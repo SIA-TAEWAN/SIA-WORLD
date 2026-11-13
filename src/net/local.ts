@@ -119,7 +119,7 @@ function writeDb(rooms: Room[]) {
   setTimeout(() => dbListeners.forEach((l) => l()), 0);
 }
 
-type LocalRoom = Room & { updated_at?: number };
+type LocalRoom = Room;
 
 function mutate<T>(fn: (rooms: LocalRoom[]) => T): T {
   const rooms = readDb();
@@ -215,6 +215,7 @@ export function createLocalBackend(): Backend {
         if (!allReady(r)) fail('not ready');
         r.status = 'playing';
         r.gone = [];
+        r.updated_at = Date.now();
         r.seed = seed;
         r.host_id = host;
         r.game_no++;
@@ -252,13 +253,13 @@ export function createLocalBackend(): Backend {
         if (r && r.players.some((p) => p.id === playerId)) r.updated_at = Date.now();
       });
     },
-    async sweepRooms(lobby) {
+    async sweepRooms() {
       const now = Date.now();
       mutate((rooms) => {
         for (let i = rooms.length - 1; i >= 0; i--) {
           const r = rooms[i];
           r.updated_at ??= now;
-          if (r.lobby === lobby && now - r.updated_at > 120_000) rooms.splice(i, 1);
+          if (now - Number(r.updated_at) > 120_000) rooms.splice(i, 1);
         }
       });
     },

@@ -127,23 +127,54 @@ export function faceColor(id: TankId): string {
   return TANKS[id].color;
 }
 
+/** 색을 밝게(+)/어둡게(-) */
+function shade(hex: string, amt: number): string {
+  const v = parseInt(hex.slice(1), 16);
+  const f = (c: number) => Math.round(amt >= 0 ? c + (255 - c) * amt : c * (1 + amt));
+  const r = f((v >> 16) & 255);
+  const g = f((v >> 8) & 255);
+  const b = f(v & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+let uid = 0;
+
 /** 탱크 몸체 SVG 조각 (포신 제외) */
 function bodyParts(id: TankId): string {
   const d = TANKS[id];
   const l = look(id);
   const r = l.domeR ?? 9;
-  return `${l.back ?? ''}
-    <rect x="7" y="29" width="34" height="9" rx="4" fill="#4a4a58" ${s()}/>
-    ${[0, 1, 2, 3].map((i) => `<circle cx="${13 + i * 7.3}" cy="33.5" r="2.4" fill="#9aa0b0"/>`).join('')}
-    <rect x="9" y="21" width="30" height="10" rx="4" fill="${d.color}" ${s()}/>
-    <rect x="12" y="22" width="18" height="3" rx="1.5" fill="#fff" fill-opacity=".35"/>
+  const k = `${id}${uid++}`;
+  const c = d.color;
+  return `<defs>
+      <radialGradient id="dome${k}" cx="0.36" cy="0.3" r="0.8">
+        <stop offset="0" stop-color="${shade(c, 0.45)}"/><stop offset="0.55" stop-color="${c}"/><stop offset="1" stop-color="${shade(c, -0.22)}"/>
+      </radialGradient>
+      <linearGradient id="plate${k}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${shade(c, 0.3)}"/><stop offset="0.5" stop-color="${c}"/><stop offset="1" stop-color="${shade(c, -0.25)}"/>
+      </linearGradient>
+      <linearGradient id="track${k}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#6a6a7c"/><stop offset="1" stop-color="#2e2e3a"/>
+      </linearGradient>
+    </defs>
+    ${l.back ?? ''}
+    <rect x="6.5" y="28.5" width="35" height="10" rx="5" fill="url(#track${k})" ${s()}/>
+    ${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `<rect x="${9.2 + i * 3.4}" y="29.6" width="1.4" height="1.4" rx=".4" fill="#8a8a9c"/>`).join('')}
+    ${[0, 1, 2, 3].map((i) => `<circle cx="${13 + i * 7.3}" cy="33.8" r="2.7" fill="#c3c8d3" stroke="#3a3a48" stroke-width=".9"/><circle cx="${13 + i * 7.3}" cy="33.8" r="1" fill="#6b7080"/>`).join('')}
+    <circle cx="9.3" cy="33.6" r="1.6" fill="#8a8fa0" stroke="#3a3a48" stroke-width=".7"/><circle cx="38.7" cy="33.6" r="1.6" fill="#8a8fa0" stroke="#3a3a48" stroke-width=".7"/>
+    <rect x="9" y="21" width="30" height="10" rx="4" fill="url(#plate${k})" ${s()}/>
+    <path d="M11.5 23.2 Q24 21.6 36.5 23.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.3" stroke-linecap="round"/>
+    <path d="M10.5 29.4 L37.5 29.4" stroke="${shade(c, -0.4)}" stroke-opacity=".5" stroke-width=".8"/>
+    ${[12.5, 35.5].map((x) => `<circle cx="${x}" cy="26.4" r=".9" fill="${shade(c, -0.35)}"/><circle cx="${x - 0.25}" cy="26.1" r=".35" fill="#fff" fill-opacity=".7"/>`).join('')}
     ${l.plate ?? ''}
-    <circle cx="24" cy="20" r="${r}" fill="${d.color}" ${s()}/>
-    <circle cx="20.5" cy="15.5" r="2.6" fill="#fff" fill-opacity=".35"/>
+    <circle cx="24" cy="20" r="${r}" fill="url(#dome${k})" ${s()}/>
+    <ellipse cx="20.4" cy="15.2" rx="3.2" ry="2" fill="#fff" fill-opacity=".55" transform="rotate(-30 20.4 15.2)"/>
+    <circle cx="18.6" cy="18.2" r=".9" fill="#fff" fill-opacity=".45"/>
     ${l.face ?? ''}
-    <ellipse cx="27" cy="19" rx="2.5" ry="3" fill="#fff"/><ellipse cx="32" cy="19" rx="2.5" ry="3" fill="#fff"/>
-    <circle cx="28" cy="19" r="1.6" fill="#1e1e2a"/><circle cx="33" cy="19" r="1.6" fill="#1e1e2a"/>
-    <circle cx="25" cy="23.5" r="1.6" fill="#ff7a9a" fill-opacity=".6"/>
+    <ellipse cx="27" cy="19" rx="2.5" ry="3" fill="#fff" stroke="${O}" stroke-width=".5"/><ellipse cx="32" cy="19" rx="2.5" ry="3" fill="#fff" stroke="${O}" stroke-width=".5"/>
+    <circle cx="28" cy="19.3" r="1.7" fill="#1e1e2a"/><circle cx="33" cy="19.3" r="1.7" fill="#1e1e2a"/>
+    <circle cx="28.6" cy="18.5" r=".65" fill="#fff"/><circle cx="33.6" cy="18.5" r=".65" fill="#fff"/>
+    <ellipse cx="25" cy="23.6" rx="1.9" ry="1.2" fill="#ff7a9a" fill-opacity=".55"/>
     ${l.front ?? ''}`;
 }
 
@@ -152,16 +183,18 @@ export function tankSvg(id: TankId, size = 96, flip = false): string {
   const d = TANKS[id];
   return `<svg class="tank-svg" viewBox="0 -8 50 48" width="${size}" height="${size * 0.96}" style="${flip ? 'transform:scaleX(-1)' : ''}" aria-hidden="true">
     <ellipse cx="24" cy="39" rx="19" ry="2.5" fill="#000" fill-opacity=".18"/>
-    <g transform="rotate(-35 24 23)"><rect x="23" y="19.5" width="24" height="7" rx="2.5" fill="${O}"/><rect x="25" y="21" width="20" height="4" rx="2" fill="${d.accent}"/></g>
+    <g transform="rotate(-35 24 23)"><rect x="23" y="19.5" width="24" height="7" rx="2.5" fill="${O}"/><rect x="25" y="21" width="20" height="4" rx="2" fill="${d.accent}"/><rect x="26" y="21.4" width="17" height="1.3" rx=".6" fill="#fff" fill-opacity=".45"/><rect x="42" y="19" width="5.5" height="8" rx="1.6" fill="${O}"/></g>
     ${bodyParts(id)}
   </svg>`;
 }
 
 /** 게임 안 텍스처용 SVG (포신 없음). 원점(바닥 가운데)은 (24,38) */
 export const TEX_BOX = { x: 0, y: -8, w: 48, h: 48 };
+/** 게임 안 텍스처 해상도 배율 (선명하게) */
+export const TEX_SCALE = 3;
 export function tankTextureSvg(id: TankId): string {
   const b = TEX_BOX;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" width="${b.w * 2}" height="${b.h * 2}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" width="${b.w * TEX_SCALE}" height="${b.h * TEX_SCALE}">
     <ellipse cx="24" cy="39" rx="18" ry="2.4" fill="#000" fill-opacity=".18"/>
     ${bodyParts(id)}
   </svg>`;

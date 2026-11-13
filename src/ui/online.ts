@@ -73,9 +73,15 @@ export async function showLobby() {
       return nav.entry();
     }
     lobby = sess;
-    // 게임 중에 나갔다가 돌아왔으면 그 방으로 바로 돌아간다
-    const mine = sess.rooms.find((r) => r.players.some((p) => p.id === clientId()));
-    if (mine) return enterRoom(mine.id);
+    const mine = sess.rooms.find((r) => r.players.some((p) => p.id === clientId()) && !(r.gone ?? []).includes(clientId()));
+    if (mine) {
+      // 게임 중에 끊겼다가 바로 돌아왔으면 그 게임으로 돌아간다 (최근 신호가 있는 진행 중인 방만)
+      const age = Date.now() - new Date(mine.updated_at ?? 0).getTime();
+      if (mine.status === 'playing' && age < 75_000) return enterRoom(mine.id);
+      // 끝난 게임·오래된 방에 남아 있던 내 자리는 정리한다
+      await (mine.status === 'playing' ? backend.quitGame(mine.id, clientId()) : backend.leaveRoom(mine.id, clientId())).catch(() => undefined);
+      await sess.refetch();
+    }
   }
   renderLobby(lobby);
 }
@@ -467,6 +473,8 @@ async function resumeGame(room: Room) {
   const r = await game.resume();
   if (r === 'denied' || r === 'timeout') {
     game.dispose();
+    // 다시 들어갈 수 없으면 그 판에서 나간 것으로 기록 (모두 나갔으면 방이 지워진다)
+    await backend!.quitGame(room.id, clientId()).catch(() => undefined);
     toast(r === 'denied' ? 'AI가 이어서 조종하고 있어 이 판에는 다시 들어갈 수 없어요' : '게임 상태를 받아오지 못했어요');
     await roomSess?.leave();
     roomSess = null;
@@ -496,7 +504,20 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     resume,
     onEnd: (s: MatchSummary) => {
       clearInterval(beat);
-      void backend!.endGame(room.id, g.gameNo, g.presentIds()).then(() => sess.refetch());
+      // 판 결과 정리 (실패하면 몇 번 더 시도)
+      const present = g.presentIds();
+      const finish = async () => {
+        for (let i = 0; i < 4; i++) {
+          try {
+            await backend!.endGame(room.id, g.gameNo, present);
+            break;
+          } catch {
+            await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+          }
+        }
+        await sess.refetch();
+      };
+      void finish();
       g.dispose();
       online = null;
       closeGame();

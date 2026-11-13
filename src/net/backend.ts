@@ -25,6 +25,8 @@ export interface Room {
   created_at: string;
   /** 게임 중에 [나가기]로 나간 사람 */
   gone?: string[];
+  /** 마지막으로 방에 사람이 있다는 신호가 온 때 */
+  updated_at?: string | number;
 }
 
 export interface Member<M> {

@@ -8,7 +8,7 @@ import { Terrain } from '../physics/terrain';
 import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, TEAM_COLORS } from './art';
-import { faceColor, tankTextureSvg, TEX_BOX } from '../ui/tankSvg';
+import { faceColor, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
 import { TANK_IDS } from '../game/data';
 import { Fx } from './fx';
 import { drawShell, TRAIL } from './shells';
@@ -73,10 +73,11 @@ class TankView {
     this.hp = t.hp;
     this.barrel = scene.add.graphics();
     this.barrel.fillStyle(0x3a2a1e).fillRoundedRect(-1, -3.5, 24, 7, 2.5);
-    this.barrel.fillStyle(hex(t.def.accent)).fillRoundedRect(1, -2, 20, 4, 2);
-    this.barrel.fillStyle(0x3a2a1e).fillRect(18, -4, 5, 8);
+    this.barrel.fillStyle(hex(t.def.accent)).fillRoundedRect(1, -2, 19, 4, 2);
+    this.barrel.fillStyle(0xffffff, 0.45).fillRoundedRect(2, -1.6, 15, 1.2, 0.6);
+    this.barrel.fillStyle(0x3a2a1e).fillRoundedRect(18, -4.2, 5.5, 8.4, 1.6);
     this.barrel.setPosition(0, -15);
-    this.body = scene.add.image(0, 0, `tank-${t.tankId}`).setOrigin(0.5, (38 - TEX_BOX.y) / TEX_BOX.h).setScale(0.5);
+    this.body = scene.add.image(0, 0, `tank-${t.tankId}`).setOrigin(0.5, (38 - TEX_BOX.y) / TEX_BOX.h).setScale(1 / TEX_SCALE);
     // 눈꺼풀 (깜빡일 때만 보임)
     this.lids = scene.add.graphics().setVisible(false);
     this.lids.fillStyle(hex(faceColor(t.tankId))).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
@@ -148,7 +149,7 @@ class TankView {
   /** 발사 반동 */
   recoil() {
     this.scene.tweens.add({ targets: this.barrel, x: -4, duration: 60, yoyo: true });
-    this.scene.tweens.add({ targets: this.body, x: -3, scaleY: 0.45, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
+    this.scene.tweens.add({ targets: this.body, x: -3, scaleY: 0.9 / TEX_SCALE, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
   }
 
   /** 맞았을 때 흔들림 */
@@ -253,7 +254,7 @@ export class GameScene extends Phaser.Scene {
     for (const id of TANK_IDS) {
       const key = `tank-${id}`;
       if (this.textures.exists(key)) continue;
-      this.load.svg(key, `data:image/svg+xml;base64,${btoa(tankTextureSvg(id))}`, { width: TEX_BOX.w * 2, height: TEX_BOX.h * 2 });
+      this.load.svg(key, `data:image/svg+xml;base64,${btoa(tankTextureSvg(id))}`, { width: TEX_BOX.w * TEX_SCALE, height: TEX_BOX.h * TEX_SCALE });
     }
   }
 
