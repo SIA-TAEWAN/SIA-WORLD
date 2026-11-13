@@ -298,6 +298,7 @@ function renderRoom(id: string) {
       setScreenCleanup(null);
       unsubA();
       unsubB();
+      unsubC();
       clearInterval(iv);
       void rs.leave();
       roomSess = null;
@@ -308,6 +309,7 @@ function renderRoom(id: string) {
       toast('게임방에서 나가졌어요');
       unsubA();
       unsubB();
+      unsubC();
       clearInterval(iv);
       setScreenCleanup(null);
       void rs.leave();
@@ -318,6 +320,7 @@ function renderRoom(id: string) {
     if (room.status === 'playing' && started.get(room.id) !== room.game_no) {
       unsubA();
       unsubB();
+      unsubC();
       clearInterval(iv);
       setScreenCleanup(null);
       return startOnline(room, null);
@@ -457,6 +460,7 @@ function renderRoom(id: string) {
   $(root, '#leave').addEventListener('click', () => {
     unsubA();
     unsubB();
+    unsubC();
     clearInterval(iv);
     setScreenCleanup(null);
     void leaveRoom();

@@ -970,6 +970,8 @@ button.my-slot {
 .gauge.power {
   cursor: pointer;
   touch-action: none;
+  /* HUD 층은 클릭을 통과시키므로 게이지만 다시 받게 한다 */
+  pointer-events: auto;
 }
 .power-limit {
   position: absolute;
