@@ -26,9 +26,9 @@
 
 ## 온라인 설정 (Supabase)
 
-1. Supabase 대시보드 → **SQL Editor**에 `supabase/migrations/001_rooms.sql`, 이어서 `002_ready_host_zodiac.sql`을 붙여넣고 Run
-2. 로컬: `.env.local`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (publishable 키)
-3. 배포: 저장소 Settings → Variables에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+- 로컬: `.env.local`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (publishable 키)
+- 배포: 저장소 Settings → Variables에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, Secrets에 `SUPABASE_DB_PASSWORD`
+- **DB 변경은 자동**: `supabase/migrations/`에 `003_이름.sql`처럼 번호를 이어 새 파일을 추가하고 push하면, 배포 때 아직 실행 안 된 SQL만 서버에 실행된다(세션 풀러로 접속). SQL이 실패하면 사이트 배포도 멈춘다. 이미 실행된 파일은 고치지 말고 새 파일로 바꾼다.
 
 다른 대기실은 주소에 `?l=코드`를 붙인다. 서버 없이 테스트하려면 `?local=1`(같은 브라우저 탭끼리 통신).
 
