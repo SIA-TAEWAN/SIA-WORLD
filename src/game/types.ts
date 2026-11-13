@@ -1,0 +1,73 @@
+import type { ItemId, TankDef, TankId } from './data';
+
+export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Team = 0 | 1;
+
+export interface PlayerSetup {
+  name: string;
+  tank: TankId;
+  team: Team;
+  /** AI 난이도. null이면 사람이 조종 */
+  ai: Difficulty | null;
+  items: ItemId[];
+}
+
+export interface TankState {
+  idx: number;
+  name: string;
+  tankId: TankId;
+  def: TankDef;
+  team: Team;
+  /** 발 밑 중앙 좌표 (y = 밟고 있는 땅 픽셀의 행) */
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  facing: 1 | -1;
+  angle: number;
+  delay: number;
+  /** 필살기 게이지 0~100 */
+  ult: number;
+  alive: boolean;
+  items: (ItemId | null)[];
+  damageDealt: number;
+  ai: Difficulty | null;
+  lastPower: number;
+}
+
+/** 한 턴의 입력. 온라인에서는 이것만 주고받는다. */
+export interface TurnInput {
+  angle: number;
+  facing: 1 | -1;
+  /** 0~100 */
+  power: number;
+  /** 0=1번, 1=2번, 2=필살기 */
+  weapon: 0 | 1 | 2;
+  /** 사용할 아이템 칸 번호 (없으면 null) */
+  itemSlot: number | null;
+}
+
+export type SimEvent =
+  | { f: number; type: 'explode'; x: number; y: number; radius: number; crater: number; big: boolean }
+  | { f: number; type: 'build'; x: number; y: number; r: number }
+  | { f: number; type: 'carveLine'; x1: number; y1: number; x2: number; y2: number; r: number }
+  | { f: number; type: 'laser'; x1: number; y1: number; x2: number; y2: number; r: number }
+  | { f: number; type: 'damage'; target: number; amount: number; direct: boolean }
+  | { f: number; type: 'heal'; target: number; amount: number }
+  | { f: number; type: 'move'; target: number; x: number; y: number; kind: 'knock' | 'fall' | 'teleport' }
+  | { f: number; type: 'death'; target: number };
+
+export interface ShellTrack {
+  id: number;
+  spawn: number;
+  /** [x0,y0,x1,y1,...] 프레임마다 위치 */
+  path: number[];
+  behavior: string;
+}
+
+export interface ShotResult {
+  frames: number;
+  shells: ShellTrack[];
+  events: SimEvent[];
+  firstImpact: { x: number; y: number } | null;
+}

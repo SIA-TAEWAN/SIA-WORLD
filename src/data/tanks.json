@@ -1,0 +1,70 @@
+{
+  "bolt": {
+    "name": "볼트",
+    "role": "입문용 만능형",
+    "color": "#ffb627",
+    "accent": "#ff7b00",
+    "hp": 1000,
+    "defense": 0.15,
+    "move": 120,
+    "angleMin": 15,
+    "angleMax": 70,
+    "delay": 600,
+    "weapons": [
+      "bolt_shell",
+      "bolt_double",
+      "bolt_big"
+    ]
+  },
+  "driller": {
+    "name": "드릴러",
+    "role": "지형 파괴",
+    "color": "#9c7b5b",
+    "accent": "#5f6b7a",
+    "hp": 1040,
+    "defense": 0.14,
+    "move": 100,
+    "angleMin": 20,
+    "angleMax": 60,
+    "delay": 650,
+    "weapons": [
+      "drill_drill",
+      "drill_dig",
+      "drill_quake"
+    ]
+  },
+  "sparrow": {
+    "name": "스패로우",
+    "role": "원거리·정밀",
+    "color": "#5cc96b",
+    "accent": "#2f8f5b",
+    "hp": 980,
+    "defense": 0.1,
+    "move": 140,
+    "angleMin": 25,
+    "angleMax": 80,
+    "delay": 520,
+    "weapons": [
+      "sparrow_fast",
+      "sparrow_drop",
+      "sparrow_laser"
+    ]
+  },
+  "bubble": {
+    "name": "버블",
+    "role": "방어·교란",
+    "color": "#ff8fc8",
+    "accent": "#5fc8ff",
+    "hp": 1200,
+    "defense": 0.25,
+    "move": 90,
+    "angleMin": 10,
+    "angleMax": 50,
+    "delay": 700,
+    "weapons": [
+      "bubble_bounce",
+      "bubble_build",
+      "bubble_shock"
+    ]
+  }
+}
