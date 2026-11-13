@@ -1205,9 +1205,10 @@ export class GameScene extends Phaser.Scene {
       case 'laser': {
         this.vis.carveLine(e.x1, Math.max(-60, e.y1), e.x2, e.y2, e.r);
         this.paint(e.x1 - e.r - 1, 0, e.x1 + e.r + 1, e.y2 + e.r + 1);
-        const beam = this.add.graphics().setDepth(25);
-        beam.fillStyle(0xff3b6b, 0.35).fillRect(e.x1 - e.r * 2.2, e.y1, e.r * 4.4, e.y2 - e.y1);
-        beam.fillStyle(0xffffff, 0.95).fillRect(e.x1 - e.r * 0.6, e.y1, e.r * 1.2, e.y2 - e.y1);
+        // 빛줄기 자리를 기준점으로 그려서, 퍼지며 사라질 때 옆으로 밀리지 않게 한다
+        const beam = this.add.graphics().setDepth(25).setPosition(e.x1, 0);
+        beam.fillStyle(0xff3b6b, 0.35).fillRect(-e.r * 2.2, e.y1, e.r * 4.4, e.y2 - e.y1);
+        beam.fillStyle(0xffffff, 0.95).fillRect(-e.r * 0.6, e.y1, e.r * 1.2, e.y2 - e.y1);
         this.tweens.add({ targets: beam, alpha: 0, scaleX: 1.4, duration: 650, onComplete: () => beam.destroy() });
         this.cameras.main.flash(120, 255, 200, 220);
         this.cameras.main.shake(300, 0.008);
