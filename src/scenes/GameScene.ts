@@ -11,7 +11,7 @@ import { buildTerrainArt, drawBackground, hex, TEAM_COLORS } from './art';
 import { ART_SCALE, TANK_ART, faceColor, tankArtUrl, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
 import { ALL_TANK_IDS } from '../game/data';
 import { Fx } from './fx';
-import { drawShell, TRAIL } from './shells';
+import { drawShell, SHELL_LOOKS, SPIN_LOOKS, TRAIL } from './shells';
 import { music } from '../ui/music';
 import { Hud } from '../ui/hud';
 import { Input, type ControlEvent } from '../ui/input';
@@ -258,6 +258,8 @@ export class GameScene extends Phaser.Scene {
   /** 탱크별 파워 리미터 (최대로 눌러도 여기까지) */
   private limit = new Map<number, number>();
   private offAngleAcc = 0;
+  /** 날아가는 포탄 그림 (포탄 기록별) */
+  private shellSprites = new Map<object, Phaser.GameObjects.Image>();
   /** 땅에 놓인 보급 상자 그림 (상자 id별) */
   private crateViews = new Map<number, Phaser.GameObjects.Container>();
   /** 떨어지는 중인 상자 id */
@@ -282,6 +284,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
+    for (const l of SHELL_LOOKS) if (!this.textures.exists(`shell-${l}`)) this.load.image(`shell-${l}`, `${import.meta.env.BASE_URL}shells/${l}.png`);
     // 탱크 그림은 메뉴와 같은 SVG를 2배 크기로 굽는다
     for (const id of ALL_TANK_IDS) {
       const key = `tank-${id}`;
@@ -1079,6 +1082,8 @@ export class GameScene extends Phaser.Scene {
     this.time.removeAllEvents();
     this.pb = null;
     this.shellG.clear();
+    this.shellSprites.forEach((im) => im.destroy());
+    this.shellSprites.clear();
     this.views.forEach((v) => v.destroy());
     this.match = Match.fromSnapshot(snap);
     this.records = new Map(records.map((r) => [r.turn, r]));
@@ -1130,7 +1135,11 @@ export class GameScene extends Phaser.Scene {
     let lead: { x: number; y: number } | null = null;
     for (const s of pb.res.shells) {
       const k = Math.floor(pb.frame) - s.spawn;
-      if (k < 0 || k * 2 >= s.path.length) continue;
+      const spr = this.shellSprites.get(s);
+      if (k < 0 || k * 2 >= s.path.length) {
+        spr?.setVisible(false);
+        continue;
+      }
       const x = s.path[k * 2];
       const y = s.path[k * 2 + 1];
       // 꼬리 + 날아가는 방향으로 기운 포탄
@@ -1144,13 +1153,27 @@ export class GameScene extends Phaser.Scene {
       dx /= len;
       dy /= len;
       if (s.behavior === 'laser') g.fillStyle(0xff7aa0, 0.35).fillCircle(x, y, 12);
-      drawShell(g, look, x, y, dx, dy, pb.frame / 60, s.big);
+      const key = `shell-${look}`;
+      if (this.textures.exists(key)) {
+        // SpriteCook 포탄 그림: 진행 방향으로 기울이거나, 둥근 것은 빙글빙글
+        let im = spr;
+        if (!im) {
+          im = this.add.image(x, y, key).setDepth(20);
+          im.setScale((s.big ? 26 : 18) / Math.max(im.width, im.height));
+          this.shellSprites.set(s, im);
+        }
+        im.setVisible(true).setPosition(x, y);
+        im.rotation = SPIN_LOOKS.has(look) ? (pb.frame / 60) * 10 : Math.atan2(dy, dx);
+        g.fillStyle(0x000000, 0.18).fillCircle(x + 1.5, y + 2, s.big ? 8 : 5.5);
+      } else drawShell(g, look, x, y, dx, dy, pb.frame / 60, s.big);
       if (!lead) lead = { x, y };
     }
     if (lead && !this.manualCam) this.follow(lead.x, this.focusY(lead.y, 0.5), 0.14);
 
     if (pb.frame >= pb.res.frames + 2 && pb.ev >= evs.length) {
       g.clear();
+      this.shellSprites.forEach((im) => im.destroy());
+      this.shellSprites.clear();
       this.endShot();
     }
   }

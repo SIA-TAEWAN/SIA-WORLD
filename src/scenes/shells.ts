@@ -30,6 +30,11 @@ export const TRAIL: Record<string, number> = {
 
 const OUT = 0x3a2a1e;
 
+/** SpriteCook으로 만든 포탄 그림 (public/shells/*.png) */
+export const SHELL_LOOKS = ['shell', 'cheese', 'horn', 'drill', 'claw', 'carrot', 'hop', 'fire', 'pearl', 'fang', 'mist', 'shoe', 'wool', 'banana', 'egg', 'feather', 'bone', 'acorn', 'mud', 'moon', 'sun', 'coconut'];
+/** 진행 방향 대신 빙글빙글 도는 포탄 */
+export const SPIN_LOOKS = new Set(['cheese', 'claw', 'hop', 'pearl', 'mist', 'shoe', 'wool', 'banana', 'egg', 'bone', 'mud', 'moon', 'sun', 'coconut']);
+
 /**
  * 포탄을 날아가는 방향(dx,dy 단위벡터)으로 그린다.
  * 로컬 좌표 u = 앞, v = 옆.
