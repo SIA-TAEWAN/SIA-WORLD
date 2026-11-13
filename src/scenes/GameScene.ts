@@ -1159,7 +1159,7 @@ export class GameScene extends Phaser.Scene {
         let im = spr;
         if (!im) {
           im = this.add.image(x, y, key).setDepth(20);
-          im.setScale((s.big ? 26 : 18) / Math.max(im.width, im.height));
+          im.setScale((s.big ? 29 : 20) / Math.max(im.width, im.height));
           this.shellSprites.set(s, im);
         }
         im.setVisible(true).setPosition(x, y);
