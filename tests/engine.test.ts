@@ -125,3 +125,29 @@ describe('AI', () => {
     expect(r.turns).toBeLessThan(200);
   });
 });
+
+describe('온라인 동기화', () => {
+  it('스냅샷으로 되살린 판은 같은 입력에 같은 결과를 낸다', () => {
+    const a = new Match(duo('bolt', 'driller'), 'sphinx', 99);
+    for (let i = 0; i < 3; i++) {
+      a.startTurn();
+      a.fire(shot({ facing: a.cur.team === 0 ? 1 : -1, power: 55 + i * 10 }));
+    }
+    const b = Match.fromSnapshot(JSON.parse(JSON.stringify(a.snapshot())));
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (const m of [a, b]) {
+      m.startTurn();
+      m.fire(shot({ facing: m.cur.team === 0 ? 1 : -1, power: 77, weapon: 1 }));
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+  });
+
+  it('지형 압축을 풀면 원래와 같다', () => {
+    const m = new Match(duo(), 'sky', 1);
+    m.terrain.carve(400, 400, 50);
+    const t = new Terrain();
+    t.decode(m.terrain.encode());
+    expect(t.hash()).toBe(m.terrain.hash());
+    expect(m.terrain.encode().length).toBeLessThan(60000);
+  });
+});

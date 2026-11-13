@@ -4,6 +4,8 @@ export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Team = 0 | 1;
 
 export interface PlayerSetup {
+  /** 온라인 플레이어 고유 ID */
+  id?: string;
   name: string;
   tank: TankId;
   team: Team;

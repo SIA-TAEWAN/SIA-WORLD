@@ -26,7 +26,10 @@ export class Match {
   /** 승리 팀. 무승부는 -1, 진행 중이면 null */
   winner: Team | -1 | null = null;
 
+  readonly setups: PlayerSetup[];
+
   constructor(setups: PlayerSetup[], mapId: MapId, seed: number) {
+    this.setups = setups;
     this.mapId = mapId;
     this.seed = seed;
     this.rng = new Rng(seed);
@@ -291,7 +294,62 @@ export class Match {
     else if (teams.size === 1) this.winner = [...teams][0];
   }
 
+  /** 기기 간 비교용 상태 지문 (지형 + 탱크 + 난수 상태) */
+  stateHash(): string {
+    const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10)].join(',')).join(';');
+    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}`;
+  }
+
+  snapshot(): MatchSnapshot {
+    return {
+      setups: this.setups,
+      mapId: this.mapId,
+      seed: this.seed,
+      turn: this.turn,
+      current: this.current,
+      wind: this.wind,
+      moveLeft: this.moveLeft,
+      movedThisTurn: this.movedThisTurn,
+      rng: this.rng.state,
+      winner: this.winner,
+      terrain: this.terrain.encode(),
+      tanks: this.tanks.map((t) => ({
+        x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
+        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower,
+      })),
+    };
+  }
+
+  static fromSnapshot(s: MatchSnapshot): Match {
+    const m = new Match(s.setups, s.mapId, s.seed);
+    m.turn = s.turn;
+    m.current = s.current;
+    m.wind = s.wind;
+    m.moveLeft = s.moveLeft;
+    m.movedThisTurn = s.movedThisTurn;
+    m.rng.state = s.rng;
+    m.winner = s.winner;
+    m.terrain.decode(s.terrain);
+    s.tanks.forEach((d, i) => Object.assign(m.tanks[i], d));
+    return m;
+  }
+
   get over() {
     return this.winner !== null;
   }
+}
+
+export interface MatchSnapshot {
+  setups: PlayerSetup[];
+  mapId: MapId;
+  seed: number;
+  turn: number;
+  current: number;
+  wind: number;
+  moveLeft: number;
+  movedThisTurn: number;
+  rng: number;
+  winner: Team | -1 | null;
+  terrain: string;
+  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower'>[];
 }

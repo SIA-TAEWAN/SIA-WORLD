@@ -1,0 +1,98 @@
+import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
+import type { Backend, Channel, Member, NetMsg, Room, RoomPlayer } from './backend';
+
+class SupaChannel<M> implements Channel<M> {
+  private ch: RealtimeChannel;
+  private presenceCbs: ((m: Member<M>[]) => void)[] = [];
+  private msgCbs: ((m: NetMsg) => void)[] = [];
+
+  constructor(sb: SupabaseClient, name: string, key: string) {
+    this.ch = sb.channel(name, { config: { presence: { key }, broadcast: { self: false, ack: false } } });
+    this.ch.on('presence', { event: 'sync' }, () => {
+      const state = this.ch.presenceState<{ meta: M }>();
+      const list: Member<M>[] = [];
+      for (const [k, metas] of Object.entries(state)) {
+        const last = metas[metas.length - 1];
+        if (last) list.push({ key: k, meta: last.meta });
+      }
+      this.presenceCbs.forEach((cb) => cb(list));
+    });
+    this.ch.on('broadcast', { event: 'm' }, ({ payload }) => this.msgCbs.forEach((cb) => cb(payload as NetMsg)));
+  }
+
+  onPresence(cb: (m: Member<M>[]) => void) {
+    this.presenceCbs.push(cb);
+  }
+  onMessage(cb: (m: NetMsg) => void) {
+    this.msgCbs.push(cb);
+  }
+
+  join(meta: M): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      this.ch.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await this.ch.track({ meta });
+          if (!done) {
+            done = true;
+            resolve();
+          }
+        } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !done) {
+          done = true;
+          reject(new Error(status));
+        }
+      });
+    });
+  }
+
+  async track(meta: M) {
+    await this.ch.track({ meta });
+  }
+
+  send(msg: NetMsg) {
+    void this.ch.send({ type: 'broadcast', event: 'm', payload: msg });
+  }
+
+  async leave() {
+    this.presenceCbs = [];
+    this.msgCbs = [];
+    await this.ch.unsubscribe();
+  }
+}
+
+export function createSupabaseBackend(url: string, key: string): Backend {
+  const sb = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { params: { eventsPerSecond: 20 } },
+  });
+
+  const rpc = async <T>(fn: string, args: Record<string, unknown>): Promise<T> => {
+    const { data, error } = await sb.rpc(fn, args);
+    if (error) throw new Error(error.message);
+    return data as T;
+  };
+
+  return {
+    kind: 'supabase',
+    channel: <M>(name: string, key: string) => new SupaChannel<M>(sb, name, key),
+    async listRooms(lobby) {
+      const { data, error } = await sb.from('rooms').select('*').eq('lobby', lobby).order('created_at');
+      if (error) throw new Error(error.message);
+      return (data ?? []) as Room[];
+    },
+    watchRooms(lobby, cb) {
+      const ch = sb
+        .channel(`rooms-db:${lobby}:${Math.random().toString(36).slice(2)}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => cb())
+        .subscribe();
+      return () => void sb.removeChannel(ch);
+    },
+    createRoom: (lobby, name, player: RoomPlayer) => rpc<Room>('create_room', { p_lobby: lobby, p_name: name, p_player: player }),
+    joinRoom: (id, player) => rpc<Room>('join_room', { p_id: id, p_player: player }),
+    leaveRoom: (id, playerId) => rpc<void>('leave_room', { p_id: id, p_player_id: playerId }),
+    updatePlayer: (id, player) => rpc<void>('update_player', { p_id: id, p_player: player }),
+    setMap: (id, map) => rpc<void>('set_room_map', { p_id: id, p_map: map }),
+    startGame: (id, host, seed) => rpc<Room>('start_game', { p_id: id, p_host: host, p_seed: seed }),
+    endGame: (id, gameNo, present) => rpc<void>('end_game', { p_id: id, p_game_no: gameNo, p_present: present }),
+  };
+}

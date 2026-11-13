@@ -2,7 +2,7 @@
 
 설치·회원가입 없이 링크 하나로 즐기는 브라우저 턴제 포격 게임. 각도·파워·바람을 계산해 맞히고, 포탄이 지형을 부순다.
 
-## 지금 되는 것 (PRD 1~2단계)
+## 지금 되는 것 (PRD 1~3단계)
 
 - **핵심 엔진**: 픽셀 비트맵 지형 파괴, 중력·바람 탄도, 데미지 공식(직격 +20%), 탱크 낙하·추락 탈락
 - **턴 규칙**: 딜레이 기반 턴 순서, 턴당 30초, 필살기 게이지
@@ -13,7 +13,18 @@
 - **화면**: 입장 → AI 1:1 설정(탱크·상대·맵·상점) → 게임 → 결과
 - **조작**: PC 키보드 + 모바일 터치 버튼, 화면 드래그로 맵 둘러보기
 
-온라인 대기실·게임방(3단계, Supabase)은 아직이다. 엔진이 고정 프레임·시드 기반이라 "턴 입력만 주고받기" 구조를 그대로 올릴 수 있다.
+- **온라인 대기실** (3단계): 링크 하나 = 대기실 하나(최대 10명, ID 중복 불가), 접속자 목록, 채팅, 아이템 상점, 게임방 목록
+- **게임방**: 최대 4명, 탱크·팀(3명 이상일 때)·맵 선택, 누구나 시작, 1:1 / 2:1 / 2:2
+- **동기화**: 턴마다 이동 기록·발사 입력만 주고받고 모든 기기가 같은 물리로 계산. 기준 기기가 턴 결과 지문을 보내고, 다르면 전체 상태를 받아 맞춤
+- **접속 끊김**: 30초 동안 자리 유지(새로고침하면 자동으로 다시 들어감), 넘으면 AI가 이어서 조종하고 그 판에는 다시 못 들어옴. 기준 기기가 끊기면 다음 사람이 이어받음
+
+## 온라인 설정 (Supabase)
+
+1. Supabase 대시보드 → **SQL Editor**에 `supabase/migrations/001_rooms.sql`을 붙여넣고 Run
+2. 로컬: `.env.local`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (publishable 키)
+3. 배포: 저장소 Settings → Variables에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+
+다른 대기실은 주소에 `?l=코드`를 붙인다. 서버 없이 테스트하려면 `?local=1`(같은 브라우저 탭끼리 통신).
 
 ## 조작
 
@@ -49,7 +60,9 @@ src/
   game/      match.ts (턴·딜레이·데미지·팀·아이템), rng.ts (시드 난수), types.ts
   ai/        ai.ts (각도·파워 시뮬레이션 탐색 + 난이도별 오차), autoplay.ts
   scenes/    GameScene.ts (Phaser 렌더링·턴 진행), art.ts (코드로 그린 카툰 그래픽)
-  ui/        hud.ts, input.ts, sfx.ts (합성 효과음), storage.ts
+  net/       backend.ts(공통), supabase.ts, local.ts(탭 간 테스트), lobby.ts, room.ts, online.ts(동기화)
+  ui/        offline.ts(입장·AI 설정·결과), online.ts(대기실·게임방), hud.ts, shop.ts, input.ts, sfx.ts
+supabase/    migrations/001_rooms.sql (rooms 테이블, RLS, 게임방 함수)
 tools/       balance.ts, stats.ts
 tests/       engine.test.ts
 ```

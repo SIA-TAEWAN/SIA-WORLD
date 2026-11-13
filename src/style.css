@@ -1083,3 +1083,263 @@ button.my-slot {
   margin: 12px 0 0;
   color: #8a6a4a;
 }
+
+/* ---------- 온라인: 공통 ---------- */
+.screen.center {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 20px;
+  text-shadow: 0 2px 0 var(--ink);
+}
+.connecting {
+  text-align: center;
+}
+.spinner {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  border: 6px solid rgba(255, 255, 255, 0.4);
+  border-top-color: var(--sun);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.small-btn {
+  font-size: 15px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  box-shadow: 0 3px 0 var(--ink);
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.bar h2 small {
+  font-size: 15px;
+  -webkit-text-stroke: 0;
+  color: #fff;
+  opacity: 0.9;
+}
+.screen.lobby,
+.screen.room {
+  min-height: 100%;
+  padding: 0 16px 96px;
+  background: linear-gradient(#4aa8ff, #9fd6ff 300px, #ffe9b8);
+}
+.screen.lobby {
+  padding-bottom: 24px;
+}
+.lobby-grid,
+.room-grid {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.card-head h3 {
+  margin: 0;
+}
+.room-list {
+  display: grid;
+  gap: 8px;
+}
+.room-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  padding: 8px 10px;
+}
+.room-row.playing {
+  background: #f1ece2;
+}
+.rn {
+  font-size: 17px;
+  min-width: 0;
+}
+.rn small {
+  display: block;
+  font-size: 12px;
+  color: #8a6a4a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cnt {
+  font-size: 15px;
+}
+.st {
+  font-size: 12px;
+  color: #8a6a4a;
+}
+.empty {
+  color: #8a6a4a;
+  text-align: center;
+  padding: 24px 8px;
+}
+.people {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.people li {
+  background: #fff;
+  border: 2px solid #e2d3b5;
+  border-radius: 10px;
+  padding: 3px 8px;
+  font-size: 14px;
+}
+.people li.me {
+  border-color: var(--ink);
+  background: #fff4c2;
+}
+.people small {
+  margin-left: 4px;
+  font-size: 11px;
+  color: #8a6a4a;
+}
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chat-log {
+  height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 2px solid #e2d3b5;
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 14px;
+  user-select: text;
+}
+.chat-log p {
+  margin: 3px 0;
+  word-break: break-all;
+}
+.chat-log p.sys {
+  color: #9a8a74;
+  font-size: 12px;
+}
+.chat-form {
+  display: flex;
+  gap: 6px;
+}
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 15px;
+}
+
+/* ---------- 게임방 ---------- */
+.slots4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.pslot {
+  position: relative;
+  background: #fff;
+  border: 3px solid var(--c, #e2d3b5);
+  border-radius: 14px;
+  padding: 6px;
+  text-align: center;
+  min-height: 150px;
+  font-size: 14px;
+}
+.pslot.me {
+  box-shadow: 0 0 0 3px var(--sun);
+}
+.pslot.empty {
+  display: grid;
+  place-items: center;
+  color: #c9b48e;
+  border-style: dashed;
+  border-color: #e2d3b5;
+}
+.pslot .pic {
+  background: linear-gradient(#cdeaff, #eaf6ff);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+}
+.pn {
+  font-size: 16px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pt,
+.pi {
+  font-size: 12px;
+  color: #8a6a4a;
+}
+.away {
+  position: absolute;
+  inset: auto 6px 6px;
+  background: var(--red);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 11px;
+}
+#team button.sel {
+  background: var(--c);
+  color: #fff;
+}
+#team .team-dot {
+  border: 1px solid #fff;
+}
+
+@media (max-width: 1000px) {
+  .lobby-grid,
+  .room-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .rooms-card,
+  .slots-card {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 760px) {
+  .lobby-grid,
+  .room-grid {
+    grid-template-columns: 1fr;
+  }
+  .slots4 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .chat-log {
+    height: 180px;
+  }
+  .room-row {
+    grid-template-columns: 1fr auto auto;
+  }
+  .room-row .st {
+    display: none;
+  }
+}

@@ -112,12 +112,12 @@ export class Hud {
     parent.append(this.root);
   }
 
-  setTurn(match: Match, t: TankState, human: boolean) {
+  setTurn(match: Match, t: TankState, human: boolean, tag = '') {
     const w = match.wind;
     const arrow = w === 0 ? '·' : w > 0 ? '➜' : '➜';
     this.wind.innerHTML = `<span class="wind-label">WIND</span><span class="wind-arrow ${w < 0 ? 'flip' : ''}" style="--s:${0.6 + Math.abs(w) / 12}">${arrow}</span><b>${Math.abs(w)}</b>`;
     this.wind.title = w === 0 ? '무풍' : `${w > 0 ? '오른쪽' : '왼쪽'}으로 ${Math.abs(w)}`;
-    this.banner.innerHTML = `<span style="color:${TEAM_COLORS[t.team]}">${escapeHtml(t.name)}</span> 차례${human ? '' : ' <small>(AI)</small>'}`;
+    this.banner.innerHTML = `<span style="color:${TEAM_COLORS[t.team]}">${escapeHtml(t.name)}</span> 차례${tag ? ` <small>(${escapeHtml(tag)})</small>` : ''}`;
     this.banner.classList.remove('show');
     void this.banner.offsetWidth;
     this.banner.classList.add('show');

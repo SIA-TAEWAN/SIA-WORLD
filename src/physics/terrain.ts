@@ -93,4 +93,68 @@ export class Terrain {
     if (l < 1e-6) return { nx: 0, ny: -1 };
     return { nx: nx / l, ny: ny / l };
   }
+
+  /** 지형 지문 (기기 간 화면 일치 확인용) */
+  hash(): number {
+    let h = 0x811c9dc5;
+    const d = this.data;
+    let run = 0;
+    let prev = 0;
+    for (let i = 0; i < d.length; i++) {
+      if (d[i] === prev) run++;
+      else {
+        h = Math.imul(h ^ run, 0x01000193);
+        prev = d[i];
+        run = 1;
+      }
+    }
+    return (Math.imul(h ^ run, 0x01000193) >>> 0);
+  }
+
+  /** 런 길이 압축 → base64 (0부터 시작해 값이 바뀔 때마다 길이를 기록) */
+  encode(): string {
+    const out: number[] = [];
+    const d = this.data;
+    let prev = 0;
+    let run = 0;
+    const push = (n: number) => {
+      while (n >= 0x80) {
+        out.push((n & 0x7f) | 0x80);
+        n >>>= 7;
+      }
+      out.push(n);
+    };
+    for (let i = 0; i < d.length; i++) {
+      if (d[i] === prev) run++;
+      else {
+        push(run);
+        prev = d[i];
+        run = 1;
+      }
+    }
+    push(run);
+    let bin = '';
+    for (let i = 0; i < out.length; i++) bin += String.fromCharCode(out[i]);
+    return btoa(bin);
+  }
+
+  decode(b64: string) {
+    const bin = atob(b64);
+    let i = 0;
+    let pos = 0;
+    let v = 0;
+    while (i < bin.length) {
+      let n = 0;
+      let shift = 0;
+      let b: number;
+      do {
+        b = bin.charCodeAt(i++);
+        n |= (b & 0x7f) << shift;
+        shift += 7;
+      } while (b & 0x80);
+      this.data.fill(v, pos, pos + n);
+      pos += n;
+      v ^= 1;
+    }
+  }
 }

@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
-import { Match } from '../game/match';
+import { Match, type MatchSnapshot } from '../game/match';
 import { Rng } from '../game/rng';
 import { TURN_SECONDS, ITEMS } from '../game/data';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput } from '../game/types';
 import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
+import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, makeTankTextures, TEAM_COLORS } from './art';
 import { Hud } from '../ui/hud';
@@ -13,7 +14,7 @@ import { sfx } from '../ui/sfx';
 
 export interface MatchSummary {
   winner: 0 | 1 | -1;
-  players: { name: string; tank: string; team: 0 | 1; damage: number; alive: boolean; ai: boolean }[];
+  players: { name: string; tank: string; team: 0 | 1; damage: number; alive: boolean; ai: boolean; mine: boolean }[];
   turns: number;
 }
 
@@ -25,9 +26,14 @@ export interface GameConfig {
   hudParent: HTMLElement;
   onEnd: (s: MatchSummary) => void;
   onQuit: () => void;
+  /** 온라인 대전일 때만 */
+  net?: NetHooks;
+  /** 재접속: 기준 기기에서 받은 판 상태 */
+  resume?: { snap: MatchSnapshot; records: TurnRecord[]; elapsed: number };
 }
 
-type Phase = 'intro' | 'aim' | 'ai' | 'fly' | 'settle' | 'over';
+type Phase = 'intro' | 'aim' | 'ai' | 'remote' | 'fly' | 'settle' | 'over';
+type Control = 'human' | 'ai' | 'remote';
 
 class TankView {
   cont: Phaser.GameObjects.Container;
@@ -83,6 +89,28 @@ class TankView {
     this.barrel.rotation = (-angle * Math.PI) / 180;
   }
 
+  private status: Phaser.GameObjects.Text | null = null;
+
+  setStatus(text: string | null) {
+    if (!text) {
+      this.status?.destroy();
+      this.status = null;
+      return;
+    }
+    if (!this.status) {
+      this.status = this.scene.add
+        .text(0, -86, '', { fontFamily: 'Jua, sans-serif', fontSize: '13px', color: '#fff', backgroundColor: '#c0392bcc', padding: { x: 6, y: 2 } })
+        .setOrigin(0.5);
+      this.label.add(this.status);
+    }
+    this.status.setText(text);
+  }
+
+  destroy() {
+    this.cont.destroy();
+    this.label.destroy();
+  }
+
   kill() {
     if (this.dead) return;
     this.dead = true;
@@ -121,6 +149,17 @@ export class GameScene extends Phaser.Scene {
   private pb: { res: ShotResult; frame: number; ev: number } | null = null;
   private ai: { stage: 'wait' | 'move' | 'aim' | 'charge'; move: number; shot: TurnInput | null; wait: number } | null = null;
   private quitBtn!: HTMLButtonElement;
+  /** 이번 턴 이동 기록 (부호 = 방향, 크기 = 걸음 수) */
+  private runs: number[] = [];
+  private records = new Map<number, TurnRecord>();
+  private remote: { applied: number; stage: 'wait' | 'move' | 'aim' | 'charge'; rec?: TurnRecord; liveRuns: number[]; moveAcc: number } = {
+    applied: 0,
+    stage: 'wait',
+    liveRuns: [],
+    moveAcc: 0,
+  };
+  private liveTimer = 0;
+  private lastLive = '';
 
   constructor() {
     super('game');
@@ -132,7 +171,8 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const cfg = this.cfg;
-    this.match = new Match(cfg.setups, cfg.mapId, cfg.seed);
+    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed);
+    if (cfg.resume) this.records = new Map(cfg.resume.records.map((r) => [r.turn, r]));
     this.aiRng = new Rng(cfg.seed ^ 0x5bd1e995);
     const map = MAPS[cfg.mapId];
     const { terrain } = this.match;
@@ -141,7 +181,8 @@ export class GameScene extends Phaser.Scene {
     drawBackground(this, map.theme, cfg.mapId, terrain.w);
 
     // 지형
-    this.art = buildTerrainArt(terrain, map.theme);
+    // 색은 처음 지형 기준으로 칠한다 (재접속해도 같은 모습)
+    this.art = buildTerrainArt(map.build(new Rng(this.match.seed)), map.theme);
     if (this.textures.exists('terrain')) this.textures.remove('terrain');
     this.tex = this.textures.createCanvas('terrain', terrain.w, terrain.h)!;
     this.img = this.tex.context.createImageData(terrain.w, terrain.h);
@@ -163,7 +204,7 @@ export class GameScene extends Phaser.Scene {
     this.quitBtn.className = 'quit';
     this.quitBtn.textContent = '나가기';
     this.quitBtn.onclick = () => {
-      if (confirm('게임을 그만두고 나갈까요?')) cfg.onQuit();
+      if (confirm(cfg.net ? '게임에서 나갈까요? 30초 뒤에는 AI가 대신 조종하고 다시 들어올 수 없어요.' : '게임을 그만두고 나갈까요?')) cfg.onQuit();
     };
     this.hud.root.querySelector('.hud-top')!.prepend(this.quitBtn);
     this.input2.on((e) => this.onControl(e));
@@ -188,7 +229,12 @@ export class GameScene extends Phaser.Scene {
     this.events.once('destroy', () => this.cleanup());
 
     if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = this.match;
-    this.time.delayedCall(500, () => this.nextTurn());
+    if (cfg.resume) {
+      const { elapsed } = cfg.resume;
+      this.views.forEach((v) => v.t.alive || v.kill());
+      this.time.delayedCall(300, () => (this.match.over ? this.finish() : this.match.current < 0 ? this.nextTurn() : this.beginTurn(Math.min(TURN_SECONDS - 3, elapsed))));
+    } else this.time.delayedCall(500, () => this.nextTurn());
+    cfg.net?.attach(this);
   }
 
   private cleanup() {
@@ -253,25 +299,51 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- 턴 진행 ----------
 
+  /** 이 기기에서 이 탱크를 누가 조종하는지 */
+  private controlOf(t: TankState): Control {
+    const net = this.cfg.net;
+    if (!net) return t.ai ? 'ai' : 'human';
+    if (t.ai) return net.isHost() ? 'ai' : 'remote';
+    return t.idx === net.myIdx ? 'human' : 'remote';
+  }
+
   private nextTurn() {
     if (this.match.over) return this.finish();
-    const t = this.match.startTurn();
-    const human = !t.ai;
-    this.timeLeft = TURN_SECONDS;
+    this.match.startTurn();
+    this.cfg.net?.turnStarted(this.match);
+    this.beginTurn(0);
+  }
+
+  private beginTurn(elapsed: number) {
+    const t = this.match.cur;
+    const ctrl = this.controlOf(t);
+    this.timeLeft = TURN_SECONDS - elapsed;
     this.power = 0;
     this.charging = false;
     this.weapon = 0;
     this.itemSlot = null;
     this.manualCam = false;
+    this.runs = [];
+    this.remote = { applied: 0, stage: 'wait', liveRuns: [], moveAcc: 0 };
+    this.lastLive = '';
     this.views.forEach((v) => v.arrow.setVisible(v.t.idx === t.idx));
-    this.hud.setTurn(this.match, t, human);
+    const tag = t.ai ? 'AI' : ctrl === 'human' && this.cfg.net ? '내 차례!' : '';
+    this.hud.setTurn(this.match, t, ctrl === 'human', tag);
     sfx.turn();
     this.cameras.main.pan(t.x, t.y - 120, 600, 'Sine.easeInOut');
-    if (human) this.phase = 'aim';
+    this.ai = null;
+    if (ctrl === 'human') this.phase = 'aim';
+    else if (ctrl === 'ai') this.startAi();
     else {
-      this.phase = 'ai';
-      this.ai = { stage: 'wait', move: 0, shot: null, wait: 0.9 };
+      this.phase = 'remote';
+      const rec = this.records.get(this.match.turn);
+      if (rec) this.onRemoteTurn(rec);
     }
+  }
+
+  private startAi() {
+    this.phase = 'ai';
+    this.ai = { stage: 'wait', move: 0, shot: null, wait: 0.9 };
   }
 
   private onControl(e: ControlEvent) {
@@ -292,6 +364,28 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 1px 이동하고, 성공하면 이동 기록에 남긴다 */
+  private step(dir: 1 | -1): boolean {
+    if (!this.match.moveStep(dir)) return false;
+    const last = this.runs[this.runs.length - 1];
+    if (last !== undefined && Math.sign(last) === dir) this.runs[this.runs.length - 1] += dir;
+    else this.runs.push(dir);
+    return true;
+  }
+
+  /** 이 기기에서 끝낸 턴을 다른 기기에 알린다 */
+  private sendTurn(input: TurnInput | null) {
+    const net = this.cfg.net;
+    if (!net) return;
+    const rec: TurnRecord = { turn: this.match.turn, runs: [...this.runs], input, facing: this.match.cur.facing };
+    this.records.set(rec.turn, rec);
+    net.sendTurn(rec);
+  }
+
+  private turnDone() {
+    this.cfg.net?.turnDone(this.match.turn, this.match.stateHash());
+  }
+
   private fire(input: TurnInput) {
     const t = this.match.cur;
     this.phase = 'fly';
@@ -301,6 +395,7 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: v.barrel, x: -4 * 1, duration: 60, yoyo: true });
     sfx.fire();
     const res = this.match.fire(input);
+    this.turnDone();
     this.pb = { res, frame: 0, ev: 0 };
     this.manualCam = false;
     // 포구 연기
@@ -310,9 +405,21 @@ export class GameScene extends Phaser.Scene {
 
   private skip(msg: string) {
     this.match.skipTurn();
+    this.turnDone();
     this.hud.toast(msg);
     this.phase = 'settle';
     this.views.forEach((v) => v.arrow.setVisible(false));
+    this.time.delayedCall(900, () => this.nextTurn());
+  }
+
+  /** 이동 중 맵 밖으로 떨어졌을 때 */
+  private fellDuringMove() {
+    const t = this.match.cur;
+    this.match.checkWinner();
+    this.turnDone();
+    this.views[t.idx].kill();
+    this.hud.toast(`${t.name} 추락!`);
+    this.phase = 'settle';
     this.time.delayedCall(900, () => this.nextTurn());
   }
 
@@ -324,7 +431,31 @@ export class GameScene extends Phaser.Scene {
 
     if (this.phase === 'aim') this.updateHuman(dt);
     else if (this.phase === 'ai') this.updateAi(dt);
+    else if (this.phase === 'remote') this.updateRemote(dt);
     else if (this.phase === 'fly') this.updatePlayback(dt);
+
+    // 내가 조종 중이면 다른 기기에 진행 상황을 보낸다
+    if ((this.phase === 'aim' || this.phase === 'ai') && this.cfg.net) {
+      this.liveTimer -= dt;
+      if (this.liveTimer <= 0) {
+        this.liveTimer = 0.12;
+        const live: LiveState = {
+          turn: m.turn,
+          runs: this.runs,
+          angle: Math.round(t.angle * 10) / 10,
+          facing: t.facing,
+          power: Math.round(this.power),
+          charging: this.charging,
+          weapon: this.weapon,
+          itemSlot: this.itemSlot,
+        };
+        const j = JSON.stringify(live);
+        if (j !== this.lastLive) {
+          this.lastLive = j;
+          this.cfg.net.sendLive(live);
+        }
+      }
+    }
 
     // 탱크 표시 위치 (조준 중엔 상태를 부드럽게 따라감)
     for (const v of this.views) {
@@ -337,7 +468,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 카메라: 조준 중엔 현재 탱크를 따라감
-    if ((this.phase === 'aim' || this.phase === 'ai') && !this.manualCam && !this.cameras.main.panEffect.isRunning) {
+    if ((this.phase === 'aim' || this.phase === 'ai' || this.phase === 'remote') && !this.manualCam && !this.cameras.main.panEffect.isRunning) {
       this.follow(t.x, t.y - 120, 0.06);
     }
 
@@ -356,8 +487,8 @@ export class GameScene extends Phaser.Scene {
       charging: this.charging,
       weapon: this.weapon,
       itemSlot: this.itemSlot,
-      timeLeft: this.phase === 'aim' || this.phase === 'ai' ? this.timeLeft : this.timeLeft,
-      human: !t.ai,
+      timeLeft: this.timeLeft,
+      human: this.phase === 'aim',
     });
   }
 
@@ -375,7 +506,12 @@ export class GameScene extends Phaser.Scene {
     const c = this.input2.state;
     this.timeLeft -= dt;
     if (this.timeLeft <= 0) {
-      if (this.charging) return this.fire(this.turnInput(this.power));
+      if (this.charging) {
+        const input = this.turnInput(this.power);
+        this.sendTurn(input);
+        return this.fire(input);
+      }
+      this.sendTurn(null);
       return this.skip('시간 초과! 턴이 넘어갑니다');
     }
 
@@ -386,18 +522,15 @@ export class GameScene extends Phaser.Scene {
         this.moveAcc += 48 * dt;
         while (this.moveAcc >= 1) {
           this.moveAcc--;
-          if (!m.moveStep(dir)) {
+          if (!this.step(dir)) {
             this.moveAcc = 0;
             break;
           }
         }
         this.manualCam = false;
         if (!t.alive) {
-          this.views[t.idx].kill();
-          this.hud.toast(`${t.name} 추락!`);
-          this.phase = 'settle';
-          this.time.delayedCall(900, () => this.nextTurn());
-          return;
+          this.sendTurn(null);
+          return this.fellDuringMove();
         }
       } else this.moveAcc = 0;
 
@@ -417,7 +550,11 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.charging) {
       this.power = Math.min(100, this.power + 52 * dt);
-      if (!c.fire) this.fire(this.turnInput(this.power));
+      if (!c.fire) {
+        const input = this.turnInput(this.power);
+        this.sendTurn(input);
+        this.fire(input);
+      }
     }
   }
 
@@ -443,13 +580,12 @@ export class GameScene extends Phaser.Scene {
         this.moveAcc += 48 * dt;
         while (this.moveAcc >= 1 && ai.move !== 0) {
           this.moveAcc--;
-          if (!m.moveStep(dir)) ai.move = 0;
+          if (!this.step(dir)) ai.move = 0;
           else ai.move -= dir;
         }
         if (!t.alive) {
-          this.views[t.idx].kill();
-          this.phase = 'settle';
-          this.time.delayedCall(900, () => this.nextTurn());
+          this.sendTurn(null);
+          this.fellDuringMove();
         }
         return;
       }
@@ -469,8 +605,154 @@ export class GameScene extends Phaser.Scene {
       } else t.angle += Math.sign(target - t.angle) * step;
     } else if (ai.stage === 'charge') {
       this.power = Math.min(ai.shot!.power, this.power + 52 * dt);
-      if (this.power >= ai.shot!.power) this.fire(ai.shot!);
+      if (this.power >= ai.shot!.power) {
+        this.sendTurn(ai.shot!);
+        this.fire(ai.shot!);
+      }
     }
+  }
+
+  // ---------- 다른 기기의 턴 재생 ----------
+
+  private flatSteps(runs: number[]): (1 | -1)[] {
+    const out: (1 | -1)[] = [];
+    for (const r of runs) for (let i = 0; i < Math.abs(r); i++) out.push(r > 0 ? 1 : -1);
+    return out;
+  }
+
+  /** 이동 기록 중 아직 적용하지 않은 걸음을 max개까지 적용. 다 적용했으면 true */
+  private applyRemoteSteps(runs: number[], max: number): boolean {
+    const steps = this.flatSteps(runs);
+    let n = 0;
+    while (this.remote.applied < steps.length && n < max) {
+      this.match.moveStep(steps[this.remote.applied++]);
+      n++;
+      if (!this.match.cur.alive) break;
+    }
+    return this.remote.applied >= steps.length;
+  }
+
+  /** 상대 기기의 실시간 진행 상황 (이동·각도·파워) */
+  onRemoteLive(l: LiveState) {
+    if (this.phase !== 'remote' || l.turn !== this.match.turn || this.remote.stage !== 'wait') return;
+    const t = this.match.cur;
+    this.remote.liveRuns = l.runs;
+    this.applyRemoteSteps(l.runs, 999);
+    if (!t.alive) return;
+    t.facing = l.facing;
+    t.angle = l.angle;
+    this.power = l.power;
+    this.charging = l.charging;
+    this.weapon = l.weapon;
+    this.itemSlot = l.itemSlot;
+  }
+
+  /** 상대 기기가 턴을 끝냈다 */
+  onRemoteTurn(rec: TurnRecord) {
+    if (rec.turn < this.match.turn) return;
+    if (!this.records.has(rec.turn)) this.records.set(rec.turn, rec);
+    if (this.phase !== 'remote' || rec.turn !== this.match.turn || this.remote.stage !== 'wait') return;
+    this.remote.rec = this.records.get(rec.turn);
+    this.remote.stage = 'move';
+  }
+
+  private updateRemote(dt: number) {
+    const m = this.match;
+    const t = m.cur;
+    const net = this.cfg.net!;
+    const r = this.remote;
+    this.timeLeft -= dt;
+
+    if (r.stage === 'wait') {
+      // 조종하던 사람 대신 AI가 넘겨받았으면 기준 기기가 이어서 둔다
+      if (this.controlOf(t) === 'ai') {
+        if (r.applied === 0) this.startAi();
+        else {
+          // 이미 움직인 걸음은 그대로 두고 그 자리에서 턴을 넘긴다
+          this.runs = [...r.liveRuns];
+          this.sendTurn(null);
+          this.skip('연결이 끊겨 턴을 넘깁니다');
+        }
+        return;
+      }
+      // 시간이 넘었는데 아무 입력도 안 오면 기준 기기가 턴을 넘긴다
+      if (this.timeLeft < -4 && net.isHost()) {
+        const rec: TurnRecord = { turn: m.turn, runs: [...r.liveRuns], input: null, facing: t.facing };
+        this.records.set(rec.turn, rec);
+        net.sendTurn(rec);
+        r.rec = rec;
+        r.stage = 'move';
+      }
+      return;
+    }
+    const rec = r.rec!;
+    if (r.stage === 'move') {
+      r.moveAcc += 120 * dt;
+      const n = Math.floor(r.moveAcc);
+      r.moveAcc -= n;
+      const done = this.applyRemoteSteps(rec.runs, n);
+      if (!t.alive) return this.fellDuringMove();
+      if (!done) return;
+      t.facing = rec.facing;
+      if (!rec.input) return this.skip('시간 초과! 턴이 넘어갑니다');
+      this.weapon = rec.input.weapon;
+      this.itemSlot = rec.input.itemSlot;
+      t.facing = rec.input.facing;
+      r.stage = 'aim';
+    } else if (r.stage === 'aim') {
+      const target = rec.input!.angle;
+      const s = 90 * dt;
+      if (Math.abs(t.angle - target) <= s) {
+        t.angle = target;
+        r.stage = 'charge';
+        this.charging = true;
+        if (this.power > rec.input!.power) this.power = 0;
+      } else t.angle += Math.sign(target - t.angle) * s;
+    } else if (r.stage === 'charge') {
+      this.power = Math.min(rec.input!.power, this.power + 140 * dt);
+      if (this.power >= rec.input!.power) this.fire(rec.input!);
+    }
+  }
+
+  // ---------- 온라인: 다시 맞추기 · 접속 끊김 ----------
+
+  /** 기준 기기의 상태로 판 전체를 다시 불러온다 (재접속, 화면 어긋남) */
+  loadSnapshot(snap: MatchSnapshot, records: TurnRecord[], elapsed: number) {
+    this.tweens.killAll();
+    this.time.removeAllEvents();
+    this.pb = null;
+    this.shellG.clear();
+    this.views.forEach((v) => v.destroy());
+    this.match = Match.fromSnapshot(snap);
+    this.records = new Map(records.map((r) => [r.turn, r]));
+    this.vis = this.match.terrain.clone();
+    this.scorch.fill(0);
+    this.paint(0, 0, this.vis.w - 1, this.vis.h - 1);
+    this.hud.drawMiniBase(this.match);
+    this.views = this.match.tanks.map((t) => new TankView(this, t));
+    this.views.forEach((v) => v.t.alive || v.kill());
+    if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = this.match;
+    if (this.match.over) return this.finish();
+    if (this.match.current < 0) return this.nextTurn();
+    this.beginTurn(Math.min(TURN_SECONDS - 3, elapsed));
+  }
+
+  /** 접속이 끊긴 플레이어 표시 (null이면 해제) */
+  setConn(idx: number, text: string | null) {
+    this.views[idx]?.setStatus(text);
+  }
+
+  /** 끊긴 플레이어의 탱크를 AI가 넘겨받는다 */
+  takeover(idx: number) {
+    const t = this.match.tanks[idx];
+    if (!t || t.ai) return;
+    t.ai = 'normal';
+    this.views[idx].setStatus('AI 조종 중');
+    if (this.match.current === idx) this.hud.toast(`${t.name}의 탱크를 AI가 이어서 조종합니다`);
+  }
+
+  get matchState(): Match {
+    return this.match;
   }
 
   // ---------- 발사 재생 ----------
@@ -615,7 +897,7 @@ export class GameScene extends Phaser.Scene {
     const summary: MatchSummary = {
       winner: m.winner as 0 | 1 | -1,
       turns: m.turn,
-      players: m.tanks.map((t) => ({ name: t.name, tank: t.tankId, team: t.team, damage: t.damageDealt, alive: t.alive, ai: !!t.ai })),
+      players: m.tanks.map((t) => ({ name: t.name, tank: t.tankId, team: t.team, damage: t.damageDealt, alive: t.alive, ai: !!t.ai, mine: this.cfg.net ? t.idx === this.cfg.net.myIdx : !t.ai })),
     };
     this.time.delayedCall(1400, () => this.cfg.onEnd(summary));
   }

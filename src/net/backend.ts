@@ -1,0 +1,71 @@
+import type { ItemId, TankId } from '../game/data';
+import type { MapId } from '../data/maps';
+
+export interface RoomPlayer {
+  id: string;
+  name: string;
+  tank: TankId;
+  team: 0 | 1;
+  items: ItemId[];
+}
+
+export interface Room {
+  id: string;
+  lobby: string;
+  name: string;
+  map: MapId | 'random';
+  status: 'waiting' | 'playing';
+  players: RoomPlayer[];
+  seed: number | null;
+  host_id: string | null;
+  game_no: number;
+  created_at: string;
+}
+
+export interface Member<M> {
+  key: string;
+  meta: M;
+}
+
+/** 실시간 채널 하나 (Presence + Broadcast) */
+export interface Channel<M> {
+  onPresence(cb: (members: Member<M>[]) => void): void;
+  onMessage(cb: (msg: NetMsg) => void): void;
+  /** 구독하고 내 정보를 올린다 */
+  join(meta: M): Promise<void>;
+  track(meta: M): Promise<void>;
+  send(msg: NetMsg): void;
+  leave(): Promise<void>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type NetMsg = { t: string; [k: string]: any };
+
+export interface Backend {
+  kind: 'supabase' | 'local';
+  channel<M>(name: string, key: string): Channel<M>;
+  listRooms(lobby: string): Promise<Room[]>;
+  /** 게임방 테이블이 바뀌면 cb를 부른다. 해제 함수를 돌려준다 */
+  watchRooms(lobby: string, cb: () => void): () => void;
+  createRoom(lobby: string, name: string, player: RoomPlayer): Promise<Room>;
+  joinRoom(id: string, player: RoomPlayer): Promise<Room>;
+  leaveRoom(id: string, playerId: string): Promise<void>;
+  updatePlayer(id: string, player: RoomPlayer): Promise<void>;
+  setMap(id: string, map: MapId | 'random'): Promise<void>;
+  startGame(id: string, host: string, seed: number): Promise<Room>;
+  endGame(id: string, gameNo: number, present: string[]): Promise<void>;
+}
+
+export class NetError extends Error {}
+
+/** 서버 오류 메시지를 사람이 읽을 말로 */
+export function friendly(e: unknown): string {
+  const m = String((e as Error)?.message ?? e);
+  if (m.includes('room is full')) return '게임방이 가득 찼어요 (최대 4명)';
+  if (m.includes('room is playing') || m.includes('already playing')) return '이미 게임이 진행 중인 방이에요';
+  if (m.includes('room not found')) return '게임방이 사라졌어요';
+  if (m.includes('need 2')) return '2명 이상이어야 시작할 수 있어요';
+  if (m.includes('teams')) return '한 팀에 모두 몰려 있으면 시작할 수 없어요';
+  if (m.includes('too many rooms')) return '게임방이 너무 많아요. 잠시 후 다시 시도해주세요';
+  return '서버와 통신하지 못했어요. 잠시 후 다시 시도해주세요';
+}
