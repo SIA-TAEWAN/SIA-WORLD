@@ -8,7 +8,7 @@ import { Terrain } from '../physics/terrain';
 import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, TEAM_COLORS } from './art';
-import { faceColor, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
+import { ART_SCALE, TANK_ART, faceColor, tankArtUrl, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
 import { ALL_TANK_IDS } from '../game/data';
 import { Fx } from './fx';
 import { drawShell, TRAIL } from './shells';
@@ -51,6 +51,9 @@ class TankView {
   barrel: Phaser.GameObjects.Graphics;
   body: Phaser.GameObjects.Image;
   lids: Phaser.GameObjects.Graphics;
+  private hasArt = false;
+  private bodyScale = 1;
+  private dy = 0;
   label: Phaser.GameObjects.Container;
   hpBar: Phaser.GameObjects.Graphics;
   arrow: Phaser.GameObjects.Text;
@@ -81,20 +84,31 @@ class TankView {
     this.barrel.fillStyle(0xffffff, 0.45).fillRoundedRect(2, -1.6, 15, 1.2, 0.6);
     this.barrel.fillStyle(0x3a2a1e).fillRoundedRect(18, -4.2, 5.5, 8.4, 1.6);
     this.barrel.setPosition(0, -15);
-    this.body = scene.add.image(0, 0, `tank-${t.tankId}`).setOrigin(0.5, (38 - TEX_BOX.y) / TEX_BOX.h).setScale(1 / TEX_SCALE);
+    const art = TANK_ART[t.tankId];
+    this.hasArt = !!art;
+    this.bodyScale = art ? 1 / ART_SCALE : 1 / TEX_SCALE;
+    this.body = scene.add.image(0, 1, `tank-${t.tankId}`).setScale(this.bodyScale);
+    if (art) this.body.setOrigin(art.cx, 1);
+    else this.body.setOrigin(0.5, (38 - TEX_BOX.y) / TEX_BOX.h);
+    // 그림 높이에 맞춰 이름·체력바를 올린다
+    const top = art ? art.h / ART_SCALE : 40;
+    this.dy = Math.min(0, 42 - top);
     // 눈꺼풀 (깜빡일 때만 보임)
     this.lids = scene.add.graphics().setVisible(false);
     this.lids.fillStyle(hex(faceColor(t.tankId))).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
     this.lids.lineStyle(1.5, 0x1e1e2a).lineBetween(0.5, -18.5, 5.5, -18.5).lineBetween(5.5, -18.5, 10.5, -18.5);
-    this.rig = scene.add.container(0, 0, [this.barrel, this.body, this.lids]);
+    // 그림 탱크는 머리가 커서 포신을 몸통 앞쪽에서 앞으로 그린다
+    if (this.hasArt) this.barrel.setPosition(6, -11);
+    this.rig = scene.add.container(0, 0, this.hasArt ? [this.body, this.barrel, this.lids] : [this.barrel, this.body, this.lids]);
     this.cont = scene.add.container(t.x, t.y, [this.rig]).setDepth(10);
 
     const name = scene.add
-      .text(0, -52, t.name, { fontFamily: 'Jua, sans-serif', fontSize: '14px', color: '#fff', stroke: TEAM_COLORS[t.team], strokeThickness: 4 })
+      .text(0, -52 + this.dy, t.name, { fontFamily: 'Jua, sans-serif', fontSize: '14px', color: '#fff', stroke: TEAM_COLORS[t.team], strokeThickness: 4 })
       .setOrigin(0.5, 1);
     this.hpBar = scene.add.graphics();
-    this.arrow = scene.add.text(0, -72, '▼', { fontSize: '18px', color: '#ffe14d', stroke: '#7a4b00', strokeThickness: 3 }).setOrigin(0.5).setVisible(false);
-    scene.tweens.add({ targets: this.arrow, y: -66, duration: 400, yoyo: true, repeat: -1 });
+    this.arrow = scene.add.text(0, -72 + this.dy, '▼', { fontSize: '18px', color: '#ffe14d', stroke: '#7a4b00', strokeThickness: 3 }).setOrigin(0.5).setVisible(false);
+    scene.tweens.add({ targets: this.arrow, y: -66 + this.dy, duration: 400, yoyo: true, repeat: -1 });
+    this.hpBar.y = this.dy;
     this.label = scene.add.container(t.x, t.y, [name, this.hpBar, this.arrow]).setDepth(30);
     this.drawHp();
 
@@ -104,7 +118,7 @@ class TankView {
       delay: 2200 + Math.random() * 2000,
       loop: true,
       callback: () => {
-        if (this.dead) return;
+        if (this.dead || this.hasArt) return;
         this.lids.setVisible(true);
         scene.time.delayedCall(110, () => this.dead || this.lids.setVisible(false));
       },
@@ -153,7 +167,7 @@ class TankView {
   /** 발사 반동 */
   recoil() {
     this.scene.tweens.add({ targets: this.barrel, x: -4, duration: 60, yoyo: true });
-    this.scene.tweens.add({ targets: this.body, x: -3, scaleY: 0.9 / TEX_SCALE, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
+    this.scene.tweens.add({ targets: this.body, x: -3, scaleY: 0.9 * this.bodyScale, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
   }
 
   /** 맞았을 때 흔들림 */
@@ -197,7 +211,7 @@ class TankView {
     this.label.setAlpha(0.35);
     this.arrow.setVisible(false);
     // X자 눈
-    this.lids.clear().setVisible(true);
+    this.lids.clear().setVisible(!this.hasArt);
     this.lids.fillStyle(0x555555).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
     this.lids.lineStyle(1.6, 0x1e1e2a);
     for (const ex of [3, 8]) this.lids.lineBetween(ex - 2, -21, ex + 2, -17).lineBetween(ex - 2, -17, ex + 2, -21);
@@ -272,7 +286,8 @@ export class GameScene extends Phaser.Scene {
     for (const id of ALL_TANK_IDS) {
       const key = `tank-${id}`;
       if (this.textures.exists(key)) continue;
-      this.load.svg(key, `data:image/svg+xml;base64,${btoa(tankTextureSvg(id))}`, { width: TEX_BOX.w * TEX_SCALE, height: TEX_BOX.h * TEX_SCALE });
+      if (TANK_ART[id]) this.load.image(key, tankArtUrl(id));
+      else this.load.svg(key, `data:image/svg+xml;base64,${btoa(tankTextureSvg(id))}`, { width: TEX_BOX.w * TEX_SCALE, height: TEX_BOX.h * TEX_SCALE });
     }
   }
 

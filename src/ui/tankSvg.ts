@@ -1,4 +1,10 @@
 import { TANKS, type TankId } from '../game/data';
+import tankArtJson from '../data/tankArt.json';
+
+/** SpriteCook으로 만든 탱크 그림 (public/tanks/*.png). w·h는 px, cx는 무한궤도 가운데(0~1). 무한궤도 폭 108px = 게임 36px */
+export const TANK_ART = tankArtJson as Record<string, { w: number; h: number; cx: number }>;
+export const ART_SCALE = 3;
+export const tankArtUrl = (id: string) => `${import.meta.env.BASE_URL}tanks/${id}.png`;
 
 /**
  * 12지신 탱크 그림 (오른쪽을 보는 모습).
@@ -192,6 +198,18 @@ function bodyParts(id: TankId): string {
 
 /** 메뉴 화면용 탱크 그림 ('random'은 물음표 탱크) */
 export function tankSvg(id: TankId | 'random', size = 96, flip = false): string {
+  const art = id !== 'random' ? TANK_ART[id] : undefined;
+  if (art) {
+    // 그림 탱크: 포신(뒤) + PNG. 무한궤도 바닥 y=38, 가운데 x=24
+    const w = art.w / ART_SCALE;
+    const h = art.h / ART_SCALE;
+    const d = TANKS[id as TankId];
+    return `<svg class="tank-svg" viewBox="-2 -20 54 60" width="${size}" height="${(size * 60) / 54}" style="${flip ? 'transform:scaleX(-1)' : ''}" aria-hidden="true">
+      <ellipse cx="24" cy="39" rx="19" ry="2.5" fill="#000" fill-opacity=".18"/>
+      <g transform="rotate(-35 24 24)"><rect x="23" y="20.5" width="25" height="7" rx="2.5" fill="${O}"/><rect x="25" y="22" width="20" height="4" rx="2" fill="${d.accent}"/><rect x="43" y="20" width="5.5" height="8" rx="1.6" fill="${O}"/></g>
+      <image href="${tankArtUrl(id)}" x="${24 - art.cx * w}" y="${38.5 - h}" width="${w}" height="${h}"/>
+    </svg>`;
+  }
   if (id === 'random')
     return `<svg class="tank-svg" viewBox="0 -8 50 48" width="${size}" height="${size * 0.96}" aria-hidden="true">
       <ellipse cx="24" cy="39" rx="19" ry="2.5" fill="#000" fill-opacity=".18"/>
