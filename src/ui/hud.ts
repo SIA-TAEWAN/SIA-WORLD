@@ -11,7 +11,12 @@ export interface HudView {
   weapon: 0 | 1 | 2;
   itemSlot: number | null;
   timeLeft: number;
+  /** 지금 내가 조종 중 (이동·발사·아이템 가능) */
   human: boolean;
+  /** 파워 리미터 (%) */
+  limit: number;
+  /** 내 탱크가 없거나 탈락 → 구경만 */
+  spectate: boolean;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = '') => {
@@ -32,10 +37,14 @@ export class Hud {
   private powerFill = el('div', 'power-fill');
   private powerLast = el('div', 'power-last');
   private powerNum = el('div', 'power-num');
+  private powerLimit = el('div', 'power-limit');
+  private limitLabel = el('label', 'limit-label', 'POWER');
   private moveFill = el('div', 'move-fill');
   private weapons: HTMLButtonElement[] = [];
   private items: HTMLButtonElement[] = [];
-  private mini = el('canvas', 'minimap') as HTMLCanvasElement;
+  private mini = el('canvas', 'minimap2') as HTMLCanvasElement;
+  /** 미니맵을 누르면 맵의 그 위치(0~1)로 카메라를 옮긴다 */
+  onMiniClick: ((fx: number, fy: number) => void) | null = null;
   private miniBase = document.createElement('canvas');
   private toastEl = el('div', 'toast');
   private lastTimer = -1;
@@ -60,7 +69,22 @@ export class Hud {
     // 파워·이동
     const gauges = el('div', 'panel gauges');
     const pw = el('div', 'gauge power');
-    pw.append(this.powerFill, this.powerLast, this.powerNum);
+    pw.title = '눌러서(드래그) 파워 리미터 설정 · 키보드 - / =';
+    pw.append(this.powerFill, this.powerLimit, this.powerLast, this.powerNum);
+    // 게이지를 누르거나 끌면 그 위치가 파워 리미터가 된다
+    let dragging = false;
+    const setAt = (e: PointerEvent) => {
+      const r = pw.getBoundingClientRect();
+      input.emit({ type: 'limit', value: ((e.clientX - r.left) / r.width) * 100 });
+    };
+    pw.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      pw.setPointerCapture(e.pointerId);
+      setAt(e);
+    });
+    pw.addEventListener('pointermove', (e) => dragging && setAt(e));
+    pw.addEventListener('pointerup', () => (dragging = false));
+    pw.addEventListener('pointercancel', () => (dragging = false));
     for (let i = 1; i < 10; i++) {
       const tick = el('i', 'tick');
       tick.style.left = `${i * 10}%`;
@@ -68,7 +92,7 @@ export class Hud {
     }
     const mv = el('div', 'gauge move');
     mv.append(this.moveFill);
-    gauges.append(el('label', '', 'POWER'), pw, el('label', '', 'MOVE'), mv);
+    gauges.append(this.limitLabel, pw, el('label', '', 'MOVE'), mv);
     // 무기
     const wbox = el('div', 'panel slots weapons');
     for (let i = 0; i < 3; i++) {
@@ -85,13 +109,19 @@ export class Hud {
       this.items.push(b);
       ibox.append(b);
     }
-    const miniBox = el('div', 'panel mini-box');
-    this.mini.width = 176;
-    this.mini.height = 88;
+    // 미니맵: 화면 왼쪽 위 (맵 전체·탱크 위치·포탄)
+    const miniBox = el('div', 'mini-top');
+    this.mini.width = 200;
+    this.mini.height = 100;
     miniBox.append(this.mini);
-    bottom.append(angleBox, gauges, wbox, ibox, miniBox);
+    miniBox.title = '눌러서 그 위치 보기';
+    miniBox.addEventListener('pointerdown', (e) => {
+      const r = this.mini.getBoundingClientRect();
+      this.onMiniClick?.((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+    });
+    bottom.append(angleBox, gauges, wbox, ibox);
 
-    this.root.append(top, this.banner, this.toastEl, bottom);
+    this.root.append(top, miniBox, this.banner, this.toastEl, bottom);
 
     if (touch) {
       const pad = el('div', 'touch-pad');
@@ -160,6 +190,12 @@ export class Hud {
     this.powerLast.style.left = `${t.lastPower}%`;
     this.powerLast.style.display = t.lastPower > 0 ? 'block' : 'none';
     this.powerNum.textContent = v.power > 0 ? `${Math.round(v.power)}` : '';
+    this.powerLimit.style.left = `${v.limit}%`;
+    this.powerLimit.style.display = v.limit < 100 ? 'block' : 'none';
+    const lt = v.limit < 100 ? `POWER<small>≤${v.limit}</small>` : 'POWER';
+    if (this.limitLabel.innerHTML !== lt) this.limitLabel.innerHTML = lt;
+    this.root.classList.toggle('my-turn', v.human);
+    this.root.classList.toggle('spectate', v.spectate);
     this.moveFill.style.width = `${(match.moveLeft / t.def.move) * 100}%`;
 
     const tl = Math.ceil(v.timeLeft);

@@ -91,6 +91,8 @@ export function showSetup() {
         <div class="row" id="name2-row"><span class="lbl">2P 이름</span><input id="name2" maxlength="10" value="${escapeHtml(state.name2)}"/></div>
         <h3>맵</h3>
         <div class="maps" id="maps"></div>
+        <div class="opt-row"><span class="lbl">게임 속도</span><div class="seg small" id="speed"></div></div>
+        <div class="opt-row"><span class="lbl">바람 변화</span><div class="seg small" id="wind"></div></div>
       </section>
       <section class="card shop-card">
         <h3>아이템 상점 <small>매 판 1,000 포인트 · 3칸</small></h3>
@@ -162,6 +164,26 @@ export function showSetup() {
   };
   $<HTMLInputElement>('#name2').addEventListener('input', (e) => (state.name2 = (e.target as HTMLInputElement).value));
 
+  const renderOpts = () => {
+    $('#speed').innerHTML = [1, 1.5].map((v) => `<button data-v="${v}" class="${state.speed === v ? 'sel' : ''}">${v === 1 ? '보통 (1배)' : '빠르게 (1.5배)'}</button>`).join('');
+    const winds = [['slow', '느리게 ±2'], ['normal', '보통 ±5'], ['fast', '빠르게 ±8']] as const;
+    $('#wind').innerHTML = winds.map(([v, l]) => `<button data-v="${v}" class="${state.wind === v ? 'sel' : ''}">${l}</button>`).join('');
+    root.querySelectorAll<HTMLElement>('#speed button').forEach((b) =>
+      b.addEventListener('click', () => {
+        state.speed = Number(b.dataset.v);
+        sfx.click();
+        renderOpts();
+      }),
+    );
+    root.querySelectorAll<HTMLElement>('#wind button').forEach((b) =>
+      b.addEventListener('click', () => {
+        state.wind = b.dataset.v as typeof state.wind;
+        sfx.click();
+        renderOpts();
+      }),
+    );
+  };
+
   const renderMaps = () => {
     const opts: (MapId | 'random')[] = [...MAP_IDS, 'random'];
     $('#maps').innerHTML = opts
@@ -200,6 +222,7 @@ export function showSetup() {
   renderTanks();
   renderOpp();
   renderMaps();
+  renderOpts();
   renderShop();
   $('#back').addEventListener('click', showEntry);
   $('#start').addEventListener('click', () => {
@@ -242,6 +265,8 @@ function startGame() {
     setups,
     mapId,
     seed,
+    speed: state.speed,
+    wind: state.wind,
     onEnd: (s: MatchSummary) => {
       closeGame();
       showResult(s);

@@ -189,3 +189,80 @@ describe('바람·경사·분열탄', () => {
     expect(r.events.filter((e) => e.type === 'explode').length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('바람 빠르기·굴러가는 탄·유도탄', () => {
+  it('바람 빠르기 설정에 따라 턴마다 바뀌는 폭이 다르다', () => {
+    for (const [mode, step] of [['slow', 2], ['fast', 8]] as const) {
+      const m = new Match(duo(), 'valley', 5, { wind: mode });
+      m.startTurn();
+      let prev = m.wind;
+      let maxStep = 0;
+      for (let i = 0; i < 300; i++) {
+        m.skipTurn();
+        m.startTurn();
+        maxStep = Math.max(maxStep, Math.abs(m.wind - prev));
+        prev = m.wind;
+      }
+      expect(maxStep).toBeLessThanOrEqual(step);
+      if (mode === 'fast') expect(maxStep).toBeGreaterThan(5);
+    }
+  });
+
+  it('스냅샷에 바람 빠르기가 남는다', () => {
+    const m = new Match(duo(), 'valley', 5, { wind: 'slow' });
+    expect(Match.fromSnapshot(JSON.parse(JSON.stringify(m.snapshot()))).options.wind).toBe('slow');
+  });
+
+  it('코코넛은 땅에 떨어진 뒤 굴러간다', () => {
+    const m = new Match(duo('monkey', 'ox'), 'valley', 3);
+    m.current = 0;
+    m.tanks[1].x = 1500;
+    const r = m.fire(shot({ angle: 30, power: 35 }));
+    const path = r.shells[0].path;
+    // 마지막 몇 프레임은 땅 위를 수평으로 이동
+    const n = path.length / 2;
+    const xs = [path[(n - 10) * 2], path[(n - 1) * 2]];
+    expect(Math.abs(xs[1] - xs[0])).toBeGreaterThan(15);
+  });
+
+  it('유도 뼈다귀는 적 쪽으로 휜다', () => {
+    const plain = new Match(duo('tiger', 'ox'), 'valley', 3);
+    const homing = new Match(duo('dog', 'ox'), 'valley', 3);
+    for (const m of [plain, homing]) {
+      m.current = 0;
+      m.tanks[1].x = m.tanks[0].x + 500;
+      m.tanks[1].y = 0;
+      m.settle(m.tanks[1]);
+    }
+    const target = homing.tanks[1].x;
+    const a = plain.fire(shot({ angle: 60, power: 62 })).firstImpact!;
+    const b = homing.fire(shot({ angle: 60, power: 62 })).firstImpact!;
+    expect(Math.abs(b.x - target)).toBeLessThan(Math.abs(a.x - target));
+  });
+});
+
+describe('수리킷 즉시 사용·파워에 따른 구덩이', () => {
+  it('수리킷은 쏘지 않아도 누르는 즉시 회복된다', () => {
+    const m = new Match(duo('tiger', 'tiger', ['repair']), 'valley', 2);
+    m.current = 0;
+    m.tanks[0].hp = 500;
+    const d0 = m.tanks[0].delay;
+    expect(m.useItemNow(0)).toBe(200);
+    expect(m.tanks[0].hp).toBe(700);
+    expect(m.tanks[0].items[0]).toBeNull();
+    expect(m.tanks[0].delay - d0).toBe(200);
+    expect(m.useItemNow(0)).toBeNull();
+  });
+
+  it('세게 쏠수록, 파워업을 쓰면 땅을 더 크게 판다', () => {
+    const crater = (power: number, items: PlayerSetup['items'] = []) => {
+      const m = new Match(duo('tiger', 'tiger', items), 'valley', 7);
+      m.current = 0;
+      const r = m.fire(shot({ angle: 80, power, itemSlot: items.length ? 0 : null }));
+      return (r.events.find((e) => e.type === 'explode') as { crater: number }).crater;
+    };
+    const base = crater(0);
+    expect(crater(60)).toBeGreaterThan(base * 1.25);
+    expect(crater(60, ['power'])).toBeGreaterThan(crater(60) * 1.25);
+  });
+});

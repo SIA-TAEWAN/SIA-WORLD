@@ -9,6 +9,10 @@ export const TANK_HIT_R = 13;
 export const MAX_FRAMES = 60 * 14;
 const OWNER_ARM_FRAMES = 25;
 const PROXIMITY = 26;
+/** 굴러가는 탄: 프레임당 굴러가는 칸 수, 오를 수 있는 턱, 떨어져도 계속 구르는 높이 */
+const ROLL_STEPS = 3;
+const ROLL_CLIMB = 6;
+const ROLL_DROP = 8;
 
 export function tankCenter(t: TankState): { x: number; y: number } {
   return { x: t.x, y: t.y - 11 };
@@ -62,6 +66,11 @@ interface Shell {
   dropped: boolean;
   /** 분열탄에서 갈라져 나온 탄 */
   child: boolean;
+  /** 굴러가는 탄 상태 */
+  rolling: boolean;
+  rolled: boolean;
+  rollDir: number;
+  rollLeft: number;
   alive: boolean;
   track: ShellTrack;
 }
@@ -155,6 +164,10 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         drilling: false,
         dropped: false,
         child: false,
+        rolling: false,
+        rolled: false,
+        rollDir: p.facing,
+        rollLeft: 0,
         alive: true,
         track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big },
       };
@@ -190,6 +203,47 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         continue;
       }
 
+      if (s.rolling) {
+        // 땅 위를 굴러간다: 작은 턱은 넘고, 벽에 막히거나 거리를 다 가면 터진다
+        for (let i = 0; i < ROLL_STEPS && s.alive && s.rolling; i++) {
+          const nx = s.x + s.rollDir;
+          let ny = s.y;
+          let k = 0;
+          while (k <= ROLL_CLIMB && terrain.solid(nx, ny)) {
+            ny--;
+            k++;
+          }
+          if (k > ROLL_CLIMB || nx < 0 || nx > terrain.w) {
+            impact(s, s.x, s.y, null);
+            break;
+          }
+          let dd = 0;
+          while (dd <= ROLL_DROP && !terrain.solid(nx, ny + 1) && ny < terrain.h) {
+            ny++;
+            dd++;
+          }
+          s.x = nx;
+          s.y = ny;
+          if (dd > ROLL_DROP) {
+            // 낭떠러지: 다시 날아서 떨어진다 (다음 착지에 터짐)
+            s.rolling = false;
+            s.rolled = true;
+            s.vx = s.rollDir * 90;
+            s.vy = 0;
+            break;
+          }
+          s.rollLeft--;
+          const t = hitTank(s.x, s.y - 3, s);
+          if (t !== null || nearEnemy(s.x, s.y - 3, PROXIMITY) !== null || s.rollLeft <= 0) {
+            impact(s, s.x, s.y, t);
+            break;
+          }
+        }
+        s.track.path.push(s.x, s.y);
+        if (s.alive) anyAlive = true;
+        continue;
+      }
+
       if (s.drilling) {
         // 드릴: 중력 없이 직진하며 굴을 판다
         const sp = Math.hypot(s.vx, s.vy) || 1;
@@ -216,6 +270,32 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
       const wm = s.dropped ? 0 : w.wind;
       s.vx += windAcc * wm * DT;
       s.vy += GRAVITY * DT;
+
+      // 유도탄: 꼭대기를 지나면 가장 가까운 적 쪽으로 조금씩 꺾는다
+      if (w.behavior === 'homing' && s.vy >= 0) {
+        let best: { x: number; y: number } | null = null;
+        let bd = Infinity;
+        for (const t of tanks) {
+          if (!t.alive || t.team === owner.team) continue;
+          const c = tankCenter(t);
+          const d = (c.x - s.x) ** 2 + (c.y - s.y) ** 2;
+          if (d < bd) {
+            bd = d;
+            best = c;
+          }
+        }
+        if (best) {
+          const cur = Math.atan2(s.vy, s.vx);
+          let diff = Math.atan2(best.y - s.y, best.x - s.x) - cur;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const max = (((w.homing ?? 45) * Math.PI) / 180) * DT;
+          const na = cur + Math.max(-max, Math.min(max, diff));
+          const sp = Math.hypot(s.vx, s.vy);
+          s.vx = Math.cos(na) * sp;
+          s.vy = Math.sin(na) * sp;
+        }
+      }
 
       const dx = s.vx * DT;
       const dy = s.vy * DT;
@@ -250,6 +330,14 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
           }
           if (w.behavior === 'drill' && handler) {
             s.drilling = true;
+            break;
+          }
+          if (w.behavior === 'roll' && !s.rolled) {
+            s.rolling = true;
+            s.rollDir = s.vx > 0 ? 1 : s.vx < 0 ? -1 : p.facing;
+            s.rollLeft = w.rollDistance ?? 120;
+            s.x = px;
+            s.y = py;
             break;
           }
           impact(s, s.x, s.y, null);

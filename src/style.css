@@ -117,8 +117,10 @@ input {
 .screen.entry {
   min-height: 100%;
   display: grid;
+  /* 카드가 화면보다 넓어지지 않도록 칸 너비를 화면에 맞춘다 */
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
-  padding: 16px;
+  padding: 16px max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left));
   background:
     radial-gradient(circle at 80% 15%, #fff7c2 0 60px, transparent 61px),
     linear-gradient(transparent 70%, #6ed34a 70% 73%, #b9824a 73%);
@@ -951,10 +953,37 @@ button.my-slot {
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.3);
 }
-.hud.ai-turn .hud-bottom .slots,
-.hud.ai-turn .touch-pad {
-  opacity: 0.5;
+/* 내 차례가 아닐 때: 이동·발사·아이템은 잠그고, 각도·무기·파워 리미터는 미리 맞출 수 있다 */
+.hud:not(.my-turn) .hud-bottom .slots.items,
+.hud:not(.my-turn) .tbtn.l,
+.hud:not(.my-turn) .tbtn.r,
+.hud:not(.my-turn) .tbtn.fire {
+  opacity: 0.45;
   pointer-events: none;
+}
+.hud.spectate .hud-bottom .slots,
+.hud.spectate .touch-pad,
+.hud.spectate .gauge.power {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.gauge.power {
+  cursor: pointer;
+  touch-action: none;
+}
+.power-limit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  background: repeating-linear-gradient(135deg, rgba(255, 60, 60, 0.35) 0 4px, rgba(0, 0, 0, 0.35) 4px 8px);
+  border-left: 3px solid #ff4d4d;
+  pointer-events: none;
+}
+.limit-label small {
+  display: block;
+  color: #ff8a8a;
+  font-size: 10px;
 }
 
 /* 터치 버튼 */
@@ -1591,5 +1620,117 @@ body.in-game .sound-fab {
 @media (max-width: 420px) {
   .zodiac-pick {
     grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* 게임 속도·바람 설정 줄 */
+.opt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.opt-row .lbl {
+  min-width: 64px;
+  font-size: 14px;
+  color: #8a6a4a;
+}
+.opt-row .seg {
+  flex: 1;
+}
+
+/* 입장 화면: 좁은 휴대폰 */
+@media (max-width: 400px) {
+  .entry-card {
+    padding: 18px 14px 14px;
+    border-radius: 22px;
+  }
+  .logo-tanks svg {
+    width: 64px;
+    height: auto;
+  }
+  .logo h1 {
+    font-size: 44px;
+  }
+  .foot {
+    display: none;
+  }
+}
+/* 입장 화면: 가로로 눕힌 휴대폰 → 로고 왼쪽, 입력·버튼 오른쪽 */
+@media (max-height: 520px) and (orientation: landscape) {
+  .screen.entry {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .entry-card {
+    width: min(640px, 100%);
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    column-gap: 18px;
+    row-gap: 8px;
+    padding: 14px 18px;
+    border-radius: 22px;
+  }
+  .entry-card .logo {
+    grid-row: 1 / span 4;
+    align-self: center;
+  }
+  .logo-tanks svg {
+    width: 58px;
+    height: auto;
+  }
+  .logo h1 {
+    font-size: 40px;
+  }
+  .entry-card .btn.big {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 18px;
+  }
+  .entry-card .hint {
+    margin: 0;
+    min-height: 0;
+  }
+  .foot {
+    display: none;
+  }
+}
+
+/* 미니맵 (왼쪽 위) */
+.mini-top {
+  position: absolute;
+  left: calc(8px + env(safe-area-inset-left));
+  top: 50px;
+  padding: 3px;
+  background: var(--panel);
+  border: 2px solid var(--panel-b);
+  border-radius: 10px;
+  pointer-events: auto;
+  cursor: pointer;
+  line-height: 0;
+}
+.minimap2 {
+  width: 200px;
+  height: 100px;
+  border-radius: 6px;
+  background: rgba(120, 180, 255, 0.25);
+}
+@media (max-width: 760px) {
+  .mini-top {
+    top: 46px;
+  }
+  .minimap2 {
+    width: 112px;
+    height: 56px;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .mini-top {
+    top: 32px;
+  }
+  .minimap2 {
+    width: 136px;
+    height: 68px;
   }
 }

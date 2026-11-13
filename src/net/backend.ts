@@ -1,5 +1,6 @@
 import type { ItemId, TankId } from '../game/data';
 import type { MapId } from '../data/maps';
+import type { WindMode } from '../game/match';
 
 export interface RoomPlayer {
   id: string;
@@ -25,6 +26,10 @@ export interface Room {
   created_at: string;
   /** 게임 중에 [나가기]로 나간 사람 */
   gone?: string[];
+  /** 게임 속도 (1 또는 1.5) */
+  speed?: number;
+  /** 바람이 바뀌는 빠르기 */
+  wind?: WindMode;
   /** 마지막으로 방에 사람이 있다는 신호가 온 때 */
   updated_at?: string | number;
 }
@@ -59,6 +64,8 @@ export interface Backend {
   leaveRoom(id: string, playerId: string): Promise<void>;
   updatePlayer(id: string, player: RoomPlayer): Promise<void>;
   setMap(id: string, playerId: string, map: MapId | 'random'): Promise<void>;
+  /** 게임 속도·바람 빠르기 (방장만) */
+  setOptions(id: string, playerId: string, speed: number, wind: WindMode): Promise<void>;
   startGame(id: string, host: string, seed: number): Promise<Room>;
   endGame(id: string, gameNo: number, present: string[]): Promise<void>;
   /** 게임 중 나가기 (모두 나가면 방이 사라진다) */

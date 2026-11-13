@@ -8,6 +8,8 @@ export interface TurnRecord {
   runs: number[];
   input: TurnInput | null;
   facing: 1 | -1;
+  /** 이번 턴에 바로 쓴 아이템 칸 (수리킷) */
+  used?: number[];
 }
 
 /** 조종 중인 기기가 0.12초마다 보내는 진행 상황 (화면 표시용) */
@@ -20,6 +22,8 @@ export interface LiveState {
   charging: boolean;
   weapon: 0 | 1 | 2;
   itemSlot: number | null;
+  /** 이번 턴에 바로 쓴 아이템 칸 (수리킷) */
+  used?: number[];
 }
 
 /** 네트워크가 게임 화면에 요청하는 것 */

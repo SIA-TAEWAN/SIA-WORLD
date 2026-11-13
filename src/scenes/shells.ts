@@ -25,6 +25,7 @@ export const TRAIL: Record<string, number> = {
   mud: 0xb08a5a,
   moon: 0xfff3a0,
   sun: 0xffd23a,
+  coconut: 0xc8a070,
 };
 
 const OUT = 0x3a2a1e;
@@ -191,6 +192,17 @@ export function drawShell(g: G, look: string, x: number, y: number, dx: number, 
         g.lineStyle(1.8, OUT).lineBetween(ax, ay, bx, by);
       }
       break;
+    case 'coconut': {
+      circ(0, 0, 6, 0x7a4a26);
+      // 굴러가는 게 보이도록 시간에 따라 도는 섬유 줄무늬
+      for (let i = 0; i < 3; i++) {
+        const a = t * 12 + (i * Math.PI * 2) / 3;
+        g.lineStyle(1.1, 0x4a2a12).lineBetween(x + Math.cos(a) * 1.5 * k, y + Math.sin(a) * 1.5 * k, x + Math.cos(a) * 5 * k, y + Math.sin(a) * 5 * k);
+      }
+      const a = t * 12;
+      g.fillStyle(0x2a1a0a).fillCircle(x + Math.cos(a + 2) * 2.5 * k, y + Math.sin(a + 2) * 2.5 * k, 1 * k);
+      break;
+    }
     case 'mud':
       circ(0, 0, 6, 0x8a6a42);
       circ(-3, -2, 2.2, 0x6a4e30, false);

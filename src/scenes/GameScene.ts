@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Match, type MatchSnapshot } from '../game/match';
+import { Match, type MatchSnapshot, type WindMode } from '../game/match';
 import { Rng } from '../game/rng';
 import { TURN_SECONDS, ITEMS } from '../game/data';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput } from '../game/types';
@@ -35,6 +35,10 @@ export interface GameConfig {
   net?: NetHooks;
   /** 재접속: 기준 기기에서 받은 판 상태 */
   resume?: { snap: MatchSnapshot; records: TurnRecord[]; elapsed: number };
+  /** 게임 속도 (포탄·연출 재생 배율) */
+  speed?: number;
+  /** 바람이 바뀌는 빠르기 */
+  wind?: WindMode;
 }
 
 type Phase = 'intro' | 'aim' | 'ai' | 'remote' | 'fly' | 'settle' | 'over';
@@ -232,6 +236,16 @@ export class GameScene extends Phaser.Scene {
   /** 이번 턴 이동 기록 (부호 = 방향, 크기 = 걸음 수) */
   private runs: number[] = [];
   private records = new Map<number, TurnRecord>();
+  /** 게임 속도 배율 */
+  private speed = 1;
+  /** 탱크별로 고른 무기 (다음 턴에도 유지) */
+  private sel = new Map<number, 0 | 1 | 2>();
+  private lastNormal = new Map<number, 0 | 1>();
+  /** 탱크별 파워 리미터 (최대로 눌러도 여기까지) */
+  private limit = new Map<number, number>();
+  private offAngleAcc = 0;
+  /** 이번 턴에 바로 쓴 아이템 칸 */
+  private usedNow: number[] = [];
   private remote: { applied: number; stage: 'wait' | 'move' | 'aim' | 'charge'; rec?: TurnRecord; liveRuns: number[]; moveAcc: number } = {
     applied: 0,
     stage: 'wait',
@@ -260,7 +274,10 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const cfg = this.cfg;
-    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed);
+    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal' });
+    this.speed = cfg.speed ?? 1;
+    this.time.timeScale = this.speed;
+    this.tweens.timeScale = this.speed;
     if (cfg.resume) this.records = new Map(cfg.resume.records.map((r) => [r.turn, r]));
     this.aiRng = new Rng(cfg.seed ^ 0x5bd1e995);
     const map = MAPS[cfg.mapId];
@@ -289,6 +306,11 @@ export class GameScene extends Phaser.Scene {
     this.input2 = new Input();
     this.hud = new Hud(cfg.hudParent, this.input2, cfg.touch);
     this.hud.drawMiniBase(this.match);
+    this.hud.onMiniClick = (fx, fy) => {
+      const t = this.match.terrain;
+      this.manualCam = true;
+      this.cameras.main.pan(fx * t.w, fy * t.h, 300, 'Sine.easeInOut');
+    };
     this.quitBtn = document.createElement('button');
     this.quitBtn.className = 'quit';
     this.quitBtn.textContent = '나가기';
@@ -302,17 +324,37 @@ export class GameScene extends Phaser.Scene {
     this.setupCamera();
     this.scale.on('resize', this.setupCamera, this);
     let drag: { x: number; y: number; sx: number; sy: number } | null = null;
+    // 두 손가락으로 오므리면 축소(맵 전체까지), 벌리면 확대
+    this.input.addPointer(1);
+    let pinch: { d: number; z: number } | null = null;
+    const p1 = () => this.input.pointer1;
+    const p2 = () => this.input.pointer2;
+    const twoDown = () => p1().isDown && p2().isDown;
+    const gap = () => Math.hypot(p1().x - p2().x, p1().y - p2().y) || 1;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (twoDown()) {
+        pinch = { d: gap(), z: this.cameras.main.zoom };
+        drag = null;
+        return;
+      }
       drag = { x: p.x, y: p.y, sx: this.cameras.main.scrollX, sy: this.cameras.main.scrollY };
     });
+    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoomTo(this.cameras.main.zoom * (dy > 0 ? 0.9 : 1.1)));
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (pinch) {
+        if (twoDown()) this.zoomTo(pinch.z * (gap() / pinch.d));
+        return;
+      }
       if (!drag || !p.isDown) return;
       const cam = this.cameras.main;
       if (Math.abs(p.x - drag.x) + Math.abs(p.y - drag.y) > 6) this.manualCam = true;
       cam.scrollX = drag.sx - (p.x - drag.x) / cam.zoom;
       cam.scrollY = drag.sy - (p.y - drag.y) / cam.zoom;
     });
-    this.input.on('pointerup', () => (drag = null));
+    this.input.on('pointerup', () => {
+      drag = null;
+      if (!twoDown()) pinch = null;
+    });
 
     this.events.once('shutdown', () => this.cleanup());
     this.events.once('destroy', () => this.cleanup());
@@ -332,6 +374,39 @@ export class GameScene extends Phaser.Scene {
     this.hud?.destroy();
   }
 
+  /** 사용자가 정한 확대 배율 (핀치·휠). null이면 자동 */
+  private userZoom: number | null = null;
+
+  /** 맵 전체가 한 화면에 들어오는 배율 */
+  private fitZoom() {
+    const hudH = this.hud?.bottomHeight ?? 0;
+    const t = this.match.terrain;
+    return Math.min(this.scale.width / (t.w + 60), (this.scale.height - hudH) / (t.h + 40));
+  }
+
+  private zoomTo(z: number) {
+    const cam = this.cameras.main;
+    const min = this.fitZoom();
+    const nz = Phaser.Math.Clamp(z, min, 1.6);
+    const mid = cam.midPoint.clone();
+    cam.setZoom(nz);
+    this.userZoom = nz;
+    this.manualCam = true;
+    this.applyBounds();
+    // 가장 작게 줄이면 맵 전체가 보이도록 가운데로
+    if (nz <= min + 0.001) {
+      const t = this.match.terrain;
+      cam.centerOn(t.w / 2, this.focusY(t.h / 2, 0.5) - 10);
+    } else cam.centerOn(mid.x, mid.y);
+  }
+
+  private applyBounds() {
+    const cam = this.cameras.main;
+    const hudH = this.hud?.bottomHeight || 118;
+    const t = this.match.terrain;
+    cam.setBounds(-120, -650, t.w + 240, t.h + 650 + hudH / cam.zoom);
+  }
+
   private setupCamera() {
     const cam = this.cameras.main;
     const w = this.scale.width;
@@ -343,9 +418,8 @@ export class GameScene extends Phaser.Scene {
       h > w
         ? Phaser.Math.Clamp(w / 620, 0.45, 1)
         : Phaser.Math.Clamp(Math.min((h - hudH * (short ? 0.85 : 0.5)) / (short ? 520 : 860), w / 1050), 0.38, 1.15);
-    cam.setZoom(zoom);
-    const t = this.match.terrain;
-    cam.setBounds(-120, -650, t.w + 240, t.h + 650 + hudH / zoom);
+    cam.setZoom(this.userZoom !== null ? Phaser.Math.Clamp(this.userZoom, this.fitZoom(), 1.6) : zoom);
+    this.applyBounds();
   }
 
   // ---------- 지형 그리기 ----------
@@ -413,10 +487,13 @@ export class GameScene extends Phaser.Scene {
     this.timeLeft = TURN_SECONDS - elapsed;
     this.power = 0;
     this.charging = false;
-    this.weapon = 0;
+    // 지난번에 고른 무기를 그대로 (필살기는 게이지가 차 있을 때만)
+    const s = this.sel.get(t.idx) ?? 0;
+    this.weapon = s === 2 && !this.match.canUseUlt(t) ? (this.lastNormal.get(t.idx) ?? 0) : s;
     this.itemSlot = null;
     this.manualCam = false;
     this.runs = [];
+    this.usedNow = [];
     this.remote = { applied: 0, stage: 'wait', liveRuns: [], moveAcc: 0 };
     this.lastLive = '';
     this.views.forEach((v) => v.arrow.setVisible(v.t.idx === t.idx));
@@ -439,17 +516,82 @@ export class GameScene extends Phaser.Scene {
     this.ai = { stage: 'wait', move: 0, shot: null, wait: 0.9 };
   }
 
-  private onControl(e: ControlEvent) {
-    if (this.phase !== 'aim' || this.charging) return;
+  /** 즉시 아이템 사용 (내 기기에서 누르거나, 다른 기기의 턴 기록을 재생) */
+  private useNow(slot: number) {
     const t = this.match.cur;
+    const amount = this.match.useItemNow(slot);
+    if (amount === null) return;
+    this.usedNow.push(slot);
+    if (this.itemSlot === slot) this.itemSlot = null;
+    const v = this.views[t.idx];
+    v.hp = t.hp;
+    v.drawHp();
+    this.floatText(v.x, v.y - 60, `+${amount}`, '#5cff8a');
+    this.fx.puff(v.x, v.y - 14, 0x7dffa8, 8);
+    sfx.heal();
+  }
+
+  /** 내 차례가 아닐 때도 내 탱크 각도를 미리 맞출 수 있다 */
+  private updateOffTurn(dt: number) {
+    const v = this.viewer();
+    if (!v || !v.alive || (this.phase === 'aim' && v === this.match.cur)) return;
+    const c = this.input2.state;
+    const ad = c.up && !c.down ? 1 : c.down && !c.up ? -1 : 0;
+    if (!ad) {
+      this.offAngleAcc = 0.99;
+      return;
+    }
+    this.offAngleAcc += 28 * dt;
+    while (this.offAngleAcc >= 1) {
+      this.offAngleAcc--;
+      v.angle = Math.max(v.def.angleMin, Math.min(v.def.angleMax, Math.round(v.angle) + ad));
+    }
+  }
+
+  /** 이 기기에서 HUD로 보여줄 내 탱크 (내 차례가 아니어도 내 것) */
+  private viewer(): TankState | null {
+    const m = this.match;
+    if (m.current >= 0 && this.controlOf(m.cur) === 'human') return m.cur;
+    if (this.cfg.net) return m.tanks[this.cfg.net.myIdx] ?? null;
+    return m.tanks.find((t) => !t.ai) ?? null;
+  }
+
+  private limitOf(t: TankState) {
+    return this.limit.get(t.idx) ?? 100;
+  }
+
+  private onControl(e: ControlEvent) {
+    const v = this.viewer();
+    if (!v || !v.alive) return;
+    const myTurn = this.phase === 'aim' && v === this.match.cur;
+    if (e.type === 'limit') {
+      // 파워 리미터는 언제든 조절
+      const val = e.delta !== undefined ? this.limitOf(v) + e.delta : (e.value ?? 100);
+      this.limit.set(v.idx, Math.max(10, Math.min(100, Math.round(val))));
+      return;
+    }
+    if (myTurn && this.charging) return;
     if (e.type === 'weapon') {
-      if (e.slot === 2 && !this.match.canUseUlt(t)) {
+      if (e.slot === 2 && !this.match.canUseUlt(v)) {
         this.hud.toast('필살기 게이지가 아직 안 찼어요');
         return;
       }
-      this.weapon = e.slot;
+      this.sel.set(v.idx, e.slot);
+      if (e.slot !== 2) this.lastNormal.set(v.idx, e.slot);
+      if (myTurn) this.weapon = e.slot;
       sfx.click();
     } else {
+      if (!myTurn) {
+        this.hud.toast('아이템은 내 차례에 쓸 수 있어요');
+        return;
+      }
+      const t = v;
+      // 수리킷은 누르는 즉시 회복
+      if (t.items[e.slot] === 'repair') {
+        if (t.hp >= t.maxHp) return this.hud.toast('체력이 이미 가득 찼어요');
+        this.useNow(e.slot);
+        return;
+      }
       if (!t.items[e.slot]) return;
       this.itemSlot = this.itemSlot === e.slot ? null : e.slot;
       sfx.click();
@@ -470,7 +612,7 @@ export class GameScene extends Phaser.Scene {
   private sendTurn(input: TurnInput | null) {
     const net = this.cfg.net;
     if (!net) return;
-    const rec: TurnRecord = { turn: this.match.turn, runs: [...this.runs], input, facing: this.match.cur.facing };
+    const rec: TurnRecord = { turn: this.match.turn, runs: [...this.runs], input, facing: this.match.cur.facing, used: [...this.usedNow] };
     this.records.set(rec.turn, rec);
     net.sendTurn(rec);
   }
@@ -488,6 +630,7 @@ export class GameScene extends Phaser.Scene {
     v.recoil();
     sfx.fire();
     const res = this.match.fire(input);
+    if (input.weapon === 2 && this.sel.get(t.idx) === 2) this.sel.set(t.idx, this.lastNormal.get(t.idx) ?? 0);
     this.turnDone();
     this.pb = { res, frame: 0, ev: 0 };
     this.manualCam = false;
@@ -526,7 +669,8 @@ export class GameScene extends Phaser.Scene {
     if (this.phase === 'aim') this.updateHuman(dt);
     else if (this.phase === 'ai') this.updateAi(dt);
     else if (this.phase === 'remote') this.updateRemote(dt);
-    else if (this.phase === 'fly') this.updatePlayback(dt);
+    else if (this.phase === 'fly') this.updatePlayback(dt * this.speed);
+    this.updateOffTurn(dt);
 
     // 내가 조종 중이면 다른 기기에 진행 상황을 보낸다
     if ((this.phase === 'aim' || this.phase === 'ai') && this.cfg.net) {
@@ -542,6 +686,7 @@ export class GameScene extends Phaser.Scene {
           charging: this.charging,
           weapon: this.weapon,
           itemSlot: this.itemSlot,
+          used: this.usedNow,
         };
         const j = JSON.stringify(live);
         if (j !== this.lastLive) {
@@ -576,13 +721,19 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.hud.drawMini(m, { x: view.x, y: view.y, w: view.width, h: view.height }, shells);
-    this.hud.update(m, t, {
-      power: this.power,
-      charging: this.charging,
-      weapon: this.weapon,
-      itemSlot: this.itemSlot,
+    // HUD는 항상 내 탱크 기준 (상대 차례에도 내 게이지·무기를 보여준다)
+    const v = this.viewer() ?? t;
+    const mine = v === t;
+    const s = this.sel.get(v.idx) ?? 0;
+    this.hud.update(m, v, {
+      power: mine ? this.power : 0,
+      charging: mine && this.charging,
+      weapon: mine ? this.weapon : s === 2 && !m.canUseUlt(v) ? (this.lastNormal.get(v.idx) ?? 0) : s,
+      itemSlot: mine ? this.itemSlot : null,
       timeLeft: this.timeLeft,
-      human: this.phase === 'aim',
+      human: this.phase === 'aim' && mine,
+      limit: this.limitOf(v),
+      spectate: !v.alive || (!mine && !!v.ai),
     });
   }
 
@@ -650,7 +801,7 @@ export class GameScene extends Phaser.Scene {
       this.power = 0;
     }
     if (this.charging) {
-      this.power = Math.min(100, this.power + 52 * dt);
+      this.power = Math.min(this.limitOf(t), this.power + 52 * dt);
       if (!c.fire) {
         const input = this.turnInput(this.power);
         this.sendTurn(input);
@@ -670,7 +821,7 @@ export class GameScene extends Phaser.Scene {
     const t = m.cur;
     this.timeLeft -= dt;
     if (ai.stage === 'wait') {
-      ai.wait -= dt;
+      ai.wait -= dt * this.speed;
       if (ai.wait <= 0) {
         ai.move = decideMove(m, t.ai!, this.aiRng);
         ai.stage = 'move';
@@ -678,7 +829,7 @@ export class GameScene extends Phaser.Scene {
     } else if (ai.stage === 'move') {
       if (ai.move !== 0) {
         const dir = ai.move > 0 ? 1 : -1;
-        this.moveAcc += 48 * dt;
+        this.moveAcc += 48 * dt * this.speed;
         while (this.moveAcc >= 1 && ai.move !== 0) {
           this.moveAcc--;
           if (!this.step(dir)) ai.move = 0;
@@ -697,7 +848,7 @@ export class GameScene extends Phaser.Scene {
       ai.stage = 'aim';
     } else if (ai.stage === 'aim') {
       const target = ai.shot!.angle;
-      const step = 40 * dt;
+      const step = 40 * dt * this.speed;
       if (Math.abs(t.angle - target) <= step) {
         t.angle = target;
         ai.stage = 'charge';
@@ -705,7 +856,7 @@ export class GameScene extends Phaser.Scene {
         this.power = 0;
       } else t.angle += Math.sign(target - t.angle) * step;
     } else if (ai.stage === 'charge') {
-      this.power = Math.min(ai.shot!.power, this.power + 52 * dt);
+      this.power = Math.min(ai.shot!.power, this.power + 52 * dt * this.speed);
       if (this.power >= ai.shot!.power) {
         this.sendTurn(ai.shot!);
         this.fire(ai.shot!);
@@ -737,6 +888,8 @@ export class GameScene extends Phaser.Scene {
   onRemoteLive(l: LiveState) {
     if (this.phase !== 'remote' || l.turn !== this.match.turn || this.remote.stage !== 'wait') return;
     const t = this.match.cur;
+    // 상대가 방금 쓴 수리킷은 바로 보여준다
+    for (const slot of (l.used ?? []).slice(this.usedNow.length)) this.useNow(slot);
     this.remote.liveRuns = l.runs;
     this.applyRemoteSteps(l.runs, 999);
     if (!t.alive) return;
@@ -755,6 +908,8 @@ export class GameScene extends Phaser.Scene {
     if (this.phase !== 'remote' || rec.turn !== this.match.turn || this.remote.stage !== 'wait') return;
     this.remote.rec = this.records.get(rec.turn);
     this.remote.stage = 'move';
+    // 상대가 이번 턴에 바로 쓴 아이템(수리킷)을 먼저 적용
+    for (const slot of (this.remote.rec?.used ?? []).slice(this.usedNow.length)) this.useNow(slot);
   }
 
   private updateRemote(dt: number) {
@@ -788,7 +943,7 @@ export class GameScene extends Phaser.Scene {
     }
     const rec = r.rec!;
     if (r.stage === 'move') {
-      r.moveAcc += 120 * dt;
+      r.moveAcc += 120 * dt * this.speed;
       const n = Math.floor(r.moveAcc);
       r.moveAcc -= n;
       const done = this.applyRemoteSteps(rec.runs, n);
@@ -802,7 +957,7 @@ export class GameScene extends Phaser.Scene {
       r.stage = 'aim';
     } else if (r.stage === 'aim') {
       const target = rec.input!.angle;
-      const s = 90 * dt;
+      const s = 90 * dt * this.speed;
       if (Math.abs(t.angle - target) <= s) {
         t.angle = target;
         r.stage = 'charge';
@@ -810,7 +965,7 @@ export class GameScene extends Phaser.Scene {
         if (this.power > rec.input!.power) this.power = 0;
       } else t.angle += Math.sign(target - t.angle) * s;
     } else if (r.stage === 'charge') {
-      this.power = Math.min(rec.input!.power, this.power + 140 * dt);
+      this.power = Math.min(rec.input!.power, this.power + 140 * dt * this.speed);
       if (this.power >= rec.input!.power) this.fire(rec.input!);
     }
   }

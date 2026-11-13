@@ -24,6 +24,9 @@ export const state = {
   shop: [[], []] as ItemId[][],
   shopFor: 0,
   name2: '2P',
+  /** 게임 속도·바람 빠르기 (AI 1:1) */
+  speed: 1,
+  wind: 'normal' as 'slow' | 'normal' | 'fast',
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */

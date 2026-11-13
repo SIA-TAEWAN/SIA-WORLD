@@ -6,11 +6,19 @@ import { Terrain } from '../physics/terrain';
 import { fly, tankCenter, TANK_HIT_R, type ImpactHandler } from '../physics/shot';
 
 const MOVE_DELAY_PER_PX = 0.5;
-const ULT_PER_DEALT = 0.09;
-const ULT_PER_TAKEN = 0.12;
+const ULT_PER_DEALT = 0.12;
+const ULT_PER_TAKEN = 0.16;
 const DIRECT_BONUS = 1.2;
 const FALL_OUT_Y = 40;
 const LASER_DEPTH = 90;
+
+/** 바람이 바뀌는 빠르기: 턴마다 바뀌는 최대 폭 */
+export const WIND_STEPS = { slow: 2, normal: 5, fast: 8 } as const;
+export type WindMode = keyof typeof WIND_STEPS;
+
+export interface MatchOptions {
+  wind?: WindMode;
+}
 
 export class Match {
   readonly mapId: MapId;
@@ -27,9 +35,11 @@ export class Match {
   winner: Team | -1 | null = null;
 
   readonly setups: PlayerSetup[];
+  readonly options: MatchOptions;
 
-  constructor(setups: PlayerSetup[], mapId: MapId, seed: number) {
+  constructor(setups: PlayerSetup[], mapId: MapId, seed: number, options: MatchOptions = {}) {
     this.setups = setups;
+    this.options = options;
     this.mapId = mapId;
     this.seed = seed;
     this.rng = new Rng(seed);
@@ -98,8 +108,9 @@ export class Match {
     const next = this.order()[0];
     this.current = next.idx;
     this.turn++;
-    // 바람은 직전 바람에서 ±0~5만 바뀐다 (첫 턴은 -5~5)
-    const dw = this.rng.int(-5, 5);
+    // 바람은 직전 바람에서 ±0~(빠르기)만 바뀐다 (첫 턴은 -5~5)
+    const step = this.turn === 1 ? 5 : WIND_STEPS[this.options.wind ?? 'normal'];
+    const dw = this.rng.int(-step, step);
     this.wind = this.turn === 1 ? dw : Math.max(-10, Math.min(10, this.wind + dw));
     this.moveLeft = next.def.move;
     this.movedThisTurn = 0;
@@ -177,6 +188,17 @@ export class Match {
     t.angle = Math.max(t.def.angleMin, Math.min(t.def.angleMax, a));
   }
 
+  /** 수리킷처럼 누르는 즉시 효과가 나는 아이템. 회복량을 돌려주고, 쓸 수 없으면 null */
+  useItemNow(slot: number): number | null {
+    const t = this.cur;
+    if (!t || !t.alive || t.items[slot] !== 'repair' || t.hp >= t.maxHp) return null;
+    const amount = Math.min(t.maxHp - t.hp, Math.round(t.maxHp * 0.2));
+    t.hp += amount;
+    t.items[slot] = null;
+    t.delay += ITEMS.repair.delay;
+    return amount;
+  }
+
   canUseUlt(t: TankState) {
     return t.ult >= 100;
   }
@@ -215,6 +237,8 @@ export class Match {
       events.push({ f: 0, type: 'heal', target: t.idx, amount });
     }
     const damageMul = item === 'power' ? 1.3 : 1;
+    // 세게 쏠수록(파워·파워업) 땅을 더 크게 판다: 파워 0이면 기본 크기, 100이면 1.5배
+    const crater = Math.round(w.crater * (1 + (0.5 * Math.max(0, Math.min(100, input.power))) / 100) * damageMul);
     const volleys = item === 'double' ? 2 : 1;
 
     const moved = new Set<number>();
@@ -243,8 +267,8 @@ export class Match {
     {
       const handler: ImpactHandler = {
         explode: (f, x, y, direct) => {
-          this.terrain.carve(x, y, w.crater);
-          events.push({ f, type: 'explode', x, y, radius: w.radius, crater: w.crater, big: slot === 2 });
+          this.terrain.carve(x, y, crater);
+          events.push({ f, type: 'explode', x, y, radius: w.radius, crater, big: slot === 2 });
           for (const o of this.tanks) {
             if (!o.alive) continue;
             const c = tankCenter(o);
@@ -325,6 +349,7 @@ export class Match {
   snapshot(): MatchSnapshot {
     return {
       setups: this.setups,
+      options: this.options,
       mapId: this.mapId,
       seed: this.seed,
       turn: this.turn,
@@ -343,7 +368,7 @@ export class Match {
   }
 
   static fromSnapshot(s: MatchSnapshot): Match {
-    const m = new Match(s.setups, s.mapId, s.seed);
+    const m = new Match(s.setups, s.mapId, s.seed, s.options ?? {});
     m.turn = s.turn;
     m.current = s.current;
     m.wind = s.wind;
@@ -363,6 +388,7 @@ export class Match {
 
 export interface MatchSnapshot {
   setups: PlayerSetup[];
+  options?: MatchOptions;
   mapId: MapId;
   seed: number;
   turn: number;

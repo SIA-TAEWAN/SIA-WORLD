@@ -4,7 +4,7 @@ import itemsJson from '../data/items.json';
 
 export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig';
 export type ItemId = 'double' | 'power' | 'repair' | 'teleport';
-export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split';
+export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split' | 'roll' | 'homing';
 
 export interface TankDef {
   name: string;
@@ -51,6 +51,10 @@ export interface WeaponDef {
   /** 분열탄: 갈라지는 개수와 좌우 퍼짐 속도 */
   split?: number;
   spread?: number;
+  /** 굴러가는 탄: 땅에 닿은 뒤 굴러가는 거리 */
+  rollDistance?: number;
+  /** 유도탄: 꼭대기를 지난 뒤 초당 꺾는 각도 */
+  homing?: number;
 }
 
 export interface ItemDef {

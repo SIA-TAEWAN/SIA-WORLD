@@ -1,6 +1,7 @@
 import { TANKS, TANK_IDS, type TankId } from '../game/data';
 import { MAPS, MAP_IDS, type MapId } from '../data/maps';
 import type { PlayerSetup } from '../game/types';
+import type { WindMode } from '../game/match';
 import { Rng, randomSeed } from '../game/rng';
 import type { MatchSummary } from '../scenes/GameScene';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
@@ -24,19 +25,26 @@ let online: OnlineGame | null = null;
 const started = new Map<string, number>();
 
 const me = () => ({ id: clientId(), name: state.name });
+export const WIND_LABEL: Record<WindMode, string> = { slow: '느리게 ±2', normal: '보통 ±5', fast: '빠르게 ±8' };
 const myPlayer = (room?: Room): RoomPlayer => {
   const p = room?.players.find((x) => x.id === clientId());
   return { id: clientId(), name: state.name, tank: state.tank, team: p?.team ?? 0, items: [...state.shop[0]], ready: p?.ready ?? false };
 };
 
-function chatHtml(sess: LobbySession) {
+/** 대기실 채팅과 게임방 채팅이 같은 모양으로 그려진다 */
+interface ChatSource {
+  chat: { name: string; text: string; system?: boolean }[];
+  sendChat(text: string): void;
+}
+
+function chatHtml(sess: ChatSource) {
   return sess.chat
     .slice(-40)
     .map((c) => (c.system ? `<p class="sys">${escapeHtml(c.text)}</p>` : `<p><b>${escapeHtml(c.name)}</b> ${escapeHtml(c.text)}</p>`))
     .join('');
 }
 
-function bindChat(root: HTMLElement, sess: LobbySession) {
+function bindChat(root: HTMLElement, sess: ChatSource) {
   const form = $<HTMLFormElement>(root, '.chat-form');
   const input = $<HTMLInputElement>(root, '.chat-form input');
   form.addEventListener('submit', (e) => {
@@ -46,7 +54,7 @@ function bindChat(root: HTMLElement, sess: LobbySession) {
   });
 }
 
-function renderChatLog(root: HTMLElement, sess: LobbySession) {
+function renderChatLog(root: HTMLElement, sess: ChatSource) {
   const log = $(root, '.chat-log');
   const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
   log.innerHTML = chatHtml(sess);
@@ -234,13 +242,15 @@ function renderRoom(id: string) {
         <div id="team-box"><h3>팀 선택</h3><div class="seg" id="team"></div></div>
         <h3>맵 <small id="map-note"></small></h3>
         <div class="seg small" id="map"></div>
+        <div class="opt-row"><span class="lbl">게임 속도</span><div class="seg small" id="speed"></div></div>
+        <div class="opt-row"><span class="lbl">바람 변화</span><div class="seg small" id="wind"></div></div>
       </section>
       <section class="card shop-card">
         <h3>아이템 상점 <small>게임 시작 전까지</small></h3>
         <div id="shop"></div>
       </section>
       <section class="card chat-card">
-        <h3>채팅</h3>
+        <h3>방 채팅 <small>이 방 사람끼리만</small></h3>
         <div class="chat">
           <div class="chat-log"></div>
           <form class="chat-form"><input maxlength="120" placeholder="채팅 입력" autocomplete="off"/><button class="btn small-btn">보내기</button></form>
@@ -252,6 +262,7 @@ function renderRoom(id: string) {
     () => {
       unsubA();
       unsubB();
+      unsubC();
       clearInterval(iv);
     },
   );
@@ -348,6 +359,21 @@ function renderRoom(id: string) {
       .join('');
     const maps: (MapId | 'random')[] = [...MAP_IDS, 'random'];
     $(root, '#map').innerHTML = maps.map((m) => `<button data-v="${m}" class="${room.map === m ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${m === 'random' ? '랜덤' : MAPS[m].name}</button>`).join('');
+    const speed = room.speed ?? 1;
+    const wind = room.wind ?? 'normal';
+    $(root, '#speed').innerHTML = ([1, 1.5] as const)
+      .map((v) => `<button data-v="${v}" class="${speed === v ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${v === 1 ? '보통 (1배)' : '빠르게 (1.5배)'}</button>`)
+      .join('');
+    $(root, '#wind').innerHTML = (['slow', 'normal', 'fast'] as const)
+      .map((v) => `<button data-v="${v}" class="${wind === v ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${WIND_LABEL[v]}</button>`)
+      .join('');
+    const setOpt = async (sp: number, wd: WindMode) => {
+      sfx.click();
+      await backend!.setOptions(id, clientId(), sp, wd).catch((e) => toast(friendly(e)));
+      await sess.refetch();
+    };
+    root.querySelectorAll<HTMLElement>('#speed button').forEach((b) => b.addEventListener('click', () => void setOpt(Number(b.dataset.v), wind)));
+    root.querySelectorAll<HTMLElement>('#wind button').forEach((b) => b.addEventListener('click', () => void setOpt(speed, b.dataset.v as WindMode)));
     root.querySelectorAll<HTMLElement>('#tank button').forEach((b) =>
       b.addEventListener('click', () => {
         state.tank = b.dataset.v as TankId;
@@ -377,7 +403,7 @@ function renderRoom(id: string) {
       startBtn.disabled = false;
       startBtn.textContent = mineP.ready ? `레디 완료! 방장을 기다리는 중 (${readyN}/${others.length}) · 취소` : '레디!';
     }
-    renderChatLog(root, sess);
+    renderChatLog(root, rs);
   };
 
   let shopLocked = false;
@@ -395,6 +421,7 @@ function renderRoom(id: string) {
 
   const unsubA = sess.subscribe(draw);
   const unsubB = rs.onPresence(draw);
+  const unsubC = rs.onChat(() => renderChatLog(root, rs));
   // 브라우저를 그냥 닫은 사람은 잠시 뒤 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
   const iv = setInterval(() => {
     const room = sess.room(id);
@@ -418,7 +445,7 @@ function renderRoom(id: string) {
 
   draw();
   drawShop();
-  bindChat(root, sess);
+  bindChat(root, rs);
   $(root, '#leave').addEventListener('click', () => {
     unsubA();
     unsubB();
@@ -500,6 +527,8 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     setups: setupsOf(room),
     mapId: mapOf(room),
     seed: room.seed ?? 1,
+    speed: room.speed ?? 1,
+    wind: room.wind ?? 'normal',
     net: g,
     resume,
     onEnd: (s: MatchSummary) => {
