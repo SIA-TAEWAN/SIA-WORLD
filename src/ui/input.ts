@@ -26,8 +26,22 @@ export class Input {
       ArrowDown: 'down',
       Space: 'fire',
     };
+    // 채팅을 치는 중일 때만 키를 글자로 보낸다
+    const typing = () => {
+      const a = document.activeElement as HTMLElement | null;
+      return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && !!a.closest('.game-chat');
+    };
+    // 화면을 누르면 버튼·입력칸에 남은 포커스를 푼다 (스페이스가 버튼을 누르지 않게)
+    const unfocus = (e: PointerEvent) => {
+      if ((e.target as HTMLElement)?.closest?.('.game-chat')) return;
+      const a = document.activeElement as HTMLElement | null;
+      if (a && a !== document.body) setTimeout(() => a.blur(), 0);
+    };
+    window.addEventListener('pointerdown', unfocus, true);
+    this.cleanup.push(() => window.removeEventListener('pointerdown', unfocus, true));
     const down = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (typing()) return;
+      if (document.activeElement && document.activeElement !== document.body) (document.activeElement as HTMLElement).blur();
       const k = map[e.code];
       if (k) {
         e.preventDefault();
@@ -41,6 +55,7 @@ export class Input {
       if (item !== undefined) this.emit({ type: 'item', slot: item });
     };
     const up = (e: KeyboardEvent) => {
+      if (typing()) return;
       const k = map[e.code];
       if (k) {
         e.preventDefault();

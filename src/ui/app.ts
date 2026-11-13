@@ -27,8 +27,8 @@ export const state = {
   /** 내 ID의 포인트 (온라인에서 이기면 +100, 지면 -100, 최저 1000) */
   points: 1000,
   /** 게임 속도·바람 빠르기 (AI 1:1) */
-  speed: 1,
-  wind: 'normal' as 'slow' | 'normal' | 'fast',
+  speed: 1.5,
+  wind: 'slow' as 'slow' | 'normal' | 'fast',
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */

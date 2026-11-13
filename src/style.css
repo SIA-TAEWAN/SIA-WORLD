@@ -1758,3 +1758,67 @@ body.in-game .sound-fab {
   font-size: 16px;
   white-space: nowrap;
 }
+
+/* 게임 중 채팅 (왼쪽, 미니맵 아래) */
+.game-chat {
+  position: absolute;
+  left: calc(8px + env(safe-area-inset-left));
+  top: 166px;
+  width: min(320px, 60vw);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.gc-log p {
+  margin: 2px 0;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(20, 26, 52, 0.7);
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.6s;
+  word-break: break-all;
+}
+.game-chat.active .gc-log p {
+  opacity: 1;
+}
+.gc-log p.sys {
+  color: #ffe07a;
+}
+.gc-form {
+  width: 100%;
+  pointer-events: auto;
+}
+.gc-form input {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 2px solid var(--panel-b);
+  background: #fff;
+  color: var(--ink);
+}
+.gc-btn {
+  pointer-events: auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--panel-b);
+  background: var(--panel);
+  font-size: 18px;
+  cursor: pointer;
+}
+@media (max-width: 760px) {
+  .game-chat {
+    top: 112px;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .game-chat {
+    top: 106px;
+    width: 40vw;
+  }
+}

@@ -3,6 +3,7 @@ import type { Match } from '../game/match';
 import type { TankState } from '../game/types';
 import { TEAM_COLORS } from './teams';
 import type { Input } from './input';
+import type { GameChat } from '../scenes/GameScene';
 import { sfx } from './sfx';
 
 export interface HudView {
@@ -49,7 +50,7 @@ export class Hud {
   private toastEl = el('div', 'toast');
   private lastTimer = -1;
 
-  constructor(parent: HTMLElement, input: Input, touch: boolean) {
+  constructor(parent: HTMLElement, input: Input, touch: boolean, chat?: GameChat) {
     this.root = el('div', 'hud');
     const top = el('div', 'hud-top');
     const timerBox = el('div', 'timer-box');
@@ -122,6 +123,7 @@ export class Hud {
     bottom.append(angleBox, gauges, wbox, ibox);
 
     this.root.append(top, miniBox, this.banner, this.toastEl, bottom);
+    if (chat) this.buildChat(chat);
 
     if (touch) {
       const pad = el('div', 'touch-pad');
@@ -153,6 +155,71 @@ export class Hud {
   private bottomEl: HTMLElement;
   private offMute: () => void;
   private ro: ResizeObserver | null = null;
+
+  private chatOff: (() => void) | null = null;
+
+  /** 게임 중 채팅: Enter로 열고 보내기, Esc로 닫기. 최근 메시지는 잠깐 보였다 흐려진다 */
+  private buildChat(chat: GameChat) {
+    const box = el('div', 'game-chat');
+    const log = el('div', 'gc-log');
+    const form = el('form', 'gc-form hidden') as HTMLFormElement;
+    const inp = el('input') as HTMLInputElement;
+    inp.maxLength = 120;
+    inp.placeholder = '채팅 입력 후 Enter (Esc 닫기)';
+    inp.autocomplete = 'off';
+    form.append(inp);
+    const btn = el('button', 'gc-btn', '💬') as HTMLButtonElement;
+    btn.title = '채팅 (Enter)';
+    box.append(log, form, btn);
+    this.root.append(box);
+    let shown = 0;
+    const render = () => {
+      const msgs = chat.chat.slice(-6);
+      log.innerHTML = msgs
+        .map((c, i) => `<p class="${c.system ? 'sys' : ''} ${i >= msgs.length - (chat.chat.length - shown) ? 'new' : ''}">${c.system ? '' : `<b>${escapeHtml(c.name)}</b> `}${escapeHtml(c.text)}</p>`)
+        .join('');
+      shown = chat.chat.length;
+      box.classList.add('active');
+      clearTimeout(fade);
+      fade = setTimeout(() => form.classList.contains('hidden') && box.classList.remove('active'), 6000);
+    };
+    let fade: ReturnType<typeof setTimeout> | undefined;
+    const open = () => {
+      form.classList.remove('hidden');
+      box.classList.add('active');
+      inp.focus();
+    };
+    const close = () => {
+      form.classList.add('hidden');
+      inp.value = '';
+      inp.blur();
+      fade = setTimeout(() => box.classList.remove('active'), 3000);
+    };
+    btn.onclick = () => (form.classList.contains('hidden') ? open() : close());
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (inp.value.trim()) chat.sendChat(inp.value);
+      close();
+    });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+      e.stopPropagation();
+    });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && form.classList.contains('hidden') && document.activeElement !== inp) {
+        e.preventDefault();
+        open();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    const off = chat.onChat(render);
+    this.chatOff = () => {
+      off();
+      window.removeEventListener('keydown', onKey);
+      clearTimeout(fade);
+    };
+    shown = chat.chat.length;
+  }
 
   /** 화면 아래 조작판 높이(px) */
   get bottomHeight() {
@@ -326,6 +393,7 @@ export class Hud {
   destroy() {
     this.ro?.disconnect();
     this.offMute();
+    this.chatOff?.();
     this.root.remove();
   }
 }

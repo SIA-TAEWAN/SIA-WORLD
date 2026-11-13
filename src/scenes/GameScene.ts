@@ -23,6 +23,12 @@ export interface MatchSummary {
   turns: number;
 }
 
+export interface GameChat {
+  chat: { name: string; text: string; system?: boolean }[];
+  sendChat(text: string): void;
+  onChat(fn: () => void): () => void;
+}
+
 export interface GameConfig {
   setups: PlayerSetup[];
   mapId: MapId;
@@ -37,6 +43,8 @@ export interface GameConfig {
   resume?: { snap: MatchSnapshot; records: TurnRecord[]; elapsed: number };
   /** 게임 속도 (포탄·연출 재생 배율) */
   speed?: number;
+  /** 게임 중 채팅 (온라인: 같은 방 사람끼리) */
+  chat?: GameChat;
   /** 바람이 바뀌는 빠르기 */
   wind?: WindMode;
 }
@@ -326,7 +334,7 @@ export class GameScene extends Phaser.Scene {
 
     // UI
     this.input2 = new Input();
-    this.hud = new Hud(cfg.hudParent, this.input2, cfg.touch);
+    this.hud = new Hud(cfg.hudParent, this.input2, cfg.touch, cfg.chat);
     this.hud.drawMiniBase(this.match);
     this.hud.onMiniClick = (fx, fy) => {
       const t = this.match.terrain;

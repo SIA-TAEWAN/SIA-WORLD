@@ -366,8 +366,8 @@ function renderRoom(id: string) {
       .join('');
     const maps: (MapId | 'random')[] = [...MAP_IDS, 'random'];
     $(root, '#map').innerHTML = maps.map((m) => `<button data-v="${m}" class="${room.map === m ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${m === 'random' ? '랜덤' : MAPS[m].name}</button>`).join('');
-    const speed = room.speed ?? 1;
-    const wind = room.wind ?? 'normal';
+    const speed = room.speed ?? 1.5;
+    const wind = room.wind ?? 'slow';
     $(root, '#speed').innerHTML = ([1, 1.5] as const)
       .map((v) => `<button data-v="${v}" class="${speed === v ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${v === 1 ? '보통 (1배)' : '빠르게 (1.5배)'}</button>`)
       .join('');
@@ -541,8 +541,9 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     setups: setupsOf(room),
     mapId: mapOf(room),
     seed: room.seed ?? 1,
-    speed: room.speed ?? 1,
-    wind: room.wind ?? 'normal',
+    speed: room.speed ?? 1.5,
+    wind: room.wind ?? 'slow',
+    chat: roomSess ?? undefined,
     net: g,
     resume,
     onEnd: (s: MatchSummary) => {
