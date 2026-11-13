@@ -1,4 +1,4 @@
-import { TANKS, TANK_IDS, WEAPONS, randomTank, type TankId } from '../game/data';
+import { TANKS, TANK_IDS, WEAPONS, randomTank, type TankChoice, type TankId } from '../game/data';
 import { MAPS, MAP_IDS, type MapId } from '../data/maps';
 import type { Difficulty, PlayerSetup } from '../game/types';
 import { Rng, randomSeed } from '../game/rng';
@@ -107,11 +107,13 @@ export function showSetup() {
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => root.querySelector<T>(s)!;
 
   const renderTanks = () => {
-    const d = TANKS[state.tank];
+    const rnd = state.tank === 'random';
+    const d = TANKS[rnd ? 'zodiac' : (state.tank as TankId)];
     $('#tanks').innerHTML = `<div class="zodiac-pick">${TANK_IDS.map(
       (id) => `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''}" title="${TANKS[id].name} (${TANKS[id].animal}) · ${TANKS[id].role}">${tankSvg(id, 46)}<span>${TANKS[id].name}</span></button>`,
-    ).join('')}<button data-id="__random" class="rand ${state.tank === 'zodiac' ? 'sel' : ''}" title="20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>${state.tank === 'zodiac' ? '열두빛!' : '랜덤'}</span></button></div>
-      <div class="tank-card sel">
+    ).join('')}<button data-id="random" class="rand ${rnd ? 'sel' : ''}" title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button></div>
+      ${rnd ? `<div class="tank-card sel"><div class="pic">${tankSvg('random', 92)}</div><div class="info"><div class="tn">랜덤 <small>게임을 시작할 때 정해져요</small></div><p>12지신 중 하나가 무작위로 나오고, <b>20% 확률</b>로 전설의 <b>십이지신 '열두빛'</b>(다른 탱크보다 20% 강함)이 나와요.</p></div></div>` : ''}
+      <div class="tank-card sel" style="${rnd ? 'display:none' : ''}">
         <div class="pic">${tankSvg(state.tank, 92)}</div>
         <div class="info">
           <div class="tn">${d.name} <small>${d.animal} · ${d.role}</small></div>
@@ -125,11 +127,7 @@ export function showSetup() {
       </div>`;
     root.querySelectorAll<HTMLElement>('.zodiac-pick button').forEach((b) =>
       b.addEventListener('click', () => {
-        if (b.dataset.id === '__random') {
-          state.tank = randomTank();
-          if (state.tank === 'zodiac') toast('✨ 십이지신 열두빛 당첨! (20% 확률)');
-          else toast(`🎲 ${TANKS[state.tank].name}(이)가 골라졌어요`);
-        } else state.tank = b.dataset.id as TankId;
+        state.tank = b.dataset.id as TankChoice;
         save({ tank: state.tank });
         sfx.click();
         renderTanks();
@@ -264,7 +262,7 @@ function startGame() {
   const local = state.opponent === 'local';
   const diff = local ? null : (state.opponent as Difficulty);
   const setups: PlayerSetup[] = [
-    { name: state.name, tank: state.tank, team: 0, ai: null, items: [...state.shop[0]] },
+    { name: state.name, tank: state.tank === 'random' ? randomTank() : state.tank, team: 0, ai: null, items: [...state.shop[0]] },
     {
       name: local ? state.name2 : `AI(${{ easy: '쉬움', normal: '보통', hard: '어려움' }[diff!]})`,
       tank: oppTank,

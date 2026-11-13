@@ -1,4 +1,4 @@
-import { TANKS, TANK_IDS, randomTank, type TankId } from '../game/data';
+import { TANKS, TANK_IDS, randomTank, type TankChoice } from '../game/data';
 import { MAPS, MAP_IDS, type MapId } from '../data/maps';
 import type { PlayerSetup } from '../game/types';
 import type { WindMode } from '../game/match';
@@ -343,21 +343,21 @@ function renderRoom(id: string) {
         ${isHost ? '<div class="badge host">👑 방장</div>' : p.ready ? '<div class="badge ready">READY</div>' : '<div class="badge wait">준비 중</div>'}
         <div class="pic">${tankSvg(p.tank, 70, p.team === 1)}</div>
         <div class="pn">${escapeHtml(p.name)}${p.id === clientId() ? ' <small>(나)</small>' : ''}</div>
-        <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${TANKS[p.tank].name}</div>
+        <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${p.tank === 'random' ? '랜덤' : TANKS[p.tank].name}</div>
         ${p.items.length ? `<div class="pi">아이템 ${p.items.length}개</div>` : ''}
         ${away ? '<div class="away">연결 확인 중…</div>' : ''}
       </div>`;
     }).join('');
     const tankHtml = TANK_IDS.map(
       (t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} title="${TANKS[t].name} (${TANKS[t].animal}) · ${TANKS[t].role}">${tankSvg(t, 40)}<span>${TANKS[t].name}</span></button>`,
-    ).join('') + `<button data-v="__random" class="rand ${mineP.tank === 'zodiac' ? 'sel' : ''}" ${locked ? 'disabled ' : ''}title="20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>${mineP.tank === 'zodiac' ? '열두빛!' : '랜덤'}</span></button>`;
+    ).join('') + `<button data-v="random" class="rand ${mineP.tank === 'random' ? 'sel' : ''}" ${locked ? 'disabled ' : ''}title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button>`;
     const tankEl = $(root, '#tank');
     if (tankEl.dataset.html !== tankHtml) {
       tankEl.innerHTML = tankHtml;
       tankEl.dataset.html = tankHtml;
     }
-    const td = TANKS[mineP.tank];
-    $(root, '#tank-name').textContent = `${td.name} (${td.animal}) · ${td.role}`;
+    $(root, '#tank-name').textContent =
+      mineP.tank === 'random' ? '랜덤 · 게임 시작 때 정해져요 (20% 확률로 십이지신 열두빛)' : `${TANKS[mineP.tank].name} (${TANKS[mineP.tank].animal}) · ${TANKS[mineP.tank].role}`;
     $(root, '#map-note').textContent = iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요';
     const needTeam = room.players.length >= 3 || !teamsOk(room);
     $(root, '#team-box').style.display = needTeam ? '' : 'none';
@@ -383,10 +383,7 @@ function renderRoom(id: string) {
     root.querySelectorAll<HTMLElement>('#wind button').forEach((b) => b.addEventListener('click', () => void setOpt(speed, b.dataset.v as WindMode)));
     root.querySelectorAll<HTMLElement>('#tank button').forEach((b) =>
       b.addEventListener('click', () => {
-        if (b.dataset.v === '__random') {
-          state.tank = randomTank();
-          toast(state.tank === 'zodiac' ? '✨ 십이지신 열두빛 당첨! (20% 확률)' : `🎲 ${TANKS[state.tank].name}(이)가 골라졌어요`);
-        } else state.tank = b.dataset.v as TankId;
+        state.tank = b.dataset.v as TankChoice;
         sfx.click();
         void update({ tank: state.tank });
       }),
@@ -498,7 +495,12 @@ function renderRoom(id: string) {
 // ---------- 온라인 대전 ----------
 
 function setupsOf(room: Room): PlayerSetup[] {
-  return room.players.map((p) => ({ id: p.id, name: p.name, tank: p.tank, team: p.team, ai: null, items: [...p.items] }));
+  // '랜덤'은 판의 시드로 정한다 (모든 기기가 같은 결과)
+  return room.players.map((p, i) => {
+    const r = new Rng(((room.seed ?? 1) ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0);
+    const tank = p.tank === 'random' ? randomTank(() => r.next()) : p.tank;
+    return { id: p.id, name: p.name, tank, team: p.team, ai: null, items: [...p.items] };
+  });
 }
 
 function mapOf(room: Room): MapId {

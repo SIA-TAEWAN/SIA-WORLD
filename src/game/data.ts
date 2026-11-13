@@ -71,6 +71,8 @@ export const ITEMS = itemsJson as Record<ItemId, ItemDef>;
 /** 고를 수 있는 12지신 탱크 (십이지신은 랜덤으로만) */
 export const TANK_IDS: TankId[] = (Object.keys(TANKS) as TankId[]).filter((t) => t !== 'zodiac');
 export const ALL_TANK_IDS = Object.keys(TANKS) as TankId[];
+/** 탱크 고르기: 12지신 중 하나 또는 '랜덤'(게임 시작 때 정해짐) */
+export type TankChoice = TankId | 'random';
 /** 랜덤 선택: 20% 확률로 십이지신, 나머지는 12대 중 하나 */
 export function randomTank(rand: () => number = Math.random): TankId {
   return rand() < 0.2 ? 'zodiac' : TANK_IDS[Math.floor(rand() * TANK_IDS.length)];

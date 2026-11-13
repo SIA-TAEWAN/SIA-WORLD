@@ -1,5 +1,5 @@
 import type { GameConfig } from '../scenes/GameScene';
-import { TANK_IDS, type ItemId, type TankId } from '../game/data';
+import { TANK_IDS, type ItemId, type TankChoice, type TankId } from '../game/data';
 import type { MapId } from '../data/maps';
 import type { Difficulty } from '../game/types';
 import { load } from './storage';
@@ -16,7 +16,7 @@ export const touch = window.matchMedia('(pointer: coarse)').matches || 'ontouchs
 const saved = load();
 export const state = {
   name: saved.name ?? '',
-  tank: (TANK_IDS.includes(saved.tank as TankId) ? saved.tank : 'tiger') as TankId,
+  tank: (TANK_IDS.includes(saved.tank as TankId) || saved.tank === 'random' ? saved.tank : 'tiger') as TankChoice,
   oppTank: 'random' as TankId | 'random',
   opponent: (['easy', 'normal', 'hard', 'local'].includes(saved.opponent ?? '') ? saved.opponent : 'normal') as Opponent,
   map: ((saved.map as MapId | 'random') ?? 'valley') as MapId | 'random',

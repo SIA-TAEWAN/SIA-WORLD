@@ -137,7 +137,6 @@ export class Match {
     this.moveLeft = next.def.move;
     this.movedThisTurn = 0;
     this.lastDrop = this.turn % DROP_EVERY === 0 ? this.dropCrates() : null;
-    this.pickup();
     return next;
   }
 
@@ -187,7 +186,7 @@ export class Match {
     for (const t of this.tanks) {
       if (!t.alive) continue;
       for (const c of [...this.crates]) {
-        if (Math.abs(t.x - c.x) > 20 || Math.abs(t.y - c.y) > 28) continue;
+        if (Math.abs(t.x - c.x) > 16 || Math.abs(t.y - c.y) > 24) continue;
         const slot = t.items.findIndex((i) => !i);
         if (slot < 0) continue;
         t.items[slot] = c.item;

@@ -1,11 +1,12 @@
-import type { ItemId, TankId } from '../game/data';
+import type { ItemId, TankChoice } from '../game/data';
 import type { MapId } from '../data/maps';
 import type { WindMode } from '../game/match';
 
 export interface RoomPlayer {
   id: string;
   name: string;
-  tank: TankId;
+  /** 'random'이면 게임 시작 때 정해진다 */
+  tank: TankChoice;
   team: 0 | 1;
   items: ItemId[];
   /** 방장이 아닌 사람의 준비 완료 */

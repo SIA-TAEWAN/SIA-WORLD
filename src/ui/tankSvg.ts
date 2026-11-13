@@ -190,8 +190,17 @@ function bodyParts(id: TankId): string {
     ${l.front ?? ''}`;
 }
 
-/** 메뉴 화면용 탱크 그림 */
-export function tankSvg(id: TankId, size = 96, flip = false): string {
+/** 메뉴 화면용 탱크 그림 ('random'은 물음표 탱크) */
+export function tankSvg(id: TankId | 'random', size = 96, flip = false): string {
+  if (id === 'random')
+    return `<svg class="tank-svg" viewBox="0 -8 50 48" width="${size}" height="${size * 0.96}" aria-hidden="true">
+      <ellipse cx="24" cy="39" rx="19" ry="2.5" fill="#000" fill-opacity=".18"/>
+      <rect x="6.5" y="28.5" width="35" height="10" rx="5" fill="#4a4a58" ${s()}/>
+      <rect x="9" y="21" width="30" height="10" rx="4" fill="#cfc6ff" ${s()}/>
+      <circle cx="24" cy="18" r="11" fill="url(#rq)" ${s()}/>
+      <defs><linearGradient id="rq" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd23a"/><stop offset=".5" stop-color="#ff8fb1"/><stop offset="1" stop-color="#6fd8ff"/></linearGradient></defs>
+      <text x="24" y="23.5" text-anchor="middle" font-size="15" font-family="Jua, sans-serif" fill="#fff" stroke="${O}" stroke-width="1.2" paint-order="stroke">?</text>
+    </svg>`;
   const d = TANKS[id];
   return `<svg class="tank-svg" viewBox="0 -8 50 48" width="${size}" height="${size * 0.96}" style="${flip ? 'transform:scaleX(-1)' : ''}" aria-hidden="true">
     <ellipse cx="24" cy="39" rx="19" ry="2.5" fill="#000" fill-opacity=".18"/>
