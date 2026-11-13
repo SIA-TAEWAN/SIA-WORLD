@@ -527,7 +527,8 @@ export class GameScene extends Phaser.Scene {
     this.usedNow = [];
     this.remote = { applied: 0, stage: 'wait', liveRuns: [], moveAcc: 0 };
     this.lastLive = '';
-    this.views.forEach((v) => v.arrow.setVisible(v.t.idx === t.idx));
+    // 내 차례면 탱크 위 화살표를 2배로
+    this.views.forEach((v) => v.arrow.setVisible(v.t.idx === t.idx).setScale(v.t.idx === t.idx && ctrl === 'human' ? 2 : 1));
     const tag = t.ai ? 'AI' : ctrl === 'human' && this.cfg.net ? '내 차례!' : '';
     this.hud.setTurn(this.match, t, ctrl === 'human', tag);
     sfx.turn();

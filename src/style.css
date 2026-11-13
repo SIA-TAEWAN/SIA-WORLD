@@ -1822,3 +1822,20 @@ body.in-game .sound-fab {
     width: 40vw;
   }
 }
+
+/* 내 차례 문구는 2배 */
+.banner.mine {
+  font-size: 80px;
+  -webkit-text-stroke-width: 10px;
+}
+.banner.mine small {
+  font-size: 44px;
+}
+@media (max-width: 760px), (max-height: 520px) {
+  .banner.mine {
+    font-size: 56px;
+  }
+  .banner.mine small {
+    font-size: 30px;
+  }
+}

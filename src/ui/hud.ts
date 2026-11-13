@@ -233,6 +233,7 @@ export class Hud {
     this.wind.title = w === 0 ? '무풍' : `${w > 0 ? '오른쪽' : '왼쪽'}으로 ${Math.abs(w)}`;
     this.banner.innerHTML = `<span style="color:${TEAM_COLORS[t.team]}">${escapeHtml(t.name)}</span> 차례${tag ? ` <small>(${escapeHtml(tag)})</small>` : ''}`;
     this.banner.classList.remove('show');
+    this.banner.classList.toggle('mine', human);
     void this.banner.offsetWidth;
     this.banner.classList.add('show');
     this.order.innerHTML =
