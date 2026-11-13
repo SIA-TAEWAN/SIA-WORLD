@@ -305,3 +305,15 @@ describe('보급 상자·십이지신', () => {
     expect(TANKS.zodiac.hp / avg).toBeGreaterThan(1.15);
   });
 });
+
+it('필살기를 쓴 발사로는 게이지가 다시 차지 않는다', () => {
+  const m = new Match(duo('tiger', 'ox'), 'valley', 4);
+  m.current = 0;
+  m.tanks[1].x = m.tanks[0].x + 40;
+  m.tanks[1].y = 0;
+  m.settle(m.tanks[1]);
+  m.tanks[0].ult = 100;
+  m.fire(shot({ weapon: 2, angle: 60, power: 8 }));
+  expect(m.tanks[1].hp).toBeLessThan(m.tanks[1].maxHp);
+  expect(m.tanks[0].ult).toBe(0);
+});

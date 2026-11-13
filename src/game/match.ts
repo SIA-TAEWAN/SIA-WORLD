@@ -334,7 +334,8 @@ export class Match {
       const real = Math.min(dmg, target.hp);
       target.hp -= real;
       t.damageDealt += real;
-      t.ult = Math.min(100, t.ult + real * ULT_PER_DEALT);
+      // 필살기로 준 피해로는 게이지가 다시 차지 않는다
+      if (slot !== 2) t.ult = Math.min(100, t.ult + real * ULT_PER_DEALT);
       target.ult = Math.min(100, target.ult + real * ULT_PER_TAKEN);
       events.push({ f, type: 'damage', target: target.idx, amount: real, direct });
       if (target.hp <= 0) {
