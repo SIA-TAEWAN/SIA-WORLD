@@ -7,6 +7,8 @@ export interface RoomPlayer {
   tank: TankId;
   team: 0 | 1;
   items: ItemId[];
+  /** 방장이 아닌 사람의 준비 완료 */
+  ready?: boolean;
 }
 
 export interface Room {
@@ -17,6 +19,7 @@ export interface Room {
   status: 'waiting' | 'playing';
   players: RoomPlayer[];
   seed: number | null;
+  /** 방장 (맵·시작 권한, 게임 중엔 기준 기기) */
   host_id: string | null;
   game_no: number;
   created_at: string;
@@ -51,7 +54,7 @@ export interface Backend {
   joinRoom(id: string, player: RoomPlayer): Promise<Room>;
   leaveRoom(id: string, playerId: string): Promise<void>;
   updatePlayer(id: string, player: RoomPlayer): Promise<void>;
-  setMap(id: string, map: MapId | 'random'): Promise<void>;
+  setMap(id: string, playerId: string, map: MapId | 'random'): Promise<void>;
   startGame(id: string, host: string, seed: number): Promise<Room>;
   endGame(id: string, gameNo: number, present: string[]): Promise<void>;
 }
@@ -66,6 +69,19 @@ export function friendly(e: unknown): string {
   if (m.includes('room not found')) return '게임방이 사라졌어요';
   if (m.includes('need 2')) return '2명 이상이어야 시작할 수 있어요';
   if (m.includes('teams')) return '한 팀에 모두 몰려 있으면 시작할 수 없어요';
+  if (m.includes('not host')) return '방장만 할 수 있어요';
+  if (m.includes('not ready')) return '아직 레디하지 않은 사람이 있어요';
   if (m.includes('too many rooms')) return '게임방이 너무 많아요. 잠시 후 다시 시도해주세요';
   return '서버와 통신하지 못했어요. 잠시 후 다시 시도해주세요';
+}
+
+/** 방장: host_id가 방에 있으면 그 사람, 아니면 첫 번째 사람 */
+export function hostOf(r: Room): string | undefined {
+  return r.host_id && r.players.some((p) => p.id === r.host_id) ? r.host_id : r.players[0]?.id;
+}
+
+/** 방장 말고 모두 레디했는가 */
+export function allReady(r: Room): boolean {
+  const h = hostOf(r);
+  return r.players.every((p) => p.id === h || p.ready);
 }

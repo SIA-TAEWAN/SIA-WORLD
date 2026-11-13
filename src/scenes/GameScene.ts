@@ -7,8 +7,11 @@ import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
 import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
-import { buildTerrainArt, drawBackground, hex, makeTankTextures, TEAM_COLORS } from './art';
+import { buildTerrainArt, drawBackground, hex, TEAM_COLORS } from './art';
+import { faceColor, tankTextureSvg, TEX_BOX } from '../ui/tankSvg';
+import { TANK_IDS } from '../game/data';
 import { Fx } from './fx';
+import { drawShell, TRAIL } from './shells';
 import { music } from '../ui/music';
 import { Hud } from '../ui/hud';
 import { Input, type ControlEvent } from '../ui/input';
@@ -53,6 +56,7 @@ class TankView {
   tweening = false;
   dead = false;
   private lastX: number;
+  private tiltNow = 0;
   private moveT = 0;
   private dustT = 0;
   private breathe: Phaser.Tweens.Tween;
@@ -72,10 +76,10 @@ class TankView {
     this.barrel.fillStyle(hex(t.def.accent)).fillRoundedRect(1, -2, 20, 4, 2);
     this.barrel.fillStyle(0x3a2a1e).fillRect(18, -4, 5, 8);
     this.barrel.setPosition(0, -15);
-    this.body = scene.add.image(0, 0, `tank-${t.tankId}`).setOrigin(0.5, 38 / 40);
+    this.body = scene.add.image(0, 0, `tank-${t.tankId}`).setOrigin(0.5, (38 - TEX_BOX.y) / TEX_BOX.h).setScale(0.5);
     // 눈꺼풀 (깜빡일 때만 보임)
     this.lids = scene.add.graphics().setVisible(false);
-    this.lids.fillStyle(hex(t.def.color)).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
+    this.lids.fillStyle(hex(faceColor(t.tankId))).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
     this.lids.lineStyle(1.5, 0x1e1e2a).lineBetween(0.5, -18.5, 5.5, -18.5).lineBetween(5.5, -18.5, 10.5, -18.5);
     this.rig = scene.add.container(0, 0, [this.barrel, this.body, this.lids]);
     this.cont = scene.add.container(t.x, t.y, [this.rig]).setDepth(10);
@@ -111,7 +115,10 @@ class TankView {
     g.fillStyle(hex(TEAM_COLORS[this.t.team])).fillRoundedRect(-w / 2, -46, w * r, 4, 2);
   }
 
-  sync(facing: number, angle: number, dt: number) {
+  /** 쓰러질 때 기우는 각도 */
+  lean = 0;
+
+  sync(facing: number, angle: number, dt: number, tilt = 0) {
     // 굴러가는 중이면 덜컹거리고 흙먼지를 날린다
     const moving = Math.abs(this.x - this.lastX) > 0.05 && !this.dead;
     this.lastX = this.x;
@@ -132,13 +139,16 @@ class TankView {
     this.cont.setPosition(this.x, this.y);
     this.label.setPosition(this.x, this.y);
     this.cont.scaleX = facing;
+    // 경사를 따라 몸체가 기운다 (포신 각도는 몸체 기준)
+    this.tiltNow += (tilt - this.tiltNow) * Math.min(1, dt * 12);
+    this.cont.angle = -this.tiltNow + this.lean;
     this.barrel.rotation = (-angle * Math.PI) / 180;
   }
 
   /** 발사 반동 */
   recoil() {
     this.scene.tweens.add({ targets: this.barrel, x: -4, duration: 60, yoyo: true });
-    this.scene.tweens.add({ targets: this.body, x: -3, scaleY: 0.9, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
+    this.scene.tweens.add({ targets: this.body, x: -3, scaleY: 0.45, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
   }
 
   /** 맞았을 때 흔들림 */
@@ -186,20 +196,9 @@ class TankView {
     this.lids.fillStyle(0x555555).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
     this.lids.lineStyle(1.6, 0x1e1e2a);
     for (const ex of [3, 8]) this.lids.lineBetween(ex - 2, -21, ex + 2, -17).lineBetween(ex - 2, -17, ex + 2, -21);
-    this.scene.tweens.add({ targets: this.cont, angle: this.t.facing * 18, duration: 400, ease: 'Back.easeOut' });
+    this.scene.tweens.add({ targets: this, lean: this.t.facing * 18, duration: 400, ease: 'Back.easeOut' });
   }
 }
-
-/** 무기 동작별 포탄 색 (몸통·코·꼬리) */
-const SHELL_LOOK: Record<string, { body: number; nose: number; trail: number }> = {
-  normal: { body: 0x2b2b3a, nose: 0xffc240, trail: 0xffffff },
-  drop: { body: 0x2b2b3a, nose: 0x7fd3ff, trail: 0xd6f0ff },
-  drill: { body: 0x7d8494, nose: 0xdfe3ea, trail: 0xc9a27a },
-  laser: { body: 0xff3b6b, nose: 0xffffff, trail: 0xff7aa0 },
-  bounce: { body: 0x2fb35f, nose: 0xb6ffcc, trail: 0xa0ffb0 },
-  build: { body: 0x8b5a2b, nose: 0xd9b38c, trail: 0xd9b38c },
-  push: { body: 0x6b4fe0, nose: 0xd7ccff, trail: 0xc4b0ff },
-};
 
 export class GameScene extends Phaser.Scene {
   private cfg!: GameConfig;
@@ -249,6 +248,15 @@ export class GameScene extends Phaser.Scene {
     this.cfg = cfg;
   }
 
+  preload() {
+    // 탱크 그림은 메뉴와 같은 SVG를 2배 크기로 굽는다
+    for (const id of TANK_IDS) {
+      const key = `tank-${id}`;
+      if (this.textures.exists(key)) continue;
+      this.load.svg(key, `data:image/svg+xml;base64,${btoa(tankTextureSvg(id))}`, { width: TEX_BOX.w * 2, height: TEX_BOX.h * 2 });
+    }
+  }
+
   create() {
     const cfg = this.cfg;
     this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed);
@@ -257,7 +265,6 @@ export class GameScene extends Phaser.Scene {
     const map = MAPS[cfg.mapId];
     const { terrain } = this.match;
 
-    makeTankTextures(this);
     drawBackground(this, map.theme, cfg.mapId, terrain.w);
     this.fx = new Fx(this, map.theme);
 
@@ -484,8 +491,9 @@ export class GameScene extends Phaser.Scene {
     this.pb = { res, frame: 0, ev: 0 };
     this.manualCam = false;
     // 포구 연기
-    const m = { x: t.x + t.facing * Math.cos((t.angle * Math.PI) / 180) * 24, y: t.y - 15 - Math.sin((t.angle * Math.PI) / 180) * 24 };
-    this.fx.muzzle(m.x, m.y, Math.atan2(-Math.sin((t.angle * Math.PI) / 180), t.facing * Math.cos((t.angle * Math.PI) / 180)));
+    const p0 = res.shells[0]?.path;
+    const wa = (this.match.worldAngle(t) * Math.PI) / 180;
+    if (p0) this.fx.muzzle(p0[0], p0[1], Math.atan2(-Math.sin(wa), t.facing * Math.cos(wa)));
   }
 
   private skip(msg: string) {
@@ -549,7 +557,7 @@ export class GameScene extends Phaser.Scene {
         v.y += (v.t.y - v.y) * Math.min(1, dt * 14);
         if (Math.abs(v.t.y - v.y) < 0.5) v.y = v.t.y;
       }
-      v.sync(v.t.facing, v.t.angle, dt);
+      v.sync(v.t.facing, v.t.angle, dt, v.t.alive ? this.match.tilt({ x: Math.round(v.x), y: Math.round(v.y) }) : 0);
     }
 
     // 카메라: 조준 중엔 현재 탱크를 따라감
@@ -867,19 +875,15 @@ export class GameScene extends Phaser.Scene {
       // 꼬리 + 날아가는 방향으로 기운 포탄
       const px = k > 0 ? s.path[k * 2 - 2] : x;
       const py = k > 0 ? s.path[k * 2 - 1] : y;
-      const look = SHELL_LOOK[s.behavior] ?? SHELL_LOOK.normal;
-      this.fx.trail(px, py, look.trail);
+      const look = s.look ?? 'shell';
+      this.fx.trail(px, py, TRAIL[look] ?? 0xffffff);
       let dx = x - px;
       let dy = y - py;
       const len = Math.hypot(dx, dy) || 1;
       dx /= len;
       dy /= len;
-      if (s.behavior === 'laser') g.fillStyle(0xff7aa0, 0.35).fillCircle(x, y, 11);
-      g.fillStyle(0x000000, 0.22).fillCircle(x + 1.5, y + 1.5, 6);
-      g.fillStyle(look.body).fillCircle(x - dx * 4, y - dy * 4, 4.2).fillCircle(x, y, 5.5);
-      if (s.behavior === 'drill') g.fillStyle(0xdfe3ea).fillTriangle(x + dx * 11, y + dy * 11, x - dy * 5, y + dx * 5, x + dy * 5, y - dx * 5);
-      else g.fillStyle(look.nose).fillCircle(x + dx * 2.5, y + dy * 2.5, 2.6);
-      g.fillStyle(0xffffff, 0.7).fillCircle(x - 1.8, y - 1.8, 1.6);
+      if (s.behavior === 'laser') g.fillStyle(0xff7aa0, 0.35).fillCircle(x, y, 12);
+      drawShell(g, look, x, y, dx, dy, pb.frame / 60, s.big);
       if (!lead) lead = { x, y };
     }
     if (lead && !this.manualCam) this.follow(lead.x, this.focusY(lead.y, 0.5), 0.14);

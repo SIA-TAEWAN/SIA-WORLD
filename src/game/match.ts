@@ -98,7 +98,9 @@ export class Match {
     const next = this.order()[0];
     this.current = next.idx;
     this.turn++;
-    this.wind = this.rng.int(-10, 10);
+    // 바람은 직전 바람에서 ±0~5만 바뀐다 (첫 턴은 -5~5)
+    const dw = this.rng.int(-5, 5);
+    this.wind = this.turn === 1 ? dw : Math.max(-10, Math.min(10, this.wind + dw));
     this.moveLeft = next.def.move;
     this.movedThisTurn = 0;
     return next;
@@ -148,6 +150,26 @@ export class Match {
     this.settle(t);
     if (!t.alive) this.checkWinner();
     return true;
+  }
+
+  /**
+   * 탱크가 선 땅의 기울기(도). 오른쪽이 높으면 +.
+   * 포신 각도는 몸체 기준이라 실제 발사각 = 각도 + 바라보는 방향 × 기울기.
+   */
+  tilt(t: { x: number; y: number }): number {
+    const ground = (x: number) => {
+      for (let y = t.y - 22; y <= t.y + 22; y++) if (this.terrain.solid(x, y)) return y;
+      return t.y + 6;
+    };
+    const l = ground(t.x - 10);
+    const r = ground(t.x + 10);
+    const deg = Math.round((Math.atan2(l - r, 20) * 180) / Math.PI);
+    return Math.max(-40, Math.min(40, deg));
+  }
+
+  /** 몸체 기준 포신 각도 → 실제 발사각 */
+  worldAngle(t: TankState, angle = t.angle, facing: number = t.facing): number {
+    return angle + facing * this.tilt(t);
   }
 
   setAngle(a: number) {
@@ -260,7 +282,7 @@ export class Match {
           events.push({ f, type: 'carveLine', x1, y1, x2, y2, r });
         },
       };
-      const out = fly(this, { owner: t.idx, facing: input.facing, angle: t.angle, power: input.power, weapon: w, damageMul, volleys }, handler);
+      const out = fly(this, { owner: t.idx, facing: input.facing, angle: this.worldAngle(t, t.angle, input.facing), power: input.power, weapon: w, damageMul, volleys, tilt: this.tilt(t), big: slot === 2 }, handler);
       const firstImpact = out.impacts[0] ? { x: out.impacts[0].x, y: out.impacts[0].y } : null;
       result = { frames: out.frames, shells: out.shells, events, firstImpact };
 

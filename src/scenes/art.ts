@@ -1,6 +1,4 @@
 import Phaser from 'phaser';
-import type { TankId } from '../game/data';
-import { TANKS } from '../game/data';
 import type { MapTheme } from '../data/maps';
 import type { Terrain } from '../physics/terrain';
 
@@ -122,75 +120,6 @@ export function buildTerrainArt(t: Terrain, theme: MapTheme, mapId = 'valley'): 
     }
   }
   return art;
-}
-
-/** 탱크 몸체 텍스처를 그린다 (오른쪽을 보는 모습, 원점 = 바닥 중앙) */
-export function makeTankTextures(scene: Phaser.Scene) {
-  for (const id of Object.keys(TANKS) as TankId[]) {
-    const key = `tank-${id}`;
-    if (scene.textures.exists(key)) continue;
-    const def = TANKS[id];
-    const g = scene.make.graphics({}, false);
-    const W = 48;
-    const H = 40;
-    const ox = W / 2;
-    const oy = H - 2;
-    const body = hex(def.color);
-    const accent = hex(def.accent);
-    const outline = 0x3a2a1e;
-
-    // 그림자
-    g.fillStyle(0x000000, 0.18).fillEllipse(ox, oy + 1, 38, 5);
-
-    // 특수 장식 (몸체 뒤)
-    if (id === 'sparrow') {
-      g.fillStyle(accent).lineStyle(2, outline).beginPath();
-      g.moveTo(ox - 6, oy - 20).lineTo(ox - 20, oy - 30).lineTo(ox - 13, oy - 18).closePath().fillPath().strokePath();
-    }
-
-    // 무한궤도
-    g.fillStyle(0x4a4a58).lineStyle(2, outline).fillRoundedRect(ox - 17, oy - 9, 34, 9, 4).strokeRoundedRect(ox - 17, oy - 9, 34, 9, 4);
-    g.fillStyle(0x9aa0b0);
-    for (let i = 0; i < 4; i++) g.fillCircle(ox - 11 + i * 7.3, oy - 4.5, 2.4);
-
-    // 몸체
-    g.fillStyle(body).lineStyle(2, outline).fillRoundedRect(ox - 15, oy - 17, 30, 10, 4).strokeRoundedRect(ox - 15, oy - 17, 30, 10, 4);
-    g.fillStyle(0xffffff, 0.35).fillRoundedRect(ox - 12, oy - 16, 18, 3, 1.5);
-
-    if (id === 'driller') {
-      g.fillStyle(0xc9ced8).lineStyle(2, outline).beginPath();
-      g.moveTo(ox + 13, oy - 16).lineTo(ox + 24, oy - 12).lineTo(ox + 13, oy - 8).closePath().fillPath().strokePath();
-      g.lineStyle(1, 0x6b7280).lineBetween(ox + 16, oy - 15, ox + 18, oy - 9).lineBetween(ox + 19, oy - 14, ox + 21, oy - 10);
-    }
-    if (id === 'bolt') {
-      g.fillStyle(accent).beginPath();
-      g.moveTo(ox - 4, oy - 17).lineTo(ox - 8, oy - 12).lineTo(ox - 5, oy - 12).lineTo(ox - 8, oy - 8).lineTo(ox - 1, oy - 13).lineTo(ox - 4, oy - 13).lineTo(ox - 1, oy - 17).closePath().fillPath();
-    }
-
-    // 머리(돔)
-    const domeR = id === 'bubble' ? 10 : 9;
-    g.fillStyle(body).lineStyle(2, outline).fillCircle(ox, oy - 18, domeR).strokeCircle(ox, oy - 18, domeR);
-    g.fillStyle(0xffffff, 0.4).fillCircle(ox - 3, oy - 22, 3);
-    // 눈
-    g.fillStyle(0xffffff).fillEllipse(ox + 3, oy - 19, 5, 6).fillEllipse(ox + 8, oy - 19, 5, 6);
-    g.fillStyle(0x1e1e2a).fillCircle(ox + 4, oy - 19, 1.6).fillCircle(ox + 9, oy - 19, 1.6);
-    // 볼터치
-    g.fillStyle(0xff7a9a, 0.6).fillCircle(ox + 1, oy - 14.5, 1.6);
-
-    if (id === 'bubble') {
-      g.fillStyle(accent, 0.25).lineStyle(2, accent, 0.9).fillCircle(ox, oy - 19, 15).strokeCircle(ox, oy - 19, 15);
-      g.fillStyle(0xffffff, 0.7).fillCircle(ox - 6, oy - 26, 2.5);
-    }
-    if (id === 'bolt') {
-      g.fillStyle(accent).lineStyle(1.5, outline).fillTriangle(ox - 2, oy - 27, ox + 2, oy - 27, ox, oy - 33).strokeTriangle(ox - 2, oy - 27, ox + 2, oy - 27, ox, oy - 33);
-    }
-    if (id === 'sparrow') {
-      g.fillStyle(accent).fillTriangle(ox - 4, oy - 26, ox + 1, oy - 27, ox - 2, oy - 31);
-    }
-
-    g.generateTexture(key, W, H);
-    g.destroy();
-  }
 }
 
 /** 폭발·연기·파편에 쓰는 작은 텍스처들 */

@@ -2,12 +2,16 @@ import tanksJson from '../data/tanks.json';
 import weaponsJson from '../data/weapons.json';
 import itemsJson from '../data/items.json';
 
-export type TankId = 'bolt' | 'driller' | 'sparrow' | 'bubble';
+export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig';
 export type ItemId = 'double' | 'power' | 'repair' | 'teleport';
-export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push';
+export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split';
 
 export interface TankDef {
   name: string;
+  /** 12지신 글자 (자·축·인…) */
+  zodiac: string;
+  /** 동물 이름 */
+  animal: string;
   role: string;
   color: string;
   accent: string;
@@ -42,6 +46,11 @@ export interface WeaponDef {
   drillWidth?: number;
   bounces?: number;
   knockback?: number;
+  /** 날아가는 포탄 그림 (치즈·당근·달걀…) */
+  look?: string;
+  /** 분열탄: 갈라지는 개수와 좌우 퍼짐 속도 */
+  split?: number;
+  spread?: number;
 }
 
 export interface ItemDef {

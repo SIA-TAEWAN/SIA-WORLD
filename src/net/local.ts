@@ -1,4 +1,4 @@
-import type { Backend, Channel, Member, NetMsg, Room, RoomPlayer } from './backend';
+import { allReady, hostOf, type Backend, type Channel, type Member, type NetMsg, type Room, type RoomPlayer } from './backend';
 
 /**
  * 서버 없이 같은 브라우저의 탭끼리 통신하는 테스트용 백엔드.
@@ -130,7 +130,7 @@ const fail = (m: string): never => {
   throw new Error(m);
 };
 
-const clean = (p: RoomPlayer): RoomPlayer => ({ id: p.id, name: p.name, tank: p.tank, team: p.team === 1 ? 1 : 0, items: [...p.items].slice(0, 3) });
+const clean = (p: RoomPlayer): RoomPlayer => ({ id: p.id, name: p.name, tank: p.tank, team: p.team === 1 ? 1 : 0, items: [...p.items].slice(0, 3), ready: !!p.ready });
 
 export function createLocalBackend(): Backend {
   return {
@@ -151,9 +151,9 @@ export function createLocalBackend(): Backend {
           name: name.slice(0, 24),
           map: 'random',
           status: 'waiting',
-          players: [{ ...clean(player), team: 0 }],
+          players: [{ ...clean(player), team: 0, ready: false }],
           seed: null,
-          host_id: null,
+          host_id: player.id,
           game_no: 0,
           created_at: new Date().toISOString(),
         };
@@ -169,7 +169,8 @@ export function createLocalBackend(): Backend {
         if (r.players.length >= 4) fail('room is full');
         const a = r.players.filter((p) => p.team === 0).length;
         const b = r.players.length - a;
-        r.players.push({ ...clean(player), team: a <= b ? 0 : 1 });
+        r.host_id = hostOf(r) ?? null;
+        r.players.push({ ...clean(player), team: a <= b ? 0 : 1, ready: false });
         return r;
       });
     },
@@ -177,7 +178,9 @@ export function createLocalBackend(): Backend {
       mutate((rooms) => {
         const i = rooms.findIndex((x) => x.id === id);
         if (i < 0 || rooms[i].status === 'playing') return;
+        const h = hostOf(rooms[i]);
         rooms[i].players = rooms[i].players.filter((p) => p.id !== playerId);
+        rooms[i].host_id = h === playerId ? (rooms[i].players[0]?.id ?? null) : (h ?? null);
         if (!rooms[i].players.length) rooms.splice(i, 1);
       });
     },
@@ -185,13 +188,17 @@ export function createLocalBackend(): Backend {
       mutate((rooms) => {
         const r = rooms.find((x) => x.id === id);
         if (!r || r.status !== 'waiting') return;
-        r.players = r.players.map((p) => (p.id === player.id ? clean(player) : p));
+        const p2 = clean(player);
+        if (p2.id === hostOf(r)) p2.ready = false;
+        r.players = r.players.map((p) => (p.id === player.id ? p2 : p));
       });
     },
-    async setMap(id, map) {
+    async setMap(id, playerId, map) {
       mutate((rooms) => {
         const r = rooms.find((x) => x.id === id);
-        if (r && r.status === 'waiting') r.map = map;
+        if (!r || r.status !== 'waiting') return;
+        if (hostOf(r) !== playerId) fail('not host');
+        r.map = map;
       });
     },
     async startGame(id, host, seed) {
@@ -200,7 +207,9 @@ export function createLocalBackend(): Backend {
         if (r.status !== 'waiting') fail('already playing');
         const a = r.players.filter((p) => p.team === 0).length;
         if (r.players.length < 2) fail('need 2 players');
+        if (hostOf(r) !== host) fail('not host');
         if (a === 0 || a === r.players.length) fail('teams');
+        if (!allReady(r)) fail('not ready');
         r.status = 'playing';
         r.seed = seed;
         r.host_id = host;
@@ -214,7 +223,8 @@ export function createLocalBackend(): Backend {
         if (i < 0) return;
         const r = rooms[i];
         if (r.status !== 'playing' || r.game_no !== gameNo) return;
-        r.players = r.players.filter((p) => present.includes(p.id)).map((p) => ({ ...p, items: [] }));
+        r.players = r.players.filter((p) => present.includes(p.id)).map((p) => ({ ...p, items: [], ready: false }));
+        if (!r.players.some((p) => p.id === r.host_id)) r.host_id = r.players[0]?.id ?? null;
         r.status = 'waiting';
         if (!r.players.length) rooms.splice(i, 1);
       });

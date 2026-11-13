@@ -5,7 +5,7 @@ import { Rng, randomSeed } from '../game/rng';
 import type { MatchSummary } from '../scenes/GameScene';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { getBackend, lobbyCode, lobbyLink, clientId } from '../net';
-import { friendly, type Backend, type Room, type RoomPlayer } from '../net/backend';
+import { allReady, friendly, hostOf, type Backend, type Room, type RoomPlayer } from '../net/backend';
 import { DuplicateNameError, LobbyFullError, LobbySession, LOBBY_MAX } from '../net/lobby';
 import { RoomSession } from '../net/room';
 import { OnlineGame } from '../net/online';
@@ -26,7 +26,7 @@ const started = new Map<string, number>();
 const me = () => ({ id: clientId(), name: state.name });
 const myPlayer = (room?: Room): RoomPlayer => {
   const p = room?.players.find((x) => x.id === clientId());
-  return { id: clientId(), name: state.name, tank: state.tank, team: p?.team ?? 0, items: [...state.shop[0]] };
+  return { id: clientId(), name: state.name, tank: state.tank, team: p?.team ?? 0, items: [...state.shop[0]], ready: p?.ready ?? false };
 };
 
 function chatHtml(sess: LobbySession) {
@@ -222,10 +222,10 @@ function renderRoom(id: string) {
     <div class="room-grid">
       <section class="card slots-card">
         <div class="slots4" id="slots"></div>
-        <h3>내 탱크</h3>
-        <div class="seg small" id="tank"></div>
+        <h3>내 탱크 <small id="tank-name"></small></h3>
+        <div class="zodiac-pick" id="tank"></div>
         <div id="team-box"><h3>팀 선택</h3><div class="seg" id="team"></div></div>
-        <h3>맵 <small>누구나 바꿀 수 있어요</small></h3>
+        <h3>맵 <small id="map-note"></small></h3>
         <div class="seg small" id="map"></div>
       </section>
       <section class="card shop-card">
@@ -301,27 +301,46 @@ function renderRoom(id: string) {
       return startOnline(room, null);
     }
     const mineP = room.players.find((p) => p.id === clientId())!;
+    const host = hostOf(room);
+    const iAmHost = host === clientId();
+    const locked = !iAmHost && !!mineP.ready;
+    if (locked !== shopLocked) {
+      shopLocked = locked;
+      drawShop();
+    }
     $(root, '#title').innerHTML = `${escapeHtml(room.name)} <small>${room.players.length}/4</small>`;
     $(root, '#slots').innerHTML = Array.from({ length: 4 }, (_, i) => {
       const p = room.players[i];
       if (!p) return `<div class="pslot empty">빈자리</div>`;
       const away = !rs.present.has(p.id);
-      return `<div class="pslot ${p.id === clientId() ? 'me' : ''}" style="--c:${TEAM_COLORS[p.team]}">
+      const isHost = p.id === host;
+      return `<div class="pslot ${p.id === clientId() ? 'me' : ''} ${p.ready && !isHost ? 'ready' : ''}" style="--c:${TEAM_COLORS[p.team]}">
+        ${isHost ? '<div class="badge host">👑 방장</div>' : p.ready ? '<div class="badge ready">READY</div>' : '<div class="badge wait">준비 중</div>'}
         <div class="pic">${tankSvg(p.tank, 70, p.team === 1)}</div>
         <div class="pn">${escapeHtml(p.name)}${p.id === clientId() ? ' <small>(나)</small>' : ''}</div>
-        <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${TANKS[p.tank].name}</div>
+        <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${TANKS[p.tank].animal} ${TANKS[p.tank].name}</div>
         ${p.items.length ? `<div class="pi">아이템 ${p.items.length}개</div>` : ''}
         ${away ? '<div class="away">연결 확인 중…</div>' : ''}
       </div>`;
     }).join('');
-    $(root, '#tank').innerHTML = TANK_IDS.map((t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}">${TANKS[t].name}</button>`).join('');
+    const tankHtml = TANK_IDS.map(
+      (t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} title="${TANKS[t].animal} ${TANKS[t].name} · ${TANKS[t].role}">${tankSvg(t, 40)}<span>${TANKS[t].zodiac}</span></button>`,
+    ).join('');
+    const tankEl = $(root, '#tank');
+    if (tankEl.dataset.html !== tankHtml) {
+      tankEl.innerHTML = tankHtml;
+      tankEl.dataset.html = tankHtml;
+    }
+    const td = TANKS[mineP.tank];
+    $(root, '#tank-name').textContent = `${td.zodiac}(${td.animal}) ${td.name} · ${td.role}`;
+    $(root, '#map-note').textContent = iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요';
     const needTeam = room.players.length >= 3 || !teamsOk(room);
     $(root, '#team-box').style.display = needTeam ? '' : 'none';
     $(root, '#team').innerHTML = ([0, 1] as const)
-      .map((t) => `<button data-v="${t}" class="${mineP.team === t ? 'sel' : ''}" style="--c:${TEAM_COLORS[t]}"><span class="team-dot" style="--c:${TEAM_COLORS[t]}"></span>${TEAM_NAMES[t]}</button>`)
+      .map((t) => `<button data-v="${t}" class="${mineP.team === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} style="--c:${TEAM_COLORS[t]}"><span class="team-dot" style="--c:${TEAM_COLORS[t]}"></span>${TEAM_NAMES[t]}</button>`)
       .join('');
     const maps: (MapId | 'random')[] = [...MAP_IDS, 'random'];
-    $(root, '#map').innerHTML = maps.map((m) => `<button data-v="${m}" class="${room.map === m ? 'sel' : ''}">${m === 'random' ? '랜덤' : MAPS[m].name}</button>`).join('');
+    $(root, '#map').innerHTML = maps.map((m) => `<button data-v="${m}" class="${room.map === m ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${m === 'random' ? '랜덤' : MAPS[m].name}</button>`).join('');
     root.querySelectorAll<HTMLElement>('#tank button').forEach((b) =>
       b.addEventListener('click', () => {
         state.tank = b.dataset.v as TankId;
@@ -333,22 +352,38 @@ function renderRoom(id: string) {
     root.querySelectorAll<HTMLElement>('#map button').forEach((b) =>
       b.addEventListener('click', async () => {
         sfx.click();
-        await backend!.setMap(id, b.dataset.v as MapId | 'random').catch((e) => toast(friendly(e)));
+        await backend!.setMap(id, clientId(), b.dataset.v as MapId | 'random').catch((e) => toast(friendly(e)));
         await sess.refetch();
       }),
     );
     const startBtn = $<HTMLButtonElement>(root, '#start');
     const ok = teamsOk(room);
-    startBtn.disabled = !ok;
-    startBtn.textContent = room.players.length < 2 ? '친구를 기다리는 중… (2명부터 시작)' : ok ? '게임 시작 ▶' : '한 팀에 모두 몰려 있어요';
+    const others = room.players.filter((p) => p.id !== host);
+    const readyN = others.filter((p) => p.ready).length;
+    startBtn.classList.toggle('ready-on', !iAmHost && !!mineP.ready);
+    if (iAmHost) {
+      const can = ok && allReady(room);
+      startBtn.disabled = !can;
+      startBtn.textContent =
+        room.players.length < 2 ? '친구를 기다리는 중… (2명부터 시작)' : !ok ? '한 팀에 모두 몰려 있어요' : can ? '게임 시작 ▶' : `모두 레디하면 시작할 수 있어요 (${readyN}/${others.length})`;
+    } else {
+      startBtn.disabled = false;
+      startBtn.textContent = mineP.ready ? `레디 완료! 방장을 기다리는 중 (${readyN}/${others.length}) · 취소` : '레디!';
+    }
     renderChatLog(root, sess);
   };
 
+  let shopLocked = false;
   const drawShop = () => {
-    renderShop($(root, '#shop'), state.shop[0], () => {
-      drawShop();
-      void update({ items: [...state.shop[0]] });
-    });
+    renderShop(
+      $(root, '#shop'),
+      state.shop[0],
+      () => {
+        drawShop();
+        void update({ items: [...state.shop[0]] });
+      },
+      shopLocked,
+    );
   };
 
   const unsubA = sess.subscribe(draw);
@@ -389,6 +424,14 @@ function renderRoom(id: string) {
   });
   $(root, '#start').addEventListener('click', async () => {
     sfx.click();
+    const room = sess.room(id);
+    if (!room) return;
+    if (hostOf(room) !== clientId()) {
+      // 방장이 아니면 레디 켜고 끄기
+      const mineP = room.players.find((p) => p.id === clientId());
+      await update({ ready: !mineP?.ready });
+      return;
+    }
     const b = $<HTMLButtonElement>(root, '#start');
     b.disabled = true;
     try {

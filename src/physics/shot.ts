@@ -14,10 +14,13 @@ export function tankCenter(t: TankState): { x: number; y: number } {
   return { x: t.x, y: t.y - 11 };
 }
 
-/** 포신 끝 좌표 */
-export function muzzle(t: { x: number; y: number }, facing: number, angleDeg: number) {
+/** 포신 끝 좌표 (angleDeg = 실제 발사각, tiltDeg = 몸체 기울기) */
+export function muzzle(t: { x: number; y: number }, facing: number, angleDeg: number, tiltDeg = 0) {
   const a = (angleDeg * Math.PI) / 180;
-  return { x: t.x + facing * Math.cos(a) * 20, y: t.y - 14 - Math.sin(a) * 20 };
+  const k = (tiltDeg * Math.PI) / 180;
+  const px = t.x - Math.sin(k) * 14;
+  const py = t.y - Math.cos(k) * 14;
+  return { x: px + facing * Math.cos(a) * 20, y: py - Math.sin(a) * 20 };
 }
 
 export interface ShotWorld {
@@ -40,6 +43,10 @@ export interface ShotParams {
   damageMul: number;
   /** 같은 무기를 몇 번 발사하는지 (더블샷이면 2) */
   volleys: number;
+  /** 몸체 기울기 (포신 받침 위치) */
+  tilt?: number;
+  /** 필살기 (화면 표시용) */
+  big?: boolean;
 }
 
 interface Shell {
@@ -53,6 +60,8 @@ interface Shell {
   drillLeft: number;
   drilling: boolean;
   dropped: boolean;
+  /** 분열탄에서 갈라져 나온 탄 */
+  child: boolean;
   alive: boolean;
   track: ShellTrack;
 }
@@ -80,7 +89,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
   const { terrain, tanks } = world;
   const w = p.weapon;
   const owner = tanks[p.owner];
-  const start = muzzle(owner, p.facing, p.angle);
+  const start = muzzle(owner, p.facing, p.angle, p.tilt ?? 0);
   const a = (p.angle * Math.PI) / 180;
   const speed = (Math.max(0, Math.min(100, p.power)) / 100) * w.speed;
 
@@ -145,17 +154,41 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         drillLeft: w.drillDistance ?? 0,
         drilling: false,
         dropped: false,
+        child: false,
         alive: true,
-        track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior },
+        track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big },
       };
       s.track.id = s.id;
       shells.push(s);
     }
 
     let anyAlive = false;
+    const born: Shell[] = [];
     for (const s of shells) {
       if (!s.alive) continue;
       s.age++;
+
+      // 분열탄: 꼭대기에서 여러 발로 갈라진다
+      if (w.behavior === 'split' && !s.child && s.vy >= 0 && s.age > 8) {
+        const n = w.split ?? 3;
+        for (let i = 0; i < n; i++) {
+          const k = i - (n - 1) / 2;
+          const c: Shell = {
+            ...s,
+            id: nextId++,
+            vx: s.vx + k * (w.spread ?? 40),
+            vy: s.vy - Math.abs(k) * 6,
+            child: true,
+            track: { id: 0, spawn: f, path: [s.x, s.y], behavior: 'split', look: w.look, big: p.big },
+          };
+          c.track.id = c.id;
+          born.push(c);
+        }
+        s.track.path.push(s.x, s.y);
+        end(s);
+        anyAlive = true;
+        continue;
+      }
 
       if (s.drilling) {
         // 드릴: 중력 없이 직진하며 굴을 판다
@@ -230,6 +263,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
       if (s.alive) anyAlive = true;
     }
 
+    shells.push(...born);
     f++;
     if (!handler && impacts.length) break;
     if (!anyAlive && pending.length === 0) break;

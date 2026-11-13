@@ -5,8 +5,9 @@
 ## 지금 되는 것 (PRD 1~4단계)
 
 - **핵심 엔진**: 픽셀 비트맵 지형 파괴, 중력·바람 탄도, 데미지 공식(직격 +20%), 탱크 낙하·추락 탈락
-- **턴 규칙**: 딜레이 기반 턴 순서, 턴당 30초, 필살기 게이지
-- **탱크 4대 × 무기 3종**: 볼트 / 드릴러 / 스패로우 / 버블 (수치는 `src/data/*.json`)
+- **턴 규칙**: 딜레이 기반 턴 순서, 턴당 30초, 필살기 게이지, 바람은 직전 바람에서 ±0~5씩 변화(-10~10)
+- **경사**: 탱크가 선 땅의 기울기만큼 몸체가 기울고, 실제 발사각 = 포신 각도 ± 경사
+- **12지신 탱크 12대 × 무기 3종**: 자(쥐)·축(소)·인(호랑이)·묘(토끼)·진(용)·사(뱀)·오(말)·미(양)·신(원숭이)·유(닭)·술(개)·해(돼지). 무기마다 어울리는 포탄 그림(치즈·당근·달걀·뼈다귀·도토리…)과 동작(분열·드릴·바운스·낙하·레이저·밀어내기·땅 쌓기). 수치는 `src/data/*.json`
 - **맵 3종**: 밸리 / 스카이 / 스핑크스 (+ 랜덤)
 - **아이템 4종 + 상점**: 더블샷, 파워업, 수리킷, 순간이동 (매 판 1,000포인트, 3칸, 판매 가능)
 - **AI 1:1**: 쉬움 / 보통 / 어려움, 그리고 한 기기 2인 대전
@@ -14,7 +15,7 @@
 - **조작**: PC 키보드 + 모바일 터치 버튼, 화면 드래그로 맵 둘러보기
 
 - **온라인 대기실** (3단계): 링크 하나 = 대기실 하나(최대 10명, ID 중복 불가), 접속자 목록, 채팅, 아이템 상점, 게임방 목록
-- **게임방**: 최대 4명, 탱크·팀(3명 이상일 때)·맵 선택, 누구나 시작, 1:1 / 2:1 / 2:2
+- **게임방**: 최대 4명, 탱크·팀(3명 이상일 때) 선택. 방장(👑)만 맵을 고르고, 나머지가 모두 레디하면 방장이 시작. 방장이 나가면 다음 사람이 방장. 1:1 / 2:1 / 2:2
 - **동기화**: 턴마다 이동 기록·발사 입력만 주고받고 모든 기기가 같은 물리로 계산. 기준 기기가 턴 결과 지문을 보내고, 다르면 전체 상태를 받아 맞춤
 - **접속 끊김**: 30초 동안 자리 유지(새로고침하면 자동으로 다시 들어감), 넘으면 AI가 이어서 조종하고 그 판에는 다시 못 들어옴. 기준 기기가 끊기면 다음 사람이 이어받음
 
@@ -25,7 +26,7 @@
 
 ## 온라인 설정 (Supabase)
 
-1. Supabase 대시보드 → **SQL Editor**에 `supabase/migrations/001_rooms.sql`을 붙여넣고 Run
+1. Supabase 대시보드 → **SQL Editor**에 `supabase/migrations/001_rooms.sql`, 이어서 `002_ready_host_zodiac.sql`을 붙여넣고 Run
 2. 로컬: `.env.local`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (publishable 키)
 3. 배포: 저장소 Settings → Variables에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 
@@ -48,7 +49,7 @@
 npm install
 npm run dev        # http://localhost:5173/sia-tank/
 npm test           # 엔진 규칙·결정론 테스트
-npm run balance    # AI끼리 자동 대전으로 탱크별 승률 측정 (예: npm run balance -- 4 normal)
+npm run balance:par -- 2 normal   # AI끼리 모든 조합 자동 대전, CPU 코어 수만큼 병렬
 npm run stats      # 탱크별 평균 피해·빗나감 비율
 npm run build
 ```
@@ -64,9 +65,9 @@ src/
   physics/   terrain.ts (비트맵 지형), shot.ts (탄도·충돌, 60fps 고정 스텝)
   game/      match.ts (턴·딜레이·데미지·팀·아이템), rng.ts (시드 난수), types.ts
   ai/        ai.ts (각도·파워 시뮬레이션 탐색 + 난이도별 오차), autoplay.ts
-  scenes/    GameScene.ts (Phaser 렌더링·턴 진행), art.ts (코드로 그린 카툰 그래픽·배경), fx.ts (폭발·연기 파티클)
+  scenes/    GameScene.ts (Phaser 렌더링·턴 진행), art.ts (배경·지형 그림), fx.ts (폭발·연기 파티클), shells.ts (무기별 포탄 그림)
   net/       backend.ts(공통), supabase.ts, local.ts(탭 간 테스트), lobby.ts, room.ts, online.ts(동기화)
-  ui/        offline.ts(입장·AI 설정·결과), online.ts(대기실·게임방), hud.ts, shop.ts, input.ts, sfx.ts, music.ts
+  ui/        offline.ts(입장·AI 설정·결과), online.ts(대기실·게임방), hud.ts, shop.ts, input.ts, sfx.ts, music.ts, tankSvg.ts(12지신 탱크 그림)
 supabase/    migrations/001_rooms.sql (rooms 테이블, RLS, 게임방 함수)
 tools/       balance.ts, stats.ts
 tests/       engine.test.ts
@@ -74,11 +75,13 @@ tests/       engine.test.ts
 
 게임 규칙(`game/`, `physics/`)은 화면과 분리되어 Node에서도 돈다. 화면은 시뮬레이션이 만든 이벤트(폭발·피해·이동)를 재생할 뿐이다.
 
-## 밸런스 (AI 보통 vs 보통, 맵 3종 × 모든 조합 144판)
+## 밸런스 (AI 보통 vs 보통, 12대 모든 조합 × 맵 3종 × 3판 = 1,188판)
 
-| 탱크 | 승률 |
-| --- | --- |
-| 볼트 | 52.8% |
-| 드릴러 | 52.8% |
-| 스패로우 | 45.8% |
-| 버블 | 47.2% |
+| 탱크 | 승률 | 탱크 | 승률 |
+| --- | --- | --- | --- |
+| 묘 토끼 깡총이 | 59.1% | 진 용 여의룡 | 48.5% |
+| 미 양 몽실이 | 55.1% | 유 닭 꼬꼬댁 | 46.5% |
+| 축 소 우직이 | 52.5% | 인 호랑이 어흥이 | 45.5% |
+| 해 돼지 꿀꿀이 | 52.5% | 오 말 따각이 | 45.5% |
+| 술 개 멍뭉이 | 51.0% | 사 뱀 스르르 | 44.4% |
+| 자 쥐 찍찍이 | 49.5% | 신 원숭이 재롱이 | 49.5% |

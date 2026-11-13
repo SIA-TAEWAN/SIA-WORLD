@@ -19,7 +19,7 @@ export function showEntry() {
   const root = screen(
     `<div class="entry-card">
       <div class="logo">
-        <div class="logo-tanks">${tankSvg('bolt', 84)}${tankSvg('bubble', 84, true)}</div>
+        <div class="logo-tanks">${tankSvg('tiger', 84)}${tankSvg('rabbit', 84, true)}</div>
         <h1>시아탱크</h1>
         <p class="tagline">각도 · 파워 · 바람! 링크 하나로 한 판</p>
       </div>
@@ -105,22 +105,23 @@ export function showSetup() {
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => root.querySelector<T>(s)!;
 
   const renderTanks = () => {
-    $('#tanks').innerHTML = TANK_IDS.map((id) => {
-      const d = TANKS[id];
-      return `<button class="tank-card ${state.tank === id ? 'sel' : ''}" data-id="${id}">
-        <div class="pic">${tankSvg(id, 92)}</div>
+    const d = TANKS[state.tank];
+    $('#tanks').innerHTML = `<div class="zodiac-pick">${TANK_IDS.map(
+      (id) => `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''}" title="${TANKS[id].animal} ${TANKS[id].name}">${tankSvg(id, 46)}<span>${TANKS[id].zodiac} · ${TANKS[id].animal}</span></button>`,
+    ).join('')}</div>
+      <div class="tank-card sel">
+        <div class="pic">${tankSvg(state.tank, 92)}</div>
         <div class="info">
-          <div class="tn">${d.name} <small>${d.role}</small></div>
-          ${stat('체력', d.hp, 1250, `${d.hp}`)}
-          ${stat('방어', d.defense, 0.3, `${Math.round(d.defense * 100)}%`)}
-          ${stat('이동', d.move, 150, `${d.move}`)}
+          <div class="tn">${d.zodiac}(${d.animal}) ${d.name} <small>${d.role}</small></div>
+          ${stat('체력', d.hp, 1300, `${d.hp}`)}
+          ${stat('방어', d.defense, 0.25, `${Math.round(d.defense * 100)}%`)}
+          ${stat('이동', d.move, 160, `${d.move}`)}
           ${stat('빠르기', 800 - d.delay, 300, `딜레이 ${d.delay}`)}
           <div class="angle">발사각 ${d.angleMin}–${d.angleMax}°</div>
           <ol class="wl">${d.weapons.map((w, i) => `<li class="${i === 2 ? 'ult' : ''}"><b>${i === 2 ? '필살' : i + 1}</b> ${WEAPONS[w].name} <small>${WEAPONS[w].desc}</small></li>`).join('')}</ol>
         </div>
-      </button>`;
-    }).join('');
-    root.querySelectorAll<HTMLElement>('.tank-card').forEach((b) =>
+      </div>`;
+    root.querySelectorAll<HTMLElement>('.zodiac-pick button').forEach((b) =>
       b.addEventListener('click', () => {
         state.tank = b.dataset.id as TankId;
         save({ tank: state.tank });
@@ -150,7 +151,7 @@ export function showSetup() {
     );
     $('#name2-row').style.display = state.opponent === 'local' ? '' : 'none';
     const ot: (TankId | 'random')[] = ['random', ...TANK_IDS];
-    $('#opp-tank').innerHTML = ot.map((v) => `<button data-v="${v}" class="${state.oppTank === v ? 'sel' : ''}">${v === 'random' ? '랜덤' : TANKS[v].name}</button>`).join('');
+    $('#opp-tank').innerHTML = ot.map((v) => `<button data-v="${v}" class="${state.oppTank === v ? 'sel' : ''}">${v === 'random' ? '랜덤' : `${TANKS[v].zodiac} ${TANKS[v].animal}`}</button>`).join('');
     $('#opp-tank').querySelectorAll<HTMLElement>('button').forEach((b) =>
       b.addEventListener('click', () => {
         state.oppTank = b.dataset.v as TankId | 'random';

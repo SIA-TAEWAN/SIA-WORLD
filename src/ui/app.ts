@@ -16,7 +16,7 @@ export const touch = window.matchMedia('(pointer: coarse)').matches || 'ontouchs
 const saved = load();
 export const state = {
   name: saved.name ?? '',
-  tank: (TANK_IDS.includes(saved.tank as TankId) ? saved.tank : 'bolt') as TankId,
+  tank: (TANK_IDS.includes(saved.tank as TankId) ? saved.tank : 'tiger') as TankId,
   oppTank: 'random' as TankId | 'random',
   opponent: (['easy', 'normal', 'hard', 'local'].includes(saved.opponent ?? '') ? saved.opponent : 'normal') as Opponent,
   map: ((saved.map as MapId | 'random') ?? 'valley') as MapId | 'random',

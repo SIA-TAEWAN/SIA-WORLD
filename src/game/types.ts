@@ -65,6 +65,10 @@ export interface ShellTrack {
   /** [x0,y0,x1,y1,...] 프레임마다 위치 */
   path: number[];
   behavior: string;
+  /** 포탄 그림 */
+  look?: string;
+  /** 필살기는 크게 */
+  big?: boolean;
 }
 
 export interface ShotResult {

@@ -33,8 +33,9 @@ export function bestAim(match: Match, shooter: TankState, target: TankState, w: 
   const facing: 1 | -1 = target.x >= shooter.x ? 1 : -1;
   const { angleMin, angleMax } = shooter.def;
 
+  const tilt = match.tilt(shooter);
   const evalShot = (angle: number, power: number) => {
-    const out = fly(world, { owner: shooter.idx, facing, angle, power, weapon: w, damageMul: 1, volleys: 1 }, null);
+    const out = fly(world, { owner: shooter.idx, facing, angle: angle + facing * tilt, power, weapon: w, damageMul: 1, volleys: 1, tilt }, null);
     const hit = out.impacts[0];
     if (!hit) return 1e6;
     if (hit.target === target.idx) return 0;
@@ -88,7 +89,7 @@ export function decideShot(match: Match, diff: Difficulty, rng: Rng): TurnInput 
 
   let weapon: 0 | 1 | 2 = 0;
   if (match.canUseUlt(me) && rng.next() < sk.ultChance) weapon = 2;
-  else if (rng.next() < sk.special && me.def.weapons[1] !== 'bubble_build') weapon = 1;
+  else if (rng.next() < sk.special && match.weaponOf(me, 1).behavior !== 'build') weapon = 1;
   let aim = bestAim(match, me, target, match.weaponOf(me, weapon), wind);
   if (weapon !== 0 && aim.score > 40) {
     // 이 무기로는 닿지 않으면 기본 무기로

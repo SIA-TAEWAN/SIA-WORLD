@@ -249,8 +249,11 @@ input {
 }
 .tank-list {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
+}
+.tank-list .tank-card {
+  cursor: default;
 }
 .tank-card {
   text-align: left;
@@ -1006,16 +1009,10 @@ button.my-slot {
   .tanks-card {
     grid-column: 1 / -1;
   }
-  .tank-list {
-    grid-template-columns: repeat(4, 1fr);
-  }
 }
 @media (max-width: 760px) {
   .setup-grid {
     grid-template-columns: 1fr;
-  }
-  .tank-list {
-    grid-template-columns: 1fr 1fr;
   }
   .hud-bottom {
     flex-wrap: wrap;
@@ -1506,5 +1503,93 @@ body.in-game .sound-fab {
   }
   .screen.lobby {
     padding-bottom: 72px;
+  }
+}
+
+/* ---------- 게임방: 방장·레디 ---------- */
+.pslot .badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+  border: 2px solid var(--ink);
+}
+.badge.host {
+  background: var(--sun);
+  color: var(--ink);
+}
+.badge.wait {
+  background: #fff;
+  color: #a08a6a;
+  border-color: #d9c7a6;
+}
+.badge.ready {
+  background: #2fbf71;
+  color: #fff;
+  letter-spacing: 1px;
+  animation: ready-pop 0.35s ease-out;
+}
+@keyframes ready-pop {
+  0% {
+    transform: translateX(-50%) scale(1.6);
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+}
+.pslot.ready {
+  border-color: #2fbf71;
+  box-shadow: 0 0 0 3px rgba(47, 191, 113, 0.35);
+}
+.pslot.ready .pic {
+  background: linear-gradient(#c9f5dc, #ecfff3);
+}
+.pslot.me.ready {
+  box-shadow: 0 0 0 3px #2fbf71;
+}
+#start.ready-on {
+  background: linear-gradient(#5be09a, #2fbf71);
+  color: #fff;
+}
+
+/* 12지신 선택 */
+.zodiac-pick {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.zodiac-pick button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3px 0 2px;
+  border: 2px solid #e2d3b5;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+.zodiac-pick button.sel {
+  border-color: var(--ink);
+  background: #fff1c2;
+  box-shadow: 0 2px 0 var(--ink);
+}
+.zodiac-pick button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.zodiac-pick button:disabled.sel {
+  opacity: 1;
+}
+@media (max-width: 420px) {
+  .zodiac-pick {
+    grid-template-columns: repeat(4, 1fr);
   }
 }

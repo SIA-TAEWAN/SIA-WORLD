@@ -11,12 +11,16 @@ let totalTurns = 0;
 let n = 0;
 let draws = 0;
 const t0 = Date.now();
+// SHARD=i/n 이면 조합 일부만 (병렬 실행용), JSON=1 이면 결과를 JSON으로
+const [si, sn] = (process.env.SHARD ?? '0/1').split('/').map(Number);
+let pair = 0;
 for (const a of TANK_IDS) {
   for (const b of TANK_IDS) {
     if (a === b) continue;
+    if (pair++ % sn !== si) continue;
     for (const map of MAP_IDS) {
       for (let g = 0; g < games; g++) {
-        const seed = (a.length * 7919 + b.length * 104729 + g * 2654435761 + map.length * 31) >>> 0;
+        const seed = (TANK_IDS.indexOf(a) * 7919 + TANK_IDS.indexOf(b) * 104729 + g * 2654435761 + map.length * 31) >>> 0;
         const r = autoplay(a, b, map, seed + g, diff, true);
         played[a] = (played[a] ?? 0) + 1;
         played[b] = (played[b] ?? 0) + 1;
@@ -28,6 +32,10 @@ for (const a of TANK_IDS) {
       }
     }
   }
+}
+if (process.env.JSON) {
+  console.log(JSON.stringify({ wins, played, n, totalTurns, draws }));
+  process.exit(0);
 }
 console.log(`난이도 ${diff}, ${n}판, 평균 ${(totalTurns / n).toFixed(1)}턴, 무승부 ${draws}, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 for (const id of TANK_IDS) {

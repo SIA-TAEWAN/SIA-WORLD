@@ -149,8 +149,12 @@ export class Hud {
   }
 
   update(match: Match, t: TankState, v: HudView) {
-    this.angleNum.textContent = `${Math.round(t.angle)}°`;
-    this.drawDial(t);
+    // 실제 발사각 = 포신 각도 + 경사
+    const off = t.facing * match.tilt(t);
+    const shown = `${Math.round(t.angle + off)}°`;
+    if (this.angleNum.textContent !== shown) this.angleNum.textContent = shown;
+    this.angleNum.title = off ? `포신 ${Math.round(t.angle)}° ${off > 0 ? '+' : '−'} 경사 ${Math.abs(off)}°` : '';
+    this.drawDial(t, off);
     this.powerFill.style.width = `${v.power}%`;
     this.powerFill.classList.toggle('charging', v.charging);
     this.powerLast.style.left = `${t.lastPower}%`;
@@ -194,7 +198,7 @@ export class Hud {
     });
   }
 
-  private drawDial(t: TankState) {
+  private drawDial(t: TankState, off: number) {
     const c = this.dial.getContext('2d')!;
     const W = this.dial.width;
     const cx = W / 2;
@@ -210,11 +214,11 @@ export class Hud {
     c.stroke();
     c.strokeStyle = '#ffd34d';
     c.beginPath();
-    const a1 = toRad(t.def.angleMin);
-    const a2 = toRad(t.def.angleMax);
+    const a1 = toRad(t.def.angleMin + off);
+    const a2 = toRad(t.def.angleMax + off);
     c.arc(cx, cy, r, Math.min(a1, a2), Math.max(a1, a2));
     c.stroke();
-    const a = toRad(t.angle);
+    const a = toRad(t.angle + off);
     c.strokeStyle = '#fff';
     c.lineWidth = 3;
     c.beginPath();
