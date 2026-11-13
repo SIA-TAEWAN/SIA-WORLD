@@ -107,12 +107,12 @@ export function showSetup() {
   const renderTanks = () => {
     const d = TANKS[state.tank];
     $('#tanks').innerHTML = `<div class="zodiac-pick">${TANK_IDS.map(
-      (id) => `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''}" title="${TANKS[id].animal} ${TANKS[id].name}">${tankSvg(id, 46)}<span>${TANKS[id].zodiac} · ${TANKS[id].animal}</span></button>`,
+      (id) => `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''}" title="${TANKS[id].name} (${TANKS[id].animal}) · ${TANKS[id].role}">${tankSvg(id, 46)}<span>${TANKS[id].name}</span></button>`,
     ).join('')}</div>
       <div class="tank-card sel">
         <div class="pic">${tankSvg(state.tank, 92)}</div>
         <div class="info">
-          <div class="tn">${d.zodiac}(${d.animal}) ${d.name} <small>${d.role}</small></div>
+          <div class="tn">${d.name} <small>${d.animal} · ${d.role}</small></div>
           ${stat('체력', d.hp, 1300, `${d.hp}`)}
           ${stat('방어', d.defense, 0.25, `${Math.round(d.defense * 100)}%`)}
           ${stat('이동', d.move, 160, `${d.move}`)}
@@ -151,7 +151,7 @@ export function showSetup() {
     );
     $('#name2-row').style.display = state.opponent === 'local' ? '' : 'none';
     const ot: (TankId | 'random')[] = ['random', ...TANK_IDS];
-    $('#opp-tank').innerHTML = ot.map((v) => `<button data-v="${v}" class="${state.oppTank === v ? 'sel' : ''}">${v === 'random' ? '랜덤' : `${TANKS[v].zodiac} ${TANKS[v].animal}`}</button>`).join('');
+    $('#opp-tank').innerHTML = ot.map((v) => `<button data-v="${v}" class="${state.oppTank === v ? 'sel' : ''}">${v === 'random' ? '랜덤' : TANKS[v].name}</button>`).join('');
     $('#opp-tank').querySelectorAll<HTMLElement>('button').forEach((b) =>
       b.addEventListener('click', () => {
         state.oppTank = b.dataset.v as TankId | 'random';

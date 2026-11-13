@@ -213,6 +213,7 @@ function renderRoom(id: string) {
   const sess = lobby!;
   const rs = roomSess!;
   const absentSince = new Map<string, number>();
+  let lastBeat = Date.now();
   const root = screen(
     `<header class="bar">
       <button class="btn ghost" id="leave">← 나가기</button>
@@ -318,13 +319,13 @@ function renderRoom(id: string) {
         ${isHost ? '<div class="badge host">👑 방장</div>' : p.ready ? '<div class="badge ready">READY</div>' : '<div class="badge wait">준비 중</div>'}
         <div class="pic">${tankSvg(p.tank, 70, p.team === 1)}</div>
         <div class="pn">${escapeHtml(p.name)}${p.id === clientId() ? ' <small>(나)</small>' : ''}</div>
-        <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${TANKS[p.tank].animal} ${TANKS[p.tank].name}</div>
+        <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${TANKS[p.tank].name}</div>
         ${p.items.length ? `<div class="pi">아이템 ${p.items.length}개</div>` : ''}
         ${away ? '<div class="away">연결 확인 중…</div>' : ''}
       </div>`;
     }).join('');
     const tankHtml = TANK_IDS.map(
-      (t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} title="${TANKS[t].animal} ${TANKS[t].name} · ${TANKS[t].role}">${tankSvg(t, 40)}<span>${TANKS[t].zodiac}</span></button>`,
+      (t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} title="${TANKS[t].name} (${TANKS[t].animal}) · ${TANKS[t].role}">${tankSvg(t, 40)}<span>${TANKS[t].name}</span></button>`,
     ).join('');
     const tankEl = $(root, '#tank');
     if (tankEl.dataset.html !== tankHtml) {
@@ -332,7 +333,7 @@ function renderRoom(id: string) {
       tankEl.dataset.html = tankHtml;
     }
     const td = TANKS[mineP.tank];
-    $(root, '#tank-name').textContent = `${td.zodiac}(${td.animal}) ${td.name} · ${td.role}`;
+    $(root, '#tank-name').textContent = `${td.name} (${td.animal}) · ${td.role}`;
     $(root, '#map-note').textContent = iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요';
     const needTeam = room.players.length >= 3 || !teamsOk(room);
     $(root, '#team-box').style.display = needTeam ? '' : 'none';
@@ -394,6 +395,11 @@ function renderRoom(id: string) {
     if (!room || room.status !== 'waiting') return;
     const now = Date.now();
     const here = room.players.filter((p) => rs.present.has(p.id));
+    // 대기 중에도 방에 사람이 있다는 신호 (30초마다, 첫 번째 사람이)
+    if (here[0]?.id === clientId() && now - lastBeat > 30_000) {
+      lastBeat = now;
+      void backend!.touchRoom(id, clientId()).catch(() => undefined);
+    }
     for (const p of room.players) {
       if (rs.present.has(p.id)) absentSince.delete(p.id);
       else if (!absentSince.has(p.id)) absentSince.set(p.id, now);
@@ -477,6 +483,11 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
   online = game ?? new OnlineGame(roomSess!, room, clientId());
   const g = online;
   const sess = lobby!;
+  // 게임 중에는 기준 기기가 방에 사람이 있다는 신호를 보낸다
+  const beat = setInterval(() => {
+    if (online !== g) return clearInterval(beat);
+    if (g.isHost()) void backend!.touchRoom(room.id, clientId()).catch(() => undefined);
+  }, 30_000);
   launchGame({
     setups: setupsOf(room),
     mapId: mapOf(room),
@@ -484,6 +495,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     net: g,
     resume,
     onEnd: (s: MatchSummary) => {
+      clearInterval(beat);
       void backend!.endGame(room.id, g.gameNo, g.presentIds()).then(() => sess.refetch());
       g.dispose();
       online = null;
@@ -497,6 +509,9 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
       });
     },
     onQuit: () => {
+      clearInterval(beat);
+      // 게임 중 나가기: 모두 나가면 서버가 방을 지운다
+      void backend!.quitGame(room.id, clientId()).then(() => sess.refetch());
       g.dispose();
       online = null;
       closeGame();

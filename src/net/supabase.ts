@@ -94,5 +94,8 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     setMap: (id, playerId, map) => rpc<void>('set_room_map', { p_id: id, p_player: playerId, p_map: map }),
     startGame: (id, host, seed) => rpc<Room>('start_game', { p_id: id, p_host: host, p_seed: seed }),
     endGame: (id, gameNo, present) => rpc<void>('end_game', { p_id: id, p_game_no: gameNo, p_present: present }),
+    quitGame: (id, playerId) => rpc<void>('quit_game', { p_id: id, p_player: playerId }),
+    touchRoom: (id, playerId) => rpc<void>('touch_room', { p_id: id, p_player: playerId }),
+    sweepRooms: (lobby) => rpc<void>('sweep_rooms', { p_lobby: lobby }),
   };
 }

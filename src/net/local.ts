@@ -119,7 +119,9 @@ function writeDb(rooms: Room[]) {
   setTimeout(() => dbListeners.forEach((l) => l()), 0);
 }
 
-function mutate<T>(fn: (rooms: Room[]) => T): T {
+type LocalRoom = Room & { updated_at?: number };
+
+function mutate<T>(fn: (rooms: LocalRoom[]) => T): T {
   const rooms = readDb();
   const out = fn(rooms);
   writeDb(rooms);
@@ -145,7 +147,7 @@ export function createLocalBackend(): Backend {
     },
     async createRoom(lobby, name, player) {
       return mutate((rooms) => {
-        const r: Room = {
+        const r: LocalRoom = {
           id: crypto.randomUUID(),
           lobby,
           name: name.slice(0, 24),
@@ -156,6 +158,7 @@ export function createLocalBackend(): Backend {
           host_id: player.id,
           game_no: 0,
           created_at: new Date().toISOString(),
+          updated_at: Date.now(),
         };
         rooms.push(r);
         return r;
@@ -211,6 +214,7 @@ export function createLocalBackend(): Backend {
         if (a === 0 || a === r.players.length) fail('teams');
         if (!allReady(r)) fail('not ready');
         r.status = 'playing';
+        r.gone = [];
         r.seed = seed;
         r.host_id = host;
         r.game_no++;
@@ -223,10 +227,39 @@ export function createLocalBackend(): Backend {
         if (i < 0) return;
         const r = rooms[i];
         if (r.status !== 'playing' || r.game_no !== gameNo) return;
-        r.players = r.players.filter((p) => present.includes(p.id)).map((p) => ({ ...p, items: [], ready: false }));
+        r.players = r.players.filter((p) => present.includes(p.id) && !(r.gone ?? []).includes(p.id)).map((p) => ({ ...p, items: [], ready: false }));
+        r.gone = [];
         if (!r.players.some((p) => p.id === r.host_id)) r.host_id = r.players[0]?.id ?? null;
         r.status = 'waiting';
         if (!r.players.length) rooms.splice(i, 1);
+      });
+    },
+    async quitGame(id, playerId) {
+      const r0 = readDb().find((x) => x.id === id);
+      if (r0 && r0.status !== 'playing') return this.leaveRoom(id, playerId);
+      mutate((rooms) => {
+        const i = rooms.findIndex((x) => x.id === id);
+        if (i < 0 || !rooms[i].players.some((p) => p.id === playerId)) return;
+        const r = rooms[i];
+        r.gone = [...new Set([...(r.gone ?? []), playerId])];
+        if (r.players.every((p) => r.gone!.includes(p.id))) rooms.splice(i, 1);
+        else r.updated_at = Date.now();
+      });
+    },
+    async touchRoom(id, playerId) {
+      mutate((rooms) => {
+        const r = rooms.find((x) => x.id === id);
+        if (r && r.players.some((p) => p.id === playerId)) r.updated_at = Date.now();
+      });
+    },
+    async sweepRooms(lobby) {
+      const now = Date.now();
+      mutate((rooms) => {
+        for (let i = rooms.length - 1; i >= 0; i--) {
+          const r = rooms[i];
+          r.updated_at ??= now;
+          if (r.lobby === lobby && now - r.updated_at > 120_000) rooms.splice(i, 1);
+        }
       });
     },
   };

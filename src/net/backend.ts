@@ -23,6 +23,8 @@ export interface Room {
   host_id: string | null;
   game_no: number;
   created_at: string;
+  /** 게임 중에 [나가기]로 나간 사람 */
+  gone?: string[];
 }
 
 export interface Member<M> {
@@ -57,6 +59,12 @@ export interface Backend {
   setMap(id: string, playerId: string, map: MapId | 'random'): Promise<void>;
   startGame(id: string, host: string, seed: number): Promise<Room>;
   endGame(id: string, gameNo: number, present: string[]): Promise<void>;
+  /** 게임 중 나가기 (모두 나가면 방이 사라진다) */
+  quitGame(id: string, playerId: string): Promise<void>;
+  /** 방에 아직 사람이 있다는 신호 */
+  touchRoom(id: string, playerId: string): Promise<void>;
+  /** 2분 넘게 신호가 없는 방 정리 */
+  sweepRooms(lobby: string): Promise<void>;
 }
 
 export class NetError extends Error {}

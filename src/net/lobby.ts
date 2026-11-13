@@ -98,7 +98,14 @@ export class LobbySession {
     this.refetchTimer = setTimeout(() => this.refetch(), 120);
   }
 
+  private lastSweep = 0;
+
   async refetch() {
+    // 오래 비어 있는 방은 가끔 서버에서 정리한다
+    if (Date.now() - this.lastSweep > 30_000) {
+      this.lastSweep = Date.now();
+      await this.backend.sweepRooms(this.code).catch(() => undefined);
+    }
     try {
       this.rooms = await this.backend.listRooms(this.code);
       this.emit();
@@ -107,10 +114,10 @@ export class LobbySession {
     }
   }
 
-  /** 대기실에 있는 사람이 하나도 없는 방(브라우저를 그냥 닫은 경우)은 숨긴다 */
+  /** 그 방에 아직 들어가 있는 사람이 하나도 없는 방(모두 나갔거나 브라우저를 닫은 경우)은 숨긴다 */
   visibleRooms(): Room[] {
-    const here = new Set(this.members.map((m) => m.key));
-    return this.rooms.filter((r) => r.players.some((p) => here.has(p.id)));
+    const inRoom = new Map(this.members.map((m) => [m.key, m.meta.room]));
+    return this.rooms.filter((r) => r.players.some((p) => inRoom.get(p.id) === r.id && !(r.gone ?? []).includes(p.id)));
   }
 
   room(id: string): Room | undefined {
