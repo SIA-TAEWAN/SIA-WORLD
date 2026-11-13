@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # SQL 실행 도중에 끊기지 않도록 앞선 배포를 취소하지 않는다
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -34,8 +35,28 @@ jobs:
         with:
           path: dist
 
-  deploy:
+  # supabase/migrations/ 에서 아직 실행 안 된 SQL만 서버에 실행한다
+  migrate:
     needs: build
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: xvvpndudbbtpiygiuaxv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      # 001은 SQL Editor에서 직접 실행했으므로 '실행됨'으로 기록만 한다 (이미 기록돼 있으면 그대로)
+      - run: supabase migration repair --status applied 001 --password "$SUPABASE_DB_PASSWORD" --yes || supabase migration repair --status applied 001 --password "$SUPABASE_DB_PASSWORD"
+      - run: supabase migration list --password "$SUPABASE_DB_PASSWORD"
+      - run: supabase db push --password "$SUPABASE_DB_PASSWORD" --yes
+      - run: supabase migration list --password "$SUPABASE_DB_PASSWORD"
+
+  deploy:
+    needs: [build, migrate]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
