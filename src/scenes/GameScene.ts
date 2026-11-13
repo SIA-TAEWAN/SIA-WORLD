@@ -8,6 +8,8 @@ import { Terrain } from '../physics/terrain';
 import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, makeTankTextures, TEAM_COLORS } from './art';
+import { Fx } from './fx';
+import { music } from '../ui/music';
 import { Hud } from '../ui/hud';
 import { Input, type ControlEvent } from '../ui/input';
 import { sfx } from '../ui/sfx';
@@ -37,8 +39,11 @@ type Control = 'human' | 'ai' | 'remote';
 
 class TankView {
   cont: Phaser.GameObjects.Container;
+  /** 몸체·포신을 묶어 숨쉬기·반동·흔들림을 주는 틀 */
+  rig: Phaser.GameObjects.Container;
   barrel: Phaser.GameObjects.Graphics;
   body: Phaser.GameObjects.Image;
+  lids: Phaser.GameObjects.Graphics;
   label: Phaser.GameObjects.Container;
   hpBar: Phaser.GameObjects.Graphics;
   arrow: Phaser.GameObjects.Text;
@@ -47,13 +52,20 @@ class TankView {
   hp: number;
   tweening = false;
   dead = false;
+  private lastX: number;
+  private moveT = 0;
+  private dustT = 0;
+  private breathe: Phaser.Tweens.Tween;
+  private blinkTimer: Phaser.Time.TimerEvent;
 
   constructor(
     private scene: Phaser.Scene,
     readonly t: TankState,
+    private fx: Fx,
   ) {
     this.x = t.x;
     this.y = t.y;
+    this.lastX = t.x;
     this.hp = t.hp;
     this.barrel = scene.add.graphics();
     this.barrel.fillStyle(0x3a2a1e).fillRoundedRect(-1, -3.5, 24, 7, 2.5);
@@ -61,7 +73,12 @@ class TankView {
     this.barrel.fillStyle(0x3a2a1e).fillRect(18, -4, 5, 8);
     this.barrel.setPosition(0, -15);
     this.body = scene.add.image(0, 0, `tank-${t.tankId}`).setOrigin(0.5, 38 / 40);
-    this.cont = scene.add.container(t.x, t.y, [this.barrel, this.body]).setDepth(10);
+    // 눈꺼풀 (깜빡일 때만 보임)
+    this.lids = scene.add.graphics().setVisible(false);
+    this.lids.fillStyle(hex(t.def.color)).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
+    this.lids.lineStyle(1.5, 0x1e1e2a).lineBetween(0.5, -18.5, 5.5, -18.5).lineBetween(5.5, -18.5, 10.5, -18.5);
+    this.rig = scene.add.container(0, 0, [this.barrel, this.body, this.lids]);
+    this.cont = scene.add.container(t.x, t.y, [this.rig]).setDepth(10);
 
     const name = scene.add
       .text(0, -52, t.name, { fontFamily: 'Jua, sans-serif', fontSize: '14px', color: '#fff', stroke: TEAM_COLORS[t.team], strokeThickness: 4 })
@@ -71,6 +88,18 @@ class TankView {
     scene.tweens.add({ targets: this.arrow, y: -66, duration: 400, yoyo: true, repeat: -1 });
     this.label = scene.add.container(t.x, t.y, [name, this.hpBar, this.arrow]).setDepth(30);
     this.drawHp();
+
+    // 살아 있는 느낌: 천천히 숨쉬기 + 가끔 눈 깜빡임
+    this.breathe = scene.tweens.add({ targets: this.rig, scaleY: 0.955, scaleX: 1.02, duration: 650 + Math.random() * 250, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: Math.random() * 600 });
+    this.blinkTimer = scene.time.addEvent({
+      delay: 2200 + Math.random() * 2000,
+      loop: true,
+      callback: () => {
+        if (this.dead) return;
+        this.lids.setVisible(true);
+        scene.time.delayedCall(110, () => this.dead || this.lids.setVisible(false));
+      },
+    });
   }
 
   drawHp() {
@@ -82,11 +111,41 @@ class TankView {
     g.fillStyle(hex(TEAM_COLORS[this.t.team])).fillRoundedRect(-w / 2, -46, w * r, 4, 2);
   }
 
-  sync(facing: number, angle: number) {
+  sync(facing: number, angle: number, dt: number) {
+    // 굴러가는 중이면 덜컹거리고 흙먼지를 날린다
+    const moving = Math.abs(this.x - this.lastX) > 0.05 && !this.dead;
+    this.lastX = this.x;
+    if (moving) {
+      this.moveT += dt;
+      this.rig.y = -Math.abs(Math.sin(this.moveT * 26)) * 1.6;
+      this.rig.angle = Math.sin(this.moveT * 13) * 1.5;
+      this.dustT -= dt;
+      if (this.dustT <= 0) {
+        this.dustT = 0.07;
+        this.fx.dust(this.x - facing * 14, this.y - 2);
+      }
+    } else if (this.moveT) {
+      this.moveT = 0;
+      this.rig.y = 0;
+      this.rig.angle = 0;
+    }
     this.cont.setPosition(this.x, this.y);
     this.label.setPosition(this.x, this.y);
     this.cont.scaleX = facing;
     this.barrel.rotation = (-angle * Math.PI) / 180;
+  }
+
+  /** 발사 반동 */
+  recoil() {
+    this.scene.tweens.add({ targets: this.barrel, x: -4, duration: 60, yoyo: true });
+    this.scene.tweens.add({ targets: this.body, x: -3, scaleY: 0.9, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
+  }
+
+  /** 맞았을 때 흔들림 */
+  hurt() {
+    this.body.setTintFill(0xffffff);
+    this.scene.time.delayedCall(90, () => (this.dead ? this.body.setTint(0x555555) : this.body.clearTint()));
+    this.scene.tweens.add({ targets: this.body, x: { from: -3, to: 3 }, duration: 50, yoyo: true, repeat: 2, onComplete: () => (this.body.x = 0) });
   }
 
   private status: Phaser.GameObjects.Text | null = null;
@@ -107,6 +166,8 @@ class TankView {
   }
 
   destroy() {
+    this.breathe.remove();
+    this.blinkTimer.remove();
     this.cont.destroy();
     this.label.destroy();
   }
@@ -114,13 +175,31 @@ class TankView {
   kill() {
     if (this.dead) return;
     this.dead = true;
+    this.breathe.remove();
+    this.rig.setScale(1);
     this.body.setTint(0x555555);
     this.barrel.setAlpha(0.6);
     this.label.setAlpha(0.35);
     this.arrow.setVisible(false);
+    // X자 눈
+    this.lids.clear().setVisible(true);
+    this.lids.fillStyle(0x555555).fillEllipse(3, -19, 6, 7).fillEllipse(8, -19, 6, 7);
+    this.lids.lineStyle(1.6, 0x1e1e2a);
+    for (const ex of [3, 8]) this.lids.lineBetween(ex - 2, -21, ex + 2, -17).lineBetween(ex - 2, -17, ex + 2, -21);
     this.scene.tweens.add({ targets: this.cont, angle: this.t.facing * 18, duration: 400, ease: 'Back.easeOut' });
   }
 }
+
+/** 무기 동작별 포탄 색 (몸통·코·꼬리) */
+const SHELL_LOOK: Record<string, { body: number; nose: number; trail: number }> = {
+  normal: { body: 0x2b2b3a, nose: 0xffc240, trail: 0xffffff },
+  drop: { body: 0x2b2b3a, nose: 0x7fd3ff, trail: 0xd6f0ff },
+  drill: { body: 0x7d8494, nose: 0xdfe3ea, trail: 0xc9a27a },
+  laser: { body: 0xff3b6b, nose: 0xffffff, trail: 0xff7aa0 },
+  bounce: { body: 0x2fb35f, nose: 0xb6ffcc, trail: 0xa0ffb0 },
+  build: { body: 0x8b5a2b, nose: 0xd9b38c, trail: 0xd9b38c },
+  push: { body: 0x6b4fe0, nose: 0xd7ccff, trail: 0xc4b0ff },
+};
 
 export class GameScene extends Phaser.Scene {
   private cfg!: GameConfig;
@@ -136,6 +215,7 @@ export class GameScene extends Phaser.Scene {
   private scorch!: Uint8Array;
 
   private views: TankView[] = [];
+  private fx!: Fx;
   private shellG!: Phaser.GameObjects.Graphics;
   private phase: Phase = 'intro';
   private timeLeft = TURN_SECONDS;
@@ -179,10 +259,11 @@ export class GameScene extends Phaser.Scene {
 
     makeTankTextures(this);
     drawBackground(this, map.theme, cfg.mapId, terrain.w);
+    this.fx = new Fx(this, map.theme);
 
     // 지형
     // 색은 처음 지형 기준으로 칠한다 (재접속해도 같은 모습)
-    this.art = buildTerrainArt(map.build(new Rng(this.match.seed)), map.theme);
+    this.art = buildTerrainArt(map.build(new Rng(this.match.seed)), map.theme, cfg.mapId);
     if (this.textures.exists('terrain')) this.textures.remove('terrain');
     this.tex = this.textures.createCanvas('terrain', terrain.w, terrain.h)!;
     this.img = this.tex.context.createImageData(terrain.w, terrain.h);
@@ -193,7 +274,7 @@ export class GameScene extends Phaser.Scene {
     // 맵 아래 낭떠러지 표시
     this.add.rectangle(-400, terrain.h, terrain.w + 800, 600, 0x000000, 0.25).setOrigin(0).setDepth(1);
 
-    this.views = this.match.tanks.map((t) => new TankView(this, t));
+    this.views = this.match.tanks.map((t) => new TankView(this, t, this.fx));
     this.shellG = this.add.graphics().setDepth(20);
 
     // UI
@@ -228,7 +309,7 @@ export class GameScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.cleanup());
     this.events.once('destroy', () => this.cleanup());
 
-    if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = this.match;
+    if (import.meta.env.DEV) Object.assign(window, { __match: this.match, __scene: this });
     if (cfg.resume) {
       const { elapsed } = cfg.resume;
       this.views.forEach((v) => v.t.alive || v.kill());
@@ -247,9 +328,13 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const w = this.scale.width;
     const h = this.scale.height;
-    const hudH = w < 700 ? 150 : 118;
-    // 가로 화면은 맵 높이가 거의 다 보이게, 세로(모바일) 화면은 좌우로 둘러보도록 더 확대
-    const zoom = h > w ? Phaser.Math.Clamp(w / 620, 0.45, 1) : Phaser.Math.Clamp(Math.min((h - hudH * 0.5) / 860, w / 1050), 0.38, 1.15);
+    const hudH = this.hud?.bottomHeight || (w < 700 ? 150 : 118);
+    const short = h < 520 && w > h;
+    // 가로 화면은 맵 높이가 거의 다 보이게, 세로(모바일)·낮은 가로 화면은 둘러보도록 더 확대
+    const zoom =
+      h > w
+        ? Phaser.Math.Clamp(w / 620, 0.45, 1)
+        : Phaser.Math.Clamp(Math.min((h - hudH * (short ? 0.85 : 0.5)) / (short ? 520 : 860), w / 1050), 0.38, 1.15);
     cam.setZoom(zoom);
     const t = this.match.terrain;
     cam.setBounds(-120, -650, t.w + 240, t.h + 650 + hudH / zoom);
@@ -330,7 +415,7 @@ export class GameScene extends Phaser.Scene {
     const tag = t.ai ? 'AI' : ctrl === 'human' && this.cfg.net ? '내 차례!' : '';
     this.hud.setTurn(this.match, t, ctrl === 'human', tag);
     sfx.turn();
-    this.cameras.main.pan(t.x, t.y - 120, 600, 'Sine.easeInOut');
+    this.cameras.main.pan(t.x, this.focusY(t.y, 0.7), 600, 'Sine.easeInOut');
     this.ai = null;
     if (ctrl === 'human') this.phase = 'aim';
     else if (ctrl === 'ai') this.startAi();
@@ -392,7 +477,7 @@ export class GameScene extends Phaser.Scene {
     this.charging = false;
     this.views[t.idx].arrow.setVisible(false);
     const v = this.views[t.idx];
-    this.tweens.add({ targets: v.barrel, x: -4 * 1, duration: 60, yoyo: true });
+    v.recoil();
     sfx.fire();
     const res = this.match.fire(input);
     this.turnDone();
@@ -400,7 +485,7 @@ export class GameScene extends Phaser.Scene {
     this.manualCam = false;
     // 포구 연기
     const m = { x: t.x + t.facing * Math.cos((t.angle * Math.PI) / 180) * 24, y: t.y - 15 - Math.sin((t.angle * Math.PI) / 180) * 24 };
-    this.puff(m.x, m.y, 0xffffff, 6);
+    this.fx.muzzle(m.x, m.y, Math.atan2(-Math.sin((t.angle * Math.PI) / 180), t.facing * Math.cos((t.angle * Math.PI) / 180)));
   }
 
   private skip(msg: string) {
@@ -464,12 +549,12 @@ export class GameScene extends Phaser.Scene {
         v.y += (v.t.y - v.y) * Math.min(1, dt * 14);
         if (Math.abs(v.t.y - v.y) < 0.5) v.y = v.t.y;
       }
-      v.sync(v.t.facing, v.t.angle);
+      v.sync(v.t.facing, v.t.angle, dt);
     }
 
     // 카메라: 조준 중엔 현재 탱크를 따라감
     if ((this.phase === 'aim' || this.phase === 'ai' || this.phase === 'remote') && !this.manualCam && !this.cameras.main.panEffect.isRunning) {
-      this.follow(t.x, t.y - 120, 0.06);
+      this.follow(t.x, this.focusY(t.y, 0.7), 0.06);
     }
 
     const cam = this.cameras.main;
@@ -490,6 +575,13 @@ export class GameScene extends Phaser.Scene {
       timeLeft: this.timeLeft,
       human: this.phase === 'aim',
     });
+  }
+
+  /** 화면 아래 조작판을 뺀 보이는 영역의 at(0~1) 높이에 y가 오도록 하는 카메라 중심 y */
+  private focusY(y: number, at: number) {
+    const h = this.scale.height;
+    const vis = h - (this.hud?.bottomHeight ?? 0);
+    return y - (vis * at - h / 2) / this.cameras.main.zoom;
   }
 
   private follow(x: number, y: number, k: number) {
@@ -729,7 +821,7 @@ export class GameScene extends Phaser.Scene {
     this.scorch.fill(0);
     this.paint(0, 0, this.vis.w - 1, this.vis.h - 1);
     this.hud.drawMiniBase(this.match);
-    this.views = this.match.tanks.map((t) => new TankView(this, t));
+    this.views = this.match.tanks.map((t) => new TankView(this, t, this.fx));
     this.views.forEach((v) => v.t.alive || v.kill());
     if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = this.match;
     if (this.match.over) return this.finish();
@@ -772,18 +864,25 @@ export class GameScene extends Phaser.Scene {
       if (k < 0 || k * 2 >= s.path.length) continue;
       const x = s.path[k * 2];
       const y = s.path[k * 2 + 1];
-      // 꼬리
-      for (let j = Math.max(0, k - 14); j < k; j++) {
-        const a = (j - (k - 14)) / 14;
-        g.fillStyle(0xffffff, a * 0.5).fillCircle(s.path[j * 2], s.path[j * 2 + 1], 1.5 + a * 2.5);
-      }
-      const col = s.behavior === 'laser' ? 0xff3b6b : s.behavior === 'build' ? 0x8b5a2b : s.behavior === 'drill' ? 0x9aa0b0 : 0x2b2b3a;
-      g.fillStyle(0x000000, 0.25).fillCircle(x + 1.5, y + 1.5, 6);
-      g.fillStyle(col).fillCircle(x, y, 5.5);
-      g.fillStyle(0xffffff, 0.7).fillCircle(x - 1.8, y - 1.8, 1.8);
+      // 꼬리 + 날아가는 방향으로 기운 포탄
+      const px = k > 0 ? s.path[k * 2 - 2] : x;
+      const py = k > 0 ? s.path[k * 2 - 1] : y;
+      const look = SHELL_LOOK[s.behavior] ?? SHELL_LOOK.normal;
+      this.fx.trail(px, py, look.trail);
+      let dx = x - px;
+      let dy = y - py;
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len;
+      dy /= len;
+      if (s.behavior === 'laser') g.fillStyle(0xff7aa0, 0.35).fillCircle(x, y, 11);
+      g.fillStyle(0x000000, 0.22).fillCircle(x + 1.5, y + 1.5, 6);
+      g.fillStyle(look.body).fillCircle(x - dx * 4, y - dy * 4, 4.2).fillCircle(x, y, 5.5);
+      if (s.behavior === 'drill') g.fillStyle(0xdfe3ea).fillTriangle(x + dx * 11, y + dy * 11, x - dy * 5, y + dx * 5, x + dy * 5, y - dx * 5);
+      else g.fillStyle(look.nose).fillCircle(x + dx * 2.5, y + dy * 2.5, 2.6);
+      g.fillStyle(0xffffff, 0.7).fillCircle(x - 1.8, y - 1.8, 1.6);
       if (!lead) lead = { x, y };
     }
-    if (lead && !this.manualCam) this.follow(lead.x, lead.y, 0.14);
+    if (lead && !this.manualCam) this.follow(lead.x, this.focusY(lead.y, 0.5), 0.14);
 
     if (pb.frame >= pb.res.frames + 2 && pb.ev >= evs.length) {
       g.clear();
@@ -831,8 +930,7 @@ export class GameScene extends Phaser.Scene {
         const v = this.views[e.target];
         v.hp = Math.max(0, v.hp - e.amount);
         v.drawHp();
-        v.body.setTintFill(0xffffff);
-        this.time.delayedCall(90, () => (v.dead ? v.body.setTint(0x555555) : v.body.clearTint()));
+        v.hurt();
         this.floatText(v.x, v.y - 60, `${e.direct ? '직격! ' : ''}-${e.amount}`, e.direct ? '#ffdd33' : '#ff6b6b');
         break;
       }
@@ -892,6 +990,7 @@ export class GameScene extends Phaser.Scene {
   private finish() {
     this.phase = 'over';
     this.views.forEach((v) => v.arrow.setVisible(false));
+    music.play(null);
     sfx.win();
     const m = this.match;
     const summary: MatchSummary = {
@@ -906,46 +1005,12 @@ export class GameScene extends Phaser.Scene {
 
   private boom(x: number, y: number, r: number, big: boolean) {
     sfx.boom(big);
-    const flash = this.add.circle(x, y, r * 0.5, 0xffffff, 1).setDepth(26);
-    this.tweens.add({ targets: flash, scale: 2.2, alpha: 0, duration: 260, onComplete: () => flash.destroy() });
-    const fire = this.add.circle(x, y, r * 0.8, 0xffa020, 0.9).setDepth(25);
-    this.tweens.add({ targets: fire, scale: 1.3, alpha: 0, duration: 480, ease: 'Cubic.easeOut', onComplete: () => fire.destroy() });
-    const ring = this.add.circle(x, y, r, 0xffffff, 0).setStrokeStyle(4, 0xfff1a8, 0.9).setDepth(26);
-    ring.setScale(0.3);
-    this.tweens.add({ targets: ring, scale: 1.1, alpha: 0, duration: 380, onComplete: () => ring.destroy() });
-    const n = big ? 22 : 12;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + Math.random();
-      const sp = r * (0.8 + Math.random() * 1.4);
-      const p = this.add.rectangle(x, y, 4 + Math.random() * 4, 4 + Math.random() * 4, Math.random() < 0.5 ? 0x8f5f35 : 0xffc240).setDepth(24);
-      this.tweens.add({
-        targets: p,
-        x: x + Math.cos(a) * sp,
-        y: y + Math.sin(a) * sp * 0.7 + 40,
-        angle: 360,
-        alpha: 0,
-        duration: 600 + Math.random() * 400,
-        ease: 'Quad.easeOut',
-        onComplete: () => p.destroy(),
-      });
-    }
-    this.puff(x, y - r * 0.3, 0x666666, big ? 10 : 5);
+    this.fx.boom(x, y, r, big);
     this.cameras.main.shake(big ? 380 : 200, big ? 0.012 : 0.005);
   }
 
   private puff(x: number, y: number, color: number, n: number) {
-    for (let i = 0; i < n; i++) {
-      const c = this.add.circle(x + (Math.random() - 0.5) * 16, y + (Math.random() - 0.5) * 10, 4 + Math.random() * 6, color, 0.7).setDepth(23);
-      this.tweens.add({
-        targets: c,
-        y: c.y - 20 - Math.random() * 30,
-        x: c.x + (Math.random() - 0.5) * 30,
-        scale: 2,
-        alpha: 0,
-        duration: 700 + Math.random() * 500,
-        onComplete: () => c.destroy(),
-      });
-    }
+    this.fx.puff(x, y, color, n);
   }
 
   private floatText(x: number, y: number, s: string, color: string) {

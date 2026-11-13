@@ -1,9 +1,15 @@
 /** 효과음을 코드로 합성한다 (파일 없음) */
 let ctx: AudioContext | null = null;
 let muted = false;
+try {
+  muted = localStorage.getItem('siatank:mute') === '1';
+} catch {
+  /* 저장소를 못 쓰면 소리 켬 */
+}
+const muteListeners = new Set<(m: boolean) => void>();
 
-function ac(): AudioContext | null {
-  if (muted) return null;
+/** 소리 끔 상태와 상관없이 오디오 장치를 얻는다 (배경음악용) */
+export function audioCtx(): AudioContext | null {
   try {
     ctx ??= new AudioContext();
     if (ctx.state === 'suspended') void ctx.resume();
@@ -11,6 +17,10 @@ function ac(): AudioContext | null {
   } catch {
     return null;
   }
+}
+
+function ac(): AudioContext | null {
+  return muted ? null : audioCtx();
 }
 
 function tone(freq: number, dur: number, type: OscillatorType, vol = 0.15, slide = 0) {
@@ -64,7 +74,20 @@ export const sfx = {
   },
   heal: () => tone(440, 0.3, 'sine', 0.1, 400),
   win: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.12), i * 130)),
-  toggleMute: () => (muted = !muted),
+  toggleMute: () => {
+    muted = !muted;
+    try {
+      localStorage.setItem('siatank:mute', muted ? '1' : '0');
+    } catch {
+      /* 무시 */
+    }
+    muteListeners.forEach((f) => f(muted));
+    return muted;
+  },
+  onMute: (f: (m: boolean) => void) => {
+    muteListeners.add(f);
+    return () => muteListeners.delete(f);
+  },
   get muted() {
     return muted;
   },

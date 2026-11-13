@@ -1,7 +1,7 @@
 import { ITEMS, WEAPONS } from '../game/data';
 import type { Match } from '../game/match';
 import type { TankState } from '../game/types';
-import { TEAM_COLORS } from '../scenes/art';
+import { TEAM_COLORS } from './teams';
 import type { Input } from './input';
 import { sfx } from './sfx';
 
@@ -47,10 +47,8 @@ export class Hud {
     timerBox.append(this.timer);
     const mute = el('button', 'mute', sfx.muted ? '🔇' : '🔊') as HTMLButtonElement;
     mute.title = '소리 켜기/끄기';
-    mute.onclick = () => {
-      sfx.toggleMute();
-      mute.textContent = sfx.muted ? '🔇' : '🔊';
-    };
+    mute.onclick = () => sfx.toggleMute();
+    this.offMute = sfx.onMute((m) => (mute.textContent = m ? '🔇' : '🔊'));
     top.append(timerBox, this.wind, this.order, mute);
 
     const bottom = el('div', 'hud-bottom');
@@ -106,10 +104,29 @@ export class Hud {
       lr.append(mk('l', '◀', 'left'), mk('r', '▶', 'right'));
       const ud = el('div', 'tgroup ud');
       ud.append(mk('u', '▲', 'up'), mk('d', '▼', 'down'));
-      pad.append(lr, mk('fire', '발사', 'fire'), ud);
+      const right = el('div', 'tgroup right');
+      right.append(mk('fire', '발사', 'fire'), ud);
+      pad.append(lr, right);
       this.root.append(pad);
     }
     parent.append(this.root);
+    // 아래 조작판 높이에 맞춰 터치 버튼 위치를 잡는다
+    this.bottomEl = bottom;
+    const sync = () => this.root.style.setProperty('--hud-h', `${bottom.offsetHeight}px`);
+    sync();
+    if ('ResizeObserver' in window) {
+      this.ro = new ResizeObserver(sync);
+      this.ro.observe(bottom);
+    }
+  }
+
+  private bottomEl: HTMLElement;
+  private offMute: () => void;
+  private ro: ResizeObserver | null = null;
+
+  /** 화면 아래 조작판 높이(px) */
+  get bottomHeight() {
+    return this.bottomEl.offsetHeight;
   }
 
   setTurn(match: Match, t: TankState, human: boolean, tag = '') {
@@ -166,7 +183,7 @@ export class Hud {
     });
     t.items.forEach((id, i) => {
       const b = this.items[i];
-      const html = `<span class="key">${'QWE'[i]}</span>${id ? `<span class="ic">${ITEMS[id].icon}</span><span class="nm">${ITEMS[id].name}</span>` : '<span class="nm empty">비어있음</span>'}`;
+      const html = `<span class="key">${'QWE'[i]}</span>${id ? `<span class="ic">${ITEMS[id].icon}</span><span class="nm">${ITEMS[id].name}</span>` : '<span class="nm empty">빈칸</span>'}`;
       if (b.dataset.html !== html) {
         b.innerHTML = html;
         b.dataset.html = html;
@@ -267,6 +284,8 @@ export class Hud {
   }
 
   destroy() {
+    this.ro?.disconnect();
+    this.offMute();
     this.root.remove();
   }
 }

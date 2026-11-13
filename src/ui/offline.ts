@@ -8,7 +8,7 @@ import { escapeHtml } from './hud';
 import { tankSvg } from './tankSvg';
 import { save } from './storage';
 import { sfx } from './sfx';
-import { TEAM_COLORS, TEAM_NAMES } from '../scenes/art';
+import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
 import { onlineConfigured } from '../net';

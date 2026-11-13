@@ -3,7 +3,7 @@ import { MAPS, MAP_IDS, type MapId } from '../data/maps';
 import type { PlayerSetup } from '../game/types';
 import { Rng, randomSeed } from '../game/rng';
 import type { MatchSummary } from '../scenes/GameScene';
-import { TEAM_COLORS, TEAM_NAMES } from '../scenes/art';
+import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { getBackend, lobbyCode, lobbyLink, clientId } from '../net';
 import { friendly, type Backend, type Room, type RoomPlayer } from '../net/backend';
 import { DuplicateNameError, LobbyFullError, LobbySession, LOBBY_MAX } from '../net/lobby';

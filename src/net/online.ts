@@ -64,6 +64,8 @@ export class OnlineGame implements NetHooks {
 
   attach(scene: SceneApi) {
     this.scene = scene;
+    // 게임을 불러오는 동안 도착한 턴 기록을 넘겨준다
+    for (const r of this.records.values()) scene.onRemoteTurn(r);
     this.tick();
   }
 
