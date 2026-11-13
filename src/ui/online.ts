@@ -498,7 +498,7 @@ function setupsOf(room: Room): PlayerSetup[] {
   // '랜덤'은 판의 시드로 정한다 (모든 기기가 같은 결과)
   return room.players.map((p, i) => {
     const r = new Rng(((room.seed ?? 1) ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0);
-    const tank = p.tank === 'random' ? randomTank(() => r.next()) : p.tank;
+    const tank = p.tank === 'random' ? randomTank(() => r.next(), p.name) : p.tank;
     return { id: p.id, name: p.name, tank, team: p.team, ai: null, items: [...p.items] };
   });
 }

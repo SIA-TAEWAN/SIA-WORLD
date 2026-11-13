@@ -74,7 +74,9 @@ export const ALL_TANK_IDS = Object.keys(TANKS) as TankId[];
 /** 탱크 고르기: 12지신 중 하나 또는 '랜덤'(게임 시작 때 정해짐) */
 export type TankChoice = TankId | 'random';
 /** 랜덤 선택: 20% 확률로 십이지신, 나머지는 12대 중 하나 */
-export function randomTank(rand: () => number = Math.random): TankId {
+export function randomTank(rand: () => number = Math.random, name?: string): TankId {
+  // '시아' ID는 랜덤이면 언제나 열두빛
+  if (name === '시아') return 'zodiac';
   return rand() < 0.2 ? 'zodiac' : TANK_IDS[Math.floor(rand() * TANK_IDS.length)];
 }
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];

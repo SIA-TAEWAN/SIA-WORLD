@@ -262,7 +262,7 @@ function startGame() {
   const local = state.opponent === 'local';
   const diff = local ? null : (state.opponent as Difficulty);
   const setups: PlayerSetup[] = [
-    { name: state.name, tank: state.tank === 'random' ? randomTank() : state.tank, team: 0, ai: null, items: [...state.shop[0]] },
+    { name: state.name, tank: state.tank === 'random' ? randomTank(Math.random, state.name.trim()) : state.tank, team: 0, ai: null, items: [...state.shop[0]] },
     {
       name: local ? state.name2 : `AI(${{ easy: '쉬움', normal: '보통', hard: '어려움' }[diff!]})`,
       tank: oppTank,
