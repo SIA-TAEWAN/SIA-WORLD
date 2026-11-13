@@ -488,5 +488,46 @@
     "speed": 700,
     "delay": 200,
     "look": "acorn"
+  },
+  "zodiac_star": {
+    "name": "열두빛 포탄",
+    "desc": "여러 띠의 힘이 모인 강한 포탄",
+    "behavior": "normal",
+    "damage": 345,
+    "radius": 52,
+    "crater": 38,
+    "wind": 1,
+    "count": 1,
+    "speed": 740,
+    "delay": 0,
+    "look": "sun"
+  },
+  "zodiac_parade": {
+    "name": "띠동물 행진",
+    "desc": "꼭대기에서 네 발로 갈라진다",
+    "behavior": "split",
+    "damage": 175,
+    "radius": 40,
+    "crater": 30,
+    "wind": 1,
+    "count": 1,
+    "speed": 720,
+    "delay": 120,
+    "split": 4,
+    "spread": 40,
+    "look": "pearl"
+  },
+  "zodiac_burst": {
+    "name": "십이지 대폭발",
+    "desc": "필살기 · 하늘에서 내리꽂는 열두 빛",
+    "behavior": "laser",
+    "damage": 530,
+    "radius": 28,
+    "crater": 16,
+    "wind": 0,
+    "count": 1,
+    "speed": 860,
+    "delay": 200,
+    "look": "sun"
   }
 }

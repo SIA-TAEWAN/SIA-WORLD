@@ -1,9 +1,9 @@
-import { ITEMS, TANKS, WEAPONS, type ItemId, type WeaponDef } from './data';
+import { ITEMS, ITEM_IDS, TANKS, WEAPONS, type ItemId, type WeaponDef } from './data';
 import { Rng } from './rng';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput } from './types';
 import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
-import { fly, tankCenter, TANK_HIT_R, type ImpactHandler } from '../physics/shot';
+import { fly, tankCenter, TANK_HIT_R, WIND_K, type ImpactHandler } from '../physics/shot';
 
 const MOVE_DELAY_PER_PX = 0.5;
 const ULT_PER_DEALT = 0.12;
@@ -15,6 +15,22 @@ const LASER_DEPTH = 90;
 /** 바람이 바뀌는 빠르기: 턴마다 바뀌는 최대 폭 */
 export const WIND_STEPS = { slow: 2, normal: 5, fast: 8 } as const;
 export type WindMode = keyof typeof WIND_STEPS;
+
+/** 보급 상자: 10턴마다 비행기가 플레이어마다 하나씩 떨어뜨린다 */
+export const DROP_EVERY = 10;
+export interface Crate {
+  id: number;
+  x: number;
+  y: number;
+  item: ItemId;
+}
+export interface CrateDrop {
+  id: number;
+  item: ItemId;
+  /** 낙하산 궤적 [x,y,...] (프레임마다). 맵 밖으로 떨어지면 마지막이 맵 아래 */
+  path: number[];
+  landed: boolean;
+}
 
 export interface MatchOptions {
   wind?: WindMode;
@@ -33,6 +49,12 @@ export class Match {
   moveLeft = 0;
   /** 승리 팀. 무승부는 -1, 진행 중이면 null */
   winner: Team | -1 | null = null;
+  crates: Crate[] = [];
+  nextCrate = 0;
+  /** 이번 턴 시작에 떨어진 상자 (화면 연출용) */
+  lastDrop: CrateDrop[] | null = null;
+  /** 상자를 주운 기록 (화면이 꺼내 간다) */
+  pickups: { tank: number; crate: number; item: ItemId }[] = [];
 
   readonly setups: PlayerSetup[];
   readonly options: MatchOptions;
@@ -114,7 +136,65 @@ export class Match {
     this.wind = this.turn === 1 ? dw : Math.max(-10, Math.min(10, this.wind + dw));
     this.moveLeft = next.def.move;
     this.movedThisTurn = 0;
+    this.lastDrop = this.turn % DROP_EVERY === 0 ? this.dropCrates() : null;
+    this.pickup();
     return next;
+  }
+
+  /** 비행기가 살아 있는 플레이어마다 상자 하나씩, 그 근처 하늘에서 떨어뜨린다 (바람을 탄다) */
+  private dropCrates(): CrateDrop[] {
+    const drops: CrateDrop[] = [];
+    const T = this.terrain;
+    for (const t of this.tanks) {
+      if (!t.alive) continue;
+      const item = ITEM_IDS[this.rng.int(0, ITEM_IDS.length - 1)];
+      let x = Math.max(20, Math.min(T.w - 20, t.x + this.rng.int(-160, 160)));
+      let y = -60;
+      let vx = 0;
+      const path = [x, y];
+      let landed = false;
+      for (let f = 0; f < 60 * 30; f++) {
+        vx += this.wind * WIND_K * 0.5 * (1 / 60);
+        vx = Math.max(-80, Math.min(80, vx));
+        x += vx / 60;
+        y += 75 / 60;
+        if (f % 2 === 0) path.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+        if (x < 4 || x > T.w - 4 || y > T.h + 40) break;
+        if (y > 0 && T.solid(Math.round(x), Math.round(y) + 1)) {
+          landed = true;
+          break;
+        }
+      }
+      const id = this.nextCrate++;
+      path.push(x, y);
+      if (landed) this.crates.push({ id, x: Math.round(x), y: Math.round(y), item });
+      drops.push({ id, item, path, landed });
+    }
+    return drops;
+  }
+
+  /** 상자 아래 땅이 없어지면 떨어진다 */
+  private settleCrates() {
+    const T = this.terrain;
+    this.crates = this.crates.filter((c) => {
+      while (!T.solid(c.x, c.y + 1) && c.y < T.h + 40) c.y++;
+      return c.y < T.h + 40;
+    });
+  }
+
+  /** 탱크가 상자에 닿으면 빈 아이템 칸에 넣는다 (칸이 꽉 차 있으면 그대로 둔다) */
+  pickup() {
+    for (const t of this.tanks) {
+      if (!t.alive) continue;
+      for (const c of [...this.crates]) {
+        if (Math.abs(t.x - c.x) > 20 || Math.abs(t.y - c.y) > 28) continue;
+        const slot = t.items.findIndex((i) => !i);
+        if (slot < 0) continue;
+        t.items[slot] = c.item;
+        this.crates = this.crates.filter((x) => x !== c);
+        this.pickups.push({ tank: t.idx, crate: c.id, item: c.item });
+      }
+    }
   }
 
   // ---------- 탱크 이동 ----------
@@ -159,6 +239,7 @@ export class Match {
     this.moveLeft--;
     this.movedThisTurn++;
     this.settle(t);
+    this.pickup();
     if (!t.alive) this.checkWinner();
     return true;
   }
@@ -330,6 +411,8 @@ export class Match {
       if (!ok) events.push({ f: endF, type: 'death', target: o.idx });
     }
     result.frames = endF;
+    this.settleCrates();
+    this.pickup();
     this.checkWinner();
     return result;
   }
@@ -343,7 +426,8 @@ export class Match {
   /** 기기 간 비교용 상태 지문 (지형 + 탱크 + 난수 상태) */
   stateHash(): string {
     const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10)].join(',')).join(';');
-    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}`;
+    const crates = this.crates.map((c) => `${c.id}:${c.x},${c.y}`).join(';');
+    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}`;
   }
 
   snapshot(): MatchSnapshot {
@@ -360,6 +444,8 @@ export class Match {
       rng: this.rng.state,
       winner: this.winner,
       terrain: this.terrain.encode(),
+      crates: this.crates.map((c) => ({ ...c })),
+      nextCrate: this.nextCrate,
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
         alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower,
@@ -377,6 +463,8 @@ export class Match {
     m.rng.state = s.rng;
     m.winner = s.winner;
     m.terrain.decode(s.terrain);
+    m.crates = (s.crates ?? []).map((c) => ({ ...c }));
+    m.nextCrate = s.nextCrate ?? 0;
     s.tanks.forEach((d, i) => Object.assign(m.tanks[i], d));
     return m;
   }
@@ -399,5 +487,7 @@ export interface MatchSnapshot {
   rng: number;
   winner: Team | -1 | null;
   terrain: string;
+  crates?: Crate[];
+  nextCrate?: number;
   tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower'>[];
 }

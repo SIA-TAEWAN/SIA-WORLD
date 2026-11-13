@@ -110,6 +110,18 @@ function look(id: TankId): Look {
           <ellipse cx="35.4" cy="22.2" rx="2.1" ry="1.7" fill="${O}"/><path d="M32.5 25 q1 2.6 2.4 0" fill="#ff7a9a" ${s(0.8)}/>`,
         face: `<ellipse cx="31.5" cy="19" rx="3.4" ry="3.6" fill="${a}" fill-opacity=".35"/>`,
       };
+    case 'zodiac': {
+      // 십이지신: 금빛 몸, 왕관, 열두 띠 색 구슬
+      const cols = ['#a9b2c3', '#8a5a3c', '#ff9a2e', '#f4f1f6', '#3fbf8f', '#7bc04a', '#b8763e', '#fff7e6', '#a8693c', '#ff3b3b', '#e0a85a', '#ffb3c7'];
+      return {
+        back: `<path d="M15 12 L17 3 L20.5 9 L24 1.5 L27.5 9 L31 3 L33 12 Z" fill="#ffd23a" ${s(1.5)}/>
+          <circle cx="17" cy="3" r="1.4" fill="${a}"/><circle cx="24" cy="1.5" r="1.6" fill="#6fd8ff"/><circle cx="31" cy="3" r="1.4" fill="${a}"/>
+          <path d="M9 27 Q2 22 6 15 Q8 21 12 23" fill="#ff8fb1" ${s(1.2)}/><path d="M39 27 Q46 22 42 15 Q40 21 36 23" fill="#6fd8ff" ${s(1.2)}/>`,
+        plate: cols.map((col, i) => `<circle cx="${11.5 + i * 2.27}" cy="27.6" r="1.05" fill="${col}" stroke="${O}" stroke-width=".35"/>`).join(''),
+        front: `<path d="M33.5 23.6 q1.6 1.3 3.2 0" fill="none" stroke="${O}" stroke-width="1"/>`,
+        domeR: 9.6,
+      };
+    }
     case 'pig':
       return {
         back: `<path d="M17 14 L14.5 6.5 L21.5 11 Z M25.5 11 L28 4 L30.5 11.5 Z" fill="${c}" ${s(1.5)}/>

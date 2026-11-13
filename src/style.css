@@ -1734,3 +1734,25 @@ body.in-game .sound-fab {
     height: 68px;
   }
 }
+
+/* 랜덤(십이지신) 버튼 */
+.zodiac-pick button.rand {
+  background: linear-gradient(135deg, #fff1c2, #ffd6e6 50%, #d6f0ff);
+  justify-content: center;
+}
+.zodiac-pick button.rand .dice {
+  font-size: 26px;
+  line-height: 40px;
+}
+.zodiac-pick button.rand.sel {
+  background: linear-gradient(135deg, #ffd23a, #ff8fb1 50%, #6fd8ff);
+}
+
+.my-points {
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 16px;
+  white-space: nowrap;
+}

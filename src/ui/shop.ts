@@ -1,10 +1,10 @@
 import { ITEMS, ITEM_IDS, ITEM_SLOTS, START_POINTS, type ItemId } from '../game/data';
 import { sfx } from './sfx';
 
-/** 아이템 상점: 포인트 1,000으로 3칸까지, 판매(환불) 가능 */
-export function renderShop(el: HTMLElement, mine: ItemId[], onChange: () => void, locked = false) {
+/** 아이템 상점: 내 포인트(기본 1,000)로 3칸까지, 판매(환불) 가능 */
+export function renderShop(el: HTMLElement, mine: ItemId[], onChange: () => void, locked = false, budget = START_POINTS) {
   const spent = mine.reduce((s, i) => s + ITEMS[i].price, 0);
-  const left = START_POINTS - spent;
+  const left = budget - spent;
   el.innerHTML = `
     <div class="points">남은 포인트 <b>${left.toLocaleString()}</b></div>
     <div class="shop">${ITEM_IDS.map((id) => {

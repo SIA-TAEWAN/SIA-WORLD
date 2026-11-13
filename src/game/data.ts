@@ -2,7 +2,7 @@ import tanksJson from '../data/tanks.json';
 import weaponsJson from '../data/weapons.json';
 import itemsJson from '../data/items.json';
 
-export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig';
+export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig' | 'zodiac';
 export type ItemId = 'double' | 'power' | 'repair' | 'teleport';
 export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split' | 'roll' | 'homing';
 
@@ -68,7 +68,13 @@ export interface ItemDef {
 export const TANKS = tanksJson as Record<TankId, TankDef>;
 export const WEAPONS = weaponsJson as Record<string, WeaponDef>;
 export const ITEMS = itemsJson as Record<ItemId, ItemDef>;
-export const TANK_IDS = Object.keys(TANKS) as TankId[];
+/** 고를 수 있는 12지신 탱크 (십이지신은 랜덤으로만) */
+export const TANK_IDS: TankId[] = (Object.keys(TANKS) as TankId[]).filter((t) => t !== 'zodiac');
+export const ALL_TANK_IDS = Object.keys(TANKS) as TankId[];
+/** 랜덤 선택: 20% 확률로 십이지신, 나머지는 12대 중 하나 */
+export function randomTank(rand: () => number = Math.random): TankId {
+  return rand() < 0.2 ? 'zodiac' : TANK_IDS[Math.floor(rand() * TANK_IDS.length)];
+}
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 
 export const START_POINTS = 1000;

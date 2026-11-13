@@ -1,4 +1,4 @@
-import { TANKS, TANK_IDS, type TankId } from '../game/data';
+import { TANKS, TANK_IDS, randomTank, type TankId } from '../game/data';
 import { MAPS, MAP_IDS, type MapId } from '../data/maps';
 import type { PlayerSetup } from '../game/types';
 import type { WindMode } from '../game/match';
@@ -25,6 +25,8 @@ let online: OnlineGame | null = null;
 const started = new Map<string, number>();
 
 const me = () => ({ id: clientId(), name: state.name });
+/** 마지막 판의 승리 팀 (게임방으로 돌아갈 때 정산이 아직이면 같이 보낸다) */
+let lastWinner: number | null = null;
 export const WIND_LABEL: Record<WindMode, string> = { slow: '느리게 ±2', normal: '보통 ±5', fast: '빠르게 ±8' };
 const myPlayer = (room?: Room): RoomPlayer => {
   const p = room?.players.find((x) => x.id === clientId());
@@ -81,6 +83,7 @@ export async function showLobby() {
       return nav.entry();
     }
     lobby = sess;
+    state.points = await backend.getPoints(state.name).catch(() => 1000);
     const mine = sess.rooms.find((r) => r.players.some((p) => p.id === clientId()) && !(r.gone ?? []).includes(clientId()));
     if (mine) {
       // 게임 중에 끊겼다가 바로 돌아왔으면 그 게임으로 돌아간다 (최근 신호가 있는 진행 중인 방만)
@@ -107,6 +110,7 @@ function renderLobby(sess: LobbySession) {
     `<header class="bar">
       <button class="btn ghost" id="exit">← 나가기</button>
       <h2>대기실 <small id="count"></small></h2>
+      <span class="my-points" title="온라인에서 이기면 +100, 지면 -100 (최저 1,000)">🏅 ${state.points.toLocaleString()}P</span>
       <button class="btn small-btn" id="copy">🔗 링크 복사</button>
     </header>
     <div class="lobby-grid">
@@ -160,7 +164,7 @@ function renderLobby(sess: LobbySession) {
       .join('');
     renderChatLog(root, sess);
   };
-  const drawShop = () => renderShop($(root, '#shop'), state.shop[0], drawShop);
+  const drawShop = () => renderShop($(root, '#shop'), state.shop[0], drawShop, false, state.points);
   const unsub = sess.subscribe(draw);
   draw();
   drawShop();
@@ -343,7 +347,7 @@ function renderRoom(id: string) {
     }).join('');
     const tankHtml = TANK_IDS.map(
       (t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} title="${TANKS[t].name} (${TANKS[t].animal}) · ${TANKS[t].role}">${tankSvg(t, 40)}<span>${TANKS[t].name}</span></button>`,
-    ).join('');
+    ).join('') + `<button data-v="__random" class="rand ${mineP.tank === 'zodiac' ? 'sel' : ''}" ${locked ? 'disabled ' : ''}title="20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>${mineP.tank === 'zodiac' ? '열두빛!' : '랜덤'}</span></button>`;
     const tankEl = $(root, '#tank');
     if (tankEl.dataset.html !== tankHtml) {
       tankEl.innerHTML = tankHtml;
@@ -376,7 +380,10 @@ function renderRoom(id: string) {
     root.querySelectorAll<HTMLElement>('#wind button').forEach((b) => b.addEventListener('click', () => void setOpt(speed, b.dataset.v as WindMode)));
     root.querySelectorAll<HTMLElement>('#tank button').forEach((b) =>
       b.addEventListener('click', () => {
-        state.tank = b.dataset.v as TankId;
+        if (b.dataset.v === '__random') {
+          state.tank = randomTank();
+          toast(state.tank === 'zodiac' ? '✨ 십이지신 열두빛 당첨! (20% 확률)' : `🎲 ${TANKS[state.tank].name}(이)가 골라졌어요`);
+        } else state.tank = b.dataset.v as TankId;
         sfx.click();
         void update({ tank: state.tank });
       }),
@@ -416,6 +423,7 @@ function renderRoom(id: string) {
         void update({ items: [...state.shop[0]] });
       },
       shopLocked,
+      state.points,
     );
   };
 
@@ -535,16 +543,21 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
       clearInterval(beat);
       // 판 결과 정리 (실패하면 몇 번 더 시도)
       const present = g.presentIds();
+      const before = state.points;
+      lastWinner = s.winner === -1 ? null : s.winner;
       const finish = async () => {
         for (let i = 0; i < 4; i++) {
           try {
-            await backend!.endGame(room.id, g.gameNo, present);
+            await backend!.endGame(room.id, g.gameNo, present, s.winner === -1 ? null : s.winner);
             break;
           } catch {
             await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
           }
         }
         await sess.refetch();
+        state.points = await backend!.getPoints(state.name).catch(() => state.points);
+        const d = state.points - before;
+        toast(d > 0 ? `🏅 승리! 포인트 +${d} → ${state.points.toLocaleString()}P` : d < 0 ? `포인트 ${d} → ${state.points.toLocaleString()}P` : `포인트 ${state.points.toLocaleString()}P (최저 1,000)`);
       };
       void finish();
       g.dispose();
@@ -583,7 +596,7 @@ async function backToRoom(id: string) {
   }
   if (room.status === 'playing') {
     // 다른 기기가 결과를 정리할 때까지 잠깐 기다린다
-    await backend!.endGame(room.id, room.game_no, [clientId(), ...[...(roomSess?.present ?? [])]]).catch(() => undefined);
+    await backend!.endGame(room.id, room.game_no, [clientId(), ...[...(roomSess?.present ?? [])]], lastWinner).catch(() => undefined);
     await sess.refetch();
   }
   renderRoom(id);

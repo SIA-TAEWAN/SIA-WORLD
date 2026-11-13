@@ -69,7 +69,7 @@ export class Hud {
     // 파워·이동
     const gauges = el('div', 'panel gauges');
     const pw = el('div', 'gauge power');
-    pw.title = '눌러서(드래그) 파워 리미터 설정 · 키보드 - / =';
+    pw.title = '마우스로 클릭(드래그)해서 파워 리미터 설정 · 오른쪽 끝을 누르면 해제';
     pw.append(this.powerFill, this.powerLimit, this.powerLast, this.powerNum);
     // 게이지를 누르거나 끌면 그 위치가 파워 리미터가 된다
     let dragging = false;

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Match, type MatchSnapshot, type WindMode } from '../game/match';
+import { Match, type CrateDrop, type MatchSnapshot, type WindMode } from '../game/match';
 import { Rng } from '../game/rng';
 import { TURN_SECONDS, ITEMS } from '../game/data';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput } from '../game/types';
@@ -9,7 +9,7 @@ import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, TEAM_COLORS } from './art';
 import { faceColor, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
-import { TANK_IDS } from '../game/data';
+import { ALL_TANK_IDS } from '../game/data';
 import { Fx } from './fx';
 import { drawShell, TRAIL } from './shells';
 import { music } from '../ui/music';
@@ -244,6 +244,10 @@ export class GameScene extends Phaser.Scene {
   /** 탱크별 파워 리미터 (최대로 눌러도 여기까지) */
   private limit = new Map<number, number>();
   private offAngleAcc = 0;
+  /** 땅에 놓인 보급 상자 그림 (상자 id별) */
+  private crateViews = new Map<number, Phaser.GameObjects.Container>();
+  /** 떨어지는 중인 상자 id */
+  private falling = new Set<number>();
   /** 이번 턴에 바로 쓴 아이템 칸 */
   private usedNow: number[] = [];
   private remote: { applied: number; stage: 'wait' | 'move' | 'aim' | 'charge'; rec?: TurnRecord; liveRuns: number[]; moveAcc: number } = {
@@ -265,7 +269,7 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     // 탱크 그림은 메뉴와 같은 SVG를 2배 크기로 굽는다
-    for (const id of TANK_IDS) {
+    for (const id of ALL_TANK_IDS) {
       const key = `tank-${id}`;
       if (this.textures.exists(key)) continue;
       this.load.svg(key, `data:image/svg+xml;base64,${btoa(tankTextureSvg(id))}`, { width: TEX_BOX.w * TEX_SCALE, height: TEX_BOX.h * TEX_SCALE });
@@ -477,6 +481,7 @@ export class GameScene extends Phaser.Scene {
   private nextTurn() {
     if (this.match.over) return this.finish();
     this.match.startTurn();
+    if (this.match.lastDrop) this.playDrop(this.match.lastDrop);
     this.cfg.net?.turnStarted(this.match);
     this.beginTurn(0);
   }
@@ -514,6 +519,86 @@ export class GameScene extends Phaser.Scene {
   private startAi() {
     this.phase = 'ai';
     this.ai = { stage: 'wait', move: 0, shot: null, wait: 0.9 };
+  }
+
+  // ---------- 보급 상자 ----------
+
+  private makeCrate(x: number, y: number, chute: boolean) {
+    const g = this.add.graphics();
+    if (chute) {
+      g.lineStyle(1.2, 0x5a4a3a, 0.9).lineBetween(-8, -14, -11, -34).lineBetween(8, -14, 11, -34).lineBetween(0, -14, 0, -36);
+      g.fillStyle(0xff5a6a).slice(0, -34, 16, Math.PI, 0, false).fillPath();
+      g.fillStyle(0xffffff).slice(0, -34, 16, Math.PI * 1.33, Math.PI * 1.66, false).fillPath();
+      g.lineStyle(1.5, 0x3a2a1e).beginPath().arc(0, -34, 16, Math.PI, 0).strokePath();
+    }
+    g.fillStyle(0xc98a4a).fillRoundedRect(-9, -15, 18, 15, 2).lineStyle(1.6, 0x3a2a1e).strokeRoundedRect(-9, -15, 18, 15, 2);
+    g.lineStyle(1.2, 0x8a5a2a).lineBetween(-9, -7.5, 9, -7.5).lineBetween(0, -15, 0, 0);
+    const q = this.add.text(0, -7.5, '?', { fontFamily: 'Jua, sans-serif', fontSize: '11px', color: '#fff', stroke: '#3a2a1e', strokeThickness: 3 }).setOrigin(0.5);
+    return this.add.container(x, y, [g, q]).setDepth(9);
+  }
+
+  /** 비행기가 지나가며 상자를 낙하산으로 떨어뜨린다 */
+  private playDrop(drops: CrateDrop[]) {
+    sfx.turn();
+    this.hud.toast('✈️ 보급 비행기가 상자를 떨어뜨려요! 닿으면 아이템 획득');
+    const W = this.match.terrain.w;
+    const plane = this.add.graphics().setDepth(40);
+    plane.fillStyle(0xffffff).fillEllipse(0, 0, 70, 18).lineStyle(2, 0x3a2a1e).strokeEllipse(0, 0, 70, 18);
+    plane.fillStyle(0xff5a6a).fillTriangle(-30, -2, -42, -20, -22, -4).fillRoundedRect(-10, -3, 22, 26, 4);
+    plane.fillStyle(0x6fd8ff).fillCircle(22, -2, 4).fillCircle(10, -3, 3.5);
+    plane.setPosition(-200, -60);
+    this.tweens.add({ targets: plane, x: W + 200, duration: 4200, onComplete: () => plane.destroy() });
+    for (const d of drops) {
+      this.falling.add(d.id);
+      const box = this.makeCrate(d.path[0], d.path[1], true);
+      const n = d.path.length / 2;
+      const delay = ((d.path[0] + 200) / (W + 400)) * 4200;
+      this.tweens.addCounter({
+        from: 0,
+        to: n - 1,
+        delay,
+        duration: (n * 2 * 1000) / 60,
+        onUpdate: (tw) => {
+          const i = Math.floor(tw.getValue() ?? 0);
+          box.setPosition(d.path[i * 2], d.path[i * 2 + 1]);
+          box.angle = Math.sin(i / 8) * 8;
+        },
+        onComplete: () => {
+          box.destroy();
+          this.falling.delete(d.id);
+          if (!d.landed) this.puff(d.path[d.path.length - 2], Math.min(d.path[d.path.length - 1], this.match.terrain.h), 0xffffff, 4);
+        },
+      });
+    }
+  }
+
+  /** 땅에 있는 상자를 그리고, 주운 상자는 지운다 */
+  private syncCrates() {
+    const m = this.match;
+    const live = new Set(m.crates.map((c) => c.id));
+    for (const c of m.crates) {
+      if (this.falling.has(c.id)) continue;
+      let v = this.crateViews.get(c.id);
+      if (!v) {
+        v = this.makeCrate(c.x, c.y, false);
+        this.crateViews.set(c.id, v);
+      }
+      if (this.phase !== 'fly') v.y += (c.y - v.y) * 0.2;
+    }
+    for (const [id, v] of this.crateViews) {
+      if (live.has(id)) continue;
+      this.puff(v.x, v.y - 8, 0xffe066, 6);
+      v.destroy();
+      this.crateViews.delete(id);
+    }
+    while (m.pickups.length) {
+      const p = m.pickups.shift()!;
+      const t = m.tanks[p.tank];
+      const view = this.views[p.tank];
+      this.floatText(view.x, view.y - 70, `📦 ${ITEMS[p.item].name}`, '#ffe066');
+      sfx.heal();
+      if (t === this.viewer()) this.hud.toast(`보급 상자에서 ${ITEMS[p.item].name}을(를) 얻었어요!`);
+    }
   }
 
   /** 즉시 아이템 사용 (내 기기에서 누르거나, 다른 기기의 턴 기록을 재생) */
@@ -671,6 +756,7 @@ export class GameScene extends Phaser.Scene {
     else if (this.phase === 'remote') this.updateRemote(dt);
     else if (this.phase === 'fly') this.updatePlayback(dt * this.speed);
     this.updateOffTurn(dt);
+    this.syncCrates();
 
     // 내가 조종 중이면 다른 기기에 진행 상황을 보낸다
     if ((this.phase === 'aim' || this.phase === 'ai') && this.cfg.net) {
@@ -987,6 +1073,10 @@ export class GameScene extends Phaser.Scene {
     this.hud.drawMiniBase(this.match);
     this.views = this.match.tanks.map((t) => new TankView(this, t, this.fx));
     this.views.forEach((v) => v.t.alive || v.kill());
+    this.crateViews.forEach((v) => v.destroy());
+    this.crateViews.clear();
+    this.falling.clear();
+    this.match.pickups = [];
     if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = this.match;
     if (this.match.over) return this.finish();
     if (this.match.current < 0) return this.nextTurn();

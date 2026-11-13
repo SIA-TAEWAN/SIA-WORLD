@@ -128,6 +128,14 @@ function mutate<T>(fn: (rooms: LocalRoom[]) => T): T {
   return out;
 }
 
+function readPoints(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem('siatank:localpoints') ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
 const fail = (m: string): never => {
   throw new Error(m);
 };
@@ -231,12 +239,20 @@ export function createLocalBackend(): Backend {
         return r;
       });
     },
-    async endGame(id, gameNo, present) {
+    async getPoints(name) {
+      return readPoints()[name] ?? 1000;
+    },
+    async endGame(id, gameNo, present, winner) {
       mutate((rooms) => {
         const i = rooms.findIndex((x) => x.id === id);
         if (i < 0) return;
         const r = rooms[i];
         if (r.status !== 'playing' || r.game_no !== gameNo) return;
+        if (winner === 0 || winner === 1) {
+          const pts = readPoints();
+          for (const p of r.players) pts[p.name] = Math.max(1000, (pts[p.name] ?? 1000) + (p.team === winner ? 100 : -100));
+          localStorage.setItem('siatank:localpoints', JSON.stringify(pts));
+        }
         r.players = r.players.filter((p) => present.includes(p.id) && !(r.gone ?? []).includes(p.id)).map((p) => ({ ...p, items: [], ready: false }));
         r.gone = [];
         if (!r.players.some((p) => p.id === r.host_id)) r.host_id = r.players[0]?.id ?? null;

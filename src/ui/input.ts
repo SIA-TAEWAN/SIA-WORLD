@@ -39,9 +39,6 @@ export class Input {
       if (weapon !== undefined) this.emit({ type: 'weapon', slot: weapon as 0 | 1 | 2 });
       const item = { KeyQ: 0, KeyW: 1, KeyE: 2 }[e.code];
       if (item !== undefined) this.emit({ type: 'item', slot: item });
-      // 파워 리미터: - / = (또는 숫자패드 - +)
-      const lim = { Minus: -5, NumpadSubtract: -5, Equal: 5, NumpadAdd: 5 }[e.code];
-      if (lim !== undefined) this.emit({ type: 'limit', delta: lim });
     };
     const up = (e: KeyboardEvent) => {
       const k = map[e.code];

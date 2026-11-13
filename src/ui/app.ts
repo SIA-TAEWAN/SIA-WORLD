@@ -24,6 +24,8 @@ export const state = {
   shop: [[], []] as ItemId[][],
   shopFor: 0,
   name2: '2P',
+  /** 내 ID의 포인트 (온라인에서 이기면 +100, 지면 -100, 최저 1000) */
+  points: 1000,
   /** 게임 속도·바람 빠르기 (AI 1:1) */
   speed: 1,
   wind: 'normal' as 'slow' | 'normal' | 'fast',

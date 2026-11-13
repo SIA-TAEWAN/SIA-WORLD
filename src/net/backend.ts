@@ -67,7 +67,10 @@ export interface Backend {
   /** 게임 속도·바람 빠르기 (방장만) */
   setOptions(id: string, playerId: string, speed: number, wind: WindMode): Promise<void>;
   startGame(id: string, host: string, seed: number): Promise<Room>;
-  endGame(id: string, gameNo: number, present: string[]): Promise<void>;
+  /** 판 정산 (winner: 이긴 팀, 무승부·모름은 null) */
+  endGame(id: string, gameNo: number, present: string[], winner?: number | null): Promise<void>;
+  /** ID별 포인트 (없으면 1000) */
+  getPoints(name: string): Promise<number>;
   /** 게임 중 나가기 (모두 나가면 방이 사라진다) */
   quitGame(id: string, playerId: string): Promise<void>;
   /** 방에 아직 사람이 있다는 신호 */

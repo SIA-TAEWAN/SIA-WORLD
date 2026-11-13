@@ -104,7 +104,7 @@ describe('턴 규칙', () => {
     m.current = 0;
     m.tanks[0].hp = 500;
     m.fire(shot({ power: 5, itemSlot: 0 }));
-    expect(m.tanks[0].hp).toBe(700);
+    expect(m.tanks[0].hp).toBe(500 + Math.round(m.tanks[0].maxHp * 0.2));
     expect(m.tanks[0].items[0]).toBeNull();
   });
 
@@ -247,8 +247,9 @@ describe('수리킷 즉시 사용·파워에 따른 구덩이', () => {
     m.current = 0;
     m.tanks[0].hp = 500;
     const d0 = m.tanks[0].delay;
-    expect(m.useItemNow(0)).toBe(200);
-    expect(m.tanks[0].hp).toBe(700);
+    const heal = Math.round(m.tanks[0].maxHp * 0.2);
+    expect(m.useItemNow(0)).toBe(heal);
+    expect(m.tanks[0].hp).toBe(500 + heal);
     expect(m.tanks[0].items[0]).toBeNull();
     expect(m.tanks[0].delay - d0).toBe(200);
     expect(m.useItemNow(0)).toBeNull();
@@ -264,5 +265,43 @@ describe('수리킷 즉시 사용·파워에 따른 구덩이', () => {
     const base = crater(0);
     expect(crater(60)).toBeGreaterThan(base * 1.25);
     expect(crater(60, ['power'])).toBeGreaterThan(crater(60) * 1.25);
+  });
+});
+
+describe('보급 상자·십이지신', () => {
+  it('10턴마다 살아 있는 플레이어마다 상자가 떨어지고, 닿으면 빈 칸에 들어간다', () => {
+    const m = new Match(duo(), 'valley', 31);
+    for (let i = 0; i < 9; i++) {
+      m.startTurn();
+      expect(m.lastDrop).toBeNull();
+      m.skipTurn();
+    }
+    m.startTurn();
+    expect(m.lastDrop!.length).toBe(2);
+    const c = m.crates[0];
+    expect(c).toBeDefined();
+    const t = m.tanks[0];
+    t.items = [null, null, null];
+    t.x = c.x;
+    t.y = 0;
+    m.settle(t);
+    m.pickup();
+    expect(t.items[0]).toBe(c.item);
+    expect(m.crates.find((x) => x.id === c.id)).toBeUndefined();
+    // 스냅샷으로 상자도 이어진다
+    const b = Match.fromSnapshot(JSON.parse(JSON.stringify(m.snapshot())));
+    expect(b.stateHash()).toBe(m.stateHash());
+  });
+
+  it('랜덤 선택은 약 20% 확률로 십이지신, 십이지신은 평균보다 20% 튼튼하다', async () => {
+    const { randomTank, TANKS, TANK_IDS } = await import('../src/game/data');
+    let n = 0;
+    let seed = 1;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 5000; i++) if (randomTank(rand) === 'zodiac') n++;
+    expect(n / 5000).toBeGreaterThan(0.17);
+    expect(n / 5000).toBeLessThan(0.23);
+    const avg = TANK_IDS.reduce((s, id) => s + TANKS[id].hp, 0) / TANK_IDS.length;
+    expect(TANKS.zodiac.hp / avg).toBeGreaterThan(1.15);
   });
 });
