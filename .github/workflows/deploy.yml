@@ -48,7 +48,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - run: supabase link --project-ref "$PROJECT_REF"
       # 001은 SQL Editor에서 직접 실행했으므로 '실행됨'으로 기록만 한다 (이미 기록돼 있으면 그대로)
       - run: supabase migration repair --status applied 001 --password "$SUPABASE_DB_PASSWORD" --yes || supabase migration repair --status applied 001 --password "$SUPABASE_DB_PASSWORD"
       - run: supabase migration list --password "$SUPABASE_DB_PASSWORD"
