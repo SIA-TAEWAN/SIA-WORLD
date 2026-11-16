@@ -176,7 +176,7 @@
     "delay": 0,
     "look": "fire",
     "zone": "fire",
-    "zoneR": 36
+    "zoneR": 54
   },
   "dragon_pearl": {
     "name": "여의주",
@@ -233,7 +233,7 @@
     "delay": 100,
     "look": "mist",
     "zone": "poison",
-    "zoneR": 36,
+    "zoneR": 54,
     "zoneH": 72
   },
   "snake_imugi": {
