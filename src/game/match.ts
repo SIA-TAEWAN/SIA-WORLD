@@ -405,6 +405,8 @@ export class Match {
 
     /** 이번 발사로 불·독에 걸린 탱크 */
     const afflicted = new Map<number, 'fire' | 'poison'>();
+    /** 장판 피해 배율 (증폭벽) */
+    const dotMul = new Map<number, number>();
     /** 이번 발사로 막 중독된 탱크 (피해는 다음 차례부터) */
     const fresh = new Set<number>();
     let result: ShotResult;
@@ -422,7 +424,7 @@ export class Match {
             const zx = Math.round(x);
             let zy = Math.max(0, Math.round(y));
             while (zy < this.terrain.h && !this.terrain.solid(zx, zy + 1)) zy++;
-            zone = { id: this.nextZone++, kind: w.zone, x: zx, y: zy, r: w.zoneR ?? ZONE_R, h: w.zoneH, owner: t.idx, until: w.zone === 'fire' ? this.turn + 3 : undefined };
+            zone = { id: this.nextZone++, kind: w.zone, x: zx, y: zy, r: Math.round((w.zoneR ?? ZONE_R) * boost), h: w.zoneH ? Math.round(w.zoneH * boost) : undefined, mul: boost, owner: t.idx, until: w.zone === 'fire' ? this.turn + 3 : undefined };
             this.zones.push(zone);
           }
           events.push({ f, type: 'explode', x, y, radius: w.radius, crater: cr, big: slot === 2, fx: w.fx, zone: zone ? { ...zone } : undefined });
@@ -436,8 +438,11 @@ export class Match {
             hurt(f, o, raw, o.idx === direct);
             // 중독: 맞은 탱크의 다음 차례 3번 동안 피해
             if (w.poison && o.alive && o.team !== t.team && o.idx !== t.idx) {
-              if (!(o.poison ?? 0)) events.push({ f, type: 'poisoned', target: o.idx });
+              const was = (o.poison ?? 0) > 0;
+              if (!was) events.push({ f, type: 'poisoned', target: o.idx });
               o.poison = 3;
+              // 증폭벽을 지난 탄이면 독도 강해진다 (이미 걸린 독이 더 세면 그대로)
+              o.poisonMul = Math.max(was ? (o.poisonMul ?? 1) : 1, boost);
               fresh.add(o.idx);
             }
             if (w.behavior === 'push' && wasAlive && o.alive && o.team !== t.team) {
@@ -497,7 +502,7 @@ export class Match {
     result.frames = endF;
     this.settleCrates();
     this.settleZones();
-    result.frames = this.applyDots(t, afflicted, events, endF, fresh);
+    result.frames = this.applyDots(t, afflicted, events, endF, fresh, dotMul);
     events.sort((a, b) => a.f - b.f);
     this.refillUlt();
     this.pickup();
@@ -509,7 +514,7 @@ export class Match {
    * 불·독안개 위에 있는 적, 중독된 적에게 초당 2%씩 5번 (최대 10%) 피해. 체력 1은 남긴다.
    * 누군가를 태운(중독시킨) 장판은 사라진다. 끝나는 프레임을 돌려준다.
    */
-  private applyDots(shooter: TankState, afflicted: Map<number, 'fire' | 'poison'>, events: SimEvent[], endF: number, fresh = new Set<number>()): number {
+  private applyDots(shooter: TankState, afflicted: Map<number, 'fire' | 'poison'>, events: SimEvent[], endF: number, fresh = new Set<number>(), dotMul = new Map<number, number>()): number {
     for (const z of [...this.zones]) {
       let used = false;
       for (const o of this.tanks) {
@@ -519,6 +524,7 @@ export class Match {
         const up = z.h ?? z.r;
         if (Math.abs(c.x - z.x) > z.r + TANK_HIT_R || c.y < z.y - up - TANK_HIT_R || c.y > z.y + TANK_HIT_R) continue;
         if (!afflicted.has(o.idx)) afflicted.set(o.idx, z.kind);
+        dotMul.set(o.idx, Math.max(dotMul.get(o.idx) ?? 1, z.mul ?? 1));
         used = true;
       }
       if (used) this.zones = this.zones.filter((x) => x !== z);
@@ -530,13 +536,14 @@ export class Match {
       if (o.alive && (o.poison ?? 0) > 0 && !fresh.has(o.idx)) {
         sick.add(o.idx);
         if (!afflicted.has(o.idx)) afflicted.set(o.idx, 'poison');
+        dotMul.set(o.idx, Math.max(dotMul.get(o.idx) ?? 1, o.poisonMul ?? 1));
       }
     if (!afflicted.size) return endF;
     let last = endF;
     for (const [idx, kind] of [...afflicted].sort((a, b) => a[0] - b[0])) {
       const o = this.tanks[idx];
       // 포탄 피해와 상관없이 최대 체력의 정확히 10%를 5번에 나눠서 (체력 1은 남긴다)
-      const total = Math.round(o.maxHp * DOT_RATE * DOT_TICKS);
+      const total = Math.round(o.maxHp * DOT_RATE * DOT_TICKS * (dotMul.get(idx) ?? 1));
       for (let i = 0; i < DOT_TICKS; i++) {
         const f = endF + 40 + i * 60;
         const per = Math.round((total * (i + 1)) / DOT_TICKS) - Math.round((total * i) / DOT_TICKS);
@@ -575,7 +582,7 @@ export class Match {
 
   /** 기기 간 비교용 상태 지문 (지형 + 탱크 + 난수 상태) */
   stateHash(): string {
-    const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10), t.poison ?? 0].join(',')).join(';');
+    const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10), t.poison ?? 0, t.poisonMul ?? 1].join(',')).join(';');
     const crates = this.crates.map((c) => `${c.id}:${c.x},${c.y}`).join(';');
     const zones = this.zones.map((z) => `${z.id}:${z.kind}:${z.x},${z.y}`).join(';');
     const wall = this.wall ? `${this.wall.kind}:${this.wall.x}:${this.wall.until}` : '';
@@ -603,7 +610,7 @@ export class Match {
       wall: this.wall ? { ...this.wall } : null,
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
-        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0,
+        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0, poisonMul: t.poisonMul ?? 1,
       })),
     };
   }
@@ -650,5 +657,5 @@ export interface MatchSnapshot {
   zones?: Zone[];
   nextZone?: number;
   wall?: Wall | null;
-  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison'>[];
+  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison' | 'poisonMul'>[];
 }

@@ -67,6 +67,7 @@ class TankView {
   private hasArt = false;
   /** 중독 중 (녹색) */
   poisoned = false;
+  poisonIcon!: Phaser.GameObjects.Text;
   private bodyScale = 1;
   private dy = 0;
   label: Phaser.GameObjects.Container;
@@ -132,6 +133,9 @@ class TankView {
       cloud.x = name.x - name.width / 2 - 2;
       parts.push(cloud);
     }
+    // 중독 표시 (체력바 오른쪽)
+    this.poisonIcon = scene.add.text(26, -44 + this.dy, '☠️', { fontSize: '13px' }).setOrigin(0, 0.5).setVisible(false);
+    parts.push(this.poisonIcon);
     this.label = scene.add.container(t.x, t.y, parts).setDepth(30);
     this.drawHp();
 
@@ -982,6 +986,7 @@ export class GameScene extends Phaser.Scene {
       }
       // 화면에 보이는 지형 기준 (포탄이 날아가는 동안 미리 파인 땅에 기울지 않게)
       v.sync(v.t.facing, v.t.angle, dt, v.dead ? 0 : this.visTilt(Math.round(v.x), Math.round(v.y)));
+      v.poisonIcon.setVisible(v.poisoned && !v.dead);
     }
 
     // 카메라: 조준 중엔 현재 탱크를 따라감

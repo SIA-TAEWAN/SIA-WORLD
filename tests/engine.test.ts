@@ -651,3 +651,38 @@ describe('초보 모드', () => {
     expect(play('easy', true)).toBe(play('normal', true));
   });
 });
+
+describe('벽과 독·불', () => {
+  const fireThrough = (tank: 'rooster' | 'snake' | 'dragon', slot: 0 | 1, kind: 'amp' | 'double' | 'triple' | null) => {
+    for (let a = 20; a <= 70; a += 1)
+      for (let p = 20; p <= 100; p += 1) {
+        const m = new Match(duo(tank, 'ox'), 'valley', 5);
+        m.startTurn();
+        m.current = 0;
+        m.wind = 0;
+        m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+        m.tanks[1].x = 700; m.tanks[1].y = 0; m.settle(m.tanks[1]);
+        let b = 0;
+        while (!m.terrain.solid(500, b)) b++;
+        m.wall = kind ? { kind, x: 500, bottom: b, top: 0, until: 99 } : null;
+        const r = m.fire(shot({ weapon: slot, angle: a, power: p, facing: 1 }));
+        if (r.events.some((e) => e.type === 'damage' && e.target === 1)) return { m, r };
+      }
+    throw new Error('no hit');
+  };
+  it('벽을 지난 깃털탄도 맞으면 중독, 증폭벽이면 독이 1.3배', () => {
+    for (const kind of ['amp', 'double', 'triple'] as const) {
+      const { m } = fireThrough('rooster', 1, kind);
+      expect(m.tanks[1].poison).toBe(3);
+      expect(m.tanks[1].poisonMul).toBe(kind === 'amp' ? 1.3 : 1);
+    }
+  });
+  it('증폭벽을 지난 독안개·불은 넓고 세다', () => {
+    for (const [tank, slot] of [['snake', 1], ['dragon', 0]] as const) {
+      const plain = fireThrough(tank, slot, null).r.events.find((e) => e.type === 'explode') as { zone?: { r: number } };
+      const amp = fireThrough(tank, slot, 'amp').r.events.find((e) => e.type === 'explode') as { zone?: { r: number; mul?: number } };
+      expect(amp.zone!.r).toBeGreaterThan(plain.zone!.r);
+      expect(amp.zone!.mul).toBe(1.3);
+    }
+  });
+});

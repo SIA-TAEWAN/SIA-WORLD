@@ -37,6 +37,8 @@ export interface TankState {
   lastPower: number;
   /** 중독이 남은 턴 수 (꼬꼬댁 깃털탄) */
   poison?: number;
+  /** 중독 세기 배율 (증폭벽을 지난 탄이면 1.3) */
+  poisonMul?: number;
 }
 
 /** 한 턴의 입력. 온라인에서는 이것만 주고받는다. */
@@ -91,6 +93,8 @@ export interface Zone {
   until?: number;
   /** 위로 닿는 높이 (없으면 r) */
   h?: number;
+  /** 증폭벽을 지난 탄이 만든 장판: 지속 피해 배율 */
+  mul?: number;
 }
 
 export interface ShellTrack {
