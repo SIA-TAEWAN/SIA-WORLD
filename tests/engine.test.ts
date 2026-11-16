@@ -562,3 +562,60 @@ describe('팀킬·장판 높이', () => {
     expect(r.events.some((e) => e.type === 'dot' && e.target === 1)).toBe(false);
   });
 });
+
+describe('특수 벽', () => {
+  const run = (kind: 'amp' | 'whirl' | 'double' | 'triple', power = 55) => {
+    const m = new Match(duo('tiger', 'ox'), 'valley', 51);
+    m.startTurn();
+    m.current = 0;
+    m.wind = 0;
+    m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+    m.tanks[1].x = 1300; m.tanks[1].y = 0; m.settle(m.tanks[1]);
+    let bottom = 0;
+    while (!m.terrain.solid(500, bottom)) bottom++;
+    m.wall = { kind, x: 500, bottom, until: m.turn + 3 };
+    return m.fire(shot({ angle: 45, power, facing: 1 }));
+  };
+
+  it('더블벽은 한 발, 트리플벽은 두 발이 더 생긴다', () => {
+    expect(run('double').shells.length).toBe(2);
+    expect(run('triple').shells.length).toBe(3);
+  });
+  it('증폭벽을 지나면 구덩이가 커진다', () => {
+    const plain = new Match(duo('tiger', 'ox'), 'valley', 51);
+    const a = run('amp').events.find((e) => e.type === 'explode') as { crater: number };
+    expect(a.crater).toBeGreaterThan(Math.round(plain.weaponOf(plain.tanks[0], 0).crater * (1 + 0.5 * 0.55)));
+  });
+  it('회오리는 돌며 천장 위로 올라간다', () => {
+    const r = run('whirl');
+    const p = r.shells[0].path;
+    let minY = Infinity;
+    for (let i = 1; i < p.length; i += 2) minY = Math.min(minY, p[i]);
+    expect(minY).toBeLessThan(0);
+  });
+  it('천장 위로 넘어가면 효과가 없다', () => {
+    // 아주 높이 쏴서 벽 위(천장 밖)로 넘긴다
+    const m = new Match(duo('tiger', 'ox'), 'valley', 51);
+    m.startTurn();
+    m.current = 0;
+    m.wind = 0;
+    m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+    m.wall = { kind: 'triple', x: 700, bottom: 700, until: 99 };
+    const r = m.fire(shot({ angle: 70, power: 100, facing: 1 }));
+    expect(r.shells.length).toBe(1);
+  });
+  it('벽은 없을 때만 턴마다 5% 확률로 생기고 3턴 뒤 사라진다', () => {
+    const m = new Match(duo(), 'valley', 61);
+    let made = 0;
+    for (let i = 0; i < 2000; i++) {
+      const had = m.wall;
+      m.startTurn();
+      if (!had && m.wall) {
+        made++;
+        expect(m.wall.until).toBe(m.turn + 3);
+      }
+      if (had && m.turn < had.until) expect(m.wall).toEqual(had);
+    }
+    expect(made).toBeGreaterThan(40);
+  });
+});

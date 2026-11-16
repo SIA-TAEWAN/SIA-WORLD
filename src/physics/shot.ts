@@ -1,5 +1,5 @@
 import type { WeaponDef } from '../game/data';
-import type { ShellTrack, SimEvent, TankState } from '../game/types';
+import type { ShellTrack, SimEvent, TankState, Wall } from '../game/types';
 import { Terrain } from './terrain';
 
 export const DT = 1 / 60;
@@ -31,6 +31,8 @@ export interface ShotWorld {
   terrain: Terrain;
   tanks: TankState[];
   wind: number;
+  /** 특수 벽 */
+  wall?: Wall | null;
 }
 
 export interface Volley {
@@ -74,13 +76,19 @@ interface Shell {
   /** 물수제비: 남은 튐 횟수, 지금까지 터진 횟수 */
   hopsLeft: number;
   hopN: number;
+  /** 벽 효과를 이미 받았다 */
+  walled: boolean;
+  /** 증폭벽 배율 */
+  boost: number;
+  /** 회오리 안에서 도는 중 */
+  whirl: { cx: number; a: number; vx: number; vy: number } | null;
   alive: boolean;
   track: ShellTrack;
 }
 
 export interface ImpactHandler {
   /** 폭발 처리. 실제 시뮬레이션에서만 호출된다. */
-  explode(f: number, x: number, y: number, directTarget: number | null, craterScale?: number): void;
+  explode(f: number, x: number, y: number, directTarget: number | null, craterScale?: number, boost?: number): void;
   build(f: number, x: number, y: number): void;
   carveLine(f: number, x1: number, y1: number, x2: number, y2: number, r: number): void;
   /** 착탄 지점에 하늘에서 수직 레이저 */
@@ -147,6 +155,30 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
   const HOP_SCALE = [1, 0.65, 0.4, 0.3];
   /** 절구처럼 나중에 하늘에서 떨어지는 탄 */
   const later: Shell[] = [];
+  /** 더블벽: 잠시 뒤 벽에서 한 발 더 */
+  const queued: { at: number; s: Shell }[] = [];
+  const wall = world.wall ?? null;
+  const cloneAt = (s: Shell, x: number, y: number, vx: number, vy: number, spawn: number): Shell => {
+    const c: Shell = { ...s, id: nextId++, x, y, vx, vy, walled: true, child: true, whirl: null, alive: true, track: { id: 0, spawn, path: [x, y], behavior: s.track.behavior, look: s.track.look, big: s.track.big } };
+    c.track.id = c.id;
+    return c;
+  };
+  /** 벽을 지나는 순간 효과 (천장 위로 넘어가면 없음). 회오리면 true */
+  const crossWall = (s: Shell, px: number): boolean => {
+    if (!wall || s.walled || s.y < 0 || s.y > wall.bottom) return false;
+    if ((px - wall.x) * (s.x - wall.x) > 0 || px === s.x) return false;
+    s.walled = true;
+    if (wall.kind === 'amp') s.boost *= 1.3;
+    else if (wall.kind === 'double') queued.push({ at: f + 12, s: cloneAt(s, wall.x, s.y, s.vx, s.vy, f + 12) });
+    else if (wall.kind === 'triple') {
+      for (const k of [-1, 1]) later.push(cloneAt(s, s.x, s.y, s.vx + k * 42, s.vy - 6, f + 1));
+    } else if (wall.kind === 'whirl') {
+      s.whirl = { cx: wall.x, a: s.vx > 0 ? Math.PI : 0, vx: s.vx, vy: s.vy };
+      s.x = wall.x;
+      return true;
+    }
+    return false;
+  };
   const impact = (s: Shell, x: number, y: number, target: number | null) => {
     impacts.push({ x, y, target });
     end(s);
@@ -160,13 +192,13 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
     }
     if (w.behavior === 'firework') {
       // 폭죽: 맞은 자리 주변에서 다섯 번 (위치는 좌표로 정해지는 의사난수 → 모든 기기에서 같다)
-      handler.explode(f, x, y, target);
+      handler.explode(f, x, y, target, 1, s.boost);
       for (let i = 1; i < 5; i++) {
         const h = Math.sin(x * 12.9898 + y * 78.233 + i * 37.719) * 43758.5453;
         const r1 = h - Math.floor(h);
         const h2 = Math.sin(x * 39.346 + y * 11.135 + i * 83.155) * 24634.6345;
         const r2 = h2 - Math.floor(h2);
-        handler.explode(f + i * 9, x + (r1 - 0.5) * 130, y - 10 + (r2 - 0.5) * 70, null);
+        handler.explode(f + i * 9, x + (r1 - 0.5) * 130, y - 10 + (r2 - 0.5) * 70, null, 1, s.boost);
       }
       return;
     }
@@ -183,7 +215,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         handler.laser(f + i * 14, lx, ly);
       }
     }
-    else handler.explode(f, x, y, target, HOP_SCALE[Math.min(s.hopN, 3)]);
+    else handler.explode(f, x, y, target, HOP_SCALE[Math.min(s.hopN, 3)], s.boost);
   };
 
   while (f < MAX_FRAMES) {
@@ -207,6 +239,9 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         rollLeft: 0,
         hopsLeft: w.hops ?? 0,
         hopN: 0,
+        walled: false,
+        boost: 1,
+        whirl: null,
         alive: true,
         track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big && w.behavior !== 'firework' },
       };
@@ -214,6 +249,11 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
       shells.push(s);
     }
 
+    for (let i = queued.length - 1; i >= 0; i--)
+      if (queued[i].at <= f) {
+        shells.push(queued[i].s);
+        queued.splice(i, 1);
+      }
     let anyAlive = false;
     const born: Shell[] = [];
     for (const s of shells) {
@@ -238,6 +278,22 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         }
         s.track.path.push(s.x, s.y);
         end(s);
+        anyAlive = true;
+        continue;
+      }
+
+      if (s.whirl) {
+        // 회오리: 벽 둘레를 돌며 위로 올라가다 천장을 넘으면 원래대로 날아간다
+        const wh = s.whirl;
+        wh.a += 0.32;
+        s.y -= 3.4;
+        s.x = wh.cx + Math.cos(wh.a) * 16;
+        if (s.y < 0) {
+          s.vx = wh.vx;
+          s.vy = Math.min(wh.vy, -Math.abs(wh.vy) * 0.6);
+          s.whirl = null;
+        }
+        s.track.path.push(s.x, s.y);
         anyAlive = true;
         continue;
       }
@@ -344,6 +400,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         const py = s.y;
         s.x += dx / n;
         s.y += dy / n;
+        if (crossWall(s, px)) break;
         const t = hitTank(s.x, s.y, s);
         if (t !== null) {
           impact(s, s.x, s.y, t);
@@ -374,7 +431,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
               end(s);
               break;
             }
-            handler.explode(f, s.x, s.y, null, HOP_SCALE[Math.min(s.hopN, 3)]);
+            handler.explode(f, s.x, s.y, null, HOP_SCALE[Math.min(s.hopN, 3)], s.boost);
             s.hopsLeft--;
             s.hopN++;
             s.x = px;
@@ -410,7 +467,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
     shells.push(...born, ...later.splice(0));
     f++;
     if (!handler && impacts.length) break;
-    if (!anyAlive && pending.length === 0 && shells.every((s) => !s.alive)) break;
+    if (!anyAlive && pending.length === 0 && !queued.length && shells.every((s) => !s.alive)) break;
   }
 
   return { frames: f, shells: shells.map((s) => s.track), impacts };

@@ -157,7 +157,7 @@ const ledge: MapDef = {
   build(rng) {
     const t = new Terrain(MAP_W, MAP_H);
     const n = noise(rng, 3);
-    // 선반: 두께 81px. top(x)로 기울기·울퉁불퉁함을 준다
+    // 선반: 두께 122px. top(x)로 기울기·울퉁불퉁함을 준다
     const shelf = (x0: number, x1: number, top: (x: number) => number, thick: number) => {
       for (let x = x0; x <= x1; x++) {
         const edge = Math.min(x - x0, x1 - x) / 30;
@@ -171,19 +171,46 @@ const ledge: MapDef = {
     const bumps = Array.from({ length: 8 }, () => ({ x: rng.range(60, 1540), w: rng.range(18, 45), h: rng.range(-16, 22) }));
     const bumpy = (x: number) => b1(x) * 0.9 + bumps.reduce((s, q) => s - q.h * Math.exp(-(((x - q.x) / q.w) ** 2)), 0);
     // 전체가 V자 (약 22.5도): 바깥쪽이 높고 가운데로 갈수록 내려간다
-    const hi = 190 + Math.round(rng.range(-10, 10));
+    const hi = 130 + Math.round(rng.range(-10, 10));
     const lo = hi + 236; // 경사 약 22.5도
-    shelf(40, 610, (x) => hi + ((x - 40) / 570) * (lo - hi) + bumpy(x), 81);
-    shelf(990, 1560, (x) => hi + ((1560 - x) / 570) * (lo - hi) + bumpy(x), 81);
+    shelf(40, 610, (x) => hi + ((x - 40) / 570) * (lo - hi) + bumpy(x), 122);
+    shelf(990, 1560, (x) => hi + ((1560 - x) / 570) * (lo - hi) + bumpy(x), 122);
     // 작은 섬: 가운데 위쪽 하나, V자 아래쪽 양옆에 하나씩
     shelf(710, 890, (x) => hi - 20 + b1(x) * 0.3, 39);
-    shelf(380, 500, (x) => lo + 75 + b1(x) * 0.3, 39);
-    shelf(1100, 1220, (x) => lo + 75 + b1(x) * 0.3, 39);
+    shelf(380, 500, (x) => lo + 115 + b1(x) * 0.3, 39);
+    shelf(1100, 1220, (x) => lo + 115 + b1(x) * 0.3, 39);
     return t;
   },
 };
 
-export const MAPS: Record<MapId, MapDef> = { valley, sky, sphinx, ledge };
+/** 지형 전체를 위로 올린다: 땅 윗면 평균과 바닥 사이 거리의 30%만큼 */
+function raised(def: MapDef): MapDef {
+  return {
+    ...def,
+    build(rng) {
+      const t = def.build(rng);
+      let sum = 0;
+      let n = 0;
+      for (let x = 0; x < t.w; x++)
+        for (let y = 0; y < t.h; y++)
+          if (t.data[y * t.w + x]) {
+            sum += y;
+            n++;
+            break;
+          }
+      const shift = n ? Math.round(0.3 * (t.h - sum / n)) : 0;
+      if (shift > 0) {
+        t.data.copyWithin(0, shift * t.w);
+        // 아래 빈 줄은 맨 아랫줄을 이어 붙인다 (땅이면 땅, 낭떠러지면 빈칸)
+        const last = (t.h - shift - 1) * t.w;
+        for (let y = t.h - shift; y < t.h; y++) t.data.copyWithin(y * t.w, last, last + t.w);
+      }
+      return t;
+    },
+  };
+}
+
+export const MAPS: Record<MapId, MapDef> = { valley: raised(valley), sky: raised(sky), sphinx: raised(sphinx), ledge: raised(ledge) };
 export const MAP_IDS: MapId[] = ['valley', 'sky', 'sphinx', 'ledge'];
 /** '랜덤' 맵에서 나올 수 있는 맵 (특수 규칙 맵은 빠진다) */
 export const RANDOM_MAP_IDS: MapId[] = ['valley', 'sky', 'sphinx'];

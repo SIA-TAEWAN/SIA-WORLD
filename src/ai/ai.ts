@@ -28,7 +28,7 @@ export interface Aim {
 
 /** 각도·파워를 시뮬레이션해서 목표에 가장 가까이 떨어지는 조합을 찾는다 */
 export function bestAim(match: Match, shooter: TankState, target: TankState, w: WeaponDef, wind: number): Aim {
-  const world: ShotWorld = { terrain: match.terrain, tanks: match.tanks, wind };
+  const world: ShotWorld = { terrain: match.terrain, tanks: match.tanks, wind, wall: match.wall };
   const tc = tankCenter(target);
   const facing: 1 | -1 = target.x >= shooter.x ? 1 : -1;
   const { angleMin, angleMax } = shooter.def;

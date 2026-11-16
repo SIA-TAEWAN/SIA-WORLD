@@ -1,6 +1,6 @@
 import { ITEMS, ITEM_IDS, TANKS, WEAPONS, type ItemId, type WeaponDef } from './data';
 import { Rng } from './rng';
-import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput, Zone } from './types';
+import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput, Wall, WallKind, Zone } from './types';
 import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
 import { fly, tankCenter, TANK_HIT_R, WIND_K, type ImpactHandler } from '../physics/shot';
@@ -15,6 +15,8 @@ const LASER_DEPTH = 90;
 const DOT_TICKS = 5;
 const DOT_RATE = 0.02;
 const ZONE_R = 18;
+/** 특수 벽이 턴마다 생길 확률 */
+const WALL_CHANCE = 0.05;
 
 /** 바람이 바뀌는 빠르기: 턴마다 바뀌는 최대 폭 */
 export const WIND_STEPS = { slow: 2, normal: 5, fast: 8 } as const;
@@ -59,6 +61,8 @@ export class Match {
   nextCrate = 0;
   /** 땅에 남은 불·독안개 */
   zones: Zone[] = [];
+  /** 판마다 무작위 특수 벽 하나 (두 팀 사이 가운데) */
+  wall: Wall | null = null;
   nextZone = 0;
   /** 이번 턴 시작에 떨어진 상자 (화면 연출용) */
   lastDrop: CrateDrop[] | null = null;
@@ -130,6 +134,21 @@ export class Match {
     });
   }
 
+  /** 두 팀 탱크 사이 가운데에 4종 중 하나 (3턴 동안) */
+  private placeWall(): Wall {
+    const kinds: WallKind[] = ['amp', 'whirl', 'double', 'triple'];
+    const kind = kinds[this.rng.int(0, 3)];
+    const avg = (team: number) => {
+      const xs = this.tanks.filter((t) => t.team === team).map((t) => t.x);
+      return xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+    };
+    const alive = (team: number) => this.tanks.some((t) => t.team === team && t.alive);
+    const x = Math.round(Math.max(30, Math.min(this.terrain.w - 30, (alive(0) && alive(1) ? (avg(0) + avg(1)) / 2 : this.terrain.w / 2) + this.rng.range(-20, 20))));
+    let bottom = 0;
+    while (bottom < this.terrain.h && !this.terrain.solid(x, bottom)) bottom++;
+    return { kind, x, bottom, until: this.turn + 3 };
+  }
+
   get cur(): TankState {
     return this.tanks[this.current];
   }
@@ -147,6 +166,9 @@ export class Match {
     const next = this.order()[0];
     this.current = next.idx;
     this.turn++;
+    // 특수 벽: 3턴이 지나면 사라지고, 없을 때만 턴마다 5% 확률로 생긴다
+    if (this.wall && this.turn >= this.wall.until) this.wall = null;
+    if (!this.wall && this.rng.next() < WALL_CHANCE) this.wall = this.placeWall();
     // 바람은 직전 바람에서 ±0~(빠르기)만 바뀐다 (첫 턴은 -5~5)
     const step = this.turn === 1 ? 5 : WIND_STEPS[this.options.wind ?? 'normal'];
     const dw = this.rng.int(-step, step);
@@ -379,8 +401,9 @@ export class Match {
     let result: ShotResult;
     {
       const handler: ImpactHandler = {
-        explode: (f, x, y, direct, scale = 1) => {
-          const cr = Math.max(4, Math.round(crater * scale));
+        explode: (f, x, y, direct, scale = 1, boost = 1) => {
+          // boost: 증폭벽을 지난 탄 (파워업처럼 피해·구덩이 증가)
+          const cr = Math.max(4, Math.round(crater * scale * boost));
           this.terrain.carve(x, y, cr);
           // 폭발이 덮친 불은 꺼진다
           this.zones = this.zones.filter((z) => z.kind !== 'fire' || Math.hypot(z.x - x, z.y - y) > cr + z.r);
@@ -399,7 +422,7 @@ export class Match {
             const c = tankCenter(o);
             const d = o.idx === direct ? 0 : Math.max(0, Math.hypot(c.x - x, c.y - y) - TANK_HIT_R * 0.5);
             if (d > w.radius) continue;
-            const raw = w.damage * damageMul * (1 - d / w.radius) * (o.idx === direct ? DIRECT_BONUS : 1);
+            const raw = w.damage * damageMul * boost * (1 - d / w.radius) * (o.idx === direct ? DIRECT_BONUS : 1);
             const wasAlive = o.alive;
             hurt(f, o, raw, o.idx === direct);
             // 중독: 맞은 탱크의 다음 차례 3번 동안 피해
@@ -543,7 +566,8 @@ export class Match {
     const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10), t.poison ?? 0].join(',')).join(';');
     const crates = this.crates.map((c) => `${c.id}:${c.x},${c.y}`).join(';');
     const zones = this.zones.map((z) => `${z.id}:${z.kind}:${z.x},${z.y}`).join(';');
-    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}`;
+    const wall = this.wall ? `${this.wall.kind}:${this.wall.x}:${this.wall.until}` : '';
+    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}|${wall}`;
   }
 
   snapshot(): MatchSnapshot {
@@ -564,6 +588,7 @@ export class Match {
       nextCrate: this.nextCrate,
       zones: this.zones.map((z) => ({ ...z })),
       nextZone: this.nextZone,
+      wall: this.wall ? { ...this.wall } : null,
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
         alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0,
@@ -585,6 +610,7 @@ export class Match {
     m.nextCrate = s.nextCrate ?? 0;
     m.zones = (s.zones ?? []).map((z) => ({ ...z }));
     m.nextZone = s.nextZone ?? 0;
+    m.wall = s.wall ? { ...s.wall } : null;
     s.tanks.forEach((d, i) => Object.assign(m.tanks[i], d));
     return m;
   }
@@ -611,5 +637,6 @@ export interface MatchSnapshot {
   nextCrate?: number;
   zones?: Zone[];
   nextZone?: number;
+  wall?: Wall | null;
   tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison'>[];
 }

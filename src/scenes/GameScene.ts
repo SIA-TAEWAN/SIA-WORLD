@@ -331,6 +331,52 @@ export class GameScene extends Phaser.Scene {
     for (const z of this.match.zones) this.addZoneView(z);
   }
 
+  /** 특수 벽 그림 (엔진의 벽과 맞춘다) */
+  private wallView: Phaser.GameObjects.Container | null = null;
+  private wallKey = '';
+
+  private syncWall() {
+    const w = this.match.wall;
+    const key = w ? `${w.kind}:${w.x}:${w.until}` : '';
+    if (key === this.wallKey) return;
+    this.wallKey = key;
+    if (this.wallView) {
+      const old = this.wallView;
+      this.tweens.add({ targets: old, alpha: 0, duration: 500, onComplete: () => old.destroy() });
+      this.wallView = null;
+    }
+    if (!w) return;
+    const info = {
+      amp: { color: 0xff4d6d, icon: '⚡', label: '증폭벽' },
+      whirl: { color: 0x3fc8ff, icon: '🌀', label: '회오리' },
+      double: { color: 0xffc83d, icon: '×2', label: '더블벽' },
+      triple: { color: 0xb46bff, icon: '×3', label: '트리플벽' },
+    }[w.kind];
+    const c = this.add.container(w.x, 0).setDepth(6).setAlpha(0);
+    const h = Math.max(40, w.bottom);
+    // 빛나는 기둥 (천장부터 바닥까지)
+    c.add(this.add.rectangle(0, 0, 48, h, info.color, 0.22).setOrigin(0.5, 0));
+    c.add(this.add.rectangle(0, 0, 20, h, info.color, 0.55).setOrigin(0.5, 0));
+    c.add(this.add.rectangle(0, 0, 4, h, 0xffffff, 0.9).setOrigin(0.5, 0));
+    // 위아래로 흐르는 빛 알갱이
+    for (let i = 0; i < 6; i++) {
+      const dot = this.add.circle((i % 2 ? 6 : -6), (h * i) / 6, 3, 0xffffff, 0.9);
+      c.add(dot);
+      this.tweens.add({ targets: dot, y: { from: h, to: 0 }, duration: w.kind === 'whirl' ? 1400 : 2400, repeat: -1, delay: i * 300 });
+      if (w.kind === 'whirl') this.tweens.add({ targets: dot, x: { from: -14, to: 14 }, duration: 350, yoyo: true, repeat: -1, delay: i * 90 });
+    }
+    // 이름표 (기둥 여러 곳에)
+    for (let y = 60; y < h - 20; y += 220) {
+      const tag = this.add
+        .text(0, y, `${info.icon}\n${info.label}`, { fontFamily: 'Jua, sans-serif', fontSize: '20px', color: '#fff', align: 'center', stroke: `#${info.color.toString(16).padStart(6, '0')}`, strokeThickness: 4 })
+        .setOrigin(0.5);
+      c.add(tag);
+    }
+    this.tweens.add({ targets: c, alpha: 1, duration: 500 });
+    this.wallView = c;
+    if (this.match.turn > 0) this.hud.toast(`${info.icon} ${info.label}이(가) 나타났어요! (3턴)`);
+  }
+
   /** 어흥이 할퀴기: 세 줄 발톱 자국 */
   private clawFx(x: number, y: number) {
     const g = this.add.graphics().setDepth(26).setPosition(x, y).setRotation(-0.5);
@@ -400,8 +446,24 @@ export class GameScene extends Phaser.Scene {
     this.vis = terrain.clone();
     this.paint(0, 0, terrain.w - 1, terrain.h - 1);
     this.add.image(0, 0, 'terrain').setOrigin(0).setDepth(0);
-    // 맵 아래 낭떠러지 표시
-    this.add.rectangle(-400, terrain.h, terrain.w + 800, 600, 0x000000, 0.25).setOrigin(0).setDepth(1);
+    // 맵 바깥(아래·양옆)이 보이지 않게 덮는다: 땅이 바닥까지 이어진 맵은 흙, 낭떠러지 맵은 구름
+    {
+      const last = (terrain.h - 1) * terrain.w;
+      let solid = 0;
+      for (let x = 0; x < terrain.w; x++) solid += terrain.data[last + x];
+      if (solid > terrain.w * 0.5) {
+        const dirt = hex(map.theme.dirtBottom);
+        this.add.rectangle(-3000, terrain.h - 1, terrain.w + 6000, 3000, dirt).setOrigin(0).setDepth(1);
+        const sl = Math.max(0, terrain.surface(0));
+        const sr = Math.max(0, terrain.surface(terrain.w - 1));
+        this.add.rectangle(-3000, sl, 3000, terrain.h - sl + 1, dirt).setOrigin(0).setDepth(1);
+        this.add.rectangle(terrain.w, sr, 3000, terrain.h - sr + 1, dirt).setOrigin(0).setDepth(1);
+      } else {
+        const sea = this.add.graphics().setDepth(1);
+        sea.fillStyle(0xffffff, 0.95).fillRect(-3000, terrain.h - 30, terrain.w + 6000, 3000);
+        for (let x = -3000; x < terrain.w + 3000; x += 80) sea.fillCircle(x, terrain.h - 30 + Math.sin(x * 0.05) * 8, 40);
+      }
+    }
 
     this.views = this.match.tanks.map((t) => new TankView(this, t, this.fx));
     this.shellG = this.add.graphics().setDepth(20);
@@ -878,6 +940,7 @@ export class GameScene extends Phaser.Scene {
     this.updateOffTurn(dt);
     this.syncCrates();
     if (this.phase !== 'fly') this.syncZones();
+    this.syncWall();
 
     // 내가 조종 중이면 다른 기기에 진행 상황을 보낸다
     if ((this.phase === 'aim' || this.phase === 'ai') && this.cfg.net) {

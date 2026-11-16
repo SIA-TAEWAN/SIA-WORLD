@@ -65,6 +65,17 @@ export type SimEvent =
   /** 불·독 지속 피해 (체력 1은 남긴다) */
   | { f: number; type: 'dot'; target: number; amount: number; kind: 'fire' | 'poison'; last: boolean; /** 끝난 뒤에도 중독이 남아 있다 */ stay?: boolean };
 
+/** 세로로 긴 특수 벽 (천장부터 바닥까지). 천장 위로 넘어가면 효과 없음 */
+export type WallKind = 'amp' | 'whirl' | 'double' | 'triple';
+export interface Wall {
+  kind: WallKind;
+  x: number;
+  /** 벽 아래끝 (그 자리 땅 높이) */
+  bottom: number;
+  /** 이 턴 번호가 되면 사라진다 (생긴 뒤 3턴) */
+  until: number;
+}
+
 /** 땅에 남은 장판 (불·독안개) */
 export interface Zone {
   id: number;
