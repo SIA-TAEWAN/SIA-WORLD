@@ -234,7 +234,7 @@
     "role": "랜덤으로만 나오는 전설 (무기 20% 강함)",
     "color": "#ffd23a",
     "accent": "#ff5a8a",
-    "hp": 810,
+    "hp": 821,
     "defense": 0.15,
     "move": 130,
     "angleMin": 15,
