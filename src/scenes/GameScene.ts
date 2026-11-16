@@ -63,6 +63,8 @@ class TankView {
   body: Phaser.GameObjects.Image;
   lids: Phaser.GameObjects.Graphics;
   private hasArt = false;
+  /** 중독 중 (녹색) */
+  poisoned = false;
   private bodyScale = 1;
   private dy = 0;
   label: Phaser.GameObjects.Container;
@@ -192,7 +194,7 @@ class TankView {
   /** 맞았을 때 흔들림 */
   hurt() {
     this.body.setTintFill(0xffffff);
-    this.scene.time.delayedCall(90, () => (this.dead ? this.body.setTint(0x555555) : this.body.clearTint()));
+    this.scene.time.delayedCall(90, () => (this.dead ? this.body.setTint(0x555555) : this.poisoned ? this.body.setTint(0x6dff7a) : this.body.clearTint()));
     this.scene.tweens.add({ targets: this.body, x: { from: -3, to: 3 }, duration: 50, yoyo: true, repeat: 2, onComplete: () => (this.body.x = 0) });
   }
 
@@ -1189,6 +1191,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.drawMiniBase(this.match);
     this.views = this.match.tanks.map((t) => new TankView(this, t, this.fx));
     this.views.forEach((v) => v.t.alive || v.kill());
+    this.views.forEach((v) => (v.poisoned = (v.t.poison ?? 0) > 0) && v.body.setTint(0x6dff7a));
     this.crateViews.forEach((v) => v.destroy());
     this.crateViews.clear();
     this.falling.clear();
@@ -1336,12 +1339,13 @@ export class GameScene extends Phaser.Scene {
         const fire = e.kind === 'fire';
         if (fire) {
           v.body.setTintFill(0xff7a2a);
-          this.time.delayedCall(120, () => (v.dead ? v.body.setTint(0x555555) : v.body.clearTint()));
+          this.time.delayedCall(120, () => (v.dead ? v.body.setTint(0x555555) : v.poisoned ? v.body.setTint(0x6dff7a) : v.body.clearTint()));
           this.fx.puff(v.x, v.y - 14, 0xff8a3c, 4);
         } else {
           // 중독: 녹색으로 변한다
-          v.body.setTint(e.last ? 0xffffff : 0x6dff7a);
-          if (e.last) v.body.clearTint();
+          v.poisoned = !e.last || !!e.stay;
+          if (v.poisoned) v.body.setTint(0x6dff7a);
+          else v.body.clearTint();
           this.fx.puff(v.x, v.y - 18, 0x6ad66a, 4);
         }
         if (e.amount > 0) this.floatText(v.x, v.y - 60, `${fire ? '🔥' : '☠️'} -${e.amount}`, fire ? '#ff9a3c' : '#7dff7a');

@@ -4,7 +4,7 @@ import itemsJson from '../data/items.json';
 
 export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig' | 'zodiac';
 export type ItemId = 'double' | 'power' | 'repair' | 'teleport';
-export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split' | 'roll' | 'homing' | 'skip';
+export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split' | 'roll' | 'homing' | 'skip' | 'meteor' | 'firework';
 
 export interface TankDef {
   name: string;
@@ -63,6 +63,8 @@ export interface WeaponDef {
   poison?: boolean;
   /** 폭발 연출 (할퀴기 등) */
   fx?: 'claw';
+  /** 레이저를 맞은 자리 주변에 여러 번 (열두빛) */
+  lasers?: number;
 }
 
 export interface ItemDef {

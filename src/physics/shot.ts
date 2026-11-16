@@ -145,12 +145,44 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
 
   // 물수제비탄은 튈 때마다 구덩이가 작아진다
   const HOP_SCALE = [1, 0.65, 0.4, 0.3];
+  /** 절구처럼 나중에 하늘에서 떨어지는 탄 */
+  const later: Shell[] = [];
   const impact = (s: Shell, x: number, y: number, target: number | null) => {
     impacts.push({ x, y, target });
     end(s);
     if (!handler) return;
+    if (w.behavior === 'meteor' && !s.child) {
+      // 맞은 자리 위 하늘에서 큰 절구가 떨어진다
+      const m: Shell = { ...s, id: nextId++, x, y: -90, vx: 0, vy: 260, age: 99, child: true, alive: true, track: { id: 0, spawn: f + 1, path: [x, -90], behavior: 'meteor', look: w.look, big: p.big } };
+      m.track.id = m.id;
+      later.push(m);
+      return;
+    }
+    if (w.behavior === 'firework') {
+      // 폭죽: 맞은 자리 주변에서 다섯 번 (위치는 좌표로 정해지는 의사난수 → 모든 기기에서 같다)
+      handler.explode(f, x, y, target);
+      for (let i = 1; i < 5; i++) {
+        const h = Math.sin(x * 12.9898 + y * 78.233 + i * 37.719) * 43758.5453;
+        const r1 = h - Math.floor(h);
+        const h2 = Math.sin(x * 39.346 + y * 11.135 + i * 83.155) * 24634.6345;
+        const r2 = h2 - Math.floor(h2);
+        handler.explode(f + i * 9, x + (r1 - 0.5) * 130, y - 10 + (r2 - 0.5) * 70, null);
+      }
+      return;
+    }
     if (w.behavior === 'build') handler.build(f, x, y);
-    else if (w.behavior === 'laser') handler.laser(f, x, y);
+    else if (w.behavior === 'laser') {
+      handler.laser(f, x, y);
+      // 열두빛: 주변에 무작위로 더 내리꽂는다 (좌표로 정해지는 의사난수 → 모든 기기에서 같다)
+      for (let i = 1; i < (w.lasers ?? 1); i++) {
+        const h = Math.sin(x * 12.9898 + y * 78.233 + i * 51.17) * 43758.5453;
+        const r = h - Math.floor(h);
+        const lx = Math.max(4, Math.min(terrain.w - 4, x + (r - 0.5) * 220));
+        let ly = 0;
+        while (ly < terrain.h && !terrain.solid(Math.round(lx), ly)) ly++;
+        handler.laser(f + i * 14, lx, ly);
+      }
+    }
     else handler.explode(f, x, y, target, HOP_SCALE[Math.min(s.hopN, 3)]);
   };
 
@@ -176,7 +208,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         hopsLeft: w.hops ?? 0,
         hopN: 0,
         alive: true,
-        track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big },
+        track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big && w.behavior !== 'firework' },
       };
       s.track.id = s.id;
       shells.push(s);
@@ -375,10 +407,10 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
       if (s.alive) anyAlive = true;
     }
 
-    shells.push(...born);
+    shells.push(...born, ...later.splice(0));
     f++;
     if (!handler && impacts.length) break;
-    if (!anyAlive && pending.length === 0) break;
+    if (!anyAlive && pending.length === 0 && shells.every((s) => !s.alive)) break;
   }
 
   return { frames: f, shells: shells.map((s) => s.track), impacts };

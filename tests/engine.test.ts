@@ -434,3 +434,64 @@ describe('새 무기 효과', () => {
     expect(m.weaponOf(m.tanks[0], 0).crater).toBe(50);
   });
 });
+
+describe('필살기·상태 개편', () => {
+  const setup = (a: PlayerSetup['tank'], b: PlayerSetup['tank']) => {
+    const m = new Match(duo(a, b), 'valley', 21);
+    m.startTurn();
+    m.current = 0;
+    m.wind = 0;
+    for (const [i, x] of [[0, 300], [1, 900]] as const) {
+      m.tanks[i].x = x;
+      m.tanks[i].y = 0;
+      m.settle(m.tanks[i]);
+      m.tanks[i].ult = 100;
+    }
+    return m;
+  };
+  const fire = (m: Match, weapon: 0 | 1 | 2) => m.fire(shot({ weapon, angle: 45, power: 45, facing: 1 }));
+  const explodes = (r: ReturnType<Match['fire']>) => r.events.filter((e) => e.type === 'explode');
+
+  it('달토끼 절구: 맞은 자리에 하늘에서 떨어진다', () => {
+    const r = fire(setup('rabbit', 'ox'), 2);
+    expect(r.shells.length).toBe(2);
+    expect(r.shells[1].path[1]).toBeLessThan(0);
+    expect(explodes(r).length).toBe(1);
+  });
+  it('스르르 이무기: 세 번 터진다', () => {
+    const r = setup('snake', 'ox').fire(shot({ weapon: 2, angle: 40, power: 35, facing: 1 }));
+    expect(explodes(r).length).toBe(3);
+  });
+  it('꿀꿀 대폭발: 보통 크기 도토리, 다섯 번 터지고 이벤트는 시간 순', () => {
+    const r = fire(setup('pig', 'ox'), 2);
+    expect(r.shells[0].big).toBe(false);
+    expect(explodes(r).length).toBe(5);
+    for (let i = 1; i < r.events.length; i++) expect(r.events[i].f).toBeGreaterThanOrEqual(r.events[i - 1].f);
+    expect(r.frames).toBeGreaterThanOrEqual(r.events[r.events.length - 1].f);
+  });
+  it('여의룡 불은 땅 위에 생기고 3턴 동안 남는다', () => {
+    const m = setup('dragon', 'ox');
+    fire(m, 0);
+    expect(m.zones.length).toBe(1);
+    const z = m.zones[0];
+    expect(m.terrain.solid(z.x, z.y + 1)).toBe(true);
+    expect(m.terrain.solid(z.x, z.y - 2)).toBe(false);
+    const t0 = m.turn;
+    m.startTurn();
+    m.startTurn();
+    expect(m.turn).toBe(t0 + 2);
+    expect(m.zones.length).toBe(1);
+    m.startTurn();
+    expect(m.zones.length).toBe(0);
+  });
+  it('꼬꼬댁 중독은 3턴 동안 턴마다 피해', () => {
+    const m = setup('rooster', 'ox');
+    m.tanks[1].poison = 3;
+    for (let k = 0; k < 4; k++) {
+      m.current = 0;
+      const r = fire(m, 0);
+      const n = r.events.filter((e) => e.type === 'dot' && e.target === 1).length;
+      expect(n).toBe(k < 3 ? 5 : 0);
+    }
+  });
+});

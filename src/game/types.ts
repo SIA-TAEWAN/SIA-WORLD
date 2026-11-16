@@ -35,6 +35,8 @@ export interface TankState {
   damageDealt: number;
   ai: Difficulty | null;
   lastPower: number;
+  /** 중독이 남은 턴 수 (꼬꼬댁 깃털탄) */
+  poison?: number;
 }
 
 /** 한 턴의 입력. 온라인에서는 이것만 주고받는다. */
@@ -59,7 +61,7 @@ export type SimEvent =
   | { f: number; type: 'move'; target: number; x: number; y: number; kind: 'knock' | 'fall' | 'teleport' }
   | { f: number; type: 'death'; target: number }
   /** 불·독 지속 피해 (체력 1은 남긴다) */
-  | { f: number; type: 'dot'; target: number; amount: number; kind: 'fire' | 'poison'; last: boolean };
+  | { f: number; type: 'dot'; target: number; amount: number; kind: 'fire' | 'poison'; last: boolean; /** 끝난 뒤에도 중독이 남아 있다 */ stay?: boolean };
 
 /** 땅에 남은 장판 (불·독안개) */
 export interface Zone {
@@ -70,6 +72,8 @@ export interface Zone {
   r: number;
   /** 만든 탱크 (그 탱크의 다음 차례에 사라진다) */
   owner: number;
+  /** 이 턴 번호가 되면 사라진다 (없으면 만든 탱크의 다음 차례에) */
+  until?: number;
 }
 
 export interface ShellTrack {

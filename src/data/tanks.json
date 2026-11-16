@@ -101,7 +101,7 @@
     "role": "땅굴 파기",
     "color": "#7bc04a",
     "accent": "#e8e04a",
-    "hp": 800,
+    "hp": 880,
     "defense": 0.12,
     "move": 130,
     "angleMin": 20,

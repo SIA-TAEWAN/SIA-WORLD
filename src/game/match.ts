@@ -155,7 +155,7 @@ export class Match {
     this.refillUlt();
     this.movedThisTurn = 0;
     // 내 차례가 오면 내가 만든 불·독안개는 사라진다
-    this.zones = this.zones.filter((z) => z.owner !== next.idx);
+    this.zones = this.zones.filter((z) => (z.until !== undefined ? this.turn < z.until : z.owner !== next.idx));
     this.lastDrop = this.turn % DROP_EVERY === 0 ? this.dropCrates() : null;
     return next;
   }
@@ -381,7 +381,11 @@ export class Match {
           this.zones = this.zones.filter((z) => z.kind !== 'fire' || Math.hypot(z.x - x, z.y - y) > cr + z.r);
           let zone: Zone | undefined;
           if (w.zone) {
-            zone = { id: this.nextZone++, kind: w.zone, x: Math.round(x), y: Math.round(y), r: ZONE_R, owner: t.idx };
+            // 불·독안개는 터진 자리 아래 땅 위에 생긴다
+            const zx = Math.round(x);
+            let zy = Math.max(0, Math.round(y));
+            while (zy < this.terrain.h && !this.terrain.solid(zx, zy + 1)) zy++;
+            zone = { id: this.nextZone++, kind: w.zone, x: zx, y: zy, r: ZONE_R, owner: t.idx, until: w.zone === 'fire' ? this.turn + 3 : undefined };
             this.zones.push(zone);
           }
           events.push({ f, type: 'explode', x, y, radius: w.radius, crater: cr, big: slot === 2, fx: w.fx, zone: zone ? { ...zone } : undefined });
@@ -393,7 +397,10 @@ export class Match {
             const raw = w.damage * damageMul * (1 - d / w.radius) * (o.idx === direct ? DIRECT_BONUS : 1);
             const wasAlive = o.alive;
             hurt(f, o, raw, o.idx === direct);
-            if (w.poison && o.alive && o.team !== t.team) afflicted.set(o.idx, 'poison');
+            if (w.poison && o.alive && o.team !== t.team) {
+              afflicted.set(o.idx, 'poison');
+              o.poison = 3;
+            }
             if (w.behavior === 'push' && wasAlive && o.alive && o.team !== t.team) {
               const k = (w.knockback ?? 100) * (1 - d / w.radius);
               const dir = c.x >= x ? 1 : -1;
@@ -436,7 +443,8 @@ export class Match {
     }
 
     // 땅이 사라진 탱크는 떨어진다
-    const endF = result.frames;
+    // 폭죽처럼 늦게 터지는 폭발까지 기다린다
+    const endF = Math.max(result.frames, ...events.map((e) => e.f + 1));
     for (const o of this.tanks) {
       if (!o.alive) continue;
       const before = { x: o.x, y: o.y };
@@ -448,7 +456,9 @@ export class Match {
     }
     result.frames = endF;
     this.settleCrates();
+    this.settleZones();
     result.frames = this.applyDots(t, afflicted, events, endF);
+    events.sort((a, b) => a.f - b.f);
     this.refillUlt();
     this.pickup();
     this.checkWinner();
@@ -471,6 +481,8 @@ export class Match {
       }
       if (used) this.zones = this.zones.filter((x) => x !== z);
     }
+    // 중독(꼬꼬댁): 3턴 동안 턴마다 피해
+    for (const o of this.tanks) if (o.alive && (o.poison ?? 0) > 0 && !afflicted.has(o.idx)) afflicted.set(o.idx, 'poison');
     if (!afflicted.size) return endF;
     let last = endF;
     for (const [idx, kind] of [...afflicted].sort((a, b) => a[0] - b[0])) {
@@ -481,11 +493,21 @@ export class Match {
         const amount = Math.max(0, Math.min(per, o.hp - 1));
         o.hp -= amount;
         shooter.damageDealt += amount;
-        events.push({ f, type: 'dot', target: idx, amount, kind, last: i === DOT_TICKS - 1 });
+        const lastTick = i === DOT_TICKS - 1;
+        if (lastTick && (o.poison ?? 0) > 0) o.poison!--;
+        events.push({ f, type: 'dot', target: idx, amount, kind, last: lastTick, stay: lastTick && (o.poison ?? 0) > 0 });
         last = Math.max(last, f);
       }
     }
     return last + 20;
+  }
+
+  /** 발밑 땅이 사라진 장판은 아래 땅으로 내려온다 */
+  private settleZones() {
+    this.zones = this.zones.filter((z) => {
+      while (z.y < this.terrain.h && !this.terrain.solid(z.x, z.y + 1)) z.y++;
+      return z.y < this.terrain.h;
+    });
   }
 
   /** 필살기 무한 탱크는 게이지를 다시 채운다 */
@@ -501,7 +523,7 @@ export class Match {
 
   /** 기기 간 비교용 상태 지문 (지형 + 탱크 + 난수 상태) */
   stateHash(): string {
-    const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10)].join(',')).join(';');
+    const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10), t.poison ?? 0].join(',')).join(';');
     const crates = this.crates.map((c) => `${c.id}:${c.x},${c.y}`).join(';');
     const zones = this.zones.map((z) => `${z.id}:${z.kind}:${z.x},${z.y}`).join(';');
     return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}`;
@@ -527,7 +549,7 @@ export class Match {
       nextZone: this.nextZone,
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
-        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower,
+        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0,
       })),
     };
   }
@@ -572,5 +594,5 @@ export interface MatchSnapshot {
   nextCrate?: number;
   zones?: Zone[];
   nextZone?: number;
-  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower'>[];
+  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison'>[];
 }
