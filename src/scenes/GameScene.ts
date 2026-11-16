@@ -125,8 +125,8 @@ class TankView {
     // 랭킹 구름 (AI는 없음)
     const parts: Phaser.GameObjects.GameObject[] = [name, this.hpBar, this.arrow];
     if (!t.ai) {
-      const cloud = scene.add.image(-name.width / 2 - 2, -60 + this.dy, `cloud-${tierOf(t.name)}`).setOrigin(1, 0.5).setDisplaySize(40, 28);
-      name.x = 21;
+      const cloud = scene.add.image(-name.width / 2 - 2, -60 + this.dy, `cloud-${tierOf(t.name)}`).setOrigin(1, 0.5).setDisplaySize(36, 25);
+      name.x = 19;
       cloud.x = name.x - name.width / 2 - 2;
       parts.push(cloud);
     }
