@@ -196,7 +196,7 @@
     "name": "용의 숨결",
     "desc": "필살기 · 표식탄 자리에 하늘에서 굵은 불기둥",
     "behavior": "laser",
-    "damage": 440,
+    "damage": 280,
     "radius": 104,
     "crater": 56,
     "wind": 1,
