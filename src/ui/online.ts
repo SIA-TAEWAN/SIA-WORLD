@@ -285,6 +285,8 @@ function renderRoom(id: string) {
       unsubB();
       unsubC();
       clearInterval(iv);
+      window.removeEventListener('pagehide', onHide);
+    window.removeEventListener('pagehide', onHide);
     },
   );
 
@@ -317,6 +319,8 @@ function renderRoom(id: string) {
       unsubB();
       unsubC();
       clearInterval(iv);
+      window.removeEventListener('pagehide', onHide);
+    window.removeEventListener('pagehide', onHide);
       void rs.leave();
       roomSess = null;
       void sess.setMyRoom(null);
@@ -328,6 +332,8 @@ function renderRoom(id: string) {
       unsubB();
       unsubC();
       clearInterval(iv);
+      window.removeEventListener('pagehide', onHide);
+    window.removeEventListener('pagehide', onHide);
       setScreenCleanup(null);
       void rs.leave();
       roomSess = null;
@@ -339,6 +345,8 @@ function renderRoom(id: string) {
       unsubB();
       unsubC();
       clearInterval(iv);
+      window.removeEventListener('pagehide', onHide);
+    window.removeEventListener('pagehide', onHide);
       setScreenCleanup(null);
       return startOnline(room, null);
     }
@@ -363,11 +371,12 @@ function renderRoom(id: string) {
         <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${p.tank === 'random' ? '랜덤' : TANKS[p.tank].name}</div>
         ${p.items.length ? `<div class="pi">아이템 ${p.items.length}개</div>` : ''}
         ${away ? '<div class="away">연결 확인 중…</div>' : ''}
-        ${iAmHost && p.id !== clientId() ? `<button class="kick" data-kick="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" title="강퇴">✕ 강퇴</button>` : ''}
+        ${iAmHost && room.status === 'waiting' && p.id !== clientId() ? `<button class="kick" data-kick="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" title="강퇴">✕ 강퇴</button>` : ''}
       </div>`;
     }).join('');
     root.querySelectorAll<HTMLButtonElement>('[data-kick]').forEach((b) =>
       b.addEventListener('click', async () => {
+        if (sess.room(id)?.status !== 'waiting') return toast('게임 중에는 강퇴할 수 없어요');
         if (!confirm(`${b.dataset.name}님을 게임방에서 강퇴할까요?`)) return;
         sfx.click();
         await backend!.kickPlayer(id, clientId(), b.dataset.kick!).catch((e) => toast(friendly(e)));
@@ -457,7 +466,7 @@ function renderRoom(id: string) {
   const unsubA = sess.subscribe(draw);
   const unsubB = rs.onPresence(draw);
   const unsubC = rs.onChat(() => renderChatLog(root, rs));
-  // 브라우저를 그냥 닫은 사람은 잠시 뒤 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
+  // 대기방에서 접속이 끊긴 사람은 바로 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
   const iv = setInterval(() => {
     const room = sess.room(id);
     if (!room || room.status !== 'waiting') return;
@@ -471,12 +480,17 @@ function renderRoom(id: string) {
     for (const p of room.players) {
       if (rs.present.has(p.id)) absentSince.delete(p.id);
       else if (!absentSince.has(p.id)) absentSince.set(p.id, now);
-      else if (now - absentSince.get(p.id)! > 8000 && here[0]?.id === clientId()) {
+      else if (now - absentSince.get(p.id)! > 1500 && here[0]?.id === clientId()) {
         absentSince.delete(p.id);
         void backend!.leaveRoom(id, p.id).then(() => sess.refetch());
       }
     }
-  }, 2000);
+  }, 1000);
+  // 창을 닫거나 다른 곳으로 가면 스스로 대기방에서 나간다
+  const onHide = () => {
+    if (sess.room(id)?.status === 'waiting') void backend!.leaveRoom(id, clientId()).catch(() => undefined);
+  };
+  window.addEventListener('pagehide', onHide);
 
   draw();
   drawShop();
@@ -486,6 +500,7 @@ function renderRoom(id: string) {
     unsubB();
     unsubC();
     clearInterval(iv);
+    window.removeEventListener('pagehide', onHide);
     setScreenCleanup(null);
     void leaveRoom();
   });
