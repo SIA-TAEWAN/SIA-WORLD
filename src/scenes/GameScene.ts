@@ -547,7 +547,8 @@ export class GameScene extends Phaser.Scene {
   private fitZoom() {
     const hudH = this.hud?.bottomHeight ?? 0;
     const t = this.match.terrain;
-    return Math.min(this.scale.width / (t.w + 60), (this.scale.height - hudH) / (t.h + 40));
+    // 가로는 맵 전체가 들어오게 하되, 세로로 맵 아래 바깥이 보일 만큼은 줄이지 않는다
+    return Math.max(this.scale.width / (t.w + 240), (this.scale.height - hudH) / (t.h + 650));
   }
 
   private zoomTo(z: number) {
