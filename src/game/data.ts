@@ -65,6 +65,8 @@ export interface WeaponDef {
   fx?: 'claw';
   /** 레이저를 맞은 자리 주변에 여러 번 (열두빛) */
   lasers?: number;
+  /** 장판 반지름 (기본 18 = 탱크 크기) */
+  zoneR?: number;
 }
 
 export interface ItemDef {

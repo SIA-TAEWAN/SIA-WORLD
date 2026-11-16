@@ -1332,6 +1332,13 @@ export class GameScene extends Phaser.Scene {
         this.floatText(v.x, v.y - 60, `${e.direct ? '직격! ' : ''}-${e.amount}`, e.direct ? '#ffdd33' : '#ff6b6b');
         break;
       }
+      case 'poisoned': {
+        const v = this.views[e.target];
+        v.poisoned = true;
+        v.body.setTint(0x6dff7a);
+        this.floatText(v.x, v.y - 78, '☠️ 중독!', '#7dff7a');
+        break;
+      }
       case 'dot': {
         const v = this.views[e.target];
         v.hp = Math.max(1, v.hp - e.amount);

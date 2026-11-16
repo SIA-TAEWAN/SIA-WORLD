@@ -371,6 +371,8 @@ export class Match {
 
     /** 이번 발사로 불·독에 걸린 탱크 */
     const afflicted = new Map<number, 'fire' | 'poison'>();
+    /** 이번 발사로 막 중독된 탱크 (피해는 다음 차례부터) */
+    const fresh = new Set<number>();
     let result: ShotResult;
     {
       const handler: ImpactHandler = {
@@ -385,7 +387,7 @@ export class Match {
             const zx = Math.round(x);
             let zy = Math.max(0, Math.round(y));
             while (zy < this.terrain.h && !this.terrain.solid(zx, zy + 1)) zy++;
-            zone = { id: this.nextZone++, kind: w.zone, x: zx, y: zy, r: ZONE_R, owner: t.idx, until: w.zone === 'fire' ? this.turn + 3 : undefined };
+            zone = { id: this.nextZone++, kind: w.zone, x: zx, y: zy, r: w.zoneR ?? ZONE_R, owner: t.idx, until: w.zone === 'fire' ? this.turn + 3 : undefined };
             this.zones.push(zone);
           }
           events.push({ f, type: 'explode', x, y, radius: w.radius, crater: cr, big: slot === 2, fx: w.fx, zone: zone ? { ...zone } : undefined });
@@ -397,9 +399,11 @@ export class Match {
             const raw = w.damage * damageMul * (1 - d / w.radius) * (o.idx === direct ? DIRECT_BONUS : 1);
             const wasAlive = o.alive;
             hurt(f, o, raw, o.idx === direct);
-            if (w.poison && o.alive && o.team !== t.team) {
-              afflicted.set(o.idx, 'poison');
+            // 중독: 맞은 탱크의 다음 차례 3번 동안 피해
+            if (w.poison && o.alive && o.team !== t.team && o.idx !== t.idx) {
+              if (!(o.poison ?? 0)) events.push({ f, type: 'poisoned', target: o.idx });
               o.poison = 3;
+              fresh.add(o.idx);
             }
             if (w.behavior === 'push' && wasAlive && o.alive && o.team !== t.team) {
               const k = (w.knockback ?? 100) * (1 - d / w.radius);
@@ -457,7 +461,7 @@ export class Match {
     result.frames = endF;
     this.settleCrates();
     this.settleZones();
-    result.frames = this.applyDots(t, afflicted, events, endF);
+    result.frames = this.applyDots(t, afflicted, events, endF, fresh);
     events.sort((a, b) => a.f - b.f);
     this.refillUlt();
     this.pickup();
@@ -469,7 +473,7 @@ export class Match {
    * 불·독안개 위에 있는 적, 중독된 적에게 초당 2%씩 5번 (최대 10%) 피해. 체력 1은 남긴다.
    * 누군가를 태운(중독시킨) 장판은 사라진다. 끝나는 프레임을 돌려준다.
    */
-  private applyDots(shooter: TankState, afflicted: Map<number, 'fire' | 'poison'>, events: SimEvent[], endF: number): number {
+  private applyDots(shooter: TankState, afflicted: Map<number, 'fire' | 'poison'>, events: SimEvent[], endF: number, fresh = new Set<number>()): number {
     for (const z of [...this.zones]) {
       let used = false;
       for (const o of this.tanks) {
@@ -482,7 +486,13 @@ export class Match {
       if (used) this.zones = this.zones.filter((x) => x !== z);
     }
     // 중독(꼬꼬댁): 3턴 동안 턴마다 피해
-    for (const o of this.tanks) if (o.alive && (o.poison ?? 0) > 0 && !afflicted.has(o.idx)) afflicted.set(o.idx, 'poison');
+    // 중독: 누구 차례든 차례가 끝날 때마다 (3번). 막 중독된 탱크는 다음 차례부터
+    const sick = new Set<number>();
+    for (const o of this.tanks)
+      if (o.alive && (o.poison ?? 0) > 0 && !fresh.has(o.idx)) {
+        sick.add(o.idx);
+        if (!afflicted.has(o.idx)) afflicted.set(o.idx, 'poison');
+      }
     if (!afflicted.size) return endF;
     let last = endF;
     for (const [idx, kind] of [...afflicted].sort((a, b) => a[0] - b[0])) {
@@ -494,7 +504,7 @@ export class Match {
         o.hp -= amount;
         shooter.damageDealt += amount;
         const lastTick = i === DOT_TICKS - 1;
-        if (lastTick && (o.poison ?? 0) > 0) o.poison!--;
+        if (lastTick && sick.has(o.idx)) o.poison!--;
         events.push({ f, type: 'dot', target: idx, amount, kind, last: lastTick, stay: lastTick && (o.poison ?? 0) > 0 });
         last = Math.max(last, f);
       }

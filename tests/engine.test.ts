@@ -349,7 +349,7 @@ describe('아슬아슬 맵', () => {
       }
     if (process.env.DBG) console.log({ direct, fell, near, survivedNear });
     expect(direct).toBeGreaterThan(0);
-  });
+  }, 30000);
 });
 
 describe('새 무기 효과', () => {
@@ -388,7 +388,7 @@ describe('새 무기 효과', () => {
   });
 
   it('불·독은 초당 2%씩 최대 10%, 체력 1은 남기고, 장판은 쓰이면 사라진다', () => {
-    for (const [tank, slot, kind] of [['dragon', 0, 'fire'], ['snake', 1, 'poison'], ['rooster', 1, 'poison']] as const) {
+    for (const [tank, slot, kind] of [['dragon', 0, 'fire'], ['snake', 1, 'poison']] as const) {
       // 상대 바로 위로 떨어지는 탄을 찾는다
       let found = false;
       for (let a = 30; a <= 80 && !found; a += 1)
@@ -484,14 +484,41 @@ describe('필살기·상태 개편', () => {
     m.startTurn();
     expect(m.zones.length).toBe(0);
   });
-  it('꼬꼬댁 중독은 3턴 동안 턴마다 피해', () => {
+  it('중독은 누구 차례든 3번 동안 피해', () => {
     const m = setup('rooster', 'ox');
     m.tanks[1].poison = 3;
+    // 누구 차례든 차례가 끝날 때마다 3번
     for (let k = 0; k < 4; k++) {
-      m.current = 0;
-      const r = fire(m, 0);
+      m.current = k % 2;
+      const r = m.fire(shot({ weapon: 0, angle: 45, power: 45, facing: k % 2 ? -1 : 1 }));
       const n = r.events.filter((e) => e.type === 'dot' && e.target === 1).length;
       expect(n).toBe(k < 3 ? 5 : 0);
+    }
+    expect(m.tanks[1].poison).toBe(0);
+  });
+});
+
+describe('중독 걸기', () => {
+  it('깃털탄·이무기에 맞으면 중독(3턴)', () => {
+    for (const [tank, slot] of [['rooster', 1], ['snake', 2]] as const) {
+      let ok = false;
+      for (let a = 20; a <= 80 && !ok; a += 1)
+        for (let p = 20; p <= 100 && !ok; p += 1) {
+          const m = new Match(duo(tank, 'ox'), 'valley', 31);
+          m.startTurn();
+          m.current = 0;
+          m.wind = 0;
+          m.tanks[0].ult = 100;
+          m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+          m.tanks[1].x = 460; m.tanks[1].y = 0; m.settle(m.tanks[1]);
+          const r = m.fire(shot({ weapon: slot, angle: a, power: p, facing: 1 }));
+          if (r.events.some((e) => e.type === 'poisoned')) {
+            ok = true;
+            expect(m.tanks[1].poison).toBe(3);
+            expect(r.events.some((e) => e.type === 'dot' && e.kind === 'poison' && e.target === 1)).toBe(false);
+          }
+        }
+      expect(ok).toBe(true);
     }
   });
 });

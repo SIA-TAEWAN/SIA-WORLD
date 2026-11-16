@@ -177,7 +177,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
       for (let i = 1; i < (w.lasers ?? 1); i++) {
         const h = Math.sin(x * 12.9898 + y * 78.233 + i * 51.17) * 43758.5453;
         const r = h - Math.floor(h);
-        const lx = Math.max(4, Math.min(terrain.w - 4, x + (r - 0.5) * 220));
+        const lx = Math.max(4, Math.min(terrain.w - 4, x + (r - 0.5) * 110));
         let ly = 0;
         while (ly < terrain.h && !terrain.solid(Math.round(lx), ly)) ly++;
         handler.laser(f + i * 14, lx, ly);

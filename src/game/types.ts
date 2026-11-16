@@ -60,6 +60,8 @@ export type SimEvent =
   | { f: number; type: 'heal'; target: number; amount: number }
   | { f: number; type: 'move'; target: number; x: number; y: number; kind: 'knock' | 'fall' | 'teleport' }
   | { f: number; type: 'death'; target: number }
+  /** 중독됨 (녹색) */
+  | { f: number; type: 'poisoned'; target: number }
   /** 불·독 지속 피해 (체력 1은 남긴다) */
   | { f: number; type: 'dot'; target: number; amount: number; kind: 'fire' | 'poison'; last: boolean; /** 끝난 뒤에도 중독이 남아 있다 */ stay?: boolean };
 

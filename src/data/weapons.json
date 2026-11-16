@@ -175,7 +175,8 @@
     "speed": 720,
     "delay": 0,
     "look": "fire",
-    "zone": "fire"
+    "zone": "fire",
+    "zoneR": 36
   },
   "dragon_pearl": {
     "name": "여의주",
@@ -193,11 +194,11 @@
   },
   "dragon_breath": {
     "name": "용의 숨결",
-    "desc": "필살기 · 표식탄 자리에 하늘에서 불기둥",
+    "desc": "필살기 · 표식탄 자리에 하늘에서 굵은 불기둥",
     "behavior": "laser",
     "damage": 440,
-    "radius": 26,
-    "crater": 14,
+    "radius": 104,
+    "crater": 56,
     "wind": 1,
     "count": 1,
     "speed": 720,
@@ -231,11 +232,12 @@
     "speed": 720,
     "delay": 100,
     "look": "mist",
-    "zone": "poison"
+    "zone": "poison",
+    "zoneR": 36
   },
   "snake_imugi": {
     "name": "이무기",
-    "desc": "필살기 · 땅에 닿을 때마다 튀어 오르며 세 번 터진다",
+    "desc": "필살기 · 세 번 튀며 터지고, 맞으면 3턴 동안 중독",
     "behavior": "skip",
     "damage": 400,
     "radius": 80,
@@ -245,7 +247,8 @@
     "speed": 720,
     "delay": 200,
     "look": "fang",
-    "hops": 2
+    "hops": 2,
+    "poison": true
   },
   "horse_dash": {
     "name": "질주탄",
@@ -386,7 +389,7 @@
   },
   "rooster_feather": {
     "name": "깃털탄",
-    "desc": "폭발은 아주 작지만 맞으면 3턴 동안 중독 (매 턴 초당 2%, 최대 10%)",
+    "desc": "폭발은 아주 작지만 맞으면 3턴 동안 중독 (내 차례마다 초당 2%, 최대 10%)",
     "behavior": "normal",
     "damage": 275,
     "radius": 8,

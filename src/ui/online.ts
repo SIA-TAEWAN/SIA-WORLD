@@ -127,7 +127,7 @@ function renderLobby(sess: LobbySession) {
     `<header class="bar">
       <button class="btn ghost" id="exit">← 나가기</button>
       <h2>대기실 <small id="count"></small></h2>
-      <button class="btn small-btn" id="rank">☁️ 랭킹</button>
+      <button class="btn small-btn" id="rank">🏆 랭킹</button>
       <span class="my-points" title="온라인에서 이기면 +100, 지면 -100 (최저 1,000)">🏅 ${state.points.toLocaleString()}P</span>
       <button class="btn small-btn" id="copy">🔗 링크 복사</button>
     </header>

@@ -1,7 +1,7 @@
 /**
- * 랭킹: 전체 플레이어 포인트 순위의 비율로 구름 등급을 정한다.
- *   금구름 상위 10% · 은구름 상위 30% · 동구름 상위 60% · 나머지 하얀구름
- * 아직 한 번도 이기지 못해 1,000포인트인 사람은 하얀구름.
+ * 랭킹: 전체 플레이어 포인트 순위의 비율로 등급을 정한다.
+ *   금(해) 상위 10% · 은(달) 상위 30% · 동(별) 상위 60% · 그 외 구름
+ * 아직 한 번도 이기지 못해 1,000포인트인 사람은 구름.
  */
 import { escapeHtml } from './hud';
 
@@ -13,7 +13,9 @@ export interface RankRow {
   losses: number;
 }
 
-export const TIER_NAME: Record<Tier, string> = { gold: '금구름', silver: '은구름', bronze: '동구름', white: '하얀구름' };
+export const TIER_NAME: Record<Tier, string> = { gold: '해', silver: '달', bronze: '별', white: '구름' };
+/** 랭킹 창에 쓰는 이름 */
+export const TIER_LABEL: Record<Tier, string> = { gold: '금 (해)', silver: '은 (달)', bronze: '동 (별)', white: '구름' };
 const TIER_COLOR: Record<Tier, [string, string, string]> = {
   // 밝은색, 어두운색, 테두리
   gold: ['#fff3a0', '#f5b81c', '#9a6a00'],
@@ -53,15 +55,38 @@ export const tierOf = (name: string): Tier => tiers.get(name) ?? 'white';
 export const placeOf = (name: string): number | undefined => places.get(name);
 export const ranking = () => rows;
 
-/** 구름 아이콘 SVG */
+/** 등급 아이콘 SVG: 금=해, 은=달, 동=별, 그 외=구름 */
 export function cloudSvg(tier: Tier, size = 18): string {
   const [hi, lo, line] = TIER_COLOR[tier];
   const id = `cg-${tier}`;
-  const star = tier === 'gold' ? `<path d="M16 6.2l1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" fill="#fff" opacity=".9"/>` : '';
-  return `<svg class="cloud-ic" viewBox="0 0 32 22" width="${size}" height="${(size * 22) / 32}" aria-label="${TIER_NAME[tier]}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset="1" stop-color="${lo}"/></linearGradient></defs><path d="M8 20h17a6 6 0 0 0 .6-12A8 8 0 0 0 10.2 7 6.5 6.5 0 0 0 8 20z" fill="url(#${id})" stroke="${line}" stroke-width="1.8" stroke-linejoin="round"/>${star}</svg>`;
+  const grad = `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset="1" stop-color="${lo}"/></linearGradient></defs>`;
+  const paint = `fill="url(#${id})" stroke="${line}" stroke-width="1.8" stroke-linejoin="round"`;
+  let shape: string;
+  if (tier === 'gold') {
+    // 해: 동그라미 + 햇살
+    const rays = Array.from({ length: 8 }, (_, i) => {
+      const a = (i * Math.PI) / 4;
+      return `<line x1="${16 + Math.cos(a) * 7.5}" y1="${11 + Math.sin(a) * 7.5}" x2="${16 + Math.cos(a) * 10.5}" y2="${11 + Math.sin(a) * 10.5}" stroke="${line}" stroke-width="2" stroke-linecap="round"/>`;
+    }).join('');
+    shape = `${rays}<circle cx="16" cy="11" r="6" ${paint}/>`;
+  } else if (tier === 'silver') {
+    // 달: 초승달
+    shape = `<path d="M19.5 2.2A9 9 0 1 0 22.8 17.6 7.2 7.2 0 1 1 19.5 2.2z" ${paint}/>`;
+  } else if (tier === 'bronze') {
+    // 별
+    const pts = Array.from({ length: 10 }, (_, i) => {
+      const r = i % 2 ? 4.4 : 10;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      return `${(16 + Math.cos(a) * r).toFixed(1)},${(11.8 + Math.sin(a) * r).toFixed(1)}`;
+    }).join(' ');
+    shape = `<polygon points="${pts}" ${paint}/>`;
+  } else {
+    shape = `<path d="M8 20h17a6 6 0 0 0 .6-12A8 8 0 0 0 10.2 7 6.5 6.5 0 0 0 8 20z" ${paint}/>`;
+  }
+  return `<svg class="cloud-ic" viewBox="0 0 32 22" width="${size}" height="${(size * 22) / 32}" aria-label="${TIER_NAME[tier]}">${grad}${shape}</svg>`;
 }
 
-/** 닉네임 앞에 구름을 붙인 HTML */
+/** 닉네임 앞에 등급 아이콘(해·달·별·구름)을 붙인 HTML */
 export function rankedName(name: string, size = 16): string {
   return `<span class="rk-name">${cloudSvg(tierOf(name), size)}${escapeHtml(name)}</span>`;
 }
@@ -78,13 +103,13 @@ export function showRankingModal(me: string) {
     return `<tr class="${r.name === me ? 'me' : ''} t-${t}"><td class="pl">${placeOf(r.name)}</td><td>${cloudSvg(t, 26)}</td><td class="nm">${escapeHtml(r.name)}</td><td class="pt">${r.points.toLocaleString()}P</td><td class="wl">${r.wins}승 ${r.losses}패</td></tr>`;
   };
   wrap.innerHTML = `<div class="rank-box">
-    <div class="rank-head"><h3>☁️ 랭킹 <small>${total}명</small></h3><button class="btn small-btn" data-close>닫기</button></div>
+    <div class="rank-head"><h3>🏆 랭킹 <small>${total}명</small></h3><button class="btn small-btn" data-close>닫기</button></div>
     <div class="rank-legend">${(['gold', 'silver', 'bronze', 'white'] as Tier[])
-      .map((t, i) => `<span>${cloudSvg(t, 22)}<b>${TIER_NAME[t]}</b><small>${['상위 10%', '상위 30%', '상위 60%', '나머지'][i]}</small></span>`)
+      .map((t, i) => `<span>${cloudSvg(t, 22)}<b>${TIER_LABEL[t]}</b><small>${['상위 10%', '상위 30%', '상위 60%', '나머지'][i]}</small></span>`)
       .join('')}</div>
-    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me)}위</b> / ${total}명 · ${cloudSvg(tierOf(me), 20)} ${TIER_NAME[tierOf(me)]} · ${mine.points.toLocaleString()}P</p>` : `<p class="rank-me">아직 기록이 없어요. 온라인 대전에서 이기면 순위에 올라가요!</p>`}
+    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me)}위</b> / ${total}명 · ${cloudSvg(tierOf(me), 20)} ${TIER_LABEL[tierOf(me)]} · ${mine.points.toLocaleString()}P</p>` : `<p class="rank-me">아직 기록이 없어요. 온라인 대전에서 이기면 순위에 올라가요!</p>`}
     <div class="rank-scroll"><table>${list.length ? list.map(line).join('') : '<tr><td>아직 랭킹이 없어요</td></tr>'}</table></div>
-    <p class="rank-note">이기면 +100P, 지면 -100P (최저 1,000P). 1,000P인 사람은 하얀구름이에요.</p>
+    <p class="rank-note">이기면 +100P, 지면 -100P (최저 1,000P). 1,000P인 사람은 구름이에요.</p>
   </div>`;
   const close = () => wrap.remove();
   wrap.addEventListener('click', (e) => {
