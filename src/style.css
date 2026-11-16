@@ -1375,7 +1375,7 @@ button.my-slot {
 }
 
 /* 가로로 눕힌 휴대폰: 조작판을 낮고 촘촘하게 */
-@media (max-height: 520px) and (orientation: landscape) {
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) {
   .hud {
     font-size: 12px;
   }
@@ -1660,7 +1660,7 @@ body.in-game .sound-fab {
   }
 }
 /* 입장 화면: 가로로 눕힌 휴대폰 → 로고 왼쪽, 입력·버튼 오른쪽 */
-@media (max-height: 520px) and (orientation: landscape) {
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) {
   .screen.entry {
     padding-top: 8px;
     padding-bottom: 8px;
@@ -1727,7 +1727,7 @@ body.in-game .sound-fab {
     height: 56px;
   }
 }
-@media (max-height: 520px) and (orientation: landscape) {
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) {
   .mini-top {
     top: 32px;
   }
@@ -1816,7 +1816,7 @@ body.in-game .sound-fab {
     top: 112px;
   }
 }
-@media (max-height: 520px) and (orientation: landscape) {
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) {
   .game-chat {
     top: 106px;
     width: 40vw;
