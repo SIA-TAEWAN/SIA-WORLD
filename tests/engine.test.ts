@@ -379,10 +379,14 @@ describe('새 무기 효과', () => {
   };
 
   it('쟁기탄은 세 번 터지고 구덩이가 점점 작아진다', () => {
-    const m = setup('ox', 'tiger');
-    near(m, 700);
-    const r = m.fire(shot({ weapon: 1, angle: 40, power: 55, facing: 1 }));
-    const ex = r.events.filter((e) => e.type === 'explode') as { crater: number }[];
+    // 탱크에 맞지 않고 땅에 떨어지는 발사를 고른다
+    let ex: { crater: number }[] = [];
+    for (let p = 40; p <= 70 && ex.length !== 3; p += 3) {
+      const m = setup('ox', 'tiger');
+      near(m, 700);
+      const r = m.fire(shot({ weapon: 1, angle: 40, power: p, facing: 1 }));
+      ex = r.events.filter((e) => e.type === 'explode') as { crater: number }[];
+    }
     expect(ex.length).toBe(3);
     expect(ex[1].crater).toBeLessThan(ex[0].crater);
     expect(ex[2].crater).toBeLessThan(ex[1].crater);

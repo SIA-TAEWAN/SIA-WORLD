@@ -5,7 +5,7 @@ import { Terrain } from './terrain';
 export const DT = 1 / 60;
 export const GRAVITY = 320;
 export const WIND_K = 6;
-export const TANK_HIT_R = 13;
+export const TANK_HIT_R = 17; // 탱크에 맞는 범위 (스쳐도 맞게 13 → 17)
 export const MAX_FRAMES = 60 * 14;
 const OWNER_ARM_FRAMES = 25;
 const PROXIMITY = 26;
