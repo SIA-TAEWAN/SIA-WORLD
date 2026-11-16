@@ -428,7 +428,7 @@
     "name": "땅파기탄",
     "desc": "피해는 적지만 넓게 판다",
     "behavior": "normal",
-    "damage": 158,
+    "damage": 175,
     "radius": 59,
     "crater": 83,
     "wind": 1,
