@@ -457,12 +457,12 @@
     "desc": "느리지만 땅을 크게 파낸다",
     "behavior": "normal",
     "damage": 240,
-    "radius": 86,
-    "crater": 60,
+    "radius": 71,
+    "crater": 50,
     "wind": 1,
     "count": 1,
     "speed": 650,
-    "delay": 150,
+    "delay": 0,
     "look": "acorn"
   },
   "pig_mud": {
