@@ -509,7 +509,9 @@ export class Match {
         last = Math.max(last, f);
       }
     }
-    return last + 20;
+    // 지속 피해는 게임을 멈추지 않는다 (다음 차례와 함께 화면에서 이어서 보여 준다)
+    void last;
+    return endF;
   }
 
   /** 발밑 땅이 사라진 장판은 아래 땅으로 내려온다 */

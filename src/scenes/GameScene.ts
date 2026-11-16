@@ -1269,11 +1269,12 @@ export class GameScene extends Phaser.Scene {
     }
     if (lead && !this.manualCam) this.follow(lead.x, this.focusY(lead.y, 0.5), 0.14);
 
-    if (pb.frame >= pb.res.frames + 2 && pb.ev >= evs.length) {
+    if (pb.frame >= pb.res.frames + 2) {
       g.clear();
       this.shellSprites.forEach((im) => im.destroy());
       this.shellSprites.clear();
-      this.endShot();
+      // 남은 불·독 지속 피해는 다음 차례와 함께 이어서 보여 준다
+      this.endShot(evs.slice(pb.ev), pb.frame);
     }
   }
 
@@ -1396,7 +1397,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private endShot() {
+  private endShot(later: SimEvent[] = [], frame = 0) {
     this.pb = null;
     this.ultShown = null;
     this.phase = 'settle';
@@ -1405,10 +1406,12 @@ export class GameScene extends Phaser.Scene {
     this.paint(0, 0, this.vis.w - 1, this.vis.h - 1);
     this.hud.drawMiniBase(this.match);
     for (const v of this.views) {
-      v.hp = v.t.hp;
+      // 아직 보여 주지 않은 지속 피해만큼은 체력바에 남겨 둔다
+      v.hp = v.t.hp + later.reduce((s, e) => s + (e.type === 'dot' && e.target === v.t.idx ? e.amount : 0), 0);
       v.drawHp();
       if (!v.t.alive) v.kill();
     }
+    for (const e of later) this.time.delayedCall(Math.max(0, ((e.f - frame) / 60) * 1000), () => this.applyEvent(e));
     this.time.delayedCall(this.views.some((v) => v.tweening) ? 1100 : 700, () => this.nextTurn());
   }
 
