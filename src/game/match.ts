@@ -17,6 +17,8 @@ const DOT_RATE = 0.02;
 const ZONE_R = 18;
 /** 특수 벽이 턴마다 생길 확률 */
 const WALL_CHANCE = 0.05;
+/** 땅이 파이는 크기 배율 (전체 10% 축소) */
+const CRATER_SCALE = 0.9;
 
 /** 바람이 바뀌는 빠르기: 턴마다 바뀌는 최대 폭 */
 export const WIND_STEPS = { slow: 2, normal: 5, fast: 8 } as const;
@@ -365,7 +367,7 @@ export class Match {
     }
     const damageMul = item === 'power' ? 1.3 : 1;
     // 세게 쏠수록(파워·파워업) 땅을 더 크게 판다: 파워 0이면 기본 크기, 100이면 1.5배
-    const crater = Math.round(w.crater * (1 + (0.5 * Math.max(0, Math.min(100, input.power))) / 100) * damageMul);
+    const crater = Math.round(w.crater * CRATER_SCALE * (1 + (0.5 * Math.max(0, Math.min(100, input.power))) / 100) * damageMul);
     const volleys = item === 'double' ? 2 : 1;
 
     const moved = new Set<number>();
@@ -448,8 +450,9 @@ export class Match {
         },
         laser: (f, x, y) => {
           const y2 = Math.min(this.terrain.h + 50, y + LASER_DEPTH);
-          this.terrain.carveLine(x, -60, x, y2, w.crater);
-          events.push({ f, type: 'laser', x1: x, y1: -400, x2: x, y2, r: w.crater });
+          const lr = Math.round(w.crater * CRATER_SCALE);
+          this.terrain.carveLine(x, -60, x, y2, lr);
+          events.push({ f, type: 'laser', x1: x, y1: -400, x2: x, y2, r: lr });
           for (const o of this.tanks) {
             const c = tankCenter(o);
             if (Math.abs(c.x - x) <= w.radius + TANK_HIT_R && c.y <= y2 + TANK_HIT_R) hurt(f, o, w.damage * damageMul, true);
