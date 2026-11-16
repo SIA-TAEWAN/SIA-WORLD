@@ -1,6 +1,6 @@
 import { ITEMS, ITEM_IDS, TANKS, WEAPONS, type ItemId, type WeaponDef } from './data';
 import { Rng } from './rng';
-import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput } from './types';
+import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput, Zone } from './types';
 import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
 import { fly, tankCenter, TANK_HIT_R, WIND_K, type ImpactHandler } from '../physics/shot';
@@ -11,6 +11,10 @@ const ULT_PER_TAKEN = 0.16;
 const DIRECT_BONUS = 1.2;
 const FALL_OUT_Y = 40;
 const LASER_DEPTH = 90;
+/** 불·독: 초당 최대체력의 2%, 5초(최대 10%). 장판 크기는 탱크만 하다 */
+const DOT_TICKS = 5;
+const DOT_RATE = 0.02;
+const ZONE_R = 18;
 
 /** 바람이 바뀌는 빠르기: 턴마다 바뀌는 최대 폭 */
 export const WIND_STEPS = { slow: 2, normal: 5, fast: 8 } as const;
@@ -34,6 +38,8 @@ export interface CrateDrop {
 
 export interface MatchOptions {
   wind?: WindMode;
+  /** 필살기 게이지가 항상 가득 찬 탱크 (AI 대전 '시아') */
+  fullUlt?: number[];
 }
 
 export class Match {
@@ -51,6 +57,9 @@ export class Match {
   winner: Team | -1 | null = null;
   crates: Crate[] = [];
   nextCrate = 0;
+  /** 땅에 남은 불·독안개 */
+  zones: Zone[] = [];
+  nextZone = 0;
   /** 이번 턴 시작에 떨어진 상자 (화면 연출용) */
   lastDrop: CrateDrop[] | null = null;
   /** 상자를 주운 기록 (화면이 꺼내 간다) */
@@ -143,7 +152,10 @@ export class Match {
     const dw = this.rng.int(-step, step);
     this.wind = this.turn === 1 ? dw : Math.max(-10, Math.min(10, this.wind + dw));
     this.moveLeft = next.def.move;
+    this.refillUlt();
     this.movedThisTurn = 0;
+    // 내 차례가 오면 내가 만든 불·독안개는 사라진다
+    this.zones = this.zones.filter((z) => z.owner !== next.idx);
     this.lastDrop = this.turn % DROP_EVERY === 0 ? this.dropCrates() : null;
     return next;
   }
@@ -357,12 +369,22 @@ export class Match {
       }
     };
 
+    /** 이번 발사로 불·독에 걸린 탱크 */
+    const afflicted = new Map<number, 'fire' | 'poison'>();
     let result: ShotResult;
     {
       const handler: ImpactHandler = {
-        explode: (f, x, y, direct) => {
-          this.terrain.carve(x, y, crater);
-          events.push({ f, type: 'explode', x, y, radius: w.radius, crater, big: slot === 2 });
+        explode: (f, x, y, direct, scale = 1) => {
+          const cr = Math.max(4, Math.round(crater * scale));
+          this.terrain.carve(x, y, cr);
+          // 폭발이 덮친 불은 꺼진다
+          this.zones = this.zones.filter((z) => z.kind !== 'fire' || Math.hypot(z.x - x, z.y - y) > cr + z.r);
+          let zone: Zone | undefined;
+          if (w.zone) {
+            zone = { id: this.nextZone++, kind: w.zone, x: Math.round(x), y: Math.round(y), r: ZONE_R, owner: t.idx };
+            this.zones.push(zone);
+          }
+          events.push({ f, type: 'explode', x, y, radius: w.radius, crater: cr, big: slot === 2, fx: w.fx, zone: zone ? { ...zone } : undefined });
           for (const o of this.tanks) {
             if (!o.alive) continue;
             const c = tankCenter(o);
@@ -371,6 +393,7 @@ export class Match {
             const raw = w.damage * damageMul * (1 - d / w.radius) * (o.idx === direct ? DIRECT_BONUS : 1);
             const wasAlive = o.alive;
             hurt(f, o, raw, o.idx === direct);
+            if (w.poison && o.alive && o.team !== t.team) afflicted.set(o.idx, 'poison');
             if (w.behavior === 'push' && wasAlive && o.alive && o.team !== t.team) {
               const k = (w.knockback ?? 100) * (1 - d / w.radius);
               const dir = c.x >= x ? 1 : -1;
@@ -425,9 +448,49 @@ export class Match {
     }
     result.frames = endF;
     this.settleCrates();
+    result.frames = this.applyDots(t, afflicted, events, endF);
+    this.refillUlt();
     this.pickup();
     this.checkWinner();
     return result;
+  }
+
+  /**
+   * 불·독안개 위에 있는 적, 중독된 적에게 초당 2%씩 5번 (최대 10%) 피해. 체력 1은 남긴다.
+   * 누군가를 태운(중독시킨) 장판은 사라진다. 끝나는 프레임을 돌려준다.
+   */
+  private applyDots(shooter: TankState, afflicted: Map<number, 'fire' | 'poison'>, events: SimEvent[], endF: number): number {
+    for (const z of [...this.zones]) {
+      let used = false;
+      for (const o of this.tanks) {
+        if (!o.alive || o.team === this.tanks[z.owner].team) continue;
+        const c = tankCenter(o);
+        if (Math.hypot(c.x - z.x, c.y - z.y) > z.r + TANK_HIT_R) continue;
+        if (!afflicted.has(o.idx)) afflicted.set(o.idx, z.kind);
+        used = true;
+      }
+      if (used) this.zones = this.zones.filter((x) => x !== z);
+    }
+    if (!afflicted.size) return endF;
+    let last = endF;
+    for (const [idx, kind] of [...afflicted].sort((a, b) => a[0] - b[0])) {
+      const o = this.tanks[idx];
+      const per = Math.max(1, Math.round(o.maxHp * DOT_RATE));
+      for (let i = 0; i < DOT_TICKS; i++) {
+        const f = endF + 40 + i * 60;
+        const amount = Math.max(0, Math.min(per, o.hp - 1));
+        o.hp -= amount;
+        shooter.damageDealt += amount;
+        events.push({ f, type: 'dot', target: idx, amount, kind, last: i === DOT_TICKS - 1 });
+        last = Math.max(last, f);
+      }
+    }
+    return last + 20;
+  }
+
+  /** 필살기 무한 탱크는 게이지를 다시 채운다 */
+  refillUlt() {
+    for (const i of this.options.fullUlt ?? []) if (this.tanks[i]) this.tanks[i].ult = 100;
   }
 
   checkWinner() {
@@ -440,7 +503,8 @@ export class Match {
   stateHash(): string {
     const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10)].join(',')).join(';');
     const crates = this.crates.map((c) => `${c.id}:${c.x},${c.y}`).join(';');
-    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}`;
+    const zones = this.zones.map((z) => `${z.id}:${z.kind}:${z.x},${z.y}`).join(';');
+    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}`;
   }
 
   snapshot(): MatchSnapshot {
@@ -459,6 +523,8 @@ export class Match {
       terrain: this.terrain.encode(),
       crates: this.crates.map((c) => ({ ...c })),
       nextCrate: this.nextCrate,
+      zones: this.zones.map((z) => ({ ...z })),
+      nextZone: this.nextZone,
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
         alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower,
@@ -478,6 +544,8 @@ export class Match {
     m.terrain.decode(s.terrain);
     m.crates = (s.crates ?? []).map((c) => ({ ...c }));
     m.nextCrate = s.nextCrate ?? 0;
+    m.zones = (s.zones ?? []).map((z) => ({ ...z }));
+    m.nextZone = s.nextZone ?? 0;
     s.tanks.forEach((d, i) => Object.assign(m.tanks[i], d));
     return m;
   }
@@ -502,5 +570,7 @@ export interface MatchSnapshot {
   terrain: string;
   crates?: Crate[];
   nextCrate?: number;
+  zones?: Zone[];
+  nextZone?: number;
   tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower'>[];
 }

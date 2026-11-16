@@ -4,7 +4,7 @@ import itemsJson from '../data/items.json';
 
 export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig' | 'zodiac';
 export type ItemId = 'double' | 'power' | 'repair' | 'teleport';
-export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split' | 'roll' | 'homing';
+export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split' | 'roll' | 'homing' | 'skip';
 
 export interface TankDef {
   name: string;
@@ -55,6 +55,14 @@ export interface WeaponDef {
   rollDistance?: number;
   /** 유도탄: 꼭대기를 지난 뒤 초당 꺾는 각도 */
   homing?: number;
+  /** 물수제비탄: 땅에서 더 튀어 오르며 터지는 횟수 (구덩이는 점점 작아진다) */
+  hops?: number;
+  /** 터진 자리에 남는 장판 (불·독안개) */
+  zone?: 'fire' | 'poison';
+  /** 맞은 탱크를 중독시킨다 */
+  poison?: boolean;
+  /** 폭발 연출 (할퀴기 등) */
+  fx?: 'claw';
 }
 
 export interface ItemDef {

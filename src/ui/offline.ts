@@ -368,6 +368,8 @@ function startGame() {
     seed,
     speed: state.speed,
     wind: state.wind,
+    // 닉네임 '시아'는 AI 대전에서 필살기 게이지가 늘 가득
+    fullUlt: setups.flatMap((s, i) => (!s.ai && s.name.trim() === '시아' ? [i] : [])),
     onEnd: (s: MatchSummary) => {
       closeGame();
       showResult(s);

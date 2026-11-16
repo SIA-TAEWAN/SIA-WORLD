@@ -71,13 +71,16 @@ interface Shell {
   rolled: boolean;
   rollDir: number;
   rollLeft: number;
+  /** 물수제비: 남은 튐 횟수, 지금까지 터진 횟수 */
+  hopsLeft: number;
+  hopN: number;
   alive: boolean;
   track: ShellTrack;
 }
 
 export interface ImpactHandler {
   /** 폭발 처리. 실제 시뮬레이션에서만 호출된다. */
-  explode(f: number, x: number, y: number, directTarget: number | null): void;
+  explode(f: number, x: number, y: number, directTarget: number | null, craterScale?: number): void;
   build(f: number, x: number, y: number): void;
   carveLine(f: number, x1: number, y1: number, x2: number, y2: number, r: number): void;
   /** 착탄 지점에 하늘에서 수직 레이저 */
@@ -140,13 +143,15 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
     return null;
   };
 
+  // 물수제비탄은 튈 때마다 구덩이가 작아진다
+  const HOP_SCALE = [1, 0.65, 0.4, 0.3];
   const impact = (s: Shell, x: number, y: number, target: number | null) => {
     impacts.push({ x, y, target });
     end(s);
     if (!handler) return;
     if (w.behavior === 'build') handler.build(f, x, y);
     else if (w.behavior === 'laser') handler.laser(f, x, y);
-    else handler.explode(f, x, y, target);
+    else handler.explode(f, x, y, target, HOP_SCALE[Math.min(s.hopN, 3)]);
   };
 
   while (f < MAX_FRAMES) {
@@ -168,6 +173,8 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         rolled: false,
         rollDir: p.facing,
         rollLeft: 0,
+        hopsLeft: w.hops ?? 0,
+        hopN: 0,
         alive: true,
         track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big },
       };
@@ -326,6 +333,23 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
             s.y = py;
             s.bounces--;
             if (Math.hypot(s.vx, s.vy) < 70) impact(s, px, py, null);
+            break;
+          }
+          if (w.behavior === 'skip' && s.hopsLeft > 0) {
+            // 터지고 앞으로 다시 튀어 오른다
+            impacts.push({ x: s.x, y: s.y, target: null });
+            if (!handler) {
+              end(s);
+              break;
+            }
+            handler.explode(f, s.x, s.y, null, HOP_SCALE[Math.min(s.hopN, 3)]);
+            s.hopsLeft--;
+            s.hopN++;
+            s.x = px;
+            s.y = py - 3;
+            const dir = s.vx > 0 ? 1 : s.vx < 0 ? -1 : p.facing;
+            s.vx = dir * Math.max(110, Math.abs(s.vx) * 0.7);
+            s.vy = -175;
             break;
           }
           if (w.behavior === 'drill' && handler) {

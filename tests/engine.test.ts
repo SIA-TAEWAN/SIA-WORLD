@@ -182,7 +182,7 @@ describe('바람·경사·분열탄', () => {
   });
 
   it('분열탄은 꼭대기에서 여러 발로 갈라진다', () => {
-    const m = new Match(duo('rat', 'ox'), 'valley', 8);
+    const m = new Match(duo('monkey', 'ox'), 'valley', 8);
     m.current = 0;
     const r = m.fire(shot({ weapon: 1, angle: 55, power: 70, facing: m.tanks[0].facing }));
     expect(r.shells.length).toBe(4);
@@ -349,5 +349,88 @@ describe('아슬아슬 맵', () => {
       }
     if (process.env.DBG) console.log({ direct, fell, near, survivedNear });
     expect(direct).toBeGreaterThan(0);
+  });
+});
+
+describe('새 무기 효과', () => {
+  const setup = (a: PlayerSetup['tank'], b: PlayerSetup['tank'], seed = 11) => {
+    const m = new Match(duo(a, b), 'valley', seed);
+    m.startTurn();
+    m.current = 0;
+    m.wind = 0;
+    return m;
+  };
+  const near = (m: Match, dist: number) => {
+    m.tanks[0].x = 300;
+    m.tanks[0].y = 0;
+    m.settle(m.tanks[0]);
+    m.tanks[1].x = 300 + dist;
+    m.tanks[1].y = 0;
+    m.settle(m.tanks[1]);
+  };
+
+  it('쟁기탄은 세 번 터지고 구덩이가 점점 작아진다', () => {
+    const m = setup('ox', 'tiger');
+    near(m, 700);
+    const r = m.fire(shot({ weapon: 1, angle: 40, power: 55, facing: 1 }));
+    const ex = r.events.filter((e) => e.type === 'explode') as { crater: number }[];
+    expect(ex.length).toBe(3);
+    expect(ex[1].crater).toBeLessThan(ex[0].crater);
+    expect(ex[2].crater).toBeLessThan(ex[1].crater);
+  });
+
+  it('쥐떼탄은 세 마리가 굴러간다', () => {
+    const m = setup('rat', 'tiger');
+    near(m, 700);
+    const r = m.fire(shot({ weapon: 1, angle: 40, power: 55, facing: 1 }));
+    expect(r.shells.length).toBe(3);
+    expect(r.shells.every((s) => s.look === 'rat')).toBe(true);
+  });
+
+  it('불·독은 초당 2%씩 최대 10%, 체력 1은 남기고, 장판은 쓰이면 사라진다', () => {
+    for (const [tank, slot, kind] of [['dragon', 0, 'fire'], ['snake', 1, 'poison'], ['rooster', 1, 'poison']] as const) {
+      // 상대 바로 위로 떨어지는 탄을 찾는다
+      let found = false;
+      for (let a = 30; a <= 80 && !found; a += 1)
+        for (let p = 20; p <= 100 && !found; p += 1) {
+          const m = setup(tank, 'ox');
+          near(m, 160);
+          const before = m.tanks[1].hp;
+          const r = m.fire(shot({ weapon: slot, angle: a, power: p, facing: 1 }));
+          const dots = r.events.filter((e) => e.type === 'dot' && e.target === 1) as { amount: number; kind: string }[];
+          if (!dots.length) continue;
+          found = true;
+          const direct = r.events.filter((e) => e.type === 'damage' && e.target === 1).reduce((s, e) => s + (e as { amount: number }).amount, 0);
+          const dotSum = dots.reduce((s, e) => s + e.amount, 0);
+          expect(dots.length).toBe(5);
+          expect(dots[0].kind).toBe(kind);
+          expect(dotSum).toBeLessThanOrEqual(Math.round(m.tanks[1].maxHp * 0.02) * 5);
+          expect(m.tanks[1].hp).toBe(Math.max(1, before - direct - dotSum));
+          expect(m.tanks[1].hp).toBeGreaterThanOrEqual(1);
+          expect(m.zones.length).toBe(0);
+        }
+      expect(found).toBe(true);
+    }
+  });
+
+  it('맞히지 못한 독안개는 남았다가 내 다음 차례에 사라진다', () => {
+    const m = setup('snake', 'ox');
+    near(m, 700);
+    m.fire(shot({ weapon: 1, angle: 45, power: 30, facing: 1 }));
+    expect(m.zones.length).toBe(1);
+    const snap = Match.fromSnapshot(m.snapshot());
+    expect(snap.zones.length).toBe(1);
+    m.current = 1;
+    m.tanks[0].delay = 0;
+    m.tanks[1].delay = 999;
+    m.startTurn();
+    expect(m.current).toBe(0);
+    expect(m.zones.length).toBe(0);
+  });
+
+  it('꿀꿀이 왕도토리는 폭발·구덩이가 1.5배', () => {
+    const m = setup('pig', 'tiger');
+    expect(m.weaponOf(m.tanks[0], 0).radius).toBe(86);
+    expect(m.weaponOf(m.tanks[0], 0).crater).toBe(60);
   });
 });

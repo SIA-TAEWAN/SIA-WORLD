@@ -14,18 +14,17 @@
   },
   "rat_swarm": {
     "name": "쥐떼탄",
-    "desc": "꼭대기에서 세 발로 갈라진다",
-    "behavior": "split",
-    "damage": 150,
-    "radius": 40,
-    "crater": 26,
+    "desc": "쥐 세 마리가 연달아 날아가 땅에 닿으면 굴러간다",
+    "behavior": "roll",
+    "damage": 105,
+    "radius": 36,
+    "crater": 22,
     "wind": 1,
-    "count": 1,
+    "count": 3,
     "speed": 760,
     "delay": 120,
-    "split": 3,
-    "spread": 38,
-    "look": "cheese"
+    "look": "rat",
+    "rollDistance": 100
   },
   "rat_horde": {
     "name": "쥐떼 습격",
@@ -58,18 +57,17 @@
   },
   "ox_plow": {
     "name": "쟁기탄",
-    "desc": "땅을 길게 갈아엎고 터진다",
-    "behavior": "drill",
-    "damage": 230,
-    "radius": 53,
+    "desc": "땅에 닿을 때마다 튀어 오르며 세 번 터진다 (구덩이는 점점 작게)",
+    "behavior": "skip",
+    "damage": 150,
+    "radius": 45,
     "crater": 34,
     "wind": 1,
     "count": 1,
     "speed": 720,
     "delay": 100,
-    "drillDistance": 85,
-    "drillWidth": 12,
-    "look": "drill"
+    "look": "drill",
+    "hops": 2
   },
   "ox_charge": {
     "name": "황소 돌진",
@@ -100,7 +98,7 @@
   },
   "tiger_twin": {
     "name": "쌍발톱",
-    "desc": "같은 궤적으로 두 발",
+    "desc": "할퀴는 발톱 두 발",
     "behavior": "normal",
     "damage": 190,
     "radius": 46,
@@ -109,7 +107,8 @@
     "count": 2,
     "speed": 720,
     "delay": 150,
-    "look": "claw"
+    "look": "claw",
+    "fx": "claw"
   },
   "tiger_roar": {
     "name": "포효탄",
@@ -166,7 +165,7 @@
   },
   "dragon_flame": {
     "name": "불꽃탄",
-    "desc": "아주 넓게 그을리는 불꽃",
+    "desc": "터진 자리에 불이 남는다 (초당 2%, 최대 10%)",
     "behavior": "normal",
     "damage": 305,
     "radius": 77,
@@ -175,7 +174,8 @@
     "count": 1,
     "speed": 720,
     "delay": 0,
-    "look": "fire"
+    "look": "fire",
+    "zone": "fire"
   },
   "dragon_pearl": {
     "name": "여의주",
@@ -221,7 +221,7 @@
   },
   "snake_mist": {
     "name": "독안개",
-    "desc": "피해는 적지만 아주 넓게 퍼진다",
+    "desc": "터진 자리에 독안개가 남는다 (초당 2%, 최대 10%)",
     "behavior": "normal",
     "damage": 190,
     "radius": 94,
@@ -230,7 +230,8 @@
     "count": 1,
     "speed": 720,
     "delay": 100,
-    "look": "mist"
+    "look": "mist",
+    "zone": "poison"
   },
   "snake_imugi": {
     "name": "이무기",
@@ -386,16 +387,17 @@
   },
   "rooster_feather": {
     "name": "깃털탄",
-    "desc": "한 번에 날아가는 날카로운 깃털",
+    "desc": "폭발은 아주 작지만 맞으면 중독 (초당 2%, 최대 10%)",
     "behavior": "normal",
     "damage": 275,
-    "radius": 44,
+    "radius": 16,
     "crater": 28,
     "wind": 1,
     "count": 1,
     "speed": 900,
     "delay": 60,
-    "look": "feather"
+    "look": "feather",
+    "poison": true
   },
   "rooster_dawn": {
     "name": "새벽 레이저",
@@ -455,12 +457,12 @@
     "desc": "느리지만 땅을 크게 파낸다",
     "behavior": "normal",
     "damage": 240,
-    "radius": 57,
-    "crater": 40,
+    "radius": 86,
+    "crater": 60,
     "wind": 1,
     "count": 1,
     "speed": 650,
-    "delay": 0,
+    "delay": 150,
     "look": "acorn"
   },
   "pig_mud": {

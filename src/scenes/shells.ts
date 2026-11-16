@@ -26,6 +26,7 @@ export const TRAIL: Record<string, number> = {
   moon: 0xfff3a0,
   sun: 0xffd23a,
   coconut: 0xc8a070,
+  rat: 0xd8d8e0,
 };
 
 const OUT = 0x3a2a1e;
@@ -197,6 +198,24 @@ export function drawShell(g: G, look: string, x: number, y: number, dx: number, 
         g.lineStyle(1.8, OUT).lineBetween(ax, ay, bx, by);
       }
       break;
+    case 'rat': {
+      // 동그랗게 몸을 만 쥐 (구르면 빙글빙글)
+      const a = t * 12;
+      const ax = Math.cos(a);
+      const ay = Math.sin(a);
+      g.lineStyle(1.4, 0xff9db5).beginPath();
+      g.arc(x - ax * 5 * k, y - ay * 5 * k, 3 * k, a, a + 2.5);
+      g.strokePath();
+      circ(0, 0, 6, 0x9a9aa8);
+      g.fillStyle(0xc4c4d0).fillCircle(x + ax * 1.5 * k, y + ay * 1.5 * k, 3.6 * k);
+      // 귀
+      g.fillStyle(0xff9db5).lineStyle(1, OUT).fillCircle(x + Math.cos(a + 1.2) * 5.5 * k, y + Math.sin(a + 1.2) * 5.5 * k, 2.2 * k);
+      g.strokeCircle(x + Math.cos(a + 1.2) * 5.5 * k, y + Math.sin(a + 1.2) * 5.5 * k, 2.2 * k);
+      // 눈·코
+      g.fillStyle(0x1e1e2a).fillCircle(x + Math.cos(a + 0.4) * 3 * k, y + Math.sin(a + 0.4) * 3 * k, 0.9 * k);
+      g.fillStyle(0xff6b8a).fillCircle(x + ax * 5.6 * k, y + ay * 5.6 * k, 1.1 * k);
+      break;
+    }
     case 'coconut': {
       circ(0, 0, 6, 0x7a4a26);
       // 굴러가는 게 보이도록 시간에 따라 도는 섬유 줄무늬

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Match, type CrateDrop, type MatchSnapshot, type WindMode } from '../game/match';
 import { Rng } from '../game/rng';
 import { TURN_SECONDS, ITEMS } from '../game/data';
-import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput } from '../game/types';
+import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput, Zone } from '../game/types';
 import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
 import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
@@ -48,6 +48,8 @@ export interface GameConfig {
   chat?: GameChat;
   /** 바람이 바뀌는 빠르기 */
   wind?: WindMode;
+  /** 필살기 게이지가 항상 가득 찬 탱크 번호 */
+  fullUlt?: number[];
 }
 
 type Phase = 'intro' | 'aim' | 'ai' | 'remote' | 'fly' | 'settle' | 'over';
@@ -279,6 +281,58 @@ export class GameScene extends Phaser.Scene {
   private shellSprites = new Map<object, Phaser.GameObjects.Image>();
   /** 땅에 놓인 보급 상자 그림 (상자 id별) */
   private crateViews = new Map<number, Phaser.GameObjects.Container>();
+  /** 땅에 남은 불·독안개 그림 */
+  private zoneViews = new Map<number, Phaser.GameObjects.Container>();
+
+  private addZoneView(z: Zone) {
+    if (this.zoneViews.has(z.id)) return;
+    const c = this.add.container(z.x, z.y).setDepth(12).setData('kind', z.kind);
+    const fire = z.kind === 'fire';
+    // 바닥 얼룩
+    c.add(this.add.ellipse(0, 0, z.r * 2.4, z.r * 0.7, fire ? 0xff6a00 : 0x5bd16b, 0.35));
+    // 불꽃 / 독 구름 덩어리
+    for (let i = 0; i < 5; i++) {
+      const dx = (i - 2) * z.r * 0.42;
+      const blob = fire
+        ? this.add.triangle(dx, -6, 0, 10, 5, -8 - (i % 2) * 5, 10, 10, i % 2 ? 0xffb020 : 0xff4d1a, 0.9)
+        : this.add.circle(dx, -8 - (i % 2) * 5, 8 + (i % 3) * 2, i % 2 ? 0x8cf06a : 0x2f9e48, 0.75);
+      c.add(blob);
+      this.tweens.add({
+        targets: blob,
+        scaleY: fire ? { from: 0.7, to: 1.25 } : { from: 0.9, to: 1.15 },
+        scaleX: fire ? 1 : { from: 0.9, to: 1.15 },
+        alpha: fire ? { from: 0.65, to: 1 } : { from: 0.6, to: 0.85 },
+        y: blob.y - (fire ? 3 : 4),
+        duration: fire ? 180 + i * 37 : 900 + i * 120,
+        yoyo: true,
+        repeat: -1,
+      });
+    }
+    this.zoneViews.set(z.id, c);
+  }
+
+  private syncZones() {
+    const live = new Set(this.match.zones.map((z) => z.id));
+    for (const [id, v] of this.zoneViews)
+      if (!live.has(id)) {
+        this.zoneViews.delete(id);
+        this.tweens.add({ targets: v, alpha: 0, duration: 400, onComplete: () => v.destroy() });
+      }
+    for (const z of this.match.zones) this.addZoneView(z);
+  }
+
+  /** 어흥이 할퀴기: 세 줄 발톱 자국 */
+  private clawFx(x: number, y: number) {
+    const g = this.add.graphics().setDepth(26).setPosition(x, y).setRotation(-0.5);
+    for (let i = -1; i <= 1; i++) {
+      g.lineStyle(7, 0x2a0d00, 0.5).lineBetween(i * 13 - 4, -30, i * 13 + 4, 30);
+      g.lineStyle(4, 0xffffff, 1).lineBetween(i * 13 - 4, -30, i * 13 + 4, 30);
+      g.lineStyle(2, 0xff5a3c, 1).lineBetween(i * 13 - 3, -24, i * 13 + 3, 24);
+    }
+    g.setScale(0.2, 0.2);
+    this.tweens.add({ targets: g, scaleX: 1.2, scaleY: 1.2, duration: 120, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: g, alpha: 0, delay: 450, duration: 400, onComplete: () => g.destroy() });
+  }
   /** 떨어지는 중인 상자 id */
   private falling = new Set<number>();
   /** 이번 턴에 바로 쓴 아이템 칸 */
@@ -314,7 +368,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const cfg = this.cfg;
-    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal' });
+    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal', fullUlt: cfg.fullUlt });
     this.speed = cfg.speed ?? 1;
     this.time.timeScale = this.speed;
     this.tweens.timeScale = this.speed;
@@ -813,6 +867,7 @@ export class GameScene extends Phaser.Scene {
     else if (this.phase === 'fly') this.updatePlayback(dt * this.speed);
     this.updateOffTurn(dt);
     this.syncCrates();
+    if (this.phase !== 'fly') this.syncZones();
 
     // 내가 조종 중이면 다른 기기에 진행 상황을 보낸다
     if ((this.phase === 'aim' || this.phase === 'ai') && this.cfg.net) {
@@ -1226,6 +1281,16 @@ export class GameScene extends Phaser.Scene {
         this.scorchRing(e.x, e.y, e.crater);
         this.paint(e.x - e.crater - 7, e.y - e.crater - 7, e.x + e.crater + 7, e.y + e.crater + 7);
         this.boom(e.x, e.y, Math.max(e.radius, e.crater), e.big);
+        if (e.fx === 'claw') this.clawFx(e.x, e.y - 8);
+        // 폭발이 덮친 불은 꺼진다 (엔진과 같은 규칙)
+        for (const [id, v] of this.zoneViews) {
+          const near = Math.hypot(v.x - e.x, v.y - e.y) <= e.crater + 18;
+          if (near && v.getData('kind') === 'fire' && id !== e.zone?.id) {
+            this.zoneViews.delete(id);
+            this.tweens.add({ targets: v, alpha: 0, duration: 300, onComplete: () => v.destroy() });
+          }
+        }
+        if (e.zone) this.addZoneView(e.zone);
         break;
       }
       case 'build': {
@@ -1262,6 +1327,24 @@ export class GameScene extends Phaser.Scene {
         v.drawHp();
         v.hurt();
         this.floatText(v.x, v.y - 60, `${e.direct ? '직격! ' : ''}-${e.amount}`, e.direct ? '#ffdd33' : '#ff6b6b');
+        break;
+      }
+      case 'dot': {
+        const v = this.views[e.target];
+        v.hp = Math.max(1, v.hp - e.amount);
+        v.drawHp();
+        const fire = e.kind === 'fire';
+        if (fire) {
+          v.body.setTintFill(0xff7a2a);
+          this.time.delayedCall(120, () => (v.dead ? v.body.setTint(0x555555) : v.body.clearTint()));
+          this.fx.puff(v.x, v.y - 14, 0xff8a3c, 4);
+        } else {
+          // 중독: 녹색으로 변한다
+          v.body.setTint(e.last ? 0xffffff : 0x6dff7a);
+          if (e.last) v.body.clearTint();
+          this.fx.puff(v.x, v.y - 18, 0x6ad66a, 4);
+        }
+        if (e.amount > 0) this.floatText(v.x, v.y - 60, `${fire ? '🔥' : '☠️'} -${e.amount}`, fire ? '#ff9a3c' : '#7dff7a');
         break;
       }
       case 'heal': {

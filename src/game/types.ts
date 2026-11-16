@@ -50,14 +50,27 @@ export interface TurnInput {
 }
 
 export type SimEvent =
-  | { f: number; type: 'explode'; x: number; y: number; radius: number; crater: number; big: boolean }
+  | { f: number; type: 'explode'; x: number; y: number; radius: number; crater: number; big: boolean; fx?: 'claw'; zone?: Zone }
   | { f: number; type: 'build'; x: number; y: number; r: number }
   | { f: number; type: 'carveLine'; x1: number; y1: number; x2: number; y2: number; r: number }
   | { f: number; type: 'laser'; x1: number; y1: number; x2: number; y2: number; r: number }
   | { f: number; type: 'damage'; target: number; amount: number; direct: boolean }
   | { f: number; type: 'heal'; target: number; amount: number }
   | { f: number; type: 'move'; target: number; x: number; y: number; kind: 'knock' | 'fall' | 'teleport' }
-  | { f: number; type: 'death'; target: number };
+  | { f: number; type: 'death'; target: number }
+  /** 불·독 지속 피해 (체력 1은 남긴다) */
+  | { f: number; type: 'dot'; target: number; amount: number; kind: 'fire' | 'poison'; last: boolean };
+
+/** 땅에 남은 장판 (불·독안개) */
+export interface Zone {
+  id: number;
+  kind: 'fire' | 'poison';
+  x: number;
+  y: number;
+  r: number;
+  /** 만든 탱크 (그 탱크의 다음 차례에 사라진다) */
+  owner: number;
+}
 
 export interface ShellTrack {
   id: number;
