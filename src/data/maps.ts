@@ -150,26 +150,29 @@ const ledge: MapDef = {
     dirtTop: '#9a7a62', dirtBottom: '#5a4636', speck: '#7d6250',
     far: '#ffffff', cloud: '#ffe9f0',
   },
-  spawnA: [150, 450],
-  spawnB: [1150, 1450],
+  spawnA: [90, 560],
+  spawnB: [1040, 1510],
   lockTank: 'dog',
   lockWeapon: 1,
   build(rng) {
     const t = new Terrain(MAP_W, MAP_H);
     const n = noise(rng, 3);
-    // 선반: 위는 평평, 두께 36px (땅파기탄 구덩이 반지름 92px보다 훨씬 얇다)
-    const shelf = (x0: number, x1: number, top: number, thick: number) => {
+    // 선반: 두께 36px (땅파기탄 구덩이 반지름 92px보다 훨씬 얇다). top(x)로 기울기를 준다
+    const shelf = (x0: number, x1: number, top: (x: number) => number, thick: number) => {
       for (let x = x0; x <= x1; x++) {
         const edge = Math.min(x - x0, x1 - x) / 30;
         const th = thick * Math.min(1, 0.45 + edge) + n(x) * 0.15;
-        for (let y = top; y < top + th; y++) t.data[y * t.w + x] = 1;
+        const y0 = Math.round(top(x));
+        for (let y = y0; y < y0 + th; y++) t.data[y * t.w + x] = 1;
       }
     };
-    const y = 430 + Math.round(rng.range(-10, 10));
-    shelf(110, 490, y, 36);
-    shelf(1110, 1490, y, 36);
+    // 전체가 V자: 바깥쪽이 높고 가운데로 갈수록 내려간다
+    const hi = 330 + Math.round(rng.range(-10, 10));
+    const lo = hi + 150;
+    shelf(40, 610, (x) => hi + ((x - 40) / 570) * (lo - hi), 36);
+    shelf(990, 1560, (x) => hi + ((1560 - x) / 570) * (lo - hi), 36);
     // 가운데 작은 바위섬 (포탄을 가리는 장애물)
-    shelf(740, 860, y - 140, 26);
+    shelf(710, 890, () => hi - 20, 26);
     return t;
   },
 };
