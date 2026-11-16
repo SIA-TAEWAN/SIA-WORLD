@@ -1,6 +1,6 @@
 import { autoplay } from '../src/ai/autoplay';
 import { TANK_IDS, TANKS } from '../src/game/data';
-import { MAP_IDS } from '../src/data/maps';
+import { RANDOM_MAP_IDS as MAP_IDS } from '../src/data/maps';
 import type { Difficulty } from '../src/game/types';
 
 const games = Number(process.argv[2] ?? 12);

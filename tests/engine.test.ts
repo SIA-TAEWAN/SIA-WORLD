@@ -184,7 +184,7 @@ describe('바람·경사·분열탄', () => {
   it('분열탄은 꼭대기에서 여러 발로 갈라진다', () => {
     const m = new Match(duo('rat', 'ox'), 'valley', 8);
     m.current = 0;
-    const r = m.fire(shot({ weapon: 1, angle: 55, power: 70 }));
+    const r = m.fire(shot({ weapon: 1, angle: 55, power: 70, facing: m.tanks[0].facing }));
     expect(r.shells.length).toBe(4);
     expect(r.events.filter((e) => e.type === 'explode').length).toBeGreaterThanOrEqual(2);
   });
@@ -230,6 +230,9 @@ describe('바람 빠르기·굴러가는 탄·유도탄', () => {
     const homing = new Match(duo('dog', 'ox'), 'valley', 3);
     for (const m of [plain, homing]) {
       m.current = 0;
+      m.tanks[0].x = 250;
+      m.tanks[0].y = 0;
+      m.settle(m.tanks[0]);
       m.tanks[1].x = m.tanks[0].x + 500;
       m.tanks[1].y = 0;
       m.settle(m.tanks[1]);

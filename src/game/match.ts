@@ -73,14 +73,20 @@ export class Match {
     const byTeam: [PlayerSetup[], PlayerSetup[]] = [[], []];
     setups.forEach((s) => byTeam[s.team].push(s));
     const slotX = new Map<PlayerSetup, number>();
+    // 시작 위치는 무작위: 어느 팀이 왼쪽일지, 자기 구역 안 어디에 설지 (같은 팀끼리 70px 이상 떨어지게)
+    const swap = this.rng.next() < 0.5;
     ([0, 1] as const).forEach((team) => {
-      const [a, b] = team === 0 ? map.spawnA : map.spawnB;
-      const list = byTeam[team];
-      list.forEach((s, i) => {
-        const span = (b - a) / list.length;
-        const center = a + span * (i + 0.5);
-        slotX.set(s, Math.round(center + this.rng.range(-span * 0.25, span * 0.25)));
-      });
+      const [a, b] = (team === 0) !== swap ? map.spawnA : map.spawnB;
+      const xs: number[] = [];
+      for (const s of byTeam[team]) {
+        let x = 0;
+        for (let k = 0; k < 30; k++) {
+          x = Math.round(this.rng.range(a, b));
+          if (xs.every((o) => Math.abs(o - x) >= 70)) break;
+        }
+        xs.push(x);
+        slotX.set(s, x);
+      }
     });
 
     this.tanks = setups.map((s, idx) => {
@@ -96,7 +102,7 @@ export class Match {
         y: 0,
         hp: def.hp,
         maxHp: def.hp,
-        facing: s.team === 0 ? 1 : -1,
+        facing: x < this.terrain.w / 2 ? 1 : -1,
         angle: Math.round((def.angleMin + def.angleMax) / 2),
         delay: this.rng.int(0, 120),
         ult: 0,
