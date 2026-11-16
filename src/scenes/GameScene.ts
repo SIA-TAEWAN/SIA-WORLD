@@ -352,8 +352,9 @@ export class GameScene extends Phaser.Scene {
       double: { color: 0xffc83d, icon: '×2', label: '더블벽' },
       triple: { color: 0xb46bff, icon: '×3', label: '트리플벽' },
     }[w.kind];
-    const c = this.add.container(w.x, 0).setDepth(6).setAlpha(0);
-    const h = Math.max(40, w.bottom);
+    // 지형 뒤, 배경 앞 (땅에 묻힌 부분은 가려진다)
+    const c = this.add.container(w.x, w.top ?? 0).setDepth(-1).setAlpha(0);
+    const h = Math.max(40, w.bottom - (w.top ?? 0) + 6);
     // 빛나는 기둥 (천장부터 바닥까지)
     c.add(this.add.rectangle(0, 0, 48, h, info.color, 0.22).setOrigin(0.5, 0));
     c.add(this.add.rectangle(0, 0, 20, h, info.color, 0.55).setOrigin(0.5, 0));
@@ -366,7 +367,7 @@ export class GameScene extends Phaser.Scene {
       if (w.kind === 'whirl') this.tweens.add({ targets: dot, x: { from: -14, to: 14 }, duration: 350, yoyo: true, repeat: -1, delay: i * 90 });
     }
     // 이름표 (기둥 여러 곳에)
-    for (let y = 60; y < h - 20; y += 220) {
+    for (let y = Math.min(60, h / 2); y < h - 10; y += 220) {
       const tag = this.add
         .text(0, y, `${info.icon}\n${info.label}`, { fontFamily: 'Jua, sans-serif', fontSize: '20px', color: '#fff', align: 'center', stroke: `#${info.color.toString(16).padStart(6, '0')}`, strokeThickness: 4 })
         .setOrigin(0.5);
@@ -1325,6 +1326,13 @@ export class GameScene extends Phaser.Scene {
       dx /= len;
       dy /= len;
       if (s.behavior === 'laser') g.fillStyle(0xff7aa0, 0.35).fillCircle(x, y, 12);
+      // 증폭된 탄 (파워업·증폭벽): 붉게 타오르는 기운과 불꽃 꼬리
+      if (s.boostFrom !== undefined && k >= s.boostFrom) {
+        const pulse = 0.5 + 0.5 * Math.sin(pb.frame * 0.5);
+        g.fillStyle(0xff3b3b, 0.22 + pulse * 0.15).fillCircle(x, y, (s.big ? 20 : 15) + pulse * 3);
+        g.fillStyle(0xffd23a, 0.35).fillCircle(x, y, s.big ? 11 : 8);
+        this.fx.trail(px, py, 0xff5a2a);
+      }
       const key = `shell-${look}`;
       if (this.textures.exists(key)) {
         // SpriteCook 포탄 그림: 진행 방향으로 기울이거나, 둥근 것은 빙글빙글

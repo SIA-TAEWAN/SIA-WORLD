@@ -159,16 +159,19 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
   const queued: { at: number; s: Shell }[] = [];
   const wall = world.wall ?? null;
   const cloneAt = (s: Shell, x: number, y: number, vx: number, vy: number, spawn: number): Shell => {
-    const c: Shell = { ...s, id: nextId++, x, y, vx, vy, walled: true, child: true, whirl: null, alive: true, track: { id: 0, spawn, path: [x, y], behavior: s.track.behavior, look: s.track.look, big: s.track.big } };
+    const c: Shell = { ...s, id: nextId++, x, y, vx, vy, walled: true, child: true, whirl: null, alive: true, track: { id: 0, spawn, path: [x, y], behavior: s.track.behavior, look: s.track.look, big: s.track.big, boostFrom: s.track.boostFrom !== undefined ? 0 : undefined } };
     c.track.id = c.id;
     return c;
   };
   /** 벽을 지나는 순간 효과 (천장 위로 넘어가면 없음). 회오리면 true */
   const crossWall = (s: Shell, px: number): boolean => {
-    if (!wall || s.walled || s.y < 0 || s.y > wall.bottom) return false;
+    if (!wall || s.walled || s.y < (wall.top ?? 0) || s.y > wall.bottom) return false;
     if ((px - wall.x) * (s.x - wall.x) > 0 || px === s.x) return false;
     s.walled = true;
-    if (wall.kind === 'amp') s.boost *= 1.3;
+    if (wall.kind === 'amp') {
+      s.boost *= 1.3;
+      s.track.boostFrom ??= s.track.path.length / 2;
+    }
     else if (wall.kind === 'double') queued.push({ at: f + 12, s: cloneAt(s, wall.x, s.y, s.vx, s.vy, f + 12) });
     else if (wall.kind === 'triple') {
       for (const k of [-1, 1]) later.push(cloneAt(s, s.x, s.y, s.vx + k * 42, s.vy - 6, f + 1));
@@ -185,7 +188,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
     if (!handler) return;
     if (w.behavior === 'meteor' && !s.child) {
       // 맞은 자리 위 하늘에서 큰 절구가 떨어진다
-      const m: Shell = { ...s, id: nextId++, x, y: -90, vx: 0, vy: 260, age: 99, child: true, alive: true, track: { id: 0, spawn: f + 1, path: [x, -90], behavior: 'meteor', look: w.look, big: p.big } };
+      const m: Shell = { ...s, id: nextId++, x, y: -90, vx: 0, vy: 260, age: 99, child: true, alive: true, track: { id: 0, spawn: f + 1, path: [x, -90], behavior: 'meteor', look: w.look, big: p.big, boostFrom: s.track.boostFrom !== undefined ? 0 : undefined } };
       m.track.id = m.id;
       later.push(m);
       return;
@@ -243,7 +246,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         boost: 1,
         whirl: null,
         alive: true,
-        track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big && w.behavior !== 'firework' },
+        track: { id: 0, spawn: f, path: [start.x, start.y], behavior: w.behavior, look: w.look, big: p.big && w.behavior !== 'firework', boostFrom: p.damageMul > 1 ? 0 : undefined },
       };
       s.track.id = s.id;
       shells.push(s);
@@ -271,7 +274,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
             vx: s.vx + k * (w.spread ?? 40),
             vy: s.vy - Math.abs(k) * 6,
             child: true,
-            track: { id: 0, spawn: f, path: [s.x, s.y], behavior: 'split', look: w.look, big: p.big },
+            track: { id: 0, spawn: f, path: [s.x, s.y], behavior: 'split', look: w.look, big: p.big, boostFrom: s.track.boostFrom !== undefined ? 0 : undefined },
           };
           c.track.id = c.id;
           born.push(c);
@@ -288,7 +291,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         wh.a += 0.32;
         s.y -= 3.4;
         s.x = wh.cx + Math.cos(wh.a) * 16;
-        if (s.y < 0) {
+        if (s.y < (wall?.top ?? 0)) {
           s.vx = wh.vx;
           s.vy = Math.min(wh.vy, -Math.abs(wh.vy) * 0.6);
           s.whirl = null;

@@ -72,6 +72,8 @@ export interface Wall {
   x: number;
   /** 벽 아래끝 (그 자리 땅 높이) */
   bottom: number;
+  /** 벽 위끝 (바닥에서 탱크 4대 높이). 이보다 위로 지나가면 효과 없음 */
+  top: number;
   /** 이 턴 번호가 되면 사라진다 (생긴 뒤 3턴) */
   until: number;
 }
@@ -101,6 +103,8 @@ export interface ShellTrack {
   look?: string;
   /** 필살기는 크게 */
   big?: boolean;
+  /** 이 프레임(path 순번)부터 증폭된 탄 (파워업·증폭벽) */
+  boostFrom?: number;
 }
 
 export interface ShotResult {

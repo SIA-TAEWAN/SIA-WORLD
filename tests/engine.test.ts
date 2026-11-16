@@ -573,7 +573,7 @@ describe('특수 벽', () => {
     m.tanks[1].x = 1300; m.tanks[1].y = 0; m.settle(m.tanks[1]);
     let bottom = 0;
     while (!m.terrain.solid(500, bottom)) bottom++;
-    m.wall = { kind, x: 500, bottom, until: m.turn + 3 };
+    m.wall = { kind, x: 500, bottom, top: 0, until: m.turn + 3 };
     return m.fire(shot({ angle: 45, power, facing: 1 }));
   };
 
@@ -600,7 +600,7 @@ describe('특수 벽', () => {
     m.current = 0;
     m.wind = 0;
     m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
-    m.wall = { kind: 'triple', x: 700, bottom: 700, until: 99 };
+    m.wall = { kind: 'triple', x: 700, bottom: 700, top: 560, until: 99 };
     const r = m.fire(shot({ angle: 70, power: 100, facing: 1 }));
     expect(r.shells.length).toBe(1);
   });
