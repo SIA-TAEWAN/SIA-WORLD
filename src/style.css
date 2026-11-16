@@ -1864,3 +1864,18 @@ body.in-game .sound-fab {
   font-size: 14px;
   margin-left: 6px;
 }
+
+/* 첫 화면 사용 설명서 */
+.manual { margin-top: 14px; text-align: left; }
+.manual h3 { font-size: 16px; margin: 0 0 6px; text-align: center; }
+.manual details { border: 2px solid var(--panel-b); border-radius: 10px; margin: 5px 0; background: rgba(255,255,255,.5); overflow: hidden; }
+.manual summary { cursor: pointer; padding: 7px 12px; font-size: 15px; list-style: none; }
+.manual summary::-webkit-details-marker { display: none; }
+.manual summary::after { content: '▸'; float: right; transition: transform .2s; }
+.manual details[open] summary::after { transform: rotate(90deg); }
+.manual .mbody { padding: 0 12px 8px; font-size: 13.5px; line-height: 1.55; }
+.manual .mbody p { margin: 4px 0; }
+.manual .mbody ul { margin: 4px 0; padding-left: 18px; }
+
+/* 설명서 끝이 소리 버튼에 가리지 않게 */
+.screen.entry { padding-bottom: 72px; }
