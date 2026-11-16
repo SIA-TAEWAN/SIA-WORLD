@@ -50,8 +50,8 @@ export interface MatchOptions {
 
 /** 초보 / 일반 */
 export type GameMode = 'easy' | 'normal';
-/** 초보 모드 유도 세기: 멍뭉이 킁킁 뼈다귀(12)의 2배 */
-export const EASY_HOMING = 24;
+/** 초보 모드 유도 세기: 멍뭉이 킁킁 뼈다귀(12)의 4배 */
+export const EASY_HOMING = 48;
 
 export class Match {
   readonly mapId: MapId;
