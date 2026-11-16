@@ -57,8 +57,10 @@ export interface WeaponDef {
   homing?: number;
   /** 물수제비탄: 땅에서 더 튀어 오르며 터지는 횟수 (구덩이는 점점 작아진다) */
   hops?: number;
+  /** 튈 때마다 피해·구덩이 배율 (없으면 구덩이만 점점 작게) */
+  hopScale?: number[];
   /** 터진 자리에 남는 장판 (불·독안개) */
-  zone?: 'fire' | 'poison';
+  zone?: 'fire' | 'poison' | 'cloud';
   /** 맞은 탱크를 중독시킨다 */
   poison?: boolean;
   /** 폭발 연출 (할퀴기 등) */

@@ -275,6 +275,8 @@ export class Match {
     const t = this.cur;
     t.facing = dir;
     if (this.moveLeft <= 0 || !t.alive) return false;
+    // 몽실이 뭉게구름 안에서는 움직일 수 없다
+    if (this.inCloud(t)) return false;
     const nx = t.x + dir;
     if (nx < 8 || nx > this.terrain.w - 8) return false;
     let ny = t.y;
@@ -412,7 +414,7 @@ export class Match {
     let result: ShotResult;
     {
       const handler: ImpactHandler = {
-        explode: (f, x, y, direct, scale = 1, boost = 1) => {
+        explode: (f, x, y, direct, scale = 1, boost = 1, dmgScale = 1) => {
           // boost: 증폭벽을 지난 탄 (파워업처럼 피해·구덩이 증가)
           const cr = Math.max(4, Math.round(crater * scale * boost));
           this.terrain.carve(x, y, cr);
@@ -433,7 +435,7 @@ export class Match {
             const c = tankCenter(o);
             const d = o.idx === direct ? 0 : Math.max(0, Math.hypot(c.x - x, c.y - y) - TANK_HIT_R * 0.5);
             if (d > w.radius) continue;
-            const raw = w.damage * damageMul * boost * (1 - d / w.radius) * (o.idx === direct ? DIRECT_BONUS : 1);
+            const raw = w.damage * damageMul * boost * dmgScale * (1 - d / w.radius) * (o.idx === direct ? DIRECT_BONUS : 1);
             const wasAlive = o.alive;
             hurt(f, o, raw, o.idx === direct);
             // 중독: 맞은 탱크의 다음 차례 3번 동안 피해
@@ -516,6 +518,7 @@ export class Match {
    */
   private applyDots(shooter: TankState, afflicted: Map<number, 'fire' | 'poison'>, events: SimEvent[], endF: number, fresh = new Set<number>(), dotMul = new Map<number, number>()): number {
     for (const z of [...this.zones]) {
+      if (z.kind === 'cloud') continue;
       let used = false;
       for (const o of this.tanks) {
         if (!o.alive || o.team === this.tanks[z.owner].team) continue;
@@ -559,6 +562,12 @@ export class Match {
     // 지속 피해는 게임을 멈추지 않는다 (다음 차례와 함께 화면에서 이어서 보여 준다)
     void last;
     return endF;
+  }
+
+  /** 뭉게구름 안에 있는지 */
+  inCloud(t: TankState): boolean {
+    const c = tankCenter(t);
+    return this.zones.some((z) => z.kind === 'cloud' && Math.abs(c.x - z.x) <= z.r + TANK_HIT_R && c.y >= z.y - (z.h ?? z.r) - TANK_HIT_R && c.y <= z.y + TANK_HIT_R);
   }
 
   /** 발밑 땅이 사라진 장판은 아래 땅으로 내려온다 */

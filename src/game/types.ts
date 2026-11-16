@@ -83,7 +83,8 @@ export interface Wall {
 /** 땅에 남은 장판 (불·독안개) */
 export interface Zone {
   id: number;
-  kind: 'fire' | 'poison';
+  /** cloud: 몽실이 뭉게구름 (안에 있으면 이동 불가, 피해 없음) */
+  kind: 'fire' | 'poison' | 'cloud';
   x: number;
   y: number;
   r: number;

@@ -686,3 +686,48 @@ describe('벽과 독·불', () => {
     }
   });
 });
+
+describe('뭉게구름·질주탄', () => {
+  it('뭉게구름 안의 탱크는 움직이지 못하고 피해도 없다', () => {
+    const m = new Match(duo('sheep', 'ox'), 'valley', 81);
+    m.startTurn();
+    const o = m.tanks[1];
+    m.zones = [{ id: 1, kind: 'cloud', x: o.x, y: o.y, r: 54, h: 72, owner: 0 }];
+    m.current = 1;
+    m.moveLeft = 50;
+    expect(m.inCloud(o)).toBe(true);
+    expect(m.moveStep(1)).toBe(false);
+    m.current = 0;
+    m.tanks[0].x = 200; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+    const r = m.fire(shot({ angle: 80, power: 15, facing: -1 }));
+    expect(r.events.some((e) => e.type === 'dot')).toBe(false);
+    expect(m.zones.some((z) => z.id === 1)).toBe(true);
+  });
+  it('솜구름탄은 뭉게구름을 남기고, 바람은 기본으로 탄다', () => {
+    const m = new Match(duo('sheep', 'ox'), 'valley', 81);
+    expect(m.weaponOf(m.tanks[0], 0).wind).toBe(1);
+    m.startTurn();
+    m.current = 0;
+    m.wind = 0;
+    m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+    m.tanks[1].x = 1300; m.tanks[1].y = 0; m.settle(m.tanks[1]);
+    m.fire(shot({ angle: 45, power: 50, facing: 1 }));
+    expect(m.zones.some((z) => z.kind === 'cloud')).toBe(true);
+  });
+  it('질주탄은 세 번 터지고 100%·75%·50%로 약해진다', () => {
+    let ex: { crater: number }[] = [];
+    for (let p = 30; p <= 70 && ex.length !== 3; p += 2) {
+      const m = new Match(duo('horse', 'ox'), 'valley', 81);
+      m.startTurn();
+      m.current = 0;
+      m.wind = 0;
+      m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+      m.tanks[1].x = 1400; m.tanks[1].y = 0; m.settle(m.tanks[1]);
+      expect(m.weaponOf(m.tanks[0], 0).wind).toBe(1);
+      ex = m.fire(shot({ angle: 40, power: p, facing: 1 })).events.filter((e) => e.type === 'explode') as { crater: number }[];
+    }
+    expect(ex.length).toBe(3);
+    expect(ex[1].crater / ex[0].crater).toBeCloseTo(0.75, 1);
+    expect(ex[2].crater / ex[0].crater).toBeCloseTo(0.5, 1);
+  });
+});

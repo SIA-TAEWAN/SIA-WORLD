@@ -297,13 +297,16 @@ export class GameScene extends Phaser.Scene {
     const c = this.add.container(z.x, z.y).setDepth(12).setData('kind', z.kind);
     const fire = z.kind === 'fire';
     // 바닥 얼룩
-    c.add(this.add.ellipse(0, 0, z.r * 2.4, z.r * 0.7, fire ? 0xff6a00 : 0x5bd16b, 0.35));
+    const cloud = z.kind === 'cloud';
+    // 독은 초록, 뭉게구름은 하양
+    const [ca, cb] = cloud ? [0xffffff, 0xc9d4e6] : [0x8cf06a, 0x2f9e48];
+    c.add(this.add.ellipse(0, 0, z.r * 2.4, z.r * 0.7, fire ? 0xff6a00 : cloud ? 0xdfe8f5 : 0x5bd16b, 0.35));
     // 불꽃 / 독 구름 덩어리
     for (let i = 0; i < 5; i++) {
       const dx = (i - 2) * z.r * 0.42;
       const blob = fire
         ? this.add.triangle(dx, -6, 0, 10, 5, -8 - (i % 2) * 5, 10, 10, i % 2 ? 0xffb020 : 0xff4d1a, 0.9)
-        : this.add.circle(dx, -8 - (i % 2) * 5, 8 + (i % 3) * 2, i % 2 ? 0x8cf06a : 0x2f9e48, 0.75);
+        : this.add.circle(dx, -8 - (i % 2) * 5, (cloud ? 13 : 8) + (i % 3) * 2, i % 2 ? ca : cb, cloud ? 0.97 : 0.75);
       c.add(blob);
       this.tweens.add({
         targets: blob,
@@ -320,7 +323,7 @@ export class GameScene extends Phaser.Scene {
     const up = z.h ?? z.r;
     for (let k = 1; up > z.r && k <= Math.round((up - z.r) / 16); k++)
       for (let i = 0; i < 4; i++) {
-        const blob = this.add.circle((i - 1.5) * z.r * 0.5, -8 - k * 16, 9 + (i % 2) * 3, i % 2 ? 0x8cf06a : 0x2f9e48, 0.55);
+        const blob = this.add.circle((i - 1.5) * z.r * 0.5, -8 - k * 16, (cloud ? 12 : 9) + (i % 2) * 3, i % 2 ? ca : cb, cloud ? 0.85 : 0.55);
         c.add(blob);
         this.tweens.add({ targets: blob, alpha: { from: 0.35, to: 0.65 }, y: blob.y - 4, duration: 1000 + i * 150 + k * 90, yoyo: true, repeat: -1 });
       }
@@ -595,7 +598,8 @@ export class GameScene extends Phaser.Scene {
       h > w
         ? Phaser.Math.Clamp(w / 620, 0.45, 1)
         : Phaser.Math.Clamp(Math.min((h - hudH * (short ? 0.85 : 0.5)) / (short ? 520 : 860), w / 1050), 0.38, 1.15);
-    cam.setZoom(this.userZoom !== null ? Phaser.Math.Clamp(this.userZoom, this.fitZoom(), 1.6) : zoom);
+    // 맵 밖이 보이지 않도록 최소 배율 이상으로
+    cam.setZoom(this.userZoom !== null ? Phaser.Math.Clamp(this.userZoom, this.fitZoom(), 1.6) : Math.max(zoom, this.fitZoom()));
     this.applyBounds();
   }
 
@@ -863,9 +867,19 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private cloudToastTurn = -1;
+
   /** 1px 이동하고, 성공하면 이동 기록에 남긴다 */
   private step(dir: 1 | -1): boolean {
-    if (!this.match.moveStep(dir)) return false;
+    if (!this.match.moveStep(dir)) {
+      // 뭉게구름에 갇혀 있으면 한 번 알려 준다
+      const t = this.match.cur;
+      if (this.match.inCloud(t) && this.controlOf(t) === 'human' && this.cloudToastTurn !== this.match.turn) {
+        this.cloudToastTurn = this.match.turn;
+        this.hud.toast('☁️ 뭉게구름에 갇혀 움직일 수 없어요');
+      }
+      return false;
+    }
     const last = this.runs[this.runs.length - 1];
     if (last !== undefined && Math.sign(last) === dir) this.runs[this.runs.length - 1] += dir;
     else this.runs.push(dir);

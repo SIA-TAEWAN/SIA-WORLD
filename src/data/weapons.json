@@ -253,16 +253,22 @@
   },
   "horse_dash": {
     "name": "질주탄",
-    "desc": "빠르고 바람을 덜 탄다",
-    "behavior": "normal",
+    "desc": "땅에 닿을 때마다 튀며 세 번 터진다 (100%·75%·50%)",
+    "behavior": "skip",
     "damage": 330,
     "radius": 44,
     "crater": 30,
-    "wind": 0.35,
+    "wind": 1,
     "count": 1,
     "speed": 830,
     "delay": 0,
-    "look": "shell"
+    "look": "shell",
+    "hops": 2,
+    "hopScale": [
+      1,
+      0.75,
+      0.5
+    ]
   },
   "horse_shoe": {
     "name": "편자탄",
@@ -293,16 +299,19 @@
   },
   "sheep_wool": {
     "name": "솜구름탄",
-    "desc": "바람을 두 배로 타는 솜뭉치",
+    "desc": "맞은 자리에 뭉게구름이 생겨, 그 안의 탱크는 움직일 수 없다",
     "behavior": "normal",
     "damage": 306,
     "radius": 59,
     "crater": 40,
-    "wind": 2,
+    "wind": 1,
     "count": 1,
     "speed": 680,
     "delay": 0,
-    "look": "wool"
+    "look": "wool",
+    "zone": "cloud",
+    "zoneR": 54,
+    "zoneH": 72
   },
   "sheep_wall": {
     "name": "양털 방벽",

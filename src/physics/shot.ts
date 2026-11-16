@@ -90,7 +90,7 @@ interface Shell {
 
 export interface ImpactHandler {
   /** 폭발 처리. 실제 시뮬레이션에서만 호출된다. */
-  explode(f: number, x: number, y: number, directTarget: number | null, craterScale?: number, boost?: number): void;
+  explode(f: number, x: number, y: number, directTarget: number | null, craterScale?: number, boost?: number, dmgScale?: number): void;
   build(f: number, x: number, y: number): void;
   carveLine(f: number, x1: number, y1: number, x2: number, y2: number, r: number): void;
   /** 착탄 지점에 하늘에서 수직 레이저 */
@@ -155,6 +155,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
 
   // 물수제비탄은 튈 때마다 구덩이가 작아진다
   const HOP_SCALE = [1, 0.65, 0.4, 0.3];
+  const hopScale = (s: Shell) => (w.hopScale ? w.hopScale[Math.min(s.hopN, w.hopScale.length - 1)] : HOP_SCALE[Math.min(s.hopN, 3)]);
   /** 절구처럼 나중에 하늘에서 떨어지는 탄 */
   const later: Shell[] = [];
   /** 더블벽: 잠시 뒤 벽에서 한 발 더 */
@@ -220,7 +221,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         handler.laser(f + i * 14, lx, ly);
       }
     }
-    else handler.explode(f, x, y, target, HOP_SCALE[Math.min(s.hopN, 3)], s.boost);
+    else handler.explode(f, x, y, target, hopScale(s), s.boost, w.hopScale ? hopScale(s) : 1);
   };
 
   while (f < MAX_FRAMES) {
@@ -437,7 +438,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
               end(s);
               break;
             }
-            handler.explode(f, s.x, s.y, null, HOP_SCALE[Math.min(s.hopN, 3)], s.boost);
+            handler.explode(f, s.x, s.y, null, hopScale(s), s.boost, w.hopScale ? hopScale(s) : 1);
             s.hopsLeft--;
             s.hopN++;
             s.x = px;
