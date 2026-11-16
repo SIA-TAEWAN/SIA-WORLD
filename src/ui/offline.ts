@@ -312,7 +312,7 @@ export function showSetup() {
         renderShop();
       }),
     );
-    shopWidget($('#shop'), state.shop[state.shopFor], renderShop, false, state.shopFor === 0 ? state.points : 1000);
+    shopWidget($('#shop'), state.shop[state.shopFor], renderShop, false, 1000); // AI 대전 상점 예산은 항상 1,000
   };
 
   renderTanks();
@@ -320,19 +320,10 @@ export function showSetup() {
   renderMaps();
   renderOpts();
   renderShop();
-  // 내 ID 포인트를 불러와 상점 예산에 쓴다
+  // 닉네임 앞 랭킹 구름을 위해 랭킹만 불러온다 (AI 대전 포인트는 1,000 고정)
   if (onlineConfigured() && state.name)
     void getBackend()
-      .then(async (b) => {
-        b?.getRanking().then(setRanking).catch(() => undefined);
-        return b?.getPoints(state.name);
-      })
-      .then((p) => {
-        if (p && p !== state.points) {
-          state.points = p;
-          renderShop();
-        }
-      })
+      .then((b) => b?.getRanking().then(setRanking))
       .catch(() => undefined);
   $('#back').addEventListener('click', showEntry);
   $('#start').addEventListener('click', () => {
