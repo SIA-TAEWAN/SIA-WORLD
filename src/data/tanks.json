@@ -10,7 +10,7 @@
     "defense": 0.08,
     "move": 150,
     "angleMin": 20,
-    "angleMax": 75,
+    "angleMax": 60,
     "delay": 500,
     "weapons": [
       "rat_cheese",
@@ -29,7 +29,7 @@
     "defense": 0.2,
     "move": 90,
     "angleMin": 10,
-    "angleMax": 55,
+    "angleMax": 40,
     "delay": 720,
     "weapons": [
       "ox_horn",
@@ -48,7 +48,7 @@
     "defense": 0.14,
     "move": 120,
     "angleMin": 15,
-    "angleMax": 70,
+    "angleMax": 55,
     "delay": 620,
     "weapons": [
       "tiger_claw",
@@ -67,7 +67,7 @@
     "defense": 0.1,
     "move": 150,
     "angleMin": 25,
-    "angleMax": 80,
+    "angleMax": 65,
     "delay": 540,
     "weapons": [
       "rabbit_hop",
@@ -86,7 +86,7 @@
     "defense": 0.15,
     "move": 110,
     "angleMin": 15,
-    "angleMax": 70,
+    "angleMax": 55,
     "delay": 650,
     "weapons": [
       "dragon_flame",
@@ -105,7 +105,7 @@
     "defense": 0.12,
     "move": 130,
     "angleMin": 20,
-    "angleMax": 60,
+    "angleMax": 45,
     "delay": 600,
     "weapons": [
       "snake_fang",
@@ -124,7 +124,7 @@
     "defense": 0.1,
     "move": 160,
     "angleMin": 25,
-    "angleMax": 75,
+    "angleMax": 60,
     "delay": 540,
     "weapons": [
       "horse_dash",
@@ -143,7 +143,7 @@
     "defense": 0.2,
     "move": 90,
     "angleMin": 10,
-    "angleMax": 55,
+    "angleMax": 40,
     "delay": 700,
     "weapons": [
       "sheep_wool",
@@ -162,7 +162,7 @@
     "defense": 0.12,
     "move": 140,
     "angleMin": 20,
-    "angleMax": 75,
+    "angleMax": 60,
     "delay": 560,
     "weapons": [
       "monkey_banana",
@@ -181,7 +181,7 @@
     "defense": 0.1,
     "move": 140,
     "angleMin": 30,
-    "angleMax": 85,
+    "angleMax": 70,
     "delay": 560,
     "weapons": [
       "rooster_egg",
@@ -200,7 +200,7 @@
     "defense": 0.14,
     "move": 120,
     "angleMin": 15,
-    "angleMax": 70,
+    "angleMax": 55,
     "delay": 600,
     "weapons": [
       "dog_bone",
@@ -219,7 +219,7 @@
     "defense": 0.18,
     "move": 80,
     "angleMin": 10,
-    "angleMax": 55,
+    "angleMax": 40,
     "delay": 760,
     "weapons": [
       "pig_acorn",
@@ -238,7 +238,7 @@
     "defense": 0.15,
     "move": 130,
     "angleMin": 15,
-    "angleMax": 75,
+    "angleMax": 60,
     "delay": 600,
     "weapons": [
       "zodiac_star",

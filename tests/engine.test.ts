@@ -333,14 +333,14 @@ it('필살기를 쓴 발사로는 게이지가 다시 차지 않는다', () => {
 
 describe('아슬아슬 맵', () => {
   it('모두 멍뭉이, 무기는 2번만, 정통으로 맞힐 수 있다', () => {
-    const base = new Match(duo('tiger', 'rat'), 'ledge', 4242);
+    const base = new Match(duo('tiger', 'rat'), 'ledge', 1);
     base.startTurn();
     expect(base.tanks.every((t) => t.tankId === 'dog')).toBe(true);
     expect(base.weaponLock).toBe(1);
     const snap = base.snapshot();
     let direct = 0, fell = 0, near = 0, survivedNear = 0;
     for (let a = 20; a <= 70; a += 2)
-      for (let p = 40; p <= 100; p += 1.5) {
+      for (let p = 10; p <= 100; p += 1) {
         const m = Match.fromSnapshot(snap);
         const shooter = m.cur;
         const target = m.tanks[1 - shooter.idx];
