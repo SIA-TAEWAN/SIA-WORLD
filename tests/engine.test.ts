@@ -417,7 +417,7 @@ describe('새 무기 효과', () => {
           const dotSum = dots.reduce((s, e) => s + e.amount, 0);
           expect(dots.length).toBe(5);
           expect(dots[0].kind).toBe(kind);
-          expect(dotSum).toBeLessThanOrEqual(Math.round(m.tanks[1].maxHp * 0.02) * 5);
+          expect(dotSum).toBeLessThanOrEqual(Math.round(m.tanks[1].maxHp * 0.1));
           expect(m.tanks[1].hp).toBe(Math.max(1, before - direct - dotSum));
           expect(m.tanks[1].hp).toBeGreaterThanOrEqual(1);
           expect(m.zones.length).toBe(0);
@@ -626,5 +626,28 @@ describe('특수 벽', () => {
       if (had && m.turn < had.until) expect(m.wall).toEqual(had);
     }
     expect(made).toBeGreaterThan(40);
+  });
+});
+
+describe('초보 모드', () => {
+  const play = (mode: 'easy' | 'normal', ai: boolean) => {
+    const setups: PlayerSetup[] = [
+      { name: 'A', tank: 'tiger', team: 0, ai: ai ? 'normal' : null, items: [] },
+      { name: 'B', tank: 'ox', team: 1, ai: null, items: [] },
+    ];
+    const m = new Match(setups, 'valley', 71, { mode });
+    m.startTurn();
+    m.current = 0;
+    m.wind = 0;
+    m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+    m.tanks[1].x = 800; m.tanks[1].y = 0; m.settle(m.tanks[1]);
+    const r = m.fire(shot({ angle: 55, power: 60, facing: 1 }));
+    return Math.abs(r.firstImpact!.x - m.tanks[1].x);
+  };
+  it('사람이 쏜 탄은 초보 모드에서 적 쪽으로 더 휜다', () => {
+    expect(play('easy', false)).toBeLessThan(play('normal', false));
+  });
+  it('AI는 초보 모드 도움을 받지 않는다', () => {
+    expect(play('easy', true)).toBe(play('normal', true));
   });
 });

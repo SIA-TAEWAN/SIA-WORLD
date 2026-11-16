@@ -185,6 +185,7 @@ export function showSetup() {
         <div class="row" id="name2-row"><span class="lbl">2P 이름</span><input id="name2" maxlength="10" value="${escapeHtml(state.name2)}"/></div>
         <h3>맵</h3>
         <div class="maps" id="maps"></div>
+        <div class="opt-row"><span class="lbl">게임 모드</span><div class="seg small" id="mode"></div></div>
         <div class="opt-row"><span class="lbl">게임 속도</span><div class="seg small" id="speed"></div></div>
         <div class="opt-row"><span class="lbl">바람 변화</span><div class="seg small" id="wind"></div></div>
       </section>
@@ -261,6 +262,16 @@ export function showSetup() {
   $<HTMLInputElement>('#name2').addEventListener('input', (e) => (state.name2 = (e.target as HTMLInputElement).value));
 
   const renderOpts = () => {
+    $('#mode').innerHTML = (['easy', 'normal'] as const)
+      .map((v) => `<button data-v="${v}" class="${state.mode === v ? 'sel' : ''}" title="${v === 'easy' ? '내가 쏜 탄이 적 쪽으로 휘어요 (AI 제외)' : ''}">${v === 'easy' ? '초보' : '일반'}</button>`)
+      .join('');
+    root.querySelectorAll<HTMLElement>('#mode button').forEach((b) =>
+      b.addEventListener('click', () => {
+        state.mode = b.dataset.v as 'easy' | 'normal';
+        sfx.click();
+        renderOpts();
+      }),
+    );
     $('#speed').innerHTML = [1, 1.5].map((v) => `<button data-v="${v}" class="${state.speed === v ? 'sel' : ''}">${v === 1 ? '보통 (1배)' : '빠르게 (1.5배)'}</button>`).join('');
     const winds = [['slow', '느리게 ±2'], ['normal', '보통 ±5'], ['fast', '빠르게 ±8']] as const;
     $('#wind').innerHTML = winds.map(([v, l]) => `<button data-v="${v}" class="${state.wind === v ? 'sel' : ''}">${l}</button>`).join('');
@@ -368,6 +379,7 @@ function startGame() {
     seed,
     speed: state.speed,
     wind: state.wind,
+    mode: state.mode,
     // 닉네임 '시아'는 AI 대전에서 필살기 게이지가 늘 가득
     fullUlt: setups.flatMap((s, i) => (!s.ai && s.name.trim() === '시아' ? [i] : [])),
     onEnd: (s: MatchSummary) => {
@@ -386,8 +398,9 @@ function startGame() {
 export interface ResultActions {
   primary: string;
   onPrimary: () => void;
-  secondary: string;
-  onSecondary: () => void;
+  /** 없으면 버튼 하나만 */
+  secondary?: string;
+  onSecondary?: () => void;
 }
 
 export function showResult(s: MatchSummary, actions?: ResultActions) {
@@ -413,13 +426,13 @@ export function showResult(s: MatchSummary, actions?: ResultActions) {
       </table>
       <div class="actions">
         <button class="btn big primary" id="again">${act.primary}</button>
-        <button class="btn" id="home">${act.secondary}</button>
+        ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
       </div>
       <p class="hint">다음 판에는 포인트 1,000이 새로 지급돼요</p>
     </div>`,
     'result',
   );
   root.querySelector('#again')!.addEventListener('click', act.onPrimary);
-  root.querySelector('#home')!.addEventListener('click', act.onSecondary);
+  if (act.onSecondary) root.querySelector('#home')?.addEventListener('click', act.onSecondary);
 }
 

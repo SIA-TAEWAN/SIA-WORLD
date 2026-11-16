@@ -53,6 +53,8 @@ export interface ShotParams {
   tilt?: number;
   /** 필살기 (화면 표시용) */
   big?: boolean;
+  /** 초보 모드: 꼭대기를 지나면 적 쪽으로 휘는 세기 (초당 각도) */
+  assist?: number;
 }
 
 interface Shell {
@@ -370,7 +372,8 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
       s.vy += GRAVITY * DT;
 
       // 유도탄: 꼭대기를 지나면 가장 가까운 적 쪽으로 조금씩 꺾는다
-      if (w.behavior === 'homing' && s.vy >= 0) {
+      const homing = Math.max(w.behavior === 'homing' ? (w.homing ?? 45) : 0, p.assist ?? 0);
+      if (homing > 0 && s.vy >= 0 && !s.whirl) {
         let best: { x: number; y: number } | null = null;
         let bd = Infinity;
         for (const t of tanks) {
@@ -387,7 +390,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
           let diff = Math.atan2(best.y - s.y, best.x - s.x) - cur;
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
-          const max = (((w.homing ?? 45) * Math.PI) / 180) * DT;
+          const max = ((homing * Math.PI) / 180) * DT;
           const na = cur + Math.max(-max, Math.min(max, diff));
           const sp = Math.hypot(s.vx, s.vy);
           s.vx = Math.cos(na) * sp;

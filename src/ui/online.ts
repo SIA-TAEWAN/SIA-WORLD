@@ -263,6 +263,7 @@ function renderRoom(id: string) {
         <div id="team-box"><h3>팀 선택</h3><div class="seg" id="team"></div></div>
         <h3>맵 <small id="map-note"></small></h3>
         <div class="seg small" id="map"></div>
+        <div class="opt-row"><span class="lbl">게임 모드</span><div class="seg small" id="mode"></div></div>
         <div class="opt-row"><span class="lbl">게임 속도</span><div class="seg small" id="speed"></div></div>
         <div class="opt-row"><span class="lbl">바람 변화</span><div class="seg small" id="wind"></div></div>
       </section>
@@ -404,6 +405,17 @@ function renderRoom(id: string) {
     $(root, '#map').innerHTML = maps.map((m) => `<button data-v="${m}" class="${room.map === m ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${m === 'random' ? '랜덤' : MAPS[m].name}</button>`).join('');
     const speed = room.speed ?? 1.5;
     const wind = room.wind ?? 'slow';
+    const mode = room.mode ?? 'normal';
+    $(root, '#mode').innerHTML = (['easy', 'normal'] as const)
+      .map((v) => `<button data-v="${v}" class="${mode === v ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'} title="${v === 'easy' ? '사람이 쏜 탄이 적 쪽으로 휘어요 (AI 제외)' : ''}">${v === 'easy' ? '초보' : '일반'}</button>`)
+      .join('');
+    root.querySelectorAll<HTMLElement>('#mode button').forEach((b) =>
+      b.addEventListener('click', async () => {
+        sfx.click();
+        await backend!.setMode(id, clientId(), b.dataset.v as 'easy' | 'normal').catch((e) => toast(friendly(e)));
+        await sess.refetch();
+      }),
+    );
     $(root, '#speed').innerHTML = ([1, 1.5] as const)
       .map((v) => `<button data-v="${v}" class="${speed === v ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${v === 1 ? '보통 (1배)' : '빠르게 (1.5배)'}</button>`)
       .join('');
@@ -593,6 +605,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     mapId: mapOf(room),
     seed: room.seed ?? 1,
     speed: room.speed ?? 1.5,
+    mode: room.mode ?? 'normal',
     wind: room.wind ?? 'slow',
     chat: roomSess ?? undefined,
     net: g,
@@ -626,8 +639,6 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
       showResult(s, {
         primary: '게임방으로',
         onPrimary: () => backToRoom(room.id),
-        secondary: '대기실로',
-        onSecondary: () => void leaveRoom(),
       });
     },
     onQuit: () => {

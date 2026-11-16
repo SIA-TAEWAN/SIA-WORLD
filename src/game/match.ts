@@ -42,9 +42,16 @@ export interface CrateDrop {
 
 export interface MatchOptions {
   wind?: WindMode;
+  /** 게임 모드: 초보면 사람이 쏜 탄이 적 쪽으로 휜다 (AI는 제외) */
+  mode?: GameMode;
   /** 필살기 게이지가 항상 가득 찬 탱크 (AI 대전 '시아') */
   fullUlt?: number[];
 }
+
+/** 초보 / 일반 */
+export type GameMode = 'easy' | 'normal';
+/** 초보 모드 유도 세기: 멍뭉이 킁킁 뼈다귀(12)의 2배 */
+export const EASY_HOMING = 24;
 
 export class Match {
   readonly mapId: MapId;
@@ -463,7 +470,7 @@ export class Match {
           events.push({ f, type: 'carveLine', x1, y1, x2, y2, r });
         },
       };
-      const out = fly(this, { owner: t.idx, facing: input.facing, angle: this.worldAngle(t, t.angle, input.facing), power: input.power, weapon: w, damageMul, volleys, tilt: this.tilt(t), big: slot === 2 }, handler);
+      const out = fly(this, { owner: t.idx, facing: input.facing, angle: this.worldAngle(t, t.angle, input.facing), power: input.power, weapon: w, damageMul, volleys, tilt: this.tilt(t), big: slot === 2, assist: this.options.mode === 'easy' && !t.ai ? EASY_HOMING : 0 }, handler);
       const firstImpact = out.impacts[0] ? { x: out.impacts[0].x, y: out.impacts[0].y } : null;
       result = { frames: out.frames, shells: out.shells, events, firstImpact };
 
@@ -528,9 +535,11 @@ export class Match {
     let last = endF;
     for (const [idx, kind] of [...afflicted].sort((a, b) => a[0] - b[0])) {
       const o = this.tanks[idx];
-      const per = Math.max(1, Math.round(o.maxHp * DOT_RATE));
+      // 포탄 피해와 상관없이 최대 체력의 정확히 10%를 5번에 나눠서 (체력 1은 남긴다)
+      const total = Math.round(o.maxHp * DOT_RATE * DOT_TICKS);
       for (let i = 0; i < DOT_TICKS; i++) {
         const f = endF + 40 + i * 60;
+        const per = Math.round((total * (i + 1)) / DOT_TICKS) - Math.round((total * i) / DOT_TICKS);
         const amount = Math.max(0, Math.min(per, o.hp - 1));
         o.hp -= amount;
         shooter.damageDealt += amount;

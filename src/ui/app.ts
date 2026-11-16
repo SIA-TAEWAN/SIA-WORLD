@@ -31,6 +31,8 @@ export const state = {
   /** 게임 속도·바람 빠르기 (AI 1:1) */
   speed: 1.5,
   wind: 'slow' as 'slow' | 'normal' | 'fast',
+  /** 게임 모드 (초보: 내 탄이 적 쪽으로 휜다) */
+  mode: 'normal' as 'easy' | 'normal',
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */

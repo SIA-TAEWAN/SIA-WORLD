@@ -1,6 +1,6 @@
 import type { ItemId, TankChoice } from '../game/data';
 import type { MapId } from '../data/maps';
-import type { WindMode } from '../game/match';
+import type { GameMode, WindMode } from '../game/match';
 
 export interface RoomPlayer {
   id: string;
@@ -31,6 +31,8 @@ export interface Room {
   speed?: number;
   /** 바람이 바뀌는 빠르기 */
   wind?: WindMode;
+  /** 게임 모드 (없으면 일반) */
+  mode?: GameMode;
   /** 마지막으로 방에 사람이 있다는 신호가 온 때 */
   updated_at?: string | number;
 }
@@ -69,6 +71,8 @@ export interface Backend {
   setMap(id: string, playerId: string, map: MapId | 'random'): Promise<void>;
   /** 게임 속도·바람 빠르기 (방장만) */
   setOptions(id: string, playerId: string, speed: number, wind: WindMode): Promise<void>;
+  /** 게임 모드 (방장만) */
+  setMode(id: string, playerId: string, mode: GameMode): Promise<void>;
   startGame(id: string, host: string, seed: number): Promise<Room>;
   /** 판 정산 (winner: 이긴 팀, 무승부·모름은 null) */
   endGame(id: string, gameNo: number, present: string[], winner?: number | null): Promise<void>;

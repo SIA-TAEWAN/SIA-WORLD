@@ -100,6 +100,7 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     leaveRoom: (id, playerId) => rpc<void>('leave_room', { p_id: id, p_player_id: playerId }),
     updatePlayer: (id, player) => rpc<void>('update_player', { p_id: id, p_player: withTok(player) }),
     setOptions: (id, playerId, speed, wind) => rpc<void>('set_room_options', { p_id: id, p_player: playerId, p_speed: speed, p_wind: wind }),
+    setMode: (id, playerId, mode) => rpc<void>('set_room_mode', { p_id: id, p_player: playerId, p_mode: mode }),
     setMap: (id, playerId, map) => rpc<void>('set_room_map', { p_id: id, p_player: playerId, p_map: map }),
     startGame: (id, host, seed) => rpc<Room>('start_game', { p_id: id, p_host: host, p_seed: seed }),
     endGame: (id, gameNo, present, winner) => rpc<void>('end_game', { p_id: id, p_game_no: gameNo, p_present: present, p_winner: winner ?? null }),

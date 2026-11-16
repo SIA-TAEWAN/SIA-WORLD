@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Match, type CrateDrop, type MatchSnapshot, type WindMode } from '../game/match';
+import { Match, type CrateDrop, type MatchSnapshot, type WindMode, type GameMode } from '../game/match';
 import { Rng } from '../game/rng';
 import { TURN_SECONDS, ITEMS } from '../game/data';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput, Zone } from '../game/types';
@@ -48,6 +48,8 @@ export interface GameConfig {
   chat?: GameChat;
   /** 바람이 바뀌는 빠르기 */
   wind?: WindMode;
+  /** 게임 모드 (초보: 내 탄이 적 쪽으로 휜다) */
+  mode?: GameMode;
   /** 필살기 게이지가 항상 가득 찬 탱크 번호 */
   fullUlt?: number[];
 }
@@ -425,7 +427,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const cfg = this.cfg;
-    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal', fullUlt: cfg.fullUlt });
+    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal', fullUlt: cfg.fullUlt, mode: cfg.mode ?? 'normal' });
     this.speed = cfg.speed ?? 1;
     this.time.timeScale = this.speed;
     this.tweens.timeScale = this.speed;

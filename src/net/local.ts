@@ -246,6 +246,14 @@ export function createLocalBackend(): Backend {
         r.map = map;
       });
     },
+    async setMode(id, playerId, mode) {
+      mutate((rooms) => {
+        const r = rooms.find((x) => x.id === id);
+        if (!r || r.status !== 'waiting') return;
+        if (hostOf(r) !== playerId) fail('not host');
+        r.mode = mode;
+      });
+    },
     async setOptions(id, playerId, speed, wind) {
       mutate((rooms) => {
         const r = rooms.find((x) => x.id === id);
