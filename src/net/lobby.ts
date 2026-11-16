@@ -1,6 +1,6 @@
 import type { Backend, Channel, Member, Room, RoomPlayer } from './backend';
 
-export const LOBBY_MAX = 10;
+export const LOBBY_MAX = 30;
 
 export interface LobbyMeta {
   name: string;
@@ -72,7 +72,7 @@ export class LobbySession {
     if (this.chat.length > 60) this.chat.splice(0, this.chat.length - 60);
   }
 
-  /** 들어가서 정원(10명)·ID 중복을 확인한다 */
+  /** 들어가서 정원(30명)·ID 중복을 확인한다 */
   async enter() {
     await this.ch.join(this.meta);
     // 다른 사람 정보가 도착할 시간을 잠깐 준다

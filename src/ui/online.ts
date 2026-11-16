@@ -93,7 +93,7 @@ export async function showLobby() {
     try {
       await sess.enter();
     } catch (e) {
-      if (e instanceof LobbyFullError) toast('대기실이 가득 찼습니다 (최대 10명)');
+      if (e instanceof LobbyFullError) toast(`대기실이 가득 찼습니다 (최대 ${LOBBY_MAX}명)`);
       else if (e instanceof DuplicateNameError) toast('이 대기실에 같은 ID가 이미 있어요. 다른 ID로 들어와 주세요');
       else toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요');
       return nav.entry();
