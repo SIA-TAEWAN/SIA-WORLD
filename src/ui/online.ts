@@ -73,6 +73,11 @@ export async function showLobby() {
       toast('온라인 서버가 설정되지 않았어요');
       return nav.entry();
     }
+    if (!state.token) {
+      toast('로그인해야 대기실에 들어갈 수 있어요');
+      return nav.entry();
+    }
+    backend.setToken(state.token);
     const sess = new LobbySession(backend, lobbyCode(), me());
     try {
       await sess.enter();

@@ -3,6 +3,8 @@ const KEY = 'siatank:v1';
 
 export interface Saved {
   name?: string;
+  /** 로그인 토큰 (비밀번호는 저장하지 않는다) */
+  token?: string;
   tank?: string;
   map?: string;
   difficulty?: string;

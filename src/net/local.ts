@@ -143,8 +143,34 @@ const fail = (m: string): never => {
 const clean = (p: RoomPlayer): RoomPlayer => ({ id: p.id, name: p.name, tank: p.tank, team: p.team === 1 ? 1 : 0, items: [...p.items].slice(0, 3), ready: !!p.ready });
 
 export function createLocalBackend(): Backend {
+  // 테스트 모드 계정 (이 브라우저 안에서만)
+  const accts = (): Record<string, { pw: string; token: string }> => {
+    try {
+      return JSON.parse(localStorage.getItem('siatank:localaccts') ?? '{}');
+    } catch {
+      return {};
+    }
+  };
   return {
     kind: 'local',
+    setToken() {},
+    async signUp(name, pw) {
+      const a = accts();
+      if (name.length < 2 || name.length > 10) fail('bad id');
+      if (pw.length < 4 || pw.length > 40) fail('bad password');
+      if (a[name]) fail('id taken');
+      a[name] = { pw, token: crypto.randomUUID() };
+      localStorage.setItem('siatank:localaccts', JSON.stringify(a));
+      return a[name].token;
+    },
+    async signIn(name, pw) {
+      const a = accts()[name];
+      if (!a || a.pw !== pw) fail('wrong login');
+      return a!.token;
+    },
+    async checkSession(name, token) {
+      return accts()[name]?.token === token;
+    },
     channel: <M>(name: string, key: string) => new LocalChannel<M>(name, key),
     async listRooms(lobby) {
       return readDb().filter((r) => r.lobby === lobby);

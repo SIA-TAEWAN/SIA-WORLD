@@ -1839,3 +1839,28 @@ body.in-game .sound-fab {
     font-size: 30px;
   }
 }
+
+/* 로그인 */
+.entry-card .auth-row {
+  display: flex;
+  gap: 8px;
+}
+.entry-card .auth-row .btn {
+  flex: 1;
+}
+.entry-card .who {
+  text-align: center;
+  font-size: 18px;
+  margin: 6px 0 2px;
+}
+.entry-card .who .link {
+  background: none;
+  border: none;
+  color: var(--ink);
+  opacity: 0.6;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  margin-left: 6px;
+}

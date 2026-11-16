@@ -72,8 +72,15 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     return data as T;
   };
 
+  let token: string | null = null;
+  const withTok = (p: RoomPlayer) => ({ ...p, token });
+
   return {
     kind: 'supabase',
+    setToken: (t) => void (token = t),
+    signUp: (name, pw) => rpc<string>('sign_up', { p_name: name, p_pw: pw }),
+    signIn: (name, pw) => rpc<string>('sign_in', { p_name: name, p_pw: pw }),
+    checkSession: (name, tok) => rpc<boolean>('check_session', { p_name: name, p_token: tok }).catch(() => false),
     channel: <M>(name: string, key: string) => new SupaChannel<M>(sb, name, key),
     async listRooms(lobby) {
       const { data, error } = await sb.from('rooms').select('*').eq('lobby', lobby).order('created_at');
@@ -87,10 +94,10 @@ export function createSupabaseBackend(url: string, key: string): Backend {
         .subscribe();
       return () => void sb.removeChannel(ch);
     },
-    createRoom: (lobby, name, player: RoomPlayer) => rpc<Room>('create_room', { p_lobby: lobby, p_name: name, p_player: player }),
-    joinRoom: (id, player) => rpc<Room>('join_room', { p_id: id, p_player: player }),
+    createRoom: (lobby, name, player: RoomPlayer) => rpc<Room>('create_room', { p_lobby: lobby, p_name: name, p_player: withTok(player) }),
+    joinRoom: (id, player) => rpc<Room>('join_room', { p_id: id, p_player: withTok(player) }),
     leaveRoom: (id, playerId) => rpc<void>('leave_room', { p_id: id, p_player_id: playerId }),
-    updatePlayer: (id, player) => rpc<void>('update_player', { p_id: id, p_player: player }),
+    updatePlayer: (id, player) => rpc<void>('update_player', { p_id: id, p_player: withTok(player) }),
     setOptions: (id, playerId, speed, wind) => rpc<void>('set_room_options', { p_id: id, p_player: playerId, p_speed: speed, p_wind: wind }),
     setMap: (id, playerId, map) => rpc<void>('set_room_map', { p_id: id, p_player: playerId, p_map: map }),
     startGame: (id, host, seed) => rpc<Room>('start_game', { p_id: id, p_host: host, p_seed: seed }),

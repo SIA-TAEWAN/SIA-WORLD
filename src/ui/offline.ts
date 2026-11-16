@@ -12,10 +12,13 @@ import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
 import { getBackend, onlineConfigured } from '../net';
+import { friendly } from '../net/backend';
 
 // ---------- 1. 입장 ----------
 
 export function showEntry() {
+  const online = onlineConfigured();
+  const logged = online && !!state.token && !!state.name;
   const root = screen(
     `<div class="entry-card">
       <div class="logo">
@@ -23,47 +26,106 @@ export function showEntry() {
         <h1>시아탱크</h1>
         <p class="tagline">각도 · 파워 · 바람! 링크 하나로 한 판</p>
       </div>
-      <label class="field">
+      ${
+        logged
+          ? `<p class="who"><b>${escapeHtml(state.name)}</b>님 환영해요! <button class="link" id="logout">로그아웃</button></p>`
+          : `<label class="field">
         <span>내 ID</span>
-        <input id="name" maxlength="10" autocomplete="off" placeholder="2~10자" value="${escapeHtml(state.name)}" />
+        <input id="name" maxlength="10" autocomplete="username" placeholder="2~10자" value="${escapeHtml(state.name)}" />
       </label>
+      ${online ? `<label class="field"><span>비밀번호</span><input id="pw" type="password" maxlength="40" autocomplete="current-password" placeholder="4자 이상" /></label>` : ''}`
+      }
       <p class="hint" id="name-hint"></p>
-      <button class="btn big primary" id="lobby">대기실 입장</button>
+      ${
+        logged || !online
+          ? `<button class="btn big primary" id="lobby">대기실 입장</button>`
+          : `<div class="auth-row"><button class="btn big primary" id="login">로그인</button><button class="btn big" id="signup">회원가입</button></div>`
+      }
       <button class="btn big" id="ai">AI와 1:1</button>
       <p class="foot">PC: ← → 이동 · ↑ ↓ 각도 · 스페이스 길게 눌러 발사 · 1 2 3 무기 · Q W E 아이템</p>
     </div>`,
     'entry',
   );
-  const input = root.querySelector<HTMLInputElement>('#name')!;
+  const input = root.querySelector<HTMLInputElement>('#name');
+  const pw = root.querySelector<HTMLInputElement>('#pw');
   const hint = root.querySelector<HTMLElement>('#name-hint')!;
   const valid = () => {
+    if (!input) return true;
     const v = input.value.trim();
     return v.length >= 2 && v.length <= 10;
   };
   const go = () => {
     if (!valid()) {
       hint.textContent = 'ID는 2~10자로 정해주세요';
-      input.focus();
+      input?.focus();
       return false;
     }
-    state.name = input.value.trim();
+    if (input) state.name = input.value.trim();
     save({ name: state.name });
     return true;
   };
-  input.addEventListener('input', () => (hint.textContent = ''));
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && go()) (onlineConfigured() ? nav.lobby() : showSetup());
+  // 로그인 / 회원가입
+  let busy = false;
+  const auth = async (kind: 'in' | 'up') => {
+    if (busy || !go()) return;
+    const p = pw!.value;
+    if (p.length < 4) {
+      hint.textContent = '비밀번호는 4자 이상이에요';
+      return pw!.focus();
+    }
+    busy = true;
+    hint.textContent = kind === 'in' ? '로그인 중…' : '가입 중…';
+    try {
+      const b = (await getBackend())!;
+      const tok = kind === 'in' ? await b.signIn(state.name, p) : await b.signUp(state.name, p);
+      state.token = tok;
+      save({ name: state.name, token: tok });
+      toast(kind === 'in' ? `${state.name}님 어서 오세요!` : `가입 완료! ${state.name}님 환영해요`);
+      nav.lobby();
+    } catch (e) {
+      hint.textContent = friendly(e);
+    } finally {
+      busy = false;
+    }
+  };
+  input?.addEventListener('input', () => (hint.textContent = ''));
+  const onEnter = (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    if (!online) return go() && showSetup();
+    if (pw && !pw.value) return pw.focus();
+    void auth('in');
+  };
+  input?.addEventListener('keydown', onEnter);
+  pw?.addEventListener('keydown', onEnter);
+  root.querySelector('#login')?.addEventListener('click', () => (sfx.click(), void auth('in')));
+  root.querySelector('#signup')?.addEventListener('click', () => (sfx.click(), void auth('up')));
+  root.querySelector('#logout')?.addEventListener('click', () => {
+    sfx.click();
+    state.token = '';
+    save({ token: '' });
+    showEntry();
   });
   root.querySelector('#ai')!.addEventListener('click', () => {
     sfx.click();
     if (go()) showSetup();
   });
-  root.querySelector('#lobby')!.addEventListener('click', () => {
+  root.querySelector('#lobby')?.addEventListener('click', () => {
     sfx.click();
-    if (!onlineConfigured()) return toast('온라인 서버가 아직 설정되지 않았어요. AI 1:1을 즐겨주세요!');
+    if (!online) return toast('온라인 서버가 아직 설정되지 않았어요. AI 1:1을 즐겨주세요!');
     if (go()) nav.lobby();
   });
-  if (!state.name) input.focus();
+  if (input && !state.name) input.focus();
+  else pw?.focus();
+  // 저장된 로그인이 아직 유효한지 확인 (다른 곳에서 바뀌었으면 다시 로그인)
+  if (logged)
+    void getBackend().then(async (b) => {
+      if (b && !(await b.checkSession(state.name, state.token))) {
+        state.token = '';
+        save({ token: '' });
+        toast('로그인이 만료됐어요. 다시 로그인해 주세요');
+        if (document.body.contains(root)) showEntry();
+      }
+    });
 }
 
 // ---------- 2. AI 1:1 설정 + 상점 ----------

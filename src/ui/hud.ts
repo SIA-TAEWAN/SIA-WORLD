@@ -18,6 +18,8 @@ export interface HudView {
   limit: number;
   /** 내 탱크가 없거나 탈락 → 구경만 */
   spectate: boolean;
+  /** 포탄이 날아가는 중엔 발사 전 게이지를 보여준다 */
+  ult?: number;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = '') => {
@@ -278,8 +280,9 @@ export class Hud {
       const w = WEAPONS[wid];
       const b = this.weapons[i];
       const ult = i === 2;
-      const ready = !ult || t.ult >= 100;
-      const html = `<span class="key">${i + 1}</span><span class="nm">${w.name}</span>${ult ? `<span class="ult-bar"><i style="width:${t.ult}%"></i></span>` : ''}`;
+      const g = v.ult ?? t.ult;
+      const ready = !ult || g >= 100;
+      const html = `<span class="key">${i + 1}</span><span class="nm">${w.name}</span>${ult ? `<span class="ult-bar"><i style="width:${g}%"></i></span>` : ''}`;
       if (b.dataset.html !== html) {
         b.innerHTML = html;
         b.dataset.html = html;
@@ -359,7 +362,7 @@ export class Hud {
     c.putImageData(img, 0, 0);
   }
 
-  drawMini(match: Match, view: { x: number; y: number; w: number; h: number }, shells: { x: number; y: number }[]) {
+  drawMini(match: Match, view: { x: number; y: number; w: number; h: number }, shells: { x: number; y: number }[], shown?: { x: number; y: number; alive: boolean }[]) {
     const c = this.mini.getContext('2d')!;
     const W = this.mini.width;
     const H = this.mini.height;
@@ -367,8 +370,11 @@ export class Hud {
     const sy = H / match.terrain.h;
     c.clearRect(0, 0, W, H);
     c.drawImage(this.miniBase, 0, 0);
-    for (const t of match.tanks) {
-      if (!t.alive) continue;
+    for (const t0 of match.tanks) {
+      // 화면에 보이는 위치·생존 상태 (포탄이 닿기 전엔 결과를 미리 보여주지 않는다)
+      const s = shown?.[t0.idx];
+      const t = s ? { ...t0, x: s.x, y: s.y } : t0;
+      if (s ? !s.alive : !t.alive) continue;
       c.fillStyle = TEAM_COLORS[t.team];
       c.strokeStyle = t.idx === match.current ? '#fff' : '#0008';
       c.lineWidth = 1.5;

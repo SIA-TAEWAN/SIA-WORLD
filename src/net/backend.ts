@@ -78,6 +78,14 @@ export interface Backend {
   touchRoom(id: string, playerId: string): Promise<void>;
   /** 2분 넘게 신호가 없는 방 정리 */
   sweepRooms(lobby: string): Promise<void>;
+  /** 회원가입 → 로그인 토큰 */
+  signUp(name: string, pw: string): Promise<string>;
+  /** 로그인 → 토큰 */
+  signIn(name: string, pw: string): Promise<string>;
+  /** 저장해 둔 토큰이 아직 유효한지 */
+  checkSession(name: string, token: string): Promise<boolean>;
+  /** 이후 게임방 요청에 쓸 로그인 토큰 */
+  setToken(token: string | null): void;
 }
 
 export class NetError extends Error {}
@@ -85,6 +93,10 @@ export class NetError extends Error {}
 /** 서버 오류 메시지를 사람이 읽을 말로 */
 export function friendly(e: unknown): string {
   const m = String((e as Error)?.message ?? e);
+  if (m.includes('id taken')) return '이미 있는 ID예요. 다른 ID를 써 주세요';
+  if (m.includes('wrong login')) return 'ID 또는 비밀번호가 맞지 않아요';
+  if (m.includes('bad password')) return '비밀번호는 4~40자로 정해주세요';
+  if (m.includes('need login')) return '로그인이 풀렸어요. 다시 로그인해 주세요';
   if (m.includes('room is full')) return '게임방이 가득 찼어요 (최대 4명)';
   if (m.includes('room is playing') || m.includes('already playing')) return '이미 게임이 진행 중인 방이에요';
   if (m.includes('room not found')) return '게임방이 사라졌어요';

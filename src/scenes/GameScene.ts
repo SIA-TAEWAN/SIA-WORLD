@@ -733,7 +733,21 @@ export class GameScene extends Phaser.Scene {
     this.cfg.net?.turnDone(this.match.turn, this.match.stateHash());
   }
 
+  /** 화면 지형(vis) 기준 경사 */
+  private visTilt(x: number, y: number) {
+    const ground = (gx: number) => {
+      for (let gy = y - 22; gy <= y + 22; gy++) if (this.vis.solid(gx, gy)) return gy;
+      return y + 6;
+    };
+    const deg = Math.round((Math.atan2(ground(x - 10) - ground(x + 10), 20) * 180) / Math.PI);
+    return Math.max(-40, Math.min(40, deg));
+  }
+
+  /** 포탄이 날아가는 동안 HUD에 보여줄 발사 전 필살기 게이지 */
+  private ultShown: Map<number, number> | null = null;
+
   private fire(input: TurnInput) {
+    this.ultShown = new Map(this.match.tanks.map((x) => [x.idx, x.ult]));
     const t = this.match.cur;
     this.phase = 'fly';
     this.charging = false;
@@ -816,7 +830,8 @@ export class GameScene extends Phaser.Scene {
         v.y += (v.t.y - v.y) * Math.min(1, dt * 14);
         if (Math.abs(v.t.y - v.y) < 0.5) v.y = v.t.y;
       }
-      v.sync(v.t.facing, v.t.angle, dt, v.t.alive ? this.match.tilt({ x: Math.round(v.x), y: Math.round(v.y) }) : 0);
+      // 화면에 보이는 지형 기준 (포탄이 날아가는 동안 미리 파인 땅에 기울지 않게)
+      v.sync(v.t.facing, v.t.angle, dt, v.dead ? 0 : this.visTilt(Math.round(v.x), Math.round(v.y)));
     }
 
     // 카메라: 조준 중엔 현재 탱크를 따라감
@@ -833,7 +848,7 @@ export class GameScene extends Phaser.Scene {
         if (k >= 0 && k * 2 < s.path.length) shells.push({ x: s.path[k * 2], y: s.path[k * 2 + 1] });
       }
     }
-    this.hud.drawMini(m, { x: view.x, y: view.y, w: view.width, h: view.height }, shells);
+    this.hud.drawMini(m, { x: view.x, y: view.y, w: view.width, h: view.height }, shells, this.views.map((tv) => ({ x: tv.x, y: tv.y, alive: !tv.dead })));
     // HUD는 항상 내 탱크 기준 (상대 차례에도 내 게이지·무기를 보여준다)
     const v = this.viewer() ?? t;
     const mine = v === t;
@@ -847,6 +862,7 @@ export class GameScene extends Phaser.Scene {
       human: this.phase === 'aim' && mine,
       limit: this.limitOf(v),
       spectate: !v.alive || (!mine && !!v.ai),
+      ult: this.ultShown?.get(v.idx),
     });
   }
 
@@ -1272,6 +1288,7 @@ export class GameScene extends Phaser.Scene {
 
   private endShot() {
     this.pb = null;
+    this.ultShown = null;
     this.phase = 'settle';
     // 기기 화면을 시뮬레이션 결과와 정확히 맞춘다
     this.vis = this.match.terrain.clone();
