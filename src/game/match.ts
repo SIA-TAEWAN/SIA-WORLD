@@ -66,6 +66,8 @@ export class Match {
     this.seed = seed;
     this.rng = new Rng(seed);
     const map = MAPS[mapId];
+    // 특수 맵: 모두 같은 탱크로 고정
+    if (map.lockTank) setups = setups.map((s) => ({ ...s, tank: map.lockTank! }));
     this.terrain = map.build(this.rng);
 
     const byTeam: [PlayerSetup[], PlayerSetup[]] = [[], []];
@@ -279,6 +281,11 @@ export class Match {
     return amount;
   }
 
+  /** 이 맵에서 쓸 수 있는 유일한 무기 (없으면 undefined) */
+  get weaponLock(): 0 | 1 | 2 | undefined {
+    return MAPS[this.mapId].lockWeapon;
+  }
+
   canUseUlt(t: TankState) {
     return t.ult >= 100;
   }
@@ -298,7 +305,7 @@ export class Match {
     this.setAngle(input.angle);
     t.lastPower = input.power;
 
-    let slot = input.weapon;
+    let slot = this.weaponLock ?? input.weapon;
     if (slot === 2 && !this.canUseUlt(t)) slot = 0;
     if (slot === 2) t.ult = 0;
     const w = this.weaponOf(t, slot);

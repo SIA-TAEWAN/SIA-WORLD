@@ -20,6 +20,8 @@ export interface HudView {
   spectate: boolean;
   /** 포탄이 날아가는 중엔 발사 전 게이지를 보여준다 */
   ult?: number;
+  /** 특수 맵: 이 무기만 쓸 수 있다 */
+  only?: number;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = '') => {
@@ -289,7 +291,7 @@ export class Hud {
       }
       b.title = `${w.name} — ${w.desc}`;
       b.classList.toggle('sel', v.weapon === i);
-      b.classList.toggle('locked', !ready);
+      b.classList.toggle('locked', !ready || (v.only !== undefined && v.only !== i));
       b.classList.toggle('ready', ult && ready);
     });
     t.items.forEach((id, i) => {

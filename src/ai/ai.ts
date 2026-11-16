@@ -90,8 +90,9 @@ export function decideShot(match: Match, diff: Difficulty, rng: Rng): TurnInput 
   let weapon: 0 | 1 | 2 = 0;
   if (match.canUseUlt(me) && rng.next() < sk.ultChance) weapon = 2;
   else if (rng.next() < sk.special && match.weaponOf(me, 1).behavior !== 'build') weapon = 1;
+  if (match.weaponLock !== undefined) weapon = match.weaponLock;
   let aim = bestAim(match, me, target, match.weaponOf(me, weapon), wind);
-  if (weapon !== 0 && aim.score > 40) {
+  if (weapon !== 0 && aim.score > 40 && match.weaponLock === undefined) {
     // 이 무기로는 닿지 않으면 기본 무기로
     const base = bestAim(match, me, target, match.weaponOf(me, 0), wind);
     if (base.score < aim.score) {

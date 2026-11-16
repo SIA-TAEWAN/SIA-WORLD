@@ -1,5 +1,5 @@
 import { TANKS, TANK_IDS, randomTank, type TankChoice } from '../game/data';
-import { MAPS, MAP_IDS, type MapId } from '../data/maps';
+import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { PlayerSetup } from '../game/types';
 import type { WindMode } from '../game/match';
 import { Rng, randomSeed } from '../game/rng';
@@ -363,7 +363,7 @@ function renderRoom(id: string) {
     }
     $(root, '#tank-name').textContent =
       mineP.tank === 'random' ? '랜덤 · 게임 시작 때 정해져요 (20% 확률로 십이지신 열두빛)' : `${TANKS[mineP.tank].name} (${TANKS[mineP.tank].animal}) · ${TANKS[mineP.tank].role}`;
-    $(root, '#map-note').textContent = iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요';
+    $(root, '#map-note').textContent = (room.map !== 'random' && MAPS[room.map].lockTank ? '🐶 아슬아슬: 모두 멍뭉이 · 땅파기탄(2번)만! · ' : '') + (iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요');
     const needTeam = room.players.length >= 3 || !teamsOk(room);
     $(root, '#team-box').style.display = needTeam ? '' : 'none';
     $(root, '#team').innerHTML = ([0, 1] as const)
@@ -509,7 +509,7 @@ function setupsOf(room: Room): PlayerSetup[] {
 }
 
 function mapOf(room: Room): MapId {
-  return room.map === 'random' ? new Rng((room.seed ?? 0) ^ 0x51ed270b).pick(MAP_IDS) : room.map;
+  return room.map === 'random' ? new Rng((room.seed ?? 0) ^ 0x51ed270b).pick(RANDOM_MAP_IDS) : room.map;
 }
 
 async function resumeGame(room: Room) {

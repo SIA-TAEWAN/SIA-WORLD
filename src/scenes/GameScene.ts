@@ -520,7 +520,7 @@ export class GameScene extends Phaser.Scene {
     this.charging = false;
     // 지난번에 고른 무기를 그대로 (필살기는 게이지가 차 있을 때만)
     const s = this.sel.get(t.idx) ?? 0;
-    this.weapon = s === 2 && !this.match.canUseUlt(t) ? (this.lastNormal.get(t.idx) ?? 0) : s;
+    this.weapon = this.match.weaponLock ?? (s === 2 && !this.match.canUseUlt(t) ? (this.lastNormal.get(t.idx) ?? 0) : s);
     this.itemSlot = null;
     this.manualCam = false;
     this.runs = [];
@@ -684,6 +684,11 @@ export class GameScene extends Phaser.Scene {
     }
     if (myTurn && this.charging) return;
     if (e.type === 'weapon') {
+      const lock = this.match.weaponLock;
+      if (lock !== undefined && e.slot !== lock) {
+        this.hud.toast(`이 맵에서는 ${lock + 1}번 무기만 쓸 수 있어요`);
+        return;
+      }
       if (e.slot === 2 && !this.match.canUseUlt(v)) {
         this.hud.toast('필살기 게이지가 아직 안 찼어요');
         return;
@@ -856,7 +861,8 @@ export class GameScene extends Phaser.Scene {
     this.hud.update(m, v, {
       power: mine ? this.power : 0,
       charging: mine && this.charging,
-      weapon: mine ? this.weapon : s === 2 && !m.canUseUlt(v) ? (this.lastNormal.get(v.idx) ?? 0) : s,
+      weapon: m.weaponLock ?? (mine ? this.weapon : s === 2 && !m.canUseUlt(v) ? (this.lastNormal.get(v.idx) ?? 0) : s),
+      only: m.weaponLock,
       itemSlot: mine ? this.itemSlot : null,
       timeLeft: this.timeLeft,
       human: this.phase === 'aim' && mine,

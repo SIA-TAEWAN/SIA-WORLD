@@ -1,5 +1,5 @@
 import { TANKS, TANK_IDS, WEAPONS, randomTank, type TankChoice, type TankId } from '../game/data';
-import { MAPS, MAP_IDS, type MapId } from '../data/maps';
+import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { Difficulty, PlayerSetup } from '../game/types';
 import { Rng, randomSeed } from '../game/rng';
 import { aiItems } from '../ai/ai';
@@ -286,7 +286,7 @@ export function showSetup() {
         const m = id === 'random' ? null : MAPS[id];
         const bg = m ? `linear-gradient(${m.theme.skyTop}, ${m.theme.skyBottom} 60%, ${m.theme.grass} 60%, ${m.theme.dirtBottom})` : 'linear-gradient(135deg,#8ec5ff,#ffd38a)';
         return `<button class="map ${state.map === id ? 'sel' : ''}" data-id="${id}" style="--bg:${bg}">
-          <span class="mn">${m ? m.name : '랜덤'}</span><small>${m ? m.desc : '셋 중 하나를 무작위로'}</small></button>`;
+          <span class="mn">${m ? m.name : '랜덤'}</span><small>${m ? m.desc : '셋 중 하나를 무작위로'}${m?.lockTank ? '<br><b>🐶 모두 멍뭉이 · 2번 땅파기탄만</b>' : ''}</small></button>`;
       })
       .join('');
     root.querySelectorAll<HTMLElement>('.map').forEach((b) =>
@@ -350,7 +350,7 @@ function startGame() {
   sfx.click();
   const seed = randomSeed();
   const rng = new Rng(seed ^ 0xabcdef);
-  const mapId: MapId = state.map === 'random' ? rng.pick(MAP_IDS) : state.map;
+  const mapId: MapId = state.map === 'random' ? rng.pick(RANDOM_MAP_IDS) : state.map;
   const oppTank: TankId = state.oppTank === 'random' ? randomTank(() => rng.next()) : state.oppTank;
   const local = state.opponent === 'local';
   const diff = local ? null : (state.opponent as Difficulty);

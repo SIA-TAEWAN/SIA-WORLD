@@ -318,3 +318,35 @@ it('필살기를 쓴 발사로는 게이지가 다시 차지 않는다', () => {
   expect(m.tanks[1].hp).toBeLessThan(m.tanks[1].maxHp);
   expect(m.tanks[0].ult).toBe(0);
 });
+
+describe('아슬아슬 맵', () => {
+  it('모두 멍뭉이, 무기는 2번만, 땅파기탄을 정통으로 맞으면 떨어지고 빗맞으면 버틴다', () => {
+    const base = new Match(duo('tiger', 'rat'), 'ledge', 4242);
+    base.startTurn();
+    expect(base.tanks.every((t) => t.tankId === 'dog')).toBe(true);
+    expect(base.weaponLock).toBe(1);
+    const snap = base.snapshot();
+    let direct = 0, fell = 0, near = 0, survivedNear = 0;
+    for (let a = 20; a <= 70; a += 2)
+      for (let p = 40; p <= 100; p += 1.5) {
+        const m = Match.fromSnapshot(snap);
+        const shooter = m.cur;
+        const target = m.tanks[1 - shooter.idx];
+        const facing = target.x > shooter.x ? 1 : -1;
+        const r = m.fire({ angle: a, facing, power: p, weapon: 0, itemSlot: null });
+        const d = r.events.find((e) => e.type === 'damage' && e.target === target.idx) as { direct: boolean } | undefined;
+        const imp = r.firstImpact;
+        if (d?.direct) {
+          direct++;
+          if (!target.alive) fell++;
+        } else if (imp && Math.abs(imp.x - target.x) > 130 && Math.abs(imp.x - target.x) < 220 && Math.abs(imp.y - target.y) < 40) {
+          near++;
+          if (target.alive) survivedNear++;
+        }
+      }
+    if (process.env.DBG) console.log({ direct, fell, near, survivedNear });
+    expect(direct).toBeGreaterThan(0);
+    expect(fell).toBe(direct);
+    expect(survivedNear).toBe(near);
+  });
+});
