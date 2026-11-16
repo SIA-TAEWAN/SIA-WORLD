@@ -548,7 +548,8 @@ export class GameScene extends Phaser.Scene {
     const hudH = this.hud?.bottomHeight ?? 0;
     const t = this.match.terrain;
     // 가로는 맵 전체가 들어오게 하되, 세로로 맵 아래 바깥이 보일 만큼은 줄이지 않는다
-    return Math.max(this.scale.width / (t.w + 240), (this.scale.height - hudH) / (t.h + 650));
+    // 맵 밖(양옆·아래)이 보이기 전까지만 축소된다
+    return Math.max(this.scale.width / t.w, (this.scale.height - hudH) / (t.h + 650));
   }
 
   private zoomTo(z: number) {
@@ -571,7 +572,7 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const hudH = this.hud?.bottomHeight || 118;
     const t = this.match.terrain;
-    cam.setBounds(-120, -650, t.w + 240, t.h + 650 + hudH / cam.zoom);
+    cam.setBounds(0, -650, t.w, t.h + 650 + hudH / cam.zoom);
   }
 
   private setupCamera() {
