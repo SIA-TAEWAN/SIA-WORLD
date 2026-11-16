@@ -157,7 +157,7 @@ const ledge: MapDef = {
   build(rng) {
     const t = new Terrain(MAP_W, MAP_H);
     const n = noise(rng, 3);
-    // 선반: 두께 54px. top(x)로 기울기·울퉁불퉁함을 준다
+    // 선반: 두께 81px. top(x)로 기울기·울퉁불퉁함을 준다
     const shelf = (x0: number, x1: number, top: (x: number) => number, thick: number) => {
       for (let x = x0; x <= x1; x++) {
         const edge = Math.min(x - x0, x1 - x) / 30;
@@ -171,14 +171,14 @@ const ledge: MapDef = {
     const bumps = Array.from({ length: 8 }, () => ({ x: rng.range(60, 1540), w: rng.range(18, 45), h: rng.range(-16, 22) }));
     const bumpy = (x: number) => b1(x) * 0.9 + bumps.reduce((s, q) => s - q.h * Math.exp(-(((x - q.x) / q.w) ** 2)), 0);
     // 전체가 V자 (약 22.5도): 바깥쪽이 높고 가운데로 갈수록 내려간다
-    const hi = 250 + Math.round(rng.range(-10, 10));
+    const hi = 190 + Math.round(rng.range(-10, 10));
     const lo = hi + 236; // 경사 약 22.5도
-    shelf(40, 610, (x) => hi + ((x - 40) / 570) * (lo - hi) + bumpy(x), 54);
-    shelf(990, 1560, (x) => hi + ((1560 - x) / 570) * (lo - hi) + bumpy(x), 54);
+    shelf(40, 610, (x) => hi + ((x - 40) / 570) * (lo - hi) + bumpy(x), 81);
+    shelf(990, 1560, (x) => hi + ((1560 - x) / 570) * (lo - hi) + bumpy(x), 81);
     // 작은 섬: 가운데 위쪽 하나, V자 아래쪽 양옆에 하나씩
-    shelf(710, 890, (x) => hi - 20 + b1(x) * 0.3, 26);
-    shelf(380, 500, (x) => lo + 40 + b1(x) * 0.3, 26);
-    shelf(1100, 1220, (x) => lo + 40 + b1(x) * 0.3, 26);
+    shelf(710, 890, (x) => hi - 20 + b1(x) * 0.3, 39);
+    shelf(380, 500, (x) => lo + 75 + b1(x) * 0.3, 39);
+    shelf(1100, 1220, (x) => lo + 75 + b1(x) * 0.3, 39);
     return t;
   },
 };
