@@ -353,15 +353,18 @@ export class Match {
     };
 
     const hurt = (f: number, target: TankState, raw: number, direct: boolean) => {
-      if (!target.alive || target.team === t.team) return;
+      if (!target.alive) return;
+      // 내 포탄·팀 포탄에도 피해를 입는다 (게이지·딜량은 적에게 준 것만)
+      const enemy = target.team !== t.team;
       const dmg = Math.round(raw * (1 - target.def.defense));
       if (dmg <= 0) return;
       const real = Math.min(dmg, target.hp);
       target.hp -= real;
-      t.damageDealt += real;
+      if (enemy) t.damageDealt += real;
       // 필살기로 준 피해로는 게이지가 다시 차지 않는다
-      if (slot !== 2) t.ult = Math.min(100, t.ult + real * ULT_PER_DEALT);
-      target.ult = Math.min(100, target.ult + real * ULT_PER_TAKEN);
+      if (slot !== 2 && enemy) t.ult = Math.min(100, t.ult + real * ULT_PER_DEALT);
+      // 맞으면 (적·아군·내 포탄 모두) 게이지가 찬다. 단, 내 필살기에 내가 맞은 건 빼고
+      if (!(slot === 2 && target === t)) target.ult = Math.min(100, target.ult + real * ULT_PER_TAKEN);
       events.push({ f, type: 'damage', target: target.idx, amount: real, direct });
       if (target.hp <= 0) {
         target.alive = false;
@@ -387,7 +390,7 @@ export class Match {
             const zx = Math.round(x);
             let zy = Math.max(0, Math.round(y));
             while (zy < this.terrain.h && !this.terrain.solid(zx, zy + 1)) zy++;
-            zone = { id: this.nextZone++, kind: w.zone, x: zx, y: zy, r: w.zoneR ?? ZONE_R, owner: t.idx, until: w.zone === 'fire' ? this.turn + 3 : undefined };
+            zone = { id: this.nextZone++, kind: w.zone, x: zx, y: zy, r: w.zoneR ?? ZONE_R, h: w.zoneH, owner: t.idx, until: w.zone === 'fire' ? this.turn + 3 : undefined };
             this.zones.push(zone);
           }
           events.push({ f, type: 'explode', x, y, radius: w.radius, crater: cr, big: slot === 2, fx: w.fx, zone: zone ? { ...zone } : undefined });
@@ -479,7 +482,9 @@ export class Match {
       for (const o of this.tanks) {
         if (!o.alive || o.team === this.tanks[z.owner].team) continue;
         const c = tankCenter(o);
-        if (Math.hypot(c.x - z.x, c.y - z.y) > z.r + TANK_HIT_R) continue;
+        // 장판: 가로는 반지름, 위로는 높이(h)까지
+        const up = z.h ?? z.r;
+        if (Math.abs(c.x - z.x) > z.r + TANK_HIT_R || c.y < z.y - up - TANK_HIT_R || c.y > z.y + TANK_HIT_R) continue;
         if (!afflicted.has(o.idx)) afflicted.set(o.idx, z.kind);
         used = true;
       }

@@ -63,6 +63,8 @@ export interface Backend {
   createRoom(lobby: string, name: string, player: RoomPlayer): Promise<Room>;
   joinRoom(id: string, player: RoomPlayer): Promise<Room>;
   leaveRoom(id: string, playerId: string): Promise<void>;
+  /** 방장이 다른 사람을 내보낸다 (대기 중일 때만) */
+  kickPlayer(id: string, host: string, target: string): Promise<void>;
   updatePlayer(id: string, player: RoomPlayer): Promise<void>;
   setMap(id: string, playerId: string, map: MapId | 'random'): Promise<void>;
   /** 게임 속도·바람 빠르기 (방장만) */

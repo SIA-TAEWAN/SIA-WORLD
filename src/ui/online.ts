@@ -323,7 +323,7 @@ function renderRoom(id: string) {
       return renderLobby(sess);
     }
     if (!room.players.some((p) => p.id === clientId())) {
-      toast('게임방에서 나가졌어요');
+      toast('방장이 게임방에서 내보냈어요');
       unsubA();
       unsubB();
       unsubC();
@@ -363,8 +363,18 @@ function renderRoom(id: string) {
         <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${p.tank === 'random' ? '랜덤' : TANKS[p.tank].name}</div>
         ${p.items.length ? `<div class="pi">아이템 ${p.items.length}개</div>` : ''}
         ${away ? '<div class="away">연결 확인 중…</div>' : ''}
+        ${iAmHost && p.id !== clientId() ? `<button class="kick" data-kick="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" title="강퇴">✕ 강퇴</button>` : ''}
       </div>`;
     }).join('');
+    root.querySelectorAll<HTMLButtonElement>('[data-kick]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirm(`${b.dataset.name}님을 게임방에서 강퇴할까요?`)) return;
+        sfx.click();
+        await backend!.kickPlayer(id, clientId(), b.dataset.kick!).catch((e) => toast(friendly(e)));
+        rs.sendChat(`${b.dataset.name}님이 강퇴되었어요`);
+        await sess.refetch();
+      }),
+    );
     const tankHtml = TANK_IDS.map(
       (t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} title="${TANKS[t].name} (${TANKS[t].animal}) · ${TANKS[t].role}">${tankSvg(t, 40)}<span>${TANKS[t].name}</span></button>`,
     ).join('') + `<button data-v="random" class="rand ${mineP.tank === 'random' ? 'sel' : ''}" ${locked ? 'disabled ' : ''}title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button>`;
@@ -513,11 +523,20 @@ function renderRoom(id: string) {
 
 function setupsOf(room: Room): PlayerSetup[] {
   // '랜덤'은 판의 시드로 정한다 (모든 기기가 같은 결과)
-  return room.players.map((p, i) => {
+  const list: PlayerSetup[] = room.players.map((p, i) => {
     const r = new Rng(((room.seed ?? 1) ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0);
     const tank = p.tank === 'random' ? randomTank(() => r.next()) : p.tank;
     return { id: p.id, name: p.name, tank, team: p.team, ai: null, items: [...p.items] };
   });
+  // 2:1이면 사람이 적은 팀에 AI(초보 또는 보통)가 한 명 들어온다 (시드로 정해서 모든 기기가 같다)
+  const n0 = list.filter((p) => p.team === 0).length;
+  const n1 = list.length - n0;
+  if (list.length === 3 && Math.abs(n0 - n1) === 1) {
+    const r = new Rng(((room.seed ?? 1) ^ 0x2545f491) >>> 0);
+    const easy = r.next() < 0.5;
+    list.push({ name: easy ? 'AI(초보)' : 'AI(보통)', tank: r.pick(TANK_IDS), team: n0 < n1 ? 0 : 1, ai: easy ? 'easy' : 'normal', items: [] });
+  }
+  return list;
 }
 
 function mapOf(room: Room): MapId {

@@ -1933,3 +1933,8 @@ body.in-game .sound-fab {
 @media (min-width: 1001px) {
   .lobby-grid { grid-template-columns: 1.6fr 1fr; }
 }
+
+/* 방장 강퇴 버튼 */
+.pslot { position: relative; }
+.pslot .kick { position: absolute; top: 6px; right: 6px; border: 2px solid var(--ink); background: #fff; color: #c0392b; border-radius: 10px; font: inherit; font-size: 12px; padding: 1px 6px; cursor: pointer; }
+.pslot .kick:hover { background: #ffe1dc; }

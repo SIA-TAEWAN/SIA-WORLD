@@ -67,6 +67,8 @@ export interface WeaponDef {
   lasers?: number;
   /** 장판 반지름 (기본 18 = 탱크 크기) */
   zoneR?: number;
+  /** 장판이 위로 닿는 높이 (기본 = 반지름) */
+  zoneH?: number;
 }
 
 export interface ItemDef {

@@ -233,7 +233,8 @@
     "delay": 100,
     "look": "mist",
     "zone": "poison",
-    "zoneR": 36
+    "zoneR": 36,
+    "zoneH": 72
   },
   "snake_imugi": {
     "name": "이무기",

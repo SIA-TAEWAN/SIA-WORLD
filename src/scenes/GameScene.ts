@@ -310,6 +310,14 @@ export class GameScene extends Phaser.Scene {
         repeat: -1,
       });
     }
+    // 위로 높은 독안개는 구름을 한 층 더 쌓는다
+    const up = z.h ?? z.r;
+    for (let k = 1; up > z.r && k <= Math.round((up - z.r) / 16); k++)
+      for (let i = 0; i < 4; i++) {
+        const blob = this.add.circle((i - 1.5) * z.r * 0.5, -8 - k * 16, 9 + (i % 2) * 3, i % 2 ? 0x8cf06a : 0x2f9e48, 0.55);
+        c.add(blob);
+        this.tweens.add({ targets: blob, alpha: { from: 0.35, to: 0.65 }, y: blob.y - 4, duration: 1000 + i * 150 + k * 90, yoyo: true, repeat: -1 });
+      }
     this.zoneViews.set(z.id, c);
   }
 

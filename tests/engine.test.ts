@@ -84,26 +84,35 @@ describe('턴 규칙', () => {
     expect(m.tanks[0].ult).toBe(0);
   });
 
-  it('같은 팀은 피해를 받지 않는다', () => {
+  it('아군 포탄에 맞으면 피해를 입고 게이지도 찬다 (딜량은 적에게 준 것만)', () => {
     const setups: PlayerSetup[] = [
       { name: 'A1', tank: 'tiger', team: 0, ai: null, items: [] },
       { name: 'A2', tank: 'tiger', team: 0, ai: null, items: [] },
       { name: 'B', tank: 'tiger', team: 1, ai: null, items: [] },
     ];
-    const m = new Match(setups, 'valley', 11);
-    m.current = 0;
-    // 아군 바로 옆에 붙여 놓고 아군 머리 위로 떨어뜨린다
-    m.tanks[1].x = m.tanks[0].x + 30;
-    m.settle(m.tanks[1]);
-    m.fire(shot({ angle: 70, power: 18 }));
-    expect(m.tanks[1].hp).toBe(m.tanks[1].maxHp);
+    let hit = false;
+    for (let p = 5; p <= 40 && !hit; p += 1) {
+      const m = new Match(setups, 'valley', 11);
+      m.current = 0;
+      m.wind = 0;
+      m.tanks[0].x = 300; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+      m.tanks[1].x = 360; m.tanks[1].y = 0; m.settle(m.tanks[1]);
+      m.fire(shot({ angle: 60, power: p, facing: 1 }));
+      if (m.tanks[1].hp < m.tanks[1].maxHp) {
+        hit = true;
+        expect(m.tanks[1].ult).toBeGreaterThan(0);
+        expect(m.tanks[0].damageDealt).toBe(0);
+      }
+    }
+    expect(hit).toBe(true);
   });
 
   it('수리킷은 체력 20%를 회복한다', () => {
     const m = new Match(duo('tiger', 'tiger', ['repair']), 'valley', 2);
     m.current = 0;
     m.tanks[0].hp = 500;
-    m.fire(shot({ power: 5, itemSlot: 0 }));
+    // 멀리 쏴서 내 포탄에 맞지 않게
+    m.fire(shot({ power: 70, facing: m.tanks[0].facing, itemSlot: 0 }));
     expect(m.tanks[0].hp).toBe(500 + Math.round(m.tanks[0].maxHp * 0.2));
     expect(m.tanks[0].items[0]).toBeNull();
   });
@@ -520,5 +529,36 @@ describe('중독 걸기', () => {
         }
       expect(ok).toBe(true);
     }
+  });
+});
+
+describe('팀킬·장판 높이', () => {
+  it('내 포탄에 나도 맞는다 (게이지·딜량은 적에게 준 것만)', () => {
+    const m = new Match(duo('pig', 'ox'), 'valley', 41);
+    m.startTurn();
+    m.current = 0;
+    m.wind = 0;
+    const me = m.tanks[0];
+    const hp = me.hp;
+    // 바로 앞 땅에 쏜다
+    const r = m.fire(shot({ angle: 10, power: 3, facing: 1 }));
+    expect(r.events.some((e) => e.type === 'damage' && e.target === 0)).toBe(true);
+    expect(me.hp).toBeLessThan(hp);
+    expect(me.damageDealt).toBe(0);
+  });
+  it('독안개는 위로 2배 높이까지 닿는다', () => {
+    const m = new Match(duo('snake', 'ox'), 'valley', 41);
+    m.startTurn();
+    const o = m.tanks[1];
+    const mk = (dy: number) => [{ id: 1, kind: 'poison' as const, x: o.x, y: o.y + dy, r: 36, h: 72, owner: 0 }];
+    m.current = 0;
+    m.zones = mk(70); // 탱크가 장판 바닥보다 70px 위
+    m.tanks[0].x = 100; m.tanks[0].y = 0; m.settle(m.tanks[0]);
+    let r = m.fire(shot({ angle: 80, power: 20, facing: -1 }));
+    expect(r.events.some((e) => e.type === 'dot' && e.target === 1)).toBe(true);
+    m.current = 0;
+    m.zones = mk(110);
+    r = m.fire(shot({ angle: 80, power: 20, facing: -1 }));
+    expect(r.events.some((e) => e.type === 'dot' && e.target === 1)).toBe(false);
   });
 });

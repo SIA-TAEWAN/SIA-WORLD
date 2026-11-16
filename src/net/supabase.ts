@@ -96,6 +96,7 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     },
     createRoom: (lobby, name, player: RoomPlayer) => rpc<Room>('create_room', { p_lobby: lobby, p_name: name, p_player: withTok(player) }),
     joinRoom: (id, player) => rpc<Room>('join_room', { p_id: id, p_player: withTok(player) }),
+    kickPlayer: (id, host, target) => rpc<void>('kick_player', { p_id: id, p_host: host, p_target: target }),
     leaveRoom: (id, playerId) => rpc<void>('leave_room', { p_id: id, p_player_id: playerId }),
     updatePlayer: (id, player) => rpc<void>('update_player', { p_id: id, p_player: withTok(player) }),
     setOptions: (id, playerId, speed, wind) => rpc<void>('set_room_options', { p_id: id, p_player: playerId, p_speed: speed, p_wind: wind }),

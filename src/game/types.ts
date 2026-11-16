@@ -76,6 +76,8 @@ export interface Zone {
   owner: number;
   /** 이 턴 번호가 되면 사라진다 (없으면 만든 탱크의 다음 차례에) */
   until?: number;
+  /** 위로 닿는 높이 (없으면 r) */
+  h?: number;
 }
 
 export interface ShellTrack {

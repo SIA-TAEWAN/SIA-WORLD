@@ -211,6 +211,14 @@ export function createLocalBackend(): Backend {
         return r;
       });
     },
+    async kickPlayer(id, host, target) {
+      mutate((rooms) => {
+        const r = rooms.find((x) => x.id === id);
+        if (!r || r.status !== 'waiting') return;
+        if (hostOf(r) !== host) fail('not host');
+        if (target !== host) r.players = r.players.filter((p) => p.id !== target);
+      });
+    },
     async leaveRoom(id, playerId) {
       mutate((rooms) => {
         const i = rooms.findIndex((x) => x.id === id);
