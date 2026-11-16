@@ -143,7 +143,7 @@ const sphinx: MapDef = {
 const ledge: MapDef = {
   id: 'ledge',
   name: '아슬아슬',
-  desc: '얇은 절벽 선반 위의 멍뭉이 대결! 땅파기탄을 정통으로 맞으면 발밑이 뚫려 떨어진다.',
+  desc: '울퉁불퉁한 V자 절벽 위의 멍뭉이 대결! 땅파기탄으로 발밑을 파서 떨어뜨려라.',
   theme: {
     skyTop: '#6b6fd6', skyBottom: '#ffc3a0',
     grass: '#8fd86a', grassDark: '#55a84a',
@@ -157,22 +157,28 @@ const ledge: MapDef = {
   build(rng) {
     const t = new Terrain(MAP_W, MAP_H);
     const n = noise(rng, 3);
-    // 선반: 두께 36px (땅파기탄 구덩이 반지름 92px보다 훨씬 얇다). top(x)로 기울기를 준다
+    // 선반: 두께 54px. top(x)로 기울기·울퉁불퉁함을 준다
     const shelf = (x0: number, x1: number, top: (x: number) => number, thick: number) => {
       for (let x = x0; x <= x1; x++) {
         const edge = Math.min(x - x0, x1 - x) / 30;
         const th = thick * Math.min(1, 0.45 + edge) + n(x) * 0.15;
         const y0 = Math.round(top(x));
-        for (let y = y0; y < y0 + th; y++) t.data[y * t.w + x] = 1;
+        for (let y = Math.max(0, y0); y < y0 + th; y++) t.data[y * t.w + x] = 1;
       }
     };
-    // 전체가 V자: 바깥쪽이 높고 가운데로 갈수록 내려간다
-    const hi = 330 + Math.round(rng.range(-10, 10));
-    const lo = hi + 150;
-    shelf(40, 610, (x) => hi + ((x - 40) / 570) * (lo - hi), 36);
-    shelf(990, 1560, (x) => hi + ((1560 - x) / 570) * (lo - hi), 36);
-    // 가운데 작은 바위섬 (포탄을 가리는 장애물)
-    shelf(710, 890, () => hi - 20, 26);
+    // 울퉁불퉁: 크고 작은 굴곡을 무작위로 섞는다
+    const b1 = noise(rng, 4);
+    const bumps = Array.from({ length: 8 }, () => ({ x: rng.range(60, 1540), w: rng.range(18, 45), h: rng.range(-16, 22) }));
+    const bumpy = (x: number) => b1(x) * 0.9 + bumps.reduce((s, q) => s - q.h * Math.exp(-(((x - q.x) / q.w) ** 2)), 0);
+    // 전체가 V자 (약 30도): 바깥쪽이 높고 가운데로 갈수록 내려간다
+    const hi = 250 + Math.round(rng.range(-10, 10));
+    const lo = hi + 330;
+    shelf(40, 610, (x) => hi + ((x - 40) / 570) * (lo - hi) + bumpy(x), 54);
+    shelf(990, 1560, (x) => hi + ((1560 - x) / 570) * (lo - hi) + bumpy(x), 54);
+    // 작은 섬: 가운데 위쪽 하나, V자 아래쪽 양옆에 하나씩
+    shelf(710, 890, (x) => hi - 20 + b1(x) * 0.3, 26);
+    shelf(380, 500, (x) => lo + 40 + b1(x) * 0.3, 26);
+    shelf(1100, 1220, (x) => lo + 40 + b1(x) * 0.3, 26);
     return t;
   },
 };
