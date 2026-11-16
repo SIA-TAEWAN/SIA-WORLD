@@ -184,7 +184,7 @@ const ledge: MapDef = {
 };
 
 /** 지형 전체를 위로 올린다: 땅 윗면 평균과 바닥 사이 거리의 9%만큼 */
-function raised(def: MapDef): MapDef {
+function raised(def: MapDef, down = 0): MapDef {
   return {
     ...def,
     build(rng) {
@@ -205,12 +205,17 @@ function raised(def: MapDef): MapDef {
         const last = (t.h - shift - 1) * t.w;
         for (let y = t.h - shift; y < t.h; y++) t.data.copyWithin(y * t.w, last, last + t.w);
       }
+      // 맵별로 더 내린다 (px). 위는 빈 하늘로 채운다
+      if (down > 0) {
+        t.data.copyWithin(down * t.w, 0, (t.h - down) * t.w);
+        t.data.fill(0, 0, down * t.w);
+      }
       return t;
     },
   };
 }
 
-export const MAPS: Record<MapId, MapDef> = { valley: raised(valley), sky: raised(sky), sphinx: raised(sphinx), ledge }; // 아슬아슬은 위치를 직접 맞춰 두어 올리지 않는다 (올리면 천장에 잘림)
+export const MAPS: Record<MapId, MapDef> = { valley: raised(valley, 150), sky: raised(sky, 150), sphinx: raised(sphinx), ledge }; // 아슬아슬은 위치를 직접 맞춰 두어 올리지 않는다 (올리면 천장에 잘림)
 export const MAP_IDS: MapId[] = ['valley', 'sky', 'sphinx', 'ledge'];
 /** '랜덤' 맵에서 나올 수 있는 맵 (특수 규칙 맵은 빠진다) */
 export const RANDOM_MAP_IDS: MapId[] = ['valley', 'sky', 'sphinx'];

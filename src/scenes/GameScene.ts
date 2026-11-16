@@ -460,7 +460,8 @@ export class GameScene extends Phaser.Scene {
         this.add.rectangle(-3000, sl, 3000, terrain.h - sl + 1, dirt).setOrigin(0).setDepth(1);
         this.add.rectangle(terrain.w, sr, 3000, terrain.h - sr + 1, dirt).setOrigin(0).setDepth(1);
       } else {
-        const sea = this.add.graphics().setDepth(1);
+        // 지형 뒤에 깐다 (낮게 뜬 섬이 가려지지 않게)
+        const sea = this.add.graphics().setDepth(-1);
         sea.fillStyle(0xffffff, 0.95).fillRect(-3000, terrain.h - 30, terrain.w + 6000, 3000);
         for (let x = -3000; x < terrain.w + 3000; x += 80) sea.fillCircle(x, terrain.h - 30 + Math.sin(x * 0.05) * 8, 40);
       }

@@ -479,8 +479,13 @@ describe('필살기·상태 개편', () => {
     expect(r.frames).toBeGreaterThanOrEqual(r.events[r.events.length - 1].f);
   });
   it('여의룡 불은 땅 위에 생기고 3턴 동안 남는다', () => {
-    const m = setup('dragon', 'ox');
-    fire(m, 0);
+    // 아무도 없는 땅에 떨어지는 발사를 고른다
+    let m = setup('dragon', 'ox');
+    for (let p = 20; p <= 60; p += 2) {
+      m = setup('dragon', 'ox');
+      m.fire(shot({ angle: 45, power: p, facing: 1 }));
+      if (m.zones.length) break;
+    }
     expect(m.zones.length).toBe(1);
     const z = m.zones[0];
     expect(m.terrain.solid(z.x, z.y + 1)).toBe(true);

@@ -290,7 +290,7 @@ export function drawBackground(scene: Phaser.Scene, theme: MapTheme, mapId: stri
 
   // 스카이 맵: 맵 아래 낭떠러지를 덮는 구름 바다 (지형 앞)
   if (mapId === 'sky') {
-    const sea = scene.add.graphics().setDepth(2);
+    const sea = scene.add.graphics().setDepth(-1);
     sea.fillStyle(0xffffff, 0.92);
     for (let x = -1200; x < w + 1200; x += 90) cloud(sea, x, 845 + Math.sin(x * 0.02) * 12, 1.8);
     sea.fillRect(-1200, 855, w + 2400, 900);
