@@ -377,8 +377,8 @@
   },
   "rooster_egg": {
     "name": "달걀 폭탄",
-    "desc": "꼭대기에서 수직 낙하",
-    "behavior": "drop",
+    "desc": "꼭대기를 지나면 가까운 적 쪽으로 휜다",
+    "behavior": "homing",
     "damage": 352,
     "radius": 48,
     "crater": 32,
@@ -386,7 +386,8 @@
     "count": 1,
     "speed": 900,
     "delay": 0,
-    "look": "egg"
+    "look": "egg",
+    "homing": 12
   },
   "rooster_feather": {
     "name": "깃털탄",
