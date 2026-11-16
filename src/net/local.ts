@@ -265,6 +265,9 @@ export function createLocalBackend(): Backend {
         return r;
       });
     },
+    async getRanking() {
+      return Object.entries(readPoints()).map(([name, points]) => ({ name, points, wins: Math.max(0, (points - 1000) / 100), losses: 0 }));
+    },
     async getPoints(name) {
       return readPoints()[name] ?? 1000;
     },

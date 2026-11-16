@@ -8,6 +8,7 @@ import { Terrain } from '../physics/terrain';
 import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, TEAM_COLORS } from './art';
+import { cloudDataUrl, tierOf, type Tier } from '../ui/rank';
 import { ART_SCALE, TANK_ART, faceColor, tankArtUrl, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
 import { ALL_TANK_IDS } from '../game/data';
 import { Fx } from './fx';
@@ -117,7 +118,15 @@ class TankView {
     this.arrow = scene.add.text(0, -72 + this.dy, '▼', { fontSize: '18px', color: '#ffe14d', stroke: '#7a4b00', strokeThickness: 3 }).setOrigin(0.5).setVisible(false);
     scene.tweens.add({ targets: this.arrow, y: -66 + this.dy, duration: 400, yoyo: true, repeat: -1 });
     this.hpBar.y = this.dy;
-    this.label = scene.add.container(t.x, t.y, [name, this.hpBar, this.arrow]).setDepth(30);
+    // 랭킹 구름 (AI는 없음)
+    const parts: Phaser.GameObjects.GameObject[] = [name, this.hpBar, this.arrow];
+    if (!t.ai) {
+      const cloud = scene.add.image(-name.width / 2 - 2, -60 + this.dy, `cloud-${tierOf(t.name)}`).setOrigin(1, 0.5).setDisplaySize(20, 14);
+      name.x = 11;
+      cloud.x = name.x - name.width / 2 - 2;
+      parts.push(cloud);
+    }
+    this.label = scene.add.container(t.x, t.y, parts).setDepth(30);
     this.drawHp();
 
     // 살아 있는 느낌: 천천히 숨쉬기 + 가끔 눈 깜빡임
@@ -292,6 +301,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
+    for (const tr of ['gold', 'silver', 'bronze', 'white'] as Tier[]) if (!this.textures.exists(`cloud-${tr}`)) this.load.svg(`cloud-${tr}`, cloudDataUrl(tr), { width: 64, height: 44 });
     for (const l of SHELL_LOOKS) if (!this.textures.exists(`shell-${l}`)) this.load.image(`shell-${l}`, `${import.meta.env.BASE_URL}shells/${l}.png`);
     // 탱크 그림은 메뉴와 같은 SVG를 2배 크기로 굽는다
     for (const id of ALL_TANK_IDS) {

@@ -13,6 +13,7 @@ import { OnlineGame } from '../net/online';
 import { $, closeGame, launchGame, nav, screen, setScreenCleanup, state, toast } from './app';
 import { escapeHtml } from './hud';
 import { renderShop } from './shop';
+import { rankedName, setRanking, showRankingModal } from './rank';
 import { tankSvg } from './tankSvg';
 import { sfx } from './sfx';
 import { showResult } from './offline';
@@ -63,6 +64,16 @@ function renderChatLog(root: HTMLElement, sess: ChatSource) {
   if (atBottom) log.scrollTop = log.scrollHeight;
 }
 
+/** 랭킹을 서버에서 다시 받아 구름 등급을 갱신한다 */
+async function refreshRanking() {
+  if (!backend) return;
+  try {
+    setRanking(await backend.getRanking());
+  } catch {
+    /* 랭킹을 못 받아도 게임은 계속 */
+  }
+}
+
 // ---------- 대기실 ----------
 
 export async function showLobby() {
@@ -89,6 +100,7 @@ export async function showLobby() {
     }
     lobby = sess;
     state.points = await backend.getPoints(state.name).catch(() => 1000);
+    await refreshRanking();
     const mine = sess.rooms.find((r) => r.players.some((p) => p.id === clientId()) && !(r.gone ?? []).includes(clientId()));
     if (mine) {
       // 게임 중에 끊겼다가 바로 돌아왔으면 그 게임으로 돌아간다 (최근 신호가 있는 진행 중인 방만)
@@ -115,6 +127,7 @@ function renderLobby(sess: LobbySession) {
     `<header class="bar">
       <button class="btn ghost" id="exit">← 나가기</button>
       <h2>대기실 <small id="count"></small></h2>
+      <button class="btn small-btn" id="rank">☁️ 랭킹</button>
       <span class="my-points" title="온라인에서 이기면 +100, 지면 -100 (최저 1,000)">🏅 ${state.points.toLocaleString()}P</span>
       <button class="btn small-btn" id="copy">🔗 링크 복사</button>
     </header>
@@ -152,7 +165,7 @@ function renderLobby(sess: LobbySession) {
             const label = inIt ? '돌아가기' : playing ? '게임 중' : full ? '가득 참' : '입장';
             const can = inIt || (!playing && !full);
             return `<div class="room-row ${playing ? 'playing' : ''}">
-              <div class="rn">${escapeHtml(r.name)}<small>${r.map === 'random' ? '랜덤 맵' : MAPS[r.map].name} · ${r.players.map((p) => escapeHtml(p.name)).join(', ')}</small></div>
+              <div class="rn">${escapeHtml(r.name)}<small>${r.map === 'random' ? '랜덤 맵' : MAPS[r.map].name} · ${r.players.map((p) => rankedName(p.name, 14)).join(', ')}</small></div>
               <span class="cnt">${r.players.length}/4</span>
               <span class="st">${playing ? '게임 중' : '대기'}</span>
               <button class="btn small-btn ${can ? 'primary' : ''}" data-id="${r.id}" ${can ? '' : 'disabled'}>${label}</button>
@@ -164,7 +177,7 @@ function renderLobby(sess: LobbySession) {
     $(root, '#people').innerHTML = sess.members
       .map((m) => {
         const r = m.meta.room ? sess.room(m.meta.room) : undefined;
-        return `<li class="${m.key === clientId() ? 'me' : ''}">${escapeHtml(m.meta.name)}${r ? `<small>${r.status === 'playing' ? '게임 중' : '게임방'}</small>` : ''}</li>`;
+        return `<li class="${m.key === clientId() ? 'me' : ''}">${rankedName(m.meta.name)}${r ? `<small>${r.status === 'playing' ? '게임 중' : '게임방'}</small>` : ''}</li>`;
       })
       .join('');
     renderChatLog(root, sess);
@@ -176,6 +189,11 @@ function renderLobby(sess: LobbySession) {
   bindChat(root, sess);
 
   $(root, '#exit').addEventListener('click', () => void leaveLobby());
+  $(root, '#rank').addEventListener('click', async () => {
+    sfx.click();
+    await refreshRanking();
+    showRankingModal(state.name);
+  });
   $(root, '#copy').addEventListener('click', async () => {
     const link = lobbyLink(sess.code);
     try {
@@ -347,7 +365,7 @@ function renderRoom(id: string) {
       return `<div class="pslot ${p.id === clientId() ? 'me' : ''} ${p.ready && !isHost ? 'ready' : ''}" style="--c:${TEAM_COLORS[p.team]}">
         ${isHost ? '<div class="badge host">👑 방장</div>' : p.ready ? '<div class="badge ready">READY</div>' : '<div class="badge wait">준비 중</div>'}
         <div class="pic">${tankSvg(p.tank, 70, p.team === 1)}</div>
-        <div class="pn">${escapeHtml(p.name)}${p.id === clientId() ? ' <small>(나)</small>' : ''}</div>
+        <div class="pn">${rankedName(p.name)}${p.id === clientId() ? ' <small>(나)</small>' : ''}</div>
         <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${p.tank === 'random' ? '랜덤' : TANKS[p.tank].name}</div>
         ${p.items.length ? `<div class="pi">아이템 ${p.items.length}개</div>` : ''}
         ${away ? '<div class="away">연결 확인 중…</div>' : ''}
@@ -568,6 +586,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
         }
         await sess.refetch();
         state.points = await backend!.getPoints(state.name).catch(() => state.points);
+        await refreshRanking();
         const d = state.points - before;
         toast(d > 0 ? `🏅 승리! 포인트 +${d} → ${state.points.toLocaleString()}P` : d < 0 ? `포인트 ${d} → ${state.points.toLocaleString()}P` : `포인트 ${state.points.toLocaleString()}P (최저 1,000)`);
       };

@@ -12,6 +12,7 @@ import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
 import { getBackend, onlineConfigured } from '../net';
+import { setRanking } from './rank';
 import { friendly } from '../net/backend';
 
 // ---------- 1. 입장 ----------
@@ -322,7 +323,10 @@ export function showSetup() {
   // 내 ID 포인트를 불러와 상점 예산에 쓴다
   if (onlineConfigured() && state.name)
     void getBackend()
-      .then((b) => b?.getPoints(state.name))
+      .then(async (b) => {
+        b?.getRanking().then(setRanking).catch(() => undefined);
+        return b?.getPoints(state.name);
+      })
       .then((p) => {
         if (p && p !== state.points) {
           state.points = p;

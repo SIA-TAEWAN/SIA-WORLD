@@ -72,6 +72,8 @@ export interface Backend {
   endGame(id: string, gameNo: number, present: string[], winner?: number | null): Promise<void>;
   /** ID별 포인트 (없으면 1000) */
   getPoints(name: string): Promise<number>;
+  /** 포인트 랭킹 (포인트 높은 순) */
+  getRanking(): Promise<{ name: string; points: number; wins: number; losses: number }[]>;
   /** 게임 중 나가기 (모두 나가면 방이 사라진다) */
   quitGame(id: string, playerId: string): Promise<void>;
   /** 방에 아직 사람이 있다는 신호 */

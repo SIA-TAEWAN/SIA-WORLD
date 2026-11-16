@@ -1879,3 +1879,24 @@ body.in-game .sound-fab {
 
 /* 설명서 끝이 소리 버튼에 가리지 않게 */
 .screen.entry { padding-bottom: 72px; }
+
+/* 랭킹 구름 */
+.rk-name { display: inline-flex; align-items: center; gap: 3px; }
+.cloud-ic { flex: none; vertical-align: middle; }
+.rank-modal { position: fixed; inset: 0; z-index: 200; background: rgba(20, 26, 52, 0.55); display: grid; place-items: center; padding: 16px; }
+.rank-box { width: min(480px, 100%); max-height: calc(100% - 20px); display: flex; flex-direction: column; background: var(--cream); border: 4px solid var(--ink); border-radius: 22px; box-shadow: 0 6px 0 var(--ink); padding: 14px 16px; }
+.rank-head { display: flex; justify-content: space-between; align-items: center; }
+.rank-head h3 { margin: 0; font-size: 22px; }
+.rank-legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 10px 0 6px; text-align: center; }
+.rank-legend span { display: flex; flex-direction: column; align-items: center; font-size: 13px; }
+.rank-legend small { opacity: 0.65; font-size: 11px; }
+.rank-me { text-align: center; margin: 6px 0; font-size: 14px; }
+.rank-scroll { overflow-y: auto; flex: 1; min-height: 0; border-top: 2px dashed #0002; }
+.rank-scroll table { width: 100%; border-collapse: collapse; }
+.rank-scroll td { padding: 5px 6px; border-bottom: 1px solid #0001; font-size: 15px; }
+.rank-scroll td.pl { width: 34px; text-align: center; font-weight: bold; }
+.rank-scroll td.nm { width: 100%; }
+.rank-scroll td.pt, .rank-scroll td.wl { white-space: nowrap; text-align: right; font-size: 13px; }
+.rank-scroll tr.me { background: #fff3b0; }
+.rank-scroll tr.t-gold td.pl { color: #c58a00; }
+.rank-note { font-size: 12px; opacity: 0.6; text-align: center; margin: 8px 0 0; }

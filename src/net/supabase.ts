@@ -102,6 +102,11 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     setMap: (id, playerId, map) => rpc<void>('set_room_map', { p_id: id, p_player: playerId, p_map: map }),
     startGame: (id, host, seed) => rpc<Room>('start_game', { p_id: id, p_host: host, p_seed: seed }),
     endGame: (id, gameNo, present, winner) => rpc<void>('end_game', { p_id: id, p_game_no: gameNo, p_present: present, p_winner: winner ?? null }),
+    async getRanking() {
+      const { data, error } = await sb.from('player_points').select('name,points,wins,losses').order('points', { ascending: false }).limit(1000);
+      if (error) throw new Error(error.message);
+      return (data ?? []) as { name: string; points: number; wins: number; losses: number }[];
+    },
     async getPoints(name) {
       const { data, error } = await sb.from('player_points').select('points').eq('name', name).maybeSingle();
       if (error) throw new Error(error.message);
