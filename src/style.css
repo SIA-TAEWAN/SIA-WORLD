@@ -1900,3 +1900,36 @@ body.in-game .sound-fab {
 .rank-scroll tr.me { background: #fff3b0; }
 .rank-scroll tr.t-gold td.pl { color: #c58a00; }
 .rank-note { font-size: 12px; opacity: 0.6; text-align: center; margin: 8px 0 0; }
+
+/* 대기실 상단: 포인트 글씨가 보이게 */
+.bar .my-points { color: var(--ink); }
+.bar .btn, .bar h2 { white-space: nowrap; }
+/* 좁은 화면: 1줄 = 나가기 · 제목, 2줄 = 랭킹 · 포인트 · 링크 */
+@media (max-width: 600px) {
+  .screen.lobby .bar {
+    display: grid;
+    grid-template-columns: auto 1fr 1fr;
+    grid-template-areas: 'exit title title' 'rank pts copy';
+    gap: 8px;
+    padding: 8px 0;
+  }
+  .screen.lobby .bar #exit { grid-area: exit; }
+  .screen.lobby .bar h2 { grid-area: title; font-size: 22px; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+  .screen.lobby .bar h2 small { font-size: 12px; }
+  .screen.lobby .bar #rank { grid-area: rank; }
+  .screen.lobby .bar .my-points { grid-area: pts; text-align: center; align-self: center; }
+  .screen.lobby .bar #copy { grid-area: copy; }
+  .screen.lobby .bar #rank, .bar #copy { padding-left: 6px; padding-right: 6px; font-size: 14px; }
+}
+/* 좁은 화면 게임방: 제목은 남는 칸에 맞춰 줄이고 넘치면 … */
+@media (max-width: 600px) {
+  .screen.room .bar { gap: 6px; }
+  .screen.room .bar h2 { flex: 1; min-width: 0; font-size: 19px; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .screen.room .bar h2 small { font-size: 12px; }
+  .screen.room .bar #copy { font-size: 13px; padding-left: 8px; padding-right: 8px; flex: none; }
+  .screen.room .bar #leave { flex: none; }
+}
+/* 대기실: 게임방 · 접속자 두 칸 (상점은 게임방에서) */
+@media (min-width: 1001px) {
+  .lobby-grid { grid-template-columns: 1.6fr 1fr; }
+}

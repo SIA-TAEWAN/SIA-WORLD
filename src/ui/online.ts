@@ -136,10 +136,6 @@ function renderLobby(sess: LobbySession) {
         <div class="card-head"><h3>게임방</h3><button class="btn primary small-btn" id="create">＋ 방 만들기</button></div>
         <div class="room-list" id="rooms"></div>
       </section>
-      <section class="card shop-card">
-        <h3>아이템 상점 <small>매 판 1,000 포인트 · 3칸</small></h3>
-        <div id="shop"></div>
-      </section>
       <section class="card people-card">
         <h3>접속자</h3>
         <ul class="people" id="people"></ul>
@@ -182,10 +178,8 @@ function renderLobby(sess: LobbySession) {
       .join('');
     renderChatLog(root, sess);
   };
-  const drawShop = () => renderShop($(root, '#shop'), state.shop[0], drawShop, false, state.points);
   const unsub = sess.subscribe(draw);
   draw();
-  drawShop();
   bindChat(root, sess);
 
   $(root, '#exit').addEventListener('click', () => void leaveLobby());
