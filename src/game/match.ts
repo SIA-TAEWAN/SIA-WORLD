@@ -17,8 +17,6 @@ const DOT_RATE = 0.02;
 const ZONE_R = 18;
 /** 특수 벽이 턴마다 생길 확률 */
 const WALL_CHANCE = 0.05;
-/** 특수 벽 높이: 탱크 4대 */
-const WALL_HEIGHT = 36 * 4;
 
 /** 바람이 바뀌는 빠르기: 턴마다 바뀌는 최대 폭 */
 export const WIND_STEPS = { slow: 2, normal: 5, fast: 8 } as const;
@@ -148,7 +146,7 @@ export class Match {
     const x = Math.round(Math.max(30, Math.min(this.terrain.w - 30, (alive(0) && alive(1) ? (avg(0) + avg(1)) / 2 : this.terrain.w / 2) + this.rng.range(-20, 20))));
     let bottom = 0;
     while (bottom < this.terrain.h && !this.terrain.solid(x, bottom)) bottom++;
-    return { kind, x, bottom, top: Math.max(0, bottom - WALL_HEIGHT), until: this.turn + 3 };
+    return { kind, x, bottom, top: 0, until: this.turn + 3 };
   }
 
   get cur(): TankState {

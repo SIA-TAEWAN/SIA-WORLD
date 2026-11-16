@@ -72,7 +72,7 @@ export interface Wall {
   x: number;
   /** 벽 아래끝 (그 자리 땅 높이) */
   bottom: number;
-  /** 벽 위끝 (바닥에서 탱크 4대 높이). 이보다 위로 지나가면 효과 없음 */
+  /** 벽 위끝 (천장 = 0). 이보다 위로 지나가면 효과 없음 */
   top: number;
   /** 이 턴 번호가 되면 사라진다 (생긴 뒤 3턴) */
   until: number;
