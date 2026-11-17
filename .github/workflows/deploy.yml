@@ -87,9 +87,9 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 3.2.0
-      - run: supabase functions deploy game-action --project-ref "$PROJECT_REF" --use-api
+      - run: supabase functions deploy game-action --project-ref "$PROJECT_REF" --use-api --yes
       # cron(pg_net)이 사용자 JWT 없이 부르므로 JWT 확인을 끄고, 함수 안에서 DB 비밀값으로 확인한다
-      - run: supabase functions deploy game-timeout --project-ref "$PROJECT_REF" --use-api --no-verify-jwt
+      - run: supabase functions deploy game-timeout --project-ref "$PROJECT_REF" --use-api --no-verify-jwt --yes
 
   deploy:
     needs: [build, migrate, functions]
