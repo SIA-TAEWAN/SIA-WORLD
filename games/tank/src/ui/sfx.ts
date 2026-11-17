@@ -1,4 +1,24 @@
-/** 효과음을 코드로 합성한다 (파일 없음) */
+/**
+ * 시아탱크 효과음: SIA WORLD 공용 효과음(shared/sound.js, ZzFX)을 쓴다. 켜기/끄기 설정도 공용과 같다.
+ * 공용 모듈을 못 불러오면(오프라인 등) 예전처럼 여기서 직접 합성한다.
+ */
+import { loadSound, type SoundModule } from '../net/world';
+let shared: SoundModule | null = null;
+void loadSound().then(
+  (m) => {
+    shared = m;
+    muted = m.isMuted();
+    muteListeners.forEach((f) => f(muted));
+    m.onMuteChange((v) => {
+      muted = v;
+      muteListeners.forEach((f) => f(muted));
+    });
+  },
+  () => undefined,
+);
+/** 공용 소리가 있으면 그것으로, 없으면 fallback */
+const say = (name: string, fallback: () => void) => (shared ? shared.play(name) : fallback());
+
 let ctx: AudioContext | null = null;
 let muted = false;
 try {
@@ -56,25 +76,32 @@ function noise(dur: number, vol: number, cutoff: number) {
 }
 
 export const sfx = {
-  fire: () => {
-    noise(0.18, 0.35, 1800);
-    tone(180, 0.15, 'square', 0.08, -120);
-  },
-  boom: (big = false) => {
-    noise(big ? 0.9 : 0.5, big ? 0.7 : 0.5, big ? 600 : 900);
-    tone(big ? 70 : 110, big ? 0.6 : 0.35, 'sine', 0.3, -50);
-  },
-  laser: () => tone(1400, 0.6, 'sawtooth', 0.08, -1200),
-  build: () => tone(220, 0.25, 'triangle', 0.15, -100),
-  click: () => tone(660, 0.05, 'square', 0.05),
-  tick: () => tone(980, 0.06, 'sine', 0.08),
-  turn: () => {
-    tone(523, 0.1, 'triangle', 0.1);
-    setTimeout(() => tone(784, 0.14, 'triangle', 0.1), 90);
-  },
-  heal: () => tone(440, 0.3, 'sine', 0.1, 400),
-  win: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.12), i * 130)),
+  fire: () =>
+    say('tankFire', () => {
+      noise(0.18, 0.35, 1800);
+      tone(180, 0.15, 'square', 0.08, -120);
+    }),
+  boom: (big = false) =>
+    say(big ? 'tankBigBoom' : 'tankBoom', () => {
+      noise(big ? 0.9 : 0.5, big ? 0.7 : 0.5, big ? 600 : 900);
+      tone(big ? 70 : 110, big ? 0.6 : 0.35, 'sine', 0.3, -50);
+    }),
+  laser: () => say('tankLaser', () => tone(1400, 0.6, 'sawtooth', 0.08, -1200)),
+  build: () => say('tankBuild', () => tone(220, 0.25, 'triangle', 0.15, -100)),
+  click: () => say('click', () => tone(660, 0.05, 'square', 0.05)),
+  tick: () => say('tick', () => tone(980, 0.06, 'sine', 0.08)),
+  turn: () =>
+    say('tankTurn', () => {
+      tone(523, 0.1, 'triangle', 0.1);
+      setTimeout(() => tone(784, 0.14, 'triangle', 0.1), 90);
+    }),
+  heal: () => say('tankHeal', () => tone(440, 0.3, 'sine', 0.1, 400)),
+  win: () => say('tankWin', () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.12), i * 130))),
   toggleMute: () => {
+    if (shared) {
+      shared.setMuted(!muted);
+      return muted;
+    }
     muted = !muted;
     try {
       localStorage.setItem('siatank:mute', muted ? '1' : '0');

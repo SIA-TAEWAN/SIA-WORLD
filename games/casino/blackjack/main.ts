@@ -11,6 +11,9 @@ const RESULT: Record<BjResult, string> = { blackjack: '블랙잭!', win: '승', 
 const ACTION: Record<string, string> = { hit: '히트', stand: '스탠드', double: '더블다운', split: '스플릿' };
 
 let betAmount = 0;
+/** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
+const short = (n: string) => n.replace(/^AI /, '');
+
 
 const ui: GameUI<BjPublic, Record<string, never>> = {
   game: 'blackjack',
@@ -70,6 +73,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       const isTurn = p.turn?.seat === s.seat;
       const me = s.seat === t.mySeat;
       const k = clamp(scw / 80, 0.75, 1.15);
+      t.anchor(`seat:${s.seat}`, x, y - scw * 0.75);
       nameTag(scene, tagLeft ? 30 * k : x - 44 * k, rowTop + rowH - 24 * k, t.seatName(s.seat), t.seatAvatar(s.seat), {
         turn: isTurn || (p.phase === 'bet' && p.waitingBets.includes(s.seat)),
         me,
@@ -105,6 +109,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     const flushLabels = () => pendingLabels.forEach((x) => showAfter(x.lt, x.result ? Math.max(x.land, dealerLand) : x.land));
     // 딜러 카드는 사람 카드 다음에 (차례대로 한 장씩 보이게) → 먼저 자리를 그리면서 시각을 모으고, 딜러는 그 뒤에
     let dealerLand = 0;
+    t.anchor('dealer', dx, dy - dcw * 0.6);
     const drawDealer = () => {
       dc.forEach((c, i) => {
         const card = playingCard(scene, dx + (i - (dc.length - 1) / 2) * dcw * 0.62, dy, c, dcw);
@@ -195,6 +200,43 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       })
       .join('');
     return `<h3>🃏 판 결과</h3><p>딜러 ${r.dealer.total}${r.dealer.blackjack ? ' (블랙잭)' : r.dealer.bust ? ' (버스트)' : ''}</p><table>${rows}</table>`;
+  },
+
+  // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
+  replay(ev, t: Ctx) {
+    const who = typeof ev.seat === 'number' ? short(t.seatName(ev.seat)) : '';
+    switch (ev.t) {
+      case 'bet':
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} ${t.fmt(Number(ev.amount) || 0)} 베팅`, chips: { from: ev.seat, to: 'dealer', amount: Number(ev.amount) || 0 } } : null;
+      case 'hit':
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 히트!`, gap: typeof ev.seat === 'number' ? undefined : 600 } : null;
+      case 'stand':
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스탠드` } : null;
+      case 'double':
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 더블다운!`, chips: { from: ev.seat, to: 'dealer', amount: Number(ev.bet) || 0 } } : null;
+      case 'split':
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스플릿!` } : null;
+      case 'bust':
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 버스트!`, sound: 'bust' } : null;
+      case 'dealer_reveal':
+        return { at: 'dealer', text: `딜러 ${ev.total}`, sound: 'flip', gap: 800 };
+      case 'dealer_hit':
+        return { at: 'dealer', text: `딜러 히트 (${ev.total})`, gap: 800 };
+      case 'dealer_stand':
+        return { at: 'dealer', text: `딜러 ${ev.total} 스탠드`, gap: 800 };
+      case 'dealer_bust':
+        return { at: 'dealer', text: '딜러 버스트!', sound: 'bust', gap: 800 };
+      case 'result': {
+        if (typeof ev.seat !== 'number') return null;
+        const d = Number(ev.delta) || 0;
+        if (!d) return { at: ev.seat, text: `${who} 무승부`, gap: 500 };
+        return d > 0
+          ? { at: ev.seat, text: `${who} +${t.fmt(d)}`, chips: { from: 'dealer', to: ev.seat, amount: d }, sound: 'coin', gap: 600 }
+          : { at: ev.seat, text: `${who} ${t.fmt(d)}`, chips: { from: ev.seat, to: 'dealer', amount: -d }, gap: 600 };
+      }
+      default:
+        return null;
+    }
   },
 
   cutin(ev, t: Ctx) {

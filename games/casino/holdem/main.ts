@@ -12,6 +12,9 @@ const STREET: Record<string, string> = { preflop: '프리플롭', flop: '플롭'
 /** 레이즈(베트) 금액: 이번 라운드 총액 (슬라이더) */
 let raiseTo = 0;
 let raiseKey = '';
+/** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
+const short = (n: string) => n.replace(/^AI /, '');
+
 
 /** 버튼(D)·SB·BB 표시 칩 */
 function marker(scene: PhaserNS.Scene, x: number, y: number, text: string, r: number) {
@@ -42,7 +45,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     drawTable(scene, 'holdem');
     const portrait = H > W * 1.15 || W < 520;
     // 내 카드 크기 (2장이라 크게), 공용 카드, 다른 사람
-    const cw = clamp(Math.min(W / (portrait ? 4.6 : 7.5), H / (portrait ? 4.6 : 6.2)), 44, 110);
+    // 내 카드 (조금 작게)
+    const cw = clamp(Math.min(W / (portrait ? 5.3 : 8.6), H / (portrait ? 5.4 : 7.1)), 40, 96);
     const bc = clamp(Math.min((W * 0.9) / 5.6, H / (portrait ? 6.2 : 4.4)), 36, 100);
     const nOpp = Math.max(1, (p?.seats.length ?? 4) - 1);
     const oc = portrait ? Math.min(cw * 0.55, W / nOpp / 3.2) : cw * 0.55;
@@ -73,6 +77,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     // 판돈 · 단계
     const chip = clamp(bc * 0.2, 12, 20);
     chipStack(scene, center.x - bc * 0.3, center.y + bc * 0.95, p.pot, `판돈 ${t.fmt(p.pot)}`, chip);
+    t.anchor('pot', center.x - bc * 0.3, center.y + bc * 0.95);
     label(
       scene,
       center.x + bc * 1.3,
@@ -123,6 +128,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       const k = me ? clamp(cw / 85, 0.85, 1.15) : clamp(oc / 60, 0.75, 1);
       const tagY = y + w * 0.71 + 24 * k;
       nameTag(scene, Math.max(26, Math.min(x - 52 * k, W - 160 * k)), tagY, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, size: k, sub: sub || undefined });
+      t.anchor(`seat:${s.seat}`, x, y - w * 0.72);
       // 딜러 버튼
       if (s.seat === p.button) marker(scene, x + ((cards.length || 2) / 2) * gap + w * 0.32, y + w * 0.5, 'D', clamp(w * 0.16, 9, 15));
       // 이번 라운드에 낸 칩 (가운데 쪽으로)
@@ -199,6 +205,36 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       .join('');
     const split = r.pots.some((x) => x.winners.length > 1) ? '<p>동점이라 판돈을 나눴어요</p>' : '';
     return `<h3>♥️ 판 결과</h3>${split}<table>${rows}</table>`;
+  },
+
+  // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
+  replay(ev, t: Ctx) {
+    if (typeof ev.seat !== 'number') return null;
+    const who = short(t.seatName(ev.seat));
+    const amount = typeof ev.amount === 'number' ? ev.amount : 0;
+    switch (ev.t) {
+      case 'blind':
+        return { at: ev.seat, text: `${who} ${ev.kind === 'sb' ? 'SB' : 'BB'}`, chips: { from: ev.seat, to: 'pot', amount }, gap: 450 };
+      case 'fold':
+        return { at: ev.seat, text: `${who} 폴드`, sound: 'fold' };
+      case 'check':
+        return { at: ev.seat, text: `${who} 체크`, sound: 'tick' };
+      case 'call':
+        return { at: ev.seat, text: `${who} 콜!`, chips: { from: ev.seat, to: 'pot', amount } };
+      case 'bet':
+      case 'raise':
+        return {
+          at: ev.seat,
+          text: `${who} ${ev.t === 'bet' ? '베트' : '레이즈'} ${t.fmt(Number(ev.to) || 0)}!`,
+          chips: { from: ev.seat, to: 'pot', amount: Number(ev.to) || t.pub?.bb || 1 },
+        };
+      case 'allin':
+        return { at: ev.seat, text: `${who} 올인!`, gap: 500 };
+      case 'win':
+        return { at: ev.seat, text: `${who} +${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, sound: 'coin', gap: 900 };
+      default:
+        return null;
+    }
   },
 
   cutin(ev, t: Ctx) {

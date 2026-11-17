@@ -4,7 +4,7 @@
  * 모든 화면이 같은 칸에 멈추도록, 회전은 서버 결과로 정해진 각도까지 같은 시간(6초) 동안 돈다.
  */
 import { ROULETTE_MANUAL } from '../../lib/manuals.ts';
-import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
+import { bootGame, esc, sfx, sfxMany, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { clamp, drawTable, label, tc, theme, viewSize } from '../../lib/cards.ts';
 import { BET_MS, MULT, SEASONS, WHEEL, hits, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
 import { worldRoot } from '../../lib/world.ts';
@@ -39,6 +39,7 @@ let roomId = '';
 let skew = 0;
 let lastPhase = '';
 let lastBase = 0;
+let lastTick = '';
 
 function enterRoom(id: string, base: number) {
   if (id === roomId && base === lastBase) return;
@@ -130,6 +131,12 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
   back: 'games/casino/',
   backLabel: '카지노',
   noAi: true,
+  pageClass(t: Ctx) {
+    const p = t.pub;
+    if (!p || t.mySeat === null) return '';
+    const betting = p.phase === 'bet' && p.players.some((x) => x.seat === t.mySeat) && !p.confirmed.includes(t.mySeat);
+    return betting ? 'rl-betting' : 'rl-watch';
+  },
   // 당첨금은 휠이 멈춘 뒤에 보이게
   liveWallet: (pub: RoulettePublic | null) => (pub?.phase === 'spin' ? SPIN_ANIM + 600 : 400),
   felt: () => theme().COLOR.skyMid,
@@ -185,12 +192,26 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
       const ease = (x: number) => 1 - Math.pow(1 - x, 4);
       wheel.setRotation(from + (to - from) * ease(prog));
       if (prog < 1) {
+        let lastSeg = Math.floor((from + (to - from) * ease(prog)) / seg);
         scene.tweens.addCounter({
           from: prog,
           to: 1,
           duration: SPIN_ANIM * (1 - prog),
-          onUpdate: (tw) => wheel.setRotation(from + (to - from) * ease(tw.getValue() ?? 1)),
-          onComplete: () => t.redraw(),
+          onUpdate: (tw) => {
+            const rot = from + (to - from) * ease(tw.getValue() ?? 1);
+            wheel.setRotation(rot);
+            const segNow = Math.floor(rot / seg);
+            if (segNow !== lastSeg) {
+              lastSeg = segNow;
+              sfx('spinTick');
+            }
+          },
+          onComplete: () => {
+            sfx('spinStop');
+            const mine = t.mySeat !== null ? (p.wins[String(t.mySeat)] ?? 0) : 0;
+            if (mine > 0) sfxMany('coin', 3, 120, { delay: 250 });
+            t.redraw();
+          },
         });
       }
     } else {
@@ -212,6 +233,12 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
       label(scene, cx, msgY, `베팅 ${left}초 · ${p.confirmed.length}/${p.players.length}명 확정`, clamp(r * 0.11, 15, 24));
       // 1초마다 남은 시간 갱신 (타이머는 하나만)
       const room = t.room.id;
+      const leftEl = document.getElementById('rl-left');
+      if (leftEl) leftEl.textContent = `${left}초`;
+      if (left > 0 && left <= 3 && lastTick !== `${p.spin}:${left}`) {
+        lastTick = `${p.spin}:${left}`;
+        sfx('tick');
+      }
       if (!countdown) countdown = setTimeout(() => ((countdown = null), room === roomId && t.redrawTable()), 1000);
     } else if (p.phase === 'spin' && result !== null) {
       if (!stopped) label(scene, cx, msgY, '돌아가는 중…', clamp(r * 0.11, 15, 24));
@@ -272,6 +299,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     const total = sumOf(local);
     el.innerHTML = `<div class="row rl-top">
         <span class="rl-units">${[1, 5, 10].map((n) => `<button class="btn small ${unit === n ? 'sel' : ''}" data-u="${n}">${t.fmt(base * n)}</button>`).join('')}</span>
+        <span class="rl-left" id="rl-left">${p.endsAt ? Math.max(0, Math.ceil((p.endsAt - serverNow()) / 1000)) : 20}초</span>
         <span class="amount">${t.fmt(total)} / ${t.fmt(p.maxTotal)}</span>
       </div>
       ${board(p, t, true)}
@@ -289,6 +317,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     el.querySelectorAll<HTMLButtonElement>('[data-bk]').forEach((b) =>
       b.addEventListener('click', () => {
         if (!addBet(b.dataset.bk as BetKind, Number(b.dataset.bt), base * unit, p.maxTotal)) return void flash(el, `한 번에 ${t.fmt(p.maxTotal)}칩까지 걸 수 있어요`);
+        sfx('chip');
         t.redraw();
       }),
     );

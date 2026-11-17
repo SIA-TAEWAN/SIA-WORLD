@@ -1,5 +1,5 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
-import { bootGame, esc, type GameUI, type TableCtx, type TrackOpts } from '../lib/shell.ts';
+import { bootGame, esc, sfx, type GameUI, type TableCtx, type TrackOpts } from '../lib/shell.ts';
 import { worldRoot } from '../lib/world.ts';
 import { cardBack, clamp, drawTable, label, nameTag, tc, theme, viewSize } from '../lib/cards.ts';
 import { CARDS, cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
@@ -300,6 +300,7 @@ function scoreChip(scene: PhaserNS.Scene, x: number, y: number, text: string, tu
 /** 찰싹! 패가 바닥에 내려앉는 순간: 하얀 충격 링 + 별 조각 + 살짝 흔들림 (같은 달 패 위면 더 크게 + '찰싹!') */
 function slap(scene: PhaserNS.Scene, x: number, y: number, w: number, onStack: boolean, dpr: number) {
   if (!scene.sys?.isActive()) return;
+  sfx('slap', { volume: onStack ? 1 : 0.7, rate: onStack ? 1 : 1.15 });
   const T = theme();
   const ring = scene.add.circle(x, y, w * 0.45).setStrokeStyle(Math.max(3, w * 0.07), T.COLOR.white, 1).setDepth(30);
   scene.tweens.add({ targets: ring, scale: onStack ? 2.1 : 1.6, alpha: 0, duration: 320, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
@@ -498,6 +499,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           from: srcOf(id, pl),
           delay: pl.startAt,
           flip: pl.flip,
+          sound: pl.flip ? 'flip' : 'deal',
           fromScale: srcSize(pl) / capW,
           via,
           viaScale: fw / capW,
@@ -506,7 +508,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         };
       }
       // 바닥에 있던 패 (또는 뺏어 온 피): 가져가기 차례에 지금 자리에서 출발
-      return { delay: pl.captureAt ?? AT_TAKE };
+      return { delay: pl.captureAt ?? AT_TAKE, sound: 'chip' };
     };
     captured(t, scene, L.capX, L.oppCapY, op, capW, L.oppCapMaxX, capOpts);
 
@@ -526,12 +528,13 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         });
         // 처음 보는 패: 판 시작이면 더미에서 차례로, 아니면 사건 기록대로 (낸 패는 손에서, 뒤집은 패는 더미에서 뒤집으며)
         const pl = dealing ? undefined : plan.get(id);
-        if (dealing) t.track(card, id, { from: pile, delay: (20 + floorSeq++) * DEAL_GAP, fromScale: L.pw / fw });
+        if (dealing) t.track(card, id, { from: pile, delay: (20 + floorSeq++) * DEAL_GAP, fromScale: L.pw / fw, sound: 'deal' });
         else if (pl)
           t.track(card, id, {
             from: srcOf(id, pl),
             delay: pl.startAt,
             flip: pl.flip,
+            sound: pl.flip ? 'flip' : 'deal',
             // 손패(또는 뒷면·더미) 크기에서 바닥 크기로
             fromScale: srcSize(pl) / fw,
             // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
@@ -579,7 +582,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           onClick: canPlay && !t.busy ? () => void t.act({ type: 'play', card: id, shake: shake && !!t.priv?.shakeable.includes(cardById(id).month) }) : undefined,
         }),
         id,
-        { from: pile, delay: dealing ? i * 2 * DEAL_GAP : 0 },
+        { from: pile, delay: dealing ? i * 2 * DEAL_GAP : 0, sound: dealing ? 'deal' : undefined },
       );
     });
   },

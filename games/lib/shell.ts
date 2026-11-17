@@ -10,6 +10,7 @@ import {
   linkThemeCss,
   world,
   worldHome,
+  worldRoot,
   type GameId,
   type PrivateRow,
   type RoomModule,
@@ -54,6 +55,10 @@ export interface TableCtx<P = any, Q = any> {
   redraw(): void;
   /** 테이블만 다시 그리기 (아래 버튼은 그대로: 누르던 버튼·포커스가 끊기지 않게) */
   redrawTable(): void;
+  /** 연출 기준점 등록 (그릴 때마다): 'pot', 'dealer', 'seat:<번호>' 등 → 말풍선·칩 이동 위치 */
+  anchor(name: string, x: number, y: number): void;
+  /** 효과음 (shared/sound.js) */
+  sound(name: SoundName, opts?: { delay?: number; volume?: number; rate?: number }): void;
   /**
    * 카드 나눠 주기 연출: 이번 판에 처음 보는 자리(key)의 카드는 from에서 날아오고,
    * 같은 자리인데 면(face)이 바뀌면(뒷면 → 앞면) 뒤집는다. 이미 본 카드는 그대로 둔다.
@@ -92,6 +97,8 @@ export interface TrackOpts {
   delay?: number;
   /** 출발할 때 크기 배율 (손패 크기에서 바닥 크기로 자연스럽게) */
   fromScale?: number;
+  /** 출발할 때 소리 (예: 'deal', 'flip') */
+  sound?: SoundName;
   /** 먹는 패: 먼저 이 자리(바닥)에 내려앉았다가 '가져가기' 차례에 목표로 */
   via?: { x: number; y: number };
   /** 경유점에서 떠나는 시각 (지금부터 ms, 기본: 가져가기 차례) */
@@ -102,6 +109,22 @@ export interface TrackOpts {
   flip?: boolean;
   /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등). 경유점이 있으면 경유점에 내려앉을 때 */
   onLand?: () => void;
+}
+
+/** 효과음 이름 (shared/sound.js의 SOUNDS) */
+export type SoundName = string;
+
+/** 연출 재생 한 걸음: 말풍선 · 칩 이동 · 소리 */
+export interface ReplayStep {
+  /** 말풍선 글자 (seat 자리 위, 없으면 안 띄움) */
+  text?: string;
+  /** 말풍선을 띄울 곳 (자리 번호 또는 anchor 이름) */
+  at?: number | string;
+  /** 칩 이동: from → to (anchor 이름 'pot' · 'dealer' 또는 자리 번호), 금액은 칩 개수 정할 때만 */
+  chips?: { from: number | string; to: number | string; amount: number };
+  sound?: SoundName;
+  /** 다음 걸음까지 (ms). 없으면 AI 0.8초, 사람 0.35초 */
+  gap?: number;
 }
 
 export interface GameUI<P = any, Q = any> {
@@ -127,6 +150,13 @@ export interface GameUI<P = any, Q = any> {
   noAi?: boolean;
   /** 카드를 한 장씩 나눠 줄 때 간격(ms). 기본 110 */
   dealGap?: number;
+  /**
+   * 사건 하나를 연출 한 걸음으로 (말풍선·칩·소리). 서버가 여러 행동을 한꺼번에 보내도 화면은 이 걸음들을 차례로 보여 준 뒤
+   * 새 상태를 그린다. null이면 그 사건은 건너뛴다.
+   */
+  replay?(ev: GameEventLite, t: TableCtx<P, Q>): ReplayStep | null;
+  /** 방 화면 전체에 붙일 클래스 (예: 룰렛 '베팅 중' / '구경 중' → 휴대폰 배치를 바꾼다) */
+  pageClass?(t: TableCtx<P, Q>): string;
   /** 대기방 '게임 방법' 창 내용 (HTML). 없으면 버튼을 숨긴다 */
   manual?: string;
   /** Phaser에 미리 불러올 그림 (key → url) */
@@ -184,9 +214,34 @@ interface Mods {
   z: ZodiacModule;
 }
 
+interface SoundModule {
+  play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
+  playMany(name: string, count: number, gapMs?: number, opts?: { delay?: number }): void;
+  mountSoundButton(parent?: HTMLElement): HTMLElement;
+}
+let snd: SoundModule | null = null;
+/** 효과음 (모듈을 아직 못 불러왔으면 조용히) */
+export const sfx = (name: SoundName, opts?: { delay?: number; volume?: number; rate?: number }) => snd?.play(name, opts);
+export const sfxMany = (name: SoundName, count: number, gapMs?: number, opts?: { delay?: number }) => snd?.playMany(name, count, gapMs, opts);
+function loadSound() {
+  void import(/* @vite-ignore */ new URL('shared/sound.js', worldRoot()).href).then(
+    (m: SoundModule) => {
+      snd = m;
+      m.mountSoundButton();
+      // 버튼 누르는 소리 (모든 화면)
+      document.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement | null)?.closest('button, .unit, label.btn');
+        if (b && !(b as HTMLButtonElement).disabled && b.id !== 'sia-sound-btn') sfx('click');
+      });
+    },
+    () => undefined,
+  );
+}
+
 export async function bootGame(ui: GameUI) {
   document.title = ui.title;
   linkThemeCss();
+  loadSound();
   app().innerHTML = '<div class="center">불러오는 중…</div>';
   let me: WorldUser;
   let mods: Mods;
@@ -485,6 +540,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const sc = r.viaScale + (1 - r.viaScale) * b.e;
     return { x: b.x, y: b.y, angle: Math.sin(Math.PI * b.e) * b.tilt, sx: sc, sy: sc };
   };
+  /** 연출 기준점 (그릴 때마다 다시 등록) */
+  const anchors = new Map<string, { x: number; y: number }>();
   /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
   let animEnd = 0;
   const afterAnim = (fn: () => void) => {
@@ -581,10 +638,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           await m.room.act(roomId, payload);
           // 새 상태(실시간)가 도착하면 풀린다. 혹시 안 오면 3초 뒤에 푼다
           if (busy && st?.updated_at === busySince) {
-            busyTimer = setTimeout(() => {
+            // 3초 안에 새 상태가 안 오면 다시 누를 수 있게 (연출 재생 중이면 끝날 때까지 기다린다)
+            const release = () => {
+              if (replaying || queue.length) {
+                busyTimer = setTimeout(release, 500);
+                return;
+              }
               unbusy();
               paintControls();
-            }, 3000);
+            };
+            busyTimer = setTimeout(release, 3000);
             return true;
           }
           unbusy();
@@ -604,6 +667,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       seatAvatar: (n) => seats.find((s) => s.seat_no === n)?.avatar ?? 'tiger',
       redraw: () => paint(),
       redrawTable: () => drawTableOnly(),
+      anchor: (name, x, y) => void anchors.set(name, { x, y }),
+      sound: (name, opts) => sfx(name, opts),
       dpr: DPR,
       track: (obj, key, opts = {}) => {
         const round = st?.round_no ?? 0;
@@ -644,6 +709,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             viaScale: via ? (opts.viaScale ?? 1) : 1,
           };
           moves.set(key, rec);
+          if (animate && opts.sound) sfx(opts.sound, { delay: Math.max(0, rec.s1 - now) });
           if (animate && opts.onLand && scene) {
             const land = opts.onLand;
             scene.time.delayedCall(Math.max(0, rec.s1 + MOVE_MS - now), () => !closed && land());
@@ -693,6 +759,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         if (p >= 1) return 0;
         const delay = Math.max(0, rec!.start - now);
         const rest = dur * (1 - p);
+        if (p === 0) sfx(rec!.kind === 'slide' ? 'deal' : 'flip', { delay });
         if (rec!.kind === 'slide') {
           // 받기: 더미에서 미끄러지듯 날아와 (감속) 살짝 돌았다가 반듯하게 놓인다
           const tx = obj.x;
@@ -758,8 +825,21 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       .join('');
   };
 
+  let wasMyTurn = false;
   const paintControls = () => {
     if (closed) return;
+    {
+      const mine = mySeatRow();
+      const now = !!mine && room?.status === 'playing' && (st?.pending_seats ?? []).includes(mine.seat_no);
+      if (now && !wasMyTurn) sfx('turn');
+      wasMyTurn = now;
+      const page = root.querySelector('.table-page');
+      if (page) {
+        const c0 = ctx();
+        const cls = c0 && ui.pageClass ? ui.pageClass(c0) : '';
+        if (page.getAttribute('data-mode') !== cls) page.setAttribute('data-mode', cls);
+      }
+    }
     const el = $(root, '#controls');
     const c = ctx();
     const mine = mySeatRow();
@@ -845,6 +925,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const sparkles = won
       ? Array.from({ length: 10 }, (_, i) => `<span class="sparkle" style="left:${4 + ((i * 37) % 90)}%;top:${-4 + ((i * 53) % 100)}%;animation-delay:${(i * 0.15).toFixed(2)}s">${i % 2 ? '★' : '✦'}</span>`).join('')
       : '';
+    const lost = c.resultSeat !== null && (deltas?.[String(c.resultSeat)] ?? 0) < 0;
+    if (won) sfx('win');
+    else if (lost) sfx('lose');
     d.innerHTML = `<div class="box result ${won ? 'win' : ''}">${sparkles}${ui.resultHtml(c)}<div class="row"><button class="btn primary" data-x>확인</button></div></div>`;
     document.body.append(d);
     $(d, '[data-x]').addEventListener('click', () => d.remove());
@@ -873,6 +956,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       el.classList.remove('show');
       void el.offsetWidth;
       el.classList.add('show');
+      sfx('cutin');
     });
   };
 
@@ -910,6 +994,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     c.scene.tweens.killAll();
     dealSeq = 0;
     movesSnap = new Map(moves);
+    anchors.clear();
     ui.draw(c);
     sharpenText(c.scene.children.list);
   }
@@ -924,6 +1009,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       c.scene.tweens.killAll();
       dealSeq = 0;
       movesSnap = new Map(moves);
+      anchors.clear();
       ui.draw(c);
       sharpenText(c.scene.children.list);
       // 처음 그린 뒤부터 연출 (들어오자마자 모든 카드가 날아오지 않게)
@@ -961,11 +1047,121 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     priv = p;
     if (w) wallet = w;
     if (firstLoad && st && r.status === 'waiting') resultShownFor = st.round_no;
+    if (st) {
+      replayRound = st.round_no;
+      replaySeen = ((st.public_state?.events as GameEventLite[] | undefined) ?? []).reduce((a, e) => Math.max(a, e.id), 0);
+    }
     firstLoad = false;
     paintMoney();
     paint();
     showCutins();
     paintResult();
+  };
+
+  // ── 연출 재생기: 서버 응답에 행동이 여러 개 들어 있으면 하나씩 보여 준 뒤 새 상태를 그린다 ──
+  let replayRound = -1;
+  let replaySeen = 0;
+  let replaying = false;
+  let pendingPriv: PrivateRow | null | undefined;
+  const queue: { s: StateRow; steps: ReplayStep[] }[] = [];
+  const applyState = (s: StateRow) => {
+    if (busy && s.updated_at !== busySince) unbusy();
+    st = s;
+    if (pendingPriv !== undefined) {
+      priv = pendingPriv;
+      pendingPriv = undefined;
+    }
+    if (ui.liveWallet) refreshWallet(typeof ui.liveWallet === 'function' ? ui.liveWallet(s.public_state) : 400);
+    paint(); // 먼저 그려야 카드 연출 시각을 안다 (컷인·결과는 그 뒤)
+    showCutins();
+    paintResult();
+  };
+  const freshSteps = (s: StateRow): ReplayStep[] => {
+    const events = (s.public_state?.events as GameEventLite[] | undefined) ?? [];
+    const maxId = events.reduce((a, e) => Math.max(a, e.id), 0);
+    if (s.round_no !== replayRound || maxId < replaySeen) {
+      // 새 판: 처음부터 (단, 방에 막 들어온 경우는 지난 일은 재생하지 않는다)
+      const first = replayRound === -1;
+      replayRound = s.round_no;
+      replaySeen = first ? maxId : 0;
+      if (first) return [];
+    }
+    const c = ctx();
+    const fresh = events.filter((e) => e.id > replaySeen);
+    replaySeen = Math.max(replaySeen, maxId);
+    if (!ui.replay || !c || !dealReady || reduceMotion) return [];
+    return fresh.map((e) => ui.replay!(e, c)).filter((x): x is ReplayStep => !!x);
+  };
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const enqueueState = (s: StateRow) => {
+    queue.push({ s, steps: freshSteps(s) });
+    void runQueue();
+  };
+  const runQueue = async () => {
+    if (replaying) return;
+    replaying = true;
+    try {
+      while (queue.length && !closed) {
+        const item = queue.shift()!;
+        for (const step of item.steps) {
+          if (closed) return;
+          playStep(step);
+          const seat = typeof step.at === 'number' ? step.at : null;
+          const isAi = seat !== null && (() => {
+            const r = seats.find((x) => x.seat_no === seat);
+            return !r || !r.user_id || r.left_game;
+          })();
+          await sleep(step.gap ?? (isAi ? 800 : 350));
+        }
+        if (closed) return;
+        applyState(item.s);
+      }
+    } finally {
+      replaying = false;
+    }
+  };
+  const anchorOf = (k: number | string) => anchors.get(typeof k === 'number' ? `seat:${k}` : k) ?? null;
+  /** 한 걸음: 말풍선 + 칩 이동 + 소리 (Phaser 위 HTML이라 다시 그려도 끊기지 않는다) */
+  const playStep = (step: ReplayStep) => {
+    if (step.sound) sfx(step.sound);
+    const stageEl = $(root, '#stage');
+    if (step.text && step.at !== undefined) {
+      const a = anchorOf(step.at);
+      if (a) {
+        const b = document.createElement('div');
+        b.className = 'say';
+        b.textContent = step.text;
+        b.style.left = `${a.x}px`;
+        b.style.top = `${a.y}px`;
+        stageEl.append(b);
+        setTimeout(() => b.remove(), 1500);
+      }
+    }
+    if (step.chips && step.chips.amount > 0) {
+      const from = anchorOf(step.chips.from);
+      const to = anchorOf(step.chips.to);
+      if (from && to) {
+        const n = Math.min(4, Math.max(1, Math.round(Math.log10(step.chips.amount / Math.max(1, room?.base_unit ?? 100)) * 2) + 1));
+        for (let i = 0; i < n; i++) {
+          const chip = document.createElement('i');
+          chip.className = 'fly-chip';
+          stageEl.append(chip);
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const lift = Math.min(80, Math.hypot(dx, dy) * 0.25);
+          const anim = chip.animate(
+            [
+              { transform: `translate(${from.x}px, ${from.y}px) scale(0.8)`, opacity: 0 },
+              { transform: `translate(${from.x + dx * 0.5}px, ${from.y + dy * 0.5 - lift}px) scale(1.1)`, opacity: 1, offset: 0.5 },
+              { transform: `translate(${to.x}px, ${to.y}px) scale(0.9)`, opacity: 1 },
+            ],
+            { duration: 520, delay: i * 70, easing: 'cubic-bezier(.45,.05,.35,1)', fill: 'both' },
+          );
+          anim.onfinish = () => chip.remove();
+        }
+        sfxMany('chip', n, 70);
+      }
+    }
   };
 
   const gone = () => {
@@ -997,15 +1193,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     },
     onState: (s) => {
       if (closed) return;
-      if (busy && s.updated_at !== busySince) unbusy();
-      st = s;
-      if (ui.liveWallet) refreshWallet(typeof ui.liveWallet === 'function' ? ui.liveWallet(s.public_state) : 400);
-      paint(); // 먼저 그려야 카드 연출 시각을 안다 (컷인·결과는 그 뒤)
-      showCutins();
-      paintResult();
+      enqueueState(s);
     },
     onPrivate: (p) => {
       if (closed) return;
+      // 연출 재생 중이면 새 상태와 함께 (새 카드가 미리 보이지 않게)
+      if (replaying) {
+        pendingPriv = p;
+        return;
+      }
       priv = p;
       paint();
     },
