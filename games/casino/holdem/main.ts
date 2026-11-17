@@ -42,12 +42,13 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     drawTable(scene, 'holdem');
     const portrait = H > W * 1.15 || W < 520;
     // 내 카드 크기 (2장이라 크게), 공용 카드, 다른 사람
-    const cw = clamp(Math.min(W / (portrait ? 4.6 : 7.5), H / 4.6), 44, 120);
+    const cw = clamp(Math.min(W / (portrait ? 4.6 : 7.5), H / (portrait ? 4.6 : 6.2)), 44, 110);
     const bc = clamp(Math.min((W * 0.9) / 5.6, H / (portrait ? 6.2 : 4.4)), 36, 100);
     const nOpp = Math.max(1, (p?.seats.length ?? 4) - 1);
     const oc = portrait ? Math.min(cw * 0.55, W / nOpp / 3.2) : cw * 0.55;
-    const center = { x: W / 2, y: portrait ? H * 0.43 : H * 0.42 };
-    const deck = { x: center.x + bc * 2.6 + 6, y: center.y - bc * 1.15 };
+    const center = { x: W / 2, y: portrait ? H * 0.43 : H * 0.38 };
+    // 카드 더미: 가로는 공용 카드 오른쪽 위, 세로는 공용 카드 바로 위 오른쪽 (화면 밖으로 나가지 않게)
+    const deck = portrait ? { x: Math.min(W - bc * 0.4 - 16, center.x + bc * 2.1), y: center.y - bc * 1.55 } : { x: center.x + bc * 2.6 + 6, y: center.y - bc * 1.15 };
     for (let i = 0; i < 3; i++) playingCard(scene, deck.x + i * 2, deck.y - i * 2, null, bc * 0.6);
     if (!p) {
       label(scene, W / 2, H / 2, '모두 레디하면 시작해요', clamp(cw * 0.26, 18, 30));
