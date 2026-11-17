@@ -1,0 +1,75 @@
+/*
+ * SIA WORLD 공통 테마 (CSS 변수). DESIGN.md의 값을 여기서 한 번만 정한다.
+ * 값은 시아탱크(games/tank/src/style.css)의 실제 값 — 'AI 1:1 설정' 화면 기준.
+ * Phaser(숫자 색)는 같은 값을 shared/theme.js에서 쓴다. 두 파일을 함께 고칠 것.
+ */
+:root {
+  /* ---------- 색 ---------- */
+  --sky-top: #4aa8ff;        /* 배경 위 (하늘) */
+  --sky-mid: #9fd6ff;        /* 배경 가운데 (300px 지점) */
+  --sky-bottom: #ffe9b8;     /* 배경 아래 */
+  --sky-deep: #1f6fd1;       /* 진한 하늘 (링크·강조) */
+  --panel: #fff8e8;          /* 패널·카드 바탕 (크림) */
+  --panel-strong: #fff4c2;   /* 선택된 카드 안쪽 */
+  --outline: #2a1a10;        /* 모든 외곽선 (= 진한 글자) */
+  --ink: #2a1a10;            /* 본문 글자 */
+  --ink-soft: #8a6a4a;       /* 설명 글자 */
+  --line-soft: #e2d3b5;      /* 선택 안 된 카드 외곽선 */
+  --empty-line: #c9b48e;     /* 빈 슬롯 점선 */
+  --primary: #ffd34d;        /* 주 버튼·선택 상태 (노랑) */
+  --primary-light: #ffe066;  /* 주 버튼 그라데이션 위 */
+  --primary-deep: #f0a500;   /* 주 버튼 그라데이션 아래·두께 */
+  --accent: #f0a500;         /* 금액 강조 (포인트·칩·냥) */
+  --pink: #ff4d6d;           /* 특수 태그 (필살·NEW·2배) */
+  --track: #eee2c8;          /* 게이지 빈 부분 */
+  --white: #ffffff;
+  --pill: rgba(0, 0, 0, 0.25);      /* 상단 바 닉네임 알약 (시아탱크 .bar .me) */
+  --dim: rgba(42, 26, 16, 0.55);    /* 팝업 뒤 어둡게 (--outline 55%) */
+  --team-a: #3d8bff;
+  --team-b: #ff4d6d;
+
+  /* 결과 색 (시아탱크에 따로 없음 → DESIGN.md에서 정한 값) */
+  --win: #4cb86a;
+  --lose: #e86a5a;
+  --draw: #9a8c7e;
+
+  /* 게임별 넓은 면 (테이블) — DESIGN.md에서 정한 값 */
+  --table-matgo: #7cc08a;
+  --table-poker: #6cc6b5;
+  --table-blackjack: #7fb8e8;
+  --roulette-spring: #9cc7f2;
+  --roulette-summer: #f7c1a8;
+  --roulette-autumn: #a9ddc6;
+  --roulette-winter: #c9d1dd;
+
+  /* ---------- 글꼴 ---------- */
+  --font: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --font-body: 'Jua', 'Gowun Dodum', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --fs-title: 26px;          /* 화면 제목 (흰 글자 + 2px 외곽선) */
+  --fs-logo: 56px;           /* 로고 (노란 글자 + 3px 외곽선) */
+  --fs-panel: 20px;          /* 패널 제목 */
+  --fs-button: 18px;
+  --fs-button-big: 22px;
+  --fs-body: 15px;
+  --fs-small: 12px;
+
+  /* ---------- 모양 ---------- */
+  --radius-panel-big: 28px;  /* 큰 패널 (입장·결과 카드) */
+  --radius-panel: 20px;      /* 패널 (.card) */
+  --radius-button: 16px;
+  --radius-item: 12px;       /* 목록 항목·작은 버튼 */
+  --radius-key: 6px;         /* 키 배지 (Q/W/E) */
+  --radius-pill: 999px;
+  --line-big: 4px;           /* 큰 패널 외곽선 */
+  --line: 3px;               /* 버튼·패널 외곽선 */
+  --line-thin: 2px;          /* 목록 항목·알약 외곽선 */
+  --depth-big: 8px;          /* 큰 패널 아래 두께 */
+  --depth-panel: 5px;
+  --depth-button: 4px;
+  --press: 3px;              /* 누르면 내려가는 거리 */
+  --press-ms: 80ms;
+
+  --sky-gradient: linear-gradient(var(--sky-top), var(--sky-mid) 300px, var(--sky-bottom));
+  --primary-gradient: linear-gradient(var(--primary-light), var(--primary-deep));
+  --gauge-gradient: linear-gradient(90deg, var(--primary), var(--primary-deep));
+}
