@@ -4,9 +4,13 @@
  * 아직 한 번도 이기지 못해 1,000포인트인 사람은 구름.
  */
 import { escapeHtml } from './hud';
+import type { RankEntry, TargetEntry } from '../net/backend';
 
 export type Tier = 'gold' | 'silver' | 'bronze' | 'white';
 export interface RankRow {
+  /** 사람마다 다른 값 (가입자는 user_id, 예전 기록은 'legacy:ID') */
+  key: string;
+  /** 화면에 보일 이름 */
   name: string;
   points: number;
   wins: number;
@@ -33,44 +37,50 @@ const CUT: [Tier, number][] = [
 export type Board = 'points' | 'target';
 interface BoardData {
   rows: RankRow[];
+  /** key → 등급 */
   tiers: Map<string, Tier>;
-  /** 순위 (같은 점수면 같은 순위) */
+  /** key → 순위 (같은 점수면 같은 순위) */
   places: Map<string, number>;
+  /** 이름 → key (이름만 아는 곳(게임 화면)용. 가입자를 예전 기록보다 우선) */
+  byName: Map<string, string>;
 }
-const boards: Record<Board, BoardData> = {
-  points: { rows: [], tiers: new Map(), places: new Map() },
-  target: { rows: [], tiers: new Map(), places: new Map() },
-};
+const empty = (): BoardData => ({ rows: [], tiers: new Map(), places: new Map(), byName: new Map() });
+const boards: Record<Board, BoardData> = { points: empty(), target: empty() };
+/** key 또는 이름 → key */
+const resolve = (b: BoardData, x: string) => (b.tiers.has(x) ? x : (b.byName.get(x) ?? x));
 
 function build(board: Board, list: RankRow[], base: number) {
   const rows = [...list].sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name));
   const tiers = new Map<string, Tier>();
   const places = new Map<string, number>();
+  const byName = new Map<string, string>();
   const n = rows.length;
   rows.forEach((r, i) => {
-    const place = i > 0 && rows[i - 1].points === r.points ? places.get(rows[i - 1].name)! : i + 1;
-    places.set(r.name, place);
+    const place = i > 0 && rows[i - 1].points === r.points ? places.get(rows[i - 1].key)! : i + 1;
+    places.set(r.key, place);
+    if (!byName.has(r.name) || !r.key.startsWith('legacy:')) byName.set(r.name, r.key);
     let tier: Tier = 'white';
     if (r.points > base) for (const [t, cut] of CUT) if ((place - 1) / n < cut) {
       tier = t;
       break;
     }
-    tiers.set(r.name, tier);
+    tiers.set(r.key, tier);
   });
-  boards[board] = { rows, tiers, places };
+  boards[board] = { rows, tiers, places, byName };
 }
 
-export function setRanking(list: RankRow[]) {
+export function setRanking(list: RankEntry[]) {
   build('points', list, 1000);
 }
 
 /** 백발백중 랭킹: 최고 점수 기준, 0점은 구름 */
-export function setTargetRanking(list: { name: string; best: number }[]) {
-  build('target', list.map((r) => ({ name: r.name, points: r.best, wins: 0, losses: 0 })), 0);
+export function setTargetRanking(list: TargetEntry[]) {
+  build('target', list.map((r) => ({ key: r.key, name: r.name, points: r.best, wins: 0, losses: 0 })), 0);
 }
 
-export const tierOf = (name: string, board: Board = 'points'): Tier => boards[board].tiers.get(name) ?? 'white';
-export const placeOf = (name: string, board: Board = 'points'): number | undefined => boards[board].places.get(name);
+/** who: 사용자 key(user_id) 또는 이름 */
+export const tierOf = (who: string, board: Board = 'points'): Tier => boards[board].tiers.get(resolve(boards[board], who)) ?? 'white';
+export const placeOf = (who: string, board: Board = 'points'): number | undefined => boards[board].places.get(resolve(boards[board], who));
 export const ranking = (board: Board = 'points') => boards[board].rows;
 
 /** 등급 아이콘 SVG: 금=해, 은=달, 동=별, 그 외=구름 */
@@ -104,23 +114,23 @@ export function cloudSvg(tier: Tier, size = 18): string {
   return `<svg class="cloud-ic" viewBox="0 0 32 22" width="${size}" height="${(size * 22) / 32}" aria-label="${TIER_NAME[tier]}">${grad}${shape}</svg>`;
 }
 
-/** 닉네임 앞에 등급 아이콘(해·달·별·구름)을 붙인 HTML */
-export function rankedName(name: string, size = 16): string {
-  return `<span class="rk-name">${cloudSvg(tierOf(name), size)}${escapeHtml(name)}</span>`;
+/** 닉네임 앞에 등급 아이콘(해·달·별·구름)을 붙인 HTML (key: 사용자 ID, 알면 넘긴다) */
+export function rankedName(name: string, size = 16, key?: string): string {
+  return `<span class="rk-name">${cloudSvg(tierOf(key ?? name), size)}${escapeHtml(name)}</span>`;
 }
 
-/** 랭킹 창 */
+/** 랭킹 창 (me: 내 사용자 ID) */
 export function showRankingModal(me: string, board: Board = 'points') {
   const wrap = document.createElement('div');
   wrap.className = 'rank-modal';
   const tg = board === 'target';
   const rows = boards[board].rows;
   const list = rows.slice(0, 100);
-  const mine = rows.find((r) => r.name === me);
+  const mine = rows.find((r) => r.key === me);
   const total = rows.length;
   const line = (r: RankRow) => {
-    const t = tierOf(r.name, board);
-    return `<tr class="${r.name === me ? 'me' : ''} t-${t}"><td class="pl">${placeOf(r.name, board)}</td><td>${cloudSvg(t, 26)}</td><td class="nm">${escapeHtml(r.name)}</td><td class="pt">${r.points.toLocaleString()}${tg ? '점' : 'P'}</td><td class="wl">${tg ? '최고 점수' : `${r.wins}승 ${r.losses}패`}</td></tr>`;
+    const t = tierOf(r.key, board);
+    return `<tr class="${r.key === me ? 'me' : ''} t-${t}"><td class="pl">${placeOf(r.key, board)}</td><td>${cloudSvg(t, 26)}</td><td class="nm">${escapeHtml(r.name)}</td><td class="pt">${r.points.toLocaleString()}${tg ? '점' : 'P'}</td><td class="wl">${tg ? '최고 점수' : `${r.wins}승 ${r.losses}패`}</td></tr>`;
   };
   wrap.innerHTML = `<div class="rank-box">
     <div class="rank-head"><h3>🏆 랭킹 <small>${total}명</small></h3><button class="btn small-btn" data-close>닫기</button></div>
@@ -128,7 +138,7 @@ export function showRankingModal(me: string, board: Board = 'points') {
     <div class="rank-legend">${(['gold', 'silver', 'bronze', 'white'] as Tier[])
       .map((t, i) => `<span>${cloudSvg(t, 22)}<b>${TIER_LABEL[t]}</b><small>${['상위 10%', '상위 30%', '상위 60%', '나머지'][i]}</small></span>`)
       .join('')}</div>
-    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me, board)}위</b> / ${total}명 · ${cloudSvg(tierOf(me, board), 20)} ${TIER_LABEL[tierOf(me, board)]} · ${mine.points.toLocaleString()}${tg ? '점' : 'P'}</p>` : `<p class="rank-me">${tg ? '아직 기록이 없어요. 로그인하고 백발백중을 해 보세요!' : '아직 기록이 없어요. 온라인 대전에서 이기면 순위에 올라가요!'}</p>`}
+    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me, board)}위</b> / ${total}명 · ${cloudSvg(tierOf(me, board), 20)} ${TIER_LABEL[tierOf(me, board)]} · ${mine.points.toLocaleString()}${tg ? '점' : 'P'}</p>` : `<p class="rank-me">${tg ? '아직 기록이 없어요. 백발백중을 해 보세요!' : '아직 기록이 없어요. 온라인 대전에서 이기면 순위에 올라가요!'}</p>`}
     <div class="rank-scroll"><table>${list.length ? list.map(line).join('') : '<tr><td>아직 랭킹이 없어요</td></tr>'}</table></div>
     <p class="rank-note">${tg ? '백발백중 최고 점수로 순위를 매겨요. 0점인 사람은 구름이에요.' : '이기면 +100P, 지면 -100P (최저 1,000P). 1,000P인 사람은 구름이에요.'}</p>
   </div>`;

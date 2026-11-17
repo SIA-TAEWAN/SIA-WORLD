@@ -11,15 +11,16 @@ import { sfx } from './sfx';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
-import { getBackend, onlineConfigured } from '../net';
+import { clientId, getBackend } from '../net';
+import { worldHome } from '../net/world';
+import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
 
-// ---------- 1. 입장 ----------
+// ---------- 1. 처음 화면 ----------
+// 로그인하면 바로 대기실로 간다. 이 화면은 대기실에 못 들어갔을 때(서버 문제 등) 보인다.
 
 export function showEntry() {
-  const online = onlineConfigured();
-  const logged = online && !!state.token && !!state.name;
   const root = screen(
     `<div class="entry-card">
       <div class="logo">
@@ -27,172 +28,31 @@ export function showEntry() {
         <h1>시아탱크</h1>
         <p class="tagline">각도 · 파워 · 바람! 링크 하나로 한 판</p>
       </div>
-      ${
-        logged
-          ? `<p class="who"><b>${escapeHtml(state.name)}</b>님 환영해요! <button class="link" id="logout">로그아웃</button></p>`
-          : `<label class="field">
-        <span>내 ID</span>
-        <input id="name" maxlength="10" autocomplete="username" placeholder="2~10자" value="${escapeHtml(state.name)}" />
-      </label>
-      ${online ? `<label class="field"><span>비밀번호</span><input id="pw" type="password" maxlength="40" autocomplete="current-password" placeholder="4자 이상" /></label>` : ''}`
-      }
-      <p class="hint" id="name-hint"></p>
-      ${
-        logged || !online
-          ? `<button class="btn big primary" id="lobby">대기실 입장</button>`
-          : `<div class="auth-row"><button class="btn big primary" id="login">로그인</button><button class="btn big" id="signup">회원가입</button></div>`
-      }
+      <p class="who"><b>${escapeHtml(state.name)}</b>님 환영해요!</p>
+      <button class="btn big primary" id="lobby">대기실 입장</button>
       <button class="btn big" id="ai">AI와 1:1</button>
-      ${online ? '<button class="btn" id="ranking">🏆 랭킹 보기</button>' : ''}
-      ${manualHtml()}
+      <button class="btn" id="ranking">🏆 랭킹 보기</button>
+      <button class="btn" id="manual">📖 게임 설명</button>
+      <a class="btn" id="world" href="${worldHome()}">🌏 SIA WORLD로</a>
     </div>`,
     'entry',
   );
-  const input = root.querySelector<HTMLInputElement>('#name');
-  const pw = root.querySelector<HTMLInputElement>('#pw');
-  const hint = root.querySelector<HTMLElement>('#name-hint')!;
-  const valid = () => {
-    if (!input) return true;
-    const v = input.value.trim();
-    return v.length >= 2 && v.length <= 10;
-  };
-  const go = () => {
-    if (!valid()) {
-      hint.textContent = 'ID는 2~10자로 정해주세요';
-      input?.focus();
-      return false;
-    }
-    if (input) state.name = input.value.trim();
-    save({ name: state.name });
-    return true;
-  };
-  // 로그인 / 회원가입
-  let busy = false;
-  const auth = async (kind: 'in' | 'up') => {
-    if (busy || !go()) return;
-    const p = pw!.value;
-    if (p.length < 4) {
-      hint.textContent = '비밀번호는 4자 이상이에요';
-      return pw!.focus();
-    }
-    busy = true;
-    hint.textContent = kind === 'in' ? '로그인 중…' : '가입 중…';
-    try {
-      const b = (await getBackend())!;
-      const tok = kind === 'in' ? await b.signIn(state.name, p) : await b.signUp(state.name, p);
-      state.token = tok;
-      save({ name: state.name, token: tok });
-      toast(kind === 'in' ? `${state.name}님 어서 오세요!` : `가입 완료! ${state.name}님 환영해요`);
-      nav.lobby();
-    } catch (e) {
-      hint.textContent = friendly(e);
-    } finally {
-      busy = false;
-    }
-  };
-  // 랭킹 보기 (로그인하지 않아도 볼 수 있다)
-  root.querySelector('#ranking')?.addEventListener('click', async () => {
+  root.querySelector('#ranking')!.addEventListener('click', async () => {
     sfx.click();
     try {
-      const b = (await getBackend())!;
+      const b = await getBackend();
+      if (!b) throw new Error('no backend');
       const [pts, tg] = await Promise.all([b.getRanking(), b.getTargetRanking()]);
       setRanking(pts);
       setTargetRanking(tg);
-      showRankingModal(state.name);
+      showRankingModal(clientId());
     } catch (e) {
       toast(friendly(e));
     }
   });
-  input?.addEventListener('input', () => (hint.textContent = ''));
-  const onEnter = (e: KeyboardEvent) => {
-    if (e.key !== 'Enter') return;
-    if (!online) return go() && showSetup();
-    if (pw && !pw.value) return pw.focus();
-    void auth('in');
-  };
-  input?.addEventListener('keydown', onEnter);
-  pw?.addEventListener('keydown', onEnter);
-  root.querySelector('#login')?.addEventListener('click', () => (sfx.click(), void auth('in')));
-  root.querySelector('#signup')?.addEventListener('click', () => (sfx.click(), void auth('up')));
-  root.querySelector('#logout')?.addEventListener('click', () => {
-    sfx.click();
-    state.token = '';
-    save({ token: '' });
-    showEntry();
-  });
-  root.querySelector('#ai')!.addEventListener('click', () => {
-    sfx.click();
-    if (go()) showSetup();
-  });
-  root.querySelector('#lobby')?.addEventListener('click', () => {
-    sfx.click();
-    if (!online) return toast('온라인 서버가 아직 설정되지 않았어요. AI 1:1을 즐겨주세요!');
-    if (go()) nav.lobby();
-  });
-  if (input && !state.name) input.focus();
-  else pw?.focus();
-  // 저장된 로그인이 아직 유효한지 확인 (다른 곳에서 바뀌었으면 다시 로그인)
-  if (logged)
-    void getBackend().then(async (b) => {
-      if (b && !(await b.checkSession(state.name, state.token))) {
-        state.token = '';
-        save({ token: '' });
-        toast('로그인이 만료됐어요. 다시 로그인해 주세요');
-        if (document.body.contains(root)) showEntry();
-      }
-    });
-}
-
-/** 첫 화면 사용 설명서: 항목을 누르면 자세한 내용이 펼쳐진다 */
-const MANUAL: [string, string][] = [
-  ['🔑 회원가입 · 로그인', `<p>처음이면 ID(2~10자)와 비밀번호(4자 이상)를 넣고 <b>회원가입</b>, 다음부터는 <b>로그인</b>을 누르세요.</p>
-    <p>한 번 로그인하면 이 기기에서는 계속 유지돼요. 비밀번호 찾기가 없으니 꼭 기억해 두세요.</p>
-    <p>AI와 1:1은 로그인 없이도 할 수 있어요.</p>`],
-  ['🎮 조작 방법', `<ul><li><b>PC</b>: ← → 이동 · ↑ ↓ 포신 각도 · <b>스페이스</b>를 길게 눌렀다 떼면 발사</li>
-    <li>1 · 2 · 3 무기 선택 · Q W E 아이템 · Enter 채팅</li>
-    <li><b>휴대폰</b>: 화면 아래 버튼으로 조작, 두 손가락으로 오므리면 맵이 넓게 보여요</li>
-    <li>파워 게이지를 누르면 <b>리미터</b>가 생겨서, 끝까지 눌러도 그 힘까지만 쏴요</li></ul>`],
-  ['🎯 게임 규칙', `<ul><li>차례대로 한 번씩 쏘고, 상대 탱크의 체력을 모두 없애면 이겨요</li>
-    <li><b>바람</b>이 포탄을 밀어요. 화면 위 바람 표시를 꼭 보세요</li>
-    <li>탱크가 비탈에 서 있으면 그만큼 발사 각도가 바뀌어요</li>
-    <li>세게 쏠수록 땅을 크게 파요. 땅이 꺼지면 탱크가 떨어지고, 맵 아래로 떨어지면 탈락이에요</li>
-    <li><b>내 포탄이나 우리 팀 포탄에 맞아도</b> 체력이 닳아요. 가까이 쏠 때 조심!</li>
-    <li>10턴마다 비행기가 <b>보급 상자</b>를 떨어뜨려요. 탱크로 가서 닿아야 얻어요</li></ul>`],
-  ['🧱 특수 벽', `<p>가끔(턴마다 5%) 두 팀 사이에 빛나는 벽이 생겨서 <b>3턴</b> 동안 있어요. 포탄이 벽을 지나가면 효과가 생겨요 (천장 위로 넘기면 효과 없음).</p>
-    <ul><li><b>⚡ 증폭벽</b>: 피해와 구덩이가 1.3배, 불·독도 1.3배로 세고 넓어져요</li>
-    <li><b>🌀 회오리</b>: 벽을 돌며 위로 올라갔다가 원래 방향으로 날아가요</li>
-    <li><b>×2 더블벽</b>: 벽에서 같은 포탄이 한 발 더 나가요</li>
-    <li><b>×3 트리플벽</b>: 포탄이 세 갈래로 갈라져요</li></ul>`],
-  ['🔥 불 · ☠️ 독', `<ul><li><b>여의룡 불꽃탄</b>: 땅에 불이 3턴 동안 남아요</li>
-    <li><b>스르르 독안개</b>: 독안개가 남았다가 스르르 다음 차례에 사라져요</li>
-    <li>불·독안개에 닿으면 5초 동안 최대 체력의 <b>10%</b>가 깎이고, 그 불·독안개는 사라져요</li>
-    <li><b>꼬꼬댁 깃털탄 · 스르르 이무기</b>에 맞으면 <b>중독</b>(녹색 탱크, ☠️ 표시): 다음 차례부터 3번, 차례마다 10%씩 깎여요</li>
-    <li>불·독으로는 죽지 않아요 (체력 1은 남아요)</li></ul>`],
-  ['🐯 탱크와 무기', `<p>12지신 탱크 12대가 있고, 탱크마다 1·2번 무기와 <b>3번 필살기</b>가 달라요. 무기 설명은 탱크를 고를 때 볼 수 있어요.</p>
-    <p>필살기 게이지는 내 차례가 올 때마다 20%씩 차고, 100%가 되면 쓸 수 있어요 (쓰면 0%부터 다시).</p>
-    <p><b>🎲 랜덤</b>을 고르면 게임 시작 때 탱크가 정해지고, 20% 확률로 더 강한 <b>십이지신 '열두빛'</b>이 나와요.</p>`],
-  ['🎯 백발백중', `<p><b>백발백중</b> — 꼬꼬댁과 깃털탄으로 계단 위 과녁을 맞히는 모드예요. 5턴 동안 과녁 하나당 200점, 높은 층일수록 한 층마다 +50점 (1층 200 · 2층 250 · 3층 300 …)! 최고 점수로 백발백중 랭킹이 매겨져요.</p>
-    <ul><li>맵에서 <b>백발백중</b>을 고르면 탱크는 꼬꼬댁, 무기는 깃털탄으로 정해지고 아이템은 쓸 수 없어요</li>
-    <li>모두 맨 왼쪽 층에서 시작해요. 땅은 파이지 않고, 서로 맞아도 피해가 없어요</li>
-    <li>바람 세기는 보통으로 정해져 있고 방향만 턴마다 바뀌어요</li>
-    <li>AI 대전에서는 혼자, 온라인에서는 여럿이 같은 과녁(인원 × 5개)을 두고 겨뤄요 (먼저 맞힌 사람이 점수를 가져가요)</li>
-    <li>로그인하면 최고 점수가 <b>백발백중 랭킹</b>에 올라가고, 이 맵에서는 백발백중 등급(해·달·별·구름)이 닉네임 앞에 붙어요</li></ul>`],
-  ['🛒 아이템', `<p>게임 전에 상점에서 3칸까지 살 수 있어요 (AI 대전은 1,000포인트, 온라인은 내 포인트로).</p>
-    <ul><li>더블샷: 같은 각도·파워로 두 번 발사 · 파워업: 이번 발사 피해 +30%</li><li>수리킷: 누르면 바로 체력 20% 회복 · 순간이동: 포탄이 떨어진 곳으로 이동</li></ul>`],
-  ['🐣 게임 모드', `<ul><li><b>일반</b>: 보통 게임</li>
-    <li><b>초보</b>: 사람이 쏜 포탄이 꼭대기를 지나면 가까운 적 쪽으로 휘어요 (AI는 도움 없음)</li>
-    <li>AI 대전은 설정 화면에서, 온라인은 게임방에서 방장이 골라요</li></ul>`],
-  ['🌐 온라인 대전', `<ul><li><b>대기실 입장</b>(최대 30명) → 게임방을 만들거나 들어가요 (최대 4명, 팀전 가능)</li>
-    <li>모두 <b>레디</b>하면 방장이 시작해요. 맵·게임 모드·속도·바람은 방장이 정해요</li>
-    <li>2:1이면 사람이 적은 팀에 <b>AI(초보 또는 보통)</b>가 한 명 들어와요</li>
-    <li>방장은 대기 중에 다른 사람을 <b>강퇴</b>할 수 있어요 (게임 중에는 안 돼요)</li>
-    <li>대기실 링크를 친구에게 보내면 같은 대기실로 들어와요. 게임 중에도 Enter(또는 💬)로 채팅할 수 있어요</li></ul>`],
-  ['🏆 포인트 · 랭킹', `<p>처음엔 1,000포인트예요. 온라인 대전에서 이기면 <b>+100</b>, 지면 <b>-100</b>이고 1,000 아래로는 내려가지 않아요.</p>
-    <p>포인트 순위에 따라 닉네임 앞에 <b>해</b>(상위 10%) · <b>달</b>(30%) · <b>별</b>(60%) · <b>구름</b>(그 외)이 붙어요. 대기실의 🏆 랭킹 버튼으로 순위를 볼 수 있어요.</p>`],
-];
-
-function manualHtml() {
-  return `<div class="manual"><h3>📖 사용 설명서</h3>${MANUAL.map(([t, b]) => `<details><summary>${t}</summary><div class="mbody">${b}</div></details>`).join('')}</div>`;
+  root.querySelector('#manual')!.addEventListener('click', () => (sfx.click(), showManualModal()));
+  root.querySelector('#ai')!.addEventListener('click', () => (sfx.click(), showSetup()));
+  root.querySelector('#lobby')!.addEventListener('click', () => (sfx.click(), nav.lobby()));
 }
 
 // ---------- 2. AI 1:1 설정 + 상점 ----------
@@ -204,7 +64,7 @@ function stat(label: string, v: number, max: number, text: string) {
 export function showSetup() {
   const root = screen(
     `<header class="bar">
-      <button class="btn ghost" id="back">← 처음으로</button>
+      <button class="btn ghost" id="back">← 대기실로</button>
       <h2>AI 1:1 설정</h2>
       <div class="me">${escapeHtml(state.name)}</div>
     </header>
@@ -367,11 +227,10 @@ export function showSetup() {
   renderOpts();
   renderShop();
   // 닉네임 앞 랭킹 구름을 위해 랭킹만 불러온다 (AI 대전 포인트는 1,000 고정)
-  if (onlineConfigured() && state.name)
-    void getBackend()
+  void getBackend()
       .then((b) => Promise.all([b?.getRanking().then(setRanking), b?.getTargetRanking().then(setTargetRanking)]))
       .catch(() => undefined);
-  $('#back').addEventListener('click', showEntry);
+  $('#back').addEventListener('click', () => nav.lobby());
   $('#start').addEventListener('click', () => {
     if (state.opponent === 'local') {
       const n2 = state.name2.trim();
@@ -433,14 +292,14 @@ function startGame() {
 
 // ---------- 4. 결과 ----------
 
-/** 백발백중 점수를 내 기록에 올린다 (로그인했을 때만) */
+/** 백발백중 점수를 내 기록에 올린다 */
 export async function recordTarget(s: MatchSummary) {
   const me = s.players.find((p) => p.mine);
-  if (!me || !state.token || !onlineConfigured()) return;
+  if (!me) return;
   try {
     const b = await getBackend();
     if (!b) return;
-    const best = await b.submitTargetScore(state.name, state.token, me.damage);
+    const best = await b.submitTargetScore(me.damage);
     setTargetRanking(await b.getTargetRanking());
     toast(`🎯 ${me.damage}점 · 내 최고 ${best}점`);
   } catch {
@@ -466,7 +325,7 @@ function showTargetResult(s: MatchSummary, act: ResultActions) {
         <button class="btn big primary" id="again">${act.primary}</button>
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
       </div>
-      <p class="hint">${state.token ? '최고 점수가 백발백중 랭킹에 올라가요' : '로그인하면 최고 점수가 백발백중 랭킹에 올라가요'}</p>
+      <p class="hint">최고 점수가 백발백중 랭킹에 올라가요</p>
     </div>`,
     'result',
   );
@@ -483,7 +342,7 @@ export interface ResultActions {
 }
 
 export function showResult(s: MatchSummary, actions?: ResultActions) {
-  const act: ResultActions = actions ?? { primary: '다시 하기', onPrimary: showSetup, secondary: '처음으로', onSecondary: showEntry };
+  const act: ResultActions = actions ?? { primary: '다시 하기', onPrimary: showSetup, secondary: '대기실로', onSecondary: () => nav.lobby() };
   if (s.practice) return showTargetResult(s, act);
   const winText = s.winner === -1 ? '무승부!' : `${TEAM_NAMES[s.winner]} 승리!`;
   const meWon = s.players.some((p) => p.team === s.winner && p.mine);

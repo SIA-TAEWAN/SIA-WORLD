@@ -1970,3 +1970,10 @@ body.in-game .sound-fab {
 .target-board span { opacity: 0.85; }
 .target-board span.cur { opacity: 1; color: #ffe14d; }
 .rank-tabs { margin: 6px 0; }
+
+/* SIA WORLD 연동: 링크도 버튼 모양, 대기실 아래줄 도구, 게임 설명 팝업 */
+a.btn { text-decoration: none; text-align: center; }
+.lobby-tools { max-width: 1180px; margin: 0 auto 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lobby-tools .who-me { margin-left: auto; color: var(--ink); background: rgba(255, 255, 255, 0.7); padding: 4px 12px; border-radius: 12px; }
+.manual-box { width: min(560px, 100%); }
+.manual-box .manual { margin-top: 10px; padding-top: 4px; }

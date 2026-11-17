@@ -15,9 +15,8 @@ export const touch = window.matchMedia('(pointer: coarse)').matches || 'ontouchs
 
 const saved = load();
 export const state = {
-  name: saved.name ?? '',
-  /** 로그인 토큰 (온라인) */
-  token: saved.token ?? '',
+  /** 내 닉네임 (SIA WORLD 계정, 시작할 때 정해진다) */
+  name: '',
   tank: (TANK_IDS.includes(saved.tank as TankId) || saved.tank === 'random' ? saved.tank : 'tiger') as TankChoice,
   oppTank: 'random' as TankId | 'random',
   opponent: (['easy', 'normal', 'hard', 'local'].includes(saved.opponent ?? '') ? saved.opponent : 'normal') as Opponent,

@@ -1,6 +1,6 @@
 # 시아탱크
 
-설치·회원가입 없이 링크 하나로 즐기는 브라우저 턴제 포격 게임. 각도·파워·바람을 계산해 맞히고, 포탄이 지형을 부순다.
+SIA WORLD 계정으로 링크 하나로 즐기는 브라우저 턴제 포격 게임. 각도·파워·바람을 계산해 맞히고, 포탄이 지형을 부순다.
 
 ## 지금 되는 것 (PRD 1~4단계)
 
@@ -14,7 +14,7 @@
 - **화면**: 입장 → AI 1:1 설정(탱크·상대·맵·상점) → 게임 → 결과
 - **조작**: PC 키보드 + 모바일 터치 버튼, 화면 드래그로 맵 둘러보기
 
-- **온라인 대기실** (3단계): 링크 하나 = 대기실 하나(최대 30명, ID 중복 불가), 접속자 목록, 채팅, 랭킹, 게임방 목록
+- **온라인 대기실** (3단계): 링크 하나 = 대기실 하나(최대 30명), 접속자 목록, 채팅, 랭킹, 게임방 목록
 - **게임방**: 최대 4명, 탱크·팀(3명 이상일 때) 선택. 방장(👑)만 맵을 고르고, 나머지가 모두 레디하면 방장이 시작. 방장이 나가면 다음 사람이 방장. 1:1 / 2:1 / 2:2
 - **동기화**: 턴마다 이동 기록·발사 입력만 주고받고 모든 기기가 같은 물리로 계산. 기준 기기가 턴 결과 지문을 보내고, 다르면 전체 상태를 받아 맞춤
 - **접속 끊김**: 30초 동안 자리 유지(새로고침하면 자동으로 다시 들어감), 넘으면 AI가 이어서 조종하고 그 판에는 다시 못 들어옴. 기준 기기가 끊기면 다음 사람이 이어받음
@@ -26,11 +26,13 @@
 
 ## 온라인 설정 (Supabase)
 
-- 로컬: `.env.local`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (publishable 키)
-- 배포: 저장소 Settings → Variables에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, Secrets에 `SUPABASE_DB_PASSWORD`
+- 로그인·Supabase 연결은 SIA WORLD 공통 모듈(`../../shared/supabase.js`, `auth.js`)을 실행 중에 불러와서 쓴다. 빌드에 넣지 않으므로 로비와 같은 로그인 세션을 쓴다.
+- 시작할 때 `requireLogin()` → 로그인 안 했으면 SIA WORLD 로그인 화면으로 갔다가 같은 주소(쿼리 포함)로 돌아온다.
+- 플레이어는 Supabase Auth 사용자 ID로 구분하고, 화면에는 `profiles.nickname`을 보여 준다. 랭킹(`player_points`, `target_scores`)은 `user_id` 기준.
+- 배포: SIA WORLD 저장소 Secrets에 `SUPABASE_DB_PASSWORD`
 - **DB 변경은 자동**: `supabase/migrations/`에 `003_이름.sql`처럼 번호를 이어 새 파일을 추가하고 push하면, 배포 때 아직 실행 안 된 SQL만 서버에 실행된다(세션 풀러로 접속). SQL이 실패하면 사이트 배포도 멈춘다. 이미 실행된 파일은 고치지 말고 새 파일로 바꾼다.
 
-다른 대기실은 주소에 `?l=코드`를 붙인다. 서버 없이 테스트하려면 `?local=1`(같은 브라우저 탭끼리 통신).
+다른 대기실은 주소에 `?l=코드`를 붙인다. 서버·로그인 없이 테스트하려면 `?local=1`(같은 브라우저 탭끼리 통신).
 
 ## 조작
 
@@ -47,15 +49,15 @@
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173/sia-tank/
+npm run dev        # http://localhost:5173/games/tank/  (로그인 화면은 http://localhost:5173/)
 npm test           # 엔진 규칙·결정론 테스트
 npm run balance:par -- 2 normal   # AI끼리 모든 조합 자동 대전, CPU 코어 수만큼 병렬
 npm run stats      # 탱크별 평균 피해·빗나감 비율
 npm run build
 ```
 
-`main` 브랜치에 push하면 GitHub Actions가 테스트·빌드 후 GitHub Pages에 배포한다.
-(저장소 Settings → Pages → Source를 **GitHub Actions**로 설정)
+SIA WORLD `main` 브랜치에 push하면 GitHub Actions(저장소 최상위 `.github/workflows/deploy.yml`)가 테스트·빌드 후
+`https://sia-taewan.github.io/SIA-WORLD/games/tank/`로 배포한다. (저장소 Settings → Pages → Source를 **GitHub Actions**로 설정)
 
 ## 구조
 

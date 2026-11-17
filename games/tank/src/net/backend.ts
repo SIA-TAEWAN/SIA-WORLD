@@ -56,6 +56,23 @@ export interface Channel<M> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type NetMsg = { t: string; [k: string]: any };
 
+/**
+ * 랭킹 한 줄. key는 사람마다 다른 값(가입자는 user_id, 아직 이어받지 않은 예전 기록은 'legacy:ID'),
+ * name은 화면에 보일 이름(가입자는 닉네임, 예전 기록은 예전 ID)
+ */
+export interface RankEntry {
+  key: string;
+  name: string;
+  points: number;
+  wins: number;
+  losses: number;
+}
+export interface TargetEntry {
+  key: string;
+  name: string;
+  best: number;
+}
+
 export interface Backend {
   kind: 'supabase' | 'local';
   channel<M>(name: string, key: string): Channel<M>;
@@ -76,28 +93,20 @@ export interface Backend {
   startGame(id: string, host: string, seed: number): Promise<Room>;
   /** 판 정산 (winner: 이긴 팀, 무승부·모름은 null) */
   endGame(id: string, gameNo: number, present: string[], winner?: number | null): Promise<void>;
-  /** ID별 포인트 (없으면 1000) */
-  getPoints(name: string): Promise<number>;
+  /** 사용자별 포인트 (없으면 1000) */
+  getPoints(userId: string): Promise<number>;
   /** 포인트 랭킹 (포인트 높은 순) */
-  getRanking(): Promise<{ name: string; points: number; wins: number; losses: number }[]>;
-  /** 백발백중 점수 기록 (로그인한 본인만) → 최고 점수 */
-  submitTargetScore(name: string, token: string, score: number): Promise<number>;
+  getRanking(): Promise<RankEntry[]>;
+  /** 백발백중 점수 기록 (로그인한 본인) → 최고 점수 */
+  submitTargetScore(score: number): Promise<number>;
   /** 백발백중 랭킹 (최고 점수 높은 순) */
-  getTargetRanking(): Promise<{ name: string; best: number }[]>;
+  getTargetRanking(): Promise<TargetEntry[]>;
   /** 게임 중 나가기 (모두 나가면 방이 사라진다) */
   quitGame(id: string, playerId: string): Promise<void>;
   /** 방에 아직 사람이 있다는 신호 */
   touchRoom(id: string, playerId: string): Promise<void>;
   /** 2분 넘게 신호가 없는 방 정리 */
   sweepRooms(lobby: string): Promise<void>;
-  /** 회원가입 → 로그인 토큰 */
-  signUp(name: string, pw: string): Promise<string>;
-  /** 로그인 → 토큰 */
-  signIn(name: string, pw: string): Promise<string>;
-  /** 저장해 둔 토큰이 아직 유효한지 */
-  checkSession(name: string, token: string): Promise<boolean>;
-  /** 이후 게임방 요청에 쓸 로그인 토큰 */
-  setToken(token: string | null): void;
 }
 
 export class NetError extends Error {}
@@ -105,10 +114,7 @@ export class NetError extends Error {}
 /** 서버 오류 메시지를 사람이 읽을 말로 */
 export function friendly(e: unknown): string {
   const m = String((e as Error)?.message ?? e);
-  if (m.includes('id taken')) return '이미 있는 ID예요. 다른 ID를 써 주세요';
-  if (m.includes('wrong login')) return 'ID 또는 비밀번호가 맞지 않아요';
-  if (m.includes('bad password')) return '비밀번호는 4~40자로 정해주세요';
-  if (m.includes('need login')) return '로그인이 풀렸어요. 다시 로그인해 주세요';
+  if (m.includes('need login')) return '로그인이 풀렸어요. SIA WORLD에서 다시 로그인해 주세요';
   if (m.includes('room is full')) return '게임방이 가득 찼어요 (최대 4명)';
   if (m.includes('room is playing') || m.includes('already playing')) return '이미 게임이 진행 중인 방이에요';
   if (m.includes('room not found')) return '게임방이 사라졌어요';

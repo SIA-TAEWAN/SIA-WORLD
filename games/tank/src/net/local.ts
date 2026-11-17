@@ -128,49 +128,25 @@ function mutate<T>(fn: (rooms: LocalRoom[]) => T): T {
   return out;
 }
 
-function readPoints(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem('siatank:localpoints') ?? '{}');
-  } catch {
-    return {};
-  }
-}
-
 const fail = (m: string): never => {
   throw new Error(m);
 };
 
 const clean = (p: RoomPlayer): RoomPlayer => ({ id: p.id, name: p.name, tank: p.tank, team: p.team === 1 ? 1 : 0, items: [...p.items].slice(0, 3), ready: !!p.ready });
 
-export function createLocalBackend(): Backend {
-  // 테스트 모드 계정 (이 브라우저 안에서만)
-  const accts = (): Record<string, { pw: string; token: string }> => {
-    try {
-      return JSON.parse(localStorage.getItem('siatank:localaccts') ?? '{}');
-    } catch {
-      return {};
-    }
-  };
+/** 테스트 모드 기록: 플레이어 id → { 이름, 점수 } (이 브라우저 안에서만) */
+type LocalScores = Record<string, { name: string; v: number }>;
+function readScores(k: string): LocalScores {
+  try {
+    return JSON.parse(localStorage.getItem(k) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function createLocalBackend(me: () => { id: string; name: string }): Backend {
   return {
     kind: 'local',
-    setToken() {},
-    async signUp(name, pw) {
-      const a = accts();
-      if (name.length < 2 || name.length > 10) fail('bad id');
-      if (pw.length < 4 || pw.length > 40) fail('bad password');
-      if (a[name]) fail('id taken');
-      a[name] = { pw, token: crypto.randomUUID() };
-      localStorage.setItem('siatank:localaccts', JSON.stringify(a));
-      return a[name].token;
-    },
-    async signIn(name, pw) {
-      const a = accts()[name];
-      if (!a || a.pw !== pw) fail('wrong login');
-      return a!.token;
-    },
-    async checkSession(name, token) {
-      return accts()[name]?.token === token;
-    },
     channel: <M>(name: string, key: string) => new LocalChannel<M>(name, key),
     async listRooms(lobby) {
       return readDb().filter((r) => r.lobby === lobby);
@@ -282,21 +258,20 @@ export function createLocalBackend(): Backend {
       });
     },
     async getRanking() {
-      return Object.entries(readPoints()).map(([name, points]) => ({ name, points, wins: Math.max(0, (points - 1000) / 100), losses: 0 }));
+      return Object.entries(readScores('siatank:localpoints2')).map(([key, { name, v }]) => ({ key, name, points: v, wins: Math.max(0, (v - 1000) / 100), losses: 0 }));
     },
-    async submitTargetScore(name, token, score) {
-      if (accts()[name]?.token !== token) fail('need login');
-      const all: Record<string, number> = JSON.parse(localStorage.getItem('siatank:localtarget') ?? '{}');
-      all[name] = Math.max(all[name] ?? 0, score);
-      localStorage.setItem('siatank:localtarget', JSON.stringify(all));
-      return all[name];
+    async submitTargetScore(score) {
+      const { id, name } = me();
+      const all = readScores('siatank:localtarget2');
+      all[id] = { name, v: Math.max(all[id]?.v ?? 0, score) };
+      localStorage.setItem('siatank:localtarget2', JSON.stringify(all));
+      return all[id].v;
     },
     async getTargetRanking() {
-      const all: Record<string, number> = JSON.parse(localStorage.getItem('siatank:localtarget') ?? '{}');
-      return Object.entries(all).map(([name, best]) => ({ name, best }));
+      return Object.entries(readScores('siatank:localtarget2')).map(([key, { name, v }]) => ({ key, name, best: v }));
     },
-    async getPoints(name) {
-      return readPoints()[name] ?? 1000;
+    async getPoints(userId) {
+      return readScores('siatank:localpoints2')[userId]?.v ?? 1000;
     },
     async endGame(id, gameNo, present, winner) {
       mutate((rooms) => {
@@ -305,9 +280,9 @@ export function createLocalBackend(): Backend {
         const r = rooms[i];
         if (r.status !== 'playing' || r.game_no !== gameNo) return;
         if ((winner === 0 || winner === 1) && r.map !== 'target') {
-          const pts = readPoints();
-          for (const p of r.players) pts[p.name] = Math.max(1000, (pts[p.name] ?? 1000) + (p.team === winner ? 100 : -100));
-          localStorage.setItem('siatank:localpoints', JSON.stringify(pts));
+          const pts = readScores('siatank:localpoints2');
+          for (const p of r.players) pts[p.id] = { name: p.name, v: Math.max(1000, (pts[p.id]?.v ?? 1000) + (p.team === winner ? 100 : -100)) };
+          localStorage.setItem('siatank:localpoints2', JSON.stringify(pts));
         }
         r.players = r.players.filter((p) => present.includes(p.id) && !(r.gone ?? []).includes(p.id)).map((p) => ({ ...p, items: [], ready: false }));
         r.gone = [];

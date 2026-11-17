@@ -17,7 +17,6 @@ export interface ChatMsg {
 }
 
 export class LobbyFullError extends Error {}
-export class DuplicateNameError extends Error {}
 
 /** 대기실 하나 = 실시간 채널 lobby:{코드}. 접속자 목록, 채팅, 게임방 목록 */
 export class LobbySession {
@@ -72,17 +71,12 @@ export class LobbySession {
     if (this.chat.length > 60) this.chat.splice(0, this.chat.length - 60);
   }
 
-  /** 들어가서 정원(30명)·ID 중복을 확인한다 */
+  /** 들어가서 정원(30명)을 확인한다 (사람은 계정 ID로 구분하므로 이름 중복은 없다) */
   async enter() {
     await this.ch.join(this.meta);
     // 다른 사람 정보가 도착할 시간을 잠깐 준다
     await new Promise((r) => setTimeout(r, 900));
     const idx = this.members.findIndex((m) => m.key === this.me.id);
-    const dup = this.members.find((m) => m.key !== this.me.id && m.meta.name === this.me.name && this.members.indexOf(m) < idx);
-    if (dup) {
-      await this.ch.leave();
-      throw new DuplicateNameError();
-    }
     if (idx >= LOBBY_MAX) {
       await this.ch.leave();
       throw new LobbyFullError();

@@ -7,7 +7,9 @@ import type { MatchSummary } from '../scenes/GameScene';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { getBackend, lobbyCode, lobbyLink, clientId } from '../net';
 import { allReady, friendly, hostOf, type Backend, type Room, type RoomPlayer } from '../net/backend';
-import { DuplicateNameError, LobbyFullError, LobbySession, LOBBY_MAX } from '../net/lobby';
+import { LobbyFullError, LobbySession, LOBBY_MAX } from '../net/lobby';
+import { worldHome } from '../net/world';
+import { showManualModal } from './manual';
 import { RoomSession } from '../net/room';
 import { OnlineGame } from '../net/online';
 import { $, closeGame, launchGame, nav, screen, setScreenCleanup, state, toast } from './app';
@@ -82,25 +84,19 @@ export async function showLobby() {
     screen(`<div class="connecting"><div class="spinner"></div><p>대기실에 들어가는 중…</p></div>`, 'center');
     backend = await getBackend();
     if (!backend) {
-      toast('온라인 서버가 설정되지 않았어요');
+      toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요');
       return nav.entry();
     }
-    if (!state.token) {
-      toast('로그인해야 대기실에 들어갈 수 있어요');
-      return nav.entry();
-    }
-    backend.setToken(state.token);
     const sess = new LobbySession(backend, lobbyCode(), me());
     try {
       await sess.enter();
     } catch (e) {
       if (e instanceof LobbyFullError) toast(`대기실이 가득 찼습니다 (최대 ${LOBBY_MAX}명)`);
-      else if (e instanceof DuplicateNameError) toast('이 대기실에 같은 ID가 이미 있어요. 다른 ID로 들어와 주세요');
       else toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요');
       return nav.entry();
     }
     lobby = sess;
-    state.points = await backend.getPoints(state.name).catch(() => 1000);
+    state.points = await backend.getPoints(clientId()).catch(() => 1000);
     await refreshRanking();
     const mine = sess.rooms.find((r) => r.players.some((p) => p.id === clientId()) && !(r.gone ?? []).includes(clientId()));
     if (mine) {
@@ -115,23 +111,29 @@ export async function showLobby() {
   renderLobby(lobby);
 }
 
-async function leaveLobby() {
+/** 대기실에서 나가 다른 화면(AI 1:1 등)으로 */
+async function leaveLobby(next: () => void) {
   await roomSess?.leave();
   roomSess = null;
   await lobby?.leave();
   lobby = null;
-  nav.entry();
+  next();
 }
 
 function renderLobby(sess: LobbySession) {
   const root = screen(
     `<header class="bar">
-      <button class="btn ghost" id="exit">← 나가기</button>
+      <a class="btn ghost" id="exit" href="${worldHome()}">🌏 SIA WORLD로</a>
       <h2>대기실 <small id="count"></small></h2>
       <button class="btn small-btn" id="rank">🏆 랭킹</button>
       <span class="my-points" title="온라인에서 이기면 +100, 지면 -100 (최저 1,000)">🏅 ${state.points.toLocaleString()}P</span>
       <button class="btn small-btn" id="copy">🔗 링크 복사</button>
     </header>
+    <div class="lobby-tools">
+      <button class="btn small-btn" id="ai">🤖 AI와 1:1</button>
+      <button class="btn small-btn" id="manual">📖 게임 설명</button>
+      <span class="who-me">${rankedName(state.name, 16, clientId())}님</span>
+    </div>
     <div class="lobby-grid">
       <section class="card rooms-card">
         <div class="card-head"><h3>게임방</h3><button class="btn primary small-btn" id="create">＋ 방 만들기</button></div>
@@ -162,7 +164,7 @@ function renderLobby(sess: LobbySession) {
             const label = inIt ? '돌아가기' : playing ? '게임 중' : full ? '가득 참' : '입장';
             const can = inIt || (!playing && !full);
             return `<div class="room-row ${playing ? 'playing' : ''}">
-              <div class="rn">${escapeHtml(r.name)}<small>${r.map === 'random' ? '랜덤 맵' : MAPS[r.map].name} · ${r.players.map((p) => rankedName(p.name, 14)).join(', ')}</small></div>
+              <div class="rn">${escapeHtml(r.name)}<small>${r.map === 'random' ? '랜덤 맵' : MAPS[r.map].name} · ${r.players.map((p) => rankedName(p.name, 14, p.id)).join(', ')}</small></div>
               <span class="cnt">${r.players.length}/4</span>
               <span class="st">${playing ? '게임 중' : '대기'}</span>
               <button class="btn small-btn ${can ? 'primary' : ''}" data-id="${r.id}" ${can ? '' : 'disabled'}>${label}</button>
@@ -174,7 +176,7 @@ function renderLobby(sess: LobbySession) {
     $(root, '#people').innerHTML = sess.members
       .map((m) => {
         const r = m.meta.room ? sess.room(m.meta.room) : undefined;
-        return `<li class="${m.key === clientId() ? 'me' : ''}">${rankedName(m.meta.name)}${r ? `<small>${r.status === 'playing' ? '게임 중' : '게임방'}</small>` : ''}</li>`;
+        return `<li class="${m.key === clientId() ? 'me' : ''}">${rankedName(m.meta.name, 16, m.key)}${r ? `<small>${r.status === 'playing' ? '게임 중' : '게임방'}</small>` : ''}</li>`;
       })
       .join('');
     renderChatLog(root, sess);
@@ -183,11 +185,18 @@ function renderLobby(sess: LobbySession) {
   draw();
   bindChat(root, sess);
 
-  $(root, '#exit').addEventListener('click', () => void leaveLobby());
+  $(root, '#ai').addEventListener('click', () => {
+    sfx.click();
+    void leaveLobby(nav.setup);
+  });
+  $(root, '#manual').addEventListener('click', () => {
+    sfx.click();
+    showManualModal();
+  });
   $(root, '#rank').addEventListener('click', async () => {
     sfx.click();
     await refreshRanking();
-    showRankingModal(state.name);
+    showRankingModal(clientId());
   });
   $(root, '#copy').addEventListener('click', async () => {
     const link = lobbyLink(sess.code);
@@ -371,7 +380,7 @@ function renderRoom(id: string) {
       return `<div class="pslot ${p.id === clientId() ? 'me' : ''} ${p.ready && !isHost ? 'ready' : ''}" style="--c:${TEAM_COLORS[p.team]}">
         ${isHost ? '<div class="badge host">👑 방장</div>' : p.ready ? '<div class="badge ready">READY</div>' : '<div class="badge wait">준비 중</div>'}
         <div class="pic">${tankSvg(p.tank, 70, p.team === 1)}</div>
-        <div class="pn">${rankedName(p.name)}${p.id === clientId() ? ' <small>(나)</small>' : ''}</div>
+        <div class="pn">${rankedName(p.name, 16, p.id)}${p.id === clientId() ? ' <small>(나)</small>' : ''}</div>
         <div class="pt"><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]} · ${p.tank === 'random' ? '랜덤' : TANKS[p.tank].name}</div>
         ${p.items.length ? `<div class="pi">아이템 ${p.items.length}개</div>` : ''}
         ${away ? '<div class="away">연결 확인 중…</div>' : ''}
@@ -630,7 +639,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
           }
         }
         await sess.refetch();
-        state.points = await backend!.getPoints(state.name).catch(() => state.points);
+        state.points = await backend!.getPoints(clientId()).catch(() => state.points);
         await refreshRanking();
         if (s.practice) return void recordTarget(s);
         const d = state.points - before;

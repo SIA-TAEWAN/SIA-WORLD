@@ -1,5 +1,5 @@
-import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
-import type { Backend, Channel, Member, NetMsg, Room, RoomPlayer } from './backend';
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import type { Backend, Channel, Member, NetMsg, RankEntry, Room, RoomPlayer, TargetEntry } from './backend';
 
 class SupaChannel<M> implements Channel<M> {
   private ch: RealtimeChannel;
@@ -60,11 +60,13 @@ class SupaChannel<M> implements Channel<M> {
   }
 }
 
-export function createSupabaseBackend(url: string, key: string): Backend {
-  const sb = createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    realtime: { params: { eventsPerSecond: 20 } },
-  });
+/** 랭킹 줄의 이름: 가입자는 닉네임, 아직 이어받지 않은 예전 기록은 예전 ID */
+type RankRowDb = { user_id: string | null; legacy_id: string | null; profiles: { nickname: string } | null };
+const keyOf = (r: RankRowDb) => (r.user_id ? r.user_id : `legacy:${r.legacy_id ?? ''}`);
+const nameOf = (r: RankRowDb) => r.profiles?.nickname ?? r.legacy_id ?? '?';
+
+/** sb: SIA WORLD 공통 클라이언트 (로그인 세션을 그대로 쓴다. 서버는 auth.uid()로 본인을 확인) */
+export function createSupabaseBackend(sb: SupabaseClient): Backend {
 
   const rpc = async <T>(fn: string, args: Record<string, unknown>): Promise<T> => {
     const { data, error } = await sb.rpc(fn, args);
@@ -72,15 +74,8 @@ export function createSupabaseBackend(url: string, key: string): Backend {
     return data as T;
   };
 
-  let token: string | null = null;
-  const withTok = (p: RoomPlayer) => ({ ...p, token });
-
   return {
     kind: 'supabase',
-    setToken: (t) => void (token = t),
-    signUp: (name, pw) => rpc<string>('sign_up', { p_name: name, p_pw: pw }),
-    signIn: (name, pw) => rpc<string>('sign_in', { p_name: name, p_pw: pw }),
-    checkSession: (name, tok) => rpc<boolean>('check_session', { p_name: name, p_token: tok }).catch(() => false),
     channel: <M>(name: string, key: string) => new SupaChannel<M>(sb, name, key),
     async listRooms(lobby) {
       const { data, error } = await sb.from('rooms').select('*').eq('lobby', lobby).order('created_at');
@@ -94,31 +89,45 @@ export function createSupabaseBackend(url: string, key: string): Backend {
         .subscribe();
       return () => void sb.removeChannel(ch);
     },
-    createRoom: (lobby, name, player: RoomPlayer) => rpc<Room>('create_room', { p_lobby: lobby, p_name: name, p_player: withTok(player) }),
-    joinRoom: (id, player) => rpc<Room>('join_room', { p_id: id, p_player: withTok(player) }),
+    createRoom: (lobby, name, player: RoomPlayer) => rpc<Room>('create_room', { p_lobby: lobby, p_name: name, p_player: player }),
+    joinRoom: (id, player) => rpc<Room>('join_room', { p_id: id, p_player: player }),
     kickPlayer: (id, host, target) => rpc<void>('kick_player', { p_id: id, p_host: host, p_target: target }),
     leaveRoom: (id, playerId) => rpc<void>('leave_room', { p_id: id, p_player_id: playerId }),
-    updatePlayer: (id, player) => rpc<void>('update_player', { p_id: id, p_player: withTok(player) }),
+    updatePlayer: (id, player) => rpc<void>('update_player', { p_id: id, p_player: player }),
     setOptions: (id, playerId, speed, wind) => rpc<void>('set_room_options', { p_id: id, p_player: playerId, p_speed: speed, p_wind: wind }),
     setMode: (id, playerId, mode) => rpc<void>('set_room_mode', { p_id: id, p_player: playerId, p_mode: mode }),
     setMap: (id, playerId, map) => rpc<void>('set_room_map', { p_id: id, p_player: playerId, p_map: map }),
     startGame: (id, host, seed) => rpc<Room>('start_game', { p_id: id, p_host: host, p_seed: seed }),
     endGame: (id, gameNo, present, winner) => rpc<void>('end_game', { p_id: id, p_game_no: gameNo, p_present: present, p_winner: winner ?? null }),
-    async getRanking() {
-      const { data, error } = await sb.from('player_points').select('name,points,wins,losses').order('points', { ascending: false }).limit(1000);
+    async getRanking(): Promise<RankEntry[]> {
+      const { data, error } = await sb
+        .from('player_points')
+        .select('user_id,legacy_id,points,wins,losses,profiles(nickname)')
+        .order('points', { ascending: false })
+        .limit(1000);
       if (error) throw new Error(error.message);
-      return (data ?? []) as { name: string; points: number; wins: number; losses: number }[];
+      return ((data ?? []) as unknown as (RankRowDb & { points: number; wins: number; losses: number })[]).map((r) => ({
+        key: keyOf(r),
+        name: nameOf(r),
+        points: r.points,
+        wins: r.wins,
+        losses: r.losses,
+      }));
     },
-    async getPoints(name) {
-      const { data, error } = await sb.from('player_points').select('points').eq('name', name).maybeSingle();
+    async getPoints(userId) {
+      const { data, error } = await sb.from('player_points').select('points').eq('user_id', userId).maybeSingle();
       if (error) throw new Error(error.message);
       return (data as { points: number } | null)?.points ?? 1000;
     },
-    submitTargetScore: (name, tok, score) => rpc<number>('submit_target_score', { p_name: name, p_token: tok, p_score: score }),
-    async getTargetRanking() {
-      const { data, error } = await sb.from('target_scores').select('name,best').order('best', { ascending: false }).limit(1000);
+    submitTargetScore: (score) => rpc<number>('submit_target_score', { p_score: score }),
+    async getTargetRanking(): Promise<TargetEntry[]> {
+      const { data, error } = await sb
+        .from('target_scores')
+        .select('user_id,legacy_id,best,profiles(nickname)')
+        .order('best', { ascending: false })
+        .limit(1000);
       if (error) throw new Error(error.message);
-      return (data ?? []) as { name: string; best: number }[];
+      return ((data ?? []) as unknown as (RankRowDb & { best: number })[]).map((r) => ({ key: keyOf(r), name: nameOf(r), best: r.best }));
     },
     quitGame: (id, playerId) => rpc<void>('quit_game', { p_id: id, p_player: playerId }),
     touchRoom: (id, playerId) => rpc<void>('touch_room', { p_id: id, p_player: playerId }),
