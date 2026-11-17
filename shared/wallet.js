@@ -47,11 +47,37 @@ export function canRefill(wallet, currency, baseUnit) {
  */
 export const refill = (currency, baseUnit) => call('refill', { p_currency: currency, p_min_required: minEntry(baseUnit) });
 
+/** 랭킹 종류: 단위와 등급 기준 (이 값 이하는 구름) */
+export const RANKINGS = {
+  casino: { label: '🪙 카지노', unit: '칩', base: START_AMOUNT, note: '보유 칩 순' },
+  matgo: { label: '💰 맞고', unit: '냥', base: START_AMOUNT, note: '보유 냥 순' },
+  tank: { label: '💣 시아탱크', unit: 'P', base: 1000, note: '온라인 대전 포인트 순 (이기면 +100, 지면 -100)' },
+  target: { label: '🎯 백발백중', unit: '점', base: 0, note: '백발백중 최고 점수 순' },
+};
+
+/** 시아탱크 랭킹 (포인트 / 백발백중): 가입자는 닉네임, 아직 이어받지 않은 예전 기록은 예전 ID */
+async function tankRanking(kind, limit) {
+  const table = kind === 'target' ? 'target_scores' : 'player_points';
+  const col = kind === 'target' ? 'best' : 'points';
+  const { data, error } = await supabase
+    .from(table)
+    .select(`user_id,legacy_id,${col},profiles(nickname)`)
+    .order(col, { ascending: false })
+    .limit(limit);
+  if (error) throw new WalletError('랭킹을 불러오지 못했어요');
+  return (data ?? []).map((r) => ({
+    key: r.user_id ?? `legacy:${r.legacy_id}`,
+    nickname: r.profiles?.nickname ?? r.legacy_id ?? '?',
+    amount: Number(r[col]),
+  }));
+}
+
 /**
- * 랭킹: game = 'casino'(칩) | 'matgo'(냥)
+ * 랭킹: game = 'casino'(칩) | 'matgo'(냥) | 'tank'(시아탱크 포인트) | 'target'(백발백중 최고 점수)
  * → [{ key: userId, nickname, amount }] 많은 순
  */
 export async function getRanking(game, limit = 500) {
+  if (game === 'tank' || game === 'target') return tankRanking(game, limit);
   const view = game === 'matgo' ? 'matgo_ranking' : 'casino_ranking';
   const { data, error } = await supabase.from(view).select('user_id,nickname,amount').order('amount', { ascending: false }).limit(limit);
   if (error) throw new WalletError('랭킹을 불러오지 못했어요');
