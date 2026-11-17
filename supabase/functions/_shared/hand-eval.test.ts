@@ -16,6 +16,8 @@ describe('hand-eval: 세븐포커(KOREAN) 기본값 유지', () => {
     const a = evaluate5(h('AS AD 9H 7C 3S'));
     const b = evaluate5(h('AH AC 9S 7D 3C'));
     expect(compareHands(a, b)).toBeGreaterThan(0);
+    // 기본값이 KOREAN과 같다
+    expect(compareHands(a, b, KOREAN)).toBe(compareHands(a, b));
   });
 });
 
