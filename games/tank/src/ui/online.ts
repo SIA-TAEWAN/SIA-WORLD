@@ -8,7 +8,7 @@ import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { getBackend, lobbyCode, lobbyLink, clientId } from '../net';
 import { allReady, friendly, hostOf, type Backend, type Room, type RoomPlayer } from '../net/backend';
 import { LobbyFullError, LobbySession, LOBBY_MAX } from '../net/lobby';
-import { worldHome } from '../net/world';
+import { worldHome, openWorldRanking } from '../net/world';
 import { showManualModal } from './manual';
 import { RoomSession } from '../net/room';
 import { OnlineGame } from '../net/online';
@@ -196,7 +196,7 @@ function renderLobby(sess: LobbySession) {
   $(root, '#rank').addEventListener('click', async () => {
     sfx.click();
     await refreshRanking();
-    showRankingModal(clientId());
+    void openWorldRanking(clientId()).then((ok) => ok || showRankingModal(clientId()));
   });
   $(root, '#copy').addEventListener('click', async () => {
     const link = lobbyLink(sess.code);
@@ -302,9 +302,16 @@ function renderRoom(id: string) {
   );
 
   let busy = false;
+  /** 저장 중에 들어온 변경 (예: 아이템을 빠르게 연달아 살 때) — 끝나면 이어서 보낸다 */
+  let queued: Partial<RoomPlayer> | null = null;
   const update = async (patch: Partial<RoomPlayer>) => {
     const room = sess.room(id);
-    if (!room || busy) return;
+    if (!room) return;
+    if (busy) {
+      // 예전에는 여기서 버려서, 세 번째 아이템이 서버에 저장되지 않는 일이 있었다
+      queued = { ...queued, ...patch };
+      return;
+    }
     busy = true;
     try {
       await backend!.updatePlayer(id, { ...myPlayer(room), ...patch });
@@ -313,6 +320,11 @@ function renderRoom(id: string) {
       toast(friendly(e));
     } finally {
       busy = false;
+      if (queued) {
+        const next = queued;
+        queued = null;
+        void update(next);
+      }
     }
   };
 

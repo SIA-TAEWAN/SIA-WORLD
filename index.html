@@ -98,28 +98,9 @@
     .pill .small:disabled { opacity: .45; }
     #rank-btn { flex: 0 0 auto; align-self: center; }
     .note { color: var(--pink); font-size: 14px; margin: -14px 0 16px; }
-    dialog.rank { border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); padding: 16px; width: min(460px, calc(100% - 32px));
-      max-height: calc(100% - 40px); color: var(--ink); font-family: inherit; background: var(--panel); box-shadow: 0 var(--depth-big) 0 var(--outline); }
-    dialog.rank::backdrop { background: var(--dim); }
-    .rank-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .rank-head h3 { margin: 0; font-size: 22px; font-weight: normal; }
-    .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
-    .tabs { flex-wrap: wrap; }
-    .tabs button { flex: 1; min-width: 90px; border: var(--line-thin) solid var(--outline); background: var(--white); border-radius: var(--radius-item); padding: 7px 4px; cursor: pointer; font-size: 14px; color: var(--ink); }
-    .tabs button.sel { background: var(--primary); box-shadow: 0 3px 0 var(--outline); }
-    .rank-me { text-align: center; font-size: 15px; margin: 6px 0; }
-    .rank-list { max-height: 55vh; overflow-y: auto; border-top: var(--line-thin) dashed var(--line-soft); }
-    .rank-list table { width: 100%; border-collapse: collapse; }
-    .rank-list td { padding: 6px; border-bottom: var(--line-thin) dashed var(--line-soft); font-size: 16px; }
-    .rank-list td.pl { width: 36px; text-align: center; }
-    .rank-list td.nm { width: 100%; }
-    .rank-list td.am { white-space: nowrap; text-align: right; color: var(--accent); }
-    .rank-list tr.me { background: var(--panel-strong); color: var(--ink); }
-    .rank-list tr.me .nm { color: var(--sky-deep); }
     .games-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .games-head { margin-bottom: 12px; }
     main.lobby .games-head h2 { margin: 0 auto 0 0; }
-    .rank-note { font-size: 12px; color: var(--ink-soft); text-align: center; margin: 8px 0 0; }
     @media (max-width: 420px) {
       .top .logo { font-size: 24px; }
       .brand h1 { font-size: 40px; }
@@ -191,13 +172,6 @@
     </main>
   </div>
 
-  <dialog class="rank" id="rank">
-    <div class="rank-head"><h3>🏆 랭킹</h3><button class="btn small" id="rank-close">닫기</button></div>
-    <div class="tabs"><button data-g="tank" class="sel">💣 시아탱크</button><button data-g="target">🎯 백발백중</button><button data-g="casino">🪙 카지노</button><button data-g="matgo">💰 맞고</button></div>
-    <p class="rank-me" id="rank-me"></p>
-    <div class="rank-list"><table id="rank-table"></table></div>
-    <p class="rank-note" id="rank-note"></p>
-  </dialog>
 
   <script type="module">
     import {
@@ -205,8 +179,8 @@
       isLoginIdTaken, isNicknameTaken, loginIdProblem, nicknameProblem, passwordProblem, AuthError,
     } from './shared/auth.js';
     import { GAMES } from './shared/games.js';
-    import { claimAttendance, refill, canRefill, getRanking, formatAmount, RANKINGS, REFILLS_PER_DAY } from './shared/wallet.js';
-    import { withTiers, tierSvg } from './shared/rank.js';
+    import { claimAttendance, refill, canRefill, formatAmount, REFILLS_PER_DAY } from './shared/wallet.js';
+    import { openRanking } from './shared/ranking-dialog.js';
 
     const $ = (s) => document.querySelector(s);
     const views = ['loading', 'login-view', 'signup-view', 'lobby-view'];
@@ -289,36 +263,8 @@
       }),
     );
 
-    // ---------- 랭킹 (카지노 칩 / 맞고 냥 따로) ----------
-    const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ESC[c]);
-    async function showRanking(game) {
-      document.querySelectorAll('#rank .tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
-      const info = RANKINGS[game];
-      const unit = info.unit;
-      $('#rank-note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${formatAmount(info.base)}${unit} 이하는 구름)`;
-      $('#rank-me').textContent = '불러오는 중…';
-      $('#rank-table').innerHTML = '';
-      try {
-        const rows = withTiers(await getRanking(game), info.base);
-        const mine = rows.find((r) => r.key === me?.userId);
-        $('#rank-me').innerHTML = mine
-          ? `내 순위 <b>${mine.place}위</b> / ${rows.length}명 · ${tierSvg(mine.tier, 20)} · ${formatAmount(mine.amount)}${unit}`
-          : '아직 순위가 없어요';
-        $('#rank-table').innerHTML = rows.slice(0, 100).map((r) =>
-          `<tr class="${r.key === me?.userId ? 'me' : ''}"><td class="pl">${r.place}</td><td>${tierSvg(r.tier, 26)}</td>` +
-          `<td class="nm">${esc(r.nickname)}</td><td class="am">${formatAmount(r.amount)}${unit}</td></tr>`).join('') ||
-          '<tr><td>아직 랭킹이 없어요</td></tr>';
-      } catch {
-        $('#rank-me').textContent = '랭킹을 불러오지 못했어요';
-      }
-    }
-    $('#rank-btn').addEventListener('click', () => {
-      $('#rank').showModal();
-      void showRanking('tank');
-    });
-    $('#rank-close').addEventListener('click', () => $('#rank').close());
-    document.querySelectorAll('#rank .tabs button').forEach((b) => b.addEventListener('click', () => void showRanking(b.dataset.g)));
+    // ---------- 랭킹 (시아탱크와 같은 창: shared/ranking-dialog.js) ----------
+    $('#rank-btn').addEventListener('click', () => openRanking({ meId: me?.userId ?? null, first: 'tank' }));
     $('#logout').addEventListener('click', async () => {
       await signOut();
       showLogin();

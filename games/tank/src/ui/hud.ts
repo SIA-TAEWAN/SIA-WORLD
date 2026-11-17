@@ -6,6 +6,7 @@ import type { Input } from './input';
 import type { GameChat } from '../scenes/GameScene';
 import { sfx } from './sfx';
 import { iconUrl } from './icons';
+import { DPR } from './dpr';
 
 export interface HudView {
   power: number;
@@ -74,8 +75,9 @@ export class Hud {
     const bottom = el('div', 'hud-bottom');
     // 각도
     const angleBox = el('div', 'panel angle-box');
-    this.dial.width = 84;
-    this.dial.height = 84;
+    // 각도판은 84×84 CSS 크기 기준으로 그리고, 캔버스는 기기 해상도만큼 크게 (휴대폰에서 선명하게)
+    this.dial.width = 84 * DPR;
+    this.dial.height = 84 * DPR;
     angleBox.append(this.dial, this.angleNum);
     // 파워·이동
     const gauges = el('div', 'panel gauges');
@@ -329,7 +331,8 @@ export class Hud {
 
   private drawDial(t: TankState, off: number) {
     const c = this.dial.getContext('2d')!;
-    const W = this.dial.width;
+    c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const W = 84;
     const cx = W / 2;
     const cy = W / 2 + 14;
     const r = 34;

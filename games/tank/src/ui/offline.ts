@@ -12,7 +12,7 @@ import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
 import { clientId, getBackend } from '../net';
-import { worldHome } from '../net/world';
+import { worldHome, openWorldRanking } from '../net/world';
 import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
@@ -46,7 +46,7 @@ export function showEntry() {
       const [pts, tg] = await Promise.all([b.getRanking(), b.getTargetRanking()]);
       setRanking(pts);
       setTargetRanking(tg);
-      showRankingModal(clientId());
+      void openWorldRanking(clientId()).then((ok) => ok || showRankingModal(clientId()));
     } catch (e) {
       toast(friendly(e));
     }

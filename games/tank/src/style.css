@@ -2206,3 +2206,32 @@ a.btn { text-decoration: none; text-align: center; }
 .target-board span.cur {
   color: var(--sun-d);
 }
+
+/* 휴대폰 세로: 각도판이 칸을 넘지 않게, 바람은 미니맵과 겹치지 않게 오른쪽으로 */
+@media (max-width: 760px) {
+  .angle-box {
+    width: 76px;
+    padding: 2px;
+  }
+  .dial {
+    width: 64px;
+    height: 64px;
+  }
+  .gauges {
+    flex-basis: calc(100% - 86px);
+  }
+  .wind {
+    left: auto;
+    right: calc(8px + env(safe-area-inset-right));
+    top: 56px;
+    transform: none;
+  }
+}
+/* 아주 좁은 휴대폰(≤420px): 대기실 위쪽 줄이 잘리지 않게 세 칸을 똑같이, 제목은 줄바꿈 허용 */
+@media (max-width: 420px) {
+  .screen.lobby .bar { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .screen.lobby .bar #exit { white-space: nowrap; font-size: 14px; padding-left: 4px; padding-right: 4px; }
+  .screen.lobby .bar h2 { white-space: normal; line-height: 1.1; font-size: 20px; }
+  .screen.lobby .bar h2 small { display: block; }
+  .screen.lobby .bar #rank, .screen.lobby .bar #copy, .screen.lobby .bar .my-points { min-width: 0; font-size: 13px; white-space: nowrap; }
+}
