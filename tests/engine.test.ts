@@ -760,7 +760,7 @@ describe('백발백중', () => {
       if (r.events.some((e) => e.type === 'target')) {
         hit = true;
         expect(m.tanks[0].damageDealt).toBe(200);
-        expect(m.targets.length).toBe(19);
+        expect(m.targets.length).toBe(4);
         for (let i = 0; i < 4; i++) {
           expect(m.over).toBe(false);
           m.startTurn();

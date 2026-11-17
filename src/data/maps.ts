@@ -195,7 +195,7 @@ const ledge: MapDef = {
 const target: MapDef = {
   id: 'target',
   name: '백발백중',
-  desc: '계단 위 과녁 20개를 꼬꼬댁 깃털탄으로! 5턴 동안 과녁 하나에 200점.',
+  desc: '계단 위 과녁(인원 × 5개)을 꼬꼬댁 깃털탄으로! 5턴 동안 과녁 하나에 200점.',
   theme: {
     skyTop: '#7fd3ff', skyBottom: '#fff2c8',
     grass: '#9be36a', grassDark: '#5fb34a',

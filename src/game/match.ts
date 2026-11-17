@@ -22,7 +22,7 @@ const CRATER_SCALE = 0.9;
 
 /** 백발백중: 한 사람이 쏘는 횟수, 과녁 수, 과녁 하나 점수 */
 export const PRACTICE_TURNS = 5;
-export const TARGET_COUNT = 20;
+export const TARGETS_PER_TANK = 5;
 export const TARGET_POINTS = 200;
 export interface Target {
   id: number;
@@ -183,11 +183,12 @@ export class Match {
     return this.practice;
   }
 
-  /** 시작 층을 뺀 계단에 과녁 20개. 한 발에 하나만 맞도록 서로 깃털탄 폭발 범위보다 멀리 둔다 */
+  /** 시작 층을 뺀 계단에 과녁 (사람 수 × 5). 한 발에 하나만 맞도록 서로 깃털탄 폭발 범위보다 멀리 둔다 */
   private placeTargets() {
     const steps = targetSteps().slice(1);
-    const per = steps.map(() => Math.floor(TARGET_COUNT / steps.length));
-    for (let left = TARGET_COUNT - per.reduce((a, b) => a + b, 0); left > 0; ) {
+    const count = Math.min(steps.length * 3, this.tanks.length * TARGETS_PER_TANK);
+    const per = steps.map(() => Math.floor(count / steps.length));
+    for (let left = count - per.reduce((a, b) => a + b, 0); left > 0; ) {
       const i = this.rng.int(0, steps.length - 1);
       if (per[i] < 3) {
         per[i]++;
