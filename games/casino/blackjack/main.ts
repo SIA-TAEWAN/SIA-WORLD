@@ -44,7 +44,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     if (p.shoeRemaining) label(scene, shoe.x, shoe.y + cw * 0.72, `${p.shoeRemaining}장`, clamp(cw * 0.17, 11, 15));
     // 처음 나눠 줄 때는 빠르게, 그 뒤(다른 사람·딜러가 받는 카드)는 한 장씩 천천히
     const firstDeal = p.phase === 'play' && p.seats.every((s) => s.hands.every((h) => h.cards.length <= 2)) && p.dealer.cards.length <= 2;
-    ui.dealGap = firstDeal ? 220 : 550;
+    ui.dealGap = firstDeal ? 300 : 650;
 
     /** 글자는 그 카드들이 다 놓인 뒤에 보이게 (한 장씩 진행하는 느낌) */
     const showAfter = (obj: PhaserNS.GameObjects.Text, ms: number) => {

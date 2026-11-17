@@ -372,7 +372,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const allCaptured = (pl: (typeof P)[number]) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi];
     // 판 시작(아직 아무도 안 냄): 더미에서 한 장씩 착착 나눠 준다 (내 패 → 상대 패 번갈아, 그다음 바닥)
     const dealing = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0;
-    const DEAL_GAP = 70;
+    const DEAL_GAP = 130;
 
     // 상대: 점수(세로) 또는 이름패(가로) · 손패(뒷면) · 먹은 패
     const oppSub = `${op.score}점${op.go ? ` · ${op.go}고` : ''}${op.shakes ? ` · 흔들${op.shakes}` : ''}`;

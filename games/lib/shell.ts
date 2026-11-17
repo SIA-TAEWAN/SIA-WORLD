@@ -415,13 +415,14 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     dealSeq++;
     return start;
   };
-  const SLIDE_MS = 250;
-  const FLIP_MS = 200;
+  // 모션 속도 (너무 빠르지 않게): 받기 0.42초 · 뒤집기 0.36초 · 패 이동 0.56초 · 낸 패→뒤집은 패→가져가기 사이 0.5초
+  const SLIDE_MS = 420;
+  const FLIP_MS = 360;
   /** 카드 이동 연출: key → 목표 위치와 진행 중인 이동 */
   const moves = new Map<string, { x: number; y: number; fromX: number; fromY: number; start: number }>();
   let moveRound = -1;
-  const MOVE_MS = 320;
-  const ORDER_GAP = 280;
+  const MOVE_MS = 560;
+  const ORDER_GAP = 500;
   /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
   let animEnd = 0;
   const afterAnim = (fn: () => void) => {
@@ -575,15 +576,25 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         const p = Math.max(0, Math.min(1, (now - r.start) / MOVE_MS));
         if (p >= 1) return;
         animEnd = Math.max(animEnd, r.start + MOVE_MS);
-        const e = 1 - Math.pow(1 - p, 3);
-        obj.setPosition(r.fromX + (r.x - r.fromX) * e, r.fromY + (r.y - r.fromY) * e);
-        obj.setDepth(10 + (p < 1 ? 1 : 0));
-        scene.tweens.add({ targets: obj, x: r.x, y: r.y, duration: MOVE_MS * (1 - p), delay: Math.max(0, r.start - now), ease: 'Cubic.easeOut' });
-        // 날아가는 동안: 출발 크기가 다르면 그 크기에서 바닥 크기로, 아니면 살짝 커졌다가 내려앉는다
-        if (p === 0 && opts.fromScale && Math.abs(opts.fromScale - 1) > 0.05) {
-          obj.setScale(opts.fromScale);
-          scene.tweens.add({ targets: obj, scale: 1, duration: MOVE_MS, delay: Math.max(0, r.start - now), ease: 'Cubic.easeOut' });
-        } else if (p === 0) scene.tweens.add({ targets: obj, scale: { from: 1, to: 1.12 }, yoyo: true, duration: MOVE_MS / 2, delay: Math.max(0, r.start - now), ease: 'Sine.easeOut' });
+        // 자연스럽게: 천천히 떠서 빨라졌다가 내려앉고(ease-in-out), 살짝 포물선으로, 날아가는 동안 조금 기울었다가 바로 선다
+        const fx = r.fromX;
+        const fy = r.fromY;
+        const dist = Math.hypot(r.x - fx, r.y - fy);
+        const cx = (fx + r.x) / 2;
+        const cy = (fy + r.y) / 2 - Math.min(90, dist * 0.18);
+        const tilt = (r.x >= fx ? 1 : -1) * Math.min(9, dist * 0.03);
+        const s0 = opts.fromScale && Math.abs(opts.fromScale - 1) > 0.05 ? opts.fromScale : 1;
+        const place = (t: number) => {
+          const e = easeInOut(t);
+          const u = 1 - e;
+          obj.setPosition(u * u * fx + 2 * u * e * cx + e * e * r.x, u * u * fy + 2 * u * e * cy + e * e * r.y);
+          obj.setAngle(Math.sin(Math.PI * e) * tilt);
+          // 출발 크기가 다르면 그 크기에서 바닥 크기로, 같으면 가운데서 살짝 커졌다가 내려앉는다
+          obj.setScale(s0 !== 1 ? s0 + (1 - s0) * e : 1 + 0.08 * Math.sin(Math.PI * e));
+        };
+        place(p);
+        obj.setDepth(11);
+        scene.tweens.addCounter({ from: p, to: 1, duration: MOVE_MS * (1 - p), delay: Math.max(0, r.start - now), onUpdate: (tw) => place(tw.getValue() ?? 1) });
       },
       deal: (obj, key, face, from) => {
         const round = st?.round_no ?? 0;
@@ -596,10 +607,10 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         let rec = prev;
         if (!prev) {
           // 처음 보는 카드: 출발점에서 날아온다 (여러 장이면 차례로)
-          rec = { face, start: queueDeal(now, ui.dealGap ?? 110), kind: dealReady && !reduceMotion ? 'slide' : null, from };
+          rec = { face, start: queueDeal(now, ui.dealGap ?? 200), kind: dealReady && !reduceMotion ? 'slide' : null, from };
         } else if (prev.face !== face) {
           // 같은 자리인데 면이 바뀜: 뒤집기
-          rec = { face, start: queueDeal(now, Math.round((ui.dealGap ?? 110) * 0.8)), kind: dealReady && !reduceMotion ? 'flip' : null, from };
+          rec = { face, start: queueDeal(now, Math.round((ui.dealGap ?? 200) * 0.8)), kind: dealReady && !reduceMotion ? 'flip' : null, from };
         }
         dealt.set(key, rec!);
         if (!scene || !rec!.kind) return 0;
@@ -611,14 +622,28 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         const delay = Math.max(0, rec!.start - now);
         const rest = dur * (1 - p);
         if (rec!.kind === 'slide') {
+          // 받기: 더미에서 미끄러지듯 날아와 (감속) 살짝 돌았다가 반듯하게 놓인다
           const tx = obj.x;
           const ty = obj.y;
-          const e = 1 - Math.pow(1 - p, 3);
-          obj.setPosition(rec!.from.x + (tx - rec!.from.x) * e, rec!.from.y + (ty - rec!.from.y) * e).setScale(0.55 + 0.45 * e).setAlpha(e);
-          scene.tweens.add({ targets: obj, x: tx, y: ty, scale: 1, alpha: 1, duration: rest, delay, ease: 'Back.easeOut' });
+          const f = rec!.from;
+          const spin = (tx >= f.x ? -1 : 1) * 12;
+          const place = (t: number) => {
+            const e = 1 - Math.pow(1 - t, 3);
+            obj.setPosition(f.x + (tx - f.x) * e, f.y + (ty - f.y) * e - Math.sin(Math.PI * e) * 14);
+            obj.setScale(0.7 + 0.3 * e).setAlpha(Math.min(1, t * 4)).setAngle(spin * (1 - e));
+          };
+          place(p);
+          scene.tweens.addCounter({ from: p, to: 1, duration: rest, delay, onUpdate: (tw) => place(tw.getValue() ?? 1) });
         } else {
-          obj.setScale(p, 1);
-          scene.tweens.add({ targets: obj, scaleX: 1, duration: rest, delay, ease: 'Sine.easeOut' });
+          // 뒤집기: 가로로 납작해졌다가 펴지면서 살짝 들렸다 내려온다
+          const y0 = obj.y;
+          const place = (t: number) => {
+            const e = easeInOut(t);
+            obj.setScale(Math.max(0.02, e), 1 + 0.06 * Math.sin(Math.PI * e));
+            obj.setY(y0 - Math.sin(Math.PI * e) * 6);
+          };
+          place(p);
+          scene.tweens.addCounter({ from: p, to: 1, duration: rest, delay, onUpdate: (tw) => place(tw.getValue() ?? 1) });
         }
         // 이 카드가 자리에 놓이는 시각까지 남은 시간 (점수 글자 등을 그때 보여 주려고)
         return delay + rest;
@@ -959,4 +984,9 @@ function makeRoundAvatars(scene: PhaserNS.Scene, ids: readonly string[]) {
     c.restore();
     tex.refresh();
   }
+}
+
+/** 천천히 출발해 빨라졌다가 천천히 멈춘다 (cubic in-out) */
+function easeInOut(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
