@@ -27,7 +27,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     const { W, H } = viewSize(scene);
     const p = t.pub;
     drawTable(scene, 'poker');
-    const portrait = H > W * 1.15;
+    const portrait = H > W * 1.15 || W < 520;
     // 내 카드 크기: 화면 비율에 맞춰 (7장이 한 줄에 들어오게). 다른 사람은 0.6배
     const cw = clamp(Math.min(W / 5.8, H / 4.9), 40, 118);
     const nOpp = Math.max(1, (p?.seats.length ?? 4) - 1);
@@ -45,7 +45,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     label(
       scene,
       center.x,
-      center.y + chip * 2.7,
+      center.y + chip * 2.3 + clamp(cw * 0.18, 12, 18),
       `${ROUND(p.phase)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}`,
       clamp(cw * 0.18, 12, 18),
     );
@@ -57,11 +57,11 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     const myY = H - cw * 0.71 - Math.max(46, cw * 0.55);
     // 가로: 왼쪽·위·오른쪽 / 세로: 위에 한 줄
     const spots: number[][] = portrait
-      ? [[W / 2, myY], ...Array.from({ length: nOpp }, (_, j) => [(W * (j + 0.5)) / nOpp, oc * 0.8 + 6])]
+      ? [[W / 2, myY], ...Array.from({ length: nOpp }, (_, j) => [(W * (j + 0.5)) / nOpp, oc * 0.71 + 22])]
       : [
           [W / 2, myY],
           [side, H * 0.36],
-          [W / 2, oc * 0.8 + 8],
+          [W / 2, oc * 0.71 + 24],
           [W - side, H * 0.36],
         ];
     const shown = new Map((p.showdown ?? []).map((h) => [h.seat, h]));
@@ -76,13 +76,22 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       else cards = [...Array(Math.min(2, s.hiddenCount)).fill(null), ...s.open, ...Array(Math.max(0, s.hiddenCount - 2)).fill(null)];
       const w = me ? cw : oc;
       const gap = w * (me ? 0.72 : 0.4);
+      // 카드 고르기 단계: 내 카드를 눌러서 버릴 카드 → 공개할 카드를 고른다 (아래 버튼과 같은 동작)
+      const picking = me && !sd && p.phase === 'choose' && !!t.priv?.choices.length && !s.chosen && !t.busy;
       cards.forEach((c, ci) => {
         const isOpen = c !== null && s.open.includes(c);
-        const card = playingCard(scene, x + (ci - (cards.length - 1) / 2) * gap, y, c, w, {
-          dim: s.folded,
-          lift: me && !!c && !isOpen && p.phase !== 'choose',
+        const thrown = picking && c === discard;
+        const cx = x + (ci - (cards.length - 1) / 2) * gap;
+        const card = playingCard(scene, cx, y, c, w, {
+          dim: s.folded || thrown,
+          lift: (me && !!c && !isOpen && p.phase !== 'choose') || (picking && !thrown),
         });
         t.deal(card, `${s.seat}:${ci}`, c, deck);
+        if (picking && c) {
+          card.setSize(w, w * 1.42).setInteractive({ useHandCursor: true });
+          card.on('pointerdown', () => pickChoice(t, c));
+          if (thrown) label(scene, cx, y - w * 0.95, '버림', clamp(w * 0.22, 13, 20), tc('lose'));
+        }
       });
       const mineHand = me && !sd && t.priv?.hand && p.phase !== 'choose' ? `내 패 ${t.priv.hand}` : '';
       const sub = s.excluded ? '이번 판 쉼' : s.folded ? '다이' : [s.last, s.allIn ? '올인' : '', mineHand || (s.openLabel ?? '')].filter(Boolean).join(' · ');
@@ -112,18 +121,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         .filter((c) => c !== discard)
         .map((c) => `<button class="btn big" data-c="${c}" ${t.busy ? 'disabled' : ''}>${cardText(c)}</button>`)
         .join('')}${discard ? '<button class="btn" id="undo">다시 고르기</button>' : ''}</div>`;
-      el.querySelectorAll<HTMLButtonElement>('[data-c]').forEach((b) =>
-        b.addEventListener('click', () => {
-          if (!discard) {
-            discard = b.dataset.c!;
-            t.redraw();
-          } else {
-            const d = discard;
-            discard = null;
-            void t.act({ type: 'choose', discard: d, open: b.dataset.c });
-          }
-        }),
-      );
+      el.querySelectorAll<HTMLButtonElement>('[data-c]').forEach((b) => b.addEventListener('click', () => pickChoice(t, b.dataset.c!)));
       el.querySelector('#undo')?.addEventListener('click', () => ((discard = null), t.redraw()));
       return;
     }
@@ -161,6 +159,22 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     return null;
   },
 };
+
+/** 카드 고르기: 첫 번째는 버릴 카드, 두 번째는 공개할 카드 (버린 카드를 다시 누르면 취소) */
+function pickChoice(t: Ctx, c: string) {
+  if (t.busy) return;
+  if (!discard) {
+    discard = c;
+    t.redraw();
+  } else if (c === discard) {
+    discard = null;
+    t.redraw();
+  } else {
+    const d = discard;
+    discard = null;
+    void t.act({ type: 'choose', discard: d, open: c });
+  }
+}
 
 function cardText(c: string) {
   const sym: Record<string, string> = { S: '♠', D: '◆', H: '♥', C: '♣' };

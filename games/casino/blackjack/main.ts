@@ -27,7 +27,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     drawTable(scene, 'blackjack');
     const n = Math.max(1, p?.seats.length ?? 4);
     // 세로 화면이면 자리를 2×2로, 가로면 한 줄로
-    const portrait = H > W * 1.15;
+    const portrait = H > W * 1.15 || W < 520;
     const cols = portrait ? Math.min(2, n) : n;
     const rows = Math.ceil(n / cols);
     // 카드 크기: 화면 비율에 맞춰 (좁으면 자리 수로, 낮으면 높이로 제한)

@@ -197,7 +197,7 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
       capW,
       k,
       bw,
-      oppHand: { x: W * 0.45, y: bw * 0.8 + 4 },
+      oppHand: { x: W * 0.45, y: bw * 0.78 + 18 },
       pile: { x: W * 0.075, y: y0 + rowGap * 0.5 },
       pw: fw,
       capX: 24 + capW / 2,
@@ -337,7 +337,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const p = t.pub;
     drawTable(scene, 'matgo');
     // 세로 화면(휴대폰): 이름은 위쪽 자리 줄에 있으니 테이블 이름패는 빼고 점수만, 손패는 다섯 장씩 두 줄
-    const portrait = H > W * 1.15;
+    const portrait = H > W * 1.15 || W < 520;
     const L = layout(W, H, portrait, p?.floor.length ?? 8);
     const { cw, fw, capW, k } = L;
 
@@ -434,11 +434,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const shown = new Set<string>([...p.floor.flatMap((f) => f.cards), ...Object.values(P).flatMap(allCaptured)]);
     const hand = (t.priv?.hand ?? []).filter((id) => !shown.has(id));
     const canPlay = t.myTurn && p.choice?.kind === 'play';
+    // 바닥에 같은 달이 있어 먹을 수 있는 패는 노란 테두리로 (고를 수 있는 패와 같은 표시)
+    const floorMonths = new Set(p.floor.filter((f) => f.cards.length).map((f) => cardById(f.cards[0]).month));
     hand.forEach((id, i) => {
       const { x, y } = L.handPos(i, hand.length);
       t.track(
         hwatu(scene, x, y, id, cw, {
           lift: canPlay,
+          glow: floorMonths.has(cardById(id).month),
           onClick: canPlay && !t.busy ? () => void t.act({ type: 'play', card: id, shake: shake && !!t.priv?.shakeable.includes(cardById(id).month) }) : undefined,
         }),
         id,
