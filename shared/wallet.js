@@ -4,6 +4,8 @@ import { supabase } from './supabase.js';
 
 export const START_AMOUNT = 10000;
 export const REFILL_TO = 10000;
+/** 무료 충전 한 번에 더해 주는 금액 */
+export const REFILL_AMOUNT = 10000;
 export const REFILLS_PER_DAY = 3;
 export const BASE_UNITS = [100, 500, 1000];
 export const CURRENCY_NAME = { chips: '칩', nyang: '냥' };
@@ -42,7 +44,7 @@ export function canRefill(wallet, currency, baseUnit) {
 }
 
 /**
- * 무료 충전 (하루 3번, 10,000으로 채움)
+ * 무료 충전 (하루 3번, 지금 금액에 10,000을 더함)
  * → { ok, reason?: 'enough' | 'limit', chips, nyang, ... }
  */
 export const refill = (currency, baseUnit) => call('refill', { p_currency: currency, p_min_required: minEntry(baseUnit) });

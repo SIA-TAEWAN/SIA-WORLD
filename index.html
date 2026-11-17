@@ -62,7 +62,7 @@
     .top .logo { font-size: 30px; margin: 0; flex: 1; white-space: nowrap; font-weight: normal; color: var(--primary);
       -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; text-shadow: 0 3px 0 var(--outline); }
     .top .logo b { color: var(--white); font-weight: inherit; }
-    .me { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--pill); color: var(--white); padding: 5px 12px; border-radius: var(--radius-item); }
+    .top .me { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--pill); color: var(--white); padding: 5px 12px; border-radius: var(--radius-item); }
     .small { width: auto; display: inline-block; margin: 0; padding: 5px 12px; font-size: 15px; border-radius: var(--radius-item);
       background: var(--white); color: var(--ink); box-shadow: 0 3px 0 var(--outline); }
     .small:active:not(:disabled) { box-shadow: 0 1px 0 var(--outline); }
@@ -114,7 +114,11 @@
     .rank-list td.pl { width: 36px; text-align: center; }
     .rank-list td.nm { width: 100%; }
     .rank-list td.am { white-space: nowrap; text-align: right; color: var(--accent); }
-    .rank-list tr.me { background: var(--panel-strong); }
+    .rank-list tr.me { background: var(--panel-strong); color: var(--ink); }
+    .rank-list tr.me .nm { color: var(--sky-deep); }
+    .games-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .games-head { margin-bottom: 12px; }
+    main.lobby .games-head h2 { margin: 0 auto 0 0; }
     .rank-note { font-size: 12px; color: var(--ink-soft); text-align: center; margin: 8px 0 0; }
     @media (max-width: 420px) {
       .top .logo { font-size: 24px; }
@@ -180,10 +184,9 @@
         <div class="pill"><span class="ic">💰</span>
           <span class="amt"><small>맞고 냥</small><b id="w-nyang">-</b><span class="left" id="l-nyang"></span></span>
           <button class="btn small refill" data-c="nyang" disabled>무료 충전</button></div>
-        <button class="btn small" id="rank-btn">🏆 랭킹</button>
       </section>
       <p class="note" id="w-note"></p>
-      <h2>게임</h2>
+      <div class="games-head"><h2>게임</h2><button class="btn small" id="rank-btn">🏆 랭킹</button></div>
       <div class="games" id="games"></div>
     </main>
   </div>
