@@ -1977,3 +1977,37 @@ a.btn { text-decoration: none; text-align: center; }
 .lobby-tools .who-me { margin-left: auto; color: var(--ink); background: rgba(255, 255, 255, 0.7); padding: 4px 12px; border-radius: 12px; }
 .manual-box { width: min(560px, 100%); }
 .manual-box .manual { margin-top: 10px; padding-top: 4px; }
+
+/* 내 탱크 체력 게이지 (파워 위) */
+.gauge.hp {
+  height: 16px;
+}
+.hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #3ad16b, #8ef05a);
+  transition: width 0.35s ease-out;
+}
+.hp-fill[data-level='mid'] {
+  background: linear-gradient(90deg, #f5b81c, #ffe14d);
+}
+.hp-fill[data-level='low'] {
+  background: linear-gradient(90deg, #e2483d, #ff7a5c);
+}
+.hp-num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+}
+@media (max-width: 700px), (max-height: 500px) {
+  .gauge.hp {
+    height: 12px;
+  }
+  .hp-num {
+    font-size: 9px;
+  }
+}

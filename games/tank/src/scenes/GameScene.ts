@@ -1076,6 +1076,7 @@ export class GameScene extends Phaser.Scene {
       limit: this.limitOf(v),
       spectate: !v.alive || (!mine && !!v.ai),
       ult: this.ultShown?.get(v.idx),
+      hp: this.views[v.idx]?.hp,
     });
   }
 

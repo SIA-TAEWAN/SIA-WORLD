@@ -22,6 +22,8 @@ export interface HudView {
   ult?: number;
   /** 특수 맵: 이 무기만 쓸 수 있다 */
   only?: number;
+  /** 화면에 보이는 내 탱크 체력 (포탄이 닿을 때 줄어든다) */
+  hp?: number;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = '') => {
@@ -45,6 +47,9 @@ export class Hud {
   private powerLimit = el('div', 'power-limit');
   private limitLabel = el('label', 'limit-label', 'POWER');
   private moveFill = el('div', 'move-fill');
+  private hpFill = el('div', 'hp-fill');
+  private hpNum = el('div', 'hp-num');
+  private hpShown = '';
   private weapons: HTMLButtonElement[] = [];
   private items: HTMLButtonElement[] = [];
   private mini = el('canvas', 'minimap2') as HTMLCanvasElement;
@@ -97,7 +102,11 @@ export class Hud {
     }
     const mv = el('div', 'gauge move');
     mv.append(this.moveFill);
-    gauges.append(this.limitLabel, pw, el('label', '', 'MOVE'), mv);
+    // 내 탱크 체력 (파워 위)
+    const hp = el('div', 'gauge hp');
+    hp.title = '내 탱크 체력';
+    hp.append(this.hpFill, this.hpNum);
+    gauges.append(el('label', '', 'HP'), hp, this.limitLabel, pw, el('label', '', 'MOVE'), mv);
     // 무기
     const wbox = el('div', 'panel slots weapons');
     for (let i = 0; i < 3; i++) {
@@ -269,6 +278,16 @@ export class Hud {
     this.root.classList.toggle('my-turn', v.human);
     this.root.classList.toggle('spectate', v.spectate);
     this.moveFill.style.width = `${(match.moveLeft / t.def.move) * 100}%`;
+    // 체력: 70% 이상 초록 · 35% 이상 노랑 · 그 아래 빨강
+    const hpNow = Math.max(0, Math.round(v.hp ?? t.hp));
+    const hpKey = `${hpNow}/${t.maxHp}`;
+    if (hpKey !== this.hpShown) {
+      this.hpShown = hpKey;
+      const r = Math.min(1, hpNow / t.maxHp);
+      this.hpFill.style.width = `${r * 100}%`;
+      this.hpFill.dataset.level = r >= 0.7 ? 'high' : r >= 0.35 ? 'mid' : 'low';
+      this.hpNum.textContent = `${hpNow} / ${t.maxHp}`;
+    }
 
     const tl = Math.ceil(v.timeLeft);
     if (tl !== this.lastTimer) {
@@ -384,6 +403,18 @@ export class Hud {
       c.arc(t.x * sx, (t.y - 10) * sy, 3.5, 0, Math.PI * 2);
       c.fill();
       c.stroke();
+    }
+    // 특수 벽 (천장부터 그 자리 땅까지 빛나는 기둥)
+    const w = match.wall;
+    if (w) {
+      const col = { amp: '#ff4d6d', whirl: '#3fc8ff', double: '#ffc83d', triple: '#b46bff' }[w.kind];
+      const top = (w.top ?? 0) * sy;
+      const bot = Math.max(top + 4, w.bottom * sy);
+      c.fillStyle = col;
+      c.globalAlpha = 0.45;
+      c.fillRect(w.x * sx - 3, top, 6, bot - top);
+      c.globalAlpha = 1;
+      c.fillRect(w.x * sx - 1, top, 2, bot - top);
     }
     c.fillStyle = '#ffeb3b';
     for (const s of shells) c.fillRect(s.x * sx - 1.5, s.y * sy - 1.5, 3, 3);
