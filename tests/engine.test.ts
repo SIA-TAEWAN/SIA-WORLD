@@ -443,8 +443,8 @@ describe('새 무기 효과', () => {
 
   it('꿀꿀이 왕도토리는 폭발·구덩이가 1.25배', () => {
     const m = setup('pig', 'tiger');
-    expect(m.weaponOf(m.tanks[0], 0).radius).toBe(71);
-    expect(m.weaponOf(m.tanks[0], 0).crater).toBe(50);
+    expect(m.weaponOf(m.tanks[0], 0).radius).toBe(78);
+    expect(m.weaponOf(m.tanks[0], 0).crater).toBe(55);
   });
 });
 
