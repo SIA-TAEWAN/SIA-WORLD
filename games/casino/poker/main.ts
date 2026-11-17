@@ -1,6 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, label, nameTag, playingCard } from '../../lib/cards.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
 
 type Ctx = TableCtx<PokerPublic, PokerPrivate>;
@@ -18,57 +18,80 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
   icon: '♠️',
   back: 'games/casino/',
   backLabel: '카지노',
-  felt: 0x174d6b,
+  felt: 0x2a1712,
 
   draw(t: Ctx) {
     const { scene } = t;
     const W = scene.scale.width;
     const H = scene.scale.height;
     const p = t.pub;
-    const cw = Math.max(30, Math.min(54, W / 16, H / 8));
+    drawTable(scene, 'lacquer', 0x1c4f5e);
+    const portrait = H > W * 1.15;
+    // 내 카드 크기: 화면 비율에 맞춰 (7장이 한 줄에 들어오게). 다른 사람은 0.6배
+    const cw = clamp(Math.min(W / 5.8, H / 4.9), 40, 118);
+    const nOpp = Math.max(1, (p?.seats.length ?? 4) - 1);
+    const oc = portrait ? Math.min(cw * 0.6, W / nOpp / 3.9) : cw * 0.6;
+    const center = { x: W / 2, y: portrait ? H * 0.42 : H * 0.36 };
+    const deck = { x: center.x + cw * 1.15, y: center.y };
+    for (let i = 0; i < 3; i++) playingCard(scene, deck.x + i * 2, deck.y - i * 2, null, oc);
     if (!p) {
-      label(scene, W / 2, H / 2, '모두 레디하면 시작해요', 22);
+      label(scene, W / 2, H / 2, '모두 레디하면 시작해요', clamp(cw * 0.3, 18, 30));
       return;
     }
     // 가운데 판돈
-    chipStack(scene, W / 2, H / 2 - 10, p.pot, `판돈 ${t.fmt(p.pot)}`);
-    label(scene, W / 2, H / 2 + 34, `${ROUND(p.phase)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}`, 14, '#d9ecff');
+    const chip = clamp(cw * 0.22, 13, 22);
+    chipStack(scene, center.x - cw * 0.15, center.y, p.pot, `판돈 ${t.fmt(p.pot)}`, chip);
+    label(
+      scene,
+      center.x,
+      center.y + chip * 2.7,
+      `${ROUND(p.phase)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}`,
+      clamp(cw * 0.18, 12, 18),
+      '#cfe8ef',
+    );
 
     // 자리 배치: 내 자리가 아래 가운데
     const order = [...p.seats].sort((a, b) => a.seat - b.seat);
     const myIdx = Math.max(0, order.findIndex((s) => s.seat === t.mySeat));
-    // 좁은 화면에서 왼쪽·오른쪽 자리가 잘리지 않게
-    const side = Math.max(cw * 1.6, W * 0.13);
-    const spots = [
-      [W / 2, H * 0.8],
-      [side, H * 0.45],
-      [W / 2, H * 0.14],
-      [W - side, H * 0.45],
-    ];
+    const side = Math.max(oc * 2.1, W * 0.16);
+    const myY = H - cw * 0.71 - Math.max(46, cw * 0.55);
+    // 가로: 왼쪽·위·오른쪽 / 세로: 위에 한 줄
+    const spots: number[][] = portrait
+      ? [[W / 2, myY], ...Array.from({ length: nOpp }, (_, j) => [(W * (j + 0.5)) / nOpp, oc * 0.8 + 6])]
+      : [
+          [W / 2, myY],
+          [side, H * 0.36],
+          [W / 2, oc * 0.8 + 8],
+          [W - side, H * 0.36],
+        ];
     const shown = new Map((p.showdown ?? []).map((h) => [h.seat, h]));
     order.forEach((s, i) => {
       const rel = (i - myIdx + order.length) % order.length;
-      const [x, y] = spots[order.length === 2 && rel === 1 ? 2 : rel];
+      const [x, y] = spots[!portrait && order.length === 2 && rel === 1 ? 2 : rel];
       const me = s.seat === t.mySeat;
       const sd = shown.get(s.seat);
       let cards: (string | null)[];
       if (sd) cards = sd.cards;
       else if (me && t.priv) cards = p.phase === 'choose' && t.priv.choices.length ? t.priv.choices : [...t.priv.hidden.slice(0, 2), ...s.open, ...t.priv.hidden.slice(2)];
       else cards = [...Array(Math.min(2, s.hiddenCount)).fill(null), ...s.open, ...Array(Math.max(0, s.hiddenCount - 2)).fill(null)];
-      const scale = me ? 1 : 0.78;
-      const gap = cw * scale * (me ? 0.75 : 0.5);
+      const w = me ? cw : oc;
+      const gap = w * (me ? 0.72 : 0.4);
       cards.forEach((c, ci) => {
         const isOpen = c !== null && s.open.includes(c);
-        playingCard(scene, x + (ci - (cards.length - 1) / 2) * gap, y, c, cw * scale, {
+        const card = playingCard(scene, x + (ci - (cards.length - 1) / 2) * gap, y, c, w, {
           dim: s.folded,
           lift: me && !!c && !isOpen && p.phase !== 'choose',
         });
+        t.deal(card, `${s.seat}:${ci}`, c, deck);
       });
-      const sub = s.excluded ? '이번 판 쉼' : s.folded ? '다이' : [s.last, s.allIn ? '올인' : '', s.openLabel ?? ''].filter(Boolean).join(' · ');
-      nameTag(scene, Math.min(W - 120, Math.max(22, x - 50)), y + cw * scale * 0.95, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, sub: sub || undefined });
-      if (s.total) label(scene, x + cw * 1.8 * scale, y - cw * 0.95 * scale, `${t.fmt(s.total)}`, 13, '#ffe9a8');
-      if (sd) label(scene, x, y - cw * 0.95 * scale, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, 16, p.winners.includes(s.seat) ? '#ffe066' : '#ffffff');
-      else if (me && t.priv?.hand && p.phase !== 'choose') label(scene, x, y - cw * 0.95, `내 패: ${t.priv.hand}`, 15, '#ffe066');
+      const mineHand = me && !sd && t.priv?.hand && p.phase !== 'choose' ? `내 패 ${t.priv.hand}` : '';
+      const sub = s.excluded ? '이번 판 쉼' : s.folded ? '다이' : [s.last, s.allIn ? '올인' : '', mineHand || (s.openLabel ?? '')].filter(Boolean).join(' · ');
+      const k = me ? clamp(cw / 85, 0.85, 1.15) : clamp(cw / 100, 0.75, 1);
+      const tagY = y + w * 0.71 + 24 * k;
+      nameTag(scene, clamp(x - 52 * k, 26, W - 150 * k), tagY, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, size: k, sub: sub || undefined });
+      const fs = clamp(w * (me ? 0.2 : 0.28), 12, 22);
+      if (s.total) label(scene, x + ((cards.length - 1) / 2) * gap + w * 0.62, y - w * 0.55, `${t.fmt(s.total)}`, fs * 0.85, '#f7d77a');
+      if (sd) label(scene, x, y - w * 0.92, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, fs, p.winners.includes(s.seat) ? '#f7d77a' : '#fff6e5');
     });
   },
 
@@ -106,7 +129,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     }
     if (t.myTurn && p.turn === t.mySeat) {
       el.innerHTML = `<div class="row">${p.actions
-        .map((a) => `<button class="btn big ${a.type === 'die' ? '' : a.type === 'call' || a.type === 'check' ? 'primary' : ''}" data-a="${a.type}" ${t.busy ? 'disabled' : ''}>
+        .map((a) => `<button class="btn big ${a.type === 'die' ? '' : a.type === 'call' || a.type === 'check' ? 'primary' : 'alt'}" data-a="${a.type}" ${t.busy ? 'disabled' : ''}>
           ${BET[a.type]}${a.amount ? ` ${t.fmt(a.amount)}` : ''}${a.allIn ? ' (올인)' : ''}</button>`)
         .join('')}</div><p class="msg">레이즈 ${p.raises}/${p.maxRaises} · 20초가 지나면 체크(안 되면 다이)</p>`;
       el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));

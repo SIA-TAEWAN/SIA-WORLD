@@ -50,6 +50,11 @@ export interface TableCtx<P = any, Q = any> {
   seatAvatar(seat: number): string;
   /** 다시 그리기 요청 */
   redraw(): void;
+  /**
+   * 카드 나눠 주기 연출: 이번 판에 처음 보는 자리(key)의 카드는 from에서 날아오고,
+   * 같은 자리인데 면(face)이 바뀌면(뒷면 → 앞면) 뒤집는다. 이미 본 카드는 그대로 둔다.
+   */
+  deal(obj: PhaserNS.GameObjects.Container, key: string, face: string | null, from: { x: number; y: number }): void;
 }
 
 export interface GameUI<P = any, Q = any> {
@@ -179,7 +184,9 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
     const a = m.z.ZODIAC.find((x) => x.id === avatar)!;
     $(root, '#c-av').innerHTML = `<img src="${m.z.avatarUrl(avatar)}" alt=""/><span>${a.name}<small>바꾸기</small></span>`;
   };
+  let alive = true;
   const paintMoney = () => {
+    if (!alive) return;
     $(root, '#money').textContent = wallet ? `${cur === 'nyang' ? '💰' : '🪙'} ${m.wallet.formatAmount(wallet[cur])}${unit}` : '-';
     $(root, '#units').innerHTML = m.wallet.BASE_UNITS.map((u) => {
       const ok = !!wallet && wallet[cur] >= m.wallet.minEntry(u);
@@ -219,7 +226,9 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
     let rooms: RoomRow[];
     try {
       rooms = await m.room.listRooms(ui.game);
+      if (!alive) return;
     } catch (e) {
+      if (!alive) return;
       $(root, '#rooms').innerHTML = `<p class="empty">${esc(m.room.friendly(e))}</p>`;
       return;
     }
@@ -288,6 +297,7 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
   const onFocus = () => void loadWallet();
   window.addEventListener('focus', onFocus);
   const stop = () => {
+    alive = false;
     unwatch();
     window.removeEventListener('focus', onFocus);
   };
@@ -362,6 +372,22 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   let lastEvent = -1;
   let resultShownFor = -1;
   let firstLoad = true;
+  // 카드 연출 상태: 판마다 key → 면. 처음 화면을 그릴 때(새로고침 등)는 연출 없이 기록만
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let dealRound = -1;
+  let dealReady = false;
+  /** key → 면, 그리고 진행 중인 연출(시작 시각·종류·출발점) */
+  const dealt = new Map<string, { face: string | null; start: number; kind: 'slide' | 'flip' | null; from: { x: number; y: number } }>();
+  let dealSeq = 0;
+  const SLIDE_MS = 300;
+  const FLIP_MS = 220;
+  /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
+  let animEnd = 0;
+  const afterAnim = (fn: () => void) => {
+    const wait = animEnd - performance.now();
+    if (wait <= 0) fn();
+    else setTimeout(() => !closed && fn(), wait + 150);
+  };
 
   app().innerHTML = `<div class="table-page">
     <header class="bar"><button class="btn ghost" id="leave">← 나가기</button>
@@ -445,10 +471,47 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       seatName: (n) => seats.find((s) => s.seat_no === n)?.nickname ?? `자리 ${n + 1}`,
       seatAvatar: (n) => seats.find((s) => s.seat_no === n)?.avatar ?? 'tiger',
       redraw: () => paint(),
+      deal: (obj, key, face, from) => {
+        const round = st?.round_no ?? 0;
+        if (round !== dealRound) {
+          dealRound = round;
+          dealt.clear();
+        }
+        const now = performance.now();
+        const prev = dealt.get(key);
+        let rec = prev;
+        if (!prev) {
+          // 처음 보는 카드: 출발점에서 날아온다 (여러 장이면 차례로)
+          rec = { face, start: now + dealSeq++ * 110, kind: dealReady && !reduceMotion ? 'slide' : null, from };
+        } else if (prev.face !== face) {
+          // 같은 자리인데 면이 바뀜: 뒤집기
+          rec = { face, start: now + dealSeq++ * 90, kind: dealReady && !reduceMotion ? 'flip' : null, from };
+        }
+        dealt.set(key, rec!);
+        if (!scene || !rec!.kind) return;
+        // 다시 그려도(실시간 이벤트마다) 하던 연출을 이어서 한다
+        const dur = rec!.kind === 'slide' ? SLIDE_MS : FLIP_MS;
+        animEnd = Math.max(animEnd, rec!.start + dur);
+        const p = Math.max(0, Math.min(1, (now - rec!.start) / dur));
+        if (p >= 1) return;
+        const delay = Math.max(0, rec!.start - now);
+        const rest = dur * (1 - p);
+        if (rec!.kind === 'slide') {
+          const tx = obj.x;
+          const ty = obj.y;
+          const e = 1 - Math.pow(1 - p, 3);
+          obj.setPosition(rec!.from.x + (tx - rec!.from.x) * e, rec!.from.y + (ty - rec!.from.y) * e).setScale(0.55 + 0.45 * e).setAlpha(e);
+          scene.tweens.add({ targets: obj, x: tx, y: ty, scale: 1, alpha: 1, duration: rest, delay, ease: 'Cubic.easeOut' });
+        } else {
+          obj.setScale(p, 1);
+          scene.tweens.add({ targets: obj, scaleX: 1, duration: rest, delay, ease: 'Sine.easeOut' });
+        }
+      },
     };
   };
 
   const paintMoney = () => {
+    if (closed) return;
     $(root, '#money').textContent = wallet ? `${cur === 'nyang' ? '💰' : '🪙'} ${m.wallet.formatAmount(wallet[cur])}${unit}` : '-';
   };
 
@@ -469,6 +532,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
 
   const paintControls = () => {
+    if (closed) return;
     const el = $(root, '#controls');
     const c = ctx();
     const mine = mySeatRow();
@@ -531,6 +595,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const res = st?.public_state?.result;
     if (!c || !res || room?.status !== 'waiting' || !st || resultShownFor === st.round_no) return;
     resultShownFor = st.round_no;
+    afterAnim(() => showResultBox(c));
+  };
+  const showResultBox = (c: TableCtx) => {
     const d = document.createElement('div');
     d.className = 'modal';
     d.innerHTML = `<div class="box result">${ui.resultHtml(c)}<div class="row"><button class="btn primary" data-x>확인</button></div></div>`;
@@ -555,11 +622,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (!hits.length) return;
     const { e, text } = hits[hits.length - 1];
     const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
-    const el = $(root, '#cutin');
-    el.innerHTML = `<div>${av ? `<img src="${m.z.avatarUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
-    el.classList.remove('show');
-    void el.offsetWidth;
-    el.classList.add('show');
+    afterAnim(() => {
+      const el = $(root, '#cutin');
+      el.innerHTML = `<div>${av ? `<img src="${m.z.avatarUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
+      el.classList.remove('show');
+      void el.offsetWidth;
+      el.classList.add('show');
+    });
   };
 
   /** 대기 중인데 사람이 모두 레디면 판을 시작한다 (서버가 다시 확인하므로 여러 명이 불러도 안전) */
@@ -583,7 +652,10 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (c) {
       c.scene.children.removeAll(true);
       c.scene.tweens.killAll();
+      dealSeq = 0;
       ui.draw(c);
+      // 처음 그린 뒤부터 연출 (들어오자마자 모든 카드가 날아오지 않게)
+      if (st?.public_state) dealReady = true;
     }
     paintControls();
   }
@@ -618,8 +690,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (firstLoad && st && r.status === 'waiting') resultShownFor = st.round_no;
     firstLoad = false;
     paintMoney();
-    showCutins();
     paint();
+    showCutins();
     paintResult();
   };
 
@@ -654,8 +726,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       if (closed) return;
       if (busy && s.updated_at !== busySince) unbusy();
       st = s;
+      paint(); // 먼저 그려야 카드 연출 시각을 안다 (컷인·결과는 그 뒤)
       showCutins();
-      paint();
       paintResult();
     },
     onPrivate: (p) => {

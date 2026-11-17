@@ -122,3 +122,128 @@ input { padding: 9px 12px; border-radius: 10px; border: 2px solid var(--panel-b)
 .pick-card b { font-size: 26px; font-weight: normal; }
 .pick-card span { font-size: 14px; opacity: 0.85; }
 @media (max-width: 520px) { .pick { grid-template-columns: 1fr; } }
+
+/* ================================================================
+   테이블 화면: '십이지신 놀이판' — 칠흑 칠기 바 · 자개 이름패 · 단청 버튼
+   (방 목록 화면은 SIA WORLD 하늘색 그대로 두고, 테이블만 이 옷을 입는다)
+   ================================================================ */
+.table-page {
+  --lacquer: #2a1712;
+  --lacquer-2: #3a2119;
+  --pearl: #f3efe6;
+  --pearl-line: linear-gradient(90deg, #f3efe6, #cfe8ef 30%, #ead2e6 60%, #f7e3c4 85%, #f3efe6);
+  --vermilion: #d9452f;
+  --vermilion-d: #9e2a1b;
+  --verdigris: #2f8f83;
+  --verdigris-d: #1d5e56;
+  --gold: #f2c14e;
+  --cream: #fff6e5;
+  color: var(--cream);
+  background: var(--lacquer);
+}
+.table-page .bar {
+  position: relative;
+  background: linear-gradient(180deg, var(--lacquer-2), var(--lacquer));
+  border-bottom: none;
+  color: var(--cream);
+  padding: 8px 14px;
+}
+.table-page .bar::after,
+.table-page .controls::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--pearl-line);
+  opacity: 0.85;
+}
+.table-page .bar::after { bottom: 0; }
+.table-page .bar h1 { font-size: 20px; }
+.table-page .bar h1 small { color: #d8c7b0; }
+.table-page .bar .btn.ghost { color: var(--cream); }
+.table-page .bar .btn.small { background: rgba(243, 239, 230, 0.12); color: var(--cream); box-shadow: inset 0 0 0 1.5px rgba(243, 239, 230, 0.35); }
+.table-page .money { color: var(--gold); font-size: 18px; }
+
+/* 자리: 자개 이름패 */
+.table-page .seats { background: #1f110d; padding: 7px 12px; gap: 8px; }
+.table-page .seat {
+  background: var(--pearl);
+  color: #2a1712;
+  border-radius: 999px;
+  padding: 3px 12px 3px 3px;
+  box-shadow: inset 0 0 0 1.5px #cfe8ef, 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.table-page .seat img { width: 34px; height: 34px; background: #e6dccb; border-radius: 50%; }
+.table-page .seat.me { outline: 2.5px solid var(--vermilion); outline-offset: 1px; }
+.table-page .seat:has(b.turn) { outline: 3px solid var(--gold); outline-offset: 1px; }
+.table-page .seat.ai { opacity: 0.9; }
+.table-page .seat b, .table-page .seat em { background: #e6dccb; color: #6b5a4a; }
+.table-page .seat b.ready { background: #d6efe9; color: var(--verdigris-d); }
+.table-page .seat b.turn { background: var(--gold); color: #2a1712; }
+
+/* 차례 시간: 금박 띠 */
+.table-page .timer { height: 5px; background: #1f110d; }
+.table-page .timer i { background: #8fb7c2; }
+.table-page .timer i.mine { background: linear-gradient(90deg, #f7d77a, var(--gold)); box-shadow: 0 0 8px rgba(242, 193, 78, 0.6); }
+
+/* 조작부: 칠기 받침 + 단청 버튼 */
+.table-page .controls {
+  position: relative;
+  background: linear-gradient(180deg, var(--lacquer-2), #1f110d);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  min-height: 72px;
+}
+.table-page .controls::before { top: 0; }
+.table-page .controls .msg { color: #d8c7b0; font-size: 15px; }
+.table-page .controls .btn {
+  background: var(--pearl);
+  color: #2a1712;
+  box-shadow: 0 4px 0 #b9ab95;
+  border-radius: 14px;
+  min-width: 76px;
+}
+.table-page .controls .btn:active { box-shadow: 0 1px 0 #b9ab95; }
+.table-page .controls .btn.primary { background: var(--vermilion); color: var(--cream); box-shadow: 0 4px 0 var(--vermilion-d); }
+.table-page .controls .btn.primary:active { box-shadow: 0 1px 0 var(--vermilion-d); }
+.table-page .controls .btn.alt { background: var(--verdigris); color: var(--cream); box-shadow: 0 4px 0 var(--verdigris-d); }
+.table-page .controls .btn.big { font-size: 20px; padding: 12px 22px; }
+.table-page .controls .btn:focus-visible,
+.table-page .bar .btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.table-page .controls .amount { color: var(--gold); font-size: 22px; min-width: 100px; }
+.table-page .controls label.btn input { accent-color: var(--vermilion); }
+
+/* 컷인: 크림 글자 + 주홍 테두리 */
+.table-page ~ .modal .box,
+.modal .box.result {
+  background: var(--pearl, #f3efe6);
+}
+.cutin div { color: #fff6e5; -webkit-text-stroke: 4px #9e2a1b; }
+
+/* 결과 창: 자개 종이 */
+.modal .box.result { border: 3px solid #cfe8ef; box-shadow: 0 0 0 4px #2a1712, 0 18px 40px rgba(0, 0, 0, 0.45); }
+.modal .box.result h3 { font-size: 22px; }
+.modal .box.result .row .btn.primary { background: #d9452f; box-shadow: 0 3px 0 #9e2a1b; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cutin.show div { animation-duration: 0.01s; }
+}
+@media (max-width: 520px) {
+  .table-page .bar h1 { font-size: 16px; }
+  .table-page .controls .btn.big { font-size: 17px; padding: 10px 14px; }
+  .table-page .controls .btn { min-width: 0; }
+}
+
+/* 낮은 화면(가로로 눕힌 휴대폰): 테이블을 넓게 — 자리 줄은 숨기고(테이블 위 이름패와 같은 정보) 위·아래를 얇게 */
+@media (max-height: 520px) {
+  .table-page .seats { display: none; }
+  .table-page .bar { padding: 4px 10px; }
+  .table-page .bar h1 { font-size: 15px; }
+  .table-page .bar .btn { padding: 4px 8px; font-size: 13px; }
+  .table-page .money { font-size: 14px; }
+  .table-page .controls { min-height: 0; padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); }
+  .table-page .controls .btn.big { font-size: 16px; padding: 7px 14px; }
+  .table-page .controls .btn { padding: 6px 10px; }
+  .table-page .controls .msg { font-size: 12px; margin-top: 3px; }
+  .table-page .controls .amount { font-size: 17px; min-width: 70px; }
+}
