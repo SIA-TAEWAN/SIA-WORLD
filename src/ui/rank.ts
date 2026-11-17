@@ -29,31 +29,49 @@ const CUT: [Tier, number][] = [
   ['bronze', 0.6],
 ];
 
-let rows: RankRow[] = [];
-let tiers = new Map<string, Tier>();
-/** 순위 (같은 포인트면 같은 순위) */
-let places = new Map<string, number>();
+/** points: 포인트 랭킹, target: 백발백중 최고 점수 랭킹 (따로 운영) */
+export type Board = 'points' | 'target';
+interface BoardData {
+  rows: RankRow[];
+  tiers: Map<string, Tier>;
+  /** 순위 (같은 점수면 같은 순위) */
+  places: Map<string, number>;
+}
+const boards: Record<Board, BoardData> = {
+  points: { rows: [], tiers: new Map(), places: new Map() },
+  target: { rows: [], tiers: new Map(), places: new Map() },
+};
 
-export function setRanking(list: RankRow[]) {
-  rows = [...list].sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name));
-  tiers = new Map();
-  places = new Map();
+function build(board: Board, list: RankRow[], base: number) {
+  const rows = [...list].sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name));
+  const tiers = new Map<string, Tier>();
+  const places = new Map<string, number>();
   const n = rows.length;
   rows.forEach((r, i) => {
     const place = i > 0 && rows[i - 1].points === r.points ? places.get(rows[i - 1].name)! : i + 1;
     places.set(r.name, place);
     let tier: Tier = 'white';
-    if (r.points > 1000) for (const [t, cut] of CUT) if ((place - 1) / n < cut) {
+    if (r.points > base) for (const [t, cut] of CUT) if ((place - 1) / n < cut) {
       tier = t;
       break;
     }
     tiers.set(r.name, tier);
   });
+  boards[board] = { rows, tiers, places };
 }
 
-export const tierOf = (name: string): Tier => tiers.get(name) ?? 'white';
-export const placeOf = (name: string): number | undefined => places.get(name);
-export const ranking = () => rows;
+export function setRanking(list: RankRow[]) {
+  build('points', list, 1000);
+}
+
+/** 백발백중 랭킹: 최고 점수 기준, 0점은 구름 */
+export function setTargetRanking(list: { name: string; best: number }[]) {
+  build('target', list.map((r) => ({ name: r.name, points: r.best, wins: 0, losses: 0 })), 0);
+}
+
+export const tierOf = (name: string, board: Board = 'points'): Tier => boards[board].tiers.get(name) ?? 'white';
+export const placeOf = (name: string, board: Board = 'points'): number | undefined => boards[board].places.get(name);
+export const ranking = (board: Board = 'points') => boards[board].rows;
 
 /** 등급 아이콘 SVG: 금=해, 은=달, 동=별, 그 외=구름 */
 export function cloudSvg(tier: Tier, size = 18): string {
@@ -92,27 +110,36 @@ export function rankedName(name: string, size = 16): string {
 }
 
 /** 랭킹 창 */
-export function showRankingModal(me: string) {
+export function showRankingModal(me: string, board: Board = 'points') {
   const wrap = document.createElement('div');
   wrap.className = 'rank-modal';
+  const tg = board === 'target';
+  const rows = boards[board].rows;
   const list = rows.slice(0, 100);
   const mine = rows.find((r) => r.name === me);
   const total = rows.length;
   const line = (r: RankRow) => {
-    const t = tierOf(r.name);
-    return `<tr class="${r.name === me ? 'me' : ''} t-${t}"><td class="pl">${placeOf(r.name)}</td><td>${cloudSvg(t, 26)}</td><td class="nm">${escapeHtml(r.name)}</td><td class="pt">${r.points.toLocaleString()}P</td><td class="wl">${r.wins}승 ${r.losses}패</td></tr>`;
+    const t = tierOf(r.name, board);
+    return `<tr class="${r.name === me ? 'me' : ''} t-${t}"><td class="pl">${placeOf(r.name, board)}</td><td>${cloudSvg(t, 26)}</td><td class="nm">${escapeHtml(r.name)}</td><td class="pt">${r.points.toLocaleString()}${tg ? '점' : 'P'}</td><td class="wl">${tg ? '최고 점수' : `${r.wins}승 ${r.losses}패`}</td></tr>`;
   };
   wrap.innerHTML = `<div class="rank-box">
     <div class="rank-head"><h3>🏆 랭킹 <small>${total}명</small></h3><button class="btn small-btn" data-close>닫기</button></div>
+    <div class="seg rank-tabs"><button data-b="points" class="${tg ? '' : 'sel'}">포인트 랭킹</button><button data-b="target" class="${tg ? 'sel' : ''}">🎯 백발백중</button></div>
     <div class="rank-legend">${(['gold', 'silver', 'bronze', 'white'] as Tier[])
       .map((t, i) => `<span>${cloudSvg(t, 22)}<b>${TIER_LABEL[t]}</b><small>${['상위 10%', '상위 30%', '상위 60%', '나머지'][i]}</small></span>`)
       .join('')}</div>
-    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me)}위</b> / ${total}명 · ${cloudSvg(tierOf(me), 20)} ${TIER_LABEL[tierOf(me)]} · ${mine.points.toLocaleString()}P</p>` : `<p class="rank-me">아직 기록이 없어요. 온라인 대전에서 이기면 순위에 올라가요!</p>`}
+    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me, board)}위</b> / ${total}명 · ${cloudSvg(tierOf(me, board), 20)} ${TIER_LABEL[tierOf(me, board)]} · ${mine.points.toLocaleString()}${tg ? '점' : 'P'}</p>` : `<p class="rank-me">${tg ? '아직 기록이 없어요. 로그인하고 백발백중을 해 보세요!' : '아직 기록이 없어요. 온라인 대전에서 이기면 순위에 올라가요!'}</p>`}
     <div class="rank-scroll"><table>${list.length ? list.map(line).join('') : '<tr><td>아직 랭킹이 없어요</td></tr>'}</table></div>
-    <p class="rank-note">이기면 +100P, 지면 -100P (최저 1,000P). 1,000P인 사람은 구름이에요.</p>
+    <p class="rank-note">${tg ? '백발백중 최고 점수로 순위를 매겨요. 0점인 사람은 구름이에요.' : '이기면 +100P, 지면 -100P (최저 1,000P). 1,000P인 사람은 구름이에요.'}</p>
   </div>`;
   const close = () => wrap.remove();
   wrap.addEventListener('click', (e) => {
+    const tab = (e.target as HTMLElement).closest<HTMLElement>('[data-b]');
+    if (tab) {
+      close();
+      showRankingModal(me, tab.dataset.b as Board);
+      return;
+    }
     if (e.target === wrap || (e.target as HTMLElement).closest('[data-close]')) close();
   });
   document.body.append(wrap);

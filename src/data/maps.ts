@@ -2,7 +2,7 @@ import { Terrain, MAP_W, MAP_H } from '../physics/terrain';
 import { Rng } from '../game/rng';
 import type { TankId } from '../game/data';
 
-export type MapId = 'valley' | 'sky' | 'sphinx' | 'ledge';
+export type MapId = 'valley' | 'sky' | 'sphinx' | 'ledge' | 'target';
 
 export interface MapTheme {
   skyTop: string;
@@ -29,6 +29,14 @@ export interface MapDef {
   lockTank?: TankId;
   /** 이 맵에서는 이 무기(0~2)만 쓸 수 있다 */
   lockWeapon?: 0 | 1 | 2;
+  /** 백발백중: 과녁 맞히기 (개인전·땅 안 파임·서로 피해 없음·아이템 없음·5턴) */
+  practice?: boolean;
+}
+
+/** 백발백중 계단: 층마다 [시작 x, 끝 x, 땅 높이]. 층 너비는 탱크 6대쯤 */
+export const STEP_W = 200;
+export function targetSteps(): [number, number, number][] {
+  return Array.from({ length: 8 }, (_, i) => [i * STEP_W, (i + 1) * STEP_W, 640 - i * 42]);
 }
 
 function fillColumns(t: Terrain, topAt: (x: number) => number, bottomAt?: (x: number) => number) {
@@ -183,6 +191,30 @@ const ledge: MapDef = {
   },
 };
 
+// 백발백중: 왼쪽에서 오른쪽으로 완만하게 올라가는 계단. 꼬꼬댁 깃털탄으로 과녁을 맞힌다
+const target: MapDef = {
+  id: 'target',
+  name: '백발백중',
+  desc: '계단 위 과녁 20개를 꼬꼬댁 깃털탄으로! 5턴 동안 과녁 하나에 200점.',
+  theme: {
+    skyTop: '#7fd3ff', skyBottom: '#fff2c8',
+    grass: '#9be36a', grassDark: '#5fb34a',
+    dirtTop: '#c9a06a', dirtBottom: '#7a5634', speck: '#a07a4a',
+    far: '#b8e6c0', cloud: '#ffffff',
+  },
+  spawnA: [20, 180],
+  spawnB: [20, 180],
+  lockTank: 'rooster',
+  lockWeapon: 1,
+  practice: true,
+  build() {
+    const t = new Terrain(MAP_W, MAP_H);
+    const steps = targetSteps();
+    fillColumns(t, (x) => steps[Math.min(steps.length - 1, Math.floor(x / STEP_W))][2]);
+    return t;
+  },
+};
+
 /** 지형 전체를 위로 올린다: 땅 윗면 평균과 바닥 사이 거리의 9%만큼 */
 function raised(def: MapDef, down = 0): MapDef {
   return {
@@ -215,7 +247,7 @@ function raised(def: MapDef, down = 0): MapDef {
   };
 }
 
-export const MAPS: Record<MapId, MapDef> = { valley: raised(valley, 150), sky: raised(sky, 150), sphinx: raised(sphinx), ledge }; // 아슬아슬은 위치를 직접 맞춰 두어 올리지 않는다 (올리면 천장에 잘림)
-export const MAP_IDS: MapId[] = ['valley', 'sky', 'sphinx', 'ledge'];
+export const MAPS: Record<MapId, MapDef> = { valley: raised(valley, 150), sky: raised(sky, 150), sphinx: raised(sphinx), ledge, target }; // 아슬아슬은 위치를 직접 맞춰 두어 올리지 않는다 (올리면 천장에 잘림)
+export const MAP_IDS: MapId[] = ['valley', 'sky', 'sphinx', 'ledge', 'target'];
 /** '랜덤' 맵에서 나올 수 있는 맵 (특수 규칙 맵은 빠진다) */
 export const RANDOM_MAP_IDS: MapId[] = ['valley', 'sky', 'sphinx'];

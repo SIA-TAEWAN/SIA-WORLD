@@ -270,7 +270,7 @@ export function createLocalBackend(): Backend {
         const a = r.players.filter((p) => p.team === 0).length;
         if (r.players.length < 2) fail('need 2 players');
         if (hostOf(r) !== host) fail('not host');
-        if (a === 0 || a === r.players.length) fail('teams');
+        if (r.map !== 'target' && (a === 0 || a === r.players.length)) fail('teams');
         if (!allReady(r)) fail('not ready');
         r.status = 'playing';
         r.gone = [];
@@ -284,6 +284,17 @@ export function createLocalBackend(): Backend {
     async getRanking() {
       return Object.entries(readPoints()).map(([name, points]) => ({ name, points, wins: Math.max(0, (points - 1000) / 100), losses: 0 }));
     },
+    async submitTargetScore(name, token, score) {
+      if (accts()[name]?.token !== token) fail('need login');
+      const all: Record<string, number> = JSON.parse(localStorage.getItem('siatank:localtarget') ?? '{}');
+      all[name] = Math.max(all[name] ?? 0, score);
+      localStorage.setItem('siatank:localtarget', JSON.stringify(all));
+      return all[name];
+    },
+    async getTargetRanking() {
+      const all: Record<string, number> = JSON.parse(localStorage.getItem('siatank:localtarget') ?? '{}');
+      return Object.entries(all).map(([name, best]) => ({ name, best }));
+    },
     async getPoints(name) {
       return readPoints()[name] ?? 1000;
     },
@@ -293,7 +304,7 @@ export function createLocalBackend(): Backend {
         if (i < 0) return;
         const r = rooms[i];
         if (r.status !== 'playing' || r.game_no !== gameNo) return;
-        if (winner === 0 || winner === 1) {
+        if ((winner === 0 || winner === 1) && r.map !== 'target') {
           const pts = readPoints();
           for (const p of r.players) pts[p.name] = Math.max(1000, (pts[p.name] ?? 1000) + (p.team === winner ? 100 : -100));
           localStorage.setItem('siatank:localpoints', JSON.stringify(pts));

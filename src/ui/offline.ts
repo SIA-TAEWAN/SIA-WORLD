@@ -12,7 +12,7 @@ import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
 import { getBackend, onlineConfigured } from '../net';
-import { setRanking } from './rank';
+import { setRanking, setTargetRanking } from './rank';
 import { friendly } from '../net/backend';
 
 // ---------- 1. 입장 ----------
@@ -157,6 +157,12 @@ const MANUAL: [string, string][] = [
   ['🐯 탱크와 무기', `<p>12지신 탱크 12대가 있고, 탱크마다 1·2번 무기와 <b>3번 필살기</b>가 달라요. 무기 설명은 탱크를 고를 때 볼 수 있어요.</p>
     <p>필살기는 맞히거나 맞을 때 게이지가 차고, 100%가 되면 쓸 수 있어요.</p>
     <p><b>🎲 랜덤</b>을 고르면 게임 시작 때 탱크가 정해지고, 20% 확률로 더 강한 <b>십이지신 '열두빛'</b>이 나와요.</p>`],
+  ['🎯 백발백중', `<p><b>백발백중</b> — 꼬꼬댁과 깃털탄으로 계단 위 과녁을 맞히는 모드예요. 5턴 동안 과녁 하나당 200점! 최고 점수로 백발백중 랭킹이 매겨져요.</p>
+    <ul><li>맵에서 <b>백발백중</b>을 고르면 탱크는 꼬꼬댁, 무기는 깃털탄으로 정해지고 아이템은 쓸 수 없어요</li>
+    <li>모두 맨 왼쪽 층에서 시작해요. 땅은 파이지 않고, 서로 맞아도 피해가 없어요</li>
+    <li>바람 세기는 보통으로 정해져 있고 방향만 턴마다 바뀌어요</li>
+    <li>AI 대전에서는 혼자, 온라인에서는 여럿이 같은 과녁 20개를 두고 겨뤄요 (먼저 맞힌 사람이 점수를 가져가요)</li>
+    <li>로그인하면 최고 점수가 <b>백발백중 랭킹</b>에 올라가고, 이 맵에서는 백발백중 등급(해·달·별·구름)이 닉네임 앞에 붙어요</li></ul>`],
   ['🛒 아이템', `<p>게임 전에 상점에서 3칸까지 살 수 있어요 (AI 대전은 1,000포인트, 온라인은 내 포인트로).</p>
     <ul><li>더블샷: 같은 각도·파워로 두 번 발사 · 파워업: 이번 발사 피해 +30%</li><li>수리킷: 누르면 바로 체력 20% 회복 · 순간이동: 포탄이 떨어진 곳으로 이동</li></ul>`],
   ['🐣 게임 모드', `<ul><li><b>일반</b>: 보통 게임</li>
@@ -313,7 +319,7 @@ export function showSetup() {
         const m = id === 'random' ? null : MAPS[id];
         const bg = m ? `linear-gradient(${m.theme.skyTop}, ${m.theme.skyBottom} 60%, ${m.theme.grass} 60%, ${m.theme.dirtBottom})` : 'linear-gradient(135deg,#8ec5ff,#ffd38a)';
         return `<button class="map ${state.map === id ? 'sel' : ''}" data-id="${id}" style="--bg:${bg}">
-          <span class="mn">${m ? m.name : '랜덤'}</span><small>${m ? m.desc : '셋 중 하나를 무작위로'}${m?.lockTank ? '<br><b>🐶 모두 멍뭉이 · 2번 땅파기탄만</b>' : ''}</small></button>`;
+          <span class="mn">${m ? m.name : '랜덤'}</span><small>${m ? m.desc : '셋 중 하나를 무작위로'}${m?.practice ? '<br><b>🐔 꼬꼬댁 · 깃털탄만 · 혼자 과녁 맞히기</b>' : m?.lockTank ? '<br><b>🐶 모두 멍뭉이 · 2번 땅파기탄만</b>' : ''}</small></button>`;
       })
       .join('');
     root.querySelectorAll<HTMLElement>('.map').forEach((b) =>
@@ -349,7 +355,7 @@ export function showSetup() {
   // 닉네임 앞 랭킹 구름을 위해 랭킹만 불러온다 (AI 대전 포인트는 1,000 고정)
   if (onlineConfigured() && state.name)
     void getBackend()
-      .then((b) => b?.getRanking().then(setRanking))
+      .then((b) => Promise.all([b?.getRanking().then(setRanking), b?.getTargetRanking().then(setTargetRanking)]))
       .catch(() => undefined);
   $('#back').addEventListener('click', showEntry);
   $('#start').addEventListener('click', () => {
@@ -385,6 +391,8 @@ function startGame() {
       items: local ? [...state.shop[1]] : aiItems(diff!, rng),
     },
   ];
+  // 백발백중: AI 상대 없이 혼자 (2P는 둘이서)
+  if (MAPS[mapId].practice && !local) setups.pop();
   // 판이 끝나면 포인트·아이템 초기화
   state.shop = [[], []];
 
@@ -400,6 +408,7 @@ function startGame() {
     onEnd: (s: MatchSummary) => {
       closeGame();
       showResult(s);
+      if (s.practice) void recordTarget(s);
     },
     onQuit: () => {
       closeGame();
@@ -409,6 +418,47 @@ function startGame() {
 }
 
 // ---------- 4. 결과 ----------
+
+/** 백발백중 점수를 내 기록에 올린다 (로그인했을 때만) */
+export async function recordTarget(s: MatchSummary) {
+  const me = s.players.find((p) => p.mine);
+  if (!me || !state.token || !onlineConfigured()) return;
+  try {
+    const b = await getBackend();
+    if (!b) return;
+    const best = await b.submitTargetScore(state.name, state.token, me.damage);
+    setTargetRanking(await b.getTargetRanking());
+    toast(`🎯 ${me.damage}점 · 내 최고 ${best}점`);
+  } catch {
+    /* 기록을 못 올려도 결과는 보여 준다 */
+  }
+}
+
+function showTargetResult(s: MatchSummary, act: ResultActions) {
+  const players = [...s.players].sort((a, b) => b.damage - a.damage);
+  const top = players[0];
+  const root = screen(
+    `<div class="result-card">
+      <div class="trophy">🎯</div>
+      <h2>${players.length > 1 ? `${escapeHtml(top.name)} 1등!` : `${top.damage.toLocaleString()}점!`}</h2>
+      <p class="sub">백발백중 · 과녁 하나 200점 (최대 1,000점)</p>
+      <table class="score">
+        <thead><tr><th>순위</th><th>플레이어</th><th>맞힌 과녁</th><th>점수</th></tr></thead>
+        <tbody>${players
+          .map((p, i) => `<tr class="${i === 0 ? 'win' : ''}"><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${p.damage / 200}개</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`)
+          .join('')}</tbody>
+      </table>
+      <div class="actions">
+        <button class="btn big primary" id="again">${act.primary}</button>
+        ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
+      </div>
+      <p class="hint">${state.token ? '최고 점수가 백발백중 랭킹에 올라가요' : '로그인하면 최고 점수가 백발백중 랭킹에 올라가요'}</p>
+    </div>`,
+    'result',
+  );
+  root.querySelector('#again')!.addEventListener('click', act.onPrimary);
+  if (act.onSecondary) root.querySelector('#home')?.addEventListener('click', act.onSecondary);
+}
 
 export interface ResultActions {
   primary: string;
@@ -420,6 +470,7 @@ export interface ResultActions {
 
 export function showResult(s: MatchSummary, actions?: ResultActions) {
   const act: ResultActions = actions ?? { primary: '다시 하기', onPrimary: showSetup, secondary: '처음으로', onSecondary: showEntry };
+  if (s.practice) return showTargetResult(s, act);
   const winText = s.winner === -1 ? '무승부!' : `${TEAM_NAMES[s.winner]} 승리!`;
   const meWon = s.players.some((p) => p.team === s.winner && p.mine);
   const vsAi = true;

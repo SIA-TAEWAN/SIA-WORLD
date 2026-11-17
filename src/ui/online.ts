@@ -13,10 +13,10 @@ import { OnlineGame } from '../net/online';
 import { $, closeGame, launchGame, nav, screen, setScreenCleanup, state, toast } from './app';
 import { escapeHtml } from './hud';
 import { renderShop } from './shop';
-import { rankedName, setRanking, showRankingModal } from './rank';
+import { rankedName, setRanking, setTargetRanking, showRankingModal } from './rank';
 import { tankSvg } from './tankSvg';
 import { sfx } from './sfx';
-import { showResult } from './offline';
+import { recordTarget, showResult } from './offline';
 
 let backend: Backend | null = null;
 let lobby: LobbySession | null = null;
@@ -69,6 +69,7 @@ async function refreshRanking() {
   if (!backend) return;
   try {
     setRanking(await backend.getRanking());
+    setTargetRanking(await backend.getTargetRanking());
   } catch {
     /* 랭킹을 못 받아도 게임은 계속 */
   }
@@ -307,6 +308,8 @@ function renderRoom(id: string) {
   };
 
   const teamsOk = (r: Room) => {
+    // 백발백중은 개인전 (팀 나눔 없음)
+    if (r.map === 'target') return r.players.length >= 2;
     const a = r.players.filter((p) => p.team === 0).length;
     return r.players.length >= 2 && a > 0 && a < r.players.length;
   };
@@ -395,8 +398,8 @@ function renderRoom(id: string) {
     }
     $(root, '#tank-name').textContent =
       mineP.tank === 'random' ? '랜덤 · 게임 시작 때 정해져요 (20% 확률로 십이지신 열두빛)' : `${TANKS[mineP.tank].name} (${TANKS[mineP.tank].animal}) · ${TANKS[mineP.tank].role}`;
-    $(root, '#map-note').textContent = (room.map !== 'random' && MAPS[room.map].lockTank ? '🐶 아슬아슬: 모두 멍뭉이 · 땅파기탄(2번)만! · ' : '') + (iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요');
-    const needTeam = room.players.length >= 3 || !teamsOk(room);
+    $(root, '#map-note').textContent = (room.map === 'target' ? '🎯 백발백중: 모두 꼬꼬댁 · 깃털탄만 · 개인전 · 같은 과녁 20개를 먼저 맞히면 200점! · ' : room.map !== 'random' && MAPS[room.map].lockTank ? '🐶 아슬아슬: 모두 멍뭉이 · 땅파기탄(2번)만! · ' : '') + (iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요');
+    const needTeam = room.map !== 'target' && (room.players.length >= 3 || !teamsOk(room));
     $(root, '#team-box').style.display = needTeam ? '' : 'none';
     $(root, '#team').innerHTML = ([0, 1] as const)
       .map((t) => `<button data-v="${t}" class="${mineP.team === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} style="--c:${TEAM_COLORS[t]}"><span class="team-dot" style="--c:${TEAM_COLORS[t]}"></span>${TEAM_NAMES[t]}</button>`)
@@ -558,7 +561,7 @@ function setupsOf(room: Room): PlayerSetup[] {
   // 2:1이면 사람이 적은 팀에 AI(초보 또는 보통)가 한 명 들어온다 (시드로 정해서 모든 기기가 같다)
   const n0 = list.filter((p) => p.team === 0).length;
   const n1 = list.length - n0;
-  if (list.length === 3 && Math.abs(n0 - n1) === 1) {
+  if (list.length === 3 && Math.abs(n0 - n1) === 1 && room.map !== 'target') {
     const r = new Rng(((room.seed ?? 1) ^ 0x2545f491) >>> 0);
     const easy = r.next() < 0.5;
     list.push({ name: easy ? 'AI(초보)' : 'AI(보통)', tank: r.pick(TANK_IDS), team: n0 < n1 ? 0 : 1, ai: easy ? 'easy' : 'normal', items: [] });
@@ -615,11 +618,12 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
       // 판 결과 정리 (실패하면 몇 번 더 시도)
       const present = g.presentIds();
       const before = state.points;
-      lastWinner = s.winner === -1 ? null : s.winner;
+      // 백발백중은 포인트를 주고받지 않는다 (점수는 백발백중 랭킹으로)
+      lastWinner = s.winner === -1 || s.practice ? null : s.winner;
       const finish = async () => {
         for (let i = 0; i < 4; i++) {
           try {
-            await backend!.endGame(room.id, g.gameNo, present, s.winner === -1 ? null : s.winner);
+            await backend!.endGame(room.id, g.gameNo, present, lastWinner);
             break;
           } catch {
             await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
@@ -628,6 +632,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
         await sess.refetch();
         state.points = await backend!.getPoints(state.name).catch(() => state.points);
         await refreshRanking();
+        if (s.practice) return void recordTarget(s);
         const d = state.points - before;
         toast(d > 0 ? `🏅 승리! 포인트 +${d} → ${state.points.toLocaleString()}P` : d < 0 ? `포인트 ${d} → ${state.points.toLocaleString()}P` : `포인트 ${state.points.toLocaleString()}P (최저 1,000)`);
       };

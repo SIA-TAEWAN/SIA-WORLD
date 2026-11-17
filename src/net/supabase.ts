@@ -114,6 +114,12 @@ export function createSupabaseBackend(url: string, key: string): Backend {
       if (error) throw new Error(error.message);
       return (data as { points: number } | null)?.points ?? 1000;
     },
+    submitTargetScore: (name, tok, score) => rpc<number>('submit_target_score', { p_name: name, p_token: tok, p_score: score }),
+    async getTargetRanking() {
+      const { data, error } = await sb.from('target_scores').select('name,best').order('best', { ascending: false }).limit(1000);
+      if (error) throw new Error(error.message);
+      return (data ?? []) as { name: string; best: number }[];
+    },
     quitGame: (id, playerId) => rpc<void>('quit_game', { p_id: id, p_player: playerId }),
     touchRoom: (id, playerId) => rpc<void>('touch_room', { p_id: id, p_player: playerId }),
     sweepRooms: (lobby) => rpc<void>('sweep_rooms', { p_lobby: lobby }),

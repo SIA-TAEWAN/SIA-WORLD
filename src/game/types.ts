@@ -35,6 +35,8 @@ export interface TankState {
   damageDealt: number;
   ai: Difficulty | null;
   lastPower: number;
+  /** 백발백중: 쏜 횟수 */
+  shots?: number;
   /** 중독이 남은 턴 수 (꼬꼬댁 깃털탄) */
   poison?: number;
   /** 중독 세기 배율 (증폭벽을 지난 탄이면 1.3) */
@@ -55,6 +57,7 @@ export interface TurnInput {
 
 export type SimEvent =
   | { f: number; type: 'explode'; x: number; y: number; radius: number; crater: number; big: boolean; fx?: 'claw'; zone?: Zone }
+  | { f: number; type: 'target'; id: number; by: number; x: number; y: number; points: number }
   | { f: number; type: 'build'; x: number; y: number; r: number }
   | { f: number; type: 'carveLine'; x1: number; y1: number; x2: number; y2: number; r: number }
   | { f: number; type: 'laser'; x1: number; y1: number; x2: number; y2: number; r: number }

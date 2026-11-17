@@ -33,7 +33,14 @@ export interface ShotWorld {
   wind: number;
   /** 특수 벽 */
   wall?: Wall | null;
+  /** 백발백중 과녁 (맞으면 그 자리에서 터진다) */
+  targets?: { x: number; y: number }[];
+  /** 탱크끼리 맞지 않는다 (백발백중) */
+  ghosts?: boolean;
 }
+
+/** 과녁 반지름. 과녁 중심은 땅(y)에서 TARGET_R 위 */
+export const TARGET_R = 14;
 
 export interface Volley {
   /** 몇 프레임 뒤에 발사되는지 */
@@ -132,6 +139,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
   };
 
   const hitTank = (x: number, y: number, s: Shell): number | null => {
+    if (world.ghosts) return null;
     for (const t of tanks) {
       if (!t.alive) continue;
       if (t.idx === p.owner && s.age < OWNER_ARM_FRAMES) continue;
@@ -145,6 +153,7 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
 
   // 드릴·바운스탄은 적 탱크 가까이 가면 바로 터진다
   const nearEnemy = (x: number, y: number, r: number): number | null => {
+    if (world.ghosts) return null;
     for (const t of tanks) {
       if (!t.alive || t.team === owner.team) continue;
       const c = tankCenter(t);
@@ -411,6 +420,10 @@ export function fly(world: ShotWorld, p: ShotParams, handler: ImpactHandler | nu
         const t = hitTank(s.x, s.y, s);
         if (t !== null) {
           impact(s, s.x, s.y, t);
+          break;
+        }
+        if (world.targets?.some((g) => (s.x - g.x) ** 2 + (s.y - (g.y - TARGET_R)) ** 2 <= TARGET_R * TARGET_R)) {
+          impact(s, s.x, s.y, null);
           break;
         }
         if (w.behavior === 'bounce' && s.bounces < (w.bounces ?? 0) && nearEnemy(s.x, s.y, PROXIMITY) !== null) {

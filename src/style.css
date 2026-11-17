@@ -1938,3 +1938,23 @@ body.in-game .sound-fab {
 .pslot { position: relative; }
 .pslot .kick { position: absolute; top: 6px; right: 6px; border: 2px solid var(--ink); background: #fff; color: #c0392b; border-radius: 10px; font: inherit; font-size: 12px; padding: 1px 6px; cursor: pointer; }
 .pslot .kick:hover { background: #ffe1dc; }
+
+/* 백발백중 점수판 */
+.target-board {
+  position: absolute;
+  top: 168px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(30, 20, 10, 0.55);
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 5;
+}
+.target-board span { opacity: 0.85; }
+.target-board span.cur { opacity: 1; color: #ffe14d; }
+.rank-tabs { margin: 6px 0; }

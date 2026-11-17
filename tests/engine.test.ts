@@ -731,3 +731,54 @@ describe('뭉게구름·질주탄', () => {
     expect(ex[2].crater / ex[0].crater).toBeCloseTo(0.5, 1);
   });
 });
+
+describe('백발백중', () => {
+  const solo = (n = 1): PlayerSetup[] => Array.from({ length: n }, (_, i) => ({ name: `P${i}`, tank: 'tiger', team: (i % 2) as 0 | 1, ai: null, items: ['power'] }));
+  it('꼬꼬댁 고정·왼쪽 층 시작·겹치지 않음·아이템 없음·과녁 20개', () => {
+    const m = new Match(solo(4), 'target', 7);
+    expect(m.targets.length).toBe(20);
+    for (const t of m.tanks) {
+      expect(t.tankId).toBe('rooster');
+      expect(t.x).toBeLessThan(200);
+      expect(t.items.every((i) => i === null)).toBe(true);
+    }
+    const xs = m.tanks.map((t) => t.x).sort((a, b) => a - b);
+    xs.forEach((x, i) => i && expect(x - xs[i - 1]).toBeGreaterThanOrEqual(40));
+    // 과녁끼리는 깃털탄 폭발 범위(8)+과녁 크기의 두 배보다 멀다
+    for (const a of m.targets) for (const b of m.targets) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(44);
+  });
+  it('과녁을 맞히면 200점, 땅은 안 파이고, 5번 쏘면 끝', () => {
+    let hit = false;
+    for (let p = 20; p <= 100 && !hit; p++) {
+      const m = new Match(solo(1), 'target', 3);
+      const before = m.terrain.hash();
+      m.startTurn();
+      expect(Math.abs(m.wind)).toBe(5);
+      m.wind = 0;
+      const r = m.fire(shot({ angle: 45, power: p }));
+      expect(m.terrain.hash()).toBe(before);
+      if (r.events.some((e) => e.type === 'target')) {
+        hit = true;
+        expect(m.tanks[0].damageDealt).toBe(200);
+        expect(m.targets.length).toBe(19);
+        for (let i = 0; i < 4; i++) {
+          expect(m.over).toBe(false);
+          m.startTurn();
+          m.fire(shot({ angle: 80, power: 10 }));
+        }
+        expect(m.over).toBe(true);
+      }
+    }
+    expect(hit).toBe(true);
+  });
+  it('서로 맞지 않는다', () => {
+    const m = new Match(solo(2), 'target', 5);
+    m.startTurn();
+    const o = m.tanks.find((t) => t.idx !== m.current)!;
+    m.cur.x = o.x - 40;
+    m.settle(m.cur);
+    const r = m.fire(shot({ angle: 10, power: 30, facing: 1 }));
+    expect(r.events.some((e) => e.type === 'damage')).toBe(false);
+    expect(o.hp).toBe(o.maxHp);
+  });
+});

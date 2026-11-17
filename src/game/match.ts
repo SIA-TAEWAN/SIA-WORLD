@@ -1,9 +1,9 @@
 import { ITEMS, ITEM_IDS, TANKS, WEAPONS, type ItemId, type WeaponDef } from './data';
 import { Rng } from './rng';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput, Wall, WallKind, Zone } from './types';
-import { MAPS, type MapId } from '../data/maps';
+import { MAPS, STEP_W, targetSteps, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
-import { fly, tankCenter, TANK_HIT_R, WIND_K, type ImpactHandler } from '../physics/shot';
+import { fly, tankCenter, TANK_HIT_R, TARGET_R, WIND_K, type ImpactHandler } from '../physics/shot';
 
 const MOVE_DELAY_PER_PX = 0.5;
 const ULT_PER_DEALT = 0.12;
@@ -19,6 +19,17 @@ const ZONE_R = 18;
 const WALL_CHANCE = 0.05;
 /** 땅이 파이는 크기 배율 (전체 10% 축소) */
 const CRATER_SCALE = 0.9;
+
+/** 백발백중: 한 사람이 쏘는 횟수, 과녁 수, 과녁 하나 점수 */
+export const PRACTICE_TURNS = 5;
+export const TARGET_COUNT = 20;
+export const TARGET_POINTS = 200;
+export interface Target {
+  id: number;
+  x: number;
+  /** 과녁이 선 땅 높이 */
+  y: number;
+}
 
 /** 바람이 바뀌는 빠르기: 턴마다 바뀌는 최대 폭 */
 export const WIND_STEPS = { slow: 2, normal: 5, fast: 8 } as const;
@@ -73,6 +84,8 @@ export class Match {
   /** 판마다 무작위 특수 벽 하나 (두 팀 사이 가운데) */
   wall: Wall | null = null;
   nextZone = 0;
+  /** 백발백중 과녁 (맞히면 사라진다) */
+  targets: Target[] = [];
   /** 이번 턴 시작에 떨어진 상자 (화면 연출용) */
   lastDrop: CrateDrop[] | null = null;
   /** 상자를 주운 기록 (화면이 꺼내 간다) */
@@ -97,7 +110,23 @@ export class Match {
     const slotX = new Map<PlayerSetup, number>();
     // 시작 위치는 무작위: 어느 팀이 왼쪽일지, 자기 구역 안 어디에 설지 (같은 팀끼리 70px 이상 떨어지게)
     const swap = this.rng.next() < 0.5;
-    ([0, 1] as const).forEach((team) => {
+    if (map.practice) {
+      // 백발백중: 모두 맨 왼쪽 층에서, 서로 겹치지 않게 (사람이 많으면 시작 영역을 넓힌다)
+      const gap = 40;
+      const width = Math.max(STEP_W - 40, setups.length * (gap + 4));
+      const xs: number[] = [];
+      for (const s of setups) {
+        let x = 0;
+        let ok = false;
+        for (let k = 0; k < 60 && !ok; k++) {
+          x = Math.round(this.rng.range(20, 20 + width));
+          ok = xs.every((o) => Math.abs(o - x) >= gap);
+        }
+        if (!ok) x = 20 + xs.length * gap;
+        xs.push(x);
+        slotX.set(s, x);
+      }
+    } else ([0, 1] as const).forEach((team) => {
       const [a, b] = (team === 0) !== swap ? map.spawnA : map.spawnB;
       const xs: number[] = [];
       for (const s of byTeam[team]) {
@@ -124,12 +153,12 @@ export class Match {
         y: 0,
         hp: def.hp,
         maxHp: def.hp,
-        facing: x < this.terrain.w / 2 ? 1 : -1,
+        facing: map.practice || x < this.terrain.w / 2 ? 1 : -1,
         angle: Math.round((def.angleMin + def.angleMax) / 2),
         delay: this.rng.int(0, 120),
         ult: 0,
         alive: true,
-        items: [...s.items.slice(0, 3), null, null, null].slice(0, 3) as (ItemId | null)[],
+        items: (map.practice ? [null, null, null] : [...s.items.slice(0, 3), null, null, null].slice(0, 3)) as (ItemId | null)[],
         damageDealt: 0,
         ai: s.ai,
         lastPower: 0,
@@ -140,6 +169,43 @@ export class Match {
       t.x = gx;
       t.y = Math.max(0, this.terrain.surface(gx));
       return t;
+    });
+    if (map.practice) this.placeTargets();
+  }
+
+  /** 백발백중인가 */
+  get practice(): boolean {
+    return !!MAPS[this.mapId].practice;
+  }
+
+  /** 백발백중: 탱크끼리 맞지 않는다 */
+  get ghosts(): boolean {
+    return this.practice;
+  }
+
+  /** 시작 층을 뺀 계단에 과녁 20개. 한 발에 하나만 맞도록 서로 깃털탄 폭발 범위보다 멀리 둔다 */
+  private placeTargets() {
+    const steps = targetSteps().slice(1);
+    const per = steps.map(() => Math.floor(TARGET_COUNT / steps.length));
+    for (let left = TARGET_COUNT - per.reduce((a, b) => a + b, 0); left > 0; ) {
+      const i = this.rng.int(0, steps.length - 1);
+      if (per[i] < 3) {
+        per[i]++;
+        left--;
+      }
+    }
+    const gap = 56;
+    steps.forEach(([x0, x1, y], i) => {
+      const lo = x0 + 18;
+      const hi = x1 - 18;
+      let xs: number[] = [];
+      for (let k = 0; k < 80; k++) {
+        xs = Array.from({ length: per[i] }, () => Math.round(this.rng.range(lo, hi))).sort((a, b) => a - b);
+        if (xs.every((x, j) => j === 0 || x - xs[j - 1] >= gap)) break;
+        xs = [];
+      }
+      if (!xs.length) xs = Array.from({ length: per[i] }, (_, j) => Math.round(lo + ((hi - lo) * (j + 0.5)) / per[i]));
+      for (const x of xs) this.targets.push({ id: this.targets.length, x, y });
     });
   }
 
@@ -168,7 +234,7 @@ export class Match {
 
   /** 다음 턴 순서 (딜레이 낮은 순) */
   order(): TankState[] {
-    return this.tanks.filter((t) => t.alive).sort((a, b) => a.delay - b.delay || a.idx - b.idx);
+    return this.tanks.filter((t) => t.alive && (!this.practice || (t.shots ?? 0) < PRACTICE_TURNS)).sort((a, b) => a.delay - b.delay || a.idx - b.idx);
   }
 
   startTurn(): TankState {
@@ -177,17 +243,19 @@ export class Match {
     this.turn++;
     // 특수 벽: 3턴이 지나면 사라지고, 없을 때만 턴마다 5% 확률로 생긴다
     if (this.wall && this.turn >= this.wall.until) this.wall = null;
-    if (!this.wall && this.rng.next() < WALL_CHANCE) this.wall = this.placeWall();
+    if (!this.wall && !this.practice && this.rng.next() < WALL_CHANCE) this.wall = this.placeWall();
     // 바람은 직전 바람에서 ±0~(빠르기)만 바뀐다 (첫 턴은 -5~5)
     const step = this.turn === 1 ? 5 : WIND_STEPS[this.options.wind ?? 'normal'];
     const dw = this.rng.int(-step, step);
     this.wind = this.turn === 1 ? dw : Math.max(-10, Math.min(10, this.wind + dw));
+    // 백발백중: 바람 세기는 '보통'(5) 고정, 방향만 턴마다 무작위
+    if (this.practice) this.wind = this.rng.next() < 0.5 ? -5 : 5;
     this.moveLeft = next.def.move;
     this.refillUlt();
     this.movedThisTurn = 0;
     // 내 차례가 오면 내가 만든 불·독안개는 사라진다
     this.zones = this.zones.filter((z) => (z.until !== undefined ? this.turn < z.until : z.owner !== next.idx));
-    this.lastDrop = this.turn % DROP_EVERY === 0 ? this.dropCrates() : null;
+    this.lastDrop = this.turn % DROP_EVERY === 0 && !this.practice ? this.dropCrates() : null;
     return next;
   }
 
@@ -347,6 +415,10 @@ export class Match {
   skipTurn() {
     const t = this.cur;
     t.delay += t.def.delay + this.movedThisTurn * MOVE_DELAY_PER_PX;
+    if (this.practice) {
+      t.shots = (t.shots ?? 0) + 1;
+      this.checkWinner();
+    }
   }
 
   fire(input: TurnInput): ShotResult {
@@ -355,6 +427,7 @@ export class Match {
     t.facing = input.facing;
     this.setAngle(input.angle);
     t.lastPower = input.power;
+    if (this.practice) t.shots = (t.shots ?? 0) + 1;
 
     let slot = this.weaponLock ?? input.weapon;
     if (slot === 2 && !this.canUseUlt(t)) slot = 0;
@@ -362,7 +435,7 @@ export class Match {
     const w = this.weaponOf(t, slot);
 
     let item: ItemId | null = null;
-    if (input.itemSlot !== null && t.items[input.itemSlot]) {
+    if (input.itemSlot !== null && t.items[input.itemSlot] && !this.practice) {
       item = t.items[input.itemSlot];
       t.items[input.itemSlot] = null;
     }
@@ -415,6 +488,25 @@ export class Match {
     {
       const handler: ImpactHandler = {
         explode: (f, x, y, direct, scale = 1, boost = 1, dmgScale = 1) => {
+          if (this.practice) {
+            // 백발백중: 땅이 파이지 않고 서로 피해도 없다. 가장 가까운 과녁 하나만 맞는다
+            events.push({ f, type: 'explode', x, y, radius: w.radius, crater: 0, big: false, fx: w.fx });
+            let best: Target | null = null;
+            let bd = Infinity;
+            for (const g of this.targets) {
+              const d = Math.hypot(g.x - x, g.y - TARGET_R - y);
+              if (d <= w.radius + TARGET_R && d < bd) {
+                bd = d;
+                best = g;
+              }
+            }
+            if (best) {
+              this.targets = this.targets.filter((g) => g !== best);
+              t.damageDealt += TARGET_POINTS;
+              events.push({ f, type: 'target', id: best.id, by: t.idx, x: best.x, y: best.y, points: TARGET_POINTS });
+            }
+            return;
+          }
           // boost: 증폭벽을 지난 탄 (파워업처럼 피해·구덩이 증가)
           const cr = Math.max(4, Math.round(crater * scale * boost));
           this.terrain.carve(x, y, cr);
@@ -477,7 +569,7 @@ export class Match {
           events.push({ f, type: 'carveLine', x1, y1, x2, y2, r });
         },
       };
-      const out = fly(this, { owner: t.idx, facing: input.facing, angle: this.worldAngle(t, t.angle, input.facing), power: input.power, weapon: w, damageMul, volleys, tilt: this.tilt(t), big: slot === 2, assist: this.options.mode === 'easy' && !t.ai ? EASY_HOMING : 0 }, handler);
+      const out = fly(this, { owner: t.idx, facing: input.facing, angle: this.worldAngle(t, t.angle, input.facing), power: input.power, weapon: w, damageMul, volleys, tilt: this.tilt(t), big: slot === 2, assist: this.options.mode === 'easy' && !t.ai && !this.practice ? EASY_HOMING : 0 }, handler);
       const firstImpact = out.impacts[0] ? { x: out.impacts[0].x, y: out.impacts[0].y } : null;
       result = { frames: out.frames, shells: out.shells, events, firstImpact };
 
@@ -584,6 +676,13 @@ export class Match {
   }
 
   checkWinner() {
+    if (this.practice) {
+      // 백발백중: 모두 5번 쏘면 끝. 점수가 가장 높은 사람(같으면 먼저 들어온 사람)의 팀
+      if (this.tanks.some((t) => t.alive && (t.shots ?? 0) < PRACTICE_TURNS)) return;
+      const top = [...this.tanks].sort((a, b) => b.damageDealt - a.damageDealt || a.idx - b.idx)[0];
+      this.winner = top.team;
+      return;
+    }
     const teams = new Set(this.tanks.filter((t) => t.alive).map((t) => t.team));
     if (teams.size === 0) this.winner = -1;
     else if (teams.size === 1) this.winner = [...teams][0];
@@ -591,11 +690,12 @@ export class Match {
 
   /** 기기 간 비교용 상태 지문 (지형 + 탱크 + 난수 상태) */
   stateHash(): string {
-    const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10), t.poison ?? 0, t.poisonMul ?? 1].join(',')).join(';');
+    const tanks = this.tanks.map((t) => [t.x, t.y, t.hp, t.alive ? 1 : 0, Math.round(t.delay * 10), Math.round(t.ult * 10), t.poison ?? 0, t.poisonMul ?? 1, t.shots ?? 0, t.damageDealt].join(',')).join(';');
     const crates = this.crates.map((c) => `${c.id}:${c.x},${c.y}`).join(';');
     const zones = this.zones.map((z) => `${z.id}:${z.kind}:${z.x},${z.y}`).join(';');
     const wall = this.wall ? `${this.wall.kind}:${this.wall.x}:${this.wall.until}` : '';
-    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}|${wall}`;
+    const tg = this.targets.map((g) => g.id).join(',');
+    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}|${wall}|${tg}`;
   }
 
   snapshot(): MatchSnapshot {
@@ -617,9 +717,10 @@ export class Match {
       zones: this.zones.map((z) => ({ ...z })),
       nextZone: this.nextZone,
       wall: this.wall ? { ...this.wall } : null,
+      targets: this.targets.map((g) => ({ ...g })),
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
-        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0, poisonMul: t.poisonMul ?? 1,
+        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0, poisonMul: t.poisonMul ?? 1, shots: t.shots ?? 0,
       })),
     };
   }
@@ -639,6 +740,7 @@ export class Match {
     m.zones = (s.zones ?? []).map((z) => ({ ...z }));
     m.nextZone = s.nextZone ?? 0;
     m.wall = s.wall ? { ...s.wall } : null;
+    if (s.targets) m.targets = s.targets.map((g) => ({ ...g }));
     s.tanks.forEach((d, i) => Object.assign(m.tanks[i], d));
     return m;
   }
@@ -666,5 +768,6 @@ export interface MatchSnapshot {
   zones?: Zone[];
   nextZone?: number;
   wall?: Wall | null;
-  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison' | 'poisonMul'>[];
+  targets?: Target[];
+  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison' | 'poisonMul' | 'shots'>[];
 }

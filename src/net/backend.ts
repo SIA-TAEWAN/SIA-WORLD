@@ -80,6 +80,10 @@ export interface Backend {
   getPoints(name: string): Promise<number>;
   /** 포인트 랭킹 (포인트 높은 순) */
   getRanking(): Promise<{ name: string; points: number; wins: number; losses: number }[]>;
+  /** 백발백중 점수 기록 (로그인한 본인만) → 최고 점수 */
+  submitTargetScore(name: string, token: string, score: number): Promise<number>;
+  /** 백발백중 랭킹 (최고 점수 높은 순) */
+  getTargetRanking(): Promise<{ name: string; best: number }[]>;
   /** 게임 중 나가기 (모두 나가면 방이 사라진다) */
   quitGame(id: string, playerId: string): Promise<void>;
   /** 방에 아직 사람이 있다는 신호 */

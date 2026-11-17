@@ -22,6 +22,8 @@ export interface MatchSummary {
   winner: 0 | 1 | -1;
   players: { name: string; tank: string; team: 0 | 1; damage: number; alive: boolean; ai: boolean; mine: boolean }[];
   turns: number;
+  /** 백발백중 (damage가 점수) */
+  practice?: boolean;
 }
 
 export interface GameChat {
@@ -128,7 +130,7 @@ class TankView {
     // 랭킹 구름 (AI는 없음)
     const parts: Phaser.GameObjects.GameObject[] = [name, this.hpBar, this.arrow];
     if (!t.ai) {
-      const cloud = scene.add.image(-name.width / 2 - 2, -60 + this.dy, `cloud-${tierOf(t.name)}`).setOrigin(1, 0.5).setDisplaySize(36, 25);
+      const cloud = scene.add.image(-name.width / 2 - 2, -60 + this.dy, `cloud-${tierOf(t.name, (scene as unknown as { match?: Match }).match?.practice ? 'target' : 'points')}`).setOrigin(1, 0.5).setDisplaySize(36, 25);
       name.x = 19;
       cloud.x = name.x - name.width / 2 - 2;
       parts.push(cloud);
@@ -289,6 +291,10 @@ export class GameScene extends Phaser.Scene {
   private shellSprites = new Map<object, Phaser.GameObjects.Image>();
   /** 땅에 놓인 보급 상자 그림 (상자 id별) */
   private crateViews = new Map<number, Phaser.GameObjects.Container>();
+  /** 백발백중 과녁 그림 */
+  private targetViews = new Map<number, Phaser.GameObjects.Container>();
+  private board: HTMLElement | null = null;
+  private boardKey = '';
   /** 땅에 남은 불·독안개 그림 */
   private zoneViews = new Map<number, Phaser.GameObjects.Container>();
 
@@ -328,6 +334,42 @@ export class GameScene extends Phaser.Scene {
         this.tweens.add({ targets: blob, alpha: { from: 0.35, to: 0.65 }, y: blob.y - 4, duration: 1000 + i * 150 + k * 90, yoyo: true, repeat: -1 });
       }
     this.zoneViews.set(z.id, c);
+  }
+
+  /** 백발백중 과녁: 엔진에 남은 과녁을 그린다 (날아가는 중에는 맞는 순간에 지운다) */
+  private syncTargets() {
+    const m = this.match;
+    if (!m.practice) return;
+    const live = new Set(m.targets.map((g) => g.id));
+    for (const g of m.targets) {
+      if (this.targetViews.has(g.id)) continue;
+      const gfx = this.add.graphics();
+      const r = 14;
+      gfx.fillStyle(0x6b4a2a).fillRect(-2, -4, 4, 6);
+      ([[r, 0xe23b3b], [r * 0.72, 0xffffff], [r * 0.45, 0xe23b3b], [r * 0.18, 0xffe14d]] as const).forEach(([rr, c]) => gfx.fillStyle(c).fillCircle(0, -r, rr));
+      gfx.lineStyle(1.5, 0x5a1a1a).strokeCircle(0, -r, r);
+      this.targetViews.set(g.id, this.add.container(g.x, g.y, [gfx]).setDepth(5));
+    }
+    if (this.phase !== 'fly')
+      for (const [id, v] of this.targetViews)
+        if (!live.has(id)) {
+          v.destroy();
+          this.targetViews.delete(id);
+        }
+    // 점수판 (남은 과녁, 사람별 점수·남은 발)
+    const key = `${m.targets.length}|${m.tanks.map((t) => `${t.damageDealt}:${t.shots ?? 0}`).join(',')}|${m.current}`;
+    if (key === this.boardKey) return;
+    this.boardKey = key;
+    if (!this.board) {
+      this.board = document.createElement('div');
+      this.board.className = 'target-board';
+      this.cfg.hudParent.append(this.board);
+      this.events.once('shutdown', () => this.board?.remove());
+    }
+    const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    this.board.innerHTML = `<b>🎯 남은 과녁 ${m.targets.length}</b>${m.tanks
+      .map((t) => `<span class="${t.idx === m.current ? 'cur' : ''}">${esc(t.name)} <b>${t.damageDealt}</b>점 · ${Math.max(0, 5 - (t.shots ?? 0))}발</span>`)
+      .join('')}`;
   }
 
   private syncZones() {
@@ -964,6 +1006,7 @@ export class GameScene extends Phaser.Scene {
     else if (this.phase === 'fly') this.updatePlayback(dt * this.speed);
     this.updateOffTurn(dt);
     this.syncCrates();
+    this.syncTargets();
     if (this.phase !== 'fly') this.syncZones();
     this.syncWall();
 
@@ -1401,6 +1444,17 @@ export class GameScene extends Phaser.Scene {
         if (e.zone) this.addZoneView(e.zone);
         break;
       }
+      case 'target': {
+        const v = this.targetViews.get(e.id);
+        if (v) {
+          this.targetViews.delete(e.id);
+          this.tweens.add({ targets: v, scale: 1.6, alpha: 0, duration: 350, onComplete: () => v.destroy() });
+        }
+        this.puff(e.x, e.y - 14, 0xffe066, 10);
+        this.floatText(e.x, e.y - 40, `+${e.points}`, '#ffe14d');
+        sfx.click();
+        break;
+      }
       case 'build': {
         this.vis.circle(e.x, e.y, e.r, 1);
         for (let y = Math.floor(e.y - e.r); y <= e.y + e.r; y++)
@@ -1528,6 +1582,7 @@ export class GameScene extends Phaser.Scene {
     const summary: MatchSummary = {
       winner: m.winner as 0 | 1 | -1,
       turns: m.turn,
+      practice: m.practice,
       players: m.tanks.map((t) => ({ name: t.name, tank: t.tankId, team: t.team, damage: t.damageDealt, alive: t.alive, ai: !!t.ai, mine: this.cfg.net ? t.idx === this.cfg.net.myIdx : !t.ai })),
     };
     this.time.delayedCall(1400, () => this.cfg.onEnd(summary));
