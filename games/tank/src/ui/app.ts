@@ -5,6 +5,10 @@ import type { Difficulty } from '../game/types';
 import { load } from './storage';
 import { music } from './music';
 import { sfx } from './sfx';
+import { DPR } from './dpr';
+
+/** 게임 캔버스 크기 맞추기 (게임 중에만) */
+let onResize: (() => void) | null = null;
 
 export type Opponent = Difficulty | 'local';
 
@@ -121,13 +125,19 @@ export function launchGame(cfg: Omit<GameConfig, 'touch' | 'hudParent'>) {
         type: Phaser.AUTO,
         parent: gameEl,
         transparent: true,
-        scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+        scale: { mode: Phaser.Scale.NONE, width: window.innerWidth * DPR, height: window.innerHeight * DPR, zoom: 1 / DPR },
         render: { antialias: true, roundPixels: false },
         input: { keyboard: false },
         banner: false,
       });
       g.scene.add('game', GameScene, true, { ...cfg, touch, hudParent: hudEl });
       game = g;
+      // 창 크기가 바뀌면 캔버스도 (기기 픽셀 기준으로) 맞춘다
+      onResize = () => {
+        g.scale.resize(window.innerWidth * DPR, window.innerHeight * DPR);
+        g.scale.setZoom(1 / DPR);
+      };
+      window.addEventListener('resize', onResize);
     },
     () => {
       if (token !== launchToken) return;
@@ -139,6 +149,8 @@ export function launchGame(cfg: Omit<GameConfig, 'touch' | 'hudParent'>) {
 
 export function closeGame() {
   launchToken++;
+  if (onResize) window.removeEventListener('resize', onResize);
+  onResize = null;
   game?.destroy(true);
   game = null;
   hudEl.innerHTML = '';

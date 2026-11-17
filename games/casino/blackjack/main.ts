@@ -1,6 +1,7 @@
 /** 블랙잭 화면: 딜러(위) + 플레이어 자리(아래), 베팅·히트·스탠드·더블·스플릿 */
+import { BLACKJACK_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme } from '../../lib/cards.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { BjPublic, BjResult } from '../../../supabase/functions/_shared/blackjack.ts';
 
 type Ctx = TableCtx<BjPublic, Record<string, never>>;
@@ -13,6 +14,7 @@ let betAmount = 0;
 const ui: GameUI<BjPublic, Record<string, never>> = {
   game: 'blackjack',
   title: '블랙잭',
+  manual: BLACKJACK_MANUAL,
   icon: '🃏',
   back: 'games/casino/',
   backLabel: '카지노',
@@ -20,8 +22,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
 
   draw(t: Ctx) {
     const { scene } = t;
-    const W = scene.scale.width;
-    const H = scene.scale.height;
+    const { W, H } = viewSize(scene);
     const p = t.pub;
     drawTable(scene, 'blackjack');
     const n = Math.max(1, p?.seats.length ?? 4);
@@ -30,11 +31,12 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     const cols = portrait ? Math.min(2, n) : n;
     const rows = Math.ceil(n / cols);
     // 카드 크기: 화면 비율에 맞춰 (좁으면 자리 수로, 낮으면 높이로 제한)
-    const cw = clamp(Math.min(W / (cols * 2.6), H / (portrait ? 3.4 + rows * 2.3 : 4.3)), 40, 124);
+    const cw = clamp(Math.min(W / (cols * 2.6), H / (portrait ? 2.4 + rows * 2.75 : 4.3)), 40, 124);
     const shoe = { x: W - cw * 1.1, y: H * 0.19 };
     // 슈 (카드를 꺼내는 곳)
     for (let i = 0; i < 4; i++) playingCard(scene, shoe.x + i * 2, shoe.y - i * 2, null, cw * 0.8);
-    if (portrait || H > 380) label(scene, W / 2, portrait ? cw * 2.15 + 14 : H * 0.455, '블랙잭 3:2 · 딜러는 17부터 섭니다', clamp(cw * 0.17, 12, 16)).setAlpha(0.85);
+    // 규칙 안내: 세로 화면에서는 판 진행 중엔 자리가 빠듯해 대기 중에만
+    if ((portrait && !p) || (!portrait && H > 380)) label(scene, W / 2, portrait ? cw * 2.15 + 14 : H * 0.455, '블랙잭 3:2 · 딜러는 17부터 섭니다', clamp(cw * 0.17, 12, 16)).setAlpha(0.85);
     if (!p) {
       label(scene, W / 2, H / 2 - cw * 0.6, '모두 레디하면 시작해요', clamp(cw * 0.3, 18, 30));
       return;
@@ -52,26 +54,24 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
 
     // 플레이어 자리
     const seats = p.seats;
-    const slot = W / cols;
-    // 자리 칸: 딜러 아래부터 바닥까지를 줄 수만큼 나눈다
     const areaTop = portrait ? cw * 2.4 + 20 : H * 0.42;
-    const rowH = (H - areaTop) / rows;
-    seats.forEach((s, i) => {
-      const x = slot * ((i % cols) + 0.5);
-      const rowTop = areaTop + rowH * Math.floor(i / cols);
-      const y = rowTop + Math.min(rowH * 0.42, cw * 0.98 + 18);
+    type Seat = (typeof seats)[number];
+    /** 자리 하나 그리기: (x, 칸 위, 칸 높이, 카드 크기, 칸 너비) */
+    const drawSeat = (s: Seat, x: number, rowTop: number, rowH: number, scw: number, slot: number, bottom = false) => {
+      const y = rowTop + Math.min(rowH * 0.42, scw * 0.98 + 18);
       const isTurn = p.turn?.seat === s.seat;
       const me = s.seat === t.mySeat;
-      const k = clamp(cw / 80, 0.8, 1.15);
-      nameTag(scene, x - 44 * k, rowTop + rowH - 26 * k, t.seatName(s.seat), t.seatAvatar(s.seat), {
+      const k = clamp(scw / 80, 0.8, 1.15);
+      // 맨 아래 내 자리: 이름패는 왼쪽 아래 (카드와 겹치지 않게)
+      nameTag(scene, bottom ? 30 * k : x - 44 * k, rowTop + rowH - 26 * k, t.seatName(s.seat), t.seatAvatar(s.seat), {
         turn: isTurn || (p.phase === 'bet' && p.waitingBets.includes(s.seat)),
         me,
         size: k,
         sub: s.out ? '쉬는 중' : s.bet ? `베팅 ${t.fmt(s.bet)}` : undefined,
       });
       const hands = s.hands;
-      const hw = hands.length > 1 ? Math.min(cw * 1.5, slot / 2.05) : 0;
-      const hcw = hands.length > 1 ? Math.min(cw * 0.86, slot / 2.6) : cw * 0.92;
+      const hw = hands.length > 1 ? Math.min(scw * 1.5, slot / 2.05) : 0;
+      const hcw = hands.length > 1 ? Math.min(scw * 0.86, slot / 2.6) : scw * 0.92;
       hands.forEach((h, hi) => {
         const hx = x + (hi - (hands.length - 1) / 2) * hw;
         const active = isTurn && p.turn?.hand === hi;
@@ -82,13 +82,34 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
         const tot = `${h.total}${h.soft && h.total <= 21 ? 's' : ''}`;
         const res = h.result ? ` · ${RESULT[h.result]}${h.delta ? ` ${h.delta > 0 ? '+' : ''}${t.fmt(h.delta)}` : ''}` : '';
         const bad = h.result === 'lose' || h.result === 'bust';
-        label(scene, hx, y - hcw * 0.98, `${tot}${h.doubled ? ' ×2' : ''}${res}`, clamp(hcw * 0.22, 13, 22), bad ? tc('lose') : h.result === 'win' || h.result === 'blackjack' ? tc('primary') : tc('white'));
-        // 칩: 가로는 카드 아래, 세로(2×2)는 이름패와 겹치지 않게 카드 오른쪽
+        const lt = label(scene, hx, y - hcw * 0.98, `${tot}${h.doubled ? ' ×2' : ''}${res}`, clamp(hcw * 0.22, 13, 22), bad ? tc('lose') : h.result === 'win' || h.result === 'blackjack' ? tc('primary') : tc('white'));
+        // 맨 아래 내 자리: 점수는 카드 왼쪽 (위 자리 이름패와 겹치지 않게)
+        if (bottom && hands.length === 1) lt.setPosition(hx - hcw * 0.18 * (h.cards.length - 1) - hcw * 0.62, y - hcw * 0.2).setOrigin(1, 0.5);
         // 칩은 카드 오른쪽 (아래 이름패와 겹치지 않게)
-        chipStack(scene, hx + hcw * 0.18 * (h.cards.length - 1) + hcw * 0.8, y + hcw * 0.3, h.bet, undefined, clamp(cw * 0.18, 10, 18));
+        chipStack(scene, hx + hcw * 0.18 * (h.cards.length - 1) + hcw * 0.8, y + hcw * 0.3, h.bet, undefined, clamp(scw * 0.18, 10, 18));
       });
-      if (!hands.length && s.bet) chipStack(scene, x, y + cw * 0.3, s.bet, undefined, clamp(cw * 0.2, 11, 20));
-    });
+      if (!hands.length && s.bet) chipStack(scene, x, y + scw * 0.3, s.bet, undefined, clamp(scw * 0.2, 11, 20));
+    };
+
+    const meIdx = seats.findIndex((s) => s.seat === t.mySeat);
+    const slot0 = W / cols;
+    if (portrait && meIdx >= 0 && seats.length > 1) {
+      // 세로 화면: 내 자리는 맨 아래에 크게, 나머지는 원래 2×2 자리 그대로 (내 칸만 비운다)
+      const top = cw * 2.1 + 22;
+      const meCw = cw * 1.15;
+      const meH = Math.min((H - top) * 0.4, meCw * 2.1);
+      const orowH = (H - top - meH) / rows;
+      seats.forEach((s, i) => {
+        if (i === meIdx) return;
+        drawSeat(s, slot0 * ((i % cols) + 0.5), top + orowH * Math.floor(i / cols), orowH, cw * 0.72, slot0);
+      });
+      drawSeat(seats[meIdx], W / 2, H - meH, meH, meCw, W * 0.9, true);
+      return;
+    }
+    const slot = W / cols;
+    // 자리 칸: 딜러 아래부터 바닥까지를 줄 수만큼 나눈다
+    const rowH = (H - areaTop) / rows;
+    seats.forEach((s, i) => drawSeat(s, slot * ((i % cols) + 0.5), areaTop + rowH * Math.floor(i / cols), rowH, cw, slot));
   },
 
   controls(t: Ctx, el: HTMLElement) {

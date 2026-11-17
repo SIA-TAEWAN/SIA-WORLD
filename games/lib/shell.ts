@@ -61,7 +61,20 @@ export interface TableCtx<P = any, Q = any> {
    * 카드 이동 연출: 같은 key(카드 id)가 지난번과 다른 자리에 그려지면 그 사이를 날아간다.
    * 처음 보는 카드는 from이 있으면 거기서 날아온다. order가 클수록 늦게 (낸 패 0 → 뒤집은 패 1 → 가져가기 2)
    */
-  track(obj: PhaserNS.GameObjects.Container, key: string, opts?: { from?: { x: number; y: number }; order?: number }): void;
+  track(obj: PhaserNS.GameObjects.Container, key: string, opts?: TrackOpts): void;
+  /** 기기 픽셀 배율 (효과용 글자를 선명하게) */
+  dpr: number;
+}
+
+export interface TrackOpts {
+  /** 처음 보는 카드가 날아올 출발점 */
+  from?: { x: number; y: number };
+  /** 순서 (클수록 늦게: 낸 패 0 → 뒤집은 패 1 → 가져가기 2) */
+  order?: number;
+  /** 추가로 늦출 시간(ms): 판 시작 때 한 장씩 나눠 주기 */
+  delay?: number;
+  /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등) */
+  onLand?: () => void;
 }
 
 export interface GameUI<P = any, Q = any> {
@@ -81,6 +94,8 @@ export interface GameUI<P = any, Q = any> {
   resultHtml(t: TableCtx<P, Q>): string;
   /** 컷인 문구 (없으면 null) */
   cutin?(ev: GameEventLite, t: TableCtx<P, Q>): string | null;
+  /** 대기방 '게임 방법' 창 내용 (HTML). 없으면 버튼을 숨긴다 */
+  manual?: string;
   /** Phaser에 미리 불러올 그림 (key → url) */
   preload?(scene: PhaserNS.Scene, avatarUrl: (id: string) => string): void;
 }
@@ -214,7 +229,7 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
       try {
         const r = await m.wallet.refill(cur, 100);
         wallet = r;
-        toast(r.ok ? `10,000${unit}으로 채웠어요` : r.reason === 'limit' ? '오늘 무료 충전을 모두 썼어요' : '아직 충분해요');
+        toast(r.ok ? `10,000${unit}을 충전했어요` : r.reason === 'limit' ? '오늘 무료 충전을 모두 썼어요' : '아직 충분해요');
       } catch (e) {
         toast(m.room.friendly(e));
       }
@@ -419,11 +434,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const Phaser = ((PhaserMod as unknown as { default?: typeof PhaserNS }).default ?? PhaserMod) as typeof PhaserNS;
   let scene: PhaserNS.Scene | null = null;
   const stage = $(root, '#stage');
+  // 고해상도 화면(휴대폰 등): 캔버스는 기기 픽셀만큼 크게 만들고 CSS로 줄여 보여 준다.
+  // 게임 코드는 그대로 CSS 픽셀 좌표로 그리고, 카메라 확대(DPR)로 맞춘다 (viewSize 참고)
+  const DPR = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  const stageW = () => Math.max(1, Math.round(stage.clientWidth || 800));
+  const stageH = () => Math.max(1, Math.round(stage.clientHeight || 400));
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: stage,
     backgroundColor: ui.felt(),
-    scale: { mode: Phaser.Scale.RESIZE, width: stage.clientWidth || 800, height: stage.clientHeight || 400 },
+    scale: { mode: Phaser.Scale.NONE, width: stageW() * DPR, height: stageH() * DPR, zoom: 1 / DPR },
     banner: false,
     scene: {
       key: 'table',
@@ -437,8 +457,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       },
       create(this: PhaserNS.Scene) {
         scene = this;
+        this.cameras.main.setOrigin(0, 0).setZoom(DPR);
         // 크기가 바뀌면 테이블만 다시 그린다 (조작부까지 다시 만들면 크기가 또 바뀌어 반복될 수 있다)
-        this.scale.on('resize', () => drawTableOnly());
+        this.scale.on('resize', () => {
+          this.cameras.main.setSize(this.scale.width, this.scale.height);
+          drawTableOnly();
+        });
         paint();
       },
     },
@@ -447,8 +471,10 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const ro = new ResizeObserver(() => {
     const w = Math.round(stage.clientWidth);
     const h = Math.round(stage.clientHeight);
-    // Phaser(RESIZE 모드)는 창 크기 이벤트 때만 부모 크기를 다시 읽는다 → 이벤트를 보내 준다
-    if (w > 0 && h > 0 && (w !== game.scale.width || h !== game.scale.height)) window.dispatchEvent(new Event('resize'));
+    if (w > 0 && h > 0 && (w * DPR !== game.scale.width || h * DPR !== game.scale.height)) {
+      game.scale.resize(w * DPR, h * DPR);
+      game.scale.setZoom(1 / DPR);
+    }
   });
   ro.observe(stage);
 
@@ -497,6 +523,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       seatName: (n) => seats.find((s) => s.seat_no === n)?.nickname ?? `자리 ${n + 1}`,
       seatAvatar: (n) => seats.find((s) => s.seat_no === n)?.avatar ?? 'tiger',
       redraw: () => paint(),
+      dpr: DPR,
       track: (obj, key, opts = {}) => {
         const round = st?.round_no ?? 0;
         if (round !== moveRound) {
@@ -520,8 +547,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             fy = prev.fromY + (prev.y - prev.fromY) * e;
           }
           const animate = dealReady && !reduceMotion && (prev ? true : !!opts.from);
-          rec = { x: tx, y: ty, fromX: animate ? fx : tx, fromY: animate ? fy : ty, start: now + (opts.order ?? 0) * ORDER_GAP };
+          rec = { x: tx, y: ty, fromX: animate ? fx : tx, fromY: animate ? fy : ty, start: now + (opts.order ?? 0) * ORDER_GAP + (animate ? (opts.delay ?? 0) : 0) };
           moves.set(key, rec);
+          if (animate && opts.onLand && scene) {
+            const land = opts.onLand;
+            const at = rec.start + MOVE_MS - now;
+            scene.time.delayedCall(Math.max(0, at), () => !closed && land());
+          }
         }
         if (!scene || reduceMotion) return;
         const r = rec!;
@@ -624,6 +656,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const allHumansReady = seats.filter((x) => x.user_id && !x.left_game).every((x) => x.ready);
     el.innerHTML = `<div class="row">
       <button class="btn" id="av">🐾 동물 바꾸기</button>
+      ${ui.manual ? '<button class="btn" id="manual">📖 게임 방법</button>' : ''}
       ${!enough && m.wallet.canRefill(wallet, cur, room.base_unit) ? `<button class="btn" id="refill">무료 충전</button>` : ''}
       <button class="btn big ${mine.ready ? '' : 'primary'}" id="ready" ${enough ? '' : 'disabled'}>${mine.ready ? '레디 취소' : '레디 ▶'}</button>
     </div>
@@ -635,6 +668,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         toast(m.room.friendly(e));
       }
     });
+    el.querySelector('#manual')?.addEventListener('click', () => showManual());
     el.querySelector('#av')?.addEventListener('click', async () => {
       const taken = seats.filter((s) => s.user_id && s.user_id !== me.userId && !s.left_game).map((s) => s.avatar);
       const v = await pickAvatar(m.z, mine.avatar, taken);
@@ -646,13 +680,22 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       try {
         const r = await m.wallet.refill(cur, room!.base_unit);
         wallet = r;
-        toast(r.ok ? `10,000${unit}으로 채웠어요` : '충전할 수 없어요');
+        toast(r.ok ? `10,000${unit}을 충전했어요` : '충전할 수 없어요');
       } catch (e) {
         toast(m.room.friendly(e));
       }
       paintMoney();
       paintControls();
     });
+  };
+
+  const showManual = () => {
+    const d = document.createElement('div');
+    d.className = 'modal';
+    d.innerHTML = `<div class="box manual"><h3>📖 ${esc(ui.title)} 게임 방법</h3><div class="manual-body">${ui.manual ?? ''}</div><div class="row"><button class="btn primary" data-x>닫기</button></div></div>`;
+    document.body.append(d);
+    $(d, '[data-x]').addEventListener('click', () => d.remove());
+    d.addEventListener('click', (e) => e.target === d && d.remove());
   };
 
   const paintResult = () => {
@@ -720,6 +763,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }, 1500);
   };
 
+  /** 글자는 따로 그린 그림이라 기기 해상도로 다시 굽는다 (안 하면 휴대폰에서 흐리다) */
+  const sharpenText = (list: PhaserNS.GameObjects.GameObject[]) => {
+    for (const o of list) {
+      if (o instanceof Phaser.GameObjects.Text) {
+        if (o.style.resolution !== DPR) o.setResolution(DPR);
+      } else if (o instanceof Phaser.GameObjects.Container) sharpenText(o.list);
+    }
+  };
+
   function drawTableOnly() {
     if (closed) return;
     const c = ctx();
@@ -728,6 +780,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     c.scene.tweens.killAll();
     dealSeq = 0;
     ui.draw(c);
+    sharpenText(c.scene.children.list);
   }
 
   function paint() {
@@ -740,8 +793,10 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       c.scene.tweens.killAll();
       dealSeq = 0;
       ui.draw(c);
+      sharpenText(c.scene.children.list);
       // 처음 그린 뒤부터 연출 (들어오자마자 모든 카드가 날아오지 않게)
-      if (st?.public_state) dealReady = true;
+      // 대기실에서 시작을 본 경우도 (첫 판 나눠 주기 연출)
+      if (st?.public_state || room?.status === 'waiting') dealReady = true;
     }
     paintControls();
   }

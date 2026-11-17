@@ -294,8 +294,11 @@ input:focus { outline: var(--line) solid var(--primary); }
 
 /* 좁은 화면 */
 @media (max-width: 520px) {
-  .bar h1 { font-size: 20px; }
-  .table-page .bar h1 { font-size: 16px; }
+  /* 제목(방 이름·게임 이름)이 잘리지 않게 두 줄로: 위 줄은 버튼·금액, 아래 줄은 제목 */
+  .bar { flex-wrap: wrap; row-gap: 2px; }
+  .bar .money { margin-left: auto; }
+  .bar h1 { order: 5; flex-basis: 100%; font-size: 20px; white-space: normal; }
+  .table-page .bar h1 { font-size: 17px; }
   .controls .btn.big { font-size: 17px; padding: 9px 14px; }
 }
 /* 낮은 화면(가로로 눕힌 휴대폰): 자리 줄은 숨기고(테이블 위 이름패와 같은 정보) 위·아래를 얇게 */
@@ -311,6 +314,15 @@ input:focus { outline: var(--line) solid var(--primary); }
   .controls .msg { font-size: 12px; margin-top: 3px; }
   .controls .amount { font-size: 16px; min-width: 70px; }
 }
+
+/* ---------- 게임 방법 창 ---------- */
+.box.manual { max-width: 560px; text-align: left; }
+.box.manual h3 { text-align: center; }
+.manual-body { max-height: min(62vh, 560px); overflow-y: auto; font-size: 15px; line-height: 1.55; padding-right: 4px; }
+.manual-body h4 { margin: 14px 0 4px; font-size: 17px; font-weight: normal; color: var(--sky-deep); }
+.manual-body p, .manual-body ol, .manual-body ul { margin: 4px 0; }
+.manual-body ol, .manual-body ul { padding-left: 22px; }
+.manual-body b { font-weight: normal; color: var(--accent); }
 
 /* ---------- 맞고: 가져올 패 고르기 (패 그림 버튼) ---------- */
 .hw-pick { background: none; border: none; padding: 0; cursor: pointer; transition: transform var(--press-ms); }
@@ -344,3 +356,7 @@ input:focus { outline: var(--line) solid var(--primary); }
 .hw.gwang { box-shadow: 0 var(--depth-button) 0 var(--outline), 0 0 0 var(--line) var(--primary), inset 0 0 0 3px var(--accent); }
 .hw em { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; font-style: normal; font-size: 14px; }
 .hw em.tag { left: 50%; right: auto; transform: translateX(-50%); background: var(--pink); color: var(--white); padding: 0 4px; font-size: 11px; white-space: nowrap; }
+/* 고르기 버튼: 전통 화투 그림 */
+.hw.img { background: none; border: none; box-shadow: none; border-radius: 6px; }
+.hw.img img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.hw-pick:not(:disabled) .hw.img { outline: var(--line) solid var(--primary); outline-offset: 2px; }

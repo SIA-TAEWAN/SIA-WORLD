@@ -30,8 +30,7 @@ const scaled = (v: number, w: number, w0: number) => Math.max(v * 0.6, (v * w) /
  * 테이블: 게임별 보조색의 둥근 판 + 굵은 외곽선 + 가장자리 크림 테두리 (평평한 단색, 펠트 질감 없음)
  */
 export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'blackjack') {
-  const W = scene.scale.width;
-  const H = scene.scale.height;
+  const { W, H } = viewSize(scene);
   const g = scene.add.graphics();
   const C = T.COLOR;
   const m = Math.max(6, Math.min(W, H) * 0.012);
@@ -238,3 +237,9 @@ export const label = text;
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export type { Container };
+
+/** 테이블의 CSS 픽셀 크기 (캔버스는 기기 해상도만큼 크고 카메라 확대로 맞춘다) */
+export function viewSize(scene: PhaserNS.Scene) {
+  const z = scene.cameras.main?.zoom || 1;
+  return { W: scene.scale.width / z, H: scene.scale.height / z };
+}

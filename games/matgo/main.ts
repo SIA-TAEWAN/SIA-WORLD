@@ -1,8 +1,8 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
 import { bootGame, esc, type GameUI, type TableCtx } from '../lib/shell.ts';
 import { worldRoot } from '../lib/world.ts';
-import { cardBack, clamp, drawTable, label, nameTag, tc, theme } from '../lib/cards.ts';
-import { cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
+import { cardBack, clamp, drawTable, label, nameTag, tc, theme, viewSize } from '../lib/cards.ts';
+import { CARDS, cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
 type Ctx = TableCtx<MatgoPublic, MatgoPrivate>;
@@ -11,6 +11,9 @@ const DAN_NAME: Record<string, string> = { hong: '홍단', cheong: '청단', cho
 /** 원래 화투 그림(식물·배경): SpriteCook으로 그린 12달 식물 (shared/images/hwatu/plant-MM.png) */
 const plantKey = (m: number) => `plant-${String(m).padStart(2, '0')}`;
 const plantUrl = (m: number) => new URL(`shared/images/hwatu/${plantKey(m)}.png`, worldRoot()).href;
+/** 전통 화투 그림 (SpriteCook, shared/images/hwatu/cards/<카드 id>.png, 뒷면 back.png) */
+const cardKey = (id: string) => `hw-${id}`;
+const cardUrl = (id: string) => new URL(`shared/images/hwatu/cards/${id}.png`, worldRoot()).href;
 const ANIMAL_KEY = ['', 'rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'];
 
 /**
@@ -33,6 +36,27 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   }
   g.fillStyle(C.outline, 1).fillRoundedRect(-w / 2, -h / 2 + depth, w, h, r);
   c.add(g);
+  const art = cardKey(id ?? 'back');
+  if (scene.textures.exists(art)) {
+    // 전통 화투 그림 (그림 자체에 테두리·둥근 모서리가 있다)
+    c.add(scene.add.image(0, 0, art).setDisplaySize(w, h));
+    if (id && cardById(id).kind === 'gwang') {
+      // 광: 오른쪽 위 작은 '광' 도장 (처음 하는 사람도 알아보게)
+      const sr = Math.max(6, w * 0.13);
+      const sx = w / 2 - sr - w * 0.06;
+      const sy = -h / 2 + sr + w * 0.06;
+      const g3 = scene.add.graphics();
+      g3.fillStyle(C.white, 1).fillCircle(sx, sy, sr);
+      g3.lineStyle(Math.max(1.5, w * 0.025), C.cardRed, 1).strokeCircle(sx, sy, sr);
+      c.add(g3);
+      c.add(scene.add.text(sx, sy, '광', { fontFamily: T.FONT, fontSize: `${Math.round(sr * 1.2)}px`, color: tc('cardRed') }).setOrigin(0.5));
+    }
+    if (opts.onClick) {
+      c.setSize(w, h).setInteractive({ useHandCursor: true });
+      c.on('pointerdown', opts.onClick);
+    }
+    return c;
+  }
   if (!id) {
     c.add(scene.add.image(0, 0, cardBack(scene, 'back-hwatu')).setDisplaySize(w, h));
     return c;
@@ -137,6 +161,10 @@ function captured(t: Ctx, scene: PhaserNS.Scene, x: number, y: number, p: MatgoP
 
 /** 고르기 버튼에 넣는 작은 화투 (HTML 그림) */
 function miniCard(id: string) {
+  return `<span class="hw img"><img src="${cardUrl(id)}" alt="${esc(cardById(id).name)}"/></span>`;
+}
+/** (예전) 코드로 그린 작은 화투 — 그림을 못 불러올 때 대비 */
+export function miniCardDrawn(id: string) {
   const card = cardById(id);
   const animal = ANIMAL_KEY[card.month];
   const big = card.kind === 'yeol' || card.kind === 'gwang';
@@ -145,6 +173,144 @@ function miniCard(id: string) {
   const tag = card.kind === 'gwang' ? `<b class="stamp">${card.bigwang ? '비' : '광'}</b>` : '';
   const foot = card.kind === 'pi' ? `<em>${card.ssangpi ? '🐾🐾' : '🐾'}</em>` : card.godori ? '<em class="tag">고도리</em>' : card.gukjin ? '<em class="tag">국진</em>' : '';
   return `<span class="hw ${card.kind}"><img class="pl ${card.kind === 'pi' ? 'strong' : ''}" src="${plantUrl(card.month)}" alt=""/>${tti}${char}<u>${card.month}</u>${tag}${foot}</span>`;
+}
+
+/**
+ * 화면 배치. 세로(휴대폰)는 위에서부터: 상대 손패(뒷면)·더미 → 상대 먹은 패 → 바닥 → 내 먹은 패 → 손패 두 줄.
+ * 남는 높이로 바닥 카드 크기를 정하고, 바닥은 두 줄(넓게)과 세 줄 중 카드가 더 크게 나오는 쪽을 쓴다.
+ */
+function layout(W: number, H: number, portrait: boolean, floorCount: number) {
+  if (!portrait) {
+    const cw = clamp(Math.min(W / 11.5, H / 7), 30, 96);
+    const fw = cw * 0.86;
+    const capW = cw * 0.56;
+    const k = clamp(cw / 75, 0.8, 1.2);
+    const bw = cw * 0.42;
+    const y0 = H * 0.355;
+    const rowGap = fw * 1.68;
+    const left = W * 0.17;
+    const right = W * 0.83;
+    const hx0 = Math.max(W * 0.27, 190 * k);
+    return {
+      cw,
+      fw,
+      capW,
+      k,
+      bw,
+      oppHand: { x: W * 0.45, y: bw * 0.8 + 4 },
+      pile: { x: W * 0.075, y: y0 + rowGap * 0.5 },
+      pw: fw,
+      capX: 24 + capW / 2,
+      oppCapY: H * 0.19,
+      oppCapMaxX: W - 16,
+      myCapY: H * 0.685,
+      floorTop: y0 - fw * 0.78,
+      floorH: rowGap + fw * 1.55,
+      floorPos: (i: number, n: number) => {
+        const cols = Math.max(4, Math.ceil(n / 2));
+        return { x: left + ((i % cols) + 0.5) * ((right - left) / cols) - fw * 0.3, y: y0 + Math.floor(i / cols) * rowGap };
+      },
+      handPos: (i: number, n: number) => {
+        const step = Math.min(cw * 1.06, (W - hx0 - cw * 0.6) / Math.max(1, n - 1));
+        return { x: hx0 + i * step, y: H - cw * 0.86 };
+      },
+    };
+  }
+  const cw = clamp(Math.min(W / 5.6, H / 9.4), 30, 96);
+  const k = clamp(cw / 75, 0.8, 1.2);
+  const ch = cw * 1.55;
+  const capW = cw * 0.48;
+  const bw = cw * 0.36;
+  // 손패 두 줄 (아래)
+  const handBottomY = H - ch / 2 - 20;
+  const handTopY = handBottomY - ch - 6;
+  // 내 먹은 패 (손패 위): 카드 + 아래 글자
+  const myCapY = handTopY - ch / 2 - capW * 1.0 - 16;
+  // 상대 손패(뒷면)와 더미는 맨 위 한 줄
+  // 더미: 오른쪽 위, 상대 손패와 같은 줄 (테두리 안)
+  const pw = bw * 1.35;
+  const pile = { x: W - pw / 2 - 22, y: pw * 0.78 + 14 };
+  // 테이블 테두리(약 14px) 안쪽으로
+  const oppHand = { x: W * 0.42, y: bw * 0.78 + 14 };
+  const oppCapY = Math.max(oppHand.y + bw * 0.78, pile.y + pw * 0.78 + 12) + capW * 0.78 + 4;
+  const floorTop = oppCapY + capW * 1.0 + 14;
+  const floorH = myCapY - capW * 0.78 - 8 - floorTop;
+  // 바닥 카드 크기: 두 줄 / 세 줄 중 큰 쪽
+  const fit = (rows: number) => {
+    const cols = Math.max(4, Math.ceil(floorCount / rows));
+    const byW = (W * 0.94) / cols / 1.45;
+    const byH = floorH / (1.62 * (rows - 1) + 1.62);
+    return { rows, cols, fw: Math.min(byW, byH, cw * 0.95) };
+  };
+  const a = fit(2);
+  const b = fit(3);
+  const F = a.fw >= b.fw ? a : b;
+  const fw = Math.max(26, F.fw);
+  const rowGap = fw * 1.62;
+  const used = rowGap * (F.rows - 1) + fw * 1.55;
+  const y0 = floorTop + (floorH - used) / 2 + fw * 0.78;
+  return {
+    cw,
+    fw,
+    capW,
+    k,
+    bw,
+    oppHand,
+    pile,
+    pw,
+    capX: 16 + capW / 2,
+    oppCapY,
+    oppCapMaxX: W - pw - 34,
+    myCapY,
+    floorTop,
+    floorH,
+    floorPos: (i: number, _n?: number) => {
+      const colW = (W * 0.94) / F.cols;
+      return { x: W * 0.03 + ((i % F.cols) + 0.5) * colW - fw * 0.2, y: y0 + Math.floor(i / F.cols) * rowGap };
+    },
+    handPos: (i: number, n: number) => {
+      const perRow = 5;
+      const inRow = Math.min(perRow, n - Math.floor(i / perRow) * perRow);
+      const step = Math.min(cw * 1.06, (W - 12) / perRow);
+      return { x: W / 2 + ((i % perRow) - (inRow - 1) / 2) * step, y: Math.floor(i / perRow) === 0 && n > perRow ? handTopY : handBottomY };
+    },
+  };
+}
+
+/** 점수 알약 (세로 화면: 이름 대신). right면 x가 오른쪽 끝 */
+function scoreChip(scene: PhaserNS.Scene, x: number, y: number, text: string, turn: boolean, k: number, right = false) {
+  const T = theme();
+  const fs = Math.round(13 * k);
+  const tx = scene.add.text(8, 0, text, { fontFamily: T.FONT, fontSize: `${fs}px`, color: tc('ink') }).setOrigin(0, 0.5);
+  const w = tx.width + 16;
+  const h = fs + 10;
+  const g = scene.add.graphics();
+  g.fillStyle(turn ? T.COLOR.primary : T.COLOR.panel, 1).fillRoundedRect(0, -h / 2, w, h, h / 2);
+  g.lineStyle(T.SHAPE.lineThin, T.COLOR.outline, 1).strokeRoundedRect(0, -h / 2, w, h, h / 2);
+  return scene.add.container(right ? x - w : x, y + h / 2, [g, tx]).setDepth(5);
+}
+
+/** 찰싹! 패가 바닥에 내려앉는 순간: 하얀 충격 링 + 별 조각 + 살짝 흔들림 (같은 달 패 위면 더 크게 + '찰싹!') */
+function slap(scene: PhaserNS.Scene, x: number, y: number, w: number, onStack: boolean, dpr: number) {
+  if (!scene.sys?.isActive()) return;
+  const T = theme();
+  const ring = scene.add.circle(x, y, w * 0.45).setStrokeStyle(Math.max(3, w * 0.07), T.COLOR.white, 1).setDepth(30);
+  scene.tweens.add({ targets: ring, scale: onStack ? 2.1 : 1.6, alpha: 0, duration: 320, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+  const n = onStack ? 8 : 5;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + 0.3;
+    const dot = scene.add.star(x, y, 4, w * 0.04, w * 0.11, i % 2 ? T.COLOR.primary : T.COLOR.white).setDepth(31);
+    scene.tweens.add({ targets: dot, x: x + Math.cos(a) * w * 0.9, y: y + Math.sin(a) * w * 0.9, alpha: 0, angle: 180, duration: 380, ease: 'Cubic.easeOut', onComplete: () => dot.destroy() });
+  }
+  if (onStack) {
+    const word = scene.add
+      .text(x, y - w * 0.9, '찰싹!', { fontFamily: T.FONT, fontSize: `${Math.round(clamp(w * 0.34, 14, 26))}px`, color: tc('white'), stroke: tc('outline'), strokeThickness: 4 })
+      .setOrigin(0.5)
+      .setResolution(dpr)
+      .setDepth(32);
+    scene.tweens.add({ targets: word, y: y - w * 1.3, alpha: { from: 1, to: 0 }, scale: { from: 0.6, to: 1.15 }, duration: 520, ease: 'Back.easeOut', onComplete: () => word.destroy() });
+  }
+  scene.cameras.main.shake(onStack ? 110 : 70, onStack ? 0.006 : 0.003);
 }
 
 let shake = false;
@@ -161,115 +327,124 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
 
   preload(scene) {
     for (let m = 1; m <= 12; m++) scene.load.image(plantKey(m), plantUrl(m));
+    for (const c of CARDS) scene.load.image(cardKey(c.id), cardUrl(c.id));
+    scene.load.image(cardKey('back'), cardUrl('back'));
   },
 
   draw(t: Ctx) {
     const { scene } = t;
-    const W = scene.scale.width;
-    const H = scene.scale.height;
+    const { W, H } = viewSize(scene);
     const p = t.pub;
     drawTable(scene, 'matgo');
+    // 세로 화면(휴대폰): 이름은 위쪽 자리 줄에 있으니 테이블 이름패는 빼고 점수만, 손패는 다섯 장씩 두 줄
+    const portrait = H > W * 1.15;
+    const L = layout(W, H, portrait, p?.floor.length ?? 8);
+    const { cw, fw, capW, k } = L;
+
     if (!p) {
-      label(scene, W / 2, H / 2, '모두 레디하면 시작해요', clamp(Math.min(W, H) * 0.05, 18, 30));
+      // 대기 중: 기본 화투를 깔아 둔다 (더미 + 양쪽 손패 뒷면)
+      for (let i = 0; i < 6; i++) hwatu(scene, L.pile.x + i * 1.5, L.pile.y - i * 1.5, null, L.pw);
+      for (let i = 0; i < 8; i++) {
+        const { x, y } = L.floorPos(i, 8);
+        hwatu(scene, x, y, null, fw).setAlpha(0.55);
+      }
+      for (let i = 0; i < 10; i++) hwatu(scene, L.oppHand.x + (i - 4.5) * L.bw * 0.55, L.oppHand.y, null, L.bw);
+      for (let i = 0; i < 10; i++) {
+        const { x, y } = L.handPos(i, 10);
+        hwatu(scene, x, y, null, cw);
+      }
+      label(scene, W / 2, L.floorTop + L.floorH / 2, '모두 레디하면 시작해요', clamp(Math.min(W, H) * 0.05, 18, 30));
       return;
     }
-    // 세로 화면: 손패 두 줄, 바닥 세 줄
-    const portrait = H > W * 1.15;
-    // 카드 크기: 화면 비율에 맞춰 (손패 기준). 바닥 0.86배(세로 0.8배), 먹은 패 0.5배
-    const cw = portrait ? clamp(Math.min(W / 6.4, H / 11), 30, 90) : clamp(Math.min(W / 11.5, H / 7), 30, 96);
-    const fw = cw * (portrait ? 0.8 : 0.86);
-    const capW = cw * 0.56;
+
     const me = t.mySeat ?? p.seats[0];
     const opp = p.seats.find((s) => s !== me) ?? p.seats[1];
     const P = p.players;
-    const k = clamp(cw / 75, 0.8, 1.2);
-
-    // 상대: 이름패 · 손패(뒷면) · 먹은 패
     const op = P[opp];
-    nameTag(scene, 26 * k, 26 * k, t.seatName(opp), t.seatAvatar(opp), {
-      turn: p.turn === opp,
-      size: k,
-      sub: `${op.score}점${op.go ? ` · ${op.go}고` : ''}${op.shakes ? ` · 흔들${op.shakes}` : ''}`,
-    });
-    const bw = cw * 0.42;
-    const oppHand = { x: W * 0.45, y: bw * 0.8 + 4 };
-    for (let i = 0; i < op.handCount; i++) hwatu(scene, oppHand.x + (i - (op.handCount - 1) / 2) * bw * 0.55, oppHand.y, null, bw);
-    captured(t, scene, 24 + capW / 2, portrait ? H * 0.13 : H * 0.19, op, capW, W - 16);
+    const mp = P[me];
+    const allCaptured = (pl: (typeof P)[number]) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi];
+    // 판 시작(아직 아무도 안 냄): 더미에서 한 장씩 착착 나눠 준다 (내 패 → 상대 패 번갈아, 그다음 바닥)
+    const dealing = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0;
+    const DEAL_GAP = 70;
 
-    // 더미 위치 (세로 화면: 오른쪽 위, 가로: 바닥 왼쪽) — 뒤집은 패가 여기서 날아온다
-    const y0 = portrait ? H * 0.255 : H * 0.355;
-    const rowGap = fw * 1.68;
-    const pile = portrait ? { x: W - fw * 0.8, y: fw * 0.85 + 6 } : { x: W * 0.075, y: y0 + rowGap * 0.5 };
-    const myHand = { x: W * 0.6, y: H - cw * 0.86 };
+    // 상대: 점수(세로) 또는 이름패(가로) · 손패(뒷면) · 먹은 패
+    const oppSub = `${op.score}점${op.go ? ` · ${op.go}고` : ''}${op.shakes ? ` · 흔들${op.shakes}` : ''}`;
+    if (portrait) scoreChip(scene, 8, 6, oppSub, p.turn === opp, k);
+    else nameTag(scene, 26 * k, 26 * k, t.seatName(opp), t.seatAvatar(opp), { turn: p.turn === opp, size: k, sub: oppSub });
+    for (let i = 0; i < op.handCount; i++) {
+      const back = hwatu(scene, L.oppHand.x + (i - (op.handCount - 1) / 2) * L.bw * 0.55, L.oppHand.y, null, L.bw);
+      t.track(back, `opp:${i}`, { from: L.pile, delay: dealing ? (i * 2 + 1) * DEAL_GAP : 0 });
+    }
+    captured(t, scene, L.capX, L.oppCapY, op, capW, L.oppCapMaxX);
 
-    // 바닥 (달별로 모아서, 두 줄)
+    const pile = L.pile;
+    const myHand = { x: W * 0.6, y: L.handPos(0, 10).y };
+
+    // 바닥 (달별로 모아서)
     const floor = p.floor;
-    const nRows = portrait ? 3 : 2;
-    const cols = Math.max(4, Math.ceil(floor.length / nRows));
-    const left = portrait ? W * 0.04 : W * 0.17;
-    const right = portrait ? W * 0.96 : W * 0.83;
+    const pick = p.choice?.kind === 'choose' && t.myTurn && !t.busy;
+    let floorSeq = 0;
     floor.forEach((f, i) => {
-      const row = Math.floor(i / cols);
-      const col = i % cols;
-      const x = left + (col + 0.5) * ((right - left) / cols) - fw * 0.3;
-      const y = y0 + row * rowGap;
-      const pick = p.choice?.kind === 'choose' && t.myTurn && !t.busy;
+      const { x, y } = L.floorPos(i, floor.length);
       f.cards.forEach((id, j) => {
         const glow = p.choice?.kind === 'choose' && p.choice.options.includes(id);
-        const card = hwatu(scene, x + j * fw * 0.4, y + j * fw * 0.06, id, fw, {
+        const cx = x + j * fw * 0.4;
+        const cy = y + j * fw * 0.06;
+        const card = hwatu(scene, cx, cy, id, fw, {
           glow,
           onClick: glow && pick ? () => void t.act({ type: 'choose', card: id }) : undefined,
         });
-        // 처음 보는 패: 이번 차례에 뒤집은 패면 더미에서, 낸 패면 낸 사람 손에서
+        // 처음 보는 패: 판 시작이면 더미에서 차례로, 이번 차례에 뒤집은 패면 더미에서, 낸 패면 낸 사람 손에서
         const flipped = p.turnCards?.flipped === id;
-        const from = flipped ? pile : p.turn === me ? myHand : oppHand;
-        t.track(card, id, { from, order: flipped ? 1 : 0 });
+        const from = dealing || flipped ? pile : p.turn === me ? myHand : L.oppHand;
+        t.track(card, id, {
+          from,
+          order: flipped ? 1 : 0,
+          delay: dealing ? (20 + floorSeq++) * DEAL_GAP : 0,
+          // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
+          onLand: dealing ? undefined : () => slap(scene, cx, cy, fw, j > 0, t.dpr),
+        });
       });
       if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink'));
     });
     // 더미
-    for (let i = 0; i < 3; i++) hwatu(scene, pile.x + i * 2, pile.y - i * 2, null, fw);
-    label(scene, pile.x, pile.y + fw * 1.0, `더미 ${p.pileCount}`, clamp(fw * 0.22, 12, 18));
-    // 이번 차례에 낸 패·뒤집은 패 (오른쪽)
-    if (p.turnCards) {
-      const tc = [...p.turnCards.played, ...(p.turnCards.flipped ? [p.turnCards.flipped] : [])];
-      const tx = portrait ? W - fw * 2.1 : W * 0.925;
-      tc.forEach((id, i) => hwatu(scene, tx - i * fw * 0.45, pile.y, id, fw * 0.85));
+    for (let i = 0; i < 3; i++) hwatu(scene, pile.x + i * 2, pile.y - i * 2, null, L.pw);
+    label(scene, pile.x, pile.y + L.pw * 0.95, `더미 ${p.pileCount}`, clamp(L.pw * 0.24, 12, 18));
+    // 이번 차례에 낸 패·뒤집은 패 (가로 화면만)
+    if (p.turnCards && !portrait) {
+      const tcards = [...p.turnCards.played, ...(p.turnCards.flipped ? [p.turnCards.flipped] : [])];
+      const tx = W * 0.925;
+      tcards.forEach((id, i) => hwatu(scene, tx - i * fw * 0.45, pile.y, id, fw * 0.85));
       label(scene, tx, pile.y + fw * 1.0, '이번 차례', clamp(fw * 0.22, 12, 18));
     }
-    if (p.nagariMul > 1) label(scene, W / 2, y0 - fw * 1.05, `나가리 ×${p.nagariMul}`, clamp(fw * 0.3, 14, 22), tc('primary'));
+    if (p.nagariMul > 1) label(scene, W / 2, L.floorTop - 4, `나가리 ×${p.nagariMul}`, clamp(fw * 0.3, 14, 22), tc('primary'));
 
-    // 나: 먹은 패 · 이름패 · 손패
-    const mp = P[me];
-    captured(t, scene, 24 + capW / 2, portrait ? H - cw * 3.55 : H * 0.685, mp, capW, W - 16);
-    nameTag(scene, 26 * k, H - 28 * k, t.seatName(me), t.seatAvatar(me), {
-      turn: p.turn === me,
-      me: t.mySeat === me,
-      size: k,
-      sub: `${mp.score}점${mp.go ? ` · ${mp.go}고` : ''}${mp.bombFill ? ` · 폭탄피 ${mp.bombFill}` : ''}`,
-    });
+    // 나: 먹은 패 · 점수/이름패 · 손패
+    captured(t, scene, L.capX, L.myCapY, mp, capW, W - 16);
+    const mySub = `${mp.score}점${mp.go ? ` · ${mp.go}고` : ''}${mp.bombFill ? ` · 폭탄피 ${mp.bombFill}` : ''}`;
+    if (portrait) scoreChip(scene, W - 8, L.myCapY - capW * 0.78 - 30 * k, mySub, p.turn === me, k, true);
+    else
+      nameTag(scene, 26 * k, H - 28 * k, t.seatName(me), t.seatAvatar(me), {
+        turn: p.turn === me,
+        me: t.mySeat === me,
+        size: k,
+        sub: mySub,
+      });
     // 공개 상태가 내 비공개 손패보다 먼저 도착하면 방금 낸 패가 두 곳에 보인다 → 이미 바닥·먹은 패에 있는 패는 손패에서 뺀다
-    const shown = new Set<string>([
-      ...p.floor.flatMap((f) => f.cards),
-      ...Object.values(P).flatMap((pl) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi]),
-    ]);
+    const shown = new Set<string>([...p.floor.flatMap((f) => f.cards), ...Object.values(P).flatMap(allCaptured)]);
     const hand = (t.priv?.hand ?? []).filter((id) => !shown.has(id));
     const canPlay = t.myTurn && p.choice?.kind === 'play';
-    // 가로: 한 줄 (이름패 오른쪽부터) / 세로: 다섯 장씩 두 줄 (이름패 위)
-    const perRow = portrait ? 5 : hand.length;
-    const hx0 = portrait ? W / 2 - (Math.min(perRow, hand.length) - 1) * cw * 0.53 : Math.max(W * 0.27, 190 * k);
-    const step = portrait ? cw * 1.06 : Math.min(cw * 1.06, (W - hx0 - cw * 0.6) / Math.max(1, hand.length - 1));
-    const handY = (i: number) => (portrait ? H - cw * 0.86 - 46 * k - (Math.floor(i / perRow) === 0 ? cw * 1.62 : 0) : H - cw * 0.86);
-    hand.forEach((id, i) =>
+    hand.forEach((id, i) => {
+      const { x, y } = L.handPos(i, hand.length);
       t.track(
-        hwatu(scene, hx0 + (i % perRow) * step, handY(i), id, cw, {
+        hwatu(scene, x, y, id, cw, {
           lift: canPlay,
           onClick: canPlay && !t.busy ? () => void t.act({ type: 'play', card: id, shake: shake && !!t.priv?.shakeable.includes(cardById(id).month) }) : undefined,
         }),
         id,
-        { from: pile },
-      ),
-    );
+        { from: pile, delay: dealing ? i * 2 * DEAL_GAP : 0 },
+      );
+    });
   },
 
   controls(t: Ctx, el: HTMLElement) {

@@ -1,6 +1,7 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
+import { POKER_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme } from '../../lib/cards.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
 
 type Ctx = TableCtx<PokerPublic, PokerPrivate>;
@@ -15,6 +16,7 @@ let discard: string | null = null;
 const ui: GameUI<PokerPublic, PokerPrivate> = {
   game: 'poker',
   title: '세븐포커',
+  manual: POKER_MANUAL,
   icon: '♠️',
   back: 'games/casino/',
   backLabel: '카지노',
@@ -22,8 +24,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
 
   draw(t: Ctx) {
     const { scene } = t;
-    const W = scene.scale.width;
-    const H = scene.scale.height;
+    const { W, H } = viewSize(scene);
     const p = t.pub;
     drawTable(scene, 'poker');
     const portrait = H > W * 1.15;

@@ -9,6 +9,7 @@ import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, TEAM_COLORS, TERRAIN_TEX, type TexPixels } from './art';
 import { ICON_IDS, iconUrl } from '../ui/icons';
+import { DPR } from '../ui/dpr';
 import { cloudDataUrl, tierOf, type Tier } from '../ui/rank';
 import { ART_SCALE, TANK_ART, faceColor, tankArtUrl, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
 import { ALL_TANK_IDS } from '../game/data';
@@ -502,6 +503,12 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const cfg = this.cfg;
+    // 글자는 기기 해상도로 굽는다 (휴대폰에서 흐리지 않게)
+    if (DPR > 1) {
+      const fac = this.add;
+      const makeText = fac.text.bind(fac);
+      fac.text = ((x: number, y: number, text: string | string[], style?: Phaser.Types.GameObjects.Text.TextStyle) => makeText(x, y, text, style).setResolution(DPR)) as typeof fac.text;
+    }
     this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal', fullUlt: cfg.fullUlt, mode: cfg.mode ?? 'normal' });
     this.speed = cfg.speed ?? 1;
     this.time.timeScale = this.speed;
@@ -578,13 +585,13 @@ export class GameScene extends Phaser.Scene {
     const gap = () => Math.hypot(p1().x - p2().x, p1().y - p2().y) || 1;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (twoDown()) {
-        pinch = { d: gap(), z: this.cameras.main.zoom };
+        pinch = { d: gap(), z: this.zoomCss };
         drag = null;
         return;
       }
       drag = { x: p.x, y: p.y, sx: this.cameras.main.scrollX, sy: this.cameras.main.scrollY };
     });
-    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoomTo(this.cameras.main.zoom * (dy > 0 ? 0.9 : 1.1)));
+    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoomTo(this.zoomCss * (dy > 0 ? 0.9 : 1.1)));
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (pinch) {
         if (twoDown()) this.zoomTo(pinch.z * (gap() / pinch.d));
@@ -622,13 +629,24 @@ export class GameScene extends Phaser.Scene {
   /** 사용자가 정한 확대 배율 (핀치·휠). null이면 자동 */
   private userZoom: number | null = null;
 
+  /** 화면 크기·카메라 배율 (CSS 픽셀 기준. 캔버스는 DPR배 크다) */
+  private get viewW() {
+    return this.scale.width / DPR;
+  }
+  private get viewH() {
+    return this.scale.height / DPR;
+  }
+  private get zoomCss() {
+    return this.cameras.main.zoom / DPR;
+  }
+
   /** 맵 전체가 한 화면에 들어오는 배율 */
   private fitZoom() {
     const hudH = this.hud?.bottomHeight ?? 0;
     const t = this.match.terrain;
     // 가로는 맵 전체가 들어오게 하되, 세로로 맵 아래 바깥이 보일 만큼은 줄이지 않는다
     // 맵 밖(양옆·아래)이 보이기 전까지만 축소된다
-    return Math.max(this.scale.width / t.w, (this.scale.height - hudH) / t.h);
+    return Math.max(this.viewW / t.w, (this.viewH - hudH) / t.h);
   }
 
   private zoomTo(z: number) {
@@ -636,7 +654,7 @@ export class GameScene extends Phaser.Scene {
     const min = this.fitZoom();
     const nz = Phaser.Math.Clamp(z, min, 1.6);
     const mid = cam.midPoint.clone();
-    cam.setZoom(nz);
+    cam.setZoom(nz * DPR);
     this.userZoom = nz;
     this.manualCam = true;
     this.applyBounds();
@@ -652,13 +670,14 @@ export class GameScene extends Phaser.Scene {
     const hudH = this.hud?.bottomHeight || 118;
     const t = this.match.terrain;
     // 천장(맵 맨 위)보다 위, 맵 양옆·아래 바깥은 보이지 않는다
-    cam.setBounds(0, 0, t.w, t.h + hudH / cam.zoom);
+    cam.setBounds(0, 0, t.w, t.h + hudH / this.zoomCss);
   }
 
   private setupCamera() {
     const cam = this.cameras.main;
-    const w = this.scale.width;
-    const h = this.scale.height;
+    cam.setSize(this.scale.width, this.scale.height);
+    const w = this.viewW;
+    const h = this.viewH;
     const hudH = this.hud?.bottomHeight || (w < 700 ? 150 : 118);
     const short = h < 520 && w > h;
     // 가로 화면은 맵 높이가 거의 다 보이게, 세로(모바일)·낮은 가로 화면은 둘러보도록 더 확대
@@ -667,7 +686,7 @@ export class GameScene extends Phaser.Scene {
         ? Phaser.Math.Clamp(w / 620, 0.45, 1)
         : Phaser.Math.Clamp(Math.min((h - hudH * (short ? 0.85 : 0.5)) / (short ? 520 : 860), w / 1050), 0.38, 1.15);
     // 맵 밖이 보이지 않도록 최소 배율 이상으로
-    cam.setZoom(this.userZoom !== null ? Phaser.Math.Clamp(this.userZoom, this.fitZoom(), 1.6) : Math.max(zoom, this.fitZoom()));
+    cam.setZoom((this.userZoom !== null ? Phaser.Math.Clamp(this.userZoom, this.fitZoom(), 1.6) : Math.max(zoom, this.fitZoom())) * DPR);
     this.applyBounds();
   }
 
@@ -1129,9 +1148,9 @@ export class GameScene extends Phaser.Scene {
 
   /** 화면 아래 조작판을 뺀 보이는 영역의 at(0~1) 높이에 y가 오도록 하는 카메라 중심 y */
   private focusY(y: number, at: number) {
-    const h = this.scale.height;
+    const h = this.viewH;
     const vis = h - (this.hud?.bottomHeight ?? 0);
-    return y - (vis * at - h / 2) / this.cameras.main.zoom;
+    return y - (vis * at - h / 2) / this.zoomCss;
   }
 
   private follow(x: number, y: number, k: number) {
