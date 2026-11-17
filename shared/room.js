@@ -61,6 +61,8 @@ export function watchRooms(game, cb) {
   const ch = supabase
     .channel(`rooms:${game}:${Math.random().toString(36).slice(2)}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'game_rooms', filter: `game=eq.${game}` }, soon)
+    // 삭제(DELETE)는 필터를 걸 수 없어서 따로 받는다
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_rooms' }, soon)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'room_seats' }, soon)
     .subscribe();
   return () => {
@@ -141,7 +143,13 @@ export async function getState(roomId) {
 
 /** 내 비공개 패 (본인 것만 읽힌다) */
 export async function getPrivate(roomId) {
-  const { data } = await supabase.from('game_private').select('seat_no,round_no,hand').eq('room_id', roomId);
+  // 판 도중 나갔다가 다른 자리를 예약하면 내 행이 둘일 수 있다 → 가장 최근 판의 것
+  const { data } = await supabase
+    .from('game_private')
+    .select('seat_no,round_no,hand')
+    .eq('room_id', roomId)
+    .order('round_no', { ascending: false })
+    .limit(1);
   return data?.[0] ?? null;
 }
 
@@ -153,7 +161,13 @@ export function watchRoom(roomId, { onRoom, onSeats, onState, onPrivate, onResyn
   let first = true;
   const ch = supabase
     .channel(`room:${roomId}:${Math.random().toString(36).slice(2)}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, (p) => onRoom?.(p.new && Object.keys(p.new).length ? p.new : null))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, (p) => {
+      if (p.eventType !== 'DELETE') onRoom?.(p.new);
+    })
+    // 방 삭제는 필터 없이 받고 id로 고른다
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_rooms' }, (p) => {
+      if (p.old?.id === roomId) onRoom?.(null);
+    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'room_seats', filter: `room_id=eq.${roomId}` }, () => onSeats?.())
     .on('postgres_changes', { event: '*', schema: 'public', table: 'game_states', filter: `room_id=eq.${roomId}` }, (p) => onState?.(p.new))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'game_private', filter: `room_id=eq.${roomId}` }, (p) => onPrivate?.(p.new))

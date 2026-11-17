@@ -35,6 +35,8 @@ export interface TableCtx<P = any, Q = any> {
   me: WorldUser;
   /** 내 자리 (관전 중이면 null) */
   mySeat: number | null;
+  /** 지금 보이는 판에서 내가 앉았던 자리 (결과 화면용, 그 판에 없었으면 null) */
+  resultSeat: number | null;
   pub: P | null;
   priv: Q | null;
   pending: number[];
@@ -190,12 +192,12 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
       }),
     );
     const box = $(root, '#refill-box');
-    box.innerHTML = m.wallet.canRefill(wallet, cur, baseUnit)
+    box.innerHTML = m.wallet.canRefill(wallet, cur, 100)
       ? `<button class="btn" id="refill">무료 충전 (오늘 ${wallet![`${cur}RefillsLeft`]}번 남음)</button>`
       : '';
     box.querySelector('#refill')?.addEventListener('click', async () => {
       try {
-        const r = await m.wallet.refill(cur, baseUnit);
+        const r = await m.wallet.refill(cur, 100);
         wallet = r;
         toast(r.ok ? `10,000${unit}으로 채웠어요` : r.reason === 'limit' ? '오늘 무료 충전을 모두 썼어요' : '아직 충분해요');
       } catch (e) {
@@ -227,7 +229,8 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
             const seats = r.seats ?? [];
             const humans = seats.filter((s) => s.user_id && !s.left_game);
             const ais = seats.filter((s) => !s.user_id || s.left_game).length;
-            const full = ais === 0;
+            const open = r.status === 'playing' ? seats.filter((s) => (!s.user_id || s.left_game) && !s.pending_user_id).length : ais;
+            const full = open === 0;
             const playing = r.status === 'playing';
             return `<div class="room-row ${playing ? 'playing' : ''}">
               <div class="rn">${r.has_password ? '🔒 ' : ''}${esc(r.name)}
@@ -296,11 +299,12 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
 async function enterRoom(ui: GameUI, m: Mods, me: WorldUser, roomId: string, password = '') {
   app().innerHTML = '<div class="center">방에 들어가는 중…</div>';
   let avatar = m.z.lastAvatar(me.userId);
-  for (let tries = 0; tries < 4; tries++) {
+  let joined = false;
+  for (let tries = 0; tries < 4 && !joined; tries++) {
     try {
       const r = await m.room.joinRoom(roomId, password, avatar);
       if (r.pending) toast('게임이 진행 중이에요. 이번 판은 구경하고 다음 판부터 참여해요');
-      break;
+      joined = true;
     } catch (e) {
       const msg = m.room.friendly(e);
       if (msg.includes('동물')) {
@@ -322,6 +326,10 @@ async function enterRoom(ui: GameUI, m: Mods, me: WorldUser, roomId: string, pas
       return showLobby(ui, m, me);
     }
   }
+  if (!joined) {
+    toast('방에 들어가지 못했어요');
+    return showLobby(ui, m, me);
+  }
   const url = new URL(location.href);
   url.searchParams.set('room', roomId);
   history.replaceState(null, '', url);
@@ -341,9 +349,19 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   let priv: PrivateRow | null = null;
   let wallet: Wallet | null = null;
   let busy = false;
+  /** 행동을 보낸 시점의 상태 시각 (이보다 새 상태가 오면 버튼을 다시 켠다) */
+  let busySince: string | null = null;
+  let busyTimer: ReturnType<typeof setTimeout> | null = null;
+  const unbusy = () => {
+    busy = false;
+    busySince = null;
+    if (busyTimer) clearTimeout(busyTimer);
+    busyTimer = null;
+  };
   let closed = false;
   let lastEvent = -1;
   let resultShownFor = -1;
+  let firstLoad = true;
 
   app().innerHTML = `<div class="table-page">
     <header class="bar"><button class="btn ghost" id="leave">← 나가기</button>
@@ -394,6 +412,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       seats,
       me,
       mySeat: mine?.seat_no ?? null,
+      resultSeat: priv && st && priv.round_no === st.round_no ? priv.seat_no : null,
       pub: (room.status === 'playing' || st?.public_state?.result) && st?.round_no ? st.public_state : null,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       pending,
@@ -401,15 +420,24 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       act: async (payload) => {
         if (busy) return;
         busy = true;
+        busySince = st?.updated_at ?? null;
         paintControls();
         try {
           await m.room.act(roomId, payload);
+          // 새 상태(실시간)가 도착하면 풀린다. 혹시 안 오면 3초 뒤에 푼다
+          if (busy && st?.updated_at === busySince) {
+            busyTimer = setTimeout(() => {
+              unbusy();
+              paintControls();
+            }, 3000);
+            return;
+          }
+          unbusy();
         } catch (e) {
           toast(m.room.friendly(e));
-        } finally {
-          busy = false;
-          paintControls();
+          unbusy();
         }
+        paintControls();
       },
       busy,
       fmt: (n) => m.wallet.formatAmount(n),
@@ -498,6 +526,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
 
   const paintResult = () => {
+    if (closed) return;
     const c = ctx();
     const res = st?.public_state?.result;
     if (!c || !res || room?.status !== 'waiting' || !st || resultShownFor === st.round_no) return;
@@ -511,6 +540,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
 
   const showCutins = () => {
+    if (closed) return;
     const c = ctx();
     const events = (st?.public_state?.events as GameEventLite[] | undefined) ?? [];
     const maxId = events.reduce((a, e) => Math.max(a, e.id), 0);
@@ -532,8 +562,22 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     el.classList.add('show');
   };
 
+  /** 대기 중인데 사람이 모두 레디면 판을 시작한다 (서버가 다시 확인하므로 여러 명이 불러도 안전) */
+  let autoStartKey = '';
+  const maybeStart = () => {
+    if (closed || !room || room.status !== 'waiting') return;
+    const humans = seats.filter((s) => s.user_id && !s.left_game);
+    const mine = mySeatRow();
+    if (!mine?.ready || !humans.length || !humans.every((s) => s.ready)) return;
+    const key = `${room.round_no}:${humans.map((s) => s.user_id).join(',')}`;
+    if (key === autoStartKey) return;
+    autoStartKey = key;
+    void m.room.startRound(roomId).catch(() => undefined);
+  };
+
   function paint() {
     if (closed) return;
+    maybeStart();
     paintSeats();
     const c = ctx();
     if (c) {
@@ -564,12 +608,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       m.room.getPrivate(roomId),
       m.wallet.ensureWallet().catch(() => null),
     ]);
+    if (closed) return;
     if (!r) return gone();
     room = r;
     seats = s;
     st = gs;
     priv = p;
     if (w) wallet = w;
+    if (firstLoad && st && r.status === 'waiting') resultShownFor = st.round_no;
+    firstLoad = false;
     paintMoney();
     showCutins();
     paint();
@@ -585,13 +632,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
 
   const unwatch = m.room.watchRoom(roomId, {
     onRoom: (r) => {
+      if (closed) return;
       if (!r) return gone();
       room = { ...room!, ...r };
       paint();
       paintResult();
     },
     onSeats: async () => {
+      if (closed) return;
       seats = await m.room.getSeats(roomId).catch(() => seats);
+      if (closed) return;
       if (!seats.some((s) => s.user_id === me.userId || s.pending_user_id === me.userId)) {
         // 오래 자리를 비워 정리되었으면
         toast('방에서 나와졌어요');
@@ -601,12 +651,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       paint();
     },
     onState: (s) => {
+      if (closed) return;
+      if (busy && s.updated_at !== busySince) unbusy();
       st = s;
       showCutins();
       paint();
       paintResult();
     },
     onPrivate: (p) => {
+      if (closed) return;
       priv = p;
       paint();
     },
@@ -614,12 +667,21 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   });
   const touch = setInterval(() => void m.room.touchRoom(roomId), m.room.TOUCH_MS);
   void m.room.touchRoom(roomId);
+  // 백그라운드 탭에서는 타이머가 느려지므로, 다시 보이면 바로 신호를 보내고 상태를 다시 읽는다
+  const onVisible = () => {
+    if (document.visibilityState !== 'visible' || closed) return;
+    void m.room.touchRoom(roomId);
+    void reloadAll();
+  };
+  document.addEventListener('visibilitychange', onVisible);
 
   function cleanup() {
     closed = true;
     unwatch();
     clearInterval(touch);
     clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVisible);
+    unbusy();
     game.destroy(true);
   }
 

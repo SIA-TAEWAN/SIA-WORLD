@@ -52,7 +52,8 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       });
       const hands = s.hands;
       hands.forEach((h, hi) => {
-        const hx = x + (hi - (hands.length - 1) / 2) * (cw * 1.9);
+        // 좁은 화면에서도 스플릿 핸드가 옆자리와 겹치지 않게
+        const hx = x + (hi - (hands.length - 1) / 2) * Math.min(cw * 1.9, W / seats.length / 2.1);
         h.cards.forEach((c, ci) => playingCard(scene, hx - cw * 0.25 + ci * cw * 0.32, y - ci * 6, c, cw * 0.9, { lift: isTurn && p.turn?.hand === hi }));
         const tot = `${h.total}${h.soft && h.total <= 21 ? 's' : ''}`;
         const res = h.result ? ` · ${RESULT[h.result]}${h.delta ? ` ${h.delta > 0 ? '+' : ''}${t.fmt(h.delta)}` : ''}` : '';
@@ -68,7 +69,8 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     if (!p || t.mySeat === null) return;
     const mine = p.seats.find((s) => s.seat === t.mySeat);
     if (p.phase === 'bet' && p.waitingBets.includes(t.mySeat)) {
-      const max = mine?.maxBet ?? p.maxBet;
+      // 베팅은 기본 단위의 배수만
+      const max = Math.floor((mine?.maxBet ?? p.maxBet) / p.minBet) * p.minBet;
       if (betAmount < p.minBet || betAmount > max) betAmount = p.minBet;
       el.innerHTML = `<div class="row">
         <button class="btn" data-m="1">×1</button><button class="btn" data-m="2">×2</button><button class="btn" data-m="5">×5</button>
@@ -105,7 +107,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       .map((s) => {
         const d = s.delta;
         const res = s.out ? '쉼' : s.hands.map((h) => RESULT[h.result]).join(' / ');
-        return `<tr><td>${esc(t.seatName(s.seat))}${s.seat === t.mySeat ? ' (나)' : ''}</td><td>${res}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
+        return `<tr><td>${esc(s.name)}${s.seat === t.resultSeat ? ' (나)' : ''}</td><td>${res}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
       })
       .join('');
     return `<h3>🃏 판 결과</h3><p>딜러 ${r.dealer.total}${r.dealer.blackjack ? ' (블랙잭)' : r.dealer.bust ? ' (버스트)' : ''}</p><table>${rows}</table>`;

@@ -37,11 +37,13 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     // 자리 배치: 내 자리가 아래 가운데
     const order = [...p.seats].sort((a, b) => a.seat - b.seat);
     const myIdx = Math.max(0, order.findIndex((s) => s.seat === t.mySeat));
+    // 좁은 화면에서 왼쪽·오른쪽 자리가 잘리지 않게
+    const side = Math.max(cw * 1.6, W * 0.13);
     const spots = [
       [W / 2, H * 0.8],
-      [W * 0.13, H * 0.45],
+      [side, H * 0.45],
       [W / 2, H * 0.14],
-      [W * 0.87, H * 0.45],
+      [W - side, H * 0.45],
     ];
     const shown = new Map((p.showdown ?? []).map((h) => [h.seat, h]));
     order.forEach((s, i) => {
@@ -63,7 +65,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         });
       });
       const sub = s.excluded ? '이번 판 쉼' : s.folded ? '다이' : [s.last, s.allIn ? '올인' : '', s.openLabel ?? ''].filter(Boolean).join(' · ');
-      nameTag(scene, x - 50, y + cw * scale * 0.95, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, sub: sub || undefined });
+      nameTag(scene, Math.min(W - 120, Math.max(22, x - 50)), y + cw * scale * 0.95, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, sub: sub || undefined });
       if (s.total) label(scene, x + cw * 1.8 * scale, y - cw * 0.95 * scale, `${t.fmt(s.total)}`, 13, '#ffe9a8');
       if (sd) label(scene, x, y - cw * 0.95 * scale, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, 16, p.winners.includes(s.seat) ? '#ffe066' : '#ffffff');
       else if (me && t.priv?.hand && p.phase !== 'choose') label(scene, x, y - cw * 0.95, `내 패: ${t.priv.hand}`, 15, '#ffe066');
@@ -117,11 +119,12 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     const r = t.pub?.summary;
     if (!r) return '<p>판이 끝났어요</p>';
     if (r.cancelled) return '<h3>판이 취소됐어요</h3><p>참가할 수 있는 사람이 2명보다 적었어요</p>';
+    const names = new Map((t.pub?.seats ?? []).map((s) => [s.seat, s.name]));
     const rows = Object.entries(r.deltas)
       .map(([seat, d]) => {
         const n = Number(seat);
         const hand = r.hands[n]?.name ?? (r.winners.includes(n) && r.uncontested ? '무혈 승리' : '');
-        return `<tr><td>${esc(t.seatName(n))}${n === t.mySeat ? ' (나)' : ''}${r.winners.includes(n) ? ' 🏆' : ''}</td><td>${esc(hand)}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
+        return `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}${r.winners.includes(n) ? ' 🏆' : ''}</td><td>${esc(hand)}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
       })
       .join('');
     return `<h3>♠️ 판 결과</h3><table>${rows}</table>`;

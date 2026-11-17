@@ -69,18 +69,24 @@ function captured(scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['p
     ['열끗', p.captured.yeol],
     ['띠', p.captured.tti],
     ['피', p.captured.pi],
-  ];
+  ].filter((g): g is [string, string[]] => g[1].length > 0) as [string, string[]][];
+  // 먹은 패가 많아도 화면 안에 들어오게 겹침 간격을 줄인다
+  const avail = scene.scale.width - x - 10;
+  const fixed = groups.length * w * 1.4;
+  const extra = groups.reduce((a, [, ids]) => a + ids.length - 1, 0);
+  const step = Math.min(w * 0.32, extra ? Math.max(3, (avail - fixed) / extra) : w * 0.32);
   let cx = x;
   for (const [name, ids] of groups) {
-    if (!ids.length) continue;
-    ids.forEach((id, i) => hwatu(scene, cx + i * w * 0.32, y, id, w));
-    const gw = w + (ids.length - 1) * w * 0.32;
+    ids.forEach((id, i) => hwatu(scene, cx + i * step, y, id, w));
+    const gw = w + (ids.length - 1) * step;
     label(scene, cx - w / 2 + gw / 2, y + w * 0.95, `${name} ${name === '피' ? p.piCount : ids.length}`, 14, name === '띠' ? '#ffc9c9' : '#ffe9a8');
     cx += gw + w * 0.4;
   }
 }
 
 let shake = false;
+/** 5광 컷인을 이미 보여 준 판:자리 */
+const fiveGwang = new Set<string>();
 
 const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   game: 'matgo',
@@ -196,10 +202,12 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const r = (t.pub as unknown as { result?: MatgoSummary })?.result;
     if (!r) return '<p>판이 끝났어요</p>';
     if (r.result === 'nagari') return `<h3>🎴 나가리!</h3><p class="big">다음 판 ×${r.nextNagari}</p>`;
-    const meWin = r.winner === t.mySeat;
+    const meWin = r.winner === t.resultSeat;
+    const name = (seat: number) => t.pub?.players[seat]?.name ?? t.seatName(seat);
     const lines = r.breakdown.map((l) => `<tr><td>${esc(l.label)}</td><td>${l.points}점</td></tr>`).join('');
-    return `<h3>🎴 ${esc(t.seatName(r.winner!))} 승리${r.chongtong ? ' (총통)' : ''}</h3>
-      <p class="big ${meWin ? 'plus' : t.mySeat === r.loser ? 'minus' : ''}">${meWin ? '+' : t.mySeat === r.loser ? '-' : ''}${t.fmt(r.paid)}냥</p>
+    const meLose = r.loser === t.resultSeat;
+    return `<h3>🎴 ${esc(name(r.winner!))} 승리${r.chongtong ? ' (총통)' : ''}</h3>
+      <p class="big ${meWin ? 'plus' : meLose ? 'minus' : ''}">${meWin ? '+' : meLose ? '-' : ''}${t.fmt(r.paid)}냥</p>
       <table>${lines}
         ${r.goCount ? `<tr><td>${r.goCount}고</td><td>+${r.goBonus}${r.goMultiplier > 1 ? ` ×${r.goMultiplier}` : ''}</td></tr>` : ''}
         <tr><td>최종 점수</td><td>${r.score}점</td></tr>
@@ -234,9 +242,17 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         return mine ? '뻑!' : null;
       case 'nagari':
         return '나가리';
-      default:
-        if (ev.t === 'capture' && t.pub && (t.pub.players[ev.seat ?? -1]?.captured.gwang.length ?? 0) === 5) return '5광!';
+      default: {
+        // 5광: 광이 5장이 된 그 순간만 (자리마다 한 번)
+        if (ev.t !== 'capture' || typeof ev.seat !== 'number' || !t.pub) return null;
+        const n = t.pub.players[ev.seat]?.captured.gwang.length ?? 0;
+        const key = `${(t.pub as unknown as { round?: number }).round ?? 0}:${ev.seat}`;
+        if (n === 5 && !fiveGwang.has(key)) {
+          fiveGwang.add(key);
+          return '5광!';
+        }
         return null;
+      }
     }
   },
 };
