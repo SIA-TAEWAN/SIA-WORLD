@@ -398,7 +398,7 @@ function renderRoom(id: string) {
     }
     $(root, '#tank-name').textContent =
       mineP.tank === 'random' ? '랜덤 · 게임 시작 때 정해져요 (20% 확률로 십이지신 열두빛)' : `${TANKS[mineP.tank].name} (${TANKS[mineP.tank].animal}) · ${TANKS[mineP.tank].role}`;
-    $(root, '#map-note').textContent = (room.map === 'target' ? '🎯 백발백중: 모두 꼬꼬댁 · 깃털탄만 · 개인전 · 과녁(인원 × 5개)을 먼저 맞히면 200점! · ' : room.map !== 'random' && MAPS[room.map].lockTank ? '🐶 아슬아슬: 모두 멍뭉이 · 땅파기탄(2번)만! · ' : '') + (iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요');
+    $(root, '#map-note').textContent = (room.map === 'target' ? '🎯 백발백중: 모두 꼬꼬댁 · 깃털탄만 · 개인전 · 과녁(인원 × 5개)을 먼저 맞히면 200점 (높은 층일수록 +50점씩)! · ' : room.map !== 'random' && MAPS[room.map].lockTank ? '🐶 아슬아슬: 모두 멍뭉이 · 땅파기탄(2번)만! · ' : '') + (iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요');
     const needTeam = room.map !== 'target' && (room.players.length >= 3 || !teamsOk(room));
     $(root, '#team-box').style.display = needTeam ? '' : 'none';
     $(root, '#team').innerHTML = ([0, 1] as const)

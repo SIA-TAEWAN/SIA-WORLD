@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Match } from '../src/game/match';
+import { Match, targetPoints } from '../src/game/match';
 import type { PlayerSetup, TurnInput } from '../src/game/types';
 import { Terrain } from '../src/physics/terrain';
 import { autoplay } from '../src/ai/autoplay';
@@ -759,7 +759,8 @@ describe('백발백중', () => {
       expect(m.terrain.hash()).toBe(before);
       if (r.events.some((e) => e.type === 'target')) {
         hit = true;
-        expect(m.tanks[0].damageDealt).toBe(200);
+        expect(m.tanks[0].damageDealt).toBe(targetPoints((r.events.find((e) => e.type === 'target') as { x: number }).x));
+        expect([200, 250, 300, 350, 400, 450, 500]).toContain(m.tanks[0].damageDealt);
         expect(m.targets.length).toBe(4);
         for (let i = 0; i < 4; i++) {
           expect(m.over).toBe(false);

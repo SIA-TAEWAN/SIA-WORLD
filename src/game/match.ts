@@ -24,6 +24,13 @@ const CRATER_SCALE = 0.9;
 export const PRACTICE_TURNS = 5;
 export const TARGETS_PER_TANK = 5;
 export const TARGET_POINTS = 200;
+/** 층이 하나 높아질 때마다 더 주는 점수 (과녁이 있는 첫 층이 1층) */
+export const TARGET_FLOOR_BONUS = 50;
+/** 과녁이 선 층에 따른 점수: 1층 200, 2층 250, 3층 300 … */
+export function targetPoints(x: number): number {
+  const floor = Math.max(1, Math.floor(x / STEP_W)); // 0번 층은 시작 층
+  return TARGET_POINTS + (floor - 1) * TARGET_FLOOR_BONUS;
+}
 export interface Target {
   id: number;
   x: number;
@@ -500,8 +507,10 @@ export class Match {
             }
             if (best) {
               this.targets = this.targets.filter((g) => g !== best);
-              t.damageDealt += TARGET_POINTS;
-              events.push({ f, type: 'target', id: best.id, by: t.idx, x: best.x, y: best.y, points: TARGET_POINTS });
+              const pts = targetPoints(best.x);
+              t.damageDealt += pts;
+              t.hits = (t.hits ?? 0) + 1;
+              events.push({ f, type: 'target', id: best.id, by: t.idx, x: best.x, y: best.y, points: pts });
             }
             return;
           }
@@ -718,7 +727,7 @@ export class Match {
       targets: this.targets.map((g) => ({ ...g })),
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
-        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0, poisonMul: t.poisonMul ?? 1, shots: t.shots ?? 0,
+        alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0, poisonMul: t.poisonMul ?? 1, shots: t.shots ?? 0, hits: t.hits ?? 0,
       })),
     };
   }
@@ -767,5 +776,5 @@ export interface MatchSnapshot {
   nextZone?: number;
   wall?: Wall | null;
   targets?: Target[];
-  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison' | 'poisonMul' | 'shots'>[];
+  tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison' | 'poisonMul' | 'shots' | 'hits'>[];
 }

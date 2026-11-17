@@ -37,6 +37,8 @@ export interface TankState {
   lastPower: number;
   /** 백발백중: 쏜 횟수 */
   shots?: number;
+  /** 백발백중: 맞힌 과녁 수 */
+  hits?: number;
   /** 중독이 남은 턴 수 (꼬꼬댁 깃털탄) */
   poison?: number;
   /** 중독 세기 배율 (증폭벽을 지난 탄이면 1.3) */

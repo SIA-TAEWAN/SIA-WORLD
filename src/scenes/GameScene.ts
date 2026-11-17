@@ -20,7 +20,7 @@ import { sfx } from '../ui/sfx';
 
 export interface MatchSummary {
   winner: 0 | 1 | -1;
-  players: { name: string; tank: string; team: 0 | 1; damage: number; alive: boolean; ai: boolean; mine: boolean }[];
+  players: { name: string; tank: string; team: 0 | 1; damage: number; hits?: number; alive: boolean; ai: boolean; mine: boolean }[];
   turns: number;
   /** 백발백중 (damage가 점수) */
   practice?: boolean;
@@ -1583,7 +1583,7 @@ export class GameScene extends Phaser.Scene {
       winner: m.winner as 0 | 1 | -1,
       turns: m.turn,
       practice: m.practice,
-      players: m.tanks.map((t) => ({ name: t.name, tank: t.tankId, team: t.team, damage: t.damageDealt, alive: t.alive, ai: !!t.ai, mine: this.cfg.net ? t.idx === this.cfg.net.myIdx : !t.ai })),
+      players: m.tanks.map((t) => ({ name: t.name, tank: t.tankId, team: t.team, damage: t.damageDealt, hits: t.hits ?? 0, alive: t.alive, ai: !!t.ai, mine: this.cfg.net ? t.idx === this.cfg.net.myIdx : !t.ai })),
     };
     this.time.delayedCall(1400, () => this.cfg.onEnd(summary));
   }

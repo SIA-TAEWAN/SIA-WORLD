@@ -157,7 +157,7 @@ const MANUAL: [string, string][] = [
   ['🐯 탱크와 무기', `<p>12지신 탱크 12대가 있고, 탱크마다 1·2번 무기와 <b>3번 필살기</b>가 달라요. 무기 설명은 탱크를 고를 때 볼 수 있어요.</p>
     <p>필살기 게이지는 내 차례가 올 때마다 20%씩 차고, 100%가 되면 쓸 수 있어요 (쓰면 0%부터 다시).</p>
     <p><b>🎲 랜덤</b>을 고르면 게임 시작 때 탱크가 정해지고, 20% 확률로 더 강한 <b>십이지신 '열두빛'</b>이 나와요.</p>`],
-  ['🎯 백발백중', `<p><b>백발백중</b> — 꼬꼬댁과 깃털탄으로 계단 위 과녁을 맞히는 모드예요. 5턴 동안 과녁 하나당 200점! 최고 점수로 백발백중 랭킹이 매겨져요.</p>
+  ['🎯 백발백중', `<p><b>백발백중</b> — 꼬꼬댁과 깃털탄으로 계단 위 과녁을 맞히는 모드예요. 5턴 동안 과녁 하나당 200점, 높은 층일수록 한 층마다 +50점 (1층 200 · 2층 250 · 3층 300 …)! 최고 점수로 백발백중 랭킹이 매겨져요.</p>
     <ul><li>맵에서 <b>백발백중</b>을 고르면 탱크는 꼬꼬댁, 무기는 깃털탄으로 정해지고 아이템은 쓸 수 없어요</li>
     <li>모두 맨 왼쪽 층에서 시작해요. 땅은 파이지 않고, 서로 맞아도 피해가 없어요</li>
     <li>바람 세기는 보통으로 정해져 있고 방향만 턴마다 바뀌어요</li>
@@ -441,11 +441,11 @@ function showTargetResult(s: MatchSummary, act: ResultActions) {
     `<div class="result-card">
       <div class="trophy">🎯</div>
       <h2>${players.length > 1 ? `${escapeHtml(top.name)} 1등!` : `${top.damage.toLocaleString()}점!`}</h2>
-      <p class="sub">백발백중 · 과녁 하나 200점 (최대 1,000점)</p>
+      <p class="sub">백발백중 · 1층 200점 · 한 층 오를 때마다 +50점</p>
       <table class="score">
         <thead><tr><th>순위</th><th>플레이어</th><th>맞힌 과녁</th><th>점수</th></tr></thead>
         <tbody>${players
-          .map((p, i) => `<tr class="${i === 0 ? 'win' : ''}"><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${p.damage / 200}개</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`)
+          .map((p, i) => `<tr class="${i === 0 ? 'win' : ''}"><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${p.hits ?? 0}개</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`)
           .join('')}</tbody>
       </table>
       <div class="actions">
