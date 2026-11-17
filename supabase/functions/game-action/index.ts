@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof GameError) return json({ error: e.message }, e.status);
     console.error(e);
-    return json({ error: 'server error' }, 500);
+    // 원인을 찾을 수 있게 짧은 설명을 같이 보낸다 (비밀값은 들어 있지 않다)
+    return json({ error: 'server error', detail: String((e as Error)?.message ?? e).slice(0, 200) }, 500);
   }
 });
