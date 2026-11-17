@@ -94,6 +94,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
   back: 'games/casino/',
   backLabel: '카지노',
   noAi: true,
+  liveWallet: true,
   felt: () => theme().COLOR.skyMid,
 
   draw(t: Ctx) {
@@ -102,10 +103,14 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     const p = t.pub;
     drawTable(scene, 'poker');
     const T = theme();
+    // 결과가 처음 보인 순간부터 회전 (다시 그려도 이어서)
+    const spinKey = p ? `${p.spin}:${t.room.round_no}` : '';
+    if (p?.phase === 'spin' && p.landed !== null && !spinStart.has(spinKey)) spinStart.set(spinKey, performance.now());
+    const isStopped = () => !p || p.phase !== 'spin' || wheelStopped(spinKey);
     // 최근 결과 (최대 20, 최신이 오른쪽)
     const hist = p?.history ?? [];
     const hs = clamp(Math.min(30, (W - 40) / 20), 12, 30);
-    const shownHist = p && p.phase === 'spin' && !wheelStopped(p) ? hist.slice(0, -1) : hist;
+    const shownHist = !isStopped() ? hist.slice(0, -1) : hist;
     shownHist.forEach((cell, i) => {
       const x = W - 20 - (shownHist.length - 1 - i) * (hs + 2) - hs / 2;
       const key = `avc-${WHEEL[cell]}`;
@@ -117,12 +122,13 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
 
     // 휠
     const top = 28 + hs;
-    const r = Math.max(60, Math.min(W * 0.42, (H - top - 50) / 2));
+    // 휠 아래 두 줄(남은 시간·결과) 자리를 남긴다
+    const r = Math.max(56, Math.min(W * 0.42, (H - top - 96) / 2));
     const cx = W / 2;
     const cy = top + 14 + r;
-    const result = p?.result ?? null;
+    const result = p?.landed ?? null;
     const lastCell = hist.length ? hist[hist.length - 1] : 0;
-    const stopped = !p || p.phase !== 'spin' || wheelStopped(p);
+    const stopped = isStopped();
     const wheel = drawWheel(scene, cx, cy, r, p?.phase === 'spin' && stopped ? result : null);
     const seg = (Math.PI * 2) / 12;
     // 칸 c가 위(바늘)에 오는 회전값
@@ -276,10 +282,9 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
 };
 
 /** 회전 연출이 끝났는가 */
-function wheelStopped(p: RoulettePublic) {
-  const k = [...spinStart.keys()].find((x) => x.startsWith(`${p.spin}:`));
-  const t0 = k ? spinStart.get(k)! : 0;
-  return !k || performance.now() - t0 >= SPIN_ANIM;
+function wheelStopped(key: string) {
+  const t0 = spinStart.get(key);
+  return t0 === undefined || performance.now() - t0 >= SPIN_ANIM;
 }
 
 function flash(el: HTMLElement, msg: string) {
@@ -293,7 +298,7 @@ function flash(el: HTMLElement, msg: string) {
 /** 베팅판 HTML: 계절마다 한 줄 [계절][띠][이웃][띠][이웃][띠][다음 줄로 이웃] + 음양 줄 */
 function board(p: RoulettePublic, t: Ctx, active: boolean) {
   const me = String(t.mySeat);
-  const result = p.phase === 'spin' ? p.result : null;
+  const result = p.phase === 'spin' ? p.landed : null;
   // 다른 사람 베팅 (확정한 것): 칸마다 아바타
   const others = new Map<string, string[]>();
   for (const [seat, bets] of Object.entries(p.bets)) {

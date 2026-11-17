@@ -122,7 +122,8 @@ export interface RoulettePublic {
   confirmed: number[];
   /** 확정한 사람의 베팅 (자리 → 목록) */
   bets: Record<string, RBet[]>;
-  result: number | null;
+  /** 이번 스핀 결과 칸 (공개 상태의 result는 판 정산 요약 자리라 이름을 따로 쓴다) */
+  landed: number | null;
   wins: Record<string, number>;
   history: number[];
   idle: number;
@@ -267,7 +268,7 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
         players: clone(s.players),
         confirmed: s.confirmed.slice(),
         bets: clone(s.bets),
-        result: s.result,
+        landed: s.result,
         wins: { ...s.wins },
         history: s.history.slice(),
         idle: s.idle,
