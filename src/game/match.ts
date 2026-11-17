@@ -6,8 +6,8 @@ import { Terrain } from '../physics/terrain';
 import { fly, tankCenter, TANK_HIT_R, TARGET_R, WIND_K, type ImpactHandler } from '../physics/shot';
 
 const MOVE_DELAY_PER_PX = 0.5;
-const ULT_PER_DEALT = 0.12;
-const ULT_PER_TAKEN = 0.16;
+/** 필살기 게이지: 내 차례가 올 때마다 20%씩 찬다 (맞히거나 맞아도 차지 않는다) */
+export const ULT_PER_TURN = 20;
 const DIRECT_BONUS = 1.2;
 const FALL_OUT_Y = 40;
 const LASER_DEPTH = 90;
@@ -252,6 +252,7 @@ export class Match {
     // 백발백중: 바람 세기는 '보통'(5) 고정, 방향만 턴마다 무작위
     if (this.practice) this.wind = this.rng.next() < 0.5 ? -5 : 5;
     this.moveLeft = next.def.move;
+    next.ult = Math.min(100, next.ult + ULT_PER_TURN);
     this.refillUlt();
     this.movedThisTurn = 0;
     // 내 차례가 오면 내가 만든 불·독안개는 사라진다
@@ -468,10 +469,6 @@ export class Match {
       const real = Math.min(dmg, target.hp);
       target.hp -= real;
       if (enemy) t.damageDealt += real;
-      // 필살기로 준 피해로는 게이지가 다시 차지 않는다
-      if (slot !== 2 && enemy) t.ult = Math.min(100, t.ult + real * ULT_PER_DEALT);
-      // 맞으면 (적·아군·내 포탄 모두) 게이지가 찬다. 단, 내 필살기에 내가 맞은 건 빼고
-      if (!(slot === 2 && target === t)) target.ult = Math.min(100, target.ult + real * ULT_PER_TAKEN);
       events.push({ f, type: 'damage', target: target.idx, amount: real, direct });
       if (target.hp <= 0) {
         target.alive = false;

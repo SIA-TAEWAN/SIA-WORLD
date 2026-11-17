@@ -100,7 +100,7 @@ describe('턴 규칙', () => {
       m.fire(shot({ angle: 60, power: p, facing: 1 }));
       if (m.tanks[1].hp < m.tanks[1].maxHp) {
         hit = true;
-        expect(m.tanks[1].ult).toBeGreaterThan(0);
+        expect(m.tanks[1].ult).toBe(0);
         expect(m.tanks[0].damageDealt).toBe(0);
       }
     }
@@ -780,5 +780,16 @@ describe('백발백중', () => {
     const r = m.fire(shot({ angle: 10, power: 30, facing: 1 }));
     expect(r.events.some((e) => e.type === 'damage')).toBe(false);
     expect(o.hp).toBe(o.maxHp);
+  });
+});
+
+describe('필살기 게이지', () => {
+  it('내 차례마다 20%씩 찬다', () => {
+    const m = new Match(duo(), 'valley', 4);
+    const t = m.startTurn();
+    expect(t.ult).toBe(20);
+    m.skipTurn();
+    while (m.startTurn() !== t) m.skipTurn();
+    expect(t.ult).toBe(40);
   });
 });
