@@ -86,6 +86,38 @@
     .game-card .gi { padding: 10px 14px 14px; }
     .game-card h3 { margin: 0; font-size: 21px; }
     .game-card p { margin: 4px 0 0; color: var(--sub); font-size: 15px; }
+    /* 지갑 · 출석 · 랭킹 */
+    .notice { background: #fff3c4; border: 2px solid #f3c24a; color: #7a5200; border-radius: 14px;
+      padding: 10px 14px; margin: 0 0 14px; font-size: 17px; text-align: center; animation: pop .35s ease-out; }
+    @keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: none; opacity: 1; } }
+    .wallet { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 0 0 22px; }
+    .pill { flex: 1 1 220px; display: flex; align-items: center; gap: 10px; background: var(--panel);
+      border: 3px solid var(--panel-b); border-radius: 16px; padding: 10px 12px; }
+    .pill .ic { font-size: 28px; }
+    .pill .amt { flex: 1; min-width: 0; }
+    .pill small { display: block; color: var(--sub); font-size: 13px; }
+    .pill b { font-size: 22px; font-weight: normal; }
+    .pill .left { display: block; color: var(--sub); font-size: 12px; }
+    .pill .small:disabled { opacity: .45; }
+    #rank-btn { flex: 0 0 auto; align-self: center; }
+    .note { color: var(--err); font-size: 14px; margin: -14px 0 16px; }
+    dialog.rank { border: 3px solid var(--panel-b); border-radius: 20px; padding: 16px; width: min(460px, calc(100% - 32px));
+      max-height: calc(100% - 40px); color: var(--ink); font-family: inherit; }
+    dialog.rank::backdrop { background: rgba(20, 30, 60, .5); }
+    .rank-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .rank-head h3 { margin: 0; font-size: 22px; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tabs button { flex: 1; border: 2px solid var(--panel-b); background: #f7fbff; border-radius: 10px; padding: 8px; cursor: pointer; font-size: 16px; color: var(--ink); }
+    .tabs button.sel { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .rank-me { text-align: center; font-size: 15px; margin: 6px 0; }
+    .rank-list { max-height: 55vh; overflow-y: auto; border-top: 2px dashed #0002; }
+    .rank-list table { width: 100%; border-collapse: collapse; }
+    .rank-list td { padding: 6px; border-bottom: 1px solid #0001; font-size: 16px; }
+    .rank-list td.pl { width: 36px; text-align: center; }
+    .rank-list td.nm { width: 100%; }
+    .rank-list td.am { white-space: nowrap; text-align: right; }
+    .rank-list tr.me { background: #fff3b0; }
+    .rank-note { font-size: 12px; color: var(--sub); text-align: center; margin: 8px 0 0; }
     .center { min-height: 100vh; display: grid; place-items: center; color: var(--sub); font-size: 18px; }
     @media (max-width: 420px) {
       .top .logo { font-size: 20px; }
@@ -142,10 +174,29 @@
       <button class="btn small" id="logout">로그아웃</button>
     </header>
     <main class="lobby">
+      <div class="notice hidden" id="attend">🎁 오늘의 출석 보너스! 칩 +10,000 · 냥 +10,000</div>
+      <section class="wallet">
+        <div class="pill"><span class="ic">🪙</span>
+          <span class="amt"><small>카지노 칩</small><b id="w-chips">-</b><span class="left" id="l-chips"></span></span>
+          <button class="btn small refill" data-c="chips" disabled>무료 충전</button></div>
+        <div class="pill"><span class="ic">💰</span>
+          <span class="amt"><small>맞고 냥</small><b id="w-nyang">-</b><span class="left" id="l-nyang"></span></span>
+          <button class="btn small refill" data-c="nyang" disabled>무료 충전</button></div>
+        <button class="btn small" id="rank-btn">🏆 랭킹</button>
+      </section>
+      <p class="note" id="w-note"></p>
       <h2>게임</h2>
       <div class="games" id="games"></div>
     </main>
   </div>
+
+  <dialog class="rank" id="rank">
+    <div class="rank-head"><h3>🏆 랭킹</h3><button class="btn small" id="rank-close">닫기</button></div>
+    <div class="tabs"><button data-g="casino" class="sel">🪙 카지노 (칩)</button><button data-g="matgo">💰 맞고 (냥)</button></div>
+    <p class="rank-me" id="rank-me"></p>
+    <div class="rank-list"><table id="rank-table"></table></div>
+    <p class="rank-note">해 상위 10% · 달 30% · 별 60% · 그 외 구름 (10,000 이하는 구름)</p>
+  </dialog>
 
   <script type="module">
     import {
@@ -153,6 +204,8 @@
       isLoginIdTaken, isNicknameTaken, loginIdProblem, nicknameProblem, passwordProblem, AuthError,
     } from './shared/auth.js';
     import { GAMES } from './shared/games.js';
+    import { claimAttendance, refill, canRefill, getRanking, formatAmount, START_AMOUNT, REFILLS_PER_DAY } from './shared/wallet.js';
+    import { withTiers, tierSvg } from './shared/rank.js';
 
     const $ = (s) => document.querySelector(s);
     const views = ['loading', 'login-view', 'signup-view', 'lobby-view'];
@@ -190,7 +243,79 @@
         }),
       );
       show('lobby-view');
+      void loadWallet(user);
     }
+
+    // ---------- 지갑 · 출석 · 무료 충전 ----------
+    // 로비에서의 충전은 가장 작은 방(기본 단위 100, 최소 입장 5,000) 기준
+    const LOBBY_BASE_UNIT = 100;
+    let me = null;
+    let wallet = null;
+    function renderWallet() {
+      for (const c of ['chips', 'nyang']) {
+        $('#w-' + c).textContent = wallet ? formatAmount(wallet[c]) : '-';
+        const left = wallet?.[c + 'RefillsLeft'];
+        $('#l-' + c).textContent = wallet ? `무료 충전 오늘 ${left}/${REFILLS_PER_DAY}번 남음` : '';
+        $(`.refill[data-c="${c}"]`).disabled = !canRefill(wallet, c, LOBBY_BASE_UNIT);
+      }
+    }
+    async function loadWallet(user) {
+      me = user;
+      $('#w-note').textContent = '';
+      $('#attend').classList.add('hidden');
+      try {
+        // 출석 확인 (지갑이 없으면 이때 10,000 / 10,000으로 만들어진다)
+        wallet = await claimAttendance();
+        if (wallet.granted) $('#attend').classList.remove('hidden');
+      } catch {
+        wallet = null;
+        $('#w-note').textContent = '지갑을 불러오지 못했어요. 새로고침해 주세요';
+      }
+      renderWallet();
+    }
+    document.querySelectorAll('.refill').forEach((b) =>
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        $('#w-note').textContent = '';
+        try {
+          const r = await refill(b.dataset.c, LOBBY_BASE_UNIT);
+          wallet = r;
+          if (!r.ok) $('#w-note').textContent = r.reason === 'limit' ? '오늘 무료 충전을 모두 썼어요 (하루 3번)' : '아직 충분해요. 5,000보다 적을 때 충전할 수 있어요';
+        } catch {
+          $('#w-note').textContent = '충전하지 못했어요. 잠시 후 다시 시도해 주세요';
+        }
+        renderWallet();
+      }),
+    );
+
+    // ---------- 랭킹 (카지노 칩 / 맞고 냥 따로) ----------
+    const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ESC[c]);
+    async function showRanking(game) {
+      document.querySelectorAll('#rank .tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
+      const unit = game === 'matgo' ? '냥' : '칩';
+      $('#rank-me').textContent = '불러오는 중…';
+      $('#rank-table').innerHTML = '';
+      try {
+        const rows = withTiers(await getRanking(game), START_AMOUNT);
+        const mine = rows.find((r) => r.key === me?.userId);
+        $('#rank-me').innerHTML = mine
+          ? `내 순위 <b>${mine.place}위</b> / ${rows.length}명 · ${tierSvg(mine.tier, 20)} · ${formatAmount(mine.amount)}${unit}`
+          : '아직 순위가 없어요';
+        $('#rank-table').innerHTML = rows.slice(0, 100).map((r) =>
+          `<tr class="${r.key === me?.userId ? 'me' : ''}"><td class="pl">${r.place}</td><td>${tierSvg(r.tier, 26)}</td>` +
+          `<td class="nm">${esc(r.nickname)}</td><td class="am">${formatAmount(r.amount)}${unit}</td></tr>`).join('') ||
+          '<tr><td>아직 랭킹이 없어요</td></tr>';
+      } catch {
+        $('#rank-me').textContent = '랭킹을 불러오지 못했어요';
+      }
+    }
+    $('#rank-btn').addEventListener('click', () => {
+      $('#rank').showModal();
+      void showRanking('casino');
+    });
+    $('#rank-close').addEventListener('click', () => $('#rank').close());
+    document.querySelectorAll('#rank .tabs button').forEach((b) => b.addEventListener('click', () => void showRanking(b.dataset.g)));
     $('#logout').addEventListener('click', async () => {
       await signOut();
       showLogin();
