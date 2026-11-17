@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     dir: fileURLToPath(new URL('../supabase/functions/_shared', import.meta.url)),
     include: ['**/*.test.ts'],
+    // 무작위 수백 판 테스트는 CI 기계에서 5초를 넘길 수 있다
+    testTimeout: 60_000,
   },
   server: { fs: { allow: ['..'] } },
 });
