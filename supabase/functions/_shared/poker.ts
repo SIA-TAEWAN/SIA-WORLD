@@ -59,6 +59,8 @@ import {
   type Settlement,
   type View,
 } from './engine.ts';
+import { cardKey, compareHands, evaluate7, fullDeck, groups, HandCat, RANK_NAME, rankOf, suitOf, type HandValue } from './hand-eval.ts';
+import { computeSidePots } from './pots.ts';
 
 // ───────────────────────── 타입 ─────────────────────────
 
@@ -205,156 +207,10 @@ export interface PokerPrivate {
 export const MAX_RAISES = 3;
 const EVENT_KEEP = 30;
 
-// ───────────────────────── 카드·족보 ─────────────────────────
+// ───────────────────────── 카드·족보 (hand-eval.ts, 세븐포커 규칙 = KOREAN) ─────────────────────────
 
-const RANKS = '23456789TJQKA';
-/** 무늬 서열 낮은 것 → 높은 것 (♣ < ♥ < ◆ < ♠) */
-const SUITS = 'CHDS';
-
-export const rankOf = (c: string): number => RANKS.indexOf(c[0]) + 2;
-export const suitOf = (c: string): number => SUITS.indexOf(c[1]);
-/** 카드 서열 (숫자 우선, 그다음 무늬) */
-export const cardKey = (c: string): number => rankOf(c) * 4 + suitOf(c);
-
-export function fullDeck(): string[] {
-  const d: string[] = [];
-  for (const s of SUITS) for (const r of RANKS) d.push(r + s);
-  return d;
-}
-
-function isCard(c: unknown): c is string {
-  return typeof c === 'string' && c.length === 2 && RANKS.includes(c[0]) && SUITS.includes(c[1]);
-}
-
-const RANK_NAME: Record<number, string> = {
-  2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A',
-};
-
-/** 족보 등급 */
-export const HandCat = {
-  HIGH: 0,
-  PAIR: 1,
-  TWO_PAIR: 2,
-  TRIPS: 3,
-  STRAIGHT: 4,
-  FLUSH: 5,
-  FULL_HOUSE: 6,
-  QUADS: 7,
-  STRAIGHT_FLUSH: 8,
-  ROYAL: 9,
-} as const;
-
-export interface HandValue {
-  cat: number;
-  /** 같은 등급 안에서 비교할 숫자들 (앞에서부터) */
-  ranks: number[];
-  /** 결정 카드의 무늬 (0=♣ … 3=♠) */
-  suit: number;
-  name: string;
-  /** 고른 5장 (공개 족보는 그 카드들) */
-  cards: string[];
-}
-
-/** a가 b보다 좋으면 양수, 나쁘면 음수, 같으면 0 */
-export function compareHands(a: HandValue, b: HandValue): number {
-  if (a.cat !== b.cat) return a.cat - b.cat;
-  const n = Math.max(a.ranks.length, b.ranks.length);
-  for (let i = 0; i < n; i++) {
-    const d = (a.ranks[i] ?? 0) - (b.ranks[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  return a.suit - b.suit;
-}
-
-/** 숫자별로 묶어 (장수 많은 순, 숫자 높은 순) 정렬. 각 묶음 카드는 서열 높은 순 */
-function groups(cards: string[]): { rank: number; cards: string[] }[] {
-  const m = new Map<number, string[]>();
-  for (const c of cards) {
-    const r = rankOf(c);
-    const g = m.get(r);
-    if (g) g.push(c);
-    else m.set(r, [c]);
-  }
-  const out = [...m.entries()].map(([rank, cs]) => ({ rank, cards: cs.sort((x, y) => cardKey(y) - cardKey(x)) }));
-  out.sort((a, b) => b.cards.length - a.cards.length || b.rank - a.rank);
-  return out;
-}
-
-/** 5장 평가 */
-export function evaluate5(cards: string[]): HandValue {
-  if (cards.length !== 5) throw new EngineError('5장이어야 합니다');
-  const sorted = cards.slice().sort((a, b) => cardKey(b) - cardKey(a));
-  const gs = groups(sorted);
-  const flush = sorted.every((c) => c[1] === sorted[0][1]);
-  let straightTop = 0;
-  if (gs.length === 5) {
-    const rs = gs.map((g) => g.rank); // 높은 순
-    if (rs[0] - rs[4] === 4) straightTop = rs[0];
-    else if (rs[0] === 14 && rs[1] === 5 && rs[4] === 2) straightTop = 5; // 백스트레이트 A-2-3-4-5
-  }
-  // 스트레이트 순위 값: 마운틴 15 > 백스트레이트 14 > 일반은 가장 높은 숫자(6~13)
-  const straightKey = straightTop === 14 ? 15 : straightTop === 5 ? 14 : straightTop;
-  // 스트레이트의 결정 카드: 가장 높은 카드, 백스트레이트는 A
-  const topCard = straightTop === 5 ? sorted.find((c) => rankOf(c) === 14)! : sorted[0];
-  const R = (r: number) => RANK_NAME[r];
-
-  if (flush && straightTop) {
-    if (straightTop === 14) {
-      return { cat: HandCat.ROYAL, ranks: [], suit: suitOf(topCard), name: '로열 스트레이트 플러시', cards: sorted };
-    }
-    return {
-      cat: HandCat.STRAIGHT_FLUSH,
-      ranks: [straightKey],
-      suit: suitOf(topCard),
-      name: straightTop === 5 ? '백스트레이트 플러시' : `${R(straightTop)} 스트레이트 플러시`,
-      cards: sorted,
-    };
-  }
-  const lead = gs[0];
-  const leadSuit = suitOf(lead.cards[0]);
-  if (lead.cards.length === 4) {
-    return { cat: HandCat.QUADS, ranks: [lead.rank, gs[1].rank], suit: leadSuit, name: `${R(lead.rank)} 포카드`, cards: sorted };
-  }
-  if (lead.cards.length === 3 && gs[1].cards.length === 2) {
-    return { cat: HandCat.FULL_HOUSE, ranks: [lead.rank, gs[1].rank], suit: leadSuit, name: `${R(lead.rank)} 풀하우스`, cards: sorted };
-  }
-  if (flush) {
-    return { cat: HandCat.FLUSH, ranks: gs.map((g) => g.rank), suit: suitOf(sorted[0]), name: `${R(gs[0].rank)} 플러시`, cards: sorted };
-  }
-  if (straightTop) {
-    return {
-      cat: HandCat.STRAIGHT,
-      ranks: [straightKey],
-      suit: suitOf(topCard),
-      name: straightTop === 14 ? '마운틴' : straightTop === 5 ? '백스트레이트' : `${R(straightTop)} 스트레이트`,
-      cards: sorted,
-    };
-  }
-  const ranks = gs.map((g) => g.rank);
-  if (lead.cards.length === 3) return { cat: HandCat.TRIPS, ranks, suit: leadSuit, name: `${R(lead.rank)} 트리플`, cards: sorted };
-  if (lead.cards.length === 2 && gs[1].cards.length === 2) {
-    return { cat: HandCat.TWO_PAIR, ranks, suit: leadSuit, name: `${R(lead.rank)} 투페어`, cards: sorted };
-  }
-  if (lead.cards.length === 2) return { cat: HandCat.PAIR, ranks, suit: leadSuit, name: `${R(lead.rank)} 원페어`, cards: sorted };
-  return { cat: HandCat.HIGH, ranks, suit: leadSuit, name: `${R(lead.rank)} 탑`, cards: sorted };
-}
-
-/** 5~7장에서 가장 좋은 5장 */
-export function evaluate7(cards: string[]): HandValue {
-  if (cards.length < 5 || cards.length > 7) throw new EngineError('5~7장이어야 합니다');
-  if (new Set(cards).size !== cards.length || !cards.every(isCard)) throw new EngineError('잘못된 카드');
-  let best: HandValue | null = null;
-  const n = cards.length;
-  for (let a = 0; a < n; a++)
-    for (let b = a + 1; b < n; b++)
-      for (let c = b + 1; c < n; c++)
-        for (let d = c + 1; d < n; d++)
-          for (let e = d + 1; e < n; e++) {
-            const v = evaluate5([cards[a], cards[b], cards[c], cards[d], cards[e]]);
-            if (!best || compareHands(v, best) > 0) best = v;
-          }
-  return best!;
-}
+export { rankOf, suitOf, cardKey, fullDeck, HandCat, compareHands, evaluate5, evaluate7 } from './hand-eval.ts';
+export type { HandValue } from './hand-eval.ts';
 
 /** 공개 카드(1~4장) 족보: 포카드/트리플/투페어/원페어/하이카드만 */
 export function evaluateOpen(cards: string[]): HandValue | null {
@@ -413,34 +269,9 @@ function put(p: PokerPlayer, amount: number): number {
   return amt;
 }
 
-/** 사이드 팟 (설명은 파일 머리말) */
+/** 사이드 팟 (설명은 파일 머리말, 계산은 pots.ts) */
 export function computePots(s: PokerState): PokerPot[] {
-  const ps = participants(s);
-  const alive = ps.filter((p) => !p.folded);
-  const levels = [...new Set(alive.filter((p) => p.allIn).map((p) => p.total))].sort((a, b) => a - b);
-  const pots: PokerPot[] = [];
-  let prev = 0;
-  for (const L of levels) {
-    const amount = ps.reduce((a, p) => a + Math.min(p.total, L) - Math.min(p.total, prev), 0);
-    const eligible = alive.filter((p) => p.total >= L).map((p) => p.seat);
-    if (amount > 0) pots.push({ amount, eligible });
-    prev = L;
-  }
-  const rest = ps.reduce((a, p) => a + Math.max(0, p.total - prev), 0);
-  if (rest > 0) {
-    const elig = alive.filter((p) => !p.allIn && p.total > prev).map((p) => p.seat);
-    if (elig.length > 0) pots.push({ amount: rest, eligible: elig });
-    else if (pots.length > 0) pots[pots.length - 1].amount += rest;
-    else pots.push({ amount: rest, eligible: alive.map((p) => p.seat) });
-  }
-  // 대상이 같은 이웃 팟 합치기
-  const merged: PokerPot[] = [];
-  for (const p of pots) {
-    const last = merged[merged.length - 1];
-    if (last && last.eligible.join(',') === p.eligible.join(',')) last.amount += p.amount;
-    else merged.push({ amount: p.amount, eligible: p.eligible.slice() });
-  }
-  return merged;
+  return computeSidePots(participants(s));
 }
 
 /** 지금 turn 자리가 할 수 있는 행동 */
