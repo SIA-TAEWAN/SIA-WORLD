@@ -1,0 +1,45 @@
+/**
+ * game-action: 모든 게임 행동을 처리하는 딜러.
+ * 입력 { roomId, action: 'start' | 'act', payload } (사용자 JWT로 호출)
+ * 권한·차례 확인 → 규칙 검사 → 상태 변경 → AI 차례 이어서 → 판 끝이면 정산 → 공개 상태 저장(Realtime으로 전달)
+ */
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
+import { ENGINES } from '../_shared/engines.ts';
+import { GameError, Runner } from '../_shared/runner.ts';
+import { supabaseStore } from '../_shared/store.ts';
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
+const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+  try {
+    const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+    const { data: auth } = await sb.auth.getUser(token);
+    const userId = auth?.user?.id;
+    if (!userId) return json({ error: 'need login' }, 401);
+
+    const body = await req.json().catch(() => null);
+    const roomId = typeof body?.roomId === 'string' ? body.roomId : '';
+    if (!/^[0-9a-f-]{36}$/i.test(roomId)) return json({ error: 'bad room' }, 400);
+
+    const runner = new Runner(supabaseStore(sb), ENGINES);
+    if (body.action === 'start') return json(await runner.start(roomId, userId));
+    if (body.action === 'act') return json(await runner.act(roomId, userId, body.payload));
+    return json({ error: 'bad action' }, 400);
+  } catch (e) {
+    if (e instanceof GameError) return json({ error: e.message }, e.status);
+    console.error(e);
+    return json({ error: 'server error' }, 500);
+  }
+});
