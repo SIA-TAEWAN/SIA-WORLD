@@ -608,6 +608,18 @@ button.my-slot {
 .actions .btn.big {
   width: auto;
 }
+/* 버튼이 하나뿐이면 가운데에 꽉 차게 */
+.actions.one {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+.actions.one .btn.big {
+  width: 100%;
+  max-width: 360px;
+}
+#ranking {
+  width: 100%;
+}
 
 /* ---------- 게임 HUD ---------- */
 .hud {

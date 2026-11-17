@@ -12,7 +12,7 @@ import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
 import { getBackend, onlineConfigured } from '../net';
-import { setRanking, setTargetRanking } from './rank';
+import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
 
 // ---------- 1. 입장 ----------
@@ -43,6 +43,7 @@ export function showEntry() {
           : `<div class="auth-row"><button class="btn big primary" id="login">로그인</button><button class="btn big" id="signup">회원가입</button></div>`
       }
       <button class="btn big" id="ai">AI와 1:1</button>
+      ${online ? '<button class="btn" id="ranking">🏆 랭킹 보기</button>' : ''}
       ${manualHtml()}
     </div>`,
     'entry',
@@ -89,6 +90,19 @@ export function showEntry() {
       busy = false;
     }
   };
+  // 랭킹 보기 (로그인하지 않아도 볼 수 있다)
+  root.querySelector('#ranking')?.addEventListener('click', async () => {
+    sfx.click();
+    try {
+      const b = (await getBackend())!;
+      const [pts, tg] = await Promise.all([b.getRanking(), b.getTargetRanking()]);
+      setRanking(pts);
+      setTargetRanking(tg);
+      showRankingModal(state.name);
+    } catch (e) {
+      toast(friendly(e));
+    }
+  });
   input?.addEventListener('input', () => (hint.textContent = ''));
   const onEnter = (e: KeyboardEvent) => {
     if (e.key !== 'Enter') return;
@@ -448,7 +462,7 @@ function showTargetResult(s: MatchSummary, act: ResultActions) {
           .map((p, i) => `<tr class="${i === 0 ? 'win' : ''}"><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${p.hits ?? 0}개</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`)
           .join('')}</tbody>
       </table>
-      <div class="actions">
+      <div class="actions ${act.secondary ? '' : 'one'}">
         <button class="btn big primary" id="again">${act.primary}</button>
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
       </div>
@@ -490,7 +504,7 @@ export function showResult(s: MatchSummary, actions?: ResultActions) {
           )
           .join('')}</tbody>
       </table>
-      <div class="actions">
+      <div class="actions ${act.secondary ? '' : 'one'}">
         <button class="btn big primary" id="again">${act.primary}</button>
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
       </div>
