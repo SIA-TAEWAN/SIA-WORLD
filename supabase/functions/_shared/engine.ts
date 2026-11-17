@@ -64,7 +64,7 @@ export interface Settlement<C> {
 }
 
 export interface Engine<S, A, C = unknown, P = unknown, Q = unknown> {
-  readonly game: 'matgo' | 'poker' | 'blackjack' | 'holdem';
+  readonly game: 'matgo' | 'poker' | 'blackjack' | 'holdem' | 'roulette';
   /** 한 판 시작 (섞고 나누기) */
   newRound(input: RoundInput<C>): S;
   /** 지금 행동해야 하는 자리들. 비어 있으면 판이 끝났거나(done) 엔진이 스스로 진행할 차례가 없음 */
@@ -81,6 +81,18 @@ export interface Engine<S, A, C = unknown, P = unknown, Q = unknown> {
   settle(s: S): Settlement<C>;
   /** 화면용 정보 */
   view(s: S): View<P, Q>;
+
+  // ── 아래는 선택 (룰렛처럼 정해진 시간마다 저절로 넘어가는 게임) ──
+  /** 단계 마감 시각을 상태에 찍는다 (이미 있으면 그대로) */
+  stamp?(s: S, now: number): S;
+  /** 단계 마감 시각 (ms). 있으면 차례 제한 시간 대신 이 시각을 마감으로 쓴다 */
+  deadlineAt?(s: S): number | null;
+  /** 사람 차례가 없을 때 마감이 지나면 다음 단계로 (그때 자리에 앉은 사람 정보를 받는다) */
+  tick?(s: S, rng: Rng, seats: SeatInfo[]): S;
+  /** 행동 전에 먼저 지갑에서 뺄 금액 (확정 베팅). 없으면 null */
+  charge?(s: S, seat: number, action: A): { spin: number; bets: unknown; total: number } | null;
+  /** 결과가 나와 지급할 스핀 (없으면 null) */
+  spinResult?(s: S): { spin: number; result: number } | null;
 }
 
 export class EngineError extends Error {

@@ -19,6 +19,7 @@ async function main() {
       <a class="pick-card" href="poker/"><img src="${z.fullUrl('tiger')}" alt=""/><b>세븐포커</b><span>4장 받고 1장 버리기, 7구 히든까지 · 최대 4명</span></a>
       <a class="pick-card" href="holdem/"><img src="${z.fullUrl('monkey')}" alt=""/><b>텍사스 홀덤</b><span>내 카드 2장 + 공용 카드 5장, 노리밋 · 최대 4명</span></a>
       <a class="pick-card bj" href="blackjack/"><img src="${z.fullUrl('rabbit')}" alt=""/><b>블랙잭</b><span>딜러와 21을 겨루는 게임 · 최대 4명</span></a>
+      <a class="pick-card rl" href="roulette/"><img src="${z.fullUrl('dragon')}" alt=""/><b>십이지신 룰렛</b><span>띠 ×12 · 이웃 ×6 · 계절 ×4 · 음양 ×2 · 최대 8명</span></a>
     </section>
     <p class="empty">방을 만들면 AI가 빈자리를 채워요. 친구가 들어오면 AI가 한 명씩 빠져요.</p>
   </div>`;

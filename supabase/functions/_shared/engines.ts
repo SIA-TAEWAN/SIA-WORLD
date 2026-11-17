@@ -3,6 +3,7 @@ import { matgo } from './matgo.ts';
 import { poker } from './poker.ts';
 import { blackjack } from './blackjack.ts';
 import { holdem } from './holdem.ts';
+import { roulette } from './roulette.ts';
 import type { AnyEngine, GameId } from './runner.ts';
 
-export const ENGINES: Record<GameId, AnyEngine> = { matgo, poker, blackjack, holdem };
+export const ENGINES: Record<GameId, AnyEngine> = { matgo, poker, blackjack, holdem, roulette };

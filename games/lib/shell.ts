@@ -96,6 +96,8 @@ export interface GameUI<P = any, Q = any> {
   resultHtml(t: TableCtx<P, Q>): string;
   /** 컷인 문구 (없으면 null) */
   cutin?(ev: GameEventLite, t: TableCtx<P, Q>): string | null;
+  /** AI가 없는 게임 (룰렛): 빈자리는 자리 줄·방 목록에 보이지 않는다 */
+  noAi?: boolean;
   /** 카드를 한 장씩 나눠 줄 때 간격(ms). 기본 110 */
   dealGap?: number;
   /** 대기방 '게임 방법' 창 내용 (HTML). 없으면 버튼을 숨긴다 */
@@ -270,9 +272,9 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
             const playing = r.status === 'playing';
             return `<div class="room-row ${playing ? 'playing' : ''}">
               <div class="rn">${r.has_password ? '🔒 ' : ''}${esc(r.name)}
-                <small>기본 ${m.wallet.formatAmount(r.base_unit)} · ${humans.map((h) => esc(h.nickname)).join(', ')}${ais ? ` · AI ${ais}` : ''}</small></div>
+                <small>기본 ${m.wallet.formatAmount(r.base_unit)} · ${humans.map((h) => esc(h.nickname)).join(', ')}${ui.noAi ? ` · ${humans.length}/${seats.length}명` : ais ? ` · AI ${ais}` : ''}</small></div>
               <span class="st">${playing ? '게임 중' : '대기'}</span>
-              <button class="btn ${full ? '' : 'primary'}" data-id="${r.id}" data-pw="${r.has_password ? 1 : 0}" ${full ? 'disabled' : ''}>${full ? '가득 참' : playing ? '관전·예약' : '입장'}</button>
+              <button class="btn ${full ? '' : 'primary'}" data-id="${r.id}" data-pw="${r.has_password ? 1 : 0}" ${full ? 'disabled' : ''}>${full ? '가득 참' : playing && !ui.noAi ? '관전·예약' : '입장'}</button>
             </div>`;
           })
           .join('')
@@ -659,6 +661,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const paintSeats = () => {
     const pending = room?.status === 'playing' ? (st?.pending_seats ?? []) : [];
     $(root, '#seats').innerHTML = seats
+      .filter((s) => !ui.noAi || (s.user_id && !s.left_game) || s.pending_user_id)
       .map((s) => {
         const human = !!s.user_id && !s.left_game;
         const meHere = s.user_id === me.userId && !s.left_game;

@@ -50,6 +50,7 @@ export default defineConfig(({ command }) => ({
         casino: here('casino/index.html'),
         poker: here('casino/poker/index.html'),
         holdem: here('casino/holdem/index.html'),
+        roulette: here('casino/roulette/index.html'),
         blackjack: here('casino/blackjack/index.html'),
       },
     },

@@ -67,5 +67,11 @@ export function supabaseStore(sb: SupabaseClient): Store {
       const r = await sb.rpc('finish_round', { p_room: id });
       return Boolean(must(r));
     },
+    async placeBet(id, round, spin, userId, bets, total) {
+      must(await sb.rpc('roulette_place_bet', { p_room: id, p_round: round, p_spin: spin, p_user: userId, p_bets: bets, p_total: total }));
+    },
+    async paySpin(id, round, spin, result) {
+      must(await sb.rpc('roulette_pay', { p_room: id, p_round: round, p_spin: spin, p_result: result }));
+    },
   };
 }

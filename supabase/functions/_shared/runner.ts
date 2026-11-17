@@ -5,7 +5,7 @@
  */
 import { cryptoRng, EngineError, type Engine, type Rng, type SeatInfo } from './engine.ts';
 
-export type GameId = 'matgo' | 'poker' | 'blackjack' | 'holdem';
+export type GameId = 'matgo' | 'poker' | 'blackjack' | 'holdem' | 'roulette';
 
 export interface RoomRow {
   id: string;
@@ -56,6 +56,10 @@ export interface Store {
   applyResult(id: string, round: number, deltas: Record<number, number>): Promise<boolean>;
   /** 판 끝 정리 (나간 자리 AI로, 예약자 앉히기, 대기 상태로) */
   finishRound(id: string): Promise<boolean>;
+  /** (룰렛) 확정 베팅: 지갑에서 먼저 빼고 기록. 같은 스핀·사람은 한 번만. 칩이 모자라면 예외 */
+  placeBet?(id: string, round: number, spin: number, userId: string, bets: unknown, total: number): Promise<void>;
+  /** (룰렛) 결과 지급: 그 스핀 기록 기준으로 한 번만 */
+  paySpin?(id: string, round: number, spin: number, result: number): Promise<void>;
 }
 
 /** 사람 차례 제한 시간 */
@@ -117,9 +121,17 @@ export class Runner {
     // 시작 직전에 자리가 바뀌었을 수 있으니 시작한 뒤의 자리로 판을 만든다
     seats = await this.store.seats(roomId);
 
+    const info = await this.seatInfo(room, seats);
+    const state = engine.newRound({ seats: info, baseUnit: room.base_unit, carry: deck.carry ?? null, rng: this.rng });
+    await this.advance(roomId, { ...room, status: 'playing', round_no: round }, seats, engine, deck.version, state);
+    return { started: true, round };
+  }
+
+  /** 엔진에 넘길 자리 정보 (사람은 지갑 잔액) */
+  private async seatInfo(room: RoomRow, seats: SeatRow[]): Promise<SeatInfo[]> {
     const humans = seats.filter((s) => s.user_id && !s.left_game).map((s) => s.user_id!);
     const bal = await this.store.balances(humans, room.game);
-    const info: SeatInfo[] = [...seats]
+    return [...seats]
       .sort((a, b) => a.seat_no - b.seat_no)
       .map((s) => ({
         seat: s.seat_no,
@@ -127,9 +139,6 @@ export class Runner {
         name: s.nickname,
         stack: s.user_id ? (bal[s.user_id] ?? 0) : null,
       }));
-    const state = engine.newRound({ seats: info, baseUnit: room.base_unit, carry: deck.carry ?? null, rng: this.rng });
-    await this.advance(roomId, { ...room, status: 'playing', round_no: round }, seats, engine, deck.version, state);
-    return { started: true, round };
   }
 
   /** 사람의 행동 */
@@ -141,11 +150,22 @@ export class Runner {
       if (!seat) throw new GameError('not in room', 403);
       if (!engine.pending(deck.state).includes(seat.seat_no)) throw new GameError('not your turn', 409);
       let state;
+      let charge: { spin: number; bets: unknown; total: number } | null = null;
       try {
         state = engine.apply(deck.state, seat.seat_no, action, this.rng);
+        charge = engine.charge ? engine.charge(deck.state, seat.seat_no, action) : null;
       } catch (e) {
         if (e instanceof EngineError) throw new GameError(e.message);
         throw e;
+      }
+      // 확정 베팅: 칩을 먼저 뺀다 (같은 스핀은 한 번만이라 다시 시도해도 두 번 빠지지 않는다)
+      if (charge && this.store.placeBet) {
+        try {
+          await this.store.placeBet(roomId, room.round_no, charge.spin, userId, charge.bets, charge.total);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          throw new GameError(/not enough money/.test(msg) ? 'not enough money' : msg);
+        }
       }
       if (await this.advance(roomId, room, seats, engine, deck.version, state)) return { ok: true };
     }
@@ -166,7 +186,11 @@ export class Runner {
       return { acted: true, recovered: true };
     }
     let state = deck.state;
-    if (!engine.done(state)) {
+    // 사람 차례가 없던 상태(룰렛 회전·결과)에서 마감이 지났으면 다음 단계로
+    const waitingTimer = !engine.done(state) && engine.pending(state).length === 0;
+    if (waitingTimer && engine.tick && !autoOnly) {
+      state = engine.tick(state, this.rng, await this.seatInfo(room, seats));
+    } else if (!engine.done(state)) {
       for (const seat of engine.pending(state)) {
         if (!engine.pending(state).includes(seat)) continue;
         const auto = this.auto(seats, seat);
@@ -198,6 +222,7 @@ export class Runner {
       }
     }
 
+    if (engine.stamp) state = engine.stamp(state, this.now());
     const done = engine.done(state);
     const settlement = done ? engine.settle(state) : null;
     const deck = await this.store.deck(roomId);
@@ -207,10 +232,15 @@ export class Runner {
     const view = engine.view(state);
     const pending: number[] = done ? [] : engine.pending(state);
     const humanPending = pending.some((s) => !this.auto(seats, s));
-    const deadline = humanPending ? new Date(this.now() + TURN_MS) : null;
+    const fixed = engine.deadlineAt ? engine.deadlineAt(state) : undefined;
+    const deadline = fixed !== undefined ? (fixed === null ? null : new Date(fixed)) : humanPending ? new Date(this.now() + TURN_MS) : null;
     const pub = { ...(view.public as object), round: room.round_no, result: settlement?.summary ?? null, deltas: settlement?.deltas ?? null };
     const privates = seats.map((s) => ({ seat: s.seat_no, userId: s.user_id, hand: view.private[s.seat_no] ?? null }));
     await this.store.publish(roomId, version + 1, room.round_no, pub, pending, deadline, privates);
+
+    // 룰렛: 결과가 나온 스핀은 지급 (기록 기준, 한 번만)
+    const spun = engine.spinResult ? engine.spinResult(state) : null;
+    if (spun && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, spun.spin, spun.result);
 
     if (settlement) {
       await this.store.applyResult(roomId, room.round_no, settlement.deltas);

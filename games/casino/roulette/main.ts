@@ -1,0 +1,326 @@
+/**
+ * 십이지신 룰렛 화면: 위 휠(12칸, 계절 색 + 십이지신) · 최근 20개 결과 · 아래 베팅판.
+ * 칩 놓기는 브라우저에서만 하고 '확정'할 때 한 번 보낸다 (안 보냈으면 마감 직전에 자동으로).
+ * 모든 화면이 같은 칸에 멈추도록, 회전은 서버 결과로 정해진 각도까지 같은 시간(6초) 동안 돈다.
+ */
+import { ROULETTE_MANUAL } from '../../lib/manuals.ts';
+import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
+import { clamp, drawTable, label, tc, theme, viewSize } from '../../lib/cards.ts';
+import { MULT, SEASONS, WHEEL, hits, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
+import { worldRoot } from '../../lib/world.ts';
+import type PhaserNS from 'phaser';
+
+type Ctx = TableCtx<RoulettePublic, Record<string, never>>;
+
+const NAME: Record<string, string> = {
+  rat: '쥐', ox: '소', tiger: '호랑이', rabbit: '토끼', dragon: '용', snake: '뱀', horse: '말', sheep: '양', monkey: '원숭이', rooster: '닭', dog: '개', pig: '돼지',
+};
+const SEASON_KEY = ['spring', 'summer', 'autumn', 'winter'] as const;
+/** 칸 → 계절 번호 */
+const seasonOf = (cell: number) => [0, 1, 2, 3].find((t) => seasonCells(t).includes(cell))!;
+const faceUrl = (id: string) => new URL(`shared/images/zodiac/face/${id}.png`, worldRoot()).href;
+const SPIN_ANIM = 6000;
+
+// ── 브라우저에서만 놓는 칩 (확정 전) ──
+let unit = 1;
+let local: RBet[] = [];
+let localKey = '';
+/** 지난 라운드에 확정한 베팅 ('지난 라운드와 같게') */
+let lastBets: RBet[] = [];
+let autoTimer: ReturnType<typeof setTimeout> | null = null;
+let sentFor = '';
+/** 스핀별 회전 시작 시각 (다시 그려도 이어서 돈다) */
+const spinStart = new Map<string, number>();
+const shownWin = new Set<string>();
+let countdown: ReturnType<typeof setTimeout> | null = null;
+
+const keyOf = (b: { kind: BetKind; target: number }) => `${b.kind}:${b.target}`;
+const sumOf = (bs: RBet[]) => bs.reduce((a, b) => a + b.amount, 0);
+
+function addBet(kind: BetKind, target: number, amount: number, max: number) {
+  if (sumOf(local) + amount > max) return false;
+  const cur = local.find((b) => b.kind === kind && b.target === target);
+  if (cur) cur.amount += amount;
+  else local.push({ kind, target, amount });
+  return true;
+}
+
+/** 휠 그리기 (rot: 라디안, 0이면 0번 칸(쥐)이 위) */
+function drawWheel(scene: PhaserNS.Scene, cx: number, cy: number, r: number, highlight: number | null) {
+  const T = theme();
+  const c = scene.add.container(cx, cy);
+  const g = scene.add.graphics();
+  // 바깥 테두리 (두께)
+  g.fillStyle(T.COLOR.outline, 1).fillCircle(0, 4, r + 8);
+  g.fillStyle(T.COLOR.panel, 1).fillCircle(0, 0, r + 8);
+  g.lineStyle(T.SHAPE.line, T.COLOR.outline, 1).strokeCircle(0, 0, r + 8);
+  const seg = (Math.PI * 2) / 12;
+  for (let i = 0; i < 12; i++) {
+    // i번 칸의 가운데가 위(−90°)에서 시계 방향으로 i×30°
+    const a0 = -Math.PI / 2 + i * seg - seg / 2;
+    const col = T.ROULETTE[SEASON_KEY[seasonOf(i)]];
+    g.fillStyle(highlight === i ? T.COLOR.primary : col, 1).slice(0, 0, r, a0, a0 + seg, false).fillPath();
+    g.lineStyle(T.SHAPE.lineThin, T.COLOR.outline, 1).slice(0, 0, r, a0, a0 + seg, false).strokePath();
+  }
+  c.add(g);
+  for (let i = 0; i < 12; i++) {
+    const a = -Math.PI / 2 + i * seg;
+    const key = `avc-${WHEEL[i]}`;
+    const fx = Math.cos(a) * r * 0.7;
+    const fy = Math.sin(a) * r * 0.7;
+    if (scene.textures.exists(key)) {
+      const img = scene.add.image(fx, fy, key);
+      img.setScale((r * 0.38) / img.width).setRotation(a + Math.PI / 2);
+      c.add(img);
+    }
+    // 음양 점 (양 = 흰 점, 음 = 진한 점)
+    const dot = scene.add.circle(Math.cos(a) * r * 0.36, Math.sin(a) * r * 0.36, Math.max(2.5, r * 0.035), i % 2 === 0 ? T.COLOR.white : T.COLOR.outline);
+    dot.setStrokeStyle(1.5, T.COLOR.outline);
+    c.add(dot);
+  }
+  // 가운데
+  const hub = scene.add.graphics();
+  hub.fillStyle(T.COLOR.primary, 1).fillCircle(0, 0, r * 0.2);
+  hub.lineStyle(T.SHAPE.line, T.COLOR.outline, 1).strokeCircle(0, 0, r * 0.2);
+  c.add(hub);
+  return c;
+}
+
+const ui: GameUI<RoulettePublic, Record<string, never>> = {
+  game: 'roulette',
+  title: '십이지신 룰렛',
+  manual: ROULETTE_MANUAL,
+  icon: '🎡',
+  back: 'games/casino/',
+  backLabel: '카지노',
+  noAi: true,
+  felt: () => theme().COLOR.skyMid,
+
+  draw(t: Ctx) {
+    const { scene } = t;
+    const { W, H } = viewSize(scene);
+    const p = t.pub;
+    drawTable(scene, 'poker');
+    const T = theme();
+    // 최근 결과 (최대 20, 최신이 오른쪽)
+    const hist = p?.history ?? [];
+    const hs = clamp(Math.min(30, (W - 40) / 20), 12, 30);
+    const shownHist = p && p.phase === 'spin' && !wheelStopped(p) ? hist.slice(0, -1) : hist;
+    shownHist.forEach((cell, i) => {
+      const x = W - 20 - (shownHist.length - 1 - i) * (hs + 2) - hs / 2;
+      const key = `avc-${WHEEL[cell]}`;
+      const y = 20 + hs / 2;
+      scene.add.circle(x, y, hs / 2 + 1.5, T.ROULETTE[SEASON_KEY[seasonOf(cell)]]).setStrokeStyle(1.5, T.COLOR.outline);
+      if (scene.textures.exists(key)) scene.add.image(x, y, key).setScale((hs * 0.9) / 128);
+    });
+    if (hist.length) label(scene, 22, 20 + hs / 2, '최근', clamp(hs * 0.5, 11, 15)).setOrigin(0, 0.5);
+
+    // 휠
+    const top = 28 + hs;
+    const r = Math.max(60, Math.min(W * 0.42, (H - top - 50) / 2));
+    const cx = W / 2;
+    const cy = top + 14 + r;
+    const result = p?.result ?? null;
+    const lastCell = hist.length ? hist[hist.length - 1] : 0;
+    const stopped = !p || p.phase !== 'spin' || wheelStopped(p);
+    const wheel = drawWheel(scene, cx, cy, r, p?.phase === 'spin' && stopped ? result : null);
+    const seg = (Math.PI * 2) / 12;
+    // 칸 c가 위(바늘)에 오는 회전값
+    const restAngle = (cell: number) => -cell * seg;
+    if (p?.phase === 'spin' && result !== null) {
+      const k = `${p.spin}:${t.room.round_no}`;
+      if (!spinStart.has(k)) spinStart.set(k, performance.now());
+      const t0 = spinStart.get(k)!;
+      const prevCell = hist.length >= 2 ? hist[hist.length - 2] : 0;
+      const from = restAngle(prevCell);
+      // 같은 방향(시계)으로 5바퀴 이상 돌아 결과 칸에 멈춘다
+      let to = restAngle(result) + Math.PI * 2 * 5;
+      while (to - from < Math.PI * 2 * 5) to += Math.PI * 2;
+      const prog = Math.min(1, (performance.now() - t0) / SPIN_ANIM);
+      const ease = (x: number) => 1 - Math.pow(1 - x, 4);
+      wheel.setRotation(from + (to - from) * ease(prog));
+      if (prog < 1) {
+        scene.tweens.addCounter({
+          from: prog,
+          to: 1,
+          duration: SPIN_ANIM * (1 - prog),
+          onUpdate: (tw) => wheel.setRotation(from + (to - from) * ease(tw.getValue() ?? 1)),
+          onComplete: () => t.redraw(),
+        });
+      }
+    } else {
+      wheel.setRotation(restAngle(lastCell));
+    }
+    // 바늘 (위)
+    const pin = scene.add.graphics();
+    pin.fillStyle(T.COLOR.outline, 1).fillTriangle(cx - r * 0.1, cy - r - 14, cx + r * 0.1, cy - r - 14, cx, cy - r + r * 0.14 + 3);
+    pin.fillStyle(T.COLOR.lose, 1).fillTriangle(cx - r * 0.08, cy - r - 12, cx + r * 0.08, cy - r - 12, cx, cy - r + r * 0.14);
+
+    // 아래 안내: 남은 시간 / 결과
+    const msgY = cy + r + 26;
+    if (!p) {
+      label(scene, cx, msgY, '모두 레디하면 시작해요', clamp(r * 0.12, 16, 26));
+      return;
+    }
+    if (p.phase === 'bet') {
+      const left = p.endsAt ? Math.max(0, Math.ceil((p.endsAt - Date.now()) / 1000)) : 20;
+      label(scene, cx, msgY, `베팅 ${left}초 · ${p.confirmed.length}/${p.players.length}명 확정`, clamp(r * 0.11, 15, 24));
+      // 1초마다 남은 시간 갱신 (타이머는 하나만)
+      if (!countdown) countdown = setTimeout(() => ((countdown = null), t.redraw()), 1000);
+    } else if (p.phase === 'spin' && result !== null) {
+      if (!stopped) label(scene, cx, msgY, '돌아가는 중…', clamp(r * 0.11, 15, 24));
+      else {
+        const animal = WHEEL[result];
+        const mine = t.mySeat !== null ? (p.wins[String(t.mySeat)] ?? 0) : 0;
+        const bet = t.mySeat !== null ? sumOf(p.bets[String(t.mySeat)] ?? []) : 0;
+        label(scene, cx, msgY, `${NAME[animal]}! ${SEASONS[seasonOf(result)]} · ${result % 2 === 0 ? '양' : '음'}`, clamp(r * 0.13, 16, 28), tc('primary'));
+        if (bet > 0) label(scene, cx, msgY + clamp(r * 0.15, 20, 32), mine > 0 ? `+${t.fmt(mine)}칩 당첨!` : '꽝', clamp(r * 0.11, 14, 22), mine > 0 ? tc('win') : tc('white'));
+        // 멈추는 순간 한 번: 당첨 띠 크게
+        const wk = `${p.spin}:${t.room.round_no}`;
+        if (!shownWin.has(wk)) {
+          shownWin.add(wk);
+          const big = scene.add.image(cx, cy, `full-${animal}`).setDepth(50);
+          if (scene.textures.exists(`full-${animal}`)) {
+            big.setScale((r * 0.9) / Math.max(big.width, big.height) * 0.4);
+            scene.tweens.add({ targets: big, scale: big.scale * 2.5, duration: 420, ease: 'Back.easeOut' });
+            scene.tweens.add({ targets: big, alpha: 0, delay: 1600, duration: 500, onComplete: () => big.destroy() });
+          } else big.destroy();
+        }
+      }
+    }
+  },
+
+  controls(t: Ctx, el: HTMLElement) {
+    const p = t.pub;
+    if (!p || t.mySeat === null) return;
+    const me = String(t.mySeat);
+    const base = p.baseUnit;
+    // 스핀이 바뀌면 놓던 칩은 새로
+    const k = `${t.room.round_no}:${p.spin}`;
+    if (k !== localKey) {
+      localKey = k;
+      local = [];
+    }
+    const inSpin = p.players.some((x) => String(x.seat) === me);
+    const confirmed = p.confirmed.includes(t.mySeat);
+    if (p.phase === 'spin' || p.phase === 'done') {
+      const mine = p.bets[me] ?? [];
+      if (mine.length) lastBets = mine.map((b) => ({ ...b }));
+      el.innerHTML = `<p class="msg">${p.phase === 'done' ? '' : '결과를 보고 나면 다음 베팅이 열려요'}</p>${board(p, t, false)}`;
+      return;
+    }
+    if (!inSpin) {
+      el.innerHTML = `<p class="msg">다음 베팅부터 참여해요 (지금은 구경 중)</p>${board(p, t, false)}`;
+      return;
+    }
+    if (confirmed) {
+      const mine = p.bets[me] ?? [];
+      el.innerHTML = `<p class="msg">확정했어요 (${t.fmt(sumOf(mine))}칩) · 다른 사람을 기다리는 중</p>${board(p, t, false)}`;
+      return;
+    }
+    const dis = t.busy ? 'disabled' : '';
+    const total = sumOf(local);
+    el.innerHTML = `<div class="row rl-top">
+        <span class="rl-units">${[1, 5, 10].map((n) => `<button class="btn small ${unit === n ? 'sel' : ''}" data-u="${n}">${t.fmt(base * n)}</button>`).join('')}</span>
+        <span class="amount">${t.fmt(total)} / ${t.fmt(p.maxTotal)}</span>
+      </div>
+      ${board(p, t, true)}
+      <div class="row">
+        <button class="btn" id="rl-clear" ${dis || (local.length ? '' : 'disabled')}>취소</button>
+        <button class="btn" id="rl-repeat" ${dis || (lastBets.length ? '' : 'disabled')}>지난 라운드와 같게</button>
+        <button class="btn big primary" id="rl-go" ${dis}>${local.length ? '베팅 확정' : '이번엔 안 걸기'}</button>
+      </div>`;
+    el.querySelectorAll<HTMLButtonElement>('[data-u]').forEach((b) =>
+      b.addEventListener('click', () => {
+        unit = Number(b.dataset.u);
+        t.redraw();
+      }),
+    );
+    el.querySelectorAll<HTMLButtonElement>('[data-bk]').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (!addBet(b.dataset.bk as BetKind, Number(b.dataset.bt), base * unit, p.maxTotal)) return void flash(el, `한 번에 ${t.fmt(p.maxTotal)}칩까지 걸 수 있어요`);
+        t.redraw();
+      }),
+    );
+    el.querySelector('#rl-clear')?.addEventListener('click', () => ((local = []), t.redraw()));
+    el.querySelector('#rl-repeat')?.addEventListener('click', () => {
+      local = lastBets.map((b) => ({ ...b }));
+      if (sumOf(local) > p.maxTotal) local = [];
+      t.redraw();
+    });
+    const send = () => {
+      if (sentFor === k) return;
+      sentFor = k;
+      const bets = local.map((b) => ({ ...b }));
+      if (bets.length) lastBets = bets;
+      void t.act({ type: 'bet', bets }).finally(() => {
+        // 실패하면 다시 보낼 수 있게
+        if (!p.confirmed.includes(t.mySeat!)) sentFor = '';
+      });
+    };
+    el.querySelector('#rl-go')?.addEventListener('click', send);
+    // 마감 직전 자동 확정 (놓은 칩이 있을 때만, 없으면 서버가 '안 걸기'로 처리)
+    if (autoTimer) clearTimeout(autoTimer);
+    if (p.endsAt && local.length) autoTimer = setTimeout(send, Math.max(0, p.endsAt - Date.now() - 1500));
+  },
+
+  resultHtml(t: Ctx) {
+    const r = (t.pub as unknown as { result?: { stopReason?: string; spins?: number } })?.result;
+    if (r?.stopReason === 'idle') return '<h3>🎡 잠깐 쉬어요</h3><p>3번 연속 아무도 걸지 않아 멈췄어요. 레디하면 다시 시작해요.</p>';
+    return '<h3>🎡 룰렛을 멈췄어요</h3><p>레디하면 다시 시작해요.</p>';
+  },
+
+  cutin() {
+    return null;
+  },
+};
+
+/** 회전 연출이 끝났는가 */
+function wheelStopped(p: RoulettePublic) {
+  const k = [...spinStart.keys()].find((x) => x.startsWith(`${p.spin}:`));
+  const t0 = k ? spinStart.get(k)! : 0;
+  return !k || performance.now() - t0 >= SPIN_ANIM;
+}
+
+function flash(el: HTMLElement, msg: string) {
+  const m = el.querySelector('.rl-top .amount');
+  if (m) {
+    m.textContent = msg;
+    m.classList.add('warn');
+  }
+}
+
+/** 베팅판 HTML: 계절마다 한 줄 [계절][띠][이웃][띠][이웃][띠][다음 줄로 이웃] + 음양 줄 */
+function board(p: RoulettePublic, t: Ctx, active: boolean) {
+  const me = String(t.mySeat);
+  const result = p.phase === 'spin' ? p.result : null;
+  // 다른 사람 베팅 (확정한 것): 칸마다 아바타
+  const others = new Map<string, string[]>();
+  for (const [seat, bets] of Object.entries(p.bets)) {
+    if (seat === me) continue;
+    const av = t.seatAvatar(Number(seat));
+    for (const b of bets) others.set(keyOf(b), [...(others.get(keyOf(b)) ?? []), av]);
+  }
+  const mineConfirmed = new Map((p.bets[me] ?? []).map((b) => [keyOf(b), b.amount]));
+  const mineLocal = new Map(local.map((b) => [keyOf(b), b.amount]));
+  const cell = (kind: BetKind, target: number, inner: string, cls: string, title: string) => {
+    const k = keyOf({ kind, target });
+    const amt = active ? mineLocal.get(k) : mineConfirmed.get(k);
+    const win = result !== null && hits({ kind, target }, result);
+    const avs = (others.get(k) ?? []).slice(0, 3).map((a) => `<img class="oc" src="${faceUrl(a)}" alt=""/>`).join('');
+    return `<button class="rc ${cls} ${win ? 'win' : ''} ${amt ? 'has' : ''}" ${active ? `data-bk="${kind}" data-bt="${target}"` : 'disabled'} title="${esc(title)} ×${MULT[kind]}">
+      ${inner}${amt ? `<b class="amt">${t.fmt(amt)}</b>` : ''}${avs ? `<span class="ocs">${avs}</span>` : ''}</button>`;
+  };
+  const z = (i: number) => cell('zodiac', i, `<img src="${faceUrl(WHEEL[i])}" alt=""/><i>${NAME[WHEEL[i]]}</i>`, 'z', NAME[WHEEL[i]]);
+  const pair = (i: number) => cell('pair', i, '<i>↔</i>', 'pr', `${NAME[WHEEL[i]]}·${NAME[WHEEL[(i + 1) % 12]]}`);
+  const rows = [0, 1, 2, 3]
+    .map((s) => {
+      const [a, b, c] = seasonCells(s);
+      return `<div class="rrow ${SEASON_KEY[s]}">${cell('season', s, `<i>${SEASONS[s]}</i><small>×4</small>`, 'ss', SEASONS[s])}${z(a)}${pair(a)}${z(b)}${pair(b)}${z(c)}${pair(c)}</div>`;
+    })
+    .join('');
+  const yy = `<div class="rrow yy">${cell('yinyang', 0, '<i>☀ 양</i><small>×2</small>', 'y', '양')}${cell('yinyang', 1, '<i>☾ 음</i><small>×2</small>', 'y', '음')}</div>`;
+  return `<div class="rboard ${active ? '' : 'off'}"><p class="rhint">띠 ×12 · ↔ 이웃 두 칸 ×6 · 계절 ×4 · 음양 ×2</p>${rows}${yy}</div>`;
+}
+
+void bootGame(ui);
