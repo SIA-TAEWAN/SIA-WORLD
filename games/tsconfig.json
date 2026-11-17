@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": [
+      "vite/client",
+      "node"
+    ],
+    "paths": {
+      "npm:@supabase/supabase-js@2.118.0": [
+        "./node_modules/@supabase/supabase-js"
+      ],
+      "vitest": [
+        "./node_modules/vitest"
+      ]
+    }
+  },
+  "include": [
+    "lib",
+    "matgo",
+    "casino",
+    "../supabase/functions/_shared"
+  ]
+}

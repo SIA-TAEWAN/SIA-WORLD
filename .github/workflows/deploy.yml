@@ -27,9 +27,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: games/tank/package-lock.json
+          cache-dependency-path: |
+            games/tank/package-lock.json
+            games/package-lock.json
       - name: 시아탱크 테스트·빌드
         working-directory: games/tank
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: 시아맞고·시아카지노 규칙 엔진 테스트·빌드
+        working-directory: games
         run: |
           npm ci
           npm test
@@ -40,8 +48,7 @@ jobs:
           cp index.html _site/
           cp -r shared _site/
           cp -r games/tank/dist/. _site/games/tank/
-          # 시아맞고·시아카지노 (지금은 빌드 없는 임시 페이지)
-          cp -r games/matgo games/casino _site/games/
+          cp -r games/dist/. _site/games/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
@@ -68,8 +75,24 @@ jobs:
       - run: supabase db push --remote "$DB_URL" --yes
       - run: supabase migration list --remote "$DB_URL"
 
+  # Edge Function 배포 (게임 딜러 game-action, 시간 초과 game-timeout)
+  functions:
+    needs: migrate
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ssbopykmgqrjrrtfespm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase functions deploy game-action --project-ref "$PROJECT_REF" --use-api
+      # cron(pg_net)이 사용자 JWT 없이 부르므로 JWT 확인을 끄고, 함수 안에서 DB 비밀값으로 확인한다
+      - run: supabase functions deploy game-timeout --project-ref "$PROJECT_REF" --use-api --no-verify-jwt
+
   deploy:
-    needs: [build, migrate]
+    needs: [build, migrate, functions]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

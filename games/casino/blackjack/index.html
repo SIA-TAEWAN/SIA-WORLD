@@ -1,34 +1,17 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>블랙잭</title>
-  <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
-  <style>
-    :root { --ink: #23324a; --sub: #5d6f8c; --panel-b: #b9d6f2; --primary: #ff8a3d; --primary-d: #e06a1c; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; font-family: 'Jua', system-ui, sans-serif; color: var(--ink);
-      background: linear-gradient(180deg, #6cc0ff, #d9efff 70%, #f4fbff); display: grid; place-items: center; padding: 24px 16px; }
-    .box { width: 100%; max-width: 420px; background: #fff; border: 3px solid var(--panel-b); border-radius: 22px;
-      padding: 26px 22px; text-align: center; box-shadow: 0 10px 30px rgba(30, 80, 140, .18); }
-    h1 { margin: 0 0 6px; font-size: 32px; }
-    p { color: var(--sub); margin: 6px 0 18px; }
-    a.btn { display: block; text-decoration: none; border-radius: 14px; padding: 13px; font-size: 19px; margin-top: 12px;
-      background: var(--primary); color: #fff; box-shadow: 0 4px 0 var(--primary-d); }
-    a.btn.sub { background: #eef6ff; color: var(--ink); box-shadow: 0 4px 0 var(--panel-b); }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h1>🃏 블랙잭</h1>
-    <p>준비 중이에요. 곧 열려요! (3단계)</p>
-    <a class="btn sub" href="../">← 카지노로</a>
-  </div>
-  <script type="module">
-    import { requireLogin } from '../../../shared/auth.js';
-    await requireLogin();
-
-  </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#4aa8ff" />
+    <title>블랙잭</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
 </html>
