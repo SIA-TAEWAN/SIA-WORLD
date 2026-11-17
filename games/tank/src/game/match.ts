@@ -62,6 +62,8 @@ export interface MatchOptions {
   wind?: WindMode;
   /** 게임 모드: 초보면 사람이 쏜 탄이 적 쪽으로 휜다 (AI는 제외) */
   mode?: GameMode;
+  /** 필살기 게이지가 항상 가득 찬 탱크 (AI 대전 관리자) */
+  fullUlt?: number[];
 }
 
 /** 초보 / 일반 */
@@ -258,6 +260,7 @@ export class Match {
     if (this.practice) this.wind = this.rng.next() < 0.5 ? -5 : 5;
     this.moveLeft = next.def.move;
     next.ult = Math.min(100, next.ult + ULT_PER_TURN);
+    this.refillUlt();
     this.movedThisTurn = 0;
     // 내 차례가 오면 내가 만든 불·독안개는 사라진다
     this.zones = this.zones.filter((z) => (z.until !== undefined ? this.turn < z.until : z.owner !== next.idx));
@@ -602,6 +605,7 @@ export class Match {
     this.settleZones();
     result.frames = this.applyDots(t, afflicted, events, endF, fresh, dotMul);
     events.sort((a, b) => a.f - b.f);
+    this.refillUlt();
     this.pickup();
     this.checkWinner();
     return result;
@@ -671,6 +675,11 @@ export class Match {
       while (z.y < this.terrain.h && !this.terrain.solid(z.x, z.y + 1)) z.y++;
       return z.y < this.terrain.h;
     });
+  }
+
+  /** 필살기 무한 탱크는 게이지를 다시 채운다 */
+  refillUlt() {
+    for (const i of this.options.fullUlt ?? []) if (this.tanks[i]) this.tanks[i].ult = 100;
   }
 
   checkWinner() {

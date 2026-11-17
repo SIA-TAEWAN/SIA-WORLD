@@ -255,7 +255,7 @@ function startGame() {
   const local = state.opponent === 'local';
   const diff = local ? null : (state.opponent as Difficulty);
   const setups: PlayerSetup[] = [
-    { name: state.name, tank: state.tank === 'random' ? randomTank(Math.random, state.name.trim()) : state.tank, team: 0, ai: null, items: [...state.shop[0]] },
+    { name: state.name, tank: state.tank === 'random' ? randomTank(Math.random, state.isAdmin) : state.tank, team: 0, ai: null, items: [...state.shop[0]] },
     {
       name: local ? state.name2 : `AI(${{ easy: '쉬움', normal: '보통', hard: '어려움' }[diff!]})`,
       tank: oppTank,
@@ -276,6 +276,8 @@ function startGame() {
     speed: state.speed,
     wind: state.wind,
     mode: state.mode,
+    // 관리자 계정은 AI 대전에서 필살기 게이지가 늘 가득 (1P = 나)
+    fullUlt: state.isAdmin ? [0] : [],
     onEnd: (s: MatchSummary) => {
       closeGame();
       showResult(s);

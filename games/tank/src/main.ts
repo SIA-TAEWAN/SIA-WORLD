@@ -38,6 +38,7 @@ async function start() {
   }
   setPlayer(user.userId, user.nickname);
   state.name = user.nickname;
+  state.isAdmin = !!user.isAdmin;
   nav.lobby();
 }
 

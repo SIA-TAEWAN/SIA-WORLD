@@ -17,6 +17,8 @@ const saved = load();
 export const state = {
   /** 내 닉네임 (SIA WORLD 계정, 시작할 때 정해진다) */
   name: '',
+  /** 관리자 계정: AI 대전에서 필살기 게이지 가득, 랜덤 탱크는 언제나 열두빛 */
+  isAdmin: false,
   tank: (TANK_IDS.includes(saved.tank as TankId) || saved.tank === 'random' ? saved.tank : 'tiger') as TankChoice,
   oppTank: 'random' as TankId | 'random',
   opponent: (['easy', 'normal', 'hard', 'local'].includes(saved.opponent ?? '') ? saved.opponent : 'normal') as Opponent,

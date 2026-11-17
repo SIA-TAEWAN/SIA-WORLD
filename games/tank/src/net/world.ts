@@ -9,6 +9,8 @@ export interface WorldUser {
   userId: string;
   loginId: string;
   nickname: string;
+  /** 관리자 계정 (profiles.is_admin) */
+  isAdmin?: boolean;
 }
 
 interface AuthModule {

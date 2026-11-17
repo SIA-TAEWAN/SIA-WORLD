@@ -136,16 +136,16 @@ export async function signOut() {
 
 let profileCache = null;
 
-/** 로그인 상태면 { userId, loginId, nickname }, 아니면 null */
+/** 로그인 상태면 { userId, loginId, nickname, isAdmin }, 아니면 null */
 export async function getCurrentUser() {
   const { data } = await supabase.auth.getSession();
   const uid = data.session?.user?.id;
   if (!uid) return null;
   if (profileCache?.userId === uid) return profileCache;
-  const { data: p, error } = await supabase.from('profiles').select('login_id,nickname').eq('id', uid).maybeSingle();
+  const { data: p, error } = await supabase.from('profiles').select('login_id,nickname,is_admin').eq('id', uid).maybeSingle();
   if (error) throw new AuthError('서버와 통신하지 못했어요. 잠시 후 다시 시도해 주세요');
   if (!p) return null;
-  profileCache = { userId: uid, loginId: p.login_id, nickname: p.nickname };
+  profileCache = { userId: uid, loginId: p.login_id, nickname: p.nickname, isAdmin: !!p.is_admin };
   return profileCache;
 }
 

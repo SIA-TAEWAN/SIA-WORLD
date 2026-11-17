@@ -315,7 +315,8 @@ describe('보급 상자·십이지신', () => {
     expect(n / 5000).toBeLessThan(0.23);
     const avg = TANK_IDS.reduce((s, id) => s + TANKS[id].hp, 0) / TANK_IDS.length;
     expect(Math.abs(TANKS.zodiac.hp - avg)).toBeLessThan(10);
-    expect(randomTank(() => 0.99, '시아')).toBe('zodiac');
+    expect(randomTank(() => 0.99, true)).toBe('zodiac');
+    expect(randomTank(() => 0.99, false)).not.toBe('zodiac');
   });
 });
 
