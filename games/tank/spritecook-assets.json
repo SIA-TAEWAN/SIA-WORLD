@@ -11,6 +11,56 @@
     {
       "asset_id": "e1da32a3-72f3-4ff8-92e1-101428993af3",
       "label": "포탄 22종 시트 (art/shells-sheet.png)"
+    },
+    {
+      "asset_id": "ffc700b7-754a-4d0d-8d18-5f410d97da23",
+      "sha12": "80540d889f4d",
+      "label": "맵 배경 뒷동산 → public/bg/valley.jpg, valley-s.jpg"
+    },
+    {
+      "asset_id": "8d62ee20-374e-4696-9c4f-ff686d11b8c4",
+      "sha12": "0193163fa050",
+      "label": "맵 배경 둥둥섬 → public/bg/sky.jpg"
+    },
+    {
+      "asset_id": "993d77d7-5f9b-4949-8c40-a4ef1681aee8",
+      "sha12": "322ae1fa9fd5",
+      "label": "맵 배경 모래밭 → public/bg/sphinx.jpg"
+    },
+    {
+      "asset_id": "da1c16c1-7226-4341-84d4-c73a604d05a6",
+      "sha12": "04e92bb514f1",
+      "label": "맵 배경 아슬아슬 → public/bg/ledge.jpg"
+    },
+    {
+      "asset_id": "156fe301-c683-4f81-92f4-7c8bb4518816",
+      "sha12": "9c04b985a3ef",
+      "label": "맵 배경 백발백중 → public/bg/target.jpg"
+    },
+    {
+      "asset_id": "ccc932fd-d013-4a9c-8211-9dddf43d78ae",
+      "sha12": "49e3816d66ea",
+      "label": "땅 질감 흙 (뒷동산·백발백중) → public/tex/soil.png"
+    },
+    {
+      "asset_id": "7b26276a-33ed-467a-924b-40345581e98a",
+      "sha12": "a2bd7e4478ea",
+      "label": "땅 질감 모래 (모래밭) → public/tex/sand.png"
+    },
+    {
+      "asset_id": "79316f9d-8e1f-4ce6-b281-869ece1bf6e2",
+      "sha12": "47c7eedf7f55",
+      "label": "땅 질감 바위 (둥둥섬·아슬아슬) → public/tex/rock.png"
+    },
+    {
+      "asset_id": "a8afc07e-c3fe-49e0-be4e-22fc9d0e2b23",
+      "sha12": "2908d283e22f",
+      "label": "아이콘 12종 4x3 (특수 벽 4·아이템 4·상자·낙하산·비행기·바람) → public/icons/*.png"
+    },
+    {
+      "asset_id": "75a9f006-4fcb-4cbd-9ad8-c4efaf41f7ae",
+      "sha12": "cb8835fdc228",
+      "label": "대기실 그림 → public/lobby.jpg"
     }
   ]
 }

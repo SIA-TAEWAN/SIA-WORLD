@@ -5,6 +5,7 @@ import { TEAM_COLORS } from './teams';
 import type { Input } from './input';
 import type { GameChat } from '../scenes/GameScene';
 import { sfx } from './sfx';
+import { iconUrl } from './icons';
 
 export interface HudView {
   power: number;
@@ -242,7 +243,7 @@ export class Hud {
   setTurn(match: Match, t: TankState, human: boolean, tag = '') {
     const w = match.wind;
     const arrow = w === 0 ? '·' : w > 0 ? '➜' : '➜';
-    this.wind.innerHTML = `<span class="wind-label">WIND</span><span class="wind-arrow ${w < 0 ? 'flip' : ''}" style="--s:${0.6 + Math.abs(w) / 12}">${arrow}</span><b>${Math.abs(w)}</b>`;
+    this.wind.innerHTML = `<img class="wind-ic" src="${iconUrl('wind')}" alt="" /><span class="wind-label">WIND</span><span class="wind-arrow ${w < 0 ? 'flip' : ''}" style="--s:${0.6 + Math.abs(w) / 12}">${arrow}</span><b>${Math.abs(w)}</b>`;
     this.wind.title = w === 0 ? '무풍' : `${w > 0 ? '오른쪽' : '왼쪽'}으로 ${Math.abs(w)}`;
     this.banner.innerHTML = `<span style="color:${TEAM_COLORS[t.team]}">${escapeHtml(t.name)}</span> 차례${tag ? ` <small>(${escapeHtml(tag)})</small>` : ''}`;
     this.banner.classList.remove('show');
@@ -315,7 +316,7 @@ export class Hud {
     });
     t.items.forEach((id, i) => {
       const b = this.items[i];
-      const html = `<span class="key">${'QWE'[i]}</span>${id ? `<span class="ic">${ITEMS[id].icon}</span><span class="nm">${ITEMS[id].name}</span>` : '<span class="nm empty">빈칸</span>'}`;
+      const html = `<span class="key">${'QWE'[i]}</span>${id ? `<img class="ic" src="${iconUrl(id)}" alt="${ITEMS[id].icon}" /><span class="nm">${ITEMS[id].name}</span>` : '<span class="nm empty">빈칸</span>'}`;
       if (b.dataset.html !== html) {
         b.innerHTML = html;
         b.dataset.html = html;
@@ -336,7 +337,7 @@ export class Hud {
     const f = t.facing;
     const toRad = (a: number) => (f > 0 ? -a : -(180 - a)) * (Math.PI / 180);
     c.lineWidth = 7;
-    c.strokeStyle = 'rgba(255,255,255,0.25)';
+    c.strokeStyle = '#eee2c8';
     c.beginPath();
     c.arc(cx, cy, r, Math.PI, 0);
     c.stroke();
@@ -347,13 +348,13 @@ export class Hud {
     c.arc(cx, cy, r, Math.min(a1, a2), Math.max(a1, a2));
     c.stroke();
     const a = toRad(t.angle + off);
-    c.strokeStyle = '#fff';
+    c.strokeStyle = '#2a1a10';
     c.lineWidth = 3;
     c.beginPath();
     c.moveTo(cx, cy);
     c.lineTo(cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6));
     c.stroke();
-    c.fillStyle = '#fff';
+    c.fillStyle = '#2a1a10';
     c.beginPath();
     c.arc(cx, cy, 4, 0, Math.PI * 2);
     c.fill();

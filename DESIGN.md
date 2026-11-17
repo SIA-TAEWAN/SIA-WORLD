@@ -203,6 +203,13 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노)은 이 �
 - 로비 카드 `shared/images/card-matgo.png`, `card-casino.png`
 - 시아탱크 원본 그림(`games/tank/public/tanks`)은 시아탱크 게임 화면에서 그대로 쓰고, `shared/images/zodiac/*.png`(탱크 버전)는 `tankUrl()`로만 쓴다.
 
+**시아탱크 (SpriteCook, 2026-11-17)** — 원본 asset id: `games/tank/spritecook-assets.json`
+- 맵 5종 배경 `games/tank/public/bg/{valley,sky,sphinx,ledge,target}.jpg` (+ `-s.jpg` 맵 선택 썸네일). 전투 화면에서는 CSS 배경 + 시차 스크롤, 위에 하늘색 안개 한 겹
+- 땅 질감 `public/tex/{soil,sand,rock}.png` (흙 부분에 바둑판으로 깔고 깊이에 따라 어둡게)
+- 아이콘 `public/icons/*.png`: 특수 벽 배지 4, 아이템 4, 보급 상자·낙하산·비행기, 바람
+- 대기실 그림 `public/lobby.jpg`
+- 전투 HUD는 어두운 남색 → 크림 판 + 갈색 외곽선 (`style.css` 끝 "DESIGN.md 맞춤" 블록)
+
 **아직 코드로 그리는 부분** (필요하면 SpriteCook 그림으로 교체)
 | 위치 | 지금 |
 |---|---|

@@ -16,6 +16,7 @@ import { worldHome } from '../net/world';
 import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
+import { mapBgUrl } from './icons';
 
 // ---------- 1. 처음 화면 ----------
 // 로그인하면 바로 대기실로 간다. 이 화면은 대기실에 못 들어갔을 때(서버 문제 등) 보인다.
@@ -191,7 +192,8 @@ export function showSetup() {
     $('#maps').innerHTML = opts
       .map((id) => {
         const m = id === 'random' ? null : MAPS[id];
-        const bg = m ? `linear-gradient(${m.theme.skyTop}, ${m.theme.skyBottom} 60%, ${m.theme.grass} 60%, ${m.theme.dirtBottom})` : 'linear-gradient(135deg,#8ec5ff,#ffd38a)';
+        // 맵 썸네일: SpriteCook 배경 그림 + 아래쪽을 어둡게 해서 흰 글자가 읽히게
+        const bg = m ? `linear-gradient(#2a1a1040, #2a1a10b0), url(${mapBgUrl(id, true)}) center / cover` : 'linear-gradient(135deg,#8ec5ff,#ffd38a)';
         return `<button class="map ${state.map === id ? 'sel' : ''}" data-id="${id}" style="--bg:${bg}">
           <span class="mn">${m ? m.name : '랜덤'}</span><small>${m ? m.desc : '셋 중 하나를 무작위로'}${m?.practice ? '<br><b>🐔 꼬꼬댁 · 깃털탄만 · 혼자 과녁 맞히기</b>' : m?.lockTank ? '<br><b>🐶 모두 멍뭉이 · 2번 땅파기탄만</b>' : ''}</small></button>`;
       })

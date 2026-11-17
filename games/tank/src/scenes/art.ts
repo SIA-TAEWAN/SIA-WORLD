@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { MapTheme } from '../data/maps';
-import type { Terrain } from '../physics/terrain';
+import { MAP_H, type Terrain } from '../physics/terrain';
 
 export { TEAM_COLORS, TEAM_NAMES } from '../ui/teams';
 
@@ -46,8 +46,16 @@ const FLOWERS = [
   [140, 190, 255],
 ];
 
-/** 픽셀별 지형 색(풀·흙 그라데이션·돌·맵 장식)을 미리 계산한다 */
-export function buildTerrainArt(t: Terrain, theme: MapTheme, mapId = 'valley'): Uint8ClampedArray {
+/** SpriteCook 땅 질감 (public/tex): 맵별로 흙·모래·바위 */
+export const TERRAIN_TEX: Record<string, 'soil' | 'sand' | 'rock'> = { valley: 'soil', target: 'soil', sphinx: 'sand', sky: 'rock', ledge: 'rock' };
+export interface TexPixels {
+  w: number;
+  h: number;
+  data: Uint8ClampedArray;
+}
+
+/** 픽셀별 지형 색(풀·흙 그라데이션·돌·맵 장식)을 미리 계산한다. tex가 있으면 흙 부분은 그 질감을 바둑판처럼 깐다 */
+export function buildTerrainArt(t: Terrain, theme: MapTheme, mapId = 'valley', tex?: TexPixels): Uint8ClampedArray {
   const art = new Uint8ClampedArray(t.w * t.h * 4);
   const grass = rgb(theme.grass);
   const grassDark = rgb(theme.grassDark);
@@ -99,7 +107,13 @@ export function buildTerrainArt(t: Terrain, theme: MapTheme, mapId = 'valley'): 
         if (d < 2) c = mix(c, [255, 255, 255], 0.18);
         if (mapId === 'valley' && d < 3 && hash2(x, y) < 0.025) c = [...FLOWERS[Math.floor(hash2(y, x) * 4)]];
       } else if (d < 10) c = [...grassDark];
-      else {
+      else if (tex) {
+        // 질감 + 깊을수록 조금 어둡게, 풀 바로 아래는 맵 색을 살짝 섞는다
+        const o = ((y % tex.h) * tex.w + (x % tex.w)) * 4;
+        c = [tex.data[o], tex.data[o + 1], tex.data[o + 2]];
+        c = mix(c, bottom, Math.min(1, y / t.h) * 0.3);
+        if (d < 22) c = mix(c, top, (1 - (d - 10) / 12) * 0.35);
+      } else {
         c = mix(top, bottom, Math.min(1, y / t.h + 0.1));
         // 흙 속 돌멩이
         if (blob > 0.82) c = mix(c, mapId === 'sphinx' ? [236, 200, 140] : rock, (blob - 0.82) * 4.5);
@@ -163,13 +177,6 @@ export function makeFxTextures(scene: Phaser.Scene) {
 
 type G = Phaser.GameObjects.Graphics;
 
-function poly(g: G, pts: number[][]) {
-  g.beginPath();
-  g.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
-  g.closePath().fillPath();
-}
-
 function cloud(g: G, cx: number, cy: number, s: number) {
   g.fillEllipse(cx, cy, 90 * s, 34 * s)
     .fillEllipse(cx - 30 * s, cy + 6 * s, 60 * s, 26 * s)
@@ -177,112 +184,54 @@ function cloud(g: G, cx: number, cy: number, s: number) {
     .fillEllipse(cx + 5 * s, cy - 12 * s, 54 * s, 30 * s);
 }
 
-function tree(g: G, x: number, y: number, s: number, leaf: number, dark: number) {
-  g.fillStyle(0x7a5232).fillRect(x - 2 * s, y - 14 * s, 4 * s, 14 * s);
-  g.fillStyle(dark).fillCircle(x, y - 20 * s, 11 * s);
-  g.fillStyle(leaf).fillCircle(x - 3 * s, y - 23 * s, 8 * s);
-}
-
-function palm(g: G, x: number, y: number, s: number) {
-  g.lineStyle(4 * s, 0x9a6a3a).beginPath();
-  g.moveTo(x, y);
-  g.lineTo(x + 4 * s, y - 20 * s);
-  g.lineTo(x + 6 * s, y - 40 * s);
-  g.strokePath();
-  g.fillStyle(0x4f9a4a);
-  const tx = x + 6 * s;
-  const ty = y - 40 * s;
-  for (const [dx, dy] of [[-22, 6], [22, 6], [-16, -8], [16, -8], [0, -14]]) g.fillEllipse(tx + dx * s * 0.6, ty + dy * s * 0.5, 26 * s, 8 * s);
-}
-
-const hillY = (x: number) => 470 + Math.sin(x * 0.005) * 60 + Math.sin(x * 0.013 + 1) * 26;
-const duneY = (x: number) => 560 + Math.sin(x * 0.004) * 40 + Math.sin(x * 0.011 + 2) * 18;
-
 /** 하늘·구름·맵별 먼 풍경 배경 */
 export function drawBackground(scene: Phaser.Scene, theme: MapTheme, mapId: string, w: number) {
   const layers: Phaser.GameObjects.GameObject[] = [];
   // 하늘 그라데이션은 캔버스 뒤 CSS 배경으로 그린다 (줌과 무관하게 화면 전체를 덮음)
   const canvas = scene.game.canvas.parentElement;
   if (canvas) canvas.style.background = `linear-gradient(${theme.skyTop}, ${theme.skyBottom})`;
-  const L = -1600;
-  const R = w + 1600;
 
-  // 태양
-  const sun = scene.add.graphics().setScrollFactor(0.05).setDepth(-95);
-  const big = mapId === 'sphinx';
-  sun.fillStyle(0xfff6b0, 0.35).fillCircle(1250, 70, big ? 110 : 80);
-  sun.fillStyle(0xfff6b0, 0.5).fillCircle(1250, 70, big ? 82 : 62);
-  sun.fillStyle(0xfff8d0, 1).fillCircle(1250, 70, big ? 58 : 44);
-
-  // 먼 풍경 (좌우로 천천히)
-  const far = scene.add.graphics().setScrollFactor(0.3, 0.9).setDepth(-90);
-  // 가까운 풍경
-  const mid = scene.add.graphics().setScrollFactor(0.6, 0.95).setDepth(-85);
-
-  if (mapId === 'valley') {
-    // 눈 덮인 먼 산맥
-    for (let i = 0; i < 18; i++) {
-      const x = L + i * 260 + (i % 3) * 40;
-      const peak = 250 + ((i * 97) % 120);
-      const half = 200 + ((i * 53) % 90);
-      const base = 1400;
-      far.fillStyle(0x9cb8dc, 1);
-      poly(far, [[x - half * 2.2, base], [x, peak], [x + half * 2.2, base]]);
-      far.fillStyle(0x88a5cd, 1);
-      poly(far, [[x, peak], [x + half * 2.2, base], [x + half * 0.5, base]]);
-      // 눈 모자
-      const sx = half * 2.2 * 0.16;
-      const sy = (base - peak) * 0.16;
-      far.fillStyle(0xffffff, 0.95);
-      poly(far, [[x - sx, peak + sy], [x, peak], [x + sx, peak + sy], [x + sx * 0.4, peak + sy * 0.7], [x, peak + sy * 1.1], [x - sx * 0.5, peak + sy * 0.75]]);
-    }
-    // 초록 언덕과 나무
-    mid.fillStyle(hex(theme.far), 1).beginPath();
-    mid.moveTo(L, 1400);
-    for (let x = L; x <= R; x += 30) mid.lineTo(x, hillY(x));
-    mid.lineTo(R, 1400).closePath().fillPath();
-    for (let x = L + 60; x < R; x += 70 + (Math.abs(x * 7) % 90)) tree(mid, x, hillY(x) + 6, 0.9 + (Math.abs(x * 13) % 7) / 10, 0x6dbf6a, 0x4f9e57);
-  } else if (mapId === 'sphinx') {
-    // 멀리 보이는 피라미드들
-    for (const [x, s] of [[-500, 1], [200, 0.7], [1500, 1.2], [2300, 0.8], [2900, 1]]) {
-      const top = 400 - 130 * s;
-      far.fillStyle(0xf2b98a, 1);
-      poly(far, [[x - 260 * s, 660], [x, top], [x + 260 * s, 660]]);
-      far.fillStyle(0xd99a6c, 1);
-      poly(far, [[x, top], [x + 260 * s, 660], [x + 50 * s, 660]]);
-    }
-    far.fillStyle(0xf0b07c, 1).fillRect(L, 650, R - L, 900);
-    // 모래 언덕과 야자수
-    mid.fillStyle(hex(theme.far), 1).beginPath();
-    mid.moveTo(L, 1400);
-    for (let x = L; x <= R; x += 30) mid.lineTo(x, duneY(x));
-    mid.lineTo(R, 1400).closePath().fillPath();
-    for (let x = L + 200; x < R; x += 380 + (Math.abs(x * 11) % 260)) palm(mid, x, duneY(x) + 4, 1.1);
-  } else {
-    // 스카이: 멀리 떠 있는 작은 섬들
-    for (let i = 0; i < 10; i++) {
-      const x = L + 300 + i * 520 + ((i * 131) % 200);
-      const y = 240 + ((i * 89) % 260);
-      const s = 0.5 + ((i * 37) % 5) / 10;
-      far.fillStyle(0x9fc3e6, 0.95);
-      poly(far, [[x - 70 * s, y], [x + 70 * s, y], [x + 10 * s, y + 70 * s]]);
-      far.fillEllipse(x, y, 140 * s, 22 * s);
-      far.fillStyle(0x8fd68a, 0.95).fillEllipse(x, y - 4 * s, 140 * s, 12 * s);
-    }
-    // 아래쪽 구름 바다
-    mid.fillStyle(0xffffff, 0.8);
-    for (let x = L; x < R; x += 110) cloud(mid, x, 690 + Math.sin(x * 0.01) * 24, 1.6 + Math.sin(x * 0.03) * 0.3);
-    mid.fillRect(L, 700, R - L, 900);
+  // 맵 그림 (SpriteCook): 화면을 덮을 만큼 키우고, 카메라가 움직이면 조금만 따라 움직인다 (먼 풍경)
+  if (canvas) {
+    const IMG_W = 1600;
+    const IMG_H = 900;
+    const url = `${import.meta.env.BASE_URL}bg/${mapId}.jpg`;
+    const sky = `linear-gradient(${theme.skyTop}, ${theme.skyBottom})`;
+    // 하늘색 안개를 한 겹 얹어 먼 풍경처럼 (실제 지형과 헷갈리지 않게)
+    const haze = `linear-gradient(${theme.skyBottom}55, ${theme.skyBottom}55)`;
+    canvas.style.background = `${haze}, url(${url}) no-repeat, ${sky}`;
+    const cam = scene.cameras.main;
+    let last = '';
+    const follow = () => {
+      const vw = canvas.clientWidth;
+      const vh = canvas.clientHeight;
+      if (!vw || !vh) return;
+      const k = Math.max(vw / IMG_W, vh / IMG_H) * 1.15;
+      const iw = IMG_W * k;
+      const ih = IMG_H * k;
+      const view = cam.worldView;
+      const fx = Math.max(0, Math.min(1, view.centerX / w));
+      const fy = Math.max(0, Math.min(1, view.centerY / MAP_H));
+      const pos = `${Math.round(-(iw - vw) * fx)}px ${Math.round(-(ih - vh) * (0.4 + fy * 0.6))}px`;
+      const key = `${Math.round(iw)}:${pos}`;
+      if (key === last) return;
+      last = key;
+      canvas.style.backgroundSize = `auto, ${Math.round(iw)}px ${Math.round(ih)}px, auto`;
+      canvas.style.backgroundPosition = `0 0, ${pos}, 0 0`;
+    };
+    follow();
+    scene.events.on('postupdate', follow);
+    scene.events.once('shutdown', () => scene.events.off('postupdate', follow));
   }
 
   // 구름
   const cloudY = [70, 130, 200, 90, 160];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 5; i++) {
     const c = scene.add.graphics().setDepth(-80).setScrollFactor(0.2 + (i % 3) * 0.15, 0.5);
     const cx = (i * 263) % (w + 300);
     const cy = cloudY[i % cloudY.length] + (i % 2) * 30;
     const s = 0.7 + (i % 3) * 0.25;
-    c.fillStyle(hex(theme.cloud), 0.9);
+    c.fillStyle(hex(theme.cloud), 0.75);
     cloud(c, cx, cy, s);
     scene.tweens.add({ targets: c, x: 60, duration: 20000 + i * 3000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     layers.push(c);

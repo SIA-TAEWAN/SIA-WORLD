@@ -7,7 +7,8 @@ import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
 import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
-import { buildTerrainArt, drawBackground, hex, TEAM_COLORS } from './art';
+import { buildTerrainArt, drawBackground, hex, TEAM_COLORS, TERRAIN_TEX, type TexPixels } from './art';
+import { ICON_IDS, iconUrl } from '../ui/icons';
 import { cloudDataUrl, tierOf, type Tier } from '../ui/rank';
 import { ART_SCALE, TANK_ART, faceColor, tankArtUrl, tankTextureSvg, TEX_BOX, TEX_SCALE } from '../ui/tankSvg';
 import { ALL_TANK_IDS } from '../game/data';
@@ -398,10 +399,10 @@ export class GameScene extends Phaser.Scene {
     }
     if (!w) return;
     const info = {
-      amp: { color: 0xff4d6d, icon: '⚡', label: '증폭벽' },
-      whirl: { color: 0x3fc8ff, icon: '🌀', label: '회오리' },
-      double: { color: 0xffc83d, icon: '×2', label: '더블벽' },
-      triple: { color: 0xb46bff, icon: '×3', label: '트리플벽' },
+      amp: { color: 0xff4d6d, icon: '⚡', badge: 'amp', label: '증폭벽' },
+      whirl: { color: 0x3fc8ff, icon: '🌀', badge: 'whirl', label: '회오리' },
+      double: { color: 0xffc83d, icon: '×2', badge: 'x2', label: '더블벽' },
+      triple: { color: 0xb46bff, icon: '×3', badge: 'x3', label: '트리플벽' },
     }[w.kind];
     // 지형 뒤, 배경 앞 (땅에 묻힌 부분은 가려진다)
     const c = this.add.container(w.x, w.top ?? 0).setDepth(-1).setAlpha(0);
@@ -419,14 +420,36 @@ export class GameScene extends Phaser.Scene {
     }
     // 이름표 (기둥 여러 곳에)
     for (let y = Math.min(60, h / 2); y < h - 10; y += 220) {
+      const badgeKey = `icon-${info.badge}`;
+      const hasBadge = this.textures.exists(badgeKey);
+      if (hasBadge) {
+        const b = this.add.image(0, y - 14, badgeKey);
+        b.setScale(46 / Math.max(b.width, b.height));
+        c.add(b);
+        this.tweens.add({ targets: b, scale: b.scale * 1.12, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
       const tag = this.add
-        .text(0, y, `${info.icon}\n${info.label}`, { fontFamily: 'Jua, sans-serif', fontSize: '20px', color: '#fff', align: 'center', stroke: `#${info.color.toString(16).padStart(6, '0')}`, strokeThickness: 4 })
+        .text(0, hasBadge ? y + 20 : y, hasBadge ? info.label : `${info.icon}\n${info.label}`, { fontFamily: 'Jua, sans-serif', fontSize: '18px', color: '#fff', align: 'center', stroke: '#2a1a10', strokeThickness: 5 })
         .setOrigin(0.5);
       c.add(tag);
     }
     this.tweens.add({ targets: c, alpha: 1, duration: 500 });
     this.wallView = c;
     if (this.match.turn > 0) this.hud.toast(`${info.icon} ${info.label}이(가) 나타났어요! (3턴)`);
+  }
+
+  /** 불러온 땅 질감 그림의 픽셀 (없으면 예전처럼 색으로 칠한다) */
+  private texPixels(name: string | undefined): TexPixels | undefined {
+    const key = `tex-${name}`;
+    if (!name || !this.textures.exists(key)) return undefined;
+    const img = this.textures.get(key).getSourceImage() as HTMLImageElement;
+    const cv = document.createElement('canvas');
+    cv.width = img.width;
+    cv.height = img.height;
+    const ctx = cv.getContext('2d');
+    if (!ctx || !cv.width) return undefined;
+    ctx.drawImage(img, 0, 0);
+    return { w: cv.width, h: cv.height, data: ctx.getImageData(0, 0, cv.width, cv.height).data };
   }
 
   /** 어흥이 할퀴기: 세 줄 발톱 자국 */
@@ -465,6 +488,9 @@ export class GameScene extends Phaser.Scene {
   preload() {
     for (const tr of ['gold', 'silver', 'bronze', 'white'] as Tier[]) if (!this.textures.exists(`cloud-${tr}`)) this.load.svg(`cloud-${tr}`, cloudDataUrl(tr), { width: 64, height: 44 });
     for (const l of SHELL_LOOKS) if (!this.textures.exists(`shell-${l}`)) this.load.image(`shell-${l}`, `${import.meta.env.BASE_URL}shells/${l}.png`);
+    // SpriteCook 아이콘 (특수 벽·상자·낙하산·비행기)과 땅 질감
+    for (const id of ICON_IDS) if (!this.textures.exists(`icon-${id}`)) this.load.image(`icon-${id}`, iconUrl(id));
+    for (const t of new Set(Object.values(TERRAIN_TEX))) if (!this.textures.exists(`tex-${t}`)) this.load.image(`tex-${t}`, `${import.meta.env.BASE_URL}tex/${t}.png`);
     // 탱크 그림은 메뉴와 같은 SVG를 2배 크기로 굽는다
     for (const id of ALL_TANK_IDS) {
       const key = `tank-${id}`;
@@ -490,7 +516,7 @@ export class GameScene extends Phaser.Scene {
 
     // 지형
     // 색은 처음 지형 기준으로 칠한다 (재접속해도 같은 모습)
-    this.art = buildTerrainArt(map.build(new Rng(this.match.seed)), map.theme, cfg.mapId);
+    this.art = buildTerrainArt(map.build(new Rng(this.match.seed)), map.theme, cfg.mapId, this.texPixels(TERRAIN_TEX[cfg.mapId]));
     if (this.textures.exists('terrain')) this.textures.remove('terrain');
     this.tex = this.textures.createCanvas('terrain', terrain.w, terrain.h)!;
     this.img = this.tex.context.createImageData(terrain.w, terrain.h);
@@ -744,6 +770,18 @@ export class GameScene extends Phaser.Scene {
   // ---------- 보급 상자 ----------
 
   private makeCrate(x: number, y: number, chute: boolean) {
+    if (this.textures.exists('icon-crate')) {
+      const parts: Phaser.GameObjects.GameObject[] = [];
+      if (chute && this.textures.exists('icon-chute')) {
+        const ch = this.add.image(0, -15, 'icon-chute').setOrigin(0.5, 1);
+        ch.setScale(40 / ch.width);
+        parts.push(ch);
+      }
+      const box = this.add.image(0, 0, 'icon-crate').setOrigin(0.5, 1);
+      box.setScale(22 / box.width);
+      parts.push(box);
+      return this.add.container(x, y, parts).setDepth(9);
+    }
     const g = this.add.graphics();
     if (chute) {
       g.lineStyle(1.2, 0x5a4a3a, 0.9).lineBetween(-8, -14, -11, -34).lineBetween(8, -14, 11, -34).lineBetween(0, -14, 0, -36);
@@ -762,10 +800,19 @@ export class GameScene extends Phaser.Scene {
     sfx.turn();
     this.hud.toast('✈️ 보급 비행기가 상자를 떨어뜨려요! 닿으면 아이템 획득');
     const W = this.match.terrain.w;
-    const plane = this.add.graphics().setDepth(40);
-    plane.fillStyle(0xffffff).fillEllipse(0, 0, 70, 18).lineStyle(2, 0x3a2a1e).strokeEllipse(0, 0, 70, 18);
-    plane.fillStyle(0xff5a6a).fillTriangle(-30, -2, -42, -20, -22, -4).fillRoundedRect(-10, -3, 22, 26, 4);
-    plane.fillStyle(0x6fd8ff).fillCircle(22, -2, 4).fillCircle(10, -3, 3.5);
+    let plane: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
+    if (this.textures.exists('icon-plane')) {
+      const img = this.add.image(0, 0, 'icon-plane').setDepth(40);
+      img.setScale(84 / img.width);
+      this.tweens.add({ targets: img, angle: { from: -3, to: 3 }, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      plane = img;
+    } else {
+      const g = this.add.graphics().setDepth(40);
+      g.fillStyle(0xffffff).fillEllipse(0, 0, 70, 18).lineStyle(2, 0x3a2a1e).strokeEllipse(0, 0, 70, 18);
+      g.fillStyle(0xff5a6a).fillTriangle(-30, -2, -42, -20, -22, -4).fillRoundedRect(-10, -3, 22, 26, 4);
+      g.fillStyle(0x6fd8ff).fillCircle(22, -2, 4).fillCircle(10, -3, 3.5);
+      plane = g;
+    }
     plane.setPosition(-200, -60);
     this.tweens.add({ targets: plane, x: W + 200, duration: 4200, onComplete: () => plane.destroy() });
     for (const d of drops) {

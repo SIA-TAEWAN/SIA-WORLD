@@ -171,7 +171,7 @@ function renderLobby(sess: LobbySession) {
             </div>`;
           })
           .join('')
-      : '<p class="empty">아직 게임방이 없어요. 방을 만들어 친구를 불러보세요!</p>';
+      : `<div class="empty lobby-empty"><img src="${import.meta.env.BASE_URL}lobby.jpg" alt="" /><p>아직 게임방이 없어요. 방을 만들어 친구를 불러보세요!</p></div>`;
     root.querySelectorAll<HTMLElement>('.room-row button[data-id]').forEach((b) => b.addEventListener('click', () => enterRoom(b.dataset.id!)));
     $(root, '#people').innerHTML = sess.members
       .map((m) => {
