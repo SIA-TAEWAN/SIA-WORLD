@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#4aa8ff" />
+  <title>SIA WORLD</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌏</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --sky1: #6cc0ff; --sky2: #d9efff;
+      --ink: #23324a; --sub: #5d6f8c;
+      --panel: #ffffff; --panel-b: #b9d6f2;
+      --primary: #ff8a3d; --primary-d: #e06a1c;
+      --blue: #4aa8ff; --err: #e2483d; --ok: #2f9e5a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: 'Jua', system-ui, sans-serif; color: var(--ink);
+      background: linear-gradient(180deg, var(--sky1), var(--sky2) 70%, #f4fbff);
+      background-attachment: fixed; min-height: 100vh;
+    }
+    button, input { font: inherit; }
+    .hidden { display: none !important; }
+
+    /* ---------- 로그인 / 회원가입 ---------- */
+    .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+    .auth-card {
+      width: 100%; max-width: 380px; background: var(--panel); border: 3px solid var(--panel-b);
+      border-radius: 22px; padding: 26px 22px 20px; box-shadow: 0 10px 30px rgba(30, 80, 140, .18);
+    }
+    .brand { text-align: center; margin-bottom: 18px; }
+    .brand h1 { margin: 0; font-size: 40px; letter-spacing: 1px; color: var(--blue);
+      text-shadow: 0 3px 0 #1c6fbf33; }
+    .brand h1 b { color: var(--primary); font-weight: inherit; }
+    .brand p { margin: 4px 0 0; color: var(--sub); font-size: 15px; }
+    .field { display: block; margin: 10px 0; }
+    .field > span { display: block; font-size: 14px; color: var(--sub); margin: 0 0 4px 4px; }
+    .field input {
+      width: 100%; padding: 11px 14px; border-radius: 12px; border: 2px solid var(--panel-b);
+      font-size: 17px; outline: none; background: #f7fbff; color: var(--ink);
+    }
+    .field input:focus { border-color: var(--blue); background: #fff; }
+    .field.bad input { border-color: var(--err); }
+    .msg { min-height: 0; font-size: 13px; margin: 4px 0 0 4px; color: var(--err); }
+    .msg.ok { color: var(--ok); }
+    .legacy { background: #fff7e8; border: 2px dashed #f3c27a; border-radius: 14px; padding: 8px 12px 4px; margin: 12px 0; }
+    .legacy p { margin: 2px 0 4px; font-size: 14px; color: #8a5a12; }
+    .btn {
+      display: block; width: 100%; border: none; border-radius: 14px; padding: 13px; font-size: 19px;
+      cursor: pointer; background: var(--primary); color: #fff; box-shadow: 0 4px 0 var(--primary-d);
+      margin-top: 14px; transition: transform .05s;
+    }
+    .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--primary-d); }
+    .btn:disabled { opacity: .6; cursor: default; }
+    .form-err { text-align: center; color: var(--err); font-size: 15px; min-height: 20px; margin: 10px 0 0; }
+    .switch { text-align: center; margin: 14px 0 0; font-size: 15px; color: var(--sub); }
+    .link { background: none; border: none; color: var(--blue); cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; }
+
+    /* ---------- 로비 ---------- */
+    .top {
+      position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; background: rgba(255, 255, 255, .85); backdrop-filter: blur(6px);
+      border-bottom: 2px solid var(--panel-b);
+    }
+    .top .logo { font-size: 24px; color: var(--blue); margin: 0; flex: 1; white-space: nowrap; }
+    .top .logo b { color: var(--primary); font-weight: inherit; }
+    .me { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .small { width: auto; display: inline-block; margin: 0; padding: 7px 12px; font-size: 15px; border-radius: 10px;
+      background: #eef6ff; color: var(--ink); box-shadow: 0 3px 0 var(--panel-b); }
+    .small:active { box-shadow: 0 1px 0 var(--panel-b); }
+    main.lobby { max-width: 960px; margin: 0 auto; padding: 22px 16px 40px; }
+    main.lobby h2 { margin: 0 0 14px; font-size: 22px; }
+    .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .game-card {
+      display: block; text-decoration: none; color: inherit; background: var(--panel);
+      border: 3px solid var(--panel-b); border-radius: 18px; overflow: hidden;
+      box-shadow: 0 6px 18px rgba(30, 80, 140, .14); transition: transform .12s, box-shadow .12s;
+    }
+    .game-card:hover, .game-card:focus-visible { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(30, 80, 140, .22); outline: none; border-color: var(--blue); }
+    .game-card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--sky2); }
+    .game-card .gi { padding: 10px 14px 14px; }
+    .game-card h3 { margin: 0; font-size: 21px; }
+    .game-card p { margin: 4px 0 0; color: var(--sub); font-size: 15px; }
+    .center { min-height: 100vh; display: grid; place-items: center; color: var(--sub); font-size: 18px; }
+    @media (max-width: 420px) {
+      .top .logo { font-size: 20px; }
+      .brand h1 { font-size: 34px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" class="center">불러오는 중…</div>
+
+  <!-- 로그인 -->
+  <div id="login-view" class="auth-wrap hidden">
+    <form class="auth-card" id="login-form" novalidate>
+      <div class="brand"><h1>SIA <b>WORLD</b></h1><p>로그인하고 친구들과 놀아요</p></div>
+      <label class="field"><span>아이디</span>
+        <input id="li-id" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="16" /></label>
+      <label class="field"><span>비밀번호</span>
+        <input id="li-pw" type="password" autocomplete="current-password" /></label>
+      <p class="form-err" id="li-err"></p>
+      <button class="btn" id="li-btn">로그인</button>
+      <p class="switch">처음이에요? <button type="button" class="link" id="to-signup">회원가입</button></p>
+    </form>
+  </div>
+
+  <!-- 회원가입 -->
+  <div id="signup-view" class="auth-wrap hidden">
+    <form class="auth-card" id="signup-form" novalidate>
+      <div class="brand"><h1>SIA <b>WORLD</b></h1><p>회원가입</p></div>
+      <label class="field" data-f="loginId"><span>아이디 (영문 소문자·숫자 4~16자)</span>
+        <input id="su-id" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="16" />
+        <p class="msg"></p></label>
+      <label class="field" data-f="password"><span>비밀번호 (6자 이상)</span>
+        <input id="su-pw" type="password" autocomplete="new-password" /><p class="msg"></p></label>
+      <label class="field" data-f="password2"><span>비밀번호 확인</span>
+        <input id="su-pw2" type="password" autocomplete="new-password" /><p class="msg"></p></label>
+      <label class="field" data-f="nickname"><span>닉네임 (한글·영문·숫자 2~8자)</span>
+        <input id="su-nick" maxlength="8" autocomplete="nickname" /><p class="msg"></p></label>
+      <div class="legacy hidden" id="legacy">
+        <p>🏆 이 아이디로 된 예전 시아탱크 랭킹 기록이 있어요.<br />예전 비밀번호를 넣으면 기록을 이어받아요. (선택)</p>
+        <label class="field" data-f="legacy"><span>예전 시아탱크 비밀번호</span>
+          <input id="su-legacy" type="password" autocomplete="off" /><p class="msg"></p></label>
+      </div>
+      <p class="form-err" id="su-err"></p>
+      <button class="btn" id="su-btn">가입하기</button>
+      <p class="switch">이미 계정이 있어요 <button type="button" class="link" id="to-login">로그인</button></p>
+    </form>
+  </div>
+
+  <!-- 로비 -->
+  <div id="lobby-view" class="hidden">
+    <header class="top">
+      <h1 class="logo">SIA <b>WORLD</b></h1>
+      <span class="me" id="me"></span>
+      <button class="btn small" id="logout">로그아웃</button>
+    </header>
+    <main class="lobby">
+      <h2>게임</h2>
+      <div class="games" id="games"></div>
+    </main>
+  </div>
+
+  <script type="module">
+    import {
+      signIn, signUp, signOut, getCurrentUser, safeRedirect, checkLegacy,
+      isLoginIdTaken, isNicknameTaken, loginIdProblem, nicknameProblem, passwordProblem, AuthError,
+    } from './shared/auth.js';
+    import { GAMES } from './shared/games.js';
+
+    const $ = (s) => document.querySelector(s);
+    const views = ['loading', 'login-view', 'signup-view', 'lobby-view'];
+    const show = (id) => views.forEach((v) => $('#' + v).classList.toggle('hidden', v !== id));
+
+    const params = new URLSearchParams(location.search);
+    const redirect = safeRedirect(params.get('redirect'));
+
+    /** 로그인 성공 → redirect가 있으면 그곳으로, 없으면 로비 */
+    function afterLogin(user) {
+      if (redirect) return location.replace(redirect);
+      // 주소에 남은 ?redirect=... 는 지운다
+      if (location.search) history.replaceState(null, '', location.pathname);
+      showLobby(user);
+    }
+
+    // ---------- 로비 ----------
+    function showLobby(user) {
+      $('#me').textContent = `${user.nickname}님`;
+      const box = $('#games');
+      box.replaceChildren(
+        ...GAMES.filter((g) => g.open).map((g) => {
+          const a = document.createElement('a');
+          a.className = 'game-card';
+          a.href = g.path;
+          const img = document.createElement('img');
+          img.src = g.image; img.alt = ''; img.loading = 'lazy';
+          const info = document.createElement('div');
+          info.className = 'gi';
+          const h = document.createElement('h3'); h.textContent = g.name;
+          const p = document.createElement('p'); p.textContent = g.desc;
+          info.append(h, p);
+          a.append(img, info);
+          return a;
+        }),
+      );
+      show('lobby-view');
+    }
+    $('#logout').addEventListener('click', async () => {
+      await signOut();
+      showLogin();
+    });
+
+    // ---------- 로그인 ----------
+    function showLogin() {
+      $('#li-err').textContent = '';
+      $('#li-pw').value = '';
+      show('login-view');
+      $('#li-id').focus();
+    }
+    $('#li-id').addEventListener('input', (e) => (e.target.value = e.target.value.toLowerCase()));
+    $('#login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = $('#li-btn');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      $('#li-err').textContent = '';
+      try {
+        afterLogin(await signIn($('#li-id').value, $('#li-pw').value));
+      } catch (err) {
+        $('#li-err').textContent = err instanceof AuthError ? err.message : '아이디 또는 비밀번호가 맞지 않아요';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    $('#to-signup').addEventListener('click', () => {
+      show('signup-view');
+      $('#su-id').focus();
+    });
+    $('#to-login').addEventListener('click', showLogin);
+
+    // ---------- 회원가입 ----------
+    const field = (f) => document.querySelector(`#signup-form [data-f="${f}"]`);
+    function setMsg(f, text, ok = false) {
+      const el = field(f);
+      el.classList.toggle('bad', !!text && !ok);
+      const m = el.querySelector('.msg');
+      m.textContent = text || '';
+      m.classList.toggle('ok', ok);
+    }
+    const clearAll = () => ['loginId', 'password', 'password2', 'nickname', 'legacy'].forEach((f) => setMsg(f, ''));
+
+    // 칸을 벗어나면 바로 확인 (아이디·닉네임 중복, 예전 기록)
+    let checkedId = '';
+    $('#su-id').addEventListener('input', (e) => {
+      e.target.value = e.target.value.toLowerCase();
+      setMsg('loginId', '');
+    });
+    $('#su-id').addEventListener('blur', async () => {
+      const v = $('#su-id').value.trim();
+      if (!v) return;
+      const prob = loginIdProblem(v);
+      if (prob) return setMsg('loginId', prob);
+      if (v === checkedId) return;
+      checkedId = v;
+      try {
+        if (await isLoginIdTaken(v)) return setMsg('loginId', '이미 있는 아이디예요');
+        setMsg('loginId', '쓸 수 있는 아이디예요', true);
+        const legacy = (await checkLegacy(v)) !== 'none';
+        $('#legacy').classList.toggle('hidden', !legacy);
+        if (!legacy) $('#su-legacy').value = '';
+      } catch { /* 가입할 때 다시 확인 */ }
+    });
+    $('#su-nick').addEventListener('input', () => setMsg('nickname', ''));
+    $('#su-nick').addEventListener('blur', async () => {
+      const v = $('#su-nick').value.trim();
+      if (!v) return;
+      const prob = nicknameProblem(v);
+      if (prob) return setMsg('nickname', prob);
+      try {
+        setMsg('nickname', ...((await isNicknameTaken(v)) ? ['이미 있는 닉네임이에요'] : ['쓸 수 있는 닉네임이에요', true]));
+      } catch { /* 가입할 때 다시 확인 */ }
+    });
+    $('#su-pw').addEventListener('input', () => setMsg('password', ''));
+    $('#su-pw').addEventListener('blur', () => $('#su-pw').value && setMsg('password', passwordProblem($('#su-pw').value)));
+    $('#su-pw2').addEventListener('input', () => setMsg('password2', ''));
+    $('#su-legacy').addEventListener('input', () => setMsg('legacy', ''));
+
+    $('#signup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = $('#su-btn');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      clearAll();
+      $('#su-err').textContent = '';
+      const loginId = $('#su-id').value.trim();
+      const legacyPassword = $('#legacy').classList.contains('hidden') ? '' : $('#su-legacy').value;
+      try {
+        // 예전 비밀번호를 넣었으면 가입 전에 맞는지 먼저 확인 (틀리면 가입하지 않고 다시 입력)
+        if (legacyPassword && loginIdProblem(loginId) === null && (await checkLegacy(loginId, legacyPassword)) !== 'ok') {
+          throw new AuthError('예전 비밀번호가 맞지 않아요 (비워 두면 기록 없이 가입해요)', 'legacy');
+        }
+        const { user, claimed } = await signUp({
+          loginId,
+          password: $('#su-pw').value,
+          password2: $('#su-pw2').value,
+          nickname: $('#su-nick').value,
+          legacyPassword,
+        });
+        if (claimed > 0) alert('예전 시아탱크 랭킹 기록을 이어받았어요!');
+        afterLogin(user);
+      } catch (err) {
+        if (err instanceof AuthError && err.field) {
+          setMsg(err.field, err.message);
+          field(err.field).querySelector('input').focus();
+        } else {
+          $('#su-err').textContent = err instanceof AuthError ? err.message : '가입하지 못했어요. 잠시 후 다시 시도해 주세요';
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ---------- 시작 ----------
+    try {
+      const user = await getCurrentUser();
+      if (user) afterLogin(user);
+      else showLogin();
+    } catch {
+      showLogin();
+    }
+  </script>
+</body>
+</html>
