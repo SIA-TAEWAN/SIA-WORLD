@@ -1,0 +1,33 @@
+{
+  "assets": [
+    {
+      "asset_id": "faeddafb-eacf-46b2-97dc-95c837f573d0",
+      "label": "12지신 탱크 시트 (games/tank/art/tanks-sheet.png) — 스타일 참고"
+    },
+    {
+      "asset_id": "0620e930-1751-4436-8940-4da390e5b5db",
+      "sha12": "cbbe6dbfb008",
+      "label": "십이지신 캐릭터 전신 시트 A (탱크 없음) → shared/images/zodiac/full, face"
+    },
+    {
+      "asset_id": "ab8a69c8-7a1d-4911-9394-b99c3bb4738a",
+      "sha12": "c311b58b7069",
+      "label": "십이지신 캐릭터 전신 시트 B (예비)"
+    },
+    {
+      "asset_id": "b02a7e09-473b-4296-aa0b-693c6aa05970",
+      "sha12": "77b341deaff3",
+      "label": "화투 12달 식물 시트 → shared/images/hwatu/plant-01~12"
+    },
+    {
+      "asset_id": "2c289458-d89f-4fdc-a790-f1792b517c7c",
+      "sha12": "67f26203eb41",
+      "label": "로비 카드 시아맞고 (16:9) → shared/images/card-matgo.png"
+    },
+    {
+      "asset_id": "a67bc7f9-523e-4432-b53b-aff4e314622d",
+      "sha12": "a19b13faadfd",
+      "label": "로비 카드 시아카지노 (16:9) → shared/images/card-casino.png"
+    }
+  ]
+}

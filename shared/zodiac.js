@@ -23,8 +23,12 @@ const BY_ID = new Map(ZODIAC.map((z, i) => [z.id, { ...z, month: i + 1 }]));
 /** id → { id, name, nick, emoji, month } (없으면 undefined) */
 export const zodiacOf = (id) => BY_ID.get(id);
 
-/** 아바타 그림 주소 (시아탱크의 십이지신 그림) */
-export const avatarUrl = (id) => new URL(`images/zodiac/${id}.png`, import.meta.url).href;
+/** 원형 아바타용 얼굴 그림 (SpriteCook, 탱크 없는 캐릭터) */
+export const avatarUrl = (id) => new URL(`images/zodiac/face/${id}.png`, import.meta.url).href;
+/** 전신 그림 (카드·컷인·화면 장식) */
+export const fullUrl = (id) => new URL(`images/zodiac/full/${id}.png`, import.meta.url).href;
+/** 시아탱크의 탱크에 탄 그림 (시아탱크 화면용) */
+export const tankUrl = (id) => new URL(`images/zodiac/${id}.png`, import.meta.url).href;
 
 /** AI 이름: "AI 어흥이" */
 export const aiName = (id) => `AI ${zodiacOf(id)?.nick ?? ''}`.trim();
