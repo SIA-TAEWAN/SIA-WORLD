@@ -56,7 +56,7 @@ export interface TableCtx<P = any, Q = any> {
    * 카드 나눠 주기 연출: 이번 판에 처음 보는 자리(key)의 카드는 from에서 날아오고,
    * 같은 자리인데 면(face)이 바뀌면(뒷면 → 앞면) 뒤집는다. 이미 본 카드는 그대로 둔다.
    */
-  deal(obj: PhaserNS.GameObjects.Container, key: string, face: string | null, from: { x: number; y: number }): void;
+  deal(obj: PhaserNS.GameObjects.Container, key: string, face: string | null, from: { x: number; y: number }): number;
   /**
    * 카드 이동 연출: 같은 key(카드 id)가 지난번과 다른 자리에 그려지면 그 사이를 날아간다.
    * 처음 보는 카드는 from이 있으면 거기서 날아온다. order가 클수록 늦게 (낸 패 0 → 뒤집은 패 1 → 가져가기 2)
@@ -73,6 +73,8 @@ export interface TrackOpts {
   order?: number;
   /** 추가로 늦출 시간(ms): 판 시작 때 한 장씩 나눠 주기 */
   delay?: number;
+  /** 출발할 때 크기 배율 (손패 크기에서 바닥 크기로 자연스럽게) */
+  fromScale?: number;
   /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등) */
   onLand?: () => void;
 }
@@ -94,6 +96,8 @@ export interface GameUI<P = any, Q = any> {
   resultHtml(t: TableCtx<P, Q>): string;
   /** 컷인 문구 (없으면 null) */
   cutin?(ev: GameEventLite, t: TableCtx<P, Q>): string | null;
+  /** 카드를 한 장씩 나눠 줄 때 간격(ms). 기본 110 */
+  dealGap?: number;
   /** 대기방 '게임 방법' 창 내용 (HTML). 없으면 버튼을 숨긴다 */
   manual?: string;
   /** Phaser에 미리 불러올 그림 (key → url) */
@@ -402,6 +406,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   /** key → 면, 그리고 진행 중인 연출(시작 시각·종류·출발점) */
   const dealt = new Map<string, { face: string | null; start: number; kind: 'slide' | 'flip' | null; from: { x: number; y: number } }>();
   let dealSeq = 0;
+  /** 다음 카드가 출발할 수 있는 시각: 여러 번 나눠 온 상태도 한 장씩 차례로 보이게 */
+  let dealQueueAt = 0;
+  const queueDeal = (now: number, gap: number) => {
+    if (!dealReady || reduceMotion) return now;
+    const start = Math.max(now, dealQueueAt);
+    dealQueueAt = start + gap;
+    dealSeq++;
+    return start;
+  };
   const SLIDE_MS = 250;
   const FLIP_MS = 200;
   /** 카드 이동 연출: key → 목표 위치와 진행 중인 이동 */
@@ -458,6 +471,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       create(this: PhaserNS.Scene) {
         scene = this;
         this.cameras.main.setOrigin(0, 0).setZoom(DPR);
+        makeRoundAvatars(this, m.z.ZODIAC_IDS);
         // 크기가 바뀌면 테이블만 다시 그린다 (조작부까지 다시 만들면 크기가 또 바뀌어 반복될 수 있다)
         this.scale.on('resize', () => {
           this.cameras.main.setSize(this.scale.width, this.scale.height);
@@ -565,8 +579,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         obj.setPosition(r.fromX + (r.x - r.fromX) * e, r.fromY + (r.y - r.fromY) * e);
         obj.setDepth(10 + (p < 1 ? 1 : 0));
         scene.tweens.add({ targets: obj, x: r.x, y: r.y, duration: MOVE_MS * (1 - p), delay: Math.max(0, r.start - now), ease: 'Cubic.easeOut' });
-        // 날아가는 동안 살짝 커졌다가 내려앉는다
-        if (p === 0) scene.tweens.add({ targets: obj, scale: { from: 1, to: 1.12 }, yoyo: true, duration: MOVE_MS / 2, delay: Math.max(0, r.start - now), ease: 'Sine.easeOut' });
+        // 날아가는 동안: 출발 크기가 다르면 그 크기에서 바닥 크기로, 아니면 살짝 커졌다가 내려앉는다
+        if (p === 0 && opts.fromScale && Math.abs(opts.fromScale - 1) > 0.05) {
+          obj.setScale(opts.fromScale);
+          scene.tweens.add({ targets: obj, scale: 1, duration: MOVE_MS, delay: Math.max(0, r.start - now), ease: 'Cubic.easeOut' });
+        } else if (p === 0) scene.tweens.add({ targets: obj, scale: { from: 1, to: 1.12 }, yoyo: true, duration: MOVE_MS / 2, delay: Math.max(0, r.start - now), ease: 'Sine.easeOut' });
       },
       deal: (obj, key, face, from) => {
         const round = st?.round_no ?? 0;
@@ -579,18 +596,18 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         let rec = prev;
         if (!prev) {
           // 처음 보는 카드: 출발점에서 날아온다 (여러 장이면 차례로)
-          rec = { face, start: now + dealSeq++ * 110, kind: dealReady && !reduceMotion ? 'slide' : null, from };
+          rec = { face, start: queueDeal(now, ui.dealGap ?? 110), kind: dealReady && !reduceMotion ? 'slide' : null, from };
         } else if (prev.face !== face) {
           // 같은 자리인데 면이 바뀜: 뒤집기
-          rec = { face, start: now + dealSeq++ * 90, kind: dealReady && !reduceMotion ? 'flip' : null, from };
+          rec = { face, start: queueDeal(now, Math.round((ui.dealGap ?? 110) * 0.8)), kind: dealReady && !reduceMotion ? 'flip' : null, from };
         }
         dealt.set(key, rec!);
-        if (!scene || !rec!.kind) return;
+        if (!scene || !rec!.kind) return 0;
         // 다시 그려도(실시간 이벤트마다) 하던 연출을 이어서 한다
         const dur = rec!.kind === 'slide' ? SLIDE_MS : FLIP_MS;
         animEnd = Math.max(animEnd, rec!.start + dur);
         const p = Math.max(0, Math.min(1, (now - rec!.start) / dur));
-        if (p >= 1) return;
+        if (p >= 1) return 0;
         const delay = Math.max(0, rec!.start - now);
         const rest = dur * (1 - p);
         if (rec!.kind === 'slide') {
@@ -603,6 +620,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           obj.setScale(p, 1);
           scene.tweens.add({ targets: obj, scaleX: 1, duration: rest, delay, ease: 'Sine.easeOut' });
         }
+        // 이 카드가 자리에 놓이는 시각까지 남은 시간 (점수 글자 등을 그때 보여 주려고)
+        return delay + rest;
       },
     };
   };
@@ -916,4 +935,28 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   });
 
   await reloadAll();
+}
+
+/** 십이지신 얼굴을 원 모양으로 잘라 둔다 (avc-<id>): 이름패의 원 안에 꼭 맞게 */
+function makeRoundAvatars(scene: PhaserNS.Scene, ids: readonly string[]) {
+  const S = 128;
+  for (const id of ids) {
+    const key = `avc-${id}`;
+    if (scene.textures.exists(key) || !scene.textures.exists(`av-${id}`)) continue;
+    const src = scene.textures.get(`av-${id}`).getSourceImage() as HTMLImageElement;
+    const tex = scene.textures.createCanvas(key, S, S);
+    if (!tex || !src.width) continue;
+    const c = tex.context;
+    c.save();
+    c.beginPath();
+    c.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
+    c.clip();
+    // 얼굴 그림이 원 안에 다 들어오게 조금 줄여서 가운데 (아래로 살짝)
+    const k = (S * 0.86) / Math.max(src.width, src.height);
+    const w = src.width * k;
+    const h = src.height * k;
+    c.drawImage(src, (S - w) / 2, (S - h) / 2 + S * 0.04, w, h);
+    c.restore();
+    tex.refresh();
+  }
 }

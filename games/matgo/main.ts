@@ -200,6 +200,8 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
       oppHand: { x: W * 0.45, y: bw * 0.78 + 18 },
       pile: { x: W * 0.075, y: y0 + rowGap * 0.5 },
       pw: fw,
+      backStep: bw * 0.55,
+      oppScore: { x: 8, y: 6 },
       capX: 24 + capW / 2,
       oppCapY: H * 0.19,
       oppCapMaxX: W - 16,
@@ -216,31 +218,33 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
       },
     };
   }
-  const cw = clamp(Math.min(W / 5.6, H / 9.4), 30, 96);
+  // 휴대폰: 카드를 최대한 크게 (손패 5장이 한 줄을 꽉 채우고, 높이는 7.3장 분량)
+  const cw = clamp(Math.min((W - 34) / 5.2, (H - 96) / 7.3), 30, 110);
   const k = clamp(cw / 75, 0.8, 1.2);
   const ch = cw * 1.55;
-  const capW = cw * 0.48;
-  const bw = cw * 0.36;
+  const capW = cw * 0.42;
+  const bw = cw * 0.3;
   // 손패 두 줄 (아래)
-  const handBottomY = H - ch / 2 - 20;
-  const handTopY = handBottomY - ch - 6;
+  const handBottomY = H - ch / 2 - 22;
+  const handTopY = handBottomY - ch - 5;
   // 내 먹은 패 (손패 위): 카드 + 아래 글자
-  const myCapY = handTopY - ch / 2 - capW * 1.0 - 16;
-  // 상대 손패(뒷면)와 더미는 맨 위 한 줄
-  // 더미: 오른쪽 위, 상대 손패와 같은 줄 (테두리 안)
-  const pw = bw * 1.35;
-  const pile = { x: W - pw / 2 - 22, y: pw * 0.78 + 14 };
-  // 테이블 테두리(약 14px) 안쪽으로
-  const oppHand = { x: W * 0.42, y: bw * 0.78 + 14 };
-  const oppCapY = Math.max(oppHand.y + bw * 0.78, pile.y + pw * 0.78 + 12) + capW * 0.78 + 4;
-  const floorTop = oppCapY + capW * 1.0 + 14;
-  const floorH = myCapY - capW * 0.78 - 8 - floorTop;
+  const myCapY = handTopY - ch / 2 - capW * 1.0 - 14;
+  // 맨 위 한 줄: 왼쪽 상대 먹은 패 · 오른쪽 상대 손패(뒷면, 촘촘히) · 더미
+  const pw = cw * 0.5;
+  const pile = { x: W - pw / 2 - 22, y: pw * 0.78 + 16 };
+  const backStep = bw * 0.4;
+  const backsHalf = (backStep * 9 + bw) / 2;
+  const oppHand = { x: W - pw - 34 - backsHalf, y: bw * 0.78 + 16 };
+  const oppCapY = 16 + capW * 0.78;
+  const floorTop = Math.max(oppCapY + capW + 14, pile.y + pw * 0.78 + 24, oppHand.y + bw * 0.78 + 30);
+  const floorH = myCapY - capW * 0.78 - 6 - floorTop;
   // 바닥 카드 크기: 두 줄 / 세 줄 중 큰 쪽
   const fit = (rows: number) => {
     const cols = Math.max(4, Math.ceil(floorCount / rows));
-    const byW = (W * 0.94) / cols / 1.45;
+    const byW = (W - 40) / cols / 1.42;
     const byH = floorH / (1.62 * (rows - 1) + 1.62);
-    return { rows, cols, fw: Math.min(byW, byH, cw * 0.95) };
+    // 바닥 패도 손패와 거의 같은 크기로
+    return { rows, cols, fw: Math.min(byW, byH, cw) };
   };
   const a = fit(2);
   const b = fit(3);
@@ -258,20 +262,23 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
     oppHand,
     pile,
     pw,
+    backStep,
+    oppScore: { x: oppHand.x - backsHalf, y: oppHand.y + bw * 0.78 + 4 },
     capX: 16 + capW / 2,
     oppCapY,
-    oppCapMaxX: W - pw - 34,
+    oppCapMaxX: oppHand.x - backsHalf - 10,
     myCapY,
     floorTop,
     floorH,
     floorPos: (i: number, _n?: number) => {
-      const colW = (W * 0.94) / F.cols;
-      return { x: W * 0.03 + ((i % F.cols) + 0.5) * colW - fw * 0.2, y: y0 + Math.floor(i / F.cols) * rowGap };
+      // 테이블 테두리(양쪽 약 18px) 안쪽에, 겹친 패가 오른쪽으로 나가도 들어오게
+      const colW = (W - 40) / F.cols;
+      return { x: 20 + ((i % F.cols) + 0.5) * colW - fw * 0.2, y: y0 + Math.floor(i / F.cols) * rowGap };
     },
     handPos: (i: number, n: number) => {
       const perRow = 5;
       const inRow = Math.min(perRow, n - Math.floor(i / perRow) * perRow);
-      const step = Math.min(cw * 1.06, (W - 12) / perRow);
+      const step = Math.min(cw * 1.04, (W - 32) / perRow);
       return { x: W / 2 + ((i % perRow) - (inRow - 1) / 2) * step, y: Math.floor(i / perRow) === 0 && n > perRow ? handTopY : handBottomY };
     },
   };
@@ -348,7 +355,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         const { x, y } = L.floorPos(i, 8);
         hwatu(scene, x, y, null, fw).setAlpha(0.55);
       }
-      for (let i = 0; i < 10; i++) hwatu(scene, L.oppHand.x + (i - 4.5) * L.bw * 0.55, L.oppHand.y, null, L.bw);
+      for (let i = 0; i < 10; i++) hwatu(scene, L.oppHand.x + (i - 4.5) * L.backStep, L.oppHand.y, null, L.bw);
       for (let i = 0; i < 10; i++) {
         const { x, y } = L.handPos(i, 10);
         hwatu(scene, x, y, null, cw);
@@ -369,10 +376,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
 
     // 상대: 점수(세로) 또는 이름패(가로) · 손패(뒷면) · 먹은 패
     const oppSub = `${op.score}점${op.go ? ` · ${op.go}고` : ''}${op.shakes ? ` · 흔들${op.shakes}` : ''}`;
-    if (portrait) scoreChip(scene, 8, 6, oppSub, p.turn === opp, k);
+    if (portrait) scoreChip(scene, L.oppScore.x, L.oppScore.y, oppSub, p.turn === opp, k);
     else nameTag(scene, 26 * k, 26 * k, t.seatName(opp), t.seatAvatar(opp), { turn: p.turn === opp, size: k, sub: oppSub });
     for (let i = 0; i < op.handCount; i++) {
-      const back = hwatu(scene, L.oppHand.x + (i - (op.handCount - 1) / 2) * L.bw * 0.55, L.oppHand.y, null, L.bw);
+      const back = hwatu(scene, L.oppHand.x + (i - (op.handCount - 1) / 2) * L.backStep, L.oppHand.y, null, L.bw);
       t.track(back, `opp:${i}`, { from: L.pile, delay: dealing ? (i * 2 + 1) * DEAL_GAP : 0 });
     }
     captured(t, scene, L.capX, L.oppCapY, op, capW, L.oppCapMaxX);
@@ -401,6 +408,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           from,
           order: flipped ? 1 : 0,
           delay: dealing ? (20 + floorSeq++) * DEAL_GAP : 0,
+          // 내 손에서 낸 패는 손패 크기에서 바닥 크기로 (상대 패는 뒷면 크기에서)
+          fromScale: dealing || flipped ? L.pw / fw : p.turn === me ? cw / fw : L.bw / fw,
           // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
           onLand: dealing ? undefined : () => slap(scene, cx, cy, fw, j > 0, t.dpr),
         });

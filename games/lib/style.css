@@ -360,3 +360,7 @@ input:focus { outline: var(--line) solid var(--primary); }
 .hw.img { background: none; border: none; box-shadow: none; border-radius: 6px; }
 .hw.img img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .hw-pick:not(:disabled) .hw.img { outline: var(--line) solid var(--primary); outline-offset: 2px; }
+
+/* 이름칸 얼굴: 원 안에 다 들어오게 (모서리가 잘리지 않게 여백) */
+.seat img, .av-btn img { padding: 3px; box-sizing: border-box; overflow: hidden; }
+.av img { border-radius: 50%; background: var(--white); border: var(--line-thin) solid var(--outline); padding: 5px; box-sizing: border-box; }

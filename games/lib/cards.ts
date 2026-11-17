@@ -208,9 +208,11 @@ export function nameTag(scene: Scene, x: number, y: number, name: string, avatar
   g.fillStyle(C.white, 1).fillCircle(0, 0, 19 * k);
   g.lineStyle(line, C.outline, 1).strokeCircle(0, 0, 19 * k);
   c.add(g);
-  if (scene.textures.exists(`av-${avatar}`)) {
-    const img = scene.add.image(0, 2 * k, `av-${avatar}`);
-    img.setScale((32 * k) / Math.max(img.width, img.height));
+  // 얼굴은 원 모양으로 잘라 둔 그림(avc-)을 원 안쪽 크기에 딱 맞게 (원을 넘거나 잘리지 않게)
+  const face = scene.textures.exists(`avc-${avatar}`) ? `avc-${avatar}` : `av-${avatar}`;
+  if (scene.textures.exists(face)) {
+    const img = scene.add.image(0, 0, face);
+    img.setScale((36 * k) / Math.max(img.width, img.height));
     c.add(img);
   }
   c.add(nm);
