@@ -1,0 +1,6 @@
+{
+  "double":   { "name": "더블샷",  "desc": "같은 각도·파워로 두 번 발사", "price": 400, "delay": 250, "icon": "×2" },
+  "power":    { "name": "파워업",  "desc": "이번 발사 데미지 +30%",      "price": 300, "delay": 150, "icon": "⚡" },
+  "repair":   { "name": "수리킷",  "desc": "체력 20% 회복",            "price": 300, "delay": 200, "icon": "✚" },
+  "teleport": { "name": "순간이동", "desc": "포탄이 떨어진 자리로 이동",   "price": 300, "delay": 200, "icon": "✦" }
+}

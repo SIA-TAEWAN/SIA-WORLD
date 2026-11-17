@@ -1,0 +1,70 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  # SQL 실행 도중에 끊기지 않도록 앞선 배포를 취소하지 않는다
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # supabase/migrations/ 에서 아직 실행 안 된 SQL만 서버에 실행한다
+  migrate:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # 세션 풀러 주소 (비밀번호 자리는 시크릿에서 채운다)
+      DB_HOST: aws-1-ap-southeast-2.pooler.supabase.com
+      DB_USER: postgres.xvvpndudbbtpiygiuaxv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: 접속 주소 만들기
+        run: |
+          PW=$(python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"],safe=""))')
+          echo "::add-mask::$PW"
+          echo "DB_URL=postgresql://$DB_USER:$PW@$DB_HOST:5432/postgres" >> "$GITHUB_ENV"
+      # 001은 SQL Editor에서 직접 실행했으므로 '실행됨'으로 기록만 한다 (이미 기록돼 있으면 그대로)
+      - run: supabase migration repair --status applied 001 --remote "$DB_URL" --yes
+      - run: supabase db push --remote "$DB_URL" --yes
+      - run: supabase migration list --remote "$DB_URL"
+
+  deploy:
+    needs: [build, migrate]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

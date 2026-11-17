@@ -1,0 +1,249 @@
+{
+  "rat": {
+    "name": "찍찍이",
+    "zodiac": "자",
+    "animal": "쥐",
+    "role": "날쌘 분열탄",
+    "color": "#a9b2c3",
+    "accent": "#ff9db5",
+    "hp": 816,
+    "defense": 0.08,
+    "move": 150,
+    "angleMin": 20,
+    "angleMax": 60,
+    "delay": 500,
+    "weapons": [
+      "rat_cheese",
+      "rat_swarm",
+      "rat_horde"
+    ]
+  },
+  "ox": {
+    "name": "우직이",
+    "zodiac": "축",
+    "animal": "소",
+    "role": "튼튼한 밀어내기",
+    "color": "#8a5a3c",
+    "accent": "#f2e6c9",
+    "hp": 1124,
+    "defense": 0.2,
+    "move": 90,
+    "angleMin": 10,
+    "angleMax": 50,
+    "delay": 720,
+    "weapons": [
+      "ox_horn",
+      "ox_plow",
+      "ox_charge"
+    ]
+  },
+  "tiger": {
+    "name": "어흥이",
+    "zodiac": "인",
+    "animal": "호랑이",
+    "role": "강력한 한 방",
+    "color": "#ff9a2e",
+    "accent": "#2a1a10",
+    "hp": 865,
+    "defense": 0.14,
+    "move": 120,
+    "angleMin": 15,
+    "angleMax": 55,
+    "delay": 620,
+    "weapons": [
+      "tiger_claw",
+      "tiger_twin",
+      "tiger_roar"
+    ]
+  },
+  "rabbit": {
+    "name": "깡총이",
+    "zodiac": "묘",
+    "animal": "토끼",
+    "role": "튀는 탄·낙하",
+    "color": "#f4f1f6",
+    "accent": "#ff8fb1",
+    "hp": 881,
+    "defense": 0.1,
+    "move": 150,
+    "angleMin": 25,
+    "angleMax": 65,
+    "delay": 540,
+    "weapons": [
+      "rabbit_hop",
+      "rabbit_carrot",
+      "rabbit_mortar"
+    ]
+  },
+  "dragon": {
+    "name": "여의룡",
+    "zodiac": "진",
+    "animal": "용",
+    "role": "불꽃·레이저",
+    "color": "#3fbf8f",
+    "accent": "#ffd23a",
+    "hp": 830,
+    "defense": 0.15,
+    "move": 110,
+    "angleMin": 15,
+    "angleMax": 55,
+    "delay": 650,
+    "weapons": [
+      "dragon_flame",
+      "dragon_pearl",
+      "dragon_breath"
+    ]
+  },
+  "snake": {
+    "name": "스르르",
+    "zodiac": "사",
+    "animal": "뱀",
+    "role": "땅굴 파기",
+    "color": "#7bc04a",
+    "accent": "#e8e04a",
+    "hp": 906,
+    "defense": 0.12,
+    "move": 130,
+    "angleMin": 20,
+    "angleMax": 45,
+    "delay": 600,
+    "weapons": [
+      "snake_fang",
+      "snake_mist",
+      "snake_imugi"
+    ]
+  },
+  "horse": {
+    "name": "따각이",
+    "zodiac": "오",
+    "animal": "말",
+    "role": "빠른 원거리",
+    "color": "#b8763e",
+    "accent": "#3a2a1e",
+    "hp": 865,
+    "defense": 0.1,
+    "move": 160,
+    "angleMin": 25,
+    "angleMax": 60,
+    "delay": 540,
+    "weapons": [
+      "horse_dash",
+      "horse_shoe",
+      "horse_pegasus"
+    ]
+  },
+  "sheep": {
+    "name": "몽실이",
+    "zodiac": "미",
+    "animal": "양",
+    "role": "방어·땅 쌓기",
+    "color": "#fff7e6",
+    "accent": "#c9a27a",
+    "hp": 1066,
+    "defense": 0.2,
+    "move": 90,
+    "angleMin": 10,
+    "angleMax": 50,
+    "delay": 700,
+    "weapons": [
+      "sheep_wool",
+      "sheep_wall",
+      "sheep_cloud"
+    ]
+  },
+  "monkey": {
+    "name": "재롱이",
+    "zodiac": "신",
+    "animal": "원숭이",
+    "role": "재주꾼 분열",
+    "color": "#a8693c",
+    "accent": "#ffd23a",
+    "hp": 822,
+    "defense": 0.12,
+    "move": 140,
+    "angleMin": 20,
+    "angleMax": 60,
+    "delay": 560,
+    "weapons": [
+      "monkey_banana",
+      "monkey_bunch",
+      "monkey_clone"
+    ]
+  },
+  "rooster": {
+    "name": "꼬꼬댁",
+    "zodiac": "유",
+    "animal": "닭",
+    "role": "공중 폭격",
+    "color": "#ffffff",
+    "accent": "#ff3b3b",
+    "hp": 832,
+    "defense": 0.1,
+    "move": 140,
+    "angleMin": 30,
+    "angleMax": 70,
+    "delay": 560,
+    "weapons": [
+      "rooster_egg",
+      "rooster_feather",
+      "rooster_dawn"
+    ]
+  },
+  "dog": {
+    "name": "멍뭉이",
+    "zodiac": "술",
+    "animal": "개",
+    "role": "충직한 연타",
+    "color": "#e0a85a",
+    "accent": "#7a4a2a",
+    "hp": 827,
+    "defense": 0.14,
+    "move": 120,
+    "angleMin": 15,
+    "angleMax": 55,
+    "delay": 600,
+    "weapons": [
+      "dog_bone",
+      "dog_dig",
+      "dog_bark"
+    ]
+  },
+  "pig": {
+    "name": "꿀꿀이",
+    "zodiac": "해",
+    "animal": "돼지",
+    "role": "묵직한 대폭발",
+    "color": "#ffb3c7",
+    "accent": "#d9607f",
+    "hp": 965,
+    "defense": 0.18,
+    "move": 80,
+    "angleMin": 10,
+    "angleMax": 50,
+    "delay": 760,
+    "weapons": [
+      "pig_acorn",
+      "pig_mud",
+      "pig_boom"
+    ]
+  },
+  "zodiac": {
+    "name": "열두빛",
+    "zodiac": "십이지신",
+    "animal": "십이지신",
+    "role": "랜덤으로만 나오는 전설 (무기 20% 강함)",
+    "color": "#ffd23a",
+    "accent": "#ff5a8a",
+    "hp": 900,
+    "defense": 0.15,
+    "move": 130,
+    "angleMin": 15,
+    "angleMax": 60,
+    "delay": 600,
+    "weapons": [
+      "zodiac_star",
+      "zodiac_parade",
+      "zodiac_burst"
+    ]
+  }
+}

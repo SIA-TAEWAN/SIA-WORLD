@@ -1,0 +1,16 @@
+{
+  "assets": [
+    {
+      "asset_id": "faeddafb-eacf-46b2-97dc-95c837f573d0",
+      "label": "12지신 탱크 시트 (art/tanks-sheet.png)"
+    },
+    {
+      "asset_id": "aeb791fb-46d3-4fb4-b951-8b213422038c",
+      "label": "십이지신 열두빛 (art/zodiac-raw.png)"
+    },
+    {
+      "asset_id": "e1da32a3-72f3-4ff8-92e1-101428993af3",
+      "label": "포탄 22종 시트 (art/shells-sheet.png)"
+    }
+  ]
+}
