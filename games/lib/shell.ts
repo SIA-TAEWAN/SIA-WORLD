@@ -568,12 +568,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       return;
     }
     const enough = !!wallet && wallet[cur] >= m.wallet.minEntry(room.base_unit);
+    const allHumansReady = seats.filter((x) => x.user_id && !x.left_game).every((x) => x.ready);
     el.innerHTML = `<div class="row">
       <button class="btn" id="av">🐾 동물 바꾸기</button>
       ${!enough && m.wallet.canRefill(wallet, cur, room.base_unit) ? `<button class="btn" id="refill">무료 충전</button>` : ''}
       <button class="btn big ${mine.ready ? '' : 'primary'}" id="ready" ${enough ? '' : 'disabled'}>${mine.ready ? '레디 취소' : '레디 ▶'}</button>
     </div>
-    <p class="msg">${enough ? (mine.ready ? '다른 사람을 기다리는 중… 사람이 모두 레디하면 시작해요' : '레디를 누르면 시작해요') : `${m.wallet.formatAmount(m.wallet.minEntry(room.base_unit))}${unit} 이상 있어야 해요`}</p>`;
+    <p class="msg">${!enough ? `${m.wallet.formatAmount(m.wallet.minEntry(room.base_unit))}${unit} 이상 있어야 해요` : !mine.ready ? '레디를 누르면 시작해요' : allHumansReady ? '모두 레디! 곧 시작해요…' : '다른 사람을 기다리는 중… 사람이 모두 레디하면 시작해요'}</p>`;
     el.querySelector('#ready')?.addEventListener('click', async () => {
       try {
         await m.room.setReady(roomId, !mine.ready);
