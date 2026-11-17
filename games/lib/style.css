@@ -86,6 +86,8 @@ input { padding: 9px 12px; border-radius: 10px; border: 2px solid var(--panel-b)
 .controls .amount { font-size: 18px; min-width: 90px; text-align: center; }
 
 .cutin { position: fixed; inset: 0; pointer-events: none; display: grid; place-items: center; z-index: 50; }
+.cutin div { display: flex; flex-direction: column; align-items: center; }
+.cutin div img { width: clamp(90px, 22vw, 180px); filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.25)); }
 .cutin div { opacity: 0; font-size: clamp(40px, 11vw, 96px); color: #fff; -webkit-text-stroke: 3px #3a2a1e; paint-order: stroke fill; text-shadow: 0 6px 0 rgba(0, 0, 0, 0.25); }
 .cutin.show div { animation: cutin 1.4s ease-out forwards; }
 @keyframes cutin {

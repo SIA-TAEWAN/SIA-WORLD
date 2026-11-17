@@ -1,6 +1,6 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
 import { bootGame, esc, type GameUI, type TableCtx } from '../lib/shell.ts';
-import { label, nameTag } from '../lib/cards.ts';
+import { cardBack, label, nameTag } from '../lib/cards.ts';
 import { cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
@@ -9,6 +9,8 @@ type Ctx = TableCtx<MatgoPublic, MatgoPrivate>;
 /** 달마다 바탕색 (임시 그래픽) */
 const MONTH_COLOR = [0, 0xe9f2e4, 0xfbe3ea, 0xffe1ec, 0xe6e1f2, 0xe2eefc, 0xfbe8f0, 0xf6e3dc, 0xe8eef6, 0xfff4d6, 0xffe4d2, 0xe9ece0, 0xe2e7ee];
 const DAN_COLOR: Record<string, number> = { hong: 0xd0312d, cheong: 0x2d6fd0, cho: 0x2f9e5a };
+/** 원래 화투 그림(식물·배경)을 바탕에 연하게: 송학 · 매조 · 벚꽃 · 흑싸리 · 난초 · 모란 · 홍싸리 · 공산 · 국화 · 단풍 · 오동 · 비 */
+const PLANT = ['', '🌲', '🌸', '🌸', '🌿', '🌾', '🌺', '🍂', '🌕', '🌼', '🍁', '🍃', '☔'];
 
 /** 화투 한 장 (id가 null이면 뒷면). 가운데 기준 */
 function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w: number, opts: { lift?: boolean; glow?: boolean; onClick?: () => void } = {}) {
@@ -17,9 +19,8 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   const g = scene.add.graphics();
   g.fillStyle(0x000000, 0.25).fillRoundedRect(-w / 2 + 2, -h / 2 + 3, w, h, 5);
   if (!id) {
-    g.fillStyle(0xb3262e, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 5);
-    g.lineStyle(2, 0x7a1219, 1).strokeRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6, 4);
     c.add(g);
+    c.add(scene.add.image(0, 0, cardBack(scene, 'back-red')).setDisplaySize(w, h));
     return c;
   }
   const card = cardById(id);
@@ -32,6 +33,7 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
     g.fillStyle(col, 1).fillRect(-w * 0.12, -h * 0.28, w * 0.24, h * 0.62);
   }
   c.add(g);
+  c.add(scene.add.text(0, -h * 0.05, PLANT[card.month], { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.7)}px` }).setOrigin(0.5).setAlpha(0.22));
   const fs = Math.max(9, Math.round(w * 0.22));
   c.add(scene.add.text(-w / 2 + 3, -h / 2 + 2, `${card.month}월`, { fontFamily: 'Jua, sans-serif', fontSize: `${fs}px`, color: '#3a2a1e' }));
   const key = `av-${['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'][card.month - 1]}`;
@@ -73,7 +75,7 @@ function captured(scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['p
     if (!ids.length) continue;
     ids.forEach((id, i) => hwatu(scene, cx + i * w * 0.32, y, id, w));
     const gw = w + (ids.length - 1) * w * 0.32;
-    label(scene, cx - w / 2 + gw / 2, y + w * 0.95, `${name} ${name === '피' ? p.piCount : ids.length}`, 11, '#ffe9a8');
+    label(scene, cx - w / 2 + gw / 2, y + w * 0.95, `${name} ${name === '피' ? p.piCount : ids.length}`, 14, name === '띠' ? '#ffc9c9' : '#ffe9a8');
     cx += gw + w * 0.4;
   }
 }

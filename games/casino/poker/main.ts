@@ -6,7 +6,8 @@ import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_sha
 type Ctx = TableCtx<PokerPublic, PokerPrivate>;
 
 const BET: Record<string, string> = { check: '체크', bbing: '삥', call: '콜', ddadang: '따당', half: '하프', die: '다이' };
-const ROUND = (r: number) => (r <= 3 ? '카드 고르기' : r === 7 ? '7구 (히든)' : `${r}구`);
+/** 단계 이름 (phase로 정한다: choose / bet4~bet7 / done) */
+const ROUND = (phase: string) => (phase === 'choose' ? '카드 고르기' : phase === 'bet7' ? '7구 (히든)' : /^bet\d$/.test(phase) ? `${phase.slice(3)}구` : '결과');
 
 /** 선택 단계: 버릴 카드 → 공개할 카드 */
 let discard: string | null = null;
@@ -31,7 +32,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     }
     // 가운데 판돈
     chipStack(scene, W / 2, H / 2 - 10, p.pot, `판돈 ${t.fmt(p.pot)}`);
-    label(scene, W / 2, H / 2 + 34, `${ROUND(p.round)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}`, 14, '#d9ecff');
+    label(scene, W / 2, H / 2 + 34, `${ROUND(p.phase)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}`, 14, '#d9ecff');
 
     // 자리 배치: 내 자리가 아래 가운데
     const order = [...p.seats].sort((a, b) => a.seat - b.seat);

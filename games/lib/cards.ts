@@ -20,6 +20,37 @@ export const FACE_ANIMAL: Record<string, Record<string, string>> = {
   C: { J: 'rooster', Q: 'dog', K: 'pig' },
 };
 
+const ZODIAC_ORDER = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'];
+
+/**
+ * 카드 뒷면 그림: 십이지신 12마리가 원형으로 둘러선 문양. 한 번만 그려서 텍스처로 저장한다.
+ * key: 'back-purple'(트럼프) / 'back-red'(화투)
+ */
+export function cardBack(scene: Scene, key: 'back-purple' | 'back-red') {
+  if (scene.textures.exists(key)) return key;
+  const W = 120;
+  const H = key === 'back-red' ? 186 : 170;
+  const [bg, line] = key === 'back-red' ? [0xb3262e, 0xf5d36b] : [0x6a2a85, 0xf5d36b];
+  // DynamicTexture는 텍스처 관리자에 남는다 (테이블을 다시 그려도 지워지지 않음)
+  const rt = scene.textures.addDynamicTexture(key, W, H)!;
+  const g = scene.make.graphics({}, false);
+  g.fillStyle(bg, 1).fillRoundedRect(0, 0, W, H, 12);
+  g.lineStyle(4, line, 1).strokeRoundedRect(6, 6, W - 12, H - 12, 8);
+  g.lineStyle(2, line, 0.8).strokeCircle(W / 2, H / 2, W * 0.36);
+  g.fillStyle(line, 1).fillCircle(W / 2, H / 2, 6);
+  rt.draw(g);
+  ZODIAC_ORDER.forEach((z, i) => {
+    if (!scene.textures.exists(`av-${z}`)) return;
+    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const img = scene.make.image({ key: `av-${z}`, add: false });
+    img.setScale(26 / Math.max(img.width, img.height));
+    rt.draw(img, W / 2 + Math.cos(a) * W * 0.36, H / 2 + Math.sin(a) * W * 0.36);
+    img.destroy();
+  });
+  g.destroy();
+  return key;
+}
+
 /** 'AS', '10H', 'TD' → { rank: 'A'|'10'…, suit } */
 export function parseCard(code: string) {
   const suit = code.slice(-1);
@@ -40,14 +71,9 @@ export function playingCard(scene: Scene, x: number, y: number, code: string | n
   const g = scene.add.graphics();
   g.fillStyle(0x000000, 0.25).fillRoundedRect(-w / 2 + 2, -h / 2 + 3, w, h, 6);
   if (!code) {
-    g.fillStyle(0x7a2e8c, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 6);
-    g.lineStyle(2, 0xf5d36b, 1).strokeRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 4);
     c.add(g);
-    // 뒷면: 십이지신 원형 문양 자리 (임시: 12개의 점)
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      g.fillStyle(0xf5d36b, 1).fillCircle(Math.cos(a) * w * 0.28, Math.sin(a) * w * 0.28, Math.max(1.5, w * 0.035));
-    }
+    c.add(scene.add.image(0, 0, cardBack(scene, 'back-purple')).setDisplaySize(w, h));
+    if (opts.dim) c.setAlpha(0.45);
     return c;
   }
   const { rank, suit } = parseCard(code);
@@ -70,16 +96,22 @@ export function playingCard(scene: Scene, x: number, y: number, code: string | n
   return c;
 }
 
-/** 칩 더미 (금액 표시) */
+/** 칩 더미 (금액 표시). 칩 그림: 10,000 이상 용 · 1,000 이상 호랑이 · 그 아래 쥐 */
 export function chipStack(scene: Scene, x: number, y: number, amount: number, label?: string) {
   const c = scene.add.container(x, y);
-  const color = amount >= 10000 ? 0x1b1b1b : amount >= 1000 ? 0xd0312d : 0x2d6fd0;
+  const [color, animal] = amount >= 10000 ? [0x1b1b1b, 'dragon'] : amount >= 1000 ? [0xd0312d, 'tiger'] : [0x2d6fd0, 'rat'];
   const g = scene.add.graphics();
   for (let i = 0; i < 3; i++) {
-    g.fillStyle(color, 1).fillCircle(0, -i * 4, 14);
-    g.lineStyle(2, 0xffffff, 0.9).strokeCircle(0, -i * 4, 14);
+    g.fillStyle(color, 1).fillCircle(0, -i * 4, 15);
+    g.lineStyle(2, 0xffffff, 0.9).strokeCircle(0, -i * 4, 15);
   }
+  g.lineStyle(2, 0xffffff, 0.7).strokeCircle(0, -8, 10);
   c.add(g);
+  if (scene.textures.exists(`av-${animal}`)) {
+    const img = scene.add.image(0, -9, `av-${animal}`);
+    img.setScale(18 / Math.max(img.width, img.height));
+    c.add(img);
+  }
   c.add(
     scene.add
       .text(0, 14, label ?? amount.toLocaleString('ko-KR'), { fontFamily: 'Jua, sans-serif', fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 3 })

@@ -521,10 +521,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (maxId < lastEvent) lastEvent = 0; // 새 판
     const fresh = events.filter((e) => e.id > lastEvent);
     lastEvent = maxId;
-    const texts = fresh.map((e) => ui.cutin?.(e, c)).filter((t): t is string => !!t);
-    if (!texts.length) return;
+    const hits = fresh.map((e) => ({ e, text: ui.cutin?.(e, c) })).filter((x): x is { e: GameEventLite; text: string } => !!x.text);
+    if (!hits.length) return;
+    const { e, text } = hits[hits.length - 1];
+    const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
     const el = $(root, '#cutin');
-    el.innerHTML = `<div>${esc(texts[texts.length - 1])}</div>`;
+    el.innerHTML = `<div>${av ? `<img src="${m.z.avatarUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
     el.classList.remove('show');
     void el.offsetWidth;
     el.classList.add('show');
