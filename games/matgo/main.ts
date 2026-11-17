@@ -1,5 +1,5 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
-import { bootGame, esc, type GameUI, type TableCtx } from '../lib/shell.ts';
+import { bootGame, esc, type GameUI, type TableCtx, type TrackOpts } from '../lib/shell.ts';
 import { worldRoot } from '../lib/world.ts';
 import { cardBack, clamp, drawTable, label, nameTag, tc, theme, viewSize } from '../lib/cards.ts';
 import { CARDS, cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
@@ -136,7 +136,7 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
 }
 
 /** 먹은 패 (광·열끗·띠·피) 겹쳐서. maxX까지 들어오게 간격을 줄인다 */
-function captured(t: Ctx, scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['players'][number], w: number, maxX: number) {
+function captured(t: Ctx, scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['players'][number], w: number, maxX: number, optsFor: (id: string) => TrackOpts) {
   const groups = (
     [
       ['광', p.captured.gwang],
@@ -152,7 +152,7 @@ function captured(t: Ctx, scene: PhaserNS.Scene, x: number, y: number, p: MatgoP
   const step = Math.min(w * 0.58, extra ? Math.max(3, (avail - fixed) / extra) : w * 0.58);
   let cx = x;
   for (const [name, ids] of groups) {
-    ids.forEach((id, i) => t.track(hwatu(scene, cx + i * step, y, id, w), id, { order: 2 }));
+    ids.forEach((id, i) => t.track(hwatu(scene, cx + i * step, y, id, w), id, optsFor(id)));
     const gw = w + (ids.length - 1) * step;
     label(scene, cx - w / 2 + gw / 2, y + w * 1.0, `${name} ${name === '피' ? p.piCount : ids.length}`, clamp(w * 0.32, 12, 18), tc('primary'));
     cx += gw + w * 0.35;
@@ -320,6 +320,99 @@ function slap(scene: PhaserNS.Scene, x: number, y: number, w: number, onStack: b
   scene.cameras.main.shake(onStack ? 110 : 70, onStack ? 0.006 : 0.003);
 }
 
+/**
+ * 패 흐름 재생 계획 (서버는 내 차례와 AI 차례를 한 번에 보낼 수 있다 → 사건 기록으로 차례대로 보여 준다)
+ * 한 차례: 낸 패가 바닥으로(0초) → 더미 패가 뒤집히며 바닥으로(0.76초) → 먹을 게 있으면 짝지어 가져가기(1.65초).
+ * 다음 차례는 2.5초 뒤.
+ */
+interface CardPlan {
+  /** 출발 시각 (지금부터 ms) */
+  startAt: number;
+  /** 어디서: 낸 사람 손 / 더미 */
+  src: 'hand' | 'pile';
+  seat: number | null;
+  flip: boolean;
+  /** 가져가는 시각 (먹은 패만) */
+  captureAt: number | null;
+  /** 낸 패·뒤집은 패가 먹힐 때 먼저 내려앉을 바닥 자리 (그릴 때 정한다) */
+  via: { x: number; y: number } | null;
+  /** 그 차례에 함께 움직인 카드들 (같은 달 짝 찾기용) */
+  turn: number;
+  /** 원래 바닥에 있다가 먹힌 패 */
+  floor: boolean;
+}
+const TURN_MS = 2500;
+const AT_PLAY = 0;
+const AT_FLIP = 760;
+const AT_TAKE = 1650;
+const plan = new Map<string, CardPlan>();
+let planRound = -1;
+let planSeen = 0;
+
+/** 새 사건들로 계획 세우기 (같은 상태를 다시 그릴 때는 그대로) */
+function updatePlan(p: MatgoPublic, round: number) {
+  if (round !== planRound) {
+    planRound = round;
+    planSeen = 0;
+    plan.clear();
+  }
+  const evs = (p.events ?? []).filter((e) => e.id > planSeen);
+  if (!evs.length) return;
+  // 이전 계획은 이미 지나간 것이므로 비운다 (새로 들어온 사건만 재생)
+  plan.clear();
+  planSeen = Math.max(planSeen, ...evs.map((e) => e.id));
+  let turn = -1;
+  let hasFlip = true;
+  const base = () => Math.max(0, turn) * TURN_MS;
+  for (const e of evs) {
+    const seat = typeof e.seat === 'number' ? e.seat : null;
+    if (e.t === 'play' || e.t === 'bomb' || (e.t === 'flip' && hasFlip)) {
+      turn += 1;
+      hasFlip = false;
+    }
+    if (e.t === 'play' || e.t === 'bomb') {
+      for (const id of (e.cards as string[]) ?? []) plan.set(id, { startAt: base() + AT_PLAY, src: 'hand', seat, flip: false, captureAt: null, via: null, turn, floor: false });
+    } else if (e.t === 'flip' && typeof e.card === 'string') {
+      hasFlip = true;
+      plan.set(e.card, { startAt: base() + AT_FLIP, src: 'pile', seat, flip: true, captureAt: null, via: null, turn: Math.max(0, turn), floor: false });
+    } else if (e.t === 'capture') {
+      for (const id of (e.cards as string[]) ?? []) {
+        const cur = plan.get(id);
+        if (cur) cur.captureAt = base() + AT_TAKE;
+        else plan.set(id, { startAt: base() + AT_TAKE, src: 'hand', seat, flip: false, captureAt: base() + AT_TAKE, via: null, turn: Math.max(0, turn), floor: true });
+      }
+    } else if (e.t === 'steal' && typeof e.card === 'string') {
+      plan.set(e.card, { startAt: base() + AT_TAKE + 300, src: 'hand', seat, flip: false, captureAt: base() + AT_TAKE + 300, via: null, turn: Math.max(0, turn), floor: false });
+    }
+  }
+}
+
+/** 낸 패·뒤집은 패가 먹힐 때 내려앉을 바닥 자리: 같은 달 바닥 패가 있던 자리 위, 없으면 같은 차례에 먼저 내려앉은 같은 달 패 위, 그것도 없으면 빈 칸 */
+function landingSpot(t: Ctx, id: string, fw: number, fallback: { x: number; y: number }) {
+  const me = plan.get(id)!;
+  const m = cardById(id).month;
+  let spot: { x: number; y: number } | null = null;
+  for (const [other, pl] of plan) {
+    if (other === id || pl.turn !== me.turn || cardById(other).month !== m) continue;
+    // 원래 바닥에 있던 패 (손·더미에서 온 패가 아닌 것)
+    if (pl.floor) {
+      const lp = t.lastPos(other);
+      if (lp) {
+        spot = lp;
+        break;
+      }
+    }
+  }
+  if (!spot) {
+    for (const [other, pl] of plan) {
+      if (other === id || pl.turn !== me.turn || cardById(other).month !== m || !pl.via || pl.startAt >= me.startAt) continue;
+      spot = pl.via;
+    }
+  }
+  const base = spot ?? fallback;
+  return { x: base.x + fw * 0.4, y: base.y + fw * 0.06 };
+}
+
 let shake = false;
 /** 5광 컷인을 이미 보여 준 판:자리 */
 const fiveGwang = new Set<string>();
@@ -371,7 +464,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const mp = P[me];
     const allCaptured = (pl: (typeof P)[number]) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi];
     // 판 시작(아직 아무도 안 냄): 더미에서 한 장씩 착착 나눠 준다 (내 패 → 상대 패 번갈아, 그다음 바닥)
-    const dealing = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0;
+    const dealing = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0 && !(p.events ?? []).some((e) => e.t === 'play' || e.t === 'flip');
+    updatePlan(p, t.room.round_no);
     const DEAL_GAP = 130;
 
     // 상대: 점수(세로) 또는 이름패(가로) · 손패(뒷면) · 먹은 패
@@ -382,10 +476,39 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       const back = hwatu(scene, L.oppHand.x + (i - (op.handCount - 1) / 2) * L.backStep, L.oppHand.y, null, L.bw);
       t.track(back, `opp:${i}`, { from: L.pile, delay: dealing ? (i * 2 + 1) * DEAL_GAP : 0 });
     }
-    captured(t, scene, L.capX, L.oppCapY, op, capW, L.oppCapMaxX);
-
     const pile = L.pile;
     const myHand = { x: W * 0.6, y: L.handPos(0, 10).y };
+    const srcOf = (id: string, pl: CardPlan) => (pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand);
+    const srcSize = (pl: CardPlan) => (pl.src === 'pile' ? L.pw : pl.seat === me ? cw : L.bw);
+    // 낸 패·뒤집은 패가 먹힐 때 먼저 내려앉을 바닥 자리 (시간 순서대로 한 번만 정한다)
+    const newSlot = L.floorPos(p.floor.length, p.floor.length + 1);
+    [...plan.entries()]
+      .filter(([, pl]) => pl.captureAt !== null && !pl.floor && pl.src !== 'hand' || (pl.captureAt !== null && !pl.floor && pl.startAt !== pl.captureAt))
+      .filter(([, pl]) => !pl.via && pl.startAt !== pl.captureAt)
+      .sort((a, b) => a[1].startAt - b[1].startAt)
+      .forEach(([id, pl]) => (pl.via = landingSpot(t, id, fw, newSlot)));
+    /** 먹은 패 자리로 가는 카드의 움직임 */
+    const capOpts = (id: string): TrackOpts => {
+      const pl = plan.get(id);
+      if (!pl || dealing) return { order: 2 };
+      if (pl.via && pl.captureAt !== null) {
+        // 손·더미 → 바닥(찰싹) → 잠깐 → 먹은 패 자리
+        const via = pl.via;
+        return {
+          from: srcOf(id, pl),
+          delay: pl.startAt,
+          flip: pl.flip,
+          fromScale: srcSize(pl) / capW,
+          via,
+          viaScale: fw / capW,
+          viaLeave: pl.captureAt,
+          onLand: () => slap(scene, via.x, via.y, fw, true, t.dpr),
+        };
+      }
+      // 바닥에 있던 패 (또는 뺏어 온 피): 가져가기 차례에 지금 자리에서 출발
+      return { delay: pl.captureAt ?? AT_TAKE };
+    };
+    captured(t, scene, L.capX, L.oppCapY, op, capW, L.oppCapMaxX, capOpts);
 
     // 바닥 (달별로 모아서)
     const floor = p.floor;
@@ -401,18 +524,20 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           glow,
           onClick: glow && pick ? () => void t.act({ type: 'choose', card: id }) : undefined,
         });
-        // 처음 보는 패: 판 시작이면 더미에서 차례로, 이번 차례에 뒤집은 패면 더미에서, 낸 패면 낸 사람 손에서
-        const flipped = p.turnCards?.flipped === id;
-        const from = dealing || flipped ? pile : p.turn === me ? myHand : L.oppHand;
-        t.track(card, id, {
-          from,
-          order: flipped ? 1 : 0,
-          delay: dealing ? (20 + floorSeq++) * DEAL_GAP : 0,
-          // 내 손에서 낸 패는 손패 크기에서 바닥 크기로 (상대 패는 뒷면 크기에서)
-          fromScale: dealing || flipped ? L.pw / fw : p.turn === me ? cw / fw : L.bw / fw,
-          // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
-          onLand: dealing ? undefined : () => slap(scene, cx, cy, fw, j > 0, t.dpr),
-        });
+        // 처음 보는 패: 판 시작이면 더미에서 차례로, 아니면 사건 기록대로 (낸 패는 손에서, 뒤집은 패는 더미에서 뒤집으며)
+        const pl = dealing ? undefined : plan.get(id);
+        if (dealing) t.track(card, id, { from: pile, delay: (20 + floorSeq++) * DEAL_GAP, fromScale: L.pw / fw });
+        else if (pl)
+          t.track(card, id, {
+            from: srcOf(id, pl),
+            delay: pl.startAt,
+            flip: pl.flip,
+            // 손패(또는 뒷면·더미) 크기에서 바닥 크기로
+            fromScale: srcSize(pl) / fw,
+            // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
+            onLand: () => slap(scene, cx, cy, fw, j > 0, t.dpr),
+          });
+        else t.track(card, id, { from: pile, fromScale: L.pw / fw });
       });
       if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink'));
     });
@@ -429,7 +554,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     if (p.nagariMul > 1) label(scene, W / 2, L.floorTop - 4, `나가리 ×${p.nagariMul}`, clamp(fw * 0.3, 14, 22), tc('primary'));
 
     // 나: 먹은 패 · 점수/이름패 · 손패
-    captured(t, scene, L.capX, L.myCapY, mp, capW, W - 16);
+    captured(t, scene, L.capX, L.myCapY, mp, capW, W - 16, capOpts);
     const mySub = `${mp.score}점${mp.go ? ` · ${mp.go}고` : ''}${mp.bombFill ? ` · 폭탄피 ${mp.bombFill}` : ''}`;
     if (portrait) scoreChip(scene, W - 8, L.myCapY - capW * 0.78 - 30 * k, mySub, p.turn === me, k, true);
     else

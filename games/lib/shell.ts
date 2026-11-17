@@ -43,15 +43,17 @@ export interface TableCtx<P = any, Q = any> {
   priv: Q | null;
   pending: number[];
   myTurn: boolean;
-  /** 서버로 행동 보내기 (실패하면 알림) */
-  act(payload: unknown): Promise<void>;
+  /** 서버로 행동 보내기 (실패하면 알림) → 서버가 받았으면 true */
+  act(payload: unknown): Promise<boolean>;
   busy: boolean;
   fmt(n: number): string;
   avatarUrl(id: string): string;
   seatName(seat: number): string;
   seatAvatar(seat: number): string;
-  /** 다시 그리기 요청 */
+  /** 다시 그리기 요청 (테이블 + 아래 버튼) */
   redraw(): void;
+  /** 테이블만 다시 그리기 (아래 버튼은 그대로: 누르던 버튼·포커스가 끊기지 않게) */
+  redrawTable(): void;
   /**
    * 카드 나눠 주기 연출: 이번 판에 처음 보는 자리(key)의 카드는 from에서 날아오고,
    * 같은 자리인데 면(face)이 바뀌면(뒷면 → 앞면) 뒤집는다. 이미 본 카드는 그대로 둔다.
@@ -62,8 +64,23 @@ export interface TableCtx<P = any, Q = any> {
    * 처음 보는 카드는 from이 있으면 거기서 날아온다. order가 클수록 늦게 (낸 패 0 → 뒤집은 패 1 → 가져가기 2)
    */
   track(obj: PhaserNS.GameObjects.Container, key: string, opts?: TrackOpts): void;
+  /** 이번 그림 직전에 그 카드가 있던 자리 (처음 보는 카드면 null) */
+  lastPos(key: string): { x: number; y: number } | null;
   /** 기기 픽셀 배율 (효과용 글자를 선명하게) */
   dpr: number;
+}
+
+interface MoveRec {
+  x: number;
+  y: number;
+  fromX: number;
+  fromY: number;
+  via: { x: number; y: number } | null;
+  s1: number;
+  s2: number;
+  flip: boolean;
+  scale0: number;
+  viaScale: number;
 }
 
 export interface TrackOpts {
@@ -75,7 +92,15 @@ export interface TrackOpts {
   delay?: number;
   /** 출발할 때 크기 배율 (손패 크기에서 바닥 크기로 자연스럽게) */
   fromScale?: number;
-  /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등) */
+  /** 먹는 패: 먼저 이 자리(바닥)에 내려앉았다가 '가져가기' 차례에 목표로 */
+  via?: { x: number; y: number };
+  /** 경유점에서 떠나는 시각 (지금부터 ms, 기본: 가져가기 차례) */
+  viaLeave?: number;
+  /** 경유점에서의 크기 배율 (바닥 패 크기 ÷ 목표 크기) */
+  viaScale?: number;
+  /** 뒤집으며 출발 (더미에서 뒤집은 패) */
+  flip?: boolean;
+  /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등). 경유점이 있으면 경유점에 내려앉을 때 */
   onLand?: () => void;
 }
 
@@ -422,11 +447,44 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   // 모션 속도 (너무 빠르지 않게): 받기 0.42초 · 뒤집기 0.36초 · 패 이동 0.56초 · 낸 패→뒤집은 패→가져가기 사이 0.5초
   const SLIDE_MS = 420;
   const FLIP_MS = 360;
-  /** 카드 이동 연출: key → 목표 위치와 진행 중인 이동 */
-  const moves = new Map<string, { x: number; y: number; fromX: number; fromY: number; start: number }>();
+  /** 카드 이동 연출: key → 목표 위치와 진행 중인 이동 (경유점이 있으면 출발 → 경유점 → 목표) */
+  const moves = new Map<string, MoveRec>();
+  /** 이번에 그리기 직전의 위치들 (같은 그림 안에서 먼저 옮겨진 카드의 '원래 자리'를 알려고) */
+  let movesSnap = new Map<string, MoveRec>();
   let moveRound = -1;
+  /** 순서별 출발 시각: 낸 패 0 → 뒤집은 패 0.76초 → 가져가기 1.65초 */
+  const ORDER_AT = [0, 760, 1650];
   const MOVE_MS = 560;
-  const ORDER_GAP = 500;
+  const moveEnd = (r: MoveRec) => (r.via ? r.s2 : r.s1) + MOVE_MS;
+  /** 시각 t의 위치·기울기·크기 */
+  const posAt = (r: MoveRec, t: number) => {
+    const leg = (fx: number, fy: number, tx2: number, ty2: number, p: number) => {
+      const e = easeInOut(p);
+      const dist = Math.hypot(tx2 - fx, ty2 - fy);
+      const cx = (fx + tx2) / 2;
+      const cy = (fy + ty2) / 2 - Math.min(90, dist * 0.18);
+      const u = 1 - e;
+      return { x: u * u * fx + 2 * u * e * cx + e * e * tx2, y: u * u * fy + 2 * u * e * cy + e * e * ty2, e, tilt: (tx2 >= fx ? 1 : -1) * Math.min(9, dist * 0.03) };
+    };
+    const target = r.via ?? { x: r.x, y: r.y };
+    const endScale1 = r.via ? r.viaScale : 1;
+    if (t <= r.s1) return { x: r.fromX, y: r.fromY, angle: 0, sx: r.scale0 * (r.flip ? 0.02 : 1), sy: r.scale0 };
+    const p1 = Math.min(1, (t - r.s1) / MOVE_MS);
+    if (p1 < 1 || !r.via) {
+      const a = leg(r.fromX, r.fromY, target.x, target.y, p1);
+      const base = r.scale0 + (endScale1 - r.scale0) * a.e;
+      const pop = r.scale0 === endScale1 ? 1 + 0.08 * Math.sin(Math.PI * a.e) : 1;
+      // 뒤집기: 처음 40% 동안 가로로 펴진다
+      const fl = r.flip ? Math.max(0.02, Math.min(1, p1 / 0.4)) : 1;
+      return { x: a.x, y: a.y, angle: Math.sin(Math.PI * a.e) * a.tilt, sx: base * pop * fl, sy: base * pop };
+    }
+    // 경유점(바닥)에서 잠깐 머문 뒤 목표(먹은 패 자리)로
+    if (t <= r.s2) return { x: r.via.x, y: r.via.y, angle: 0, sx: r.viaScale, sy: r.viaScale };
+    const p2 = Math.min(1, (t - r.s2) / MOVE_MS);
+    const b = leg(r.via.x, r.via.y, r.x, r.y, p2);
+    const sc = r.viaScale + (1 - r.viaScale) * b.e;
+    return { x: b.x, y: b.y, angle: Math.sin(Math.PI * b.e) * b.tilt, sx: sc, sy: sc };
+  };
   /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
   let animEnd = 0;
   const afterAnim = (fn: () => void) => {
@@ -515,7 +573,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       pending,
       myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no),
       act: async (payload) => {
-        if (busy) return;
+        if (busy) return false;
         busy = true;
         busySince = st?.updated_at ?? null;
         paintControls();
@@ -527,14 +585,17 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
               unbusy();
               paintControls();
             }, 3000);
-            return;
+            return true;
           }
           unbusy();
         } catch (e) {
           toast(m.room.friendly(e));
           unbusy();
+          paintControls();
+          return false;
         }
         paintControls();
+        return true;
       },
       busy,
       fmt: (n) => m.wallet.formatAmount(n),
@@ -542,12 +603,14 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       seatName: (n) => seats.find((s) => s.seat_no === n)?.nickname ?? `자리 ${n + 1}`,
       seatAvatar: (n) => seats.find((s) => s.seat_no === n)?.avatar ?? 'tiger',
       redraw: () => paint(),
+      redrawTable: () => drawTableOnly(),
       dpr: DPR,
       track: (obj, key, opts = {}) => {
         const round = st?.round_no ?? 0;
         if (round !== moveRound) {
           moveRound = round;
           moves.clear();
+          movesSnap.clear();
         }
         const now = performance.now();
         const tx = obj.x;
@@ -560,45 +623,50 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           let fx = opts.from?.x ?? tx;
           let fy = opts.from?.y ?? ty;
           if (prev) {
-            const p0 = Math.max(0, Math.min(1, (now - prev.start) / MOVE_MS));
-            const e = 1 - Math.pow(1 - p0, 3);
-            fx = prev.fromX + (prev.x - prev.fromX) * e;
-            fy = prev.fromY + (prev.y - prev.fromY) * e;
+            const at = posAt(prev, now);
+            fx = at.x;
+            fy = at.y;
           }
           const animate = dealReady && !reduceMotion && (prev ? true : !!opts.from);
-          rec = { x: tx, y: ty, fromX: animate ? fx : tx, fromY: animate ? fy : ty, start: now + (opts.order ?? 0) * ORDER_GAP + (animate ? (opts.delay ?? 0) : 0) };
+          const s1 = now + ORDER_AT[Math.min(2, opts.order ?? 0)] + (animate ? (opts.delay ?? 0) : 0);
+          const via = animate && opts.via ? opts.via : null;
+          rec = {
+            x: tx,
+            y: ty,
+            fromX: animate ? fx : tx,
+            fromY: animate ? fy : ty,
+            via,
+            s1,
+            // 경유점(바닥)에 내려앉은 뒤 '가져가기' 차례에 떠난다
+            s2: via ? Math.max(s1 + MOVE_MS + 120, now + (opts.viaLeave ?? ORDER_AT[2])) : s1,
+            flip: animate && !!opts.flip,
+            scale0: animate && opts.fromScale && Math.abs(opts.fromScale - 1) > 0.05 ? opts.fromScale : 1,
+            viaScale: via ? (opts.viaScale ?? 1) : 1,
+          };
           moves.set(key, rec);
           if (animate && opts.onLand && scene) {
             const land = opts.onLand;
-            const at = rec.start + MOVE_MS - now;
-            scene.time.delayedCall(Math.max(0, at), () => !closed && land());
+            scene.time.delayedCall(Math.max(0, rec.s1 + MOVE_MS - now), () => !closed && land());
           }
         }
         if (!scene || reduceMotion) return;
         const r = rec!;
-        if (r.fromX === r.x && r.fromY === r.y) return;
-        const p = Math.max(0, Math.min(1, (now - r.start) / MOVE_MS));
-        if (p >= 1) return;
-        animEnd = Math.max(animEnd, r.start + MOVE_MS);
-        // 자연스럽게: 천천히 떠서 빨라졌다가 내려앉고(ease-in-out), 살짝 포물선으로, 날아가는 동안 조금 기울었다가 바로 선다
-        const fx = r.fromX;
-        const fy = r.fromY;
-        const dist = Math.hypot(r.x - fx, r.y - fy);
-        const cx = (fx + r.x) / 2;
-        const cy = (fy + r.y) / 2 - Math.min(90, dist * 0.18);
-        const tilt = (r.x >= fx ? 1 : -1) * Math.min(9, dist * 0.03);
-        const s0 = opts.fromScale && Math.abs(opts.fromScale - 1) > 0.05 ? opts.fromScale : 1;
-        const place = (t: number) => {
-          const e = easeInOut(t);
-          const u = 1 - e;
-          obj.setPosition(u * u * fx + 2 * u * e * cx + e * e * r.x, u * u * fy + 2 * u * e * cy + e * e * r.y);
-          obj.setAngle(Math.sin(Math.PI * e) * tilt);
-          // 출발 크기가 다르면 그 크기에서 바닥 크기로, 같으면 가운데서 살짝 커졌다가 내려앉는다
-          obj.setScale(s0 !== 1 ? s0 + (1 - s0) * e : 1 + 0.08 * Math.sin(Math.PI * e));
+        if (r.fromX === r.x && r.fromY === r.y && !r.via) return;
+        const end = moveEnd(r);
+        if (now >= end) return;
+        animEnd = Math.max(animEnd, end);
+        const apply = () => {
+          const t = performance.now();
+          const at = posAt(r, t);
+          obj.setPosition(at.x, at.y).setAngle(at.angle).setScale(at.sx, at.sy);
+          obj.setDepth(t >= r.s1 && t < end ? 11 : 10);
         };
-        place(p);
-        obj.setDepth(11);
-        scene.tweens.addCounter({ from: p, to: 1, duration: MOVE_MS * (1 - p), delay: Math.max(0, r.start - now), onUpdate: (tw) => place(tw.getValue() ?? 1) });
+        apply();
+        scene.tweens.addCounter({ from: 0, to: 1, duration: end - now, onUpdate: apply, onComplete: apply });
+      },
+      lastPos: (key) => {
+        const r = movesSnap.get(key);
+        return r ? { x: r.x, y: r.y } : null;
       },
       deal: (obj, key, face, from) => {
         const round = st?.round_no ?? 0;
@@ -841,6 +909,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     c.scene.children.removeAll(true);
     c.scene.tweens.killAll();
     dealSeq = 0;
+    movesSnap = new Map(moves);
     ui.draw(c);
     sharpenText(c.scene.children.list);
   }
@@ -854,6 +923,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       c.scene.children.removeAll(true);
       c.scene.tweens.killAll();
       dealSeq = 0;
+      movesSnap = new Map(moves);
       ui.draw(c);
       sharpenText(c.scene.children.list);
       // 처음 그린 뒤부터 연출 (들어오자마자 모든 카드가 날아오지 않게)

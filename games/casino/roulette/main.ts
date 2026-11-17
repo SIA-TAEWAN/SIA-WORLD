@@ -6,7 +6,7 @@
 import { ROULETTE_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { clamp, drawTable, label, tc, theme, viewSize } from '../../lib/cards.ts';
-import { MULT, SEASONS, WHEEL, hits, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
+import { BET_MS, MULT, SEASONS, WHEEL, hits, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
 import { worldRoot } from '../../lib/world.ts';
 import type PhaserNS from 'phaser';
 
@@ -31,8 +31,44 @@ let autoTimer: ReturnType<typeof setTimeout> | null = null;
 let sentFor = '';
 /** 스핀별 회전 시작 시각 (다시 그려도 이어서 돈다) */
 const spinStart = new Map<string, number>();
-const shownWin = new Set<string>();
+const shownWin = new Set<string>(); // (예전: 한 번만 보이기, 지금은 시각 기준)
 let countdown: ReturnType<typeof setTimeout> | null = null;
+/** 지금 화면의 방 (바뀌면 위 상태를 모두 비운다) */
+let roomId = '';
+/** 서버 시각 − 내 시각 (베팅이 새로 열리는 순간을 보고 맞춘다) */
+let skew = 0;
+let lastPhase = '';
+let lastBase = 0;
+
+function enterRoom(id: string, base: number) {
+  if (id === roomId && base === lastBase) return;
+  roomId = id;
+  lastBase = base;
+  local = [];
+  localKey = '';
+  lastBets = [];
+  sentFor = '';
+  skew = 0;
+  lastPhase = '';
+  if (autoTimer) clearTimeout(autoTimer);
+  autoTimer = null;
+  if (countdown) clearTimeout(countdown);
+  countdown = null;
+  spinStart.clear();
+  shownWin.clear();
+}
+const serverNow = () => Date.now() + skew;
+/** 베팅이 막 열린 순간이면 서버 시계와의 차이를 잰다 (중간에 들어왔을 때는 재지 않는다) */
+function syncClock(p: RoulettePublic) {
+  const key = `${p.phase}:${p.spin}`;
+  if (key === lastPhase) return;
+  if (p.phase === 'bet' && p.endsAt && lastPhase.startsWith('spin:')) {
+    const est = p.endsAt - BET_MS - Date.now();
+    // 터무니없는 값은 버린다 (네트워크 지연이 매우 큰 경우 등)
+    if (Math.abs(est) < 5 * 60_000) skew = est;
+  }
+  lastPhase = key;
+}
 
 const keyOf = (b: { kind: BetKind; target: number }) => `${b.kind}:${b.target}`;
 const sumOf = (bs: RBet[]) => bs.reduce((a, b) => a + b.amount, 0);
@@ -104,6 +140,8 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     const p = t.pub;
     drawTable(scene, 'poker');
     const T = theme();
+    enterRoom(t.room.id, t.room.base_unit);
+    if (p) syncClock(p);
     // 결과가 처음 보인 순간부터 회전 (다시 그려도 이어서)
     const spinKey = p ? `${p.spin}:${t.room.round_no}` : '';
     if (p?.phase === 'spin' && p.landed !== null && !spinStart.has(spinKey)) spinStart.set(spinKey, performance.now());
@@ -170,10 +208,11 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
       return;
     }
     if (p.phase === 'bet') {
-      const left = p.endsAt ? Math.max(0, Math.ceil((p.endsAt - Date.now()) / 1000)) : 20;
+      const left = p.endsAt ? Math.max(0, Math.ceil((p.endsAt - serverNow()) / 1000)) : 20;
       label(scene, cx, msgY, `베팅 ${left}초 · ${p.confirmed.length}/${p.players.length}명 확정`, clamp(r * 0.11, 15, 24));
       // 1초마다 남은 시간 갱신 (타이머는 하나만)
-      if (!countdown) countdown = setTimeout(() => ((countdown = null), t.redraw()), 1000);
+      const room = t.room.id;
+      if (!countdown) countdown = setTimeout(() => ((countdown = null), room === roomId && t.redrawTable()), 1000);
     } else if (p.phase === 'spin' && result !== null) {
       if (!stopped) label(scene, cx, msgY, '돌아가는 중…', clamp(r * 0.11, 15, 24));
       else {
@@ -182,16 +221,16 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
         const bet = t.mySeat !== null ? sumOf(p.bets[String(t.mySeat)] ?? []) : 0;
         label(scene, cx, msgY, `${NAME[animal]}! ${SEASONS[seasonOf(result)]} · ${result % 2 === 0 ? '양' : '음'}`, clamp(r * 0.13, 16, 28), tc('primary'));
         if (bet > 0) label(scene, cx, msgY + clamp(r * 0.15, 20, 32), mine > 0 ? `+${t.fmt(mine)}칩 당첨!` : '꽝', clamp(r * 0.11, 14, 22), mine > 0 ? tc('win') : tc('white'));
-        // 멈추는 순간 한 번: 당첨 띠 크게
-        const wk = `${p.spin}:${t.room.round_no}`;
-        if (!shownWin.has(wk)) {
-          shownWin.add(wk);
+        // 멈춘 뒤 2.1초 동안 당첨 띠를 크게 (시각 기준이라 중간에 다시 그려도 이어진다)
+        const since = performance.now() - ((spinStart.get(spinKey) ?? 0) + SPIN_ANIM);
+        if (since >= 0 && since < 2100 && scene.textures.exists(`full-${animal}`)) {
           const big = scene.add.image(cx, cy, `full-${animal}`).setDepth(50);
-          if (scene.textures.exists(`full-${animal}`)) {
-            big.setScale((r * 0.9) / Math.max(big.width, big.height) * 0.4);
-            scene.tweens.add({ targets: big, scale: big.scale * 2.5, duration: 420, ease: 'Back.easeOut' });
-            scene.tweens.add({ targets: big, alpha: 0, delay: 1600, duration: 500, onComplete: () => big.destroy() });
-          } else big.destroy();
+          const s0 = (r * 0.36) / Math.max(big.width, big.height);
+          const grow = Math.min(1, since / 420);
+          big.setScale(s0 * (1 + 1.5 * (1 - Math.pow(1 - grow, 3))));
+          big.setAlpha(since < 1600 ? 1 : 1 - (since - 1600) / 500);
+          if (grow < 1) scene.tweens.add({ targets: big, scale: s0 * 2.5, duration: 420 - since, ease: 'Back.easeOut' });
+          scene.tweens.add({ targets: big, alpha: 0, delay: Math.max(0, 1600 - since), duration: Math.min(500, 2100 - since), onComplete: () => big.destroy() });
         }
       }
     }
@@ -199,7 +238,11 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
 
   controls(t: Ctx, el: HTMLElement) {
     const p = t.pub;
+    // 자동 확정 예약은 그릴 때마다 새로 (확정했거나 회전 중이면 다시 걸지 않는다)
+    if (autoTimer) clearTimeout(autoTimer);
+    autoTimer = null;
     if (!p || t.mySeat === null) return;
+    enterRoom(t.room.id, t.room.base_unit);
     const me = String(t.mySeat);
     const base = p.baseUnit;
     // 스핀이 바뀌면 놓던 칩은 새로
@@ -255,20 +298,23 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
       if (sumOf(local) > p.maxTotal) local = [];
       t.redraw();
     });
+    const room = t.room.id;
     const send = () => {
-      if (sentFor === k) return;
+      // 이미 보냈거나, 방을 나갔거나 다른 방이면 보내지 않는다
+      if (sentFor === k || room !== roomId || !el.isConnected) return;
       sentFor = k;
+      if (autoTimer) clearTimeout(autoTimer);
+      autoTimer = null;
       const bets = local.map((b) => ({ ...b }));
       if (bets.length) lastBets = bets;
-      void t.act({ type: 'bet', bets }).finally(() => {
-        // 실패하면 다시 보낼 수 있게
-        if (!p.confirmed.includes(t.mySeat!)) sentFor = '';
+      void t.act({ type: 'bet', bets }).then((ok) => {
+        // 서버가 받지 않았을 때만 다시 보낼 수 있게
+        if (!ok && sentFor === k) sentFor = '';
       });
     };
     el.querySelector('#rl-go')?.addEventListener('click', send);
     // 마감 직전 자동 확정 (놓은 칩이 있을 때만, 없으면 서버가 '안 걸기'로 처리)
-    if (autoTimer) clearTimeout(autoTimer);
-    if (p.endsAt && local.length) autoTimer = setTimeout(send, Math.max(0, p.endsAt - Date.now() - 1500));
+    if (p.endsAt && local.length && sentFor !== k) autoTimer = setTimeout(send, Math.max(0, p.endsAt - serverNow() - 1500));
   },
 
   resultHtml(t: Ctx) {

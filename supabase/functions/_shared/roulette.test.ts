@@ -201,3 +201,53 @@ describe('Runner + 룰렛 (칩은 확정 때 먼저, 지급은 결과 때 한 �
     expect(wallet.u1).toBe(15_500);
   });
 });
+
+describe('전체검사 보강', () => {
+  it('constructor·__proto__ 같은 이름은 베팅 종류로 받지 않는다', () => {
+    for (const kind of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(() => normalizeBets([{ kind, target: 3, amount: 100 }], 100)).toThrow();
+    }
+  });
+  it('지급이 한 번 실패해도 다음 마감 처리 때 지급한다 (다음 스핀으로 넘어가기 전에)', async () => {
+    const room: RoomRow = { id: 'r1', game: 'roulette', base_unit: 100, status: 'waiting', round_no: 0 };
+    const seats: SeatRow[] = [{ seat_no: 0, user_id: 'u1', nickname: '나', avatar: 'tiger', ready: true, left_game: false }];
+    let deck: DeckRow = { version: 0, round_no: 0, state: null, carry: null };
+    let wallet = 10_000;
+    const rows: { bets: RBet[]; paid: boolean }[] = [];
+    let failPay = true;
+    const store: Store = {
+      room: async () => ({ ...room }),
+      seats: async () => seats.map((s) => ({ ...s })),
+      balances: async () => ({ u1: wallet }),
+      deck: async () => JSON.parse(JSON.stringify(deck)),
+      saveDeck: async (_id, v, state, carry, round) => {
+        if (deck.version !== v) return false;
+        deck = { version: v + 1, round_no: round, state: JSON.parse(JSON.stringify(state)), carry };
+        return true;
+      },
+      beginRound: async () => ((room.status = 'playing'), ++room.round_no),
+      publish: async () => undefined,
+      applyResult: async () => true,
+      finishRound: async () => ((room.status = 'waiting'), true),
+      placeBet: async (_id, _r, _s, _u, b, total) => {
+        wallet -= total;
+        rows.push({ bets: b as RBet[], paid: false });
+      },
+      paySpin: async (_id, _r, _s, result) => {
+        if (failPay) {
+          failPay = false;
+          throw new Error('network');
+        }
+        for (const row of rows) if (!row.paid) ((row.paid = true), (wallet += payoutOf(row.bets, result)));
+      },
+    };
+    let clock = 0;
+    const runner = new Runner(store, ENGINES, fixed(2), () => clock);
+    await runner.start('r1', 'u1');
+    await expect(runner.act('r1', 'u1', { type: 'bet', bets: [{ kind: 'zodiac', target: 2, amount: 1000 }] })).rejects.toThrow('network');
+    expect(wallet).toBe(9000);
+    clock += 10_000;
+    await runner.timeout('r1');
+    expect(wallet).toBe(9000 + 12_000);
+  });
+});

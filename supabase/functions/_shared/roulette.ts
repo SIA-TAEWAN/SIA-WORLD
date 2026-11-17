@@ -62,7 +62,8 @@ export function normalizeBets(raw: unknown, baseUnit: number): RBet[] {
   const m = new Map<string, RBet>();
   for (const x of raw) {
     const b = x as Partial<RBet>;
-    if (!b || typeof b !== 'object' || !(b.kind && b.kind in MULT)) throw new EngineError('베팅 종류가 잘못되었습니다');
+    // 자기 속성만 (constructor·__proto__ 같은 이름이 통과하지 않게)
+    if (!b || typeof b !== 'object' || typeof b.kind !== 'string' || !Object.prototype.hasOwnProperty.call(MULT, b.kind)) throw new EngineError('베팅 종류가 잘못되었습니다');
     const target = Number(b.target);
     const amount = Number(b.amount);
     if (!Number.isInteger(target) || target < 0 || target >= TARGETS[b.kind as BetKind]) throw new EngineError('베팅 칸이 잘못되었습니다');

@@ -164,7 +164,10 @@ export class Runner {
           await this.store.placeBet(roomId, room.round_no, charge.spin, userId, charge.bets, charge.total);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          throw new GameError(/not enough money/.test(msg) ? 'not enough money' : msg);
+          if (/not enough money/.test(msg)) throw new GameError('not enough money');
+          if (/spin closed|not playing/.test(msg)) throw new GameError('베팅 시간이 끝났어요', 409);
+          if (/already bet/.test(msg)) throw new GameError('이미 확정했어요', 409);
+          throw new GameError(msg);
         }
       }
       if (await this.advance(roomId, room, seats, engine, deck.version, state)) return { ok: true };
@@ -189,6 +192,9 @@ export class Runner {
     // 사람 차례가 없던 상태(룰렛 회전·결과)에서 마감이 지났으면 다음 단계로
     const waitingTimer = !engine.done(state) && engine.pending(state).length === 0;
     if (waitingTimer && engine.tick && !autoOnly) {
+      // 지난번 지급이 실패했어도 여기서 마저 (기록 기준, 한 번만) — 다음 스핀으로 넘어가면 결과를 잃는다
+      const prev = engine.spinResult ? engine.spinResult(state) : null;
+      if (prev && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, prev.spin, prev.result);
       state = engine.tick(state, this.rng, await this.seatInfo(room, seats));
     } else if (!engine.done(state)) {
       for (const seat of engine.pending(state)) {
@@ -236,11 +242,10 @@ export class Runner {
     const deadline = fixed !== undefined ? (fixed === null ? null : new Date(fixed)) : humanPending ? new Date(this.now() + TURN_MS) : null;
     const pub = { ...(view.public as object), round: room.round_no, result: settlement?.summary ?? null, deltas: settlement?.deltas ?? null };
     const privates = seats.map((s) => ({ seat: s.seat_no, userId: s.user_id, hand: view.private[s.seat_no] ?? null }));
-    await this.store.publish(roomId, version + 1, room.round_no, pub, pending, deadline, privates);
-
-    // 룰렛: 결과가 나온 스핀은 지급 (기록 기준, 한 번만)
+    // 룰렛: 결과가 나온 스핀은 공개 전에 지급 (기록 기준, 한 번만). 실패해도 다음 마감 처리 때 다시 지급한다
     const spun = engine.spinResult ? engine.spinResult(state) : null;
     if (spun && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, spun.spin, spun.result);
+    await this.store.publish(roomId, version + 1, room.round_no, pub, pending, deadline, privates);
 
     if (settlement) {
       await this.store.applyResult(roomId, room.round_no, settlement.deltas);

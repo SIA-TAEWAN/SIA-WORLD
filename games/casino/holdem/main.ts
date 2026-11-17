@@ -122,7 +122,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
           : [s.last, s.allIn ? '올인' : '', mineHand, tags, `칩 ${t.fmt(s.stackLeft)}`].filter(Boolean).join(' · ');
       const k = me ? clamp(cw / 85, 0.85, 1.15) : clamp(oc / 60, 0.75, 1);
       const tagY = y + w * 0.71 + 24 * k;
-      nameTag(scene, clamp(x - 52 * k, 26, W - 160 * k), tagY, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, size: k, sub: sub || undefined });
+      nameTag(scene, Math.max(26, Math.min(x - 52 * k, W - 160 * k)), tagY, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, size: k, sub: sub || undefined });
       // 딜러 버튼
       if (s.seat === p.button) marker(scene, x + ((cards.length || 2) / 2) * gap + w * 0.32, y + w * 0.5, 'D', clamp(w * 0.16, 9, 15));
       // 이번 라운드에 낸 칩 (가운데 쪽으로)
@@ -172,7 +172,9 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     const btn = el.querySelector<HTMLButtonElement>('#raise');
     const range = el.querySelector<HTMLInputElement>('#raise-range');
     const setTo = (v: number) => {
+      // 슬라이더 칸(SB 단위)이 끝까지 안 닿으면 마지막 칸은 올인으로
       raiseTo = clamp(Math.round(v), o.minTo, o.maxTo);
+      if (o.maxTo - raiseTo < step) raiseTo = o.maxTo;
       if (btn) btn.textContent = `${raiseTo >= o.maxTo ? '올인' : raiseLabel} ${t.fmt(raiseTo)}`;
       if (range) range.value = String(raiseTo);
     };
