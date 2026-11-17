@@ -57,6 +57,11 @@ export interface TableCtx<P = any, Q = any> {
    * 같은 자리인데 면(face)이 바뀌면(뒷면 → 앞면) 뒤집는다. 이미 본 카드는 그대로 둔다.
    */
   deal(obj: PhaserNS.GameObjects.Container, key: string, face: string | null, from: { x: number; y: number }): void;
+  /**
+   * 카드 이동 연출: 같은 key(카드 id)가 지난번과 다른 자리에 그려지면 그 사이를 날아간다.
+   * 처음 보는 카드는 from이 있으면 거기서 날아온다. order가 클수록 늦게 (낸 패 0 → 뒤집은 패 1 → 가져가기 2)
+   */
+  track(obj: PhaserNS.GameObjects.Container, key: string, opts?: { from?: { x: number; y: number }; order?: number }): void;
 }
 
 export interface GameUI<P = any, Q = any> {
@@ -384,6 +389,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   let dealSeq = 0;
   const SLIDE_MS = 250;
   const FLIP_MS = 200;
+  /** 카드 이동 연출: key → 목표 위치와 진행 중인 이동 */
+  const moves = new Map<string, { x: number; y: number; fromX: number; fromY: number; start: number }>();
+  let moveRound = -1;
+  const MOVE_MS = 320;
+  const ORDER_GAP = 280;
   /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
   let animEnd = 0;
   const afterAnim = (fn: () => void) => {
@@ -418,7 +428,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     scene: {
       key: 'table',
       preload(this: PhaserNS.Scene) {
-        for (const z of m.z.ZODIAC_IDS) this.load.image(`av-${z}`, m.z.avatarUrl(z));
+        // av-: 얼굴(원형 아바타·칩·카드 뒷면), full-: 전신(트럼프 그림 카드·화투)
+        for (const z of m.z.ZODIAC_IDS) {
+          this.load.image(`av-${z}`, m.z.avatarUrl(z));
+          this.load.image(`full-${z}`, m.z.fullUrl(z));
+        }
         ui.preload?.(this, m.z.avatarUrl);
       },
       create(this: PhaserNS.Scene) {
@@ -483,6 +497,45 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       seatName: (n) => seats.find((s) => s.seat_no === n)?.nickname ?? `자리 ${n + 1}`,
       seatAvatar: (n) => seats.find((s) => s.seat_no === n)?.avatar ?? 'tiger',
       redraw: () => paint(),
+      track: (obj, key, opts = {}) => {
+        const round = st?.round_no ?? 0;
+        if (round !== moveRound) {
+          moveRound = round;
+          moves.clear();
+        }
+        const now = performance.now();
+        const tx = obj.x;
+        const ty = obj.y;
+        const prev = moves.get(key);
+        let rec = prev;
+        const moved = prev && Math.abs(prev.x - tx) + Math.abs(prev.y - ty) > 3;
+        if (!prev || moved) {
+          // 지금 보이는 자리(이동 중이면 그 중간)에서 출발
+          let fx = opts.from?.x ?? tx;
+          let fy = opts.from?.y ?? ty;
+          if (prev) {
+            const p0 = Math.max(0, Math.min(1, (now - prev.start) / MOVE_MS));
+            const e = 1 - Math.pow(1 - p0, 3);
+            fx = prev.fromX + (prev.x - prev.fromX) * e;
+            fy = prev.fromY + (prev.y - prev.fromY) * e;
+          }
+          const animate = dealReady && !reduceMotion && (prev ? true : !!opts.from);
+          rec = { x: tx, y: ty, fromX: animate ? fx : tx, fromY: animate ? fy : ty, start: now + (opts.order ?? 0) * ORDER_GAP };
+          moves.set(key, rec);
+        }
+        if (!scene || reduceMotion) return;
+        const r = rec!;
+        if (r.fromX === r.x && r.fromY === r.y) return;
+        const p = Math.max(0, Math.min(1, (now - r.start) / MOVE_MS));
+        if (p >= 1) return;
+        animEnd = Math.max(animEnd, r.start + MOVE_MS);
+        const e = 1 - Math.pow(1 - p, 3);
+        obj.setPosition(r.fromX + (r.x - r.fromX) * e, r.fromY + (r.y - r.fromY) * e);
+        obj.setDepth(10 + (p < 1 ? 1 : 0));
+        scene.tweens.add({ targets: obj, x: r.x, y: r.y, duration: MOVE_MS * (1 - p), delay: Math.max(0, r.start - now), ease: 'Cubic.easeOut' });
+        // 날아가는 동안 살짝 커졌다가 내려앉는다
+        if (p === 0) scene.tweens.add({ targets: obj, scale: { from: 1, to: 1.12 }, yoyo: true, duration: MOVE_MS / 2, delay: Math.max(0, r.start - now), ease: 'Sine.easeOut' });
+      },
       deal: (obj, key, face, from) => {
         const round = st?.round_no ?? 0;
         if (round !== dealRound) {
@@ -643,7 +696,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
     afterAnim(() => {
       const el = $(root, '#cutin');
-      el.innerHTML = `<div>${av ? `<img src="${m.z.avatarUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
+      el.innerHTML = `<div>${av ? `<img src="${m.z.fullUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
       el.classList.remove('show');
       void el.offsetWidth;
       el.classList.add('show');

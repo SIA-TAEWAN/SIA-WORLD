@@ -112,6 +112,7 @@ export interface ZodiacModule {
   ZODIAC: { id: string; name: string; nick: string; emoji: string }[];
   ZODIAC_IDS: string[];
   avatarUrl(id: string): string;
+  fullUrl(id: string): string;
   lastAvatar(userId: string): string;
   saveAvatar(userId: string, id: string): void;
   pickFree(wanted: string, taken: string[]): string | null;

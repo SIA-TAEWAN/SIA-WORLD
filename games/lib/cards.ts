@@ -139,12 +139,12 @@ export function playingCard(scene: Scene, x: number, y: number, code: string | n
   c.add(scene.add.text(-w / 2 + w * 0.08, -h / 2 + w * 0.05, corner, style));
   c.add(scene.add.text(w / 2 - w * 0.08, h / 2 - w * 0.05, corner, style).setOrigin(0, 0).setAngle(180));
   const animal = FACE_ANIMAL[suit]?.[rank];
-  if (animal && scene.textures.exists(`av-${animal}`)) {
+  if (animal && scene.textures.exists(`full-${animal}`)) {
     // 그림 카드: 크림 액자 + 십이지신 캐릭터
     g.fillStyle(C.panelStrong, 1).fillRoundedRect(-w * 0.3, -h * 0.3, w * 0.6, h * 0.6, w * 0.08);
     g.lineStyle(line, C.outline, 1).strokeRoundedRect(-w * 0.3, -h * 0.3, w * 0.6, h * 0.6, w * 0.08);
-    const img = scene.add.image(0, h * 0.02, `av-${animal}`);
-    img.setScale((w * 0.55) / Math.max(img.width, img.height));
+    const img = scene.add.image(0, h * 0.02, `full-${animal}`);
+    img.setScale(Math.min((w * 0.54) / img.width, (h * 0.56) / img.height));
     c.add(img);
   } else {
     c.add(scene.add.text(0, h * 0.04, SUIT_SYM[suit] ?? suit, { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.6)}px`, color }).setOrigin(0.5));

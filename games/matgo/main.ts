@@ -1,5 +1,6 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
 import { bootGame, esc, type GameUI, type TableCtx } from '../lib/shell.ts';
+import { worldRoot } from '../lib/world.ts';
 import { cardBack, clamp, drawTable, label, nameTag, tc, theme } from '../lib/cards.ts';
 import { cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
@@ -7,8 +8,9 @@ import type PhaserNS from 'phaser';
 type Ctx = TableCtx<MatgoPublic, MatgoPrivate>;
 
 const DAN_NAME: Record<string, string> = { hong: '홍단', cheong: '청단', cho: '초단' };
-/** 원래 화투 그림(식물·배경)을 바탕에 연하게: 송학 · 매조 · 벚꽃 · 흑싸리 · 난초 · 모란 · 홍싸리 · 공산 · 국화 · 단풍 · 오동 · 비 */
-const PLANT = ['', '🌲', '🌸', '🌸', '🌿', '🌾', '🌺', '🍂', '🌕', '🌼', '🍁', '🍃', '☔'];
+/** 원래 화투 그림(식물·배경): SpriteCook으로 그린 12달 식물 (shared/images/hwatu/plant-MM.png) */
+const plantKey = (m: number) => `plant-${String(m).padStart(2, '0')}`;
+const plantUrl = (m: number) => new URL(`shared/images/hwatu/${plantKey(m)}.png`, worldRoot()).href;
 const ANIMAL_KEY = ['', 'rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'];
 
 /**
@@ -40,8 +42,13 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   g.lineStyle(line, C.outline, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, r);
   // 광: 금색 안쪽 테두리
   if (card.kind === 'gwang') g.lineStyle(Math.max(2.5, w * 0.05), C.accent, 1).strokeRoundedRect(-w / 2 + line * 1.8, -h / 2 + line * 1.8, w - line * 3.6, h - line * 3.6, r * 0.6);
-  // 원래 화투 식물 (연하게)
-  c.add(scene.add.text(0, h * 0.04, PLANT[card.month], { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.78)}px` }).setOrigin(0.5).setAlpha(0.22));
+  // 원래 화투 식물: 피는 식물이 주인공(진하게), 나머지는 캐릭터 뒤에 연하게
+  if (scene.textures.exists(plantKey(card.month))) {
+    const pl = scene.add.image(0, h * 0.04, plantKey(card.month));
+    pl.setScale(Math.min((w * 0.86) / pl.width, (h * 0.8) / pl.height));
+    pl.setAlpha(card.kind === 'pi' ? 0.95 : 0.4);
+    c.add(pl);
+  }
   const g2 = scene.add.graphics();
   c.add(g2);
   // 띠: 단 색 리본 (외곽선)
@@ -58,11 +65,12 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
     }
   }
   // 캐릭터: 광·열끗은 크게, 띠는 작게 위쪽, 피는 없음
-  const key = `av-${ANIMAL_KEY[card.month]}`;
+  const big = card.kind === 'yeol' || card.kind === 'gwang';
+  const key = big ? `full-${ANIMAL_KEY[card.month]}` : `av-${ANIMAL_KEY[card.month]}`;
   if (card.kind !== 'pi' && scene.textures.exists(key)) {
-    const big = card.kind === 'yeol' || card.kind === 'gwang';
-    const img = scene.add.image(card.kind === 'tti' ? w * 0.26 : 0, card.kind === 'tti' ? -h * 0.3 : h * 0.06, key);
-    img.setScale(((big ? 0.82 : 0.36) * w) / Math.max(img.width, img.height));
+    const img = scene.add.image(card.kind === 'tti' ? w * 0.26 : 0, card.kind === 'tti' ? -h * 0.3 : h * 0.08, key);
+    if (big) img.setScale(Math.min((w * 0.8) / img.width, (h * 0.62) / img.height));
+    else img.setScale((w * 0.36) / Math.max(img.width, img.height));
     c.add(img);
   }
   // 달: 왼쪽 위 키 배지 (바탕 --outline, 흰 숫자)
@@ -83,7 +91,7 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   }
   // 아래: 피 발자국 / 고도리·국진 태그
   if (card.kind === 'pi') {
-    c.add(scene.add.text(0, h * 0.08, card.ssangpi ? '🐾🐾' : '🐾', { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.3)}px` }).setOrigin(0.5));
+    c.add(scene.add.text(0, h / 2 - line - 2, card.ssangpi ? '🐾🐾' : '🐾', { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.24)}px` }).setOrigin(0.5, 1));
   } else if (card.godori || card.gukjin) {
     const t = scene.add
       .text(0, h / 2 - line - 2, card.godori ? '고도리' : '국진', {
@@ -104,7 +112,7 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
 }
 
 /** 먹은 패 (광·열끗·띠·피) 겹쳐서. maxX까지 들어오게 간격을 줄인다 */
-function captured(scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['players'][number], w: number, maxX: number) {
+function captured(t: Ctx, scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['players'][number], w: number, maxX: number) {
   const groups = (
     [
       ['광', p.captured.gwang],
@@ -116,14 +124,27 @@ function captured(scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['p
   const avail = maxX - x;
   const fixed = groups.length * w * 1.35;
   const extra = groups.reduce((a, [, ids]) => a + ids.length - 1, 0);
-  const step = Math.min(w * 0.36, extra ? Math.max(3, (avail - fixed) / extra) : w * 0.36);
+  // 겹친 패가 더 보이게: 기본 간격을 넓히고, 화면이 모자랄 때만 줄인다
+  const step = Math.min(w * 0.58, extra ? Math.max(3, (avail - fixed) / extra) : w * 0.58);
   let cx = x;
   for (const [name, ids] of groups) {
-    ids.forEach((id, i) => hwatu(scene, cx + i * step, y, id, w));
+    ids.forEach((id, i) => t.track(hwatu(scene, cx + i * step, y, id, w), id, { order: 2 }));
     const gw = w + (ids.length - 1) * step;
     label(scene, cx - w / 2 + gw / 2, y + w * 1.0, `${name} ${name === '피' ? p.piCount : ids.length}`, clamp(w * 0.32, 12, 18), tc('primary'));
     cx += gw + w * 0.35;
   }
+}
+
+/** 고르기 버튼에 넣는 작은 화투 (HTML 그림) */
+function miniCard(id: string) {
+  const card = cardById(id);
+  const animal = ANIMAL_KEY[card.month];
+  const big = card.kind === 'yeol' || card.kind === 'gwang';
+  const char = card.kind === 'pi' ? '' : `<img class="ch ${big ? 'big' : 'small'}" src="${new URL(`shared/images/zodiac/${big ? 'full' : 'face'}/${animal}.png`, worldRoot()).href}" alt=""/>`;
+  const tti = card.kind === 'tti' ? `<i class="tti ${card.dan ?? 'plain'}">${card.dan ? DAN_NAME[card.dan] : ''}</i>` : '';
+  const tag = card.kind === 'gwang' ? `<b class="stamp">${card.bigwang ? '비' : '광'}</b>` : '';
+  const foot = card.kind === 'pi' ? `<em>${card.ssangpi ? '🐾🐾' : '🐾'}</em>` : card.godori ? '<em class="tag">고도리</em>' : card.gukjin ? '<em class="tag">국진</em>' : '';
+  return `<span class="hw ${card.kind}"><img class="pl ${card.kind === 'pi' ? 'strong' : ''}" src="${plantUrl(card.month)}" alt=""/>${tti}${char}<u>${card.month}</u>${tag}${foot}</span>`;
 }
 
 let shake = false;
@@ -137,6 +158,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   back: '',
   backLabel: 'SIA WORLD',
   felt: () => theme().COLOR.skyMid,
+
+  preload(scene) {
+    for (let m = 1; m <= 12; m++) scene.load.image(plantKey(m), plantUrl(m));
+  },
 
   draw(t: Ctx) {
     const { scene } = t;
@@ -153,7 +178,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 카드 크기: 화면 비율에 맞춰 (손패 기준). 바닥 0.86배(세로 0.8배), 먹은 패 0.5배
     const cw = portrait ? clamp(Math.min(W / 6.4, H / 11), 30, 90) : clamp(Math.min(W / 11.5, H / 7), 30, 96);
     const fw = cw * (portrait ? 0.8 : 0.86);
-    const capW = cw * 0.5;
+    const capW = cw * 0.56;
     const me = t.mySeat ?? p.seats[0];
     const opp = p.seats.find((s) => s !== me) ?? p.seats[1];
     const P = p.players;
@@ -167,8 +192,15 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       sub: `${op.score}점${op.go ? ` · ${op.go}고` : ''}${op.shakes ? ` · 흔들${op.shakes}` : ''}`,
     });
     const bw = cw * 0.42;
-    for (let i = 0; i < op.handCount; i++) hwatu(scene, W * 0.45 + (i - (op.handCount - 1) / 2) * bw * 0.55, bw * 0.8 + 4, null, bw);
-    captured(scene, 24 + capW / 2, portrait ? H * 0.13 : H * 0.19, op, capW, W - 16);
+    const oppHand = { x: W * 0.45, y: bw * 0.8 + 4 };
+    for (let i = 0; i < op.handCount; i++) hwatu(scene, oppHand.x + (i - (op.handCount - 1) / 2) * bw * 0.55, oppHand.y, null, bw);
+    captured(t, scene, 24 + capW / 2, portrait ? H * 0.13 : H * 0.19, op, capW, W - 16);
+
+    // 더미 위치 (세로 화면: 오른쪽 위, 가로: 바닥 왼쪽) — 뒤집은 패가 여기서 날아온다
+    const y0 = portrait ? H * 0.255 : H * 0.355;
+    const rowGap = fw * 1.68;
+    const pile = portrait ? { x: W - fw * 0.8, y: fw * 0.85 + 6 } : { x: W * 0.075, y: y0 + rowGap * 0.5 };
+    const myHand = { x: W * 0.6, y: H - cw * 0.86 };
 
     // 바닥 (달별로 모아서, 두 줄)
     const floor = p.floor;
@@ -176,19 +208,26 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const cols = Math.max(4, Math.ceil(floor.length / nRows));
     const left = portrait ? W * 0.04 : W * 0.17;
     const right = portrait ? W * 0.96 : W * 0.83;
-    const rowGap = fw * 1.68;
-    const y0 = portrait ? H * 0.255 : H * 0.355;
     floor.forEach((f, i) => {
       const row = Math.floor(i / cols);
       const col = i % cols;
-      const x = left + (col + 0.5) * ((right - left) / cols) - fw * 0.1;
+      const x = left + (col + 0.5) * ((right - left) / cols) - fw * 0.3;
       const y = y0 + row * rowGap;
-      f.cards.forEach((id, j) => hwatu(scene, x + j * fw * 0.2, y + j * 4, id, fw, { glow: p.choice?.kind === 'choose' && p.choice.options.includes(id) }));
+      const pick = p.choice?.kind === 'choose' && t.myTurn && !t.busy;
+      f.cards.forEach((id, j) => {
+        const glow = p.choice?.kind === 'choose' && p.choice.options.includes(id);
+        const card = hwatu(scene, x + j * fw * 0.4, y + j * fw * 0.06, id, fw, {
+          glow,
+          onClick: glow && pick ? () => void t.act({ type: 'choose', card: id }) : undefined,
+        });
+        // 처음 보는 패: 이번 차례에 뒤집은 패면 더미에서, 낸 패면 낸 사람 손에서
+        const flipped = p.turnCards?.flipped === id;
+        const from = flipped ? pile : p.turn === me ? myHand : oppHand;
+        t.track(card, id, { from, order: flipped ? 1 : 0 });
+      });
       if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink'));
     });
-    // 더미 (왼쪽)
-    // 세로 화면: 더미는 오른쪽 위 (상대 손패 옆), 가로: 바닥 왼쪽
-    const pile = portrait ? { x: W - fw * 0.8, y: fw * 0.85 + 6 } : { x: W * 0.075, y: y0 + rowGap * 0.5 };
+    // 더미
     for (let i = 0; i < 3; i++) hwatu(scene, pile.x + i * 2, pile.y - i * 2, null, fw);
     label(scene, pile.x, pile.y + fw * 1.0, `더미 ${p.pileCount}`, clamp(fw * 0.22, 12, 18));
     // 이번 차례에 낸 패·뒤집은 패 (오른쪽)
@@ -202,14 +241,19 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
 
     // 나: 먹은 패 · 이름패 · 손패
     const mp = P[me];
-    captured(scene, 24 + capW / 2, portrait ? H - cw * 3.55 : H * 0.685, mp, capW, W - 16);
+    captured(t, scene, 24 + capW / 2, portrait ? H - cw * 3.55 : H * 0.685, mp, capW, W - 16);
     nameTag(scene, 26 * k, H - 28 * k, t.seatName(me), t.seatAvatar(me), {
       turn: p.turn === me,
       me: t.mySeat === me,
       size: k,
       sub: `${mp.score}점${mp.go ? ` · ${mp.go}고` : ''}${mp.bombFill ? ` · 폭탄피 ${mp.bombFill}` : ''}`,
     });
-    const hand = t.priv?.hand ?? [];
+    // 공개 상태가 내 비공개 손패보다 먼저 도착하면 방금 낸 패가 두 곳에 보인다 → 이미 바닥·먹은 패에 있는 패는 손패에서 뺀다
+    const shown = new Set<string>([
+      ...p.floor.flatMap((f) => f.cards),
+      ...Object.values(P).flatMap((pl) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi]),
+    ]);
+    const hand = (t.priv?.hand ?? []).filter((id) => !shown.has(id));
     const canPlay = t.myTurn && p.choice?.kind === 'play';
     // 가로: 한 줄 (이름패 오른쪽부터) / 세로: 다섯 장씩 두 줄 (이름패 위)
     const perRow = portrait ? 5 : hand.length;
@@ -217,10 +261,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const step = portrait ? cw * 1.06 : Math.min(cw * 1.06, (W - hx0 - cw * 0.6) / Math.max(1, hand.length - 1));
     const handY = (i: number) => (portrait ? H - cw * 0.86 - 46 * k - (Math.floor(i / perRow) === 0 ? cw * 1.62 : 0) : H - cw * 0.86);
     hand.forEach((id, i) =>
-      hwatu(scene, hx0 + (i % perRow) * step, handY(i), id, cw, {
-        lift: canPlay,
-        onClick: canPlay && !t.busy ? () => void t.act({ type: 'play', card: id, shake: shake && !!t.priv?.shakeable.includes(cardById(id).month) }) : undefined,
-      }),
+      t.track(
+        hwatu(scene, hx0 + (i % perRow) * step, handY(i), id, cw, {
+          lift: canPlay,
+          onClick: canPlay && !t.busy ? () => void t.act({ type: 'play', card: id, shake: shake && !!t.priv?.shakeable.includes(cardById(id).month) }) : undefined,
+        }),
+        id,
+        { from: pile },
+      ),
     );
   },
 
@@ -249,8 +297,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     }
     shake = false;
     if (c.kind === 'choose') {
-      el.innerHTML = `<p class="msg">${c.stage === 'flip' ? '뒤집은 패로' : '낸 패로'} 가져올 패를 고르세요</p><div class="row">${c.options
-        .map((id) => `<button class="btn big" data-c="${id}" ${dis}>${esc(cardById(id).name)}</button>`)
+      el.innerHTML = `<p class="msg">${c.stage === 'flip' ? '뒤집은 패로' : '낸 패로'} 가져올 패를 고르세요 (테이블에서 빛나는 패를 눌러도 돼요)</p><div class="row">${c.options
+        .map((id) => `<button class="hw-pick" data-c="${id}" ${dis} title="${esc(cardById(id).name)}">${miniCard(id)}</button>`)
         .join('')}</div>`;
       el.querySelectorAll<HTMLButtonElement>('[data-c]').forEach((b) => b.addEventListener('click', () => void t.act({ type: 'choose', card: b.dataset.c })));
       return;

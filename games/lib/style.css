@@ -311,3 +311,36 @@ input:focus { outline: var(--line) solid var(--primary); }
   .controls .msg { font-size: 12px; margin-top: 3px; }
   .controls .amount { font-size: 16px; min-width: 70px; }
 }
+
+/* ---------- 맞고: 가져올 패 고르기 (패 그림 버튼) ---------- */
+.hw-pick { background: none; border: none; padding: 0; cursor: pointer; transition: transform var(--press-ms); }
+.hw-pick:hover:not(:disabled) { transform: translateY(-4px); }
+.hw-pick:active:not(:disabled) { transform: translateY(var(--press)); }
+.hw-pick:disabled { opacity: 0.5; cursor: default; }
+.hw-pick:focus-visible { outline: var(--line) solid var(--sky-deep); outline-offset: 3px; border-radius: var(--radius-item); }
+.hw {
+  position: relative;
+  display: block;
+  width: 74px;
+  height: 115px;
+  background: var(--panel);
+  border: var(--line) solid var(--outline);
+  border-radius: 10px;
+  box-shadow: 0 var(--depth-button) 0 var(--outline), 0 0 0 var(--line) var(--primary);
+  overflow: hidden;
+}
+.hw .pl { position: absolute; inset: 8px 4px 14px; width: calc(100% - 8px); height: calc(100% - 22px); object-fit: contain; opacity: 0.4; }
+.hw .pl.strong { opacity: 0.95; }
+.hw .ch { position: absolute; left: 50%; transform: translateX(-50%); object-fit: contain; }
+.hw .ch.big { bottom: 12px; width: 82%; height: 66%; }
+.hw .ch.small { top: 6px; right: 4px; left: auto; transform: none; width: 34%; }
+.hw .tti { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); width: 24%; height: 62%; border: var(--line-thin) solid var(--outline); color: var(--white); font-style: normal; font-size: 12px; writing-mode: vertical-rl; display: grid; place-items: center; }
+.hw .tti.hong { background: var(--lose); }
+.hw .tti.cheong { background: var(--team-a); }
+.hw .tti.cho { background: var(--win); }
+.hw .tti.plain { background: var(--ink-soft); }
+.hw u { position: absolute; left: 3px; top: 3px; min-width: 18px; padding: 0 3px; text-decoration: none; text-align: center; background: var(--outline); color: var(--white); border-radius: var(--radius-key); font-size: 13px; }
+.hw .stamp { position: absolute; right: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--lose); color: var(--white); border: var(--line-thin) solid var(--outline); font-weight: normal; font-size: 12px; display: grid; place-items: center; }
+.hw.gwang { box-shadow: 0 var(--depth-button) 0 var(--outline), 0 0 0 var(--line) var(--primary), inset 0 0 0 3px var(--accent); }
+.hw em { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; font-style: normal; font-size: 14px; }
+.hw em.tag { left: 50%; right: auto; transform: translateX(-50%); background: var(--pink); color: var(--white); padding: 0 4px; font-size: 11px; white-space: nowrap; }
