@@ -40,17 +40,16 @@ jobs:
           cp index.html _site/
           cp -r shared _site/
           cp -r games/tank/dist/. _site/games/tank/
+          # 시아맞고·시아카지노 (지금은 빌드 없는 임시 페이지)
+          cp -r games/matgo games/casino _site/games/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
-  # games/tank/supabase/migrations/ 에서 아직 실행 안 된 SQL만 서버에 실행한다
+  # supabase/migrations/ 에서 아직 실행 안 된 SQL만 서버에 실행한다 (SIA WORLD 공용 DB)
   migrate:
     needs: build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: games/tank
     env:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       # 세션 풀러 주소 (비밀번호 자리는 시크릿에서 채운다)

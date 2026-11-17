@@ -30,7 +30,7 @@ SIA WORLD 계정으로 링크 하나로 즐기는 브라우저 턴제 포격 게
 - 시작할 때 `requireLogin()` → 로그인 안 했으면 SIA WORLD 로그인 화면으로 갔다가 같은 주소(쿼리 포함)로 돌아온다.
 - 플레이어는 Supabase Auth 사용자 ID로 구분하고, 화면에는 `profiles.nickname`을 보여 준다. 랭킹(`player_points`, `target_scores`)은 `user_id` 기준.
 - 배포: SIA WORLD 저장소 Secrets에 `SUPABASE_DB_PASSWORD`
-- **DB 변경은 자동**: `supabase/migrations/`에 `003_이름.sql`처럼 번호를 이어 새 파일을 추가하고 push하면, 배포 때 아직 실행 안 된 SQL만 서버에 실행된다(세션 풀러로 접속). SQL이 실패하면 사이트 배포도 멈춘다. 이미 실행된 파일은 고치지 말고 새 파일로 바꾼다.
+- **DB 변경은 자동**: SIA WORLD 최상위 `supabase/migrations/`에 `003_이름.sql`처럼 번호를 이어 새 파일을 추가하고 push하면, 배포 때 아직 실행 안 된 SQL만 서버에 실행된다(세션 풀러로 접속). SQL이 실패하면 사이트 배포도 멈춘다. 이미 실행된 파일은 고치지 말고 새 파일로 바꾼다.
 
 다른 대기실은 주소에 `?l=코드`를 붙인다. 서버·로그인 없이 테스트하려면 `?local=1`(같은 브라우저 탭끼리 통신).
 
@@ -70,10 +70,11 @@ src/
   scenes/    GameScene.ts (Phaser 렌더링·턴 진행), art.ts (배경·지형 그림), fx.ts (폭발·연기 파티클), shells.ts (무기별 포탄 그림)
   net/       backend.ts(공통), supabase.ts, local.ts(탭 간 테스트), lobby.ts, room.ts, online.ts(동기화)
   ui/        offline.ts(입장·AI 설정·결과), online.ts(대기실·게임방), hud.ts, shop.ts, input.ts, sfx.ts, music.ts, tankSvg.ts(12지신 탱크 그림)
-supabase/    migrations/001_rooms.sql (rooms 테이블, RLS, 게임방 함수)
 tools/       balance.ts, stats.ts
 tests/       engine.test.ts
 ```
+
+DB SQL은 SIA WORLD 최상위 `supabase/migrations/`에 있다 (모든 게임이 같은 DB를 쓴다).
 
 게임 규칙(`game/`, `physics/`)은 화면과 분리되어 Node에서도 돈다. 화면은 시뮬레이션이 만든 이벤트(폭발·피해·이동)를 재생할 뿐이다.
 
