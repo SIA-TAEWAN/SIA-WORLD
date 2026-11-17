@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.2.0
       - name: 접속 주소 만들기
         run: |
           PW=$(python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"],safe=""))')
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.2.0
       - run: supabase functions deploy game-action --project-ref "$PROJECT_REF" --use-api
       # cron(pg_net)이 사용자 JWT 없이 부르므로 JWT 확인을 끄고, 함수 안에서 DB 비밀값으로 확인한다
       - run: supabase functions deploy game-timeout --project-ref "$PROJECT_REF" --use-api --no-verify-jwt
