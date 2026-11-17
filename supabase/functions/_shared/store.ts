@@ -29,13 +29,13 @@ export function supabaseStore(sb: SupabaseClient): Store {
       return out;
     },
     async deck(id) {
-      const r = await sb.from('game_decks').select('version,state,carry').eq('room_id', id).maybeSingle();
-      return (must(r) ?? { version: 0, state: null, carry: null }) as DeckRow;
+      const r = await sb.from('game_decks').select('version,round_no,state,carry').eq('room_id', id).maybeSingle();
+      return (must(r) ?? { version: 0, round_no: 0, state: null, carry: null }) as DeckRow;
     },
-    async saveDeck(id, expectVersion, state, carry) {
+    async saveDeck(id, expectVersion, state, carry, round) {
       const r = await sb
         .from('game_decks')
-        .update({ state, carry, version: expectVersion + 1 })
+        .update({ state, carry, round_no: round, version: expectVersion + 1 })
         .eq('room_id', id)
         .eq('version', expectVersion)
         .select('room_id');
@@ -45,23 +45,18 @@ export function supabaseStore(sb: SupabaseClient): Store {
       const r = await sb.rpc('begin_round', { p_room: id });
       return (must(r) as number | null) ?? null;
     },
-    async publish(id, round, pub, pendingSeats, deadline, privates) {
+    async publish(id, version, round, pub, pendingSeats, deadline, privates) {
+      // 버전이 더 새로울 때만 저장 (늦게 도착한 옛 상태가 덮어쓰지 않게)
       must(
-        await sb
-          .from('game_states')
-          .upsert({
-            room_id: id,
-            round_no: round,
-            public_state: pub,
-            pending_seats: pendingSeats,
-            turn_deadline: deadline ? deadline.toISOString() : null,
-            updated_at: new Date().toISOString(),
-          }),
-      );
-      must(
-        await sb.from('game_private').upsert(
-          privates.map((p) => ({ room_id: id, seat_no: p.seat, user_id: p.userId, round_no: round, hand: p.hand })),
-        ),
+        await sb.rpc('publish_state', {
+          p_room: id,
+          p_version: version,
+          p_round: round,
+          p_pub: pub,
+          p_pending: pendingSeats,
+          p_deadline: deadline ? deadline.toISOString() : null,
+          p_privates: privates.map((p) => ({ seat: p.seat, userId: p.userId, hand: p.hand })),
+        }),
       );
     },
     async applyResult(id, round, deltas) {

@@ -26,6 +26,8 @@ export interface SeatRow {
 
 export interface DeckRow {
   version: number;
+  /** 이 엔진 상태가 몇 번째 판의 것인지 (방의 판 번호와 다르면 지난 판 상태) */
+  round_no: number;
   state: unknown;
   carry: unknown;
 }
@@ -37,12 +39,13 @@ export interface Store {
   balances(userIds: string[], game: GameId): Promise<Record<string, number>>;
   deck(id: string): Promise<DeckRow>;
   /** 낙관적 잠금: version이 그대로일 때만 저장 → 저장했으면 true */
-  saveDeck(id: string, expectVersion: number, state: unknown, carry: unknown): Promise<boolean>;
+  saveDeck(id: string, expectVersion: number, state: unknown, carry: unknown, round: number): Promise<boolean>;
   /** 판 시작 (대기 중 + 사람 모두 레디일 때만) → 새 판 번호 또는 null */
   beginRound(id: string): Promise<number | null>;
-  /** 화면용 상태 저장 (공개 + 자리별 비공개) */
+  /** 화면용 상태 저장 (공개 + 자리별 비공개). version이 저장된 것보다 새로울 때만 바뀐다 */
   publish(
     id: string,
+    version: number,
     round: number,
     pub: unknown,
     pendingSeats: number[],
@@ -104,11 +107,15 @@ export class Runner {
 
   /** 판 시작 (사람이 모두 레디했을 때 아무 참가자나 부른다) */
   async start(roomId: string, userId: string) {
-    const { room, seats, deck, engine } = await this.load(roomId);
+    const loaded = await this.load(roomId);
+    const { room, deck, engine } = loaded;
+    let { seats } = loaded;
     if (!seats.some((s) => s.user_id === userId && !s.left_game)) throw new GameError('not in room', 403);
     if (room.status !== 'waiting') return { started: false };
     const round = await this.store.beginRound(roomId);
     if (round === null) return { started: false };
+    // 시작 직전에 자리가 바뀌었을 수 있으니 시작한 뒤의 자리로 판을 만든다
+    seats = await this.store.seats(roomId);
 
     const humans = seats.filter((s) => s.user_id && !s.left_game).map((s) => s.user_id!);
     const bal = await this.store.balances(humans, room.game);
@@ -129,7 +136,7 @@ export class Runner {
   async act(roomId: string, userId: string, action: unknown) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const { room, seats, deck, engine } = await this.load(roomId);
-      if (room.status !== 'playing' || !deck.state) throw new GameError('not playing', 409);
+      if (room.status !== 'playing' || !deck.state || deck.round_no !== room.round_no) throw new GameError('not playing', 409);
       const seat = seats.find((s) => s.user_id === userId && !s.left_game);
       if (!seat) throw new GameError('not in room', 403);
       if (!engine.pending(deck.state).includes(seat.seat_no)) throw new GameError('not your turn', 409);
@@ -145,18 +152,31 @@ export class Runner {
     throw new GameError('busy, try again', 409);
   }
 
-  /** 시간 초과 처리 (cron). expectVersion이 바뀌었으면(그 사이 누가 뒀으면) 건너뛴다 */
-  async timeout(roomId: string, expectVersion?: number) {
+  /**
+   * 시간 초과 처리 (cron). expectVersion이 바뀌었으면(그 사이 누가 뒀으면) 건너뛴다.
+   * autoOnly: 마감 전이지만 나간 사람 자리만 AI로 처리할 때 (남은 사람의 차례 시간은 그대로)
+   */
+  async timeout(roomId: string, expectVersion?: number, autoOnly = false) {
     const { room, seats, deck, engine } = await this.load(roomId);
-    if (room.status !== 'playing' || !deck.state) return { acted: false };
+    if (room.status !== 'playing') return { acted: false };
     if (expectVersion !== undefined && expectVersion !== deck.version) return { acted: false };
-    let state = deck.state;
-    for (const seat of engine.pending(state)) {
-      if (!engine.pending(state).includes(seat)) continue;
-      // 나간 사람은 AI가, 자리에 있는데 시간을 넘긴 사람은 정해진 자동 행동
-      const a = this.auto(seats, seat) ? this.aiAction(engine, state, seat) : engine.timeout(state, seat, this.rng);
-      state = engine.apply(state, seat, a, this.rng);
+    // 판을 시작하다 오류로 멈춘 방: 이번 판 상태가 없으면 정산 없이 대기 상태로 되돌린다
+    if (!deck.state || deck.round_no !== room.round_no) {
+      await this.store.finishRound(roomId);
+      return { acted: true, recovered: true };
     }
+    let state = deck.state;
+    if (!engine.done(state)) {
+      for (const seat of engine.pending(state)) {
+        if (!engine.pending(state).includes(seat)) continue;
+        const auto = this.auto(seats, seat);
+        if (autoOnly && !auto) continue;
+        // 나간 사람은 AI가, 자리에 있는데 시간을 넘긴 사람은 정해진 자동 행동
+        const a = auto ? this.aiAction(engine, state, seat) : engine.timeout(state, seat, this.rng);
+        state = engine.apply(state, seat, a, this.rng);
+      }
+    }
+    // 끝난 판이면(정산 도중 멈춘 경우 포함) advance가 정산·정리를 마저 한다 (정산은 판마다 한 번만)
     return { acted: await this.advance(roomId, room, seats, engine, deck.version, state) };
   }
 
@@ -182,7 +202,7 @@ export class Runner {
     const settlement = done ? engine.settle(state) : null;
     const deck = await this.store.deck(roomId);
     const carry = settlement ? settlement.carry : deck.carry;
-    if (!(await this.store.saveDeck(roomId, version, state, carry))) return false;
+    if (!(await this.store.saveDeck(roomId, version, state, carry, room.round_no))) return false;
 
     const view = engine.view(state);
     const pending: number[] = done ? [] : engine.pending(state);
@@ -190,7 +210,7 @@ export class Runner {
     const deadline = humanPending ? new Date(this.now() + TURN_MS) : null;
     const pub = { ...(view.public as object), round: room.round_no, result: settlement?.summary ?? null, deltas: settlement?.deltas ?? null };
     const privates = seats.map((s) => ({ seat: s.seat_no, userId: s.user_id, hand: view.private[s.seat_no] ?? null }));
-    await this.store.publish(roomId, room.round_no, pub, pending, deadline, privates);
+    await this.store.publish(roomId, version + 1, room.round_no, pub, pending, deadline, privates);
 
     if (settlement) {
       await this.store.applyResult(roomId, room.round_no, settlement.deltas);

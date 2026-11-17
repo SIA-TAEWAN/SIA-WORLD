@@ -14,6 +14,13 @@ const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 
 let secret: string | null = null;
 
+/** 길이와 내용을 끝까지 비교 (시간차로 비밀값을 알아내지 못하게) */
+function sameText(a: string, b: string) {
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
   if (!secret) {
@@ -21,16 +28,16 @@ Deno.serve(async (req) => {
     secret = (data as { value: string } | null)?.value ?? null;
   }
   const given = req.headers.get('x-cron-secret') ?? '';
-  if (!secret || given.length !== secret.length || given !== secret) return new Response('forbidden', { status: 403 });
+  if (!secret || !sameText(given, secret)) return new Response('forbidden', { status: 403 });
 
   const body = await req.json().catch(() => null);
-  const rooms: { id: string; version?: number }[] = Array.isArray(body?.rooms) ? body.rooms.slice(0, 50) : [];
+  const rooms: { id: string; version?: number; autoOnly?: boolean }[] = Array.isArray(body?.rooms) ? body.rooms.slice(0, 50) : [];
   const runner = new Runner(supabaseStore(sb), ENGINES);
   const results: Record<string, unknown> = {};
   for (const r of rooms) {
     if (typeof r?.id !== 'string') continue;
     try {
-      results[r.id] = await runner.timeout(r.id, typeof r.version === 'number' ? r.version : undefined);
+      results[r.id] = await runner.timeout(r.id, typeof r.version === 'number' ? r.version : undefined, r.autoOnly === true);
     } catch (e) {
       console.error(r.id, e);
       results[r.id] = { error: String((e as Error)?.message ?? e) };

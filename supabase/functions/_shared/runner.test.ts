@@ -15,7 +15,8 @@ function memStore(game: GameId, humans: string[], seatCount: number, balance = 1
     left_game: false,
   }));
   const wallets: Record<string, number> = Object.fromEntries(humans.map((h) => [h, balance]));
-  let deck: DeckRow = { version: 0, state: null, carry: null };
+  let deck: DeckRow = { version: 0, round_no: 0, state: null, carry: null };
+  let pubVersion = 0;
   const published: { pub: any; pending: number[]; deadline: Date | null; privates: { seat: number; userId: string | null; hand: unknown }[] }[] = [];
   const results = new Map<number, Record<number, number>>();
   const store: Store = {
@@ -23,9 +24,9 @@ function memStore(game: GameId, humans: string[], seatCount: number, balance = 1
     seats: async () => seats.map((s) => ({ ...s })),
     balances: async (ids) => Object.fromEntries(ids.map((i) => [i, wallets[i] ?? 0])),
     deck: async () => JSON.parse(JSON.stringify(deck)),
-    saveDeck: async (_id, v, state, carry) => {
+    saveDeck: async (_id, v, state, carry, round) => {
       if (deck.version !== v) return false;
-      deck = { version: v + 1, state: JSON.parse(JSON.stringify(state)), carry: JSON.parse(JSON.stringify(carry ?? null)) };
+      deck = { version: v + 1, round_no: round, state: JSON.parse(JSON.stringify(state)), carry: JSON.parse(JSON.stringify(carry ?? null)) };
       return true;
     },
     beginRound: async () => {
@@ -33,7 +34,11 @@ function memStore(game: GameId, humans: string[], seatCount: number, balance = 1
       room.status = 'playing';
       return ++room.round_no;
     },
-    publish: async (_id, _r, pub, pending, deadline, privates) => void published.push({ pub: JSON.parse(JSON.stringify(pub)), pending, deadline, privates }),
+    publish: async (_id, version, _r, pub, pending, deadline, privates) => {
+      if (version <= pubVersion) return; // 옛 상태는 버린다 (publish_state와 같은 규칙)
+      pubVersion = version;
+      published.push({ pub: JSON.parse(JSON.stringify(pub)), pending, deadline, privates });
+    },
     applyResult: async (_id, round, deltas) => {
       if (results.has(round)) return false;
       results.set(round, deltas);
@@ -51,7 +56,7 @@ function memStore(game: GameId, humans: string[], seatCount: number, balance = 1
       return true;
     },
   };
-  return { store, room, seats, wallets, published, results, get deck() { return deck; } };
+  return { store, room, seats, wallets, published, results, get deck() { return deck; }, set deck(d: DeckRow) { deck = d; } };
 }
 
 /** 사람 차례면 엔진의 AI로 대신 두면서 판을 끝까지 */
@@ -132,6 +137,43 @@ describe('Runner', () => {
     expect(m.results.has(1)).toBe(true);
     expect(m.wallets.u1).toBe(100000 + (m.results.get(1)![0] ?? 0));
     expect(m.seats[0].user_id).toBeNull(); // 판이 끝나면 AI 자리
+  });
+
+  it('나간 자리만 처리(autoOnly)할 때 남은 사람은 자동 행동하지 않는다', async () => {
+    const m = memStore('blackjack', ['u1', 'u2'], 4);
+    const runner = new Runner(m.store, ENGINES, seededRng(31));
+    await runner.start('r1', 'u1');
+    m.seats[1].left_game = true; // u2가 베팅 단계에서 나감
+    await runner.timeout('r1', m.deck.version, true);
+    const pub = m.published[m.published.length - 1].pub;
+    expect(pub.waitingBets).toEqual([0]); // u1은 그대로 고민 중
+    expect(pub.seats.find((x: any) => x.seat === 1).bet).not.toBeNull(); // 나간 자리는 AI가 베팅
+  });
+
+  it('시작하다 멈춘 방(이번 판 상태 없음)은 정산 없이 대기로 되돌린다', async () => {
+    const m = memStore('poker', ['u1'], 4);
+    const runner = new Runner(m.store, ENGINES, seededRng(41));
+    m.room.status = 'playing';
+    m.room.round_no = 3; // begin_round 뒤 오류로 엔진 상태가 저장되지 않은 상황
+    const r = await runner.timeout('r1');
+    expect(r).toMatchObject({ recovered: true });
+    expect(m.room.status).toBe('waiting');
+    expect(m.results.size).toBe(0);
+    await expect(runner.act('r1', 'u1', { type: 'check' })).rejects.toThrow('not playing');
+  });
+
+  it('정산 도중 멈춘 판은 다시 정산하지 않고 정리만 마친다', async () => {
+    const m = memStore('matgo', ['u1'], 2);
+    const runner = new Runner(m.store, ENGINES, seededRng(51));
+    await runner.start('r1', 'u1');
+    await playOut(m, runner, 'matgo', ['u1'], 5);
+    const before = m.wallets.u1;
+    // 판은 끝났는데 방이 playing으로 남은 상황을 흉내
+    m.room.status = 'playing';
+    await runner.timeout('r1');
+    expect(m.room.status).toBe('waiting');
+    expect(m.wallets.u1).toBe(before);
+    expect(m.results.size).toBe(1);
   });
 
   it('동시에 두 행동이 오면 하나만 저장된다 (버전 충돌 시 다시 시도)', async () => {

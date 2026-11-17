@@ -557,6 +557,8 @@ export const blackjack: Engine<BjState, BjAction, BjCarry, BjPublic, BjPrivate> 
         const amt = action.amount;
         if (!Number.isInteger(amt)) throw new EngineError('베팅 금액은 정수여야 합니다');
         if (amt < s.baseUnit) throw new EngineError(`최소 베팅은 ${s.baseUnit}입니다`);
+        // 기본 단위의 배수만 (블랙잭 3:2 지급이 항상 정수가 되도록: 기본 단위는 100 이상의 짝수)
+        if (amt % s.baseUnit !== 0) throw new EngineError(`베팅은 ${s.baseUnit} 단위로만 할 수 있습니다`);
         if (amt > s.baseUnit * MAX_BET_MULT) throw new EngineError(`최대 베팅은 ${s.baseUnit * MAX_BET_MULT}입니다`);
         if (st.stack !== null && amt > st.stack) throw new EngineError('가진 돈보다 많이 걸 수 없습니다');
         st.bet = amt;

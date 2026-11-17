@@ -92,15 +92,14 @@ describe('딜러', () => {
 });
 
 describe('블랙잭·피크', () => {
-  it('블랙잭은 3:2, 홀수 베팅은 버림', () => {
-    const s = start([human(0), human(1)], [['AS', 'KD'], ['QS', 'AC']], ['9H', '7C'], [], [B, 150]);
+  it('블랙잭은 3:2, 베팅은 기본 단위의 배수만', () => {
+    const s = start([human(0), human(1)], [['AS', 'KD'], ['QS', 'AC']], ['9H', '7C'], [], [B, 300]);
     expect(s.phase).toBe('done'); // 둘 다 블랙잭 → 딜러는 뽑지 않음
     expect(s.dealer).toHaveLength(2);
     const d = deltas(s);
     expect(d[0]).toBe(150);
-    expect(d[1]).toBe(225);
-    const s2 = start([human(0)], [['AS', 'KD']], ['9H', '7C'], [], [B + 1]);
-    expect(deltas(s2)[0]).toBe(151); // 101 × 1.5 = 151.5 → 151
+    expect(d[1]).toBe(450);
+    expect(() => start([human(0)], [['AS', 'KD']], ['9H', '7C'], [], [B + 1])).toThrow(/단위/);
   });
   it('딜러 블랙잭 피크: 즉시 공개, 원금만 잃고 플레이어 블랙잭은 푸시', () => {
     const s = start([human(0), human(1)], [['10S', '9D'], ['AS', 'JD']], ['AH', 'KC'], FILLER, [300, 200]);
