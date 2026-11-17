@@ -1,5 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import type { Backend, Channel, Member, NetMsg, RankEntry, Room, RoomPlayer, TargetEntry } from './backend';
+import { LOBBY_MAX } from './lobby';
 
 class SupaChannel<M> implements Channel<M> {
   private ch: RealtimeChannel;
@@ -114,6 +115,12 @@ export function createSupabaseBackend(sb: SupabaseClient): Backend {
         losses: r.losses,
       }));
     },
+    async getLobbyMax() {
+      const { data } = await sb.from('app_settings').select('value').eq('key', 'tank_lobby_max').maybeSingle();
+      const n = Number((data as { value: unknown } | null)?.value);
+      return Number.isFinite(n) && n >= 2 ? n : LOBBY_MAX;
+    },
+    setLobbyMax: (n) => rpc<number>('set_app_setting', { p_key: 'tank_lobby_max', p_value: Math.round(n) }),
     async getPoints(userId) {
       const { data, error } = await sb.from('player_points').select('points').eq('user_id', userId).maybeSingle();
       if (error) throw new Error(error.message);

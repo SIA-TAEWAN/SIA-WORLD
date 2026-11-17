@@ -95,6 +95,10 @@ export interface Backend {
   endGame(id: string, gameNo: number, present: string[], winner?: number | null): Promise<void>;
   /** 사용자별 포인트 (없으면 1000) */
   getPoints(userId: string): Promise<number>;
+  /** 대기실 최대 동시 접속 인원 (운영 설정, 없으면 LOBBY_MAX) */
+  getLobbyMax(): Promise<number>;
+  /** 대기실 최대 인원 바꾸기 (관리자만, 2~200) → 저장된 값 */
+  setLobbyMax(n: number): Promise<number>;
   /** 포인트 랭킹 (포인트 높은 순) */
   getRanking(): Promise<RankEntry[]>;
   /** 백발백중 점수 기록 (로그인한 본인) → 최고 점수 */

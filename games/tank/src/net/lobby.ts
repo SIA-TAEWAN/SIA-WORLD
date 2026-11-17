@@ -1,5 +1,6 @@
 import type { Backend, Channel, Member, Room, RoomPlayer } from './backend';
 
+/** 대기실 최대 동시 접속 인원 기본값 (운영 설정 app_settings.tank_lobby_max가 있으면 그 값) */
 export const LOBBY_MAX = 30;
 
 export interface LobbyMeta {
@@ -30,6 +31,8 @@ export class LobbySession {
   private poll: ReturnType<typeof setInterval> | null = null;
   private refetchTimer: ReturnType<typeof setTimeout> | null = null;
   private known = new Set<string>();
+  /** 이 대기실의 최대 인원 (들어갈 때 서버 설정을 읽는다) */
+  max = LOBBY_MAX;
 
   constructor(
     readonly backend: Backend,
@@ -71,13 +74,14 @@ export class LobbySession {
     if (this.chat.length > 60) this.chat.splice(0, this.chat.length - 60);
   }
 
-  /** 들어가서 정원(30명)을 확인한다 (사람은 계정 ID로 구분하므로 이름 중복은 없다) */
+  /** 들어가서 정원(운영 설정, 기본 30명)을 확인한다 (사람은 계정 ID로 구분하므로 이름 중복은 없다) */
   async enter() {
+    this.max = await this.backend.getLobbyMax().catch(() => LOBBY_MAX);
     await this.ch.join(this.meta);
     // 다른 사람 정보가 도착할 시간을 잠깐 준다
     await new Promise((r) => setTimeout(r, 900));
     const idx = this.members.findIndex((m) => m.key === this.me.id);
-    if (idx >= LOBBY_MAX) {
+    if (idx >= this.max) {
       await this.ch.leave();
       throw new LobbyFullError();
     }

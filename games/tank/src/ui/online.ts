@@ -7,7 +7,7 @@ import type { MatchSummary } from '../scenes/GameScene';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { getBackend, lobbyCode, lobbyLink, clientId } from '../net';
 import { allReady, friendly, hostOf, type Backend, type Room, type RoomPlayer } from '../net/backend';
-import { LobbyFullError, LobbySession, LOBBY_MAX } from '../net/lobby';
+import { LobbyFullError, LobbySession } from '../net/lobby';
 import { worldHome, openWorldRanking } from '../net/world';
 import { showManualModal } from './manual';
 import { RoomSession } from '../net/room';
@@ -91,7 +91,7 @@ export async function showLobby() {
     try {
       await sess.enter();
     } catch (e) {
-      if (e instanceof LobbyFullError) toast(`대기실이 가득 찼습니다 (최대 ${LOBBY_MAX}명)`);
+      if (e instanceof LobbyFullError) toast(`대기실이 가득 찼습니다 (최대 ${sess.max}명)`);
       else toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요');
       return nav.entry();
     }
@@ -132,6 +132,7 @@ function renderLobby(sess: LobbySession) {
     <div class="lobby-tools">
       <button class="btn small-btn" id="ai">🤖 AI와 1:1</button>
       <button class="btn small-btn" id="manual">📖 게임 설명</button>
+      ${state.isAdmin ? '<button class="btn small-btn" id="cap" title="관리자: 대기실 최대 동시 접속 인원">👥 정원 설정</button>' : ''}
       <span class="who-me">${rankedName(state.name, 16, clientId())}님</span>
     </div>
     <div class="lobby-grid">
@@ -153,7 +154,7 @@ function renderLobby(sess: LobbySession) {
   );
 
   const draw = () => {
-    $(root, '#count').textContent = `${sess.members.length}/${LOBBY_MAX}명 · ${sess.code === 'main' ? '기본' : escapeHtml(sess.code)}`;
+    $(root, '#count').textContent = `${sess.members.length}/${sess.max}명 · ${sess.code === 'main' ? '기본' : escapeHtml(sess.code)}`;
     const rooms = sess.visibleRooms();
     $(root, '#rooms').innerHTML = rooms.length
       ? rooms
@@ -188,6 +189,21 @@ function renderLobby(sess: LobbySession) {
   $(root, '#ai').addEventListener('click', () => {
     sfx.click();
     void leaveLobby(nav.setup);
+  });
+  // 관리자: 대기실 최대 동시 접속 인원 바꾸기 (다음에 들어오는 사람부터 적용)
+  root.querySelector('#cap')?.addEventListener('click', async () => {
+    const v = prompt(`대기실 최대 동시 접속 인원 (2~200명)
+지금: ${sess.max}명 · 바꾸면 다음에 들어오는 사람부터 적용돼요`, String(sess.max));
+    if (v === null) return;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 2 || n > 200) return toast('2~200 사이 숫자로 적어 주세요');
+    try {
+      sess.max = await sess.backend.setLobbyMax(n);
+      toast(`대기실 정원을 ${sess.max}명으로 바꿨어요`);
+      draw();
+    } catch (e) {
+      toast(friendly(e));
+    }
   });
   $(root, '#manual').addEventListener('click', () => {
     sfx.click();

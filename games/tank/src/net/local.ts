@@ -1,3 +1,4 @@
+import { LOBBY_MAX } from './lobby';
 import { allReady, hostOf, type Backend, type Channel, type Member, type NetMsg, type Room, type RoomPlayer } from './backend';
 
 /**
@@ -269,6 +270,14 @@ export function createLocalBackend(me: () => { id: string; name: string }): Back
     },
     async getTargetRanking() {
       return Object.entries(readScores('siatank:localtarget2')).map(([key, { name, v }]) => ({ key, name, best: v }));
+    },
+    async getLobbyMax() {
+      return Number(localStorage.getItem('siatank:lobbymax')) || LOBBY_MAX;
+    },
+    async setLobbyMax(n) {
+      const v = Math.max(2, Math.min(200, Math.round(n)));
+      localStorage.setItem('siatank:lobbymax', String(v));
+      return v;
     },
     async getPoints(userId) {
       return readScores('siatank:localpoints2')[userId]?.v ?? 1000;
