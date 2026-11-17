@@ -29,7 +29,7 @@ const scaled = (v: number, w: number, w0: number) => Math.max(v * 0.6, (v * w) /
 /**
  * 테이블: 게임별 보조색의 둥근 판 + 굵은 외곽선 + 가장자리 크림 테두리 (평평한 단색, 펠트 질감 없음)
  */
-export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'blackjack') {
+export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'holdem' | 'blackjack') {
   const { W, H } = viewSize(scene);
   const g = scene.add.graphics();
   const C = T.COLOR;

@@ -64,7 +64,7 @@ export interface Settlement<C> {
 }
 
 export interface Engine<S, A, C = unknown, P = unknown, Q = unknown> {
-  readonly game: 'matgo' | 'poker' | 'blackjack';
+  readonly game: 'matgo' | 'poker' | 'blackjack' | 'holdem';
   /** 한 판 시작 (섞고 나누기) */
   newRound(input: RoundInput<C>): S;
   /** 지금 행동해야 하는 자리들. 비어 있으면 판이 끝났거나(done) 엔진이 스스로 진행할 차례가 없음 */

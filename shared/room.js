@@ -2,9 +2,9 @@
 // 방 상태 변경은 DB 함수(security definer)로, 게임 행동은 Edge Function(game-action)으로만 한다.
 import { supabase } from './supabase.js';
 
-export const SEATS = { matgo: 2, poker: 4, blackjack: 4 };
-export const GAME_NAME = { matgo: '시아맞고', poker: '세븐포커', blackjack: '블랙잭' };
-export const CURRENCY = { matgo: 'nyang', poker: 'chips', blackjack: 'chips' };
+export const SEATS = { matgo: 2, poker: 4, blackjack: 4, holdem: 4 };
+export const GAME_NAME = { matgo: '시아맞고', poker: '세븐포커', blackjack: '블랙잭', holdem: '텍사스 홀덤' };
+export const CURRENCY = { matgo: 'nyang', poker: 'chips', blackjack: 'chips', holdem: 'chips' };
 /** 살아 있음 신호 간격 (60초 넘게 없으면 서버가 나간 것으로 본다) */
 export const TOUCH_MS = 20_000;
 

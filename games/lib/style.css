@@ -364,3 +364,7 @@ input:focus { outline: var(--line) solid var(--primary); }
 /* 이름칸 얼굴: 원 안에 다 들어오게 (모서리가 잘리지 않게 여백) */
 .seat img, .av-btn img { padding: 3px; box-sizing: border-box; overflow: hidden; }
 .av img { border-radius: 50%; background: var(--white); border: var(--line-thin) solid var(--outline); padding: 5px; box-sizing: border-box; }
+
+/* 홀덤: 레이즈 금액 (빠른 버튼 + 슬라이더) */
+.raise-row { align-items: center; }
+.raise-row input[type='range'] { flex: 1; min-width: 140px; max-width: 320px; accent-color: var(--primary-deep); height: 28px; }

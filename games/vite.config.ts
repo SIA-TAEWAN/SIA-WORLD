@@ -49,6 +49,7 @@ export default defineConfig(({ command }) => ({
         matgo: here('matgo/index.html'),
         casino: here('casino/index.html'),
         poker: here('casino/poker/index.html'),
+        holdem: here('casino/holdem/index.html'),
         blackjack: here('casino/blackjack/index.html'),
       },
     },

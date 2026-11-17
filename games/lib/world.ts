@@ -10,7 +10,7 @@ export interface WorldUser {
   isAdmin?: boolean;
 }
 
-export type GameId = 'matgo' | 'poker' | 'blackjack';
+export type GameId = 'matgo' | 'poker' | 'blackjack' | 'holdem';
 export type Currency = 'chips' | 'nyang';
 
 export interface SeatRow {

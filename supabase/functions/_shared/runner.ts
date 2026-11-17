@@ -5,7 +5,7 @@
  */
 import { cryptoRng, EngineError, type Engine, type Rng, type SeatInfo } from './engine.ts';
 
-export type GameId = 'matgo' | 'poker' | 'blackjack';
+export type GameId = 'matgo' | 'poker' | 'blackjack' | 'holdem';
 
 export interface RoomRow {
   id: string;
