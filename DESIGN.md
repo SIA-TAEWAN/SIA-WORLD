@@ -199,7 +199,8 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노)은 이 �
 **SpriteCook으로 만든 그림** (원본 시트와 asset id: `art/spritecook/`, `art/spritecook/spritecook-assets.json`)
 - 탱크 없는 십이지신 전신 12장 → `shared/images/zodiac/full/*.png` (트럼프 J·Q·K, 화투 광·열끗, 컷인, 로비·카지노 장식)
 - 원형 아바타용 얼굴 12장 (전신에서 잘라냄) → `shared/images/zodiac/face/*.png` (이름패, 칩, 카드 뒷면 12띠, 동물 고르기)
-- 화투 12달 식물 → `shared/images/hwatu/plant-01~12.png` (화투 바탕, 피는 진하게 · 나머지는 연하게)
+- **전통 화투 48장 + 뒷면** → `shared/images/hwatu/cards/<카드 id>.png` (맞고 화면은 이 그림을 쓴다. 광에만 작은 '광' 도장)
+- 화투 12달 식물 → `shared/images/hwatu/plant-01~12.png` (예전 코드 그림 화투용, 지금은 대체됨)
 - 로비 카드 `shared/images/card-matgo.png`, `card-casino.png`
 - 시아탱크 원본 그림(`games/tank/public/tanks`)은 시아탱크 게임 화면에서 그대로 쓰고, `shared/images/zodiac/*.png`(탱크 버전)는 `tankUrl()`로만 쓴다.
 

@@ -28,6 +28,36 @@
       "asset_id": "a67bc7f9-523e-4432-b53b-aff4e314622d",
       "sha12": "a19b13faadfd",
       "label": "로비 카드 시아카지노 (16:9) → shared/images/card-casino.png"
+    },
+    {
+      "asset_id": "cebe85dd-4b7f-4b69-a5b1-dc4c979991ce",
+      "sha12": "c37a3b8b9433",
+      "label": "전통 화투 1~3월 (4x3) → shared/images/hwatu/cards/m01~m03-*.png"
+    },
+    {
+      "asset_id": "43c6730a-236b-4886-8c5b-b6a970386369",
+      "sha12": "0ed1b4485bac",
+      "label": "전통 화투 4~6월 (4x3) → cards/m04~m06"
+    },
+    {
+      "asset_id": "4a0ba157-2cf6-4a77-8a7f-dd85b3df1260",
+      "sha12": "7ad05f738e67",
+      "label": "전통 화투 7~9월 (4x3) → cards/m07~m09"
+    },
+    {
+      "asset_id": "9f9e63a3-08a8-44b3-9972-a780b818ac56",
+      "sha12": "41aacb9307d4",
+      "label": "전통 화투 10~12월 (4x3) → cards/m10~m12"
+    },
+    {
+      "asset_id": "9547f970-3264-4b20-91ed-955ad2cf8ce7",
+      "sha12": "690d95a17752",
+      "label": "화투 뒷면 → cards/back.png"
+    },
+    {
+      "asset_id": "c7546fbe-bb48-4650-9fb3-0a7ab1cade26",
+      "sha12": "",
+      "label": "로비 카드 시아맞고 2인 (호랑이·토끼) → shared/images/card-matgo.png (예전 3인 그림 대체)"
     }
   ]
 }
