@@ -94,7 +94,8 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
   back: 'games/casino/',
   backLabel: '카지노',
   noAi: true,
-  liveWallet: true,
+  // 당첨금은 휠이 멈춘 뒤에 보이게
+  liveWallet: (pub: RoulettePublic | null) => (pub?.phase === 'spin' ? SPIN_ANIM + 600 : 400),
   felt: () => theme().COLOR.skyMid,
 
   draw(t: Ctx) {
@@ -298,7 +299,8 @@ function flash(el: HTMLElement, msg: string) {
 /** 베팅판 HTML: 계절마다 한 줄 [계절][띠][이웃][띠][이웃][띠][다음 줄로 이웃] + 음양 줄 */
 function board(p: RoulettePublic, t: Ctx, active: boolean) {
   const me = String(t.mySeat);
-  const result = p.phase === 'spin' ? p.landed : null;
+  // 당첨 칸 표시는 휠이 멈춘 뒤에
+  const result = p.phase === 'spin' && wheelStopped(`${p.spin}:${t.room.round_no}`) ? p.landed : null;
   // 다른 사람 베팅 (확정한 것): 칸마다 아바타
   const others = new Map<string, string[]>();
   for (const [seat, bets] of Object.entries(p.bets)) {

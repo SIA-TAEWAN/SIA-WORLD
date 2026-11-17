@@ -5,6 +5,6 @@ export const GAMES = [
     path: 'games/tank/', image: 'shared/images/card-tank.png', open: true },
   { id: 'matgo', name: '시아맞고', desc: '십이지신 화투로 즐기는 맞고',
     path: 'games/matgo/', image: 'shared/images/card-matgo.png', open: true },
-  { id: 'casino', name: '시아카지노', desc: '세븐포커와 블랙잭',
+  { id: 'casino', name: '시아카지노', desc: '세븐포커 · 텍사스 홀덤 · 블랙잭 · 십이지신 룰렛',
     path: 'games/casino/', image: 'shared/images/card-casino.png', open: true },
 ];

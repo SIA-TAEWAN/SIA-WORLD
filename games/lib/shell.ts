@@ -97,7 +97,7 @@ export interface GameUI<P = any, Q = any> {
   /** 컷인 문구 (없으면 null) */
   cutin?(ev: GameEventLite, t: TableCtx<P, Q>): string | null;
   /** 판 도중에도 지갑이 바뀌는 게임 (룰렛: 확정 때 빠지고 결과 때 들어온다) → 상태가 올 때마다 금액을 다시 읽는다 */
-  liveWallet?: boolean;
+  liveWallet?: boolean | ((pub: any) => number);
   /** AI가 없는 게임 (룰렛): 빈자리는 자리 줄·방 목록에 보이지 않는다 */
   noAi?: boolean;
   /** 카드를 한 장씩 나눠 줄 때 간격(ms). 기본 110 */
@@ -657,8 +657,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
 
   /** 지갑 다시 읽기 (잠깐 사이 여러 번 불려도 한 번만) */
   let walletTimer: ReturnType<typeof setTimeout> | null = null;
-  const refreshWallet = () => {
-    if (walletTimer) return;
+  const refreshWallet = (delay = 400) => {
+    if (walletTimer) clearTimeout(walletTimer);
     walletTimer = setTimeout(() => {
       walletTimer = null;
       void m.wallet.ensureWallet().then((w) => {
@@ -666,7 +666,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         wallet = w;
         paintMoney();
       }, () => undefined);
-    }, 400);
+    }, delay);
   };
   const paintMoney = () => {
     if (closed) return;
@@ -929,7 +929,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       if (closed) return;
       if (busy && s.updated_at !== busySince) unbusy();
       st = s;
-      if (ui.liveWallet) refreshWallet();
+      if (ui.liveWallet) refreshWallet(typeof ui.liveWallet === 'function' ? ui.liveWallet(s.public_state) : 400);
       paint(); // 먼저 그려야 카드 연출 시각을 안다 (컷인·결과는 그 뒤)
       showCutins();
       paintResult();
