@@ -347,23 +347,30 @@ const AT_PLAY = 0;
 const AT_FLIP = 760;
 const AT_TAKE = 1650;
 const plan = new Map<string, CardPlan>();
-let planRound = -1;
+let planRound = '';
 let planSeen = 0;
 
 /** 새 사건들로 계획 세우기 (같은 상태를 다시 그릴 때는 그대로) */
-function updatePlan(p: MatgoPublic, round: number) {
-  if (round !== planRound) {
-    planRound = round;
+function updatePlan(p: MatgoPublic, round: number, roomId: string) {
+  // 방이 바뀌거나 새 판이면 처음부터 (모듈 상태는 방을 옮겨도 남는다)
+  const key = `${roomId}:${round}`;
+  if (key !== planRound) {
+    planRound = key;
     planSeen = 0;
     plan.clear();
   }
   const evs = (p.events ?? []).filter((e) => e.id > planSeen);
   if (!evs.length) return;
   // 이전 계획은 이미 지나간 것이므로 비운다 (새로 들어온 사건만 재생)
+  // 단, 패 고르기로 한 차례가 두 번에 나뉘어 오면 (첫 사건이 낸 패가 아님) 앞서 낸·뒤집은 패는 이미 내려앉은 채로 이어 간다
+  const continuing = evs[0].t === 'flip' || evs[0].t === 'capture' || evs[0].t === 'steal';
+  const lastTurn = Math.max(-1, ...[...plan.values()].map((x) => x.turn));
+  const kept = continuing ? [...plan].filter(([, x]) => x.turn === lastTurn && !x.floor && x.captureAt === null) : [];
   plan.clear();
+  for (const [id, x] of kept) plan.set(id, { ...x, startAt: 0, turn: 0 });
   planSeen = Math.max(planSeen, ...evs.map((e) => e.id));
-  let turn = -1;
-  let hasFlip = true;
+  let turn = kept.length ? 0 : continuing ? 0 : -1;
+  let hasFlip = kept.length ? kept.some(([, x]) => x.flip) : !continuing;
   const base = () => Math.max(0, turn) * TURN_MS;
   for (const e of evs) {
     const seat = typeof e.seat === 'number' ? e.seat : null;
@@ -466,7 +473,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const allCaptured = (pl: (typeof P)[number]) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi];
     // 판 시작(아직 아무도 안 냄): 더미에서 한 장씩 착착 나눠 준다 (내 패 → 상대 패 번갈아, 그다음 바닥)
     const dealing = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0 && !(p.events ?? []).some((e) => e.t === 'play' || e.t === 'flip');
-    updatePlan(p, t.room.round_no);
+    updatePlan(p, t.room.round_no, t.room.id);
     const DEAL_GAP = 130;
 
     // 상대: 점수(세로) 또는 이름패(가로) · 손패(뒷면) · 먹은 패

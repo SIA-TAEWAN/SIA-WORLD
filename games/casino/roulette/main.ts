@@ -37,6 +37,7 @@ let countdown: ReturnType<typeof setTimeout> | null = null;
 let roomId = '';
 /** 서버 시각 − 내 시각 (베팅이 새로 열리는 순간을 보고 맞춘다) */
 let skew = 0;
+let skewSeen = false;
 let lastPhase = '';
 let lastBase = 0;
 let lastTick = '';
@@ -50,6 +51,7 @@ function enterRoom(id: string, base: number) {
   lastBets = [];
   sentFor = '';
   skew = 0;
+  skewSeen = false;
   lastPhase = '';
   if (autoTimer) clearTimeout(autoTimer);
   autoTimer = null;
@@ -66,7 +68,11 @@ function syncClock(p: RoulettePublic) {
   if (p.phase === 'bet' && p.endsAt && lastPhase.startsWith('spin:')) {
     const est = p.endsAt - BET_MS - Date.now();
     // 터무니없는 값은 버린다 (네트워크 지연이 매우 큰 경우 등)
-    if (Math.abs(est) < 5 * 60_000) skew = est;
+    // 늦게 본 경우(백그라운드·재연결) 값이 작게 나오므로, 지금까지 잰 것 중 가장 큰 값을 쓴다
+    if (Math.abs(est) < 5 * 60_000) {
+      skew = skewSeen ? Math.max(skew, est) : est;
+      skewSeen = true;
+    }
   }
   lastPhase = key;
 }
@@ -343,7 +349,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     };
     el.querySelector('#rl-go')?.addEventListener('click', send);
     // 마감 직전 자동 확정 (놓은 칩이 있을 때만, 없으면 서버가 '안 걸기'로 처리)
-    if (p.endsAt && local.length && sentFor !== k) autoTimer = setTimeout(send, Math.max(0, p.endsAt - serverNow() - 1500));
+    if (p.endsAt && local.length && sentFor !== k && p.endsAt - serverNow() > 300) autoTimer = setTimeout(send, Math.max(0, p.endsAt - serverNow() - 1500));
   },
 
   resultHtml(t: Ctx) {

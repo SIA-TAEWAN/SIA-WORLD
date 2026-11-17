@@ -24,30 +24,30 @@ export const SOUNDS = {
   tick: [0.35, 0, 1500, 0, 0.005, 0.02, 1, 2],
   cutin: [0.6, 0, 440, 0.02, 0.1, 0.25, 1, 1.5, 12, 0, 220, 0.06],
   win: [0.7, 0, 523, 0.02, 0.18, 0.35, 1, 1.4, 0, 0, 262, 0.07, 0.07],
-  lose: [0.55, 0, 330, 0.02, 0.1, 0.35, 1, 1.2, -4],
+  lose: [0.55, 0, 330, 0.02, 0.1, 0.35, 1, 1.2, -1],
   // 카드
-  deal: [0.45, 0.1, 1600, 0, 0.01, 0.06, 4, 0.6, -40, 0, 0, 0, 0, 1.4],
+  deal: [0.45, 0.1, 1600, 0, 0.01, 0.06, 4, 0.6, -30, 0, 0, 0, 0, 1.4],
   flip: [0.45, 0.05, 900, 0.005, 0.01, 0.05, 1, 2, 60],
-  slap: [0.9, 0.05, 200, 0, 0.02, 0.14, 4, 2.5, -8, 0, 0, 0, 0, 1.2],
+  slap: [0.9, 0.05, 200, 0, 0.02, 0.14, 4, 2.5, -1.7, 0, 0, 0, 0, 1.2],
   chip: [0.4, 0.08, 2400, 0, 0.01, 0.05, 1, 2.5, 0, 0, 900, 0.015],
-  fold: [0.4, 0, 260, 0.01, 0.04, 0.12, 2, 1, -12],
-  bust: [0.55, 0, 180, 0.01, 0.08, 0.3, 2, 1.5, -6],
+  fold: [0.4, 0, 260, 0.01, 0.04, 0.12, 2, 1, -2],
+  bust: [0.55, 0, 180, 0.01, 0.08, 0.3, 2, 1.5, -0.65],
   // 룰렛
   spinTick: [0.3, 0.05, 1900, 0, 0.004, 0.015, 1, 2],
   spinStop: [0.6, 0, 1047, 0.01, 0.06, 0.2, 1, 1.4, 0, 0, 523, 0.05],
   // 시아탱크
-  tankFire: [0.8, 0.05, 150, 0, 0.04, 0.22, 4, 1.8, -10, 0, 0, 0, 0, 1.6],
-  tankBoom: [1, 0.1, 80, 0, 0.12, 0.6, 4, 2.2, -2, 0, 0, 0, 0, 2.2],
-  tankBigBoom: [1, 0.1, 60, 0.01, 0.25, 0.9, 4, 2.5, -1.5, 0, 0, 0, 0, 2.6],
-  tankLaser: [0.5, 0, 1400, 0.01, 0.3, 0.3, 2, 1, -80],
-  tankBuild: [0.5, 0, 220, 0.01, 0.08, 0.15, 1, 1, -10],
+  tankFire: [0.8, 0.05, 150, 0, 0.04, 0.22, 4, 1.8, -0.8, 0, 0, 0, 0, 1.6],
+  tankBoom: [1, 0.1, 80, 0, 0.12, 0.6, 4, 2.2, -0.15, 0, 0, 0, 0, 2.2],
+  tankBigBoom: [1, 0.1, 60, 0.01, 0.25, 0.9, 4, 2.5, -0.07, 0, 0, 0, 0, 2.6],
+  tankLaser: [0.5, 0, 1400, 0.01, 0.3, 0.3, 2, 1, -3.2],
+  tankBuild: [0.5, 0, 220, 0.01, 0.08, 0.15, 1, 1, -1.3],
   tankHeal: [0.5, 0, 440, 0.02, 0.15, 0.2, 0, 1, 25],
   tankTurn: [0.5, 0, 523, 0.01, 0.06, 0.12, 1, 1.2, 0, 0, 262, 0.07],
   tankWin: [0.7, 0, 523, 0.02, 0.2, 0.4, 1, 1.4, 0, 0, 262, 0.08, 0.08],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { chip: 70, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40 };
+const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 
@@ -150,18 +150,19 @@ function audio() {
       return null;
     }
   }
-  if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
+  if (ctx.state !== 'running' && ctx.state !== 'closed') void ctx.resume().catch(() => undefined);
   return ctx;
 }
 
 /** 첫 사용자 입력 때 오디오를 깨운다 (그 전에는 소리 없음) */
+const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click'];
 function unlock() {
-  if (unlocked) return;
   unlocked = true;
-  audio();
-  for (const ev of ['pointerdown', 'keydown', 'touchstart']) removeEventListener(ev, unlock, true);
+  const a = audio();
+  // 오디오가 실제로 깨어날 때까지 입력마다 다시 시도 (휴대폰은 touchend/click에서만 깨어나는 경우가 있다)
+  if (a && a.state === 'running') for (const ev of UNLOCK_EVENTS) removeEventListener(ev, unlock, true);
 }
-if (typeof addEventListener === 'function') for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, unlock, true);
+if (typeof addEventListener === 'function') for (const ev of UNLOCK_EVENTS) addEventListener(ev, unlock, true);
 
 const soundsBase = () => new URL('sounds/', import.meta.url).href;
 
@@ -212,10 +213,10 @@ export function play(name, opts = {}) {
   const now = performance.now();
   const gap = MIN_GAP[name] ?? DEFAULT_GAP;
   if (now - (lastAt.get(name) ?? -1e9) < gap) return;
+  const a = audio();
+  if (!a || a.state !== 'running') return;
   if (voices >= MAX_VOICES) return;
   lastAt.set(name, now);
-  const a = audio();
-  if (!a) return;
   void checkFile(name);
   const buf = buffers.get(name) ?? zzfxBuffer(name);
   if (!buf) return;
@@ -226,9 +227,9 @@ export function play(name, opts = {}) {
     const g = a.createGain();
     g.gain.value = opts.volume ?? 1;
     src.connect(g).connect(a.destination);
-    voices++;
     src.onended = () => (voices = Math.max(0, voices - 1));
     src.start();
+    voices++;
   } catch {
     /* 소리는 실패해도 게임은 계속 */
   }
@@ -272,7 +273,7 @@ export function mountSoundButton(parent = document.body) {
     b.title = muted ? '소리 켜기' : '소리 끄기';
   };
   b.style.cssText =
-    'position:fixed;right:calc(12px + env(safe-area-inset-right));bottom:calc(12px + env(safe-area-inset-bottom));z-index:150;width:44px;height:44px;border-radius:50%;' +
+    'position:fixed;right:calc(12px + env(safe-area-inset-right));bottom:calc(12px + env(safe-area-inset-bottom));z-index:90;width:44px;height:44px;border-radius:50%;' +
     'background:var(--white,#fff);border:3px solid var(--outline,#2a1a10);box-shadow:0 3px 0 var(--outline,#2a1a10);font-size:20px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0';
   b.addEventListener('click', () => toggleMuted());
   onMuteChange(paint);

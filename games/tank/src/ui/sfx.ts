@@ -105,6 +105,7 @@ export const sfx = {
     muted = !muted;
     try {
       localStorage.setItem('siatank:mute', muted ? '1' : '0');
+      localStorage.setItem('sia:sound', muted ? 'off' : 'on');
     } catch {
       /* 무시 */
     }

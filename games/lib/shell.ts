@@ -1041,6 +1041,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     ]);
     if (closed) return;
     if (!r) return gone();
+    queue.length = 0;
+    pendingPriv = undefined;
     room = r;
     seats = s;
     st = gs;
@@ -1067,7 +1069,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const applyState = (s: StateRow) => {
     if (busy && s.updated_at !== busySince) unbusy();
     st = s;
-    if (pendingPriv !== undefined) {
+    if (pendingPriv !== undefined && queue.length === 0) {
       priv = pendingPriv;
       pendingPriv = undefined;
     }
@@ -1094,7 +1096,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const enqueueState = (s: StateRow) => {
-    queue.push({ s, steps: freshSteps(s) });
+    // 이미 본 것보다 오래된 상태 (다시 불러온 뒤 늦게 온 실시간 등)는 버린다
+    const latest = queue.length ? queue[queue.length - 1].s : st;
+    if (latest && s.updated_at && latest.updated_at && s.updated_at < latest.updated_at) return;
+    let steps: ReplayStep[] = [];
+    try {
+      steps = freshSteps(s);
+    } catch (e) {
+      console.warn('replay', e);
+    }
+    queue.push({ s, steps });
     void runQueue();
   };
   const runQueue = async () => {
@@ -1103,18 +1114,30 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     try {
       while (queue.length && !closed) {
         const item = queue.shift()!;
+        const mine = seats.find((x) => x.user_id === me.userId);
+        const myNext = !!mine && (item.s.pending_seats ?? []).includes(mine.seat_no);
         for (const step of item.steps) {
           if (closed) return;
-          playStep(step);
+          try {
+            playStep(step);
+          } catch (e) {
+            console.warn('replay', e);
+          }
           const seat = typeof step.at === 'number' ? step.at : null;
           const isAi = seat !== null && (() => {
             const r = seats.find((x) => x.seat_no === seat);
             return !r || !r.user_id || r.left_game;
           })();
-          await sleep(step.gap ?? (isAi ? 800 : 350));
+          // 이 상태에서 내 차례가 오면 내 시간(서버 마감)이 줄지 않게 조금 빨리
+          const gap = step.gap ?? (isAi ? 800 : 350);
+          await sleep(myNext ? Math.min(gap, 500) : gap);
         }
         if (closed) return;
-        applyState(item.s);
+        try {
+          applyState(item.s);
+        } catch (e) {
+          console.warn('apply', e);
+        }
       }
     } finally {
       replaying = false;
@@ -1132,7 +1155,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         b.className = 'say';
         b.textContent = step.text;
         b.style.left = `${a.x}px`;
-        b.style.top = `${a.y}px`;
+        b.style.top = `${Math.max(a.y, 48)}px`;
         stageEl.append(b);
         setTimeout(() => b.remove(), 1500);
       }
@@ -1176,6 +1199,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       if (closed) return;
       if (!r) return gone();
       room = { ...room!, ...r };
+      // 연출 재생 중이면 지금 그리지 않는다 (판이 끝나며 테이블이 비거나 남은 말풍선이 사라지지 않게) → 재생 뒤 applyState가 그린다
+      if (replaying || queue.length) return;
       paint();
       paintResult();
     },
