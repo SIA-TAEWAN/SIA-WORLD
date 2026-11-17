@@ -1,6 +1,8 @@
 import { autoplay } from '../src/ai/autoplay';
 import { TANK_IDS, TANKS } from '../src/game/data';
-import { RANDOM_MAP_IDS as MAP_IDS } from '../src/data/maps';
+import type { MapId } from '../src/data/maps';
+/** 밸런스 측정은 뒷동산 맵만 (열두빛은 TANK_IDS에 없어 빠진다) */
+const MAP_IDS: MapId[] = ['valley'];
 import type { Difficulty } from '../src/game/types';
 
 const games = Number(process.argv[2] ?? 12);

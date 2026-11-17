@@ -3,7 +3,7 @@ import { cpus } from 'node:os';
 import { TANK_IDS, TANKS } from '../src/game/data';
 
 /** 밸런스 측정을 CPU 코어 수만큼 나눠 돌린다: npm run balance:par -- [판 수] [난이도] */
-const games = process.argv[2] ?? '2';
+const games = process.argv[2] ?? '6' // 맵이 하나라 예전(3맵×2판)과 같은 판 수;
 const diff = process.argv[3] ?? 'normal';
 const N = Math.max(2, cpus().length - 1);
 const t0 = Date.now();
