@@ -1,6 +1,6 @@
 /** 블랙잭 화면: 딜러(위) + 플레이어 자리(아래), 베팅·히트·스탠드·더블·스플릿 */
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard } from '../../lib/cards.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme } from '../../lib/cards.ts';
 import type { BjPublic, BjResult } from '../../../supabase/functions/_shared/blackjack.ts';
 
 type Ctx = TableCtx<BjPublic, Record<string, never>>;
@@ -16,14 +16,14 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
   icon: '🃏',
   back: 'games/casino/',
   backLabel: '카지노',
-  felt: 0x2a1712,
+  felt: () => theme().COLOR.skyMid,
 
   draw(t: Ctx) {
     const { scene } = t;
     const W = scene.scale.width;
     const H = scene.scale.height;
     const p = t.pub;
-    drawTable(scene, 'lacquer', 0x1d6b4f);
+    drawTable(scene, 'blackjack');
     const n = Math.max(1, p?.seats.length ?? 4);
     // 세로 화면이면 자리를 2×2로, 가로면 한 줄로
     const portrait = H > W * 1.15;
@@ -34,12 +34,12 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     const shoe = { x: W - cw * 1.1, y: H * 0.19 };
     // 슈 (카드를 꺼내는 곳)
     for (let i = 0; i < 4; i++) playingCard(scene, shoe.x + i * 2, shoe.y - i * 2, null, cw * 0.8);
-    if (portrait || H > 380) label(scene, W / 2, portrait ? cw * 2.15 + 14 : H * 0.455, '블랙잭 3:2 · 딜러는 17부터 섭니다', clamp(cw * 0.17, 12, 16), '#bfe3d3').setAlpha(0.85);
+    if (portrait || H > 380) label(scene, W / 2, portrait ? cw * 2.15 + 14 : H * 0.455, '블랙잭 3:2 · 딜러는 17부터 섭니다', clamp(cw * 0.17, 12, 16)).setAlpha(0.85);
     if (!p) {
       label(scene, W / 2, H / 2 - cw * 0.6, '모두 레디하면 시작해요', clamp(cw * 0.3, 18, 30));
       return;
     }
-    if (p.shoeRemaining) label(scene, shoe.x, shoe.y + cw * 0.72, `${p.shoeRemaining}장`, clamp(cw * 0.17, 11, 15), '#d8c7b0');
+    if (p.shoeRemaining) label(scene, shoe.x, shoe.y + cw * 0.72, `${p.shoeRemaining}장`, clamp(cw * 0.17, 11, 15));
     // 딜러
     const dc = p.dealer.cards;
     const dy = portrait ? cw * 1.0 + 12 : H * 0.22;
@@ -82,10 +82,10 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
         const tot = `${h.total}${h.soft && h.total <= 21 ? 's' : ''}`;
         const res = h.result ? ` · ${RESULT[h.result]}${h.delta ? ` ${h.delta > 0 ? '+' : ''}${t.fmt(h.delta)}` : ''}` : '';
         const bad = h.result === 'lose' || h.result === 'bust';
-        label(scene, hx, y - hcw * 0.98, `${tot}${h.doubled ? ' ×2' : ''}${res}`, clamp(hcw * 0.22, 13, 22), bad ? '#ffb4a8' : h.result === 'win' || h.result === 'blackjack' ? '#f7d77a' : '#fff6e5');
+        label(scene, hx, y - hcw * 0.98, `${tot}${h.doubled ? ' ×2' : ''}${res}`, clamp(hcw * 0.22, 13, 22), bad ? tc('lose') : h.result === 'win' || h.result === 'blackjack' ? tc('primary') : tc('white'));
         // 칩: 가로는 카드 아래, 세로(2×2)는 이름패와 겹치지 않게 카드 오른쪽
-        if (portrait) chipStack(scene, hx + hcw * 0.18 * (h.cards.length - 1) + hcw * 0.78, y + hcw * 0.25, h.bet, undefined, clamp(cw * 0.18, 10, 16));
-        else chipStack(scene, hx, y + hcw * 0.92, h.bet, undefined, clamp(cw * 0.2, 11, 20));
+        // 칩은 카드 오른쪽 (아래 이름패와 겹치지 않게)
+        chipStack(scene, hx + hcw * 0.18 * (h.cards.length - 1) + hcw * 0.8, y + hcw * 0.3, h.bet, undefined, clamp(cw * 0.18, 10, 18));
       });
       if (!hands.length && s.bet) chipStack(scene, x, y + cw * 0.3, s.bet, undefined, clamp(cw * 0.2, 11, 20));
     });

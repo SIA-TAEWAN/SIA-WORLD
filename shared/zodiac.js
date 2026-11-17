@@ -1,32 +1,33 @@
 // 십이지신 목록과 아바타 선택.
 // 순서 = 띠 순서 = 화투 달 순서(1월 쥐 … 12월 돼지).
 
+// nick: 시아탱크 캐릭터 이름 (DESIGN.md 6장) — 화면에는 이 이름을 쓴다 ("AI 어흥이")
 export const ZODIAC = [
-  { id: 'rat', name: '쥐', emoji: '🐭', color: '#a9b2c3' },
-  { id: 'ox', name: '소', emoji: '🐮', color: '#8a5a3c' },
-  { id: 'tiger', name: '호랑이', emoji: '🐯', color: '#ff9a2e' },
-  { id: 'rabbit', name: '토끼', emoji: '🐰', color: '#f4f1f6' },
-  { id: 'dragon', name: '용', emoji: '🐲', color: '#3fbf8f' },
-  { id: 'snake', name: '뱀', emoji: '🐍', color: '#7bc04a' },
-  { id: 'horse', name: '말', emoji: '🐴', color: '#b8763e' },
-  { id: 'sheep', name: '양', emoji: '🐑', color: '#fff7e6' },
-  { id: 'monkey', name: '원숭이', emoji: '🐵', color: '#a8693c' },
-  { id: 'rooster', name: '닭', emoji: '🐔', color: '#ffffff' },
-  { id: 'dog', name: '개', emoji: '🐶', color: '#e0a85a' },
-  { id: 'pig', name: '돼지', emoji: '🐷', color: '#ffb3c7' },
+  { id: 'rat', name: '쥐', nick: '찍찍이', emoji: '🐭' },
+  { id: 'ox', name: '소', nick: '우직이', emoji: '🐮' },
+  { id: 'tiger', name: '호랑이', nick: '어흥이', emoji: '🐯' },
+  { id: 'rabbit', name: '토끼', nick: '깡총이', emoji: '🐰' },
+  { id: 'dragon', name: '용', nick: '여의룡', emoji: '🐲' },
+  { id: 'snake', name: '뱀', nick: '스르르', emoji: '🐍' },
+  { id: 'horse', name: '말', nick: '따각이', emoji: '🐴' },
+  { id: 'sheep', name: '양', nick: '몽실이', emoji: '🐑' },
+  { id: 'monkey', name: '원숭이', nick: '재롱이', emoji: '🐵' },
+  { id: 'rooster', name: '닭', nick: '꼬꼬댁', emoji: '🐔' },
+  { id: 'dog', name: '개', nick: '멍뭉이', emoji: '🐶' },
+  { id: 'pig', name: '돼지', nick: '꿀꿀이', emoji: '🐷' },
 ];
 
 export const ZODIAC_IDS = ZODIAC.map((z) => z.id);
 const BY_ID = new Map(ZODIAC.map((z, i) => [z.id, { ...z, month: i + 1 }]));
 
-/** id → { id, name, emoji, color, month } (없으면 undefined) */
+/** id → { id, name, nick, emoji, month } (없으면 undefined) */
 export const zodiacOf = (id) => BY_ID.get(id);
 
 /** 아바타 그림 주소 (시아탱크의 십이지신 그림) */
 export const avatarUrl = (id) => new URL(`images/zodiac/${id}.png`, import.meta.url).href;
 
-/** AI 이름: "AI 호랑이" */
-export const aiName = (id) => `AI ${zodiacOf(id)?.name ?? ''}`.trim();
+/** AI 이름: "AI 어흥이" */
+export const aiName = (id) => `AI ${zodiacOf(id)?.nick ?? ''}`.trim();
 
 const key = (userId) => `sia-world:avatar:${userId}`;
 

@@ -9,120 +9,117 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./shared/theme.css" />
   <style>
-    :root {
-      --sky1: #6cc0ff; --sky2: #d9efff;
-      --ink: #23324a; --sub: #5d6f8c;
-      --panel: #ffffff; --panel-b: #b9d6f2;
-      --primary: #ff8a3d; --primary-d: #e06a1c;
-      --blue: #4aa8ff; --err: #e2483d; --ok: #2f9e5a;
-    }
+    /* SIA WORLD 로비. DESIGN.md를 따른다 — 값은 shared/theme.css의 변수만 쓴다 */
     * { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; }
     body {
-      font-family: 'Jua', system-ui, sans-serif; color: var(--ink);
-      background: linear-gradient(180deg, var(--sky1), var(--sky2) 70%, #f4fbff);
-      background-attachment: fixed; min-height: 100vh;
+      font-family: var(--font); font-size: var(--fs-body); color: var(--ink);
+      background: var(--sky-gradient); background-attachment: fixed; min-height: 100vh;
     }
     button, input { font: inherit; }
     .hidden { display: none !important; }
 
-    /* ---------- 로그인 / 회원가입 ---------- */
+    /* ---------- 로그인 / 회원가입 (시아탱크 .entry-card) ---------- */
     .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
     .auth-card {
-      width: 100%; max-width: 380px; background: var(--panel); border: 3px solid var(--panel-b);
-      border-radius: 22px; padding: 26px 22px 20px; box-shadow: 0 10px 30px rgba(30, 80, 140, .18);
+      width: 100%; max-width: 400px; background: var(--panel); border: var(--line-big) solid var(--outline);
+      border-radius: var(--radius-panel-big); padding: 24px 22px 20px; box-shadow: 0 var(--depth-big) 0 var(--outline);
     }
-    .brand { text-align: center; margin-bottom: 18px; }
-    .brand h1 { margin: 0; font-size: 40px; letter-spacing: 1px; color: var(--blue);
-      text-shadow: 0 3px 0 #1c6fbf33; }
-    .brand h1 b { color: var(--primary); font-weight: inherit; }
-    .brand p { margin: 4px 0 0; color: var(--sub); font-size: 15px; }
+    .brand { text-align: center; margin-bottom: 14px; }
+    .brand img { width: 96px; height: 96px; object-fit: contain; }
+    .brand h1 { margin: 0; font-size: 48px; font-weight: normal; color: var(--primary); letter-spacing: 1px;
+      -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); }
+    .brand h1 b { color: var(--white); font-weight: inherit; }
+    .brand p { margin: 6px 0 0; color: var(--ink-soft); font-size: 15px; }
     .field { display: block; margin: 10px 0; }
-    .field > span { display: block; font-size: 14px; color: var(--sub); margin: 0 0 4px 4px; }
+    .field > span { display: block; font-size: 14px; color: var(--ink-soft); margin: 0 0 4px 4px; }
     .field input {
-      width: 100%; padding: 11px 14px; border-radius: 12px; border: 2px solid var(--panel-b);
-      font-size: 17px; outline: none; background: #f7fbff; color: var(--ink);
+      width: 100%; padding: 11px 14px; border-radius: var(--radius-item); border: var(--line-thin) solid var(--outline);
+      font-size: 17px; outline: none; background: var(--white); color: var(--ink);
     }
-    .field input:focus { border-color: var(--blue); background: #fff; }
-    .field.bad input { border-color: var(--err); }
-    .msg { min-height: 0; font-size: 13px; margin: 4px 0 0 4px; color: var(--err); }
-    .msg.ok { color: var(--ok); }
-    .legacy { background: #fff7e8; border: 2px dashed #f3c27a; border-radius: 14px; padding: 8px 12px 4px; margin: 12px 0; }
-    .legacy p { margin: 2px 0 4px; font-size: 14px; color: #8a5a12; }
+    .field input:focus { box-shadow: 0 0 0 var(--line) var(--primary); }
+    .field.bad input { border-color: var(--pink); }
+    .msg { font-size: 13px; margin: 4px 0 0 4px; color: var(--pink); }
+    .msg.ok { color: var(--win); }
+    .legacy { background: var(--panel-strong); border: var(--line-thin) dashed var(--empty-line); border-radius: var(--radius-item); padding: 8px 12px 4px; margin: 12px 0; }
+    .legacy p { margin: 2px 0 4px; font-size: 14px; color: var(--ink-soft); }
     .btn {
-      display: block; width: 100%; border: none; border-radius: 14px; padding: 13px; font-size: 19px;
-      cursor: pointer; background: var(--primary); color: #fff; box-shadow: 0 4px 0 var(--primary-d);
-      margin-top: 14px; transition: transform .05s;
+      display: block; width: 100%; border: var(--line) solid var(--outline); border-radius: var(--radius-button); padding: 12px; font-size: var(--fs-button-big);
+      cursor: pointer; background: var(--primary-gradient); color: var(--ink); box-shadow: 0 5px 0 var(--outline);
+      margin-top: 14px; transition: transform var(--press-ms), box-shadow var(--press-ms);
     }
-    .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--primary-d); }
-    .btn:disabled { opacity: .6; cursor: default; }
-    .form-err { text-align: center; color: var(--err); font-size: 15px; min-height: 20px; margin: 10px 0 0; }
-    .switch { text-align: center; margin: 14px 0 0; font-size: 15px; color: var(--sub); }
-    .link { background: none; border: none; color: var(--blue); cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; }
+    .btn:active:not(:disabled) { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .btn:focus-visible { outline: var(--line) solid var(--sky-deep); outline-offset: 2px; }
+    .form-err { text-align: center; color: var(--pink); font-size: 15px; min-height: 20px; margin: 10px 0 0; }
+    .switch { text-align: center; margin: 14px 0 0; font-size: 15px; color: var(--ink-soft); }
+    .link { background: none; border: none; color: var(--sky-deep); cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; }
 
     /* ---------- 로비 ---------- */
-    .top {
-      position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px;
-      padding: 10px 16px; background: rgba(255, 255, 255, .85); backdrop-filter: blur(6px);
-      border-bottom: 2px solid var(--panel-b);
-    }
-    .top .logo { font-size: 24px; color: var(--blue); margin: 0; flex: 1; white-space: nowrap; }
-    .top .logo b { color: var(--primary); font-weight: inherit; }
-    .me { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .small { width: auto; display: inline-block; margin: 0; padding: 7px 12px; font-size: 15px; border-radius: 10px;
-      background: #eef6ff; color: var(--ink); box-shadow: 0 3px 0 var(--panel-b); }
-    .small:active { box-shadow: 0 1px 0 var(--panel-b); }
-    main.lobby { max-width: 960px; margin: 0 auto; padding: 22px 16px 40px; }
-    main.lobby h2 { margin: 0 0 14px; font-size: 22px; }
+    .top { display: flex; align-items: center; gap: 10px; padding: 10px 16px; color: var(--white); }
+    .top .logo { font-size: 30px; margin: 0; flex: 1; white-space: nowrap; font-weight: normal; color: var(--primary);
+      -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; text-shadow: 0 3px 0 var(--outline); }
+    .top .logo b { color: var(--white); font-weight: inherit; }
+    .me { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--pill); color: var(--white); padding: 5px 12px; border-radius: var(--radius-item); }
+    .small { width: auto; display: inline-block; margin: 0; padding: 5px 12px; font-size: 15px; border-radius: var(--radius-item);
+      background: var(--white); color: var(--ink); box-shadow: 0 3px 0 var(--outline); }
+    .small:active:not(:disabled) { box-shadow: 0 1px 0 var(--outline); }
+    main.lobby { max-width: 960px; margin: 0 auto; padding: 8px 16px 40px; }
+    main.lobby h2 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: normal; color: var(--white);
+      -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
     .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
     .game-card {
       display: block; text-decoration: none; color: inherit; background: var(--panel);
-      border: 3px solid var(--panel-b); border-radius: 18px; overflow: hidden;
-      box-shadow: 0 6px 18px rgba(30, 80, 140, .14); transition: transform .12s, box-shadow .12s;
+      border: var(--line) solid var(--outline); border-radius: var(--radius-panel); overflow: hidden;
+      box-shadow: 0 var(--depth-panel) 0 var(--outline); transition: transform var(--press-ms), box-shadow var(--press-ms);
     }
-    .game-card:hover, .game-card:focus-visible { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(30, 80, 140, .22); outline: none; border-color: var(--blue); }
-    .game-card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--sky2); }
+    .game-card:active { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
+    .game-card:focus-visible { outline: var(--line) solid var(--sky-deep); outline-offset: 2px; }
+    .game-card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--sky-mid); border-bottom: var(--line) solid var(--outline); }
     .game-card .gi { padding: 10px 14px 14px; }
-    .game-card h3 { margin: 0; font-size: 21px; }
-    .game-card p { margin: 4px 0 0; color: var(--sub); font-size: 15px; }
+    .game-card h3 { margin: 0; font-size: var(--fs-panel); font-weight: normal; }
+    .game-card p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+    .center { min-height: 100vh; display: grid; place-items: center; color: var(--white); font-size: 18px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
+
     /* 지갑 · 출석 · 랭킹 */
-    .notice { background: #fff3c4; border: 2px solid #f3c24a; color: #7a5200; border-radius: 14px;
-      padding: 10px 14px; margin: 0 0 14px; font-size: 17px; text-align: center; animation: pop .35s ease-out; }
+    .notice { background: var(--panel-strong); border: var(--line) solid var(--outline); color: var(--ink); border-radius: var(--radius-item);
+      padding: 10px 14px; margin: 0 0 14px; font-size: 17px; text-align: center; box-shadow: 0 3px 0 var(--outline); animation: pop .35s ease-out; }
     @keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: none; opacity: 1; } }
     .wallet { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 0 0 22px; }
     .pill { flex: 1 1 220px; display: flex; align-items: center; gap: 10px; background: var(--panel);
-      border: 3px solid var(--panel-b); border-radius: 16px; padding: 10px 12px; }
+      border: var(--line) solid var(--outline); border-radius: var(--radius-button); padding: 10px 12px; box-shadow: 0 var(--depth-button) 0 var(--outline); }
     .pill .ic { font-size: 28px; }
     .pill .amt { flex: 1; min-width: 0; }
-    .pill small { display: block; color: var(--sub); font-size: 13px; }
-    .pill b { font-size: 22px; font-weight: normal; }
-    .pill .left { display: block; color: var(--sub); font-size: 12px; }
+    .pill small { display: block; color: var(--ink-soft); font-size: 13px; }
+    .pill b { font-size: 24px; font-weight: normal; color: var(--accent); }
+    .pill .left { display: block; color: var(--ink-soft); font-size: 12px; }
     .pill .small:disabled { opacity: .45; }
     #rank-btn { flex: 0 0 auto; align-self: center; }
-    .note { color: var(--err); font-size: 14px; margin: -14px 0 16px; }
-    dialog.rank { border: 3px solid var(--panel-b); border-radius: 20px; padding: 16px; width: min(460px, calc(100% - 32px));
-      max-height: calc(100% - 40px); color: var(--ink); font-family: inherit; }
-    dialog.rank::backdrop { background: rgba(20, 30, 60, .5); }
+    .note { color: var(--pink); font-size: 14px; margin: -14px 0 16px; }
+    dialog.rank { border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); padding: 16px; width: min(460px, calc(100% - 32px));
+      max-height: calc(100% - 40px); color: var(--ink); font-family: inherit; background: var(--panel); box-shadow: 0 var(--depth-big) 0 var(--outline); }
+    dialog.rank::backdrop { background: var(--dim); }
     .rank-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .rank-head h3 { margin: 0; font-size: 22px; }
+    .rank-head h3 { margin: 0; font-size: 22px; font-weight: normal; }
     .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
-    .tabs button { flex: 1; border: 2px solid var(--panel-b); background: #f7fbff; border-radius: 10px; padding: 8px; cursor: pointer; font-size: 16px; color: var(--ink); }
-    .tabs button.sel { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .tabs button { flex: 1; border: var(--line-thin) solid var(--outline); background: var(--white); border-radius: var(--radius-item); padding: 8px; cursor: pointer; font-size: 16px; color: var(--ink); }
+    .tabs button.sel { background: var(--primary); box-shadow: 0 3px 0 var(--outline); }
     .rank-me { text-align: center; font-size: 15px; margin: 6px 0; }
-    .rank-list { max-height: 55vh; overflow-y: auto; border-top: 2px dashed #0002; }
+    .rank-list { max-height: 55vh; overflow-y: auto; border-top: var(--line-thin) dashed var(--line-soft); }
     .rank-list table { width: 100%; border-collapse: collapse; }
-    .rank-list td { padding: 6px; border-bottom: 1px solid #0001; font-size: 16px; }
+    .rank-list td { padding: 6px; border-bottom: var(--line-thin) dashed var(--line-soft); font-size: 16px; }
     .rank-list td.pl { width: 36px; text-align: center; }
     .rank-list td.nm { width: 100%; }
-    .rank-list td.am { white-space: nowrap; text-align: right; }
-    .rank-list tr.me { background: #fff3b0; }
-    .rank-note { font-size: 12px; color: var(--sub); text-align: center; margin: 8px 0 0; }
-    .center { min-height: 100vh; display: grid; place-items: center; color: var(--sub); font-size: 18px; }
+    .rank-list td.am { white-space: nowrap; text-align: right; color: var(--accent); }
+    .rank-list tr.me { background: var(--panel-strong); }
+    .rank-note { font-size: 12px; color: var(--ink-soft); text-align: center; margin: 8px 0 0; }
     @media (max-width: 420px) {
-      .top .logo { font-size: 20px; }
-      .brand h1 { font-size: 34px; }
+      .top .logo { font-size: 24px; }
+      .brand h1 { font-size: 40px; }
     }
+    @media (prefers-reduced-motion: reduce) { .btn:active, .game-card:active { transform: none; } .notice { animation: none; } }
   </style>
 </head>
 <body>
@@ -131,7 +128,7 @@
   <!-- 로그인 -->
   <div id="login-view" class="auth-wrap hidden">
     <form class="auth-card" id="login-form" novalidate>
-      <div class="brand"><h1>SIA <b>WORLD</b></h1><p>로그인하고 친구들과 놀아요</p></div>
+      <div class="brand"><img src="shared/images/zodiac/tiger.png" alt="" /><h1>SIA <b>WORLD</b></h1><p>로그인하고 친구들과 놀아요</p></div>
       <label class="field"><span>아이디</span>
         <input id="li-id" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="16" /></label>
       <label class="field"><span>비밀번호</span>
@@ -145,7 +142,7 @@
   <!-- 회원가입 -->
   <div id="signup-view" class="auth-wrap hidden">
     <form class="auth-card" id="signup-form" novalidate>
-      <div class="brand"><h1>SIA <b>WORLD</b></h1><p>회원가입</p></div>
+      <div class="brand"><img src="shared/images/zodiac/rabbit.png" alt="" /><h1>SIA <b>WORLD</b></h1><p>회원가입</p></div>
       <label class="field" data-f="loginId"><span>아이디 (영문 소문자·숫자 4~16자)</span>
         <input id="su-id" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="16" />
         <p class="msg"></p></label>

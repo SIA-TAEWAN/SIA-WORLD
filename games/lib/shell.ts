@@ -5,7 +5,9 @@
  */
 import type PhaserNS from 'phaser';
 import './style.css';
+import { setTheme } from './cards.ts';
 import {
+  linkThemeCss,
   world,
   worldHome,
   type GameId,
@@ -64,8 +66,8 @@ export interface GameUI<P = any, Q = any> {
   /** 방 목록에서 '← 뒤로' 갈 곳 (SIA WORLD 최상위 기준 상대 경로) */
   back: string;
   backLabel: string;
-  /** 테이블 바탕색 */
-  felt: number;
+  /** Phaser 바탕색 (테마에서) */
+  felt: () => number;
   /** Phaser 테이블 그리기 (매번 지우고 새로 그린다) */
   draw(t: TableCtx<P, Q>): void;
   /** 게임 중 조작 버튼 (el을 채운다) */
@@ -114,7 +116,7 @@ function pickAvatar(z: ZodiacModule, current: string, taken: string[] = []): Pro
     d.className = 'modal';
     d.innerHTML = `<div class="box"><h3>내 동물 고르기</h3><div class="avatars">${z.ZODIAC.map(
       (a) => `<button class="av ${a.id === current ? 'sel' : ''}" data-id="${a.id}" ${taken.includes(a.id) ? 'disabled' : ''}>
-        <img src="${z.avatarUrl(a.id)}" alt=""/><span>${a.name}</span></button>`,
+        <img src="${z.avatarUrl(a.id)}" alt=""/><span>${a.nick}</span></button>`,
     ).join('')}</div><div class="row"><button class="btn ghost" data-x>취소</button></div></div>`;
     document.body.append(d);
     const close = (v: string | null) => (d.remove(), done(v));
@@ -131,11 +133,12 @@ interface Mods {
 
 export async function bootGame(ui: GameUI) {
   document.title = ui.title;
-  document.documentElement.style.setProperty('--felt', `#${ui.felt.toString(16).padStart(6, '0')}`);
+  linkThemeCss();
   app().innerHTML = '<div class="center">불러오는 중…</div>';
   let me: WorldUser;
   let mods: Mods;
   try {
+    setTheme(await world.theme());
     const auth = await world.auth();
     me = await auth.requireLogin();
     auth.onSignedOut(() => location.replace(auth.loginUrl()));
@@ -173,7 +176,7 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
       </div>
       <div class="units" id="units"></div>
       <div class="me-row"><button class="av-btn" id="c-av"></button><span id="refill-box"></span>
-        <button class="btn primary big" id="c-go">방 만들기</button></div>
+        <button class="btn primary big" id="c-go">방 만들기 ▶</button></div>
       <p class="hint" id="c-hint"></p>
     </section>
     <section class="card"><h2>방 목록</h2><div id="rooms" class="rooms"><p class="empty">불러오는 중…</p></div></section>
@@ -182,7 +185,7 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
 
   const paintAvatar = () => {
     const a = m.z.ZODIAC.find((x) => x.id === avatar)!;
-    $(root, '#c-av').innerHTML = `<img src="${m.z.avatarUrl(avatar)}" alt=""/><span>${a.name}<small>바꾸기</small></span>`;
+    $(root, '#c-av').innerHTML = `<img src="${m.z.avatarUrl(avatar)}" alt=""/><span>${a.nick}<small>${a.name} · 바꾸기</small></span>`;
   };
   let alive = true;
   const paintMoney = () => {
@@ -379,8 +382,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   /** key → 면, 그리고 진행 중인 연출(시작 시각·종류·출발점) */
   const dealt = new Map<string, { face: string | null; start: number; kind: 'slide' | 'flip' | null; from: { x: number; y: number } }>();
   let dealSeq = 0;
-  const SLIDE_MS = 300;
-  const FLIP_MS = 220;
+  const SLIDE_MS = 250;
+  const FLIP_MS = 200;
   /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
   let animEnd = 0;
   const afterAnim = (fn: () => void) => {
@@ -409,7 +412,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: stage,
-    backgroundColor: ui.felt,
+    backgroundColor: ui.felt(),
     scale: { mode: Phaser.Scale.RESIZE, width: stage.clientWidth || 800, height: stage.clientHeight || 400 },
     banner: false,
     scene: {
@@ -420,11 +423,20 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       },
       create(this: PhaserNS.Scene) {
         scene = this;
-        this.scale.on('resize', () => paint());
+        // 크기가 바뀌면 테이블만 다시 그린다 (조작부까지 다시 만들면 크기가 또 바뀌어 반복될 수 있다)
+        this.scale.on('resize', () => drawTableOnly());
         paint();
       },
     },
   });
+  // 테이블 칸 크기가 바뀌면(아래 조작부 줄 수가 바뀌는 등) 캔버스도 맞춘다 — Phaser는 창 크기만 따라가므로
+  const ro = new ResizeObserver(() => {
+    const w = Math.round(stage.clientWidth);
+    const h = Math.round(stage.clientHeight);
+    // Phaser(RESIZE 모드)는 창 크기 이벤트 때만 부모 크기를 다시 읽는다 → 이벤트를 보내 준다
+    if (w > 0 && h > 0 && (w !== game.scale.width || h !== game.scale.height)) window.dispatchEvent(new Event('resize'));
+  });
+  ro.observe(stage);
 
   const mySeatRow = () => seats.find((s) => s.user_id === me.userId && !s.left_game) ?? null;
   const ctx = (): TableCtx | null => {
@@ -501,7 +513,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           const ty = obj.y;
           const e = 1 - Math.pow(1 - p, 3);
           obj.setPosition(rec!.from.x + (tx - rec!.from.x) * e, rec!.from.y + (ty - rec!.from.y) * e).setScale(0.55 + 0.45 * e).setAlpha(e);
-          scene.tweens.add({ targets: obj, x: tx, y: ty, scale: 1, alpha: 1, duration: rest, delay, ease: 'Cubic.easeOut' });
+          scene.tweens.add({ targets: obj, x: tx, y: ty, scale: 1, alpha: 1, duration: rest, delay, ease: 'Back.easeOut' });
         } else {
           obj.setScale(p, 1);
           scene.tweens.add({ targets: obj, scaleX: 1, duration: rest, delay, ease: 'Sine.easeOut' });
@@ -559,7 +571,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     el.innerHTML = `<div class="row">
       <button class="btn" id="av">🐾 동물 바꾸기</button>
       ${!enough && m.wallet.canRefill(wallet, cur, room.base_unit) ? `<button class="btn" id="refill">무료 충전</button>` : ''}
-      <button class="btn big ${mine.ready ? '' : 'primary'}" id="ready" ${enough ? '' : 'disabled'}>${mine.ready ? '레디 취소' : '레디'}</button>
+      <button class="btn big ${mine.ready ? '' : 'primary'}" id="ready" ${enough ? '' : 'disabled'}>${mine.ready ? '레디 취소' : '레디 ▶'}</button>
     </div>
     <p class="msg">${enough ? (mine.ready ? '다른 사람을 기다리는 중… 사람이 모두 레디하면 시작해요' : '레디를 누르면 시작해요') : `${m.wallet.formatAmount(m.wallet.minEntry(room.base_unit))}${unit} 이상 있어야 해요`}</p>`;
     el.querySelector('#ready')?.addEventListener('click', async () => {
@@ -600,7 +612,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const showResultBox = (c: TableCtx) => {
     const d = document.createElement('div');
     d.className = 'modal';
-    d.innerHTML = `<div class="box result">${ui.resultHtml(c)}<div class="row"><button class="btn primary" data-x>확인</button></div></div>`;
+    // 내가 이긴 판이면 별·색종이
+    const deltas = (st?.public_state?.deltas ?? null) as Record<string, number> | null;
+    const won = c.resultSeat !== null && (deltas?.[String(c.resultSeat)] ?? 0) > 0;
+    const sparkles = won
+      ? Array.from({ length: 10 }, (_, i) => `<span class="sparkle" style="left:${4 + ((i * 37) % 90)}%;top:${-4 + ((i * 53) % 100)}%;animation-delay:${(i * 0.15).toFixed(2)}s">${i % 2 ? '★' : '✦'}</span>`).join('')
+      : '';
+    d.innerHTML = `<div class="box result ${won ? 'win' : ''}">${sparkles}${ui.resultHtml(c)}<div class="row"><button class="btn primary" data-x>확인</button></div></div>`;
     document.body.append(d);
     $(d, '[data-x]').addEventListener('click', () => d.remove());
     void m.wallet.ensureWallet().then((w) => ((wallet = w), paintMoney(), paintControls()));
@@ -641,8 +659,22 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const key = `${room.round_no}:${humans.map((s) => s.user_id).join(',')}`;
     if (key === autoStartKey) return;
     autoStartKey = key;
-    void m.room.startRound(roomId).catch(() => undefined);
+    // 레디 버튼이 이미 시작을 불렀을 수 있으니, 1.5초 뒤에도 아직 대기 중일 때만 (예: 마지막 사람이 레디 대신 나간 경우)
+    setTimeout(() => {
+      if (closed || room?.status !== 'waiting') return;
+      void m.room.startRound(roomId).catch(() => undefined);
+    }, 1500);
   };
+
+  function drawTableOnly() {
+    if (closed) return;
+    const c = ctx();
+    if (!c) return;
+    c.scene.children.removeAll(true);
+    c.scene.tweens.killAll();
+    dealSeq = 0;
+    ui.draw(c);
+  }
 
   function paint() {
     if (closed) return;
@@ -753,6 +785,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     clearInterval(touch);
     clearInterval(timer);
     document.removeEventListener('visibilitychange', onVisible);
+    ro.disconnect();
     unbusy();
     game.destroy(true);
   }

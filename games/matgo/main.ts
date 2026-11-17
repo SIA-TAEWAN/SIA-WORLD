@@ -1,93 +1,100 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
 import { bootGame, esc, type GameUI, type TableCtx } from '../lib/shell.ts';
-import { C, FONT, cardBack, clamp, drawTable, label, nameTag } from '../lib/cards.ts';
+import { cardBack, clamp, drawTable, label, nameTag, tc, theme } from '../lib/cards.ts';
 import { cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
 type Ctx = TableCtx<MatgoPublic, MatgoPrivate>;
 
-/** 계절 색 (단청): 봄 1~3월 녹청 · 여름 4~6월 주홍 · 가을 7~9월 황 · 겨울 10~12월 감청 */
-const SEASON = [0, 0x2f8f83, 0x2f8f83, 0x2f8f83, 0xd9452f, 0xd9452f, 0xd9452f, 0xc9932a, 0xc9932a, 0xc9932a, 0x3b5ba5, 0x3b5ba5, 0x3b5ba5];
-const DAN_COLOR: Record<string, number> = { hong: 0xc8372d, cheong: 0x2d5fb8, cho: 0x2f8f53 };
 const DAN_NAME: Record<string, string> = { hong: '홍단', cheong: '청단', cho: '초단' };
 /** 원래 화투 그림(식물·배경)을 바탕에 연하게: 송학 · 매조 · 벚꽃 · 흑싸리 · 난초 · 모란 · 홍싸리 · 공산 · 국화 · 단풍 · 오동 · 비 */
 const PLANT = ['', '🌲', '🌸', '🌸', '🌿', '🌾', '🌺', '🍂', '🌕', '🌼', '🍁', '🍃', '☔'];
 const ANIMAL_KEY = ['', 'rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'];
 
 /**
- * 화투 한 장 (id가 null이면 뒷면). 가운데 기준.
- * 한지색 바탕 + 검은 테두리(진짜 화투처럼) · 왼쪽 위 달 표시(계절 색) · 광은 금테와 光 · 띠는 단 색 리본 · 피는 발자국
+ * 화투 한 장 (id가 null이면 뒷면). 가운데 기준. DESIGN.md 7장:
+ * 크림 바탕, 모서리 8px(가로 60px 기준), 외곽선 2px · 광: --accent 테두리 + '광' 도장 · 띠: 홍·청·초단 색 띠 · 열끗: 캐릭터 크게 · 피: 발자국
  */
 function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w: number, opts: { lift?: boolean; glow?: boolean; onClick?: () => void } = {}) {
+  const T = theme();
+  const C = T.COLOR;
   const h = Math.round(w * 1.55);
-  const r = Math.max(3, w * 0.08);
+  const r = Math.max(4, (T.SHAPE.radiusHwatu * w) / 60);
+  const line = Math.max(T.SHAPE.lineThin, w * 0.03);
+  const depth = Math.max(2, w * 0.045);
   const c = scene.add.container(x, y - (opts.lift ? w * 0.14 : 0));
   const g = scene.add.graphics();
-  g.fillStyle(0x000000, 0.32).fillRoundedRect(-w / 2 + 2, -h / 2 + 4, w, h, r);
-  if (opts.glow) g.lineStyle(Math.max(3, w * 0.07), C.gold, 1).strokeRoundedRect(-w / 2 - 4, -h / 2 - 4, w + 8, h + 8, r + 3);
+  // 고를 수 있는 패: 노란 테두리로 강조
+  if (opts.glow) {
+    g.fillStyle(C.primary, 1).fillRoundedRect(-w / 2 - 5, -h / 2 - 5, w + 10, h + 10 + depth, r + 4);
+    g.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(-w / 2 - 5, -h / 2 - 5, w + 10, h + 10 + depth, r + 4);
+  }
+  g.fillStyle(C.outline, 1).fillRoundedRect(-w / 2, -h / 2 + depth, w, h, r);
+  c.add(g);
   if (!id) {
-    c.add(g);
     c.add(scene.add.image(0, 0, cardBack(scene, 'back-hwatu')).setDisplaySize(w, h));
     return c;
   }
   const card = cardById(id);
-  g.fillStyle(0x1d1a18, 1).fillRoundedRect(-w / 2, -h / 2, w, h, r);
-  const b = Math.max(1.5, w * 0.045);
-  g.fillStyle(0xfbf5e6, 1).fillRoundedRect(-w / 2 + b, -h / 2 + b, w - b * 2, h - b * 2, r * 0.7);
-  if (card.kind === 'gwang') g.lineStyle(Math.max(2, w * 0.05), C.gold, 1).strokeRoundedRect(-w / 2 + b * 1.6, -h / 2 + b * 1.6, w - b * 3.2, h - b * 3.2, r * 0.5);
-  c.add(g);
-  // 식물 (원래 화투 그림)
-  c.add(scene.add.text(0, h * 0.04, PLANT[card.month], { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.78)}px` }).setOrigin(0.5).setAlpha(0.2));
+  g.fillStyle(C.panel, 1).fillRoundedRect(-w / 2, -h / 2, w, h, r);
+  g.lineStyle(line, C.outline, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, r);
+  // 광: 금색 안쪽 테두리
+  if (card.kind === 'gwang') g.lineStyle(Math.max(2.5, w * 0.05), C.accent, 1).strokeRoundedRect(-w / 2 + line * 1.8, -h / 2 + line * 1.8, w - line * 3.6, h - line * 3.6, r * 0.6);
+  // 원래 화투 식물 (연하게)
+  c.add(scene.add.text(0, h * 0.04, PLANT[card.month], { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.78)}px` }).setOrigin(0.5).setAlpha(0.22));
   const g2 = scene.add.graphics();
   c.add(g2);
-  // 띠: 단 색 리본
+  // 띠: 단 색 리본 (외곽선)
   if (card.kind === 'tti') {
-    const col = card.dan ? DAN_COLOR[card.dan] : 0x8a8178;
+    const col = card.dan ? T.HWATU[card.dan] : T.HWATU.plain;
     g2.fillStyle(col, 1).fillRect(-w * 0.13, -h * 0.3, w * 0.26, h * 0.6);
-    g2.fillStyle(0xffffff, 0.25).fillRect(-w * 0.13, -h * 0.3, w * 0.05, h * 0.6);
+    g2.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRect(-w * 0.13, -h * 0.3, w * 0.26, h * 0.6);
     if (card.dan) {
-      const t = scene.add.text(0, 0, DAN_NAME[card.dan].split('').join('\n'), { fontFamily: FONT, fontSize: `${Math.round(w * 0.17)}px`, color: '#fff6e5', align: 'center', lineSpacing: -w * 0.04 }).setOrigin(0.5);
-      c.add(t);
+      c.add(
+        scene.add
+          .text(0, 0, DAN_NAME[card.dan].split('').join('\n'), { fontFamily: T.FONT, fontSize: `${Math.round(w * 0.17)}px`, color: tc('white'), align: 'center', lineSpacing: -w * 0.04 })
+          .setOrigin(0.5),
+      );
     }
   }
-  // 동물 (광·열끗은 크게, 띠는 작게 위쪽, 피는 없음)
+  // 캐릭터: 광·열끗은 크게, 띠는 작게 위쪽, 피는 없음
   const key = `av-${ANIMAL_KEY[card.month]}`;
   if (card.kind !== 'pi' && scene.textures.exists(key)) {
     const big = card.kind === 'yeol' || card.kind === 'gwang';
-    const img = scene.add.image(card.kind === 'tti' ? w * 0.27 : 0, card.kind === 'tti' ? -h * 0.3 : h * 0.06, key);
+    const img = scene.add.image(card.kind === 'tti' ? w * 0.26 : 0, card.kind === 'tti' ? -h * 0.3 : h * 0.06, key);
     img.setScale(((big ? 0.82 : 0.36) * w) / Math.max(img.width, img.height));
     c.add(img);
   }
-  // 달 표시 (왼쪽 위 계절 색 동그라미)
-  const mr = Math.max(6, w * 0.15);
-  g2.fillStyle(SEASON[card.month], 1).fillCircle(-w / 2 + b + mr * 1.05, -h / 2 + b + mr * 1.05, mr);
-  c.add(scene.add.text(-w / 2 + b + mr * 1.05, -h / 2 + b + mr * 1.05, `${card.month}`, { fontFamily: FONT, fontSize: `${Math.round(mr * 1.25)}px`, color: '#fff6e5' }).setOrigin(0.5));
-  // 광: 오른쪽 위 붉은 원 안의 光
+  // 달: 왼쪽 위 키 배지 (바탕 --outline, 흰 숫자)
+  const bw = Math.max(13, w * 0.28);
+  const bh = Math.max(12, w * 0.24);
+  const bx = -w / 2 + line + 2;
+  const by = -h / 2 + line + 2;
+  g2.fillStyle(C.outline, 1).fillRoundedRect(bx, by, bw, bh, Math.max(3, (T.SHAPE.radiusKey * w) / 60));
+  c.add(scene.add.text(bx + bw / 2, by + bh / 2, `${card.month}`, { fontFamily: T.FONT, fontSize: `${Math.round(bh * 0.8)}px`, color: tc('white') }).setOrigin(0.5));
+  // 광 도장: 오른쪽 위 둥근 도장 '광' (비광은 '비')
   if (card.kind === 'gwang') {
-    const gx = w / 2 - b - mr * 1.05;
-    const gy = -h / 2 + b + mr * 1.05;
-    g2.fillStyle(C.red, 1).fillCircle(gx, gy, mr);
-    g2.lineStyle(1.5, C.gold, 1).strokeCircle(gx, gy, mr);
-    c.add(scene.add.text(gx, gy, card.bigwang ? '雨' : '光', { fontFamily: 'serif', fontSize: `${Math.round(mr * 1.2)}px`, color: '#fff6e5' }).setOrigin(0.5));
+    const sr = Math.max(7, w * 0.15);
+    const sx = w / 2 - line - sr - 2;
+    const sy = -h / 2 + line + sr + 2;
+    g2.fillStyle(C.cardRed, 1).fillCircle(sx, sy, sr);
+    g2.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeCircle(sx, sy, sr);
+    c.add(scene.add.text(sx, sy, card.bigwang ? '비' : '광', { fontFamily: T.FONT, fontSize: `${Math.round(sr * 1.15)}px`, color: tc('white') }).setOrigin(0.5));
   }
-  // 아래 표시: 피 발자국 / 고도리 / 국진
-  let tag = '';
-  if (card.kind === 'pi') tag = card.ssangpi ? '🐾🐾' : '🐾';
-  else if (card.godori) tag = '고도리';
-  else if (card.gukjin) tag = '국진';
-  if (tag) {
-    const pi = card.kind === 'pi';
-    c.add(
-      scene.add
-        .text(0, pi ? h * 0.08 : h / 2 - b * 1.6, tag, {
-          fontFamily: FONT,
-          fontSize: `${Math.round(w * (pi ? 0.3 : 0.19))}px`,
-          color: '#3a2a1e',
-          backgroundColor: pi ? undefined : '#f2c14e',
-          padding: pi ? undefined : { x: 3, y: 0 },
-        })
-        .setOrigin(0.5, pi ? 0.5 : 1),
-    );
+  // 아래: 피 발자국 / 고도리·국진 태그
+  if (card.kind === 'pi') {
+    c.add(scene.add.text(0, h * 0.08, card.ssangpi ? '🐾🐾' : '🐾', { fontFamily: 'sans-serif', fontSize: `${Math.round(w * 0.3)}px` }).setOrigin(0.5));
+  } else if (card.godori || card.gukjin) {
+    const t = scene.add
+      .text(0, h / 2 - line - 2, card.godori ? '고도리' : '국진', {
+        fontFamily: T.FONT,
+        fontSize: `${Math.round(w * 0.18)}px`,
+        color: tc('white'),
+        backgroundColor: tc('pink'),
+        padding: { x: 4, y: 1 },
+      })
+      .setOrigin(0.5, 1);
+    c.add(t);
   }
   if (opts.onClick) {
     c.setSize(w, h).setInteractive({ useHandCursor: true });
@@ -114,7 +121,7 @@ function captured(scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['p
   for (const [name, ids] of groups) {
     ids.forEach((id, i) => hwatu(scene, cx + i * step, y, id, w));
     const gw = w + (ids.length - 1) * step;
-    label(scene, cx - w / 2 + gw / 2, y + w * 1.0, `${name} ${name === '피' ? p.piCount : ids.length}`, clamp(w * 0.32, 12, 18), name === '띠' ? '#ffd2c8' : '#f7d77a');
+    label(scene, cx - w / 2 + gw / 2, y + w * 1.0, `${name} ${name === '피' ? p.piCount : ids.length}`, clamp(w * 0.32, 12, 18), tc('primary'));
     cx += gw + w * 0.35;
   }
 }
@@ -129,14 +136,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   icon: '🎴',
   back: '',
   backLabel: 'SIA WORLD',
-  felt: 0x56603a,
+  felt: () => theme().COLOR.skyMid,
 
   draw(t: Ctx) {
     const { scene } = t;
     const W = scene.scale.width;
     const H = scene.scale.height;
     const p = t.pub;
-    drawTable(scene, 'blanket');
+    drawTable(scene, 'matgo');
     if (!p) {
       label(scene, W / 2, H / 2, '모두 레디하면 시작해요', clamp(Math.min(W, H) * 0.05, 18, 30));
       return;
@@ -177,7 +184,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       const x = left + (col + 0.5) * ((right - left) / cols) - fw * 0.1;
       const y = y0 + row * rowGap;
       f.cards.forEach((id, j) => hwatu(scene, x + j * fw * 0.2, y + j * 4, id, fw, { glow: p.choice?.kind === 'choose' && p.choice.options.includes(id) }));
-      if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), '#ffd2c8');
+      if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink'));
     });
     // 더미 (왼쪽)
     // 세로 화면: 더미는 오른쪽 위 (상대 손패 옆), 가로: 바닥 왼쪽
@@ -191,7 +198,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       tc.forEach((id, i) => hwatu(scene, tx - i * fw * 0.45, pile.y, id, fw * 0.85));
       label(scene, tx, pile.y + fw * 1.0, '이번 차례', clamp(fw * 0.22, 12, 18));
     }
-    if (p.nagariMul > 1) label(scene, W / 2, y0 - fw * 1.05, `나가리 ×${p.nagariMul}`, clamp(fw * 0.3, 14, 22), '#f7d77a');
+    if (p.nagariMul > 1) label(scene, W / 2, y0 - fw * 1.05, `나가리 ×${p.nagariMul}`, clamp(fw * 0.3, 14, 22), tc('primary'));
 
     // 나: 먹은 패 · 이름패 · 손패
     const mp = P[me];

@@ -1,6 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard } from '../../lib/cards.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
 
 type Ctx = TableCtx<PokerPublic, PokerPrivate>;
@@ -18,14 +18,14 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
   icon: '♠️',
   back: 'games/casino/',
   backLabel: '카지노',
-  felt: 0x2a1712,
+  felt: () => theme().COLOR.skyMid,
 
   draw(t: Ctx) {
     const { scene } = t;
     const W = scene.scale.width;
     const H = scene.scale.height;
     const p = t.pub;
-    drawTable(scene, 'lacquer', 0x1c4f5e);
+    drawTable(scene, 'poker');
     const portrait = H > W * 1.15;
     // 내 카드 크기: 화면 비율에 맞춰 (7장이 한 줄에 들어오게). 다른 사람은 0.6배
     const cw = clamp(Math.min(W / 5.8, H / 4.9), 40, 118);
@@ -47,7 +47,6 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       center.y + chip * 2.7,
       `${ROUND(p.phase)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}`,
       clamp(cw * 0.18, 12, 18),
-      '#cfe8ef',
     );
 
     // 자리 배치: 내 자리가 아래 가운데
@@ -90,8 +89,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       const tagY = y + w * 0.71 + 24 * k;
       nameTag(scene, clamp(x - 52 * k, 26, W - 150 * k), tagY, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, size: k, sub: sub || undefined });
       const fs = clamp(w * (me ? 0.2 : 0.28), 12, 22);
-      if (s.total) label(scene, x + ((cards.length - 1) / 2) * gap + w * 0.62, y - w * 0.55, `${t.fmt(s.total)}`, fs * 0.85, '#f7d77a');
-      if (sd) label(scene, x, y - w * 0.92, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, fs, p.winners.includes(s.seat) ? '#f7d77a' : '#fff6e5');
+      if (s.total) label(scene, x + ((cards.length - 1) / 2) * gap + w * 0.62, y - w * 0.55, `${t.fmt(s.total)}`, fs * 0.85, tc('primary'));
+      if (sd) label(scene, x, y - w * 0.92, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, fs, p.winners.includes(s.seat) ? tc('primary') : tc('white'));
     });
   },
 

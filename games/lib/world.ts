@@ -109,7 +109,7 @@ export interface WalletModule {
 }
 
 export interface ZodiacModule {
-  ZODIAC: { id: string; name: string; emoji: string; color: string }[];
+  ZODIAC: { id: string; name: string; nick: string; emoji: string }[];
   ZODIAC_IDS: string[];
   avatarUrl(id: string): string;
   lastAvatar(userId: string): string;
@@ -120,6 +120,37 @@ export interface ZodiacModule {
 export interface RankModule {
   withTiers<T extends { amount: number }>(rows: T[], base?: number): (T & { place: number; tier: string })[];
   tierSvg(tier: string, size?: number): string;
+}
+
+/** shared/theme.js (DESIGN.md의 값) */
+export interface ThemeModule {
+  COLOR: Record<
+    | 'skyTop' | 'skyMid' | 'skyBottom' | 'skyDeep' | 'panel' | 'panelStrong' | 'outline' | 'ink' | 'inkSoft' | 'lineSoft' | 'emptyLine'
+    | 'primary' | 'primaryLight' | 'primaryDeep' | 'accent' | 'pink' | 'track' | 'white' | 'teamA' | 'teamB' | 'win' | 'lose' | 'draw' | 'cardRed',
+    number
+  >;
+  TABLE: Record<'matgo' | 'poker' | 'holdem' | 'blackjack', number>;
+  ROULETTE: Record<'spring' | 'summer' | 'autumn' | 'winter', number>;
+  HWATU: Record<'hong' | 'cheong' | 'cho' | 'plain', number>;
+  CHIPS: { min: number; color: number; animal: string }[];
+  css(n: number): string;
+  FONT: string;
+  SIZE: Record<'title' | 'logo' | 'panel' | 'button' | 'buttonBig' | 'body' | 'small', number>;
+  SHAPE: Record<
+    'radiusPanelBig' | 'radiusPanel' | 'radiusButton' | 'radiusItem' | 'radiusKey' | 'radiusCard' | 'radiusHwatu' | 'lineBig' | 'line' | 'lineThin' | 'depthBig' | 'depthPanel' | 'depthButton' | 'press',
+    number
+  >;
+  MOTION: Record<'press' | 'deal' | 'flip' | 'cutin', number>;
+}
+
+/** shared/theme.css를 문서에 붙인다 (한 번만) */
+export function linkThemeCss() {
+  if (document.getElementById('sia-theme')) return;
+  const l = document.createElement('link');
+  l.id = 'sia-theme';
+  l.rel = 'stylesheet';
+  l.href = new URL('shared/theme.css', worldRoot()).href;
+  document.head.prepend(l);
 }
 
 /** SIA WORLD 최상위 주소 (…/games/… 앞부분) */
@@ -148,4 +179,5 @@ export const world = {
   wallet: () => load<WalletModule>('wallet'),
   zodiac: () => load<ZodiacModule>('zodiac'),
   rank: () => load<RankModule>('rank'),
+  theme: () => load<ThemeModule>('theme'),
 };
