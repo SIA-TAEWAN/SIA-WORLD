@@ -368,7 +368,8 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
   const lastTurn = Math.max(-1, ...[...plan.values()].map((x) => x.turn));
   const kept = continuing ? [...plan].filter(([, x]) => x.turn === lastTurn && !x.floor && x.captureAt === null) : [];
   plan.clear();
-  for (const [id, x] of kept) plan.set(id, { ...x, startAt: 0, turn: 0 });
+  // 이미 앞면으로 내려앉은 패: 다시 뒤집지 않는다
+  for (const [id, x] of kept) plan.set(id, { ...x, startAt: 0, turn: 0, flip: false });
   planSeen = Math.max(planSeen, ...evs.map((e) => e.id));
   let turn = kept.length ? 0 : continuing ? 0 : -1;
   let hasFlip = kept.length ? kept.some(([, x]) => x.flip) : !continuing;

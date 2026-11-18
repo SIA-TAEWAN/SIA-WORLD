@@ -377,7 +377,24 @@ export class RaceGame {
     } else if (m.t === 'takeover') {
       this.applyTakeover(Number(m.slot));
     } else if (m.t === 'end') {
-      if (Array.isArray(m.results)) this.finish(m.results as RankedEntry[]);
+      // 네트워크로 온 값은 그대로 화면(HTML)에 넣지 않는다: 숫자·정해진 값만 골라 쓴다
+      if (Array.isArray(m.results)) {
+        const n = this.roster.length;
+        const clean: RankedEntry[] = [];
+        for (const raw of m.results as unknown[]) {
+          const e = (raw ?? {}) as Record<string, unknown>;
+          const slot = Number(e.slot);
+          const place = Number(e.place);
+          const status = e.status === 'finish' || e.status === 'dnf' || e.status === 'foul' ? e.status : null;
+          const timeMs = e.timeMs === null || e.timeMs === undefined ? null : Number(e.timeMs);
+          const x = Number(e.x);
+          if (!Number.isInteger(slot) || slot < 0 || slot >= n || clean.some((c) => c.slot === slot)) continue;
+          if (!Number.isInteger(place) || place < 1 || place > n || !status || !Number.isFinite(x)) continue;
+          if (status === 'finish' && (timeMs === null || !Number.isFinite(timeMs) || timeMs <= 0)) continue;
+          clean.push({ slot, place, status, timeMs: status === 'finish' ? timeMs : null, x: Math.max(0, Math.min(200, x)) });
+        }
+        if (clean.length) this.finish(clean);
+      }
     }
   }
 

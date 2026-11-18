@@ -120,6 +120,8 @@ export function stepRunner(r: Runner, obs: readonly Obstacle[], press: boolean, 
       if (r.jumpT >= JUMP_TIME) {
         r.state = 'run';
         r.jumpT = 0;
+        // 착지하면 땅 위 속도로 (안 그러면 바로 다시 뛸 때 부스트 속도가 끝없이 이어진다)
+        r.v = r.base * (r.boostT > 0 ? BOOST_FACTOR : 1);
         r.events.push('land');
       }
     } else {

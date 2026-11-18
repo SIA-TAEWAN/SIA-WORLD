@@ -549,6 +549,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   // 연출 재생기 상태 (아래 paint·paintControls가 먼저 쓰므로 위에 둔다)
   let replaying = false;
   let inApply = false;
+  /** 다시 불러올 때마다 늘린다: 그 전에 꺼내 둔 재생 항목은 적용하지 않는다 */
+  let epoch = 0;
   /** 결과 걸음을 보여 주는 동안 결과 창·레디 버튼을 미룬다 */
   let holdResult = false;
   let pendingPriv: PrivateRow | null | undefined;
@@ -1061,6 +1063,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (closed) return;
     if (!r) return gone();
     queue.length = 0;
+    epoch++;
     pendingPriv = undefined;
     room = r;
     seats = s;
@@ -1138,6 +1141,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     try {
       while (queue.length && !closed) {
         const item = queue.shift()!;
+        const myEpoch = epoch;
         const mine = seats.find((x) => x.user_id === me.userId);
         const myNext = !!mine && (item.s.pending_seats ?? []).includes(mine.seat_no);
         const pre = item.steps.filter((x) => !x.after);
@@ -1159,6 +1163,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           await sleep(myNext ? Math.min(gap, 500) : gap);
         }
         if (closed) return;
+        // 재생하는 동안 다시 불러왔으면 (탭 복귀·재연결) 이 항목은 이미 지난 상태 → 적용하지 않고 새 상태로 다시 그린다
+        if (myEpoch !== epoch) {
+          inApply = true;
+          try {
+            paint();
+          } finally {
+            inApply = false;
+          }
+          continue;
+        }
         if (post.length) holdResult = true;
         try {
           applyState(item.s);
@@ -1179,14 +1193,30 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           }
           holdResult = false;
           if (closed) return;
-          paintResult();
+          if (pendingPriv !== undefined && !queue.length) {
+            priv = pendingPriv;
+            pendingPriv = undefined;
+          }
+          try {
+            paintResult();
+          } catch (e) {
+            console.warn('result', e);
+          }
         }
       }
     } finally {
       replaying = false;
       holdResult = false;
+      if (!closed) {
+        try {
+          paintControls();
+        } catch (e) {
+          console.warn('controls', e);
+        }
+        // 남은 항목이 있으면 (예외로 멈춘 경우) 이어서
+        if (queue.length) setTimeout(() => void runQueue(), 0);
+      }
     }
-    if (!closed) paintControls();
   };
   const anchorOf = (k: number | string) => anchors.get(typeof k === 'number' ? `seat:${k}` : k) ?? null;
   /** 한 걸음: 말풍선 + 칩 이동 + 소리 (Phaser 위 HTML이라 다시 그려도 끊기지 않는다) */
