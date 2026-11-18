@@ -796,12 +796,21 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 자리 판: 아바타 · 이름 · 꼬리표(차례 · 고 · 흔들기 · 폭탄 피) · 점수 방울
     const tagsOf = (pl: (typeof P)[number], seat: number): PanelTag[] => [
       ...(p.turn === seat ? [{ text: seat === t.mySeat ? '내 차례!' : '생각 중…', color: 'pink', bounce: true } as PanelTag] : []),
-      // 판이 끝난 뒤 (다음 판 기다리는 중): 레디 표시
-      ...(t.room.status === 'waiting' && t.seats.find((s) => s.seat_no === seat && s.user_id && !s.left_game)?.ready ? [{ text: '레디!', color: 'win' } as PanelTag] : []),
+      // 위쪽 자리 줄을 숨긴 대신 여기서 알려 준다: 나간 사람 자리(AI 대신) · 다음 판에 들어올 사람 · 레디/대기
+      ...seatTags(seat),
       ...(pl.go ? [{ text: `${pl.go}고`, color: 'teamA' } as PanelTag] : []),
       ...(pl.shakes ? [{ text: `흔들기 ${pl.shakes}`, color: 'accent' } as PanelTag] : []),
       ...(pl.bombFill ? [{ text: `폭탄 피 ${pl.bombFill}`, color: 'track' } as PanelTag] : []),
     ];
+    function seatTags(seat: number): PanelTag[] {
+      const row = t.seats.find((s) => s.seat_no === seat);
+      if (!row) return [];
+      const out: PanelTag[] = [];
+      if (row.user_id && row.left_game) out.push({ text: 'AI 대신', color: 'track' } as PanelTag);
+      if (row.pending_user_id) out.push({ text: `다음 판: ${row.pending_nickname ?? '새 친구'}`, color: 'teamA' } as PanelTag);
+      if (t.room.status === 'waiting' && row.user_id && !row.left_game) out.push(row.ready ? ({ text: '레디!', color: 'win' } as PanelTag) : ({ text: '대기', color: 'track' } as PanelTag));
+      return out;
+    }
     const subOf = (pl: (typeof P)[number]) => pl.breakdown.map((l) => `${l.label} ${l.points}점`).join(' · ');
     playerPanel(scene, L.oppPanel, { name: t.seatName(opp), avatar: t.seatAvatar(opp), score: op.score, tags: tagsOf(op, opp), sub: portrait ? undefined : subOf(op), turn: p.turn === opp, reserve: L.oppReserve });
     playerPanel(scene, L.myPanel, { name: t.seatName(me), avatar: t.seatAvatar(me), score: mp.score, tags: tagsOf(mp, me), sub: subOf(mp), turn: p.turn === me });

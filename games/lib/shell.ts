@@ -1266,6 +1266,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   function privWaiting(seated: boolean): boolean {
     if (!seated || !st || room?.status !== 'playing') return false;
     if (priv && priv.round_no === st.round_no) return false;
+    // 끝난 판 화면이거나, 새 판의 내 패가 판 정보보다 먼저 온 경우: 지금 화면(지난 판)의 카드는 그대로 둔다
+    if (st.public_state?.result || (priv && priv.round_no > st.round_no)) return false;
     // 연출 재생 중이라 미뤄 둔 내 패가 이번 판 것이면 바로 쓴다 (새 판 첫 패를 기다리게 하지 않는다)
     if (pendingPriv && pendingPriv.round_no === st.round_no) {
       priv = pendingPriv;
@@ -1276,7 +1278,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       privWaitRound = st.round_no;
       privWaitSince = performance.now();
       if (privWaitTimer) clearTimeout(privWaitTimer);
-      privWaitTimer = setTimeout(() => !closed && paint(), 3100);
+      // 연출 재생 중이어도 테이블까지 다시 그린다 (paint는 재생 중 테이블을 건너뛴다)
+      privWaitTimer = setTimeout(() => !closed && repaint(), 3100);
     }
     return performance.now() - privWaitSince < 3000;
   }

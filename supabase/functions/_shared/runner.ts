@@ -170,7 +170,7 @@ export class Runner {
           throw new GameError(msg);
         }
       }
-      if (await this.advance(roomId, room, seats, engine, deck.version, state)) return { ok: true };
+      if (await this.advance(roomId, room, seats, engine, deck.version, state, engine.spinResult ? engine.spinResult(deck.state) : null)) return { ok: true };
     }
     throw new GameError('busy, try again', 409);
   }
@@ -207,7 +207,7 @@ export class Runner {
       }
     }
     // 끝난 판이면(정산 도중 멈춘 경우 포함) advance가 정산·정리를 마저 한다 (정산은 판마다 한 번만)
-    return { acted: await this.advance(roomId, room, seats, engine, deck.version, state) };
+    return { acted: await this.advance(roomId, room, seats, engine, deck.version, state, engine.spinResult ? engine.spinResult(deck.state) : null) };
   }
 
   private aiAction(engine: AnyEngine, state: unknown, seat: number) {
@@ -216,10 +216,10 @@ export class Runner {
   }
 
   /** AI 차례를 이어서 두고, 저장·공개하고, 판이 끝났으면 정산한다 → 저장했으면 true */
-  private async advance(roomId: string, room: RoomRow, seats: SeatRow[], engine: AnyEngine, version: number, state: unknown) {
+  /** savedSpin: 불러온(이미 저장된) 상태의 스핀 결과. 넘겨받은 state는 호출한 쪽에서 이미 바뀌었을 수 있어 여기서 재지 않는다 */
+  private async advance(roomId: string, room: RoomRow, seats: SeatRow[], engine: AnyEngine, version: number, state: unknown, savedSpin: { spin: number; result: number } | null = null) {
     let steps = 0;
-    // 불러온(이미 저장된) 상태의 스핀 결과: 이번 호출에서 새로 나온 결과는 아직 저장 전이라 여기서 지급·다음 단계로 넘기지 않는다
-    const savedSpin = engine.spinResult ? engine.spinResult(state) : null;
+    // 이번 호출에서 새로 나온 결과(저장 전)로는 여기서 지급·다음 단계로 넘기지 않는다 (savedSpin과 다르면 저장 전)
     while (!engine.done(state)) {
       const autos = engine.pending(state).filter((s: number) => this.auto(seats, s));
       if (autos.length === 0) {
