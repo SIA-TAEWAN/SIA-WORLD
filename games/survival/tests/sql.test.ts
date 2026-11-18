@@ -28,19 +28,25 @@ const rows = (name: string) =>
   [...body(name).matchAll(/^\s*\(([^)]+)\),?\s*$/gm)].map((m) => m[1].split(',').map((c) => (c.trim().startsWith("'") ? c.trim().slice(1, -1) : Number(c))));
 
 describe('SQL의 표가 게임 데이터와 같다', () => {
-  it('영구 강화: 항목 · 최대 레벨 · 첫 비용', () => {
-    expect(rows('_survival_upgrades')).toEqual(UPGRADES.map((u) => [u.id, u.max, u.baseCost]));
+  it('영구 강화: 항목 · 최대 레벨 · 첫 비용 · 배수', () => {
+    expect(rows('_survival_upgrades')).toEqual(UPGRADES.map((u) => [u.id, u.max, u.baseCost, u.growth]));
   });
 
-  it('강화 비용 식: round(첫 비용 × 1.5^레벨 / 5) × 5', () => {
-    expect(body('_survival_upgrade_cost')).toContain('(round(p_base * power(1.5::numeric, p_level) / 5) * 5)::bigint');
-    // 같은 식을 여기서 다시 계산해 게임 쪽 함수와 비교한다. 딱 절반(67.5 등)은 두 쪽 모두 올림이다 (JS Math.round · PG numeric round)
+  it('강화 비용 식: round(첫 비용 × 배수^레벨 / 5) × 5', () => {
+    expect(body('_survival_upgrade_cost')).toContain('(round(p_base * power(p_growth, p_level) / 5) * 5)::bigint');
+    expect(body('survival_buy_upgrade')).toContain('public._survival_upgrade_cost(u.base_cost, u.growth, lv)');
+    expect(body('survival_reset_upgrades')).toContain('public._survival_upgrade_cost(x.base_cost, x.growth, g.n)');
+    // 같은 식을 여기서 다시 계산해 게임 쪽 함수와 비교한다.
+    // 서버는 십진수로 정확히, 게임은 부동소수로 계산하므로 반올림이 갈릴 수 있는 값(딱 절반 근처)이 없어야 한다.
+    // 단 1.5배는 2의 거듭제곱 분수라 부동소수로도 정확하고, 딱 절반(67.5 등)은 두 쪽 모두 올림이다
     for (const u of UPGRADES) {
       for (let lv = 0; lv < u.max; lv++) {
-        const exact = (u.baseCost * 1.5 ** lv) / 5;
+        const exact = (u.baseCost * u.growth ** lv) / 5;
+        if (u.growth !== 1.5) expect(Math.abs((exact % 1) - 0.5), `${u.id} ${lv}`).toBeGreaterThan(0.001);
         expect(upgradeCost(u.id, lv)).toBe(Math.round(exact) * 5);
       }
     }
+    expect([0, 1, 2].map((lv) => upgradeCost('might', lv))).toEqual([100, 150, 225]);
   });
 
   it('엽전으로 푸는 캐릭터와 값', () => {

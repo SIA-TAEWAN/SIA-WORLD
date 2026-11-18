@@ -60,38 +60,38 @@ export interface BossDef {
 export const BOSSES: BossDef[] = [
   // ───── 1. 들판 ─────
   {
-    id: 'bigDokkaebi', name: '큰 도깨비', map: 'field', desc: '돌진하고 주변에 충격파를 낸다', hp: 2200, speed: 78, dmg: 16, r: 52, xp: 60, ready: true,
+    id: 'bigDokkaebi', name: '큰 도깨비', map: 'field', desc: '돌진하고 주변에 충격파를 낸다', hp: 3200, speed: 86, dmg: 30, r: 52, xp: 60, ready: true,
     patterns: [
       { kind: 'chase', dur: 3 },
       { kind: 'charge', windup: 0.8, speed: 560, dur: 0.65 },
       { kind: 'chase', dur: 2 },
-      { kind: 'shockwave', windup: 1.1, r: 210, dmg: 20 },
+      { kind: 'shockwave', windup: 1.0, r: 225, dmg: 34 },
     ],
   },
   {
-    id: 'dueoksini', name: '두억시니', map: 'field', desc: '방망이를 내려찍고 꼬마 도깨비를 부른다', hp: 5000, speed: 70, dmg: 20, r: 56, xp: 150, ready: true,
+    id: 'dueoksini', name: '두억시니', map: 'field', desc: '방망이를 내려찍고 꼬마 도깨비를 부른다', hp: 2800, speed: 70, dmg: 18, r: 56, xp: 150, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
-      { kind: 'slam', windup: 0.9, r: 125, dmg: 24, count: 3, gap: 0.55 },
+      { kind: 'slam', windup: 1.0, r: 125, dmg: 18, count: 3, gap: 0.6 },
       { kind: 'chase', dur: 2 },
-      { kind: 'summon', windup: 0.8, enemy: 'imp', count: 10, spread: 260 },
+      { kind: 'summon', windup: 0.8, enemy: 'imp', count: 8, spread: 260 },
     ],
   },
   {
-    id: 'bulgasal', name: '불가살', map: 'field', desc: '큰 범위를 공격하고, 시간이 갈수록 단단해진다', hp: 9000, speed: 84, dmg: 24, r: 64, xp: 300, ready: true,
+    id: 'bulgasal', name: '불가살', map: 'field', desc: '큰 범위를 공격하고, 시간이 갈수록 단단해진다', hp: 4200, speed: 80, dmg: 18, r: 64, xp: 300, ready: true,
     harden: { perSec: 0.004, min: 0.6 },
     patterns: [
       { kind: 'chase', dur: 2.5 },
-      { kind: 'barrage', windup: 1.1, r: 140, dmg: 26, count: 5, spread: 330 },
+      { kind: 'barrage', windup: 1.2, r: 140, dmg: 18, count: 5, spread: 330 },
       { kind: 'chase', dur: 2 },
-      { kind: 'nova', windup: 1.6, r: 400, dmg: 32 },
-      { kind: 'charge', windup: 0.7, speed: 600, dur: 0.6 },
+      { kind: 'nova', windup: 1.9, r: 380, dmg: 22 },
+      { kind: 'charge', windup: 0.9, speed: 560, dur: 0.6 },
     ],
   },
   // ───── 2. 대나무 숲 ─────
   {
     // 장산범: 대나무 사이로 숨었다가(보이지 않고 맞지 않는다) 내 옆에 나타나 빠르게 덮친다
-    id: 'jangsanbeom', name: '장산범', map: 'bamboo', desc: '대나무 사이로 숨었다가 빠르게 기습한다', hp: 2000, speed: 96, dmg: 18, r: 48, xp: 80, ready: true,
+    id: 'jangsanbeom', name: '장산범', map: 'bamboo', desc: '대나무 사이로 숨었다가 빠르게 기습한다', hp: 1800, speed: 94, dmg: 16, r: 48, xp: 80, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
       { kind: 'hide', dur: 1.6, r: 250 },
@@ -103,7 +103,7 @@ export const BOSSES: BossDef[] = [
   },
   {
     // 왕지네: 긴 몸(독 지대의 줄)으로 내가 가는 길을 막고, 내 둘레에 독을 뿌린다
-    id: 'centipede', name: '왕지네', map: 'bamboo', desc: '긴 몸으로 길을 막고 독을 뿌린다', hp: 5500, speed: 74, dmg: 22, r: 54, xp: 170, ready: true,
+    id: 'centipede', name: '왕지네', map: 'bamboo', desc: '긴 몸으로 길을 막고 독을 뿌린다', hp: 2600, speed: 74, dmg: 18, r: 54, xp: 170, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
       { kind: 'wallLine', windup: 0.9, r: 62, dmg: 20, count: 7, spread: 620, linger: 4, tick: 8, zone: 'poison' },
@@ -113,31 +113,31 @@ export const BOSSES: BossDef[] = [
   },
   {
     // 구미호: 분신을 만들고 여우구슬을 사방으로 쏟아낸다
-    id: 'gumiho', name: '구미호', map: 'bamboo', desc: '분신을 만들고 여우구슬을 쏟아낸다', hp: 10000, speed: 96, dmg: 24, r: 56, xp: 320, ready: true,
+    id: 'gumiho', name: '구미호', map: 'bamboo', desc: '분신을 만들고 여우구슬을 쏟아낸다', hp: 3600, speed: 90, dmg: 18, r: 56, xp: 320, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
-      { kind: 'bullets', windup: 0.7, count: 12, waves: 3, gap: 0.5, speed: 210, dmg: 16 },
+      { kind: 'bullets', windup: 0.8, count: 10, waves: 3, gap: 0.6, speed: 190, dmg: 14 },
       { kind: 'clones', windup: 0.8, count: 3, hp: 0.03, spread: 240 },
       { kind: 'chase', dur: 2 },
-      { kind: 'bullets', windup: 0.6, count: 16, waves: 2, gap: 0.6, speed: 240, dmg: 16 },
+      { kind: 'bullets', windup: 0.8, count: 14, waves: 2, gap: 0.7, speed: 210, dmg: 14 },
       { kind: 'charge', windup: 0.6, speed: 600, dur: 0.55 },
     ],
   },
   // ───── 3. 달빛 궁궐 ─────
   {
     // 수문장 대장: 방패를 든 채(받는 피해가 줄어든다) 돌진하고, 수문장 요괴를 불러 지휘한다
-    id: 'guardCaptain', name: '수문장 대장', map: 'palace', desc: '방패 돌진을 하고 수문장 요괴를 지휘한다', hp: 2200, speed: 80, dmg: 20, r: 54, xp: 100, ready: true,
+    id: 'guardCaptain', name: '수문장 대장', map: 'palace', desc: '방패 돌진을 하고 수문장 요괴를 지휘한다', hp: 1500, speed: 76, dmg: 14, r: 54, xp: 100, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
-      { kind: 'charge', windup: 0.9, speed: 520, dur: 0.8, shield: 0.3 },
-      { kind: 'summon', windup: 0.8, enemy: 'guard', count: 4, spread: 300 },
+      { kind: 'charge', windup: 1.0, speed: 480, dur: 0.7, shield: 0.3 },
+      { kind: 'summon', windup: 0.8, enemy: 'guard', count: 3, spread: 320 },
       { kind: 'chase', dur: 2.5 },
-      { kind: 'charge', windup: 0.7, speed: 560, dur: 0.7, shield: 0.3 },
+      { kind: 'charge', windup: 0.9, speed: 500, dur: 0.7, shield: 0.3 },
     ],
   },
   {
     // 야광귀: 내 옆으로 순간이동해 덮친다. 맞으면 잠시 이동 속도가 줄어든다
-    id: 'yagwanggwi', name: '야광귀', map: 'palace', desc: '순간이동한다. 맞으면 잠시 느려진다', hp: 6000, speed: 92, dmg: 24, r: 50, xp: 200, ready: true,
+    id: 'yagwanggwi', name: '야광귀', map: 'palace', desc: '순간이동한다. 맞으면 잠시 느려진다', hp: 2600, speed: 88, dmg: 18, r: 50, xp: 200, ready: true,
     patterns: [
       { kind: 'chase', dur: 2 },
       { kind: 'blink', windup: 0.75, r: 130, dmg: 24, count: 3, gap: 1.0, slow: 2.5 },
@@ -147,19 +147,19 @@ export const BOSSES: BossDef[] = [
   },
   {
     // 이무기: 화면 밖에서 화면을 가로질러 돌진하고(지나갈 길이 미리 보인다), 여기저기 물기둥을 세운다
-    id: 'imugi', name: '이무기', map: 'palace', desc: '화면을 가로지르는 돌진, 물기둥', hp: 11000, speed: 90, dmg: 28, r: 66, xp: 380, ready: true,
+    id: 'imugi', name: '이무기', map: 'palace', desc: '화면을 가로지르는 돌진, 물기둥', hp: 2200, speed: 82, dmg: 16, r: 66, xp: 380, ready: true,
     patterns: [
       { kind: 'chase', dur: 2 },
-      { kind: 'sweep', windup: 1.2, speed: 1150, dur: 0.95, r: 86, dmg: 30, count: 8, spread: 1040 },
-      { kind: 'barrage', windup: 1.1, r: 105, dmg: 26, count: 7, spread: 380, zone: 'water' },
+      { kind: 'sweep', windup: 1.4, speed: 1150, dur: 0.95, r: 80, dmg: 20, count: 8, spread: 1040 },
+      { kind: 'barrage', windup: 1.2, r: 100, dmg: 18, count: 6, spread: 380, zone: 'water' },
       { kind: 'chase', dur: 1.5 },
-      { kind: 'sweep', windup: 1.0, speed: 1250, dur: 0.9, r: 86, dmg: 30, count: 8, spread: 1040 },
+      { kind: 'sweep', windup: 1.3, speed: 1250, dur: 0.9, r: 80, dmg: 20, count: 8, spread: 1040 },
     ],
   },
   // ───── 4. 황천길 ─────
   {
     // 저승사자: 명부로 내 자리에 표식을 찍는다. 표식은 잠시 뒤 폭발한다
-    id: 'reaper', name: '저승사자', map: 'underworld', desc: '명부로 표식을 찍고 그 자리가 잠시 뒤 폭발한다', hp: 2400, speed: 86, dmg: 22, r: 50, xp: 120, ready: true,
+    id: 'reaper', name: '저승사자', map: 'underworld', desc: '명부로 표식을 찍고 그 자리가 잠시 뒤 폭발한다', hp: 1500, speed: 82, dmg: 16, r: 50, xp: 120, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
       { kind: 'slam', windup: 1.3, r: 105, dmg: 26, count: 5, gap: 0.45 },
@@ -169,7 +169,7 @@ export const BOSSES: BossDef[] = [
   },
   {
     // 강철이: 내 쪽으로 불을 뿜는다. 불이 지나간 바닥에는 불길 지대가 한동안 남는다
-    id: 'gangcheori', name: '강철이', map: 'underworld', desc: '불을 뿜어 바닥에 불길 지대를 남긴다', hp: 6500, speed: 82, dmg: 26, r: 62, xp: 240, ready: true,
+    id: 'gangcheori', name: '강철이', map: 'underworld', desc: '불을 뿜어 바닥에 불길 지대를 남긴다', hp: 2600, speed: 80, dmg: 18, r: 62, xp: 240, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
       { kind: 'breath', windup: 0.8, r: 70, dmg: 24, count: 7, spread: 560, linger: 5, tick: 9, zone: 'fire' },
@@ -180,14 +180,14 @@ export const BOSSES: BossDef[] = [
   },
   {
     // 염라대왕: 넓은 판결 장판을 여러 개 깔고, 저승사자(작은 모습)와 해골 병사를 부른다
-    id: 'yeomra', name: '염라대왕', map: 'underworld', desc: '넓은 판결 장판, 저승사자·해골 병사 소환', hp: 12000, speed: 78, dmg: 30, r: 70, xp: 450, ready: true,
-    harden: { perSec: 0.003, min: 0.65 },
+    id: 'yeomra', name: '염라대왕', map: 'underworld', desc: '넓은 판결 장판, 저승사자·해골 병사 소환', hp: 2000, speed: 72, dmg: 16, r: 70, xp: 450, ready: true,
+    harden: { perSec: 0.002, min: 0.75 },
     patterns: [
       { kind: 'chase', dur: 2.5 },
-      { kind: 'barrage', windup: 1.4, r: 210, dmg: 32, count: 4, spread: 420 },
-      { kind: 'summon', windup: 0.8, enemy: 'skeleton', count: 12, spread: 280 },
+      { kind: 'barrage', windup: 1.5, r: 190, dmg: 20, count: 4, spread: 420 },
+      { kind: 'summon', windup: 0.8, enemy: 'skeleton', count: 8, spread: 280 },
       { kind: 'chase', dur: 2 },
-      { kind: 'nova', windup: 1.7, r: 430, dmg: 34 },
+      { kind: 'nova', windup: 2.0, r: 400, dmg: 22 },
       { kind: 'clones', windup: 0.8, count: 2, hp: 0.04, spread: 260, look: 'reaper' },
     ],
   },

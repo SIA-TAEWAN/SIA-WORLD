@@ -16,6 +16,7 @@ import { EV, MODE, type State } from '../src/game/state';
 import { advance, disarm, emptyRun, live, put } from './helpers';
 
 const FIELD = MAPS[0];
+const BIG = BOSSES[BOSS_INDEX.bigDokkaebi];
 
 /** 무기 없이, 죽지 않고 들판을 sec 초까지 흘려보내며 본 것을 적는다 (cull: 요괴가 상한까지 쌓이지 않게 가끔 치운다) */
 function watch(untilSec: number, from = 0, cull = false) {
@@ -68,7 +69,8 @@ describe('시간별 등장 표 (들판)', () => {
 
   it('떼로 몰려오는 이벤트가 정해진 시각에 온다', () => {
     const swarm = early.events.filter((e) => e.t === EV.swarm);
-    expect(swarm.map((e) => Math.round(e.at))).toEqual([210]);
+    expect(swarm.map((e) => Math.round(e.at))).toEqual(FIELD.swarms.filter((w) => w.at < 250).map((w) => w.at));
+    expect(swarm.length).toBe(1);
     expect(swarm[0].a).toBe(ENEMY_INDEX.imp);
   });
 
@@ -77,9 +79,8 @@ describe('시간별 등장 표 (들판)', () => {
     expect(late.maxNormals).toBeGreaterThan(250);
     expect(late.maxNormals).toBeLessThanOrEqual(LIMIT.enemies + 40); // 떼·소환은 풀 크기까지
     expect(late.s.enemies.n).toBeLessThanOrEqual(LIMIT.enemyPool);
-    // 5분부터 물귀신, 7분부터 여우불 · 7분에 중간 보스 2(두억시니)
+    // 5분부터 물귀신 · 7분에 중간 보스 2(두억시니). (상한에 닿으면 새 요괴는 나오지 않는다)
     expect(late.firstSeen.has('water')).toBe(true);
-    expect(late.firstSeen.get('fox')).toBeGreaterThanOrEqual(420);
     expect(late.firstSeen.get('boss:dueoksini')).toBeCloseTo(420, 1);
   });
 
@@ -170,11 +171,11 @@ describe('보스 3종', () => {
         maxStep = Math.max(maxStep, Math.hypot(b.x - px, b.y - py));
         px = b.x;
         py = b.y;
-        if (live(st.zones).some((z) => z.owner === 1 && z.delay > 0 && z.r === 210)) warned = true;
+        if (live(st.zones).some((z) => z.owner === 1 && z.delay > 0 && z.r === BIG.patterns[3].r)) warned = true;
         for (let i = 0; i < st.evN; i++) if (st.events[i].t === EV.boom) boom = true;
       },
     });
-    expect(maxStep).toBeCloseTo(560 / 60, 1);
+    expect(maxStep).toBeCloseTo(BIG.patterns[1].speed! / 60, 1);
     expect(warned).toBe(true);
     expect(boom).toBe(true);
   });
@@ -188,12 +189,13 @@ describe('보스 3종', () => {
       b.speed = 0;
       b.dmg = 0;
       step(s, makeInput());
+      const wave = BIG.patterns[3];
       const z = live(s.zones)[0];
-      expect(z.delay).toBeCloseTo(1.1, 1);
-      advance(s, 1.0);
+      expect(z.delay).toBeCloseTo(wave.windup!, 1);
+      advance(s, wave.windup! - 0.1);
       expect(s.player.hp).toBe(110);
       advance(s, 0.3);
-      expect(s.player.hp).toBe(inside ? 110 - 20 : 110);
+      expect(s.player.hp).toBe(inside ? 110 - wave.dmg! : 110);
     }
   });
 
@@ -209,7 +211,7 @@ describe('보스 3종', () => {
       },
     });
     expect(slams).toBeGreaterThanOrEqual(3);
-    expect(live(s.enemies).filter((e) => e.kind === ENEMY_INDEX.imp).length).toBe(10);
+    expect(live(s.enemies).filter((e) => e.kind === ENEMY_INDEX.imp).length).toBe(BOSSES[BOSS_INDEX.dueoksini].patterns[3].count);
   });
 
   it('불가살: 큰 범위 공격을 하고, 시간이 갈수록 단단해진다', () => {
@@ -224,7 +226,8 @@ describe('보스 3종', () => {
         for (const z of zs) maxR = Math.max(maxR, z.r);
       },
     });
-    expect(maxR).toBe(400);
+    expect(maxR).toBe(BOSSES[BOSS_INDEX.bulgasal].patterns[3].r);
+    expect(maxR).toBeGreaterThan(300);
     expect(many).toBeGreaterThanOrEqual(5);
     // 단단해짐: 같은 피해라도 나중에는 덜 들어간다
     const t = bossRun('bulgasal');

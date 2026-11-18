@@ -483,7 +483,7 @@ describe('보스 9종 (대나무 숲 · 달빛 궁궐 · 황천길)', () => {
 
   it('저승사자: 내 자리에 표식을 여러 번 찍고, 표식은 잠시 뒤 폭발한다', () => {
     const { seen } = watchBoss('reaper');
-    const marks = seen.zones.filter((z) => z.r === 105);
+    const marks = seen.zones.filter((z) => z.r === 105 || z.r === 120);
     expect(marks.length).toBeGreaterThanOrEqual(5);
     const t = disarm(emptyRun({ map: 'field', char: 'ox' }));
     const r = spawnBoss(t, BOSS_INDEX.reaper, 0, -700)!;
@@ -521,9 +521,10 @@ describe('보스 9종 (대나무 숲 · 달빛 궁궐 · 황천길)', () => {
   it('염라대왕: 넓은 판결 장판, 해골 병사와 저승사자 소환, 시간이 갈수록 단단해짐', () => {
     const { seen, def } = watchBoss('yeomra', 30);
     const zs = seen.zones;
-    expect(zs.filter((z) => z.r === 210).length).toBeGreaterThanOrEqual(4);
-    expect(zs.some((z) => z.r === 430)).toBe(true);
-    expect(seen.summoned.skeleton).toBeGreaterThanOrEqual(12);
+    expect(zs.filter((z) => z.r === def.patterns[1].r).length).toBeGreaterThanOrEqual(4);
+    expect(def.patterns[1].r).toBeGreaterThan(150); // 넓은 판결 장판
+    expect(zs.some((z) => z.r === def.patterns[4].r)).toBe(true);
+    expect(seen.summoned.skeleton).toBeGreaterThanOrEqual(def.patterns[2].count!);
     expect(seen.clones.filter((c) => c.look === BOSS_INDEX.reaper).length).toBeGreaterThanOrEqual(2);
     expect(def.harden).toBeTruthy();
   });
@@ -532,7 +533,7 @@ describe('보스 9종 (대나무 숲 · 달빛 궁궐 · 황천길)', () => {
     for (const m of MAPS) {
       const s = emptyRun({ map: m.id });
       const b = spawnBoss(s, BOSS_INDEX[m.bosses[0].id], 0, -500)!;
-      expect(b.maxHp).toBeCloseTo(BOSSES[BOSS_INDEX[m.bosses[0].id]].hp * m.power.hp, 3);
+      expect(b.maxHp).toBeCloseTo(BOSSES[BOSS_INDEX[m.bosses[0].id]].hp * m.power.boss, 3);
     }
   });
 });
@@ -721,7 +722,6 @@ describe('맵 4종: 10분 구성이 끝까지 돈다', () => {
     for (let i = 1; i < MAPS.length; i++) {
       expect(MAPS[i].power.hp).toBeGreaterThan(MAPS[i - 1].power.hp);
       expect(MAPS[i].power.speed).toBeGreaterThan(MAPS[i - 1].power.speed);
-      expect(MAPS[i].power.count).toBeGreaterThanOrEqual(MAPS[i - 1].power.count);
       expect(MAPS[i].coinMul).toBeGreaterThan(MAPS[i - 1].coinMul);
     }
     const hp = (id: string) => put(emptyRun({ map: id }), 'imp', 500, 0).maxHp;

@@ -51,7 +51,7 @@ const ranged: EnemyMove = (s, e, def, dx, dy, d) => {
   if (e.cd <= 0 && d < sh.range) {
     e.cd = sh.every;
     const speed = sh.speed;
-    addProjectile(s, PROJ.foxfire, MODE.enemy, 7, -1, e.x, e.y, (dx / d) * speed, (dy / d) * speed, sh.size, sh.dmg * dmgGrowth(s), (sh.range * 1.5) / speed);
+    addProjectile(s, PROJ.foxfire, MODE.enemy, 7, -1, e.x, e.y, (dx / d) * speed, (dy / d) * speed, sh.size, sh.dmg * s.map.power.dmg * dmgGrowth(s), (sh.range * 1.5) / speed);
   }
 };
 

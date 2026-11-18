@@ -40,8 +40,8 @@ export interface MapDef {
   level: string;
   /** 엽전 배율 */
   coinMul: number;
-  /** 요괴 강함: 체력·속도·수 배율 */
-  power: { hp: number; speed: number; count: number };
+  /** 요괴 강함: 체력·속도·수·닿았을 때 피해의 배율, boss 는 보스 체력 배율 */
+  power: { hp: number; speed: number; count: number; dmg: number; boss: number };
   /** 시간이 갈수록 강해짐: 1분마다 체력·피해가 이만큼(비율) 는다 */
   growth: { hpPerMin: number; dmgPerMin: number };
   terrain: TerrainDef;
@@ -60,7 +60,7 @@ const END = 99999;
 export const MAPS: MapDef[] = [
   {
     id: 'field', name: '들판', desc: '넓은 풀밭, 장애물이 적다', level: '쉬움', coinMul: 1, ready: true, unlock: '처음부터',
-    power: { hp: 1, speed: 1, count: 1 },
+    power: { hp: 1, speed: 1, count: 1.5, dmg: 0.5, boss: 1 },
     growth: { hpPerMin: 0.26, dmgPerMin: 0.09 },
     terrain: { kind: 'none', cell: 200, chance: 0, r: 0 },
     spawns: [
@@ -68,27 +68,27 @@ export const MAPS: MapDef[] = [
       { enemy: 'imp', from: 0, to: 180, rate0: 1.5, rate1: 5.0 },
       { enemy: 'wisp', from: 120, to: 180, rate0: 0.5, rate1: 1.2 },
       // 3~7분: 빠른 요괴·단단한 요괴 추가
-      { enemy: 'imp', from: 180, to: 420, rate0: 5.0, rate1: 6.0 },
+      { enemy: 'imp', from: 180, to: 420, rate0: 4.6, rate1: 5.0 },
       { enemy: 'wisp', from: 180, to: 420, rate0: 1.5, rate1: 3.0 },
-      { enemy: 'club', from: 240, to: 420, rate0: 0.3, rate1: 1.0 },
-      { enemy: 'water', from: 300, to: 420, rate0: 0.3, rate1: 0.8 },
+      { enemy: 'club', from: 240, to: 420, rate0: 0.25, rate1: 0.7 },
+      { enemy: 'water', from: 300, to: 420, rate0: 0.2, rate1: 0.5 },
       // 7~10분: 가장 강한 요괴, 원거리 요괴 (10분 뒤에는 최종 보스와 함께 계속)
-      { enemy: 'imp', from: 420, to: END, rate0: 5.0, rate1: 5.0 },
-      { enemy: 'wisp', from: 420, to: 600, rate0: 3.0, rate1: 3.6 },
-      { enemy: 'club', from: 420, to: 600, rate0: 1.0, rate1: 1.3 },
-      { enemy: 'water', from: 420, to: 600, rate0: 0.8, rate1: 1.0 },
-      { enemy: 'fox', from: 420, to: 600, rate0: 0.15, rate1: 0.4 },
+      { enemy: 'imp', from: 420, to: END, rate0: 4.0, rate1: 4.0 },
+      { enemy: 'wisp', from: 420, to: 600, rate0: 2.4, rate1: 2.8 },
+      { enemy: 'club', from: 420, to: 600, rate0: 0.7, rate1: 0.9 },
+      { enemy: 'water', from: 420, to: 600, rate0: 0.5, rate1: 0.7 },
+      { enemy: 'fox', from: 420, to: 600, rate0: 0.1, rate1: 0.25 },
       { enemy: 'wisp', from: 600, to: END, rate0: 2.0, rate1: 2.0 },
       { enemy: 'club', from: 600, to: END, rate0: 0.6, rate1: 0.6 },
       { enemy: 'fox', from: 600, to: END, rate0: 0.2, rate1: 0.2 },
     ],
     swarms: [
-      { at: 210, enemy: 'imp', count: 30, shape: 'ring' },
+      { at: 205, enemy: 'imp', count: 44, shape: 'ring' },
       { at: 285, enemy: 'wisp', count: 24, shape: 'side' },
       { at: 345, enemy: 'imp', count: 40, shape: 'ring' },
       { at: 465, enemy: 'wisp', count: 36, shape: 'side' },
-      { at: 525, enemy: 'imp', count: 50, shape: 'ring' },
-      { at: 570, enemy: 'club', count: 12, shape: 'ring' },
+      { at: 525, enemy: 'imp', count: 36, shape: 'ring' },
+      { at: 570, enemy: 'club', count: 8, shape: 'ring' },
     ],
     bosses: [
       { at: 180, id: 'bigDokkaebi' },
@@ -99,8 +99,8 @@ export const MAPS: MapDef[] = [
   {
     // 도깨비불·물귀신·여우불 + 죽순 요괴. 빠른 요괴와 원거리 요괴가 일찍 나온다. 대나무가 길을 막는다
     id: 'bamboo', name: '대나무 숲', desc: '대나무가 길을 막는다', level: '보통', coinMul: 1.5, ready: true, unlock: '들판을 끝까지 버티기',
-    power: { hp: 1.3, speed: 1.04, count: 1.0 },
-    growth: { hpPerMin: 0.26, dmgPerMin: 0.09 },
+    power: { hp: 1.3, speed: 1.04, count: 1.05, dmg: 0.6, boss: 1.3 },
+    growth: { hpPerMin: 0.26, dmgPerMin: 0.04 },
     terrain: { kind: 'scatter', cell: 190, chance: 0.5, r: 22 },
     spawns: [
       { enemy: 'imp', from: 0, to: 180, rate0: 1.0, rate1: 2.4 },
@@ -135,8 +135,8 @@ export const MAPS: MapDef[] = [
   {
     // 전 종류 + 수문장 요괴. 떼로 몰려오는 이벤트가 잦다. 담 사이로 길이 좁다
     id: 'palace', name: '달빛 궁궐', desc: '밤 분위기, 길이 좁다', level: '어려움', coinMul: 2, ready: true, unlock: '대나무 숲을 끝까지 버티기',
-    power: { hp: 1.6, speed: 1.06, count: 1.0 },
-    growth: { hpPerMin: 0.26, dmgPerMin: 0.09 },
+    power: { hp: 1.6, speed: 1.06, count: 1.15, dmg: 0.68, boss: 1.6 },
+    growth: { hpPerMin: 0.26, dmgPerMin: 0.04 },
     terrain: { kind: 'walls', cell: 300, chance: 0.55, r: 30 },
     spawns: [
       { enemy: 'imp', from: 0, to: 180, rate0: 1.2, rate1: 3.0 },
@@ -176,8 +176,8 @@ export const MAPS: MapDef[] = [
   {
     // 해골 병사·원혼·도깨비불·물귀신·여우불. 처음부터 수가 많고 원거리 요괴가 일찍 나온다. 군데군데 삼도천 물길
     id: 'underworld', name: '황천길', desc: '저승으로 가는 어두운 길, 안개와 푸른 불빛', level: '매우 어려움', coinMul: 2.5, ready: true, unlock: '달빛 궁궐을 끝까지 버티기',
-    power: { hp: 2, speed: 1.08, count: 1.0 },
-    growth: { hpPerMin: 0.26, dmgPerMin: 0.09 },
+    power: { hp: 2, speed: 1.08, count: 1.18, dmg: 0.72, boss: 1.8 },
+    growth: { hpPerMin: 0.26, dmgPerMin: 0.04 },
     terrain: { kind: 'pools', cell: 360, chance: 0.45, r: 52 },
     spawns: [
       { enemy: 'skeleton', from: 0, to: 180, rate0: 0.6, rate1: 1.6 },

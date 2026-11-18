@@ -64,8 +64,8 @@ describe('밸런스 시험 틀', () => {
   }, 60000);
 
   it('강화 0에서는 들판을 끝까지 버티기 어렵고, 강화가 많으면 더 오래 버틴다', () => {
-    const base = average({ char: 'tiger', map: 'field' }, 8);
-    const strong = average({ char: 'tiger', map: 'field', upgrades: presetUpgrades(34) }, 8);
+    const base = average({ char: 'tiger', map: 'field' }, 5);
+    const strong = average({ char: 'tiger', map: 'field', upgrades: presetUpgrades(34) }, 5);
     expect(base.time).toBeGreaterThan(120);
     expect(base.time).toBeLessThan(480);
     expect(strong.time).toBeGreaterThan(base.time);

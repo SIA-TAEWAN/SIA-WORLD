@@ -324,7 +324,7 @@ export function spawnEnemy(s: State, kind: number, x: number, y: number): Enemy 
   e.maxHp = e.hp = def.hp * s.map.power.hp * hpGrowth(s);
   e.r = def.r;
   e.speed = def.speed * s.map.power.speed;
-  e.dmg = def.dmg * dmgGrowth(s);
+  e.dmg = def.dmg * s.map.power.dmg * dmgGrowth(s);
   e.xp = def.xp;
   e.cd = def.shoot ? def.shoot.every * (0.4 + rand(s) * 0.6) : 0;
   s.normals++;
@@ -339,7 +339,7 @@ export function spawnBoss(s: State, boss: number, x: number, y: number): Enemy |
   resetEnemy(s, e, x, y);
   e.kind = -1;
   e.boss = boss;
-  e.maxHp = e.hp = def.hp * s.map.power.hp;
+  e.maxHp = e.hp = def.hp * s.map.power.boss;
   e.r = def.r;
   e.speed = def.speed * s.map.power.speed;
   e.dmg = def.dmg;

@@ -25,9 +25,9 @@ export const ITEMS = {
   /** 엽전 한 닢의 값 (맵 엽전 배율·엽전 획득 보너스가 곱해진다) */
   coinValue: 1,
   /** 요괴 한 마리가 떨굴 확률 (0~1). 보스는 보물상자와 엽전을 따로 준다 */
-  drop: { coin: 0.06, cake: 0.006, pouch: 0.0022, talisman: 0.0016 },
+  drop: { coin: 0.037, cake: 0.006, pouch: 0.0022, talisman: 0.0016 },
   /** 보스가 떨구는 엽전 (닢 수) */
-  bossCoins: 15,
+  bossCoins: 9,
   /** 줍는 판정 거리 (내 반지름에 더한다) */
   touch: 10,
 };

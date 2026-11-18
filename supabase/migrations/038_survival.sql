@@ -107,28 +107,31 @@ language sql immutable as $$
 $$;
 revoke all on function public._survival_maps() from public, anon, authenticated;
 
--- 영구 강화: 항목, 최대 레벨, 첫 비용. 레벨 n → n+1 의 비용 = round(첫 비용 × 1.5^n / 5) × 5
+-- 영구 강화: 항목, 최대 레벨, 첫 비용, 레벨마다 오르는 배수. 레벨 n → n+1 의 비용 = round(첫 비용 × 배수^n / 5) × 5
+-- (보통은 1.5배: 100 → 150 → 225. 방어는 한 레벨의 효과가 커서 2.2배)
 -- games/survival/src/data/upgrades.ts
-create or replace function public._survival_upgrades() returns table (key text, max_level int, base_cost int)
+drop function if exists public._survival_upgrades();
+create or replace function public._survival_upgrades() returns table (key text, max_level int, base_cost int, growth numeric)
 language sql immutable as $$
   values
-    ('might', 10, 100),
-    ('hp', 10, 100),
-    ('armor', 5, 150),
-    ('speed', 5, 100),
-    ('xp', 5, 100),
-    ('pickup', 5, 100),
-    ('coin', 5, 100),
-    ('revive', 1, 500),
-    ('reroll', 3, 300)
+    ('might', 10, 100, 1.5),
+    ('hp', 10, 100, 1.5),
+    ('armor', 5, 100, 2.2),
+    ('speed', 5, 100, 1.5),
+    ('xp', 5, 100, 1.5),
+    ('pickup', 5, 100, 1.5),
+    ('coin', 5, 100, 1.5),
+    ('revive', 1, 120, 1.5),
+    ('reroll', 3, 300, 1.5)
 $$;
 revoke all on function public._survival_upgrades() from public, anon, authenticated;
 
-create or replace function public._survival_upgrade_cost(p_base int, p_level int) returns bigint
+drop function if exists public._survival_upgrade_cost(int, int);
+create or replace function public._survival_upgrade_cost(p_base int, p_growth numeric, p_level int) returns bigint
 language sql immutable as $$
-  select (round(p_base * power(1.5::numeric, p_level) / 5) * 5)::bigint
+  select (round(p_base * power(p_growth, p_level) / 5) * 5)::bigint
 $$;
-revoke all on function public._survival_upgrade_cost(int, int) from public, anon, authenticated;
+revoke all on function public._survival_upgrade_cost(int, numeric, int) from public, anon, authenticated;
 
 -- 엽전으로 푸는 캐릭터와 값. games/survival/src/data/characters.ts
 create or replace function public._survival_character_prices() returns table (char_id text, price int)
@@ -377,7 +380,7 @@ begin
   pr := public._survival_profile_row(me);
   lv := greatest(0, coalesce((pr.upgrades->>p_key)::int, 0));
   if lv >= u.max_level then raise exception 'max level'; end if;
-  cost := public._survival_upgrade_cost(u.base_cost, lv);
+  cost := public._survival_upgrade_cost(u.base_cost, u.growth, lv);
   if pr.coins < cost then raise exception 'not enough coins'; end if;
   update public.survival_profiles
     set coins = coins - cost, upgrades = upgrades || jsonb_build_object(p_key, lv + 1), updated_at = now()
@@ -395,7 +398,7 @@ begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   pr := public._survival_profile_row(me);
   -- 항목마다 0 ~ (지금 레벨 - 1) 레벨의 비용을 모두 더한다 (최대 레벨을 넘는 값은 최대 레벨까지만)
-  select coalesce(sum(public._survival_upgrade_cost(x.base_cost, g.n)), 0) into refund
+  select coalesce(sum(public._survival_upgrade_cost(x.base_cost, x.growth, g.n)), 0) into refund
   from public._survival_upgrades() x
   cross join lateral generate_series(0, least(x.max_level, greatest(0, coalesce((pr.upgrades->>x.key)::int, 0))) - 1) as g(n);
   update public.survival_profiles

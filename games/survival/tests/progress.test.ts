@@ -218,11 +218,14 @@ describe('영구 강화', () => {
   it('초기화하면 쓴 엽전을 전액 돌려받는다', () => {
     let p: SurvivalProfile = { ...defaultProfile(), coins: 5000 };
     for (const id of ['might', 'hp', 'armor', 'might', 'revive', 'reroll']) p = buyUpgrade(p, id);
-    expect(p.coins).toBe(5000 - (100 + 100 + 150 + 150 + 500 + 300));
+    expect(p.upgrades).toEqual({ might: 2, hp: 1, armor: 1, revive: 1, reroll: 1 });
+    expect(p.coins).toBe(5000 - (100 + 150 + 100 + 100 + 120 + 300));
+    expect(5000 - p.coins).toBe(upgradeSpent(p.upgrades));
     const r = resetUpgrades(p);
     expect(r.coins).toBe(5000);
     expect(upgradeCount(r.upgrades)).toBe(0);
-    expect(upgradeCost('revive', 0)).toBe(500);
+    // 방어는 레벨마다 2.2배로 오른다 (나머지는 1.5배)
+    expect([0, 1, 2, 3, 4].map((lv) => upgradeCost('armor', lv))).toEqual([100, 220, 485, 1065, 2345]);
   });
 
   it('읽어 온 프로필은 믿을 수 있는 모양으로 고친다', () => {

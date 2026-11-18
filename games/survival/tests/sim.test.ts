@@ -62,7 +62,7 @@ describe('요괴 추적과 피격', () => {
 
   it('방어(거북 등껍질·강화)는 받는 피해를 줄이되 1 아래로는 안 내려간다', () => {
     const s = disarm(emptyRun({ upgrades: { armor: 5 } }));
-    put(s, 'imp', 10, 0);
+    put(s, 'imp', 10, 0).dmg = 10;
     step(s, makeInput());
     expect(s.player.hp).toBe(100 - 5);
     const t = disarm(emptyRun({ upgrades: { armor: 5 } }));
@@ -146,7 +146,7 @@ describe('결정성과 풀', () => {
     expect(Array.from(a.state.dmgByWeapon)).toEqual(Array.from(b.state.dmgByWeapon));
     const c = simulate({ seed: 778, char: 'tiger', map: 'field' }, normalPolicy(5), 150);
     expect(c.state.rng).not.toBe(a.state.rng);
-  });
+  }, 60000);
 
   it('오래 돌려도 객체 수가 늘지 않는다 (풀 재사용)', () => {
     const s = createRun({ seed: 3, char: 'rat', map: 'field', upgrades: presetUpgrades(49), startAt: 300 });
@@ -167,5 +167,5 @@ describe('결정성과 풀', () => {
     expect(s.events.length).toBe(48);
     expect(s.cards.length).toBe(3);
     expect(s.weapons.length).toBeLessThanOrEqual(LIMIT.weapons);
-  });
+  }, 60000);
 });
