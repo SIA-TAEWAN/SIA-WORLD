@@ -4,7 +4,7 @@ import type { Side } from '../game/sim';
 import { Match, type MatchEvent, type MatchSetup } from '../match/game';
 import { OnlineMatch } from '../match/online';
 import { serverNow } from '../net/api';
-import { MatchRecorder } from '../net/record';
+import { MatchRecorder, forfeitResult, pendingStore } from '../net/record';
 import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, openSettings, screen, stage, state, toast } from './app';
@@ -30,7 +30,10 @@ export function showMatch(setup: MatchSetup) {
   const match: Match = room ? new OnlineMatch(setup, room, serverNow) : new Match(setup);
   window.__match = match;
   // 온라인: 경기 시작을 서버에 알린다 (두 기기가 각자). 끝나면 결과를 보고한다
-  const recorder = room && state.api ? new MatchRecorder(state.api, room.key, setup) : null;
+  const recorder = room && state.api ? new MatchRecorder(state.api, room.key, setup, { store: pendingStore(state.user.id) }) : null;
+  // 그림을 받는 동안에도 경기 시계가 돌게 한다 (방장이 늦게 시작해 상대만 기다리지 않도록). 화면이 그려지기 시작하면 멈춘다
+  let drawing = false;
+  const pump = online ? setInterval(() => drawing || match.update(performance.now()), 50) : null;
   const me = match.mySide;
 
   let game: Phaser.Game | null = null;
@@ -61,6 +64,7 @@ export function showMatch(setup: MatchSetup) {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', releaseAll);
+      if (pump) clearInterval(pump);
       ro?.disconnect();
       if (resultTimer) clearTimeout(resultTimer);
       if (cutTimer) clearTimeout(cutTimer);
@@ -155,6 +159,8 @@ export function showMatch(setup: MatchSetup) {
   // ---------- 나가기·설정 (창이 떠 있는 동안 AI 경기는 멈춘다) ----------
   $('#quit').addEventListener('click', () => {
     sfx('click');
+    // 버튼에 포커스가 남으면 스페이스(점프)가 이 버튼을 다시 누른다
+    (document.activeElement as HTMLElement | null)?.blur();
     releaseAll();
     // 온라인 경기는 멈출 수 없다 (창이 떠 있어도 계속 진행)
     if (!online) match.paused = true;
@@ -168,12 +174,19 @@ export function showMatch(setup: MatchSetup) {
         sfx('click');
         dim.remove();
         if (match.phase !== 'over') {
-          // 온라인: 상대에게 알리고(내 자리는 AI가 이어받는다) 방에서도 나간다. 남은 사람의 경기는 계속되므로 방의 '경기 끝'은 알리지 않는다
+          // AI가 이어받은 경기에서 남은 나까지 나간다: 몰수패(AI 3점)로 보고해야 이 경기가 기록된다 (나간 상대도 패, 나도 패)
+          const solo = match instanceof OnlineMatch && match.solo;
+          if (solo && recorder) void recorder.finish(forfeitResult(setup, match.state.score));
+          // 온라인: 상대에게 알리고(내 자리는 AI가 이어받는다) 방에서도 나간다.
+          // 남은 사람의 경기는 계속되므로 방의 '경기 끝'은 알리지 않는다 (이미 혼자였으면 알린다)
           match.quit();
           if (room) {
-            room.matchOver(setup.matchNo ?? 0, false);
+            room.matchOver(setup.matchNo ?? 0, solo);
             leaveRoom();
           }
+        } else if (room) {
+          // 경기가 끝난 직후(결과 화면으로 넘어가기 전)에 나가기: 방에서도 나간다
+          leaveRoom();
         }
         nav.lobby();
       } else if (el === dim || el.closest('[data-no]')) {
@@ -185,6 +198,7 @@ export function showMatch(setup: MatchSetup) {
     stage.append(dim);
   });
   $('#settings').addEventListener('click', () => {
+    (document.activeElement as HTMLElement | null)?.blur();
     releaseAll();
     if (online) return openSettings();
     match.paused = true;
@@ -195,7 +209,8 @@ export function showMatch(setup: MatchSetup) {
     // 방은 대기 상태로 돌아간다 (방 목록의 '경기중' 표시도 풀린다).
     // 내가 끊겼던 쪽이면 남은 사람은 아직 AI와 경기 중이므로 내 기기에서만 정리한다
     const iLeft = result.reason === 'leave' && result.leaver === me;
-    room?.matchOver(setup.matchNo ?? 0, !iLeft);
+    // 방장이 정상 종료했으면 결과도 함께 알린다 (상대가 끝 스냅샷을 못 받았어도 같은 결과로 끝나게)
+    room?.matchOver(setup.matchNo ?? 0, !iLeft, result.reason === 'normal' && me === 0 ? { score: result.score, winner: result.winner } : undefined);
     if (match instanceof OnlineMatch) window.__lastStats = { side: me, solo: match.solo, ...match.stats };
     if (recorder) result.record = recorder.finish(result);
     stage.querySelector('.dim')?.remove();
@@ -238,6 +253,7 @@ export function showMatch(setup: MatchSetup) {
   // ---------- 매 프레임: 이번에 생긴 일을 점수판·큰 글자에 반영 ----------
   let lastWait = 0;
   function frame(events: MatchEvent[]) {
+    drawing = true;
     // 상대 연결을 기다리는 중 (10초가 지나면 AI가 상대 캐릭터를 이어받는다)
     if (match.waitingSec !== lastWait) {
       lastWait = match.waitingSec;

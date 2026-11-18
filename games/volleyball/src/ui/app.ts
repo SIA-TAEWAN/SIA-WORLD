@@ -43,6 +43,8 @@ let cleanupScreen: (() => void) | null = null;
 export function screen(html: string, cls: string, bgm: TrackName | null, cleanup?: () => void): HTMLElement {
   cleanupScreen?.();
   cleanupScreen = cleanup ?? null;
+  // 앞 화면에서 띄운 창(나가기 확인·설정·방법)이 새 화면 위에 남지 않게
+  stage.querySelectorAll('.dim').forEach((d) => d.remove());
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
   music.play(bgm);
   return app.firstElementChild as HTMLElement;

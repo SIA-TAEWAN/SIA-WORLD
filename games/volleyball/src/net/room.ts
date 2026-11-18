@@ -1,35 +1,15 @@
-import { COUNTDOWN_SEC, type ZodiacId } from '../game/constants';
+import { COUNTDOWN_SEC, WIN_SCORE, type ZodiacId } from '../game/constants';
 import { serverNow, type VolleyApi } from './api';
 import type { Channel, Member, NetMsg } from './channel';
+import { MATCH_MAX_MS, cleanStart, type EndInfo, type StartMsg } from './start';
 import { bothReady, cleanTitle, hostOf, players, roomTitle, seatOf, sortMembers, type MemberInfo, type PlayerMeta } from './seats';
 
-/** 경기에 나서는 사람 (시작할 때 방장이 정해서 보낸다) */
-export interface StartPlayer {
-  id: string;
-  name: string;
-  char: ZodiacId;
-}
-
-/** 경기 시작 알림 */
-export interface StartMsg {
-  t: 'start';
-  /** 경기 번호: 방장이 서버 시각(ms)으로 만든 숫자. 결과 저장 때 방 코드와 함께 이 경기를 가리킨다 */
-  matchNo: number;
-  /** 첫 서브를 정하는 시드 */
-  seed: number;
-  /** 배경 번호 0~2 */
-  bg: number;
-  /** 카운트다운이 끝나고 경기가 시작되는 시각 (서버 시각 ms) — 두 기기가 같은 순간에 시작한다 */
-  startAt: number;
-  /** [왼쪽(방장), 오른쪽] */
-  players: [StartPlayer, StartPlayer];
-}
+export type { EndInfo, StartMsg, StartPlayer } from './start';
 
 /** 시작 알림이 두 기기에 닿을 시간 (ms). 그 뒤 3초 카운트다운 */
 const LEAD_MS = 700;
-/** 한 경기가 이보다 길어지면 끝난 것으로 본다 (끝 알림을 못 받았을 때) */
-const MATCH_MAX_MS = 35 * 60 * 1000;
-
+/** 시작 알림을 카운트다운 동안 다시 보내는 시각 (ms 뒤). 하나를 놓쳐도 경기가 시작되게 */
+const START_RESEND_MS = [400, 1200, 2400] as const;
 /** 방 코드: 영문 소문자·숫자 6자 (주소 ?room=코드) */
 export function newRoomCode(): string {
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -59,6 +39,7 @@ export class VolleyRoom {
   current: StartMsg | null = null;
   private lastNo = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private resend: ReturnType<typeof setTimeout>[] = [];
 
   constructor(
     private api: VolleyApi,
@@ -88,7 +69,8 @@ export class VolleyRoom {
 
   private onPresence(list: Member<PlayerMeta>[]) {
     if (this.left) return;
-    const others = list.filter((m) => m.key !== this.me.id && m.meta && typeof m.meta.at === 'number').map((m) => ({ id: m.key, ...m.meta }));
+    // 들어온 시각이 유한한 수가 아닌 정보는 버린다 (자리 순서가 기기마다 달라지지 않게)
+    const others = list.filter((m) => m.key !== this.me.id && m.meta && Number.isFinite(m.meta.at)).map((m) => ({ id: m.key, ...m.meta }));
     this.members = sortMembers([...others, { id: this.me.id, ...this.meta }]);
     this.present.clear();
     this.members.forEach((m) => this.present.add(m.id));
@@ -98,23 +80,30 @@ export class VolleyRoom {
 
   private onMessage(m: NetMsg) {
     if (this.left) return;
-    if (m.t === 'start') this.applyStart(m as StartMsg, true);
+    if (!m || typeof m !== 'object') return;
+    if (m.t === 'start') this.applyStart(m, true);
     else if (m.t === 'hello') {
       // 방장이 답한다 (경기 중이면 그 경기 정보)
       if (this.isHost() && m.from !== this.me.id) this.ch.send({ t: 'state', to: m.from, start: this.current });
     } else if (m.t === 'state') {
-      if (m.to === this.me.id && m.start && !this.current) this.applyStart(m.start as StartMsg, false);
+      if (m.to === this.me.id && m.start && !this.current) this.applyStart(m.start, false);
     } else if (m.t === 'over') {
-      // 경기하던 사람이 끝을 알림 (구경만 하던 사람도 대기 상태로 돌아간다)
-      this.matchOver(Number(m.n), false);
+      // 경기하던 사람이 끝을 알림 (구경만 하던 사람도 대기 상태로 돌아간다). 그 경기의 선수가 보낸 것만 믿는다
+      if (this.current && this.current.matchNo === Number(m.n) && this.current.players.some((p) => p.id === m.from)) {
+        // 경기 화면(OnlineMatch)이 이 알림을 먼저 본 뒤에 방 상태를 바꾼다
+        this.msgFns.forEach((f) => f(m));
+        this.matchOver(Number(m.n), false);
+        return;
+      }
+      return;
     }
     this.msgFns.forEach((f) => f(m));
   }
 
-  private applyStart(s: StartMsg, live: boolean) {
-    if (!s || typeof s.matchNo !== 'number' || !Array.isArray(s.players) || s.players.length !== 2) return;
+  private applyStart(raw: unknown, live: boolean) {
+    const s = cleanStart(raw, serverNow());
+    if (!s) return;
     if (this.current?.matchNo === s.matchNo || s.matchNo <= this.lastNo) return;
-    if (serverNow() > s.startAt + MATCH_MAX_MS) return;
     this.current = s;
     this.lastNo = s.matchNo;
     if (this.meta.ready) this.setReady(false);
@@ -123,10 +112,16 @@ export class VolleyRoom {
   }
 
   /** 경기가 끝났다 (결과가 정해졌다) */
-  matchOver(matchNo: number, tell = true) {
+  /** end: 방장이 정상 종료한 경기의 결과 (상대가 끝 스냅샷을 못 받았어도 이 결과로 끝낼 수 있게 함께 보낸다) */
+  matchOver(matchNo: number, tell = true, end?: EndInfo) {
     if (this.current?.matchNo !== matchNo) return;
     this.current = null;
-    if (tell) this.ch.send({ t: 'over', n: matchNo });
+    this.resend.forEach((t) => clearTimeout(t));
+    this.resend = [];
+    if (tell) {
+      const ok = end && end.score.length === 2 && (end.score[0] === WIN_SCORE) !== (end.score[1] === WIN_SCORE);
+      this.ch.send({ t: 'over', n: matchNo, from: this.me.id, ...(ok ? { r: { score: [end.score[0], end.score[1]], winner: end.winner } } : {}) });
+    }
     this.emit();
     this.tick();
   }
@@ -161,6 +156,18 @@ export class VolleyRoom {
     };
     this.ch.send(msg);
     this.applyStart(msg, true);
+    // 카운트다운 동안 몇 번 더 보낸다 (받는 쪽은 같은 경기 번호를 한 번만 받아들인다)
+    for (const ms of START_RESEND_MS)
+      this.resend.push(
+        setTimeout(() => {
+          if (!this.left && this.current?.matchNo === msg.matchNo) this.ch.send(msg);
+        }, ms),
+      );
+  }
+
+  /** 내 기기의 연결이 살아 있는가: 방 채널이 이어져 있고 기기가 오프라인이 아니다 */
+  online(): boolean {
+    return this.ch.connected() && (typeof navigator === 'undefined' || navigator.onLine !== false);
   }
 
   isHost(): boolean {
@@ -248,6 +255,7 @@ export class VolleyRoom {
     if (this.left) return;
     this.left = true;
     if (this.timer) clearInterval(this.timer);
+    this.resend.forEach((t) => clearTimeout(t));
     this.changeFns.clear();
     this.msgFns.clear();
     this.startFns.clear();

@@ -3,6 +3,7 @@ import type { MatchSetup } from '../match/game';
 import { VolleyRoom, newRoomCode, type StartMsg } from '../net/room';
 import { SEATS, cleanTitle } from '../net/seats';
 import { LOCAL_MODE } from '../net/api';
+import { pendingStore, settlePending } from '../net/record';
 import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
@@ -128,6 +129,8 @@ export function showLobby() {
     void lobby.join();
     paintRooms();
   } else $('#rooms').innerHTML = '<p class="empty">방 목록을 불러오지 못했어요</p>';
+  // 지난번에 확정하지 못하고 떠난 경기(내 보고만 올라간 경기)를 확정한다
+  if (state.api && !LOCAL_MODE) void settlePending(state.api, pendingStore(state.user.id)).catch(() => 0);
   void loadEngine();
 }
 

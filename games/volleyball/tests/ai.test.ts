@@ -74,6 +74,40 @@ describe('AI', () => {
     }
   });
 
+  it('속도 상한에 걸려 떨어지는 공은 "방향이 바뀐 것"으로 보지 않는다 (그래야 그 공에도 점프한다)', () => {
+    const s = createState(1);
+    const a = makeAi(1, 3);
+    // 오른쪽 코트 위에서 상한 속도(20)로 똑바로 떨어지는 공: 매 틱 중력이 붙었다가 다시 20으로 깎인다
+    s.ball = { x: 560, y: 60, vx: 0, vy: 20 };
+    let rearmed = 0;
+    for (let i = 0; i < 24; i++) {
+      aiInput(a, s);
+      if (i > 16 && a.noticeAt >= 0) rearmed++;
+      s.tick++;
+      s.ball.y += 20;
+      s.ball.vy = Math.min(20, s.ball.vy + 0.45);
+    }
+    // 처음 한 번 알아챈 뒤에는 다시 '알아채는 중'으로 돌아가지 않는다
+    expect(rearmed).toBe(0);
+    // 비스듬히 상한에 걸린 공도 같다
+    const t = createState(1);
+    const b = makeAi(1, 4);
+    t.ball = { x: 420, y: 60, vx: 12, vy: 16 };
+    let re2 = 0;
+    for (let i = 0; i < 20; i++) {
+      aiInput(b, t);
+      if (i > 16 && b.noticeAt >= 0) re2++;
+      t.tick++;
+      const vy = t.ball.vy + 0.45;
+      const k = Math.min(1, 20 / Math.hypot(t.ball.vx, vy));
+      t.ball.vx *= k;
+      t.ball.vy = vy * k;
+      t.ball.x += t.ball.vx;
+      t.ball.y += t.ball.vy;
+    }
+    expect(re2).toBe(0);
+  });
+
   it('AI 설정은 PRD 값: 반응 0.15~0.25초, 오차 ±20px', () => {
     expect(AI_NORMAL.reactMin).toBe(0.15);
     expect(AI_NORMAL.reactMax).toBe(0.25);

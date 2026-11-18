@@ -17,6 +17,8 @@ export interface Channel<M> {
   track(meta: M): Promise<void>;
   send(msg: NetMsg): void;
   leave(): Promise<void>;
+  /** 지금 채널이 이어져 있는가 (끊겼거나 다시 잇는 중이면 false) */
+  connected(): boolean;
 }
 
 /** Supabase Realtime 채널 */
@@ -51,6 +53,8 @@ export class SupaChannel<M> implements Channel<M> {
     return new Promise((resolve, reject) => {
       let done = false;
       this.ch.subscribe(async (status) => {
+        // 채널 상태를 적어 둔다: SUBSCRIBED 면 이어져 있고, CHANNEL_ERROR · TIMED_OUT · CLOSED 면 끊긴 것
+        this.up = status === 'SUBSCRIBED';
         if (status === 'SUBSCRIBED') {
           // 다시 연결됐을 때도 내 정보를 다시 올린다
           await this.ch.track({ meta: this.lastMeta ?? meta });
@@ -64,6 +68,11 @@ export class SupaChannel<M> implements Channel<M> {
         }
       });
     });
+  }
+
+  private up = false;
+  connected() {
+    return this.up;
   }
 
   private lastMeta: M | null = null;
@@ -166,6 +175,11 @@ export class LocalChannel<M> implements Channel<M> {
 
   send(msg: NetMsg) {
     this.bc.postMessage({ k: this.key, type: 'msg', msg });
+  }
+
+  /** 같은 브라우저의 탭끼리라 언제나 이어져 있다 */
+  connected() {
+    return !this.closed;
   }
 
   async leave() {

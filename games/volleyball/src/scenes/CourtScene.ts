@@ -23,6 +23,9 @@ export interface SceneData {
 /** 자리 색: 왼쪽 파랑, 오른쪽 빨강 (DESIGN.md 팀 색) */
 export const SIDE_COLOR = [COLOR.teamA, COLOR.teamB] as const;
 
+/** 한 프레임에 소리·이펙트로 재생하는 알림 수 한도 */
+const FX_PER_FRAME = 12;
+
 /** 캐릭터 그림 높이 (충돌 원 지름 72보다 조금 크게) */
 const CHAR_H = 86;
 const CHAR_MAX_W = 84;
@@ -189,7 +192,11 @@ export class CourtScene extends Phaser.Scene {
     const dt = Math.min(0.1, delta / 1000);
     this.match.update(performance.now());
     const evs = this.match.events.splice(0);
-    for (const e of evs) this.onEvent(e);
+    // 탭이 가려졌다 돌아오면 알림이 한꺼번에 쌓여 있다: 소리·파티클은 마지막 몇 개만, 상태 알림(이름표 등)은 모두
+    const skip = evs.length > FX_PER_FRAME ? evs.length - FX_PER_FRAME : 0;
+    evs.forEach((e, i) => {
+      if (i >= skip || e.t === 'takeover') this.onEvent(e);
+    });
     this.draw(dt);
     this.onFrame(evs);
   }

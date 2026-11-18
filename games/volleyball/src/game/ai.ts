@@ -120,8 +120,16 @@ export function aiInput(ai: Ai, s: SimState): Input {
 
   // 공의 방향이 바뀌었는가: 중력만 받았다면 vx는 그대로, vy는 중력만큼만 늘어난다
   const jumped = s.tick !== ai.lastTick + 1;
-  const turned =
-    ai.last === null || jumped || Math.abs(b.vx - ai.last.vx) > 0.01 || Math.abs(b.vy - ai.last.vy - BALL_GRAVITY) > 0.01 || Math.abs(b.x - ai.last.x - b.vx) > 0.5;
+  let turned = ai.last === null || jumped;
+  if (!turned && ai.last) {
+    // 중력만 받았을 때의 속도
+    const ex = ai.last.vx;
+    const ey = ai.last.vy + BALL_GRAVITY;
+    const same = Math.abs(b.vx - ex) <= 0.01 && Math.abs(b.vy - ey) <= 0.01;
+    // 속도 상한에 걸려 크기만 줄고 방향은 그대로인 경우(빠르게 떨어지는 공)는 방향이 바뀐 것이 아니다
+    const capped = !same && Math.abs(b.vx * ey - b.vy * ex) <= 0.02 * Math.hypot(ex, ey) && b.vx * ex + b.vy * ey > 0 && Math.hypot(b.vx, b.vy) <= Math.hypot(ex, ey) + 1e-6;
+    turned = (!same && !capped) || Math.abs(b.x - ai.last.x - b.vx) > 0.5;
+  }
   ai.last = { ...b };
   ai.lastTick = s.tick;
   if (turned) {

@@ -8,7 +8,7 @@
  *   화면에 보이던 자리와의 차이는 작으면 조금씩 줄이고(carryOffset → decayOffset) 크면 바로 맞춘다.
  * - 이탈: 상대 소식이 끊기면 '기다리는 중', 10초가 지나면 남은 사람 승리 (linkState).
  */
-import { PLAYER_MAX_X, PLAYER_MIN_X, GROUND_Y } from './constants';
+import { GROUND_Y, PLAYER_MAX_X, PLAYER_MIN_X, POINT_PAUSE_TICKS, RALLY_MAX_STAGE, WIN_SCORE } from './constants';
 import { step, stepPlayerOnly, type BallState, type Input, type Phase, type PlayerState, type Side, type SimState } from './sim';
 
 /** 틱 3번에 한 번 스냅샷 (초당 20회), 틱 2번에 한 번 위치 (초당 30회) */
@@ -94,12 +94,32 @@ export function makeSnapshot(s: Readonly<SimState>, input: Readonly<Input>, hits
   };
 }
 
-/** 받은 스냅샷이 쓸 만한 모양인가 */
+const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const playerOk = (p: unknown) => isObj(p) && fin(p.x) && fin(p.y) && fin(p.vx) && fin(p.vy);
+/** 틱으로 쓸 수 있는 수: 0 이상, 한 경기(30분)를 넘지 않는 유한한 수 */
+const tickOk = (v: unknown): v is number => fin(v) && v >= 0 && v <= 60 * 60 * 40;
+
+/** 받은 캐릭터 소식(pos)이 쓸 만한 모양인가 */
+export function validPacket(v: unknown): v is PlayerPacket {
+  return isObj(v) && tickOk(v.tick) && playerOk(v.p) && isObj(v.in);
+}
+
+/** 받은 스냅샷이 쓸 만한 모양·범위인가 (이상한 값은 버린다) */
 export function validSnapshot(v: unknown): v is Snapshot {
-  const s = v as Snapshot;
+  if (!isObj(v)) return false;
+  const s = v as unknown as Snapshot;
+  const score01 = (n: unknown) => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= WIN_SCORE;
   return (
-    !!s && typeof s.tick === 'number' && !!s.ball && [s.ball.x, s.ball.y, s.ball.vx, s.ball.vy].every((n) => typeof n === 'number' && Number.isFinite(n)) && !!s.p && !!s.in &&
-    (s.phase === 'play' || s.phase === 'point' || s.phase === 'over') && Array.isArray(s.score) && s.score.length === 2 && Array.isArray(s.hits)
+    tickOk(s.tick) && isObj(s.ball) && fin(s.ball.x) && fin(s.ball.y) && fin(s.ball.vx) && fin(s.ball.vy) && playerOk(s.p) && isObj(s.in) &&
+    (s.phase === 'play' || s.phase === 'point' || s.phase === 'over') &&
+    Array.isArray(s.score) && s.score.length === 2 && score01(s.score[0]) && score01(s.score[1]) &&
+    (s.server === 0 || s.server === 1) && tickOk(s.rallyTicks) &&
+    Number.isInteger(s.stage) && s.stage >= 0 && s.stage <= RALLY_MAX_STAGE && fin(s.pause) && s.pause >= 0 && s.pause <= POINT_PAUSE_TICKS &&
+    (s.scorer === -1 || s.scorer === 0 || s.scorer === 1) && (s.winner === -1 || s.winner === 0 || s.winner === 1) &&
+    // 승자가 있으면 그쪽이 3점이고 경기가 끝난 상태여야 한다
+    (s.winner === -1 ? s.phase !== 'over' : s.phase === 'over' && s.score[s.winner] === WIN_SCORE) &&
+    Array.isArray(s.hits) && s.hits.length === 2 && fin(s.hits[0]) && fin(s.hits[1])
   );
 }
 

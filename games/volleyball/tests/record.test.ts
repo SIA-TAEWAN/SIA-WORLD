@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MatchResult, MatchSetup } from '../src/match/game';
 import type { SaveResult, VolleyApi } from '../src/net/api';
-import { MatchRecorder, reportFor } from '../src/net/record';
+import { MatchRecorder, forfeitResult, reportFor, settlePending, type PendingEntry, type PendingStore } from '../src/net/record';
 
 const setup = (mySide: 0 | 1): MatchSetup => ({
   mode: 'online', mySide, seed: 1, bg: 0, matchNo: 1234, startAt: 0,
@@ -110,18 +110,44 @@ describe('결과 저장 순서', () => {
     expect(await p).toEqual({ state: 'saved', wins: 2, losses: 5 });
   });
 
-  it("너무 빨리 끝나 'too early'면 5.5초 뒤 한 번 더 보고한다", async () => {
+  it("너무 빨리 끝나 'too early'면 서버가 받아 주는 시각(시작 15초 뒤)이 지난 다음에 다시 보고한다", async () => {
     let n = 0;
+    const at: number[] = [];
+    const t0 = Date.now();
     const { api } = fakeApi({
       async report(): Promise<SaveResult> {
         n++;
+        at.push(Date.now() - t0);
         return n === 1 ? { status: 'error', code: 'too early' } : { status: 'done', wins: 1, losses: 0 };
       },
     });
-    const p = new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 2], 0, 'leave', 1));
-    await vi.advanceTimersByTimeAsync(5600);
+    const rec = new MatchRecorder(api, 'room01', setup(0));
+    await vi.advanceTimersByTimeAsync(6000); // 경기가 6초 만에 끝남
+    const p = rec.finish(result(0, [3, 2], 0, 'leave', 1));
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(n).toBe(1); // 아직 15초가 안 됐다
+    await vi.advanceTimersByTimeAsync(1000);
     expect(await p).toEqual({ state: 'saved', wins: 1, losses: 0 });
     expect(n).toBe(2);
+    expect(at[1]).toBeGreaterThanOrEqual(15000);
+    expect(at[1]).toBeLessThan(16500);
+  });
+
+  it('하루 30판을 채워 begin이 거절되면(daily limit) 보고하지 않고 그렇게 알린다', async () => {
+    const { api, calls } = fakeApi({
+      async begin() {
+        return { error: 'daily limit' };
+      },
+    });
+    expect(await new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 0], 0))).toEqual({ state: 'limit' });
+    expect(calls.some((c) => c.startsWith('report'))).toBe(false);
+    // 다른 까닭으로 거절되면 그냥 실패
+    const b = fakeApi({
+      async begin() {
+        return { error: 'too soon' };
+      },
+    });
+    expect(await new MatchRecorder(b.api, 'room01', setup(0)).finish(result(0, [3, 0], 0))).toEqual({ state: 'failed' });
   });
 
   it('두 기기의 결과가 다르면(void) 기록되지 않았다고 알리고 내 전적만 읽는다', async () => {
@@ -181,5 +207,110 @@ describe('결과 저장 순서', () => {
     const { api, calls } = fakeApi({ kind: 'local' });
     expect(await new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 0], 0))).toEqual({ state: 'none' });
     expect(calls).toEqual([]);
+  });
+});
+
+/** 메모리에 두는 가짜 저장소 */
+function memStore(init: PendingEntry[] = []): PendingStore & { list: PendingEntry[] } {
+  const st = {
+    list: [...init],
+    load: () => [...st.list],
+    save: (l: PendingEntry[]) => {
+      st.list = [...l];
+    },
+  };
+  return st;
+}
+
+describe('확정하지 못하고 떠난 경기 (M4)', () => {
+  beforeEach(() => void vi.useFakeTimers());
+  afterEach(() => void vi.useRealTimers());
+
+  it("내 보고가 'waiting'이면 적어 두고, 확정되면 지운다", async () => {
+    const store = memStore();
+    let n = 0;
+    const { api } = fakeApi({
+      async report() {
+        return { status: 'waiting' };
+      },
+      async settle(): Promise<SaveResult> {
+        n++;
+        return n < 3 ? { status: 'waiting' } : { status: 'done', wins: 1, losses: 0 };
+      },
+    });
+    const p = new MatchRecorder(api, 'room01', setup(0), { store }).finish(result(0, [3, 1], 0, 'leave', 1));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(store.list.map((e) => e.id)).toEqual(['m1']); // 여기서 페이지를 떠나도 남아 있다
+    await vi.advanceTimersByTimeAsync(12100);
+    expect((await p).state).toBe('saved');
+    expect(store.list).toEqual([]);
+  });
+
+  it('끝내 확정을 못 했으면 남겨 두고, 다음에 로비에 들어올 때 확정한다', async () => {
+    const store = memStore();
+    const a = fakeApi({
+      async report() {
+        return { status: 'waiting' };
+      },
+      async settle() {
+        return { status: 'waiting' };
+      },
+    });
+    const p = new MatchRecorder(a.api, 'room01', setup(0), { store }).finish(result(0, [3, 1], 0, 'leave', 1));
+    await vi.advanceTimersByTimeAsync(12100);
+    expect((await p).state).toBe('failed');
+    expect(store.list).toHaveLength(1);
+    // 다음 접속
+    const b = fakeApi();
+    expect(await settlePending(b.api, store)).toBe(1);
+    expect(b.calls).toEqual(['settle m1']);
+    expect(store.list).toEqual([]);
+  });
+
+  it('아직 기다리는 중·통신 실패는 남기고, 서버가 거절한 것·40분 지난 것은 지운다', async () => {
+    const now = Date.now();
+    const store = memStore([{ id: 'wait', at: now }, { id: 'net', at: now }, { id: 'gone', at: now }, { id: 'old', at: now - 41 * 60 * 1000 }, { id: 'void', at: now }]);
+    const { api, calls } = fakeApi({
+      async settle(m): Promise<SaveResult> {
+        calls.push(`settle ${m}`);
+        if (m === 'wait') return { status: 'waiting' };
+        if (m === 'net') return { status: 'error' };
+        if (m === 'gone') return { status: 'error', code: 'no match' };
+        return { status: 'void' };
+      },
+    });
+    expect(await settlePending(api, store, now)).toBe(1);
+    expect(calls).toEqual(['settle wait', 'settle net', 'settle gone', 'settle void']);
+    expect(store.list.map((e) => e.id)).toEqual(['wait', 'net']);
+  });
+
+  it('테스트 모드(local)는 서버를 부르지 않는다', async () => {
+    const store = memStore([{ id: 'x', at: Date.now() }]);
+    const { api, calls } = fakeApi({ kind: 'local' });
+    expect(await settlePending(api, store)).toBe(0);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe('AI가 이어받은 경기에서 남은 사람까지 나감 (M5)', () => {
+  it('몰수패로 보고한다: AI 쪽 3점, 내 점수는 지금 값(최대 2점), 나간 사람은 상대', () => {
+    expect(forfeitResult(setup(0), [2, 1])).toMatchObject({ score: [2, 3], winner: 1, reason: 'leave', leaver: 1 });
+    expect(forfeitResult(setup(1), [1, 0])).toMatchObject({ score: [3, 0], winner: 0, reason: 'leave', leaver: 0 });
+    expect(forfeitResult(setup(0), [3, 0]).score).toEqual([2, 3]);
+    expect(reportFor(forfeitResult(setup(1), [2, 2]), 1)).toEqual({ left: 3, right: 2, reason: 'leave' });
+  });
+  it('나가면서 보고가 올라가고, 확정을 기다리는 경기로 적힌다', async () => {
+    const store = memStore();
+    const { api, calls } = fakeApi({
+      async report(m, l, r, reason) {
+        calls.push(`report ${m} ${l}:${r} ${reason}`);
+        return { status: 'waiting' };
+      },
+    });
+    const rec = new MatchRecorder(api, 'room01', setup(0), { store });
+    void rec.finish(forfeitResult(setup(0), [1, 2]));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toContain('report m1 1:3 leave');
+    expect(store.list.map((e) => e.id)).toEqual(['m1']);
   });
 });

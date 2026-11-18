@@ -173,20 +173,32 @@ describe('이탈 판정 (상대 소식이 끊긴 시간)', () => {
 // ───────────────────────── 두 기기를 붙여서 돌려 보기 ─────────────────────────
 
 /** 가짜 시계 + 지연 있는 통신으로 방장·상대 두 경기를 붙인다 */
-function pair(lagMs: number, seed = 7) {
+function pair(lagMs: number, seed = 7, lateHostMs = 0) {
   let now = 1_000_000;
+  void lateHostMs;
   const queue: { at: number; to: 0 | 1; m: NetMsg }[] = [];
   const fns: [((m: NetMsg) => void)[], ((m: NetMsg) => void)[]] = [[], []];
   /** 이 쪽이 보내는 것을 버린다 (연결 끊김 흉내) */
   const mute = [false, false];
+  /** 이 쪽으로 오는 것을 버린다 */
+  const deaf = [false, false];
+  /** 이 쪽 기기가 '내 연결이 끊겼다'는 것을 안다 (online() === false) */
+  const down = [false, false];
+  /** 이 쪽 기기가 멈춰 있다 (앱을 내림: update가 돌지 않는다) */
+  const asleep = [false, false];
+  /** 특정 메시지만 버리는 거름 (to: 받는 쪽) */
+  const hook: { drop: ((to: 0 | 1, m: NetMsg) => boolean) | null } = { drop: null };
+  const sent: NetMsg[] = [];
   const link = (side: 0 | 1) => ({
     send: (m: NetMsg) => {
-      if (!mute[side]) queue.push({ at: now + lagMs, to: side === 0 ? 1 : 0, m: JSON.parse(JSON.stringify(m)) as NetMsg });
+      sent.push(m);
+      if (!mute[side]) queue.push({ at: now + lagMs, to: (side === 0 ? 1 : 0) as 0 | 1, m: JSON.parse(JSON.stringify(m)) as NetMsg });
     },
     onMsg: (fn: (m: NetMsg) => void) => {
       fns[side].push(fn);
       return () => undefined;
     },
+    online: () => !down[side],
   });
   const setup = (mySide: 0 | 1): MatchSetup => ({
     mode: 'online', mySide, seed, bg: 0, matchNo: 42, startAt: now + 3000,
@@ -204,16 +216,19 @@ function pair(lagMs: number, seed = 7) {
     queue.sort((a, b) => a.at - b.at);
     while (queue.length && queue[0].at <= now) {
       const q = queue.shift()!;
+      if (deaf[q.to] || hook.drop?.(q.to, q.m)) continue;
       fns[q.to].forEach((f) => f(q.m));
     }
     if (play) {
       Object.assign(host.input, host.phase === 'play' ? aiInput(ais[0], host.state) : NO_INPUT);
       Object.assign(guest.input, guest.phase === 'play' ? aiInput(ais[1], guest.state) : NO_INPUT);
     }
-    host.update();
-    guest.update();
+    if (!asleep[0]) host.update();
+    if (!asleep[1]) guest.update();
   };
-  return { host, guest, results, advance, mute, clock: () => now, dispose: () => (host.dispose(), guest.dispose()) };
+  /** to 쪽에 메시지를 바로 넣는다 (방 채널의 다른 알림·남이 보낸 메시지 흉내) */
+  const inject = (to: 0 | 1, m: NetMsg) => fns[to].forEach((f) => f(m));
+  return { host, guest, results, advance, mute, deaf, down, asleep, hook, sent, inject, clock: () => now, dispose: () => (host.dispose(), guest.dispose()) };
 }
 
 describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
@@ -505,6 +520,294 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
     expect(p.results[1]).toBeNull();
     expect(p.guest.waitingSec).toBe(0);
     if (p.host.phase === 'play') expect(p.host.state.tick).toBeGreaterThanOrEqual(t0 + 60 * 6 - 2);
+  });
+});
+
+// ───────────────────────── 전체 검사에서 나온 경우들 ─────────────────────────
+
+describe('두 기기가 서로 "상대가 나갔다"고 보지 않는다 (H1)', () => {
+  let cleanup: (() => void) | null = null;
+  afterEach(() => {
+    cleanup?.();
+    cleanup = null;
+  });
+  const run = (p: ReturnType<typeof pair>, sec: number, play = false) => {
+    for (let i = 0; i < 60 * sec; i++) p.advance(STEP_MS, play);
+  };
+
+  it('한쪽 망이 12초 끊김 (끊긴 쪽이 자기 연결이 끊긴 것을 아는 경우): 끊긴 쪽은 이어받지 않고 나간 사람이 된다', () => {
+    const p = pair(30);
+    cleanup = p.dispose;
+    run(p, 5);
+    // 오른쪽 사람의 망이 끊김: 보내지도 받지도 못하고, 자기 채널이 끊긴 것을 안다
+    p.mute[1] = p.deaf[1] = p.down[1] = true;
+    run(p, 10.5);
+    expect(p.host.solo).toBe(true);
+    expect(p.guest.solo).toBe(false); // 끊긴 쪽은 AI와 따로 경기를 이어 가지 않는다
+    expect(p.results[1]).toMatchObject({ reason: 'leave', leaver: 1 });
+    p.mute[1] = p.deaf[1] = p.down[1] = false;
+    for (let i = 0; i < 60 * 600 && !p.results[0]; i++) p.advance(STEP_MS);
+    expect(p.results[0]).toMatchObject({ reason: 'leave', leaver: 1 });
+  });
+
+  it('한쪽 망이 12초 끊김 (연결 상태를 모르는 경우): 둘 다 이어받더라도 다시 이어지면 한쪽만 남고, 두 기기의 결론이 같다', () => {
+    for (const lag of [0, 30, 120]) {
+      const p = pair(lag);
+      run(p, 5);
+      p.mute[1] = p.deaf[1] = true; // 오른쪽 망이 끊겼지만 두 기기 모두 자기 연결은 멀쩡하다고 안다
+      run(p, 12);
+      expect(p.host.solo).toBe(true);
+      expect(p.guest.solo).toBe(true);
+      p.mute[1] = p.deaf[1] = false; // 다시 이어짐
+      run(p, 2.5, true);
+      // 한쪽은 양보해서 '나간 사람'으로 끝나고, 다른 쪽만 AI와 계속한다
+      const yielded = [p.results[0], p.results[1]].filter((r) => r !== null);
+      expect(yielded).toHaveLength(1);
+      const leaver = yielded[0]!.leaver!;
+      expect(yielded[0]!.setup.mySide).toBe(leaver);
+      const stay = leaver === 0 ? 1 : 0;
+      for (let i = 0; i < 60 * 600 && !p.results[stay]; i++) p.advance(STEP_MS);
+      // 두 기기가 같은 사람을 '나간 사람'으로 본다 → 서버에는 남은 사람의 leave 보고 하나만 간다
+      expect(p.results[stay]).toMatchObject({ reason: 'leave', leaver });
+      expect(p.results[leaver]).toMatchObject({ reason: 'leave', leaver });
+      p.dispose();
+    }
+  });
+
+  it('앱을 12초 내렸다 돌아온 기기: 메시지보다 프레임이 먼저 돌아도 자기가 이어받지 않고, 상대의 알림을 받아 나간 사람이 된다', () => {
+    const p = pair(30);
+    cleanup = p.dispose;
+    run(p, 5);
+    p.asleep[1] = true; // 오른쪽 기기가 멈춤: update도 안 돌고 보내지도 받지도 못한다
+    p.mute[1] = p.deaf[1] = true;
+    run(p, 12);
+    expect(p.host.solo).toBe(true);
+    // 돌아옴: 첫 프레임이 메시지보다 먼저 돈다
+    p.asleep[1] = false;
+    p.mute[1] = p.deaf[1] = false;
+    p.guest.update();
+    expect(p.guest.solo).toBe(false);
+    expect(p.results[1]).toBeNull();
+    expect(p.guest.waitingSec).toBeGreaterThan(0);
+    run(p, 1.5);
+    expect(p.guest.solo).toBe(false);
+    expect(p.results[1]).toMatchObject({ reason: 'leave', leaver: 1 });
+    expect(p.host.solo).toBe(true);
+    expect(p.results[0]).toBeNull();
+  });
+
+  it('방장 기기가 멈췄다 돌아와도 같다 (방장이 나간 사람)', () => {
+    const p = pair(30);
+    cleanup = p.dispose;
+    run(p, 5);
+    p.asleep[0] = true;
+    p.mute[0] = p.deaf[0] = true;
+    run(p, 12);
+    expect(p.guest.solo).toBe(true);
+    p.asleep[0] = false;
+    p.mute[0] = p.deaf[0] = false;
+    p.host.update();
+    expect(p.host.solo).toBe(false);
+    run(p, 1.5);
+    expect(p.results[0]).toMatchObject({ reason: 'leave', leaver: 0 });
+    expect(p.guest.solo).toBe(true);
+  });
+
+  it('잠깐(1.5초) 멈춘 것은 그냥 이어진다', () => {
+    const p = pair(30);
+    cleanup = p.dispose;
+    run(p, 5);
+    p.asleep[1] = true;
+    run(p, 1.5);
+    p.asleep[1] = false;
+    run(p, 2);
+    expect(p.host.solo).toBe(false);
+    expect(p.guest.solo).toBe(false);
+    expect(p.guest.waitingSec).toBe(0);
+    expect(p.results).toEqual([null, null]);
+  });
+
+  it('남이 보낸 taken·quit은 믿지 않는다 (보낸 사람이 상대가 아니면 버린다)', () => {
+    const p = pair(30);
+    cleanup = p.dispose;
+    run(p, 5);
+    p.inject(0, { t: 'quit', n: 42, from: 'X' });
+    p.inject(1, { t: 'taken', n: 42, from: 'X', at: 0 });
+    p.inject(0, { t: 'taken', n: 42 });
+    run(p, 1);
+    expect(p.host.solo).toBe(false);
+    expect(p.results).toEqual([null, null]);
+    // 진짜 상대가 보낸 것은 듣는다
+    p.inject(0, { t: 'quit', n: 42, from: 'R' });
+    run(p, 0.2);
+    expect(p.host.solo).toBe(true);
+  });
+});
+
+describe('마지막 스냅샷을 못 받아도 정상 종료로 끝난다 (M1)', () => {
+  /** 방장 쪽 경기가 끝날 때까지 돌린다. 끝 스냅샷(승자가 정해진 스냅샷)은 처음 dropN 개를 버린다 */
+  function untilHostOver(dropN: number, seed = 7) {
+    const p = pair(30, seed);
+    let dropped = 0;
+    p.hook.drop = (to, m) => {
+      if (to === 1 && m.t === 'snap' && (m.s as { winner: number }).winner !== -1 && dropped < dropN) {
+        dropped++;
+        return true;
+      }
+      return false;
+    };
+    for (let i = 0; i < 60 * 600 && !p.results[0]; i++) p.advance(STEP_MS);
+    expect(p.results[0]).toMatchObject({ reason: 'normal' });
+    return { p, dropped: () => dropped };
+  }
+
+  it('끝 스냅샷 하나를 놓쳐도: 상대가 보내는 소식에 방장이 끝 스냅샷으로 다시 답한다', () => {
+    const { p, dropped } = untilHostOver(1);
+    for (let i = 0; i < 60 * 2 && !p.results[1]; i++) p.advance(STEP_MS);
+    expect(dropped()).toBe(1);
+    expect(p.results[1]).toMatchObject({ reason: 'normal', winner: p.results[0]!.winner, score: p.results[0]!.score });
+    expect(p.guest.solo).toBe(false);
+    p.dispose();
+  });
+
+  it('끝 스냅샷을 모두 놓쳐도: 방 채널의 "경기 끝" 알림에 담긴 결과로 끝낸다 (AI가 이어받지 않는다)', () => {
+    const { p } = untilHostOver(9999);
+    for (let i = 0; i < 60 * 1; i++) p.advance(STEP_MS);
+    expect(p.results[1]).toBeNull();
+    const r = p.results[0]!;
+    // 방(VolleyRoom.matchOver)이 보내는 알림과 같은 모양
+    p.inject(1, { t: 'over', n: 42, from: 'L', r: { score: r.score, winner: r.winner } });
+    expect(p.results[1]).toMatchObject({ reason: 'normal', winner: r.winner, score: r.score });
+    expect(p.guest.solo).toBe(false);
+    p.dispose();
+  });
+
+  it('결과 없이 "경기 끝"만 받았으면: 이어받지 않고 끝 스냅샷을 다시 청한다. 그래도 없으면 내 쪽에서 빠진다', () => {
+    const { p } = untilHostOver(9999);
+    p.inject(1, { t: 'over', n: 42, from: 'L' });
+    const before = p.sent.filter((m) => m.t === 'pos').length;
+    for (let i = 0; i < 60 * 4; i++) p.advance(STEP_MS);
+    expect(p.guest.solo).toBe(false);
+    expect(p.results[1]).toBeNull();
+    expect(p.sent.filter((m) => m.t === 'pos').length).toBeGreaterThan(before + 8); // 계속 청한다
+    for (let i = 0; i < 60 * 1.5; i++) p.advance(STEP_MS);
+    expect(p.guest.solo).toBe(false);
+    expect(p.results[1]).toMatchObject({ reason: 'leave', leaver: 1 });
+    p.dispose();
+  });
+
+  it('잘못된 결과가 담긴 "경기 끝"은 결과로 쓰지 않는다', () => {
+    const p = pair(30);
+    for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS);
+    for (const r of [{ score: [3, 3], winner: 0 }, { score: [2, 1], winner: 0 }, { score: [3, 0], winner: 1 }, { score: [NaN, 3], winner: 1 }, { score: [9, 0], winner: 0 }, null]) {
+      p.inject(1, { t: 'over', n: 42, from: 'L', r });
+      expect(p.results[1]).toBeNull();
+    }
+    p.dispose();
+  });
+});
+
+describe('늦게 시작한 방장은 지나간 시간을 몰아서 계산하지 않는다 (M2)', () => {
+  it('방장의 첫 계산이 5초 늦어도 0:0에서 시작하고, 상대는 방장 틱에 맞춘다', () => {
+    const p = pair(30);
+    p.asleep[0] = true; // 방장 기기는 그림을 받느라 아직 계산을 못 한다
+    for (let i = 0; i < 60 * 8; i++) p.advance(STEP_MS, false); // 카운트다운 3초 + 5초
+    // 그동안 상대는 혼자 앞서 나가지 않는다
+    expect(p.guest.state.score).toEqual([0, 0]);
+    expect(p.guest.state.tick).toBe(0);
+    p.asleep[0] = false;
+    p.advance(STEP_MS, false);
+    expect(p.host.state.score).toEqual([0, 0]);
+    expect(p.host.state.tick).toBeLessThanOrEqual(2);
+    for (let i = 0; i < 30; i++) p.advance(STEP_MS, false);
+    expect(p.host.state.score).toEqual([0, 0]);
+    expect(p.host.state.tick).toBeGreaterThan(25);
+    expect(p.host.state.tick).toBeLessThan(40);
+    // 상대의 틱이 방장을 따라온다 (300틱 앞서 있지 않다)
+    expect(Math.abs(p.guest.state.tick - p.host.state.tick)).toBeLessThan(10);
+    expect(p.guest.waitingSec).toBe(0);
+    // 그대로 끝까지: 두 기기의 결과가 같다
+    for (let i = 0; i < 60 * 600 && (!p.results[0] || !p.results[1]); i++) p.advance(STEP_MS);
+    expect(p.results[1]).toMatchObject({ reason: 'normal', score: p.results[0]!.score, winner: p.results[0]!.winner });
+    p.dispose();
+  });
+
+  it('제때 시작하면 예전처럼 시작 시각 기준 (두 기기의 틱이 같은 시계를 쓴다)', () => {
+    const p = pair(30);
+    for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS, false);
+    expect(Math.abs(p.guest.state.tick - p.host.state.tick)).toBeLessThanOrEqual(3);
+    expect(p.host.state.tick).toBeGreaterThan(110);
+    p.dispose();
+  });
+});
+
+describe('틱이 뒤로 맞춰진 뒤에도 방장이 상대 위치를 받는다 (M3)', () => {
+  const pkt = (tick: number, x: number) => ({ tick, p: { x, y: GROUND_Y, vx: 0, vy: 0, ground: true }, in: { left: false, right: false, jump: false } });
+
+  it('일련번호가 있으면 그 순서대로: 틱이 작아져도 새 소식을 쓴다', () => {
+    const p = pair(0);
+    for (let i = 0; i < 60 * 4; i++) p.advance(STEP_MS, false);
+    p.mute[1] = true; // 진짜 상대 소식 대신 직접 넣는다
+    p.inject(0, { t: 'pos', n: 42, from: 'R', q: 100001, k: pkt(5000, 600) });
+    p.advance(STEP_MS, false);
+    expect(p.host.state.players[1].x).toBe(600);
+    // 상대 시계가 뒤로 맞춰져 틱이 100이나 작아졌다
+    p.inject(0, { t: 'pos', n: 42, from: 'R', q: 100002, k: pkt(4900, 450) });
+    p.advance(STEP_MS, false);
+    expect(p.host.state.players[1].x).toBe(450);
+    // 늦게 도착한 옛 소식(일련번호가 작음)은 쓰지 않는다
+    p.inject(0, { t: 'pos', n: 42, from: 'R', q: 100000, k: pkt(5001, 520) });
+    p.advance(STEP_MS, false);
+    expect(p.host.state.players[1].x).toBe(450);
+    p.dispose();
+  });
+
+  it('일련번호가 없어도: 틱이 크게(20 넘게) 작아진 것은 받아들이고, 조금 작은 것(순서 뒤바뀜)은 버린다', () => {
+    const p = pair(0);
+    for (let i = 0; i < 60 * 4; i++) p.advance(STEP_MS, false);
+    p.mute[1] = true;
+    p.inject(0, { t: 'pos', n: 42, from: 'R', q: 900000, k: pkt(5000, 600) });
+    p.inject(0, { t: 'pos', n: 42, from: 'R', k: pkt(5000, 610) });
+    p.inject(0, { t: 'pos', n: 42, from: 'R', k: pkt(4995, 500) });
+    p.advance(STEP_MS, false);
+    expect(p.host.state.players[1].x).toBe(610);
+    p.inject(0, { t: 'pos', n: 42, from: 'R', k: pkt(4900, 450) });
+    p.advance(STEP_MS, false);
+    expect(p.host.state.players[1].x).toBe(450);
+    p.dispose();
+  });
+
+  it('이상한 소식은 버린다 (틱이 NaN·Infinity·음수, 위치가 숫자가 아님)', () => {
+    const p = pair(0);
+    for (let i = 0; i < 60 * 4; i++) p.advance(STEP_MS, false);
+    p.mute[1] = true;
+    p.inject(0, { t: 'pos', n: 42, from: 'R', q: 900000, k: pkt(5000, 600) });
+    p.advance(STEP_MS, false);
+    for (const k of [pkt(NaN, 400), pkt(Infinity, 400), pkt(-5, 400), { ...pkt(6000, 400), p: { x: 'a', y: 0, vx: 0, vy: 0 } }, { tick: 6000 }, null, 'x'])
+      p.inject(0, { t: 'pos', n: 42, from: 'R', q: 900001, k });
+    p.advance(STEP_MS, false);
+    expect(p.host.state.players[1].x).toBe(600);
+    expect(Number.isFinite(p.host.state.ball.x + p.host.state.ball.y)).toBe(true);
+    p.dispose();
+  });
+});
+
+describe('받은 스냅샷 검사 (L3)', () => {
+  const good = () => makeSnapshot(createState(1), NO_INPUT, [0, 0]);
+  it('정상 스냅샷은 통과 (경기 중·득점 멈춤·끝)', () => {
+    expect(validSnapshot(good())).toBe(true);
+    expect(validSnapshot({ ...good(), phase: 'point', pause: 90, score: [1, 0], scorer: 0 })).toBe(true);
+    expect(validSnapshot({ ...good(), phase: 'over', score: [3, 1], winner: 0 })).toBe(true);
+  });
+  it('범위를 벗어나거나 숫자가 아닌 값은 버린다', () => {
+    const bad: Record<string, unknown>[] = [
+      { tick: NaN }, { tick: Infinity }, { tick: -1 }, { score: [4, 0] }, { score: [-1, 0] }, { score: [1.5, 0] }, { score: [0] }, { score: 'x' },
+      { stage: 6 }, { stage: -1 }, { stage: NaN }, { pause: NaN }, { pause: 5000 }, { winner: 2 }, { winner: 0 }, { phase: 'over' }, { phase: 'x' },
+      { server: 2 }, { rallyTicks: NaN }, { hits: [NaN, 0] }, { hits: 'x' }, { p: null }, { p: { x: 1, y: NaN, vx: 0, vy: 0 } }, { in: null }, { ball: null }, { scorer: 5 },
+      // 승자가 있는데 그쪽이 3점이 아니다
+      { phase: 'over', winner: 1, score: [3, 0] },
+    ];
+    for (const b of bad) expect(validSnapshot({ ...good(), ...b }), JSON.stringify(b)).toBe(false);
   });
 });
 

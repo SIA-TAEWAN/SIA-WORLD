@@ -44,8 +44,11 @@ export interface MatchResult {
 
 /** 결과 저장이 어떻게 됐는가 */
 export interface RecordOutcome {
-  /** saved 기록됨 · void 두 기기의 결과가 달라 기록 안 됨 · failed 올리지 못함 · none 올릴 것이 없음(테스트 모드) · left 내가 나간 경기(상대가 보고한다) */
-  state: 'saved' | 'void' | 'failed' | 'none' | 'left';
+  /**
+   * saved 기록됨 · void 두 기기의 결과가 달라 기록 안 됨 · failed 올리지 못함 · none 올릴 것이 없음(테스트 모드)
+   * · left 내가 나간 경기(상대가 보고한다) · limit 같은 상대와 하루 30판을 채워 기록되지 않음
+   */
+  state: 'saved' | 'void' | 'failed' | 'none' | 'left' | 'limit';
   /** 내 전적 (읽을 수 있었으면) */
   wins?: number;
   losses?: number;

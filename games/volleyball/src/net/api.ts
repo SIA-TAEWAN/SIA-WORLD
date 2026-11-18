@@ -14,8 +14,8 @@ export interface VolleyApi {
   channel<M>(name: string, key: string): Channel<M>;
   /** 기기 시계를 서버 시각에 맞춘다 (서버 함수가 없거나 실패하면 기기 시각 그대로) */
   syncClock(): Promise<void>;
-  /** 경기 시작: 두 사람이 각자 부른다. 서로가 서로를 지목했을 때 live. 실패하면 null */
-  begin(room: string, matchNo: number, side: 0 | 1, opponent: string, character: ZodiacId): Promise<{ match: string; live: boolean } | null>;
+  /** 경기 시작: 두 사람이 각자 부른다. 서로가 서로를 지목했을 때 live. 실패하면 null, 서버가 거절했으면 { error: 까닭 } */
+  begin(room: string, matchNo: number, side: 0 | 1, opponent: string, character: ZodiacId): Promise<{ match: string; live: boolean } | { error: string } | null>;
   /** 결과 보고: 양쪽 보고가 같으면 확정(done), 다르면 무효(void), 한쪽만 있으면 waiting */
   report(match: string, left: number, right: number, reason: 'normal' | 'leave'): Promise<SaveResult>;
   /** 첫 보고 10초 뒤에도 상대 보고가 없으면 그 보고 하나로 확정 */
@@ -95,7 +95,7 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): VolleyApi {
       const d = data as { match?: string; live?: boolean } | null;
       if (error || !d?.match) {
         console.warn('[시아배구] 경기 시작을 서버에 알리지 못했어요 (이 경기는 기록되지 않아요)', error?.message);
-        return null;
+        return error?.message ? { error: error.message } : null;
       }
       return { match: d.match, live: d.live === true };
     },

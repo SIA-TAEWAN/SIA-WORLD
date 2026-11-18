@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Member } from '../src/net/channel';
 import { roomsFrom, type LobbyMeta } from '../src/net/lobby';
+import { cleanStart } from '../src/net/start';
 import { bothReady, cleanTitle, hostOf, players, roomTitle, seatOf, type MemberInfo } from '../src/net/seats';
 
 const lm = (key: string, name: string, room: string | null, at = 0, extra: Partial<LobbyMeta> = {}): Member<LobbyMeta> => ({
@@ -111,5 +112,33 @@ describe('자리 정하기 (게임방)', () => {
     expect(roomTitle(list.slice(1))).toBe('태완의 방');
     expect(roomTitle([])).toBe('');
     expect(cleanTitle('   ')).toBe('');
+  });
+});
+
+describe('받은 시작 알림 검사 (L3)', () => {
+  const NOW = 1_800_000_000_000;
+  const ok = () => ({ t: 'start', matchNo: NOW, seed: 12345, bg: 2, startAt: NOW + 3700, players: [{ id: 'a', name: '시아', char: 'pig' }, { id: 'b', name: '태완', char: 'dog' }] });
+  it('정상 알림은 그대로 통과', () => {
+    expect(cleanStart(ok(), NOW)).toEqual(ok());
+  });
+  it('잘못된 것은 버린다: 사람 정보가 없거나, 숫자가 아니거나, 시작 시각이 엉뚱하다', () => {
+    const bad: Record<string, unknown>[] = [
+      { players: [null, { id: 'b', name: 'x', char: 'pig' }] }, { players: [{ id: 'a' }] }, { players: 'x' }, { players: [{ id: 'a' }, { id: 'a' }] }, { players: [{ id: '' }, { id: 'b' }] },
+      { players: [{ id: 5 }, { id: 'b' }] }, { startAt: NaN }, { startAt: 'soon' }, { startAt: NOW + 10 * 60 * 1000 }, { startAt: NOW - 60 * 60 * 1000 }, { startAt: Infinity },
+      { matchNo: NaN }, { matchNo: -3 }, { matchNo: '1' }, { seed: NaN }, { seed: undefined },
+    ];
+    for (const b of bad) expect(cleanStart({ ...ok(), ...b }, NOW), JSON.stringify(b)).toBeNull();
+    for (const v of [null, undefined, 'start', 7, []]) expect(cleanStart(v, NOW)).toBeNull();
+  });
+  it('다듬는다: 배경 번호는 0~2, 긴 이름은 12자, 모르는 캐릭터는 기본값', () => {
+    expect(cleanStart({ ...ok(), bg: NaN }, NOW)!.bg).toBe(0);
+    expect(cleanStart({ ...ok(), bg: 7 }, NOW)!.bg).toBe(1);
+    expect(cleanStart({ ...ok(), bg: -1 }, NOW)!.bg).toBe(2);
+    expect(cleanStart({ ...ok(), bg: 'x' }, NOW)!.bg).toBe(0);
+    const s = cleanStart({ ...ok(), players: [{ id: 'a', name: '가'.repeat(40), char: 'unicorn' }, { id: 'b' }] }, NOW)!;
+    expect(s.players[0].name).toHaveLength(12);
+    expect(s.players[0].char).toBe('tiger');
+    expect(s.players[1].name).toBe('이름 없음');
+    expect(cleanStart({ ...ok(), seed: -5.7 }, NOW)!.seed).toBe(5);
   });
 });

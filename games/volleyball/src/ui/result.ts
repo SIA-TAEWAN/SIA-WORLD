@@ -75,6 +75,7 @@ export function showResult(result: MatchResult) {
     else if (o.state === 'void') rec.innerHTML = `두 기기의 결과가 달라 기록되지 않았어요${total(o.wins, o.losses) ? ` · ${total(o.wins, o.losses)}` : ''}`;
     else if (o.state === 'failed') rec.textContent = '기록을 올리지 못했어요';
     else if (o.state === 'left') rec.textContent = '';
+    else if (o.state === 'limit') rec.textContent = '오늘 이 상대와는 30판을 채워서 기록되지 않아요';
     else rec.textContent = '테스트 모드라 기록되지 않아요';
   });
 
