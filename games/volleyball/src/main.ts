@@ -3,12 +3,12 @@ import { LOCAL_MODE } from './net/api';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { loadChar, loadEngine, nav, screen, state } from './ui/app';
 import { showCharSelect, showLobby } from './ui/menus';
+import { showResult } from './ui/result';
 
 nav.lobby = showLobby;
 nav.select = showCharSelect;
 nav.match = (setup) => void loadEngine().then((m) => m.showMatch(setup));
-// 1단계: 결과 화면은 아직 없다 → 경기가 끝나면 로비로
-nav.result = () => nav.lobby();
+nav.result = showResult;
 
 /** 테스트 모드(?local=1): 로그인 없이 탭마다 다른 플레이어 (?name= 으로 이름 지정) */
 function localUser(): WorldUser {

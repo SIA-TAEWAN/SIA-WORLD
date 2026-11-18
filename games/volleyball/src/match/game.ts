@@ -1,5 +1,6 @@
+import { aiInput, makeAi, type Ai } from '../game/ai';
 import { COUNTDOWN_SEC, STEP_MS, type ZodiacId } from '../game/constants';
-import { NO_INPUT, createState, newClock, step, ticksFor, type Input, type Side, type SimEvent, type SimState } from '../game/sim';
+import { createState, newClock, step, ticksFor, type Input, type Side, type SimEvent, type SimState } from '../game/sim';
 
 /** 한 자리의 선수 */
 export interface Fighter {
@@ -49,6 +50,7 @@ export class Match {
   paused = false;
   onOver: ((result: MatchResult) => void) | null = null;
 
+  private readonly ai: Ai | null;
   private readonly clock = newClock();
   private lastMs = -1;
   private countMs = COUNTDOWN_SEC * 1000;
@@ -59,6 +61,8 @@ export class Match {
 
   constructor(readonly setup: MatchSetup) {
     this.state = createState(setup.seed);
+    const aiSide = setup.fighters[0].ai ? 0 : setup.fighters[1].ai ? 1 : -1;
+    this.ai = aiSide >= 0 ? makeAi(aiSide as Side, (setup.seed ^ 0x9e3779b9) >>> 0) : null;
     this.prevBall = { x: this.state.ball.x, y: this.state.ball.y };
     this.prevPlayers = [{ ...this.state.players[0] }, { ...this.state.players[1] }];
   }
@@ -91,8 +95,7 @@ export class Match {
     for (let n = ticksFor(this.clock, dt); n > 0; n--) {
       this.prevBall = { x: s.ball.x, y: s.ball.y };
       this.prevPlayers = [{ x: s.players[0].x, y: s.players[0].y }, { x: s.players[1].x, y: s.players[1].y }];
-      // 1단계: 상대는 가만히 서 있다 (2단계에서 AI가 조작한다)
-      const other = NO_INPUT;
+      const other = this.ai ? aiInput(this.ai, s) : this.input;
       step(s, this.mySide === 0 ? [this.input, other] : [other, this.input], this.events as SimEvent[]);
       if (s.phase === 'over') {
         this.phase = 'over';
