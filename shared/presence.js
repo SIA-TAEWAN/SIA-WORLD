@@ -1,6 +1,6 @@
 // SIA WORLD 접속 인원 (게임마다 "지금 몇 명"과 정원 30명).
 //   게임마다 실시간 채널(Presence)이 있고, 들어온 사람은 그 채널에 자기 정보를 올린다 (같은 계정은 탭이 여러 개여도 한 명).
-//   - 시아탱크 lobby:main · 시아레이스 race-lobby · 시아배구 volley-lobby 는 각 게임의 대기실 채널을 그대로 센다.
+//   - 시아탱크 lobby:main · 시아레이스 race-lobby · 시아배구 volley-lobby · 시아서바이벌 survival-lobby 는 각 게임의 대기실 채널을 그대로 센다.
 //   - 맞고·카지노는 이 파일의 enterGame()으로 card-lobby:<게임> 채널에 들어간다.
 //   - SIA WORLD 로비는 watchGameCounts()로 구독만 해서 게임 카드에 인원을 보여 준다 (자기 정보는 올리지 않는다).
 import { supabase } from './supabase.js';
@@ -15,6 +15,7 @@ export const GAME_CHANNELS = {
   casino: ['card-lobby:poker', 'card-lobby:holdem', 'card-lobby:blackjack', 'card-lobby:roulette'],
   race: ['race-lobby'],
   volleyball: ['volley-lobby'],
+  survival: ['survival-lobby'],
 };
 
 /** 맞고·카지노 게임 하나의 접속 채널 이름 */

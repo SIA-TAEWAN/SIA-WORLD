@@ -441,3 +441,7 @@ create or replace view public.survival_ranking as
   from public.survival_records r join public.profiles p on p.id = r.user_id;
 revoke all on public.survival_ranking from anon, authenticated;
 grant select on public.survival_ranking to anon, authenticated;
+
+-- ---------- 게임 오픈 여부 ----------
+-- 처음에는 닫힌 상태로 추가한다 (관리자만 보이고 들어갈 수 있다. 로비의 오픈 설정에서 연다)
+insert into public.app_settings (key, value) values ('game_open:survival', 'false'::jsonb) on conflict (key) do nothing;
