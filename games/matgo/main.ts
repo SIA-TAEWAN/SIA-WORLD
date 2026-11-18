@@ -800,6 +800,9 @@ let dealKey = '';
 let dealStartAt = 0;
 let dealFresh = false;
 let planDelayedFor = '';
+/** 내 손패 10장을 다 받는 데 걸리는 시간 (그 뒤에 달 순서로 정렬한다) */
+const HAND_DEAL_MS = 3300;
+let sortTimer: ReturnType<typeof setTimeout> | null = null;
 /** 패를 다 나눠 주는 데 걸리는 시간 (손패 10장씩 + 바닥 8장을 0.13초 간격으로) */
 const DEAL_MS = 4300;
 /** 방금 누른 내 패 (서버 답을 기다리지 않고 바로 바닥에 내려놓는다) */
@@ -1117,8 +1120,21 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 나: 먹은 패 · 손패
     captured(t, scene, L.myTray, mp, capW, capOpts);
     // 공개 상태가 내 비공개 손패보다 먼저 도착하면 방금 낸 패가 두 곳에 보인다 → 이미 바닥·먹은 패에 있는 패는 손패에서 뺀다
+    // 내 패를 다 받은 뒤에는 달 순서로 정렬해 보여 준다 (받는 동안은 받은 순서대로 → 다 받으면 한 번 자리를 바꾼다)
+    const handDealt = !dealFresh || performance.now() - dealStartAt >= HAND_DEAL_MS;
+    if (!handDealt && !sortTimer) {
+      sortTimer = setTimeout(() => {
+        sortTimer = null;
+        t.redraw();
+      }, Math.max(0, dealStartAt + HAND_DEAL_MS - performance.now()) + 30);
+    }
+    const KIND_ORDER: Record<string, number> = { gwang: 0, yeol: 1, tti: 2, pi: 3 };
+    const sortKey = (id: string) => cardById(id).month * 10 + (KIND_ORDER[cardById(id).kind] ?? 9);
     // 방금 누른 패는 이미 바닥에 내려놓았으므로 손패에서 뺀다
-    const hand = rawHand.filter((id) => id !== picked);
+    const handRaw = rawHand.filter((id) => id !== picked);
+    const hand = handDealt ? handRaw.map((id, k) => ({ id, k })).sort((a, b) => sortKey(a.id) - sortKey(b.id) || a.k - b.k).map((x) => x.id) : handRaw;
+    // 나눠 받는 중일 때만 한 장씩 차례로 (정렬로 자리를 바꿀 때는 한꺼번에, 소리 없이)
+    const dealingHand = dealing && !handDealt;
     const canPlay = myTurnNow && p.choice?.kind === 'play';
     // 바닥에 같은 달이 있어 먹을 수 있는 패는 노란 테두리로 (고를 수 있는 패와 같은 표시)
     const floorMonths = new Set(p.floor.filter((f) => f.cards.length).map((f) => cardById(f.cards[0]).month));
@@ -1131,7 +1147,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           onClick: canPlay && !t.busy && !picked ? () => playCard(t, id) : undefined,
         }),
         id,
-        { from: pile, delay: dealing ? i * 2 * DEAL_GAP : 0, sound: dealing ? 'deal' : undefined },
+        { from: pile, delay: dealingHand ? i * 2 * DEAL_GAP : 0, sound: dealingHand ? 'deal' : undefined },
       );
     });
   },
