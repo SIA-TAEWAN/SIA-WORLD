@@ -47,6 +47,7 @@ export class SupaChannel<M> implements Channel<M> {
   }
 
   join(meta: M): Promise<void> {
+    this.lastMeta ??= meta;
     return new Promise((resolve, reject) => {
       let done = false;
       this.ch.subscribe(async (status) => {
