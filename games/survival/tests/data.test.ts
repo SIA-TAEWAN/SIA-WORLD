@@ -32,8 +32,9 @@ describe('데이터 표 (PRD 4~7장)', () => {
       expect(m.bosses.map((b) => b.at)).toEqual([180, 420, 600]);
       expect(BOSSES.filter((b) => b.map === m.id).map((b) => b.id)).toEqual(m.bosses.map((b) => b.id));
     }
-    // 이번 단계에서 완성한 맵은 들판뿐
-    expect(MAPS.filter((m) => m.ready).map((m) => m.id)).toEqual(['field']);
+    // 맵 4종 모두 등장 표까지 완성
+    expect(MAPS.filter((m) => m.ready).map((m) => m.id)).toEqual(['field', 'bamboo', 'palace', 'underworld']);
+    for (const m of MAPS) expect(m.spawns.length).toBeGreaterThan(8);
   });
 
   it('영구 강화: 9항목 49레벨, 비용은 100 → 150 → 225', () => {

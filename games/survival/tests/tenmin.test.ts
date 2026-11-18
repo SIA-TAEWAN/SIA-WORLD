@@ -101,9 +101,11 @@ describe('시간별 등장 표 (들판)', () => {
 });
 
 describe('요괴 5종의 움직임', () => {
-  it('움직임 3종이 등록돼 있다 (쫓기·출렁이기·원거리)', () => {
-    for (const e of ENEMIES.filter((x) => x.ready)) expect(MOVES[e.move]).toBeTypeOf('function');
-    expect(ENEMIES.filter((x) => x.ready).map((x) => x.id)).toEqual(['imp', 'wisp', 'club', 'water', 'fox']);
+  it('공통 요괴 5종의 움직임 3종이 등록돼 있다 (쫓기·출렁이기·원거리)', () => {
+    const common = ENEMIES.slice(0, 5);
+    expect(common.map((x) => x.id)).toEqual(['imp', 'wisp', 'club', 'water', 'fox']);
+    expect(common.map((x) => x.move)).toEqual(['chase', 'chase', 'chase', 'wave', 'ranged']);
+    for (const e of common) expect(MOVES[e.move]).toBeTypeOf('function');
   });
 
   it('도깨비불은 꼬마 도깨비보다 빠르고, 방망이 도깨비는 느리고 단단하다', () => {
@@ -146,11 +148,12 @@ describe('보스 3종', () => {
   }
 
   it('패턴 종류가 모두 등록돼 있다', () => {
-    for (const b of BOSSES.filter((x) => x.ready)) {
+    const field = BOSSES.filter((x) => x.map === 'field');
+    for (const b of field) {
       expect(b.patterns.length).toBeGreaterThan(1);
       for (const p of b.patterns) expect(PATTERNS[p.kind]).toBeTypeOf('function');
     }
-    expect(BOSSES.filter((x) => x.ready).map((x) => x.id)).toEqual(['bigDokkaebi', 'dueoksini', 'bulgasal']);
+    expect(field.map((x) => x.id)).toEqual(['bigDokkaebi', 'dueoksini', 'bulgasal']);
     expect(BOSSES.length).toBe(12);
   });
 

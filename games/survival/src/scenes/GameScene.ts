@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
 import { PLAYER } from '../data/balance';
+import { ENEMIES } from '../data/enemies';
 import { bossWinding } from '../game/bosses';
 import { FX, MODE, PROJ, ZONE, type State } from '../game/state';
+import { eachObstacle } from '../game/terrain';
 import type { Run } from '../run/run';
 import { COLOR, css } from '../theme';
-import { BOSS_DRAW, ENEMY_DRAW, ITEM_KEYS, NUM_FONT, PROJ_KEYS, bossKey, enemyKey, ensureArt, preloadArt, tileKey, zKey } from './art';
+import { BOSS_DRAW, ENEMY_DRAW, ITEM_KEYS, MAP_BG, NUM_FONT, PROJ_KEYS, bossKey, enemyKey, ensureArt, obstacleKey, preloadArt, tileKey, zKey } from './art';
 
 export interface SceneData {
   run: Run;
@@ -22,7 +24,9 @@ type Img = Phaser.GameObjects.Image;
 const CHAR_H = 92;
 const CHAR_MAX_W = 96;
 /** 그림 깊이 */
-const D = { ground: 0, zone: 1, aura: 2, item: 3, enemy: 4, boss: 5, ring: 6, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
+const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
+/** 지대 색 (state.ts 의 ZONE 순서): 독안개 · 예고 · 독 · 불길 · 물기둥 · 양털 구름 · 말발굽 */
+const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft];
 
 /** 같은 종류의 그림을 미리 만들어 두고 돌려 쓰는 묶음 (프레임마다 새로 만들지 않는다) */
 class SpritePool {
@@ -66,6 +70,8 @@ export class GameScene extends Phaser.Scene {
   private auras!: SpritePool;
   private items!: SpritePool;
   private fxs!: SpritePool;
+  private obstacles!: SpritePool;
+  private obN = 0;
   private nums: Phaser.GameObjects.BitmapText[] = [];
   private numShown = 0;
   /** 그림 크기 (판정 반지름에 맞춰 줄이려고) */
@@ -124,7 +130,7 @@ export class GameScene extends Phaser.Scene {
     ensureArt(this, s.char.id, s.map.id);
     const cam = this.cameras.main;
     cam.setZoom(this.zoom);
-    cam.setBackgroundColor(css(COLOR.skyMid));
+    cam.setBackgroundColor(css(MAP_BG[s.map.id] ?? COLOR.skyMid));
     cam.setRoundPixels(false);
 
     // 바닥: 타일 무늬가 캐릭터를 따라 흘러서 움직임이 보인다
@@ -138,6 +144,8 @@ export class GameScene extends Phaser.Scene {
     this.enemies = new SpritePool(this, enemyKey(0), D.enemy);
     this.projs = new SpritePool(this, PROJ_KEYS[0], D.proj);
     this.fxs = new SpritePool(this, 'ring', D.fx);
+    // 장애물: 물길은 바닥에 깔리고, 대나무·담은 아이템 위·요괴 아래에 선다
+    this.obstacles = new SpritePool(this, obstacleKey(s.map.terrain.kind === 'none' ? 'scatter' : s.map.terrain.kind), s.map.terrain.kind === 'pools' ? D.water : D.wall);
 
     // 내 캐릭터: 발밑 원 + 흰 테두리(같은 그림을 흰색으로 네 방향에 겹침) + 그림. 적이 많아도 잘 보이게 가장 위에 그린다
     this.shadow = this.add.image(0, 0, 'shadow').setAlpha(0.25).setDepth(D.ring);
@@ -167,6 +175,7 @@ export class GameScene extends Phaser.Scene {
     const halfH = this.viewH() / 2 + 70;
     const sec = time / 1000;
 
+    this.drawObstacles(s, halfW, halfH);
     this.drawZones(s, sec);
     this.drawItems(s, halfW, halfH, sec);
     this.drawEnemies(s, halfW, halfH);
@@ -176,6 +185,19 @@ export class GameScene extends Phaser.Scene {
     this.drawNums(s);
     run.perf.drawMs = performance.now() - t0;
     this.onFrame();
+  }
+
+  /** 화면에 보이는 칸의 장애물 (칸 좌표와 시드로 그때그때 계산한다) */
+  private putObstacle = (x: number, y: number, r: number) => {
+    const spr = this.obstacles.get(this.obN++);
+    // 물길은 판정 원 그대로, 대나무·담은 조금 크게 (위로 솟은 그림)
+    const k = this.run.state.map.terrain.kind === 'pools' ? 2.06 : 2.5;
+    spr.setPosition(x, y - (k > 2.1 ? r * 0.2 : 0)).setScale((r * k) / 128).setVisible(true);
+  };
+  private drawObstacles(s: State, halfW: number, halfH: number) {
+    this.obN = 0;
+    eachObstacle(s.map.terrain, s.terrainSeed, s.player.x, s.player.y, halfW + 80, halfH + 80, this.putObstacle);
+    this.obstacles.end(this.obN);
   }
 
   private drawEnemies(s: State, halfW: number, halfH: number) {
@@ -193,15 +215,31 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
       const boss = e.boss >= 0;
-      const key = boss ? bossKey(e.boss) : enemyKey(e.kind);
+      // 분신·부하는 보스 그림을 작게 그린다
+      const big = boss || e.look >= 0;
+      const key = boss ? bossKey(e.boss) : e.look >= 0 ? bossKey(e.look) : enemyKey(e.kind);
       if (spr.texture.key !== key) spr.setTexture(key).setDepth(boss ? D.boss : D.enemy);
-      const sc = (e.r * 2 * (boss ? BOSS_DRAW : ENEMY_DRAW)) / this.w(key);
+      let sc = (e.r * 2 * (big ? BOSS_DRAW : ENEMY_DRAW)) / this.w(key);
       // 걸으며 통통: 요괴마다 박자가 다르게
       const wob = Math.sin(e.t * 9 + e.uid) * 0.06;
       let x = e.x;
+      let alpha = e.look >= 0 ? 0.82 : 1;
+      let rot = 0;
       if (boss && bossWinding(e)) x += Math.sin(e.patT * 60) * 4;
-      spr.setPosition(x, e.y).setScale(sc * (1 - wob), sc * (1 + wob)).setFlipX(dx > 0).setVisible(true);
+      if (e.hidden) {
+        if (boss) alpha = 0.08; // 숨은 보스(장산범): 거의 보이지 않는다
+        else if (e.sub === 0) sc *= 0.45; // 땅속의 죽순: 작은 싹만 보인다
+        else if (ENEMIES[e.kind].move === 'ambush') sc *= 0.45 + 0.55 * (1 - Math.max(0, e.patT) / 0.4); // 튀어나오는 중
+        else {
+          // 쓰러진 해골 병사: 옆으로 누워 있다
+          rot = Math.PI / 2;
+          alpha = 0.55;
+        }
+      }
+      spr.setPosition(x, e.y).setScale(sc * (1 - wob), sc * (1 + wob)).setFlipX(dx > 0).setRotation(rot).setAlpha(alpha).setVisible(true);
       if (e.flash > 0) spr.setTintFill(COLOR.white);
+      else if (e.slow > 0) spr.setTint(COLOR.skyMid); // 느려진 요괴
+      else if (e.guard < 1) spr.setTint(COLOR.primaryLight); // 방패를 든 보스
       else if (spr.isTinted) spr.clearTint();
     }
     this.enemies.end(n);
@@ -221,6 +259,9 @@ export class GameScene extends Phaser.Scene {
     // 무적 중에는 깜빡인다
     const alpha = p.inv > 0 && Math.floor(p.inv / 4) % 2 === 0 ? 0.45 : 1;
     this.player.setPosition(p.x, y).setScale(sx, sy).setRotation(tilt).setFlipX(flip).setAlpha(alpha);
+    // 느려졌을 때는 푸르스름하게
+    if (p.slow > 0) this.player.setTint(COLOR.skyMid);
+    else if (this.player.isTinted) this.player.clearTint();
     const o = 2.6;
     for (let i = 0; i < 4; i++) {
       this.outline[i]
@@ -246,15 +287,21 @@ export class GameScene extends Phaser.Scene {
       const key = PROJ_KEYS[pr.kind] ?? PROJ_KEYS[0];
       if (spr.texture.key !== key) spr.setTexture(key);
       let y = pr.y;
-      let sc = (pr.r * 2.4) / this.w(key);
+      // 강아지는 판정 원보다 넉넉하게 그린다 (작아서 안 보이지 않게)
+      let sc = (pr.r * (pr.kind === PROJ.puppy ? 3.6 : 2.4)) / this.w(key);
       if (pr.mode === MODE.lob) {
         // 포물선: 가운데에서 가장 높이 뜨고 조금 커 보인다
         const h = Math.sin(Math.PI * pr.t);
         y -= h * 110;
         sc *= 1 + h * 0.5;
       }
-      spr.setPosition(pr.x, y).setScale(sc).setVisible(true);
+      spr.setPosition(pr.x, y).setScale(sc).setVisible(true).setFlipX(false);
       if (pr.kind === PROJ.shuriken || pr.kind === PROJ.shurikenEvo) spr.setRotation(sec * 16);
+      else if (pr.kind === PROJ.feather) spr.setRotation(pr.a);
+      else if (pr.kind === PROJ.pig) {
+        // 복돼지: 달리는 쪽을 본다 (왼쪽으로 갈 때는 뒤집는다), 통통 튄다
+        spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 18)) * 8);
+      } else if (pr.kind === PROJ.puppy) spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 12 + i)) * 5);
       else spr.setRotation(0);
     }
     this.projs.end(n);
@@ -268,17 +315,21 @@ export class GameScene extends Phaser.Scene {
       const z = list[i];
       const spr = this.zones.get(i);
       const sc = (z.r * 2) / 252;
-      if (z.kind === ZONE.mist) {
-        // 독 지대: 초록 안개가 숨 쉬듯 일렁인다, 끝날 때 옅어진다
+      const tint = ZONE_TINT[z.kind] ?? COLOR.pink;
+      if (z.owner === 0) {
+        // 내 지대: 독안개(초록)·양털 구름(흰색)은 숨 쉬듯 일렁이고 끝날 때 옅어진다, 말발굽은 한 번 번쩍
         const fade = Math.min(1, z.life / 0.4) * Math.min(1, (z.maxLife - z.life) / 0.2);
-        spr.setPosition(z.x, z.y).setScale(sc * (1 + Math.sin(sec * 5 + i) * 0.04)).setTint(COLOR.win).setAlpha(0.38 * fade).setVisible(true);
-      } else {
+        const a = z.kind === ZONE.hoof ? 0.55 * (z.life / z.maxLife) : z.kind === ZONE.cloud ? 0.5 * fade : 0.38 * fade;
+        spr.setPosition(z.x, z.y).setScale(sc * (1 + Math.sin(sec * 5 + i) * 0.04)).setTint(tint).setAlpha(a).setVisible(true);
+      } else if (z.delay > 0) {
         // 보스의 범위 공격: 분홍 원이 미리 보이고, 안쪽 원이 다 차면 터진다
-        spr.setPosition(z.x, z.y).setScale(sc).setTint(COLOR.pink).setAlpha(z.delay > 0 ? 0.26 : 0.5 * (z.life / z.maxLife)).setVisible(true);
-        if (z.delay > 0) {
-          const k = 1 - z.delay / z.windup;
-          this.zoneCores.get(cores++).setPosition(z.x, z.y).setScale(sc * k).setTint(COLOR.pink).setAlpha(0.42).setVisible(true);
-        }
+        spr.setPosition(z.x, z.y).setScale(sc).setTint(COLOR.pink).setAlpha(0.26).setVisible(true);
+        const k = 1 - z.delay / z.windup;
+        this.zoneCores.get(cores++).setPosition(z.x, z.y).setScale(sc * k).setTint(tint).setAlpha(0.42).setVisible(true);
+      } else {
+        // 터진 뒤: 불길·독은 바닥에 남아 일렁인다 (그 안에 있으면 계속 아프다)
+        const stay = z.tick > 0 ? 0.5 * Math.min(1, z.life / 0.5) * (0.85 + Math.sin(sec * 9 + i) * 0.15) : 0.5 * (z.life / z.maxLife);
+        spr.setPosition(z.x, z.y).setScale(sc).setTint(tint).setAlpha(stay).setVisible(true);
       }
     }
     this.zones.end(n);
@@ -357,9 +408,20 @@ export class GameScene extends Phaser.Scene {
           sc *= 0.4 + k * 0.6;
           alpha = 0.9 * (1 - k);
           break;
+        case FX.beam:
+          // 여의봉: 손에서 길게 뻗었다가 사라진다 (그림의 왼쪽 끝이 손)
+          key = 'beam';
+          rot = f.a;
+          alpha = 1 - k * k;
+          break;
       }
       if (spr.texture.key !== key) spr.setTexture(key);
-      spr.setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(tint).setAlpha(alpha).setVisible(true);
+      if (f.kind === FX.beam) {
+        const grow = Math.min(1, k * 4 + 0.35);
+        spr.setOrigin(0, 0.5).setPosition(f.x, f.y).setScale((f.r * grow) / 256, f.b / 36).setRotation(rot).clearTint().setAlpha(alpha).setVisible(true);
+        continue;
+      }
+      spr.setOrigin(0.5, 0.5).setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(tint).setAlpha(alpha).setVisible(true);
     }
     this.fxs.end(n);
   }

@@ -147,11 +147,123 @@ const pool: WeaponFire = (s, w, slot, L) => {
   }
 };
 
-export const BEHAVIORS: Record<string, WeaponFire> = { seek, aura, cone, lob, orbit, pool };
+/** 말발굽: 내가 서 있는 자리(지나간 자리)에 충격파가 한 번 터진다 */
+const trail: WeaponFire = (s, w, slot, L) => {
+  const p = s.player;
+  const r = (L.radius ?? 90) * s.stats.area;
+  // 한 번만 때리는 지대: 간격을 아주 길게
+  addZone(s, ZONE.hoof, 0, slot, w.def, p.x, p.y, r, 0, 0.35, 99, L.dmg * s.stats.might);
+};
+
+/** 양털 구름: 적이 있는 곳에 구름을 띄운다. 구름 속의 적은 조금씩 피해를 입고 느려진다 */
+const slowCloud: WeaponFire = (s, w, slot, L) => {
+  const p = s.player;
+  const range = L.range ?? 280;
+  const r = (L.radius ?? 80) * s.stats.area;
+  for (let i = 0; i < (L.count ?? 1); i++) {
+    let x: number;
+    let y: number;
+    const n = collect(s, p.x, p.y, range);
+    if (n > 0) {
+      const e = s.enemies.items[s.hits[Math.floor(rand(s) * n)]];
+      x = e.x;
+      y = e.y;
+    } else {
+      const a = rand(s) * Math.PI * 2;
+      x = p.x + Math.cos(a) * range * 0.4;
+      y = p.y + Math.sin(a) * range * 0.4;
+    }
+    const z = addZone(s, ZONE.cloud, 0, slot, w.def, x, y, r, 0, L.dur ?? 3, L.every ?? 0.5, L.dmg * s.stats.might * s.stats.dot);
+    // 구름을 벗어나도 잠깐은 느리다
+    if (z) z.slow = Math.round(((L.every ?? 0.5) + 0.3) * TICKS_PER_SEC);
+  }
+};
+
+/** 여의봉: 겨눈 쪽으로 길게 뻗어, 그 길 위의 적을 모두 꿰뚫는다 */
+const lance: WeaponFire = (s, w, _slot, L) => {
+  const p = s.player;
+  const range = (L.range ?? 250) * s.stats.area;
+  const half = ((L.size ?? 44) * s.stats.area) / 2;
+  aim(s, range * 1.2);
+  const dmg = L.dmg * s.stats.might;
+  const n = collect(s, p.x, p.y, range);
+  const list = s.enemies.items;
+  for (let k = 0; k < n; k++) {
+    const e = list[s.hits[k]];
+    const dx = e.x - p.x;
+    const dy = e.y - p.y;
+    // 길을 따라 얼마나 나아간 자리인가, 길에서 옆으로 얼마나 벗어났나
+    const along = dx * AIM.x + dy * AIM.y;
+    const side = Math.abs(dx * AIM.y - dy * AIM.x);
+    if (along < -e.r || along > range + e.r || side > half + e.r) continue;
+    hurtEnemy(s, e, dmg, w.def);
+  }
+  addFx(s, FX.beam, p.x, p.y, range, Math.atan2(AIM.y, AIM.x), half * 2, 0.2);
+};
+
+/** 깃털: 사방으로 고르게 한꺼번에 쏜다. 쏠 때마다 방향이 조금씩 돈다 */
+const radial: WeaponFire = (s, w, slot, L) => {
+  const p = s.player;
+  const n = L.count ?? 5;
+  const speed = (L.speed ?? 420) * s.stats.projSpeed;
+  for (let i = 0; i < n; i++) {
+    const a = w.a + (i * Math.PI * 2) / n;
+    const pr = addProjectile(s, PROJ.feather, MODE.line, slot, w.def, p.x, p.y, Math.cos(a) * speed, Math.sin(a) * speed, L.size ?? 9, L.dmg * s.stats.might, L.life ?? 1.1);
+    if (pr) {
+      pr.pierce = L.pierce ?? 0;
+      pr.a = a;
+    }
+  }
+  w.a += 0.45;
+};
+
+/**
+ * 동료 강아지: 한 번 부르면 판이 끝날 때까지 곁에 있으면서 가까운 적을 쫓아가 문다 (움직임은 sim.ts 의 투사체 처리).
+ * 여기서는 마릿수를 맞추고, 레벨·패시브가 바뀌었을 때 세기를 다시 맞춘다.
+ */
+const minion: WeaponFire = (s, w, slot, L) => {
+  const p = s.player;
+  const want = L.count ?? 1;
+  const list = s.projectiles.items;
+  let have = 0;
+  for (let i = 0; i < s.projectiles.n; i++) {
+    const pr = list[i];
+    if (pr.dead || pr.mode !== MODE.minion || pr.slot !== slot) continue;
+    have++;
+    pr.dmg = L.dmg * s.stats.might;
+    pr.c = L.speed ?? 300;
+    pr.r = L.size ?? 16;
+    pr.every = Math.round((L.every ?? 0.4) * s.stats.cooldown * TICKS_PER_SEC);
+  }
+  for (; have < want; have++) {
+    const pr = addProjectile(s, PROJ.puppy, MODE.minion, slot, w.def, p.x + 30 + have * 14, p.y + 20, 0, 0, L.size ?? 16, L.dmg * s.stats.might, 1e9);
+    if (!pr) return;
+    pr.c = L.speed ?? 300;
+    pr.every = Math.round((L.every ?? 0.4) * s.stats.cooldown * TICKS_PER_SEC);
+    // a: 곁에서 쉴 때의 자리 (강아지마다 다른 쪽)
+    pr.a = have * 2.1;
+  }
+};
+
+/** 복돼지 돌진: 겨눈 쪽으로 큰 복돼지가 내달리며 닿는 적을 모두 친다 */
+const dash: WeaponFire = (s, w, slot, L) => {
+  const p = s.player;
+  aim(s, 420);
+  const speed = (L.speed ?? 620) * s.stats.projSpeed;
+  const pr = addProjectile(s, PROJ.pig, MODE.line, slot, w.def, p.x, p.y, AIM.x * speed, AIM.y * speed, (L.size ?? 30) * Math.sqrt(s.stats.area), L.dmg * s.stats.might, L.life ?? 0.6);
+  if (pr) {
+    pr.pierce = 99;
+    pr.a = Math.atan2(AIM.y, AIM.x);
+  }
+};
+
+export const BEHAVIORS: Record<string, WeaponFire> = { seek, aura, cone, lob, orbit, pool, trail, slowCloud, lance, radial, minion, dash };
 
 /** 발동 간격: 구슬은 도는 시간보다 짧아질 수 없다 (겹쳐서 두 배가 되지 않게) */
 function interval(s: State, L: WeaponLevel, def: WeaponDef) {
   const cd = L.cd * s.stats.cooldown;
+  // 강아지는 발동 간격이 '세기 다시 맞추기' 일 뿐이라 줄이지 않는다 (재사용 대기시간은 무는 간격에 반영)
+  if (def.kind === 'minion') return L.cd;
   return def.kind === 'orbit' ? Math.max(cd, L.dur ?? 0) : cd;
 }
 
@@ -166,7 +278,7 @@ export function updateWeapons(s: State) {
     if (w.cd > 0) continue;
     const L = def.levels[Math.min(w.lv, def.levels.length) - 1];
     fire(s, w, slot, L, def);
-    emit(s, EV.fire, w.def);
+    if (def.kind !== 'minion') emit(s, EV.fire, w.def);
     w.cd += interval(s, L, def);
     if (w.cd < 0) w.cd = 0;
   }

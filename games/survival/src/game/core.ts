@@ -135,7 +135,7 @@ export function collect(s: State, x: number, y: number, r: number): number {
   let n = 0;
   for (let k = 0; k < m; k++) {
     const e = list[hits[k]];
-    if (e.dead) continue;
+    if (e.dead || e.hidden) continue;
     const dx = e.x - x;
     const dy = e.y - y;
     const rr = r + e.r;
@@ -151,7 +151,7 @@ export function nearestEnemy(s: State, x: number, y: number, maxDist: number): n
   let bd = maxDist * maxDist;
   for (let i = 0; i < s.enemies.n; i++) {
     const e = list[i];
-    if (e.dead) continue;
+    if (e.dead || e.hidden) continue;
     const dx = e.x - x;
     const dy = e.y - y;
     const d = dx * dx + dy * dy;
@@ -192,9 +192,12 @@ export function dropPickup(s: State, kind: number, x: number, y: number, value: 
 export const gemKind = (xp: number) => (xp >= ITEMS.gemBigXp ? ITEM.gemL : xp >= ITEMS.gemMidXp ? ITEM.gemM : ITEM.gemS);
 
 // ───────────────────────── 피해 ─────────────────────────
+/** 요괴 번호 → 되살아나는 데 걸리는 시간 (되살아나지 않으면 0) */
+const REVIVE_SEC = ENEMIES.map((d) => (d.move === 'revive' ? (d.extra?.reviveSec ?? 2.5) : 0));
 /** 적에게 피해 (slot: 무기 칸, weapon: 무기 번호 — 집계용, 없으면 -1) */
 export function hurtEnemy(s: State, e: Enemy, dmg: number, weapon: number) {
-  if (e.dead) return;
+  if (e.dead || e.hidden) return;
+  dmg *= e.guard;
   if (e.boss >= 0) {
     // 시간이 갈수록 단단해지는 보스
     const h = BOSSES[e.boss].harden;
@@ -211,6 +214,15 @@ export function hurtEnemy(s: State, e: Enemy, dmg: number, weapon: number) {
 /** 적 처치: 경험치 구슬과 아이템을 떨군다 (drops=false 면 흔적 없이 사라진다) */
 export function killEnemy(s: State, e: Enemy, drops: boolean) {
   if (e.dead) return;
+  // 해골 병사: 처음 쓰러지면 죽지 않고 잠시 누워 있다가 한 번 되살아난다
+  if (drops && e.boss < 0 && e.sub === 0 && REVIVE_SEC[e.kind] > 0 && e.look < 0) {
+    e.sub = 1;
+    e.hidden = true;
+    e.hp = 1;
+    e.patT = REVIVE_SEC[e.kind];
+    addFx(s, FX.puff, e.x, e.y, e.r, 0, 0, 0.28);
+    return;
+  }
   e.dead = true;
   e.hp = 0;
   if (!drops) return;
@@ -293,6 +305,12 @@ function resetEnemy(s: State, e: Enemy, x: number, y: number) {
   e.sub = 0;
   e.ax = 0;
   e.ay = 0;
+  e.slow = 0;
+  e.hidden = false;
+  e.guard = 1;
+  e.look = -1;
+  e.side = 0;
+  e.sideT = 0;
   e.hitAt.fill(-100000);
 }
 
@@ -393,6 +411,8 @@ export function addZone(s: State, kind: number, owner: number, slot: number, wea
   z.every = Math.max(1, Math.round(everySec * TICKS_PER_SEC));
   z.next = 0;
   z.dmg = dmg;
+  z.tick = 0;
+  z.slow = 0;
   z.dead = false;
   return z;
 }

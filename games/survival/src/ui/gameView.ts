@@ -376,9 +376,9 @@ export function showGame(setup: GameSetup) {
         break;
       case EV.fire: {
         const kind = WEAPONS[e.a].kind;
-        if (kind === 'seek') weaponSfx('survShot');
-        else if (kind === 'cone') weaponSfx('survSlash');
-        else if (kind === 'lob' || kind === 'pool') weaponSfx('survPop');
+        if (kind === 'seek' || kind === 'radial') weaponSfx('survShot');
+        else if (kind === 'cone' || kind === 'lance') weaponSfx('survSlash');
+        else if (kind === 'lob' || kind === 'pool' || kind === 'slowCloud' || kind === 'trail' || kind === 'dash') weaponSfx('survPop');
         break;
       }
       case EV.pick:

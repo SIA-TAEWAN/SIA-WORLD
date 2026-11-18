@@ -9,7 +9,8 @@ import { MODE } from '../src/game/state';
 import { BEHAVIORS, weaponReady } from '../src/game/weapons';
 import { advance, disarm, emptyRun, live, put } from './helpers';
 
-const SIX = ['shuriken', 'bell', 'claw', 'mooncake', 'pearl', 'mist'];
+/** 캐릭터 12종의 시작 무기 */
+const SIX = ['shuriken', 'bell', 'claw', 'mooncake', 'pearl', 'mist', 'hoof', 'wool', 'staff', 'feather', 'puppy', 'piggy'];
 
 /** 무기 하나만 든 판 */
 function armed(id: string, lv = 1) {
@@ -18,7 +19,7 @@ function armed(id: string, lv = 1) {
   return s;
 }
 
-describe('무기 6종의 세기', () => {
+describe('무기 12종의 세기', () => {
   it('시작 무기(1레벨)가 같은 시간에 주는 피해는 서로 ±15% 안이다', () => {
     const dps = SIX.map((id) => weaponDps(id, 1));
     const mean = dps.reduce((a, b) => a + b, 0) / dps.length;
@@ -41,8 +42,9 @@ describe('무기 6종의 세기', () => {
     }
   }, 60000);
 
-  it('무기 6종 + 진화 3종이 준비됐고, 나머지 6종은 자리만 있다 (대신 표창으로 시작)', () => {
-    expect(WEAPONS.filter(weaponReady).map((w) => w.id)).toEqual([...SIX, 'shurikenEvo', 'pearlEvo', 'clawEvo']);
+  it('무기 12종 + 진화 3종이 모두 준비됐다', () => {
+    expect(WEAPONS.filter(weaponReady).map((w) => w.id).sort()).toEqual([...SIX, 'shurikenEvo', 'pearlEvo', 'clawEvo'].sort());
+    expect(CHARACTERS.map((c) => c.weapon)).toEqual(SIX);
     for (const c of CHARACTERS) {
       const def = WEAPONS[WEAPON_INDEX[c.weapon]];
       expect(def).toBeTruthy();
@@ -157,6 +159,6 @@ describe('무기 동작', () => {
   it('뱀의 특성(지속 피해 +10%)은 장판·독 지대에만 붙는다', () => {
     const snake = disarm(emptyRun({ char: 'snake' }));
     expect(snake.stats.dot).toBeCloseTo(1.1, 6);
-    expect(WEAPONS.filter((w) => w.dot && w.ready).map((w) => w.id)).toEqual(['bell', 'mist']);
+    expect(WEAPONS.filter((w) => w.dot && w.ready).map((w) => w.id)).toEqual(['bell', 'mist', 'wool']);
   });
 });

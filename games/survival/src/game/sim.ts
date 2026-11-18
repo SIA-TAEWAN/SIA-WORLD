@@ -13,13 +13,14 @@ import { PASSIVES } from '../data/passives';
 import { UPGRADES, type UpgradeLevels } from '../data/upgrades';
 import { FALLBACK_WEAPON, WEAPONS, WEAPON_INDEX } from '../data/weapons';
 import {
-  addFx, collect, edgePoint, emit, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
+  addFx, collect, edgePoint, emit, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
   spawnBoss, spawnEnemy, sweep,
 } from './core';
 import { updateEnemies } from './enemies';
 import { Grid } from './grid';
 import { addWeapon, applyCard, checkLevelUp, drawCards, openChest, pickCard } from './levelup';
 import { EV, FX, MODE, type Enemy, type Input, type RunConfig, type State } from './state';
+import { OUT, blocked, pushOut } from './terrain';
 import { updateWeapons, weaponReady } from './weapons';
 
 export const makeInput = (): Input => ({ mx: 0, my: 0, pick: -1, reroll: false });
@@ -42,10 +43,11 @@ export function createRun(cfg: RunConfig): State {
     char,
     upgrades,
     rng: cfg.seed >>> 0,
+    terrainSeed: (Math.imul(cfg.seed >>> 0, 2654435761) >>> 0) % 1000003,
     tick: 0,
     time: 0,
     phase: 'play',
-    player: { x: 0, y: 0, hp: 0, fx: 1, fy: 0, inv: 0, moving: false, revives: 0 },
+    player: { x: 0, y: 0, hp: 0, fx: 1, fy: 0, inv: 0, moving: false, revives: 0, slow: 0 },
     stats: makeStats(),
     level: 1,
     xp: 0,
@@ -59,13 +61,13 @@ export function createRun(cfg: RunConfig): State {
     passives: [],
     enemies: makePool<Enemy>(LIMIT.enemyPool, () => ({
       uid: 0, kind: 0, boss: -1, x: 0, y: 0, hp: 0, maxHp: 0, r: 0, speed: 0, dmg: 0, xp: 0, flash: 0, t: 0, dead: false, cd: 0,
-      pat: 0, patT: 0, sub: 0, ax: 0, ay: 0, hitAt: new Int32Array(8),
+      pat: 0, patT: 0, sub: 0, ax: 0, ay: 0, slow: 0, hidden: false, guard: 1, look: -1, side: 0, sideT: 0, hitAt: new Int32Array(8),
     })),
     projectiles: makePool(LIMIT.projectiles, () => ({
       kind: 0, mode: 0, slot: 0, weapon: -1, x: 0, y: 0, vx: 0, vy: 0, r: 0, dmg: 0, life: 0, pierce: 0,
       sx: 0, sy: 0, tx: 0, ty: 0, t: 0, dur: 0, a: 0, b: 0, c: 0, every: 0, hit: new Int32Array(8), hitN: 0, dead: false,
     })),
-    zones: makePool(LIMIT.zones, () => ({ kind: 0, owner: 0, slot: 0, weapon: -1, x: 0, y: 0, r: 0, delay: 0, windup: 0, life: 0, maxLife: 0, every: 1, next: 0, dmg: 0, dead: false })),
+    zones: makePool(LIMIT.zones, () => ({ kind: 0, owner: 0, slot: 0, weapon: -1, x: 0, y: 0, r: 0, delay: 0, windup: 0, life: 0, maxLife: 0, every: 1, next: 0, dmg: 0, tick: 0, slow: 0, dead: false })),
     pickups: makePool(LIMIT.pickups, () => ({ kind: 0, x: 0, y: 0, value: 0, magnet: false, dead: false })),
     fx: makePool(LIMIT.fx, () => ({ kind: 0, x: 0, y: 0, r: 0, a: 0, b: 0, life: 0, maxLife: 0, dead: false })),
     nums: makePool(LIMIT.nums, () => ({ x: 0, y: 0, v: 0, kind: 0, life: 0, dead: false })),
@@ -122,6 +124,52 @@ function fastForward(s: State, sec: number) {
 
 const PT = { x: 0, y: 0 };
 
+/**
+ * 요괴 종류에 맞는 자리에 나타나게 한다 (data/enemies.ts 의 spawn):
+ *   edge 화면 밖 둘레 한 마리 · near 내 근처 바닥에 숨어서 · row 화면 밖에 한 줄로 늘어서서
+ */
+function spawnByKind(s: State, kind: number) {
+  const def = ENEMIES[kind];
+  const p = s.player;
+  if (def.spawn === 'near') {
+    // 내 둘레 300~520 거리의 바닥 (장애물 위는 피한다)
+    for (let tries = 0; tries < 4; tries++) {
+      const a = rand(s) * Math.PI * 2;
+      const d = 300 + rand(s) * 220;
+      const x = p.x + Math.cos(a) * d;
+      const y = p.y + Math.sin(a) * d;
+      if (tries < 3 && blocked(s.map.terrain, s.terrainSeed, x, y, def.r)) continue;
+      spawnEnemy(s, kind, x, y);
+      return;
+    }
+    return;
+  }
+  if (def.spawn === 'row') {
+    // 한쪽 변에 나란히 서서 같은 방향으로 밀고 들어온다
+    const side = Math.floor(rand(s) * 4);
+    edgePoint(s, PT, side);
+    const n = Math.round(def.extra?.row ?? 5);
+    const gap = def.r * 2.3;
+    const horizontal = side < 2;
+    const dx = p.x - PT.x;
+    const dy = p.y - PT.y;
+    const d = Math.hypot(dx, dy) || 1;
+    for (let i = 0; i < n; i++) {
+      if (s.enemies.n >= LIMIT.enemyPool - 6) break;
+      const o = (i - (n - 1) / 2) * gap;
+      const e = spawnEnemy(s, kind, PT.x + (horizontal ? o : 0), PT.y + (horizontal ? 0 : o));
+      if (!e) break;
+      e.ax = dx / d;
+      e.ay = dy / d;
+      // 줄에서의 내 자리 (나아가는 방향에 수직으로 얼마나 옆인가): 이만큼 옆을 겨눠서 줄이 흐트러지지 않는다
+      e.patT = (horizontal ? o : 0) * -e.ay + (horizontal ? 0 : o) * e.ax;
+    }
+    return;
+  }
+  edgePoint(s, PT);
+  spawnEnemy(s, kind, PT.x, PT.y);
+}
+
 // ───────────────────────── 출현: 등장 표 · 떼 · 보스 ─────────────────────────
 function updateSpawns(s: State) {
   const map = s.map;
@@ -134,8 +182,7 @@ function updateSpawns(s: State) {
     while (s.spawnAcc[i] >= 1) {
       s.spawnAcc[i]--;
       if (s.normals >= LIMIT.enemies) continue;
-      edgePoint(s, PT);
-      spawnEnemy(s, s.spawnKind[i], PT.x, PT.y);
+      spawnByKind(s, s.spawnKind[i]);
     }
   }
   // 떼로 몰려오는 이벤트
@@ -144,9 +191,16 @@ function updateSpawns(s: State) {
     const kind = s.swarmKind[s.swarmNext++];
     const side = sw.shape === 'side' ? Math.floor(rand(s) * 4) : -1;
     const n = Math.round(sw.count * map.power.count);
+    const special = ENEMIES[kind].spawn === 'near' || ENEMIES[kind].spawn === 'row';
     for (let i = 0; i < n; i++) {
       // 풀에 보스가 들어올 자리는 남겨 둔다
       if (s.enemies.n >= LIMIT.enemyPool - 6) break;
+      if (special) {
+        // 숨어 있는 요괴·줄지어 오는 요괴는 제 방식대로 (줄은 한 번에 여러 마리)
+        spawnByKind(s, kind);
+        if (ENEMIES[kind].spawn === 'row') i += Math.round(ENEMIES[kind].extra?.row ?? 5) - 1;
+        continue;
+      }
       edgePoint(s, PT, side);
       spawnEnemy(s, kind, PT.x, PT.y);
     }
@@ -217,6 +271,37 @@ function updateProjectiles(s: State) {
         e.hitAt[pr.slot] = s.tick;
         hurtEnemy(s, e, pr.dmg, pr.weapon);
       }
+    } else if (pr.mode === MODE.minion) {
+      // 동료 강아지: 가까운 적을 쫓아가 문다. 내게서 너무 멀어지면 돌아온다
+      pr.life = 1e9;
+      let tx = p.x + Math.cos(pr.a) * 46;
+      let ty = p.y + Math.sin(pr.a) * 46;
+      const away = Math.hypot(pr.x - p.x, pr.y - p.y);
+      if (away > 700) {
+        pr.x = tx;
+        pr.y = ty;
+      }
+      const ti = away < 420 ? nearestEnemy(s, pr.x, pr.y, 300) : -1;
+      if (ti >= 0) {
+        tx = enemies[ti].x;
+        ty = enemies[ti].y;
+      }
+      const dx = tx - pr.x;
+      const dy = ty - pr.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 3) {
+        const v = Math.min(d, pr.c * TICK);
+        pr.x += (dx / d) * v;
+        pr.y += (dy / d) * v;
+        pr.vx = dx;
+      }
+      // 무는 간격은 강아지마다 따로 센다 (t: 다음에 물 수 있을 때까지 남은 걸음)
+      if (pr.t > 0) pr.t--;
+      else {
+        const m = collect(s, pr.x, pr.y, pr.r);
+        for (let k = 0; k < m; k++) hurtEnemy(s, enemies[s.hits[k]], pr.dmg, pr.weapon);
+        if (m > 0) pr.t = pr.every;
+      }
     } else {
       // 적이 쏜 것: 내게 닿으면 피해
       pr.x += pr.vx * TICK;
@@ -249,14 +334,23 @@ function updateZones(s: State) {
           const dx = p.x - z.x;
           const dy = p.y - z.y;
           const rr = z.r + PLAYER.r * 0.5;
-          if (dx * dx + dy * dy < rr * rr) hurtPlayer(s, z.dmg);
+          if (dx * dx + dy * dy < rr * rr && hurtPlayer(s, z.dmg) && z.slow > 0) p.slow = z.slow;
           addFx(s, FX.shock, z.x, z.y, z.r, 0, 0, 0.3);
           emit(s, EV.boom);
+          z.maxLife = z.life;
+          z.next = z.every;
         }
         continue;
       }
       z.life -= TICK;
       if (z.life <= 0) z.dead = true;
+      else if (z.tick > 0 && --z.next <= 0) {
+        // 바닥에 남은 불길·독: 그 안에 있으면 간격마다 피해
+        z.next = z.every;
+        const dx = p.x - z.x;
+        const dy = p.y - z.y;
+        if (dx * dx + dy * dy < z.r * z.r) hurtPlayer(s, z.tick);
+      }
       continue;
     }
     z.life -= TICK;
@@ -267,7 +361,11 @@ function updateZones(s: State) {
     if (--z.next > 0) continue;
     z.next = z.every;
     const m = collect(s, z.x, z.y, z.r);
-    for (let k = 0; k < m; k++) hurtEnemy(s, enemies[s.hits[k]], z.dmg, z.weapon);
+    for (let k = 0; k < m; k++) {
+      const e = enemies[s.hits[k]];
+      if (z.slow > 0 && e.boss < 0) e.slow = z.slow;
+      hurtEnemy(s, e, z.dmg, z.weapon);
+    }
   }
 }
 
@@ -393,9 +491,17 @@ export function step(s: State, input: Input) {
     my /= len;
   }
   p.moving = len > 0.01;
+  if (p.slow > 0) p.slow--;
   if (p.moving) {
-    p.x += mx * s.stats.speed * TICK;
-    p.y += my * s.stats.speed * TICK;
+    // 야광귀에게 맞으면 잠시 절반 빠르기
+    const speed = s.stats.speed * (p.slow > 0 ? 0.5 : 1);
+    p.x += mx * speed * TICK;
+    p.y += my * speed * TICK;
+    // 지형: 대나무·담·물길은 지나갈 수 없다 (비스듬히 닿으면 미끄러지듯 돌아간다)
+    if (pushOut(s.map.terrain, s.terrainSeed, p.x, p.y, PLAYER.r)) {
+      p.x = OUT.x;
+      p.y = OUT.y;
+    }
     p.fx = mx / Math.min(1, len);
     p.fy = my / Math.min(1, len);
   }

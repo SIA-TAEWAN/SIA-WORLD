@@ -16,7 +16,7 @@ export interface WeaponLevel {
   pierce?: number;
   /** 투사체 속도 */
   speed?: number;
-  /** 투사체 반지름 */
+  /** 투사체 반지름 (여의봉은 굵기) */
   size?: number;
   /** 투사체가 사라지기까지 (초) */
   life?: number;
@@ -48,7 +48,7 @@ export interface WeaponDef {
   dot?: boolean;
   /** 진화 무기인가 (레벨업 카드에 나오지 않고 보물상자로만 얻는다) */
   evolved?: boolean;
-  /** 아직 만들지 않은 무기 (데이터 자리만 있음) */
+  /** 동작까지 만들어졌나 */
   ready: boolean;
   /** 레벨 1~5 (진화 무기는 한 줄) */
   levels: WeaponLevel[];
@@ -130,15 +130,69 @@ export const WEAPONS: WeaponDef[] = [
     levels: [{ dmg: 20, cd: 0.8, range: 180, arc: 360, text: '사방을 한꺼번에 벤다' }],
   },
 
-  // ───── 나중에 만들 무기 6종 (자리만. kind 의 동작 함수와 levels 를 채우고 ready 를 true 로) ─────
-  { id: 'hoof', name: '말발굽', icon: '🐴', desc: '지나간 자리에 충격파를 남긴다', kind: 'trail', ready: false, levels: [] },
-  { id: 'wool', name: '양털 구름', icon: '🐑', desc: '구름으로 적을 느리게 한다', kind: 'slowCloud', dot: true, ready: false, levels: [] },
-  { id: 'staff', name: '여의봉', icon: '🐵', desc: '곧게 뻗어 적을 모두 꿰뚫는다', kind: 'lance', ready: false, levels: [] },
-  { id: 'feather', name: '깃털', icon: '🪶', desc: '여러 방향으로 한꺼번에 쏜다', kind: 'radial', ready: false, levels: [] },
-  { id: 'puppy', name: '동료 강아지', icon: '🐶', desc: '적을 쫓아가 무는 소환수', kind: 'minion', ready: false, levels: [] },
-  { id: 'piggy', name: '복돼지 돌진', icon: '🐷', desc: '일정 간격으로 돌진해 부딪친다', kind: 'dash', ready: false, levels: [] },
+  // ───── 나머지 캐릭터 6종의 시작 무기 ─────
+  {
+    id: 'hoof', name: '말발굽', icon: '🐴', desc: '지나간 자리에 충격파를 남긴다', kind: 'trail', ready: true,
+    levels: [
+      { dmg: 6.4, cd: 0.7, radius: 92, text: '내가 지나간 자리에 충격파가 터진다' },
+      { dmg: 9, cd: 0.7, radius: 96, text: '더 아프게' },
+      { dmg: 9.9, cd: 0.62, radius: 108, text: '더 넓게, 더 자주' },
+      { dmg: 12.7, cd: 0.56, radius: 114, text: '더 아프게, 더 자주' },
+      { dmg: 13.5, cd: 0.5, radius: 124, text: '더 아프고 더 넓게' },
+    ],
+  },
+  {
+    id: 'wool', name: '양털 구름', icon: '🐑', desc: '구름으로 적을 느리게 한다', kind: 'slowCloud', dot: true, ready: true,
+    levels: [
+      { dmg: 3.35, cd: 2.8, dur: 3.2, every: 0.5, count: 1, radius: 86, range: 280, text: '적이 있는 곳에 구름을 띄운다. 구름 속의 적은 느려진다' },
+      { dmg: 4.6, cd: 2.8, dur: 3.2, every: 0.5, count: 1, radius: 90, range: 280, text: '더 아프게' },
+      { dmg: 4.6, cd: 3.9, dur: 3.2, every: 0.5, count: 2, radius: 90, range: 300, text: '구름 1개 더 (조금 천천히)' },
+      { dmg: 5.2, cd: 3.7, dur: 3.6, every: 0.5, count: 2, radius: 96, range: 300, text: '더 아프고 더 오래 남는다' },
+      { dmg: 5.4, cd: 3.9, dur: 3.6, every: 0.5, count: 3, radius: 98, range: 320, text: '구름 1개 더' },
+    ],
+  },
+  {
+    id: 'staff', name: '여의봉', icon: '🐵', desc: '곧게 뻗어 적을 모두 꿰뚫는다', kind: 'lance', ready: true,
+    levels: [
+      { dmg: 12.6, cd: 1.0, range: 250, size: 44, text: '겨눈 쪽으로 여의봉이 길게 뻗는다' },
+      { dmg: 18.3, cd: 1.0, range: 260, size: 46, text: '더 아프게' },
+      { dmg: 18.8, cd: 0.92, range: 300, size: 54, text: '더 길고 굵게' },
+      { dmg: 24.7, cd: 0.82, range: 310, size: 58, text: '더 아프게, 더 자주' },
+      { dmg: 30, cd: 0.76, range: 340, size: 66, text: '더 길고 굵게' },
+    ],
+  },
+  {
+    id: 'feather', name: '깃털', icon: '🪶', desc: '여러 방향으로 한꺼번에 쏜다', kind: 'radial', ready: true,
+    levels: [
+      { dmg: 8.3, cd: 0.9, count: 5, pierce: 0, speed: 420, size: 9, life: 1.1, text: '깃털 5개를 사방으로 쏜다' },
+      { dmg: 12, cd: 0.9, count: 5, pierce: 0, speed: 420, size: 9, life: 1.1, text: '더 아프게' },
+      { dmg: 13, cd: 0.9, count: 7, pierce: 0, speed: 440, size: 9, life: 1.1, text: '깃털 2개 더' },
+      { dmg: 16.6, cd: 0.8, count: 7, pierce: 0, speed: 440, size: 10, life: 1.1, text: '더 아프게, 더 자주' },
+      { dmg: 18.3, cd: 0.8, count: 9, pierce: 0, speed: 460, size: 10, life: 1.1, text: '깃털 2개 더' },
+    ],
+  },
+  {
+    id: 'puppy', name: '동료 강아지', icon: '🐶', desc: '적을 쫓아가 무는 소환수', kind: 'minion', ready: true,
+    levels: [
+      { dmg: 12.5, cd: 1, count: 1, speed: 300, size: 16, every: 0.4, text: '강아지 한 마리가 적을 쫓아가 문다' },
+      { dmg: 16.2, cd: 1, count: 1, speed: 310, size: 16, every: 0.4, text: '더 아프게' },
+      { dmg: 11.9, cd: 1, count: 2, speed: 320, size: 16, every: 0.4, text: '강아지 1마리 더 (한 마리는 조금 약하게)' },
+      { dmg: 16.7, cd: 1, count: 2, speed: 330, size: 17, every: 0.38, text: '더 아프게' },
+      { dmg: 16.9, cd: 1, count: 3, speed: 340, size: 17, every: 0.4, text: '강아지 1마리 더' },
+    ],
+  },
+  {
+    id: 'piggy', name: '복돼지 돌진', icon: '🐷', desc: '일정 간격으로 돌진해 부딪친다', kind: 'dash', ready: true,
+    levels: [
+      { dmg: 14.4, cd: 1.5, speed: 620, size: 30, life: 0.6, text: '복돼지가 겨눈 쪽으로 돌진해 닿는 적을 모두 친다' },
+      { dmg: 19.3, cd: 1.5, speed: 620, size: 32, life: 0.6, text: '더 아프게' },
+      { dmg: 24.4, cd: 1.35, speed: 660, size: 38, life: 0.62, text: '더 크게, 더 자주' },
+      { dmg: 29, cd: 1.2, speed: 680, size: 40, life: 0.64, text: '더 아프게, 더 자주' },
+      { dmg: 32.8, cd: 1.1, speed: 700, size: 46, life: 0.66, text: '더 크고 더 아프게' },
+    ],
+  },
 ];
 
 export const WEAPON_INDEX: Record<string, number> = Object.fromEntries(WEAPONS.map((w, i) => [w.id, i]));
-/** 준비되지 않은 무기를 가진 캐릭터가 대신 들고 시작하는 무기 */
+/** 준비되지 않은 무기를 가진 캐릭터가 대신 들고 시작하는 무기 (지금은 12종 모두 준비돼 있어 쓰이지 않는다) */
 export const FALLBACK_WEAPON = 'shuriken';

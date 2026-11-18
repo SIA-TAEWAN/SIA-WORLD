@@ -42,14 +42,25 @@ export interface Enemy {
   sub: number;
   ax: number;
   ay: number;
+  /** 느려진 남은 걸음 수 (양털 구름) */
+  slow: number;
+  /** 숨어 있다: 보이지 않고 맞지 않고 닿아도 피해가 없다 (땅속의 죽순 요괴, 쓰러진 해골 병사, 숨은 장산범) */
+  hidden: boolean;
+  /** 받는 피해 배율 (방패를 든 동안 1보다 작다) */
+  guard: number;
+  /** 분신·부하의 모습: 이 번호의 보스 그림을 작게 그린다 (아니면 -1) */
+  look: number;
+  /** 장애물에 막혔을 때 돌아가는 쪽 (-1·1, 막히지 않았으면 0) 과 그 쪽을 유지하는 남은 걸음 */
+  side: number;
+  sideT: number;
   /** 무기 칸(0~7)마다 마지막으로 맞은 걸음 (장판·구슬이 같은 적을 너무 자주 때리지 않게) */
   hitAt: Int32Array;
 }
 
 /** 투사체 움직임 종류 */
-export const MODE = { line: 0, lob: 1, orbit: 2, enemy: 3 } as const;
+export const MODE = { line: 0, lob: 1, orbit: 2, enemy: 3, minion: 4 } as const;
 /** 투사체 그림 종류 */
-export const PROJ = { shuriken: 0, cake: 1, pearl: 2, foxfire: 3, shurikenEvo: 4, pearlEvo: 5 } as const;
+export const PROJ = { shuriken: 0, cake: 1, pearl: 2, foxfire: 3, shurikenEvo: 4, pearlEvo: 5, feather: 6, pig: 7, puppy: 8, orb: 9 } as const;
 
 export interface Projectile {
   kind: number;
@@ -85,7 +96,9 @@ export interface Projectile {
 }
 
 /** 지대 그림 종류 */
-export const ZONE = { mist: 0, warn: 1 } as const;
+export const ZONE = { mist: 0, warn: 1, poison: 2, fire: 3, water: 4, cloud: 5, hoof: 6 } as const;
+/** 보스 패턴 데이터의 zone 이름 → 번호 */
+export const ZONE_OF: Record<string, number> = { warn: ZONE.warn, poison: ZONE.poison, fire: ZONE.fire, water: ZONE.water };
 
 export interface Zone {
   kind: number;
@@ -105,6 +118,10 @@ export interface Zone {
   every: number;
   next: number;
   dmg: number;
+  /** 적의 것: 터진 뒤 바닥에 남아 있는 동안 간격마다 주는 피해 (0이면 없음) */
+  tick: number;
+  /** 맞은 쪽이 느려지는 시간 (걸음 수. 적의 것은 나를, 내 것은 요괴를 느리게 한다) */
+  slow: number;
   dead: boolean;
 }
 
@@ -121,7 +138,7 @@ export interface Pickup {
 }
 
 /** 이펙트 그림 종류 (보여 주기만 한다) */
-export const FX = { slash: 0, burst: 1, pulse: 2, puff: 3, shock: 4 } as const;
+export const FX = { slash: 0, burst: 1, pulse: 2, puff: 3, shock: 4, beam: 5 } as const;
 
 export interface Fx {
   kind: number;
@@ -269,6 +286,8 @@ export interface State {
   upgrades: UpgradeLevels;
   /** 난수 상태 (mulberry32) */
   rng: number;
+  /** 지형의 시드 (판마다 장애물 자리가 다르다) */
+  terrainSeed: number;
   tick: number;
   /** 흐른 시간 (초) */
   time: number;
@@ -285,6 +304,8 @@ export interface State {
     moving: boolean;
     /** 남은 부활 횟수 */
     revives: number;
+    /** 느려진 남은 걸음 수 (야광귀에게 맞았을 때) */
+    slow: number;
   };
   stats: Stats;
   level: number;

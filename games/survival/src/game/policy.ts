@@ -12,6 +12,7 @@ import { addWeapon } from './levelup';
 import { makeRng } from './rng';
 import { createRun, makeInput, step, summarize, type RunSummary } from './sim';
 import { MODE, type Input, type RunConfig, type State } from './state';
+import { eachObstacle } from './terrain';
 
 /** 정책: 지금 상태를 보고 조작을 정한다 */
 export type Policy = (s: State, input: Input) => void;
@@ -52,6 +53,7 @@ export function normalPolicy(seed: number): Policy {
     // 가까운 요괴에게서 멀어진다 (가까울수록 세게)
     for (let i = 0; i < s.enemies.n; i++) {
       const e = s.enemies.items[i];
+      if (e.hidden) continue;
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const d = Math.max(1, Math.hypot(dx, dy) - e.r);
@@ -83,6 +85,15 @@ export function normalPolicy(seed: number): Policy {
       ax += (dx / d) * 6;
       ay += (dy / d) * 6;
     }
+    // 장애물(대나무·담·물길)에 바짝 붙지 않는다
+    eachObstacle(s.map.terrain, s.terrainSeed, p.x, p.y, 150, 150, (ox, oy, r) => {
+      const dx = p.x - ox;
+      const dy = p.y - oy;
+      const d = Math.max(1, Math.hypot(dx, dy) - r);
+      if (d > 70) return;
+      ax += (dx / (d + r)) * (30 / d) * 1.5;
+      ay += (dy / (d + r)) * (30 / d) * 1.5;
+    });
     // 위험하지 않으면 가장 가까운 구슬·아이템을 주우러 간다
     if (nearest > 60) {
       let best = -1;
