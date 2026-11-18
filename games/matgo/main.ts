@@ -1073,9 +1073,11 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   },
 
   cutinDelay(ev) {
+    // 패의 움직임과 함께 보여야 하는 것만 때를 맞춘다. 고·스톱·박 등은 카드 연출이 끝난 뒤 차례로 (그 뒤에 결과 창)
+    if (ev.t !== 'shake' && ev.t !== 'bomb' && ev.t !== 'ppeok' && ev.t !== 'capture') return null;
     const base = eventBase.get(ev.id);
     if (base === undefined) return null;
-    // 흔들기·폭탄은 패를 낼 때, 뻑은 뒤집은 패가 내려앉을 때, 그 밖(먹기·고·스톱 등)은 가져간 뒤
+    // 흔들기·폭탄은 패를 낼 때, 뻑은 뒤집은 패가 내려앉을 때, 5광은 가져간 뒤
     const at = ev.t === 'shake' || ev.t === 'bomb' ? 200 : ev.t === 'ppeok' ? AT_FLIP + 600 : AT_TAKE + 600;
     return Math.max(0, planBuiltAt + base + at - performance.now());
   },

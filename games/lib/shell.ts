@@ -646,6 +646,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   /** 재생 중인 항목의 새 상태를 이미 그렸다 (그 뒤에 온 비공개 패는 바로 반영) */
   let itemApplied = false;
   const queue: { s: StateRow; events: GameEventLite[]; exact: boolean; newRound: boolean }[] = [];
+  /** 컷인 하나가 보이는 시간 (style.css의 cutin 애니메이션 1.2초 + 여유), 지금 예정된 컷인이 모두 끝나는 시각 */
+  const CUTIN_MS = 1300;
+  let cutinUntil = 0;
   const afterAnim = (fn: () => void) => {
     const wait = animEnd - performance.now();
     if (wait <= 0) fn();
@@ -1078,7 +1081,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const res = st?.public_state?.result;
     if (holdResult || !c || !res || room?.status !== 'waiting' || !st || resultShownFor === st.round_no) return;
     resultShownFor = st.round_no;
-    afterAnim(() => showResultBox(c));
+    // 카드 연출이 끝나고, 컷인('스톱!' 등)이 다 보인 뒤에 결과 창
+    afterAnim(() => {
+      const wait = cutinUntil - performance.now();
+      if (wait <= 0) showResultBox(c);
+      else setTimeout(() => !closed && showResultBox(c), wait);
+    });
   };
   /** 판 정리 연출을 돌리고, 끝나면 테이블을 비운 뒤 레디 버튼을 켠다 */
   const runTidy = (round: number) => {
@@ -1143,6 +1151,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (!hits.length) return;
     const show = (e: GameEventLite, text: string) => {
       if (closed) return;
+      cutinUntil = Math.max(cutinUntil, performance.now() + CUTIN_MS);
       const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
       const el = $(root, '#cutin');
       el.innerHTML = `<div>${av ? `<img src="${m.z.fullUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
@@ -1161,12 +1170,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         delay = null;
       }
       if (delay === null || reduceMotion) untimed.push(h);
-      else setTimeout(() => show(h.e, h.text), Math.max(0, delay));
+      else {
+        const d = Math.max(0, delay);
+        cutinUntil = Math.max(cutinUntil, performance.now() + d + CUTIN_MS);
+        setTimeout(() => show(h.e, h.text), d);
+      }
     }
-    if (untimed.length) {
-      const { e, text } = untimed[untimed.length - 1];
-      afterAnim(() => show(e, text));
-    }
+    // 나머지는 카드 연출이 끝난 뒤에 차례로 하나씩 (마지막 3개까지: '스톱!' → '광박!' …)
+    const tail = untimed.slice(-3);
+    if (tail.length && !reduceMotion) cutinUntil = Math.max(cutinUntil, Math.max(animEnd, performance.now()) + 150 + tail.length * CUTIN_MS);
+    tail.forEach((h, i) => afterAnim(() => (i ? setTimeout(() => show(h.e, h.text), i * CUTIN_MS) : show(h.e, h.text))));
   };
 
   /** 대기 중인데 사람이 모두 레디면 판을 시작한다 (서버가 다시 확인하므로 여러 명이 불러도 안전) */
