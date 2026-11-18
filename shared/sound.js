@@ -1,8 +1,10 @@
-// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 공용).
+// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 · 시아레이스 공용).
 //
 // - 소리는 ZzFX 방식(코드로 파형을 만든다, MIT · Frank Force)으로 만든다. 외부 파일 없음.
 // - shared/sounds/<이름>.ogg 또는 .mp3 파일을 넣으면 그 소리를 처음 낼 때 확인해서 파일로 바꿔 쓴다.
 // - 켜기/끄기는 브라우저에 저장 (localStorage 'sia:sound'). 시아탱크의 예전 설정('siatank:mute')도 이어받는다.
+// - 배경음 켜기/끄기는 따로 저장 (localStorage 'sia:bgm'). 곡 자체는 각 게임이 만든다 (시아레이스: games/running/src/ui/music.ts,
+//   shared/sounds/bgmLobby|bgmRace|bgmResult.ogg|.mp3 를 넣으면 그 파일로 바뀐다).
 // - 브라우저 정책: 첫 클릭·터치·키 입력 전에는 소리를 내지 않는다 (그때 오디오를 깨운다).
 // - 같은 소리가 겹치지 않게 이름마다 최소 간격, 동시에 나는 소리 수 제한.
 
@@ -44,10 +46,25 @@ export const SOUNDS = {
   tankHeal: [0.5, 0, 440, 0.02, 0.15, 0.2, 0, 1, 25],
   tankTurn: [0.5, 0, 523, 0.01, 0.06, 0.12, 1, 1.2, 0, 0, 262, 0.07],
   tankWin: [0.7, 0, 523, 0.02, 0.2, 0.4, 1, 1.4, 0, 0, 262, 0.08, 0.08],
+  // 시아레이스
+  raceReady: [0.5, 0, 440, 0.01, 0.1, 0.12, 1, 1.2],
+  raceGo: [0.7, 0, 880, 0.01, 0.2, 0.28, 1, 1.4, 0, 0, 440, 0.08],
+  raceFoul: [0.6, 0, 220, 0.01, 0.14, 0.3, 2, 1.2, -0.8],
+  step: [0.3, 0.1, 190, 0, 0.01, 0.04, 4, 2, -2, 0, 0, 0, 0, 1.5],
+  jump: [0.5, 0, 420, 0.01, 0.05, 0.12, 1, 1.4, 9],
+  land: [0.4, 0.05, 150, 0, 0.02, 0.07, 4, 2, -1.5, 0, 0, 0, 0, 1],
+  mud: [0.5, 0.1, 120, 0.01, 0.05, 0.16, 4, 1.5, -0.6, 0, 0, 0, 0, 2.2],
+  hurdleHit: [0.7, 0.05, 260, 0, 0.03, 0.18, 2, 1.6, -1.6, 0, 0, 0, 0, 0.8],
+  slip: [0.5, 0, 700, 0.01, 0.08, 0.18, 1, 1, -7],
+  logHit: [0.8, 0.05, 110, 0, 0.05, 0.25, 4, 2.2, -0.4, 0, 0, 0, 0, 1.6],
+  boost: [0.5, 0, 523, 0.01, 0.1, 0.2, 1, 1.3, 14, 0, 262, 0.05],
+  goal: [0.7, 0, 659, 0.02, 0.15, 0.3, 1, 1.4, 0, 0, 330, 0.07, 0.07],
+  rankShow: [0.5, 0, 784, 0.01, 0.05, 0.14, 1, 1.3, 0, 0, 196, 0.05],
+  newRecord: [0.7, 0, 523, 0.02, 0.22, 0.45, 1, 1.4, 0, 0, 392, 0.09, 0.09],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40 };
+const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 
@@ -258,6 +275,45 @@ export const toggleMuted = () => (setMuted(!muted), muted);
 export function onMuteChange(cb) {
   listeners.add(cb);
   return () => listeners.delete(cb);
+}
+
+// ───────────────────────── 배경음 설정 (효과음과 따로 켜고 끈다) ─────────────────────────
+let bgmOn = readBgm();
+const bgmListeners = new Set();
+function readBgm() {
+  try {
+    return localStorage.getItem('sia:bgm') !== 'off';
+  } catch {
+    return true;
+  }
+}
+export const isBgmOn = () => bgmOn;
+export function setBgmOn(on) {
+  bgmOn = !!on;
+  try {
+    localStorage.setItem('sia:bgm', bgmOn ? 'on' : 'off');
+  } catch {
+    /* 저장 못 해도 이번에는 적용 */
+  }
+  bgmListeners.forEach((f) => f(bgmOn));
+}
+/** 배경음 켜기/끄기가 바뀌면 cb(on) → 해제 함수 */
+export function onBgmChange(cb) {
+  bgmListeners.add(cb);
+  return () => bgmListeners.delete(cb);
+}
+/** 배경음 파일(shared/sounds/<이름>.ogg|.mp3)이 있으면 그 주소, 없으면 null */
+export async function bgmFileUrl(name) {
+  for (const ext of ['ogg', 'mp3']) {
+    const url = `${soundsBase()}${name}.${ext}`;
+    try {
+      const res = await fetch(url, { method: 'HEAD', cache: 'force-cache' });
+      if (res.ok && /audio|octet/.test(res.headers.get('content-type') ?? 'audio')) return url;
+    } catch {
+      /* 다음 형식 */
+    }
+  }
+  return null;
 }
 
 /** 오른쪽 아래 사운드 버튼 (DESIGN.md: 원형 흰 버튼) */

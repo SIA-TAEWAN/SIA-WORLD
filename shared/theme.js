@@ -52,6 +52,9 @@ export const CHIPS = [
   { min: 0, color: 0x6fd8ff, animal: 'rat' }, // 찍찍이 (하늘, 시아탱크 랜덤 선택 그라데이션)
 ];
 
+/** 시아레이스: 트랙(넓은 면) · 트랙 어두운 점·레인 구분 · 잔디 (= 맞고 담요 초록) */
+export const RACE = { track: 0xf2b279, trackDark: 0xd98a52, grass: 0x7cc08a };
+
 /** 숫자 색 → '#rrggbb' */
 export const css = (n) => `#${n.toString(16).padStart(6, '0')}`;
 
