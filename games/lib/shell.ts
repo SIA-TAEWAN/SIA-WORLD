@@ -1216,6 +1216,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     return { events: fresh, exact, newRound };
   };
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** 한 동작에서 다음 동작으로 넘어가는 쉬는 시간의 배율 (작을수록 빠르다. 카드가 움직이는 시간은 그대로) */
+  const PACE = 0.85;
   /** 진행 중인 카드 연출이 다 끝날 때까지 (다시 그리면서 늘어날 수 있어 되풀이해서 확인) */
   const waitAnim = async (pad = 120) => {
     for (let i = 0; i < 40 && !closed; i++) {
@@ -1327,7 +1329,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         const waitA = async () => {
           if (!hurry()) await waitAnim();
         };
-        const gapOf = (step: ReplayStep) => quick(step.gap ?? (step.after ? 800 : isAiStep(step) ? 800 : 350));
+        const gapOf = (step: ReplayStep) => quick(Math.round((step.gap ?? (step.after ? 800 : isAiStep(step) ? 800 : 350)) * PACE));
         // 앞 상태의 카드 연출이 끝난 뒤에 시작
         await waitA();
         if (closed) return;
@@ -1383,7 +1385,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             } else {
               // 걸음 간격에서 카드 연출에 쓴 시간은 뺀다. 카드가 움직였으면 놓인 뒤 잠깐은 쉰다
               const spent = performance.now() - t0;
-              await sleep(Math.max(step ? gapOf(step) - spent : 0, spent > 200 ? 250 : 0));
+              await sleep(Math.max(step ? gapOf(step) - spent : 0, spent > 200 ? Math.round(250 * PACE) : 0));
             }
           }
         } else if (!stale()) {
