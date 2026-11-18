@@ -2,7 +2,8 @@ import { WIN_SCORE, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/const
 import type { MatchSetup } from '../match/game';
 import { VolleyRoom, newRoomCode, type StartMsg } from '../net/room';
 import { SEATS, cleanTitle } from '../net/seats';
-import { worldHome } from '../net/world';
+import { LOCAL_MODE } from '../net/api';
+import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
 import { sfx } from './sfx';
@@ -37,10 +38,11 @@ export function onlineSetup(s: StartMsg, myId: string): MatchSetup {
   };
 }
 
-/** 랭킹 창 (4단계에서 SIA WORLD 공용 랭킹 창의 시아배구 탭을 연다) */
-export function showRanking() {
+/** 랭킹 창 (SIA WORLD 공용, 시아배구 탭부터) */
+export async function showRanking() {
   sfx('click');
-  toast('랭킹은 준비 중이에요');
+  if (LOCAL_MODE) return toast('테스트 모드에서는 랭킹을 볼 수 없어요');
+  if (!(await openWorldRanking(state.user.id, 'volley'))) toast('랭킹을 불러오지 못했어요');
 }
 
 // ───────────────────────── 로비 ─────────────────────────
@@ -72,7 +74,7 @@ export function showLobby() {
     nav.select();
   });
   $('#create').addEventListener('click', showCreate);
-  $('#rank').addEventListener('click', showRanking);
+  $('#rank').addEventListener('click', () => void showRanking());
   $('#howto').addEventListener('click', showHowTo);
 
   // 방 목록: 대기 중이면서 1/2인 방만 눌러 들어간다 (대기실 채널에서 실시간으로 받는다)

@@ -53,7 +53,7 @@ async function start() {
   }
   state.user = { id: user.userId, name: user.nickname };
   state.char = loadChar();
-  state.api = await getApi();
+  state.api = await getApi(user.userId);
   // 대기실 채널: 방 목록을 받고, 내가 들어간 방을 알린다 (연결을 기다리지 않는다)
   state.lobby = new VolleyLobby(state.api, state.user);
   void state.lobby.join();

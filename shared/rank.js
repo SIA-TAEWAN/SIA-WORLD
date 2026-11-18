@@ -34,6 +34,16 @@ export function withTiers(rows, base = 0) {
   });
 }
 
+/**
+ * 순위(place)와 전체 인원(total)으로 등급을 정한다 (withTiers 와 같은 기준: 해 10% · 달 30% · 별 60% · 그 외 구름).
+ * ranked 가 false 면 구름 (예: 아직 1승도 없는 사람).
+ */
+export function tierOfPlace(place, total, ranked = true) {
+  if (!ranked || !(total > 0)) return 'white';
+  for (const [t, cut] of CUT) if ((place - 1) / total < cut) return t;
+  return 'white';
+}
+
 /** 등급 아이콘 SVG 문자열 */
 export function tierSvg(tier, size = 18) {
   const [hi, lo, line] = TIER_COLOR[tier] ?? TIER_COLOR.white;

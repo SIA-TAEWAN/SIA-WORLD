@@ -1,4 +1,4 @@
-import type { MatchResult } from '../match/game';
+import type { MatchResult, RecordOutcome } from '../match/game';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, screen, state } from './app';
 import { aiSetup } from './menus';
@@ -35,6 +35,7 @@ export function showResult(result: MatchResult) {
       <p class="verdict">${won ? '승리!' : '패배…'}</p>
       <div class="vs">${row(0)}<div class="vs-score"><b>${score[0]}</b><i>:</i><b>${score[1]}</b></div>${row(1)}</div>
       <p class="soft note" id="note">${note}</p>
+      <p class="soft note" id="rec">${online ? '기록을 올리는 중…' : ''}</p>
       <p class="again-st" id="again-st"></p>
       <div class="actions"><button class="btn" id="exit">로비로</button><button class="btn primary" id="again">다시하기 ▶</button></div>
     </div><div class="cheer" id="cheer"></div>`,
@@ -58,6 +59,17 @@ export function showResult(result: MatchResult) {
     });
     return;
   }
+
+  // 내 전적 한 줄 (서버에 결과를 올린 뒤)
+  const rec = $('#rec');
+  const total = (w?: number, l?: number) => (w === undefined || l === undefined ? '' : `내 전적 <b>${w}승 ${l}패</b>`);
+  void (result.record ?? Promise.resolve<RecordOutcome>({ state: 'none' })).then((o) => {
+    if (!rec.isConnected) return;
+    if (o.state === 'saved') rec.innerHTML = total(o.wins, o.losses) || '기록했어요';
+    else if (o.state === 'void') rec.innerHTML = `두 기기의 결과가 달라 기록되지 않았어요${total(o.wins, o.losses) ? ` · ${total(o.wins, o.losses)}` : ''}`;
+    else if (o.state === 'failed') rec.textContent = '기록을 올리지 못했어요';
+    else rec.textContent = '테스트 모드라 기록되지 않아요';
+  });
 
   // ---------- 온라인: 다시하기 = 이 방에서 레디. 둘 다 누르면 방장이 바로 시작을 알린다 ----------
   const btn = $<HTMLButtonElement>('#again');

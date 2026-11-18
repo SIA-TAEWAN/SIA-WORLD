@@ -219,6 +219,8 @@ button, input { font: inherit; color: inherit; }
 .vs-score b { font-weight: normal; color: var(--accent); }
 .vs-score i { font-style: normal; color: var(--ink-soft); font-size: 30px; }
 .result-card .note { text-align: center; margin: 10px 0 0; }
+.result-card .note:empty { display: none; }
+.result-card .note b { font-weight: normal; color: var(--accent); font-size: 17px; }
 .result .actions { display: flex; gap: 10px; margin-top: 14px; }
 .result .actions .btn { flex: 1; }
 .cheer { position: absolute; left: 0; right: 0; top: 0; height: 100%; pointer-events: none; overflow: hidden; }

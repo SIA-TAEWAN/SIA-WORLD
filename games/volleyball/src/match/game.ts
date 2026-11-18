@@ -36,6 +36,17 @@ export interface MatchResult {
   winner: Side;
   /** normal: 3점으로 끝남 · leave: 상대가 나가거나 연결이 끊김 */
   reason: 'normal' | 'leave';
+  /** 온라인: 서버에 결과를 올린 결과 (AI전·테스트 모드는 없음) */
+  record?: Promise<RecordOutcome>;
+}
+
+/** 결과 저장이 어떻게 됐는가 */
+export interface RecordOutcome {
+  /** saved 기록됨 · void 두 기기의 결과가 달라 기록 안 됨 · failed 올리지 못함 · none 올릴 것이 없음(테스트 모드) */
+  state: 'saved' | 'void' | 'failed' | 'none';
+  /** 내 전적 (읽을 수 있었으면) */
+  wins?: number;
+  losses?: number;
 }
 
 /** 화면에 알릴 일: 계산 중에 생긴 일 + 카운트다운 */

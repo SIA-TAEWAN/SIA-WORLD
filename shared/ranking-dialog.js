@@ -1,15 +1,16 @@
 // SIA WORLD 랭킹 창 (로비와 시아탱크가 같이 쓴다).
-//   탭: 💣 시아탱크(포인트) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록)
+//   탭: 💣 시아탱크(포인트) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수)
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
 //   시아레이스만 기록 기준: 해 30.75초 이내 · 달 33초 이내 · 별 37.5초 이내 · 그 외 구름 (RACE_TIERS)
+//   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
-import { withTiers, tierSvg } from './rank.js';
+import { withTiers, tierSvg, tierOfPlace } from './rank.js';
 import { supabase } from './supabase.js';
 
 const STYLE_ID = 'sia-ranking-style';
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley'];
 
 /**
  * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
@@ -17,7 +18,9 @@ const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race'];
 export const RACE_TIERS = { gold: 30750, silver: 33000, bronze: 37500 };
 export const RACE_TOP = 100;
 const RACE_INFO = { label: '🏁 레이스', note: '150m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : RANKINGS[g]);
+const VOLLEY_INFO = { label: '🏐 배구', note: '사람끼리 겨룬 경기의 승수 순 (같으면 승률, 그다음 먼저 달성한 사람이 위)' };
+export const VOLLEY_TOP = 100;
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : RANKINGS[g]);
 
 /** 기록(ms) → 등급 */
 export function raceTier(ms) {
@@ -53,6 +56,33 @@ export async function getRaceRanking(meId = null) {
   }
   return { rows, mine, total };
 }
+/** 승률 표시: 승 ÷ (승 + 패), 소수점 없이 */
+export const volleyRate = (wins, losses) => (wins + losses > 0 ? `${Math.round((wins / (wins + losses)) * 100)}%` : '-');
+const ZODIAC = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'];
+/** 캐릭터 얼굴 그림 (shared/images/zodiac/face) */
+const faceUrl = (id) => new URL(`images/zodiac/face/${ZODIAC.includes(id) ? id : 'tiger'}.png`, import.meta.url).href;
+
+/**
+ * 시아배구 랭킹 (volleyball_ranking 뷰: 승수 → 승률 → 먼저 달성한 순).
+ * → { rows: 상위 100명 [{ key, nickname, wins, losses, character, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getVolleyRanking(meId = null) {
+  const cols = 'user_id,nickname,wins,losses,last_character,place,total';
+  const { data, error } = await supabase.from('volleyball_ranking').select(cols).order('place', { ascending: true }).limit(VOLLEY_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, wins: Number(r.wins), losses: Number(r.losses), character: r.last_character, place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= VOLLEY_TOP) {
+    const res = await supabase.from('volleyball_ranking').select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 const CSS = `
 .sia-rank-dim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
   background: color-mix(in srgb, #2a1a10 55%, transparent); font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
@@ -75,6 +105,9 @@ const CSS = `
 .sia-rank td { padding: 6px; border-bottom: 2px dashed #e2d3b5; font-size: 16px; vertical-align: middle; }
 .sia-rank td.pl { width: 36px; text-align: center; }
 .sia-rank td.tr { width: 34px; line-height: 0; }
+.sia-rank td.ch { width: 36px; line-height: 0; }
+.sia-rank td.ch img { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #2a1a10; background: #fff; object-fit: cover; }
+.sia-rank td.am small { display: block; font-size: 12px; color: #8a6a4a; }
 .sia-rank td.nm { width: 100%; word-break: break-all; }
 .sia-rank td.am { white-space: nowrap; text-align: right; color: #f0a500; }
 .sia-rank tr.me { background: #fff4c2; color: #2a1a10; }
@@ -87,7 +120,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
   if (!document.getElementById(STYLE_ID)) {
@@ -126,6 +159,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     shown = game;
     dim.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
     if (game === 'race') return showRace();
+    if (game === 'volley') return showVolley();
     const info = RANKINGS[game];
     $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${formatAmount(info.base)}${info.unit} 이하는 구름)`;
     $('.me-line').textContent = '불러오는 중…';
@@ -172,6 +206,31 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'race') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /** 시아배구: 승수 순 상위 100명 + 내 순위. 줄마다 순위 · 등급 · 최근 캐릭터 얼굴 · 닉네임 · 승 패 · 승률 */
+  async function showVolley() {
+    $('.note').textContent = `${VOLLEY_INFO.note} · 상위 ${VOLLEY_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (1승도 없으면 구름)`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getVolleyRanking(meId);
+      if (shown !== 'volley') return;
+      const tier = (r) => tierOfPlace(r.place, total, r.wins > 0);
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${mine.wins}승 ${mine.losses}패 (승률 ${volleyRate(mine.wins, mine.losses)})`
+        : '아직 전적이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="ch"><img src="${faceUrl(r.character)}" alt="" /></td><td class="nm">${esc(r.nickname)}</td>` +
+              `<td class="am">${r.wins}승 ${r.losses}패<small>승률 ${volleyRate(r.wins, r.losses)}</small></td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'volley') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   void show(tabInfo(first) ? first : 'tank');

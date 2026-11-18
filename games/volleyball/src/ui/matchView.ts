@@ -4,6 +4,7 @@ import type { Side } from '../game/sim';
 import { Match, type MatchEvent, type MatchSetup } from '../match/game';
 import { OnlineMatch } from '../match/online';
 import { serverNow } from '../net/api';
+import { MatchRecorder } from '../net/record';
 import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, openSettings, screen, stage, state } from './app';
@@ -28,6 +29,8 @@ export function showMatch(setup: MatchSetup) {
   if (online && !room) return nav.lobby();
   const match: Match = room ? new OnlineMatch(setup, room, serverNow) : new Match(setup);
   window.__match = match;
+  // 온라인: 경기 시작을 서버에 알린다 (두 기기가 각자). 끝나면 결과를 보고한다
+  const recorder = room && state.api ? new MatchRecorder(state.api, room.key, setup) : null;
   const me = match.mySide;
 
   let game: Phaser.Game | null = null;
@@ -192,6 +195,7 @@ export function showMatch(setup: MatchSetup) {
     // 방은 대기 상태로 돌아간다 (방 목록의 '경기중' 표시도 풀린다)
     room?.matchOver(setup.matchNo ?? 0);
     if (match instanceof OnlineMatch) window.__lastStats = { side: me, ...match.stats };
+    if (recorder) result.record = recorder.finish(result);
     stage.querySelector('.dim')?.remove();
     if (result.reason === 'leave') {
       const won = result.winner === me;
