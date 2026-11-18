@@ -231,7 +231,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       case 'allin':
         return { at: ev.seat, text: `${who} 올인!`, gap: 500 };
       case 'win':
-        return { at: ev.seat, text: `${who} +${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, sound: 'coin', gap: 900 };
+        return { at: ev.seat, text: `${who} +${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, sound: 'coin', gap: 900, after: true };
       default:
         return null;
     }

@@ -217,22 +217,22 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       case 'split':
         return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스플릿!` } : null;
       case 'bust':
-        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 버스트!`, sound: 'bust' } : null;
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 버스트!`, sound: 'bust', after: true } : null;
       case 'dealer_reveal':
-        return { at: 'dealer', text: `딜러 ${ev.total}`, sound: 'flip', gap: 800 };
+        return { at: 'dealer', text: `딜러 ${ev.total}`, sound: 'flip', gap: 800, after: true };
       case 'dealer_hit':
-        return { at: 'dealer', text: `딜러 히트 (${ev.total})`, gap: 800 };
+        return { at: 'dealer', text: `딜러 히트 (${ev.total})`, gap: 800, after: true };
       case 'dealer_stand':
-        return { at: 'dealer', text: `딜러 ${ev.total} 스탠드`, gap: 800 };
+        return { at: 'dealer', text: `딜러 ${ev.total} 스탠드`, gap: 800, after: true };
       case 'dealer_bust':
-        return { at: 'dealer', text: '딜러 버스트!', sound: 'bust', gap: 800 };
+        return { at: 'dealer', text: '딜러 버스트!', sound: 'bust', gap: 800, after: true };
       case 'result': {
         if (typeof ev.seat !== 'number') return null;
         const d = Number(ev.delta) || 0;
-        if (!d) return { at: ev.seat, text: `${who} 무승부`, gap: 500 };
+        if (!d) return { at: ev.seat, text: `${who} 무승부`, gap: 500, after: true };
         return d > 0
-          ? { at: ev.seat, text: `${who} +${t.fmt(d)}`, chips: { from: 'dealer', to: ev.seat, amount: d }, sound: 'coin', gap: 600 }
-          : { at: ev.seat, text: `${who} ${t.fmt(d)}`, chips: { from: ev.seat, to: 'dealer', amount: -d }, gap: 600 };
+          ? { at: ev.seat, text: `${who} +${t.fmt(d)}`, chips: { from: 'dealer', to: ev.seat, amount: d }, sound: 'coin', gap: 600, after: true }
+          : { at: ev.seat, text: `${who} ${t.fmt(d)}`, chips: { from: ev.seat, to: 'dealer', amount: -d }, gap: 600, after: true };
       }
       default:
         return null;

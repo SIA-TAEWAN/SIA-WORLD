@@ -125,6 +125,8 @@ export interface ReplayStep {
   sound?: SoundName;
   /** 다음 걸음까지 (ms). 없으면 AI 0.8초, 사람 0.35초 */
   gap?: number;
+  /** 새 상태(카드)를 그리고 카드 연출이 끝난 뒤에 보여 줄 걸음 (승패·정산·버스트 등: 결과가 카드보다 먼저 보이지 않게) */
+  after?: boolean;
 }
 
 export interface GameUI<P = any, Q = any> {
@@ -544,6 +546,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const anchors = new Map<string, { x: number; y: number }>();
   /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
   let animEnd = 0;
+  // 연출 재생기 상태 (아래 paint·paintControls가 먼저 쓰므로 위에 둔다)
+  let replaying = false;
+  let inApply = false;
+  /** 결과 걸음을 보여 주는 동안 결과 창·레디 버튼을 미룬다 */
+  let holdResult = false;
+  let pendingPriv: PrivateRow | null | undefined;
+  const queue: { s: StateRow; steps: ReplayStep[] }[] = [];
   const afterAnim = (fn: () => void) => {
     const wait = animEnd - performance.now();
     if (wait <= 0) fn();
@@ -625,7 +634,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       me,
       mySeat: mine?.seat_no ?? null,
       resultSeat: priv && st && priv.round_no === st.round_no ? priv.seat_no : null,
-      pub: (room.status === 'playing' || st?.public_state?.result) && st?.round_no ? st.public_state : null,
+      // 판이 끝났어도 그 판의 연출을 재생하는 중이면 마지막 상태까지 그대로 보여 준다
+      pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length) && st?.round_no ? st.public_state : null,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       pending,
       myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no),
@@ -857,7 +867,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       }
       return;
     }
-    // 대기 중
+    // 대기 중 (방금 끝난 판의 연출·결과를 다 보여 준 뒤에 레디 버튼)
+    if (replaying || queue.length || holdResult) {
+      el.innerHTML = '<p class="msg">판 정리 중이에요…</p>';
+      return;
+    }
     if (spectator) {
       el.innerHTML = '<p class="msg">자리를 기다리는 중이에요…</p>';
       return;
@@ -912,7 +926,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (closed) return;
     const c = ctx();
     const res = st?.public_state?.result;
-    if (!c || !res || room?.status !== 'waiting' || !st || resultShownFor === st.round_no) return;
+    if (holdResult || !c || !res || room?.status !== 'waiting' || !st || resultShownFor === st.round_no) return;
     resultShownFor = st.round_no;
     afterAnim(() => showResultBox(c));
   };
@@ -1003,6 +1017,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (closed) return;
     maybeStart();
     paintSeats();
+    if ((replaying || queue.length) && !inApply) {
+      // 연출 재생 중: 테이블은 재생이 끝난 뒤 새 상태로 그린다 (판이 끝나며 자리·방 정보가 먼저 와도 테이블이 비지 않게)
+      paintControls();
+      return;
+    }
     const c = ctx();
     if (c) {
       c.scene.children.removeAll(true);
@@ -1063,10 +1082,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   // ── 연출 재생기: 서버 응답에 행동이 여러 개 들어 있으면 하나씩 보여 준 뒤 새 상태를 그린다 ──
   let replayRound = -1;
   let replaySeen = 0;
-  let replaying = false;
-  let pendingPriv: PrivateRow | null | undefined;
-  const queue: { s: StateRow; steps: ReplayStep[] }[] = [];
   const applyState = (s: StateRow) => {
+    inApply = true;
+    try {
+      applyStateNow(s);
+    } finally {
+      inApply = false;
+    }
+  };
+  const applyStateNow = (s: StateRow) => {
     if (busy && s.updated_at !== busySince) unbusy();
     st = s;
     if (pendingPriv !== undefined && queue.length === 0) {
@@ -1116,7 +1140,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         const item = queue.shift()!;
         const mine = seats.find((x) => x.user_id === me.userId);
         const myNext = !!mine && (item.s.pending_seats ?? []).includes(mine.seat_no);
-        for (const step of item.steps) {
+        const pre = item.steps.filter((x) => !x.after);
+        const post = item.steps.filter((x) => x.after);
+        for (const step of pre) {
           if (closed) return;
           try {
             playStep(step);
@@ -1133,15 +1159,34 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           await sleep(myNext ? Math.min(gap, 500) : gap);
         }
         if (closed) return;
+        if (post.length) holdResult = true;
         try {
           applyState(item.s);
         } catch (e) {
           console.warn('apply', e);
         }
+        if (post.length) {
+          // 카드가 다 놓인 뒤에 승패·정산을 하나씩
+          await sleep(Math.max(0, animEnd - performance.now()) + 250);
+          for (const step of post) {
+            if (closed) return;
+            try {
+              playStep(step);
+            } catch (e) {
+              console.warn('replay', e);
+            }
+            await sleep(step.gap ?? 800);
+          }
+          holdResult = false;
+          if (closed) return;
+          paintResult();
+        }
       }
     } finally {
       replaying = false;
+      holdResult = false;
     }
+    if (!closed) paintControls();
   };
   const anchorOf = (k: number | string) => anchors.get(typeof k === 'number' ? `seat:${k}` : k) ?? null;
   /** 한 걸음: 말풍선 + 칩 이동 + 소리 (Phaser 위 HTML이라 다시 그려도 끊기지 않는다) */
