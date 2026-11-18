@@ -14,7 +14,8 @@ import { Run } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
 import { esc, mmss, nav, openSettings, screen, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
-import { music } from './music';
+import { icon } from './icons';
+import { mapTrack, music } from './music';
 import { sfx, weaponSfx } from './sfx';
 import { whyText } from './upgrade';
 
@@ -37,14 +38,14 @@ const KEY_DIR: Record<string, [number, number]> = {
 function cardView(c: Card): { icon: string; name: string; tag: string; text: string; kind: string } {
   if (c.type === CARD.weapon) {
     const d = WEAPONS[c.def];
-    return { icon: d.icon, name: d.name, tag: c.isNew ? '새 무기' : `무기 Lv ${c.lv}`, text: d.levels[c.lv - 1]?.text ?? d.desc, kind: 'weapon' };
+    return { icon: icon('w', d.id), name: d.name, tag: c.isNew ? '새 무기' : `무기 Lv ${c.lv}`, text: d.levels[c.lv - 1]?.text ?? d.desc, kind: 'weapon' };
   }
   if (c.type === CARD.passive) {
     const d = PASSIVES[c.def];
-    return { icon: d.icon, name: d.name, tag: c.isNew ? '새 패시브' : `패시브 Lv ${c.lv}`, text: d.text, kind: 'passive' };
+    return { icon: icon('p', d.id), name: d.name, tag: c.isNew ? '새 패시브' : `패시브 Lv ${c.lv}`, text: d.text, kind: 'passive' };
   }
-  if (c.type === CARD.heal) return { icon: '🍡', name: '떡', tag: '덤', text: `체력 ${BONUS.heal} 회복`, kind: 'bonus' };
-  return { icon: '🪙', name: '엽전', tag: '덤', text: `엽전 ${BONUS.coins}닢`, kind: 'bonus' };
+  if (c.type === CARD.heal) return { icon: icon('x', 'cake'), name: '떡', tag: '덤', text: `체력 ${BONUS.heal} 회복`, kind: 'bonus' };
+  return { icon: icon('x', 'coin'), name: '엽전', tag: '덤', text: `엽전 ${BONUS.coins}닢`, kind: 'bonus' };
 }
 
 /** 게임 화면: 필드(캔버스)가 화면을 가득 채우고, 그 위에 HUD·레벨업 카드·일시정지 창을 올린다 */
@@ -88,10 +89,12 @@ export function showGame(setup: GameSetup) {
       </div>
       <div class="bossbar hidden" id="bossbar"><span id="bossName"></span><div class="track"><i id="bossFill"></i></div></div>
     </div>
+    <div class="mood"><i></i><i></i></div>
+    <div class="edge" id="edge"></div>
     <div class="cutin" id="cutin"></div>
     <div class="stick hidden" id="stick"><i></i></div>`,
-    'game',
-    'field',
+    `game m-${s.map.id}`,
+    mapTrack(s.map.id),
     () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
@@ -108,6 +111,15 @@ export function showGame(setup: GameSetup) {
   const $ = <T extends HTMLElement>(q: string) => root.querySelector(q) as T;
   const fieldEl = $('#field');
   const cutin = $('#cutin');
+  const edge = $('#edge');
+  /** 화면 가장자리 테두리를 한 번 번쩍인다: hurt 맞음(분홍) · warn 보스 경고(분홍, 세 번) · good 좋은 일(노랑) */
+  const flashEdge = (kind: 'hurt' | 'warn' | 'good') => {
+    edge.className = 'edge';
+    void edge.offsetWidth;
+    edge.className = `edge ${kind}${lowHp ? ' low' : ''}`;
+  };
+  let lowHp = false;
+  const scene = () => (game?.scene.getScene('game') as GameScene | undefined) ?? null;
   const stick = $('#stick');
   const knob = stick.firstElementChild as HTMLElement;
   const el = {
@@ -234,8 +246,8 @@ export function showGame(setup: GameSetup) {
   function paintOwned() {
     const chip = (icon: string, lv: number, evo = false) => `<span class="own ${evo ? 'evo' : ''}"><em>${icon}</em><i>${evo ? '★' : lv}</i></span>`;
     el.owned.innerHTML =
-      `<div>${s.weapons.map((w) => chip(WEAPONS[w.def].icon, w.lv, WEAPONS[w.def].evolved)).join('')}</div>` +
-      `<div>${s.passives.map((p) => chip(PASSIVES[p.def].icon, p.lv)).join('')}</div>`;
+      `<div>${s.weapons.map((w) => chip(icon('w', WEAPONS[w.def].id), w.lv, WEAPONS[w.def].evolved)).join('')}</div>` +
+      `<div>${s.passives.map((p) => chip(icon('p', PASSIVES[p.def].id), p.lv)).join('')}</div>`;
   }
 
   // ---------- 레벨업: 게임이 멈추고 카드 3장 중 1장 (1·2·3 키 또는 클릭/터치) ----------
@@ -295,9 +307,9 @@ export function showGame(setup: GameSetup) {
     const paint = (confirm: boolean) => {
       const weapons = s.weapons.map((w) => {
         const d = WEAPONS[w.def];
-        return row(d.icon, d.name, d.evolved ? '진화' : `Lv ${w.lv}`, d.desc);
+        return row(icon('w', d.id), d.name, d.evolved ? '진화' : `Lv ${w.lv}`, d.desc);
       });
-      const passives = s.passives.map((p) => row(PASSIVES[p.def].icon, PASSIVES[p.def].name, `Lv ${p.lv}`, `${PASSIVES[p.def].text} (레벨마다)`));
+      const passives = s.passives.map((p) => row(icon('p', PASSIVES[p.def].id), PASSIVES[p.def].name, `Lv ${p.lv}`, `${PASSIVES[p.def].text} (레벨마다)`));
       dim.innerHTML = confirm
         ? `<div class="dialog"><h3>그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">지금까지 주운 엽전 ${Math.floor(s.coins)}닢은 받아요</p>
             <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-quit>그만두기</button></div></div>`
@@ -373,6 +385,7 @@ export function showGame(setup: GameSetup) {
     switch (e.t) {
       case EV.hurt:
         sfx('survHurt');
+        flashEdge('hurt');
         break;
       case EV.fire: {
         const kind = WEAPONS[e.a].kind;
@@ -393,23 +406,29 @@ export function showGame(setup: GameSetup) {
         break;
       case EV.levelup:
         sfx('survLevel');
+        scene()?.burst('level');
         showLevelUp();
         break;
       case EV.bossWarn:
         sfx('survBossWarn');
-        setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>보스가 다가온다!</small>`, 'bad', 2600);
+        setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>보스가 다가온다!</small>`, 'bad warn', 2600);
+        flashEdge('warn');
         music.play('boss');
         break;
       case EV.bossDown:
         sfx('survBossDown');
+        scene()?.burst('boss');
+        flashEdge('good');
         if (st.phase === 'play') {
           setCut(`${esc(BOSSES[e.a].name)} 처치!<small>보물상자를 주워요</small>`, 'go', 1800);
-          if (!activeBoss(st)) music.play('field');
+          if (!activeBoss(st)) music.play(mapTrack(st.map.id));
         }
         break;
       case EV.evolve:
         sfx('newRecord');
-        setCut(`진화!<small>${esc(WEAPONS[e.a].icon)} ${esc(WEAPONS[e.a].name)}</small>`, 'go', 2200);
+        scene()?.burst('evolve');
+        flashEdge('good');
+        setCut(`진화!<small>${esc(WEAPONS[e.a].name)}</small>`, 'go', 2200);
         paintOwned();
         break;
       case EV.chestGain: {
@@ -424,6 +443,7 @@ export function showGame(setup: GameSetup) {
         break;
       case EV.revive:
         sfx('tankHeal');
+        scene()?.burst('evolve');
         setCut('부활!', 'go', 1200);
         break;
       case EV.boom:
@@ -462,6 +482,12 @@ export function showGame(setup: GameSetup) {
     if (xp !== shown.xp) {
       shown.xp = xp;
       el.xp.style.width = `${xp / 2}%`;
+    }
+    // 체력이 30% 아래면 가장자리가 계속 붉게 깜빡인다
+    const low = s.player.hp > 0 && s.player.hp < s.stats.maxHp * 0.3 && s.phase !== 'clear';
+    if (low !== lowHp) {
+      lowHp = low;
+      edge.classList.toggle('low', low);
     }
     const boss = activeBoss(s);
     const bossId = boss ? boss.boss : -1;

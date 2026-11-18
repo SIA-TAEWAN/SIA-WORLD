@@ -9,6 +9,7 @@ import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, loadEngine, nav, openSettings, saveChar, screen, state, toast } from './app';
+import { icon } from './icons';
 import { sfx } from './sfx';
 import { whyText } from './upgrade';
 
@@ -107,7 +108,7 @@ export function showCharSelect() {
       <div class="info-text">
         <h3>${esc(c.nick)} <small>${esc(c.name)}</small></h3>
         <ul class="facts">
-          <li><em>${start.icon}</em><span><b>시작 무기 · ${esc(start.name)}</b><small>${esc(start.desc)}</small></span></li>
+          <li><em>${icon('w', start.id)}</em><span><b>시작 무기 · ${esc(start.name)}</b><small>${esc(start.desc)}</small></span></li>
           <li><em>✨</em><span><b>고유 특성</b><small>${esc(c.trait.text)}</small></span></li>
           <li><em>${locked ? '🔒' : '🔓'}</em><span><b>해금</b><small>${esc(c.unlock.text)}</small></span></li>
         </ul>

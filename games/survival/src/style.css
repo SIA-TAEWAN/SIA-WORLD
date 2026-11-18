@@ -55,6 +55,9 @@ button, input { font: inherit; color: inherit; }
 .tag { display: inline-block; background: var(--pink); color: var(--white); border-radius: var(--radius-pill); padding: 1px 8px; font-size: 12px; }
 .key { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; background: var(--outline); color: var(--white); border-radius: var(--radius-key); font-size: 13px; }
 .grow { flex: 1; min-height: 4px; }
+/* 코드로 그린 아이콘 (ui/icons.ts): 감싸는 쪽의 글자 크기에 맞는 정사각형 */
+.ico { width: 1em; height: 1em; display: block; flex: none; }
+em > .ico { margin: 0 auto; }
 
 .toast {
   position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); z-index: 90; background: var(--outline); color: var(--white);
@@ -228,6 +231,32 @@ button, input { font: inherit; color: inherit; }
 .bossbar span { font-size: calc(var(--u) * 28); color: var(--white); -webkit-text-stroke: calc(var(--u) * 5) var(--outline); paint-order: stroke fill; line-height: 1.1; }
 .bossbar .track { width: 100%; height: calc(var(--u) * 26); background: var(--track); border: var(--line) solid var(--outline); border-radius: var(--radius-pill); overflow: hidden; }
 .bossbar .track i { display: block; height: 100%; width: 100%; background: var(--pink); transition: width 120ms linear; }
+/* 맵의 분위기 (캔버스 위, HUD 아래): 들판 낮 · 대나무 숲 초록 그늘 · 달빛 궁궐 밤 · 황천길 안개와 푸른 불빛 */
+.mood { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.mood i { position: absolute; display: none; }
+.m-bamboo .mood { background: linear-gradient(color-mix(in srgb, var(--matgo-mat-dark) 30%, transparent), transparent 22%, transparent 78%, color-mix(in srgb, var(--matgo-mat-dark) 30%, transparent)); }
+.m-palace .mood { background: color-mix(in srgb, var(--sky-deep) 26%, transparent); }
+/* 달: 오른쪽 위의 둥근 달 */
+.m-palace .mood i:first-child { display: block; right: 8%; top: 13%; width: calc(var(--u) * 90); height: calc(var(--u) * 90); border-radius: 50%; background: var(--panel-strong); border: var(--line) solid var(--outline); opacity: 0.85; }
+.m-underworld .mood { background: color-mix(in srgb, var(--team-a) 12%, transparent); }
+/* 안개: 옆으로 천천히 흐르는 옅은 띠 두 줄 */
+.m-underworld .mood i { display: block; left: -40%; width: 180%; height: 22%; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--white) 20%, transparent); animation: fog 16s ease-in-out infinite alternate; }
+.m-underworld .mood i:first-child { top: 24%; }
+.m-underworld .mood i:last-child { top: 66%; animation-delay: -8s; animation-direction: alternate-reverse; }
+@keyframes fog { from { transform: translateX(-12%); } to { transform: translateX(12%); } }
+
+/* 화면 가장자리 테두리: 맞았을 때 붉게, 보스 경고 때 세 번, 좋은 일에는 노랗게. 체력이 적으면 계속 깜빡인다 */
+.edge { position: absolute; inset: 0; z-index: 4; pointer-events: none; border: calc(var(--u) * 16) solid var(--pink); opacity: 0; }
+.edge.hurt { animation: edge-hit 320ms ease-out; }
+.edge.warn { animation: edge-hit 600ms ease-in-out 3; }
+.edge.good { border-color: var(--primary); animation: edge-hit 520ms ease-out; }
+.edge.low { opacity: 0.35; animation: edge-low 0.9s ease-in-out infinite; }
+.edge.low.hurt { animation: edge-hit 320ms ease-out, edge-low 0.9s ease-in-out 320ms infinite; }
+@keyframes edge-hit { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+@keyframes edge-low { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.5; } }
+.cutin.warn { animation: cut-pop 260ms cubic-bezier(0.2, 1.6, 0.4, 1), warn-blink 0.6s steps(2, jump-none) 3 260ms; }
+@keyframes warn-blink { from { opacity: 1; } to { opacity: 0.45; } }
+
 .cutin { position: absolute; left: 0; right: 0; top: 30%; text-align: center; pointer-events: none; z-index: 6; font-size: calc(var(--u) * 96); color: var(--white); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); line-height: 1.1; }
 .cutin small { display: block; font-size: 0.46em; margin-top: 6px; -webkit-text-stroke: 2px var(--outline); text-shadow: 0 3px 0 var(--outline); }
 .cutin.pop { animation: cut-pop 260ms cubic-bezier(0.2, 1.6, 0.4, 1); }

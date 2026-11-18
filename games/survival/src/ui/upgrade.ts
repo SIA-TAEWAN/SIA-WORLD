@@ -2,10 +2,9 @@ import { UPGRADES, UPGRADE_TOTAL, upgradeSpent } from '../data/upgrades';
 import { upgradeCount, upgradeOffer } from '../game/progress';
 import { ApiError } from '../net/api';
 import { esc, nav, screen, stage, state, toast } from './app';
+import { icon } from './icons';
 import { sfx } from './sfx';
 
-/** 강화 항목의 임시 아이콘 (정식 그림은 ASSETS.md) */
-const ICON: Record<string, string> = { might: '⚔️', hp: '❤️', armor: '🛡️', speed: '👟', xp: '⭐', pickup: '🧲', coin: '🪙', revive: '🪽', reroll: '🔄' };
 
 /** 서버가 낸 까닭 → 쉬운 말 */
 export function whyText(e: unknown): string {
@@ -43,7 +42,7 @@ export function showUpgrade() {
         o.why === 'max level'
           ? '<span class="up-max">끝!</span>'
           : `<button class="btn small ${o.ok ? 'primary' : ''}" data-u="${u.id}" ${o.ok ? '' : 'disabled'}>🪙 ${o.cost.toLocaleString()}</button>`;
-      return `<div class="up-row"><em>${ICON[u.id] ?? '✨'}</em>
+      return `<div class="up-row"><em>${icon('u', u.id)}</em>
         <span class="up-tx"><b>${esc(u.name)} <small>${esc(u.text)}</small></b><span class="pips">${pips}</span></span>${btn}</div>`;
     }).join('');
     (root.querySelector('#reset') as HTMLButtonElement).disabled = upgradeCount(p.upgrades) === 0;

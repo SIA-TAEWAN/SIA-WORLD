@@ -7,6 +7,7 @@ import { WEAPONS } from '../data/weapons';
 import { codexCount, evolutionHints } from '../game/progress';
 import { zodiacFaceUrl } from '../assets';
 import { esc, nav, screen, state } from './app';
+import { icon } from './icons';
 import { sfx } from './sfx';
 
 /** 요괴·보스의 임시 그림: 게임 화면과 같은 색의 동그라미 (정식 그림은 ASSETS.md) */
@@ -56,12 +57,12 @@ export function showCodex() {
       });
       body.innerHTML = `<h3>요괴 ${cx.enemies.length}/${ENEMIES.length}</h3>${enemies.join('')}<h3>보스 ${cx.bosses.length}/${BOSSES.length}</h3>${bosses.join('')}`;
     } else if (tab === 'gear') {
-      const weapons = WEAPONS.filter((w) => !w.evolved).map((w) => cell(cx.weapons.includes(w.id), `<em>${w.icon}</em>`, w.name, w.desc));
-      const passives = PASSIVES.map((x) => cell(cx.passives.includes(x.id), `<em>${x.icon}</em>`, x.name, `${x.text} (레벨마다)`));
+      const weapons = WEAPONS.filter((w) => !w.evolved).map((w) => cell(cx.weapons.includes(w.id), `<em>${icon('w', w.id)}</em>`, w.name, w.desc));
+      const passives = PASSIVES.map((x) => cell(cx.passives.includes(x.id), `<em>${icon('p', x.id)}</em>`, x.name, `${x.text} (레벨마다)`));
       // 진화 조합 힌트: 아는 재료만 보이고 나머지는 ? 로 가린다
       const evo = evolutionHints(cx).map((h) => {
-        const part = (known: boolean, icon: string, name: string) => `<span class="evo-part ${known ? '' : 'unknown'}"><em>${known ? icon : '❓'}</em>${known ? esc(name) : '?'}</span>`;
-        return `<div class="evo">${part(h.weaponKnown, h.weapon.icon, `${h.weapon.name} Lv5`)}<b>+</b>${part(h.passiveKnown, h.passive.icon, h.passive.name)}<b>→</b>${part(h.resultKnown, h.result.icon, h.result.name)}</div>`;
+        const part = (known: boolean, ic: string, name: string) => `<span class="evo-part ${known ? '' : 'unknown'}"><em>${known ? ic : icon('x', 'unknown')}</em>${known ? esc(name) : '?'}</span>`;
+        return `<div class="evo">${part(h.weaponKnown, icon('w', h.weapon.id), `${h.weapon.name} Lv5`)}<b>+</b>${part(h.passiveKnown, icon('p', h.passive.id), h.passive.name)}<b>→</b>${part(h.resultKnown, icon('w', h.result.id), h.result.name)}</div>`;
       });
       const have = (list: { id: string }[], known: string[]) => list.filter((x) => known.includes(x.id)).length;
       body.innerHTML = `<h3>무기 ${have(WEAPONS.filter((w) => !w.evolved), cx.weapons)}/${WEAPONS.filter((w) => !w.evolved).length}</h3>${weapons.join('')}
@@ -74,7 +75,7 @@ export function showCodex() {
         const w = WEAPONS.find((x) => x.id === c.weapon)!;
         return `<div class="cx ${known ? '' : 'unknown'}"><span class="cx-art"><img src="${zodiacFaceUrl(c.id)}" alt="" /></span>
           <span class="cx-tx"><b>${esc(c.nick)} <i class="soft">${esc(c.name)}</i></b>
-          <small>${known ? `${w.icon} ${esc(w.name)} · ${esc(c.trait.text)}` : `🔒 ${esc(c.unlock.text)}`}</small></span></div>`;
+          <small>${known ? `${esc(w.name)} · ${esc(c.trait.text)}` : `🔒 ${esc(c.unlock.text)}`}</small></span></div>`;
       });
       const maps = MAPS.map((m) => cell(p.unlockedMaps.includes(m.id), `<i class="blob m-${m.id}"></i>`, m.name, `${m.desc} · ${m.level} · 엽전 ×${m.coinMul}`));
       body.innerHTML = `<h3>캐릭터 ${p.unlockedCharacters.length}/${CHARACTERS.length}</h3>${chars.join('')}<h3>맵 ${p.unlockedMaps.filter((m) => MAP_INDEX[m] !== undefined).length}/${MAPS.length}</h3>${maps.join('')}`;

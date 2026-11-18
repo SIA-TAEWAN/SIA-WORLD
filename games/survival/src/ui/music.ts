@@ -2,8 +2,9 @@ import { sound, whenSound } from './sfx';
 
 /**
  * 배경음: 파일 없이 코드로 만든 짧은 반복곡 (시아배구 games/volleyball/src/ui/music.ts 를 그대로 가져옴).
- * shared/sounds/bgmSurvMain|bgmSurvField|bgmSurvBoss|bgmSurvResult.ogg|.mp3 를 넣으면 그 파일을 반복 재생한다.
- * 곡의 마지막 다듬기와 나머지 맵 3곡은 7단계.
+ * shared/sounds/bgmSurvMain|bgmSurvField|bgmSurvBamboo|bgmSurvPalace|bgmSurvUnderworld|bgmSurvBoss|bgmSurvResult.ogg|.mp3 를 넣으면 그 파일을 반복 재생한다.
+ * 곡: 메인 · 맵 4종(들판 · 대나무 숲 · 달빛 궁궐 · 황천길) · 보스 · 결과.
+ * 가려진 탭에서는 멈춘다 (아래 apply 의 document.hidden).
  */
 
 interface Bar {
@@ -50,6 +51,51 @@ const FIELD: Track = {
   ],
 };
 
+/** 대나무 숲: 가볍게 통통 튀는 5음 음계 (라단조 5음) */
+const BAMBOO: Track = {
+  bpm: 126, arpVol: 0.028, leadVol: 0.042, drums: 'light', file: 'bgmSurvBamboo',
+  bars: [
+    { arp: [62, 65, 69, 72, 69, 65, 69, 72], lead: [74, 0, 72, 69], bass: 38 },
+    { arp: [60, 65, 67, 72, 67, 65, 67, 72], lead: [72, 0, 69, 67], bass: 36 },
+    { arp: [62, 65, 69, 74, 69, 65, 69, 74], lead: [69, 72, 74, 77], bass: 38 },
+    { arp: [57, 62, 64, 69, 64, 62, 64, 69], lead: [76, 0, 74, -1], bass: 33 },
+    { arp: [65, 69, 72, 77, 72, 69, 72, 77], lead: [77, 0, 74, 72], bass: 41 },
+    { arp: [60, 65, 67, 72, 67, 65, 67, 72], lead: [72, 74, 72, 69], bass: 36 },
+    { arp: [62, 65, 69, 74, 69, 65, 69, 74], lead: [74, 0, 77, 0], bass: 38 },
+    { arp: [57, 62, 64, 69, 72, 69, 64, 62], lead: [74, 0, 0, -1], bass: 33 },
+  ],
+};
+
+/** 달빛 궁궐: 느리고 고요한 밤의 곡 (나단조) */
+const PALACE: Track = {
+  bpm: 112, arpVol: 0.026, leadVol: 0.044, drums: 'light', file: 'bgmSurvPalace',
+  bars: [
+    { arp: [59, 62, 66, 71, 66, 62, 66, 71], lead: [78, 0, 0, 76], bass: 35 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [74, 0, 71, 0], bass: 31 },
+    { arp: [57, 61, 64, 69, 64, 61, 64, 69], lead: [73, 0, 76, 0], bass: 33 },
+    { arp: [54, 58, 61, 66, 61, 58, 61, 66], lead: [78, 0, 0, -1], bass: 30 },
+    { arp: [59, 62, 66, 71, 66, 62, 66, 71], lead: [83, 0, 81, 78], bass: 35 },
+    { arp: [52, 55, 59, 64, 59, 55, 59, 64], lead: [79, 0, 76, 0], bass: 28 },
+    { arp: [57, 61, 64, 69, 64, 61, 64, 69], lead: [76, 73, 71, 73], bass: 33 },
+    { arp: [59, 62, 66, 71, 74, 71, 66, 62], lead: [71, 0, 0, -1], bass: 35 },
+  ],
+};
+
+/** 황천길: 낮게 깔리는 으스스한 곡 (다단조, 반음이 섞인다) */
+const UNDERWORLD: Track = {
+  bpm: 118, arpVol: 0.026, leadVol: 0.04, drums: 'run', file: 'bgmSurvUnderworld',
+  bars: [
+    { arp: [48, 55, 60, 63, 60, 55, 60, 63], lead: [72, 0, 75, 0], bass: 36 },
+    { arp: [48, 55, 60, 63, 60, 55, 60, 66], lead: [74, 0, 72, 0], bass: 36 },
+    { arp: [44, 51, 56, 60, 56, 51, 56, 60], lead: [68, 0, 72, 75], bass: 32 },
+    { arp: [43, 50, 55, 59, 55, 50, 55, 59], lead: [74, 0, 71, -1], bass: 31 },
+    { arp: [48, 55, 60, 63, 60, 55, 60, 63], lead: [79, 0, 78, 79], bass: 36 },
+    { arp: [41, 48, 53, 56, 53, 48, 53, 56], lead: [77, 0, 72, 0], bass: 29 },
+    { arp: [44, 51, 56, 60, 56, 51, 56, 60], lead: [75, 0, 72, 68], bass: 32 },
+    { arp: [43, 50, 55, 59, 62, 59, 55, 50], lead: [71, 0, 0, -1], bass: 31 },
+  ],
+};
+
 /** 보스: 낮고 급한 곡 (마단조) */
 const BOSS: Track = {
   bpm: 152, arpVol: 0.03, leadVol: 0.045, drums: 'run', file: 'bgmSurvBoss',
@@ -72,7 +118,9 @@ const RESULT: Track = {
   ],
 };
 
-const TRACKS = { main: MAIN, field: FIELD, boss: BOSS, result: RESULT };
+const TRACKS = { main: MAIN, field: FIELD, bamboo: BAMBOO, palace: PALACE, underworld: UNDERWORLD, boss: BOSS, result: RESULT };
+/** 맵 id → 그 맵의 곡 (없는 맵은 들판 곡) */
+export const mapTrack = (map: string): TrackName => (map === 'bamboo' || map === 'palace' || map === 'underworld' ? map : 'field');
 export type TrackName = keyof typeof TRACKS;
 
 const freq = (m: number) => 440 * Math.pow(2, (m - 69) / 12);

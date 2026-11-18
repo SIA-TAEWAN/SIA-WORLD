@@ -72,6 +72,10 @@ export class GameScene extends Phaser.Scene {
   private fxs!: SpritePool;
   private obstacles!: SpritePool;
   private obN = 0;
+  /** 레벨업·진화 때 내 둘레로 퍼지는 고리 (남은 시간) */
+  private glow!: Img;
+  private glowT = 0;
+  private glowTint: number = COLOR.primary;
   private nums: Phaser.GameObjects.BitmapText[] = [];
   private numShown = 0;
   /** 그림 크기 (판정 반지름에 맞춰 줄이려고) */
@@ -96,6 +100,22 @@ export class GameScene extends Phaser.Scene {
     preloadArt(this, this.run.state.char.id);
     // 그림을 못 불러와도 게임은 진행한다 (create에서 코드 그림으로 채운다)
     this.load.on('loaderror', () => undefined);
+  }
+
+  /**
+   * 큰 일이 생겼을 때의 연출: level 레벨업(노란 고리) · evolve 진화·부활(분홍 고리 + 번쩍) · boss 보스 처치(흔들림 + 번쩍)
+   */
+  burst(kind: 'level' | 'evolve' | 'boss') {
+    const cam = this.cameras.main;
+    if (!cam) return;
+    if (kind === 'boss') {
+      cam.shake(320, 0.012);
+      cam.flash(220, 255, 255, 255);
+      return;
+    }
+    this.glowT = 0.55;
+    this.glowTint = kind === 'level' ? COLOR.primary : COLOR.pink;
+    if (kind === 'evolve') cam.flash(260, 255, 224, 102);
   }
 
   /** 화면 크기가 바뀌었을 때 (판은 그대로, 배율만) */
@@ -155,6 +175,7 @@ export class GameScene extends Phaser.Scene {
     this.charBase = Math.min(CHAR_H / src.height, CHAR_MAX_W / src.width);
     for (let i = 0; i < 4; i++) this.outline.push(this.add.image(0, 0, key).setOrigin(0.5, 0.9).setDepth(D.player).setTintFill(COLOR.white));
     this.player = this.add.image(0, 0, key).setOrigin(0.5, 0.9).setDepth(D.player + 1);
+    this.glow = this.add.image(0, 0, 'ring').setDepth(D.fx).setVisible(false);
     // 캐릭터 아래 작은 체력 바
     this.hpBack = this.add.rectangle(0, 0, 60, 11, COLOR.outline).setDepth(D.bar);
     this.hpFill = this.add.rectangle(0, 0, 54, 5, COLOR.win).setOrigin(0, 0.5).setDepth(D.bar);
@@ -182,6 +203,12 @@ export class GameScene extends Phaser.Scene {
     this.drawPlayer(s, run.paused ? 0 : this.game.loop.delta / 1000);
     this.drawProjectiles(s, sec);
     this.drawFx(s);
+    // 레벨업·진화: 내 둘레로 고리가 퍼진다
+    if (this.glowT > 0) {
+      this.glowT -= this.game.loop.delta / 1000;
+      const k = 1 - Math.max(0, this.glowT) / 0.55;
+      this.glow.setPosition(p.x, p.y).setScale(0.3 + k * 1.5).setTint(this.glowTint).setAlpha(1 - k).setVisible(this.glowT > 0);
+    }
     this.drawNums(s);
     run.perf.drawMs = performance.now() - t0;
     this.onFrame();
@@ -271,7 +298,8 @@ export class GameScene extends Phaser.Scene {
         .setFlipX(flip)
         .setAlpha(alpha);
     }
-    this.ring.setPosition(p.x, p.y + 12);
+    // 발밑 원은 숨 쉬듯 조금 커졌다 작아진다 (적 사이에서도 내 자리가 눈에 띄게)
+    this.ring.setPosition(p.x, p.y + 14).setScale(((PLAYER.r * 2 + 26) / 128) * (1 + Math.sin(this.time.now / 260) * 0.06));
     this.shadow.setPosition(p.x, p.y + 26).setScale(1 - bob / 30);
     const k = Math.max(0, Math.min(1, p.hp / s.stats.maxHp));
     this.hpBack.setPosition(p.x, p.y + 42);

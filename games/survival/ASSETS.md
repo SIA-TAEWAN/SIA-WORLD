@@ -2,7 +2,7 @@
 
 지금은 **캐릭터를 빼고 모두 코드로 그린 임시 그림**으로 돌아간다 (맵 4종 · 요괴 9종 · 보스 12종 · 무기 12종 + 진화 3종) (DESIGN.md 색·외곽선 규칙, `src/scenes/art.ts`).
 캐릭터는 공용 십이지 그림(`shared/images/zodiac/full/<id>.png` 전신, `face/<id>.png` 얼굴) 한 장을 코드로 움직인다 (통통·기울이기·좌우 뒤집기).
-HUD·카드의 무기·패시브 아이콘은 임시로 이모지를 쓴다 (`src/data/weapons.ts`·`passives.ts` 의 `icon`).
+HUD·카드·도감·강화 화면의 아이콘은 코드로 그린 SVG다 (`src/ui/icons.ts`). 맵의 분위기(밤·달·안개)와 피격·경고 테두리는 CSS다.
 
 정식 그림은 SpriteCook으로 만들어 아래 **파일 이름**으로 `games/survival/public/art/`에 넣고,
 `src/scenes/art.ts`의 `ART_FILES`에 그 이름(확장자 빼고)을 적는다. 그러면 그 그림을 먼저 쓰고, 못 불러올 때만 코드 그림으로 대신한다 (시아배구·시아레이스와 같은 방식).
@@ -122,21 +122,23 @@ HUD·카드의 무기·패시브 아이콘은 임시로 이모지를 쓴다 (`sr
 
 | 이름 | 내용 | 지금 | 만들 크기 |
 |---|---|---|---|
-| `icon-w-<무기 id>` × 15 | 무기 아이콘 (12종 + 진화 3종) | 이모지 | 128×128 |
-| `icon-p-<패시브 id>` × 8 | 패시브 아이콘 (might wind shell sleeve fan magnet ginseng knot) | 이모지 | 128×128 |
+| `icon-w-<무기 id>` × 15 | 무기 아이콘 (12종 + 진화 3종) | 코드로 그린 SVG | 128×128 |
+| `icon-p-<패시브 id>` × 8 | 패시브 아이콘 (might wind shell sleeve fan magnet ginseng knot) | 코드로 그린 SVG | 128×128 |
 | `card-weapon` `card-passive` `card-bonus` | 레벨업 카드 바탕 (지금은 CSS 크림 판) | CSS | 640×200 (9-slice) |
 
-아이콘은 DOM(HUD·카드·일시정지 창)에서 쓴다. 넣을 때 `src/ui/gameView.ts` 의 아이콘 표시를 `<img>` 로 바꾼다.
+아이콘은 DOM(HUD·카드·일시정지 창·도감·강화)에서 쓴다. 파일을 `public/art/icon-w-shuriken.png` 처럼 넣고 `src/ui/icons.ts` 의 `ICON_FILES` 에 이름(`icon-w-shuriken`)을 적으면 SVG 대신 그 그림을 쓴다.
+덤 카드의 떡·엽전은 `icon-x-cake` `icon-x-coin`, 도감의 모르는 재료는 `icon-x-unknown`.
 
 ## 8. 강화 · 도감 UI (4·5단계)
 
 | 이름 | 내용 | 만들 크기 |
 |---|---|---|
-| `icon-u-<강화 id>` × 9 | 영구 강화 아이콘 (might hp armor speed xp pickup coin revive reroll) | 128×128 |
+| `icon-u-<강화 id>` × 9 | 영구 강화 아이콘 (might hp armor speed xp pickup coin revive reroll). 지금은 코드로 그린 SVG | 128×128 |
 | `codex-shadow` | 도감의 못 만난 항목 (그림자는 코드로 그림을 검게 칠해 만든다. 따로 안 만들어도 된다) | — |
 | 도감의 요괴·보스 그림 | 지금은 색 동그라미 (`src/ui/codex.ts`). 2·3장의 그림을 만들면 그 파일을 그대로 쓴다 | — |
 | `map-<맵 id>` × 4 | 맵 고르기 썸네일 (지금은 DESIGN.md 보조색 단색 카드) | 640×200 |
-| `shared/images/card-survival.png` | SIA WORLD 게임 선택 화면의 카드 (8단계) | 다른 게임 카드와 같은 크기 |
+| `shared/images/card-survival.png` | SIA WORLD 게임 선택 화면의 카드. **임시, 교체 예정** (헤드리스 Chrome 캔버스로 그린 그림: 요괴 떼에 둘러싸인 어흥이) | 640×400 |
+| 맵의 분위기 | 달빛 궁궐의 달·밤빛, 황천길의 안개 띠, 대나무 숲의 초록 그늘 (지금은 CSS). 그림으로 바꾸려면 `mood-<맵 id>.png` 를 화면 위에 덮는다 | 720×1280 (반투명) |
 
 ## 9. 소리
 
@@ -158,5 +160,24 @@ HUD·카드의 무기·패시브 아이콘은 임시로 이모지를 쓴다 (`sr
 | 클리어 / 게임 오버 | `win` / `lose` | 기존 이름 |
 | 버튼 | `click` `toggle` | 기존 이름 |
 
-배경음은 코드로 만든 반복곡 4개 (`src/ui/music.ts`): 메인·들판·보스·결과. 교체 파일 이름은
-`bgmSurvMain` `bgmSurvField` `bgmSurvBoss` `bgmSurvResult`. 나머지 맵 3곡(`bgmSurvBamboo` `bgmSurvPalace` `bgmSurvUnderworld`)과 마지막 다듬기는 7단계.
+배경음은 코드로 만든 반복곡 7개 (`src/ui/music.ts`): 메인 · 맵 4종(들판·대나무 숲·달빛 궁궐·황천길) · 보스 · 결과.
+`shared/sounds/` 에 아래 이름의 `.ogg`(또는 `.mp3`)를 넣으면 그 파일로 바뀐다:
+`bgmSurvMain` `bgmSurvField` `bgmSurvBamboo` `bgmSurvPalace` `bgmSurvUnderworld` `bgmSurvBoss` `bgmSurvResult`.
+가려진 탭에서는 게임이 저절로 멈추고 배경음도 멈춘다.
+
+## 10. 한눈에: 나중에 SpriteCook으로 만들 것
+
+| 묶음 | 개수 | 파일 이름 | 크기 | 지금 대신 쓰는 것 |
+|---|---|---|---|---|
+| 캐릭터 걷기 | 12 | `char-<id>-walk.png` | 768×192 (4프레임) | 전신 그림 한 장 + 코드 움직임 |
+| 일반 요괴 | 9 | `e-<id>.png` | 128~192 | 코드 그림 |
+| 보스 | 12 | `b-<id>.png` | 512~640 | 코드 그림 |
+| 무기 투사체·이펙트 | 약 20 | `p-*.png` `fx-*.png` `beam.png` `slash.png` | 64~512 | 코드 그림 · 색만 바꾼 원 |
+| 필드 아이템 | 8 | `i-*.png` | 64~128 | 코드 그림 |
+| 맵 타일 | 4 | `tile-<맵 id>.png` | 512×512 | 코드 그림 |
+| 장애물 | 3 | `ob-scatter.png` `ob-walls.png` `ob-pools.png` | 192~256 | 코드 그림 |
+| 아이콘 | 32 (+3) | `icon-w-*` `icon-p-*` `icon-u-*` `icon-x-*` | 128×128 | 코드로 그린 SVG |
+| 레벨업 카드 바탕 | 3 | `card-weapon` `card-passive` `card-bonus` | 640×200 | CSS 크림 판 |
+| 맵 썸네일 | 4 | `map-<맵 id>.png` | 640×200 | 보조색 단색 카드 |
+| 로비 카드 | 1 | `shared/images/card-survival.png` | 640×400 | 임시 캔버스 그림 |
+| 배경음 | 7 | `shared/sounds/bgmSurv*.ogg` | — | 코드로 만든 반복곡 |

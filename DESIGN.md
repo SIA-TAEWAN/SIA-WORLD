@@ -49,6 +49,7 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아�
 | 시아맞고 | 담요 초록 | `#7CC08A` (테두리 `--outline`) · 체크 무늬 밝은 칸 `#8FCC9B`(`--matgo-mat-light`) · 바닥 자리·먹은 패 칸 `#5FA772`(`--matgo-mat-dark`) |
 | 세븐포커·홀덤 | 민트 테이블 | `#6CC6B5` |
 | 블랙잭 | 하늘 테이블 | `#7FB8E8` |
+| 시아서바이벌 | 맵 바닥 4색 (새 색 없이 기존 값) | 들판 `#7CC08A`(담요 초록) · 대나무 숲 `#6CC6B5`(민트 테이블) · 달빛 궁궐 `#7FB8E8`(하늘 테이블) · 황천길 `#C9D1DD`(룰렛 겨울) |
 | 시아레이스 | 트랙 주황 | `#F9A873` (어두운 점·구분 `#E08A4F`, `--race-track`) |
 | 룰렛 | 계절 4색 | 봄 `#9CC7F2` · 여름 `#F7C1A8` · 가을 `#A9DDC6` · 겨울 `#C9D1DD` |
 
@@ -201,8 +202,8 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아�
 
 ### 효과음
 - 모든 소리는 `shared/sound.js` 한 곳에서 관리 (ZzFX 방식으로 코드로 생성, 외부 파일 없음). 분위기: 짧고 통통 튀는 밝은 소리.
-- `shared/sounds/<이름>.ogg` 또는 `.mp3`를 넣으면 그 소리를 처음 낼 때 파일로 바뀐다. 이름: click, toggle, coin, turn, tick, cutin, win, lose, deal, flip, slap, chip, fold, bust, spinTick, spinStop, tankFire, tankBoom, tankBigBoom, tankLaser, tankBuild, tankHeal, tankTurn, tankWin, raceReady, raceGo, raceFoul, step, jump, land, mud, hurdleHit, slip, logHit, boost, goal, rankShow, newRecord, volleyHit, volleyWall, volleyNet, volleyServe, volleySpeed, volleyPoint, volleyMiss, volleyCount, volleyGo.
-- 배경음은 게임마다 코드로 만든 짧은 반복곡. 시아레이스는 `shared/sounds/bgmLobby|bgmRace|bgmResult.ogg`(또는 `.mp3`)를 넣으면 그 파일로 바뀐다. 배경음 켜기/끄기는 효과음과 따로 저장한다 (`sia:bgm`).
+- `shared/sounds/<이름>.ogg` 또는 `.mp3`를 넣으면 그 소리를 처음 낼 때 파일로 바뀐다. 이름: click, toggle, coin, turn, tick, cutin, win, lose, deal, flip, slap, chip, fold, bust, spinTick, spinStop, tankFire, tankBoom, tankBigBoom, tankLaser, tankBuild, tankHeal, tankTurn, tankWin, raceReady, raceGo, raceFoul, step, jump, land, mud, hurdleHit, slip, logHit, boost, goal, rankShow, newRecord, volleyHit, volleyWall, volleyNet, volleyServe, volleySpeed, volleyPoint, volleyMiss, volleyCount, volleyGo, survShot, survSlash, survPop, survHurt, survLevel, survBossWarn, survBossDown, survChest.
+- 배경음은 게임마다 코드로 만든 짧은 반복곡. 시아레이스는 `shared/sounds/bgmLobby|bgmRace|bgmResult.ogg`(또는 `.mp3`)를 넣으면 그 파일로 바뀐다. 시아서바이벌은 `bgmSurvMain|bgmSurvField|bgmSurvBamboo|bgmSurvPalace|bgmSurvUnderworld|bgmSurvBoss|bgmSurvResult`. 배경음 켜기/끄기는 효과음과 따로 저장한다 (`sia:bgm`).
 - 오른쪽 아래 원형 사운드 버튼으로 켜기/끄기 (브라우저에 저장, 시아탱크와 같은 설정). 첫 클릭 전에는 소리를 내지 않는다.
 - 같은 소리는 이름마다 최소 간격(칩 70ms 등), 동시에 6개까지.
 
@@ -257,3 +258,10 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아�
 | 칩 4종 (`chipStack`) | 색 칩 + 점무늬 + 얼굴 |
 | 트럼프 숫자 카드 무늬, 화투 띠·광 도장·달 배지 | 도형 + 글자 |
 | 테이블 (`drawTable`) | 단색 판 + 크림 테두리 (맞고는 `drawMat`: 체크 담요 + 바느질 선) |
+
+**시아서바이벌 (코드 그림, 2026-11-18)** — 만들 그림 목록: `games/survival/ASSETS.md`
+- 맵 4종의 바닥 타일·장애물(대나무·담·물길), 요괴 9종, 보스 12종, 무기 12종(+진화 3종)의 투사체·이펙트, 필드 아이템은 모두 코드 그림 (`games/survival/src/scenes/art.ts`). `public/art/<이름>.png`를 넣고 `ART_FILES`에 적으면 그 그림으로 바뀐다
+- 무기·패시브·강화 아이콘 32개는 코드로 그린 SVG (`games/survival/src/ui/icons.ts`, 색은 `shared/theme.css` 변수). `public/art/icon-<종류>-<id>.png`로 교체할 수 있다
+- 맵의 분위기(달빛 궁궐의 밤과 달, 황천길의 안개)와 피격·보스 경고 테두리는 CSS (`style.css`의 `.mood` `.edge`)
+- 캐릭터는 `shared/images/zodiac/full/*.png` 한 장을 코드로 움직인다 (통통·기울이기·좌우 뒤집기, 흰 테두리와 발밑 원으로 눈에 띄게)
+- 로비 카드 `shared/images/card-survival.png`는 임시 그림 (헤드리스 Chrome 캔버스로 그림. SpriteCook으로 교체 예정)
