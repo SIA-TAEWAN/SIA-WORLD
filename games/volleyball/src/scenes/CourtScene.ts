@@ -117,7 +117,8 @@ export class CourtScene extends Phaser.Scene {
       const ring = this.add.graphics().setDepth(18);
       ring.fillStyle(COLOR.white, 0.28).fillCircle(0, 0, PLAYER_R);
       ring.lineStyle(3, SIDE_COLOR[side], 0.75).strokeCircle(0, 0, PLAYER_R - 1.5);
-      const spr = this.add.image(0, 0, zKey(f.char)).setOrigin(0.5, 1).setDepth(20);
+      // 십이지 그림은 모두 오른쪽을 본다: 오른쪽 자리는 뒤집어 네트(왼쪽)를 보게 한다
+      const spr = this.add.image(0, 0, zKey(f.char)).setOrigin(0.5, 1).setDepth(20).setFlipX(side === 1);
       const tex = spr.texture.getSourceImage();
       const base = Math.min(CHAR_H / tex.height, CHAR_MAX_W / tex.width);
       spr.setScale(base);

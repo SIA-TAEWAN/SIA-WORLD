@@ -232,3 +232,8 @@ button, input { font: inherit; color: inherit; }
   .screen { gap: 6px; }
   .hero { min-height: 90px; }
 }
+
+/* ---------- 캐릭터가 보는 쪽 ----------
+   십이지 그림(전신·얼굴)은 모두 오른쪽을 본다. 왼쪽 자리는 그대로(네트 쪽), 오른쪽 자리는 좌우를 뒤집어 네트(왼쪽)를 보게 한다.
+   (scale 속성은 움직임용 transform 과 따로 적용된다) */
+.duo .seat.s1 .av:not(.blank), .score .side.s1 .av, .vs-side.s1 .av, .hero .hero-char.r { scale: -1 1; }

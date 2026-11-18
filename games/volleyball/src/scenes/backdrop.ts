@@ -145,7 +145,8 @@ export function drawBackdrop(scene: Phaser.Scene, bg: number) {
     const f = scene.add.graphics().setDepth(2);
     f.fillStyle(COLOR.white, 0.92).fillCircle(xs[i], fy, 27);
     f.lineStyle(3, COLOR.outline, 0.9).strokeCircle(xs[i], fy, 27);
-    scene.add.image(xs[i], fy, flagKey(id)).setDisplaySize(48, 48).setDepth(3).setAlpha(0.95);
+    // 오른쪽 벽의 깃발은 뒤집어 경기장 안쪽을 보게 한다
+    scene.add.image(xs[i], fy, flagKey(id)).setDisplaySize(48, 48).setDepth(3).setAlpha(0.95).setFlipX(i >= 2);
   });
 
   // 바닥 (배경마다 색만 다르다)
