@@ -630,6 +630,17 @@ let planSeen = 0;
 const eventBase = new Map<number, number>();
 let planBuiltAt = 0;
 
+/**
+ * 지금 그리는 차례 연출(상대가 낸 패·뒤집은 패·먹기)이 끝날 때까지 남은 시간 (ms).
+ * 서버 상태로는 이미 내 차례여도, 화면에서 상대 차례 연출이 끝나기 전에는 내 패를 누를 수 없게 한다.
+ */
+function animLeft(): number {
+  let end = 0;
+  for (const pl of plan.values()) end = Math.max(end, (pl.captureAt ?? pl.startAt) + 620);
+  return plan.size ? planBuiltAt + end - performance.now() : 0;
+}
+let enableTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** 새 사건들로 계획 세우기 (같은 상태를 다시 그릴 때는 그대로) */
 function updatePlan(p: MatgoPublic, round: number, roomId: string) {
   // 방이 바뀌거나 새 판이면 처음부터 (모듈 상태는 방을 옮겨도 남는다)
@@ -937,7 +948,16 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
 
     // 바닥 (달별로 모아서)
     const floor = p.floor;
-    const pick = p.choice?.kind === 'choose' && t.myTurn && !t.busy;
+    // 내 차례이고, 화면의 차례 연출도 끝났을 때만 누를 수 있다 (연출이 끝나면 한 번 다시 그려 켠다)
+    const waitMs = dealing ? 0 : animLeft();
+    const myTurnNow = t.myTurn && waitMs <= 0;
+    if (t.myTurn && waitMs > 0 && !enableTimer) {
+      enableTimer = setTimeout(() => {
+        enableTimer = null;
+        t.redraw();
+      }, waitMs + 40);
+    }
+    const pick = p.choice?.kind === 'choose' && myTurnNow && !t.busy;
     let floorSeq = 0;
     floor.forEach((f, i) => {
       const { x, y } = L.floorPos(FS.slots[i], 12);
@@ -1046,7 +1066,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 공개 상태가 내 비공개 손패보다 먼저 도착하면 방금 낸 패가 두 곳에 보인다 → 이미 바닥·먹은 패에 있는 패는 손패에서 뺀다
     // 방금 누른 패는 이미 바닥에 내려놓았으므로 손패에서 뺀다
     const hand = rawHand.filter((id) => id !== picked);
-    const canPlay = t.myTurn && p.choice?.kind === 'play';
+    const canPlay = myTurnNow && p.choice?.kind === 'play';
     // 바닥에 같은 달이 있어 먹을 수 있는 패는 노란 테두리로 (고를 수 있는 패와 같은 표시)
     const floorMonths = new Set(p.floor.filter((f) => f.cards.length).map((f) => cardById(f.cards[0]).month));
     hand.forEach((id, i) => {
@@ -1070,7 +1090,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     /** 말풍선 알약: 얼굴 + 한마디 (+ 작은 설명) */
     const say = (seat: number, text: string, small = '', mine = false) =>
       `<div class="mg-say ${mine ? 'mine' : ''}"><img src="${t.avatarUrl(t.seatAvatar(seat))}" alt=""/><span>${text}${small ? `<small>${small}</small>` : ''}</span></div>`;
-    if (!t.myTurn || !c) {
+    if (!t.myTurn || !c || animLeft() > 0) {
       // 내 차례여도 앞선 연출(패가 움직이는 중)이 끝나기 전에는 버튼 대신 안내
       el.innerHTML = p.turn === null ? '' : `<div class="mg-ctl">${p.turn === t.mySeat && c ? say(t.mySeat, '패가 움직이는 중…') : say(p.turn, `${esc(t.seatName(p.turn))} 차례…`)}</div>`;
       return;
