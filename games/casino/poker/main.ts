@@ -83,7 +83,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       const w = me ? cw : oc;
       const gap = w * (me ? 0.72 : 0.4);
       // 카드 고르기 단계: 내 카드를 눌러서 버릴 카드 → 공개할 카드를 고른다 (아래 버튼과 같은 동작)
-      const picking = me && !sd && p.phase === 'choose' && !!t.priv?.choices.length && !s.chosen && !t.busy;
+      // 카드를 다 받은 뒤에 고른다 (t.myTurn: 앞선 연출이 끝난 내 차례)
+      const picking = me && !sd && p.phase === 'choose' && !!t.priv?.choices.length && !s.chosen && !t.busy && t.myTurn;
       cards.forEach((c, ci) => {
         const isOpen = c !== null && s.open.includes(c);
         const thrown = picking && c === discard;
@@ -130,6 +131,10 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         discard = null;
         return;
       }
+      if (!t.myTurn) {
+        el.innerHTML = '<p class="msg">카드를 나누는 중…</p>';
+        return;
+      }
       const choices = t.priv.choices;
       if (discard && !choices.includes(discard)) discard = null;
       const step = discard ? '공개할 카드를 고르세요' : '버릴 카드를 고르세요';
@@ -149,7 +154,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));
       return;
     }
-    el.innerHTML = `<p class="msg">${p.turn !== null ? `${esc(t.seatName(p.turn))} 차례…` : '카드를 나누는 중…'}</p>`;
+    // 내 차례여도 앞선 연출(말풍선·카드 나누기)이 끝나기 전에는 버튼 대신 안내
+    el.innerHTML = `<p class="msg">${p.turn === null ? (p.phase === 'done' ? '' : '카드를 나누는 중…') : p.turn === t.mySeat ? '진행 중이에요…' : `${esc(t.seatName(p.turn))} 차례…`}</p>`;
   },
 
   resultHtml(t: Ctx) {

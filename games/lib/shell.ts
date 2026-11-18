@@ -43,6 +43,7 @@ export interface TableCtx<P = any, Q = any> {
   pub: P | null;
   priv: Q | null;
   pending: number[];
+  /** 내가 지금 조작할 수 있다: 내 차례이고 앞선 연출(카드·칩·말풍선)이 다 끝났다. 조작 버튼은 이 값으로 켠다 */
   myTurn: boolean;
   /** 서버로 행동 보내기 (실패하면 알림) → 서버가 받았으면 true */
   act(payload: unknown): Promise<boolean>;
@@ -109,6 +110,10 @@ export interface TrackOpts {
   flip?: boolean;
   /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등). 경유점이 있으면 경유점에 내려앉을 때 */
   onLand?: () => void;
+  /** 자리만 기록하고 움직이지 않는다 (아직 나눠 주는 중인 카드: 받기 연출과 겹치지 않게) */
+  still?: boolean;
+  /** 겹치는 순서를 고정 (없으면 움직이는 동안 11, 멈추면 10). 그린 순서대로 겹쳐야 하는 패(블랙잭 핸드)는 0 */
+  depth?: number;
 }
 
 /** 효과음 이름 (shared/sound.js의 SOUNDS) */
@@ -157,6 +162,12 @@ export interface GameUI<P = any, Q = any> {
    * 새 상태를 그린다. null이면 그 사건은 건너뛴다.
    */
   replay?(ev: GameEventLite, t: TableCtx<P, Q>): ReplayStep | null;
+  /**
+   * 한 동작씩 보여 주기: 새 상태(next)에서 새 사건들(events)을 뒤에서부터 하나씩 되돌린 중간 상태들.
+   * out[i] = events[i]가 일어나기 직전의 화면 (길이는 events와 같다). 화면은 out[0] → … → next 순서로 하나씩 그리고,
+   * 그릴 때마다 카드 연출이 끝나기를 기다린다. 되돌릴 수 없으면 예외를 던지거나 null (그러면 말풍선 → 새 상태 순서로 보여 준다)
+   */
+  rewind?(next: P, events: GameEventLite[]): P[] | null;
   /** 방 화면 전체에 붙일 클래스 (예: 룰렛 '베팅 중' / '구경 중' → 휴대폰 배치를 바꾼다) */
   pageClass?(t: TableCtx<P, Q>): string;
   /** 대기방 '게임 방법' 창 내용 (HTML). 없으면 버튼을 숨긴다 */
@@ -279,15 +290,25 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
     <header class="bar"><a class="btn ghost" href="${new URL(ui.back, new URL('index.html', worldHome())).href}">← ${esc(ui.backLabel)}</a>
       <h1>${ui.icon} ${esc(ui.title)}</h1><span class="money" id="money">-</span></header>
     <section class="card create">
-      <h2>방 만들기</h2>
-      <div class="grid2">
-        <label>방 이름<input id="c-name" maxlength="20" placeholder="${esc(me.nickname)}의 방"/></label>
-        <label>비밀번호 (선택)<input id="c-pw" maxlength="20" type="password" autocomplete="new-password" placeholder="없으면 공개방"/></label>
+      <div class="me-card">
+        <button class="me-face" id="c-av" aria-label="내 동물 바꾸기"></button>
+        <div class="me-info">
+          <b class="me-name">${esc(me.nickname)}</b>
+          <small id="me-animal"></small>
+          <span class="me-money" id="me-money">-</span>
+          <span id="refill-box"></span>
+        </div>
       </div>
-      <div class="units" id="units"></div>
-      <div class="me-row"><button class="av-btn" id="c-av"></button><span id="refill-box"></span>
-        <button class="btn primary big" id="c-go">방 만들기 ▶</button></div>
-      <p class="hint" id="c-hint"></p>
+      <div class="create-form">
+        <h2>방 만들기</h2>
+        <div class="grid2">
+          <label>방 이름<input id="c-name" maxlength="20" placeholder="${esc(me.nickname)}의 방"/></label>
+          <label>비밀번호 (선택)<input id="c-pw" maxlength="20" type="password" autocomplete="new-password" placeholder="없으면 공개방"/></label>
+        </div>
+        <div class="units" id="units"></div>
+        <button class="btn primary big" id="c-go">방 만들기 ▶</button>
+        <p class="hint" id="c-hint"></p>
+      </div>
     </section>
     <section class="card"><h2>방 목록</h2><div id="rooms" class="rooms"><p class="empty">불러오는 중…</p></div></section>
   </div>`;
@@ -295,12 +316,14 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
 
   const paintAvatar = () => {
     const a = m.z.ZODIAC.find((x) => x.id === avatar)!;
-    $(root, '#c-av').innerHTML = `<img src="${m.z.avatarUrl(avatar)}" alt=""/><span>${a.nick}<small>${a.name} · 바꾸기</small></span>`;
+    $(root, '#c-av').innerHTML = `<img src="${m.z.fullUrl(avatar)}" alt=""/><span>🐾 바꾸기</span>`;
+    $(root, '#me-animal').textContent = `${a.name} · ${a.nick}`;
   };
   let alive = true;
   const paintMoney = () => {
     if (!alive) return;
     $(root, '#money').textContent = wallet ? `${cur === 'nyang' ? '💰' : '🪙'} ${m.wallet.formatAmount(wallet[cur])}${unit}` : '-';
+    $(root, '#me-money').textContent = wallet ? `${cur === 'nyang' ? '💰' : '🪙'} ${m.wallet.formatAmount(wallet[cur])}${unit}` : '-';
     $(root, '#units').innerHTML = m.wallet.BASE_UNITS.map((u) => {
       const ok = !!wallet && wallet[cur] >= m.wallet.minEntry(u);
       return `<button class="unit ${u === baseUnit ? 'sel' : ''}" data-u="${u}">기본 ${m.wallet.formatAmount(u)}<small>입장 ${m.wallet.formatAmount(m.wallet.minEntry(u))}${unit}${ok ? '' : ' ⚠'}</small></button>`;
@@ -313,7 +336,7 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
     );
     const box = $(root, '#refill-box');
     box.innerHTML = m.wallet.canRefill(wallet, cur, 100)
-      ? `<button class="btn" id="refill">무료 충전 (오늘 ${wallet![`${cur}RefillsLeft`]}번 남음)</button>`
+      ? `<button class="btn small" id="refill">무료 충전 (오늘 ${wallet![`${cur}RefillsLeft`]}번 남음)</button>`
       : '';
     box.querySelector('#refill')?.addEventListener('click', async () => {
       try {
@@ -554,7 +577,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   /** 결과 걸음을 보여 주는 동안 결과 창·레디 버튼을 미룬다 */
   let holdResult = false;
   let pendingPriv: PrivateRow | null | undefined;
-  const queue: { s: StateRow; steps: ReplayStep[] }[] = [];
+  /** 연출이 끝날 때까지 내 조작 버튼을 미룬다 (ctx.myTurn이 꺼진다) */
+  let ctlHold = false;
+  /** 재생 중인 항목의 새 상태를 이미 그렸다 (그 뒤에 온 비공개 패는 바로 반영) */
+  let itemApplied = false;
+  const queue: { s: StateRow; events: GameEventLite[]; exact: boolean; newRound: boolean }[] = [];
   const afterAnim = (fn: () => void) => {
     const wait = animEnd - performance.now();
     if (wait <= 0) fn();
@@ -640,7 +667,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length) && st?.round_no ? st.public_state : null,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       pending,
-      myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no),
+      myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no) && !ctlHold,
       act: async (payload) => {
         if (busy) return false;
         busy = true;
@@ -704,7 +731,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             fx = at.x;
             fy = at.y;
           }
-          const animate = dealReady && !reduceMotion && (prev ? true : !!opts.from);
+          const animate = !opts.still && dealReady && !reduceMotion && (prev ? true : !!opts.from);
           const s1 = now + ORDER_AT[Math.min(2, opts.order ?? 0)] + (animate ? (opts.delay ?? 0) : 0);
           const via = animate && opts.via ? opts.via : null;
           rec = {
@@ -737,7 +764,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           const t = performance.now();
           const at = posAt(r, t);
           obj.setPosition(at.x, at.y).setAngle(at.angle).setScale(at.sx, at.sy);
-          obj.setDepth(t >= r.s1 && t < end ? 11 : 10);
+          obj.setDepth(opts.depth ?? (t >= r.s1 && t < end ? 11 : 10));
         };
         apply();
         scene.tweens.addCounter({ from: 0, to: 1, duration: end - now, onUpdate: apply, onComplete: apply });
@@ -828,7 +855,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         const human = !!s.user_id && !s.left_game;
         const meHere = s.user_id === me.userId && !s.left_game;
         const tag = room?.status === 'playing'
-          ? pending.includes(s.seat_no) ? '<b class="turn">차례</b>' : s.left_game ? '<em>AI 대신</em>' : ''
+          ? pending.includes(s.seat_no) && !(meHere && ctlHold) ? '<b class="turn">차례</b>' : s.left_game ? '<em>AI 대신</em>' : ''
           : human ? (s.ready ? '<b class="ready">레디</b>' : '<em>대기</em>') : '<em>AI</em>';
         return `<div class="seat ${meHere ? 'me' : ''} ${human ? '' : 'ai'}">
           <img src="${m.z.avatarUrl(s.avatar)}" alt=""/><span class="nm">${esc(s.nickname)}${meHere ? ' (나)' : ''}${room?.host_id && s.user_id === room.host_id ? ' 👑' : ''}</span>${tag}
@@ -842,7 +869,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (closed) return;
     {
       const mine = mySeatRow();
-      const now = !!mine && room?.status === 'playing' && (st?.pending_seats ?? []).includes(mine.seat_no);
+      // 차례 소리는 버튼이 실제로 켜질 때 (앞선 연출이 끝난 뒤)
+      const now = !!mine && room?.status === 'playing' && (st?.pending_seats ?? []).includes(mine.seat_no) && !ctlHold;
       if (now && !wasMyTurn) sfx('turn');
       wasMyTurn = now;
       const page = root.querySelector('.table-page');
@@ -863,6 +891,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         return;
       }
       if (c) {
+        // 판은 시작됐는데 새 판의 상태가 아직 안 왔다 (지난 판 화면이 남아 있다): 지난 판의 '○○ 차례' 대신 안내
+        if (!c.pub || (c.pub as { result?: unknown }).result) {
+          el.innerHTML = '<p class="msg">새 판을 준비하는 중…</p>';
+          return;
+        }
         c.busy = busy;
         el.innerHTML = '';
         ui.controls(c, el);
@@ -871,7 +904,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }
     // 대기 중 (방금 끝난 판의 연출·결과를 다 보여 준 뒤에 레디 버튼)
     if (replaying || queue.length || holdResult) {
-      el.innerHTML = '<p class="msg">판 정리 중이에요…</p>';
+      el.innerHTML = '';
+      // 아직 결과 전 화면을 보여 주는 중이면 (AI·딜러 차례 연출) 게임의 안내 문구 ('○○ 차례…')
+      if (c && c.pub && !(c.pub as { result?: unknown }).result && ui.replay && !spectator) {
+        c.busy = false;
+        ui.controls(c, el);
+      }
+      if (!el.textContent?.trim()) el.innerHTML = '<p class="msg">판 정리 중이에요…</p>';
       return;
     }
     if (spectator) {
@@ -1105,36 +1144,90 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     showCutins();
     paintResult();
   };
-  const freshSteps = (s: StateRow): ReplayStep[] => {
+  /** 이 상태에서 새로 생긴 사건들. exact = 빠진 번호 없이 이어진다 (한 동작씩 되돌려 보여 줄 수 있다) */
+  const freshEvents = (s: StateRow): { events: GameEventLite[]; exact: boolean; newRound: boolean } => {
     const events = (s.public_state?.events as GameEventLite[] | undefined) ?? [];
     const maxId = events.reduce((a, e) => Math.max(a, e.id), 0);
+    let newRound = false;
     if (s.round_no !== replayRound || maxId < replaySeen) {
       // 새 판: 처음부터 (단, 방에 막 들어온 경우는 지난 일은 재생하지 않는다)
       const first = replayRound === -1;
+      newRound = !first && s.round_no !== replayRound;
       replayRound = s.round_no;
       replaySeen = first ? maxId : 0;
-      if (first) return [];
+      if (first) return { events: [], exact: false, newRound: false };
     }
-    const c = ctx();
-    const fresh = events.filter((e) => e.id > replaySeen);
+    const fresh = events.filter((e) => e.id > replaySeen).sort((x, y) => x.id - y.id);
+    const exact = fresh.every((e, i) => e.id === replaySeen + 1 + i);
     replaySeen = Math.max(replaySeen, maxId);
-    if (!ui.replay || !c || !dealReady || reduceMotion) return [];
-    return fresh.map((e) => ui.replay!(e, c)).filter((x): x is ReplayStep => !!x);
+    if (!ui.replay || !scene || !dealReady || reduceMotion) return { events: [], exact: false, newRound: false };
+    return { events: fresh, exact, newRound };
   };
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** 진행 중인 카드 연출이 다 끝날 때까지 (다시 그리면서 늘어날 수 있어 되풀이해서 확인) */
+  const waitAnim = async (pad = 120) => {
+    for (let i = 0; i < 40 && !closed; i++) {
+      const wait = animEnd - performance.now();
+      if (wait <= 0) return;
+      await sleep(wait + pad);
+    }
+  };
   const enqueueState = (s: StateRow) => {
     // 이미 본 것보다 오래된 상태 (다시 불러온 뒤 늦게 온 실시간 등)는 버린다
     const latest = queue.length ? queue[queue.length - 1].s : st;
     if (latest && s.updated_at && latest.updated_at && s.updated_at < latest.updated_at) return;
-    let steps: ReplayStep[] = [];
+    let f: ReturnType<typeof freshEvents> = { events: [], exact: false, newRound: false };
     try {
-      steps = freshSteps(s);
+      f = freshEvents(s);
     } catch (e) {
       console.warn('replay', e);
     }
-    queue.push({ s, steps });
+    queue.push({ s, ...f });
     void runQueue();
   };
+  // 개발 서버 전용: 연출 점검용으로 상태를 직접 넣어 볼 수 있게 (배포 빌드에는 들어가지 않는다)
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+    (window as unknown as { __siaTable?: unknown }).__siaTable = { enqueue: enqueueState, state: () => st, mySeat: () => mySeatRow()?.seat_no ?? null };
+  }
+  /** 사건 → 연출 한 걸음 (지금 보이는 화면 기준) */
+  const stepOf = (ev: GameEventLite): ReplayStep | null => {
+    try {
+      const c = ctx();
+      return c && ui.replay ? ui.replay(ev, c) : null;
+    } catch (e) {
+      console.warn('replay', e);
+      return null;
+    }
+  };
+  const tryStep = (step: ReplayStep | null) => {
+    if (!step) return;
+    try {
+      playStep(step);
+    } catch (e) {
+      console.warn('replay', e);
+    }
+  };
+  const isAiStep = (step: ReplayStep) => {
+    if (typeof step.at !== 'number') return false;
+    const r = seats.find((x) => x.seat_no === step.at);
+    return !r || !r.user_id || r.left_game;
+  };
+  /** 연출 중에 테이블 다시 그리기 (재생 중에는 paint가 테이블을 건너뛰므로) */
+  const repaint = () => {
+    inApply = true;
+    try {
+      paint();
+    } catch (e) {
+      console.warn('paint', e);
+    } finally {
+      inApply = false;
+    }
+  };
+  /**
+   * 연출 순서 (어떤 동작도 앞 동작의 연출이 끝나기 전에 시작하지 않는다):
+   *   앞 상태의 카드 연출이 끝남 → (새 판이면 판을 먼저 새로 펴고 '새 판 시작') → 사건을 하나씩 (말풍선·칩 → 카드 → 끝날 때까지 기다림)
+   *   → 결과 걸음 → 결과 창 → 그제서야 내 조작 버튼 · 레디 버튼
+   */
   const runQueue = async () => {
     if (replaying) return;
     replaying = true;
@@ -1142,57 +1235,116 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       while (queue.length && !closed) {
         const item = queue.shift()!;
         const myEpoch = epoch;
+        const stale = () => closed || myEpoch !== epoch;
         const mine = seats.find((x) => x.user_id === me.userId);
         const myNext = !!mine && (item.s.pending_seats ?? []).includes(mine.seat_no);
-        const pre = item.steps.filter((x) => !x.after);
-        const post = item.steps.filter((x) => x.after);
-        for (const step of pre) {
-          if (closed) return;
+        const wasMine = !!mine && room?.status === 'playing' && (st?.pending_seats ?? []).includes(mine.seat_no);
+        // 내가 고르던 중이고 (아직 안 눌렀고) 새 상태에서도 내 차례면 버튼을 그대로 둔다. 그 밖에는 연출이 끝난 뒤에 켠다
+        const keep = wasMine && !busy && myNext;
+        ctlHold = !keep;
+        itemApplied = false;
+        // 이 상태에서 내 차례가 오면 내 시간(서버 마감)이 줄지 않게 조금 빨리
+        const quick = (ms: number) => (myNext ? Math.min(ms, 500) : ms);
+        const gapOf = (step: ReplayStep) => quick(step.gap ?? (step.after ? 800 : isAiStep(step) ? 800 : 350));
+        // 앞 상태의 카드 연출이 끝난 뒤에 시작
+        await waitAnim();
+        if (closed) return;
+        let afterAt = 0;
+        const markAfter = () => {
+          if (!afterAt) afterAt = performance.now();
+        };
+        let frames: unknown[] | null = null;
+        if (!stale() && ui.rewind && item.exact && item.events.length) {
           try {
-            playStep(step);
+            const f = ui.rewind(item.s.public_state, item.events);
+            if (f && f.length === item.events.length) frames = f;
           } catch (e) {
-            console.warn('replay', e);
+            console.warn('rewind', e);
           }
-          const seat = typeof step.at === 'number' ? step.at : null;
-          const isAi = seat !== null && (() => {
-            const r = seats.find((x) => x.seat_no === seat);
-            return !r || !r.user_id || r.left_game;
-          })();
-          // 이 상태에서 내 차례가 오면 내 시간(서버 마감)이 줄지 않게 조금 빨리
-          const gap = step.gap ?? (isAi ? 800 : 350);
-          await sleep(myNext ? Math.min(gap, 500) : gap);
+        }
+        // 결과가 든 상태면 결과 걸음을 다 보여 준 뒤에 결과 창·레디 버튼
+        const ending = !!item.s.public_state?.result && (!!frames || item.events.some((e) => stepOf(e)?.after));
+        if (ending) holdResult = true;
+        /** 중간 화면 그리기: 내 버튼은 (고르던 중이 아니면) 숨긴 채로 */
+        const showFrame = (pub: unknown) => {
+          st = { ...item.s, public_state: { ...(pub as object), result: null, deltas: null }, pending_seats: keep && mine ? [mine.seat_no] : [] } as StateRow;
+          repaint();
+        };
+        const apply = () => {
+          try {
+            applyState(item.s);
+          } catch (e) {
+            console.warn('apply', e);
+          }
+          itemApplied = true;
+        };
+        if (!stale() && frames) {
+          // ── 한 동작씩: 말풍선·칩 → 그 동작의 화면 → 카드 연출이 끝나면 다음 ──
+          if (item.newRound) {
+            showFrame(frames[0]);
+            playBanner('새 판 시작!');
+            await sleep(quick(900));
+            await waitAnim();
+          }
+          for (let i = 0; i < item.events.length && !stale(); i++) {
+            const step = stepOf(item.events[i]);
+            const t0 = performance.now();
+            if (step && !step.after) tryStep(step);
+            if (i === item.events.length - 1) apply();
+            else showFrame(frames[i + 1]);
+            await waitAnim();
+            if (stale()) break;
+            if (step?.after) {
+              markAfter();
+              tryStep(step);
+              await sleep(gapOf(step));
+            } else {
+              // 걸음 간격에서 카드 연출에 쓴 시간은 뺀다. 카드가 움직였으면 놓인 뒤 잠깐은 쉰다
+              const spent = performance.now() - t0;
+              await sleep(Math.max(step ? gapOf(step) - spent : 0, spent > 200 ? 250 : 0));
+            }
+          }
+        } else if (!stale()) {
+          const steps = item.events.map(stepOf).filter((x): x is ReplayStep => !!x);
+          const pre = steps.filter((x) => !x.after);
+          const post = steps.filter((x) => x.after);
+          if (item.newRound) {
+            // 새 판: 먼저 판을 새로 펴고 (지난 판 테이블 위에 새 판의 베팅이 보이지 않게) 그다음에 사건을 하나씩
+            apply();
+            playBanner('새 판 시작!');
+            await sleep(quick(700));
+            await waitAnim();
+          }
+          for (const step of pre) {
+            if (stale()) break;
+            tryStep(step);
+            await sleep(gapOf(step));
+          }
+          if (!stale() && !item.newRound) {
+            apply();
+            await waitAnim();
+          }
+          // 카드가 다 놓인 뒤에 승패·정산을 하나씩
+          for (const step of post) {
+            if (stale()) break;
+            markAfter();
+            tryStep(step);
+            await sleep(gapOf(step));
+          }
         }
         if (closed) return;
-        // 재생하는 동안 다시 불러왔으면 (탭 복귀·재연결) 이 항목은 이미 지난 상태 → 적용하지 않고 새 상태로 다시 그린다
+        // 재생하는 동안 다시 불러왔으면 (탭 복귀·재연결) 이 항목은 이미 지난 상태 → 새 상태로 다시 그린다
         if (myEpoch !== epoch) {
-          inApply = true;
-          try {
-            paint();
-          } finally {
-            inApply = false;
-          }
+          holdResult = false;
+          ctlHold = false;
+          repaint();
           continue;
         }
-        if (post.length) holdResult = true;
-        try {
-          applyState(item.s);
-        } catch (e) {
-          console.warn('apply', e);
-        }
-        if (post.length) {
-          // 카드가 다 놓인 뒤에 승패·정산을 하나씩
-          await sleep(Math.max(0, animEnd - performance.now()) + 250);
-          for (const step of post) {
-            if (closed) return;
-            try {
-              playStep(step);
-            } catch (e) {
-              console.warn('replay', e);
-            }
-            await sleep(step.gap ?? 800);
-          }
-          holdResult = false;
+        if (ending) {
+          // 결과(승패 말풍선)는 적어도 2초는 보인 뒤에 결과 창
+          if (afterAt) await sleep(Math.max(0, 2000 - (performance.now() - afterAt)));
           if (closed) return;
+          holdResult = false;
           if (pendingPriv !== undefined && !queue.length) {
             priv = pendingPriv;
             pendingPriv = undefined;
@@ -1203,11 +1355,23 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             console.warn('result', e);
           }
         }
+        // 연출이 다 끝났다: 내 차례면 이제 조작 버튼을 켠다 (테이블의 누를 수 있는 패도 함께)
+        if (ctlHold) {
+          ctlHold = false;
+          if (myNext && !queue.length) repaint();
+        }
       }
     } finally {
       replaying = false;
       holdResult = false;
+      ctlHold = false;
+      itemApplied = false;
       if (!closed) {
+        if (pendingPriv !== undefined && !queue.length) {
+          priv = pendingPriv;
+          pendingPriv = undefined;
+          repaint();
+        }
         try {
           paintControls();
         } catch (e) {
@@ -1217,6 +1381,14 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         if (queue.length) setTimeout(() => void runQueue(), 0);
       }
     }
+  };
+  /** 화면 가운데 알림 말풍선 ('새 판 시작!') */
+  const playBanner = (text: string) => {
+    const b = document.createElement('div');
+    b.className = 'say banner';
+    b.textContent = text;
+    $(root, '#stage').append(b);
+    setTimeout(() => b.remove(), 1500);
   };
   const anchorOf = (k: number | string) => anchors.get(typeof k === 'number' ? `seat:${k}` : k) ?? null;
   /** 한 걸음: 말풍선 + 칩 이동 + 소리 (Phaser 위 HTML이라 다시 그려도 끊기지 않는다) */
@@ -1298,12 +1470,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     onPrivate: (p) => {
       if (closed) return;
       // 연출 재생 중이면 새 상태와 함께 (새 카드가 미리 보이지 않게)
-      if (replaying) {
+      if (replaying && !(itemApplied && !queue.length)) {
         pendingPriv = p;
         return;
       }
       priv = p;
-      paint();
+      if (replaying) repaint();
+      else paint();
     },
     onResync: () => void reloadAll(),
   });

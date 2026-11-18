@@ -150,6 +150,45 @@ describe('Runner', () => {
     expect(pub.seats.find((x: any) => x.seat === 1).bet).not.toBeNull(); // 나간 자리는 AI가 베팅
   });
 
+  it('블랙잭: 판 시작 때 AI는 바로 베팅하고, 사람이 모두 베팅하면 마감을 기다리지 않고 바로 카드를 나눈다', async () => {
+    const m = memStore('blackjack', ['u1', 'u2'], 4);
+    const runner = new Runner(m.store, ENGINES, seededRng(61), () => 5_000_000);
+    await runner.start('r1', 'u1');
+    let last = m.published[m.published.length - 1];
+    // 시작 상태: 베팅 단계, AI 두 자리는 이미 베팅 (화면은 '새 판 시작' 뒤에 하나씩 보여 준다), 사람만 남음
+    expect(last.pub.phase).toBe('bet');
+    expect(last.pending).toEqual([0, 1]);
+    expect(last.pub.events.filter((e: any) => e.t === 'bet').map((e: any) => e.seat)).toEqual([2, 3]);
+    expect(last.pub.seats.every((x: any) => x.hands.length === 0)).toBe(true);
+    // 한 사람만 베팅: 아직 베팅 단계 (다른 사람을 기다린다)
+    await runner.act('r1', 'u1', { type: 'bet', amount: 100 });
+    last = m.published[m.published.length - 1];
+    expect(last.pub.phase).toBe('bet');
+    expect(last.pending).toEqual([1]);
+    // 마지막 사람이 베팅하는 그 응답에서 바로 딜 (시간 초과 처리 없이)
+    const before = m.published.length;
+    await runner.act('r1', 'u2', { type: 'bet', amount: 200 });
+    expect(m.published.length).toBe(before + 1);
+    last = m.published[m.published.length - 1];
+    expect(last.pub.phase).not.toBe('bet');
+    expect(last.pub.waitingBets).toEqual([]);
+    expect(last.pub.events.some((e: any) => e.t === 'deal')).toBe(true);
+    expect(last.pub.dealer.cards.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('블랙잭: 쉬기를 고른 사람·나간 사람은 기다리지 않는다', async () => {
+    const m = memStore('blackjack', ['u1', 'u2', 'u3'], 4);
+    const runner = new Runner(m.store, ENGINES, seededRng(62));
+    await runner.start('r1', 'u1');
+    await runner.act('r1', 'u2', { type: 'sitout' });
+    m.seats[2].left_game = true; // u3는 베팅 단계에서 나감 → 다음 행동 때 AI가 대신 베팅
+    await runner.act('r1', 'u1', { type: 'bet', amount: 100 });
+    const last = m.published[m.published.length - 1];
+    expect(last.pub.phase).not.toBe('bet');
+    expect(last.pub.seats.find((x: any) => x.seat === 1).out).toBe(true);
+    expect(last.pub.seats.find((x: any) => x.seat === 2).hands.length).toBeGreaterThan(0);
+  });
+
   it('시작하다 멈춘 방(이번 판 상태 없음)은 정산 없이 대기로 되돌린다', async () => {
     const m = memStore('poker', ['u1'], 4);
     const runner = new Runner(m.store, ENGINES, seededRng(41));

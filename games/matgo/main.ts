@@ -630,7 +630,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     if (!p || t.mySeat === null) return;
     const c = p.choice;
     if (!t.myTurn || !c) {
-      el.innerHTML = `<p class="msg">${p.turn !== null ? `${esc(t.seatName(p.turn))} 차례…` : ''}</p>`;
+      // 내 차례여도 앞선 연출(패가 움직이는 중)이 끝나기 전에는 버튼 대신 안내
+      el.innerHTML = `<p class="msg">${p.turn === null ? '' : p.turn === t.mySeat && c ? '패가 움직이는 중…' : `${esc(t.seatName(p.turn))} 차례…`}</p>`;
       return;
     }
     const dis = t.busy ? 'disabled' : '';

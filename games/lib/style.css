@@ -100,22 +100,69 @@ input:focus { outline: var(--line) solid var(--primary); }
 }
 .unit small { display: block; color: var(--ink-soft); font-size: var(--fs-small); }
 .unit.sel { background: var(--primary); box-shadow: 0 3px 0 var(--outline); }
-.me-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.me-row #c-go { margin-left: auto; }
-/* 내 동물 (시아탱크 .tank-card) */
-.av-btn {
+/* 대기방 맨 위 패널: 왼쪽 내 캐릭터 카드 · 오른쪽 방 만들기 (좁은 화면은 위아래) */
+.card.create { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.create-form { display: flex; flex-direction: column; min-width: 0; }
+.create-form .units { margin: 12px 0 14px; }
+.create-form #c-go { width: 100%; margin-top: auto; }
+/* 내 캐릭터 카드 (DESIGN.md 정보 패널: 위쪽 하늘색 칸에 캐릭터 크게, 아래 이름·동물·보유 금액) */
+.me-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-  border: var(--line) solid var(--outline);
+  padding: 10px;
   background: var(--panel-strong);
+  border: var(--line) solid var(--outline);
   border-radius: var(--radius-button);
-  padding: 4px 12px 4px 4px;
-  cursor: pointer;
-  color: var(--ink);
+  text-align: center;
 }
-.av-btn img { width: 46px; height: 46px; object-fit: contain; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: 50%; }
-.av-btn small { display: block; font-size: var(--fs-small); color: var(--ink-soft); }
+.me-face {
+  position: relative;
+  width: 100%;
+  height: 132px;
+  padding: 0;
+  border: var(--line-thin) solid var(--outline);
+  border-radius: var(--radius-item);
+  background: linear-gradient(var(--sky-top), var(--sky-mid));
+  cursor: pointer;
+  overflow: hidden;
+  color: var(--ink);
+  transition: transform var(--press-ms);
+}
+.me-face:active { transform: translateY(2px); }
+.me-face:focus-visible { outline: var(--line) solid var(--sky-deep); outline-offset: 2px; }
+.me-face img { display: block; width: 100%; height: 100%; object-fit: contain; padding: 6px 6px 0; }
+.me-face span {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 8px;
+  font-size: var(--fs-small);
+  background: var(--white);
+  border: var(--line-thin) solid var(--outline);
+  border-radius: var(--radius-pill);
+}
+.me-info { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.me-name { font-size: var(--fs-panel); font-weight: normal; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-info small { font-size: 13px; color: var(--ink-soft); }
+.me-money {
+  font-size: 18px;
+  color: var(--accent);
+  background: var(--white);
+  border: var(--line-thin) solid var(--outline);
+  border-radius: var(--radius-pill);
+  padding: 1px 12px;
+  white-space: nowrap;
+}
+.me-info #refill-box:empty { display: none; }
+@media (max-width: 700px) {
+  .card.create { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .me-card { flex-direction: row; gap: 12px; text-align: left; }
+  .me-face { flex: none; width: 104px; height: 104px; }
+  .me-info { align-items: flex-start; flex: 1; }
+  .create-form #c-go { margin-top: 0; }
+}
 .hint { color: var(--pink); min-height: 1em; margin: 8px 0 0; font-size: 14px; }
 /* 방 한 줄 (시아탱크 .shop-item) */
 .rooms { display: flex; flex-direction: column; gap: 8px; }
@@ -460,6 +507,17 @@ input:focus { outline: var(--line) solid var(--primary); }
   box-shadow: 0 2px 0 var(--outline);
   pointer-events: none;
 }
+/* 화면 가운데 알림 ('새 판 시작!'): 주 버튼 색 알약, 꼬리 없음 */
+.say.banner {
+  left: 50%;
+  top: 46%;
+  padding: 8px 22px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-gradient);
+  font-size: var(--fs-button-big);
+  box-shadow: 0 4px 0 var(--outline);
+}
+.say.banner::after { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .say { animation: none; }
 }

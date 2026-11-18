@@ -4,6 +4,7 @@ import { BLACKJACK_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { BjPublic, BjResult } from '../../../supabase/functions/_shared/blackjack.ts';
+import { rewindBlackjack } from '../../../supabase/functions/_shared/blackjack-rewind.ts';
 
 type Ctx = TableCtx<BjPublic, Record<string, never>>;
 
@@ -13,6 +14,11 @@ const ACTION: Record<string, string> = { hit: '히트', stand: '스탠드', doub
 let betAmount = 0;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
+/** 카드 자리 이름 (연출용): 스플릿으로 갈라져도 원래 두 장은 같은 이름을 쓴다 → 뒤집히지 않고 제 핸드로 옮겨 간다 */
+const cardKey = (seat: number, hi: number, ci: number, split: boolean) =>
+  !split ? `${seat}:0:${ci}` : ci === 0 ? `${seat}:0:${hi}` : `${seat}:${hi ? 'b' : 'a'}:${ci}`;
+/** 처음 두 장의 지난번 크기 (스플릿 때 크기도 자연스럽게 줄어들게) */
+const lastWidth = new Map<string, number>();
 
 
 const ui: GameUI<BjPublic, Record<string, never>> = {
@@ -74,8 +80,11 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       const me = s.seat === t.mySeat;
       const k = clamp(scw / 80, 0.75, 1.15);
       t.anchor(`seat:${s.seat}`, x, y - scw * 0.75);
+      // 베팅 칩은 이름패에서 칩 자리로 날아간다
+      t.anchor(`tag:${s.seat}`, tagLeft ? 30 * k : x - 44 * k, rowTop + rowH - 24 * k);
+      t.anchor(`bet:${s.seat}`, x, y);
       nameTag(scene, tagLeft ? 30 * k : x - 44 * k, rowTop + rowH - 24 * k, t.seatName(s.seat), t.seatAvatar(s.seat), {
-        turn: isTurn || (p.phase === 'bet' && p.waitingBets.includes(s.seat)),
+        turn: isTurn || (p.phase === 'bet' && p.waitingBets.includes(s.seat) && (!me || t.myTurn)),
         me,
         size: k,
         sub: s.out ? '쉬는 중' : s.bet ? `베팅 ${t.fmt(s.bet)}` : undefined,
@@ -89,7 +98,15 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
         let land = 0;
         h.cards.forEach((c, ci) => {
           const card = playingCard(scene, hx - hcw * 0.18 * (h.cards.length - 1) + ci * hcw * 0.36, y - ci * hcw * 0.05, c, hcw, { lift: active });
-          land = Math.max(land, t.deal(card, `${s.seat}:${hi}:${ci}`, c, shoe));
+          const key = cardKey(s.seat, hi, ci, h.fromSplit);
+          const cl = t.deal(card, key, c, shoe);
+          land = Math.max(land, cl);
+          // 처음 두 장: 스플릿하면 제 핸드 자리로 미끄러져 간다 (나눠 주는 중에는 자리만 기록)
+          if (!h.fromSplit ? ci < 2 : ci === 0) {
+            const was = lastWidth.get(key);
+            lastWidth.set(key, hcw);
+            t.track(card, `mv:${key}`, { still: cl > 0, fromScale: was ? was / hcw : undefined, depth: 0 });
+          }
         });
         const tot = `${h.total}${h.soft && h.total <= 21 ? 's' : ''}`;
         const res = h.result ? ` · ${RESULT[h.result]}${h.delta ? ` ${h.delta > 0 ? '+' : ''}${t.fmt(h.delta)}` : ''}` : '';
@@ -157,7 +174,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     const p = t.pub;
     if (!p || t.mySeat === null) return;
     const mine = p.seats.find((s) => s.seat === t.mySeat);
-    if (p.phase === 'bet' && p.waitingBets.includes(t.mySeat)) {
+    if (p.phase === 'bet' && p.waitingBets.includes(t.mySeat) && t.myTurn) {
       // 베팅은 기본 단위의 배수만
       const max = Math.floor((mine?.maxBet ?? p.maxBet) / p.minBet) * p.minBet;
       if (betAmount < p.minBet || betAmount > max) betAmount = p.minBet;
@@ -185,7 +202,13 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));
       return;
     }
-    const who = p.phase === 'bet' ? '다른 사람이 베팅하는 중…' : p.turn ? `${esc(t.seatName(p.turn.seat))} 차례…` : '딜러 차례…';
+    // 내 차례여도 앞선 연출(베팅 말풍선·카드 나누기)이 끝나기 전에는 버튼 대신 안내만
+    const who =
+      p.phase === 'bet'
+        ? p.waitingBets.includes(t.mySeat) ? '베팅을 받는 중…' : '다른 사람이 베팅하는 중…'
+        : p.turn
+          ? p.turn.seat === t.mySeat ? '카드를 받는 중…' : `${esc(t.seatName(p.turn.seat))} 차례…`
+          : '딜러 차례…';
     el.innerHTML = `<p class="msg">${who}</p>`;
   },
 
@@ -207,15 +230,23 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     const who = typeof ev.seat === 'number' ? short(t.seatName(ev.seat)) : '';
     switch (ev.t) {
       case 'bet':
-        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} ${t.fmt(Number(ev.amount) || 0)} 베팅`, chips: { from: ev.seat, to: 'dealer', amount: Number(ev.amount) || 0 } } : null;
-      case 'hit':
-        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 히트!`, gap: typeof ev.seat === 'number' ? undefined : 600 } : null;
+        return typeof ev.seat === 'number'
+          ? { at: ev.seat, text: `${who} ${t.fmt(Number(ev.amount) || 0)} 베팅`, chips: { from: `tag:${ev.seat}`, to: `bet:${ev.seat}`, amount: Number(ev.amount) || 0 } }
+          : null;
+      case 'hit': {
+        if (typeof ev.seat !== 'number') return null;
+        // 스플릿한 핸드가 저절로 받는 두 번째 카드: 말풍선 없이 카드만 (받고 나서 잠깐 쉰다)
+        const h = t.pub?.seats.find((x) => x.seat === ev.seat)?.hands[Number(ev.hand) || 0];
+        if (h?.fromSplit && h.cards.length === 1) return { gap: 900 };
+        return { at: ev.seat, text: `${who} 히트!` };
+      }
       case 'stand':
         return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스탠드` } : null;
       case 'double':
-        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 더블다운!`, chips: { from: ev.seat, to: 'dealer', amount: Number(ev.bet) || 0 } } : null;
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 더블다운!`, chips: { from: `tag:${ev.seat}`, to: `bet:${ev.seat}`, amount: Number(ev.bet) || 0 } } : null;
       case 'split':
-        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스플릿!` } : null;
+        // 두 장이 두 핸드로 갈라지는 것을 다 본 뒤에 다음 카드
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스플릿!`, chips: { from: `tag:${ev.seat}`, to: `bet:${ev.seat}`, amount: Number(ev.bet) || 0 }, gap: 1000 } : null;
       case 'bust':
         return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 버스트!`, sound: 'bust', after: true } : null;
       case 'dealer_reveal':
@@ -238,6 +269,9 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
         return null;
     }
   },
+
+  // 한 동작씩: 새 상태를 사건 하나씩 되돌린 중간 화면들 (베팅 → 딜 → 히트·스플릿 → 딜러 → 정산)
+  rewind: rewindBlackjack,
 
   cutin(ev, t: Ctx) {
     if (ev.t === 'blackjack') return ev.seat === t.mySeat ? '블랙잭!' : null;

@@ -145,7 +145,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     if (!p || t.mySeat === null) return;
     const o = p.options;
     if (!(t.myTurn && p.turn === t.mySeat && o)) {
-      el.innerHTML = `<p class="msg">${p.turn !== null ? `${esc(t.seatName(p.turn))} 차례…` : p.phase === 'done' ? '' : '카드를 나누는 중…'}</p>`;
+      // 내 차례여도 앞선 연출(말풍선·카드 나누기)이 끝나기 전에는 버튼 대신 안내
+      el.innerHTML = `<p class="msg">${p.turn === null ? (p.phase === 'done' ? '' : '카드를 나누는 중…') : p.turn === t.mySeat ? '진행 중이에요…' : `${esc(t.seatName(p.turn))} 차례…`}</p>`;
       return;
     }
     const dis = t.busy ? 'disabled' : '';
