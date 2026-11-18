@@ -7,4 +7,6 @@ export const GAMES = [
     path: 'games/matgo/', image: 'shared/images/card-matgo.png', open: true },
   { id: 'casino', name: '시아카지노', desc: '세븐포커 · 텍사스 홀덤 · 블랙잭 · 십이지신 룰렛',
     path: 'games/casino/', image: 'shared/images/card-casino.png', open: true },
+  { id: 'race', name: '시아레이스', desc: '십이지신 100m 달리기 · 최대 4명',
+    path: 'games/running/', image: 'shared/images/card-race.png', open: true },
 ];

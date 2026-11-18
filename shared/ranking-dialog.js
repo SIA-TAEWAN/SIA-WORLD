@@ -1,13 +1,58 @@
 // SIA WORLD 랭킹 창 (로비와 시아탱크가 같이 쓴다).
-//   탭: 💣 시아탱크(포인트) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고
+//   탭: 💣 시아탱크(포인트) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록)
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
+//   시아레이스만 기록 기준: 해 20.5초 이내 · 달 22초 이내 · 별 25초 이내 · 그 외 구름 (RACE_TIERS)
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg } from './rank.js';
+import { supabase } from './supabase.js';
 
 const STYLE_ID = 'sia-ranking-style';
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race'];
+
+/**
+ * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
+ */
+export const RACE_TIERS = { gold: 20500, silver: 22000, bronze: 25000 };
+export const RACE_TOP = 100;
+const RACE_INFO = { label: '🏁 레이스', note: '100m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : RANKINGS[g]);
+
+/** 기록(ms) → 등급 */
+export function raceTier(ms) {
+  if (ms <= RACE_TIERS.gold) return 'gold';
+  if (ms <= RACE_TIERS.silver) return 'silver';
+  if (ms <= RACE_TIERS.bronze) return 'bronze';
+  return 'white';
+}
+/** 기록 표시: 0.01초 단위 (버림) */
+export const raceTime = (ms) => {
+  const cs = Math.floor(Math.max(0, Number(ms)) / 10);
+  return `${Math.floor(cs / 100)}.${String(cs % 100).padStart(2, '0')}초`;
+};
+
+/**
+ * 시아레이스 랭킹 (race_ranking 뷰: 최고 기록 빠른 순, 동률은 먼저 세운 기록 우선).
+ * → { rows: 상위 100명 [{ key, nickname, ms, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getRaceRanking(meId = null) {
+  const cols = 'user_id,nickname,best_ms,place,total';
+  const { data, error } = await supabase.from('race_ranking').select(cols).order('place', { ascending: true }).limit(RACE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, ms: Number(r.best_ms), place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= RACE_TOP) {
+    const res = await supabase.from('race_ranking').select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 const CSS = `
 .sia-rank-dim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
   background: color-mix(in srgb, #2a1a10 55%, transparent); font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
@@ -42,7 +87,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
   if (!document.getElementById(STYLE_ID)) {
@@ -55,8 +100,8 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
   dim.className = 'sia-rank-dim';
   dim.innerHTML = `<div class="sia-rank" role="dialog" aria-modal="true" aria-label="랭킹">
     <div class="rh"><h3>🏆 랭킹</h3><button type="button" data-close>닫기</button></div>
-    <div class="tabs">${TAB_ORDER.filter((g) => RANKINGS[g])
-      .map((g) => `<button type="button" data-g="${g}">${RANKINGS[g].label}</button>`)
+    <div class="tabs">${TAB_ORDER.filter((g) => tabInfo(g))
+      .map((g) => `<button type="button" data-g="${g}">${tabInfo(g).label}</button>`)
       .join('')}</div>
     <p class="me-line"></p>
     <div class="list"><table></table></div>
@@ -80,6 +125,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
   async function show(game) {
     shown = game;
     dim.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
+    if (game === 'race') return showRace();
     const info = RANKINGS[game];
     $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${formatAmount(info.base)}${info.unit} 이하는 구름)`;
     $('.me-line').textContent = '불러오는 중…';
@@ -104,6 +150,30 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       if (shown === game) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
-  void show(RANKINGS[first] ? first : 'tank');
+  /** 시아레이스: 최고 기록 빠른 순 상위 100명 + 내 순위, 등급은 기록 기준 */
+  async function showRace() {
+    const sec = (ms) => (ms / 1000).toString();
+    $('.note').textContent = `${RACE_INFO.note} · 상위 ${RACE_TOP}명 · 해 ${sec(RACE_TIERS.gold)}초 · 달 ${sec(RACE_TIERS.silver)}초 · 별 ${sec(RACE_TIERS.bronze)}초 이내 · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getRaceRanking(meId);
+      if (shown !== 'race') return;
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(raceTier(mine.ms), 20)} · ${raceTime(mine.ms)}`
+        : '아직 완주 기록이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(raceTier(r.ms), 26)}</td>` +
+              `<td class="nm">${esc(r.nickname)}</td><td class="am">${raceTime(r.ms)}</td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'race') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  void show(tabInfo(first) ? first : 'tank');
   return close;
 }
