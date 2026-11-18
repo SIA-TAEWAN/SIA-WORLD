@@ -172,16 +172,25 @@ revoke all on function public._volleyball_const(text) from public, anon, authent
 -- 경기 시작 (034의 함수 앞에 확인 두 가지를 붙였다):
 --   · 같은 두 사람이 오늘 이미 30판을 기록했으면 거절 ('daily limit'. 경기는 할 수 있고 기록만 안 된다)
 --   · 내가 들어 있는 다른 경기(아직 아무도 결과를 보고하지 않은 pending·live)는 무효로 한다 → 한 사람은 한 번에 한 경기만
+--   · 보고 하나만 올라온 채 10초가 지난 내 예전 경기는 그 보고로 확정한다 (settle을 부르지 못하고 떠난 경우)
 alter function public.volleyball_begin(text, bigint, int, uuid, text) rename to _volleyball_begin_unchecked;
 revoke all on function public._volleyball_begin_unchecked(text, bigint, int, uuid, text) from public, anon, authenticated;
 
 create function public.volleyball_begin(p_room_key text, p_match_no bigint, p_side int, p_opponent uuid, p_character text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare me uuid := auth.uid(); n int;
+declare me uuid := auth.uid(); n int; old uuid;
 begin
   if me is null then raise exception 'need login'; end if;
   -- 같은 사람의 시작 요청은 한 번에 하나씩
   perform pg_advisory_xact_lock(hashtext('volley-begin:' || me::text));
+  -- 내 예전 경기 중 보고 하나만 올라온 채 남은 것(결과 화면을 일찍 떠난 경우)은 여기서 확정한다
+  for old in select id from public.volleyball_matches
+    where status = 'live' and (left_user_id = me or right_user_id = me)
+      and (left_report is null) <> (right_report is null)
+      and first_report_at <= clock_timestamp() - make_interval(secs => public._volleyball_const('settle_sec'))
+  loop
+    perform public.volleyball_settle(old);
+  end loop;
   select count(*) into n from public.volleyball_matches
   where status = 'done' and done_at >= (public._kst_today()::timestamp at time zone 'Asia/Seoul')
     and ((left_user_id = me and right_user_id = p_opponent) or (left_user_id = p_opponent and right_user_id = me));
