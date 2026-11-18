@@ -540,3 +540,87 @@ input:focus { outline: var(--line) solid var(--primary); }
 @media (max-width: 700px) {
   .controls { padding-right: calc(62px + env(safe-area-inset-right)); }
 }
+
+/* ---------- 시아맞고: 조작부·결과 창 (방 화면 data-game='matgo'에만) ---------- */
+/* 자리 줄은 숨긴다: 담요 위 자리 판(아바타·이름·점수·차례·레디)이 같은 정보를 보여 준다 */
+.table-page[data-game='matgo'] .seats { display: none; }
+.table-page[data-game='matgo'] .stage { margin-top: 4px; }
+.table-page[data-game='matgo'] .controls { display: flex; flex-direction: column; justify-content: center; padding-top: 4px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+.table-page[data-game='matgo'] .controls .msg { margin-top: 4px; }
+.mg-ctl { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.mg-ctl.side { flex-direction: row; justify-content: center; gap: 12px; }
+/* 고르기: 말풍선은 줄어들고(여러 줄), 패 버튼은 한 줄로 */
+.mg-ctl.side .mg-say { flex: 0 1 auto; min-width: 0; }
+.mg-ctl.side .mg-btns { flex: none; flex-wrap: nowrap; }
+.mg-ctl.side.many .mg-say img, .mg-ctl.side.many .mg-say small { display: none; }
+.mg-ctl.side.many .mg-say { padding-left: 12px; }
+/* 말풍선 알약: 얼굴 + 한마디 */
+.mg-say {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  background: var(--panel);
+  border: var(--line) solid var(--outline);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 3px 0 var(--outline);
+  padding: 3px 14px 3px 4px;
+  font-size: 16px;
+  line-height: 1.2;
+  word-break: keep-all;
+}
+.mg-say.mine { background: var(--primary); }
+.mg-say img { flex: none; width: 28px; height: 28px; object-fit: contain; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: 50%; }
+.mg-say small { display: block; font-size: var(--fs-small); color: var(--ink-soft); }
+.mg-say.mine small { color: var(--ink); opacity: 0.7; }
+.mg-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.mg-btns .btn { font-size: 15px; padding: 5px 12px; box-shadow: 0 3px 0 var(--outline); }
+.mg-btns .btn.big { min-width: 118px; font-size: 19px; padding: 6px 20px; box-shadow: 0 var(--depth-button) 0 var(--outline); }
+.mg-btns .mg-stop { background: var(--white); }
+/* 가져올 패 고르기: 조작부 높이에 맞춘 작은 패 */
+.table-page[data-game='matgo'] .hw { width: 52px; height: 81px; }
+
+/* 결과 창: 머리띠(승·패 색) + 금액 + 점수 내역 + 계산식 */
+.mg-res-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -4px -6px 0;
+  padding: 8px 14px;
+  border: var(--line) solid var(--outline);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 var(--depth-button) 0 var(--outline);
+  background: var(--draw);
+  color: var(--white);
+}
+.mg-res.win .mg-res-head { background: var(--win); }
+.mg-res.lose .mg-res-head { background: var(--lose); }
+.mg-res-head img { flex: none; width: 72px; height: 72px; margin: -18px 0 -8px; object-fit: contain; }
+.mg-res-head b { display: block; font-weight: normal; font-size: 30px; line-height: 1.1; -webkit-text-stroke: var(--line) var(--outline); paint-order: stroke fill; }
+.mg-res-head span { font-size: var(--fs-body); -webkit-text-stroke: 2.5px var(--outline); paint-order: stroke fill; }
+.mg-res-money { margin: 12px 0 6px; text-align: center; font-size: 34px; line-height: 1; color: var(--accent); }
+.mg-res-money.plus { color: var(--win); }
+.mg-res-money.minus { color: var(--lose); }
+.mg-res-lines { list-style: none; margin: 8px 0 0; padding: 4px 12px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); }
+.mg-res-lines li { display: flex; justify-content: space-between; padding: 5px 0; font-size: var(--fs-body); border-bottom: var(--line-thin) dashed var(--line-soft); }
+.mg-res-lines li b { font-weight: normal; }
+.mg-res-lines li.sum { border-bottom: none; font-size: 18px; }
+.mg-res-lines li.sum b { color: var(--accent); }
+.mg-res-calc { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 5px; margin-top: 10px; font-size: 14px; }
+.mg-res-calc i { font-style: normal; padding: 2px 9px; background: var(--track); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); }
+.mg-res-calc i.mul { background: var(--pink); color: var(--white); }
+.mg-res-calc em { font-style: normal; color: var(--ink-soft); }
+.mg-res-calc b { font-weight: normal; font-size: 18px; color: var(--accent); }
+.mg-res-note { margin: 6px 0 0; text-align: center; font-size: var(--fs-small); color: var(--ink-soft); }
+@media (max-height: 520px) {
+  .mg-say { font-size: 13px; padding: 1px 10px 1px 2px; }
+  .mg-say img { width: 24px; height: 24px; }
+  .mg-say small { display: none; }
+  .table-page[data-game='matgo'] .hw { width: 34px; height: 53px; }
+  .mg-ctl { gap: 4px; }
+}
+@media (min-width: 700px) and (min-height: 521px) {
+  .mg-say { font-size: 18px; padding: 4px 18px 4px 5px; }
+  .mg-say img { width: 36px; height: 36px; }
+  .table-page[data-game='matgo'] .hw { width: 56px; height: 87px; }
+}

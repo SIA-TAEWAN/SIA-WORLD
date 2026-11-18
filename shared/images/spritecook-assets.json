@@ -32,6 +32,62 @@
       "asset_id": "32ae6d65-93e3-447c-b314-fb5bc4339f18",
       "sha12": "8a7ed4c8e7f3",
       "label": "카지노 고르기 십이지신 룰렛 → shared/images/casino/roulette.webp"
+    },
+    {
+      "asset_id": "4716553d-93b1-4cc4-836b-166ae18cb908",
+      "label": "캐주얼 화투 1월 4장 시트 → shared/images/hwatu/cards/m01-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "e7fd7032-7417-4e61-88c1-5a42bd449670",
+      "label": "캐주얼 화투 2월 4장 시트 → shared/images/hwatu/cards/m02-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "bab2f471-3fba-4d48-89d0-13e8e0a216e6",
+      "label": "캐주얼 화투 3월 4장 시트 → shared/images/hwatu/cards/m03-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "2174bf98-1385-42f1-b295-218a488f1638",
+      "label": "캐주얼 화투 4월 4장 시트 → shared/images/hwatu/cards/m04-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "eaa10339-8e08-40f1-b172-79e2774599b8",
+      "label": "캐주얼 화투 5월 4장 시트 → shared/images/hwatu/cards/m05-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "788bacf6-5a9f-48b3-8f04-e247c0f4cf23",
+      "label": "캐주얼 화투 6월 4장 시트 → shared/images/hwatu/cards/m06-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "9499c773-df9f-4eea-a028-b5eb587958c6",
+      "label": "캐주얼 화투 7월 4장 시트 → shared/images/hwatu/cards/m07-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "e6ba357b-115d-488f-a88a-76a46423d86c",
+      "label": "캐주얼 화투 8월 4장 시트 → shared/images/hwatu/cards/m08-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "05104aa1-c115-426d-8216-915f444e3a5a",
+      "label": "캐주얼 화투 9월 4장 시트 → shared/images/hwatu/cards/m09-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "789fb16b-dc29-461a-8b0b-6f522d67b5e9",
+      "label": "캐주얼 화투 10월 4장 시트 → shared/images/hwatu/cards/m10-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "83a14405-ff24-4649-8af4-bd08059253c7",
+      "label": "캐주얼 화투 11월 4장 시트 → shared/images/hwatu/cards/m11-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "34ae4856-a2b1-46a1-966c-59d03fafc5d9",
+      "label": "캐주얼 화투 12월 4장 시트 → shared/images/hwatu/cards/m12-*.png (낱장으로 잘라 240x372)"
+    },
+    {
+      "asset_id": "b05a1a64-4477-476f-9691-1d6ea826314b",
+      "label": "캐주얼 화투 뒷면 → shared/images/hwatu/cards/back.png"
+    },
+    {
+      "asset_id": "060e6cd3-0273-4d23-8507-c302c59abdfd",
+      "label": "트럼프 뒷면 → shared/images/cards/back.png"
     }
   ]
 }

@@ -157,6 +157,8 @@ export interface GameUI<P = any, Q = any> {
   noAi?: boolean;
   /** false면 조작부 높이를 고정하지 않는다 (룰렛: 조작부가 베팅판이라 화면마다 크기가 다르다). 기본은 고정 */
   stableControls?: boolean;
+  /** 조작부를 처음에 잡아 둘 높이(px, 화면 너비를 받는다). 없으면 기본값 (휴대폰 210 · PC 150, 화면 높이의 1/4까지) */
+  controlsMin?(w: number): number;
   /** 카드를 한 장씩 나눠 줄 때 간격(ms). 기본 110 */
   dealGap?: number;
   /**
@@ -590,7 +592,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     else setTimeout(() => !closed && fn(), wait + 150);
   };
 
-  app().innerHTML = `<div class="table-page">
+  app().innerHTML = `<div class="table-page" data-game="${ui.game}">
     <header class="bar"><button class="btn ghost" id="leave">← 나가기</button>
       <h1>${esc(room.name)} <small>${ui.icon} 기본 ${m.wallet.formatAmount(room.base_unit)}</small></h1>
       <span class="money" id="money">-</span><button class="btn small" id="invite">🔗 초대</button></header>
@@ -888,7 +890,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (ctlLockW !== window.innerWidth) {
       ctlLockW = window.innerWidth;
       // 처음부터 넉넉히 잡아 둔다 (대기 → 베팅 → 진행으로 넘어가도 테이블 크기가 그대로이게). 화면 높이의 1/4까지만
-      ctlLockH = Math.min(window.innerWidth < 700 ? 210 : 150, Math.round(window.innerHeight * 0.25));
+      ctlLockH = ui.controlsMin ? ui.controlsMin(window.innerWidth) : Math.min(window.innerWidth < 700 ? 210 : 150, Math.round(window.innerHeight * 0.25));
     }
     el.style.minHeight = '';
     ctlLockH = Math.max(ctlLockH, el.offsetHeight);

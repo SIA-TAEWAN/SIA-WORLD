@@ -35,6 +35,8 @@
 
   /* 게임별 넓은 면 (테이블) — DESIGN.md에서 정한 값 */
   --table-matgo: #7cc08a;
+  --matgo-mat-light: #8fcc9b; /* 맞고 담요 체크 무늬 (밝은 칸) */
+  --matgo-mat-dark: #5fa772;  /* 맞고 바닥 자리·먹은 패 칸 */
   --table-poker: #6cc6b5;
   --table-blackjack: #7fb8e8;
   --roulette-spring: #9cc7f2;

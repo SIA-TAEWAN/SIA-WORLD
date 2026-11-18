@@ -38,6 +38,9 @@ export const TABLE = {
   blackjack: 0x7fb8e8,
 };
 
+/** 시아맞고 담요: 체크 무늬(밝은 칸) · 바닥 자리·먹은 패 칸(어두운 면). 바탕은 TABLE.matgo */
+export const MATGO = { matLight: 0x8fcc9b, matDark: 0x5fa772 };
+
 /** 화투 띠 색 (새 색 없이 위 값을 다시 씀): 홍단=트럼프 빨강, 청단=팀 파랑, 초단=승리 초록, 비띠=설명 글자색 */
 export const HWATU = { hong: 0xe8564a, cheong: 0x3d8bff, cho: 0x4cb86a, plain: 0x8a6a4a };
 

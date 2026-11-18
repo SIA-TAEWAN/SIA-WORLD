@@ -1,7 +1,7 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
 import { bootGame, esc, sfx, type GameUI, type TableCtx, type TrackOpts } from '../lib/shell.ts';
 import { worldRoot } from '../lib/world.ts';
-import { cardBack, clamp, drawTable, label, nameTag, tc, theme, viewSize } from '../lib/cards.ts';
+import { cardBack, clamp, label, tc, theme, viewSize } from '../lib/cards.ts';
 import { CARDS, cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
@@ -137,27 +137,272 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   return c;
 }
 
-/** 먹은 패 (광·열끗·띠·피) 겹쳐서. maxX까지 들어오게 간격을 줄인다 */
-function captured(t: Ctx, scene: PhaserNS.Scene, x: number, y: number, p: MatgoPublic['players'][number], w: number, maxX: number, optsFor: (id: string) => TrackOpts) {
-  const groups = (
-    [
-      ['광', p.captured.gwang],
-      ['열끗', p.captured.yeol],
-      ['띠', p.captured.tti],
-      ['피', p.captured.pi],
-    ] as [string, string[]][]
-  ).filter((g) => g[1].length > 0);
-  const avail = maxX - x;
-  const fixed = groups.length * w * 1.35;
-  const extra = groups.reduce((a, [, ids]) => a + ids.length - 1, 0);
-  // 겹친 패가 더 보이게: 기본 간격을 넓히고, 화면이 모자랄 때만 줄인다
-  const step = Math.min(w * 0.58, extra ? Math.max(3, (avail - fixed) / extra) : w * 0.58);
-  let cx = x;
-  for (const [name, ids] of groups) {
-    ids.forEach((id, i) => t.track(hwatu(scene, cx + i * step, y, id, w), id, optsFor(id)));
-    const gw = w + (ids.length - 1) * step;
-    label(scene, cx - w / 2 + gw / 2, y + w * 1.0, `${name} ${name === '피' ? p.piCount : ids.length}`, clamp(w * 0.32, 12, 18), tc('primary'));
-    cx += gw + w * 0.35;
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+type Gfx = PhaserNS.GameObjects.Graphics;
+
+/** 바느질 선: 둥근 사각형 둘레를 따라 짧은 선을 띄엄띄엄 (담요 가장자리 · 빈 자리 표시). 선 모양은 부르는 쪽에서 정한다 */
+function stitch(g: Gfx, x: number, y: number, w: number, h: number, r: number, dash: number, gap: number) {
+  const seg = (x1: number, y1: number, x2: number, y2: number) => {
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len < dash) return;
+    const n = Math.max(1, Math.round(len / (dash + gap)));
+    const unit = len / n;
+    const l = (unit * dash) / (dash + gap);
+    const ux = (x2 - x1) / len;
+    const uy = (y2 - y1) / len;
+    for (let i = 0; i < n; i++) {
+      const a = i * unit + (unit - l) / 2;
+      g.lineBetween(x1 + ux * a, y1 + uy * a, x1 + ux * (a + l), y1 + uy * (a + l));
+    }
+  };
+  seg(x + r, y, x + w - r, y);
+  seg(x + w, y + r, x + w, y + h - r);
+  seg(x + w - r, y + h, x + r, y + h);
+  seg(x, y + h - r, x, y + r);
+  const arc = (cx: number, cy: number, a0: number) => {
+    g.beginPath();
+    g.arc(cx, cy, r, a0 + 0.3, a0 + Math.PI / 2 - 0.3);
+    g.strokePath();
+  };
+  arc(x + w - r, y + r, -Math.PI / 2);
+  arc(x + w - r, y + h - r, 0);
+  arc(x + r, y + h - r, Math.PI / 2);
+  arc(x + r, y + r, Math.PI);
+}
+
+/**
+ * 담요: 초록 바탕에 연한 체크 무늬, 굵은 외곽선 + 아래 두께, 가장자리에는 크림색 바느질 선.
+ * (평평한 단색 판 대신 포근한 놀이 담요 느낌. 색은 theme의 TABLE.matgo · MATGO)
+ */
+function drawMat(scene: PhaserNS.Scene, W: number, H: number) {
+  const T = theme();
+  const C = T.COLOR;
+  const g = scene.add.graphics();
+  const m = Math.max(4, Math.min(W, H) * 0.008);
+  const d = T.SHAPE.depthPanel;
+  const r = clamp(Math.min(W, H) * 0.06, 16, T.SHAPE.radiusPanelBig);
+  const w = W - m * 2;
+  const h = H - m * 2 - d;
+  g.fillStyle(C.outline, 1).fillRoundedRect(m, m + d, w, h, r);
+  g.fillStyle(T.TABLE.matgo, 1).fillRoundedRect(m, m, w, h, r);
+  // 체크 무늬 (바느질 선 안쪽에만: 둥근 모서리 밖으로 나가지 않게)
+  const inset = 10 + r * 0.3;
+  const s = clamp(Math.min(W, H) * 0.075, 26, 46);
+  const x1 = m + w - inset;
+  const y1 = m + h - inset;
+  g.fillStyle(T.MATGO.matLight, 1);
+  for (let j = 0, y = m + inset; y < y1 - 1; j++, y += s) {
+    for (let i = 0, x = m + inset; x < x1 - 1; i++, x += s) {
+      if ((i + j) % 2 === 0) g.fillRect(x, y, Math.min(s, x1 - x), Math.min(s, y1 - y));
+    }
+  }
+  g.lineStyle(T.SHAPE.lineBig, C.outline, 1).strokeRoundedRect(m, m, w, h, r);
+  g.lineStyle(T.SHAPE.lineThin, C.panel, 0.95);
+  stitch(g, m + 7, m + 7, w - 14, h - 14, Math.max(4, r - 7), 7, 6);
+  return g;
+}
+
+/** 글자가 칸을 넘으면 뒤를 줄이고 '…' */
+function fitText(tx: PhaserNS.GameObjects.Text, maxW: number) {
+  let s = tx.text;
+  while (tx.width > maxW && s.length > 1) {
+    s = s.slice(0, -1);
+    tx.setText(`${s}…`);
+  }
+  return tx;
+}
+
+type TagColor = 'pink' | 'teamA' | 'win' | 'accent' | 'track' | 'white';
+interface PanelTag {
+  text: string;
+  color: TagColor;
+  /** 통통 튀는 표시 (내 차례) */
+  bounce?: boolean;
+}
+interface PanelOpts {
+  name: string;
+  avatar: string;
+  /** 점수 (대기 중이면 null: 점수 방울을 그리지 않는다) */
+  score: number | null;
+  tags: PanelTag[];
+  /** 점수 내역 (자리가 남을 때만) */
+  sub?: string;
+  turn: boolean;
+  /** 오른쪽에 비워 둘 너비 (상대 손패 뒷면이 놓이는 자리) */
+  reserve?: number;
+}
+
+/**
+ * 자리 판: 큰 원형 아바타 + 이름 + 꼬리표(차례·고·흔들기) + 큰 점수 방울.
+ * 차례인 사람은 판이 노랗게 바뀌고 바깥 흰 테두리가 깜빡이며 '내 차례!' 꼬리표가 통통 튄다.
+ */
+function playerPanel(scene: PhaserNS.Scene, R: Rect, o: PanelOpts) {
+  const T = theme();
+  const C = T.COLOR;
+  const { x, y, w, h } = R;
+  const depth = T.SHAPE.depthButton;
+  const r = Math.min(h / 2, T.SHAPE.radiusPanel);
+  if (o.turn) {
+    const ring = scene.add.graphics();
+    ring.lineStyle(T.SHAPE.lineBig, C.white, 1).strokeRoundedRect(x - 4, y - 4, w + 8, h + 8 + depth, r + 4);
+    scene.tweens.add({ targets: ring, alpha: { from: 1, to: 0.2 }, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  }
+  const g = scene.add.graphics();
+  g.fillStyle(C.outline, 1).fillRoundedRect(x, y + depth, w, h, r);
+  g.fillStyle(o.turn ? C.primary : C.panel, 1).fillRoundedRect(x, y, w, h, r);
+  g.lineStyle(T.SHAPE.line, C.outline, 1).strokeRoundedRect(x, y, w, h, r);
+  // 아바타: 판보다 살짝 크게 튀어나온 원
+  const ra = h / 2 + 3;
+  const ax = x + ra - 3;
+  const ay = y + h / 2;
+  g.fillStyle(C.outline, 1).fillCircle(ax, ay + 2, ra);
+  g.fillStyle(C.white, 1).fillCircle(ax, ay, ra);
+  g.lineStyle(T.SHAPE.line, C.outline, 1).strokeCircle(ax, ay, ra);
+  const face = scene.textures.exists(`avc-${o.avatar}`) ? `avc-${o.avatar}` : `av-${o.avatar}`;
+  if (scene.textures.exists(face)) {
+    const img = scene.add.image(ax, ay, face);
+    img.setScale((ra * 2 - 5) / Math.max(img.width, img.height));
+  }
+  // 점수 방울 (오른쪽)
+  let right = x + w - (o.reserve ?? 0) - 7;
+  if (o.score !== null) {
+    const sh = Math.min(h - 10, 46, w * 0.2);
+    const num = scene.add.text(0, 0, `${o.score}`, { fontFamily: T.FONT, fontSize: `${Math.round(sh * 0.66)}px`, color: tc('ink') }).setOrigin(0, 0.5);
+    const unit = scene.add.text(0, 0, '점', { fontFamily: T.FONT, fontSize: `${Math.round(sh * 0.38)}px`, color: tc('inkSoft') }).setOrigin(0, 0.5);
+    const sw = Math.max(sh * 1.35, num.width + unit.width + sh * 0.5);
+    const sx = right - sw;
+    const sy = y + (h - sh) / 2;
+    g.fillStyle(C.outline, 1).fillRoundedRect(sx, sy + 2, sw, sh, sh / 2);
+    g.fillStyle(o.turn ? C.white : C.primary, 1).fillRoundedRect(sx, sy, sw, sh, sh / 2);
+    g.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(sx, sy, sw, sh, sh / 2);
+    const tw = num.width + 2 + unit.width;
+    num.setPosition(sx + (sw - tw) / 2, sy + sh / 2);
+    unit.setPosition(num.x + num.width + 2, sy + sh / 2 + sh * 0.1);
+    right = sx - 6;
+  }
+  // 가운데: 이름 · 꼬리표 · 점수 내역
+  const left = ax + ra + 7;
+  const room = right - left;
+  const tall = h >= 56;
+  const fsName = clamp(h * (tall ? 0.25 : 0.36), 13, 20);
+  const fsTag = clamp(h * (tall ? 0.19 : 0.28), 11, 15);
+  const subTall = tall && !!o.sub;
+  const rows = 1 + (o.tags.length ? 1 : 0) + (subTall ? 1 : 0);
+  const gapY = Math.min(fsName + 7, (h - 8) / rows);
+  let ly = ay - ((rows - 1) * gapY) / 2;
+  const name = fitText(scene.add.text(left, ly, o.name, { fontFamily: T.FONT, fontSize: `${Math.round(fsName)}px`, color: tc('ink') }).setOrigin(0, 0.5), room);
+  const subStyle = { fontFamily: T.FONT, fontSize: `${Math.round(fsTag)}px`, color: tc(o.turn ? 'ink' : 'inkSoft') };
+  if (o.sub && !tall && room - name.width > 70) fitText(scene.add.text(left + name.width + 8, ly + 1, o.sub, subStyle).setOrigin(0, 0.5), room - name.width - 8);
+  if (o.tags.length) {
+    ly += gapY;
+    let tx = left;
+    for (const tag of o.tags) {
+      const dark = tag.color === 'track' || tag.color === 'white';
+      const t = scene.add.text(0, 0, tag.text, { fontFamily: T.FONT, fontSize: `${Math.round(fsTag)}px`, color: tc(dark ? 'ink' : 'white') }).setOrigin(0.5);
+      const pw = t.width + 12;
+      const ph = fsTag + 6;
+      if (tx + pw > right + 1) {
+        t.destroy();
+        break;
+      }
+      const pg = scene.add.graphics();
+      pg.fillStyle(C[tag.color], 1).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+      pg.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+      const c = scene.add.container(tx + pw / 2, ly, [pg, t]);
+      if (tag.bounce) scene.tweens.add({ targets: c, y: ly - 3, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      tx += pw + 4;
+    }
+  }
+  if (subTall) {
+    ly += gapY;
+    fitText(scene.add.text(left, ly, o.sub!, subStyle).setOrigin(0, 0.5), room);
+  }
+}
+
+/** 크림색 말풍선 알약 (테이블 가운데 안내) */
+function bubble(scene: PhaserNS.Scene, x: number, y: number, s: string, fs: number) {
+  const T = theme();
+  const C = T.COLOR;
+  const t = scene.add.text(0, 0, s, { fontFamily: T.FONT, fontSize: `${Math.round(fs)}px`, color: tc('ink') }).setOrigin(0.5);
+  const w = t.width + fs * 1.6;
+  const h = fs * 2;
+  const g = scene.add.graphics();
+  g.fillStyle(C.outline, 1).fillRoundedRect(-w / 2, -h / 2 + 4, w, h, h / 2);
+  g.fillStyle(C.panel, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+  g.lineStyle(T.SHAPE.line, C.outline, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+  return scene.add.container(x, y, [g, t]).setDepth(6);
+}
+
+/** 더미: 도톰하게 쌓인 뒷면 + 남은 장수 배지. 아래에는 바느질한 놓는 자리 */
+function deck(scene: PhaserNS.Scene, x: number, y: number, w: number, count: number | null) {
+  const T = theme();
+  const C = T.COLOR;
+  const h = w * 1.55;
+  const g = scene.add.graphics();
+  const pad = Math.max(4, w * 0.1);
+  g.fillStyle(T.MATGO.matDark, 1).fillRoundedRect(x - w / 2 - pad, y - h / 2 - pad, w + pad * 2, h + pad * 2, pad * 2);
+  g.lineStyle(T.SHAPE.lineThin, C.panel, 0.9);
+  stitch(g, x - w / 2 - pad, y - h / 2 - pad, w + pad * 2, h + pad * 2, pad * 2, 6, 5);
+  const layers = count === null ? 5 : clamp(Math.ceil(count / 4), count > 0 ? 1 : 0, 5);
+  const off = Math.max(1.4, w * 0.035);
+  for (let i = 0; i < layers; i++) hwatu(scene, x, y + ((layers - 1) / 2 - i) * off, null, w);
+  if (count === null) return;
+  // 남은 장수: 오른쪽 아래 모서리의 노란 배지
+  const fs = clamp(w * 0.3, 12, 20);
+  const t = scene.add.text(0, 0, `${count}`, { fontFamily: T.FONT, fontSize: `${Math.round(fs)}px`, color: tc('ink') }).setOrigin(0.5);
+  const bw = Math.max(fs * 1.7, t.width + fs * 0.9);
+  const bh = fs * 1.5;
+  const bg = scene.add.graphics();
+  bg.fillStyle(C.outline, 1).fillRoundedRect(-bw / 2, -bh / 2 + 2, bw, bh, bh / 2);
+  bg.fillStyle(C.primary, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+  bg.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+  scene.add.container(x + w / 2 - bw * 0.25, y + h / 2 - bh * 0.1, [bg, t]).setDepth(4);
+}
+
+/** 먹은 패 칸: 종류, 이름, 점수가 나기 시작하는 장수, 너비 비율 */
+const TRAYS = [
+  ['gwang', '광', 3, 0.17],
+  ['yeol', '열끗', 5, 0.23],
+  ['tti', '띠', 5, 0.23],
+  ['pi', '피', 10, 0.37],
+] as const;
+
+/**
+ * 먹은 패: 광 · 열끗 · 띠 · 피 칸에 겹쳐서. 칸 위 꼬리표에 장수(점수가 나는 장수까지 '3/10'), 점수가 나면 노랗게.
+ * 칸 너비는 고정 (패가 늘어도 다른 칸이 움직이지 않게), 넘치면 겹치는 간격만 줄인다.
+ */
+function captured(t: Ctx, scene: PhaserNS.Scene, R: Rect, p: MatgoPublic['players'][number] | null, w: number, optsFor: (id: string) => TrackOpts) {
+  const T = theme();
+  const C = T.COLOR;
+  const gap = clamp(w * 0.16, 4, 8);
+  const usable = R.w - gap * 3;
+  const fs = clamp(w * 0.4, 11, 16);
+  const g = scene.add.graphics();
+  let x = R.x;
+  for (const [kind, name, goal, share] of TRAYS) {
+    const tw = usable * share;
+    const ids = p?.captured[kind] ?? [];
+    const count = kind === 'pi' ? (p?.piCount ?? 0) : ids.length;
+    g.fillStyle(T.MATGO.matDark, 1).fillRoundedRect(x, R.y, tw, R.h, 9);
+    g.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(x, R.y, tw, R.h, 9);
+    const inner = tw - 10;
+    const step = ids.length > 1 ? Math.min(w * 0.6, (inner - w) / (ids.length - 1)) : 0;
+    ids.forEach((id, i) => t.track(hwatu(scene, x + 5 + w / 2 + i * step, R.y + R.h / 2 - 1, id, w), id, optsFor(id)));
+    // 꼬리표: 칸 위쪽 테두리에 걸친 알약
+    const scoring = count >= goal;
+    const tx = scene.add.text(0, 0, scoring ? `${name} ${count}` : `${name} ${count}/${goal}`, { fontFamily: T.FONT, fontSize: `${Math.round(fs)}px`, color: tc('ink') }).setOrigin(0, 0.5);
+    const th = fs + 6;
+    const twd = tx.width + 12;
+    const ty = R.y - th / 2 + 3;
+    g.fillStyle(scoring ? C.primary : C.panel, 1).fillRoundedRect(x + 5, ty - th / 2, twd, th, th / 2);
+    g.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(x + 5, ty - th / 2, twd, th, th / 2);
+    tx.setPosition(x + 11, ty);
+    x += tw + gap;
   }
 }
 
@@ -178,124 +423,149 @@ export function miniCardDrawn(id: string) {
 }
 
 /**
- * 화면 배치. 세로(휴대폰)는 위에서부터: 상대 손패(뒷면)·더미 → 상대 먹은 패 → 바닥 → 내 먹은 패 → 손패 두 줄.
- * 남는 높이로 바닥 카드 크기를 정하고, 바닥은 두 줄(넓게)과 세 줄 중 카드가 더 크게 나오는 쪽을 쓴다.
+ * 화면 배치.
+ * 세로(휴대폰)는 위에서부터: 상대 자리 판(손패 뒷면 포함) · 상대 먹은 패 (오른쪽에 더미) → 바닥 → 내 먹은 패 → 내 자리 판 → 손패 두 줄.
+ * 가로(PC)는 왼쪽 기둥에 상대 자리 판 · 상대 손패 · 더미 · 내 자리 판, 오른쪽에 상대 먹은 패 → 바닥 → 내 먹은 패 → 손패 한 줄.
+ * 남는 높이로 카드 크기를 정한다.
  */
 function layout(W: number, H: number, portrait: boolean, floorCount: number) {
   if (!portrait) {
-    const cw = clamp(Math.min(W / 11.5, H / 7), 30, 96);
-    const fw = cw * 0.86;
-    const capW = cw * 0.56;
+    const pad = 14;
+    // 낮은 화면(가로로 든 휴대폰)에서도 겹치지 않게 높이에 맞춰 줄인다
+    const cw = clamp(Math.min(W / 11.5, (H - 104) / 6.15), 22, 96);
     const k = clamp(cw / 75, 0.8, 1.2);
-    const bw = cw * 0.42;
-    const y0 = H * 0.355;
-    const rowGap = fw * 1.68;
-    const left = W * 0.17;
-    const right = W * 0.83;
-    const hx0 = Math.max(W * 0.27, 190 * k);
+    const ch = cw * 1.55;
+    const fw = cw * 0.86;
+    const capW = cw * 0.5;
+    const trayH = capW * 1.55 + 10;
+    const tab = clamp(capW * 0.4, 11, 16) + 4;
+    const colW = clamp(W * 0.24, 170, 270);
+    const x0 = pad + colW + 12;
+    const panelH = Math.round(Math.min(72 * k, H * 0.22));
+    const oppPanel: Rect = { x: pad, y: pad, w: colW, h: panelH };
+    const myPanel: Rect = { x: pad, y: H - pad - 8 - panelH, w: colW, h: panelH };
+    const handY = H - pad - 7 - ch / 2;
+    const trayW = Math.min(W - pad - x0, capW * 21);
+    const myTray: Rect = { x: x0, y: handY - ch / 2 - cw * 0.14 - 8 - trayH, w: trayW, h: trayH };
+    const oppTray: Rect = { x: x0, y: pad + tab - 4, w: trayW, h: trayH };
+    const floorTop = oppTray.y + trayH + 7;
+    const floor: Rect = { x: x0, y: floorTop, w: W - pad - x0, h: myTray.y - tab - 5 - floorTop };
+    const rowGap = Math.min(fw * 1.68, Math.max(fw * 0.9, floor.h - fw * 1.55 - 12));
+    const y0 = floor.y + (floor.h - (rowGap + fw * 1.55)) / 2 + fw * 0.775;
+    const left = x0 + 8;
+    const right = x0 + (W - pad - x0) * 0.84;
+    // 상대 손패(뒷면): 상대 자리 판 바로 아래
+    const bw = cw * 0.36;
+    const backStep = Math.min(bw * 0.55, (colW - bw - 12) / 9);
+    const oppHand = { x: pad + colW / 2, y: oppPanel.y + panelH + 10 + bw * 0.78 };
+    // 더미: 왼쪽 기둥 가운데 (상대 손패와 내 자리 판 사이)
+    const pw = Math.min(fw, (myPanel.y - (oppHand.y + bw * 0.78) - 34) / 1.75);
+    const pile = { x: pad + colW / 2, y: clamp(floor.y + floor.h / 2, oppHand.y + bw * 0.78 + 12 + pw * 0.9, myPanel.y - 22 - pw * 0.9) };
+    const hx0 = x0 + cw / 2 + 4;
     return {
       cw,
       fw,
       capW,
       k,
       bw,
-      oppHand: { x: W * 0.45, y: bw * 0.78 + 18 },
-      pile: { x: W * 0.075, y: y0 + rowGap * 0.5 },
-      pw: fw,
-      backStep: bw * 0.55,
-      oppScore: { x: 8, y: 6 },
-      capX: 24 + capW / 2,
-      oppCapY: H * 0.19,
-      oppCapMaxX: W - 16,
-      myCapY: H * 0.685,
-      floorTop: y0 - fw * 0.78,
-      floorH: rowGap + fw * 1.55,
+      pw,
+      backStep,
+      oppPanel,
+      myPanel,
+      oppReserve: 0,
+      oppHand,
+      pile,
+      oppTray,
+      myTray,
+      floor,
+      slots: 12,
+      turnCards: { x: x0 + (W - pad - x0) * 0.935, y: floor.y + floor.h / 2 },
       floorPos: (i: number, n: number) => {
         // 칸 수 고정 (12달 → 두 줄 6칸): 패가 들고 나도 다른 패 자리가 바뀌지 않게
         const cols = Math.max(6, Math.ceil(n / 2));
         return { x: left + ((i % cols) + 0.5) * ((right - left) / cols) - fw * 0.3, y: y0 + Math.floor(i / cols) * rowGap };
       },
       handPos: (i: number, n: number) => {
-        const step = Math.min(cw * 1.06, (W - hx0 - cw * 0.6) / Math.max(1, n - 1));
-        return { x: hx0 + i * step, y: H - cw * 0.86 };
+        const step = Math.min(cw * 1.08, (W - pad - 8 - cw / 2 - hx0) / Math.max(1, n - 1));
+        return { x: hx0 + i * step, y: handY };
       },
     };
   }
-  // 휴대폰: 카드를 최대한 크게 (손패 5장이 한 줄을 꽉 채우고, 높이는 7.3장 분량)
-  const cw = clamp(Math.min((W - 34) / 5.4, (H - 100) / 7.3), 30, 110);
+  // 휴대폰: 손패 5장이 한 줄을 꽉 채우게 (높이가 모자라면 그만큼 줄인다)
+  const pad = 12;
+  // 바닥 패(두 줄 6칸)가 너비만큼 커질 높이를 먼저 남기고, 나머지 높이로 손패 크기를 정한다
+  const fwW = (W - pad * 2 - 2) / 6 / 1.42;
+  const cw = clamp(Math.min((W - 28) / 5.32, (H - 124 - fwW * 3.24) / 5.88), 30, 110);
   const k = clamp(cw / 75, 0.8, 1.2);
   const ch = cw * 1.55;
   const capW = cw * 0.42;
-  const bw = cw * 0.3;
+  const trayH = capW * 1.55 + 10;
+  const tab = clamp(capW * 0.4, 11, 16) + 4;
+  const panelH = Math.round(50 * k);
   // 손패 두 줄 (아래)
-  const handBottomY = H - ch / 2 - 22;
+  const handBottomY = H - 16 - ch / 2;
   const handTopY = handBottomY - ch - 9;
-  // 내 먹은 패 (손패 위): 카드 + 아래 글자
-  const myCapY = handTopY - ch / 2 - capW * 1.0 - 14;
-  // 맨 위 한 줄: 왼쪽 상대 먹은 패 · 오른쪽 상대 손패(뒷면, 촘촘히) · 더미
-  const pw = cw * 0.5;
-  const pile = { x: W - pw / 2 - 22, y: pw * 0.78 + 16 };
-  const backStep = bw * 0.4;
-  const backsHalf = (backStep * 9 + bw) / 2;
-  const oppHand = { x: W - pw - 34 - backsHalf, y: bw * 0.78 + 16 };
-  const oppCapY = 16 + capW * 0.78;
-  const floorTop = Math.max(oppCapY + capW + 14, pile.y + pw * 0.78 + 24, oppHand.y + bw * 0.78 + 30);
-  const floorH = myCapY - capW * 0.78 - 6 - floorTop;
-  // 바닥 카드 크기: 두 줄 / 세 줄 중 큰 쪽
+  const myPanel: Rect = { x: pad, y: handTopY - ch / 2 - cw * 0.14 - 9 - panelH, w: W - pad * 2, h: panelH };
+  const myTray: Rect = { x: pad, y: myPanel.y - 8 - trayH, w: W - pad * 2, h: trayH };
+  // 맨 위: 상대 자리 판 + 상대 먹은 패, 그 오른쪽에 더미 (두 줄 높이)
+  const pw = cw * 0.62;
+  const deckCol = pw + 18;
+  const oppPanel: Rect = { x: pad, y: 11, w: W - pad * 2 - deckCol, h: panelH };
+  const oppTray: Rect = { x: pad, y: oppPanel.y + panelH + 4 + tab, w: oppPanel.w, h: trayH };
+  const pile = { x: W - pad - pw / 2 - 5, y: (oppPanel.y + oppTray.y + trayH) / 2 - 6 };
+  // 상대 손패(뒷면): 상대 자리 판 안 오른쪽에 촘촘히
+  const bw = cw * 0.3;
+  const backStep = bw * 0.36;
+  const backsW = backStep * 9 + bw;
+  const oppHand = { x: oppPanel.x + oppPanel.w - 9 - backsW / 2, y: oppPanel.y + panelH / 2 - 1 };
+  const floorTop = oppTray.y + trayH + 6;
+  const floor: Rect = { x: pad - 4, y: floorTop, w: W - pad * 2 + 8, h: myTray.y - tab - 3 - floorTop };
+  // 바닥 카드 크기: 두 줄 / 세 줄 / 네 줄 중 큰 쪽
   const fit = (rows: number) => {
     const cols = Math.max(4, Math.ceil(Math.max(12, floorCount) / rows));
-    const byW = (W - 40) / cols / 1.42;
-    const byH = floorH / (1.62 * (rows - 1) + 1.62);
+    const byW = (floor.w - 10) / cols / 1.42;
+    const byH = (floor.h - 10) / (1.62 * rows);
     // 바닥 패도 손패와 거의 같은 크기로
     return { rows, cols, fw: Math.min(byW, byH, cw) };
   };
   const F = [fit(2), fit(3), fit(4)].reduce((x, y) => (y.fw > x.fw ? y : x));
   const fw = Math.max(26, F.fw);
-  const rowGap = fw * 1.62;
+  const rowGap = Math.min(fw * 1.62 + (floor.h - 10 - fw * 1.62 * F.rows) / F.rows, fw * 1.8);
   const used = rowGap * (F.rows - 1) + fw * 1.55;
-  const y0 = floorTop + (floorH - used) / 2 + fw * 0.78;
+  const y0 = floor.y + (floor.h - used) / 2 + fw * 0.775;
   return {
     cw,
     fw,
     capW,
     k,
     bw,
-    oppHand,
-    pile,
     pw,
     backStep,
-    oppScore: { x: oppHand.x - backsHalf, y: oppHand.y + bw * 0.78 + 4 },
-    capX: 16 + capW / 2,
-    oppCapY,
-    oppCapMaxX: oppHand.x - backsHalf - 10,
-    myCapY,
-    floorTop,
-    floorH,
+    oppPanel,
+    myPanel,
+    oppReserve: backsW + 10,
+    oppHand,
+    pile,
+    oppTray,
+    myTray,
+    floor,
+    slots: F.rows * F.cols,
+    turnCards: null as { x: number; y: number } | null,
     floorPos: (i: number, _n?: number) => {
-      // 테이블 테두리(양쪽 약 18px) 안쪽에, 겹친 패가 오른쪽으로 나가도 들어오게
-      const colW = (W - 40) / F.cols;
-      return { x: 20 + ((i % F.cols) + 0.5) * colW - fw * 0.2, y: y0 + Math.floor(i / F.cols) * rowGap };
+      // 겹친 패가 오른쪽으로 나가도 칸 안에 들어오게 조금 왼쪽에
+      const colW = (floor.w - 10) / F.cols;
+      return { x: floor.x + 5 + ((i % F.cols) + 0.5) * colW - fw * 0.2, y: y0 + Math.floor(i / F.cols) * rowGap };
     },
     handPos: (i: number, n: number) => {
       const perRow = 5;
       const inRow = Math.min(perRow, n - Math.floor(i / perRow) * perRow);
-      const step = Math.min(cw * 1.04, (W - 32) / perRow);
-      return { x: W / 2 + ((i % perRow) - (inRow - 1) / 2) * step, y: Math.floor(i / perRow) === 0 && n > perRow ? handTopY : handBottomY };
+      // 빛나는 테두리끼리 닿지 않게 남는 너비만큼 벌린다
+      const step = Math.min(cw * 1.16, (W - 30 - cw) / (perRow - 1));
+      // 다섯 장 이하면 한 줄: 두 줄 자리의 가운데에
+      const y = n <= perRow ? (handTopY + handBottomY) / 2 : Math.floor(i / perRow) === 0 ? handTopY : handBottomY;
+      return { x: W / 2 + ((i % perRow) - (inRow - 1) / 2) * step, y };
     },
   };
-}
-
-/** 점수 알약 (세로 화면: 이름 대신). right면 x가 오른쪽 끝 */
-function scoreChip(scene: PhaserNS.Scene, x: number, y: number, text: string, turn: boolean, k: number, right = false) {
-  const T = theme();
-  const fs = Math.round(13 * k);
-  const tx = scene.add.text(8, 0, text, { fontFamily: T.FONT, fontSize: `${fs}px`, color: tc('ink') }).setOrigin(0, 0.5);
-  const w = tx.width + 16;
-  const h = fs + 10;
-  const g = scene.add.graphics();
-  g.fillStyle(turn ? T.COLOR.primary : T.COLOR.panel, 1).fillRoundedRect(0, -h / 2, w, h, h / 2);
-  g.lineStyle(T.SHAPE.lineThin, T.COLOR.outline, 1).strokeRoundedRect(0, -h / 2, w, h, h / 2);
-  return scene.add.container(right ? x - w : x, y + h / 2, [g, tx]).setDepth(5);
 }
 
 /** 찰싹! 패가 바닥에 내려앉는 순간: 하얀 충격 링 + 별 조각 + 살짝 흔들림 (같은 달 패 위면 더 크게 + '찰싹!') */
@@ -462,6 +732,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   back: '',
   backLabel: 'SIA WORLD',
   felt: () => theme().COLOR.skyMid,
+  // 조작부는 말풍선 한 줄 + 버튼 한 줄이면 충분하다 (기본 210px이면 휴대폰에서 빈 띠가 크게 남는다)
+  controlsMin: (w) => (w < 700 ? 104 : 112),
 
   preload(scene) {
     for (let m = 1; m <= 12; m++) scene.load.image(plantKey(m), plantUrl(m));
@@ -472,26 +744,41 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   draw(t: Ctx) {
     const { scene } = t;
     const { W, H } = viewSize(scene);
+    const T = theme();
+    const C = T.COLOR;
     const p = t.pub;
-    drawTable(scene, 'matgo');
-    // 세로 화면(휴대폰): 이름은 위쪽 자리 줄에 있으니 테이블 이름패는 빼고 점수만, 손패는 다섯 장씩 두 줄
+    drawMat(scene, W, H);
+    // 세로 화면(휴대폰): 손패는 다섯 장씩 두 줄
     const portrait = H > W * 1.15 || W < 520;
     const L = layout(W, H, portrait, p?.floor.length ?? 8);
-    const { cw, fw, capW, k } = L;
+    const { cw, fw, capW } = L;
+
+    // 바닥: 살짝 어두운 자리 + 패 놓는 칸마다 바느질 테두리
+    const fg = scene.add.graphics();
+    fg.fillStyle(T.MATGO.matDark, 0.45).fillRoundedRect(L.floor.x, L.floor.y, L.floor.w, L.floor.h, 16);
+    const fh = fw * 1.55;
+    for (let i = 0; i < L.slots; i++) {
+      const { x, y } = L.floorPos(i, 12);
+      fg.fillStyle(T.MATGO.matDark, 0.6).fillRoundedRect(x - fw / 2, y - fh / 2, fw, fh, fw * 0.14);
+      fg.lineStyle(T.SHAPE.lineThin, C.panel, 0.75);
+      stitch(fg, x - fw / 2 + 1, y - fh / 2 + 1, fw - 2, fh - 2, fw * 0.14, 5, 4);
+    }
 
     if (!p) {
-      // 대기 중: 기본 화투를 깔아 둔다 (더미 + 양쪽 손패 뒷면)
-      for (let i = 0; i < 6; i++) hwatu(scene, L.pile.x + i * 1.5, L.pile.y - i * 1.5, null, L.pw);
-      for (let i = 0; i < 8; i++) {
-        const { x, y } = L.floorPos(i, 8);
-        hwatu(scene, x, y, null, fw).setAlpha(0.55);
-      }
-      for (let i = 0; i < 10; i++) hwatu(scene, L.oppHand.x + (i - 4.5) * L.backStep, L.oppHand.y, null, L.bw);
+      // 대기 중: 자리 판(레디 표시) · 빈 먹은 패 칸 · 더미 · 내 손패 자리(뒷면)
+      const mine = t.seats.find((s) => s.seat_no === t.mySeat) ?? t.seats[0];
+      const other = t.seats.find((s) => s !== mine);
+      const waitTag = (s: (typeof t.seats)[number]): PanelTag[] => [!s.user_id || s.left_game ? { text: 'AI', color: 'track' } : s.ready ? { text: '레디!', color: 'win' } : { text: '준비 중', color: 'track' }];
+      if (other) playerPanel(scene, L.oppPanel, { name: other.nickname, avatar: other.avatar, score: null, tags: waitTag(other), turn: false });
+      if (mine) playerPanel(scene, L.myPanel, { name: mine.nickname, avatar: mine.avatar, score: null, tags: waitTag(mine), turn: false });
+      captured(t, scene, L.oppTray, null, capW, () => ({}));
+      captured(t, scene, L.myTray, null, capW, () => ({}));
+      deck(scene, L.pile.x, L.pile.y, L.pw, null);
       for (let i = 0; i < 10; i++) {
         const { x, y } = L.handPos(i, 10);
         hwatu(scene, x, y, null, cw);
       }
-      label(scene, W / 2, L.floorTop + L.floorH / 2, '모두 레디하면 시작해요', clamp(Math.min(W, H) * 0.05, 18, 30));
+      bubble(scene, L.floor.x + L.floor.w / 2, L.floor.y + L.floor.h / 2, '모두 레디하면 시작해요', clamp(Math.min(W, H) * 0.04, 15, 22));
       return;
     }
 
@@ -506,10 +793,20 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     updatePlan(p, t.room.round_no, t.room.id);
     const DEAL_GAP = 130;
 
-    // 상대: 점수(세로) 또는 이름패(가로) · 손패(뒷면) · 먹은 패
-    const oppSub = `${op.score}점${op.go ? ` · ${op.go}고` : ''}${op.shakes ? ` · 흔들${op.shakes}` : ''}`;
-    if (portrait) scoreChip(scene, L.oppScore.x, L.oppScore.y, oppSub, p.turn === opp, k);
-    else nameTag(scene, 26 * k, 26 * k, t.seatName(opp), t.seatAvatar(opp), { turn: p.turn === opp, size: k, sub: oppSub });
+    // 자리 판: 아바타 · 이름 · 꼬리표(차례 · 고 · 흔들기 · 폭탄 피) · 점수 방울
+    const tagsOf = (pl: (typeof P)[number], seat: number): PanelTag[] => [
+      ...(p.turn === seat ? [{ text: seat === t.mySeat ? '내 차례!' : '생각 중…', color: 'pink', bounce: true } as PanelTag] : []),
+      // 판이 끝난 뒤 (다음 판 기다리는 중): 레디 표시
+      ...(t.room.status === 'waiting' && t.seats.find((s) => s.seat_no === seat && s.user_id && !s.left_game)?.ready ? [{ text: '레디!', color: 'win' } as PanelTag] : []),
+      ...(pl.go ? [{ text: `${pl.go}고`, color: 'teamA' } as PanelTag] : []),
+      ...(pl.shakes ? [{ text: `흔들기 ${pl.shakes}`, color: 'accent' } as PanelTag] : []),
+      ...(pl.bombFill ? [{ text: `폭탄 피 ${pl.bombFill}`, color: 'track' } as PanelTag] : []),
+    ];
+    const subOf = (pl: (typeof P)[number]) => pl.breakdown.map((l) => `${l.label} ${l.points}점`).join(' · ');
+    playerPanel(scene, L.oppPanel, { name: t.seatName(opp), avatar: t.seatAvatar(opp), score: op.score, tags: tagsOf(op, opp), sub: portrait ? undefined : subOf(op), turn: p.turn === opp, reserve: L.oppReserve });
+    playerPanel(scene, L.myPanel, { name: t.seatName(me), avatar: t.seatAvatar(me), score: mp.score, tags: tagsOf(mp, me), sub: subOf(mp), turn: p.turn === me });
+
+    // 상대 손패(뒷면)
     for (let i = 0; i < op.handCount; i++) {
       const back = hwatu(scene, L.oppHand.x + (i - (op.handCount - 1) / 2) * L.backStep, L.oppHand.y, null, L.bw);
       t.track(back, `opp:${i}`, { from: L.pile, delay: dealing ? (i * 2 + 1) * DEAL_GAP : 0 });
@@ -548,7 +845,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       // 바닥에 있던 패 (또는 뺏어 온 피): 가져가기 차례에 지금 자리에서 출발
       return { delay: pl.captureAt ?? AT_TAKE, sound: 'chip' };
     };
-    captured(t, scene, L.capX, L.oppCapY, op, capW, L.oppCapMaxX, capOpts);
+    captured(t, scene, L.oppTray, op, capW, capOpts);
 
     // 바닥 (달별로 모아서)
     const floor = p.floor;
@@ -580,31 +877,21 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           });
         else t.track(card, id, { from: pile, fromScale: L.pw / fw });
       });
-      if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink'));
+      if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink')).setDepth(12);
     });
-    // 더미
-    for (let i = 0; i < 3; i++) hwatu(scene, pile.x + i * 2, pile.y - i * 2, null, L.pw);
-    label(scene, pile.x, pile.y + L.pw * 0.95, `더미 ${p.pileCount}`, clamp(L.pw * 0.24, 12, 18));
+    // 더미 (도톰한 뒷면 + 남은 장수 배지), 나가리 배수는 더미 아래
+    deck(scene, pile.x, pile.y, L.pw, p.pileCount);
+    if (p.nagariMul > 1) label(scene, pile.x, pile.y + L.pw * 0.775 + clamp(L.pw * 0.3, 12, 20) * 1.5, `나가리 ×${p.nagariMul}`, clamp(L.pw * 0.24, 11, 18), tc('primary'));
     // 이번 차례에 낸 패·뒤집은 패 (가로 화면만)
-    if (p.turnCards && !portrait) {
+    if (p.turnCards && L.turnCards) {
       const tcards = [...p.turnCards.played, ...(p.turnCards.flipped ? [p.turnCards.flipped] : [])];
-      const tx = W * 0.925;
-      tcards.forEach((id, i) => hwatu(scene, tx - i * fw * 0.45, pile.y, id, fw * 0.85));
-      label(scene, tx, pile.y + fw * 1.0, '이번 차례', clamp(fw * 0.22, 12, 18));
+      const tx = L.turnCards.x;
+      tcards.forEach((id, i) => hwatu(scene, tx - i * fw * 0.45, L.turnCards!.y, id, fw * 0.85));
+      label(scene, tx, L.turnCards.y + fw * 1.0, '이번 차례', clamp(fw * 0.22, 12, 18));
     }
-    if (p.nagariMul > 1) label(scene, W / 2, L.floorTop - 4, `나가리 ×${p.nagariMul}`, clamp(fw * 0.3, 14, 22), tc('primary'));
 
-    // 나: 먹은 패 · 점수/이름패 · 손패
-    captured(t, scene, L.capX, L.myCapY, mp, capW, W - 16, capOpts);
-    const mySub = `${mp.score}점${mp.go ? ` · ${mp.go}고` : ''}${mp.bombFill ? ` · 폭탄피 ${mp.bombFill}` : ''}`;
-    if (portrait) scoreChip(scene, W - 8, L.myCapY - capW * 0.78 - 30 * k, mySub, p.turn === me, k, true);
-    else
-      nameTag(scene, 26 * k, H - 28 * k, t.seatName(me), t.seatAvatar(me), {
-        turn: p.turn === me,
-        me: t.mySeat === me,
-        size: k,
-        sub: mySub,
-      });
+    // 나: 먹은 패 · 손패
+    captured(t, scene, L.myTray, mp, capW, capOpts);
     // 공개 상태가 내 비공개 손패보다 먼저 도착하면 방금 낸 패가 두 곳에 보인다 → 이미 바닥·먹은 패에 있는 패는 손패에서 뺀다
     const shown = new Set<string>([...p.floor.flatMap((f) => f.cards), ...Object.values(P).flatMap(allCaptured)]);
     const hand = (t.priv?.hand ?? []).filter((id) => !shown.has(id));
@@ -629,9 +916,12 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const p = t.pub;
     if (!p || t.mySeat === null) return;
     const c = p.choice;
+    /** 말풍선 알약: 얼굴 + 한마디 (+ 작은 설명) */
+    const say = (seat: number, text: string, small = '', mine = false) =>
+      `<div class="mg-say ${mine ? 'mine' : ''}"><img src="${t.avatarUrl(t.seatAvatar(seat))}" alt=""/><span>${text}${small ? `<small>${small}</small>` : ''}</span></div>`;
     if (!t.myTurn || !c) {
       // 내 차례여도 앞선 연출(패가 움직이는 중)이 끝나기 전에는 버튼 대신 안내
-      el.innerHTML = `<p class="msg">${p.turn === null ? '' : p.turn === t.mySeat && c ? '패가 움직이는 중…' : `${esc(t.seatName(p.turn))} 차례…`}</p>`;
+      el.innerHTML = p.turn === null ? '' : `<div class="mg-ctl">${p.turn === t.mySeat && c ? say(t.mySeat, '패가 움직이는 중…') : say(p.turn, `${esc(t.seatName(p.turn))} 차례…`)}</div>`;
       return;
     }
     const dis = t.busy ? 'disabled' : '';
@@ -639,11 +929,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       const pv = t.priv;
       const shakeable = pv?.shakeable ?? [];
       const bombs = pv?.bombable ?? [];
-      el.innerHTML = `<div class="row">
-        ${shakeable.length ? `<label class="btn"><input type="checkbox" id="shake" ${shake ? 'checked' : ''}/> 흔들기 (${shakeable.map((m) => `${m}월`).join(', ')})</label>` : ''}
+      const extra = `${shakeable.length ? `<label class="btn"><input type="checkbox" id="shake" ${shake ? 'checked' : ''}/> 흔들기 (${shakeable.map((m) => `${m}월`).join(', ')})</label>` : ''}
         ${bombs.map((m) => `<button class="btn primary" data-bomb="${m}" ${dis}>💣 ${m}월 폭탄</button>`).join('')}
-        ${c.canFlip ? `<button class="btn" id="flip" ${dis}>더미 뒤집기 (폭탄 피)</button>` : ''}
-      </div><p class="msg">낼 패를 누르세요 · 20초가 지나면 자동으로 내요</p>`;
+        ${c.canFlip ? `<button class="btn" id="flip" ${dis}>더미 뒤집기 (폭탄 피)</button>` : ''}`;
+      el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, '낼 패를 누르세요', '20초가 지나면 자동으로 내요', true)}${extra.trim() ? `<div class="mg-btns">${extra}</div>` : ''}</div>`;
       el.querySelector<HTMLInputElement>('#shake')?.addEventListener('change', (e) => (shake = (e.target as HTMLInputElement).checked));
       el.querySelectorAll<HTMLButtonElement>('[data-bomb]').forEach((b) => b.addEventListener('click', () => void t.act({ type: 'bomb', month: Number(b.dataset.bomb) })));
       el.querySelector('#flip')?.addEventListener('click', () => void t.act({ type: 'flip' }));
@@ -651,21 +940,21 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     }
     shake = false;
     if (c.kind === 'choose') {
-      el.innerHTML = `<p class="msg">${c.stage === 'flip' ? '뒤집은 패로' : '낸 패로'} 가져올 패를 고르세요 (테이블에서 빛나는 패를 눌러도 돼요)</p><div class="row">${c.options
+      el.innerHTML = `<div class="mg-ctl side ${c.options.length > 2 ? 'many' : ''}">${say(t.mySeat, `${c.stage === 'flip' ? '뒤집은 패로' : '낸 패로'} 가져올 패를 고르세요`, '빛나는 패를 눌러도 돼요', true)}<div class="mg-btns">${c.options
         .map((id) => `<button class="hw-pick" data-c="${id}" ${dis} title="${esc(cardById(id).name)}">${miniCard(id)}</button>`)
-        .join('')}</div>`;
+        .join('')}</div></div>`;
       el.querySelectorAll<HTMLButtonElement>('[data-c]').forEach((b) => b.addEventListener('click', () => void t.act({ type: 'choose', card: b.dataset.c })));
       return;
     }
     if (c.kind === 'gukjin') {
-      el.innerHTML = `<p class="msg">국진(9월 열끗)을 어떻게 쓸까요?</p><div class="row">
-        <button class="btn big" data-g="yeol" ${dis}>열끗으로</button><button class="btn big primary" data-g="ssangpi" ${dis}>쌍피로</button></div>`;
+      el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, '국진(9월 열끗)을 어떻게 쓸까요?', '', true)}<div class="mg-btns">
+        <button class="btn big" data-g="yeol" ${dis}>열끗으로</button><button class="btn big primary" data-g="ssangpi" ${dis}>쌍피로</button></div></div>`;
       el.querySelectorAll<HTMLButtonElement>('[data-g]').forEach((b) => b.addEventListener('click', () => void t.act({ type: 'gukjin', as: b.dataset.g })));
       return;
     }
     if (c.kind === 'goStop') {
-      el.innerHTML = `<p class="msg">${c.score}점! 고 할까요, 스톱 할까요? (지금 ${c.go}고)</p><div class="row">
-        <button class="btn big primary" id="go" ${dis}>고!</button><button class="btn big alt" id="stop" ${dis}>스톱</button></div>`;
+      el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, `${c.score}점! 고 할까요, 스톱 할까요?${c.go ? ` (지금 ${c.go}고)` : ''}`, '', true)}<div class="mg-btns">
+        <button class="btn big primary mg-go" id="go" ${dis}>고! ▶</button><button class="btn big mg-stop" id="stop" ${dis}>스톱 ✋</button></div></div>`;
       el.querySelector('#go')!.addEventListener('click', () => void t.act({ type: 'go' }));
       el.querySelector('#stop')!.addEventListener('click', () => void t.act({ type: 'stop' }));
     }
@@ -674,20 +963,27 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   resultHtml(t: Ctx) {
     const r = (t.pub as unknown as { result?: MatgoSummary })?.result;
     if (!r) return '<p>판이 끝났어요</p>';
-    if (r.result === 'nagari') return `<h3>🎴 나가리!</h3><p class="big">다음 판 ×${r.nextNagari}</p>`;
+    const full = (seat: number) => new URL(`shared/images/zodiac/full/${t.seatAvatar(seat)}.png`, worldRoot()).href;
+    if (r.result === 'nagari') {
+      return `<div class="mg-res draw"><div class="mg-res-head"><div><b>나가리!</b><span>아무도 점수를 못 냈어요</span></div></div>
+        <p class="mg-res-money">다음 판 ×${r.nextNagari}</p></div>`;
+    }
     const meWin = r.winner === t.resultSeat;
-    const name = (seat: number) => t.pub?.players[seat]?.name ?? t.seatName(seat);
-    const lines = r.breakdown.map((l) => `<tr><td>${esc(l.label)}</td><td>${l.points}점</td></tr>`).join('');
     const meLose = r.loser === t.resultSeat;
-    return `<h3>🎴 ${esc(name(r.winner!))} 승리${r.chongtong ? ' (총통)' : ''}</h3>
-      <p class="big ${meWin ? 'plus' : meLose ? 'minus' : ''}">${meWin ? '+' : meLose ? '-' : ''}${t.fmt(r.paid)}냥</p>
-      <table>${lines}
-        ${r.goCount ? `<tr><td>${r.goCount}고</td><td>+${r.goBonus}${r.goMultiplier > 1 ? ` ×${r.goMultiplier}` : ''}</td></tr>` : ''}
-        <tr><td>최종 점수</td><td>${r.score}점</td></tr>
-        ${r.multipliers.length ? `<tr><td>배수</td><td>${r.multipliers.map(esc).join(' · ')} (×${r.multiplier})</td></tr>` : ''}
-        <tr><td>점당</td><td>${t.fmt(r.baseUnit)}냥</td></tr>
-        <tr><td>계산</td><td>${t.fmt(r.amount)}냥${r.paid < r.amount ? ` → 가진 만큼 ${t.fmt(r.paid)}냥` : ''}</td></tr>
-      </table>`;
+    const name = (seat: number) => t.pub?.players[seat]?.name ?? t.seatName(seat);
+    const lines = r.breakdown.map((l) => `<li><span>${esc(l.label)}</span><b>${l.points}점</b></li>`).join('');
+    // 배수: '3고 ×2'는 최종 점수에 이미 들어 있다 (점수 내역에 한 줄로) → 계산식에는 나머지 배수만
+    const isGoMul = (m: string) => /^\d+고 ×/.test(m);
+    const muls = r.multipliers.filter((m) => !isGoMul(m)).map((m) => (m.includes('×') ? m : `${m} ×2`));
+    return `<div class="mg-res ${meWin ? 'win' : meLose ? 'lose' : 'draw'}">
+      <div class="mg-res-head"><img src="${full(r.winner!)}" alt=""/><div><b>${meWin ? '이겼어요!' : meLose ? '졌어요…' : '판 끝!'}</b><span>${esc(name(r.winner!))} 승리${r.chongtong ? ' (총통)' : ''}</span></div></div>
+      <p class="mg-res-money ${meWin ? 'plus' : meLose ? 'minus' : ''}">${meWin ? '+' : meLose ? '-' : ''}${t.fmt(r.paid)}냥</p>
+      <ul class="mg-res-lines">${lines}
+        ${r.goMultiplier > 1 ? `<li><span>${r.goCount}고</span><b>×${r.goMultiplier}</b></li>` : ''}
+        <li class="sum"><span>점수</span><b>${r.score}점</b></li></ul>
+      <div class="mg-res-calc"><i>${r.score}점</i><em>×</em><i>점당 ${t.fmt(r.baseUnit)}냥</i>${muls.map((m) => `<em>×</em><i class="mul">${esc(m)}</i>`).join('')}<em>=</em><b>${t.fmt(r.amount)}냥</b></div>
+      ${r.paid < r.amount ? `<p class="mg-res-note">가진 만큼만 ${t.fmt(r.paid)}냥</p>` : ''}
+    </div>`;
   },
 
   cutin(ev, t: Ctx) {

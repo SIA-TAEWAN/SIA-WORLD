@@ -133,6 +133,7 @@ export interface ThemeModule {
   TABLE: Record<'matgo' | 'poker' | 'holdem' | 'blackjack', number>;
   ROULETTE: Record<'spring' | 'summer' | 'autumn' | 'winter', number>;
   HWATU: Record<'hong' | 'cheong' | 'cho' | 'plain', number>;
+  MATGO: Record<'matLight' | 'matDark', number>;
   CHIPS: { min: number; color: number; animal: string }[];
   css(n: number): string;
   FONT: string;
