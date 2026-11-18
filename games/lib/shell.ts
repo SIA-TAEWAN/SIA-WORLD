@@ -633,7 +633,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   let tidy: 'none' | 'wait' | 'run' | 'done' = 'none';
   let tidyRound = -1;
   const tidying = () => (tidy === 'wait' || tidy === 'run') && tidyRound === st?.round_no && room?.status === 'waiting';
-  const tidied = () => tidy === 'done' && tidyRound === st?.round_no && room?.status === 'waiting';
+  // 정리한 판의 상태가 남아 있는 동안은 계속 빈 테이블 (레디 뒤 방이 '진행 중'으로 먼저 바뀌어도 지난 판 화면이 다시 나오지 않게)
+  const tidied = () => tidy === 'done' && tidyRound === st?.round_no;
   let replaying = false;
   let inApply = false;
   /** 다시 불러올 때마다 늘린다: 그 전에 꺼내 둔 재생 항목은 적용하지 않는다 */
