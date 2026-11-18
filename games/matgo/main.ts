@@ -680,40 +680,60 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
 function landingSpot(t: Ctx, id: string, fw: number, fallback: { x: number; y: number }) {
   const me = plan.get(id)!;
   const m = cardById(id).month;
-  let spot: { x: number; y: number } | null = null;
+  // 같은 차례·같은 달: 원래 바닥에 있던 패들 (가장 왼쪽 것이 묶음의 첫 자리)과, 나보다 먼저 내려앉는 패의 수
+  let first: { x: number; y: number } | null = null;
+  let onFloor = 0;
+  let earlier = 0;
+  let earlierSpot: { x: number; y: number } | null = null;
   for (const [other, pl] of plan) {
     if (other === id || pl.turn !== me.turn || cardById(other).month !== m) continue;
-    // 원래 바닥에 있던 패 (손·더미에서 온 패가 아닌 것)
     if (pl.floor) {
+      // 원래 바닥에 있던 패 (손·더미에서 온 패가 아닌 것)
       const lp = t.lastPos(other);
-      if (lp) {
-        spot = lp;
-        break;
-      }
+      if (!lp) continue;
+      onFloor++;
+      if (!first || lp.x < first.x) first = lp;
+    } else if (pl.via && pl.startAt < me.startAt) {
+      earlier++;
+      if (!earlierSpot || pl.via.x > earlierSpot.x) earlierSpot = pl.via;
     }
   }
-  if (!spot) {
-    for (const [other, pl] of plan) {
-      if (other === id || pl.turn !== me.turn || cardById(other).month !== m || !pl.via || pl.startAt >= me.startAt) continue;
-      spot = pl.via;
-    }
+  // 바닥 묶음이 있으면 그 옆으로 한 칸씩 (바닥 패 수 + 먼저 내려앉은 패 수만큼 밀어서 서로 겹치지 않게)
+  if (first) {
+    const k = onFloor + earlier;
+    return { x: first.x + k * fw * 0.4, y: first.y + k * fw * 0.06 };
   }
-  const base = spot ?? fallback;
-  return { x: base.x + fw * 0.4, y: base.y + fw * 0.06 };
+  // 바닥 패는 없고 같은 차례에 먼저 내려앉은 같은 달 패가 있으면 그 옆, 그것도 없으면 빈 칸
+  if (earlierSpot) return { x: earlierSpot.x + fw * 0.4, y: earlierSpot.y + fw * 0.06 };
+  return { x: fallback.x, y: fallback.y };
 }
 
 /** 바닥 자리: 달마다 한 번 정한 칸을 그 달 패가 다 없어질 때까지 유지 (패가 들고 나도 다른 패는 그대로) */
 const slotOf = new Map<string, number>();
 let slotKey = '';
+/** 방금 비워진 칸 → 비워진 때. 한 차례의 연출(먹은 패가 날아가기까지)이 끝날 동안은 다른 패를 놓지 않는다 */
+const slotFreedAt = new Map<number, number>();
+const SLOT_HOLD_MS = TURN_MS + 600;
+const FLOOR_SLOTS = 12;
 function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]; free: number } {
   if (key !== slotKey) {
     slotKey = key;
     slotOf.clear();
+    slotFreedAt.clear();
   }
   const keys = floor.map((f, i) => (f.cards.length ? `m${cardById(f.cards[0]).month}` : `e${i}`));
-  for (const k of [...slotOf.keys()]) if (!keys.includes(k)) slotOf.delete(k);
+  const now = performance.now();
+  for (const [k, n] of [...slotOf]) {
+    if (keys.includes(k)) continue;
+    slotOf.delete(k);
+    // 방금 먹힌 패가 있던 칸: 그 패들이 날아가는 동안에는 새 패(뒤집은 패 등)를 그 위에 놓지 않는다
+    slotFreedAt.set(n, now);
+  }
+  for (const [n, at] of [...slotFreedAt]) if (now - at > SLOT_HOLD_MS) slotFreedAt.delete(n);
   const used = new Set(slotOf.values());
   const lowestFree = () => {
+    // 비어 있고 방금 비워진 칸도 아닌 곳부터. 그런 칸이 없으면 (바닥이 꽉 찼으면) 방금 비워진 칸이라도 쓴다
+    for (let n = 0; n < FLOOR_SLOTS; n++) if (!used.has(n) && !slotFreedAt.has(n)) return n;
     let n = 0;
     while (used.has(n)) n++;
     return n;
