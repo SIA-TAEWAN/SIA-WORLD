@@ -616,6 +616,10 @@ interface CardPlan {
   floor: boolean;
 }
 const TURN_MS = 2150;
+/** 폭탄: 세 장을 이 간격으로 한 장씩 내려놓고(쾅쾅쾅), 다 놓인 뒤 '폭탄!'을 띄우고, 그만큼 뒤집기·먹기를 늦춘다 */
+const BOMB_GAP = 260;
+const BOMB_CUTIN_AT = 2 * BOMB_GAP + 640;
+const BOMB_EXTRA = 1500;
 const AT_PLAY = 0;
 const AT_FLIP = 650;
 const AT_TAKE = 1400;
@@ -653,7 +657,9 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
   planSeen = Math.max(planSeen, ...evs.map((e) => e.id));
   let turn = kept.length ? 0 : continuing ? 0 : -1;
   let hasFlip = kept.length ? kept.some(([, x]) => x.flip) : !continuing;
-  const base = () => Math.max(0, turn) * TURN_MS;
+  // 폭탄을 낸 차례는 세 장을 한 장씩 내려놓고 '폭탄!'을 띄운 뒤에 이어 간다 → 그만큼 뒤의 연출을 늦춘다
+  let shift = 0;
+  const base = () => Math.max(0, turn) * TURN_MS + shift;
   for (const e of evs) {
     const seat = typeof e.seat === 'number' ? e.seat : null;
     if (e.t === 'play' || e.t === 'bomb' || (e.t === 'flip' && hasFlip)) {
@@ -662,7 +668,11 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
     }
     eventBase.set(e.id, base());
     if (e.t === 'play' || e.t === 'bomb') {
-      for (const id of (e.cards as string[]) ?? []) plan.set(id, { startAt: base() + AT_PLAY, src: 'hand', seat, flip: false, captureAt: null, via: null, turn, floor: false });
+      const b0 = base();
+      ((e.cards as string[]) ?? []).forEach((id, i) =>
+        plan.set(id, { startAt: b0 + AT_PLAY + (e.t === 'bomb' ? i * BOMB_GAP : 0), src: 'hand', seat, flip: false, captureAt: null, via: null, turn, floor: false }),
+      );
+      if (e.t === 'bomb') shift += BOMB_EXTRA;
     } else if (e.t === 'flip' && typeof e.card === 'string') {
       hasFlip = true;
       plan.set(e.card, { startAt: base() + AT_FLIP, src: 'pile', seat, flip: true, captureAt: null, via: null, turn: Math.max(0, turn), floor: false });
@@ -755,14 +765,15 @@ function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]
 let shake = false;
 /** 더미 자리 (판 정리 때 패를 이리로 모은다) */
 let pilePos = { x: 0, y: 0 };
-/** 방금 누른 내 패 (서버 답이 오기 전에 누른 것이 바로 보이게) */
+/** 방금 누른 내 패 (서버 답을 기다리지 않고 바로 바닥에 내려놓는다) */
 let picked: string | null = null;
+/** 지금 바닥에 임시로 놓여 있는 패 (방금 누른 내 패 · 고르기 대기 중인 낸 패·뒤집은 패). 먹을 때 그 자리에서 이어 간다 */
+const onFloorNow = new Set<string>();
 
-/** 패 내기: 누르자마자 그 패를 올리고 소리를 낸 뒤 서버에 보낸다 (답을 기다리느라 반응이 늦어 보이지 않게) */
+/** 패 내기: 누르자마자 그 패를 바닥에 내려놓고 서버에 보낸다 (답을 기다리느라 반응이 늦어 보이지 않게) */
 function playCard(t: Ctx, id: string) {
   if (t.busy || picked) return;
   picked = id;
-  sfx('tick');
   const withShake = shake && !!t.priv?.shakeable.includes(cardById(id).month);
   t.redraw();
   void t.act({ type: 'play', card: id, shake: withShake }).then((ok) => {
@@ -877,8 +888,12 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     }
     const pile = L.pile;
     pilePos = pile;
+    // 공개 상태에서 이미 바닥·먹은 패에 있는 패 (내 비공개 손패가 늦게 와도 두 곳에 보이지 않게)
+    const shownNow = new Set<string>([...p.floor.flatMap((f) => f.cards), ...Object.values(P).flatMap(allCaptured)]);
     const myHand = { x: W * 0.6, y: L.handPos(0, 10).y };
-    const srcOf = (id: string, pl: CardPlan) => (pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand);
+    // 이미 바닥에 내려놓아 둔 패(누르자마자 놓은 내 패 · 고르기를 기다리던 패)는 그 자리에서 이어 간다
+    const srcOf = (id: string, pl: CardPlan) =>
+      onFloorNow.has(id) && t.lastPos(id) ? t.lastPos(id)! : pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand;
     // 내가 낸 패는 이미 눌러서 올려 둔 패라 빨리 내려앉는다 (0.22초. 다른 움직임은 0.56초)
     const myPlayDur = (pl: CardPlan) => (pl.src === 'hand' && pl.seat === me && !pl.floor ? 220 : undefined);
     // 늦게 내려앉는 패(뒤집은 패)가 먼저 내려앉은 패·바닥 패 위에 덮이게: 출발이 늦을수록 위
@@ -891,7 +906,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       .filter(([, pl]) => pl.captureAt !== null && !pl.floor && pl.src !== 'hand' || (pl.captureAt !== null && !pl.floor && pl.startAt !== pl.captureAt))
       .filter(([, pl]) => !pl.via && pl.startAt !== pl.captureAt)
       .sort((a, b) => a[1].startAt - b[1].startAt)
-      .forEach(([id, pl]) => (pl.via = landingSpot(t, id, fw, newSlot)));
+      .forEach(([id, pl]) => (pl.via = onFloorNow.has(id) && t.lastPos(id) ? t.lastPos(id)! : landingSpot(t, id, fw, newSlot)));
     /** 먹은 패 자리로 가는 카드의 움직임 */
     const capOpts = (id: string): TrackOpts => {
       const pl = plan.get(id);
@@ -905,12 +920,13 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           dur: myPlayDur(pl),
           over: overOf(pl),
           flip: pl.flip,
-          sound: pl.flip ? 'flip' : 'deal',
-          fromScale: srcSize(pl) / capW,
+          sound: onFloorNow.has(id) ? undefined : pl.flip ? 'flip' : 'deal',
+          fromScale: (onFloorNow.has(id) ? fw : srcSize(pl)) / capW,
           via,
           viaScale: fw / capW,
           viaLeave: pl.captureAt,
-          onLand: () => slap(scene, via.x, via.y, fw, true, t.dpr),
+          // 이미 바닥에 내려놓아 둔 패는 다시 찰싹하지 않는다
+          onLand: onFloorNow.has(id) ? undefined : () => slap(scene, via.x, via.y, fw, true, t.dpr),
         };
       }
       // 바닥에 있던 패 (또는 뺏어 온 피): 가져가기 차례에 지금 자리에서 출발
@@ -956,6 +972,54 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       });
       if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink')).setDepth(12);
     });
+    // 바닥에 임시로 놓이는 패 (서버 상태의 바닥에는 아직 없다):
+    //   · 방금 누른 내 패: 서버 답을 기다리지 않고 바로 바닥에 내려놓는다
+    //   · 고르기 대기 중 (바닥에 같은 달이 2장): 이번 차례에 낸 패·뒤집은 패를 그 묶음 위에 놓아 3장으로 보이게 한 뒤 고른다
+    const rawHand = (t.priv?.hand ?? []).filter((id) => !shownNow.has(id));
+    if (picked && !rawHand.includes(picked)) picked = null;
+    const resting: { id: string; mine: boolean; flipped: boolean }[] = [];
+    if (p.turnCards && p.choice?.kind === 'choose') {
+      const mineTurn = p.choice.seat === me;
+      for (const id of p.turnCards.played) if (!shownNow.has(id)) resting.push({ id, mine: mineTurn, flipped: false });
+      if (p.turnCards.flipped && !shownNow.has(p.turnCards.flipped)) resting.push({ id: p.turnCards.flipped, mine: mineTurn, flipped: true });
+    }
+    if (picked && !resting.some((r) => r.id === picked)) resting.push({ id: picked, mine: true, flipped: false });
+    const seenNow = new Set<string>();
+    const extra = new Map<number, number>(); // 묶음(칸) → 이번에 더 얹은 장수
+    let freeUsed = 0;
+    for (const r of resting) {
+      const m = cardById(r.id).month;
+      const gi = floor.findIndex((f) => f.cards.length && cardById(f.cards[0]).month === m);
+      let pos: { x: number; y: number };
+      let onStack = false;
+      if (gi >= 0) {
+        const base = L.floorPos(FS.slots[gi], 12);
+        const k = floor[gi].cards.length + (extra.get(gi) ?? 0);
+        extra.set(gi, (extra.get(gi) ?? 0) + 1);
+        pos = { x: base.x + k * fw * 0.4, y: base.y + k * fw * 0.06 };
+        onStack = true;
+      } else {
+        // 같은 달이 없으면 빈 칸 (먼저 임시로 놓은 같은 달 패가 있으면 그 옆)
+        const base = L.floorPos(FS.free, 12);
+        pos = { x: base.x + freeUsed * fw * 0.4, y: base.y + freeUsed * fw * 0.06 };
+        freeUsed++;
+      }
+      const card = hwatu(scene, pos.x, pos.y, r.id, fw);
+      const first = !onFloorNow.has(r.id);
+      t.track(card, r.id, {
+        from: r.flipped ? pile : r.mine ? (t.lastPos(r.id) ?? myHand) : L.oppHand,
+        dur: r.mine && !r.flipped ? 220 : undefined,
+        over: r.flipped ? 0.6 : 0.5,
+        flip: r.flipped && first,
+        sound: first ? (r.flipped ? 'flip' : 'deal') : undefined,
+        fromScale: (r.flipped ? L.pw : r.mine ? cw : L.bw) / fw,
+        onLand: first ? () => slap(scene, pos.x, pos.y, fw, onStack, t.dpr) : undefined,
+      });
+      seenNow.add(r.id);
+    }
+    // 이번에 임시로 놓지 않은 패는 표시를 지운다 (이번 그림의 먹기·바닥 계산에는 위에서 이미 썼다)
+    for (const id of [...onFloorNow]) if (!seenNow.has(id)) onFloorNow.delete(id);
+    for (const id of seenNow) onFloorNow.add(id);
     // 더미 (도톰한 뒷면 + 남은 장수 배지), 나가리 배수는 더미 아래
     deck(scene, pile.x, pile.y, L.pw, p.pileCount);
     if (p.nagariMul > 1) label(scene, pile.x, pile.y + L.pw * 0.775 + clamp(L.pw * 0.3, 12, 20) * 1.5, `나가리 ×${p.nagariMul}`, clamp(L.pw * 0.24, 11, 18), tc('primary'));
@@ -970,24 +1034,21 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 나: 먹은 패 · 손패
     captured(t, scene, L.myTray, mp, capW, capOpts);
     // 공개 상태가 내 비공개 손패보다 먼저 도착하면 방금 낸 패가 두 곳에 보인다 → 이미 바닥·먹은 패에 있는 패는 손패에서 뺀다
-    const shown = new Set<string>([...p.floor.flatMap((f) => f.cards), ...Object.values(P).flatMap(allCaptured)]);
-    const hand = (t.priv?.hand ?? []).filter((id) => !shown.has(id));
+    // 방금 누른 패는 이미 바닥에 내려놓았으므로 손패에서 뺀다
+    const hand = rawHand.filter((id) => id !== picked);
     const canPlay = t.myTurn && p.choice?.kind === 'play';
-    // 방금 누른 패: 서버 답을 기다리는 동안에도 바로 위로 올라와 보인다 (손패에서 빠지면 지운다)
-    if (picked && !hand.includes(picked)) picked = null;
     // 바닥에 같은 달이 있어 먹을 수 있는 패는 노란 테두리로 (고를 수 있는 패와 같은 표시)
     const floorMonths = new Set(p.floor.filter((f) => f.cards.length).map((f) => cardById(f.cards[0]).month));
     hand.forEach((id, i) => {
       const { x, y } = L.handPos(i, hand.length);
       t.track(
-        hwatu(scene, x, id === picked ? y - cw * 0.3 : y, id, cw, {
-          lift: canPlay || id === picked,
-          glow: id === picked || floorMonths.has(cardById(id).month),
+        hwatu(scene, x, y, id, cw, {
+          lift: canPlay,
+          glow: floorMonths.has(cardById(id).month),
           onClick: canPlay && !t.busy && !picked ? () => playCard(t, id) : undefined,
         }),
         id,
-        // 누른 패는 움직임 없이 바로 올라온다 (올라오는 동안 다음 연출이 기다리지 않게)
-        { from: pile, delay: dealing && id !== picked ? i * 2 * DEAL_GAP : 0, sound: dealing ? 'deal' : undefined, still: id === picked },
+        { from: pile, delay: dealing ? i * 2 * DEAL_GAP : 0, sound: dealing ? 'deal' : undefined },
       );
     });
   },
@@ -1077,8 +1138,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     if (ev.t !== 'shake' && ev.t !== 'bomb' && ev.t !== 'ppeok' && ev.t !== 'capture') return null;
     const base = eventBase.get(ev.id);
     if (base === undefined) return null;
-    // 흔들기·폭탄은 패를 낼 때, 뻑은 뒤집은 패가 내려앉을 때, 5광은 가져간 뒤
-    const at = ev.t === 'shake' || ev.t === 'bomb' ? 200 : ev.t === 'ppeok' ? AT_FLIP + 600 : AT_TAKE + 600;
+    // 흔들기는 패를 낼 때, 폭탄은 세 장이 다 내려앉은 뒤, 뻑은 뒤집은 패가 내려앉을 때, 5광은 가져간 뒤
+    const at = ev.t === 'shake' ? 200 : ev.t === 'bomb' ? BOMB_CUTIN_AT : ev.t === 'ppeok' ? AT_FLIP + 600 : AT_TAKE + 600;
     return Math.max(0, planBuiltAt + base + at - performance.now());
   },
 
