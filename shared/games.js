@@ -13,6 +13,8 @@ export const GAMES = [
     path: 'games/casino/', image: 'shared/images/card-casino.png', open: true },
   { id: 'race', name: '시아레이스', desc: '십이지신 150m 달리기 · 최대 4명',
     path: 'games/running/', image: 'shared/images/card-race.png', open: true },
+  { id: 'volleyball', name: '시아배구', desc: '십이지신 1:1 배구 · AI 연습',
+    path: 'games/volleyball/', image: 'shared/images/card-volleyball.png', open: false },
 ];
 
 const KEY = 'game_open:';
