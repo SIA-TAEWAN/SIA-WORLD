@@ -61,7 +61,7 @@ export const MAPS: MapDef[] = [
   {
     id: 'field', name: '들판', desc: '넓은 풀밭, 장애물이 적다', level: '쉬움', coinMul: 1, ready: true, unlock: '처음부터',
     power: { hp: 1, speed: 1, count: 1.5, dmg: 0.5, boss: 1 },
-    growth: { hpPerMin: 0.26, dmgPerMin: 0.09 },
+    growth: { hpPerMin: 0.26, dmgPerMin: 0.12 },
     terrain: { kind: 'none', cell: 200, chance: 0, r: 0 },
     spawns: [
       // 0~3분: 약한 요괴 위주, 수가 점점 늘어남
@@ -135,7 +135,7 @@ export const MAPS: MapDef[] = [
   {
     // 전 종류 + 수문장 요괴. 떼로 몰려오는 이벤트가 잦다. 담 사이로 길이 좁다
     id: 'palace', name: '달빛 궁궐', desc: '밤 분위기, 길이 좁다', level: '어려움', coinMul: 2, ready: true, unlock: '대나무 숲을 끝까지 버티기',
-    power: { hp: 1.6, speed: 1.06, count: 1.15, dmg: 0.68, boss: 1.6 },
+    power: { hp: 1.6, speed: 1.06, count: 1.15, dmg: 0.72, boss: 1.6 },
     growth: { hpPerMin: 0.26, dmgPerMin: 0.04 },
     terrain: { kind: 'walls', cell: 300, chance: 0.55, r: 30 },
     spawns: [
@@ -176,7 +176,7 @@ export const MAPS: MapDef[] = [
   {
     // 해골 병사·원혼·도깨비불·물귀신·여우불. 처음부터 수가 많고 원거리 요괴가 일찍 나온다. 군데군데 삼도천 물길
     id: 'underworld', name: '황천길', desc: '저승으로 가는 어두운 길, 안개와 푸른 불빛', level: '매우 어려움', coinMul: 2.5, ready: true, unlock: '달빛 궁궐을 끝까지 버티기',
-    power: { hp: 2, speed: 1.08, count: 1.18, dmg: 0.72, boss: 1.8 },
+    power: { hp: 2, speed: 1.08, count: 1.18, dmg: 0.84, boss: 1.8 },
     growth: { hpPerMin: 0.26, dmgPerMin: 0.04 },
     terrain: { kind: 'pools', cell: 360, chance: 0.45, r: 52 },
     spawns: [

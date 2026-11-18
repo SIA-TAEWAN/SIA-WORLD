@@ -69,7 +69,7 @@ export const BOSSES: BossDef[] = [
     ],
   },
   {
-    id: 'dueoksini', name: '두억시니', map: 'field', desc: '방망이를 내려찍고 꼬마 도깨비를 부른다', hp: 2800, speed: 70, dmg: 18, r: 56, xp: 150, ready: true,
+    id: 'dueoksini', name: '두억시니', map: 'field', desc: '방망이를 내려찍고 꼬마 도깨비를 부른다', hp: 2800, speed: 78, dmg: 30, r: 56, xp: 150, ready: true,
     patterns: [
       { kind: 'chase', dur: 2.5 },
       { kind: 'slam', windup: 1.0, r: 125, dmg: 18, count: 3, gap: 0.6 },
@@ -78,7 +78,7 @@ export const BOSSES: BossDef[] = [
     ],
   },
   {
-    id: 'bulgasal', name: '불가살', map: 'field', desc: '큰 범위를 공격하고, 시간이 갈수록 단단해진다', hp: 4200, speed: 80, dmg: 18, r: 64, xp: 300, ready: true,
+    id: 'bulgasal', name: '불가살', map: 'field', desc: '큰 범위를 공격하고, 시간이 갈수록 단단해진다', hp: 6800, speed: 86, dmg: 30, r: 64, xp: 300, ready: true,
     harden: { perSec: 0.004, min: 0.6 },
     patterns: [
       { kind: 'chase', dur: 2.5 },
@@ -137,7 +137,7 @@ export const BOSSES: BossDef[] = [
   },
   {
     // 야광귀: 내 옆으로 순간이동해 덮친다. 맞으면 잠시 이동 속도가 줄어든다
-    id: 'yagwanggwi', name: '야광귀', map: 'palace', desc: '순간이동한다. 맞으면 잠시 느려진다', hp: 2600, speed: 88, dmg: 18, r: 50, xp: 200, ready: true,
+    id: 'yagwanggwi', name: '야광귀', map: 'palace', desc: '순간이동한다. 맞으면 잠시 느려진다', hp: 3000, speed: 88, dmg: 18, r: 50, xp: 200, ready: true,
     patterns: [
       { kind: 'chase', dur: 2 },
       { kind: 'blink', windup: 0.75, r: 130, dmg: 24, count: 3, gap: 1.0, slow: 2.5 },
