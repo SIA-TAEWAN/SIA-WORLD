@@ -151,7 +151,8 @@ export class RaceGame {
       r.stunT = last.stunT;
       r.boostT = last.boostT;
       r.finishMs = last.fin > 0 ? last.fin : null;
-      r.t = Math.max(0, (last.ts - this.goAt) / 1000);
+      // 원래 AI는 멈춰 있던 시간을 따라잡고(기준 기기가 바뀐 탓이므로), 사람 자리를 이어받은 AI는 지금부터 달린다
+      r.t = tuned ? Math.max(0, (last.ts - this.goAt) / 1000) : t;
       for (const o of this.obs) {
         if (o.kind === 'log' && last.logX > -2) r.logX[o.id] = last.logX;
         if (o.kind === 'boost' && o.x < r.x) r.usedBoost.push(o.id);
