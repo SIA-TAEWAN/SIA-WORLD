@@ -12,13 +12,13 @@ export const TOP_SPEED = 5;
 export const ACCEL_TIME = 0.4;
 export const ACCEL = TOP_SPEED / ACCEL_TIME;
 
-/** 점프: 체공 0.6초, 뛰는 순간의 속도 유지 (5 m/s면 3m) */
-export const JUMP_TIME = 0.6;
+/** 점프: 체공 0.5초, 뛰는 순간의 속도 유지 (5 m/s면 2.5m). 처음(0.6초·3m)보다 짧게 해서 타이밍을 더 맞춰야 한다 */
+export const JUMP_TIME = 0.5;
 /** 화면에 그릴 점프 높이 (m) */
-export const JUMP_HEIGHT = 0.9;
+export const JUMP_HEIGHT = 0.7;
 
-/** 슬라이딩: 0.6초 동안 몸을 낮추고 누르는 순간의 속도로 미끄러진다 (가속은 멈춘다). 슬라이딩 중 재슬라이딩·점프 불가 */
-export const SLIDE_TIME = 0.6;
+/** 슬라이딩: 0.45초 동안 몸을 낮추고 누르는 순간의 속도로 미끄러진다 (가속은 멈춘다). 슬라이딩 중 재슬라이딩·점프 불가 */
+export const SLIDE_TIME = 0.45;
 
 /** 진흙: 밟는 동안 20% 감속 */
 export const MUD_FACTOR = 0.8;

@@ -124,7 +124,33 @@ describe('스핀 진행', () => {
     expect(s.endsAt).toBe(21_000);
     s = roulette.stamp(roulette.apply(s, 1, { type: 'bet', bets: [] }, fixed(0)), 6000);
     expect(s.phase).toBe('spin');
-    expect(s.endsAt).toBe(16_000);
+    expect(s.endsAt).toBe(36_000);
+  });
+  it("결과를 보고 '확인': 모두 확인하면 바로 다음 스핀, 안 누른 사람은 마감 때 자동 확인", () => {
+    let s = start([human(0), human(1)]);
+    s = roulette.apply(s, 0, { type: 'bet', bets: [] }, fixed(0));
+    s = roulette.apply(s, 1, { type: 'bet', bets: [] }, fixed(0));
+    expect(s.phase).toBe('spin');
+    // 결과 단계: 두 사람 모두 확인할 차례
+    expect(roulette.pending(s)).toEqual([0, 1]);
+    expect(roulette.tickNow(s)).toBe(false);
+    expect(() => roulette.apply(s, 0, { type: 'bet', bets: [] }, fixed(0))).toThrow(/확인/);
+    s = roulette.apply(s, 0, { type: 'next' }, fixed(0));
+    expect(roulette.pending(s)).toEqual([1]);
+    expect(() => roulette.apply(s, 0, { type: 'next' }, fixed(0))).toThrow(/이미/);
+    expect(roulette.view(s).public.acked).toEqual([0]);
+    // 마감: 안 누른 사람은 자동으로 확인한 것으로
+    expect(roulette.timeout(s, 1, fixed(0))).toEqual({ type: 'next' });
+    s = roulette.apply(s, 1, roulette.timeout(s, 1, fixed(0)), fixed(0));
+    expect(roulette.tickNow(s)).toBe(true);
+    s = roulette.tick(s, fixed(0), [human(0), human(1)]);
+    expect(s.phase).toBe('bet');
+    expect(s.acked).toEqual([]);
+    // 베팅 단계에서는 확인을 받지 않는다
+    expect(() => roulette.apply(s, 0, { type: 'next' } as never, fixed(0))).toThrow();
+    // 나간 사람 자리(AI 대신): 단계에 맞는 행동
+    expect(roulette.ai({ phase: 'spin' } as never, {}, 0, fixed(0))).toEqual({ type: 'next' });
+    expect(roulette.ai({ phase: 'bet' } as never, {}, 0, fixed(0))).toEqual({ type: 'bet', bets: [] });
   });
 });
 
@@ -182,9 +208,11 @@ describe('Runner + 룰렛 (칩은 확정 때 먼저, 지급은 결과 때 한 �
     await runner.act('r1', 'u1', { type: 'bet', bets: [{ kind: 'zodiac', target: 4, amount: 500 }] });
     expect(pubs.at(-1)!.pub.phase).toBe('spin');
     expect(wallet.u1).toBe(10_000 - 500 + 6000);
-    // 회전 마감 뒤 cron → 다음 베팅
-    clock += 10_000;
-    await runner.timeout('r1');
+    // 결과 단계: 내가 확인할 차례, 마감은 30초 뒤
+    expect(pubs.at(-1)!.pending).toEqual([0]);
+    expect(pubs.at(-1)!.deadline!.getTime()).toBe(clock + 30_000);
+    // '확인' → 마감을 기다리지 않고 바로 다음 베팅
+    await runner.act('r1', 'u1', { type: 'next' });
     expect(pubs.at(-1)!.pub.phase).toBe('bet');
     expect(pubs.at(-1)!.pub.spin).toBe(2);
     // 같은 결과로 지급을 다시 불러도 두 번 주지 않는다
@@ -194,8 +222,8 @@ describe('Runner + 룰렛 (칩은 확정 때 먼저, 지급은 결과 때 한 �
     for (let i = 0; i < 3; i++) {
       clock += 20_000;
       await runner.timeout('r1'); // 베팅 마감 → 결과
-      clock += 10_000;
-      await runner.timeout('r1'); // 회전 끝 → 다음 베팅 또는 멈춤
+      clock += 30_000;
+      await runner.timeout('r1'); // 결과 확인 마감 (자동 확인) → 다음 베팅 또는 멈춤
     }
     expect(room.status).toBe('waiting');
     expect(wallet.u1).toBe(15_500);

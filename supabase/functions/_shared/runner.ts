@@ -220,7 +220,17 @@ export class Runner {
     let steps = 0;
     while (!engine.done(state)) {
       const autos = engine.pending(state).filter((s: number) => this.auto(seats, s));
-      if (autos.length === 0) break;
+      if (autos.length === 0) {
+        // 모두 결과를 확인했으면 (룰렛) 마감을 기다리지 않고 다음 단계로 → 새 단계의 자동 자리를 이어서 처리
+        if (engine.tick && engine.tickNow && engine.tickNow(state)) {
+          const prev = engine.spinResult ? engine.spinResult(state) : null;
+          if (prev && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, prev.spin, prev.result);
+          state = engine.tick(state, this.rng, await this.seatInfo(room, seats));
+          if (++steps > MAX_AUTO_STEPS) throw new Error('AI loop');
+          continue;
+        }
+        break;
+      }
       for (const seat of autos) {
         if (!engine.pending(state).includes(seat)) continue;
         state = engine.apply(state, seat, this.aiAction(engine, state, seat), this.rng);

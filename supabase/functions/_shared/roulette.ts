@@ -79,7 +79,8 @@ export function normalizeBets(raw: unknown, baseUnit: number): RBet[] {
 // ───────────────────────── 타입 ─────────────────────────
 
 export type RoulettePhase = 'bet' | 'spin' | 'done';
-export type RouletteAction = { type: 'bet'; bets: RBet[] };
+/** bet: 베팅 확정 · next: 결과를 보고 '확인' (모두 확인하면 다음 스핀) */
+export type RouletteAction = { type: 'bet'; bets: RBet[] } | { type: 'next' };
 
 export interface RouletteCarry {
   /** 최근 결과 (최신이 끝) */
@@ -100,6 +101,8 @@ export interface RouletteState {
   /** 이번 스핀에 걸 수 있는 사람 (스핀 시작 때 자리에 있던 사람) */
   players: RPlayer[];
   confirmed: number[];
+  /** 결과를 보고 '확인'을 누른 자리 (회전·결과 단계) */
+  acked?: number[];
   bets: Record<string, RBet[]>;
   result: number | null;
   /** 이번 스핀 받은 돈 (자리별, 건 금액 포함) */
@@ -121,6 +124,8 @@ export interface RoulettePublic {
   spin: number;
   players: RPlayer[];
   confirmed: number[];
+  /** 결과를 확인한 자리 */
+  acked: number[];
   /** 확정한 사람의 베팅 (자리 → 목록) */
   bets: Record<string, RBet[]>;
   /** 이번 스핀 결과 칸 (공개 상태의 result는 판 정산 요약 자리라 이름을 따로 쓴다) */
@@ -136,7 +141,8 @@ export interface RoulettePublic {
 }
 
 export const BET_MS = 20_000;
-export const SPIN_MS = 10_000;
+/** 회전·결과 단계 길이: 휠이 도는 시간(약 6초) + 결과를 보고 '확인'을 누를 시간. 모두 확인하면 바로 넘어간다 */
+export const SPIN_MS = 30_000;
 const HISTORY = 20;
 const IDLE_STOP = 3;
 const EVENT_KEEP = 30;
@@ -153,6 +159,7 @@ function startBet(s: RouletteState, players: RPlayer[]): void {
   s.spin += 1;
   s.players = players;
   s.confirmed = [];
+  s.acked = [];
   s.bets = {};
   s.result = null;
   s.wins = {};
@@ -172,6 +179,7 @@ function resolve(s: RouletteState, rng: Rng): void {
     if (w > 0) s.wins[seat] = w;
   }
   s.phase = 'spin';
+  s.acked = [];
   s.endsAt = null;
   emit(s, 'spin', { spin: s.spin, result, animal: WHEEL[result] });
   for (const [seat, w] of Object.entries(s.wins)) emit(s, 'win', { seat: Number(seat), amount: w });
@@ -184,6 +192,7 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
   deadlineAt(s: RouletteState): number | null;
   stamp(s: RouletteState, now: number): RouletteState;
   tick(s: RouletteState, rng: Rng, seats: SeatInfo[]): RouletteState;
+  tickNow(s: RouletteState): boolean;
   charge(s: RouletteState, seat: number, action: RouletteAction): { spin: number; bets: RBet[]; total: number } | null;
   spinResult(s: RouletteState): { spin: number; result: number } | null;
 } = {
@@ -220,11 +229,23 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
   },
 
   pending(s: RouletteState): number[] {
+    // 회전·결과: 결과를 보고 '확인'을 누르지 않은 사람 (마감이 지나면 자동으로 확인)
+    if (s.phase === 'spin') return s.players.filter((p) => !(s.acked ?? []).includes(p.seat)).map((p) => p.seat);
     if (s.phase !== 'bet') return [];
     return s.players.filter((p) => !s.confirmed.includes(p.seat)).map((p) => p.seat);
   },
 
   apply(s0: RouletteState, seat: number, action: RouletteAction, rng: Rng): RouletteState {
+    if (s0.phase === 'spin') {
+      // 결과 확인: 모두 확인하면 tickNow가 참이 되어 러너가 바로 다음 스핀을 연다
+      if (!action || action.type !== 'next') throw new EngineError('지금은 결과를 확인할 차례입니다');
+      if (!s0.players.some((p) => p.seat === seat)) throw new EngineError('이번 스핀에 참가하지 않은 자리입니다');
+      if ((s0.acked ?? []).includes(seat)) throw new EngineError('이미 확인했습니다');
+      const s = clone(s0);
+      s.acked = [...(s.acked ?? []), seat];
+      emit(s, 'ack', { seat });
+      return s;
+    }
     if (s0.phase !== 'bet') throw new EngineError('베팅 시간이 아닙니다');
     if (!s0.players.some((p) => p.seat === seat)) throw new EngineError('이번 스핀에 참가하지 않은 자리입니다 (다음 베팅부터)');
     if (s0.confirmed.includes(seat)) throw new EngineError('이미 확정했습니다');
@@ -240,13 +261,13 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
     return s;
   },
 
-  // AI는 없다: 나간 사람 자리는 걸지 않은 것으로
-  ai(): RouletteAction {
-    return { type: 'bet', bets: [] };
+  // AI는 없다: 나간 사람 자리는 걸지 않은 것으로 (결과 단계에서는 확인한 것으로)
+  ai(pub: RoulettePublic): RouletteAction {
+    return pub?.phase === 'spin' ? { type: 'next' } : { type: 'bet', bets: [] };
   },
 
-  timeout(): RouletteAction {
-    return { type: 'bet', bets: [] };
+  timeout(s: RouletteState): RouletteAction {
+    return s?.phase === 'spin' ? { type: 'next' } : { type: 'bet', bets: [] };
   },
 
   done(s: RouletteState): boolean {
@@ -268,6 +289,7 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
         spin: s.spin,
         players: clone(s.players),
         confirmed: s.confirmed.slice(),
+        acked: (s.acked ?? []).slice(),
         bets: clone(s.bets),
         landed: s.result,
         wins: { ...s.wins },
@@ -313,6 +335,11 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
     }
     startBet(s, ps);
     return s;
+  },
+
+  /** 모두 결과를 확인했다: 마감을 기다리지 않고 바로 다음 단계로 */
+  tickNow(s: RouletteState): boolean {
+    return s.phase === 'spin' && s.players.every((p) => (s.acked ?? []).includes(p.seat));
   },
 
   /** 확정 때 먼저 뺄 칩 (걸지 않았으면 null) */

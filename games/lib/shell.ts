@@ -155,6 +155,8 @@ export interface GameUI<P = any, Q = any> {
   liveWallet?: boolean | ((pub: any) => number);
   /** AI가 없는 게임 (룰렛): 빈자리는 자리 줄·방 목록에 보이지 않는다 */
   noAi?: boolean;
+  /** false면 조작부 높이를 고정하지 않는다 (룰렛: 조작부가 베팅판이라 화면마다 크기가 다르다). 기본은 고정 */
+  stableControls?: boolean;
   /** 카드를 한 장씩 나눠 줄 때 간격(ms). 기본 110 */
   dealGap?: number;
   /**
@@ -624,6 +626,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           this.load.image(`av-${z}`, m.z.avatarUrl(z));
           this.load.image(`full-${z}`, m.z.fullUrl(z));
         }
+        // 트럼프 뒷면 그림 (못 불러오면 cards.ts가 코드로 그린다)
+        this.load.image('back-casino', new URL('shared/images/cards/back.png', worldRoot()).href);
         ui.preload?.(this, m.z.avatarUrl);
       },
       create(this: PhaserNS.Scene) {
@@ -865,7 +869,30 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
 
   let wasMyTurn = false;
+  /**
+   * 조작부 높이 고정: 버튼 줄 수가 바뀔 때마다 테이블(바닥판) 크기가 달라져 카드 크기·배치가 움직이지 않게,
+   * 방에 있는 동안 가장 컸던 높이를 유지한다 (화면 너비가 바뀌면 다시 잰다).
+   */
+  let ctlLockH = 0;
+  let ctlLockW = 0;
+  const lockControls = () => {
+    if (ui.stableControls === false) return;
+    const el = root.querySelector<HTMLElement>('#controls');
+    if (!el) return;
+    if (ctlLockW !== window.innerWidth) {
+      ctlLockW = window.innerWidth;
+      // 처음부터 넉넉히 잡아 둔다 (대기 → 베팅 → 진행으로 넘어가도 테이블 크기가 그대로이게)
+      ctlLockH = window.innerWidth < 700 ? 210 : 150;
+    }
+    el.style.minHeight = '';
+    ctlLockH = Math.max(ctlLockH, el.offsetHeight);
+    el.style.minHeight = `${ctlLockH}px`;
+  };
   const paintControls = () => {
+    paintControlsInner();
+    if (!closed) lockControls();
+  };
+  const paintControlsInner = () => {
     if (closed) return;
     {
       const mine = mySeatRow();

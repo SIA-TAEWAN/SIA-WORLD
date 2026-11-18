@@ -66,7 +66,7 @@ describe('달리기', () => {
     expect(late.finishMs! / 1000).toBeCloseTo(BASE + 1, 1);
   });
 
-  it('점프: 체공 0.6초, 비거리 3m, 공중 재점프 불가', () => {
+  it('점프: 체공 0.5초, 비거리 2.5m, 공중 재점프 불가', () => {
     const r = newRunner();
     advance(r, [], 2, true);
     const x0 = r.x;
@@ -78,7 +78,7 @@ describe('달리기', () => {
       steps++;
     }
     expect(steps * DT).toBeCloseTo(JUMP_TIME, 1);
-    expect(r.x - x0).toBeCloseTo(3, 1);
+    expect(r.x - x0).toBeCloseTo(JUMP_TIME * 5, 1);
   });
 
   it('점프는 뛰는 순간의 속도를 유지한다 (가속 중에 뛰면 짧다)', () => {

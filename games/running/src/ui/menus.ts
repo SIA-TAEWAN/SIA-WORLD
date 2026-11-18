@@ -130,7 +130,7 @@ function showHowTo() {
   dim.innerHTML = `<div class="dialog"><h3>❓ 달리는 방법</h3>
     <div class="row"><span>🏁 '준비' 뒤 <b style="font-weight:normal;color:var(--accent)">GO!</b>가 뜨면 버튼을 눌러 출발</span></div>
     <div class="row"><span>⚠️ GO 전에 누르면 실격</span></div>
-    <div class="row"><span>🦘 <b style="font-weight:normal;color:var(--accent)">점프</b> 버튼: 3m를 뛰어요 (스페이스·↑)</span></div>
+    <div class="row"><span>🦘 <b style="font-weight:normal;color:var(--accent)">점프</b> 버튼: 2.5m를 뛰어요 (스페이스·↑)</span></div>
     <div class="row"><span>🛷 <b style="font-weight:normal;color:var(--accent)">슬라이딩</b> 버튼: 몸을 낮춰 미끄러져요 (↓·S)</span></div>
     <div class="row"><span>🚧 허들·바나나·통나무는 뛰어넘기</span></div>
     <div class="row"><span>🚩 높이 걸린 막대는 슬라이딩으로만 지나가요 (점프하면 부딪혀요)</span></div>

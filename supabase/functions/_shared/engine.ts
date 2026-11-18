@@ -89,6 +89,8 @@ export interface Engine<S, A, C = unknown, P = unknown, Q = unknown> {
   deadlineAt?(s: S): number | null;
   /** 사람 차례가 없을 때 마감이 지나면 다음 단계로 (그때 자리에 앉은 사람 정보를 받는다) */
   tick?(s: S, rng: Rng, seats: SeatInfo[]): S;
+  /** 참이면 마감을 기다리지 않고 바로 tick (예: 모두 결과를 확인했다) */
+  tickNow?(s: S): boolean;
   /** 행동 전에 먼저 지갑에서 뺄 금액 (확정 베팅). 없으면 null */
   charge?(s: S, seat: number, action: A): { spin: number; bets: unknown; total: number } | null;
   /** 결과가 나와 지급할 스핀 (없으면 null) */

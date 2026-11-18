@@ -14,6 +14,8 @@ const ROUND = (phase: string) => (phase === 'choose' ? '카드 고르기' : phas
 let discard: string | null = null;
 /** 버리는 연출을 이미 보여 준 카드 */
 let thrownShown: string | null = null;
+/** 서버에 보낸 고르기 (답이 올 때까지 화면을 그대로 유지) */
+let sent: { discard: string; open: string } | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 
@@ -77,33 +79,41 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       const me = s.seat === t.mySeat;
       const sd = shown.get(s.seat);
       let cards: (string | null)[];
+      // 고르기를 보낸 뒤 (서버 답을 기다리는 동안): 버린 카드는 빼고 남은 3장만, 공개할 카드는 올려서 보여 준다
+      const choosing = me && !sd && p.phase === 'choose' && !!t.priv?.choices.length;
+      if (!choosing || (sent && !t.priv!.choices.includes(sent.open))) sent = me ? null : sent;
+      const gone = choosing ? (sent?.discard ?? discard) : null;
       if (sd) cards = sd.cards;
-      else if (me && t.priv) cards = p.phase === 'choose' && t.priv.choices.length ? t.priv.choices : [...t.priv.hidden.slice(0, 2), ...s.open, ...t.priv.hidden.slice(2)];
+      else if (me && t.priv) cards = choosing ? t.priv.choices.filter((c) => c !== gone) : [...t.priv.hidden.slice(0, 2), ...s.open, ...t.priv.hidden.slice(2)];
       else cards = [...Array(Math.min(2, s.hiddenCount)).fill(null), ...s.open, ...Array(Math.max(0, s.hiddenCount - 2)).fill(null)];
       const w = me ? cw : oc;
       const gap = w * (me ? 0.72 : 0.4);
       // 카드 고르기 단계: 내 카드를 눌러서 버릴 카드 → 공개할 카드를 고른다 (아래 버튼과 같은 동작)
       // 카드를 다 받은 뒤에 고른다 (t.myTurn: 앞선 연출이 끝난 내 차례)
-      const picking = me && !sd && p.phase === 'choose' && !!t.priv?.choices.length && !s.chosen && !t.busy && t.myTurn;
+      const picking = choosing && !s.chosen && !t.busy && t.myTurn && !sent;
+      // 버린 카드: 고른 순간 한 번 덱 쪽으로 날아가 사라진다 (남은 카드 중에서 공개할 카드를 고른다)
+      if (choosing && gone && thrownShown !== gone) {
+        thrownShown = gone;
+        const from = t.lastPos(`pk:${gone}`) ?? { x, y };
+        const fly = playingCard(scene, from.x, from.y, gone, w, {});
+        fly.setDepth(20);
+        sfx('fold');
+        scene.tweens.add({ targets: fly, x: deck.x, y: deck.y, angle: -25, scale: 0.5, alpha: 0, duration: 420, ease: 'Cubic.easeIn', onComplete: () => fly.destroy() });
+      }
       cards.forEach((c, ci) => {
         const isOpen = c !== null && s.open.includes(c);
-        const thrown = picking && c === discard;
         const cx = x + (ci - (cards.length - 1) / 2) * gap;
-        if (thrown) {
-          // 버린 카드는 바로 버린다: 고른 순간 한 번 날아가 사라지고, 남은 카드 중에서 공개할 카드를 고른다
-          if (thrownShown !== c) {
-            thrownShown = c;
-            const fly = playingCard(scene, cx, y, c, w, {});
-            sfx('fold');
-            scene.tweens.add({ targets: fly, x: deck.x, y: deck.y, angle: -25, scale: 0.5, alpha: 0, duration: 420, ease: 'Cubic.easeIn', onComplete: () => fly.destroy() });
-          }
-          return;
-        }
+        const opening = choosing && !!sent && c === sent.open;
         const card = playingCard(scene, cx, y, c, w, {
-          dim: s.folded || thrown,
-          lift: (me && !!c && !isOpen && p.phase !== 'choose') || (picking && !thrown),
+          dim: s.folded,
+          lift: (me && !!c && !isOpen && p.phase !== 'choose') || picking || opening,
         });
-        t.deal(card, `${s.seat}:${ci}`, c, deck);
+        if (opening) label(scene, cx, y - w * 0.98, '공개', clamp(w * 0.22, 13, 20), tc('primary'));
+        if (me && c && !sd) {
+          // 내 카드는 카드마다 따라간다: 버리고 고른 뒤 남은 카드가 새 자리로 미끄러져 간다 (순번으로 따라가면 엉뚱한 카드가 뒤집힌다)
+          t.deal(card, `${s.seat}:c:${c}`, c, deck);
+          t.track(card, `pk:${c}`, { still: choosing && !gone, depth: 0 });
+        } else t.deal(card, `${s.seat}:${ci}`, c, deck);
         if (picking && c) {
           card.setSize(w, w * 1.42).setInteractive({ useHandCursor: true });
           card.on('pointerdown', () => pickChoice(t, c));
@@ -136,6 +146,10 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         return;
       }
       const choices = t.priv.choices;
+      if (sent) {
+        el.innerHTML = '<p class="msg">카드를 골랐어요. 모두 고르면 공개해요…</p>';
+        return;
+      }
       if (discard && !choices.includes(discard)) discard = null;
       const step = discard ? '공개할 카드를 고르세요' : '버릴 카드를 고르세요';
       el.innerHTML = `<p class="msg">${step}</p><div class="row">${choices
@@ -143,7 +157,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         .map((c) => `<button class="btn big" data-c="${c}" ${t.busy ? 'disabled' : ''}>${cardText(c)}</button>`)
         .join('')}${discard ? '<button class="btn" id="undo">다시 고르기</button>' : ''}</div>`;
       el.querySelectorAll<HTMLButtonElement>('[data-c]').forEach((b) => b.addEventListener('click', () => pickChoice(t, b.dataset.c!)));
-      el.querySelector('#undo')?.addEventListener('click', () => ((discard = null), t.redraw()));
+      el.querySelector('#undo')?.addEventListener('click', () => ((discard = null), (thrownShown = null), t.redraw()));
       return;
     }
     if (t.myTurn && p.turn === t.mySeat) {
@@ -175,7 +189,10 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
 
   // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
   replay(ev, t: Ctx) {
+    // 모두 골랐다: 잠깐 알리고 나서 공개 카드를 뒤집는다
+    if (ev.t === 'reveal') return { at: 'pot', text: '카드 공개!', sound: 'cutin', gap: 900 };
     if (typeof ev.seat !== 'number') return null;
+    if (ev.t === 'choose') return { at: ev.seat, text: `${short(t.seatName(ev.seat))} 골랐어요`, sound: 'tick', gap: 450 };
     const who = short(t.seatName(ev.seat));
     const amount = typeof ev.amount === 'number' ? ev.amount : 0;
     switch (ev.t) {
@@ -220,7 +237,16 @@ function pickChoice(t: Ctx, c: string) {
   } else {
     const d = discard;
     discard = null;
-    void t.act({ type: 'choose', discard: d, open: c });
+    sent = { discard: d, open: c };
+    sfx('flip');
+    void t.act({ type: 'choose', discard: d, open: c }).then((ok) => {
+      // 서버가 받지 않았으면 다시 고를 수 있게
+      if (!ok) {
+        sent = null;
+        thrownShown = null;
+        t.redraw();
+      }
+    });
   }
 }
 

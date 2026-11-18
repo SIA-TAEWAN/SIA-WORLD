@@ -53,6 +53,8 @@ function enterRoom(id: string, base: number) {
   skew = 0;
   skewSeen = false;
   lastPhase = '';
+  closeResult();
+  resultFor = '';
   if (autoTimer) clearTimeout(autoTimer);
   autoTimer = null;
   if (countdown) clearTimeout(countdown);
@@ -137,6 +139,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
   back: 'games/casino/',
   backLabel: '카지노',
   noAi: true,
+  stableControls: false,
   pageClass(t: Ctx) {
     const p = t.pub;
     if (!p || t.mySeat === null) return '';
@@ -286,10 +289,22 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     }
     const inSpin = p.players.some((x) => String(x.seat) === me);
     const confirmed = p.confirmed.includes(t.mySeat);
+    if (p.phase !== 'spin') closeResult();
     if (p.phase === 'spin' || p.phase === 'done') {
       const mine = p.bets[me] ?? [];
       if (mine.length) lastBets = mine.map((b) => ({ ...b }));
-      el.innerHTML = `<p class="msg">${p.phase === 'done' ? '' : '결과를 보고 나면 다음 베팅이 열려요'}</p>${board(p, t, false)}`;
+      const acked = (p.acked ?? []).includes(t.mySeat);
+      const stopped = wheelStopped(`${p.spin}:${t.room.round_no}`);
+      let msg = '';
+      if (p.phase === 'spin') {
+        if (!inSpin) msg = '다음 베팅부터 참여해요 (지금은 구경 중)';
+        else if (acked) msg = '다른 사람이 결과를 확인하는 중…';
+        else if (!stopped) msg = '돌아가는 중…';
+        else msg = '결과를 확인하면 다음 판으로 넘어가요';
+      }
+      if (p.phase === 'spin' && inSpin && !acked && stopped && p.landed !== null) showResult(t, p, k);
+      else if (acked) closeResult();
+      el.innerHTML = `<p class="msg">${msg}</p>${board(p, t, false)}`;
       return;
     }
     if (!inSpin) {
@@ -364,6 +379,52 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
 };
 
 /** 회전 연출이 끝났는가 */
+/** 결과 창: 휠이 멈추고 당첨 연출이 지난 뒤 한 번 띄운다. '확인'을 누르면 다음 판 (모두 확인하면 바로, 아니면 마감 때) */
+let resultEl: HTMLElement | null = null;
+let resultFor = '';
+let resultTimer: ReturnType<typeof setTimeout> | null = null;
+function closeResult() {
+  if (resultTimer) clearTimeout(resultTimer);
+  resultTimer = null;
+  resultEl?.remove();
+  resultEl = null;
+}
+function showResult(t: Ctx, p: RoulettePublic, key: string) {
+  const id = `${t.room.id}:${key}`;
+  if (resultFor === id) return;
+  resultFor = id;
+  closeResult();
+  const room = t.room.id;
+  const open = () => {
+    resultTimer = null;
+    if (room !== roomId || p.landed === null || t.mySeat === null) return;
+    const animal = WHEEL[p.landed];
+    const win = p.wins[String(t.mySeat)] ?? 0;
+    const bet = sumOf(p.bets[String(t.mySeat)] ?? []);
+    const line = bet === 0 ? '이번 판은 걸지 않았어요' : win > 0 ? `<b class="win">+${t.fmt(win)}칩 당첨!</b> (건 금액 ${t.fmt(bet)})` : `꽝… (건 금액 ${t.fmt(bet)})`;
+    const d = document.createElement('div');
+    d.className = 'modal';
+    d.innerHTML = `<div class="box result ${win > 0 ? 'win' : ''}"><h3>🎡 결과: ${esc(NAME[animal])}</h3>
+      <p>${SEASONS[seasonOf(p.landed)]} · ${p.landed % 2 === 0 ? '양' : '음'}</p><p>${line}</p>
+      <div class="row"><button class="btn primary big" data-x>확인 ▶ 다음 판</button></div></div>`;
+    document.body.append(d);
+    resultEl = d;
+    sfx(win > 0 ? 'win' : bet > 0 ? 'lose' : 'toggle');
+    d.querySelector<HTMLButtonElement>('[data-x]')!.addEventListener('click', (ev) => {
+      (ev.currentTarget as HTMLButtonElement).disabled = true;
+      void t.act({ type: 'next' }).then((ok) => {
+        // 이미 다음 판으로 넘어갔으면 (마감) 그냥 닫는다
+        if (resultEl === d) closeResult();
+        if (!ok) t.redraw();
+      });
+    });
+  };
+  // 당첨 띠 연출(약 2초)이 지난 뒤에
+  const t0 = spinStart.get(`${p.spin}:${t.room.round_no}`);
+  const wait = t0 === undefined ? 0 : Math.max(0, t0 + SPIN_ANIM + 1900 - performance.now());
+  resultTimer = setTimeout(open, wait);
+}
+
 function wheelStopped(key: string) {
   const t0 = spinStart.get(key);
   return t0 === undefined || performance.now() - t0 >= SPIN_ANIM;

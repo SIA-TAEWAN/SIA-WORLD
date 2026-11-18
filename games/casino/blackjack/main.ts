@@ -97,7 +97,8 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
         const active = isTurn && p.turn?.hand === hi;
         let land = 0;
         h.cards.forEach((c, ci) => {
-          const card = playingCard(scene, hx - hcw * 0.18 * (h.cards.length - 1) + ci * hcw * 0.36, y - ci * hcw * 0.05, c, hcw, { lift: active });
+          // 카드 자리는 장수와 상관없이 고정 (3장 기준 가운데): 한 장 더 받아도 앞 카드가 움직이지 않는다
+          const card = playingCard(scene, hx + (ci - 1) * hcw * 0.36, y - ci * hcw * 0.05, c, hcw, { lift: active });
           const key = cardKey(s.seat, hi, ci, h.fromSplit);
           const cl = t.deal(card, key, c, shoe);
           land = Math.max(land, cl);
@@ -115,7 +116,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
         // 결과는 딜러 카드까지 다 놓인 뒤에 (딜러를 나중에 그릴 수 있어 모아 두었다가 맨 끝에)
         pendingLabels.push({ lt, land, result: !!h.result });
         // 칩은 카드 오른쪽 (아래 이름패와 겹치지 않게)
-        const spread = hcw * 0.18 * (h.cards.length - 1) + hcw * 0.78;
+        const spread = chipLeft ? hcw * 1.14 : hcw * (0.36 * (Math.max(3, h.cards.length) - 2) + 0.78);
         chipStack(scene, chipLeft ? hx - spread : hx + spread, y + hcw * 0.3, h.bet, undefined, clamp(scw * 0.18, 9, 18));
       });
       // 베팅만 하고 카드가 없을 때: 칩은 칸 가운데
@@ -129,7 +130,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     t.anchor('dealer', dx, dy - dcw * 0.6);
     const drawDealer = () => {
       dc.forEach((c, i) => {
-        const card = playingCard(scene, dx + (i - (dc.length - 1) / 2) * dcw * 0.62, dy, c, dcw);
+        const card = playingCard(scene, dx + (i - 1) * dcw * 0.62, dy, c, dcw);
         dealerLand = Math.max(dealerLand, t.deal(card, `d:${i}`, c, shoe));
       });
       showAfter(label(scene, dx, dy + dcw * 0.95, dlabel, clamp(dcw * 0.22, 14, 22)), dealerLand);

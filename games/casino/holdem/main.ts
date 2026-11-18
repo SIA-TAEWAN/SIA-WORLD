@@ -16,17 +16,19 @@ let raiseKey = '';
 const short = (n: string) => n.replace(/^AI /, '');
 
 
-/** 버튼(D)·SB·BB 표시 칩 */
-function marker(scene: PhaserNS.Scene, x: number, y: number, text: string, r: number) {
+/** 딜러 버튼 표시: 흰 알약에 '딜러' (예전의 'D' 한 글자는 뜻을 알기 어려웠다) */
+function marker(scene: PhaserNS.Scene, x: number, y: number, _text: string, r: number) {
   const T = theme();
+  const fs = Math.round(r * 1.15);
+  const tx = scene.add.text(0, 0, '딜러', { fontFamily: T.FONT, fontSize: `${fs}px`, color: tc('ink') }).setOrigin(0.5);
+  const w = tx.width + r * 1.2;
+  const h = r * 2;
   const g = scene.add.graphics();
-  const dealer = text === 'D';
-  g.fillStyle(T.COLOR.outline, 1).fillCircle(x, y + 2, r);
-  g.fillStyle(dealer ? T.COLOR.white : T.COLOR.primary, 1).fillCircle(x, y, r);
-  g.lineStyle(T.SHAPE.lineThin, T.COLOR.outline, 1).strokeCircle(x, y, r);
-  scene.add
-    .text(x, y, text, { fontFamily: T.FONT, fontSize: `${Math.round(r * (dealer ? 1.1 : 0.85))}px`, color: tc('ink') })
-    .setOrigin(0.5);
+  g.fillStyle(T.COLOR.outline, 1).fillRoundedRect(x - w / 2, y - h / 2 + 2, w, h, h / 2);
+  g.fillStyle(T.COLOR.white, 1).fillRoundedRect(x - w / 2, y - h / 2, w, h, h / 2);
+  g.lineStyle(T.SHAPE.lineThin, T.COLOR.outline, 1).strokeRoundedRect(x - w / 2, y - h / 2, w, h, h / 2);
+  tx.setPosition(x, y).setDepth(1);
+  scene.children.bringToTop(tx);
 }
 
 const ui: GameUI<HoldemPublic, HoldemPrivate> = {
@@ -130,7 +132,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       nameTag(scene, Math.max(26, Math.min(x - 52 * k, W - 160 * k)), tagY, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, size: k, sub: sub || undefined });
       t.anchor(`seat:${s.seat}`, x, y - w * 0.72);
       // 딜러 버튼
-      if (s.seat === p.button) marker(scene, x + ((cards.length || 2) / 2) * gap + w * 0.32, y + w * 0.5, 'D', clamp(w * 0.16, 9, 15));
+      if (s.seat === p.button) marker(scene, x + ((cards.length || 2) / 2) * gap + w * 0.42, y + w * 0.5, 'D', clamp(w * 0.16, 9, 15));
       // 이번 라운드에 낸 칩 (가운데 쪽으로)
       if (s.betRound > 0) {
         const toward = me ? -1 : 1;
