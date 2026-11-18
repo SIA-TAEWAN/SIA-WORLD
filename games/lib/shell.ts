@@ -121,6 +121,8 @@ export interface TrackOpts {
   flip?: boolean;
   /** 첫 구간(출발 → 목표 또는 경유점)에 걸리는 시간 (ms, 기본 560). 내가 낸 패처럼 빨리 내려앉아야 하는 카드에 쓴다 */
   dur?: number;
+  /** 움직이는 동안 다른 움직이는 카드보다 얼마나 위에 그릴지 (0~1 사이 작은 값: 늦게 내려앉는 카드일수록 크게) */
+  over?: number;
   /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등). 경유점이 있으면 경유점에 내려앉을 때 */
   onLand?: () => void;
   /** 카드의 제자리 (deal을 먼저 부른 뒤 track을 부를 때: deal 전에 잰 자리를 넘긴다. 없으면 지금 obj 자리) */
@@ -836,7 +838,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           const t = performance.now();
           const at = posAt(r, t);
           obj.setPosition(at.x, at.y).setAngle(at.angle).setScale(at.sx, at.sy);
-          obj.setDepth(opts.depth ?? (t >= r.s1 && t < end ? 11 : 10));
+          // 움직이는 동안은 위로. over: 같은 때 움직이는 카드끼리의 위아래 (늦게 내려앉는 카드가 위)
+          obj.setDepth(opts.depth ?? (t >= r.s1 && t < end ? 11 + (opts.over ?? 0) : 10));
         };
         apply();
         scene.tweens.addCounter({ from: 0, to: 1, duration: end - now, onUpdate: apply, onComplete: apply });

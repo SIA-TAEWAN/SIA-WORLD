@@ -874,8 +874,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const pile = L.pile;
     const myHand = { x: W * 0.6, y: L.handPos(0, 10).y };
     const srcOf = (id: string, pl: CardPlan) => (pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand);
-    // 내가 낸 패는 이미 눌러서 올려 둔 패라 빨리 내려앉는다 (0.3초. 다른 움직임은 0.56초)
-    const myPlayDur = (pl: CardPlan) => (pl.src === 'hand' && pl.seat === me && !pl.floor ? 300 : undefined);
+    // 내가 낸 패는 이미 눌러서 올려 둔 패라 빨리 내려앉는다 (0.22초. 다른 움직임은 0.56초)
+    const myPlayDur = (pl: CardPlan) => (pl.src === 'hand' && pl.seat === me && !pl.floor ? 220 : undefined);
+    // 늦게 내려앉는 패(뒤집은 패)가 먼저 내려앉은 패·바닥 패 위에 덮이게: 출발이 늦을수록 위
+    const overOf = (pl: CardPlan) => Math.min(0.9, pl.startAt / 20000 + (pl.flip ? 0.05 : 0));
     const srcSize = (pl: CardPlan) => (pl.src === 'pile' ? L.pw : pl.seat === me ? cw : L.bw);
     // 낸 패·뒤집은 패가 먹힐 때 먼저 내려앉을 바닥 자리 (시간 순서대로 한 번만 정한다)
     const FS = floorSlots(p.floor, `${t.room.id}:${roundNo}`);
@@ -896,6 +898,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           from: srcOf(id, pl),
           delay: pl.startAt,
           dur: myPlayDur(pl),
+          over: overOf(pl),
           flip: pl.flip,
           sound: pl.flip ? 'flip' : 'deal',
           fromScale: srcSize(pl) / capW,
@@ -917,7 +920,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     let floorSeq = 0;
     floor.forEach((f, i) => {
       const { x, y } = L.floorPos(FS.slots[i], 12);
-      f.cards.forEach((id, j) => {
+      // 한 묶음 안에서는 원래 있던 패가 아래, 이번에 온 패는 온 순서대로 위에 (낸 패 → 뒤집은 패)
+      const arrive = (id: string) => (dealing ? -1 : (plan.get(id)?.startAt ?? -1));
+      const stack = f.cards.map((id, k) => ({ id, k })).sort((a, b) => arrive(a.id) - arrive(b.id) || a.k - b.k);
+      stack.forEach(({ id }, j) => {
         const glow = p.choice?.kind === 'choose' && p.choice.options.includes(id);
         const cx = x + j * fw * 0.4;
         const cy = y + j * fw * 0.06;
@@ -933,6 +939,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
             from: srcOf(id, pl),
             delay: pl.startAt,
             dur: myPlayDur(pl),
+            over: overOf(pl),
             flip: pl.flip,
             sound: pl.flip ? 'flip' : 'deal',
             // 손패(또는 뒷면·더미) 크기에서 바닥 크기로
