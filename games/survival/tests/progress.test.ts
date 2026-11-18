@@ -31,7 +31,7 @@ describe('엽전과 판 결과', () => {
 
   it('상한을 넘는 판은 비정상: 엽전은 상한까지만, 기록·누적·해금·도감에는 넣지 않는다', () => {
     const cap = coinCap('field', 300);
-    expect(cap).toBe(50 + 300 * 3);
+    expect(cap).toBe(300 * 1.5);
     const cheat = run({ time: 300, coins: 999999, kills: 50 });
     expect(validRun(cheat)).toBe(false);
     const out = applyRun(defaultProfile(), {}, cheat, 1);
@@ -52,7 +52,7 @@ describe('엽전과 판 결과', () => {
   });
 
   it('맵 엽전 배율만큼 상한이 높다', () => {
-    expect(coinCap('underworld', 600)).toBe(Math.floor((50 + 1800) * 2.5));
+    expect(coinCap('underworld', 600)).toBe(Math.floor(600 * 1.5 * 2.5));
   });
 
   it('받지 않는 보고: 10분 초과, 서버가 잰 시간보다 긴 생존 시간, 10분을 채우지 않은 클리어, 7일 지난 판', () => {

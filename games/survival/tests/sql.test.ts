@@ -15,11 +15,13 @@ import { LIMITS, characterPrice } from '../src/game/progress';
  * 서버 SQL(supabase/migrations/038_survival.sql)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  */
-const sql = readFileSync(fileURLToPath(new URL('../../../supabase/migrations/038_survival.sql', import.meta.url)), 'utf8');
+const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
+// 뒤 파일이 같은 함수를 다시 정의하면 그쪽이 실제 값이다
+const sql = read('038_survival.sql') + '\n' + read('039_survival_hardening.sql');
 
 /** 함수 하나의 본문 */
 function body(name: string): string {
-  const at = sql.indexOf(`function public.${name}(`);
+  const at = sql.lastIndexOf(`create or replace function public.${name}(`);
   expect(at, name).toBeGreaterThan(0);
   return sql.slice(at, sql.indexOf('$$;', at));
 }
@@ -116,7 +118,7 @@ describe('랭킹 뷰', () => {
 });
 
 describe('SQL의 권한 규칙', () => {
-  const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]);
+  const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]).filter((f, i, a) => a.indexOf(f) === i);
 
   it('안에서만 쓰는 함수(_로 시작)는 아무에게도 실행 권한을 주지 않는다', () => {
     const inner = fns.filter((f) => f.startsWith('_'));
@@ -131,7 +133,8 @@ describe('SQL의 권한 규칙', () => {
     const open = fns.filter((f) => !f.startsWith('_'));
     expect(open.sort()).toEqual(['survival_buy_upgrade', 'survival_finish', 'survival_now', 'survival_profile', 'survival_reset_upgrades', 'survival_start', 'survival_unlock_character']);
     for (const f of open) {
-      const head = sql.slice(sql.indexOf(`function public.${f}(`), sql.indexOf('$$', sql.indexOf(`function public.${f}(`)));
+      const at = sql.lastIndexOf(`create or replace function public.${f}(`);
+      const head = sql.slice(at, sql.indexOf('$$', at));
       expect(head, f).toContain('security definer set search_path = public');
       if (f === 'survival_now') continue;
       expect(sql, f).toMatch(new RegExp(`revoke all on function public\\.${f}\\([^;]*\\) from public, anon;`));

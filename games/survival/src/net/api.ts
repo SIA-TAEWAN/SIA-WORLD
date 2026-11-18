@@ -149,7 +149,7 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
 // ───────────────────────── 서버 ─────────────────────────
 
 /** 서버 함수가 낸 오류인가 (raise exception → 코드 P0001). 그 밖(연결 끊김·시간 초과)은 통신 실패로 본다 */
-const rejected = (error: { code?: string; message?: string } | null) => !!error && typeof error.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) && !error.code.startsWith('08');
+const rejected = (error: { code?: string; message?: string } | null) => !!error && error.code === 'P0001';
 
 export function createSupabaseApi(sb: SupabaseClient, uid: string, store: Store): SurvivalApi {
   const profileRpc = async (fn: string, args?: Record<string, unknown>): Promise<SurvivalProfile> => {
@@ -163,7 +163,8 @@ export function createSupabaseApi(sb: SupabaseClient, uid: string, store: Store)
         p_run: r.run, p_time: r.time, p_kills: r.kills, p_level: r.level, p_coins: r.coins, p_cleared: r.cleared,
         p_boss_kills: r.bossKills, p_cakes: r.cakes, p_codex: r.codex,
       });
-      if (error) return rejected(error) ? { outcome: 'rejected', why: error.message } : { outcome: 'failed' };
+      // 'too early': 판 시작 알림이 늦게 닿았을 때. 조금 뒤에 다시 보내면 통과하므로 버리지 않는다
+      if (error) return rejected(error) && !/too early/.test(error.message ?? '') ? { outcome: 'rejected', why: error.message } : { outcome: 'failed' };
       const d = data as { profile?: unknown; result?: Partial<FinishResult> } | null;
       if (!d?.result) return { outcome: 'failed' };
       const res = d.result;

@@ -64,13 +64,15 @@ export const LIMITS = {
   kills_per_sec: 30,
   level_base: 5,
   level_per_sec: 0.2,
-  coins_base: 50,
-  coins_per_sec: 3,
+  coins_base: 0,
+  coins_per_sec: 1.5,
   cakes_base: 5,
   cakes_per_sec: 0.1,
   boss_max: 3,
   boss1_time: 180,
-  coin_min_time: 60,
+  coin_min_time: 120,
+  count_min_time: 30,
+  open_runs: 5,
   codex_max: 40,
 };
 
@@ -188,7 +190,9 @@ export function applyRun(
   now: number,
 ): { profile: SurvivalProfile; records: Record<string, SurvivalRecord>; result: FinishResult } {
   const valid = validRun(run);
-  const coins = Math.min(run.coins, coinCap(run.map, run.time));
+  // 너무 짧은 판은 엽전·누적·기록·도감에 들어가지 않는다 (서버와 같다)
+  const counted = run.time >= LIMITS.count_min_time;
+  const coins = counted ? Math.min(run.coins, coinCap(run.map, run.time)) : 0;
   const p: SurvivalProfile = {
     ...profile,
     coins: profile.coins + coins,
@@ -198,7 +202,7 @@ export function applyRun(
   };
   const rec = { ...records };
   const result: FinishResult = { coins, valid, newRecord: false, unlockedCharacters: [], unlockedMaps: [] };
-  if (!valid) return { profile: p, records: rec, result };
+  if (!valid || !counted) return { profile: p, records: rec, result };
 
   p.totals.kills += run.kills;
   p.totals.cakes += run.cakes;
@@ -225,7 +229,7 @@ export function applyRun(
   }
   p.codex = {
     enemies: merge(profile.codex.enemies, run.codex.enemies, ENEMIES.map((e) => e.id)),
-    bosses: merge(profile.codex.bosses, run.codex.bosses, BOSSES.map((e) => e.id)),
+    bosses: merge(profile.codex.bosses, run.time < LIMITS.boss1_time ? [] : run.codex.bosses, BOSSES.map((e) => e.id)),
     weapons: merge(profile.codex.weapons, run.codex.weapons, WEAPONS.map((e) => e.id)),
     passives: merge(profile.codex.passives, run.codex.passives, PASSIVES.map((e) => e.id)),
   };
