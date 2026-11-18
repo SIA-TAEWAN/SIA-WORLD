@@ -20,8 +20,7 @@ import {
   type Wallet,
   type WalletModule,
   type WorldUser,
-  type ZodiacModule,
-} from './world.ts';
+  type ZodiacModule, type PresenceHandle } from './world.ts';
 
 export interface GameEventLite {
   id: number;
@@ -267,6 +266,10 @@ function loadSound() {
   );
 }
 
+/** 이 게임에 지금 들어와 있는 사람 수 (shared/presence.js). 실시간 연결을 못 했으면 null */
+let here: PresenceHandle | null = null;
+let hereMax = 30;
+
 export async function bootGame(ui: GameUI) {
   document.title = ui.title;
   linkThemeCss();
@@ -283,6 +286,19 @@ export async function bootGame(ui: GameUI) {
     mods = { room, wallet, z };
   } catch {
     app().innerHTML = `<div class="center">SIA WORLD에 연결하지 못했어요.<br/><br/><button class="btn primary" onclick="location.reload()">다시 시도</button></div>`;
+    return;
+  }
+  // 접속 인원: 게임마다 30명까지 (시아탱크 대기실과 같은 방식). 연결을 못 하면 막지 않는다
+  try {
+    const pres = await world.presence();
+    hereMax = pres.GAME_MAX;
+    here = await pres.enterGame(pres.cardChannel(ui.game), me);
+  } catch {
+    here = null;
+  }
+  if (here?.full) {
+    app().innerHTML = `<div class="center">지금은 사람이 가득 찼어요 (최대 ${hereMax}명).<br/>잠시 후 다시 들어와 주세요.<br/><br/>
+      <button class="btn primary" onclick="location.reload()">다시 시도</button> <a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a></div>`;
     return;
   }
   const roomId = new URLSearchParams(location.search).get('room');
@@ -326,9 +342,17 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
         <p class="hint" id="c-hint"></p>
       </div>
     </section>
-    <section class="card"><h2>방 목록</h2><div id="rooms" class="rooms"><p class="empty">불러오는 중…</p></div></section>
+    <section class="card"><h2>방 목록 <small class="here" id="here"></small></h2><div id="rooms" class="rooms"><p class="empty">불러오는 중…</p></div></section>
   </div>`;
   const root = app();
+  // 지금 이 게임에 들어와 있는 사람 수 (방에 있는 사람 포함)
+  const hereEl = $(root, '#here');
+  const paintHere = () => {
+    if (!hereEl.isConnected) return void offHere?.();
+    hereEl.textContent = here && here.count() > 0 ? `· 지금 ${here.count()}/${hereMax}명` : '';
+  };
+  const offHere = here?.onChange(paintHere);
+  paintHere();
 
   const paintAvatar = () => {
     const a = m.z.ZODIAC.find((x) => x.id === avatar)!;

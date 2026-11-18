@@ -1,7 +1,7 @@
 import type { Backend, Channel, Member, Room, RoomPlayer } from './backend';
 
-/** 대기실 최대 동시 접속 인원 기본값 (운영 설정 app_settings.tank_lobby_max가 있으면 그 값, 2026-11-17 기본 50) */
-export const LOBBY_MAX = 50;
+/** 대기실 최대 동시 접속 인원 기본값 (운영 설정 app_settings.tank_lobby_max가 있으면 그 값. 2026-11-18부터 모든 게임 30명) */
+export const LOBBY_MAX = 30;
 
 export interface LobbyMeta {
   name: string;

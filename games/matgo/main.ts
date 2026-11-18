@@ -722,6 +722,26 @@ function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]
 }
 
 let shake = false;
+/** 방금 누른 내 패 (서버 답이 오기 전에 누른 것이 바로 보이게) */
+let picked: string | null = null;
+
+/** 패 내기: 누르자마자 그 패를 올리고 소리를 낸 뒤 서버에 보낸다 (답을 기다리느라 반응이 늦어 보이지 않게) */
+function playCard(t: Ctx, id: string) {
+  if (t.busy || picked) return;
+  picked = id;
+  sfx('tick');
+  const withShake = shake && !!t.priv?.shakeable.includes(cardById(id).month);
+  t.redraw();
+  void t.act({ type: 'play', card: id, shake: withShake }).then((ok) => {
+    // 서버가 받지 않았으면 다시 고를 수 있게
+    if (!ok && picked === id) {
+      picked = null;
+      t.redraw();
+    }
+    // 받았는데도 새 상태가 오지 않으면 (통신 문제) 4초 뒤에는 풀어 준다
+    if (ok) setTimeout(() => picked === id && ((picked = null), t.redraw()), 4000);
+  });
+}
 /** 5광 컷인을 이미 보여 준 판:자리 */
 const fiveGwang = new Set<string>();
 
@@ -906,15 +926,17 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const shown = new Set<string>([...p.floor.flatMap((f) => f.cards), ...Object.values(P).flatMap(allCaptured)]);
     const hand = (t.priv?.hand ?? []).filter((id) => !shown.has(id));
     const canPlay = t.myTurn && p.choice?.kind === 'play';
+    // 방금 누른 패: 서버 답을 기다리는 동안에도 바로 위로 올라와 보인다 (손패에서 빠지면 지운다)
+    if (picked && !hand.includes(picked)) picked = null;
     // 바닥에 같은 달이 있어 먹을 수 있는 패는 노란 테두리로 (고를 수 있는 패와 같은 표시)
     const floorMonths = new Set(p.floor.filter((f) => f.cards.length).map((f) => cardById(f.cards[0]).month));
     hand.forEach((id, i) => {
       const { x, y } = L.handPos(i, hand.length);
       t.track(
-        hwatu(scene, x, y, id, cw, {
-          lift: canPlay,
-          glow: floorMonths.has(cardById(id).month),
-          onClick: canPlay && !t.busy ? () => void t.act({ type: 'play', card: id, shake: shake && !!t.priv?.shakeable.includes(cardById(id).month) }) : undefined,
+        hwatu(scene, x, id === picked ? y - cw * 0.5 : y, id, cw, {
+          lift: canPlay || id === picked,
+          glow: id === picked || floorMonths.has(cardById(id).month),
+          onClick: canPlay && !t.busy && !picked ? () => playCard(t, id) : undefined,
         }),
         id,
         { from: pile, delay: dealing ? i * 2 * DEAL_GAP : 0, sound: dealing ? 'deal' : undefined },

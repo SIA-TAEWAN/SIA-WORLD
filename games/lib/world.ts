@@ -175,7 +175,21 @@ function load<T>(name: string): Promise<T> {
   return p as Promise<T>;
 }
 
+/** shared/presence.js (게임마다 지금 몇 명 · 정원 30명) */
+export interface PresenceHandle {
+  full: boolean;
+  count(): number;
+  onChange(fn: () => void): () => void;
+  leave(): Promise<void>;
+}
+export interface PresenceModule {
+  GAME_MAX: number;
+  cardChannel(game: GameId): string;
+  enterGame(topic: string, user: WorldUser): Promise<PresenceHandle>;
+}
+
 export const world = {
+  presence: () => load<PresenceModule>('presence'),
   auth: () => load<AuthModule>('auth'),
   room: () => load<RoomModule>('room'),
   wallet: () => load<WalletModule>('wallet'),

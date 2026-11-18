@@ -1,6 +1,6 @@
 import './style.css';
 import { LOCAL_MODE, getApi } from './net/api';
-import { RaceLobby } from './net/lobby';
+import { LOBBY_MAX, RaceLobby } from './net/lobby';
 import { cleanRoomCode, validRoomCode } from './net/room';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { loadChar, loadEngine, nav, screen, state } from './ui/app';
@@ -55,7 +55,18 @@ async function start() {
   state.api = await getApi(user.userId);
   // 대기실 채널: 방 목록을 받고, 내가 들어간 방을 알린다 (연결을 기다리지 않는다)
   state.lobby = new RaceLobby(state.api, state.user);
-  void state.lobby.join();
+  // 정원(30명)을 확인한 뒤에 들어간다 (연결을 못 하면 막지 않는다)
+  await state.lobby.join();
+  if (state.lobby.status === 'full') {
+    const root = screen(
+      `<div class="connecting">지금은 사람이 가득 찼어요 (최대 ${LOBBY_MAX}명).<br/>잠시 후 다시 들어와 주세요.<br/><br/>
+        <button class="btn primary" id="retry">다시 시도</button> <a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a></div>`,
+      'center',
+      null,
+    );
+    root.querySelector('#retry')!.addEventListener('click', () => location.reload());
+    return;
+  }
   // 주소에 방 코드가 있으면 바로 그 방으로 (친구 초대 링크)
   const code = cleanRoomCode(new URLSearchParams(location.search).get('room'));
   if (validRoomCode(code)) nav.room(code);

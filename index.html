@@ -81,6 +81,9 @@
     .game-card .gi { padding: 10px 14px 14px; }
     .game-card h3 { margin: 0; font-size: var(--fs-panel); font-weight: normal; }
     .game-card p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+    .game-card .here { position: absolute; top: 10px; right: 10px; padding: 2px 10px; border-radius: var(--radius-pill);
+      border: var(--line-thin) solid var(--outline); background: var(--panel); color: var(--ink); font-size: 14px; }
+    .game-card .here.full { background: var(--pink); color: var(--white); }
     /* 관리자: 닫힌 게임 카드 · 오픈 설정 */
     .game-card { position: relative; }
     .game-card.closed img { filter: grayscale(.8); opacity: .7; }
@@ -198,12 +201,13 @@
 
   <script type="module">
     import {
-      signIn, signUp, signOut, getCurrentUser, safeRedirect, checkLegacy,
+      signIn, signUp, signOut, getCurrentUser, safeRedirect, checkLegacy, takeKickedNotice, onSignedOut,
       isLoginIdTaken, isNicknameTaken, loginIdProblem, nicknameProblem, passwordProblem, AuthError,
     } from './shared/auth.js';
     import { GAMES, loadGameOpen, setGameOpen } from './shared/games.js';
     import { claimAttendance, refill, canRefill, formatAmount, REFILLS_PER_DAY } from './shared/wallet.js';
     import { openRanking } from './shared/ranking-dialog.js';
+    import { watchGameCounts, GAME_MAX } from './shared/presence.js';
 
     const $ = (s) => document.querySelector(s);
     const views = ['loading', 'login-view', 'signup-view', 'lobby-view'];
@@ -221,6 +225,17 @@
     }
 
     // ---------- 로비 ----------
+    /** 게임마다 지금 들어와 있는 사람 수 (실시간) */
+    let gameCounts = {};
+    let stopCounts = null;
+    function paintCounts() {
+      document.querySelectorAll('.game-card .here').forEach((el) => {
+        const n = gameCounts[el.dataset.game];
+        el.textContent = typeof n === 'number' ? `👥 ${Math.min(n, GAME_MAX)}/${GAME_MAX}명` : '';
+        el.classList.toggle('hidden', typeof n !== 'number');
+        el.classList.toggle('full', n >= GAME_MAX);
+      });
+    }
     /** 오픈 여부를 바꾼 횟수 (늦게 온 예전 응답으로 화면을 덮지 않게) */
     let openSeq = 0;
     /** 게임별 오픈 여부 (서버 값. 못 읽으면 목록의 기본값) */
@@ -245,9 +260,14 @@
             tag.className = 'tag'; tag.textContent = '닫힘';
             a.append(tag);
           }
+          // 지금 들어와 있는 사람 수 (게임마다 최대 30명)
+          const here = document.createElement('span');
+          here.className = 'here'; here.dataset.game = g.id;
+          a.append(here);
           return a;
         }),
       );
+      paintCounts();
       // 관리자: 게임마다 열기/닫기
       $('#admin-box').classList.toggle('hidden', !user.isAdmin);
       if (!user.isAdmin) return;
@@ -290,6 +310,8 @@
       $('#admin-err').textContent = '';
       renderGames(user);
       show('lobby-view');
+      // 게임별 접속 인원 (한 번만 구독)
+      stopCounts ??= watchGameCounts((c) => { gameCounts = c; paintCounts(); });
       void loadWallet(user);
       // 서버의 오픈 여부로 다시 그린다 (못 읽으면 기본값 그대로)
       const seq = openSeq;
@@ -342,13 +364,16 @@
     // ---------- 랭킹 (시아탱크와 같은 창: shared/ranking-dialog.js) ----------
     $('#rank-btn').addEventListener('click', () => openRanking({ meId: me?.userId ?? null, first: 'tank' }));
     $('#logout').addEventListener('click', async () => {
+      stopCounts?.();
+      stopCounts = null;
       await signOut();
       showLogin();
     });
 
     // ---------- 로그인 ----------
     function showLogin() {
-      $('#li-err').textContent = '';
+      // 다른 기기에서 같은 계정으로 로그인해 밀려난 경우 알려 준다
+      $('#li-err').textContent = takeKickedNotice() ? '다른 기기에서 로그인해서 여기는 로그아웃됐어요' : '';
       $('#li-pw').value = '';
       show('login-view');
       $('#li-id').focus();
@@ -457,6 +482,12 @@
     });
 
     // ---------- 시작 ----------
+    // 다른 기기에서 같은 계정으로 로그인하면 여기는 로그아웃된다 → 로그인 화면으로
+    onSignedOut(() => {
+      stopCounts?.();
+      stopCounts = null;
+      showLogin();
+    });
     try {
       const user = await getCurrentUser();
       if (user) afterLogin(user);

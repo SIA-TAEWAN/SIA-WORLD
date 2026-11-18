@@ -1,3 +1,4 @@
+import { LOBBY_MAX } from '../net/lobby';
 import { LANES, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
 import { formatTime, tierOf } from '../game/ranking';
 import { LOCAL_MODE } from '../net/api';
@@ -69,10 +70,11 @@ export function showLobby() {
     const box = root.querySelector('#rooms');
     if (!box || !lobby) return;
     const rooms = lobby.rooms;
-    const key = `${lobby.status}|${JSON.stringify(rooms)}`;
+    const key = `${lobby.status}|${lobby.count}|${JSON.stringify(rooms)}`;
     if (key === lastRooms) return;
     lastRooms = key;
-    $('#rooms-n').textContent = rooms.length ? `${rooms.length}개` : '';
+    // 방 수와 지금 들어와 있는 사람 수 (방에 있는 사람 포함, 최대 30명)
+    $('#rooms-n').textContent = [rooms.length ? `${rooms.length}개` : '', lobby.count > 0 ? `지금 ${lobby.count}/${LOBBY_MAX}명` : ''].filter(Boolean).join(' · ');
     if (!rooms.length) {
       box.innerHTML =
         lobby.status === 'error'

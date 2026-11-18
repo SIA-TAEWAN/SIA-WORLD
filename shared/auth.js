@@ -105,6 +105,7 @@ export async function signUp({ loginId, password, password2, nickname, legacyPas
     claimed = typeof n === 'number' ? n : 0;
   }
   profileCache = null;
+  await claimSession(true);
   const user = await getCurrentUser();
   return { user, claimed };
 }
@@ -125,12 +126,118 @@ export async function signIn(loginId, password) {
     await supabase.auth.signOut();
     throw new AuthError('회원 정보를 찾지 못했어요. 관리자에게 알려 주세요');
   }
+  // 이 브라우저를 '지금 접속한 곳'으로 올린다 → 다른 기기에 로그인돼 있던 같은 계정은 곧 로그아웃된다
+  await claimSession(true);
+  watchSession();
   return user;
 }
 
 export async function signOut() {
   profileCache = null;
-  await supabase.auth.signOut();
+  stopWatch();
+  dropToken();
+  // 이 브라우저만 로그아웃한다 (다른 기기의 로그인은 건드리지 않는다)
+  await supabase.auth.signOut({ scope: 'local' });
+}
+
+// ---------- 동시 접속 막기 (한 계정은 한 기기·브라우저에서만) ----------
+// 로그인하면 이 브라우저가 표식(token)을 서버에 올린다. 다른 곳에서 같은 계정으로 로그인하면 서버의 표식이 바뀌고,
+// 여기서는 그것을 보고(10초마다 · 화면으로 돌아올 때) 스스로 로그아웃한다. 같은 브라우저의 탭들은 표식을 같이 쓴다.
+
+const TOKEN_KEY = 'sia-world-session-token';
+const KICK_KEY = 'sia-world-kicked';
+const CHECK_MS = 10_000;
+
+function readToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+function dropToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* 저장소를 못 써도 계속 */
+  }
+}
+function newToken() {
+  const t = crypto.randomUUID();
+  try {
+    localStorage.setItem(TOKEN_KEY, t);
+  } catch {
+    /* 저장소를 못 쓰면 이 탭에서만 */
+  }
+  return t;
+}
+
+let myToken = null;
+/** 이 브라우저를 내 계정의 '지금 접속한 곳'으로 올린다. fresh: 새로 로그인했다 (표식을 새로 만든다) */
+async function claimSession(fresh) {
+  myToken = (!fresh && readToken()) || newToken();
+  const { error } = await supabase.rpc('claim_session', { p_token: myToken });
+  // 서버에 아직 함수가 없거나 통신이 안 되면 막지 않는다
+  if (error) myToken = null;
+}
+
+/** 다른 곳에서 로그인해서 밀려났다는 표시를 한 번 꺼낸다 (로그인 화면이 안내에 쓴다) */
+export function takeKickedNotice() {
+  try {
+    const v = sessionStorage.getItem(KICK_KEY);
+    sessionStorage.removeItem(KICK_KEY);
+    return !!v;
+  } catch {
+    return false;
+  }
+}
+
+let watchTimer = null;
+let watching = false;
+function stopWatch() {
+  if (watchTimer) clearInterval(watchTimer);
+  watchTimer = null;
+  watching = false;
+}
+async function checkSession() {
+  if (!watching) return;
+  const { data: s } = await supabase.auth.getSession();
+  const uid = s.session?.user?.id;
+  if (!uid) return;
+  const { data, error } = await supabase.from('user_sessions').select('token').eq('user_id', uid).maybeSingle();
+  if (error || !watching) return; // 못 읽으면 다음에 다시
+  // 같은 브라우저의 다른 탭이 새로 로그인했으면 그 표식을 따라간다
+  const local = readToken();
+  if (local) myToken = local;
+  if (!data) return void claimSession(false); // 아직 올린 적이 없다 (이 기능 전부터 로그인해 있던 경우)
+  if (!myToken || data.token === myToken) return;
+  // 다른 기기에서 로그인했다 → 이 브라우저만 로그아웃
+  stopWatch();
+  profileCache = null;
+  dropToken();
+  try {
+    sessionStorage.setItem(KICK_KEY, '1');
+  } catch {
+    /* 안내만 못 띄운다 */
+  }
+  await supabase.auth.signOut({ scope: 'local' });
+}
+/** 내 접속이 아직 유효한지 지켜본다 (로그인한 페이지마다 한 번) */
+function watchSession() {
+  if (watching) return;
+  watching = true;
+  watchTimer = setInterval(() => void checkSession(), CHECK_MS);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void checkSession());
+  window.addEventListener('focus', () => void checkSession());
+}
+
+/** 로그인돼 있는 페이지에서: 표식이 없으면 올리고(예전부터 로그인해 있던 브라우저), 지켜보기 시작 */
+async function ensureSession() {
+  if (watching) return;
+  myToken = readToken();
+  if (!myToken) await claimSession(false);
+  watchSession();
+  void checkSession();
 }
 
 // ---------- 현재 사용자 ----------
@@ -147,6 +254,8 @@ export async function getCurrentUser() {
   if (error) throw new AuthError('서버와 통신하지 못했어요. 잠시 후 다시 시도해 주세요');
   if (!p) return null;
   profileCache = { userId: uid, loginId: p.login_id, nickname: p.nickname, isAdmin: !!p.is_admin };
+  // 동시 접속 확인을 시작한다 (다른 기기에서 로그인하면 여기는 로그아웃)
+  void ensureSession();
   return profileCache;
 }
 
