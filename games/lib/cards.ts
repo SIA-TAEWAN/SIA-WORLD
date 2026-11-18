@@ -119,6 +119,7 @@ export function playingCard(scene: Scene, x: number, y: number, code: string | n
   const line = Math.max(T.SHAPE.lineThin, w * 0.025);
   const depth = Math.max(2, w * 0.04);
   const c = scene.add.container(x, y - (opts.lift ? w * 0.16 : 0));
+  c.setData('kind', 'card');
   const g = scene.add.graphics();
   g.fillStyle(C.outline, 1).fillRoundedRect(-w / 2, -h / 2 + depth, w, h, r);
   c.add(g);
@@ -159,6 +160,7 @@ export function chipStack(scene: Scene, x: number, y: number, amount: number, la
   const C = T.COLOR;
   const chip = T.CHIPS.find((c) => amount >= c.min) ?? T.CHIPS[T.CHIPS.length - 1];
   const c = scene.add.container(x, y);
+  c.setData('kind', 'chips');
   const g = scene.add.graphics();
   const n = amount >= 10000 ? 4 : amount >= 1000 ? 3 : 2;
   const step = size * 0.3;
@@ -244,4 +246,46 @@ export type { Container };
 export function viewSize(scene: PhaserNS.Scene) {
   const z = scene.cameras.main?.zoom || 1;
   return { W: scene.scale.width / z, H: scene.scale.height / z };
+}
+
+// ---------- 판 정리 ----------
+
+/**
+ * 판 정리 연출: 테이블 위의 카드를 한곳(to: 카드 더미)으로 차례로 모으고, 칩은 사라지게 한다.
+ * 더미 자리에 이미 놓인 카드(더미 자체)는 그대로 둔다. → 걸리는 시간(ms)
+ *   order: 'near' 더미에서 가까운 카드부터 · 'bottom' 화면 아래(플레이어) 카드부터 위(딜러)로
+ */
+export function sweepTable(
+  scene: Scene,
+  to: { x: number; y: number },
+  opts: { stagger?: number; dur?: number; order?: 'near' | 'bottom'; onStart?: (i: number, n: number) => void } = {},
+): number {
+  const stagger = opts.stagger ?? 45;
+  const dur = opts.dur ?? 340;
+  const kind = (o: unknown) => (o as { getData?: (k: string) => unknown }).getData?.('kind');
+  const list = [...scene.children.list];
+  const dist = (c: { x: number; y: number }) => Math.hypot(c.x - to.x, c.y - to.y);
+  const cards = (list.filter((o) => kind(o) === 'card') as unknown as PhaserNS.GameObjects.Container[]).filter((c) => dist(c) > 28);
+  cards.sort((a, b) => (opts.order === 'bottom' ? b.y - a.y || a.x - b.x : dist(a) - dist(b)));
+  cards.forEach((c, i) => {
+    c.setDepth(40 + i);
+    scene.tweens.add({
+      targets: c,
+      x: to.x,
+      y: to.y,
+      angle: (i % 2 ? 1 : -1) * 14,
+      scaleX: 0.62,
+      scaleY: 0.62,
+      delay: i * stagger,
+      duration: dur,
+      ease: 'Cubic.easeInOut',
+      onStart: () => opts.onStart?.(i, cards.length),
+      onComplete: () => c.setVisible(false),
+    });
+  });
+  for (const o of list) {
+    if (kind(o) !== 'chips') continue;
+    scene.tweens.add({ targets: o, alpha: 0, scaleX: 0.6, scaleY: 0.6, duration: 260, ease: 'Quad.easeIn' });
+  }
+  return cards.length ? (cards.length - 1) * stagger + dur + 140 : 320;
 }

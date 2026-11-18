@@ -420,8 +420,16 @@ function showResult(t: Ctx, p: RoulettePublic, key: string) {
       }
     }, 400);
     sfx(win > 0 ? 'win' : bet > 0 ? 'lose' : 'toggle');
-    d.querySelector<HTMLButtonElement>('[data-x]')!.addEventListener('click', (ev) => {
+    d.querySelector<HTMLButtonElement>('[data-x]')!.addEventListener('click', async (ev) => {
       (ev.currentTarget as HTMLButtonElement).disabled = true;
+      // 판 정리: 결과 창을 접고 베팅판의 칩·표시를 걷은 뒤에 다음 판으로
+      d.style.display = 'none';
+      const boardEl = document.querySelector('.rboard');
+      if (boardEl && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        boardEl.classList.add('sweep');
+        sfx('chip');
+        await new Promise((r) => setTimeout(r, 520));
+      }
       void t.act({ type: 'next' }).then((ok) => {
         // 이미 다음 판으로 넘어갔으면 (마감) 그냥 닫는다
         if (resultEl === d) closeResult();

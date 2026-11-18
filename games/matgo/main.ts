@@ -854,6 +854,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const pile = L.pile;
     const myHand = { x: W * 0.6, y: L.handPos(0, 10).y };
     const srcOf = (id: string, pl: CardPlan) => (pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand);
+    // 내가 낸 패는 이미 눌러서 올려 둔 패라 빨리 내려앉는다 (0.3초. 다른 움직임은 0.56초)
+    const myPlayDur = (pl: CardPlan) => (pl.src === 'hand' && pl.seat === me && !pl.floor ? 300 : undefined);
     const srcSize = (pl: CardPlan) => (pl.src === 'pile' ? L.pw : pl.seat === me ? cw : L.bw);
     // 낸 패·뒤집은 패가 먹힐 때 먼저 내려앉을 바닥 자리 (시간 순서대로 한 번만 정한다)
     const FS = floorSlots(p.floor, `${t.room.id}:${roundNo}`);
@@ -873,6 +875,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         return {
           from: srcOf(id, pl),
           delay: pl.startAt,
+          dur: myPlayDur(pl),
           flip: pl.flip,
           sound: pl.flip ? 'flip' : 'deal',
           fromScale: srcSize(pl) / capW,
@@ -909,6 +912,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           t.track(card, id, {
             from: srcOf(id, pl),
             delay: pl.startAt,
+            dur: myPlayDur(pl),
             flip: pl.flip,
             sound: pl.flip ? 'flip' : 'deal',
             // 손패(또는 뒷면·더미) 크기에서 바닥 크기로
@@ -944,13 +948,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     hand.forEach((id, i) => {
       const { x, y } = L.handPos(i, hand.length);
       t.track(
-        hwatu(scene, x, id === picked ? y - cw * 0.5 : y, id, cw, {
+        hwatu(scene, x, id === picked ? y - cw * 0.3 : y, id, cw, {
           lift: canPlay || id === picked,
           glow: id === picked || floorMonths.has(cardById(id).month),
           onClick: canPlay && !t.busy && !picked ? () => playCard(t, id) : undefined,
         }),
         id,
-        { from: pile, delay: dealing ? i * 2 * DEAL_GAP : 0, sound: dealing ? 'deal' : undefined },
+        // 누른 패는 움직임 없이 바로 올라온다 (올라오는 동안 다음 연출이 기다리지 않게)
+        { from: pile, delay: dealing && id !== picked ? i * 2 * DEAL_GAP : 0, sound: dealing ? 'deal' : undefined, still: id === picked },
       );
     });
   },

@@ -425,6 +425,9 @@ input:focus { outline: var(--line) solid var(--primary); }
 .rl-top .amount.warn { color: var(--lose); }
 .rboard { display: grid; gap: 4px; width: min(560px, 100%); margin: 4px auto; }
 .rboard.off { opacity: 0.92; }
+/* 판 정리: 결과를 확인하면 베팅판의 칩·다른 사람 표시가 위로 걷히고 당첨 칸 표시가 꺼진다 */
+.rboard.sweep .rc .amt, .rboard.sweep .rc .ocs { animation: rl-sweep 0.5s ease-in forwards; }
+@keyframes rl-sweep { to { opacity: 0; translate: 0 -26px; scale: 0.5; } }
 .rhint { margin: 0; text-align: center; font-size: 12px; color: var(--ink-soft); }
 .rrow { display: grid; grid-template-columns: 1.1fr 1fr 0.42fr 1fr 0.42fr 1fr 0.42fr; gap: 3px; padding: 3px; border-radius: var(--radius-item); border: var(--line-thin) solid var(--outline); }
 .rrow.spring { background: var(--roulette-spring); }

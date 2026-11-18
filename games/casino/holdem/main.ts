@@ -1,7 +1,7 @@
 /** 텍사스 홀덤 화면: 가운데 공용 카드 5장 · 나는 아래 · 다른 사람은 왼쪽·위·오른쪽 (세로 화면은 위 한 줄) */
 import { HOLDEM_MANUAL } from '../../lib/manuals.ts';
-import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
+import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { HoldemPrivate, HoldemPublic } from '../../../supabase/functions/_shared/holdem.ts';
 import { rewindHoldem } from '../../../supabase/functions/_shared/holdem-rewind.ts';
 import type PhaserNS from 'phaser';
@@ -13,6 +13,8 @@ const STREET: Record<string, string> = { preflop: '프리플롭', flop: '플롭'
 /** 레이즈(베트) 금액: 이번 라운드 총액 (슬라이더) */
 let raiseTo = 0;
 let raiseKey = '';
+/** 카드 더미 자리 (판 정리 때 카드를 이리로 모은다) */
+let deckPos = { x: 0, y: 0 };
 /** 마지막으로 그린 공개 상태 (한 동작씩 되돌려 보여 줄 때 기준) */
 let lastPub: HoldemPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
@@ -59,6 +61,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     const center = { x: W / 2, y: portrait ? H * 0.43 : H * 0.38 };
     // 카드 더미: 가로는 공용 카드 오른쪽 위, 세로는 공용 카드 바로 위 오른쪽 (화면 밖으로 나가지 않게)
     const deck = portrait ? { x: Math.min(W - bc * 0.4 - 16, center.x + bc * 2.1), y: center.y - bc * 1.55 } : { x: center.x + bc * 2.6 + 6, y: center.y - bc * 1.15 };
+    deckPos = deck;
     for (let i = 0; i < 3; i++) playingCard(scene, deck.x + i * 2, deck.y - i * 2, null, bc * 0.6);
     if (!p) {
       label(scene, W / 2, H / 2, '모두 레디하면 시작해요', clamp(cw * 0.26, 18, 30));
@@ -213,6 +216,11 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       .join('');
     const split = r.pots.some((x) => x.winners.length > 1) ? '<p>동점이라 판돈을 나눴어요</p>' : '';
     return `<h3>♥️ 판 결과</h3>${split}<table>${rows}</table>`;
+  },
+
+  // 판 정리: 공용 카드부터 (더미에서 가까운 순) 모두의 카드를 더미로 모으고 칩을 치운다
+  cleanup(t: Ctx) {
+    return sweepTable(t.scene, deckPos, { stagger: 45, onStart: (i) => i % 3 === 0 && sfx('deal', { volume: 0.5 }) });
   },
 
   // 한 동작씩: 베팅 → 공용 카드 → 다음 베팅 순서로, 앞 동작의 카드 연출이 끝난 뒤에 다음 동작 (판 시작은 예전 방식)

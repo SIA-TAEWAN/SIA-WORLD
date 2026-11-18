@@ -1,7 +1,7 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { POKER_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
 import { rewindPoker } from '../../../supabase/functions/_shared/poker-rewind.ts';
 
@@ -18,6 +18,8 @@ let thrownShown: string | null = null;
 /** 서버에 보낸 고르기 (답이 올 때까지 화면을 그대로 유지) */
 let sent: { discard: string; open: string } | null = null;
 let roundKey = '';
+/** 카드 더미 자리 (판 정리 때 카드를 이리로 모은다) */
+let deckPos = { x: 0, y: 0 };
 /** 마지막으로 그린 공개 상태 (한 동작씩 되돌려 보여 줄 때 기준) */
 let lastPub: PokerPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
@@ -46,6 +48,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     const oc = portrait ? Math.min(cw * 0.6, W / nOpp / 3.9) : cw * 0.6;
     const center = { x: W / 2, y: portrait ? H * 0.42 : H * 0.36 };
     const deck = { x: center.x + cw * 1.15, y: center.y };
+    deckPos = deck;
     for (let i = 0; i < 3; i++) playingCard(scene, deck.x + i * 2, deck.y - i * 2, null, oc);
     if (!p) {
       label(scene, W / 2, H / 2, '모두 레디하면 시작해요', clamp(cw * 0.3, 18, 30));
@@ -219,6 +222,11 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       })
       .join('');
     return `<h3>♠️ 판 결과</h3><table>${rows}</table>`;
+  },
+
+  // 판 정리: 모든 카드를 더미로 차례로 모으고 (가까운 카드부터) 판돈 칩을 치운다
+  cleanup(t: Ctx) {
+    return sweepTable(t.scene, deckPos, { stagger: 40, onStart: (i) => i % 3 === 0 && sfx('deal', { volume: 0.5 }) });
   },
 
   // 한 동작씩: 내 카드 공개 → 다음 카드 → 다른 사람 베팅 순서로, 앞 동작의 카드 연출이 끝난 뒤에 다음 동작 (판 시작은 예전 방식)

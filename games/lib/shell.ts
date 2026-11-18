@@ -96,6 +96,8 @@ interface MoveRec {
   flip: boolean;
   scale0: number;
   viaScale: number;
+  /** 첫 구간(출발 → 목표 또는 경유점)에 걸리는 시간 (ms) */
+  dur: number;
 }
 
 export interface TrackOpts {
@@ -117,6 +119,8 @@ export interface TrackOpts {
   viaScale?: number;
   /** 뒤집으며 출발 (더미에서 뒤집은 패) */
   flip?: boolean;
+  /** 첫 구간(출발 → 목표 또는 경유점)에 걸리는 시간 (ms, 기본 560). 내가 낸 패처럼 빨리 내려앉아야 하는 카드에 쓴다 */
+  dur?: number;
   /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등). 경유점이 있으면 경유점에 내려앉을 때 */
   onLand?: () => void;
   /** 카드의 제자리 (deal을 먼저 부른 뒤 track을 부를 때: deal 전에 잰 자리를 넘긴다. 없으면 지금 obj 자리) */
@@ -167,6 +171,11 @@ export interface GameUI<P = any, Q = any> {
    * 한 번에 여러 차례가 들어온 상태에서 내 차례의 컷인이 상대 차례 연출 뒤에 뜨지 않게 한다 (맞고).
    */
   cutinDelay?(ev: GameEventLite, t: TableCtx<P, Q>): number | null;
+  /**
+   * 판 정리 연출 (결과 창을 닫은 뒤): 카드를 더미로 모으는 등 게임에 맞게 테이블을 치우고, 걸리는 시간(ms)을 돌려준다.
+   * 연출이 끝나면 테이블을 비우고 그제서야 레디 버튼을 켠다. 없으면 예전처럼 결과 창을 닫자마자 레디.
+   */
+  cleanup?(t: TableCtx<P, Q>): number;
   /** 판 도중에도 지갑이 바뀌는 게임 (룰렛: 확정 때 빠지고 결과 때 들어온다) → 상태가 올 때마다 금액을 다시 읽는다 */
   liveWallet?: boolean | ((pub: any) => number);
   /** AI가 없는 게임 (룰렛): 빈자리는 자리 줄·방 목록에 보이지 않는다 */
@@ -580,7 +589,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   /** 순서별 출발 시각: 낸 패 0 → 뒤집은 패 0.76초 → 가져가기 1.65초 */
   const ORDER_AT = [0, 650, 1400];
   const MOVE_MS = 560;
-  const moveEnd = (r: MoveRec) => (r.via ? r.s2 : r.s1) + MOVE_MS;
+  const moveEnd = (r: MoveRec) => (r.via ? r.s2 + MOVE_MS : r.s1 + r.dur);
   /** 시각 t의 위치·기울기·크기 */
   const posAt = (r: MoveRec, t: number) => {
     const leg = (fx: number, fy: number, tx2: number, ty2: number, p: number) => {
@@ -594,7 +603,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const target = r.via ?? { x: r.x, y: r.y };
     const endScale1 = r.via ? r.viaScale : 1;
     if (t <= r.s1) return { x: r.fromX, y: r.fromY, angle: 0, sx: r.scale0 * (r.flip ? 0.02 : 1), sy: r.scale0 };
-    const p1 = Math.min(1, (t - r.s1) / MOVE_MS);
+    const p1 = Math.min(1, (t - r.s1) / r.dur);
     if (p1 < 1 || !r.via) {
       const a = leg(r.fromX, r.fromY, target.x, target.y, p1);
       const base = r.scale0 + (endScale1 - r.scale0) * a.e;
@@ -615,6 +624,14 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   /** 진행 중인 카드 연출이 끝나는 시각 (컷인·결과 창은 그 뒤에) */
   let animEnd = 0;
   // 연출 재생기 상태 (아래 paint·paintControls가 먼저 쓰므로 위에 둔다)
+  /**
+   * 판 정리 (ui.cleanup이 있는 게임): wait 결과 창을 보는 중 → run 정리 연출 중 → done 테이블을 비웠다 (레디 가능).
+   * tidyRound의 판에만 해당한다 (새 판이 오면 저절로 무시된다).
+   */
+  let tidy: 'none' | 'wait' | 'run' | 'done' = 'none';
+  let tidyRound = -1;
+  const tidying = () => (tidy === 'wait' || tidy === 'run') && tidyRound === st?.round_no && room?.status === 'waiting';
+  const tidied = () => tidy === 'done' && tidyRound === st?.round_no && room?.status === 'waiting';
   let replaying = false;
   let inApply = false;
   /** 다시 불러올 때마다 늘린다: 그 전에 꺼내 둔 재생 항목은 적용하지 않는다 */
@@ -713,7 +730,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       mySeat: mine?.seat_no ?? null,
       resultSeat: priv && st && priv.round_no === st.round_no ? priv.seat_no : null,
       // 판이 끝났어도 그 판의 연출을 재생하는 중이면 마지막 상태까지 그대로 보여 준다
-      pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length) && st?.round_no ? st.public_state : null,
+      // 판 정리를 마친 뒤에는 빈 테이블 (다음 판을 기다린다)
+      pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length) && st?.round_no && !tidied() ? st.public_state : null,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       privWait,
       privNext: pendingPriv && st && pendingPriv.round_no === st.round_no ? pendingPriv.hand : null,
@@ -786,7 +804,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           const animate = !opts.still && dealReady && !reduceMotion && (prev ? true : !!opts.from);
           const s1 = now + ORDER_AT[Math.min(2, opts.order ?? 0)] + (animate ? (opts.delay ?? 0) : 0);
           const via = animate && opts.via ? opts.via : null;
+          const dur = Math.max(120, opts.dur ?? MOVE_MS);
           rec = {
+            dur,
             x: tx,
             y: ty,
             fromX: animate ? fx : tx,
@@ -794,7 +814,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             via,
             s1,
             // 경유점(바닥)에 내려앉은 뒤 '가져가기' 차례에 떠난다
-            s2: via ? Math.max(s1 + MOVE_MS + 120, now + (opts.viaLeave ?? ORDER_AT[2])) : s1,
+            s2: via ? Math.max(s1 + dur + 120, now + (opts.viaLeave ?? ORDER_AT[2])) : s1,
             flip: animate && !!opts.flip,
             scale0: animate && opts.fromScale && Math.abs(opts.fromScale - 1) > 0.05 ? opts.fromScale : 1,
             viaScale: via ? (opts.viaScale ?? 1) : 1,
@@ -803,7 +823,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           if (animate && opts.sound) sfx(opts.sound, { delay: Math.max(0, rec.s1 - now) });
           if (animate && opts.onLand && scene) {
             const land = opts.onLand;
-            scene.time.delayedCall(Math.max(0, rec.s1 + MOVE_MS - now), () => !closed && land());
+            scene.time.delayedCall(Math.max(0, rec.s1 + dur - now), () => !closed && land());
           }
         }
         if (!scene || reduceMotion) return;
@@ -998,6 +1018,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       el.innerHTML = '<p class="msg">자리를 기다리는 중이에요…</p>';
       return;
     }
+    // 결과를 확인하고 판 정리가 끝난 뒤에 레디
+    if (tidying()) {
+      el.innerHTML = `<p class="msg">${tidy === 'wait' ? '결과를 확인하면 판을 정리해요' : '판 정리 중이에요…'}</p>`;
+      return;
+    }
     const enough = !!wallet && wallet[cur] >= m.wallet.minEntry(room.base_unit);
     const allHumansReady = seats.filter((x) => x.user_id && !x.left_game).every((x) => x.ready);
     el.innerHTML = `<div class="row">
@@ -1052,6 +1077,25 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     resultShownFor = st.round_no;
     afterAnim(() => showResultBox(c));
   };
+  /** 판 정리 연출을 돌리고, 끝나면 테이블을 비운 뒤 레디 버튼을 켠다 */
+  const runTidy = (round: number) => {
+    const finish = () => {
+      if (closed || tidyRound !== round) return;
+      tidy = 'done';
+      paint();
+    };
+    const c = tidying() ? ctx() : null;
+    if (!c || !ui.cleanup || reduceMotion || !c.pub) return finish();
+    tidy = 'run';
+    paintControls();
+    let ms = 0;
+    try {
+      ms = ui.cleanup(c);
+    } catch (e) {
+      console.warn('cleanup', e);
+    }
+    setTimeout(finish, Math.max(0, Math.min(4000, ms)));
+  };
   const showResultBox = (c: TableCtx) => {
     const d = document.createElement('div');
     d.className = 'modal';
@@ -1066,7 +1110,17 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     else if (lost) sfx('lose');
     d.innerHTML = `<div class="box result ${won ? 'win' : ''}">${sparkles}${ui.resultHtml(c)}<div class="row"><button class="btn primary" data-x>확인</button></div></div>`;
     document.body.append(d);
-    $(d, '[data-x]').addEventListener('click', () => d.remove());
+    // 결과를 확인하면 판을 정리하고 (게임에 맞는 연출) 그 뒤에 레디 버튼
+    const round = st?.round_no ?? -1;
+    if (ui.cleanup && room?.status === 'waiting') {
+      tidy = 'wait';
+      tidyRound = round;
+      paintControls();
+    }
+    $(d, '[data-x]').addEventListener('click', () => {
+      d.remove();
+      if (tidy === 'wait' && tidyRound === round) runTidy(round);
+    });
     void m.wallet.ensureWallet().then((w) => ((wallet = w), paintMoney(), paintControls()));
   };
 
@@ -1157,6 +1211,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     paintSeats();
     if ((replaying || queue.length) && !inApply) {
       // 연출 재생 중: 테이블은 재생이 끝난 뒤 새 상태로 그린다 (판이 끝나며 자리·방 정보가 먼저 와도 테이블이 비지 않게)
+      paintControls();
+      return;
+    }
+    if (tidy === 'run' && tidying()) {
+      // 판 정리 연출 중: 다시 그리면 모으던 카드가 제자리로 돌아간다 → 끝난 뒤에 그린다
       paintControls();
       return;
     }

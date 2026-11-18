@@ -1,8 +1,8 @@
 /** 블랙잭 화면: 딜러(위) + 플레이어 자리(아래), 베팅·히트·스탠드·더블·스플릿 */
 import type PhaserNS from 'phaser';
 import { BLACKJACK_MANUAL } from '../../lib/manuals.ts';
-import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
+import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
+import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { BjPublic, BjResult } from '../../../supabase/functions/_shared/blackjack.ts';
 import { rewindBlackjack } from '../../../supabase/functions/_shared/blackjack-rewind.ts';
 
@@ -12,6 +12,8 @@ const RESULT: Record<BjResult, string> = { blackjack: '블랙잭!', win: '승', 
 const ACTION: Record<string, string> = { hit: '히트', stand: '스탠드', double: '더블다운', split: '스플릿' };
 
 let betAmount = 0;
+/** 카드 통(슈) 자리 (판 정리 때 카드를 이리로 걷는다) */
+let shoePos = { x: 0, y: 0 };
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 /** 카드 자리 이름 (연출용): 스플릿으로 갈라져도 원래 두 장은 같은 이름을 쓴다 → 뒤집히지 않고 제 핸드로 옮겨 간다 */
@@ -45,6 +47,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     // 카드 크기 (가로 화면은 자리 수로, 세로 화면은 왼쪽 칸 너비로)
     const cw = portrait ? clamp(Math.min(LW / 3, H / 8), 40, 96) : clamp(Math.min(W / (cols * 2.6), H / 4.3), 40, 124);
     const shoe = portrait ? { x: 18 + cw * 0.42, y: H * 0.46 } : { x: W - cw * 1.1, y: H * 0.19 };
+    shoePos = shoe;
     for (let i = 0; i < 4; i++) playingCard(scene, shoe.x + i * 2, shoe.y - i * 2, null, cw * 0.8);
     if (!p) {
       label(scene, portrait ? W / 2 : W / 2, H / 2 - (portrait ? 0 : cw * 0.6), '모두 레디하면 시작해요', clamp(cw * 0.3, 18, 30));
@@ -278,6 +281,11 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
 
   // 한 동작씩: 새 상태를 사건 하나씩 되돌린 중간 화면들 (베팅 → 딜 → 히트·스플릿 → 딜러 → 정산)
   rewind: rewindBlackjack,
+
+  // 판 정리: 딜러가 플레이어 카드부터 (아래에서 위로) 걷어 카드 통으로 가져가고, 베팅 칩을 치운다
+  cleanup(t: Ctx) {
+    return sweepTable(t.scene, shoePos, { stagger: 55, order: 'bottom', onStart: (i) => i % 2 === 0 && sfx('deal', { volume: 0.5 }) });
+  },
 
   cutin(ev, t: Ctx) {
     if (ev.t === 'blackjack') return ev.seat === t.mySeat ? '블랙잭!' : null;
