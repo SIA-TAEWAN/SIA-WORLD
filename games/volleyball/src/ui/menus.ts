@@ -66,7 +66,7 @@ export function showLobby() {
       <img class="hero-char l" src="${zodiacFullUrl(state.char)}" alt="" /><img class="hero-char r" src="${zodiacFullUrl(others[0])}" alt="" />
     </div>
     <div class="main-actions two"><button class="btn primary big" id="create">방 만들기 ▶</button><button class="btn big" id="ai">AI 대전</button></div>
-    <div class="card rooms-card"><h3>방 목록 <span class="soft" id="rooms-n"></span></h3><div class="rooms" id="rooms"><p class="empty">불러오는 중…</p></div></div>
+    <div class="card rooms-card"><h3>방 목록 <span class="soft" id="rooms-n"></span><span class="people" id="people"></span></h3><div class="rooms" id="rooms"><p class="empty">불러오는 중…</p></div></div>
     <div class="sub-actions"><button class="btn" id="rank">🏆 랭킹</button><button class="btn" id="howto">❓ 방법</button></div>`,
     'lobby',
     'lobby',
@@ -87,6 +87,9 @@ export function showLobby() {
   const paintRooms = () => {
     const box = root.querySelector('#rooms');
     if (!box || !lobby) return;
+    // 지금 시아배구에 들어와 있는 사람 수 (방에 있는 사람 포함)
+    const people = lobby.status === 'ok' && lobby.count > 0 ? `지금 ${Math.min(lobby.count, lobby.max)}/${lobby.max}명` : '';
+    if ($('#people').textContent !== people) $('#people').textContent = people;
     const rooms = lobby.rooms;
     const key = `${lobby.status}|${JSON.stringify(rooms)}`;
     if (key === lastRooms) return;

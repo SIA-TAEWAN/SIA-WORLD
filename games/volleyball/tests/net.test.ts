@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Member } from '../src/net/channel';
 import { roomsFrom, type LobbyMeta } from '../src/net/lobby';
+import { LOBBY_MAX, lobbyCount, lobbyOrder, lobbyPlace } from '../src/net/capacity';
 import { cleanStart } from '../src/net/start';
 import { bothReady, cleanTitle, hostOf, players, roomTitle, seatOf, type MemberInfo } from '../src/net/seats';
 
 const lm = (key: string, name: string, room: string | null, at = 0, extra: Partial<LobbyMeta> = {}): Member<LobbyMeta> => ({
   key,
-  meta: { name, room, title: '', at, char: 'tiger', busy: false, ...extra },
+  meta: { name, seen: 1, room, title: '', at, char: 'tiger', busy: false, ...extra },
 });
 const mem = (id: string, at: number, extra: Partial<MemberInfo> = {}): MemberInfo => ({ id, name: id, char: 'tiger', ready: false, at, title: '', ...extra });
 
@@ -140,5 +141,49 @@ describe('받은 시작 알림 검사 (L3)', () => {
     expect(s.players[0].char).toBe('tiger');
     expect(s.players[1].name).toBe('이름 없음');
     expect(cleanStart({ ...ok(), seed: -5.7 }, NOW)!.seed).toBe(5);
+  });
+});
+
+describe('접속 인원과 정원 (최대 30명)', () => {
+  const who = (key: string, seen: unknown) => ({ key, meta: { seen } });
+  const crowd = (n: number) => Array.from({ length: n }, (_, i) => who(`u${String(i).padStart(2, '0')}`, 1000 + i));
+
+  it('정원은 30명', () => {
+    expect(LOBBY_MAX).toBe(30);
+  });
+
+  it('먼저 온 순서(seen)로 줄 세운다. 같은 시각이면 사용자 ID 순', () => {
+    expect(lobbyOrder([who('c', 300), who('a', 200), who('b', 200), who('d', 100)])).toEqual(['d', 'a', 'b', 'c']);
+  });
+
+  it('30번째까지는 들어가고, 31번째는 거절된다', () => {
+    const list = crowd(31);
+    expect(lobbyCount(list)).toBe(31);
+    expect(lobbyPlace(list, 'u29')).toBe(29);
+    expect(lobbyPlace(list, 'u29') >= LOBBY_MAX).toBe(false);
+    expect(lobbyPlace(list, 'u30')).toBe(30);
+    expect(lobbyPlace(list, 'u30') >= LOBBY_MAX).toBe(true);
+    // 누가 나가면 자리가 난다
+    expect(lobbyPlace(list.filter((m) => m.key !== 'u03'), 'u30') >= LOBBY_MAX).toBe(false);
+  });
+
+  it('같은 계정으로 연 두 탭은 한 명으로 센다 (가장 먼저 들어온 시각)', () => {
+    const list = [who('a', 100), who('b', 150), who('a', 900), who('c', 200)];
+    expect(lobbyCount(list)).toBe(3);
+    expect(lobbyOrder(list)).toEqual(['a', 'b', 'c']);
+    // 29명 + 같은 계정의 탭 5개 = 30명 → 그 계정은 들어간다
+    const full = [...crowd(29), ...Array.from({ length: 5 }, (_, i) => who('me', 5000 + i))];
+    expect(lobbyCount(full)).toBe(30);
+    expect(lobbyPlace(full, 'me') >= LOBBY_MAX).toBe(false);
+  });
+
+  it('방에 들어가 있는 사람도 접속 인원에 포함된다 (대기실 채널에 남아 있다)', () => {
+    expect(lobbyCount([lm('a', 'A', 'room01', 1), lm('b', 'B', null), lm('c', 'C', 'room01', 2)])).toBe(3);
+  });
+
+  it('들어온 시각이 없는 정보는 맨 뒤로 보낸다. 목록에 없는 사람의 순번은 맨 뒤', () => {
+    expect(lobbyOrder([who('x', undefined), who('y', NaN), who('a', 5), who('z', 'soon')])).toEqual(['a', 'x', 'y', 'z']);
+    expect(lobbyPlace(crowd(30), 'nobody')).toBe(30);
+    expect(lobbyCount([])).toBe(0);
   });
 });
