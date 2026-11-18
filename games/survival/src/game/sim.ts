@@ -65,7 +65,7 @@ export function createRun(cfg: RunConfig): State {
     })),
     projectiles: makePool(LIMIT.projectiles, () => ({
       kind: 0, mode: 0, slot: 0, weapon: -1, x: 0, y: 0, vx: 0, vy: 0, r: 0, dmg: 0, life: 0, pierce: 0,
-      sx: 0, sy: 0, tx: 0, ty: 0, t: 0, dur: 0, a: 0, b: 0, c: 0, every: 0, hit: new Int32Array(8), hitN: 0, dead: false,
+      sx: 0, sy: 0, tx: 0, ty: 0, t: 0, dur: 0, a: 0, b: 0, c: 0, every: 0, hit: new Int32Array(LIMIT.enemyPool), hitN: 0, dead: false,
     })),
     zones: makePool(LIMIT.zones, () => ({ kind: 0, owner: 0, slot: 0, weapon: -1, x: 0, y: 0, r: 0, delay: 0, windup: 0, life: 0, maxLife: 0, every: 1, next: 0, dmg: 0, tick: 0, slow: 0, dead: false })),
     pickups: makePool(LIMIT.pickups, () => ({ kind: 0, x: 0, y: 0, value: 0, magnet: false, dead: false })),
@@ -241,8 +241,15 @@ function updateProjectiles(s: State) {
       const m = collect(s, pr.x, pr.y, pr.r);
       for (let k = 0; k < m && !pr.dead; k++) {
         const e = enemies[s.hits[k]];
+        // 같은 투사체는 같은 적을 한 번만 때린다 (맞힌 적을 모두 기억한다. 칸은 적 풀 크기만큼)
+        const mem = Math.min(pr.hitN, pr.hit.length);
         let seen = false;
-        for (let h = 0; h < pr.hitN && h < pr.hit.length; h++) if (pr.hit[h] === e.uid) seen = true;
+        for (let h = 0; h < mem; h++) {
+          if (pr.hit[h] === e.uid) {
+            seen = true;
+            break;
+          }
+        }
         if (seen) continue;
         pr.hit[pr.hitN++ % pr.hit.length] = e.uid;
         hurtEnemy(s, e, pr.dmg, pr.weapon);
@@ -498,7 +505,7 @@ export function step(s: State, input: Input) {
     p.x += mx * speed * TICK;
     p.y += my * speed * TICK;
     // 지형: 대나무·담·물길은 지나갈 수 없다 (비스듬히 닿으면 미끄러지듯 돌아간다)
-    if (pushOut(s.map.terrain, s.terrainSeed, p.x, p.y, PLAYER.r)) {
+    if (pushOut(s.map.terrain, s.terrainSeed, p.x, p.y, PLAYER.r, true)) {
       p.x = OUT.x;
       p.y = OUT.y;
     }

@@ -2,6 +2,8 @@ import type { RunReport } from '../game/progress';
 
 /**
  * 못 올린 판 결과의 임시 보관 (PRD 11장: 실패하면 기기에 임시 보관 후 다음 접속 때 재전송).
+ * 결과는 보내기 전에 먼저 보관하고, 서버가 받았거나 거절했을 때 지운다 (보내는 도중에 창이 닫혀도 남는다.
+ * 같은 판이 두 번 올라가는 것은 서버가 'already finished' 로 막는다).
  * 보관하는 곳(localStorage)과 보내는 함수를 바깥에서 받아서, 화면 없이 시험할 수 있다.
  */
 export interface Store {
@@ -41,7 +43,7 @@ function writePending(store: Store, uid: string, list: RunReport[]) {
   }
 }
 
-/** 못 올린 결과를 보관한다 (같은 판은 한 번만) */
+/** 결과를 보관한다 (같은 판은 한 번만: 나중 것이 앞의 것을 덮어쓴다) */
 export function keepPending(store: Store, uid: string, report: RunReport) {
   const list = readPending(store, uid).filter((r) => r.run !== report.run);
   list.push(report);
@@ -54,11 +56,18 @@ export function dropPending(store: Store, uid: string, run: string) {
 
 /**
  * 보관해 둔 결과를 다시 보낸다. 받았거나 서버가 거절한 것은 지우고, 통신 실패만 남긴다.
+ * skip: 지금 다른 곳에서 보내는 중인 판은 건너뛴다 (같은 판을 두 번 보내지 않게).
  * → 이번에 올라간 판 수
  */
-export async function flushPending(store: Store, uid: string, send: (r: RunReport) => Promise<SendOutcome>): Promise<number> {
+export async function flushPending(
+  store: Store,
+  uid: string,
+  send: (r: RunReport) => Promise<SendOutcome>,
+  skip: (run: string) => boolean = () => false,
+): Promise<number> {
   let sent = 0;
   for (const r of readPending(store, uid)) {
+    if (skip(r.run)) continue;
     const out = await send(r).catch((): SendOutcome => 'failed');
     if (out === 'failed') continue;
     if (out === 'ok') sent++;

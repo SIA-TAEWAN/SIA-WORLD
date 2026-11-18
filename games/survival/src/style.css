@@ -225,6 +225,8 @@ em > .ico { margin: 0 auto; }
 .clock.final { color: var(--pink); }
 .counts { display: flex; gap: calc(var(--u) * 8); font-size: calc(var(--u) * 24); }
 .counts span { background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: calc(var(--u) * 2) calc(var(--u) * 12); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* 판 시작을 서버에 알리지 못한 판: 시계 아래의 작은 알약 (키 배지와 같은 바탕) */
+.norec { background: var(--outline); color: var(--white); border-radius: var(--radius-pill); padding: calc(var(--u) * 2) calc(var(--u) * 12); font-size: calc(var(--u) * 20); white-space: nowrap; }
 .hud-row .icon-btn { pointer-events: auto; justify-self: end; width: calc(var(--u) * 72); height: calc(var(--u) * 72); min-width: 36px; min-height: 36px; font-size: calc(var(--u) * 32); }
 /* 보스 체력 바 */
 .bossbar { align-self: center; width: 78%; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 4); }

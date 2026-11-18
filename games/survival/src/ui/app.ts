@@ -44,6 +44,19 @@ export const state = {
   map: 'field',
 };
 
+/** 프로필이 바뀌면 부를 함수들 (지금 떠 있는 화면이 엽전·해금 표시를 다시 그린다) */
+const profileWatchers = new Set<() => void>();
+/** 서버가 준 새 프로필을 넣는다. 판 저장 답이 화면이 바뀐 뒤에 와도, 그때 떠 있는 화면이 새 값으로 다시 그려진다 */
+export function setProfile(p: SurvivalProfile) {
+  state.profile = p;
+  for (const fn of [...profileWatchers]) fn();
+}
+/** 프로필이 바뀔 때마다 fn 을 부른다 → 그만 듣는 함수 (화면을 떠날 때 부른다) */
+export function watchProfile(fn: () => void): () => void {
+  profileWatchers.add(fn);
+  return () => void profileWatchers.delete(fn);
+}
+
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */
 export const nav = {
   main: () => {},

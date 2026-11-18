@@ -8,7 +8,7 @@ import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, loadEngine, nav, openSettings, saveChar, screen, state, toast } from './app';
+import { esc, loadEngine, nav, openSettings, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
 import { whyText } from './upgrade';
@@ -24,9 +24,10 @@ const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includ
 export function showMain() {
   const others = ZODIAC_IDS.filter((c) => c !== state.char).sort(() => Math.random() - 0.5);
   let off: (() => void) | null = null;
+  const coinsText = () => `🪙 ${state.profile.coins.toLocaleString()}`;
   const root = screen(
     `<div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><span class="people" id="people"></span><span class="spacer"></span>
-       <span class="coins-pill" title="가진 엽전">🪙 ${state.profile.coins.toLocaleString()}</span>
+       <span class="coins-pill" id="mycoins" title="가진 엽전">${coinsText()}</span>
        <button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
      <h1 class="logo">시아서바이벌</h1>
      <p class="tagline">몰려오는 요괴를 10분만 버텨라!</p>
@@ -48,8 +49,13 @@ export function showMain() {
      <p class="soft foot">${esc(state.user.name)} 님 · 공격은 저절로, 움직이기만 하면 돼요</p>`,
     'main',
     'main',
-    () => off?.(),
+    () => {
+      off?.();
+      offProfile();
+    },
   );
+  // 판 저장 답이 메인에 온 뒤에 도착하면 엽전을 새로 적는다
+  const offProfile = watchProfile(() => (root.querySelector('#mycoins')!.textContent = coinsText()));
   root.querySelector('#go')!.addEventListener('click', () => {
     sfx('click');
     nav.select();
@@ -95,6 +101,7 @@ export function showCharSelect() {
      <button class="btn primary big" id="next">맵 고르기 ▶</button>`,
     'select',
     'main',
+    () => off(),
   );
   const info = root.querySelector('#info') as HTMLElement;
   const next = root.querySelector('#next') as HTMLButtonElement;
@@ -126,6 +133,8 @@ export function showCharSelect() {
     next.textContent = !locked ? '맵 고르기 ▶' : price !== null ? `🪙 ${price.toLocaleString()}닢으로 풀기` : `🔒 ${c.unlock.text}`;
   };
   paint();
+  // 판 저장 답이 늦게 오면 엽전·해금 표시를 새로 그린다
+  const off = watchProfile(paint);
   root.querySelector('#chars')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
@@ -144,7 +153,7 @@ export function showCharSelect() {
       if (characterPrice(pick) === null || busy || !state.api) return;
       busy = true;
       try {
-        state.profile = await state.api.unlockCharacter(pick);
+        setProfile(await state.api.unlockCharacter(pick));
         sfx('newRecord');
         toast(`${CHARACTER_BY_ID[pick].nick}와(과) 함께할 수 있어요!`);
       } catch (e) {
@@ -165,6 +174,7 @@ export function showCharSelect() {
 
 export function showMapSelect() {
   let pick = MAPS.find((m) => m.id === state.map && m.ready && !mapLocked(m.id))?.id ?? MAPS[0].id;
+  let off = () => {};
   const card = (m: (typeof MAPS)[number], i: number) => {
     const open = m.ready && !mapLocked(m.id);
     const bosses = m.bosses.map((b) => BOSSES[BOSS_INDEX[b.id]]?.name ?? '').join(' · ');
@@ -182,9 +192,15 @@ export function showMapSelect() {
      <button class="btn primary big" id="start">시작 ▶</button>`,
     'select',
     'main',
+    () => off(),
   );
   const paint = () => root.querySelectorAll<HTMLElement>('.map').forEach((b) => b.classList.toggle('sel', b.dataset.m === pick));
   paint();
+  // 판 저장 답이 늦게 와서 새 맵이 풀리면 목록을 새로 그린다
+  off = watchProfile(() => {
+    root.querySelector('#maps')!.innerHTML = MAPS.map(card).join('');
+    paint();
+  });
   root.querySelector('#maps')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.map') as HTMLElement | null;
     if (!b) return;

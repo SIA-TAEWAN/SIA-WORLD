@@ -7,7 +7,7 @@ import {
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
 import type { RunSummary } from '../src/game/sim';
-import { createLocalApi, ApiError } from '../src/net/api';
+import { createLocalApi, createSupabaseApi, ApiError, type RpcClient } from '../src/net/api';
 import { lobbyCount, lobbyOrder, lobbyPlace, LOBBY_MAX } from '../src/net/capacity';
 import { PENDING_MAX, flushPending, keepPending, readPending, type SendOutcome, type Store } from '../src/net/pending';
 
@@ -299,7 +299,8 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     const out = (await api.finish({ ...run({ time: 310, coins: 120 }), run: id }))!;
     expect(out.result).toMatchObject({ coins: 120, newRecord: true, unlockedCharacters: ['rabbit'] });
     // 한 판은 한 번만
-    await expect(api.finish({ ...run({ time: 310, coins: 120 }), run: id })).rejects.toThrow('no run');
+    await expect(api.finish({ ...run({ time: 310, coins: 120 }), run: id })).rejects.toThrow('already finished');
+    await expect(api.finish({ ...run(), run: 'local-999' })).rejects.toThrow('no run');
     const bought = await api.buyUpgrade('might');
     expect(bought).toMatchObject({ coins: 20, upgrades: { might: 1 } });
     await expect(api.buyUpgrade('might')).rejects.toThrow('not enough coins');
@@ -307,12 +308,167 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     // 다시 열어도 그대로 (기기에 저장)
     const again = createLocalApi(st, () => t);
     expect(await again.loadProfile()).toMatchObject({ coins: 120, unlockedCharacters: ['rat', 'ox', 'tiger', 'rabbit'] });
-    // 새 판을 시작하면 끝나지 않은 이전 판은 버려진다
-    const a = (await again.start('field', 'rabbit'))!;
-    const b = (await again.start('field', 'rabbit'))!;
-    t += 50_000;
-    await expect(again.finish({ ...run({ time: 30 }), run: a })).rejects.toThrow('no run');
-    expect((await again.finish({ ...run({ time: 30, coins: 5 }), run: b }))!.profile.coins).toBe(125);
+  });
+
+  it('한 번에 한 판 (서버 039 와 같다): 새 판을 시작해도 이전 판은 남고, 겹치는 판은 끝낼 때 거절한다', async () => {
+    let t = 5_000_000;
+    const st = memStore();
+    const api = createLocalApi(st, () => t);
+    // 통신이 끊겨 끝을 못 보낸 판 a, 그 뒤에 한 판 b: 둘 다 받는다 (플레이 시간이 겹치지 않는다)
+    const a = (await api.start('field', 'rat'))!;
+    t += 100_000;
+    const b = (await api.start('field', 'rat'))!;
+    t += 100_000;
+    expect((await api.finish({ ...run({ time: 90, coins: 10 }), run: b }))!.profile.coins).toBe(10);
+    expect((await api.finish({ ...run({ time: 90, coins: 7 }), run: a }))!.profile.coins).toBe(17);
+    // 판 둘을 같이 열어 두고 한꺼번에 보고하면 두 번째는 겹쳐서 거절
+    const c = (await api.start('field', 'rat'))!;
+    const d = (await api.start('field', 'rat'))!;
+    t += 60_000;
+    await api.finish({ ...run({ time: 40, coins: 5 }), run: c });
+    await expect(api.finish({ ...run({ time: 40, coins: 5 }), run: d })).rejects.toThrow('overlap');
+    expect((await api.loadProfile()).coins).toBe(22);
+    // 여유 5초 안에서 맞닿은 판은 겹친 것으로 보지 않는다: c 는 [시작, 시작+35초) 를 썼다
+    t -= 60_000 - 35_000;
+    const e = (await api.start('field', 'rat'))!;
+    t += 40_000;
+    expect((await api.finish({ ...run({ time: 30, coins: 1 }), run: e }))!.profile.coins).toBe(23);
+    // 끝내지 않은 판은 5개까지만 남는다 (가장 오래된 것부터 버린다)
+    const open: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      t += 1000;
+      open.push((await api.start('field', 'rat'))!);
+    }
+    t += 400_000;
+    await expect(api.finish({ ...run({ time: 30 }), run: open[0] })).rejects.toThrow('no run');
+    expect((await api.finish({ ...run({ time: 30, coins: 2 }), run: open[1] }))!.result.coins).toBe(2);
+    // 7일이 지난 판은 다음 시작 때 치워진다
+    t += (LIMITS.max_age + 10) * 1000;
+    await api.start('field', 'rat');
+    await expect(api.finish({ ...run({ time: 30 }), run: open[2] })).rejects.toThrow('no run');
+  });
+});
+
+describe('서버에 끝 저장: 먼저 보관하고 보낸다', () => {
+  const report = (id: string): RunReport => ({ ...run(), run: id });
+  const okAnswer = (coins = 40) => ({ data: { profile: { ...defaultProfile(), coins }, result: { coins, valid: true, newRecord: false, unlockedCharacters: [], unlockedMaps: [] } }, error: null });
+  type Answer = { data: unknown; error: { code?: string; message?: string } | null };
+  /** 가짜 서버: 함수 이름별로 답을 정한다 (답이 없으면 끝내 대답하지 않는다) */
+  function fake(answer: (fn: string, args: Record<string, unknown> | undefined, nth: number) => Answer | Promise<Answer> | null) {
+    const calls: { fn: string; run?: unknown }[] = [];
+    let aborted = 0;
+    const sb: RpcClient = {
+      rpc(fn, args) {
+        calls.push({ fn, run: args?.p_run });
+        const a = answer(fn, args, calls.filter((c) => c.fn === fn).length);
+        const p: Promise<Answer> = a === null ? new Promise(() => {}) : Promise.resolve(a);
+        return Object.assign(p, {
+          abortSignal(sig: AbortSignal) {
+            sig.addEventListener('abort', () => aborted++);
+            return p;
+          },
+        });
+      },
+    };
+    return { sb, calls, aborted: () => aborted };
+  }
+
+  it('보내는 동안 이미 보관돼 있고, 서버가 받으면 지운다', async () => {
+    const st = memStore();
+    let keptWhileSending: string[] = [];
+    const f = fake(() => {
+      keptWhileSending = readPending(st, 'u1').map((r) => r.run);
+      return okAnswer(55);
+    });
+    const api = createSupabaseApi(f.sb, 'u1', st, 200);
+    const out = await api.finish(report('a'));
+    expect(keptWhileSending).toEqual(['a']);
+    expect(out?.profile.coins).toBe(55);
+    expect(readPending(st, 'u1')).toEqual([]);
+  });
+
+  it('서버가 거절하면(P0001) 지우고 알린다. 다만 too early 와 그 밖의 오류는 남겨 둔다', async () => {
+    const st = memStore();
+    const errs: Record<string, Answer> = {
+      a: { data: null, error: { code: 'P0001', message: 'overlap' } },
+      b: { data: null, error: { code: 'P0001', message: 'too early' } },
+      c: { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } },
+    };
+    const f = fake((_fn, args) => errs[String(args?.p_run)]);
+    const api = createSupabaseApi(f.sb, 'u1', st, 200);
+    await expect(api.finish(report('a'))).rejects.toBeInstanceOf(ApiError);
+    expect(readPending(st, 'u1')).toEqual([]);
+    expect(await api.finish(report('b'))).toBeNull();
+    expect(await api.finish(report('c'))).toBeNull();
+    expect(readPending(st, 'u1').map((r) => r.run)).toEqual(['b', 'c']);
+  });
+
+  it('시간 제한 안에 답이 없으면 요청을 끊고 실패로 본다 (결과는 보관돼 있다)', async () => {
+    const st = memStore();
+    const f = fake(() => null);
+    const api = createSupabaseApi(f.sb, 'u1', st, 40);
+    const t0 = Date.now();
+    expect(await api.finish(report('a'))).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(f.aborted()).toBe(1);
+    expect(readPending(st, 'u1').map((r) => r.run)).toEqual(['a']);
+    // 판 시작도 같다: 한 번 더 해 보고, 그래도 답이 없으면 null (그 판은 기록되지 않는다)
+    expect(await api.start('field', 'rat')).toBeNull();
+    expect(f.calls.filter((c) => c.fn === 'survival_start').length).toBe(2);
+  });
+
+  it('판 시작: 첫 시도가 통신 실패면 한 번 더 해 본다. 서버가 거절한 것은 다시 하지 않는다', async () => {
+    const f = fake((fn, _a, nth) => (fn === 'survival_start' && nth === 1 ? { data: null, error: { message: 'Failed to fetch' } } : { data: 'run-2', error: null }));
+    expect(await createSupabaseApi(f.sb, 'u1', memStore(), 200).start('field', 'rat')).toBe('run-2');
+    const g = fake(() => ({ data: null, error: { code: 'P0001', message: 'map locked' } }));
+    await expect(createSupabaseApi(g.sb, 'u1', memStore(), 200).start('bamboo', 'rat')).rejects.toThrow('map locked');
+    expect(g.calls.length).toBe(1);
+  });
+
+  it('저장에 성공하면 보류해 둔 다른 판도 바로 올리고, 새 프로필을 알린다. 보내는 중인 판은 다시 보내기에서 건너뛴다', async () => {
+    const st = memStore();
+    keepPending(st, 'u1', report('old'));
+    let release: (a: Answer) => void = () => {};
+    const f = fake((_fn, args) => (args?.p_run === 'now' ? new Promise<Answer>((r) => (release = r)) : okAnswer(99)));
+    const api = createSupabaseApi(f.sb, 'u1', st, 500);
+    const seen: number[] = [];
+    api.onProfile = (p) => seen.push(p.coins);
+    const done = api.finish(report('now'));
+    // 'now' 를 보내는 동안의 다시 보내기: 'old' 만 보낸다
+    expect(await api.resend()).toBe(1);
+    expect(f.calls.map((c) => c.run)).toEqual(['now', 'old']);
+    expect(seen).toEqual([99]);
+    expect(readPending(st, 'u1').map((r) => r.run)).toEqual(['now']);
+    // 판 도중 보관(stash)은 보내는 중인 판을 덮어쓰지 않는다
+    api.stash({ ...report('now'), time: 1 });
+    expect(readPending(st, 'u1')[0].time).toBe(200);
+    keepPending(st, 'u1', report('old2'));
+    release(okAnswer(120));
+    expect((await done)?.profile.coins).toBe(120);
+    // 성공 직후 기다리지 않고 보류분(old2)을 올린다
+    await api.resend();
+    expect(f.calls.map((c) => c.run)).toEqual(['now', 'old', 'old2']);
+    expect(readPending(st, 'u1')).toEqual([]);
+    expect(seen).toEqual([99, 99]);
+  });
+
+  it('판 도중에 창이 닫히면 그때까지의 결과를 보관하고, 다음 접속 때 올라간다. 판이 이어져 끝나면 끝 결과가 덮어쓴다', async () => {
+    const st = memStore();
+    const f = fake(() => okAnswer(12));
+    const api = createSupabaseApi(f.sb, 'u1', st, 200);
+    api.stash({ ...report('r1'), time: 45, coins: 12 });
+    expect(f.calls.length).toBe(0);
+    expect(readPending(st, 'u1').map((r) => [r.run, r.time])).toEqual([['r1', 45]]);
+    // 다음 접속 (새로 만든 연결)
+    const next = createSupabaseApi(f.sb, 'u1', st, 200);
+    expect(await next.resend()).toBe(1);
+    expect(readPending(st, 'u1')).toEqual([]);
+    // 닫히지 않고 이어진 판: 끝 결과가 중간 결과를 덮어쓴다
+    api.stash({ ...report('r2'), time: 45 });
+    const g = fake(() => null);
+    const slow = createSupabaseApi(g.sb, 'u1', st, 30);
+    expect(await slow.finish({ ...report('r2'), time: 300 })).toBeNull();
+    expect(readPending(st, 'u1').map((r) => [r.run, r.time])).toEqual([['r2', 300]]);
   });
 });
 

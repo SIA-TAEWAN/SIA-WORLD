@@ -74,13 +74,67 @@ const POS = { x: 0, y: 0 };
 /**
  * 원(x, y, r)이 장애물과 겹치면 밖으로 밀어낸다. 결과 자리는 OUT 에, 닿았으면 true (PUSH 에 밀려난 방향).
  * 자기가 있는 칸만 본다 (장애물이 칸 가장자리에서 EDGE 만큼 떨어져 있어서, 반지름이 EDGE 보다 작은 몸은 이것으로 충분하다).
+ *
+ * smooth (내 캐릭터): 담처럼 원이 줄지어 이어진 곳에서 원과 원 사이의 오목한 틈에 걸려 멈추지 않게 한다.
+ *   · 이어진 담의 두 원 사이는 곧은 벽(두 원을 감싼 알약 모양)으로 보고 밀어낸다 → 담을 따라 미끄러진다
+ *   · 가장 깊이 겹친 것부터 밀어내고, 밀려난 자리가 옆 장애물에 다시 겹칠 수 있으므로 세 번까지 되풀이한다
+ * 요괴는 smooth 없이 예전과 같이 움직인다 (돌아가는 길 찾기는 enemies.ts 의 avoid).
  */
-export function pushOut(t: TerrainDef, seed: number, x: number, y: number, r: number): boolean {
+export function pushOut(t: TerrainDef, seed: number, x: number, y: number, r: number, smooth = false): boolean {
   POS.x = x;
   POS.y = y;
   if (t.kind === 'none') return false;
   const n = cellObstacles(t, seed, Math.floor(x / t.cell), Math.floor(y / t.cell));
   let hit = false;
+  if (smooth) {
+    const chain = t.kind === 'walls';
+    for (let pass = 0; pass < 3; pass++) {
+      // 가장 깊이 겹친 장애물 하나에서만 밀어낸다 (차례대로 밀면 옆 원의 둥근 끝에 밀려 뒤로 물러난다)
+      let depth = 0;
+      let bx = 0;
+      let by = 0;
+      let bd = 0;
+      let brr = 0;
+      for (let i = 0; i < n; i++) {
+        let ox = OBS[i * 3];
+        let oy = OBS[i * 3 + 1];
+        const rr = r + OBS[i * 3 + 2];
+        if (chain && i + 1 < n) {
+          // 다음 원과 이어져 있으면(겹치면) 두 원의 가운데를 잇는 선분에서 가장 가까운 점을 장애물의 가운데로 본다
+          const ex = OBS[i * 3 + 3] - ox;
+          const ey = OBS[i * 3 + 4] - oy;
+          const len2 = ex * ex + ey * ey;
+          const reach = OBS[i * 3 + 2] + OBS[i * 3 + 5];
+          if (len2 > 0 && len2 < reach * reach) {
+            const k = Math.max(0, Math.min(1, ((POS.x - ox) * ex + (POS.y - oy) * ey) / len2));
+            ox += ex * k;
+            oy += ey * k;
+          }
+        }
+        const dx = POS.x - ox;
+        const dy = POS.y - oy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= rr * rr) continue;
+        const d = Math.sqrt(d2);
+        if (rr - d <= depth) continue;
+        depth = rr - d;
+        bx = ox;
+        by = oy;
+        bd = d;
+        brr = rr;
+      }
+      if (depth <= 0) break;
+      // 정확히 한가운데면 오른쪽으로
+      const nx = bd > 0.001 ? (POS.x - bx) / bd : 1;
+      const ny = bd > 0.001 ? (POS.y - by) / bd : 0;
+      POS.x = bx + nx * brr;
+      POS.y = by + ny * brr;
+      PUSH.x = nx;
+      PUSH.y = ny;
+      hit = true;
+    }
+    return hit;
+  }
   for (let i = 0; i < n; i++) {
     const dx = POS.x - OBS[i * 3];
     const dy = POS.y - OBS[i * 3 + 1];

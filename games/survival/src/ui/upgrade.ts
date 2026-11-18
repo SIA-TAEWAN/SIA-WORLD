@@ -1,7 +1,7 @@
 import { UPGRADES, UPGRADE_TOTAL, upgradeSpent } from '../data/upgrades';
 import { upgradeCount, upgradeOffer } from '../game/progress';
 import { ApiError } from '../net/api';
-import { esc, nav, screen, stage, state, toast } from './app';
+import { esc, nav, screen, setProfile, stage, state, toast, watchProfile } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
 
@@ -29,6 +29,7 @@ export function showUpgrade() {
      <button class="btn" id="reset">↩️ 강화 초기화 (엽전 모두 돌려받기)</button>`,
     'upgrade',
     'main',
+    () => off(),
   );
   const list = root.querySelector('#list') as HTMLElement;
   const paint = () => {
@@ -48,12 +49,14 @@ export function showUpgrade() {
     (root.querySelector('#reset') as HTMLButtonElement).disabled = upgradeCount(p.upgrades) === 0;
   };
   paint();
+  // 판 저장 답이 이 화면에 온 뒤에 도착하면 엽전을 새로 그린다
+  const off = watchProfile(paint);
   list.addEventListener('click', async (e) => {
     const b = (e.target as HTMLElement).closest('[data-u]') as HTMLElement | null;
     if (!b || busy || !state.api) return;
     busy = true;
     try {
-      state.profile = await state.api.buyUpgrade(b.dataset.u!);
+      setProfile(await state.api.buyUpgrade(b.dataset.u!));
       sfx('coin');
     } catch (err) {
       sfx('toggle');
@@ -75,7 +78,7 @@ export function showUpgrade() {
       if (t.closest('[data-yes]') && state.api && !busy) {
         busy = true;
         try {
-          state.profile = await state.api.resetUpgrades();
+          setProfile(await state.api.resetUpgrades());
           sfx('coin');
           toast(`엽전 ${back.toLocaleString()}닢을 돌려받았어요`);
         } catch (err) {

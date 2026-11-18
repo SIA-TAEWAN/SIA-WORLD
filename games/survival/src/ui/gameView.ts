@@ -6,13 +6,14 @@ import { ITEM } from '../data/items';
 import { PASSIVES } from '../data/passives';
 import { presetUpgrades } from '../data/upgrades';
 import { WEAPONS } from '../data/weapons';
+import { LIMITS } from '../game/progress';
 import { activeBoss } from '../game/sim';
 import { CARD, EV, type Card, type Ev, type State } from '../game/state';
 import { ApiError, LOCAL_MODE } from '../net/api';
 import { fillBench } from '../run/devtools';
 import { Run } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
-import { esc, mmss, nav, openSettings, screen, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
+import { esc, mmss, nav, openSettings, screen, setProfile, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
 import { icon } from './icons';
 import { mapTrack, music } from './music';
@@ -29,6 +30,8 @@ declare global {
 /** 가상 조이스틱: 이만큼(px) 끌면 끝까지 민 것 */
 const STICK_R = 56;
 const STICK_DEAD = 0.14;
+/** 레벨업 창이 뜬 직후 이만큼(ms)은 카드 클릭을 받지 않는다 (조이스틱을 잡으려던 탭이 카드 선택이 되지 않게) */
+const LEVELUP_GUARD_MS = 300;
 
 const KEY_DIR: Record<string, [number, number]> = {
   KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
@@ -76,6 +79,14 @@ export function showGame(setup: GameSetup) {
         return null;
       })
     : Promise.resolve(null);
+  /** 서버가 준 판 id (아직 답이 없거나 기록되지 않는 판이면 null) */
+  let runId: string | null = null;
+  /** 판 시작을 서버에 알리지 못했다: 이 판은 기록되지 않는다 */
+  let unrecorded = false;
+  // 판 도중에 창이 닫히면(새로고침·탭 닫기·강제 로그아웃 이동) 그때까지의 결과를 기기에 보관한다 → 다음 접속 때 올라간다
+  const onLeave = () => {
+    if (!ended && runId && api) api.stash({ ...run.summary(), run: runId });
+  };
   if (LOCAL_MODE) window.__surv = { run, game: null, bench: (e, p) => fillBench(run.state, e, p) };
 
   const root = screen(
@@ -84,7 +95,7 @@ export function showGame(setup: GameSetup) {
       <div class="xp"><i id="xpFill"></i><b id="lv">Lv 1</b></div>
       <div class="hud-row">
         <div class="owned" id="owned"></div>
-        <div class="hud-mid"><b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span></div>
+        <div class="hud-mid"><b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
         <button class="icon-btn" id="pause" aria-label="일시정지">⏸</button>
       </div>
       <div class="bossbar hidden" id="bossbar"><span id="bossName"></span><div class="track"><i id="bossFill"></i></div></div>
@@ -100,6 +111,7 @@ export function showGame(setup: GameSetup) {
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', releaseAll);
       document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onLeave);
       ro?.disconnect();
       if (endTimer) clearTimeout(endTimer);
       if (cutTimer) clearTimeout(cutTimer);
@@ -229,6 +241,7 @@ export function showGame(setup: GameSetup) {
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', releaseAll);
   document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('pagehide', onLeave);
 
   // ---------- 가운데 큰 글자 (보스 경고 · 진화 · 게임 오버 · 클리어) ----------
   function setCut(html: string, cls = '', ms = 0) {
@@ -252,7 +265,10 @@ export function showGame(setup: GameSetup) {
 
   // ---------- 레벨업: 게임이 멈추고 카드 3장 중 1장 (1·2·3 키 또는 클릭/터치) ----------
   let levelDim: HTMLElement | null = null;
-  function showLevelUp() {
+  /** 레벨업 창이 뜬 시각 (다시 뽑기로 새로 그릴 때는 그대로) */
+  let levelAt = 0;
+  function showLevelUp(fresh = true) {
+    if (fresh) levelAt = performance.now();
     releaseAll();
     levelDim?.remove();
     const dim = document.createElement('div');
@@ -266,6 +282,8 @@ export function showGame(setup: GameSetup) {
     dim.innerHTML = `<div class="lv-box"><h3>레벨 업! <b>Lv ${s.level}</b></h3><p class="soft">하나를 골라요</p>${cards.join('')}
       ${s.rerolls > 0 ? `<button class="btn small" data-reroll>🔄 다시 뽑기 (${s.rerolls}번 남음) <span class="key">R</span></button>` : ''}</div>`;
     dim.addEventListener('click', (e) => {
+      // 창이 뜬 직후의 클릭은 무시한다 (움직이려고 누른 것이 카드를 고르지 않게. 1·2·3 키는 바로 듣는다)
+      if (performance.now() - levelAt < LEVELUP_GUARD_MS) return;
       const t = e.target as HTMLElement;
       const b = t.closest('.lv-card') as HTMLElement | null;
       if (b) choose(Number(b.dataset.i));
@@ -291,7 +309,7 @@ export function showGame(setup: GameSetup) {
     if (s.phase !== 'levelup' || s.rerolls <= 0) return;
     sfx('toggle');
     run.reroll();
-    showLevelUp();
+    showLevelUp(false);
   }
 
   // ---------- 일시정지: 가진 무기·패시브 확인, 포기 ----------
@@ -310,8 +328,15 @@ export function showGame(setup: GameSetup) {
         return row(icon('w', d.id), d.name, d.evolved ? '진화' : `Lv ${w.lv}`, d.desc);
       });
       const passives = s.passives.map((p) => row(icon('p', PASSIVES[p.def].id), PASSIVES[p.def].name, `Lv ${p.lv}`, `${PASSIVES[p.def].text} (레벨마다)`));
+      // 그만두면 무엇을 받는지: 기록되지 않는 판 · 너무 짧은 판(서버가 엽전을 주지 않는다) · 그 밖에는 주운 엽전
+      const need = LIMITS.count_min_time;
+      const quitNote = unrecorded
+        ? '서버에 연결하지 못한 판이라 엽전이 기록되지 않아요'
+        : Math.floor(s.time) < need
+          ? `${need}초를 버티기 전에 그만두면 엽전을 받지 못해요`
+          : `지금까지 주운 엽전 ${Math.floor(s.coins)}닢은 받아요`;
       dim.innerHTML = confirm
-        ? `<div class="dialog"><h3>그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">지금까지 주운 엽전 ${Math.floor(s.coins)}닢은 받아요</p>
+        ? `<div class="dialog"><h3>그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${quitNote}</p>
             <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-quit>그만두기</button></div></div>`
         : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
             <p class="soft pause-info">${esc(s.char.nick)} · ${esc(s.map.name)} · ${mmss(Math.min(RUN_SEC, s.time))} · Lv ${s.level}</p>
@@ -369,7 +394,7 @@ export function showGame(setup: GameSetup) {
       try {
         const out = await api.finish({ ...summary, run: id });
         if (!out) return 'pending';
-        state.profile = out.profile;
+        setProfile(out.profile);
         return out.result;
       } catch {
         return 'rejected';
@@ -378,6 +403,21 @@ export function showGame(setup: GameSetup) {
     const result: GameResult = { ...summary, quit, setup, saved };
     if (quit) return nav.result(result);
     endTimer = setTimeout(() => nav.result(result), 1900);
+  }
+
+  function onOver() {
+    sfx('lose');
+    closeLevelUp();
+    setCut(`게임 오버<small>${mmss(Math.min(RUN_SEC, s.time))} 버텼어요</small>`, 'bad');
+    music.play(null);
+    finish(false);
+  }
+  function onClear() {
+    sfx('win');
+    closeLevelUp();
+    setCut('클리어!<small>10분을 버텨 냈어요</small>', 'go');
+    music.play(null);
+    finish(false);
   }
 
   // ---------- 걸음마다 생긴 일 → 소리·연출 ----------
@@ -450,17 +490,10 @@ export function showGame(setup: GameSetup) {
         sfx('tankBoom', { volume: 0.45, rate: 1.3 });
         break;
       case EV.over:
-        sfx('lose');
-        closeLevelUp();
-        setCut(`게임 오버<small>${mmss(Math.min(RUN_SEC, st.time))} 버텼어요</small>`, 'bad');
-        music.play(null);
-        finish(false);
+        onOver();
         break;
       case EV.clear:
-        sfx('win');
-        setCut('클리어!<small>10분을 버텨 냈어요</small>', 'go');
-        music.play(null);
-        finish(false);
+        onClear();
         break;
     }
   };
@@ -468,6 +501,12 @@ export function showGame(setup: GameSetup) {
   // ---------- 매 프레임: 바뀐 값만 HUD에 반영 ----------
   const shown = { sec: -1, kills: -1, coins: -1, lv: -1, xp: -1, boss: -2, bossHp: -1 };
   function frame() {
+    // 알림을 놓쳤을 때의 대비 (한 걸음에 알림이 너무 많으면 빠질 수 있다): 상태를 보고 창을 띄우거나 판을 끝낸다
+    if (!ended) {
+      if (s.phase === 'levelup' && !levelDim) showLevelUp();
+      else if (s.phase === 'over') onOver();
+      else if (s.phase === 'clear') onClear();
+    }
     const sec = Math.floor(Math.min(RUN_SEC, s.time));
     if (sec !== shown.sec) {
       shown.sec = sec;
@@ -553,6 +592,12 @@ export function showGame(setup: GameSetup) {
   paintOwned();
   frame();
   void started.then((id) => {
-    if (id === null && root.isConnected && !ended) toast('서버에 연결하지 못했어요. 이 판은 기록되지 않아요', 3600);
+    runId = id;
+    // 잠긴 캐릭터·맵이라 출전 준비로 돌아갔으면 이 화면은 이미 없다
+    if (id !== null || !root.isConnected) return;
+    // 판 시작을 알리지 못했다 (실패했거나 12초 안에 답이 없다): 판이 끝날 때까지 시계 아래에 표시해 둔다
+    unrecorded = true;
+    $('#norec').classList.remove('hidden');
+    if (!ended) toast('서버에 연결하지 못했어요. 이 판은 기록되지 않아요', 5000);
   });
 }

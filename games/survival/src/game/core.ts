@@ -48,9 +48,20 @@ export function sweep<T extends { dead: boolean }>(p: Pool<T>) {
 }
 
 // ───────────────────────── 알림 ─────────────────────────
+/** 놓치면 판이 멈추거나 끝나지 않는 알림: 칸이 모자라도 빠지지 않는다 */
+const mustTell = (t: number) => t === EV.levelup || t === EV.over || t === EV.clear;
+
 export function emit(s: State, t: number, a = 0, b = 0) {
-  if (s.evN >= s.events.length) return;
-  const e = s.events[s.evN++];
+  let e = s.events[s.evN];
+  if (s.evN < s.events.length) s.evN++;
+  else {
+    // 한 걸음의 알림이 가득 찼다: 소리·연출용 알림은 버리고, 꼭 전해야 하는 알림은 덜 중요한 마지막 알림 자리에 적는다
+    if (!mustTell(t)) return;
+    let i = s.evN - 1;
+    while (i >= 0 && mustTell(s.events[i].t)) i--;
+    if (i < 0) return;
+    e = s.events[i];
+  }
   e.t = t;
   e.a = a;
   e.b = b;
@@ -165,7 +176,7 @@ export function nearestEnemy(s: State, x: number, y: number, maxDist: number): n
 
 // ───────────────────────── 아이템 ─────────────────────────
 export function dropPickup(s: State, kind: number, x: number, y: number, value: number): Pickup | null {
-  const p = take(s.pickups);
+  let p = take(s.pickups);
   if (!p) {
     // 풀이 가득 찼다: 구슬·엽전은 이미 놓인 같은 종류에 값을 합친다 (값이 사라지지 않게)
     if (kind <= ITEM.coin) {
@@ -177,8 +188,11 @@ export function dropPickup(s: State, kind: number, x: number, y: number, value: 
         if (kind !== ITEM.coin) q.kind = gemKind(q.value);
         return q;
       }
+      return null;
     }
-    return null;
+    // 떡·복주머니·부적·보물상자는 반드시 놓는다: 가장 먼 구슬(없으면 엽전)을 다른 것에 합쳐 자리를 만든다
+    p = makeRoom(s);
+    if (!p) return null;
   }
   p.kind = kind;
   p.x = x;
@@ -187,6 +201,51 @@ export function dropPickup(s: State, kind: number, x: number, y: number, value: 
   p.magnet = false;
   p.dead = false;
   return p;
+}
+
+/**
+ * 가득 찬 바닥 아이템 풀에서 자리 하나를 비운다: 내게서 가장 먼 구슬을 그와 가장 가까운 다른 구슬에 합친다 (경험치는 그대로).
+ * 구슬이 둘 미만이면 엽전으로 같은 일을 한다. 그것도 안 되면(풀이 떡·상자 따위로만 가득) null
+ */
+function makeRoom(s: State): Pickup | null {
+  const list = s.pickups.items;
+  const n = s.pickups.n;
+  const px = s.player.x;
+  const py = s.player.y;
+  // 이미 주운(이번 걸음 끝에 치워질) 자리가 있으면 그것을 쓴다
+  for (let i = 0; i < n; i++) if (list[i].dead) return list[i];
+  for (let pass = 0; pass < 2; pass++) {
+    // pass 0: 구슬, pass 1: 엽전
+    const same = (q: Pickup) => !q.dead && (pass === 0 ? q.kind <= ITEM.gemL : q.kind === ITEM.coin);
+    let far: Pickup | null = null;
+    let fd = -1;
+    for (let i = 0; i < n; i++) {
+      const q = list[i];
+      if (!same(q)) continue;
+      const d = (q.x - px) * (q.x - px) + (q.y - py) * (q.y - py);
+      if (d > fd) {
+        fd = d;
+        far = q;
+      }
+    }
+    if (!far) continue;
+    let near: Pickup | null = null;
+    let nd = Infinity;
+    for (let i = 0; i < n; i++) {
+      const q = list[i];
+      if (q === far || !same(q)) continue;
+      const d = (q.x - far.x) * (q.x - far.x) + (q.y - far.y) * (q.y - far.y);
+      if (d < nd) {
+        nd = d;
+        near = q;
+      }
+    }
+    if (!near) continue;
+    near.value += far.value;
+    if (pass === 0) near.kind = gemKind(near.value);
+    return far;
+  }
+  return null;
 }
 
 export const gemKind = (xp: number) => (xp >= ITEMS.gemBigXp ? ITEM.gemL : xp >= ITEMS.gemMidXp ? ITEM.gemM : ITEM.gemS);

@@ -89,7 +89,7 @@ export interface Projectile {
   c: number;
   /** 같은 적을 다시 때리기까지 (걸음 수, 구슬) */
   every: number;
-  /** 이미 맞힌 적 번호 (관통 표창) */
+  /** 이미 맞힌 적 번호 (직선 투사체: 같은 적을 한 번만 때린다. 칸 수 = 적 풀 크기) */
   hit: Int32Array;
   hitN: number;
   dead: boolean;
