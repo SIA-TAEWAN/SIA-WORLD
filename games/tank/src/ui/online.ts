@@ -15,7 +15,7 @@ import { OnlineGame } from '../net/online';
 import { $, closeGame, launchGame, nav, screen, setScreenCleanup, state, toast } from './app';
 import { escapeHtml } from './hud';
 import { renderShop } from './shop';
-import { rankedName, setRanking, setTargetRanking, showRankingModal } from './rank';
+import { rankedName, ranking, setRanking, setTargetRanking, showRankingModal } from './rank';
 import { tankSvg } from './tankSvg';
 import { sfx } from './sfx';
 import { recordTarget, showResult } from './offline';
@@ -67,6 +67,12 @@ function renderChatLog(root: HTMLElement, sess: ChatSource) {
 }
 
 /** 랭킹을 서버에서 다시 받아 구름 등급을 갱신한다 */
+/** 내 온라인 대전 전적 (대기실 위쪽 표시) */
+function myRecord(): string {
+  const mine = ranking().find((r) => r.key === clientId());
+  return mine ? `${mine.wins}승 ${mine.losses}패` : '0승 0패';
+}
+
 async function refreshRanking() {
   if (!backend) return;
   try {
@@ -96,7 +102,8 @@ export async function showLobby() {
       return nav.entry();
     }
     lobby = sess;
-    state.points = await backend.getPoints(clientId()).catch(() => 1000);
+    // 포인트는 누구나 게임마다 1,000 (이기고 져도 바뀌지 않는다. 랭킹은 승패 순)
+    state.points = 1000;
     await refreshRanking();
     const mine = sess.rooms.find((r) => r.players.some((p) => p.id === clientId()) && !(r.gone ?? []).includes(clientId()));
     if (mine) {
@@ -126,7 +133,7 @@ function renderLobby(sess: LobbySession) {
       <a class="btn ghost" id="exit" href="${worldHome()}">🌏 SIA WORLD로</a>
       <h2>대기실 <small id="count"></small></h2>
       <button class="btn small-btn" id="rank">🏆 랭킹</button>
-      <span class="my-points" title="온라인에서 이기면 +100, 지면 -100 (최저 1,000)">🏅 ${state.points.toLocaleString()}P</span>
+      <span class="my-points" title="온라인 대전 전적 (랭킹은 승패 순)">🏅 ${myRecord()}</span>
       <button class="btn small-btn" id="copy">🔗 링크 복사</button>
     </header>
     <div class="lobby-tools">
@@ -654,8 +661,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
       clearInterval(beat);
       // 판 결과 정리 (실패하면 몇 번 더 시도)
       const present = g.presentIds();
-      const before = state.points;
-      // 백발백중은 포인트를 주고받지 않는다 (점수는 백발백중 랭킹으로)
+      // 백발백중은 승패를 기록하지 않는다 (점수는 백발백중 랭킹으로)
       lastWinner = s.winner === -1 || s.practice ? null : s.winner;
       const finish = async () => {
         for (let i = 0; i < 4; i++) {
@@ -667,11 +673,11 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
           }
         }
         await sess.refetch();
-        state.points = await backend!.getPoints(clientId()).catch(() => state.points);
         await refreshRanking();
         if (s.practice) return void recordTarget(s);
-        const d = state.points - before;
-        toast(d > 0 ? `🏅 승리! 포인트 +${d} → ${state.points.toLocaleString()}P` : d < 0 ? `포인트 ${d} → ${state.points.toLocaleString()}P` : `포인트 ${state.points.toLocaleString()}P (최저 1,000)`);
+        // 내 전적 (승패가 난 판만 기록된다)
+        const mine = ranking().find((r) => r.key === clientId());
+        if (lastWinner !== null && mine) toast(`🏅 내 전적 ${mine.wins}승 ${mine.losses}패`);
       };
       void finish();
       g.dispose();
