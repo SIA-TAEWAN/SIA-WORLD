@@ -333,4 +333,9 @@ export interface State {
   dmgByWeapon: Float64Array;
   /** 받은 피해 합 */
   dmgTaken: number;
+  /** 도감용: 이번 판에 만난 요괴·보스, 얻은 무기·패시브 (번호별 0/1) */
+  seenEnemy: Uint8Array;
+  seenBoss: Uint8Array;
+  gotWeapon: Uint8Array;
+  gotPassive: Uint8Array;
 }

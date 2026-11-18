@@ -310,6 +310,7 @@ export function spawnEnemy(s: State, kind: number, x: number, y: number): Enemy 
   e.xp = def.xp;
   e.cd = def.shoot ? def.shoot.every * (0.4 + rand(s) * 0.6) : 0;
   s.normals++;
+  s.seenEnemy[kind] = 1;
   return e;
 }
 
@@ -325,6 +326,7 @@ export function spawnBoss(s: State, boss: number, x: number, y: number): Enemy |
   e.speed = def.speed * s.map.power.speed;
   e.dmg = def.dmg;
   e.xp = def.xp;
+  s.seenBoss[boss] = 1;
   emit(s, EV.bossSpawn, boss);
   return e;
 }

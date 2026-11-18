@@ -1,6 +1,8 @@
 import { VIEW_W, ZODIAC_IDS, type ZodiacId } from '../data/balance';
 import type { RunSummary } from '../game/sim';
-import { defaultProfile, type SurvivalApi, type SurvivalProfile } from '../net/api';
+import { defaultProfile, type FinishResult, type SurvivalProfile } from '../game/progress';
+import type { SurvivalApi } from '../net/api';
+import type { SurvivalLobby } from '../net/lobby';
 import { music, type TrackName } from './music';
 import { sfx, sound } from './sfx';
 
@@ -22,14 +24,21 @@ export interface GameResult extends RunSummary {
   /** 스스로 그만뒀나 */
   quit: boolean;
   setup: GameSetup;
+  /**
+   * 서버에 올린 결과: 받은 엽전·새 기록·새로 해금된 것.
+   * 'unrecorded' 기록되지 않는 판(시작을 서버에 알리지 못함) · 'pending' 통신 실패로 기기에 보관함 · 'rejected' 서버가 받지 않음
+   */
+  saved: Promise<FinishResult | 'unrecorded' | 'pending' | 'rejected'>;
 }
 
 export const state = {
   /** 로그인한 사용자 (테스트 모드는 임시 사용자) */
   user: { id: '', name: '' },
   api: null as SurvivalApi | null,
-  /** 엽전·영구 강화·해금 (4단계에서 저장. 지금은 처음 상태 그대로) */
+  /** 엽전·영구 강화·해금·도감 (서버에 저장. 테스트 모드는 이 기기에) */
   profile: defaultProfile() as SurvivalProfile,
+  /** 접속 인원 채널 */
+  lobby: null as SurvivalLobby | null,
   /** 마지막으로 고른 캐릭터·맵 */
   char: 'tiger' as ZodiacId,
   map: 'field',
@@ -41,6 +50,10 @@ export const nav = {
   /** 출전 준비: 캐릭터 고르기 → 맵 고르기 */
   select: () => {},
   maps: () => {},
+  /** 영구 강화 */
+  upgrade: () => {},
+  /** 도감 */
+  codex: () => {},
   game: (_setup: GameSetup) => {},
   result: (_result: GameResult) => {},
 };

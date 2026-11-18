@@ -81,12 +81,16 @@ export function addWeapon(s: State, def: number, lv = 1) {
   const w = s.weapons.find((x) => x.def === def);
   if (w) w.lv = Math.min(LIMIT.level, Math.max(w.lv, lv));
   else if (s.weapons.length < LIMIT.weapons) s.weapons.push({ def, lv, cd: 0.3, a: 0, view: 0 });
+  else return;
+  s.gotWeapon[def] = 1;
 }
 
 export function addPassive(s: State, def: number, lv = 1) {
   const p = s.passives.find((x) => x.def === def);
   if (p) p.lv = Math.min(LIMIT.level, Math.max(p.lv, lv));
   else if (s.passives.length < LIMIT.passives) s.passives.push({ def, lv });
+  else return;
+  s.gotPassive[def] = 1;
   recalcStats(s);
 }
 
@@ -144,6 +148,7 @@ export function openChest(s: State) {
     w.lv = 1;
     w.cd = 0;
     w.view = 0;
+    s.gotWeapon[w.def] = 1;
     emit(s, EV.evolve, w.def);
     return;
   }

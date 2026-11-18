@@ -4,11 +4,12 @@
  * 화면은 이 상태를 그리기만 하고, 화면 없이도 수천 판을 돌려 밸런스를 볼 수 있다 (game/policy.ts).
  */
 import { BOSS_WARN_SEC, DEV_LEVEL_PER_SEC, LIMIT, PLAYER, RUN_SEC, TICK, TICKS_PER_SEC, xpNeed } from '../data/balance';
-import { BOSS_INDEX } from '../data/bosses';
+import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTER_BY_ID } from '../data/characters';
-import { ENEMY_INDEX } from '../data/enemies';
+import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { ITEM, ITEMS } from '../data/items';
 import { MAPS, MAP_INDEX } from '../data/maps';
+import { PASSIVES } from '../data/passives';
 import { UPGRADES, type UpgradeLevels } from '../data/upgrades';
 import { FALLBACK_WEAPON, WEAPONS, WEAPON_INDEX } from '../data/weapons';
 import {
@@ -87,6 +88,10 @@ export function createRun(cfg: RunConfig): State {
     killEv: false,
     dmgByWeapon: new Float64Array(WEAPONS.length),
     dmgTaken: 0,
+    seenEnemy: new Uint8Array(ENEMIES.length),
+    seenBoss: new Uint8Array(BOSSES.length),
+    gotWeapon: new Uint8Array(WEAPONS.length),
+    gotPassive: new Uint8Array(PASSIVES.length),
   };
   const sum = recalcStats(s);
   s.player.hp = s.stats.maxHp;
@@ -454,7 +459,18 @@ export interface RunSummary {
   cleared: boolean;
   bossKills: number;
   cakes: number;
+  /** 도감: 이번 판에 만난 요괴·보스, 얻은 무기·패시브의 id */
+  codex: Codex;
 }
+
+export interface Codex {
+  enemies: string[];
+  bosses: string[];
+  weapons: string[];
+  passives: string[];
+}
+
+const marked = <T extends { id: string }>(flags: Uint8Array, defs: readonly T[]) => defs.filter((_, i) => flags[i] === 1).map((d) => d.id);
 
 export function summarize(s: State): RunSummary {
   return {
@@ -467,5 +483,11 @@ export function summarize(s: State): RunSummary {
     cleared: s.phase === 'clear',
     bossKills: s.bossKills,
     cakes: s.cakes,
+    codex: {
+      enemies: marked(s.seenEnemy, ENEMIES),
+      bosses: marked(s.seenBoss, BOSSES),
+      weapons: marked(s.gotWeapon, WEAPONS),
+      passives: marked(s.gotPassive, PASSIVES),
+    },
   };
 }

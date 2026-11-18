@@ -39,7 +39,7 @@ describe('데이터 표 (PRD 4~7장)', () => {
   it('영구 강화: 9항목 49레벨, 비용은 100 → 150 → 225', () => {
     expect(UPGRADES.length).toBe(9);
     expect(UPGRADE_TOTAL).toBe(49);
-    expect([0, 1, 2].map(upgradeCost)).toEqual([100, 150, 225]);
+    expect([0, 1, 2].map((lv) => upgradeCost('might', lv))).toEqual([100, 150, 225]);
     for (const n of [0, 1, 10, 22, 34, 44, 49, 99]) {
       const lv = presetUpgrades(n);
       expect(Object.values(lv).reduce((a, b) => a + b, 0)).toBe(Math.min(49, n));

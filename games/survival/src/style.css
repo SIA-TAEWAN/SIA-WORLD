@@ -27,6 +27,8 @@ button, input { font: inherit; color: inherit; }
 .bar h2 { flex: 1; margin: 0; text-align: center; font-weight: normal; font-size: var(--fs-title); color: var(--white); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
 .bar .spacer { flex: 1; }
 .bar h2 + .spacer { flex: 0 0 84px; }
+.bar .people { font-size: 14px; color: var(--white); background: var(--win); border-radius: var(--radius-pill); padding: 1px 10px; }
+.bar .people:empty { display: none; }
 .coins-pill { background: var(--white); border: var(--line) solid var(--outline); border-radius: var(--radius-pill); padding: 3px 12px; font-size: 16px; color: var(--accent); }
 
 .btn {
@@ -100,7 +102,25 @@ button, input { font: inherit; color: inherit; }
 .sub-actions .btn { flex: 1; padding-left: 6px; padding-right: 6px; }
 .foot { text-align: center; margin: 0; color: var(--ink); }
 
+/* ---------- 강화 ---------- */
+.tagline.small { font-size: 14px; }
+.up-list { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.up-row { display: flex; align-items: center; gap: 8px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 5px 8px; }
+.up-row em { font-style: normal; font-size: 22px; flex: none; width: 30px; text-align: center; }
+.up-tx { flex: 1; min-width: 0; }
+.up-tx b { display: block; font-weight: normal; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up-tx b small { font-size: 12px; color: var(--ink-soft); }
+.pips { display: flex; gap: 3px; margin-top: 3px; }
+.pips i { flex: 1 1 0; max-width: 18px; height: 7px; border-radius: var(--radius-pill); background: var(--track); border: 1.5px solid var(--outline); }
+.pips i.on { background: var(--gauge-gradient); }
+.up-row .btn { flex: none; min-width: 92px; color: var(--accent); }
+.up-row .btn.primary { color: var(--ink); }
+.up-max { flex: none; min-width: 92px; text-align: center; color: var(--win); font-size: 16px; }
+.upgrade > .btn { flex: none; }
+
 /* ---------- 출전 준비: 캐릭터 고르기 ---------- */
+.who-coins { margin: 0; text-align: center; color: var(--white); font-size: 16px; text-shadow: 0 2px 0 var(--outline); flex: none; }
+.who-coins b { font-weight: normal; }
 .select { overflow-y: auto; }
 .chars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .char { position: relative; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 3px 0 2px; cursor: pointer; text-align: center; min-width: 0; }
@@ -231,6 +251,11 @@ button, input { font: inherit; color: inherit; }
 .stats b.coin { color: var(--accent); }
 .result-card .note { text-align: center; margin: 10px 0 0; }
 .result .actions { display: flex; gap: 10px; margin-top: 14px; flex: none; }
+.result > .btn.big { flex: none; }
+.stats .tag { vertical-align: 2px; margin-left: 4px; font-style: normal; animation: cut-pop 360ms cubic-bezier(0.2, 1.6, 0.4, 1); }
+.unlocks p { margin: 8px 0 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 17px; background: var(--panel-strong); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 5px 8px; }
+.unlocks b { font-weight: normal; color: var(--accent); }
+.unlocks img { width: 34px; height: 34px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
 .result .actions .btn { flex: 1; }
 .cheer { position: absolute; left: 0; right: 0; top: 0; height: 100%; pointer-events: none; overflow: hidden; }
 .cheer i { position: absolute; top: -12px; width: 10px; height: 10px; animation: fall 2.4s linear forwards; }

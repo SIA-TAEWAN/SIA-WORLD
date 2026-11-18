@@ -1,11 +1,11 @@
 import { RUN_SEC } from '../data/balance';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
-import { zodiacFullUrl } from '../assets';
+import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, mmss, nav, screen, type GameResult } from './app';
 import { sfx } from './sfx';
 
-/** 결과 화면: 생존 시간 · 처치 수 · 도달 레벨 · 얻은 엽전 → [다시하기] [메인으로] */
+/** 결과 화면: 생존 시간 · 처치 수 · 도달 레벨 · 얻은 엽전 · 새 기록 · 새로 해금된 것 → [다시하기] [강화하러 가기] [메인으로] */
 export function showResult(r: GameResult) {
   const map = MAPS[MAP_INDEX[r.map] ?? 0];
   const char = CHARACTER_BY_ID[r.setup.char];
@@ -16,17 +16,19 @@ export function showResult(r: GameResult) {
        <div class="verdict">${title}</div>
        <img class="result-char" src="${zodiacFullUrl(r.setup.char)}" alt="" />
        <ul class="stats">
-         <li><span>⏱️ 생존 시간</span><b>${mmss(r.time)}<small> / ${mmss(RUN_SEC)}</small></b></li>
+         <li><span>⏱️ 생존 시간 <i class="tag new hidden" id="record">새 기록!</i></span><b>${mmss(r.time)}<small> / ${mmss(RUN_SEC)}</small></b></li>
          <li><span>💀 처치 수</span><b>${r.kills.toLocaleString()}</b></li>
          <li><span>⭐ 도달 레벨</span><b>Lv ${r.level}</b></li>
-         <li><span>🪙 얻은 엽전</span><b class="coin">${r.coins.toLocaleString()}닢</b></li>
+         <li><span>🪙 얻은 엽전</span><b class="coin" id="coins">${r.coins.toLocaleString()}닢</b></li>
        </ul>
-       <p class="soft note">엽전 모으기와 강화는 곧 열려요 (지금은 이번 판에서 주운 수만 보여 줘요)</p>
+       <div class="unlocks" id="unlocks"></div>
+       <p class="soft note" id="note">결과를 저장하는 중…</p>
      </div>
      <div class="actions">
        <button class="btn" id="home">메인으로</button>
-       <button class="btn primary" id="again">다시하기 ▶</button>
+       <button class="btn" id="upgrade">⚒️ 강화하러 가기</button>
      </div>
+     <button class="btn primary big" id="again">다시하기 ▶</button>
      ${r.cleared ? '<div class="cheer" id="cheer"></div>' : ''}`,
     'result',
     'result',
@@ -43,10 +45,35 @@ export function showResult(r: GameResult) {
       cheer.append(c);
     }
   }
+  // 서버가 정한 결과가 오면 채운다: 받은 엽전 · 새 기록 · 새로 해금된 것
+  const note = root.querySelector('#note') as HTMLElement;
+  void r.saved.then((s) => {
+    if (!root.isConnected) return;
+    if (s === 'unrecorded') note.textContent = '서버에 연결하지 못한 판이라 기록되지 않았어요';
+    else if (s === 'pending') note.textContent = '결과를 올리지 못했어요. 다음에 들어올 때 다시 보낼게요';
+    else if (s === 'rejected') note.textContent = '이 판의 결과는 받아들여지지 않았어요';
+    else {
+      root.querySelector('#coins')!.textContent = `+${s.coins.toLocaleString()}닢`;
+      note.textContent = s.valid ? '엽전으로 메인의 [강화]에서 더 강해질 수 있어요' : '기록이 정상 범위를 벗어나 랭킹에는 오르지 않아요';
+      if (s.newRecord) {
+        root.querySelector('#record')!.classList.remove('hidden');
+        sfx('newRecord');
+      }
+      const lines = [
+        ...s.unlockedCharacters.map((c) => `<p><img src="${zodiacFaceUrl(c)}" alt="" />🔓 <b>${esc(CHARACTER_BY_ID[c].nick)}</b> 해금!</p>`),
+        ...s.unlockedMaps.map((m) => `<p>🗺️ 새 맵 <b>${esc(MAPS[MAP_INDEX[m] ?? 0].name)}</b> 해금!</p>`),
+      ];
+      root.querySelector('#unlocks')!.innerHTML = lines.join('');
+    }
+  });
   root.querySelector('#again')!.addEventListener('click', () => {
     sfx('click');
     // 같은 캐릭터·맵으로 새 판 (개발용 설정도 그대로, 시드만 새로)
     nav.game({ ...r.setup, seed: undefined });
+  });
+  root.querySelector('#upgrade')!.addEventListener('click', () => {
+    sfx('click');
+    nav.upgrade();
   });
   root.querySelector('#home')!.addEventListener('click', () => {
     sfx('click');

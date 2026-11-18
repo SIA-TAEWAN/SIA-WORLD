@@ -8,14 +8,15 @@ import { presetUpgrades } from '../data/upgrades';
 import { WEAPONS } from '../data/weapons';
 import { activeBoss } from '../game/sim';
 import { CARD, EV, type Card, type Ev, type State } from '../game/state';
-import { LOCAL_MODE } from '../net/api';
+import { ApiError, LOCAL_MODE } from '../net/api';
 import { fillBench } from '../run/devtools';
 import { Run } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
-import { esc, mmss, nav, openSettings, screen, showNumbers, stage, state, toast, type GameSetup } from './app';
+import { esc, mmss, nav, openSettings, screen, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
 import { music } from './music';
 import { sfx, weaponSfx } from './sfx';
+import { whyText } from './upgrade';
 
 declare global {
   interface Window {
@@ -52,7 +53,7 @@ export function showGame(setup: GameSetup) {
     seed: setup.seed ?? Math.floor(Math.random() * 0xffffffff),
     char: setup.char,
     map: setup.map,
-    // 영구 강화: 4단계부터는 저장된 값. 지금은 처음 상태(0)이거나 개발용 설정(?upg=N)
+    // 영구 강화: 저장된 값 (개발용 설정 ?upg=N 이 있으면 그 값)
     upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : state.profile.upgrades,
     startAt: setup.startAt,
   });
@@ -62,6 +63,18 @@ export function showGame(setup: GameSetup) {
   let endTimer: ReturnType<typeof setTimeout> | null = null;
   let cutTimer: ReturnType<typeof setTimeout> | null = null;
   let ended = false;
+  // 판 시작을 서버에 알린다 (해금 확인 + 시작 시각). 못 알렸으면 이 판은 기록되지 않는다 (플레이는 할 수 있다)
+  const api = state.api;
+  const started: Promise<string | null> = api
+    ? api.start(setup.map, setup.char, setup.startAt ?? 0).catch((e) => {
+        if (e instanceof ApiError) {
+          // 잠긴 캐릭터·맵: 출전 준비로 돌아간다
+          toast(whyText(e));
+          nav.select();
+        }
+        return null;
+      })
+    : Promise.resolve(null);
   if (LOCAL_MODE) window.__surv = { run, game: null, bench: (e, p) => fillBench(run.state, e, p) };
 
   const root = screen(
@@ -337,7 +350,20 @@ export function showGame(setup: GameSetup) {
     if (ended) return;
     ended = true;
     run.paused = true;
-    const result = { ...run.summary(), quit, setup };
+    const summary = run.summary();
+    // 판이 끝날 때 한 번 저장한다. 통신이 안 되면 기기에 보관해 두었다가 다음 접속 때 다시 보낸다
+    const saved: GameResult['saved'] = started.then(async (id) => {
+      if (!id || !api) return 'unrecorded';
+      try {
+        const out = await api.finish({ ...summary, run: id });
+        if (!out) return 'pending';
+        state.profile = out.profile;
+        return out.result;
+      } catch {
+        return 'rejected';
+      }
+    });
+    const result: GameResult = { ...summary, quit, setup, saved };
     if (quit) return nav.result(result);
     endTimer = setTimeout(() => nav.result(result), 1900);
   }
@@ -500,4 +526,7 @@ export function showGame(setup: GameSetup) {
   );
   paintOwned();
   frame();
+  void started.then((id) => {
+    if (id === null && root.isConnected && !ended) toast('서버에 연결하지 못했어요. 이 판은 기록되지 않아요', 3600);
+  });
 }

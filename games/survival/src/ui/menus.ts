@@ -3,17 +3,16 @@ import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
+import { characterPrice } from '../game/progress';
 import { startWeapon } from '../game/sim';
 import { worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, loadEngine, nav, openSettings, saveChar, screen, state, toast } from './app';
 import { sfx } from './sfx';
+import { whyText } from './upgrade';
 
-/**
- * 잠금을 적용할까. 엽전·해금·저장은 4단계에서 만들므로 지금은 12종을 모두 고를 수 있다.
- * (잠금 표시 자리와 해금 조건 글은 이미 화면에 있다. 4단계에서 true 로 바꾸고 저장된 해금 목록을 쓴다)
- */
-const LOCKS_ON = false;
+/** 잠금을 적용한다: 프로필의 해금 목록에 없는 캐릭터·맵은 고를 수 없다 (해금은 서버가 판 결과를 보고 정한다) */
+const LOCKS_ON = true;
 
 const charLocked = (id: ZodiacId) => LOCKS_ON && !state.profile.unlockedCharacters.includes(id);
 const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includes(id);
@@ -22,8 +21,9 @@ const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includ
 
 export function showMain() {
   const others = ZODIAC_IDS.filter((c) => c !== state.char).sort(() => Math.random() - 0.5);
+  let off: (() => void) | null = null;
   const root = screen(
-    `<div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><span class="spacer"></span>
+    `<div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><span class="people" id="people"></span><span class="spacer"></span>
        <span class="coins-pill" title="가진 엽전">🪙 ${state.profile.coins.toLocaleString()}</span>
        <button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
      <h1 class="logo">시아서바이벌</h1>
@@ -38,7 +38,7 @@ export function showMain() {
      <div class="main-actions">
        <button class="btn primary big" id="go">출전 ▶</button>
        <div class="sub-actions">
-         <button class="btn soon" id="upgrade">⚒️ 강화</button>
+         <button class="btn" id="upgrade">⚒️ 강화</button>
          <button class="btn soon" id="codex">📖 도감</button>
          <button class="btn soon" id="ranking">🏆 랭킹</button>
        </div>
@@ -46,19 +46,32 @@ export function showMain() {
      <p class="soft foot">${esc(state.user.name)} 님 · 공격은 저절로, 움직이기만 하면 돼요</p>`,
     'main',
     'main',
+    () => off?.(),
   );
   root.querySelector('#go')!.addEventListener('click', () => {
     sfx('click');
     nav.select();
   });
   root.querySelector('#settings')!.addEventListener('click', () => openSettings());
-  // 강화·도감·랭킹은 다음 단계에서 만든다 (지금은 자리만)
-  for (const [id, name] of [['upgrade', '강화'], ['codex', '도감'], ['ranking', '랭킹']] as const) {
+  root.querySelector('#upgrade')!.addEventListener('click', () => {
+    sfx('click');
+    nav.upgrade();
+  });
+  // 도감·랭킹은 다음 단계에서 만든다 (지금은 자리만)
+  for (const [id, name] of [['codex', '도감'], ['ranking', '랭킹']] as const) {
     root.querySelector(`#${id}`)!.addEventListener('click', () => {
       sfx('toggle');
-      toast(`${name}는 아직 준비 중이에요`);
+      toast(`${name}은 아직 준비 중이에요`);
     });
   }
+  // 지금 들어와 있는 사람 수 (다른 게임과 같은 "지금 N/30명")
+  const lobby = state.lobby;
+  const people = root.querySelector('#people') as HTMLElement;
+  const paintPeople = () => {
+    people.textContent = lobby && lobby.status === 'ok' && lobby.count > 0 ? `지금 ${lobby.count}/${lobby.max}명` : '';
+  };
+  paintPeople();
+  off = lobby?.onChange(paintPeople) ?? null;
   void loadEngine();
 }
 
@@ -70,9 +83,10 @@ export function showCharSelect() {
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>캐릭터 고르기</h2><span class="spacer"></span></div>
      <div class="card info" id="info"></div>
      <div class="card"><div class="chars" id="chars">${CHARACTERS.map(
-       (c) => `<button class="char ${charLocked(c.id) ? 'locked' : ''}" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span>${charLocked(c.id) ? '<b class="lock">🔒</b>' : ''}</button>`,
+       (c) => `<button class="char" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span><b class="lock hidden">🔒</b></button>`,
      ).join('')}</div></div>
      <div class="grow"></div>
+     <p class="who-coins">🪙 <b id="mycoins"></b></p>
      <button class="btn primary big" id="next">맵 고르기 ▶</button>`,
     'select',
     'main',
@@ -95,8 +109,16 @@ export function showCharSelect() {
         </ul>
         ${own.id !== start.id ? `<p class="soft note">${esc(own.name)}(${esc(own.desc)})은 아직 준비 중이라, 지금은 ${esc(start.name)}으로 시작해요</p>` : ''}
       </div>`;
-    next.disabled = locked;
-    next.textContent = locked ? `🔒 ${c.unlock.text}` : '맵 고르기 ▶';
+    // 잠긴 캐릭터: 조건으로 푸는 것은 조건을 보여 주고, 엽전으로 푸는 것은 바로 살 수 있다
+    const price = characterPrice(pick);
+    root.querySelector('#mycoins')!.textContent = `${state.profile.coins.toLocaleString()}닢`;
+    root.querySelectorAll<HTMLElement>('.char').forEach((b) => {
+      const l = charLocked(b.dataset.c as ZodiacId);
+      b.classList.toggle('locked', l);
+      b.querySelector('.lock')?.classList.toggle('hidden', !l);
+    });
+    next.disabled = locked && (price === null || state.profile.coins < price);
+    next.textContent = !locked ? '맵 고르기 ▶' : price !== null ? `🪙 ${price.toLocaleString()}닢으로 풀기` : `🔒 ${c.unlock.text}`;
   };
   paint();
   root.querySelector('#chars')!.addEventListener('click', (e) => {
@@ -110,8 +132,24 @@ export function showCharSelect() {
     sfx('click');
     nav.main();
   });
-  next.addEventListener('click', () => {
-    if (charLocked(pick)) return;
+  let busy = false;
+  next.addEventListener('click', async () => {
+    if (charLocked(pick)) {
+      // 엽전으로 푼다 (원숭이·닭·개)
+      if (characterPrice(pick) === null || busy || !state.api) return;
+      busy = true;
+      try {
+        state.profile = await state.api.unlockCharacter(pick);
+        sfx('newRecord');
+        toast(`${CHARACTER_BY_ID[pick].nick}와(과) 함께할 수 있어요!`);
+      } catch (e) {
+        sfx('toggle');
+        toast(whyText(e));
+      }
+      busy = false;
+      if (root.isConnected) paint();
+      return;
+    }
     sfx('click');
     saveChar(pick);
     nav.maps();

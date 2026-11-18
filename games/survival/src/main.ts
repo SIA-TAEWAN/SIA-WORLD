@@ -1,17 +1,20 @@
 import './style.css';
 import { LOCAL_MODE, devSetup, getApi } from './net/api';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
-import { loadChar, loadEngine, nav, screen, state } from './ui/app';
+import { LOBBY_MAX, LobbyFullError, SurvivalLobby } from './net/lobby';
+import { loadChar, loadEngine, nav, screen, state, toast } from './ui/app';
 import { showCharSelect, showMain, showMapSelect } from './ui/menus';
 import { showResult } from './ui/result';
+import { showUpgrade } from './ui/upgrade';
 
 nav.main = showMain;
 nav.select = showCharSelect;
 nav.maps = showMapSelect;
+nav.upgrade = showUpgrade;
 // 개발용 테스트 설정(?upg=10&t=420)은 메뉴에서 시작한 판에도 그대로 적용한다
 const dev = devSetup();
 nav.game = (setup) =>
-  void loadEngine().then((m) => m.showGame({ ...setup, upg: setup.upg ?? (dev ? dev.upg : undefined), startAt: setup.startAt ?? (dev?.t || undefined) }));
+  void loadEngine().then((m) => m.showGame({ ...setup, upg: setup.upg ?? dev?.upg ?? undefined, startAt: setup.startAt ?? (dev?.t || undefined) }));
 nav.result = showResult;
 
 /** 테스트 모드(?local=1): 로그인 없이 임시 사용자 (?name= 으로 이름 지정) */
@@ -53,12 +56,47 @@ async function start() {
   }
   state.user = { id: user.userId, name: user.nickname };
   state.char = loadChar();
-  state.api = await getApi(user.userId);
-  state.profile = await state.api.loadProfile();
+  try {
+    state.api = await getApi(user.userId);
+  } catch {
+    state.api = null;
+  }
+  const api = state.api;
+  if (api) {
+    // 접속 인원 채널: 정원(최대 30명)을 확인한다. 게임을 하는 동안에도 채널에 남아 있는다
+    // 테스트 모드에서는 ?lobbymax=2 처럼 정원을 줄여 볼 수 있다
+    const testMax = LOCAL_MODE ? Number(new URLSearchParams(location.search).get('lobbymax')) : 0;
+    state.lobby = new SurvivalLobby(api, state.user, testMax >= 1 ? Math.floor(testMax) : LOBBY_MAX);
+    try {
+      await state.lobby.enter();
+    } catch (e) {
+      if (!(e instanceof LobbyFullError)) throw e;
+      const max = state.lobby.max;
+      state.lobby = null;
+      const root = screen(
+        `<div class="connecting">지금은 사람이 가득 찼어요 (최대 ${max}명).<br/>잠시 후 다시 들어와 주세요<br/><br/>
+          <button class="btn primary" id="retry">다시 시도</button> <a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a></div>`,
+        'center',
+        null,
+      );
+      root.querySelector('#retry')!.addEventListener('click', () => location.reload());
+      return;
+    }
+  }
+  // 프로필(엽전·강화·해금·도감). 못 읽으면 처음 상태로 플레이는 할 수 있다 (그 판은 기록되지 않는다)
+  try {
+    if (!api) throw new Error('no api');
+    // 지난번에 올리지 못한 판 결과가 있으면 먼저 다시 보낸다
+    const sent = await api.resend().catch(() => 0);
+    state.profile = await api.loadProfile();
+    if (sent > 0) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
+  } catch {
+    toast('서버에 연결하지 못했어요. 지금은 기록되지 않아요', 3600);
+  }
 
   // 개발용 테스트 설정: ?local=1&map=field&char=tiger&upg=10&t=420 → 메뉴를 건너뛰고 그 상태로 바로 시작
   if (dev?.char) state.char = dev.char;
-  if (dev?.auto) nav.game({ char: dev.char!, map: dev.map!, upg: dev.upg, startAt: dev.t, seed: dev.seed ?? undefined });
+  if (dev?.auto) nav.game({ char: dev.char!, map: dev.map!, upg: dev.upg ?? undefined, startAt: dev.t, seed: dev.seed ?? undefined });
   else nav.main();
 }
 
