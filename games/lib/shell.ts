@@ -1216,8 +1216,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     return { events: fresh, exact, newRound };
   };
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  /** 한 동작에서 다음 동작으로 넘어가는 쉬는 시간의 배율 (작을수록 빠르다. 카드가 움직이는 시간은 그대로) */
-  const PACE = 0.85;
+  /** 한 동작에서 다음 동작으로 넘어가는 쉬는 시간의 배율 (클수록 천천히. 카드가 움직이는 시간은 그대로) */
+  const PACE = 1.15;
   /** 진행 중인 카드 연출이 다 끝날 때까지 (다시 그리면서 늘어날 수 있어 되풀이해서 확인) */
   const waitAnim = async (pad = 120) => {
     for (let i = 0; i < 40 && !closed; i++) {
