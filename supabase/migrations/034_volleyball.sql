@@ -8,6 +8,7 @@
 --   1) 경기 시작: 두 사람이 각자 volleyball_begin() → 서로가 서로를 상대로 지목했을 때만 live
 --   2) 경기 끝: 두 사람이 각자 volleyball_report() → 두 보고의 승자(정상 종료면 점수도)가 같으면 확정, 다르면 무효(void)
 --   3) 상대가 나가 버려 보고가 하나뿐이면: 첫 보고 10초 뒤 volleyball_settle() 로 그 보고 하나로 확정
+--   4) 보고 하나로 확정된 뒤 30분 안에 상대가 다른 결과를 보고하면: 그 경기를 무효로 되돌리고 두 사람의 전적을 원래대로
 -- 표는 함수만 바꾼다 (직접 쓰기 권한 없음).
 -- 시아코인(033_sia_coin.sql): 정상 종료('normal')로 확정된 경기의 두 사람 모두에게 준다. 이탈('leave')·무효(void)는 주지 않는다.
 
@@ -75,6 +76,7 @@ language sql immutable as $$
     when 'min_sec' then 5            -- live 뒤 이보다 빨리 끝난 경기는 없다
     when 'max_sec' then 1800         -- live 뒤 30분이 지나면 보고를 받지 않는다
     when 'settle_sec' then 10        -- 첫 보고 뒤 이만큼 지나도 상대 보고가 없으면 보고 하나로 확정
+    when 'dispute_sec' then 1800     -- 보고 하나로 확정된 뒤 이 시간 안에 상대가 다른 결과를 보고하면 무효로 되돌린다
     when 'no_window_sec' then 600    -- 경기 번호(서버 시각 ms)가 지금과 이만큼 넘게 다르면 거절
     when 'begin_gap_sec' then 3      -- 한 사람이 새 경기를 시작할 수 있는 최소 간격
   end
@@ -226,12 +228,15 @@ grant execute on function public.volleyball_begin(text, bigint, int, uuid, text)
 
 -- 경기가 끝나면 두 사람이 각자 부른다. p_reason: 'normal'(3점으로 끝남) · 'leave'(상대가 나갔다는 주장 → 보고자가 이긴 것으로만).
 -- 양쪽 보고가 모이면 승자(둘 다 normal이면 점수도)가 같을 때만 확정, 다르면 무효.
+-- 보고 하나로 이미 확정된 경기(volleyball_settle)라도, 보고하지 않았던 사람이 확정 뒤 30분 안에 다른 결과를 보고하면
+-- 그 경기를 무효로 되돌리고 두 사람의 전적을 원래대로 돌린다 (거짓 단독 보고를 막는다. 이미 준 시아코인은 그대로 둔다).
 -- → { status: 'waiting' | 'done' | 'void', (done이면) left_score, right_score, winner_id, reason, wins, losses }
 create or replace function public.volleyball_report(p_match uuid, p_left_score int, p_right_score int, p_reason text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   me uuid := auth.uid(); t timestamptz := clock_timestamp(); m public.volleyball_matches;
   my_side int; win int := public._volleyball_const('win_score'); winner int; age numeric; mine jsonb; theirs jsonb; a jsonb;
+  late boolean := false; differ boolean; loser uuid;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   select * into m from public.volleyball_matches where id = p_match for update;
@@ -240,9 +245,20 @@ begin
   elsif me = m.right_user_id then my_side := 1;
   else raise exception 'not in match';
   end if;
-  -- 이미 확정·무효: 그 결과를 그대로 알려 준다 (늦게 보고한 쪽)
-  if m.status in ('done', 'void') then return public._volleyball_result(m, me); end if;
-  if m.status <> 'live' then raise exception 'not live'; end if;
+  mine := case when my_side = 0 then m.left_report else m.right_report end;
+  theirs := case when my_side = 0 then m.right_report else m.left_report end;
+
+  if m.status = 'void' then return public._volleyball_result(m, me); end if;
+  if m.status = 'done' then
+    -- 이미 확정: 보고 하나로 확정된 경기이고, 내가 아직 보고하지 않았고, 확정 뒤 30분 안일 때만 내 보고를 받아 비교한다.
+    -- (양쪽 보고가 다 있던 경기, 이미 내 보고가 있는 경기, 30분이 지난 경기는 그대로 알려 주기만 한다)
+    if mine is not null or theirs is null or m.done_at is null
+       or m.done_at < t - make_interval(secs => public._volleyball_const('dispute_sec')) then
+      return public._volleyball_result(m, me);
+    end if;
+    late := true;
+  elsif m.status <> 'live' then raise exception 'not live';
+  end if;
 
   if p_reason is null or p_reason not in ('normal', 'leave') then raise exception 'bad reason'; end if;
   if p_left_score is null or p_right_score is null or p_left_score < 0 or p_right_score < 0 or p_left_score > win or p_right_score > win then raise exception 'bad score'; end if;
@@ -255,13 +271,13 @@ begin
     if p_left_score = win or p_right_score = win then raise exception 'bad score'; end if;
     winner := my_side;
   end if;
-  age := extract(epoch from (t - m.live_at));
-  if age < public._volleyball_const('min_sec') then raise exception 'too early'; end if;
-  if age > public._volleyball_const('max_sec') then raise exception 'too late'; end if;
+  if not late then
+    age := extract(epoch from (t - m.live_at));
+    if age < public._volleyball_const('min_sec') then raise exception 'too early'; end if;
+    if age > public._volleyball_const('max_sec') then raise exception 'too late'; end if;
+  end if;
 
   -- 내 보고는 한 번만 (이미 있으면 처음 것을 그대로 둔다)
-  mine := case when my_side = 0 then m.left_report else m.right_report end;
-  theirs := case when my_side = 0 then m.right_report else m.left_report end;
   if mine is null then
     mine := jsonb_build_object('l', p_left_score, 'r', p_right_score, 'reason', p_reason, 'winner', winner);
     if my_side = 0 then
@@ -272,9 +288,29 @@ begin
   end if;
   if theirs is null then return jsonb_build_object('status', 'waiting'); end if;
 
-  -- 양쪽 보고가 모였다
-  if (mine->>'winner')::int <> (theirs->>'winner')::int
-     or (mine->>'reason' = 'normal' and theirs->>'reason' = 'normal' and (mine->>'l' <> theirs->>'l' or mine->>'r' <> theirs->>'r')) then
+  -- 양쪽 보고가 모였다: 승자가 다르거나, 둘 다 normal인데 점수가 다르면 서로 다른 결과
+  differ := (mine->>'winner')::int <> (theirs->>'winner')::int
+    or (mine->>'reason' = 'normal' and theirs->>'reason' = 'normal' and (mine->>'l' <> theirs->>'l' or mine->>'r' <> theirs->>'r'));
+
+  if late then
+    -- 보고 하나로 확정됐던 경기에 늦은 보고가 왔다. 같으면 그대로(내 보고만 채워 둠), 다르면 무효로 되돌린다.
+    -- 내 보고 칸이 이제 채워졌으므로 이 되돌리기는 한 경기에 한 번만 일어난다.
+    if differ then
+      loser := case when m.winner_id = m.left_user_id then m.right_user_id else m.left_user_id end;
+      if m.winner_id is not null then
+        update public.volleyball_rankings set wins = greatest(0, wins - 1), updated_at = t where user_id = m.winner_id;
+      end if;
+      if loser is not null then
+        update public.volleyball_rankings set losses = greatest(0, losses - 1), updated_at = t where user_id = loser;
+      end if;
+      update public.volleyball_matches set status = 'void', winner_id = null, left_score = null, right_score = null, ended_reason = null, done_at = t where id = m.id;
+      return jsonb_build_object('status', 'void');
+    end if;
+    select * into m from public.volleyball_matches where id = p_match;
+    return public._volleyball_result(m, me);
+  end if;
+
+  if differ then
     update public.volleyball_matches set status = 'void', done_at = t where id = m.id;
     return jsonb_build_object('status', 'void');
   end if;
