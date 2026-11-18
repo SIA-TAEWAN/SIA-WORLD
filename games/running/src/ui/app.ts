@@ -1,6 +1,7 @@
 import { ZODIAC_IDS, type ZodiacId } from '../game/constants';
 import type { RankedEntry } from '../game/ranking';
 import type { RaceApi } from '../net/api';
+import type { RaceLobby } from '../net/lobby';
 import type { RaceRoom, StartMsg } from '../net/room';
 import type { RaceGame } from '../race/game';
 import { music, type TrackName } from './music';
@@ -14,6 +15,8 @@ export const state = {
   user: { id: '', name: '' },
   api: null as RaceApi | null,
   room: null as RaceRoom | null,
+  /** 대기실 채널 (방 목록) */
+  lobby: null as RaceLobby | null,
   /** 마지막으로 고른 캐릭터 */
   char: 'tiger' as ZodiacId,
   /** 내 최고 기록 (ms) */
@@ -104,6 +107,13 @@ export function openSettings() {
     paint();
   });
   stage.append(dim);
+}
+
+/** 지금 방에서 나온다 (대기실 방 목록에서도 빠진다) */
+export function leaveRoom() {
+  void state.room?.leave();
+  state.room = null;
+  state.lobby?.setRoom(null);
 }
 
 /** 주소의 ?room=코드 를 바꾼다 (새로 고침·공유해도 같은 방) */

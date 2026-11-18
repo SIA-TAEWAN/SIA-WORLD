@@ -21,7 +21,7 @@ export function whenSound(fn: () => void) {
 }
 
 export type SfxName =
-  | 'click' | 'toggle' | 'raceReady' | 'raceGo' | 'raceFoul' | 'step' | 'jump' | 'land' | 'mud' | 'hurdleHit' | 'slip' | 'logHit' | 'boost' | 'goal'
+  | 'click' | 'toggle' | 'raceReady' | 'raceGo' | 'raceFoul' | 'step' | 'jump' | 'land' | 'slide' | 'mud' | 'hurdleHit' | 'slip' | 'logHit' | 'boost' | 'goal'
   | 'rankShow' | 'newRecord';
 
 export function sfx(name: SfxName | string, opts?: { delay?: number; volume?: number; rate?: number }) {

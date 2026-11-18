@@ -1762,12 +1762,19 @@ body.in-game .sound-fab {
   background: linear-gradient(135deg, #ffd23a, #ff8fb1 50%, #6fd8ff);
 }
 
+/* 대기실 랭킹 포인트 칸: 옆의 랭킹·링크 복사 버튼(.btn.small-btn)과 같은 크기·모양 */
 .my-points {
-  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: #fff8d6;
   border: 3px solid var(--ink);
-  border-radius: 999px;
-  padding: 2px 12px;
-  font-size: 16px;
+  border-radius: 12px;
+  box-shadow: 0 3px 0 var(--ink);
+  padding: 6px 12px;
+  font-size: 15px;
+  line-height: normal;
   white-space: nowrap;
 }
 
@@ -1929,9 +1936,9 @@ body.in-game .sound-fab {
   .screen.lobby .bar h2 { grid-area: title; font-size: 22px; text-align: right; overflow: hidden; text-overflow: ellipsis; }
   .screen.lobby .bar h2 small { font-size: 12px; }
   .screen.lobby .bar #rank { grid-area: rank; }
-  .screen.lobby .bar .my-points { grid-area: pts; text-align: center; align-self: center; }
+  .screen.lobby .bar .my-points { grid-area: pts; text-align: center; }
   .screen.lobby .bar #copy { grid-area: copy; }
-  .screen.lobby .bar #rank, .bar #copy { padding-left: 6px; padding-right: 6px; font-size: 14px; }
+  .screen.lobby .bar #rank, .bar #copy, .screen.lobby .bar .my-points { padding-left: 6px; padding-right: 6px; font-size: 14px; }
 }
 /* 좁은 화면 게임방: 제목은 남는 칸에 맞춰 줄이고 넘치면 … */
 @media (max-width: 600px) {

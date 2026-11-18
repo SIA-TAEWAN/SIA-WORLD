@@ -31,6 +31,15 @@
       "label": "로비 카드 시아레이스 (16:9) → shared/images/card-race.png"
     },
     {
+      "asset_id": "130714d7-1044-49a0-94a8-c10de17e65fc",
+      "sha12": "e499f6d15a68",
+      "label": "낮은 막대 (슬라이딩으로 지나가는 방해물, 방해물 시트를 화풍 참고) → public/art/bar.png"
+    },
+    {
+      "asset_id": "78b3aa4b-d476-4b6c-9f96-d69f55aa38a5",
+      "label": "낮은 막대 다른 시안 (쓰지 않음)"
+    },
+    {
       "asset_id": "0620e930-1751-4436-8940-4da390e5b5db",
       "label": "(화풍 참고) 십이지신 캐릭터 전신 시트 A — art/spritecook/spritecook-assets.json"
     },

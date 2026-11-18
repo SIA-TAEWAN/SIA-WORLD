@@ -40,7 +40,7 @@ export function livePlace(entries: readonly RaceEntry[], slot: number): number {
 
 export type Tier = 'gold' | 'silver' | 'bronze' | 'white';
 
-/** 등급: 해(20.5초 이내) · 달(22초 이내) · 별(25초 이내) · 구름 */
+/** 등급: 해(30.75초 이내) · 달(33초 이내) · 별(37.5초 이내) · 구름 */
 export function tierOf(ms: number): Tier {
   if (ms <= TIER_SUN_MS) return 'gold';
   if (ms <= TIER_MOON_MS) return 'silver';

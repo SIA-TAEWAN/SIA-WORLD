@@ -1,5 +1,6 @@
 import './style.css';
 import { LOCAL_MODE, getApi } from './net/api';
+import { RaceLobby } from './net/lobby';
 import { cleanRoomCode, validRoomCode } from './net/room';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { loadChar, loadEngine, nav, screen, state } from './ui/app';
@@ -52,6 +53,9 @@ async function start() {
   state.user = { id: user.userId, name: user.nickname };
   state.char = loadChar();
   state.api = await getApi(user.userId);
+  // 대기실 채널: 방 목록을 받고, 내가 들어간 방을 알린다 (연결을 기다리지 않는다)
+  state.lobby = new RaceLobby(state.api, state.user);
+  void state.lobby.join();
   // 주소에 방 코드가 있으면 바로 그 방으로 (친구 초대 링크)
   const code = cleanRoomCode(new URLSearchParams(location.search).get('room'));
   if (validRoomCode(code)) nav.room(code);

@@ -1,7 +1,7 @@
 // SIA WORLD 랭킹 창 (로비와 시아탱크가 같이 쓴다).
 //   탭: 💣 시아탱크(포인트) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록)
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
-//   시아레이스만 기록 기준: 해 20.5초 이내 · 달 22초 이내 · 별 25초 이내 · 그 외 구름 (RACE_TIERS)
+//   시아레이스만 기록 기준: 해 30.75초 이내 · 달 33초 이내 · 별 37.5초 이내 · 그 외 구름 (RACE_TIERS)
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg } from './rank.js';
@@ -14,9 +14,9 @@ const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race'];
 /**
  * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
  */
-export const RACE_TIERS = { gold: 20500, silver: 22000, bronze: 25000 };
+export const RACE_TIERS = { gold: 30750, silver: 33000, bronze: 37500 };
 export const RACE_TOP = 100;
-const RACE_INFO = { label: '🏁 레이스', note: '100m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
+const RACE_INFO = { label: '🏁 레이스', note: '150m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
 const tabInfo = (g) => (g === 'race' ? RACE_INFO : RANKINGS[g]);
 
 /** 기록(ms) → 등급 */

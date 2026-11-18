@@ -7,7 +7,7 @@ import { zodiacFullUrl } from '../assets';
  * 그림 목록. public/art/<이름>.png (SpriteCook, 원본 asset id: spritecook-assets.json) 를 쓰고,
  * 파일을 못 불러오면 아래 코드 그림(임시 그림)으로 대신한다.
  */
-export const ART_FILES = ['track', 'sky', 'stands', 'hurdle', 'banana', 'log', 'mudShort', 'mudLong', 'boost', 'marker', 'flag', 'dust', 'splash', 'star', 'spark'] as const;
+export const ART_FILES = ['track', 'sky', 'stands', 'hurdle', 'banana', 'log', 'mudShort', 'mudLong', 'boost', 'bar', 'marker', 'flag', 'dust', 'splash', 'star', 'spark'] as const;
 export type ArtKey = (typeof ART_FILES)[number];
 
 export const zKey = (id: ZodiacId) => `z-${id}`;
@@ -63,6 +63,15 @@ export function ensureArt(scene: Phaser.Scene, chars: readonly ZodiacId[]) {
     g.fillRect(70, 26, 12, 96).strokeRect(70, 26, 12, 96);
     g.fillStyle(COLOR.pink, 1).fillRoundedRect(6, 10, 84, 26, 8).strokeRoundedRect(6, 10, 84, 26, 8);
     g.fillStyle(COLOR.white, 1).fillRect(34, 12, 12, 22).fillRect(58, 12, 12, 22);
+  });
+  // 낮은 막대: 높은 기둥 둘과 머리 높이의 줄무늬 막대 (아래로 슬라이딩해서 지나간다)
+  make(scene, 'bar', 120, 160, (g) => {
+    g.fillStyle(COLOR.white, 1);
+    line(g, 5);
+    g.fillRect(12, 20, 12, 134).strokeRect(12, 20, 12, 134);
+    g.fillRect(96, 6, 12, 134).strokeRect(96, 6, 12, 134);
+    g.fillStyle(COLOR.pink, 1).fillRoundedRect(6, 8, 108, 30, 8).strokeRoundedRect(6, 8, 108, 30, 8);
+    g.fillStyle(COLOR.white, 1).fillRect(30, 10, 14, 26).fillRect(58, 10, 14, 26).fillRect(86, 10, 14, 26);
   });
   make(scene, 'banana', 96, 64, (g) => {
     g.fillStyle(COLOR.primary, 1);

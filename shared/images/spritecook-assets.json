@@ -1,0 +1,37 @@
+{
+  "assets": [
+    {
+      "asset_id": "f676e934-0148-4f52-9cdb-033f37ee6c3b",
+      "label": "스타일 참고(업로드): 로비 카드 카지노 shared/images/card-casino.png"
+    },
+    {
+      "asset_id": "3f07cec9-461f-4db7-ad2c-c0461e79d226",
+      "label": "스타일 참고(업로드): 로비 카드 레이스 shared/images/card-race.png"
+    },
+    {
+      "asset_id": "4431bd2b-9d8c-4fdd-b34d-5e7a3d06f3c5",
+      "sha12": "68123b5886aa",
+      "label": "로비 카드 시아탱크 → shared/images/card-tank.png (16:10 가운데 자르기, 640x400)"
+    },
+    {
+      "asset_id": "24a8bb34-1448-4a62-8fab-96c72915044f",
+      "sha12": "bd22c55e8473",
+      "label": "카지노 고르기 세븐포커 → shared/images/casino/poker.webp (오른쪽 16:10 자르기)"
+    },
+    {
+      "asset_id": "3e0bb4f8-dc57-4476-aaf1-4786732a7188",
+      "sha12": "2bb709b7f91e",
+      "label": "카지노 고르기 텍사스 홀덤 → shared/images/casino/holdem.webp (딜러 버튼 글자 지움)"
+    },
+    {
+      "asset_id": "7e8e0474-e88b-42c1-95b0-7b5146d9899b",
+      "sha12": "ccb1b21c3be1",
+      "label": "카지노 고르기 블랙잭 → shared/images/casino/blackjack.webp"
+    },
+    {
+      "asset_id": "32ae6d65-93e3-447c-b314-fb5bc4339f18",
+      "sha12": "8a7ed4c8e7f3",
+      "label": "카지노 고르기 십이지신 룰렛 → shared/images/casino/roulette.webp"
+    }
+  ]
+}

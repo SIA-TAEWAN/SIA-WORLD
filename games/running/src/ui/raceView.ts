@@ -5,7 +5,7 @@ import type { StartMsg } from '../net/room';
 import { RaceGame } from '../race/game';
 import { RaceScene, type SceneData } from '../scenes/RaceScene';
 import { zodiacFaceUrl } from '../assets';
-import { nav, screen, stage, state, toast } from './app';
+import { leaveRoom, nav, screen, stage, state, toast } from './app';
 import { DPR } from './dpr';
 import { sfx } from './sfx';
 
@@ -28,13 +28,17 @@ export function showRace(start: StartMsg) {
   let game: Phaser.Game | null = null;
   let ro: ResizeObserver | null = null;
   let resultTimer: ReturnType<typeof setTimeout> | null = null;
+  // 키보드: 점프 = 스페이스·↑·W·엔터, 슬라이딩 = ↓·S
+  const keyKind = (code: string): 'jump' | 'slide' | null =>
+    code === 'Space' || code === 'Enter' || code === 'ArrowUp' || code === 'KeyW' ? 'jump' : code === 'ArrowDown' || code === 'KeyS' ? 'slide' : null;
   const onKey = (e: KeyboardEvent) => {
-    if (e.code !== 'Space' && e.code !== 'Enter') return;
+    const kind = keyKind(e.code);
+    if (!kind) return;
     e.preventDefault();
-    if (!e.repeat) press();
+    if (!e.repeat) press(kind);
   };
   const onKeyUp = (e: KeyboardEvent) => {
-    if (e.code === 'Space' || e.code === 'Enter') pad.classList.remove('down');
+    if (keyKind(e.code)) up();
   };
 
   const root = screen(
@@ -49,7 +53,8 @@ export function showRace(start: StartMsg) {
       </div>
     </div>
     <div class="track" id="track"><div class="cutin" id="cutin"></div></div>
-    <div class="pad" id="pad"><div class="go-btn" id="go">출발</div><p class="hint">스페이스 키 · 이 아래 아무 곳이나 눌러도 돼요</p></div>`,
+    <div class="pad solo" id="pad"><div class="pad-btns"><div class="go-btn slide" id="slide">슬라이딩</div><div class="go-btn" id="go">출발</div></div>
+      <p class="hint" id="hint">스페이스 키 · 이 아래 아무 곳이나 눌러도 돼요</p></div>`,
     'race',
     'race',
     () => {
@@ -67,21 +72,30 @@ export function showRace(start: StartMsg) {
   const trackEl = $('#track');
   const pad = $('#pad');
   const goBtn = $('#go');
+  const hint = $('#hint');
   const timeEl = $('#time');
   const placeEl = $('#place');
   const cutin = $('#cutin');
   const rail = $<HTMLElement>('.rail i');
   const icons = [...root.querySelectorAll<HTMLImageElement>('#prog img')];
 
-  function press() {
-    pad.classList.add('down');
-    race.press();
+  /** 버튼이 둘(슬라이딩·점프)로 나뉘어 있는가. 출발 전에는 '출발' 하나 */
+  let split = false;
+  function press(kind: 'jump' | 'slide') {
+    // 출발 전에는 어느 쪽을 눌러도 출발
+    const k = split ? kind : 'jump';
+    pad.classList.add(k === 'slide' ? 'down-l' : 'down');
+    race.press(k);
   }
   pad.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    press();
+    // 버튼 영역 어디를 눌러도 인식: 왼쪽 반은 슬라이딩, 오른쪽 반은 점프
+    const box = pad.getBoundingClientRect();
+    press(e.clientX < box.left + box.width / 2 ? 'slide' : 'jump');
   });
-  const up = () => pad.classList.remove('down');
+  function up() {
+    pad.classList.remove('down', 'down-l');
+  }
   pad.addEventListener('pointerup', up);
   pad.addEventListener('pointercancel', up);
   pad.addEventListener('pointerleave', up);
@@ -97,8 +111,7 @@ export function showRace(start: StartMsg) {
       const el = e.target as HTMLElement;
       if (el.closest('[data-yes]')) {
         dim.remove();
-        void room.leave();
-        state.room = null;
+        leaveRoom();
         nav.lobby();
       } else if (el === dim || el.closest('[data-no]')) dim.remove();
     });
@@ -165,7 +178,7 @@ export function showRace(start: StartMsg) {
     }
     if (mine) rail.style.width = `${Math.min(100, (mine.x / TRACK_LEN) * 100).toFixed(1)}%`;
 
-    // 버튼: 출발 전 '출발', 달리는 중 '점프'
+    // 버튼: 출발 전 '출발' 하나, 달리는 중에는 '슬라이딩'(왼쪽)과 '점프'(오른쪽)
     let label = '출발';
     let off = false;
     if (!mine || !race.amRacing()) [label, off] = ['구경 중', true];
@@ -176,7 +189,11 @@ export function showRace(start: StartMsg) {
       lastBtn = label;
       goBtn.textContent = label;
       goBtn.classList.toggle('off', off);
+      split = label === '점프';
+      pad.classList.toggle('solo', !split);
+      hint.textContent = split ? '슬라이딩 ↓·S  ·  점프 스페이스·↑' : '스페이스 키 · 이 아래 아무 곳이나 눌러도 돼요';
     }
+
   }
 
   // ---------- Phaser ----------

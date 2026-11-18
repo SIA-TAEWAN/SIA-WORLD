@@ -3,7 +3,7 @@ import { LOCAL_MODE } from '../net/api';
 import { loadRankIcons } from '../net/world';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
-import { esc, nav, screen, state } from './app';
+import { esc, leaveRoom, nav, screen, state } from './app';
 import { showRanking } from './menus';
 import { sfx } from './sfx';
 
@@ -80,8 +80,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   });
   $('#exit').addEventListener('click', () => {
     sfx('click');
-    void state.room?.leave();
-    state.room = null;
+    leaveRoom();
     nav.lobby();
   });
   $('#rank').addEventListener('click', () => void showRanking());

@@ -3,7 +3,8 @@
 /** 계산 한 걸음 (고정 시간 간격) */
 export const DT = 1 / 120;
 
-export const TRACK_LEN = 100;
+/** 트랙 길이: 그냥 달리면 약 30초 (150m ÷ 5 m/s) */
+export const TRACK_LEN = 150;
 export const LANES = 4;
 
 /** 최고 속도와 가속 (정지 → 최고 속도 0.4초) */
@@ -16,6 +17,9 @@ export const JUMP_TIME = 0.6;
 /** 화면에 그릴 점프 높이 (m) */
 export const JUMP_HEIGHT = 0.9;
 
+/** 슬라이딩: 0.6초 동안 몸을 낮추고 누르는 순간의 속도로 미끄러진다 (가속은 멈춘다). 슬라이딩 중 재슬라이딩·점프 불가 */
+export const SLIDE_TIME = 0.6;
+
 /** 진흙: 밟는 동안 20% 감속 */
 export const MUD_FACTOR = 0.8;
 export const MUD_SHORT_LEN = 2;
@@ -25,6 +29,8 @@ export const MUD_LONG_LEN = 5;
 export const HURDLE_STUN = 0.8;
 export const BANANA_STUN = 0.6;
 export const LOG_STUN = 1.0;
+/** 낮은 막대(머리 높이): 슬라이딩으로만 지나간다. 서서 달리거나 점프하면 부딪혀 넘어진다 */
+export const BAR_STUN = 0.8;
 /** 일어난 뒤 같은 방해물에 다시 걸리지 않는 시간 */
 export const IMMUNE_TIME = 0.5;
 
@@ -43,33 +49,34 @@ export const BOOST_LEN = 1;
 export const HURDLE_LEN = 0.3;
 export const BANANA_LEN = 0.4;
 export const LOG_LEN = 0.6;
+export const BAR_LEN = 0.3;
 
 /** 배치 규칙: 출발 10m·도착 전 5m에는 없음, 방해물 사이 최소 6m */
 export const SAFE_START = 10;
 export const SAFE_END = 5;
 export const MIN_GAP = 6;
 
-/** 판마다 놓는 개수 (합 12) */
-export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 4, banana: 2, log: 1, boost: 2 } as const;
+/** 판마다 놓는 개수 (합 18: 150m 트랙) */
+export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 4, banana: 3, log: 2, boost: 3, bar: 3 } as const;
 
-/** 경기 끝: 1등 도착 뒤 15초 또는 출발(GO) 뒤 60초 */
+/** 경기 끝: 1등 도착 뒤 15초 또는 출발(GO) 뒤 90초 */
 export const END_AFTER_FIRST = 15;
-export const END_AFTER_GO = 60;
+export const END_AFTER_GO = 90;
 
-/** AI: 방해물마다 점프 성공 확률, 출발 반응, 도착 시간 범위 */
+/** AI: 방해물마다 점프(낮은 막대는 슬라이딩) 성공 확률, 출발 반응, 도착 시간 범위 */
 export const AI_SUCCESS = 0.75;
 export const AI_REACT_MIN = 0.2;
 export const AI_REACT_MAX = 0.5;
-export const AI_FINISH_MIN = 22;
-export const AI_FINISH_MAX = 25;
+export const AI_FINISH_MIN = 33;
+export const AI_FINISH_MAX = 37.5;
 
 /** 등급 기준 (ms 이내). 임시 값 — shared/ranking-dialog.js 의 RACE_TIERS 와 같이 고친다 */
-export const TIER_SUN_MS = 20500;
-export const TIER_MOON_MS = 22000;
-export const TIER_STAR_MS = 25000;
+export const TIER_SUN_MS = 30750;
+export const TIER_MOON_MS = 33000;
+export const TIER_STAR_MS = 37500;
 
-/** 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/029_race.sql 의 min_ms) */
-export const MIN_VALID_MS = 19000;
+/** 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/031_race_150m.sql 의 min_ms) */
+export const MIN_VALID_MS = 28000;
 
 /** 위치 전송 간격 (초당 10회) */
 export const NET_INTERVAL_MS = 100;

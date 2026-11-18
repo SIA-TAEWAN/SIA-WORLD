@@ -1,9 +1,9 @@
 import {
-  BANANA_LEN, BOOST_LEN, HURDLE_LEN, LOG_LEN, MIN_GAP, MUD_LONG_LEN, MUD_SHORT_LEN, OBSTACLE_COUNTS, SAFE_END, SAFE_START, TRACK_LEN,
+  BANANA_LEN, BAR_LEN, BOOST_LEN, HURDLE_LEN, LOG_LEN, MIN_GAP, MUD_LONG_LEN, MUD_SHORT_LEN, OBSTACLE_COUNTS, SAFE_END, SAFE_START, TRACK_LEN,
 } from './constants';
 import { makeRng, shuffle } from './rng';
 
-export type ObstacleKind = 'mudShort' | 'mudLong' | 'hurdle' | 'banana' | 'log' | 'boost';
+export type ObstacleKind = 'mudShort' | 'mudLong' | 'hurdle' | 'banana' | 'log' | 'boost' | 'bar';
 
 export interface Obstacle {
   /** 놓인 순서 (0부터) */
@@ -21,6 +21,7 @@ export const OBSTACLE_LEN: Record<ObstacleKind, number> = {
   banana: BANANA_LEN,
   log: LOG_LEN,
   boost: BOOST_LEN,
+  bar: BAR_LEN,
 };
 
 /** 순서 규칙: 부스트 발판은 허들 바로 뒤에 놓지 않는다 */

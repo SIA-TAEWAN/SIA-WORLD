@@ -1,17 +1,20 @@
 import {
-  ACCEL, BANANA_STUN, BOOST_FACTOR, BOOST_TIME, DT, HURDLE_STUN, IMMUNE_TIME, JUMP_TIME, LOG_GONE, LOG_LEN, LOG_SPEED, LOG_STUN,
-  LOG_TRIGGER, MUD_FACTOR, TOP_SPEED, TRACK_LEN,
+  ACCEL, BANANA_STUN, BAR_STUN, BOOST_FACTOR, BOOST_TIME, DT, HURDLE_STUN, IMMUNE_TIME, JUMP_TIME, LOG_GONE, LOG_LEN, LOG_SPEED, LOG_STUN,
+  LOG_TRIGGER, MUD_FACTOR, SLIDE_TIME, TOP_SPEED, TRACK_LEN,
 } from './constants';
 import type { Obstacle } from './track';
 
 /**
- * wait 출발 전(GO 뒤 버튼을 기다림) · run 달리는 중 · jump 공중 · fall 넘어짐(허들·통나무) · slip 미끄러짐(바나나)
- * done 도착 · foul 실격
+ * wait 출발 전(GO 뒤 버튼을 기다림) · run 달리는 중 · jump 공중 · slide 슬라이딩(몸을 낮춤)
+ * fall 넘어짐(허들·통나무·낮은 막대) · slip 미끄러짐(바나나) · done 도착 · foul 실격
  */
-export type RunState = 'wait' | 'run' | 'jump' | 'fall' | 'slip' | 'done' | 'foul';
+export type RunState = 'wait' | 'run' | 'jump' | 'slide' | 'fall' | 'slip' | 'done' | 'foul';
+
+/** 이번 걸음의 버튼: true·'jump' 는 출발 또는 점프, 'slide' 는 출발 또는 슬라이딩 */
+export type Press = boolean | 'jump' | 'slide';
 
 /** 한 걸음에 생긴 일 (소리·이펙트용) */
-export type SimEvent = 'start' | 'jump' | 'land' | 'mud' | 'hurdle' | 'banana' | 'log' | 'boost' | 'getup' | 'finish';
+export type SimEvent = 'start' | 'jump' | 'land' | 'slide' | 'slideEnd' | 'mud' | 'hurdle' | 'banana' | 'log' | 'bar' | 'boost' | 'getup' | 'finish';
 
 export interface Runner {
   /** 위치 (m) */
@@ -27,6 +30,8 @@ export interface Runner {
   jumpT: number;
   /** 뛰는 순간의 속도 (공중에서 그대로) */
   jumpV: number;
+  /** 슬라이딩한 뒤 흐른 시간 */
+  slideT: number;
   /** 넘어져 있는 남은 시간 */
   stunT: number;
   /** 부스트 남은 시간 */
@@ -46,7 +51,7 @@ export interface Runner {
 
 export function newRunner(): Runner {
   return {
-    x: 0, base: 0, v: 0, state: 'wait', t: 0, jumpT: 0, jumpV: 0, stunT: 0, boostT: 0,
+    x: 0, base: 0, v: 0, state: 'wait', t: 0, jumpT: 0, jumpV: 0, slideT: 0, stunT: 0, boostT: 0,
     immuneId: -1, immuneT: 0, usedBoost: [], logX: {}, inMud: false, finishMs: null, events: [],
   };
 }
@@ -65,10 +70,13 @@ export function logPos(r: Pick<Runner, 'logX'>, o: Obstacle): number | null {
   return x < 0 ? null : x;
 }
 
+const onGround = (r: Runner) => r.state === 'run' || r.state === 'slide';
 const overlaps = (prevX: number, x: number, a: number, b: number) => x >= a && prevX <= b;
 
 function stun(r: Runner, o: Obstacle, state: 'fall' | 'slip', time: number, ev: SimEvent) {
   r.state = state;
+  r.jumpT = 0;
+  r.slideT = 0;
   r.stunT = time;
   r.base = 0;
   r.v = 0;
@@ -78,10 +86,10 @@ function stun(r: Runner, o: Obstacle, state: 'fall' | 'slip', time: number, ev: 
 }
 
 /**
- * 한 걸음(dt) 계산. press: 이번 걸음에 버튼을 눌렀는가 (출발 또는 점프).
+ * 한 걸음(dt) 계산. press: 이번 걸음에 누른 버튼 (출발, 또는 점프·슬라이딩).
  * 생긴 일은 r.events 에 쌓인다 (부르는 쪽에서 비운다).
  */
-export function stepRunner(r: Runner, obs: readonly Obstacle[], press: boolean, dt = DT): void {
+export function stepRunner(r: Runner, obs: readonly Obstacle[], press: Press, dt = DT): void {
   r.t += dt;
   if (r.state === 'foul') return;
   if (r.state === 'wait') {
@@ -106,7 +114,11 @@ export function stepRunner(r: Runner, obs: readonly Obstacle[], press: boolean, 
       r.events.push('getup');
     }
   } else {
-    if (r.state === 'run' && press) {
+    if (r.state === 'run' && press === 'slide') {
+      r.state = 'slide';
+      r.slideT = 0;
+      r.events.push('slide');
+    } else if (r.state === 'run' && press) {
       r.state = 'jump';
       r.jumpT = 0;
       r.jumpV = r.v;
@@ -125,13 +137,23 @@ export function stepRunner(r: Runner, obs: readonly Obstacle[], press: boolean, 
         r.events.push('land');
       }
     } else {
-      r.base = Math.min(TOP_SPEED, r.base + ACCEL * dt);
+      // 슬라이딩: 땅에 붙어 있으므로 진흙·부스트는 그대로 받지만, 가속은 멈춘다 (달릴 때보다 빨라지지 않는다)
+      const sliding = r.state === 'slide';
+      if (!sliding) r.base = Math.min(TOP_SPEED, r.base + ACCEL * dt);
       let mud = false;
       for (const o of obs) if ((o.kind === 'mudShort' || o.kind === 'mudLong') && r.x >= o.x && r.x <= o.x + o.len) mud = true;
       if (mud && !r.inMud) r.events.push('mud');
       r.inMud = mud;
       r.v = r.base * (mud ? MUD_FACTOR : 1) * (r.boostT > 0 ? BOOST_FACTOR : 1);
       r.x += r.v * dt;
+      if (sliding) {
+        r.slideT += dt;
+        if (r.slideT >= SLIDE_TIME) {
+          r.state = 'run';
+          r.slideT = 0;
+          r.events.push('slideEnd');
+        }
+      }
     }
   }
 
@@ -146,14 +168,24 @@ export function stepRunner(r: Runner, obs: readonly Obstacle[], press: boolean, 
     if (lx < 0) continue;
     const prevL = lx;
     lx -= LOG_SPEED * dt;
-    if (r.state === 'run' && !(r.immuneId === o.id && r.immuneT > 0) && overlaps(prevX, r.x, lx, prevL + LOG_LEN)) stun(r, o, 'fall', LOG_STUN, 'log');
+    if (onGround(r) && !(r.immuneId === o.id && r.immuneT > 0) && overlaps(prevX, r.x, lx, prevL + LOG_LEN)) stun(r, o, 'fall', LOG_STUN, 'log');
     r.logX[o.id] = lx < r.x - LOG_GONE || lx < -1 ? -1 : lx;
   }
 
-  // 땅에 있을 때만 걸린다
-  if (r.state === 'run') {
+  // 낮은 막대(머리 높이): 슬라이딩이 아니면 걸린다. 점프해도 부딪힌다
+  if (r.state === 'run' || r.state === 'jump') {
     for (const o of obs) {
-      if (o.kind === 'log' || o.kind === 'mudShort' || o.kind === 'mudLong') continue;
+      if (o.kind !== 'bar' || !overlaps(prevX, r.x, o.x, o.x + o.len)) continue;
+      if (r.immuneId === o.id && r.immuneT > 0) continue;
+      stun(r, o, 'fall', BAR_STUN, 'bar');
+      break;
+    }
+  }
+
+  // 땅에 있을 때만 걸린다 (슬라이딩도 땅이다)
+  if (onGround(r)) {
+    for (const o of obs) {
+      if (o.kind === 'log' || o.kind === 'mudShort' || o.kind === 'mudLong' || o.kind === 'bar') continue;
       if (!overlaps(prevX, r.x, o.x, o.x + o.len)) continue;
       if (o.kind === 'boost') {
         if (!r.usedBoost.includes(o.id)) {
@@ -171,7 +203,7 @@ export function stepRunner(r: Runner, obs: readonly Obstacle[], press: boolean, 
   }
 
   // 결승선: 지나는 순간을 걸음 안에서 나눠 0.001초까지 잰다 (공중에서 지나도 도착)
-  if (r.finishMs === null && r.x >= TRACK_LEN && (r.state === 'run' || r.state === 'jump')) {
+  if (r.finishMs === null && r.x >= TRACK_LEN && (r.state === 'run' || r.state === 'jump' || r.state === 'slide')) {
     const frac = r.x > prevX ? (TRACK_LEN - prevX) / (r.x - prevX) : 1;
     r.finishMs = Math.round((r.t - dt + frac * dt) * 1000);
     r.state = 'done';
@@ -190,7 +222,7 @@ export function foul(r: Runner) {
  * GO 뒤 toT(초)까지 고정 간격으로 계산한다. press는 첫 걸음에 한 번만 쓰인다.
  * → 계산한 걸음 수
  */
-export function advance(r: Runner, obs: readonly Obstacle[], toT: number, press: boolean, dt = DT): number {
+export function advance(r: Runner, obs: readonly Obstacle[], toT: number, press: Press, dt = DT): number {
   let n = 0;
   while (r.t + dt <= toT + 1e-9) {
     stepRunner(r, obs, press && n === 0, dt);

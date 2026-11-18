@@ -76,11 +76,11 @@ button, input { font: inherit; color: inherit; }
 .lobby { align-items: stretch; }
 .logo { margin: 4px 0 0; text-align: center; font-weight: normal; font-size: clamp(44px, 14vmin, var(--fs-logo)); color: var(--primary); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); line-height: 1.1; }
 .tagline { margin: 0; text-align: center; color: var(--white); font-size: 17px; text-shadow: 0 2px 0 var(--outline); }
-.hero { position: relative; flex: 1 1 150px; min-height: 130px; max-height: 250px; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); overflow: hidden; background: var(--sky-mid); }
+.hero { position: relative; flex: 1 1 110px; min-height: 96px; max-height: 190px; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); overflow: hidden; background: var(--sky-mid); }
 .hero .hero-bg { position: absolute; left: 0; right: 0; top: 0; height: 68%; background-size: auto 100%; background-repeat: repeat-x; background-position: center bottom; }
 .hero .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 32%; background: var(--race-track); border-top: var(--line) solid var(--outline); background-size: auto 100%; }
 .hero .ground::after { content: ''; position: absolute; left: 0; right: 0; top: 46%; height: 3px; background: var(--white); opacity: 0.9; }
-.hero img.runner { position: absolute; bottom: 7%; height: 44%; transform-origin: 50% 100%; animation: hero-run 0.46s ease-in-out infinite alternate; }
+.hero img.runner { position: absolute; bottom: 7%; height: 44%; margin-left: -11%; width: 22%; object-fit: contain; object-position: center bottom; transform-origin: 50% 100%; animation: hero-run 0.46s ease-in-out infinite alternate; }
 .hero img.runner:nth-of-type(2) { animation-delay: -0.15s; }
 .hero img.runner:nth-of-type(3) { animation-delay: -0.3s; }
 .hero img.runner:nth-of-type(4) { animation-delay: -0.4s; }
@@ -88,8 +88,23 @@ button, input { font: inherit; color: inherit; }
 .best { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 17px; padding: 10px 14px; }
 .best b { font-weight: normal; color: var(--accent); font-size: 22px; }
 .lobby .main-actions { display: flex; flex-direction: column; gap: 10px; }
-.join-row { display: flex; gap: 8px; }
-.join-row input { flex: 1; min-width: 0; border: var(--line) solid var(--outline); border-radius: var(--radius-button); padding: 8px 12px; font-size: 17px; background: var(--white); text-transform: lowercase; user-select: text; -webkit-user-select: text; }
+/* 방 목록 (카드 게임 로비 games/lib/style.css 의 .room-row 와 같은 모양) */
+.rooms-card { flex: 2 1 150px; min-height: 132px; display: flex; flex-direction: column; padding-bottom: 10px; }
+.rooms-card h3 { flex: none; }
+.rooms { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 0 2px 4px; }
+.room-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); box-shadow: 0 3px 0 var(--outline); padding: 6px 10px 6px 6px; flex: none; transition: transform var(--press-ms), box-shadow var(--press-ms); }
+.room-row:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--outline); }
+.room-row.playing { background: var(--panel-strong); }
+.room-row.full { opacity: 0.6; cursor: default; }
+.room-row .av { width: 40px; height: 40px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; flex: none; }
+.room-row .rn { flex: 1; min-width: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-row .rn small { display: block; color: var(--ink-soft); font-size: 12px; }
+.room-row .tag { flex: none; font-size: 13px; padding: 2px 9px; }
+.room-row .tag.wait { background: var(--win); }
+.room-row .tag.busy { background: var(--pink); }
+.room-row .tag.full { background: var(--ink-soft); }
+.room-row .go { flex: none; font-size: 14px; color: var(--accent); white-space: nowrap; }
+.rooms .empty { margin: auto; color: var(--ink-soft); text-align: center; font-size: 15px; line-height: 1.7; padding: 8px 4px; }
 .lobby .sub-actions { display: flex; gap: 8px; }
 .lobby .sub-actions .btn { flex: 1; }
 
@@ -111,7 +126,7 @@ button, input { font: inherit; color: inherit; }
 .char.taken { opacity: 0.4; cursor: default; }
 .room .invite { display: flex; align-items: center; gap: 8px; }
 .room .invite .code { flex: 1; min-width: 0; font-size: 15px; }
-.room .invite .code b { font-weight: normal; color: var(--accent); font-size: 19px; letter-spacing: 1px; }
+.room .invite .code b { font-weight: normal; color: var(--accent); font-size: 19px; }
 .room .status { align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
 .room .grow { flex: 1; min-height: 4px; }
 .room .btn.big { width: 100%; flex: none; }
@@ -140,12 +155,17 @@ button, input { font: inherit; color: inherit; }
 .cutin.bad { color: var(--pink); }
 @keyframes cut-pop { from { transform: scale(0.3); opacity: 0; } }
 .pad { position: relative; flex: 1 1 30%; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); border-top: var(--line) solid var(--outline); cursor: pointer; padding-bottom: env(safe-area-inset-bottom); touch-action: none; }
+.pad-btns { display: flex; align-items: stretch; justify-content: center; gap: 12px; width: 100%; height: min(62%, 150px); padding: 0 14px; pointer-events: none; }
 .go-btn {
-  width: min(64%, 46vh); height: min(62%, 150px); border-radius: 36px; border: var(--line-big) solid var(--outline); background: var(--primary-gradient);
+  flex: 1 1 0; min-width: 0; max-width: 240px; border-radius: 36px; border: var(--line-big) solid var(--outline); background: var(--primary-gradient);
   box-shadow: 0 var(--depth-big) 0 var(--outline); font-size: clamp(30px, 6.4vh, 50px); pointer-events: none; display: grid; place-items: center;
   transition: transform var(--press-ms), box-shadow var(--press-ms);
 }
-.pad.down .go-btn { transform: translateY(6px); box-shadow: 0 2px 0 var(--outline); }
+/* 슬라이딩 버튼(왼쪽)은 하늘색, 점프 버튼(오른쪽)은 노란색 */
+.go-btn.slide { background: var(--team-a); color: var(--white); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; font-size: clamp(24px, 5.2vh, 40px); }
+.pad.solo .go-btn.slide { display: none; }
+.pad.solo .go-btn { flex: 0 1 min(64%, 46vh); max-width: none; }
+.pad.down .go-btn:not(.slide), .pad.down-l .go-btn.slide { transform: translateY(6px); box-shadow: 0 2px 0 var(--outline); }
 .go-btn.off { background: var(--track); color: var(--ink-soft); }
 .pad .hint { margin: 0; font-size: 13px; color: var(--ink-soft); }
 

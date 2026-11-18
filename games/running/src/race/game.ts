@@ -1,7 +1,7 @@
 import { makeAiPlan, aiPress, type AiPlan } from '../game/ai';
 import { DT, END_AFTER_FIRST, END_AFTER_GO, LANES, NET_INTERVAL_MS, TOP_SPEED, TRACK_LEN, type ZodiacId } from '../game/constants';
 import { rankResults, type RaceEntry, type RankedEntry } from '../game/ranking';
-import { foul, newRunner, stepRunner, type RunState, type Runner, type SimEvent } from '../game/sim';
+import { foul, newRunner, stepRunner, type Press, type RunState, type Runner, type SimEvent } from '../game/sim';
 import { makeTrack, type Obstacle } from '../game/track';
 import { serverNow, type RaceApi, type SubmitResult } from '../net/api';
 import type { NetMsg } from '../net/channel';
@@ -14,6 +14,8 @@ export interface RunnerView {
   v: number;
   state: RunState;
   jumpT: number;
+  /** 슬라이딩한 뒤 흐른 시간 */
+  slideT: number;
   stunT: number;
   boost: boolean;
   mud: boolean;
@@ -28,6 +30,7 @@ interface Snap {
   x: number;
   v: number;
   st: RunState;
+  /** 점프(슬라이딩 중이면 슬라이딩)한 뒤 흐른 시간 */
   jumpT: number;
   stunT: number;
   boostT: number;
@@ -42,7 +45,8 @@ export type RaceEvent = { slot: number; ev: SimEvent | 'foul' };
 /** me 내가 조종 · ai 이 기기가 계산하는 AI · remote 다른 기기에서 받아 보간 */
 type Control = 'me' | 'ai' | 'remote';
 
-const STATES: RunState[] = ['wait', 'run', 'jump', 'fall', 'slip', 'done', 'foul'];
+/** 전송용 상태 번호 (순서를 바꾸지 않는다: 새 상태는 뒤에 붙인다) */
+const STATES: RunState[] = ['wait', 'run', 'jump', 'fall', 'slip', 'done', 'foul', 'slide'];
 /** 상대는 이만큼 늦게 그린다 (받은 위치 사이를 부드럽게 잇기 위해) */
 const INTERP_DELAY = 130;
 /** 접속이 이만큼 끊기면 AI가 이어 달린다 */
@@ -73,7 +77,7 @@ export class RaceGame {
   readonly taken: boolean[] = [];
   private lastState: RunState[] = [];
   private goneSince = new Map<number, number>();
-  private pendingPress = false;
+  private pendingPress: Press = false;
   private lastSend = 0;
   private wasHost = false;
   private endAt = 0;
@@ -146,7 +150,8 @@ export class RaceGame {
       r.v = last.v;
       r.base = Math.min(TOP_SPEED, last.v);
       r.state = last.st;
-      r.jumpT = last.jumpT;
+      r.jumpT = last.st === 'jump' ? last.jumpT : 0;
+      r.slideT = last.st === 'slide' ? last.jumpT : 0;
       r.jumpV = last.v;
       r.stunT = last.stunT;
       r.boostT = last.boostT;
@@ -172,8 +177,8 @@ export class RaceGame {
 
   // ───────────── 입력 ─────────────
 
-  /** 버튼(출발·점프). '준비'와 GO 사이에 누르면 실격 */
-  press() {
+  /** 버튼(출발·점프·슬라이딩). '준비'와 GO 사이에 누르면 실격. 출발 전에는 어느 버튼이든 출발 */
+  press(kind: 'jump' | 'slide' = 'jump') {
     const me = this.mySlot >= 0 && this.control[this.mySlot] === 'me' ? this.runners[this.mySlot] : null;
     if (!me || this.results) return;
     const now = serverNow();
@@ -187,7 +192,7 @@ export class RaceGame {
       }
       return;
     }
-    this.pendingPress = true;
+    this.pendingPress = kind;
   }
 
   // ───────────── 매 프레임 ─────────────
@@ -216,7 +221,7 @@ export class RaceGame {
         let first = true;
         // 고정 간격으로 지금 시각까지 계산 (화면이 잠깐 멈췄다 와도 따라잡는다)
         while (r.t + DT <= t + 1e-9) {
-          const press = mine ? first && this.pendingPress : plan ? aiPress(r, this.obs, plan) : false;
+          const press: Press = mine ? (first ? this.pendingPress : false) : plan ? aiPress(r, this.obs, plan) : false;
           stepRunner(r, this.obs, press);
           if (mine && first) this.pendingPress = false;
           first = false;
@@ -250,15 +255,19 @@ export class RaceGame {
 
   private remoteEvent(slot: number, st: RunState): RaceEvent['ev'] | null {
     if (st === 'jump') return 'jump';
+    if (st === 'slide') return 'slide';
     if (st === 'slip') return 'banana';
     if (st === 'done') return 'finish';
     if (st === 'foul') return 'foul';
-    if (st === 'run') return this.lastState[slot] === 'jump' ? 'land' : this.lastState[slot] === 'wait' ? 'start' : 'getup';
+    if (st === 'run') {
+      const was = this.lastState[slot];
+      return was === 'jump' ? 'land' : was === 'wait' ? 'start' : was === 'slide' ? 'slideEnd' : 'getup';
+    }
     if (st === 'fall') {
-      // 가까운 것이 허들인지 통나무인지
+      // 가까운 것이 낮은 막대인지 허들인지 통나무인지
       const x = this.view(slot).x;
-      const near = this.obs.filter((o) => o.kind === 'hurdle').some((o) => Math.abs(o.x - x) < 1.2);
-      return near ? 'hurdle' : 'log';
+      const near = (kind: Obstacle['kind']) => this.obs.some((o) => o.kind === kind && Math.abs(o.x - x) < 1.2);
+      return near('bar') ? 'bar' : near('hurdle') ? 'hurdle' : 'log';
     }
     return null;
   }
@@ -270,18 +279,18 @@ export class RaceGame {
     if (r) {
       const logO = this.obs.find((o) => o.kind === 'log');
       return {
-        x: r.x, v: r.v, state: r.state, jumpT: r.jumpT, stunT: r.stunT, boost: r.boostT > 0, mud: r.inMud,
+        x: r.x, v: r.v, state: r.state, jumpT: r.jumpT, slideT: r.slideT, stunT: r.stunT, boost: r.boostT > 0, mud: r.inMud,
         logX: logO ? r.logX[logO.id] : undefined, finishMs: r.finishMs,
       };
     }
     const buf = this.snaps[slot];
-    if (!buf.length) return { x: 0, v: 0, state: 'wait', jumpT: 0, stunT: 0, boost: false, mud: false, logX: undefined, finishMs: null };
+    if (!buf.length) return { x: 0, v: 0, state: 'wait', jumpT: 0, slideT: 0, stunT: 0, boost: false, mud: false, logX: undefined, finishMs: null };
     const rt = serverNow() - INTERP_DELAY;
     let i = buf.length - 1;
     while (i > 0 && buf[i].ts > rt) i--;
     const a = buf[i];
     const b = buf[i + 1];
-    const moving = a.st === 'run' || a.st === 'jump' || a.st === 'done';
+    const moving = a.st === 'run' || a.st === 'jump' || a.st === 'slide' || a.st === 'done';
     let x = a.x;
     let logX = a.logX;
     const since = Math.max(0, (rt - a.ts) / 1000);
@@ -294,7 +303,7 @@ export class RaceGame {
       x = a.x + a.v * Math.min(0.3, since);
     }
     return {
-      x, v: a.v, state: a.st, jumpT: a.st === 'jump' ? a.jumpT + since : 0, stunT: Math.max(0, a.stunT - since),
+      x, v: a.v, state: a.st, jumpT: a.st === 'jump' ? a.jumpT + since : 0, slideT: a.st === 'slide' ? a.jumpT + since : 0, stunT: Math.max(0, a.stunT - since),
       boost: a.boostT > 0, mud: a.mud, logX: logX === -2 ? undefined : logX, finishMs: a.fin > 0 ? a.fin : null,
     };
   }
@@ -324,7 +333,7 @@ export class RaceGame {
     const logO = this.obs.find((o) => o.kind === 'log');
     const lx = logO ? r.logX[logO.id] : undefined;
     const q = (n: number) => Math.round(n * 100) / 100;
-    return [slot, q(r.x), q(r.v), STATES.indexOf(r.state), q(r.jumpT), q(r.stunT), q(r.boostT), lx === undefined ? -2 : q(lx), r.finishMs ?? 0, r.inMud ? 1 : 0];
+    return [slot, q(r.x), q(r.v), STATES.indexOf(r.state), q(r.state === 'slide' ? r.slideT : r.jumpT), q(r.stunT), q(r.boostT), lx === undefined ? -2 : q(lx), r.finishMs ?? 0, r.inMud ? 1 : 0];
   }
 
   private sendPos(now: number, force = false) {
@@ -405,7 +414,7 @@ export class RaceGame {
     if (slot === this.mySlot && this.control[slot] === 'me') {
       // 내 자리가 넘어갔다: 구경만 하고 기록은 남기지 않는다
       const r = this.runners[slot]!;
-      this.snaps[slot] = [{ ts: serverNow(), x: r.x, v: r.v, st: r.state, jumpT: r.jumpT, stunT: r.stunT, boostT: r.boostT, logX: -2, fin: r.finishMs ?? 0, mud: r.inMud }];
+      this.snaps[slot] = [{ ts: serverNow(), x: r.x, v: r.v, st: r.state, jumpT: r.state === 'slide' ? r.slideT : r.jumpT, stunT: r.stunT, boostT: r.boostT, logX: -2, fin: r.finishMs ?? 0, mud: r.inMud }];
       this.runners[slot] = null;
       this.control[slot] = 'remote';
       this.onLostSeat?.();

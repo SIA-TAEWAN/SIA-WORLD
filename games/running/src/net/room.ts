@@ -176,6 +176,10 @@ export class RaceRoom {
   get char(): ZodiacId {
     return this.meta.char;
   }
+  /** 내가 이 방에 들어온 시각 (서버 시각 ms) */
+  get joinedAt(): number {
+    return this.meta.at;
+  }
   get ready(): boolean {
     return this.meta.ready;
   }

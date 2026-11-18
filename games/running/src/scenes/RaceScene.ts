@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { JUMP_TIME, LANES, TRACK_LEN, ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { JUMP_TIME, LANES, SLIDE_TIME, TRACK_LEN, ZODIAC_IDS, type ZodiacId } from '../game/constants';
 import { livePlace } from '../game/ranking';
 import type { RunState } from '../game/sim';
 import type { Obstacle } from '../game/track';
@@ -59,6 +59,8 @@ interface ObSprite {
   o: Obstacle;
   row: number;
   img: Phaser.GameObjects.Image;
+  /** 낮은 막대 위의 '슬라이딩' 표시 (내 레인만) */
+  badge?: Phaser.GameObjects.Container;
 }
 
 /** 경주 화면: 가로 레인 4줄, 내 캐릭터가 맨 아래 레인. 카메라는 내 캐릭터를 화면 왼쪽 15%에 둔다 */
@@ -210,11 +212,25 @@ export class RaceScene extends Phaser.Scene {
         } else if (o.kind === 'hurdle') {
           const h = this.laneH * 0.5;
           img.setOrigin(0.5, 1).setDisplaySize((h / tex.height) * tex.width, h).setY(gy + this.laneH * 0.06);
+        } else if (o.kind === 'bar') {
+          // 낮은 막대: 막대가 캐릭터 머리 높이에 오게 (서서 지나가면 머리가 걸리고, 슬라이딩하면 아래로 지나간다)
+          const h = this.laneH * 0.92;
+          img.setOrigin(0.5, 1).setDisplaySize((h / tex.height) * tex.width, h).setY(gy + this.laneH * 0.07);
         } else {
           const w = this.laneH * 0.36;
           img.setOrigin(0.5, 1).setDisplaySize(w, (w / tex.width) * tex.height).setY(gy + this.laneH * 0.06);
         }
-        this.obSprites.push({ o, row, img });
+        let badge: Phaser.GameObjects.Container | undefined;
+        if (o.kind === 'bar' && row === LANES - 1 && this.race.mySlot >= 0) {
+          // 내 레인의 낮은 막대 위에 아래 화살표 (슬라이딩 버튼과 같은 파란색)
+          const rad = Math.max(9, Math.min(13, this.laneH * 0.13));
+          const bg = this.add.graphics();
+          bg.fillStyle(COLOR.teamA, 1).fillCircle(0, 0, rad).lineStyle(2, COLOR.outline, 1).strokeCircle(0, 0, rad);
+          bg.fillStyle(COLOR.white, 1).fillTriangle(-rad * 0.55, -rad * 0.3, rad * 0.55, -rad * 0.3, 0, rad * 0.6);
+          const y0 = gy + this.laneH * 0.07 - img.displayHeight - rad * 0.4;
+          badge = this.add.container(0, y0, [bg]).setDepth(99).setData('y0', y0);
+        }
+        this.obSprites.push({ o, row, img, badge });
       }
     }
 
@@ -308,10 +324,15 @@ export class RaceScene extends Phaser.Scene {
       if (l.text) l.text.setPosition(x, l.dy ?? 0);
     }
     for (const s of this.obSprites) {
-      const x = this.sx(s.o.kind === 'hurdle' || s.o.kind === 'banana' ? s.o.x + s.o.len / 2 : s.o.x);
+      const x = this.sx(s.o.kind === 'hurdle' || s.o.kind === 'banana' || s.o.kind === 'bar' ? s.o.x + s.o.len / 2 : s.o.x);
       const vis = x > -s.img.displayWidth - 20 && x < W + 60;
       s.img.setVisible(vis);
       if (vis) s.img.x = x;
+      if (s.badge) {
+        s.badge.setVisible(vis);
+        // 가까이 오면 콩콩 뛰어 눈에 띄게
+        if (vis) s.badge.setPosition(x, s.badge.getData('y0') + Math.sin(this.time.now / 110) * 2.5);
+      }
     }
 
     const entries = this.race.entries();
@@ -383,7 +404,7 @@ export class RaceScene extends Phaser.Scene {
     a.arrow.x = side > 0 ? this.W - w / 2 - tip - 3 : w / 2 + tip + 3;
   }
 
-  /** 캐릭터 동작 (그림 한 장을 코드로 움직인다): 달리기 흔들림·점프·넘어짐·미끄러짐·골인 */
+  /** 캐릭터 동작 (그림 한 장을 코드로 움직인다): 달리기 흔들림·점프·슬라이딩·넘어짐·미끄러짐·골인 */
   private pose(a: Actor, v: RunnerView, phase: string, now: number, dt: number) {
     const h = a.spr.displayHeight;
     const gy = this.groundY(a.row);
@@ -437,6 +458,18 @@ export class RaceScene extends Phaser.Scene {
         shadowK = 1 - arc * 0.45;
         break;
       }
+      case 'slide': {
+        // 슬라이딩: 발을 앞으로 내밀고 몸을 뒤로 눕혀 납작하게 미끄러진다 (들어갈 때·일어날 때는 부드럽게)
+        const p = Math.min(1, v.slideT / SLIDE_TIME);
+        const k = Math.min(1, p / 0.18, (1 - p) / 0.2);
+        rot = -1.12 * k;
+        sy = 1 - 0.2 * k;
+        sx = 1 + 0.1 * k;
+        ox = h * 0.14 * k;
+        oy = h * 0.02 * k + Math.sin(now * 40 + a.slot) * h * 0.006;
+        shadowK = 1 + 0.25 * k;
+        break;
+      }
       case 'fall': {
         // 앞으로 엎어졌다가 일어난다
         const inK = Math.min(1, a.since / 0.16);
@@ -483,12 +516,19 @@ export class RaceScene extends Phaser.Scene {
     a.spr.setVisible(vis);
     a.shadow.setVisible(vis);
     a.label.setVisible(vis);
-    const lying = v.state === 'fall' || v.state === 'slip';
+    const lying = v.state === 'fall' || v.state === 'slip' || v.state === 'slide';
     a.label.setPosition(Phaser.Math.Clamp(x, 44, this.W - 44), gy - h * (lying ? 0.62 : 1.0) + Math.min(0, oy) * 0.5 - 7);
     if (!vis || dt <= 0) return;
 
     // 달릴 때 먼지, 진흙 튀김, 부스트 잔상
-    if (v.state === 'run' && v.v > 2) {
+    if (v.state === 'slide') {
+      // 슬라이딩: 발 앞에서 먼지가 계속 인다
+      a.dustT -= dt;
+      if (a.dustT <= 0) {
+        a.dustT = 0.05;
+        this.puff('dust', x + h * 0.2, gy - 3, a.row, 0.36, -70 - Math.random() * 40, -18 - Math.random() * 14, 300);
+      }
+    } else if (v.state === 'run' && v.v > 2) {
       a.dustT -= dt;
       if (a.dustT <= 0) {
         a.dustT = 0.16;
@@ -566,6 +606,17 @@ export class RaceScene extends Phaser.Scene {
           this.puff('dust', a.spr.x - 12, gy - 3, a.row, 0.4, -50, -10, 300);
           this.puff('dust', a.spr.x + 12, gy - 3, a.row, 0.4, 40, -10, 300);
         }
+        break;
+      case 'slide':
+        say('slide');
+        if (vis) this.puff('dust', a.spr.x + 6, gy - 3, a.row, 0.5, -90, -12, 320);
+        break;
+      case 'slideEnd':
+        break;
+      case 'bar':
+        say('hurdleHit', 0.85);
+        if (vis) this.stars(a);
+        if (mine) this.cameras.main.shake(150, 0.007);
         break;
       case 'mud':
         say('mud');
