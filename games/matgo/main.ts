@@ -962,15 +962,25 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
             dur: myPlayDur(pl),
             over: overOf(pl),
             flip: pl.flip,
-            sound: pl.flip ? 'flip' : 'deal',
+            // 이미 바닥에 내려놓아 둔 패(누르자마자 놓은 내 패 등)는 자리만 맞춘다: 소리·찰싹을 한 번 더 내지 않는다
+            sound: onFloorNow.has(id) ? undefined : pl.flip ? 'flip' : 'deal',
             // 손패(또는 뒷면·더미) 크기에서 바닥 크기로
-            fromScale: srcSize(pl) / fw,
+            fromScale: onFloorNow.has(id) ? 1 : srcSize(pl) / fw,
             // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
-            onLand: () => slap(scene, cx, cy, fw, j > 0, t.dpr),
+            onLand: onFloorNow.has(id) ? undefined : () => slap(scene, cx, cy, fw, j > 0, t.dpr),
           });
         else t.track(card, id, { from: pile, fromScale: L.pw / fw });
       });
-      if (f.ppeok || f.stacked) label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink')).setDepth(12);
+      if (f.ppeok || f.stacked) {
+        const tag = label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink')).setDepth(12);
+        // 이번 차례에 온 패가 다 내려앉은 뒤에 표시한다 (겹치기도 전에 '뻑'이 먼저 보이지 않게)
+        const lastLand = dealing ? 0 : Math.max(0, ...f.cards.map((id) => (plan.has(id) ? planBuiltAt + plan.get(id)!.startAt + 620 : 0)));
+        const wait = lastLand - performance.now();
+        if (wait > 0) {
+          tag.setVisible(false);
+          scene.time.delayedCall(wait, () => tag.active && tag.setVisible(true));
+        }
+      }
     });
     // 바닥에 임시로 놓이는 패 (서버 상태의 바닥에는 아직 없다):
     //   · 방금 누른 내 패: 서버 답을 기다리지 않고 바로 바닥에 내려놓는다
