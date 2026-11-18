@@ -573,7 +573,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   let movesSnap = new Map<string, MoveRec>();
   let moveRound = -1;
   /** 순서별 출발 시각: 낸 패 0 → 뒤집은 패 0.76초 → 가져가기 1.65초 */
-  const ORDER_AT = [0, 760, 1650];
+  const ORDER_AT = [0, 650, 1400];
   const MOVE_MS = 560;
   const moveEnd = (r: MoveRec) => (r.via ? r.s2 : r.s1) + MOVE_MS;
   /** 시각 t의 위치·기울기·크기 */

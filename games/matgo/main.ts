@@ -613,10 +613,10 @@ interface CardPlan {
   /** 원래 바닥에 있다가 먹힌 패 */
   floor: boolean;
 }
-const TURN_MS = 2500;
+const TURN_MS = 2150;
 const AT_PLAY = 0;
-const AT_FLIP = 760;
-const AT_TAKE = 1650;
+const AT_FLIP = 650;
+const AT_TAKE = 1400;
 const plan = new Map<string, CardPlan>();
 let planRound = '';
 let planSeen = 0;
