@@ -70,7 +70,8 @@ async function tankWinRanking(limit) {
     .from('player_points')
     .select('user_id,legacy_id,wins,losses,profiles(nickname)')
     .order('wins', { ascending: false })
-    .limit(limit);
+    .order('losses', { ascending: true })
+    .limit(Math.max(limit, 1000));
   if (error) throw new WalletError('랭킹을 불러오지 못했어요');
   return (data ?? [])
     .map((r) => {

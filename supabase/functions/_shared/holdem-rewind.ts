@@ -70,6 +70,7 @@ function undo(p: HoldemPublic, events: readonly GameEvent[], i: number, paid: nu
   const curBet = () => p.seats.reduce((a, s) => Math.max(a, s.excluded ? 0 : s.betRound), 0);
   // 되돌린 화면에서는 조작 버튼을 그리지 않는다
   p.options = null;
+  p.pots = prev?.pots ?? [];
   p.summary = null;
 
   if (BETS.has(e.t)) {

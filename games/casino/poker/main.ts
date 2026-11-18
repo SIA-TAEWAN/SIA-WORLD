@@ -99,16 +99,18 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       if (me && sent && (!pv || !pv.choices.includes(sent.open))) sent = null;
       const gone = choosing ? (sent?.discard ?? discard) : null;
       // 고른 뒤 모두 고르기를 기다리는 중: 남긴 3장 (공개할 카드는 올려서)
-      const waitingOpen = me && !sd && !choosing && p.phase === 'choose' && pv ? pv.open : [];
+      // (앞선 내 패에는 4구 카드까지 들어 있을 수 있다 → 고른 공개 카드 한 장만)
+      const waitingOpen = me && !sd && !choosing && p.phase === 'choose' && pv ? pv.open.slice(0, 1) : [];
       if (sd) cards = sd.cards;
       else if (me && pv) {
         if (choosing) cards = pv.choices.filter((c) => c !== gone);
-        else if (p.phase === 'choose') cards = [...pv.hidden, ...pv.open];
+        else if (p.phase === 'choose') cards = [...pv.hidden.slice(0, 2), ...pv.open.slice(0, 1)];
         else {
           // 새 패가 아직 안 왔으면 (고르기 직후의 중간 화면) 내가 보낸 고르기로 남은 2장을 안다
-          const hid: (string | null)[] = !pv.choices.length ? pv.hidden : sent ? pv.choices.filter((c) => c !== sent!.discard && c !== sent!.open) : [null, null];
+          // 시간 초과로 서버가 대신 골랐으면 무엇을 버렸는지 모른다 → 새 패가 올 때까지 내 카드는 그리지 않는다 (뒷면으로 그리면 한 번 더 받는 연출이 나온다)
+          const hid: string[] | null = !pv.choices.length ? pv.hidden : sent ? pv.choices.filter((c) => c !== sent!.discard && c !== sent!.open) : null;
           // 히든(7구)은 공개 상태에서 받은 만큼만
-          cards = [...hid.slice(0, 2), ...s.open, ...hid.slice(2, Math.max(2, s.hiddenCount))];
+          cards = hid ? [...hid.slice(0, 2), ...s.open, ...hid.slice(2, Math.max(2, s.hiddenCount))] : [];
         }
       }
       // 내 패가 아직 안 왔으면 그리지 않는다 (뒷면으로 먼저 받으면 패가 온 뒤 한 번 더 받는 연출이 나온다)

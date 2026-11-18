@@ -37,8 +37,9 @@ let offset = 0;
 export const serverNow = () => Date.now() + offset;
 
 const params = new URLSearchParams(location.search);
-/** 주소의 ?local=1 이면 탭끼리 통신하는 테스트 모드 (로그인 없이) */
-export const LOCAL_MODE = params.get('local') === '1';
+/** 주소의 ?local=1 이면 탭끼리 통신하는 테스트 모드 (로그인 없이). 개발 서버나 내 컴퓨터(localhost)에서만 켜진다 */
+export const LOCAL_MODE =
+  params.get('local') === '1' && (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(location.hostname));
 /** 테스트 모드에서 통신 지연 흉내 (?lag=150 → 받는 쪽에서 150ms 늦게) */
 export const LAG_MS = LOCAL_MODE ? Math.max(0, Math.min(1000, Number(params.get('lag')) || 0)) : 0;
 

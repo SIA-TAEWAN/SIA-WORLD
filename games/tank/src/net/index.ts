@@ -6,8 +6,9 @@ let backend: Backend | null | undefined;
 
 const params = new URLSearchParams(location.search);
 
-/** 주소의 ?local=1 이면 탭끼리 통신하는 테스트 모드 (로그인 없이) */
-export const LOCAL_MODE = params.get('local') === '1';
+/** 주소의 ?local=1 이면 탭끼리 통신하는 테스트 모드 (로그인 없이). 개발 서버나 내 컴퓨터(localhost)에서만 켜진다 */
+export const LOCAL_MODE =
+  params.get('local') === '1' && (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(location.hostname));
 
 export async function getBackend(): Promise<Backend | null> {
   if (backend !== undefined) return backend;

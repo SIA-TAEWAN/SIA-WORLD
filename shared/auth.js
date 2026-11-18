@@ -198,12 +198,20 @@ export async function requireLogin() {
 
 /** 지금 페이지의 게임이 닫혀 있는가 (게임 페이지가 아니거나 확인하지 못하면 false) */
 async function isClosedHere() {
-  const game = gameForPath(currentRelative());
+  let rel = currentRelative();
+  try {
+    // 주소에 %76 같은 표기가 섞여 있어도 같은 게임으로 본다
+    rel = decodeURIComponent(rel);
+  } catch {
+    /* 풀 수 없는 주소는 그대로 */
+  }
+  const game = gameForPath(rel);
   if (!game) return false;
   try {
     return (await loadGameOpen())[game.id] === false;
   } catch {
-    return false;
+    // 서버에서 못 읽으면 목록의 기본값 (기본이 닫힘인 게임은 닫힌 것으로)
+    return game.open === false;
   }
 }
 

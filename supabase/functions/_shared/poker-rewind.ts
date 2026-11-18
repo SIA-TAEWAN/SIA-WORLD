@@ -47,6 +47,7 @@ function undo(p: PokerPublic, events: readonly GameEvent[], i: number, prev: Pok
   const curBet = () => p.seats.reduce((a, s) => Math.max(a, s.excluded ? 0 : s.betRound), 0);
   // 되돌린 화면에서는 조작 버튼을 그리지 않는다
   p.actions = [];
+  p.pots = prev?.pots ?? [];
   p.summary = null;
 
   if (BETS.has(e.t)) {

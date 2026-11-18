@@ -221,6 +221,8 @@
     }
 
     // ---------- 로비 ----------
+    /** 오픈 여부를 바꾼 횟수 (늦게 온 예전 응답으로 화면을 덮지 않게) */
+    let openSeq = 0;
     /** 게임별 오픈 여부 (서버 값. 못 읽으면 목록의 기본값) */
     let gameOpen = Object.fromEntries(GAMES.map((g) => [g.id, g.open]));
     /** 게임 카드: 열린 게임만. 관리자는 닫힌 게임도 '닫힘' 표시와 함께 보이고 들어갈 수 있다 */
@@ -262,14 +264,20 @@
           btn.className = 'btn small';
           btn.textContent = gameOpen[g.id] ? '닫기' : '오픈하기';
           btn.addEventListener('click', async () => {
-            btn.disabled = true;
+            // 요청 중에는 모든 줄을 잠근다 (연달아 눌러 응답 순서가 뒤바뀌지 않게)
+            document.querySelectorAll('#admin-games button').forEach((b) => (b.disabled = true));
             $('#admin-err').textContent = '';
+            const seq = ++openSeq;
             try {
-              await setGameOpen(g.id, !gameOpen[g.id]);
-              gameOpen = await loadGameOpen();
+              const next = !gameOpen[g.id];
+              await setGameOpen(g.id, next);
+              gameOpen = { ...gameOpen, [g.id]: next };
             } catch {
               $('#admin-err').textContent = '바꾸지 못했어요. 잠시 후 다시 시도해 주세요';
             }
+            // 서버 값으로 한 번 더 맞춘다 (못 읽어도 방금 저장한 값은 그대로)
+            const fresh = await loadGameOpen().catch(() => null);
+            if (fresh && seq === openSeq) gameOpen = fresh;
             renderGames(user);
           });
           row.append(name, btn);
@@ -284,7 +292,8 @@
       show('lobby-view');
       void loadWallet(user);
       // 서버의 오픈 여부로 다시 그린다 (못 읽으면 기본값 그대로)
-      loadGameOpen().then((m) => { gameOpen = m; renderGames(user); }).catch(() => {});
+      const seq = openSeq;
+      loadGameOpen().then((m) => { if (seq !== openSeq) return; gameOpen = m; renderGames(user); }).catch(() => {});
     }
 
     // ---------- 지갑 · 출석 · 무료 충전 ----------
