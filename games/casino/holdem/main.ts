@@ -3,6 +3,7 @@ import { HOLDEM_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { HoldemPrivate, HoldemPublic } from '../../../supabase/functions/_shared/holdem.ts';
+import { rewindHoldem } from '../../../supabase/functions/_shared/holdem-rewind.ts';
 import type PhaserNS from 'phaser';
 
 type Ctx = TableCtx<HoldemPublic, HoldemPrivate>;
@@ -12,6 +13,8 @@ const STREET: Record<string, string> = { preflop: '프리플롭', flop: '플롭'
 /** 레이즈(베트) 금액: 이번 라운드 총액 (슬라이더) */
 let raiseTo = 0;
 let raiseKey = '';
+/** 마지막으로 그린 공개 상태 (한 동작씩 되돌려 보여 줄 때 기준) */
+let lastPub: HoldemPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 
@@ -44,6 +47,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     const { scene } = t;
     const { W, H } = viewSize(scene);
     const p = t.pub;
+    lastPub = p;
     drawTable(scene, 'holdem');
     const portrait = H > W * 1.15 || W < 520;
     // 내 카드 크기 (2장이라 크게), 공용 카드, 다른 사람
@@ -210,6 +214,9 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     const split = r.pots.some((x) => x.winners.length > 1) ? '<p>동점이라 판돈을 나눴어요</p>' : '';
     return `<h3>♥️ 판 결과</h3>${split}<table>${rows}</table>`;
   },
+
+  // 한 동작씩: 베팅 → 공용 카드 → 다음 베팅 순서로, 앞 동작의 카드 연출이 끝난 뒤에 다음 동작 (판 시작은 예전 방식)
+  rewind: (next, events) => rewindHoldem(next, events, lastPub),
 
   // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
   replay(ev, t: Ctx) {
