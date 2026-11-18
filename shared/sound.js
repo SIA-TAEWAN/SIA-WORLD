@@ -1,4 +1,4 @@
-// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 · 시아레이스 · 시아배구 공용).
+// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 · 시아레이스 · 시아배구 · 시아서바이벌 공용).
 //
 // - 소리는 ZzFX 방식(코드로 파형을 만든다, MIT · Frank Force)으로 만든다. 외부 파일 없음.
 // - shared/sounds/<이름>.ogg 또는 .mp3 파일을 넣으면 그 소리를 처음 낼 때 확인해서 파일로 바꿔 쓴다.
@@ -72,10 +72,19 @@ export const SOUNDS = {
   volleyServe: [0.4, 0, 660, 0.01, 0.04, 0.1, 1, 1.5, 6],
   volleyCount: [0.5, 0, 523, 0.01, 0.08, 0.1, 1, 1.3],
   volleyGo: [0.7, 0, 1047, 0.01, 0.18, 0.28, 1, 1.4, 0, 0, 523, 0.08],
+  // 시아서바이벌 (엽전은 coin, 구슬은 chip, 떡은 tankHeal, 부적·보스 폭발은 tankBoom, 클리어·게임 오버는 win · lose 를 같이 쓴다)
+  survShot: [0.35, 0.05, 900, 0, 0.01, 0.05, 1, 1.5, -18],
+  survSlash: [0.4, 0.05, 520, 0, 0.02, 0.08, 4, 2, -9, 0, 0, 0, 0, 1.2],
+  survPop: [0.4, 0.05, 260, 0, 0.02, 0.1, 1, 1.6, -3],
+  survHurt: [0.7, 0.05, 190, 0, 0.05, 0.16, 2, 1.4, -2.2, 0, 0, 0, 0, 0.6],
+  survLevel: [0.6, 0, 659, 0.01, 0.12, 0.26, 1, 1.4, 0, 0, 330, 0.05, 0.05],
+  survBossWarn: [0.7, 0, 196, 0.03, 0.3, 0.3, 2, 1.2, 0, 0, -40, 0.15, 0.15],
+  survBossDown: [0.9, 0.05, 110, 0.01, 0.2, 0.6, 4, 2.2, -0.2, 0, 0, 0, 0, 1.8],
+  survChest: [0.6, 0, 880, 0.01, 0.1, 0.3, 1, 1.5, 0, 0, 440, 0.06, 0.06],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50 };
+const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 

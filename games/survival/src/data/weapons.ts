@@ -1,0 +1,144 @@
+/**
+ * 무기 (PRD 4장). 무기마다 "동작 종류(kind)" 와 레벨별 수치만 적는다.
+ * 동작 종류의 실제 움직임은 src/game/weapons.ts 의 BEHAVIORS 에 등록한다.
+ * 새 무기 = 여기에 한 항목 + (새 동작이면) BEHAVIORS 에 작은 함수 하나.
+ */
+
+/** 레벨 한 줄. 동작 종류마다 쓰는 값이 다르다 (안 쓰는 값은 비워 둔다) */
+export interface WeaponLevel {
+  /** 한 번 맞을 때 피해 */
+  dmg: number;
+  /** 재사용 대기시간 (장판은 피해 간격) */
+  cd: number;
+  /** 한 번에 나가는 수 (표창·달떡·구슬·독 지대) */
+  count?: number;
+  /** 뚫고 지나가는 적 수 (0이면 처음 맞은 적에서 사라짐) */
+  pierce?: number;
+  /** 투사체 속도 */
+  speed?: number;
+  /** 투사체 반지름 */
+  size?: number;
+  /** 투사체가 사라지기까지 (초) */
+  life?: number;
+  /** 범위 반지름 (장판·폭발·독 지대·구슬이 도는 거리) */
+  radius?: number;
+  /** 닿는 거리 (발톱), 던지는 거리 (달떡·독안개) */
+  range?: number;
+  /** 부채꼴 각도 (도) */
+  arc?: number;
+  /** 유지 시간 (구슬·독 지대) */
+  dur?: number;
+  /** 같은 적을 다시 때리기까지 (초) */
+  every?: number;
+  /** 도는 빠르기 (라디안/초) */
+  spin?: number;
+  /** 카드에 적는 설명 */
+  text: string;
+}
+
+export interface WeaponDef {
+  id: string;
+  name: string;
+  /** 임시 아이콘 (정식 그림은 ASSETS.md) */
+  icon: string;
+  desc: string;
+  /** 동작 종류 (src/game/weapons.ts 의 BEHAVIORS 열쇠) */
+  kind: string;
+  /** 지속 피해 무기인가 (뱀의 '지속 피해 +10%' 대상) */
+  dot?: boolean;
+  /** 진화 무기인가 (레벨업 카드에 나오지 않고 보물상자로만 얻는다) */
+  evolved?: boolean;
+  /** 아직 만들지 않은 무기 (데이터 자리만 있음) */
+  ready: boolean;
+  /** 레벨 1~5 (진화 무기는 한 줄) */
+  levels: WeaponLevel[];
+}
+
+export const WEAPONS: WeaponDef[] = [
+  {
+    id: 'shuriken', name: '표창', icon: '✴️', desc: '가까운 적에게 날아간다', kind: 'seek', ready: true,
+    levels: [
+      { dmg: 17, cd: 0.42, count: 1, pierce: 0, speed: 540, size: 10, life: 1.3, text: '가까운 적에게 표창을 던진다' },
+      { dmg: 24.5, cd: 0.42, count: 1, pierce: 0, speed: 540, size: 10, life: 1.3, text: '더 아프게' },
+      { dmg: 18, cd: 0.42, count: 2, pierce: 0, speed: 560, size: 10, life: 1.3, text: '표창 1개 더 (하나하나는 조금 약하게)' },
+      { dmg: 24, cd: 0.38, count: 2, pierce: 0, speed: 560, size: 11, life: 1.3, text: '더 아프게, 조금 더 빨리' },
+      { dmg: 23, cd: 0.38, count: 3, pierce: 0, speed: 580, size: 11, life: 1.3, text: '표창 1개 더' },
+    ],
+  },
+  {
+    id: 'bell', name: '방울', icon: '🔔', desc: '주변에 피해 장판을 두른다', kind: 'aura', dot: true, ready: true,
+    levels: [
+      { dmg: 3.45, cd: 0.5, radius: 120, text: '내 주변의 적이 계속 피해를 입는다' },
+      { dmg: 3.6, cd: 0.5, radius: 130, text: '장판이 넓어진다' },
+      { dmg: 5.1, cd: 0.48, radius: 130, text: '더 아프게' },
+      { dmg: 5.5, cd: 0.46, radius: 145, text: '장판이 더 넓어진다' },
+      { dmg: 6.1, cd: 0.44, radius: 160, text: '더 아프고 더 넓게' },
+    ],
+  },
+  {
+    id: 'claw', name: '발톱', icon: '🐾', desc: '앞쪽을 부채꼴로 벤다', kind: 'cone', ready: true,
+    levels: [
+      { dmg: 13.5, cd: 0.9, range: 130, arc: 115, text: '앞쪽을 부채꼴로 벤다' },
+      { dmg: 18.5, cd: 0.9, range: 136, arc: 115, text: '더 아프게' },
+      { dmg: 17, cd: 0.86, range: 152, arc: 135, text: '더 넓고 길게 벤다' },
+      { dmg: 19.5, cd: 0.78, range: 156, arc: 135, text: '더 아프게, 더 자주' },
+      { dmg: 20, cd: 0.74, range: 172, arc: 155, text: '더 넓고 길게 벤다' },
+    ],
+  },
+  {
+    id: 'mooncake', name: '달떡', icon: '🌕', desc: '포물선으로 던져 터뜨린다', kind: 'lob', ready: true,
+    levels: [
+      { dmg: 12, cd: 1.15, count: 1, radius: 74, range: 300, text: '달떡을 던져 떨어진 자리를 터뜨린다' },
+      { dmg: 17, cd: 1.15, count: 1, radius: 76, range: 300, text: '더 아프게' },
+      { dmg: 14, cd: 1.3, count: 2, radius: 76, range: 310, text: '달떡 1개 더 (조금 천천히)' },
+      { dmg: 15, cd: 1.3, count: 2, radius: 90, range: 320, text: '더 크게 터진다' },
+      { dmg: 15.5, cd: 1.4, count: 3, radius: 90, range: 330, text: '달떡 1개 더' },
+    ],
+  },
+  {
+    id: 'pearl', name: '여의주', icon: '🔮', desc: '내 주위를 쉬지 않고 도는 구슬', kind: 'orbit', ready: true,
+    levels: [
+      { dmg: 9.1, cd: 4, dur: 4, count: 2, radius: 98, every: 0.4, spin: 3.4, size: 14, text: '구슬 2개가 내 주위를 돈다' },
+      { dmg: 8.8, cd: 4, dur: 4, count: 3, radius: 98, every: 0.4, spin: 3.4, size: 14, text: '구슬 1개 더' },
+      { dmg: 11.2, cd: 4, dur: 4, count: 3, radius: 104, every: 0.4, spin: 3.6, size: 15, text: '더 아프고 더 넓게 돈다' },
+      { dmg: 12.2, cd: 4, dur: 4, count: 4, radius: 104, every: 0.4, spin: 3.6, size: 15, text: '구슬 1개 더' },
+      { dmg: 13.7, cd: 4, dur: 4, count: 5, radius: 116, every: 0.38, spin: 3.8, size: 16, text: '구슬 1개 더, 더 넓게 돈다' },
+    ],
+  },
+  {
+    id: 'mist', name: '독안개', icon: '☁️', desc: '바닥에 독 지대를 깐다', kind: 'pool', dot: true, ready: true,
+    levels: [
+      { dmg: 4.5, cd: 2.6, dur: 3.0, every: 0.5, count: 1, radius: 78, range: 280, text: '적이 있는 바닥에 독 지대를 깐다' },
+      { dmg: 6.5, cd: 2.6, dur: 3.0, every: 0.5, count: 1, radius: 78, range: 280, text: '더 아프게' },
+      { dmg: 6.5, cd: 3.6, dur: 3.0, every: 0.5, count: 2, radius: 80, range: 300, text: '독 지대 1개 더 (조금 천천히)' },
+      { dmg: 7, cd: 3.4, dur: 3.5, every: 0.5, count: 2, radius: 84, range: 300, text: '더 아프고 더 오래 남는다' },
+      { dmg: 7, cd: 3.6, dur: 3.5, every: 0.5, count: 3, radius: 86, range: 320, text: '독 지대 1개 더' },
+    ],
+  },
+
+  // ───── 진화 무기 (data/evolutions.ts) ─────
+  {
+    id: 'shurikenEvo', name: '천병만마 표창', icon: '🌟', desc: '수많은 표창이 적을 모두 뚫고 지나간다', kind: 'seek', evolved: true, ready: true,
+    levels: [{ dmg: 14, cd: 0.34, count: 5, pierce: 99, speed: 660, size: 13, life: 1.5, text: '표창 5개가 적을 모두 뚫는다' }],
+  },
+  {
+    id: 'pearlEvo', name: '용왕의 구슬', icon: '🐉', desc: '큰 구슬 6개가 쉬지 않고 돈다', kind: 'orbit', evolved: true, ready: true,
+    levels: [{ dmg: 20, cd: 4, dur: 4, count: 6, radius: 132, every: 0.3, spin: 4.2, size: 20, text: '큰 구슬 6개가 쉬지 않고 돈다' }],
+  },
+  {
+    id: 'clawEvo', name: '백호의 발톱', icon: '🐯', desc: '사방을 한꺼번에 벤다', kind: 'cone', evolved: true, ready: true,
+    levels: [{ dmg: 20, cd: 0.8, range: 180, arc: 360, text: '사방을 한꺼번에 벤다' }],
+  },
+
+  // ───── 나중에 만들 무기 6종 (자리만. kind 의 동작 함수와 levels 를 채우고 ready 를 true 로) ─────
+  { id: 'hoof', name: '말발굽', icon: '🐴', desc: '지나간 자리에 충격파를 남긴다', kind: 'trail', ready: false, levels: [] },
+  { id: 'wool', name: '양털 구름', icon: '🐑', desc: '구름으로 적을 느리게 한다', kind: 'slowCloud', dot: true, ready: false, levels: [] },
+  { id: 'staff', name: '여의봉', icon: '🐵', desc: '곧게 뻗어 적을 모두 꿰뚫는다', kind: 'lance', ready: false, levels: [] },
+  { id: 'feather', name: '깃털', icon: '🪶', desc: '여러 방향으로 한꺼번에 쏜다', kind: 'radial', ready: false, levels: [] },
+  { id: 'puppy', name: '동료 강아지', icon: '🐶', desc: '적을 쫓아가 무는 소환수', kind: 'minion', ready: false, levels: [] },
+  { id: 'piggy', name: '복돼지 돌진', icon: '🐷', desc: '일정 간격으로 돌진해 부딪친다', kind: 'dash', ready: false, levels: [] },
+];
+
+export const WEAPON_INDEX: Record<string, number> = Object.fromEntries(WEAPONS.map((w, i) => [w.id, i]));
+/** 준비되지 않은 무기를 가진 캐릭터가 대신 들고 시작하는 무기 */
+export const FALLBACK_WEAPON = 'shuriken';
