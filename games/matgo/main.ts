@@ -843,7 +843,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         };
       }
       // 바닥에 있던 패 (또는 뺏어 온 피): 가져가기 차례에 지금 자리에서 출발
-      return { delay: pl.captureAt ?? AT_TAKE, sound: 'chip' };
+      // 바닥 패는 가져가기 전까지 바닥 크기 그대로 있다가, 날아가면서 먹은 패 크기로 줄어든다
+      return { delay: pl.captureAt ?? AT_TAKE, sound: 'chip', fromScale: pl.floor ? fw / capW : undefined };
     };
     captured(t, scene, L.oppTray, op, capW, capOpts);
 
