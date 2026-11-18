@@ -218,12 +218,16 @@ export class Runner {
   /** AI 차례를 이어서 두고, 저장·공개하고, 판이 끝났으면 정산한다 → 저장했으면 true */
   private async advance(roomId: string, room: RoomRow, seats: SeatRow[], engine: AnyEngine, version: number, state: unknown) {
     let steps = 0;
+    // 불러온(이미 저장된) 상태의 스핀 결과: 이번 호출에서 새로 나온 결과는 아직 저장 전이라 여기서 지급·다음 단계로 넘기지 않는다
+    const savedSpin = engine.spinResult ? engine.spinResult(state) : null;
     while (!engine.done(state)) {
       const autos = engine.pending(state).filter((s: number) => this.auto(seats, s));
       if (autos.length === 0) {
         // 모두 결과를 확인했으면 (룰렛) 마감을 기다리지 않고 다음 단계로 → 새 단계의 자동 자리를 이어서 처리
         if (engine.tick && engine.tickNow && engine.tickNow(state)) {
           const prev = engine.spinResult ? engine.spinResult(state) : null;
+          // 저장되지 않은 결과로 지급하면, 저장에 실패해 다시 돌렸을 때 기록과 지급이 어긋난다 → 먼저 저장·공개하고 다음 마감 때 넘어간다
+          if (prev && (!savedSpin || savedSpin.spin !== prev.spin || savedSpin.result !== prev.result)) break;
           if (prev && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, prev.spin, prev.result);
           state = engine.tick(state, this.rng, await this.seatInfo(room, seats));
           if (++steps > MAX_AUTO_STEPS) throw new Error('AI loop');

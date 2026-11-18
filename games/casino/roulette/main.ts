@@ -407,15 +407,29 @@ function showResult(t: Ctx, p: RoulettePublic, key: string) {
     d.innerHTML = `<div class="box result ${win > 0 ? 'win' : ''}"><h3>🎡 결과: ${esc(NAME[animal])}</h3>
       <p>${SEASONS[seasonOf(p.landed)]} · ${p.landed % 2 === 0 ? '양' : '음'}</p><p>${line}</p>
       <div class="row"><button class="btn primary big" data-x>확인 ▶ 다음 판</button></div></div>`;
+    if (!document.querySelector('#stage')) return; // 그 사이 방을 나갔다
     document.body.append(d);
     resultEl = d;
+    // 방을 나가거나 판이 끝나면 (조작부가 더는 그려지지 않아 닫을 기회가 없다) 스스로 닫는다
+    const watch = setInterval(() => {
+      if (resultEl !== d) return clearInterval(watch);
+      const others = [...document.querySelectorAll('.modal')].some((m) => m !== d && m.querySelector('.result'));
+      if (!document.querySelector('#stage') || document.querySelector('#ready') || others) {
+        clearInterval(watch);
+        closeResult();
+      }
+    }, 400);
     sfx(win > 0 ? 'win' : bet > 0 ? 'lose' : 'toggle');
     d.querySelector<HTMLButtonElement>('[data-x]')!.addEventListener('click', (ev) => {
       (ev.currentTarget as HTMLButtonElement).disabled = true;
       void t.act({ type: 'next' }).then((ok) => {
         // 이미 다음 판으로 넘어갔으면 (마감) 그냥 닫는다
         if (resultEl === d) closeResult();
-        if (!ok) t.redraw();
+        // 보내지 못했으면 다시 띄울 수 있게
+        if (!ok) {
+          resultFor = '';
+          t.redraw();
+        }
       });
     });
   };

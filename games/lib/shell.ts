@@ -879,10 +879,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (ui.stableControls === false) return;
     const el = root.querySelector<HTMLElement>('#controls');
     if (!el) return;
+    // 낮은 화면(가로로 든 휴대폰)은 고정하지 않는다: 테이블이 너무 작아진다
+    if (window.innerHeight <= 520) {
+      el.style.minHeight = '';
+      ctlLockW = 0;
+      return;
+    }
     if (ctlLockW !== window.innerWidth) {
       ctlLockW = window.innerWidth;
-      // 처음부터 넉넉히 잡아 둔다 (대기 → 베팅 → 진행으로 넘어가도 테이블 크기가 그대로이게)
-      ctlLockH = window.innerWidth < 700 ? 210 : 150;
+      // 처음부터 넉넉히 잡아 둔다 (대기 → 베팅 → 진행으로 넘어가도 테이블 크기가 그대로이게). 화면 높이의 1/4까지만
+      ctlLockH = Math.min(window.innerWidth < 700 ? 210 : 150, Math.round(window.innerHeight * 0.25));
     }
     el.style.minHeight = '';
     ctlLockH = Math.max(ctlLockH, el.offsetHeight);

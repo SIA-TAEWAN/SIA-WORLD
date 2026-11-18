@@ -16,6 +16,7 @@ let discard: string | null = null;
 let thrownShown: string | null = null;
 /** 서버에 보낸 고르기 (답이 올 때까지 화면을 그대로 유지) */
 let sent: { discard: string; open: string } | null = null;
+let roundKey = '';
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 
@@ -80,6 +81,13 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       const sd = shown.get(s.seat);
       let cards: (string | null)[];
       // 고르기를 보낸 뒤 (서버 답을 기다리는 동안): 버린 카드는 빼고 남은 3장만, 공개할 카드는 올려서 보여 준다
+      if (me && roundKey !== `${t.room.id}:${t.room.round_no}`) {
+        // 방·판이 바뀌면 지난 고르기 기록은 버린다
+        roundKey = `${t.room.id}:${t.room.round_no}`;
+        sent = null;
+        discard = null;
+        thrownShown = null;
+      }
       const choosing = me && !sd && p.phase === 'choose' && !!t.priv?.choices.length;
       if (!choosing || (sent && !t.priv!.choices.includes(sent.open))) sent = me ? null : sent;
       const gone = choosing ? (sent?.discard ?? discard) : null;
@@ -109,7 +117,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
           lift: (me && !!c && !isOpen && p.phase !== 'choose') || picking || opening,
         });
         if (opening) label(scene, cx, y - w * 0.98, '공개', clamp(w * 0.22, 13, 20), tc('primary'));
-        if (me && c && !sd) {
+        if (me && c) {
           // 내 카드는 카드마다 따라간다: 버리고 고른 뒤 남은 카드가 새 자리로 미끄러져 간다 (순번으로 따라가면 엉뚱한 카드가 뒤집힌다)
           t.deal(card, `${s.seat}:c:${c}`, c, deck);
           t.track(card, `pk:${c}`, { still: choosing && !gone, depth: 0 });
