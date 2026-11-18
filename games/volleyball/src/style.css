@@ -1,0 +1,205 @@
+/* 시아배구 화면 (공통·로비·대기실 모양은 시아레이스 games/running/src/style.css 에서 가져옴). 색·글꼴·모양은 shared/theme.css 의 값만 쓴다 (DESIGN.md) */
+@import '../../../shared/theme.css';
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body {
+  font-family: var(--font); color: var(--ink); background: var(--sky-gradient); background-color: var(--sky-mid);
+  user-select: none; -webkit-user-select: none; touch-action: manipulation;
+}
+button, input { font: inherit; color: inherit; }
+.hidden { display: none !important; }
+
+/* 세로 화면 기준: PC에서는 세로 비율(9:16) 그대로 가운데 */
+#stage {
+  position: relative; height: 100vh; height: 100dvh; width: min(100vw, calc(100vh * 9 / 16)); width: min(100vw, calc(100dvh * 9 / 16));
+  margin: 0 auto; overflow: hidden; background: var(--sky-gradient);
+}
+@media (min-aspect-ratio: 9/16) {
+  #stage { box-shadow: 0 0 0 var(--line-big) var(--outline); }
+}
+#app { position: absolute; inset: 0; }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; padding: calc(10px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom)); gap: 10px; overflow-y: auto; }
+
+/* ---------- 공통 ---------- */
+.bar { display: flex; align-items: center; gap: 8px; min-height: 40px; flex: none; }
+.bar .back { background: none; border: 0; color: var(--white); font-size: 16px; cursor: pointer; padding: 6px 4px; text-decoration: none; text-shadow: 0 2px 0 var(--outline); }
+.bar h2 { flex: 1; margin: 0; text-align: center; font-weight: normal; font-size: var(--fs-title); color: var(--white); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
+.bar .me { background: var(--pill); color: var(--white); border-radius: var(--radius-item); padding: 5px 10px; font-size: 14px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar .spacer { flex: 1; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; text-decoration: none;
+  background: var(--white); color: var(--ink); border: var(--line) solid var(--outline); border-radius: var(--radius-button);
+  box-shadow: 0 var(--depth-button) 0 var(--outline); padding: 9px 16px; font-size: var(--fs-button);
+  transition: transform var(--press-ms), box-shadow var(--press-ms);
+}
+.btn:active, .btn.down { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn.primary { background: var(--primary-gradient); }
+.btn.big { font-size: var(--fs-button-big); padding: 13px 20px; box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+.btn.small { font-size: 15px; padding: 5px 12px; border-radius: var(--radius-item); box-shadow: 0 3px 0 var(--outline); }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--white); border: var(--line) solid var(--outline);
+  box-shadow: 0 3px 0 var(--outline); font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; flex: none;
+}
+.icon-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--outline); }
+
+.card { background: var(--panel); border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); padding: 12px; }
+.card h3 { margin: 0 0 8px; font-weight: normal; font-size: var(--fs-panel); }
+.soft { color: var(--ink-soft); font-size: 13px; }
+.tag { display: inline-block; background: var(--pink); color: var(--white); border-radius: var(--radius-pill); padding: 1px 8px; font-size: 12px; }
+
+.toast {
+  position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); z-index: 60; background: var(--outline); color: var(--white);
+  border-radius: var(--radius-item); padding: 8px 14px; font-size: 15px; max-width: 86%; text-align: center; pointer-events: none;
+  animation: toast-in 160ms ease-out;
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+.connecting { margin: auto; text-align: center; color: var(--white); font-size: 17px; text-shadow: 0 2px 0 var(--outline); line-height: 1.6; }
+.spinner { width: 38px; height: 38px; margin: 0 auto 12px; border-radius: 50%; border: 5px solid var(--white); border-top-color: var(--primary); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- 팝업 ---------- */
+.dim { position: absolute; inset: 0; z-index: 70; background: var(--dim); display: grid; place-items: center; padding: 16px; }
+.dialog { width: min(340px, 100%); background: var(--panel); border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); box-shadow: 0 var(--depth-big) 0 var(--outline); padding: 16px; }
+.dialog h3 { margin: 0 0 12px; font-weight: normal; font-size: 22px; text-align: center; }
+.dialog .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 2px; font-size: 17px; border-bottom: 2px dashed var(--line-soft); }
+.dialog .actions { display: flex; gap: 10px; margin-top: 14px; }
+.dialog .actions .btn { flex: 1; }
+.seg { display: flex; gap: 6px; }
+.seg button { border: var(--line-thin) solid var(--outline); background: var(--white); border-radius: var(--radius-item); padding: 5px 14px; font-size: 15px; cursor: pointer; }
+.seg button.sel { background: var(--primary); box-shadow: 0 3px 0 var(--outline); }
+
+/* ---------- 로비 ---------- */
+.lobby { align-items: stretch; }
+.logo { margin: 4px 0 0; text-align: center; font-weight: normal; font-size: clamp(44px, 14vmin, var(--fs-logo)); color: var(--primary); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); line-height: 1.1; }
+.tagline { margin: 0; text-align: center; color: var(--white); font-size: 17px; text-shadow: 0 2px 0 var(--outline); }
+.hero { position: relative; flex: 1 1 110px; min-height: 96px; max-height: 190px; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); overflow: hidden; background: var(--sky-mid); }
+.hero .hero-floor { position: absolute; left: 0; right: 0; bottom: 0; height: 22%; background: var(--sky-bottom); border-top: var(--line) solid var(--outline); }
+.hero .hero-net { position: absolute; left: calc(50% - 8px); bottom: 22%; width: 16px; height: 42%; background: var(--white); border: var(--line) solid var(--outline); border-bottom: 0; border-radius: 8px 8px 0 0; }
+.hero .hero-char { position: absolute; bottom: 16%; height: 46%; width: 22%; object-fit: contain; object-position: center bottom; transform-origin: 50% 100%; animation: hero-hop 0.9s ease-in-out infinite; }
+.hero .hero-char.l { left: 12%; }
+.hero .hero-char.r { right: 12%; animation-delay: -0.45s; }
+@keyframes hero-hop { 0%, 60%, 100% { transform: translateY(0) scale(1.03, 0.97); } 30% { transform: translateY(-22%) scale(0.97, 1.05); } }
+.hero .hero-ball { position: absolute; left: 24%; top: 34%; width: 26px; height: 26px; margin: -13px; border-radius: 50%; background: var(--white); border: var(--line) solid var(--outline); animation: hero-ball-x 1.8s ease-in-out infinite alternate, hero-ball-y 0.9s ease-in-out infinite alternate; }
+@keyframes hero-ball-x { to { left: 76%; } }
+@keyframes hero-ball-y { from { top: 40%; } to { top: 12%; } }
+.lobby .main-actions { display: flex; flex-direction: column; gap: 10px; }
+/* 방 목록 (카드 게임 로비 games/lib/style.css 의 .room-row 와 같은 모양) */
+.rooms-card { flex: 2 1 150px; min-height: 132px; display: flex; flex-direction: column; padding-bottom: 10px; }
+.rooms-card h3 { flex: none; }
+.rooms { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 0 2px 4px; }
+.room-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); box-shadow: 0 3px 0 var(--outline); padding: 6px 10px 6px 6px; flex: none; transition: transform var(--press-ms), box-shadow var(--press-ms); }
+.room-row:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--outline); }
+.room-row.playing { background: var(--panel-strong); }
+.room-row.full { opacity: 0.6; cursor: default; }
+.room-row .av { width: 40px; height: 40px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; flex: none; }
+.room-row .rn { flex: 1; min-width: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-row .rn small { display: block; color: var(--ink-soft); font-size: 12px; }
+.room-row .tag { flex: none; font-size: 13px; padding: 2px 9px; }
+.room-row .tag.wait { background: var(--win); }
+.room-row .tag.busy { background: var(--pink); }
+.room-row .tag.full { background: var(--ink-soft); }
+.room-row .go { flex: none; font-size: 14px; color: var(--accent); white-space: nowrap; }
+.rooms .empty { margin: auto; color: var(--ink-soft); text-align: center; font-size: 15px; line-height: 1.7; padding: 8px 4px; }
+.lobby .sub-actions { display: flex; gap: 8px; }
+.lobby .sub-actions .btn { flex: 1; }
+
+/* ---------- 대기실 ---------- */
+.chars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.char { position: relative; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 3px 0 2px; cursor: pointer; text-align: center; min-width: 0; }
+/* 캐릭터 얼굴은 모두 같은 크기의 원 안에 (그림마다 여백이 달라 크기가 들쭉날쭉해 보이지 않게) */
+.char img { width: 78%; aspect-ratio: 1; object-fit: cover; display: block; margin: 0 auto; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); }
+.char span { display: block; font-size: 11px; white-space: nowrap; overflow: hidden; }
+.char.sel { border-color: var(--outline); background: var(--panel-strong); box-shadow: inset 0 0 0 3px var(--primary); }
+.char.taken { opacity: 0.4; cursor: default; }
+.room .status { align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
+.room .grow { flex: 1; min-height: 4px; }
+.room .btn.big { width: 100%; flex: none; }
+
+/* ---------- AI 대전: 캐릭터 고르기 ---------- */
+.pick { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 0; overflow: hidden; }
+.pick-stage { align-self: stretch; margin: 0 -12px; height: clamp(120px, 24vh, 210px); background: var(--sky-mid); border-bottom: var(--line) solid var(--outline); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; overflow: hidden; }
+.pick-stage img { height: 82%; width: auto; max-width: 70%; object-fit: contain; object-position: center bottom; transform-origin: 50% 100%; animation: hero-hop 0.9s ease-in-out infinite; }
+.pick-name { font-size: 24px; margin-top: 6px; }
+.lobby .main-actions .btn:disabled { font-size: var(--fs-button); }
+
+/* ---------- 경기: 위에서부터 점수판 160 · 경기장 840 · 조작 280 (가로 720 기준, --u = 기준 1px의 실제 크기) ---------- */
+.match { padding: 0; gap: 0; overflow: hidden; }
+.score { flex: none; height: calc(var(--u) * 160 + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(var(--u) * 14) 0; display: flex; align-items: center; gap: calc(var(--u) * 10); background: var(--panel); border-bottom: var(--line) solid var(--outline); }
+.score .side { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: calc(var(--u) * 12); }
+.score .side.s1 { flex-direction: row-reverse; }
+.score .av { width: calc(var(--u) * 92); height: calc(var(--u) * 92); border-radius: 50%; border: var(--line-big) solid var(--team-a); background: var(--white); object-fit: cover; flex: none; }
+.score .s1 .av { border-color: var(--team-b); }
+.score .who { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 8); }
+.score .s1 .who { align-items: flex-end; }
+.score .nm { max-width: 100%; font-size: calc(var(--u) * 26); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.score .side.me .nm { background: var(--primary); border-radius: var(--radius-pill); padding: 0 calc(var(--u) * 12); }
+.score .dots { display: flex; gap: calc(var(--u) * 6); }
+.score .dots i { width: calc(var(--u) * 18); height: calc(var(--u) * 18); border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--track); }
+.score .s0 .dots i.on { background: var(--team-a); }
+.score .s1 .dots i.on { background: var(--team-b); }
+.score .pt { flex: none; font-weight: normal; font-size: calc(var(--u) * 84); line-height: 1; min-width: calc(var(--u) * 56); text-align: center; font-variant-numeric: tabular-nums; -webkit-text-stroke: calc(var(--u) * 6) var(--outline); paint-order: stroke fill; }
+.score .s0 .pt { color: var(--team-a); }
+.score .s1 .pt { color: var(--team-b); }
+.score .pt.bump { animation: pt-bump 420ms cubic-bezier(0.2, 1.8, 0.4, 1); }
+@keyframes pt-bump { from { transform: scale(1.9); } }
+.score .mid { flex: none; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 10); }
+.score .mid-btns { display: flex; gap: calc(var(--u) * 10); }
+.score .icon-btn { width: calc(var(--u) * 60); height: calc(var(--u) * 60); min-width: 28px; min-height: 28px; font-size: calc(var(--u) * 28); }
+.score .speed { font-size: calc(var(--u) * 22); color: var(--ink-soft); white-space: nowrap; border-radius: var(--radius-pill); padding: calc(var(--u) * 2) calc(var(--u) * 14); min-height: calc(var(--u) * 34); }
+.score .speed.fast { background: var(--pink); color: var(--white); animation: cut-pop 260ms cubic-bezier(0.2, 1.6, 0.4, 1); }
+
+.court { position: relative; flex: none; width: 100%; aspect-ratio: 720 / 840; overflow: hidden; background: var(--sky-mid); }
+.court canvas { display: block; width: 100% !important; height: 100% !important; }
+.cutin { position: absolute; left: 0; right: 0; top: 26%; text-align: center; pointer-events: none; z-index: 5; font-size: calc(var(--u) * 150); color: var(--white); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); line-height: 1; }
+.cutin small { display: block; font-size: 0.42em; margin-top: 6px; -webkit-text-stroke: 2px var(--outline); text-shadow: 0 3px 0 var(--outline); }
+.cutin.pop { animation: cut-pop 260ms cubic-bezier(0.2, 1.6, 0.4, 1); }
+.cutin.go { color: var(--primary); }
+.cutin.bad { color: var(--pink); }
+@keyframes cut-pop { from { transform: scale(0.3); opacity: 0; } }
+
+/* 조작: ◀ ▶ 왼쪽, 점프 오른쪽. 버튼 그림보다 넓은 영역을 누를 수 있다 (matchView.ts 의 zone) */
+.pad { position: relative; flex: 1 1 0; min-height: calc(var(--u) * 200); display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 24); padding: calc(var(--u) * 20) calc(var(--u) * 24) calc(var(--u) * 26 + env(safe-area-inset-bottom)); background: var(--panel); border-top: var(--line) solid var(--outline); touch-action: none; cursor: pointer; }
+.pad-move { flex: 0 0 51%; display: flex; gap: calc(var(--u) * 18); height: 100%; max-height: calc(var(--u) * 230); }
+.pbtn {
+  flex: 1 1 0; min-width: 0; height: 100%; max-height: calc(var(--u) * 230); display: grid; place-items: center; pointer-events: none;
+  border-radius: calc(var(--u) * 44); border: var(--line-big) solid var(--outline); background: var(--white); box-shadow: 0 var(--depth-big) 0 var(--outline);
+  font-size: calc(var(--u) * 76); transition: transform var(--press-ms), box-shadow var(--press-ms);
+}
+.pbtn.jump { background: var(--primary-gradient); font-size: calc(var(--u) * 62); }
+.pbtn.down { transform: translateY(6px); box-shadow: 0 2px 0 var(--outline); background: var(--panel-strong); }
+.pbtn.jump.down { background: var(--primary-deep); }
+
+/* ---------- 결과 ---------- */
+.result { justify-content: center; }
+.result-card { background: var(--panel); border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); box-shadow: 0 var(--depth-big) 0 var(--outline); padding: 16px 14px; }
+.result-card h2 { margin: 0 0 4px; text-align: center; font-weight: normal; font-size: var(--fs-title); }
+.result-card .kind { text-align: center; margin: 4px 0 0; }
+.result-card .kind .tag { font-size: 15px; padding: 3px 14px; }
+.result-card .verdict { margin: 8px 0 10px; text-align: center; font-size: 60px; line-height: 1.1; color: var(--win); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); animation: cut-pop 360ms cubic-bezier(0.2, 1.6, 0.4, 1); }
+.result-card.lost .verdict { color: var(--lose); }
+.vs { display: flex; align-items: center; gap: 8px; }
+.vs-side { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 10px 6px 8px; }
+.vs-side.win { background: var(--panel-strong); box-shadow: 0 3px 0 var(--outline); }
+.vs-side .av { width: 72px; height: 72px; border-radius: 50%; border: var(--line-big) solid var(--team-a); background: var(--white); object-fit: cover; }
+.vs-side.s1 .av { border-color: var(--team-b); }
+.vs-side .nm { max-width: 100%; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-side .wl { font-size: 14px; color: var(--white); background: var(--lose); border-radius: var(--radius-pill); padding: 1px 12px; }
+.vs-side.win .wl { background: var(--win); }
+.vs-score { flex: none; display: flex; align-items: center; gap: 6px; font-size: 44px; font-variant-numeric: tabular-nums; }
+.vs-score b { font-weight: normal; color: var(--accent); }
+.vs-score i { font-style: normal; color: var(--ink-soft); font-size: 30px; }
+.result-card .note { text-align: center; margin: 10px 0 0; }
+.result .actions { display: flex; gap: 10px; margin-top: 14px; }
+.result .actions .btn { flex: 1; }
+.cheer { position: absolute; left: 0; right: 0; top: 0; height: 100%; pointer-events: none; overflow: hidden; }
+.cheer i { position: absolute; top: -12px; width: 10px; height: 10px; animation: fall 2.4s linear forwards; }
+@keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
+
+@media (max-height: 640px) {
+  .screen { gap: 6px; }
+  .hero { min-height: 90px; }
+}

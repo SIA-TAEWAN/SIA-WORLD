@@ -1,0 +1,344 @@
+import Phaser from 'phaser';
+import {
+  BALL_R, CEIL, COURT_H, COURT_W, FLOOR_Y, LEFT, NET_R, NET_TOP, NET_W, NET_X, PLAYER_R, RIGHT, WALL, ZODIAC_IDS,
+} from '../game/constants';
+import type { Side } from '../game/sim';
+import type { Match, MatchEvent } from '../match/game';
+import { COLOR, FONT, css } from '../theme';
+import { BALL_TEX, ensureArt, preloadArt, zKey } from './art';
+
+export interface SceneData {
+  match: Match;
+  /** 경기장 한 칸(720 기준 1px)이 캔버스 몇 픽셀인가 (화면 배율 × 기기 픽셀 배율) */
+  zoom: number;
+  sfx: (name: string, opts?: { volume?: number; rate?: number }) => void;
+  /** 매 프레임, 이번 프레임에 생긴 일과 함께 (점수판·큰 글자 갱신용) */
+  onFrame: (events: MatchEvent[]) => void;
+}
+
+/** 자리 색: 왼쪽 파랑, 오른쪽 빨강 (DESIGN.md 팀 색) */
+export const SIDE_COLOR = [COLOR.teamA, COLOR.teamB] as const;
+
+/** 캐릭터 그림 높이 (충돌 원 지름 72보다 조금 크게) */
+const CHAR_H = 86;
+const CHAR_MAX_W = 84;
+
+interface Actor {
+  side: Side;
+  spr: Phaser.GameObjects.Image;
+  base: number;
+  ring: Phaser.GameObjects.Graphics;
+  shadow: Phaser.GameObjects.Image;
+  label: Phaser.GameObjects.Container;
+  /** 걸음 위상 */
+  stride: number;
+  /** 착지·타격 뒤 흐른 시간 (초) */
+  landT: number;
+  hitT: number;
+}
+
+/**
+ * 경기장 화면. 좌표는 계산(sim)과 같은 720×840이고, 카메라 배율로 실제 화면 크기에 맞춘다.
+ * 그림은 임시(코드로 그린 도형 + 십이지 전신 그림을 코드로 움직임).
+ */
+export class CourtScene extends Phaser.Scene {
+  private match!: Match;
+  private sfx!: SceneData['sfx'];
+  private onFrame!: SceneData['onFrame'];
+  private zoom = 1;
+  private ball!: Phaser.GameObjects.Image;
+  private ballShadow!: Phaser.GameObjects.Image;
+  private actors: Actor[] = [];
+  private spin = 0;
+  private trailT = 0;
+
+  constructor() {
+    super('court');
+  }
+
+  init(d: SceneData) {
+    this.match = d.match;
+    this.zoom = d.zoom;
+    this.sfx = d.sfx;
+    this.onFrame = d.onFrame;
+    this.actors = [];
+  }
+
+  preload() {
+    preloadArt(this, this.match.setup.fighters.map((f) => f.char).filter((c) => ZODIAC_IDS.includes(c)));
+    // 그림을 못 불러와도 게임은 진행한다 (create에서 코드 그림으로 채운다)
+    this.load.on('loaderror', () => undefined);
+  }
+
+  /** 화면 크기가 바뀌었을 때 (경기는 그대로, 배율만) */
+  setZoom(zoom: number) {
+    this.zoom = zoom;
+    this.cameras.main?.setZoom(zoom);
+  }
+
+  private text(x: number, y: number, s: string, size: number, color = COLOR.ink) {
+    return this.add
+      .text(x, y, s, { fontFamily: FONT, fontSize: `${size}px`, color: css(color) })
+      .setOrigin(0.5)
+      .setResolution(Math.max(2, Math.ceil(this.zoom)));
+  }
+
+  create() {
+    ensureArt(this, this.match.setup.fighters.map((f) => f.char));
+    const cam = this.cameras.main;
+    cam.setOrigin(0, 0);
+    cam.setZoom(this.zoom);
+    cam.setBackgroundColor(css(COLOR.skyMid));
+    this.drawCourt();
+
+    this.ballShadow = this.add.image(0, FLOOR_Y + 4, 'shadow').setAlpha(0.22).setDepth(8);
+    this.ball = this.add.image(0, 0, 'ball').setDepth(30).setScale((BALL_R * 2 + 4) / BALL_TEX);
+
+    for (const side of [0, 1] as const) {
+      const f = this.match.setup.fighters[side];
+      const mine = side === this.match.mySide;
+      const shadow = this.add.image(0, FLOOR_Y + 4, 'shadow').setAlpha(0.22).setDepth(8);
+      // 충돌 판정 원: 자리 색 테두리 (왼쪽 파랑·오른쪽 빨강)
+      const ring = this.add.graphics().setDepth(18);
+      ring.fillStyle(SIDE_COLOR[side], 0.22).fillCircle(0, 0, PLAYER_R);
+      ring.lineStyle(4, SIDE_COLOR[side], 1).strokeCircle(0, 0, PLAYER_R - 2);
+      const spr = this.add.image(0, 0, zKey(f.char)).setOrigin(0.5, 1).setDepth(20);
+      const tex = spr.texture.getSourceImage();
+      const base = Math.min(CHAR_H / tex.height, CHAR_MAX_W / tex.width);
+      spr.setScale(base);
+
+      // 이름표: 자리 색 테두리, 내 것은 노란 바탕
+      const labelText = this.text(0, 0, f.name, 22);
+      const w = labelText.width + 26;
+      const h = 34;
+      const bg = this.add.graphics();
+      bg.fillStyle(mine ? COLOR.primary : COLOR.white, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+      bg.lineStyle(4, SIDE_COLOR[side], 1).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+      const label = this.add.container(0, 0, [bg, labelText]).setDepth(40).setAlpha(0.95).setData('w', w);
+      this.actors.push({ side, spr, base, ring, shadow, label, stride: side * 1.7, landT: 9, hitT: 9 });
+    }
+    this.draw(0);
+  }
+
+  /** 경기장 배경·벽·바닥·네트 (임시 그림: DESIGN.md 색의 도형) */
+  private drawCourt() {
+    const g = this.add.graphics().setDepth(0);
+    g.fillGradientStyle(COLOR.skyTop, COLOR.skyTop, COLOR.skyMid, COLOR.skyMid, 1).fillRect(0, 0, COURT_W, FLOOR_Y);
+    for (const [x, y, s, a] of [[150, 150, 1, 0.9], [520, 250, 0.8, 0.8], [330, 90, 0.6, 0.7]]) this.add.image(x, y, 'cloud').setScale(s).setAlpha(a).setDepth(1);
+    // 코트 구분: 왼쪽 파랑·오른쪽 빨강을 옅게
+    const tint = this.add.graphics().setDepth(2);
+    tint.fillStyle(SIDE_COLOR[0], 0.08).fillRect(LEFT, FLOOR_Y - 150, NET_X - LEFT, 150);
+    tint.fillStyle(SIDE_COLOR[1], 0.08).fillRect(NET_X, FLOOR_Y - 150, RIGHT - NET_X, 150);
+
+    // 바닥
+    const f = this.add.graphics().setDepth(5);
+    f.fillStyle(COLOR.skyBottom, 1).fillRect(0, FLOOR_Y, COURT_W, COURT_H - FLOOR_Y);
+    f.fillStyle(COLOR.emptyLine, 1).fillRect(0, FLOOR_Y + 26, COURT_W, COURT_H - FLOOR_Y - 26);
+    f.fillStyle(SIDE_COLOR[0], 1).fillRect(LEFT, FLOOR_Y + 8, NET_X - LEFT - 14, 8);
+    f.fillStyle(SIDE_COLOR[1], 1).fillRect(NET_X + 14, FLOOR_Y + 8, RIGHT - NET_X - 14, 8);
+    f.fillStyle(COLOR.outline, 1).fillRect(0, FLOOR_Y - 2, COURT_W, 4);
+
+    // 벽·천장 (크림색 판 + 외곽선)
+    const w = this.add.graphics().setDepth(45);
+    w.fillStyle(COLOR.panel, 1);
+    w.fillRect(0, 0, COURT_W, CEIL).fillRect(0, 0, WALL, COURT_H).fillRect(RIGHT, 0, WALL, COURT_H);
+    w.fillStyle(COLOR.outline, 1);
+    w.fillRect(WALL - 4, CEIL - 4, COURT_W - WALL * 2 + 8, 4).fillRect(WALL - 4, CEIL - 4, 4, COURT_H).fillRect(RIGHT, CEIL - 4, 4, COURT_H);
+
+    // 네트: 기둥 + 둥근 윗면
+    const n = this.add.graphics().setDepth(25);
+    const nl = NET_X - NET_W / 2;
+    n.fillStyle(COLOR.outline, 1).fillRoundedRect(nl - 4, NET_TOP - 4, NET_W + 8, FLOOR_Y - NET_TOP + 4, { tl: NET_R + 4, tr: NET_R + 4, bl: 0, br: 0 });
+    n.fillStyle(COLOR.white, 1).fillRoundedRect(nl, NET_TOP, NET_W, FLOOR_Y - NET_TOP, { tl: NET_R, tr: NET_R, bl: 0, br: 0 });
+    n.fillStyle(COLOR.pink, 1);
+    for (let y = NET_TOP + 26; y < FLOOR_Y - 14; y += 44) n.fillRect(nl, y, NET_W, 14);
+    n.fillStyle(COLOR.pink, 1).fillRoundedRect(nl, NET_TOP, NET_W, 14, { tl: NET_R, tr: NET_R, bl: 0, br: 0 });
+  }
+
+  update(_time: number, delta: number) {
+    const dt = Math.min(0.1, delta / 1000);
+    this.match.update(performance.now());
+    const evs = this.match.events.splice(0);
+    for (const e of evs) this.onEvent(e);
+    this.draw(dt);
+    this.onFrame(evs);
+  }
+
+  private draw(dt: number) {
+    const s = this.match.state;
+    const now = this.time.now / 1000;
+    const paused = this.match.paused;
+
+    // 공
+    const b = this.match.ballView();
+    this.ball.setPosition(b.x, b.y);
+    if (!paused && this.match.phase === 'play' && s.phase === 'play') this.spin += s.ball.vx * dt * 60 * 0.035;
+    this.ball.setRotation(this.spin);
+    const high = Phaser.Math.Clamp((FLOOR_Y - b.y) / 700, 0, 1);
+    this.ballShadow.setPosition(b.x, FLOOR_Y + 4).setScale(1 - high * 0.5, 1 - high * 0.4).setAlpha(0.26 - high * 0.16);
+
+    // 랠리 가속 중에는 공 뒤에 잔상
+    if (s.stage > 0 && s.phase === 'play' && !paused && dt > 0) {
+      this.trailT -= dt;
+      if (this.trailT <= 0) {
+        this.trailT = 0.05;
+        const ghost = this.add.image(b.x, b.y, 'ball').setDepth(29).setScale(this.ball.scaleX).setRotation(this.spin).setTintFill(COLOR.primary).setAlpha(0.14 + s.stage * 0.05);
+        this.tweens.add({ targets: ghost, alpha: 0, scale: this.ball.scaleX * 0.6, duration: 160 + s.stage * 30, onComplete: () => ghost.destroy() });
+      }
+    }
+
+    // 캐릭터
+    for (const a of this.actors) {
+      const p = s.players[a.side];
+      const v = this.match.playerView(a.side);
+      if (!paused) {
+        a.landT += dt;
+        a.hitT += dt;
+      }
+      let sx = 1;
+      let sy = 1;
+      let rot = 0;
+      let oy = 0;
+      if (!p.ground) {
+        // 점프: 올라갈 때 길쭉하게, 내려올 때 조금 납작하게
+        const k = Phaser.Math.Clamp(-p.vy / 14, -1, 1);
+        sy = 1 + 0.16 * k;
+        sx = 1 - 0.1 * k;
+        rot = p.vx * 0.03;
+      } else if (p.vx !== 0 && this.match.phase === 'play' && s.phase === 'play') {
+        // 이동: 가는 쪽으로 기울이고 통통
+        if (!paused) a.stride += dt * 16;
+        const hop = Math.abs(Math.sin(a.stride));
+        oy = -hop * 7;
+        rot = Math.sign(p.vx) * (0.14 + Math.sin(a.stride * 2) * 0.03);
+        sy = 1 + Math.cos(a.stride * 2) * 0.04;
+        sx = 1 - Math.cos(a.stride * 2) * 0.04;
+      } else {
+        // 대기: 살짝 숨쉬기
+        sy = 1 + Math.sin(now * 3 + a.side * 1.3) * 0.025;
+        sx = 1 - Math.sin(now * 3 + a.side * 1.3) * 0.015;
+      }
+      // 착지: 찌그러졌다 돌아온다
+      if (p.ground && a.landT < 0.16) {
+        const k = 1 - a.landT / 0.16;
+        sy -= 0.2 * k;
+        sx += 0.16 * k;
+      }
+      // 공을 친 순간 살짝 커진다
+      if (a.hitT < 0.12) {
+        const k = 1 - a.hitT / 0.12;
+        sx += 0.08 * k;
+        sy += 0.08 * k;
+      }
+      const feet = v.y + PLAYER_R + 4;
+      a.spr.setPosition(v.x, feet + oy).setRotation(rot).setScale(a.base * sx, a.base * sy);
+      a.ring.setPosition(v.x, v.y);
+      const up = Phaser.Math.Clamp((FLOOR_Y - PLAYER_R - v.y) / 130, 0, 1);
+      a.shadow.setPosition(v.x, FLOOR_Y + 4).setScale(1.25 - up * 0.45, 1 - up * 0.3).setAlpha(0.26 - up * 0.12);
+      const lw = (a.label.getData('w') as number) / 2;
+      a.label.setPosition(Phaser.Math.Clamp(v.x, LEFT + lw + 4, RIGHT - lw - 4), v.y - PLAYER_R - 38 + Math.min(0, oy));
+    }
+  }
+
+  /** 작은 이펙트 하나: 날아가며 사라진다 */
+  private puff(key: string, x: number, y: number, size: number, vx: number, vy: number, ms: number, tint?: number) {
+    const img = this.add.image(x, y, key).setDepth(35);
+    const tex = img.texture.getSourceImage();
+    const sc = size / Math.max(tex.width, tex.height);
+    img.setScale(sc * 0.6);
+    if (tint !== undefined) img.setTint(tint);
+    this.tweens.add({
+      targets: img, x: x + (vx * ms) / 1000, y: y + (vy * ms) / 1000, scaleX: sc, scaleY: sc, alpha: 0, angle: (Math.random() - 0.5) * 90, duration: ms, ease: 'Quad.easeOut',
+      onComplete: () => img.destroy(),
+    });
+  }
+
+  private confetti(x: number, y: number) {
+    const cols = [COLOR.primary, COLOR.pink, COLOR.teamA, COLOR.win, COLOR.white];
+    for (let i = 0; i < 28; i++) {
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
+      const sp = 160 + Math.random() * 340;
+      this.puff('confetti', x, y, 14 + Math.random() * 10, Math.cos(ang) * sp, Math.sin(ang) * sp + 120, 800 + Math.random() * 400, cols[i % cols.length]);
+    }
+    for (let i = 0; i < 5; i++) {
+      const ang = -Math.PI / 2 + (i - 2) * 0.5;
+      this.puff('star', x, y, 44, Math.cos(ang) * 260, Math.sin(ang) * 260, 700);
+    }
+  }
+
+  /** 가운데 위에 잠깐 뜨는 글자 (빨라질 때) */
+  private banner(msg: string) {
+    const t = this.text(COURT_W / 2, 150, msg, 52, COLOR.primary).setDepth(60).setStroke(css(COLOR.outline), 10).setScale(0.4);
+    this.tweens.add({ targets: t, scale: 1, duration: 220, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: t, alpha: 0, y: 120, delay: 900, duration: 300, onComplete: () => t.destroy() });
+  }
+
+  private onEvent(e: MatchEvent) {
+    const me = this.match.mySide;
+    switch (e.t) {
+      case 'count':
+        this.sfx('raceReady');
+        break;
+      case 'go':
+        this.sfx('raceGo');
+        break;
+      case 'serve':
+        break;
+      case 'jump': {
+        this.sfx('jump', e.side === me ? undefined : { volume: 0.4, rate: 1.1 });
+        const p = this.match.state.players[e.side];
+        this.puff('dust', p.x - 14, FLOOR_Y - 6, 34, -70, -20, 300);
+        this.puff('dust', p.x + 14, FLOOR_Y - 6, 34, 70, -20, 300);
+        break;
+      }
+      case 'land': {
+        this.sfx('land', { volume: e.side === me ? 0.8 : 0.35 });
+        const a = this.actors[e.side];
+        a.landT = 0;
+        const p = this.match.state.players[e.side];
+        this.puff('dust', p.x - 18, FLOOR_Y - 6, 38, -90, -16, 320);
+        this.puff('dust', p.x + 18, FLOOR_Y - 6, 38, 90, -16, 320);
+        break;
+      }
+      case 'hit': {
+        // 세게 칠수록 높고 큰 소리
+        const k = Phaser.Math.Clamp((e.power - 11) / 19, 0, 1);
+        this.sfx('slap', { volume: 0.55 + k * 0.45, rate: 1.25 - k * 0.3 });
+        this.actors[e.side].hitT = 0;
+        for (let i = 0; i < 3 + Math.round(k * 3); i++) {
+          const ang = Math.random() * Math.PI * 2;
+          this.puff('star', e.x, e.y, 26 + k * 16, Math.cos(ang) * (120 + k * 160), Math.sin(ang) * (120 + k * 160), 360);
+        }
+        if (k > 0.5) this.cameras.main.shake(90, 0.004);
+        break;
+      }
+      case 'wall':
+        this.sfx('flip', { volume: 0.7, rate: 0.8 });
+        this.puff('dust', e.x, e.y, 36, e.x <= LEFT ? 60 : e.x >= RIGHT ? -60 : 0, e.y <= CEIL ? 60 : -10, 280);
+        break;
+      case 'net':
+        this.sfx('fold', { volume: 0.8, rate: 1.2 });
+        this.puff('dust', e.x, e.y, 32, 0, -50, 280);
+        break;
+      case 'speedup':
+        this.sfx('boost');
+        this.banner(`빨라져요! +${e.stage * 10}%`);
+        this.cameras.main.flash(180, 255, 211, 77, false);
+        for (let i = 0; i < 8; i++) {
+          const ang = (i / 8) * Math.PI * 2;
+          this.puff('spark', this.ball.x, this.ball.y, 60, Math.cos(ang) * 320, Math.sin(ang) * 320, 320);
+        }
+        break;
+      case 'point': {
+        this.sfx(e.side === me ? 'goal' : 'bust');
+        for (let i = 0; i < 6; i++) this.puff('dust', e.x, FLOOR_Y - 6, 44, (Math.random() - 0.5) * 320, -60 - Math.random() * 120, 420);
+        this.cameras.main.shake(140, 0.006);
+        const p = this.match.state.players[e.side];
+        this.confetti(p.x, FLOOR_Y - 150);
+        break;
+      }
+      case 'over':
+        break;
+    }
+  }
+}
