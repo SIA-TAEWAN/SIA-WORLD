@@ -31,8 +31,10 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   const g = scene.add.graphics();
   // 고를 수 있는 패: 노란 테두리로 강조
   if (opts.glow) {
-    g.fillStyle(C.primary, 1).fillRoundedRect(-w / 2 - 5, -h / 2 - 5, w + 10, h + 10 + depth, r + 4);
-    g.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(-w / 2 - 5, -h / 2 - 5, w + 10, h + 10 + depth, r + 4);
+    // 얇게 (옆 패와 겹치지 않게: 패 사이 간격의 절반보다 작게)
+    const pad = clamp(w * 0.03, 1.5, 3);
+    g.fillStyle(C.primary, 1).fillRoundedRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2 + depth, r + pad);
+    g.lineStyle(1, C.outline, 1).strokeRoundedRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2 + depth, r + pad);
   }
   g.fillStyle(C.outline, 1).fillRoundedRect(-w / 2, -h / 2 + depth, w, h, r);
   c.add(g);
@@ -209,7 +211,8 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
       floorTop: y0 - fw * 0.78,
       floorH: rowGap + fw * 1.55,
       floorPos: (i: number, n: number) => {
-        const cols = Math.max(4, Math.ceil(n / 2));
+        // 칸 수 고정 (12달 → 두 줄 6칸): 패가 들고 나도 다른 패 자리가 바뀌지 않게
+        const cols = Math.max(6, Math.ceil(n / 2));
         return { x: left + ((i % cols) + 0.5) * ((right - left) / cols) - fw * 0.3, y: y0 + Math.floor(i / cols) * rowGap };
       },
       handPos: (i: number, n: number) => {
@@ -219,14 +222,14 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
     };
   }
   // 휴대폰: 카드를 최대한 크게 (손패 5장이 한 줄을 꽉 채우고, 높이는 7.3장 분량)
-  const cw = clamp(Math.min((W - 34) / 5.2, (H - 96) / 7.3), 30, 110);
+  const cw = clamp(Math.min((W - 34) / 5.4, (H - 100) / 7.3), 30, 110);
   const k = clamp(cw / 75, 0.8, 1.2);
   const ch = cw * 1.55;
   const capW = cw * 0.42;
   const bw = cw * 0.3;
   // 손패 두 줄 (아래)
   const handBottomY = H - ch / 2 - 22;
-  const handTopY = handBottomY - ch - 5;
+  const handTopY = handBottomY - ch - 9;
   // 내 먹은 패 (손패 위): 카드 + 아래 글자
   const myCapY = handTopY - ch / 2 - capW * 1.0 - 14;
   // 맨 위 한 줄: 왼쪽 상대 먹은 패 · 오른쪽 상대 손패(뒷면, 촘촘히) · 더미
@@ -240,15 +243,13 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
   const floorH = myCapY - capW * 0.78 - 6 - floorTop;
   // 바닥 카드 크기: 두 줄 / 세 줄 중 큰 쪽
   const fit = (rows: number) => {
-    const cols = Math.max(4, Math.ceil(floorCount / rows));
+    const cols = Math.max(4, Math.ceil(Math.max(12, floorCount) / rows));
     const byW = (W - 40) / cols / 1.42;
     const byH = floorH / (1.62 * (rows - 1) + 1.62);
     // 바닥 패도 손패와 거의 같은 크기로
     return { rows, cols, fw: Math.min(byW, byH, cw) };
   };
-  const a = fit(2);
-  const b = fit(3);
-  const F = a.fw >= b.fw ? a : b;
+  const F = [fit(2), fit(3), fit(4)].reduce((x, y) => (y.fw > x.fw ? y : x));
   const fw = Math.max(26, F.fw);
   const rowGap = fw * 1.62;
   const used = rowGap * (F.rows - 1) + fw * 1.55;
@@ -421,6 +422,34 @@ function landingSpot(t: Ctx, id: string, fw: number, fallback: { x: number; y: n
   return { x: base.x + fw * 0.4, y: base.y + fw * 0.06 };
 }
 
+/** 바닥 자리: 달마다 한 번 정한 칸을 그 달 패가 다 없어질 때까지 유지 (패가 들고 나도 다른 패는 그대로) */
+const slotOf = new Map<string, number>();
+let slotKey = '';
+function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]; free: number } {
+  if (key !== slotKey) {
+    slotKey = key;
+    slotOf.clear();
+  }
+  const keys = floor.map((f, i) => (f.cards.length ? `m${cardById(f.cards[0]).month}` : `e${i}`));
+  for (const k of [...slotOf.keys()]) if (!keys.includes(k)) slotOf.delete(k);
+  const used = new Set(slotOf.values());
+  const lowestFree = () => {
+    let n = 0;
+    while (used.has(n)) n++;
+    return n;
+  };
+  const slots = keys.map((k) => {
+    let n = slotOf.get(k);
+    if (n === undefined) {
+      n = lowestFree();
+      slotOf.set(k, n);
+      used.add(n);
+    }
+    return n;
+  });
+  return { slots, free: lowestFree() };
+}
+
 let shake = false;
 /** 5광 컷인을 이미 보여 준 판:자리 */
 const fiveGwang = new Set<string>();
@@ -489,7 +518,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const srcOf = (id: string, pl: CardPlan) => (pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand);
     const srcSize = (pl: CardPlan) => (pl.src === 'pile' ? L.pw : pl.seat === me ? cw : L.bw);
     // 낸 패·뒤집은 패가 먹힐 때 먼저 내려앉을 바닥 자리 (시간 순서대로 한 번만 정한다)
-    const newSlot = L.floorPos(p.floor.length, p.floor.length + 1);
+    const FS = floorSlots(p.floor, `${t.room.id}:${t.room.round_no}`);
+    const newSlot = L.floorPos(FS.free, 12);
     [...plan.entries()]
       .filter(([, pl]) => pl.captureAt !== null && !pl.floor && pl.src !== 'hand' || (pl.captureAt !== null && !pl.floor && pl.startAt !== pl.captureAt))
       .filter(([, pl]) => !pl.via && pl.startAt !== pl.captureAt)
@@ -524,7 +554,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const pick = p.choice?.kind === 'choose' && t.myTurn && !t.busy;
     let floorSeq = 0;
     floor.forEach((f, i) => {
-      const { x, y } = L.floorPos(i, floor.length);
+      const { x, y } = L.floorPos(FS.slots[i], 12);
       f.cards.forEach((id, j) => {
         const glow = p.choice?.kind === 'choose' && p.choice.options.includes(id);
         const cx = x + j * fw * 0.4;

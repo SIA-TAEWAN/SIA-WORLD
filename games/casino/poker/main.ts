@@ -1,6 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { POKER_MANUAL } from '../../lib/manuals.ts';
-import { bootGame, esc, type GameUI, type TableCtx } from '../../lib/shell.ts';
+import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
 
@@ -12,6 +12,8 @@ const ROUND = (phase: string) => (phase === 'choose' ? '카드 고르기' : phas
 
 /** 선택 단계: 버릴 카드 → 공개할 카드 */
 let discard: string | null = null;
+/** 버리는 연출을 이미 보여 준 카드 */
+let thrownShown: string | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 
@@ -86,6 +88,16 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         const isOpen = c !== null && s.open.includes(c);
         const thrown = picking && c === discard;
         const cx = x + (ci - (cards.length - 1) / 2) * gap;
+        if (thrown) {
+          // 버린 카드는 바로 버린다: 고른 순간 한 번 날아가 사라지고, 남은 카드 중에서 공개할 카드를 고른다
+          if (thrownShown !== c) {
+            thrownShown = c;
+            const fly = playingCard(scene, cx, y, c, w, {});
+            sfx('fold');
+            scene.tweens.add({ targets: fly, x: deck.x, y: deck.y, angle: -25, scale: 0.5, alpha: 0, duration: 420, ease: 'Cubic.easeIn', onComplete: () => fly.destroy() });
+          }
+          return;
+        }
         const card = playingCard(scene, cx, y, c, w, {
           dim: s.folded || thrown,
           lift: (me && !!c && !isOpen && p.phase !== 'choose') || (picking && !thrown),
@@ -94,7 +106,6 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         if (picking && c) {
           card.setSize(w, w * 1.42).setInteractive({ useHandCursor: true });
           card.on('pointerdown', () => pickChoice(t, c));
-          if (thrown) label(scene, cx, y - w * 0.95, '버림', clamp(w * 0.22, 13, 20), tc('lose'));
         }
       });
       const mineHand = me && !sd && t.priv?.hand && p.phase !== 'choose' ? `내 패 ${t.priv.hand}` : '';
@@ -195,6 +206,7 @@ function pickChoice(t: Ctx, c: string) {
   if (t.busy) return;
   if (!discard) {
     discard = c;
+    thrownShown = null;
     t.redraw();
   } else if (c === discard) {
     discard = null;

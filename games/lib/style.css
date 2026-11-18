@@ -477,3 +477,8 @@ input:focus { outline: var(--line) solid var(--primary); }
   .table-page[data-mode='rl-betting'] .rc { min-height: 54px; }
   .table-page[data-mode='rl-betting'] .rboard { gap: 6px; }
 }
+
+/* 오른쪽 아래 사운드 버튼(44px)이 조작 버튼을 가리지 않게 */
+@media (max-width: 700px) {
+  .controls { padding-right: calc(62px + env(safe-area-inset-right)); }
+}
