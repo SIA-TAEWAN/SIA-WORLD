@@ -4,12 +4,14 @@ import {
 } from '../game/constants';
 import type { Side } from '../game/sim';
 import type { Match, MatchEvent } from '../match/game';
-import { COLOR, FONT, ROULETTE, css } from '../theme';
+import { zodiacFaceUrl } from '../assets';
+import { COLOR, FONT, css } from '../theme';
 import { BALL_TEX, ensureArt, preloadArt, zKey } from './art';
+import { BG_COUNT, BG_ZODIAC, drawBackdrop, flagKey } from './backdrop';
 
 export interface SceneData {
   match: Match;
-  /** 배경 번호 0~2 (지금은 하늘 색만 다르다. 5단계에서 그림으로) */
+  /** 배경 번호 0~2 (scenes/backdrop.ts) */
   bg: number;
   /** 경기장 한 칸(720 기준 1px)이 캔버스 몇 픽셀인가 (화면 배율 × 기기 픽셀 배율) */
   zoom: number;
@@ -20,13 +22,6 @@ export interface SceneData {
 
 /** 자리 색: 왼쪽 파랑, 오른쪽 빨강 (DESIGN.md 팀 색) */
 export const SIDE_COLOR = [COLOR.teamA, COLOR.teamB] as const;
-
-/** 배경 번호 → 하늘 색 [위, 아래] */
-const BG_SKY: readonly (readonly [number, number])[] = [
-  [COLOR.skyTop, COLOR.skyMid],
-  [ROULETTE.spring, COLOR.skyBottom],
-  [COLOR.skyMid, ROULETTE.autumn],
-];
 
 /** 캐릭터 그림 높이 (충돌 원 지름 72보다 조금 크게) */
 const CHAR_H = 86;
@@ -61,6 +56,8 @@ export class CourtScene extends Phaser.Scene {
   private actors: Actor[] = [];
   private spin = 0;
   private trailT = 0;
+  /** 공이 맞은 뒤 흐른 시간 (초): 잠깐 눌렸다 펴진다 */
+  private ballSquash = 9;
 
   constructor() {
     super('court');
@@ -77,6 +74,8 @@ export class CourtScene extends Phaser.Scene {
 
   preload() {
     preloadArt(this, this.match.setup.fighters.map((f) => f.char).filter((c) => ZODIAC_IDS.includes(c)));
+    // 배경의 응원 깃발: 이 배경의 십이지 네 마리 얼굴
+    for (const id of BG_ZODIAC[((this.bg % BG_COUNT) + BG_COUNT) % BG_COUNT]) if (!this.textures.exists(flagKey(id))) this.load.image(flagKey(id), zodiacFaceUrl(id));
     // 그림을 못 불러와도 게임은 진행한다 (create에서 코드 그림으로 채운다)
     this.load.on('loaderror', () => undefined);
   }
@@ -111,8 +110,8 @@ export class CourtScene extends Phaser.Scene {
       const shadow = this.add.image(0, FLOOR_Y + 4, 'shadow').setAlpha(0.22).setDepth(8);
       // 충돌 판정 원: 자리 색 테두리 (왼쪽 파랑·오른쪽 빨강)
       const ring = this.add.graphics().setDepth(18);
-      ring.fillStyle(SIDE_COLOR[side], 0.22).fillCircle(0, 0, PLAYER_R);
-      ring.lineStyle(4, SIDE_COLOR[side], 1).strokeCircle(0, 0, PLAYER_R - 2);
+      ring.fillStyle(COLOR.white, 0.28).fillCircle(0, 0, PLAYER_R);
+      ring.lineStyle(3, SIDE_COLOR[side], 0.75).strokeCircle(0, 0, PLAYER_R - 1.5);
       const spr = this.add.image(0, 0, zKey(f.char)).setOrigin(0.5, 1).setDepth(20);
       const tex = spr.texture.getSourceImage();
       const base = Math.min(CHAR_H / tex.height, CHAR_MAX_W / tex.width);
@@ -131,41 +130,48 @@ export class CourtScene extends Phaser.Scene {
     this.draw(0);
   }
 
-  /** 경기장 배경·벽·바닥·네트 (임시 그림: DESIGN.md 색의 도형) */
+  /** 경기장: 배경(3종) + 코트 표시 + 벽·천장 + 네트. 그림 파일이 있으면 그것을, 없으면 코드 그림 */
   private drawCourt() {
-    const g = this.add.graphics().setDepth(0);
-    // 배경 3종 (임시: 하늘 색만 다르다. DESIGN.md 의 하늘·계절 색)
-    const [top, bottom] = BG_SKY[this.bg] ?? BG_SKY[0];
-    g.fillGradientStyle(top, top, bottom, bottom, 1).fillRect(0, 0, COURT_W, FLOOR_Y);
-    for (const [x, y, s, a] of [[150, 150, 1, 0.9], [520, 250, 0.8, 0.8], [330, 90, 0.6, 0.7]]) this.add.image(x, y, 'cloud').setScale(s).setAlpha(a).setDepth(1);
-    // 코트 구분: 왼쪽 파랑·오른쪽 빨강을 옅게
-    const tint = this.add.graphics().setDepth(2);
-    tint.fillStyle(SIDE_COLOR[0], 0.08).fillRect(LEFT, FLOOR_Y - 150, NET_X - LEFT, 150);
-    tint.fillStyle(SIDE_COLOR[1], 0.08).fillRect(NET_X, FLOOR_Y - 150, RIGHT - NET_X, 150);
+    const painted = this.textures.exists(`bg-${((this.bg % BG_COUNT) + BG_COUNT) % BG_COUNT}`);
+    drawBackdrop(this, this.bg);
 
-    // 바닥
-    const f = this.add.graphics().setDepth(5);
-    f.fillStyle(COLOR.skyBottom, 1).fillRect(0, FLOOR_Y, COURT_W, COURT_H - FLOOR_Y);
-    f.fillStyle(COLOR.emptyLine, 1).fillRect(0, FLOOR_Y + 26, COURT_W, COURT_H - FLOOR_Y - 26);
-    f.fillStyle(SIDE_COLOR[0], 1).fillRect(LEFT, FLOOR_Y + 8, NET_X - LEFT - 14, 8);
-    f.fillStyle(SIDE_COLOR[1], 1).fillRect(NET_X + 14, FLOOR_Y + 8, RIGHT - NET_X - 14, 8);
+    // 코트 구분: 왼쪽 파랑·오른쪽 빨강 (바닥 띠 + 옅은 빛)
+    const tint = this.add.graphics().setDepth(4);
+    tint.fillStyle(SIDE_COLOR[0], 0.07).fillRect(LEFT, FLOOR_Y - 120, NET_X - LEFT, 120);
+    tint.fillStyle(SIDE_COLOR[1], 0.07).fillRect(NET_X, FLOOR_Y - 120, RIGHT - NET_X, 120);
+    const f = this.add.graphics().setDepth(6);
+    for (const [side, x0, x1] of [[0, LEFT + 6, NET_X - 16], [1, NET_X + 16, RIGHT - 6]] as const) {
+      f.fillStyle(COLOR.outline, 1).fillRoundedRect(x0 - 3, FLOOR_Y + 7, x1 - x0 + 6, 16, 8);
+      f.fillStyle(SIDE_COLOR[side], 1).fillRoundedRect(x0, FLOOR_Y + 10, x1 - x0, 10, 5);
+    }
     f.fillStyle(COLOR.outline, 1).fillRect(0, FLOOR_Y - 2, COURT_W, 4);
 
-    // 벽·천장 (크림색 판 + 외곽선)
-    const w = this.add.graphics().setDepth(45);
-    w.fillStyle(COLOR.panel, 1);
-    w.fillRect(0, 0, COURT_W, CEIL).fillRect(0, 0, WALL, COURT_H).fillRect(RIGHT, 0, WALL, COURT_H);
-    w.fillStyle(COLOR.outline, 1);
-    w.fillRect(WALL - 4, CEIL - 4, COURT_W - WALL * 2 + 8, 4).fillRect(WALL - 4, CEIL - 4, 4, COURT_H).fillRect(RIGHT, CEIL - 4, 4, COURT_H);
+    // 벽·천장 (크림색 판 + 외곽선). 정식 배경 그림에는 벽이 그려져 있다
+    if (!painted) {
+      const w = this.add.graphics().setDepth(45);
+      w.fillStyle(COLOR.panel, 1);
+      w.fillRect(0, 0, COURT_W, CEIL).fillRect(0, 0, WALL, COURT_H).fillRect(RIGHT, 0, WALL, COURT_H);
+      w.fillStyle(COLOR.lineSoft, 1);
+      for (let y = 60; y < COURT_H; y += 96) w.fillRect(4, y, WALL - 8, 4).fillRect(RIGHT + 4, y, WALL - 8, 4);
+      w.fillStyle(COLOR.outline, 1);
+      w.fillRect(WALL - 4, CEIL - 4, COURT_W - WALL * 2 + 8, 4).fillRect(WALL - 4, CEIL - 4, 4, COURT_H).fillRect(RIGHT, CEIL - 4, 4, COURT_H);
+    }
 
-    // 네트: 기둥 + 둥근 윗면
-    const n = this.add.graphics().setDepth(25);
+    // 네트: 기둥 + 둥근 윗면 + 받침
     const nl = NET_X - NET_W / 2;
+    if (this.textures.exists('net')) {
+      this.add.image(NET_X, FLOOR_Y, 'net').setOrigin(0.5, 1).setDisplaySize(24, FLOOR_Y - NET_TOP + 16).setDepth(25);
+      return;
+    }
+    const n = this.add.graphics().setDepth(25);
     n.fillStyle(COLOR.outline, 1).fillRoundedRect(nl - 4, NET_TOP - 4, NET_W + 8, FLOOR_Y - NET_TOP + 4, { tl: NET_R + 4, tr: NET_R + 4, bl: 0, br: 0 });
     n.fillStyle(COLOR.white, 1).fillRoundedRect(nl, NET_TOP, NET_W, FLOOR_Y - NET_TOP, { tl: NET_R, tr: NET_R, bl: 0, br: 0 });
     n.fillStyle(COLOR.pink, 1);
-    for (let y = NET_TOP + 26; y < FLOOR_Y - 14; y += 44) n.fillRect(nl, y, NET_W, 14);
-    n.fillStyle(COLOR.pink, 1).fillRoundedRect(nl, NET_TOP, NET_W, 14, { tl: NET_R, tr: NET_R, bl: 0, br: 0 });
+    for (let y = NET_TOP + 30; y < FLOOR_Y - 20; y += 44) n.fillRect(nl, y, NET_W, 16);
+    n.fillStyle(COLOR.primary, 1).fillRoundedRect(nl, NET_TOP, NET_W, 16, { tl: NET_R, tr: NET_R, bl: 0, br: 0 });
+    n.fillStyle(COLOR.outline, 1).fillRect(nl, NET_TOP + 16, NET_W, 3);
+    n.fillStyle(COLOR.outline, 1).fillRoundedRect(NET_X - 20, FLOOR_Y - 12, 40, 14, { tl: 7, tr: 7, bl: 0, br: 0 });
+    n.fillStyle(COLOR.panel, 1).fillRoundedRect(NET_X - 16, FLOOR_Y - 8, 32, 8, { tl: 4, tr: 4, bl: 0, br: 0 });
   }
 
   update(_time: number, delta: number) {
@@ -187,6 +193,10 @@ export class CourtScene extends Phaser.Scene {
     this.ball.setPosition(b.x, b.y);
     if (!paused && this.match.phase === 'play' && s.phase === 'play') this.spin += s.ball.vx * dt * 60 * 0.035;
     this.ball.setRotation(this.spin);
+    if (!paused) this.ballSquash += dt;
+    const sq = this.ballSquash < 0.12 ? 1 - this.ballSquash / 0.12 : 0;
+    const bs = (BALL_R * 2 + 4) / BALL_TEX;
+    this.ball.setScale(bs * (1 + sq * 0.16), bs * (1 - sq * 0.14));
     const high = Phaser.Math.Clamp((FLOOR_Y - b.y) / 700, 0, 1);
     this.ballShadow.setPosition(b.x, FLOOR_Y + 4).setScale(1 - high * 0.5, 1 - high * 0.4).setAlpha(0.26 - high * 0.16);
 
@@ -195,8 +205,8 @@ export class CourtScene extends Phaser.Scene {
       this.trailT -= dt;
       if (this.trailT <= 0) {
         this.trailT = 0.05;
-        const ghost = this.add.image(b.x, b.y, 'ball').setDepth(29).setScale(this.ball.scaleX).setRotation(this.spin).setTintFill(COLOR.primary).setAlpha(0.14 + s.stage * 0.05);
-        this.tweens.add({ targets: ghost, alpha: 0, scale: this.ball.scaleX * 0.6, duration: 160 + s.stage * 30, onComplete: () => ghost.destroy() });
+        const ghost = this.add.image(b.x, b.y, 'ball').setDepth(29).setScale(bs).setRotation(this.spin).setTintFill(COLOR.primary).setAlpha(0.14 + s.stage * 0.05);
+        this.tweens.add({ targets: ghost, alpha: 0, scale: bs * 0.6, duration: 160 + s.stage * 30, onComplete: () => ghost.destroy() });
       }
     }
 
@@ -279,6 +289,15 @@ export class CourtScene extends Phaser.Scene {
     }
   }
 
+  /** 퍼지며 사라지는 고리 (타격·벽에 닿은 자리) */
+  private ringFx(x: number, y: number, size: number, color: number) {
+    const g = this.add.graphics({ x, y }).setDepth(34);
+    g.lineStyle(5, COLOR.outline, 1).strokeCircle(0, 0, size);
+    g.lineStyle(3, color, 1).strokeCircle(0, 0, size);
+    g.setScale(0.3);
+    this.tweens.add({ targets: g, scale: 1.25, alpha: 0, duration: 240, ease: 'Quad.easeOut', onComplete: () => g.destroy() });
+  }
+
   /** 가운데 위에 잠깐 뜨는 글자 (빨라질 때) */
   private banner(msg: string) {
     const t = this.text(COURT_W / 2, 150, msg, 52, COLOR.primary).setDepth(60).setStroke(css(COLOR.outline), 10).setScale(0.4);
@@ -290,12 +309,13 @@ export class CourtScene extends Phaser.Scene {
     const me = this.match.mySide;
     switch (e.t) {
       case 'count':
-        this.sfx('raceReady');
+        this.sfx('volleyCount');
         break;
       case 'go':
-        this.sfx('raceGo');
+        this.sfx('volleyGo');
         break;
       case 'serve':
+        if (this.match.phase === 'play') this.sfx('volleyServe', { volume: 0.7 });
         break;
       case 'jump': {
         this.sfx('jump', e.side === me ? undefined : { volume: 0.4, rate: 1.1 });
@@ -316,25 +336,28 @@ export class CourtScene extends Phaser.Scene {
       case 'hit': {
         // 세게 칠수록 높고 큰 소리
         const k = Phaser.Math.Clamp((e.power - 11) / 19, 0, 1);
-        this.sfx('slap', { volume: 0.55 + k * 0.45, rate: 1.25 - k * 0.3 });
+        this.sfx('volleyHit', { volume: 0.6 + k * 0.4, rate: 1.15 - k * 0.3 });
         this.actors[e.side].hitT = 0;
         for (let i = 0; i < 3 + Math.round(k * 3); i++) {
           const ang = Math.random() * Math.PI * 2;
           this.puff('star', e.x, e.y, 26 + k * 16, Math.cos(ang) * (120 + k * 160), Math.sin(ang) * (120 + k * 160), 360);
         }
+        this.ringFx(e.x, e.y, 22 + k * 26, SIDE_COLOR[e.side]);
+        // 공이 맞는 순간 살짝 눌렸다 펴진다
+        this.ballSquash = 0;
         if (k > 0.5) this.cameras.main.shake(90, 0.004);
         break;
       }
       case 'wall':
-        this.sfx('flip', { volume: 0.7, rate: 0.8 });
+        this.sfx('volleyWall', { volume: 0.8 });
         this.puff('dust', e.x, e.y, 36, e.x <= LEFT ? 60 : e.x >= RIGHT ? -60 : 0, e.y <= CEIL ? 60 : -10, 280);
         break;
       case 'net':
-        this.sfx('fold', { volume: 0.8, rate: 1.2 });
+        this.sfx('volleyNet');
         this.puff('dust', e.x, e.y, 32, 0, -50, 280);
         break;
       case 'speedup':
-        this.sfx('boost');
+        this.sfx('volleySpeed');
         this.banner(`빨라져요! +${e.stage * 10}%`);
         this.cameras.main.flash(180, 255, 211, 77, false);
         for (let i = 0; i < 8; i++) {
@@ -343,7 +366,7 @@ export class CourtScene extends Phaser.Scene {
         }
         break;
       case 'point': {
-        this.sfx(e.side === me ? 'goal' : 'bust');
+        this.sfx(e.side === me ? 'volleyPoint' : 'volleyMiss');
         for (let i = 0; i < 6; i++) this.puff('dust', e.x, FLOOR_Y - 6, 44, (Math.random() - 0.5) * 320, -60 - Math.random() * 120, 420);
         this.cameras.main.shake(140, 0.006);
         const p = this.match.state.players[e.side];

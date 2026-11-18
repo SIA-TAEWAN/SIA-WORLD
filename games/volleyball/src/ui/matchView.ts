@@ -201,7 +201,7 @@ export function showMatch(setup: MatchSetup) {
       const won = result.winner === me;
       setCut(`${won ? '승리!' : '패배…'}<small>${won ? '상대가 나갔어요' : '연결이 끊겼어요'}</small>`, won ? 'go' : 'bad');
       cutin.dataset.k = 'over';
-      sfx(won ? 'goal' : 'bust');
+      sfx(won ? 'volleyPoint' : 'volleyMiss');
       releaseAll();
     }
     resultTimer = setTimeout(() => nav.result(result), 1800);

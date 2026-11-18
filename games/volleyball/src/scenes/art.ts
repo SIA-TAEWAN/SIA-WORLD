@@ -4,9 +4,11 @@ import { BALL_R, ZODIAC_IDS, type ZodiacId } from '../game/constants';
 import { zodiacFullUrl } from '../assets';
 
 /**
- * 그림 목록. 지금은 모두 코드로 그린 임시 그림이다 (DESIGN.md 색·외곽선 규칙).
- * 정식 그림은 ASSETS.md 의 파일 이름으로 public/art/ 에 넣고, ART_FILES 에 이름을 적으면
- * 그 그림을 먼저 쓰고 못 불러올 때만 아래 코드 그림으로 대신한다 (시아레이스와 같은 방식).
+ * 그림 목록. 지금은 모두 코드로 그린 그림이다 (DESIGN.md 색·외곽선 규칙).
+ * 정식 그림은 ASSETS.md 의 파일 이름으로 public/art/<이름>.png 에 넣고, ART_FILES 에 이름을 적으면
+ * 그 그림을 먼저 쓰고 못 불러올 때만 코드 그림으로 대신한다 (시아레이스와 같은 방식).
+ * 쓸 수 있는 이름: 'bg-0' 'bg-1' 'bg-2'(배경, scenes/backdrop.ts) · 'ball' · 'net' · 'dust' · 'star' · 'spark'
+ * (파일이 없는 이름을 적어 두면 경기마다 404 요청이 나가므로, 파일을 넣은 것만 적는다)
  */
 export const ART_FILES: readonly string[] = [];
 
@@ -40,10 +42,10 @@ export function ensureArt(scene: Phaser.Scene, chars: readonly ZodiacId[]) {
     const c = BALL_TEX / 2;
     const r = c - 5;
     g.fillStyle(COLOR.white, 1).fillCircle(c, c, r);
-    g.fillStyle(COLOR.primary, 1).slice(c, c, r, -2.5, -1.2, false).fillPath();
-    g.fillStyle(COLOR.teamA, 1).slice(c, c, r, 0.6, 1.9, false).fillPath();
-    g.fillStyle(COLOR.white, 1).fillCircle(c, c, r * 0.42);
-    g.lineStyle(5, COLOR.outline, 1);
+    g.fillStyle(COLOR.primary, 1).slice(c, c, r, -2.6, -1.1, false).fillPath();
+    g.fillStyle(COLOR.teamA, 1).slice(c, c, r, 0.5, 2.0, false).fillPath();
+    g.fillStyle(COLOR.white, 1).fillCircle(c, c, r * 0.4);
+    g.lineStyle(4, COLOR.outline, 1);
     g.beginPath().arc(c - r * 0.9, c - r * 0.5, r * 1.05, -0.5, 0.95, false).strokePath();
     g.beginPath().arc(c + r * 0.95, c + r * 0.35, r * 1.05, 2.6, 4.1, false).strokePath();
     g.beginPath().arc(c - r * 0.1, c + r * 1.2, r * 1.0, -2.2, -0.9, false).strokePath();

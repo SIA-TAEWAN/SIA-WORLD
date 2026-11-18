@@ -21,7 +21,8 @@ export function whenSound(fn: () => void) {
 }
 
 export type SfxName =
-  | 'click' | 'toggle' | 'raceReady' | 'raceGo' | 'jump' | 'land' | 'slap' | 'flip' | 'fold' | 'boost' | 'goal' | 'bust' | 'win' | 'lose';
+  | 'click' | 'toggle' | 'jump' | 'land' | 'win' | 'lose'
+  | 'volleyHit' | 'volleyWall' | 'volleyNet' | 'volleySpeed' | 'volleyPoint' | 'volleyMiss' | 'volleyServe' | 'volleyCount' | 'volleyGo';
 
 export function sfx(name: SfxName | string, opts?: { delay?: number; volume?: number; rate?: number }) {
   shared?.play(name, opts);

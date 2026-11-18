@@ -188,15 +188,15 @@ button, input { font: inherit; color: inherit; }
 @keyframes cut-pop { from { transform: scale(0.3); opacity: 0; } }
 
 /* 조작: ◀ ▶ 왼쪽, 점프 오른쪽. 버튼 그림보다 넓은 영역을 누를 수 있다 (matchView.ts 의 zone) */
-.pad { position: relative; flex: 1 1 0; min-height: calc(var(--u) * 200); display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 24); padding: calc(var(--u) * 20) calc(var(--u) * 24) calc(var(--u) * 26 + env(safe-area-inset-bottom)); background: var(--panel); border-top: var(--line) solid var(--outline); touch-action: none; cursor: pointer; }
-.pad-move { flex: 0 0 51%; display: flex; gap: calc(var(--u) * 18); height: 100%; max-height: calc(var(--u) * 230); }
+.pad { position: relative; flex: 1 1 0; min-height: calc(var(--u) * 200); display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 24); padding: calc(var(--u) * 22) calc(var(--u) * 24) calc(var(--u) * 30 + env(safe-area-inset-bottom)); background: var(--panel); border-top: var(--line) solid var(--outline); touch-action: none; cursor: pointer; }
+.pad-move { flex: 0 0 51%; display: flex; gap: calc(var(--u) * 18); height: 100%; max-height: calc(var(--u) * 330); }
 .pbtn {
-  flex: 1 1 0; min-width: 0; height: 100%; max-height: calc(var(--u) * 230); display: grid; place-items: center; pointer-events: none;
+  flex: 1 1 0; min-width: 0; height: 100%; max-height: calc(var(--u) * 330); display: grid; place-items: center; pointer-events: none;
   border-radius: calc(var(--u) * 44); border: var(--line-big) solid var(--outline); background: var(--white); box-shadow: 0 var(--depth-big) 0 var(--outline);
   font-size: calc(var(--u) * 76); transition: transform var(--press-ms), box-shadow var(--press-ms);
 }
 .pbtn.jump { background: var(--primary-gradient); font-size: calc(var(--u) * 62); }
-.pbtn.down { transform: translateY(6px); box-shadow: 0 2px 0 var(--outline); background: var(--panel-strong); }
+.pbtn.down { transform: translateY(calc(var(--depth-big) - 2px)); box-shadow: 0 2px 0 var(--outline); background: var(--panel-strong); }
 .pbtn.jump.down { background: var(--primary-deep); }
 
 /* ---------- 결과 ---------- */

@@ -201,7 +201,7 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아�
 
 ### 효과음
 - 모든 소리는 `shared/sound.js` 한 곳에서 관리 (ZzFX 방식으로 코드로 생성, 외부 파일 없음). 분위기: 짧고 통통 튀는 밝은 소리.
-- `shared/sounds/<이름>.ogg` 또는 `.mp3`를 넣으면 그 소리를 처음 낼 때 파일로 바뀐다. 이름: click, toggle, coin, turn, tick, cutin, win, lose, deal, flip, slap, chip, fold, bust, spinTick, spinStop, tankFire, tankBoom, tankBigBoom, tankLaser, tankBuild, tankHeal, tankTurn, tankWin, raceReady, raceGo, raceFoul, step, jump, land, mud, hurdleHit, slip, logHit, boost, goal, rankShow, newRecord.
+- `shared/sounds/<이름>.ogg` 또는 `.mp3`를 넣으면 그 소리를 처음 낼 때 파일로 바뀐다. 이름: click, toggle, coin, turn, tick, cutin, win, lose, deal, flip, slap, chip, fold, bust, spinTick, spinStop, tankFire, tankBoom, tankBigBoom, tankLaser, tankBuild, tankHeal, tankTurn, tankWin, raceReady, raceGo, raceFoul, step, jump, land, mud, hurdleHit, slip, logHit, boost, goal, rankShow, newRecord, volleyHit, volleyWall, volleyNet, volleyServe, volleySpeed, volleyPoint, volleyMiss, volleyCount, volleyGo.
 - 배경음은 게임마다 코드로 만든 짧은 반복곡. 시아레이스는 `shared/sounds/bgmLobby|bgmRace|bgmResult.ogg`(또는 `.mp3`)를 넣으면 그 파일로 바뀐다. 배경음 켜기/끄기는 효과음과 따로 저장한다 (`sia:bgm`).
 - 오른쪽 아래 원형 사운드 버튼으로 켜기/끄기 (브라우저에 저장, 시아탱크와 같은 설정). 첫 클릭 전에는 소리를 내지 않는다.
 - 같은 소리는 이름마다 최소 간격(칩 70ms 등), 동시에 6개까지.
@@ -243,6 +243,12 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아�
 - 이펙트·표지 `public/art/{splash,dust,star,spark,marker,flag}.png`, 트랙 바닥 `track.png`, 배경 2겹 `sky.png`·`stands.png`
 - 로비 카드 `shared/images/card-race.png`
 - 캐릭터는 `shared/images/zodiac/full/*.png` 한 장을 코드로 움직인다 (달리기 흔들림·점프·넘어짐·미끄러짐·골인). 출발선·결승선 띠, 색종이, 부스트 잔상은 코드 그림
+
+**시아배구 (코드 그림, 2026-11-18)** — 만들 그림 목록: `games/volleyball/ASSETS.md`
+- 배경 3종(낮의 풀밭 마당 · 노을 지는 기와지붕 마을 · 밤의 달과 등불), 공, 네트, 이펙트는 모두 코드 그림 (`games/volleyball/src/scenes/backdrop.ts`, `art.ts`). `public/art/bg-0~2.png` 등을 넣으면 그 그림으로 바뀐다
+- 캐릭터는 `shared/images/zodiac/full/*.png` 한 장을 코드로 움직인다 (대기·이동·점프·착지·타격)
+- 로비 카드 `shared/images/card-volleyball.png`는 임시 그림 (SpriteCook으로 교체 예정)
+- 넓은 면 보조색: 새 색 없이 기존 값만 쓴다 (풀밭 = 맞고 담요 초록, 노을 바닥 = 레이스 트랙 주황, 밤 = `--sky-deep` · `--team-a`, 은빛 바닥 = 룰렛 겨울)
 
 **아직 코드로 그리는 부분** (필요하면 SpriteCook 그림으로 교체)
 | 위치 | 지금 |

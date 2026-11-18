@@ -8,6 +8,10 @@ import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
 import { sfx } from './sfx';
 
+/** 테스트 모드에서 배경을 고른다 (?local=1&bg=0~2). 평소에는 경기마다 무작위 */
+const bgParam = new URLSearchParams(location.search).get('bg');
+const testBg = LOCAL_MODE && bgParam !== null && /^[0-2]$/.test(bgParam) ? Number(bgParam) : null;
+
 /** AI 대전 설정: 내가 왼쪽, AI는 내 캐릭터를 뺀 것 중 무작위 */
 export function aiSetup(myChar: ZodiacId): MatchSetup {
   const others = ZODIAC_IDS.filter((c) => c !== myChar);
@@ -20,7 +24,7 @@ export function aiSetup(myChar: ZodiacId): MatchSetup {
     ],
     mySide: 0,
     seed: Math.floor(Math.random() * 0xffffffff),
-    bg: Math.floor(Math.random() * 3),
+    bg: testBg ?? Math.floor(Math.random() * 3),
   };
 }
 
