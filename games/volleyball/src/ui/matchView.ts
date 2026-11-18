@@ -7,7 +7,7 @@ import { serverNow } from '../net/api';
 import { MatchRecorder } from '../net/record';
 import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
-import { esc, leaveRoom, nav, openSettings, screen, stage, state } from './app';
+import { esc, leaveRoom, nav, openSettings, screen, stage, state, toast } from './app';
 import { DPR } from './dpr';
 import { sfx } from './sfx';
 
@@ -160,7 +160,7 @@ export function showMatch(setup: MatchSetup) {
     if (!online) match.paused = true;
     const dim = document.createElement('div');
     dim.className = 'dim';
-    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online ? '지금 나가면 진 것으로 기록돼요' : '연습 경기라 기록은 남지 않아요'}</p>
+    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online ? '지금 나가면 패배로 기록돼요' : '연습 경기라 기록은 남지 않아요'}</p>
       <div class="actions"><button class="btn" data-no>계속하기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -168,10 +168,10 @@ export function showMatch(setup: MatchSetup) {
         sfx('click');
         dim.remove();
         if (match.phase !== 'over') {
-          // 온라인: 상대에게 알리고(상대 승리) 방에서도 나간다
+          // 온라인: 상대에게 알리고(내 자리는 AI가 이어받는다) 방에서도 나간다. 남은 사람의 경기는 계속되므로 방의 '경기 끝'은 알리지 않는다
           match.quit();
           if (room) {
-            room.matchOver(setup.matchNo ?? 0);
+            room.matchOver(setup.matchNo ?? 0, false);
             leaveRoom();
           }
         }
@@ -192,16 +192,18 @@ export function showMatch(setup: MatchSetup) {
   });
 
   match.onOver = (result) => {
-    // 방은 대기 상태로 돌아간다 (방 목록의 '경기중' 표시도 풀린다)
-    room?.matchOver(setup.matchNo ?? 0);
-    if (match instanceof OnlineMatch) window.__lastStats = { side: me, ...match.stats };
+    // 방은 대기 상태로 돌아간다 (방 목록의 '경기중' 표시도 풀린다).
+    // 내가 끊겼던 쪽이면 남은 사람은 아직 AI와 경기 중이므로 내 기기에서만 정리한다
+    const iLeft = result.reason === 'leave' && result.leaver === me;
+    room?.matchOver(setup.matchNo ?? 0, !iLeft);
+    if (match instanceof OnlineMatch) window.__lastStats = { side: me, solo: match.solo, ...match.stats };
     if (recorder) result.record = recorder.finish(result);
     stage.querySelector('.dim')?.remove();
-    if (result.reason === 'leave') {
-      const won = result.winner === me;
-      setCut(`${won ? '승리!' : '패배…'}<small>${won ? '상대가 나갔어요' : '연결이 끊겼어요'}</small>`, won ? 'go' : 'bad');
+    waitbox.classList.add('hidden');
+    if (iLeft) {
+      setCut('패배…<small>연결이 끊겨 AI가 대신했어요</small>', 'bad');
       cutin.dataset.k = 'over';
-      sfx(won ? 'volleyPoint' : 'volleyMiss');
+      sfx('volleyMiss');
       releaseAll();
     }
     resultTimer = setTimeout(() => nav.result(result), 1800);
@@ -236,11 +238,11 @@ export function showMatch(setup: MatchSetup) {
   // ---------- 매 프레임: 이번에 생긴 일을 점수판·큰 글자에 반영 ----------
   let lastWait = 0;
   function frame(events: MatchEvent[]) {
-    // 상대 연결을 기다리는 중 (10초가 지나면 내가 이긴다)
+    // 상대 연결을 기다리는 중 (10초가 지나면 AI가 상대 캐릭터를 이어받는다)
     if (match.waitingSec !== lastWait) {
       lastWait = match.waitingSec;
       waitbox.classList.toggle('hidden', lastWait <= 0);
-      if (lastWait > 0) waitbox.innerHTML = `상대 연결을 기다리는 중…<small>${lastWait}초 뒤에도 돌아오지 않으면 내가 이겨요</small>`;
+      if (lastWait > 0) waitbox.innerHTML = `상대 연결을 기다리는 중…<small>${lastWait}초 뒤에도 돌아오지 않으면 AI가 대신해요</small>`;
     }
     for (const e of events) {
       switch (e.t) {
@@ -258,6 +260,16 @@ export function showMatch(setup: MatchSetup) {
           speedEl.textContent = online ? '' : '연습 경기';
           speedEl.classList.remove('fast');
           break;
+        case 'takeover': {
+          // 상대가 나갔다: 그 자리의 캐릭터를 AI가 이어받아 끝까지 한다
+          const nm = root.querySelector(`.side.s${e.side} .nm`);
+          if (nm) nm.innerHTML = `<i class="ai-tag">AI</i>${esc(setup.fighters[e.side].name)}`;
+          // 오른쪽 기기가 넘겨받은 경우: 방장이 확인해 주기 전에 미리 계산해 둔 점수가 이제 진짜 점수다
+          paintScore();
+          toast('상대가 나가서 AI가 대신해요', 3200);
+          sfx('toggle');
+          break;
+        }
         case 'speedup':
           speedEl.textContent = `⚡ 빠르기 +${e.stage * 10}%`;
           speedEl.classList.add('fast');

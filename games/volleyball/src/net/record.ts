@@ -17,12 +17,13 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /**
  * 어떤 결과를 서버에 보고할지 정한다 (순수 함수).
  * - 정상 종료: 두 사람 모두 같은 점수를 보고한다 (점수는 방장 스냅샷 값).
- * - 이탈: 이긴(남은) 사람만 'leave'로 보고한다. 진 사람은 보고하지 않는다 (서버가 받지 않는다).
+ * - 이탈: 남아서 AI와 끝까지 한 사람만 'leave'로 최종 점수를 보고한다 (이겼든 졌든). 나간 사람은 보고하지 않는다.
+ *   서버는 나간 사람을 항상 패, 남은 사람을 AI와의 결과대로 승 또는 패로 기록한다.
  */
-export function reportFor(result: Pick<MatchResult, 'score' | 'winner' | 'reason'>, mySide: 0 | 1): { left: number; right: number; reason: 'normal' | 'leave' } | null {
+export function reportFor(result: Pick<MatchResult, 'score' | 'winner' | 'reason' | 'leaver'>, mySide: 0 | 1): { left: number; right: number; reason: 'normal' | 'leave' } | null {
   if (result.reason === 'leave') {
-    if (result.winner !== mySide) return null;
-    return { left: Math.min(2, result.score[0]), right: Math.min(2, result.score[1]), reason: 'leave' };
+    if (result.leaver === undefined || result.leaver === mySide) return null;
+    return { left: result.score[0], right: result.score[1], reason: 'leave' };
   }
   return { left: result.score[0], right: result.score[1], reason: 'normal' };
 }
@@ -61,26 +62,21 @@ export class MatchRecorder {
     const api = this.api;
     if (api.kind === 'local') return { state: 'none' };
     try {
-      const id = await this.matchId;
-      if (!id) return { state: 'failed' };
       const rep = reportFor(result, this.setup.mySide);
-      let r: SaveResult;
-      if (!rep) {
-        // 이탈로 진 쪽: 보고하지 않고, 상대의 보고가 확정될 때까지 기다렸다가 내 전적만 읽는다
-        await sleep(SETTLE_AFTER_MS + 2000);
-        r = await api.settle(id);
-      } else {
+      const id = await this.matchId;
+      if (!id) return { state: rep ? 'failed' : 'left' };
+      // 내가 나간(끊긴) 경기: 보고하지 않는다. 남은 사람의 보고로 나는 패배로 기록된다
+      if (!rep) return { state: 'left' };
+      let r: SaveResult = await api.report(id, rep.left, rep.right, rep.reason);
+      if (r.status === 'error' && /too early/.test(r.code ?? '')) {
+        await sleep(EARLY_RETRY_MS);
         r = await api.report(id, rep.left, rep.right, rep.reason);
-        if (r.status === 'error' && /too early/.test(r.code ?? '')) {
-          await sleep(EARLY_RETRY_MS);
-          r = await api.report(id, rep.left, rep.right, rep.reason);
-        }
-        // 상대 보고를 기다린다. 끝내 안 오면(상대가 나가 버림) 내 보고 하나로 확정
-        for (const ms of SETTLE_WAITS_MS) {
-          if (r.status !== 'waiting') break;
-          await sleep(ms);
-          r = await api.settle(id);
-        }
+      }
+      // 상대 보고를 기다린다. 끝내 안 오면(이탈 경기는 언제나) 내 보고 하나로 확정
+      for (const ms of SETTLE_WAITS_MS) {
+        if (r.status !== 'waiting') break;
+        await sleep(ms);
+        r = await api.settle(id);
       }
       if (r.status === 'done') return { state: 'saved', wins: r.wins, losses: r.losses };
       if (r.status === 'void') return { state: 'void', ...(await api.myRecord().catch(() => null)) };

@@ -34,6 +34,8 @@ interface Actor {
   ring: Phaser.GameObjects.Graphics;
   shadow: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Container;
+  labelText: Phaser.GameObjects.Text;
+  labelBg: Phaser.GameObjects.Graphics;
   /** 걸음 위상 */
   stride: number;
   /** 착지·타격 뒤 흐른 시간 (초) */
@@ -119,15 +121,24 @@ export class CourtScene extends Phaser.Scene {
 
       // 이름표: 자리 색 테두리, 내 것은 노란 바탕
       const labelText = this.text(0, 0, f.name, 22);
-      const w = labelText.width + 26;
-      const h = 34;
-      const bg = this.add.graphics();
-      bg.fillStyle(mine ? COLOR.primary : COLOR.white, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
-      bg.lineStyle(4, SIDE_COLOR[side], 1).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
-      const label = this.add.container(0, 0, [bg, labelText]).setDepth(40).setAlpha(0.95).setData('w', w);
-      this.actors.push({ side, spr, base, ring, shadow, label, stride: side * 1.7, landT: 9, hitT: 9 });
+      const labelBg = this.add.graphics();
+      const label = this.add.container(0, 0, [labelBg, labelText]).setDepth(40).setAlpha(0.95);
+      const a: Actor = { side, spr, base, ring, shadow, label, labelText, labelBg, stride: side * 1.7, landT: 9, hitT: 9 };
+      this.paintLabel(a, f.name, mine);
+      this.actors.push(a);
     }
     this.draw(0);
+  }
+
+  /** 이름표 글자와 바탕을 그린다 (AI가 이어받으면 'AI 이름'으로 바뀐다) */
+  private paintLabel(a: Actor, name: string, mine: boolean) {
+    a.labelText.setText(name);
+    const w = a.labelText.width + 26;
+    const h = 34;
+    a.labelBg.clear();
+    a.labelBg.fillStyle(mine ? COLOR.primary : COLOR.white, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    a.labelBg.lineStyle(4, SIDE_COLOR[a.side], 1).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    a.label.setData('w', w);
   }
 
   /** 경기장: 배경(3종) + 코트 표시 + 벽·천장 + 네트. 그림 파일이 있으면 그것을, 없으면 코드 그림 */
@@ -371,6 +382,13 @@ export class CourtScene extends Phaser.Scene {
         this.cameras.main.shake(140, 0.006);
         const p = this.match.state.players[e.side];
         this.confetti(p.x, FLOOR_Y - 150);
+        break;
+      }
+      case 'takeover': {
+        // 나간 사람의 캐릭터를 AI가 이어받는다: 이름표를 'AI 이름'으로
+        const a = this.actors[e.side];
+        this.paintLabel(a, `AI ${this.match.setup.fighters[e.side].name}`, false);
+        this.ringFx(a.spr.x, a.spr.y - 40, 46, SIDE_COLOR[e.side]);
         break;
       }
       case 'over':

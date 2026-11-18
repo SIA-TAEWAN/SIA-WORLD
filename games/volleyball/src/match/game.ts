@@ -34,23 +34,25 @@ export interface MatchResult {
   setup: MatchSetup;
   score: [number, number];
   winner: Side;
-  /** normal: 3점으로 끝남 · leave: 상대가 나가거나 연결이 끊김 */
+  /** normal: 두 사람이 끝까지 함 · leave: 한 사람이 나가서(또는 연결이 끊겨) AI가 그 자리를 이어받아 끝냄 */
   reason: 'normal' | 'leave';
+  /** leave: 나간 사람의 자리 (그 자리의 캐릭터를 AI가 대신했다) */
+  leaver?: Side;
   /** 온라인: 서버에 결과를 올린 결과 (AI전·테스트 모드는 없음) */
   record?: Promise<RecordOutcome>;
 }
 
 /** 결과 저장이 어떻게 됐는가 */
 export interface RecordOutcome {
-  /** saved 기록됨 · void 두 기기의 결과가 달라 기록 안 됨 · failed 올리지 못함 · none 올릴 것이 없음(테스트 모드) */
-  state: 'saved' | 'void' | 'failed' | 'none';
+  /** saved 기록됨 · void 두 기기의 결과가 달라 기록 안 됨 · failed 올리지 못함 · none 올릴 것이 없음(테스트 모드) · left 내가 나간 경기(상대가 보고한다) */
+  state: 'saved' | 'void' | 'failed' | 'none' | 'left';
   /** 내 전적 (읽을 수 있었으면) */
   wins?: number;
   losses?: number;
 }
 
-/** 화면에 알릴 일: 계산 중에 생긴 일 + 카운트다운 */
-export type MatchEvent = SimEvent | { t: 'count'; n: number } | { t: 'go' };
+/** 화면에 알릴 일: 계산 중에 생긴 일 + 카운트다운 + AI 인계(takeover: 그 자리의 사람이 나가서 AI가 대신한다) */
+export type MatchEvent = SimEvent | { t: 'count'; n: number } | { t: 'go' } | { t: 'takeover'; side: Side };
 
 export type { Pos };
 
@@ -72,7 +74,7 @@ export class Match {
   waitingSec = 0;
   onOver: ((result: MatchResult) => void) | null = null;
 
-  private readonly ai: Ai | null;
+  protected ai: Ai | null;
   private readonly clock = newClock();
   private lastMs = -1;
   private countMs = COUNTDOWN_SEC * 1000;
@@ -115,11 +117,11 @@ export class Match {
     this.prevPlayers = [{ x: s.players[0].x, y: s.players[0].y }, { x: s.players[1].x, y: s.players[1].y }];
   }
 
-  protected finish(reason: 'normal' | 'leave', winner: Side) {
+  protected finish(reason: 'normal' | 'leave', winner: Side, leaver?: Side) {
     if (this.phase === 'over') return;
     this.phase = 'over';
     const s = this.state;
-    this.onOver?.({ setup: this.setup, score: [s.score[0], s.score[1]], winner, reason });
+    this.onOver?.({ setup: this.setup, score: [s.score[0], s.score[1]], winner, reason, leaver });
   }
 
   /** nowMs: performance.now() 같은, 계속 늘어나는 시각 */

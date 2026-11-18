@@ -7,7 +7,7 @@ const setup = (mySide: 0 | 1): MatchSetup => ({
   mode: 'online', mySide, seed: 1, bg: 0, matchNo: 1234, startAt: 0,
   fighters: [{ id: 'L', name: 'L', char: 'tiger', ai: false }, { id: 'R', name: 'R', char: 'pig', ai: false }],
 });
-const result = (mySide: 0 | 1, score: [number, number], winner: 0 | 1, reason: 'normal' | 'leave' = 'normal'): MatchResult => ({ setup: setup(mySide), score, winner, reason });
+const result = (mySide: 0 | 1, score: [number, number], winner: 0 | 1, reason: 'normal' | 'leave' = 'normal', leaver?: 0 | 1): MatchResult => ({ setup: setup(mySide), score, winner, reason, leaver });
 
 /** 부른 것을 적어 두는 가짜 서버 */
 function fakeApi(over: Partial<VolleyApi> = {}) {
@@ -44,9 +44,17 @@ describe('무엇을 보고할지', () => {
     expect(reportFor(result(0, [3, 1], 0), 0)).toEqual({ left: 3, right: 1, reason: 'normal' });
     expect(reportFor(result(1, [3, 1], 0), 1)).toEqual({ left: 3, right: 1, reason: 'normal' });
   });
-  it('이탈: 남아서 이긴 사람만 leave로 보고하고, 진 사람은 보고하지 않는다', () => {
-    expect(reportFor(result(0, [1, 2], 0, 'leave'), 0)).toEqual({ left: 1, right: 2, reason: 'leave' });
-    expect(reportFor(result(1, [1, 2], 0, 'leave'), 1)).toBeNull();
+  it('이탈: 남아서 AI와 끝까지 한 사람이 최종 점수를 leave로 보고한다 (이겼든 졌든)', () => {
+    // 오른쪽이 나감 → 왼쪽(나)이 AI를 3:1로 이김
+    expect(reportFor(result(0, [3, 1], 0, 'leave', 1), 0)).toEqual({ left: 3, right: 1, reason: 'leave' });
+    // 오른쪽이 나감 → 왼쪽(나)이 AI에게 2:3으로 짐
+    expect(reportFor(result(0, [2, 3], 1, 'leave', 1), 0)).toEqual({ left: 2, right: 3, reason: 'leave' });
+    // 방장(왼쪽)이 나감 → 오른쪽(나)이 마무리
+    expect(reportFor(result(1, [1, 3], 1, 'leave', 0), 1)).toEqual({ left: 1, right: 3, reason: 'leave' });
+  });
+  it('이탈: 나간(끊긴) 사람은 보고하지 않는다', () => {
+    expect(reportFor(result(1, [1, 2], 0, 'leave', 1), 1)).toBeNull();
+    expect(reportFor(result(0, [1, 2], 1, 'leave', 0), 0)).toBeNull();
   });
 });
 
@@ -95,7 +103,7 @@ describe('결과 저장 순서', () => {
         return n < 3 ? { status: 'waiting' } : { status: 'done', wins: 2, losses: 5 };
       },
     });
-    const p = new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [1, 0], 0, 'leave'));
+    const p = new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 0], 0, 'leave', 1));
     await vi.advanceTimersByTimeAsync(11900);
     expect(n).toBe(2);
     await vi.advanceTimersByTimeAsync(200);
@@ -110,7 +118,7 @@ describe('결과 저장 순서', () => {
         return n === 1 ? { status: 'error', code: 'too early' } : { status: 'done', wins: 1, losses: 0 };
       },
     });
-    const p = new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [0, 0], 0, 'leave'));
+    const p = new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 2], 0, 'leave', 1));
     await vi.advanceTimersByTimeAsync(5600);
     expect(await p).toEqual({ state: 'saved', wins: 1, losses: 0 });
     expect(n).toBe(2);
@@ -125,12 +133,18 @@ describe('결과 저장 순서', () => {
     expect(await new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 1], 0))).toEqual({ state: 'void', wins: 1, losses: 1 });
   });
 
-  it('이탈로 진 쪽은 보고하지 않고, 상대 보고가 확정된 뒤 결과만 읽는다', async () => {
+  it('남은 사람이 AI에게 져도 그 점수를 leave로 보고한다 (서버가 패로 기록)', async () => {
     const { api, calls } = fakeApi();
-    const p = new MatchRecorder(api, 'room01', setup(1)).finish(result(1, [1, 1], 0, 'leave'));
-    await vi.advanceTimersByTimeAsync(14100);
-    expect(await p).toEqual({ state: 'saved', wins: 4, losses: 2 });
-    expect(calls.some((c) => c.startsWith('report'))).toBe(false);
+    const out = await new MatchRecorder(api, 'room01', setup(1)).finish(result(1, [3, 1], 0, 'leave', 0));
+    expect(calls).toEqual(['begin room01 1234 1 L pig', 'report m1 3:1 leave']);
+    expect(out.state).toBe('saved');
+  });
+
+  it('내가 나간(끊긴) 경기는 보고하지 않는다 (남은 사람의 보고로 패배가 기록된다)', async () => {
+    const { api, calls } = fakeApi();
+    const out = await new MatchRecorder(api, 'room01', setup(1)).finish(result(1, [1, 1], 0, 'leave', 1));
+    expect(out).toEqual({ state: 'left' });
+    expect(calls.some((c) => c.startsWith('report') || c.startsWith('settle'))).toBe(false);
   });
 
   it('begin이 아직 live가 아니면 2.5초 뒤 한 번 더 부른다', async () => {

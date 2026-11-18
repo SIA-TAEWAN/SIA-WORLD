@@ -10,24 +10,30 @@ import { sfx } from './sfx';
  * - 온라인: 두 사람 모두 다시하기를 누르면 같은 방에서 바로 재경기. 상대가 나가면 남은 사람은 그 방의 대기 상태로.
  */
 export function showResult(result: MatchResult) {
-  const { setup, score, winner, reason } = result;
+  const { setup, score, winner, reason, leaver } = result;
   const me = setup.mySide;
-  const won = winner === me;
+  /** 내가 나간(끊긴) 경기: 남은 사람이 AI와 마무리한다 → 나는 패배 */
+  const iLeft = reason === 'leave' && leaver === me;
+  /** 상대가 나가서 AI와 마무리한 경기 */
+  const vsAi = reason === 'leave' && leaver !== undefined && leaver !== me;
+  const won = !iLeft && winner === me;
   const online = setup.mode === 'online';
   const room = online ? state.room : null;
   let off: (() => void) | null = null;
   const row = (s: 0 | 1) => {
     const f = setup.fighters[s];
-    return `<div class="vs-side s${s} ${s === winner ? 'win' : ''}"><img class="av" src="${zodiacFaceUrl(f.char)}" alt="" />
-      <span class="nm">${esc(f.name)}</span><span class="wl">${s === winner ? '승' : '패'}</span></div>`;
+    const ai = reason === 'leave' && leaver === s && !iLeft;
+    const w = iLeft ? s !== me : s === winner;
+    return `<div class="vs-side s${s} ${w ? 'win' : ''}"><img class="av" src="${zodiacFaceUrl(f.char)}" alt="" />
+      <span class="nm">${ai ? '<i class="ai-tag">AI</i>' : ''}${esc(f.name)}</span><span class="wl">${w ? '승' : '패'}</span></div>`;
   };
   const note = !online
     ? '연습 경기는 랭킹·전적에 기록되지 않아요'
-    : reason === 'leave'
-      ? won
-        ? '상대가 나가서 이겼어요'
-        : '연결이 끊겨서 졌어요'
-      : '';
+    : iLeft
+      ? '연결이 끊겨 AI가 대신했어요 · 이 경기는 패배로 기록돼요'
+      : vsAi
+        ? '상대가 나가서 AI와 마무리했어요'
+        : '';
   const root = screen(
     `<div class="result-card ${won ? 'won' : 'lost'}">
       <h2>🏐 경기 결과</h2>
@@ -68,6 +74,7 @@ export function showResult(result: MatchResult) {
     if (o.state === 'saved') rec.innerHTML = total(o.wins, o.losses) || '기록했어요';
     else if (o.state === 'void') rec.innerHTML = `두 기기의 결과가 달라 기록되지 않았어요${total(o.wins, o.losses) ? ` · ${total(o.wins, o.losses)}` : ''}`;
     else if (o.state === 'failed') rec.textContent = '기록을 올리지 못했어요';
+    else if (o.state === 'left') rec.textContent = '';
     else rec.textContent = '테스트 모드라 기록되지 않아요';
   });
 
@@ -81,6 +88,13 @@ export function showResult(result: MatchResult) {
       return;
     }
     const opp = room.opponent();
+    if (reason === 'leave') {
+      // AI와 마무리한(또는 내가 끊겼던) 경기: 바로 재경기할 상대가 없다 → 다시하기 대신 게임방으로
+      st.textContent = '';
+      btn.textContent = '게임방으로 ▶';
+      btn.classList.add('primary');
+      return;
+    }
     if (!opp) {
       // 상대가 나갔다: 남은 사람은 이 방에서 다음 상대를 기다릴 수 있다
       st.textContent = '상대가 방에서 나갔어요';
@@ -107,7 +121,7 @@ export function showResult(result: MatchResult) {
       sfx('click');
       return nav.lobby();
     }
-    if (!room.opponent()) {
+    if (reason === 'leave' || !room.opponent()) {
       sfx('click');
       if (room.ready) room.setReady(false);
       return nav.waiting();

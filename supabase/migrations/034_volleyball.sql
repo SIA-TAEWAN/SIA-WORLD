@@ -6,11 +6,16 @@
 --
 -- 결과는 '양쪽 보고 일치' 방식으로만 기록한다 (한 기기가 승패를 마음대로 올리지 못하게):
 --   1) 경기 시작: 두 사람이 각자 volleyball_begin() → 서로가 서로를 상대로 지목했을 때만 live
---   2) 경기 끝: 두 사람이 각자 volleyball_report() → 두 보고의 승자(정상 종료면 점수도)가 같으면 확정, 다르면 무효(void)
---   3) 상대가 나가 버려 보고가 하나뿐이면: 첫 보고 10초 뒤 volleyball_settle() 로 그 보고 하나로 확정
---   4) 보고 하나로 확정된 뒤 30분 안에 상대가 다른 결과를 보고하면: 그 경기를 무효로 되돌리고 두 사람의 전적을 원래대로
+--   2) 경기 끝(정상): 두 사람이 각자 volleyball_report('normal') → 두 보고의 점수가 같으면 확정, 다르면 무효(void)
+--   3) 경기 중 이탈: 한 사람이 나가면(또는 10초 넘게 끊기면) 그 사람의 캐릭터를 AI가 이어받아 끝까지 한다.
+--      남은 사람만 volleyball_report('leave')로 최종 점수를 보고하고, 첫 보고 10초 뒤 volleyball_settle()로 그 보고 하나로 확정한다.
+--        · 나간 사람: 항상 패 +1 (AI가 이겨도 승이 아니다)
+--        · 남은 사람: AI를 이기면 승 +1, 지면 패 +1
+--      (정상 종료인데 상대 보고가 끝내 오지 않은 경우도 같은 방법으로 보고 하나로 확정한다)
+--   4) 보고 하나로 확정된 뒤 30분 안에 상대가 보고를 올렸는데 내용이 다르면: 그 경기를 무효로 되돌리고 두 사람의 전적을 원래대로
+--      ('leave' 보고는 "상대는 끝까지 하지 않았다"는 주장이므로, 상대의 보고가 오면 언제나 서로 다른 내용이다)
 -- 표는 함수만 바꾼다 (직접 쓰기 권한 없음).
--- 시아코인(033_sia_coin.sql): 정상 종료('normal')로 확정된 경기의 두 사람 모두에게 준다. 이탈('leave')·무효(void)는 주지 않는다.
+-- 시아코인(033_sia_coin.sql): 끝까지 한 사람에게 준다 — 'normal'은 두 사람 모두, 'leave'는 남은 사람만. 무효(void)는 주지 않는다.
 
 -- ---------- 1. 표 ----------
 
@@ -45,7 +50,7 @@ create table if not exists public.volleyball_matches (
   -- 각 자리의 사람이 '내 상대'라고 지목한 사용자
   left_claim uuid,
   right_claim uuid,
-  -- 각 자리의 보고: { "l": 왼쪽 점수, "r": 오른쪽 점수, "reason": "normal"|"leave", "winner": 0|1 }
+  -- 각 자리의 보고: { "l": 왼쪽 점수, "r": 오른쪽 점수, "reason": "normal"|"leave", "winner": 0|1(3점을 얻은 자리) }
   left_report jsonb,
   right_report jsonb,
   first_report_at timestamptz,
@@ -53,8 +58,11 @@ create table if not exists public.volleyball_matches (
   -- 확정된 결과
   left_score int check (left_score between 0 and 3),
   right_score int check (right_score between 0 and 3),
+  -- 이긴 사람. 'leave'에서 AI(나간 사람의 캐릭터)가 이겼으면 null
   winner_id uuid references public.profiles(id) on delete set null,
   ended_reason text check (ended_reason in ('normal', 'leave')),
+  -- 'leave': 경기 중에 나간 사람 (그 뒤는 AI가 대신했다)
+  leaver_id uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   done_at timestamptz,
   unique (room_key, match_no)
@@ -96,19 +104,60 @@ grant execute on function public.volleyball_now() to anon, authenticated;
 -- ---------- 4. 결과 확정 (안에서만 쓴다) ----------
 
 -- 한 경기를 한 번만 확정한다: 부르는 쪽이 그 줄을 잠근 채(for update) status = 'live' 를 확인하고 부른다.
-create or replace function public._volleyball_finish(p_id uuid, p_left int, p_right int, p_winner_side int, p_reason text) returns void
+-- p_winner_side: 3점을 얻은 자리(0 왼쪽 · 1 오른쪽). p_leaver_side: 'leave'일 때 나간 사람의 자리 (normal이면 null).
+create or replace function public._volleyball_finish(p_id uuid, p_left int, p_right int, p_winner_side int, p_reason text, p_leaver_side int) returns void
 language plpgsql security definer set search_path = public as $$
-declare m public.volleyball_matches; w uuid; l uuid; wc text; lc text; t timestamptz := clock_timestamp();
+declare
+  m public.volleyball_matches; t timestamptz := clock_timestamp();
+  w uuid; l uuid; wc text; lc text;          -- normal: 이긴 사람·진 사람
+  stayer uuid; sc text; leaver uuid; vc text; -- leave: 남은 사람·나간 사람
+  stay_won boolean;
 begin
   select * into m from public.volleyball_matches where id = p_id for update;
   if not found or m.status <> 'live' then return; end if;
+
+  if p_reason = 'leave' then
+    if p_leaver_side = 0 then
+      leaver := m.left_user_id; vc := m.left_character; stayer := m.right_user_id; sc := m.right_character;
+    else
+      leaver := m.right_user_id; vc := m.right_character; stayer := m.left_user_id; sc := m.left_character;
+    end if;
+    -- 남은 사람이 AI(나간 사람의 캐릭터)를 이겼는가
+    stay_won := p_winner_side <> p_leaver_side;
+    update public.volleyball_matches
+      set status = 'done', left_score = p_left, right_score = p_right, winner_id = case when stay_won then stayer else null end,
+          ended_reason = 'leave', leaver_id = leaver, done_at = t
+      where id = p_id;
+    -- 남은 사람: AI를 이기면 승 +1, 지면 패 +1
+    if stayer is not null then
+      if stay_won then
+        insert into public.volleyball_rankings as r (user_id, wins, losses, last_character, reached_at, updated_at)
+        values (stayer, 1, 0, sc, t, t)
+        on conflict (user_id) do update set wins = r.wins + 1, last_character = excluded.last_character, reached_at = excluded.reached_at, updated_at = excluded.updated_at;
+      else
+        insert into public.volleyball_rankings as r (user_id, wins, losses, last_character, reached_at, updated_at)
+        values (stayer, 0, 1, sc, t, t)
+        on conflict (user_id) do update set losses = r.losses + 1, last_character = excluded.last_character, updated_at = excluded.updated_at;
+      end if;
+      -- 시아코인: 끝까지 한 사람(남은 사람)에게만
+      perform public._grant_sia_coin(stayer, 'volleyball', m.id::text);
+    end if;
+    -- 나간 사람: 항상 패 +1 (AI가 이겨도 승이 아니다)
+    if leaver is not null then
+      insert into public.volleyball_rankings as r (user_id, wins, losses, last_character, reached_at, updated_at)
+      values (leaver, 0, 1, vc, t, t)
+      on conflict (user_id) do update set losses = r.losses + 1, last_character = excluded.last_character, updated_at = excluded.updated_at;
+    end if;
+    return;
+  end if;
+
   if p_winner_side = 0 then
     w := m.left_user_id; wc := m.left_character; l := m.right_user_id; lc := m.right_character;
   else
     w := m.right_user_id; wc := m.right_character; l := m.left_user_id; lc := m.left_character;
   end if;
   update public.volleyball_matches
-    set status = 'done', left_score = p_left, right_score = p_right, winner_id = w, ended_reason = p_reason, done_at = t
+    set status = 'done', left_score = p_left, right_score = p_right, winner_id = w, ended_reason = 'normal', leaver_id = null, done_at = t
     where id = p_id;
   -- 이긴 사람: 승 +1, 지금 승수에 도달한 시각 갱신
   if w is not null then
@@ -122,13 +171,47 @@ begin
     values (l, 0, 1, lc, t, t)
     on conflict (user_id) do update set losses = r.losses + 1, last_character = excluded.last_character, updated_at = excluded.updated_at;
   end if;
-  -- 시아코인: 끝까지 한 경기(정상 종료)의 두 사람 모두. 이미 준 판·15초 안 중복은 _grant_sia_coin 이 알아서 false
-  if p_reason = 'normal' then
-    perform public._grant_sia_coin(m.left_user_id, 'volleyball', m.id::text);
-    perform public._grant_sia_coin(m.right_user_id, 'volleyball', m.id::text);
-  end if;
+  -- 시아코인: 끝까지 한 두 사람 모두. 이미 준 판·15초 안 중복은 _grant_sia_coin 이 알아서 false
+  perform public._grant_sia_coin(m.left_user_id, 'volleyball', m.id::text);
+  perform public._grant_sia_coin(m.right_user_id, 'volleyball', m.id::text);
 end $$;
-revoke all on function public._volleyball_finish(uuid, int, int, int, text) from public, anon, authenticated;
+revoke all on function public._volleyball_finish(uuid, int, int, int, text, int) from public, anon, authenticated;
+
+-- 보고 하나로 확정됐던 경기를 무효로 되돌린다: 그때 올린 승·패를 1씩 빼고(0 아래로는 안 내려감) 결과 칸을 비운다.
+-- 부르는 쪽이 그 줄을 잠근 채 status = 'done' 을 확인하고 부른다. 이미 준 시아코인은 그대로 둔다.
+create or replace function public._volleyball_revert(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare m public.volleyball_matches; t timestamptz := clock_timestamp(); stayer uuid; loser uuid;
+begin
+  select * into m from public.volleyball_matches where id = p_id for update;
+  if not found or m.status <> 'done' then return; end if;
+  if m.ended_reason = 'leave' then
+    -- 나간 사람의 패, 남은 사람의 승 또는 패
+    stayer := case when m.leaver_id = m.left_user_id then m.right_user_id else m.left_user_id end;
+    if m.leaver_id is not null then
+      update public.volleyball_rankings set losses = greatest(0, losses - 1), updated_at = t where user_id = m.leaver_id;
+    end if;
+    if stayer is not null then
+      if m.winner_id = stayer then
+        update public.volleyball_rankings set wins = greatest(0, wins - 1), updated_at = t where user_id = stayer;
+      else
+        update public.volleyball_rankings set losses = greatest(0, losses - 1), updated_at = t where user_id = stayer;
+      end if;
+    end if;
+  else
+    loser := case when m.winner_id = m.left_user_id then m.right_user_id else m.left_user_id end;
+    if m.winner_id is not null then
+      update public.volleyball_rankings set wins = greatest(0, wins - 1), updated_at = t where user_id = m.winner_id;
+    end if;
+    if loser is not null then
+      update public.volleyball_rankings set losses = greatest(0, losses - 1), updated_at = t where user_id = loser;
+    end if;
+  end if;
+  update public.volleyball_matches
+    set status = 'void', winner_id = null, left_score = null, right_score = null, ended_reason = null, leaver_id = null, done_at = t
+    where id = p_id;
+end $$;
+revoke all on function public._volleyball_revert(uuid) from public, anon, authenticated;
 
 -- 끝난 경기를 부른 사람에게 알려 줄 모양
 create or replace function public._volleyball_result(m public.volleyball_matches, p_me uuid) returns jsonb
@@ -139,6 +222,7 @@ language sql stable security definer set search_path = public as $$
     'right_score', m.right_score,
     'winner_id', m.winner_id,
     'reason', m.ended_reason,
+    'leaver_id', m.leaver_id,
     'wins', coalesce((select wins from public.volleyball_rankings where user_id = p_me), 0),
     'losses', coalesce((select losses from public.volleyball_rankings where user_id = p_me), 0))
 $$;
@@ -226,17 +310,19 @@ grant execute on function public.volleyball_begin(text, bigint, int, uuid, text)
 
 -- ---------- 6. 결과 보고 ----------
 
--- 경기가 끝나면 두 사람이 각자 부른다. p_reason: 'normal'(3점으로 끝남) · 'leave'(상대가 나갔다는 주장 → 보고자가 이긴 것으로만).
--- 양쪽 보고가 모이면 승자(둘 다 normal이면 점수도)가 같을 때만 확정, 다르면 무효.
--- 보고 하나로 이미 확정된 경기(volleyball_settle)라도, 보고하지 않았던 사람이 확정 뒤 30분 안에 다른 결과를 보고하면
+-- 경기가 끝나면 부른다. 최종 점수는 정확히 한쪽만 3점.
+--   'normal': 두 사람이 끝까지 했다 → 두 사람이 각자 보고하고, 점수가 같으면 확정 · 다르면 무효.
+--   'leave' : "상대가 나갔고, 나는 AI와 끝까지 했다"는 주장 (보고자가 질 수도 있다). 나간 사람은 보고하지 않으므로
+--             이 보고 하나로 10초 뒤 volleyball_settle()에서 확정된다. 상대의 보고가 있으면 서로 다른 내용이라 무효.
+-- 보고 하나로 이미 확정된 경기라도, 보고하지 않았던 사람이 확정 뒤 30분 안에 보고했는데 내용이 다르면
 -- 그 경기를 무효로 되돌리고 두 사람의 전적을 원래대로 돌린다 (거짓 단독 보고를 막는다. 이미 준 시아코인은 그대로 둔다).
--- → { status: 'waiting' | 'done' | 'void', (done이면) left_score, right_score, winner_id, reason, wins, losses }
+-- → { status: 'waiting' | 'done' | 'void', (done이면) left_score, right_score, winner_id, reason, leaver_id, wins, losses }
 create or replace function public.volleyball_report(p_match uuid, p_left_score int, p_right_score int, p_reason text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   me uuid := auth.uid(); t timestamptz := clock_timestamp(); m public.volleyball_matches;
-  my_side int; win int := public._volleyball_const('win_score'); winner int; age numeric; mine jsonb; theirs jsonb; a jsonb;
-  late boolean := false; differ boolean; loser uuid;
+  my_side int; win int := public._volleyball_const('win_score'); winner int; age numeric; mine jsonb; theirs jsonb;
+  late boolean := false; differ boolean;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   select * into m from public.volleyball_matches where id = p_match for update;
@@ -262,15 +348,9 @@ begin
 
   if p_reason is null or p_reason not in ('normal', 'leave') then raise exception 'bad reason'; end if;
   if p_left_score is null or p_right_score is null or p_left_score < 0 or p_right_score < 0 or p_left_score > win or p_right_score > win then raise exception 'bad score'; end if;
-  if p_reason = 'normal' then
-    -- 정확히 한쪽만 3점
-    if (p_left_score = win) = (p_right_score = win) then raise exception 'bad score'; end if;
-    winner := case when p_left_score = win then 0 else 1 end;
-  else
-    -- 상대가 나갔다: 아무도 3점이 아니고, 보고한 내가 이긴 것으로만
-    if p_left_score = win or p_right_score = win then raise exception 'bad score'; end if;
-    winner := my_side;
-  end if;
+  -- 정확히 한쪽만 3점 (이탈도 AI와 끝까지 한 최종 점수)
+  if (p_left_score = win) = (p_right_score = win) then raise exception 'bad score'; end if;
+  winner := case when p_left_score = win then 0 else 1 end;
   if not late then
     age := extract(epoch from (t - m.live_at));
     if age < public._volleyball_const('min_sec') then raise exception 'too early'; end if;
@@ -288,22 +368,15 @@ begin
   end if;
   if theirs is null then return jsonb_build_object('status', 'waiting'); end if;
 
-  -- 양쪽 보고가 모였다: 승자가 다르거나, 둘 다 normal인데 점수가 다르면 서로 다른 결과
-  differ := (mine->>'winner')::int <> (theirs->>'winner')::int
-    or (mine->>'reason' = 'normal' and theirs->>'reason' = 'normal' and (mine->>'l' <> theirs->>'l' or mine->>'r' <> theirs->>'r'));
+  -- 양쪽 보고가 모였다: 둘 다 normal이고 점수가 같을 때만 같은 내용.
+  -- ('leave'는 "상대는 끝까지 하지 않았다"는 주장이라, 상대의 보고와는 언제나 다르다)
+  differ := not (mine->>'reason' = 'normal' and theirs->>'reason' = 'normal' and mine->>'l' = theirs->>'l' and mine->>'r' = theirs->>'r');
 
   if late then
     -- 보고 하나로 확정됐던 경기에 늦은 보고가 왔다. 같으면 그대로(내 보고만 채워 둠), 다르면 무효로 되돌린다.
     -- 내 보고 칸이 이제 채워졌으므로 이 되돌리기는 한 경기에 한 번만 일어난다.
     if differ then
-      loser := case when m.winner_id = m.left_user_id then m.right_user_id else m.left_user_id end;
-      if m.winner_id is not null then
-        update public.volleyball_rankings set wins = greatest(0, wins - 1), updated_at = t where user_id = m.winner_id;
-      end if;
-      if loser is not null then
-        update public.volleyball_rankings set losses = greatest(0, losses - 1), updated_at = t where user_id = loser;
-      end if;
-      update public.volleyball_matches set status = 'void', winner_id = null, left_score = null, right_score = null, ended_reason = null, done_at = t where id = m.id;
+      perform public._volleyball_revert(m.id);
       return jsonb_build_object('status', 'void');
     end if;
     select * into m from public.volleyball_matches where id = p_match;
@@ -314,9 +387,7 @@ begin
     update public.volleyball_matches set status = 'void', done_at = t where id = m.id;
     return jsonb_build_object('status', 'void');
   end if;
-  -- 승자가 같다: 점수·사유는 정상 종료 보고가 있으면 그것, 없으면 내 보고
-  a := case when mine->>'reason' = 'normal' then mine when theirs->>'reason' = 'normal' then theirs else mine end;
-  perform public._volleyball_finish(m.id, (a->>'l')::int, (a->>'r')::int, (a->>'winner')::int, a->>'reason');
+  perform public._volleyball_finish(m.id, (mine->>'l')::int, (mine->>'r')::int, (mine->>'winner')::int, 'normal', null);
   select * into m from public.volleyball_matches where id = p_match;
   return public._volleyball_result(m, me);
 end $$;
@@ -325,11 +396,13 @@ grant execute on function public.volleyball_report(uuid, int, int, text) to auth
 
 -- ---------- 7. 보고 하나로 확정 ----------
 
--- 참가자가 부른다. 첫 보고 뒤 10초가 지났는데 상대 보고가 없으면(상대가 나가 버림) 그 보고 하나로 확정한다.
+-- 참가자가 부른다. 첫 보고 뒤 10초가 지났는데 상대 보고가 없으면 그 보고 하나로 확정한다.
+--   'leave' 보고: 상대(보고하지 않은 쪽)가 나간 사람 → 나간 사람 패, 남은 사람은 AI와의 결과대로 승 또는 패
+--   'normal' 보고: 끝까지 했지만 상대 보고가 오지 않음 → 그 점수대로
 -- → { status: 'waiting' | 'done' | 'void', … }
 create or replace function public.volleyball_settle(p_match uuid) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare me uuid := auth.uid(); t timestamptz := clock_timestamp(); m public.volleyball_matches; one jsonb;
+declare me uuid := auth.uid(); t timestamptz := clock_timestamp(); m public.volleyball_matches; one jsonb; leaver int;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   select * into m from public.volleyball_matches where id = p_match for update;
@@ -343,7 +416,9 @@ begin
     return jsonb_build_object('status', 'waiting');
   end if;
   one := coalesce(m.left_report, m.right_report);
-  perform public._volleyball_finish(m.id, (one->>'l')::int, (one->>'r')::int, (one->>'winner')::int, one->>'reason');
+  -- 'leave': 보고하지 않은 쪽이 나간 사람
+  leaver := case when one->>'reason' = 'leave' then (case when m.left_report is null then 0 else 1 end) else null end;
+  perform public._volleyball_finish(m.id, (one->>'l')::int, (one->>'r')::int, (one->>'winner')::int, one->>'reason', leaver);
   select * into m from public.volleyball_matches where id = p_match;
   return public._volleyball_result(m, me);
 end $$;

@@ -1,3 +1,4 @@
+import { makeAi, aiInput } from '../game/ai';
 import { STEP_MS } from '../game/constants';
 import { setPlayer, step, type Input, type Side, type SimEvent } from '../game/sim';
 import {
@@ -17,6 +18,8 @@ export interface NetLink {
 const CATCH_UP_MAX = 600;
 /** 기다리는 동안 '나 여기 있어요' 소식을 보내는 간격 (ms) */
 const KEEPALIVE_MS = 250;
+/** AI가 이어받은 뒤 '이어받았음'을 알리는 간격 (ms) */
+const TAKEN_MS = 1000;
 /** 상대 기기의 틱이 스냅샷보다 이만큼까지 뒤처진 것은 기다린다 (그보다 크면 방장 틱에 맞춘다) */
 const LAG_BEHIND_MAX = 6;
 /** 상대 캐릭터의 화면 차이가 이보다 크면 바로 맞춘다 (px) */
@@ -30,7 +33,9 @@ const inKey = (i: Input) => `${+i.left}${+i.right}${+i.jump}`;
  * - 두 기기의 틱 시계는 같은 시작 시각(서버 시각)에서 흐른다: 틱 = (지금 − 시작) ÷ (1/60초).
  * - 방장(왼쪽): 공·득점을 계산하고 스냅샷을 초당 약 20번 보낸다. 상대 캐릭터는 받은 위치를 지금 틱까지 이어 움직여 쓴다.
  * - 상대(오른쪽): 같은 계산을 돌려 미리 보여 주고, 스냅샷이 오면 그 틱부터 다시 계산해 맞춘다. 점수·서브·끝은 방장 값만 따른다.
- * - 메시지: pos(내 캐릭터, 초당 약 30번) · snap(방장 스냅샷) · quit(나감) · end(이탈 승리 알림)
+ * - 이탈: 상대가 나가거나(quit) 소식이 10초 넘게 끊기면, 남은 내 기기가 계산 권한을 갖고 상대 캐릭터를 AI가 이어받아
+ *   같은 점수에서 끝까지 한다 (takeover). 한번 AI로 바뀌면 그 경기 끝까지 AI다 (돌아온 사람은 그 경기에 못 낀다).
+ * - 메시지: pos(내 캐릭터, 초당 약 30번) · snap(방장 스냅샷) · quit(나감) · taken(AI가 이어받았음 — 돌아온 사람에게 알림)
  */
 export class OnlineMatch extends Match {
   private readonly host: boolean;
@@ -44,6 +49,8 @@ export class OnlineMatch extends Match {
   /** 마지막으로 상대 소식을 들은 시각 */
   private lastHeard = 0;
   private oppQuit = false;
+  /** 상대가 나가서 AI가 그 자리를 이어받았는가 (이 경기 끝까지) */
+  solo = false;
   private lastSendMs = 0;
   private lastSentIn = '';
   /** 방장: 상대(오른쪽)가 보낸 최신 소식 */
@@ -88,7 +95,7 @@ export class OnlineMatch extends Match {
     clearInterval(this.bgTimer);
   }
 
-  /** 경기 중에 내가 나간다: 상대에게 바로 알린다 (상대 승리) */
+  /** 경기 중에 내가 나간다: 상대에게 바로 알린다 (내 자리는 AI가 이어받고, 나는 패배로 기록된다) */
   quit() {
     if (this.phase === 'over') return;
     this.link.send({ t: 'quit', n: this.no });
@@ -101,12 +108,12 @@ export class OnlineMatch extends Match {
       this.oppQuit = true;
       return;
     }
-    if (m.t === 'end') {
-      // 상대가 '내가 이겼다(상대 이탈)'고 알림: 내가 잠깐 끊겼다 돌아온 경우
-      if (Array.isArray(m.score)) this.state.score = [Number(m.score[0]) || 0, Number(m.score[1]) || 0];
-      this.finish(m.reason === 'leave' ? 'leave' : 'normal', m.winner === 0 ? 0 : 1);
+    if (m.t === 'taken') {
+      // 상대가 '네 자리는 AI가 이어받았다'고 알림: 내가 10초 넘게 끊겼다 돌아온 경우 → 이 경기에는 못 낀다 (나는 나간 사람)
+      if (!this.solo) this.finish('leave', this.mySide === 0 ? 1 : 0, this.mySide);
       return;
     }
+    if (this.solo) return;
     if (m.t === 'pos' && this.host) {
       const k = m.k as PlayerPacket;
       if (!k || typeof k.tick !== 'number' || !k.p || !k.in) return;
@@ -131,9 +138,10 @@ export class OnlineMatch extends Match {
       this.lastHeard = now;
       this.lastNow = now;
     }
-    if (this.oppQuit) return this.leaveWin();
+    if (this.solo) return this.soloUpdate(now);
+    if (this.oppQuit) return this.takeover(now);
     const link = linkState(now, this.lastHeard);
-    if (link.state === 'lost') return this.leaveWin();
+    if (link.state === 'lost') return this.takeover(now);
     if (link.state === 'waiting') {
       // 상대 연결을 기다리는 중: 경기를 멈추고(시계를 그만큼 뒤로) 내 소식만 계속 보낸다
       this.waitingSec = link.leftSec;
@@ -293,16 +301,60 @@ export class OnlineMatch extends Match {
     if (snap.winner !== -1) this.finish('normal', snap.winner);
   }
 
-  // ---------- 이탈 ----------
+  // ---------- 이탈: AI가 이어받는다 ----------
 
-  /** 상대가 나갔거나 10초 넘게 끊겼다: 남은 내가 이긴다 */
-  private leaveWin() {
-    if (this.phase === 'over') return;
-    const s = this.state;
+  /**
+   * 상대가 나갔거나 10초 넘게 끊겼다: 남은 내 기기가 계산 권한을 갖고, 상대 캐릭터는 AI가 이어받아 같은 점수에서 계속한다.
+   * (내가 오른쪽이었으면 지금까지 미리 계산해 보여 주던 상태가 그대로 진짜 상태가 된다)
+   */
+  private takeover(now: number) {
+    if (this.solo || this.phase === 'over') return;
+    const opp: Side = this.mySide === 0 ? 1 : 0;
+    this.solo = true;
     this.waitingSec = 0;
-    s.winner = this.mySide;
-    this.link.send({ t: 'end', n: this.no, winner: this.mySide, score: [s.score[0], s.score[1]], reason: 'leave' });
-    this.finish('leave', this.mySide);
+    this.pending = null;
+    this.offBall = ZERO;
+    this.offP = [ZERO, ZERO];
+    this.ai = makeAi(opp, ((this.setup.seed ^ 0x51a7) + this.done) >>> 0);
+    // 멈춰 있던 만큼 시계를 당겨 지금부터 이어 간다
+    this.anchor = now - this.done * STEP_MS;
+    this.lastNow = now;
+    // 방장이 확인해 주지 못한 득점(내가 미리 계산한 것)이 있으면 이제 알린다
+    if (!this.host) {
+      const known = this.snap?.score ?? [0, 0];
+      for (const side of [0, 1] as const) if (this.state.score[side] > known[side]) this.events.push({ t: 'point', side, x: this.state.ball.x });
+    }
+    this.events.push({ t: 'takeover', side: opp });
+    this.sendTaken(now);
+    // 내가 미리 계산한 상태에서 이미 경기가 끝나 있었으면(마지막 점수 직후 상대가 끊김) 그대로 끝낸다
+    if (this.state.phase === 'over' && this.state.winner !== -1) this.finish('leave', this.state.winner, opp);
+  }
+
+  private sendTaken(now: number) {
+    this.lastSendMs = now;
+    this.link.send({ t: 'taken', n: this.no });
+  }
+
+  /** AI가 이어받은 뒤: 내 기기 혼자 계산한다 (AI 대전과 같다) */
+  private soloUpdate(now: number) {
+    const s = this.state;
+    const opp: Side = this.mySide === 0 ? 1 : 0;
+    let n = Math.floor((now - this.anchor) / STEP_MS) - this.done;
+    if (n > CATCH_UP_MAX) {
+      this.anchor += (n - CATCH_UP_MAX) * STEP_MS;
+      n = CATCH_UP_MAX;
+    }
+    for (; n > 0 && this.phase === 'play'; n--) {
+      this.savePrev();
+      const other = this.ai ? aiInput(this.ai, s) : { left: false, right: false, jump: false };
+      step(s, this.mySide === 0 ? [this.input, other] : [other, this.input], this.events as SimEvent[]);
+      this.done++;
+      if (s.phase === 'over') this.finish('leave', s.winner as Side, opp);
+    }
+    this.lastNow = now;
+    this.frac = Math.max(0, Math.min(1, (now - this.anchor) / STEP_MS - this.done));
+    // 돌아온 상대에게 '이 경기는 AI가 이어받았다'고 계속 알린다
+    if (now - this.lastSendMs >= TAKEN_MS) this.sendTaken(now);
   }
 
   ballView(): Pos {

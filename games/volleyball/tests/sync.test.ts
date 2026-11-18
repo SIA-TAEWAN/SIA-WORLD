@@ -296,7 +296,17 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
     expect(goAt[1]).toBe(goAt[0]);
   });
 
-  it('상대 소식이 끊기면 기다리는 중 → 10초 뒤 남은 사람 승리 (이탈)', () => {
+  /** 경기가 끝날 때까지 돌린다 (side 쪽 결과가 나올 때까지). 그동안 생긴 알림을 모은다 */
+  function playOut(p: ReturnType<typeof pair>, side: 0 | 1, maxSec = 600) {
+    const seen: string[] = [];
+    for (let i = 0; i < 60 * maxSec && !p.results[side]; i++) {
+      p.advance(STEP_MS);
+      for (const e of (side === 0 ? p.host : p.guest).events.splice(0)) seen.push(e.t);
+    }
+    return seen;
+  }
+
+  it('상대(오른쪽) 소식이 끊기면 기다리는 중 → 10초 뒤 AI가 이어받아 같은 점수에서 끝까지 한다', () => {
     const p = pair(30);
     cleanup = p.dispose;
     for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS, false); // 카운트다운 3초 + 2초 경기
@@ -308,13 +318,37 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
     expect(p.host.waitingSec).toBeGreaterThan(0);
     expect(p.host.waitingSec).toBeLessThanOrEqual(8);
     expect(p.host.state.tick).toBeLessThan(tickBefore + 60 * 2.2);
+    expect(p.host.solo).toBe(false);
+    const frozen = p.host.state.tick;
+    const scoreBefore = [...p.host.state.score];
+    for (let i = 0; i < 60 * 6.5; i++) p.advance(STEP_MS, false);
+    expect(p.host.solo).toBe(false);
+    expect(p.host.state.tick).toBe(frozen);
+    p.host.events.length = 0;
+    for (let i = 0; i < 60 * 1; i++) p.advance(STEP_MS, false);
+    // 10초가 지나면 바로 이기는 것이 아니라 AI가 이어받는다
+    expect(p.host.solo).toBe(true);
     expect(p.results[0]).toBeNull();
-    for (let i = 0; i < 60 * 7.2; i++) p.advance(STEP_MS, false);
-    expect(p.results[0]).toMatchObject({ winner: 0, reason: 'leave' });
-    expect(p.host.phase).toBe('over');
+    expect(p.host.phase).toBe('play');
+    expect(p.host.waitingSec).toBe(0);
+    expect(p.host.events.filter((e) => e.t === 'takeover')).toEqual([{ t: 'takeover', side: 1 }]);
+    expect(p.host.state.score).toEqual(scoreBefore);
+    // 경기가 다시 흐르고, AI(오른쪽)가 실제로 움직여 공을 친다
+    const seen = playOut(p, 0);
+    expect(seen).toContain('hit');
+    expect(seen.filter((t) => t === 'over')).toHaveLength(1);
+    const r = p.results[0]!;
+    expect(r.reason).toBe('leave');
+    expect(r.leaver).toBe(1);
+    expect(Math.max(...r.score)).toBe(3);
+    expect(Math.min(...r.score)).toBeLessThan(3);
+    expect(r.winner).toBe(r.score[0] === 3 ? 0 : 1);
+    // 끊겼던 사람(받기는 됨)은 '이어받았음' 알림을 받고 이 경기에서 빠진다: 나간 사람으로 끝
+    expect(p.results[1]).toMatchObject({ reason: 'leave', leaver: 1 });
+    expect(p.guest.phase).toBe('over');
   });
 
-  it('방장이 끊겨도 같다: 오른쪽 사람이 10초 뒤 승리', () => {
+  it('방장이 끊겨도 같다: 오른쪽 사람 기기가 계산을 넘겨받고, AI가 왼쪽 캐릭터를 조종해 끝까지 한다', () => {
     const p = pair(30);
     cleanup = p.dispose;
     for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS, false);
@@ -322,8 +356,115 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
     for (let i = 0; i < 60 * 9.5; i++) p.advance(STEP_MS, false);
     expect(p.results[1]).toBeNull();
     expect(p.guest.waitingSec).toBeGreaterThan(0);
+    expect(p.guest.solo).toBe(false);
+    const scoreBefore = [...p.guest.state.score];
+    p.guest.events.length = 0;
     for (let i = 0; i < 60 * 1; i++) p.advance(STEP_MS, false);
-    expect(p.results[1]).toMatchObject({ winner: 1, reason: 'leave' });
+    expect(p.guest.solo).toBe(true);
+    expect(p.guest.events.filter((e) => e.t === 'takeover')).toEqual([{ t: 'takeover', side: 0 }]);
+    expect(p.guest.state.score).toEqual(scoreBefore);
+    expect(p.results[1]).toBeNull();
+    // 넘겨받은 뒤에는 오른쪽 기기가 득점·서브·끝을 스스로 정한다
+    const leftX0 = p.guest.state.players[0].x;
+    let leftMoved = false;
+    const seen: string[] = [];
+    for (let i = 0; i < 60 * 600 && !p.results[1]; i++) {
+      p.advance(STEP_MS);
+      for (const e of p.guest.events.splice(0)) seen.push(e.t);
+      if (Math.abs(p.guest.state.players[0].x - leftX0) > 30) leftMoved = true;
+    }
+    expect(leftMoved).toBe(true); // AI가 왼쪽 캐릭터를 움직였다
+    expect(seen).toContain('point');
+    expect(seen.filter((t) => t === 'over')).toHaveLength(1);
+    const r = p.results[1]!;
+    expect(r).toMatchObject({ reason: 'leave', leaver: 0 });
+    expect(Math.max(...r.score)).toBe(3);
+    expect(r.winner).toBe(r.score[0] === 3 ? 0 : 1);
+    // 보내기만 막혔던 방장은 '이어받았음' 알림을 받고 이 경기에서 빠진다
+    // (그 전에 자기 화면에서 경기가 끝나 버렸으면 normal로 끝나 있다 → 서버에서는 두 보고가 달라 무효)
+    expect(p.results[0]).not.toBeNull();
+    if (p.results[0]!.reason === 'leave') expect(p.results[0]!.leaver).toBe(0);
+    expect(p.host.phase).toBe('over');
+  });
+
+  it('경기 중에 나가면(quit) 기다리지 않고 바로 AI가 이어받는다 (방장이 나간 경우 · 상대가 나간 경우)', () => {
+    for (const quitter of [0, 1] as const) {
+      const p = pair(50);
+      const stay = quitter === 0 ? 1 : 0;
+      const [gone, left] = quitter === 0 ? [p.host, p.guest] : [p.guest, p.host];
+      for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS, false);
+      gone.quit();
+      for (let i = 0; i < 20; i++) p.advance(STEP_MS, false);
+      expect(left.solo).toBe(true);
+      expect(left.waitingSec).toBe(0);
+      expect(p.results[stay]).toBeNull();
+      expect(p.results[quitter]).toBeNull(); // 나간 사람은 결과 화면 없이 로비로
+      expect(gone.phase).toBe('over');
+      playOut(p, stay);
+      expect(p.results[stay]).toMatchObject({ reason: 'leave', leaver: quitter });
+      expect(Math.max(...p.results[stay]!.score)).toBe(3);
+      p.dispose();
+    }
+  });
+
+  it('오른쪽 기기가 넘겨받을 때, 방장이 확인해 주지 못한 득점(미리 계산한 것)도 알림으로 나온다', () => {
+    // 공이 바닥에 닿기 직전에 방장이 끊기는 순간을 찾아 본다
+    let checked = 0;
+    for (let cut = 200; cut < 520 && checked < 3; cut += 8) {
+      const p = pair(30, 11);
+      // 처음부터 화면에 알린 득점을 모두 센다
+      const pts: number[] = [];
+      const collect = () => {
+        for (const e of p.guest.events.splice(0)) if (e.t === 'point') pts.push(e.side);
+      };
+      for (let i = 0; i < 60 * 3 + cut; i++) {
+        p.advance(STEP_MS, false);
+        collect();
+      }
+      p.mute[0] = true;
+      const told = pts.length;
+      for (let i = 0; i < 60 * 11 && !p.guest.solo; i++) {
+        p.advance(STEP_MS, false);
+        collect();
+      }
+      collect();
+      expect(p.guest.solo).toBe(true);
+      const now = p.guest.state.score;
+      // 넘겨받은 순간: 화면에 알린 득점 수 = 지금 점수 (빠진 것도, 두 번 알린 것도 없다)
+      expect(pts.length).toBe(now[0] + now[1]);
+      // 방장이 확인해 주지 못한 득점이 있었던 경우를 실제로 지나갔는지
+      if (p.guest.stats.snaps > 0 && pts.length > told) checked++;
+      p.dispose();
+    }
+  });
+
+  it('한번 AI로 바뀌면 그 경기 끝까지 AI: 끊겼던 사람이 돌아와 보내는 소식은 무시한다', () => {
+    const p = pair(30);
+    cleanup = p.dispose;
+    for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS, false);
+    p.mute[1] = true;
+    for (let i = 0; i < 60 * 10.5; i++) p.advance(STEP_MS, false);
+    expect(p.host.solo).toBe(true);
+    p.mute[1] = false; // 돌아옴
+    for (let i = 0; i < 60 * 3; i++) p.advance(STEP_MS);
+    expect(p.host.solo).toBe(true);
+    expect(p.host.waitingSec).toBe(0);
+    expect(p.guest.phase).toBe('over');
+    expect(p.results[1]).toMatchObject({ leaver: 1 });
+  });
+
+  it('서로 완전히 끊기면 두 기기 모두 AI와 끝까지 한다 (서버에서는 두 보고가 달라 무효가 된다)', () => {
+    const p = pair(30);
+    cleanup = p.dispose;
+    for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS, false);
+    p.mute[0] = true;
+    p.mute[1] = true;
+    for (let i = 0; i < 60 * 10.5; i++) p.advance(STEP_MS, false);
+    expect(p.host.solo).toBe(true);
+    expect(p.guest.solo).toBe(true);
+    for (let i = 0; i < 60 * 600 && (!p.results[0] || !p.results[1]); i++) p.advance(STEP_MS);
+    expect(p.results[0]).toMatchObject({ reason: 'leave', leaver: 1 });
+    expect(p.results[1]).toMatchObject({ reason: 'leave', leaver: 0 });
   });
 
   it('잠깐 끊겼다 돌아오면 경기가 이어진다', () => {
@@ -343,17 +484,6 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
     expect(p.results[0]).toBeNull();
     // 상대 기기의 틱도 방장을 따라온다
     expect(Math.abs(p.guest.state.tick - p.host.state.tick)).toBeLessThan(45);
-  });
-
-  it('경기 중에 나가면(quit) 상대가 바로 이긴다', () => {
-    const p = pair(50);
-    cleanup = p.dispose;
-    for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS, false);
-    p.guest.quit();
-    for (let i = 0; i < 20; i++) p.advance(STEP_MS, false);
-    expect(p.results[0]).toMatchObject({ winner: 0, reason: 'leave' });
-    expect(p.results[1]).toBeNull(); // 나간 사람은 결과 화면 없이 로비로
-    expect(p.guest.phase).toBe('over');
   });
 
   it('방장 탭이 가려져 1초에 한 번만 계산해도 따라잡고, 상대는 이탈로 보지 않는다', () => {
