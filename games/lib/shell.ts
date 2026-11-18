@@ -162,6 +162,11 @@ export interface GameUI<P = any, Q = any> {
   resultHtml(t: TableCtx<P, Q>): string;
   /** 컷인 문구 (없으면 null) */
   cutin?(ev: GameEventLite, t: TableCtx<P, Q>): string | null;
+  /**
+   * 그 컷인을 지금부터 몇 ms 뒤에 띄울지 (그 사건의 연출이 보이는 순간). null·없으면 진행 중인 카드 연출이 모두 끝난 뒤.
+   * 한 번에 여러 차례가 들어온 상태에서 내 차례의 컷인이 상대 차례 연출 뒤에 뜨지 않게 한다 (맞고).
+   */
+  cutinDelay?(ev: GameEventLite, t: TableCtx<P, Q>): number | null;
   /** 판 도중에도 지갑이 바뀌는 게임 (룰렛: 확정 때 빠지고 결과 때 들어온다) → 상태가 올 때마다 금액을 다시 읽는다 */
   liveWallet?: boolean | ((pub: any) => number);
   /** AI가 없는 게임 (룰렛): 빈자리는 자리 줄·방 목록에 보이지 않는다 */
@@ -1079,16 +1084,32 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     lastEvent = maxId;
     const hits = fresh.map((e) => ({ e, text: ui.cutin?.(e, c) })).filter((x): x is { e: GameEventLite; text: string } => !!x.text);
     if (!hits.length) return;
-    const { e, text } = hits[hits.length - 1];
-    const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
-    afterAnim(() => {
+    const show = (e: GameEventLite, text: string) => {
+      if (closed) return;
+      const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
       const el = $(root, '#cutin');
       el.innerHTML = `<div>${av ? `<img src="${m.z.fullUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
       el.classList.remove('show');
       void el.offsetWidth;
       el.classList.add('show');
       sfx('cutin');
-    });
+    };
+    // 띄울 때가 정해진 컷인은 그 순간에 (각각), 나머지는 마지막 것 하나를 카드 연출이 모두 끝난 뒤에
+    const untimed: typeof hits = [];
+    for (const h of hits) {
+      let delay: number | null = null;
+      try {
+        delay = ui.cutinDelay?.(h.e, c) ?? null;
+      } catch {
+        delay = null;
+      }
+      if (delay === null || reduceMotion) untimed.push(h);
+      else setTimeout(() => show(h.e, h.text), Math.max(0, delay));
+    }
+    if (untimed.length) {
+      const { e, text } = untimed[untimed.length - 1];
+      afterAnim(() => show(e, text));
+    }
   };
 
   /** 대기 중인데 사람이 모두 레디면 판을 시작한다 (서버가 다시 확인하므로 여러 명이 불러도 안전) */

@@ -620,18 +620,26 @@ const AT_TAKE = 1400;
 const plan = new Map<string, CardPlan>();
 let planRound = '';
 let planSeen = 0;
+/** 사건 번호 → 그 사건이 든 차례의 연출이 시작되는 때 (계획을 세운 순간부터 ms). 컷인을 그 차례에 맞춰 띄운다 */
+const eventBase = new Map<number, number>();
+let planBuiltAt = 0;
 
 /** 새 사건들로 계획 세우기 (같은 상태를 다시 그릴 때는 그대로) */
 function updatePlan(p: MatgoPublic, round: number, roomId: string) {
   // 방이 바뀌거나 새 판이면 처음부터 (모듈 상태는 방을 옮겨도 남는다)
   const key = `${roomId}:${round}`;
-  if (key !== planRound) {
+  // 사건 번호가 처음부터 다시 시작했으면 새 판이다 (판 번호가 늦게 바뀌어도 지난 판의 계획이 남지 않게)
+  const maxId = Math.max(0, ...(p.events ?? []).map((e) => e.id));
+  if (key !== planRound || maxId < planSeen) {
     planRound = key;
     planSeen = 0;
     plan.clear();
+    eventBase.clear();
   }
   const evs = (p.events ?? []).filter((e) => e.id > planSeen);
   if (!evs.length) return;
+  eventBase.clear();
+  planBuiltAt = performance.now();
   // 이전 계획은 이미 지나간 것이므로 비운다 (새로 들어온 사건만 재생)
   // 단, 패 고르기로 한 차례가 두 번에 나뉘어 오면 (첫 사건이 낸 패가 아님) 앞서 낸·뒤집은 패는 이미 내려앉은 채로 이어 간다
   const continuing = evs[0].t === 'flip' || evs[0].t === 'capture' || evs[0].t === 'steal';
@@ -650,6 +658,7 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
       turn += 1;
       hasFlip = false;
     }
+    eventBase.set(e.id, base());
     if (e.t === 'play' || e.t === 'bomb') {
       for (const id of (e.cards as string[]) ?? []) plan.set(id, { startAt: base() + AT_PLAY, src: 'hand', seat, flip: false, captureAt: null, via: null, turn, floor: false });
     } else if (e.t === 'flip' && typeof e.card === 'string') {
@@ -810,7 +819,9 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const allCaptured = (pl: (typeof P)[number]) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi];
     // 판 시작(아직 아무도 안 냄): 더미에서 한 장씩 착착 나눠 준다 (내 패 → 상대 패 번갈아, 그다음 바닥)
     const dealing = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0 && !(p.events ?? []).some((e) => e.t === 'play' || e.t === 'flip');
-    updatePlan(p, t.room.round_no, t.room.id);
+    // 판 번호는 공개 상태에 든 값으로 (방 정보의 판 번호는 상태보다 늦게 바뀔 수 있다 → 새 판에 지난 판의 연출 계획이 남는다)
+    const roundNo = (p as unknown as { round?: number }).round ?? t.room.round_no;
+    updatePlan(p, roundNo, t.room.id);
     const DEAL_GAP = 130;
 
     // 자리 판: 아바타 · 이름 · 꼬리표(차례 · 고 · 흔들기 · 폭탄 피) · 점수 방울
@@ -845,7 +856,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const srcOf = (id: string, pl: CardPlan) => (pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand);
     const srcSize = (pl: CardPlan) => (pl.src === 'pile' ? L.pw : pl.seat === me ? cw : L.bw);
     // 낸 패·뒤집은 패가 먹힐 때 먼저 내려앉을 바닥 자리 (시간 순서대로 한 번만 정한다)
-    const FS = floorSlots(p.floor, `${t.room.id}:${t.room.round_no}`);
+    const FS = floorSlots(p.floor, `${t.room.id}:${roundNo}`);
     const newSlot = L.floorPos(FS.free, 12);
     [...plan.entries()]
       .filter(([, pl]) => pl.captureAt !== null && !pl.floor && pl.src !== 'hand' || (pl.captureAt !== null && !pl.floor && pl.startAt !== pl.captureAt))
@@ -1016,6 +1027,15 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       <div class="mg-res-calc"><i>${r.score}점</i><em>×</em><i>점당 ${t.fmt(r.baseUnit)}냥</i>${muls.map((m) => `<em>×</em><i class="mul">${esc(m)}</i>`).join('')}<em>=</em><b>${t.fmt(r.amount)}냥</b></div>
       ${r.paid < r.amount ? `<p class="mg-res-note">가진 만큼만 ${t.fmt(r.paid)}냥</p>` : ''}
     </div>`;
+  },
+
+  // 컷인은 그 사건이 든 차례의 연출에 맞춰 띄운다 (내 뻑이 상대 차례 연출까지 끝난 뒤에 뜨지 않게)
+  cutinDelay(ev) {
+    const base = eventBase.get(ev.id);
+    if (base === undefined) return null;
+    // 흔들기·폭탄은 패를 낼 때, 뻑은 뒤집은 패가 내려앉을 때, 그 밖(먹기·고·스톱 등)은 가져간 뒤
+    const at = ev.t === 'shake' || ev.t === 'bomb' ? 200 : ev.t === 'ppeok' ? AT_FLIP + 600 : AT_TAKE + 600;
+    return Math.max(0, planBuiltAt + base + at - performance.now());
   },
 
   cutin(ev, t: Ctx) {
