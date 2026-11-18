@@ -571,6 +571,15 @@ function layout(W: number, H: number, portrait: boolean, floorCount: number) {
 }
 
 /** 찰싹! 패가 바닥에 내려앉는 순간: 하얀 충격 링 + 별 조각 + 살짝 흔들림 (같은 달 패 위면 더 크게 + '찰싹!') */
+/** 패 하나가 내려앉는 찰싹은 한 번만: 같은 패로 2.5초 안에 또 부르면 무시한다 (미리 내려놓은 패를 서버 답으로 다시 그릴 때 등) */
+const slapAt = new Map<string, number>();
+function slapCard(id: string, scene: PhaserNS.Scene, x: number, y: number, w: number, onStack: boolean, dpr: number) {
+  const now = performance.now();
+  if (now - (slapAt.get(id) ?? -1e9) < 2500) return;
+  slapAt.set(id, now);
+  if (slapAt.size > 80) for (const [k, v] of slapAt) if (now - v > 5000) slapAt.delete(k);
+  slap(scene, x, y, w, onStack, dpr);
+}
 function slap(scene: PhaserNS.Scene, x: number, y: number, w: number, onStack: boolean, dpr: number) {
   if (!scene.sys?.isActive()) return;
   sfx('slap', { volume: onStack ? 1 : 0.7, rate: onStack ? 1 : 1.15 });
@@ -738,7 +747,7 @@ let slotKey = '';
 const slotFreedAt = new Map<number, number>();
 const SLOT_HOLD_MS = TURN_MS + 600;
 const FLOOR_SLOTS = 12;
-function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]; free: number } {
+function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]; free: number; frees: number[] } {
   if (key !== slotKey) {
     slotKey = key;
     slotOf.clear();
@@ -770,12 +779,29 @@ function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]
     }
     return n;
   });
-  return { slots, free: lowestFree() };
+  // 빈 칸들 (앞에서부터 쓸 순서). 서로 다른 달의 패가 같은 빈 칸에 겹쳐 놓이지 않게 여러 개를 준다
+  const frees: number[] = [];
+  const tmp = new Set(used);
+  for (let i = 0; i < 6; i++) {
+    let n = -1;
+    for (let k = 0; k < FLOOR_SLOTS; k++) if (!tmp.has(k) && !slotFreedAt.has(k)) { n = k; break; }
+    if (n < 0) for (let k = 0; k < FLOOR_SLOTS + 6; k++) if (!tmp.has(k)) { n = k; break; }
+    tmp.add(n);
+    frees.push(n);
+  }
+  return { slots, free: frees[0], frees };
 }
 
 let shake = false;
 /** 더미 자리 (판 정리 때 패를 이리로 모은다) */
 let pilePos = { x: 0, y: 0 };
+/** 패 나눠 주기: 이 판(방:판 번호)을 처음 그린 때와, 그때 막 시작한 판이었는지 */
+let dealKey = '';
+let dealStartAt = 0;
+let dealFresh = false;
+let planDelayedFor = '';
+/** 패를 다 나눠 주는 데 걸리는 시간 (손패 10장씩 + 바닥 8장을 0.13초 간격으로) */
+const DEAL_MS = 4300;
 /** 방금 누른 내 패 (서버 답을 기다리지 않고 바로 바닥에 내려놓는다) */
 let picked: string | null = null;
 /** 지금 바닥에 임시로 놓여 있는 패 (방금 누른 내 패 · 고르기 대기 중인 낸 패·뒤집은 패). 먹을 때 그 자리에서 이어 간다 */
@@ -864,10 +890,29 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const mp = P[me];
     const allCaptured = (pl: (typeof P)[number]) => [...pl.captured.gwang, ...pl.captured.yeol, ...pl.captured.tti, ...pl.captured.pi];
     // 판 시작(아직 아무도 안 냄): 더미에서 한 장씩 착착 나눠 준다 (내 패 → 상대 패 번갈아, 그다음 바닥)
-    const dealing = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0 && !(p.events ?? []).some((e) => e.t === 'play' || e.t === 'flip');
     // 판 번호는 공개 상태에 든 값으로 (방 정보의 판 번호는 상태보다 늦게 바뀔 수 있다 → 새 판에 지난 판의 연출 계획이 남는다)
     const roundNo = (p as unknown as { round?: number }).round ?? t.room.round_no;
     updatePlan(p, roundNo, t.room.id);
+    // 판 시작(패 나눠 주기): 아직 아무도 패를 내지 않았거나, 새 판을 처음 그리는 때 (상대가 선이면 상대의 첫 수가 같이 도착한다)
+    const dealKeyNow = `${t.room.id}:${roundNo}`;
+    if (dealKeyNow !== dealKey) {
+      dealKey = dealKeyNow;
+      dealStartAt = performance.now();
+      // 이미 여러 차례가 지난 판(중간에 들어옴·새로고침)이면 나눠 주기 없이
+      dealFresh = (p.events ?? []).filter((e) => e.t === 'play' || e.t === 'bomb').length <= 1;
+    }
+    const noMoveYet = !p.turnCards && allCaptured(op).length + allCaptured(mp).length === 0 && !(p.events ?? []).some((e) => e.t === 'play' || e.t === 'flip');
+    const dealing = noMoveYet || (dealFresh && performance.now() - dealStartAt < 1200);
+    // 상대의 첫 수는 패를 다 나눠 준 뒤에 보여 준다 (한 번만 늦춘다)
+    if (dealing && !noMoveYet && plan.size && planDelayedFor !== dealKeyNow) {
+      planDelayedFor = dealKeyNow;
+      for (const pl of plan.values()) {
+        pl.startAt += DEAL_MS;
+        if (pl.captureAt !== null) pl.captureAt += DEAL_MS;
+      }
+      for (const [k, v] of eventBase) eventBase.set(k, v + DEAL_MS);
+    }
+
     const DEAL_GAP = 130;
 
     // 자리 판: 아바타 · 이름 · 꼬리표(차례 · 고 · 흔들기 · 폭탄 피) · 점수 방울
@@ -912,16 +957,21 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const srcSize = (pl: CardPlan) => (pl.src === 'pile' ? L.pw : pl.seat === me ? cw : L.bw);
     // 낸 패·뒤집은 패가 먹힐 때 먼저 내려앉을 바닥 자리 (시간 순서대로 한 번만 정한다)
     const FS = floorSlots(p.floor, `${t.room.id}:${roundNo}`);
-    const newSlot = L.floorPos(FS.free, 12);
+    // 같은 달 바닥 패가 없을 때 내려앉을 빈 칸: 차례·달마다 다른 칸 (다른 달 패끼리 한 칸에 겹치지 않게)
+    const freeFor = new Map<string, number>();
+    const emptySpot = (key: string) => {
+      if (!freeFor.has(key)) freeFor.set(key, freeFor.size);
+      return L.floorPos(FS.frees[Math.min(FS.frees.length - 1, freeFor.get(key)!)], 12);
+    };
     [...plan.entries()]
       .filter(([, pl]) => pl.captureAt !== null && !pl.floor && pl.src !== 'hand' || (pl.captureAt !== null && !pl.floor && pl.startAt !== pl.captureAt))
       .filter(([, pl]) => !pl.via && pl.startAt !== pl.captureAt)
       .sort((a, b) => a[1].startAt - b[1].startAt)
-      .forEach(([id, pl]) => (pl.via = onFloorNow.has(id) && t.lastPos(id) ? t.lastPos(id)! : landingSpot(t, id, fw, newSlot)));
+      .forEach(([id, pl]) => (pl.via = onFloorNow.has(id) && t.lastPos(id) ? t.lastPos(id)! : landingSpot(t, id, fw, emptySpot(`${pl.turn}:${cardById(id).month}`))));
     /** 먹은 패 자리로 가는 카드의 움직임 */
     const capOpts = (id: string): TrackOpts => {
       const pl = plan.get(id);
-      if (!pl || dealing) return { order: 2 };
+      if (!pl) return { order: 2 };
       if (pl.via && pl.captureAt !== null) {
         // 손·더미 → 바닥(찰싹) → 잠깐 → 먹은 패 자리
         const via = pl.via;
@@ -937,7 +987,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           viaScale: fw / capW,
           viaLeave: pl.captureAt,
           // 이미 바닥에 내려놓아 둔 패는 다시 찰싹하지 않는다
-          onLand: onFloorNow.has(id) ? undefined : () => slap(scene, via.x, via.y, fw, true, t.dpr),
+          onLand: onFloorNow.has(id) ? undefined : () => slapCard(id, scene, via.x, via.y, fw, true, t.dpr),
         };
       }
       // 바닥에 있던 패 (또는 뺏어 온 피): 가져가기 차례에 지금 자리에서 출발
@@ -949,7 +999,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 바닥 (달별로 모아서)
     const floor = p.floor;
     // 내 차례이고, 화면의 차례 연출도 끝났을 때만 누를 수 있다 (연출이 끝나면 한 번 다시 그려 켠다)
-    const waitMs = dealing ? 0 : animLeft();
+    const waitMs = animLeft();
     const myTurnNow = t.myTurn && waitMs <= 0;
     if (t.myTurn && waitMs > 0 && !enableTimer) {
       enableTimer = setTimeout(() => {
@@ -962,7 +1012,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     floor.forEach((f, i) => {
       const { x, y } = L.floorPos(FS.slots[i], 12);
       // 한 묶음 안에서는 원래 있던 패가 아래, 이번에 온 패는 온 순서대로 위에 (낸 패 → 뒤집은 패)
-      const arrive = (id: string) => (dealing ? -1 : (plan.get(id)?.startAt ?? -1));
+      const arrive = (id: string) => plan.get(id)?.startAt ?? -1;
       const stack = f.cards.map((id, k) => ({ id, k })).sort((a, b) => arrive(a.id) - arrive(b.id) || a.k - b.k);
       stack.forEach(({ id }, j) => {
         const glow = p.choice?.kind === 'choose' && p.choice.options.includes(id);
@@ -973,8 +1023,9 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
           onClick: glow && pick ? () => void t.act({ type: 'choose', card: id }) : undefined,
         });
         // 처음 보는 패: 판 시작이면 더미에서 차례로, 아니면 사건 기록대로 (낸 패는 손에서, 뒤집은 패는 더미에서 뒤집으며)
-        const pl = dealing ? undefined : plan.get(id);
-        if (dealing) t.track(card, id, { from: pile, delay: (20 + floorSeq++) * DEAL_GAP, fromScale: L.pw / fw, sound: 'deal' });
+        // 이번에 온 패(계획이 있는 패)는 사건 기록대로, 판 시작 때 깔린 패는 더미에서 차례로
+        const pl = plan.get(id);
+        if (!pl && dealing) t.track(card, id, { from: pile, delay: (20 + floorSeq++) * DEAL_GAP, fromScale: L.pw / fw, sound: 'deal' });
         else if (pl)
           t.track(card, id, {
             from: srcOf(id, pl),
@@ -987,14 +1038,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
             // 손패(또는 뒷면·더미) 크기에서 바닥 크기로
             fromScale: onFloorNow.has(id) ? 1 : srcSize(pl) / fw,
             // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
-            onLand: onFloorNow.has(id) ? undefined : () => slap(scene, cx, cy, fw, j > 0, t.dpr),
+            onLand: onFloorNow.has(id) ? undefined : () => slapCard(id, scene, cx, cy, fw, j > 0, t.dpr),
           });
         else t.track(card, id, { from: pile, fromScale: L.pw / fw });
       });
       if (f.ppeok || f.stacked) {
         const tag = label(scene, x, y - fw * 0.95, f.ppeok ? '뻑' : '쌓임', clamp(fw * 0.26, 12, 20), tc('pink')).setDepth(12);
         // 이번 차례에 온 패가 다 내려앉은 뒤에 표시한다 (겹치기도 전에 '뻑'이 먼저 보이지 않게)
-        const lastLand = dealing ? 0 : Math.max(0, ...f.cards.map((id) => (plan.has(id) ? planBuiltAt + plan.get(id)!.startAt + 620 : 0)));
+        const lastLand = Math.max(0, ...f.cards.map((id) => (plan.has(id) ? planBuiltAt + plan.get(id)!.startAt + 620 : 0)));
         const wait = lastLand - performance.now();
         if (wait > 0) {
           tag.setVisible(false);
@@ -1016,7 +1067,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     if (picked && !resting.some((r) => r.id === picked)) resting.push({ id: picked, mine: true, flipped: false });
     const seenNow = new Set<string>();
     const extra = new Map<number, number>(); // 묶음(칸) → 이번에 더 얹은 장수
-    let freeUsed = 0;
+    const restOnFree = new Map<number, number>(); // 달 → 빈 칸에 임시로 놓은 장수
     for (const r of resting) {
       const m = cardById(r.id).month;
       const gi = floor.findIndex((f) => f.cards.length && cardById(f.cards[0]).month === m);
@@ -1030,9 +1081,11 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         onStack = true;
       } else {
         // 같은 달이 없으면 빈 칸 (먼저 임시로 놓은 같은 달 패가 있으면 그 옆)
-        const base = L.floorPos(FS.free, 12);
-        pos = { x: base.x + freeUsed * fw * 0.4, y: base.y + freeUsed * fw * 0.06 };
-        freeUsed++;
+        // 같은 달끼리는 한 칸에 차례로, 다른 달은 다른 빈 칸
+        const base = emptySpot(`rest:${m}`);
+        const k = restOnFree.get(m) ?? 0;
+        restOnFree.set(m, k + 1);
+        pos = { x: base.x + k * fw * 0.4, y: base.y + k * fw * 0.06 };
       }
       const card = hwatu(scene, pos.x, pos.y, r.id, fw);
       const first = !onFloorNow.has(r.id);
@@ -1043,7 +1096,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         flip: r.flipped && first,
         sound: first ? (r.flipped ? 'flip' : 'deal') : undefined,
         fromScale: (r.flipped ? L.pw : r.mine ? cw : L.bw) / fw,
-        onLand: first ? () => slap(scene, pos.x, pos.y, fw, onStack, t.dpr) : undefined,
+        onLand: first ? () => slapCard(r.id, scene, pos.x, pos.y, fw, onStack, t.dpr) : undefined,
       });
       seenNow.add(r.id);
     }
