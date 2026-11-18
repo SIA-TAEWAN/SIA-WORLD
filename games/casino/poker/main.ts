@@ -3,6 +3,7 @@ import { POKER_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
+import { rewindPoker } from '../../../supabase/functions/_shared/poker-rewind.ts';
 
 type Ctx = TableCtx<PokerPublic, PokerPrivate>;
 
@@ -17,6 +18,8 @@ let thrownShown: string | null = null;
 /** 서버에 보낸 고르기 (답이 올 때까지 화면을 그대로 유지) */
 let sent: { discard: string; open: string } | null = null;
 let roundKey = '';
+/** 마지막으로 그린 공개 상태 (한 동작씩 되돌려 보여 줄 때 기준) */
+let lastPub: PokerPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 
@@ -34,6 +37,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     const { scene } = t;
     const { W, H } = viewSize(scene);
     const p = t.pub;
+    lastPub = p;
     drawTable(scene, 'poker');
     const portrait = H > W * 1.15 || W < 520;
     // 내 카드 크기: 화면 비율에 맞춰 (7장이 한 줄에 들어오게). 다른 사람은 0.6배
@@ -88,11 +92,25 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         discard = null;
         thrownShown = null;
       }
-      const choosing = me && !sd && p.phase === 'choose' && !!t.priv?.choices.length;
-      if (!choosing || (sent && !t.priv!.choices.includes(sent.open))) sent = me ? null : sent;
+      // 내 패: 연출 재생 중에 먼저 온 새 패가 있으면 그것으로 (한 동작씩 보여 주는 중간 화면에서 내 카드가 빠지지 않게)
+      const pv = me ? (t.privNext ?? t.priv) : null;
+      const choosing = me && !sd && p.phase === 'choose' && !!pv?.choices.length;
+      // 서버 답(고른 뒤의 내 패)이 왔으면 보낸 기록은 지운다
+      if (me && sent && (!pv || !pv.choices.includes(sent.open))) sent = null;
       const gone = choosing ? (sent?.discard ?? discard) : null;
+      // 고른 뒤 모두 고르기를 기다리는 중: 남긴 3장 (공개할 카드는 올려서)
+      const waitingOpen = me && !sd && !choosing && p.phase === 'choose' && pv ? pv.open : [];
       if (sd) cards = sd.cards;
-      else if (me && t.priv) cards = choosing ? t.priv.choices.filter((c) => c !== gone) : [...t.priv.hidden.slice(0, 2), ...s.open, ...t.priv.hidden.slice(2)];
+      else if (me && pv) {
+        if (choosing) cards = pv.choices.filter((c) => c !== gone);
+        else if (p.phase === 'choose') cards = [...pv.hidden, ...pv.open];
+        else {
+          // 새 패가 아직 안 왔으면 (고르기 직후의 중간 화면) 내가 보낸 고르기로 남은 2장을 안다
+          const hid: (string | null)[] = !pv.choices.length ? pv.hidden : sent ? pv.choices.filter((c) => c !== sent!.discard && c !== sent!.open) : [null, null];
+          // 히든(7구)은 공개 상태에서 받은 만큼만
+          cards = [...hid.slice(0, 2), ...s.open, ...hid.slice(2, Math.max(2, s.hiddenCount))];
+        }
+      }
       // 내 패가 아직 안 왔으면 그리지 않는다 (뒷면으로 먼저 받으면 패가 온 뒤 한 번 더 받는 연출이 나온다)
       else if (me && t.privWait) cards = [];
       else cards = [...Array(Math.min(2, s.hiddenCount)).fill(null), ...s.open, ...Array(Math.max(0, s.hiddenCount - 2)).fill(null)];
@@ -113,7 +131,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       cards.forEach((c, ci) => {
         const isOpen = c !== null && s.open.includes(c);
         const cx = x + (ci - (cards.length - 1) / 2) * gap;
-        const opening = choosing && !!sent && c === sent.open;
+        const opening = (choosing && !!sent && c === sent.open) || (c !== null && waitingOpen.includes(c));
         const card = playingCard(scene, cx, y, c, w, {
           dim: s.folded,
           lift: (me && !!c && !isOpen && p.phase !== 'choose') || picking || opening,
@@ -131,7 +149,9 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
           card.on('pointerdown', () => pickChoice(t, c));
         }
       });
-      const mineHand = me && !sd && t.priv?.hand && p.phase !== 'choose' ? `내 패 ${t.priv.hand}` : '';
+      // 족보 이름은 화면의 카드와 내 패가 같은 때만 (중간 화면에서 아직 안 받은 카드까지 센 족보가 보이지 않게)
+      const handNow = pv && !pv.choices.length && pv.hidden.length === s.hiddenCount && pv.open.length === s.open.length ? pv.hand : null;
+      const mineHand = me && !sd && handNow && p.phase !== 'choose' ? `내 패 ${handNow}` : '';
       const sub = s.excluded ? '이번 판 쉼' : s.folded ? '다이' : [s.last, s.allIn ? '올인' : '', mineHand || (s.openLabel ?? '')].filter(Boolean).join(' · ');
       const k = me ? clamp(cw / 85, 0.85, 1.15) : clamp(cw / 100, 0.75, 1);
       const tagY = y + w * 0.71 + 24 * k;
@@ -153,15 +173,15 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         discard = null;
         return;
       }
+      if (sent) {
+        el.innerHTML = '<p class="msg">카드를 골랐어요. 모두 고르면 공개해요…</p>';
+        return;
+      }
       if (!t.myTurn) {
         el.innerHTML = '<p class="msg">카드를 나누는 중…</p>';
         return;
       }
       const choices = t.priv.choices;
-      if (sent) {
-        el.innerHTML = '<p class="msg">카드를 골랐어요. 모두 고르면 공개해요…</p>';
-        return;
-      }
       if (discard && !choices.includes(discard)) discard = null;
       const step = discard ? '공개할 카드를 고르세요' : '버릴 카드를 고르세요';
       el.innerHTML = `<p class="msg">${step}</p><div class="row">${choices
@@ -198,6 +218,9 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       .join('');
     return `<h3>♠️ 판 결과</h3><table>${rows}</table>`;
   },
+
+  // 한 동작씩: 내 카드 공개 → 다음 카드 → 다른 사람 베팅 순서로, 앞 동작의 카드 연출이 끝난 뒤에 다음 동작 (판 시작은 예전 방식)
+  rewind: (next, events) => rewindPoker(next, events, lastPub),
 
   // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
   replay(ev, t: Ctx) {

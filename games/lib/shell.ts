@@ -47,6 +47,11 @@ export interface TableCtx<P = any, Q = any> {
    * 이때 내 카드를 뒷면으로 먼저 그리면, 패가 온 뒤 다시 받거나 얇게 뒤집히는 연출이 한 번 더 나온다 → 올 때까지 내 카드를 그리지 않는다.
    */
   privWait: boolean;
+  /**
+   * 연출 재생 중에 먼저 도착해 미뤄 둔 이번 판의 내 패 (없으면 null). 한 동작씩 보여 주는 게임(rewind)이 중간 화면에서
+   * 내 카드를 맞게 그릴 때 쓴다. 지금 화면보다 앞선 내용일 수 있으니 공개 상태에 맞는 만큼만 그려야 한다
+   */
+  privNext: Q | null;
   pending: number[];
   /** 내가 지금 조작할 수 있다: 내 차례이고 앞선 연출(카드·칩·말풍선)이 다 끝났다. 조작 버튼은 이 값으로 켠다 */
   myTurn: boolean;
@@ -682,6 +687,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length) && st?.round_no ? st.public_state : null,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       privWait,
+      privNext: pendingPriv && st && pendingPriv.round_no === st.round_no ? pendingPriv.hand : null,
       pending,
       myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no) && !ctlHold,
       act: async (payload) => {
