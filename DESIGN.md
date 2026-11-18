@@ -1,6 +1,6 @@
 # SIA WORLD 디자인 가이드
 
-SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노)은 이 문서를 따른다.
+SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아레이스)은 이 문서를 따른다.
 기준 화면: 시아탱크 **AI 1:1 설정** 화면.
 
 > 아래 값은 시아탱크(`games/tank/src/style.css`)의 **실제 값**으로 고쳤다 (2026-11-17).
@@ -49,6 +49,7 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노)은 이 �
 | 시아맞고 | 담요 초록 | `#7CC08A` (테두리 `--outline`) |
 | 세븐포커·홀덤 | 민트 테이블 | `#6CC6B5` |
 | 블랙잭 | 하늘 테이블 | `#7FB8E8` |
+| 시아레이스 | 트랙 주황 | `#F9A873` (어두운 점·구분 `#E08A4F`, `--race-track`) |
 | 룰렛 | 계절 4색 | 봄 `#9CC7F2` · 여름 `#F7C1A8` · 가을 `#A9DDC6` · 겨울 `#C9D1DD` |
 
 결과 색 (시아탱크에 없음, 새로 정한 값): 승리 `#4CB86A`, 패배 `#E86A5A`, 무승부 `#9A8C7E`.
@@ -189,7 +190,8 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노)은 이 �
 
 ### 효과음
 - 모든 소리는 `shared/sound.js` 한 곳에서 관리 (ZzFX 방식으로 코드로 생성, 외부 파일 없음). 분위기: 짧고 통통 튀는 밝은 소리.
-- `shared/sounds/<이름>.ogg` 또는 `.mp3`를 넣으면 그 소리를 처음 낼 때 파일로 바뀐다. 이름: click, toggle, coin, turn, tick, cutin, win, lose, deal, flip, slap, chip, fold, bust, spinTick, spinStop, tankFire, tankBoom, tankBigBoom, tankLaser, tankBuild, tankHeal, tankTurn, tankWin.
+- `shared/sounds/<이름>.ogg` 또는 `.mp3`를 넣으면 그 소리를 처음 낼 때 파일로 바뀐다. 이름: click, toggle, coin, turn, tick, cutin, win, lose, deal, flip, slap, chip, fold, bust, spinTick, spinStop, tankFire, tankBoom, tankBigBoom, tankLaser, tankBuild, tankHeal, tankTurn, tankWin, raceReady, raceGo, raceFoul, step, jump, land, mud, hurdleHit, slip, logHit, boost, goal, rankShow, newRecord.
+- 배경음은 게임마다 코드로 만든 짧은 반복곡. 시아레이스는 `shared/sounds/bgmLobby|bgmRace|bgmResult.ogg`(또는 `.mp3`)를 넣으면 그 파일로 바뀐다. 배경음 켜기/끄기는 효과음과 따로 저장한다 (`sia:bgm`).
 - 오른쪽 아래 원형 사운드 버튼으로 켜기/끄기 (브라우저에 저장, 시아탱크와 같은 설정). 첫 클릭 전에는 소리를 내지 않는다.
 - 같은 소리는 이름마다 최소 간격(칩 70ms 등), 동시에 6개까지.
 
@@ -224,6 +226,12 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노)은 이 �
 - 아이콘 `public/icons/*.png`: 특수 벽 배지 4, 아이템 4, 보급 상자·낙하산·비행기, 바람
 - 대기실 그림 `public/lobby.jpg`
 - 전투 HUD는 어두운 남색 → 크림 판 + 갈색 외곽선 (`style.css` 끝 "DESIGN.md 맞춤" 블록)
+
+**시아레이스 (SpriteCook, 2026-11-18)** — 원본 시트와 asset id: `games/running/art/`, `games/running/spritecook-assets.json`
+- 방해물 6종 `games/running/public/art/{hurdle,banana,log,mudShort,mudLong,boost}.png`
+- 이펙트·표지 `public/art/{splash,dust,star,spark,marker,flag}.png`, 트랙 바닥 `track.png`, 배경 2겹 `sky.png`·`stands.png`
+- 로비 카드 `shared/images/card-race.png`
+- 캐릭터는 `shared/images/zodiac/full/*.png` 한 장을 코드로 움직인다 (달리기 흔들림·점프·넘어짐·미끄러짐·골인). 출발선·결승선 띠, 색종이, 부스트 잔상은 코드 그림
 
 **아직 코드로 그리는 부분** (필요하면 SpriteCook 그림으로 교체)
 | 위치 | 지금 |

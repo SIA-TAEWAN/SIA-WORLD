@@ -77,10 +77,10 @@ button, input { font: inherit; color: inherit; }
 .logo { margin: 4px 0 0; text-align: center; font-weight: normal; font-size: clamp(44px, 14vmin, var(--fs-logo)); color: var(--primary); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); line-height: 1.1; }
 .tagline { margin: 0; text-align: center; color: var(--white); font-size: 17px; text-shadow: 0 2px 0 var(--outline); }
 .hero { position: relative; flex: 1 1 150px; min-height: 130px; max-height: 250px; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); overflow: hidden; background: var(--sky-mid); }
-.hero .hero-bg { position: absolute; inset: 0; background-size: cover; background-position: center bottom; }
-.hero .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 34%; background: var(--race-track); border-top: var(--line) solid var(--outline); background-size: auto 100%; }
+.hero .hero-bg { position: absolute; left: 0; right: 0; top: 0; height: 68%; background-size: auto 100%; background-repeat: repeat-x; background-position: center bottom; }
+.hero .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 32%; background: var(--race-track); border-top: var(--line) solid var(--outline); background-size: auto 100%; }
 .hero .ground::after { content: ''; position: absolute; left: 0; right: 0; top: 46%; height: 3px; background: var(--white); opacity: 0.9; }
-.hero img.runner { position: absolute; bottom: 10%; height: 62%; transform-origin: 50% 100%; animation: hero-run 0.46s ease-in-out infinite alternate; }
+.hero img.runner { position: absolute; bottom: 8%; height: 50%; transform-origin: 50% 100%; animation: hero-run 0.46s ease-in-out infinite alternate; }
 .hero img.runner:nth-of-type(2) { animation-delay: -0.15s; }
 .hero img.runner:nth-of-type(3) { animation-delay: -0.3s; }
 .hero img.runner:nth-of-type(4) { animation-delay: -0.4s; }
@@ -112,7 +112,7 @@ button, input { font: inherit; color: inherit; }
 .room .invite { display: flex; align-items: center; gap: 8px; }
 .room .invite .code { flex: 1; min-width: 0; font-size: 15px; }
 .room .invite .code b { font-weight: normal; color: var(--accent); font-size: 19px; letter-spacing: 1px; }
-.room .status { text-align: center; color: var(--white); font-size: 16px; text-shadow: 0 2px 0 var(--outline); min-height: 22px; margin: 0; }
+.room .status { align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
 .room .grow { flex: 1; min-height: 4px; }
 .room .btn.big { width: 100%; flex: none; }
 

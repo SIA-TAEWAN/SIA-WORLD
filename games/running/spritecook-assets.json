@@ -1,0 +1,42 @@
+{
+  "assets": [
+    {
+      "asset_id": "a3aab655-59c6-4893-9196-9dfccc07d6fc",
+      "sha12": "0195f109fe3a",
+      "label": "방해물 6종 시트 (3x2) → public/art/hurdle, banana, log, mudShort, mudLong, boost"
+    },
+    {
+      "asset_id": "e6747f6b-d605-4e16-92bb-0aed8a974dd2",
+      "sha12": "8968b98e7859",
+      "label": "이펙트·표지 시트 (4x2) → public/art/splash, dust, star, spark, marker, flag (출발선·결승선 띠는 쓰지 않고 코드로 그림)"
+    },
+    {
+      "asset_id": "309ecae3-cf88-4264-980e-69f6e1099767",
+      "sha12": "c31e1899c96d",
+      "label": "배경 관중석 (16:9) → public/art/stands.png (아래 단만 잘라 좌우 거울 이어 붙임)"
+    },
+    {
+      "asset_id": "11fd585a-40ec-4669-9170-64495f61e3ab",
+      "sha12": "470a646377cc",
+      "label": "배경 하늘 (16:9) → public/art/sky.png (좌우 거울 이어 붙임)"
+    },
+    {
+      "asset_id": "e418fcb0-4247-4d69-8921-a5e16d713351",
+      "sha12": "79ee61785bba",
+      "label": "트랙 바닥 타일 (이어지는 질감) → public/art/track.png"
+    },
+    {
+      "asset_id": "f71a8638-741d-4bc7-b565-2ab6bddb0a26",
+      "sha12": "8fb9594f11fe",
+      "label": "로비 카드 시아레이스 (16:9) → shared/images/card-race.png"
+    },
+    {
+      "asset_id": "0620e930-1751-4436-8940-4da390e5b5db",
+      "label": "(화풍 참고) 십이지신 캐릭터 전신 시트 A — art/spritecook/spritecook-assets.json"
+    },
+    {
+      "asset_id": "2c289458-d89f-4fdc-a790-f1792b517c7c",
+      "label": "(화풍 참고) 로비 카드 시아맞고"
+    }
+  ]
+}

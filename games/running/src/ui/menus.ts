@@ -42,7 +42,7 @@ export function showLobby() {
     <h1 class="logo">시아레이스</h1>
     <p class="tagline">십이지신 100m 달리기 · 최대 4명</p>
     <div class="hero"><div class="hero-bg" style="background-image:url('${ART}stands.png')"></div><div class="ground" style="background-image:url('${ART}track.png')"></div>
-      ${cast.map((c, i) => `<img class="runner" src="${zodiacFullUrl(c)}" alt="" style="left:${6 + i * 23}%;" />`).join('')}
+      ${cast.map((c, i) => `<img class="runner" src="${zodiacFullUrl(c)}" alt="" style="left:${8 + i * 22}%;" />`).join('')}
     </div>
     <div class="card best"><span>🏅 내 최고 기록</span><span id="best"><span class="soft">불러오는 중…</span></span></div>
     <div class="main-actions">

@@ -7,7 +7,7 @@ import { zodiacFullUrl } from '../assets';
  * 그림 목록. public/art/<이름>.png (SpriteCook, 원본 asset id: spritecook-assets.json) 를 쓰고,
  * 파일을 못 불러오면 아래 코드 그림(임시 그림)으로 대신한다.
  */
-export const ART_FILES = ['track', 'sky', 'stands', 'hurdle', 'banana', 'log', 'mudShort', 'mudLong', 'boost', 'start', 'finish', 'marker', 'dust', 'splash', 'star', 'spark'] as const;
+export const ART_FILES = ['track', 'sky', 'stands', 'hurdle', 'banana', 'log', 'mudShort', 'mudLong', 'boost', 'marker', 'flag', 'dust', 'splash', 'star', 'spark'] as const;
 export type ArtKey = (typeof ART_FILES)[number];
 
 export const zKey = (id: ZodiacId) => `z-${id}`;
@@ -101,6 +101,11 @@ export function ensureArt(scene: Phaser.Scene, chars: readonly ZodiacId[]) {
   make(scene, 'finish', 64, 128, (g) => {
     for (let y = 0; y < 8; y++) for (let x = 0; x < 3; x++) g.fillStyle((x + y) % 2 ? COLOR.outline : COLOR.white, 1).fillRect(8 + x * 16, y * 16, 16, 16);
     line(g, 4).lineBetween(8, 0, 8, 128).lineBetween(56, 0, 56, 128);
+  });
+  make(scene, 'flag', 64, 64, (g) => {
+    g.fillStyle(COLOR.outline, 1).fillRect(8, 4, 6, 58);
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) g.fillStyle((x + y) % 2 ? COLOR.outline : COLOR.white, 1).fillRect(14 + x * 11, 6 + y * 11, 11, 11);
+    line(g, 3).strokeRect(14, 6, 44, 33);
   });
   make(scene, 'marker', 96, 64, (g) => {
     g.fillStyle(COLOR.panel, 1).fillRoundedRect(4, 4, 88, 42, 12);

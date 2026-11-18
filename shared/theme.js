@@ -53,7 +53,7 @@ export const CHIPS = [
 ];
 
 /** 시아레이스: 트랙(넓은 면) · 트랙 어두운 점·레인 구분 · 잔디 (= 맞고 담요 초록) */
-export const RACE = { track: 0xf2b279, trackDark: 0xd98a52, grass: 0x7cc08a };
+export const RACE = { track: 0xf9a873, trackDark: 0xe08a4f, grass: 0x7cc08a };
 
 /** 숫자 색 → '#rrggbb' */
 export const css = (n) => `#${n.toString(16).padStart(6, '0')}`;

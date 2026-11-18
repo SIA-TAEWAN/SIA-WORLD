@@ -177,14 +177,22 @@ export class RaceScene extends Phaser.Scene {
     };
     mkLine('start', 0, 0.45);
     mkLine('finish', TRACK_LEN, 0.9);
+    {
+      // 결승선 깃발 (관중석 앞)
+      const tex = this.textures.get('flag').getSourceImage();
+      const fh = this.bgH * 0.62;
+      const img = this.add.image(0, this.bgH + 3, 'flag').setOrigin(0.1, 1).setDepth(5);
+      img.setScale(fh / tex.height);
+      this.lineSprites.push({ x: TRACK_LEN, img });
+    }
     for (let m = 10; m < TRACK_LEN; m += 10) {
-      const mw = Math.min(64, this.bgH * 0.5);
+      const mw = Math.min(58, this.bgH * 0.56);
       const tex = this.textures.get('marker').getSourceImage();
       const img = this.add.image(0, this.bgH + 2, 'marker').setOrigin(0.5, 1).setDepth(5);
       img.setScale(mw / tex.width);
       const mh = (mw / tex.width) * tex.height;
-      const text = this.text(0, 0, `${m}m`, Math.max(11, Math.round(mw * 0.26))).setDepth(6);
-      this.lineSprites.push({ x: m, img, text, dy: this.bgH + 2 - mh * 0.62 });
+      const text = this.text(0, 0, `${m}m`, Math.max(11, Math.round(mw * 0.27))).setDepth(6);
+      this.lineSprites.push({ x: m, img, text, dy: this.bgH + 2 - mh * 0.66 });
     }
 
     // 방해물: 4개 레인에 같은 배치
@@ -195,7 +203,7 @@ export class RaceScene extends Phaser.Scene {
         const tex = img.texture.getSourceImage();
         const gy = this.groundY(row);
         if (o.kind === 'mudShort' || o.kind === 'mudLong') {
-          img.setOrigin(0, 0.5).setDisplaySize(o.len * this.ppm, this.laneH * 0.28).setY(gy);
+          img.setOrigin(0, 0.5).setDisplaySize(o.len * this.ppm, Math.min(this.laneH * 0.34, ((o.len * this.ppm) / tex.width) * tex.height)).setY(gy);
         } else if (o.kind === 'boost') {
           const w = o.len * this.ppm * 1.15;
           img.setOrigin(0, 0.5).setDisplaySize(w, (w / tex.width) * tex.height).setY(gy);
@@ -251,8 +259,9 @@ export class RaceScene extends Phaser.Scene {
       let logSpr: Phaser.GameObjects.Image | null = null;
       if (logO) {
         logSpr = this.add.image(0, 0, 'log').setDepth(depth + 1);
-        const d = this.laneH * 0.46;
-        logSpr.setDisplaySize(d, d).setY(this.groundY(row) - d * 0.42);
+        const d = this.laneH * 0.5;
+        const lt = logSpr.texture.getSourceImage();
+        logSpr.setDisplaySize(d, (d / lt.width) * lt.height).setY(this.groundY(row) - d * 0.42);
       }
       this.actors.push({
         slot: r.slot, row, char: r.char, spr, shadow, label, labelText, labelBg, rankText, arrow, arrowText, arrowBg,
@@ -323,8 +332,11 @@ export class RaceScene extends Phaser.Scene {
         const vis = lx >= 0 && x > -60 && x < W + 80;
         a.logSpr.setVisible(vis);
         if (vis) {
+          // 구르는 동안 통통 튀며 흔들린다
+          const roll = lx * 2.4;
           a.logSpr.x = x + a.logSpr.displayWidth * 0.3;
-          a.logSpr.rotation -= ((a.logLastX - lx) * this.ppm) / (a.logSpr.displayWidth * 0.5);
+          a.logSpr.y = this.groundY(a.row) - a.logSpr.displayHeight * 0.42 - (v.logX === undefined ? 0 : Math.abs(Math.sin(roll * 2)) * this.laneH * 0.07);
+          a.logSpr.rotation = v.logX === undefined ? 0 : Math.sin(roll * 2) * 0.16;
         }
         a.logLastX = lx;
       }
