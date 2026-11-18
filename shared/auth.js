@@ -121,14 +121,15 @@ export async function signIn(loginId, password) {
     throw new AuthError('아이디 또는 비밀번호가 맞지 않아요');
   }
   profileCache = null;
+  // 이 브라우저를 '지금 접속한 곳'으로 올린다 → 다른 기기에 로그인돼 있던 같은 계정은 곧 로그아웃된다
+  // (getCurrentUser보다 먼저: 거기서 시작하는 확인이 예전 표식을 다시 올리지 않게)
+  await claimSession(true);
   const user = await getCurrentUser();
   if (!user) {
-    await supabase.auth.signOut();
+    dropToken();
+    await supabase.auth.signOut({ scope: 'local' });
     throw new AuthError('회원 정보를 찾지 못했어요. 관리자에게 알려 주세요');
   }
-  // 이 브라우저를 '지금 접속한 곳'으로 올린다 → 다른 기기에 로그인돼 있던 같은 계정은 곧 로그아웃된다
-  await claimSession(true);
-  watchSession();
   return user;
 }
 
@@ -177,8 +178,11 @@ let myToken = null;
 async function claimSession(fresh) {
   myToken = (!fresh && readToken()) || newToken();
   const { error } = await supabase.rpc('claim_session', { p_token: myToken });
-  // 서버에 아직 함수가 없거나 통신이 안 되면 막지 않는다
-  if (error) myToken = null;
+  // 서버에 아직 함수가 없거나 통신이 안 되면 막지 않는다 (표식도 지워 다음에 다시 올린다)
+  if (error) {
+    myToken = null;
+    dropToken();
+  }
 }
 
 /** 다른 곳에서 로그인해서 밀려났다는 표시를 한 번 꺼낸다 (로그인 화면이 안내에 쓴다) */
@@ -206,11 +210,11 @@ async function checkSession() {
   if (!uid) return;
   const { data, error } = await supabase.from('user_sessions').select('token').eq('user_id', uid).maybeSingle();
   if (error || !watching) return; // 못 읽으면 다음에 다시
-  // 같은 브라우저의 다른 탭이 새로 로그인했으면 그 표식을 따라간다
+  // 같은 브라우저의 다른 탭이 새로 로그인했으면 그 표식을 따라간다 (내 표식을 서버에 올리지 못한 상태면 비교하지 않는다)
   const local = readToken();
-  if (local) myToken = local;
-  if (!data) return void claimSession(false); // 아직 올린 적이 없다 (이 기능 전부터 로그인해 있던 경우)
-  if (!myToken || data.token === myToken) return;
+  if (local && myToken) myToken = local;
+  if (!data || !myToken) return void claimSession(false); // 아직 올린 적이 없다 (이 기능 전부터 로그인해 있던 경우 · 올리기에 실패했던 경우)
+  if (data.token === myToken) return;
   // 다른 기기에서 로그인했다 → 이 브라우저만 로그아웃
   stopWatch();
   profileCache = null;
@@ -234,8 +238,13 @@ function watchSession() {
 /** 로그인돼 있는 페이지에서: 표식이 없으면 올리고(예전부터 로그인해 있던 브라우저), 지켜보기 시작 */
 async function ensureSession() {
   if (watching) return;
-  myToken = readToken();
-  if (!myToken) await claimSession(false);
+  const first = async () => {
+    myToken = readToken();
+    if (!myToken) await claimSession(false);
+  };
+  // 같은 브라우저의 탭들이 동시에 처음 올리면 서로 다른 표식이 생긴다 → 한 탭씩 차례로 (먼저 한 탭의 표식을 같이 쓴다)
+  if (navigator.locks?.request) await navigator.locks.request('sia-world-session', first).catch(first);
+  else await first();
   watchSession();
   void checkSession();
 }
