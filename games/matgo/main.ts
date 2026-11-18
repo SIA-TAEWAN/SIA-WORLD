@@ -1,7 +1,7 @@
 /** 시아맞고 화면: 상대(위) · 바닥(가운데) · 나(아래). 손패를 눌러 내고, 고르기·고/스톱은 아래 버튼 */
 import { bootGame, esc, sfx, type GameUI, type TableCtx, type TrackOpts } from '../lib/shell.ts';
 import { worldRoot } from '../lib/world.ts';
-import { cardBack, clamp, label, tc, theme, viewSize } from '../lib/cards.ts';
+import { cardBack, clamp, label, sweepTable, tc, theme, viewSize } from '../lib/cards.ts';
 import { CARDS, cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
@@ -28,6 +28,8 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   const line = Math.max(T.SHAPE.lineThin, w * 0.03);
   const depth = Math.max(2, w * 0.045);
   const c = scene.add.container(x, y - (opts.lift ? w * 0.14 : 0));
+  // 판 정리 때 모을 수 있게 표시
+  c.setData('kind', 'card');
   const g = scene.add.graphics();
   // 고를 수 있는 패: 노란 테두리로 강조
   if (opts.glow) {
@@ -751,6 +753,8 @@ function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]
 }
 
 let shake = false;
+/** 더미 자리 (판 정리 때 패를 이리로 모은다) */
+let pilePos = { x: 0, y: 0 };
 /** 방금 누른 내 패 (서버 답이 오기 전에 누른 것이 바로 보이게) */
 let picked: string | null = null;
 
@@ -872,6 +876,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       t.track(back, `opp:${i}`, { from: L.pile, delay: dealing ? (i * 2 + 1) * DEAL_GAP : 0 });
     }
     const pile = L.pile;
+    pilePos = pile;
     const myHand = { x: W * 0.6, y: L.handPos(0, 10).y };
     const srcOf = (id: string, pl: CardPlan) => (pl.src === 'pile' ? pile : pl.seat === me ? (t.lastPos(id) ?? myHand) : L.oppHand);
     // 내가 낸 패는 이미 눌러서 올려 둔 패라 빨리 내려앉는다 (0.22초. 다른 움직임은 0.56초)
@@ -1062,6 +1067,11 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   },
 
   // 컷인은 그 사건이 든 차례의 연출에 맞춰 띄운다 (내 뻑이 상대 차례 연출까지 끝난 뒤에 뜨지 않게)
+  // 판 정리 (점수를 확인한 뒤): 바닥·먹은 패·손패를 더미로 차례로 모은다 (더미에서 가까운 패부터) → 끝나면 레디
+  cleanup(t: Ctx) {
+    return sweepTable(t.scene, pilePos, { stagger: 22, dur: 300, onStart: (i) => i % 5 === 0 && sfx('deal', { volume: 0.45 }) });
+  },
+
   cutinDelay(ev) {
     const base = eventBase.get(ev.id);
     if (base === undefined) return null;
