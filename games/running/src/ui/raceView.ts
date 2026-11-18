@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TRACK_LEN } from '../game/constants';
+import { END_AFTER_GO, TRACK_LEN } from '../game/constants';
 import { formatTime, livePlace } from '../game/ranking';
 import type { StartMsg } from '../net/room';
 import { RaceGame } from '../race/game';
@@ -160,7 +160,7 @@ export function showRace(start: StartMsg) {
     else setCut('', '');
 
     // 시간: 내가 도착하면 그 기록에서 멈춘다
-    const ms = mine?.finishMs ?? Math.max(0, Math.min(t, 60) * 1000);
+    const ms = mine?.finishMs ?? Math.max(0, Math.min(t, END_AFTER_GO) * 1000);
     const ts = formatTime(ms);
     if (ts !== lastTime) {
       lastTime = ts;

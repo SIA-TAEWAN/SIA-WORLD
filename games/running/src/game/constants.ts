@@ -56,8 +56,8 @@ export const SAFE_START = 10;
 export const SAFE_END = 5;
 export const MIN_GAP = 6;
 
-/** 판마다 놓는 개수 (합 18: 150m 트랙) */
-export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 4, banana: 3, log: 2, boost: 3, bar: 3 } as const;
+/** 판마다 놓는 개수 (합 18: 150m 트랙). 통나무는 화면·동기화가 하나만 다루므로 1개 */
+export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 5, banana: 3, log: 1, boost: 3, bar: 3 } as const;
 
 /** 경기 끝: 1등 도착 뒤 15초 또는 출발(GO) 뒤 90초 */
 export const END_AFTER_FIRST = 15;

@@ -55,7 +55,7 @@ function localGo(): GoInfo {
   return { round: Math.floor(now / 1000) % 100000000, readyAt, goAt: readyAt + 1000 + Math.random() * 2000 };
 }
 
-const bestKey = (uid: string) => `siarace:best:${uid}`;
+const bestKey = (uid: string) => `siarace:best150:${uid}`;
 function readLocalBest(uid: string): number | null {
   try {
     const n = Number(localStorage.getItem(bestKey(uid)));

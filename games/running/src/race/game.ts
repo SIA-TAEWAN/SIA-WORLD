@@ -361,8 +361,9 @@ export class RaceGame {
       const tk = Number(m.tk) || 0;
       for (let i = 0; i < LANES; i++) if (tk & (1 << i)) this.applyTakeover(i);
       for (const p of m.s as number[][]) {
-        const slot = p[0];
-        if (!(slot >= 0 && slot < LANES)) continue;
+        const slot = p?.[0];
+        // 네트워크 값 검사: 자리 번호는 정수, 위치·속도는 유한한 수만
+        if (!Number.isInteger(slot) || slot < 0 || slot >= LANES || !Number.isFinite(p[1]) || !Number.isFinite(p[2])) continue;
         // 자기 자리는 그 사람만, AI 자리는 기준 기기만 보낸다
         const owner = this.roster[slot].id;
         if (owner && !this.taken[slot] && owner !== m.f) continue;

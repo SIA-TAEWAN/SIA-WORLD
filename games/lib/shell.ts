@@ -893,7 +893,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       if (c) {
         // 판은 시작됐는데 새 판의 상태가 아직 안 왔다 (지난 판 화면이 남아 있다): 지난 판의 '○○ 차례' 대신 안내
         if (!c.pub || (c.pub as { result?: unknown }).result) {
-          el.innerHTML = '<p class="msg">새 판을 준비하는 중…</p>';
+          el.innerHTML = `<p class="msg">${c.pub ? '판 정리 중이에요…' : '새 판을 준비하는 중…'}</p>`;
           return;
         }
         c.busy = busy;
@@ -1244,10 +1244,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         ctlHold = !keep;
         itemApplied = false;
         // 이 상태에서 내 차례가 오면 내 시간(서버 마감)이 줄지 않게 조금 빨리
-        const quick = (ms: number) => (myNext ? Math.min(ms, 500) : ms);
+        // 내 시간이 많이 줄었으면 (서버 마감까지 12초 미만) 남은 연출은 기다리지 않고 바로 버튼을 켠다
+        const dl = myNext && item.s.turn_deadline ? Date.parse(item.s.turn_deadline) : 0;
+        const hurry = () => !!dl && dl - Date.now() < 12000;
+        const quick = (ms: number) => (hurry() ? Math.min(ms, 100) : myNext ? Math.min(ms, 500) : ms);
+        const waitA = async () => {
+          if (!hurry()) await waitAnim();
+        };
         const gapOf = (step: ReplayStep) => quick(step.gap ?? (step.after ? 800 : isAiStep(step) ? 800 : 350));
         // 앞 상태의 카드 연출이 끝난 뒤에 시작
-        await waitAnim();
+        await waitA();
         if (closed) return;
         let afterAt = 0;
         const markAfter = () => {
@@ -1284,7 +1290,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             showFrame(frames[0]);
             playBanner('새 판 시작!');
             await sleep(quick(900));
-            await waitAnim();
+            await waitA();
           }
           for (let i = 0; i < item.events.length && !stale(); i++) {
             const step = stepOf(item.events[i]);
@@ -1292,7 +1298,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             if (step && !step.after) tryStep(step);
             if (i === item.events.length - 1) apply();
             else showFrame(frames[i + 1]);
-            await waitAnim();
+            await waitA();
             if (stale()) break;
             if (step?.after) {
               markAfter();
@@ -1313,7 +1319,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             apply();
             playBanner('새 판 시작!');
             await sleep(quick(700));
-            await waitAnim();
+            await waitA();
           }
           for (const step of pre) {
             if (stale()) break;
@@ -1322,7 +1328,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           }
           if (!stale() && !item.newRound) {
             apply();
-            await waitAnim();
+            await waitA();
           }
           // 카드가 다 놓인 뒤에 승패·정산을 하나씩
           for (const step of post) {
@@ -1373,6 +1379,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           repaint();
         }
         try {
+          // 재생하는 동안 방이 '대기'로 바뀌었으면 여기서 결과 창을 띄운다 (재생 중에는 방 갱신이 그리기를 미룬다)
+          paintResult();
           paintControls();
         } catch (e) {
           console.warn('controls', e);
