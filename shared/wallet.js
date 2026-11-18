@@ -26,7 +26,8 @@ async function call(fn, args) {
 
 /**
  * 지갑 확인(없으면 10,000 / 10,000으로 생성)
- * → { chips, nyang, chipsRefillsLeft, nyangRefillsLeft }
+ * → { chips, nyang, siaCoins, chipsRefillsLeft, nyangRefillsLeft }
+ *   siaCoins: 시아코인 (게임 한 판을 정상적으로 끝낼 때마다 서버가 1개씩 준다. 033_sia_coin.sql)
  */
 export const ensureWallet = () => call('ensure_wallet');
 

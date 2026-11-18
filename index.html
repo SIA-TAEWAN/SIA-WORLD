@@ -180,6 +180,8 @@
         <div class="pill"><span class="ic">💰</span>
           <span class="amt"><small>맞고 냥</small><b id="w-nyang">-</b><span class="left" id="l-nyang"></span></span>
           <button class="btn small refill" data-c="nyang" disabled>무료 충전</button></div>
+        <div class="pill"><span class="ic">🌟</span>
+          <span class="amt"><small>시아코인</small><b id="w-coins">-</b><span class="left">게임 한 판을 끝낼 때마다 1코인</span></span></div>
       </section>
       <p class="note" id="w-note"></p>
       <div class="games-head"><h2>게임</h2><button class="btn small" id="rank-btn">🏆 랭킹</button></div>
@@ -291,6 +293,7 @@
     let me = null;
     let wallet = null;
     function renderWallet() {
+      $('#w-coins').textContent = wallet ? formatAmount(wallet.siaCoins) : '-';
       for (const c of ['chips', 'nyang']) {
         $('#w-' + c).textContent = wallet ? formatAmount(wallet[c]) : '-';
         const left = wallet?.[c + 'RefillsLeft'];
