@@ -102,13 +102,15 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
           const stp = h.cards.length <= 3 ? hcw * 0.36 : (hcw * 0.72) / (h.cards.length - 1);
           const card = playingCard(scene, hx - hcw * 0.36 + ci * stp, y - ci * hcw * 0.05, c, hcw, { lift: active });
           const key = cardKey(s.seat, hi, ci, h.fromSplit);
+          // 제자리는 deal 전에 잰다 (deal은 날아오는 카드를 덱 자리로 옮겨 놓는다)
+          const home = { x: card.x, y: card.y };
           const cl = t.deal(card, key, c, shoe);
           land = Math.max(land, cl);
           // 처음 두 장: 스플릿하면 제 핸드 자리로 미끄러져 간다 (나눠 주는 중에는 자리만 기록)
           if (!h.fromSplit ? ci < 2 : ci === 0) {
             const was = lastWidth.get(key);
             lastWidth.set(key, hcw);
-            t.track(card, `mv:${key}`, { still: cl > 0, fromScale: was ? was / hcw : undefined, depth: 0 });
+            t.track(card, `mv:${key}`, { at: home, still: cl > 0, fromScale: was ? was / hcw : undefined, depth: 0 });
           }
         });
         const tot = `${h.total}${h.soft && h.total <= 21 ? 's' : ''}`;

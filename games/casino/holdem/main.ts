@@ -108,7 +108,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       const [x, y] = spots[!portrait && order.length === 2 && rel === 1 ? 2 : rel];
       const me = s.seat === t.mySeat;
       const sd = shown.get(s.seat);
-      const cards: (string | null)[] = sd ? sd.cards : me && t.priv ? t.priv.hole : s.excluded ? [] : Array(s.holeCount).fill(null);
+      // 내 패가 아직 안 왔으면 그리지 않는다 (뒷면으로 먼저 받으면 패가 온 뒤 얇게 뒤집힌다) → 오면 딜러에게서 앞면으로 한 장씩 받는다
+      const cards: (string | null)[] = sd ? sd.cards : me && t.priv ? t.priv.hole : s.excluded || (me && t.privWait) ? [] : Array(s.holeCount).fill(null);
       const w = me ? cw : oc;
       const gap = w * (me ? 0.78 : 0.5);
       const best = new Set(sd?.best ?? []);

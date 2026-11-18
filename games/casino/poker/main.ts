@@ -93,6 +93,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       const gone = choosing ? (sent?.discard ?? discard) : null;
       if (sd) cards = sd.cards;
       else if (me && t.priv) cards = choosing ? t.priv.choices.filter((c) => c !== gone) : [...t.priv.hidden.slice(0, 2), ...s.open, ...t.priv.hidden.slice(2)];
+      // 내 패가 아직 안 왔으면 그리지 않는다 (뒷면으로 먼저 받으면 패가 온 뒤 한 번 더 받는 연출이 나온다)
+      else if (me && t.privWait) cards = [];
       else cards = [...Array(Math.min(2, s.hiddenCount)).fill(null), ...s.open, ...Array(Math.max(0, s.hiddenCount - 2)).fill(null)];
       const w = me ? cw : oc;
       const gap = w * (me ? 0.72 : 0.4);
@@ -119,8 +121,10 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         if (opening) label(scene, cx, y - w * 0.98, '공개', clamp(w * 0.22, 13, 20), tc('primary'));
         if (me && c) {
           // 내 카드는 카드마다 따라간다: 버리고 고른 뒤 남은 카드가 새 자리로 미끄러져 간다 (순번으로 따라가면 엉뚱한 카드가 뒤집힌다)
-          t.deal(card, `${s.seat}:c:${c}`, c, deck);
-          t.track(card, `pk:${c}`, { still: choosing && !gone, depth: 0 });
+          // 제자리는 deal 전에 잰다 (deal은 날아오는 카드를 덱 자리로 옮겨 놓는다)
+          const home = { x: card.x, y: card.y };
+          const landAt = t.deal(card, `${s.seat}:c:${c}`, c, deck);
+          t.track(card, `pk:${c}`, { at: home, still: landAt > 0 || (choosing && !gone), depth: 0 });
         } else t.deal(card, `${s.seat}:${ci}`, c, deck);
         if (picking && c) {
           card.setSize(w, w * 1.42).setInteractive({ useHandCursor: true });

@@ -42,6 +42,11 @@ export interface TableCtx<P = any, Q = any> {
   resultSeat: number | null;
   pub: P | null;
   priv: Q | null;
+  /**
+   * 이번 판의 내 패(비공개 상태)가 아직 안 왔다 (공개 상태가 먼저 도착한 잠깐 동안).
+   * 이때 내 카드를 뒷면으로 먼저 그리면, 패가 온 뒤 다시 받거나 얇게 뒤집히는 연출이 한 번 더 나온다 → 올 때까지 내 카드를 그리지 않는다.
+   */
+  privWait: boolean;
   pending: number[];
   /** 내가 지금 조작할 수 있다: 내 차례이고 앞선 연출(카드·칩·말풍선)이 다 끝났다. 조작 버튼은 이 값으로 켠다 */
   myTurn: boolean;
@@ -110,6 +115,8 @@ export interface TrackOpts {
   flip?: boolean;
   /** 날아가서 내려앉는 순간 한 번 (찰싹 효과 등). 경유점이 있으면 경유점에 내려앉을 때 */
   onLand?: () => void;
+  /** 카드의 제자리 (deal을 먼저 부른 뒤 track을 부를 때: deal 전에 잰 자리를 넘긴다. 없으면 지금 obj 자리) */
+  at?: { x: number; y: number };
   /** 자리만 기록하고 움직이지 않는다 (아직 나눠 주는 중인 카드: 받기 연출과 겹치지 않게) */
   still?: boolean;
   /** 겹치는 순서를 고정 (없으면 움직이는 동안 11, 멈추면 10). 그린 순서대로 겹쳐야 하는 패(블랙잭 핸드)는 0 */
@@ -661,6 +668,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (!scene || !room) return null;
     const mine = mySeatRow();
     const pending = st?.pending_seats ?? [];
+    // 먼저 계산한다: 미뤄 둔 내 패를 여기서 꺼내 쓸 수 있다 (아래 priv보다 앞서야 한다)
+    const privWait = privWaiting(!!mine);
     return {
       scene,
       Phaser,
@@ -672,6 +681,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       // 판이 끝났어도 그 판의 연출을 재생하는 중이면 마지막 상태까지 그대로 보여 준다
       pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length) && st?.round_no ? st.public_state : null,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
+      privWait,
       pending,
       myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no) && !ctlHold,
       act: async (payload) => {
@@ -723,8 +733,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           movesSnap.clear();
         }
         const now = performance.now();
-        const tx = obj.x;
-        const ty = obj.y;
+        // 제자리: 받기 연출(deal)이 이미 카드를 덱 쪽으로 옮겨 놓았을 수 있으니, 넘겨받은 자리가 있으면 그것을 쓴다
+        const tx = opts.at?.x ?? obj.x;
+        const ty = opts.at?.y ?? obj.y;
         const prev = moves.get(key);
         let rec = prev;
         const moved = prev && Math.abs(prev.x - tx) + Math.abs(prev.y - ty) > 3;
@@ -1248,6 +1259,27 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     return !r || !r.user_id || r.left_game;
   };
   /** 연출 중에 테이블 다시 그리기 (재생 중에는 paint가 테이블을 건너뛰므로) */
+  /** 내 패를 기다리는 중인가 (판마다 처음 본 때부터 최대 3초: 그래도 안 오면 뒷면으로라도 그린다) */
+  let privWaitRound = -1;
+  let privWaitSince = 0;
+  let privWaitTimer: ReturnType<typeof setTimeout> | null = null;
+  function privWaiting(seated: boolean): boolean {
+    if (!seated || !st || room?.status !== 'playing') return false;
+    if (priv && priv.round_no === st.round_no) return false;
+    // 연출 재생 중이라 미뤄 둔 내 패가 이번 판 것이면 바로 쓴다 (새 판 첫 패를 기다리게 하지 않는다)
+    if (pendingPriv && pendingPriv.round_no === st.round_no) {
+      priv = pendingPriv;
+      pendingPriv = undefined;
+      return false;
+    }
+    if (privWaitRound !== st.round_no) {
+      privWaitRound = st.round_no;
+      privWaitSince = performance.now();
+      if (privWaitTimer) clearTimeout(privWaitTimer);
+      privWaitTimer = setTimeout(() => !closed && paint(), 3100);
+    }
+    return performance.now() - privWaitSince < 3000;
+  }
   const repaint = () => {
     inApply = true;
     try {
