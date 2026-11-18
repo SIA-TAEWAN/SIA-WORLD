@@ -54,14 +54,45 @@ export const refill = (currency, baseUnit) => call('refill', { p_currency: curre
 export const RANKINGS = {
   casino: { label: '🪙 카지노', unit: '칩', base: START_AMOUNT, note: '보유 칩 순' },
   matgo: { label: '💰 맞고', unit: '냥', base: START_AMOUNT, note: '보유 냥 순' },
-  tank: { label: '💣 시아탱크', unit: 'P', base: 1000, note: '온라인 대전 포인트 순 (이기면 +100, 지면 -100)' },
+  tank: { label: '💣 시아탱크', unit: '승', base: 0, note: '온라인 대전 승수 순 (같으면 승률이 높은 사람이 위)', cloud: '1승도 없으면 구름' },
   target: { label: '🎯 백발백중', unit: '점', base: 0, note: '백발백중 최고 점수 순' },
 };
 
-/** 시아탱크 랭킹 (포인트 / 백발백중): 가입자는 닉네임, 아직 이어받지 않은 예전 기록은 예전 ID */
+/** 승률 (0~1). 한 판도 안 했으면 0 */
+export const winRate = (wins, losses) => (wins + losses > 0 ? wins / (wins + losses) : 0);
+
+/**
+ * 시아탱크 대전 랭킹: 승수 많은 순 → 승률 높은 순 → 패가 적은 순.
+ * amount는 줄 세우기용 값(승수 + 승률의 절반: 승수가 같으면 승률로 갈리고, 둘 다 같으면 같은 순위), text는 화면에 보일 글자.
+ */
+async function tankWinRanking(limit) {
+  const { data, error } = await supabase
+    .from('player_points')
+    .select('user_id,legacy_id,wins,losses,profiles(nickname)')
+    .order('wins', { ascending: false })
+    .limit(limit);
+  if (error) throw new WalletError('랭킹을 불러오지 못했어요');
+  return (data ?? [])
+    .map((r) => {
+      const wins = Number(r.wins) || 0;
+      const losses = Number(r.losses) || 0;
+      return {
+        key: r.user_id ?? `legacy:${r.legacy_id}`,
+        nickname: r.profiles?.nickname ?? r.legacy_id ?? '?',
+        wins,
+        losses,
+        amount: wins + winRate(wins, losses) / 2,
+        text: `${wins}승 ${losses}패`,
+      };
+    })
+    .sort((a, b) => b.amount - a.amount || a.losses - b.losses);
+}
+
+/** 시아탱크 랭킹 (대전 승패 / 백발백중): 가입자는 닉네임, 아직 이어받지 않은 예전 기록은 예전 ID */
 async function tankRanking(kind, limit) {
-  const table = kind === 'target' ? 'target_scores' : 'player_points';
-  const col = kind === 'target' ? 'best' : 'points';
+  if (kind !== 'target') return tankWinRanking(limit);
+  const table = 'target_scores';
+  const col = 'best';
   const { data, error } = await supabase
     .from(table)
     .select(`user_id,legacy_id,${col},profiles(nickname)`)
@@ -76,8 +107,8 @@ async function tankRanking(kind, limit) {
 }
 
 /**
- * 랭킹: game = 'casino'(칩) | 'matgo'(냥) | 'tank'(시아탱크 포인트) | 'target'(백발백중 최고 점수)
- * → [{ key: userId, nickname, amount }] 많은 순
+ * 랭킹: game = 'casino'(칩) | 'matgo'(냥) | 'tank'(시아탱크 대전 승패) | 'target'(백발백중 최고 점수)
+ * → [{ key: userId, nickname, amount, text? }] 높은 순 (text가 있으면 금액 대신 그 글자를 보여 준다)
  */
 export async function getRanking(game, limit = 500) {
   if (game === 'tank' || game === 'target') return tankRanking(game, limit);

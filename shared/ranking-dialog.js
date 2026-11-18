@@ -1,5 +1,5 @@
 // SIA WORLD 랭킹 창 (로비와 시아탱크가 같이 쓴다).
-//   탭: 💣 시아탱크(포인트) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수)
+//   탭: 💣 시아탱크(승패) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수)
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
 //   시아레이스만 기록 기준: 해 30.75초 이내 · 달 33초 이내 · 별 37.5초 이내 · 그 외 구름 (RACE_TIERS)
 //   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
@@ -161,7 +161,8 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     if (game === 'race') return showRace();
     if (game === 'volley') return showVolley();
     const info = RANKINGS[game];
-    $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${formatAmount(info.base)}${info.unit} 이하는 구름)`;
+    $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${info.cloud ?? `${formatAmount(info.base)}${info.unit} 이하는 구름`})`;
+    const amountText = (r) => r.text ?? `${formatAmount(r.amount)}${info.unit}`;
     $('.me-line').textContent = '불러오는 중…';
     $('table').innerHTML = '';
     try {
@@ -169,7 +170,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       if (shown !== game) return;
       const mine = meId ? rows.find((r) => r.key === meId) : null;
       $('.me-line').innerHTML = mine
-        ? `내 순위 <b>${mine.place}위</b> / ${rows.length}명 · ${tierSvg(mine.tier, 20)} · ${formatAmount(mine.amount)}${info.unit}`
+        ? `내 순위 <b>${mine.place}위</b> / ${rows.length}명 · ${tierSvg(mine.tier, 20)} · ${amountText(mine)}`
         : '아직 순위가 없어요';
       $('table').innerHTML =
         rows
@@ -177,7 +178,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           .map(
             (r) =>
               `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(r.tier, 26)}</td>` +
-              `<td class="nm">${esc(r.nickname)}</td><td class="am">${formatAmount(r.amount)}${info.unit}</td></tr>`,
+              `<td class="nm">${esc(r.nickname)}</td><td class="am">${esc(amountText(r))}</td></tr>`,
           )
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {

@@ -104,7 +104,7 @@ export function createSupabaseBackend(sb: SupabaseClient): Backend {
       const { data, error } = await sb
         .from('player_points')
         .select('user_id,legacy_id,points,wins,losses,profiles(nickname)')
-        .order('points', { ascending: false })
+        .order('wins', { ascending: false })
         .limit(1000);
       if (error) throw new Error(error.message);
       return ((data ?? []) as unknown as (RankRowDb & { points: number; wins: number; losses: number })[]).map((r) => ({
