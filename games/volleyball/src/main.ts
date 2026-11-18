@@ -1,12 +1,16 @@
 import './style.css';
-import { LOCAL_MODE } from './net/api';
+import { LOCAL_MODE, getApi } from './net/api';
+import { VolleyLobby } from './net/lobby';
+import { cleanRoomCode, validRoomCode } from './net/room';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { loadChar, loadEngine, nav, screen, state } from './ui/app';
-import { showCharSelect, showLobby } from './ui/menus';
+import { enterRoom, showCharSelect, showLobby, showWaiting } from './ui/menus';
 import { showResult } from './ui/result';
 
 nav.lobby = showLobby;
 nav.select = showCharSelect;
+nav.room = (code, title) => void enterRoom(code, title);
+nav.waiting = showWaiting;
 nav.match = (setup) => void loadEngine().then((m) => m.showMatch(setup));
 nav.result = showResult;
 
@@ -33,7 +37,7 @@ async function start() {
     if (LOCAL_MODE) user = localUser();
     else {
       const auth = await loadAuth();
-      // 로그인 안 했으면 SIA WORLD 로그인 화면으로 갔다가 이 주소로 돌아온다 (AI 대전도 로그인 필수)
+      // 로그인 안 했으면 SIA WORLD 로그인 화면으로 갔다가 이 주소(방 코드 포함)로 돌아온다 (AI 대전도 로그인 필수)
       user = await auth.requireLogin();
       auth.onSignedOut(() => location.replace(auth.loginUrl()));
     }
@@ -49,8 +53,14 @@ async function start() {
   }
   state.user = { id: user.userId, name: user.nickname };
   state.char = loadChar();
-  // 3단계: 여기서 대기실 채널에 들어가고, 주소에 방 코드(?room=)가 있으면 그 방으로 바로 간다
-  nav.lobby();
+  state.api = await getApi();
+  // 대기실 채널: 방 목록을 받고, 내가 들어간 방을 알린다 (연결을 기다리지 않는다)
+  state.lobby = new VolleyLobby(state.api, state.user);
+  void state.lobby.join();
+  // 주소에 방 코드가 있으면 바로 그 방으로 (친구가 보낸 방 링크)
+  const code = cleanRoomCode(new URLSearchParams(location.search).get('room'));
+  if (validRoomCode(code)) nav.room(code);
+  else nav.lobby();
 }
 
 void start();

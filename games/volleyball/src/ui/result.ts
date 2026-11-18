@@ -1,42 +1,111 @@
 import type { MatchResult } from '../match/game';
 import { zodiacFaceUrl } from '../assets';
-import { esc, nav, screen } from './app';
+import { esc, leaveRoom, nav, screen, state } from './app';
 import { aiSetup } from './menus';
 import { sfx } from './sfx';
 
-/** 결과 화면: 승/패, 점수, [다시하기] · [로비로]. AI전은 '연습 경기'로 표시 */
+/**
+ * 결과 화면: 승/패, 점수, [다시하기] · [로비로].
+ * - AI전은 '연습 경기'로 표시하고, 다시하기를 누르면 바로 새 경기.
+ * - 온라인: 두 사람 모두 다시하기를 누르면 같은 방에서 바로 재경기. 상대가 나가면 남은 사람은 그 방의 대기 상태로.
+ */
 export function showResult(result: MatchResult) {
-  const { setup, score, winner } = result;
+  const { setup, score, winner, reason } = result;
   const me = setup.mySide;
   const won = winner === me;
+  const online = setup.mode === 'online';
+  const room = online ? state.room : null;
+  let off: (() => void) | null = null;
   const row = (s: 0 | 1) => {
     const f = setup.fighters[s];
     return `<div class="vs-side s${s} ${s === winner ? 'win' : ''}"><img class="av" src="${zodiacFaceUrl(f.char)}" alt="" />
       <span class="nm">${esc(f.name)}</span><span class="wl">${s === winner ? '승' : '패'}</span></div>`;
   };
+  const note = !online
+    ? '연습 경기는 랭킹·전적에 기록되지 않아요'
+    : reason === 'leave'
+      ? won
+        ? '상대가 나가서 이겼어요'
+        : '연결이 끊겨서 졌어요'
+      : '';
   const root = screen(
     `<div class="result-card ${won ? 'won' : 'lost'}">
       <h2>🏐 경기 결과</h2>
-      ${setup.mode === 'ai' ? '<p class="kind"><span class="tag">연습 경기</span></p>' : ''}
+      ${online ? '' : '<p class="kind"><span class="tag">연습 경기</span></p>'}
       <p class="verdict">${won ? '승리!' : '패배…'}</p>
       <div class="vs">${row(0)}<div class="vs-score"><b>${score[0]}</b><i>:</i><b>${score[1]}</b></div>${row(1)}</div>
-      ${setup.mode === 'ai' ? '<p class="soft note">연습 경기는 랭킹·전적에 기록되지 않아요</p>' : ''}
+      <p class="soft note" id="note">${note}</p>
+      <p class="again-st" id="again-st"></p>
       <div class="actions"><button class="btn" id="exit">로비로</button><button class="btn primary" id="again">다시하기 ▶</button></div>
     </div><div class="cheer" id="cheer"></div>`,
     'result',
     'result',
+    () => off?.(),
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
   sfx(won ? 'win' : 'lose', { delay: 150 });
   if (won) confetti($('#cheer'));
 
-  $('#again').addEventListener('click', () => {
-    sfx('click');
-    // AI 대전: 같은 캐릭터로 바로 다시 (상대는 새로 뽑는다). 3단계: 두 사람 모두 누르면 같은 방에서 재경기
-    nav.match(aiSetup(setup.fighters[me].char));
+  if (!online) {
+    $('#again').addEventListener('click', () => {
+      sfx('click');
+      // AI 대전: 같은 캐릭터로 바로 다시 (상대는 새로 뽑는다)
+      nav.match(aiSetup(setup.fighters[me].char));
+    });
+    $('#exit').addEventListener('click', () => {
+      sfx('click');
+      nav.lobby();
+    });
+    return;
+  }
+
+  // ---------- 온라인: 다시하기 = 이 방에서 레디. 둘 다 누르면 방장이 바로 시작을 알린다 ----------
+  const btn = $<HTMLButtonElement>('#again');
+  const st = $('#again-st');
+  const paint = () => {
+    if (!room || state.room !== room) {
+      st.textContent = '';
+      btn.textContent = '로비로 ▶';
+      return;
+    }
+    const opp = room.opponent();
+    if (!opp) {
+      // 상대가 나갔다: 남은 사람은 이 방에서 다음 상대를 기다릴 수 있다
+      st.textContent = '상대가 방에서 나갔어요';
+      st.className = 'again-st';
+      btn.textContent = '게임방으로 ▶';
+      btn.classList.add('primary');
+      return;
+    }
+    btn.textContent = room.ready ? '다시하기 취소' : '다시하기 ▶';
+    btn.classList.toggle('primary', !room.ready);
+    st.className = `again-st ${opp.ready ? 'on' : ''}`;
+    st.textContent = opp.ready
+      ? room.ready
+        ? '곧 시작해요!'
+        : `${opp.name} 님이 다시하기를 눌렀어요!`
+      : room.ready
+        ? `${opp.name} 님을 기다리는 중…`
+        : '둘 다 다시하기를 누르면 바로 시작해요';
+  };
+  if (room) off = room.onChange(paint);
+  paint();
+  btn.addEventListener('click', () => {
+    if (!room || state.room !== room) {
+      sfx('click');
+      return nav.lobby();
+    }
+    if (!room.opponent()) {
+      sfx('click');
+      if (room.ready) room.setReady(false);
+      return nav.waiting();
+    }
+    sfx(room.ready ? 'click' : 'toggle');
+    room.setReady(!room.ready);
   });
   $('#exit').addEventListener('click', () => {
     sfx('click');
+    leaveRoom();
     nav.lobby();
   });
 }

@@ -4,11 +4,13 @@ import {
 } from '../game/constants';
 import type { Side } from '../game/sim';
 import type { Match, MatchEvent } from '../match/game';
-import { COLOR, FONT, css } from '../theme';
+import { COLOR, FONT, ROULETTE, css } from '../theme';
 import { BALL_TEX, ensureArt, preloadArt, zKey } from './art';
 
 export interface SceneData {
   match: Match;
+  /** 배경 번호 0~2 (지금은 하늘 색만 다르다. 5단계에서 그림으로) */
+  bg: number;
   /** 경기장 한 칸(720 기준 1px)이 캔버스 몇 픽셀인가 (화면 배율 × 기기 픽셀 배율) */
   zoom: number;
   sfx: (name: string, opts?: { volume?: number; rate?: number }) => void;
@@ -18,6 +20,13 @@ export interface SceneData {
 
 /** 자리 색: 왼쪽 파랑, 오른쪽 빨강 (DESIGN.md 팀 색) */
 export const SIDE_COLOR = [COLOR.teamA, COLOR.teamB] as const;
+
+/** 배경 번호 → 하늘 색 [위, 아래] */
+const BG_SKY: readonly (readonly [number, number])[] = [
+  [COLOR.skyTop, COLOR.skyMid],
+  [ROULETTE.spring, COLOR.skyBottom],
+  [COLOR.skyMid, ROULETTE.autumn],
+];
 
 /** 캐릭터 그림 높이 (충돌 원 지름 72보다 조금 크게) */
 const CHAR_H = 86;
@@ -46,6 +55,7 @@ export class CourtScene extends Phaser.Scene {
   private sfx!: SceneData['sfx'];
   private onFrame!: SceneData['onFrame'];
   private zoom = 1;
+  private bg = 0;
   private ball!: Phaser.GameObjects.Image;
   private ballShadow!: Phaser.GameObjects.Image;
   private actors: Actor[] = [];
@@ -59,6 +69,7 @@ export class CourtScene extends Phaser.Scene {
   init(d: SceneData) {
     this.match = d.match;
     this.zoom = d.zoom;
+    this.bg = d.bg;
     this.sfx = d.sfx;
     this.onFrame = d.onFrame;
     this.actors = [];
@@ -123,7 +134,9 @@ export class CourtScene extends Phaser.Scene {
   /** 경기장 배경·벽·바닥·네트 (임시 그림: DESIGN.md 색의 도형) */
   private drawCourt() {
     const g = this.add.graphics().setDepth(0);
-    g.fillGradientStyle(COLOR.skyTop, COLOR.skyTop, COLOR.skyMid, COLOR.skyMid, 1).fillRect(0, 0, COURT_W, FLOOR_Y);
+    // 배경 3종 (임시: 하늘 색만 다르다. DESIGN.md 의 하늘·계절 색)
+    const [top, bottom] = BG_SKY[this.bg] ?? BG_SKY[0];
+    g.fillGradientStyle(top, top, bottom, bottom, 1).fillRect(0, 0, COURT_W, FLOOR_Y);
     for (const [x, y, s, a] of [[150, 150, 1, 0.9], [520, 250, 0.8, 0.8], [330, 90, 0.6, 0.7]]) this.add.image(x, y, 'cloud').setScale(s).setAlpha(a).setDepth(1);
     // 코트 구분: 왼쪽 파랑·오른쪽 빨강을 옅게
     const tint = this.add.graphics().setDepth(2);

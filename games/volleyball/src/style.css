@@ -119,6 +119,32 @@ button, input { font: inherit; color: inherit; }
 .room .grow { flex: 1; min-height: 4px; }
 .room .btn.big { width: 100%; flex: none; }
 
+/* ---------- 게임방 (1:1) ---------- */
+.room .invite { display: flex; align-items: center; gap: 8px; }
+.room .invite .code { flex: 1; min-width: 0; font-size: 15px; }
+.room .invite .code b { font-weight: normal; color: var(--accent); font-size: 19px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.duo { display: flex; align-items: center; gap: 8px; }
+.duo .vs-mark { flex: none; font-size: 22px; color: var(--ink-soft); }
+.duo .seat { position: relative; flex: 1 1 0; min-width: 0; background: var(--white); border: var(--line) solid var(--team-a); border-radius: var(--radius-button); padding: 8px 4px 6px; text-align: center; }
+.duo .seat.s1 { border-color: var(--team-b); }
+.duo .seat.me { background: var(--panel-strong); box-shadow: inset 0 0 0 3px var(--primary); }
+.duo .seat.empty { border: var(--line-thin) dashed var(--empty-line); color: var(--ink-soft); }
+.duo .seat .av { width: 64px; height: 64px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; display: block; margin: 0 auto; }
+.duo .seat .av.blank { display: grid; place-items: center; border-style: dashed; border-color: var(--empty-line); font-size: 26px; color: var(--empty-line); }
+.duo .seat .nm { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
+.duo .seat .st { font-size: 13px; color: var(--ink-soft); }
+.duo .seat .st.on { color: var(--win); }
+.duo .seat .host { position: absolute; top: -10px; left: -4px; font-size: 18px; }
+.lobby .main-actions.two { flex-direction: row; }
+.lobby .main-actions.two .btn { flex: 1 1 0; min-width: 0; }
+.lobby .main-actions.two .btn.primary { flex: 1.5 1 0; }
+.field { width: 100%; font-size: 18px; padding: 9px 12px; background: var(--white); border: var(--line) solid var(--outline); border-radius: var(--radius-item); outline: none; user-select: text; -webkit-user-select: text; }
+.field:focus { background: var(--panel-strong); }
+.waitbox { position: absolute; left: 50%; top: 62%; transform: translate(-50%, -50%); z-index: 6; width: max-content; max-width: 88%; text-align: center; background: var(--panel); border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); padding: 12px 18px; font-size: 18px; }
+.waitbox small { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+.again-st { text-align: center; margin: 10px 0 0; min-height: 22px; font-size: 15px; color: var(--ink-soft); }
+.again-st.on { color: var(--win); }
+
 /* ---------- AI 대전: 캐릭터 고르기 ---------- */
 .pick { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 0; overflow: hidden; }
 .pick-stage { align-self: stretch; margin: 0 -12px; height: clamp(120px, 24vh, 210px); background: var(--sky-mid); border-bottom: var(--line) solid var(--outline); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; overflow: hidden; }

@@ -2,9 +2,11 @@ import Phaser from 'phaser';
 import { COURT_H, COURT_W, WIN_SCORE } from '../game/constants';
 import type { Side } from '../game/sim';
 import { Match, type MatchEvent, type MatchSetup } from '../match/game';
+import { OnlineMatch } from '../match/online';
+import { serverNow } from '../net/api';
 import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
-import { esc, nav, openSettings, screen, stage } from './app';
+import { esc, leaveRoom, nav, openSettings, screen, stage, state } from './app';
 import { DPR } from './dpr';
 import { sfx } from './sfx';
 
@@ -12,6 +14,8 @@ declare global {
   interface Window {
     /** 점검용: 지금 진행 중인 경기 */
     __match?: Match;
+    /** 점검용: 방금 끝난 온라인 경기의 동기화 수치 */
+    __lastStats?: unknown;
   }
 }
 
@@ -19,7 +23,10 @@ type Btn = 'left' | 'right' | 'jump';
 
 /** 경기 화면: 위에서부터 점수판 160 · 경기장 840 · 조작 280 (세로 720×1280 기준) */
 export function showMatch(setup: MatchSetup) {
-  const match = new Match(setup);
+  const online = setup.mode === 'online';
+  const room = online ? state.room : null;
+  if (online && !room) return nav.lobby();
+  const match: Match = room ? new OnlineMatch(setup, room, serverNow) : new Match(setup);
   window.__match = match;
   const me = match.mySide;
 
@@ -38,9 +45,9 @@ export function showMatch(setup: MatchSetup) {
   const root = screen(
     `<div class="score">${side(0)}
       <div class="mid"><div class="mid-btns"><button class="icon-btn" id="quit" aria-label="나가기">✕</button><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
-        <div class="speed" id="speed">${setup.mode === 'ai' ? '연습 경기' : ''}</div></div>
+        <div class="speed" id="speed">${online ? '' : '연습 경기'}</div></div>
       ${side(1)}</div>
-    <div class="court" id="court"><div class="cutin" id="cutin"></div></div>
+    <div class="court bg${setup.bg}" id="court"><div class="cutin" id="cutin"></div><div class="waitbox hidden" id="waitbox"></div></div>
     <div class="pad" id="pad">
       <div class="pad-move"><div class="pbtn" data-b="left">◀</div><div class="pbtn" data-b="right">▶</div></div>
       <div class="pbtn jump" data-b="jump">점프</div>
@@ -54,6 +61,7 @@ export function showMatch(setup: MatchSetup) {
       ro?.disconnect();
       if (resultTimer) clearTimeout(resultTimer);
       if (cutTimer) clearTimeout(cutTimer);
+      match.dispose();
       game?.destroy(true);
       game = null;
       if (window.__match === match) delete window.__match;
@@ -64,6 +72,7 @@ export function showMatch(setup: MatchSetup) {
   const pad = $('#pad');
   const cutin = $('#cutin');
   const speedEl = $('#speed');
+  const waitbox = $('#waitbox');
   const btnEls: Record<Btn, HTMLElement> = { left: $('[data-b="left"]'), right: $('[data-b="right"]'), jump: $('[data-b="jump"]') };
 
   // ---------- 조작: 키보드 + 터치(여러 손가락) → match.input ----------
@@ -144,16 +153,25 @@ export function showMatch(setup: MatchSetup) {
   $('#quit').addEventListener('click', () => {
     sfx('click');
     releaseAll();
-    match.paused = true;
+    // 온라인 경기는 멈출 수 없다 (창이 떠 있어도 계속 진행)
+    if (!online) match.paused = true;
     const dim = document.createElement('div');
     dim.className = 'dim';
-    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">연습 경기라 기록은 남지 않아요</p>
+    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online ? '지금 나가면 진 것으로 기록돼요' : '연습 경기라 기록은 남지 않아요'}</p>
       <div class="actions"><button class="btn" data-no>계속하기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
       if (el.closest('[data-yes]')) {
         sfx('click');
         dim.remove();
+        if (match.phase !== 'over') {
+          // 온라인: 상대에게 알리고(상대 승리) 방에서도 나간다
+          match.quit();
+          if (room) {
+            room.matchOver(setup.matchNo ?? 0);
+            leaveRoom();
+          }
+        }
         nav.lobby();
       } else if (el === dim || el.closest('[data-no]')) {
         sfx('click');
@@ -165,11 +183,23 @@ export function showMatch(setup: MatchSetup) {
   });
   $('#settings').addEventListener('click', () => {
     releaseAll();
+    if (online) return openSettings();
     match.paused = true;
     openSettings(() => (match.paused = false));
   });
 
   match.onOver = (result) => {
+    // 방은 대기 상태로 돌아간다 (방 목록의 '경기중' 표시도 풀린다)
+    room?.matchOver(setup.matchNo ?? 0);
+    if (match instanceof OnlineMatch) window.__lastStats = { side: me, ...match.stats };
+    stage.querySelector('.dim')?.remove();
+    if (result.reason === 'leave') {
+      const won = result.winner === me;
+      setCut(`${won ? '승리!' : '패배…'}<small>${won ? '상대가 나갔어요' : '연결이 끊겼어요'}</small>`, won ? 'go' : 'bad');
+      cutin.dataset.k = 'over';
+      sfx(won ? 'goal' : 'bust');
+      releaseAll();
+    }
     resultTimer = setTimeout(() => nav.result(result), 1800);
   };
 
@@ -200,7 +230,14 @@ export function showMatch(setup: MatchSetup) {
   }
 
   // ---------- 매 프레임: 이번에 생긴 일을 점수판·큰 글자에 반영 ----------
+  let lastWait = 0;
   function frame(events: MatchEvent[]) {
+    // 상대 연결을 기다리는 중 (10초가 지나면 내가 이긴다)
+    if (match.waitingSec !== lastWait) {
+      lastWait = match.waitingSec;
+      waitbox.classList.toggle('hidden', lastWait <= 0);
+      if (lastWait > 0) waitbox.innerHTML = `상대 연결을 기다리는 중…<small>${lastWait}초 뒤에도 돌아오지 않으면 내가 이겨요</small>`;
+    }
     for (const e of events) {
       switch (e.t) {
         case 'count':
@@ -214,7 +251,7 @@ export function showMatch(setup: MatchSetup) {
             setCut('');
             delete cutin.dataset.k;
           }
-          speedEl.textContent = setup.mode === 'ai' ? '연습 경기' : '';
+          speedEl.textContent = online ? '' : '연습 경기';
           speedEl.classList.remove('fast');
           break;
         case 'speedup':
@@ -262,7 +299,7 @@ export function showMatch(setup: MatchSetup) {
       render: { antialias: true, powerPreference: 'high-performance' },
       scene: [],
     });
-    const data: SceneData = { match, zoom: (w * DPR) / COURT_W, sfx: (name, opts) => sfx(name, opts), onFrame: frame };
+    const data: SceneData = { match, bg: setup.bg, zoom: (w * DPR) / COURT_W, sfx: (name, opts) => sfx(name, opts), onFrame: frame };
     game.scene.add('court', CourtScene, true, data);
     let last = w;
     let timer: ReturnType<typeof setTimeout> | null = null;

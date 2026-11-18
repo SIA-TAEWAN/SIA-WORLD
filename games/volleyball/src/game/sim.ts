@@ -219,6 +219,15 @@ function control(p: PlayerState, side: Side, input: Input, ev?: SimEvent[]) {
 }
 
 /**
+ * 캐릭터 한 명만 한 틱 움직인다 (공 없이). 온라인에서 상대가 보낸 위치를 지금 시각까지 이어 그릴 때 쓴다.
+ * step() 안의 캐릭터 움직임과 똑같다.
+ */
+export function stepPlayerOnly(p: PlayerState, side: Side, input: Input) {
+  control(p, side, input);
+  for (let i = 0; i < SUBSTEPS; i++) movePlayer(p, side, 1 / SUBSTEPS);
+}
+
+/**
  * 공만 한 틱 움직인다 (캐릭터 없이 벽·천장·네트만). AI가 공이 떨어질 곳을 내다볼 때 쓴다.
  * 바닥에 닿으면 true.
  */

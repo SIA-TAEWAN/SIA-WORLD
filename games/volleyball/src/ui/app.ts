@@ -1,5 +1,8 @@
 import { SCREEN_W, ZODIAC_IDS, type ZodiacId } from '../game/constants';
 import type { MatchResult, MatchSetup } from '../match/game';
+import type { VolleyApi } from '../net/api';
+import type { VolleyLobby } from '../net/lobby';
+import type { VolleyRoom } from '../net/room';
 import { music, type TrackName } from './music';
 import { sfx, sound } from './sfx';
 
@@ -9,6 +12,11 @@ export const stage = document.getElementById('stage')!;
 export const state = {
   /** 로그인한 사용자 (테스트 모드는 탭마다 다른 임시 사용자) */
   user: { id: '', name: '' },
+  api: null as VolleyApi | null,
+  /** 지금 들어가 있는 방 */
+  room: null as VolleyRoom | null,
+  /** 대기실 채널 (방 목록) */
+  lobby: null as VolleyLobby | null,
   /** 마지막으로 고른 캐릭터 */
   char: 'tiger' as ZodiacId,
 };
@@ -18,6 +26,10 @@ export const nav = {
   lobby: () => {},
   /** AI 대전 캐릭터 고르기 */
   select: () => {},
+  /** 방에 들어간다 (title: 방을 새로 만들 때 적은 이름) */
+  room: (_code: string, _title?: string) => {},
+  /** 방에 있는 채로 게임방(대기) 화면으로 */
+  waiting: () => {},
   match: (_setup: MatchSetup) => {},
   result: (_result: MatchResult) => {},
 };
@@ -104,6 +116,29 @@ export function openSettings(onClose?: () => void) {
     paint();
   });
   stage.append(dim);
+}
+
+/** 지금 방에서 나온다 (대기실 방 목록에서도 빠진다) */
+export function leaveRoom() {
+  void state.room?.leave();
+  state.room = null;
+  state.lobby?.setRoom(null);
+}
+
+/** 주소의 ?room=코드 를 바꾼다 (새로 고침·공유해도 같은 방) */
+export function setRoomInUrl(code: string | null) {
+  const u = new URL(location.href);
+  if (code) u.searchParams.set('room', code);
+  else u.searchParams.delete('room');
+  history.replaceState(null, '', u);
+}
+
+/** 친구에게 보낼 방 주소 */
+export function roomLink(code: string): string {
+  const u = new URL(location.href);
+  u.hash = '';
+  u.searchParams.set('room', code);
+  return u.toString();
 }
 
 /** 게임 엔진(Phaser)과 경기 화면을 미리 받아 둔다 */
