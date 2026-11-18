@@ -89,6 +89,26 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
   });
 });
 
+describe('랭킹 뷰', () => {
+  it('맵별로 따로, 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순 (PRD 10장)', () => {
+    const at = sql.indexOf('create or replace view public.survival_ranking as');
+    expect(at).toBeGreaterThan(0);
+    const view = sql.slice(at).replace(/\s+/g, ' ');
+    expect(view).toContain('partition by r.map_id order by r.best_time desc, r.cleared desc, r.best_kills desc, r.achieved_at asc, r.user_id');
+    expect(view).toContain('(count(*) over (partition by r.map_id))::int as total');
+    expect(view).toContain('grant select on public.survival_ranking to anon, authenticated;');
+    // 랭킹 창(shared/ranking-dialog.js)이 읽는 칸이 모두 있다
+    for (const col of ['user_id', 'nickname', 'map_id', 'best_time', 'best_kills', 'cleared', 'character', 'achieved_at']) expect(view).toMatch(new RegExp(`[ .]${col}[, ]`));
+  });
+
+  it('랭킹 창의 맵 목록이 게임 데이터와 같다', () => {
+    const js = readFileSync(fileURLToPath(new URL('../../../shared/ranking-dialog.js', import.meta.url)), 'utf8');
+    const list = [...js.slice(js.indexOf('export const SURVIVAL_MAPS'), js.indexOf('const tabInfo')).matchAll(/\{ id: '(\w+)', name: '([^']+)' \}/g)].map((m) => [m[1], m[2]]);
+    expect(list).toEqual(MAPS.map((m) => [m.id, m.name]));
+    expect(js).toContain("from('survival_ranking')");
+  });
+});
+
 describe('SQL의 권한 규칙', () => {
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]);
 

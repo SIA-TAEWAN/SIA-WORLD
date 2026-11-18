@@ -46,12 +46,12 @@ export async function worldSupabase(): Promise<SupabaseClient> {
 }
 
 interface RankingDialogModule {
-  openRanking(opts: { meId?: string | null; first?: 'tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' }): () => void;
+  openRanking(opts: { meId?: string | null; first?: 'tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' }): () => void;
 }
 let rankMod: Promise<RankingDialogModule> | null = null;
 
 /** SIA WORLD 로비와 같은 랭킹 창 (shared/ranking-dialog.js). 못 불러오면 false */
-export async function openWorldRanking(meId: string, first: 'tank' | 'target' | 'race' | 'volley' = 'volley'): Promise<boolean> {
+export async function openWorldRanking(meId: string, first: 'tank' | 'target' | 'race' | 'volley' | 'survival' = 'survival'): Promise<boolean> {
   try {
     rankMod ??= import(/* @vite-ignore */ new URL('shared/ranking-dialog.js', root()).href) as Promise<RankingDialogModule>;
     (await rankMod).openRanking({ meId, first });

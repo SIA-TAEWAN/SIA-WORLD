@@ -3,6 +3,7 @@ import { LOCAL_MODE, devSetup, getApi } from './net/api';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { LOBBY_MAX, LobbyFullError, SurvivalLobby } from './net/lobby';
 import { loadChar, loadEngine, nav, screen, state, toast } from './ui/app';
+import { showCodex } from './ui/codex';
 import { showCharSelect, showMain, showMapSelect } from './ui/menus';
 import { showResult } from './ui/result';
 import { showUpgrade } from './ui/upgrade';
@@ -11,6 +12,7 @@ nav.main = showMain;
 nav.select = showCharSelect;
 nav.maps = showMapSelect;
 nav.upgrade = showUpgrade;
+nav.codex = showCodex;
 // 개발용 테스트 설정(?upg=10&t=420)은 메뉴에서 시작한 판에도 그대로 적용한다
 const dev = devSetup();
 nav.game = (setup) =>

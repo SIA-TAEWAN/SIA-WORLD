@@ -118,6 +118,39 @@ button, input { font: inherit; color: inherit; }
 .up-max { flex: none; min-width: 92px; text-align: center; color: var(--win); font-size: 16px; }
 .upgrade > .btn { flex: none; }
 
+/* ---------- 도감 ---------- */
+.seg.wide { flex: none; }
+.seg.wide button { flex: 1; padding: 6px 2px; white-space: nowrap; }
+.codex { overflow: hidden; }
+.cx-body { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.cx-body h3 { margin: 6px 0 2px; }
+.cx-body h3:first-child { margin-top: 0; }
+.cx-body h4 { margin: 4px 0 0; font-weight: normal; font-size: 14px; color: var(--ink-soft); }
+.cx-body > p { margin: 0 0 2px; }
+.cx { display: flex; align-items: center; gap: 10px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 5px 8px; flex: none; }
+.cx-art { flex: none; width: 40px; height: 40px; display: grid; place-items: center; }
+.cx-art em { font-style: normal; font-size: 26px; line-height: 1; }
+.cx-art img { width: 40px; height: 40px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
+.cx-art .blob { width: 30px; height: 28px; border-radius: 50%; border: var(--line) solid var(--outline); }
+.cx-art .blob.big { width: 38px; height: 36px; }
+.cx-art .blob.m-field { background: var(--table-matgo); border-radius: 8px; }
+.cx-art .blob.m-bamboo { background: var(--table-poker); border-radius: 8px; }
+.cx-art .blob.m-palace { background: var(--table-blackjack); border-radius: 8px; }
+.cx-art .blob.m-underworld { background: var(--roulette-winter); border-radius: 8px; }
+.cx-tx { flex: 1; min-width: 0; }
+.cx-tx b { display: block; font-weight: normal; font-size: 16px; }
+.cx-tx b i { font-style: normal; font-size: 12px; }
+.cx-tx small { display: block; font-size: 12px; color: var(--ink-soft); }
+/* 못 만난 항목: 그림자(실루엣)만 보인다 */
+.cx.unknown { border-style: dashed; border-color: var(--empty-line); background: var(--panel); }
+.cx.unknown .cx-art { filter: brightness(0); opacity: 0.55; }
+.cx.unknown .cx-tx b { color: var(--ink-soft); }
+.evo { display: flex; align-items: center; gap: 6px; background: var(--panel-strong); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 6px 8px; flex: none; }
+.evo > b { font-weight: normal; color: var(--ink-soft); }
+.evo-part { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; font-size: 12px; text-align: center; }
+.evo-part em { font-style: normal; font-size: 24px; line-height: 1.1; }
+.evo-part.unknown { color: var(--ink-soft); }
+
 /* ---------- 출전 준비: 캐릭터 고르기 ---------- */
 .who-coins { margin: 0; text-align: center; color: var(--white); font-size: 16px; text-shadow: 0 2px 0 var(--outline); flex: none; }
 .who-coins b { font-weight: normal; }

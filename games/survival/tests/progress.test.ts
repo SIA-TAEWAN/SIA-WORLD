@@ -3,7 +3,7 @@ import { CHARACTERS } from '../src/data/characters';
 import { UPGRADES, presetUpgrades, upgradeCost, upgradeSpent } from '../src/data/upgrades';
 import { normalPolicy, simulate } from '../src/game/policy';
 import {
-  LIMITS, applyRun, betterRecord, buyUpgrade, characterPrice, cleanProfile, coinCap, defaultProfile, rejectReason, resetUpgrades,
+  LIMITS, applyRun, betterRecord, buyUpgrade, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, evolutionHints, rejectReason, resetUpgrades,
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
 import type { RunSummary } from '../src/game/sim';
@@ -163,6 +163,34 @@ describe('해금', () => {
     s = after(s.profile, run({ codex: { enemies: ['club'], bosses: [], weapons: ['bell'], passives: [] } }));
     expect(s.profile.codex).toEqual({ enemies: ['imp', 'wisp', 'club'], bosses: ['bigDokkaebi'], weapons: ['shuriken', 'bell'], passives: ['fan'] });
   });
+});
+
+describe('도감', () => {
+  it('진화 조합 힌트는 아는 재료만 보인다', () => {
+    const none = evolutionHints(defaultProfile().codex);
+    expect(none.length).toBe(3);
+    expect(none.every((h) => !h.weaponKnown && !h.passiveKnown && !h.resultKnown)).toBe(true);
+    const some = evolutionHints({ enemies: [], bosses: [], weapons: ['shuriken', 'clawEvo'], passives: ['sleeve'] });
+    expect(some.map((h) => [h.weapon.id, h.weaponKnown, h.passive.id, h.passiveKnown, h.result.id, h.resultKnown])).toEqual([
+      ['shuriken', true, 'fan', false, 'shurikenEvo', false],
+      ['pearl', false, 'sleeve', true, 'pearlEvo', false],
+      ['claw', false, 'might', false, 'clawEvo', true],
+    ]);
+  });
+
+  it('모은 수: 처음에는 캐릭터 셋뿐', () => {
+    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 15 + 8 + 12 });
+    const run2 = applyRun(defaultProfile(), {}, run({ time: 300, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
+    expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);
+  });
+
+  it('판에서 만난 요괴·보스, 얻은 무기·패시브·진화가 판 결과에 담긴다', () => {
+    const r = simulate({ seed: 8, char: 'tiger', map: 'field', upgrades: presetUpgrades(49), startAt: 170 }, normalPolicy(2), 200);
+    expect(r.codex.enemies).toContain('imp');
+    expect(r.codex.bosses).toEqual(['bigDokkaebi']);
+    expect(r.codex.weapons).toContain('claw');
+    expect(r.codex.passives.length).toBeGreaterThan(0);
+  }, 60000);
 });
 
 describe('영구 강화', () => {

@@ -1,8 +1,9 @@
 // SIA WORLD 랭킹 창 (로비와 시아탱크가 같이 쓴다).
-//   탭: 💣 시아탱크(승패) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수)
+//   탭: 💣 시아탱크(승패) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수) · 👹 시아서바이벌(맵별 생존 시간)
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
 //   시아레이스만 기록 기준: 해 30.75초 이내 · 달 33초 이내 · 별 37.5초 이내 · 그 외 구름 (RACE_TIERS)
 //   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
+//   시아서바이벌은 맵마다 따로: 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순. 등급은 그 맵 안의 순위 기준
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg, tierOfPlace } from './rank.js';
@@ -10,7 +11,7 @@ import { supabase } from './supabase.js';
 
 const STYLE_ID = 'sia-ranking-style';
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival'];
 
 /**
  * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
@@ -20,7 +21,16 @@ export const RACE_TOP = 100;
 const RACE_INFO = { label: '🏁 레이스', note: '150m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
 const VOLLEY_INFO = { label: '🏐 배구', note: '사람끼리 겨룬 경기의 승수 순 (같으면 승률, 그다음 먼저 달성한 사람이 위)' };
 export const VOLLEY_TOP = 100;
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : RANKINGS[g]);
+const SURVIVAL_INFO = { label: '👹 서바이벌', note: '맵별 생존 시간 순 (같으면 클리어한 기록, 그다음 처치 수, 먼저 달성한 사람이 위)' };
+export const SURVIVAL_TOP = 100;
+/** 시아서바이벌 맵 (games/survival/src/data/maps.ts 와 같은 순서·이름) */
+export const SURVIVAL_MAPS = [
+  { id: 'field', name: '들판' },
+  { id: 'bamboo', name: '대나무 숲' },
+  { id: 'palace', name: '달빛 궁궐' },
+  { id: 'underworld', name: '황천길' },
+];
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : RANKINGS[g]);
 
 /** 기록(ms) → 등급 */
 export function raceTier(ms) {
@@ -83,6 +93,41 @@ export async function getVolleyRanking(meId = null) {
   }
   return { rows, mine, total };
 }
+/** 생존 시간 표시: 초 → 0:00 */
+export const survivalTime = (sec) => {
+  const t = Math.max(0, Math.floor(Number(sec) || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
+/** 달성 날짜 표시: 2026.11.18 */
+const dateText = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * 시아서바이벌 랭킹 (survival_ranking 뷰: 맵별로 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순).
+ * → { rows: 상위 100명 [{ key, nickname, time, kills, cleared, character, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getSurvivalRanking(mapId, meId = null) {
+  const cols = 'user_id,nickname,best_time,best_kills,cleared,character,achieved_at,place,total';
+  const { data, error } = await supabase.from('survival_ranking').select(cols).eq('map_id', mapId).order('place', { ascending: true }).limit(SURVIVAL_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({
+    key: r.user_id, nickname: r.nickname, time: Number(r.best_time), kills: Number(r.best_kills), cleared: r.cleared === true,
+    character: r.character, at: r.achieved_at, place: Number(r.place),
+  });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= SURVIVAL_TOP) {
+    const res = await supabase.from('survival_ranking').select(cols).eq('map_id', mapId).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 const CSS = `
 .sia-rank-dim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
   background: color-mix(in srgb, #2a1a10 55%, transparent); font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
@@ -98,6 +143,12 @@ const CSS = `
 .sia-rank .tabs button { flex: 1; min-width: 72px; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
   border: 2px solid #2a1a10; background: #fff; border-radius: 12px; padding: 7px 4px; }
 .sia-rank .tabs button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
+.sia-rank .subs { display: none; gap: 5px; margin-bottom: 6px; }
+.sia-rank .subs.on { display: flex; }
+.sia-rank .subs button { flex: 1; white-space: nowrap; font: inherit; font-size: 13px; color: #2a1a10; cursor: pointer;
+  border: 2px solid #e2d3b5; background: #fff; border-radius: 999px; padding: 4px 2px; }
+.sia-rank .subs button.sel { border-color: #2a1a10; background: #fff4c2; }
+.sia-rank td.am i { font-style: normal; display: inline-block; background: #4cb86a; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; margin-right: 4px; vertical-align: 1px; }
 .sia-rank .me-line { text-align: center; font-size: 15px; margin: 6px 0; }
 .sia-rank .me-line b { font-weight: normal; color: #f0a500; }
 .sia-rank .list { flex: 1; min-height: 0; overflow-y: auto; border-top: 2px dashed #e2d3b5; }
@@ -120,7 +171,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
   if (!document.getElementById(STYLE_ID)) {
@@ -136,6 +187,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     <div class="tabs">${TAB_ORDER.filter((g) => tabInfo(g))
       .map((g) => `<button type="button" data-g="${g}">${tabInfo(g).label}</button>`)
       .join('')}</div>
+    <div class="subs">${SURVIVAL_MAPS.map((m) => `<button type="button" data-m="${m.id}">${m.name}</button>`).join('')}</div>
     <p class="me-line"></p>
     <div class="list"><table></table></div>
     <p class="note"></p>
@@ -152,12 +204,17 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     if (e.target === dim || e.target.closest('[data-close]')) close();
     const tab = e.target.closest('[data-g]');
     if (tab) void show(tab.dataset.g);
+    const sub = e.target.closest('[data-m]');
+    if (sub) void showSurvival(sub.dataset.m);
   });
 
   let shown = '';
   async function show(game) {
     shown = game;
     dim.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
+    // 맵 고르기 줄은 시아서바이벌 탭에서만 보인다
+    $('.subs').classList.toggle('on', game === 'survival');
+    if (game === 'survival') return showSurvival(survivalMap);
     if (game === 'race') return showRace();
     if (game === 'volley') return showVolley();
     const info = RANKINGS[game];
@@ -232,6 +289,36 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'volley') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /** 시아서바이벌: 맵을 골라 본다. 생존 시간 순 상위 100명 + 내 순위. 줄마다 순위 · 등급 · 캐릭터 얼굴 · 닉네임 · 생존 시간(클리어) · 처치 수 · 달성 날짜 */
+  let survivalMap = SURVIVAL_MAPS[0].id;
+  async function showSurvival(mapId) {
+    if (!SURVIVAL_MAPS.some((m) => m.id === mapId)) mapId = SURVIVAL_MAPS[0].id;
+    survivalMap = mapId;
+    dim.querySelectorAll('.subs button').forEach((b) => b.classList.toggle('sel', b.dataset.m === mapId));
+    $('.note').textContent = `${SURVIVAL_INFO.note} · 상위 ${SURVIVAL_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    const timeText = (r) => `${r.cleared ? '<i>클리어</i>' : ''}${survivalTime(r.time)}`;
+    try {
+      const { rows, mine, total } = await getSurvivalRanking(mapId, meId);
+      if (shown !== 'survival' || survivalMap !== mapId) return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${survivalTime(mine.time)}${mine.cleared ? ' 클리어' : ''} · 처치 ${mine.kills.toLocaleString()}`
+        : '아직 이 맵의 기록이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="ch"><img src="${faceUrl(r.character)}" alt="" /></td><td class="nm">${esc(r.nickname)}</td>` +
+              `<td class="am">${timeText(r)}<small>처치 ${r.kills.toLocaleString()} · ${esc(dateText(r.at))}</small></td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'survival' && survivalMap === mapId) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   void show(tabInfo(first) ? first : 'tank');

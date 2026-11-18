@@ -10,10 +10,11 @@ import { RUN_SEC, ZODIAC_IDS, type ZodiacId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES } from '../data/enemies';
+import { EVOLUTIONS } from '../data/evolutions';
 import { MAPS, MAP_INDEX } from '../data/maps';
-import { PASSIVES } from '../data/passives';
+import { PASSIVES, PASSIVE_INDEX, type PassiveDef } from '../data/passives';
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, upgradeSpent, type UpgradeLevels } from '../data/upgrades';
-import { WEAPONS } from '../data/weapons';
+import { WEAPONS, WEAPON_INDEX, type WeaponDef } from '../data/weapons';
 import type { Codex, RunSummary } from './sim';
 
 /** 판 밖에 저장하는 것 (survival_profiles) */
@@ -266,3 +267,35 @@ export function unlockCharacter(profile: SurvivalProfile, id: ZodiacId): Surviva
 
 /** 모든 강화 레벨의 합 (0~49) */
 export const upgradeCount = (levels: UpgradeLevels) => UPGRADES.reduce((n, u) => n + Math.min(u.max, levels[u.id] ?? 0), 0);
+
+// ───────────────────────── 도감 (PRD 8장) ─────────────────────────
+
+export interface EvolutionHint {
+  weapon: WeaponDef;
+  passive: PassiveDef;
+  result: WeaponDef;
+  /** 도감에 있는 것만 보여 준다 (없는 것은 ? 로 가린다) */
+  weaponKnown: boolean;
+  passiveKnown: boolean;
+  resultKnown: boolean;
+}
+
+/** 진화 조합 힌트: 재료(무기·패시브)는 얻어 본 것만 보이고, 진화 무기는 한 번 만들어 봐야 보인다 */
+export function evolutionHints(codex: Codex): EvolutionHint[] {
+  return EVOLUTIONS.map((e) => ({
+    weapon: WEAPONS[WEAPON_INDEX[e.weapon]],
+    passive: PASSIVES[PASSIVE_INDEX[e.passive]],
+    result: WEAPONS[WEAPON_INDEX[e.result]],
+    weaponKnown: codex.weapons.includes(e.weapon),
+    passiveKnown: codex.passives.includes(e.passive),
+    resultKnown: codex.weapons.includes(e.result),
+  }));
+}
+
+/** 도감을 얼마나 모았나: 요괴·보스·무기(진화 포함)·패시브·캐릭터 */
+export function codexCount(p: SurvivalProfile): { have: number; all: number } {
+  return {
+    have: p.codex.enemies.length + p.codex.bosses.length + p.codex.weapons.length + p.codex.passives.length + p.unlockedCharacters.length,
+    all: ENEMIES.length + BOSSES.length + WEAPONS.length + PASSIVES.length + CHARACTERS.length,
+  };
+}

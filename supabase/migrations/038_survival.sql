@@ -426,3 +426,18 @@ begin
 end $$;
 revoke all on function public.survival_unlock_character(text) from public, anon;
 grant execute on function public.survival_unlock_character(text) to authenticated;
+
+-- ---------- 9. 랭킹 ----------
+
+-- 맵별 생존 시간 랭킹 (PRD 10장). 각자 맵별 최고 기록 하나, 누적 운영(초기화 없음).
+-- 정렬: 생존 시간(최대 10분) → 클리어한 기록이 위 → 처치 수 → 먼저 달성한 순.
+-- place·total 은 맵 안에서의 순위와 인원 (상위 100명은 map_id 로 고른 뒤 place <= 100, 내 순위는 user_id 로 조회)
+create or replace view public.survival_ranking as
+  select r.user_id, p.nickname, r.map_id, r.best_time, r.best_kills, r.cleared, r.character, r.achieved_at,
+    (row_number() over (
+      partition by r.map_id
+      order by r.best_time desc, r.cleared desc, r.best_kills desc, r.achieved_at asc, r.user_id))::int as place,
+    (count(*) over (partition by r.map_id))::int as total
+  from public.survival_records r join public.profiles p on p.id = r.user_id;
+revoke all on public.survival_ranking from anon, authenticated;
+grant select on public.survival_ranking to anon, authenticated;

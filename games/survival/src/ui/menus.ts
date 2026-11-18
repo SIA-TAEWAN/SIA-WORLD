@@ -5,7 +5,8 @@ import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
 import { characterPrice } from '../game/progress';
 import { startWeapon } from '../game/sim';
-import { worldHome } from '../net/world';
+import { LOCAL_MODE } from '../net/api';
+import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, loadEngine, nav, openSettings, saveChar, screen, state, toast } from './app';
 import { sfx } from './sfx';
@@ -39,8 +40,8 @@ export function showMain() {
        <button class="btn primary big" id="go">출전 ▶</button>
        <div class="sub-actions">
          <button class="btn" id="upgrade">⚒️ 강화</button>
-         <button class="btn soon" id="codex">📖 도감</button>
-         <button class="btn soon" id="ranking">🏆 랭킹</button>
+         <button class="btn" id="codex">📖 도감</button>
+         <button class="btn" id="ranking">🏆 랭킹</button>
        </div>
      </div>
      <p class="soft foot">${esc(state.user.name)} 님 · 공격은 저절로, 움직이기만 하면 돼요</p>`,
@@ -57,13 +58,16 @@ export function showMain() {
     sfx('click');
     nav.upgrade();
   });
-  // 도감·랭킹은 다음 단계에서 만든다 (지금은 자리만)
-  for (const [id, name] of [['codex', '도감'], ['ranking', '랭킹']] as const) {
-    root.querySelector(`#${id}`)!.addEventListener('click', () => {
-      sfx('toggle');
-      toast(`${name}은 아직 준비 중이에요`);
-    });
-  }
+  root.querySelector('#codex')!.addEventListener('click', () => {
+    sfx('click');
+    nav.codex();
+  });
+  // 랭킹: SIA WORLD 공용 랭킹 창을 시아서바이벌 탭(맵별 생존 시간)으로 연다
+  root.querySelector('#ranking')!.addEventListener('click', async () => {
+    sfx('click');
+    if (LOCAL_MODE) return toast('테스트 모드에서는 랭킹을 볼 수 없어요');
+    if (!(await openWorldRanking(state.user.id, 'survival'))) toast('랭킹을 불러오지 못했어요');
+  });
   // 지금 들어와 있는 사람 수 (다른 게임과 같은 "지금 N/30명")
   const lobby = state.lobby;
   const people = root.querySelector('#people') as HTMLElement;
