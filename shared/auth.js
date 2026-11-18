@@ -1,6 +1,7 @@
 // SIA WORLD 공통 로그인.
 // 사용자에게는 아이디만 보이고, Supabase Auth에는 `<아이디>@sia-world.local` 이메일로 넣는다.
 import { supabase } from './supabase.js';
+import { gameForPath, loadGameOpen } from './games.js';
 
 /** SIA WORLD 최상위 주소 (이 파일이 shared/ 안에 있으므로 한 단계 위) */
 export const ROOT = new URL('../', import.meta.url);
@@ -179,12 +180,51 @@ export function loginUrl(redirect = currentRelative()) {
 /**
  * 로그인 상태면 { userId, loginId, nickname }을 돌려준다.
  * 아니면 로그인 화면으로 보내고, 돌아오지 않는 Promise를 돌려준다.
+ * 게임 페이지에서 부르면 그 게임이 열려 있는지도 본다: 닫힌 게임은 관리자만 들어갈 수 있다.
+ * (들어올 때 한 번만 확인한다 → 닫기 전에 들어와 있던 사람은 그대로 한다)
  */
 export async function requireLogin() {
   const user = await getCurrentUser();
-  if (user) return user;
-  location.replace(loginUrl());
-  return new Promise(() => {});
+  if (!user) {
+    location.replace(loginUrl());
+    return new Promise(() => {});
+  }
+  if (!user.isAdmin && (await isClosedHere())) {
+    showClosed();
+    return new Promise(() => {});
+  }
+  return user;
+}
+
+/** 지금 페이지의 게임이 닫혀 있는가 (게임 페이지가 아니거나 확인하지 못하면 false) */
+async function isClosedHere() {
+  const game = gameForPath(currentRelative());
+  if (!game) return false;
+  try {
+    return (await loadGameOpen())[game.id] === false;
+  } catch {
+    return false;
+  }
+}
+
+/** 닫힌 게임 안내 (화면 전체) → 로비로 */
+function showClosed() {
+  const box = document.createElement('div');
+  box.style.cssText =
+    'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;' +
+    'padding:24px;text-align:center;background:linear-gradient(#4aa8ff,#9fd6ff 300px,#ffe9b8);color:#2a1a10;' +
+    "font:20px 'Jua','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif";
+  const msg = document.createElement('p');
+  msg.textContent = '지금은 준비 중인 게임이에요';
+  msg.style.cssText = 'margin:0;font-size:26px';
+  const a = document.createElement('a');
+  a.href = new URL('index.html', ROOT).href;
+  a.textContent = '🌏 SIA WORLD로';
+  a.style.cssText =
+    'padding:12px 22px;border:3px solid #2a1a10;border-radius:16px;background:linear-gradient(#ffe066,#f0a500);color:#2a1a10;' +
+    'text-decoration:none;box-shadow:0 4px 0 #2a1a10';
+  box.append(msg, a);
+  document.body.append(box);
 }
 
 /**

@@ -81,6 +81,21 @@
     .game-card .gi { padding: 10px 14px 14px; }
     .game-card h3 { margin: 0; font-size: var(--fs-panel); font-weight: normal; }
     .game-card p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+    /* 관리자: 닫힌 게임 카드 · 오픈 설정 */
+    .game-card { position: relative; }
+    .game-card.closed img { filter: grayscale(.8); opacity: .7; }
+    .game-card .tag { position: absolute; top: 10px; left: 10px; padding: 2px 12px; border-radius: var(--radius-pill);
+      border: var(--line-thin) solid var(--outline); background: var(--pink); color: var(--white); font-size: 14px; }
+    .admin-box { margin-top: 24px; padding: 14px 16px; background: var(--panel); border: var(--line) solid var(--outline);
+      border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+    .admin-box h2 { margin: 0 0 4px; font-size: var(--fs-panel); font-weight: normal; }
+    .admin-box > p { margin: 0 0 10px; color: var(--ink-soft); font-size: 14px; }
+    .admin-box .row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: var(--line-thin) solid var(--line-soft); }
+    .admin-box .row span { flex: 1; min-width: 0; }
+    .admin-box .row b { font-weight: normal; }
+    .admin-box .row .on { color: var(--win); }
+    .admin-box .row .off { color: var(--lose); }
+    .admin-box .err { color: var(--pink); font-size: 14px; min-height: 18px; margin: 6px 0 0; }
     .center { min-height: 100vh; display: grid; place-items: center; color: var(--white); font-size: 18px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
 
     /* 지갑 · 출석 · 랭킹 */
@@ -169,6 +184,12 @@
       <p class="note" id="w-note"></p>
       <div class="games-head"><h2>게임</h2><button class="btn small" id="rank-btn">🏆 랭킹</button></div>
       <div class="games" id="games"></div>
+      <section class="admin-box hidden" id="admin-box">
+        <h2>🔧 게임 오픈 설정 (관리자)</h2>
+        <p>닫은 게임은 다른 사람에게 보이지 않아요. 이미 들어가 있는 사람은 그대로 할 수 있어요.</p>
+        <div id="admin-games"></div>
+        <p class="err" id="admin-err"></p>
+      </section>
     </main>
   </div>
 
@@ -178,7 +199,7 @@
       signIn, signUp, signOut, getCurrentUser, safeRedirect, checkLegacy,
       isLoginIdTaken, isNicknameTaken, loginIdProblem, nicknameProblem, passwordProblem, AuthError,
     } from './shared/auth.js';
-    import { GAMES } from './shared/games.js';
+    import { GAMES, loadGameOpen, setGameOpen } from './shared/games.js';
     import { claimAttendance, refill, canRefill, formatAmount, REFILLS_PER_DAY } from './shared/wallet.js';
     import { openRanking } from './shared/ranking-dialog.js';
 
@@ -198,13 +219,14 @@
     }
 
     // ---------- 로비 ----------
-    function showLobby(user) {
-      $('#me').textContent = `${user.nickname}님`;
-      const box = $('#games');
-      box.replaceChildren(
-        ...GAMES.filter((g) => g.open).map((g) => {
+    /** 게임별 오픈 여부 (서버 값. 못 읽으면 목록의 기본값) */
+    let gameOpen = Object.fromEntries(GAMES.map((g) => [g.id, g.open]));
+    /** 게임 카드: 열린 게임만. 관리자는 닫힌 게임도 '닫힘' 표시와 함께 보이고 들어갈 수 있다 */
+    function renderGames(user) {
+      $('#games').replaceChildren(
+        ...GAMES.filter((g) => gameOpen[g.id] || user.isAdmin).map((g) => {
           const a = document.createElement('a');
-          a.className = 'game-card';
+          a.className = 'game-card' + (gameOpen[g.id] ? '' : ' closed');
           a.href = g.path;
           const img = document.createElement('img');
           img.src = g.image; img.alt = ''; img.loading = 'lazy';
@@ -214,11 +236,53 @@
           const p = document.createElement('p'); p.textContent = g.desc;
           info.append(h, p);
           a.append(img, info);
+          if (!gameOpen[g.id]) {
+            const tag = document.createElement('span');
+            tag.className = 'tag'; tag.textContent = '닫힘';
+            a.append(tag);
+          }
           return a;
         }),
       );
+      // 관리자: 게임마다 열기/닫기
+      $('#admin-box').classList.toggle('hidden', !user.isAdmin);
+      if (!user.isAdmin) return;
+      $('#admin-games').replaceChildren(
+        ...GAMES.map((g) => {
+          const row = document.createElement('div');
+          row.className = 'row';
+          const name = document.createElement('span');
+          const state = document.createElement('b');
+          state.className = gameOpen[g.id] ? 'on' : 'off';
+          state.textContent = gameOpen[g.id] ? '오픈' : '닫힘';
+          name.append(`${g.name} · `, state);
+          const btn = document.createElement('button');
+          btn.className = 'btn small';
+          btn.textContent = gameOpen[g.id] ? '닫기' : '오픈하기';
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            $('#admin-err').textContent = '';
+            try {
+              await setGameOpen(g.id, !gameOpen[g.id]);
+              gameOpen = await loadGameOpen();
+            } catch {
+              $('#admin-err').textContent = '바꾸지 못했어요. 잠시 후 다시 시도해 주세요';
+            }
+            renderGames(user);
+          });
+          row.append(name, btn);
+          return row;
+        }),
+      );
+    }
+    function showLobby(user) {
+      $('#me').textContent = `${user.nickname}님`;
+      $('#admin-err').textContent = '';
+      renderGames(user);
       show('lobby-view');
       void loadWallet(user);
+      // 서버의 오픈 여부로 다시 그린다 (못 읽으면 기본값 그대로)
+      loadGameOpen().then((m) => { gameOpen = m; renderGames(user); }).catch(() => {});
     }
 
     // ---------- 지갑 · 출석 · 무료 충전 ----------
