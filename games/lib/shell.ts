@@ -640,6 +640,28 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const tidying = () => (tidy === 'wait' || tidy === 'run') && tidyRound === st?.round_no && room?.status === 'waiting';
   // 정리한 판의 상태가 남아 있는 동안은 계속 빈 테이블 (레디 뒤 방이 '진행 중'으로 먼저 바뀌어도 지난 판 화면이 다시 나오지 않게)
   const tidied = () => tidy === 'done' && tidyRound === st?.round_no;
+  /**
+   * 판이 끝나 방은 '대기'로 바뀌었는데 그 판의 결과가 든 상태가 아직 오지 않았다 (방 정보가 먼저 도착했거나 상태를 놓쳤다).
+   * 이때 테이블을 비우고 레디 버튼을 켜면 '스톱 → 결과 창 → 확인 → 판 정리' 순서가 뒤집혀 보인다 (빈 테이블이 먼저 나왔다가 결과가 뜬다)
+   * → 잠깐(최대 5초)은 마지막 화면을 그대로 두고 결과를 기다린다. 1.5초가 지나도 안 오면 한 번 다시 읽는다.
+   */
+  let liveRound = -1;
+  let endWaitRound = -1;
+  let endWaitAt = 0;
+  const awaitingResult = () => {
+    if (!room || room.status !== 'waiting' || !st || !st.public_state || st.public_state.result) return false;
+    if (st.round_no !== liveRound || st.round_no !== room.round_no) return false;
+    const now = performance.now();
+    if (endWaitRound !== st.round_no) {
+      endWaitRound = st.round_no;
+      endWaitAt = now;
+      const round = st.round_no;
+      const still = () => !closed && endWaitRound === round && st?.round_no === round && !st.public_state?.result;
+      setTimeout(() => still() && void reloadAll(), 1500);
+      setTimeout(() => still() && paint(), 5100);
+    }
+    return now - endWaitAt < 5000;
+  };
   let replaying = false;
   let inApply = false;
   /** 다시 불러올 때마다 늘린다: 그 전에 꺼내 둔 재생 항목은 적용하지 않는다 */
@@ -742,7 +764,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       resultSeat: priv && st && priv.round_no === st.round_no ? priv.seat_no : null,
       // 판이 끝났어도 그 판의 연출을 재생하는 중이면 마지막 상태까지 그대로 보여 준다
       // 판 정리를 마친 뒤에는 빈 테이블 (다음 판을 기다린다)
-      pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length) && st?.round_no && !tidied() ? st.public_state : null,
+      pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length || awaitingResult()) && st?.round_no && !tidied() ? st.public_state : null,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       privWait,
       privNext: pendingPriv && st && pendingPriv.round_no === st.round_no ? pendingPriv.hand : null,
@@ -1006,7 +1028,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       if (c) {
         // 판은 시작됐는데 새 판의 상태가 아직 안 왔다 (지난 판 화면이 남아 있다): 지난 판의 '○○ 차례' 대신 안내
         if (!c.pub || (c.pub as { result?: unknown }).result) {
-          el.innerHTML = `<p class="msg">${c.pub ? '판 정리 중이에요…' : '새 판을 준비하는 중…'}</p>`;
+          // '판 정리'는 결과를 확인한 뒤의 일이다: 끝난 판의 결과를 띄우기 전에는 그렇게 말하지 않는다
+          el.innerHTML = `<p class="msg">${c.pub && st?.round_no === room.round_no ? '판이 끝났어요. 결과를 확인하는 중…' : '새 판을 준비하는 중…'}</p>`;
           return;
         }
         c.busy = busy;
@@ -1016,14 +1039,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       return;
     }
     // 대기 중 (방금 끝난 판의 연출·결과를 다 보여 준 뒤에 레디 버튼)
-    if (replaying || queue.length || holdResult) {
+    if (replaying || queue.length || holdResult || awaitingResult()) {
       el.innerHTML = '';
       // 아직 결과 전 화면을 보여 주는 중이면 (AI·딜러 차례 연출) 게임의 안내 문구 ('○○ 차례…')
       if (c && c.pub && !(c.pub as { result?: unknown }).result && ui.replay && !spectator) {
         c.busy = false;
         ui.controls(c, el);
       }
-      if (!el.textContent?.trim()) el.innerHTML = '<p class="msg">판 정리 중이에요…</p>';
+      // 아직 마지막 연출·결과 창 전이다 ('판 정리'는 결과를 확인한 뒤)
+      if (!el.textContent?.trim()) el.innerHTML = '<p class="msg">판이 끝났어요. 결과를 확인하는 중…</p>';
       return;
     }
     if (spectator) {
@@ -1292,6 +1316,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     priv = p;
     if (w) wallet = w;
     if (firstLoad && st && r.status === 'waiting') resultShownFor = st.round_no;
+    if (r.status === 'playing' && st?.public_state && !st.public_state.result) liveRound = st.round_no;
     if (st) {
       replayRound = st.round_no;
       replaySeen = ((st.public_state?.events as GameEventLite[] | undefined) ?? []).reduce((a, e) => Math.max(a, e.id), 0);
@@ -1317,6 +1342,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const applyStateNow = (s: StateRow) => {
     if (busy && s.updated_at !== busySince) unbusy();
     st = s;
+    if (room?.status === 'playing' && s.public_state && !s.public_state.result) liveRound = s.round_no;
     if (pendingPriv !== undefined && queue.length === 0) {
       priv = pendingPriv;
       pendingPriv = undefined;
