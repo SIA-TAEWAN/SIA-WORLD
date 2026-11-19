@@ -84,6 +84,8 @@ export interface TableCtx<P = any, Q = any> {
   lastPos(key: string): { x: number; y: number } | null;
   /** 기기 픽셀 배율 (효과용 글자를 선명하게) */
   dpr: number;
+  /** 지금 떠 있거나 곧 뜰 컷인이 모두 끝날 때까지 남은 시간 (ms, 없으면 0 이하) */
+  cutinLeft(): number;
 }
 
 interface MoveRec {
@@ -217,6 +219,11 @@ export interface GameUI<P = any, Q = any> {
    * 없는 게임, 기기 진행 중이 아닌 판(사람이 둘인 방 등)은 예전 그대로 서버가 진행한다.
    */
   local?(host: LocalHost): LocalPlay;
+  /**
+   * 지금 화면에 '차례'로 보여 줄 자리. 새 상태에서는 이미 다음 사람 차례여도, 방금 둔 사람의 연출(낸 패 → 뒤집기 → 먹기 → 컷인)이
+   * 끝나기 전에는 그 사람 차례로 보여 준다 (맞고). 없으면(undefined) 상태의 차례 그대로. 자리 줄의 '차례' 표시와 타이머 막대에 쓴다
+   */
+  turnSeat?(t: TableCtx<P, Q>): number | null | undefined;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, s: string) => root.querySelector<T>(s)!;
@@ -856,6 +863,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       anchor: (name, x, y) => void anchors.set(name, { x, y }),
       sound: (name, opts) => sfx(name, opts),
       dpr: DPR,
+      cutinLeft: () => cutinUntil - performance.now(),
       track: (obj, key, opts = {}) => {
         const round = st?.round_no ?? 0;
         if (round !== moveRound) {
@@ -998,8 +1006,19 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     $(root, '#money').textContent = wallet ? `${cur === 'nyang' ? '💰' : '🪙'} ${m.wallet.formatAmount(wallet[cur])}${unit}` : '-';
   };
 
+  /** 화면에 '차례'로 보여 줄 자리 (게임이 정한다: GameUI.turnSeat). 따로 없으면 undefined → 상태의 차례 그대로 */
+  const shownTurn = (): number | null | undefined => {
+    if (!ui.turnSeat || room?.status !== 'playing') return undefined;
+    try {
+      const c = ctx();
+      return c && c.pub ? ui.turnSeat(c) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const paintSeats = () => {
-    const pending = room?.status === 'playing' ? (st?.pending_seats ?? []) : [];
+    const shown = shownTurn();
+    const pending = room?.status === 'playing' ? (shown === undefined ? (st?.pending_seats ?? []) : shown === null ? [] : [shown]) : [];
     $(root, '#seats').innerHTML = seats
       .filter((s) => !ui.noAi || (s.user_id && !s.left_game) || s.pending_user_id)
       .map((s) => {
@@ -1362,6 +1381,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       bar.style.width = '0';
       return;
     }
+    // 앞 사람의 연출이 아직 끝나지 않았으면 (화면의 차례가 상태의 차례와 다르면) 다음 사람의 시간 막대는 아직 보이지 않는다
+    const shown = shownTurn();
+    if (shown !== undefined && (shown === null || !st.pending_seats.includes(shown))) {
+      bar.style.width = '0';
+      return;
+    }
     const left = Math.max(0, new Date(st.turn_deadline).getTime() - Date.now());
     bar.style.width = `${Math.min(100, (left / 20000) * 100)}%`;
     bar.classList.toggle('mine', !!mySeatRow() && st.pending_seats.includes(mySeatRow()!.seat_no));
@@ -1483,6 +1508,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       hand: () => (priv && st && priv.round_no === st.round_no ? priv.hand : null),
       myTurn: () => !!ctx()?.myTurn && !busy,
       act: (payload: unknown) => ctx()?.act(payload),
+      // 연출 점검용: 화면에 '차례'로 보이는 자리 (게임이 따로 정하지 않으면 상태의 차례)
+      turn: () => {
+        const shown = shownTurn();
+        return shown === undefined ? (st?.pending_seats ?? [])[0] ?? null : shown;
+      },
       // 연출 점검용: 그 카드가 지금 화면에 그려지는 자리 (이동 중이면 그 중간. 아직 그린 적이 없으면 null)
       pos: (key: string) => {
         const r = moves.get(key);

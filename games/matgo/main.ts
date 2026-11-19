@@ -680,6 +680,47 @@ function animLeft(): number {
   return plan.size ? planBuiltAt + end - performance.now() : 0;
 }
 let enableTimer: ReturnType<typeof setTimeout> | null = null;
+/** 계획 속의 차례들: 언제부터(계획을 세운 때부터 ms) 누구의 연출인가 → 그 연출이 끝날 때까지 화면의 '차례'는 그 사람 */
+let planActors: { at: number; seat: number }[] = [];
+/** 자리(seat)가 '그 행동을 한 사람'이 아닌 사건 (박은 진 사람 자리로 온다) */
+const NOT_ACTOR = new Set(['pibak', 'gwangbak', 'meongbak', 'gobak', 'nagari']);
+/** 내 손패를 달 순서로 고쳐 놓기 시작한 때 (판마다 한 번. 패를 다 받은 뒤의 첫 그림) */
+let handSortKey = '';
+let handSortAt = 0;
+/** 패 나눠 주기(와 그 뒤 손패 정렬)가 끝날 때까지 남은 시간 (ms). 이어 하는 판(새로고침 등)은 나눠 주지 않으므로 0 */
+function dealLeft(): number {
+  if (!dealFresh) return 0;
+  const now = performance.now();
+  // 아직 정렬을 시작하지 못했으면 (다시 그릴 때 시작한다) 조금 더 기다린다
+  const sortEnd = handSortKey === dealKey ? handSortAt + 620 : now + 200;
+  return Math.max(dealStartAt + DEAL_MS, sortEnd) - now;
+}
+/**
+ * 입력을 열고 차례 표시를 넘기기까지 남은 시간 (ms): 패 나눠 주기 · 차례 연출(낸 패 → 뒤집기 → 먹기 → 피 빼앗기) · 컷인이 모두 끝나야 0 이하.
+ * 이 시간 동안에는 손패·버튼(폭탄 피 뒤집기 포함)을 누를 수 없고, 화면의 차례도 방금 둔 사람 그대로다
+ */
+function holdLeft(t: Ctx): number {
+  return Math.max(animLeft(), dealLeft(), t.cutinLeft());
+}
+/** 화면에 보여 줄 차례: 연출이 남아 있으면 지금 그 연출의 주인, 다 끝났으면 상태의 차례 */
+function shownTurn(p: MatgoPublic, hold: number): number | null {
+  if (hold <= 0 || !planActors.length) return p.turn;
+  const el = performance.now() - planBuiltAt;
+  let seat = planActors[0].seat;
+  for (const a of planActors) if (a.at <= el) seat = a.seat;
+  return seat;
+}
+/** 그림을 그린 횟수 (다시 그리기 요청이 테이블까지 그렸는지 알려고) */
+let drawSeq = 0;
+/** 다시 그리기: 셸이 연출 재생 중이라 테이블을 건너뛰었으면 테이블만이라도 다시 그린다 (연출이 끝난 것을 화면에 반영해야 한다) */
+function forceRedraw(t: Ctx) {
+  const before = drawSeq;
+  t.redraw();
+  // (판 정리로 패를 모으는 중에는 그리지 않는다: 모으던 패가 제자리로 돌아간다)
+  if (drawSeq === before && performance.now() >= sweepUntil) t.redrawTable();
+}
+/** 판 정리(패를 더미로 모으기)가 끝나는 때 */
+let sweepUntil = 0;
 
 /** 새 사건들로 계획 세우기 (같은 상태를 다시 그릴 때는 그대로) */
 function updatePlan(p: MatgoPublic, round: number, roomId: string) {
@@ -693,6 +734,7 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
     planSeen = maxId;
     plan.clear();
     eventBase.clear();
+    planActors = [];
     return;
   }
   if (key !== planRound || maxId < planSeen) {
@@ -700,10 +742,12 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
     planSeen = 0;
     plan.clear();
     eventBase.clear();
+    planActors = [];
   }
   const evs = (p.events ?? []).filter((e) => e.id > planSeen);
   if (!evs.length) return;
   eventBase.clear();
+  planActors = [];
   planBuiltAt = performance.now();
   // 이전 계획은 이미 지나간 것이므로 비운다 (새로 들어온 사건만 재생)
   // 단, 패 고르기로 한 차례가 두 번에 나뉘어 오면 (첫 사건이 낸 패가 아님) 앞서 낸·뒤집은 패는 이미 내려앉은 채로 이어 간다
@@ -726,6 +770,7 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
       hasFlip = false;
     }
     eventBase.set(e.id, base());
+    if (seat !== null && !NOT_ACTOR.has(e.t) && planActors[planActors.length - 1]?.seat !== seat) planActors.push({ at: base(), seat });
     if (e.t === 'play' || e.t === 'bomb') {
       const b0 = base();
       ((e.cards as string[]) ?? []).forEach((id, i) =>
@@ -867,7 +912,8 @@ const onFloorNow = new Set<string>();
 
 /** 패 내기: 누르자마자 그 패를 바닥에 내려놓고 서버에 보낸다 (답을 기다리느라 반응이 늦어 보이지 않게) */
 function playCard(t: Ctx, id: string) {
-  if (t.busy || picked) return;
+  // 그린 뒤에 연출이 다시 시작됐을 수도 있다: 누르는 순간에도 한 번 더 본다
+  if (t.busy || picked || holdLeft(t) > 0) return;
   picked = id;
   const withShake = shake && !!t.priv?.shakeable.includes(cardById(id).month);
   t.redraw();
@@ -908,6 +954,11 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     },
   }),
 
+  // 화면의 차례: 방금 둔 사람의 연출이 끝날 때까지는 그 사람 (자리 줄 · 타이머 막대)
+  turnSeat(t: Ctx) {
+    return t.pub ? shownTurn(t.pub, holdLeft(t)) : undefined;
+  },
+
   preload(scene) {
     for (let m = 1; m <= 12; m++) scene.load.image(plantKey(m), plantUrl(m));
     for (const c of CARDS) scene.load.image(cardKey(c.id), cardUrl(c.id));
@@ -915,6 +966,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   },
 
   draw(t: Ctx) {
+    drawSeq++;
     const { scene } = t;
     const { W, H } = viewSize(scene);
     const T = theme();
@@ -983,13 +1035,22 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         if (pl.captureAt !== null) pl.captureAt += DEAL_MS;
       }
       for (const [k, v] of eventBase) eventBase.set(k, v + DEAL_MS);
+      for (const a of planActors) a.at += DEAL_MS;
     }
 
     const DEAL_GAP = 130;
 
     // 자리 판: 아바타 · 이름 · 꼬리표(차례 · 고 · 흔들기 · 폭탄 피) · 점수 방울
+    // 차례 표시는 방금 둔 사람의 연출이 다 끝난 뒤에 넘어간다 (내 패를 뒤집는 중인데 '상대 차례'로 보이지 않게)
+    const handDealt = !dealFresh || performance.now() - dealStartAt >= HAND_DEAL_MS;
+    if (handDealt && dealFresh && handSortKey !== dealKeyNow) {
+      handSortKey = dealKeyNow;
+      handSortAt = performance.now();
+    }
+    const hold = holdLeft(t);
+    const turnNow = shownTurn(p, hold);
     const tagsOf = (pl: (typeof P)[number], seat: number): PanelTag[] => [
-      ...(p.turn === seat ? [{ text: seat === t.mySeat ? '내 차례!' : '생각 중…', color: 'pink', bounce: true } as PanelTag] : []),
+      ...(turnNow === seat ? [{ text: seat === t.mySeat ? '내 차례!' : hold > 0 && p.turn !== seat ? '패 내는 중…' : '생각 중…', color: 'pink', bounce: true } as PanelTag] : []),
       // 위쪽 자리 줄을 숨긴 대신 여기서 알려 준다: 나간 사람 자리(AI 대신) · 다음 판에 들어올 사람 · 레디/대기
       ...seatTags(seat),
       ...(pl.go ? [{ text: `${pl.go}고`, color: 'teamA' } as PanelTag] : []),
@@ -1008,8 +1069,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       return out;
     }
     const subOf = (pl: (typeof P)[number]) => pl.breakdown.map((l) => `${l.label} ${l.points}점`).join(' · ');
-    playerPanel(scene, L.oppPanel, { name: t.seatName(opp), avatar: t.seatAvatar(opp), score: op.score, tags: tagsOf(op, opp), sub: portrait ? undefined : subOf(op), turn: p.turn === opp, reserve: L.oppReserve });
-    playerPanel(scene, L.myPanel, { name: t.seatName(me), avatar: t.seatAvatar(me), score: mp.score, tags: tagsOf(mp, me), sub: subOf(mp), turn: p.turn === me });
+    playerPanel(scene, L.oppPanel, { name: t.seatName(opp), avatar: t.seatAvatar(opp), score: op.score, tags: tagsOf(op, opp), sub: portrait ? undefined : subOf(op), turn: turnNow === opp, reserve: L.oppReserve });
+    playerPanel(scene, L.myPanel, { name: t.seatName(me), avatar: t.seatAvatar(me), score: mp.score, tags: tagsOf(mp, me), sub: subOf(mp), turn: turnNow === me });
 
     // 상대 손패(뒷면)
     for (let i = 0; i < op.handCount; i++) {
@@ -1074,13 +1135,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 바닥 (달별로 모아서)
     const floor = p.floor;
     // 내 차례이고, 화면의 차례 연출도 끝났을 때만 누를 수 있다 (연출이 끝나면 한 번 다시 그려 켠다)
-    const waitMs = animLeft();
-    const myTurnNow = t.myTurn && waitMs <= 0;
-    if (t.myTurn && waitMs > 0 && !enableTimer) {
+    // (패 나눠 주기 · 상대 차례 연출 · 컷인이 남아 있으면 손패는 눌러도 아무 반응이 없다: 누를 수 있는 것으로 그리지 않는다)
+    const myTurnNow = t.myTurn && hold <= 0;
+    // 연출이 끝나면 한 번 다시 그린다: 차례 표시를 넘기고, 내 차례면 손패·버튼을 켠다
+    if (hold > 0 && !enableTimer) {
       enableTimer = setTimeout(() => {
         enableTimer = null;
-        t.redraw();
-      }, waitMs + 40);
+        forceRedraw(t);
+      }, Math.min(hold, 20000) + 40);
     }
     const pick = p.choice?.kind === 'choose' && myTurnNow && !t.busy;
     let floorSeq = 0;
@@ -1198,11 +1260,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     captured(t, scene, L.myTray, mp, capW, capOpts);
     // 공개 상태가 내 비공개 손패보다 먼저 도착하면 방금 낸 패가 두 곳에 보인다 → 이미 바닥·먹은 패에 있는 패는 손패에서 뺀다
     // 내 패를 다 받은 뒤에는 달 순서로 정렬해 보여 준다 (받는 동안은 받은 순서대로 → 다 받으면 한 번 자리를 바꾼다)
-    const handDealt = !dealFresh || performance.now() - dealStartAt >= HAND_DEAL_MS;
     if (!handDealt && !sortTimer) {
       sortTimer = setTimeout(() => {
         sortTimer = null;
-        t.redraw();
+        forceRedraw(t);
       }, Math.max(0, dealStartAt + HAND_DEAL_MS - performance.now()) + 30);
     }
     const KIND_ORDER: Record<string, number> = { gwang: 0, yeol: 1, tti: 2, pi: 3 };
@@ -1236,11 +1297,20 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     /** 말풍선 알약: 얼굴 + 한마디 (+ 작은 설명) */
     const say = (seat: number, text: string, small = '', mine = false) =>
       `<div class="mg-say ${mine ? 'mine' : ''}"><img src="${t.avatarUrl(t.seatAvatar(seat))}" alt=""/><span>${text}${small ? `<small>${small}</small>` : ''}</span></div>`;
-    if (!t.myTurn || !c || animLeft() > 0) {
-      // 내 차례여도 앞선 연출(패가 움직이는 중)이 끝나기 전에는 버튼 대신 안내
-      el.innerHTML = p.turn === null ? '' : `<div class="mg-ctl">${p.turn === t.mySeat && c ? say(t.mySeat, '패가 움직이는 중…') : say(p.turn, `${esc(t.seatName(p.turn))} 차례…`)}</div>`;
+    const hold = holdLeft(t);
+    if (!t.myTurn || !c || hold > 0) {
+      // 내 차례여도 앞선 연출(패가 움직이는 중)이 끝나기 전에는 버튼 대신 안내.
+      // 누구 차례인지는 화면에서 연출 중인 사람 기준: 내가 낸 패·뒤집은 패가 움직이는 동안은 아직 내 차례로 보여 준다
+      const who = hold > 0 ? shownTurn(p, hold) : p.turn;
+      const moving = who === t.mySeat && (hold > 0 || !!c);
+      el.innerHTML = who === null ? '' : `<div class="mg-ctl">${moving ? say(t.mySeat, '패가 움직이는 중…') : say(who, `${esc(t.seatName(who))} 차례…`)}</div>`;
       return;
     }
+    // 버튼은 그린 뒤에도 누르는 순간에 한 번 더 확인한다 (그 사이 연출이 시작됐으면 아무 일도 하지 않는다)
+    const send = (payload: Record<string, unknown>) => {
+      if (holdLeft(t) > 0) return;
+      void t.act(payload);
+    };
     const dis = t.busy ? 'disabled' : '';
     if (c.kind === 'play') {
       const pv = t.priv;
@@ -1251,8 +1321,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         ${c.canFlip ? `<button class="btn" id="flip" ${dis}>더미 뒤집기 (폭탄 피)</button>` : ''}`;
       el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, '낼 패를 누르세요', '20초가 지나면 자동으로 내요', true)}${extra.trim() ? `<div class="mg-btns">${extra}</div>` : ''}</div>`;
       el.querySelector<HTMLInputElement>('#shake')?.addEventListener('change', (e) => (shake = (e.target as HTMLInputElement).checked));
-      el.querySelectorAll<HTMLButtonElement>('[data-bomb]').forEach((b) => b.addEventListener('click', () => void t.act({ type: 'bomb', month: Number(b.dataset.bomb) })));
-      el.querySelector('#flip')?.addEventListener('click', () => void t.act({ type: 'flip' }));
+      el.querySelectorAll<HTMLButtonElement>('[data-bomb]').forEach((b) => b.addEventListener('click', () => send({ type: 'bomb', month: Number(b.dataset.bomb) })));
+      el.querySelector('#flip')?.addEventListener('click', () => send({ type: 'flip' }));
       return;
     }
     shake = false;
@@ -1260,20 +1330,20 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       el.innerHTML = `<div class="mg-ctl side ${c.options.length > 2 ? 'many' : ''}">${say(t.mySeat, `${c.stage === 'flip' ? '뒤집은 패로' : '낸 패로'} 가져올 패를 고르세요`, '빛나는 패를 눌러도 돼요', true)}<div class="mg-btns">${c.options
         .map((id) => `<button class="hw-pick" data-c="${id}" ${dis} title="${esc(cardById(id).name)}">${miniCard(id)}</button>`)
         .join('')}</div></div>`;
-      el.querySelectorAll<HTMLButtonElement>('[data-c]').forEach((b) => b.addEventListener('click', () => void t.act({ type: 'choose', card: b.dataset.c })));
+      el.querySelectorAll<HTMLButtonElement>('[data-c]').forEach((b) => b.addEventListener('click', () => send({ type: 'choose', card: b.dataset.c })));
       return;
     }
     if (c.kind === 'gukjin') {
       el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, '국진(9월 열끗)을 어떻게 쓸까요?', '', true)}<div class="mg-btns">
         <button class="btn big" data-g="yeol" ${dis}>열끗으로</button><button class="btn big primary" data-g="ssangpi" ${dis}>쌍피로</button></div></div>`;
-      el.querySelectorAll<HTMLButtonElement>('[data-g]').forEach((b) => b.addEventListener('click', () => void t.act({ type: 'gukjin', as: b.dataset.g })));
+      el.querySelectorAll<HTMLButtonElement>('[data-g]').forEach((b) => b.addEventListener('click', () => send({ type: 'gukjin', as: b.dataset.g })));
       return;
     }
     if (c.kind === 'goStop') {
       el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, `${c.score}점! 고 할까요, 스톱 할까요?${c.go ? ` (지금 ${c.go}고)` : ''}`, '', true)}<div class="mg-btns">
         <button class="btn big primary mg-go" id="go" ${dis}>고! ▶</button><button class="btn big mg-stop" id="stop" ${dis}>스톱 ✋</button></div></div>`;
-      el.querySelector('#go')!.addEventListener('click', () => void t.act({ type: 'go' }));
-      el.querySelector('#stop')!.addEventListener('click', () => void t.act({ type: 'stop' }));
+      el.querySelector('#go')!.addEventListener('click', () => send({ type: 'go' }));
+      el.querySelector('#stop')!.addEventListener('click', () => send({ type: 'stop' }));
     }
   },
 
@@ -1317,7 +1387,9 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   // 컷인은 그 사건이 든 차례의 연출에 맞춰 띄운다 (내 뻑이 상대 차례 연출까지 끝난 뒤에 뜨지 않게)
   // 판 정리 (점수를 확인한 뒤): 바닥·먹은 패·손패를 더미로 차례로 모은다 (더미에서 가까운 패부터) → 끝나면 레디
   cleanup(t: Ctx) {
-    return sweepTable(t.scene, pilePos, { stagger: 22, dur: 300, onStart: (i) => i % 5 === 0 && sfx('deal', { volume: 0.45 }) });
+    const ms = sweepTable(t.scene, pilePos, { stagger: 22, dur: 300, onStart: (i) => i % 5 === 0 && sfx('deal', { volume: 0.45 }) });
+    sweepUntil = performance.now() + ms + 200;
+    return ms;
   },
 
   cutinDelay(ev) {
