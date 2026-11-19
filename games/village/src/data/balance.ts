@@ -13,15 +13,15 @@ export const GRID_MAX = 20;
 /** 확장 단계별 한 변의 칸 수 (0단계 = 처음) */
 export const LAND_SIZES = [8, 10, 12, 14, 16, 18, 20];
 
-export const RES_IDS = ['rice', 'wood', 'stone', 'cake', 'coin'] as const;
+export const RES_IDS = ['rice', 'wood', 'stone', 'cake', 'coin', 'special'] as const;
 export type ResId = (typeof RES_IDS)[number];
 export type Resources = Record<ResId, number>;
-/** 창고 용량 제한을 받는 자원 (엽전은 제한 없음) */
+/** 창고 용량 제한을 받는 자원 (엽전 · 특산품은 제한 없음) */
 export const CAPPED: readonly ResId[] = ['rice', 'wood', 'stone', 'cake'];
-export const RES_NAME: Record<ResId, string> = { rice: '쌀', wood: '나무', stone: '돌', cake: '떡', coin: '엽전' };
+export const RES_NAME: Record<ResId, string> = { rice: '쌀', wood: '나무', stone: '돌', cake: '떡', coin: '엽전', special: '특산품' };
 
 /** 새 마을이 가지고 시작하는 자원 */
-export const START_RES: Resources = { rice: 50, wood: 50, stone: 0, cake: 0, coin: 0 };
+export const START_RES: Resources = { rice: 50, wood: 50, stone: 0, cake: 0, coin: 0, special: 0 };
 /** 새 마을의 마을 회관 자리 (땅 한가운데 2×2) */
 export const HALL_AT = { x: 9, y: 9 };
 
@@ -44,6 +44,11 @@ export const CONST = {
   /** 마을 회관의 업그레이드 시간·경험치 배수 */
   hall_sec_mul: 2,
   hall_exp_mul: 3,
+  /** 건물 레벨이 이 값 이상이면 업그레이드에 돌이 든다 */
+  stone_from: 4,
+  /** 장터 시세: 기준 값의 price_min_pct % 부터 price_span 가지 (80 ~ 130 %) */
+  price_min_pct: 80,
+  price_span: 51,
 } as const;
 
 /** 마을 레벨 n → n+1 에 필요한 경험치 (n = 1 … 29). 레벨이 오르면 경험치는 0부터 다시 센다 */
@@ -74,3 +79,20 @@ export const HALL_NEED = [2, 4, 6, 9, 12, 15, 19, 23, 27];
 
 /** 건물 모습 3단계: 레벨 1~3 / 4~7 / 8~10 */
 export const lookOf = (level: number): 1 | 2 | 3 => (level >= 8 ? 3 : level >= 4 ? 2 : 1);
+
+/** 장터의 하루 판매 한도 (엽전, 장터 레벨 1 … 10) */
+export const MARKET_LIMIT = [300, 450, 650, 900, 1200, 1600, 2100, 2700, 3400, 4200];
+
+/** 장터에서 파는 자원: 100개의 기준 값(엽전)과 시세를 가르는 번호. SQL 의 _village_prices */
+export const PRICES: { res: ResId; base: number; idx: number }[] = [
+  { res: 'rice', base: 40, idx: 1 },
+  { res: 'wood', base: 50, idx: 2 },
+  { res: 'stone', base: 90, idx: 3 },
+  { res: 'cake', base: 300, idx: 4 },
+  { res: 'special', base: 4000, idx: 5 },
+];
+
+/** 서버 날짜: 한국 시간 2026-01-01 부터 센 날 수 (하루 한 번 바뀌는 것들의 기준) */
+export const kstDay = (ms: number) => Math.floor((ms + 9 * 3600_000) / 86400_000) - 20454;
+/** 그날의 시세 (%) */
+export const pricePct = (day: number, idx: number) => CONST.price_min_pct + ((((day * 7919 + idx * 104729 + 12345) % CONST.price_span) + CONST.price_span) % CONST.price_span);

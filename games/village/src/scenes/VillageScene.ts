@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import { GRID_MAX, lookOf } from '../data/balance';
-import { BUILDING, type BuildingType } from '../data/buildings';
+import { BUILDING, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { isFull, landRect, placeError, stored, type Building, type VillageState } from '../game/rules';
 import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
-import { BUBBLE, CELL, makeTextures, texKey, texSize } from './art';
+import { BUBBLE, CELL, bubbleKey, makeTextures, texKey, texSize } from './art';
 
 /**
  * 마을 화면: 격자 땅 + 건물. 서버가 준 상태를 그리기만 한다 (계산은 서버, 미리 보기는 game/rules.ts).
@@ -37,6 +37,7 @@ interface View {
   bar: Phaser.GameObjects.Graphics;
   label: Phaser.GameObjects.Text;
   badge: Phaser.GameObjects.Text;
+  tag: Phaser.GameObjects.Graphics;
   bubble: Phaser.GameObjects.Image;
   sig: string;
 }
@@ -117,6 +118,8 @@ export class VillageScene extends Phaser.Scene {
     if (s.profile.landStage !== this.landStage) this.drawGround(s.profile.landStage);
     const seen = new Set<string>();
     for (const b of s.buildings) {
+      // 보관함에 든 것은 마을에 없다
+      if (b.state === 'stored') continue;
       seen.add(b.id);
       this.syncView(b);
     }
@@ -156,7 +159,7 @@ export class VillageScene extends Phaser.Scene {
     let x: number;
     let y: number;
     const moving = movingId ? s.buildings.find((b) => b.id === movingId) : null;
-    if (moving) {
+    if (moving && moving.state !== 'stored') {
       x = moving.x;
       y = moving.y;
     } else {
@@ -242,24 +245,26 @@ export class VillageScene extends Phaser.Scene {
       const img = this.add.image(0, d.h * CELL, texKey(b.type, 1)).setOrigin(0, 1);
       const bar = this.add.graphics();
       const label = this.add.text((d.w * CELL) / 2, d.h * CELL - 30, '', { fontFamily: FONT, fontSize: '22px', color: css(COLOR.white), stroke: css(COLOR.outline), strokeThickness: 5 }).setOrigin(0.5, 1).setResolution(2);
-      const badge = this.add
-        .text(d.w * CELL - 6, d.h * CELL - 6, '', { fontFamily: FONT, fontSize: '16px', color: css(COLOR.white), backgroundColor: css(COLOR.outline), padding: { x: 5, y: 1 } })
-        .setOrigin(1, 1)
-        .setResolution(2);
-      const box = this.add.container(0, 0, [img, bar, label, badge]);
-      const product = d.product === 'wood' ? 'wood' : 'rice';
-      const bubble = this.add.image(0, 0, `bubble-${product}`).setOrigin(0.5, 1).setDisplaySize(BUBBLE, BUBBLE + 10).setVisible(false);
+      // 레벨: 오른쪽 아래 귀퉁이의 작은 동그라미 (그림을 덜 가리게)
+      const tag = this.add.graphics();
+      tag.fillStyle(COLOR.outline, 1).fillCircle(d.w * CELL - 13, d.h * CELL - 13, 12);
+      const badge = this.add.text(d.w * CELL - 13, d.h * CELL - 13, '', { fontFamily: FONT, fontSize: '17px', color: css(COLOR.white) }).setOrigin(0.5, 0.5).setResolution(2);
+      const box = this.add.container(0, 0, [img, bar, label, tag, badge]);
+      const bubble = this.add.image(0, 0, bubbleKey(b.type, recipeOf(b.type)?.out ?? null) ?? 'bubble-rice').setOrigin(0.5, 1).setDisplaySize(BUBBLE, BUBBLE + 10).setVisible(false);
       this.tweens.add({ targets: bubble, angle: { from: -7, to: 7 }, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      v = { box, img, bar, label, badge, bubble, sig: '' };
+      v = { box, img, bar, label, badge, tag, bubble, sig: '' };
       this.views.set(b.id, v);
     }
     if (v.sig === sig) return;
     v.sig = sig;
     const sz = texSize(d.w, d.h);
     v.img.setTexture(b.state === 'building' ? `site-${d.w}` : texKey(b.type, lookOf(b.level))).setDisplaySize(sz.w, sz.h);
-    v.box.setPosition(b.x * CELL, b.y * CELL).setDepth((b.y + d.h) * CELL);
+    // 길은 바닥에 깔린다 (다른 것보다 늘 아래)
+    v.box.setPosition(b.x * CELL, b.y * CELL).setDepth(d.kind === 'road' ? 1 + b.y : (b.y + d.h) * CELL);
     v.bubble.setPosition((b.x + d.w / 2) * CELL, b.y * CELL + 18).setDepth(40000 + b.y);
-    v.badge.setText(b.state === 'building' ? '' : `Lv${b.level}`).setVisible(b.state !== 'building');
+    const lv = upgradable(b.type) && b.state !== 'building';
+    v.badge.setText(String(b.level)).setVisible(lv);
+    v.tag.setVisible(lv);
   }
 
   /** 시간에 따라 바뀌는 것: 진행 막대 · 남은 시간 · 수확 방울 */
@@ -272,7 +277,9 @@ export class VillageScene extends Phaser.Scene {
       if (!v) continue;
       const d = BUILDING[b.type];
       v.bar.clear();
-      if (b.state !== 'done' && b.finishAt !== null) {
+      // 가공이 다 끝난 건물은 막대 대신 방울이 뜬다
+      const timed = b.finishAt !== null && (b.state === 'building' || b.state === 'upgrading' || (b.state === 'working' && b.finishAt > now));
+      if (timed && b.finishAt !== null) {
         const total = Math.max(1, b.finishAt - (b.startAt ?? b.finishAt));
         const left = b.finishAt - now;
         const rate = Math.max(0, Math.min(1, 1 - left / total));
@@ -346,6 +353,7 @@ export class VillageScene extends Phaser.Scene {
       if ((c.wx - bx) ** 2 + (c.wy - by) ** 2 <= (BUBBLE * 0.62) ** 2) return { b, bubble: true, onBubble: true };
     }
     for (const b of s.buildings) {
+      if (b.state === 'stored') continue;
       const d = BUILDING[b.type];
       if (c.x >= b.x && c.x < b.x + d.w && c.y >= b.y && c.y < b.y + d.h) return { b, bubble: this.views.get(b.id)?.bubble.visible === true, onBubble: false };
     }

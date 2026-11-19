@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "pace": "vite-node scripts/pace.ts"
+    "pace": "vite-node scripts/pace.ts",
+    "sqlrows": "vite-node scripts/sqlrows.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

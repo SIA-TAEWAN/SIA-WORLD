@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BUILDINGS, type BuildingType } from '../data/buildings';
+import { BUILDING, BUILDINGS, isGift, upgradable, type BuildingType } from '../data/buildings';
 import { COLOR, MATGO, RACE, ROULETTE, TABLE } from '../theme';
 
 /**
@@ -17,13 +17,14 @@ const S = 2;
 type G = Phaser.GameObjects.Graphics;
 const LINE = 3;
 
-export const texKey = (type: BuildingType, look: number) => `b-${type}-${look}`;
+/** 건물 그림의 이름. 장식물 · 길은 모습이 하나다 */
+export const texKey = (type: BuildingType, look: number) => `b-${type}-${upgradable(type) ? look : 1}`;
 /** 건물 그림의 크기 (장면 좌표) */
 export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + RISE * w });
 
 function box(g: G, x: number, y: number, w: number, h: number, r: number, fill: number, line = LINE) {
   g.fillStyle(fill, 1).fillRoundedRect(x, y, w, h, r);
-  g.lineStyle(line, COLOR.outline, 1).strokeRoundedRect(x, y, w, h, r);
+  if (line > 0) g.lineStyle(line, COLOR.outline, 1).strokeRoundedRect(x, y, w, h, r);
 }
 function poly(g: G, pts: number[], fill: number, line = LINE) {
   const p: Phaser.Math.Vector2[] = [];
@@ -34,6 +35,9 @@ function poly(g: G, pts: number[], fill: number, line = LINE) {
 function dot(g: G, x: number, y: number, r: number, fill: number, line = LINE) {
   g.fillStyle(fill, 1).fillCircle(x, y, r);
   if (line > 0) g.lineStyle(line, COLOR.outline, 1).strokeCircle(x, y, r);
+}
+function seg(g: G, x1: number, y1: number, x2: number, y2: number, w = 4, color = COLOR.outline) {
+  g.lineStyle(w, color, 1).lineBetween(x1, y1, x2, y2);
 }
 
 /** 지붕: 초가(노랑, 둥글게) · 널(주황) · 기와(잿빛, 처마 끝이 들림) */
@@ -51,6 +55,9 @@ function roof(g: G, cx: number, top: number, w: number, h: number, look: number)
     box(g, l + w * 0.2, top - 5, w * 0.6, 9, 4, COLOR.primary, 2);
   }
 }
+
+/** 1×1 그림의 바닥 선 (칸의 아래쪽에서 조금 위) */
+const BASE = RISE + CELL - 10;
 
 function drawPaddy(g: G, look: number) {
   const top = RISE;
@@ -70,42 +77,108 @@ function drawPaddy(g: G, look: number) {
 }
 
 function drawHouse(g: G, look: number) {
-  const base = RISE + CELL - 8;
   const w = look === 1 ? 56 : 64;
-  box(g, 48 - w / 2, base - 44, w, 44, 6, COLOR.panel);
-  box(g, 40, base - 28, 16, 28, 4, COLOR.inkSoft, 2);
-  if (look >= 2) box(g, 48 + w / 2 - 20, base - 34, 12, 12, 3, TABLE.blackjack, 2);
-  roof(g, 48, base - 44 - (look === 1 ? 34 : 38), w + 20, look === 1 ? 40 : 42, look);
-  if (look === 3) dot(g, 48 - w / 2 - 2, base - 30, 5, COLOR.pink, 2);
+  box(g, 48 - w / 2, BASE - 44, w, 44, 6, COLOR.panel);
+  box(g, 40, BASE - 28, 16, 28, 4, COLOR.inkSoft, 2);
+  if (look >= 2) box(g, 48 + w / 2 - 20, BASE - 34, 12, 12, 3, TABLE.blackjack, 2);
+  roof(g, 48, BASE - 44 - (look === 1 ? 34 : 38), w + 20, look === 1 ? 40 : 42, look);
+  if (look === 3) dot(g, 48 - w / 2 - 2, BASE - 30, 5, COLOR.pink, 2);
 }
 
 function drawLumber(g: G, look: number) {
-  const base = RISE + CELL - 8;
+  // 지붕 달린 작업대 (2단계부터)
+  if (look >= 2) {
+    seg(g, 10, BASE - 2, 10, BASE - 62);
+    seg(g, 86, BASE - 2, 86, BASE - 62);
+    roof(g, 48, BASE - 94, 90, 34, look);
+  }
   // 그루터기와 도끼
-  box(g, 10, base - 22, 26, 22, 6, COLOR.inkSoft);
-  dot(g, 23, base - 22, 10, COLOR.panel, 2);
-  g.lineStyle(4, COLOR.outline, 1).lineBetween(26, base - 26, 40, base - 52);
-  poly(g, [36, base - 58, 50, base - 56, 46, base - 44, 36, base - 48], ROULETTE.winter, 2);
+  box(g, 8, BASE - 20, 26, 20, 6, COLOR.inkSoft);
+  dot(g, 21, BASE - 20, 10, COLOR.panel, 2);
+  seg(g, 24, BASE - 24, 36, BASE - 48);
+  poly(g, [32, BASE - 54, 46, BASE - 52, 42, BASE - 40, 32, BASE - 44], ROULETTE.winter, 2);
   // 통나무 더미
-  const logs = look === 1 ? [[62, base - 12], [78, base - 12], [70, base - 26]] : [[56, base - 12], [72, base - 12], [86, base - 12], [64, base - 26], [80, base - 26], [72, base - 40]];
+  const logs = look === 1 ? [[56, BASE - 10], [74, BASE - 10], [65, BASE - 26]] : [[52, BASE - 10], [68, BASE - 10], [84, BASE - 10], [60, BASE - 26], [76, BASE - 26], [68, BASE - 42]];
   for (const [x, y] of logs) {
     dot(g, x, y, 9, COLOR.inkSoft);
     dot(g, x, y, 4, COLOR.panel, 1.5);
   }
-  if (look >= 2) {
-    // 지붕 달린 작업대
-    g.lineStyle(4, COLOR.outline, 1).lineBetween(8, base - 2, 8, base - 70).lineBetween(90, base - 2, 90, base - 70);
-    roof(g, 49, base - 100, 92, 34, look);
-  }
 }
 
 function drawStorage(g: G, look: number) {
-  const base = RISE + CELL - 8;
-  box(g, 12, base - 50, 72, 50, 6, look === 1 ? COLOR.panel : COLOR.panelStrong);
-  box(g, 30, base - 36, 36, 36, 4, COLOR.inkSoft, 2);
-  g.lineStyle(3, COLOR.outline, 1).lineBetween(30, base - 36, 66, base).lineBetween(66, base - 36, 30, base).lineBetween(48, base - 36, 48, base);
-  roof(g, 48, base - 50 - 36, 92, 42, look);
-  if (look === 3) dot(g, 48, base - 62, 7, COLOR.primary, 2);
+  box(g, 12, BASE - 50, 72, 50, 6, look === 1 ? COLOR.panel : COLOR.panelStrong);
+  box(g, 30, BASE - 36, 36, 36, 4, COLOR.inkSoft, 2);
+  g.lineStyle(3, COLOR.outline, 1).lineBetween(30, BASE - 36, 66, BASE).lineBetween(66, BASE - 36, 30, BASE).lineBetween(48, BASE - 36, 48, BASE);
+  roof(g, 48, BASE - 50 - 36, 92, 42, look);
+  if (look === 3) dot(g, 48, BASE - 62, 7, COLOR.primary, 2);
+}
+
+/** 장터: 줄무늬 차양 아래 좌판 */
+function drawMarket(g: G, look: number) {
+  seg(g, 14, BASE, 14, BASE - 66);
+  seg(g, 82, BASE, 82, BASE - 66);
+  box(g, 10, BASE - 30, 76, 30, 5, COLOR.inkSoft);
+  // 좌판 위의 물건
+  dot(g, 28, BASE - 34, 8, COLOR.primary, 2);
+  dot(g, 48, BASE - 34, 8, COLOR.lose, 2);
+  dot(g, 68, BASE - 34, 8, COLOR.win, 2);
+  // 차양
+  const top = BASE - 96;
+  for (let i = 0; i < 4; i++) box(g, 6 + i * 21, top, 21, 30, 4, i % 2 ? COLOR.white : look === 3 ? COLOR.primary : COLOR.pink, 2);
+  box(g, 6, top - 6, 84, 10, 4, look === 1 ? COLOR.inkSoft : ROULETTE.winter, 2);
+  if (look >= 2) dot(g, 48, top - 12, 7, COLOR.primary, 2);
+}
+
+/** 채석장: 돌무더기와 곡괭이 */
+function drawQuarry(g: G, look: number) {
+  poly(g, [6, BASE, 16, BASE - 40, 40, BASE - 62, 70, BASE - 50, 90, BASE - 20, 90, BASE], ROULETTE.winter);
+  g.lineStyle(2, COLOR.outline, 1).lineBetween(40, BASE - 62, 44, BASE - 30).lineBetween(44, BASE - 30, 70, BASE - 50).lineBetween(44, BASE - 30, 30, BASE);
+  dot(g, 22, BASE - 8, 9, COLOR.lineSoft, 2);
+  dot(g, 70, BASE - 8, 8, COLOR.lineSoft, 2);
+  // 곡괭이
+  seg(g, 58, BASE - 4, 76, BASE - 64, 5);
+  seg(g, 58, BASE - 4, 76, BASE - 64, 2, COLOR.inkSoft);
+  poly(g, [62, BASE - 70, 76, BASE - 72, 90, BASE - 60, 76, BASE - 62], COLOR.lineSoft, 2);
+  if (look >= 2) {
+    // 수레
+    box(g, 4, BASE - 26, 30, 16, 3, COLOR.inkSoft, 2);
+    dot(g, 12, BASE - 6, 6, COLOR.panel, 2);
+    dot(g, 26, BASE - 6, 6, COLOR.panel, 2);
+  }
+  if (look === 3) dot(g, 40, BASE - 46, 6, COLOR.primary, 2);
+}
+
+/** 방앗간: 작은 집과 물레방아 */
+function drawMill(g: G, look: number) {
+  box(g, 26, BASE - 44, 58, 44, 6, COLOR.panel);
+  box(g, 58, BASE - 26, 14, 26, 4, COLOR.inkSoft, 2);
+  roof(g, 55, BASE - 44 - 34, 74, 40, look);
+  // 물레방아
+  dot(g, 24, BASE - 24, 22, look === 1 ? COLOR.emptyLine : COLOR.inkSoft);
+  dot(g, 24, BASE - 24, 13, TABLE.blackjack, 2);
+  for (let i = 0; i < 4; i++) {
+    const a = (Math.PI / 4) * i;
+    seg(g, 24 - Math.cos(a) * 21, BASE - 24 - Math.sin(a) * 21, 24 + Math.cos(a) * 21, BASE - 24 + Math.sin(a) * 21, 2.5);
+  }
+  dot(g, 24, BASE - 24, 4, COLOR.primary, 2);
+}
+
+/** 장독대: 낮은 단 위의 항아리들 */
+function drawJar(g: G, look: number) {
+  box(g, 6, BASE - 12, 84, 12, 5, COLOR.lineSoft);
+  const jar = (x: number, s: number) => {
+    const h = 34 * s;
+    box(g, x - 13 * s, BASE - 12 - h, 26 * s, h, 11 * s, COLOR.inkSoft);
+    box(g, x - 9 * s, BASE - 12 - h - 5, 18 * s, 8, 4, COLOR.outline, 0);
+    box(g, x - 9 * s, BASE - 12 - h - 5, 18 * s, 8, 4, COLOR.emptyLine, 2);
+  };
+  if (look >= 2) {
+    jar(22, 0.8);
+    jar(74, 0.8);
+  }
+  jar(look === 1 ? 32 : 48, look === 1 ? 1 : 1.25);
+  if (look === 1) jar(66, 0.85);
+  if (look === 3) roof(g, 48, BASE - 96, 92, 26, 3);
 }
 
 function drawHall(g: G, look: number) {
@@ -128,7 +201,7 @@ function drawHall(g: G, look: number) {
   }
   if (look === 3) {
     // 깃발과 금빛 장식
-    g.lineStyle(4, COLOR.outline, 1).lineBetween(W / 2, base - 212, W / 2, base - 250);
+    seg(g, W / 2, base - 212, W / 2, base - 250);
     poly(g, [W / 2, base - 250, W / 2 + 26, base - 242, W / 2, base - 232], COLOR.pink, 2);
     dot(g, 30, base - 150, 6, COLOR.primary, 2);
     dot(g, W - 30, base - 150, 6, COLOR.primary, 2);
@@ -137,18 +210,177 @@ function drawHall(g: G, look: number) {
   box(g, W / 2 - 22, base - 88, 44, 14, 3, COLOR.primary, 2);
 }
 
-const DRAW: Record<BuildingType, (g: G, look: number) => void> = { hall: drawHall, paddy: drawPaddy, house: drawHouse, lumber: drawLumber, storage: drawStorage };
+/** 특별 건물 (2×2): 정자 · 잔치 마당 · 십이지 사당 */
+function drawPavilion(g: G, look: number) {
+  const W = CELL * 2;
+  const base = RISE * 2 + CELL * 2 - 10;
+  box(g, 20, base - 16, W - 40, 16, 6, COLOR.lineSoft);
+  for (const x of [34, 76, W - 88, W - 46]) box(g, x, base - 96, 12, 82, 3, COLOR.cardRed, 2);
+  box(g, 30, base - 46, W - 60, 10, 3, COLOR.inkSoft, 2);
+  roof(g, W / 2, base - 96 - 60, W - 20, 66, 3);
+  dot(g, W / 2, base - 96 - 66, look === 3 ? 12 : 8, COLOR.primary, 2);
+  if (look >= 2) for (const x of [28, W - 28]) dot(g, x, base - 78, 7, COLOR.pink, 2);
+}
+function drawFeast(g: G, look: number) {
+  const W = CELL * 2;
+  const base = RISE * 2 + CELL * 2 - 10;
+  // 멍석
+  box(g, 10, base - 76, W - 20, 76, 14, COLOR.primaryLight);
+  box(g, 22, base - 64, W - 44, 52, 10, COLOR.panel, 2);
+  // 상과 떡
+  box(g, 56, base - 54, 80, 30, 6, COLOR.inkSoft);
+  for (const x of [72, 96, 120]) dot(g, x, base - 44, 9, COLOR.white, 2);
+  dot(g, 96, base - 44, 4, COLOR.pink, 0);
+  // 청사초롱 줄
+  seg(g, 16, base - 80, 16, base - 150);
+  seg(g, W - 16, base - 80, W - 16, base - 150);
+  seg(g, 16, base - 146, W - 16, base - 146, 3);
+  const n = look === 1 ? 3 : 5;
+  for (let i = 0; i < n; i++) box(g, 30 + ((W - 76) / (n - 1)) * i, base - 142, 16, 22, 6, i % 2 ? COLOR.teamA : COLOR.pink, 2);
+  if (look === 3) dot(g, W / 2, base - 160, 9, COLOR.primary, 2);
+}
+function drawShrine(g: G, look: number) {
+  const W = CELL * 2;
+  const base = RISE * 2 + CELL * 2 - 10;
+  box(g, 14, base - 14, W - 28, 14, 5, COLOR.lineSoft);
+  box(g, 34, base - 26, W - 68, 14, 5, COLOR.lineSoft);
+  box(g, 50, base - 100, W - 100, 76, 6, COLOR.cardRed);
+  box(g, 80, base - 76, 32, 52, 4, COLOR.outline, 0);
+  box(g, 82, base - 74, 28, 50, 3, COLOR.primaryDeep, 2);
+  roof(g, W / 2, base - 100 - 56, W - 44, 62, 3);
+  dot(g, W / 2, base - 100 - 64, 9, COLOR.primary, 2);
+  // 돌 등
+  for (const x of [24, W - 24]) {
+    box(g, x - 8, base - 44, 16, 30, 3, ROULETTE.winter, 2);
+    box(g, x - 12, base - 60, 24, 18, 4, look >= 2 ? COLOR.primaryLight : COLOR.lineSoft, 2);
+  }
+  if (look === 3) for (const x of [58, W - 58]) dot(g, x, base - 120, 6, COLOR.primary, 2);
+}
 
-/** 짓는 중인 터: 흙바닥 + 나무 틀 */
+// ───────────────────────── 장식물 · 길 ─────────────────────────
+
+const DECO: Partial<Record<BuildingType, (g: G) => void>> = {
+  tree(g) {
+    box(g, 42, BASE - 30, 12, 30, 3, COLOR.inkSoft, 2.5);
+    dot(g, 48, BASE - 52, 28, COLOR.win);
+    dot(g, 38, BASE - 60, 7, MATGO.matLight, 0);
+  },
+  haystack(g) {
+    poly(g, [14, BASE, 26, BASE - 46, 48, BASE - 64, 70, BASE - 46, 82, BASE], COLOR.primary);
+    g.lineStyle(2, COLOR.primaryDeep, 1).lineBetween(34, BASE - 6, 40, BASE - 44).lineBetween(48, BASE - 6, 48, BASE - 52).lineBetween(62, BASE - 6, 56, BASE - 44);
+    box(g, 22, BASE - 36, 52, 7, 3, COLOR.inkSoft, 2);
+  },
+  flower(g) {
+    box(g, 8, BASE - 22, 80, 22, 10, COLOR.inkSoft);
+    const cols = [COLOR.pink, COLOR.primary, COLOR.white, COLOR.teamA, COLOR.pink];
+    cols.forEach((c, i) => {
+      const x = 18 + i * 15;
+      const y = BASE - 28 - (i % 2) * 8;
+      seg(g, x, BASE - 14, x, y, 3, COLOR.win);
+      dot(g, x, y, 7, c, 2);
+      dot(g, x, y, 2.5, COLOR.primaryDeep, 0);
+    });
+  },
+  scarecrow(g) {
+    seg(g, 48, BASE, 48, BASE - 60, 5);
+    seg(g, 22, BASE - 40, 74, BASE - 40, 5);
+    poly(g, [30, BASE - 48, 66, BASE - 48, 62, BASE - 18, 34, BASE - 18], COLOR.teamA, 2.5);
+    dot(g, 48, BASE - 62, 12, COLOR.panel, 2.5);
+    poly(g, [30, BASE - 70, 66, BASE - 70, 48, BASE - 90], COLOR.primary, 2.5);
+  },
+  stonewall(g) {
+    const rows = [[8, 30, 54, 76], [18, 42, 66]];
+    rows.forEach((xs, r) => xs.forEach((x) => box(g, x - 4, BASE - 20 - r * 18, 24, 20, 7, r ? COLOR.lineSoft : ROULETTE.winter, 2.5)));
+  },
+  bench(g) {
+    for (const x of [16, 76]) box(g, x - 4, BASE - 14, 8, 14, 2, COLOR.inkSoft, 2);
+    box(g, 8, BASE - 28, 80, 16, 5, COLOR.emptyLine);
+    g.lineStyle(2, COLOR.inkSoft, 1).lineBetween(28, BASE - 26, 28, BASE - 14).lineBetween(48, BASE - 26, 48, BASE - 14).lineBetween(68, BASE - 26, 68, BASE - 14);
+  },
+  lantern(g) {
+    seg(g, 48, BASE, 48, BASE - 62, 5);
+    box(g, 36, BASE - 8, 24, 8, 3, COLOR.lineSoft, 2);
+    box(g, 34, BASE - 84, 28, 30, 8, COLOR.primaryLight);
+    box(g, 30, BASE - 90, 36, 9, 4, COLOR.cardRed, 2);
+    box(g, 30, BASE - 58, 36, 7, 3, COLOR.cardRed, 2);
+  },
+  well(g) {
+    seg(g, 22, BASE - 20, 22, BASE - 70);
+    seg(g, 74, BASE - 20, 74, BASE - 70);
+    roof(g, 48, BASE - 92, 76, 26, 2);
+    box(g, 14, BASE - 34, 68, 34, 10, ROULETTE.winter);
+    box(g, 22, BASE - 30, 52, 12, 6, TABLE.blackjack, 2);
+  },
+  jangseung(g) {
+    box(g, 34, BASE - 84, 28, 84, 8, COLOR.inkSoft);
+    dot(g, 42, BASE - 66, 4, COLOR.white, 2);
+    dot(g, 54, BASE - 66, 4, COLOR.white, 2);
+    box(g, 40, BASE - 54, 16, 8, 3, COLOR.cardRed, 2);
+    box(g, 30, BASE - 96, 36, 14, 5, COLOR.outline, 0);
+    box(g, 32, BASE - 94, 32, 10, 4, COLOR.emptyLine, 2);
+  },
+  sotdae(g) {
+    seg(g, 48, BASE, 48, BASE - 84, 5);
+    seg(g, 48, BASE, 48, BASE - 84, 2, COLOR.inkSoft);
+    box(g, 38, BASE - 8, 20, 8, 3, COLOR.lineSoft, 2);
+    // 새
+    poly(g, [30, BASE - 92, 56, BASE - 100, 66, BASE - 90, 52, BASE - 84], COLOR.panel, 2.5);
+    poly(g, [66, BASE - 90, 76, BASE - 88, 66, BASE - 84], COLOR.primary, 2);
+  },
+  pond(g) {
+    box(g, 6, BASE - 44, 84, 44, 22, ROULETTE.winter);
+    box(g, 14, BASE - 38, 68, 32, 16, TABLE.blackjack, 2);
+    dot(g, 34, BASE - 20, 9, COLOR.win, 2);
+    dot(g, 60, BASE - 26, 7, COLOR.win, 2);
+    dot(g, 60, BASE - 28, 4, COLOR.pink, 1.5);
+  },
+  stonetower(g) {
+    [[48, 26], [48, 21], [48, 16], [48, 11], [48, 7]].forEach(([x, r], i) => {
+      const y = BASE - 12 - i * 19;
+      box(g, x - r, y - 8, r * 2, 20, 9, i % 2 ? COLOR.lineSoft : ROULETTE.winter, 2.5);
+    });
+  },
+  road(g) {
+    box(g, 3, RISE + 3, CELL - 6, CELL - 6, 12, COLOR.lineSoft, 0);
+    for (const [x, y, r] of [[22, 22, 9], [58, 18, 7], [78, 44, 8], [36, 52, 10], [66, 72, 9], [20, 76, 7]]) dot(g, x, RISE + y, r, COLOR.emptyLine, 0);
+  },
+};
+
+/** 주민 선물: 받침 위의 선물 꾸러미 (주민마다 리본 색이 다르다) */
+const GIFT_COLORS = [ROULETTE.winter, COLOR.inkSoft, RACE.track, COLOR.pink, COLOR.win, TABLE.poker, RACE.trackDark, COLOR.white, COLOR.primaryDeep, COLOR.cardRed, COLOR.emptyLine, ROULETTE.summer];
+function drawGift(g: G, i: number) {
+  box(g, 14, BASE - 12, 68, 12, 5, COLOR.lineSoft);
+  box(g, 24, BASE - 56, 48, 44, 8, COLOR.primaryLight);
+  box(g, 43, BASE - 56, 10, 44, 0, GIFT_COLORS[i % GIFT_COLORS.length], 2);
+  box(g, 24, BASE - 40, 48, 10, 0, GIFT_COLORS[i % GIFT_COLORS.length], 2);
+  dot(g, 40, BASE - 62, 9, GIFT_COLORS[i % GIFT_COLORS.length], 2.5);
+  dot(g, 56, BASE - 62, 9, GIFT_COLORS[i % GIFT_COLORS.length], 2.5);
+  dot(g, 48, BASE - 58, 5, COLOR.primary, 2);
+}
+
+const MAIN: Partial<Record<BuildingType, (g: G, look: number) => void>> = {
+  hall: drawHall, paddy: drawPaddy, house: drawHouse, lumber: drawLumber, storage: drawStorage, market: drawMarket, quarry: drawQuarry, mill: drawMill, jar: drawJar,
+  pavilion: drawPavilion, feast: drawFeast, shrine: drawShrine,
+};
+
+/** 짓는 중인 터: 다진 흙바닥 + 말뚝과 줄 + 쌓아 둔 널빤지와 삽 */
 function drawSite(g: G, w: number, h: number) {
   const top = RISE * w;
-  box(g, 6, top + 6, w * CELL - 12, h * CELL - 14, 12, RACE.track);
-  const l = 14;
-  const r = w * CELL - 14;
-  const b = top + h * CELL - 14;
-  const t = top - RISE * w * 0.3 + 20;
-  g.lineStyle(7, COLOR.outline, 1).lineBetween(l, b, l, t).lineBetween(r, b, r, t).lineBetween(l, t, r, t).lineBetween(l, b, r, t).lineBetween(l, (b + t) / 2, r, (b + t) / 2);
-  g.lineStyle(3, COLOR.emptyLine, 1).lineBetween(l, b, l, t).lineBetween(r, b, r, t).lineBetween(l, t, r, t).lineBetween(l, b, r, t).lineBetween(l, (b + t) / 2, r, (b + t) / 2);
+  const W = w * CELL;
+  const H = h * CELL;
+  box(g, 8, top + 10, W - 16, H - 20, 14, RACE.track);
+  // 흙더미
+  box(g, W * 0.12, top + H - 44, W * 0.34, 30, 14, RACE.trackDark, 2.5);
+  // 널빤지
+  for (let i = 0; i < 3; i++) box(g, W * 0.5, top + H - 26 - i * 9, W * 0.36, 9, 3, COLOR.emptyLine, 2);
+  // 네 귀퉁이 말뚝과 줄
+  const posts = [[14, top + 16], [W - 14, top + 16], [14, top + H - 14], [W - 14, top + H - 14]];
+  g.lineStyle(2.5, COLOR.cardRed, 1).strokeRect(14, top + 8, W - 28, H - 30);
+  for (const [x, y] of posts) box(g, x - 4, y - 18, 8, 22, 3, COLOR.inkSoft, 2);
+  // 삽
+  seg(g, W * 0.3, top + H - 40, W * 0.38, top + H - 78, 5);
+  seg(g, W * 0.3, top + H - 40, W * 0.38, top + H - 78, 2, COLOR.emptyLine);
+  poly(g, [W * 0.24, top + H - 40, W * 0.36, top + H - 44, W * 0.33, top + H - 26, W * 0.26, top + H - 24], ROULETTE.winter, 2);
 }
 
 /** 수확 방울 안의 자원 그림 */
@@ -162,9 +394,18 @@ function drawRes(g: G, res: string, cx: number, cy: number) {
       g.lineStyle(2.5, COLOR.outline, 1).strokeEllipse(0, 0, 11, 17);
       g.restore();
     }
-  } else {
+  } else if (res === 'wood') {
     box(g, cx - 15, cy - 7, 30, 14, 7, COLOR.inkSoft, 2.5);
     dot(g, cx + 10, cy, 6, COLOR.panel, 2);
+  } else if (res === 'stone') {
+    poly(g, [cx - 14, cy + 10, cx - 10, cy - 6, cx + 2, cy - 13, cx + 13, cy - 4, cx + 15, cy + 10], ROULETTE.winter, 2.5);
+  } else if (res === 'cake') {
+    box(g, cx - 14, cy - 10, 28, 20, 9, COLOR.white, 2.5);
+    dot(g, cx, cy, 4.5, COLOR.pink, 1.5);
+  } else {
+    // 특산품: 작은 항아리
+    box(g, cx - 11, cy - 9, 22, 22, 9, COLOR.inkSoft, 2.5);
+    box(g, cx - 8, cy - 14, 16, 7, 3, COLOR.emptyLine, 2);
   }
 }
 
@@ -178,17 +419,24 @@ function make(scene: Phaser.Scene, key: string, w: number, h: number, draw: (g: 
 }
 
 export const BUBBLE = 64;
+export const BUBBLE_RES = ['rice', 'wood', 'stone', 'cake', 'special'] as const;
 
 export function makeTextures(scene: Phaser.Scene) {
+  let gifts = 0;
   for (const d of BUILDINGS) {
     const sz = texSize(d.w, d.h);
-    for (const look of [1, 2, 3]) make(scene, texKey(d.id, look), sz.w, sz.h, (g) => DRAW[d.id](g, look));
+    const main = MAIN[d.id];
+    if (main) for (const look of [1, 2, 3]) make(scene, texKey(d.id, look), sz.w, sz.h, (g) => main(g, look));
+    else if (isGift(d.id)) {
+      const i = gifts++;
+      make(scene, texKey(d.id, 1), sz.w, sz.h, (g) => drawGift(g, i));
+    } else make(scene, texKey(d.id, 1), sz.w, sz.h, (g) => DECO[d.id]?.(g));
   }
   for (const w of [1, 2]) {
     const sz = texSize(w, w);
     make(scene, `site-${w}`, sz.w, sz.h, (g) => drawSite(g, w, w));
   }
-  for (const res of ['rice', 'wood']) {
+  for (const res of BUBBLE_RES) {
     make(scene, `bubble-${res}`, BUBBLE, BUBBLE + 10, (g) => {
       poly(g, [BUBBLE / 2 - 9, BUBBLE - 12, BUBBLE / 2 + 9, BUBBLE - 12, BUBBLE / 2, BUBBLE + 6], COLOR.white);
       dot(g, BUBBLE / 2, BUBBLE / 2 - 2, BUBBLE / 2 - 5, COLOR.white);
@@ -202,4 +450,10 @@ export function makeTextures(scene: Phaser.Scene) {
     dot(g, 48, 40, 26, TABLE.matgo);
     dot(g, 38, 34, 6, MATGO.matLight, 0);
   });
+}
+
+/** 그 건물이 만드는 것의 방울 그림 이름 (없으면 null) */
+export function bubbleKey(type: BuildingType, craftOut: string | null): string | null {
+  const res = craftOut ?? BUILDING[type].product;
+  return res && (BUBBLE_RES as readonly string[]).includes(res) ? `bubble-${res}` : null;
 }

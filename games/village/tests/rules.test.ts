@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_SIZES, LEVEL_EXP, RATE_MUL, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, lookOf } from '../src/data/balance';
-import { BUILDING, BUILDINGS } from '../src/data/buildings';
+import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, RATE_MUL, RES_IDS, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, lookOf } from '../src/data/balance';
+import { BUILDING, BUILDINGS, RECIPES, upgradable, type BuildingType } from '../src/data/buildings';
 import { GOALS, goalText, josa } from '../src/data/goals';
 import {
-  RuleError, addExp, build, claimGoal, cleanState, cloneState, goalStatus, harvest, landRect, maxCount, move, newVillage, placeError, ratePerHour, settle, slots,
-  storageCap, stored, upgrade, upgradeCost, upgradeSec, type VillageState,
+  RuleError, addExp, batchMax, build, claimGoal, cleanState, cloneState, countOf, craft, goalStatus, harvest, landRect, maxCount, move, newVillage, place, placeError, priceOf,
+  ratePerHour, sell, sellCoins, sellLeft, settle, slots, storageCap, store, stored, unitSec, upgrade, upgradeCost, upgradeSec, type VillageState,
 } from '../src/game/rules';
 
 const T0 = 1_700_000_000_000;
@@ -13,6 +13,11 @@ const HOUR = 3600 * SEC;
 let seq = 0;
 const id = () => `b${++seq}`;
 const rich = (s: VillageState, n = 100000) => ((s.profile.resources.rice = n), (s.profile.resources.wood = n), s);
+/** 모든 자원을 n 으로 */
+const fill = (s: VillageState, n: number) => {
+  for (const k of RES_IDS) s.profile.resources[k] = n;
+  return s;
+};
 const why = (fn: () => unknown) => {
   try {
     fn();
@@ -47,17 +52,22 @@ describe('수치 표', () => {
     expect(BUILDING.house.unlock).toEqual([1, 2, 3, 5, 7, 9, 11, 13, 15, 18, 21, 24]);
   });
 
-  it('업그레이드 값은 그때의 창고 용량 안에 든다 (창고를 하나도 안 지어도 마을 회관은 올릴 수 있다)', () => {
+  it('업그레이드 값은 그때 가질 수 있는 창고 용량 안에 든다 (마을 회관은 창고를 하나도 안 지어도 올릴 수 있다)', () => {
     for (let lv = 1; lv < CONST.building_max_level; lv++) {
       const c = upgradeCost('hall', lv);
-      expect(Math.max(c.rice, c.wood), `hall ${lv}`).toBeLessThanOrEqual(HALL_CAP[lv - 1]);
-      // 다른 건물을 레벨 lv+1 로 올릴 때 마을 회관은 lv+1 이상
-      for (const d of BUILDINGS.filter((v) => v.id !== 'hall')) {
+      expect(Math.max(c.rice, c.wood, c.stone), `hall ${lv}`).toBeLessThanOrEqual(HALL_CAP[lv - 1]);
+      // 다른 건물을 레벨 lv+1 로 올릴 때: 마을 회관은 lv+1 이상, 창고는 그 마을 레벨에서 지을 수 있는 만큼 (레벨 lv)
+      const room = HALL_CAP[lv] + maxCount('storage', HALL_NEED[lv - 1]) * STORAGE_CAP[lv - 1];
+      for (const d of BUILDINGS.filter((v) => v.id !== 'hall' && upgradable(v.id))) {
         const u = upgradeCost(d.id, lv);
-        expect(Math.max(u.rice, u.wood), `${d.id} ${lv}`).toBeLessThanOrEqual(HALL_CAP[lv]);
+        expect(Math.max(u.rice, u.wood, u.stone), `${d.id} ${lv}`).toBeLessThanOrEqual(room);
+        expect(u.stone > 0).toBe(lv >= CONST.stone_from && d.upStone > 0);
       }
     }
-    for (const d of BUILDINGS) expect(Math.max(d.rice, d.wood)).toBeLessThanOrEqual(HALL_CAP[0]);
+    for (const d of BUILDINGS) expect(Math.max(d.rice, d.wood, d.stone)).toBeLessThanOrEqual(HALL_CAP[0]);
+    expect(upgradeCost('paddy', 3)).toEqual({ rice: 35, wood: 70, stone: 0, coin: 0 });
+    expect(upgradeCost('paddy', 4)).toEqual({ rice: 55, wood: 110, stone: 55, coin: 0 });
+    expect(upgradeCost('hall', 9)).toEqual({ rice: 2800, wood: 2800, stone: 2100, coin: 0 });
   });
 
   it('모습 3단계: 레벨 1~3 / 4~7 / 8~10', () => {
@@ -322,7 +332,7 @@ describe('마을 목표', () => {
     const wood = s.profile.resources.wood;
     expect(claimGoal(s, t)).toBe(GOALS[0]);
     expect(s.profile).toMatchObject({ goal: 1, goalProgress: 0 });
-    expect(s.profile.resources.wood).toBe(wood + 20);
+    expect(s.profile.resources.wood).toBe(wood + GOALS[0].wood);
     // 목표 1(집)을 하는 동안의 수확은 목표 2(수확)에 들어가지 않는다
     t += HOUR;
     harvest(s, [p.id], t);
@@ -343,14 +353,17 @@ describe('마을 목표', () => {
     expect(why(() => claimGoal(s, T0))).toBe('no goal');
   });
 
-  it('목록을 처음부터 끝까지 실제로 따라갈 수 있다', () => {
-    const s = rich(newVillage(T0), 1e7);
+  it('목록을 처음부터 끝까지 실제로 따라갈 수 있다 (마을 레벨 30 까지)', () => {
+    const s = fill(newVillage(T0), 1e7);
+    // 자리가 모자라 막히지 않게 땅은 넓게 (목표가 시키는 건물만 지으면 8×8 에도 들어간다 — 아래에서 따로 본다)
+    s.profile.landStage = 6;
     let t = T0;
-    const spot = (type: string) => {
-      for (let y = 6; y < 14; y++) for (let x = 6; x < 14; x++) if (!placeError(s, type as 'paddy', x, y)) return { x, y };
+    const spot = (type: BuildingType) => {
+      for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if (!placeError(s, type, x, y)) return { x, y };
       throw new Error('no room');
     };
-    for (let guard = 0; guard < 500 && goalStatus(s); guard++) {
+    let guard = 0;
+    for (; guard < 3000 && goalStatus(s); guard++) {
       t += 12 * HOUR;
       settle(s, t);
       const g = goalStatus(s)!;
@@ -359,33 +372,60 @@ describe('마을 목표', () => {
         continue;
       }
       const d = g.def;
+      fill(s, 1e7);
       if (d.kind === 'build') {
-        const at = spot(d.type);
+        const at = spot(d.type as BuildingType);
         build(s, d.type, at.x, at.y, t, id());
       } else if (d.kind === 'upgrade') {
         const b = s.buildings.filter((v) => v.type === d.type).sort((a, c) => c.level - a.level)[0];
-        upgrade(s, b.id, t);
+        // 가공 중이면 먼저 거둬야 올릴 수 있다
+        if (b.state === 'working') harvest(s, [b.id], t);
+        else if (b.state === 'done') upgrade(s, b.id, t);
       } else if (d.kind === 'harvest') {
-        // 창고가 넘치게 넣어 둔 자원을 비워야 수확이 들어간다
-        rich(s, 0);
+        // 창고가 넘치게 넣어 둔 자원을 비워야 수확이 들어간다 (넘쳐도 횟수는 오르지만, 들어가는 것도 함께 본다)
+        fill(s, 0);
         harvest(s, s.buildings.map((b) => b.id), t);
-        rich(s, 1e7);
+      } else if (d.kind === 'sell') {
+        let n = Math.floor((sellLeft(s, t) * 100) / priceOf('rice', t));
+        while (n > 0 && sellCoins('rice', n, t) > sellLeft(s, t)) n--;
+        if (sellLeft(s, t) > 0 && sellCoins('rice', n, t) >= 1) sell(s, 'rice', n, t);
+      } else if (d.kind === 'craft') {
+        const b = s.buildings.filter((v) => v.type === d.type)[0];
+        if (b.state === 'working') harvest(s, [b.id], t);
+        else if (b.state === 'done') craft(s, b.id, batchMax(b.type, b.level), t);
+      } else if (d.kind === 'deco') {
+        const type = BUILDINGS.find((v) => v.kind === 'deco' && countOf(s, v.id) < maxCount(v.id, s.profile.level))!.id;
+        const at = spot(type);
+        build(s, type, at.x, at.y, t, id());
       } else addExp(s.profile, LEVEL_EXP[s.profile.level - 1]);
     }
     expect(goalStatus(s)).toBeNull();
     expect(s.profile.goal).toBe(GOALS.length);
+    expect(s.profile.level).toBe(30);
+    // 목표가 시키는 건물(장식물 빼고)은 처음 땅 8×8 에 다 들어간다
+    const cells = s.buildings.filter((b) => BUILDING[b.type].kind === 'main').reduce((n, b) => n + BUILDING[b.type].w * BUILDING[b.type].h, 0);
+    expect(cells).toBeLessThanOrEqual(64);
   });
 });
 
 describe('서버 답 다듬기', () => {
   it('이상한 값을 걸러 낸다', () => {
     const s = cleanState({
-      profile: { name: 7, level: 99, exp: -3, resources: { rice: '12', wood: null, coin: 5.9 }, landStage: 9, goal: 'x' },
-      buildings: [{ id: 'a', type: 'paddy', level: 0, x: -1, y: 99, state: 'weird', finishAt: 5 }, { id: 'b', type: 'castle' }, { type: 'paddy' }, null],
+      profile: { name: 7, level: 99, exp: -3, resources: { rice: '12', wood: null, coin: 5.9 }, landStage: 9, goal: 'x', marketSold: -4 },
+      buildings: [
+        { id: 'a', type: 'paddy', level: 0, x: -1, y: 99, state: 'weird', finishAt: 5 },
+        { id: 'm', type: 'mill', level: 2, x: null, y: null, state: 'working', finishAt: 9, startAt: 4, jobN: 7 },
+        { id: 'k', type: 'tree', state: 'stored', x: null, y: null, jobN: 3 },
+        { id: 'b', type: 'castle' }, { type: 'paddy' }, null,
+      ],
     });
-    expect(s.profile).toMatchObject({ name: '', level: 30, exp: 0, landStage: 6, goal: 0 });
-    expect(s.profile.resources).toEqual({ rice: 12, wood: 0, stone: 0, cake: 0, coin: 5 });
-    expect(s.buildings).toEqual([{ id: 'a', type: 'paddy', level: 1, x: 0, y: 19, state: 'done', finishAt: null, startAt: null, collectedAt: 0, resident: null }]);
+    expect(s.profile).toMatchObject({ name: '', level: 30, exp: 0, landStage: 6, goal: 0, marketDay: 0, marketSold: 0 });
+    expect(s.profile.resources).toEqual({ rice: 12, wood: 0, stone: 0, cake: 0, coin: 5, special: 0 });
+    expect(s.buildings).toEqual([
+      { id: 'a', type: 'paddy', level: 1, x: 0, y: 19, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0 },
+      { id: 'm', type: 'mill', level: 2, x: 0, y: 0, state: 'working', finishAt: 9, startAt: 4, collectedAt: 0, jobN: 7 },
+      { id: 'k', type: 'tree', level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: 0, jobN: 0 },
+    ]);
     expect(cleanState(null).buildings).toEqual([]);
   });
 
@@ -396,5 +436,225 @@ describe('서버 답 다듬기', () => {
     c.buildings[0].x = 0;
     expect(s.profile.resources.rice).toBe(50);
     expect(s.buildings[0].x).toBe(HALL_AT.x);
+  });
+});
+
+describe('4단계: 돌 · 엽전, 장식물 · 길, 보관함', () => {
+  it('장식물 · 길은 엽전으로 바로 놓인다 (건설 슬롯을 쓰지 않는다). 업그레이드는 없다', () => {
+    const s = fill(newVillage(T0), 1000);
+    build(s, 'paddy', 6, 6, T0, id());
+    build(s, 'house', 7, 6, T0, id());
+    const tree = build(s, 'tree', 8, 6, T0, id());
+    expect(tree.state).toBe('done');
+    expect(s.profile.resources.coin).toBe(980);
+    const road = build(s, 'road', 9, 6, T0, id());
+    expect(road.state).toBe('done');
+    expect(why(() => build(s, 'road', 9, 6, T0, id()))).toBe('occupied');
+    expect(why(() => upgrade(s, tree.id, T0))).toBe('no upgrade');
+    expect(why(() => build(s, 'lantern', 6, 7, T0, id()))).toBe('locked');
+    expect(why(() => build(s, 'gift_rat', 6, 7, T0, id()))).toBe('locked');
+    expect(why(() => build(s, 'pavilion', 6, 7, T0, id()))).toBe('locked');
+    s.profile.resources.coin = 3;
+    expect(why(() => build(s, 'road', 6, 7, T0, id()))).toBe('not enough');
+    // 개수: 나무 12그루까지
+    expect(maxCount('tree', 1)).toBe(12);
+    expect(maxCount('lantern', 4)).toBe(0);
+    expect(maxCount('lantern', 5)).toBe(8);
+    expect(maxCount('road', 1)).toBe(80);
+  });
+
+  it('건물 값의 돌 · 엽전', () => {
+    const s = fill(newVillage(T0), 500);
+    s.profile.level = 8;
+    build(s, 'mill', 6, 6, T0, id());
+    expect(s.profile.resources).toMatchObject({ rice: 460, wood: 420, stone: 480, coin: 500 });
+    build(s, 'jar', 7, 6, T0, id());
+    expect(s.profile.resources).toMatchObject({ rice: 460, wood: 320, stone: 420, coin: 450 });
+    s.profile.resources.stone = 0;
+    settle(s, T0 + HOUR);
+    expect(why(() => build(s, 'mill', 8, 6, T0 + HOUR, id()))).toBe('not enough');
+    // 업그레이드: 레벨 4 부터 돌
+    s.buildings[0].level = 6;
+    const p = build(s, 'paddy', 8, 6, T0 + HOUR, id());
+    settle(s, T0 + 2 * HOUR);
+    p.level = 4;
+    expect(why(() => upgrade(s, p.id, T0 + 2 * HOUR))).toBe('not enough');
+    s.profile.resources.stone = 55;
+    upgrade(s, p.id, T0 + 2 * HOUR);
+    expect(s.profile.resources.stone).toBe(0);
+  });
+
+  it('보관함: 넣으면 자리가 비고 생산이 멈춘다. 다시 놓으면 그때부터 쌓인다', () => {
+    const s = fill(newVillage(T0), 100);
+    const p = build(s, 'paddy', 6, 6, T0 - 10 * SEC, id());
+    settle(s, T0);
+    expect(why(() => store(s, s.buildings[0].id, T0))).toBe('cannot store');
+    const q = build(s, 'paddy', 7, 6, T0, id());
+    expect(why(() => store(s, q.id, T0))).toBe('busy');
+    // 쌓여 있던 60 은 먼저 거둔다 (경험치 없음)
+    const exp = s.profile.exp;
+    store(s, p.id, T0 + HOUR);
+    expect(p.state).toBe('stored');
+    expect(s.profile.resources.rice).toBe(100 - 5 - 5 + 60);
+    expect(s.profile.exp).toBe(exp + 10); // 둘째 논의 완공 경험치뿐
+    expect(why(() => store(s, p.id, T0 + HOUR))).toBe('stored');
+    expect(why(() => move(s, p.id, 8, 8, T0 + HOUR))).toBe('stored');
+    expect(stored(p, T0 + 5 * HOUR)).toBe(0);
+    expect(harvest(s, [p.id], T0 + 5 * HOUR).per[p.id]).toBeUndefined();
+    // 자리가 비었다. 개수에는 여전히 들어간다
+    expect(placeError(s, 'house', 6, 6)).toBeNull();
+    expect(why(() => build(s, 'paddy', 6, 6, T0 + 5 * HOUR, id()))).toBe('limit');
+    expect(why(() => place(s, q.id, 8, 8, T0 + 5 * HOUR))).toBe('not stored');
+    expect(why(() => place(s, p.id, 7, 6, T0 + 5 * HOUR))).toBe('occupied');
+    place(s, p.id, 8, 8, T0 + 5 * HOUR);
+    expect(p).toMatchObject({ state: 'done', x: 8, y: 8, collectedAt: T0 + 5 * HOUR });
+    expect(stored(p, T0 + 6 * HOUR)).toBe(60);
+  });
+
+  it('보관함에 든 창고는 용량에 들어가지 않는다', () => {
+    const s = fill(newVillage(T0), 100);
+    s.profile.level = 2;
+    const st = build(s, 'storage', 6, 6, T0, id());
+    settle(s, T0 + 60 * SEC);
+    expect(storageCap(s)).toBe(450);
+    store(s, st.id, T0 + 60 * SEC);
+    expect(storageCap(s)).toBe(300);
+  });
+});
+
+describe('4단계: 방앗간 · 장독대 (가공)', () => {
+  const withMill = () => {
+    const s = fill(newVillage(T0), 200);
+    s.profile.level = 8;
+    const m = build(s, 'mill', 6, 6, T0 - HOUR, id());
+    settle(s, T0);
+    fill(s, 200);
+    return { s, m };
+  };
+
+  it('재료를 내고 기다리면 떡이 나온다', () => {
+    const { s, m } = withMill();
+    expect(batchMax('mill', 1)).toBe(10);
+    expect(unitSec('mill', 1)).toBe(120);
+    expect(unitSec('mill', 2)).toBe(92);
+    expect(why(() => craft(s, m.id, 0, T0))).toBe('bad count');
+    expect(why(() => craft(s, m.id, 11, T0))).toBe('bad count');
+    expect(why(() => craft(s, m.id, 1.5, T0))).toBe('bad count');
+    expect(why(() => craft(s, s.buildings[0].id, 1, T0))).toBe('no recipe');
+    craft(s, m.id, 10, T0);
+    expect(s.profile.resources.rice).toBe(170);
+    expect(m).toMatchObject({ state: 'working', jobN: 10, finishAt: T0 + 1200 * SEC });
+    expect(why(() => craft(s, m.id, 1, T0))).toBe('busy');
+    expect(why(() => upgrade(s, m.id, T0))).toBe('busy');
+    expect(why(() => store(s, m.id, T0))).toBe('busy');
+    // 다 끝나기 전에는 거둘 것이 없다
+    expect(stored(m, T0 + 1199 * SEC)).toBe(0);
+    expect(harvest(s, [m.id], T0 + 1199 * SEC).per).toEqual({});
+    expect(stored(m, T0 + 1200 * SEC)).toBe(10);
+    // 가공 중인 건물은 건설 슬롯을 쓰지 않는다
+    build(s, 'paddy', 7, 6, T0, id());
+    build(s, 'paddy', 8, 6, T0, id());
+    const exp = s.profile.exp;
+    s.profile.goal = GOALS.findIndex((g) => g.kind === 'craft' && g.type === 'mill');
+    const r = harvest(s, [m.id], T0 + 1300 * SEC);
+    expect(r).toEqual({ per: { [m.id]: 10 }, gained: { cake: 10 }, exp: 10, lost: 0 });
+    expect(s.profile.resources.cake).toBe(210);
+    expect(m).toMatchObject({ state: 'done', jobN: 0, finishAt: null });
+    expect(s.profile.goalProgress).toBe(10);
+    expect(s.profile.exp).toBe(exp + 10 + 20); // 가공 10 + 논 두 채 완공
+  });
+
+  it('재료가 모자라면 못 만든다. 창고가 가득 차면 넘친 떡은 버린다', () => {
+    const { s, m } = withMill();
+    s.profile.resources.rice = 29;
+    expect(why(() => craft(s, m.id, 10, T0))).toBe('not enough');
+    craft(s, m.id, 9, T0);
+    s.profile.resources.cake = 295;
+    expect(harvest(s, [m.id], T0 + HOUR)).toEqual({ per: { [m.id]: 5 }, gained: { cake: 5 }, exp: 9, lost: 4 });
+  });
+
+  it('장독대: 떡과 쌀로 특산품을 만든다 (특산품은 창고 용량과 상관없다)', () => {
+    const s = fill(newVillage(T0), 300);
+    s.profile.level = 8;
+    const j = build(s, 'jar', 6, 6, T0 - HOUR, id());
+    settle(s, T0);
+    fill(s, 300);
+    expect(RECIPES.find((r) => r.type === 'jar')).toMatchObject({ in1: 'cake', n1: 3, in2: 'rice', n2: 10, out: 'special' });
+    expect(batchMax('jar', 1)).toBe(2);
+    craft(s, j.id, 2, T0);
+    expect(s.profile.resources).toMatchObject({ cake: 294, rice: 280 });
+    const r = harvest(s, [j.id], T0 + 2 * HOUR);
+    expect(r).toEqual({ per: { [j.id]: 2 }, gained: { special: 2 }, exp: 30, lost: 0 });
+    expect(s.profile.resources.special).toBe(302);
+  });
+});
+
+describe('4단계: 장터', () => {
+  const withMarket = () => {
+    const s = fill(newVillage(T0), 300);
+    s.profile.level = 3;
+    const m = build(s, 'market', 6, 6, T0 - HOUR, id());
+    settle(s, T0);
+    fill(s, 300);
+    return { s, m };
+  };
+
+  it('시세는 날마다 다르고 (80 ~ 130 %), 받는 엽전 = floor(개수 × 기준 값 × 시세 ÷ 10000)', () => {
+    const seen = new Set<number>();
+    for (let d = 0; d < 60; d++) {
+      const t = T0 + d * 24 * HOUR;
+      const per100 = priceOf('rice', t);
+      expect(per100).toBeGreaterThanOrEqual(32);
+      expect(per100).toBeLessThanOrEqual(52);
+      expect(sellCoins('rice', 100, t)).toBe(per100);
+      seen.add(per100);
+    }
+    expect(seen.size).toBeGreaterThan(8);
+    // 같은 날에는 같다 (한국 시간 자정에 바뀐다)
+    const midnight = Date.UTC(2026, 10, 19, 15, 0, 0);
+    expect(kstDay(midnight)).toBe(kstDay(midnight + 23 * HOUR));
+    expect(priceOf('wood', midnight)).toBe(priceOf('wood', midnight + 23 * HOUR));
+    expect(kstDay(midnight - 1)).toBe(kstDay(midnight) - 1);
+  });
+
+  it('팔기: 자원이 줄고 엽전이 는다. 하루 한도, 날이 바뀌면 다시', () => {
+    const { s } = withMarket();
+    expect(why(() => sell(s, 'coin', 10, T0))).toBe('bad resource');
+    expect(why(() => sell(s, 'rice', 0, T0))).toBe('bad count');
+    expect(why(() => sell(s, 'rice', 301, T0))).toBe('not enough');
+    expect(why(() => sell(s, 'rice', 1, T0))).toBe('too few');
+    const got = sell(s, 'rice', 100, T0);
+    expect(got).toBe(priceOf('rice', T0));
+    expect(s.profile.resources).toMatchObject({ rice: 200, coin: 300 + got });
+    expect(s.profile).toMatchObject({ marketDay: kstDay(T0), marketSold: got });
+    expect(sellLeft(s, T0)).toBe(MARKET_LIMIT[0] - got);
+    // 한도: 떡 300개는 한도(300닢)를 넘는다
+    s.profile.resources.cake = 1000;
+    expect(sellCoins('cake', 300, T0)).toBeGreaterThan(sellLeft(s, T0));
+    expect(why(() => sell(s, 'cake', 300, T0))).toBe('sell limit');
+    // 다음 날에는 한도가 돌아온다
+    const next = T0 + 24 * HOUR;
+    expect(sellLeft(s, next)).toBe(MARKET_LIMIT[0]);
+    const n = Math.floor((MARKET_LIMIT[0] * 100) / priceOf('cake', next)) - 1;
+    sell(s, 'cake', n, next);
+    expect(s.profile.marketSold).toBe(sellCoins('cake', n, next));
+  });
+
+  it('장터가 없거나 짓는 중이면 팔 수 없다', () => {
+    const s = fill(newVillage(T0), 300);
+    expect(why(() => sell(s, 'rice', 100, T0))).toBe('no market');
+    s.profile.level = 3;
+    build(s, 'market', 6, 6, T0, id());
+    expect(why(() => sell(s, 'rice', 100, T0))).toBe('no market');
+    expect(sellLeft(s, T0)).toBe(0);
+    sell(s, 'rice', 100, T0 + 120 * SEC);
+  });
+
+  it('목표: 판 엽전을 센다', () => {
+    const { s } = withMarket();
+    s.profile.goal = GOALS.findIndex((g) => g.kind === 'sell');
+    const got = sell(s, 'wood', 100, T0);
+    expect(s.profile.goalProgress).toBe(got);
+    expect(goalStatus(s)).toMatchObject({ have: 20, done: true });
   });
 });

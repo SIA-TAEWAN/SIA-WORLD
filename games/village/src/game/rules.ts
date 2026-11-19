@@ -1,35 +1,37 @@
 import {
-  CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_SIZES, LEVEL_EXP, RATE_MUL, RES_IDS, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC,
-  type ResId, type Resources,
+  CAPPED, CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, RES_IDS, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC,
+  kstDay, pricePct, type ResId, type Resources,
 } from '../data/balance';
-import { BUILDING, isBuildingType, type BuildingType } from '../data/buildings';
-import { GOALS, type GoalDef } from '../data/goals';
+import { BUILDING, isBuildingType, recipeOf, upgradable, type BuildingType } from '../data/buildings';
+import { COUNTED, GOALS, type GoalDef, type GoalKind } from '../data/goals';
 
 /**
- * 시아마을의 규칙 (순수 함수). 진짜 계산은 서버 함수(supabase/migrations/047_village.sql)가 서버 시간으로 한다.
+ * 시아마을의 규칙 (순수 함수). 진짜 계산은 서버 함수(supabase/migrations/047_village.sql + 049 …)가 서버 시간으로 한다.
  * 여기 있는 것은 같은 식을 옮긴 것으로, 테스트 모드(LocalApi)와 화면의 미리 보기(쌓인 양·진행 막대·살 수 있는지)가 쓴다.
  * 거절 까닭(RuleError 의 글자)은 SQL 의 raise exception 글자와 같다.
  * 시각은 모두 ms (서버 시각 기준).
  */
 
-export type BuildingState = 'building' | 'upgrading' | 'done';
+/** building 짓는 중 · upgrading 업그레이드 중 · done 다 지음 · working 가공 중(방앗간 · 장독대) · stored 보관함 */
+export type BuildingState = 'building' | 'upgrading' | 'done' | 'working' | 'stored';
 
 export interface Building {
   id: string;
   type: BuildingType;
   /** 지금 레벨 (업그레이드 중이면 끝나기 전의 레벨) */
   level: number;
+  /** 왼쪽 위 칸 (보관함에 있으면 뜻이 없다) */
   x: number;
   y: number;
   state: BuildingState;
-  /** 짓기·업그레이드가 끝나는 시각 (done 이면 null) */
+  /** 짓기 · 업그레이드 · 가공이 끝나는 시각 (done · stored 이면 null) */
   finishAt: number | null;
-  /** 짓기·업그레이드를 시작한 시각 (진행 막대용. done 이면 null) */
+  /** 시작한 시각 (진행 막대용) */
   startAt: number | null;
   /** 마지막으로 수확한 시각 (이때부터 생산이 쌓인다) */
   collectedAt: number;
-  /** 배치한 주민 (6단계) */
-  resident: string | null;
+  /** 가공 중인 개수 */
+  jobN: number;
 }
 
 export interface Profile {
@@ -42,14 +44,20 @@ export interface Profile {
   prosperity: number;
   /** 지금 마을 목표의 번호 (GOALS 의 순서. 끝까지 했으면 GOALS.length) */
   goal: number;
-  /** 지금 목표가 시작된 뒤의 수확 횟수 */
+  /** 지금 목표가 시작된 뒤에 센 횟수 (수확 · 판매 · 가공) */
   goalProgress: number;
+  /** 장터: 마지막으로 판 날(kstDay)과 그날 번 엽전 */
+  marketDay: number;
+  marketSold: number;
 }
 
 export interface VillageState {
   profile: Profile;
   buildings: Building[];
 }
+
+export type Cost = { rice: number; wood: number; stone: number; coin: number };
+const COST_KEYS = ['rice', 'wood', 'stone', 'coin'] as const;
 
 export class RuleError extends Error {}
 const fail = (why: string): never => {
@@ -64,36 +72,50 @@ export function landRect(stage: number): { x0: number; size: number } {
   return { x0: (GRID_MAX - size) / 2, size };
 }
 
-/** 레벨 n → n+1 업그레이드 값 */
-export function upgradeCost(type: BuildingType, level: number): { rice: number; wood: number } {
+export function buildCost(type: BuildingType): Cost {
+  const d = BUILDING[type];
+  return { rice: d.rice, wood: d.wood, stone: d.stone, coin: d.coin };
+}
+/** 레벨 n → n+1 업그레이드 값. 돌은 건물 레벨 stone_from 부터 든다 */
+export function upgradeCost(type: BuildingType, level: number): Cost {
   const d = BUILDING[type];
   const m = COST_MUL[level - 1];
-  return { rice: Math.floor((d.rice * m) / 10), wood: Math.floor((d.wood * m) / 10) };
+  return { rice: Math.floor((d.rice * m) / 10), wood: Math.floor((d.wood * m) / 10), stone: level >= CONST.stone_from ? Math.floor((d.upStone * m) / 10) : 0, coin: 0 };
 }
+export const canPay = (p: Profile, c: Cost) => COST_KEYS.every((k) => p.resources[k] >= c[k]);
 export const upgradeSec = (type: BuildingType, level: number) => UPGRADE_SEC[level - 1] * (type === 'hall' ? CONST.hall_sec_mul : 1);
 export const upgradeExp = (type: BuildingType, level: number) => UPGRADE_EXP[level - 1] * (type === 'hall' ? CONST.hall_exp_mul : 1);
 /** 시간당 생산량 */
 export const ratePerHour = (type: BuildingType, level: number) => Math.floor((BUILDING[type].rate * RATE_MUL[level - 1]) / 10);
-/** 그 마을 레벨에서 지을 수 있는 개수 */
-export const maxCount = (type: BuildingType, villageLevel: number) => BUILDING[type].unlock.filter((l) => l <= villageLevel).length;
+/** 그 마을 레벨에서 가질 수 있는 개수 */
+export function maxCount(type: BuildingType, villageLevel: number): number {
+  const d = BUILDING[type];
+  if (d.cap > 0) return villageLevel >= d.unlock[0] ? d.cap : 0;
+  return d.unlock.filter((l) => l <= villageLevel).length;
+}
+/** 가진 개수 (보관함에 든 것도 센다) */
 export const countOf = (s: VillageState, type: BuildingType) => s.buildings.filter((b) => b.type === type).length;
-/** 다음 한 채가 열리는 마을 레벨 (더 없으면 null) */
+/** 다음 하나가 열리는 마을 레벨 (더 없으면 null) */
 export function nextUnlock(s: VillageState, type: BuildingType): number | null {
-  return BUILDING[type].unlock[countOf(s, type)] ?? null;
+  const d = BUILDING[type];
+  if (d.cap > 0) return countOf(s, type) < d.cap ? d.unlock[0] : null;
+  return d.unlock[countOf(s, type)] ?? null;
 }
 
 export const hallLevel = (s: VillageState) => s.buildings.find((b) => b.type === 'hall')?.level ?? 1;
+/** 땅에 놓여 있고 다 지어진 건물인가 (짓는 중 · 보관함이 아니다) */
+export const standing = (b: Building) => b.state !== 'building' && b.state !== 'stored';
 
-/** 창고 용량: 마을 회관 + 다 지은 창고들 */
+/** 창고 용량: 마을 회관 + 놓여 있는 창고들 */
 export function storageCap(s: VillageState): number {
   let cap = HALL_CAP[hallLevel(s) - 1];
-  for (const b of s.buildings) if (b.type === 'storage' && b.state !== 'building') cap += STORAGE_CAP[b.level - 1];
+  for (const b of s.buildings) if (b.type === 'storage' && standing(b)) cap += STORAGE_CAP[b.level - 1];
   return cap;
 }
 
 /** 동시에 지을 수 있는 수 · 지금 짓는 수 */
 export const slots = (s: VillageState) => (hallLevel(s) >= CONST.slots3_hall ? CONST.base_slots + 1 : CONST.base_slots);
-export const busyCount = (s: VillageState) => s.buildings.filter((b) => b.state !== 'done').length;
+export const busyCount = (s: VillageState) => s.buildings.filter((b) => b.state === 'building' || b.state === 'upgrading').length;
 
 /** 그 자리에 놓을 수 있나 → 안 되면 까닭 */
 export function placeError(s: VillageState, type: BuildingType, x: number, y: number, ignoreId?: string): 'out of land' | 'occupied' | null {
@@ -101,21 +123,48 @@ export function placeError(s: VillageState, type: BuildingType, x: number, y: nu
   const { x0, size } = landRect(s.profile.landStage);
   if (!Number.isInteger(x) || !Number.isInteger(y) || x < x0 || y < x0 || x + d.w > x0 + size || y + d.h > x0 + size) return 'out of land';
   for (const b of s.buildings) {
-    if (b.id === ignoreId) continue;
+    if (b.id === ignoreId || b.state === 'stored') continue;
     const o = BUILDING[b.type];
     if (b.x < x + d.w && b.x + o.w > x && b.y < y + d.h && b.y + o.h > y) return 'occupied';
   }
   return null;
 }
 
-/** 쌓인 양: floor(지난 초 × 시간당 생산량 ÷ 3600), 최대 12시간 분량 */
+/** 가공: 한 번에 넣을 수 있는 개수 · 하나를 만드는 시간(초) */
+export function batchMax(type: BuildingType, level: number): number {
+  const r = recipeOf(type);
+  return r ? r.base + r.per * (level - 1) : 0;
+}
+export function unitSec(type: BuildingType, level: number): number {
+  const r = recipeOf(type);
+  return r ? Math.floor((r.sec * 10) / RATE_MUL[level - 1]) : 0;
+}
+
+/** 쌓인 양: 생산 건물은 floor(지난 초 × 시간당 ÷ 3600) (최대 12시간), 가공 건물은 다 끝난 묶음 */
 export function stored(b: Building, now: number): number {
+  if (b.state === 'working') return b.finishAt !== null && b.finishAt <= now ? b.jobN : 0;
   if (b.state !== 'done' || !BUILDING[b.type].product) return 0;
   const sec = Math.min(CONST.prod_cap_sec, Math.max(0, Math.floor((now - b.collectedAt) / 1000)));
   return Math.floor((sec * ratePerHour(b.type, b.level)) / 3600);
 }
 /** 가득 찼나 (12시간 분량) */
 export const isFull = (b: Building, now: number) => b.state === 'done' && !!BUILDING[b.type].product && now - b.collectedAt >= CONST.prod_cap_sec * 1000;
+
+/** 장터: 오늘 그 자원 100개의 값 · 오늘 더 벌 수 있는 엽전 */
+export const priceOf = (res: ResId, now: number) => {
+  const p = PRICES.find((v) => v.res === res);
+  return p ? Math.floor((p.base * pricePct(kstDay(now), p.idx)) / 100) : 0;
+};
+export const sellCoins = (res: ResId, n: number, now: number) => {
+  const p = PRICES.find((v) => v.res === res);
+  return p ? Math.floor((n * p.base * pricePct(kstDay(now), p.idx)) / 10000) : 0;
+};
+export const market = (s: VillageState) => s.buildings.find((b) => b.type === 'market' && b.state === 'done') ?? null;
+export function sellLeft(s: VillageState, now: number): number {
+  const m = market(s);
+  if (!m) return 0;
+  return Math.max(0, MARKET_LIMIT[m.level - 1] - (s.profile.marketDay === kstDay(now) ? s.profile.marketSold : 0));
+}
 
 /** 지금 목표와 진행 */
 export function goalStatus(s: VillageState): { def: GoalDef; have: number; done: boolean } | null {
@@ -124,8 +173,9 @@ export function goalStatus(s: VillageState): { def: GoalDef; have: number; done:
   let have = 0;
   if (def.kind === 'build') have = s.buildings.filter((b) => b.type === def.type && b.state !== 'building').length;
   else if (def.kind === 'upgrade') have = Math.max(0, ...s.buildings.filter((b) => b.type === def.type && b.state !== 'building').map((b) => b.level));
-  else if (def.kind === 'harvest') have = s.profile.goalProgress;
-  else have = s.profile.level;
+  else if (def.kind === 'deco') have = s.buildings.filter((b) => BUILDING[b.type].kind === 'deco').length;
+  else if (def.kind === 'level') have = s.profile.level;
+  else have = s.profile.goalProgress;
   return { def, have: Math.min(have, def.n), done: have >= def.n };
 }
 
@@ -133,8 +183,8 @@ export function goalStatus(s: VillageState): { def: GoalDef; have: number; done:
 
 export function newVillage(now: number, hallId = 'hall'): VillageState {
   return {
-    profile: { name: '', level: 1, exp: 0, resources: { ...START_RES }, landStage: 0, prosperity: 0, goal: 0, goalProgress: 0 },
-    buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, resident: null }],
+    profile: { name: '', level: 1, exp: 0, resources: { ...START_RES }, landStage: 0, prosperity: 0, goal: 0, goalProgress: 0, marketDay: 0, marketSold: 0 },
+    buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, jobN: 0 }],
   };
 }
 
@@ -151,9 +201,17 @@ export function addExp(p: Profile, n: number): number {
   return ups;
 }
 
+/** 지금 목표가 그 종류를 세고 있으면 횟수를 더한다 */
+function progress(s: VillageState, kind: GoalKind, type: BuildingType | '', n: number) {
+  const g = GOALS[s.profile.goal];
+  if (n > 0 && g && COUNTED.includes(g.kind) && g.kind === kind && (g.type === '' || g.type === type)) s.profile.goalProgress += n;
+}
+
 /** 끝난 짓기·업그레이드를 마무리한다 (서버는 모든 요청의 처음에 이것을 한다) */
 export function settle(s: VillageState, now: number): void {
-  const due = s.buildings.filter((b) => b.state !== 'done' && b.finishAt !== null && b.finishAt <= now).sort((a, b) => a.finishAt! - b.finishAt!);
+  const due = s.buildings
+    .filter((b) => (b.state === 'building' || b.state === 'upgrading') && b.finishAt !== null && b.finishAt <= now)
+    .sort((a, b) => a.finishAt! - b.finishAt!);
   for (const b of due) {
     if (b.state === 'building') addExp(s.profile, BUILDING[b.type].buildExp);
     else {
@@ -168,26 +226,27 @@ export function settle(s: VillageState, now: number): void {
   }
 }
 
-function pay(p: Profile, rice: number, wood: number) {
-  if (p.resources.rice < rice || p.resources.wood < wood) fail('not enough');
-  p.resources.rice -= rice;
-  p.resources.wood -= wood;
+function pay(p: Profile, c: Cost) {
+  if (!canPay(p, c)) fail('not enough');
+  for (const k of COST_KEYS) p.resources[k] -= c[k];
 }
 
 export function build(s: VillageState, type: string, x: number, y: number, now: number, id: string): Building {
   settle(s, now);
   if (!isBuildingType(type)) return fail('bad type');
   const d = BUILDING[type];
+  // 시아코인으로 사는 특별 건물은 buySpecial 로 (5단계)
+  if (d.sia > 0) fail('locked');
   const have = countOf(s, type);
-  // 아직 하나도 못 짓는 건물은 'locked', 지금 레벨의 개수를 다 지었으면 'limit'
+  // 아직 하나도 못 가지는 것은 'locked', 지금 레벨의 개수를 다 가졌으면 'limit'
   if (have >= maxCount(type, s.profile.level)) fail(have === 0 ? 'locked' : 'limit');
-  if (busyCount(s) >= slots(s)) fail('no slot');
+  if (d.buildSec > 0 && busyCount(s) >= slots(s)) fail('no slot');
   const why = placeError(s, type, x, y);
   if (why) fail(why);
-  pay(s.profile, d.rice, d.wood);
-  const b: Building = { id, type, level: 1, x, y, state: 'building', finishAt: now + d.buildSec * 1000, startAt: now, collectedAt: now, resident: null };
+  pay(s.profile, buildCost(type));
+  const b: Building = { id, type, level: 1, x, y, state: 'building', finishAt: now + d.buildSec * 1000, startAt: now, collectedAt: now, jobN: 0 };
   s.buildings.push(b);
-  // 0초짜리 건물은 바로 끝난다
+  // 0초짜리(장식물 · 길)는 바로 끝난다
   settle(s, now);
   return b;
 }
@@ -195,6 +254,7 @@ export function build(s: VillageState, type: string, x: number, y: number, now: 
 export function move(s: VillageState, id: string, x: number, y: number, now: number): void {
   settle(s, now);
   const b = s.buildings.find((v) => v.id === id) ?? fail('no building');
+  if (b.state === 'stored') fail('stored');
   const why = placeError(s, b.type, x, y, id);
   if (why) fail(why);
   b.x = x;
@@ -206,18 +266,34 @@ export function move(s: VillageState, id: string, x: number, y: number, now: num
  * 건물은 비워진다: 창고에 들어가는 만큼만 담고 넘친 것은 버린다 (경험치는 쌓여 있던 양으로 준다 —
  * 창고가 가득 차도 수확 경험치가 끊기지 않아야 마을이 멈추지 않는다).
  */
-function collect(s: VillageState, b: Building, now: number, cap: number): { have: number; got: number } {
+function collect(s: VillageState, b: Building, now: number, cap: number): { have: number; got: number; res: ResId | null; job: boolean } {
+  const none = { have: 0, got: 0, res: null, job: false };
+  const room = (res: ResId) => (CAPPED.includes(res) ? cap - s.profile.resources[res] : Infinity);
+  if (b.state === 'working') {
+    // 가공: 묶음이 다 끝나야 거둔다
+    const r = recipeOf(b.type);
+    if (!r || b.finishAt === null || b.finishAt > now) return none;
+    const have = b.jobN;
+    const got = Math.max(0, Math.min(have, room(r.out)));
+    s.profile.resources[r.out] += got;
+    b.state = 'done';
+    b.finishAt = null;
+    b.startAt = null;
+    b.jobN = 0;
+    b.collectedAt = now;
+    return { have, got, res: r.out, job: true };
+  }
   const res = BUILDING[b.type].product;
-  if (!res || b.state !== 'done') return { have: 0, got: 0 };
+  if (!res || b.state !== 'done') return none;
   const rate = ratePerHour(b.type, b.level);
   const from = Math.max(b.collectedAt, now - CONST.prod_cap_sec * 1000);
   const have = Math.floor((Math.max(0, Math.floor((now - from) / 1000)) * rate) / 3600);
-  if (have <= 0) return { have: 0, got: 0 };
-  const got = Math.max(0, Math.min(have, cap - s.profile.resources[res]));
+  if (have <= 0) return none;
+  const got = Math.max(0, Math.min(have, room(res)));
   s.profile.resources[res] += got;
   // 거둔 만큼의 시간만 쓴다 (1개가 되다 만 시간은 남는다)
   b.collectedAt = Math.min(now, from + Math.ceil((have * 3600) / rate) * 1000);
-  return { have, got };
+  return { have, got, res, job: false };
 }
 
 export interface HarvestResult {
@@ -234,22 +310,23 @@ export function harvest(s: VillageState, ids: string[], now: number): HarvestRes
   if (ids.length === 0 || ids.length > CONST.harvest_max) fail('bad request');
   const cap = storageCap(s);
   const out: HarvestResult = { per: {}, gained: {}, exp: 0, lost: 0 };
-  let count = 0;
   let total = 0;
+  let jobExp = 0;
   for (const id of [...new Set(ids)]) {
     const b = s.buildings.find((v) => v.id === id);
     if (!b) continue;
-    const { have, got } = collect(s, b, now, cap);
-    if (have <= 0) continue;
-    const res = BUILDING[b.type].product!;
+    const { have, got, res, job } = collect(s, b, now, cap);
+    if (have <= 0 || !res) continue;
     out.per[id] = got;
     if (got > 0) out.gained[res] = (out.gained[res] ?? 0) + got;
     out.lost += have - got;
-    total += have;
-    count++;
+    if (job) {
+      jobExp += have * recipeOf(b.type)!.exp;
+      progress(s, 'craft', b.type, have);
+    } else total += have;
+    progress(s, 'harvest', '', 1);
   }
-  out.exp = Math.floor(total / CONST.harvest_exp_div);
-  if (GOALS[s.profile.goal]?.kind === 'harvest') s.profile.goalProgress += count;
+  out.exp = Math.floor(total / CONST.harvest_exp_div) + jobExp;
   addExp(s.profile, out.exp);
   return out;
 }
@@ -257,6 +334,7 @@ export function harvest(s: VillageState, ids: string[], now: number): HarvestRes
 export function upgrade(s: VillageState, id: string, now: number): void {
   settle(s, now);
   const b = s.buildings.find((v) => v.id === id) ?? fail('no building');
+  if (!upgradable(b.type)) fail('no upgrade');
   if (b.state !== 'done') fail('busy');
   if (b.level >= CONST.building_max_level) fail('max level');
   if (b.type === 'hall') {
@@ -264,13 +342,73 @@ export function upgrade(s: VillageState, id: string, now: number): void {
   } else if (b.level >= hallLevel(s)) fail('hall level');
   if (busyCount(s) >= slots(s)) fail('no slot');
   const c = upgradeCost(b.type, b.level);
-  if (s.profile.resources.rice < c.rice || s.profile.resources.wood < c.wood) fail('not enough');
+  if (!canPay(s.profile, c)) fail('not enough');
   // 쌓여 있던 것은 먼저 거둔다 (창고에 들어가는 만큼, 넘친 것은 버린다. 경험치·목표 횟수는 없다)
   collect(s, b, now, storageCap(s));
-  pay(s.profile, c.rice, c.wood);
+  pay(s.profile, c);
   b.state = 'upgrading';
   b.startAt = now;
   b.finishAt = now + upgradeSec(b.type, b.level) * 1000;
+}
+
+/** 가공 시작: 재료를 내고 n개를 만든다 (다 끝나면 수확으로 거둔다) */
+export function craft(s: VillageState, id: string, n: number, now: number): void {
+  settle(s, now);
+  const b = s.buildings.find((v) => v.id === id) ?? fail('no building');
+  const r = recipeOf(b.type) ?? fail('no recipe');
+  if (b.state !== 'done') fail('busy');
+  if (!Number.isInteger(n) || n < 1 || n > batchMax(b.type, b.level)) fail('bad count');
+  const need = (res: ResId) => (r.in1 === res ? r.n1 * n : 0) + (r.in2 === res ? r.n2 * n : 0);
+  for (const k of RES_IDS) if (s.profile.resources[k] < need(k)) fail('not enough');
+  for (const k of RES_IDS) s.profile.resources[k] -= need(k);
+  b.state = 'working';
+  b.jobN = n;
+  b.startAt = now;
+  b.finishAt = now + n * unitSec(b.type, b.level) * 1000;
+}
+
+/** 장터에서 팔기 → 받은 엽전. 시세는 서버 날짜로 정해지고, 하루에 벌 수 있는 엽전에 한도가 있다 */
+export function sell(s: VillageState, res: string, n: number, now: number): number {
+  settle(s, now);
+  const m = market(s) ?? fail('no market');
+  const price = PRICES.find((v) => v.res === res) ?? fail('bad resource');
+  if (!Number.isInteger(n) || n < 1 || n > 1000000) fail('bad count');
+  const p = s.profile;
+  if (p.resources[price.res] < n) fail('not enough');
+  const day = kstDay(now);
+  const sold = p.marketDay === day ? p.marketSold : 0;
+  const coins = sellCoins(price.res, n, now);
+  if (coins < 1) fail('too few');
+  if (sold + coins > MARKET_LIMIT[m.level - 1]) fail('sell limit');
+  p.resources[price.res] -= n;
+  p.resources.coin += coins;
+  p.marketDay = day;
+  p.marketSold = sold + coins;
+  progress(s, 'sell', '', coins);
+  return coins;
+}
+
+/** 보관함에 넣기 (마을 회관은 안 된다. 쌓여 있던 것은 먼저 거둔다) */
+export function store(s: VillageState, id: string, now: number): void {
+  settle(s, now);
+  const b = s.buildings.find((v) => v.id === id) ?? fail('no building');
+  if (b.type === 'hall') fail('cannot store');
+  if (b.state !== 'done') fail(b.state === 'stored' ? 'stored' : 'busy');
+  collect(s, b, now, storageCap(s));
+  b.state = 'stored';
+}
+
+/** 보관함에서 꺼내 놓기 (생산은 놓은 순간부터 다시 쌓인다) */
+export function place(s: VillageState, id: string, x: number, y: number, now: number): void {
+  settle(s, now);
+  const b = s.buildings.find((v) => v.id === id) ?? fail('no building');
+  if (b.state !== 'stored') fail('not stored');
+  const why = placeError(s, b.type, x, y, id);
+  if (why) fail(why);
+  b.x = x;
+  b.y = y;
+  b.state = 'done';
+  b.collectedAt = now;
 }
 
 export function claimGoal(s: VillageState, now: number): GoalDef {
@@ -278,8 +416,7 @@ export function claimGoal(s: VillageState, now: number): GoalDef {
   const g = goalStatus(s) ?? fail('no goal');
   if (!g.done) fail('not done');
   // 보상은 창고 용량을 넘겨도 받는다 (다음 수확부터 용량이 적용된다)
-  s.profile.resources.rice += g.def.rice;
-  s.profile.resources.wood += g.def.wood;
+  for (const k of COST_KEYS) s.profile.resources[k] += g.def[k];
   s.profile.goal++;
   s.profile.goalProgress = 0;
   addExp(s.profile, g.def.exp);
@@ -292,6 +429,7 @@ const int = (v: unknown, min: number, max: number, d: number) => {
   const n = Math.floor(Number(v));
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : d;
 };
+const STATES: readonly BuildingState[] = ['building', 'upgrading', 'done', 'working', 'stored'];
 
 /** 서버(또는 기기 저장소)가 준 상태를 믿을 수 있는 모양으로 */
 export function cleanState(raw: unknown): VillageState {
@@ -303,19 +441,21 @@ export function cleanState(raw: unknown): VillageState {
   for (const v of Array.isArray(r.buildings) ? r.buildings : []) {
     const b = (v ?? {}) as Record<string, unknown>;
     if (!isBuildingType(b.type) || typeof b.id !== 'string') continue;
-    const state: BuildingState = b.state === 'building' || b.state === 'upgrading' ? b.state : 'done';
+    const state: BuildingState = STATES.includes(b.state as BuildingState) ? (b.state as BuildingState) : 'done';
+    const timed = state === 'building' || state === 'upgrading' || state === 'working';
     buildings.push({
       id: b.id, type: b.type, level: int(b.level, 1, CONST.building_max_level, 1), x: int(b.x, 0, GRID_MAX - 1, 0), y: int(b.y, 0, GRID_MAX - 1, 0), state,
-      finishAt: state === 'done' ? null : Number(b.finishAt) || 0,
-      startAt: state === 'done' ? null : Number(b.startAt) || 0,
+      finishAt: timed ? Number(b.finishAt) || 0 : null,
+      startAt: timed ? Number(b.startAt) || 0 : null,
       collectedAt: Number(b.collectedAt) || 0,
-      resident: typeof b.resident === 'string' ? b.resident : null,
+      jobN: state === 'working' ? int(b.jobN, 0, 1e6, 0) : 0,
     });
   }
   return {
     profile: {
       name: typeof p.name === 'string' ? p.name : '', level: int(p.level, 1, CONST.max_level, 1), exp: int(p.exp, 0, 1e9, 0), resources,
       landStage: int(p.landStage, 0, LAND_SIZES.length - 1, 0), prosperity: int(p.prosperity, 0, 1e9, 0), goal: int(p.goal, 0, 9999, 0), goalProgress: int(p.goalProgress, 0, 1e9, 0),
+      marketDay: int(p.marketDay, -1e6, 1e6, 0), marketSold: int(p.marketSold, 0, 1e9, 0),
     },
     buildings,
   };

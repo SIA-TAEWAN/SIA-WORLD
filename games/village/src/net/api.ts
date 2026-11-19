@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { CONST, LEVEL_EXP } from '../data/balance';
+import { CONST, LEVEL_EXP, RES_IDS } from '../data/balance';
 import { GOALS } from '../data/goals';
 import {
-  RuleError, build, claimGoal, cleanState, cloneState, harvest, move, newVillage, settle, upgrade,
+  RuleError, build, claimGoal, cleanState, cloneState, craft, harvest, move, newVillage, place, sell, settle, store as storeRule, upgrade,
   type HarvestResult, type VillageState,
 } from '../game/rules';
 import { worldSupabase } from './world';
@@ -36,6 +36,13 @@ export interface VillageApi {
   harvest(ids: string[]): Promise<{ state: VillageState; harvest: HarvestResult }>;
   upgrade(id: string): Promise<VillageState>;
   claimGoal(): Promise<VillageState>;
+  /** 가공 시작 (방앗간 · 장독대): n개 */
+  craft(id: string, n: number): Promise<VillageState>;
+  /** 장터에서 팔기 → 받은 엽전 */
+  sell(res: string, n: number): Promise<{ state: VillageState; sold: number }>;
+  /** 보관함에 넣기 · 보관함에서 꺼내 놓기 */
+  store(id: string): Promise<VillageState>;
+  place(id: string, x: number, y: number): Promise<VillageState>;
 }
 
 export interface Store {
@@ -132,6 +139,19 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     async claimGoal() {
       return run((s) => void claimGoal(s, now())).state;
     },
+    async craft(id, n) {
+      return run((s) => craft(s, id, n, now())).state;
+    },
+    async sell(res, n) {
+      const r = run((s) => sell(s, res, n, now()));
+      return { state: r.state, sold: r.out };
+    },
+    async store(id) {
+      return run((s) => storeRule(s, id, now())).state;
+    },
+    async place(id, x, y) {
+      return run((s) => place(s, id, x, y, now())).state;
+    },
   };
 }
 
@@ -204,6 +224,13 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
     },
     upgrade: async (id) => cleanState(await call('village_upgrade', { p_id: id })),
     claimGoal: async () => cleanState(await call('village_claim_goal')),
+    craft: async (id, n) => cleanState(await call('village_craft', { p_id: id, p_n: n })),
+    async sell(res, n) {
+      const d = await call('village_sell', { p_res: res, p_n: n });
+      return { state: cleanState(d), sold: Number(d.sold) || 0 };
+    },
+    store: async (id) => cleanState(await call('village_store', { p_id: id })),
+    place: async (id, x, y) => cleanState(await call('village_place', { p_id: id, p_x: x, p_y: y })),
   };
 }
 
@@ -221,11 +248,11 @@ export async function getApi(): Promise<VillageApi> {
 
 /**
  * 테스트 모드의 마을을 주소로 정한다 (헤드리스 확인용):
- *   ?fresh=1 처음 상태로 · ?rice=500&wood=500 자원 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
+ *   ?fresh=1 처음 상태로 · ?rice=500&wood=500&stone=&cake=&coin=&special= 자원 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
  */
 function seedLocal(store: Store) {
   if (params.get('fresh') === '1') store.removeItem(LOCAL_KEY);
-  const keys = ['rice', 'wood', 'lv', 'goal'].filter((k) => params.get(k) !== null);
+  const keys = [...RES_IDS, 'lv', 'goal'].filter((k) => params.get(k) !== null);
   if (keys.length === 0) return;
   let d: { state?: unknown; seq?: number; skew?: number } = {};
   try {
@@ -235,8 +262,7 @@ function seedLocal(store: Store) {
   }
   const s = d.state ? cleanState(d.state) : newVillage(Date.now() + (Number(d.skew) || 0));
   const num = (k: string, max: number) => Math.max(0, Math.min(max, Math.floor(Number(params.get(k)) || 0)));
-  if (params.get('rice') !== null) s.profile.resources.rice = num('rice', 1e9);
-  if (params.get('wood') !== null) s.profile.resources.wood = num('wood', 1e9);
+  for (const k of RES_IDS) if (params.get(k) !== null) s.profile.resources[k] = num(k, 1e9);
   if (params.get('lv') !== null) {
     s.profile.level = Math.max(1, num('lv', CONST.max_level));
     s.profile.exp = Math.min(s.profile.exp, (LEVEL_EXP[s.profile.level - 1] ?? 1) - 1);
