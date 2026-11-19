@@ -46,14 +46,17 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
     c.add(scene.add.image(0, 0, art).setDisplaySize(w, h));
     if (id && cardById(id).kind === 'gwang') {
       // 광: 오른쪽 위 작은 '광' 도장 (처음 하는 사람도 알아보게)
-      const sr = Math.max(6, w * 0.13);
-      const sx = w / 2 - sr - w * 0.06;
-      const sy = -h / 2 + sr + w * 0.06;
+      const stampR = (cardW: number) => Math.max(6, cardW * 0.13);
+      const sr = stampR(w);
+      const off = sr + w * 0.06;
       const g3 = scene.add.graphics();
-      g3.fillStyle(C.white, 1).fillCircle(sx, sy, sr);
-      g3.lineStyle(Math.max(1.5, w * 0.025), C.cardRed, 1).strokeCircle(sx, sy, sr);
-      c.add(g3);
-      c.add(scene.add.text(sx, sy, '광', { fontFamily: T.FONT, fontSize: `${Math.round(sr * 1.2)}px`, color: tc('cardRed') }).setOrigin(0.5));
+      g3.fillStyle(C.white, 1).fillCircle(-off, off, sr);
+      g3.lineStyle(Math.max(1.5, w * 0.025), C.cardRed, 1).strokeCircle(-off, off, sr);
+      const tx = scene.add.text(-off, off, '광', { fontFamily: T.FONT, fontSize: `${Math.round(sr * 1.2)}px`, color: tc('cardRed') }).setOrigin(0.5);
+      // 패의 오른쪽 위 모서리를 기준으로 한 묶음 (크기를 맞출 때 모서리에 붙어 있게)
+      const stamp = scene.add.container(w / 2, -h / 2, [g3, tx]);
+      c.add(stamp);
+      steadyStamp(scene, c, stamp, w, stampR);
     }
     if (opts.onClick) {
       c.setSize(w, h).setInteractive({ useHandCursor: true });
@@ -110,12 +113,16 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
   c.add(scene.add.text(bx + bw / 2, by + bh / 2, `${card.month}`, { fontFamily: T.FONT, fontSize: `${Math.round(bh * 0.8)}px`, color: tc('white') }).setOrigin(0.5));
   // 광 도장: 오른쪽 위 둥근 도장 '광' (비광은 '비')
   if (card.kind === 'gwang') {
-    const sr = Math.max(7, w * 0.15);
-    const sx = w / 2 - line - sr - 2;
-    const sy = -h / 2 + line + sr + 2;
-    g2.fillStyle(C.cardRed, 1).fillCircle(sx, sy, sr);
-    g2.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeCircle(sx, sy, sr);
-    c.add(scene.add.text(sx, sy, card.bigwang ? '비' : '광', { fontFamily: T.FONT, fontSize: `${Math.round(sr * 1.15)}px`, color: tc('white') }).setOrigin(0.5));
+    const stampR = (cardW: number) => Math.max(7, cardW * 0.15);
+    const sr = stampR(w);
+    const off = line + sr + 2;
+    const g4 = scene.add.graphics();
+    g4.fillStyle(C.cardRed, 1).fillCircle(-off, off, sr);
+    g4.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeCircle(-off, off, sr);
+    const tx = scene.add.text(-off, off, card.bigwang ? '비' : '광', { fontFamily: T.FONT, fontSize: `${Math.round(sr * 1.15)}px`, color: tc('white') }).setOrigin(0.5);
+    const stamp = scene.add.container(w / 2, -h / 2, [g4, tx]);
+    c.add(stamp);
+    steadyStamp(scene, c, stamp, w, stampR);
   }
   // 아래: 피 발자국 / 고도리·국진 태그
   if (card.kind === 'pi') {
@@ -137,6 +144,24 @@ function hwatu(scene: PhaserNS.Scene, x: number, y: number, id: string | null, w
     c.on('pointerdown', opts.onClick);
   }
   return c;
+}
+
+/**
+ * '광' 도장 크기 맞추기.
+ * 작은 패(먹은 패 칸)에서는 도장을 알아볼 수 있게 최소 크기로 그린다 (패에 견주면 크다). 그런데 먹는 패는 먹은 패 크기로 그린 뒤
+ * 바닥 패 크기로 키워 놓고 바닥에서부터 날아가므로, 그대로 두면 먹자마자 — 아직 바닥에 있을 때부터 — '광' 글자만 커 보인다.
+ * → 패가 커져 있는 동안에는 도장을 그 크기의 패에 맞는 크기로 줄여 두고, 먹은 패 자리로 가며 패가 작아질 때 제 크기가 되게 한다.
+ */
+function steadyStamp(scene: PhaserNS.Scene, card: PhaserNS.GameObjects.Container, stamp: PhaserNS.GameObjects.Container, w: number, stampR: (cardW: number) => number) {
+  // 최소 크기에 걸리지 않는 큰 패는 그냥 같이 커지고 작아지면 된다
+  if (stampR(w) <= stampR(w * 3) / 3 + 0.01) return;
+  const fit = () => {
+    const s = Math.abs(card.scaleY) || 1;
+    // 지금 보이는 크기(s × w)의 패에 그렸을 도장 크기에 맞춘다 (판 정리처럼 패가 줄어들 때는 그대로)
+    stamp.setScale(s > 1 ? stampR(s * w) / (s * stampR(w)) : 1);
+  };
+  scene.events.on('postupdate', fit);
+  card.once('destroy', () => scene.events.off('postupdate', fit));
 }
 
 interface Rect {
