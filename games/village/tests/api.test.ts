@@ -144,6 +144,16 @@ describe('서버 (SupabaseApi)', () => {
     await expect(createSupabaseApi(thrown).load()).rejects.toThrow('network');
   });
 
+  it('게임에 들어올 때만 entry = true (관리자 10,000 은 그때만, 059)', async () => {
+    const args: unknown[] = [];
+    const sb: RpcClient = { rpc: (_fn, a) => (args.push(a), Promise.resolve({ data: answer(1000), error: null })) };
+    const api = createSupabaseApi(sb);
+    await api.load(true);
+    await api.load();
+    await api.load(false);
+    expect(args).toEqual([{ p_entry: true }, { p_entry: false }, { p_entry: false }]);
+  });
+
   it('시아코인 잔액은 상태에 실려 온다 (서버가 공통 지갑에서 읽는다)', async () => {
     const ok: RpcClient = { rpc: () => Promise.resolve({ data: { ...answer(1000), sia: 12 }, error: null }) };
     expect((await createSupabaseApi(ok).load()).sia).toBe(12);

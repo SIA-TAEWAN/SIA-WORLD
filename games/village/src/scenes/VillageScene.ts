@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { GRID_MAX, lookOf } from '../data/balance';
+import { CAPPED, GRID_MAX, lookOf } from '../data/balance';
 import { BUILDING, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import type { ResidentId } from '../data/residents';
-import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, stored, workplace, type Building, type VillageState } from '../game/rules';
+import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, storageCap, stored, workplace, type Building, type VillageState } from '../game/rules';
 import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
 import { ART_FILES, BUBBLE, CELL, GLOWS, bubbleKey, makeTextures, texKey, texSize } from './art';
 import { skyAt } from './sky';
@@ -199,6 +199,8 @@ export class VillageScene extends Phaser.Scene {
     }
     for (const [id, v] of this.views) {
       if (seen.has(id)) continue;
+      // 방울의 흔들림 트윈도 함께 지운다 (구경을 오갈 때마다 쌓이지 않게)
+      this.tweens.killTweensOf(v.bubble);
       v.box.destroy();
       v.bubble.destroy();
       v.glow?.destroy();
@@ -207,6 +209,13 @@ export class VillageScene extends Phaser.Scene {
     this.syncWalkers();
     this.tickViews();
     if (this.place) this.updateGhost();
+  }
+
+  /** 다른 마을로 바뀌었다 (구경하러 가거나 돌아옴): 주민은 새 마을의 마을 회관 앞에서 다시 나타난다 */
+  switchVillage() {
+    for (const w of this.walkers.values()) w.box.destroy();
+    this.walkers.clear();
+    this.pending.clear();
   }
 
   /** 수확 답이 왔다: 방울을 다시 계산하고, 거둔 양을 띄운다 */
@@ -529,6 +538,7 @@ export class VillageScene extends Phaser.Scene {
   private tickViews() {
     const s = this.hooks.state();
     const now = this.hooks.now();
+    const cap = storageCap(s);
     let due = false;
     for (const b of s.buildings) {
       const v = this.views.get(b.id);
@@ -552,10 +562,13 @@ export class VillageScene extends Phaser.Scene {
       v.boost.setVisible(b.state === 'done' && !!d.product && (ratePct(s, b) > 0 || feasting(s, now)));
       const n = this.place || this.pending.has(b.id) ? 0 : stored(s, b, now);
       v.bubble.setVisible(n >= 1);
-      // 가득 차면 방울이 커진다
+      // 가득 차면 방울이 커진다. 그 자원의 창고가 가득 찼으면 흐리게 (거두면 넘친 만큼은 버려진다)
       if (n >= 1) {
         const k = isFull(s, b, now) ? 1.25 : 1;
         v.bubble.setDisplaySize(BUBBLE * k, (BUBBLE + 10) * k);
+        const res = b.state === 'working' ? recipeOf(b.type)?.out : d.product;
+        const shut = !!res && CAPPED.includes(res) && s.profile.resources[res] >= cap;
+        v.bubble.setAlpha(shut ? 0.45 : 1).setTint(shut ? 0x9a9a9a : 0xffffff);
       }
     }
     this.updateSky();
@@ -566,14 +579,18 @@ export class VillageScene extends Phaser.Scene {
     }
   }
 
-  /** 하늘 색 · 등불 (200ms 마다) */
+  /** 하늘 색 · 등불 (200ms 마다). 등불은 하나씩 조금씩 다르게 깜박인다 */
   private updateSky() {
     const sky = skyAt(this.hooks.hour());
     this.tint.setFillStyle(sky.color, sky.alpha);
-    if (Math.abs(sky.glow - this.glowLevel) < 0.005) return;
     this.glowLevel = sky.glow;
-    const pulse = 0.85 + Math.sin(this.time.now / 600) * 0.15;
-    for (const v of this.views.values()) v.glow?.setAlpha(sky.glow * pulse).setVisible(sky.glow > 0.02);
+    const on = sky.glow > 0.02;
+    const t = this.time.now / 600;
+    for (const v of this.views.values()) {
+      if (!v.glow) continue;
+      v.glow.setVisible(on);
+      if (on) v.glow.setAlpha(sky.glow * (0.85 + Math.sin(t + v.glow.x * 0.013 + v.glow.y * 0.029) * 0.15));
+    }
   }
 
   update(_t: number, dt: number) {

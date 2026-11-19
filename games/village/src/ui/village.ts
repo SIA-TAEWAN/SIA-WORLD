@@ -137,7 +137,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     $('#res').innerHTML =
       RES_IDS.filter((k) => k !== 'special' || p.resources.special > 0)
         .map((k) => `<div class="pill ${CAPPED.includes(k) && p.resources[k] >= cap ? 'full' : ''}" title="${RES_NAME[k]}">${icon(k)}<b>${num(p.resources[k])}</b></div>`)
-        .join('') + `<div class="cap">창고 ${num(cap)}</div><div class="cap pros" title="번영도">🏵 ${num(p.prosperity)}</div>` + (feasting(state, api.now()) ? `<div class="cap feast" id="feasttx"></div>` : '');
+        // 창고 · 번영도는 한 묶음 (좁은 화면에서 번영도만 혼자 다음 줄로 내려가지 않게)
+        .join('') + `<div class="caps"><div class="cap">창고 ${num(cap)}</div><div class="cap pros" title="번영도">🏵 ${num(p.prosperity)}</div></div>` + (feasting(state, api.now()) ? `<div class="cap feast" id="feasttx"></div>` : '');
     $('#sia').textContent = num(state.sia);
     const todo = claimable(state);
     $('#reqdot').textContent = String(todo);
@@ -164,6 +165,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── 마을 이름 ─────────────────────────
 
   $('#vname').addEventListener('click', () => {
+    // 구경 중에는 HUD 가 숨어 있다
+    if (visiting) return;
     sfx('click');
     stage.querySelector('.dim')?.remove();
     const dim = document.createElement('div');
@@ -204,8 +207,11 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── 서버와 주고받기 (한 번에 하나씩, 온 순서대로 화면에 반영) ─────────────────────────
 
   let queue: Promise<unknown> = Promise.resolve();
-  /** 서버 일을 줄 세운다. 실패하면 까닭을 알리고 false */
-  function act<T>(job: () => Promise<T>, done?: (out: T) => void, quiet = false): Promise<boolean> {
+  /**
+   * 서버 일을 줄 세운다. 실패하면 까닭을 알리고 false.
+   * 서버가 거절한 것(ApiError)이 아닌 실패(통신 오류 · 12초 시간 초과)는 서버에서는 됐을 수도 있으므로, 곧바로 다시 읽기를 줄에 넣어 서버 상태로 맞춘다
+   */
+  function act<T>(job: () => Promise<T>, done?: (out: T) => void, quiet = false, resync = true): Promise<boolean> {
     const run = queue.then(async () => {
       try {
         const out = await job();
@@ -216,6 +222,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
           toast(reason(e, state), 2600);
           sfx('fold');
         }
+        if (resync && !(e instanceof ApiError)) void reload();
         return false;
       }
     });
@@ -287,16 +294,19 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   function openMonuments() {
     statsFailed = false;
     openSheet({ kind: 'monuments' });
-    void api.monuments().then(
+    // 다른 서버 일과 같은 줄에서 (늦게 온 답이 그 뒤의 새 상태를 덮지 않게)
+    void act(
+      () => api.monuments(),
       (r) => {
         gameStats = r.stats;
         apply(r.state);
       },
-      () => {
-        statsFailed = true;
-        paintSheet();
-      },
-    );
+      true,
+    ).then((ok) => {
+      if (ok) return;
+      statsFailed = true;
+      paintSheet();
+    });
   }
 
   // ───────────────────────── 랭킹 · 다른 마을 구경 · 칭찬 ─────────────────────────
@@ -361,9 +371,12 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   function showVisit(v: Visit) {
     openSheet(null);
     if (scene?.placing) stopPlacing();
+    const other = visiting?.userId !== v.userId;
     visiting = v;
     viewState = toViewState(v);
     paintVisit();
+    // 다른 마을: 주민은 그 마을 회관 앞에서 새로 나타난다 (앞 마을의 자리에서 걸어 들어오지 않게)
+    if (other) scene?.switchVillage();
     scene?.refresh();
     scene?.fit();
   }
@@ -374,6 +387,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     visiting = null;
     viewState = null;
     paintVisit();
+    scene?.switchVillage();
     scene?.refresh();
     scene?.fit();
   }
@@ -396,12 +410,92 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     });
   });
 
-  const reload = (quiet = true) => act(() => api.load(), apply, quiet);
+  /** 서버 상태를 다시 읽는다 (게임에 들어올 때가 아니므로 entry = false). 이것이 실패해도 또 다시 읽지는 않는다 */
+  const reload = (quiet = true) => act(() => api.load(false), apply, quiet, false);
 
   // ───────────────────────── 수확 (끌면서 지나간 건물을 모아 한 번에 보낸다) ─────────────────────────
 
   let batch: string[] = [];
   let batchTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * 창고가 가득할 때: 넘친 양은 버린다 (서버 규칙). 거두기 전에 한 번 묻는다 — 끌어서 한꺼번에 거둘 때는 처음 넘치는 건물부터
+   * 모은 것을 손을 뗄 때 한 번만 (넘치기 전에 모은 것은 그대로 보낸다).
+   *   ask 넘치는 것을 모으는 중 (손을 떼면 묻는다) · asking 묻는 창이 떠 있다
+   */
+  let gate: 'none' | 'ask' | 'asking' = 'none';
+  /** 보냈거나 보낼 수확이 창고에 넣을 양 (답이 와서 상태에 들어가면 지운다) */
+  const planned = new Map<string, { res: ResId; n: number }>();
+
+  /** 그 건물에 쌓인 것을 지금 거두면 넘쳐서 버려지는 양 (창고 용량이 있는 자원만. harvest: 닭의 첫 수확 보너스까지) */
+  function lossOf(b: Building, harvesting: boolean): { res: ResId; have: number; lost: number } | null {
+    const res = b.state === 'working' ? recipeOf(b.type)?.out : BUILDING[b.type].product;
+    const now = api.now();
+    let have = stored(state, b, now);
+    if (!res || have <= 0) return null;
+    if (harvesting && b.state === 'done' && state.profile.roosterDay !== kstDay(now)) have += Math.floor((have * residentPct(state, 'rooster')) / 100);
+    if (!CAPPED.includes(res)) return { res, have, lost: 0 };
+    let room = storageCap(state) - state.profile.resources[res];
+    for (const [id, p] of planned) if (id !== b.id && p.res === res) room -= p.n;
+    return { res, have, lost: Math.max(0, have - Math.max(0, room)) };
+  }
+
+  /** 확인 창 하나 (다른 창이 덮어 지워지면 '아니요'로 본다) */
+  function ask(title: string, html: string, okLabel: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      stage.querySelector('.dim')?.remove();
+      const dim = document.createElement('div');
+      dim.className = 'dim';
+      dim.innerHTML = `<div class="dialog" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <h3>${esc(title)}</h3><p>${html}</p>
+        <div class="actions"><button class="btn" data-close>그만두기</button><button class="btn primary" data-ok>${esc(okLabel)}</button></div>
+      </div>`;
+      let over = false;
+      const end = (yes: boolean) => {
+        if (over) return;
+        over = true;
+        watch.disconnect();
+        dim.remove();
+        resolve(yes);
+      };
+      const watch = new MutationObserver(() => !dim.isConnected && end(false));
+      dim.addEventListener('click', (e) => {
+        const el = e.target as HTMLElement;
+        if (el === dim || el.closest('[data-close]')) {
+          sfx('click');
+          end(false);
+        } else if (el.closest('[data-ok]')) {
+          sfx('click');
+          end(true);
+        }
+      });
+      stage.append(dim);
+      watch.observe(stage, { childList: true });
+    });
+  }
+  /** 모아 둔 수확을 보내면 넘쳐서 버려지는 양 (자원마다 모아서 센다) */
+  function batchLoss(ids: string[]): number {
+    const have = new Map<ResId, number>();
+    for (const id of ids) {
+      const p = planned.get(id);
+      if (p && CAPPED.includes(p.res)) have.set(p.res, (have.get(p.res) ?? 0) + p.n);
+    }
+    let lost = 0;
+    for (const [res, n] of have) {
+      let room = storageCap(state) - state.profile.resources[res];
+      for (const [id, p] of planned) if (!ids.includes(id) && p.res === res) room -= p.n;
+      lost += Math.max(0, n - Math.max(0, room));
+    }
+    return lost;
+  }
+
+  /** 업그레이드 · 보관이 쌓인 것을 먼저 거둘 때 넘치면 묻는다 (넘치지 않으면 바로 true) */
+  function askLoss(id: string, okLabel: string): Promise<boolean> {
+    const b = state.buildings.find((v) => v.id === id);
+    const o = b ? lossOf(b, false) : null;
+    if (!o || o.lost <= 0) return Promise.resolve(true);
+    return ask('창고가 가득해요', `쌓여 있던 ${RES_NAME[o.res]} ${num(o.have)}개를 먼저 거두는데, 창고가 가득해서 <b>${num(o.lost)}개</b>는 버려져요`, okLabel);
+  }
+
   function flushHarvest() {
     if (batchTimer) clearTimeout(batchTimer);
     batchTimer = null;
@@ -417,7 +511,10 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         if (r.harvest.lost > 0) toast(`창고가 가득 차서 ${num(r.harvest.lost)}개는 담지 못했어요`, 2800);
         else if (r.harvest.rooster > 0) toast(`${RESIDENT.rooster.nick} 덕분에 오늘의 첫 수확이 ${r.harvest.rooster}% 더 많아요! 🐔`, 2800);
       },
-    ).then((ok) => !ok && scene?.harvested(ids, {}));
+    ).then((ok) => {
+      for (const id of ids) planned.delete(id);
+      if (!ok) scene?.harvested(ids, {});
+    });
   }
 
   // ───────────────────────── 아래 판 (짓기 메뉴 · 건물 관리) ─────────────────────────
@@ -463,7 +560,43 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       : sheet.kind === 'monuments' ? monumentsPanel()
       : buildingPanel(state.buildings.find((b) => b.id === (sheet as { id: string }).id)!);
     sheetEl.scrollTop = top;
+    markBusy();
     tickSheet();
+  }
+
+  /** 답을 기다리는 판의 일 (판을 다시 그려도 그 버튼은 막아 둔다) */
+  const busy = new Set<string>();
+  const busyKey = (d: DOMStringMap): string | null =>
+    d.upgrade ? `upgrade:${d.upgrade}`
+    : d.store ? `store:${d.store}`
+    : d.craft ? `craft:${d.craft}`
+    : d.sell ? `sell:${d.sell}`
+    : d.assign ? `assign:${d.assign.split(':')[0]}`
+    : d.rest ? `assign:${d.rest}`
+    : d.done ? `req:${d.done}`
+    : d.skip ? `req:${d.skip}`
+    : d.daily ? `daily:${d.daily}`
+    : d.expand !== undefined ? 'expand'
+    : d.feast !== undefined ? 'feast'
+    : null;
+  function markBusy() {
+    if (busy.size === 0) return;
+    for (const b of sheetEl.querySelectorAll<HTMLButtonElement>('button')) {
+      const k = busyKey(b.dataset);
+      if (k && busy.has(k)) b.disabled = true;
+    }
+  }
+  /** 판의 버튼 하나로 서버 일을 한다: 답이 올 때까지 그 버튼(같은 일의 버튼)을 막는다 */
+  function sheetAct<T>(bt: HTMLButtonElement, job: () => Promise<T>, done: (out: T) => void): void {
+    const key = busyKey(bt.dataset) ?? `btn:${Math.random()}`;
+    if (busy.has(key)) return;
+    busy.add(key);
+    bt.disabled = true;
+    markBusy();
+    void act(job, done).finally(() => {
+      busy.delete(key);
+      paintSheet();
+    });
   }
 
   function buildMenu(tab: Tab): string {
@@ -700,19 +833,17 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       if (b) startPlacing(b.type, b.id);
     } else if (d.upgrade) {
       const id = d.upgrade;
-      bt.disabled = true;
-      void act(() => api.upgrade(id), (s) => {
+      void askLoss(id, '그래도 올리기').then((yes) => yes && sheetAct(bt, () => api.upgrade(id), (s) => {
         sfx('villBuild');
         apply(s);
-      });
+      }));
     } else if (d.store) {
       const id = d.store;
-      bt.disabled = true;
-      void act(() => api.store(id), (s) => {
+      void askLoss(id, '그래도 보관하기').then((yes) => yes && sheetAct(bt, () => api.store(id), (s) => {
         sfx('chip');
         toast('보관함에 넣었어요 ([짓기] → 보관함에서 다시 놓을 수 있어요)', 2600);
         apply(s);
-      });
+      }));
     } else if (d.step) {
       sfx('click');
       craftN = d.step === 'max' ? 9999 : craftN + Number(d.step);
@@ -720,16 +851,14 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     } else if (d.craft) {
       const id = d.craft;
       const n = craftN;
-      bt.disabled = true;
-      void act(() => api.craft(id, n), (s) => {
+      sheetAct(bt, () => api.craft(id, n), (s) => {
         sfx('villBuild');
         apply(s);
       });
     } else if (d.sell) {
       const res = d.sell;
       const n = Number(d.n);
-      bt.disabled = true;
-      void act(() => api.sell(res, n), (r) => {
+      sheetAct(bt, () => api.sell(res, n), (r) => {
         sfx('coin');
         toast(`${RES_NAME[res as ResId]} ${num(n)}개를 팔아 엽전 ${num(r.sold)}닢을 받았어요`);
         apply(r.state);
@@ -739,8 +868,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       startVisit(d.visit);
     } else if (d.assign || d.rest) {
       const [rid, bid] = d.assign ? d.assign.split(':') : [d.rest!, null];
-      bt.disabled = true;
-      void act(() => api.assign(rid, bid), (s) => {
+      sheetAct(bt, () => api.assign(rid, bid), (s) => {
         sfx('chip');
         const def = RESIDENT[rid as ResidentId];
         const at = bid ? s.buildings.find((v) => v.id === bid) : null;
@@ -750,8 +878,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     } else if (d.done) {
       const slot = Number(d.done);
       const q = state.requests.find((v) => v.slot === slot);
-      bt.disabled = true;
-      void act(() => api.requestDone(slot), (r) => {
+      sheetAct(bt, () => api.requestDone(slot), (r) => {
         sfx('villRequest');
         if (q?.resident) {
           toast(`${RESIDENT[q.resident].nick}: 고마워요! 엽전 ${num(q.coin)}닢 · 경험치 ${num(q.exp)}`, 2600);
@@ -761,22 +888,19 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       });
     } else if (d.skip) {
       const slot = Number(d.skip);
-      bt.disabled = true;
-      void act(() => api.requestSkip(slot), (s) => {
+      sheetAct(bt, () => api.requestSkip(slot), (s) => {
         sfx('click');
         apply(s);
       });
     } else if (d.daily) {
       const slot = Number(d.daily);
-      bt.disabled = true;
-      void act(() => api.dailyClaim(slot), (s) => {
+      sheetAct(bt, () => api.dailyClaim(slot), (s) => {
         sfx('win');
         toast(slot === 3 ? '오늘의 할 일을 모두 끝냈어요! 추가 보상을 받았어요' : '보상을 받았어요');
         apply(s);
       });
     } else if (d.expand !== undefined) {
-      bt.disabled = true;
-      void act(() => api.expand(), (s) => {
+      sheetAct(bt, () => api.expand(), (s) => {
         sfx('win');
         const size = LAND_SIZES[s.profile.landStage];
         toast(`땅이 ${size}×${size} 칸으로 넓어졌어요!`, 2600);
@@ -784,8 +908,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         apply(s);
       });
     } else if (d.feast !== undefined) {
-      bt.disabled = true;
-      void act(() => api.feast(), (s) => {
+      sheetAct(bt, () => api.feast(), (s) => {
         sfx('win');
         toast('잔치가 열렸어요! 하루 동안 마을 전체 생산이 늘어나요', 2800);
         apply(s);
@@ -845,7 +968,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
 
   $('#menu').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button');
-    if (!b) return;
+    // 구경 중 · 자리 고르는 중에는 메뉴가 숨어 있다
+    if (!b || visiting || scene?.placing) return;
     sfx('click');
     if (b.dataset.m === 'build') openSheet({ kind: 'build', tab: 'main' });
     else if (b.dataset.m === 'residents') openSheet({ kind: 'residents' });
@@ -855,18 +979,25 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     else toast('준비 중이에요');
   });
 
+  /** [보상 받기]를 보내고 답을 기다리는 중 (연타 막기) */
+  let goalBusy = false;
   $('#goal').addEventListener('click', () => {
     const g = goalStatus(state);
-    if (!g) return;
+    if (!g || visiting || goalBusy) return;
     if (!g.done) {
       sfx('click');
       toast(`${goalText(g.def)} (${num(g.have)}/${num(g.def.n)})`);
       return;
     }
+    goalBusy = true;
+    $('#goal').classList.add('busy');
     void act(() => api.claimGoal(), (s) => {
       sfx('villRequest');
       toast('목표 달성! 보상을 받았어요');
       apply(s);
+    }).finally(() => {
+      goalBusy = false;
+      $('#goal').classList.remove('busy');
     });
   });
 
@@ -942,12 +1073,42 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       scene?.say(id, lines[Math.floor(Math.random() * lines.length)]);
     },
     harvest(id) {
+      // 구경 중에는 거두지 않는다 (방울도 뜨지 않는다)
+      if (visiting) return void scene?.harvested([id], {});
+      const b = state.buildings.find((v) => v.id === id);
+      const o = b ? lossOf(b, true) : null;
+      if (o) planned.set(id, { res: o.res, n: o.have });
       batch.push(id);
       sfx('chip');
+      if (gate !== 'none') return;
+      if (o && o.lost > 0) {
+        // 처음 넘치는 건물: 앞서 모은 것은 보내고, 이것부터는 손을 뗄 때 묻는다
+        const before = batch.slice(0, -1);
+        batch = before;
+        flushHarvest();
+        batch = [id];
+        gate = 'ask';
+        return;
+      }
       // 손을 떼지 않고 오래 끌어도 0.6초마다 보낸다
       batchTimer ??= setTimeout(flushHarvest, 600);
     },
-    harvestEnd: flushHarvest,
+    harvestEnd() {
+      if (gate === 'asking') return;
+      if (gate === 'none') return flushHarvest();
+      gate = 'asking';
+      const ids = batch;
+      const lost = batchLoss(ids);
+      const names = [...new Set(ids.map((x) => planned.get(x)?.res).filter((r): r is ResId => !!r && CAPPED.includes(r)))].map((r) => RES_NAME[r]).join(' · ');
+      void ask('창고가 가득해요', `${names} 창고가 가득해서 <b>${num(lost)}개</b>는 버려져요. 그래도 거둘까요?`, '그래도 거두기').then((yes) => {
+        gate = 'none';
+        if (yes) return flushHarvest();
+        const back = batch;
+        batch = [];
+        for (const x of back) planned.delete(x);
+        scene?.harvested(back, {});
+      });
+    },
     placeChanged(p) {
       $('#placeok').classList.toggle('off', !p.ok);
     },

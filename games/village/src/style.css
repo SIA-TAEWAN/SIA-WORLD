@@ -92,6 +92,8 @@ button, input { font: inherit; color: inherit; }
 .pill.sia b { color: var(--sky-deep); }
 .res-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .res-row .cap { font-size: 12px; color: var(--white); background: var(--pill); border-radius: var(--radius-item); padding: 2px 8px; margin-left: auto; }
+.res-row .caps { display: flex; align-items: center; gap: 4px; flex: none; margin-left: auto; }
+.res-row .caps .cap { margin-left: 0; white-space: nowrap; }
 
 .goal { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer; background: var(--panel); border: var(--line) solid var(--outline); border-radius: var(--radius-button); box-shadow: 0 3px 0 var(--outline); padding: 4px 10px 4px 5px; }
 .goal:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--outline); }
@@ -252,3 +254,5 @@ button, input { font: inherit; color: inherit; }
 
 /* 자원 아이콘 그림 (SpriteCook): 얼굴 그림용 규칙(.goal img 등)을 받지 않게 */
 img.ico { width: 1em; height: 1em; border: 0; border-radius: 0; background: none; object-fit: contain; -webkit-user-drag: none; }
+/* [보상 받기]를 보내고 답을 기다리는 동안 (연타 막기) */
+.goal.busy { pointer-events: none; opacity: 0.7; animation: none; }
