@@ -1,0 +1,29 @@
+{
+  "assets": [
+    { "asset_id": "0620e930-1751-4436-8940-4da390e5b5db", "label": "(화풍 참고) 십이지신 캐릭터 전신 시트 A — art/spritecook/spritecook-assets.json" },
+    { "asset_id": "3f07cec9-461f-4db7-ad2c-c0461e79d226", "label": "(화풍 참고) 로비 카드 레이스 — shared/images/spritecook-assets.json" },
+    { "asset_id": "b1e84f6b-3e8b-4943-bd28-9993fa4eda7e", "sha12": "f8f468046954", "label": "꼬마 도깨비 → art/e-imp.png → public/art/e-imp.png (128). 이후 그림의 화풍 참고" },
+    { "asset_id": "194a7edb-df1f-436a-86dd-d95e9c313709", "sha12": "6c7896d513f4", "label": "도깨비불 → art/e-wisp.png → public/art/e-wisp.png (128)" },
+    { "asset_id": "62b7b590-300c-420b-9261-911fc1626dca", "sha12": "40e3e7f84e2b", "label": "방망이 도깨비 → art/e-club.png → public/art/e-club.png (192)" },
+    { "asset_id": "5a2aea58-d06c-40c2-870a-daf2a26903bb", "sha12": "377b1b5b37e3", "label": "물귀신 → art/e-water.png → public/art/e-water.png (128)" },
+    { "asset_id": "81394565-9af2-44e3-8797-8fab12c56ebe", "sha12": "94d48a19f7f7", "label": "여우불 → art/e-fox.png → public/art/e-fox.png (128)" },
+    { "asset_id": "3aab5e5d-8ba8-4082-aeb0-926d3f4aad06", "sha12": "48c56a15daa6", "label": "죽순 요괴 → art/e-bamboo.png → public/art/e-bamboo.png (128)" },
+    { "asset_id": "b6214211-0b92-4350-8ca1-e043a8a2f158", "sha12": "43a702e72c7d", "label": "수문장 요괴 → art/e-guard.png → public/art/e-guard.png (192)" },
+    { "asset_id": "03a1b633-3273-4df7-9adf-ac45c37f1bba", "sha12": "e901f4b79cd0", "label": "해골 병사 → art/e-skeleton.png → public/art/e-skeleton.png (128)" },
+    { "asset_id": "c9d323f1-53d8-4302-ad67-b5c0506fe3cb", "sha12": "4c7d4cbfad85", "label": "원혼 → art/e-spirit.png → public/art/e-spirit.png (128)" },
+    { "asset_id": "993f3a16-07d7-4965-a00a-97b517281e2c", "sha12": "c460ecb75bee", "label": "큰 도깨비 → art/b-bigDokkaebi.png → public/art/b-bigDokkaebi.png (512). 이후 그림의 화풍 참고" },
+    { "asset_id": "94bb1654-a1bc-4244-babc-02994a5504f7", "sha12": "ca1e3fb8e2a1", "label": "두억시니 → art/b-dueoksini.png → public/art/b-dueoksini.png (512)" },
+    { "asset_id": "8f821b7c-583f-461d-b7e2-1cf385858018", "sha12": "f5692d3e060b", "label": "불가살 → art/b-bulgasal.png → public/art/b-bulgasal.png (640)" },
+    { "asset_id": "ffdd573c-54c4-4f37-9e39-09d4572ebb05", "sha12": "f0e528831ee5", "label": "장산범 → art/b-jangsanbeom.png → public/art/b-jangsanbeom.png (512)" },
+    { "asset_id": "2721618d-053e-4602-9868-6fb4b286880f", "sha12": "1568aa72d2e0", "label": "왕지네 → art/b-centipede.png → public/art/b-centipede.png (512)" },
+    { "asset_id": "dc032871-6e0e-45bf-b355-0734dd8a4420", "sha12": "1c022344b4f9", "label": "구미호 → art/b-gumiho.png → public/art/b-gumiho.png (640)" },
+    { "asset_id": "2b994bef-1cdf-43d9-8579-dddbcf5fb96f", "sha12": "d392cb73873d", "label": "수문장 대장 (방패의 글자 무늬를 지운 수정본) → art/b-guardCaptain.png → public/art/b-guardCaptain.png (512)" },
+    { "asset_id": "975775a9-e1dd-4924-989b-edb5f756d276", "label": "수문장 대장 첫 시안 (방패에 한자 같은 무늬가 있어 쓰지 않음. 위 수정본의 원본)" },
+    { "asset_id": "c048f379-e201-4289-bb8c-602d3b704915", "sha12": "b498525aa1af", "label": "야광귀 → art/b-yagwanggwi.png → public/art/b-yagwanggwi.png (512)" },
+    { "asset_id": "8a736dd3-f0be-4cfe-8b3a-e5575866cad2", "sha12": "82d785cad8eb", "label": "이무기 → art/b-imugi.png → public/art/b-imugi.png (640)" },
+    { "asset_id": "0db263b3-0e95-43d0-8f17-979eed089828", "sha12": "fe96937d7e62", "label": "저승사자 → art/b-reaper.png → public/art/b-reaper.png (512)" },
+    { "asset_id": "1981ae1f-a195-4918-9ade-5e0f61f4d4d8", "sha12": "f41c22fbb627", "label": "강철이 → art/b-gangcheori.png → public/art/b-gangcheori.png (640)" },
+    { "asset_id": "80eb8231-bcc4-4799-898f-b7c62e04e4ea", "sha12": "45d40c5b00c5", "label": "염라대왕 → art/b-yeomra.png → public/art/b-yeomra.png (640)" },
+    { "asset_id": "c2d37810-2f8b-439b-930f-bbe058d305cb", "sha12": "9a4c1677ee33", "label": "로비 카드 (16:9, 요괴에 둘러싸인 어흥이) → art/card.png → shared/images/card-survival.png (가운데 16:10 자르기, 640x400)" }
+  ]
+}

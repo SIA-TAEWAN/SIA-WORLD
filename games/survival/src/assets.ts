@@ -6,3 +6,5 @@ const worldRoot = () => new URL('../../', document.baseURI);
 export const zodiacFullUrl = (id: ZodiacId) => new URL(`shared/images/zodiac/full/${id}.png`, worldRoot()).href;
 /** 십이지 얼굴 그림 (shared/images/zodiac/face) */
 export const zodiacFaceUrl = (id: ZodiacId) => new URL(`shared/images/zodiac/face/${id}.png`, worldRoot()).href;
+/** 게임 그림 (public/art/<이름>.png, ASSETS.md). 메인 화면·도감에서 쓴다 */
+export const artUrl = (name: string) => `${import.meta.env.BASE_URL}art/${name}.png`;
