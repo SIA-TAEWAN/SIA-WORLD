@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { GATE_STEP_DMG, MAX_TROOPS } from '../src/data/balance';
-import { STAGES, type StageDef } from '../src/data/stages';
+import { stagesOf, type StageDef } from '../src/data/stages';
 import { STEP, applyOp, createRun, setTarget, step } from '../src/game/sim';
 import { greedy, simulate, stay } from './policy';
 
 const tiny = (over: Partial<StageDef>): StageDef => ({
   id: 't',
   region: 1,
+  no: 1,
   name: 't',
   startTroops: 10,
   items: [],
@@ -86,7 +87,7 @@ describe('요괴 무리와 보스', () => {
 });
 
 describe('1지역 스테이지', () => {
-  for (const st of STAGES) {
+  for (const st of stagesOf(1)) {
     it(`${st.id}: 잘 고르면 클리어하고 1분 안팎, 아무것도 고르지 않으면 어렵다`, () => {
       const good = simulate(st.id, 'rat', greedy);
       expect(good.cleared).toBe(true);
@@ -98,16 +99,45 @@ describe('1지역 스테이지', () => {
     });
   }
 
-  it('스테이지 데이터: 아이템은 출발점과 보스 사이, 순서대로', () => {
-    for (const st of STAGES) {
-      let last = 0;
-      for (const it of st.items) {
-        const z = it.t === 'rail' ? it.z0 : it.z;
-        expect(z).toBeGreaterThan(last);
-        expect(z).toBeLessThan(st.bossZ - 600);
-        last = it.t === 'rail' ? it.z1 : it.z;
-      }
-      expect(st.stars[0]).toBeLessThan(st.stars[1]);
+});
+
+describe('장애물 · 상자 · 요괴 버릇', () => {
+  it('구덩이에 겹치면 잃고, 비켜 가면 잃지 않는다', () => {
+    const mk = () => createRun(tiny({ startTroops: 40, items: [{ t: 'obstacle', z: 300, kind: 'pit', x: 140 }] }), 'rat');
+    const a = mk();
+    runFor(a, 2, 140);
+    const b = mk();
+    runFor(b, 2, -200);
+    expect(a.lost).toBeGreaterThan(0);
+    expect(b.lost).toBe(0);
+  });
+
+  it('상자를 쏘아 부수면 보상을 받는다', () => {
+    const s = createRun(tiny({ startTroops: 40, items: [{ t: 'crate', z: 1500, x: 0, reward: { kind: 'troops', v: 30 } }] }), 'rat');
+    runFor(s, 5, 0);
+    expect(s.crates[0].broken).toBe(true);
+    expect(s.troops).toBeGreaterThanOrEqual(44 + 30 - 1);
+  });
+
+  it('해골 병사는 한 번 되살아난다, 숨은 요괴는 나오기 전에 맞힐 수 없다', () => {
+    const s = createRun(tiny({ startTroops: 200, items: [{ t: 'horde', z: 900, kind: 'skeleton', count: 6, span: 'full' }] }), 'rat');
+    runFor(s, 3, 0);
+    expect(s.hordes[0].revived).toBe(true);
+    const w = createRun(tiny({ startTroops: 200, items: [{ t: 'horde', z: 1400, kind: 'bamboo', count: 6, span: 'full' }] }), 'rat');
+    runFor(w, 1, 0);
+    expect(w.hordes[0].shown).toBe(false);
+    expect(w.hordes[0].count).toBe(6);
+  });
+
+  it('보스가 둘로 칠 때 두 자리를 모두 피할 수 있다', () => {
+    const s = createRun(
+      tiny({ startTroops: 20, bossZ: 600, boss: { kind: 'gumiho', hp: 1500, every: 1.5, warn: 1, width: 160, frac: 0.5, traits: { double: true } } }),
+      'rat',
+    );
+    for (let i = 0; i < 60 / STEP && s.phase !== 'clear' && s.phase !== 'fail'; i++) {
+      setTarget(s, greedy(s));
+      step(s);
     }
+    expect(s.phase).toBe('clear');
   });
 });

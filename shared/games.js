@@ -21,6 +21,8 @@ export const GAMES = [
     path: 'games/defense/', image: 'shared/images/card-defense.png', open: false },
   { id: 'village', name: '시아마을', desc: '시간이 지나면 쌓이는 자원으로 마을 키우기 · 십이지 주민 · 1인용',
     path: 'games/village/', image: 'shared/images/card-village.png', open: false },
+  { id: 'charge', name: '시아돌격대', desc: '숫자 문으로 대원을 불려 요괴를 뚫어라 · 1인용',
+    path: 'games/charge/', image: 'shared/images/card-charge.png', open: false },
 ];
 
 const KEY = 'game_open:';
