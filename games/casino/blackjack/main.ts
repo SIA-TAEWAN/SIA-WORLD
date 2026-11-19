@@ -287,6 +287,9 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     return sweepTable(t.scene, shoePos, { stagger: 55, order: 'bottom', onStart: (i) => i % 2 === 0 && sfx('deal', { volume: 0.5 }) });
   },
 
+  // 블랙잭 이펙트는 그 카드가 보인 바로 뒤에 띄우고, 다 보인 뒤에 다음(칩 지급·회수)으로 넘어간다
+  cutinHold: (ev) => ev.t === 'blackjack' || ev.t === 'dealer_blackjack',
+
   cutin(ev, t: Ctx) {
     if (ev.t === 'blackjack') return ev.seat === t.mySeat ? '블랙잭!' : null;
     if (ev.t === 'dealer_blackjack') return '딜러 블랙잭';

@@ -174,6 +174,11 @@ export interface GameUI<P = any, Q = any> {
    */
   cutinDelay?(ev: GameEventLite, t: TableCtx<P, Q>): number | null;
   /**
+   * 참이면 그 사건의 컷인을 그 사건의 화면(카드 연출)이 끝난 바로 뒤에 띄우고, 컷인이 다 보인 뒤에 다음 걸음으로 넘어간다.
+   * (블랙잭: '딜러 블랙잭' 이펙트가 끝난 뒤에 칩 지급·회수. 없으면 컷인은 새 상태를 다 그린 뒤 맨 끝에 뜬다)
+   */
+  cutinHold?(ev: GameEventLite, t: TableCtx<P, Q>): boolean;
+  /**
    * 판 정리 연출 (결과 창을 닫은 뒤): 카드를 더미로 모으는 등 게임에 맞게 테이블을 치우고, 걸리는 시간(ms)을 돌려준다.
    * 연출이 끝나면 테이블을 비우고 그제서야 레디 버튼을 켠다. 없으면 예전처럼 결과 창을 닫자마자 레디.
    */
@@ -1136,6 +1141,20 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     void m.wallet.ensureWallet().then((w) => ((wallet = w), paintMoney(), paintControls()));
   };
 
+  /** 컷인 하나 띄우기 */
+  const showCutin = (c: TableCtx, e: GameEventLite, text: string) => {
+    if (closed) return;
+    cutinUntil = Math.max(cutinUntil, performance.now() + CUTIN_MS);
+    const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
+    const el = $(root, '#cutin');
+    el.innerHTML = `<div>${av ? `<img src="${m.z.fullUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    sfx('cutin');
+  };
+  /** 연출 재생기가 제때 이미 띄운(띄울) 컷인 ('판:사건 번호'): 새 상태를 그릴 때 한 번 더 띄우지 않는다 */
+  const heldCutins = new Set<string>();
   const showCutins = () => {
     if (closed) return;
     const c = ctx();
@@ -1146,21 +1165,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       return;
     }
     if (maxId < lastEvent) lastEvent = 0; // 새 판
-    const fresh = events.filter((e) => e.id > lastEvent);
+    const fresh = events.filter((e) => e.id > lastEvent && !heldCutins.has(`${st?.round_no}:${e.id}`));
     lastEvent = maxId;
     const hits = fresh.map((e) => ({ e, text: ui.cutin?.(e, c) })).filter((x): x is { e: GameEventLite; text: string } => !!x.text);
     if (!hits.length) return;
-    const show = (e: GameEventLite, text: string) => {
-      if (closed) return;
-      cutinUntil = Math.max(cutinUntil, performance.now() + CUTIN_MS);
-      const av = typeof e.seat === 'number' ? c.seatAvatar(e.seat) : null;
-      const el = $(root, '#cutin');
-      el.innerHTML = `<div>${av ? `<img src="${m.z.fullUrl(av)}" alt=""/>` : ''}<span>${esc(text)}</span></div>`;
-      el.classList.remove('show');
-      void el.offsetWidth;
-      el.classList.add('show');
-      sfx('cutin');
-    };
+    const show = (e: GameEventLite, text: string) => showCutin(c, e, text);
     // 띄울 때가 정해진 컷인은 그 순간에 (각각), 나머지는 마지막 것 하나를 카드 연출이 모두 끝난 뒤에
     const untimed: typeof hits = [];
     for (const h of hits) {
@@ -1374,6 +1383,29 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       return null;
     }
   };
+  /** 그 사건의 컷인을 그 자리에서 띄우고 끝날 때까지 기다려야 하는가 (GameUI.cutinHold) */
+  const holdsCutin = (ev: GameEventLite): boolean => {
+    try {
+      const c = ctx();
+      return !!c && !!ui.cutinHold?.(ev, c);
+    } catch {
+      return false;
+    }
+  };
+  /** 그 사건의 컷인을 지금 띄우고 다 보일 때까지 기다린다 → 띄웠으면 true */
+  const playHeldCutin = async (ev: GameEventLite): Promise<boolean> => {
+    let text: string | null | undefined = null;
+    const c = ctx();
+    try {
+      text = c ? ui.cutin?.(ev, c) : null;
+    } catch (e) {
+      console.warn('cutin', e);
+    }
+    if (!c || !text) return false;
+    showCutin(c, ev, text);
+    await sleep(CUTIN_MS);
+    return true;
+  };
   const tryStep = (step: ReplayStep | null) => {
     if (!step) return;
     try {
@@ -1495,10 +1527,20 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             const step = stepOf(item.events[i]);
             const t0 = performance.now();
             if (step && !step.after) tryStep(step);
+            // 제때 띄울 컷인: 새 상태를 그릴 때(apply) 맨 끝에 한 번 더 뜨지 않게 먼저 표시해 둔다
+            const hold = holdsCutin(item.events[i]);
+            if (hold) {
+              if (heldCutins.size > 200) heldCutins.clear();
+              heldCutins.add(`${item.s.round_no}:${item.events[i].id}`);
+            }
             if (i === item.events.length - 1) apply();
             else showFrame(frames[i + 1]);
             await waitA();
             if (stale()) break;
+            // 이 사건의 이펙트(컷인)를 다 보여 준 뒤에 다음 걸음 (블랙잭 이펙트 → 그 뒤에 칩 지급·회수)
+            if (hold && (await playHeldCutin(item.events[i]))) {
+              if (stale()) break;
+            }
             if (step?.after) {
               markAfter();
               tryStep(step);
@@ -1528,6 +1570,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           if (!stale() && !item.newRound) {
             apply();
             await waitA();
+          }
+          // 제때 보여 줘야 하는 컷인(블랙잭 이펙트)이 있으면 다 보인 뒤에 승패·정산 걸음
+          if (!stale() && post.length && item.events.some(holdsCutin)) {
+            await sleep(150);
+            const wait = cutinUntil - performance.now();
+            if (wait > 0) await sleep(wait);
           }
           // 카드가 다 놓인 뒤에 승패·정산을 하나씩
           for (const step of post) {
