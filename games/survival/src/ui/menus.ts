@@ -7,7 +7,7 @@ import { characterPrice } from '../game/progress';
 import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
-import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
+import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, loadEngine, nav, openSettings, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
@@ -30,13 +30,13 @@ export function showMain() {
        <span class="coins-pill" id="mycoins" title="가진 엽전">${coinsText()}</span>
        <button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
      <h1 class="logo">시아서바이벌</h1>
-     <p class="tagline">몰려오는 요괴를 10분만 버텨라!</p>
+     <p class="tagline">몰려오는 요괴를 5분만 버텨라!</p>
      <div class="hero">
        <div class="hero-floor"></div>
        <img class="hero-char me" src="${zodiacFullUrl(state.char)}" alt="" />
        <img class="hero-char e1" src="${zodiacFullUrl(others[0])}" alt="" />
        <img class="hero-char e2" src="${zodiacFullUrl(others[1])}" alt="" />
-       <i class="hero-imp i1"></i><i class="hero-imp i2"></i><i class="hero-imp i3"></i>
+       ${['e-imp', 'e-wisp', 'e-club', 'e-fox'].map((n, i) => `<img class="hero-foe f${i + 1}" src="${artUrl(n)}" alt="" />`).join('')}
      </div>
      <div class="main-actions">
        <button class="btn primary big" id="go">출전 ▶</button>

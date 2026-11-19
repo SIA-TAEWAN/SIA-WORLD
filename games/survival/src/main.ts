@@ -13,7 +13,7 @@ nav.select = showCharSelect;
 nav.maps = showMapSelect;
 nav.upgrade = showUpgrade;
 nav.codex = showCodex;
-// 개발용 테스트 설정(?upg=10&t=420)은 메뉴에서 시작한 판에도 그대로 적용한다
+// 개발용 테스트 설정(?upg=10&t=210)은 메뉴에서 시작한 판에도 그대로 적용한다
 const dev = devSetup();
 /** 게임 엔진 묶음을 받는 중인가 (그동안 시작 버튼을 여러 번 눌러도 판은 한 번만 시작한다) */
 let starting = false;
@@ -110,7 +110,7 @@ async function start() {
     toast('서버에 연결하지 못했어요. 지금은 기록되지 않아요', 3600);
   }
 
-  // 개발용 테스트 설정: ?local=1&map=field&char=tiger&upg=10&t=420 → 메뉴를 건너뛰고 그 상태로 바로 시작
+  // 개발용 테스트 설정: ?local=1&map=field&char=tiger&upg=10&t=210 → 메뉴를 건너뛰고 그 상태로 바로 시작
   if (dev?.char) state.char = dev.char;
   if (dev?.auto) nav.game({ char: dev.char!, map: dev.map!, upg: dev.upg ?? undefined, startAt: dev.t, seed: dev.seed ?? undefined });
   else nav.main();

@@ -3,6 +3,7 @@
  * 인자: 일감 목록(JSON) [{ key, map, char, upg, from, to }] → 일감마다 한 줄씩 결과(JSON)를 찍는다.
  */
 import type { ZodiacId } from '../src/data/balance';
+import { MAPS, MAP_INDEX } from '../src/data/maps';
 import { presetUpgrades } from '../src/data/upgrades';
 import { dpsTable, normalPolicy, simulate } from '../src/game/policy';
 
@@ -21,7 +22,7 @@ if (arg === 'dps') {
 } else {
   const jobs = JSON.parse(arg) as Job[];
   for (const j of jobs) {
-    const out = { key: j.key, runs: 0, time: 0, clears: 0, coins: 0, kills: 0, level: 0, times: [] as number[] };
+    const out = { key: j.key, runs: 0, time: 0, clears: 0, coins: 0, kills: 0, level: 0, cakes: 0, times: [] as number[], max: { coins: 0, coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 } };
     for (let i = j.from; i < j.to; i++) {
       // 판 번호마다 정해진 시드: 일꾼을 어떻게 나누든 같은 판이 나온다
       const r = simulate({ seed: 1 + i * 7919, char: j.char, map: j.map, upgrades: presetUpgrades(j.upg) }, normalPolicy(31 + i));
@@ -31,7 +32,16 @@ if (arg === 'dps') {
       out.coins += r.coins;
       out.kills += r.kills;
       out.level += r.level;
+      out.cakes += r.cakes;
       out.times.push(r.time);
+      // 서버 상한(초당 값)을 정할 때 보는 실제 최대치: 엽전은 맵 배율로 나눈 초당 값, 나머지는 기본 여유(처치 100 · 레벨 5 · 떡 5)를 뺀 초당 값
+      const m = out.max;
+      const t = Math.max(20, r.time);
+      m.coins = Math.max(m.coins, r.coins);
+      m.coinRate = Math.max(m.coinRate, r.coins / MAPS[MAP_INDEX[j.map] ?? 0].coinMul / t);
+      m.killRate = Math.max(m.killRate, (r.kills - 100) / t);
+      m.levelRate = Math.max(m.levelRate, (r.level - 5) / t);
+      m.cakeRate = Math.max(m.cakeRate, (r.cakes - 5) / t);
     }
     console.log(JSON.stringify(out));
   }

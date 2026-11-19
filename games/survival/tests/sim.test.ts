@@ -149,7 +149,7 @@ describe('결정성과 풀', () => {
   }, 60000);
 
   it('오래 돌려도 객체 수가 늘지 않는다 (풀 재사용)', () => {
-    const s = createRun({ seed: 3, char: 'rat', map: 'field', upgrades: presetUpgrades(49), startAt: 300 });
+    const s = createRun({ seed: 3, char: 'rat', map: 'field', upgrades: presetUpgrades(49), startAt: 150 });
     const pools = [s.enemies, s.projectiles, s.zones, s.pickups, s.fx, s.nums] as { items: object[]; n: number }[];
     const before = pools.map((p) => new Set(p.items));
     const sizes = pools.map((p) => p.items.length);

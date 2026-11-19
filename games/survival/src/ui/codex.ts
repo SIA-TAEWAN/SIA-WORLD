@@ -5,17 +5,13 @@ import { MAPS, MAP_INDEX } from '../data/maps';
 import { PASSIVES } from '../data/passives';
 import { WEAPONS } from '../data/weapons';
 import { codexCount, evolutionHints } from '../game/progress';
-import { zodiacFaceUrl } from '../assets';
-import { esc, nav, screen, state } from './app';
+import { artUrl, zodiacFaceUrl } from '../assets';
+import { esc, mmss, nav, screen, state } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
 
-/** 요괴·보스의 임시 그림: 게임 화면과 같은 색의 동그라미 (정식 그림은 ASSETS.md) */
-const BLOB: Record<string, string> = {
-  imp: 'var(--lose)', wisp: 'var(--team-a)', club: 'var(--ink-soft)', water: 'var(--sky-deep)', fox: 'var(--primary-deep)',
-  bamboo: 'var(--win)', guard: 'var(--draw)', skeleton: 'var(--panel)', spirit: 'var(--sky-mid)',
-};
-const BOSS_BLOB: Record<string, string> = { field: 'var(--pink)', bamboo: 'var(--win)', palace: 'var(--team-a)', underworld: 'var(--draw)' };
+/** 요괴·보스 그림: 게임 화면과 같은 그림 (public/art/e-<id>.png · b-<id>.png, ASSETS.md) */
+const foe = (name: string) => `<img class="foe" src="${artUrl(name)}" alt="" loading="lazy" />`;
 
 type Tab = 'enemy' | 'gear' | 'char';
 
@@ -43,15 +39,14 @@ export function showCodex() {
   const cell = (known: boolean, art: string, name: string, desc: string, tag = '') =>
     `<div class="cx ${known ? '' : 'unknown'}"><span class="cx-art">${art}</span>
       <span class="cx-tx"><b>${known ? esc(name) : '???'}${known && tag ? ` <i class="tag">${esc(tag)}</i>` : ''}</b><small>${known ? esc(desc) : '아직 만나지 못했어요'}</small></span></div>`;
-  const blob = (color: string, big = false) => `<i class="blob ${big ? 'big' : ''}" style="background:${color}"></i>`;
 
   const paint = () => {
     root.querySelectorAll<HTMLElement>('#tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.t === tab));
     if (tab === 'enemy') {
-      const enemies = ENEMIES.map((e) => cell(cx.enemies.includes(e.id), blob(BLOB[e.id] ?? 'var(--draw)'), e.name, e.desc));
+      const enemies = ENEMIES.map((e) => cell(cx.enemies.includes(e.id), foe(`e-${e.id}`), e.name, e.desc));
       const bosses = MAPS.map((m) => {
         const list = BOSSES.filter((b) => b.map === m.id).map((b, i) =>
-          cell(cx.bosses.includes(b.id), blob(BOSS_BLOB[m.id] ?? 'var(--draw)', true), b.name, b.desc, i === 2 ? '최종 보스' : `${m.bosses[i].at / 60}분`),
+          cell(cx.bosses.includes(b.id), foe(`b-${b.id}`), b.name, b.desc, i === 2 ? '최종 보스' : mmss(m.bosses[i].at)),
         );
         return `<h4>${esc(m.name)}</h4>${list.join('')}`;
       });

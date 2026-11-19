@@ -31,7 +31,7 @@ describe('엽전과 판 결과', () => {
 
   it('상한을 넘는 판은 비정상: 엽전은 상한까지만, 기록·누적·해금·도감에는 넣지 않는다', () => {
     const cap = coinCap('field', 300);
-    expect(cap).toBe(300 * 1.5);
+    expect(cap).toBe(300 * LIMITS.coins_per_sec);
     const cheat = run({ time: 300, coins: 999999, kills: 50 });
     expect(validRun(cheat)).toBe(false);
     const out = applyRun(defaultProfile(), {}, cheat, 1);
@@ -42,24 +42,24 @@ describe('엽전과 판 결과', () => {
     expect(out.profile.codex.enemies).toEqual([]);
     for (const bad of [
       run({ kills: 100 + 200 * 30 + 1 }),
-      run({ level: 46 }),
-      run({ cakes: 26 }),
-      run({ bossKills: 4, time: 600 }),
-      run({ bossKills: 1, time: 100 }),
-      run({ cleared: true, time: 600, bossKills: 0 }),
+      run({ level: 66 }),
+      run({ cakes: 22 }),
+      run({ bossKills: 4, time: 300 }),
+      run({ bossKills: 1, time: 80 }),
+      run({ cleared: true, time: 300, bossKills: 0 }),
     ]) expect(validRun(bad)).toBe(false);
-    expect(validRun(run({ kills: 100 + 200 * 30, level: 45, cakes: 25 }))).toBe(true);
+    expect(validRun(run({ kills: 100 + 200 * 30, level: 65, cakes: 21 }))).toBe(true);
   });
 
   it('맵 엽전 배율만큼 상한이 높다', () => {
-    expect(coinCap('underworld', 600)).toBe(Math.floor(600 * 1.5 * 2.5));
+    expect(coinCap('underworld', 300)).toBe(Math.floor(300 * LIMITS.coins_per_sec * 2.5));
   });
 
-  it('받지 않는 보고: 10분 초과, 서버가 잰 시간보다 긴 생존 시간, 10분을 채우지 않은 클리어, 7일 지난 판', () => {
-    expect(rejectReason(run({ time: 601 }), 9999)).toBe('bad time');
-    expect(rejectReason(run({ time: 600 }), 120)).toBe('too early');
-    expect(rejectReason(run({ time: 600 }), 595)).toBe(null);
-    expect(rejectReason(run({ time: 300, cleared: true }), 400)).toBe('bad time');
+  it('받지 않는 보고: 5분 초과, 서버가 잰 시간보다 긴 생존 시간, 5분을 채우지 않은 클리어, 7일 지난 판', () => {
+    expect(rejectReason(run({ time: 301 }), 9999)).toBe('bad time');
+    expect(rejectReason(run({ time: 300 }), 120)).toBe('too early');
+    expect(rejectReason(run({ time: 300 }), 295)).toBe(null);
+    expect(rejectReason(run({ time: 150, cleared: true }), 400)).toBe('bad time');
     expect(rejectReason(run({ time: 100 }), LIMITS.max_age + 1)).toBe('too late');
     expect(rejectReason(run({ kills: -1 }), 400)).toBe('bad result');
     expect(rejectReason(run({ time: 12.5 }), 400)).toBe('bad result');
@@ -82,15 +82,15 @@ describe('엽전과 판 결과', () => {
 });
 
 describe('최고 기록', () => {
-  const old: SurvivalRecord = { time: 300, kills: 500, cleared: false, character: 'rat', at: 1 };
+  const old: SurvivalRecord = { time: 150, kills: 500, cleared: false, character: 'rat', at: 1 };
   it('정렬: 생존 시간 → 클리어 → 처치 수, 같으면 먼저 달성한 기록이 남는다', () => {
-    expect(betterRecord({ time: 301, kills: 1, cleared: false }, old)).toBe(true);
-    expect(betterRecord({ time: 299, kills: 9999, cleared: false }, old)).toBe(false);
-    expect(betterRecord({ time: 300, kills: 501, cleared: false }, old)).toBe(true);
-    expect(betterRecord({ time: 300, kills: 500, cleared: false }, old)).toBe(false);
-    const ten: SurvivalRecord = { ...old, time: 600, kills: 4000 };
-    expect(betterRecord({ time: 600, kills: 10, cleared: true }, ten)).toBe(true);
-    expect(betterRecord({ time: 600, kills: 9999, cleared: false }, { ...ten, cleared: true })).toBe(false);
+    expect(betterRecord({ time: 151, kills: 1, cleared: false }, old)).toBe(true);
+    expect(betterRecord({ time: 149, kills: 9999, cleared: false }, old)).toBe(false);
+    expect(betterRecord({ time: 150, kills: 501, cleared: false }, old)).toBe(true);
+    expect(betterRecord({ time: 150, kills: 500, cleared: false }, old)).toBe(false);
+    const full: SurvivalRecord = { ...old, time: 300, kills: 4000 };
+    expect(betterRecord({ time: 300, kills: 10, cleared: true }, full)).toBe(true);
+    expect(betterRecord({ time: 300, kills: 9999, cleared: false }, { ...full, cleared: true })).toBe(false);
   });
 
   it('맵마다 따로 남는다', () => {
@@ -110,15 +110,16 @@ describe('해금', () => {
     expect(defaultProfile()).toMatchObject({ coins: 0, unlockedCharacters: ['rat', 'ox', 'tiger'], unlockedMaps: ['field'] });
   });
 
-  it('토끼 5분 · 용 중간 보스 · 말 8분 · 돼지 10분 클리어', () => {
-    expect(after(defaultProfile(), run({ time: 299 })).result.unlockedCharacters).toEqual([]);
-    expect(after(defaultProfile(), run({ time: 300 })).result.unlockedCharacters).toEqual(['rabbit']);
-    expect(after(defaultProfile(), run({ time: 200, bossKills: 1 })).result.unlockedCharacters).toEqual(['dragon']);
-    expect(after(defaultProfile(), run({ time: 480 })).result.unlockedCharacters).toEqual(['rabbit', 'horse']);
-    const clear = after(defaultProfile(), run({ time: 600, cleared: true, bossKills: 3, kills: 900, level: 30 }));
+  it('토끼 2분 30초 · 용 중간 보스 · 말 4분 · 돼지 5분 클리어', () => {
+    expect(after(defaultProfile(), run({ time: 149 })).result.unlockedCharacters).toEqual([]);
+    expect(after(defaultProfile(), run({ time: 150 })).result.unlockedCharacters).toEqual(['rabbit']);
+    expect(after(defaultProfile(), run({ time: 239 })).result.unlockedCharacters).toEqual(['rabbit']);
+    expect(after(defaultProfile(), run({ time: 100, bossKills: 1 })).result.unlockedCharacters).toEqual(['dragon']);
+    expect(after(defaultProfile(), run({ time: 240 })).result.unlockedCharacters).toEqual(['rabbit', 'horse']);
+    const clear = after(defaultProfile(), run({ time: 300, cleared: true, bossKills: 3, kills: 900, level: 30 }));
     expect(clear.result.unlockedCharacters).toEqual(['rabbit', 'dragon', 'horse', 'pig']);
     // 이미 푼 캐릭터는 다시 알리지 않는다
-    expect(after(clear.profile, run({ time: 600, cleared: true, bossKills: 3, kills: 10 })).result.unlockedCharacters).toEqual([]);
+    expect(after(clear.profile, run({ time: 300, cleared: true, bossKills: 3, kills: 10 })).result.unlockedCharacters).toEqual([]);
   });
 
   it('뱀 누적 처치 1,000 · 양 누적 떡 50개 (여러 판에 걸쳐)', () => {
@@ -132,7 +133,7 @@ describe('해금', () => {
   });
 
   it('맵은 앞 맵을 클리어하면 다음 맵이 열린다', () => {
-    const win = (map: string) => run({ map, time: 600, cleared: true, bossKills: 3 });
+    const win = (map: string) => run({ map, time: 300, cleared: true, bossKills: 3 });
     let s = after(defaultProfile(), win('field'));
     expect(s.result.unlockedMaps).toEqual(['bamboo']);
     s = after(s.profile, win('field'));
@@ -141,8 +142,8 @@ describe('해금', () => {
     s = after(s.profile, win('palace'));
     expect(s.profile.unlockedMaps).toEqual(['field', 'bamboo', 'palace', 'underworld']);
     expect(after(s.profile, win('underworld')).result.unlockedMaps).toEqual([]);
-    // 10분을 버텼어도 최종 보스를 못 잡으면 열리지 않는다
-    expect(after(defaultProfile(), run({ time: 600 })).result.unlockedMaps).toEqual([]);
+    // 5분을 버텼어도 최종 보스를 못 잡으면 열리지 않는다
+    expect(after(defaultProfile(), run({ time: 300 })).result.unlockedMaps).toEqual([]);
   });
 
   it('원숭이·닭·개는 엽전으로 푼다', () => {
@@ -155,7 +156,7 @@ describe('해금', () => {
     expect(() => unlockCharacter(q, 'rooster')).toThrow('not enough coins');
     expect(() => unlockCharacter(p, 'rabbit')).toThrow('bad character');
     // 조건으로는 풀리지 않는다
-    expect(after(defaultProfile(), run({ time: 600, cleared: true, bossKills: 3 })).profile.unlockedCharacters).not.toContain('monkey');
+    expect(after(defaultProfile(), run({ time: 300, cleared: true, bossKills: 3 })).profile.unlockedCharacters).not.toContain('monkey');
   });
 
   it('도감: 만난 것이 쌓이고, 모르는 id는 버린다', () => {
@@ -180,12 +181,12 @@ describe('도감', () => {
 
   it('모은 수: 처음에는 캐릭터 셋뿐', () => {
     expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 15 + 8 + 12 });
-    const run2 = applyRun(defaultProfile(), {}, run({ time: 300, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
+    const run2 = applyRun(defaultProfile(), {}, run({ time: 150, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
     expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);
   });
 
   it('판에서 만난 요괴·보스, 얻은 무기·패시브·진화가 판 결과에 담긴다', () => {
-    const r = simulate({ seed: 8, char: 'tiger', map: 'field', upgrades: presetUpgrades(49), startAt: 170 }, normalPolicy(2), 200);
+    const r = simulate({ seed: 8, char: 'tiger', map: 'field', upgrades: presetUpgrades(49), startAt: 85 }, normalPolicy(2), 115);
     expect(r.codex.enemies).toContain('imp');
     expect(r.codex.bosses).toEqual(['bigDokkaebi']);
     expect(r.codex.weapons).toContain('claw');
@@ -292,14 +293,14 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     await expect(api.start('bamboo', 'rat')).rejects.toThrow('map locked');
     await expect(api.start('field', 'pig')).rejects.toThrow('character locked');
     const id = (await api.start('field', 'rat'))!;
-    // 10분을 2분 만에 끝낼 수 없다
+    // 5분을 2분 만에 끝낼 수 없다
     t += 120_000;
-    await expect(api.finish({ ...run({ time: 600 }), run: id })).rejects.toBeInstanceOf(ApiError);
+    await expect(api.finish({ ...run({ time: 300 }), run: id })).rejects.toThrow('too early');
     t += 200_000;
-    const out = (await api.finish({ ...run({ time: 310, coins: 120 }), run: id }))!;
+    const out = (await api.finish({ ...run({ time: 160, coins: 120 }), run: id }))!;
     expect(out.result).toMatchObject({ coins: 120, newRecord: true, unlockedCharacters: ['rabbit'] });
     // 한 판은 한 번만
-    await expect(api.finish({ ...run({ time: 310, coins: 120 }), run: id })).rejects.toThrow('already finished');
+    await expect(api.finish({ ...run({ time: 160, coins: 120 }), run: id })).rejects.toThrow('already finished');
     await expect(api.finish({ ...run(), run: 'local-999' })).rejects.toThrow('no run');
     const bought = await api.buyUpgrade('might');
     expect(bought).toMatchObject({ coins: 20, upgrades: { might: 1 } });
@@ -310,7 +311,7 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     expect(await again.loadProfile()).toMatchObject({ coins: 120, unlockedCharacters: ['rat', 'ox', 'tiger', 'rabbit'] });
   });
 
-  it('한 번에 한 판 (서버 039 와 같다): 새 판을 시작해도 이전 판은 남고, 겹치는 판은 끝낼 때 거절한다', async () => {
+  it('한 번에 한 판 (서버 039·040 과 같다): 새 판을 시작해도 이전 판은 남고, 겹치는 판은 끝낼 때 거절한다', async () => {
     let t = 5_000_000;
     const st = memStore();
     const api = createLocalApi(st, () => t);
