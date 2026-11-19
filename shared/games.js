@@ -19,6 +19,8 @@ export const GAMES = [
     path: 'games/survival/', image: 'shared/images/card-survival.png', open: false },
   { id: 'defense', name: '시아디펜스', desc: '길목을 지켜 요괴를 막아라 · 십이지 타워 디펜스 · 1인용',
     path: 'games/defense/', image: 'shared/images/card-defense.png', open: false },
+  { id: 'village', name: '시아마을', desc: '시간이 지나면 쌓이는 자원으로 마을 키우기 · 십이지 주민 · 1인용',
+    path: 'games/village/', image: 'shared/images/card-village.png', open: false },
 ];
 
 const KEY = 'game_open:';
