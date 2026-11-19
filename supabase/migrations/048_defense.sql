@@ -312,6 +312,14 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public._defense_profile_json(public.defense_profiles) from public, anon, authenticated;
 
+-- 서버 시각 (ms): 접속 인원 채널(defense-lobby)에서 먼저 온 순서를 셀 때 쓴다 (survival_now 와 같다)
+create or replace function public.defense_now() returns double precision
+language sql volatile security definer set search_path = public as $$
+  select extract(epoch from clock_timestamp()) * 1000
+$$;
+revoke all on function public.defense_now() from public;
+grant execute on function public.defense_now() to anon, authenticated;
+
 create or replace function public.defense_profile() returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare me uuid := auth.uid(); pr public.defense_profiles;

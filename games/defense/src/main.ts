@@ -1,7 +1,8 @@
 import './style.css';
 import { SQUAD_SIZE } from './data/balance';
 import { ROSTER, STARTERS, towerOf } from './data/characters';
-import { LOCAL_MODE, devSetup, getApi } from './net/api';
+import { LOCAL_MODE, devSetup, getApi, lobbyNet } from './net/api';
+import { DefenseLobby, LOBBY_MAX, LobbyFullError } from './net/lobby';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { loadEngine, loadSquad, nav, screen, setProfile, state, toast } from './ui/app';
 import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
@@ -33,6 +34,9 @@ nav.game = (setup) => {
     .finally(() => (starting = false));
 };
 nav.result = showResult;
+
+/** 접속 인원 채널 (정원 확인. 들어와 있는 동안 계속 붙잡아 둔다) */
+let lobby: DefenseLobby | null = null;
 
 /** 테스트 모드(?local=1): 로그인 없이 임시 사용자 (?name= 으로 이름 지정) */
 function localUser(): WorldUser {
@@ -69,6 +73,26 @@ async function start() {
   const api = state.api;
   // 보류했던 결과가 나중에(판 시작 직전·저장 성공 직후) 올라가면 새 프로필을 화면에 반영한다
   if (api) api.onProfile = setProfile;
+  // 접속 인원 채널(defense-lobby): 정원(최대 30명)을 확인한다. 게임을 하는 동안에도 채널에 남아 있는다 (시아서바이벌과 같은 방식)
+  // 채널 연결이 안 되면 인원 확인 없이 들어간다. 테스트 모드에서는 ?lobbymax=2 처럼 정원을 줄여 볼 수 있다
+  if (api) {
+    const testMax = LOCAL_MODE ? Number(new URLSearchParams(location.search).get('lobbymax')) : 0;
+    try {
+      lobby = new DefenseLobby(await lobbyNet(), state.user, testMax >= 1 ? Math.floor(testMax) : LOBBY_MAX);
+      await lobby.enter();
+    } catch (e) {
+      if (e instanceof LobbyFullError) {
+        const root = screen(
+          `<div class="connecting">지금은 사람이 가득 찼어요 (최대 ${lobby!.max}명).<br/>잠시 후 다시 들어와 주세요<br/><br/>
+            <button class="btn primary" id="retry">다시 시도</button> <a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a></div>`,
+          'center',
+        );
+        root.querySelector('#retry')!.addEventListener('click', () => location.reload());
+        return;
+      }
+      lobby = null;
+    }
+  }
   // 프로필(엽전·별·레벨·강화·해금). 못 읽으면 처음 상태로 플레이는 할 수 있다 (그 판은 기록되지 않는다)
   try {
     if (!api) throw new Error('no api');

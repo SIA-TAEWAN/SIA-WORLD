@@ -16,6 +16,7 @@ export const GAME_CHANNELS = {
   race: ['race-lobby'],
   volleyball: ['volley-lobby'],
   survival: ['survival-lobby'],
+  defense: ['defense-lobby'],
 };
 
 /** 맞고·카지노 게임 하나의 접속 채널 이름 */

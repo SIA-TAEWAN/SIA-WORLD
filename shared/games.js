@@ -17,6 +17,8 @@ export const GAMES = [
     path: 'games/volleyball/', image: 'shared/images/card-volleyball.png', open: false },
   { id: 'survival', name: '시아서바이벌', desc: '몰려오는 요괴를 4분 버텨라 · 1인용',
     path: 'games/survival/', image: 'shared/images/card-survival.png', open: false },
+  { id: 'defense', name: '시아디펜스', desc: '길목을 지켜 요괴를 막아라 · 십이지 타워 디펜스 · 1인용',
+    path: 'games/defense/', image: 'shared/images/card-defense.png', open: false },
 ];
 
 const KEY = 'game_open:';

@@ -6,6 +6,7 @@ name: Deploy to GitHub Pages
 #   /games/running/ 시아레이스 빌드 결과 (games/running/dist)
 #   /games/volleyball/ 시아배구 빌드 결과 (games/volleyball/dist)
 #   /games/survival/ 시아서바이벌 빌드 결과 (games/survival/dist)
+#   /games/defense/ 시아디펜스 빌드 결과 (games/defense/dist)
 on:
   push:
     branches: [main]
@@ -36,6 +37,7 @@ jobs:
             games/running/package-lock.json
             games/volleyball/package-lock.json
             games/survival/package-lock.json
+            games/defense/package-lock.json
       - name: 시아탱크 테스트·빌드
         working-directory: games/tank
         run: |
@@ -66,9 +68,15 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: 시아디펜스 테스트·빌드
+        working-directory: games/defense
+        run: |
+          npm ci
+          npm test
+          npm run build
       - name: 사이트 파일 모으기
         run: |
-          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival
+          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense
           cp index.html _site/
           cp -r shared _site/
           cp -r games/tank/dist/. _site/games/tank/
@@ -76,6 +84,7 @@ jobs:
           cp -r games/running/dist/. _site/games/running/
           cp -r games/volleyball/dist/. _site/games/volleyball/
           cp -r games/survival/dist/. _site/games/survival/
+          cp -r games/defense/dist/. _site/games/defense/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

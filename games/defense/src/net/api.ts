@@ -10,6 +10,8 @@ import {
 import { ENDLESS_ID } from '../data/endless';
 import { dropPending, flushPending, keepPending, type SendOutcome, type Store } from './pending';
 import { worldSupabase } from './world';
+import { LocalChannel, SupaChannel } from './channel';
+import type { LobbyNet } from './lobby';
 
 /**
  * 서버 연결. 시아디펜스는 1인 전용이라 게임 중에는 서버와 통신하지 않는다 (PRD 1장).
@@ -327,6 +329,24 @@ export async function getApi(uid: string): Promise<DefenseApi> {
     return (api = createLocalApi(store, LOCAL_KEY, () => Date.now(), params.get('ff') === '1'));
   }
   return (api = createSupabaseApi(await worldSupabase(), uid, store));
+}
+
+/**
+ * 접속 인원 채널(net/lobby.ts)을 만드는 쪽: 테스트 모드는 같은 브라우저의 탭끼리(BroadcastChannel),
+ * 아니면 Supabase Realtime. 서버 시각은 defense_now() (못 물어보면 기기 시각)
+ */
+export async function lobbyNet(): Promise<LobbyNet> {
+  if (LOCAL_MODE) return { channel: <M>(name: string, key: string) => new LocalChannel<M>(name, key), now: async () => Date.now() };
+  const sb = await worldSupabase();
+  return {
+    channel: <M>(name: string, key: string) => new SupaChannel<M>(sb, name, key),
+    async now() {
+      const t0 = Date.now();
+      const { data, error } = await sb.rpc('defense_now');
+      const t1 = Date.now();
+      return error || typeof data !== 'number' ? t1 : data + (t1 - t0) / 2;
+    },
+  };
 }
 
 /**
