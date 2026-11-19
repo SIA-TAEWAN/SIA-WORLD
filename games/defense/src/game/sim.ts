@@ -75,6 +75,8 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
       // 지속 피해도 공격력과 함께 오른다
       ...(L.poison ? { poison: L.poison * mods[i].dmg } : {}),
       ...(L.burn ? { burn: L.burn * mods[i].dmg } : {}),
+      // 돼지는 공격력 대신 버는 기운이 오른다
+      ...(L.income ? { income: Math.round(L.income * mods[i].dmg) } : {}),
     })),
   );
   const price = (i: number, v: number) => Math.max(1, Math.round(v * mods[i].cost));

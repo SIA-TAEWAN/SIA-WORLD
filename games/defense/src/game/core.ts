@@ -127,6 +127,22 @@ function fall(s: State, e: Enemy) {
     addFx(s, FX.puff, e.x, e.y, e.r * 1.4, 0.3);
     return;
   }
+  // 염라대왕의 곁에서 쓰러진 요괴는 한 번 되살아날 수 있다 (시드 난수). 되살아난 적이 있는 요괴는 e.c = 1
+  if (e.boss < 0 && e.look < 0 && e.c === 0) {
+    for (let i = 0; i < s.enemyHi; i++) {
+      const b = s.enemies[i];
+      if (!b.alive || b.boss < 0 || BOSSES[b.boss].act !== 'yeomra') continue;
+      const p = BOSSES[b.boss].p;
+      if ((b.x - e.x) * (b.x - e.x) + (b.y - e.y) * (b.y - e.y) > p.range * p.range) continue;
+      e.c = 1;
+      if (s.rng() >= p.chance) break;
+      e.down = 1.5;
+      e.hp = e.maxHp * 0.4;
+      e.dotT = e.stun = 0;
+      addFx(s, FX.puff, e.x, e.y, e.r * 1.4, 0.3);
+      return;
+    }
+  }
   e.hp = 0;
   e.alive = false;
   s.enemyN--;

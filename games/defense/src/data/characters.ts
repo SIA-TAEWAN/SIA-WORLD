@@ -164,11 +164,31 @@ export const TOWERS: TowerDef[] = [
     id: 'rooster', name: '닭', nick: '꼬꼬댁', role: '지원', desc: '주변 캐릭터의 공격 속도를 올려요. 직접 공격은 약해요', kind: 'shot', proj: 5, air: true,
     cost: 100, up: [80, 130],
     levels: [
-      { dmg: 5, range: 130, every: 1, haste: 0.2 },
-      { dmg: 7, range: 140, every: 1, haste: 0.27 },
-      { dmg: 9, range: 180, every: 1, haste: 0.34 },
+      { dmg: 8, range: 135, every: 1, haste: 0.3 },
+      { dmg: 11, range: 145, every: 1, haste: 0.4 },
+      { dmg: 14, range: 185, every: 1, haste: 0.5 },
     ],
     special: '지원 범위가 크게 늘어요',
+  },
+  {
+    id: 'dog', name: '개', nick: '멍뭉이', role: '감지·추격', desc: '숨은 요괴를 드러내고, 강아지를 보내 길 위의 요괴를 물어 세워요', kind: 'shot', proj: 6, air: false,
+    cost: 110, up: [90, 150],
+    levels: [
+      { dmg: 34, range: 180, every: 1.4, stun: 1, detect: true },
+      { dmg: 48, range: 195, every: 1.3, stun: 1.2, detect: true },
+      { dmg: 58, range: 210, every: 1.2, stun: 1.4, detect: true, count: 2 },
+    ],
+    special: '강아지를 2마리씩 보내요',
+  },
+  {
+    id: 'pig', name: '돼지', nick: '꿀꿀이', role: '재화', desc: '웨이브(30초)마다 기운을 벌어 줘요. 공격은 하지 않아요', kind: 'bank', air: false,
+    cost: 90, up: [75, 130],
+    levels: [
+      { dmg: 0, range: 0, every: 1, income: 40 },
+      { dmg: 0, range: 0, every: 1, income: 62 },
+      { dmg: 0, range: 0, every: 1, income: 88, coin: 2 },
+    ],
+    special: '엽전도 조금 벌어요',
   },
 ];
 

@@ -52,6 +52,36 @@ export const BOSSES: BossDef[] = [
     // 분신: 체력이 3/4 · 2/4 · 1/4 이 될 때마다 길마다 분신 하나 (체력은 보스 최대 체력의 hp 배, 지나가면 생명 leak)
     act: 'clones', p: { hp: 0.13, leak: 2 },
   },
+  {
+    id: 'guardCaptain', name: '수문장 대장', desc: '방패로 정면 피해를 막고 주변 요괴를 빠르게 해요', hp: 1900, speed: 28, bounty: 160, r: 36, size: 136, leak: 5, shield: 0.35,
+    // 대장: range 안의 요괴가 빨라진다 (sim.ts 의 RUSH_MUL)
+    act: 'captain', p: { range: 190 },
+  },
+  {
+    id: 'yagwanggwi', name: '야광귀', desc: '주기적으로 가까운 캐릭터 하나를 잠깐 멈춰요', hp: 2200, speed: 30, bounty: 170, r: 34, size: 128, leak: 5,
+    // 멈춤: every 초마다 range 안에서 가장 가까운 캐릭터 하나를 dur 초 동안 멈춘다
+    act: 'freeze', p: { every: 6, range: 260, dur: 3.5 },
+  },
+  {
+    id: 'imugi', name: '이무기', desc: '물기둥으로 주변 캐릭터들을 잠깐 기절시켜요', hp: 2300, speed: 29, bounty: 180, r: 36, size: 140, leak: 5,
+    // 물기둥: every 초마다 range 안의 캐릭터를 모두 dur 초 동안 멈춘다
+    act: 'geyser', p: { every: 9, range: 170, dur: 2 },
+  },
+  {
+    id: 'reaper', name: '저승사자', desc: '표식을 찍은 캐릭터의 공격 속도를 떨어뜨려요', hp: 1800, speed: 30, bounty: 190, r: 34, size: 132, leak: 5,
+    // 표식: every 초마다 range 안에서 가장 많이 키운 캐릭터 하나의 공격 속도를 dur 초 동안 절반으로 (sim.ts 의 MARK_MUL)
+    act: 'mark', p: { every: 5, range: 320, dur: 7 },
+  },
+  {
+    id: 'gangcheori', name: '강철이', desc: '불길로 배치 칸 일부를 잠시 못 쓰게 해요', hp: 1700, speed: 29, bounty: 200, r: 36, size: 140, leak: 5,
+    // 불길: every 초마다 가장 가까운 배치 칸 count 개를 dur 초 동안 못 쓰게 한다 (놓인 캐릭터는 멈추고, 빈 칸에는 놓을 수 없다)
+    act: 'fire', p: { every: 8, count: 3, dur: 4.5 },
+  },
+  {
+    id: 'yeomra', name: '염라대왕', desc: '쓰러진 요괴를 되살리고 졸개를 계속 소환해요', hp: 2800, speed: 26, bounty: 250, r: 38, size: 148, leak: 5,
+    // 소환(every 초마다 kind 요괴 count 마리) + 되살림(range 안에서 쓰러진 요괴가 chance 확률로 한 번 되살아난다 — core.ts)
+    act: 'yeomra', p: { every: 7, count: 2, kind: 7, hp: 1.2, range: 240, chance: 0.35 },
+  },
 ];
 
 export const BOSS_INDEX: Record<string, number> = Object.fromEntries(BOSSES.map((b, i) => [b.id, i]));

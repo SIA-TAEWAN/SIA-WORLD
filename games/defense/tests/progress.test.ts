@@ -163,9 +163,9 @@ describe('판 검증', () => {
 
 describe('캐릭터 레벨업 · 공통 강화', () => {
   it('레벨업: 정해진 비용을 내고 12레벨까지. 잠긴 캐릭터·엽전 부족은 거절', () => {
-    let p = { ...defaultProfile(), coins: 100 };
+    let p = { ...defaultProfile(), coins: LEVEL_COSTS[0] + LEVEL_COSTS[1] };
     p = levelUp(p, 'rat');
-    expect(p.coins).toBe(100 - LEVEL_COSTS[0]);
+    expect(p.coins).toBe(LEVEL_COSTS[1]);
     expect(charLevel(p, 'rat')).toBe(2);
     p = levelUp(p, 'rat');
     expect(p.coins).toBe(0);

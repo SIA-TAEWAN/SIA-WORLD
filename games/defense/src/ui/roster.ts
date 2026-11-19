@@ -41,7 +41,7 @@ export function showChars() {
           ${
             open
               ? `<p class="lv-line"><b>Lv ${lv}</b>${pips(lv, CHAR_MAX_LV)}</p>
-                 <p class="soft">공격력 +${Math.round(LEVEL_DMG * (lv - 1) * 100)}%${cost !== null ? ` → <b>+${Math.round(LEVEL_DMG * lv * 100)}%</b>` : ''}</p>
+                 <p class="soft">${def?.kind === 'bank' ? '버는 기운' : '공격력'} +${Math.round(LEVEL_DMG * (lv - 1) * 100)}%${cost !== null ? ` → <b>+${Math.round(LEVEL_DMG * lv * 100)}%</b>` : ''}</p>
                  <ul class="perks">${perks}</ul>
                  ${def ? `<p class="soft">${esc(def.desc)}<br/>3단계: ${esc(def.special)}</p>` : '<p class="soft">아직 준비 중인 캐릭터예요</p>'}
                  <button class="btn primary" id="up" ${cost === null ? 'disabled' : ''}>${cost === null ? '최대 레벨' : `레벨업 🪙 ${cost.toLocaleString()}`}</button>`

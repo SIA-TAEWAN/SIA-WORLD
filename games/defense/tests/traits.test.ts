@@ -4,7 +4,7 @@ import { BOSSES, BOSS_INDEX } from '../src/data/bosses';
 import { TOWERS, TOWER_INDEX } from '../src/data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../src/data/enemies';
 import { canTarget, hurt, placeOnRoute, spawnEnemy } from '../src/game/core';
-import { command, createGame, step } from '../src/game/sim';
+import { MARK_MUL, RUSH_MUL, command, createGame, step } from '../src/game/sim';
 import type { Enemy, State } from '../src/game/state';
 
 const T = TOWER_INDEX;
@@ -181,13 +181,14 @@ describe('2~6지역의 캐릭터', () => {
     expect(a.haste).toBe(0);
     expect(b.haste).toBeCloseTo(TOWERS[T.rooster].levels[0].haste!);
     expect(b.hits / a.hits).toBeGreaterThan(1.12);
-    expect(TOWERS[T.rooster].levels[0].dmg).toBeLessThan(TOWERS[T.rat].levels[0].dmg);
+    // 직접 공격은 쥐보다 약하다 (초당 피해)
+    expect(TOWERS[T.rooster].levels[0].dmg / TOWERS[T.rooster].levels[0].every).toBeLessThan(TOWERS[T.rat].levels[0].dmg / TOWERS[T.rat].levels[0].every);
   });
 });
 
 describe('2~6지역의 요괴', () => {
   it('여우불(공중): 공중을 맞힐 수 있는 캐릭터만 노린다 (호랑이·토끼·소는 못 맞힌다)', () => {
-    expect(TOWERS.filter((t) => !t.air).map((t) => t.id)).toEqual(['ox', 'tiger', 'rabbit']);
+    expect(TOWERS.filter((t) => !t.air).map((t) => t.id)).toEqual(['ox', 'tiger', 'rabbit', 'dog', 'pig']);
     const s = arena();
     put(s, 0, 'tiger');
     put(s, 1, 'rabbit');
@@ -319,5 +320,190 @@ describe('2~6지역의 보스', () => {
     tick(s, 0.1);
     // 3/4 · 2/4 · 1/4: 모두 세 번
     expect(s.enemies.filter((e) => e.alive && e.look === b.boss)).toHaveLength(3 * (s.ground.length - 1));
+  });
+});
+
+describe('7~12지역의 캐릭터·요괴', () => {
+  it('개: 숨은 요괴를 드러내고, 강아지가 물어 세운다. 3단계는 2마리', () => {
+    const s = arena();
+    const hidden = foe(s, 'bamboo', 0);
+    hidden.on = true;
+    hidden.cyc = 99;
+    put(s, 0, 'dog');
+    tick(s, 1.2);
+    expect(hidden.seen).toBeGreaterThan(0);
+    expect(hidden.hp).toBeLessThan(1000);
+    expect(hidden.stun + hidden.guard).toBeGreaterThan(0);
+    command(s, 'upgrade', 0);
+    command(s, 'upgrade', 0);
+    foe(s, 'imp', 30);
+    s.projectiles.n = 0;
+    s.towers[0].cd = 0;
+    tick(s, 0.05);
+    expect(s.projectiles.n).toBe(2);
+  });
+
+  it('돼지: 웨이브가 시작될 때마다 기운을 번다. 3단계는 엽전도 (공격은 하지 않는다)', () => {
+    const s = createGame({ seed: 1, stage: '1-1', squad: ['rat'] });
+    s.squad = TOWERS.map((_, i) => i);
+    s.energy = 10000;
+    s.lives = s.startLives = 1e6;
+    put(s, 0, 'pig');
+    put(s, 1, 'pig', 3);
+    const L = TOWERS[T.pig].levels;
+    command(s, 'start');
+    let e0 = s.energy;
+    tick(s, 0.1); // 첫 웨이브 시작
+    expect(s.energy - e0).toBe(L[0].income! + L[2].income!);
+    expect(s.bonus).toBe(L[2].coin);
+    e0 = s.energy;
+    const kills0 = s.kills;
+    tick(s, 60); // 웨이브 둘 더
+    expect(s.energy - e0).toBe(2 * (L[0].income! + L[2].income!));
+    expect(s.bonus).toBe(3 * L[2].coin!);
+    expect(s.kills).toBe(kills0);
+  });
+
+  it('수문장 요괴: 앞에서 온 공격은 방패가 막고, 뒤에서 온 공격·광선·독은 그대로 받는다', () => {
+    const s = arena();
+    const g = foe(s, 'guard', 0);
+    const shield = ENEMIES[ENEMY_INDEX.guard].shield!;
+    // 요괴는 오른쪽으로 간다: 오른쪽에서 온 공격이 정면
+    hurt(s, g, 100, g.x + 50, g.y);
+    expect(1000 - g.hp).toBeCloseTo(100 * shield);
+    hurt(s, g, 100, g.x - 50, g.y);
+    expect(1000 - g.hp).toBeCloseTo(100 * shield + 100);
+    hurt(s, g, 100);
+    expect(1000 - g.hp).toBeCloseTo(100 * shield + 200);
+  });
+
+  it('해골 병사: 쓰러져도 한 번 되살아난다 (누워 있는 동안에는 노릴 수 없다)', () => {
+    const s = arena();
+    const k = foe(s, 'skeleton', 0, 100);
+    hurt(s, k, 999);
+    expect(k.alive).toBe(true);
+    expect(k.down).toBeGreaterThan(0);
+    expect(canTarget(k, true)).toBe(false);
+    expect(s.kills).toBe(0);
+    tick(s, 2.1);
+    expect(k.down).toBeLessThanOrEqual(0);
+    expect(k.hp).toBeCloseTo(50);
+    hurt(s, k, 999);
+    expect(k.alive).toBe(false);
+    expect(s.kills).toBe(1);
+  });
+
+  it('원혼: 무적인 동안에는 피해를 받지 않지만 멈춤·감속은 먹힌다', () => {
+    const s = arena();
+    const g = foe(s, 'spirit', 0);
+    g.on = true;
+    g.cyc = 99;
+    hurt(s, g, 100);
+    expect(g.hp).toBe(1000);
+    put(s, 0, 'ox');
+    tick(s, 0.4);
+    expect(g.stun).toBeGreaterThan(0);
+    expect(g.hp).toBe(1000);
+    g.on = false;
+    hurt(s, g, 100);
+    expect(g.hp).toBe(900);
+  });
+});
+
+describe('7~12지역의 보스', () => {
+  const near = (s: State, id: string) => {
+    const b = boss(s, id, s.slotX[0] + 80);
+    b.speed = 0;
+    return b;
+  };
+  it('수문장 대장: 정면 방패 + 둘레의 요괴를 빠르게 한다', () => {
+    const s = arena();
+    const b = near(s, 'guardCaptain');
+    expect(b.shield).toBeLessThan(1);
+    const a = foe(s, 'imp', 40);
+    a.speed = 50;
+    const d = a.d;
+    tick(s, 1);
+    expect(a.d - d).toBeCloseTo(50 * RUSH_MUL, 0);
+  });
+
+  it('야광귀: 가까운 캐릭터 하나를 잠깐 멈춘다 (멈춘 동안 공격하지 못한다)', () => {
+    const s = arena();
+    put(s, 0, 'tiger');
+    put(s, 3, 'tiger'); // 먼 칸
+    const b = near(s, 'yagwanggwi');
+    b.hp = b.maxHp = 1e7;
+    const p = BOSSES[BOSS_INDEX.yagwanggwi].p;
+    tick(s, p.every * 0.5 + 0.1);
+    expect(s.towers[0].off).toBeGreaterThan(0);
+    expect(s.towers[3].off).toBe(0);
+    const hp = b.hp;
+    tick(s, p.dur - 0.5);
+    expect(b.hp).toBe(hp);
+    tick(s, 1.5);
+    expect(b.hp).toBeLessThan(hp);
+  });
+
+  it('이무기: 물기둥으로 둘레의 캐릭터들을 한꺼번에 멈춘다', () => {
+    const s = arena();
+    put(s, 0, 'rat');
+    put(s, 1, 'rat');
+    put(s, 9, 'rat');
+    const b = boss(s, 'imugi', s.slotX[0] + 160);
+    b.speed = 0;
+    const p = BOSSES[BOSS_INDEX.imugi].p;
+    tick(s, p.every * 0.5 + 0.1);
+    expect(s.towers[0].off).toBeGreaterThan(0);
+    expect(s.towers[1].off).toBeGreaterThan(0);
+    expect(s.towers[9].off).toBe(0);
+  });
+
+  it('저승사자: 표식이 찍힌 캐릭터는 공격 속도가 절반이 된다 (가장 많이 키운 캐릭터부터)', () => {
+    const s = arena();
+    put(s, 0, 'rat');
+    put(s, 1, 'tiger', 3);
+    near(s, 'reaper');
+    const p = BOSSES[BOSS_INDEX.reaper].p;
+    tick(s, p.every * 0.5 + 0.1);
+    expect(s.towers[1].mark).toBeGreaterThan(0);
+    expect(s.towers[0].mark).toBe(0);
+    expect(MARK_MUL).toBe(0.5);
+  });
+
+  it('강철이: 가까운 배치 칸을 잠시 못 쓰게 한다 (빈 칸에는 놓을 수 없다)', () => {
+    const s = arena();
+    near(s, 'gangcheori');
+    const p = BOSSES[BOSS_INDEX.gangcheori].p;
+    tick(s, p.every * 0.5 + 0.1);
+    expect(s.towers.filter((t) => t.off > 0)).toHaveLength(p.count);
+    expect(s.towers[0].off).toBeGreaterThan(0);
+    expect(command(s, 'place', 0, T.rat)).toBe(false);
+    tick(s, p.dur);
+    expect(command(s, 'place', 0, T.rat)).toBe(true);
+  });
+
+  it('염라대왕: 졸개를 계속 부르고, 곁에서 쓰러진 요괴를 가끔 되살린다 (한 요괴는 한 번만)', () => {
+    const s = arena();
+    const b = near(s, 'yeomra');
+    const p = BOSSES[BOSS_INDEX.yeomra].p;
+    let raised = 0;
+    for (let i = 0; i < 40; i++) {
+      const e = foe(s, 'imp', 20, 10);
+      hurt(s, e, 99);
+      if (e.alive) {
+        raised++;
+        expect(e.down).toBeGreaterThan(0);
+        e.down = 0;
+        hurt(s, e, 9999);
+        expect(e.alive).toBe(false);
+      }
+    }
+    expect(raised).toBeGreaterThan(40 * p.chance * 0.4);
+    expect(raised).toBeLessThan(40 * p.chance * 1.8);
+    const n = s.enemyN;
+    tick(s, p.every * 0.5 + 0.1);
+    expect(s.enemyN).toBe(n + p.count);
+    expect(s.enemies.some((e) => e.alive && e.boss < 0 && e.kind === p.kind)).toBe(true);
+    expect(b.alive).toBe(true);
   });
 });

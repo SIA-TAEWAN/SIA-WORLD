@@ -4,6 +4,12 @@ import { REGION_03 } from './stages/r03';
 import { REGION_04 } from './stages/r04';
 import { REGION_05 } from './stages/r05';
 import { REGION_06 } from './stages/r06';
+import { REGION_07 } from './stages/r07';
+import { REGION_08 } from './stages/r08';
+import { REGION_09 } from './stages/r09';
+import { REGION_10 } from './stages/r10';
+import { REGION_11 } from './stages/r11';
+import { REGION_12 } from './stages/r12';
 
 /**
  * 스테이지 데이터 (PRD 1·3·6장). 스테이지 하나 = 이 파일의 객체 하나이고, 코드를 고치지 않고 여기에 추가만 하면 된다.
@@ -152,7 +158,7 @@ const REGION_1: StageDef[] = [
 ];
 
 // 2지역부터는 지역마다 파일 하나 (src/data/stages/rNN.ts — scripts/gen-stages.ts 가 만든 데이터)
-export const STAGES: StageDef[] = [...REGION_1, ...REGION_02, ...REGION_03, ...REGION_04, ...REGION_05, ...REGION_06];
+export const STAGES: StageDef[] = [...REGION_1, ...REGION_02, ...REGION_03, ...REGION_04, ...REGION_05, ...REGION_06, ...REGION_07, ...REGION_08, ...REGION_09, ...REGION_10, ...REGION_11, ...REGION_12];
 
 export const STAGE_INDEX: Record<string, number> = Object.fromEntries(STAGES.map((s, i) => [s.id, i]));
 export const stageOf = (id: string): StageDef | undefined => STAGES[STAGE_INDEX[id]];

@@ -139,4 +139,102 @@ export const BOSS_ACTS: Record<string, BossAct> = {
     }
     emit(s, EV.bossAct, e.boss, ACT.clone, e.x, e.y);
   },
+
+  /** 대장: 둘레의 요괴가 빨라진다 (정면 방패는 data 의 shield) */
+  captain(s, e, def) {
+    const r2 = def.p.range * def.p.range;
+    for (let i = 0; i < s.enemyHi; i++) {
+      const o = s.enemies[i];
+      if (!o.alive || o === e) continue;
+      if ((o.x - e.x) * (o.x - e.x) + (o.y - e.y) * (o.y - e.y) <= r2) o.rush = 0.3;
+    }
+  },
+
+  /** 멈춤: every 초마다 가장 가까운 캐릭터 하나를 잠깐 멈춘다 */
+  freeze(s, e, def) {
+    const p = def.p;
+    if (!every(e, p.every)) return;
+    let best = -1;
+    let bestD = p.range * p.range;
+    for (let i = 0; i < s.towers.length; i++) {
+      if (s.towers[i].char < 0 || s.towers[i].off > 0) continue;
+      const d = (s.slotX[i] - e.x) * (s.slotX[i] - e.x) + (s.slotY[i] - e.y) * (s.slotY[i] - e.y);
+      if (d <= bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best < 0) return;
+    s.towers[best].off = p.dur;
+    addFx(s, FX.zap, s.slotX[best], s.slotY[best], 60, 0.5);
+    emit(s, EV.bossAct, e.boss, ACT.freeze, s.slotX[best], s.slotY[best]);
+  },
+
+  /** 물기둥: every 초마다 둘레의 캐릭터를 모두 잠깐 멈춘다 */
+  geyser(s, e, def) {
+    const p = def.p;
+    if (!every(e, p.every)) return;
+    let n = 0;
+    for (let i = 0; i < s.towers.length; i++) {
+      if (s.towers[i].char < 0) continue;
+      if ((s.slotX[i] - e.x) * (s.slotX[i] - e.x) + (s.slotY[i] - e.y) * (s.slotY[i] - e.y) > p.range * p.range) continue;
+      s.towers[i].off = Math.max(s.towers[i].off, p.dur);
+      n++;
+    }
+    addFx(s, FX.zap, e.x, e.y, p.range, 0.6);
+    if (n) emit(s, EV.bossAct, e.boss, ACT.geyser, e.x, e.y);
+  },
+
+  /** 표식: every 초마다 가장 많이 키운 캐릭터 하나의 공격 속도를 떨어뜨린다 */
+  mark(s, e, def) {
+    const p = def.p;
+    if (!every(e, p.every)) return;
+    let best = -1;
+    for (let i = 0; i < s.towers.length; i++) {
+      const tw = s.towers[i];
+      if (tw.char < 0 || tw.mark > 0) continue;
+      if ((s.slotX[i] - e.x) * (s.slotX[i] - e.x) + (s.slotY[i] - e.y) * (s.slotY[i] - e.y) > p.range * p.range) continue;
+      if (best < 0 || tw.spent > s.towers[best].spent) best = i;
+    }
+    if (best < 0) return;
+    s.towers[best].mark = p.dur;
+    addFx(s, FX.zap, s.slotX[best], s.slotY[best], 50, 0.5);
+    emit(s, EV.bossAct, e.boss, ACT.mark, s.slotX[best], s.slotY[best]);
+  },
+
+  /** 불길: every 초마다 가장 가까운 배치 칸 몇 개를 잠시 못 쓰게 한다 (놓인 캐릭터는 멈추고, 빈 칸에는 놓을 수 없다) */
+  fire(s, e, def) {
+    const p = def.p;
+    if (!every(e, p.every)) return;
+    for (let k = 0; k < p.count; k++) {
+      let best = -1;
+      let bestD = Infinity;
+      for (let i = 0; i < s.towers.length; i++) {
+        if (s.towers[i].off > 0) continue;
+        const d = (s.slotX[i] - e.x) * (s.slotX[i] - e.x) + (s.slotY[i] - e.y) * (s.slotY[i] - e.y);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      if (best < 0) break;
+      s.towers[best].off = p.dur;
+      addFx(s, FX.burst, s.slotX[best], s.slotY[best], 50, 0.6);
+    }
+    emit(s, EV.bossAct, e.boss, ACT.fire, e.x, e.y);
+  },
+
+  /** 염라대왕: 졸개를 계속 부른다. 둘레에서 쓰러진 요괴를 되살리는 것은 core.ts 의 fall 이 한다 */
+  yeomra(s, e, def) {
+    BOSS_ACTS.summon(s, e, def);
+  },
 };
+
+/** every 초마다 한 번 참 (e.a 를 시계로 쓴다. 처음은 절반 시간 뒤) */
+function every(e: Enemy, sec: number): boolean {
+  if (first(e)) e.a = sec * 0.5;
+  e.a -= TICK;
+  if (e.a > 0) return false;
+  e.a = sec;
+  return true;
+}

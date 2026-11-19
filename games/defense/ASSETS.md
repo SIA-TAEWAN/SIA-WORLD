@@ -26,16 +26,17 @@
 | 이름(`ART_FILES`) | 내용 | 화면 크기 | 지금 쓰는 곳 |
 |---|---|---|---|
 | `e-imp` `e-wisp` | 꼬마 도깨비 · 도깨비불 | 64 · 54 | 1지역 |
-| `e-club` `e-water` `e-fox` `e-bamboo` `e-guard` `e-skeleton` `e-spirit` | 방망이 도깨비 · 물귀신 · 여우불 · 죽순 요괴 · 수문장 요괴 · 해골 병사 · 원혼 | 54~84 | 5~6단계에서 요괴 데이터와 함께 |
+| `e-club` `e-water` `e-fox` `e-bamboo` `e-guard` `e-skeleton` `e-spirit` | 방망이 도깨비 · 물귀신 · 여우불 · 죽순 요괴 · 수문장 요괴 · 해골 병사 · 원혼 | 60~84 | 2~12지역 |
 | `b-bigDokkaebi` | 큰 도깨비 | 128 | 1-5 |
-| `b-dueoksini` `b-bulgasal` `b-jangsanbeom` `b-centipede` `b-gumiho` `b-guardCaptain` `b-yagwanggwi` `b-imugi` `b-reaper` `b-gangcheori` `b-yeomra` | 2~12지역 보스 | 120~160 | 5~6단계 |
+| `b-dueoksini` `b-bulgasal` `b-jangsanbeom` `b-centipede` `b-gumiho` `b-guardCaptain` `b-yagwanggwi` `b-imugi` `b-reaper` `b-gangcheori` `b-yeomra` | 2~12지역 보스 (왕지네의 마디·구미호의 분신은 같은 그림을 작게) | 120~148 | 2-5 ~ 12-5 |
 
 더 만들면 좋은 것 (없어도 된다. 지금은 같은 그림을 코드로 움직이거나 색을 입힌다):
 
 | 파일 | 내용 | 크기 | 지금 |
 |---|---|---|---|
 | `e-<id>-walk.png` × 9 | 걷기 4프레임 가로 시트 | 프레임 128×128 | 한 장을 통통 튀게 |
-| `e-bamboo-hide.png` · `e-skeleton-down.png` · `e-spirit-ghost.png` | 숨은 죽순 · 쓰러진 해골 · 무적 상태의 원혼 | 128×128 | (요괴가 아직 없다) |
+| `e-bamboo-hide.png` · `e-skeleton-down.png` · `e-spirit-ghost.png` | 숨은 죽순 · 쓰러진 해골 · 무적 상태의 원혼 | 128×128 | 같은 그림을 작고 흐리게 · 눕혀서 흐리게 · 흐리게 |
+| `b-centipede-seg.png` · `b-gumiho-clone.png` | 왕지네의 마디 · 구미호의 분신 | 128×128 | 보스 그림을 작게 |
 | `b-bigDokkaebi-dash.png` | 큰 도깨비 돌진 자세 | 256×256 | 벼를 때 부들부들 + 돌진 중 노란 색조 |
 
 ## 2. 십이지 캐릭터 공격 동작 (12종)
@@ -60,7 +61,13 @@
 | `fx-leak` | 요괴가 마을로 들어갔을 때 | 120 | 256×256 | 분홍 고리 |
 | `fx-dizzy` | 멈춘 요괴 머리 위의 별 | 22 | 64×64 | 노란 별 |
 | `fx-range` | 사거리 원 | 사거리 지름 | (코드 그림 유지) | 노란 반투명 원 + 갈색 테두리 |
-| 5~6단계 | 용 `p-beam` · 뱀 `p-poison` + `fx-poison` · 말 `p-arrow` · 양 `fx-cloud` · 원숭이 `p-stone` · 닭 `fx-cheer` · 개 `p-puppy` · 돼지 `fx-coin` | | 64~256 | (캐릭터가 아직 없다) |
+| `fx-beam` | 용의 여의주 광선 (손에서 사거리 끝까지 뻗는 띠) | 길이 = 사거리 | 512×64 | 노란 띠 + 흰 심 (`beam`) |
+| `p-venom` · `fx-poison` | 뱀의 독 방울 · 독이 번질 때의 연기 | 24 · 범위 지름 | 64×64 · 256×256 | 초록 물방울 · 흰 연기 원 (독에 걸린 요괴는 초록 색조) |
+| `p-arrow` | 말의 화살 (나는 쪽을 본다) | 32×16 | 128×64 | 노란 촉 + 분홍 깃 |
+| `fx-cloud` | 양의 양털 구름 (사거리만 한 구름) | 사거리 지름 | 512×512 | 옅은 흰 원 (느려진 요괴는 하늘색 색조) |
+| `p-stone` · `p-feather` · `p-puppy` | 원숭이의 돌 · 닭의 깃털 · 개의 강아지 | 24~35 | 64×64 | 갈색 돌 · 흰 깃털 · 갈색 강아지 얼굴 |
+| `fx-zap` · `fx-burn-slot` | 보스가 캐릭터를 멈출 때 · 강철이가 태운 배치 칸 | 100 | 256×256 | 분홍 고리 · 칸과 캐릭터의 분홍·잿빛 색조 |
+| `fx-coin` | 돼지가 기운을 벌 때 | 40 | 64×64 | 없음 (소리만) |
 
 ## 4. 배경 4종의 길 타일과 배치 칸
 

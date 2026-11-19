@@ -73,9 +73,9 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
       if (TOWERS[t.char].kind === 'lob' || TOWERS[t.char].kind === 'beam') lobs++;
       if (TOWERS[t.char].kind === 'bank') banks++;
     }
-    // 돼지: 처음 두세 번째로 하나, 넉넉해지면 하나 더
+    // 돼지: 처음 두세 번째로 하나만 (일찍 놓아야 번 기운이 값을 넘는다)
     const pig = s.squad.find((c) => TOWERS[c].kind === 'bank');
-    if (pig !== undefined && ((placed >= 1 && banks === 0 && s.time < 100) || (placed >= 6 && banks === 1 && s.time < 70))) return pig;
+    if (pig !== undefined && placed >= 1 && banks === 0 && s.time < 45) return pig;
     let total = 0;
     const w = s.squad.map((c) => {
       const k = TOWERS[c].kind;

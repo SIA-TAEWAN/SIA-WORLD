@@ -16,7 +16,7 @@ export const PERKS = [
 ] as const;
 
 /** 레벨 n → n+1 로 올리는 엽전 (n = 1 … 11) */
-export const LEVEL_COSTS = [40, 60, 90, 130, 180, 240, 320, 410, 520, 650, 800];
+export const LEVEL_COSTS = [110, 130, 150, 175, 200, 230, 260, 300, 340, 390, 450];
 /** 지금 레벨에서 다음 레벨로 올리는 비용 (이미 최대면 null) */
 export const levelCost = (lv: number): number | null => (lv >= 1 && lv < CHAR_MAX_LV ? LEVEL_COSTS[lv - 1] : null);
 
