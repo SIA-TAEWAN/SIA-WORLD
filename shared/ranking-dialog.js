@@ -1,5 +1,6 @@
 // SIA WORLD 랭킹 창 (로비와 시아탱크가 같이 쓴다).
 //   탭: 💣 시아탱크(승패) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수) · 👹 시아서바이벌(맵별 생존 시간)
+//   탭은 관리자가 로비에서 연 게임만 보인다 (shared/games.js 의 game_open). 닫힌 게임 안에서 연 창은 그 게임 탭만 예외
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
 //   시아레이스만 기록 기준: 해 30.75초 이내 · 달 33초 이내 · 별 37.5초 이내 · 그 외 구름 (RACE_TIERS)
 //   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
@@ -10,8 +11,12 @@
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg, tierOfPlace } from './rank.js';
 import { supabase } from './supabase.js';
+import { GAMES, loadGameOpen } from './games.js';
 
 const STYLE_ID = 'sia-ranking-style';
+/** 탭 → 게임 id (shared/games.js). 관리자가 로비에서 연 게임의 탭만 보인다 */
+const TAB_GAME = { target: 'tank', volley: 'volleyball' };
+const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 탭 순서 (시아탱크가 먼저) */
 const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge'];
 
@@ -251,6 +256,7 @@ const CSS = `
 .sia-rank .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .sia-rank .tabs button { flex: 1; min-width: 72px; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
   border: 2px solid #2a1a10; background: #fff; border-radius: 12px; padding: 7px 4px; }
+.sia-rank .tabs button[hidden] { display: none; }
 .sia-rank .tabs button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
 .sia-rank .subs { display: none; gap: 5px; margin-bottom: 6px; }
 .sia-rank .subs.on { display: flex; }
@@ -299,6 +305,9 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
  * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
+  // 닫힌 게임 안에서 연 창(관리자가 미리 해 보는 중)은 그 게임 탭만 보이게 둔다. 로비에서는 열린 게임만
+  const here = GAMES.find((g) => location.pathname.includes('/' + g.path));
+  const inside = here && gameOfTab(first) === here.id ? first : null;
   if (!document.getElementById(STYLE_ID)) {
     const st = document.createElement('style');
     st.id = STYLE_ID;
@@ -309,7 +318,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
   dim.className = 'sia-rank-dim';
   dim.innerHTML = `<div class="sia-rank" role="dialog" aria-modal="true" aria-label="랭킹">
     <div class="rh"><h3>🏆 랭킹</h3><button type="button" data-close>닫기</button></div>
-    <div class="tabs">${TAB_ORDER.filter((g) => tabInfo(g))
+    <div class="tabs">${TAB_ORDER.filter((g) => tabInfo(g) && (defaultOpen(g) || g === inside))
       .map((g) => `<button type="button" data-g="${g}">${tabInfo(g).label}</button>`)
       .join('')}</div>
     <div class="modes">${SURVIVAL_MODES.map((m) => `<button type="button" data-sm="${m.id}">${m.name}</button>`).join('')}</div>
@@ -572,6 +581,39 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       if (shown === 'village') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
-  void show(tabInfo(first) ? first : 'tank');
+  // 열린 게임만 탭으로 남긴다 (inside 는 예외)
+  const visible = (open) => TAB_ORDER.filter((g) => tabInfo(g) && (open[gameOfTab(g)] || g === inside));
+  const start = (open) => {
+    const tabs = visible(open);
+    dim.querySelectorAll('.tabs button').forEach((b) => b.toggleAttribute('hidden', !tabs.includes(b.dataset.g)));
+    for (const g of tabs) {
+      if (dim.querySelector(`.tabs [data-g="${g}"]`)) continue;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.g = g;
+      b.textContent = tabInfo(g).label;
+      const after = [...dim.querySelectorAll('.tabs button')].find((x) => TAB_ORDER.indexOf(x.dataset.g) > TAB_ORDER.indexOf(g));
+      $('.tabs').insertBefore(b, after ?? null);
+    }
+    const pick = tabs.includes(first) ? first : tabs[0];
+    if (!pick) {
+      $('.me-line').textContent = '열린 게임이 없어요';
+      return;
+    }
+    if (!tabs.includes(shown)) void show(pick);
+  };
+  // 서버의 오픈 여부를 받기 전에는 목록의 기본값으로 먼저 보여 준다
+  const fallback = Object.fromEntries(GAMES.map((g) => [g.id, g.open]));
+  start(fallback);
+  loadGameOpen()
+    .then((open) => {
+      if (dim.isConnected) start(open);
+    })
+    .catch(() => null);
   return close;
+}
+
+/** shared/games.js 의 기본 오픈 여부 (서버 값을 받기 전) */
+function defaultOpen(tab) {
+  return !!GAMES.find((g) => g.id === gameOfTab(tab))?.open;
 }
