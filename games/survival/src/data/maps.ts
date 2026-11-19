@@ -76,7 +76,7 @@ export const MAPS: MapDef[] = [
   {
     id: 'field', name: '들판', desc: '넓은 풀밭, 장애물이 적다', level: '쉬움', coinMul: 1, endlessCoins: 450, ready: true, unlock: '처음부터',
     power: { hp: 1, speed: 1, count: 1.5, dmg: 0.9, boss: 0.92 },
-    hell: { hp: 1.3, dmg: 1.55, count: 1.1, boss: 1.5, bossDmg: 1.25 },
+    hell: { hp: 1.3, dmg: 1.55, count: 1.1, boss: 1.5, bossDmg: 1.35 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'none', cell: 200, chance: 0, r: 0 },
     spawns: [
@@ -153,7 +153,7 @@ export const MAPS: MapDef[] = [
     // 전 종류 + 수문장 요괴. 떼로 몰려오는 이벤트가 잦다. 담 사이로 길이 좁다
     id: 'palace', name: '달빛 궁궐', desc: '밤 분위기, 길이 좁다', level: '어려움', coinMul: 2, endlessCoins: 600, ready: true, unlock: '대나무 숲의 최종 보스 물리치기',
     power: { hp: 1.6, speed: 1.06, count: 1.15, dmg: 0.9, boss: 1.1 },
-    hell: { hp: 1.05, dmg: 1.15, boss: 1.15 },
+    hell: { hp: 1.05, dmg: 1.15, boss: 1.15, bossDmg: 1.1 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'walls', cell: 300, chance: 0.55, r: 30 },
     spawns: [

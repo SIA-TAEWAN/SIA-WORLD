@@ -268,7 +268,11 @@ const quake: BossPatternFn = (s, e, p) => {
   return e.patT >= windup + (n - 1) * gap + 0.35;
 };
 
-/** 비: 내 자리(둘레 spread 안의 아무 곳)를 쫓아 짧은 간격으로 연달아 떨어진다. 계속 움직이면 맞지 않는다 */
+/**
+ * 비: 내 자리를 쫓아 짧은 간격으로 연달아 떨어진다. 계속 움직이면 맞지 않는다.
+ * 움직이는 중이면 지금 자리와 가는 방향의 뒤쪽 반원(반지름 spread) 안에만 떨어진다 — 앞쪽에 떨어지면 예고 시간 안에 못 벗어날 수 있다
+ * (기본 속도 190px/초로 0.8초면 152px: 뒤쪽 어디에 떨어져도 판정 반지름 r + 8 보다 멀어진다). 서 있으면 둘레 spread 안 아무 곳
+ */
 const rain: BossPatternFn = (s, e, p, dx, dy, d) => {
   const count = p.count ?? 8;
   const gap = p.gap ?? 0.3;
@@ -276,9 +280,10 @@ const rain: BossPatternFn = (s, e, p, dx, dy, d) => {
   walk(e, dx, dy, d, 0.3);
   if (e.sub < count && e.patT >= e.sub * gap) {
     e.sub++;
-    const a = rand(s) * Math.PI * 2;
+    const pl = s.player;
+    const a = pl.moving ? Math.atan2(-pl.fy, -pl.fx) + (rand(s) - 0.5) * Math.PI : rand(s) * Math.PI * 2;
     const r = rand(s) * (p.spread ?? 90);
-    blast(s, p, s.player.x + Math.cos(a) * r, s.player.y + Math.sin(a) * r, p.r ?? 100, windup, p.dmg ?? 20);
+    blast(s, p, pl.x + Math.cos(a) * r, pl.y + Math.sin(a) * r, p.r ?? 100, windup, p.dmg ?? 20);
   }
   return e.patT >= (count - 1) * gap + windup + 0.3;
 };
