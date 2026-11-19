@@ -1,5 +1,5 @@
 {
-  "note": "시아디펜스의 요괴 9종·보스 12종 그림은 시아서바이벌에서 만든 SpriteCook 그림을 그대로 복사해 쓴다 (games/survival/public/art → games/defense/public/art). 원본 시트와 만드는 방법은 games/survival/art, games/survival/spritecook-assets.json. 시아디펜스 전용 그림(8단계)을 만들면 아래에 이어 적는다.",
+  "note": "시아디펜스의 요괴 9종·보스 12종 그림은 시아서바이벌에서 만든 SpriteCook 그림을 그대로 복사해 쓴다 (games/survival/public/art → games/defense/public/art). 원본 시트와 만드는 방법은 games/survival/art, games/survival/spritecook-assets.json. 그 뒤에 적힌 것은 시아디펜스 전용 그림(8단계)이다: 원본은 games/defense/art, 만드는 방법은 art/build.py.",
   "assets": [
     {
       "asset_id": "b1e84f6b-3e8b-4943-bd28-9993fa4eda7e",
@@ -105,6 +105,123 @@
       "asset_id": "80eb8231-bcc4-4799-898f-b7c62e04e4ea",
       "sha12": "45d40c5b00c5",
       "label": "염라대왕 → games/survival/art/b-yeomra.png → public/art/b-yeomra.png (640)"
+    },
+    {
+      "asset_id": "0620e930-1751-4436-8940-4da390e5b5db",
+      "label": "(화풍 참고) 십이지신 캐릭터 전신 시트 A — art/spritecook/spritecook-assets.json"
+    },
+    {
+      "asset_id": "3f07cec9-461f-4db7-ad2c-c0461e79d226",
+      "label": "(화풍 참고) 로비 카드 레이스 — shared/images/spritecook-assets.json"
+    },
+    {
+      "asset_id": "12011533-d60f-496a-ba2e-814c7796d093",
+      "sha12": "2a0bb1c4df63",
+      "label": "들판 바닥 무늬 (이음매 없는 타일) → art/tile-field.png → public/art/tile-field.png (512, 바탕색과 섞어 옅게). 이후 타일의 화풍 참고"
+    },
+    {
+      "asset_id": "6f24295c-9825-45d7-8893-4a6220ca656f",
+      "sha12": "2469f022b3ee",
+      "label": "대숲 바닥 무늬 → art/tile-bamboo.png → public/art/tile-bamboo.png (512)"
+    },
+    {
+      "asset_id": "9dfb4f17-c6b9-4a71-ac53-7a9235056a72",
+      "sha12": "969f1f17f5c2",
+      "label": "궁궐 돌바닥 무늬 → art/tile-palace.png → public/art/tile-palace.png (512)"
+    },
+    {
+      "asset_id": "740e5a0f-f316-4d64-a1b6-f7fffb6e033a",
+      "sha12": "e535f5b98cda",
+      "label": "저승 바닥 무늬 → art/tile-underworld.png → public/art/tile-underworld.png (512)"
+    },
+    {
+      "asset_id": "ec699ad1-d479-4343-9b0d-79d68d99d2ce",
+      "sha12": "3c8e92c76ab8",
+      "label": "배치 칸 돌 받침 → art/slot.png → public/art/slot.png (136, 더하기 표시를 덧그림) · slotOn.png (노랗게 물들임)"
+    },
+    {
+      "asset_id": "57323464-7f94-4d37-bf78-d2dbde2a455e",
+      "sha12": "728520f95831",
+      "label": "쥐의 표창 → art/p-shuriken.png → public/art/p-shuriken.png (48). 이후 투사체의 화풍 참고"
+    },
+    {
+      "asset_id": "279a54bb-20d4-4963-bf94-8c00051e4f20",
+      "sha12": "639dbb212948",
+      "label": "토끼의 달떡 (흰 떡으로 다시 만든 것) → art/p-cake.png → public/art/p-cake.png (64)"
+    },
+    {
+      "asset_id": "54827600-317a-420f-9136-3bcbbfdd4528",
+      "label": "토끼의 달떡 첫 시안 (잿빛 초록이라 쓰지 않음)"
+    },
+    {
+      "asset_id": "386aea36-43be-4d2e-8367-973270be33d6",
+      "sha12": "ed122c96f578",
+      "label": "뱀의 독 방울 → art/p-venom.png → public/art/p-venom.png (48)"
+    },
+    {
+      "asset_id": "4d1729c4-c12c-4709-a458-d7908b7e73bc",
+      "sha12": "82bd71acec89",
+      "label": "말의 화살 (오른쪽 보기) → art/p-arrow.png → public/art/p-arrow.png (64x32)"
+    },
+    {
+      "asset_id": "73e76e86-4519-402c-be31-5dfa7eac0d52",
+      "sha12": "e6ca9269f7d1",
+      "label": "원숭이가 던지는 복숭아 → art/p-stone.png → public/art/p-stone.png (48)"
+    },
+    {
+      "asset_id": "23128b7e-a489-4b6b-b234-8ad346b63873",
+      "sha12": "89bf52e5286c",
+      "label": "닭의 깃털 → art/p-feather.png → public/art/p-feather.png (48)"
+    },
+    {
+      "asset_id": "e8e8433b-40f4-45c2-9f5a-84e49623d329",
+      "sha12": "ad0b8262bf7d",
+      "label": "개가 보내는 강아지 (오른쪽으로 달림) → art/p-puppy.png → public/art/p-puppy.png (64)"
+    },
+    {
+      "asset_id": "fd452770-a657-46ba-ac04-ce1e0ef489ee",
+      "sha12": "81a1ecafb3c8",
+      "label": "요괴가 쓰러질 때의 번쩍임 → art/fx-pop.png → public/art/fx-pop.png (192)"
+    },
+    {
+      "asset_id": "8b68f5fa-9d2f-47dc-b74d-f9a80c5fe621",
+      "sha12": "65f3dcb866f3",
+      "label": "흰 연기·양털 뭉치 (되살아남 · 독 번짐 · 되팔기) → art/fx-wool.png → public/art/fx-wool.png (192)"
+    },
+    {
+      "asset_id": "20c9a483-1caf-4a27-8133-008407c1d199",
+      "sha12": "e0cb4daa04e5",
+      "label": "엽전 → art/fx-coin.png → public/art/fx-coin.png (64). 돼지가 기운을 벌 때 뜬다"
+    },
+    {
+      "asset_id": "da4cddac-c3ab-4cf6-a2ea-2532455c480f",
+      "sha12": "cf5287022a9f",
+      "label": "불덩이 → art/p-fire.png (아직 쓰지 않음: 용은 광선을 쏜다. 불 공격이 생기면 쓴다)"
+    },
+    {
+      "asset_id": "049cab48-b564-408e-9d3b-00b77c6b9b1b",
+      "sha12": "21622efd4b5b",
+      "label": "로비 카드 (16:9, 길목을 지키는 십이지와 내려오는 요괴) → art/card.png → shared/images/card-defense.png (가운데 16:10 자르기, 640x400)"
+    },
+    {
+      "asset_id": "878c43af-234d-4b5b-8fb8-ad39ba6fe076",
+      "sha12": "7fb9413c8649",
+      "label": "메인 그림 (9:16, 마을 앞의 십이지와 산에서 내려오는 요괴) → art/main.png → public/art/main.png (540x960)"
+    },
+    {
+      "asset_id": "e717ac4d-3a06-4161-863b-ae80f64f59ca",
+      "sha12": "3737fd31663d",
+      "label": "지역 지도 그림 (16:9, 들판 → 대숲 → 궁궐 → 저승) → art/map.png → public/art/map.png (960x400)"
+    },
+    {
+      "asset_id": "e7c368e1-be42-45a3-9ddd-b1cdaf60cfa0",
+      "sha12": "2c053470833d",
+      "label": "호랑이의 발톱 자국 → art/fx-slash.png → public/art/fx-slash.png (256)"
+    },
+    {
+      "asset_id": "3a7f23ef-4f98-4a15-be3e-f03f3f068919",
+      "sha12": "a23947e64f75",
+      "label": "소의 방울 (울릴 때 떠오른다) → art/fx-bell.png → public/art/fx-bell.png (96)"
     }
   ]
 }

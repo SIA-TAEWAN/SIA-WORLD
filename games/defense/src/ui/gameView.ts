@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BOARD_H, MAX_LV, RUN_SEC, SLOT_SIZE, SQUAD_SIZE, VIEW_W, WAVES, WAVE_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
+import { stageBg } from '../data/stages';
 import { TOWERS } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { ACT, DASH } from '../game/bosses';
@@ -17,6 +18,7 @@ import { artUrl, zodiacFaceUrl } from '../assets';
 import { esc, mmss, nav, screen, setProfile, stage, state, toast, whyText, type GameResult, type GameSetup } from './app';
 import { levelText } from './codex';
 import { DPR } from './dpr';
+import { bgTrack, music } from './music';
 import { attackSfx, sfx, sound } from './sfx';
 
 declare global {
@@ -503,22 +505,32 @@ export function showGame(setup: GameSetup) {
     endTimer = setTimeout(() => nav.result(result), 1700);
   }
   function onFail() {
+    music.play(null);
     sfx('lose');
     if (s.endless) setCut(`웨이브 ${s.wave + 1}<small>여기까지 버텼어요</small>`, 'go');
     else setCut('실패…<small>마을에 요괴가 들어왔어요</small>', 'bad');
     finish(false);
   }
   function onClear() {
+    music.play(null);
     sfx('win');
     setCut('클리어!<small>마을을 지켜 냈어요</small>', 'go');
     finish(false);
   }
 
   // ---------- 생긴 일 → 소리·연출 ----------
+  /** 이 판의 배경 곡 (끝없는 모드는 들판 곡) */
+  const bgm = bgTrack(s.endless ? 'field' : stageBg(s.stage));
+  /** 캐릭터별 공격음: [공용 소리 이름, 높낮이]. 양(쉬지 않고 구름을 깐다)·돼지(공격하지 않는다)는 없다 */
+  const ATTACK_SFX: Record<string, [string, number] | undefined> = {
+    rat: ['survShot', 1.3], ox: ['tankTurn', 0.8], tiger: ['survSlash', 1], rabbit: ['survPop', 0.85], dragon: ['tankLaser', 1.4], snake: ['survPop', 1.4],
+    horse: ['survShot', 0.7], monkey: ['survShot', 1.6], rooster: ['survSlash', 1.7], dog: ['survPop', 1.1],
+  };
   run.onEvent = (e: Ev, st: State) => {
     switch (e.t) {
       case EV.start:
         sfx('raceGo');
+        music.play(bgm);
         break;
       case EV.wave:
         if (e.a > 0) sfx('turn');
@@ -526,28 +538,31 @@ export function showGame(setup: GameSetup) {
         break;
       case EV.place:
         sfx('tankBuild');
+        scene()?.spark('place', e.a);
         break;
       case EV.upgrade:
         sfx('survLevel');
+        scene()?.spark('upgrade', e.a);
         break;
       case EV.sell:
         sfx('coin');
+        scene()?.spark('sell', e.a);
         break;
       case EV.fire: {
-        const kind = TOWERS[e.a].kind;
-        if (kind === 'shot') attackSfx('survShot');
-        else if (kind === 'melee') attackSfx('survSlash');
-        else if (kind === 'lob' || kind === 'poison') attackSfx('survPop');
-        else if (kind === 'beam') attackSfx('tankLaser', 1.4);
-        else if (kind === 'stun') attackSfx('tankTurn', 0.8);
+        // 캐릭터마다 다른 소리 (같은 공용 소리의 높낮이를 바꿔 쓴다)
+        const v = ATTACK_SFX[TOWERS[e.a].id];
+        if (v) attackSfx(v[0], v[1]);
         break;
       }
       case EV.leak:
         sfx('survHurt');
         flashEdge('hurt');
         scene()?.burst('leak');
+        // 보스가 지나갔으면 배경 곡으로 돌아간다
+        if (e.b >= 0 && st.phase === 'play') music.play(bgm);
         break;
       case EV.bossWarn:
+        music.play('boss');
         sfx('survBossWarn');
         setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>보스가 다가온다!</small>`, 'bad warn', 2600);
         flashEdge('warn');
@@ -567,8 +582,10 @@ export function showGame(setup: GameSetup) {
       }
       case EV.income:
         sfx('coin', { volume: 0.4 });
+        scene()?.coin(e.b);
         break;
       case EV.bossDown:
+        if (st.phase === 'play') music.play(bgm);
         sfx('survBossDown');
         scene()?.burst('boss');
         flashEdge('good');
@@ -623,6 +640,8 @@ export function showGame(setup: GameSetup) {
       }
       el.lives.textContent = `❤️ ${(shown.lives = s.lives)}`;
       el.lives.classList.toggle('low', s.lives < s.startLives / 2);
+      // 생명이 5 이하면 화면 가장자리가 깜빡이며 경고한다
+      root.classList.toggle('danger', s.lives > 0 && s.lives <= 5);
     }
     if (s.phase !== shown.phase || s.wave !== shown.wave) {
       shown.phase = s.phase;

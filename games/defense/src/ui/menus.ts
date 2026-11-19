@@ -36,6 +36,7 @@ export function showMain() {
      <h1 class="logo">시아디펜스</h1>
      <p class="tagline">길목을 지켜 마을로 가는 요괴를 막아라!</p>
      <div class="hero">
+       <img class="hero-art" src="${artUrl('main')}" alt="" />
        <div class="hero-road"></div>
        <img class="hero-char c1" src="${zodiacFullUrl('tiger')}" alt="" />
        <img class="hero-char c2" src="${zodiacFullUrl('rabbit')}" alt="" />
@@ -56,6 +57,11 @@ export function showMain() {
     () => off(),
   );
   // 꾸밈용 그림을 받지 못하면 깨진 그림 표시가 보이지 않게 숨긴다 (error 는 위로 올라오지 않아 capture 로 듣는다)
+  // 메인 그림을 받으면 그 그림만 보여 주고, 못 받으면 아래의 코드 그림(길 위의 캐릭터와 요괴)을 그대로 쓴다
+  const heroArt = root.querySelector('.hero-art') as HTMLImageElement;
+  const artOn = () => heroArt.naturalWidth > 0 && root.querySelector('.hero')!.classList.add('has-art');
+  heroArt.addEventListener('load', artOn);
+  artOn();
   root.querySelector('.hero')!.addEventListener('error', (e) => e.target instanceof HTMLImageElement && (e.target.style.visibility = 'hidden'), true);
   const off = watchProfile(() => (root.querySelector('#pills')!.innerHTML = pills()));
   root.querySelector('#go')!.addEventListener('click', () => {
@@ -98,6 +104,7 @@ export function showRegions() {
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>지역 지도</h2><span class="spacer"></span></div>
      <div class="regions" id="regions">
+       <img class="map-art" src="${artUrl('map')}" alt="" onerror="this.remove()" />
        ${REGIONS.map(card).join('')}
        <button class="region endless ${endless ? '' : 'closed'}" id="endless">
          <span class="region-face"><em>♾️</em></span>

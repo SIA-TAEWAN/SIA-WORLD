@@ -9,7 +9,7 @@ import { makePoint, routePos, type Route } from '../game/path';
 import { FX, PROJ, type State } from '../game/state';
 import type { Run } from '../run/run';
 import { COLOR, FONT, css } from '../theme';
-import { BG, PROJ_KEYS, bossKey, enemyKey, ensureArt, pipKey, preloadArt, tileKey, zKey } from './art';
+import { BG, COMMON_ART, PROJ_KEYS, TILE_SPAN, bossKey, enemyKey, ensureArt, pipKey, preloadArt, tileKey, zKey } from './art';
 
 export interface SceneData {
   run: Run;
@@ -53,6 +53,10 @@ class SpritePool {
 export class GameScene extends Phaser.Scene {
   private run!: Run;
   private zoom = 1;
+  /** 칸마다 마지막으로 통 튄 때 (초) */
+  private bounceAt: number[] = [];
+  /** 바닥 무늬의 배율 (받은 그림은 크게 만들어 줄여 쓴다) */
+  private tileK = 1;
   private offY = 0;
   private onFrame!: () => void;
   private ground!: Phaser.GameObjects.TileSprite;
@@ -67,6 +71,9 @@ export class GameScene extends Phaser.Scene {
   private barBacks!: SpritePool;
   private barFills!: SpritePool;
   private dizzy!: SpritePool;
+  private bells!: SpritePool;
+  private slashKey = 'slash';
+  private bellOn = false;
   private projs!: SpritePool;
   private fxs!: SpritePool;
   /** 그림 크기 (그리는 크기에 맞춰 줄이려고) */
@@ -106,6 +113,7 @@ export class GameScene extends Phaser.Scene {
       const kind = BOSSES[s.bossId].p.kind;
       if (kind !== undefined && !keys.includes(enemyKey(kind))) keys.push(enemyKey(kind));
     }
+    keys.push(tileKey(stageBg(s.stage)), ...COMMON_ART);
     preloadArt(this, keys, s.squad.map((c) => TOWERS[c].id as ZodiacId));
     // 그림을 못 불러와도 게임은 진행한다 (create 에서 코드 그림으로 채운다)
     this.load.on('loaderror', () => undefined);
@@ -129,6 +137,27 @@ export class GameScene extends Phaser.Scene {
     this.hint = on;
   }
 
+  /** 배치·강화·되팔기 연출: 그 칸에서 고리가 퍼지고(되팔기는 흰 연기) 캐릭터가 통 튄다 */
+  spark(kind: 'place' | 'upgrade' | 'sell', slot: number) {
+    const s = this.run.state;
+    if (slot < 0 || slot >= s.slotX.length || !this.sys.isActive()) return;
+    const img = this.add.image(s.slotX[slot], s.slotY[slot], kind === 'sell' ? 'fx-wool' : 'ring').setDepth(D.fx);
+    if (kind === 'sell') img.setScale(0.25).setAlpha(0.9);
+    else img.setScale(0.18).setTint(kind === 'upgrade' ? COLOR.primary : COLOR.white);
+    this.tweens.add({ targets: img, scale: kind === 'sell' ? 0.6 : kind === 'upgrade' ? 0.62 : 0.48, alpha: 0, duration: kind === 'upgrade' ? 460 : 360, ease: 'Cubic.easeOut', onComplete: () => img.destroy() });
+    this.bounceAt[slot] = this.time.now / 1000;
+  }
+
+  /** 돼지가 기운을 벌었다: 그 칸에서 엽전이 떠오른다 */
+  coin(slot: number) {
+    const s = this.run.state;
+    if (slot < 0 || slot >= s.slotX.length || !this.sys.isActive()) return;
+    const img = this.add.image(s.slotX[slot], s.slotY[slot] - 30, 'fx-coin').setDepth(D.fx).setScale(0.3);
+    this.tweens.add({ targets: img, y: img.y - 54, scale: 0.6, duration: 320, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: img, alpha: 0, delay: 520, duration: 260, onComplete: () => img.destroy() });
+    this.bounceAt[slot] = this.time.now / 1000;
+  }
+
   /** 큰 일이 생겼을 때의 연출: boss 보스 처치(흔들림 + 번쩍) · leak 요괴가 지나감(짧은 흔들림) */
   burst(kind: 'boss' | 'leak') {
     const cam = this.cameras.main;
@@ -146,8 +175,8 @@ export class GameScene extends Phaser.Scene {
     cam.setZoom(this.zoom);
     cam.centerOn(BOARD_W / 2, this.offY + viewH / 2);
     if (this.ground) this.ground.setPosition(BOARD_W / 2, this.offY + viewH / 2).setSize(BOARD_W + 16, viewH + 16);
-    // 바닥 무늬를 판의 칸에 맞춘다 (타일 160 = 두 칸)
-    if (this.ground) this.ground.setTilePosition(-8, this.offY - 8);
+    // 바닥 무늬를 판의 칸에 맞춘다 (코드 그림은 타일 160 = 두 칸, 받은 그림은 한 장이 네 칸)
+    if (this.ground) this.ground.setTilePosition(-8 / this.tileK, (this.offY - 8) / this.tileK);
   }
 
   private w(key: string) {
@@ -167,6 +196,9 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(css(BG[bg].ground));
     this.cameras.main.setRoundPixels(false);
     this.ground = this.add.tileSprite(0, 0, 16, 16, tileKey(bg)).setDepth(D.ground);
+    const tileW = this.textures.get(tileKey(bg)).getSourceImage().width;
+    this.tileK = tileW > 160 ? TILE_SPAN / tileW : 1;
+    this.ground.setTileScale(this.tileK);
     this.fitCamera();
     this.drawBoard(s);
 
@@ -191,6 +223,10 @@ export class GameScene extends Phaser.Scene {
     this.dizzy = new SpritePool(this, 'dizzy', D.bar + 0.2);
     this.projs = new SpritePool(this, PROJ_KEYS[0], D.proj);
     this.fxs = new SpritePool(this, 'ring', D.fx);
+    // 받은 그림(발톱 자국·방울)이 있을 때만 쓴다
+    this.slashKey = this.textures.exists('fx-slash') ? 'fx-slash' : 'slash';
+    this.bellOn = this.textures.exists('fx-bell');
+    this.bells = new SpritePool(this, this.bellOn ? 'fx-bell' : 'ring', D.fx + 0.1);
   }
 
   /** 길 · 입구 · 출구(마을 입구): 처음에 한 번만 그린다 */
@@ -296,7 +332,10 @@ export class GameScene extends Phaser.Scene {
       // 공격하는 순간 겨눈 쪽으로 살짝 내밀며 늘어난다. 평소에는 숨 쉬듯 조금 움직인다
       const k = tw.since < 0.18 ? 1 - tw.since / 0.18 : 0;
       const breathe = Math.sin(sec * 3 + i * 1.7) * 0.025;
-      const base = this.charBase[tw.char] ?? 0.4;
+      // 놓거나 강화한 직후에는 통 튄다
+      const since = sec - (this.bounceAt[i] ?? -9);
+      const hop = since >= 0 && since < 0.3 ? Math.sin((since / 0.3) * Math.PI) * 0.22 : 0;
+      const base = (this.charBase[tw.char] ?? 0.4) * (1 + hop);
       // 십이지 그림은 모두 오른쪽을 본다: 왼쪽을 겨눌 때는 뒤집는다
       img
         .setPosition(s.slotX[i] + tw.face * 7 * k, s.slotY[i] + SLOT_SIZE / 2 - 8)
@@ -413,6 +452,7 @@ export class GameScene extends Phaser.Scene {
   private drawFx(s: State) {
     const list = s.fx.items;
     const n = s.fx.n;
+    let bells = 0;
     for (let i = 0; i < n; i++) {
       const f = list[i];
       const spr = this.fxs.get(i);
@@ -430,7 +470,8 @@ export class GameScene extends Phaser.Scene {
           alpha = 0.9 * (1 - k * k);
           break;
         case FX.slash:
-          key = 'slash';
+          // 호랑이의 발톱 자국 (받은 그림이 있으면 그것, 없으면 코드 그림)
+          key = this.slashKey;
           sc = (f.r * 2.2) / 256;
           rot = f.a;
           alpha = 1 - k * k;
@@ -443,8 +484,11 @@ export class GameScene extends Phaser.Scene {
           alpha = 0.75 * (1 - k);
           break;
         case FX.pop:
-          sc *= 0.5 + k * 0.7;
-          alpha = 0.9 * (1 - k);
+          // 요괴가 쓰러진 자리: 별 모양으로 번쩍
+          key = 'fx-pop';
+          sc = ((f.r * 3.2) / 192) * (0.55 + k * 0.6);
+          alpha = 1 - k * k;
+          rot = f.x * 0.7;
           break;
         case FX.leak:
         case FX.zap:
@@ -458,9 +502,9 @@ export class GameScene extends Phaser.Scene {
           alpha = 0.3 * (1 - k * k);
           break;
         case FX.puff:
-          key = 'disc';
-          sc = ((f.r * 2) / 252) * (0.5 + k * 0.6);
-          alpha = 0.6 * (1 - k);
+          key = 'fx-wool';
+          sc = ((f.r * 2.2) / 192) * (0.5 + k * 0.6);
+          alpha = 0.85 * (1 - k);
           break;
         case FX.beam:
           key = 'beam';
@@ -474,8 +518,19 @@ export class GameScene extends Phaser.Scene {
         spr.setOrigin(0, 0.5).setPosition(f.x, f.y).setScale((f.r * Math.min(1, k * 5 + 0.4)) / 256, 0.6).setRotation(rot).clearTint().setAlpha(alpha).setVisible(true);
         continue;
       }
-      spr.setOrigin(0.5, 0.5).setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(tint).setAlpha(alpha).setVisible(true);
+      spr.setOrigin(0.5, 0.5).setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(f.kind === FX.slash && key === 'fx-slash' ? COLOR.white : tint).setAlpha(alpha).setVisible(true);
+      // 소의 방울: 고리가 퍼지는 동안 방울 그림이 흔들리며 떠오른다
+      if (f.kind === FX.pulse && this.bellOn) {
+        this.bells
+          .get(bells++)
+          .setPosition(f.x, f.y - 46 - k * 16)
+          .setScale(0.55 * (k < 0.15 ? k / 0.15 : 1))
+          .setRotation(Math.sin(k * 18) * 0.35)
+          .setAlpha(1 - k * k)
+          .setVisible(true);
+      }
     }
     this.fxs.end(n);
+    this.bells.end(bells);
   }
 }

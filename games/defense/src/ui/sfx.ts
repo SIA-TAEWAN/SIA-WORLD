@@ -1,14 +1,25 @@
 /**
  * 시아디펜스 효과음: SIA WORLD 공용 효과음(shared/sound.js, ZzFX)을 쓴다. 켜기/끄기는 공용 설정('sia:sound').
- * 1~3단계에서는 공용 모듈에 이미 있는 소리 이름만 쓴다. 시아디펜스 전용 소리와 배경음은 8단계에서 더한다 (ASSETS.md).
+ * 공용 모듈에 이미 있는 소리 이름만 쓴다 (공용 파일을 고치지 않는다). 배경음은 ui/music.ts (효과음과 따로 'sia:bgm').
+ * 소리 버튼 하나가 효과음과 배경음을 함께 켜고 끈다.
  */
 import { loadSound, type SoundModule } from '../net/world';
 
 let shared: SoundModule | null = null;
+const ready: (() => void)[] = [];
 void loadSound().then(
-  (m) => (shared = m),
+  (m) => {
+    shared = m;
+    ready.splice(0).forEach((f) => f());
+  },
   () => undefined,
 );
+
+/** 공용 소리 모듈을 불러온 뒤에 실행 */
+export function whenSound(fn: () => void) {
+  if (shared) fn();
+  else ready.push(fn);
+}
 
 export function sfx(name: string, opts?: { delay?: number; volume?: number; rate?: number }) {
   shared?.play(name, opts);
@@ -31,7 +42,22 @@ export const sound = {
   get on() {
     return shared ? !shared.isMuted() : true;
   },
+  /** 효과음과 배경음을 함께 켜고 끈다 */
   set(on: boolean) {
     shared?.setMuted(!on);
+    shared?.setBgmOn(on);
+  },
+  /** 배경음: 효과음을 껐으면 배경음도 나지 않는다 */
+  get bgmOn() {
+    return shared ? shared.isBgmOn() && !shared.isMuted() : true;
+  },
+  onBgm(fn: (on: boolean) => void) {
+    whenSound(() => {
+      shared!.onBgmChange(fn);
+      shared!.onMuteChange((m) => fn(!m));
+    });
+  },
+  bgmFile(name: string): Promise<string | null> {
+    return shared ? shared.bgmFileUrl(name) : Promise.resolve(null);
   },
 };

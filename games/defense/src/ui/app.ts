@@ -3,6 +3,7 @@ import { STARTERS, towerOf } from '../data/characters';
 import type { RunSummary } from '../game/sim';
 import { defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
 import type { DefenseApi } from '../net/api';
+import { music } from './music';
 import { sfx, sound } from './sfx';
 
 export const app = document.getElementById('app')!;
@@ -106,6 +107,8 @@ let cleanupScreen: (() => void) | null = null;
 export function screen(html: string, cls: string, cleanup?: () => void): HTMLElement {
   cleanupScreen?.();
   cleanupScreen = cleanup ?? null;
+  // 판 밖의 화면에서는 메인 곡 (판 안에서는 gameView 가 배경·보스 곡을 고른다)
+  music.play(cls.split(' ')[0] === 'game' ? null : 'main');
   // 앞 화면에서 띄운 창(일시정지·설정)이 새 화면 위에 남지 않게
   stage.querySelectorAll('.dim').forEach((d) => d.remove());
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
@@ -153,6 +156,7 @@ export function saveSquad(list: ZodiacId[]) {
 
 // ---------- 소리 켜기/끄기: 오른쪽 아래 원형 버튼 (DESIGN.md 5장, 다른 게임과 같은 위치·같은 설정) ----------
 export function soundButton(): HTMLButtonElement {
+  music.refresh();
   const b = document.createElement('button');
   b.className = 'icon-btn sound-btn';
   const paint = () => {

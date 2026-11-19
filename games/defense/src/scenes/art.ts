@@ -9,16 +9,23 @@ import { zodiacFullUrl } from '../assets';
 /**
  * 그림 목록. 요괴·보스는 시아서바이벌의 SpriteCook 그림(public/art/e-*.png · b-*.png)을 그대로 쓰고,
  * 캐릭터는 공용 십이지 전신 그림(shared/images/zodiac/full) 한 장을 코드로 움직인다.
- * 나머지(바닥·길·배치 칸·투사체·이펙트)는 코드로 그린 임시 그림이다 (DESIGN.md 색·외곽선 규칙).
- * 정식 그림은 ASSETS.md 의 파일 이름으로 public/art/<이름>.png 에 넣고 ART_FILES 에 이름을 적으면
- * 그 그림을 먼저 쓰고, 못 불러올 때만 코드 그림으로 대신한다 (시아서바이벌과 같은 방식).
+ * 바닥 무늬 4종 · 배치 칸 · 투사체 7종 · 터지는 이펙트는 SpriteCook 그림이고 (art/build.py 가 만든다),
+ * 길·표지판·사거리·고리·광선·체력 바는 코드로 그린다 (DESIGN.md 색·외곽선 규칙).
+ * 그림은 ASSETS.md 의 파일 이름으로 public/art/<이름>.png 에 넣고 ART_FILES 에 이름을 적으면
+ * 그 그림을 먼저 쓰고, 못 불러올 때만 아래의 코드 그림으로 대신한다 (시아서바이벌과 같은 방식).
  * (파일이 없는 이름을 적어 두면 판마다 404 요청이 나가므로, 파일을 넣은 것만 적는다)
  */
 export const ART_FILES: readonly string[] = [
   'e-imp', 'e-wisp', 'e-club', 'e-water', 'e-fox', 'e-bamboo', 'e-guard', 'e-skeleton', 'e-spirit',
   'b-bigDokkaebi', 'b-dueoksini', 'b-bulgasal', 'b-jangsanbeom', 'b-centipede', 'b-gumiho',
   'b-guardCaptain', 'b-yagwanggwi', 'b-imugi', 'b-reaper', 'b-gangcheori', 'b-yeomra',
+  'tile-field', 'tile-bamboo', 'tile-palace', 'tile-underworld', 'slot', 'slotOn',
+  'p-shuriken', 'p-cake', 'p-venom', 'p-arrow', 'p-stone', 'p-feather', 'p-puppy', 'fx-pop', 'fx-wool', 'fx-coin', 'fx-slash', 'fx-bell',
 ];
+/** 어느 판에서나 쓰는 그림 (바닥 무늬는 그 판의 배경 것만 따로 받는다) */
+export const COMMON_ART: readonly string[] = ['slot', 'slotOn', 'p-shuriken', 'p-cake', 'p-venom', 'p-arrow', 'p-stone', 'p-feather', 'p-puppy', 'fx-pop', 'fx-wool', 'fx-coin', 'fx-slash', 'fx-bell'];
+/** 바닥 무늬 한 장이 판에서 차지하는 너비 (px): 받은 그림은 4칸, 코드 그림은 2칸(160) */
+export const TILE_SPAN = 320;
 
 export const zKey = (id: ZodiacId) => `z-${id}`;
 export const enemyKey = (kind: number) => `e-${ENEMIES[kind].id}`;
@@ -200,6 +207,20 @@ export function ensureArt(scene: Phaser.Scene, bg: BgId, squad: readonly ZodiacI
       g.arc(96, 128 + dy, 96, -0.55, 0.55);
       g.strokePath();
     }
+  });
+  // 요괴가 쓰러질 때의 별 모양 번쩍임 · 흰 연기 (받은 그림이 없을 때)
+  make(scene, 'fx-pop', 192, 192, (g) => {
+    g.fillStyle(COLOR.primaryLight, 1).fillPoints(star(96, 96, 90, 44), true);
+    g.fillStyle(COLOR.white, 1).fillPoints(star(96, 96, 56, 28), true);
+  });
+  make(scene, 'fx-wool', 192, 192, (g) => {
+    g.fillStyle(COLOR.white, 1).fillCircle(66, 104, 46).fillCircle(122, 104, 50).fillCircle(96, 74, 48);
+  });
+  // 엽전: 가운데 네모 구멍이 난 노란 동전 (돼지가 기운을 벌 때)
+  make(scene, 'fx-coin', 64, 64, (g) => {
+    g.fillStyle(COLOR.primary, 1).fillCircle(32, 32, 27);
+    line(g, 5).strokeCircle(32, 32, 27);
+    g.fillStyle(COLOR.outline, 1).fillRect(24, 24, 16, 16);
   });
   make(scene, 'px', 8, 8, (g) => {
     g.fillStyle(COLOR.white, 1).fillRect(0, 0, 8, 8);
