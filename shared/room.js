@@ -123,13 +123,43 @@ async function invoke(body) {
 }
 
 export const startRound = (roomId) => invoke({ roomId, action: 'start' });
-/** 게임 행동 (payload 모양은 게임마다 다르다) */
-export const act = (roomId, payload) => invoke({ roomId, action: 'act', payload });
+/**
+ * 게임 행동 (payload 모양은 게임마다 다르다).
+ * n: 기기에서 먼저 진행하는 화면(맞고)이 보내는 진행 수 — 서버 상태와 다르면 409 'out of sync' (중복·순서 뒤바뀜 방지)
+ */
+export const act = (roomId, payload, n) => invoke(n === undefined ? { roomId, action: 'act', payload } : { roomId, action: 'act', payload, n });
 
 // ---------- 혼자 하는 맞고: 기기에서 진행 (supabase/functions/_shared/solo.ts) ----------
 
 /** 진행 중인 혼자 하는 판의 전체 상태 → { state, version, round } (새로고침·재접속한 화면이 이어서 두려고) */
-export const soloSync = (roomId) => invoke({ roomId, action: 'sync' });
+// (duo: 사람이 둘인 판의 상태도 달라는 표시. 서버는 이 표시가 있을 때만 사람 둘인 판의 전체 상태를 준다)
+export const soloSync = (roomId) => invoke({ roomId, action: 'sync', payload: { duo: true } });
+
+/**
+ * 방 채널: 같은 방에 있는 화면끼리 바로 주고받는 알림 (Realtime Broadcast, DB·서버 함수를 거치지 않는다).
+ * 사람 둘이 하는 맞고에서 내 행동을 상대 화면에 바로 보여 주는 데 쓴다. 누구나 보낼 수 있는 길이므로
+ * 받은 쪽은 내용을 믿지 않는다 (규칙 검사를 통과한 것만 쓰고, 진실은 서버가 공개한 상태다).
+ * 인원 집계 채널(card-lobby:*)·DB 변경 구독 채널(room:*)과는 따로 쓴다.
+ */
+export function roomCast(roomId, onMessage) {
+  const ch = supabase
+    .channel(`matgo-room:${roomId}`, { config: { broadcast: { self: false, ack: false } } })
+    .on('broadcast', { event: 'act' }, (m) => {
+      try {
+        onMessage?.(m?.payload);
+      } catch {
+        /* 받은 쪽 문제로 채널이 끊기지 않게 */
+      }
+    })
+    .subscribe();
+  return {
+    send: (msg) => {
+      // 아직 연결 전이면 라이브러리가 HTTP 로 대신 보낸다. 실패해도 된다 (상대는 서버 공개 상태로 따라온다)
+      void Promise.resolve(ch.send({ type: 'broadcast', event: 'act', payload: msg })).catch(() => undefined);
+    },
+    close: () => void supabase.removeChannel(ch),
+  };
+}
 /** 기기에서 둔 사람 행동 목록 보내기: payload { n, actions } → { ok, n, done } (끝난 판이면 서버가 정산한다) */
 export const soloReplay = (roomId, payload) => invoke({ roomId, action: 'replay', payload });
 

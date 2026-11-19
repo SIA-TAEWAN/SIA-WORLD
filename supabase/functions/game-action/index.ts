@@ -35,9 +35,10 @@ Deno.serve(async (req) => {
 
     const runner = new Runner(supabaseStore(sb), ENGINES);
     if (body.action === 'start') return json(await runner.start(roomId, userId));
-    if (body.action === 'act') return json(await runner.act(roomId, userId, body.payload));
+    // n: 기기에서 먼저 진행하는 화면(맞고)이 보내는 진행 수 — 서버 상태와 다르면 409 'out of sync'
+    if (body.action === 'act') return json(await runner.act(roomId, userId, body.payload, Number.isInteger(body.n) ? body.n : undefined));
     // 혼자 하는 맞고 (기기에서 진행): 전체 상태 받기 · 사람 행동 목록 보내기
-    if (body.action === 'sync') return json(await runner.sync(roomId, userId));
+    if (body.action === 'sync') return json(await runner.sync(roomId, userId, body.payload));
     if (body.action === 'replay') return json(await runner.replay(roomId, userId, body.payload));
     return json({ error: 'bad action' }, 400);
   } catch (e) {

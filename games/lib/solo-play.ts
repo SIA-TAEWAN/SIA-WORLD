@@ -1,5 +1,13 @@
 /**
- * 혼자 하는 판(사람 1명 + AI)을 기기에서 진행한다 (지금은 맞고).
+ * 맞고 판을 기기에서 먼저 진행한다: 혼자 하는 판(사람 1명 + AI)과 사람 둘이 하는 판.
+ *
+ * ── 사람이 둘인 판 (duo): 서버는 계속 심판, 화면은 먼저 보여 준다 ──
+ *   내 행동 → 기기에서 바로 적용·연출 + 상대에게 바로 알림(방 채널 broadcast) + 서버에는 뒤에서 하나씩 차례로 (act + 진행 수 n).
+ *   상대 행동 → 알림이 오면 규칙 검사(엔진)를 통과한 것만, 내 연출이 끝난 뒤 순서대로 적용한다. 알림은 믿지 않는다:
+ *   서버가 공개한 상태와 내 진행이 다르거나(지문 비교), 서버가 내 행동을 거절하거나, 알림을 놓쳐 서버가 앞서 있으면 sync 로 서버 상태에 맞춘다.
+ *   정산·결과는 서버가 공개한 상태로만 보여 준다. 상대가 나가 AI 가 대신 두거나 시간 초과로 서버가 대신 둔 것도 공개 상태를 보고 따라간다.
+ *
+ * ── 혼자 하는 판 ──
  *
  * 서버는 판을 시작할 때 전체 상태(더미 순서·AI 패·씨앗 포함)를 한 번 내려 주고, 그 뒤로는 기기가 규칙 엔진을 직접 돌린다:
  *   내 행동 → 바로 적용 → 화면에 넣기 (실시간으로 받은 것과 같은 길) → 연출이 다 끝나면 AI 가 한 수 → …
@@ -27,7 +35,12 @@ export interface LocalHost {
   get(): { room: RoomRow | null; seats: SeatRow[]; mySeat: number | null };
   /** 서버 호출 (실패하면 code = 서버 문구, status = HTTP 상태가 실린 오류. 통신 실패면 status 가 없다) */
   api: {
-    sync(): Promise<{ state: unknown; version: number; round: number }>;
+    /** 전체 상태 받기. duo = 사람이 둘인 판인가 (상대 차례를 AI 로 두면 안 된다) */
+    sync(): Promise<{ state: unknown; version: number; round: number; duo?: boolean }>;
+    /** (사람이 둘인 판) 내 행동 하나를 서버에 보낸다. n = 이 행동을 적용할 진행 수 (서버와 다르면 409 'out of sync') */
+    act?(payload: unknown, n: number): Promise<unknown>;
+    /** (사람이 둘인 판) 내 행동을 상대 화면에 바로 알린다 (방 채널 broadcast. 못 보내도 된다 — 상대는 서버 공개 상태로 따라온다) */
+    cast?(msg: unknown): void;
     replay(p: ReplayPayload): Promise<{ ok: boolean; n: number | null; done: boolean }>;
     /** 페이지를 떠나는 중에 보내기 (응답을 기다리지 않는다) */
     replayOnExit(p: ReplayPayload): boolean;
@@ -59,6 +72,8 @@ export interface LocalPlay {
   onReload(r: { room: RoomRow | null; state: StateRow | null }): { state: StateRow; priv: PrivateRow } | null;
   /** 내 행동: 기기에서 처리했으면 true, 거절이면 false, 서버로 보내야 하면(기기 진행 중이 아니면) null */
   act(payload: unknown): boolean | null;
+  /** (사람이 둘인 판) 상대 화면이 알려 온 행동 (방 채널 broadcast). 믿지 않는다: 규칙 검사를 통과한 것만 쓴다 */
+  onCast(msg: unknown): void;
   /** 나가기 · 페이지 닫기 직전: 그때까지의 행동 목록을 서버에 보낸다 (실패해도 무시) */
   flush(kind: 'leave' | 'pagehide'): Promise<void>;
   /** 조작부에 대신 보여 줄 안내 (없으면 null) */
@@ -144,6 +159,18 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       /** 마지막으로 화면에 넣은 상태 */
       row: StateRow;
       priv: PrivateRow;
+      /** 사람이 둘인 판: 상대 차례는 알림(또는 서버)을 기다리고, 내 행동은 하나씩 서버에 보낸다 */
+      duo: boolean;
+      /** (duo) 아직 서버에 보내지 못한 내 행동 (차례대로) */
+      outbox: { n: number; a: unknown }[];
+      /** (duo) 상대가 알려 온 행동: 진행 수 → 행동 (아직 적용하지 않은 것) */
+      inbox: Map<number, { seat: number; a: unknown }>;
+      /** (duo) 진행 수마다 내가 본 공개 상태의 지문 (서버가 공개한 상태와 견준다) */
+      prints: Map<number, string>;
+      /** (duo) 서버가 공개한 가장 앞선 진행 수 */
+      serverN: number;
+      /** (duo) 내가 아직 가지 못한 진행 수에 대해 서버가 먼저 공개한 상태의 지문 (내가 거기 닿았을 때 견준다) */
+      seen: Map<number, string>;
     }
     let cur: Cur | null = null;
     let seq = 0;
@@ -159,6 +186,14 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
     let wanted = 0;
     let turnTimer: ReturnType<typeof setTimeout> | null = null;
     let lateTimer: ReturnType<typeof setTimeout> | null = null;
+    let lagTimer: ReturnType<typeof setTimeout> | null = null;
+    let pumping = false;
+    /** 공개 상태의 지문 (서버가 덧붙이는 칸은 빼고, DB 를 거친 것과 같은 모양으로) */
+    const pubPrint = (pub: unknown) => {
+      const o = { ...(JSON.parse(JSON.stringify(pub ?? {})) as Record<string, unknown>) };
+      for (const k of ['round', 'result', 'deltas', 'soloN']) delete o[k];
+      return fingerprint(o);
+    };
 
     const nOf = (s: S) => soloOf(s)?.n ?? 0;
     /** 내 자리에서 보이는 판 (공개 + 내 패)의 지문 */
@@ -216,8 +251,8 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         // 결과(result · deltas)는 서버가 정산해 공개한 상태로만 보여 준다
         public_state: { ...(v.public as object), round: c.round, result: null, deltas: null, soloN: nOf(c.state) },
         pending_seats: pending,
-        // 내 시간은 앞선 연출이 끝난 뒤부터 잰다 (arm 이 다시 맞춘다)
-        turn_deadline: pending.includes(c.seat) ? new Date(Date.now() + TURN + 3000).toISOString() : null,
+        // 내 시간은 앞선 연출이 끝난 뒤부터 잰다 (arm 이 다시 맞춘다). 사람이 둘인 판은 서버가 차례 시간을 잰다 → 누구 차례든 그만큼
+        turn_deadline: c.duo ? (pending.length ? new Date(Date.now() + TURN).toISOString() : null) : pending.includes(c.seat) ? new Date(Date.now() + TURN + 3000).toISOString() : null,
         // 서버 시각이 아니라 순번 (셸은 local 표시가 있으면 시각으로 낡았는지 따지지 않는다)
         updated_at: `local:${String(++seq).padStart(9, '0')}`,
         local: true,
@@ -225,6 +260,15 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         ...(mine ? { eager: true } : {}),
       };
       c.priv = { seat_no: c.seat, round_no: c.round, hand: v.private[c.seat] ?? null };
+      if (c.duo) {
+        const n = nOf(c.state);
+        const mine = pubPrint(v.public);
+        c.prints.set(n, mine);
+        if (c.prints.size > 400) c.prints.delete(c.prints.keys().next().value as number);
+        // 서버가 이 진행 수의 상태를 먼저 공개했는데 내용이 다르다 (서버가 대신 뒀다 · 가짜 알림): 서버 상태로 맞춘다
+        const theirs = c.seen.get(n);
+        if (theirs !== undefined && theirs !== mine && mode !== 'jump') void resync();
+      }
       if (mode === 'jump') {
         opts.onJump?.(c.row.public_state!, c.round, host.roomId);
         host.jump(c.row, c.priv);
@@ -240,6 +284,8 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       clearTurn();
       if (lateTimer) clearTimeout(lateTimer);
       lateTimer = null;
+      if (lagTimer) clearTimeout(lagTimer);
+      lagTimer = null;
     };
     /** 기기 진행을 끝낸다 (서버가 공개하는 상태를 그대로 따른다) */
     const drop = () => {
@@ -269,16 +315,19 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
      * 서버에서 받은 전체 상태로 기기 진행을 시작한다 (판 시작 응답 · sync).
      * 보관해 둔 내 행동 가운데 서버 진행 수 이후의 것은 다시 적용해 이어 간다. 서버 상태와 안 맞으면 맞는 데까지만 (서버 상태를 따른다).
      */
-    const adopt = (state: unknown, round: number, mode: 'start' | 'sync' | 'resync'): boolean => {
+    const adopt = (state: unknown, round: number, mode: 'start' | 'sync' | 'resync', duo = false): boolean => {
       const solo = soloOf(state);
       const seat = host.get().mySeat;
       if (!solo || seat === null || disposed) return false;
+      // 사람이 둘인 판인데 행동을 하나씩 보낼 길이 없으면 기기에서 진행하지 않는다 (서버 진행 그대로)
+      if (duo && !host.api.act) return false;
       // 이미 이 판을 더 앞서 진행 중이면 그대로 둔다 (늦게 온 판 시작 응답 등)
       if (cur && cur.round === round && mode !== 'resync' && nOf(cur.state) >= solo.n) return false;
       stop();
       let s = state as S;
       const log: Entry[] = [];
-      const stored = readLog(round).filter((e) => e.n >= solo.n).sort((x, y) => x.n - y.n);
+      // (사람이 둘인 판은 행동을 그때그때 서버에 보내므로 보관해 둔 것이 없다)
+      const stored = duo ? [] : readLog(round).filter((e) => e.n >= solo.n).sort((x, y) => x.n - y.n);
       try {
         for (const e of stored) {
           const before = runAi(s, seat);
@@ -291,8 +340,11 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       } catch {
         /* 보관한 행동이 서버 상태와 맞지 않는다: 맞는 데까지만 */
       }
-      cur = { round, seat, state: s, savedN: solo.n, log, row: null as unknown as StateRow, priv: null as unknown as PrivateRow };
-      prune(round);
+      cur = {
+        round, seat, state: s, savedN: solo.n, log, row: null as unknown as StateRow, priv: null as unknown as PrivateRow,
+        duo, outbox: [], inbox: new Map(), prints: new Map(), serverN: solo.n, seen: new Map(),
+      };
+      prune(duo ? null : round);
       writeLog();
       // 이어 붙인 행동이 있으면(새로고침) 그 사이의 연출은 건너뛴다. 판 시작이면 평소처럼 (나눠 주기 · AI 의 첫 수)
       show(cur, log.length > 0 || mode === 'resync' ? 'jump' : 'push');
@@ -352,11 +404,33 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           }
           const pend = engine.pending(c.state) as number[];
           if (pend.includes(c.seat)) {
-            arm(c);
+            // (사람이 둘인 판은 서버가 차례 시간을 잰다: 넘기면 서버가 대신 두고, 공개 상태를 보고 따라간다)
+            if (!c.duo) arm(c);
             return;
           }
           const ai = pend[0];
           if (ai === undefined) return;
+          if (c.duo) {
+            // 상대 차례: 상대가 알려 온 행동이 있으면 적용한다 (규칙 검사는 엔진이 한다). 없으면 기다린다 (알림이 오면 다시 돈다)
+            const m = c.inbox.get(at);
+            if (!m) {
+              lag(c);
+              return;
+            }
+            c.inbox.delete(at);
+            if (m.seat === c.seat || !pend.includes(m.seat)) continue;
+            let next: S;
+            try {
+              next = soloStep(engine, c.state, m.seat, m.a as A);
+            } catch (e) {
+              // 규칙에 안 맞는 알림: 버리고 서버가 공개하는 상태를 기다린다
+              if (e instanceof EngineError) continue;
+              throw e;
+            }
+            c.state = next;
+            show(c, 'push');
+            continue;
+          }
           await sleep(THINK);
           if (g !== gen || cur !== c || disposed) return;
           if (nOf(c.state) !== at) continue;
@@ -370,6 +444,61 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         if (g === gen) void resync();
       } finally {
         if (runningGen === g) runningGen = -1;
+      }
+    };
+
+    /** (사람이 둘인 판) 서버가 내 진행보다 앞서 있는데 상대의 알림이 없다 (놓쳤거나, 서버가 대신 뒀다): 잠깐 기다려 보고 서버 상태로 맞춘다 */
+    const lag = (c: Cur) => {
+      if (lagTimer || c.serverN <= nOf(c.state)) return;
+      lagTimer = setTimeout(() => {
+        lagTimer = null;
+        if (cur !== c || disposed) return;
+        if (c.serverN > nOf(c.state) && !c.inbox.has(nOf(c.state))) void resync();
+      }, 400);
+    };
+
+    /** (사람이 둘인 판) 내 행동을 서버에 하나씩 차례로 보낸다. 화면은 응답을 기다리지 않는다 */
+    const pump = async () => {
+      if (pumping) return;
+      pumping = true;
+      try {
+        for (let attempt = 0; !disposed; ) {
+          const c = cur;
+          if (!c || !c.duo || !host.api.act) return;
+          const m = c.outbox[0];
+          if (!m) return;
+          try {
+            await host.api.act(m.a, m.n);
+            if (cur !== c) return;
+            c.outbox.shift();
+            attempt = 0;
+          } catch (e) {
+            if (cur !== c) return;
+            const err = e as { code?: unknown; status?: unknown } | null;
+            if (isGone(err)) {
+              // 서버에서는 이미 끝난 판: 서버 상태를 따른다
+              drop();
+              void host.reload();
+              return;
+            }
+            // 진행 수가 다르다: 상대의 앞선 행동이 아직 서버에 닿지 않았을 수 있다 (알림이 서버보다 빨리 온다) → 잠깐씩 기다려 다시 보낸다.
+            // 정말 어긋난 것이면 (서버가 대신 뒀다 등) 서버 공개 상태를 보고 먼저 맞추게 되고, 그래도 안 되면 여기서 맞춘다
+            const outOfSync = String(err?.code ?? '').includes('out of sync');
+            // 그 밖의 거절 (규칙 위반 · 내 차례 아님): 내 예측이 틀렸다 → 서버 상태로
+            if (!outOfSync && typeof err?.status === 'number' && err.status >= 400 && err.status < 500) {
+              void resync();
+              return;
+            }
+            // 통신 문제도 몇 번 다시 보내 보고, 안 되면 서버 상태로 (그사이 서버가 시간 초과로 대신 뒀을 수 있다)
+            if (attempt >= 4) {
+              void resync();
+              return;
+            }
+            await sleep(Math.min(4000, (outOfSync ? 150 : 400) * 2 ** attempt++));
+          }
+        }
+      } finally {
+        pumping = false;
       }
     };
 
@@ -389,6 +518,21 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         throw e;
       }
       clearTurn();
+      if (c.duo) {
+        // 바로 보여 주고, 상대에게 바로 알리고, 서버에는 뒤에서 차례로 보낸다
+        const n = nOf(c.state);
+        c.state = next;
+        show(c, 'push', true);
+        c.outbox.push({ n, a });
+        try {
+          host.api.cast?.({ r: c.round, n, seat: c.seat, a });
+        } catch {
+          /* 알림을 못 보내도 상대는 서버 공개 상태로 따라온다 */
+        }
+        void pump();
+        kick();
+        return true;
+      }
       c.log.push({ n: nOf(c.state), a, h: print(c.state, c.seat) });
       c.state = next;
       writeLog();
@@ -404,6 +548,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
      * (서버는 내 목록을 적용한 뒤 AI 차례를 바로 이어 두지만, 기기는 연출이 끝나기를 기다렸다 둔다 → 서버가 잠깐 앞설 수 있다)
      */
     const reachN = (c: Cur) => {
+      if (c.duo) return nOf(c.state);
       try {
         return nOf(runAi(c.state, c.seat));
       } catch {
@@ -430,7 +575,8 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       try {
         for (let attempt = 0; !disposed; ) {
           const c = cur;
-          if (!c) return;
+          // (사람이 둘인 판은 행동을 하나씩 보낸다: 목록으로 한꺼번에 내지 않는다)
+          if (!c || c.duo) return;
           const done = engine.done(c.state);
           const batch = unsent(c);
           if (!batch.length && !done) return;
@@ -496,7 +642,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       stop();
       try {
         const r = await host.api.sync();
-        if (!disposed) adopt(r.state, r.round, 'resync');
+        if (!disposed) adopt(r.state, r.round, 'resync', !!r.duo);
       } catch (e) {
         if (isGone(e)) {
           drop();
@@ -522,7 +668,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         host.api.sync().then(
           (r) => {
             syncing = false;
-            if (!disposed && (!cur || cur.round !== r.round)) adopt(r.state, r.round, 'sync');
+            if (!disposed && (!cur || cur.round !== r.round)) adopt(r.state, r.round, 'sync', !!r.duo);
             end();
           },
           () => {
@@ -544,8 +690,10 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
 
     return {
       onStart(res) {
-        const r = res as { round?: unknown; solo?: unknown } | null;
+        const r = res as { round?: unknown; solo?: unknown; duo?: unknown } | null;
         if (r && typeof r.round === 'number' && r.solo) adopt(r.solo, r.round, 'start');
+        // 사람이 둘인 판 (시작을 부른 사람만 이 응답을 받는다. 상대는 공개 상태를 보고 sync 로 받아 온다)
+        else if (r && typeof r.round === 'number' && r.duo) adopt(r.duo, r.round, 'start', true);
       },
 
       filterState(s) {
@@ -563,6 +711,22 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           drop();
           if (soloN !== null && !ended) wantSync(s.round_no, 700);
           return false;
+        }
+        if (c.duo) {
+          // 사람이 둘인 판: 평소에는 이미 본 상태다 (내 행동의 되울림 · 알림으로 먼저 본 상대 행동) → 화면에 넣지 않는다.
+          // 다만 같은 진행 수인데 내용이 다르면 내 예측이 틀린 것이다 (서버가 대신 뒀다 · 가짜 알림) → 서버 상태로
+          const n = nOf(c.state);
+          if (soloN <= n) {
+            const mine = c.prints.get(soloN);
+            if (mine !== undefined && mine !== pubPrint(s.public_state)) void resync();
+            return true;
+          }
+          // 서버가 앞서 있다: 상대의 알림이 곧 오거나 이미 와 있으면 그것으로, 아니면 잠깐 뒤 서버 상태로
+          c.serverN = Math.max(c.serverN, soloN);
+          c.seen.set(soloN, pubPrint(s.public_state));
+          if (c.seen.size > 60) c.seen.delete(c.seen.keys().next().value as number);
+          lag(c);
+          return true;
         }
         // 같은 판의 진행 중 상태: 내가 보낸 중간 저장이 되돌아온 것 → 화면을 되돌리지 않게 버린다 (기기 진행이 같거나 앞서 있다)
         if (sending) return true;
@@ -592,6 +756,14 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           if (room?.status === 'playing' && state && soloN !== null && !ended) wantSync(state.round_no, 0);
           return null;
         }
+        if (c.duo) {
+          // 서버가 앞서 있으면 알림을 잠깐 기다려 보고 맞춘다 (화면은 그동안 기기 진행 그대로)
+          if (soloN > nOf(c.state)) {
+            c.serverN = Math.max(c.serverN, soloN);
+            lag(c);
+          }
+          return { state: c.row, priv: c.priv };
+        }
         if (!sending) {
           if (soloN > reachN(c)) {
             void resync();
@@ -606,9 +778,28 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         return apply(payload as A);
       },
 
+      onCast(msg) {
+        const c = cur;
+        const m = msg as { r?: unknown; n?: unknown; seat?: unknown; a?: unknown } | null;
+        if (!c || !c.duo || disposed || !m || typeof m !== 'object') return;
+        if (m.r !== c.round || !Number.isInteger(m.n) || !Number.isInteger(m.seat) || !m.a || typeof m.a !== 'object' || Array.isArray(m.a)) return;
+        const n = m.n as number;
+        // 이미 지난 것 · 터무니없이 앞선 것 · 내 자리라고 우기는 것은 버린다
+        if (m.seat === c.seat || n < nOf(c.state) || n > nOf(c.state) + 40 || c.inbox.has(n)) return;
+        c.inbox.set(n, { seat: m.seat as number, a: m.a });
+        kick();
+      },
+
       async flush(kind) {
         const c = cur;
         if (!c) return;
+        if (c.duo) {
+          // 사람이 둘인 판: 행동은 이미 하나씩 보내고 있다. 나갈 때는 보내던 것이 끝나기를 잠깐 기다린다
+          if (kind === 'pagehide') return;
+          for (let i = 0; i < 60 && cur === c && c.outbox.length && pumping; i++) await sleep(50);
+          if (cur === c) drop();
+          return;
+        }
         const batch = unsent(c);
         const payload: ReplayPayload = { n: c.savedN, actions: batch.map((e) => e.a) };
         if (kind === 'pagehide') {

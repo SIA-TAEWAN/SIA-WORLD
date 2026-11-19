@@ -1895,13 +1895,23 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     else paint();
   }
   // ── 기기에서 진행하는 판 (혼자 하는 맞고): 게임이 주는 진행기에 셸의 문을 열어 준다 ──
+  /** 방 채널 (기기에서 진행하는 게임만): 상대 화면이 알려 온 행동을 진행기에 넘긴다 */
+  let cast: { send(msg: unknown): void; close(): void } | null = null;
   if (ui.local) {
+    try {
+      cast = m.room.roomCast?.(roomId, (msg) => !closed && local?.onCast(msg)) ?? null;
+    } catch (e) {
+      console.warn('cast', e);
+    }
     const maxEvent = (s: StateRow) => ((s.public_state?.events as GameEventLite[] | undefined) ?? []).reduce((a, e) => Math.max(a, e.id), 0);
     local = ui.local({
       roomId,
       get: () => ({ room, seats, mySeat: mySeatRow()?.seat_no ?? null }),
       api: {
         sync: () => m.room.soloSync(roomId),
+        // 사람이 둘인 판: 내 행동을 하나씩 서버에 (진행 수와 함께), 상대 화면에는 방 채널로 바로
+        act: (payload, n) => m.room.act(roomId, payload, n),
+        cast: (msg) => cast?.send(msg),
         replay: (p) => m.room.soloReplay(roomId, p),
         replayOnExit: (p) => m.room.soloReplayOnExit(roomId, p),
       },
@@ -1972,6 +1982,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     document.removeEventListener('visibilitychange', onHidden);
     window.removeEventListener('pagehide', onPageHide);
     local?.dispose();
+    try {
+      cast?.close();
+    } catch {
+      /* 무시 */
+    }
     ro.disconnect();
     unbusy();
     game.destroy(true);

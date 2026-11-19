@@ -84,9 +84,15 @@ export interface RoomModule {
   touchRoom(roomId: string): Promise<void>;
   setReady(roomId: string, ready: boolean, onStart?: (res: unknown) => void): Promise<boolean>;
   startRound(roomId: string): Promise<unknown>;
-  act(roomId: string, payload: unknown): Promise<unknown>;
-  /** 혼자 하는 판의 전체 상태 (기기에서 이어서 두려고). 실패하면 code(서버 문구)·status 가 실린 오류 */
-  soloSync(roomId: string): Promise<{ state: unknown; version: number; round: number }>;
+  /** n: 기기에서 먼저 진행하는 화면이 보내는 진행 수 (서버 상태와 다르면 409 'out of sync'). 없으면 지금 상태에 적용 */
+  act(roomId: string, payload: unknown, n?: number): Promise<unknown>;
+  /** 기기에서 진행하는 판의 전체 상태 (이어서 두려고). duo = 사람이 둘인 판. 실패하면 code(서버 문구)·status 가 실린 오류 */
+  soloSync(roomId: string): Promise<{ state: unknown; version: number; round: number; duo?: boolean }>;
+  /**
+   * 방 채널 (같은 방 화면끼리 바로 주고받는 알림. 서버를 거치지 않으므로 받은 내용은 믿으면 안 된다)
+   * → send(msg): 다른 화면들에 보낸다, close(): 닫는다
+   */
+  roomCast?(roomId: string, onMessage: (msg: unknown) => void): { send(msg: unknown): void; close(): void };
   /** 기기에서 둔 사람 행동 목록 보내기 (n: 목록이 시작되는 서버 진행 수) */
   soloReplay(roomId: string, payload: { n: number; actions: unknown[] }): Promise<{ ok: boolean; n: number | null; done: boolean }>;
   /** 페이지를 떠나는 중에 보내기 (응답을 기다리지 않는다) → 보냈으면 true */

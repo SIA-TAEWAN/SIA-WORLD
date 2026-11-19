@@ -131,12 +131,16 @@ export class Runner {
 
     const info = await this.seatInfo(room, seats);
     let state = engine.newRound({ seats: info, baseUnit: room.base_unit, carry: deck.carry ?? null, rng: this.rng });
-    // 혼자 하는 맞고(사람 1명 + AI): 화면이 기기에서 진행한다 (solo.ts). 판마다 씨앗을 정해 상태에 싣는다
-    const solo = room.game === 'matgo' && this.humans(seats).length === 1 && !engine.done(state);
+    // 맞고: 화면이 기기에서 먼저 진행한다 (solo.ts 의 결정적 걸음). 판마다 씨앗을 정해 상태에 싣는다
+    //   · 사람 1명 + AI: 화면이 혼자 끝까지 두고 행동 목록만 보낸다 (replay)
+    //   · 사람 2명: 각자 자기 행동을 기기에서 바로 적용해 보여 주고 서버에는 하나씩 보낸다 (act + n). 서버가 계속 심판이다
+    const humans = this.humans(seats).length;
+    const solo = room.game === 'matgo' && humans >= 1 && !engine.done(state);
     if (solo) state = { ...state, solo: { seed: Math.floor(this.rng.next() * 4294967296) >>> 0, n: 0 } };
     const saved = await this.advance(roomId, { ...room, status: 'playing', round_no: round }, seats, engine, deck.version, state);
-    // 화면이 이어서 둘 수 있게 전체 상태를 같이 돌려준다 (그 방의 유일한 사람만 부를 수 있는 응답)
-    if (solo && saved !== null && !engine.done(saved)) return { started: true, round, solo: saved };
+    // 화면이 이어서 둘 수 있게 전체 상태를 같이 돌려준다 (그 판에 앉아 있는 사람만 부를 수 있는 응답).
+    // 사람이 둘인 판은 다른 칸(duo)에 싣는다: 예전 화면이 혼자 하는 판으로 잘못 알고 상대 차례를 AI 로 두지 않게
+    if (solo && saved !== null && !engine.done(saved)) return humans === 1 ? { started: true, round, solo: saved } : { started: true, round, duo: saved };
     return { started: true, round };
   }
 
@@ -145,22 +149,31 @@ export class Runner {
     return seats.filter((s) => s.user_id !== null && !s.left_game);
   }
 
-  /** 혼자 하는 판인지 확인하고 불러온다: 진행 중인 solo 판이고, 부른 사람이 그 방의 유일한 사람이어야 한다 */
-  private async loadSolo(roomId: string, userId: string) {
+  /**
+   * 기기에서 진행하는 판인지 확인하고 불러온다: 진행 중인 solo 판이고, 부른 사람이 그 판에 앉아 있어야 한다.
+   * duo = 사람이 둘인 판도 받는다 (아니면 그 방의 유일한 사람이어야 한다)
+   */
+  private async loadSolo(roomId: string, userId: string, duo = false) {
     const loaded = await this.load(roomId);
     const { room, seats, deck } = loaded;
     const seat = seats.find((s) => s.user_id === userId && !s.left_game);
     if (!seat) throw new GameError('not in room', 403);
     if (room.status !== 'playing' || !deck.state || deck.round_no !== room.round_no) throw new GameError('not playing', 409);
     const solo = soloOf(deck.state);
-    if (!solo || this.humans(seats).length !== 1) throw new GameError('not solo', 409);
-    return { ...loaded, seat, solo };
+    const humans = this.humans(seats).length;
+    if (!solo || (humans !== 1 && !duo)) throw new GameError('not solo', 409);
+    return { ...loaded, seat, solo, humans };
   }
 
-  /** 혼자 하는 판의 전체 상태 (새로고침·재접속한 화면이 이어서 두려고 부른다) */
-  async sync(roomId: string, userId: string) {
-    const { room, deck } = await this.loadSolo(roomId, userId);
-    return { state: deck.state, version: deck.version, round: room.round_no };
+  /**
+   * 기기에서 진행하는 판의 전체 상태 (판 시작 응답을 못 받았거나 새로고침·재접속한 화면, 어긋난 화면이 이어서 두려고 부른다).
+   * 사람이 둘인 판은 payload { duo: true } 로 불러야 준다 (예전 화면은 그렇게 부르지 않는다 → 예전처럼 서버 진행으로 남는다).
+   * duo: 사람이 둘인 판인가 (화면이 상대 차례를 AI 로 두면 안 된다)
+   */
+  async sync(roomId: string, userId: string, payload?: unknown) {
+    const wantDuo = !!(payload as { duo?: unknown } | null | undefined)?.duo;
+    const { room, deck, humans } = await this.loadSolo(roomId, userId, wantDuo);
+    return { state: deck.state, version: deck.version, round: room.round_no, duo: humans !== 1 };
   }
 
   /**
@@ -220,13 +233,18 @@ export class Runner {
       }));
   }
 
-  /** 사람의 행동 */
-  async act(roomId: string, userId: string, action: unknown) {
+  /**
+   * 사람의 행동.
+   * n (기기에서 먼저 진행하는 화면이 보낸다): 이 행동을 적용할 서버 상태의 solo.n. 다르면 409 'out of sync' —
+   * 같은 행동이 두 번 오거나 순서가 뒤바뀌어 다른 자리에 적용되는 것을 막는다. 없으면 예전처럼 지금 상태에 적용한다
+   */
+  async act(roomId: string, userId: string, action: unknown, n?: number) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const { room, seats, deck, engine } = await this.load(roomId);
       if (room.status !== 'playing' || !deck.state || deck.round_no !== room.round_no) throw new GameError('not playing', 409);
       const seat = seats.find((s) => s.user_id === userId && !s.left_game);
       if (!seat) throw new GameError('not in room', 403);
+      if (n !== undefined && soloOf(deck.state)?.n !== n) throw new GameError('out of sync', 409);
       if (!engine.pending(deck.state).includes(seat.seat_no)) throw new GameError('not your turn', 409);
       let state;
       let charge: { spin: number; bets: unknown; total: number } | null = null;
@@ -250,7 +268,9 @@ export class Runner {
           throw new GameError(msg);
         }
       }
-      if ((await this.advance(roomId, room, seats, engine, deck.version, state, engine.spinResult ? engine.spinResult(deck.state) : null)) !== null) return { ok: true };
+      const saved = await this.advance(roomId, room, seats, engine, deck.version, state, engine.spinResult ? engine.spinResult(deck.state) : null);
+      // n: 저장한 뒤의 진행 수 (기기에서 진행하는 화면이 자기 진행과 견준다)
+      if (saved !== null) return soloOf(saved) ? { ok: true, n: soloOf(saved)!.n } : { ok: true };
     }
     throw new GameError('busy, try again', 409);
   }
@@ -277,8 +297,10 @@ export class Runner {
       if (prev && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, prev.spin, prev.result);
       state = engine.tick(state, this.rng, await this.seatInfo(room, seats));
     } else if (!engine.done(state) && soloOf(state)) {
-      // solo 판: 나간 사람 자리는 AI가 이어서 둔다 (autoOnly). 자리는 지키는데 30분 마감이 지났으면 버려진 판이다
-      // → 사람 차례는 정해진 자동 행동으로, 판이 끝날 때까지 서버가 대신 둔다
+      // solo 판: 나간 사람 자리는 AI가 이어서 둔다 (autoOnly).
+      //   · 혼자 하는 판: 자리는 지키는데 30분 마감이 지났으면 버려진 판이다 → 사람 차례는 정해진 자동 행동으로, 판이 끝날 때까지 서버가 대신 둔다
+      //   · 사람이 둘인 판: 차례 시간(20초)을 넘긴 사람의 이번 차례만 대신 둔다 (다음 차례는 다시 그 사람이 둔다)
+      const lone = this.humans(seats).length <= 1;
       for (let steps = 0; !engine.done(state); steps++) {
         if (steps > MAX_AUTO_STEPS) throw new Error('AI loop');
         state = this.soloAutos(engine, seats, state);
@@ -286,6 +308,7 @@ export class Runner {
         const seat = (engine.pending(state) as number[])[0];
         if (seat === undefined) break;
         state = soloStep(engine, state, seat, engine.timeout(state, seat, this.rng));
+        if (!lone) break;
       }
     } else if (!engine.done(state)) {
       for (const seat of engine.pending(state)) {
@@ -347,8 +370,10 @@ export class Runner {
     const humanPending = pending.some((s) => !this.auto(seats, s));
     const fixed = engine.deadlineAt ? engine.deadlineAt(state) : undefined;
     const solo = soloOf(state);
-    const deadline = fixed !== undefined ? (fixed === null ? null : new Date(fixed)) : humanPending ? new Date(this.now() + (solo ? SOLO_DEADLINE_MS : TURN_MS)) : null;
-    // soloN: 혼자 하는 판이면 지금까지 적용한 행동 수 (화면이 자기 진행과 견줘 낡은 공개 상태를 가려낸다. 씨앗은 싣지 않는다)
+    // 혼자 하는 판만 길게 (화면이 기기에서 시간을 잰다). 사람이 둘인 판은 행동을 하나씩 받으므로 차례 시간 그대로
+    const lone = !!solo && this.humans(seats).length <= 1;
+    const deadline = fixed !== undefined ? (fixed === null ? null : new Date(fixed)) : humanPending ? new Date(this.now() + (lone ? SOLO_DEADLINE_MS : TURN_MS)) : null;
+    // soloN: 기기에서 진행하는 판이면 지금까지 적용한 행동 수 (화면이 자기 진행과 견줘 낡은 공개 상태를 가려낸다. 씨앗은 싣지 않는다)
     const pub = {
       ...(view.public as object),
       round: room.round_no,
