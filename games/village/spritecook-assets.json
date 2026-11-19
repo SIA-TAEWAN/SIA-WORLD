@@ -1,0 +1,140 @@
+{
+  "note": "SpriteCook (Nano Banana 2.1, 투명 배경) 시트. 원본 art/sheets/<이름>.png (256색으로 줄임), 게임 그림은 python art/build.py",
+  "assets": [
+    {
+      "asset_id": "0620e930-1751-4436-8940-4da390e5b5db",
+      "label": "(화풍 참고) 십이지신 캐릭터 전신 시트 — games/survival/spritecook-assets.json"
+    },
+    {
+      "asset_id": "b1e84f6b-3e8b-4943-bd28-9993fa4eda7e",
+      "label": "(화풍 참고) 시아서바이벌 꼬마 도깨비"
+    },
+    {
+      "asset_id": "3f07cec9-461f-4db7-ad2c-c0461e79d226",
+      "label": "(화풍 참고) 로비 카드 레이스"
+    },
+    {
+      "asset_id": "68dc32a0-1408-4d3e-bfcd-29a6d9d74b46",
+      "sha12": "0e2cadeeeefc",
+      "label": "art/sheets/house2.png — 주민 집 모습 1·2·3 → public/art/b-house-1~3 (이후 그림의 화풍 참고)"
+    },
+    {
+      "asset_id": "6c2b231e-5d64-4c62-9f44-1f1b6592f7bd",
+      "sha12": "78b4d3fbaead",
+      "label": "art/sheets/hall2.png — 마을 회관 모습 1·2·3 → b-hall-1~3"
+    },
+    {
+      "asset_id": "24d1034c-90d4-40e4-b213-75a035ecaa3e",
+      "sha12": "801043378e08",
+      "label": "art/sheets/paddy.png — 논 → b-paddy-1~3"
+    },
+    {
+      "asset_id": "40efc255-a561-4b62-9678-d5113c9db06a",
+      "sha12": "ba1f95af5534",
+      "label": "art/sheets/lumber.png — 벌목장 → b-lumber-1~3"
+    },
+    {
+      "asset_id": "32e7caf8-fdce-474c-898f-a3b61bc0d8c8",
+      "sha12": "95d8065780db",
+      "label": "art/sheets/storage.png — 창고 → b-storage-1~3"
+    },
+    {
+      "asset_id": "20bfc091-4cd8-48fb-8007-63811f3ec088",
+      "sha12": "7876acb042df",
+      "label": "art/sheets/market.png — 장터 → b-market-1~3"
+    },
+    {
+      "asset_id": "0bf95cfd-55cb-45cb-9927-f18191fdbb8c",
+      "sha12": "b491c0dccd6f",
+      "label": "art/sheets/quarry.png — 채석장 → b-quarry-1~3"
+    },
+    {
+      "asset_id": "eb4657c4-58d8-43a6-8c0e-9521c86cb260",
+      "sha12": "913628befb3b",
+      "label": "art/sheets/mill.png — 방앗간 → b-mill-1~3"
+    },
+    {
+      "asset_id": "905163a6-e59c-4c45-afc2-d9460e08f752",
+      "sha12": "bb91f8314f41",
+      "label": "art/sheets/jar.png — 장독대 → b-jar-1~3"
+    },
+    {
+      "asset_id": "b0d19257-a5b2-4e41-b236-3cb2cc29156d",
+      "sha12": "2e45380ea2b1",
+      "label": "art/sheets/pavilion.png — 정자 → b-pavilion-1~3"
+    },
+    {
+      "asset_id": "f3f96af0-c090-423c-a1d9-1777235df835",
+      "sha12": "9ed02782446c",
+      "label": "art/sheets/feast.png — 잔치 마당 → b-feast-1~3"
+    },
+    {
+      "asset_id": "1a7aad61-0e5c-4cbc-aa34-c26b3854e8ad",
+      "sha12": "e32806d4b38f",
+      "label": "art/sheets/shrine.png — 십이지 사당 → b-shrine-1~3"
+    },
+    {
+      "asset_id": "02859751-83db-40da-a8e9-b7899cf8fefc",
+      "sha12": "e9f7b821584e",
+      "label": "art/sheets/decoA.png — 장식물 나무·볏가리·꽃밭·허수아비·평상·돌담"
+    },
+    {
+      "asset_id": "23960c4f-09c3-40a8-aa5d-ffa418b64533",
+      "sha12": "e99735b80f3b",
+      "label": "art/sheets/decoB.png — 장식물 등불·우물·장승·솟대·연못·돌탑"
+    },
+    {
+      "asset_id": "8bec2456-8f25-44a9-8f00-dae40e5eec64",
+      "sha12": "1d2c17f302b9",
+      "label": "art/sheets/giftA.png — 주민 선물 쥐·소·호랑이·토끼·용·뱀"
+    },
+    {
+      "asset_id": "e435e61f-9b78-436e-beba-617380cdac39",
+      "sha12": "211e5bb08b42",
+      "label": "art/sheets/giftB.png — 주민 선물 말·양·원숭이·닭·개·돼지"
+    },
+    {
+      "asset_id": "4af1a345-db7e-4417-80df-4ff03f1e9e4d",
+      "sha12": "2e202b893688",
+      "label": "art/sheets/monA.png — 기념물 탱크 2·배구 2·레이스 2"
+    },
+    {
+      "asset_id": "ffb9a066-2da6-4c01-8c37-49355db941df",
+      "sha12": "1350fb56a97e",
+      "label": "art/sheets/monB.png — 기념물 서바이벌 4·디펜스 3·6"
+    },
+    {
+      "asset_id": "26fa23a3-7971-44d0-9316-94fe04037655",
+      "sha12": "e461e90bca0b",
+      "label": "art/sheets/monC.png — 기념물 디펜스 9·12·맞고·카지노"
+    },
+    {
+      "asset_id": "d913fea5-99bb-4ff1-96e8-86017283e43e",
+      "sha12": "b7f14b4d4091",
+      "label": "art/sheets/icons.png — 자원 아이콘 6 → icon-* · bubble-*"
+    },
+    {
+      "asset_id": "9c91c320-09e6-48e1-9c01-e1722ee23c5c",
+      "sha12": "c6119487dfa9",
+      "label": "art/sheets/misc.png — 짓는 터 1×1·2×2 · 길 → site-1 · site-2 · b-road-1"
+    },
+    {
+      "asset_id": "f4d3b1e5-997f-4fb0-bce4-5dcd640d92ca",
+      "sha12": "c0ef6c70b8da",
+      "label": "art/sheets/grass.png — 땅 바닥 무늬 → tile-grass"
+    },
+    {
+      "asset_id": "f8028156-1dd6-45b1-9e38-8c514b070187",
+      "sha12": "dde6b15ad5a9",
+      "label": "art/sheets/card.png — 로비 카드 → shared/images/card-village.png (16:10 가운데 자르기, 640x400)"
+    },
+    {
+      "asset_id": "a98140e3-0ff5-47cd-bf6f-c7e5b39847d2",
+      "label": "(쓰지 않음) 첫 화풍 시험: 마름모 시점이라 격자와 맞지 않아 버림"
+    },
+    {
+      "asset_id": "8317b233-0d46-4126-9367-9369d5490414",
+      "label": "(쓰지 않음) 첫 화풍 시험: 마름모 시점"
+    }
+  ]
+}

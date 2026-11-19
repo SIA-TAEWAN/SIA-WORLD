@@ -2,7 +2,7 @@ import type { ResId } from '../data/balance';
 
 /**
  * 자원 아이콘. 코드로 그린 SVG (DESIGN.md: 굵은 갈색 외곽선 + 밝은 단색, 색은 shared/theme.css 의 변수).
- * 정식 그림 목록은 ASSETS.md (9단계에서 교체).
+ * 쌀 · 나무 · 돌 · 떡 · 엽전 · 특산품은 SpriteCook 그림 파일을 쓰고, SVG 는 시아코인 · 경험치 · 시간에 쓴다 (자원 SVG 는 남겨 둔다).
  */
 const O = 'stroke="var(--outline)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"';
 
@@ -19,4 +19,10 @@ const ART: Record<ResId | 'sia' | 'exp' | 'time', string> = {
 };
 
 export type IconId = keyof typeof ART;
-export const icon = (id: IconId) => `<svg class="ico" viewBox="0 0 48 48" aria-hidden="true">${ART[id]}</svg>`;
+/** 그림 파일(SpriteCook, public/art/icon-<자원>.png)이 있는 자원. 시아코인 · 경험치 · 시간은 SVG 그대로 */
+const FILES: readonly IconId[] = ['rice', 'wood', 'stone', 'cake', 'coin', 'special'];
+const BASE = `${import.meta.env.BASE_URL}art/`;
+export const icon = (id: IconId) =>
+  FILES.includes(id)
+    ? `<img class="ico" src="${BASE}icon-${id}.png" alt="" aria-hidden="true" draggable="false">`
+    : `<svg class="ico" viewBox="0 0 48 48" aria-hidden="true">${ART[id]}</svg>`;

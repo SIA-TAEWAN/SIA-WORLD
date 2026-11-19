@@ -4,7 +4,8 @@ import { BUILDING, recipeOf, upgradable, type BuildingType } from '../data/build
 import type { ResidentId } from '../data/residents';
 import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, stored, workplace, type Building, type VillageState } from '../game/rules';
 import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
-import { BUBBLE, CELL, bubbleKey, makeTextures, texKey, texSize } from './art';
+import { ART_FILES, BUBBLE, CELL, GLOWS, bubbleKey, makeTextures, texKey, texSize } from './art';
+import { skyAt } from './sky';
 
 /**
  * 마을 화면: 격자 땅 + 건물. 서버가 준 상태를 그리기만 한다 (계산은 서버, 미리 보기는 game/rules.ts).
@@ -27,6 +28,8 @@ export interface SceneHooks {
   placeChanged(p: { x: number; y: number; ok: boolean }): void;
   /** 짓기 · 업그레이드가 끝날 시각이 지났다 → 서버에 다시 묻는다 */
   due(): void;
+  /** 지금 한국 시각 (0 ~ 24, 서버 시각 기준. 하늘 색) */
+  hour(): number;
 }
 
 export interface SceneData {
@@ -67,6 +70,8 @@ interface View {
   /** 생산 보너스를 받고 있다는 표시 (정자 · 잔치) */
   boost: Phaser.GameObjects.Text;
   bubble: Phaser.GameObjects.Image;
+  /** 밤에 켜지는 등불 빛 (없으면 null) */
+  glow: Phaser.GameObjects.Image | null;
   sig: string;
 }
 
@@ -89,6 +94,14 @@ export class VillageScene extends Phaser.Scene {
   private unit = 1;
   private zoom = 0.82;
   private ground!: Phaser.GameObjects.Graphics;
+  /** 땅 위: 바닥 무늬(그림 파일) · 체크 무늬와 외곽선 */
+  private grass: Phaser.GameObjects.TileSprite | null = null;
+  private groundTop!: Phaser.GameObjects.Graphics;
+  /** 그림 파일로 불러온 텍스처 이름 */
+  private files = new Set<string>();
+  /** 하늘 색 (마을 전체에 곱하기로 덮는다) · 등불의 세기 */
+  private tint!: Phaser.GameObjects.Rectangle;
+  private glowLevel = 0;
   private trees!: Phaser.GameObjects.Container;
   private landStage = -1;
   private views = new Map<string, View>();
@@ -120,13 +133,24 @@ export class VillageScene extends Phaser.Scene {
     this.zodiacUrl = data.zodiacUrl;
   }
 
+  preload() {
+    const base = `${import.meta.env.BASE_URL}art/`;
+    this.load.on('filecomplete', (key: string) => this.files.add(key));
+    // 못 불러온 그림은 코드 그림으로 채운다 (makeTextures)
+    this.load.on('loaderror', () => undefined);
+    for (const k of ART_FILES) this.load.image(k, `${base}${k}.png`);
+  }
+
   create() {
-    makeTextures(this);
+    makeTextures(this, this.files);
+    const big = (GRID_MAX + 120) * CELL;
+    this.tint = this.add.rectangle(-60 * CELL, -60 * CELL, big, big, 0xffffff, 0).setOrigin(0, 0).setDepth(70000).setBlendMode(Phaser.BlendModes.MULTIPLY);
     // 숲 무늬: 무늬 한 장의 경계가 NEAR0 에 맞게 깐다 (무늬 속 나무는 가장자리에 걸치지 않는다)
     const f0 = (NEAR0 - FOREST_PAD) * CELL;
     const fw = (NEAR1 - NEAR0 + FOREST_PAD * 2) * CELL;
     this.add.tileSprite(f0, f0, fw, fw, 'forest').setOrigin(0, 0).setDepth(-11);
     this.ground = this.add.graphics().setDepth(-10);
+    this.groundTop = this.add.graphics().setDepth(-9);
     this.trees = this.add.container(0, 0).setDepth(-5);
     this.ghostTile = this.add.graphics();
     this.ghostImg = this.add.image(0, 0, texKey('paddy', 1)).setOrigin(0, 1).setAlpha(0.8);
@@ -177,6 +201,7 @@ export class VillageScene extends Phaser.Scene {
       if (seen.has(id)) continue;
       v.box.destroy();
       v.bubble.destroy();
+      v.glow?.destroy();
       this.views.delete(id);
     }
     this.syncWalkers();
@@ -428,12 +453,18 @@ export class VillageScene extends Phaser.Scene {
     g.fillStyle(MATGO.matDark, 1).fillRect(NEAR0 * CELL, NEAR0 * CELL, (NEAR1 - NEAR0) * CELL, (NEAR1 - NEAR0) * CELL);
     const l = x0 * CELL;
     const w = size * CELL;
-    // 땅: 아래 두께 + 체크 무늬 + 굵은 외곽선
+    // 땅: 아래 두께 + (풀밭 무늬) + 체크 무늬 + 굵은 외곽선
     g.fillStyle(COLOR.outline, 1).fillRoundedRect(l - 6, l - 6 + 12, w + 12, w + 12, 18);
     g.fillStyle(TABLE.matgo, 1).fillRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
-    g.fillStyle(MATGO.matLight, 1);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if ((x + y) % 2 === 0) g.fillRoundedRect(l + x * CELL + 3, l + y * CELL + 3, CELL - 6, CELL - 6, 10);
-    g.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
+    const hasGrass = this.files.has('tile-grass');
+    if (hasGrass) {
+      this.grass ??= this.add.tileSprite(0, 0, 1, 1, 'tile-grass').setOrigin(0, 0).setDepth(-9.5).setTileScale(CELL / 192, CELL / 192);
+      this.grass.setPosition(l - 2, l - 2).setSize(w + 4, w + 4);
+    }
+    const top = this.groundTop.clear();
+    top.fillStyle(MATGO.matLight, hasGrass ? 0.35 : 1);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if ((x + y) % 2 === 0) top.fillRoundedRect(l + x * CELL + 3, l + y * CELL + 3, CELL - 6, CELL - 6, 10);
+    top.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
     // 땅 밖: 나무 (자리는 좌표로 정해 늘 같다)
     this.trees.removeAll(true);
     for (let y = NEAR0; y < NEAR1; y++) {
@@ -441,7 +472,11 @@ export class VillageScene extends Phaser.Scene {
         if (x >= x0 - 1 && x <= x0 + size && y >= x0 - 1 && y <= x0 + size) continue;
         const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
         if (h % 3 !== 0) continue;
-        this.trees.add(this.add.image(x * CELL + (h % 17) - 8, y * CELL + ((h >> 5) % 17) - 8, 'tree').setOrigin(0, 0).setDisplaySize(CELL, CELL));
+        if (this.files.has(texKey('tree', 1))) {
+          // 그림 파일의 나무 (마을 안 장식물과 같은 그림, 조금 어둡게)
+          const img = this.add.image(x * CELL + (h % 17) - 8 + CELL / 2, (y + 1) * CELL + ((h >> 5) % 17) - 8, texKey('tree', 1)).setOrigin(0.5, 1).setTint(0xd6e8d6);
+          this.trees.add(img.setDisplaySize(CELL * 0.95, (CELL * 0.95 * img.height) / img.width));
+        } else this.trees.add(this.add.image(x * CELL + (h % 17) - 8, y * CELL + ((h >> 5) % 17) - 8, 'tree').setOrigin(0, 0).setDisplaySize(CELL, CELL));
       }
     }
   }
@@ -462,7 +497,7 @@ export class VillageScene extends Phaser.Scene {
       const box = this.add.container(0, 0, [img, bar, label, tag, badge, boost]);
       const bubble = this.add.image(0, 0, bubbleKey(b.type, recipeOf(b.type)?.out ?? null) ?? 'bubble-rice').setOrigin(0.5, 1).setDisplaySize(BUBBLE, BUBBLE + 10).setVisible(false);
       this.tweens.add({ targets: bubble, angle: { from: -7, to: 7 }, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      v = { box, img, bar, label, badge, tag, boost, bubble, sig: '' };
+      v = { box, img, bar, label, badge, tag, boost, bubble, glow: null, sig: '' };
       this.views.set(b.id, v);
     }
     if (v.sig === sig) return;
@@ -472,6 +507,19 @@ export class VillageScene extends Phaser.Scene {
     // 길은 바닥에 깔린다 (다른 것보다 늘 아래)
     v.box.setPosition(b.x * CELL, b.y * CELL).setDepth(d.kind === 'road' ? 1 + b.y : (b.y + d.h) * CELL);
     v.bubble.setPosition((b.x + d.w / 2) * CELL, b.y * CELL + 18).setDepth(40000 + b.y);
+    // 밤의 등불 빛
+    const from = GLOWS[b.type];
+    const lit = from !== undefined && b.state !== 'building' && lookOf(b.level) >= from;
+    if (lit && !v.glow) v.glow = this.add.image(0, 0, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(70001);
+    if (!lit && v.glow) {
+      v.glow.destroy();
+      v.glow = null;
+    }
+    if (v.glow) {
+      const r = (b.type === 'lantern' ? 1.5 : d.w > 1 ? 1.3 : 1.6) * d.w * CELL;
+      // 등불은 등이 달린 높이, 건물은 앞쪽 가운데
+      v.glow.setPosition((b.x + d.w / 2) * CELL, b.type === 'lantern' ? b.y * CELL - 4 : (b.y + d.h * 0.62) * CELL).setDisplaySize(r, r).setAlpha(this.glowLevel).setVisible(this.glowLevel > 0.02);
+    }
     const lv = upgradable(b.type) && b.state !== 'building';
     v.badge.setText(String(b.level)).setVisible(lv);
     v.tag.setVisible(lv);
@@ -510,11 +558,22 @@ export class VillageScene extends Phaser.Scene {
         v.bubble.setDisplaySize(BUBBLE * k, (BUBBLE + 10) * k);
       }
     }
+    this.updateSky();
     // 끝날 시각이 지난 건물이 있으면 서버에 묻는다 (2초에 한 번까지)
     if (due && now - this.dueAsked > 2000) {
       this.dueAsked = now;
       this.hooks.due();
     }
+  }
+
+  /** 하늘 색 · 등불 (200ms 마다) */
+  private updateSky() {
+    const sky = skyAt(this.hooks.hour());
+    this.tint.setFillStyle(sky.color, sky.alpha);
+    if (Math.abs(sky.glow - this.glowLevel) < 0.005) return;
+    this.glowLevel = sky.glow;
+    const pulse = 0.85 + Math.sin(this.time.now / 600) * 0.15;
+    for (const v of this.views.values()) v.glow?.setAlpha(sky.glow * pulse).setVisible(sky.glow > 0.02);
   }
 
   update(_t: number, dt: number) {

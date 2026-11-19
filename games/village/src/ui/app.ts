@@ -1,4 +1,5 @@
 import { loadSound, type SoundModule } from '../net/world';
+import { audioCtx, isVillSound, playVill, type VillSound } from './vsound';
 
 export const app = document.getElementById('app')!;
 export const stage = document.getElementById('stage')!;
@@ -30,7 +31,7 @@ export function toast(msg: string, ms = 2200) {
   setTimeout(() => t.remove(), ms);
 }
 
-// ---------- 효과음: SIA WORLD 공용(shared/sound.js). 마을 전용 소리는 9단계에서 더한다 (지금은 있는 이름만 쓴다) ----------
+// ---------- 효과음: SIA WORLD 공용(shared/sound.js) + 마을 전용(vsound.ts, 코드로 만든 소리) ----------
 let shared: SoundModule | null = null;
 const waiting: (() => void)[] = [];
 void loadSound().then(
@@ -40,8 +41,21 @@ void loadSound().then(
   },
   () => undefined,
 );
-export type SfxName = 'click' | 'toggle' | 'coin' | 'chip' | 'win' | 'tankBuild' | 'survLevel' | 'fold';
-export const sfx = (name: SfxName, opts?: { volume?: number; rate?: number }) => shared?.play(name, opts);
+export type SfxName = 'click' | 'toggle' | 'coin' | 'chip' | 'win' | 'fold' | VillSound;
+export const sfx = (name: SfxName, opts?: { volume?: number; rate?: number }) => {
+  if (!isVillSound(name)) return shared?.play(name, opts);
+  // 마을 소리: 공용 설정을 따르고, 첫 입력 전에는 내지 않는다
+  if (!shared || shared.isMuted() || !unlocked) return;
+  const mod = shared;
+  playVill(name, (n) => mod.bgmFileUrl(n), opts?.volume);
+};
+let unlocked = false;
+const unlock = () => {
+  unlocked = true;
+  audioCtx();
+};
+window.addEventListener('pointerdown', unlock, { passive: true, capture: true });
+window.addEventListener('keydown', unlock, { capture: true });
 export const sound = {
   get on() {
     return shared ? !shared.isMuted() : true;
@@ -49,8 +63,23 @@ export const sound = {
   set(on: boolean) {
     shared?.setMuted(!on);
   },
+  get bgmOn() {
+    return shared ? shared.isBgmOn() : true;
+  },
+  get unlocked() {
+    return unlocked;
+  },
   whenReady(fn: () => void) {
     if (shared) fn();
     else waiting.push(fn);
+  },
+  onChange(fn: () => void) {
+    sound.whenReady(() => {
+      shared!.onMuteChange(fn);
+      shared!.onBgmChange(fn);
+    });
+  },
+  bgmFile(name: string): Promise<string | null> {
+    return shared ? shared.bgmFileUrl(name) : Promise.resolve(null);
   },
 };

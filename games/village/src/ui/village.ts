@@ -12,6 +12,8 @@ import { ApiError, LOCAL_MODE, type Ranking, type VillageApi, type Visit } from 
 import { worldHome, zodiacFace, zodiacFull } from '../net/world';
 import { VillageScene, type SceneData, type SceneHooks } from '../scenes/VillageScene';
 import { texKey } from '../scenes/art';
+import { kstHour, skyAt } from '../scenes/sky';
+import { music } from './music';
 import { duration, esc, num, screen, sfx, sound, stage, toast } from './app';
 import { DPR } from './dpr';
 import { icon } from './icons';
@@ -230,7 +232,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       const old = prev.buildings.find((v) => v.id === b.id);
       if (old && (old.state === 'building' || old.state === 'upgrading') && b.state === 'done') {
         toast(old.state === 'building' ? `${BUILDING[b.type].name} 완성!` : `${BUILDING[b.type].name} 레벨 ${b.level}!`);
-        sfx('tankBuild');
+        sfx('villDone');
       }
     }
     // 새 주민 · 친밀도 단계
@@ -239,7 +241,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       const old = prev.residents.find((v) => v.id === r.id);
       if (!old) {
         toast(`${d.nick}${josa(d.nick, '이', '가')} 이사 왔어요! 🎉`, 3000);
-        sfx('win');
+        sfx('villWelcome');
       } else if (affLevel(r.affinity) > affLevel(old.affinity)) {
         const lv = affLevel(r.affinity);
         toast(lv >= 5 && r.gifted && !old.gifted ? `${d.nick}${josa(d.nick, '과', '와')} 단짝이 됐어요! 선물이 보관함에 들어왔어요 🎁` : `${d.nick}${josa(d.nick, '과', '와')} 더 친해졌어요 (♥${lv})`, 3200);
@@ -411,7 +413,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       (r) => {
         apply(r.state);
         scene?.harvested(ids, r.harvest.per);
-        if (Object.keys(r.harvest.per).length > 0) sfx('coin');
+        if (Object.keys(r.harvest.per).length > 0) sfx('villHarvest');
         if (r.harvest.lost > 0) toast(`창고가 가득 차서 ${num(r.harvest.lost)}개는 담지 못했어요`, 2800);
         else if (r.harvest.rooster > 0) toast(`${RESIDENT.rooster.nick} 덕분에 오늘의 첫 수확이 ${r.harvest.rooster}% 더 많아요! 🐔`, 2800);
       },
@@ -700,7 +702,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       const id = d.upgrade;
       bt.disabled = true;
       void act(() => api.upgrade(id), (s) => {
-        sfx('tankBuild');
+        sfx('villBuild');
         apply(s);
       });
     } else if (d.store) {
@@ -720,7 +722,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       const n = craftN;
       bt.disabled = true;
       void act(() => api.craft(id, n), (s) => {
-        sfx('tankBuild');
+        sfx('villBuild');
         apply(s);
       });
     } else if (d.sell) {
@@ -750,7 +752,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       const q = state.requests.find((v) => v.slot === slot);
       bt.disabled = true;
       void act(() => api.requestDone(slot), (r) => {
-        sfx('coin');
+        sfx('villRequest');
         if (q?.resident) {
           toast(`${RESIDENT[q.resident].nick}: 고마워요! 엽전 ${num(q.coin)}닢 · 경험치 ${num(q.exp)}`, 2600);
           scene?.say(q.resident, '고마워요! ♥');
@@ -830,7 +832,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     void act(
       () => (movingId ? (kept ? api.place(movingId, x, y) : api.move(movingId, x, y)) : api.build(type, x, y).then((r) => r.state)),
       (s) => {
-        sfx(movingId ? 'chip' : 'tankBuild');
+        sfx(movingId ? 'chip' : 'villBuild');
         stopPlacing();
         apply(s);
         // 길은 이어서 놓는다 (더 놓을 수 있고 값이 있으면)
@@ -862,7 +864,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       return;
     }
     void act(() => api.claimGoal(), (s) => {
-      sfx('win');
+      sfx('villRequest');
       toast('목표 달성! 보상을 받았어요');
       apply(s);
     });
@@ -871,7 +873,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── 레벨업 ─────────────────────────
 
   function levelUp(from: number, to: number) {
-    sfx('survLevel');
+    sfx('villLevel');
     const opened: string[] = [];
     for (const d of BUILDINGS) {
       if (isReward(d.id)) continue;
@@ -906,9 +908,16 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
 
   // ───────────────────────── Phaser ─────────────────────────
 
+  /** 지금 한국 시각 (서버 시각). 테스트 모드는 ?hour=21 로 정할 수 있다 */
+  const hourParam = LOCAL_MODE ? new URLSearchParams(location.search).get('hour') : null;
+  function hourNow(): number {
+    return hourParam !== null && Number.isFinite(Number(hourParam)) ? Number(hourParam) : kstHour(api.now());
+  }
+
   const hooks: SceneHooks = {
     state: () => viewState ?? state,
     now: () => api.now(),
+    hour: hourNow,
     tapBuilding(id) {
       sfx('click');
       if (viewState) {
@@ -988,6 +997,10 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── 주기적으로 ─────────────────────────
 
   if (LOCAL_MODE) window.__village = { state, api, scene: null, game: null };
+  // 배경음: 낮 곡 / 밤 곡 (하늘 색과 같은 때에 바꾼다)
+  const pickTrack = () => music.play(skyAt(hourNow()).phase === 'night' ? 'night' : 'day');
+  pickTrack();
+  setInterval(pickTrack, 30000);
   // 랭킹 창(로비 · 다른 게임)의 [구경]으로 들어왔으면 그 마을부터 보여 준다:  ?visit=<사용자 id>
   const wantVisit = new URLSearchParams(location.search).get('visit');
   if (wantVisit && wantVisit !== user.id) setTimeout(() => startVisit(wantVisit), 600);

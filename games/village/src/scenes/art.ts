@@ -3,7 +3,12 @@ import { BUILDING, BUILDINGS, isGift, isMonument, upgradable, type BuildingType 
 import { COLOR, MATGO, RACE, ROULETTE, TABLE } from '../theme';
 
 /**
- * 임시 그림 (코드로 그린다. DESIGN.md: 굵은 갈색 외곽선 · 밝은 단색 · 흐린 그림자 없음. 색은 shared/theme.js 의 값만).
+ * 그림 파일 (SpriteCook, public/art/<이름>.png): 장면이 먼저 불러오고, 못 불러온 이름만 아래 코드 그림으로 채운다.
+ * 원본 시트와 만드는 법은 games/village/art/build.py · spritecook-assets.json.
+ */
+
+/**
+ * 대신 쓰는 그림 (코드로 그린다. DESIGN.md: 굵은 갈색 외곽선 · 밝은 단색 · 흐린 그림자 없음. 색은 shared/theme.js 의 값만).
  * 정식 그림 목록은 games/village/ASSETS.md — 9단계에서 SpriteCook 그림으로 바꾼다 (같은 이름의 텍스처를 그림 파일로 먼저 채우면 된다).
  */
 
@@ -23,6 +28,15 @@ const LINE = 3;
 export const texKey = (type: BuildingType, look: number) => `b-${type}-${upgradable(type) ? look : 1}`;
 /** 건물 그림의 크기 (장면 좌표) */
 export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + RISE * w });
+
+/** 그림 파일로 먼저 채우는 텍스처 이름 (public/art/<이름>.png) */
+export const ART_FILES: string[] = [
+  ...BUILDINGS.flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
+  'site-1', 'site-2', 'tile-grass',
+  ...['rice', 'wood', 'stone', 'cake', 'special'].map((r) => `bubble-${r}`),
+];
+/** 밤에 빛나는 것: 종류 → 모습 몇부터 (등불 · 사당의 돌 등 · 잔치 마당의 초롱 · 정자의 등 · 기와집의 등) */
+export const GLOWS: Partial<Record<BuildingType, number>> = { lantern: 1, shrine: 1, feast: 1, pavilion: 2, house: 3, hall: 3 };
 
 function box(g: G, x: number, y: number, w: number, h: number, r: number, fill: number, line = LINE) {
   g.fillStyle(fill, 1).fillRoundedRect(x, y, w, h, r);
@@ -452,7 +466,7 @@ function make(scene: Phaser.Scene, key: string, w: number, h: number, draw: (g: 
 export const BUBBLE = 64;
 export const BUBBLE_RES = ['rice', 'wood', 'stone', 'cake', 'special'] as const;
 
-export function makeTextures(scene: Phaser.Scene) {
+export function makeTextures(scene: Phaser.Scene, files: Set<string> = new Set()) {
   let gifts = 0;
   for (const d of BUILDINGS) {
     const sz = texSize(d.w, d.h);
@@ -483,7 +497,36 @@ export function makeTextures(scene: Phaser.Scene) {
     dot(g, x + 38, y + 34, 6, MATGO.matLight, 0);
   };
   make(scene, 'tree', CELL, CELL, (g) => outTree(g, 0, 0));
+  // 밤의 등불 빛: 가운데가 밝은 노란 동그라미 (더하기로 겹친다)
+  make(scene, 'glow', 128, 128, (g) => {
+    for (let i = 10; i >= 1; i--) g.fillStyle(COLOR.primaryLight, 0.06 + (10 - i) * 0.012).fillCircle(64, 64, i * 6.2);
+  });
   // 더 먼 숲: FOREST_CELLS 칸 한 장을 되풀이해 깐다 (나무는 가장자리에 걸치지 않게, 1배로 그려 가볍게)
+  // 나무 그림 파일이 있으면 그것을 찍어 만든다 (땅 밖 가까운 나무와 같은 그림)
+  if (!scene.textures.exists('forest') && files.has(texKey('tree', 1))) {
+    const T = FOREST_CELLS * CELL;
+    // TileSprite 는 DynamicTexture 를 못 쓰므로 캔버스 텍스처에 그린다
+    const ct = scene.textures.createCanvas('forest', T, T);
+    if (ct) {
+      const c = ct.getContext();
+      c.fillStyle = `#${MATGO.matDark.toString(16).padStart(6, '0')}`;
+      c.fillRect(0, 0, T, T);
+      const src = scene.textures.get(texKey('tree', 1)).getSourceImage() as HTMLImageElement;
+      const tw = CELL * 0.95;
+      const th = (tw * src.height) / src.width;
+      c.filter = 'brightness(0.88) saturate(0.9)';
+      for (let y = 0; y < FOREST_CELLS; y++) {
+        for (let x = 0; x < FOREST_CELLS; x++) {
+          const h = ((x * 73856093) ^ (y * 19349663) ^ 0x5bd1e995) >>> 0;
+          if (h % 3 !== 0) continue;
+          const ox = Math.min(T - tw - 2, Math.max(2, x * CELL + (h % 17) - 8));
+          const oy = Math.min(T - th - 2, Math.max(2, y * CELL + ((h >> 5) % 17) - 8 - CELL * 0.4));
+          c.drawImage(src, ox, oy, tw, th);
+        }
+      }
+      ct.refresh();
+    }
+  }
   if (!scene.textures.exists('forest')) {
     const T = FOREST_CELLS * CELL;
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
