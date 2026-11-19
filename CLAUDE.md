@@ -1,0 +1,69 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+SIA WORLD: a set of browser games behind one login, served as a static site on GitHub Pages with Supabase (Postgres + Realtime + Edge Functions) as the backend. All user-facing text is Korean. Visual design must follow `DESIGN.md` and the shared tokens in `shared/theme.css` / `shared/theme.js` (edit both together).
+
+## Layout
+
+- `index.html` — login + lobby (no build step). Game list, per-game open/closed flags and online counts.
+- `shared/*.js` — plain ES modules (auth, supabase client, games list, wallet, room, presence, ranking dialog, sound, zodiac art). **Loaded at runtime by every game, not bundled**, so all games share one login session. A change here affects every game.
+- Five separate Vite + TypeScript packages, each with its own `package.json`, `node_modules` and tests:
+  - `games/` — 맞고 and 카지노 (poker, holdem, blackjack, roulette). Shared shell in `games/lib/`.
+  - `games/tank`, `games/running` (dev port 5290), `games/volleyball` (5291), `games/survival` (5292).
+- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 046).
+- `supabase/functions/_shared/` — card-game rule engines and round runner; `game-action` and `game-timeout` are the Edge Functions.
+- Each newer game keeps its spec in `games/<name>/PRD.md` and art notes in `ASSETS.md`.
+
+## Commands
+
+Run inside the package directory (`games`, `games/tank`, `games/running`, `games/volleyball`, `games/survival`):
+
+```bash
+npm run dev            # Vite dev server
+npm test               # vitest run
+npm run build          # tsc --noEmit && vite build
+npx vitest run <file>  # one test file;  add  -t "<name>"  for one test
+```
+
+- In `games/`, vitest's root is `supabase/functions/_shared` (see `games/vitest.config.ts`): the rule-engine tests live there, e.g. `cd games && npx vitest run matgo.test.ts`.
+- `games/survival`: `npm run balance -- <runs> [dps|chars|maps|endless] [map,map]` runs the balance sweep (9 worker processes, minutes long). `games/tank` has `npm run balance` / `stats`.
+- `?local=1` on a dev server (localhost only) runs 레이스/배구/서바이벌 without login or Supabase. Survival also accepts `?t=<sec>`, `?mode=endless`, `?cleared=<maps>`.
+- There is no Deno on the dev machine; engine code is tested through Node/vitest only.
+
+## Deploy
+
+Pushing to `main` runs `.github/workflows/deploy.yml`: test + build every package → `supabase db push` (**runs new migrations against production**) → deploy both Edge Functions → publish Pages. A failing test in any package blocks the whole deploy. Check with `gh run watch`.
+
+Consequences:
+- Never edit a migration that has already been pushed; add a new numbered file. Later files redefine functions with `create or replace` — the latest definition wins, so find it before changing a function.
+- Migration numbers must be unique and pushed in order; when several changes are in flight, don't push a commit history that contains someone's unfinished migration.
+- Client and SQL/Edge Function changes that depend on each other must ship in the same push.
+
+## Architecture notes
+
+### Card games (맞고·카지노)
+
+- An engine implements the `Engine` interface in `_shared/engine.ts`: pure TypeScript, JSON-serialisable state, all randomness through the passed `Rng`, relative imports with `.ts` extensions (Deno rule). The same engine files are imported by the browser.
+- `_shared/runner.ts` (`Runner`) loads room/seats/deck through the `Store` interface (`store.ts` = Supabase, tests use an in-memory store), applies actions, plays AI seats, saves with optimistic locking on `game_decks.version`, publishes `game_states.public_state` + per-seat `game_private.hand`, and settles through SQL RPCs (`apply_round_result`, `finish_round`). Clients receive state via Realtime `postgres_changes`.
+- pg_cron `cron_tick()` calls `game-timeout` for passed deadlines, left seats, and stuck rooms.
+- `games/lib/shell.ts` is the shared table UI for all five card games: room screen, state intake, the replay director (`runQueue`: plays new `events` one step at a time, optional `rewind` frames from `*-rewind.ts`), cut-ins, result box → table cleanup (`tidy`) → ready. Each game supplies a `GameUI` object in its `main.ts`. Changes to the shell must be checked against every game, not just the one being worked on.
+- 맞고 runs locally first (`_shared/solo.ts`, `games/lib/solo-play.ts`): state carries `solo: { seed, n }` and `soloStep` makes every step deterministic on server and client. One human + AI: the client plays the whole round and sends only the human actions (`replay`); the server re-plays them, playing the AI itself, and settles. Two humans: each client applies its own action immediately, broadcasts it on the room channel, and sends `act` with `n` in the background; the server stays the referee. Both clients hold the full state (deck and opponent hand) — this trade-off was chosen deliberately by the owner.
+
+### Standalone games
+
+- 탱크, 레이스, 배구 use Supabase Realtime Presence/Broadcast rooms with a host-authoritative, fixed-timestep simulation kept in pure modules with vitest tests.
+- 서바이벌 is single-player: the simulation runs on the device and the server validates results in SQL (`survival_start` / `survival_finish`: elapsed-time check, per-second caps, kill floor, overlap check). The validation constants exist twice — `_survival_const` in SQL and `LIMITS` in `games/survival/src/game/progress.ts` — and `tests/sql.test.ts` reads the migration files to assert they match. A new migration that redefines these functions must be added to the list that test reads.
+
+### SQL conventions
+
+- State-changing access goes through `security definer` functions with `set search_path`, explicit `revoke`/`grant`, and RLS on tables; clients do not write tables directly.
+- Shared economy: `wallets` (게임 화폐 + 시아코인 via `_grant_sia_coin`), `app_settings` (`game_open:<id>` flags, lobby caps), `user_sessions` (one session per account).
+- Adding a game means: an entry in `shared/games.js`, a `game_open:<id>` row, a channel in `shared/presence.js` `GAME_CHANNELS`, a ranking tab in `shared/ranking-dialog.js`, and build/copy steps in `deploy.yml`.
+
+## Working conventions in this repo
+
+- Commit messages are Korean, conventional-prefix style (`feat(matgo): …`).
+- Generated art comes from SpriteCook; asset ids are recorded in each game's `spritecook-assets.json`, and code-drawn fallbacks are kept for when an image fails to load.
