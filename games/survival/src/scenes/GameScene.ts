@@ -34,12 +34,14 @@ const mix = (a: number, b: number, t: number) => {
 };
 /**
  * 헬 모드의 색 (DESIGN.md 의 --pink 와 어두운 갈색 --outline 만 섞어 쓴다. 그림에 곱해진다):
- *   바닥·장애물은 붉고 어둡게, 요괴는 붉은 기운, 보스는 더 짙게. 내 캐릭터는 그대로라 더 잘 보인다
+ *   바닥·장애물만 검붉게 어둡게, 요괴·보스는 약한 붉은 기운만. 내 캐릭터·투사체·아이템·숫자는 그대로라 대비로 더 잘 보인다
  */
 const HELL_TINT = {
-  ground: mix(mix(COLOR.pink, COLOR.white, 0.35), COLOR.outline, 0.3),
-  enemy: mix(COLOR.pink, COLOR.white, 0.45),
-  boss: mix(COLOR.pink, COLOR.white, 0.25),
+  // 바닥·장애물: 검붉은 갈색으로 크게 어둡게 (밝은 캐릭터·요괴가 대비로 살아난다)
+  ground: mix(COLOR.pink, COLOR.outline, 0.52),
+  // 요괴·보스: 아주 약한 붉은 기운만 (윤곽·눈은 또렷하게)
+  enemy: mix(COLOR.pink, COLOR.white, 0.78),
+  boss: mix(COLOR.pink, COLOR.white, 0.7),
 };
 
 /** 같은 종류의 그림을 미리 만들어 두고 돌려 쓰는 묶음 (프레임마다 새로 만들지 않는다) */

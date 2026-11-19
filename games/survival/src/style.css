@@ -274,19 +274,15 @@ em > .ico { margin: 0 auto; }
 .m-underworld .mood i:last-child { top: 66%; animation-delay: -8s; animation-direction: alternate-reverse; }
 @keyframes fog { from { transform: translateX(-12%); } to { transform: translateX(12%); } }
 /*
- * 헬 모드의 분위기 (맵 분위기 위, HUD 아래): 붉고 어두운 색조 + 가장자리가 어둡게 타들어 가는 테 + 불씨·재.
- * 색은 --pink 와 어두운 갈색(--outline)만 쓴다. 가운데(내 캐릭터 둘레)는 밝게 남겨 캐릭터가 잘 보인다
+ * 헬 모드의 분위기 (맵 분위기 위, HUD 아래): 화면 전체를 덮는 색조는 없다 — 바닥·장애물만 그림 쪽(GameScene 의 HELL_TINT)에서 검붉게 어둡게 한다.
+ * 여기서는 가장자리만 어둡게 타들어 가는 테(가운데 절반은 비워 둔다) + 그 위의 불씨·재. 색은 --pink 와 어두운 갈색(--outline)만 쓴다
  */
 .hellmood { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden;
-  background:
-    radial-gradient(ellipse 78% 62% at 50% 52%, transparent 36%, color-mix(in srgb, var(--outline) 34%, transparent) 70%, color-mix(in srgb, var(--outline) 74%, transparent) 100%),
-    linear-gradient(color-mix(in srgb, var(--outline) 42%, transparent), transparent 26%, transparent 72%, color-mix(in srgb, color-mix(in srgb, var(--pink) 55%, var(--outline)) 42%, transparent));
+  background: radial-gradient(ellipse 80% 66% at 50% 52%, transparent 52%, color-mix(in srgb, var(--outline) 40%, transparent) 80%, color-mix(in srgb, var(--outline) 82%, transparent) 100%);
   animation: hell-breathe 3.6s ease-in-out infinite; }
-/* 전체에 깔리는 붉은 갈색 (곱하기): 바닥·요괴가 붉고 어두워진다 */
-.hellmood::before { content: ''; position: absolute; inset: 0; background: color-mix(in srgb, var(--pink) 42%, color-mix(in srgb, var(--outline) 46%, var(--white))); mix-blend-mode: multiply; opacity: 0.72; }
-/* 맵의 밝은 안개·빛줄기는 헬에서 옅게 (어두운 분위기를 밝히지 않게) */
+@keyframes hell-breathe { 0%, 100% { opacity: 0.88; } 50% { opacity: 1; } }
+/* 맵의 안개·빛줄기는 헬에서 옅게 (어두운 바닥을 밝히지 않게) */
 .game.hell .mood { opacity: 0.3; }
-@keyframes hell-breathe { 0%, 100% { opacity: 0.86; } 50% { opacity: 1; } }
 /* 불씨: 아래에서 위로 흔들리며 올라가다 꺼진다 · 재: 위에서 천천히 내려온다 */
 .embers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .embers i { position: absolute; bottom: -3%; width: calc(var(--u) * 9); height: calc(var(--u) * 9); border-radius: 50%; background: var(--primary); box-shadow: 0 0 calc(var(--u) * 10) calc(var(--u) * 3) var(--pink); opacity: 0; animation: ember-rise 4s linear infinite; }
@@ -304,7 +300,6 @@ em > .ico { margin: 0 auto; }
   100% { transform: translate(calc(var(--u) * 40), 104vh) rotate(300deg); opacity: 0; }
 }
 /* 헬 판의 HUD: 시계·보스 바를 헬 색으로 */
-.game.hell .clock { color: color-mix(in srgb, var(--pink) 28%, var(--white)); }
 .game.hell .clock.final { color: var(--pink); }
 .game.hell .bossbar .track { background: color-mix(in srgb, var(--outline) 78%, var(--pink)); }
 .game.hell .bossbar span { color: var(--primary); }
