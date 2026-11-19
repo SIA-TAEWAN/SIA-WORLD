@@ -17,6 +17,9 @@ export const BUILDING_IDS = [
   'road',
   // 주민이 친밀도 선물로 주는 전용 장식물 (지을 수 없다: 보관함으로 들어온다)
   'gift_rat', 'gift_ox', 'gift_tiger', 'gift_rabbit', 'gift_dragon', 'gift_snake', 'gift_horse', 'gift_sheep', 'gift_monkey', 'gift_rooster', 'gift_dog', 'gift_pig',
+  // 기념물: 다른 게임의 성과로 열린다 (지을 수 없다: 보관함으로 들어온다. 조건은 monuments.ts)
+  'mon_tank1', 'mon_tank10', 'mon_volley1', 'mon_volley10', 'mon_race1', 'mon_race2', 
+  'mon_surv_field', 'mon_surv_bamboo', 'mon_surv_palace', 'mon_surv_underworld', 'mon_def3', 'mon_def6', 'mon_def9', 'mon_def12', 'mon_matgo', 'mon_casino',
 ] as const;
 export type BuildingType = (typeof BUILDING_IDS)[number];
 
@@ -92,6 +95,22 @@ const ROWS: Row[] = [
   ['gift_rooster', 'deco', '꼬꼬댁의 횃대', '꼬꼬댁이 준 선물', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 12, [99]],
   ['gift_dog', 'deco', '멍뭉이의 집', '멍뭉이가 준 선물', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 12, [99]],
   ['gift_pig', 'deco', '꿀꿀이의 복주머니', '꿀꿀이가 준 선물', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 12, [99]],
+  ['mon_tank1', 'deco', '낡은 대포', '시아탱크 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
+  ['mon_tank10', 'deco', '황금 대포', '시아탱크 10승 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 40, [99]],
+  ['mon_volley1', 'deco', '배구 네트', '시아배구 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
+  ['mon_volley10', 'deco', '우승 깃발', '시아배구 10승 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 40, [99]],
+  ['mon_race1', 'deco', '출발선 깃발', '시아레이스 완주 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
+  ['mon_race2', 'deco', '결승선 아치', '시아레이스 기록 도전 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 30, [99]],
+  ['mon_surv_field', 'deco', '도깨비 석상', '들판을 지켜 낸 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
+  ['mon_surv_bamboo', 'deco', '구미호 석상', '대나무 숲을 지켜 낸 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 30, [99]],
+  ['mon_surv_palace', 'deco', '이무기 석상', '달빛 궁궐을 지켜 낸 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 40, [99]],
+  ['mon_surv_underworld', 'deco', '염라 석상', '황천길을 지켜 낸 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 50, [99]],
+  ['mon_def3', 'deco', '망루', '시아디펜스 3지역 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
+  ['mon_def6', 'deco', '성문', '시아디펜스 6지역 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
+  ['mon_def9', 'deco', '누각', '시아디펜스 9지역 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 45, [99]],
+  ['mon_def12', 'deco', '십이지 탑', '시아디펜스 12지역 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 60, [99]],
+  ['mon_matgo', 'deco', '화투 평상', '시아맞고 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
+  ['mon_casino', 'deco', '행운의 분수', '시아카지노 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
 ];
 
 export const BUILDINGS: BuildingDef[] = ROWS.map(([id, kind, name, desc, w, h, rice, wood, stone, coin, sia, upStone, buildSec, product, rate, buildExp, cap, points, unlock]) => ({
@@ -104,6 +123,9 @@ export const isBuildingType = (t: unknown): t is BuildingType => typeof t === 's
 export const upgradable = (t: BuildingType) => BUILDING[t].kind === 'main' || BUILDING[t].kind === 'special';
 /** 선물 장식물인가 (지을 수 없다) */
 export const isGift = (t: BuildingType) => t.startsWith('gift_');
+export const isMonument = (t: BuildingType) => t.startsWith('mon_');
+/** 지을 수 없고 받아서만 생기는 것 (주민 선물 · 기념물) */
+export const isReward = (t: BuildingType) => isGift(t) || isMonument(t);
 
 /** 가공: 재료를 넣고 기다리면 물건이 나온다 (방앗간 · 장독대). SQL 의 _village_recipes */
 export interface Recipe {

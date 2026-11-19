@@ -1,11 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { STAT_IDS, noStats, type GameStats, type StatId } from '../data/monuments';
 import { CONST, LEVEL_EXP, RES_IDS } from '../data/balance';
 import { isBuildingType, type BuildingType } from '../data/buildings';
 import { isResidentId, type ResidentId } from '../data/residents';
 import { GOALS } from '../data/goals';
 import {
   RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, praiseGive, praiseLeft, prosperityOf, refresh, rename,
-  requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
+  grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
   type HarvestResult, type VillageState,
 } from '../game/rules';
 import { worldSupabase } from './world';
@@ -115,6 +116,8 @@ export interface VillageApi {
   praise(userId: string): Promise<{ state: VillageState; visit: Visit }>;
   /** 마을 이름 바꾸기 */
   rename(name: string): Promise<VillageState>;
+  /** [기념물] 화면: 조건을 다시 보고, 다른 게임의 기록(stats)과 함께 돌려준다 */
+  monuments(): Promise<{ state: VillageState; stats: GameStats }>;
 }
 
 export interface Store {
@@ -141,7 +144,7 @@ const LOCAL_KEY = 'siavillage:local';
  * 이 기기에만 저장하는 마을. fast: 시간을 그 배수로 빨리 돌린다 (개발용 ?fast=60 → 1초가 1분).
  * 빨리 돌린 시간은 저장해 두므로 새로 고쳐도 뒤로 가지 않는다.
  */
-export function createLocalApi(store: Store, realNow: () => number = () => Date.now(), fast = 1, me = { id: 'local', name: '시아' }): VillageApi {
+export function createLocalApi(store: Store, realNow: () => number = () => Date.now(), fast = 1, me = { id: 'local', name: '시아' }, stats: GameStats = noStats()): VillageApi {
   interface Saved {
     state: VillageState;
     seq: number;
@@ -205,7 +208,17 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     kind: 'local',
     now,
     async load() {
-      return run((s) => settle(s, now())).state;
+      return run((s, d) => {
+        settle(s, now());
+        grantMonuments(s, stats, now(), () => `local-${++d.seq}`);
+      }).state;
+    },
+    async monuments() {
+      const r = run((s, d) => {
+        settle(s, now());
+        grantMonuments(s, stats, now(), () => `local-${++d.seq}`);
+      });
+      return { state: r.state, stats: { ...stats } };
     },
     async build(type, x, y) {
       const r = run((s, d) => build(s, type, x, y, now(), `local-${++d.seq}`));
@@ -384,7 +397,19 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
       return { state: cleanState(d), visit: cleanVisit(d.visit) };
     },
     rename: async (name) => cleanState(await call('village_rename', { p_name: name })),
+    async monuments() {
+      const d = await call('village_monuments');
+      return { state: cleanState(d), stats: cleanStats(d.stats) };
+    },
   };
+}
+
+/** 서버가 준 게임 기록을 다듬는다 (없는 값은 0) */
+export function cleanStats(raw: unknown): GameStats {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const out = noStats();
+  for (const k of STAT_IDS) out[k] = Math.max(0, Math.floor(Number(r[k]) || 0));
+  return out;
 }
 
 let api: VillageApi | null = null;
@@ -394,7 +419,13 @@ export async function getApi(user: { id: string; name: string }): Promise<Villag
     const store = browserStore();
     seedLocal(store);
     const fast = Math.max(1, Math.min(100000, Number(params.get('fast')) || 1));
-    return (api = createLocalApi(store, undefined, fast, user));
+    // 다른 게임의 기록은 주소로 정한다:  ?mon=tank_wins:10,surv_field:1  (없으면 조금씩 해 본 것으로)
+    const stats = noStats();
+    for (const part of (params.get('mon') ?? 'tank_wins:3,volley_wins:12,race_plays:1,surv_field:1,matgo_wins:1').split(',')) {
+      const [k, v] = part.split(':');
+      if ((STAT_IDS as readonly string[]).includes(k)) stats[k as StatId] = Math.max(0, Math.floor(Number(v) || 0));
+    }
+    return (api = createLocalApi(store, undefined, fast, user, stats));
   }
   return (api = createSupabaseApi(await worldSupabase(), undefined, undefined, user.id));
 }

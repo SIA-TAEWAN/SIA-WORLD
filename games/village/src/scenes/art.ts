@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BUILDING, BUILDINGS, isGift, upgradable, type BuildingType } from '../data/buildings';
+import { BUILDING, BUILDINGS, isGift, isMonument, upgradable, type BuildingType } from '../data/buildings';
 import { COLOR, MATGO, RACE, ROULETTE, TABLE } from '../theme';
 
 /**
@@ -358,6 +358,35 @@ function drawGift(g: G, i: number) {
   dot(g, 48, BASE - 58, 5, COLOR.primary, 2);
 }
 
+/** 기념물: 돌 받침 위의 상징 (게임마다 모양이 다르다) */
+const plinth = (g: G, gold = false) => box(g, 12, BASE - 14, 72, 14, 5, gold ? COLOR.primary : ROULETTE.winter);
+const MON: Partial<Record<BuildingType, (g: G) => void>> = {
+  mon_tank1(g) { plinth(g); box(g, 26, BASE - 34, 44, 20, 6, COLOR.inkSoft); poly(g, [40, BASE - 44, 76, BASE - 62, 82, BASE - 52, 48, BASE - 30], COLOR.lineSoft); dot(g, 34, BASE - 16, 9, COLOR.inkSoft, 2.5); dot(g, 62, BASE - 16, 9, COLOR.inkSoft, 2.5); },
+  mon_tank10(g) { plinth(g, true); box(g, 26, BASE - 34, 44, 20, 6, COLOR.primaryDeep); poly(g, [40, BASE - 44, 76, BASE - 62, 82, BASE - 52, 48, BASE - 30], COLOR.primary); dot(g, 34, BASE - 16, 9, COLOR.primary, 2.5); dot(g, 62, BASE - 16, 9, COLOR.primary, 2.5); dot(g, 80, BASE - 66, 6, COLOR.white, 2); },
+  mon_volley1(g) { plinth(g); seg(g, 20, BASE - 14, 20, BASE - 70, 5); seg(g, 76, BASE - 14, 76, BASE - 70, 5); box(g, 20, BASE - 68, 56, 24, 2, COLOR.white, 2.5); g.lineStyle(1.5, COLOR.lineSoft, 1); for (let x = 30; x < 76; x += 10) g.lineBetween(x, BASE - 66, x, BASE - 46); g.lineBetween(22, BASE - 56, 74, BASE - 56); dot(g, 48, BASE - 26, 10, COLOR.primaryLight, 2.5); },
+  mon_volley10(g) { plinth(g, true); seg(g, 30, BASE - 14, 30, BASE - 84, 5); poly(g, [32, BASE - 84, 78, BASE - 72, 32, BASE - 52], COLOR.cardRed); dot(g, 46, BASE - 70, 6, COLOR.primary, 2); dot(g, 30, BASE - 86, 5, COLOR.primary, 2); },
+  mon_race1(g) { plinth(g); seg(g, 30, BASE - 14, 30, BASE - 84, 5); box(g, 32, BASE - 84, 44, 30, 2, COLOR.white, 2.5); g.fillStyle(COLOR.outline, 1); for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) if ((i + j) % 2 === 0) g.fillRect(32 + i * 11, BASE - 84 + j * 10, 11, 10); },
+  mon_race2(g) { plinth(g); box(g, 14, BASE - 70, 10, 58, 3, RACE.trackDark); box(g, 72, BASE - 70, 10, 58, 3, RACE.trackDark); box(g, 10, BASE - 86, 76, 20, 8, COLOR.cardRed); box(g, 24, BASE - 81, 48, 10, 3, COLOR.white, 2); },
+  mon_surv_field(g) { plinth(g); statue(g, COLOR.lineSoft); poly(g, [36, BASE - 74, 40, BASE - 90, 46, BASE - 76], COLOR.primary, 2); poly(g, [50, BASE - 76, 56, BASE - 90, 60, BASE - 74], COLOR.primary, 2); },
+  mon_surv_bamboo(g) { plinth(g); statue(g, COLOR.white); poly(g, [32, BASE - 70, 34, BASE - 92, 46, BASE - 78], COLOR.white, 2.5); poly(g, [50, BASE - 78, 62, BASE - 92, 64, BASE - 70], COLOR.white, 2.5); for (const x of [18, 78]) dot(g, x, BASE - 30, 8, COLOR.pink, 2); },
+  mon_surv_palace(g) { plinth(g); g.lineStyle(13, COLOR.outline, 1).beginPath().arc(48, BASE - 44, 22, Math.PI * 0.2, Math.PI * 1.9).strokePath(); g.lineStyle(8, COLOR.win, 1).beginPath().arc(48, BASE - 44, 22, Math.PI * 0.2, Math.PI * 1.9).strokePath(); dot(g, 68, BASE - 56, 11, COLOR.win, 2.5); dot(g, 71, BASE - 59, 2.5, COLOR.outline, 0); dot(g, 48, BASE - 44, 7, COLOR.primary, 2); },
+  mon_surv_underworld(g) { plinth(g, true); statue(g, COLOR.cardRed); box(g, 28, BASE - 92, 40, 12, 3, COLOR.outline, 0); box(g, 36, BASE - 100, 24, 10, 3, COLOR.outline, 0); seg(g, 22, BASE - 86, 22, BASE - 74, 3); seg(g, 74, BASE - 86, 74, BASE - 74, 3); },
+  mon_def3(g) { for (const x of [26, 66]) seg(g, x, BASE, x - 2, BASE - 56, 6); seg(g, 26, BASE - 20, 66, BASE - 36, 3); seg(g, 66, BASE - 20, 26, BASE - 36, 3); box(g, 16, BASE - 68, 64, 14, 3, COLOR.emptyLine); roof(g, 48, BASE - 96, 70, 26, 2); },
+  mon_def6(g) { box(g, 8, BASE - 50, 80, 50, 4, ROULETTE.winter); box(g, 34, BASE - 34, 28, 34, 12, COLOR.inkSoft); g.fillStyle(ROULETTE.winter, 1).fillRect(34, BASE - 3, 28, 3); roof(g, 48, BASE - 78, 92, 28, 3); },
+  mon_def9(g) { box(g, 10, BASE - 16, 76, 16, 4, ROULETTE.winter); for (const x of [20, 46, 70]) box(g, x, BASE - 52, 7, 36, 2, COLOR.cardRed, 2.5); roof(g, 48, BASE - 76, 88, 26, 3); box(g, 30, BASE - 96, 36, 14, 3, COLOR.panel); roof(g, 48, BASE - 112, 54, 18, 3); },
+  mon_def12(g) { box(g, 14, BASE - 12, 68, 12, 4, COLOR.primary); [0, 1, 2, 3].forEach((i) => { const w = 60 - i * 12; box(g, 48 - w / 2 + 5, BASE - 30 - i * 24, w - 10, 20, 3, COLOR.panel, 2.5); roof(g, 48, BASE - 40 - i * 24, w + 6, 12, 3); }); dot(g, 48, BASE - 116, 6, COLOR.primary, 2); },
+  mon_matgo(g) { for (const x of [18, 72]) box(g, x, BASE - 16, 7, 16, 2, COLOR.inkSoft, 2); box(g, 8, BASE - 30, 80, 16, 5, COLOR.emptyLine); box(g, 20, BASE - 52, 18, 26, 3, COLOR.cardRed, 2.5); dot(g, 29, BASE - 40, 5, COLOR.white, 0); box(g, 42, BASE - 56, 18, 26, 3, COLOR.outline, 2.5); dot(g, 51, BASE - 46, 6, COLOR.primary, 0); box(g, 62, BASE - 50, 18, 26, 3, COLOR.cardRed, 2.5); dot(g, 71, BASE - 36, 4, COLOR.pink, 0); },
+  mon_casino(g) { box(g, 8, BASE - 22, 80, 22, 10, ROULETTE.winter); box(g, 16, BASE - 18, 64, 10, 5, COLOR.teamA, 2); box(g, 42, BASE - 54, 12, 36, 4, COLOR.lineSoft); box(g, 28, BASE - 62, 40, 10, 5, ROULETTE.winter); dot(g, 48, BASE - 72, 9, COLOR.primary, 2.5); for (const [x, y] of [[26, BASE - 44], [70, BASE - 44], [20, BASE - 30], [76, BASE - 30]]) dot(g, x, y, 3.5, COLOR.teamA, 1.5); },
+};
+/** 석상의 몸 (서바이벌 보스 석상의 바탕) */
+function statue(g: G, fill: number) {
+  box(g, 30, BASE - 48, 36, 36, 10, fill);
+  dot(g, 48, BASE - 62, 19, fill);
+  dot(g, 41, BASE - 64, 3, COLOR.outline, 0);
+  dot(g, 55, BASE - 64, 3, COLOR.outline, 0);
+  seg(g, 42, BASE - 54, 54, BASE - 54, 3);
+}
+
 const MAIN: Partial<Record<BuildingType, (g: G, look: number) => void>> = {
   hall: drawHall, paddy: drawPaddy, house: drawHouse, lumber: drawLumber, storage: drawStorage, market: drawMarket, quarry: drawQuarry, mill: drawMill, jar: drawJar,
   pavilion: drawPavilion, feast: drawFeast, shrine: drawShrine,
@@ -430,7 +459,8 @@ export function makeTextures(scene: Phaser.Scene) {
     else if (isGift(d.id)) {
       const i = gifts++;
       make(scene, texKey(d.id, 1), sz.w, sz.h, (g) => drawGift(g, i));
-    } else make(scene, texKey(d.id, 1), sz.w, sz.h, (g) => DECO[d.id]?.(g));
+    } else if (isMonument(d.id)) make(scene, texKey(d.id, 1), sz.w, sz.h, (g) => MON[d.id]?.(g));
+    else make(scene, texKey(d.id, 1), sz.w, sz.h, (g) => DECO[d.id]?.(g));
   }
   for (const w of [1, 2]) {
     const sz = texSize(w, w);

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { noStats } from '../src/data/monuments';
+import { cleanStats } from '../src/net/api';
 import { ApiError, createLocalApi, createSupabaseApi, type RpcClient, type Store } from '../src/net/api';
 import { newVillage } from '../src/game/rules';
 
@@ -73,6 +75,23 @@ describe('테스트 모드: 랭킹 · 구경 · 칭찬 · 이름', () => {
     expect((await api.rename('달빛 마을')).profile.name).toBe('달빛 마을');
     await expect(api.rename('<b>')).rejects.toThrow('bad name');
     expect((await api.visit('me')).mine).toBe(true);
+  });
+});
+
+describe('테스트 모드: 기념물', () => {
+  it('들어올 때와 [기념물] 화면에서 열린다', async () => {
+    const t = Date.UTC(2026, 10, 20, 3, 0, 0);
+    const stats = { ...noStats(), tank_wins: 3, surv_field: 1 };
+    const api = createLocalApi(memory(), () => t, 1, { id: 'me', name: '나' }, stats);
+    const s = await api.load();
+    expect(s.monuments).toEqual(['mon_tank1', 'mon_surv_field']);
+    expect(s.buildings.filter((b) => b.state === 'stored').map((b) => b.type)).toEqual(['mon_tank1', 'mon_surv_field']);
+    stats.tank_wins = 10;
+    const r = await api.monuments();
+    expect(r.state.monuments).toEqual(['mon_tank1', 'mon_tank10', 'mon_surv_field']);
+    expect(r.stats.tank_wins).toBe(10);
+    expect((await api.load()).buildings.filter((b) => b.state === 'stored')).toHaveLength(3);
+    expect(cleanStats({ tank_wins: '4', def_3: 1, x: 9 })).toMatchObject({ tank_wins: 4, def_3: 1, volley_wins: 0 });
   });
 });
 

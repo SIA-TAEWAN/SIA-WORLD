@@ -242,3 +242,10 @@ button, input { font: inherit; color: inherit; }
 .visit-bar { position: absolute; left: 8px; right: 8px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 25; display: flex; gap: 10px; }
 .visit-bar .btn { flex: 1; }
 .visit-bar .btn.primary { flex: 1.6; }
+
+/* ---------- 8단계: 기념물 ---------- */
+.mon-game { margin: 8px 2px 0; font-size: 15px; font-weight: normal; color: var(--ink-soft); }
+.mon-game:first-child { margin-top: 0; }
+.b-row.mon.shut { background: var(--track); }
+.b-row.mon.shut .b-art { filter: brightness(0); opacity: 0.32; }
+.b-row.mon small { color: var(--accent); }

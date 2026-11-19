@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { MONUMENTS, STAT_IDS } from '../src/data/monuments';
+import { BUILDING, isMonument, isReward } from '../src/data/buildings';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, NAME_RE, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, pricePct } from '../src/data/balance';
@@ -11,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, 
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -161,12 +163,12 @@ describe('SQL의 권한 규칙', () => {
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]).filter((f, i, a) => a.indexOf(f) === i);
   /** 화면이 부르는 함수 (전부) */
   const OPEN = [
-    'village_assign', 'village_build', 'village_claim_goal', 'village_craft', 'village_daily_claim', 'village_expand', 'village_feast', 'village_harvest', 'village_move', 'village_place',
+    'village_assign', 'village_build', 'village_claim_goal', 'village_craft', 'village_daily_claim', 'village_expand', 'village_feast', 'village_harvest', 'village_monuments', 'village_move', 'village_place',
     'village_praise', 'village_rename', 'village_request_done', 'village_request_skip', 'village_sell', 'village_state', 'village_store', 'village_upgrade', 'village_visit',
   ];
 
   /** 읽기만 하는 함수 (구경 · 기념물 조건 보기) */
-  const READ_ONLY = ['village_visit', 'village_monuments'];
+  const READ_ONLY = ['village_visit'];
 
   it('안에서만 쓰는 함수(_로 시작)는 아무에게도 실행 권한을 주지 않는다', () => {
     const inner = fns.filter((f) => f.startsWith('_'));
@@ -219,7 +221,7 @@ describe('SQL의 권한 규칙', () => {
   });
 
   it('표는 RLS를 켜고 직접 쓰는 권한이 없다', () => {
-    for (const t of ['village_profiles', 'village_buildings', 'sia_coin_spends', 'village_residents', 'village_requests', 'village_praises']) {
+    for (const t of ['village_profiles', 'village_buildings', 'sia_coin_spends', 'village_residents', 'village_requests', 'village_praises', 'village_monuments']) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);
       expect(sql).toContain(`revoke all on public.${t} from anon, authenticated;`);
       expect(sql).toContain(`grant select on public.${t} to authenticated;`);
@@ -279,6 +281,31 @@ describe('SQL의 권한 규칙', () => {
     expect(b).toContain('update public.wallets set sia_coins = 10000 where user_id = me;');
     // 다른 함수는 관리자를 따로 보지 않는다
     for (const f of fns.filter((x) => x !== 'village_state')) expect(body(f), f).not.toContain('is_admin');
+  });
+
+  it('기념물 (053): 조건 표 · 다른 게임의 기록은 읽기만', () => {
+    expect(rows('_village_monument_defs')).toEqual(MONUMENTS.map((m, i) => [m.id, i + 1, m.stat, m.need]));
+    // 기념물은 지을 수 없는 장식물이고 (열리는 레벨 99), 번영도 점수가 장식물보다 높다
+    const best = Math.max(...BUILDINGS.filter((d) => d.kind === 'deco' && !isReward(d.id)).map((d) => d.points));
+    for (const m of MONUMENTS) {
+      const d = BUILDING[m.id];
+      expect([d.kind, d.unlock, d.coin, d.sia], m.id).toEqual(['deco', [99], 0, 0]);
+      expect(d.points, m.id).toBeGreaterThan(best);
+    }
+    expect(MONUMENTS.map((m) => m.id)).toEqual(BUILDINGS.filter((d) => isMonument(d.id)).map((d) => d.id));
+    const st = body('_village_game_stats');
+    for (const k of STAT_IDS) expect(st, k).toContain(`'${k}'`);
+    // 다른 게임의 표는 읽기만 한다. 디펜스 표는 없을 수도 있다
+    expect(st).not.toMatch(/\b(insert|update|delete)\b/);
+    expect(st).toContain("if to_regclass('public.defense_stages') is not null then");
+    for (const f of fns) if (f !== '_village_game_stats') expect(body(f), f).not.toMatch(/player_points|volleyball_rankings|race_records|survival_|wallet_logs|roulette_bets|defense_/);
+    // 여는 곳: 들어올 때와 [기념물] 화면
+    const sync = 'perform public._village_monument_sync(me, t);';
+    expect(fns.filter((f) => body(f).includes(sync)).sort()).toEqual(['village_monuments', 'village_state']);
+    const sy = body('_village_monument_sync').replace(/\s+/g, ' ');
+    expect(sy).toContain("insert into public.village_buildings (user_id, type, state, last_collected_at) values (p_user, d.monument, 'stored', p_now);");
+    expect(sy).toContain('coalesce((st ->> x.stat)::int, 0) >= x.need');
+    expect(body('_village_state_json')).toContain("'monuments', coalesce((");
   });
 
   it('닫힌 상태로 시작한다', () => {

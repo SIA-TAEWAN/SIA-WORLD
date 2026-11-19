@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, NAME_RE, PRICES, RES_IDS, RES_NAME, STORAGE_CAP, VIEW_W, kstDay, lookOf, pricePct, type ResId } from '../data/balance';
-import { BUILDING, BUILDINGS, isGift, recipeOf, upgradable, type BuildingType } from '../data/buildings';
+import { BUILDING, BUILDINGS, isReward, recipeOf, upgradable, type BuildingType } from '../data/buildings';
+import { GAMES, MONUMENTS, type GameStats } from '../data/monuments';
 import { goalText, josa } from '../data/goals';
 import { RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
@@ -77,7 +78,7 @@ declare global {
 }
 
 type Tab = 'main' | 'deco' | 'special' | 'stored';
-type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | { kind: 'residents' } | { kind: 'requests' } | { kind: 'ranking' } | null;
+type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | { kind: 'residents' } | { kind: 'requests' } | { kind: 'ranking' } | { kind: 'monuments' } | null;
 
 export function showVillage(api: VillageApi, user: { id: string; name: string }, first: VillageState) {
   let state = first;
@@ -245,10 +246,55 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         sfx('win');
       }
     }
+    const fresh = next.monuments.filter((m) => !prev.monuments.includes(m));
+    if (fresh.length) {
+      toast(`새 기념물: ${fresh.map((m) => BUILDING[m].name).join(' · ')} — 보관함에 들어왔어요 🗿`, 3500);
+      sfx('win');
+    }
     paintHud();
     if (!visiting) scene?.refresh();
     paintSheet();
     if (next.profile.level > prev.profile.level) levelUp(prev.profile.level, next.profile.level);
+  }
+
+  // ───────────────────────── 기념물 (PRD 9장) ─────────────────────────
+
+  let gameStats: GameStats | null = null;
+  let statsFailed = false;
+  function monumentsPanel(): string {
+    const head = `<div class="sheet-head"><h3>🗿 기념물</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+      <p class="soft note">SIA WORLD 의 다른 게임에서 성과를 내면 열려요. 열린 기념물은 보관함으로 들어오고, 번영도가 크게 올라요 · <b>${state.monuments.length}</b> / ${MONUMENTS.length}</p>`;
+    const groups = GAMES.map((g) => {
+      const rows = MONUMENTS.filter((m) => m.game === g.id)
+        .map((m) => {
+          const d = BUILDING[m.id];
+          const open = state.monuments.includes(m.id);
+          const b = state.buildings.find((v) => v.type === m.id);
+          const have = Math.min(m.need, gameStats?.[m.stat] ?? 0);
+          const side = !open ? `<span class="lock">🔒 ${gameStats && m.need > 1 ? `${have} / ${m.need}` : '잠김'}</span>`
+            : b?.state === 'stored' ? `<button class="btn small primary" data-take="${b.id}">놓기</button>`
+            : '<span class="lock on">마을에 세웠어요</span>';
+          return `<div class="b-row mon ${open ? '' : 'shut'}">${art(m.id, 1)}
+            <div class="b-tx"><b>${d.name} <small>🏵 +${d.points}</small></b><span class="soft">${m.cond}</span></div>${side}</div>`;
+        })
+        .join('');
+      return `<h4 class="mon-game">${g.icon} ${g.name}</h4>${rows}`;
+    }).join('');
+    return `${head}${statsFailed ? '<p class="soft empty">기록을 불러오지 못했어요</p>' : ''}<div class="b-list">${groups}</div>`;
+  }
+  function openMonuments() {
+    statsFailed = false;
+    openSheet({ kind: 'monuments' });
+    void api.monuments().then(
+      (r) => {
+        gameStats = r.stats;
+        apply(r.state);
+      },
+      () => {
+        statsFailed = true;
+        paintSheet();
+      },
+    );
   }
 
   // ───────────────────────── 랭킹 · 다른 마을 구경 · 칭찬 ─────────────────────────
@@ -412,6 +458,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       : sheet.kind === 'residents' ? residentsPanel(state)
       : sheet.kind === 'requests' ? requestsPanel(state)
       : sheet.kind === 'ranking' ? rankingPanel()
+      : sheet.kind === 'monuments' ? monumentsPanel()
       : buildingPanel(state.buildings.find((b) => b.id === (sheet as { id: string }).id)!);
     sheetEl.scrollTop = top;
     tickSheet();
@@ -434,7 +481,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         : '<p class="soft empty">보관함이 비어 있어요. 건물이나 장식물을 누르고 [보관]을 누르면 여기에 들어와요</p>';
     } else {
       // 장식 탭에는 길도 함께. 특별 탭에는 시아코인으로 사는 것 (땅 넓히기 · 특별 건물)
-      const list = BUILDINGS.filter((d) => d.id !== 'hall' && !isGift(d.id) && (tab === 'main' ? d.kind === 'main' : tab === 'special' ? d.kind === 'special' : d.kind === 'deco' || d.kind === 'road'));
+      const list = BUILDINGS.filter((d) => d.id !== 'hall' && !isReward(d.id) && (tab === 'main' ? d.kind === 'main' : tab === 'special' ? d.kind === 'special' : d.kind === 'deco' || d.kind === 'road'));
       rows = (tab === 'special' ? landRow() : '') + list
         .map((d) => {
           const have = countOf(state, d.id);
@@ -802,6 +849,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     else if (b.dataset.m === 'residents') openSheet({ kind: 'residents' });
     else if (b.dataset.m === 'requests') openSheet({ kind: 'requests' });
     else if (b.dataset.m === 'ranking') openRanking();
+    else if (b.dataset.m === 'monuments') openMonuments();
     else toast('준비 중이에요');
   });
 
@@ -826,7 +874,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     sfx('survLevel');
     const opened: string[] = [];
     for (const d of BUILDINGS) {
-      if (isGift(d.id)) continue;
+      if (isReward(d.id)) continue;
       const more = maxCount(d.id, to) - maxCount(d.id, from);
       if (more <= 0) continue;
       if (maxCount(d.id, from) === 0) opened.push(`<li><b>${d.kind === 'main' ? '새 건물' : d.kind === 'special' ? '특별 건물' : '새 장식'}</b> ${d.name}</li>`);

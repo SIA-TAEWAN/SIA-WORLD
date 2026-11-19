@@ -2,6 +2,7 @@ import {
   CAPPED, CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, NAME_RE, PRICES, RATE_MUL, RES_IDS, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC,
   kstDay, pricePct, type ResId, type Resources,
 } from '../data/balance';
+import { MONUMENTS, type GameStats } from '../data/monuments';
 import { BUILDING, isBuildingType, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { COUNTED, GOALS, type GoalDef } from '../data/goals';
 import {
@@ -117,6 +118,8 @@ export interface VillageState {
   residents: Resident[];
   requests: Ask[];
   daily: DailyTask[];
+  /** 열린 기념물 (PRD 9장) */
+  monuments: BuildingType[];
 }
 
 export type Cost = { rice: number; wood: number; stone: number; coin: number };
@@ -391,6 +394,7 @@ export function newVillage(now: number, hallId = 'hall'): VillageState {
     residents: [],
     requests: [],
     daily: [],
+    monuments: [],
   };
 }
 
@@ -843,7 +847,7 @@ const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.ma
 
 /** 서버(또는 기기 저장소)가 준 상태를 믿을 수 있는 모양으로 */
 export function cleanState(raw: unknown): VillageState {
-  const r = (raw ?? {}) as { profile?: Record<string, unknown>; buildings?: unknown; residents?: unknown; requests?: unknown; daily?: unknown; sia?: unknown; now?: unknown };
+  const r = (raw ?? {}) as { profile?: Record<string, unknown>; buildings?: unknown; residents?: unknown; requests?: unknown; daily?: unknown; sia?: unknown; now?: unknown; monuments?: unknown };
   const p = r.profile ?? {};
   const res = (p.resources ?? {}) as Record<string, unknown>;
   const resources = Object.fromEntries(RES_IDS.map((k) => [k, int(res[k], 0, 1e12, 0)])) as Resources;
@@ -901,6 +905,7 @@ export function cleanState(raw: unknown): VillageState {
     residents,
     requests,
     daily,
+    monuments: MONUMENTS.map((m) => m.id).filter((id) => Array.isArray(r.monuments) && r.monuments.includes(id)),
   };
 }
 
@@ -911,4 +916,24 @@ export const cloneState = (s: VillageState): VillageState => ({
   residents: s.residents.map((r) => ({ ...r })),
   requests: s.requests.map((q) => ({ ...q })),
   daily: s.daily.map((t) => ({ ...t })),
+  monuments: [...s.monuments],
 });
+
+// ───────────────────────── 8단계: 기념물 ─────────────────────────
+
+/**
+ * 조건을 채운 기념물을 연다 (PRD 9장): 보관함으로 들어온다. 한 번 열린 것은 다시 잠기지 않는다.
+ * stats: 서버가 다른 게임의 기록 표에서 읽은 값. idFor: 새 건물의 id. → 이번에 열린 기념물
+ */
+export function grantMonuments(s: VillageState, stats: Partial<GameStats>, now: number, idFor: (type: BuildingType) => string): Building[] {
+  const got: Building[] = [];
+  for (const m of MONUMENTS) {
+    if (s.monuments.includes(m.id) || (stats[m.stat] ?? 0) < m.need) continue;
+    s.monuments.push(m.id);
+    const b: Building = { id: idFor(m.id), type: m.id, level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0 };
+    s.buildings.push(b);
+    got.push(b);
+  }
+  s.monuments.sort((a, b) => MONUMENTS.findIndex((m) => m.id === a) - MONUMENTS.findIndex((m) => m.id === b));
+  return got;
+}

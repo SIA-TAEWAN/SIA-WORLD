@@ -6,6 +6,7 @@
 import { CONST, PRICES } from '../src/data/balance';
 import { BUILDINGS, RECIPES } from '../src/data/buildings';
 import { GOALS } from '../src/data/goals';
+import { MONUMENTS } from '../src/data/monuments';
 import { ASKS, REQ, RESIDENTS, TASKS } from '../src/data/residents';
 
 const q = (v: string) => `'${v}'`;
@@ -25,6 +26,8 @@ console.log('\n-- _village_asks');
 console.log(rows(ASKS.map((a, i) => [i + 1, q(a.res), a.base, a.grow, a.from, a.worth].join(', '))));
 console.log('\n-- _village_tasks');
 console.log(rows(TASKS.map((t, i) => [i + 1, q(t.task), t.from, t.base, t.per].join(', '))));
+console.log('\n-- _village_monuments');
+console.log(rows(MONUMENTS.map((m, i) => [q(m.id), i + 1, q(m.stat), m.need].join(', '))));
 console.log('\n-- _village_const');
 const consts: Record<string, number> = { ...CONST, req_slots: REQ.slots, req_wait_done: REQ.wait_done, req_wait_skip: REQ.wait_skip, shrine_pct: REQ.shrine_pct, dog_cap_sec: REQ.dog_cap_sec, sheep_range: REQ.sheep_range };
 console.log(Object.entries(consts).map(([k, v]) => `    when '${k}' then ${v}`).join('\n'));

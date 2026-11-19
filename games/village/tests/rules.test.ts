@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { GAMES, MONUMENTS, noStats } from '../src/data/monuments';
+import { grantMonuments } from '../src/game/rules';
 import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, RATE_MUL, RES_IDS, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, lookOf } from '../src/data/balance';
 import { BUILDING, BUILDINGS, RECIPES, isBuildingType, upgradable, type BuildingType } from '../src/data/buildings';
 import { ASKS, RESIDENTS, RESIDENT_IDS, TASKS, affLevel, mix, type ResidentId } from '../src/data/residents';
@@ -1368,5 +1370,40 @@ describe('7단계: 마을 이름 · 칭찬', () => {
     const c = cloneState(s);
     c.profile.praised.push('x');
     expect(s.profile.praised).toHaveLength(2);
+  });
+});
+
+// ───────────────────────── 8단계: 기념물 ─────────────────────────
+
+describe('8단계: 기념물', () => {
+  it('조건을 채운 것만 보관함으로 들어오고, 다시 주지 않는다', () => {
+    const s = newVillage(T0);
+    let n = 0;
+    const id = () => `m${++n}`;
+    expect(grantMonuments(s, noStats(), T0, id)).toEqual([]);
+    const got = grantMonuments(s, { ...noStats(), volley_wins: 10, tank_wins: 9, race_plays: 1, def_12: 1 }, T0, id);
+    expect(got.map((b) => [b.type, b.state])).toEqual([['mon_tank1', 'stored'], ['mon_volley1', 'stored'], ['mon_volley10', 'stored'], ['mon_race1', 'stored'], ['mon_def12', 'stored']]);
+    expect(s.monuments).toEqual(['mon_tank1', 'mon_volley1', 'mon_volley10', 'mon_race1', 'mon_def12']);
+    expect(grantMonuments(s, { ...noStats(), volley_wins: 10, tank_wins: 9, race_plays: 1, def_12: 1 }, T0, id)).toEqual([]);
+    // 기록이 줄어도 그대로. 나중에 열린 것은 차례대로 끼어든다
+    expect(grantMonuments(s, { ...noStats(), tank_wins: 10 }, T0, id).map((b) => b.type)).toEqual(['mon_tank10']);
+    expect(s.monuments).toEqual(['mon_tank1', 'mon_tank10', 'mon_volley1', 'mon_volley10', 'mon_race1', 'mon_def12']);
+    // 놓으면 번영도가 오른다
+    const b = s.buildings.find((v) => v.type === 'mon_def12')!;
+    const p0 = prosperityOf(s);
+    place(s, b.id, 6, 6, T0);
+    expect(prosperityOf(s)).toBe(p0 + 60);
+    // 지을 수는 없다
+    expect(why(() => build(s, 'mon_tank1', 8, 8, T0, 'x'))).toMatch(/locked|limit/);
+  });
+
+  it('서버 답의 기념물 목록', () => {
+    const s = cleanState({ monuments: ['mon_def3', 'nope', 'mon_tank1', 5] });
+    expect(s.monuments).toEqual(['mon_tank1', 'mon_def3']);
+    const c = cloneState(s);
+    c.monuments.push('mon_def6');
+    expect(s.monuments).toHaveLength(2);
+    expect(MONUMENTS).toHaveLength(16);
+    expect(new Set(MONUMENTS.map((m) => m.game)).size).toBe(GAMES.length);
   });
 });
