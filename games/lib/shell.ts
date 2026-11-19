@@ -577,6 +577,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   let closed = false;
   let lastEvent = -1;
   let resultShownFor = -1;
+  /** 결과 창을 띄우기로 했지만 (컷인이 끝나기를 기다리는 중) 아직 뜨지 않은 판 */
+  let resultDue = -1;
   let firstLoad = true;
   // 카드 연출 상태: 판마다 key → 면. 처음 화면을 그릴 때(새로고침 등)는 연출 없이 기록만
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -671,6 +673,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }
     return now - endWaitAt < 5000;
   };
+  /**
+   * 끝난 판의 결과 창이 아직 뜨지 않았다 (스톱 등 마지막 컷인을 보여 주는 중이거나, 곧 띄울 참).
+   * 이 사이에 레디 버튼이 먼저 나오면 결과를 보기도 전에 다음 판으로 넘어간 것처럼 보인다 → 결과 창이 뜬 뒤에 (확인 → 판 정리 →) 레디
+   */
+  const resultPending = () =>
+    !!st?.public_state?.result && room?.status === 'waiting' && !closed && (resultDue === st.round_no || resultShownFor !== st.round_no);
   let replaying = false;
   let inApply = false;
   /** 다시 불러올 때마다 늘린다: 그 전에 꺼내 둔 재생 항목은 적용하지 않는다 */
@@ -1082,7 +1090,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       return;
     }
     // 대기 중 (방금 끝난 판의 연출·결과를 다 보여 준 뒤에 레디 버튼)
-    if (replaying || queue.length || holdResult || awaitingResult()) {
+    if (replaying || queue.length || holdResult || awaitingResult() || resultPending()) {
       el.innerHTML = '';
       // 아직 결과 전 화면을 보여 주는 중이면 (AI·딜러 차례 연출) 게임의 안내 문구 ('○○ 차례…')
       if (c && c.pub && !(c.pub as { result?: unknown }).result && ui.replay && !spectator) {
@@ -1154,6 +1162,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const res = st?.public_state?.result;
     if (holdResult || !c || !res || room?.status !== 'waiting' || !st || resultShownFor === st.round_no) return;
     resultShownFor = st.round_no;
+    resultDue = st.round_no;
+    // 결과 창이 뜰 때까지는 레디 버튼 대신 안내 (스톱 → 결과 창 → 확인 → 판 정리 → 레디)
+    paintControls();
     // 카드 연출이 끝나고, 컷인('스톱!' 등)이 다 보인 뒤에 결과 창
     afterAnim(() => {
       const wait = cutinUntil - performance.now();
@@ -1181,6 +1192,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     setTimeout(finish, Math.max(0, Math.min(4000, ms)));
   };
   const showResultBox = (c: TableCtx) => {
+    resultDue = -1;
     const d = document.createElement('div');
     d.className = 'modal';
     // 내가 이긴 판이면 별·색종이
@@ -1272,6 +1284,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     // 레디 버튼이 이미 시작을 불렀을 수 있으니, 1.5초 뒤에도 아직 대기 중일 때만 (예: 마지막 사람이 레디 대신 나간 경우)
     setTimeout(() => {
       if (closed || room?.status !== 'waiting') return;
+      // 그 사이 레디가 풀렸으면 (판이 막 끝나 자리 정보가 늦게 온 경우 등) 부르지 않는다
+      const now = seats.filter((s) => s.user_id && !s.left_game);
+      if (!mySeatRow()?.ready || !now.length || !now.every((s) => s.ready)) {
+        autoStartKey = '';
+        return;
+      }
       void m.room.startRound(roomId).then((res) => !closed && local?.onStart(res), () => undefined);
     }, 1500);
   };
