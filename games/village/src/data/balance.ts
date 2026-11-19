@@ -49,6 +49,18 @@ export const CONST = {
   /** 장터 시세: 기준 값의 price_min_pct % 부터 price_span 가지 (80 ~ 130 %) */
   price_min_pct: 80,
   price_span: 51,
+  /** 정자: 둘레 pavilion_range 칸 안의 생산 건물이 pavilion_pct % 더 만든다 (정자 레벨마다 + pavilion_pct_per) */
+  pavilion_pct: 10,
+  pavilion_pct_per: 2,
+  pavilion_range: 1,
+  /** 잔치: 떡 feast_cake 개로 feast_sec 초(하루) 동안 마을 전체 생산 + feast_pct % (잔치 마당 레벨마다 + feast_pct_per). 열면 경험치 feast_exp */
+  feast_cake: 60,
+  feast_sec: 86400,
+  feast_pct: 20,
+  feast_pct_per: 2,
+  feast_exp: 30,
+  /** 보너스(잔치 등)로 더 쌓일 수 있는 여유: 건물에 쌓이는 양의 상한 = 12시간 분량 × (100 + bonus_room_pct) % */
+  bonus_room_pct: 40,
 } as const;
 
 /** 마을 레벨 n → n+1 에 필요한 경험치 (n = 1 … 29). 레벨이 오르면 경험치는 0부터 다시 센다 */
@@ -96,3 +108,7 @@ export const PRICES: { res: ResId; base: number; idx: number }[] = [
 export const kstDay = (ms: number) => Math.floor((ms + 9 * 3600_000) / 86400_000) - 20454;
 /** 그날의 시세 (%) */
 export const pricePct = (day: number, idx: number) => CONST.price_min_pct + ((((day * 7919 + idx * 104729 + 12345) % CONST.price_span) + CONST.price_span) % CONST.price_span);
+
+/** 땅 확장 (PRD 6장): n단계로 넓히는 값(시아코인)과 필요한 마을 레벨 (n = 1 … 6) */
+export const LAND_PRICE = [10, 20, 30, 50, 70, 100];
+export const LAND_NEED = [3, 6, 9, 13, 17, 22];

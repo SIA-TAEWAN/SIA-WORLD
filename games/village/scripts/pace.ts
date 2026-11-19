@@ -141,7 +141,7 @@ function chores() {
 
 function harvestAll() {
   tally('build', () => settle(s, now));
-  const ids = s.buildings.filter((b) => stored(b, now) >= 1).map((b) => b.id);
+  const ids = s.buildings.filter((b) => stored(s, b, now) >= 1).map((b) => b.id);
   if (ids.length > 0) tally('harvest', () => harvest(s, ids, now));
 }
 

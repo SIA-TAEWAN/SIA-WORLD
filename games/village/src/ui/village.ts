@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
-import { CAPPED, CONST, HALL_NEED, LEVEL_EXP, MARKET_LIMIT, PRICES, RES_IDS, RES_NAME, STORAGE_CAP, VIEW_W, kstDay, lookOf, pricePct, type ResId } from '../data/balance';
-import { BUILDING, BUILDINGS, isGift, recipeOf, upgradable, type BuildingKind, type BuildingType } from '../data/buildings';
+import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RES_IDS, RES_NAME, STORAGE_CAP, VIEW_W, kstDay, lookOf, pricePct, type ResId } from '../data/balance';
+import { BUILDING, BUILDINGS, isGift, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { goalText } from '../data/goals';
 import {
-  batchMax, buildCost, busyCount, canPay, countOf, goalStatus, hallLevel, market, maxCount, nextUnlock, ratePerHour, sellCoins, sellLeft, slots, storageCap, stored,
-  unitSec, upgradeCost, upgradeSec, type Building, type Cost, type VillageState,
+  batchMax, buildCost, busyCount, canPay, capSec, countOf, effRate, feasting, goalStatus, hallLevel, market, maxCount, nextUnlock, ratePct, sellCoins, sellLeft, slots,
+  storageCap, stored, unitSec, upgradeCost, upgradeSec, type Building, type Cost, type VillageState,
 } from '../game/rules';
 import { ApiError, LOCAL_MODE, type VillageApi } from '../net/api';
 import { worldHome, zodiacFace, zodiacFull } from '../net/world';
@@ -38,6 +38,11 @@ function reason(e: unknown, s: VillageState): string {
     'sell limit': '오늘 팔 수 있는 만큼을 넘어요',
     'bad count': '개수를 다시 정해 주세요',
     'cannot store': '마을 회관은 보관할 수 없어요',
+    'not enough coin': '시아코인이 모자라요. 다른 게임을 한 판 할 때마다 1코인을 받아요',
+    'max land': '땅을 끝까지 넓혔어요',
+    'no feast': '잔치 마당을 다 지어야 잔치를 열 수 있어요',
+    'feast active': '지금 잔치가 한창이에요',
+    'already spent': '이미 산 것이에요',
     'need login': '로그인이 필요해요',
   };
   return map[e.message] ?? '지금은 할 수 없어요';
@@ -49,6 +54,8 @@ const costHtml = (c: Partial<Cost>, have?: Record<ResId, number>) =>
   COST_KEYS.filter((k) => (c[k] ?? 0) > 0)
     .map((k) => `<span class="cost ${have && have[k] < c[k]! ? 'lack' : ''}">${icon(k)}${num(c[k]!)}</span>`)
     .join('');
+/** 시아코인 값 */
+const siaHtml = (n: number, have: number) => (n > 0 ? `<span class="cost sia ${have < n ? 'lack' : ''}">${icon('sia')}${num(n)}</span>` : '');
 
 declare global {
   interface Window {
@@ -56,13 +63,13 @@ declare global {
   }
 }
 
-type Sheet = { kind: 'build'; tab: BuildingKind | 'stored' } | { kind: 'building'; id: string } | null;
+type Tab = 'main' | 'deco' | 'special' | 'stored';
+type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | null;
 
 export function showVillage(api: VillageApi, user: { id: string; name: string }, first: VillageState) {
   let state = first;
   let scene: VillageScene | null = null;
   let game: Phaser.Game | null = null;
-  let siaCoins: number | null = null;
 
   const root = screen(
     `<div class="field" id="field"></div>
@@ -110,8 +117,9 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     $('#res').innerHTML =
       RES_IDS.filter((k) => k !== 'special' || p.resources.special > 0)
         .map((k) => `<div class="pill ${CAPPED.includes(k) && p.resources[k] >= cap ? 'full' : ''}" title="${RES_NAME[k]}">${icon(k)}<b>${num(p.resources[k])}</b></div>`)
-        .join('') + `<div class="cap">창고 ${num(cap)}</div>`;
-    $('#sia').textContent = siaCoins === null ? '-' : num(siaCoins);
+        .join('') + `<div class="cap">창고 ${num(cap)}</div>` + (feasting(state, api.now()) ? `<div class="cap feast" id="feasttx"></div>` : '');
+    $('#sia').textContent = num(state.sia);
+    tickHud();
     const g = goalStatus(state);
     const el = $('#goal');
     el.classList.toggle('done', !!g?.done);
@@ -119,6 +127,15 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       ? `<img src="${zodiacFace(GUIDE)}" alt="" /><span class="g-tx"><small>마을 목표</small><b>${esc(goalText(g.def))}</b></span>
          <span class="g-side">${g.done ? '<i class="tag">보상 받기</i>' : g.def.kind === 'upgrade' ? '' : `<i class="g-n">${num(g.have)}/${num(g.def.n)}</i>`}<span class="g-rw">${costHtml(g.def)}${g.def.exp ? `<span class="cost">${icon('exp')}${g.def.exp}</span>` : ''}</span></span>`
       : `<img src="${zodiacFace(GUIDE)}" alt="" /><span class="g-tx"><small>마을 목표</small><b>목표를 모두 해냈어요! 마을을 마음껏 꾸며 보세요</b></span>`;
+  }
+
+  /** 잔치의 남은 시간 */
+  function tickHud() {
+    const el = root.querySelector('#feasttx');
+    if (!el) return;
+    const left = state.profile.feastUntil - api.now();
+    if (left <= 0) return paintHud();
+    el.textContent = `🎉 잔치 +${state.profile.feastPct}% · ${duration(left / 1000)}`;
   }
 
   const paintSound = () => ($('#sound').textContent = sound.on ? '🔊' : '🔇');
@@ -231,10 +248,10 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     tickSheet();
   }
 
-  function buildMenu(tab: BuildingKind | 'stored'): string {
+  function buildMenu(tab: Tab): string {
     const p = state.profile;
     const kept = state.buildings.filter((b) => b.state === 'stored');
-    const tabs = ([['main', '건물'], ['deco', '장식'], ['stored', `보관함${kept.length ? ` ${kept.length}` : ''}`]] as const)
+    const tabs = ([['main', '건물'], ['deco', '장식'], ['special', '특별'], ['stored', `보관함${kept.length ? ` ${kept.length}` : ''}`]] as const)
       .map(([id, name]) => `<button data-tab="${id}" class="${tab === id ? 'sel' : ''}">${name}</button>`)
       .join('');
     let rows: string;
@@ -247,29 +264,56 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
             .join('')
         : '<p class="soft empty">보관함이 비어 있어요. 건물이나 장식물을 누르고 [보관]을 누르면 여기에 들어와요</p>';
     } else {
-      // 장식 탭에는 길도 함께. 특별 건물은 5단계에서 연다
-      const list = BUILDINGS.filter((d) => d.id !== 'hall' && !isGift(d.id) && (tab === 'main' ? d.kind === 'main' : d.kind === 'deco' || d.kind === 'road'));
-      rows = list
+      // 장식 탭에는 길도 함께. 특별 탭에는 시아코인으로 사는 것 (땅 넓히기 · 특별 건물)
+      const list = BUILDINGS.filter((d) => d.id !== 'hall' && !isGift(d.id) && (tab === 'main' ? d.kind === 'main' : tab === 'special' ? d.kind === 'special' : d.kind === 'deco' || d.kind === 'road'));
+      rows = (tab === 'special' ? landRow() : '') + list
         .map((d) => {
           const have = countOf(state, d.id);
           const max = maxCount(d.id, p.level);
           const next = nextUnlock(state, d.id);
           let side: string;
-          if (have < max) side = `<button class="btn small primary" data-build="${d.id}">${d.kind === 'main' ? '짓기' : '놓기'}</button>`;
+          if (have < max) side = `<button class="btn small primary" data-build="${d.id}">${d.kind === 'deco' || d.kind === 'road' ? '놓기' : '짓기'}</button>`;
           else if (next !== null && next > p.level) side = `<span class="lock">🔒 마을 레벨 ${next}</span>`;
           else side = '<span class="lock">모두 가졌어요</span>';
           const total = d.cap > 0 ? d.cap : Math.max(max, have);
           return `<div class="b-row ${have < max ? '' : 'off'}">
             ${art(d.id, 1)}
             <div class="b-tx"><b>${d.name} <small>${have}/${total}</small></b><span class="soft">${d.desc}</span>
-              <span class="costs">${costHtml(buildCost(d.id), p.resources)}${d.buildSec ? `<span class="cost">${icon('time')}${duration(d.buildSec)}</span>` : ''}${d.points ? `<span class="cost pts">번영도 +${d.points}</span>` : ''}</span></div>
+              <span class="costs">${siaHtml(d.sia, state.sia)}${costHtml(buildCost(d.id), p.resources)}${d.buildSec ? `<span class="cost">${icon('time')}${duration(d.buildSec)}</span>` : ''}${d.points ? `<span class="cost pts">번영도 +${d.points}</span>` : ''}</span></div>
             ${side}
           </div>`;
         })
         .join('');
     }
+    const note = tab === 'special' ? `<p class="soft sia-note">${icon('sia')} 시아코인 <b>${num(state.sia)}</b> · SIA WORLD 의 어느 게임이든 한 판을 끝낼 때마다 1코인을 받아요</p>` : '';
     return `<div class="sheet-head"><h3>🔨 짓기</h3><span class="soft">짓는 중 ${busyCount(state)}/${slots(state)}</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
-      <div class="seg wide">${tabs}</div><div class="b-list">${rows}</div>`;
+      <div class="seg wide">${tabs}</div>${note}<div class="b-list">${rows}</div>`;
+  }
+
+  /** 땅 넓히기 (특별 탭의 첫 줄) */
+  function landRow(): string {
+    const p = state.profile;
+    const stage = p.landStage;
+    const size = LAND_SIZES[stage];
+    if (stage >= LAND_SIZES.length - 1) return `<div class="b-row off"><span class="b-art land">${size}×${size}</span><div class="b-tx"><b>땅 넓히기</b><span class="soft">땅을 끝까지 넓혔어요</span></div><span class="lock">끝</span></div>`;
+    const next = LAND_SIZES[stage + 1];
+    const locked = p.level < LAND_NEED[stage];
+    return `<div class="b-row ${locked ? 'off' : ''}"><span class="b-art land">${next}×${next}</span>
+      <div class="b-tx"><b>땅 넓히기 <small>${stage}/6</small></b><span class="soft">${size}×${size} → ${next}×${next} 칸. 건물은 그 자리에 그대로 있어요</span>
+        <span class="costs">${siaHtml(LAND_PRICE[stage], state.sia)}</span></div>
+      ${locked ? `<span class="lock">🔒 마을 레벨 ${LAND_NEED[stage]}</span>` : `<button class="btn small primary" data-expand ${state.sia < LAND_PRICE[stage] ? 'disabled' : ''}>넓히기</button>`}</div>`;
+  }
+
+  /** 잔치 마당: 잔치 열기 */
+  function feastBox(b: Building): string {
+    const p = state.profile;
+    const pct = CONST.feast_pct + CONST.feast_pct_per * (b.level - 1);
+    if (feasting(state, api.now())) return `<p>🎉 잔치가 한창이에요! 마을 전체 생산 <b>+${p.feastPct}%</b></p><p class="live"><span data-live="feast"></span></p>`;
+    if (b.state !== 'done') return `<p class="soft">다 지으면 떡 ${CONST.feast_cake}개로 잔치를 열 수 있어요</p>`;
+    const lack = p.resources.cake < CONST.feast_cake;
+    return `<div class="up-box"><div class="up-tx"><b>잔치 열기</b><span class="costs"><span class="cost ${lack ? 'lack' : ''}">${icon('cake')}${CONST.feast_cake}</span><span class="cost">${icon('time')}하루</span></span>
+        <span class="soft">${lack ? '떡이 모자라요 (방앗간에서 만들어요)' : `하루 동안 마을 전체 생산 +${pct}%`}</span></div>
+      <button class="btn primary" data-feast ${lack ? 'disabled' : ''}>잔치 열기</button></div>`;
   }
 
   /** 장터: 오늘의 시세와 팔기 */
@@ -323,15 +367,20 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const lines: string[] = [];
     if (b.state === 'building' || b.state === 'upgrading') lines.push(`<p class="live"><span data-live="left"></span></p>`);
     if (d.product) {
-      lines.push(`<p>${icon(d.product)} 한 시간에 <b>${num(ratePerHour(b.type, b.level))}</b>개 · 최대 12시간 분량까지 쌓여요</p>`);
+      const pct = ratePct(state, b);
+      const bonus = [pct ? `정자 +${pct}%` : '', feasting(state, api.now()) ? `잔치 +${p.feastPct}%` : ''].filter(Boolean).join(' · ');
+      lines.push(`<p>${icon(d.product)} 한 시간에 <b>${num(effRate(state, b))}</b>개${bonus ? ` <small class="bonus">${bonus}</small>` : ''} · 최대 ${capSec(state) / 3600}시간 분량까지 쌓여요</p>`);
       if (b.state === 'done') lines.push(`<p class="live">지금 쌓인 양 <b data-live="stored"></b></p>`);
     }
+    if (b.type === 'pavilion') lines.push(`<p>둘레 ${CONST.pavilion_range}칸 안의 생산 건물이 <b>${CONST.pavilion_pct + CONST.pavilion_pct_per * (b.level - 1)}%</b> 더 만들어요${b.state === 'building' ? ' (다 지은 뒤부터)' : ''}</p>`);
+    if (b.type === 'feast') lines.push(feastBox(b));
+    if (b.type === 'shrine') lines.push('<p class="soft">마을의 상징이에요. 주민과 더 빨리 친해지고 번영도가 크게 올라요 (주민 · 랭킹이 열리면 힘을 내요)</p>');
     if (b.type === 'storage') lines.push(`<p>창고 용량 <b>+${num(STORAGE_CAP[b.level - 1])}</b></p>`);
     if (b.type === 'hall') lines.push(`<p>창고 용량 <b>${num(storageCap(state))}</b> · 동시에 짓기 <b>${slots(state)}</b>개 · 다른 건물은 레벨 <b>${b.level}</b>까지</p>`);
     if (b.type === 'house') lines.push('<p class="soft">주민은 곧 이사 와요 (준비 중)</p>');
     if (b.type === 'market') lines.push(marketBox());
     if (recipeOf(b.type)) lines.push(craftBox(b));
-    if (!upgradable(b.type)) lines.push(`<p class="soft">${d.desc}${d.points ? ` · 번영도 +${d.points}` : ''}</p>`);
+    if (b.type !== 'pavilion' && b.type !== 'feast' && b.type !== 'shrine' && !upgradable(b.type)) lines.push(`<p class="soft">${d.desc}${d.points ? ` · 번영도 +${d.points}` : ''}</p>`);
 
     let up = '';
     if (b.state === 'done' && upgradable(b.type)) {
@@ -344,7 +393,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         else if (busyCount(state) >= slots(state)) block = `짓는 중인 건물이 ${slots(state)}개예요`;
         else if (!canPay(p, c)) block = '자원이 모자라요';
         const gain = d.product
-          ? ` · 한 시간에 ${num(ratePerHour(b.type, b.level + 1))}개`
+          ? ` · 한 시간에 ${num(Math.floor((effRate(state, { ...b, level: b.level + 1 }))))}개`
           : b.type === 'storage'
             ? ` · 용량 +${num(STORAGE_CAP[b.level])}`
             : b.type === 'market'
@@ -370,7 +419,9 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (!b) return;
     const now = api.now();
     const st = sheetEl.querySelector('[data-live="stored"]');
-    if (st) st.textContent = `${num(stored(b, now))} / ${num(Math.floor((CONST.prod_cap_sec * ratePerHour(b.type, b.level)) / 3600))}`;
+    if (st) st.textContent = `${num(stored(state, b, now))} / ${num(Math.floor((capSec(state) * effRate(state, b)) / 3600))}`;
+    const fe = sheetEl.querySelector('[data-live="feast"]');
+    if (fe) fe.textContent = state.profile.feastUntil > now ? `${duration((state.profile.feastUntil - now) / 1000)} 남았어요` : '잔치가 끝났어요';
     const left = sheetEl.querySelector('[data-live="left"]');
     if (left && b.finishAt !== null) left.textContent = `${b.state === 'building' ? '짓는 중' : `레벨 ${b.level + 1}로 올리는 중`} · ${b.finishAt > now ? `${duration((b.finishAt - now) / 1000)} 남음` : '곧 끝나요'}`;
     const job = sheetEl.querySelector('[data-live="job"]');
@@ -392,7 +443,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (d.tab) {
       sfx('click');
       sheetEl.scrollTop = 0;
-      openSheet({ kind: 'build', tab: d.tab as BuildingKind | 'stored' });
+      openSheet({ kind: 'build', tab: d.tab as Tab });
     } else if (d.build) {
       sfx('click');
       startPlacing(d.build as BuildingType, null);
@@ -435,6 +486,22 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         sfx('coin');
         toast(`${RES_NAME[res as ResId]} ${num(n)}개를 팔아 엽전 ${num(r.sold)}닢을 받았어요`);
         apply(r.state);
+      });
+    } else if (d.expand !== undefined) {
+      bt.disabled = true;
+      void act(() => api.expand(), (s) => {
+        sfx('win');
+        const size = LAND_SIZES[s.profile.landStage];
+        toast(`땅이 ${size}×${size} 칸으로 넓어졌어요!`, 2600);
+        openSheet(null);
+        apply(s);
+      });
+    } else if (d.feast !== undefined) {
+      bt.disabled = true;
+      void act(() => api.feast(), (s) => {
+        sfx('win');
+        toast('잔치가 열렸어요! 하루 동안 마을 전체 생산이 늘어나요', 2800);
+        apply(s);
       });
     } else if (d.soon !== undefined) {
       sfx('click');
@@ -518,14 +585,16 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     sfx('survLevel');
     const opened: string[] = [];
     for (const d of BUILDINGS) {
-      if (isGift(d.id) || d.sia > 0) continue;
+      if (isGift(d.id)) continue;
       const more = maxCount(d.id, to) - maxCount(d.id, from);
       if (more <= 0) continue;
-      if (maxCount(d.id, from) === 0) opened.push(`<li><b>${d.kind === 'main' ? '새 건물' : '새 장식'}</b> ${d.name}</li>`);
+      if (maxCount(d.id, from) === 0) opened.push(`<li><b>${d.kind === 'main' ? '새 건물' : d.kind === 'special' ? '특별 건물' : '새 장식'}</b> ${d.name}</li>`);
       else opened.push(`<li>${d.name} +${more}채</li>`);
     }
     const hallUp = HALL_NEED.findIndex((l) => l > from && l <= to);
     if (hallUp >= 0) opened.push(`<li>마을 회관 레벨 ${hallUp + 2}</li>`);
+    const land = LAND_NEED.findIndex((l) => l > from && l <= to);
+    if (land >= 0 && land >= state.profile.landStage) opened.push(`<li>땅 넓히기 ${LAND_SIZES[land + 1]}×${LAND_SIZES[land + 1]} (시아코인)</li>`);
     stage.querySelector('.dim')?.remove();
     const dim = document.createElement('div');
     dim.className = 'dim';
@@ -614,20 +683,15 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
 
   if (LOCAL_MODE) window.__village = { state, api, scene: null, game: null };
   paintHud();
-  void api.siaCoins().then((n) => {
-    siaCoins = n;
-    paintHud();
-  });
-  // 판의 남은 시간 · 쌓인 양
-  setInterval(tickSheet, 500);
+  // 판의 남은 시간 · 쌓인 양, 잔치의 남은 시간
+  setInterval(() => {
+    tickSheet();
+    tickHud();
+  }, 500);
   // 다른 기기에서 한 일이나 놓친 완공을 반영한다: 1분마다, 그리고 화면으로 돌아왔을 때
   setInterval(() => document.visibilityState === 'visible' && void reload(), 60000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     void reload();
-    void api.siaCoins().then((n) => {
-      siaCoins = n;
-      paintHud();
-    });
   });
 }

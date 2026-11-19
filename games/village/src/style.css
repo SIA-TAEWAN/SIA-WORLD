@@ -171,3 +171,13 @@ button, input { font: inherit; color: inherit; }
 .stepper b { min-width: 44px; text-align: center; color: var(--accent); font-size: 16px; }
 .stepper .btn { padding: 2px 9px; }
 .b-info p small { font-size: 12px; }
+
+/* ---------- 5단계: 시아코인 · 땅 넓히기 · 잔치 ---------- */
+.cost.sia { color: var(--sky-deep); }
+.cost.sia.lack { color: var(--lose); }
+.sia-note { display: flex; align-items: center; gap: 4px; margin: 0 2px 8px; flex-wrap: wrap; }
+.sia-note b { font-weight: normal; color: var(--sky-deep); font-size: 15px; }
+.sia-note .ico { font-size: 18px; }
+.b-art.land { display: grid; place-items: center; background: var(--table-matgo); border: var(--line) solid var(--outline); border-radius: var(--radius-item); font-size: 15px; color: var(--white); text-shadow: 0 2px 0 var(--outline); width: 52px; height: 52px; margin: 2px; }
+.res-row .cap.feast { margin-left: 0; background: var(--pink); }
+.b-info .bonus { color: var(--pink); }

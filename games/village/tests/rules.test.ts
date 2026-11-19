@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, RATE_MUL, RES_IDS, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, lookOf } from '../src/data/balance';
+import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, RATE_MUL, RES_IDS, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, lookOf } from '../src/data/balance';
 import { BUILDING, BUILDINGS, RECIPES, upgradable, type BuildingType } from '../src/data/buildings';
 import { GOALS, goalText, josa } from '../src/data/goals';
 import {
-  RuleError, addExp, batchMax, build, claimGoal, cleanState, cloneState, countOf, craft, goalStatus, harvest, landRect, maxCount, move, newVillage, place, placeError, priceOf,
+  RuleError, addExp, batchMax, build, claimGoal, cleanState, cloneState, countOf, craft, effRate, expand, feast, feasting, goalStatus, nearPavilion, ratePct, harvest, landRect, maxCount, move, newVillage, place, placeError, priceOf,
   ratePerHour, sell, sellCoins, sellLeft, settle, slots, storageCap, store, stored, unitSec, upgrade, upgradeCost, upgradeSec, type VillageState,
 } from '../src/game/rules';
 
@@ -179,14 +179,14 @@ describe('생산과 수확', () => {
   };
 
   it('쌓인 양 = floor(지난 초 × 시간당 ÷ 3600), 최대 12시간', () => {
-    const { b } = withPaddy();
-    expect(stored(b, T0)).toBe(0);
-    expect(stored(b, T0 + 59 * SEC)).toBe(0);
-    expect(stored(b, T0 + 60 * SEC)).toBe(1);
-    expect(stored(b, T0 + HOUR)).toBe(60);
-    expect(stored(b, T0 + 12 * HOUR)).toBe(720);
-    expect(stored(b, T0 + 30 * 24 * HOUR)).toBe(720);
-    expect(stored({ ...b, state: 'upgrading' }, T0 + HOUR)).toBe(0);
+    const { s, b } = withPaddy();
+    expect(stored(s, b, T0)).toBe(0);
+    expect(stored(s, b, T0 + 59 * SEC)).toBe(0);
+    expect(stored(s, b, T0 + 60 * SEC)).toBe(1);
+    expect(stored(s, b, T0 + HOUR)).toBe(60);
+    expect(stored(s, b, T0 + 12 * HOUR)).toBe(720);
+    expect(stored(s, b, T0 + 30 * 24 * HOUR)).toBe(720);
+    expect(stored(s, { ...b, state: 'upgrading' }, T0 + HOUR)).toBe(0);
     expect(ratePerHour('paddy', 2)).toBe(78);
     expect(ratePerHour('lumber', 10)).toBe(220);
   });
@@ -211,7 +211,7 @@ describe('생산과 수확', () => {
     expect(r).toEqual({ per: { [b.id]: 200 }, gained: { rice: 200 }, exp: 36, lost: 520 });
     expect(s.profile.resources.rice).toBe(300);
     // 건물은 비워졌다
-    expect(stored(b, t)).toBe(0);
+    expect(stored(s, b, t)).toBe(0);
     expect(harvest(s, [b.id], t)).toEqual({ per: {}, gained: {}, exp: 0, lost: 0 });
     // 창고가 가득 찬 채로 거둬도 건물은 비워지고 경험치와 목표 횟수는 오른다
     t += 2 * HOUR;
@@ -293,10 +293,10 @@ describe('업그레이드', () => {
     const rice = s.profile.resources.rice;
     upgrade(s, p.id, T0 + HOUR);
     expect(s.profile.resources.rice).toBe(rice + 60 - 10);
-    expect(stored(p, T0 + HOUR + 20 * SEC)).toBe(0);
+    expect(stored(s, p, T0 + HOUR + 20 * SEC)).toBe(0);
     settle(s, T0 + HOUR + 30 * SEC);
     expect(p).toMatchObject({ level: 2, state: 'done', collectedAt: T0 + HOUR + 30 * SEC });
-    expect(stored(p, T0 + 2 * HOUR + 30 * SEC)).toBe(78);
+    expect(stored(s, p, T0 + 2 * HOUR + 30 * SEC)).toBe(78);
   });
 
   it('최고 레벨 · 슬롯 · 자원', () => {
@@ -422,9 +422,9 @@ describe('서버 답 다듬기', () => {
     expect(s.profile).toMatchObject({ name: '', level: 30, exp: 0, landStage: 6, goal: 0, marketDay: 0, marketSold: 0 });
     expect(s.profile.resources).toEqual({ rice: 12, wood: 0, stone: 0, cake: 0, coin: 5, special: 0 });
     expect(s.buildings).toEqual([
-      { id: 'a', type: 'paddy', level: 1, x: 0, y: 19, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0 },
-      { id: 'm', type: 'mill', level: 2, x: 0, y: 0, state: 'working', finishAt: 9, startAt: 4, collectedAt: 0, jobN: 7 },
-      { id: 'k', type: 'tree', level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: 0, jobN: 0 },
+      { id: 'a', type: 'paddy', level: 1, x: 0, y: 19, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0 },
+      { id: 'm', type: 'mill', level: 2, x: 0, y: 0, state: 'working', finishAt: 9, startAt: 4, collectedAt: 0, jobN: 7, banked: 0 },
+      { id: 'k', type: 'tree', level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0 },
     ]);
     expect(cleanState(null).buildings).toEqual([]);
   });
@@ -453,7 +453,6 @@ describe('4단계: 돌 · 엽전, 장식물 · 길, 보관함', () => {
     expect(why(() => upgrade(s, tree.id, T0))).toBe('no upgrade');
     expect(why(() => build(s, 'lantern', 6, 7, T0, id()))).toBe('locked');
     expect(why(() => build(s, 'gift_rat', 6, 7, T0, id()))).toBe('locked');
-    expect(why(() => build(s, 'pavilion', 6, 7, T0, id()))).toBe('locked');
     s.profile.resources.coin = 3;
     expect(why(() => build(s, 'road', 6, 7, T0, id()))).toBe('not enough');
     // 개수: 나무 12그루까지
@@ -499,7 +498,7 @@ describe('4단계: 돌 · 엽전, 장식물 · 길, 보관함', () => {
     expect(s.profile.exp).toBe(exp + 10); // 둘째 논의 완공 경험치뿐
     expect(why(() => store(s, p.id, T0 + HOUR))).toBe('stored');
     expect(why(() => move(s, p.id, 8, 8, T0 + HOUR))).toBe('stored');
-    expect(stored(p, T0 + 5 * HOUR)).toBe(0);
+    expect(stored(s, p, T0 + 5 * HOUR)).toBe(0);
     expect(harvest(s, [p.id], T0 + 5 * HOUR).per[p.id]).toBeUndefined();
     // 자리가 비었다. 개수에는 여전히 들어간다
     expect(placeError(s, 'house', 6, 6)).toBeNull();
@@ -508,7 +507,7 @@ describe('4단계: 돌 · 엽전, 장식물 · 길, 보관함', () => {
     expect(why(() => place(s, p.id, 7, 6, T0 + 5 * HOUR))).toBe('occupied');
     place(s, p.id, 8, 8, T0 + 5 * HOUR);
     expect(p).toMatchObject({ state: 'done', x: 8, y: 8, collectedAt: T0 + 5 * HOUR });
-    expect(stored(p, T0 + 6 * HOUR)).toBe(60);
+    expect(stored(s, p, T0 + 6 * HOUR)).toBe(60);
   });
 
   it('보관함에 든 창고는 용량에 들어가지 않는다', () => {
@@ -548,9 +547,9 @@ describe('4단계: 방앗간 · 장독대 (가공)', () => {
     expect(why(() => upgrade(s, m.id, T0))).toBe('busy');
     expect(why(() => store(s, m.id, T0))).toBe('busy');
     // 다 끝나기 전에는 거둘 것이 없다
-    expect(stored(m, T0 + 1199 * SEC)).toBe(0);
+    expect(stored(s, m, T0 + 1199 * SEC)).toBe(0);
     expect(harvest(s, [m.id], T0 + 1199 * SEC).per).toEqual({});
-    expect(stored(m, T0 + 1200 * SEC)).toBe(10);
+    expect(stored(s, m, T0 + 1200 * SEC)).toBe(10);
     // 가공 중인 건물은 건설 슬롯을 쓰지 않는다
     build(s, 'paddy', 7, 6, T0, id());
     build(s, 'paddy', 8, 6, T0, id());
@@ -656,5 +655,185 @@ describe('4단계: 장터', () => {
     const got = sell(s, 'wood', 100, T0);
     expect(s.profile.goalProgress).toBe(got);
     expect(goalStatus(s)).toMatchObject({ have: 20, done: true });
+  });
+});
+
+describe('5단계: 시아코인 — 땅 넓히기', () => {
+  it('값과 마을 레벨 조건, 6단계까지', () => {
+    expect(LAND_PRICE).toEqual([10, 20, 30, 50, 70, 100]);
+    expect(LAND_NEED).toHaveLength(6);
+    const s = newVillage(T0);
+    expect(why(() => expand(s, T0))).toBe('village level');
+    s.profile.level = 3;
+    expect(why(() => expand(s, T0))).toBe('not enough coin');
+    s.sia = 15;
+    expand(s, T0);
+    expect(s).toMatchObject({ sia: 5 });
+    expect(s.profile.landStage).toBe(1);
+    // 건물 좌표는 그대로, 땅이 바깥으로 넓어졌다
+    expect(s.buildings[0]).toMatchObject({ x: HALL_AT.x, y: HALL_AT.y });
+    expect(placeError(s, 'paddy', 5, 5)).toBeNull();
+    expect(placeError(s, 'paddy', 4, 5)).toBe('out of land');
+    s.profile.level = 30;
+    s.sia = 1000;
+    for (let i = 0; i < 5; i++) expand(s, T0);
+    expect(s.profile.landStage).toBe(6);
+    expect(s.sia).toBe(1000 - 20 - 30 - 50 - 70 - 100);
+    expect(why(() => expand(s, T0))).toBe('max land');
+    expect(placeError(s, 'paddy', 0, 19)).toBeNull();
+  });
+});
+
+describe('5단계: 특별 건물', () => {
+  it('일반 자원과 시아코인을 함께 낸다. 하나씩만', () => {
+    const s = fill(newVillage(T0), 300);
+    expect(why(() => build(s, 'pavilion', 6, 6, T0, id()))).toBe('locked');
+    s.profile.level = 14;
+    expect(why(() => build(s, 'pavilion', 6, 6, T0, id()))).toBe('not enough coin');
+    s.sia = 130;
+    s.profile.resources.rice = 99;
+    // 일반 자원이 모자라면 시아코인도 쓰지 않는다
+    expect(why(() => build(s, 'pavilion', 6, 6, T0, id()))).toBe('not enough');
+    expect(s.sia).toBe(130);
+    s.profile.resources.rice = 300;
+    const pv = build(s, 'pavilion', 6, 6, T0, id());
+    expect(s.sia).toBe(110);
+    expect(s.profile.resources).toMatchObject({ rice: 200, wood: 200 });
+    expect(pv).toMatchObject({ state: 'building', finishAt: T0 + 600 * SEC });
+    expect(why(() => build(s, 'pavilion', 12, 12, T0, id()))).toBe('limit');
+    expect(BUILDINGS.filter((d) => d.kind === 'special').map((d) => [d.id, d.sia, d.unlock[0]])).toEqual([['pavilion', 20, 6], ['feast', 40, 10], ['shrine', 60, 14]]);
+    // 업그레이드는 일반 자원으로
+    s.buildings[0].level = 5;
+    settle(s, T0 + HOUR);
+    fill(s, 3000);
+    upgrade(s, pv.id, T0 + HOUR);
+    expect(s.sia).toBe(110);
+  });
+
+  it('시아코인 없이도 일반 건물은 모두 처음 땅에 들어간다', () => {
+    const cells = BUILDINGS.filter((d) => d.kind === 'main').reduce((n, d) => n + d.w * d.h * d.unlock.length, 0);
+    expect(cells).toBeLessThanOrEqual(64);
+    expect(BUILDINGS.filter((d) => d.kind === 'main').every((d) => d.sia === 0)).toBe(true);
+  });
+});
+
+describe('5단계: 정자 (둘레의 생산 건물 +10%)', () => {
+  /** 논 둘: 정자(6,6 의 2×2) 옆(8,6)과 먼 곳(12,12) */
+  const setup = () => {
+    const s = fill(newVillage(T0), 300);
+    s.profile.level = 6;
+    s.sia = 20;
+    const near = build(s, 'paddy', 8, 6, T0 - HOUR, id());
+    const far = build(s, 'paddy', 12, 12, T0 - HOUR, id());
+    settle(s, T0);
+    near.collectedAt = far.collectedAt = T0;
+    const pv = build(s, 'pavilion', 6, 6, T0, id());
+    return { s, near, far, pv };
+  };
+
+  it('다 지은 뒤부터, 둘레 한 칸 안에만', () => {
+    const { s, near, far, pv } = setup();
+    expect(ratePct(s, near)).toBe(0); // 아직 짓는 중
+    // 30분 뒤에 들어와 보니 정자가 다 지어져 있다: 그때까지 쌓인 30 은 보너스 없이 적어 둔다
+    settle(s, T0 + 30 * 60 * SEC);
+    expect(pv.state).toBe('done');
+    expect(near.banked).toBe(30);
+    expect(ratePct(s, near)).toBe(10);
+    expect(ratePct(s, far)).toBe(0);
+    expect(effRate(s, near)).toBe(66);
+    expect(nearPavilion(s, 5, 5, 1, 1)).toBe(true);
+    expect(nearPavilion(s, 4, 5, 1, 1)).toBe(false);
+    expect(nearPavilion(s, 8, 8, 1, 1)).toBe(true);
+    expect(nearPavilion(s, 9, 8, 1, 1)).toBe(false);
+    // 한 시간 더: 30 + 66
+    expect(stored(s, near, T0 + 90 * 60 * SEC)).toBe(96);
+    expect(stored(s, far, T0 + 90 * 60 * SEC)).toBe(90);
+    s.profile.resources.rice = 0;
+    const r = harvest(s, [near.id, far.id], T0 + 90 * 60 * SEC);
+    expect(r.per).toEqual({ [near.id]: 96, [far.id]: 90 });
+    expect(near.banked).toBe(0);
+  });
+
+  it('수확 직전에 정자 옆으로 옮겨도 그때까지 쌓인 것에는 보너스가 붙지 않는다', () => {
+    const { s, near, far } = setup();
+    settle(s, T0 + 10 * 60 * SEC);
+    const t = T0 + 10 * HOUR;
+    move(s, far.id, 8, 7, t);
+    expect(far.banked).toBe(600);
+    expect(ratePct(s, far)).toBe(10);
+    expect(stored(s, far, t)).toBe(600);
+    expect(stored(s, far, t + HOUR)).toBe(666);
+    // 정자 옆에 있던 논을 멀리 옮기면 보너스가 그때부터 없다
+    move(s, near.id, 13, 13, t);
+    expect(ratePct(s, near)).toBe(0);
+    expect(stored(s, near, t + HOUR)).toBe(near.banked + 60);
+  });
+
+  it('정자를 옮기거나 보관하면 모든 생산 건물의 쌓인 양을 먼저 적어 둔다. 레벨이 오르면 보너스가 커진다', () => {
+    const { s, near, pv } = setup();
+    settle(s, T0 + 10 * 60 * SEC);
+    harvest(s, [near.id], T0 + 10 * 60 * SEC);
+    const t = T0 + 10 * 60 * SEC + HOUR;
+    store(s, pv.id, t);
+    expect(near.banked).toBe(66);
+    expect(ratePct(s, near)).toBe(0);
+    place(s, pv.id, 6, 7, t + HOUR);
+    expect(near.banked).toBe(66 + 60);
+    expect(ratePct(s, near)).toBe(10);
+    pv.level = 3;
+    expect(ratePct(s, near)).toBe(14);
+  });
+
+  it('쌓이는 양의 상한: 12시간 분량 × 140%', () => {
+    const { s, near } = setup();
+    settle(s, T0 + 10 * 60 * SEC);
+    near.banked = 5000;
+    expect(stored(s, near, T0 + HOUR)).toBe(Math.floor((43200 * 66 * 140) / 360000));
+  });
+});
+
+describe('5단계: 잔치 마당 (하루 동안 마을 전체 +20%)', () => {
+  const setup = () => {
+    const s = fill(newVillage(T0), 300);
+    s.profile.level = 10;
+    s.sia = 40;
+    const p = build(s, 'paddy', 12, 12, T0 - 2 * HOUR, id());
+    const f = build(s, 'feast', 6, 6, T0 - 2 * HOUR, id());
+    settle(s, T0);
+    p.collectedAt = T0;
+    fill(s, 100);
+    return { s, p, f };
+  };
+
+  it('떡을 내고 연다. 잔치 중에는 또 못 연다', () => {
+    const { s, p, f } = setup();
+    s.profile.resources.cake = 59;
+    expect(why(() => feast(s, T0))).toBe('not enough');
+    s.profile.resources.cake = 100;
+    const exp = s.profile.exp;
+    // 한 시간 뒤에 연다: 그때까지의 60 은 보너스 없이 적어 둔다
+    feast(s, T0 + HOUR);
+    expect(s.profile.resources.cake).toBe(40);
+    expect(s.profile).toMatchObject({ feastFrom: T0 + HOUR, feastUntil: T0 + 25 * HOUR, feastPct: 20, exp: exp + 30 });
+    expect(p.banked).toBe(60);
+    expect(feasting(s, T0 + 2 * HOUR)).toBe(true);
+    expect(why(() => feast(s, T0 + 2 * HOUR))).toBe('feast active');
+    // 잔치 중의 한 시간: 60 + 12
+    expect(stored(s, p, T0 + 2 * HOUR)).toBe(60 + 72);
+    harvest(s, [p.id], T0 + 2 * HOUR);
+    // 잔치가 끝난 뒤까지 걸친 구간: 겹친 시간에만 보너스 (끝나기 2시간 전부터 4시간 → 240 + 2시간 몫 24)
+    p.collectedAt = T0 + 23 * HOUR;
+    expect(stored(s, p, T0 + 27 * HOUR)).toBe(240 + 24);
+    expect(feasting(s, T0 + 25 * HOUR)).toBe(false);
+    f.level = 4;
+    s.profile.resources.cake = 60;
+    feast(s, T0 + 27 * HOUR);
+    expect(s.profile.feastPct).toBe(26);
+    expect(p.banked).toBe(264);
+  });
+
+  it('잔치 마당이 없으면 열 수 없다', () => {
+    const s = fill(newVillage(T0), 300);
+    expect(why(() => feast(s, T0))).toBe('no feast');
   });
 });

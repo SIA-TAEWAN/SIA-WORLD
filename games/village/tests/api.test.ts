@@ -97,10 +97,9 @@ describe('서버 (SupabaseApi)', () => {
     await expect(createSupabaseApi(thrown).load()).rejects.toThrow('network');
   });
 
-  it('시아코인 잔액은 공통 지갑에서 읽는다', async () => {
-    const ok: RpcClient = { rpc: (fn) => Promise.resolve({ data: fn === 'ensure_wallet' ? { siaCoins: 12 } : null, error: null }) };
-    expect(await createSupabaseApi(ok).siaCoins()).toBe(12);
-    const bad: RpcClient = { rpc: () => Promise.resolve({ data: null, error: { message: 'x' } }) };
-    expect(await createSupabaseApi(bad).siaCoins()).toBeNull();
+  it('시아코인 잔액은 상태에 실려 온다 (서버가 공통 지갑에서 읽는다)', async () => {
+    const ok: RpcClient = { rpc: () => Promise.resolve({ data: { ...answer(1000), sia: 12 }, error: null }) };
+    expect((await createSupabaseApi(ok).load()).sia).toBe(12);
+    expect((await createSupabaseApi(ok).expand()).sia).toBe(12);
   });
 });

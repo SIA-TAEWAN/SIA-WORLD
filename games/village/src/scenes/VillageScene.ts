@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GRID_MAX, lookOf } from '../data/balance';
 import { BUILDING, recipeOf, upgradable, type BuildingType } from '../data/buildings';
-import { isFull, landRect, placeError, stored, type Building, type VillageState } from '../game/rules';
+import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, stored, type Building, type VillageState } from '../game/rules';
 import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
 import { BUBBLE, CELL, bubbleKey, makeTextures, texKey, texSize } from './art';
 
@@ -38,11 +38,13 @@ interface View {
   label: Phaser.GameObjects.Text;
   badge: Phaser.GameObjects.Text;
   tag: Phaser.GameObjects.Graphics;
+  /** 생산 보너스를 받고 있다는 표시 (정자 · 잔치) */
+  boost: Phaser.GameObjects.Text;
   bubble: Phaser.GameObjects.Image;
   sig: string;
 }
 
-const ZOOM_MIN = 0.45;
+const ZOOM_MIN = 0.34;
 const ZOOM_MAX = 1.8;
 const DRAG_PX = 10;
 
@@ -97,13 +99,19 @@ export class VillageScene extends Phaser.Scene {
     this.input.on('pointerup', this.onUp, this);
     this.input.on('pointerupoutside', this.onUp, this);
     this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.zoomAt(this.zoom * (dy > 0 ? 0.9 : 1.1), p.x, p.y));
-    const { x0, size } = landRect(this.hooks.state().profile.landStage);
-    const c = (x0 + size / 2) * CELL;
-    this.cameras.main.setZoom(this.unit * this.zoom).centerOn(c, c - CELL * 0.4);
+    this.fit();
     this.refresh();
   }
 
   // ───────────────────────── 밖에서 부르는 것 ─────────────────────────
+
+  /** 땅 전체가 화면 너비에 들어오게 맞춘다 (처음 들어올 때 · 땅을 넓혔을 때) */
+  fit() {
+    const { x0, size } = landRect(this.hooks.state().profile.landStage);
+    const c = (x0 + size / 2) * CELL;
+    this.zoom = Math.max(ZOOM_MIN, Math.min(0.82, 720 / ((size + 0.8) * CELL)));
+    this.cameras.main.setZoom(this.unit * this.zoom).centerOn(c, c - CELL * 0.4);
+  }
 
   /** 화면 크기가 바뀌었다 */
   setUnit(unit: number) {
@@ -115,7 +123,11 @@ export class VillageScene extends Phaser.Scene {
   /** 서버가 준 새 상태로 다시 그린다 */
   refresh() {
     const s = this.hooks.state();
-    if (s.profile.landStage !== this.landStage) this.drawGround(s.profile.landStage);
+    if (s.profile.landStage !== this.landStage) {
+      const first = this.landStage < 0;
+      this.drawGround(s.profile.landStage);
+      if (!first) this.fit();
+    }
     const seen = new Set<string>();
     for (const b of s.buildings) {
       // 보관함에 든 것은 마을에 없다
@@ -249,10 +261,11 @@ export class VillageScene extends Phaser.Scene {
       const tag = this.add.graphics();
       tag.fillStyle(COLOR.outline, 1).fillCircle(d.w * CELL - 13, d.h * CELL - 13, 12);
       const badge = this.add.text(d.w * CELL - 13, d.h * CELL - 13, '', { fontFamily: FONT, fontSize: '17px', color: css(COLOR.white) }).setOrigin(0.5, 0.5).setResolution(2);
-      const box = this.add.container(0, 0, [img, bar, label, tag, badge]);
+      const boost = this.add.text(4, d.h * CELL - 4, '▲', { fontFamily: FONT, fontSize: '22px', color: css(COLOR.pink), stroke: css(COLOR.outline), strokeThickness: 5 }).setOrigin(0, 1).setResolution(2).setVisible(false);
+      const box = this.add.container(0, 0, [img, bar, label, tag, badge, boost]);
       const bubble = this.add.image(0, 0, bubbleKey(b.type, recipeOf(b.type)?.out ?? null) ?? 'bubble-rice').setOrigin(0.5, 1).setDisplaySize(BUBBLE, BUBBLE + 10).setVisible(false);
       this.tweens.add({ targets: bubble, angle: { from: -7, to: 7 }, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      v = { box, img, bar, label, badge, tag, bubble, sig: '' };
+      v = { box, img, bar, label, badge, tag, boost, bubble, sig: '' };
       this.views.set(b.id, v);
     }
     if (v.sig === sig) return;
@@ -291,11 +304,12 @@ export class VillageScene extends Phaser.Scene {
         v.label.setText(left > 0 ? mmss(left) : '완성!').setVisible(true);
         if (left <= 0) due = true;
       } else v.label.setVisible(false);
-      const n = this.place || this.pending.has(b.id) ? 0 : stored(b, now);
+      v.boost.setVisible(b.state === 'done' && !!d.product && (ratePct(s, b) > 0 || feasting(s, now)));
+      const n = this.place || this.pending.has(b.id) ? 0 : stored(s, b, now);
       v.bubble.setVisible(n >= 1);
       // 가득 차면 방울이 커진다
       if (n >= 1) {
-        const k = isFull(b, now) ? 1.25 : 1;
+        const k = isFull(s, b, now) ? 1.25 : 1;
         v.bubble.setDisplaySize(BUBBLE * k, (BUBBLE + 10) * k);
       }
     }
@@ -325,6 +339,12 @@ export class VillageScene extends Phaser.Scene {
     this.ghostTile.lineStyle(10, COLOR.outline, 1).strokeRoundedRect(2, 2, d.w * CELL - 4, d.h * CELL - 4, 12);
     this.ghostTile.lineStyle(5, tone, 1).strokeRoundedRect(2, 2, d.w * CELL - 4, d.h * CELL - 4, 12);
     this.ghostImg.setTint(p.ok ? 0xffffff : COLOR.lose);
+    // 정자: 영향이 닿는 둘레를 보여 준다
+    if (p.type === 'pavilion') {
+      const r = pavilionRange(this.hooks.state()) * CELL;
+      this.ghostTile.lineStyle(8, COLOR.outline, 1).strokeRoundedRect(-r, -r, d.w * CELL + r * 2, d.h * CELL + r * 2, 16);
+      this.ghostTile.lineStyle(4, COLOR.primary, 1).strokeRoundedRect(-r, -r, d.w * CELL + r * 2, d.h * CELL + r * 2, 16);
+    }
     this.hooks.placeChanged({ x: p.x, y: p.y, ok: p.ok });
   }
 

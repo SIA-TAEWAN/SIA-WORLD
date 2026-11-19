@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, pricePct } from '../src/data/balance';
+import { CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, pricePct } from '../src/data/balance';
 import { BUILDINGS, RECIPES } from '../src/data/buildings';
 import { COUNTED, GOALS } from '../src/data/goals';
 
@@ -10,7 +10,7 @@ import { COUNTED, GOALS } from '../src/data/goals';
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -41,7 +41,11 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(found).toEqual({
       land_sizes: LAND_SIZES, level_exp: LEVEL_EXP, cost_mul: COST_MUL, upgrade_sec: UPGRADE_SEC, upgrade_exp: UPGRADE_EXP,
       rate_mul: RATE_MUL, hall_cap: HALL_CAP, storage_cap: STORAGE_CAP, hall_need: HALL_NEED, market_limit: MARKET_LIMIT,
+      land_price: LAND_PRICE, land_need: LAND_NEED,
     });
+    // 땅 값은 PRD 6장의 표 그대로
+    expect(LAND_PRICE).toEqual([10, 20, 30, 50, 70, 100]);
+    expect(LAND_SIZES.slice(1)).toEqual([10, 12, 14, 16, 18, 20]);
   });
 
   it('건물 · 장식물 · 길', () => {
@@ -85,10 +89,15 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
 
   it('계산식 (game/rules.ts 와 같은 식)', () => {
     const c = body('_village_collect').replace(/\s+/g, ' ');
-    expect(c).toContain("rate := ty.rate * (public._village_table('rate_mul'))[b.level] / 10;");
-    expect(c).toContain('have := greatest(0, floor(extract(epoch from (p_now - frm)))::bigint) * rate / 3600;');
     expect(c).toContain('got := greatest(0, least(have, room));');
-    expect(c).toContain('least(p_now, frm + make_interval(secs => ((have * 3600 + rate - 1) / rate)::double precision))');
+    expect(c).toContain('least(p_now, u.frm + make_interval(secs => ((u.base * 3600 + u.rate - 1) / u.rate)::double precision))');
+    // 쌓인 양: 보너스를 넣은 생산량, 잔치와 겹친 시간, 상한
+    const n = body('_village_units').replace(/\s+/g, ' ');
+    expect(n).toContain("rate := (ty.rate * (public._village_table('rate_mul'))[b.level] / 10)::bigint * (100 + public._village_rate_pct(p_user, p_id)) / 100;");
+    expect(n).toContain('base := greatest(0, floor(extract(epoch from (p_now - frm)))::bigint) * rate / 3600;');
+    expect(n).toContain('extra := over * rate * p.feast_pct / 360000;');
+    expect(n).toContain("units := least(b.banked + base + extra, cap::bigint * rate * (100 + public._village_const('bonus_room_pct')::int) / 360000);");
+    expect(body('_village_rate_pct').replace(/\s+/g, ' ')).toContain("public._village_const('pavilion_pct')::int + public._village_const('pavilion_pct_per')::int * (pv.level - 1)");
     // 용량 제한을 받는 자원
     expect(c).toContain("room := case when product in ('rice', 'wood', 'stone', 'cake') then p_cap - cur else have end;");
     const u = body('village_upgrade').replace(/\s+/g, ' ');
@@ -108,11 +117,12 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
 describe('SQL의 권한 규칙', () => {
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]).filter((f, i, a) => a.indexOf(f) === i);
   /** 화면이 부르는 함수 (전부) */
-  const OPEN = ['village_build', 'village_claim_goal', 'village_craft', 'village_harvest', 'village_move', 'village_place', 'village_sell', 'village_state', 'village_store', 'village_upgrade'];
+  const OPEN = ['village_build', 'village_claim_goal', 'village_craft', 'village_expand', 'village_feast', 'village_harvest', 'village_move', 'village_place', 'village_sell', 'village_state', 'village_store', 'village_upgrade'];
 
   it('안에서만 쓰는 함수(_로 시작)는 아무에게도 실행 권한을 주지 않는다', () => {
     const inner = fns.filter((f) => f.startsWith('_'));
     expect(inner.length).toBeGreaterThan(10);
+    expect(inner).toContain('_spend_sia_coin');
     for (const f of inner) {
       expect(sql, f).toMatch(new RegExp(`revoke all on function public\\.${f}\\([^;]*\\) from public, anon, authenticated;`));
       expect(sql, f).not.toMatch(new RegExp(`grant execute on function public\\.${f}\\(`));
@@ -149,12 +159,28 @@ describe('SQL의 권한 규칙', () => {
   });
 
   it('표는 RLS를 켜고 직접 쓰는 권한이 없다', () => {
-    for (const t of ['village_profiles', 'village_buildings']) {
+    for (const t of ['village_profiles', 'village_buildings', 'sia_coin_spends']) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);
       expect(sql).toContain(`revoke all on public.${t} from anon, authenticated;`);
       expect(sql).toContain(`grant select on public.${t} to authenticated;`);
       expect(sql).not.toMatch(new RegExp(`grant (insert|update|delete|all)[^;]* on public\\.${t} `));
     }
+  });
+
+  it('시아코인: 쓰는 함수는 지갑 줄을 잠그고, 받는 기록 표와 섞지 않는다. 잠금 순서는 마을 → 지갑', () => {
+    const sp = body('_spend_sia_coin').replace(/\s+/g, ' ');
+    expect(sp).toContain('select sia_coins into bal from public.wallets where user_id = p_user for update;');
+    expect(sp).toContain("if bal is null or bal < p_amount then raise exception 'not enough coin'; end if;");
+    expect(sp).toContain('insert into public.sia_coin_spends');
+    expect(sp).not.toContain('sia_coin_logs');
+    // 시아코인을 쓰는 함수는 마을 줄을 잠근 뒤에 부른다
+    for (const f of ['village_build', 'village_expand']) {
+      const b = body(f);
+      expect(b.indexOf('perform public._village_profile_row(me);')).toBeLessThan(b.indexOf('public._spend_sia_coin('));
+      expect(b.indexOf('public._spend_sia_coin(')).toBeGreaterThan(0);
+    }
+    // 이 게임 안에서는 시아코인을 주지 않는다 (PRD 4장)
+    expect(sql).not.toContain('_grant_sia_coin(');
   });
 
   it('닫힌 상태로 시작한다', () => {

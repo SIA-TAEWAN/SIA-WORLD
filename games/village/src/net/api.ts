@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { CONST, LEVEL_EXP, RES_IDS } from '../data/balance';
 import { GOALS } from '../data/goals';
 import {
-  RuleError, build, claimGoal, cleanState, cloneState, craft, harvest, move, newVillage, place, sell, settle, store as storeRule, upgrade,
+  RuleError, build, claimGoal, cleanState, cloneState, craft, expand, feast, harvest, move, newVillage, place, sell, settle, store as storeRule, upgrade,
   type HarvestResult, type VillageState,
 } from '../game/rules';
 import { worldSupabase } from './world';
@@ -26,8 +26,6 @@ export interface VillageApi {
   kind: 'supabase' | 'local';
   /** 지금의 서버 시각 (ms). 마지막 답에 실려 온 서버 시각으로 기기 시계와의 차이를 맞춘 값 */
   now(): number;
-  /** 시아코인 잔액 (공통 지갑). 못 읽으면 null */
-  siaCoins(): Promise<number | null>;
   /** 내 마을 (없으면 만든다). 끝난 짓기 · 업그레이드가 마무리된 상태 */
   load(): Promise<VillageState>;
   /** 아래는 모두 새 상태를 돌려준다. 서버가 거절하면 ApiError(까닭), 통신 문제면 Error('network') */
@@ -43,6 +41,9 @@ export interface VillageApi {
   /** 보관함에 넣기 · 보관함에서 꺼내 놓기 */
   store(id: string): Promise<VillageState>;
   place(id: string, x: number, y: number): Promise<VillageState>;
+  /** 땅 넓히기 (시아코인) · 잔치 열기 (떡) */
+  expand(): Promise<VillageState>;
+  feast(): Promise<VillageState>;
 }
 
 export interface Store {
@@ -116,9 +117,6 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
   return {
     kind: 'local',
     now,
-    async siaCoins() {
-      return 0;
-    },
     async load() {
       return run((s) => settle(s, now())).state;
     },
@@ -151,6 +149,12 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     },
     async place(id, x, y) {
       return run((s) => place(s, id, x, y, now())).state;
+    },
+    async expand() {
+      return run((s) => expand(s, now())).state;
+    },
+    async feast() {
+      return run((s) => feast(s, now())).state;
     },
   };
 }
@@ -202,15 +206,6 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
   return {
     kind: 'supabase',
     now: () => Math.floor(deviceNow() + offset),
-    async siaCoins() {
-      try {
-        const { data, error } = await (sb as RpcClient).rpc('ensure_wallet');
-        const n = Number((data as { siaCoins?: unknown } | null)?.siaCoins);
-        return error || !Number.isFinite(n) ? null : n;
-      } catch {
-        return null;
-      }
-    },
     load: async () => cleanState(await call('village_state')),
     async build(type, x, y) {
       const d = await call('village_build', { p_type: type, p_x: x, p_y: y });
@@ -231,6 +226,8 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
     },
     store: async (id) => cleanState(await call('village_store', { p_id: id })),
     place: async (id, x, y) => cleanState(await call('village_place', { p_id: id, p_x: x, p_y: y })),
+    expand: async () => cleanState(await call('village_expand')),
+    feast: async () => cleanState(await call('village_feast')),
   };
 }
 
@@ -248,11 +245,11 @@ export async function getApi(): Promise<VillageApi> {
 
 /**
  * 테스트 모드의 마을을 주소로 정한다 (헤드리스 확인용):
- *   ?fresh=1 처음 상태로 · ?rice=500&wood=500&stone=&cake=&coin=&special= 자원 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
+ *   ?fresh=1 처음 상태로 · ?rice=500&wood=500&stone=&cake=&coin=&special= 자원 · ?sia=100 시아코인 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
  */
 function seedLocal(store: Store) {
   if (params.get('fresh') === '1') store.removeItem(LOCAL_KEY);
-  const keys = [...RES_IDS, 'lv', 'goal'].filter((k) => params.get(k) !== null);
+  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land'].filter((k) => params.get(k) !== null);
   if (keys.length === 0) return;
   let d: { state?: unknown; seq?: number; skew?: number } = {};
   try {
@@ -267,6 +264,8 @@ function seedLocal(store: Store) {
     s.profile.level = Math.max(1, num('lv', CONST.max_level));
     s.profile.exp = Math.min(s.profile.exp, (LEVEL_EXP[s.profile.level - 1] ?? 1) - 1);
   }
+  if (params.get('sia') !== null) s.sia = num('sia', 1e9);
+  if (params.get('land') !== null) s.profile.landStage = num('land', 6);
   if (params.get('goal') !== null) {
     s.profile.goal = num('goal', GOALS.length);
     s.profile.goalProgress = 0;

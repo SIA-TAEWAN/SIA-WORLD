@@ -1,12 +1,12 @@
 import {
-  CAPPED, CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, RES_IDS, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC,
+  CAPPED, CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, RES_IDS, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC,
   kstDay, pricePct, type ResId, type Resources,
 } from '../data/balance';
 import { BUILDING, isBuildingType, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { COUNTED, GOALS, type GoalDef, type GoalKind } from '../data/goals';
 
 /**
- * 시아마을의 규칙 (순수 함수). 진짜 계산은 서버 함수(supabase/migrations/047_village.sql + 049 …)가 서버 시간으로 한다.
+ * 시아마을의 규칙 (순수 함수). 진짜 계산은 서버 함수(supabase/migrations/047_village.sql + 049 · 050 …)가 서버 시간으로 한다.
  * 여기 있는 것은 같은 식을 옮긴 것으로, 테스트 모드(LocalApi)와 화면의 미리 보기(쌓인 양·진행 막대·살 수 있는지)가 쓴다.
  * 거절 까닭(RuleError 의 글자)은 SQL 의 raise exception 글자와 같다.
  * 시각은 모두 ms (서버 시각 기준).
@@ -32,6 +32,8 @@ export interface Building {
   collectedAt: number;
   /** 가공 중인 개수 */
   jobN: number;
+  /** 생산량이 바뀌기 전까지 쌓인 양 (보너스는 그 뒤에 쌓이는 것에만 붙는다) */
+  banked: number;
 }
 
 export interface Profile {
@@ -49,11 +51,17 @@ export interface Profile {
   /** 장터: 마지막으로 판 날(kstDay)과 그날 번 엽전 */
   marketDay: number;
   marketSold: number;
+  /** 잔치: 시작 · 끝 시각과 보너스(%). 연 적이 없으면 0 */
+  feastFrom: number;
+  feastUntil: number;
+  feastPct: number;
 }
 
 export interface VillageState {
   profile: Profile;
   buildings: Building[];
+  /** 시아코인 잔액 (SIA WORLD 공통 지갑) */
+  sia: number;
 }
 
 export type Cost = { rice: number; wood: number; stone: number; coin: number };
@@ -140,15 +148,67 @@ export function unitSec(type: BuildingType, level: number): number {
   return r ? Math.floor((r.sec * 10) / RATE_MUL[level - 1]) : 0;
 }
 
-/** 쌓인 양: 생산 건물은 floor(지난 초 × 시간당 ÷ 3600) (최대 12시간), 가공 건물은 다 끝난 묶음 */
-export function stored(b: Building, now: number): number {
+/** 정자의 영향이 닿는 거리 (칸) · 생산 건물이 쌓아 두는 최대 시간 (초) */
+export const pavilionRange = (_s: VillageState) => CONST.pavilion_range;
+export const capSec = (_s: VillageState) => CONST.prod_cap_sec;
+/** 서 있는 정자 (짓는 중 · 보관함이 아닌) */
+export const pavilion = (s: VillageState) => s.buildings.find((v) => v.type === 'pavilion' && (v.state === 'done' || v.state === 'upgrading')) ?? null;
+/** 그 칸들이 정자의 둘레 안인가 */
+export function nearPavilion(s: VillageState, x: number, y: number, w: number, h: number): boolean {
+  const pv = pavilion(s);
+  if (!pv) return false;
+  const r = pavilionRange(s);
+  const p = BUILDING.pavilion;
+  return x < pv.x + p.w + r && x + w > pv.x - r && y < pv.y + p.h + r && y + h > pv.y - r;
+}
+/** 그 건물의 생산 보너스 (%): 정자 둘레에 있으면 pavilion_pct + pavilion_pct_per × (정자 레벨 − 1). 생산 건물이 아니면 0 */
+export function ratePct(s: VillageState, b: Building): number {
+  const d = BUILDING[b.type];
+  if (!d.product || b.state === 'stored') return 0;
+  const pv = pavilion(s);
+  return pv && nearPavilion(s, b.x, b.y, d.w, d.h) ? CONST.pavilion_pct + CONST.pavilion_pct_per * (pv.level - 1) : 0;
+}
+/** 보너스를 넣은 시간당 생산량 */
+export const effRate = (s: VillageState, b: Building) => Math.floor((ratePerHour(b.type, b.level) * (100 + ratePct(s, b))) / 100);
+/** 지금 잔치 중인가 */
+export const feasting = (s: VillageState, now: number) => now < s.profile.feastUntil;
+
+/**
+ * 생산 건물에 쌓여 있는 양 (state 가 'done' 인 생산 건물):
+ *   base  = floor(지난 초 × rate ÷ 3600)                 (지난 초는 최대 12시간)
+ *   extra = floor(잔치와 겹친 초 × rate × 잔치 % ÷ 360000)
+ *   units = min(banked + base + extra, floor(12시간 × rate × (100 + bonus_room_pct) ÷ 360000))
+ */
+function accrued(s: VillageState, b: Building, now: number): { units: number; base: number; from: number; rate: number } {
+  const rate = effRate(s, b);
+  const cap = capSec(s);
+  const from = Math.max(b.collectedAt, now - cap * 1000);
+  const base = Math.floor((Math.max(0, Math.floor((now - from) / 1000)) * rate) / 3600);
+  const p = s.profile;
+  const over = Math.max(0, Math.floor((Math.min(now, p.feastUntil) - Math.max(from, p.feastFrom)) / 1000));
+  const extra = Math.floor((over * rate * p.feastPct) / 360000);
+  return { units: Math.min(b.banked + base + extra, Math.floor((cap * rate * (100 + CONST.bonus_room_pct)) / 360000)), base, from, rate };
+}
+
+/** 쌓인 양: 생산 건물은 위의 식, 가공 건물은 다 끝난 묶음 */
+export function stored(s: VillageState, b: Building, now: number): number {
   if (b.state === 'working') return b.finishAt !== null && b.finishAt <= now ? b.jobN : 0;
   if (b.state !== 'done' || !BUILDING[b.type].product) return 0;
-  const sec = Math.min(CONST.prod_cap_sec, Math.max(0, Math.floor((now - b.collectedAt) / 1000)));
-  return Math.floor((sec * ratePerHour(b.type, b.level)) / 3600);
+  return accrued(s, b, now).units;
 }
 /** 가득 찼나 (12시간 분량) */
-export const isFull = (b: Building, now: number) => b.state === 'done' && !!BUILDING[b.type].product && now - b.collectedAt >= CONST.prod_cap_sec * 1000;
+export const isFull = (s: VillageState, b: Building, now: number) => b.state === 'done' && !!BUILDING[b.type].product && now - b.collectedAt >= capSec(s) * 1000;
+
+/** 쌓인 양을 건물에 적어 둔다 (생산량이 바뀌기 직전에 부른다) */
+function bank(s: VillageState, b: Building, now: number) {
+  if (b.state !== 'done' || !BUILDING[b.type].product) return;
+  const a = accrued(s, b, now);
+  b.banked = a.units;
+  b.collectedAt = Math.min(now, a.from + Math.ceil((a.base * 3600) / a.rate) * 1000);
+}
+function bankAll(s: VillageState, now: number) {
+  for (const b of s.buildings) bank(s, b, now);
+}
 
 /** 장터: 오늘 그 자원 100개의 값 · 오늘 더 벌 수 있는 엽전 */
 export const priceOf = (res: ResId, now: number) => {
@@ -183,8 +243,9 @@ export function goalStatus(s: VillageState): { def: GoalDef; have: number; done:
 
 export function newVillage(now: number, hallId = 'hall'): VillageState {
   return {
-    profile: { name: '', level: 1, exp: 0, resources: { ...START_RES }, landStage: 0, prosperity: 0, goal: 0, goalProgress: 0, marketDay: 0, marketSold: 0 },
-    buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, jobN: 0 }],
+    profile: { name: '', level: 1, exp: 0, resources: { ...START_RES }, landStage: 0, prosperity: 0, goal: 0, goalProgress: 0, marketDay: 0, marketSold: 0, feastFrom: 0, feastUntil: 0, feastPct: 0 },
+    buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0 }],
+    sia: 0,
   };
 }
 
@@ -213,6 +274,8 @@ export function settle(s: VillageState, now: number): void {
     .filter((b) => (b.state === 'building' || b.state === 'upgrading') && b.finishAt !== null && b.finishAt <= now)
     .sort((a, b) => a.finishAt! - b.finishAt!);
   for (const b of due) {
+    // 정자가 다 지어지거나 레벨이 오르면 그 전까지 쌓인 양을 먼저 적어 둔다
+    if (b.type === 'pavilion') bankAll(s, now);
     if (b.state === 'building') addExp(s.profile, BUILDING[b.type].buildExp);
     else {
       addExp(s.profile, upgradeExp(b.type, b.level));
@@ -235,16 +298,18 @@ export function build(s: VillageState, type: string, x: number, y: number, now: 
   settle(s, now);
   if (!isBuildingType(type)) return fail('bad type');
   const d = BUILDING[type];
-  // 시아코인으로 사는 특별 건물은 buySpecial 로 (5단계)
-  if (d.sia > 0) fail('locked');
   const have = countOf(s, type);
   // 아직 하나도 못 가지는 것은 'locked', 지금 레벨의 개수를 다 가졌으면 'limit'
   if (have >= maxCount(type, s.profile.level)) fail(have === 0 ? 'locked' : 'limit');
   if (d.buildSec > 0 && busyCount(s) >= slots(s)) fail('no slot');
   const why = placeError(s, type, x, y);
   if (why) fail(why);
+  if (!canPay(s.profile, buildCost(type))) fail('not enough');
+  // 특별 건물은 일반 자원과 함께 시아코인을 낸다
+  if (d.sia > s.sia) fail('not enough coin');
   pay(s.profile, buildCost(type));
-  const b: Building = { id, type, level: 1, x, y, state: 'building', finishAt: now + d.buildSec * 1000, startAt: now, collectedAt: now, jobN: 0 };
+  s.sia -= d.sia;
+  const b: Building = { id, type, level: 1, x, y, state: 'building', finishAt: now + d.buildSec * 1000, startAt: now, collectedAt: now, jobN: 0, banked: 0 };
   s.buildings.push(b);
   // 0초짜리(장식물 · 길)는 바로 끝난다
   settle(s, now);
@@ -257,6 +322,9 @@ export function move(s: VillageState, id: string, x: number, y: number, now: num
   if (b.state === 'stored') fail('stored');
   const why = placeError(s, b.type, x, y, id);
   if (why) fail(why);
+  // 정자를 옮기면 모든 생산 건물의, 생산 건물을 옮기면 그 건물의 쌓인 양을 먼저 적어 둔다 (보너스가 바뀌므로)
+  if (b.type === 'pavilion') bankAll(s, now);
+  else bank(s, b, now);
   b.x = x;
   b.y = y;
 }
@@ -285,14 +353,14 @@ function collect(s: VillageState, b: Building, now: number, cap: number): { have
   }
   const res = BUILDING[b.type].product;
   if (!res || b.state !== 'done') return none;
-  const rate = ratePerHour(b.type, b.level);
-  const from = Math.max(b.collectedAt, now - CONST.prod_cap_sec * 1000);
-  const have = Math.floor((Math.max(0, Math.floor((now - from) / 1000)) * rate) / 3600);
+  const a = accrued(s, b, now);
+  const have = a.units;
   if (have <= 0) return none;
   const got = Math.max(0, Math.min(have, room(res)));
   s.profile.resources[res] += got;
   // 거둔 만큼의 시간만 쓴다 (1개가 되다 만 시간은 남는다)
-  b.collectedAt = Math.min(now, from + Math.ceil((have * 3600) / rate) * 1000);
+  b.banked = 0;
+  b.collectedAt = Math.min(now, a.from + Math.ceil((a.base * 3600) / a.rate) * 1000);
   return { have, got, res, job: false };
 }
 
@@ -394,8 +462,10 @@ export function store(s: VillageState, id: string, now: number): void {
   const b = s.buildings.find((v) => v.id === id) ?? fail('no building');
   if (b.type === 'hall') fail('cannot store');
   if (b.state !== 'done') fail(b.state === 'stored' ? 'stored' : 'busy');
+  if (b.type === 'pavilion') bankAll(s, now);
   collect(s, b, now, storageCap(s));
   b.state = 'stored';
+  b.banked = 0;
 }
 
 /** 보관함에서 꺼내 놓기 (생산은 놓은 순간부터 다시 쌓인다) */
@@ -405,10 +475,39 @@ export function place(s: VillageState, id: string, x: number, y: number, now: nu
   if (b.state !== 'stored') fail('not stored');
   const why = placeError(s, b.type, x, y, id);
   if (why) fail(why);
+  if (b.type === 'pavilion') bankAll(s, now);
   b.x = x;
   b.y = y;
   b.state = 'done';
   b.collectedAt = now;
+  b.banked = 0;
+}
+
+/** 땅 넓히기: 시아코인과 마을 레벨 조건. 건물 좌표는 그대로다 */
+export function expand(s: VillageState, now: number): void {
+  settle(s, now);
+  const stage = s.profile.landStage;
+  if (stage >= LAND_SIZES.length - 1) fail('max land');
+  if (s.profile.level < LAND_NEED[stage]) fail('village level');
+  if (s.sia < LAND_PRICE[stage]) fail('not enough coin');
+  s.sia -= LAND_PRICE[stage];
+  s.profile.landStage = stage + 1;
+}
+
+/** 잔치 열기: 떡을 내면 하루 동안 마을 전체 생산이 늘어난다 */
+export function feast(s: VillageState, now: number): void {
+  settle(s, now);
+  const f = s.buildings.find((b) => b.type === 'feast' && b.state === 'done') ?? fail('no feast');
+  const p = s.profile;
+  if (now < p.feastUntil) fail('feast active');
+  if (p.resources.cake < CONST.feast_cake) fail('not enough');
+  // 지난 잔치의 몫까지 쌓인 양을 적어 둔 다음에 새 잔치를 연다
+  bankAll(s, now);
+  p.resources.cake -= CONST.feast_cake;
+  p.feastFrom = now;
+  p.feastUntil = now + CONST.feast_sec * 1000;
+  p.feastPct = CONST.feast_pct + CONST.feast_pct_per * (f.level - 1);
+  addExp(p, CONST.feast_exp);
 }
 
 export function claimGoal(s: VillageState, now: number): GoalDef {
@@ -449,6 +548,7 @@ export function cleanState(raw: unknown): VillageState {
       startAt: timed ? Number(b.startAt) || 0 : null,
       collectedAt: Number(b.collectedAt) || 0,
       jobN: state === 'working' ? int(b.jobN, 0, 1e6, 0) : 0,
+      banked: int(b.banked, 0, 1e12, 0),
     });
   }
   return {
@@ -456,9 +556,11 @@ export function cleanState(raw: unknown): VillageState {
       name: typeof p.name === 'string' ? p.name : '', level: int(p.level, 1, CONST.max_level, 1), exp: int(p.exp, 0, 1e9, 0), resources,
       landStage: int(p.landStage, 0, LAND_SIZES.length - 1, 0), prosperity: int(p.prosperity, 0, 1e9, 0), goal: int(p.goal, 0, 9999, 0), goalProgress: int(p.goalProgress, 0, 1e9, 0),
       marketDay: int(p.marketDay, -1e6, 1e6, 0), marketSold: int(p.marketSold, 0, 1e9, 0),
+      feastFrom: int(p.feastFrom, 0, 1e15, 0), feastUntil: int(p.feastUntil, 0, 1e15, 0), feastPct: int(p.feastPct, 0, 1000, 0),
     },
     buildings,
+    sia: int((raw as { sia?: unknown } | null)?.sia, 0, 1e12, 0),
   };
 }
 
-export const cloneState = (s: VillageState): VillageState => ({ profile: { ...s.profile, resources: { ...s.profile.resources } }, buildings: s.buildings.map((b) => ({ ...b })) });
+export const cloneState = (s: VillageState): VillageState => ({ ...s, profile: { ...s.profile, resources: { ...s.profile.resources } }, buildings: s.buildings.map((b) => ({ ...b })) });
