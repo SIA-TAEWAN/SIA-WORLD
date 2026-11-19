@@ -2,7 +2,7 @@
  * 계산의 공통 도구: 난수, 풀, 범위 안의 적 찾기, 피해·처치·아이템 떨구기, 능력치 계산.
  * 무기(weapons.ts)·요괴(enemies.ts)·보스(bosses.ts)·걸음(sim.ts)이 모두 이것을 쓴다.
  */
-import { CLAMP, PLAYER, SPAWN, TICKS_PER_SEC } from '../data/balance';
+import { CLAMP, ENDLESS, PLAYER, RUN_SEC, SPAWN, TICKS_PER_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import { ITEM, ITEMS } from '../data/items';
@@ -297,8 +297,8 @@ export function killEnemy(s: State, e: Enemy, drops: boolean) {
       const d = 30 + rand(s) * 70;
       dropPickup(s, ITEM.coin, e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, 1);
     }
-    if (e.uid === s.finalUid) {
-      // 최종 보스를 물리쳤다: 클리어
+    if (e.uid === s.finalUid && !s.endless) {
+      // 최종 보스를 물리쳤다: 클리어 (무한 모드는 끝나지 않고 계속된다)
       s.phase = 'clear';
       emit(s, EV.clear);
     }
@@ -344,12 +344,24 @@ export function gainXp(s: State, v: number) {
 
 export function gainCoins(s: State, n: number) {
   s.coins += n * ITEMS.coinValue * s.map.coinMul * s.stats.coin;
+  // 무한 모드: 한 판에 받는 엽전에는 상한이 있다 (오래 버텨도 강화가 빨라지지 않게)
+  if (s.coins > s.coinCap) s.coins = s.coinCap;
 }
 
 // ───────────────────────── 적 만들기 ─────────────────────────
+/**
+ * 무한 모드의 추가 배율: 4분 뒤로 m분이 지났을 때 1 + perMin × m + perMin2 × m² (data/balance.ts 의 ENDLESS).
+ * 4분 모드와 무한 모드의 4분까지는 언제나 1
+ */
+export function endlessMul(s: State, k: { perMin: number; perMin2: number }): number {
+  if (!s.endless || s.time <= RUN_SEC) return 1;
+  const m = (s.time - RUN_SEC) / 60;
+  return 1 + k.perMin * m + k.perMin2 * m * m;
+}
+
 /** 시간이 갈수록 강해지는 배율 */
-export const hpGrowth = (s: State) => 1 + (s.map.growth.hpPerMin * s.time) / 60;
-export const dmgGrowth = (s: State) => 1 + (s.map.growth.dmgPerMin * s.time) / 60;
+export const hpGrowth = (s: State) => (1 + (s.map.growth.hpPerMin * s.time) / 60) * endlessMul(s, ENDLESS.hp);
+export const dmgGrowth = (s: State) => (1 + (s.map.growth.dmgPerMin * s.time) / 60) * endlessMul(s, ENDLESS.dmg);
 
 function resetEnemy(s: State, e: Enemy, x: number, y: number) {
   e.uid = s.nextUid++;
@@ -398,10 +410,11 @@ export function spawnBoss(s: State, boss: number, x: number, y: number): Enemy |
   resetEnemy(s, e, x, y);
   e.kind = -1;
   e.boss = boss;
-  e.maxHp = e.hp = def.hp * s.map.power.boss;
+  // 무한 모드에서 4분 뒤에 다시 나오는 보스는 시간이 갈수록 체력이 많고 세게 때린다
+  e.maxHp = e.hp = def.hp * s.map.power.boss * endlessMul(s, ENDLESS.bossHp);
   e.r = def.r;
   e.speed = def.speed * s.map.power.speed;
-  e.dmg = def.dmg;
+  e.dmg = def.dmg * endlessMul(s, ENDLESS.dmg);
   e.xp = def.xp;
   s.seenBoss[boss] = 1;
   emit(s, EV.bossSpawn, boss);

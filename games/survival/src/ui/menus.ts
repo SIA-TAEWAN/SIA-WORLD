@@ -1,14 +1,14 @@
-import { ZODIAC_IDS, type ZodiacId } from '../data/balance';
+import { ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
-import { characterPrice } from '../game/progress';
+import { characterPrice, endlessOpen } from '../game/progress';
 import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, loadEngine, nav, openSettings, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
+import { esc, loadEngine, mmss, nav, openSettings, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
 import { whyText } from './upgrade';
@@ -18,6 +18,8 @@ const LOCKS_ON = true;
 
 const charLocked = (id: ZodiacId) => LOCKS_ON && !state.profile.unlockedCharacters.includes(id);
 const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includes(id);
+/** 무한 모드는 그 맵을 4분 모드로 클리어해야 열린다 (서버의 맵별 최고 기록 기준) */
+const endlessLocked = (id: string) => LOCKS_ON && !endlessOpen(state.profile, id);
 
 // ───────────────────────── 메인 ─────────────────────────
 
@@ -170,10 +172,12 @@ export function showCharSelect() {
   });
 }
 
-// ───────────────────────── 출전 준비 2: 맵 고르기 ─────────────────────────
+// ───────────────────────── 출전 준비 2: 맵 고르기 → 모드 고르기 (4분 모드 / 무한 모드) ─────────────────────────
 
 export function showMapSelect() {
   let pick = MAPS.find((m) => m.id === state.map && m.ready && !mapLocked(m.id))?.id ?? MAPS[0].id;
+  // 지난번에 고른 모드로 시작한다 (그 맵의 무한 모드가 잠겨 있으면 4분 모드)
+  let mode: RunMode = state.mode === 'endless' && !endlessLocked(pick) ? 'endless' : 'normal';
   let off = () => {};
   const card = (m: (typeof MAPS)[number], i: number) => {
     const open = m.ready && !mapLocked(m.id);
@@ -187,6 +191,7 @@ export function showMapSelect() {
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>맵 고르기</h2><span class="spacer"></span></div>
      <div class="maps" id="maps">${MAPS.map(card).join('')}</div>
+     <div class="modes" id="modes" role="radiogroup" aria-label="모드 고르기"></div>
      <div class="grow"></div>
      <div class="who"><img src="${zodiacFaceUrl(state.char)}" alt="" /><span>${esc(CHARACTER_BY_ID[state.char].nick)} 출전!</span></div>
      <button class="btn primary big" id="start">시작 ▶</button>`,
@@ -194,12 +199,41 @@ export function showMapSelect() {
     'main',
     () => off(),
   );
-  const paint = () => root.querySelectorAll<HTMLElement>('.map').forEach((b) => b.classList.toggle('sel', b.dataset.m === pick));
+  const modesEl = root.querySelector('#modes') as HTMLElement;
+  const startBtn = root.querySelector('#start') as HTMLButtonElement;
+  /** 모드 카드 둘: 고른 맵에 따라 무한 모드가 잠겨 있으면 조건을 보여 준다 */
+  const paintModes = () => {
+    const locked = endlessLocked(pick);
+    if (locked) mode = 'normal';
+    const best = state.profile.endlessBest[pick];
+    const name = MAPS.find((m) => m.id === pick)!.name;
+    const endlessNote = locked
+      ? `🔒 ${esc(name)}을(를) 4분 모드로 클리어하면 열려요`
+      : best
+        ? `죽을 때까지 버텨요 · 내 최고 ${mmss(best.time)}`
+        : '4분 뒤로도 죽을 때까지 버텨요';
+    modesEl.innerHTML =
+      `<button class="mode ${mode === 'normal' ? 'sel' : ''}" data-mode="normal" role="radio" aria-checked="${mode === 'normal'}"><b>⏱️ 4분 모드</b><small>최종 보스를 잡으면 클리어</small></button>` +
+      `<button class="mode ${mode === 'endless' ? 'sel' : ''} ${locked ? 'closed' : ''}" data-mode="endless" role="radio" aria-checked="${mode === 'endless'}"><b>♾️ 무한 모드</b><small>${endlessNote}</small></button>`;
+    startBtn.textContent = mode === 'endless' ? '무한 모드 시작 ▶' : '시작 ▶';
+  };
+  const paint = () => {
+    root.querySelectorAll<HTMLElement>('.map').forEach((b) => b.classList.toggle('sel', b.dataset.m === pick));
+    paintModes();
+  };
   paint();
-  // 판 저장 답이 늦게 와서 새 맵이 풀리면 목록을 새로 그린다
+  // 판 저장 답이 늦게 와서 새 맵이 풀리면(또는 무한 모드가 열리면) 목록을 새로 그린다
   off = watchProfile(() => {
     root.querySelector('#maps')!.innerHTML = MAPS.map(card).join('');
     paint();
+  });
+  modesEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('.mode') as HTMLElement | null;
+    if (!b) return;
+    sfx('toggle');
+    if (b.dataset.mode === 'endless' && endlessLocked(pick)) return toast(`🔒 ${MAPS.find((m) => m.id === pick)!.name}을(를) 4분 모드로 클리어하면 무한 모드가 열려요`, 2800);
+    mode = b.dataset.mode === 'endless' ? 'endless' : 'normal';
+    paintModes();
   });
   root.querySelector('#maps')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.map') as HTMLElement | null;
@@ -224,7 +258,8 @@ export function showMapSelect() {
   root.querySelector('#start')!.addEventListener('click', () => {
     sfx('click');
     state.map = pick;
-    nav.game({ char: state.char, map: pick });
+    state.mode = mode;
+    nav.game({ char: state.char, map: pick, mode });
   });
   void loadEngine();
 }

@@ -4,6 +4,7 @@
 //   시아레이스만 기록 기준: 해 30.75초 이내 · 달 33초 이내 · 별 37.5초 이내 · 그 외 구름 (RACE_TIERS)
 //   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
 //   시아서바이벌은 맵마다 따로: 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순. 등급은 그 맵 안의 순위 기준
+//   시아서바이벌 무한 모드는 4분 모드와 따로 (모드 전환 줄): 생존 시간 → 처치 수 → 먼저 달성한 순
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg, tierOfPlace } from './rank.js';
@@ -23,6 +24,12 @@ const VOLLEY_INFO = { label: '🏐 배구', note: '사람끼리 겨룬 경기의
 export const VOLLEY_TOP = 100;
 const SURVIVAL_INFO = { label: '👹 서바이벌', note: '맵별 생존 시간 순 (같으면 클리어한 기록, 그다음 처치 수, 먼저 달성한 사람이 위)' };
 export const SURVIVAL_TOP = 100;
+/** 시아서바이벌 모드: 4분 모드와 무한 모드의 랭킹은 따로다 */
+export const SURVIVAL_MODES = [
+  { id: 'normal', name: '4분 모드' },
+  { id: 'endless', name: '무한 모드' },
+];
+const SURVIVAL_ENDLESS_NOTE = '무한 모드 · 맵별 생존 시간 순 (같으면 처치 수, 그다음 먼저 달성한 사람이 위)';
 /** 시아서바이벌 맵 (games/survival/src/data/maps.ts 와 같은 순서·이름) */
 export const SURVIVAL_MAPS = [
   { id: 'field', name: '들판' },
@@ -106,11 +113,13 @@ const dateText = (iso) => {
 
 /**
  * 시아서바이벌 랭킹 (survival_ranking 뷰: 맵별로 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순).
+ * mode 가 'endless' 면 무한 모드 랭킹 (survival_endless_ranking 뷰: 생존 시간 → 처치 수 → 먼저 달성한 순. 칸은 같다)
  * → { rows: 상위 100명 [{ key, nickname, time, kills, cleared, character, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
  */
-export async function getSurvivalRanking(mapId, meId = null) {
+export async function getSurvivalRanking(mapId, meId = null, mode = 'normal') {
   const cols = 'user_id,nickname,best_time,best_kills,cleared,character,achieved_at,place,total';
-  const { data, error } = await supabase.from('survival_ranking').select(cols).eq('map_id', mapId).order('place', { ascending: true }).limit(SURVIVAL_TOP);
+  const view = () => (mode === 'endless' ? supabase.from('survival_endless_ranking') : supabase.from('survival_ranking'));
+  const { data, error } = await view().select(cols).eq('map_id', mapId).order('place', { ascending: true }).limit(SURVIVAL_TOP);
   if (error) throw new Error('랭킹을 불러오지 못했어요');
   const map = (r) => ({
     key: r.user_id, nickname: r.nickname, time: Number(r.best_time), kills: Number(r.best_kills), cleared: r.cleared === true,
@@ -120,7 +129,7 @@ export async function getSurvivalRanking(mapId, meId = null) {
   let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
   let total = Number(data?.[0]?.total ?? 0);
   if (meId && !mine && rows.length >= SURVIVAL_TOP) {
-    const res = await supabase.from('survival_ranking').select(cols).eq('map_id', mapId).eq('user_id', meId).maybeSingle();
+    const res = await view().select(cols).eq('map_id', mapId).eq('user_id', meId).maybeSingle();
     if (res.data) {
       mine = map(res.data);
       total = Number(res.data.total);
@@ -148,6 +157,11 @@ const CSS = `
 .sia-rank .subs button { flex: 1; white-space: nowrap; font: inherit; font-size: 13px; color: #2a1a10; cursor: pointer;
   border: 2px solid #e2d3b5; background: #fff; border-radius: 999px; padding: 4px 2px; }
 .sia-rank .subs button.sel { border-color: #2a1a10; background: #fff4c2; }
+.sia-rank .modes { display: none; gap: 6px; margin-bottom: 6px; }
+.sia-rank .modes.on { display: flex; }
+.sia-rank .modes button { flex: 1; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
+  border: 2px solid #2a1a10; background: #fff; border-radius: 12px; padding: 5px 4px; }
+.sia-rank .modes button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
 .sia-rank td.am i { font-style: normal; display: inline-block; background: #4cb86a; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; margin-right: 4px; vertical-align: 1px; }
 .sia-rank .me-line { text-align: center; font-size: 15px; margin: 6px 0; }
 .sia-rank .me-line b { font-weight: normal; color: #f0a500; }
@@ -187,6 +201,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     <div class="tabs">${TAB_ORDER.filter((g) => tabInfo(g))
       .map((g) => `<button type="button" data-g="${g}">${tabInfo(g).label}</button>`)
       .join('')}</div>
+    <div class="modes">${SURVIVAL_MODES.map((m) => `<button type="button" data-sm="${m.id}">${m.name}</button>`).join('')}</div>
     <div class="subs">${SURVIVAL_MAPS.map((m) => `<button type="button" data-m="${m.id}">${m.name}</button>`).join('')}</div>
     <p class="me-line"></p>
     <div class="list"><table></table></div>
@@ -206,14 +221,17 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     if (tab) void show(tab.dataset.g);
     const sub = e.target.closest('[data-m]');
     if (sub) void showSurvival(sub.dataset.m);
+    const sm = e.target.closest('[data-sm]');
+    if (sm) void showSurvival(survivalMap, sm.dataset.sm);
   });
 
   let shown = '';
   async function show(game) {
     shown = game;
     dim.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
-    // 맵 고르기 줄은 시아서바이벌 탭에서만 보인다
+    // 모드·맵 고르기 줄은 시아서바이벌 탭에서만 보인다
     $('.subs').classList.toggle('on', game === 'survival');
+    $('.modes').classList.toggle('on', game === 'survival');
     if (game === 'survival') return showSurvival(survivalMap);
     if (game === 'race') return showRace();
     if (game === 'volley') return showVolley();
@@ -291,23 +309,32 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       if (shown === 'volley') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
-  /** 시아서바이벌: 맵을 골라 본다. 생존 시간 순 상위 100명 + 내 순위. 줄마다 순위 · 등급 · 캐릭터 얼굴 · 닉네임 · 생존 시간(클리어) · 처치 수 · 달성 날짜 */
+  /**
+   * 시아서바이벌: 모드(4분 모드 / 무한 모드)와 맵을 골라 본다. 생존 시간 순 상위 100명 + 내 순위.
+   * 줄마다 순위 · 등급 · 캐릭터 얼굴 · 닉네임 · 생존 시간(클리어) · 처치 수 · 달성 날짜
+   */
   let survivalMap = SURVIVAL_MAPS[0].id;
-  async function showSurvival(mapId) {
+  let survivalMode = SURVIVAL_MODES[0].id;
+  async function showSurvival(mapId, mode = survivalMode) {
     if (!SURVIVAL_MAPS.some((m) => m.id === mapId)) mapId = SURVIVAL_MAPS[0].id;
+    if (!SURVIVAL_MODES.some((m) => m.id === mode)) mode = SURVIVAL_MODES[0].id;
     survivalMap = mapId;
+    survivalMode = mode;
     dim.querySelectorAll('.subs button').forEach((b) => b.classList.toggle('sel', b.dataset.m === mapId));
-    $('.note').textContent = `${SURVIVAL_INFO.note} · 상위 ${SURVIVAL_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    dim.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('sel', b.dataset.sm === mode));
+    $('.note').textContent = `${mode === 'endless' ? SURVIVAL_ENDLESS_NOTE : SURVIVAL_INFO.note} · 상위 ${SURVIVAL_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
     $('.me-line').textContent = '불러오는 중…';
     $('table').innerHTML = '';
     const timeText = (r) => `${r.cleared ? '<i>클리어</i>' : ''}${survivalTime(r.time)}`;
     try {
-      const { rows, mine, total } = await getSurvivalRanking(mapId, meId);
-      if (shown !== 'survival' || survivalMap !== mapId) return;
+      const { rows, mine, total } = await getSurvivalRanking(mapId, meId, mode);
+      if (shown !== 'survival' || survivalMap !== mapId || survivalMode !== mode) return;
       const tier = (r) => tierOfPlace(r.place, total);
       $('.me-line').innerHTML = mine
         ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${survivalTime(mine.time)}${mine.cleared ? ' 클리어' : ''} · 처치 ${mine.kills.toLocaleString()}`
-        : '아직 이 맵의 기록이 없어요';
+        : mode === 'endless'
+          ? '아직 이 맵의 무한 모드 기록이 없어요'
+          : '아직 이 맵의 기록이 없어요';
       $('table').innerHTML =
         rows
           .map(
@@ -318,7 +345,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           )
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
-      if (shown === 'survival' && survivalMap === mapId) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+      if (shown === 'survival' && survivalMap === mapId && survivalMode === mode) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   void show(tabInfo(first) ? first : 'tank');

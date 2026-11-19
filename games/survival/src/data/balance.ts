@@ -8,6 +8,29 @@ export const TICK = 1 / 60;
 export const TICKS_PER_SEC = 60;
 /** 한 판 길이: 4분이 되면 최종 보스가 나온다 */
 export const RUN_SEC = 240;
+/** 판의 모드: normal 4분 모드 (최종 보스를 잡으면 클리어) · endless 무한 모드 (4분 뒤로도 죽을 때까지 계속) */
+export type RunMode = 'normal' | 'endless';
+export const RUN_MODES: readonly RunMode[] = ['normal', 'endless'];
+
+/**
+ * 무한 모드: 4분까지는 4분 모드와 완전히 같고, 그 뒤로는 끝없이 버틸 수 없게 요괴가 가파르게 강해진다.
+ * 배율은 4분 뒤로 m분이 지났을 때 1 + perMin × m + perMin2 × m² (4분까지의 성장(data/maps.ts 의 growth)에 곱한다).
+ *   hp 요괴 체력 · dmg 요괴·보스가 주는 피해 · count 등장 수 · bossHp 다시 나오는 보스의 체력
+ * 요괴 수 상한(LIMIT.enemies)과 풀 크기는 그대로다.
+ */
+export const ENDLESS = {
+  /** 이 시간이 되면 판을 끝낸다 (서버의 endless_max_time 과 같다. 실제로는 한참 전에 죽는다) */
+  maxSec: 3600,
+  /** 최종 보스 뒤로 이 간격마다 그 맵의 보스가 번갈아 다시 나온다 (서버의 endless_boss_every 와 같다) */
+  bossEvery: 80,
+  /** 이 간격마다 그 맵의 떼 이벤트가 번갈아 다시 온다 (첫 번째는 4분 + 간격의 절반) */
+  swarmEvery: 40,
+  hp: { perMin: 0.25, perMin2: 0.06 },
+  dmg: { perMin: 0.15, perMin2: 0.03 },
+  count: { perMin: 0.15, perMin2: 0 },
+  bossHp: { perMin: 0.4, perMin2: 0.05 },
+};
+
 /** 기준 화면 */
 export const VIEW_W = 720;
 export const VIEW_H = 1280;

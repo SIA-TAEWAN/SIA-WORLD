@@ -1,4 +1,4 @@
-import { VIEW_W, ZODIAC_IDS, type ZodiacId } from '../data/balance';
+import { VIEW_W, ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
 import type { RunSummary } from '../game/sim';
 import { defaultProfile, type FinishResult, type SurvivalProfile } from '../game/progress';
 import type { SurvivalApi } from '../net/api';
@@ -13,6 +13,8 @@ export const stage = document.getElementById('stage')!;
 export interface GameSetup {
   char: ZodiacId;
   map: string;
+  /** 모드 (없으면 4분 모드) */
+  mode?: RunMode;
   /** 개발용: 강화 레벨 수(0~49)·시작 시각(초)·시드 */
   upg?: number;
   startAt?: number;
@@ -39,9 +41,10 @@ export const state = {
   profile: defaultProfile() as SurvivalProfile,
   /** 접속 인원 채널 */
   lobby: null as SurvivalLobby | null,
-  /** 마지막으로 고른 캐릭터·맵 */
+  /** 마지막으로 고른 캐릭터·맵·모드 */
   char: 'tiger' as ZodiacId,
   map: 'field',
+  mode: 'normal' as RunMode,
 };
 
 /** 프로필이 바뀌면 부를 함수들 (지금 떠 있는 화면이 엽전·해금 표시를 다시 그린다) */

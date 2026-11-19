@@ -40,6 +40,8 @@ export interface MapDef {
   level: string;
   /** 엽전 배율 */
   coinMul: number;
+  /** 무한 모드에서 한 판에 받을 수 있는 엽전의 상한 (서버의 _survival_endless_coin_cap 과 같다) */
+  endlessCoins: number;
   /** 요괴 강함: 체력·속도·수·닿았을 때 피해의 배율, boss 는 보스 체력 배율 */
   power: { hp: number; speed: number; count: number; dmg: number; boss: number };
   /** 시간이 갈수록 강해짐: 1분마다 체력·피해가 이만큼(비율) 는다 */
@@ -59,7 +61,7 @@ const END = 99999;
 
 export const MAPS: MapDef[] = [
   {
-    id: 'field', name: '들판', desc: '넓은 풀밭, 장애물이 적다', level: '쉬움', coinMul: 1, ready: true, unlock: '처음부터',
+    id: 'field', name: '들판', desc: '넓은 풀밭, 장애물이 적다', level: '쉬움', coinMul: 1, endlessCoins: 450, ready: true, unlock: '처음부터',
     power: { hp: 1, speed: 1, count: 1.5, dmg: 0.8, boss: 0.68 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'none', cell: 200, chance: 0, r: 0 },
@@ -98,7 +100,7 @@ export const MAPS: MapDef[] = [
   },
   {
     // 도깨비불·물귀신·여우불 + 죽순 요괴. 빠른 요괴와 원거리 요괴가 일찍 나온다. 대나무가 길을 막는다
-    id: 'bamboo', name: '대나무 숲', desc: '대나무가 길을 막는다', level: '보통', coinMul: 1.5, ready: true, unlock: '들판을 끝까지 버티기',
+    id: 'bamboo', name: '대나무 숲', desc: '대나무가 길을 막는다', level: '보통', coinMul: 1.5, endlessCoins: 400, ready: true, unlock: '들판을 끝까지 버티기',
     power: { hp: 1.3, speed: 1.04, count: 1.05, dmg: 0.6, boss: 0.8 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'scatter', cell: 190, chance: 0.5, r: 22 },
@@ -134,7 +136,7 @@ export const MAPS: MapDef[] = [
   },
   {
     // 전 종류 + 수문장 요괴. 떼로 몰려오는 이벤트가 잦다. 담 사이로 길이 좁다
-    id: 'palace', name: '달빛 궁궐', desc: '밤 분위기, 길이 좁다', level: '어려움', coinMul: 2, ready: true, unlock: '대나무 숲을 끝까지 버티기',
+    id: 'palace', name: '달빛 궁궐', desc: '밤 분위기, 길이 좁다', level: '어려움', coinMul: 2, endlessCoins: 600, ready: true, unlock: '대나무 숲을 끝까지 버티기',
     power: { hp: 1.6, speed: 1.06, count: 1.15, dmg: 0.7, boss: 1.1 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'walls', cell: 300, chance: 0.55, r: 30 },
@@ -175,7 +177,7 @@ export const MAPS: MapDef[] = [
   },
   {
     // 해골 병사·원혼·도깨비불·물귀신·여우불. 처음부터 수가 많고 원거리 요괴가 일찍 나온다. 군데군데 삼도천 물길
-    id: 'underworld', name: '황천길', desc: '저승으로 가는 어두운 길, 안개와 푸른 불빛', level: '매우 어려움', coinMul: 2.5, ready: true, unlock: '달빛 궁궐을 끝까지 버티기',
+    id: 'underworld', name: '황천길', desc: '저승으로 가는 어두운 길, 안개와 푸른 불빛', level: '매우 어려움', coinMul: 2.5, endlessCoins: 560, ready: true, unlock: '달빛 궁궐을 끝까지 버티기',
     power: { hp: 2, speed: 1.08, count: 1.18, dmg: 1, boss: 0.52 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'pools', cell: 360, chance: 0.45, r: 52 },

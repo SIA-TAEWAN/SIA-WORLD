@@ -112,7 +112,7 @@ async function start() {
 
   // 개발용 테스트 설정: ?local=1&map=field&char=tiger&upg=10&t=120 → 메뉴를 건너뛰고 그 상태로 바로 시작
   if (dev?.char) state.char = dev.char;
-  if (dev?.auto) nav.game({ char: dev.char!, map: dev.map!, upg: dev.upg ?? undefined, startAt: dev.t, seed: dev.seed ?? undefined });
+  if (dev?.auto) nav.game({ char: dev.char!, map: dev.map!, mode: dev.mode, upg: dev.upg ?? undefined, startAt: dev.t, seed: dev.seed ?? undefined });
   else nav.main();
 }
 

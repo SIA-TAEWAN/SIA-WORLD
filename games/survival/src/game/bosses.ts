@@ -4,10 +4,10 @@
  * 체력 바·등장 경고·보물상자는 종류와 상관없이 같다 (core.ts 의 spawnBoss·killEnemy, sim.ts 의 등장 처리).
  * 패턴이 쓰는 칸: e.patT 패턴 안에서 흐른 시간, e.sub 패턴 안의 단계, e.ax·e.ay 겨눈 방향.
  */
-import { LIMIT, TICK, TICKS_PER_SEC } from '../data/balance';
+import { ENDLESS, LIMIT, TICK, TICKS_PER_SEC } from '../data/balance';
 import { BOSSES, BOSS_INDEX, type BossPattern } from '../data/bosses';
 import { ENEMY_INDEX } from '../data/enemies';
-import { addFx, addProjectile, addZone, dmgGrowth, rand, spawnEnemy } from './core';
+import { addFx, addProjectile, addZone, dmgGrowth, endlessMul, rand, spawnEnemy } from './core';
 import { FX, MODE, PROJ, ZONE, ZONE_OF, type Enemy, type State } from './state';
 
 /** dx, dy, d: 보스에서 내 캐릭터까지 */
@@ -25,9 +25,11 @@ function walk(e: Enemy, dx: number, dy: number, d: number, mul = 1) {
  * 패턴에 linger·tick 이 있으면 터진 뒤에도 바닥에 남아 계속 피해를 주고(불길·독), slow 가 있으면 맞은 나를 느리게 한다.
  */
 function blast(s: State, p: BossPattern, x: number, y: number, r: number, windup: number, dmg: number) {
-  const z = addZone(s, ZONE_OF[p.zone ?? 'warn'] ?? ZONE.warn, 1, 7, -1, x, y, r, windup, p.linger ?? 0.25, 0.5, dmg);
+  // 무한 모드의 4분 뒤로는 보스의 범위 공격도 세진다 (그 밖에는 배율 1)
+  const mul = endlessMul(s, ENDLESS.dmg);
+  const z = addZone(s, ZONE_OF[p.zone ?? 'warn'] ?? ZONE.warn, 1, 7, -1, x, y, r, windup, p.linger ?? 0.25, 0.5, dmg * mul);
   if (!z) return;
-  z.tick = p.tick ?? 0;
+  z.tick = (p.tick ?? 0) * mul;
   z.slow = Math.round((p.slow ?? 0) * TICKS_PER_SEC);
 }
 

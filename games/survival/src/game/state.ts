@@ -2,7 +2,7 @@
  * 판의 상태. 화면(Phaser·DOM)과 무관한 순수 자료이고, step(state, input) 이 한 걸음씩 바꾼다.
  * 적·투사체·지대·아이템·이펙트·피해 숫자는 모두 풀(Pool)에 미리 만들어 두고 다시 쓴다 (판 도중에 객체를 새로 만들지 않는다).
  */
-import type { ZodiacId } from '../data/balance';
+import type { RunMode, ZodiacId } from '../data/balance';
 import type { CharacterDef } from '../data/characters';
 import type { MapDef } from '../data/maps';
 import type { UpgradeLevels } from '../data/upgrades';
@@ -261,6 +261,8 @@ export interface RunConfig {
   seed: number;
   char: ZodiacId;
   map: string;
+  /** 모드 (없으면 4분 모드) */
+  mode?: RunMode;
   /** 영구 강화 (없으면 0) */
   upgrades?: UpgradeLevels;
   /** 피해 숫자를 만들까 (화면 없는 시험에서는 끈다) */
@@ -281,6 +283,10 @@ export interface Input {
 
 export interface State {
   cfg: RunConfig;
+  /** 무한 모드인가: 최종 보스를 잡아도 끝나지 않고, 4분 뒤로 요괴가 계속 강해진다 (data/balance.ts 의 ENDLESS) */
+  endless: boolean;
+  /** 무한 모드에서 이 판에 받을 수 있는 엽전의 상한 (4분 모드는 Infinity) */
+  coinCap: number;
   map: MapDef;
   char: CharacterDef;
   upgrades: UpgradeLevels;
@@ -339,6 +345,7 @@ export interface State {
   spawnKind: Int32Array;
   swarmKind: Int32Array;
   bossKind: Int32Array;
+  /** 다음에 올 떼·보스의 차례 (무한 모드는 표의 끝을 지나서도 계속 센다) */
   swarmNext: number;
   bossNext: number;
   bossWarned: boolean;

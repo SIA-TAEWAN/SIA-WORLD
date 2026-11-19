@@ -3,17 +3,17 @@
  * Phaser·DOM·Math.random 을 쓰지 않는다 (같은 시드·같은 조작이면 언제나 같은 결과).
  * 화면은 이 상태를 그리기만 하고, 화면 없이도 수천 판을 돌려 밸런스를 볼 수 있다 (game/policy.ts).
  */
-import { BOSS_WARN_SEC, DEV_LEVEL_PER_SEC, LIMIT, PLAYER, RUN_SEC, TICK, TICKS_PER_SEC, xpNeed } from '../data/balance';
+import { BOSS_WARN_SEC, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { ITEM, ITEMS } from '../data/items';
-import { MAPS, MAP_INDEX } from '../data/maps';
+import { MAPS, MAP_INDEX, type SwarmEvent } from '../data/maps';
 import { PASSIVES } from '../data/passives';
 import { UPGRADES, type UpgradeLevels } from '../data/upgrades';
 import { FALLBACK_WEAPON, WEAPONS, WEAPON_INDEX } from '../data/weapons';
 import {
-  addFx, collect, edgePoint, emit, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
+  addFx, collect, edgePoint, emit, endlessMul, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
   spawnBoss, spawnEnemy, sweep,
 } from './core';
 import { updateEnemies } from './enemies';
@@ -39,6 +39,8 @@ export function createRun(cfg: RunConfig): State {
   for (const u of UPGRADES) upgrades[u.id] = Math.max(0, Math.min(u.max, Math.floor(cfg.upgrades?.[u.id] ?? 0)));
   const s: State = {
     cfg: { ...cfg, numbers: cfg.numbers ?? true },
+    endless: cfg.mode === 'endless',
+    coinCap: cfg.mode === 'endless' ? map.endlessCoins : Infinity,
     map,
     char,
     upgrades,
@@ -108,8 +110,8 @@ export function createRun(cfg: RunConfig): State {
 function fastForward(s: State, sec: number) {
   s.tick = Math.round(sec * TICKS_PER_SEC);
   s.time = s.tick * TICK;
-  while (s.swarmNext < s.map.swarms.length && s.map.swarms[s.swarmNext].at < sec) s.swarmNext++;
-  while (s.bossNext < s.map.bosses.length && s.map.bosses[s.bossNext].at < sec) s.bossNext++;
+  while (swarmTime(s, s.swarmNext) < sec) s.swarmNext++;
+  while (bossTime(s, s.bossNext) < sec) s.bossNext++;
   const levels = Math.floor(sec * DEV_LEVEL_PER_SEC);
   for (let i = 0; i < levels; i++) {
     s.level++;
@@ -171,14 +173,50 @@ function spawnByKind(s: State, kind: number) {
 }
 
 // ───────────────────────── 출현: 등장 표 · 떼 · 보스 ─────────────────────────
+/**
+ * i번째 보스·떼가 오는 시각 (없으면 Infinity).
+ * 무한 모드는 표가 끝난 뒤로도 정해진 간격마다 그 맵의 보스·떼가 번갈아 다시 온다 (data/balance.ts 의 ENDLESS)
+ */
+function bossTime(s: State, i: number): number {
+  const list = s.map.bosses;
+  if (i < list.length) return list[i].at;
+  return s.endless && list.length > 0 ? RUN_SEC + (i - list.length + 1) * ENDLESS.bossEvery : Infinity;
+}
+function swarmTime(s: State, i: number): number {
+  const list = s.map.swarms;
+  if (i < list.length) return list[i].at;
+  return s.endless && list.length > 0 ? RUN_SEC + (i - list.length + 0.5) * ENDLESS.swarmEvery : Infinity;
+}
+
+/** 떼로 몰려온다: n 마리가 한꺼번에 (ring 사방 · side 한쪽) */
+function spawnSwarm(s: State, sw: SwarmEvent, kind: number, n: number) {
+  const side = sw.shape === 'side' ? Math.floor(rand(s) * 4) : -1;
+  const special = ENEMIES[kind].spawn === 'near' || ENEMIES[kind].spawn === 'row';
+  for (let i = 0; i < n; i++) {
+    // 풀에 보스가 들어올 자리는 남겨 둔다
+    if (s.enemies.n >= LIMIT.enemyPool - 6) break;
+    if (special) {
+      // 숨어 있는 요괴·줄지어 오는 요괴는 제 방식대로 (줄은 한 번에 여러 마리)
+      spawnByKind(s, kind);
+      if (ENEMIES[kind].spawn === 'row') i += Math.round(ENEMIES[kind].extra?.row ?? 5) - 1;
+      continue;
+    }
+    edgePoint(s, PT, side);
+    spawnEnemy(s, kind, PT.x, PT.y);
+  }
+  emit(s, EV.swarm, kind);
+}
+
 function updateSpawns(s: State) {
   const map = s.map;
   const t = s.time;
+  // 무한 모드: 4분 뒤로는 등장 수가 계속 는다 (그 밖에는 1)
+  const more = endlessMul(s, ENDLESS.count);
   for (let i = 0; i < map.spawns.length; i++) {
     const row = map.spawns[i];
     if (t < row.from || t >= row.to) continue;
     const k = row.to - row.from > 10000 ? 0 : (t - row.from) / (row.to - row.from);
-    s.spawnAcc[i] += (row.rate0 + (row.rate1 - row.rate0) * k) * map.power.count * TICK;
+    s.spawnAcc[i] += (row.rate0 + (row.rate1 - row.rate0) * k) * map.power.count * more * TICK;
     while (s.spawnAcc[i] >= 1) {
       s.spawnAcc[i]--;
       if (s.normals >= LIMIT.enemies) continue;
@@ -186,36 +224,22 @@ function updateSpawns(s: State) {
     }
   }
   // 떼로 몰려오는 이벤트
-  while (s.swarmNext < map.swarms.length && t >= map.swarms[s.swarmNext].at) {
-    const sw = map.swarms[s.swarmNext];
-    const kind = s.swarmKind[s.swarmNext++];
-    const side = sw.shape === 'side' ? Math.floor(rand(s) * 4) : -1;
-    const n = Math.round(sw.count * map.power.count);
-    const special = ENEMIES[kind].spawn === 'near' || ENEMIES[kind].spawn === 'row';
-    for (let i = 0; i < n; i++) {
-      // 풀에 보스가 들어올 자리는 남겨 둔다
-      if (s.enemies.n >= LIMIT.enemyPool - 6) break;
-      if (special) {
-        // 숨어 있는 요괴·줄지어 오는 요괴는 제 방식대로 (줄은 한 번에 여러 마리)
-        spawnByKind(s, kind);
-        if (ENEMIES[kind].spawn === 'row') i += Math.round(ENEMIES[kind].extra?.row ?? 5) - 1;
-        continue;
-      }
-      edgePoint(s, PT, side);
-      spawnEnemy(s, kind, PT.x, PT.y);
-    }
-    emit(s, EV.swarm, kind);
+  while (t >= swarmTime(s, s.swarmNext)) {
+    // 표의 끝을 지나면(무한 모드) 처음부터 번갈아 다시 온다
+    const i = s.swarmNext++ % map.swarms.length;
+    spawnSwarm(s, map.swarms[i], s.swarmKind[i], Math.round(map.swarms[i].count * map.power.count * more));
   }
-  // 보스: 등장 3초 전에 경고, 시각이 되면 등장. 마지막 보스가 최종 보스
-  if (s.bossNext < map.bosses.length) {
-    const b = map.bosses[s.bossNext];
-    if (!s.bossWarned && t >= b.at - BOSS_WARN_SEC) {
+  // 보스: 등장 3초 전에 경고, 시각이 되면 등장. 표의 마지막 보스가 최종 보스 (무한 모드는 그 뒤로도 번갈아 다시 나온다)
+  const at = bossTime(s, s.bossNext);
+  if (t >= at - BOSS_WARN_SEC) {
+    const kind = s.bossKind[s.bossNext % map.bosses.length];
+    if (!s.bossWarned) {
       s.bossWarned = true;
-      emit(s, EV.bossWarn, s.bossKind[s.bossNext]);
+      emit(s, EV.bossWarn, kind);
     }
-    if (t >= b.at) {
+    if (t >= at) {
       edgePoint(s, PT, 0);
-      const e = spawnBoss(s, s.bossKind[s.bossNext], PT.x, PT.y + 200);
+      const e = spawnBoss(s, kind, PT.x, PT.y + 200);
       if (e) {
         if (s.bossNext === map.bosses.length - 1) s.finalUid = e.uid;
         s.bossNext++;
@@ -537,8 +561,10 @@ export function step(s: State, input: Input) {
   s.normals = normals;
 
   if (s.phase !== 'play') return; // 최종 보스를 물리쳐 끝났다
+  // 무한 모드의 시간 상한 (서버가 받는 가장 긴 판. 실제로는 한참 전에 죽는다)
+  if (s.endless && s.time >= ENDLESS.maxSec) p.hp = 0;
   if (p.hp <= 0) {
-    if (p.revives > 0) revive(s);
+    if (p.revives > 0 && !(s.endless && s.time >= ENDLESS.maxSec)) revive(s);
     else {
       p.hp = 0;
       s.phase = 'over';
@@ -563,7 +589,9 @@ export function activeBoss(s: State): Enemy | null {
 export interface RunSummary {
   map: string;
   character: string;
-  /** 생존 시간 (초, 최대 240) */
+  /** 모드 (없으면 4분 모드: 예전에 보관해 둔 결과) */
+  mode?: RunMode;
+  /** 생존 시간 (초. 4분 모드는 최대 240, 무한 모드는 죽을 때까지) */
   time: number;
   kills: number;
   level: number;
@@ -589,11 +617,12 @@ export function summarize(s: State): RunSummary {
   return {
     map: s.map.id,
     character: s.char.id,
-    time: Math.min(RUN_SEC, Math.floor(s.time)),
+    mode: s.endless ? 'endless' : 'normal',
+    time: Math.min(s.endless ? ENDLESS.maxSec : RUN_SEC, Math.floor(s.time)),
     kills: s.kills,
     level: s.level,
     coins: Math.floor(s.coins),
-    cleared: s.phase === 'clear',
+    cleared: s.phase === 'clear' && !s.endless,
     bossKills: s.bossKills,
     cakes: s.cakes,
     codex: {

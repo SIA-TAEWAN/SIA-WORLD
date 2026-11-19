@@ -4,6 +4,7 @@
  *   npm run balance -- 100           → 조합마다 100판
  *   npm run balance -- 60 maps       → 맵 × 강화 수준 표와 '몇 판째' 표만   (chars: 캐릭터별, dps: 무기 피해)
  *   npm run balance -- 60 maps field,bamboo   → 그 맵만
+ *   npm run balance -- 40 endless             → 무한 모드: 맵 × 강화 수준별 평균·최대 생존 시간 (endless field 처럼 맵을 고를 수 있다)
  * 수십 초~몇 분 걸리므로 테스트(npm test)에는 넣지 않는다.
  */
 import { spawn } from 'node:child_process';
@@ -49,8 +50,8 @@ async function sweep(combos) {
   const lines = (await Promise.all(packs.map((p) => work(JSON.stringify(p))))).flat();
   const sum = new Map();
   for (const l of lines) {
-    const s = sum.get(l.key) ?? { runs: 0, time: 0, clears: 0, coins: 0, kills: 0, level: 0, cakes: 0, evos: 0, times: [], max: { coins: 0, coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 } };
-    for (const k of ['runs', 'time', 'clears', 'coins', 'kills', 'level', 'cakes', 'evos']) s[k] += l[k];
+    const s = sum.get(l.key) ?? { runs: 0, time: 0, clears: 0, coins: 0, clearCoins: 0, kills: 0, level: 0, cakes: 0, bosses: 0, evos: 0, times: [], max: { coins: 0, coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 } };
+    for (const k of ['runs', 'time', 'clears', 'coins', 'clearCoins', 'kills', 'level', 'cakes', 'bosses', 'evos']) s[k] += l[k];
     for (const k of Object.keys(s.max)) s.max[k] = Math.max(s.max[k], l.max[k]);
     s.times.push(...l.times);
     sum.set(l.key, s);
@@ -117,7 +118,58 @@ if (!only || only === 'maps') {
       console.log(`  ${name.padEnd(6, '　')} 강화 ${String(upg).padStart(2)}: ${h.slice(0, 8).map((n) => String(n).padStart(3)).join('')} |${String(h[8]).padStart(3)}`);
     }
   }
+  // 클리어한 판만의 평균 엽전 (무한 모드의 판당 엽전 상한을 정하는 기준: 약 1.5배)
+  console.log('');
+  console.log('  클리어한 판의 평균 엽전 (강화 수준별 · 전체)');
+  for (const [map, name] of maps) {
+    let coins = 0;
+    let clears = 0;
+    const cells = LEVELS.map((upg) => {
+      const s = sum.get(`${map}:${upg}`);
+      coins += s.clearCoins;
+      clears += s.clears;
+      return (s.clears ? `${(s.clearCoins / s.clears).toFixed(0)}닢 (${s.clears}판)` : '-').padStart(16);
+    });
+    console.log(`  ${name.padEnd(6, '　')}${cells.join('')}   전체 ${clears ? `${(coins / clears).toFixed(0)}닢` : '-'}`);
+  }
   if (!onlyMaps) progress(table);
+}
+
+if (!only || only === 'endless') {
+  // 무한 모드: 4분까지는 4분 모드와 같고, 그 뒤로 죽을 때까지 (data/balance.ts 의 ENDLESS). 그 맵을 클리어해야 열리므로 낮은 강화 수준의 줄은 참고용이다
+  const maps = MAPS.filter(([id]) => !onlyMaps || onlyMaps.includes(id));
+  const sum = await sweep(maps.flatMap(([map]) => LEVELS.map((upg) => ({ key: `${map}:${upg}`, map, char: 'tiger', upg, mode: 'endless' }))));
+  const caps = Object.fromEntries([...readFileSync(join(ROOT, 'src', 'data', 'maps.ts'), 'utf8').matchAll(/id: '(\w+)',.*?endlessCoins: (\d+)/g)].map((m) => [m[1], Number(m[2])]));
+  console.log(`
+■ 무한 모드: 맵 × 강화 수준 (호랑이, ${runs}판)   평균 생존 / 가장 짧은 판 ~ 가장 긴 판 / 4분을 넘긴 판 (그 판들의 평균 생존)`);
+  for (const [map, name] of maps) {
+    console.log(`  ${name} (엽전 상한 ${caps[map]}닢)`);
+    for (const upg of LEVELS) {
+      const s = sum.get(`${map}:${upg}`);
+      const past = s.times.filter((t) => t >= 240);
+      const pastAvg = past.length ? mmss(past.reduce((a, b) => a + b, 0) / past.length) : '-';
+      const capped = s.max.coins >= caps[map] ? ' (상한 닿음)' : '';
+      console.log(
+        `    강화 ${String(upg).padStart(2)}: 평균 ${mmss(s.time / s.runs).padStart(5)}  ${mmss(Math.min(...s.times)).padStart(5)} ~ ${mmss(Math.max(...s.times)).padStart(5)}  4분 넘김 ${String(past.length).padStart(3)}판 (${pastAvg.padStart(5)})` +
+          `  Lv ${(s.level / s.runs).toFixed(1).padStart(5)}  처치 ${(s.kills / s.runs).toFixed(0).padStart(5)}  보스 ${(s.bosses / s.runs).toFixed(1).padStart(4)}  엽전 ${(s.coins / s.runs).toFixed(0).padStart(4)}닢 최대 ${s.max.coins}닢${capped}`,
+      );
+    }
+  }
+  // 1분 단위로 언제 죽는지 (마지막 칸은 12분 이상)
+  console.log('');
+  console.log('  1분 단위 사망 (0분대 … 11분대 | 12분 이상)');
+  for (const [map, name] of maps) {
+    for (const upg of LEVELS) {
+      const h = new Array(13).fill(0);
+      for (const t of sum.get(`${map}:${upg}`).times) h[Math.min(12, Math.floor(t / 60))]++;
+      console.log(`  ${name.padEnd(6, '　')} 강화 ${String(upg).padStart(2)}: ${h.slice(0, 12).map((n) => String(n).padStart(3)).join('')} |${String(h[12]).padStart(3)}`);
+    }
+  }
+  // 서버 상한(시간 비례)을 무한 모드에서도 넘지 않는지: 실제 최대치
+  const top = { coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 };
+  for (const v of sum.values()) for (const k of Object.keys(top)) top[k] = Math.max(top[k], v.max[k]);
+  console.log(`
+  전체 최대: (처치-100)/초 ${top.killRate.toFixed(2)} · (레벨-5)/초 ${top.levelRate.toFixed(3)} · (떡-5)/초 ${top.cakeRate.toFixed(4)} · 엽전/초/맵 배율 ${top.coinRate.toFixed(3)}   (서버 상한: 50 · 0.5 · 0.15 · 5)`);
 }
 console.log(`\n(${((Date.now() - t0) / 1000).toFixed(1)}초, 일꾼 ${WORKERS}개)`);
 

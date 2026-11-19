@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BONUS, RUN_SEC, VIEW_W } from '../data/balance';
+import { BONUS, ENDLESS, RUN_SEC, VIEW_W } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import { ITEM } from '../data/items';
@@ -75,12 +75,15 @@ export function showGame(setup: GameSetup) {
     seed: setup.seed ?? Math.floor(Math.random() * 0xffffffff),
     char: setup.char,
     map: setup.map,
+    mode: setup.mode,
     // 영구 강화: 저장된 값 (개발용 설정 ?upg=N 이 있으면 그 값)
     upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : state.profile.upgrades,
     startAt: setup.startAt,
   });
   run.speed = loadSpeed();
   const s = run.state;
+  /** 화면에 보이는 시계: 4분 모드는 4분에서 멈추고(최종 보스와 싸우는 동안), 무한 모드는 계속 올라간다 */
+  const clockSec = () => Math.min(s.endless ? ENDLESS.maxSec : RUN_SEC, s.time);
   let game: Phaser.Game | null = null;
   let ro: ResizeObserver | null = null;
   let endTimer: ReturnType<typeof setTimeout> | null = null;
@@ -89,9 +92,9 @@ export function showGame(setup: GameSetup) {
   // 판 시작을 서버에 알린다 (해금 확인 + 시작 시각). 못 알렸으면 이 판은 기록되지 않는다 (플레이는 할 수 있다)
   const api = state.api;
   const started: Promise<string | null> = api
-    ? api.start(setup.map, setup.char, setup.startAt ?? 0).catch((e) => {
+    ? api.start(setup.map, setup.char, setup.startAt ?? 0, setup.mode ?? 'normal').catch((e) => {
         if (e instanceof ApiError) {
-          // 잠긴 캐릭터·맵: 출전 준비로 돌아간다
+          // 잠긴 캐릭터·맵·무한 모드: 출전 준비로 돌아간다
           toast(whyText(e));
           nav.select();
         }
@@ -114,7 +117,7 @@ export function showGame(setup: GameSetup) {
       <div class="xp"><i id="xpFill"></i><b id="lv">Lv 1</b></div>
       <div class="hud-row">
         <div class="owned" id="owned"></div>
-        <div class="hud-mid"><b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
+        <div class="hud-mid">${s.endless ? '<span class="mode-tag">♾️ 무한 모드</span>' : ''}<b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
         <div class="hud-btns"><button class="icon-btn speed" id="speed"></button><button class="icon-btn" id="pause" aria-label="일시정지">⏸</button></div>
       </div>
       <div class="bossbar hidden" id="bossbar"><span id="bossName"></span><div class="track"><i id="bossFill"></i></div></div>
@@ -359,7 +362,7 @@ export function showGame(setup: GameSetup) {
         ? `<div class="dialog"><h3>그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${quitNote}</p>
             <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-quit>그만두기</button></div></div>`
         : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
-            <p class="soft pause-info">${esc(s.char.nick)} · ${esc(s.map.name)} · ${mmss(Math.min(RUN_SEC, s.time))} · Lv ${s.level}</p>
+            <p class="soft pause-info">${esc(s.char.nick)} · ${esc(s.map.name)}${s.endless ? ' · 무한 모드' : ''} · ${mmss(clockSec())} · Lv ${s.level}</p>
             <h4>무기 ${s.weapons.length}/6</h4><ul class="own-list">${weapons.join('')}</ul>
             <h4>패시브 ${s.passives.length}/6</h4><ul class="own-list">${passives.join('') || '<li class="none">아직 없어요</li>'}</ul>
             <div class="actions"><button class="btn primary" data-resume>계속하기</button></div>
@@ -446,7 +449,7 @@ export function showGame(setup: GameSetup) {
   function onOver() {
     sfx('lose');
     closeLevelUp();
-    setCut(`게임 오버<small>${mmss(Math.min(RUN_SEC, s.time))} 버텼어요</small>`, 'bad');
+    setCut(`게임 오버<small>${mmss(clockSec())} 버텼어요</small>`, 'bad');
     music.play(null);
     finish(false);
   }
@@ -498,7 +501,9 @@ export function showGame(setup: GameSetup) {
         scene()?.burst('boss');
         flashEdge('good');
         if (st.phase === 'play') {
-          setCut(`${esc(BOSSES[e.a].name)} 처치!<small>보물상자를 주워요</small>`, 'go', 1800);
+          // 무한 모드에서 최종 보스를 잡았을 때: 끝나지 않고 계속된다는 것을 알려 준다
+          const more = st.endless && st.bossKind[st.map.bosses.length - 1] === e.a && st.bossNext === st.map.bosses.length;
+          setCut(`${esc(BOSSES[e.a].name)} 처치!<small>${more ? '끝이 아니에요. 요괴가 점점 강해져요' : '보물상자를 주워요'}</small>`, 'go', more ? 2400 : 1800);
           if (!activeBoss(st)) music.play(mapTrack(st.map.id));
         }
         break;
@@ -545,15 +550,20 @@ export function showGame(setup: GameSetup) {
       else if (s.phase === 'over') onOver();
       else if (s.phase === 'clear') onClear();
     }
-    const sec = Math.floor(Math.min(RUN_SEC, s.time));
+    const sec = Math.floor(clockSec());
     if (sec !== shown.sec) {
       shown.sec = sec;
       el.clock.textContent = mmss(sec);
+      // 4분 모드: 최종 보스와 싸우는 동안 / 무한 모드: 4분을 넘겨 요괴가 계속 강해지는 동안
       el.clock.classList.toggle('final', s.time >= RUN_SEC);
     }
     if (s.kills !== shown.kills) el.kills.textContent = `💀 ${(shown.kills = s.kills)}`;
     const coins = Math.floor(s.coins);
-    if (coins !== shown.coins) el.coins.textContent = `🪙 ${(shown.coins = coins)}`;
+    if (coins !== shown.coins) {
+      // 무한 모드: 이 판에 받을 수 있는 엽전을 다 채웠으면 알려 준다
+      el.coins.textContent = `🪙 ${(shown.coins = coins)}${coins >= s.coinCap ? ' 최대' : ''}`;
+      el.coins.classList.toggle('full', coins >= s.coinCap);
+    }
     if (s.level !== shown.lv) el.lv.textContent = `Lv ${(shown.lv = s.level)}`;
     const xp = Math.round(Math.min(1, s.xp / s.xpNext) * 200);
     if (xp !== shown.xp) {
