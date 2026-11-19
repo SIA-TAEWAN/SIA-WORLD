@@ -143,7 +143,7 @@ export function showRankingModal(me: string, board: Board = 'points') {
     <div class="rank-legend">${(['gold', 'silver', 'bronze', 'white'] as Tier[])
       .map((t, i) => `<span>${cloudSvg(t, 22)}<b>${TIER_LABEL[t]}</b><small>${['상위 10%', '상위 30%', '상위 60%', '나머지'][i]}</small></span>`)
       .join('')}</div>
-    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me, board)}위</b> / ${total}명 · ${cloudSvg(tierOf(me, board), 20)} ${TIER_LABEL[tierOf(me, board)]} · ${tg ? `${mine.points.toLocaleString()}점` : `${mine.wins}승 ${mine.losses}패`}</p>` : `<p class="rank-me">${tg ? '아직 기록이 없어요. 백발백중을 해 보세요!' : '아직 기록이 없어요. 온라인 대전에서 이기면 순위에 올라가요!'}</p>`}
+    ${mine ? `<p class="rank-me">내 순위: <b>${placeOf(me, board)}위</b> / ${total}명 · ${cloudSvg(tierOf(me, board), 20)} ${TIER_LABEL[tierOf(me, board)]} · ${tg ? `${mine.points.toLocaleString()}점` : `${mine.wins}승 ${mine.losses}패`}</p>` : `<p class="rank-me">${tg ? '아직 기록이 없어요. 백발백중을 해 보세요!' : '아직 기록이 없어요. 대전에서 이기면 순위에 올라가요!'}</p>`}
     <div class="rank-scroll"><table>${list.length ? list.map(line).join('') : '<tr><td>아직 랭킹이 없어요</td></tr>'}</table></div>
     <p class="rank-note">${tg ? '백발백중 최고 점수로 순위를 매겨요. 0점인 사람은 구름이에요.' : '승수가 많은 순, 같으면 승률이 높은 순이에요. 1승도 없는 사람은 구름이에요.'}</p>
   </div>`;

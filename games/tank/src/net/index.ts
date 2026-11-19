@@ -1,6 +1,7 @@
 import type { Backend } from './backend';
 import { createLocalBackend } from './local';
 import { worldSupabase } from './world';
+import { parseFinish, parseStart, type AiRpc } from './aiRecord';
 
 let backend: Backend | null | undefined;
 
@@ -23,6 +24,24 @@ export async function getBackend(): Promise<Backend | null> {
     }
   }
   return backend;
+}
+
+/**
+ * AI 1:1 판의 전적 기록용 서버 함수 (056_ai_matches.sql). 테스트 모드는 null (서버를 부르지 않는다).
+ * 연결하지 못하면 예외 → 그 판은 기록하지 못한 것으로 끝난다.
+ */
+export async function getAiRpc(difficulty: 'normal' | 'hard'): Promise<AiRpc | null> {
+  if (LOCAL_MODE) return null;
+  const sb = await worldSupabase();
+  const rpc = async (fn: string, args: Record<string, unknown>) => {
+    const { data, error } = await sb.rpc(fn, args);
+    if (error) throw new Error(error.message);
+    return data as unknown;
+  };
+  return {
+    start: async () => parseStart(await rpc('ai_match_start', { p_game: 'tank', p_difficulty: difficulty })),
+    finish: async (id, won) => parseFinish(await rpc('ai_match_finish', { p_id: id, p_won: won })),
+  };
 }
 
 /** 대기실 코드: ?l=코드, 없으면 기본 대기실 */

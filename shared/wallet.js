@@ -54,7 +54,7 @@ export const refill = (currency, baseUnit) => call('refill', { p_currency: curre
 export const RANKINGS = {
   casino: { label: '🪙 카지노', unit: '칩', base: START_AMOUNT, note: '보유 칩 순' },
   matgo: { label: '💰 맞고', unit: '냥', base: START_AMOUNT, note: '보유 냥 순' },
-  tank: { label: '💣 시아탱크', unit: '승', base: 0, note: '온라인 대전 승수 순 (같으면 승률이 높은 사람이 위)', cloud: '1승도 없으면 구름' },
+  tank: { label: '💣 시아탱크', unit: '승', base: 0, note: '대전 승수 순 · AI 보통·어려움 포함 (같으면 승률이 높은 사람이 위)', cloud: '1승도 없으면 구름' },
   target: { label: '🎯 백발백중', unit: '점', base: 0, note: '백발백중 최고 점수 순' },
 };
 

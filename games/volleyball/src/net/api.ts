@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ZodiacId } from '../game/constants';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { worldSupabase } from './world';
+import { parseFinish, parseStart, type AiRpc } from './aiRecord';
 
 /**
  * 서버 연결 (시아레이스 games/running/src/net/api.ts 와 같은 모양).
@@ -113,6 +114,24 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): VolleyApi {
       const d = data as { wins: number; losses: number } | null;
       return { wins: Number(d?.wins ?? 0), losses: Number(d?.losses ?? 0) };
     },
+  };
+}
+
+/**
+ * AI 대전 전적 기록용 서버 함수 (056_ai_matches.sql). 테스트 모드는 null (서버를 부르지 않는다).
+ * 연결하지 못하면 예외 → 그 경기는 기록하지 못한 것으로 끝난다. character: 내 캐릭터 (랭킹에 보인다)
+ */
+export async function getAiRpc(character: ZodiacId): Promise<AiRpc | null> {
+  if (LOCAL_MODE) return null;
+  const sb = await worldSupabase();
+  const rpc = async (fn: string, args: Record<string, unknown>) => {
+    const { data, error } = await sb.rpc(fn, args);
+    if (error) throw new Error(error.message);
+    return data as unknown;
+  };
+  return {
+    start: async () => parseStart(await rpc('ai_match_start', { p_game: 'volleyball', p_difficulty: 'normal', p_character: character })),
+    finish: async (id, won) => parseFinish(await rpc('ai_match_finish', { p_id: id, p_won: won })),
   };
 }
 

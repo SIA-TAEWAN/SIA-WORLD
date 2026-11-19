@@ -67,7 +67,7 @@ function renderChatLog(root: HTMLElement, sess: ChatSource) {
 }
 
 /** 랭킹을 서버에서 다시 받아 구름 등급을 갱신한다 */
-/** 내 온라인 대전 전적 (대기실 위쪽 표시) */
+/** 내 대전 전적: 온라인 + AI 보통·어려움 (대기실 위쪽 표시) */
 function myRecord(): string {
   const mine = ranking().find((r) => r.key === clientId());
   return mine ? `${mine.wins}승 ${mine.losses}패` : '0승 0패';
@@ -133,7 +133,7 @@ function renderLobby(sess: LobbySession) {
       <a class="btn ghost" id="exit" href="${worldHome()}">🌏 SIA WORLD로</a>
       <h2>대기실 <small id="count"></small></h2>
       <button class="btn small-btn" id="rank">🏆 랭킹</button>
-      <span class="my-points" title="온라인 대전 전적 (랭킹은 승패 순)">🏅 ${myRecord()}</span>
+      <span class="my-points" title="대전 전적 · AI 보통·어려움 포함 (랭킹은 승패 순)">🏅 ${myRecord()}</span>
       <button class="btn small-btn" id="copy">🔗 링크 복사</button>
     </header>
     <div class="lobby-tools">

@@ -2,6 +2,7 @@ import { aiInput, makeAi, type Ai } from '../game/ai';
 import { COUNTDOWN_SEC, STEP_MS, type ZodiacId } from '../game/constants';
 import { createState, newClock, step, ticksFor, type Input, type Side, type SimEvent, type SimState } from '../game/sim';
 import type { Pos } from '../game/sync';
+import type { AiOutcome } from '../net/aiRecord';
 
 /** 한 자리의 선수 */
 export interface Fighter {
@@ -14,7 +15,7 @@ export interface Fighter {
 
 /** 경기 설정 */
 export interface MatchSetup {
-  /** ai: AI와 연습 · online: 사람과 온라인 대전 */
+  /** ai: AI 대전 (전적·시아코인에 반영, 하루 30판) · online: 사람과 온라인 대전 */
   mode: 'ai' | 'online';
   /** [왼쪽, 오른쪽] */
   fighters: [Fighter, Fighter];
@@ -40,6 +41,8 @@ export interface MatchResult {
   leaver?: Side;
   /** 온라인: 서버에 결과를 올린 결과 (AI전·테스트 모드는 없음) */
   record?: Promise<RecordOutcome>;
+  /** AI 대전: 서버에 승패를 올린 결과 (056_ai_matches.sql) */
+  aiRecord?: Promise<AiOutcome>;
 }
 
 /** 결과 저장이 어떻게 됐는가 */

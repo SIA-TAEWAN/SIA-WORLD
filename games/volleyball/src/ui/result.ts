@@ -3,10 +3,11 @@ import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, screen, state } from './app';
 import { aiSetup } from './menus';
 import { sfx } from './sfx';
+import { outcomeText } from '../net/aiRecord';
 
 /**
  * 결과 화면: 승/패, 점수, [다시하기] · [로비로].
- * - AI전은 '연습 경기'로 표시하고, 다시하기를 누르면 바로 새 경기.
+ * - AI전은 'AI 대전'으로 표시하고 전적 반영 결과를 한 줄로 알린다. 다시하기를 누르면 바로 새 경기.
  * - 온라인: 두 사람 모두 다시하기를 누르면 같은 방에서 바로 재경기. 상대가 나가면 남은 사람은 그 방의 대기 상태로.
  */
 export function showResult(result: MatchResult) {
@@ -28,7 +29,7 @@ export function showResult(result: MatchResult) {
       <span class="nm">${ai ? '<i class="ai-tag">AI</i>' : ''}${esc(f.name)}</span><span class="wl">${w ? '승' : '패'}</span></div>`;
   };
   const note = !online
-    ? '연습 경기는 랭킹·전적에 기록되지 않아요'
+    ? ''
     : iLeft
       ? '연결이 끊겨 AI가 대신했어요 · 이 경기는 패배로 기록돼요'
       : vsAi
@@ -37,11 +38,11 @@ export function showResult(result: MatchResult) {
   const root = screen(
     `<div class="result-card ${won ? 'won' : 'lost'}">
       <h2>🏐 경기 결과</h2>
-      ${online ? '' : '<p class="kind"><span class="tag">연습 경기</span></p>'}
+      ${online ? '' : '<p class="kind"><span class="tag">AI 대전</span></p>'}
       <p class="verdict">${won ? '승리!' : '패배…'}</p>
       <div class="vs">${row(0)}<div class="vs-score"><b>${score[0]}</b><i>:</i><b>${score[1]}</b></div>${row(1)}</div>
       <p class="soft note" id="note">${note}</p>
-      <p class="soft note" id="rec">${online ? '기록을 올리는 중…' : ''}</p>
+      <p class="soft note" id="rec">${online || result.aiRecord ? '기록을 올리는 중…' : ''}</p>
       <p class="again-st" id="again-st"></p>
       <div class="actions"><button class="btn" id="exit">로비로</button><button class="btn primary" id="again">다시하기 ▶</button></div>
     </div><div class="cheer" id="cheer"></div>`,
@@ -54,6 +55,11 @@ export function showResult(result: MatchResult) {
   if (won) confetti($('#cheer'));
 
   if (!online) {
+    // AI 대전: 전적 +1 · 시아코인 / 하루 한도 / 기록 실패
+    const line = $('#rec');
+    void result.aiRecord?.then((o) => {
+      if (line.isConnected) line.textContent = outcomeText(o);
+    });
     $('#again').addEventListener('click', () => {
       sfx('click');
       // AI 대전: 같은 캐릭터로 바로 다시 (상대는 새로 뽑는다)

@@ -11,7 +11,8 @@ import { sfx } from './sfx';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
-import { clientId, getBackend } from '../net';
+import { clientId, getAiRpc, getBackend } from '../net';
+import { AiMatchRecorder, aiRanked, outcomeText, type AiOutcome } from '../net/aiRecord';
 import { worldHome, openWorldRanking } from '../net/world';
 import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
@@ -78,6 +79,7 @@ export function showSetup() {
         <h3>상대</h3>
         <div class="seg" id="opp"></div>
         <div class="row" id="opp-tank-row"><span class="lbl">상대 탱크</span><div class="seg small" id="opp-tank"></div></div>
+        <p class="rank-note" id="rank-note"></p>
         <div class="row" id="name2-row"><span class="lbl">2P 이름</span><input id="name2" maxlength="10" value="${escapeHtml(state.name2)}"/></div>
         <h3>맵</h3>
         <div class="maps" id="maps"></div>
@@ -126,6 +128,17 @@ export function showSetup() {
     );
   };
 
+  /** 전적 반영 안내: 지금 고른 설정이 반영되는 판인지 함께 알려 준다 */
+  const renderRankNote = () => {
+    const practice = state.map !== 'random' && !!MAPS[state.map].practice;
+    const on = aiRanked(state.opponent, state.mode, practice);
+    const el = $('#rank-note');
+    el.classList.toggle('on', on);
+    el.textContent = on
+      ? '🏅 이 판은 전적과 시아코인에 반영돼요 (하루 30판까지)'
+      : '보통·어려움 AI 전은 전적과 시아코인에 반영돼요 (게임 모드 일반 · 백발백중 제외)';
+  };
+
   const renderOpp = () => {
     const opts: [Opponent, string][] = [
       ['easy', 'AI 쉬움'],
@@ -145,6 +158,7 @@ export function showSetup() {
       }),
     );
     $('#name2-row').style.display = state.opponent === 'local' ? '' : 'none';
+    renderRankNote();
     const ot: (TankId | 'random')[] = ['random', ...TANK_IDS];
     $('#opp-tank').innerHTML = ot.map((v) => `<button data-v="${v}" class="${state.oppTank === v ? 'sel' : ''}">${v === 'random' ? '랜덤' : TANKS[v].name}</button>`).join('');
     $('#opp-tank').querySelectorAll<HTMLElement>('button').forEach((b) =>
@@ -168,6 +182,7 @@ export function showSetup() {
         renderOpts();
       }),
     );
+    renderRankNote();
     $('#speed').innerHTML = [1, 1.5].map((v) => `<button data-v="${v}" class="${state.speed === v ? 'sel' : ''}">${v === 1 ? '보통 (1배)' : '빠르게 (1.5배)'}</button>`).join('');
     const winds = [['slow', '느리게 ±2'], ['normal', '보통 ±5'], ['fast', '빠르게 ±8']] as const;
     $('#wind').innerHTML = winds.map(([v, l]) => `<button data-v="${v}" class="${state.wind === v ? 'sel' : ''}">${l}</button>`).join('');
@@ -204,6 +219,7 @@ export function showSetup() {
         save({ map: state.map });
         sfx.click();
         renderMaps();
+        renderRankNote();
       }),
     );
   };
@@ -268,6 +284,9 @@ function startGame() {
   ];
   // 백발백중: AI 상대 없이 혼자 (2P는 둘이서)
   if (MAPS[mapId].practice && !local) setups.pop();
+  // 전적에 반영되는 판(AI 보통·어려움 + 게임 모드 일반)이면 서버에 시작을 알린다.
+  // 한 기기 2인·AI 쉬움·초보 모드·백발백중은 알리지 않는다 (056_ai_matches.sql)
+  const record = aiRanked(state.opponent, state.mode, !!MAPS[mapId].practice) ? new AiMatchRecorder(getAiRpc(diff as 'normal' | 'hard')) : null;
   // 판이 끝나면 포인트·아이템 초기화
   state.shop = [[], []];
 
@@ -282,7 +301,9 @@ function startGame() {
     fullUlt: state.isAdmin ? [0] : [],
     onEnd: (s: MatchSummary) => {
       closeGame();
-      showResult(s);
+      // 승패가 난 판만 올린다 (무승부는 사람 대전처럼 기록하지 않는다). 중간에 나간 판(onQuit)은 올리지 않는다
+      const meWon = s.players.some((p) => p.team === s.winner && p.mine);
+      showResult(s, undefined, record ? (s.winner === -1 ? 'draw' : record.finish(meWon)) : null);
       if (s.practice) void recordTarget(s);
     },
     onQuit: () => {
@@ -343,7 +364,8 @@ export interface ResultActions {
   onSecondary?: () => void;
 }
 
-export function showResult(s: MatchSummary, actions?: ResultActions) {
+/** record: AI 전 전적 기록 (반영되는 판일 때만). 'draw' 는 무승부라 올리지 않은 판 */
+export function showResult(s: MatchSummary, actions?: ResultActions, record: Promise<AiOutcome> | 'draw' | null = null) {
   const act: ResultActions = actions ?? { primary: '다시 하기', onPrimary: showSetup, secondary: '대기실로', onSecondary: () => nav.lobby() };
   if (s.practice) return showTargetResult(s, act);
   const winText = s.winner === -1 ? '무승부!' : `${TEAM_NAMES[s.winner]} 승리!`;
@@ -369,11 +391,20 @@ export function showResult(s: MatchSummary, actions?: ResultActions) {
         <button class="btn big primary" id="again">${act.primary}</button>
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
       </div>
+      ${record ? `<p class="rec-line" id="rec">${record === 'draw' ? '무승부는 전적에 기록되지 않아요' : '전적을 기록하는 중…'}</p>` : ''}
       <p class="hint">다음 판에는 포인트 1,000이 새로 지급돼요</p>
     </div>`,
     'result',
   );
   root.querySelector('#again')!.addEventListener('click', act.onPrimary);
   if (act.onSecondary) root.querySelector('#home')?.addEventListener('click', act.onSecondary);
+  if (record && record !== 'draw') {
+    const rec = root.querySelector<HTMLElement>('#rec')!;
+    void record.then((o) => {
+      if (!rec.isConnected) return;
+      rec.textContent = outcomeText(o);
+      rec.classList.toggle('ok', o.state === 'saved');
+    });
+  }
 }
 

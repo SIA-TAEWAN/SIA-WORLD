@@ -3,8 +3,9 @@ import { COURT_H, COURT_W, WIN_SCORE } from '../game/constants';
 import type { Side } from '../game/sim';
 import { Match, type MatchEvent, type MatchSetup } from '../match/game';
 import { OnlineMatch } from '../match/online';
-import { serverNow } from '../net/api';
+import { getAiRpc, serverNow } from '../net/api';
 import { MatchRecorder, forfeitResult, pendingStore } from '../net/record';
+import { AiMatchRecorder } from '../net/aiRecord';
 import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, openSettings, screen, stage, state, toast } from './app';
@@ -31,6 +32,8 @@ export function showMatch(setup: MatchSetup) {
   window.__match = match;
   // 온라인: 경기 시작을 서버에 알린다 (두 기기가 각자). 끝나면 결과를 보고한다
   const recorder = room && state.api ? new MatchRecorder(state.api, room.key, setup, { store: pendingStore(state.user.id) }) : null;
+  // AI 대전: 경기 시작을 서버에 알리고, 끝나면 승패를 올린다 (중간에 나가면 올리지 않는다 → 기록 없음)
+  const aiRecorder = online ? null : new AiMatchRecorder(getAiRpc(setup.fighters[setup.mySide].char));
   // 그림을 받는 동안에도 경기 시계가 돌게 한다 (방장이 늦게 시작해 상대만 기다리지 않도록). 화면이 그려지기 시작하면 멈춘다
   let drawing = false;
   const pump = online ? setInterval(() => drawing || match.update(performance.now()), 50) : null;
@@ -51,7 +54,7 @@ export function showMatch(setup: MatchSetup) {
   const root = screen(
     `<div class="score">${side(0)}
       <div class="mid"><div class="mid-btns"><button class="icon-btn" id="quit" aria-label="나가기">✕</button><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
-        <div class="speed" id="speed">${online ? '' : '연습 경기'}</div></div>
+        <div class="speed" id="speed">${online ? '' : 'AI 대전'}</div></div>
       ${side(1)}</div>
     <div class="court bg${setup.bg}" id="court"><div class="cutin" id="cutin"></div><div class="waitbox hidden" id="waitbox"></div></div>
     <div class="pad" id="pad">
@@ -166,7 +169,7 @@ export function showMatch(setup: MatchSetup) {
     if (!online) match.paused = true;
     const dim = document.createElement('div');
     dim.className = 'dim';
-    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online ? '지금 나가면 패배로 기록돼요' : '연습 경기라 기록은 남지 않아요'}</p>
+    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online ? '지금 나가면 패배로 기록돼요' : '지금 나가면 이 경기는 기록되지 않아요'}</p>
       <div class="actions"><button class="btn" data-no>계속하기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -213,6 +216,7 @@ export function showMatch(setup: MatchSetup) {
     room?.matchOver(setup.matchNo ?? 0, !iLeft, result.reason === 'normal' && me === 0 ? { score: result.score, winner: result.winner } : undefined);
     if (match instanceof OnlineMatch) window.__lastStats = { side: me, solo: match.solo, ...match.stats };
     if (recorder) result.record = recorder.finish(result);
+    if (aiRecorder) result.aiRecord = aiRecorder.finish(result.winner === me);
     stage.querySelector('.dim')?.remove();
     waitbox.classList.add('hidden');
     if (iLeft) {
@@ -273,7 +277,7 @@ export function showMatch(setup: MatchSetup) {
             setCut('');
             delete cutin.dataset.k;
           }
-          speedEl.textContent = online ? '' : '연습 경기';
+          speedEl.textContent = online ? '' : 'AI 대전';
           speedEl.classList.remove('fast');
           break;
         case 'takeover': {

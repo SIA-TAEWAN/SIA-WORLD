@@ -194,7 +194,7 @@ export function showCharSelect() {
       <div class="pick-name" id="pick-name"></div><div class="soft">겉모습만 달라요. 능력은 모두 같아요</div></div>
     <div class="card"><h3>십이지신 <span class="soft">누구로 할까요?</span></h3><div class="chars" id="chars"></div></div>
     <div class="grow"></div>
-    <p class="status">내가 왼쪽 · AI가 오른쪽 · 연습 경기라 기록은 남지 않아요</p>
+    <p class="status">내가 왼쪽 · AI가 오른쪽 · 전적과 시아코인에 반영돼요 (하루 30판)</p>
     <button class="btn primary big" id="start">경기 시작 ▶</button>`,
     'room',
     'lobby',
