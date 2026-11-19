@@ -17,6 +17,8 @@ export interface SoloInfo {
   seed: number;
   /** 지금까지 적용한 행동 수 (사람 + AI) */
   n: number;
+  /** 사람 둘이 시작한 판 (상대가 나가 혼자 남아도 '버려진 혼자 하는 판'으로 보지 않는다) */
+  duo?: boolean;
 }
 
 /** 상태에 실린 solo 칸 (없거나 모양이 틀리면 null) */
@@ -24,7 +26,7 @@ export function soloOf(state: unknown): SoloInfo | null {
   const s = (state as { solo?: unknown } | null | undefined)?.solo as Partial<SoloInfo> | null | undefined;
   if (!s || typeof s !== 'object') return null;
   if (!Number.isInteger(s.seed) || !Number.isInteger(s.n) || (s.n as number) < 0) return null;
-  return { seed: s.seed as number, n: s.n as number };
+  return s.duo === true ? { seed: s.seed as number, n: s.n as number, duo: true } : { seed: s.seed as number, n: s.n as number };
 }
 
 /** (seed, n) → 그 걸음의 난수. 정수 연산만 써서 어느 실행 환경에서도 같은 값이 나온다 */
@@ -53,7 +55,7 @@ export function soloStep<S, A>(engine: AnyEngine<S, A>, state: S, seat: number, 
     a = engine.ai(v.public, v.private[seat], seat, rng) as A;
   }
   const next = engine.apply(state, seat, a, rng);
-  return { ...next, solo: { seed: solo.seed, n: solo.n + 1 } } as S;
+  return { ...next, solo: solo.duo ? { seed: solo.seed, n: solo.n + 1, duo: true } : { seed: solo.seed, n: solo.n + 1 } } as S;
 }
 
 /** AI 자리 차례를 사람 차례(또는 판 끝)까지 이어서 둔다. isAuto(seat): 사람이 직접 두지 않는 자리인가 */

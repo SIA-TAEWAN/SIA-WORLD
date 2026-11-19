@@ -136,7 +136,10 @@ export class Runner {
     //   · 사람 2명: 각자 자기 행동을 기기에서 바로 적용해 보여 주고 서버에는 하나씩 보낸다 (act + n). 서버가 계속 심판이다
     const humans = this.humans(seats).length;
     const solo = room.game === 'matgo' && humans >= 1 && !engine.done(state);
-    if (solo) state = { ...state, solo: { seed: Math.floor(this.rng.next() * 4294967296) >>> 0, n: 0 } };
+    if (solo) {
+      const seed = Math.floor(this.rng.next() * 4294967296) >>> 0;
+      state = { ...state, solo: humans >= 2 ? { seed, n: 0, duo: true } : { seed, n: 0 } };
+    }
     const saved = await this.advance(roomId, { ...room, status: 'playing', round_no: round }, seats, engine, deck.version, state);
     // 화면이 이어서 둘 수 있게 전체 상태를 같이 돌려준다 (그 판에 앉아 있는 사람만 부를 수 있는 응답).
     // 사람이 둘인 판은 다른 칸(duo)에 싣는다: 예전 화면이 혼자 하는 판으로 잘못 알고 상대 차례를 AI 로 두지 않게
@@ -300,7 +303,8 @@ export class Runner {
       // solo 판: 나간 사람 자리는 AI가 이어서 둔다 (autoOnly).
       //   · 혼자 하는 판: 자리는 지키는데 30분 마감이 지났으면 버려진 판이다 → 사람 차례는 정해진 자동 행동으로, 판이 끝날 때까지 서버가 대신 둔다
       //   · 사람이 둘인 판: 차례 시간(20초)을 넘긴 사람의 이번 차례만 대신 둔다 (다음 차례는 다시 그 사람이 둔다)
-      const lone = this.humans(seats).length <= 1;
+      // 사람 둘이 시작한 판은 상대가 나가 혼자 남아도 이번 차례만 대신 둔다 (20초를 한 번 넘겼다고 판 전체를 끝내지 않는다)
+      const lone = this.humans(seats).length <= 1 && !soloOf(state)?.duo;
       for (let steps = 0; !engine.done(state); steps++) {
         if (steps > MAX_AUTO_STEPS) throw new Error('AI loop');
         state = this.soloAutos(engine, seats, state);
