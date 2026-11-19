@@ -1,0 +1,4 @@
+{
+  "note": "시아돌격대는 아직 전용 SpriteCook 그림이 없다. public/art 의 요괴·보스·바닥·이펙트는 시아디펜스(games/defense/public/art)에서 복사한 것이고, 원본 asset id 는 games/survival/spritecook-assets.json 과 games/defense/spritecook-assets.json 에 있다. 전용 그림을 만들면 여기에 적는다 (ASSETS.md 의 '나중에 만들 것').",
+  "assets": []
+}

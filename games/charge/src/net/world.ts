@@ -77,3 +77,21 @@ export function loadSound(): Promise<SoundModule> {
   soundMod.catch(() => (soundMod = null));
   return soundMod;
 }
+
+export interface PresenceHandle {
+  full: boolean;
+  leave(): Promise<void>;
+}
+interface PresenceModule {
+  enterGame(topic: string, user: WorldUser): Promise<PresenceHandle>;
+  GAME_MAX: number;
+}
+/** SIA WORLD 접속 인원 채널에 들어간다 (shared/presence.js: 로비에 인원이 보이고, 정원 30명을 넘으면 full). 못 하면 null */
+export async function enterLobby(user: WorldUser): Promise<PresenceHandle | null> {
+  try {
+    const m = (await import(/* @vite-ignore */ new URL('shared/presence.js', root()).href)) as PresenceModule;
+    return await m.enterGame('charge-lobby', user);
+  } catch {
+    return null;
+  }
+}

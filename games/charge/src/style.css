@@ -131,3 +131,43 @@ button, input { font: inherit; color: inherit; }
 .rows div { display: flex; justify-content: space-between; font-size: 16px; }
 .rows b { font-weight: normal; color: var(--team-a); }
 .btns { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---------- 메뉴 버튼 · 지도 · 스테이지 · 강화 (4단계) ---------- */
+.screen[class*='bg-'] { background: var(--bg); }
+.light { color: var(--white); text-shadow: 0 2px 0 var(--outline); font-size: 14px; }
+.menu-btns { display: flex; flex-direction: column; gap: 10px; flex: none; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.star-pill { color: var(--primary-deep); }
+.region-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; flex: none; }
+.region { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; cursor: pointer;
+  background: var(--bg); border: var(--line) solid var(--outline); border-radius: var(--radius-item); box-shadow: 0 3px 0 var(--outline); color: var(--white); }
+.region img { width: 52px; height: 52px; object-fit: contain; background: var(--white); border: var(--line) solid var(--outline); border-radius: 50%; }
+.region b { position: absolute; top: 4px; left: 8px; font-weight: normal; font-size: 18px; -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
+.region span { font-size: 13px; text-shadow: 0 1px 0 var(--outline); white-space: nowrap; }
+.region em { font-style: normal; font-size: 12px; background: var(--outline); border-radius: var(--radius-pill); padding: 0 8px; }
+.region.locked img { filter: grayscale(1) brightness(0.6); }
+.region.locked { opacity: 0.75; }
+.stage-list { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.btn.stage-row { justify-content: flex-start; gap: 10px; padding: 12px 14px; }
+.btn.stage-row b { font-weight: normal; font-size: 20px; min-width: 44px; }
+.btn.stage-row span { flex: 1; text-align: left; font-size: 15px; }
+.btn.stage-row .stars { font-size: 18px; flex: none; }
+.btn.stage-row.boss { background: var(--primary-gradient); }
+.btn.stage-row.locked { opacity: 0.6; }
+.up-list { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.up-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.up-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.up-info b { font-weight: normal; font-size: 18px; }
+.lv { height: 10px; background: var(--track); border: 2px solid var(--outline); border-radius: var(--radius-pill); overflow: hidden; }
+.lv i { display: block; height: 100%; background: var(--gauge-gradient); }
+.up-row .btn { min-width: 86px; }
+#meters { font-size: 16px; }
+.big-num { margin: 0; text-align: center; font-size: 40px; color: var(--team-a); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
+.rows b.coin { color: var(--accent); }
+.new-leaders { display: flex; flex-direction: column; gap: 4px; }
+.new-leaders span { display: flex; align-items: center; gap: 8px; background: var(--primary-gradient); border: var(--line) solid var(--outline); border-radius: var(--radius-item); padding: 4px 10px; font-size: 15px; }
+.new-leaders img { width: 34px; height: 34px; }
+.help ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.45; }
+.help b { font-weight: normal; color: var(--accent); }
+.help b.blue { color: var(--team-a); }
+.help b.red { color: var(--pink); }
