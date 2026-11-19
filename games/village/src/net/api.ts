@@ -2,14 +2,15 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { CONST, LEVEL_EXP, RES_IDS } from '../data/balance';
 import { GOALS } from '../data/goals';
 import {
-  RuleError, build, claimGoal, cleanState, cloneState, craft, expand, feast, harvest, move, newVillage, place, sell, settle, store as storeRule, upgrade,
+  RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, requestDone, requestSkip, sell, settle, store as storeRule,
+  upgrade,
   type HarvestResult, type VillageState,
 } from '../game/rules';
 import { worldSupabase } from './world';
 
 /**
  * 서버 연결. 시아마을은 서버가 진실이다 (PRD 3·13장):
- * 짓기 · 옮기기 · 수확 · 업그레이드 · 목표 보상은 모두 서버 함수(supabase/migrations/047_village.sql)가 서버 시간으로 계산하고,
+ * 짓기 · 옮기기 · 수확 · 업그레이드 · 판매 · 부탁 · 시아코인 쓰기 등 자원이 바뀌는 동작은 모두 서버 함수(supabase/migrations/047 · 049 · 050 · 051)가 서버 시간으로 계산하고,
  * 화면은 돌려받은 상태와 서버 시각(기기 시계와의 차이를 맞춘 now())으로 진행 막대와 쌓인 양을 보여 주기만 한다.
  * 테스트 모드(?local=1, 개발 서버·localhost 전용)는 같은 규칙(game/rules.ts)으로 이 기기에만 저장한다.
  */
@@ -44,6 +45,13 @@ export interface VillageApi {
   /** 땅 넓히기 (시아코인) · 잔치 열기 (떡) */
   expand(): Promise<VillageState>;
   feast(): Promise<VillageState>;
+  /** 주민 배치 (building 이 null 이면 쉬게 한다) */
+  assign(resident: string, building: string | null): Promise<VillageState>;
+  /** 부탁 들어주기 → gift: 친밀도 선물로 받은 장식물의 id (없으면 null) · 넘기기 */
+  requestDone(slot: number): Promise<{ state: VillageState; gift: string | null }>;
+  requestSkip(slot: number): Promise<VillageState>;
+  /** 오늘의 할 일 보상 (slot 0 … 2, 3 = 다 끝낸 추가 보상) */
+  dailyClaim(slot: number): Promise<VillageState>;
 }
 
 export interface Store {
@@ -156,6 +164,19 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     async feast() {
       return run((s) => feast(s, now())).state;
     },
+    async assign(resident, building) {
+      return run((s) => assign(s, resident, building, now())).state;
+    },
+    async requestDone(slot) {
+      const r = run((s, d) => requestDone(s, slot, now(), `local-${++d.seq}`));
+      return { state: r.state, gift: r.out?.id ?? null };
+    },
+    async requestSkip(slot) {
+      return run((s) => requestSkip(s, slot, now())).state;
+    },
+    async dailyClaim(slot) {
+      return run((s) => dailyClaim(s, slot, now())).state;
+    },
   };
 }
 
@@ -215,7 +236,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
     async harvest(ids) {
       const d = await call('village_harvest', { p_ids: ids });
       const h = (d.harvest ?? {}) as Partial<HarvestResult>;
-      return { state: cleanState(d), harvest: { per: h.per ?? {}, gained: h.gained ?? {}, exp: Number(h.exp) || 0, lost: Number(h.lost) || 0 } };
+      return { state: cleanState(d), harvest: { per: h.per ?? {}, gained: h.gained ?? {}, exp: Number(h.exp) || 0, lost: Number(h.lost) || 0, rooster: Number(h.rooster) || 0 } };
     },
     upgrade: async (id) => cleanState(await call('village_upgrade', { p_id: id })),
     claimGoal: async () => cleanState(await call('village_claim_goal')),
@@ -228,6 +249,13 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
     place: async (id, x, y) => cleanState(await call('village_place', { p_id: id, p_x: x, p_y: y })),
     expand: async () => cleanState(await call('village_expand')),
     feast: async () => cleanState(await call('village_feast')),
+    assign: async (resident, building) => cleanState(await call('village_assign', { p_resident: resident, p_building: building })),
+    async requestDone(slot) {
+      const d = await call('village_request_done', { p_slot: slot });
+      return { state: cleanState(d), gift: typeof d.gift === 'string' ? d.gift : null };
+    },
+    requestSkip: async (slot) => cleanState(await call('village_request_skip', { p_slot: slot })),
+    dailyClaim: async (slot) => cleanState(await call('village_daily_claim', { p_slot: slot })),
   };
 }
 
@@ -245,11 +273,11 @@ export async function getApi(): Promise<VillageApi> {
 
 /**
  * 테스트 모드의 마을을 주소로 정한다 (헤드리스 확인용):
- *   ?fresh=1 처음 상태로 · ?rice=500&wood=500&stone=&cake=&coin=&special= 자원 · ?sia=100 시아코인 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
+ *   ?fresh=1 처음 상태로 · ?rice=500&wood=500&stone=&cake=&coin=&special= 자원 · ?sia=100 시아코인 · ?land=2 땅 단계 · ?aff=95 친밀도 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
  */
 function seedLocal(store: Store) {
   if (params.get('fresh') === '1') store.removeItem(LOCAL_KEY);
-  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land'].filter((k) => params.get(k) !== null);
+  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land', 'aff'].filter((k) => params.get(k) !== null);
   if (keys.length === 0) return;
   let d: { state?: unknown; seq?: number; skew?: number } = {};
   try {
@@ -266,6 +294,8 @@ function seedLocal(store: Store) {
   }
   if (params.get('sia') !== null) s.sia = num('sia', 1e9);
   if (params.get('land') !== null) s.profile.landStage = num('land', 6);
+  // ?aff=95 이사 온 주민 모두의 친밀도 점수
+  if (params.get('aff') !== null) for (const r of s.residents) r.affinity = num('aff', 1000);
   if (params.get('goal') !== null) {
     s.profile.goal = num('goal', GOALS.length);
     s.profile.goalProgress = 0;

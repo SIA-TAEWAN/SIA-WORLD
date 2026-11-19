@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
 import { GRID_MAX, lookOf } from '../data/balance';
 import { BUILDING, recipeOf, upgradable, type BuildingType } from '../data/buildings';
-import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, stored, type Building, type VillageState } from '../game/rules';
+import type { ResidentId } from '../data/residents';
+import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, stored, workplace, type Building, type VillageState } from '../game/rules';
 import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
 import { BUBBLE, CELL, bubbleKey, makeTextures, texKey, texSize } from './art';
 
 /**
  * 마을 화면: 격자 땅 + 건물. 서버가 준 상태를 그리기만 한다 (계산은 서버, 미리 보기는 game/rules.ts).
- *   끌기 = 이동 · 두 손가락/휠 = 확대축소 · 건물 누르기 = 관리 · 수확 방울 누르기/끌고 지나가기 = 수확
+ *   끌기 = 이동 · 두 손가락/휠 = 확대축소 · 건물 누르기 = 관리 · 수확 방울 누르기/끌고 지나가기 = 수확 · 주민 누르기 = 한마디/부탁
+ *   주민(십이지)은 공용 전신 그림 한 장을 코드로 움직인다: 마을을 걸어 다니고, 일터가 있으면 그 둘레를 맴돈다
  *   놓을 자리 고르기(짓기 · 옮기기): 칸을 누르거나 건물 그림을 끌어서 옮긴다. 확인/취소는 화면 아래 버튼(DOM)
  */
 export interface SceneHooks {
@@ -16,6 +18,8 @@ export interface SceneHooks {
   now(): number;
   tapBuilding(id: string): void;
   tapGround(): void;
+  /** 걸어 다니는 주민을 눌렀다 */
+  tapResident(id: ResidentId): void;
   /** 수확할 건물 하나 (끌면 지나가는 건물마다 불린다) */
   harvest(id: string): void;
   /** 손을 뗐다: 모은 수확을 보낸다 */
@@ -29,7 +33,29 @@ export interface SceneData {
   hooks: SceneHooks;
   /** 캔버스 픽셀 ÷ 기준 화면(가로 720) */
   unit: number;
+  /** 십이지 전신 그림의 주소 (shared/images/zodiac/full) */
+  zodiacUrl(id: string): string;
 }
+
+/** 걸어 다니는 주민 한 명 */
+interface Walker {
+  box: Phaser.GameObjects.Container;
+  img: Phaser.GameObjects.Image | null;
+  mark: Phaser.GameObjects.Text;
+  bubble: Phaser.GameObjects.Text;
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  /** 서 있는 시간 (ms) · 걸음 흔들림 */
+  rest: number;
+  step: number;
+  sayLeft: number;
+}
+
+/** 주민의 키 (장면 좌표) · 걷는 빠르기 (초당) */
+const WALK_H = 84;
+const WALK_SPEED = 44;
 
 interface View {
   box: Phaser.GameObjects.Container;
@@ -64,6 +90,9 @@ export class VillageScene extends Phaser.Scene {
   private views = new Map<string, View>();
   /** 수확을 보내고 답을 기다리는 건물 (방울을 숨긴다) */
   private pending = new Set<string>();
+  private zodiacUrl: (id: string) => string = () => '';
+  private walkers = new Map<ResidentId, Walker>();
+  private loading = new Set<string>();
   private tick = 0;
   private dueAsked = 0;
 
@@ -84,6 +113,7 @@ export class VillageScene extends Phaser.Scene {
   init(data: SceneData) {
     this.hooks = data.hooks;
     this.unit = data.unit;
+    this.zodiacUrl = data.zodiacUrl;
   }
 
   create() {
@@ -141,6 +171,7 @@ export class VillageScene extends Phaser.Scene {
       v.bubble.destroy();
       this.views.delete(id);
     }
+    this.syncWalkers();
     this.tickViews();
     if (this.place) this.updateGhost();
   }
@@ -163,6 +194,141 @@ export class VillageScene extends Phaser.Scene {
       .setDepth(60000)
       .setResolution(2);
     this.tweens.add({ targets: t, y: t.y - 70, alpha: { from: 1, to: 0 }, duration: 1100, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });
+  }
+
+  // ───────────────────────── 주민 ─────────────────────────
+
+  /** 이사 온 주민마다 걸어 다니는 그림 하나 */
+  private syncWalkers() {
+    const s = this.hooks.state();
+    const { x0, size } = landRect(s.profile.landStage);
+    for (const r of s.residents) {
+      let w = this.walkers.get(r.id);
+      if (!w) {
+        // 마을 회관 앞에서 나타난다
+        const hall = s.buildings.find((b) => b.type === 'hall');
+        const x = ((hall?.x ?? x0 + size / 2) + 1) * CELL + (this.walkers.size % 5) * 26 - 52;
+        const y = ((hall?.y ?? x0 + size / 2) + 2.4) * CELL;
+        const mark = this.add.text(0, -WALK_H - 4, '!', { fontFamily: FONT, fontSize: '30px', color: css(COLOR.white), backgroundColor: css(COLOR.pink), padding: { x: 10, y: 0 } }).setOrigin(0.5, 1).setResolution(2).setVisible(false);
+        const bubble = this.add
+          .text(0, -WALK_H - 8, '', { fontFamily: FONT, fontSize: '24px', color: css(COLOR.ink), backgroundColor: css(COLOR.white), padding: { x: 10, y: 6 }, align: 'center', wordWrap: { width: 300 } })
+          .setOrigin(0.5, 1)
+          .setResolution(2)
+          .setVisible(false);
+        const box = this.add.container(x, y, [mark, bubble]);
+        w = { box, img: null, mark, bubble, x, y, tx: x, ty: y, rest: 400 + this.walkers.size * 300, step: 0, sayLeft: 0 };
+        this.walkers.set(r.id, w);
+        this.loadWalker(r.id);
+      }
+      w.mark.setVisible(s.requests.some((q) => q.state === 'open' && q.resident === r.id) && w.sayLeft <= 0);
+    }
+  }
+
+  /** 주민 그림을 받아 붙인다 (못 받으면 이름 없는 동그라미 대신 그림 없이 표시만 남는다) */
+  private loadWalker(id: ResidentId) {
+    const key = `z-${id}`;
+    const attach = () => {
+      const w = this.walkers.get(id);
+      if (!w || w.img || !this.textures.exists(key)) return;
+      const img = this.add.image(0, 0, key).setOrigin(0.5, 0.96);
+      img.setDisplaySize((WALK_H * img.width) / img.height, WALK_H);
+      w.img = img;
+      w.box.addAt(img, 0);
+    };
+    if (this.textures.exists(key)) return attach();
+    if (this.loading.has(key)) return;
+    this.loading.add(key);
+    this.load.image(key, this.zodiacUrl(id));
+    this.load.once(`filecomplete-image-${key}`, attach);
+    this.load.start();
+  }
+
+  /** 주민이 한마디 한다 (2.8초) */
+  say(id: ResidentId, text: string) {
+    const w = this.walkers.get(id);
+    if (!w) return;
+    w.bubble.setText(text).setVisible(true);
+    w.mark.setVisible(false);
+    w.sayLeft = 2800;
+    w.rest = Math.max(w.rest, 2800);
+  }
+
+  /** 다음에 갈 곳: 일터가 있으면 그 둘레, 없으면 땅 안의 아무 곳 */
+  private nextSpot(id: ResidentId, w: Walker) {
+    const s = this.hooks.state();
+    const { x0, size } = landRect(s.profile.landStage);
+    const lo = x0 * CELL + 30;
+    const hi = (x0 + size) * CELL - 30;
+    const at = workplace(s, id);
+    if (at && Math.random() < 0.75) {
+      const d = BUILDING[at.type];
+      w.tx = (at.x + d.w / 2) * CELL + (Math.random() - 0.5) * (d.w + 1.4) * CELL;
+      w.ty = (at.y + d.h) * CELL + 14 + Math.random() * 50;
+    } else {
+      w.tx = lo + Math.random() * (hi - lo);
+      w.ty = lo + Math.random() * (hi - lo);
+    }
+    w.tx = Math.max(lo, Math.min(hi, w.tx));
+    w.ty = Math.max(lo + 40, Math.min(hi, w.ty));
+  }
+
+  private moveWalkers(dt: number) {
+    for (const [id, w] of this.walkers) {
+      if (w.sayLeft > 0) {
+        w.sayLeft -= dt;
+        if (w.sayLeft <= 0) {
+          w.bubble.setVisible(false);
+          w.mark.setVisible(this.hooks.state().requests.some((q) => q.state === 'open' && q.resident === id));
+        }
+      }
+      if (w.rest > 0) {
+        w.rest -= dt;
+        if (w.rest <= 0) this.nextSpot(id, w);
+      } else {
+        const dx = w.tx - w.x;
+        const dy = w.ty - w.y;
+        const dist = Math.hypot(dx, dy);
+        const go = (WALK_SPEED * dt) / 1000;
+        if (dist <= go) {
+          w.x = w.tx;
+          w.y = w.ty;
+          w.rest = 1200 + Math.random() * 3200;
+        } else {
+          w.x += (dx / dist) * go;
+          w.y += (dy / dist) * go;
+          w.step += dt;
+          if (w.img) w.img.setFlipX(dx < 0);
+        }
+      }
+      // 통통 걷기
+      const hop = w.rest > 0 ? 0 : Math.abs(Math.sin(w.step / 130)) * 7;
+      w.box.setPosition(w.x, w.y - hop).setDepth(w.y);
+      if (w.img) w.img.setAngle(w.rest > 0 ? 0 : Math.sin(w.step / 130) * 5);
+    }
+  }
+
+  /** 그 점 가까이에 있는 주민 */
+  private walkerAt(px: number, py: number): ResidentId | null {
+    const p = this.worldAt(px, py);
+    let best: ResidentId | null = null;
+    let bestD = 36;
+    for (const [id, w] of this.walkers) {
+      const d = Math.hypot(p.x - w.x, p.y - (w.y - WALK_H / 2));
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  /** 주민이 화면(CSS 픽셀)의 어디에 있나 (점검용) */
+  walkerScreen(id: ResidentId): { x: number; y: number } | null {
+    const w = this.walkers.get(id);
+    if (!w) return null;
+    const cam = this.cameras.main;
+    const k = this.scale.displayScale.x || 1;
+    return { x: ((w.x - cam.scrollX - cam.width / 2) * cam.zoom + cam.width / 2) / k, y: ((w.y - WALK_H / 2 - cam.scrollY - cam.height / 2) * cam.zoom + cam.height / 2) / k };
   }
 
   /** 놓을 자리 고르기 시작 (movingId: 옮기는 건물) */
@@ -321,6 +487,7 @@ export class VillageScene extends Phaser.Scene {
   }
 
   update(_t: number, dt: number) {
+    this.moveWalkers(Math.min(dt, 100));
     this.tick += dt;
     if (this.tick < 200) return;
     this.tick = 0;
@@ -448,6 +615,9 @@ export class VillageScene extends Phaser.Scene {
       this.moveGhost(c.x - Math.floor((def.w - 1) / 2), c.y - Math.floor((def.h - 1) / 2));
       return;
     }
+    // 주민이 먼저 (건물 앞을 걸어 다닌다). 수확 방울은 위에서 이미 걸렀다
+    const who = this.walkerAt(p.x, p.y);
+    if (who) return this.hooks.tapResident(who);
     const hit = this.buildingAt(p.x, p.y);
     if (hit) this.hooks.tapBuilding(hit.b.id);
     else this.hooks.tapGround();

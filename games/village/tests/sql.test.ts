@@ -4,13 +4,14 @@ import { describe, expect, it } from 'vitest';
 import { CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, pricePct } from '../src/data/balance';
 import { BUILDINGS, RECIPES } from '../src/data/buildings';
 import { COUNTED, GOALS } from '../src/data/goals';
+import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, TASKS, mix } from '../src/data/residents';
 
 /**
  * 서버 SQL(supabase/migrations/047_village.sql + 뒤 마이그레이션)의 표·상수가 게임 데이터와 같은지 본다.
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -33,7 +34,8 @@ const rows = (name: string) =>
 describe('SQL의 표가 게임 데이터와 같다', () => {
   it('기준 값', () => {
     const found = Object.fromEntries([...body('_village_const').matchAll(/when '(\w+)' then ([\d.]+)/g)].map((m) => [m[1], Number(m[2])]));
-    expect(found).toEqual(CONST);
+    // 주민 · 부탁의 기준 값은 data/residents.ts 의 REQ
+    expect(found).toEqual({ ...CONST, req_slots: REQ.slots, req_wait_done: REQ.wait_done, req_wait_skip: REQ.wait_skip, shrine_pct: REQ.shrine_pct, dog_cap_sec: REQ.dog_cap_sec, sheep_range: REQ.sheep_range });
   });
 
   it('레벨별 표', () => {
@@ -41,7 +43,7 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(found).toEqual({
       land_sizes: LAND_SIZES, level_exp: LEVEL_EXP, cost_mul: COST_MUL, upgrade_sec: UPGRADE_SEC, upgrade_exp: UPGRADE_EXP,
       rate_mul: RATE_MUL, hall_cap: HALL_CAP, storage_cap: STORAGE_CAP, hall_need: HALL_NEED, market_limit: MARKET_LIMIT,
-      land_price: LAND_PRICE, land_need: LAND_NEED,
+      land_price: LAND_PRICE, land_need: LAND_NEED, aff_need: AFF_NEED, aff_bonus: AFF_BONUS, dragon_bonus: DRAGON_BONUS,
     });
     // 땅 값은 PRD 6장의 표 그대로
     expect(LAND_PRICE).toEqual([10, 20, 30, 50, 70, 100]);
@@ -66,6 +68,48 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(kstDay(Date.UTC(2025, 11, 31, 15, 0, 0))).toBe(0);
     expect(kstDay(Date.UTC(2025, 11, 31, 14, 59, 59))).toBe(-1);
     expect(kstDay(Date.UTC(2026, 10, 19, 15, 0, 0))).toBe(323);
+  });
+
+  it('주민 · 부탁 · 오늘의 할 일', () => {
+    expect(rows('_village_residents')).toEqual(RESIDENTS.map((r, i) => [r.id, i + 1, r.level, r.work]));
+    expect(rows('_village_asks')).toEqual(ASKS.map((a, i) => [i + 1, a.res, a.base, a.grow, a.from, a.worth]));
+    expect(rows('_village_tasks')).toEqual(TASKS.map((t, i) => [i + 1, t.task, t.from, t.base, t.per]));
+    // 정해진 수를 만드는 식
+    expect(body('_village_mix')).toContain('(((p_seq * 7919 + p_k * 104729 + 12345) % 1000003 + 1000003) % 1000003)::int');
+    expect(mix(3, 2)).toBe((3 * 7919 + 2 * 104729 + 12345) % 1000003);
+    expect(mix(-5, 1)).toBeGreaterThanOrEqual(0);
+    // 부탁을 정하는 식 (game/rules.ts 의 makeAsk)
+    const st = body('_village_settle').replace(/\s+/g, ' ');
+    expect(st).toContain('n := greatest(1, a.base::bigint * (2 + public._village_mix(seq, 3) % 4) * (20 + lv * a.grow) / 20);');
+    expect(st).toContain('v := n * a.worth / 100;');
+    expect(st).toContain("'coin', v * 3 / 2 + 10, 'exp', v * public._village_const('req_exp_pct')::int / 100 + 5 + lv * 2, 'aff', 2 + public._village_mix(seq, 4) % 3)");
+    expect(st).toContain("'resident', ids[public._village_mix(seq, 1) % cardinality(ids) + 1]");
+    expect(st).toContain('where z.pos = public._village_mix(seq, 2) % pool;');
+    // 오늘의 할 일 (makeDaily)
+    expect(st).toContain('start := public._village_mix(day, 5) % pool;');
+    expect(st).toContain("jsonb_build_object('task', t.task, 'n', t.base + t.per * lv, 'coin', 20 + lv * 5, 'exp', need * public._village_const('daily_exp_pct')::int / 100 + 10)");
+    expect(st).toContain("need := (public._village_table('level_exp'))[least(lv, 29)];");
+    const dc = body('village_daily_claim').replace(/\s+/g, ' ');
+    expect(dc).toContain("perform public._village_add(me, 'coin', 50 + p.level * 10);");
+    expect(dc).toContain("perform public._village_add_exp(me, need * public._village_const('daily_exp_pct')::int * 2 / 100 + 20);");
+    // 이사: 순서대로, 마을 레벨과 빈 집
+    expect(st).toContain('exit when lv < d.level or houses <= cnt;');
+    // 생산량을 올리는 주민
+    const rp = body('_village_rate_pct');
+    expect(/unnest\(array\[([^\]]+)\]\) w/.exec(rp)![1].split(',').map((x) => x.trim().slice(1, -1))).toEqual([...RATE_WORKERS]);
+    for (const f of ['village_assign', 'village_request_done']) expect(body(f)).toContain("in ('ox', 'tiger', 'monkey')");
+    // 친밀도: 사당 · 선물
+    const rd = body('village_request_done').replace(/\s+/g, ' ');
+    expect(rd).toContain("add := add * (100 + public._village_const('shrine_pct')::int) / 100;");
+    expect(rd).toContain('if lv1 >= 5 and not r.gifted then');
+    expect(rd).toContain("values (me, 'gift_' || r.resident, 'stored', t)");
+    // 보너스가 들어가는 식
+    expect(body('_village_time_cut')).toContain("p_sec * (100 - public._village_res_pct(p_user, 'dragon')) / 100");
+    expect(body('village_craft')).toContain("unit := (rc.sec * 10 / (public._village_table('rate_mul'))[b.level]) * 100 / (100 + pct);");
+    expect(body('village_sell')).toContain("coins := p_n::bigint * pr.base * public._village_price_pct(day, pr.idx) * (100 + public._village_res_pct(me, 'pig')) / 1000000;");
+    expect(body('_village_market_limit')).toContain("(public._village_table('market_limit'))[m.level]::bigint * (100 + public._village_res_pct(p_user, 'horse')) / 100");
+    expect(body('_village_cap').replace(/\s+/g, ' ')).toContain("(public._village_table('storage_cap'))[b.level] * (100 + public._village_res_pct(p_user, 'rat')) / 100");
+    expect(body('_village_collect')).toContain('have := u.units + u.units * coalesce(p_bonus, 0) / 100;');
   });
 
   it('마을 목표', () => {
@@ -101,6 +145,7 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     // 용량 제한을 받는 자원
     expect(c).toContain("room := case when product in ('rice', 'wood', 'stone', 'cake') then p_cap - cur else have end;");
     const u = body('village_upgrade').replace(/\s+/g, ' ');
+    expect(u).toContain("sec := public._village_time_cut(me, (public._village_table('upgrade_sec'))[b.level] * case when b.type = 'hall' then public._village_const('hall_sec_mul')::int else 1 end);");
     expect(u).toContain('ty.rice * m / 10');
     expect(u).toContain("st := case when b.level >= public._village_const('stone_from') then ty.up_stone * m / 10 else 0 end;");
     expect(u).toContain("if lv < (public._village_table('hall_need'))[b.level] then raise exception 'village level'; end if;");
@@ -109,15 +154,16 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const h = body('village_harvest');
     expect(h).toContain('total := total + c.have;');
     expect(h).toContain("e := total / public._village_const('harvest_exp_div')::int + jexp;");
-    expect(body('village_craft')).toContain("unit := rc.sec * 10 / (public._village_table('rate_mul'))[b.level];");
-    expect(body('village_sell')).toContain('coins := p_n::bigint * pr.base * public._village_price_pct(day, pr.idx) / 10000;');
   });
 });
 
 describe('SQL의 권한 규칙', () => {
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]).filter((f, i, a) => a.indexOf(f) === i);
   /** 화면이 부르는 함수 (전부) */
-  const OPEN = ['village_build', 'village_claim_goal', 'village_craft', 'village_expand', 'village_feast', 'village_harvest', 'village_move', 'village_place', 'village_sell', 'village_state', 'village_store', 'village_upgrade'];
+  const OPEN = [
+    'village_assign', 'village_build', 'village_claim_goal', 'village_craft', 'village_daily_claim', 'village_expand', 'village_feast', 'village_harvest', 'village_move', 'village_place',
+    'village_request_done', 'village_request_skip', 'village_sell', 'village_state', 'village_store', 'village_upgrade',
+  ];
 
   it('안에서만 쓰는 함수(_로 시작)는 아무에게도 실행 권한을 주지 않는다', () => {
     const inner = fns.filter((f) => f.startsWith('_'));
@@ -151,15 +197,21 @@ describe('SQL의 권한 규칙', () => {
   });
 
   it('모양이 바뀐 함수는 지우고 다시 만든다 (그리고 권한을 다시 건다)', () => {
-    for (const f of ['_village_types()', '_village_goals()', '_village_collect(uuid, uuid, timestamptz, bigint)']) {
+    for (const f of ['_village_types()', '_village_goals()']) {
       expect(sql).toContain(`drop function if exists public.${f};`);
       const at = sql.lastIndexOf(`drop function if exists public.${f};`);
       expect(sql.slice(at)).toContain(`revoke all on function public.${f} from public, anon, authenticated;`);
     }
+    // _village_collect 는 인자가 하나 늘었다 (051: 닭의 보너스): 옛 것을 지우고 새 것에 권한을 건다
+    const at = sql.lastIndexOf('drop function if exists public._village_collect(uuid, uuid, timestamptz, bigint);');
+    expect(at).toBeGreaterThan(0);
+    expect(sql.slice(at)).toContain('revoke all on function public._village_collect(uuid, uuid, timestamptz, bigint, int) from public, anon, authenticated;');
+    // 그 뒤로 옛 모양(인자 넷)으로 부르는 곳이 남아 있지 않다
+    expect(sql.slice(at + 80)).not.toMatch(/_village_collect\(me, [^)]*, public\._village_cap\(me\)\);/);
   });
 
   it('표는 RLS를 켜고 직접 쓰는 권한이 없다', () => {
-    for (const t of ['village_profiles', 'village_buildings', 'sia_coin_spends']) {
+    for (const t of ['village_profiles', 'village_buildings', 'sia_coin_spends', 'village_residents', 'village_requests']) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);
       expect(sql).toContain(`revoke all on public.${t} from anon, authenticated;`);
       expect(sql).toContain(`grant select on public.${t} to authenticated;`);

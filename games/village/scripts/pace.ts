@@ -5,14 +5,17 @@
  *   npm run pace -- 60 3 2    → 60일, 하루 3번, 한 번에 2분
  * 가정: 하루 4번(9시 · 13시 · 18시 · 22시) 들러 4분씩 한다. 시아코인은 쓰지 않는다 (없어도 레벨 30 까지 가야 한다).
  *   들를 때마다: 다 거두고 → 목표 보상을 받고 → 목표가 시키는 일 → 새로 지을 수 있는 건물 → 업그레이드(마을 회관 먼저, 그다음 싼 것)
+ *   → 주민을 일터에 배치 → 들어줄 수 있는 부탁은 들어주고 오늘의 할 일 보상을 받는다
  *   → 남는 쌀로 떡, 떡으로 특산품 → 창고가 차면 장터에 판다 → 엽전이 남으면 장식물.
  * 규칙은 게임과 같은 함수(src/game/rules.ts)를 그대로 쓴다.
  */
 import { CAPPED, CONST, HALL_NEED, LEVEL_EXP, UPGRADE_EXP } from '../src/data/balance';
 import { BUILDING, BUILDINGS, recipeOf, upgradable, type BuildingType } from '../src/data/buildings';
 import { GOALS } from '../src/data/goals';
+import { RESIDENT } from '../src/data/residents';
 import {
-  RuleError, batchMax, build, buildCost, busyCount, canPay, claimGoal, countOf, craft, goalStatus, harvest, hallLevel, market, maxCount, newVillage, placeError, sell, sellCoins, sellLeft,
+  RuleError, assign, batchMax, build, buildCost, busyCount, canPay, claimGoal, countOf, craft, dailyClaim, goalStatus, harvest, hallLevel, market, maxCount, newVillage, placeError, requestDone, sell,
+  sellCoins, sellLeft, standing, workplace,
   settle, slots, storageCap, store, stored, upgrade, upgradeCost, type VillageState,
 } from '../src/game/rules';
 
@@ -112,6 +115,19 @@ function act(): boolean {
 function chores() {
   const cap = storageCap(s);
   const r = s.profile.resources;
+  // 주민: 쉬고 있으면 제 일터 가운데 레벨이 가장 높은 건물에 배치
+  for (const v of s.residents) {
+    const work = RESIDENT[v.id].work;
+    if (!work || workplace(s, v.id)) continue;
+    const b = s.buildings.filter((x) => x.type === work && standing(x)).sort((a, c) => c.level - a.level)[0];
+    if (b) tryDo(() => assign(s, v.id, b.id, now));
+  }
+  // 부탁: 가진 것으로 들어줄 수 있으면 들어준다. 오늘의 할 일: 받을 수 있는 보상을 받는다
+  for (const q of s.requests.map((v) => ({ ...v }))) {
+    if (q.state === 'open' && q.res && r[q.res] >= q.n) tally('other', () => tryDo(() => void requestDone(s, q.slot, now, `g${++seq}`)));
+  }
+  for (const t of s.daily.map((v) => ({ ...v }))) if (!t.claimed && t.progress >= t.n) tally('other', () => tryDo(() => dailyClaim(s, t.slot, now)));
+  tally('other', () => tryDo(() => dailyClaim(s, 3, now)));
   // 떡이 있으면 특산품, 쌀이 넉넉하면 떡
   for (const b of s.buildings.filter((v) => v.type === 'jar' && v.state === 'done')) {
     const rc = recipeOf('jar')!;
@@ -127,11 +143,11 @@ function chores() {
     for (const k of CAPPED) {
       if (r[k] < cap * 0.9) continue;
       let n = Math.floor(r[k] * 0.3);
-      while (n > 0 && sellCoins(k, n, now) > sellLeft(s, now)) n = Math.floor(n * 0.8);
-      if (n > 0 && sellCoins(k, n, now) >= 1) tryDo(() => void sell(s, k, n, now));
+      while (n > 0 && sellCoins(s, k, n, now) > sellLeft(s, now)) n = Math.floor(n * 0.8);
+      if (n > 0 && sellCoins(s, k, n, now) >= 1) tryDo(() => void sell(s, k, n, now));
     }
     let n = r.special;
-    while (n > 0 && sellCoins('special', n, now) > sellLeft(s, now)) n--;
+    while (n > 0 && sellCoins(s, 'special', n, now) > sellLeft(s, now)) n--;
     if (n > 0) tryDo(() => void sell(s, 'special', n, now));
   }
   // 엽전이 값의 두 배를 넘으면 장식물을 하나 놓는다 (비싼 것부터)
@@ -167,7 +183,7 @@ for (let day = 0; day < DAYS; day++) {
       .join(' / ');
     const decos = s.buildings.filter((b) => BUILDING[b.type].kind === 'deco').length;
     rows.push(
-      `${String(day + 1).padStart(3)}일째 끝  레벨 ${String(s.profile.level).padStart(2)}  누적 경험치 ${String(total()).padStart(6)}  (목표 ${String(s.profile.goal).padStart(3)}/${GOALS.length}, 쌀 ${r.rice} 나무 ${r.wood} 돌 ${r.stone} 떡 ${r.cake} 엽전 ${r.coin} / 창고 ${storageCap(s)}, 장식물 ${decos})  ${kinds}`,
+      `${String(day + 1).padStart(3)}일째 끝  레벨 ${String(s.profile.level).padStart(2)}  누적 경험치 ${String(total()).padStart(6)}  주민 ${String(s.residents.length).padStart(2)}  (목표 ${String(s.profile.goal).padStart(3)}/${GOALS.length}, 쌀 ${r.rice} 나무 ${r.wood} 돌 ${r.stone} 떡 ${r.cake} 엽전 ${r.coin} / 창고 ${storageCap(s)}, 장식물 ${decos})  ${kinds}`,
     );
   }
 }

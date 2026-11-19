@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RES_IDS, RES_NAME, STORAGE_CAP, VIEW_W, kstDay, lookOf, pricePct, type ResId } from '../data/balance';
 import { BUILDING, BUILDINGS, isGift, recipeOf, upgradable, type BuildingType } from '../data/buildings';
-import { goalText } from '../data/goals';
+import { goalText, josa } from '../data/goals';
+import { RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
-  batchMax, buildCost, busyCount, canPay, capSec, countOf, effRate, feasting, goalStatus, hallLevel, market, maxCount, nextUnlock, ratePct, sellCoins, sellLeft, slots,
-  storageCap, stored, unitSec, upgradeCost, upgradeSec, type Building, type Cost, type VillageState,
+  batchMax, buildCost, buildSec, busyCount, canPay, capSec, countOf, effRate, feasting, goalStatus, hallLevel, market, marketLimit, maxCount, nextUnlock, ratePct, residentOf, residentPct, sellCoins,
+  sellLeft, slots, standing, storageCap, stored, unitSec, upgradeCost, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
 } from '../game/rules';
 import { ApiError, LOCAL_MODE, type VillageApi } from '../net/api';
 import { worldHome, zodiacFace, zodiacFull } from '../net/world';
@@ -13,6 +14,7 @@ import { texKey } from '../scenes/art';
 import { duration, esc, num, screen, sfx, sound, stage, toast } from './app';
 import { DPR } from './dpr';
 import { icon } from './icons';
+import { bonusOf, claimable, requestsPanel, residentsPanel, workersBox } from './people';
 
 /** 길잡이 캐릭터: 첫 주민 찍찍이 (DESIGN.md: 어느 화면이든 캐릭터가 하나 이상) */
 const GUIDE = 'rat';
@@ -43,6 +45,12 @@ function reason(e: unknown, s: VillageState): string {
     'no feast': '잔치 마당을 다 지어야 잔치를 열 수 있어요',
     'feast active': '지금 잔치가 한창이에요',
     'already spent': '이미 산 것이에요',
+    'no resident': '아직 이사 오지 않은 주민이에요',
+    'no work': '이 주민은 배치하지 않아도 힘을 내요',
+    'wrong building': '이 주민의 일터가 아니에요',
+    'no request': '부탁이 이미 끝났어요',
+    'no task': '없는 할 일이에요',
+    claimed: '이미 받았어요',
     'need login': '로그인이 필요해요',
   };
   return map[e.message] ?? '지금은 할 수 없어요';
@@ -64,7 +72,7 @@ declare global {
 }
 
 type Tab = 'main' | 'deco' | 'special' | 'stored';
-type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | null;
+type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | { kind: 'residents' } | { kind: 'requests' } | null;
 
 export function showVillage(api: VillageApi, user: { id: string; name: string }, first: VillageState) {
   let state = first;
@@ -93,7 +101,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     <nav class="menu" id="menu">
       <button data-m="build"><em>🔨</em>짓기</button>
       <button data-m="residents"><em>🐭</em>주민</button>
-      <button data-m="requests"><em>📜</em>부탁</button>
+      <button data-m="requests"><em>📜</em>부탁<i class="dot hidden" id="reqdot"></i></button>
       <button data-m="monuments"><em>🗿</em>기념물</button>
       <button data-m="ranking"><em>🏆</em>랭킹</button>
     </nav>
@@ -119,6 +127,9 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         .map((k) => `<div class="pill ${CAPPED.includes(k) && p.resources[k] >= cap ? 'full' : ''}" title="${RES_NAME[k]}">${icon(k)}<b>${num(p.resources[k])}</b></div>`)
         .join('') + `<div class="cap">창고 ${num(cap)}</div>` + (feasting(state, api.now()) ? `<div class="cap feast" id="feasttx"></div>` : '');
     $('#sia').textContent = num(state.sia);
+    const todo = claimable(state);
+    $('#reqdot').textContent = String(todo);
+    $('#reqdot').classList.toggle('hidden', todo === 0);
     tickHud();
     const g = goalStatus(state);
     const el = $('#goal');
@@ -181,6 +192,19 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         sfx('tankBuild');
       }
     }
+    // 새 주민 · 친밀도 단계
+    for (const r of next.residents) {
+      const d = RESIDENT[r.id];
+      const old = prev.residents.find((v) => v.id === r.id);
+      if (!old) {
+        toast(`${d.nick}${josa(d.nick, '이', '가')} 이사 왔어요! 🎉`, 3000);
+        sfx('win');
+      } else if (affLevel(r.affinity) > affLevel(old.affinity)) {
+        const lv = affLevel(r.affinity);
+        toast(lv >= 5 && r.gifted && !old.gifted ? `${d.nick}${josa(d.nick, '과', '와')} 단짝이 됐어요! 선물이 보관함에 들어왔어요 🎁` : `${d.nick}${josa(d.nick, '과', '와')} 더 친해졌어요 (♥${lv})`, 3200);
+        sfx('win');
+      }
+    }
     paintHud();
     scene?.refresh();
     paintSheet();
@@ -206,6 +230,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         scene?.harvested(ids, r.harvest.per);
         if (Object.keys(r.harvest.per).length > 0) sfx('coin');
         if (r.harvest.lost > 0) toast(`창고가 가득 차서 ${num(r.harvest.lost)}개는 담지 못했어요`, 2800);
+        else if (r.harvest.rooster > 0) toast(`${RESIDENT.rooster.nick} 덕분에 오늘의 첫 수확이 ${r.harvest.rooster}% 더 많아요! 🐔`, 2800);
       },
     ).then((ok) => !ok && scene?.harvested(ids, {}));
   }
@@ -213,6 +238,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── 아래 판 (짓기 메뉴 · 건물 관리) ─────────────────────────
 
   let sheet: Sheet = null;
+  /** 새 부탁을 서버에 마지막으로 물어본 때 */
+  let askedAt = 0;
   /** 가공에 넣을 개수 (건물 판에서 고른 값) */
   let craftN = 1;
   const wrap = $('#sheetwrap');
@@ -243,7 +270,11 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     wrap.classList.toggle('hidden', !sheet);
     if (!sheet) return;
     const top = sheetEl.scrollTop;
-    sheetEl.innerHTML = sheet.kind === 'build' ? buildMenu(sheet.tab) : buildingPanel(state.buildings.find((b) => b.id === (sheet as { id: string }).id)!);
+    sheetEl.innerHTML =
+      sheet.kind === 'build' ? buildMenu(sheet.tab)
+      : sheet.kind === 'residents' ? residentsPanel(state)
+      : sheet.kind === 'requests' ? requestsPanel(state)
+      : buildingPanel(state.buildings.find((b) => b.id === (sheet as { id: string }).id)!);
     sheetEl.scrollTop = top;
     tickSheet();
   }
@@ -279,7 +310,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
           return `<div class="b-row ${have < max ? '' : 'off'}">
             ${art(d.id, 1)}
             <div class="b-tx"><b>${d.name} <small>${have}/${total}</small></b><span class="soft">${d.desc}</span>
-              <span class="costs">${siaHtml(d.sia, state.sia)}${costHtml(buildCost(d.id), p.resources)}${d.buildSec ? `<span class="cost">${icon('time')}${duration(d.buildSec)}</span>` : ''}${d.points ? `<span class="cost pts">번영도 +${d.points}</span>` : ''}</span></div>
+              <span class="costs">${siaHtml(d.sia, state.sia)}${costHtml(buildCost(d.id), p.resources)}${d.buildSec ? `<span class="cost">${icon('time')}${duration(buildSec(state, d.id))}</span>` : ''}${d.points ? `<span class="cost pts">번영도 +${d.points}</span>` : ''}</span></div>
             ${side}
           </div>`;
         })
@@ -330,25 +361,26 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         const have = p.resources[v.res];
         // 한도 안에서 팔 수 있는 가장 많은 개수
         let all = have;
-        while (all > 0 && sellCoins(v.res, all, now) > left) all = Math.floor(all * 0.9);
+        while (all > 0 && sellCoins(state, v.res, all, now) > left) all = Math.floor(all * 0.9);
         const btn = (n: number, label: string) => {
-          const coins = sellCoins(v.res, n, now);
+          const coins = sellCoins(state, v.res, n, now);
           return `<button class="btn small" data-sell="${v.res}" data-n="${n}" ${n < 1 || n > have || coins < 1 || coins > left ? 'disabled' : ''}>${label}</button>`;
         };
         const unit = v.res === 'special' ? 1 : 100;
         return `<div class="m-row">${icon(v.res)}<div class="m-tx"><b>${RES_NAME[v.res]} <small>${num(have)}개</small></b>
-          <span class="cost ${pct >= 110 ? 'up' : pct <= 90 ? 'down' : ''}">${unit}개 = ${icon('coin')}${num(sellCoins(v.res, unit, now))} <small>${pct >= 110 ? '▲ 비싸요' : pct <= 90 ? '▼ 싸요' : '보통'}</small></span></div>
+          <span class="cost ${pct >= 110 ? 'up' : pct <= 90 ? 'down' : ''}">${unit}개 = ${icon('coin')}${num(sellCoins(state, v.res, unit, now))} <small>${pct >= 110 ? '▲ 비싸요' : pct <= 90 ? '▼ 싸요' : '보통'}</small></span></div>
           ${btn(unit, `${unit}개`)}${btn(all, '전부')}</div>`;
       })
       .join('');
-    return `<p>오늘 더 벌 수 있는 엽전 <b>${num(left)}</b> / ${num(MARKET_LIMIT[m.level - 1])} <small class="soft">(시세는 날마다 바뀌어요)</small></p><div class="m-list">${rows}</div>`;
+    const pig = residentPct(state, 'pig');
+    return `<p>오늘 더 벌 수 있는 엽전 <b>${num(left)}</b> / ${num(marketLimit(state))} <small class="soft">(시세는 날마다 바뀌어요)</small>${pig ? ` <small class="bonus">${RESIDENT.pig.nick} 값 +${pig}%</small>` : ''}</p><div class="m-list">${rows}</div>`;
   }
 
   /** 방앗간 · 장독대: 재료를 넣고 만들기 */
   function craftBox(b: Building): string {
     const r = recipeOf(b.type)!;
     const p = state.profile;
-    const unit = unitSec(b.type, b.level);
+    const unit = unitSec(state, b);
     const recipe = `<p>${icon(r.in1)}${r.n1}${r.in2 ? ` + ${icon(r.in2)}${r.n2}` : ''} → ${icon(r.out)}1 <small class="soft">(하나에 ${duration(unit)})</small></p>`;
     if (b.state === 'working') return `${recipe}<p class="live"><span data-live="job"></span></p>`;
     if (b.state !== 'done') return recipe;
@@ -368,7 +400,12 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (b.state === 'building' || b.state === 'upgrading') lines.push(`<p class="live"><span data-live="left"></span></p>`);
     if (d.product) {
       const pct = ratePct(state, b);
-      const bonus = [pct ? `정자 +${pct}%` : '', feasting(state, api.now()) ? `잔치 +${p.feastPct}%` : ''].filter(Boolean).join(' · ');
+      // 보너스가 어디서 왔나: 그 건물에서 일하는 주민 · 정자 · 잔치
+      const helpers = workersAt(state, b).filter((id) => RATE_WORKERS.includes(id));
+      const byWorkers = helpers.reduce((n, id) => n + residentPct(state, id), 0);
+      const bonus = [...helpers.map((id) => `${RESIDENT[id].nick} +${residentPct(state, id)}%`), pct - byWorkers > 0 ? `정자 +${pct - byWorkers}%` : '', feasting(state, api.now()) ? `잔치 +${p.feastPct}%` : '']
+        .filter(Boolean)
+        .join(' · ');
       lines.push(`<p>${icon(d.product)} 한 시간에 <b>${num(effRate(state, b))}</b>개${bonus ? ` <small class="bonus">${bonus}</small>` : ''} · 최대 ${capSec(state) / 3600}시간 분량까지 쌓여요</p>`);
       if (b.state === 'done') lines.push(`<p class="live">지금 쌓인 양 <b data-live="stored"></b></p>`);
     }
@@ -377,7 +414,14 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (b.type === 'shrine') lines.push('<p class="soft">마을의 상징이에요. 주민과 더 빨리 친해지고 번영도가 크게 올라요 (주민 · 랭킹이 열리면 힘을 내요)</p>');
     if (b.type === 'storage') lines.push(`<p>창고 용량 <b>+${num(STORAGE_CAP[b.level - 1])}</b></p>`);
     if (b.type === 'hall') lines.push(`<p>창고 용량 <b>${num(storageCap(state))}</b> · 동시에 짓기 <b>${slots(state)}</b>개 · 다른 건물은 레벨 <b>${b.level}</b>까지</p>`);
-    if (b.type === 'house') lines.push('<p class="soft">주민은 곧 이사 와요 (준비 중)</p>');
+    if (b.type === 'house') {
+      const next = RESIDENTS.find((d) => !residentOf(state, d.id));
+      const houses = state.buildings.filter((v) => v.type === 'house' && standing(v)).length;
+      lines.push(`<p>주민 <b>${state.residents.length}</b>명이 살고 있어요 (집 ${houses}채)</p>`);
+      if (next) lines.push(`<p class="soft">다음 주민 ${next.nick}: ${p.level < next.level ? `마을 레벨 ${next.level}에 이사 와요` : houses <= state.residents.length ? '빈 집을 한 채 더 지으면 이사 와요' : '곧 이사 와요'}</p>`);
+    }
+    const workers = workersBox(state, b);
+    if (workers) lines.push(`<div class="w-list">${workers}</div>`);
     if (b.type === 'market') lines.push(marketBox());
     if (recipeOf(b.type)) lines.push(craftBox(b));
     if (b.type !== 'pavilion' && b.type !== 'feast' && b.type !== 'shrine' && !upgradable(b.type)) lines.push(`<p class="soft">${d.desc}${d.points ? ` · 번영도 +${d.points}` : ''}</p>`);
@@ -401,7 +445,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
               : recipeOf(b.type)
                 ? ` · 한 번에 ${batchMax(b.type, b.level + 1)}개, 더 빨리`
                 : '';
-        up = `<div class="up-box"><div class="up-tx"><b>레벨 ${b.level + 1}로 올리기</b><span class="costs">${costHtml(c, p.resources)}<span class="cost">${icon('time')}${duration(upgradeSec(b.type, b.level))}</span></span>
+        up = `<div class="up-box"><div class="up-tx"><b>레벨 ${b.level + 1}로 올리기</b><span class="costs">${costHtml(c, p.resources)}<span class="cost">${icon('time')}${duration(upgradeSec(state, b.type, b.level))}</span></span>
           <span class="soft">${block || `레벨 ${b.level + 1}${gain}`}</span></div>
           <button class="btn primary" data-upgrade="${b.id}" ${block ? 'disabled' : ''}>업그레이드</button></div>`;
       }
@@ -409,11 +453,27 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const canStore = b.type !== 'hall' && b.state === 'done';
     return `<div class="sheet-head">${art(b.type, b.state === 'building' ? 1 : lookOf(b.level))}<h3>${d.name}${upgradable(b.type) ? ` <small>레벨 ${b.level}</small>` : ''}</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
       <div class="b-info">${lines.join('')}</div>${up}
-      <div class="actions"><button class="btn" data-move="${b.id}">옮기기</button>${upgradable(b.type) ? '<button class="btn soon" data-soon>주민 배치</button>' : ''}<button class="btn" data-store="${b.id}" ${canStore ? '' : 'disabled'}>보관</button></div>`;
+      <div class="actions"><button class="btn" data-move="${b.id}">옮기기</button><button class="btn" data-store="${b.id}" ${canStore ? '' : 'disabled'}>보관</button></div>`;
   }
 
   /** 시간에 따라 바뀌는 글자만 고친다 (버튼을 누르는 도중에 판 전체를 다시 그리지 않게) */
   function tickSheet() {
+    if (sheet?.kind === 'requests') {
+      // 새 부탁까지 남은 시간. 다 됐으면 서버에 묻는다 (새 부탁은 서버가 만든다)
+      let due = false;
+      for (const q of state.requests) {
+        const el = sheetEl.querySelector(`[data-live="wait-${q.slot}"]`);
+        if (!el) continue;
+        const left = q.readyAt - api.now();
+        el.textContent = left > 0 ? `${duration(left / 1000)} 뒤에 와요` : '곧 와요';
+        if (left <= 0) due = true;
+      }
+      if (due && Date.now() - askedAt > 3000) {
+        askedAt = Date.now();
+        void reload();
+      }
+      return;
+    }
     if (sheet?.kind !== 'building') return;
     const b = state.buildings.find((v) => v.id === (sheet as { id: string }).id);
     if (!b) return;
@@ -486,6 +546,43 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         sfx('coin');
         toast(`${RES_NAME[res as ResId]} ${num(n)}개를 팔아 엽전 ${num(r.sold)}닢을 받았어요`);
         apply(r.state);
+      });
+    } else if (d.assign || d.rest) {
+      const [rid, bid] = d.assign ? d.assign.split(':') : [d.rest!, null];
+      bt.disabled = true;
+      void act(() => api.assign(rid, bid), (s) => {
+        sfx('chip');
+        const def = RESIDENT[rid as ResidentId];
+        const at = bid ? s.buildings.find((v) => v.id === bid) : null;
+        toast(at ? `${def.nick}${josa(def.nick, '이', '가')} ${BUILDING[at.type].name}에서 일해요 (${def.skill.replace('{n}', String(bonusOf(def.id, affLevel(residentOf(s, def.id)?.affinity ?? 0))))})` : `${def.nick}${josa(def.nick, '이', '가')} 쉬어요`, 2800);
+        apply(s);
+      });
+    } else if (d.done) {
+      const slot = Number(d.done);
+      const q = state.requests.find((v) => v.slot === slot);
+      bt.disabled = true;
+      void act(() => api.requestDone(slot), (r) => {
+        sfx('coin');
+        if (q?.resident) {
+          toast(`${RESIDENT[q.resident].nick}: 고마워요! 엽전 ${num(q.coin)}닢 · 경험치 ${num(q.exp)}`, 2600);
+          scene?.say(q.resident, '고마워요! ♥');
+        }
+        apply(r.state);
+      });
+    } else if (d.skip) {
+      const slot = Number(d.skip);
+      bt.disabled = true;
+      void act(() => api.requestSkip(slot), (s) => {
+        sfx('click');
+        apply(s);
+      });
+    } else if (d.daily) {
+      const slot = Number(d.daily);
+      bt.disabled = true;
+      void act(() => api.dailyClaim(slot), (s) => {
+        sfx('win');
+        toast(slot === 3 ? '오늘의 할 일을 모두 끝냈어요! 추가 보상을 받았어요' : '보상을 받았어요');
+        apply(s);
       });
     } else if (d.expand !== undefined) {
       bt.disabled = true;
@@ -561,6 +658,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (!b) return;
     sfx('click');
     if (b.dataset.m === 'build') openSheet({ kind: 'build', tab: 'main' });
+    else if (b.dataset.m === 'residents') openSheet({ kind: 'residents' });
+    else if (b.dataset.m === 'requests') openSheet({ kind: 'requests' });
     else toast('준비 중이에요');
   });
 
@@ -593,6 +692,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     }
     const hallUp = HALL_NEED.findIndex((l) => l > from && l <= to);
     if (hallUp >= 0) opened.push(`<li>마을 회관 레벨 ${hallUp + 2}</li>`);
+    for (const d of RESIDENTS) if (d.level > from && d.level <= to) opened.push(`<li><b>새 주민</b> ${d.nick} <small>(빈 주민 집이 있으면 이사 와요)</small></li>`);
     const land = LAND_NEED.findIndex((l) => l > from && l <= to);
     if (land >= 0 && land >= state.profile.landStage) opened.push(`<li>땅 넓히기 ${LAND_SIZES[land + 1]}×${LAND_SIZES[land + 1]} (시아코인)</li>`);
     stage.querySelector('.dim')?.remove();
@@ -626,6 +726,15 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     tapGround() {
       if (sheet) openSheet(null);
     },
+    tapResident(id) {
+      sfx('click');
+      // 부탁이 있으면 부탁을 보여 주고, 없으면 한마디
+      if (state.requests.some((q) => q.state === 'open' && q.resident === id)) return openSheet({ kind: 'requests' });
+      const d = RESIDENT[id];
+      const at = workplace(state, id);
+      const lines = at ? [...d.lines, `${BUILDING[at.type].name} 일, 잘되고 있어요!`] : d.lines;
+      scene?.say(id, lines[Math.floor(Math.random() * lines.length)]);
+    },
     harvest(id) {
       batch.push(id);
       sfx('chip');
@@ -656,7 +765,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       render: { antialias: true },
       scene: [],
     });
-    const data: SceneData = { hooks, unit: (w * DPR) / VIEW_W };
+    const data: SceneData = { hooks, unit: (w * DPR) / VIEW_W, zodiacUrl: zodiacFull };
     game.scene.add('village', VillageScene, true, data);
     game.events.once('poststep', () => {
       scene = game!.scene.getScene('village') as VillageScene;

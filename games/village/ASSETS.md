@@ -71,16 +71,22 @@
 
 패널·버튼·알약·게이지는 CSS 다 (`src/style.css`, `shared/theme.css` 변수) — 그림이 필요 없다.
 
-## 5. 주민 (6단계)
+## 5. 주민 (십이지 12명)
 
-- 지금은 주민이 없다. 구조만: 주민 id 는 `shared/zodiac.js` 의 십이지 id (rat … pig), 건물의 `resident` 칸(서버 `assigned_resident`)에 들어간다.
-- 임시: `shared/images/zodiac/full/<id>.png` 한 장을 코드로 움직인다 (다른 게임과 같은 방식: 통통 걷기 · 좌우 뒤집기).
+- 주민 id 는 `shared/zodiac.js` 의 십이지 id (rat … pig) 그대로다. 이름 · 일터 · 한마디는 `src/data/residents.ts`.
+- 지금: 공용 전신 그림 `shared/images/zodiac/full/<id>.png` 한 장을 코드로 움직인다 (`src/scenes/VillageScene.ts` 의 주민 부분: 통통 걷기 · 좌우 뒤집기 · 기울이기).
+  마을을 걸어 다니고, 일터가 있으면 그 둘레를 맴돈다. 부탁이 있으면 머리 위에 분홍 `!`, 누르면 흰 말풍선으로 한마디 (둘 다 코드 그림).
+- 주민 · 부탁 화면의 얼굴은 `shared/images/zodiac/face/<id>.png`, 친밀도는 글자 ♥ 다섯 개.
 
 | 파일 | 내용 | 크기 |
 |---|---|---|
 | `res-<id>-walk.png` × 12 | 걷기 4프레임 가로 시트 (오른쪽 보기) | 프레임 128×128 |
-| `res-<id>-work.png` × 12 | 일하기 2~4프레임 (배치된 건물에서) | 프레임 128×128 |
+| `res-<id>-work.png` × 12 | 일하기 2~4프레임 (배치된 건물에서: 쥐 곳간 정리 · 소 쟁기질 · 호랑이 도끼질 · 토끼 떡방아 · 용 여의주 · 뱀 항아리 살피기 · 말 수레 · 양 부채질 · 원숭이 곡괭이 · 돼지 저울) | 프레임 128×128 |
 | `res-<id>-talk.png` × 12 | 말풍선용 얼굴 (없으면 `face/<id>.png`) | 128×128 |
+| `ui-heart-on` `ui-heart-off` | 친밀도 하트 | 48×48 |
+| `ui-ask-mark` | 부탁이 있다는 표시 (머리 위) | 64×64 |
+| `ui-speech` | 말풍선 (9칸 나누기) | 96×96 |
+| `fx-boost` | 보너스를 받는 건물의 표시 (지금: 분홍 ▲) | 48×48 |
 
 ## 6. 장식물 · 길 · 기념물
 

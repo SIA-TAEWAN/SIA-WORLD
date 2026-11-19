@@ -70,7 +70,7 @@ describe('서버 (SupabaseApi)', () => {
     device += 1000;
     expect(api.now()).toBe(101_100);
     expect((await api.build('paddy', 6, 7)).id).toBe('new');
-    expect((await api.harvest(['a'])).harvest).toEqual({ per: { a: 3 }, gained: { rice: 3 }, exp: 0, lost: 2 });
+    expect((await api.harvest(['a'])).harvest).toEqual({ per: { a: 3 }, gained: { rice: 3 }, exp: 0, lost: 2, rooster: 0 });
     await api.move('a', 1, 2);
     await api.upgrade('a');
     await api.claimGoal();
