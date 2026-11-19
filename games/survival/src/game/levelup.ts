@@ -2,7 +2,7 @@
  * 판 안 성장 (PRD 3장): 레벨업 카드 3장 뽑기·적용, 보물상자와 진화.
  * 규칙: 무기 최대 6개 · 패시브 최대 6개 · 각각 최대 5레벨. 진화 무기는 카드에 나오지 않는다.
  */
-import { BONUS, CARD_COUNT, CHEST_COINS, LIMIT, xpNeed } from '../data/balance';
+import { BONUS, CARD_COUNT, CARD_WEIGHT, CHEST_COINS, LIMIT, xpNeed } from '../data/balance';
 import { EVOLUTIONS } from '../data/evolutions';
 import { PASSIVES, PASSIVE_INDEX } from '../data/passives';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
@@ -16,6 +16,8 @@ const candType = new Int32Array(MAX_CAND);
 const candDef = new Int32Array(MAX_CAND);
 const candLv = new Int32Array(MAX_CAND);
 const candNew = new Uint8Array(MAX_CAND);
+/** 뽑힐 가중치 (data/balance.ts 의 CARD_WEIGHT) */
+const candW = new Float64Array(MAX_CAND);
 
 const hasWeapon = (s: State, def: number) => s.weapons.some((w) => w.def === def);
 
@@ -25,17 +27,30 @@ function evolvedAway(s: State, def: number): boolean {
   return false;
 }
 
+/** 진화할 수 있는 무기인가 (진화 조합이 있는 무기) */
+function hasEvolution(def: number): boolean {
+  for (const ev of EVOLUTIONS) if (WEAPON_INDEX[ev.weapon] === def) return true;
+  return false;
+}
+
+/** 가진 무기(아직 진화 전)의 진화 짝 패시브인가 */
+function evoPartner(s: State, passive: number): boolean {
+  for (const ev of EVOLUTIONS) if (PASSIVE_INDEX[ev.passive] === passive && hasWeapon(s, WEAPON_INDEX[ev.weapon])) return true;
+  return false;
+}
+
 /** 지금 고를 수 있는 것을 모은다. upgradesOnly: 이미 가진 것의 강화만 (보물상자용) */
 function candidates(s: State, upgradesOnly: boolean): number {
   let n = 0;
-  const add = (type: number, def: number, lv: number, isNew: boolean) => {
+  const add = (type: number, def: number, lv: number, isNew: boolean, w = 1) => {
     candType[n] = type;
     candDef[n] = def;
     candLv[n] = lv;
     candNew[n] = isNew ? 1 : 0;
+    candW[n] = w;
     n++;
   };
-  for (const w of s.weapons) if (!WEAPONS[w.def].evolved && w.lv < LIMIT.level) add(CARD.weapon, w.def, w.lv + 1, false);
+  for (const w of s.weapons) if (!WEAPONS[w.def].evolved && w.lv < LIMIT.level) add(CARD.weapon, w.def, w.lv + 1, false, hasEvolution(w.def) ? CARD_WEIGHT.evoWeapon : CARD_WEIGHT.ownedWeapon);
   for (const p of s.passives) if (p.lv < LIMIT.level) add(CARD.passive, p.def, p.lv + 1, false);
   if (upgradesOnly) return n;
   if (s.weapons.length < LIMIT.weapons) {
@@ -46,7 +61,7 @@ function candidates(s: State, upgradesOnly: boolean): number {
     }
   }
   if (s.passives.length < LIMIT.passives) {
-    for (let i = 0; i < PASSIVES.length; i++) if (!s.passives.some((p) => p.def === i)) add(CARD.passive, i, 1, true);
+    for (let i = 0; i < PASSIVES.length; i++) if (!s.passives.some((p) => p.def === i)) add(CARD.passive, i, 1, true, evoPartner(s, i) ? CARD_WEIGHT.evoPassive : 1);
   }
   return n;
 }
@@ -58,12 +73,27 @@ function setCard(c: Card, type: number, def: number, lv: number, isNew: boolean)
   c.isNew = isNew;
 }
 
-/** 카드 3장을 뽑아 s.cards 에 담는다. 고를 것이 모자라면 떡·엽전 카드로 채운다 */
+/** 후보 n개 가운데 하나를 가중치대로 고른다 (난수 한 번) */
+function pickWeighted(s: State, n: number): number {
+  let total = 0;
+  for (let i = 0; i < n; i++) total += candW[i];
+  let r = rand(s) * total;
+  for (let i = 0; i < n - 1; i++) {
+    r -= candW[i];
+    if (r < 0) return i;
+  }
+  return n - 1;
+}
+
+/**
+ * 카드 3장을 뽑아 s.cards 에 담는다 (같은 카드는 한 번만). 고를 것이 모자라면 떡·엽전 카드로 채운다.
+ * 가진 무기의 강화(진화가 있는 무기는 더)와 그 무기의 진화 짝 패시브는 CARD_WEIGHT 만큼 더 자주 나온다
+ */
 export function drawCards(s: State) {
   let n = candidates(s, false);
   let k = 0;
   while (k < CARD_COUNT && n > 0) {
-    const i = Math.floor(rand(s) * n);
+    const i = pickWeighted(s, n);
     setCard(s.cards[k++], candType[i], candDef[i], candLv[i], candNew[i] === 1);
     // 뽑은 것은 맨 뒤 것으로 덮어 다시 나오지 않게
     n--;
@@ -71,6 +101,7 @@ export function drawCards(s: State) {
     candDef[i] = candDef[n];
     candLv[i] = candLv[n];
     candNew[i] = candNew[n];
+    candW[i] = candW[n];
   }
   if (k < CARD_COUNT) setCard(s.cards[k++], CARD.heal, 0, 0, false);
   if (k < CARD_COUNT) setCard(s.cards[k++], CARD.coins, 0, 0, false);

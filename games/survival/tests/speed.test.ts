@@ -61,7 +61,7 @@ describe('배속', () => {
   });
 
   it('같은 입력이면 2배속의 결과는 1배속과 같고, 실제 시간은 절반', () => {
-    const T = 45 * TICKS_PER_SEC;
+    const T = 35 * TICKS_PER_SEC;
     const a = drive(1, { untilTick: T });
     const b = drive(2, { untilTick: T });
     expect(a.run.state.tick).toBe(T);

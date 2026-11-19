@@ -12,12 +12,12 @@ import { WEAPONS } from '../src/data/weapons';
 import { LIMITS, characterPrice } from '../src/game/progress';
 
 /**
- * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042)의 표·상수가 게임 데이터와 같은지 본다.
+ * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
 // 뒤 파일이 같은 함수를 다시 정의하면 그쪽이 실제 값이다
-const sql = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql'].map(read).join('\n');
+const sql = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql'].map(read).join('\n');
 
 /** 함수 하나의 본문 */
 function body(name: string): string {

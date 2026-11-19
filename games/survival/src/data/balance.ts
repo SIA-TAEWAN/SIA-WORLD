@@ -6,8 +6,8 @@
 /** 계산 한 걸음 (고정 1/60초) */
 export const TICK = 1 / 60;
 export const TICKS_PER_SEC = 60;
-/** 한 판 길이: 3분이 되면 최종 보스가 나온다 */
-export const RUN_SEC = 180;
+/** 한 판 길이: 4분이 되면 최종 보스가 나온다 */
+export const RUN_SEC = 240;
 /** 기준 화면 */
 export const VIEW_W = 720;
 export const VIEW_H = 1280;
@@ -60,7 +60,7 @@ export const SPAWN = {
 };
 
 /** 다음 레벨까지 필요한 경험치 (lv: 지금 레벨) */
-export const xpNeed = (lv: number) => Math.round(1.5 + 1.2 * (lv - 1) + 0.105 * (lv - 1) * (lv - 1));
+export const xpNeed = (lv: number) => Math.round(2 + 1.6 * (lv - 1) + 0.14 * (lv - 1) * (lv - 1));
 
 /** 보스 등장 몇 초 전에 경고를 띄우나 */
 export const BOSS_WARN_SEC = 3;
@@ -69,14 +69,23 @@ export const BOSS_WARN_SEC = 3;
 export const CARD_COUNT = 3;
 export const BONUS = { heal: 30, coins: 10 };
 
+/**
+ * 카드가 뽑힐 가중치 (나머지 카드는 1). 진화(무기 5레벨 + 짝 패시브)가 카드 운에만 달리지 않게, 키우던 것이 더 자주 나온다.
+ *   ownedWeapon: 이미 가진 무기의 강화 카드
+ *   evoWeapon: 가진 무기 가운데 진화가 있는 무기(data/evolutions.ts)의 강화 카드 (ownedWeapon 대신 이 값)
+ *   evoPassive: 가진 무기의 진화 짝 패시브를 아직 못 얻었을 때 그 패시브 카드
+ * 가진 무기 전부를 똑같이 올리면 무기가 6개로 늘수록 서로 묻혀서, 진화할 무기를 한 단계 더 올린다.
+ */
+export const CARD_WEIGHT = { ownedWeapon: 2, evoWeapon: 3, evoPassive: 4 };
+
 /** 보물상자: 진화할 것이 없을 때 주는 엽전 */
 export const CHEST_COINS = 30;
 
 /** 요괴끼리 겹치지 않게 밀어내는 정도 (0~1) */
 export const SEPARATION = 0.5;
 
-/** 개발용: 시작 시각을 건너뛸 때(?t=120) 그 시각까지 올랐을 법한 레벨 (초당) */
-export const DEV_LEVEL_PER_SEC = 1 / 7;
+/** 개발용: 시작 시각을 건너뛸 때(?t=160) 그 시각까지 올랐을 법한 레벨 (초당) */
+export const DEV_LEVEL_PER_SEC = 1 / 9;
 
 /** 능력치 하한·상한 */
 export const CLAMP = { cooldownMin: 0.4, takenMin: 0.3 };

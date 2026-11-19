@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { BONUS, LIMIT, xpNeed } from '../src/data/balance';
+import { BONUS, CARD_WEIGHT, LIMIT, xpNeed } from '../src/data/balance';
 import { EVOLUTIONS } from '../src/data/evolutions';
 import { ITEM } from '../src/data/items';
 import { PASSIVES, PASSIVE_INDEX } from '../src/data/passives';
 import { WEAPONS, WEAPON_INDEX } from '../src/data/weapons';
 import { dropPickup } from '../src/game/core';
-import { addPassive, addWeapon, drawCards, evolvable, openChest } from '../src/game/levelup';
+import { addPassive, addWeapon, applyCard, drawCards, evolvable, openChest } from '../src/game/levelup';
 import { makeInput, step } from '../src/game/sim';
 import { CARD, EV, type State } from '../src/game/state';
 import { advance, disarm, emptyRun, live, put } from './helpers';
@@ -103,6 +103,80 @@ describe('카드 뽑기 규칙', () => {
         expect(WEAPONS[c.def].ready).toBe(true);
       }
     }
+  });
+
+  /** 카드를 n번 뽑아, 카드마다 나온 횟수를 센다 (열쇠: 'w:무기 id' · 'p:패시브 id') */
+  const tally = (s: State, n: number) => {
+    const seen = new Map<string, number>();
+    for (let i = 0; i < n; i++) {
+      drawCards(s);
+      for (const c of cards(s)) {
+        const key = c.type === CARD.weapon ? `w:${WEAPONS[c.def].id}` : `p:${PASSIVES[c.def].id}`;
+        seen.set(key, (seen.get(key) ?? 0) + 1);
+      }
+    }
+    return (key: string) => seen.get(key) ?? 0;
+  };
+
+  it('가진 무기의 강화와 그 무기의 진화 짝 패시브가 더 자주 나온다 (가중치)', () => {
+    expect(CARD_WEIGHT.ownedWeapon).toBeGreaterThan(1);
+    expect(CARD_WEIGHT.evoWeapon).toBeGreaterThan(CARD_WEIGHT.ownedWeapon);
+    expect(CARD_WEIGHT.evoPassive).toBeGreaterThan(1);
+    // 호랑이: 발톱(가진 무기, 진화가 있다) + 힘의 부적(발톱의 진화 짝). 방울은 진화가 없는 가진 무기
+    const s = emptyRun({ char: 'tiger' });
+    addWeapon(s, WEAPON_INDEX.bell, 1);
+    const n = tally(s, 3000);
+    const others = PASSIVES.filter((p) => p.id !== 'might').map((p) => n(`p:${p.id}`));
+    const plain = others.reduce((a, b) => a + b, 0) / others.length;
+    // 3장을 겹치지 않게 뽑으므로 나온 횟수의 비는 가중치보다 조금 작다
+    expect(n('w:claw') / plain).toBeGreaterThan(CARD_WEIGHT.evoWeapon * 0.65);
+    expect(n('w:claw') / plain).toBeLessThan(CARD_WEIGHT.evoWeapon * 1.1);
+    expect(n('w:bell') / plain).toBeGreaterThan(CARD_WEIGHT.ownedWeapon * 0.7);
+    expect(n('w:bell') / plain).toBeLessThan(CARD_WEIGHT.ownedWeapon * 1.1);
+    expect(n('w:claw')).toBeGreaterThan(n('w:bell') * 1.15);
+    expect(n('p:might') / plain).toBeGreaterThan(CARD_WEIGHT.evoPassive * 0.65);
+    expect(n('p:might') / plain).toBeLessThan(CARD_WEIGHT.evoPassive * 1.1);
+    // 새 무기와 짝이 아닌 패시브는 모두 같은 무게
+    expect(n('w:shuriken') / plain).toBeGreaterThan(0.75);
+    expect(n('w:shuriken') / plain).toBeLessThan(1.25);
+    for (const c of others) expect(c / plain).toBeGreaterThan(0.75);
+  });
+
+  it('짝 패시브를 얻은 뒤에는 그 패시브의 강화가 보통 무게로 돌아가고, 진화한 뒤에는 짝 패시브를 밀어주지 않는다', () => {
+    const s = emptyRun({ char: 'tiger' });
+    addPassive(s, PASSIVE_INDEX.might, 1);
+    addPassive(s, PASSIVE_INDEX.wind, 1);
+    const n = tally(s, 3000);
+    expect(n('p:might') / n('p:wind')).toBeGreaterThan(0.8);
+    expect(n('p:might') / n('p:wind')).toBeLessThan(1.25);
+    expect(n('w:claw')).toBeGreaterThan(n('p:wind') * 1.6);
+    // 진화한 발톱: 힘의 부적이 없어도 더 자주 나오지 않는다
+    const t = emptyRun({ char: 'tiger' });
+    t.weapons[0].lv = 5;
+    addPassive(t, PASSIVE_INDEX.might, 1);
+    openChest(t);
+    expect(WEAPONS[t.weapons[0].def].id).toBe('clawEvo');
+    t.passives.length = 0;
+    const m = tally(t, 3000);
+    expect(m('p:might') / m('p:wind')).toBeGreaterThan(0.8);
+    expect(m('p:might') / m('p:wind')).toBeLessThan(1.25);
+  });
+
+  it('같은 시드면 같은 카드가 같은 순서로 나온다 (가중치를 줘도 난수는 카드 한 장에 한 번)', () => {
+    const draw = (seed: number) => {
+      const s = emptyRun({ char: 'tiger', seed });
+      const out: string[] = [];
+      for (let i = 0; i < 40; i++) {
+        const before = s.rng;
+        drawCards(s);
+        expect(s.rng).not.toBe(before);
+        out.push(cards(s).map((c) => `${c.type}:${c.def}:${c.lv}`).join(','));
+        if (i % 3 === 0) applyCard(s, s.cards[0].type, s.cards[0].def, s.cards[0].lv);
+      }
+      return out;
+    };
+    expect(draw(7)).toEqual(draw(7));
+    expect(draw(7)).not.toEqual(draw(8));
   });
 
   it('가진 것은 다음 레벨이, 없는 것은 1레벨(새로 얻기)이 나온다', () => {

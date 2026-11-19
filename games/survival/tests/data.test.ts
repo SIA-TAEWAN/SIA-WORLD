@@ -29,7 +29,7 @@ describe('데이터 표 (PRD 4~7장)', () => {
     expect(BOSSES.length).toBe(12);
     expect(MAPS.map((m) => [m.id, m.coinMul, m.power.hp])).toEqual([['field', 1, 1], ['bamboo', 1.5, 1.3], ['palace', 2, 1.6], ['underworld', 2.5, 2]]);
     for (const m of MAPS) {
-      expect(m.bosses.map((b) => b.at)).toEqual([60, 120, 180]);
+      expect(m.bosses.map((b) => b.at)).toEqual([80, 160, 240]);
       expect(BOSSES.filter((b) => b.map === m.id).map((b) => b.id)).toEqual(m.bosses.map((b) => b.id));
     }
     // 맵 4종 모두 등장 표까지 완성
@@ -58,7 +58,7 @@ describe('밸런스 시험 틀', () => {
     const r = simulate({ seed: 42, char: 'tiger', map: 'field' }, normalPolicy(1));
     expect(['over', 'clear']).toContain(r.state.phase);
     expect(r.time).toBeGreaterThan(30);
-    expect(r.time).toBeLessThanOrEqual(180);
+    expect(r.time).toBeLessThanOrEqual(240);
     expect(r.kills).toBeGreaterThan(10);
     expect(r.level).toBeGreaterThan(1);
   }, 60000);
@@ -66,8 +66,8 @@ describe('밸런스 시험 틀', () => {
   it('강화 0에서는 들판을 끝까지 버티기 어렵고, 강화가 많으면 더 오래 버틴다', () => {
     const base = average({ char: 'tiger', map: 'field' }, 5);
     const strong = average({ char: 'tiger', map: 'field', upgrades: presetUpgrades(34) }, 5);
-    expect(base.time).toBeGreaterThan(45);
-    expect(base.time).toBeLessThan(150);
+    expect(base.time).toBeGreaterThan(60);
+    expect(base.time).toBeLessThan(200);
     expect(strong.time).toBeGreaterThan(base.time);
     expect(base.clearRate).toBeLessThan(0.5);
   }, 120000);

@@ -18,7 +18,7 @@ import { worldSupabase } from './world';
  *   · finish 는 보내기 전에 결과를 기기에 보관하고, 서버가 받았거나 거절하면 지운다. 통신 문제(12초 안에 답 없음 포함)면
  *     남겨 두었다가 다음 판을 시작할 때·다음 저장이 성공했을 때·다음 접속 때 다시 보낸다 (net/pending.ts)
  *   · 판 도중에 창이 닫히면(새로고침·탭 닫기·로그아웃) 그때까지의 결과를 보관해 둔다 (stash)
- * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql).
+ * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql).
  */
 
 /** 주소 (화면 없이 시험할 때는 없다) */

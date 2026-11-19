@@ -107,14 +107,14 @@ if (!only || only === 'maps') {
     });
     console.log(`  ${name.padEnd(6, '　')}${cells.join('')}`);
   }
-  // 30초 단위로 언제 죽는지 (조정할 때 어느 구간이 고비인지 본다). 마지막 칸은 3분을 채운 판
+  // 30초 단위로 언제 죽는지 (조정할 때 어느 구간이 고비인지 본다). 마지막 칸은 4분을 채운 판
   console.log('');
-  console.log('  30초 단위 사망 (0:00대 … 2:30대 | 3분 도달)');
+  console.log('  30초 단위 사망 (0:00대 … 3:30대 | 4분 도달)');
   for (const [map, name] of maps) {
     for (const upg of LEVELS) {
-      const h = new Array(7).fill(0);
-      for (const t of sum.get(`${map}:${upg}`).times) h[Math.min(6, Math.floor(t / 30))]++;
-      console.log(`  ${name.padEnd(6, '　')} 강화 ${String(upg).padStart(2)}: ${h.slice(0, 6).map((n) => String(n).padStart(3)).join('')} |${String(h[6]).padStart(3)}`);
+      const h = new Array(9).fill(0);
+      for (const t of sum.get(`${map}:${upg}`).times) h[Math.min(8, Math.floor(t / 30))]++;
+      console.log(`  ${name.padEnd(6, '　')} 강화 ${String(upg).padStart(2)}: ${h.slice(0, 8).map((n) => String(n).padStart(3)).join('')} |${String(h[8]).padStart(3)}`);
     }
   }
   if (!onlyMaps) progress(table);
