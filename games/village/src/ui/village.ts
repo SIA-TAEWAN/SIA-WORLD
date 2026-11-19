@@ -1,13 +1,13 @@
 import Phaser from 'phaser';
-import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RES_IDS, RES_NAME, STORAGE_CAP, VIEW_W, kstDay, lookOf, pricePct, type ResId } from '../data/balance';
+import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, NAME_RE, PRICES, RES_IDS, RES_NAME, STORAGE_CAP, VIEW_W, kstDay, lookOf, pricePct, type ResId } from '../data/balance';
 import { BUILDING, BUILDINGS, isGift, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { goalText, josa } from '../data/goals';
 import { RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
   batchMax, buildCost, buildSec, busyCount, canPay, capSec, countOf, effRate, feasting, goalStatus, hallLevel, market, marketLimit, maxCount, nextUnlock, ratePct, residentOf, residentPct, sellCoins,
-  sellLeft, slots, standing, storageCap, stored, unitSec, upgradeCost, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
+  newVillage, praiseLeft, sellLeft, slots, standing, storageCap, stored, unitSec, upgradeCost, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
 } from '../game/rules';
-import { ApiError, LOCAL_MODE, type VillageApi } from '../net/api';
+import { ApiError, LOCAL_MODE, type Ranking, type VillageApi, type Visit } from '../net/api';
 import { worldHome, zodiacFace, zodiacFull } from '../net/world';
 import { VillageScene, type SceneData, type SceneHooks } from '../scenes/VillageScene';
 import { texKey } from '../scenes/art';
@@ -51,6 +51,11 @@ function reason(e: unknown, s: VillageState): string {
     'no request': '부탁이 이미 끝났어요',
     'no task': '없는 할 일이에요',
     claimed: '이미 받았어요',
+    'bad name': '한글 · 영문 · 숫자로 12자까지 지을 수 있어요',
+    self: '내 마을은 칭찬할 수 없어요',
+    'no village': '없는 마을이에요',
+    'already praised': '오늘은 이 마을을 이미 칭찬했어요',
+    'praise limit': '칭찬은 하루에 다섯 번까지 할 수 있어요',
     'need login': '로그인이 필요해요',
   };
   return map[e.message] ?? '지금은 할 수 없어요';
@@ -72,7 +77,7 @@ declare global {
 }
 
 type Tab = 'main' | 'deco' | 'special' | 'stored';
-type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | { kind: 'residents' } | { kind: 'requests' } | null;
+type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | { kind: 'residents' } | { kind: 'requests' } | { kind: 'ranking' } | null;
 
 export function showVillage(api: VillageApi, user: { id: string; name: string }, first: VillageState) {
   let state = first;
@@ -86,13 +91,17 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         <a class="back" href="${worldHome()}" aria-label="SIA WORLD로">←</a>
         <div class="lv-box">
           <em class="lv" id="lv">1</em>
-          <div class="lv-tx"><b id="vname"></b><div class="exp"><i id="expfill"></i><span id="exptx"></span></div></div>
+          <div class="lv-tx"><b id="vname" role="button" title="마을 이름 바꾸기"></b><div class="exp"><i id="expfill"></i><span id="exptx"></span></div></div>
         </div>
         <div class="pill sia" title="시아코인">${icon('sia')}<b id="sia">-</b></div>
       </div>
       <div class="res-row" id="res"></div>
       <button class="goal" id="goal"></button>
     </header>
+    <div class="visit-top hidden" id="visittop"></div>
+    <div class="visit-bar hidden" id="visitbar">
+      <button class="btn" id="visitback">← 내 마을로</button><button class="btn primary" id="visitpraise">👏 칭찬하기</button>
+    </div>
     <div class="place-bar hidden" id="placebar">
       <p id="placetx"></p>
       <div class="actions"><button class="btn" id="placeno">취소</button><button class="btn primary" id="placeok">여기에 놓기 ✔</button></div>
@@ -125,7 +134,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     $('#res').innerHTML =
       RES_IDS.filter((k) => k !== 'special' || p.resources.special > 0)
         .map((k) => `<div class="pill ${CAPPED.includes(k) && p.resources[k] >= cap ? 'full' : ''}" title="${RES_NAME[k]}">${icon(k)}<b>${num(p.resources[k])}</b></div>`)
-        .join('') + `<div class="cap">창고 ${num(cap)}</div>` + (feasting(state, api.now()) ? `<div class="cap feast" id="feasttx"></div>` : '');
+        .join('') + `<div class="cap">창고 ${num(cap)}</div><div class="cap pros" title="번영도">🏵 ${num(p.prosperity)}</div>` + (feasting(state, api.now()) ? `<div class="cap feast" id="feasttx"></div>` : '');
     $('#sia').textContent = num(state.sia);
     const todo = claimable(state);
     $('#reqdot').textContent = String(todo);
@@ -148,6 +157,37 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (left <= 0) return paintHud();
     el.textContent = `🎉 잔치 +${state.profile.feastPct}% · ${duration(left / 1000)}`;
   }
+
+  // ───────────────────────── 마을 이름 ─────────────────────────
+
+  $('#vname').addEventListener('click', () => {
+    sfx('click');
+    stage.querySelector('.dim')?.remove();
+    const dim = document.createElement('div');
+    dim.className = 'dim';
+    dim.innerHTML = `<div class="dialog" role="dialog" aria-modal="true" aria-label="마을 이름">
+      <h3>마을 이름</h3>
+      <input class="name-in" maxlength="${CONST.name_max}" placeholder="${esc(user.name)}네 마을" />
+      <p class="soft">한글 · 영문 · 숫자 · 띄어쓰기로 ${CONST.name_max}자까지. 랭킹과 구경하는 사람에게 보여요</p>
+      <div class="actions"><button class="btn" data-close>취소</button><button class="btn primary" data-ok>바꾸기</button></div>
+    </div>`;
+    const input = dim.querySelector('input')!;
+    input.value = state.profile.name;
+    dim.addEventListener('click', (e) => {
+      const el = e.target as HTMLElement;
+      if (el === dim || el.closest('[data-close]')) return dim.remove();
+      if (!el.closest('[data-ok]')) return;
+      const name = input.value.trim().replace(/\s+/g, ' ');
+      if (!NAME_RE.test(name) || name.length > CONST.name_max) return toast('한글 · 영문 · 숫자로 12자까지 지을 수 있어요');
+      void act(() => api.rename(name), (s) => {
+        sfx('win');
+        dim.remove();
+        apply(s);
+      });
+    });
+    stage.append(dim);
+    input.focus();
+  });
 
   const paintSound = () => ($('#sound').textContent = sound.on ? '🔊' : '🔇');
   $('#sound').addEventListener('click', () => {
@@ -206,10 +246,107 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       }
     }
     paintHud();
-    scene?.refresh();
+    if (!visiting) scene?.refresh();
     paintSheet();
     if (next.profile.level > prev.profile.level) levelUp(prev.profile.level, next.profile.level);
   }
+
+  // ───────────────────────── 랭킹 · 다른 마을 구경 · 칭찬 ─────────────────────────
+
+  let ranking: Ranking | null = null;
+  let rankingFailed = false;
+  /** 구경 중인 마을과, 장면이 그릴 수 있게 옮긴 모양 */
+  let visiting: Visit | null = null;
+  let viewState: VillageState | null = null;
+  const villageName = (name: string, nick: string) => name || `${nick}네 마을`;
+
+  function rankingPanel(): string {
+    const head = `<div class="sheet-head"><h3>🏆 번영도 랭킹</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>`;
+    if (rankingFailed) return `${head}<p class="soft empty">랭킹을 불러오지 못했어요</p>`;
+    if (!ranking) return `${head}<p class="soft empty">불러오는 중…</p>`;
+    const row = (r: Ranking['rows'][number]) => `<div class="r-row ${r.userId === user.id ? 'me' : ''}"><em class="r-pl ${r.place <= 3 ? `top${r.place}` : ''}">${r.place}</em>
+        <div class="p-tx"><b>${esc(r.nickname)}</b><span class="soft">${esc(villageName(r.name, r.nickname))} · 레벨 ${r.level}</span></div>
+        <span class="r-pt">🏵 ${num(r.prosperity)}</span>${r.userId === user.id ? '<span class="lock on">내 마을</span>' : `<button class="btn small" data-visit="${esc(r.userId)}">구경</button>`}</div>`;
+    const mine = ranking.mine;
+    return `${head}<p class="soft note">${mine ? `내 순위 <b>${mine.place}위</b> / ${num(ranking.total)}곳 · 번영도 ${num(mine.prosperity)}` : '아직 순위가 없어요'} · 건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬을 더한 값이에요</p>
+      <div class="b-list">${mine && !ranking.rows.some((r) => r.userId === mine.userId) ? row(mine) : ''}${ranking.rows.map(row).join('') || '<p class="soft empty">아직 마을이 없어요</p>'}</div>`;
+  }
+  function openRanking() {
+    ranking = null;
+    rankingFailed = false;
+    openSheet({ kind: 'ranking' });
+    void api.ranking().then(
+      (r) => {
+        ranking = r;
+        paintSheet();
+      },
+      () => {
+        rankingFailed = true;
+        paintSheet();
+      },
+    );
+  }
+
+  /** 구경하는 마을을 장면이 그릴 수 있는 모양으로 (수확 방울 · 진행 막대는 뜨지 않는다) */
+  function toViewState(v: Visit): VillageState {
+    const s = newVillage(api.now());
+    s.profile.level = v.level;
+    s.profile.landStage = v.landStage;
+    s.profile.name = v.name;
+    s.profile.prosperity = v.prosperity;
+    s.buildings = v.buildings.map((b) => ({ id: b.id, type: b.type, level: b.level, x: b.x, y: b.y, state: b.state, finishAt: null, startAt: null, collectedAt: Number.MAX_SAFE_INTEGER, jobN: 0, banked: 0 }));
+    s.residents = v.residents.map((r) => ({ id: r.id, affinity: r.affinity, building: r.building, gifted: false }));
+    return s;
+  }
+  function paintVisit() {
+    const v = visiting;
+    for (const sel of ['.hud', '#menu', '#sound']) $(sel).classList.toggle('hidden', !!v);
+    $('#visittop').classList.toggle('hidden', !v);
+    $('#visitbar').classList.toggle('hidden', !v);
+    if (!v) return;
+    $('#visittop').innerHTML = `<img src="${zodiacFace(GUIDE)}" alt="" /><span class="g-tx"><small>${esc(v.nickname)} 님의 마을을 구경하는 중</small><b>${esc(villageName(v.name, v.nickname))}</b></span>
+      <span class="g-side"><i class="g-n">레벨 ${v.level}</i><i class="g-n">🏵 ${num(v.prosperity)}</i></span>`;
+    const bt = $<HTMLButtonElement>('#visitpraise');
+    bt.disabled = v.mine || v.praised || v.praiseLeft <= 0;
+    bt.textContent = v.mine ? '내 마을이에요' : v.praised ? '오늘 칭찬했어요 👏' : v.praiseLeft <= 0 ? '오늘 칭찬을 다 했어요' : `👏 칭찬하기 (${v.praiseLeft}번 남음)`;
+  }
+  function showVisit(v: Visit) {
+    openSheet(null);
+    if (scene?.placing) stopPlacing();
+    visiting = v;
+    viewState = toViewState(v);
+    paintVisit();
+    scene?.refresh();
+    scene?.fit();
+  }
+  function startVisit(id: string) {
+    void act(() => api.visit(id), showVisit);
+  }
+  function endVisit() {
+    visiting = null;
+    viewState = null;
+    paintVisit();
+    scene?.refresh();
+    scene?.fit();
+  }
+  $('#visitback').addEventListener('click', () => {
+    sfx('click');
+    endVisit();
+  });
+  $('#visitpraise').addEventListener('click', () => {
+    const v = visiting;
+    if (!v) return;
+    void act(() => api.praise(v.userId), (r) => {
+      sfx('win');
+      toast(`${v.nickname} 님의 마을을 칭찬했어요! 엽전 ${CONST.praise_coin}닢을 받았어요 (오늘 ${Math.max(0, praiseLeft(r.state, api.now()))}번 남음)`, 3000);
+      apply(r.state);
+      if (visiting?.userId === r.visit.userId) {
+        visiting = r.visit;
+        viewState = toViewState(r.visit);
+        paintVisit();
+      }
+    });
+  });
 
   const reload = (quiet = true) => act(() => api.load(), apply, quiet);
 
@@ -274,6 +411,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       sheet.kind === 'build' ? buildMenu(sheet.tab)
       : sheet.kind === 'residents' ? residentsPanel(state)
       : sheet.kind === 'requests' ? requestsPanel(state)
+      : sheet.kind === 'ranking' ? rankingPanel()
       : buildingPanel(state.buildings.find((b) => b.id === (sheet as { id: string }).id)!);
     sheetEl.scrollTop = top;
     tickSheet();
@@ -547,6 +685,9 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         toast(`${RES_NAME[res as ResId]} ${num(n)}개를 팔아 엽전 ${num(r.sold)}닢을 받았어요`);
         apply(r.state);
       });
+    } else if (d.visit) {
+      sfx('click');
+      startVisit(d.visit);
     } else if (d.assign || d.rest) {
       const [rid, bid] = d.assign ? d.assign.split(':') : [d.rest!, null];
       bt.disabled = true;
@@ -660,6 +801,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (b.dataset.m === 'build') openSheet({ kind: 'build', tab: 'main' });
     else if (b.dataset.m === 'residents') openSheet({ kind: 'residents' });
     else if (b.dataset.m === 'requests') openSheet({ kind: 'requests' });
+    else if (b.dataset.m === 'ranking') openRanking();
     else toast('준비 중이에요');
   });
 
@@ -717,10 +859,16 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── Phaser ─────────────────────────
 
   const hooks: SceneHooks = {
-    state: () => state,
+    state: () => viewState ?? state,
     now: () => api.now(),
     tapBuilding(id) {
       sfx('click');
+      if (viewState) {
+        // 구경 중: 보기만 한다
+        const b = viewState.buildings.find((v) => v.id === id);
+        if (b) toast(`${BUILDING[b.type].name}${upgradable(b.type) ? ` · 레벨 ${b.level}` : ''}`);
+        return;
+      }
       openSheet({ kind: 'building', id });
     },
     tapGround() {
@@ -728,6 +876,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     },
     tapResident(id) {
       sfx('click');
+      if (viewState) return scene?.say(id, RESIDENT[id].lines[Math.floor(Math.random() * RESIDENT[id].lines.length)]);
       // 부탁이 있으면 부탁을 보여 주고, 없으면 한마디
       if (state.requests.some((q) => q.state === 'open' && q.resident === id)) return openSheet({ kind: 'requests' });
       const d = RESIDENT[id];
@@ -745,7 +894,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     placeChanged(p) {
       $('#placeok').classList.toggle('off', !p.ok);
     },
-    due: () => void reload(),
+    due: () => void (visiting ? null : reload()),
   };
 
   const size = () => ({ w: Math.max(120, fieldEl.clientWidth), h: Math.max(120, fieldEl.clientHeight) });
@@ -791,6 +940,9 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── 주기적으로 ─────────────────────────
 
   if (LOCAL_MODE) window.__village = { state, api, scene: null, game: null };
+  // 랭킹 창(로비 · 다른 게임)의 [구경]으로 들어왔으면 그 마을부터 보여 준다:  ?visit=<사용자 id>
+  const wantVisit = new URLSearchParams(location.search).get('visit');
+  if (wantVisit && wantVisit !== user.id) setTimeout(() => startVisit(wantVisit), 600);
   paintHud();
   // 판의 남은 시간 · 쌓인 양, 잔치의 남은 시간
   setInterval(() => {

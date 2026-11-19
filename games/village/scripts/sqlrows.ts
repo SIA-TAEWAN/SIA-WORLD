@@ -3,10 +3,10 @@
  * 건물 · 목표 · 가공 · 시세 · 주민 · 부탁 · 오늘의 할 일 표를 고쳤으면 이 줄들을 새 마이그레이션의 _village_types / _village_goals / … 에 붙여 넣는다
  * (두 곳이 같은지는 tests/sql.test.ts 가 본다).
  */
-import { PRICES } from '../src/data/balance';
+import { CONST, PRICES } from '../src/data/balance';
 import { BUILDINGS, RECIPES } from '../src/data/buildings';
 import { GOALS } from '../src/data/goals';
-import { ASKS, RESIDENTS, TASKS } from '../src/data/residents';
+import { ASKS, REQ, RESIDENTS, TASKS } from '../src/data/residents';
 
 const q = (v: string) => `'${v}'`;
 const rows = (list: string[]) => list.map((r, i) => `    (${r})${i < list.length - 1 ? ',' : ''}`).join('\n');
@@ -25,3 +25,6 @@ console.log('\n-- _village_asks');
 console.log(rows(ASKS.map((a, i) => [i + 1, q(a.res), a.base, a.grow, a.from, a.worth].join(', '))));
 console.log('\n-- _village_tasks');
 console.log(rows(TASKS.map((t, i) => [i + 1, q(t.task), t.from, t.base, t.per].join(', '))));
+console.log('\n-- _village_const');
+const consts: Record<string, number> = { ...CONST, req_slots: REQ.slots, req_wait_done: REQ.wait_done, req_wait_skip: REQ.wait_skip, shrine_pct: REQ.shrine_pct, dog_cap_sec: REQ.dog_cap_sec, sheep_range: REQ.sheep_range };
+console.log(Object.entries(consts).map(([k, v]) => `    when '${k}' then ${v}`).join('\n'));

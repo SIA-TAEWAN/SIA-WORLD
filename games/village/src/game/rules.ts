@@ -1,5 +1,5 @@
 import {
-  CAPPED, CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, RES_IDS, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC,
+  CAPPED, CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, NAME_RE, PRICES, RATE_MUL, RES_IDS, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC,
   kstDay, pricePct, type ResId, type Resources,
 } from '../data/balance';
 import { BUILDING, isBuildingType, recipeOf, upgradable, type BuildingType } from '../data/buildings';
@@ -9,7 +9,7 @@ import {
 } from '../data/residents';
 
 /**
- * 시아마을의 규칙 (순수 함수). 진짜 계산은 서버 함수(supabase/migrations/047_village.sql + 049 · 050 · 051)가 서버 시간으로 한다.
+ * 시아마을의 규칙 (순수 함수). 진짜 계산은 서버 함수(supabase/migrations/047_village.sql + 049 ~ 054)가 서버 시간으로 한다.
  * 여기 있는 것은 같은 식을 옮긴 것으로, 테스트 모드(LocalApi)와 화면의 미리 보기(쌓인 양·진행 막대·살 수 있는지)가 쓴다.
  * 거절 까닭(RuleError 의 글자)은 SQL 의 raise exception 글자와 같다.
  * 시각은 모두 ms (서버 시각 기준).
@@ -46,7 +46,14 @@ export interface Profile {
   exp: number;
   resources: Resources;
   landStage: number;
+  /** 번영도 (랭킹의 기준)와 그 값이 된 시각. 서버가 상태가 바뀔 때마다 다시 센다 */
   prosperity: number;
+  prosperityAt: number;
+  /** 받은 칭찬 수 */
+  praiseCount: number;
+  /** 오늘(praisedDay) 내가 칭찬한 마을들 */
+  praisedDay: number;
+  praised: string[];
   /** 지금 마을 목표의 번호 (GOALS 의 순서. 끝까지 했으면 GOALS.length) */
   goal: number;
   /** 지금 목표가 시작된 뒤에 센 횟수 (수확 · 판매 · 가공 · 부탁 · 배치) */
@@ -303,6 +310,32 @@ export function marketLimit(s: VillageState): number {
 }
 export const sellLeft = (s: VillageState, now: number) => Math.max(0, marketLimit(s) - (s.profile.marketDay === kstDay(now) ? s.profile.marketSold : 0));
 
+/**
+ * 번영도 (PRD 11장) = 건물 레벨 합 + 장식물 · 특별 건물 · 기념물의 번영도 점수 + 주민 친밀도 + 받은 칭찬.
+ * 땅에 놓여 있고 다 지어진 것만 센다 (짓는 중 · 보관함은 빼고).
+ */
+export function prosperityOf(s: VillageState): number {
+  let n = 0;
+  for (const b of s.buildings) {
+    if (!standing(b)) continue;
+    const d = BUILDING[b.type];
+    if (d.kind === 'main' || d.kind === 'special') n += b.level;
+    n += d.points;
+  }
+  for (const r of s.residents) n += affLevel(r.affinity) * CONST.aff_points;
+  return n + s.profile.praiseCount * CONST.praise_points;
+}
+/** 번영도를 다시 세어 적는다 (서버는 답을 보내기 직전에 한다). 값이 바뀌면 달성 시각도 바뀐다 */
+export function refresh(s: VillageState, now: number): void {
+  const v = prosperityOf(s);
+  if (v !== s.profile.prosperity) {
+    s.profile.prosperity = v;
+    s.profile.prosperityAt = now;
+  }
+}
+/** 오늘 더 칭찬할 수 있는 횟수 */
+export const praiseLeft = (s: VillageState, now: number) => CONST.praise_per_day - (s.profile.praisedDay === kstDay(now) ? s.profile.praised.length : 0);
+
 /** 지금 목표와 진행 */
 export function goalStatus(s: VillageState): { def: GoalDef; have: number; done: boolean } | null {
   const def = GOALS[s.profile.goal];
@@ -350,7 +383,7 @@ export function dailyBonus(level: number): { coin: number; exp: number } {
 export function newVillage(now: number, hallId = 'hall'): VillageState {
   return {
     profile: {
-      name: '', level: 1, exp: 0, resources: { ...START_RES }, landStage: 0, prosperity: 0, goal: 0, goalProgress: 0, marketDay: 0, marketSold: 0,
+      name: '', level: 1, exp: 0, resources: { ...START_RES }, landStage: 0, prosperity: 0, prosperityAt: now, praiseCount: 0, praisedDay: 0, praised: [], goal: 0, goalProgress: 0, marketDay: 0, marketSold: 0,
       feastFrom: 0, feastUntil: 0, feastPct: 0, reqSeq: 0, dailyDay: 0, dailyBonusDay: 0, roosterDay: 0,
     },
     buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0 }],
@@ -762,6 +795,31 @@ export function dailyClaim(s: VillageState, slot: number, now: number): void {
   addExp(p, t.exp);
 }
 
+/** 마을 이름 바꾸기: 한글 · 영문 · 숫자 · 띄어쓰기, name_max 글자까지 */
+export function rename(s: VillageState, name: string, now: number): void {
+  settle(s, now);
+  if (typeof name !== 'string' || name.length < 1 || name.length > CONST.name_max || !NAME_RE.test(name)) fail('bad name');
+  s.profile.name = name;
+}
+
+/** 칭찬하기 (주는 쪽): 하루 praise_per_day 번, 같은 마을은 하루 한 번, 내 마을은 안 된다. 엽전을 조금 받는다 */
+export function praiseGive(s: VillageState, me: string, target: string, now: number): void {
+  settle(s, now);
+  if (target === me) fail('self');
+  const p = s.profile;
+  const day = kstDay(now);
+  const today = p.praisedDay === day ? p.praised : [];
+  if (today.includes(target)) fail('already praised');
+  if (today.length >= CONST.praise_per_day) fail('praise limit');
+  p.praisedDay = day;
+  p.praised = [...today, target];
+  p.resources.coin += CONST.praise_coin;
+}
+/** 칭찬받기 (받는 쪽): 받은 칭찬 수가 오른다 → 번영도 */
+export function praiseTake(s: VillageState): void {
+  s.profile.praiseCount++;
+}
+
 export function claimGoal(s: VillageState, now: number): GoalDef {
   settle(s, now);
   const g = goalStatus(s) ?? fail('no goal');
@@ -785,7 +843,7 @@ const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.ma
 
 /** 서버(또는 기기 저장소)가 준 상태를 믿을 수 있는 모양으로 */
 export function cleanState(raw: unknown): VillageState {
-  const r = (raw ?? {}) as { profile?: Record<string, unknown>; buildings?: unknown; residents?: unknown; requests?: unknown; daily?: unknown; sia?: unknown };
+  const r = (raw ?? {}) as { profile?: Record<string, unknown>; buildings?: unknown; residents?: unknown; requests?: unknown; daily?: unknown; sia?: unknown; now?: unknown };
   const p = r.profile ?? {};
   const res = (p.resources ?? {}) as Record<string, unknown>;
   const resources = Object.fromEntries(RES_IDS.map((k) => [k, int(res[k], 0, 1e12, 0)])) as Resources;
@@ -829,7 +887,11 @@ export function cleanState(raw: unknown): VillageState {
   return {
     profile: {
       name: typeof p.name === 'string' ? p.name : '', level: int(p.level, 1, CONST.max_level, 1), exp: int(p.exp, 0, 1e9, 0), resources,
-      landStage: int(p.landStage, 0, LAND_SIZES.length - 1, 0), prosperity: int(p.prosperity, 0, 1e9, 0), goal: int(p.goal, 0, 9999, 0), goalProgress: int(p.goalProgress, 0, 1e9, 0),
+      landStage: int(p.landStage, 0, LAND_SIZES.length - 1, 0), prosperity: int(p.prosperity, 0, 1e9, 0), prosperityAt: int(p.prosperityAt, 0, 1e15, 0), praiseCount: int(p.praiseCount, 0, 1e9, 0),
+      // 서버는 오늘 칭찬한 마을만 보낸다 (날짜는 그 답의 서버 시각)
+      praisedDay: p.praisedDay !== undefined ? int(p.praisedDay, -1e6, 1e6, 0) : typeof r.now === 'number' ? kstDay(r.now) : 0,
+      praised: Array.isArray(p.praised) ? p.praised.filter((x): x is string => typeof x === 'string') : [],
+      goal: int(p.goal, 0, 9999, 0), goalProgress: int(p.goalProgress, 0, 1e9, 0),
       marketDay: int(p.marketDay, -1e6, 1e6, 0), marketSold: int(p.marketSold, 0, 1e9, 0),
       feastFrom: int(p.feastFrom, 0, 1e15, 0), feastUntil: int(p.feastUntil, 0, 1e15, 0), feastPct: int(p.feastPct, 0, 1000, 0),
       reqSeq: int(p.reqSeq, 0, 1e9, 0), dailyDay: int(p.dailyDay, -1e6, 1e6, 0), dailyBonusDay: int(p.dailyBonusDay, -1e6, 1e6, 0), roosterDay: int(p.roosterDay, -1e6, 1e6, 0),
@@ -844,7 +906,7 @@ export function cleanState(raw: unknown): VillageState {
 
 export const cloneState = (s: VillageState): VillageState => ({
   ...s,
-  profile: { ...s.profile, resources: { ...s.profile.resources } },
+  profile: { ...s.profile, resources: { ...s.profile.resources }, praised: [...s.profile.praised] },
   buildings: s.buildings.map((b) => ({ ...b })),
   residents: s.residents.map((r) => ({ ...r })),
   requests: s.requests.map((q) => ({ ...q })),

@@ -65,6 +65,14 @@ export const CONST = {
   req_exp_pct: 30,
   /** 오늘의 할 일 하나의 경험치 = 그 레벨에 필요한 경험치 × daily_exp_pct % + 10 (다 끝낸 추가 보상은 두 배 + 20) */
   daily_exp_pct: 1,
+  /** 번영도 = 건물 레벨 합 + 놓인 것의 번영도 점수 + 주민 친밀도 단계 × aff_points + 받은 칭찬 × praise_points */
+  aff_points: 3,
+  praise_points: 2,
+  /** 칭찬: 하루에 줄 수 있는 횟수 · 줄 때마다 받는 엽전 */
+  praise_per_day: 5,
+  praise_coin: 10,
+  /** 마을 이름의 최대 글자 수 */
+  name_max: 12,
 } as const;
 
 /** 마을 레벨 n → n+1 에 필요한 경험치 (n = 1 … 29). 레벨이 오르면 경험치는 0부터 다시 센다 */
@@ -116,3 +124,6 @@ export const pricePct = (day: number, idx: number) => CONST.price_min_pct + ((((
 /** 땅 확장 (PRD 6장): n단계로 넓히는 값(시아코인)과 필요한 마을 레벨 (n = 1 … 6) */
 export const LAND_PRICE = [10, 20, 30, 50, 70, 100];
 export const LAND_NEED = [3, 6, 9, 13, 17, 22];
+
+/** 마을 이름에 쓸 수 있는 글자: 한글 · 영문 · 숫자 · 띄어쓰기 (앞뒤 띄어쓰기 · 연속 띄어쓰기 없음). SQL 의 village_rename 과 같은 식 */
+export const NAME_RE = /^[가-힣a-zA-Z0-9]+( [가-힣a-zA-Z0-9]+)*$/;

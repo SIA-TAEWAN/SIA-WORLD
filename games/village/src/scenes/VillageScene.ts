@@ -202,6 +202,12 @@ export class VillageScene extends Phaser.Scene {
   private syncWalkers() {
     const s = this.hooks.state();
     const { x0, size } = landRect(s.profile.landStage);
+    // 떠난 주민 (다른 마을을 구경하러 갔다 올 때)
+    for (const [id, w] of this.walkers) {
+      if (s.residents.some((r) => r.id === id)) continue;
+      w.box.destroy();
+      this.walkers.delete(id);
+    }
     for (const r of s.residents) {
       let w = this.walkers.get(r.id);
       if (!w) {

@@ -48,6 +48,34 @@ describe('테스트 모드 (LocalApi)', () => {
   });
 });
 
+describe('테스트 모드: 랭킹 · 구경 · 칭찬 · 이름', () => {
+  it('이웃 마을 셋과 내 마을', async () => {
+    const t = Date.UTC(2026, 10, 20, 3, 0, 0);
+    const api = createLocalApi(memory(), () => t, 1, { id: 'me', name: '나' });
+    const s0 = await api.load();
+    expect(s0.profile.prosperity).toBe(1);
+    const rk = await api.ranking();
+    expect(rk.total).toBe(4);
+    expect(rk.rows.map((r) => r.place)).toEqual([1, 2, 3, 4]);
+    for (let i = 1; i < rk.rows.length; i++) expect(rk.rows[i - 1].prosperity).toBeGreaterThanOrEqual(rk.rows[i].prosperity);
+    expect(rk.mine).toMatchObject({ userId: 'me', nickname: '나' });
+    const top = rk.rows[0];
+    const v = await api.visit(top.userId);
+    expect(v).toMatchObject({ userId: top.userId, mine: false, praised: false, praiseLeft: 5, prosperity: top.prosperity });
+    expect(v.buildings.length).toBeGreaterThan(5);
+    expect(v).not.toHaveProperty('resources');
+    const r = await api.praise(top.userId);
+    expect(r.state.profile.resources.coin).toBe(10);
+    expect(r.visit).toMatchObject({ praised: true, praiseLeft: 4, prosperity: top.prosperity + 2 });
+    await expect(api.praise(top.userId)).rejects.toThrow('already praised');
+    await expect(api.praise('me')).rejects.toThrow('self');
+    await expect(api.visit('nobody')).rejects.toThrow('no village');
+    expect((await api.rename('달빛 마을')).profile.name).toBe('달빛 마을');
+    await expect(api.rename('<b>')).rejects.toThrow('bad name');
+    expect((await api.visit('me')).mine).toBe(true);
+  });
+});
+
 describe('서버 (SupabaseApi)', () => {
   const answer = (now: number) => ({ now, ...newVillage(now, 'h') });
 

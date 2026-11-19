@@ -35,7 +35,7 @@ async function start() {
   }
   // 마을은 서버에 있다: 못 읽으면 시작할 수 없다
   try {
-    const api = await getApi();
+    const api = await getApi({ id: user.userId, name: user.nickname });
     showVillage(api, { id: user.userId, name: user.nickname }, await api.load());
   } catch {
     failed('마을을 불러오지 못했어요.<br/>잠시 후 다시 시도해 주세요.');

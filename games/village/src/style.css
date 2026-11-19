@@ -222,3 +222,23 @@ button, input { font: inherit; color: inherit; }
 .w-row .face { width: 38px; height: 38px; }
 .w-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .w-tx b { font-weight: normal; font-size: 15px; color: var(--ink) !important; }
+
+/* ---------- 7단계: 번영도 · 랭킹 · 구경 ---------- */
+.res-row .cap.pros { margin-left: 0; background: var(--accent); }
+.lv-tx b[role='button'] { cursor: pointer; }
+.name-in { width: 100%; font-size: 20px; text-align: center; padding: 8px 10px; border: var(--line) solid var(--outline); border-radius: var(--radius-item); background: var(--white); margin-bottom: 8px; }
+.dialog p { margin: 0; line-height: 1.4; }
+.r-row { display: flex; align-items: center; gap: 8px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 5px 8px; }
+.r-row.me { background: var(--panel-strong); }
+.r-pl { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 16px; background: var(--track); border: var(--line-thin) solid var(--outline); }
+.r-pl.top1 { background: var(--primary); }
+.r-pl.top2 { background: var(--roulette-winter); }
+.r-pl.top3 { background: var(--race-track); }
+.r-pt { flex: none; color: var(--accent); font-size: 16px; white-space: nowrap; }
+.r-row .lock { flex: none; font-size: 12px; }
+.sheet .note b { font-weight: normal; color: var(--accent); }
+.visit-top { position: absolute; left: 8px; right: 8px; top: calc(8px + env(safe-area-inset-top)); z-index: 20; display: flex; align-items: center; gap: 8px; background: var(--panel-strong); border: var(--line) solid var(--outline); border-radius: var(--radius-button); box-shadow: 0 3px 0 var(--outline); padding: 5px 12px 5px 6px; }
+.visit-top img { flex: none; width: 40px; height: 40px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
+.visit-bar { position: absolute; left: 8px; right: 8px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 25; display: flex; gap: 10px; }
+.visit-bar .btn { flex: 1; }
+.visit-bar .btn.primary { flex: 1.6; }

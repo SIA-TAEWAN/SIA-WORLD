@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, pricePct } from '../src/data/balance';
+import { CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, NAME_RE, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, pricePct } from '../src/data/balance';
 import { BUILDINGS, RECIPES } from '../src/data/buildings';
 import { COUNTED, GOALS } from '../src/data/goals';
 import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, TASKS, mix } from '../src/data/residents';
@@ -11,7 +11,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, 
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -162,8 +162,11 @@ describe('SQL의 권한 규칙', () => {
   /** 화면이 부르는 함수 (전부) */
   const OPEN = [
     'village_assign', 'village_build', 'village_claim_goal', 'village_craft', 'village_daily_claim', 'village_expand', 'village_feast', 'village_harvest', 'village_move', 'village_place',
-    'village_request_done', 'village_request_skip', 'village_sell', 'village_state', 'village_store', 'village_upgrade',
+    'village_praise', 'village_rename', 'village_request_done', 'village_request_skip', 'village_sell', 'village_state', 'village_store', 'village_upgrade', 'village_visit',
   ];
+
+  /** 읽기만 하는 함수 (구경 · 기념물 조건 보기) */
+  const READ_ONLY = ['village_visit', 'village_monuments'];
 
   it('안에서만 쓰는 함수(_로 시작)는 아무에게도 실행 권한을 주지 않는다', () => {
     const inner = fns.filter((f) => f.startsWith('_'));
@@ -185,6 +188,11 @@ describe('SQL의 권한 규칙', () => {
       expect(sql, f).toMatch(new RegExp(`grant execute on function public\\.${f}\\([^;]*\\) to authenticated;`));
       const b = body(f);
       expect(b, f).toContain("raise exception 'need login'");
+      // 읽기만 하는 함수는 잠그지 않는다
+      if (READ_ONLY.includes(f)) {
+        expect(b, f).not.toMatch(/\b(insert|update|delete)\b/);
+        continue;
+      }
       // 잠근 뒤의 시각으로, 끝난 짓기부터 마무리하고 계산한다
       const lock = b.indexOf('perform public._village_profile_row(me);');
       const clock = b.indexOf('t := clock_timestamp();');
@@ -211,7 +219,7 @@ describe('SQL의 권한 규칙', () => {
   });
 
   it('표는 RLS를 켜고 직접 쓰는 권한이 없다', () => {
-    for (const t of ['village_profiles', 'village_buildings', 'sia_coin_spends', 'village_residents', 'village_requests']) {
+    for (const t of ['village_profiles', 'village_buildings', 'sia_coin_spends', 'village_residents', 'village_requests', 'village_praises']) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);
       expect(sql).toContain(`revoke all on public.${t} from anon, authenticated;`);
       expect(sql).toContain(`grant select on public.${t} to authenticated;`);
@@ -233,6 +241,44 @@ describe('SQL의 권한 규칙', () => {
     }
     // 이 게임 안에서는 시아코인을 주지 않는다 (PRD 4장)
     expect(sql).not.toContain('_grant_sia_coin(');
+  });
+
+  it('번영도 · 랭킹 · 구경 (052)', () => {
+    const pr = body('_village_prosperity').replace(/\s+/g, ' ');
+    expect(pr).toContain("sum(case when t.kind in ('main', 'special') then b.level else 0 end + t.points)");
+    expect(pr).toContain("b.state not in ('building', 'stored')");
+    expect(pr).toContain("* public._village_const('aff_points')::int");
+    expect(pr).toContain("* public._village_const('praise_points')::int");
+    // 답을 보내기 직전에 다시 센다. 값이 바뀔 때만 달성 시각을 고친다
+    expect(body('_village_state_json')).toContain('perform public._village_refresh(p_user, p_now);');
+    expect(body('_village_refresh')).toContain('where user_id = p_user and prosperity <> v;');
+    // 랭킹 뷰: 번영도 → 먼저 달성. 다른 랭킹 뷰와 같은 모양 · 같은 권한
+    const at = sql.lastIndexOf('create or replace view public.village_ranking as');
+    expect(at).toBeGreaterThan(0);
+    const view = sql.slice(at, sql.indexOf('-- ---------- 5.', at)).replace(/\s+/g, ' ');
+    expect(view).toContain('order by v.prosperity desc, v.prosperity_at asc, v.user_id');
+    expect(view).toContain('(count(*) over ())::int as total');
+    expect(view).toContain('revoke all on public.village_ranking from anon, authenticated;');
+    expect(view).toContain('grant select on public.village_ranking to anon, authenticated;');
+    for (const col of ['user_id', 'nickname', 'village_name', 'level', 'prosperity', 'achieved_at', 'place', 'total']) expect(view).toMatch(new RegExp(`[ .]${col}[, ]`));
+    // 구경: 자원 · 시아코인 · 부탁은 보내지 않는다
+    const vj = body('_village_visit_json');
+    for (const no of ['resources', 'sia_coins', 'village_requests', 'goal', 'market_', 'exp']) expect(vj, no).not.toContain(no);
+    // 칭찬: 두 마을 줄은 user_id 가 작은 쪽부터 잠근다. 이름: 화면과 같은 식
+    const p = body('village_praise');
+    expect(p.indexOf('if p_user is not null and p_user < me then perform 1 from public.village_profiles where user_id = p_user for update; end if;')).toBeLessThan(p.indexOf('perform public._village_profile_row(me);'));
+    expect(p.indexOf('if p_user is not null and p_user < me')).toBeGreaterThan(0);
+    expect(body('village_rename')).toContain(`p_name !~ '${NAME_RE.source}'`);
+    expect(sql).toContain('check (from_user_id <> to_user_id)');
+  });
+
+  it('관리자 계정은 들어올 때만 엽전 · 시아코인이 10,000 (052)', () => {
+    const b = body('village_state');
+    expect(b).toContain('if exists (select 1 from public.profiles where id = me and is_admin) then');
+    expect(b).toContain("resources = jsonb_set(resources, '{coin}', '10000'::jsonb)");
+    expect(b).toContain('update public.wallets set sia_coins = 10000 where user_id = me;');
+    // 다른 함수는 관리자를 따로 보지 않는다
+    for (const f of fns.filter((x) => x !== 'village_state')) expect(body(f), f).not.toContain('is_admin');
   });
 
   it('닫힌 상태로 시작한다', () => {

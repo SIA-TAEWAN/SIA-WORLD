@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { CONST, LEVEL_EXP, RES_IDS } from '../data/balance';
+import { isBuildingType, type BuildingType } from '../data/buildings';
+import { isResidentId, type ResidentId } from '../data/residents';
 import { GOALS } from '../data/goals';
 import {
-  RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, requestDone, requestSkip, sell, settle, store as storeRule,
-  upgrade,
+  RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, praiseGive, praiseLeft, prosperityOf, refresh, rename,
+  requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
   type HarvestResult, type VillageState,
 } from '../game/rules';
 import { worldSupabase } from './world';
@@ -22,6 +24,59 @@ export const LOCAL_MODE =
 
 /** 서버가 거절했을 때의 까닭 (SQL 의 raise exception 글자 = RuleError 의 글자) */
 export class ApiError extends Error {}
+
+/** 랭킹의 한 줄 */
+export interface RankRow {
+  userId: string;
+  nickname: string;
+  /** 마을 이름 (비어 있으면 화면이 '닉네임네 마을'로 보여 준다) */
+  name: string;
+  level: number;
+  prosperity: number;
+  place: number;
+}
+export interface Ranking {
+  /** 상위 100곳 */
+  rows: RankRow[];
+  /** 내 줄 (100위 밖이어도) */
+  mine: RankRow | null;
+  total: number;
+}
+/** 구경하는 마을 (읽기 전용: 자원 · 시아코인 · 부탁은 오지 않는다) */
+export interface Visit {
+  userId: string;
+  nickname: string;
+  name: string;
+  level: number;
+  prosperity: number;
+  landStage: number;
+  mine: boolean;
+  /** 오늘 내가 이 마을을 칭찬했나 · 오늘 더 칭찬할 수 있는 횟수 */
+  praised: boolean;
+  praiseLeft: number;
+  buildings: { id: string; type: BuildingType; level: number; x: number; y: number; state: 'building' | 'done' }[];
+  residents: { id: ResidentId; affinity: number; building: string | null }[];
+}
+
+const num0 = (v: unknown) => Math.max(0, Math.floor(Number(v)) || 0);
+export function cleanVisit(raw: unknown): Visit {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const buildings: Visit['buildings'] = [];
+  for (const v of Array.isArray(r.buildings) ? r.buildings : []) {
+    const b = (v ?? {}) as Record<string, unknown>;
+    if (!isBuildingType(b.type) || typeof b.id !== 'string') continue;
+    buildings.push({ id: b.id, type: b.type, level: Math.max(1, Math.min(CONST.building_max_level, num0(b.level))), x: Math.min(19, num0(b.x)), y: Math.min(19, num0(b.y)), state: b.state === 'building' ? 'building' : 'done' });
+  }
+  const residents: Visit['residents'] = [];
+  for (const v of Array.isArray(r.residents) ? r.residents : []) {
+    const x = (v ?? {}) as Record<string, unknown>;
+    if (isResidentId(x.id)) residents.push({ id: x.id, affinity: num0(x.affinity), building: typeof x.building === 'string' ? x.building : null });
+  }
+  return {
+    userId: String(r.userId ?? ''), nickname: String(r.nickname ?? ''), name: typeof r.name === 'string' ? r.name : '', level: Math.max(1, Math.min(CONST.max_level, num0(r.level))),
+    prosperity: num0(r.prosperity), landStage: Math.min(6, num0(r.landStage)), mine: r.mine === true, praised: r.praised === true, praiseLeft: num0(r.praiseLeft), buildings, residents,
+  };
+}
 
 export interface VillageApi {
   kind: 'supabase' | 'local';
@@ -52,6 +107,14 @@ export interface VillageApi {
   requestSkip(slot: number): Promise<VillageState>;
   /** 오늘의 할 일 보상 (slot 0 … 2, 3 = 다 끝낸 추가 보상) */
   dailyClaim(slot: number): Promise<VillageState>;
+  /** 번영도 랭킹 (상위 100곳 + 내 줄) */
+  ranking(): Promise<Ranking>;
+  /** 다른 마을 구경 (읽기 전용) */
+  visit(userId: string): Promise<Visit>;
+  /** 칭찬하기 → 내 새 상태와 그 마을의 새 모습 */
+  praise(userId: string): Promise<{ state: VillageState; visit: Visit }>;
+  /** 마을 이름 바꾸기 */
+  rename(name: string): Promise<VillageState>;
 }
 
 export interface Store {
@@ -78,7 +141,7 @@ const LOCAL_KEY = 'siavillage:local';
  * 이 기기에만 저장하는 마을. fast: 시간을 그 배수로 빨리 돌린다 (개발용 ?fast=60 → 1초가 1분).
  * 빨리 돌린 시간은 저장해 두므로 새로 고쳐도 뒤로 가지 않는다.
  */
-export function createLocalApi(store: Store, realNow: () => number = () => Date.now(), fast = 1): VillageApi {
+export function createLocalApi(store: Store, realNow: () => number = () => Date.now(), fast = 1, me = { id: 'local', name: '시아' }): VillageApi {
   interface Saved {
     state: VillageState;
     seq: number;
@@ -119,8 +182,24 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
       if (e instanceof RuleError) throw new ApiError(e.message);
       throw e;
     }
+    // 서버처럼 답을 내기 직전에 번영도를 다시 센다
+    refresh(d.state, now());
     save(d);
     return { state: cloneState(d.state), out };
+  };
+  /** 구경 · 랭킹을 해 볼 수 있게 이웃 마을 셋을 지어 둔다 (이 기기의 기억에만 있다) */
+  const bots = makeBots();
+  const visitOf = (id: string): Visit => {
+    const s = id === me.id ? open().state : bots.find((b) => b.id === id)?.state;
+    const bot = bots.find((b) => b.id === id);
+    if (!s) throw new ApiError('no village');
+    const mine = open().state;
+    return {
+      userId: id, nickname: bot?.nick ?? me.name, name: s.profile.name, level: s.profile.level, prosperity: prosperityOf(s), landStage: s.profile.landStage, mine: id === me.id,
+      praised: mine.profile.praisedDay === kstDayOf(now()) && mine.profile.praised.includes(id), praiseLeft: Math.max(0, praiseLeft(mine, now())),
+      buildings: s.buildings.filter((b) => b.state !== 'stored').map((b) => ({ id: b.id, type: b.type, level: b.level, x: b.x, y: b.y, state: b.state === 'building' ? 'building' : 'done' })),
+      residents: s.residents.map((r) => ({ id: r.id, affinity: r.affinity, building: r.building })),
+    };
   };
   return {
     kind: 'local',
@@ -177,6 +256,27 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     async dailyClaim(slot) {
       return run((s) => dailyClaim(s, slot, now())).state;
     },
+    async ranking() {
+      const mine = run((s) => settle(s, now())).state;
+      const all = [{ id: me.id, nick: me.name, state: mine }, ...bots]
+        .map((v) => ({ userId: v.id, nickname: v.nick, name: v.state.profile.name, level: v.state.profile.level, prosperity: prosperityOf(v.state), at: v.state.profile.prosperityAt }))
+        .sort((a, b) => b.prosperity - a.prosperity || a.at - b.at)
+        .map(({ at: _at, ...r }, i) => ({ ...r, place: i + 1 }));
+      return { rows: all, mine: all.find((r) => r.userId === me.id) ?? null, total: all.length };
+    },
+    async visit(id) {
+      return visitOf(id);
+    },
+    async praise(id) {
+      if (id !== me.id && !bots.some((b) => b.id === id)) throw new ApiError('no village');
+      const r = run((s) => praiseGive(s, me.id, id, now()));
+      const bot = bots.find((b) => b.id === id)!;
+      bot.state.profile.praiseCount++;
+      return { state: r.state, visit: visitOf(id) };
+    },
+    async rename(name) {
+      return run((s) => rename(s, name, now())).state;
+    },
   };
 }
 
@@ -192,7 +292,7 @@ export interface RpcClient {
   rpc(fn: string, args?: Record<string, unknown>): PromiseLike<RpcAnswer> & { abortSignal?(signal: AbortSignal): PromiseLike<RpcAnswer> };
 }
 
-export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RPC_TIMEOUT_MS, deviceNow: () => number = () => Date.now()): VillageApi {
+export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RPC_TIMEOUT_MS, deviceNow: () => number = () => Date.now(), uid = ''): VillageApi {
   /** 서버 시각 − 기기 시각 */
   let offset = 0;
   const call = async (fn: string, args?: Record<string, unknown>): Promise<Record<string, unknown>> => {
@@ -256,19 +356,69 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
     },
     requestSkip: async (slot) => cleanState(await call('village_request_skip', { p_slot: slot })),
     dailyClaim: async (slot) => cleanState(await call('village_daily_claim', { p_slot: slot })),
+    async ranking() {
+      // village_ranking 뷰: 번영도 높은 순 → 먼저 달성한 순 (place · total 은 뷰가 센다)
+      const cols = 'user_id,nickname,village_name,level,prosperity,place,total';
+      const view = () => (sb as SupabaseClient).from('village_ranking');
+      const map = (r: Record<string, unknown>): RankRow => ({
+        userId: String(r.user_id), nickname: String(r.nickname ?? ''), name: typeof r.village_name === 'string' ? r.village_name : '',
+        level: num0(r.level), prosperity: num0(r.prosperity), place: num0(r.place),
+      });
+      const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(100);
+      if (error) throw new Error('network');
+      const rows = ((data ?? []) as Record<string, unknown>[]).map(map);
+      let mine = rows.find((r) => r.userId === uid) ?? null;
+      let total = num0((data as Record<string, unknown>[] | null)?.[0]?.total);
+      if (uid && !mine && rows.length >= 100) {
+        const res = await view().select(cols).eq('user_id', uid).maybeSingle();
+        if (res.data) {
+          mine = map(res.data as Record<string, unknown>);
+          total = num0((res.data as Record<string, unknown>).total);
+        }
+      }
+      return { rows, mine, total };
+    },
+    visit: async (id) => cleanVisit(await call('village_visit', { p_user: id })),
+    async praise(id) {
+      const d = await call('village_praise', { p_user: id });
+      return { state: cleanState(d), visit: cleanVisit(d.visit) };
+    },
+    rename: async (name) => cleanState(await call('village_rename', { p_name: name })),
   };
 }
 
 let api: VillageApi | null = null;
-export async function getApi(): Promise<VillageApi> {
+export async function getApi(user: { id: string; name: string }): Promise<VillageApi> {
   if (api) return api;
   if (LOCAL_MODE) {
     const store = browserStore();
     seedLocal(store);
     const fast = Math.max(1, Math.min(100000, Number(params.get('fast')) || 1));
-    return (api = createLocalApi(store, undefined, fast));
+    return (api = createLocalApi(store, undefined, fast, user));
   }
-  return (api = createSupabaseApi(await worldSupabase()));
+  return (api = createSupabaseApi(await worldSupabase(), undefined, undefined, user.id));
+}
+
+const kstDayOf = (ms: number) => Math.floor((ms + 9 * 3600_000) / 86400_000) - 20454;
+
+/** 테스트 모드의 이웃 마을 셋 */
+function makeBots(): { id: string; nick: string; state: VillageState }[] {
+  const mk = (id: string, nick: string, name: string, level: number, list: [BuildingType, number, number, number][], residents: [ResidentId, number][], praise: number) => {
+    const s = newVillage(0, `${id}-hall`);
+    s.profile.name = name;
+    s.profile.level = level;
+    s.profile.praiseCount = praise;
+    s.buildings[0].level = Math.min(10, Math.max(1, Math.floor(level / 3)));
+    list.forEach(([type, x, y, lv], i) => s.buildings.push({ id: `${id}-${i}`, type, level: lv, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0 }));
+    s.residents = residents.map(([rid, affinity]) => ({ id: rid, affinity, building: null, gifted: false }));
+    refresh(s, 1000 + level);
+    return { id, nick, state: s };
+  };
+  return [
+    mk('bot-1', '달토끼', '달빛 마을', 12, [['paddy', 6, 6, 5], ['paddy', 7, 6, 5], ['paddy', 8, 6, 4], ['house', 6, 8, 3], ['house', 7, 8, 3], ['house', 8, 8, 2], ['lumber', 12, 6, 4], ['lumber', 13, 6, 4], ['storage', 12, 8, 4], ['market', 13, 8, 3], ['quarry', 6, 12, 3], ['mill', 7, 12, 3], ['jar', 8, 12, 2], ['pond', 12, 12, 1], ['lantern', 13, 12, 1], ['tree', 11, 12, 1], ['flower', 12, 13, 1], ['road', 9, 11, 1], ['road', 10, 11, 1]], [['rat', 40], ['ox', 20], ['tiger', 12], ['rabbit', 5], ['dragon', 0]], 4),
+    mk('bot-2', '솔바람', '', 6, [['paddy', 6, 6, 3], ['paddy', 7, 6, 2], ['house', 12, 6, 2], ['house', 13, 6, 1], ['lumber', 6, 12, 2], ['storage', 7, 12, 2], ['market', 12, 12, 1], ['tree', 13, 13, 1]], [['rat', 12], ['ox', 3]], 1),
+    mk('bot-3', '새싹이', '새싹 마을', 2, [['paddy', 6, 6, 1], ['house', 7, 6, 1]], [['rat', 0]], 0),
+  ];
 }
 
 /**

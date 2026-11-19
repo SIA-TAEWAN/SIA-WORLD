@@ -4,7 +4,8 @@ import { BUILDING, BUILDINGS, RECIPES, isBuildingType, upgradable, type Building
 import { ASKS, RESIDENTS, RESIDENT_IDS, TASKS, affLevel, mix, type ResidentId } from '../src/data/residents';
 import { GOALS, goalText, josa } from '../src/data/goals';
 import {
-  RuleError, addExp, assign, batchMax, build, buildSec, capSec, claimGoal, dailyBonus, dailyClaim, makeAsk, makeDaily, marketLimit, pavilionRange, requestDone, requestSkip, residentOf,
+  RuleError, addExp, assign, batchMax, build, buildSec, capSec, claimGoal, dailyBonus, dailyClaim, makeAsk, makeDaily, marketLimit, pavilionRange, praiseGive, praiseLeft, praiseTake, prosperityOf,
+  refresh, rename, requestDone, requestSkip, residentOf,
   residentPct, workersAt, workplace, cleanState, cloneState, countOf, craft, effRate, expand, feast, feasting, goalStatus, nearPavilion, ratePct, harvest, landRect, maxCount, move, newVillage, place, placeError, priceOf,
   ratePerHour, sell, sellCoins, sellLeft, settle, slots, storageCap, store, stored, unitSec, upgrade, upgradeCost, upgradeSec, type Building, type VillageState,
 } from '../src/game/rules';
@@ -1282,5 +1283,90 @@ describe('6단계: 서버 답 다듬기', () => {
     c.requests[0].n = 1;
     c.daily[0].progress = 7;
     expect([s.residents[0].affinity, s.requests[0].n, s.daily[0].progress]).toEqual([0, 30, 2]);
+  });
+});
+
+// ───────────────────────── 7단계: 번영도 · 칭찬 · 마을 이름 ─────────────────────────
+
+describe('7단계: 번영도', () => {
+  it('건물 레벨 합 + 놓인 것의 점수 + 주민 친밀도 + 받은 칭찬', () => {
+    const s = newVillage(T0);
+    expect(prosperityOf(s)).toBe(1); // 마을 회관 레벨 1
+    const p = put(s, 'paddy', 6, 6, 3);
+    put(s, 'pond', 7, 6);
+    put(s, 'pavilion', 12, 12, 2);
+    expect(prosperityOf(s)).toBe(1 + 3 + 8 + (2 + 20));
+    // 짓는 중 · 보관함은 세지 않는다. 길은 점수가 없다
+    put(s, 'road', 8, 6);
+    put(s, 'stonetower', 9, 6).state = 'stored';
+    const site = put(s, 'lumber', 10, 6, 5);
+    site.state = 'building';
+    expect(prosperityOf(s)).toBe(34);
+    p.state = 'upgrading';
+    expect(prosperityOf(s)).toBe(34);
+    // 주민: 친밀도 단계 × 3
+    s.residents = [{ id: 'rat', affinity: 0, building: null, gifted: false }, { id: 'ox', affinity: 100, building: null, gifted: true }];
+    expect(prosperityOf(s)).toBe(34 + 3 + 15);
+    put(s, 'gift_ox', 11, 6);
+    s.profile.praiseCount = 4;
+    expect(prosperityOf(s)).toBe(52 + 12 + 8);
+  });
+
+  it('값이 바뀔 때만 달성 시각이 바뀐다', () => {
+    const s = newVillage(T0);
+    refresh(s, T0 + 5);
+    expect(s.profile).toMatchObject({ prosperity: 1, prosperityAt: T0 + 5 });
+    refresh(s, T0 + 99);
+    expect(s.profile.prosperityAt).toBe(T0 + 5);
+    put(s, 'tree', 6, 6);
+    refresh(s, T0 + 200);
+    expect(s.profile).toMatchObject({ prosperity: 2, prosperityAt: T0 + 200 });
+  });
+});
+
+describe('7단계: 마을 이름 · 칭찬', () => {
+  it('이름: 한글 · 영문 · 숫자 · 띄어쓰기, 12자까지', () => {
+    const s = newVillage(T0);
+    for (const ok of ['달빛 마을', 'SIA 1번지', '가', '열두글자마을이름입니다아']) {
+      rename(s, ok, T0);
+      expect(s.profile.name).toBe(ok);
+    }
+    for (const bad of ['', ' 마을', '마을 ', '달빛  마을', '<b>마을</b>', "마을'; drop", '마을!', '열세글자마을이름입니다아아', 'ㅋㅋ', '🏡마을', '마을\n이름']) {
+      expect(why(() => rename(s, bad, T0)), bad).toBe('bad name');
+    }
+    expect(why(() => rename(s, 5 as unknown as string, T0))).toBe('bad name');
+    expect(s.profile.name).toBe('열두글자마을이름입니다아');
+  });
+
+  it('칭찬: 하루 다섯 번, 같은 마을은 하루 한 번, 내 마을은 안 된다', () => {
+    const s = newVillage(T0);
+    expect(why(() => praiseGive(s, 'me', 'me', T0))).toBe('self');
+    praiseGive(s, 'me', 'a', T0);
+    expect(s.profile.resources.coin).toBe(CONST.praise_coin);
+    expect(praiseLeft(s, T0)).toBe(4);
+    expect(why(() => praiseGive(s, 'me', 'a', T0 + HOUR))).toBe('already praised');
+    for (const t of ['b', 'c', 'd', 'e']) praiseGive(s, 'me', t, T0);
+    expect(praiseLeft(s, T0)).toBe(0);
+    expect(why(() => praiseGive(s, 'me', 'f', T0))).toBe('praise limit');
+    expect(s.profile.resources.coin).toBe(5 * CONST.praise_coin);
+    // 날이 바뀌면 다시
+    const next = T0 + 24 * HOUR;
+    expect(praiseLeft(s, next)).toBe(5);
+    praiseGive(s, 'me', 'a', next);
+    expect(s.profile.praised).toEqual(['a']);
+    // 받는 쪽: 번영도 +2
+    const t = newVillage(T0);
+    praiseTake(t);
+    expect(prosperityOf(t)).toBe(1 + CONST.praise_points);
+  });
+
+  it('서버 답: 오늘 칭찬한 마을들', () => {
+    const now = Date.UTC(2026, 10, 20, 3, 0, 0);
+    const s = cleanState({ now, profile: { praised: ['u1', 'u2', 5], praiseCount: 3, prosperity: 40, prosperityAt: 123 } });
+    expect(s.profile).toMatchObject({ praised: ['u1', 'u2'], praisedDay: kstDay(now), praiseCount: 3, prosperity: 40, prosperityAt: 123 });
+    expect(praiseLeft(s, now)).toBe(3);
+    const c = cloneState(s);
+    c.profile.praised.push('x');
+    expect(s.profile.praised).toHaveLength(2);
   });
 });
