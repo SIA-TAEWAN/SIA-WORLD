@@ -30,7 +30,7 @@ export const CHARACTERS: CharacterDef[] = [
   { id: 'monkey', name: '원숭이', nick: '재롱이', weapon: 'staff', trait: { stat: 'cooldown', value: 0.08, text: '재사용 대기시간 -8%' }, unlock: { kind: 'coins', value: 500, text: '엽전 500닢' } },
   { id: 'rooster', name: '닭', nick: '꼬꼬댁', weapon: 'feather', trait: { stat: 'projSpeed', value: 0.1, text: '투사체 속도 +10%' }, unlock: { kind: 'coins', value: 1000, text: '엽전 1,000닢' } },
   { id: 'dog', name: '개', nick: '멍뭉이', weapon: 'puppy', trait: { stat: 'pickup', value: 0.2, text: '아이템 획득 범위 +20%' }, unlock: { kind: 'coins', value: 1500, text: '엽전 1,500닢' } },
-  { id: 'pig', name: '돼지', nick: '꿀꿀이', weapon: 'piggy', trait: { stat: 'coin', value: 0.1, text: '엽전 획득 +10%' }, unlock: { kind: 'clear', text: '4분 버텨 내기' } },
+  { id: 'pig', name: '돼지', nick: '꿀꿀이', weapon: 'piggy', trait: { stat: 'coin', value: 0.1, text: '엽전 획득 +10%' }, unlock: { kind: 'clear', text: '4분 모드에서 최종 보스 물리치기' } },
 ];
 
 export const CHARACTER_BY_ID = Object.fromEntries(CHARACTERS.map((c) => [c.id, c])) as Record<ZodiacId, CharacterDef>;

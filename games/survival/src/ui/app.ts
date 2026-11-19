@@ -26,6 +26,8 @@ export interface GameResult extends RunSummary {
   /** 스스로 그만뒀나 */
   quit: boolean;
   setup: GameSetup;
+  /** 판이 끝난 순간에 이 맵의 무한 모드가 이미 열려 있었나 (이 판으로 처음 열렸을 때 결과 화면이 알려 준다) */
+  endlessWasOpen: boolean;
   /**
    * 서버에 올린 결과: 받은 엽전·새 기록·새로 해금된 것.
    * 'unrecorded' 기록되지 않는 판(시작을 서버에 알리지 못함) · 'pending' 통신 실패로 기기에 보관함 · 'rejected' 서버가 받지 않음

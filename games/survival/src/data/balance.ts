@@ -19,8 +19,8 @@ export const RUN_MODES: readonly RunMode[] = ['normal', 'endless'];
  * 요괴 수 상한(LIMIT.enemies)과 풀 크기는 그대로다.
  */
 export const ENDLESS = {
-  /** 이 시간이 되면 판을 끝낸다 (서버의 endless_max_time 과 같다. 실제로는 한참 전에 죽는다) */
-  maxSec: 3600,
+  /** 이 시간(20분)이 되면 판을 끝낸다 (서버의 endless_max_time 과 같다. 실제로는 한참 전에 죽는다: 가장 긴 판이 10분 30초쯤) */
+  maxSec: 1200,
   /** 최종 보스 뒤로 이 간격마다 그 맵의 보스가 번갈아 다시 나온다 (서버의 endless_boss_every 와 같다) */
   bossEvery: 80,
   /** 이 간격마다 그 맵의 떼 이벤트가 번갈아 다시 온다 (첫 번째는 4분 + 간격의 절반) */

@@ -1,6 +1,6 @@
 /**
  * 판 밖 성장 (PRD 7·11장): 엽전 · 영구 강화 · 해금 · 최고 기록 · 도감의 규칙.
- * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040 · 041 · 042 · 043 · 044_survival_endless.sql). 여기는 같은 규칙의 순수 함수로,
+ * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040 · 041 · 042 · 043 · 044_survival_endless.sql · 045_survival_review.sql). 여기는 같은 규칙의 순수 함수로,
  *   · 테스트 모드(?local=1)의 기기 저장 프로필이 쓰고
  *   · 화면이 "살 수 있나 · 얼마인가 · 무엇이 잠겼나" 를 보여 줄 때 쓰고
  *   · tests/sql.test.ts 가 SQL의 표·상수와 같은지 비교한다.
@@ -27,7 +27,10 @@ export interface SurvivalProfile {
   codex: Codex;
   /** 해금 조건용 누적 값 */
   totals: { kills: number; cakes: number; bestTime: number; bossKills: number; clears: number; runs: number };
-  /** 4분 모드로 클리어한 맵 (맵별 최고 기록에서 나온다). 무한 모드는 그 맵을 클리어해야 열린다 */
+  /**
+   * 4분 모드로 클리어한 맵: 맵별 최고 기록에 클리어가 있거나, 그 다음 맵이 열려 있는 맵 (다음 맵은 클리어해야 열리므로).
+   * 무한 모드는 여기에 있는 맵에서만 열린다
+   */
   clearedMaps: string[];
   /** 무한 모드의 맵별 내 최고 기록 */
   endlessBest: Record<string, { time: number; kills: number }>;
@@ -62,19 +65,28 @@ export interface FinishResult {
   coins: number;
   /** 비정상 기록이 아닌가 (false면 랭킹·해금·도감에 넣지 않는다) */
   valid: boolean;
+  /** 요괴를 너무 적게 잡은 판인가 (true면 정상 기록이어도 엽전·기록·해금·누적·도감·시아코인에 넣지 않는다. 옛 서버 답에는 없다) */
+  lowKills?: boolean;
   newRecord: boolean;
   unlockedCharacters: ZodiacId[];
   unlockedMaps: string[];
 }
 
-/** 판 검증 값. SQL의 _survival_const (044_survival_endless.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
+/** 판 검증 값. SQL의 _survival_const (045_survival_review.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
 export const LIMITS = {
   max_time: RUN_SEC,
-  time_slack: 5,
+  /** 서버가 잰 경과 시간이 판에 걸리는 가장 짧은 시간보다 이만큼까지는 짧아도 된다 (판 시작 알림이 늦게 닿는 것까지 본다) */
+  time_slack: 15,
   max_speed: 2,
   max_age: 604800,
   kills_base: 100,
   kills_per_sec: 50,
+  /**
+   * 처치 수 하한 = (생존 시간 − kills_min_from) × kills_min_per_sec. 이보다 적게 잡은 판은 세지 않는다 (기다리기만 한 것처럼 꾸민 기록 방지).
+   * 실제 판은 처음 1~2분에는 거의 못 잡고도 살아 있을 수 있어서 2분 뒤부터만 본다. 값은 밸런스 측정(PRD 11장)의 최소치의 절반 이하
+   */
+  kills_min_from: 120,
+  kills_min_per_sec: 1,
   level_base: 5,
   level_per_sec: 0.5,
   coins_base: 0,
@@ -147,7 +159,7 @@ export function cleanProfile(raw: unknown): SurvivalProfile {
 /** 무한 모드인가 (모드가 적히지 않은 옛 결과는 4분 모드) */
 export const isEndless = (r: { mode?: string }) => r.mode === 'endless';
 
-/** 무한 모드가 열렸나: 그 맵을 4분 모드로 클리어한 기록이 있어야 한다 */
+/** 무한 모드가 열렸나: 그 맵을 4분 모드로 클리어했어야 한다 (클리어 기록이 있거나 다음 맵이 열려 있다 → clearedMaps) */
 export const endlessOpen = (profile: SurvivalProfile, map: string) => profile.clearedMaps.includes(map);
 
 /** 무한 모드에서 한 판에 받을 수 있는 엽전의 고정 상한 (그 맵 4분 모드 클리어 판의 약 1.5배. SQL의 _survival_endless_coin_cap) */
@@ -174,6 +186,12 @@ export function validRun(r: RunSummary): boolean {
   if (r.coins > coinCap(r.map, r.time, r.mode)) return false;
   return true;
 }
+
+/** 이 생존 시간이면 적어도 잡았어야 하는 요괴 수 (처음 kills_min_from 초는 0) */
+export const killFloor = (time: number) => Math.max(0, time - LIMITS.kills_min_from) * LIMITS.kills_min_per_sec;
+
+/** 요괴를 충분히 잡은 판인가. 아니면 정상 기록(valid)이어도 엽전·누적·기록·해금·도감·시아코인에 넣지 않는다 (서버와 같다) */
+export const enoughKills = (r: { time: number; kills: number }) => r.kills >= killFloor(r.time);
 
 /** 생존 시간 time 초인 판이 실제로 걸리는 가장 짧은 시간 (초): 가장 빠른 배속으로 하고, 시계·통신 오차만큼 뺀다 */
 export const minRealTime = (time: number) => Math.max(0, time / LIMITS.max_speed - LIMITS.time_slack);
@@ -207,11 +225,14 @@ export function betterEndless(run: { time: number; kills: number }, old: Endless
   return run.kills > old.kills;
 }
 
-/** 기록에서 나오는 프로필 칸을 채운다: 4분 모드로 클리어한 맵, 무한 모드 최고 기록 (서버는 프로필을 보낼 때 기록 표에서 읽는다) */
+/**
+ * 기록에서 나오는 프로필 칸을 채운다: 4분 모드로 클리어한 맵, 무한 모드 최고 기록 (서버는 프로필을 보낼 때 기록 표에서 읽는다).
+ * 클리어한 맵: 클리어 기록이 있거나, 그 다음 맵이 열려 있는 맵 (기록이 지워졌어도 다음 맵을 연 사람은 그 맵을 깬 사람이다)
+ */
 export function withRecords(profile: SurvivalProfile, records: Record<string, SurvivalRecord>, endless: Record<string, EndlessRecord>): SurvivalProfile {
   return {
     ...profile,
-    clearedMaps: MAPS.filter((m) => records[m.id]?.cleared === true).map((m) => m.id),
+    clearedMaps: MAPS.filter((m, i) => records[m.id]?.cleared === true || (i + 1 < MAPS.length && profile.unlockedMaps.includes(MAPS[i + 1].id))).map((m) => m.id),
     endlessBest: Object.fromEntries(MAPS.filter((m) => endless[m.id]).map((m) => [m.id, { time: endless[m.id].time, kills: endless[m.id].kills }])),
   };
 }
@@ -241,7 +262,8 @@ const merge = (old: string[], add: string[], allow: string[]) => allow.filter((i
 
 /**
  * 판 결과를 프로필에 반영한다 (서버의 survival_finish 와 같은 규칙).
- * 엽전은 언제나 주고(상한까지), 정상 기록일 때만 누적 값·최고 기록·해금·도감에 넣는다.
+ * 엽전은 상한까지 주고, 정상 기록일 때만 누적 값·최고 기록·해금·도감에 넣는다.
+ * 너무 짧은 판과 요괴를 너무 적게 잡은 판(enoughKills)은 세지 않는다: 엽전도 0, 누적·기록·해금·도감에도 넣지 않는다.
  * 무한 모드(run.mode)는 기록을 따로 두고(endless), 엽전에 고정 상한이 있으며, 시간 조건 해금·다음 맵 해금·최고 생존 시간(누적 값)에는 넣지 않는다.
  */
 export function applyRun(
@@ -253,8 +275,9 @@ export function applyRun(
 ): { profile: SurvivalProfile; records: Record<string, SurvivalRecord>; endless: Record<string, EndlessRecord>; result: FinishResult } {
   const inf = isEndless(run);
   const valid = validRun(run);
-  // 너무 짧은 판은 엽전·누적·기록·도감에 들어가지 않는다 (서버와 같다)
-  const counted = run.time >= LIMITS.count_min_time;
+  // 너무 짧은 판과 요괴를 너무 적게 잡은 판은 엽전·누적·기록·도감에 들어가지 않는다 (서버와 같다)
+  const enough = enoughKills(run);
+  const counted = run.time >= LIMITS.count_min_time && enough;
   const coins = counted ? Math.min(run.coins, coinCap(run.map, run.time, run.mode)) : 0;
   const p: SurvivalProfile = {
     ...profile,
@@ -265,7 +288,7 @@ export function applyRun(
   };
   const rec = { ...records };
   const end = { ...endless };
-  const result: FinishResult = { coins, valid, newRecord: false, unlockedCharacters: [], unlockedMaps: [] };
+  const result: FinishResult = { coins, valid, lowKills: !enough, newRecord: false, unlockedCharacters: [], unlockedMaps: [] };
   if (!valid || !counted) return { profile: withRecords(p, rec, end), records: rec, endless: end, result };
 
   p.totals.kills += run.kills;

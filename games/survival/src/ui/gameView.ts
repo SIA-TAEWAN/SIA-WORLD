@@ -6,7 +6,7 @@ import { ITEM } from '../data/items';
 import { PASSIVES } from '../data/passives';
 import { presetUpgrades } from '../data/upgrades';
 import { WEAPONS } from '../data/weapons';
-import { LIMITS } from '../game/progress';
+import { LIMITS, endlessOpen, enoughKills } from '../game/progress';
 import { activeBoss } from '../game/sim';
 import { CARD, EV, type Card, type Ev, type State } from '../game/state';
 import { ApiError, LOCAL_MODE } from '../net/api';
@@ -277,6 +277,23 @@ export function showGame(setup: GameSetup) {
     // 배속이면 글자도 그만큼 빨리 사라진다 (게임 시간 기준)
     if (ms > 0) cutTimer = setTimeout(() => setCut(''), ms / run.speed);
   }
+  /**
+   * 꼭 읽혀야 하는 큰 글자 (무한 모드에서 최종 보스를 잡았을 때의 "끝이 아니에요"):
+   * 레벨업 창이 떠 있으면 닫힌 뒤에 보여 주고, 보이는 도중에 레벨업 창이 가리면 닫힌 뒤에 다시 보여 준다.
+   */
+  let held: { html: string; cls: string; ms: number } | null = null;
+  /** held 가 다 보이는 시각 (0: 아직 보여 주지 못했다 → 레벨업 창이 닫히면 보여 준다) */
+  let heldUntil = 0;
+  function setCutHeld(html: string, cls: string, ms: number) {
+    held = { html, cls, ms };
+    heldUntil = 0;
+    if (!levelDim && s.phase === 'play') showHeld();
+  }
+  function showHeld() {
+    if (!held || ended) return;
+    heldUntil = performance.now() + held.ms / run.speed;
+    setCut(held.html, held.cls, held.ms);
+  }
 
   // ---------- 왼쪽 위: 가진 무기·패시브 아이콘 ----------
   function paintOwned() {
@@ -292,6 +309,11 @@ export function showGame(setup: GameSetup) {
   let levelAt = 0;
   function showLevelUp(fresh = true) {
     if (fresh) levelAt = performance.now();
+    // 꼭 읽혀야 하는 큰 글자가 이 창에 가려진다: 다 보인 뒤였으면 잊고, 아니면 창이 닫힌 뒤에 다시 보여 준다
+    if (held) {
+      if (heldUntil > 0 && performance.now() >= heldUntil) held = null;
+      else heldUntil = 0;
+    }
     releaseAll();
     levelDim?.remove();
     const dim = document.createElement('div');
@@ -326,7 +348,11 @@ export function showGame(setup: GameSetup) {
     paintOwned();
     // 한꺼번에 여러 레벨이 올랐으면 이어서 또 고른다
     if (run.state.phase === 'levelup') showLevelUp();
-    else closeLevelUp();
+    else {
+      closeLevelUp();
+      // 창에 가려졌던 큰 글자를 이제 보여 준다
+      if (held && heldUntil === 0) showHeld();
+    }
   }
   function reroll() {
     if (s.phase !== 'levelup' || s.rerolls <= 0) return;
@@ -351,13 +377,15 @@ export function showGame(setup: GameSetup) {
         return row(icon('w', d.id), d.name, d.evolved ? '진화' : `Lv ${w.lv}`, d.desc);
       });
       const passives = s.passives.map((p) => row(icon('p', PASSIVES[p.def].id), PASSIVES[p.def].name, `Lv ${p.lv}`, `${PASSIVES[p.def].text} (레벨마다)`));
-      // 그만두면 무엇을 받는지: 기록되지 않는 판 · 너무 짧은 판(서버가 엽전을 주지 않는다) · 그 밖에는 주운 엽전
+      // 그만두면 무엇을 받는지: 기록되지 않는 판 · 너무 짧은 판·요괴를 너무 적게 잡은 판(서버가 엽전을 주지 않는다) · 그 밖에는 주운 엽전
       const need = LIMITS.count_min_time;
       const quitNote = unrecorded
         ? '서버에 연결하지 못한 판이라 엽전이 기록되지 않아요'
         : Math.floor(s.time) < need
           ? `${need}초를 버티기 전에 그만두면 엽전을 받지 못해요`
-          : `지금까지 주운 엽전 ${Math.floor(s.coins)}닢은 받아요`;
+          : !enoughKills({ time: Math.floor(clockSec()), kills: s.kills })
+            ? '요괴를 너무 적게 잡아서, 지금 그만두면 엽전을 받지 못해요'
+            : `지금까지 주운 엽전 ${Math.floor(s.coins)}닢은 받아요`;
       dim.innerHTML = confirm
         ? `<div class="dialog"><h3>그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${quitNote}</p>
             <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-quit>그만두기</button></div></div>`
@@ -441,7 +469,9 @@ export function showGame(setup: GameSetup) {
         return 'rejected';
       }
     });
-    const result: GameResult = { ...summary, quit, setup, saved };
+    // 저장 답이 오기 전의 값 (답이 오면 프로필이 바뀐다)
+    const endlessWasOpen = endlessOpen(state.profile, setup.map);
+    const result: GameResult = { ...summary, quit, setup, endlessWasOpen, saved };
     if (quit) return nav.result(result);
     endTimer = setTimeout(() => nav.result(result), 1900);
   }
@@ -456,7 +486,7 @@ export function showGame(setup: GameSetup) {
   function onClear() {
     sfx('win');
     closeLevelUp();
-    setCut('클리어!<small>4분을 버텨 냈어요</small>', 'go');
+    setCut('클리어!<small>최종 보스를 물리쳤어요</small>', 'go');
     music.play(null);
     finish(false);
   }
@@ -500,10 +530,12 @@ export function showGame(setup: GameSetup) {
         sfx('survBossDown');
         scene()?.burst('boss');
         flashEdge('good');
-        if (st.phase === 'play') {
-          // 무한 모드에서 최종 보스를 잡았을 때: 끝나지 않고 계속된다는 것을 알려 준다
+        if (st.phase === 'play' || st.phase === 'levelup') {
+          // 무한 모드에서 최종 보스를 잡았을 때: 끝나지 않고 계속된다는 것을 알려 준다.
+          // 보스를 잡으면 곧바로 레벨업 창이 뜨는 일이 많아서, 창이 닫힌 뒤에 보이게 한다 (setCutHeld)
           const more = st.endless && st.bossKind[st.map.bosses.length - 1] === e.a && st.bossNext === st.map.bosses.length;
-          setCut(`${esc(BOSSES[e.a].name)} 처치!<small>${more ? '끝이 아니에요. 요괴가 점점 강해져요' : '보물상자를 주워요'}</small>`, 'go', more ? 2400 : 1800);
+          if (more) setCutHeld(`${esc(BOSSES[e.a].name)} 처치!<small>끝이 아니에요. 요괴가 점점 강해져요</small>`, 'go', 2400);
+          else if (st.phase === 'play') setCut(`${esc(BOSSES[e.a].name)} 처치!<small>보물상자를 주워요</small>`, 'go', 1800);
           if (!activeBoss(st)) music.play(mapTrack(st.map.id));
         }
         break;

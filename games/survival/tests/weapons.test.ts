@@ -3,7 +3,6 @@ import { CHARACTERS } from '../src/data/characters';
 import { PASSIVE_INDEX } from '../src/data/passives';
 import { WEAPONS, WEAPON_INDEX } from '../src/data/weapons';
 import { addPassive, addWeapon } from '../src/game/levelup';
-import { dpsTable, weaponDps } from '../src/game/policy';
 import { startWeapon } from '../src/game/sim';
 import { MODE } from '../src/game/state';
 import { BEHAVIORS, weaponReady } from '../src/game/weapons';
@@ -19,29 +18,8 @@ function armed(id: string, lv = 1) {
   return s;
 }
 
-describe('무기 12종의 세기', () => {
-  it('시작 무기(1레벨)가 같은 시간에 주는 피해는 서로 ±15% 안이다', () => {
-    const dps = SIX.map((id) => weaponDps(id, 1));
-    const mean = dps.reduce((a, b) => a + b, 0) / dps.length;
-    for (const d of dps) expect(Math.abs(d / mean - 1)).toBeLessThan(0.15);
-  }, 60000);
-
-  it('레벨마다 세지고, 같은 레벨끼리도 ±15% 안이다', () => {
-    const table = dpsTable().filter((r) => SIX.includes(r.id));
-    for (const r of table) for (let i = 1; i < 5; i++) expect(r.dps[i]).toBeGreaterThan(r.dps[i - 1] * 1.2);
-    for (let lv = 0; lv < 5; lv++) {
-      const col = table.map((r) => r.dps[lv]);
-      const mean = col.reduce((a, b) => a + b, 0) / col.length;
-      for (const d of col) expect(Math.abs(d / mean - 1)).toBeLessThan(0.15);
-    }
-  }, 120000);
-
-  it('진화 무기는 5레벨보다 두 배 넘게 세다', () => {
-    for (const [base, evo] of [['shuriken', 'shurikenEvo'], ['pearl', 'pearlEvo'], ['claw', 'clawEvo']]) {
-      expect(weaponDps(evo, 1)).toBeGreaterThan(weaponDps(base, 5) * 2);
-    }
-  }, 60000);
-
+// 무기의 세기를 재는 시험(수백 판을 돌린다)은 tests/weaponDps.test.ts 에 따로 있다
+describe('무기 12종', () => {
   it('무기 12종 + 진화 3종이 모두 준비됐다', () => {
     expect(WEAPONS.filter(weaponReady).map((w) => w.id).sort()).toEqual([...SIX, 'shurikenEvo', 'pearlEvo', 'clawEvo'].sort());
     expect(CHARACTERS.map((c) => c.weapon)).toEqual(SIX);

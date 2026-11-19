@@ -219,7 +219,7 @@ describe('무한 모드: 4분 뒤', () => {
     expect(n.coins).toBe(5000);
   });
 
-  it('부활은 그대로 한 번 동작하고, 시간 상한(1시간)에 닿으면 판이 끝난다', () => {
+  it('부활은 그대로 한 번 동작하고, 시간 상한(20분)에 닿으면 판이 끝난다', () => {
     const s = createRun({ seed: 2, char: 'ox', map: 'field', mode: 'endless', numbers: false, upgrades: { revive: 1 }, startAt: 300 });
     expect(s.player.revives).toBe(1);
     s.player.hp = 0;
@@ -238,6 +238,7 @@ describe('무한 모드: 4분 뒤', () => {
     expect(t.phase).toBe('over');
     expect(summarize(t).time).toBe(ENDLESS.maxSec);
     expect(LIMITS.endless_max_time).toBe(ENDLESS.maxSec);
+    expect(ENDLESS.maxSec).toBe(1200);
   });
 
   it('2배속은 무한 모드에서도 같은 판을 절반의 실제 시간에 돌린다', () => {
@@ -277,7 +278,7 @@ describe('무한 모드: 4분 뒤', () => {
   }, 120_000);
 });
 
-describe('무한 모드의 규칙 (서버 044 와 같다)', () => {
+describe('무한 모드의 규칙 (서버 044 · 045 와 같다)', () => {
   const cleared: Record<string, SurvivalRecord> = { field: { time: 240, kills: 3000, cleared: true, character: 'rat', at: 1 } };
 
   it('잠금: 그 맵을 4분 모드로 클리어한 기록이 있어야 열린다', () => {
@@ -297,17 +298,35 @@ describe('무한 모드의 규칙 (서버 044 와 같다)', () => {
     expect(cleanProfile({}).clearedMaps).toEqual([]);
   });
 
-  it('받지 않는 보고: 클리어, 1시간 초과. 240초를 넘는 시간은 받는다. 2배속 경계는 4분 모드와 같은 식', () => {
+  it('잠금 완화 (045): 클리어 기록이 없어도 그 맵의 다음 맵이 열려 있으면 열린다. 마지막 맵은 클리어 기록만', () => {
+    // 4분제로 바꿀 때 기록이 지워진 사람: 맵은 열려 있는데 기록이 없다
+    const two = withRecords({ ...defaultProfile(), unlockedMaps: ['field', 'bamboo'] }, {}, {});
+    expect(two.clearedMaps).toEqual(['field']);
+    expect(endlessOpen(two, 'field')).toBe(true);
+    expect(endlessOpen(two, 'bamboo')).toBe(false);
+    const all = withRecords({ ...defaultProfile(), unlockedMaps: MAPS.map((m) => m.id) }, {}, {});
+    expect(all.clearedMaps).toEqual(['field', 'bamboo', 'palace']);
+    expect(endlessOpen(all, 'underworld')).toBe(false);
+    // 황천길은 클리어 기록이 있어야 한다 (클리어하지 못한 기록으로는 안 된다)
+    const rec = (c: boolean): Record<string, SurvivalRecord> => ({ underworld: { time: 240, kills: 900, cleared: c, character: 'rat', at: 1 } });
+    expect(withRecords(all, rec(false), {}).clearedMaps).toEqual(['field', 'bamboo', 'palace']);
+    expect(withRecords(all, rec(true), {}).clearedMaps).toEqual(['field', 'bamboo', 'palace', 'underworld']);
+    // 아무것도 열지 않은 사람은 그대로 잠겨 있다
+    expect(withRecords(defaultProfile(), {}, {}).clearedMaps).toEqual([]);
+  });
+
+  it('받지 않는 보고: 클리어, 20분 초과. 240초를 넘는 시간은 받는다. 2배속 경계는 4분 모드와 같은 식', () => {
     expect(rejectReason(run({ time: 241 }), 9999)).toBe(null);
     expect(rejectReason(run({ time: 241, mode: 'normal' }), 9999)).toBe('bad time');
     expect(rejectReason(run({ time: 241, mode: undefined }), 9999)).toBe('bad time');
     expect(rejectReason(run({ time: LIMITS.endless_max_time }), 9999)).toBe(null);
     expect(rejectReason(run({ time: LIMITS.endless_max_time + 1 }), 9999)).toBe('bad time');
+    expect(rejectReason(run({ time: 3600 }), 9999)).toBe('bad time');
     expect(rejectReason(run({ time: 300, cleared: true }), 9999)).toBe('bad result');
     expect(rejectReason(run({ time: 240, cleared: true }), 9999)).toBe('bad result');
-    // 600초 판은 실제 295초(600 / 2 − 5) 뒤부터
-    expect(rejectReason(run({ time: 600 }), 294.9)).toBe('too early');
-    expect(rejectReason(run({ time: 600 }), 295)).toBe(null);
+    // 600초 판은 실제 285초(600 / 2 − 15) 뒤부터
+    expect(rejectReason(run({ time: 600 }), 284.9)).toBe('too early');
+    expect(rejectReason(run({ time: 600 }), 285)).toBe(null);
   });
 
   it('엽전 상한: 시간 비례 상한과 맵별 고정 상한 가운데 작은 쪽', () => {
@@ -367,8 +386,16 @@ describe('무한 모드의 규칙 (서버 044 와 같다)', () => {
     expect(play(500, 3000, 3)).toBe(false);
     expect(e.field.at).toBe(1);
     expect(play(500, 3001, 4)).toBe(true);
-    expect(play(700, 10, 5)).toBe(true);
-    expect(e.field).toMatchObject({ time: 700, kills: 10, at: 5 });
+    // 기다리기만 한 것처럼 꾸민 기록은 오르지 않는다 (처치 수 하한: (700 − 120) × 1 = 580)
+    expect(play(700, 10, 5)).toBe(false);
+    expect(play(700, 579, 6)).toBe(false);
+    expect(e.field).toMatchObject({ time: 500, kills: 3001, at: 4 });
+    expect(play(700, 580, 7)).toBe(true);
+    expect(e.field).toMatchObject({ time: 700, kills: 580, at: 7 });
+    // 가장 긴 판(20분)에 0킬: 엽전도 기록도 없다
+    const idle = applyRun(p, cleared, run({ time: 1200, kills: 0, coins: 450 }), 8, e);
+    expect(idle.result).toMatchObject({ coins: 0, valid: true, lowKills: true, newRecord: false });
+    expect(idle.endless.field).toMatchObject({ time: 700, kills: 580 });
   });
 
   it('누적 처치·떡·보스·도감은 반영하고, 시간 조건 해금(토끼·말)·클리어 해금(돼지)·다음 맵 해금·최고 생존 시간은 4분 모드에서만', () => {
@@ -380,7 +407,7 @@ describe('무한 모드의 규칙 (서버 044 와 같다)', () => {
     expect(out.profile.totals).toMatchObject({ kills: 900, cakes: 14, bestTime: 0, clears: 0, runs: 1 });
     expect(out.profile.codex.enemies).toEqual(['imp', 'wisp']);
     // 누적 조건(뱀 처치 1000 · 양 떡 15)과 보스 처치(용)는 무한 모드에서도 풀린다
-    const more = applyRun(out.profile, out.records, run({ time: 400, kills: 100, cakes: 1, bossKills: 1 }), 2, out.endless);
+    const more = applyRun(out.profile, out.records, run({ time: 400, kills: 300, cakes: 1, bossKills: 1 }), 2, out.endless);
     expect(more.result.unlockedCharacters).toEqual(['dragon', 'snake', 'sheep']);
     // 같은 사람이 4분 모드로 2분을 버티면 토끼가 풀린다
     const normal = applyRun(more.profile, more.records, run({ mode: 'normal', time: 120, kills: 100, bossKills: 0 }), 3, more.endless);
@@ -390,6 +417,15 @@ describe('무한 모드의 규칙 (서버 044 와 같다)', () => {
 });
 
 describe('무한 모드: 테스트 모드의 기기 저장과 서버 호출', () => {
+  it('잠금 완화 (045): 다음 맵이 열려 있으면 클리어 기록 없이도 무한 모드를 시작할 수 있다', async () => {
+    const store = memStore();
+    store.setItem('siasurvival:local', JSON.stringify({ profile: { ...defaultProfile(), unlockedMaps: ['field', 'bamboo'] } }));
+    const api = createLocalApi(store, () => 1_000_000);
+    expect((await api.loadProfile()).clearedMaps).toEqual(['field']);
+    expect(await api.start('field', 'rat', 0, 'endless')).toBeTruthy();
+    await expect(api.start('bamboo', 'rat', 0, 'endless')).rejects.toThrow('endless locked');
+  });
+
   it('클리어 전에는 시작을 거절하고, 클리어한 뒤에는 시작·종료가 되고 기록이 따로 남는다', async () => {
     let now = 1_000_000;
     const api = createLocalApi(memStore(), () => now);
@@ -410,6 +446,13 @@ describe('무한 모드: 테스트 모드의 기기 저장과 서버 호출', ()
     const again = await api.loadProfile();
     expect(again.clearedMaps).toEqual(['field']);
     expect(again.endlessBest.field.time).toBe(431);
+    // 요괴를 너무 적게 잡은 판은 기록에 오르지 않는다 (무한 모드 601초에 100킬)
+    id = (await api.start('field', 'rat', 0, 'endless'))!;
+    now += 700_000;
+    const low = await api.finish({ ...run({ time: 601, kills: 100, coins: 300 }), run: id });
+    expect(low!.result).toMatchObject({ valid: true, lowKills: true, newRecord: false, coins: 0 });
+    expect(low!.profile.endlessBest.field.time).toBe(431);
+    expect(low!.profile.coins).toBe(400);
     // 4분 모드로 시작한 판에 240초 넘는 결과를 보내면 거절한다 (모드는 시작할 때 정해진다)
     id = (await api.start('field', 'rat'))!;
     now += 700_000;

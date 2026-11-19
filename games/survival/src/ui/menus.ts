@@ -56,6 +56,15 @@ export function showMain() {
       offProfile();
     },
   );
+  // 꾸밈용 요괴 그림을 받지 못하면 깨진 그림 표시가 보이지 않게 숨긴다 (error 는 위로 올라오지 않아 capture 로 듣는다)
+  root.querySelector('.hero')!.addEventListener(
+    'error',
+    (e) => {
+      const img = e.target as HTMLElement;
+      if (img instanceof HTMLImageElement && img.classList.contains('hero-foe')) img.style.visibility = 'hidden';
+    },
+    true,
+  );
   // 판 저장 답이 메인에 온 뒤에 도착하면 엽전을 새로 적는다
   const offProfile = watchProfile(() => (root.querySelector('#mycoins')!.textContent = coinsText()));
   root.querySelector('#go')!.addEventListener('click', () => {
@@ -176,8 +185,11 @@ export function showCharSelect() {
 
 export function showMapSelect() {
   let pick = MAPS.find((m) => m.id === state.map && m.ready && !mapLocked(m.id))?.id ?? MAPS[0].id;
-  // 지난번에 고른 모드로 시작한다 (그 맵의 무한 모드가 잠겨 있으면 4분 모드)
-  let mode: RunMode = state.mode === 'endless' && !endlessLocked(pick) ? 'endless' : 'normal';
+  // 사용자가 고른 모드 (지난번 것부터). 무한 모드가 잠긴 맵에서는 4분 모드로 보이지만, 고른 것은 잊지 않는다:
+  // 잠긴 맵을 눌렀다가 열린 맵으로 돌아오면 다시 무한 모드다
+  let wanted: RunMode = state.mode;
+  /** 지금 고른 맵에서 실제로 시작할 모드 */
+  let mode: RunMode = wanted === 'endless' && !endlessLocked(pick) ? 'endless' : 'normal';
   let off = () => {};
   const card = (m: (typeof MAPS)[number], i: number) => {
     const open = m.ready && !mapLocked(m.id);
@@ -204,7 +216,7 @@ export function showMapSelect() {
   /** 모드 카드 둘: 고른 맵에 따라 무한 모드가 잠겨 있으면 조건을 보여 준다 */
   const paintModes = () => {
     const locked = endlessLocked(pick);
-    if (locked) mode = 'normal';
+    mode = wanted === 'endless' && !locked ? 'endless' : 'normal';
     const best = state.profile.endlessBest[pick];
     const name = MAPS.find((m) => m.id === pick)!.name;
     const endlessNote = locked
@@ -232,7 +244,8 @@ export function showMapSelect() {
     if (!b) return;
     sfx('toggle');
     if (b.dataset.mode === 'endless' && endlessLocked(pick)) return toast(`🔒 ${MAPS.find((m) => m.id === pick)!.name}을(를) 4분 모드로 클리어하면 무한 모드가 열려요`, 2800);
-    mode = b.dataset.mode === 'endless' ? 'endless' : 'normal';
+    wanted = b.dataset.mode === 'endless' ? 'endless' : 'normal';
+    state.mode = wanted;
     paintModes();
   });
   root.querySelector('#maps')!.addEventListener('click', (e) => {
@@ -258,7 +271,8 @@ export function showMapSelect() {
   root.querySelector('#start')!.addEventListener('click', () => {
     sfx('click');
     state.map = pick;
-    state.mode = mode;
+    // 고른 모드를 기억한다 (잠긴 맵이라 4분 모드로 시작해도, 다음에 열린 맵을 고르면 무한 모드부터)
+    state.mode = wanted;
     nav.game({ char: state.char, map: pick, mode });
   });
   void loadEngine();

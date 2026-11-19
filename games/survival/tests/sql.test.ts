@@ -13,12 +13,12 @@ import { ENDLESS, RUN_SEC } from '../src/data/balance';
 import { LIMITS, characterPrice, endlessCoinCap } from '../src/game/progress';
 
 /**
- * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044)의 표·상수가 게임 데이터와 같은지 본다.
+ * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044 · 045)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
 // 뒤 파일이 같은 함수를 다시 정의하면 그쪽이 실제 값이다
-const sql = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql'].map(read).join('\n');
+const sql = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql'].map(read).join('\n');
 
 /** 함수 하나의 본문 */
 function body(name: string): string {
@@ -70,6 +70,8 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(found.endless_max_time).toBe(ENDLESS.maxSec);
     expect(found.endless_boss_every).toBe(ENDLESS.bossEvery);
     expect(found.max_time).toBe(RUN_SEC);
+    // 045: 무한 모드의 가장 긴 판 20분, 시간 여유 15초, 처치 수 하한 (2분 뒤부터 초당 1)
+    expect(found).toMatchObject({ endless_max_time: 1200, time_slack: 15, kills_min_from: 120, kills_min_per_sec: 1, coin_min_time: 60 });
   });
 
   it('무한 모드의 맵별 엽전 상한', () => {
@@ -78,7 +80,9 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     // 기록 표의 맵 목록·시간 상한도 같다
     const t = sql.slice(sql.indexOf('create table if not exists public.survival_endless_records'));
     expect(/map_id in \(([^)]+)\)/.exec(t)![1].split(',').map((s) => s.trim().slice(1, -1))).toEqual(MAPS.map((m) => m.id));
-    expect(t).toContain(`best_time int not null check (best_time between 0 and ${ENDLESS.maxSec})`);
+    // 표의 시간 상한은 044 그대로(3600)다: 045 는 받는 시간만 줄였다 (이미 있는 기록을 건드리지 않는다)
+    const max = Number(/best_time int not null check \(best_time between 0 and (\d+)\)/.exec(t)![1]);
+    expect(max).toBeGreaterThanOrEqual(ENDLESS.maxSec);
   });
 
   it('도감에 넣을 수 있는 id', () => {
@@ -192,7 +196,8 @@ describe('SQL의 권한 규칙', () => {
     expect(sql).toContain('drop function if exists public.survival_start(text, text);');
     const s = body('survival_start');
     expect(s).toContain("public.survival_start(p_map text, p_character text, p_mode text default 'normal') returns uuid");
-    expect(s).toContain("if p_mode = 'endless' and not exists (select 1 from public.survival_records c where c.user_id = me and c.map_id = p_map and c.cleared) then");
+    // 045: 클리어 기록이 있거나 그 맵의 다음 맵이 열려 있으면 열린다 (_survival_map_cleared)
+    expect(s).toContain("if p_mode = 'endless' and not public._survival_map_cleared(me, p_map, pr.unlocked_maps) then");
     expect(s).toContain("raise exception 'endless locked'");
     expect(sql).toContain('revoke all on function public.survival_start(text, text, text) from public, anon;');
     expect(sql).toContain('grant execute on function public.survival_start(text, text, text) to authenticated;');
@@ -206,5 +211,30 @@ describe('SQL의 권한 규칙', () => {
     const j = body('_survival_profile_json');
     expect(j).toContain("'clearedMaps'");
     expect(j).toContain("'endlessBest'");
+  });
+
+  it('검토 반영 (045): 처치 수 하한 · 시아코인의 실제 경과 시간 · 무한 모드 잠금 완화', () => {
+    const f = body('survival_finish').replace(/\s+/g, ' ');
+    // 처치 수 하한에 못 미치면 세지 않는다 (valid 는 그대로): 엽전 0 · 누적·기록·해금·도감 없음, 클리어도 인정하지 않는다
+    expect(f).toContain("enough := p_kills >= greatest(0, p_time - public._survival_const('kills_min_from')) * public._survival_const('kills_min_per_sec');");
+    expect(f).toContain("counted := p_time >= public._survival_const('count_min_time') and enough;");
+    expect(f).toContain('if not counted then coins := 0; end if;');
+    expect(f).toContain('if ok and counted then');
+    expect(f).toContain('cleared = p_cleared and ok and enough, valid = ok,');
+    expect(f).toContain("'lowKills', not enough,");
+    // 시아코인: 생존 시간과 서버가 잰 실제 경과 시간이 모두 1분을 넘고, 처치 수 하한도 넘어야 한다
+    expect(f).toContain("if ok and enough and p_time >= public._survival_const('coin_min_time') and elapsed >= public._survival_const('coin_min_time') then");
+    // 'too early' 와 'overlap' 은 같은 여유(time_slack)를 쓴다
+    expect(f.match(/public\._survival_const\('time_slack'\)/g)!.length).toBe(3);
+    expect(f).toContain("if elapsed < p_time / public._survival_const('max_speed') - public._survival_const('time_slack') then raise exception 'too early'; end if;");
+    // 무한 모드 잠금: 클리어 기록 또는 다음 맵 해금. 프로필의 clearedMaps 도 같은 함수로
+    const c = body('_survival_map_cleared').replace(/\s+/g, ' ');
+    expect(c).toContain('where c.user_id = p_user and c.map_id = p_map and c.cleared)');
+    expect(c).toContain('on m2.ord = m1.ord + 1 where m1.map_id = p_map and m2.map_id = any(p_unlocked))');
+    expect(body('_survival_profile_json')).toContain('where public._survival_map_cleared(r.user_id, m.map_id, r.unlocked_maps)), ');
+    // 게임 쪽 문구: 클리어·다음 맵·돼지의 조건은 '4분 버티기'가 아니라 최종 보스 처치다
+    expect(f).toContain('if p_cleared and p_boss_kills < 1 then ok := false; end if;');
+    for (const m of MAPS.slice(1)) expect(m.unlock).toContain('최종 보스 물리치기');
+    expect(CHARACTERS.find((x) => x.unlock.kind === 'clear')!.unlock.text).toContain('최종 보스 물리치기');
   });
 });

@@ -1,9 +1,9 @@
 import { RUN_SEC } from '../data/balance';
-import { endlessCoinCap, isEndless } from '../game/progress';
+import { endlessCoinCap, endlessOpen, isEndless } from '../game/progress';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, mmss, nav, screen, type GameResult } from './app';
+import { esc, mmss, nav, screen, state, type GameResult } from './app';
 import { sfx } from './sfx';
 
 /** 결과 화면: 생존 시간 · 처치 수 · 도달 레벨 · 얻은 엽전 · 새 기록 · 새로 해금된 것 → [다시하기] [강화하러 가기] [메인으로] */
@@ -60,7 +60,9 @@ export function showResult(r: GameResult) {
       root.querySelector('#coins')!.textContent = `+${s.coins.toLocaleString()}닢`;
       note.textContent = !s.valid
         ? '기록이 정상 범위를 벗어나 랭킹에는 오르지 않아요'
-        : capped
+        : s.lowKills
+          ? '요괴를 너무 적게 잡은 판이라 기록과 엽전에 들어가지 않았어요'
+          : capped
           ? `무한 모드는 한 판에 ${endlessCoinCap(r.map).toLocaleString()}닢까지 받아요`
           : '엽전으로 메인의 [강화]에서 더 강해질 수 있어요';
       if (s.newRecord) {
@@ -71,6 +73,10 @@ export function showResult(r: GameResult) {
         ...s.unlockedCharacters.map((c) => `<p><img src="${zodiacFaceUrl(c)}" alt="" />🔓 <b>${esc(CHARACTER_BY_ID[c].nick)}</b> 해금!</p>`),
         ...s.unlockedMaps.map((m) => `<p>🗺️ 새 맵 <b>${esc(MAPS[MAP_INDEX[m] ?? 0].name)}</b> 해금!</p>`),
       ];
+      // 이 맵을 4분 모드로 처음 클리어했다: 무한 모드가 열렸다 (프로필은 저장 답으로 이미 새 값이다)
+      if (r.cleared && !endless && !r.endlessWasOpen && endlessOpen(state.profile, r.map)) {
+        lines.push(`<p>♾️ <b>${esc(map.name)}</b>의 무한 모드가 열렸어요!</p>`);
+      }
       root.querySelector('#unlocks')!.innerHTML = lines.join('');
     }
   });

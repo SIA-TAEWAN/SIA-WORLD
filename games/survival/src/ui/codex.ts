@@ -35,6 +35,18 @@ export function showCodex() {
     'main',
   );
   const body = root.querySelector('#body') as HTMLElement;
+  // 요괴·보스 그림을 받지 못하면 깨진 그림 표시 대신 물음표 아이콘을 둔다 (error 는 위로 올라오지 않아 capture 로 듣는다)
+  body.addEventListener(
+    'error',
+    (e) => {
+      const img = e.target as HTMLElement;
+      if (!(img instanceof HTMLImageElement) || !img.classList.contains('foe')) return;
+      const em = document.createElement('em');
+      em.innerHTML = icon('x', 'unknown');
+      img.replaceWith(em);
+    },
+    true,
+  );
   /** 한 칸: 아는 것은 그림·이름·설명, 모르는 것은 그림자와 ??? */
   const cell = (known: boolean, art: string, name: string, desc: string, tag = '') =>
     `<div class="cx ${known ? '' : 'unknown'}"><span class="cx-art">${art}</span>

@@ -18,7 +18,7 @@ import { worldSupabase } from './world';
  *   · finish 는 보내기 전에 결과를 기기에 보관하고, 서버가 받았거나 거절하면 지운다. 통신 문제(12초 안에 답 없음 포함)면
  *     남겨 두었다가 다음 판을 시작할 때·다음 저장이 성공했을 때·다음 접속 때 다시 보낸다 (net/pending.ts)
  *   · 판 도중에 창이 닫히면(새로고침·탭 닫기·로그아웃) 그때까지의 결과를 보관해 둔다 (stash)
- * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql, 044_survival_endless.sql).
+ * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql, 044_survival_endless.sql, 045_survival_review.sql).
  */
 
 /** 주소 (화면 없이 시험할 때는 없다) */
@@ -42,7 +42,7 @@ export interface SurvivalApi {
   loadProfile(): Promise<SurvivalProfile>;
   /**
    * 판 시작: 판 id. 못 받으면 null (그 판은 기록되지 않는다). skipSec: 테스트 모드에서 시작 시각을 건너뛴 판(?t=120)의 시작을 그만큼 앞당긴다.
-   * mode: 무한 모드면 'endless' (그 맵을 4분 모드로 클리어하지 않았으면 ApiError 'endless locked')
+   * mode: 무한 모드면 'endless' (그 맵을 4분 모드로 클리어하지 않았으면 — 클리어 기록도 없고 다음 맵도 안 열렸으면 — ApiError 'endless locked')
    */
   start(map: string, character: ZodiacId, skipSec?: number, mode?: RunMode): Promise<string | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
@@ -253,6 +253,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
           result: {
             coins: Number(res.coins) || 0,
             valid: res.valid !== false,
+            lowKills: res.lowKills === true,
             newRecord: res.newRecord === true,
             unlockedCharacters: (Array.isArray(res.unlockedCharacters) ? res.unlockedCharacters : []).filter((c) => ZODIAC_IDS.includes(c)),
             unlockedMaps: (Array.isArray(res.unlockedMaps) ? res.unlockedMaps : []).filter((m) => MAP_INDEX[m] !== undefined),

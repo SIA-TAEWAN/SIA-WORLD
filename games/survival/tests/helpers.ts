@@ -45,5 +45,11 @@ export function advance(s: State, sec: number, opts: AdvanceOpts = {}) {
   }
 }
 
+/**
+ * 오래 걸리는 계산 사이에 한 번 쉰다. vitest 는 시험 파일이 60초 넘게 쉬지 않고 계산하면
+ * 진행 상황을 주고받지 못해 (전부 통과여도) `Timeout calling "onTaskUpdate"` 로 실패 처리한다.
+ */
+export const breathe = () => new Promise<void>((done) => setTimeout(done, 0));
+
 export const live = <T>(p: { items: T[]; n: number }) => p.items.slice(0, p.n);
 export const move = (mx: number, my: number): Input => ({ mx, my, pick: -1, reroll: false });

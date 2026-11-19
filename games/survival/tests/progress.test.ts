@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { CHARACTERS } from '../src/data/characters';
 import { UPGRADES, presetUpgrades, upgradeCost, upgradeSpent } from '../src/data/upgrades';
-import { normalPolicy, simulate } from '../src/game/policy';
+import { TICKS_PER_SEC } from '../src/data/balance';
+import { idlePolicy, normalPolicy, simulate, type Policy } from '../src/game/policy';
 import {
-  LIMITS, applyRun, betterRecord, buyUpgrade, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, evolutionHints, rejectReason, resetUpgrades,
+  LIMITS, applyRun, betterRecord, buyUpgrade, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, rejectReason, resetUpgrades,
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
-import type { RunSummary } from '../src/game/sim';
+import { createRun, makeInput, step, summarize, type RunSummary } from '../src/game/sim';
 import { createLocalApi, createSupabaseApi, ApiError, type RpcClient } from '../src/net/api';
 import { SPEEDS } from '../src/run/run';
 import { lobbyCount, lobbyOrder, lobbyPlace, LOBBY_MAX } from '../src/net/capacity';
@@ -33,7 +34,7 @@ describe('엽전과 판 결과', () => {
   it('상한을 넘는 판은 비정상: 엽전은 상한까지만, 기록·누적·해금·도감에는 넣지 않는다', () => {
     const cap = coinCap('field', 240);
     expect(cap).toBe(240 * LIMITS.coins_per_sec);
-    const cheat = run({ time: 240, coins: 999999, kills: 50 });
+    const cheat = run({ time: 240, coins: 999999, kills: 500 });
     expect(validRun(cheat)).toBe(false);
     const out = applyRun(defaultProfile(), {}, cheat, 1);
     expect(out.profile.coins).toBe(cap);
@@ -58,15 +59,17 @@ describe('엽전과 판 결과', () => {
 
   it('받지 않는 보고: 4분 초과, 서버가 잰 시간보다 긴 생존 시간, 4분을 채우지 않은 클리어, 7일 지난 판', () => {
     expect(rejectReason(run({ time: 241 }), 9999)).toBe('bad time');
-    // 2배속(LIMITS.max_speed)이면 4분 판이 실제 2분(120초)에 끝난다: 그보다 여유 5초 넘게 이르면 받지 않는다
+    // 2배속(LIMITS.max_speed)이면 4분 판이 실제 2분(120초)에 끝난다: 그보다 여유 15초 넘게 이르면 받지 않는다
+    // (여유 15초: 판 시작 알림이 그만큼 늦게 닿아도 받는다. 045)
     expect(LIMITS.max_speed).toBe(Math.max(...SPEEDS));
-    expect(rejectReason(run({ time: 240 }), 110)).toBe('too early');
-    expect(rejectReason(run({ time: 240 }), 114.9)).toBe('too early');
-    expect(rejectReason(run({ time: 240 }), 115)).toBe(null);
+    expect(LIMITS.time_slack).toBe(15);
+    expect(rejectReason(run({ time: 240 }), 100)).toBe('too early');
+    expect(rejectReason(run({ time: 240 }), 104.9)).toBe('too early');
+    expect(rejectReason(run({ time: 240 }), 105)).toBe(null);
     expect(rejectReason(run({ time: 240 }), 120)).toBe(null);
     expect(rejectReason(run({ time: 240 }), 235)).toBe(null);
-    expect(rejectReason(run({ time: 60 }), 24)).toBe('too early');
-    expect(rejectReason(run({ time: 60 }), 25)).toBe(null);
+    expect(rejectReason(run({ time: 60 }), 14)).toBe('too early');
+    expect(rejectReason(run({ time: 60 }), 15)).toBe(null);
     expect(rejectReason(run({ time: 150, cleared: true }), 400)).toBe('bad time');
     expect(rejectReason(run({ time: 100 }), LIMITS.max_age + 1)).toBe('too late');
     expect(rejectReason(run({ kills: -1 }), 400)).toBe('bad result');
@@ -84,6 +87,56 @@ describe('엽전과 판 결과', () => {
         expect(r.kills).toBeLessThan((LIMITS.kills_base + r.time * LIMITS.kills_per_sec) / 2);
         expect(r.coins).toBeLessThan(coinCap('field', r.time) / 2);
         expect(r.level).toBeLessThan((LIMITS.level_base + r.time * LIMITS.level_per_sec) / 2);
+        // 처치 수 하한도 넉넉하다: 실제 값은 하한의 두 배가 넘는다
+        expect(enoughKills(r)).toBe(true);
+        expect(r.kills).toBeGreaterThan(killFloor(r.time) * 2);
+      }
+    }
+  }, 120000);
+
+  it('처치 수 하한 (045): 요괴를 너무 적게 잡은 판은 정상 기록이어도 세지 않는다 (엽전 0, 기록·클리어·해금·누적·도감 없음)', () => {
+    // 하한 = (생존 시간 − 120) × 1. 처음 2분은 하한이 없다
+    expect([LIMITS.kills_min_from, LIMITS.kills_min_per_sec]).toEqual([120, 1]);
+    expect([0, 60, 120, 121, 180, 240, 1200].map(killFloor)).toEqual([0, 0, 0, 1, 60, 120, 1080]);
+    expect(enoughKills({ time: 100, kills: 0 })).toBe(true);
+    expect(enoughKills({ time: 240, kills: 119 })).toBe(false);
+    expect(enoughKills({ time: 240, kills: 120 })).toBe(true);
+    // 0킬로 4분을 "버티고" 클리어했다는 보고: valid 는 그대로지만 아무것도 받지 못한다
+    const idle = run({ time: 240, kills: 0, coins: 1200, cleared: true, bossKills: 1, cakes: 9, codex: { enemies: ['imp', 'wisp'], bosses: [], weapons: [], passives: [] } });
+    expect(validRun(idle)).toBe(true);
+    const p0 = defaultProfile();
+    const out = applyRun(p0, {}, idle, 1);
+    expect(out.result).toEqual({ coins: 0, valid: true, lowKills: true, newRecord: false, unlockedCharacters: [], unlockedMaps: [] });
+    expect(out.profile).toEqual(p0);
+    expect(out.records).toEqual({});
+    // 하한에 딱 맞으면 예전처럼 전부 받는다
+    const ok = applyRun(p0, {}, { ...idle, kills: 120 }, 1);
+    expect(ok.result).toMatchObject({ coins: 1200, valid: true, lowKills: false, newRecord: true, unlockedMaps: ['bamboo'] });
+    expect(ok.result.unlockedCharacters).toContain('pig');
+    expect(ok.profile.clearedMaps).toEqual(['field']);
+    expect(ok.profile.totals).toMatchObject({ kills: 120, cakes: 9, clears: 1, runs: 1 });
+    // 2분까지는 못 잡았어도 센다 (초반에 죽은 판)
+    const early = applyRun(p0, {}, run({ time: 100, kills: 0, coins: 30 }), 1);
+    expect(early.result).toMatchObject({ coins: 30, lowKills: false, newRecord: true });
+    // 비정상 판은 그대로 비정상이다 (하한과는 따로)
+    expect(applyRun(p0, {}, run({ time: 240, kills: 0, coins: 999999 }), 1).result).toMatchObject({ coins: 0, valid: false, lowKills: true });
+  });
+
+  it("처치 수 하한은 진짜 판을 건드리지 않는다: 가만히 서 있거나 한쪽으로만 달려도, 판 도중 어느 때 그만둬도 (황천길 · 강화 0과 49)", () => {
+    for (const upg of [0, 49]) {
+      for (const [k, policy] of [normalPolicy(7), idlePolicy, ((s, input) => { input.mx = 1; input.my = 0; input.reroll = false; input.pick = s.phase === 'levelup' ? 0 : -1; }) as Policy].entries()) {
+        const s = createRun({ seed: 900 + k + upg, char: 'ox', map: 'underworld', upgrades: presetUpgrades(upg), numbers: false });
+        const input = makeInput();
+        let worst = Infinity;
+        while ((s.phase === 'play' || s.phase === 'levelup') && s.tick < 480 * TICKS_PER_SEC) {
+          policy(s, input);
+          step(s, input);
+          // 지금 그만두면 보고될 값
+          if (s.tick % TICKS_PER_SEC === 0) worst = Math.min(worst, s.kills - killFloor(Math.min(240, Math.floor(s.time))) * 2);
+        }
+        expect(enoughKills(summarize(s))).toBe(true);
+        // 어느 순간에도 하한의 두 배보다 많이 잡았다
+        expect(worst).toBeGreaterThanOrEqual(0);
       }
     }
   }, 120000);
@@ -323,9 +376,9 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     let t = 9_000_000;
     const api = createLocalApi(memStore(), () => t);
     const a = (await api.start('field', 'rat'))!;
-    t += 110_000;
+    t += 100_000;
     await expect(api.finish({ ...run({ time: 240 }), run: a })).rejects.toThrow('too early');
-    t += 10_000;
+    t += 20_000;
     expect((await api.finish({ ...run({ time: 240, coins: 10 }), run: a }))!.profile.coins).toBe(10);
     // 끝나자마자 다음 판, 또 2분 만에
     const b = (await api.start('field', 'rat'))!;
@@ -358,8 +411,8 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     await api.finish({ ...run({ time: 40, coins: 5 }), run: c });
     await expect(api.finish({ ...run({ time: 40, coins: 5 }), run: d })).rejects.toThrow('overlap');
     expect((await api.loadProfile()).coins).toBe(22);
-    // 맞닿은 판은 겹친 것으로 보지 않는다: 40초 판 c 는 2배속 기준 [시작, 시작+15초) 를 썼다 (40 / 2 − 여유 5초)
-    t -= 60_000 - 15_000;
+    // 맞닿은 판은 겹친 것으로 보지 않는다: 40초 판 c 는 2배속 기준 [시작, 시작+5초) 를 썼다 (40 / 2 − 여유 15초)
+    t -= 60_000 - 5_000;
     const e = (await api.start('field', 'rat'))!;
     t += 40_000;
     expect((await api.finish({ ...run({ time: 30, coins: 1 }), run: e }))!.profile.coins).toBe(23);
