@@ -205,6 +205,7 @@
       isLoginIdTaken, isNicknameTaken, loginIdProblem, nicknameProblem, passwordProblem, AuthError,
     } from './shared/auth.js';
     import { GAMES, loadGameOpen, setGameOpen } from './shared/games.js';
+    import { supabase } from './shared/supabase.js';
     import { claimAttendance, refill, canRefill, formatAmount, REFILLS_PER_DAY } from './shared/wallet.js';
     import { openRanking } from './shared/ranking-dialog.js';
     import { watchGameCounts, GAME_MAX } from './shared/presence.js';
@@ -236,6 +237,40 @@
         el.classList.toggle('full', n >= GAME_MAX);
       });
     }
+    // ---------- 게임 순서: 내가 많이 들어간 게임부터 ----------
+    // 순서는 이 브라우저에 기억해 두고 처음부터 그 순서로 그린다 (서버 응답을 기다렸다가 카드가 자리를 바꾸지 않게).
+    // 서버의 접속 이력은 로비를 열 때마다 받아 와 기억만 고친다 → 다음에 로비를 열 때 반영된다.
+    const ORDER_KEY = 'sia-world-game-order:';
+    /** 많이 들어간 순서의 게임 id (들어간 적 없는 게임은 없다 → 목록의 기본 순서로 뒤에 붙는다) */
+    let gameOrder = [];
+    function readGameOrder(userId) {
+      try {
+        const v = JSON.parse(localStorage.getItem(ORDER_KEY + userId) ?? '[]');
+        return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+      } catch {
+        return [];
+      }
+    }
+    function orderedGames() {
+      const rank = (g) => { const i = gameOrder.indexOf(g.id); return i < 0 ? Infinity : i; };
+      // 순위가 같으면(들어간 적 없는 게임끼리) 목록의 기본 순서 그대로 (sort 는 자리를 지킨다)
+      return [...GAMES].sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) - rank(b)));
+    }
+    /** 서버의 내 접속 이력으로 다음에 쓸 순서를 기억한다: 횟수 많은 순 → 같으면 최근에 들어간 순 → 기본 순서 */
+    async function rememberGameOrder(userId) {
+      try {
+        const { data, error } = await supabase.rpc('my_game_visits');
+        if (error || !Array.isArray(data)) return;
+        const seen = new Map(data.map((r) => [r.game, { n: Number(r.visits) || 0, at: Date.parse(r.last_at) || 0 }]));
+        const ids = GAMES.filter((g) => seen.get(g.id)?.n > 0)
+          .sort((a, b) => seen.get(b.id).n - seen.get(a.id).n || seen.get(b.id).at - seen.get(a.id).at)
+          .map((g) => g.id);
+        localStorage.setItem(ORDER_KEY + userId, JSON.stringify(ids));
+      } catch {
+        /* 못 받아 오거나 못 적으면 지금 순서 그대로 */
+      }
+    }
+
     /** 오픈 여부를 바꾼 횟수 (늦게 온 예전 응답으로 화면을 덮지 않게) */
     let openSeq = 0;
     /** 게임별 오픈 여부 (서버 값. 못 읽으면 목록의 기본값) */
@@ -243,7 +278,7 @@
     /** 게임 카드: 열린 게임만. 관리자는 닫힌 게임도 '닫힘' 표시와 함께 보이고 들어갈 수 있다 */
     function renderGames(user) {
       $('#games').replaceChildren(
-        ...GAMES.filter((g) => gameOpen[g.id] || user.isAdmin).map((g) => {
+        ...orderedGames().filter((g) => gameOpen[g.id] || user.isAdmin).map((g) => {
           const a = document.createElement('a');
           a.className = 'game-card' + (gameOpen[g.id] ? '' : ' closed');
           a.href = g.path;
@@ -308,6 +343,8 @@
     function showLobby(user) {
       $('#me').textContent = `${user.nickname}님`;
       $('#admin-err').textContent = '';
+      gameOrder = readGameOrder(user.userId);
+      void rememberGameOrder(user.userId);
       renderGames(user);
       show('lobby-view');
       // 게임별 접속 인원 (한 번만 구독)

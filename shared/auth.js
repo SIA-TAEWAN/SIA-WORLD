@@ -311,11 +311,12 @@ export async function requireLogin() {
     showClosed();
     return new Promise(() => {});
   }
+  logVisit();
   return user;
 }
 
-/** 지금 페이지의 게임이 닫혀 있는가 (게임 페이지가 아니거나 확인하지 못하면 false) */
-async function isClosedHere() {
+/** 지금 페이지가 속한 게임 (게임 페이지가 아니면 null) */
+function gameHere() {
   let rel = currentRelative();
   try {
     // 주소에 %76 같은 표기가 섞여 있어도 같은 게임으로 본다
@@ -323,7 +324,32 @@ async function isClosedHere() {
   } catch {
     /* 풀 수 없는 주소는 그대로 */
   }
-  const game = gameForPath(rel);
+  return gameForPath(rel);
+}
+
+let visitLogged = false;
+/**
+ * 이 게임에 들어왔다고 서버에 적는다 → 로비가 많이 들어간 게임부터 보여 준다.
+ * 페이지마다 한 번, 기다리지 않는다. 실패해도 게임은 그대로 시작한다 (횟수는 서버가 10분에 한 번만 올린다)
+ */
+function logVisit() {
+  if (visitLogged) return;
+  try {
+    const game = gameHere();
+    if (!game) return;
+    visitLogged = true;
+    void supabase.rpc('log_game_visit', { p_game: game.id }).then(
+      () => {},
+      () => {},
+    );
+  } catch {
+    /* 기록을 못 해도 계속 */
+  }
+}
+
+/** 지금 페이지의 게임이 닫혀 있는가 (게임 페이지가 아니거나 확인하지 못하면 false) */
+async function isClosedHere() {
+  const game = gameHere();
   if (!game) return false;
   try {
     return (await loadGameOpen())[game.id] === false;
