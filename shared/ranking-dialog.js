@@ -5,6 +5,7 @@
 //   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
 //   시아서바이벌은 맵마다 따로: 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순. 등급은 그 맵 안의 순위 기준
 //   시아서바이벌 무한 모드는 4분 모드와 따로 (모드 전환 줄): 생존 시간 → 처치 수 → 먼저 달성한 순
+//   시아마을은 번영도 순 → 먼저 달성한 순. 줄마다 [구경]으로 그 마을에 가 볼 수 있다
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg, tierOfPlace } from './rank.js';
@@ -12,7 +13,7 @@ import { supabase } from './supabase.js';
 
 const STYLE_ID = 'sia-ranking-style';
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village'];
 
 /**
  * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
@@ -45,7 +46,9 @@ export const DEFENSE_MODES = [
   { id: 'stage', name: '스테이지' },
   { id: 'endless', name: '끝없는 모드' },
 ];
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : RANKINGS[g]);
+const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
+export const VILLAGE_TOP = 100;
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : RANKINGS[g]);
 
 /** 기록(ms) → 등급 */
 export function raceTier(ms) {
@@ -172,6 +175,30 @@ export async function getDefenseRanking(mode = 'stage', meId = null) {
   }
   return { rows, mine, total };
 }
+/** 시아마을 주소 (구경: ?visit=<사용자 id>) */
+const villageUrl = (userId) => `${new URL('../games/village/', import.meta.url).href}?visit=${encodeURIComponent(userId)}`;
+
+/**
+ * 시아마을 랭킹 (village_ranking 뷰: 번영도 높은 순 → 먼저 달성한 순).
+ * → { rows: 상위 100곳 [{ key, nickname, name, level, prosperity, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getVillageRanking(meId = null) {
+  const cols = 'user_id,nickname,village_name,level,prosperity,place,total';
+  const { data, error } = await supabase.from('village_ranking').select(cols).order('place', { ascending: true }).limit(VILLAGE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, name: r.village_name || `${r.nickname}네 마을`, level: Number(r.level), prosperity: Number(r.prosperity), place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= VILLAGE_TOP) {
+    const res = await supabase.from('village_ranking').select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 const CSS = `
 .sia-rank-dim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
   background: color-mix(in srgb, #2a1a10 55%, transparent); font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
@@ -220,6 +247,8 @@ const CSS = `
 .sia-rank tr.me { background: #fff4c2; color: #2a1a10; }
 .sia-rank tr.me td.nm { color: #1f6fd1; }
 .sia-rank .note { font-size: 12px; color: #8a6a4a; text-align: center; margin: 8px 0 0; }
+.sia-rank td.go a { display: inline-block; font-size: 13px; color: #2a1a10; text-decoration: none; white-space: nowrap; background: #fff;
+  border: 2px solid #2a1a10; border-radius: 12px; padding: 3px 9px; box-shadow: 0 2px 0 #2a1a10; }
 `;
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -227,7 +256,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
   if (!document.getElementById(STYLE_ID)) {
@@ -283,6 +312,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     if (game === 'defense') return showDefense(defenseMode);
     if (game === 'race') return showRace();
     if (game === 'volley') return showVolley();
+    if (game === 'village') return showVillage();
     const info = RANKINGS[game];
     $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${info.cloud ?? `${formatAmount(info.base)}${info.unit} 이하는 구름`})`;
     const amountText = (r) => r.text ?? `${formatAmount(r.amount)}${info.unit}`;
@@ -430,6 +460,29 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'defense' && defenseMode === mode) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /** 시아마을: 번영도 순 상위 100곳 + 내 순위. 줄마다 순위 · 등급 · 닉네임(마을 이름 · 마을 레벨) · 번영도 · [구경] */
+  async function showVillage() {
+    $('.note').textContent = `${VILLAGE_INFO.note} · 상위 ${VILLAGE_TOP}곳 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getVillageRanking(meId);
+      if (shown !== 'village') return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      $('.me-line').innerHTML = mine ? `내 순위 <b>${mine.place}위</b> / ${total}곳 · ${tierSvg(tier(mine), 20)} · 번영도 ${mine.prosperity.toLocaleString()}` : '아직 마을이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="nm">${esc(r.nickname)}</td><td class="am">번영도 ${r.prosperity.toLocaleString()}<small>${esc(r.name)} · 레벨 ${r.level}</small></td>` +
+              `<td class="go">${r.key === meId ? '' : `<a href="${esc(villageUrl(r.key))}">구경</a>`}</td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'village') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   void show(tabInfo(first) ? first : 'tank');
