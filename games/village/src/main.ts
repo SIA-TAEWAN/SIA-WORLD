@@ -1,6 +1,7 @@
 import './style.css';
 import { LOCAL_MODE, getApi } from './net/api';
-import { loadAuth, worldHome, type WorldUser } from './net/world';
+import { LobbyFullError, enterLobby } from './net/lobby';
+import { loadAuth, worldHome, worldSupabase, type WorldUser } from './net/world';
 import { screen } from './ui/app';
 import { showVillage } from './ui/village';
 
@@ -32,6 +33,14 @@ async function start() {
     }
   } catch {
     return failed('SIA WORLD에 연결하지 못했어요.<br/>인터넷 연결을 확인하고 다시 시도해 주세요.');
+  }
+  // 접속 인원 채널: 정원(최대 30명)을 확인한다. 마을에 있는 동안 채널에 남아 있는다 (연결이 안 되면 확인 없이 들어간다)
+  if (!LOCAL_MODE) {
+    try {
+      await enterLobby(await worldSupabase(), { id: user.userId, name: user.nickname }, Date.now());
+    } catch (e) {
+      if (e instanceof LobbyFullError) return failed(`지금은 사람이 가득 찼어요 (최대 ${e.max}명).<br/>잠시 후 다시 들어와 주세요.`);
+    }
   }
   // 마을은 서버에 있다: 못 읽으면 시작할 수 없다
   try {
