@@ -448,7 +448,7 @@ describe('특수 규칙', () => {
     expect(f.floor).toEqual([]);
     expect(steals(f)).toEqual(['쓸:m11-pi1']);
   });
-  it('쓸: 마지막 차례(손패가 다 떨어지는 차례)에 바닥을 비워도 인정한다 (지금 규칙: 매 차례 끝에 본다. 막판 쓸을 빼지 않는다)', () => {
+  it('막판 쓸은 없다: 더미의 마지막 장을 뒤집은 마지막 차례에 바닥을 비워도 쓸이 아니다', () => {
     let s = makeTestState({
       hands: [['m07-yeol'], []], floor: ['m07-pi1', 'm10-pi1'], pile: ['m10-yeol'],
       captured: [[], ['m11-pi1']], turn: 0,
@@ -456,7 +456,9 @@ describe('특수 규칙', () => {
     s = play(s, 0, 'm07-yeol');
     expect(s.hands[0]).toEqual([]);
     expect(s.floor).toEqual([]);
-    expect(steals(s)).toEqual(['쓸:m11-pi1']);
+    expect(steals(s)).toEqual([]);
+    expect(s.events.some((e) => e.t === 'sseul')).toBe(false);
+    expect(s.captured[1]).toEqual(['m11-pi1']);
     expect(s.phase).toBe('done');
   });
   it('쓸: 빼앗은 피로 점수가 나면 그 차례에 바로 고/스톱을 묻는다 (정산에도 들어간다)', () => {

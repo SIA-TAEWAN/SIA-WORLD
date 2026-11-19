@@ -15,6 +15,7 @@
  *   이후 자기 차례에 손패를 내지 않고 더미만 뒤집을 수 있다({ type: 'flip' }). 손패를 내도 된다.
  *   손패가 비고 bombFill도 0이면 그 사람은 패를 다 쓴 것이다.
  * - 쓸은 매 차례 끝에 바닥이 비었으면(그 차례에 먹은 패가 있을 때) 인정한다.
+ *   단 막판 쓸은 인정하지 않는다: 더미의 마지막 장을 뒤집은 차례(그 판의 마지막 차례)에 바닥을 비운 것은 쓸이 아니다.
  * - 고 판단은 차례를 마친 사람만 한다(상대 차례에 피를 빼앗겨 점수가 바뀌어도 그때는 묻지 않는다).
  * - 뻑 보너스: **첫뻑**은 그 판의 자기 첫 차례에 뻑이 났을 때만 (상대에게서 기본금 ×2), **연뻑**은 첫 차례에 첫뻑을 낸 사람이
  *   바로 다음 자기 차례(둘째 차례)에 또 뻑을 냈을 때만 (기본금 ×3 더). 그 밖의 뻑(판 중간에 난 뻑)은 보너스가 없다.
@@ -747,7 +748,8 @@ function finalize(s: MatgoState, me: number): void {
   s.floor = s.floor.filter((id) => !take.includes(id)).concat(toFloor);
   s.captured[me].push(...take);
   if (take.length > 0) ev(s, 'capture', me, { cards: take });
-  if (take.length > 0 && s.floor.length === 0) {
+  // 막판 쓸 없음: 더미가 떨어진 마지막 차례에 바닥이 비는 것은 쓸로 치지 않는다
+  if (take.length > 0 && s.floor.length === 0 && s.pile.length > 0) {
     ev(s, 'sseul', me);
     steals.push('쓸');
   }
