@@ -786,11 +786,18 @@ let slotKey = '';
 const slotFreedAt = new Map<number, number>();
 const SLOT_HOLD_MS = TURN_MS + 600;
 const FLOOR_SLOTS = 12;
+/**
+ * 임시로 내려놓은 패(방금 누른 내 패 · 고르기를 기다리는 낸 패)가 앉은 빈 칸: 달 → 칸.
+ * 새 상태가 와서 그 달의 묶음이 바닥에 생기면 바로 그 칸을 준다. 이게 없으면 칸을 달 순서로 다시 나눠 주면서
+ * 뒤집은 패(더 작은 달)가 그 칸을 차지하고, 이미 내려앉은 내 패가 옆 칸으로 옮겨 간다
+ */
+const restSlot = new Map<number, number>();
 function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]; free: number; frees: number[] } {
   if (key !== slotKey) {
     slotKey = key;
     slotOf.clear();
     slotFreedAt.clear();
+    restSlot.clear();
   }
   const keys = floor.map((f, i) => (f.cards.length ? `m${cardById(f.cards[0]).month}` : `e${i}`));
   const now = performance.now();
@@ -802,11 +809,20 @@ function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]
   }
   for (const [n, at] of [...slotFreedAt]) if (now - at > SLOT_HOLD_MS) slotFreedAt.delete(n);
   const used = new Set(slotOf.values());
+  // 임시로 내려놓은 패가 앉아 있는 칸: 그 달의 묶음이 생기면 그 칸을 그대로 쓰고, 다른 달은 그 칸을 쓰지 않는다
+  for (const [m, n] of [...restSlot]) {
+    if (used.has(n)) restSlot.delete(m);
+    else if (keys.includes(`m${m}`) && !slotOf.has(`m${m}`)) {
+      slotOf.set(`m${m}`, n);
+      used.add(n);
+    }
+  }
+  const held = new Set(restSlot.values());
   const lowestFree = () => {
     // 비어 있고 방금 비워진 칸도 아닌 곳부터. 그런 칸이 없으면 (바닥이 꽉 찼으면) 방금 비워진 칸이라도 쓴다
-    for (let n = 0; n < FLOOR_SLOTS; n++) if (!used.has(n) && !slotFreedAt.has(n)) return n;
+    for (let n = 0; n < FLOOR_SLOTS; n++) if (!used.has(n) && !held.has(n) && !slotFreedAt.has(n)) return n;
     let n = 0;
-    while (used.has(n)) n++;
+    while (used.has(n) || held.has(n)) n++;
     return n;
   };
   const slots = keys.map((k) => {
@@ -820,7 +836,7 @@ function floorSlots(floor: MatgoPublic['floor'], key: string): { slots: number[]
   });
   // 빈 칸들 (앞에서부터 쓸 순서). 서로 다른 달의 패가 같은 빈 칸에 겹쳐 놓이지 않게 여러 개를 준다
   const frees: number[] = [];
-  const tmp = new Set(used);
+  const tmp = new Set([...used, ...held]);
   for (let i = 0; i < 6; i++) {
     let n = -1;
     for (let k = 0; k < FLOOR_SLOTS; k++) if (!tmp.has(k) && !slotFreedAt.has(k)) { n = k; break; }
@@ -1017,10 +1033,11 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const FS = floorSlots(p.floor, `${t.room.id}:${roundNo}`);
     // 같은 달 바닥 패가 없을 때 내려앉을 빈 칸: 차례·달마다 다른 칸 (다른 달 패끼리 한 칸에 겹치지 않게)
     const freeFor = new Map<string, number>();
-    const emptySpot = (key: string) => {
+    const emptySlot = (key: string) => {
       if (!freeFor.has(key)) freeFor.set(key, freeFor.size);
-      return L.floorPos(FS.frees[Math.min(FS.frees.length - 1, freeFor.get(key)!)], 12);
+      return FS.frees[Math.min(FS.frees.length - 1, freeFor.get(key)!)];
     };
+    const emptySpot = (key: string) => L.floorPos(emptySlot(key), 12);
     [...plan.entries()]
       .filter(([, pl]) => pl.captureAt !== null && !pl.floor && pl.src !== 'hand' || (pl.captureAt !== null && !pl.floor && pl.startAt !== pl.captureAt))
       .filter(([, pl]) => !pl.via && pl.startAt !== pl.captureAt)
@@ -1140,7 +1157,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       } else {
         // 같은 달이 없으면 빈 칸 (먼저 임시로 놓은 같은 달 패가 있으면 그 옆)
         // 같은 달끼리는 한 칸에 차례로, 다른 달은 다른 빈 칸
-        const base = emptySpot(`rest:${m}`);
+        // 한 번 앉은 칸은 그 달의 묶음이 바닥에 생길 때까지 지킨다 (새 상태가 와도 그 자리 그대로 → 옮겨 가지 않는다)
+        const slot = restSlot.get(m) ?? emptySlot(`rest:${m}`);
+        restSlot.set(m, slot);
+        const base = L.floorPos(slot, 12);
         const k = restOnFree.get(m) ?? 0;
         restOnFree.set(m, k + 1);
         pos = { x: base.x + k * fw * 0.4, y: base.y + k * fw * 0.06 };
@@ -1161,6 +1181,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 이번에 임시로 놓지 않은 패는 표시를 지운다 (이번 그림의 먹기·바닥 계산에는 위에서 이미 썼다)
     for (const id of [...onFloorNow]) if (!seenNow.has(id)) onFloorNow.delete(id);
     for (const id of seenNow) onFloorNow.add(id);
+    // 지켜 둔 빈 칸도 마찬가지: 이번에 그 달의 임시 패가 없으면 놓아준다 (묶음이 생겼으면 위에서 이미 그 칸을 받았다)
+    for (const m of [...restSlot.keys()]) if (!restOnFree.has(m)) restSlot.delete(m);
     // 더미 (도톰한 뒷면 + 남은 장수 배지), 나가리 배수는 더미 아래
     deck(scene, pile.x, pile.y, L.pw, p.pileCount);
     if (p.nagariMul > 1) label(scene, pile.x, pile.y + L.pw * 0.775 + clamp(L.pw * 0.3, 12, 20) * 1.5, `나가리 ×${p.nagariMul}`, clamp(L.pw * 0.24, 11, 18), tc('primary'));

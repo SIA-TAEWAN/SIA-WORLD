@@ -1474,6 +1474,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       hand: () => (priv && st && priv.round_no === st.round_no ? priv.hand : null),
       myTurn: () => !!ctx()?.myTurn && !busy,
       act: (payload: unknown) => ctx()?.act(payload),
+      // 연출 점검용: 그 카드가 지금 화면에 그려지는 자리 (이동 중이면 그 중간. 아직 그린 적이 없으면 null)
+      pos: (key: string) => {
+        const r = moves.get(key);
+        if (!r) return null;
+        const at = posAt(r, performance.now());
+        return { x: Math.round(at.x), y: Math.round(at.y), tx: Math.round(r.x), ty: Math.round(r.y) };
+      },
     };
   }
   /** 사건 → 연출 한 걸음 (지금 보이는 화면 기준) */
