@@ -1,6 +1,6 @@
 /**
  * 판 밖 성장 (PRD 7·11장): 엽전 · 영구 강화 · 해금 · 최고 기록 · 도감의 규칙.
- * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040_survival_5min.sql). 여기는 같은 규칙의 순수 함수로,
+ * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040 · 041_survival_3min.sql). 여기는 같은 규칙의 순수 함수로,
  *   · 테스트 모드(?local=1)의 기기 저장 프로필이 쓰고
  *   · 화면이 "살 수 있나 · 얼마인가 · 무엇이 잠겼나" 를 보여 줄 때 쓰고
  *   · tests/sql.test.ts 가 SQL의 표·상수와 같은지 비교한다.
@@ -55,21 +55,21 @@ export interface FinishResult {
   unlockedMaps: string[];
 }
 
-/** 판 검증 값. SQL의 _survival_const (040_survival_5min.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
+/** 판 검증 값. SQL의 _survival_const (041_survival_3min.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
 export const LIMITS = {
   max_time: RUN_SEC,
   time_slack: 5,
   max_age: 604800,
   kills_base: 100,
-  kills_per_sec: 30,
+  kills_per_sec: 50,
   level_base: 5,
-  level_per_sec: 0.3,
+  level_per_sec: 0.6,
   coins_base: 0,
-  coins_per_sec: 5.5,
+  coins_per_sec: 7,
   cakes_base: 5,
-  cakes_per_sec: 0.08,
+  cakes_per_sec: 0.15,
   boss_max: 3,
-  boss1_time: 90,
+  boss1_time: 60,
   coin_min_time: 60,
   count_min_time: 20,
   open_runs: 5,

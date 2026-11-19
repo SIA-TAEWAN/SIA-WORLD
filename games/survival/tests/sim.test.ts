@@ -139,17 +139,17 @@ describe('캐릭터', () => {
 
 describe('결정성과 풀', () => {
   it('같은 시드·같은 조작이면 결과가 같다', () => {
-    const run = () => simulate({ seed: 777, char: 'tiger', map: 'field' }, normalPolicy(5), 150);
+    const run = () => simulate({ seed: 777, char: 'tiger', map: 'field' }, normalPolicy(5), 100);
     const a = run();
     const b = run();
     expect([a.time, a.kills, a.level, a.coins, a.state.rng, a.state.player.x, a.state.player.y]).toEqual([b.time, b.kills, b.level, b.coins, b.state.rng, b.state.player.x, b.state.player.y]);
     expect(Array.from(a.state.dmgByWeapon)).toEqual(Array.from(b.state.dmgByWeapon));
-    const c = simulate({ seed: 778, char: 'tiger', map: 'field' }, normalPolicy(5), 150);
+    const c = simulate({ seed: 778, char: 'tiger', map: 'field' }, normalPolicy(5), 100);
     expect(c.state.rng).not.toBe(a.state.rng);
   }, 60000);
 
   it('오래 돌려도 객체 수가 늘지 않는다 (풀 재사용)', () => {
-    const s = createRun({ seed: 3, char: 'rat', map: 'field', upgrades: presetUpgrades(49), startAt: 150 });
+    const s = createRun({ seed: 3, char: 'rat', map: 'field', upgrades: presetUpgrades(49), startAt: 90 });
     const pools = [s.enemies, s.projectiles, s.zones, s.pickups, s.fx, s.nums] as { items: object[]; n: number }[];
     const before = pools.map((p) => new Set(p.items));
     const sizes = pools.map((p) => p.items.length);

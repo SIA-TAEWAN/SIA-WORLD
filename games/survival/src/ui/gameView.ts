@@ -415,7 +415,7 @@ export function showGame(setup: GameSetup) {
   function onClear() {
     sfx('win');
     closeLevelUp();
-    setCut('클리어!<small>5분을 버텨 냈어요</small>', 'go');
+    setCut('클리어!<small>3분을 버텨 냈어요</small>', 'go');
     music.play(null);
     finish(false);
   }

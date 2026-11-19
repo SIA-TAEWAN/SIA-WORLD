@@ -563,7 +563,7 @@ export function activeBoss(s: State): Enemy | null {
 export interface RunSummary {
   map: string;
   character: string;
-  /** 생존 시간 (초, 최대 300) */
+  /** 생존 시간 (초, 최대 180) */
   time: number;
   kills: number;
   level: number;

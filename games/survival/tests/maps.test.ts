@@ -189,7 +189,7 @@ describe('맵 전용 요괴 4종', () => {
   });
 
   it('죽순 요괴는 화면 밖이 아니라 내 근처 바닥에 숨어서 나타난다', () => {
-    const s = createRun({ seed: 3, char: 'rat', map: 'bamboo', startAt: 100 });
+    const s = createRun({ seed: 3, char: 'rat', map: 'bamboo', startAt: 70 });
     s.weapons.length = 0;
     advance(s, 20, { immortal: true });
     const list = live(s.enemies).filter((e) => e.kind === ENEMY_INDEX.bamboo && e.sub === 0);
@@ -666,9 +666,9 @@ describe('나머지 캐릭터 6종의 무기', () => {
   });
 });
 
-describe('맵 4종: 5분 구성이 끝까지 돈다', () => {
+describe('맵 4종: 3분 구성이 끝까지 돈다', () => {
   for (const m of MAPS) {
-    it(`${m.name}: 등장 표의 요괴가 모두 나오고, 보스 셋이 1:30·3:30·5:00에 나오고, 최종 보스를 잡으면 클리어`, () => {
+    it(`${m.name}: 등장 표의 요괴가 모두 나오고, 보스 셋이 1:00·2:00·3:00에 나오고, 최종 보스를 잡으면 클리어`, () => {
       const s = createRun({ seed: 21, char: 'ox', map: m.id, numbers: false });
       s.weapons.length = 0;
       const seen = new Set<string>();

@@ -15,7 +15,7 @@ export const GAMES = [
     path: 'games/running/', image: 'shared/images/card-race.png', open: true },
   { id: 'volleyball', name: '시아배구', desc: '십이지신 1:1 배구 · AI 연습',
     path: 'games/volleyball/', image: 'shared/images/card-volleyball.png', open: false },
-  { id: 'survival', name: '시아서바이벌', desc: '몰려오는 요괴를 5분 버텨라 · 1인용',
+  { id: 'survival', name: '시아서바이벌', desc: '몰려오는 요괴를 3분 버텨라 · 1인용',
     path: 'games/survival/', image: 'shared/images/card-survival.png', open: false },
 ];
 

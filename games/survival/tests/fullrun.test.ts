@@ -46,57 +46,57 @@ function watch(untilSec: number, from = 0, cull = false) {
 }
 
 describe('시간별 등장 표 (들판)', () => {
-  const early = watch(125, 0, true);
+  const early = watch(85, 0, true);
 
-  it('처음에는 꼬마 도깨비만, 1분부터 도깨비불, 2분부터 방망이 도깨비', () => {
+  it('처음에는 꼬마 도깨비만, 25초부터 도깨비불, 1분부터 방망이 도깨비, 1분 15초부터 물귀신', () => {
     expect(early.firstSeen.get('imp')).toBeLessThan(3);
-    expect(early.firstSeen.get('wisp')).toBeGreaterThanOrEqual(60);
-    expect(early.firstSeen.get('wisp')).toBeLessThan(66);
-    expect(early.firstSeen.get('club')).toBeGreaterThanOrEqual(120);
-    expect(early.firstSeen.has('water')).toBe(false);
+    expect(early.firstSeen.get('wisp')).toBeGreaterThanOrEqual(25);
+    expect(early.firstSeen.get('wisp')).toBeLessThan(31);
+    expect(early.firstSeen.get('club')).toBeGreaterThanOrEqual(60);
+    expect(early.firstSeen.get('water')).toBeGreaterThanOrEqual(75);
     expect(early.firstSeen.has('fox')).toBe(false);
   });
 
-  it('1분 30초에 중간 보스 1(큰 도깨비): 3초 전에 경고가 먼저 뜬다', () => {
+  it('1분에 중간 보스 1(큰 도깨비): 3초 전에 경고가 먼저 뜬다', () => {
     const warn = early.events.find((e) => e.t === EV.bossWarn)!;
     const spawn = early.events.find((e) => e.t === EV.bossSpawn)!;
     expect(warn.a).toBe(BOSS_INDEX.bigDokkaebi);
-    expect(warn.at).toBeCloseTo(90 - BOSS_WARN_SEC, 1);
+    expect(warn.at).toBeCloseTo(60 - BOSS_WARN_SEC, 1);
     expect(spawn.a).toBe(BOSS_INDEX.bigDokkaebi);
-    expect(spawn.at).toBeCloseTo(90, 1);
-    expect(early.firstSeen.get('boss:bigDokkaebi')).toBeCloseTo(90, 1);
+    expect(spawn.at).toBeCloseTo(60, 1);
+    expect(early.firstSeen.get('boss:bigDokkaebi')).toBeCloseTo(60, 1);
   });
 
   it('떼로 몰려오는 이벤트가 정해진 시각에 온다', () => {
     const swarm = early.events.filter((e) => e.t === EV.swarm);
-    expect(swarm.map((e) => Math.round(e.at))).toEqual(FIELD.swarms.filter((w) => w.at < 125).map((w) => w.at));
-    expect(swarm.length).toBe(1);
+    expect(swarm.map((e) => Math.round(e.at))).toEqual(FIELD.swarms.filter((w) => w.at < 85).map((w) => w.at));
+    expect(swarm.length).toBe(2);
     expect(swarm[0].a).toBe(ENEMY_INDEX.imp);
   });
 
   it('요괴 수는 상한(300)을 넘지 않는다 (잡지 않고 버텨도)', () => {
-    const late = watch(235, 200);
+    const late = watch(145, 110);
     expect(late.maxNormals).toBeGreaterThan(250);
     expect(late.maxNormals).toBeLessThanOrEqual(LIMIT.enemies + 40); // 떼·소환은 풀 크기까지
     expect(late.s.enemies.n).toBeLessThanOrEqual(LIMIT.enemyPool);
-    // 2분 30초부터 물귀신 · 3분 30초에 중간 보스 2(두억시니). (상한에 닿으면 새 요괴는 나오지 않는다)
+    // 2분에 중간 보스 2(두억시니), 그 뒤로 여우불. (상한에 닿으면 새 요괴는 나오지 않는다)
     expect(late.firstSeen.has('water')).toBe(true);
-    expect(late.firstSeen.get('boss:dueoksini')).toBeCloseTo(210, 1);
+    expect(late.firstSeen.get('boss:dueoksini')).toBeCloseTo(120, 1);
   });
 
   it('등장 표는 PRD의 시작 시각을 지킨다 (데이터)', () => {
     const first = (id: string) => Math.min(...FIELD.spawns.filter((r) => r.enemy === id).map((r) => r.from));
-    expect([first('imp'), first('wisp'), first('club'), first('water'), first('fox')]).toEqual([0, 60, 120, 150, 210]);
-    expect(FIELD.bosses).toEqual([{ at: 90, id: 'bigDokkaebi' }, { at: 210, id: 'dueoksini' }, { at: 300, id: 'bulgasal' }]);
+    expect([first('imp'), first('wisp'), first('club'), first('water'), first('fox')]).toEqual([0, 25, 60, 75, 120]);
+    expect(FIELD.bosses).toEqual([{ at: 60, id: 'bigDokkaebi' }, { at: 120, id: 'dueoksini' }, { at: 180, id: 'bulgasal' }]);
     for (const r of FIELD.spawns) expect(ENEMY_INDEX[r.enemy]).toBeGreaterThanOrEqual(0);
   });
 
   it('시간이 갈수록 요괴가 단단해진다', () => {
     const s = emptyRun();
     const a = put(s, 'imp', 500, 0);
-    s.time = 300;
+    s.time = 180;
     const b = put(s, 'imp', 500, 100);
-    expect(b.maxHp).toBeCloseTo(a.maxHp * (1 + FIELD.growth.hpPerMin * 5), 6);
+    expect(b.maxHp).toBeCloseTo(a.maxHp * (1 + FIELD.growth.hpPerMin * 3), 6);
     expect(b.dmg).toBeGreaterThan(a.dmg);
   });
 });
@@ -267,13 +267,13 @@ describe('보스 3종', () => {
   });
 });
 
-describe('5분: 최종 보스와 클리어', () => {
-  const s = createRun({ seed: 5, char: 'ox', map: 'field', numbers: false, startAt: 296 });
+describe('3분: 최종 보스와 클리어', () => {
+  const s = createRun({ seed: 5, char: 'ox', map: 'field', numbers: false, startAt: 176 });
   s.weapons.length = 0;
   let warned = false;
   advance(s, 5, { immortal: true, each: (st) => (warned ||= live({ items: st.events, n: st.evN }).some((e) => e.t === EV.bossWarn && e.a === BOSS_INDEX.bulgasal)) });
 
-  it('5분이 되면 최종 보스(불가살)가 나온다. 시간은 5분에서 멈춰 보인다', () => {
+  it('3분이 되면 최종 보스(불가살)가 나온다. 시간은 3분에서 멈춰 보인다', () => {
     expect(warned).toBe(true);
     const boss = activeBoss(s)!;
     expect(BOSSES[boss.boss].id).toBe('bulgasal');
@@ -303,8 +303,8 @@ describe('5분: 최종 보스와 클리어', () => {
     expect(s.tick).toBe(tick);
   });
 
-  it('최종 보스에게 지면 클리어가 아니고, 생존 시간은 5분으로 남는다', () => {
-    const t = createRun({ seed: 6, char: 'ox', map: 'field', numbers: false, startAt: 299 });
+  it('최종 보스에게 지면 클리어가 아니고, 생존 시간은 3분으로 남는다', () => {
+    const t = createRun({ seed: 6, char: 'ox', map: 'field', numbers: false, startAt: 179 });
     t.weapons.length = 0;
     advance(t, 2, { immortal: true });
     put(t, 'imp', t.player.x, t.player.y).dmg = 1e6;
@@ -341,6 +341,7 @@ describe('필드 아이템', () => {
 
   it('복주머니: 멀리 있는 구슬도 모두 끌려온다', () => {
     const s = disarm(emptyRun({ char: 'ox' }));
+    s.xpNext = 10; // 구슬 두 개로 레벨이 오르지 않게 (1레벨은 경험치 2면 오른다)
     dropPickup(s, ITEM.gemS, 900, 0, 1);
     dropPickup(s, ITEM.gemS, -700, 500, 1);
     advance(s, 1);
@@ -386,14 +387,14 @@ describe('필드 아이템', () => {
 });
 
 describe('강화 수준을 정해 바로 시험하기 (개발용 설정)', () => {
-  it('?upg=10&t=210 처럼: 강화 10레벨 상태로 3분 30초 시점에서 시작한다', () => {
-    const s = createRun({ seed: 9, char: 'tiger', map: 'field', upgrades: presetUpgrades(10), startAt: 210 });
-    expect(s.time).toBeCloseTo(210, 3);
+  it('?upg=10&t=120 처럼: 강화 10레벨 상태로 2분 시점에서 시작한다', () => {
+    const s = createRun({ seed: 9, char: 'tiger', map: 'field', upgrades: presetUpgrades(10), startAt: 120 });
+    expect(s.time).toBeCloseTo(120, 3);
     expect(Object.values(s.upgrades).reduce((a, b) => a + b, 0)).toBe(10);
     expect(s.level).toBeGreaterThan(10);
     expect(s.weapons.length + s.passives.length).toBeGreaterThan(4);
     expect(s.player.hp).toBe(s.stats.maxHp);
-    // 지나간 보스는 건너뛰고, 3분 30초 보스가 바로 나온다
+    // 지나간 보스는 건너뛰고, 2분 보스가 바로 나온다
     advance(s, 0.2, { immortal: true });
     expect(BOSSES[activeBoss(s)!.boss].id).toBe('dueoksini');
   });

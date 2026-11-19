@@ -30,7 +30,7 @@ export function showMain() {
        <span class="coins-pill" id="mycoins" title="가진 엽전">${coinsText()}</span>
        <button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
      <h1 class="logo">시아서바이벌</h1>
-     <p class="tagline">몰려오는 요괴를 5분만 버텨라!</p>
+     <p class="tagline">몰려오는 요괴를 3분만 버텨라!</p>
      <div class="hero">
        <div class="hero-floor"></div>
        <img class="hero-char me" src="${zodiacFullUrl(state.char)}" alt="" />

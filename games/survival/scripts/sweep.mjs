@@ -49,8 +49,8 @@ async function sweep(combos) {
   const lines = (await Promise.all(packs.map((p) => work(JSON.stringify(p))))).flat();
   const sum = new Map();
   for (const l of lines) {
-    const s = sum.get(l.key) ?? { runs: 0, time: 0, clears: 0, coins: 0, kills: 0, level: 0, cakes: 0, times: [], max: { coins: 0, coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 } };
-    for (const k of ['runs', 'time', 'clears', 'coins', 'kills', 'level', 'cakes']) s[k] += l[k];
+    const s = sum.get(l.key) ?? { runs: 0, time: 0, clears: 0, coins: 0, kills: 0, level: 0, cakes: 0, evos: 0, times: [], max: { coins: 0, coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 } };
+    for (const k of ['runs', 'time', 'clears', 'coins', 'kills', 'level', 'cakes', 'evos']) s[k] += l[k];
     for (const k of Object.keys(s.max)) s.max[k] = Math.max(s.max[k], l.max[k]);
     s.times.push(...l.times);
     sum.set(l.key, s);
@@ -99,22 +99,22 @@ if (!only || only === 'maps') {
   const top = { coins: 0, coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 };
   for (const v of sum.values()) for (const k of Object.keys(top)) top[k] = Math.max(top[k], v.max[k]);
   console.log('');
-  console.log(`  평균 레벨 / 처치 / 떡   (전체 최대: 엽전 ${top.coins}닢 · 엽전/초/맵 배율 ${top.coinRate.toFixed(3)} · (처치-100)/초 ${top.killRate.toFixed(2)} · (레벨-5)/초 ${top.levelRate.toFixed(3)} · (떡-5)/초 ${top.cakeRate.toFixed(4)})`);
+  console.log(`  평균 레벨 / 처치 / 떡 / 무기 진화가 일어난 판   (전체 최대: 엽전 ${top.coins}닢 · 엽전/초/맵 배율 ${top.coinRate.toFixed(3)} · (처치-100)/초 ${top.killRate.toFixed(2)} · (레벨-5)/초 ${top.levelRate.toFixed(3)} · (떡-5)/초 ${top.cakeRate.toFixed(4)})`);
   for (const [map, name] of maps) {
     const cells = LEVELS.map((upg) => {
       const s = sum.get(`${map}:${upg}`);
-      return `Lv${(s.level / s.runs).toFixed(1).padStart(5)} ${(s.kills / s.runs).toFixed(0).padStart(5)} ${(s.cakes / s.runs).toFixed(1).padStart(4)}`.padStart(22);
+      return `Lv${(s.level / s.runs).toFixed(1).padStart(5)} ${(s.kills / s.runs).toFixed(0).padStart(5)} ${(s.cakes / s.runs).toFixed(1).padStart(4)} ${((s.evos / s.runs) * 100).toFixed(0).padStart(3)}%`.padStart(22);
     });
     console.log(`  ${name.padEnd(6, '　')}${cells.join('')}`);
   }
-  // 30초 단위로 언제 죽는지 (조정할 때 어느 구간이 고비인지 본다). 마지막 칸은 5분을 채운 판
+  // 30초 단위로 언제 죽는지 (조정할 때 어느 구간이 고비인지 본다). 마지막 칸은 3분을 채운 판
   console.log('');
-  console.log('  30초 단위 사망 (0:00대 … 4:30대 | 5분 도달)');
+  console.log('  30초 단위 사망 (0:00대 … 2:30대 | 3분 도달)');
   for (const [map, name] of maps) {
     for (const upg of LEVELS) {
-      const h = new Array(11).fill(0);
-      for (const t of sum.get(`${map}:${upg}`).times) h[Math.min(10, Math.floor(t / 30))]++;
-      console.log(`  ${name.padEnd(6, '　')} 강화 ${String(upg).padStart(2)}: ${h.slice(0, 10).map((n) => String(n).padStart(3)).join('')} |${String(h[10]).padStart(3)}`);
+      const h = new Array(7).fill(0);
+      for (const t of sum.get(`${map}:${upg}`).times) h[Math.min(6, Math.floor(t / 30))]++;
+      console.log(`  ${name.padEnd(6, '　')} 강화 ${String(upg).padStart(2)}: ${h.slice(0, 6).map((n) => String(n).padStart(3)).join('')} |${String(h[6]).padStart(3)}`);
     }
   }
   if (!onlyMaps) progress(table);

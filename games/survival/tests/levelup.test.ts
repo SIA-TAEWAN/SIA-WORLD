@@ -35,6 +35,7 @@ describe('경험치와 레벨업', () => {
 
   it('쥐의 특성(경험치 +10%)과 강화가 더해진다', () => {
     const s = disarm(emptyRun({ char: 'rat', upgrades: { xp: 2 } }));
+    s.xpNext = 10; // 레벨이 오르지 않게 (1레벨은 경험치 2면 오른다)
     dropPickup(s, ITEM.gemS, 0, 0, 2);
     advance(s, 0.1);
     expect(s.xp).toBeCloseTo(2.4, 6);

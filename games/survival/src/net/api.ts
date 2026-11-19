@@ -18,7 +18,7 @@ import { worldSupabase } from './world';
  *   · finish 는 보내기 전에 결과를 기기에 보관하고, 서버가 받았거나 거절하면 지운다. 통신 문제(12초 안에 답 없음 포함)면
  *     남겨 두었다가 다음 판을 시작할 때·다음 저장이 성공했을 때·다음 접속 때 다시 보낸다 (net/pending.ts)
  *   · 판 도중에 창이 닫히면(새로고침·탭 닫기·로그아웃) 그때까지의 결과를 보관해 둔다 (stash)
- * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql).
+ * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql).
  */
 
 /** 주소 (화면 없이 시험할 때는 없다) */
@@ -40,7 +40,7 @@ export interface SurvivalApi {
   /** 서버 시각 (ms) */
   now(): Promise<number>;
   loadProfile(): Promise<SurvivalProfile>;
-  /** 판 시작: 판 id. 못 받으면 null (그 판은 기록되지 않는다). skipSec: 테스트 모드에서 시작 시각을 건너뛴 판(?t=210)의 시작을 그만큼 앞당긴다 */
+  /** 판 시작: 판 id. 못 받으면 null (그 판은 기록되지 않는다). skipSec: 테스트 모드에서 시작 시각을 건너뛴 판(?t=120)의 시작을 그만큼 앞당긴다 */
   start(map: string, character: ZodiacId, skipSec?: number): Promise<string | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
   finish(report: RunReport): Promise<{ profile: SurvivalProfile; result: FinishResult } | null>;
@@ -351,7 +351,7 @@ function seedLocal(store: Store) {
 
 /**
  * 개발용 테스트 설정 (PRD 7장). 개발 서버·localhost 의 ?local=1 에서만 읽는다.
- *   ?local=1&map=field&char=tiger&upg=10&t=210   → 강화 10레벨 상태로 3분 30초 시점부터 바로 시작
+ *   ?local=1&map=field&char=tiger&upg=10&t=120   → 강화 10레벨 상태로 2분 시점부터 바로 시작
  *   seed=숫자: 같은 판 다시 보기
  */
 export interface DevSetup {
