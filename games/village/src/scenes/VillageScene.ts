@@ -1,0 +1,469 @@
+import Phaser from 'phaser';
+import { GRID_MAX, lookOf } from '../data/balance';
+import { BUILDING, type BuildingType } from '../data/buildings';
+import { isFull, landRect, placeError, stored, type Building, type VillageState } from '../game/rules';
+import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
+import { BUBBLE, CELL, makeTextures, texKey, texSize } from './art';
+
+/**
+ * 마을 화면: 격자 땅 + 건물. 서버가 준 상태를 그리기만 한다 (계산은 서버, 미리 보기는 game/rules.ts).
+ *   끌기 = 이동 · 두 손가락/휠 = 확대축소 · 건물 누르기 = 관리 · 수확 방울 누르기/끌고 지나가기 = 수확
+ *   놓을 자리 고르기(짓기 · 옮기기): 칸을 누르거나 건물 그림을 끌어서 옮긴다. 확인/취소는 화면 아래 버튼(DOM)
+ */
+export interface SceneHooks {
+  state(): VillageState;
+  /** 서버 시각 (ms) */
+  now(): number;
+  tapBuilding(id: string): void;
+  tapGround(): void;
+  /** 수확할 건물 하나 (끌면 지나가는 건물마다 불린다) */
+  harvest(id: string): void;
+  /** 손을 뗐다: 모은 수확을 보낸다 */
+  harvestEnd(): void;
+  placeChanged(p: { x: number; y: number; ok: boolean }): void;
+  /** 짓기 · 업그레이드가 끝날 시각이 지났다 → 서버에 다시 묻는다 */
+  due(): void;
+}
+
+export interface SceneData {
+  hooks: SceneHooks;
+  /** 캔버스 픽셀 ÷ 기준 화면(가로 720) */
+  unit: number;
+}
+
+interface View {
+  box: Phaser.GameObjects.Container;
+  img: Phaser.GameObjects.Image;
+  bar: Phaser.GameObjects.Graphics;
+  label: Phaser.GameObjects.Text;
+  badge: Phaser.GameObjects.Text;
+  bubble: Phaser.GameObjects.Image;
+  sig: string;
+}
+
+const ZOOM_MIN = 0.45;
+const ZOOM_MAX = 1.8;
+const DRAG_PX = 10;
+
+const mmss = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  if (s >= 3600) return `${Math.floor(s / 3600)}시간 ${Math.floor((s % 3600) / 60)}분`;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+export class VillageScene extends Phaser.Scene {
+  private hooks!: SceneHooks;
+  private unit = 1;
+  private zoom = 0.82;
+  private ground!: Phaser.GameObjects.Graphics;
+  private trees!: Phaser.GameObjects.Container;
+  private landStage = -1;
+  private views = new Map<string, View>();
+  /** 수확을 보내고 답을 기다리는 건물 (방울을 숨긴다) */
+  private pending = new Set<string>();
+  private tick = 0;
+  private dueAsked = 0;
+
+  // 놓을 자리 고르기
+  private place: { type: BuildingType; movingId: string | null; x: number; y: number; ok: boolean } | null = null;
+  private ghost!: Phaser.GameObjects.Container;
+  private ghostTile!: Phaser.GameObjects.Graphics;
+  private ghostImg!: Phaser.GameObjects.Image;
+
+  // 손가락
+  private down: { x: number; y: number; scrollX: number; scrollY: number; mode: 'none' | 'pan' | 'harvest' | 'ghost'; moved: boolean; gx: number; gy: number } | null = null;
+  private pinch: { dist: number; zoom: number } | null = null;
+
+  constructor() {
+    super('village');
+  }
+
+  init(data: SceneData) {
+    this.hooks = data.hooks;
+    this.unit = data.unit;
+  }
+
+  create() {
+    makeTextures(this);
+    this.ground = this.add.graphics().setDepth(-10);
+    this.trees = this.add.container(0, 0).setDepth(-5);
+    this.ghostTile = this.add.graphics();
+    this.ghostImg = this.add.image(0, 0, texKey('paddy', 1)).setOrigin(0, 1).setAlpha(0.8);
+    this.ghost = this.add.container(0, 0, [this.ghostImg, this.ghostTile]).setDepth(50000).setVisible(false);
+    this.input.addPointer(2);
+    this.input.on('pointerdown', this.onDown, this);
+    this.input.on('pointermove', this.onMove, this);
+    this.input.on('pointerup', this.onUp, this);
+    this.input.on('pointerupoutside', this.onUp, this);
+    this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.zoomAt(this.zoom * (dy > 0 ? 0.9 : 1.1), p.x, p.y));
+    const { x0, size } = landRect(this.hooks.state().profile.landStage);
+    const c = (x0 + size / 2) * CELL;
+    this.cameras.main.setZoom(this.unit * this.zoom).centerOn(c, c - CELL * 0.4);
+    this.refresh();
+  }
+
+  // ───────────────────────── 밖에서 부르는 것 ─────────────────────────
+
+  /** 화면 크기가 바뀌었다 */
+  setUnit(unit: number) {
+    this.unit = unit;
+    this.cameras.main.setZoom(this.unit * this.zoom);
+    this.clampCamera();
+  }
+
+  /** 서버가 준 새 상태로 다시 그린다 */
+  refresh() {
+    const s = this.hooks.state();
+    if (s.profile.landStage !== this.landStage) this.drawGround(s.profile.landStage);
+    const seen = new Set<string>();
+    for (const b of s.buildings) {
+      seen.add(b.id);
+      this.syncView(b);
+    }
+    for (const [id, v] of this.views) {
+      if (seen.has(id)) continue;
+      v.box.destroy();
+      v.bubble.destroy();
+      this.views.delete(id);
+    }
+    this.tickViews();
+    if (this.place) this.updateGhost();
+  }
+
+  /** 수확 답이 왔다: 방울을 다시 계산하고, 거둔 양을 띄운다 */
+  harvested(ids: string[], per: Record<string, number>) {
+    for (const id of ids) this.pending.delete(id);
+    for (const [id, n] of Object.entries(per)) {
+      const b = this.hooks.state().buildings.find((v) => v.id === id);
+      if (b && n > 0) this.floatText(b, `+${n}`);
+    }
+    this.tickViews();
+  }
+
+  floatText(b: Building, text: string) {
+    const d = BUILDING[b.type];
+    const t = this.add
+      .text((b.x + d.w / 2) * CELL, b.y * CELL - 6, text, { fontFamily: FONT, fontSize: '34px', color: css(COLOR.white), stroke: css(COLOR.outline), strokeThickness: 7 })
+      .setOrigin(0.5, 1)
+      .setDepth(60000)
+      .setResolution(2);
+    this.tweens.add({ targets: t, y: t.y - 70, alpha: { from: 1, to: 0 }, duration: 1100, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });
+  }
+
+  /** 놓을 자리 고르기 시작 (movingId: 옮기는 건물) */
+  startPlacing(type: BuildingType, movingId: string | null = null) {
+    const s = this.hooks.state();
+    let x: number;
+    let y: number;
+    const moving = movingId ? s.buildings.find((b) => b.id === movingId) : null;
+    if (moving) {
+      x = moving.x;
+      y = moving.y;
+    } else {
+      // 화면 가운데에서 가장 가까운 빈 자리
+      const cam = this.cameras.main;
+      const c = this.worldAt(cam.width / 2, cam.height / 2);
+      const cx = c.x / CELL - 0.5;
+      const cy = c.y / CELL - 0.5;
+      let best = { x: Math.round(cx), y: Math.round(cy), d: Infinity };
+      for (let yy = 0; yy < GRID_MAX; yy++) {
+        for (let xx = 0; xx < GRID_MAX; xx++) {
+          if (placeError(s, type, xx, yy)) continue;
+          const dd = (xx - cx) ** 2 + (yy - cy) ** 2;
+          if (dd < best.d) best = { x: xx, y: yy, d: dd };
+        }
+      }
+      x = best.x;
+      y = best.y;
+    }
+    this.place = { type, movingId, x, y, ok: false };
+    const d = BUILDING[type];
+    const sz = texSize(d.w, d.h);
+    this.ghostImg.setTexture(texKey(type, lookOf(moving?.level ?? 1))).setDisplaySize(sz.w, sz.h).setPosition(0, d.h * CELL);
+    this.ghost.setVisible(true);
+    if (movingId) this.views.get(movingId)?.box.setAlpha(0.25);
+    this.updateGhost();
+    this.tickViews();
+  }
+
+  stopPlacing() {
+    if (this.place?.movingId) this.views.get(this.place.movingId)?.box.setAlpha(1);
+    this.place = null;
+    this.ghost.setVisible(false);
+    this.tickViews();
+  }
+
+  get placing() {
+    return this.place;
+  }
+
+  /** 칸의 한가운데가 화면(CSS 픽셀)의 어디인가 (점검용) */
+  cellToScreen(x: number, y: number): { x: number; y: number } {
+    const cam = this.cameras.main;
+    const px = ((x + 0.5) * CELL - cam.scrollX - cam.width / 2) * cam.zoom + cam.width / 2;
+    const py = ((y + 0.5) * CELL - cam.scrollY - cam.height / 2) * cam.zoom + cam.height / 2;
+    const k = this.scale.displayScale.x || 1;
+    return { x: px / k, y: py / k };
+  }
+
+  // ───────────────────────── 그리기 ─────────────────────────
+
+  private drawGround(stage: number) {
+    this.landStage = stage;
+    const { x0, size } = landRect(stage);
+    const g = this.ground.clear();
+    const W = GRID_MAX * CELL;
+    g.fillStyle(MATGO.matDark, 1).fillRect(-W, -W, W * 3, W * 3);
+    const l = x0 * CELL;
+    const w = size * CELL;
+    // 땅: 아래 두께 + 체크 무늬 + 굵은 외곽선
+    g.fillStyle(COLOR.outline, 1).fillRoundedRect(l - 6, l - 6 + 12, w + 12, w + 12, 18);
+    g.fillStyle(TABLE.matgo, 1).fillRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
+    g.fillStyle(MATGO.matLight, 1);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if ((x + y) % 2 === 0) g.fillRoundedRect(l + x * CELL + 3, l + y * CELL + 3, CELL - 6, CELL - 6, 10);
+    g.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
+    // 땅 밖: 나무 (자리는 좌표로 정해 늘 같다)
+    this.trees.removeAll(true);
+    for (let y = -3; y < GRID_MAX + 3; y++) {
+      for (let x = -3; x < GRID_MAX + 3; x++) {
+        if (x >= x0 - 1 && x <= x0 + size && y >= x0 - 1 && y <= x0 + size) continue;
+        const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+        if (h % 3 !== 0) continue;
+        this.trees.add(this.add.image(x * CELL + (h % 17) - 8, y * CELL + ((h >> 5) % 17) - 8, 'tree').setOrigin(0, 0).setDisplaySize(CELL, CELL));
+      }
+    }
+  }
+
+  private syncView(b: Building) {
+    const d = BUILDING[b.type];
+    const sig = `${b.type}|${b.level}|${b.x}|${b.y}|${b.state}`;
+    let v = this.views.get(b.id);
+    if (!v) {
+      const img = this.add.image(0, d.h * CELL, texKey(b.type, 1)).setOrigin(0, 1);
+      const bar = this.add.graphics();
+      const label = this.add.text((d.w * CELL) / 2, d.h * CELL - 30, '', { fontFamily: FONT, fontSize: '22px', color: css(COLOR.white), stroke: css(COLOR.outline), strokeThickness: 5 }).setOrigin(0.5, 1).setResolution(2);
+      const badge = this.add
+        .text(d.w * CELL - 6, d.h * CELL - 6, '', { fontFamily: FONT, fontSize: '16px', color: css(COLOR.white), backgroundColor: css(COLOR.outline), padding: { x: 5, y: 1 } })
+        .setOrigin(1, 1)
+        .setResolution(2);
+      const box = this.add.container(0, 0, [img, bar, label, badge]);
+      const product = d.product === 'wood' ? 'wood' : 'rice';
+      const bubble = this.add.image(0, 0, `bubble-${product}`).setOrigin(0.5, 1).setDisplaySize(BUBBLE, BUBBLE + 10).setVisible(false);
+      this.tweens.add({ targets: bubble, angle: { from: -7, to: 7 }, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      v = { box, img, bar, label, badge, bubble, sig: '' };
+      this.views.set(b.id, v);
+    }
+    if (v.sig === sig) return;
+    v.sig = sig;
+    const sz = texSize(d.w, d.h);
+    v.img.setTexture(b.state === 'building' ? `site-${d.w}` : texKey(b.type, lookOf(b.level))).setDisplaySize(sz.w, sz.h);
+    v.box.setPosition(b.x * CELL, b.y * CELL).setDepth((b.y + d.h) * CELL);
+    v.bubble.setPosition((b.x + d.w / 2) * CELL, b.y * CELL + 18).setDepth(40000 + b.y);
+    v.badge.setText(b.state === 'building' ? '' : `Lv${b.level}`).setVisible(b.state !== 'building');
+  }
+
+  /** 시간에 따라 바뀌는 것: 진행 막대 · 남은 시간 · 수확 방울 */
+  private tickViews() {
+    const s = this.hooks.state();
+    const now = this.hooks.now();
+    let due = false;
+    for (const b of s.buildings) {
+      const v = this.views.get(b.id);
+      if (!v) continue;
+      const d = BUILDING[b.type];
+      v.bar.clear();
+      if (b.state !== 'done' && b.finishAt !== null) {
+        const total = Math.max(1, b.finishAt - (b.startAt ?? b.finishAt));
+        const left = b.finishAt - now;
+        const rate = Math.max(0, Math.min(1, 1 - left / total));
+        const w = d.w * CELL - 20;
+        const y = d.h * CELL - 26;
+        v.bar.fillStyle(COLOR.outline, 1).fillRoundedRect(10 - 3, y - 3, w + 6, 20, 10);
+        v.bar.fillStyle(COLOR.track, 1).fillRoundedRect(10, y, w, 14, 7);
+        if (rate > 0.04) v.bar.fillStyle(COLOR.primary, 1).fillRoundedRect(10, y, w * rate, 14, 7);
+        v.label.setText(left > 0 ? mmss(left) : '완성!').setVisible(true);
+        if (left <= 0) due = true;
+      } else v.label.setVisible(false);
+      const n = this.place || this.pending.has(b.id) ? 0 : stored(b, now);
+      v.bubble.setVisible(n >= 1);
+      // 가득 차면 방울이 커진다
+      if (n >= 1) {
+        const k = isFull(b, now) ? 1.25 : 1;
+        v.bubble.setDisplaySize(BUBBLE * k, (BUBBLE + 10) * k);
+      }
+    }
+    // 끝날 시각이 지난 건물이 있으면 서버에 묻는다 (2초에 한 번까지)
+    if (due && now - this.dueAsked > 2000) {
+      this.dueAsked = now;
+      this.hooks.due();
+    }
+  }
+
+  update(_t: number, dt: number) {
+    this.tick += dt;
+    if (this.tick < 200) return;
+    this.tick = 0;
+    this.tickViews();
+  }
+
+  private updateGhost() {
+    const p = this.place;
+    if (!p) return;
+    const d = BUILDING[p.type];
+    p.ok = placeError(this.hooks.state(), p.type, p.x, p.y, p.movingId ?? undefined) === null;
+    this.ghost.setPosition(p.x * CELL, p.y * CELL);
+    // 놓을 수 있으면 초록, 없으면 빨강 (그림 위에 덮어 한눈에 보이게)
+    const tone = p.ok ? COLOR.win : COLOR.lose;
+    this.ghostTile.clear().fillStyle(tone, p.ok ? 0.3 : 0.55).fillRoundedRect(2, 2, d.w * CELL - 4, d.h * CELL - 4, 12);
+    this.ghostTile.lineStyle(10, COLOR.outline, 1).strokeRoundedRect(2, 2, d.w * CELL - 4, d.h * CELL - 4, 12);
+    this.ghostTile.lineStyle(5, tone, 1).strokeRoundedRect(2, 2, d.w * CELL - 4, d.h * CELL - 4, 12);
+    this.ghostImg.setTint(p.ok ? 0xffffff : COLOR.lose);
+    this.hooks.placeChanged({ x: p.x, y: p.y, ok: p.ok });
+  }
+
+  // ───────────────────────── 조작 ─────────────────────────
+
+  /** 캔버스의 점 → 장면 좌표 (카메라는 화면 가운데를 중심으로 확대한다) */
+  private worldAt(px: number, py: number) {
+    const cam = this.cameras.main;
+    return { x: (px - cam.width / 2) / cam.zoom + cam.scrollX + cam.width / 2, y: (py - cam.height / 2) / cam.zoom + cam.scrollY + cam.height / 2 };
+  }
+
+  private cellAt(px: number, py: number) {
+    const w = this.worldAt(px, py);
+    return { x: Math.floor(w.x / CELL), y: Math.floor(w.y / CELL), wx: w.x, wy: w.y };
+  }
+
+  /** 그 점의 건물. 수확 방울(건물 위쪽)이 먼저다. onBubble: 방울 그림을 짚었나 · bubble: 수확할 것이 있나 */
+  private buildingAt(px: number, py: number): { b: Building; bubble: boolean; onBubble: boolean } | null {
+    const c = this.cellAt(px, py);
+    const s = this.hooks.state();
+    for (const b of s.buildings) {
+      const v = this.views.get(b.id);
+      if (!v?.bubble.visible) continue;
+      const bx = v.bubble.x;
+      const by = v.bubble.y - BUBBLE / 2;
+      if ((c.wx - bx) ** 2 + (c.wy - by) ** 2 <= (BUBBLE * 0.62) ** 2) return { b, bubble: true, onBubble: true };
+    }
+    for (const b of s.buildings) {
+      const d = BUILDING[b.type];
+      if (c.x >= b.x && c.x < b.x + d.w && c.y >= b.y && c.y < b.y + d.h) return { b, bubble: this.views.get(b.id)?.bubble.visible === true, onBubble: false };
+    }
+    return null;
+  }
+
+  private touches() {
+    return [this.input.pointer1, this.input.pointer2].filter((p) => p.isDown);
+  }
+
+  private onDown(p: Phaser.Input.Pointer) {
+    const t = this.touches();
+    if (t.length >= 2) {
+      // 두 손가락: 확대축소
+      this.pinch = { dist: Phaser.Math.Distance.Between(t[0].x, t[0].y, t[1].x, t[1].y), zoom: this.zoom };
+      this.down = null;
+      return;
+    }
+    const cam = this.cameras.main;
+    const c = this.cellAt(p.x, p.y);
+    let mode: 'none' | 'ghost' | 'harvest' = 'none';
+    if (this.place) {
+      const d = BUILDING[this.place.type];
+      if (c.x >= this.place.x && c.x < this.place.x + d.w && c.y >= this.place.y && c.y < this.place.y + d.h) mode = 'ghost';
+    } else if (this.buildingAt(p.x, p.y)?.onBubble) mode = 'harvest';
+    this.down = { x: p.x, y: p.y, scrollX: cam.scrollX, scrollY: cam.scrollY, mode, moved: false, gx: c.x - (this.place?.x ?? 0), gy: c.y - (this.place?.y ?? 0) };
+    if (mode === 'harvest') this.sweep(p.x, p.y);
+  }
+
+  private onMove(p: Phaser.Input.Pointer) {
+    const t = this.touches();
+    if (this.pinch && t.length >= 2) {
+      const dist = Phaser.Math.Distance.Between(t[0].x, t[0].y, t[1].x, t[1].y);
+      if (this.pinch.dist > 0) this.zoomAt(this.pinch.zoom * (dist / this.pinch.dist), (t[0].x + t[1].x) / 2, (t[0].y + t[1].y) / 2);
+      return;
+    }
+    const d = this.down;
+    if (!d || !p.isDown) return;
+    if (!d.moved && Math.hypot(p.x - d.x, p.y - d.y) < DRAG_PX * this.unit) return;
+    d.moved = true;
+    if (d.mode === 'harvest') this.sweep(p.x, p.y);
+    else if (d.mode === 'ghost' && this.place) {
+      const c = this.cellAt(p.x, p.y);
+      this.moveGhost(c.x - d.gx, c.y - d.gy);
+    } else {
+      d.mode = 'pan';
+      const cam = this.cameras.main;
+      cam.setScroll(d.scrollX - (p.x - d.x) / cam.zoom, d.scrollY - (p.y - d.y) / cam.zoom);
+      this.clampCamera();
+    }
+  }
+
+  private onUp(p: Phaser.Input.Pointer) {
+    if (this.pinch) {
+      if (this.touches().length < 2) this.pinch = null;
+      this.down = null;
+      return;
+    }
+    const d = this.down;
+    this.down = null;
+    if (!d) return;
+    if (d.mode === 'harvest') {
+      this.hooks.harvestEnd();
+      return;
+    }
+    if (d.moved) return;
+    // 누르기
+    const c = this.cellAt(p.x, p.y);
+    if (this.place) {
+      const def = BUILDING[this.place.type];
+      // 누른 칸이 건물 가운데에 오게
+      this.moveGhost(c.x - Math.floor((def.w - 1) / 2), c.y - Math.floor((def.h - 1) / 2));
+      return;
+    }
+    const hit = this.buildingAt(p.x, p.y);
+    if (hit) this.hooks.tapBuilding(hit.b.id);
+    else this.hooks.tapGround();
+  }
+
+  private sweep(px: number, py: number) {
+    const hit = this.buildingAt(px, py);
+    if (!hit || !hit.bubble || this.pending.has(hit.b.id)) return;
+    this.pending.add(hit.b.id);
+    this.views.get(hit.b.id)?.bubble.setVisible(false);
+    this.hooks.harvest(hit.b.id);
+  }
+
+  private moveGhost(x: number, y: number) {
+    const p = this.place;
+    if (!p) return;
+    const d = BUILDING[p.type];
+    const nx = Math.max(0, Math.min(GRID_MAX - d.w, x));
+    const ny = Math.max(0, Math.min(GRID_MAX - d.h, y));
+    if (nx === p.x && ny === p.y) return;
+    p.x = nx;
+    p.y = ny;
+    this.updateGhost();
+  }
+
+  private zoomAt(z: number, px: number, py: number) {
+    const cam = this.cameras.main;
+    const before = this.worldAt(px, py);
+    this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+    cam.setZoom(this.unit * this.zoom);
+    // 손가락 아래의 점이 그대로 있게
+    const after = this.worldAt(px, py);
+    cam.setScroll(cam.scrollX + before.x - after.x, cam.scrollY + before.y - after.y);
+    this.clampCamera();
+  }
+
+  /** 화면 가운데가 땅(둘레 한 칸 포함)을 벗어나지 않게 */
+  private clampCamera() {
+    const cam = this.cameras.main;
+    const { x0, size } = landRect(this.hooks.state().profile.landStage);
+    const lo = (x0 - 1) * CELL;
+    const hi = (x0 + size + 1) * CELL;
+    const cx = Math.max(lo, Math.min(hi, cam.scrollX + cam.width / 2));
+    const cy = Math.max(lo, Math.min(hi, cam.scrollY + cam.height / 2));
+    cam.setScroll(cx - cam.width / 2, cy - cam.height / 2);
+  }
+}
