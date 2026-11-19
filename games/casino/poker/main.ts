@@ -28,6 +28,8 @@ const short = (n: string) => n.replace(/^AI /, '');
 
 const ui: GameUI<PokerPublic, PokerPrivate> = {
   game: 'poker',
+  // 자동 시작 스위치 (결과 창 3초 → 판 정리 → 자동 레디)
+  autoStart: true,
   title: '세븐포커',
   manual: POKER_MANUAL,
   icon: '♠️',

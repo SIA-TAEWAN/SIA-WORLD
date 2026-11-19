@@ -224,6 +224,12 @@ export interface GameUI<P = any, Q = any> {
    * 끝나기 전에는 그 사람 차례로 보여 준다 (맞고). 없으면(undefined) 상태의 차례 그대로. 자리 줄의 '차례' 표시와 타이머 막대에 쓴다
    */
   turnSeat?(t: TableCtx<P, Q>): number | null | undefined;
+  /**
+   * '자동 시작' 스위치를 둔다 (상단 바). 켜 두면 결과 창이 3초 뒤 저절로 닫히고 → 판 정리 → 내가 자동으로 레디한다.
+   * 사람마다(기기에) 게임별로 기억한다. 칩이 최소 입장 금액보다 모자라면 스위치를 끄고 알린다. 구경·예약 중에는 동작하지 않는다.
+   * (모두 레디하면 판이 시작되는 흐름은 그대로다. 방에 막 들어왔을 때는 저절로 레디하지 않는다: 한 판을 마쳤거나 스위치를 켠 뒤부터)
+   */
+  autoStart?: boolean;
   /** 방 화면을 떠날 때 (나가기 · 방이 사라짐): 게임이 따로 걸어 둔 타이머 등을 치운다 (모듈 상태는 방을 옮겨도 남는다) */
   leave?(): void;
 }
@@ -712,7 +718,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   app().innerHTML = `<div class="table-page" data-game="${ui.game}">
     <header class="bar"><button class="btn ghost" id="leave">← 나가기</button>
       <h1>${esc(room.name)} <small>${ui.icon} 기본 ${m.wallet.formatAmount(room.base_unit)}</small></h1>
-      <span class="money" id="money">-</span><button class="btn small" id="invite">🔗 초대</button></header>
+      <span class="money" id="money">-</span>${ui.autoStart ? '<button class="btn small auto-sw" id="auto" role="switch" aria-checked="false" title="결과 창을 3초 뒤 닫고 다음 판에 자동으로 레디해요">자동 시작<i></i></button>' : ''}<button class="btn small" id="invite">🔗 초대</button></header>
     <div class="seats" id="seats"></div>
     <div class="stage" id="stage"></div>
     <div class="timer"><i id="timer"></i></div>
@@ -720,6 +726,44 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     <div class="cutin" id="cutin"></div>
   </div>`;
   const root = app();
+
+  // ----- 자동 시작 스위치 (ui.autoStart 인 게임만) -----
+  const AUTO_KEY = `sia-auto-start:${ui.game}:${me.userId}`;
+  const AUTO_CLOSE_MS = 3000;
+  let auto = false;
+  /** 이 방에서 한 판을 마쳤거나 스위치를 켰다 (그 뒤부터 자동으로 레디한다. 방에 막 들어왔을 때는 하지 않는다) */
+  let autoArmed = false;
+  /** 자동 레디를 이미 해 본 판 (레디를 취소했거나 서버가 풀었으면 그 판에는 다시 하지 않는다) */
+  let autoReadyRound = -1;
+  if (ui.autoStart) {
+    try {
+      auto = localStorage.getItem(AUTO_KEY) === '1';
+    } catch {
+      /* 기억하지 못해도 스위치는 쓴다 */
+    }
+  }
+  const paintAuto = () => {
+    const b = root.querySelector('#auto');
+    if (!b) return;
+    b.classList.toggle('on', auto);
+    b.setAttribute('aria-checked', String(auto));
+  };
+  const setAuto = (on: boolean) => {
+    auto = on;
+    if (on) autoArmed = true;
+    try {
+      localStorage.setItem(AUTO_KEY, on ? '1' : '0');
+    } catch {
+      /* 무시 */
+    }
+    paintAuto();
+  };
+  paintAuto();
+  root.querySelector('#auto')?.addEventListener('click', () => {
+    setAuto(!auto);
+    toast(auto ? '자동 시작을 켰어요. 결과를 3초 보여 주고 다음 판에 레디해요' : '자동 시작을 껐어요');
+    if (!closed) paintControls();
+  });
 
   // ----- Phaser 테이블 -----
   const PhaserMod = await import('phaser');
@@ -1156,6 +1200,22 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }
     const enough = !!wallet && wallet[cur] >= m.wallet.minEntry(room.base_unit);
     const allHumansReady = seats.filter((x) => x.user_id && !x.left_game).every((x) => x.ready);
+    // 자동 시작: 칩이 모자라면 스위치를 끄고 알린다. 넉넉하면 (이번 판에 한 번) 저절로 레디한다
+    if (ui.autoStart && auto && autoArmed) {
+      if (wallet && !enough) {
+        setAuto(false);
+        toast(`${unit}이 모자라 자동 시작을 껐어요`);
+      } else if (enough && !mine.ready && autoReadyRound !== room.round_no) {
+        const round = room.round_no;
+        autoReadyRound = round;
+        setTimeout(() => {
+          if (closed || !auto || room?.status !== 'waiting' || room.round_no !== round) return;
+          const now = mySeatRow();
+          if (!now || now.ready) return;
+          void m.room.setReady(roomId, true, (res) => local?.onStart(res)).catch((e) => toast(m.room.friendly(e)));
+        }, 500);
+      }
+    }
     el.innerHTML = `<div class="row">
       <button class="btn" id="av">🐾 동물 바꾸기</button>
       ${ui.manual ? '<button class="btn" id="manual">📖 게임 방법</button>' : ''}
@@ -1259,11 +1319,34 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }
     // 결과 창이 떴다: 정리 연출이 없는 게임(룰렛)은 여기서 바로 레디 버튼 (지갑을 다시 읽지 못해도 버튼은 나와야 한다)
     else paintControls();
-    $(d, '[data-x]').addEventListener('click', () => {
+    const okBtn = $<HTMLButtonElement>(d, '[data-x]');
+    okBtn.addEventListener('click', () => {
       d.remove();
       if (tidy === 'wait' && tidyRound === round) runTidy(round);
       else paintControls();
     });
+    // 자동 시작: 3초 보여 주고 저절로 닫는다 (남은 초를 버튼에 적는다. 직접 눌러도 된다. 스위치를 끄면 멈춘다)
+    if (ui.autoStart) {
+      autoArmed = true;
+      let since = 0;
+      const iv = setInterval(() => {
+        if (closed || !d.isConnected) return clearInterval(iv);
+        if (!auto || !mySeatRow()) {
+          since = 0;
+          if (okBtn.textContent !== '확인') okBtn.textContent = '확인';
+          return;
+        }
+        const now = performance.now();
+        if (!since) since = now;
+        const left = AUTO_CLOSE_MS - (now - since);
+        const label = `확인 (${Math.max(1, Math.ceil(left / 1000))})`;
+        if (okBtn.textContent !== label) okBtn.textContent = label;
+        if (left <= 0) {
+          clearInterval(iv);
+          okBtn.click();
+        }
+      }, 100);
+    }
     void m.wallet.ensureWallet().then(
       (w) => {
         if (closed) return;

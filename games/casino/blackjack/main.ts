@@ -25,6 +25,8 @@ const lastWidth = new Map<string, number>();
 
 const ui: GameUI<BjPublic, Record<string, never>> = {
   game: 'blackjack',
+  // 자동 시작 스위치 (결과 창 3초 → 판 정리 → 자동 레디)
+  autoStart: true,
   title: '블랙잭',
   manual: BLACKJACK_MANUAL,
   // 한 장씩 게임하듯이 (내 차례가 끝난 뒤 AI·딜러 카드도 차례로)

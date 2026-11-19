@@ -38,6 +38,8 @@ function marker(scene: PhaserNS.Scene, x: number, y: number, _text: string, r: n
 
 const ui: GameUI<HoldemPublic, HoldemPrivate> = {
   game: 'holdem',
+  // 자동 시작 스위치 (결과 창 3초 → 판 정리 → 자동 레디)
+  autoStart: true,
   title: '텍사스 홀덤',
   manual: HOLDEM_MANUAL,
   icon: '♥️',

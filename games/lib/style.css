@@ -240,6 +240,13 @@ input:focus { outline: var(--line) solid var(--primary); }
 .timer { height: 8px; margin: 0 12px; background: var(--track); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); overflow: hidden; }
 .timer i { display: block; height: 100%; width: 0; background: var(--sky-top); transition: width 0.2s linear; }
 .timer i.mine { background: var(--gauge-gradient); }
+/* 자동 시작 스위치 (상단 바: 포커·홀덤·블랙잭). 켜면 노란 버튼 + 손잡이가 오른쪽으로 */
+.auto-sw { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; min-height: 34px; }
+.auto-sw i { position: relative; display: inline-block; width: 30px; height: 16px; flex: none; border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); background: var(--track); }
+.auto-sw i::after { content: ''; position: absolute; top: 1px; left: 1px; width: 10px; height: 10px; border: var(--line-thin) solid var(--outline); border-radius: 50%; background: var(--white); transition: left 0.15s; }
+.auto-sw.on { background: var(--primary-gradient); }
+.auto-sw.on i { background: var(--win); }
+.auto-sw.on i::after { left: 15px; }
 /* 조작부 (시아탱크 .start-bar: 아래 가운데) */
 .controls { padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); min-height: 64px; }
 .controls .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
@@ -348,6 +355,9 @@ input:focus { outline: var(--line) solid var(--primary); }
   .bar .money { margin-left: auto; }
   .bar h1 { order: 5; flex-basis: 100%; font-size: 20px; white-space: normal; }
   .table-page .bar h1 { font-size: 17px; }
+  /* 자동 시작 스위치는 제목 줄 오른쪽에 (위 줄이 넘쳐 초대 버튼이 따로 떨어지지 않게) */
+  .table-page .bar:has(.auto-sw) h1 { flex-basis: 50%; flex-grow: 1; }
+  .table-page .bar .auto-sw { order: 6; }
   .controls .btn.big { font-size: 17px; padding: 9px 14px; }
 }
 /* 낮은 화면(가로로 눕힌 휴대폰): 자리 줄은 숨기고(테이블 위 이름패와 같은 정보) 위·아래를 얇게 */
