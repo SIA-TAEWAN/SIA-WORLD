@@ -8,6 +8,7 @@ import {
 } from '../src/game/progress';
 import type { RunSummary } from '../src/game/sim';
 import { createLocalApi, createSupabaseApi, ApiError, type RpcClient } from '../src/net/api';
+import { SPEEDS } from '../src/run/run';
 import { lobbyCount, lobbyOrder, lobbyPlace, LOBBY_MAX } from '../src/net/capacity';
 import { PENDING_MAX, flushPending, keepPending, readPending, type SendOutcome, type Store } from '../src/net/pending';
 
@@ -57,8 +58,15 @@ describe('엽전과 판 결과', () => {
 
   it('받지 않는 보고: 3분 초과, 서버가 잰 시간보다 긴 생존 시간, 3분을 채우지 않은 클리어, 7일 지난 판', () => {
     expect(rejectReason(run({ time: 181 }), 9999)).toBe('bad time');
-    expect(rejectReason(run({ time: 180 }), 120)).toBe('too early');
+    // 2배속(LIMITS.max_speed)이면 3분 판이 실제 90초에 끝난다: 그보다 여유 5초 넘게 이르면 받지 않는다
+    expect(LIMITS.max_speed).toBe(Math.max(...SPEEDS));
+    expect(rejectReason(run({ time: 180 }), 80)).toBe('too early');
+    expect(rejectReason(run({ time: 180 }), 84.9)).toBe('too early');
+    expect(rejectReason(run({ time: 180 }), 85)).toBe(null);
+    expect(rejectReason(run({ time: 180 }), 90)).toBe(null);
     expect(rejectReason(run({ time: 180 }), 175)).toBe(null);
+    expect(rejectReason(run({ time: 60 }), 24)).toBe('too early');
+    expect(rejectReason(run({ time: 60 }), 25)).toBe(null);
     expect(rejectReason(run({ time: 150, cleared: true }), 400)).toBe('bad time');
     expect(rejectReason(run({ time: 100 }), LIMITS.max_age + 1)).toBe('too late');
     expect(rejectReason(run({ kills: -1 }), 400)).toBe('bad result');
@@ -311,6 +319,27 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     expect(await again.loadProfile()).toMatchObject({ coins: 120, unlockedCharacters: ['rat', 'ox', 'tiger', 'rabbit'] });
   });
 
+  it('2배속 (서버 042 와 같다): 3분 판을 90초에 끝내도 받고, 연달아 두 판도 겹치지 않는다. 동시에 연 판은 하나만', async () => {
+    let t = 9_000_000;
+    const api = createLocalApi(memStore(), () => t);
+    const a = (await api.start('field', 'rat'))!;
+    t += 80_000;
+    await expect(api.finish({ ...run({ time: 180 }), run: a })).rejects.toThrow('too early');
+    t += 10_000;
+    expect((await api.finish({ ...run({ time: 180, coins: 10 }), run: a }))!.profile.coins).toBe(10);
+    // 끝나자마자 다음 판, 또 90초 만에
+    const b = (await api.start('field', 'rat'))!;
+    t += 90_000;
+    expect((await api.finish({ ...run({ time: 180, coins: 10 }), run: b }))!.profile.coins).toBe(20);
+    // 판 둘을 같이 열어 두고 90초 뒤에 한꺼번에 보고하면 두 번째는 거절
+    const c = (await api.start('field', 'rat'))!;
+    const d = (await api.start('field', 'rat'))!;
+    t += 90_000;
+    await api.finish({ ...run({ time: 180, coins: 10 }), run: c });
+    await expect(api.finish({ ...run({ time: 180, coins: 10 }), run: d })).rejects.toThrow('overlap');
+    expect((await api.loadProfile()).coins).toBe(30);
+  });
+
   it('한 번에 한 판 (서버 039·040 과 같다): 새 판을 시작해도 이전 판은 남고, 겹치는 판은 끝낼 때 거절한다', async () => {
     let t = 5_000_000;
     const st = memStore();
@@ -329,8 +358,8 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
     await api.finish({ ...run({ time: 40, coins: 5 }), run: c });
     await expect(api.finish({ ...run({ time: 40, coins: 5 }), run: d })).rejects.toThrow('overlap');
     expect((await api.loadProfile()).coins).toBe(22);
-    // 여유 5초 안에서 맞닿은 판은 겹친 것으로 보지 않는다: c 는 [시작, 시작+35초) 를 썼다
-    t -= 60_000 - 35_000;
+    // 맞닿은 판은 겹친 것으로 보지 않는다: 40초 판 c 는 2배속 기준 [시작, 시작+15초) 를 썼다 (40 / 2 − 여유 5초)
+    t -= 60_000 - 15_000;
     const e = (await api.start('field', 'rat'))!;
     t += 40_000;
     expect((await api.finish({ ...run({ time: 30, coins: 1 }), run: e }))!.profile.coins).toBe(23);

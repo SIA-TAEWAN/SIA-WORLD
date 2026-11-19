@@ -200,7 +200,7 @@ export class GameScene extends Phaser.Scene {
     this.drawZones(s, sec);
     this.drawItems(s, halfW, halfH, sec);
     this.drawEnemies(s, halfW, halfH);
-    this.drawPlayer(s, run.paused ? 0 : this.game.loop.delta / 1000);
+    this.drawPlayer(s, run.paused ? 0 : (this.game.loop.delta / 1000) * run.speed);
     this.drawProjectiles(s, sec);
     this.drawFx(s);
     // 레벨업·진화: 내 둘레로 고리가 퍼진다

@@ -4,7 +4,7 @@ import { CHARACTERS } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { UPGRADE_TOTAL } from '../data/upgrades';
 import {
-  LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, rejectReason, resetUpgrades, unlockCharacter,
+  LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, minRealTime, rejectReason, resetUpgrades, unlockCharacter,
   type FinishResult, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../game/progress';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
@@ -18,7 +18,7 @@ import { worldSupabase } from './world';
  *   · finish 는 보내기 전에 결과를 기기에 보관하고, 서버가 받았거나 거절하면 지운다. 통신 문제(12초 안에 답 없음 포함)면
  *     남겨 두었다가 다음 판을 시작할 때·다음 저장이 성공했을 때·다음 접속 때 다시 보낸다 (net/pending.ts)
  *   · 판 도중에 창이 닫히면(새로고침·탭 닫기·로그아웃) 그때까지의 결과를 보관해 둔다 (stash)
- * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql).
+ * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql).
  */
 
 /** 주소 (화면 없이 시험할 때는 없다) */
@@ -141,8 +141,8 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       if (started === undefined) throw new ApiError('no run');
       const why = rejectReason(report, (now() - started) / 1000);
       if (why) throw new ApiError(why);
-      // 한 번에 한 판: 이미 끝낸 다른 판과 플레이 시간이 겹치면 받지 않는다
-      const span = (time: number) => Math.max(0, time - LIMITS.time_slack) * 1000;
+      // 한 번에 한 판: 이미 끝낸 다른 판과 플레이 시간이 겹치면 받지 않는다 (판 하나가 쓴 시간은 가장 빠른 배속 기준)
+      const span = (time: number) => minRealTime(time) * 1000;
       for (const o of Object.values(d.done)) {
         if (o.started < started + span(report.time) && o.started + span(o.time) > started) throw new ApiError('overlap');
       }

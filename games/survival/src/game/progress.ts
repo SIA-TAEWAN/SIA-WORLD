@@ -1,6 +1,6 @@
 /**
  * 판 밖 성장 (PRD 7·11장): 엽전 · 영구 강화 · 해금 · 최고 기록 · 도감의 규칙.
- * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040 · 041_survival_3min.sql). 여기는 같은 규칙의 순수 함수로,
+ * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040 · 041 · 042_survival_speed.sql). 여기는 같은 규칙의 순수 함수로,
  *   · 테스트 모드(?local=1)의 기기 저장 프로필이 쓰고
  *   · 화면이 "살 수 있나 · 얼마인가 · 무엇이 잠겼나" 를 보여 줄 때 쓰고
  *   · tests/sql.test.ts 가 SQL의 표·상수와 같은지 비교한다.
@@ -55,10 +55,11 @@ export interface FinishResult {
   unlockedMaps: string[];
 }
 
-/** 판 검증 값. SQL의 _survival_const (041_survival_3min.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
+/** 판 검증 값. SQL의 _survival_const (042_survival_speed.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
 export const LIMITS = {
   max_time: RUN_SEC,
   time_slack: 5,
+  max_speed: 2,
   max_age: 604800,
   kills_base: 100,
   kills_per_sec: 50,
@@ -136,6 +137,9 @@ export function validRun(r: RunSummary): boolean {
   return true;
 }
 
+/** 생존 시간 time 초인 판이 실제로 걸리는 가장 짧은 시간 (초): 가장 빠른 배속으로 하고, 시계·통신 오차만큼 뺀다 */
+export const minRealTime = (time: number) => Math.max(0, time / LIMITS.max_speed - LIMITS.time_slack);
+
 /** 아예 받지 않는 보고인가 (서버가 오류로 거절하는 것) */
 export function rejectReason(r: RunSummary, elapsedSec: number): string | null {
   const ints = [r.time, r.kills, r.level, r.coins, r.bossKills, r.cakes];
@@ -143,7 +147,7 @@ export function rejectReason(r: RunSummary, elapsedSec: number): string | null {
   if (r.time < 0 || r.time > LIMITS.max_time) return 'bad time';
   if (r.kills < 0 || r.level < 1 || r.coins < 0 || r.bossKills < 0 || r.cakes < 0) return 'bad result';
   if (r.cleared && r.time !== LIMITS.max_time) return 'bad time';
-  if (elapsedSec < r.time - LIMITS.time_slack) return 'too early';
+  if (elapsedSec < r.time / LIMITS.max_speed - LIMITS.time_slack) return 'too early';
   if (elapsedSec > LIMITS.max_age) return 'too late';
   return null;
 }

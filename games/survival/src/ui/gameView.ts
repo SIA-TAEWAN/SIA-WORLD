@@ -11,7 +11,7 @@ import { activeBoss } from '../game/sim';
 import { CARD, EV, type Card, type Ev, type State } from '../game/state';
 import { ApiError, LOCAL_MODE } from '../net/api';
 import { fillBench } from '../run/devtools';
-import { Run } from '../run/run';
+import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
 import { esc, mmss, nav, openSettings, screen, setProfile, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
@@ -32,6 +32,24 @@ const STICK_R = 56;
 const STICK_DEAD = 0.14;
 /** 레벨업 창이 뜬 직후 이만큼(ms)은 카드 클릭을 받지 않는다 (조이스틱을 잡으려던 탭이 카드 선택이 되지 않게) */
 const LEVELUP_GUARD_MS = 300;
+
+/** 배속 선택을 기기에 기억한다 (다음 판도 같은 배속으로 시작) */
+const SPEED_KEY = 'siasurvival:speed';
+function loadSpeed(): Speed {
+  try {
+    const v = Number(localStorage.getItem(SPEED_KEY));
+    return SPEEDS.find((x) => x === v) ?? 1;
+  } catch {
+    return 1;
+  }
+}
+function saveSpeed(v: Speed) {
+  try {
+    localStorage.setItem(SPEED_KEY, String(v));
+  } catch {
+    /* 무시 */
+  }
+}
 
 const KEY_DIR: Record<string, [number, number]> = {
   KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
@@ -61,6 +79,7 @@ export function showGame(setup: GameSetup) {
     upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : state.profile.upgrades,
     startAt: setup.startAt,
   });
+  run.speed = loadSpeed();
   const s = run.state;
   let game: Phaser.Game | null = null;
   let ro: ResizeObserver | null = null;
@@ -96,7 +115,7 @@ export function showGame(setup: GameSetup) {
       <div class="hud-row">
         <div class="owned" id="owned"></div>
         <div class="hud-mid"><b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
-        <button class="icon-btn" id="pause" aria-label="일시정지">⏸</button>
+        <div class="hud-btns"><button class="icon-btn speed" id="speed"></button><button class="icon-btn" id="pause" aria-label="일시정지">⏸</button></div>
       </div>
       <div class="bossbar hidden" id="bossbar"><span id="bossName"></span><div class="track"><i id="bossFill"></i></div></div>
     </div>
@@ -252,7 +271,8 @@ export function showGame(setup: GameSetup) {
     if (!html) return;
     void cutin.offsetWidth;
     cutin.classList.add('pop');
-    if (ms > 0) cutTimer = setTimeout(() => setCut(''), ms);
+    // 배속이면 글자도 그만큼 빨리 사라진다 (게임 시간 기준)
+    if (ms > 0) cutTimer = setTimeout(() => setCut(''), ms / run.speed);
   }
 
   // ---------- 왼쪽 위: 가진 무기·패시브 아이콘 ----------
@@ -381,6 +401,24 @@ export function showGame(setup: GameSetup) {
     (document.activeElement as HTMLElement | null)?.blur();
     openPause();
   });
+
+  // ---------- 배속: 누를 때마다 1배속 ↔ 2배속 (레벨업·일시정지 중에는 어차피 멈춰 있다) ----------
+  const speedBtn = $<HTMLButtonElement>('#speed');
+  function paintSpeed() {
+    speedBtn.textContent = `×${run.speed}`;
+    speedBtn.classList.toggle('on', run.speed > 1);
+    speedBtn.setAttribute('aria-label', `배속 (지금 ${run.speed}배속)`);
+    speedBtn.setAttribute('aria-pressed', String(run.speed > 1));
+  }
+  speedBtn.addEventListener('click', () => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    if (ended) return;
+    run.speed = SPEEDS[(SPEEDS.indexOf(run.speed) + 1) % SPEEDS.length];
+    saveSpeed(run.speed);
+    paintSpeed();
+    sfx('toggle');
+  });
+  paintSpeed();
 
   // ---------- 끝: 결과 화면으로 ----------
   function finish(quit: boolean) {
