@@ -16,9 +16,12 @@
  *   손패가 비고 bombFill도 0이면 그 사람은 패를 다 쓴 것이다.
  * - 쓸은 매 차례 끝에 바닥이 비었으면(그 차례에 먹은 패가 있을 때) 인정한다.
  * - 고 판단은 차례를 마친 사람만 한다(상대 차례에 피를 빼앗겨 점수가 바뀌어도 그때는 묻지 않는다).
- * - 뻑 보너스: 한 판에서 한 사람이 낸 뻑 횟수 기준. 첫 뻑은 상대에게서 기본금 ×2, 두 번째 뻑은 기본금 ×3 을 받고(판 끝 정산에 합산,
- *   나가리여도 받는다), 세 번째 뻑은 그 자리에서 승리(삼뻑)다. 삼뻑 승리는 7점으로 이긴 것으로 치고 다른 배수(흔들기·폭탄·나가리)는
- *   붙이지 않는다 (기본금 ×7 + 앞서 받은 뻑 보너스). 처음부터 바닥에 깔린 같은 달 3장은 뻑이 아니다.
+ * - 뻑 보너스: **첫뻑**은 그 판의 자기 첫 차례에 뻑이 났을 때만 (상대에게서 기본금 ×2), **연뻑**은 첫 차례에 첫뻑을 낸 사람이
+ *   바로 다음 자기 차례(둘째 차례)에 또 뻑을 냈을 때만 (기본금 ×3 더). 그 밖의 뻑(판 중간에 난 뻑)은 보너스가 없다.
+ *   보너스는 판 끝 정산에 합산하고 나가리여도 오간다. 차례는 그 사람이 둔 횟수로 센다: 패 내기·폭탄·폭탄 피 뒤집기가 각각 한 차례
+ *   (같은 달 고르기·국진·고/스톱은 그 차례에 딸린 선택이라 세지 않는다).
+ *   한 판에 세 번 뻑을 내면 (보너스가 붙었든 아니든 횟수로) 그 자리에서 승리(삼뻑)다. 삼뻑 승리는 7점으로 이긴 것으로 치고
+ *   다른 배수(흔들기·폭탄·나가리)는 붙이지 않는다 (기본금 ×7 + 앞서 받은 뻑 보너스). 처음부터 바닥에 깔린 같은 달 3장은 뻑이 아니다.
  */
 import { clone, EngineError, shuffle } from './engine.ts';
 import type { Engine, GameEvent, Rng, RoundInput, SeatInfo, SeatKind } from './engine.ts';
@@ -240,6 +243,16 @@ export interface MatgoState {
   ppeok: number[];
   /** 이번 판에 각자 낸 뻑 횟수 (idx 순). 예전에 저장된 상태에는 없을 수 있다 */
   ppeokCount?: number[];
+  /**
+   * 이번 판에 각자 둔 차례 수 (idx 순): 패 내기·폭탄·폭탄 피 뒤집기를 한 번씩 센다. 예전에 저장된 상태에는 없다
+   * (그런 판을 이어 두면 차례를 알 수 없으므로 그 뒤의 뻑에는 보너스가 붙지 않는다)
+   */
+  turns?: number[];
+  /**
+   * 뻑 보너스로 받을 몫 (idx 순, 기본금의 몇 배): 첫 차례 뻑 2, 이어서 둘째 차례에도 뻑이면 +3.
+   * 예전에 저장된 상태에는 없다 → 그 판에서 이미 난 뻑은 그때 규칙(횟수 기준: 첫 뻑 2, 두 번째 3)으로 셈한다
+   */
+  ppeokUnits?: number[];
   /** 삼뻑으로 이긴 사람 (idx). 없으면 null */
   samPpeok?: number | null;
   gukjinAs: GukjinUse | null;
@@ -299,8 +312,12 @@ export interface MatgoPlayerPublic {
   bombs: number;
   handCount: number;
   bombFill: number;
-  /** 이번 판에 낸 뻑 횟수 */
+  /** 이번 판에 낸 뻑 횟수 (세 번이면 삼뻑) */
   ppeok: number;
+  /** 뻑 보너스로 받을 몫 (기본금의 몇 배: 첫뻑 2, 연뻑까지 5, 없으면 0) */
+  ppeokBonus: number;
+  /** 이번 판에 둔 차례 수 (예전 상태에서 이어 온 판이면 null) */
+  turns: number | null;
 }
 
 export type MatgoChoice =
@@ -330,21 +347,38 @@ export interface MatgoSummary {
   nextNagari: number;
   /** 삼뻑(세 번째 뻑)으로 끝난 판 */
   samPpeok: boolean;
-  /** 뻑 보너스: 뻑을 낸 자리마다 횟수와 받을 금액 (첫 뻑 기본금 ×2, 두 번째 ×3) */
-  ppeoks: { seat: number; count: number; bonus: number }[];
+  /**
+   * 뻑: 뻑을 낸 자리마다 횟수와 보너스로 받을 금액 (첫 차례 뻑 = 첫뻑 기본금 ×2, 이어서 둘째 차례 뻑 = 연뻑 ×3. 그 밖의 뻑은 0).
+   * units = 기본금의 몇 배인가 (0 · 2 · 5). 예전 판 결과에는 없을 수 있다
+   */
+  ppeoks: { seat: number; count: number; bonus: number; units?: number }[];
   /** 자리별 최종 증감 (점수 금액 + 뻑 보너스, 내는 사람이 가진 만큼까지) */
   net: Record<number, number>;
 }
 
-/** 뻑 보너스 배수: 첫 뻑 ×2, 두 번째 뻑 ×3 (세 번째는 승리라 보너스가 더 붙지 않는다) */
+/** 뻑 보너스 배수: 첫뻑(자기 첫 차례의 뻑) ×2, 연뻑(이어서 둘째 차례에도 뻑) ×3 */
 export const PPEOK_BONUS = [2, 3] as const;
 /** 삼뻑 승리 점수 */
 export const SAM_PPEOK_SCORE = 7;
-/** 뻑 횟수 → 받을 보너스 (기본금의 몇 배인가) */
+/**
+ * 예전 규칙 (횟수 기준: 첫 뻑 2, 두 번째 3) — 새 칸(ppeokUnits)이 없는 예전 저장 상태를 셈할 때만 쓴다.
+ * 뻑 횟수 → 받을 보너스 (기본금의 몇 배인가)
+ */
 export function ppeokBonusUnits(count: number): number {
   let n = 0;
   for (let i = 0; i < Math.min(count, PPEOK_BONUS.length); i++) n += PPEOK_BONUS[i];
   return n;
+}
+
+/**
+ * 이번 뻑에 붙는 보너스 (기본금의 몇 배).
+ * turn = 그 사람의 몇 번째 차례에 난 뻑인가 (모르면 null), before = 그 사람이 앞서 낸 뻑 횟수, units = 그 사람이 이미 받은 몫
+ *   첫 차례의 뻑 → 첫뻑 2 · 첫뻑을 낸 사람의 둘째 차례 뻑 → 연뻑 3 · 그 밖 → 0
+ */
+export function ppeokBonusFor(turn: number | null, before: number, units: number): number {
+  if (turn === 1 && before === 0) return PPEOK_BONUS[0];
+  if (turn === 2 && before === 1 && units === PPEOK_BONUS[0]) return PPEOK_BONUS[1];
+  return 0;
 }
 
 export interface MatgoPublic {
@@ -459,6 +493,8 @@ function setup(o: SetupOpts): MatgoState {
     captured: o.captured.map((c) => c.slice()),
     ppeok: [],
     ppeokCount: [0, 0],
+    turns: [0, 0],
+    ppeokUnits: [0, 0],
     samPpeok: null,
     gukjinAs: null,
     go: [0, 0],
@@ -508,6 +544,10 @@ export interface MatgoTestSetup {
   ppeok?: number[];
   /** 이번 판에 각자 이미 낸 뻑 횟수 */
   ppeokCount?: [number, number];
+  /** 이번 판에 각자 이미 둔 차례 수 (기본 0) */
+  turns?: [number, number];
+  /** 각자 이미 받은 뻑 보너스 몫 (기본금의 몇 배, 기본 0) */
+  ppeokUnits?: [number, number];
   gukjinAs?: GukjinUse | null;
   fill?: [number, number];
 }
@@ -536,6 +576,8 @@ export function makeTestState(o: MatgoTestSetup): MatgoState {
   if (o.goScore) s.goScore = o.goScore.slice();
   if (o.ppeok) s.ppeok = o.ppeok.slice();
   if (o.ppeokCount) s.ppeokCount = o.ppeokCount.slice();
+  if (o.turns) s.turns = o.turns.slice();
+  if (o.ppeokUnits) s.ppeokUnits = o.ppeokUnits.slice();
   if (o.gukjinAs !== undefined) s.gukjinAs = o.gukjinAs;
   if (o.fill) s.fill = o.fill.slice();
   return s;
@@ -665,10 +707,15 @@ function finalize(s: MatgoState, me: number): void {
         toFloor.push(P, F);
         s.ppeok.push(m);
         const counts = s.ppeokCount ?? [0, 0];
+        // 예전 저장 상태(새 칸 없음): 이미 난 뻑은 그때 규칙대로 셈해 두고, 차례를 모르므로 이번 뻑에는 보너스가 없다
+        const units = s.ppeokUnits ?? counts.map(ppeokBonusUnits);
+        const bonus = ppeokBonusFor(s.turns ? s.turns[me] : null, counts[me], units[me]);
+        units[me] += bonus;
         counts[me] += 1;
         s.ppeokCount = counts;
-        // count: 이 사람이 이번 판에 낸 몇 번째 뻑인가 (1 첫뻑 ×2 · 2 연뻑 ×3 · 3 삼뻑 승리)
-        ev(s, 'ppeok', me, { month: m, count: counts[me] });
+        s.ppeokUnits = units;
+        // count: 이 사람이 이번 판에 낸 몇 번째 뻑인가 (3이면 삼뻑 승리) · bonus: 이번 뻑에 붙은 보너스 (첫뻑 2 · 연뻑 3 · 없으면 0)
+        ev(s, 'ppeok', me, { month: m, count: counts[me], bonus });
         sam = counts[me] >= 3;
       } else {
         take.push(P, F, ...c.floorBefore);
@@ -762,8 +809,10 @@ function finish(s: MatgoState, w: number, auto: boolean): void {
 /** 뻑 보너스와 최종 증감: 점수 금액(amount, 이긴 사람 w)에 뻑 보너스를 더하고, 내는 사람이 가진 만큼까지만 */
 function ppeokSettle(s: MatgoState, w: number | null, amount: number) {
   const counts = s.ppeokCount ?? [0, 0];
-  const bonus = counts.map((n) => ppeokBonusUnits(n) * s.baseUnit);
-  const ppeoks = s.seats.map((seat, i) => ({ seat, count: counts[i], bonus: bonus[i] })).filter((x) => x.count > 0);
+  // 예전 저장 상태(새 칸 없음)는 그때 규칙(횟수 기준)으로
+  const units = s.ppeokUnits ?? counts.map(ppeokBonusUnits);
+  const bonus = units.map((n) => n * s.baseUnit);
+  const ppeoks = s.seats.map((seat, i) => ({ seat, count: counts[i], bonus: bonus[i], units: units[i] })).filter((x) => x.count > 0);
   // 첫째 자리(idx 0)가 받는 금액 (음수면 낸다)
   let d0 = bonus[0] - bonus[1] + (w === 0 ? amount : w === 1 ? -amount : 0);
   const cap = (stack: number | null, v: number) => (stack === null ? v : Math.min(v, Math.max(0, stack)));
@@ -845,6 +894,7 @@ function publicView(s: MatgoState): MatgoPublic {
       seat, name: s.names[i], kind: s.kinds[i], captured: groupCaptured(s.captured[i], s.gukjinAs),
       score: sc.total, breakdown: sc.lines, piCount: sc.counts.pi, go: s.go[i], shakes: s.shakes[i],
       bombs: s.bombs[i], handCount: s.hands[i].length, bombFill: s.fill[i], ppeok: s.ppeokCount?.[i] ?? 0,
+      ppeokBonus: (s.ppeokUnits ?? (s.ppeokCount ?? [0, 0]).map(ppeokBonusUnits))[i] ?? 0, turns: s.turns?.[i] ?? null,
     };
   });
   const floor: FloorGroup[] = [];
@@ -939,13 +989,14 @@ function aiPlay(pub: MatgoPublic, priv: MatgoPrivate, seat: number, rng: Rng): M
     else if (fl.length === 1) {
       score = val(id) + val(fl[0]);
       // 뻑: 이 달 패가 손에 이것뿐인데 아직 못 본 같은 달 패가 남아 있으면 뻑이 날 수 있다.
-      // 뻑이 나면 먹을 패를 바닥에 쌓아 두게 되지만(감점) 뻑 보너스(첫 뻑 ×2, 두 번째 ×3)를 받는다 → 예전보다 덜 피한다.
-      // 이미 두 번 냈으면 세 번째는 바로 승리(삼뻑)라 오히려 노린다
+      // 뻑이 나면 먹을 패를 바닥에 쌓아 두게 된다(감점). 다만 보너스가 붙는 때 — 내 첫 차례(첫뻑 ×2), 첫뻑 뒤의 둘째 차례(연뻑 ×3) —
+      // 에는 덜 피한다. 이미 두 번 냈으면 세 번째는 바로 승리(삼뻑)라 오히려 노린다
       const unseen = CARDS.filter((x) => x.month === m && !seen.has(x.id)).length;
       if (sameMonth(hand, m).length === 1) {
         const risk = unseen >= 2 ? 1 : unseen === 1 ? 1 / 3 : 0;
         const made = me.ppeok ?? 0;
-        score += risk * (made >= 2 ? 6 : made === 1 ? -1.5 : -2.4);
+        const bonus = ppeokBonusFor(typeof me.turns === 'number' ? me.turns + 1 : null, made, me.ppeokBonus ?? 0);
+        score += risk * (made >= 2 ? 6 : bonus === PPEOK_BONUS[1] ? -1.5 : bonus === PPEOK_BONUS[0] ? -2.4 : -3);
       }
     } else if (fl.length === 2) score = val(id) + Math.max(...fl.map(val));
     else score = val(id) + fl.reduce((n, x) => n + val(x), 0) + 2;
@@ -1032,6 +1083,8 @@ export const matgo: Engine<MatgoState, MatgoAction, MatgoCarry, MatgoPublic, Mat
     const s = clone(s0);
     switch (s.phase) {
       case 'play':
+        // 한 차례를 둔다 (패 내기 · 폭탄 · 폭탄 피 뒤집기). 규칙 위반이면 아래에서 던져져 이 복사본은 버려진다
+        if (s.turns) s.turns[me] += 1;
         doPlay(s, me, action);
         break;
       case 'choose': {

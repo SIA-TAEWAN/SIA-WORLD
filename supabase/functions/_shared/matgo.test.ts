@@ -628,7 +628,7 @@ describe('나가리', () => {
 
 describe('뻑 보너스 · 삼뻑', () => {
   const L_GW = 'm11-gwang';
-  /** 첫째 자리가 3·5·7월에서 차례로 뻑을 낼 수 있는 판 (둘째 자리는 그 사이 아무 일 없는 패를 낸다) */
+  /** 첫째 자리가 3·5·7월에서 차례로 (첫·둘째·셋째 차례에) 뻑을 낼 수 있는 판 (둘째 자리는 그 사이 아무 일 없는 패를 낸다) */
   const threePpeok = (o: Partial<MatgoTestSetup> = {}) =>
     makeTestState({
       hands: [['m03-pi1', 'm05-pi1', 'm07-pi1', 'm12-yeol'], ['m06-pi1', 'm08-pi1', 'm09-pi1', 'm12-tti']],
@@ -636,44 +636,150 @@ describe('뻑 보너스 · 삼뻑', () => {
       pile: ['m03-pi2', 'm10-pi1', 'm05-pi2', 'm11-pi1', 'm07-pi2', 'm01-pi1', 'm02-pi1'],
       ...o,
     });
-  const ppeokEvents = (s: MatgoState) => s.events.filter((e) => e.t === 'ppeok').map((e) => [e.seat, e.count]);
+  /** 뻑 사건: [자리, 몇 번째 뻑, 붙은 보너스(기본금의 몇 배)] */
+  const ppeokEvents = (s: MatgoState) => s.events.filter((e) => e.t === 'ppeok').map((e) => [e.seat, e.count, e.bonus]);
+  const playAll = (s: MatgoState, moves: [number, string][]) => moves.reduce((st, [seat, card]) => play(st, seat, card), s);
 
-  it('뻑을 낼 때마다 그 사람의 횟수가 늘고, 사건에 몇 번째 뻑인지 실린다', () => {
+  it('첫뻑: 자기 첫 차례에 난 뻑은 기본금 ×2', () => {
     let s = threePpeok();
+    expect(s.turns).toEqual([0, 0]);
     s = play(s, 0, 'm03-pi1');
+    expect(s.turns).toEqual([1, 0]);
     expect(s.ppeokCount).toEqual([1, 0]);
-    expect(ppeokEvents(s)).toEqual([[0, 1]]);
-    s = play(s, 1, 'm06-pi1');
-    s = play(s, 0, 'm05-pi1');
-    expect(s.ppeokCount).toEqual([2, 0]);
-    expect(ppeokEvents(s)).toEqual([[0, 1], [0, 2]]);
-    expect(matgo.done(s)).toBe(false);
-    expect(matgo.view(s).public.players[0].ppeok).toBe(2);
-    expect(matgo.view(s).public.players[1].ppeok).toBe(0);
+    expect(s.ppeokUnits).toEqual([2, 0]);
+    expect(ppeokEvents(s)).toEqual([[0, 1, 2]]);
+    const me = matgo.view(s).public.players[0];
+    expect([me.ppeok, me.ppeokBonus, me.turns]).toEqual([1, 2, 1]);
   });
 
-  it('세 번째 뻑은 그 자리에서 승리: 7점, 다른 배수 없이 기본금 ×7 + 앞서 받은 뻑 보너스(×2 + ×3)', () => {
-    let s = threePpeok({ nagariMul: 4 });
-    s = play(s, 0, 'm03-pi1');
+  it('연뻑: 첫 차례에 첫뻑을 낸 사람이 둘째 차례에 또 뻑을 내면 기본금 ×3 을 더 받는다', () => {
+    const s = playAll(threePpeok(), [[0, 'm03-pi1'], [1, 'm06-pi1'], [0, 'm05-pi1']]);
+    expect(s.turns).toEqual([2, 1]);
+    expect(s.ppeokCount).toEqual([2, 0]);
+    expect(s.ppeokUnits).toEqual([5, 0]);
+    expect(ppeokEvents(s)).toEqual([[0, 1, 2], [0, 2, 3]]);
+    expect(matgo.done(s)).toBe(false);
+    expect(matgo.view(s).public.players[0].ppeokBonus).toBe(5);
+    expect(matgo.view(s).public.players[1]).toMatchObject({ ppeok: 0, ppeokBonus: 0, turns: 1 });
+  });
+
+  it('차례는 사람마다 따로 센다: 뒤에 두는 사람도 자기 첫 차례의 뻑이면 첫뻑', () => {
+    // 첫째 자리가 먼저 아무 일 없는 패를 내고, 둘째 자리가 자기 첫 차례에 뻑
+    const s = playAll(
+      makeTestState({ hands: [['m12-yeol', 'm01-pi2'], ['m03-pi1', 'm08-pi1']], floor: ['m03-tti'], pile: ['m10-pi1', 'm03-pi2', 'm11-pi1'] }),
+      [[0, 'm12-yeol'], [1, 'm03-pi1']],
+    );
+    expect(s.turns).toEqual([1, 1]);
+    expect(s.ppeokUnits).toEqual([0, 2]);
+    expect(ppeokEvents(s)).toEqual([[1, 1, 2]]);
+  });
+
+  it('첫 차례에 뻑이 없었으면 둘째 차례의 뻑은 보너스가 없다', () => {
+    const s = playAll(
+      makeTestState({ hands: [['m12-yeol', 'm03-pi1'], ['m06-pi1', 'm08-pi1']], floor: ['m03-tti'], pile: ['m10-pi1', 'm11-pi1', 'm03-pi2', 'm01-pi1'] }),
+      [[0, 'm12-yeol'], [1, 'm06-pi1'], [0, 'm03-pi1']],
+    );
+    expect(s.turns).toEqual([2, 1]);
+    expect(s.ppeokCount).toEqual([1, 0]);
+    expect(s.ppeokUnits).toEqual([0, 0]);
+    expect(ppeokEvents(s)).toEqual([[0, 1, 0]]);
+    expect(s.ppeok).toEqual([3]); // 뻑 더미는 그대로 생긴다
+  });
+
+  it('셋째 차례 이후의 뻑은 보너스가 없다', () => {
+    const s = playAll(
+      makeTestState({
+        hands: [['m12-yeol', 'm02-pi1', 'm03-pi1'], ['m06-pi1', 'm08-pi1', 'm09-pi1']], floor: ['m03-tti'],
+        pile: ['m10-pi1', 'm11-pi1', 'm04-pi1', 'm05-pi1', 'm03-pi2', 'm01-pi1'],
+      }),
+      [[0, 'm12-yeol'], [1, 'm06-pi1'], [0, 'm02-pi1'], [1, 'm08-pi1'], [0, 'm03-pi1']],
+    );
+    expect(s.turns).toEqual([3, 2]);
+    expect(s.ppeokCount).toEqual([1, 0]);
+    expect(s.ppeokUnits).toEqual([0, 0]);
+    expect(ppeokEvents(s)).toEqual([[0, 1, 0]]);
+    // 판이 끝나면 보너스 없이 정산한다 (뻑 횟수는 결과에 남는다)
+    const sum = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [1, 0] })).summary as MatgoSummary;
+    expect(sum.ppeoks).toEqual([{ seat: 0, count: 1, bonus: 0, units: 0 }]);
+    expect(sum.paid).toBe(700);
+  });
+
+  it('첫뻑 뒤 둘째 차례를 그냥 넘기면 셋째 차례의 뻑은 연뻑이 아니다 (보너스는 첫뻑 ×2 그대로)', () => {
+    // 첫 차례에 첫뻑을 냈고(×2), 둘째 차례는 뻑 없이 지나간 뒤의 셋째 차례
+    const s0 = makeTestState({
+      hands: [['m05-pi1', 'm12-yeol'], ['m06-pi1', 'm08-pi1']], floor: ['m05-tti'], pile: ['m05-pi2', 'm11-pi1'],
+      turns: [2, 2], ppeokCount: [1, 0], ppeokUnits: [2, 0], ppeok: [3],
+    });
+    const s = play(s0, 0, 'm05-pi1');
+    expect(s.turns).toEqual([3, 2]);
+    expect(s.ppeokCount).toEqual([2, 0]);
+    expect(s.ppeokUnits).toEqual([2, 0]);
+    expect(ppeokEvents(s)).toEqual([[0, 2, 0]]);
+  });
+
+  it('차례는 둔 횟수로 센다: 폭탄·폭탄 피 뒤집기도 한 차례, 고르기·고/스톱은 세지 않는다', () => {
+    // 첫 차례 = 폭탄 → 둘째 차례의 뻑은 (첫뻑이 없었으니) 보너스 없음
+    let s = makeTestState({
+      hands: [['m08-gwang', 'm08-yeol', 'm08-pi1', 'm03-pi1', 'm12-yeol'], ['m06-pi1', 'm07-pi1', 'm09-pi1']], floor: ['m08-pi2', 'm03-tti'],
+      pile: ['m10-pi1', 'm11-pi1', 'm03-pi2', 'm01-pi1', 'm02-pi1'],
+    });
+    s = act(s, 0, { type: 'bomb', month: 8 });
+    expect(s.turns).toEqual([1, 0]);
     s = play(s, 1, 'm06-pi1');
-    s = play(s, 0, 'm05-pi1');
-    s = play(s, 1, 'm08-pi1');
-    s = play(s, 0, 'm07-pi1');
+    s = play(s, 0, 'm03-pi1');
+    expect(s.turns).toEqual([2, 1]);
+    expect(ppeokEvents(s)).toEqual([[0, 1, 0]]);
+    s = play(s, 1, 'm07-pi1');
+    s = act(s, 0, { type: 'flip' });
+    expect(s.turns).toEqual([3, 2]);
+    // 규칙 위반으로 거절된 행동은 차례로 세지 않는다
+    expect(() => play(s, 1, 'm12-yeol')).toThrow(EngineError);
+    expect(s.turns).toEqual([3, 2]);
+    // 같은 달 2장 고르기는 그 차례에 딸린 선택
+    let c = makeTestState({ hands: [['m06-yeol', 'm05-pi1'], ['m07-pi1', 'm08-pi1']], floor: ['m06-pi1', 'm06-tti'], pile: ['m11-pi1', 'm12-yeol'] });
+    c = play(c, 0, 'm06-yeol');
+    expect(c.phase).toBe('choose');
+    c = act(c, 0, { type: 'choose', card: 'm06-tti' });
+    expect(c.turns).toEqual([1, 0]);
+  });
+
+  it('세 번째 뻑은 그 자리에서 승리: 7점, 다른 배수 없이 기본금 ×7 + 앞서 받은 뻑 보너스(첫뻑 ×2 + 연뻑 ×3)', () => {
+    let s = threePpeok({ nagariMul: 4 });
+    s = playAll(s, [[0, 'm03-pi1'], [1, 'm06-pi1'], [0, 'm05-pi1'], [1, 'm08-pi1'], [0, 'm07-pi1']]);
     expect(matgo.done(s)).toBe(true);
     expect(matgo.pending(s)).toEqual([]);
     expect(s.winner).toBe(0);
-    expect(ppeokEvents(s)).toEqual([[0, 1], [0, 2], [0, 3]]);
+    expect(ppeokEvents(s)).toEqual([[0, 1, 2], [0, 2, 3], [0, 3, 0]]);
     expect(types(s)).toContain('samppeok');
     expect(types(s)).not.toContain('stop');
     const st = matgo.settle(s);
     const sum = st.summary as MatgoSummary;
     expect(sum).toMatchObject({ result: 'win', winner: 0, loser: 1, samPpeok: true, chongtong: false, score: 7, multipliers: [], multiplier: 1, amount: 700, paid: 1200 });
     expect(sum.breakdown).toEqual([{ label: '삼뻑', points: 7 }]);
-    expect(sum.ppeoks).toEqual([{ seat: 0, count: 3, bonus: 500 }]);
+    expect(sum.ppeoks).toEqual([{ seat: 0, count: 3, bonus: 500, units: 5 }]);
     expect(st.deltas).toEqual({ 0: 1200, 1: -1200 });
     expect(st.carry).toEqual({ first: 0, nagari: 1 });
     // 화면에도 같은 결과
     expect(matgo.view(s).public.result).toEqual(sum);
+  });
+
+  it('삼뻑은 횟수로 센다: 보너스가 하나도 붙지 않은 뻑 세 번도 그 자리에서 승리 (기본금 ×7 만)', () => {
+    // 판 중간(넷째 차례부터)에 세 번
+    let s = threePpeok({ turns: [3, 3] });
+    s = playAll(s, [[0, 'm03-pi1'], [1, 'm06-pi1'], [0, 'm05-pi1'], [1, 'm08-pi1']]);
+    expect(matgo.done(s)).toBe(false);
+    expect(s.ppeokCount).toEqual([2, 0]);
+    expect(s.ppeokUnits).toEqual([0, 0]);
+    s = play(s, 0, 'm07-pi1');
+    expect(matgo.done(s)).toBe(true);
+    expect(s.winner).toBe(0);
+    expect(ppeokEvents(s)).toEqual([[0, 1, 0], [0, 2, 0], [0, 3, 0]]);
+    expect(types(s)).toContain('samppeok');
+    const st = matgo.settle(s);
+    const sum = st.summary as MatgoSummary;
+    expect(sum).toMatchObject({ samPpeok: true, score: 7, amount: 700, paid: 700 });
+    expect(sum.ppeoks).toEqual([{ seat: 0, count: 3, bonus: 0, units: 0 }]);
+    expect(st.deltas).toEqual({ 0: 700, 1: -700 });
   });
 
   it('삼뻑으로 져도 사람은 가진 만큼만 낸다', () => {
@@ -681,29 +787,32 @@ describe('뻑 보너스 · 삼뻑', () => {
       { seat: 0, kind: 'ai', name: 'AI', stack: null },
       { seat: 1, kind: 'human', name: '나', stack: 1000 },
     ];
-    let s = threePpeok({ seats });
-    for (const [seat, card] of [[0, 'm03-pi1'], [1, 'm06-pi1'], [0, 'm05-pi1'], [1, 'm08-pi1'], [0, 'm07-pi1']] as [number, string][]) s = play(s, seat, card);
+    const s = playAll(threePpeok({ seats }), [[0, 'm03-pi1'], [1, 'm06-pi1'], [0, 'm05-pi1'], [1, 'm08-pi1'], [0, 'm07-pi1']]);
     const st = matgo.settle(s);
     expect((st.summary as MatgoSummary).paid).toBe(1000);
     expect(st.deltas).toEqual({ 0: 1000, 1: -1000 });
   });
 
-  it('첫 뻑은 기본금 ×2, 두 번째 뻑은 ×3 을 판 끝 정산에 더한다 (이긴 사람·진 사람 모두)', () => {
-    // 이긴 사람이 뻑 1번: 700 + 200
-    let st = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [1, 0] }));
+  it('받은 보너스(첫뻑 ×2, 연뻑까지 ×5)를 판 끝 정산에 더한다 (이긴 사람·진 사람 모두)', () => {
+    // 이긴 사람이 첫뻑: 700 + 200
+    let st = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [1, 0], ppeokUnits: [2, 0] }));
     let sum = st.summary as MatgoSummary;
     expect(sum.amount).toBe(700);
-    expect(sum.ppeoks).toEqual([{ seat: 0, count: 1, bonus: 200 }]);
+    expect(sum.ppeoks).toEqual([{ seat: 0, count: 1, bonus: 200, units: 2 }]);
     expect(sum.paid).toBe(900);
     expect(st.deltas).toEqual({ 0: 900, 1: -900 });
-    // 진 사람이 뻑 2번: 700 - (200 + 300)
-    st = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [0, 2] }));
+    // 진 사람이 첫뻑 + 연뻑: 700 - (200 + 300)
+    st = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [0, 2], ppeokUnits: [0, 5] }));
     sum = st.summary as MatgoSummary;
-    expect(sum.ppeoks).toEqual([{ seat: 1, count: 2, bonus: 500 }]);
+    expect(sum.ppeoks).toEqual([{ seat: 1, count: 2, bonus: 500, units: 5 }]);
     expect(st.deltas).toEqual({ 0: 200, 1: -200 });
     // 둘 다: 700 + 200 - 500, 기본금이 다르면 그만큼
-    st = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [1, 2], baseUnit: 500 }));
+    st = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [1, 2], ppeokUnits: [2, 5], baseUnit: 500 }));
     expect(st.deltas).toEqual({ 0: 2000, 1: -2000 });
+    // 보너스 없는 뻑만 있으면 점수 금액 그대로 (뻑 횟수만 결과에 남는다)
+    st = matgo.settle(winBy(WIN7, [L_GW], { ppeokCount: [2, 1] }));
+    expect((st.summary as MatgoSummary).ppeoks).toEqual([{ seat: 0, count: 2, bonus: 0, units: 0 }, { seat: 1, count: 1, bonus: 0, units: 0 }]);
+    expect(st.deltas).toEqual({ 0: 700, 1: -700 });
     // 뻑이 없으면 예전과 같다
     st = matgo.settle(winBy(WIN7, [L_GW]));
     expect((st.summary as MatgoSummary).ppeoks).toEqual([]);
@@ -715,13 +824,15 @@ describe('뻑 보너스 · 삼뻑', () => {
       { seat: 0, kind: 'ai', name: 'AI', stack: null },
       { seat: 1, kind: 'human', name: '나', stack: 800 },
     ];
-    const st = matgo.settle(winBy(WIN7, [L_GW], { seats, ppeokCount: [2, 0] }));
+    const st = matgo.settle(winBy(WIN7, [L_GW], { seats, ppeokCount: [2, 0], ppeokUnits: [5, 0] }));
     expect((st.summary as MatgoSummary).amount).toBe(700);
     expect(st.deltas).toEqual({ 0: 800, 1: -800 });
   });
 
   it('나가리여도 뻑 보너스는 오간다 (나가리 배수는 그대로 이어진다)', () => {
-    let s = makeTestState({ hands: [['m01-pi1'], ['m02-pi1']], floor: ['m05-pi1'], pile: ['m03-pi1', 'm04-pi1'], turn: 1, first: 1, ppeokCount: [1, 0] });
+    let s = makeTestState({
+      hands: [['m01-pi1'], ['m02-pi1']], floor: ['m05-pi1'], pile: ['m03-pi1', 'm04-pi1'], turn: 1, first: 1, ppeokCount: [1, 0], ppeokUnits: [2, 0],
+    });
     s = play(s, 1, 'm02-pi1');
     s = play(s, 0, 'm01-pi1');
     const st = matgo.settle(s);
@@ -736,26 +847,49 @@ describe('뻑 보너스 · 삼뻑', () => {
     const s0 = makeTestState({ hands: [['m04-pi2', 'm01-pi1'], ['m06-pi1']], floor: ['m04-yeol', 'm04-tti', 'm04-pi1', 'm10-pi1'], pile: ['m11-pi1'] });
     const s = play(s0, 0, 'm04-pi2');
     expect(s.ppeokCount).toEqual([0, 0]);
+    expect(s.ppeokUnits).toEqual([0, 0]);
     expect(types(s)).not.toContain('ppeok');
   });
 
-  it('예전에 저장된 상태(뻑 횟수 칸 없음)도 이어서 둘 수 있다', () => {
-    const old = threePpeok();
+  it('예전에 저장된 상태(뻑 횟수·차례 수·보너스 칸 없음)도 이어서 둘 수 있다', () => {
+    const strip = (s: MatgoState) => {
+      delete s.turns;
+      delete s.ppeokUnits;
+      return s;
+    };
+    // 뻑 횟수 칸도 없던 더 예전 상태: 차례를 모르므로 이어 둔 뒤의 뻑에는 보너스가 없다 (횟수는 센다)
+    const old = strip(threePpeok());
     delete old.ppeokCount;
     delete old.samPpeok;
+    expect(matgo.view(old).public.players[0]).toMatchObject({ ppeok: 0, ppeokBonus: 0, turns: null });
     const s = play(old, 0, 'm03-pi1');
     expect(s.ppeokCount).toEqual([1, 0]);
-    expect(matgo.view(old).public.players[0].ppeok).toBe(0);
+    expect(s.ppeokUnits).toEqual([0, 0]);
+    expect(s.turns).toBeUndefined();
+    expect(ppeokEvents(s)).toEqual([[0, 1, 0]]);
+    // 예전 규칙으로 이미 뻑을 한 번 낸 판 (그때 '첫뻑 ×2' 를 받기로 했다): 그 몫은 그대로, 이어 둔 뒤의 뻑은 보너스 없음, 세 번째는 삼뻑
+    const mid = strip(threePpeok({ ppeokCount: [1, 0] }));
+    expect(matgo.view(mid).public.players[0].ppeokBonus).toBe(2);
+    let m = play(mid, 0, 'm03-pi1');
+    expect(m.ppeokCount).toEqual([2, 0]);
+    expect(m.ppeokUnits).toEqual([2, 0]);
+    m = playAll(m, [[1, 'm06-pi1'], [0, 'm05-pi1']]);
+    expect(matgo.done(m)).toBe(true);
+    expect((matgo.settle(m).summary as MatgoSummary).ppeoks).toEqual([{ seat: 0, count: 3, bonus: 200, units: 2 }]);
+    // 예전 규칙으로 끝난 판의 정산도 그때 규칙대로 (횟수 기준 ×2 · ×3)
+    const done = strip(winBy(WIN7, [L_GW], { ppeokCount: [2, 0] }));
+    expect(matgo.settle(done).deltas).toEqual({ 0: 1200, 1: -1200 });
   });
 
-  it('AI: 이미 뻑을 두 번 냈으면 세 번째(삼뻑)를 노린다', () => {
+  it('AI: 이미 뻑을 두 번 냈으면 세 번째(삼뻑)를 노리고, 그 밖에는 뻑 날 패를 피한다 (보너스가 없는 판 중간에는 더)', () => {
     const base = { hands: [['m04-pi1', 'm06-pi1', 'm06-yeol'], ['m01-pi1']] as [string[], string[]], floor: ['m04-yeol', 'm06-pi2'], pile: ['m10-pi1'] };
     const aiOf = (s: MatgoState) => {
       const v = JSON.parse(JSON.stringify(matgo.view(s)));
       return matgo.ai(v.public, v.private[0], 0, fixedRng());
     };
     expect(aiOf(makeTestState(base))).not.toEqual({ type: 'play', card: 'm04-pi1' });
-    expect(aiOf(makeTestState({ ...base, ppeokCount: [2, 0] }))).toEqual({ type: 'play', card: 'm04-pi1' });
+    expect(aiOf(makeTestState({ ...base, turns: [4, 4] }))).not.toEqual({ type: 'play', card: 'm04-pi1' });
+    expect(aiOf(makeTestState({ ...base, turns: [4, 4], ppeokCount: [2, 0] }))).toEqual({ type: 'play', card: 'm04-pi1' });
   });
 });
 

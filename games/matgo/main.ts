@@ -1055,7 +1055,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       ...seatTags(seat),
       ...(pl.go ? [{ text: `${pl.go}고`, color: 'teamA' } as PanelTag] : []),
       ...(pl.shakes ? [{ text: `흔들기 ${pl.shakes}`, color: 'accent' } as PanelTag] : []),
-      // 뻑 보너스: 첫 뻑 기본금 ×2, 두 번째 ×3 (세 번째는 삼뻑 승리)
+      // 이번 판에 낸 뻑 횟수 (세 번이면 삼뻑 승리. 보너스는 첫 차례의 첫뻑 ×2 · 이어진 둘째 차례의 연뻑 ×3 뿐이다)
       ...(pl.ppeok ? [{ text: pl.ppeok >= 3 ? '삼뻑!' : `뻑 ${pl.ppeok}`, color: 'pink' } as PanelTag] : []),
       ...(pl.bombFill ? [{ text: `폭탄 피 ${pl.bombFill}`, color: 'track' } as PanelTag] : []),
     ];
@@ -1352,10 +1352,11 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     if (!r) return '<p>판이 끝났어요</p>';
     const full = (seat: number) => new URL(`shared/images/zodiac/full/${t.seatAvatar(seat)}.png`, worldRoot()).href;
     const name = (seat: number) => t.pub?.players[seat]?.name ?? t.seatName(seat);
-    // 뻑 보너스 (첫 뻑 기본금 ×2 · 두 번째 ×3): 뻑을 낸 사람이 상대에게서 받는다. 예전 판 결과에는 없을 수 있다
-    const ppeoks = r.ppeoks ?? [];
+    // 뻑 보너스 (첫 차례의 첫뻑 기본금 ×2 · 이어서 둘째 차례에도 뻑이면 연뻑 ×3): 뻑을 낸 사람이 상대에게서 받는다.
+    // 보너스가 붙지 않은 뻑(판 중간의 뻑)은 줄을 만들지 않는다. 예전 판 결과에는 없거나 몫(units)이 없을 수 있다 (그때는 횟수 기준)
+    const ppeoks = (r.ppeoks ?? []).filter((x) => x.bonus > 0);
     const ppeokLines = ppeoks
-      .map((x) => `<li><span>뻑 보너스 · ${esc(name(x.seat))} ${x.count >= 2 ? '첫뻑 ×2 + 연뻑 ×3' : '첫뻑 ×2'}</span><b>${r.winner !== null && x.seat !== r.winner ? '-' : '+'}${t.fmt(x.bonus)}냥</b></li>`)
+      .map((x) => `<li><span>뻑 보너스 · ${esc(name(x.seat))} ${(x.units ?? (x.count >= 2 ? 5 : 2)) >= 5 ? '첫뻑 ×2 + 연뻑 ×3' : '첫뻑 ×2'}</span><b>${r.winner !== null && x.seat !== r.winner ? '-' : '+'}${t.fmt(x.bonus)}냥</b></li>`)
       .join('');
     if (r.result === 'nagari') {
       // 나가리여도 뻑 보너스는 오간다
@@ -1403,7 +1404,6 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   },
 
   cutin(ev, t: Ctx) {
-    const mine = ev.seat === t.mySeat;
     switch (ev.t) {
       case 'go':
         return `${ev.count ?? ''}고!`;
@@ -1424,12 +1424,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       case 'shake':
         return '흔들기!';
       case 'ppeok': {
-        // 뻑 보너스가 걸려 있으니 누구의 뻑이든 알린다: 첫 뻑 기본금 ×2 · 두 번째 ×3 · 세 번째는 삼뻑 승리
+        // 세 번째 뻑은 삼뻑 승리. 보너스가 붙은 뻑(첫 차례의 첫뻑 ×2 · 이어진 둘째 차례의 연뻑 ×3)만 배수를 알리고, 그 밖의 뻑은 그냥 '뻑!'
         const n = Number(ev.count) || 0;
         if (n >= 3) return '삼뻑!';
-        if (n === 2) return '연뻑 ×3';
-        if (n === 1) return '첫뻑 ×2';
-        return mine ? '뻑!' : null;
+        // (bonus 칸이 없는 예전 사건은 그때 규칙대로 횟수 기준)
+        const bonus = typeof ev.bonus === 'number' ? ev.bonus : n === 2 ? 3 : n === 1 ? 2 : 0;
+        if (bonus === 3) return '연뻑 ×3';
+        if (bonus === 2) return '첫뻑 ×2';
+        return '뻑!';
       }
       case 'nagari':
         return '나가리';
