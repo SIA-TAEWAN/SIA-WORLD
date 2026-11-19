@@ -658,6 +658,9 @@ const BOMB_EXTRA = 1500;
 const AT_PLAY = 0;
 const AT_FLIP = 650;
 const AT_TAKE = 1400;
+/** 판쓸이: 먹은 패가 다 자리에 놓인 뒤(가져가기 0.56초)에 '판쓸이!'를 띄우고 상대 피 1장을 가져온다. 그만큼 다음 차례의 연출을 늦춘다 */
+const SSEUL_AT = AT_TAKE + 700;
+const SSEUL_EXTRA = 1000;
 const plan = new Map<string, CardPlan>();
 let planRound = '';
 let planSeen = 0;
@@ -824,7 +827,12 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
         else plan.set(id, { startAt: base() + AT_TAKE, src: 'hand', seat, flip: false, captureAt: base() + AT_TAKE, via: null, turn: Math.max(0, turn), floor: true });
       }
     } else if (e.t === 'steal' && typeof e.card === 'string') {
-      plan.set(e.card, { startAt: base() + AT_TAKE + 300, src: 'hand', seat, flip: false, captureAt: base() + AT_TAKE + 300, via: null, turn: Math.max(0, turn), floor: false });
+      // 빼앗은 피는 먹은 패보다 조금 늦게. 판쓸이로 받는 피는 먹은 패가 다 놓이고 '판쓸이!'가 뜰 때 넘어온다 (다른 움직임에 묻히지 않게)
+      const at = base() + (e.reason === '쓸' ? SSEUL_AT : AT_TAKE + 300);
+      plan.set(e.card, { startAt: at, src: 'hand', seat, flip: false, captureAt: at, via: null, turn: Math.max(0, turn), floor: false });
+    } else if (e.t === 'sseul') {
+      // (이 사건의 컷인 때는 eventBase 에 이미 적었다. 뒤 차례만 늦춘다)
+      shift += SSEUL_EXTRA;
     }
   }
 }
@@ -1445,11 +1453,12 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
 
   cutinDelay(ev) {
     // 패의 움직임과 함께 보여야 하는 것만 때를 맞춘다. 고·스톱·박 등은 카드 연출이 끝난 뒤 차례로 (그 뒤에 결과 창)
-    if (ev.t !== 'shake' && ev.t !== 'bomb' && ev.t !== 'ppeok' && ev.t !== 'capture') return null;
+    if (ev.t !== 'shake' && ev.t !== 'bomb' && ev.t !== 'ppeok' && ev.t !== 'capture' && ev.t !== 'sseul') return null;
     const base = eventBase.get(ev.id);
     if (base === undefined) return null;
     // 흔들기는 패를 낼 때, 폭탄은 세 장이 다 내려앉은 뒤, 뻑은 뒤집은 패가 내려앉을 때, 5광은 가져간 뒤
-    const at = ev.t === 'shake' ? 200 : ev.t === 'bomb' ? BOMB_CUTIN_AT : ev.t === 'ppeok' ? AT_FLIP + 600 : AT_TAKE + 600;
+    // 판쓸이는 먹은 패가 다 놓인 뒤 (그때 상대 피 1장이 넘어온다)
+    const at = ev.t === 'shake' ? 200 : ev.t === 'bomb' ? BOMB_CUTIN_AT : ev.t === 'ppeok' ? AT_FLIP + 600 : ev.t === 'sseul' ? SSEUL_AT : AT_TAKE + 600;
     return Math.max(0, planBuiltAt + base + at - performance.now());
   },
 
@@ -1473,6 +1482,9 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         return '폭탄!';
       case 'shake':
         return '흔들기!';
+      // 바닥을 다 비웠다 (상대 피 1장을 받는다. 상대에게 피가 없으면 컷인만)
+      case 'sseul':
+        return '판쓸이!';
       case 'ppeok': {
         // 세 번째 뻑은 삼뻑 승리. 보너스가 붙은 뻑(첫 차례의 첫뻑 ×2 · 이어진 둘째 차례의 연뻑 ×3)만 배수를 알리고, 그 밖의 뻑은 그냥 '뻑!'
         const n = Number(ev.count) || 0;

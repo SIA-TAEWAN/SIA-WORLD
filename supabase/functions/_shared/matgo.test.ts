@@ -315,6 +315,163 @@ describe('특수 규칙', () => {
     expect(s.captured[0]).toContain('m11-pi1');
     expect(s.captured[1]).toEqual(['m11-ssangpi']);
   });
+  // ── 판쓸이(쓸) 경우들: 바닥을 다 비운 차례 끝에 상대 피 1장 ──
+  const steals = (s: MatgoState) => s.events.filter((e) => e.t === 'steal').map((e) => `${e.reason}:${e.card}`);
+  it('쓸: 사건 순서는 먹기 → 쓸 → 피 빼앗기 (화면이 이 순서로 보여 준다)', () => {
+    let s = makeTestState({
+      hands: [['m07-yeol', 'm01-pi1'], ['m08-pi1']], floor: ['m07-pi1', 'm10-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m11-pi1']],
+    });
+    s = play(s, 0, 'm07-yeol');
+    expect(types(s).slice(-3)).toEqual(['capture', 'sseul', 'steal']);
+    expect(s.events[s.events.length - 1]).toMatchObject({ t: 'steal', seat: 0, from: 1, card: 'm11-pi1', reason: '쓸' });
+  });
+  it('쓸: 상대에게 피가 없으면 쓸은 인정되지만 받을 것이 없다 (사건은 남는다)', () => {
+    let s = makeTestState({
+      hands: [['m07-yeol', 'm01-pi1'], ['m08-pi1']], floor: ['m07-pi1', 'm10-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m02-yeol', 'm01-tti']],
+    });
+    s = play(s, 0, 'm07-yeol');
+    expect(types(s)).toContain('sseul');
+    expect(types(s)).not.toContain('steal');
+    expect(s.captured[1]).toEqual(['m02-yeol', 'm01-tti']);
+  });
+  it('쓸: 상대에게 쌍피만 있으면 쌍피 1장을 받는다 (일반 피가 있으면 일반 피부터)', () => {
+    let s = makeTestState({
+      hands: [['m07-yeol', 'm01-pi1'], ['m08-pi1']], floor: ['m07-pi1', 'm10-pi1'], pile: ['m10-yeol', 'm01-pi2'],
+      captured: [[], ['m11-ssangpi', 'm02-yeol']],
+    });
+    s = play(s, 0, 'm07-yeol');
+    expect(steals(s)).toEqual(['쓸:m11-ssangpi']);
+    expect(s.captured[0]).toContain('m11-ssangpi');
+    expect(s.captured[1]).toEqual(['m02-yeol']);
+  });
+  it('쓸: 상대의 국진이 쌍피로 쓰이는 중이고 다른 피가 없으면 그 국진을 받는다 (열끗으로 쓰는 중이면 받지 못한다)', () => {
+    const mk = (gukjinAs: 'ssangpi' | 'yeol') =>
+      play(
+        makeTestState({
+          hands: [['m07-yeol', 'm01-pi1'], ['m08-pi1']], floor: ['m07-pi1', 'm10-pi1'], pile: ['m10-yeol', 'm01-pi2'],
+          captured: [[], ['m09-yeol']], gukjinAs,
+        }),
+        0,
+        'm07-yeol',
+      );
+    expect(steals(mk('ssangpi'))).toEqual(['쓸:m09-yeol']);
+    expect(steals(mk('yeol'))).toEqual([]);
+  });
+  it('쓸: 뻑 더미나 처음부터 쌓인 3장이 바닥에 남아 있으면 바닥을 비운 것이 아니다', () => {
+    // 판 중에 생긴 뻑 더미(3월 3장)가 남아 있다
+    let s = makeTestState({
+      hands: [['m07-yeol', 'm01-pi1'], ['m08-pi1']], floor: ['m07-pi1', 'm10-pi1', 'm03-gwang', 'm03-tti', 'm03-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m11-pi1']], ppeok: [3],
+    });
+    s = play(s, 0, 'm07-yeol');
+    expect(s.floor.sort()).toEqual(['m03-gwang', 'm03-pi1', 'm03-tti']);
+    expect(types(s)).not.toContain('sseul');
+    expect(types(s)).not.toContain('steal');
+    // 처음부터 깔린 같은 달 3장만 남아 있다가 4번째 장으로 다 먹으면: 쓸 (뻑 먹기는 아니다 → 피는 1장만)
+    let u = makeTestState({
+      hands: [['m03-pi2', 'm01-pi1'], ['m08-pi1']], floor: ['m03-gwang', 'm03-tti', 'm03-pi1', 'm10-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m11-pi1', 'm01-pi2']],
+    });
+    u = play(u, 0, 'm03-pi2');
+    expect(u.floor).toEqual([]);
+    expect(steals(u)).toEqual(['쓸:m11-pi1']);
+  });
+  it('쓸: 판 중에 생긴 뻑 더미를 먹으면서 바닥을 비우면 피 2장 (뻑 먹기 + 쓸)', () => {
+    let s = makeTestState({
+      hands: [['m03-pi2', 'm01-pi1'], ['m08-pi1']], floor: ['m03-gwang', 'm03-tti', 'm03-pi1', 'm10-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m11-pi1', 'm01-pi2', 'm02-pi1']], ppeok: [3],
+    });
+    s = play(s, 0, 'm03-pi2');
+    expect(s.floor).toEqual([]);
+    expect(steals(s)).toEqual(['뻑 먹기:m11-pi1', '쓸:m01-pi2']);
+  });
+  it('쓸: 폭탄으로 바닥을 비우면 피 2장 (폭탄 + 쓸)', () => {
+    let s = makeTestState({
+      hands: [['m05-yeol', 'm05-tti', 'm05-pi1', 'm01-pi1'], ['m08-pi1']], floor: ['m05-pi2', 'm10-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m11-pi1', 'm01-pi2']],
+    });
+    s = act(s, 0, { type: 'bomb', month: 5 });
+    expect(s.floor).toEqual([]);
+    expect(types(s)).toContain('sseul');
+    expect(steals(s)).toEqual(['폭탄:m11-pi1', '쓸:m01-pi2']);
+  });
+  it('쓸: 따닥으로 바닥을 비우면 피 2장 (따닥 + 쓸), 쪽으로 비우면 피 2장 (쪽 + 쓸)', () => {
+    // 따닥: 바닥의 같은 달 2장 + 낸 패 + 뒤집은 패
+    let s = makeTestState({
+      hands: [['m06-yeol', 'm01-pi1'], ['m07-pi1']], floor: ['m06-pi1', 'm06-pi2'], pile: ['m06-tti', 'm11-pi2'],
+      captured: [[], ['m11-pi1', 'm01-pi2']],
+    });
+    s = play(s, 0, 'm06-yeol');
+    expect(s.floor).toEqual([]);
+    expect(steals(s)).toEqual(['따닥:m11-pi1', '쓸:m01-pi2']);
+    // 쪽: 빈 바닥에 낸 패를 뒤집은 패로 바로 먹는다
+    let u = makeTestState({
+      hands: [['m06-yeol', 'm01-pi1'], ['m07-pi1']], floor: [], pile: ['m06-tti', 'm11-pi2'],
+      captured: [[], ['m11-pi1', 'm01-pi2']],
+    });
+    u = play(u, 0, 'm06-yeol');
+    expect(u.floor).toEqual([]);
+    expect(types(u)).toEqual(expect.arrayContaining(['jjok', 'sseul']));
+    expect(steals(u)).toEqual(['쪽:m11-pi1', '쓸:m01-pi2']);
+  });
+  it('쓸: 같은 달 고르기를 거친 차례 · 폭탄 피로 뒤집기만 한 차례에도 인정한다', () => {
+    // 낸 패는 바닥의 한 장을 먹고, 뒤집은 패가 같은 달 2장(피·띠) 가운데 하나를 골라 먹는다 → 고른 뒤에 차례가 끝난다
+    let u = makeTestState({
+      hands: [['m04-yeol', 'm01-pi1'], ['m07-pi1']], floor: ['m04-pi1', 'm04-tti', 'm10-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m11-pi1']],
+    });
+    u = play(u, 0, 'm04-yeol');
+    expect(u.phase).toBe('choose');
+    expect(types(u)).not.toContain('sseul');
+    u = act(u, 0, { type: 'choose', card: 'm04-tti' });
+    // 고르지 않은 한 장이 바닥에 남는다 → 쓸이 아니다
+    expect(u.floor).toEqual(['m04-pi1']);
+    expect(types(u)).not.toContain('sseul');
+    // 고른 뒤 바닥이 비면 쓸: 바닥의 같은 달 2장 중 하나를 고르고, 남은 한 장은 뒤집은 패가 먹는다
+    let c = makeTestState({
+      hands: [['m04-yeol', 'm01-pi1'], ['m07-pi1']], floor: ['m04-pi1', 'm04-tti'], pile: ['m04-pi2', 'm11-pi2'],
+      captured: [[], ['m11-pi1', 'm01-pi2']],
+    });
+    c = play(c, 0, 'm04-yeol');
+    if (c.phase === 'choose') c = act(c, 0, { type: 'choose', card: 'm04-tti' });
+    expect(c.floor).toEqual([]);
+    expect(types(c)).toContain('sseul');
+    expect(steals(c).some((x) => x.startsWith('쓸:'))).toBe(true);
+    // 폭탄 피로 뒤집기만 해서 바닥의 마지막 패를 먹었다
+    let f = makeTestState({
+      hands: [['m01-pi1'], ['m07-pi1']], floor: ['m10-pi1'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[], ['m11-pi1']], fill: [1, 0],
+    });
+    f = act(f, 0, { type: 'flip' });
+    expect(f.floor).toEqual([]);
+    expect(steals(f)).toEqual(['쓸:m11-pi1']);
+  });
+  it('쓸: 마지막 차례(손패가 다 떨어지는 차례)에 바닥을 비워도 인정한다 (지금 규칙: 매 차례 끝에 본다. 막판 쓸을 빼지 않는다)', () => {
+    let s = makeTestState({
+      hands: [['m07-yeol'], []], floor: ['m07-pi1', 'm10-pi1'], pile: ['m10-yeol'],
+      captured: [[], ['m11-pi1']], turn: 0,
+    });
+    s = play(s, 0, 'm07-yeol');
+    expect(s.hands[0]).toEqual([]);
+    expect(s.floor).toEqual([]);
+    expect(steals(s)).toEqual(['쓸:m11-pi1']);
+    expect(s.phase).toBe('done');
+  });
+  it('쓸: 빼앗은 피로 점수가 나면 그 차례에 바로 고/스톱을 묻는다 (정산에도 들어간다)', () => {
+    // 3광 3점 + 홍단 3점, 피는 이번에 먹은 것까지 9장 = 6점 → 쓸로 피 10장이 되면 7점
+    let s = makeTestState({
+      hands: [['m08-yeol', 'm01-pi1'], ['m07-pi1', 'm07-yeol']], floor: ['m08-pi1', 'm10-tti'], pile: ['m10-yeol', 'm11-pi2'],
+      captured: [[...GW3, ...HONG, ...PI8], ['m11-pi1']],
+    });
+    expect(scoreCards([...s.captured[0], 'm08-yeol', 'm08-pi1', 'm10-yeol', 'm10-tti']).total).toBe(6);
+    s = play(s, 0, 'm08-yeol');
+    expect(steals(s)).toEqual(['쓸:m11-pi1']);
+    expect(scoreCards(s.captured[0]).total).toBe(7);
+    expect(s.phase).toBe('goStop');
+  });
+
   it('국진: 먹은 사람이 열끗/쌍피를 고른다', () => {
     let s = makeTestState({ hands: [['m09-pi1', 'm01-pi1'], ['m06-pi1']], floor: ['m09-yeol'], pile: ['m10-pi1'] });
     s = play(s, 0, 'm09-pi1');
