@@ -241,8 +241,8 @@ describe('카드 뽑기 규칙', () => {
     expect(s.stats.armor).toBe(2);
     expect(s.stats.area).toBeCloseTo(1.2, 6);
     expect(s.stats.cooldown).toBeCloseTo(0.84, 6);
-    // 개의 특성(+20%)에 자석(+25%씩)이 더해진다
-    expect(s.stats.pickup).toBeCloseTo(72 * 1.7, 6);
+    // 개의 특성(+20%)에 자석(+50%씩)이 더해진다
+    expect(s.stats.pickup).toBeCloseTo(72 * 2.2, 6);
     const t = disarm(emptyRun({ char: 'rat' }));
     t.player.hp = 60;
     addPassive(t, PASSIVE_INDEX.ginseng, 3);

@@ -18,7 +18,7 @@ export const PASSIVES: PassiveDef[] = [
   { id: 'shell', name: '거북 등껍질', icon: '🐢', stat: 'armor', perLevel: 1, text: '받는 피해 -1' },
   { id: 'sleeve', name: '넓은 소매', icon: '👘', stat: 'area', perLevel: 0.1, text: '무기 범위 +10%' },
   { id: 'fan', name: '부채', icon: '🪭', stat: 'cooldown', perLevel: 0.08, text: '재사용 대기시간 -8%' },
-  { id: 'magnet', name: '자석', icon: '🧲', stat: 'pickup', perLevel: 0.25, text: '아이템 획득 범위 +25%' },
+  { id: 'magnet', name: '자석', icon: '🧲', stat: 'pickup', perLevel: 0.5, text: '아이템 획득 범위 +50%' },
   { id: 'ginseng', name: '인삼', icon: '🌿', stat: 'maxHpPct', perLevel: 0.1, text: '최대 체력 +10%' },
   { id: 'knot', name: '복주머니 매듭', icon: '🪢', stat: 'coin', perLevel: 0.1, text: '엽전 +10%' },
 ];
