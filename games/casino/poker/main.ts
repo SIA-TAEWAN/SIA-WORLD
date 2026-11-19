@@ -3,7 +3,7 @@ import { POKER_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
-import { rewindPoker } from '../../../supabase/functions/_shared/poker-rewind.ts';
+import { pokerRoundStart, rewindPoker } from '../../../supabase/functions/_shared/poker-rewind.ts';
 
 type Ctx = TableCtx<PokerPublic, PokerPrivate>;
 
@@ -230,7 +230,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
   },
 
   // 한 동작씩: 내 카드 공개 → 다음 카드 → 다른 사람 베팅 순서로, 앞 동작의 카드 연출이 끝난 뒤에 다음 동작 (판 시작은 예전 방식)
-  rewind: (next, events) => rewindPoker(next, events, lastPub),
+  // (판 시작 묶음은 되돌리지 않는다 → null: 셸이 예전 방식으로 보여 준다)
+  rewind: (next, events) => (pokerRoundStart(events) ? null : rewindPoker(next, events, lastPub)),
 
   // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
   replay(ev, t: Ctx) {

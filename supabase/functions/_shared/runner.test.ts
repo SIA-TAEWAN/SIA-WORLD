@@ -608,7 +608,10 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     if (!matgo.done(s)) {
       const got = await runner.sync('r1', 'u1', { duo: true });
       expect(got.duo).toBe(false);
-      expect(got.state).toEqual(s);
+      // 판은 그대로이고, 혼자 하는 판으로 바뀌었다 (duo 표시만 떨어진다)
+      expect(got.state).toEqual({ ...s, solo: { seed: soloOf(s)!.seed, n: soloOf(s)!.n } });
+      expect(got.state).toEqual(m.deck.state);
+      s = got.state as MatgoState;
       // 이제 혼자 하는 판과 같다: 내 행동 뒤에 서버가 AI 차례를 이어 둔다
       const n = soloOf(s)!.n;
       await runner.act('r1', 'u1', pick(s, 0), n);
@@ -616,5 +619,107 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
       expect(matgo.done(next) || matgo.pending(next).includes(0)).toBe(true);
       expect(soloOf(next)!.n).toBeGreaterThan(n);
     }
+  });
+
+  /** u1(자리 0) 차례가 될 때까지 u2 가 둔다 → 그때의 상태 */
+  const toSeat0 = async (m: ReturnType<typeof memStore>, runner: Runner, s0: MatgoState) => {
+    let s = s0;
+    for (let i = 0; i < 20 && !matgo.pending(s).includes(0); i++) {
+      await runner.act('r1', 'u2', pick(s, 1, seededRng(40 + i)), soloOf(s)!.n);
+      s = m.deck.state as MatgoState;
+    }
+    expect(matgo.done(s)).toBe(false);
+    expect(matgo.pending(s)).toEqual([0]);
+    return s;
+  };
+  const deadlineOf = (m: ReturnType<typeof memStore>) => m.published[m.published.length - 1].deadline?.getTime() ?? null;
+  const cardsLeft = (s: MatgoState, seat: number) => matgo.view(s).public.players[seat].handCount;
+
+  it('상대가 내 차례에 나간 뒤 20초를 넘기면: 내 이번 차례만 대신 둔다 (판은 계속된다. 판 전체를 끝내지 않는다)', async () => {
+    let now = 1_000_000;
+    const { m, runner, r } = await begin(51, () => now);
+    const s = await toSeat0(m, runner, r.duo!);
+    // 내 차례의 마감은 차례 시간 20초. 이때 상대(u2)가 나간다 (나간 자리 차례가 아니라서 서버는 아무것도 하지 않는다 → 마감도 그대로)
+    expect(deadlineOf(m)).toBe(now + 20_000);
+    m.seats[1].left_game = true;
+    const n0 = soloOf(s)!.n;
+    const hand0 = cardsLeft(s, 0);
+    // 20초를 넘겼다 → 시간 초과 처리
+    now += 20_500;
+    expect((await runner.timeout('r1', m.deck.version)).acted).toBe(true);
+    const after = m.deck.state as MatgoState;
+    // 판은 끝나지 않았고 정산도 없다. 내 차례는 한 번만 넘어갔고 (낸 패는 많아야 한 장), 나간 자리는 AI 가 이어 둔 뒤 다시 내 차례에서 멈췄다
+    expect(m.room.status).toBe('playing');
+    expect(matgo.done(after)).toBe(false);
+    expect(m.results.size).toBe(0);
+    expect(soloOf(after)!.n).toBeGreaterThan(n0);
+    expect(hand0 - cardsLeft(after, 0)).toBeLessThanOrEqual(1);
+    expect(matgo.pending(after)).toEqual([0]);
+    expect(matgo.view(after).public.events.filter((e) => e.id > Math.max(0, ...matgo.view(s).public.events.map((x) => x.id)) && e.seat === 0 && (e.t === 'play' || e.t === 'bomb')).length).toBeLessThanOrEqual(1);
+    // 남은 사람은 이어서 둘 수 있다
+    await runner.act('r1', 'u1', pick(after, 0), soloOf(after)!.n);
+    expect(soloOf(m.deck.state)!.n).toBeGreaterThan(soloOf(after)!.n);
+  });
+
+  it('상대가 나간 뒤 남은 사람이 sync 하면 혼자 하는 판이 된다: 마감이 20초에서 30분으로 바뀌어 화면의 (기기) 차례 시간과 어긋나지 않는다', async () => {
+    let now = 1_000_000;
+    const { m, runner, r } = await begin(52, () => now);
+    const s = await toSeat0(m, runner, r.duo!);
+    expect(deadlineOf(m)).toBe(now + 20_000);
+    m.seats[1].left_game = true;
+    // 화면이 자리 변화를 보고 5초 뒤 sync 했다
+    now += 5_000;
+    const got = await runner.sync('r1', 'u1', { duo: true });
+    expect(got.duo).toBe(false);
+    expect(soloOf(got.state)).toEqual({ seed: soloOf(s)!.seed, n: soloOf(s)!.n });
+    expect(got.version).toBe(m.deck.version);
+    expect(deadlineOf(m)).toBe(now + SOLO_DEADLINE_MS);
+    // 공개 상태의 진행 수는 그대로 (판은 한 걸음도 나아가지 않았다)
+    expect(m.published[m.published.length - 1].pub.soloN).toBe(soloOf(s)!.n);
+    // 다시 불러도 더 바뀌지 않는다 (저장 · 공개를 되풀이하지 않는다)
+    const v = m.deck.version;
+    const pubs = m.published.length;
+    expect((await runner.sync('r1', 'u1', { duo: true })).version).toBe(v);
+    expect(m.published.length).toBe(pubs);
+    // 이제 혼자 하는 판: 행동 목록(replay)도 받는다
+    const res = await runner.replay('r1', 'u1', { n: soloOf(s)!.n, actions: [pick(got.state as MatgoState, 0)] });
+    expect(res.ok).toBe(true);
+    // 30분 마감이 지나면 버려진 판이다 → 서버가 남은 판을 대신 두어 끝낸다 (혼자 하는 판과 같다)
+    if (m.room.status === 'playing') {
+      now += SOLO_DEADLINE_MS + 1000;
+      await runner.timeout('r1', m.deck.version);
+      expect(m.room.status).toBe('waiting');
+      expect(m.results.size).toBe(1);
+    }
+  });
+
+  it('상대가 나간 자리 차례에 sync 하면: 나간 자리는 AI 가 이어 둔 상태를 준다 (저장이 겹치면 다시 읽는다)', async () => {
+    const { m, runner, r } = await begin(53);
+    let s = r.duo!;
+    // u2(자리 1) 차례가 될 때까지
+    for (let i = 0; i < 20 && !matgo.pending(s).includes(1); i++) {
+      await runner.act('r1', 'u1', pick(s, 0, seededRng(60 + i)), soloOf(s)!.n);
+      s = m.deck.state as MatgoState;
+    }
+    expect(matgo.pending(s)).toEqual([1]);
+    m.seats[1].left_game = true;
+    // 첫 저장은 버전 충돌로 실패하게 한다
+    const save0 = m.store.saveDeck;
+    let failed = false;
+    m.store.saveDeck = async (...a) => {
+      if (!failed) {
+        failed = true;
+        return false;
+      }
+      return save0(...a);
+    };
+    const got = await runner.sync('r1', 'u1', { duo: true });
+    expect(failed).toBe(true);
+    expect(got.duo).toBe(false);
+    expect(got.state).toEqual(m.deck.state);
+    const st = got.state as MatgoState;
+    expect(soloOf(st)!.duo).toBeUndefined();
+    expect(soloOf(st)!.n).toBeGreaterThan(soloOf(s)!.n);
+    expect(matgo.done(st) || matgo.pending(st).includes(0)).toBe(true);
   });
 });

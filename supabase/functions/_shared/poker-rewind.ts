@@ -8,6 +8,9 @@
  * out[i] = events[i]가 일어나기 직전의 화면. 차례 표시(turn)는 그 사건을 하는 자리.
  * prev = 지금 화면에 보이는 (events가 일어나기 전) 공개 상태. 앞 베팅 라운드의 베팅액·마지막 행동 표시를 맞추는 데만 쓴다.
  * 되돌릴 수 없는 모양(판 시작의 앤티·첫 카드 등)이면 예외를 던진다 (화면은 그때 예전 방식: 말풍선 → 새 상태).
+ *
+ * 주의: 서버가 공개하는 상태의 round 칸은 '몇 구'가 아니라 방의 판 번호다 (runner 가 공개할 때 같은 이름의 칸을 덮어쓴다).
+ * 그래서 몇 구인지는 round 칸을 믿지 않고 단계(phase)와 받은 카드 수로 다시 센다 (bettingRound).
  */
 import type { GameEvent } from './engine.ts';
 import { evaluateOpen, type PokerPhase, type PokerPublic } from './poker.ts';
@@ -15,12 +18,31 @@ import { evaluateOpen, type PokerPhase, type PokerPublic } from './poker.ts';
 const BETS = new Set(['check', 'bbing', 'call', 'ddadang', 'half', 'die']);
 const LABEL: Record<string, string> = { check: '체크', bbing: '삥', call: '콜', ddadang: '따당', half: '하프', die: '다이' };
 
+/** 판 시작 사건 (앤티 · 첫 카드 3장): 이것이 든 묶음은 되돌리지 않는다 → 화면은 부르기 전에 이것으로 가른다 (예상된 경우라 경고도 내지 않는다) */
+export function pokerRoundStart(events: readonly GameEvent[]): boolean {
+  return events.some((e) => e.t === 'ante' || (e.t === 'deal' && typeof e.round === 'number' && e.round < 4));
+}
+
+/**
+ * 지금 몇 구인가 (3 = 카드 고르기, 4~7). 단계가 betN 이면 N, 고르기면 3,
+ * 끝난 판이면 가장 많이 받은 사람의 카드 수 (4구 = 공개 2 + 뒷면 2 … 7구 = 공개 4 + 뒷면 3: 받은 장수가 곧 구 번호다)
+ */
+export function bettingRound(p: Pick<PokerPublic, 'phase' | 'seats'>): number {
+  const m = /^bet(\d)$/.exec(p.phase);
+  if (m) return Number(m[1]);
+  if (p.phase === 'choose') return 3;
+  return Math.max(3, ...p.seats.map((s) => (s.excluded ? 0 : s.open.length + s.hiddenCount)));
+}
+
 export function rewindPoker(next: PokerPublic, events: readonly GameEvent[], prev?: PokerPublic | null): PokerPublic[] {
   const out: PokerPublic[] = new Array(events.length);
   let cur = next;
+  // 공개 상태의 round 칸은 방의 판 번호일 수 있다 (위 주의): 몇 구인지 다시 세어 넣고 시작한다
+  const before = prev ? { ...prev, round: bettingRound(prev) } : null;
   for (let i = events.length - 1; i >= 0; i--) {
     cur = JSON.parse(JSON.stringify(cur)) as PokerPublic;
-    undo(cur, events, i, prev ?? null);
+    if (i === events.length - 1) cur.round = bettingRound(cur);
+    undo(cur, events, i, before);
     out[i] = cur;
   }
   return out;

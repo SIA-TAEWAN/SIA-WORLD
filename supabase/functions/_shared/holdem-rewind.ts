@@ -17,6 +17,11 @@ const STREETS = new Set(['flop', 'turn', 'river']);
 const LABEL: Record<string, string> = { fold: '폴드', check: '체크', call: '콜', bet: '베트', raise: '레이즈' };
 const streetOf = (n: number): HoldemPhase => (n >= 5 ? 'river' : n === 4 ? 'turn' : n === 3 ? 'flop' : 'preflop');
 
+/** 판 시작 사건 (딜러 버튼 · 블라인드 · 첫 카드 2장): 이것이 든 묶음은 되돌리지 않는다 → 화면은 부르기 전에 이것으로 가른다 (예상된 경우라 경고도 내지 않는다) */
+export function holdemRoundStart(events: readonly GameEvent[]): boolean {
+  return events.some((e) => e.t === 'button' || e.t === 'blind' || e.t === 'deal');
+}
+
 export function rewindHoldem(next: HoldemPublic, events: readonly GameEvent[], prev?: HoldemPublic | null): HoldemPublic[] {
   // 앞에서부터: 사건마다 낸 돈(레이즈는 '얼마까지'만 적혀 있다)과, 공용 카드가 깔리기 직전 각 자리가 그 라운드에 낸 돈
   const br = new Map<number, number>();

@@ -172,11 +172,25 @@ export class Runner {
    * 기기에서 진행하는 판의 전체 상태 (판 시작 응답을 못 받았거나 새로고침·재접속한 화면, 어긋난 화면이 이어서 두려고 부른다).
    * 사람이 둘인 판은 payload { duo: true } 로 불러야 준다 (예전 화면은 그렇게 부르지 않는다 → 예전처럼 서버 진행으로 남는다).
    * duo: 사람이 둘인 판인가 (화면이 상대 차례를 AI 로 두면 안 된다)
+   *
+   * 사람 둘이 시작했는데 상대가 나가 혼자 남은 판: 이 화면은 여기서부터 혼자 하는 판으로 이어 둔다 (차례 시간을 기기에서 잰다).
+   * 서버에 남아 있는 마감은 사람 둘일 때의 20초라 그대로 두면 화면의 시간과 어긋난다 (서버가 먼저 대신 둔다)
+   * → 여기서 혼자 하는 판으로 바꾼다: duo 표시를 떼고 다시 공개해 마감을 혼자 하는 판처럼 길게 (30분) 잡는다.
    */
   async sync(roomId: string, userId: string, payload?: unknown) {
     const wantDuo = !!(payload as { duo?: unknown } | null | undefined)?.duo;
-    const { room, deck, humans } = await this.loadSolo(roomId, userId, wantDuo);
-    return { state: deck.state, version: deck.version, round: room.round_no, duo: humans !== 1 };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { room, seats, deck, engine, humans, solo } = await this.loadSolo(roomId, userId, wantDuo);
+      if (humans === 1 && solo.duo && !engine.done(deck.state)) {
+        const lone = { ...(deck.state as object), solo: { seed: solo.seed, n: solo.n } };
+        // (나간 자리 차례였으면 AI 가 이어 둔 데까지) 저장 · 공개. 그 사이 다른 저장이 끼어들었으면 다시 읽는다
+        const saved = await this.advance(roomId, room, seats, engine, deck.version, lone);
+        if (saved === null) continue;
+        return { state: saved, version: deck.version + 1, round: room.round_no, duo: false };
+      }
+      return { state: deck.state, version: deck.version, round: room.round_no, duo: humans !== 1 };
+    }
+    throw new GameError('busy, try again', 409);
   }
 
   /**
@@ -304,6 +318,7 @@ export class Runner {
       //   · 혼자 하는 판: 자리는 지키는데 30분 마감이 지났으면 버려진 판이다 → 사람 차례는 정해진 자동 행동으로, 판이 끝날 때까지 서버가 대신 둔다
       //   · 사람이 둘인 판: 차례 시간(20초)을 넘긴 사람의 이번 차례만 대신 둔다 (다음 차례는 다시 그 사람이 둔다)
       // 사람 둘이 시작한 판은 상대가 나가 혼자 남아도 이번 차례만 대신 둔다 (20초를 한 번 넘겼다고 판 전체를 끝내지 않는다)
+      // (남은 사람의 화면이 sync 로 혼자 하는 판으로 넘어가면 duo 표시가 떨어진다 → 그 뒤로는 혼자 하는 판과 같다)
       const lone = this.humans(seats).length <= 1 && !soloOf(state)?.duo;
       for (let steps = 0; !engine.done(state); steps++) {
         if (steps > MAX_AUTO_STEPS) throw new Error('AI loop');

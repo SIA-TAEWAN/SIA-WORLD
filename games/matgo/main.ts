@@ -669,6 +669,12 @@ let planBuiltAt = 0;
  * → 지나간 여러 차례를 처음부터 다시 재생하느라 내 차례가 한참 막히지 않게
  */
 let planSkip: { key: string; id: number } | null = null;
+/**
+ * 연출을 건너뛴 차례의 패 (판이 끝난 상태에 여러 차례가 한꺼번에 들어왔을 때 앞 차례들): 이번 그림에서 날아다니지 않고 제자리에 바로 놓는다
+ */
+const planQuiet = new Set<string>();
+/** 결과가 든 상태에 차례가 이만큼 넘게 한꺼번에 들어오면 마지막 이만큼만 연출한다 (나머지는 건너뛴다 → 결과 창이 20~30초씩 늦지 않게) */
+const END_TURNS = 2;
 
 /**
  * 지금 그리는 차례 연출(상대가 낸 패·뒤집은 패·먹기)이 끝날 때까지 남은 시간 (ms).
@@ -744,19 +750,50 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
     eventBase.clear();
     planActors = [];
   }
-  const evs = (p.events ?? []).filter((e) => e.id > planSeen);
+  let evs = (p.events ?? []).filter((e) => e.id > planSeen);
   if (!evs.length) return;
   eventBase.clear();
   planActors = [];
+  planQuiet.clear();
   planBuiltAt = performance.now();
+  // 판이 끝난 상태에 여러 차례가 한꺼번에 들어왔다 (서버가 남은 판을 대신 뒀다): 마지막 두 차례만 연출하고 앞 차례는 건너뛴다
+  // (전부 연출하면 차례당 2초씩, 결과 창이 한참 뒤에 뜬다)
+  let skipped = false;
+  if ((p as unknown as { result?: unknown }).result) {
+    // 차례가 시작되는 사건 (아래 계획과 같은 규칙: 패를 냈거나, 폭탄 피로 뒤집기만 한 차례)
+    const starts: number[] = [];
+    let flipped = !(evs[0].t === 'flip' || evs[0].t === 'capture' || evs[0].t === 'steal');
+    evs.forEach((e, i) => {
+      if (e.t === 'play' || e.t === 'bomb' || (e.t === 'flip' && flipped)) {
+        starts.push(i);
+        flipped = false;
+      }
+      if (e.t === 'flip') flipped = true;
+    });
+    if (starts.length > END_TURNS) {
+      const cut = starts[starts.length - END_TURNS];
+      for (const e of evs.slice(0, cut)) {
+        for (const id of (e.cards as string[] | undefined) ?? []) planQuiet.add(id);
+        if (typeof e.card === 'string') planQuiet.add(e.card);
+      }
+      planSeen = Math.max(planSeen, ...evs.map((e) => e.id));
+      evs = evs.slice(cut);
+      skipped = true;
+    }
+  }
   // 이전 계획은 이미 지나간 것이므로 비운다 (새로 들어온 사건만 재생)
   // 단, 패 고르기로 한 차례가 두 번에 나뉘어 오면 (첫 사건이 낸 패가 아님) 앞서 낸·뒤집은 패는 이미 내려앉은 채로 이어 간다
-  const continuing = evs[0].t === 'flip' || evs[0].t === 'capture' || evs[0].t === 'steal';
+  const continuing = !skipped && (evs[0].t === 'flip' || evs[0].t === 'capture' || evs[0].t === 'steal');
   const lastTurn = Math.max(-1, ...[...plan.values()].map((x) => x.turn));
   const kept = continuing ? [...plan].filter(([, x]) => x.turn === lastTurn && !x.floor && x.captureAt === null) : [];
   plan.clear();
   // 이미 앞면으로 내려앉은 패: 다시 뒤집지 않는다
   for (const [id, x] of kept) plan.set(id, { ...x, startAt: 0, turn: 0, flip: false });
+  // 연출하는 차례에 다시 움직이는 패(건너뛴 차례에 바닥에 놓였다가 마지막 차례에 먹힌 패)는 계획대로 움직인다
+  if (skipped) for (const e of evs) {
+    for (const id of (e.cards as string[] | undefined) ?? []) planQuiet.delete(id);
+    if (typeof e.card === 'string') planQuiet.delete(e.card);
+  }
   planSeen = Math.max(planSeen, ...evs.map((e) => e.id));
   let turn = kept.length ? 0 : continuing ? 0 : -1;
   let hasFlip = kept.length ? kept.some(([, x]) => x.flip) : !continuing;
@@ -959,6 +996,17 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     return t.pub ? shownTurn(t.pub, holdLeft(t)) : undefined;
   },
 
+  // 방을 나갈 때: 걸어 둔 타이머를 치운다 (남아 있으면 나간 방의 화면을 붙들고, 다시 들어온 방에서 새 타이머를 걸지 못한다)
+  leave() {
+    if (enableTimer) clearTimeout(enableTimer);
+    enableTimer = null;
+    if (sortTimer) clearTimeout(sortTimer);
+    sortTimer = null;
+    picked = null;
+    onFloorNow.clear();
+    planQuiet.clear();
+  },
+
   preload(scene) {
     for (let m = 1; m <= 12; m++) scene.load.image(plantKey(m), plantUrl(m));
     for (const c of CARDS) scene.load.image(cardKey(c.id), cardUrl(c.id));
@@ -1107,7 +1155,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     /** 먹은 패 자리로 가는 카드의 움직임 */
     const capOpts = (id: string): TrackOpts => {
       const pl = plan.get(id);
-      if (!pl) return { order: 2 };
+      // (연출을 건너뛴 차례에 먹은 패는 제자리에 바로)
+      if (!pl) return planQuiet.has(id) ? { still: true } : { order: 2 };
       if (pl.via && pl.captureAt !== null) {
         // 손·더미 → 바닥(찰싹) → 잠깐 → 먹은 패 자리
         const via = pl.via;
@@ -1177,6 +1226,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
             // 바닥에 내려앉을 때 찰싹 (같은 달 패가 있으면 그 위에)
             onLand: onFloorNow.has(id) ? undefined : () => slapCard(id, scene, cx, cy, fw, j > 0, t.dpr),
           });
+        else if (planQuiet.has(id)) t.track(card, id, { still: true });
         else t.track(card, id, { from: pile, fromScale: L.pw / fw });
       });
       if (f.ppeok || f.stacked) {

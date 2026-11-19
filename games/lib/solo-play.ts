@@ -76,6 +76,11 @@ export interface LocalPlay {
   onCast(msg: unknown): void;
   /** 나가기 · 페이지 닫기 직전: 그때까지의 행동 목록을 서버에 보낸다 (실패해도 무시) */
   flush(kind: 'leave' | 'pagehide'): Promise<void>;
+  /**
+   * 자리가 바뀌었다 (셸이 자리 정보를 새로 받은 뒤 부른다). 사람이 둘인 판에서 상대가 나갔으면 바로 서버 상태를 받아
+   * 혼자 하는 판으로 넘어간다 (내 차례 시간은 그때부터 기기에서 잰다)
+   */
+  onSeats?(): void;
   /** 조작부에 대신 보여 줄 안내 (없으면 null) */
   notice(): string | null;
   /**
@@ -93,6 +98,8 @@ export interface SoloPlayOpts {
   turnMs?: number;
   /** 연출이 끝난 뒤 AI 가 두기까지의 틈 (기본 350ms) */
   thinkMs?: number;
+  /** 전체 상태 받기(sync)를 기다려 주는 시간 (기본 5초). 넘으면 실패로 치고 다시 시도한다 (그동안 조작이 막혀 있지 않게) */
+  syncMs?: number;
   /** 셸이 모르는 게임 자체 연출이 끝나기까지 남은 시간 (ms) */
   busyLeft?(): number;
   /** 연출 없이 이 상태로 건너뛴다 (게임이 지난 사건의 연출 계획을 비우게) */
@@ -145,6 +152,9 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
   return (host) => {
     const TURN = opts.turnMs ?? 20_000;
     const THINK = opts.thinkMs ?? 350;
+    const SYNC_MS = opts.syncMs ?? 5000;
+    /** 서버가 이만큼(걸음)까지만 앞서 있으면 다시 맞출 때 그 걸음을 연출로 보여 준다 (한 차례가 내기 + 고르기 + 고/스톱으로 3걸음일 수 있다 → 한두 차례) */
+    const AHEAD_MAX = 4;
     const storage = opts.storage === undefined ? defaultStorage() : opts.storage;
 
     interface Cur {
@@ -275,6 +285,39 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       } else host.push(c.row, c.priv);
     };
 
+    /** 전체 상태 받기: 답이 SYNC_MS 안에 안 오면 실패로 친다 (걸려 있는 동안 조작이 막히거나 다시 맞추기가 멈추지 않게) */
+    const syncOnce = () =>
+      new Promise<Awaited<ReturnType<LocalHost['api']['sync']>>>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('sync timeout')), SYNC_MS);
+        host.api.sync().then(
+          (r) => (clearTimeout(t), resolve(r)),
+          (e) => (clearTimeout(t), reject(e)),
+        );
+      });
+
+    /** 판의 사건 기록 (공개 상태의 events. 없는 게임이면 null) */
+    const eventsOf = (st: S): { id?: unknown }[] | null => {
+      const e = (engine.view(st).public as { events?: unknown } | null)?.events;
+      return Array.isArray(e) ? (e as { id?: unknown }[]) : null;
+    };
+    /** b 가 a 에서 그대로 이어진 판인가: a 의 사건이 b 에 똑같이 있고 b 에 새 사건이 더 있다 (내 예측이 틀린 판이 아니다) */
+    const continues = (a: S, b: S) => {
+      const mine = eventsOf(a);
+      const theirs = eventsOf(b);
+      if (!mine || !theirs) return false;
+      const idOf = (e: { id?: unknown }) => (typeof e?.id === 'number' ? e.id : -1);
+      const byId = new Map(theirs.map((e) => [idOf(e), fingerprint(e)]));
+      const maxMine = mine.reduce((m, e) => Math.max(m, idOf(e)), 0);
+      const maxTheirs = theirs.reduce((m, e) => Math.max(m, idOf(e)), 0);
+      if (maxTheirs <= maxMine) return false;
+      for (const e of mine) {
+        const t = byId.get(idOf(e));
+        if (t !== undefined && t !== fingerprint(e)) return false;
+      }
+      // 내 마지막 사건이 서버 기록에 없으면 (기록이 잘렸다) 이어 붙일 수 없다
+      return mine.length === 0 || byId.has(maxMine);
+    };
+
     const clearTurn = () => {
       if (turnTimer) clearTimeout(turnTimer);
       turnTimer = null;
@@ -323,6 +366,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       if (duo && !host.api.act) return false;
       // 이미 이 판을 더 앞서 진행 중이면 그대로 둔다 (늦게 온 판 시작 응답 등)
       if (cur && cur.round === round && mode !== 'resync' && nOf(cur.state) >= solo.n) return false;
+      const before = cur;
       stop();
       let s = state as S;
       const log: Entry[] = [];
@@ -346,8 +390,23 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       };
       prune(duo ? null : round);
       writeLog();
-      // 이어 붙인 행동이 있으면(새로고침) 그 사이의 연출은 건너뛴다. 판 시작이면 평소처럼 (나눠 주기 · AI 의 첫 수)
-      show(cur, log.length > 0 || mode === 'resync' ? 'jump' : 'push');
+      const was = before && before.round === round && before.seat === seat && before.row ? before : null;
+      const ahead = was ? solo.n - nOf(was.state) : 0;
+      if (was && mode === 'resync' && !log.length && ahead === 0 && print(was.state, seat) === print(s, seat)) {
+        // 화면에 보이는 것과 같은 상태다 (상대가 나가 혼자 하는 판으로 넘어가는 때 등): 화면은 건드리지 않는다 (하던 연출이 끊기지 않게)
+        const mine = !engine.done(s) && (engine.pending(s) as number[]).includes(seat);
+        const iso = duo ? was.row.turn_deadline : mine ? new Date(Date.now() + TURN + 3000).toISOString() : null;
+        cur.row = { ...was.row, turn_deadline: iso };
+        cur.priv = was.priv;
+        if (duo) cur.prints.set(solo.n, pubPrint(engine.view(s).public));
+        host.setDeadline(iso);
+        host.refresh();
+      } else {
+        // 이어 붙인 행동이 있으면(새로고침) 그 사이의 연출은 건너뛴다. 판 시작이면 평소처럼 (나눠 주기 · AI 의 첫 수).
+        // 다시 맞출 때도 건너뛰지만, 서버가 내 화면에서 몇 걸음만 앞서 있으면 (시간 초과로 대신 뒀다 · 나간 자리를 AI 가 뒀다) 그 걸음은 연출로 보여 준다
+        const smooth = !!was && mode === 'resync' && !log.length && ahead > 0 && ahead <= AHEAD_MAX && continues(was.state, s);
+        show(cur, log.length > 0 || (mode === 'resync' && !smooth) ? 'jump' : 'push');
+      }
       if (engine.done(s)) void send();
       kick();
       return true;
@@ -641,7 +700,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       syncing = true;
       stop();
       try {
-        const r = await host.api.sync();
+        const r = await syncOnce();
         if (!disposed) adopt(r.state, r.round, 'resync', !!r.duo);
       } catch (e) {
         if (isGone(e)) {
@@ -654,8 +713,11 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
     };
 
     /** 이 판을 기기에서 이어 둘 수 있게 전체 상태를 받아 온다 (판 시작 응답을 못 받았거나 새로고침한 경우) */
-    const wantSync = (round: number, delay: number) => {
+    const wantSync = (round: number, delay: number, tries = 0) => {
+      // 첫 시도만 조작을 막는다. 다시 받아 보는 동안에는 서버 진행 그대로 둘 수 있다
+      const hold = tries === 0;
       const end = () => {
+        if (!hold) return;
         wanted = Math.max(0, wanted - 1);
         // 조작을 다시 켠다 (받았으면 adopt 가 이미 새 상태를 넣었다)
         if (!wanted && !disposed) host.refresh();
@@ -665,22 +727,44 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         if (Date.now() - lastSyncTry < 1500) return end();
         lastSyncTry = Date.now();
         syncing = true;
-        host.api.sync().then(
+        syncOnce().then(
           (r) => {
             syncing = false;
             if (!disposed && (!cur || cur.round !== r.round)) adopt(r.state, r.round, 'sync', !!r.duo);
             end();
           },
-          () => {
-            // 받지 못하면 서버 진행 그대로 (행동은 하나씩 서버로 간다)
+          (e) => {
+            // 받지 못하면 (오류 · 5초 안에 답이 없음) 서버 진행 그대로 (행동은 하나씩 서버로 간다): 조작은 바로 풀고, 뒤에서 두 번 더 받아 본다
             syncing = false;
             end();
+            if (!isGone(e) && tries < 2 && !disposed) setTimeout(() => !disposed && !cur && wantSync(round, 0, tries + 1), 2000);
           },
         );
       };
-      wanted++;
+      if (hold) wanted++;
       if (delay > 0) setTimeout(go, delay);
       else go();
+    };
+
+    /** 지금 자리에 앉아 있는 사람 수 */
+    const humansNow = () => host.get().seats.filter((x) => x.user_id && !x.left_game).length;
+    let loneFor: Cur | null = null;
+    /**
+     * (사람이 둘인 판) 상대가 나갔다: 서버 상태를 받아 혼자 하는 판으로 넘어간다.
+     * 서버는 이 sync 를 받으면 그 판의 마감을 혼자 하는 판처럼 길게 바꾼다 → 내 차례 시간은 여기서부터 기기에서 잰다 (arm)
+     */
+    const goLone = async (c: Cur) => {
+      if (loneFor === c) return;
+      loneFor = c;
+      // 보내던 내 행동이 서버에 닿기를 잠깐 기다린다
+      for (let i = 0; i < 60 && cur === c && c.outbox.length && !disposed; i++) await sleep(50);
+      for (let k = 0; k < 5 && !disposed; k++) {
+        if (cur !== c || !c.duo || humansNow() > 1) return;
+        await resync();
+        if (cur !== c) return;
+        // 다른 sync 가 돌고 있었거나 받지 못했다: 잠깐 뒤 다시
+        await sleep(800);
+      }
     };
 
     const soloNOf = (s: StateRow | null) => {
@@ -817,6 +901,12 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           }
         }
         drop();
+      },
+
+      onSeats() {
+        const c = cur;
+        if (!c || !c.duo || disposed || humansNow() > 1) return;
+        void goLone(c);
       },
 
       notice() {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng, type GameEvent, type SeatInfo } from './engine.ts';
 import { holdem, type HoldemPublic, type HoldemState } from './holdem.ts';
-import { rewindHoldem } from './holdem-rewind.ts';
+import { holdemRoundStart, rewindHoldem } from './holdem-rewind.ts';
 
 /** 화면에 그리는 값만 */
 const shown = (p: HoldemPublic) => ({
@@ -86,5 +86,22 @@ describe('홀덤 되돌리기 (한 동작씩 보여 주기)', () => {
     const seats: SeatInfo[] = [0, 1, 2].map((i) => ({ seat: i, kind: 'ai', name: `P${i}`, stack: null }));
     const pub = holdem.view(holdem.newRound({ seats, baseUnit: 100, carry: null, rng })).public;
     expect(() => rewindHoldem(pub, pub.events)).toThrow();
+  });
+
+  it('판 시작 묶음인지 미리 가른다 (화면은 그때 되돌리기를 부르지 않는다). 그 밖의 묶음은 모두 되돌려진다', () => {
+    let tried = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const snaps = playOut(seed);
+      expect(holdemRoundStart(snaps[0].events)).toBe(true);
+      for (let a = 0; a < snaps.length - 1; a++) {
+        const ev = fresh(snaps[snaps.length - 1], maxId(snaps[a]));
+        if (!ev.length || ev[0].id !== maxId(snaps[a]) + 1) continue;
+        expect(holdemRoundStart(ev)).toBe(false);
+        expect(() => rewindHoldem(snaps[snaps.length - 1], ev, snaps[a])).not.toThrow();
+        tried++;
+      }
+    }
+    expect(tried).toBeGreaterThan(100);
+    expect(holdemRoundStart([])).toBe(false);
   });
 });

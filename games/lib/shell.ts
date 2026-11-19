@@ -224,6 +224,8 @@ export interface GameUI<P = any, Q = any> {
    * 끝나기 전에는 그 사람 차례로 보여 준다 (맞고). 없으면(undefined) 상태의 차례 그대로. 자리 줄의 '차례' 표시와 타이머 막대에 쓴다
    */
   turnSeat?(t: TableCtx<P, Q>): number | null | undefined;
+  /** 방 화면을 떠날 때 (나가기 · 방이 사라짐): 게임이 따로 걸어 둔 타이머 등을 치운다 (모듈 상태는 방을 옮겨도 남는다) */
+  leave?(): void;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, s: string) => root.querySelector<T>(s)!;
@@ -760,6 +762,29 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       },
     },
   });
+  // Phaser 는 시작할 때 document 에 visibilitychange 리스너를 걸고 (VisibilityHandler) 게임을 없애도 떼지 않는다
+  // → 방에 들어올 때마다 하나씩 쌓인다 (끝난 게임도 붙들고 있다). 시작하는 동안 건 것을 적어 두었다가 나갈 때 뗀다
+  const phaserDocListeners: { type: string; fn: EventListenerOrEventListenerObject; opts?: boolean | AddEventListenerOptions }[] = [];
+  let phaserBlur: typeof window.onblur = null;
+  let phaserFocus: typeof window.onfocus = null;
+  {
+    const g = game as unknown as { start(): void };
+    const start0 = g.start;
+    g.start = function (this: unknown) {
+      const add0 = document.addEventListener;
+      document.addEventListener = function (this: Document, type: string, fn: EventListenerOrEventListenerObject, opts?: boolean | AddEventListenerOptions) {
+        if (/visibilitychange$/.test(type)) phaserDocListeners.push({ type, fn, opts });
+        return add0.call(this, type, fn, opts);
+      } as typeof document.addEventListener;
+      try {
+        start0.call(this);
+      } finally {
+        document.addEventListener = add0;
+        phaserBlur = window.onblur;
+        phaserFocus = window.onfocus;
+      }
+    };
+  }
   // 테이블 칸 크기가 바뀌면(아래 조작부 줄 수가 바뀌는 등) 캔버스도 맞춘다 — Phaser는 창 크기만 따라가므로
   const ro = new ResizeObserver(() => {
     const w = Math.round(stage.clientWidth);
@@ -1232,11 +1257,22 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       tidyRound = round;
       paintControls();
     }
+    // 결과 창이 떴다: 정리 연출이 없는 게임(룰렛)은 여기서 바로 레디 버튼 (지갑을 다시 읽지 못해도 버튼은 나와야 한다)
+    else paintControls();
     $(d, '[data-x]').addEventListener('click', () => {
       d.remove();
       if (tidy === 'wait' && tidyRound === round) runTidy(round);
+      else paintControls();
     });
-    void m.wallet.ensureWallet().then((w) => ((wallet = w), paintMoney(), paintControls()));
+    void m.wallet.ensureWallet().then(
+      (w) => {
+        if (closed) return;
+        wallet = w;
+        paintMoney();
+        paintControls();
+      },
+      () => undefined,
+    );
   };
 
   /** 컷인 하나 띄우기 */
@@ -1868,6 +1904,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         cleanup();
         return void showLobby(ui, m, me);
       }
+      // 기기에서 진행하는 판: 상대가 나갔으면 바로 혼자 하는 판으로 넘어간다
+      try {
+        local?.onSeats?.();
+      } catch (e) {
+        console.warn('local', e);
+      }
       paint();
     },
     onState: (s) => {
@@ -1989,7 +2031,19 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }
     ro.disconnect();
     unbusy();
+    if (walletTimer) clearTimeout(walletTimer);
+    if (privWaitTimer) clearTimeout(privWaitTimer);
+    try {
+      ui.leave?.();
+    } catch (e) {
+      console.warn('leave', e);
+    }
     game.destroy(true);
+    // Phaser 가 떼지 않고 남기는 것들 (위 참고)
+    for (const l of phaserDocListeners) document.removeEventListener(l.type, l.fn, l.opts);
+    phaserDocListeners.length = 0;
+    if (phaserBlur && window.onblur === phaserBlur) window.onblur = null;
+    if (phaserFocus && window.onfocus === phaserFocus) window.onfocus = null;
   }
 
   $(root, '#leave').addEventListener('click', async () => {

@@ -3,7 +3,7 @@ import { HOLDEM_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { HoldemPrivate, HoldemPublic } from '../../../supabase/functions/_shared/holdem.ts';
-import { rewindHoldem } from '../../../supabase/functions/_shared/holdem-rewind.ts';
+import { holdemRoundStart, rewindHoldem } from '../../../supabase/functions/_shared/holdem-rewind.ts';
 import type PhaserNS from 'phaser';
 
 type Ctx = TableCtx<HoldemPublic, HoldemPrivate>;
@@ -224,7 +224,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
   },
 
   // 한 동작씩: 베팅 → 공용 카드 → 다음 베팅 순서로, 앞 동작의 카드 연출이 끝난 뒤에 다음 동작 (판 시작은 예전 방식)
-  rewind: (next, events) => rewindHoldem(next, events, lastPub),
+  // (판 시작 묶음은 되돌리지 않는다 → null: 셸이 예전 방식으로 보여 준다)
+  rewind: (next, events) => (holdemRoundStart(events) ? null : rewindHoldem(next, events, lastPub)),
 
   // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
   replay(ev, t: Ctx) {

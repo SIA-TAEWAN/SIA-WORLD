@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng, type GameEvent, type SeatInfo } from './engine.ts';
 import { poker, type PokerPublic, type PokerState } from './poker.ts';
-import { rewindPoker } from './poker-rewind.ts';
+import { bettingRound, pokerRoundStart, rewindPoker } from './poker-rewind.ts';
 
 /** 화면에 그리는 값만 */
 const shown = (p: PokerPublic) => ({
@@ -104,5 +104,46 @@ describe('세븐포커 되돌리기 (한 동작씩 보여 주기)', () => {
     const seats: SeatInfo[] = [0, 1].map((i) => ({ seat: i, kind: 'ai', name: `P${i}`, stack: null }));
     const pub = poker.view(poker.newRound({ seats, baseUnit: 100, carry: null, rng })).public;
     expect(() => rewindPoker(pub, pub.events)).toThrow();
+  });
+
+  it('서버가 공개한 상태는 round 칸이 방의 판 번호다 (몇 구가 아니다): 그래도 되돌린다 (몇 구인지는 단계·카드 수로 센다)', () => {
+    let checked = 0;
+    let deals = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const stacks = seed % 3 === 0 ? [300, 5000, 800, null] : seed % 3 === 1 ? [null, null, null, null] : [2000, 400];
+      const snaps = playOut(seed, stacks);
+      // 몇 구인지 다시 센 값이 엔진의 값과 늘 같다
+      for (const p of snaps) expect(bettingRound(p), `seed ${seed} ${p.phase}`).toBe(p.round);
+      // 판 진행기(runner)가 공개할 때처럼 round 칸을 방의 판 번호로 덮어쓴다
+      const roomRound = 1 + (seed % 9);
+      const served = snaps.map((p) => ({ ...p, round: roomRound }));
+      for (let a = 1; a < snaps.length - 1; a++) {
+        for (const b of [a + 1, Math.min(snaps.length - 1, a + 6), snaps.length - 1]) {
+          const ev = fresh(served[b], maxId(served[a]));
+          if (!ev.length || ev[0].id !== maxId(served[a]) + 1 || pokerRoundStart(ev)) continue;
+          const frames = rewindPoker(served[b], ev, served[a]);
+          expect(frames).toHaveLength(ev.length);
+          deals += ev.filter((e) => e.t === 'deal').length;
+          for (let k = a; k < b; k++) {
+            const idx = ev.findIndex((e) => e.id === maxId(snaps[k]) + 1);
+            // 화면 값은 엔진이 실제로 지나온 화면과 같다 (round 도 몇 구로 돌아와 있다)
+            expect(shown(frames[idx]), `seed ${seed} ${a}→${b} @${k} (${ev[idx].t})`).toEqual(shown({ ...snaps[k], winners: [], showdown: null }));
+            checked++;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(500);
+    expect(deals).toBeGreaterThan(100);
+  });
+
+  it('판 시작 묶음인지 미리 가른다 (화면은 그때 되돌리기를 부르지 않는다)', () => {
+    const snaps = playOut(4, [null, null, null]);
+    expect(pokerRoundStart(snaps[0].events)).toBe(true);
+    // 판 시작 뒤의 사건만 든 묶음은 아니다
+    const later = fresh(snaps[snaps.length - 1], maxId(snaps[0]));
+    expect(later.length).toBeGreaterThan(5);
+    expect(pokerRoundStart(later)).toBe(false);
+    expect(pokerRoundStart([])).toBe(false);
   });
 });

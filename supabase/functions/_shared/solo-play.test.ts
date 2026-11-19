@@ -112,6 +112,10 @@ function screen(
     noAct?: boolean;
     /** 서버 왕복에 걸리는 시간 흉내 (ms) */
     latMs?: number;
+    /** sync 를 기다려 주는 시간 (ms) */
+    syncMs?: number;
+    /** 참을 돌려주면 그 sync 는 답이 오지 않는다 (걸려 있다) */
+    hang?: () => boolean;
   } = {},
 ) {
   /** 화면에 들어온 상태 (기기 진행 · 서버 공개 모두) */
@@ -143,7 +147,7 @@ function screen(
     roomId: 'r1',
     get: () => ({ room: sv.room as never, seats: sv.seats as never, mySeat: mySeat() }),
     api: {
-      sync: () => (calls.sync++, wrap(() => sv.runner.sync('r1', user, { duo: true }))),
+      sync: () => (calls.sync++, o.hang?.() ? new Promise<never>(() => undefined) : wrap(() => sv.runner.sync('r1', user, { duo: true }))),
       ...(o.noAct
         ? {}
         : {
@@ -196,7 +200,7 @@ function screen(
     refresh: () => undefined,
     toast: (m) => void calls.toast.push(m),
   };
-  play = soloPlay(matgo, { thinkMs: 0, turnMs: o.turnMs ?? 60_000, storage: o.storage ?? null })(host);
+  play = soloPlay(matgo, { thinkMs: 0, turnMs: o.turnMs ?? 60_000, storage: o.storage ?? null, ...(o.syncMs ? { syncMs: o.syncMs } : {}) })(host);
   // 실시간: 서버가 공개한 상태 → 진행기가 거른 뒤 화면으로
   const dropped: StateRow[] = [];
   const onPub = (s: StateRow, privs: PrivateRow[]) => {
@@ -481,6 +485,27 @@ describe('기기에서 진행하는 혼자 맞고 (화면 쪽 진행기)', () =>
     sc.off();
   });
 
+  it('sync 가 걸려 답이 없으면: 제한 시간 뒤 실패로 치고 조작을 풀어 준다. 뒤에서 다시 받아 와 기기 진행으로 넘어간다', async () => {
+    const sv = server(['u1'], 102);
+    let hung = 0;
+    const sc = screen(sv, 'u1', { syncMs: 120, hang: () => hung++ === 0 });
+    await sv.runner.start('r1', 'u1'); // 응답은 화면에 전하지 않는다 → 공개 상태를 보고 sync
+    await until(() => sc.calls.sync === 1, 3000);
+    // 받아 오는 동안은 조작을 막는다 (지금 보이는 것은 서버에 저장된 옛 상태일 수 있다)
+    expect(sc.play.waiting()).toBe(true);
+    // 답이 없다: 제한 시간이 지나면 풀린다 (서버 진행 그대로 둘 수 있다)
+    await until(() => !sc.play.waiting(), 1000);
+    expect(sc.shown.some((x) => x.local)).toBe(false);
+    expect(sc.play.act({ type: 'flip' })).toBeNull();
+    // 뒤에서 다시 받아 온다 (이때는 조작을 막지 않는다) → 기기 진행으로
+    await until(() => sc.calls.sync === 2, 4000);
+    expect(sc.play.waiting()).toBe(false);
+    await until(() => sc.shown.some((x) => x.local));
+    await finishRound(sv, sc);
+    expect(sv.results.has(1)).toBe(true);
+    sc.off();
+  }, 20_000);
+
   it('사람이 둘인 방: 행동을 하나씩 보낼 길이 없는 화면은 기기에서 진행하지 않는다 (행동은 서버로, 서버 상태는 그대로 화면에)', async () => {
     const sv = server(['u1', 'u2'], 111);
     const sc = screen(sv, 'u1', { noAct: true });
@@ -584,7 +609,7 @@ describe('기기에서 먼저 진행하는 2인 맞고 (화면 쪽 진행기)', 
     bus.lose = () => k++ % 3 === 0;
     await finishDuo(sv, [a, b]);
     expect(a.calls.sync + b.calls.sync).toBeGreaterThan(1);
-    expect(a.jumps.length + b.jumps.length).toBeGreaterThan(0);
+    // (서버가 한두 걸음 앞선 것을 따라잡을 때는 건너뛰지 않고 그 걸음을 연출로 넣는다 → 아래 '서버가 한두 걸음만 앞서 있으면')
     expect([...a.calls.act, ...b.calls.act].every((x) => x.ok)).toBe(true);
     expect(sv.results.size).toBe(1);
     for (const sc of [a, b]) expect(sc.state()?.public_state?.result).toBeTruthy();
@@ -685,6 +710,79 @@ describe('기기에서 먼저 진행하는 2인 맞고 (화면 쪽 진행기)', 
     expect(a.state()?.public_state?.result).toBeTruthy();
     a.off();
   }, 30_000);
+
+  it('서버가 한두 걸음만 앞서 있으면 (시간 초과로 서버가 대신 뒀다) 건너뛰지 않고 그 걸음을 연출로 보여 준다 (두 화면 모두)', async () => {
+    const { sv, a, b } = await begin(17);
+    const me = [a, b].find((x) => x.myTurn())!;
+    await me.host.settled();
+    const n0 = nOf(me);
+    const syncs = a.calls.sync + b.calls.sync;
+    // 아무도 두지 않았다 → 서버가 시간 초과로 대신 둔다 (알림은 없다: 공개 상태만 온다)
+    await sv.runner.timeout('r1');
+    const n1 = soloOf(sv.deck.state)!.n;
+    expect(n1).toBe(n0 + 1);
+    await until(() => nOf(a) === n1 && nOf(b) === n1, 3000);
+    expect(a.calls.sync + b.calls.sync).toBe(syncs + 2);
+    for (const sc of [a, b]) {
+      // 연출 없이 건너뛰지 않았다: 실시간으로 받은 것과 같은 길(push)로 들어왔다
+      expect(sc.jumps).toHaveLength(0);
+      expect(sc.state()?.local).toBe(true);
+      const want = JSON.parse(JSON.stringify(matgo.view(sv.deck.state as never).public));
+      delete want.result;
+      const p = { ...(sc.state()!.public_state as Record<string, unknown>) };
+      for (const key of ['round', 'result', 'deltas', 'soloN']) delete p[key];
+      expect(JSON.parse(JSON.stringify(p))).toEqual(want);
+    }
+    await finishDuo(sv, [a, b]);
+    expect(sv.results.size).toBe(1);
+    a.off();
+    b.off();
+  }, 30_000);
+
+  it('상대가 내 차례에 나가면: 자리 변화를 보고 바로 sync 해 혼자 하는 판으로 넘어간다. 화면은 그대로이고 내 차례 시간은 기기에서 잰다 (서버 마감은 30분)', async () => {
+    const { sv, a, b } = await begin(18, { turnMs: 150 });
+    await finishDuoSome(sv, [a, b], 3);
+    // u1 차례가 될 때까지 u2 가 둔다
+    const rng = seededRng(4);
+    for (let i = 0; i < 200 && !a.myTurn(); i++) {
+      await b.host.settled();
+      if (b.myTurn()) b.play.act(b.pick(rng));
+      await sleep(3);
+    }
+    expect(a.myTurn()).toBe(true);
+    await until(() => [a, b].every((x) => x.calls.act.every((r) => r.ok)), 3000);
+    await a.host.settled();
+    const n0 = nOf(a);
+    const shown0 = a.shown.length;
+    const syncs = a.calls.sync;
+    // 서버 마감은 아직 차례 시간(20초)
+    const lastDeadline = () => Date.parse(sv.published[sv.published.length - 1].turn_deadline!);
+    expect(lastDeadline() - Date.now()).toBeLessThan(21_000);
+    // u2 가 나갔다 (내 차례라 서버는 아무것도 두지 않는다) → 화면이 자리 변화를 본다
+    await b.play.flush('leave');
+    b.off();
+    sv.seats[1].left_game = true;
+    a.play.onSeats!();
+    await until(() => a.calls.sync === syncs + 1 && soloOf(sv.deck.state)!.duo === undefined, 3000);
+    // 서버: 혼자 하는 판이 됐다 (마감 30분). 판은 그대로
+    expect(soloOf(sv.deck.state)!.n).toBe(n0);
+    expect(lastDeadline() - Date.now()).toBeGreaterThan(25 * 60_000);
+    // 화면: 건너뛰지도 새로 넣지도 않았다 (같은 판이다). 내 차례 마감은 기기 기준으로 다시 잡혔다
+    await sleep(20);
+    expect(a.jumps).toHaveLength(0);
+    expect(a.shown.length).toBe(shown0);
+    expect(nOf(a)).toBe(n0);
+    const dl = Date.parse(a.state()!.turn_deadline!);
+    expect(dl - Date.now()).toBeLessThan(4000);
+    expect(dl - Date.now()).toBeGreaterThan(0);
+    // 그 시간이 지나면 기기가 내 자동 행동을 두고 (서버가 아니다), 나간 자리는 기기 AI 가 이어 둔다 → 끝까지 가서 서버가 정산한다
+    await until(() => nOf(a) > n0, 3000);
+    await until(() => sv.room.status === 'waiting', 20_000);
+    expect(a.calls.replay.length).toBeGreaterThan(0);
+    expect(sv.results.size).toBe(1);
+    await until(() => !!a.state()?.public_state?.result, 3000);
+    a.off();
+  }, 40_000);
 
   /** 몇 수만 둔다 */
   async function finishDuoSome(sv: ReturnType<typeof server>, screens: ReturnType<typeof screen>[], count: number) {
