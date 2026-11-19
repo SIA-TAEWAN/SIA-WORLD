@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { zodiacFaceUrl } from '../assets';
+import { artUrl, zodiacFaceUrl } from '../assets';
+import { hasArt } from '../scenes/art';
 import { LEADERS, ZODIAC_IDS, leaderOf, type ZodiacId } from '../data/balance';
 import { REGIONS, REGION_NAMES, UPGRADES, groundOf, modsOf, regionStars, upgradeCost, type UpgradeKey } from '../data/growth';
 import { ENDLESS_ID, STAGES, endlessStage, nextStage, stageOf, stagesOf, type StageDef } from '../data/stages';
@@ -122,6 +123,7 @@ export function showMain() {
   const eOpen = endlessOpen(profile);
   const root = screen(`
     <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><div class="spacer"></div><div class="pills">${starPill()}${coinsPill()}</div></div>
+    ${hasArt('main') ? `<img class="hero" src="${artUrl('main')}" alt="" />` : ''}
     <div class="title"><h1>시아돌격대</h1><p>숫자 문을 골라 대원을 불리고 요괴를 뚫어라!</p></div>
     <div class="card">
       <h3>대장 <small>대장과 같은 띠 대원들이 함께 달려요</small></h3>

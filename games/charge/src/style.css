@@ -171,3 +171,4 @@ button, input { font: inherit; color: inherit; }
 .help b { font-weight: normal; color: var(--accent); }
 .help b.blue { color: var(--team-a); }
 .help b.red { color: var(--pink); }
+.hero { display: block; width: 100%; max-width: 540px; margin: 0 auto -18px; flex: none; }

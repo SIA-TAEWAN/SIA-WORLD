@@ -6,6 +6,7 @@ import { autopilot } from '../game/autopilot';
 import { CRATE_HALF, STEP, isGood, obstacleX, setTarget, step, type Gate, type Horde, type RunState, type SimEvent } from '../game/sim';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
 import { COLOR } from '../theme';
+import { ART_FILES, ART_SIZE, GATE_SLICE, hasArt, type OptionalArt } from './art';
 
 /** 기준 화면 크기 (세로 9:16) */
 export const W = 720;
@@ -35,6 +36,8 @@ export interface SceneHooks {
 
 interface GateView {
   box: Phaser.GameObjects.Graphics;
+  /** 문 틀 그림 (gate.png 가 있을 때) */
+  frame: Phaser.GameObjects.NineSlice | null;
   label: Phaser.GameObjects.Text;
   text: string;
   good: boolean;
@@ -81,6 +84,9 @@ export class GameScene extends Phaser.Scene {
   private troopScale = 1;
   /** 터지는 연출 횟수 제한 */
   private popBudget = 0;
+  /** 전용 그림 (art.ts): 이번 화면에 쓴 것만 남기고 나머지는 지운다 */
+  private sprites = new Map<string, Phaser.GameObjects.Image>();
+  private seen = new Set<string>();
   private burnLost = 0;
   private burnShown = -1;
   private ground = GROUND.field;
@@ -101,6 +107,7 @@ export class GameScene extends Phaser.Scene {
     this.gateViews.clear();
     this.hordeViews.clear();
     this.crateLabels.clear();
+    this.sprites.clear();
     this.crowd = [];
     this.bullets = [];
     this.bossKey = '';
@@ -116,6 +123,7 @@ export class GameScene extends Phaser.Scene {
     const bosses = this.run.endless ? Object.values(BOSS_ART) : [bossArt(this.run.boss.kind, this.run.stage.region)];
     for (const b of bosses) this.load.image(b.art, artUrl(b.art));
     for (const n of [this.ground.tile, 'p-shuriken', 'fx-pop', 'fx-coin']) this.load.image(n, artUrl(n));
+    for (const n of ART_FILES) if (n !== 'main') this.load.image(n, artUrl(n));
   }
 
   create() {
@@ -223,12 +231,31 @@ export class GameScene extends Phaser.Scene {
     if (s.t < s.powerUntil) g.fillStyle(COLOR.primary, 0.35 + 0.15 * Math.sin(now * 12)).fillEllipse(CX + s.x, CROWD_Y + 40, crowdRadius(s.troops) * 2 + 60, 130);
 
     this.things.clear();
+    this.seen.clear();
     this.drawObstacles(now);
     this.drawCrates();
     this.drawGates();
     this.drawHordes(now);
     this.drawCrowd(now);
     this.drawBoss(now);
+    for (const [k, img] of this.sprites) {
+      if (this.seen.has(k)) continue;
+      img.destroy();
+      this.sprites.delete(k);
+    }
+  }
+
+  /** 전용 그림이 있으면 그 그림을 놓고 true (없으면 false → 코드 그림) */
+  private art(name: OptionalArt, id: string, x: number, y: number, depth: number, w = ART_SIZE[name][0], h = ART_SIZE[name][1]) {
+    if (!hasArt(name) || !this.textures.exists(name)) return null;
+    const key = `${name}:${id}`;
+    let img = this.sprites.get(key);
+    if (!img) {
+      img = this.add.image(x, y, name);
+      this.sprites.set(key, img);
+    }
+    this.seen.add(key);
+    return img.setPosition(x, y).setDisplaySize(w, h).setDepth(depth);
   }
 
   private drawObstacles(now: number) {
@@ -238,6 +265,11 @@ export class GameScene extends Phaser.Scene {
       if (y < -80 || y > H + 80) continue;
       const x = CX + obstacleX(this.run, o);
       const half = OBSTACLES[o.kind].half;
+      const img = this.art(`o-${o.kind}` as OptionalArt, String(o.id), x, y, 950, half * 2, ART_SIZE[`o-${o.kind}` as OptionalArt][1]);
+      if (img) {
+        if (o.kind === 'blade') img.setDisplaySize(half * 2, half * 2).setAngle((now * 520) % 360);
+        continue;
+      }
       if (o.kind === 'log') {
         g.fillStyle(0x9a6a3a, 1).fillRoundedRect(x - half, y - 26, half * 2, 52, 24);
         g.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(x - half, y - 26, half * 2, 52, 24);
@@ -272,9 +304,11 @@ export class GameScene extends Phaser.Scene {
       }
       const x = CX + c.x;
       const h = CRATE_HALF;
+      if (!this.art('crate', String(c.id), x, y - h * 0.8, 950, h * 2, h * 1.6)) {
       g.fillStyle(0xd9a05b, 1).fillRect(x - h, y - h * 1.6, h * 2, h * 1.6);
       g.lineStyle(5, COLOR.outline, 1).strokeRect(x - h, y - h * 1.6, h * 2, h * 1.6);
       g.lineStyle(4, COLOR.outline, 0.7).lineBetween(x - h, y - h * 0.8, x + h, y - h * 0.8);
+      }
       g.fillStyle(COLOR.outline, 1).fillRect(x - h, y + 6, h * 2, 10);
       g.fillStyle(COLOR.primary, 1).fillRect(x - h + 2, y + 8, Math.max(0, (h * 2 - 4) * (c.hp / CRATE_HP)), 6);
       const icon = c.reward.kind === 'troops' ? `+${c.reward.v}` : c.reward.kind === 'coins' ? '엽전' : '⚡';
@@ -293,6 +327,7 @@ export class GameScene extends Phaser.Scene {
       if (gate.used || y < -80 || y > H + 80) {
         if (v) {
           v.box.destroy();
+          v.frame?.destroy();
           v.label.destroy();
           this.gateViews.delete(gate.id);
         }
@@ -303,6 +338,7 @@ export class GameScene extends Phaser.Scene {
       if (!v) {
         v = {
           box: this.add.graphics().setDepth(1000),
+          frame: hasArt('gate') && this.textures.exists('gate') ? this.add.nineslice(0, 0, 'gate', undefined, 256, 140, GATE_SLICE, GATE_SLICE, GATE_SLICE, GATE_SLICE).setScale(0.5).setDepth(1000) : null,
           label: this.add
             .text(0, 0, text, { fontFamily: FONT, fontSize: gate.rail ? '30px' : '44px', color: '#ffffff', stroke: '#2a1a10', strokeThickness: 7 })
             .setOrigin(0.5)
@@ -321,6 +357,16 @@ export class GameScene extends Phaser.Scene {
       const h = gate.rail ? 46 : 70;
       const w = gate.x1 - gate.x0;
       v.box.clear();
+      if (v.frame) {
+        // 흰 문 틀 그림을 좋은 문은 파랑, 나쁜 문은 빨강으로 물들여 폭에 맞게 늘인다
+        v.frame
+          .setSize((w - 6) * 2, h * 2)
+          .setPosition(CX + (gate.x0 + gate.x1) / 2, y - h / 2)
+          .setTint(good ? COLOR.teamA : COLOR.teamB)
+          .setAlpha(gate.rail ? 0.85 : 1);
+        v.label.setPosition(CX + (gate.x0 + gate.x1) / 2, y - h / 2);
+        continue;
+      }
       v.box.fillStyle(good ? COLOR.teamA : COLOR.teamB, gate.rail ? 0.75 : 0.85);
       v.box.fillRoundedRect(CX + gate.x0 + 3, y - h, w - 6, h, 12);
       v.box.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(CX + gate.x0 + 3, y - h, w - 6, h, 12);
@@ -361,7 +407,9 @@ export class GameScene extends Phaser.Scene {
         for (const i of v.imgs) i.setVisible(false);
         const cx = CX + (h.x0 + h.x1) / 2;
         const w = h.x1 - h.x0 - 20;
-        if (h.kind === 'water') {
+        if (this.art(h.kind === 'water' ? 'h-water' : 'h-bamboo', String(h.id), cx, y - 20, 1800, w, ART_SIZE[h.kind === 'water' ? 'h-water' : 'h-bamboo'][1])) {
+          // 전용 그림
+        } else if (h.kind === 'water') {
           v.hide.fillStyle(COLOR.skyMid, 0.9).fillEllipse(cx, y - 20, w, 70);
           v.hide.lineStyle(4, COLOR.outline, 1).strokeEllipse(cx, y - 20, w, 70);
         } else {
