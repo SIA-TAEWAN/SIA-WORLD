@@ -83,8 +83,11 @@ export interface VillageApi {
   kind: 'supabase' | 'local';
   /** 지금의 서버 시각 (ms). 마지막 답에 실려 온 서버 시각으로 기기 시계와의 차이를 맞춘 값 */
   now(): number;
-  /** 내 마을 (없으면 만든다). 끝난 짓기 · 업그레이드가 마무리된 상태 */
-  load(): Promise<VillageState>;
+  /**
+   * 내 마을 (없으면 만든다). 끝난 짓기 · 업그레이드가 마무리된 상태.
+   * entry: 게임에 처음 들어올 때만 true (관리자 계정의 엽전 · 시아코인 10,000 맞추기는 그때 한 번만). 1분마다 · 돌아올 때 · 다시 읽을 때는 false
+   */
+  load(entry?: boolean): Promise<VillageState>;
   /** 아래는 모두 새 상태를 돌려준다. 서버가 거절하면 ApiError(까닭), 통신 문제면 Error('network') */
   build(type: string, x: number, y: number): Promise<{ state: VillageState; id: string }>;
   move(id: string, x: number, y: number): Promise<VillageState>;
@@ -340,7 +343,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
   return {
     kind: 'supabase',
     now: () => Math.floor(deviceNow() + offset),
-    load: async () => cleanState(await call('village_state')),
+    load: async (entry = false) => cleanState(await call('village_state', { p_entry: entry })),
     async build(type, x, y) {
       const d = await call('village_build', { p_type: type, p_x: x, p_y: y });
       return { state: cleanState(d), id: String(d.id ?? '') };
@@ -450,7 +453,7 @@ function makeTown(now: number): VillageState {
     ['well', 11, 14, 1], ['jangseung', 7, 13, 1], ['sotdae', 14, 14, 1], ['haystack', 4, 5, 1], ['scarecrow', 4, 6, 1], ['stonewall', 15, 5, 1], ['bench', 9, 13, 1],
     ['mon_tank1', 13, 7, 1], ['mon_def12', 14, 7, 1], ['gift_rat', 15, 7, 1],
   ];
-  list.forEach(([type, x, y, level], i) => s.buildings.push({ id: `town-${i}`, type, level, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: now - 14 * 3600_000, jobN: 0, banked: 0 }));
+  list.forEach(([type, x, y, level], i) => s.buildings.push({ id: `town-${i}`, type, level, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: now - 14 * 3600_000, jobN: 0, banked: 0, accFrom: 0 }));
   // 하나는 업그레이드 중 (진행 막대)
   const up = s.buildings.find((b) => b.id === 'town-7')!;
   Object.assign(up, { state: 'upgrading', startAt: now - 600_000, finishAt: now + 1200_000 });
@@ -470,7 +473,7 @@ function makeBots(): { id: string; nick: string; state: VillageState }[] {
     s.profile.level = level;
     s.profile.praiseCount = praise;
     s.buildings[0].level = Math.min(10, Math.max(1, Math.floor(level / 3)));
-    list.forEach(([type, x, y, lv], i) => s.buildings.push({ id: `${id}-${i}`, type, level: lv, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0 }));
+    list.forEach(([type, x, y, lv], i) => s.buildings.push({ id: `${id}-${i}`, type, level: lv, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0, accFrom: 0 }));
     s.residents = residents.map(([rid, affinity]) => ({ id: rid, affinity, building: null, gifted: false }));
     refresh(s, 1000 + level);
     return { id, nick, state: s };

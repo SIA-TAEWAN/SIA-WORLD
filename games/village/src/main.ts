@@ -45,7 +45,8 @@ async function start() {
   // 마을은 서버에 있다: 못 읽으면 시작할 수 없다
   try {
     const api = await getApi({ id: user.userId, name: user.nickname });
-    showVillage(api, { id: user.userId, name: user.nickname }, await api.load());
+    // 게임에 들어올 때 한 번만 entry = true (관리자 계정의 시험용 엽전 · 시아코인)
+    showVillage(api, { id: user.userId, name: user.nickname }, await api.load(true));
   } catch {
     failed('마을을 불러오지 못했어요.<br/>잠시 후 다시 시도해 주세요.');
   }

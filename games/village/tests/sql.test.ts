@@ -13,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, 
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -144,7 +144,17 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     // 쌓인 양: 보너스를 넣은 생산량, 잔치와 겹친 시간, 상한
     const n = body('_village_units').replace(/\s+/g, ' ');
     expect(n).toContain("rate := (ty.rate * (public._village_table('rate_mul'))[b.level] / 10)::bigint * (100 + public._village_rate_pct(p_user, p_id)) / 100;");
-    expect(n).toContain('base := greatest(0, floor(extract(epoch from (p_now - frm)))::bigint) * rate / 3600;');
+    // 059: 쌓기 시작한 시각(옮기기 · 배치로 적어 두어도 그대로)부터 최대 시간까지만 쌓인다
+    expect(n).toContain('st := public._village_acc_start(b.banked, b.acc_from, b.last_collected_at);');
+    expect(n).toContain('fin := least(p_now, st + make_interval(secs => cap));');
+    expect(n).toContain('base := greatest(0, floor(extract(epoch from (fin - b.last_collected_at)))::bigint) * rate / 3600;');
+    expect(n).toContain('greatest(0, floor(extract(epoch from (least(fin, p.feast_until) - greatest(b.last_collected_at, p.feast_from))))::bigint)');
+    expect(n).toContain('frm := b.last_collected_at + (p_now - fin);');
+    expect(body('_village_acc_start')).toContain('case when p_banked > 0 then coalesce(p_acc, p_last) else p_last end');
+    const bk = body('_village_bank').replace(/\s+/g, ' ');
+    expect(bk).toContain('banked = u.units, acc_from = public._village_acc_start(b.banked, b.acc_from, b.last_collected_at),');
+    expect(bk).toContain('least(p_now, u.frm + make_interval(secs => ((u.base * 3600 + u.rate - 1) / u.rate)::double precision))');
+    expect(c).toContain('set banked = 0, acc_from = null,');
     expect(n).toContain('extra := over * rate * p.feast_pct / 360000;');
     expect(n).toContain("units := least(b.banked + base + extra, cap::bigint * rate * (100 + public._village_const('bonus_room_pct')::int) / 360000);");
     expect(body('_village_rate_pct').replace(/\s+/g, ' ')).toContain("public._village_const('pavilion_pct')::int + public._village_const('pavilion_pct_per')::int * (pv.level - 1)");
@@ -278,9 +288,11 @@ describe('SQL의 권한 규칙', () => {
     expect(sql).toContain('check (from_user_id <> to_user_id)');
   });
 
-  it('관리자 계정은 들어올 때만 엽전 · 시아코인이 10,000 (052)', () => {
+  it('관리자 계정은 게임에 들어올 때만 엽전 · 시아코인이 10,000 (052 · 059: p_entry 일 때만)', () => {
     const b = body('village_state');
-    expect(b).toContain('if exists (select 1 from public.profiles where id = me and is_admin) then');
+    expect(sql).toContain('drop function if exists public.village_state();');
+    expect(b).toContain('create or replace function public.village_state(p_entry boolean default false) returns jsonb');
+    expect(b).toContain('if coalesce(p_entry, false) and exists (select 1 from public.profiles where id = me and is_admin) then');
     expect(b).toContain("resources = jsonb_set(resources, '{coin}', '10000'::jsonb)");
     expect(b).toContain('update public.wallets set sia_coins = 10000 where user_id = me;');
     // 다른 함수는 관리자를 따로 보지 않는다
@@ -302,6 +314,14 @@ describe('SQL의 권한 규칙', () => {
     // 다른 게임의 표는 읽기만 한다. 디펜스 표는 없을 수도 있다
     expect(st).not.toMatch(/\b(insert|update|delete)\b/);
     expect(st).toContain("if to_regclass('public.defense_stages') is not null then");
+    // 059: 다른 게임의 표 · 함수가 하나 없어도 나머지는 읽는다 (그 기록만 0)
+    for (const t of ['player_points', 'volleyball_rankings', 'race_records', 'survival_profiles', 'wallet_logs', 'roulette_bets']) {
+      const at = st.indexOf(`public.${t}`);
+      expect(at, t).toBeGreaterThan(0);
+      expect(st.slice(at, st.indexOf('end;', at)), t).toContain('exception when undefined_table');
+      expect(st.lastIndexOf('begin', at), t).toBeGreaterThan(st.lastIndexOf('end;', at));
+    }
+    expect(st).toContain("if to_regprocedure('public._survival_map_cleared(uuid, text, text[])') is not null then");
     for (const f of fns) if (f !== '_village_game_stats') expect(body(f), f).not.toMatch(/player_points|volleyball_rankings|race_records|survival_|wallet_logs|roulette_bets|defense_/);
     // 여는 곳: 들어올 때와 [기념물] 화면
     const sync = 'perform public._village_monument_sync(me, t);';

@@ -342,7 +342,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     s.profile.landStage = v.landStage;
     s.profile.name = v.name;
     s.profile.prosperity = v.prosperity;
-    s.buildings = v.buildings.map((b) => ({ id: b.id, type: b.type, level: b.level, x: b.x, y: b.y, state: b.state, finishAt: null, startAt: null, collectedAt: Number.MAX_SAFE_INTEGER, jobN: 0, banked: 0 }));
+    s.buildings = v.buildings.map((b) => ({ id: b.id, type: b.type, level: b.level, x: b.x, y: b.y, state: b.state, finishAt: null, startAt: null, collectedAt: Number.MAX_SAFE_INTEGER, jobN: 0, banked: 0, accFrom: 0 }));
     s.residents = v.residents.map((r) => ({ id: r.id, affinity: r.affinity, building: r.building, gifted: false }));
     return s;
   }

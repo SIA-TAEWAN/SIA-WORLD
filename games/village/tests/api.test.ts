@@ -122,7 +122,7 @@ describe('서버 (SupabaseApi)', () => {
     await api.upgrade('a');
     await api.claimGoal();
     expect(calls).toEqual([
-      ['village_state', undefined],
+      ['village_state', { p_entry: false }],
       ['village_build', { p_type: 'paddy', p_x: 6, p_y: 7 }],
       ['village_harvest', { p_ids: ['a'] }],
       ['village_move', { p_id: 'a', p_x: 1, p_y: 2 }],

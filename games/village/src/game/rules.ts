@@ -38,6 +38,8 @@ export interface Building {
   jobN: number;
   /** 생산량이 바뀌기 전까지 쌓인 양 (보너스는 그 뒤에 쌓이는 것에만 붙는다) */
   banked: number;
+  /** 쌓기 시작한 시각 (적어 둔 양 banked 가 있을 때만 뜻이 있다. 수확할 때만 바뀐다. 없으면 0) */
+  accFrom: number;
 }
 
 export interface Profile {
@@ -265,21 +267,29 @@ export const effRate = (s: VillageState, b: Building) => Math.floor((ratePerHour
 /** 지금 잔치 중인가 */
 export const feasting = (s: VillageState, now: number) => now < s.profile.feastUntil;
 
+/** 쌓기 시작한 시각: 적어 둔 양이 있으면 그때의 시작 시각, 없으면 마지막 수확 시각 (SQL _village_acc_start) */
+export const accStart = (b: Building) => (b.banked > 0 && b.accFrom > 0 ? b.accFrom : b.collectedAt);
+
 /**
- * 생산 건물에 쌓여 있는 양 (state 가 'done' 인 생산 건물):
- *   base  = floor(지난 초 × rate ÷ 3600)                 (지난 초는 최대 12시간. 개가 있으면 15시간)
- *   extra = floor(잔치와 겹친 초 × rate × 잔치 % ÷ 360000)
+ * 생산 건물에 쌓여 있는 양 (state 가 'done' 인 생산 건물. SQL _village_units):
+ *   fin   = min(지금, 쌓기 시작한 시각 + 최대 시간)      (최대 12시간. 개가 있으면 15시간. 이 뒤로는 쌓이지 않는다)
+ *   base  = floor((fin − 마지막 수확)의 초 × rate ÷ 3600)
+ *   extra = floor(잔치와 겹친 초 × rate × 잔치 % ÷ 360000) (마지막 수확 ~ fin)
  *   units = min(banked + base + extra, floor(최대 시간 × rate × (100 + bonus_room_pct) ÷ 360000))
+ *   next  = 다음 마지막 수확 시각: min(지금, 마지막 수확 + ceil(base × 3600 ÷ rate) 초 + (지금 − fin))
+ *           (거둔 개수만큼의 시간만 쓰고 1개가 되다 만 시간은 남긴다. 상한에서 잘린 fin ~ 지금은 버린다)
+ * 옮기기 · 주민 배치로 쌓인 양을 적어 두어도(banked) 쌓기 시작한 시각은 그대로라, 합계는 그 시각부터 최대 시간까지의 양을 넘지 않는다.
  */
-function accrued(s: VillageState, b: Building, now: number): { units: number; base: number; from: number; rate: number } {
+function accrued(s: VillageState, b: Building, now: number): { units: number; next: number } {
   const rate = effRate(s, b);
   const cap = capSec(s);
-  const from = Math.max(b.collectedAt, now - cap * 1000);
-  const base = Math.floor((Math.max(0, Math.floor((now - from) / 1000)) * rate) / 3600);
+  const fin = Math.min(now, accStart(b) + cap * 1000);
+  const base = Math.floor((Math.max(0, Math.floor((fin - b.collectedAt) / 1000)) * rate) / 3600);
+  const used = b.collectedAt + Math.ceil((base * 3600) / rate) * 1000;
   const p = s.profile;
-  const over = Math.max(0, Math.floor((Math.min(now, p.feastUntil) - Math.max(from, p.feastFrom)) / 1000));
+  const over = Math.max(0, Math.floor((Math.min(fin, p.feastUntil) - Math.max(b.collectedAt, p.feastFrom)) / 1000));
   const extra = Math.floor((over * rate * p.feastPct) / 360000);
-  return { units: Math.min(b.banked + base + extra, Math.floor((cap * rate * (100 + CONST.bonus_room_pct)) / 360000)), base, from, rate };
+  return { units: Math.min(b.banked + base + extra, Math.floor((cap * rate * (100 + CONST.bonus_room_pct)) / 360000)), next: Math.min(now, used + (now - fin)) };
 }
 
 /** 쌓인 양: 생산 건물은 위의 식, 가공 건물은 다 끝난 묶음 */
@@ -289,14 +299,15 @@ export function stored(s: VillageState, b: Building, now: number): number {
   return accrued(s, b, now).units;
 }
 /** 가득 찼나 */
-export const isFull = (s: VillageState, b: Building, now: number) => b.state === 'done' && !!BUILDING[b.type].product && now - b.collectedAt >= capSec(s) * 1000;
+export const isFull = (s: VillageState, b: Building, now: number) => b.state === 'done' && !!BUILDING[b.type].product && now - accStart(b) >= capSec(s) * 1000;
 
 /** 쌓인 양을 건물에 적어 둔다 (생산량이 바뀌기 직전에 부른다) */
 function bank(s: VillageState, b: Building | null, now: number) {
   if (!b || b.state !== 'done' || !BUILDING[b.type].product) return;
   const a = accrued(s, b, now);
+  b.accFrom = accStart(b);
   b.banked = a.units;
-  b.collectedAt = Math.min(now, a.from + Math.ceil((a.base * 3600) / a.rate) * 1000);
+  b.collectedAt = a.next;
 }
 function bankAll(s: VillageState, now: number) {
   for (const b of s.buildings) bank(s, b, now);
@@ -391,7 +402,7 @@ export function newVillage(now: number, hallId = 'hall'): VillageState {
       name: '', level: 1, exp: 0, resources: { ...START_RES }, landStage: 0, prosperity: 0, prosperityAt: now, praiseCount: 0, praisedDay: 0, praised: [], goal: 0, goalProgress: 0, marketDay: 0, marketSold: 0,
       feastFrom: 0, feastUntil: 0, feastPct: 0, reqSeq: 0, dailyDay: 0, dailyBonusDay: 0, roosterDay: 0,
     },
-    buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0 }],
+    buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0, accFrom: 0 }],
     sia: 0,
     residents: [],
     requests: [],
@@ -490,7 +501,7 @@ export function build(s: VillageState, type: string, x: number, y: number, now: 
   if (d.sia > s.sia) fail('not enough coin');
   pay(s.profile, buildCost(type));
   s.sia -= d.sia;
-  const b: Building = { id, type, level: 1, x, y, state: 'building', finishAt: now + buildSec(s, type) * 1000, startAt: now, collectedAt: now, jobN: 0, banked: 0 };
+  const b: Building = { id, type, level: 1, x, y, state: 'building', finishAt: now + buildSec(s, type) * 1000, startAt: now, collectedAt: now, jobN: 0, banked: 0, accFrom: 0 };
   s.buildings.push(b);
   if (d.buildSec > 0) progress(s, 'construct', '', 1);
   // 0초짜리(장식물 · 길)는 바로 끝난다
@@ -541,9 +552,10 @@ function collect(s: VillageState, b: Building, now: number, cap: number, bonus =
   const have = a.units + Math.floor((a.units * bonus) / 100);
   const got = Math.max(0, Math.min(have, room(res)));
   s.profile.resources[res] += got;
-  // 거둔 만큼의 시간만 쓴다 (1개가 되다 만 시간은 남는다)
+  // 거둔 만큼의 시간만 쓴다 (1개가 되다 만 시간은 남는다). 쌓기 시작한 시각은 지운다
   b.banked = 0;
-  b.collectedAt = Math.min(now, a.from + Math.ceil((a.base * 3600) / a.rate) * 1000);
+  b.accFrom = 0;
+  b.collectedAt = a.next;
   return { have, got, res, job: false };
 }
 
@@ -761,7 +773,7 @@ export function requestDone(s: VillageState, slot: number, now: number, giftId: 
     r.affinity += add;
     if (after >= 5 && !r.gifted) {
       r.gifted = true;
-      gift = { id: giftId, type: `gift_${r.id}` as BuildingType, level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0 };
+      gift = { id: giftId, type: `gift_${r.id}` as BuildingType, level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0, accFrom: 0 };
       s.buildings.push(gift);
     }
   }
@@ -865,6 +877,7 @@ export function cleanState(raw: unknown): VillageState {
       collectedAt: Number(b.collectedAt) || 0,
       jobN: state === 'working' ? int(b.jobN, 0, 1e6, 0) : 0,
       banked: int(b.banked, 0, 1e12, 0),
+      accFrom: Number(b.accFrom) || 0,
     });
   }
   const residents: Resident[] = [];
@@ -932,7 +945,7 @@ export function grantMonuments(s: VillageState, stats: Partial<GameStats>, now: 
   for (const m of MONUMENTS) {
     if (s.monuments.includes(m.id) || (stats[m.stat] ?? 0) < m.need) continue;
     s.monuments.push(m.id);
-    const b: Building = { id: idFor(m.id), type: m.id, level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0 };
+    const b: Building = { id: idFor(m.id), type: m.id, level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0, accFrom: 0 };
     s.buildings.push(b);
     got.push(b);
   }

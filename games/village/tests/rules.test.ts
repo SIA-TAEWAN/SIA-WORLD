@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GAMES, MONUMENTS, noStats } from '../src/data/monuments';
-import { grantMonuments } from '../src/game/rules';
+import { accStart, grantMonuments, isFull } from '../src/game/rules';
 import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, RATE_MUL, RES_IDS, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, lookOf } from '../src/data/balance';
 import { BUILDING, BUILDINGS, RECIPES, isBuildingType, upgradable, type BuildingType } from '../src/data/buildings';
 import { ASKS, RESIDENTS, RESIDENT_IDS, TASKS, affLevel, mix, type ResidentId } from '../src/data/residents';
@@ -443,9 +443,9 @@ describe('서버 답 다듬기', () => {
     expect(s.profile).toMatchObject({ name: '', level: 30, exp: 0, landStage: 6, goal: 0, marketDay: 0, marketSold: 0 });
     expect(s.profile.resources).toEqual({ rice: 12, wood: 0, stone: 0, cake: 0, coin: 5, special: 0 });
     expect(s.buildings).toEqual([
-      { id: 'a', type: 'paddy', level: 1, x: 0, y: 19, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0 },
-      { id: 'm', type: 'mill', level: 2, x: 0, y: 0, state: 'working', finishAt: 9, startAt: 4, collectedAt: 0, jobN: 7, banked: 0 },
-      { id: 'k', type: 'tree', level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0 },
+      { id: 'a', type: 'paddy', level: 1, x: 0, y: 19, state: 'done', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0, accFrom: 0 },
+      { id: 'm', type: 'mill', level: 2, x: 0, y: 0, state: 'working', finishAt: 9, startAt: 4, collectedAt: 0, jobN: 7, banked: 0, accFrom: 0 },
+      { id: 'k', type: 'tree', level: 1, x: 0, y: 0, state: 'stored', finishAt: null, startAt: null, collectedAt: 0, jobN: 0, banked: 0, accFrom: 0 },
     ]);
     expect(cleanState(null).buildings).toEqual([]);
   });
@@ -806,6 +806,31 @@ describe('5단계: 정자 (둘레의 생산 건물 +10%)', () => {
     expect(ratePct(s, near)).toBe(14);
   });
 
+  it('옮기기를 되풀이해도 쌓기 시작한 때부터 12시간까지만 쌓인다 (059)', () => {
+    const { s, far } = setup();
+    // 정자가 다 지어질 때 적어 둔다 (10분 몫 10개). 쌓기 시작한 시각은 처음 그대로
+    settle(s, T0 + 10 * 60 * SEC);
+    expect([far.banked, accStart(far)]).toEqual([10, T0]);
+    move(s, far.id, 13, 12, T0 + 12 * HOUR);
+    expect([far.banked, accStart(far)]).toEqual([720, T0]);
+    expect(isFull(s, far, T0 + 12 * HOUR)).toBe(true);
+    // 옮기지 않았을 때처럼 더 쌓이지 않는다 (예전에는 옮길 때마다 12시간이 새로 쌓였다)
+    expect(stored(s, far, T0 + 24 * HOUR)).toBe(720);
+    move(s, far.id, 12, 12, T0 + 24 * HOUR);
+    expect(stored(s, far, T0 + 36 * HOUR)).toBe(720);
+    s.profile.resources.rice = 0;
+    s.buildings[0].level = 10; // 창고 넉넉히
+    expect(harvest(s, [far.id], T0 + 36 * HOUR).per).toEqual({ [far.id]: 720 });
+    expect([far.banked, far.accFrom, far.collectedAt]).toEqual([0, 0, T0 + 36 * HOUR]);
+    // 거둔 뒤에는 다시 12시간
+    expect(stored(s, far, T0 + 48 * HOUR)).toBe(720);
+    // 6시간 뒤 정자 옆으로: 360 (보너스 없이) + 6시간 × 66 = 756, 그 뒤로는 더 쌓이지 않는다
+    move(s, far.id, 8, 7, T0 + 42 * HOUR);
+    expect(far.banked).toBe(360);
+    expect(stored(s, far, T0 + 48 * HOUR)).toBe(360 + 396);
+    expect(stored(s, far, T0 + 60 * HOUR)).toBe(360 + 396);
+  });
+
   it('쌓이는 양의 상한: 12시간 분량 × 140%', () => {
     const { s, near } = setup();
     settle(s, T0 + 10 * 60 * SEC);
@@ -864,7 +889,7 @@ describe('5단계: 잔치 마당 (하루 동안 마을 전체 +20%)', () => {
 
 /** 그 종류의 건물을 다 지어진 채로 놓는다 (값 · 개수 제한 없이: 검사용) */
 function put(s: VillageState, type: BuildingType, x: number, y: number, level = 1): Building {
-  const b: Building = { id: id(), type, level, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: T0, jobN: 0, banked: 0 };
+  const b: Building = { id: id(), type, level, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: T0, jobN: 0, banked: 0, accFrom: 0 };
   s.buildings.push(b);
   return b;
 }
