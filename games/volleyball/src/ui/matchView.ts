@@ -168,16 +168,24 @@ export function showMatch(setup: MatchSetup) {
     releaseAll();
     // 온라인 경기는 멈출 수 없다 (창이 떠 있어도 계속 진행)
     if (!online) match.paused = true;
-    // AI 대전: 시작하고 최소 시간이 지난 경기는 나가면 패배 (물을 때 기준으로 정한다)
-    const forfeit = !!aiRecorder && match.phase !== 'over' && aiRecorder.forfeitable();
+    // AI 대전: 시작하고 최소 시간이 지난 경기는 나가면 패배 (창을 띄워 둔 동안에도 서버 시계는 가므로 [나가기]를 누른 순간 다시 본다)
+    const forfeitNow = () => !!aiRecorder && match.phase !== 'over' && aiRecorder.forfeitable();
+    let forfeit = forfeitNow();
+    const note = () => (online || forfeit ? '지금 나가면 패배로 기록돼요' : '지금 나가면 이 경기는 기록되지 않아요');
     const dim = document.createElement('div');
     dim.className = 'dim';
-    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online || forfeit ? '지금 나가면 패배로 기록돼요' : '지금 나가면 이 경기는 기록되지 않아요'}</p>
+    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0" data-note>${note()}</p>
       <div class="actions"><button class="btn" data-no>계속하기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
       if (el.closest('[data-yes]')) {
         sfx('click');
+        // 창을 띄워 둔 사이 패배로 기록되는 때가 되었으면, 바뀐 안내를 보여 주고 한 번 더 누르게 한다
+        if (!forfeit && forfeitNow()) {
+          forfeit = true;
+          dim.querySelector<HTMLElement>('[data-note]')!.textContent = note();
+          return;
+        }
         dim.remove();
         if (match.phase !== 'over') {
           // AI가 이어받은 경기에서 남은 나까지 나간다: 몰수패(AI 3점)로 보고해야 이 경기가 기록된다 (나간 상대도 패, 나도 패)
@@ -187,7 +195,7 @@ export function showMatch(setup: MatchSetup) {
           // 남은 사람의 경기는 계속되므로 방의 '경기 끝'은 알리지 않는다 (이미 혼자였으면 알린다)
           match.quit();
           // AI 대전: 패배로 올리거나(최소 시간이 지난 경기) 서버에서 지운다. 통신을 기다리지 않고 나간다
-          if (aiRecorder) void aiRecorder.leave(forfeit);
+          if (aiRecorder) void aiRecorder.leave();
           if (room) {
             room.matchOver(setup.matchNo ?? 0, solo);
             leaveRoom();

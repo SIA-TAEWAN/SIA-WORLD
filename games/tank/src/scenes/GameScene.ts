@@ -571,8 +571,19 @@ export class GameScene extends Phaser.Scene {
     this.quitBtn.onclick = () => {
       // 혼자 하는 판: 승패가 난 뒤(결과 화면으로 넘어가기 직전)에는 나가지 않는다 (끝난 판이 '도중에 나간 판'이 되지 않게)
       if (!cfg.net && this.phase === 'over') return;
-      const note = cfg.quitNote?.();
-      if (confirm(cfg.net ? '게임에서 나갈까요? 30초 뒤에는 AI가 대신 조종하고 다시 들어올 수 없어요.' : `게임을 그만두고 나갈까요?${note ? `\n${note}` : ''}`)) cfg.onQuit();
+      if (cfg.net) {
+        if (confirm('게임에서 나갈까요? 30초 뒤에는 AI가 대신 조종하고 다시 들어올 수 없어요.')) cfg.onQuit();
+        return;
+      }
+      // 확인 창을 띄워 둔 사이 안내('지금 나가면 패배로 기록돼요')가 바뀌었으면, [확인]을 누른 순간의 안내로 한 번 더 묻는다
+      let note = cfg.quitNote?.() ?? null;
+      for (;;) {
+        if (!confirm(`게임을 그만두고 나갈까요?${note ? `\n${note}` : ''}`)) return;
+        const now = cfg.quitNote?.() ?? null;
+        if (now === note) break;
+        note = now;
+      }
+      cfg.onQuit();
     };
     this.hud.root.querySelector('.hud-top')!.prepend(this.quitBtn);
     this.input2.on((e) => this.onControl(e));

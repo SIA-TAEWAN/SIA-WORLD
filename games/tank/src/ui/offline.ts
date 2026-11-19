@@ -288,10 +288,8 @@ function startGame() {
   // 한 기기 2인·AI 쉬움·초보 모드·백발백중은 알리지 않는다 (056_ai_matches.sql)
   // 못 올린 결과는 기기에 맡겨 두었다가 다음 판 시작 전에 다시 올린다 (새 판을 시작하면 서버가 끝내지 않은 판을 패배로 마감하므로)
   const record = aiRanked(state.opponent, state.mode, !!MAPS[mapId].practice)
-    ? new AiMatchRecorder(getAiRpc(diff as 'normal' | 'hard'), { store: localPending('siatank:ai-pending') })
+    ? new AiMatchRecorder(getAiRpc(diff as 'normal' | 'hard'), { store: pendingStore() })
     : null;
-  // 나가기를 물을 때 '패배로 기록돼요'를 보였는가 (보인 판만 패배로 올린다)
-  let forfeitAsked = false;
   // 판이 끝나면 포인트·아이템 초기화
   state.shop = [[], []];
 
@@ -306,20 +304,33 @@ function startGame() {
     fullUlt: state.isAdmin ? [0] : [],
     onEnd: (s: MatchSummary) => {
       closeGame();
-      // 승패가 난 판만 올린다 (무승부는 사람 대전처럼 기록하지 않는다). 중간에 나간 판은 onQuit 에서
+      // 승패가 난 판은 결과를 올리고, 무승부는 기록 없이 마감한다 (사람 대전처럼 전적에 넣지 않는다 · 058). 중간에 나간 판은 onQuit 에서
       const meWon = s.players.some((p) => p.team === s.winner && p.mine);
-      showResult(s, undefined, record ? (s.winner === -1 ? 'draw' : record.finish(meWon)) : null);
+      showResult(s, undefined, record ? (s.winner === -1 ? record.draw() : record.finish(meWon)) : null);
       if (s.practice) void recordTarget(s);
     },
-    // 반영되는 판이 최소 시간(20초)을 넘겼으면 나가기 확인에 한 줄 덧붙인다
-    quitNote: () => ((forfeitAsked = !!record?.forfeitable()) ? '지금 나가면 패배로 기록돼요.' : null),
+    // 반영되는 판이 최소 시간(20초)을 넘겼으면 나가기 확인에 한 줄 덧붙인다 (GameScene 은 [확인]을 누른 순간 다시 물어 바뀌었으면 한 번 더 묻는다)
+    quitNote: () => (record?.forfeitable() ? '지금 나가면 패배로 기록돼요.' : null),
     onQuit: () => {
-      // 최소 시간이 지난 판은 패배로 올리고, 아니면 서버에서 지운다 (기록 없음). 통신을 기다리지 않고 나간다
-      if (record) void record.leave(forfeitAsked);
+      // 나가는 순간 최소 시간이 지난 판은 패배로 올리고, 아니면 서버에서 지운다 (기록 없음). 통신을 기다리지 않고 나간다
+      if (record) void record.leave();
       closeGame();
       showSetup();
     },
   });
+}
+
+/** 못 올린 AI 판 결과를 맡겨 두는 칸 (사용자별: 배구 siavolley:ai-pending:<uid> 와 같게).
+ *  예전 칸(siatank:ai-pending, 사용자 구분 없음)에 남은 것은 지금 사용자 칸으로 옮긴다 (남의 판이면 서버가 'no match' 로 거절해 지워진다) */
+function pendingStore() {
+  const store = localPending(`siatank:ai-pending:${clientId()}`);
+  const old = localPending('siatank:ai-pending');
+  const left = old.get();
+  if (left) {
+    if (!store.get()) store.set(left);
+    old.set(null);
+  }
+  return store;
 }
 
 // ---------- 4. 결과 ----------
@@ -373,8 +384,8 @@ export interface ResultActions {
   onSecondary?: () => void;
 }
 
-/** record: AI 전 전적 기록 (반영되는 판일 때만). 'draw' 는 무승부라 올리지 않은 판 */
-export function showResult(s: MatchSummary, actions?: ResultActions, record: Promise<AiOutcome> | 'draw' | null = null) {
+/** record: AI 전 전적 기록 (반영되는 판일 때만. 무승부 판은 record.draw()) */
+export function showResult(s: MatchSummary, actions?: ResultActions, record: Promise<AiOutcome> | null = null) {
   const act: ResultActions = actions ?? { primary: '다시 하기', onPrimary: showSetup, secondary: '대기실로', onSecondary: () => nav.lobby() };
   if (s.practice) return showTargetResult(s, act);
   const winText = s.winner === -1 ? '무승부!' : `${TEAM_NAMES[s.winner]} 승리!`;
@@ -400,18 +411,19 @@ export function showResult(s: MatchSummary, actions?: ResultActions, record: Pro
         <button class="btn big primary" id="again">${act.primary}</button>
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
       </div>
-      ${record ? `<p class="rec-line" id="rec">${record === 'draw' ? '무승부는 전적에 기록되지 않아요' : '전적을 기록하는 중…'}</p>` : ''}
+      ${record ? `<p class="rec-line" id="rec">${s.winner === -1 ? '무승부는 전적에 기록되지 않아요' : '전적을 기록하는 중…'}</p>` : ''}
       <p class="hint">${record ? 'AI 전은 도중에 나가면 패배로 기록돼요 · ' : ''}다음 판에는 포인트 1,000이 새로 지급돼요</p>
     </div>`,
     'result',
   );
   root.querySelector('#again')!.addEventListener('click', act.onPrimary);
   if (act.onSecondary) root.querySelector('#home')?.addEventListener('click', act.onSecondary);
-  if (record && record !== 'draw') {
+  if (record) {
     const rec = root.querySelector<HTMLElement>('#rec')!;
     void record.then((o) => {
       if (!rec.isConnected) return;
-      rec.textContent = outcomeText(o);
+      // 무승부를 알리지 못했으면 다음 판 시작 전에 다시 알린다 (기기에 맡겨 둠)
+      rec.textContent = s.winner === -1 && o.state === 'failed' ? '무승부를 서버에 알리지 못했어요 · 다음 판을 시작할 때 다시 알려요' : outcomeText(o);
       rec.classList.toggle('ok', o.state === 'saved');
     });
   }

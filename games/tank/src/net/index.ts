@@ -1,7 +1,7 @@
 import type { Backend } from './backend';
 import { createLocalBackend } from './local';
 import { worldSupabase } from './world';
-import { parseFinish, parseStart, type AiRpc } from './aiRecord';
+import { parseCancel, parseDraw, parseFinish, parseStart, type AiRpc } from './aiRecord';
 
 let backend: Backend | null | undefined;
 
@@ -41,7 +41,9 @@ export async function getAiRpc(difficulty: 'normal' | 'hard'): Promise<AiRpc | n
   return {
     start: async () => parseStart(await rpc('ai_match_start', { p_game: 'tank', p_difficulty: difficulty })),
     finish: async (id, won) => parseFinish(await rpc('ai_match_finish', { p_id: id, p_won: won })),
-    cancel: async (id) => void (await rpc('ai_match_cancel', { p_id: id })),
+    cancel: async (id) => parseCancel(await rpc('ai_match_cancel', { p_id: id })),
+    // 무승부 판을 기록 없이 마감 (058)
+    draw: async (id) => parseDraw(await rpc('ai_match_draw', { p_id: id })),
   };
 }
 

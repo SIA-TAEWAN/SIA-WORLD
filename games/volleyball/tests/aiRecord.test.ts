@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AiMatchRecorder, EARLY_MARGIN_MS, EARLY_RETRY_MS, localPending, outcomeText, parseFinish, parseStart, type AiFinish, type AiRpc, type PendingResult, type PendingStore } from '../src/net/aiRecord';
+import { AiMatchRecorder, EARLY_MARGIN_MS, EARLY_RETRY_MS, localPending, parseCancel, parseDraw, rejected, outcomeText, parseFinish, parseStart, type AiFinish, type AiRpc, type PendingResult, type PendingStore } from '../src/net/aiRecord';
 
 /** 가짜 시계: sleep 을 부르면 그만큼 시간이 흐른다 */
 function clock() {
@@ -40,6 +40,10 @@ function fakeRpc(over: Partial<AiRpc> = {}, minSec = 15) {
     },
     async cancel(id) {
       calls.push(`cancel ${id}`);
+      return 'cancelled' as const;
+    },
+    async draw(id) {
+      calls.push(`draw ${id}`);
     },
     ...over,
   };
@@ -175,7 +179,7 @@ describe('도중에 나간 판', () => {
     await tick();
     c.pass(MIN * 1000 - 1000);
     expect(rec.forfeitable()).toBe(false);
-    expect(await rec.leave(false)).toEqual({ state: 'none' });
+    expect(await rec.leave()).toEqual({ state: 'none' });
     expect(calls).toEqual(['start m1', 'cancel m1']);
     // 나간 뒤 finish 를 불러도 올리지 않는다
     await rec.finish(true);
@@ -189,7 +193,7 @@ describe('도중에 나간 판', () => {
     await tick();
     c.pass(MIN * 1000);
     expect(rec.forfeitable()).toBe(true);
-    expect((await rec.leave(true)).state).toBe('saved');
+    expect((await rec.leave()).state).toBe('saved');
     expect(calls).toEqual(['start m1', 'finish m1 false']);
     expect(rec.forfeitable()).toBe(false);
   });
@@ -217,7 +221,7 @@ describe('도중에 나간 판', () => {
     const rec = new AiMatchRecorder(rpc, c);
     await tick();
     expect(rec.forfeitable()).toBe(false);
-    const p = rec.leave(false);
+    const p = rec.leave();
     release();
     await p;
     expect(calls).toEqual(['cancel m1']);
@@ -227,14 +231,14 @@ describe('도중에 나간 판', () => {
     expect(bad.forfeitable()).toBe(false);
     // 지우기에 실패해도 예외 없이 나간다
     const rec3 = new AiMatchRecorder(fakeRpc({ cancel: async () => Promise.reject(new Error('Failed to fetch')) }).rpc, c);
-    expect(await rec3.leave(false)).toEqual({ state: 'failed' });
+    expect(await rec3.leave()).toEqual({ state: 'failed' });
   });
 
   it('테스트 모드에서는 아무것도 부르지 않는다', async () => {
     const rec = new AiMatchRecorder(null, clock());
     await tick();
     expect(rec.forfeitable()).toBe(false);
-    expect(await rec.leave(false)).toEqual({ state: 'none' });
+    expect(await rec.leave()).toEqual({ state: 'none' });
   });
 });
 
@@ -269,12 +273,12 @@ describe('못 올린 결과는 다음 판 시작 전에 다시 올린다', () =>
     down = false;
     // 다른 기록기(새로 고침 뒤)도 기기에 맡겨 둔 것으로 다시 올린다
     const next = new AiMatchRecorder(rpc, { ...c, store });
-    await next.leave(false);
+    await next.leave();
     expect(calls).toEqual(['start m1', 'finish m1 true', 'finish m1 true', 'start m2', 'cancel m2']);
     expect(box.v).toBe(null);
   });
 
-  it('다시 올리기도 실패하면 버리고 그대로 새 판을 시작한다', async () => {
+  it('다시 올리기를 서버가 거절하면(이미 마감된 판 등) 버리고 그대로 새 판을 시작한다', async () => {
     const c = clock();
     const { rpc, calls } = fakeRpc({
       async finish(id, won) {
@@ -284,7 +288,7 @@ describe('못 올린 결과는 다음 판 시작 전에 다시 올린다', () =>
     });
     const { box, store } = memStore({ id: 'old', won: true });
     const rec = new AiMatchRecorder(rpc, { ...c, store });
-    await rec.leave(false);
+    await rec.leave();
     expect(calls).toEqual(['finish old true', 'start m1', 'cancel m1']);
     expect(box.v).toBe(null);
   });
@@ -321,6 +325,8 @@ describe('못 올린 결과는 다음 판 시작 전에 다시 올린다', () =>
       expect(st.get()).toBe(null);
       st.set({ id: 'a', won: false });
       expect(st.get()).toEqual({ id: 'a', won: false });
+      st.set({ id: 'd', won: null });
+      expect(st.get()).toEqual({ id: 'd', won: null });
       map.set('k', '{oops');
       expect(st.get()).toBe(null);
       map.set('k', JSON.stringify({ id: 1 }));
@@ -353,5 +359,138 @@ describe('서버 답 읽기', () => {
     expect(outcomeText({ state: 'saved', coin: true, wins: 4, losses: 2 })).toBe('🏅 전적 +1 · 시아코인 +1 · 내 전적 4승 2패');
     expect(outcomeText({ state: 'saved', coin: false, wins: 4, losses: 2 })).toContain('시아코인은 이번엔 없어요');
     expect(outcomeText({ state: 'failed' })).toBe('전적을 기록하지 못했어요');
+  });
+});
+
+describe('검토 반영: 무승부 · 나가는 순간 판단 · 다시 올리기 통신 실패', () => {
+  it('무승부: ai_match_draw 로 기록 없이 마감한다 (다음 시작 때 패배가 되지 않게)', async () => {
+    const c = clock();
+    const { rpc, calls } = fakeRpc();
+    const { box, store } = memStore();
+    const rec = new AiMatchRecorder(rpc, { ...c, store });
+    await tick();
+    c.pass(90_000);
+    const o = await rec.draw();
+    expect(o).toEqual({ state: 'draw' });
+    expect(outcomeText(o)).toBe('무승부는 전적에 기록되지 않아요');
+    expect(calls).toEqual(['start m1', 'draw m1']);
+    expect(box.v).toBe(null);
+    // 마감한 뒤 finish·leave 는 아무것도 올리지 않는다
+    await rec.finish(true);
+    await rec.leave();
+    expect(calls).toEqual(['start m1', 'draw m1']);
+  });
+
+  it('무승부를 통신 실패로 못 알렸으면 맡겨 두었다가 다음 판 시작 전에 다시 알린다', async () => {
+    const c = clock();
+    let down = true;
+    const { rpc, calls } = fakeRpc({
+      async draw(id) {
+        calls.push(`draw ${id}`);
+        if (down) throw new Error('Failed to fetch');
+      },
+    });
+    const { box, store } = memStore();
+    const rec = new AiMatchRecorder(rpc, { ...c, store });
+    await tick();
+    c.pass(90_000);
+    expect(await rec.draw()).toEqual({ state: 'failed' });
+    expect(box.v).toEqual({ id: 'm1', won: null });
+    down = false;
+    const next = new AiMatchRecorder(rpc, { ...c, store });
+    await next.leave();
+    expect(calls).toEqual(['start m1', 'draw m1', 'draw m1', 'start m2', 'cancel m2']);
+    expect(box.v).toBe(null);
+  });
+
+  it('무승부를 받지 않는 서버(draw 없음)면 실패로 알린다', async () => {
+    const c = clock();
+    const { rpc } = fakeRpc();
+    const { draw: _d, ...noDraw } = rpc;
+    const rec = new AiMatchRecorder(noDraw as AiRpc, c);
+    await tick();
+    expect(await rec.draw()).toEqual({ state: 'failed' });
+  });
+
+  it('나가기는 부르는 순간 판단한다: 확인 창을 띄운 뒤 최소 시간이 지났으면 패배로 올린다', async () => {
+    const c = clock();
+    const { rpc, calls } = fakeRpc({}, MIN);
+    const rec = new AiMatchRecorder(rpc, c);
+    await tick();
+    c.pass(MIN * 1000 - 2000);
+    expect(rec.forfeitable()).toBe(false); // 창을 띄울 때
+    c.pass(5000); // 창을 띄워 둔 채 시간이 지남
+    expect(rec.forfeitable()).toBe(true);
+    expect((await rec.leave()).state).toBe('saved');
+    expect(calls).toEqual(['start m1', 'finish m1 false']);
+  });
+
+  it("지우려 했는데 서버가 'kept'(최소 시간이 지남)면 패배로 올린다 (서버와 화면을 맞춘다)", async () => {
+    const c = clock();
+    const { rpc, calls } = fakeRpc({
+      async cancel(id) {
+        calls.push(`cancel ${id}`);
+        return 'kept' as const;
+      },
+    }, MIN);
+    const rec = new AiMatchRecorder(rpc, c);
+    await tick();
+    expect(rec.forfeitable()).toBe(false);
+    expect((await rec.leave()).state).toBe('saved');
+    expect(calls).toEqual(['start m1', 'cancel m1', 'finish m1 false']);
+    // 'none'(지울 판이 없음)은 그대로 기록 없음
+    const r2 = fakeRpc({ cancel: async () => 'none' as const }, MIN);
+    const rec2 = new AiMatchRecorder(r2.rpc, c);
+    await tick();
+    expect(await rec2.leave()).toEqual({ state: 'none' });
+    expect(r2.calls).toEqual(['start m1']);
+  });
+
+  it('다시 올리기가 통신 실패면 맡겨 둔 것을 지우지 않고, 새 판은 서버에 알리지 않는다 (기록되지 않는 판)', async () => {
+    const c = clock();
+    let down = true;
+    const { rpc, calls } = fakeRpc({
+      async finish(id, won) {
+        calls.push(`finish ${id} ${won}`);
+        if (down) throw new Error('Failed to fetch');
+        return done();
+      },
+    });
+    const { box, store } = memStore({ id: 'old', won: true });
+    const rec = new AiMatchRecorder(rpc, { ...c, store });
+    await tick();
+    c.pass(90_000);
+    expect(rec.forfeitable()).toBe(false);
+    const o = await rec.finish(true);
+    expect(o).toEqual({ state: 'unrecorded' });
+    expect(outcomeText(o)).toContain('기록되지 않아요');
+    expect(calls).toEqual(['finish old true']);
+    expect(box.v).toEqual({ id: 'old', won: true });
+    // 기록되지 않는 판은 나가도 아무것도 부르지 않는다
+    const rec2 = new AiMatchRecorder(rpc, { ...c, store });
+    expect(await rec2.leave()).toEqual({ state: 'unrecorded' });
+    expect(calls).toEqual(['finish old true', 'finish old true']);
+    // 통신이 돌아오면 먼저 올리고 새 판을 시작한다
+    down = false;
+    const rec3 = new AiMatchRecorder(rpc, { ...c, store });
+    await tick();
+    c.pass(90_000);
+    expect((await rec3.finish(false)).state).toBe('saved');
+    expect(calls).toEqual(['finish old true', 'finish old true', 'finish old true', 'start m1', 'finish m1 false']);
+    expect(box.v).toBe(null);
+  });
+
+  it('서버 거절과 통신 실패를 가른다', () => {
+    for (const m of ['already finished', 'no match', 'too late', 'no draw']) expect(rejected(new Error(m))).toBe(true);
+    for (const m of ['Failed to fetch', 'too early', 'need login', 'NetworkError']) expect(rejected(new Error(m))).toBe(false);
+  });
+
+  it('서버 답 읽기: 지우기·무승부', () => {
+    expect(parseCancel({ status: 'kept' })).toBe('kept');
+    expect(parseCancel({ status: 'cancelled' })).toBe('cancelled');
+    expect(parseCancel({ status: 'none' })).toBe('none');
+    expect(() => parseCancel({})).toThrow();
+    expect(() => parseDraw({ status: 'draw' })).not.toThrow();
+    expect(() => parseDraw(null)).toThrow();
   });
 });

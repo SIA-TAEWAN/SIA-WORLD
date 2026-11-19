@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ZodiacId } from '../game/constants';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { worldSupabase } from './world';
-import { parseFinish, parseStart, type AiRpc } from './aiRecord';
+import { parseCancel, parseFinish, parseStart, type AiRpc } from './aiRecord';
 
 /**
  * 서버 연결 (시아레이스 games/running/src/net/api.ts 와 같은 모양).
@@ -132,7 +132,7 @@ export async function getAiRpc(character: ZodiacId): Promise<AiRpc | null> {
   return {
     start: async () => parseStart(await rpc('ai_match_start', { p_game: 'volleyball', p_difficulty: 'normal', p_character: character })),
     finish: async (id, won) => parseFinish(await rpc('ai_match_finish', { p_id: id, p_won: won })),
-    cancel: async (id) => void (await rpc('ai_match_cancel', { p_id: id })),
+    cancel: async (id) => parseCancel(await rpc('ai_match_cancel', { p_id: id })),
   };
 }
 
