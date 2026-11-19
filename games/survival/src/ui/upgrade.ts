@@ -14,6 +14,7 @@ export function whyText(e: unknown): string {
   if (m.includes('max level')) return '이미 끝까지 올렸어요';
   if (m.includes('already unlocked')) return '이미 풀린 캐릭터예요';
   if (m.includes('endless locked')) return '무한 모드는 이 맵을 4분 모드로 클리어하면 열려요';
+  if (m.includes('hell locked')) return '헬 모드는 이 맵을 4분 모드로 클리어하면 열려요';
   if (m.includes('locked')) return '아직 잠겨 있어요';
   if (m.includes('need login')) return '로그인이 필요해요';
   return '지금은 할 수 없어요';

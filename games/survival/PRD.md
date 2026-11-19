@@ -25,7 +25,7 @@ SIA-WORLD 저장소(SIA-TAEWAN/SIA-WORLD, 로컬 C:\Claude\SIA-WORLD)에 새 게
 ## 2. 화면 흐름
 로그인 → 게임 선택 → 메인 → 출전 준비 → 게임 → 결과
 - 메인: [출전] [강화] [도감] [랭킹], 보유 엽전 표시
-- 출전 준비: 캐릭터 선택 → 맵 선택 → 모드 선택(4분 모드 / 무한 모드) → 시작 (잠긴 캐릭터·맵·무한 모드는 해금 조건 표시)
+- 출전 준비: 캐릭터 선택 → 맵 선택 → 모드 선택(4분 모드 / 헬 모드 / 무한 모드) → 시작 (잠긴 캐릭터·맵·헬·무한 모드는 해금 조건 표시)
 - 결과: 생존 시간, 처치 수, 도달 레벨, 얻은 엽전, 새 기록 여부 → [다시하기] [강화하러 가기] [메인으로]
 
 ## 3. 게임 진행
@@ -58,6 +58,18 @@ SIA-WORLD 저장소(SIA-TAEWAN/SIA-WORLD, 로컬 C:\Claude\SIA-WORLD)에 새 게
 - 최종 보스를 잡으면 "끝이 아니에요" 안내를 띄운다 (레벨업 창이 떠 있으면 창이 닫힌 뒤에)
 - 시아코인(1분 이상)·누적 처치·떡·도감·누적 조건 해금(용·뱀·양)은 그대로 반영. 시간 조건 해금(토끼·말)·클리어 해금(돼지)·다음 맵 해금은 4분 모드에서만
 - 기록·랭킹은 4분 모드와 따로 (10장)
+
+**헬 모드** (`data/balance.ts` 의 `HELL` · `data/maps.ts` 의 `hell` · `data/bosses.ts` 의 `hell`, 서버는 055)
+- 기존 맵 4개의 헬 버전 (총 8개). 배경·지형·등장 표·요괴·보스는 같고 더 강하다. 4분 판이고 클리어가 있다 (헬의 무한 모드는 없다)
+- 들어가는 곳: 출전 준비에서 맵을 고른 뒤 "4분 모드 / 헬 모드 / 무한 모드". **그 맵을** 4분 모드로 클리어하면 그 맵의 헬 모드가 열린다 (무한 모드와 같은 조건 — 045 의 `_survival_map_cleared`)
+- 강함 (체감 약 1.5배): 공통 배율 요괴 체력 ×1.25 · 피해 ×1.2 · 수 ×1.1 · 보스 체력 ×1.5 · 보스 피해 ×1.2 에, 맵마다 조금씩 더 곱한다 (`data/maps.ts` 의 `hell`)
+- 보스 12종 각각에 헬 전용 패턴이 하나씩 더 있다 (첫 패턴 바로 뒤에 끼운다). 모두 예고가 보이거나 느린 탄이라 보고 피할 수 있고, 시작할 때 이름을 띄운다. 새 그림 없이 기존 범위 공격·구슬 탄을 쓴다
+- 밸런스 ('보통 실력' 정책, `npm run balance -- 60 hell`): 영구 강화 49 에서 클리어율 10~25%, 강화 34 이하에서는 0~5%. 강화 항목은 늘리지 않는다
+- 엽전 2배 (서버의 판당 엽전 상한도 2배, `hell_coin_mul`). 시아코인·누적 처치·떡·도감·누적 조건 해금(용·뱀·양)은 4분 모드와 같다. 시간 조건 해금(토끼·말)·클리어 해금(돼지)·다음 맵 해금·누적 최고 생존 시간은 4분 모드에서만
+- 화면: 붉고 어두운 색조와 가장자리 불씨·재, "🔥 헬" 배지, 요괴의 붉은 기운, 헬 전용 BGM 변주(맵 곡·보스 곡을 낮고 빠르게), 모드 카드·결과 화면·랭킹의 헬 표시 (DESIGN.md 의 색만 쓴다)
+- 기록·랭킹은 4분·무한 모드와 따로 (10장)
+
+**관리자 계정 (시험용, 055)**: `profiles.is_admin` 계정은 시아서바이벌에 들어올 때마다(`survival_profile`) 엽전과 시아코인이 10,000 으로 맞춰진다
 
 **판 안 성장**
 - 요괴 처치 → 경험치 구슬 → 가까이 가면 빨려옴
@@ -186,12 +198,14 @@ SIA-WORLD 저장소(SIA-TAEWAN/SIA-WORLD, 로컬 C:\Claude\SIA-WORLD)에 새 게
 - 표시: 순위, 캐릭터 아이콘, 아이디, 생존 시간, 처치 수, 달성 날짜. 내 순위는 목록 아래 항상 표시
 - 상위 순위 아이콘은 다른 SIA-WORLD 랭킹과 통일
 - **무한 모드 랭킹**은 4분 모드와 따로 맵별로: 생존 시간 → 처치 수 → 먼저 달성한 순. 랭킹 창의 서바이벌 탭에서 "4분 모드 / 무한 모드"를 바꿔 본다 (맵 탭·내 순위는 같다)
+- **헬 모드 랭킹**도 따로 맵별로 (헬 맵 4개): 4분 모드와 같은 순서 (생존 시간 → 클리어 → 처치 수 → 먼저 달성). 랭킹 창에서 "4분 / 헬 / 무한" 순으로 바꿔 본다
 
 ## 11. 데이터 (Supabase, 기존 규칙에 맞춰 이름과 RLS 조정)
 - `survival_profiles`: user_id, coins, upgrades(JSON), unlocked_characters, unlocked_maps, codex(JSON), updated_at
 - `survival_records`: user_id, map_id, best_time, best_kills, cleared, character, achieved_at
-- `survival_runs`: id, user_id, map_id, character, mode(normal·endless), time, kills, level, coins_earned, cleared, created_at
+- `survival_runs`: id, user_id, map_id, character, mode(normal·endless·hell), time, kills, level, coins_earned, cleared, created_at
 - `survival_endless_records`: user_id, map_id, best_time, best_kills, character, achieved_at (무한 모드의 맵별 최고 기록)
+- `survival_hell_records`: user_id, map_id, best_time, best_kills, cleared, character, achieved_at (헬 모드의 맵별 최고 기록, 뷰 `survival_hell_ranking`)
 - 판이 끝날 때 한 번에 저장. 실패하면 기기에 임시 보관 후 다음 접속 때 재전송
 - 비정상 기록(4분 초과, 지나치게 많은 처치 수 등)은 랭킹 등록 제외
 - **처치 수 하한** (045, `game/progress.ts` 의 `killFloor`): 처치 수가 (생존 시간 − 120초) × 1 보다 적은 판은 세지 않는다 — 엽전 0, 기록(4분·무한 랭킹)·클리어·해금·누적·도감·시아코인 없음. 비정상 기록으로 치지는 않는다. "기다리기만 한 0킬 기록"을 꾸며 보내는 것을 막는 장치다

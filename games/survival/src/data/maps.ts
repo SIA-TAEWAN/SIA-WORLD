@@ -3,6 +3,8 @@
  * 맵마다 요괴 구성·전용 요괴·보스 3종·지형이 다르다. 뒤 맵일수록 요괴가 강하고(체력·속도·수) 엽전을 더 준다.
  */
 
+import { HELL } from './balance';
+
 /** 등장 표 한 줄: from~to 초 동안 초당 rate0 → rate1 번 (곧은 선으로 늘거나 줄어든다). 줄지어 오는 요괴는 한 번에 한 줄 */
 export interface SpawnRow {
   enemy: string;
@@ -44,6 +46,8 @@ export interface MapDef {
   endlessCoins: number;
   /** 요괴 강함: 체력·속도·수·닿았을 때 피해의 배율, boss 는 보스 체력 배율 */
   power: { hp: number; speed: number; count: number; dmg: number; boss: number };
+  /** 헬 모드에서 이 맵에만 더 곱하는 값 (HELL 의 공통 배율 × 이 값). 강화 49 · 보통 실력으로 클리어율 10~25% 가 되게 맞췄다 */
+  hell: HellTune;
   /** 시간이 갈수록 강해짐: 1분마다 체력·피해가 이만큼(비율) 는다 */
   growth: { hpPerMin: number; dmgPerMin: number };
   terrain: TerrainDef;
@@ -59,10 +63,20 @@ export interface MapDef {
 
 const END = 99999;
 
+/** 헬 모드에서 맵마다 더 곱하는 값 (없는 칸은 1). 공통 배율은 data/balance.ts 의 HELL */
+export interface HellTune {
+  hp?: number;
+  dmg?: number;
+  count?: number;
+  boss?: number;
+  bossDmg?: number;
+}
+
 export const MAPS: MapDef[] = [
   {
     id: 'field', name: '들판', desc: '넓은 풀밭, 장애물이 적다', level: '쉬움', coinMul: 1, endlessCoins: 450, ready: true, unlock: '처음부터',
     power: { hp: 1, speed: 1, count: 1.5, dmg: 0.9, boss: 0.92 },
+    hell: { hp: 1.3, dmg: 1.55, count: 1.1, boss: 1.5, bossDmg: 1.25 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'none', cell: 200, chance: 0, r: 0 },
     spawns: [
@@ -102,6 +116,7 @@ export const MAPS: MapDef[] = [
     // 도깨비불·물귀신·여우불 + 죽순 요괴. 빠른 요괴와 원거리 요괴가 일찍 나온다. 대나무가 길을 막는다
     id: 'bamboo', name: '대나무 숲', desc: '대나무가 길을 막는다', level: '보통', coinMul: 1.5, endlessCoins: 400, ready: true, unlock: '들판의 최종 보스 물리치기',
     power: { hp: 1.3, speed: 1.04, count: 1.05, dmg: 0.75, boss: 0.8 },
+    hell: { hp: 1.1, dmg: 1.2, boss: 1.2, bossDmg: 1.15 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'scatter', cell: 190, chance: 0.5, r: 22 },
     spawns: [
@@ -138,6 +153,7 @@ export const MAPS: MapDef[] = [
     // 전 종류 + 수문장 요괴. 떼로 몰려오는 이벤트가 잦다. 담 사이로 길이 좁다
     id: 'palace', name: '달빛 궁궐', desc: '밤 분위기, 길이 좁다', level: '어려움', coinMul: 2, endlessCoins: 600, ready: true, unlock: '대나무 숲의 최종 보스 물리치기',
     power: { hp: 1.6, speed: 1.06, count: 1.15, dmg: 0.9, boss: 1.1 },
+    hell: { hp: 1.05, dmg: 1.15, boss: 1.15 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'walls', cell: 300, chance: 0.55, r: 30 },
     spawns: [
@@ -179,6 +195,7 @@ export const MAPS: MapDef[] = [
     // 해골 병사·원혼·도깨비불·물귀신·여우불. 처음부터 수가 많고 원거리 요괴가 일찍 나온다. 군데군데 삼도천 물길
     id: 'underworld', name: '황천길', desc: '저승으로 가는 어두운 길, 안개와 푸른 불빛', level: '매우 어려움', coinMul: 2.5, endlessCoins: 560, ready: true, unlock: '달빛 궁궐의 최종 보스 물리치기',
     power: { hp: 2, speed: 1.08, count: 1.18, dmg: 1.12, boss: 0.52 },
+    hell: { hp: 0.94, dmg: 0.93 },
     growth: { hpPerMin: 0.65, dmgPerMin: 0.1 },
     terrain: { kind: 'pools', cell: 360, chance: 0.45, r: 52 },
     spawns: [
@@ -212,3 +229,21 @@ export const MAPS: MapDef[] = [
 ];
 
 export const MAP_INDEX: Record<string, number> = Object.fromEntries(MAPS.map((m, i) => [m.id, i]));
+
+/**
+ * 헬 모드의 맵: 같은 맵(지형·등장 표·보스)에 '요괴 강함'만 헬 배율을 곱하고, 엽전 배율을 2배로 한 것.
+ * 판(game/sim.ts 의 createRun)은 헬 모드일 때 MAPS 대신 이것을 쓴다. 보스가 주는 피해 배율은 hellBossDmg
+ */
+export const HELL_MAPS: MapDef[] = MAPS.map((m) => ({
+  ...m,
+  coinMul: m.coinMul * HELL.coin,
+  power: {
+    hp: m.power.hp * HELL.hp * (m.hell.hp ?? 1),
+    speed: m.power.speed * HELL.speed,
+    count: m.power.count * HELL.count * (m.hell.count ?? 1),
+    dmg: m.power.dmg * HELL.dmg * (m.hell.dmg ?? 1),
+    boss: m.power.boss * HELL.boss * (m.hell.boss ?? 1),
+  },
+}));
+/** 헬 모드에서 보스가 주는 피해(몸·범위 공격·탄)의 배율 */
+export const hellBossDmg = (map: string) => HELL.bossDmg * (MAPS[MAP_INDEX[map] ?? 0].hell.bossDmg ?? 1);

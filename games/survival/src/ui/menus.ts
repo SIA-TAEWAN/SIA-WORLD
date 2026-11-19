@@ -1,9 +1,9 @@
-import { ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
+import { HELL, ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
-import { characterPrice, endlessOpen } from '../game/progress';
+import { characterPrice, endlessOpen, hellOpen } from '../game/progress';
 import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
@@ -20,6 +20,10 @@ const charLocked = (id: ZodiacId) => LOCKS_ON && !state.profile.unlockedCharacte
 const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includes(id);
 /** 무한 모드는 그 맵을 4분 모드로 클리어해야 열린다 (서버의 맵별 최고 기록 기준) */
 const endlessLocked = (id: string) => LOCKS_ON && !endlessOpen(state.profile, id);
+/** 헬 모드도 같은 조건: 그 맵을 4분 모드로 클리어해야 그 맵의 헬 모드가 열린다 */
+const hellLocked = (id: string) => LOCKS_ON && !hellOpen(state.profile, id);
+/** 이 맵에서 그 모드를 시작할 수 있나 */
+const modeLocked = (mode: RunMode, id: string) => (mode === 'endless' ? endlessLocked(id) : mode === 'hell' ? hellLocked(id) : false);
 
 // ───────────────────────── 메인 ─────────────────────────
 
@@ -181,15 +185,15 @@ export function showCharSelect() {
   });
 }
 
-// ───────────────────────── 출전 준비 2: 맵 고르기 → 모드 고르기 (4분 모드 / 무한 모드) ─────────────────────────
+// ───────────────────────── 출전 준비 2: 맵 고르기 → 모드 고르기 (4분 모드 / 헬 모드 / 무한 모드) ─────────────────────────
 
 export function showMapSelect() {
   let pick = MAPS.find((m) => m.id === state.map && m.ready && !mapLocked(m.id))?.id ?? MAPS[0].id;
-  // 사용자가 고른 모드 (지난번 것부터). 무한 모드가 잠긴 맵에서는 4분 모드로 보이지만, 고른 것은 잊지 않는다:
-  // 잠긴 맵을 눌렀다가 열린 맵으로 돌아오면 다시 무한 모드다
+  // 사용자가 고른 모드 (지난번 것부터). 그 모드가 잠긴 맵에서는 4분 모드로 보이지만, 고른 것은 잊지 않는다:
+  // 잠긴 맵을 눌렀다가 열린 맵으로 돌아오면 다시 그 모드(무한·헬)다
   let wanted: RunMode = state.mode;
   /** 지금 고른 맵에서 실제로 시작할 모드 */
-  let mode: RunMode = wanted === 'endless' && !endlessLocked(pick) ? 'endless' : 'normal';
+  let mode: RunMode = modeLocked(wanted, pick) ? 'normal' : wanted;
   let off = () => {};
   const card = (m: (typeof MAPS)[number], i: number) => {
     const open = m.ready && !mapLocked(m.id);
@@ -197,7 +201,7 @@ export function showMapSelect() {
     return `<button class="map m-${m.id} ${open ? '' : 'closed'}" data-m="${m.id}">
       <span class="map-no">${i + 1}</span>
       <span class="map-tx"><b>${esc(m.name)}</b><small>${esc(m.desc)}</small><small class="boss">보스: ${esc(bosses)}</small></span>
-      <span class="map-side"><span class="tag lv${i}">${esc(m.level)}</span><em>엽전 ×${m.coinMul}</em>${open ? '' : `<i>${m.ready ? `🔒 ${esc(m.unlock)}` : '준비 중'}</i>`}</span>
+      <span class="map-side"><span class="tag lv${i}">${esc(m.level)}</span><em data-mul="${m.coinMul}">엽전 ×${m.coinMul}</em>${open ? '' : `<i>${m.ready ? `🔒 ${esc(m.unlock)}` : '준비 중'}</i>`}</span>
     </button>`;
   };
   const root = screen(
@@ -213,21 +217,33 @@ export function showMapSelect() {
   );
   const modesEl = root.querySelector('#modes') as HTMLElement;
   const startBtn = root.querySelector('#start') as HTMLButtonElement;
-  /** 모드 카드 둘: 고른 맵에 따라 무한 모드가 잠겨 있으면 조건을 보여 준다 */
+  /** 모드 카드 셋 (4분 · 헬 · 무한): 고른 맵에 따라 헬·무한 모드가 잠겨 있으면 조건을 보여 준다 */
   const paintModes = () => {
     const locked = endlessLocked(pick);
-    mode = wanted === 'endless' && !locked ? 'endless' : 'normal';
+    const hLocked = hellLocked(pick);
+    mode = modeLocked(wanted, pick) ? 'normal' : wanted;
     const best = state.profile.endlessBest[pick];
+    const hBest = state.profile.hellBest[pick];
     const name = MAPS.find((m) => m.id === pick)!.name;
-    const endlessNote = locked
-      ? `🔒 ${esc(name)}을(를) 4분 모드로 클리어하면 열려요`
-      : best
-        ? `죽을 때까지 버텨요 · 내 최고 ${mmss(best.time)}`
-        : '4분 뒤로도 죽을 때까지 버텨요';
+    const lockNote = `🔒 ${esc(name)}을(를) 4분 모드로 클리어하면 열려요`;
+    const endlessNote = locked ? lockNote : best ? `죽을 때까지 버텨요 · 내 최고 ${mmss(best.time)}` : '4분 뒤로도 죽을 때까지 버텨요';
+    const hellNote = hLocked
+      ? lockNote
+      : hBest
+        ? `엽전 ×${HELL.coin} · ${hBest.cleared ? '클리어!' : `내 최고 ${mmss(hBest.time)}`}`
+        : `더 강한 요괴 · 보스 새 패턴 · 엽전 ×${HELL.coin}`;
+    const cardOf = (m: RunMode, cls: string, title: string, note: string, closed: boolean) =>
+      `<button class="mode ${cls} ${mode === m ? 'sel' : ''} ${closed ? 'closed' : ''}" data-mode="${m}" role="radio" aria-checked="${mode === m}"><b>${title}</b><small>${note}</small></button>`;
     modesEl.innerHTML =
-      `<button class="mode ${mode === 'normal' ? 'sel' : ''}" data-mode="normal" role="radio" aria-checked="${mode === 'normal'}"><b>⏱️ 4분 모드</b><small>최종 보스를 잡으면 클리어</small></button>` +
-      `<button class="mode ${mode === 'endless' ? 'sel' : ''} ${locked ? 'closed' : ''}" data-mode="endless" role="radio" aria-checked="${mode === 'endless'}"><b>♾️ 무한 모드</b><small>${endlessNote}</small></button>`;
-    startBtn.textContent = mode === 'endless' ? '무한 모드 시작 ▶' : '시작 ▶';
+      cardOf('normal', '', '⏱️ 4분 모드', '최종 보스를 잡으면 클리어', false) +
+      cardOf('hell', 'hell', '🔥 헬 모드', hellNote, hLocked) +
+      cardOf('endless', '', '♾️ 무한 모드', endlessNote, locked);
+    startBtn.textContent = mode === 'endless' ? '무한 모드 시작 ▶' : mode === 'hell' ? '🔥 헬 모드 시작 ▶' : '시작 ▶';
+    // 헬 모드를 골랐으면 화면도 헬 분위기로: 시작 버튼, 맵 카드의 엽전 배율(2배)
+    root.classList.toggle('hell-pick', mode === 'hell');
+    root.querySelectorAll<HTMLElement>('.map-side em').forEach((em) => {
+      em.textContent = `엽전 ×${Number(em.dataset.mul) * (mode === 'hell' ? HELL.coin : 1)}`;
+    });
   };
   const paint = () => {
     root.querySelectorAll<HTMLElement>('.map').forEach((b) => b.classList.toggle('sel', b.dataset.m === pick));
@@ -243,8 +259,9 @@ export function showMapSelect() {
     const b = (e.target as HTMLElement).closest('.mode') as HTMLElement | null;
     if (!b) return;
     sfx('toggle');
-    if (b.dataset.mode === 'endless' && endlessLocked(pick)) return toast(`🔒 ${MAPS.find((m) => m.id === pick)!.name}을(를) 4분 모드로 클리어하면 무한 모드가 열려요`, 2800);
-    wanted = b.dataset.mode === 'endless' ? 'endless' : 'normal';
+    const want: RunMode = b.dataset.mode === 'endless' ? 'endless' : b.dataset.mode === 'hell' ? 'hell' : 'normal';
+    if (modeLocked(want, pick)) return toast(`🔒 ${MAPS.find((m) => m.id === pick)!.name}을(를) 4분 모드로 클리어하면 ${want === 'hell' ? '헬 모드' : '무한 모드'}가 열려요`, 2800);
+    wanted = want;
     state.mode = wanted;
     paintModes();
   });
@@ -271,7 +288,7 @@ export function showMapSelect() {
   root.querySelector('#start')!.addEventListener('click', () => {
     sfx('click');
     state.map = pick;
-    // 고른 모드를 기억한다 (잠긴 맵이라 4분 모드로 시작해도, 다음에 열린 맵을 고르면 무한 모드부터)
+    // 고른 모드를 기억한다 (잠긴 맵이라 4분 모드로 시작해도, 다음에 열린 맵을 고르면 그 모드부터)
     state.mode = wanted;
     nav.game({ char: state.char, map: pick, mode });
   });

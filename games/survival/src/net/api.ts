@@ -4,8 +4,8 @@ import { CHARACTERS } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { UPGRADE_TOTAL } from '../data/upgrades';
 import {
-  LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, endlessOpen, minRealTime, rejectReason, resetUpgrades, unlockCharacter, withRecords,
-  type EndlessRecord, type FinishResult, type RunReport, type SurvivalProfile, type SurvivalRecord,
+  LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, endlessOpen, hellOpen, minRealTime, rejectReason, resetUpgrades, unlockCharacter, withRecords,
+  type EndlessRecord, type FinishResult, type HellRecord, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../game/progress';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { dropPending, flushPending, keepPending, type SendOutcome, type Store } from './pending';
@@ -18,7 +18,7 @@ import { worldSupabase } from './world';
  *   · finish 는 보내기 전에 결과를 기기에 보관하고, 서버가 받았거나 거절하면 지운다. 통신 문제(12초 안에 답 없음 포함)면
  *     남겨 두었다가 다음 판을 시작할 때·다음 저장이 성공했을 때·다음 접속 때 다시 보낸다 (net/pending.ts)
  *   · 판 도중에 창이 닫히면(새로고침·탭 닫기·로그아웃) 그때까지의 결과를 보관해 둔다 (stash)
- * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql, 044_survival_endless.sql, 045_survival_review.sql).
+ * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql, 044_survival_endless.sql, 045_survival_review.sql, 055_survival_hell.sql).
  */
 
 /** 주소 (화면 없이 시험할 때는 없다) */
@@ -42,7 +42,8 @@ export interface SurvivalApi {
   loadProfile(): Promise<SurvivalProfile>;
   /**
    * 판 시작: 판 id. 못 받으면 null (그 판은 기록되지 않는다). skipSec: 테스트 모드에서 시작 시각을 건너뛴 판(?t=120)의 시작을 그만큼 앞당긴다.
-   * mode: 무한 모드면 'endless' (그 맵을 4분 모드로 클리어하지 않았으면 — 클리어 기록도 없고 다음 맵도 안 열렸으면 — ApiError 'endless locked')
+   * mode: 무한 모드면 'endless' (그 맵을 4분 모드로 클리어하지 않았으면 — 클리어 기록도 없고 다음 맵도 안 열렸으면 — ApiError 'endless locked'),
+   *       헬 모드면 'hell' (같은 조건. 안 열렸으면 ApiError 'hell locked')
    */
   start(map: string, character: ZodiacId, skipSec?: number, mode?: RunMode): Promise<string | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
@@ -84,6 +85,9 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
     runs: Record<string, number>;
     /** 진행 중인 판 가운데 무한 모드인 것 (id → true). 끝낼 때 모드는 여기서 읽는다 (서버가 판의 mode 칸을 보는 것과 같다) */
     endlessRuns: Record<string, true>;
+    /** 헬 모드의 맵별 최고 기록 (4분 모드·무한 모드 기록과 따로) 과, 진행 중인 판 가운데 헬 모드인 것 */
+    hell: Record<string, HellRecord>;
+    hellRuns: Record<string, true>;
     /** 끝난 판: id → 시작 시각과 생존 시간 (겹치는 판 확인용. 서버처럼 30일 뒤에 지운다) */
     done: Record<string, { started: number; time: number }>;
     seq: number;
@@ -94,13 +98,17 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       if (d) {
         const records = d.records ?? {};
         const endless = d.endless ?? {};
-        // 클리어한 맵·무한 모드 최고 기록은 기록에서 나온다
-        return { profile: withRecords(cleanProfile(d.profile), records, endless), records, endless, runs: d.runs ?? {}, endlessRuns: d.endlessRuns ?? {}, done: d.done ?? {}, seq: Number(d.seq) || 0 };
+        const hell = d.hell ?? {};
+        // 클리어한 맵·무한 모드·헬 모드 최고 기록은 기록에서 나온다
+        return {
+          profile: withRecords(cleanProfile(d.profile), records, endless, hell), records, endless, hell,
+          runs: d.runs ?? {}, endlessRuns: d.endlessRuns ?? {}, hellRuns: d.hellRuns ?? {}, done: d.done ?? {}, seq: Number(d.seq) || 0,
+        };
       }
     } catch {
       /* 처음 상태 */
     }
-    return { profile: defaultProfile(), records: {}, endless: {}, runs: {}, endlessRuns: {}, done: {}, seq: 0 };
+    return { profile: defaultProfile(), records: {}, endless: {}, hell: {}, runs: {}, endlessRuns: {}, hellRuns: {}, done: {}, seq: 0 };
   };
   const write = (d: Saved) => {
     try {
@@ -133,6 +141,7 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       if (!d.profile.unlockedMaps.includes(map)) throw new ApiError('map locked');
       if (!d.profile.unlockedCharacters.includes(character)) throw new ApiError('character locked');
       if (mode === 'endless' && !endlessOpen(d.profile, map)) throw new ApiError('endless locked');
+      if (mode === 'hell' && !hellOpen(d.profile, map)) throw new ApiError('hell locked');
       // 서버(039)와 같다: 끝나지 않은 이전 판을 지우지 않는다 (겹치는 판은 finish 가 막는다).
       // 너무 오래됐거나(7일) 많이 쌓인 것(새 판까지 5개)만 치우고, 끝난 판은 30일 뒤에 지운다
       const t = now();
@@ -145,6 +154,8 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       d.runs = { ...Object.fromEntries(open), [id]: t - skipSec * 1000 };
       d.endlessRuns = Object.fromEntries(open.filter(([k]) => d.endlessRuns[k]).map(([k]) => [k, true as const]));
       if (mode === 'endless') d.endlessRuns[id] = true;
+      d.hellRuns = Object.fromEntries(open.filter(([k]) => d.hellRuns[k]).map(([k]) => [k, true as const]));
+      if (mode === 'hell') d.hellRuns[id] = true;
       for (const k of Object.keys(d.done)) if (d.done[k].started < t - 30 * 86400_000) delete d.done[k];
       write(d);
       return id;
@@ -155,7 +166,7 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       const started = d.runs[report.run];
       if (started === undefined) throw new ApiError('no run');
       // 모드는 시작할 때 정해진 것을 쓴다 (보고에 적힌 값은 믿지 않는다)
-      report = { ...report, mode: d.endlessRuns[report.run] ? 'endless' : 'normal' };
+      report = { ...report, mode: d.endlessRuns[report.run] ? 'endless' : d.hellRuns[report.run] ? 'hell' : 'normal' };
       const why = rejectReason(report, (now() - started) / 1000);
       if (why) throw new ApiError(why);
       // 한 번에 한 판: 이미 끝낸 다른 판과 플레이 시간이 겹치면 받지 않는다 (판 하나가 쓴 시간은 가장 빠른 배속 기준)
@@ -165,11 +176,13 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       }
       delete d.runs[report.run];
       delete d.endlessRuns[report.run];
+      delete d.hellRuns[report.run];
       d.done[report.run] = { started, time: report.time };
-      const out = applyRun(d.profile, d.records, report, now(), d.endless);
+      const out = applyRun(d.profile, d.records, report, now(), d.endless, d.hell);
       d.profile = out.profile;
       d.records = out.records;
       d.endless = out.endless;
+      d.hell = out.hell;
       write(d);
       return { profile: out.profile, result: out.result };
     },
@@ -276,9 +289,9 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     loadProfile: () => profileRpc('survival_profile'),
     async start(map, character, _skipSec = 0, mode = 'normal') {
       // 통신 문제면 한 번 더 해 본다. 두 번을 합쳐 timeoutMs(12초) 안에 답이 없으면 이 판은 기록되지 않는다
-      // 4분 모드는 예전과 같은 인자로 부른다 (모드 인자는 무한 모드일 때만 붙인다)
+      // 4분 모드는 예전과 같은 인자로 부른다 (모드 인자는 무한 모드·헬 모드일 때만 붙인다)
       const args: Record<string, unknown> = { p_map: map, p_character: character };
-      if (mode === 'endless') args.p_mode = 'endless';
+      if (mode === 'endless' || mode === 'hell') args.p_mode = mode;
       let why: string | undefined;
       for (let i = 0; i < 2; i++) {
         const { data, error } = await call('survival_start', args, timeoutMs / 2);
@@ -350,7 +363,7 @@ export async function getApi(uid: string): Promise<SurvivalApi> {
 
 /**
  * 테스트 모드의 프로필을 주소로 정한다 (헤드리스 확인용):
- *   ?fresh=1 처음 상태로 · ?coins=5000 엽전 · ?unlock=1 캐릭터·맵 모두 해금 · ?cleared=field,bamboo 그 맵을 4분 모드로 클리어한 것으로 (무한 모드가 열린다)
+ *   ?fresh=1 처음 상태로 · ?coins=5000 엽전 · ?unlock=1 캐릭터·맵 모두 해금 · ?cleared=field,bamboo 그 맵을 4분 모드로 클리어한 것으로 (무한 모드·헬 모드가 열린다)
  */
 function seedLocal(store: Store) {
   if (params.get('fresh') === '1') store.removeItem(LOCAL_KEY);
@@ -378,7 +391,7 @@ function seedLocal(store: Store) {
 /**
  * 개발용 테스트 설정 (PRD 7장). 개발 서버·localhost 의 ?local=1 에서만 읽는다.
  *   ?local=1&map=field&char=tiger&upg=10&t=120   → 강화 10레벨 상태로 2분 시점부터 바로 시작
- *   seed=숫자: 같은 판 다시 보기 · mode=endless: 무한 모드 (t 는 4분을 넘겨도 된다)
+ *   seed=숫자: 같은 판 다시 보기 · mode=endless: 무한 모드 (t 는 4분을 넘겨도 된다) · mode=hell: 헬 모드
  */
 export interface DevSetup {
   map: string | null;
@@ -388,7 +401,7 @@ export interface DevSetup {
   /** 시작 시각 (초) */
   t: number;
   seed: number | null;
-  /** 무한 모드로 시작할까 */
+  /** 무한 모드·헬 모드로 시작할까 */
   mode: RunMode;
   /** map 과 char 를 모두 적었으면 메뉴를 건너뛰고 바로 판을 시작한다 */
   auto: boolean;
@@ -402,7 +415,7 @@ export function devSetup(): DevSetup | null {
   const okChar = char !== null && ZODIAC_IDS.includes(char) ? char : null;
   const num = (k: string, max: number) => Math.max(0, Math.min(max, Math.floor(Number(params.get(k)) || 0)));
   const seed = params.get('seed');
-  const mode: RunMode = params.get('mode') === 'endless' ? 'endless' : 'normal';
+  const mode: RunMode = params.get('mode') === 'endless' ? 'endless' : params.get('mode') === 'hell' ? 'hell' : 'normal';
   return {
     map: okMap,
     char: okChar,

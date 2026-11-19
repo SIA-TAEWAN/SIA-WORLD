@@ -5,6 +5,7 @@
  *   npm run balance -- 60 maps       → 맵 × 강화 수준 표와 '몇 판째' 표만   (chars: 캐릭터별, dps: 무기 피해)
  *   npm run balance -- 60 maps field,bamboo   → 그 맵만
  *   npm run balance -- 40 endless             → 무한 모드: 맵 × 강화 수준별 평균·최대 생존 시간 (endless field 처럼 맵을 고를 수 있다)
+ *   npm run balance -- 60 hell                → 헬 모드: 맵 × 강화 수준별 클리어 비율·평균 생존 시간·엽전 (hell field 처럼 맵을 고를 수 있다)
  * 수십 초~몇 분 걸리므로 테스트(npm test)에는 넣지 않는다.
  */
 import { spawn } from 'node:child_process';
@@ -170,6 +171,47 @@ if (!only || only === 'endless') {
   for (const v of sum.values()) for (const k of Object.keys(top)) top[k] = Math.max(top[k], v.max[k]);
   console.log(`
   전체 최대: (처치-100)/초 ${top.killRate.toFixed(2)} · (레벨-5)/초 ${top.levelRate.toFixed(3)} · (떡-5)/초 ${top.cakeRate.toFixed(4)} · 엽전/초/맵 배율 ${top.coinRate.toFixed(3)}   (서버 상한: 50 · 0.5 · 0.15 · 5)`);
+}
+
+if (!only || only === 'hell') {
+  // 헬 모드: 같은 맵·요괴·보스가 더 강하고(data/balance.ts 의 HELL × data/maps.ts 의 hell), 보스마다 패턴이 하나 더 있다. 엽전 2배.
+  // 목표: 강화 49 에서 클리어율 10~25% ('보통 실력' 정책은 보스 패턴에 서툴러 사람보다 못한다), 강화 34 이하에서는 0~5%
+  const maps = MAPS.filter(([id]) => !onlyMaps || onlyMaps.includes(id));
+  const sum = await sweep(maps.flatMap(([map]) => LEVELS.map((upg) => ({ key: `${map}:${upg}`, map, char: 'tiger', upg, mode: 'hell' }))));
+  console.log(`
+■ 헬 모드: 맵 × 강화 수준 (호랑이, ${runs}판): 평균 생존 시간 / 클리어 비율 / 평균 엽전   목표: 강화 49 에서 10~25%, 강화 34 이하 0~5%`);
+  console.log(`  ${'맵'.padEnd(6, '　')}${LEVELS.map((l) => `강화 ${String(l).padStart(2)}`.padStart(22)).join('')}`);
+  for (const [map, name] of maps) {
+    const cells = LEVELS.map((upg) => {
+      const s = sum.get(`${map}:${upg}`);
+      const txt = `${mmss(s.time / s.runs)} ${((s.clears / s.runs) * 100).toFixed(0).padStart(3)}% ${(s.coins / s.runs).toFixed(0).padStart(5)}닢`;
+      return (upg === 49 ? `[${txt}]` : ` ${txt} `).padStart(22);
+    });
+    console.log(`  ${name.padEnd(6, '　')}${cells.join('')}`);
+  }
+  console.log('');
+  console.log('  평균 레벨 / 처치 / 잡은 보스 / 무기 진화가 일어난 판');
+  for (const [map, name] of maps) {
+    const cells = LEVELS.map((upg) => {
+      const s = sum.get(`${map}:${upg}`);
+      return `Lv${(s.level / s.runs).toFixed(1).padStart(5)} ${(s.kills / s.runs).toFixed(0).padStart(5)} ${(s.bosses / s.runs).toFixed(1).padStart(4)} ${((s.evos / s.runs) * 100).toFixed(0).padStart(3)}%`.padStart(22);
+    });
+    console.log(`  ${name.padEnd(6, '　')}${cells.join('')}`);
+  }
+  console.log('');
+  console.log('  30초 단위 사망 (0:00대 … 3:30대 | 4분 도달)');
+  for (const [map, name] of maps) {
+    for (const upg of LEVELS) {
+      const h = new Array(9).fill(0);
+      for (const t of sum.get(`${map}:${upg}`).times) h[Math.min(8, Math.floor(t / 30))]++;
+      console.log(`  ${name.padEnd(6, '　')} 강화 ${String(upg).padStart(2)}: ${h.slice(0, 8).map((n) => String(n).padStart(3)).join('')} |${String(h[8]).padStart(3)}`);
+    }
+  }
+  // 서버 상한을 헬 모드에서도 넘지 않는지: 실제 최대치 (엽전은 맵 배율로만 나눈 값이라 헬의 2배가 들어 있다 → 상한 5 × 2 = 10)
+  const top = { coins: 0, coinRate: 0, killRate: 0, levelRate: 0, cakeRate: 0 };
+  for (const v of sum.values()) for (const k of Object.keys(top)) top[k] = Math.max(top[k], v.max[k]);
+  console.log(`
+  전체 최대: 엽전 ${top.coins}닢 · 엽전/초/맵 배율 ${top.coinRate.toFixed(3)} · (처치-100)/초 ${top.killRate.toFixed(2)} · (레벨-5)/초 ${top.levelRate.toFixed(3)} · (떡-5)/초 ${top.cakeRate.toFixed(4)}   (서버 상한: 엽전 10 · 50 · 0.5 · 0.15)`);
 }
 console.log(`\n(${((Date.now() - t0) / 1000).toFixed(1)}초, 일꾼 ${WORKERS}개)`);
 

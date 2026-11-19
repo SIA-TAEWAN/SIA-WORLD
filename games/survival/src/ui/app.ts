@@ -26,7 +26,7 @@ export interface GameResult extends RunSummary {
   /** 스스로 그만뒀나 */
   quit: boolean;
   setup: GameSetup;
-  /** 판이 끝난 순간에 이 맵의 무한 모드가 이미 열려 있었나 (이 판으로 처음 열렸을 때 결과 화면이 알려 준다) */
+  /** 판이 끝난 순간에 이 맵의 무한 모드·헬 모드가 이미 열려 있었나 (이 판으로 처음 열렸을 때 결과 화면이 알려 준다. 둘은 같은 조건으로 열린다) */
   endlessWasOpen: boolean;
   /**
    * 서버에 올린 결과: 받은 엽전·새 기록·새로 해금된 것.

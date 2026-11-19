@@ -21,16 +21,18 @@ const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survi
 export const RACE_TIERS = { gold: 30750, silver: 33000, bronze: 37500 };
 export const RACE_TOP = 100;
 const RACE_INFO = { label: '🏁 레이스', note: '150m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
-const VOLLEY_INFO = { label: '🏐 배구', note: '사람끼리 겨룬 경기의 승수 순 (같으면 승률, 그다음 먼저 달성한 사람이 위)' };
+const VOLLEY_INFO = { label: '🏐 배구', note: '경기 승수 순 · AI 대전 포함 (같으면 승률, 그다음 먼저 달성한 사람이 위)' };
 export const VOLLEY_TOP = 100;
 const SURVIVAL_INFO = { label: '👹 서바이벌', note: '맵별 생존 시간 순 (같으면 클리어한 기록, 그다음 처치 수, 먼저 달성한 사람이 위)' };
 export const SURVIVAL_TOP = 100;
-/** 시아서바이벌 모드: 4분 모드와 무한 모드의 랭킹은 따로다 */
+/** 시아서바이벌 모드: 4분 모드 · 헬 모드 · 무한 모드의 랭킹은 따로다 (창에는 4분 / 헬 / 무한 순으로 보인다) */
 export const SURVIVAL_MODES = [
   { id: 'normal', name: '4분 모드' },
+  { id: 'hell', name: '🔥 헬 모드' },
   { id: 'endless', name: '무한 모드' },
 ];
 const SURVIVAL_ENDLESS_NOTE = '무한 모드 · 맵별 생존 시간 순 (같으면 처치 수, 그다음 먼저 달성한 사람이 위)';
+const SURVIVAL_HELL_NOTE = '🔥 헬 모드 · 맵별 생존 시간 순 (같으면 클리어한 기록, 그다음 처치 수, 먼저 달성한 사람이 위)';
 /** 시아서바이벌 맵 (games/survival/src/data/maps.ts 와 같은 순서·이름) */
 export const SURVIVAL_MAPS = [
   { id: 'field', name: '들판' },
@@ -124,12 +126,14 @@ const dateText = (iso) => {
 
 /**
  * 시아서바이벌 랭킹 (survival_ranking 뷰: 맵별로 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순).
- * mode 가 'endless' 면 무한 모드 랭킹 (survival_endless_ranking 뷰: 생존 시간 → 처치 수 → 먼저 달성한 순. 칸은 같다)
+ * mode 가 'endless' 면 무한 모드 랭킹 (survival_endless_ranking 뷰: 생존 시간 → 처치 수 → 먼저 달성한 순. 칸은 같다),
+ * 'hell' 이면 헬 모드 랭킹 (survival_hell_ranking 뷰: 4분 모드와 같은 순서. 칸은 같다)
  * → { rows: 상위 100명 [{ key, nickname, time, kills, cleared, character, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
  */
 export async function getSurvivalRanking(mapId, meId = null, mode = 'normal') {
   const cols = 'user_id,nickname,best_time,best_kills,cleared,character,achieved_at,place,total';
-  const view = () => (mode === 'endless' ? supabase.from('survival_endless_ranking') : supabase.from('survival_ranking'));
+  const view = () =>
+    mode === 'endless' ? supabase.from('survival_endless_ranking') : mode === 'hell' ? supabase.from('survival_hell_ranking') : supabase.from('survival_ranking');
   const { data, error } = await view().select(cols).eq('map_id', mapId).order('place', { ascending: true }).limit(SURVIVAL_TOP);
   if (error) throw new Error('랭킹을 불러오지 못했어요');
   const map = (r) => ({
@@ -224,6 +228,8 @@ const CSS = `
 .sia-rank .modes button { flex: 1; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
   border: 2px solid #2a1a10; background: #fff; border-radius: 12px; padding: 5px 4px; }
 .sia-rank .modes button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
+.sia-rank .modes button[data-sm="hell"].sel { background: #ff4d6d; color: #ffffff; }
+.sia-rank td.am i.hell { background: #ff4d6d; }
 .sia-rank .dmodes { display: none; gap: 6px; margin-bottom: 6px; }
 .sia-rank .dmodes.on { display: flex; }
 .sia-rank .dmodes button { flex: 1; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
@@ -400,10 +406,11 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     survivalMode = mode;
     dim.querySelectorAll('.subs button').forEach((b) => b.classList.toggle('sel', b.dataset.m === mapId));
     dim.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('sel', b.dataset.sm === mode));
-    $('.note').textContent = `${mode === 'endless' ? SURVIVAL_ENDLESS_NOTE : SURVIVAL_INFO.note} · 상위 ${SURVIVAL_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.note').textContent = `${mode === 'endless' ? SURVIVAL_ENDLESS_NOTE : mode === 'hell' ? SURVIVAL_HELL_NOTE : SURVIVAL_INFO.note} · 상위 ${SURVIVAL_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
     $('.me-line').textContent = '불러오는 중…';
     $('table').innerHTML = '';
-    const timeText = (r) => `${r.cleared ? '<i>클리어</i>' : ''}${survivalTime(r.time)}`;
+    // 헬 모드 랭킹의 클리어 표시는 헬 색(분홍)으로
+    const timeText = (r) => `${r.cleared ? (mode === 'hell' ? '<i class="hell">🔥 클리어</i>' : '<i>클리어</i>') : ''}${survivalTime(r.time)}`;
     try {
       const { rows, mine, total } = await getSurvivalRanking(mapId, meId, mode);
       if (shown !== 'survival' || survivalMap !== mapId || survivalMode !== mode) return;
@@ -412,7 +419,9 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
         ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${survivalTime(mine.time)}${mine.cleared ? ' 클리어' : ''} · 처치 ${mine.kills.toLocaleString()}`
         : mode === 'endless'
           ? '아직 이 맵의 무한 모드 기록이 없어요'
-          : '아직 이 맵의 기록이 없어요';
+          : mode === 'hell'
+            ? '아직 이 맵의 헬 모드 기록이 없어요'
+            : '아직 이 맵의 기록이 없어요';
       $('table').innerHTML =
         rows
           .map(

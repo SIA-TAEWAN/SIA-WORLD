@@ -16,7 +16,7 @@ import { GameScene, type SceneData } from '../scenes/GameScene';
 import { esc, mmss, nav, openSettings, screen, setProfile, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
 import { icon } from './icons';
-import { mapTrack, music } from './music';
+import { bossTrack, mapTrack, music } from './music';
 import { sfx, weaponSfx } from './sfx';
 import { whyText } from './upgrade';
 
@@ -117,17 +117,18 @@ export function showGame(setup: GameSetup) {
       <div class="xp"><i id="xpFill"></i><b id="lv">Lv 1</b></div>
       <div class="hud-row">
         <div class="owned" id="owned"></div>
-        <div class="hud-mid">${s.endless ? '<span class="mode-tag">♾️ 무한 모드</span>' : ''}<b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
+        <div class="hud-mid">${s.endless ? '<span class="mode-tag">♾️ 무한 모드</span>' : s.hell ? '<span class="mode-tag hell">🔥 헬</span>' : ''}<b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
         <div class="hud-btns"><button class="icon-btn speed" id="speed"></button><button class="icon-btn" id="pause" aria-label="일시정지">⏸</button></div>
       </div>
       <div class="bossbar hidden" id="bossbar"><span id="bossName"></span><div class="track"><i id="bossFill"></i></div></div>
     </div>
     <div class="mood"><i></i><i></i></div>
+    ${s.hell ? '<div class="hellmood"><div class="embers" id="embers"></div></div>' : ''}
     <div class="edge" id="edge"></div>
     <div class="cutin" id="cutin"></div>
     <div class="stick hidden" id="stick"><i></i></div>`,
-    `game m-${s.map.id}`,
-    mapTrack(s.map.id),
+    `game m-${s.map.id}${s.hell ? ' hell' : ''}`,
+    mapTrack(s.map.id, s.hell),
     () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
@@ -144,6 +145,21 @@ export function showGame(setup: GameSetup) {
   );
   const $ = <T extends HTMLElement>(q: string) => root.querySelector(q) as T;
   const fieldEl = $('#field');
+  // 헬 모드: 화면 가장자리에서 불씨(위로)와 재(아래로)가 흩날린다. 가운데(내 캐릭터 둘레)는 비워 둔다
+  const embers = root.querySelector('#embers');
+  if (embers) {
+    for (let i = 0; i < 26; i++) {
+      const e = document.createElement('i');
+      const ash = i % 3 === 2;
+      // 왼쪽·오른쪽 가장자리 쪽에 몰려 있다
+      const side = Math.random() < 0.5 ? Math.random() * 22 : 78 + Math.random() * 22;
+      e.className = ash ? 'ash' : '';
+      e.style.left = `${side}%`;
+      e.style.animationDelay = `${-Math.random() * 7}s`;
+      e.style.animationDuration = `${(ash ? 6 : 3.4) + Math.random() * 3.2}s`;
+      embers.append(e);
+    }
+  }
   const cutin = $('#cutin');
   const edge = $('#edge');
   /** 화면 가장자리 테두리를 한 번 번쩍인다: hurt 맞음(분홍) · warn 보스 경고(분홍, 세 번) · good 좋은 일(노랑) */
@@ -390,7 +406,7 @@ export function showGame(setup: GameSetup) {
         ? `<div class="dialog"><h3>그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${quitNote}</p>
             <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-quit>그만두기</button></div></div>`
         : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
-            <p class="soft pause-info">${esc(s.char.nick)} · ${esc(s.map.name)}${s.endless ? ' · 무한 모드' : ''} · ${mmss(clockSec())} · Lv ${s.level}</p>
+            <p class="soft pause-info">${esc(s.char.nick)} · ${esc(s.map.name)}${s.endless ? ' · 무한 모드' : s.hell ? ' · 🔥 헬 모드' : ''} · ${mmss(clockSec())} · Lv ${s.level}</p>
             <h4>무기 ${s.weapons.length}/6</h4><ul class="own-list">${weapons.join('')}</ul>
             <h4>패시브 ${s.passives.length}/6</h4><ul class="own-list">${passives.join('') || '<li class="none">아직 없어요</li>'}</ul>
             <div class="actions"><button class="btn primary" data-resume>계속하기</button></div>
@@ -486,7 +502,7 @@ export function showGame(setup: GameSetup) {
   function onClear() {
     sfx('win');
     closeLevelUp();
-    setCut('클리어!<small>최종 보스를 물리쳤어요</small>', 'go');
+    setCut(s.hell ? '헬 클리어!<small>헬의 최종 보스를 물리쳤어요</small>' : '클리어!<small>최종 보스를 물리쳤어요</small>', 'go');
     music.play(null);
     finish(false);
   }
@@ -522,9 +538,9 @@ export function showGame(setup: GameSetup) {
         break;
       case EV.bossWarn:
         sfx('survBossWarn');
-        setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>보스가 다가온다!</small>`, 'bad warn', 2600);
+        setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>${st.hell ? '🔥 헬의 보스가 다가온다!' : '보스가 다가온다!'}</small>`, 'bad warn', 2600);
         flashEdge('warn');
-        music.play('boss');
+        music.play(bossTrack(st.hell));
         break;
       case EV.bossDown:
         sfx('survBossDown');
@@ -536,7 +552,7 @@ export function showGame(setup: GameSetup) {
           const more = st.endless && st.bossKind[st.map.bosses.length - 1] === e.a && st.bossNext === st.map.bosses.length;
           if (more) setCutHeld(`${esc(BOSSES[e.a].name)} 처치!<small>끝이 아니에요. 요괴가 점점 강해져요</small>`, 'go', 2400);
           else if (st.phase === 'play') setCut(`${esc(BOSSES[e.a].name)} 처치!<small>보물상자를 주워요</small>`, 'go', 1800);
-          if (!activeBoss(st)) music.play(mapTrack(st.map.id));
+          if (!activeBoss(st)) music.play(mapTrack(st.map.id, st.hell));
         }
         break;
       case EV.evolve:
@@ -561,6 +577,13 @@ export function showGame(setup: GameSetup) {
         scene()?.burst('evolve');
         setCut('부활!', 'go', 1200);
         break;
+      case EV.hellPattern: {
+        // 헬 전용 패턴: 이름을 작게 띄워 알린다 (다른 큰 글자가 떠 있으면 건드리지 않는다)
+        sfx('cutin', { volume: 0.5, rate: 0.8 });
+        flashEdge('warn');
+        if (!cutin.innerHTML) setCut(`<small>🔥 ${esc(BOSSES[e.a].hell.name ?? '헬 패턴')}</small>`, 'bad', 1300);
+        break;
+      }
       case EV.boom:
         sfx('tankBoom', { volume: 0.45, rate: 1.3 });
         break;
@@ -613,7 +636,7 @@ export function showGame(setup: GameSetup) {
     if (bossId !== shown.boss) {
       shown.boss = bossId;
       el.bossbar.classList.toggle('hidden', !boss);
-      if (boss) el.bossName.textContent = BOSSES[bossId].name;
+      if (boss) el.bossName.textContent = `${s.hell ? '🔥 ' : ''}${BOSSES[bossId].name}`;
     }
     if (boss) {
       const hp = Math.round((boss.hp / boss.maxHp) * 200);

@@ -8,7 +8,7 @@ import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { ITEM, ITEMS } from '../data/items';
-import { MAPS, MAP_INDEX, type SwarmEvent } from '../data/maps';
+import { HELL_MAPS, MAPS, MAP_INDEX, hellBossDmg, type SwarmEvent } from '../data/maps';
 import { PASSIVES } from '../data/passives';
 import { UPGRADES, type UpgradeLevels } from '../data/upgrades';
 import { FALLBACK_WEAPON, WEAPONS, WEAPON_INDEX } from '../data/weapons';
@@ -33,7 +33,9 @@ export function startWeapon(charId: RunConfig['char']): number {
 
 /** 새 판을 만든다 */
 export function createRun(cfg: RunConfig): State {
-  const map = MAPS[MAP_INDEX[cfg.map] ?? 0];
+  const hell = cfg.mode === 'hell';
+  // 헬 모드: 같은 맵에 '요괴 강함'만 헬 배율을 곱하고 엽전 배율을 2배로 한 맵을 쓴다
+  const map = (hell ? HELL_MAPS : MAPS)[MAP_INDEX[cfg.map] ?? 0];
   const char = CHARACTER_BY_ID[cfg.char] ?? CHARACTER_BY_ID.rat;
   const upgrades: UpgradeLevels = {};
   for (const u of UPGRADES) upgrades[u.id] = Math.max(0, Math.min(u.max, Math.floor(cfg.upgrades?.[u.id] ?? 0)));
@@ -41,6 +43,8 @@ export function createRun(cfg: RunConfig): State {
     cfg: { ...cfg, numbers: cfg.numbers ?? true },
     endless: cfg.mode === 'endless',
     coinCap: cfg.mode === 'endless' ? map.endlessCoins : Infinity,
+    hell,
+    bossDmg: hell ? hellBossDmg(map.id) : 1,
     map,
     char,
     upgrades,
@@ -617,7 +621,7 @@ export function summarize(s: State): RunSummary {
   return {
     map: s.map.id,
     character: s.char.id,
-    mode: s.endless ? 'endless' : 'normal',
+    mode: s.endless ? 'endless' : s.hell ? 'hell' : 'normal',
     time: Math.min(s.endless ? ENDLESS.maxSec : RUN_SEC, Math.floor(s.time)),
     kills: s.kills,
     level: s.level,

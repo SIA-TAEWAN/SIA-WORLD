@@ -27,6 +27,20 @@ const CHAR_MAX_W = 96;
 const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
 /** 지대 색 (state.ts 의 ZONE 순서): 독안개 · 예고 · 독 · 불길 · 물기둥 · 양털 구름 · 말발굽 */
 const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft];
+/** 두 색을 섞는다 (t: b 쪽으로 얼마나) */
+const mix = (a: number, b: number, t: number) => {
+  const ch = (sh: number) => Math.round(((a >> sh) & 255) * (1 - t) + ((b >> sh) & 255) * t);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
+/**
+ * 헬 모드의 색 (DESIGN.md 의 --pink 와 어두운 갈색 --outline 만 섞어 쓴다. 그림에 곱해진다):
+ *   바닥·장애물은 붉고 어둡게, 요괴는 붉은 기운, 보스는 더 짙게. 내 캐릭터는 그대로라 더 잘 보인다
+ */
+const HELL_TINT = {
+  ground: mix(mix(COLOR.pink, COLOR.white, 0.35), COLOR.outline, 0.3),
+  enemy: mix(COLOR.pink, COLOR.white, 0.45),
+  boss: mix(COLOR.pink, COLOR.white, 0.25),
+};
 
 /** 같은 종류의 그림을 미리 만들어 두고 돌려 쓰는 묶음 (프레임마다 새로 만들지 않는다) */
 class SpritePool {
@@ -155,6 +169,7 @@ export class GameScene extends Phaser.Scene {
 
     // 바닥: 타일 무늬가 캐릭터를 따라 흘러서 움직임이 보인다
     this.ground = this.add.tileSprite(0, 0, 16, 16, tileKey(s.map.id)).setDepth(D.ground);
+    if (s.hell) this.ground.setTint(HELL_TINT.ground);
     this.fitGround();
 
     this.zones = new SpritePool(this, 'disc', D.zone);
@@ -220,6 +235,7 @@ export class GameScene extends Phaser.Scene {
     // 물길은 판정 원 그대로, 대나무·담은 조금 크게 (위로 솟은 그림)
     const k = this.run.state.map.terrain.kind === 'pools' ? 2.06 : 2.5;
     spr.setPosition(x, y - (k > 2.1 ? r * 0.2 : 0)).setScale((r * k) / 128).setVisible(true);
+    if (this.run.state.hell && !spr.isTinted) spr.setTint(HELL_TINT.ground);
   };
   private drawObstacles(s: State, halfW: number, halfH: number) {
     this.obN = 0;
@@ -252,7 +268,7 @@ export class GameScene extends Phaser.Scene {
       let x = e.x;
       let alpha = e.look >= 0 ? 0.82 : 1;
       let rot = 0;
-      if (boss && bossWinding(e)) x += Math.sin(e.patT * 60) * 4;
+      if (boss && bossWinding(s, e)) x += Math.sin(e.patT * 60) * 4;
       if (e.hidden) {
         if (boss) alpha = 0.08; // 숨은 보스(장산범): 거의 보이지 않는다
         else if (e.sub === 0) sc *= 0.45; // 땅속의 죽순: 작은 싹만 보인다
@@ -267,6 +283,7 @@ export class GameScene extends Phaser.Scene {
       if (e.flash > 0) spr.setTintFill(COLOR.white);
       else if (e.slow > 0) spr.setTint(COLOR.skyMid); // 느려진 요괴
       else if (e.guard < 1) spr.setTint(COLOR.primaryLight); // 방패를 든 보스
+      else if (s.hell) spr.setTint(boss ? HELL_TINT.boss : HELL_TINT.enemy); // 헬 모드: 요괴에 붉은 기운
       else if (spr.isTinted) spr.clearTint();
     }
     this.enemies.end(n);

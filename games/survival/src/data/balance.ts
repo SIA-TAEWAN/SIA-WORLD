@@ -8,9 +8,29 @@ export const TICK = 1 / 60;
 export const TICKS_PER_SEC = 60;
 /** 한 판 길이: 4분이 되면 최종 보스가 나온다 */
 export const RUN_SEC = 240;
-/** 판의 모드: normal 4분 모드 (최종 보스를 잡으면 클리어) · endless 무한 모드 (4분 뒤로도 죽을 때까지 계속) */
-export type RunMode = 'normal' | 'endless';
-export const RUN_MODES: readonly RunMode[] = ['normal', 'endless'];
+/**
+ * 판의 모드: normal 4분 모드 (최종 보스를 잡으면 클리어) · endless 무한 모드 (4분 뒤로도 죽을 때까지 계속)
+ *   · hell 헬 모드 (4분 판. 같은 맵·요괴·보스가 더 강하고, 보스마다 패턴이 하나 더 있고, 엽전을 2배로 준다)
+ */
+export type RunMode = 'normal' | 'endless' | 'hell';
+export const RUN_MODES: readonly RunMode[] = ['normal', 'endless', 'hell'];
+
+/**
+ * 헬 모드: 그 맵을 4분 모드로 클리어하면 열린다. 배경·요괴·보스는 같고 더 강하다 (체감 약 1.5배).
+ * 아래 값은 맵의 '요괴 강함'(data/maps.ts 의 power)에 곱한다. 맵마다 더 곱하는 값은 data/maps.ts 의 hell (영구 강화 49레벨 · 보통 실력으로 클리어율 10~25% 가 되게 맞춘 값).
+ *   hp 요괴 체력 · dmg 요괴가 주는 피해(닿았을 때·여우불) · count 등장 수 · speed 이동 속도 · boss 보스 체력 · bossDmg 보스가 주는 피해(몸·범위 공격·탄)
+ * 보스마다 헬 전용 패턴이 하나씩 더 있다 (data/bosses.ts 의 hell).
+ */
+export const HELL = {
+  hp: 1.25,
+  dmg: 1.2,
+  count: 1.1,
+  speed: 1,
+  boss: 1.5,
+  bossDmg: 1.2,
+  /** 엽전 배율 (서버의 hell_coin_mul 과 같다): 주운 엽전이 2배, 서버의 판당 엽전 상한도 2배 */
+  coin: 2,
+};
 
 /**
  * 무한 모드: 4분까지는 4분 모드와 완전히 같고, 그 뒤로는 끝없이 버틸 수 없게 요괴가 가파르게 강해진다.

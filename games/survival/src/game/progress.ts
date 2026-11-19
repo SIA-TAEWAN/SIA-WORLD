@@ -1,12 +1,12 @@
 /**
  * 판 밖 성장 (PRD 7·11장): 엽전 · 영구 강화 · 해금 · 최고 기록 · 도감의 규칙.
- * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040 · 041 · 042 · 043 · 044_survival_endless.sql · 045_survival_review.sql). 여기는 같은 규칙의 순수 함수로,
+ * 진짜 계산은 서버 함수가 한다 (supabase/migrations/038_survival.sql · 039 · 040 · 041 · 042 · 043 · 044_survival_endless.sql · 045_survival_review.sql · 055_survival_hell.sql). 여기는 같은 규칙의 순수 함수로,
  *   · 테스트 모드(?local=1)의 기기 저장 프로필이 쓰고
  *   · 화면이 "살 수 있나 · 얼마인가 · 무엇이 잠겼나" 를 보여 줄 때 쓰고
  *   · tests/sql.test.ts 가 SQL의 표·상수와 같은지 비교한다.
  * 시간 단위는 모두 초.
  */
-import { ENDLESS, RUN_SEC, ZODIAC_IDS, type ZodiacId } from '../data/balance';
+import { ENDLESS, HELL, RUN_SEC, ZODIAC_IDS, type ZodiacId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES } from '../data/enemies';
@@ -34,6 +34,8 @@ export interface SurvivalProfile {
   clearedMaps: string[];
   /** 무한 모드의 맵별 내 최고 기록 */
   endlessBest: Record<string, { time: number; kills: number }>;
+  /** 헬 모드의 맵별 내 최고 기록 (헬 모드도 clearedMaps 에 있는 맵에서만 열린다) */
+  hellBest: Record<string, { time: number; kills: number; cleared: boolean }>;
 }
 
 /** 맵별 최고 기록 (survival_records) */
@@ -52,6 +54,9 @@ export interface EndlessRecord {
   character: string;
   at: number;
 }
+
+/** 헬 모드의 맵별 최고 기록 (survival_hell_records). 4분 모드·무한 모드 기록과 따로 둔다. 모양은 4분 모드 기록과 같다 (클리어가 있다) */
+export type HellRecord = SurvivalRecord;
 
 /** 판을 끝낼 때 서버에 보내는 것 (survival_finish 의 인자) */
 export interface RunReport extends RunSummary {
@@ -72,7 +77,7 @@ export interface FinishResult {
   unlockedMaps: string[];
 }
 
-/** 판 검증 값. SQL의 _survival_const (045_survival_review.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
+/** 판 검증 값. SQL의 _survival_const (055_survival_hell.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
 export const LIMITS = {
   max_time: RUN_SEC,
   /** 서버가 잰 경과 시간이 판에 걸리는 가장 짧은 시간보다 이만큼까지는 짧아도 된다 (판 시작 알림이 늦게 닿는 것까지 본다) */
@@ -102,6 +107,8 @@ export const LIMITS = {
   /** 무한 모드: 가장 긴 판 (초), 최종 보스 뒤로 보스가 다시 나오는 간격 (초) */
   endless_max_time: ENDLESS.maxSec,
   endless_boss_every: ENDLESS.bossEvery,
+  /** 헬 모드: 엽전 배율 (주운 엽전도, 판당 엽전 상한도 이만큼) */
+  hell_coin_mul: HELL.coin,
 };
 
 export function defaultProfile(): SurvivalProfile {
@@ -114,6 +121,7 @@ export function defaultProfile(): SurvivalProfile {
     totals: { kills: 0, cakes: 0, bestTime: 0, bossKills: 0, clears: 0, runs: 0 },
     clearedMaps: [],
     endlessBest: {},
+    hellBest: {},
   };
 }
 
@@ -139,6 +147,10 @@ export function cleanProfile(raw: unknown): SurvivalProfile {
   const eb = (r.endlessBest && typeof r.endlessBest === 'object' ? r.endlessBest : {}) as Record<string, { time?: unknown; kills?: unknown } | null>;
   const endlessBest: SurvivalProfile['endlessBest'] = {};
   for (const m of MAPS) if (eb[m.id] && typeof eb[m.id] === 'object') endlessBest[m.id] = { time: count(eb[m.id]!.time), kills: count(eb[m.id]!.kills) };
+  // 헬 모드 최고 기록 (옛 서버 답에는 없다 → 빈 값)
+  const hb = (r.hellBest && typeof r.hellBest === 'object' ? r.hellBest : {}) as Record<string, { time?: unknown; kills?: unknown; cleared?: unknown } | null>;
+  const hellBest: SurvivalProfile['hellBest'] = {};
+  for (const m of MAPS) if (hb[m.id] && typeof hb[m.id] === 'object') hellBest[m.id] = { time: count(hb[m.id]!.time), kills: count(hb[m.id]!.kills), cleared: hb[m.id]!.cleared === true };
   return {
     coins: count(r.coins),
     upgrades: up,
@@ -153,21 +165,29 @@ export function cleanProfile(raw: unknown): SurvivalProfile {
     totals: { kills: count(tt.kills), cakes: count(tt.cakes), bestTime: count(tt.bestTime), bossKills: count(tt.bossKills), clears: count(tt.clears), runs: count(tt.runs) },
     clearedMaps: strings(r.clearedMaps, MAPS.map((m) => m.id)),
     endlessBest,
+    hellBest,
   };
 }
 
 /** 무한 모드인가 (모드가 적히지 않은 옛 결과는 4분 모드) */
 export const isEndless = (r: { mode?: string }) => r.mode === 'endless';
 
+/** 헬 모드인가 */
+export const isHell = (r: { mode?: string }) => r.mode === 'hell';
+
 /** 무한 모드가 열렸나: 그 맵을 4분 모드로 클리어했어야 한다 (클리어 기록이 있거나 다음 맵이 열려 있다 → clearedMaps) */
 export const endlessOpen = (profile: SurvivalProfile, map: string) => profile.clearedMaps.includes(map);
+
+/** 헬 모드가 열렸나: 무한 모드와 같은 조건 — **그 맵을** 4분 모드로 클리어했어야 한다 */
+export const hellOpen = (profile: SurvivalProfile, map: string) => profile.clearedMaps.includes(map);
 
 /** 무한 모드에서 한 판에 받을 수 있는 엽전의 고정 상한 (그 맵 4분 모드 클리어 판의 약 1.5배. SQL의 _survival_endless_coin_cap) */
 export const endlessCoinCap = (map: string) => MAPS[MAP_INDEX[map] ?? 0].endlessCoins;
 
-/** 이 판에서 받을 수 있는 엽전의 상한: 시간에 비례하고, 무한 모드는 고정 상한도 넘지 못한다 */
+/** 이 판에서 받을 수 있는 엽전의 상한: 시간에 비례하고, 무한 모드는 고정 상한도 넘지 못한다. 헬 모드는 엽전이 2배라 상한도 2배 */
 export function coinCap(map: string, time: number, mode?: string): number {
-  const byTime = Math.floor((LIMITS.coins_base + time * LIMITS.coins_per_sec) * MAPS[MAP_INDEX[map] ?? 0].coinMul);
+  const mul = MAPS[MAP_INDEX[map] ?? 0].coinMul * (mode === 'hell' ? LIMITS.hell_coin_mul : 1);
+  const byTime = Math.floor((LIMITS.coins_base + time * LIMITS.coins_per_sec) * mul);
   return mode === 'endless' ? Math.min(byTime, endlessCoinCap(map)) : byTime;
 }
 
@@ -226,25 +246,32 @@ export function betterEndless(run: { time: number; kills: number }, old: Endless
 }
 
 /**
- * 기록에서 나오는 프로필 칸을 채운다: 4분 모드로 클리어한 맵, 무한 모드 최고 기록 (서버는 프로필을 보낼 때 기록 표에서 읽는다).
- * 클리어한 맵: 클리어 기록이 있거나, 그 다음 맵이 열려 있는 맵 (기록이 지워졌어도 다음 맵을 연 사람은 그 맵을 깬 사람이다)
+ * 기록에서 나오는 프로필 칸을 채운다: 4분 모드로 클리어한 맵, 무한 모드·헬 모드 최고 기록 (서버는 프로필을 보낼 때 기록 표에서 읽는다).
+ * 클리어한 맵: 클리어 기록이 있거나, 그 다음 맵이 열려 있는 맵 (기록이 지워졌어도 다음 맵을 연 사람은 그 맵을 깬 사람이다).
+ * 헬 모드의 클리어 기록은 여기에 쓰이지 않는다 (records 는 4분 모드 기록만)
  */
-export function withRecords(profile: SurvivalProfile, records: Record<string, SurvivalRecord>, endless: Record<string, EndlessRecord>): SurvivalProfile {
+export function withRecords(
+  profile: SurvivalProfile,
+  records: Record<string, SurvivalRecord>,
+  endless: Record<string, EndlessRecord>,
+  hell: Record<string, HellRecord> = {},
+): SurvivalProfile {
   return {
     ...profile,
     clearedMaps: MAPS.filter((m, i) => records[m.id]?.cleared === true || (i + 1 < MAPS.length && profile.unlockedMaps.includes(MAPS[i + 1].id))).map((m) => m.id),
     endlessBest: Object.fromEntries(MAPS.filter((m) => endless[m.id]).map((m) => [m.id, { time: endless[m.id].time, kills: endless[m.id].kills }])),
+    hellBest: Object.fromEntries(MAPS.filter((m) => hell[m.id]).map((m) => [m.id, { time: hell[m.id].time, kills: hell[m.id].kills, cleared: hell[m.id].cleared === true }])),
   };
 }
 
-/** 캐릭터 해금 조건을 채웠나 (엽전으로 푸는 캐릭터는 언제나 false). 시간 조건(토끼·말)과 클리어(돼지)는 4분 모드에서만 */
+/** 캐릭터 해금 조건을 채웠나 (엽전으로 푸는 캐릭터는 언제나 false). 시간 조건(토끼·말)과 클리어(돼지)는 4분 모드에서만 (무한·헬 모드는 아니다) */
 export function characterEarned(id: ZodiacId, run: RunSummary, totals: SurvivalProfile['totals']): boolean {
   const u = CHARACTER_BY_ID[id].unlock;
   switch (u.kind) {
     case 'base':
       return true;
     case 'time':
-      return !isEndless(run) && run.time >= (u.value ?? 0);
+      return !isEndless(run) && !isHell(run) && run.time >= (u.value ?? 0);
     case 'boss':
       return run.bossKills >= (u.value ?? 1);
     case 'kills':
@@ -252,7 +279,7 @@ export function characterEarned(id: ZodiacId, run: RunSummary, totals: SurvivalP
     case 'cakes':
       return totals.cakes >= (u.value ?? 0);
     case 'clear':
-      return !isEndless(run) && run.cleared;
+      return !isEndless(run) && !isHell(run) && run.cleared;
     default:
       return false;
   }
@@ -265,6 +292,8 @@ const merge = (old: string[], add: string[], allow: string[]) => allow.filter((i
  * 엽전은 상한까지 주고, 정상 기록일 때만 누적 값·최고 기록·해금·도감에 넣는다.
  * 너무 짧은 판과 요괴를 너무 적게 잡은 판(enoughKills)은 세지 않는다: 엽전도 0, 누적·기록·해금·도감에도 넣지 않는다.
  * 무한 모드(run.mode)는 기록을 따로 두고(endless), 엽전에 고정 상한이 있으며, 시간 조건 해금·다음 맵 해금·최고 생존 시간(누적 값)에는 넣지 않는다.
+ * 헬 모드도 기록을 따로 두고(hell: 생존 시간 → 클리어 → 처치 수), 엽전 상한이 2배이며, 시간 조건 해금·돼지·다음 맵 해금·최고 생존 시간에는 넣지 않는다.
+ * 누적 처치·떡·보스·클리어 수·판 수, 도감, 누적 조건 해금(용·뱀·양)은 모드와 상관없이 반영한다.
  */
 export function applyRun(
   profile: SurvivalProfile,
@@ -272,8 +301,10 @@ export function applyRun(
   run: RunSummary,
   now: number,
   endless: Record<string, EndlessRecord> = {},
-): { profile: SurvivalProfile; records: Record<string, SurvivalRecord>; endless: Record<string, EndlessRecord>; result: FinishResult } {
+  hell: Record<string, HellRecord> = {},
+): { profile: SurvivalProfile; records: Record<string, SurvivalRecord>; endless: Record<string, EndlessRecord>; hell: Record<string, HellRecord>; result: FinishResult } {
   const inf = isEndless(run);
+  const hel = isHell(run);
   const valid = validRun(run);
   // 너무 짧은 판과 요괴를 너무 적게 잡은 판은 엽전·누적·기록·도감에 들어가지 않는다 (서버와 같다)
   const enough = enoughKills(run);
@@ -288,12 +319,13 @@ export function applyRun(
   };
   const rec = { ...records };
   const end = { ...endless };
+  const hl = { ...hell };
   const result: FinishResult = { coins, valid, lowKills: !enough, newRecord: false, unlockedCharacters: [], unlockedMaps: [] };
-  if (!valid || !counted) return { profile: withRecords(p, rec, end), records: rec, endless: end, result };
+  if (!valid || !counted) return { profile: withRecords(p, rec, end, hl), records: rec, endless: end, hell: hl, result };
 
   p.totals.kills += run.kills;
   p.totals.cakes += run.cakes;
-  if (!inf) p.totals.bestTime = Math.max(p.totals.bestTime, run.time);
+  if (!inf && !hel) p.totals.bestTime = Math.max(p.totals.bestTime, run.time);
   p.totals.bossKills += run.bossKills;
   p.totals.clears += run.cleared ? 1 : 0;
   p.totals.runs += 1;
@@ -301,6 +333,12 @@ export function applyRun(
   if (inf) {
     if (betterEndless(run, end[run.map])) {
       end[run.map] = { time: run.time, kills: run.kills, character: run.character, at: now };
+      result.newRecord = true;
+    }
+  } else if (hel) {
+    // 헬 모드의 기록은 4분 모드와 같은 순서 (생존 시간 → 클리어 → 처치 수) 로, 따로 둔다
+    if (betterRecord(run, hl[run.map])) {
+      hl[run.map] = { time: run.time, kills: run.kills, cleared: run.cleared, character: run.character, at: now };
       result.newRecord = true;
     }
   } else if (betterRecord(run, rec[run.map])) {
@@ -312,7 +350,8 @@ export function applyRun(
     p.unlockedCharacters.push(c.id);
     result.unlockedCharacters.push(c.id);
   }
-  if (run.cleared) {
+  // 다음 맵 해금: 4분 모드로 클리어했을 때만 (헬 모드의 클리어는 해금에 쓰지 않는다)
+  if (run.cleared && !hel) {
     const next = MAPS[(MAP_INDEX[run.map] ?? 0) + 1];
     if (next && !p.unlockedMaps.includes(next.id)) {
       p.unlockedMaps.push(next.id);
@@ -325,7 +364,7 @@ export function applyRun(
     weapons: merge(profile.codex.weapons, run.codex.weapons, WEAPONS.map((e) => e.id)),
     passives: merge(profile.codex.passives, run.codex.passives, PASSIVES.map((e) => e.id)),
   };
-  return { profile: withRecords(p, rec, end), records: rec, endless: end, result };
+  return { profile: withRecords(p, rec, end, hl), records: rec, endless: end, hell: hl, result };
 }
 
 /** 강화 한 레벨을 살 수 있나: 값 또는 까닭 */

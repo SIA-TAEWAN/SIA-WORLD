@@ -226,6 +226,8 @@ export const EV = {
   boom: 15,
   /** 요괴 처치 (a: 요괴 번호). 한 걸음에 하나만 알린다 */
   kill: 16,
+  /** 헬 모드: 보스가 헬 전용 패턴을 시작함 (a: 보스 번호) */
+  hellPattern: 17,
 } as const;
 
 export interface Ev {
@@ -287,6 +289,10 @@ export interface State {
   endless: boolean;
   /** 무한 모드에서 이 판에 받을 수 있는 엽전의 상한 (4분 모드는 Infinity) */
   coinCap: number;
+  /** 헬 모드인가: map 이 헬 배율을 곱한 맵(data/maps.ts 의 HELL_MAPS)이고, 보스마다 패턴이 하나 더 있다 */
+  hell: boolean;
+  /** 보스가 주는 피해(몸·범위 공격·탄)의 배율: 헬 모드가 아니면 1 */
+  bossDmg: number;
   map: MapDef;
   char: CharacterDef;
   upgrades: UpgradeLevels;

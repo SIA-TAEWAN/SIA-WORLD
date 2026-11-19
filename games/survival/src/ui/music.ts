@@ -4,6 +4,7 @@ import { sound, whenSound } from './sfx';
  * 배경음: 파일 없이 코드로 만든 짧은 반복곡 (시아배구 games/volleyball/src/ui/music.ts 를 그대로 가져옴).
  * shared/sounds/bgmSurvMain|bgmSurvField|bgmSurvBamboo|bgmSurvPalace|bgmSurvUnderworld|bgmSurvBoss|bgmSurvResult.ogg|.mp3 를 넣으면 그 파일을 반복 재생한다.
  * 곡: 메인 · 맵 4종(들판 · 대나무 숲 · 달빛 궁궐 · 황천길) · 보스 · 결과.
+ * 헬 모드: 맵 4곡과 보스 곡을 낮고 빠르게 바꾼 변주 (hellOf. 파일로 바꿀 때는 bgmSurvHellField … bgmSurvHellBoss).
  * 가려진 탭에서는 멈춘다 (아래 apply 의 document.hidden).
  */
 
@@ -118,9 +119,38 @@ const RESULT: Track = {
   ],
 };
 
-const TRACKS = { main: MAIN, field: FIELD, bamboo: BAMBOO, palace: PALACE, underworld: UNDERWORLD, boss: BOSS, result: RESULT };
-/** 맵 id → 그 맵의 곡 (없는 맵은 들판 곡) */
-export const mapTrack = (map: string): TrackName => (map === 'bamboo' || map === 'palace' || map === 'underworld' ? map : 'field');
+/**
+ * 헬 모드 변주: 같은 곡을 완전 4도(반음 5개) 낮추고 16% 빠르게, 북은 언제나 급한 박자로. 멜로디는 조금 작게, 아르페지오는 조금 크게 (낮게 으르렁거리는 느낌)
+ */
+const HELL_DOWN = 5;
+const HELL_FAST = 1.16;
+const hellOf = (t: Track, file: string): Track => ({
+  ...t,
+  bpm: Math.round(t.bpm * HELL_FAST),
+  drums: 'run',
+  arpVol: t.arpVol * 1.15,
+  leadVol: t.leadVol * 0.9,
+  file,
+  bars: t.bars.map((b) => ({
+    arp: b.arp.map((n) => (n < 0 ? n : n - HELL_DOWN)),
+    lead: b.lead?.map((n) => (n > 0 ? n - HELL_DOWN : n)),
+    bass: b.bass - HELL_DOWN,
+  })),
+});
+
+const TRACKS = {
+  main: MAIN, field: FIELD, bamboo: BAMBOO, palace: PALACE, underworld: UNDERWORLD, boss: BOSS, result: RESULT,
+  hellField: hellOf(FIELD, 'bgmSurvHellField'), hellBamboo: hellOf(BAMBOO, 'bgmSurvHellBamboo'), hellPalace: hellOf(PALACE, 'bgmSurvHellPalace'),
+  hellUnderworld: hellOf(UNDERWORLD, 'bgmSurvHellUnderworld'), hellBoss: hellOf(BOSS, 'bgmSurvHellBoss'),
+};
+/** 맵 id → 그 맵의 곡 (없는 맵은 들판 곡). hell: 헬 모드의 변주 */
+export const mapTrack = (map: string, hell = false): TrackName => {
+  const m = map === 'bamboo' || map === 'palace' || map === 'underworld' ? map : 'field';
+  if (!hell) return m;
+  return m === 'bamboo' ? 'hellBamboo' : m === 'palace' ? 'hellPalace' : m === 'underworld' ? 'hellUnderworld' : 'hellField';
+};
+/** 보스 곡 (헬 모드는 변주) */
+export const bossTrack = (hell = false): TrackName => (hell ? 'hellBoss' : 'boss');
 export type TrackName = keyof typeof TRACKS;
 
 const freq = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
@@ -197,7 +227,7 @@ function hit(a: AudioContext, out: AudioNode, t: number, kind: 'kick' | 'snare' 
 function schedule() {
   const a = audioCtx();
   if (!a || !master || !current) return;
-  const tr = TRACKS[current];
+  const tr: Track = TRACKS[current];
   const eighth = 60 / tr.bpm / 2;
   if (nextAt < a.currentTime) nextAt = a.currentTime + 0.05;
   while (nextAt < a.currentTime + 0.25) {

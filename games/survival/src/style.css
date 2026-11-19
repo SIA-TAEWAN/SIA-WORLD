@@ -200,13 +200,24 @@ em > .ico { margin: 0 auto; }
 .tag.lv0 { background: var(--win); }
 .tag.lv1 { background: var(--team-a); }
 .tag.lv2 { background: var(--accent); }
-/* 모드 고르기: 맵을 고른 뒤 4분 모드 / 무한 모드 (잠긴 무한 모드는 조건을 적는다) */
-.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; }
-.mode { min-width: 0; text-align: left; cursor: pointer; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 8px 10px; min-height: 64px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
-.mode b { font-weight: normal; font-size: 18px; white-space: nowrap; }
-.mode small { font-size: 12px; color: var(--ink-soft); line-height: 1.25; }
+/* 모드 고르기: 맵을 고른 뒤 4분 모드 / 헬 모드 / 무한 모드 (잠긴 헬·무한 모드는 조건을 적는다) */
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; flex: none; }
+.mode { min-width: 0; text-align: left; cursor: pointer; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 8px 8px; min-height: 76px; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.mode b { font-weight: normal; font-size: 16px; white-space: nowrap; }
+.mode small { font-size: 11.5px; color: var(--ink-soft); line-height: 1.25; }
 .mode.sel { border-color: var(--outline); background: var(--panel-strong); box-shadow: inset 0 0 0 3px var(--primary), 0 var(--depth-button) 0 var(--outline); }
 .mode.closed { opacity: 0.72; cursor: default; }
+/* 헬 모드 카드: 어두운 갈색 판에 분홍 글자·불빛 (DESIGN.md 의 --outline · --pink 만 쓴다) */
+.mode.hell { position: relative; overflow: hidden; color: var(--white); border-color: var(--outline); background: linear-gradient(color-mix(in srgb, var(--outline) 94%, var(--pink)), color-mix(in srgb, var(--outline) 68%, var(--pink))); }
+.mode.hell b { color: var(--primary); }
+.mode.hell small { color: color-mix(in srgb, var(--pink) 40%, var(--white)); }
+.mode.hell::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--pink); opacity: 0.85; animation: hell-glow 1.6s ease-in-out infinite; }
+.mode.hell.sel { background: linear-gradient(color-mix(in srgb, var(--outline) 86%, var(--pink)), color-mix(in srgb, var(--outline) 50%, var(--pink))); box-shadow: inset 0 0 0 3px var(--pink), 0 var(--depth-button) 0 var(--outline); }
+@keyframes hell-glow { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+/* 헬 모드를 골랐을 때: 시작 버튼과 맵 카드의 엽전 배율도 헬 색으로 */
+.hell-pick .btn.primary.big { background: linear-gradient(color-mix(in srgb, var(--pink) 82%, var(--white)), var(--pink)); color: var(--white); text-shadow: 0 2px 0 var(--outline); }
+.hell-pick .map.sel { box-shadow: inset 0 0 0 3px var(--pink), 0 var(--depth-button) 0 var(--outline); }
+.hell-pick .map-side em { background: var(--outline); color: var(--primary); }
 .who { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 18px; color: var(--white); text-shadow: 0 2px 0 var(--outline); flex: none; }
 .who img { width: 44px; height: 44px; border-radius: 50%; border: var(--line) solid var(--outline); background: var(--white); object-fit: cover; }
 
@@ -232,6 +243,9 @@ em > .ico { margin: 0 auto; }
 .clock { font-weight: normal; font-size: calc(var(--u) * 54); line-height: 1; color: var(--white); -webkit-text-stroke: calc(var(--u) * 7) var(--outline); paint-order: stroke fill; font-variant-numeric: tabular-nums; }
 .clock.final { color: var(--pink); }
 .mode-tag { background: var(--outline); color: var(--white); border-radius: var(--radius-pill); padding: calc(var(--u) * 2) calc(var(--u) * 12); font-size: calc(var(--u) * 20); white-space: nowrap; }
+/* 헬 배지: 분홍 알약 + 갈색 테두리, 숨 쉬듯 번쩍인다 */
+.mode-tag.hell { background: var(--pink); border: var(--line-thin) solid var(--outline); font-size: calc(var(--u) * 24); padding: calc(var(--u) * 2) calc(var(--u) * 16); box-shadow: 0 calc(var(--u) * 3) 0 var(--outline); animation: hell-badge 1.4s ease-in-out infinite; }
+@keyframes hell-badge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 .counts span.full { color: var(--accent); }
 .counts { display: flex; gap: calc(var(--u) * 8); font-size: calc(var(--u) * 24); }
 .counts span { background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: calc(var(--u) * 2) calc(var(--u) * 12); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -259,6 +273,46 @@ em > .ico { margin: 0 auto; }
 .m-underworld .mood i:first-child { top: 24%; }
 .m-underworld .mood i:last-child { top: 66%; animation-delay: -8s; animation-direction: alternate-reverse; }
 @keyframes fog { from { transform: translateX(-12%); } to { transform: translateX(12%); } }
+/*
+ * 헬 모드의 분위기 (맵 분위기 위, HUD 아래): 붉고 어두운 색조 + 가장자리가 어둡게 타들어 가는 테 + 불씨·재.
+ * 색은 --pink 와 어두운 갈색(--outline)만 쓴다. 가운데(내 캐릭터 둘레)는 밝게 남겨 캐릭터가 잘 보인다
+ */
+.hellmood { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden;
+  background:
+    radial-gradient(ellipse 78% 62% at 50% 52%, transparent 36%, color-mix(in srgb, var(--outline) 34%, transparent) 70%, color-mix(in srgb, var(--outline) 74%, transparent) 100%),
+    linear-gradient(color-mix(in srgb, var(--outline) 42%, transparent), transparent 26%, transparent 72%, color-mix(in srgb, color-mix(in srgb, var(--pink) 55%, var(--outline)) 42%, transparent));
+  animation: hell-breathe 3.6s ease-in-out infinite; }
+/* 전체에 깔리는 붉은 갈색 (곱하기): 바닥·요괴가 붉고 어두워진다 */
+.hellmood::before { content: ''; position: absolute; inset: 0; background: color-mix(in srgb, var(--pink) 42%, color-mix(in srgb, var(--outline) 46%, var(--white))); mix-blend-mode: multiply; opacity: 0.72; }
+/* 맵의 밝은 안개·빛줄기는 헬에서 옅게 (어두운 분위기를 밝히지 않게) */
+.game.hell .mood { opacity: 0.3; }
+@keyframes hell-breathe { 0%, 100% { opacity: 0.86; } 50% { opacity: 1; } }
+/* 불씨: 아래에서 위로 흔들리며 올라가다 꺼진다 · 재: 위에서 천천히 내려온다 */
+.embers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.embers i { position: absolute; bottom: -3%; width: calc(var(--u) * 9); height: calc(var(--u) * 9); border-radius: 50%; background: var(--primary); box-shadow: 0 0 calc(var(--u) * 10) calc(var(--u) * 3) var(--pink); opacity: 0; animation: ember-rise 4s linear infinite; }
+.embers i:nth-child(2n) { width: calc(var(--u) * 6); height: calc(var(--u) * 6); background: var(--pink); }
+.embers i.ash { bottom: auto; top: -3%; width: calc(var(--u) * 8); height: calc(var(--u) * 5); border-radius: 40%; background: color-mix(in srgb, var(--outline) 70%, var(--white)); box-shadow: none; animation-name: ash-fall; }
+@keyframes ember-rise {
+  0% { transform: translate(0, 0) scale(1); opacity: 0; }
+  12% { opacity: 0.95; }
+  50% { transform: translate(calc(var(--u) * 26), -48vh) scale(0.85); opacity: 0.8; }
+  100% { transform: translate(calc(var(--u) * -18), -96vh) scale(0.3); opacity: 0; }
+}
+@keyframes ash-fall {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  15% { opacity: 0.7; }
+  100% { transform: translate(calc(var(--u) * 40), 104vh) rotate(300deg); opacity: 0; }
+}
+/* 헬 판의 HUD: 시계·보스 바를 헬 색으로 */
+.game.hell .clock { color: color-mix(in srgb, var(--pink) 28%, var(--white)); }
+.game.hell .clock.final { color: var(--pink); }
+.game.hell .bossbar .track { background: color-mix(in srgb, var(--outline) 78%, var(--pink)); }
+.game.hell .bossbar span { color: var(--primary); }
+.game.hell .xp { background: color-mix(in srgb, var(--outline) 70%, var(--pink)); }
+.game.hell .field { background: color-mix(in srgb, var(--outline) 60%, var(--pink)); }
+@media (prefers-reduced-motion: reduce) {
+  .embers i, .hellmood, .mode-tag.hell, .mode.hell::after { animation: none; }
+}
 
 /* 화면 가장자리 테두리: 맞았을 때 붉게, 보스 경고 때 세 번, 좋은 일에는 노랗게. 체력이 적으면 계속 깜빡인다 */
 .edge { position: absolute; inset: 0; z-index: 4; pointer-events: none; border: calc(var(--u) * 16) solid var(--pink); opacity: 0; }
@@ -328,6 +382,19 @@ em > .ico { margin: 0 auto; }
 .stats b.coin { color: var(--accent); }
 .result-card .note { text-align: center; margin: 10px 0 0; }
 .result-card h2 .tag.endless { background: var(--outline); vertical-align: 2px; }
+/* 헬 판의 결과: 어두운 갈색 머리띠 + 분홍 테, 아래에서 불씨가 올라온다 */
+.result-card h2 .tag.hell { background: var(--pink); border: var(--line-thin) solid var(--outline); vertical-align: 2px; }
+.result-card.hell { overflow: hidden; box-shadow: inset 0 0 0 3px var(--pink), 0 var(--depth-big) 0 var(--outline); background: linear-gradient(color-mix(in srgb, var(--outline) 90%, var(--pink)) 0, color-mix(in srgb, var(--outline) 72%, var(--pink)) 170px, var(--panel) 171px); }
+.result-card.hell > * { position: relative; }
+.result-card.hell h2 { color: var(--panel-strong); }
+.result-card.hell.won .verdict { color: var(--primary); }
+.result-card.hell.lost .verdict { color: var(--pink); }
+.result-card.hell > .embers { position: absolute; inset: 0; height: 171px; --u: 1px; }
+.result-card.hell > .embers i { animation-name: ember-card; }
+@keyframes ember-card { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 0.9; } 100% { transform: translate(12px, -190px) scale(0.4); opacity: 0; } }
+.stats .tag.x2 { background: var(--pink); animation: none; }
+.unlocks p.hell-open { background: color-mix(in srgb, var(--outline) 86%, var(--pink)); color: var(--white); }
+.unlocks p.hell-open b { color: var(--primary); }
 .stats .tag.cap { background: var(--accent); animation: none; }
 .result .actions { display: flex; gap: 10px; margin-top: 14px; flex: none; }
 .result > .btn.big { flex: none; }

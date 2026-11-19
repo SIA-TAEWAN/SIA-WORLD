@@ -9,16 +9,16 @@ import { MAPS } from '../src/data/maps';
 import { PASSIVES } from '../src/data/passives';
 import { UPGRADES, upgradeCost } from '../src/data/upgrades';
 import { WEAPONS } from '../src/data/weapons';
-import { ENDLESS, RUN_SEC } from '../src/data/balance';
-import { LIMITS, characterPrice, endlessCoinCap } from '../src/game/progress';
+import { ENDLESS, HELL, RUN_SEC } from '../src/data/balance';
+import { LIMITS, characterPrice, coinCap, endlessCoinCap } from '../src/game/progress';
 
 /**
- * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044 · 045)의 표·상수가 게임 데이터와 같은지 본다.
+ * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044 · 045 · 055)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
 // 뒤 파일이 같은 함수를 다시 정의하면 그쪽이 실제 값이다
-const sql = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql'].map(read).join('\n');
+const sql = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql', '055_survival_hell.sql'].map(read).join('\n');
 
 /** 함수 하나의 본문 */
 function body(name: string): string {
@@ -72,6 +72,9 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(found.max_time).toBe(RUN_SEC);
     // 045: 무한 모드의 가장 긴 판 20분, 시간 여유 15초, 처치 수 하한 (2분 뒤부터 초당 1)
     expect(found).toMatchObject({ endless_max_time: 1200, time_slack: 15, kills_min_from: 120, kills_min_per_sec: 1, coin_min_time: 60 });
+    // 055: 헬 모드의 엽전 배율은 게임 데이터(data/balance.ts 의 HELL)에서 온다
+    expect(found.hell_coin_mul).toBe(HELL.coin);
+    expect(found.hell_coin_mul).toBe(2);
   });
 
   it('무한 모드의 맵별 엽전 상한', () => {
@@ -109,8 +112,8 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
       }),
     );
     expect(cond).toEqual(want);
-    // 무한 모드: 시간 조건(토끼·말)과 클리어(돼지)로 푸는 캐릭터는 건너뛴다 (4분 모드에서만 풀린다)
-    const skip = /continue when endless and c in \(([^)]+)\);/.exec(f)![1].split(',').map((s) => s.trim().slice(1, -1));
+    // 무한 모드·헬 모드: 시간 조건(토끼·말)과 클리어(돼지)로 푸는 캐릭터는 건너뛴다 (4분 모드에서만 풀린다)
+    const skip = /continue when \(endless or hell\) and c in \(([^)]+)\);/.exec(f)![1].split(',').map((s) => s.trim().slice(1, -1));
     expect(skip).toEqual(CHARACTERS.filter((c) => ['time', 'clear'].includes(c.unlock.kind)).map((c) => c.id));
     // 처음 열려 있는 캐릭터·맵
     expect(sql).toContain("unlocked_characters text[] not null default array['rat', 'ox', 'tiger']");
@@ -149,7 +152,9 @@ describe('랭킹 뷰', () => {
 
   it('랭킹 창의 맵 목록이 게임 데이터와 같다', () => {
     const js = readFileSync(fileURLToPath(new URL('../../../shared/ranking-dialog.js', import.meta.url)), 'utf8');
-    const list = [...js.slice(js.indexOf('export const SURVIVAL_MAPS'), js.indexOf('const tabInfo')).matchAll(/\{ id: '(\w+)', name: '([^']+)' \}/g)].map((m) => [m[1], m[2]]);
+    // SURVIVAL_MAPS 배열만 본다 (그 뒤에는 다른 게임의 목록이 이어진다)
+    const from = js.indexOf('export const SURVIVAL_MAPS');
+    const list = [...js.slice(from, js.indexOf('];', from)).matchAll(/\{ id: '(\w+)', name: '([^']+)' \}/g)].map((m) => [m[1], m[2]]);
     expect(list).toEqual(MAPS.map((m) => [m.id, m.name]));
     expect(js).toContain("from('survival_ranking')");
   });
@@ -182,7 +187,7 @@ describe('SQL의 권한 규칙', () => {
   });
 
   it('표는 RLS를 켜고 직접 쓰는 권한이 없다', () => {
-    for (const t of ['survival_profiles', 'survival_records', 'survival_runs', 'survival_endless_records']) {
+    for (const t of ['survival_profiles', 'survival_records', 'survival_runs', 'survival_endless_records', 'survival_hell_records']) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);
       expect(sql).toContain(`revoke all on public.${t} from anon, authenticated;`);
       expect(sql).not.toMatch(new RegExp(`grant (insert|update|delete|all)[^;]* on public\\.${t} `));
@@ -206,7 +211,8 @@ describe('SQL의 권한 규칙', () => {
     expect(f).toContain("if endless and p_cleared then raise exception 'bad result'; end if;");
     expect(f).toContain("max_t := case when endless then public._survival_const('endless_max_time') else public._survival_const('max_time') end;");
     expect(f).toContain('coins := least(coins, coalesce(fixed_cap, 0));');
-    expect(f).toContain('if p_cleared and not endless then');
+    // 055: 헬 모드의 클리어도 다음 맵 해금에 쓰지 않는다
+    expect(f).toContain('if p_cleared and not endless and not hell then');
     // 프로필에 클리어한 맵과 무한 모드 최고 기록이 실린다 (화면이 무한 모드의 잠금을 이것으로 안다)
     const j = body('_survival_profile_json');
     expect(j).toContain("'clearedMaps'");
@@ -236,5 +242,77 @@ describe('SQL의 권한 규칙', () => {
     expect(f).toContain('if p_cleared and p_boss_kills < 1 then ok := false; end if;');
     for (const m of MAPS.slice(1)) expect(m.unlock).toContain('최종 보스 물리치기');
     expect(CHARACTERS.find((x) => x.unlock.kind === 'clear')!.unlock.text).toContain('최종 보스 물리치기');
+  });
+
+  it('헬 모드 (055): 모드 칸 · 잠금은 그 맵의 클리어 · 엽전 상한 2배 · 기록 표와 랭킹 뷰 · 해금 제외', () => {
+    // 모드 칸의 check 를 바꿔 'hell' 을 받는다 (044 가 만든 이름 그대로 지우고 다시 만든다: 여러 번 올려도 된다)
+    expect(sql).toContain('alter table public.survival_runs drop constraint if exists survival_runs_mode_check;');
+    expect(sql).toContain("alter table public.survival_runs add constraint survival_runs_mode_check check (mode in ('normal', 'endless', 'hell'));");
+    const s = body('survival_start');
+    expect(s).toContain("public.survival_start(p_map text, p_character text, p_mode text default 'normal') returns uuid");
+    expect(s).toContain("if p_mode is null or p_mode not in ('normal', 'endless', 'hell') then raise exception 'bad mode'; end if;");
+    // 잠금: 무한 모드와 같은 함수(045 의 _survival_map_cleared)로 **그 맵**을 본다
+    expect(s).toContain("if p_mode = 'hell' and not public._survival_map_cleared(me, p_map, pr.unlocked_maps) then");
+    expect(s).toContain("raise exception 'hell locked'");
+    // _survival_map_cleared 는 055 에서 다시 정의하지 않는다 (4분 모드 기록만 본다 → 헬 클리어는 잠금 해제에 쓰이지 않는다)
+    expect(read('055_survival_hell.sql')).not.toContain('function public._survival_map_cleared(');
+    expect(body('_survival_map_cleared')).toContain('from public.survival_records c');
+    const f = body('survival_finish').replace(/\s+/g, ' ');
+    expect(f).toContain("hell := rn.mode = 'hell';");
+    // 4분 판이다: 가장 긴 판·클리어 조건은 4분 모드의 것 그대로 (무한 모드만 다르다)
+    expect(f).toContain("max_t := case when endless then public._survival_const('endless_max_time') else public._survival_const('max_time') end;");
+    expect(f).toContain("if p_cleared and p_time <> public._survival_const('max_time') then raise exception 'bad time'; end if;");
+    // 엽전 상한 2배
+    expect(f).toContain("if hell then mul := mul * public._survival_const('hell_coin_mul'); end if;");
+    for (const m of MAPS) {
+      expect(coinCap(m.id, 100, 'hell')).toBe(Math.floor(100 * LIMITS.coins_per_sec * m.coinMul * 2));
+      expect(coinCap(m.id, 100, 'hell')).toBe(coinCap(m.id, 100, 'normal') * 2);
+    }
+    // 기록은 따로 (4분 모드와 같은 순서), 최고 생존 시간(누적)은 4분 모드만
+    expect(f).toContain('select * into old_h from public.survival_hell_records where user_id = me and map_id = rn.map_id for update;');
+    expect(f).toContain('insert into public.survival_hell_records as r (user_id, map_id, best_time, best_kills, cleared, character, achieved_at)');
+    expect(f).toContain('elsif p_cleared <> old_h.cleared then better := p_cleared;');
+    expect(f).toContain('case when endless or hell then 0 else p_time end');
+    // 045 의 검증은 그대로다: 처치 수 하한 · too early · overlap · 시아코인
+    expect(f).toContain("counted := p_time >= public._survival_const('count_min_time') and enough;");
+    expect(f.match(/public\._survival_const\('time_slack'\)/g)!.length).toBe(3);
+    expect(f).toContain("raise exception 'overlap'");
+    expect(f).toContain("if ok and enough and p_time >= public._survival_const('coin_min_time') and elapsed >= public._survival_const('coin_min_time') then");
+    // 기록 표: 맵 목록 · 시간 상한(4분) · 클리어 칸
+    const t = sql.slice(sql.indexOf('create table if not exists public.survival_hell_records'));
+    expect(/map_id in \(([^)]+)\)/.exec(t)![1].split(',').map((x) => x.trim().slice(1, -1))).toEqual(MAPS.map((m) => m.id));
+    expect(Number(/best_time int not null check \(best_time between 0 and (\d+)\)/.exec(t)![1])).toBe(RUN_SEC);
+    expect(t.slice(0, t.indexOf(');'))).toContain('cleared boolean not null default false');
+    expect(sql).toContain('grant select on public.survival_hell_records to anon, authenticated;');
+    // 프로필에 헬 모드 최고 기록이 실린다
+    const j = body('_survival_profile_json');
+    expect(j).toContain("'hellBest'");
+    expect(j).toContain("jsonb_build_object('time', h.best_time, 'kills', h.best_kills, 'cleared', h.cleared)");
+    expect(j).toContain("'clearedMaps'");
+    expect(j).toContain("'endlessBest'");
+  });
+
+  it('헬 모드 랭킹 (055): 맵별로 따로, 4분 랭킹과 같은 순서·칸·권한', () => {
+    const at = sql.indexOf('create or replace view public.survival_hell_ranking as');
+    expect(at).toBeGreaterThan(0);
+    const view = sql.slice(at).replace(/\s+/g, ' ');
+    expect(view).toContain('partition by r.map_id order by r.best_time desc, r.cleared desc, r.best_kills desc, r.achieved_at asc, r.user_id');
+    expect(view).toContain('(count(*) over (partition by r.map_id))::int as total');
+    expect(view).toContain('from public.survival_hell_records r join public.profiles p on p.id = r.user_id;');
+    expect(view).toContain('revoke all on public.survival_hell_ranking from anon, authenticated;');
+    expect(view).toContain('grant select on public.survival_hell_ranking to anon, authenticated;');
+    for (const col of ['user_id', 'nickname', 'map_id', 'best_time', 'best_kills', 'cleared', 'character', 'achieved_at']) expect(view).toMatch(new RegExp(`[ .]${col}[, ]`));
+  });
+
+  it('관리자 계정 (055): 시아서바이벌에 들어올 때(survival_profile) 엽전과 시아코인을 10,000 으로 맞춘다', () => {
+    const p = body('survival_profile').replace(/\s+/g, ' ');
+    // 다른 SQL 과 같은 방식으로 관리자를 가린다 (profiles.is_admin)
+    expect(p).toContain('if exists (select 1 from public.profiles where id = me and is_admin) then');
+    expect(p).toContain('update public.survival_profiles set coins = 10000 where user_id = me returning * into pr;');
+    expect(p).toContain('perform public._ensure_wallet(me);');
+    expect(p).toContain('update public.wallets set sia_coins = 10000 where user_id = me;');
+    expect(p).toContain('return public._survival_profile_json(pr);');
+    // 다른 함수는 관리자를 따로 다루지 않는다 (기록·랭킹은 그대로)
+    for (const fn of ['survival_start', 'survival_finish', 'survival_buy_upgrade']) expect(body(fn)).not.toContain('is_admin');
   });
 });

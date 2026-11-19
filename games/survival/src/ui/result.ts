@@ -1,5 +1,5 @@
-import { RUN_SEC } from '../data/balance';
-import { endlessCoinCap, endlessOpen, isEndless } from '../game/progress';
+import { HELL, RUN_SEC } from '../data/balance';
+import { endlessCoinCap, endlessOpen, isEndless, isHell } from '../game/progress';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
@@ -11,19 +11,22 @@ export function showResult(r: GameResult) {
   const map = MAPS[MAP_INDEX[r.map] ?? 0];
   const char = CHARACTER_BY_ID[r.setup.char];
   const endless = isEndless(r);
+  const hell = isHell(r);
   // 무한 모드에는 클리어가 없다: 생존 시간 · 처치 수 · 새 기록만 보여 준다
-  const title = r.cleared ? '클리어!' : r.quit ? '그만뒀어요' : '게임 오버';
+  const title = r.cleared ? (hell ? '헬 클리어!' : '클리어!') : r.quit ? '그만뒀어요' : '게임 오버';
+  const modeTag = endless ? ' <span class="tag endless">♾️ 무한 모드</span>' : hell ? ' <span class="tag hell">🔥 헬 모드</span>' : '';
   const capped = endless && r.coins >= endlessCoinCap(r.map);
   const root = screen(
-    `<div class="result-card ${r.cleared ? 'won' : 'lost'}">
-       <h2>${esc(map.name)} · ${esc(char.nick)}${endless ? ' <span class="tag endless">♾️ 무한 모드</span>' : ''}</h2>
+    `<div class="result-card ${r.cleared ? 'won' : 'lost'}${hell ? ' hell' : ''}">
+       ${hell ? '<div class="embers" id="embers"></div>' : ''}
+       <h2>${esc(map.name)} · ${esc(char.nick)}${modeTag}</h2>
        <div class="verdict">${title}</div>
        <img class="result-char" src="${zodiacFullUrl(r.setup.char)}" alt="" />
        <ul class="stats">
          <li><span>⏱️ 생존 시간 <i class="tag new hidden" id="record">새 기록!</i></span><b>${mmss(r.time)}${endless ? '' : `<small> / ${mmss(RUN_SEC)}</small>`}</b></li>
          <li><span>💀 처치 수</span><b>${r.kills.toLocaleString()}</b></li>
          <li><span>⭐ 도달 레벨</span><b>Lv ${r.level}</b></li>
-         <li><span>🪙 얻은 엽전${capped ? ' <i class="tag cap">최대</i>' : ''}</span><b class="coin" id="coins">${r.coins.toLocaleString()}닢</b></li>
+         <li><span>🪙 얻은 엽전${capped ? ' <i class="tag cap">최대</i>' : ''}${hell ? ` <i class="tag x2">×${HELL.coin}</i>` : ''}</span><b class="coin" id="coins">${r.coins.toLocaleString()}닢</b></li>
        </ul>
        <div class="unlocks" id="unlocks"></div>
        <p class="soft note" id="note">결과를 저장하는 중…</p>
@@ -37,6 +40,17 @@ export function showResult(r: GameResult) {
     'result',
     'result',
   );
+  // 헬 판: 결과 카드 아래쪽에서 불씨가 올라온다
+  const embers = root.querySelector('#embers');
+  if (embers) {
+    for (let i = 0; i < 14; i++) {
+      const e = document.createElement('i');
+      e.style.left = `${4 + Math.random() * 92}%`;
+      e.style.animationDelay = `${-Math.random() * 4}s`;
+      e.style.animationDuration = `${2.6 + Math.random() * 2.4}s`;
+      embers.append(e);
+    }
+  }
   if (r.cleared) {
     // 색종이 (DESIGN.md 8장: 승리 = 별·색종이)
     const cheer = root.querySelector('#cheer')!;
@@ -64,7 +78,9 @@ export function showResult(r: GameResult) {
           ? '요괴를 너무 적게 잡은 판이라 기록과 엽전에 들어가지 않았어요'
           : capped
           ? `무한 모드는 한 판에 ${endlessCoinCap(r.map).toLocaleString()}닢까지 받아요`
-          : '엽전으로 메인의 [강화]에서 더 강해질 수 있어요';
+          : hell
+            ? `헬 모드는 엽전을 ${HELL.coin}배로 받아요`
+            : '엽전으로 메인의 [강화]에서 더 강해질 수 있어요';
       if (s.newRecord) {
         root.querySelector('#record')!.classList.remove('hidden');
         sfx('newRecord');
@@ -73,8 +89,9 @@ export function showResult(r: GameResult) {
         ...s.unlockedCharacters.map((c) => `<p><img src="${zodiacFaceUrl(c)}" alt="" />🔓 <b>${esc(CHARACTER_BY_ID[c].nick)}</b> 해금!</p>`),
         ...s.unlockedMaps.map((m) => `<p>🗺️ 새 맵 <b>${esc(MAPS[MAP_INDEX[m] ?? 0].name)}</b> 해금!</p>`),
       ];
-      // 이 맵을 4분 모드로 처음 클리어했다: 무한 모드가 열렸다 (프로필은 저장 답으로 이미 새 값이다)
-      if (r.cleared && !endless && !r.endlessWasOpen && endlessOpen(state.profile, r.map)) {
+      // 이 맵을 4분 모드로 처음 클리어했다: 헬 모드와 무한 모드가 열렸다 (프로필은 저장 답으로 이미 새 값이다)
+      if (r.cleared && !endless && !hell && !r.endlessWasOpen && endlessOpen(state.profile, r.map)) {
+        lines.push(`<p class="hell-open">🔥 <b>${esc(map.name)}</b>의 헬 모드가 열렸어요!</p>`);
         lines.push(`<p>♾️ <b>${esc(map.name)}</b>의 무한 모드가 열렸어요!</p>`);
       }
       root.querySelector('#unlocks')!.innerHTML = lines.join('');

@@ -414,7 +414,7 @@ export function spawnBoss(s: State, boss: number, x: number, y: number): Enemy |
   e.maxHp = e.hp = def.hp * s.map.power.boss * endlessMul(s, ENDLESS.bossHp);
   e.r = def.r;
   e.speed = def.speed * s.map.power.speed;
-  e.dmg = def.dmg * endlessMul(s, ENDLESS.dmg);
+  e.dmg = def.dmg * endlessMul(s, ENDLESS.dmg) * s.bossDmg;
   e.xp = def.xp;
   s.seenBoss[boss] = 1;
   emit(s, EV.bossSpawn, boss);

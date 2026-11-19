@@ -13,7 +13,7 @@ interface Job {
   map: string;
   char: ZodiacId;
   upg: number;
-  /** 모드 (없으면 4분 모드) */
+  /** 모드 (없으면 4분 모드. endless 무한 모드 · hell 헬 모드) */
   mode?: RunMode;
   from: number;
   to: number;
@@ -31,7 +31,7 @@ if (arg === 'dps') {
       // 무한 모드는 죽을 때까지 돌린다 (시간 상한까지)
       const r = j.mode === 'endless'
         ? simulate({ seed: 1 + i * 7919, char: j.char, map: j.map, mode: 'endless', upgrades: presetUpgrades(j.upg) }, normalPolicy(31 + i), ENDLESS.maxSec + 60)
-        : simulate({ seed: 1 + i * 7919, char: j.char, map: j.map, upgrades: presetUpgrades(j.upg) }, normalPolicy(31 + i));
+        : simulate({ seed: 1 + i * 7919, char: j.char, map: j.map, mode: j.mode === 'hell' ? 'hell' : undefined, upgrades: presetUpgrades(j.upg) }, normalPolicy(31 + i));
       out.runs++;
       out.time += r.time;
       out.clears += r.cleared ? 1 : 0;
