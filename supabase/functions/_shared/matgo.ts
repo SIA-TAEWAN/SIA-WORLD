@@ -16,6 +16,9 @@
  *   손패가 비고 bombFill도 0이면 그 사람은 패를 다 쓴 것이다.
  * - 쓸은 매 차례 끝에 바닥이 비었으면(그 차례에 먹은 패가 있을 때) 인정한다.
  * - 고 판단은 차례를 마친 사람만 한다(상대 차례에 피를 빼앗겨 점수가 바뀌어도 그때는 묻지 않는다).
+ * - 뻑 보너스: 한 판에서 한 사람이 낸 뻑 횟수 기준. 첫 뻑은 상대에게서 기본금 ×2, 두 번째 뻑은 기본금 ×3 을 받고(판 끝 정산에 합산,
+ *   나가리여도 받는다), 세 번째 뻑은 그 자리에서 승리(삼뻑)다. 삼뻑 승리는 7점으로 이긴 것으로 치고 다른 배수(흔들기·폭탄·나가리)는
+ *   붙이지 않는다 (기본금 ×7 + 앞서 받은 뻑 보너스). 처음부터 바닥에 깔린 같은 달 3장은 뻑이 아니다.
  */
 import { clone, EngineError, shuffle } from './engine.ts';
 import type { Engine, GameEvent, Rng, RoundInput, SeatInfo, SeatKind } from './engine.ts';
@@ -235,6 +238,10 @@ export interface MatgoState {
   captured: string[][];
   /** 판 중에 뻑이 나서 쌓인 달 */
   ppeok: number[];
+  /** 이번 판에 각자 낸 뻑 횟수 (idx 순). 예전에 저장된 상태에는 없을 수 있다 */
+  ppeokCount?: number[];
+  /** 삼뻑으로 이긴 사람 (idx). 없으면 null */
+  samPpeok?: number | null;
   gukjinAs: GukjinUse | null;
   go: number[];
   /** 마지막 고 때 점수 (이보다 올라야 다시 고/스톱을 묻는다) */
@@ -287,6 +294,8 @@ export interface MatgoPlayerPublic {
   bombs: number;
   handCount: number;
   bombFill: number;
+  /** 이번 판에 낸 뻑 횟수 */
+  ppeok: number;
 }
 
 export type MatgoChoice =
@@ -311,8 +320,26 @@ export interface MatgoSummary {
   multiplier: number;
   baseUnit: number;
   amount: number;
+  /** 실제로 오간 금액 (뻑 보너스 포함, 내는 사람이 가진 만큼까지) */
   paid: number;
   nextNagari: number;
+  /** 삼뻑(세 번째 뻑)으로 끝난 판 */
+  samPpeok: boolean;
+  /** 뻑 보너스: 뻑을 낸 자리마다 횟수와 받을 금액 (첫 뻑 기본금 ×2, 두 번째 ×3) */
+  ppeoks: { seat: number; count: number; bonus: number }[];
+  /** 자리별 최종 증감 (점수 금액 + 뻑 보너스, 내는 사람이 가진 만큼까지) */
+  net: Record<number, number>;
+}
+
+/** 뻑 보너스 배수: 첫 뻑 ×2, 두 번째 뻑 ×3 (세 번째는 승리라 보너스가 더 붙지 않는다) */
+export const PPEOK_BONUS = [2, 3] as const;
+/** 삼뻑 승리 점수 */
+export const SAM_PPEOK_SCORE = 7;
+/** 뻑 횟수 → 받을 보너스 (기본금의 몇 배인가) */
+export function ppeokBonusUnits(count: number): number {
+  let n = 0;
+  for (let i = 0; i < Math.min(count, PPEOK_BONUS.length); i++) n += PPEOK_BONUS[i];
+  return n;
 }
 
 export interface MatgoPublic {
@@ -426,6 +453,8 @@ function setup(o: SetupOpts): MatgoState {
     pile: o.pile.slice(),
     captured: o.captured.map((c) => c.slice()),
     ppeok: [],
+    ppeokCount: [0, 0],
+    samPpeok: null,
     gukjinAs: null,
     go: [0, 0],
     goScore: [0, 0],
@@ -472,6 +501,8 @@ export interface MatgoTestSetup {
   go?: [number, number];
   goScore?: [number, number];
   ppeok?: number[];
+  /** 이번 판에 각자 이미 낸 뻑 횟수 */
+  ppeokCount?: [number, number];
   gukjinAs?: GukjinUse | null;
   fill?: [number, number];
 }
@@ -499,6 +530,7 @@ export function makeTestState(o: MatgoTestSetup): MatgoState {
   if (o.go) s.go = o.go.slice();
   if (o.goScore) s.goScore = o.goScore.slice();
   if (o.ppeok) s.ppeok = o.ppeok.slice();
+  if (o.ppeokCount) s.ppeokCount = o.ppeokCount.slice();
   if (o.gukjinAs !== undefined) s.gukjinAs = o.gukjinAs;
   if (o.fill) s.fill = o.fill.slice();
   return s;
@@ -609,6 +641,7 @@ function finalize(s: MatgoState, me: number): void {
     }
   };
   const flipSame = c.flipped !== null && monthOf(c.flipped) === c.month;
+  let sam = false;
 
   if (c.mode === 'bomb') {
     take.push(...c.played, ...c.floorBefore);
@@ -626,7 +659,12 @@ function finalize(s: MatgoState, me: number): void {
       } else if (k === 1) {
         toFloor.push(P, F);
         s.ppeok.push(m);
-        ev(s, 'ppeok', me, { month: m });
+        const counts = s.ppeokCount ?? [0, 0];
+        counts[me] += 1;
+        s.ppeokCount = counts;
+        // count: 이 사람이 이번 판에 낸 몇 번째 뻑인가 (1 첫뻑 ×2 · 2 연뻑 ×3 · 3 삼뻑 승리)
+        ev(s, 'ppeok', me, { month: m, count: counts[me] });
+        sam = counts[me] >= 3;
       } else {
         take.push(P, F, ...c.floorBefore);
         ev(s, 'ttadak', me, { month: m });
@@ -665,6 +703,14 @@ function finalize(s: MatgoState, me: number): void {
 
   s.ctx = null;
   s.choice = null;
+  if (sam) {
+    // 삼뻑: 그 자리에서 승리
+    s.phase = 'done';
+    s.winner = me;
+    s.samPpeok = me;
+    ev(s, 'samppeok', me);
+    return;
+  }
   if (take.includes(GUKJIN_ID) && s.gukjinAs === null) {
     s.phase = 'gukjin';
     return;
@@ -708,13 +754,26 @@ function finish(s: MatgoState, w: number, auto: boolean): void {
 
 // ───────────────────────────── 정산 ─────────────────────────────
 
+/** 뻑 보너스와 최종 증감: 점수 금액(amount, 이긴 사람 w)에 뻑 보너스를 더하고, 내는 사람이 가진 만큼까지만 */
+function ppeokSettle(s: MatgoState, w: number | null, amount: number) {
+  const counts = s.ppeokCount ?? [0, 0];
+  const bonus = counts.map((n) => ppeokBonusUnits(n) * s.baseUnit);
+  const ppeoks = s.seats.map((seat, i) => ({ seat, count: counts[i], bonus: bonus[i] })).filter((x) => x.count > 0);
+  // 첫째 자리(idx 0)가 받는 금액 (음수면 낸다)
+  let d0 = bonus[0] - bonus[1] + (w === 0 ? amount : w === 1 ? -amount : 0);
+  const cap = (stack: number | null, v: number) => (stack === null ? v : Math.min(v, Math.max(0, stack)));
+  d0 = d0 < 0 ? -cap(s.stacks[0], -d0) : cap(s.stacks[1], d0);
+  const net: Record<number, number> = { [s.seats[0]]: d0 === 0 ? 0 : d0, [s.seats[1]]: d0 === 0 ? 0 : -d0 };
+  return { ppeoks, net, paid: Math.abs(d0) };
+}
+
 function summarize(s: MatgoState): MatgoSummary | null {
   if (s.phase !== 'done') return null;
   if (s.winner === null) {
     return {
       result: 'nagari', winner: null, loser: null, chongtong: false, breakdown: [], baseScore: 0, goCount: 0,
-      goBonus: 0, goMultiplier: 1, score: 0, multipliers: [], multiplier: 1, baseUnit: s.baseUnit, amount: 0, paid: 0,
-      nextNagari: s.nagariMul * 2,
+      goBonus: 0, goMultiplier: 1, score: 0, multipliers: [], multiplier: 1, baseUnit: s.baseUnit, amount: 0,
+      nextNagari: s.nagariMul * 2, samPpeok: false, ...ppeokSettle(s, null, 0),
     };
   }
   const w = s.winner, l = 1 - w;
@@ -727,7 +786,11 @@ function summarize(s: MatgoState): MatgoSummary | null {
   let breakdown: ScoreLine[];
   let baseScore: number, goCount = 0, goBonus = 0, goMultiplier = 1, score: number;
 
-  if (s.chongtong) {
+  const sam = s.samPpeok === w;
+  if (sam) {
+    breakdown = [{ label: '삼뻑', points: SAM_PPEOK_SCORE }];
+    baseScore = score = SAM_PPEOK_SCORE;
+  } else if (s.chongtong) {
     breakdown = [{ label: '총통', points: 7 }];
     baseScore = score = 7;
   } else {
@@ -746,16 +809,18 @@ function summarize(s: MatgoState): MatgoSummary | null {
     if (s.go[l] > 0) mul('고박', 2);
     if (goMultiplier > 1) multipliers.push(`${goCount}고 ×${goMultiplier}`); // 점수에 이미 반영 (표시용)
   }
-  for (let i = 0; i < s.shakes[0] + s.shakes[1]; i++) mul('흔들기', 2);
-  for (let i = 0; i < s.bombs[0] + s.bombs[1]; i++) mul('폭탄', 2);
-  if (s.nagariMul > 1) mul(`나가리 ×${s.nagariMul}`, s.nagariMul);
+  // 삼뻑 승리는 다른 배수 없이 7점
+  if (!sam) {
+    for (let i = 0; i < s.shakes[0] + s.shakes[1]; i++) mul('흔들기', 2);
+    for (let i = 0; i < s.bombs[0] + s.bombs[1]; i++) mul('폭탄', 2);
+    if (s.nagariMul > 1) mul(`나가리 ×${s.nagariMul}`, s.nagariMul);
+  }
 
   const amount = score * s.baseUnit * multiplier;
-  const stack = s.stacks[l];
-  const paid = stack === null ? amount : Math.max(0, Math.min(amount, stack));
   return {
-    result: 'win', winner: s.seats[w], loser: s.seats[l], chongtong: s.chongtong !== null, breakdown, baseScore,
-    goCount, goBonus, goMultiplier, score, multipliers, multiplier, baseUnit: s.baseUnit, amount, paid, nextNagari: 1,
+    result: 'win', winner: s.seats[w], loser: s.seats[l], chongtong: !sam && s.chongtong !== null, breakdown, baseScore,
+    goCount, goBonus, goMultiplier, score, multipliers, multiplier, baseUnit: s.baseUnit, amount, nextNagari: 1,
+    samPpeok: sam, ...ppeokSettle(s, w, amount),
   };
 }
 
@@ -774,7 +839,7 @@ function publicView(s: MatgoState): MatgoPublic {
     players[seat] = {
       seat, name: s.names[i], kind: s.kinds[i], captured: groupCaptured(s.captured[i], s.gukjinAs),
       score: sc.total, breakdown: sc.lines, piCount: sc.counts.pi, go: s.go[i], shakes: s.shakes[i],
-      bombs: s.bombs[i], handCount: s.hands[i].length, bombFill: s.fill[i],
+      bombs: s.bombs[i], handCount: s.hands[i].length, bombFill: s.fill[i], ppeok: s.ppeokCount?.[i] ?? 0,
     };
   });
   const floor: FloorGroup[] = [];
@@ -868,9 +933,15 @@ function aiPlay(pub: MatgoPublic, priv: MatgoPrivate, seat: number, rng: Rng): M
     if (fl.length === 0) score = -0.3 - 0.2 * val(id);
     else if (fl.length === 1) {
       score = val(id) + val(fl[0]);
-      // 뻑 피하기: 이 달 패가 손에 이것뿐인데 아직 못 본 같은 달 패가 남아 있으면 감점
+      // 뻑: 이 달 패가 손에 이것뿐인데 아직 못 본 같은 달 패가 남아 있으면 뻑이 날 수 있다.
+      // 뻑이 나면 먹을 패를 바닥에 쌓아 두게 되지만(감점) 뻑 보너스(첫 뻑 ×2, 두 번째 ×3)를 받는다 → 예전보다 덜 피한다.
+      // 이미 두 번 냈으면 세 번째는 바로 승리(삼뻑)라 오히려 노린다
       const unseen = CARDS.filter((x) => x.month === m && !seen.has(x.id)).length;
-      if (sameMonth(hand, m).length === 1) score -= unseen >= 2 ? 3 : unseen === 1 ? 1 : 0;
+      if (sameMonth(hand, m).length === 1) {
+        const risk = unseen >= 2 ? 1 : unseen === 1 ? 1 / 3 : 0;
+        const made = me.ppeok ?? 0;
+        score += risk * (made >= 2 ? 6 : made === 1 ? -1.5 : -2.4);
+      }
     } else if (fl.length === 2) score = val(id) + Math.max(...fl.map(val));
     else score = val(id) + fl.reduce((n, x) => n + val(x), 0) + 2;
     const shake = priv.shakeable.includes(m) && me.score >= op.score;
@@ -1012,11 +1083,7 @@ export const matgo: Engine<MatgoState, MatgoAction, MatgoCarry, MatgoPublic, Mat
   settle(s) {
     const sum = summarize(s);
     if (!sum) throw new EngineError('판이 아직 끝나지 않았습니다');
-    const deltas: Record<number, number> = { [s.seats[0]]: 0, [s.seats[1]]: 0 };
-    if (sum.winner !== null && sum.loser !== null && sum.paid > 0) {
-      deltas[sum.winner] = sum.paid;
-      deltas[sum.loser] = -sum.paid;
-    }
+    const deltas: Record<number, number> = { [s.seats[0]]: sum.net[s.seats[0]] ?? 0, [s.seats[1]]: sum.net[s.seats[1]] ?? 0 };
     const carry: MatgoCarry =
       sum.winner === null ? { first: s.seats[s.first], nagari: s.nagariMul * 2 } : { first: sum.winner, nagari: 1 };
     return { deltas, summary: sum, carry };

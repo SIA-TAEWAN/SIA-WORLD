@@ -925,6 +925,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       ...seatTags(seat),
       ...(pl.go ? [{ text: `${pl.go}고`, color: 'teamA' } as PanelTag] : []),
       ...(pl.shakes ? [{ text: `흔들기 ${pl.shakes}`, color: 'accent' } as PanelTag] : []),
+      // 뻑 보너스: 첫 뻑 기본금 ×2, 두 번째 ×3 (세 번째는 삼뻑 승리)
+      ...(pl.ppeok ? [{ text: pl.ppeok >= 3 ? '삼뻑!' : `뻑 ${pl.ppeok}`, color: 'pink' } as PanelTag] : []),
       ...(pl.bombFill ? [{ text: `폭탄 피 ${pl.bombFill}`, color: 'track' } as PanelTag] : []),
     ];
     function seatTags(seat: number): PanelTag[] {
@@ -1204,25 +1206,36 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const r = (t.pub as unknown as { result?: MatgoSummary })?.result;
     if (!r) return '<p>판이 끝났어요</p>';
     const full = (seat: number) => new URL(`shared/images/zodiac/full/${t.seatAvatar(seat)}.png`, worldRoot()).href;
+    const name = (seat: number) => t.pub?.players[seat]?.name ?? t.seatName(seat);
+    // 뻑 보너스 (첫 뻑 기본금 ×2 · 두 번째 ×3): 뻑을 낸 사람이 상대에게서 받는다. 예전 판 결과에는 없을 수 있다
+    const ppeoks = r.ppeoks ?? [];
+    const ppeokLines = ppeoks
+      .map((x) => `<li><span>뻑 보너스 · ${esc(name(x.seat))} ${x.count >= 2 ? '첫뻑 ×2 + 연뻑 ×3' : '첫뻑 ×2'}</span><b>+${t.fmt(x.bonus)}냥</b></li>`)
+      .join('');
     if (r.result === 'nagari') {
+      // 나가리여도 뻑 보너스는 오간다
+      const mine = t.resultSeat !== null ? (r.net?.[t.resultSeat] ?? 0) : 0;
       return `<div class="mg-res draw"><div class="mg-res-head"><div><b>나가리!</b><span>아무도 점수를 못 냈어요</span></div></div>
-        <p class="mg-res-money">다음 판 ×${r.nextNagari}</p></div>`;
+        <p class="mg-res-money">다음 판 ×${r.nextNagari}</p>
+        ${ppeokLines ? `<ul class="mg-res-lines">${ppeokLines}${mine ? `<li class="sum"><span>내 뻑 정산</span><b>${mine > 0 ? '+' : '-'}${t.fmt(Math.abs(mine))}냥</b></li>` : ''}</ul>` : ''}</div>`;
     }
     const meWin = r.winner === t.resultSeat;
     const meLose = r.loser === t.resultSeat;
-    const name = (seat: number) => t.pub?.players[seat]?.name ?? t.seatName(seat);
+    // 점수 금액 + 뻑 보너스 (이긴 사람 기준)
+    const total = r.amount + ppeoks.reduce((a, x) => a + (x.seat === r.winner ? x.bonus : -x.bonus), 0);
     const lines = r.breakdown.map((l) => `<li><span>${esc(l.label)}</span><b>${l.points}점</b></li>`).join('');
     // 배수: '3고 ×2'는 최종 점수에 이미 들어 있다 (점수 내역에 한 줄로) → 계산식에는 나머지 배수만
     const isGoMul = (m: string) => /^\d+고 ×/.test(m);
     const muls = r.multipliers.filter((m) => !isGoMul(m)).map((m) => (m.includes('×') ? m : `${m} ×2`));
     return `<div class="mg-res ${meWin ? 'win' : meLose ? 'lose' : 'draw'}">
-      <div class="mg-res-head"><img src="${full(r.winner!)}" alt=""/><div><b>${meWin ? '이겼어요!' : meLose ? '졌어요…' : '판 끝!'}</b><span>${esc(name(r.winner!))} 승리${r.chongtong ? ' (총통)' : ''}</span></div></div>
+      <div class="mg-res-head"><img src="${full(r.winner!)}" alt=""/><div><b>${meWin ? '이겼어요!' : meLose ? '졌어요…' : '판 끝!'}</b><span>${esc(name(r.winner!))} 승리${r.samPpeok ? ' (삼뻑)' : r.chongtong ? ' (총통)' : ''}</span></div></div>
       <p class="mg-res-money ${meWin ? 'plus' : meLose ? 'minus' : ''}">${meWin ? '+' : meLose ? '-' : ''}${t.fmt(r.paid)}냥</p>
       <ul class="mg-res-lines">${lines}
         ${r.goMultiplier > 1 ? `<li><span>${r.goCount}고</span><b>×${r.goMultiplier}</b></li>` : ''}
         <li class="sum"><span>점수</span><b>${r.score}점</b></li></ul>
       <div class="mg-res-calc"><i>${r.score}점</i><em>×</em><i>점당 ${t.fmt(r.baseUnit)}냥</i>${muls.map((m) => `<em>×</em><i class="mul">${esc(m)}</i>`).join('')}<em>=</em><b>${t.fmt(r.amount)}냥</b></div>
-      ${r.paid < r.amount ? `<p class="mg-res-note">가진 만큼만 ${t.fmt(r.paid)}냥</p>` : ''}
+      ${ppeokLines ? `<ul class="mg-res-lines">${ppeokLines}<li class="sum"><span>합계</span><b>${t.fmt(total)}냥</b></li></ul>` : ''}
+      ${r.paid < total ? `<p class="mg-res-note">가진 만큼만 ${t.fmt(r.paid)}냥</p>` : ''}
     </div>`;
   },
 
@@ -1263,8 +1276,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         return '폭탄!';
       case 'shake':
         return '흔들기!';
-      case 'ppeok':
+      case 'ppeok': {
+        // 뻑 보너스가 걸려 있으니 누구의 뻑이든 알린다: 첫 뻑 기본금 ×2 · 두 번째 ×3 · 세 번째는 삼뻑 승리
+        const n = Number(ev.count) || 0;
+        if (n >= 3) return '삼뻑!';
+        if (n === 2) return '연뻑 ×3';
+        if (n === 1) return '첫뻑 ×2';
         return mine ? '뻑!' : null;
+      }
       case 'nagari':
         return '나가리';
       default: {
