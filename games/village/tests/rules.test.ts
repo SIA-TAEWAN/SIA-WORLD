@@ -67,12 +67,14 @@ describe('수치 표', () => {
         const u = upgradeCost(d.id, lv);
         expect(Math.max(u.rice, u.wood, u.stone), `${d.id} ${lv}`).toBeLessThanOrEqual(room);
         expect(u.stone > 0).toBe(lv >= CONST.stone_from && d.upStone > 0);
+        expect(u.coin > 0).toBe(lv >= CONST.coin_from);
       }
     }
     for (const d of BUILDINGS) expect(Math.max(d.rice, d.wood, d.stone)).toBeLessThanOrEqual(HALL_CAP[0]);
     expect(upgradeCost('paddy', 3)).toEqual({ rice: 35, wood: 70, stone: 0, coin: 0 });
-    expect(upgradeCost('paddy', 4)).toEqual({ rice: 55, wood: 110, stone: 55, coin: 0 });
-    expect(upgradeCost('hall', 9)).toEqual({ rice: 2800, wood: 2800, stone: 2100, coin: 0 });
+    // 엽전은 레벨 4 부터: (쌀 + 나무) × 배수 × 45 ÷ 1000 (버림)
+    expect(upgradeCost('paddy', 4)).toEqual({ rice: 55, wood: 110, stone: 55, coin: 74 });
+    expect(upgradeCost('hall', 9)).toEqual({ rice: 2800, wood: 2800, stone: 2100, coin: 2520 });
   });
 
   it('모습 3단계: 레벨 1~3 / 4~7 / 8~10', () => {
@@ -1297,21 +1299,21 @@ describe('7단계: 번영도', () => {
     const p = put(s, 'paddy', 6, 6, 3);
     put(s, 'pond', 7, 6);
     put(s, 'pavilion', 12, 12, 2);
-    expect(prosperityOf(s)).toBe(1 + 3 + 8 + (2 + 20));
+    expect(prosperityOf(s)).toBe(1 + 3 + 13 + (2 + 20));
     // 짓는 중 · 보관함은 세지 않는다. 길은 점수가 없다
     put(s, 'road', 8, 6);
     put(s, 'stonetower', 9, 6).state = 'stored';
     const site = put(s, 'lumber', 10, 6, 5);
     site.state = 'building';
-    expect(prosperityOf(s)).toBe(34);
+    expect(prosperityOf(s)).toBe(39);
     p.state = 'upgrading';
-    expect(prosperityOf(s)).toBe(34);
+    expect(prosperityOf(s)).toBe(39);
     // 주민: 친밀도 단계 × 3
     s.residents = [{ id: 'rat', affinity: 0, building: null, gifted: false }, { id: 'ox', affinity: 100, building: null, gifted: true }];
-    expect(prosperityOf(s)).toBe(34 + 3 + 15);
+    expect(prosperityOf(s)).toBe(39 + 3 + 15);
     put(s, 'gift_ox', 11, 6);
     s.profile.praiseCount = 4;
-    expect(prosperityOf(s)).toBe(52 + 12 + 8);
+    expect(prosperityOf(s)).toBe(57 + 12 + 8);
   });
 
   it('값이 바뀔 때만 달성 시각이 바뀐다', () => {

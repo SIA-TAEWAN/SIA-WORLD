@@ -13,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, 
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -61,6 +61,10 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
   it('가공 · 장터 시세', () => {
     expect(rows('_village_recipes')).toEqual(RECIPES.map((r) => [r.type, r.in1, r.n1, r.in2, r.n2, r.out, r.sec, r.exp, r.base, r.per]));
     expect(rows('_village_prices')).toEqual(PRICES.map((p) => [p.res, p.base, p.idx]));
+    // 업그레이드의 엽전 (054): rules.ts 의 upgradeCost 와 같은 식
+    const up = body('village_upgrade');
+    expect(up).toContain("cn := case when b.level >= public._village_const('coin_from') then (ty.rice + ty.wood)::bigint * m * public._village_const('up_coin_pct')::int / 1000 else 0 end;");
+    expect(up).toContain('perform public._village_spend(me, ty.rice * m / 10, ty.wood * m / 10, st, cn);');
     // 시세 식: 80 + (날 × 7919 + 번호 × 104729 + 12345) mod 51
     expect(body('_village_price_pct').replace(/\s+/g, ' ')).toContain('(p_day::bigint * 7919 + p_idx * 104729 + 12345)');
     expect(pricePct(0, 1)).toBe(80 + ((104729 + 12345) % 51));

@@ -9,7 +9,7 @@
  *   → 남는 쌀로 떡, 떡으로 특산품 → 창고가 차면 장터에 판다 → 엽전이 남으면 장식물.
  * 규칙은 게임과 같은 함수(src/game/rules.ts)를 그대로 쓴다.
  */
-import { CAPPED, CONST, HALL_NEED, LEVEL_EXP, UPGRADE_EXP } from '../src/data/balance';
+import { CAPPED, CONST, HALL_NEED, LEVEL_EXP, UPGRADE_EXP, MARKET_LIMIT } from '../src/data/balance';
 import { BUILDING, BUILDINGS, recipeOf, upgradable, type BuildingType } from '../src/data/buildings';
 import { GOALS } from '../src/data/goals';
 import { RESIDENT } from '../src/data/residents';
@@ -22,6 +22,8 @@ import {
 // 수치를 바꿔 보는 실험용 (파일을 고치기 전에): PACE_EXP='40,70,…' 레벨 표 · PACE_DIV=20 수확 경험치 나누는 값 · PACE_UP='15,30,…' 업그레이드 경험치
 if (process.env.PACE_EXP) LEVEL_EXP.splice(0, LEVEL_EXP.length, ...process.env.PACE_EXP.split(',').map(Number));
 if (process.env.PACE_UP) UPGRADE_EXP.splice(0, UPGRADE_EXP.length, ...process.env.PACE_UP.split(',').map(Number));
+if (process.env.PACE_COIN) (CONST as { up_coin_pct: number }).up_coin_pct = Number(process.env.PACE_COIN);
+if (process.env.PACE_MKT) MARKET_LIMIT.splice(0, MARKET_LIMIT.length, ...process.env.PACE_MKT.split(',').map(Number));
 if (process.env.PACE_DIV) (CONST as { harvest_exp_div: number }).harvest_exp_div = Number(process.env.PACE_DIV);
 const DAYS = Number(process.argv[2]) || 60;
 const VISITS = Number(process.argv[3]) || 4;
@@ -39,6 +41,14 @@ function tally<T>(kind: keyof typeof exp, fn: () => T): T {
   const b0 = total();
   const out = fn();
   exp[kind] += total() - b0;
+  return out;
+}
+/** 엽전이 어디서 들어와 어디로 나갔나: 앞뒤 차이로 센다 */
+const coins = { goal: 0, request: 0, daily: 0, sell: 0, upgrade: 0, build: 0 };
+function coinOf<T>(kind: keyof typeof coins, fn: () => T): T {
+  const c0 = s.profile.resources.coin;
+  const out = fn();
+  coins[kind] += s.profile.resources.coin - c0;
   return out;
 }
 const tryDo = (fn: () => void): boolean => {
@@ -65,13 +75,13 @@ function tryBuild(type: BuildingType): boolean {
   const d = BUILDING[type];
   if (d.sia > 0 || countOf(s, type) >= maxCount(type, s.profile.level) || !canPay(s.profile, buildCost(type)) || (d.buildSec > 0 && busyCount(s) >= slots(s))) return false;
   const at = spot(type);
-  return !!at && tryDo(() => void build(s, type, at.x, at.y, now, `b${++seq}`));
+  return !!at && coinOf('build', () => tryDo(() => void build(s, type, at.x, at.y, now, `b${++seq}`)));
 }
 function tryUpgrade(id: string): boolean {
   const b = s.buildings.find((v) => v.id === id)!;
   if (b.state !== 'done' || !upgradable(b.type) || b.level >= CONST.building_max_level || busyCount(s) >= slots(s)) return false;
   if (!canPay(s.profile, upgradeCost(b.type, b.level))) return false;
-  return tryDo(() => upgrade(s, id, now));
+  return coinOf('upgrade', () => tryDo(() => upgrade(s, id, now)));
 }
 
 /** 한 번 손을 댄다 (5초마다 부른다) → 무언가 했으면 true */
@@ -79,7 +89,7 @@ function act(): boolean {
   tally('build', () => settle(s, now));
   const g = goalStatus(s);
   if (g?.done) {
-    tally('goal', () => claimGoal(s, now));
+    coinOf('goal', () => tally('goal', () => claimGoal(s, now)));
     return true;
   }
   // 목표가 시키는 일 먼저
@@ -124,10 +134,10 @@ function chores() {
   }
   // 부탁: 가진 것으로 들어줄 수 있으면 들어준다. 오늘의 할 일: 받을 수 있는 보상을 받는다
   for (const q of s.requests.map((v) => ({ ...v }))) {
-    if (q.state === 'open' && q.res && r[q.res] >= q.n) tally('other', () => tryDo(() => void requestDone(s, q.slot, now, `g${++seq}`)));
+    if (q.state === 'open' && q.res && r[q.res] >= q.n) coinOf('request', () => tally('other', () => tryDo(() => void requestDone(s, q.slot, now, `g${++seq}`))));
   }
-  for (const t of s.daily.map((v) => ({ ...v }))) if (!t.claimed && t.progress >= t.n) tally('other', () => tryDo(() => dailyClaim(s, t.slot, now)));
-  tally('other', () => tryDo(() => dailyClaim(s, 3, now)));
+  for (const t of s.daily.map((v) => ({ ...v }))) if (!t.claimed && t.progress >= t.n) coinOf('daily', () => tally('other', () => tryDo(() => dailyClaim(s, t.slot, now))));
+  coinOf('daily', () => tally('other', () => tryDo(() => dailyClaim(s, 3, now))));
   // 떡이 있으면 특산품, 쌀이 넉넉하면 떡
   for (const b of s.buildings.filter((v) => v.type === 'jar' && v.state === 'done')) {
     const rc = recipeOf('jar')!;
@@ -144,15 +154,24 @@ function chores() {
       if (r[k] < cap * 0.9) continue;
       let n = Math.floor(r[k] * 0.3);
       while (n > 0 && sellCoins(s, k, n, now) > sellLeft(s, now)) n = Math.floor(n * 0.8);
-      if (n > 0 && sellCoins(s, k, n, now) >= 1) tryDo(() => void sell(s, k, n, now));
+      if (n > 0 && sellCoins(s, k, n, now) >= 1) coinOf('sell', () => tryDo(() => void sell(s, k, n, now)));
     }
     let n = r.special;
     while (n > 0 && sellCoins(s, 'special', n, now) > sellLeft(s, now)) n--;
-    if (n > 0) tryDo(() => void sell(s, 'special', n, now));
+    if (n > 0) coinOf('sell', () => tryDo(() => void sell(s, 'special', n, now)));
   }
   // 엽전이 값의 두 배를 넘으면 장식물을 하나 놓는다 (비싼 것부터)
   const decos = BUILDINGS.filter((d) => d.kind === 'deco' && d.coin > 0).sort((a, b) => b.coin - a.coin);
-  if (freeCells() - reserve() >= 1) for (const d of decos) if (r.coin >= d.coin * 2 && tally('build', () => tryBuild(d.id))) break;
+  for (const d of decos) {
+    if (r.coin < d.coin * 2 || countOf(s, d.id) >= maxCount(d.id, s.profile.level)) continue;
+    // 자리가 없으면 놓여 있는 가장 싼 장식물을 보관함에 넣고 더 좋은 것을 놓는다
+    if (freeCells() - reserve() < 1) {
+      const cheap = s.buildings.filter((b) => BUILDING[b.type].kind === 'deco' && b.state === 'done' && BUILDING[b.type].coin > 0).sort((a, b) => BUILDING[a.type].coin - BUILDING[b.type].coin)[0];
+      if (!cheap || BUILDING[cheap.type].coin >= d.coin) continue;
+      tryDo(() => store(s, cheap.id, now));
+    }
+    if (tally('build', () => tryBuild(d.id))) break;
+  }
 }
 
 function harvestAll() {
@@ -201,5 +220,8 @@ const sum = exp.build + exp.harvest + exp.goal + exp.other || 1;
 const pct = (n: number) => `${Math.round((n / sum) * 100)}%`;
 console.log(`\n경험치 출처: 건설·업그레이드 ${pct(exp.build)} · 수확·가공 ${pct(exp.harvest)} · 마을 목표 ${pct(exp.goal)}${exp.other ? ` · 부탁·오늘의 할 일 ${pct(exp.other)}` : ''}  (합 ${sum})`);
 const cells = s.buildings.filter((b) => b.state !== 'stored').reduce((n, b) => n + BUILDING[b.type].w * BUILDING[b.type].h, 0);
-console.log(`쓴 칸 ${cells}/64 (처음 땅 8×8)`);
+const decoStored = s.buildings.filter((b) => b.state === 'stored').length;
+console.log(`쓴 칸 ${cells}/64 (처음 땅 8×8): 일반 건물 ${cellsOf('main')}칸 (다 지으면 ${MAIN_CELLS}칸) · 장식물 ${cellsOf('deco')}칸 · 길 ${cellsOf('road')}칸 · 보관함 ${decoStored}개`);
+const got = coins.goal + coins.request + coins.daily + coins.sell;
+console.log(`엽전 수지 (${DAYS}일): 번 것 ${got} = 목표 ${coins.goal} + 부탁 ${coins.request} + 오늘의 할 일 ${coins.daily} + 장터 ${coins.sell}  ·  쓴 것 ${-(coins.upgrade + coins.build)} = 업그레이드 ${-coins.upgrade} + 건설·장식물 ${-coins.build}  ·  남은 것 ${s.profile.resources.coin}`);
 console.log('목표 속도 (PRD): 첫날 레벨 5 · 일주일에 12 안팎 · 두 달에 30\n');

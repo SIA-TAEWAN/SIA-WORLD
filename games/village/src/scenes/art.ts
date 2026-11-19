@@ -11,6 +11,8 @@ import { COLOR, MATGO, RACE, ROULETTE, TABLE } from '../theme';
 export const CELL = 96;
 /** 건물 그림이 칸 위로 솟는 높이 (가로 한 칸마다) */
 export const RISE = 40;
+/** 먼 숲 무늬 한 장의 칸 수 */
+export const FOREST_CELLS = 8;
 /** 텍스처는 2배로 그린다 (확대해도 선명하게) */
 const S = 2;
 
@@ -475,11 +477,29 @@ export function makeTextures(scene: Phaser.Scene) {
     });
   }
   // 땅 밖의 나무
-  make(scene, 'tree', CELL, CELL, (g) => {
-    box(g, 42, 58, 12, 26, 3, COLOR.inkSoft, 2.5);
-    dot(g, 48, 40, 26, TABLE.matgo);
-    dot(g, 38, 34, 6, MATGO.matLight, 0);
-  });
+  const outTree = (g: G, x: number, y: number) => {
+    box(g, x + 42, y + 58, 12, 26, 3, COLOR.inkSoft, 2.5);
+    dot(g, x + 48, y + 40, 26, TABLE.matgo);
+    dot(g, x + 38, y + 34, 6, MATGO.matLight, 0);
+  };
+  make(scene, 'tree', CELL, CELL, (g) => outTree(g, 0, 0));
+  // 더 먼 숲: FOREST_CELLS 칸 한 장을 되풀이해 깐다 (나무는 가장자리에 걸치지 않게, 1배로 그려 가볍게)
+  if (!scene.textures.exists('forest')) {
+    const T = FOREST_CELLS * CELL;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(MATGO.matDark, 1).fillRect(0, 0, T, T);
+    for (let y = 0; y < FOREST_CELLS; y++) {
+      for (let x = 0; x < FOREST_CELLS; x++) {
+        const h = ((x * 73856093) ^ (y * 19349663) ^ 0x5bd1e995) >>> 0;
+        if (h % 3 !== 0) continue;
+        const ox = Math.min(T - CELL - 2, Math.max(2, x * CELL + (h % 17) - 8));
+        const oy = Math.min(T - CELL - 2, Math.max(2, y * CELL + ((h >> 5) % 17) - 8));
+        outTree(g, ox, oy);
+      }
+    }
+    g.generateTexture('forest', T, T);
+    g.destroy();
+  }
 }
 
 /** 그 건물이 만드는 것의 방울 그림 이름 (없으면 null) */

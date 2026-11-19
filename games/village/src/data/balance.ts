@@ -46,6 +46,9 @@ export const CONST = {
   hall_exp_mul: 3,
   /** 건물 레벨이 이 값 이상이면 업그레이드에 돌이 든다 */
   stone_from: 4,
+  /** 건물 레벨이 이 값 이상이면 업그레이드에 엽전도 든다: (짓는 값의 쌀 + 나무) x cost_mul x up_coin_pct / 1000 */
+  coin_from: 4,
+  up_coin_pct: 45,
   /** 장터 시세: 기준 값의 price_min_pct % 부터 price_span 가지 (80 ~ 130 %) */
   price_min_pct: 80,
   price_span: 51,
@@ -105,7 +108,7 @@ export const HALL_NEED = [2, 4, 6, 9, 12, 15, 19, 23, 27];
 export const lookOf = (level: number): 1 | 2 | 3 => (level >= 8 ? 3 : level >= 4 ? 2 : 1);
 
 /** 장터의 하루 판매 한도 (엽전, 장터 레벨 1 … 10) */
-export const MARKET_LIMIT = [300, 450, 650, 900, 1200, 1600, 2100, 2700, 3400, 4200];
+export const MARKET_LIMIT = [300, 450, 650, 900, 1200, 1600, 2000, 2300, 2600, 2900];
 
 /** 장터에서 파는 자원: 100개의 기준 값(엽전)과 시세를 가르는 번호. SQL 의 _village_prices */
 export const PRICES: { res: ResId; base: number; idx: number }[] = [

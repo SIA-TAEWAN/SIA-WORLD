@@ -71,6 +71,10 @@ interface View {
 }
 
 const ZOOM_MIN = 0.34;
+/** 땅 밖의 나무: 이 칸 범위(20×20 좌표 기준, 끝은 빼고)는 한 그루씩, 그 밖은 숲 무늬를 깔아 끝까지 줄여도 빈 바탕이 보이지 않게 */
+const NEAR0 = -6;
+const NEAR1 = GRID_MAX + 6;
+const FOREST_PAD = 40; // 숲 무늬 한 장(art.ts 의 FOREST_CELLS = 8칸)의 배수: NEAR1 - NEAR0 도 8의 배수
 const ZOOM_MAX = 1.8;
 const DRAG_PX = 10;
 
@@ -118,6 +122,10 @@ export class VillageScene extends Phaser.Scene {
 
   create() {
     makeTextures(this);
+    // 숲 무늬: 무늬 한 장의 경계가 NEAR0 에 맞게 깐다 (무늬 속 나무는 가장자리에 걸치지 않는다)
+    const f0 = (NEAR0 - FOREST_PAD) * CELL;
+    const fw = (NEAR1 - NEAR0 + FOREST_PAD * 2) * CELL;
+    this.add.tileSprite(f0, f0, fw, fw, 'forest').setOrigin(0, 0).setDepth(-11);
     this.ground = this.add.graphics().setDepth(-10);
     this.trees = this.add.container(0, 0).setDepth(-5);
     this.ghostTile = this.add.graphics();
@@ -259,23 +267,40 @@ export class VillageScene extends Phaser.Scene {
     w.rest = Math.max(w.rest, 2800);
   }
 
-  /** 다음에 갈 곳: 일터가 있으면 그 둘레, 없으면 땅 안의 아무 곳 */
+  /** 그 칸에 서 있는 건물 (길은 밟고 다닌다 · 보관함은 없다) */
+  private occupied(cx: number, cy: number): Building | null {
+    for (const b of this.hooks.state().buildings) {
+      const d = BUILDING[b.type];
+      if (b.state === 'stored' || d.kind === 'road') continue;
+      if (cx >= b.x && cx < b.x + d.w && cy >= b.y && cy < b.y + d.h) return b;
+    }
+    return null;
+  }
+
+  /** 다음에 갈 곳: 일터가 있으면 그 둘레, 없으면 땅 안의 아무 곳. 건물 칸 위에는 서지 않는다 (누르면 건물이 눌리게) */
   private nextSpot(id: ResidentId, w: Walker) {
     const s = this.hooks.state();
     const { x0, size } = landRect(s.profile.landStage);
     const lo = x0 * CELL + 30;
     const hi = (x0 + size) * CELL - 30;
     const at = workplace(s, id);
-    if (at && Math.random() < 0.75) {
-      const d = BUILDING[at.type];
-      w.tx = (at.x + d.w / 2) * CELL + (Math.random() - 0.5) * (d.w + 1.4) * CELL;
-      w.ty = (at.y + d.h) * CELL + 14 + Math.random() * 50;
-    } else {
-      w.tx = lo + Math.random() * (hi - lo);
-      w.ty = lo + Math.random() * (hi - lo);
+    const near = !!at && Math.random() < 0.75;
+    for (let i = 0; i < 24; i++) {
+      if (near && at && i < 12) {
+        const d = BUILDING[at.type];
+        w.tx = (at.x + d.w / 2) * CELL + (Math.random() - 0.5) * (d.w + 1.4) * CELL;
+        w.ty = (at.y + d.h) * CELL + 14 + Math.random() * 50;
+      } else {
+        w.tx = lo + Math.random() * (hi - lo);
+        w.ty = lo + Math.random() * (hi - lo);
+      }
+      w.tx = Math.max(lo, Math.min(hi, w.tx));
+      w.ty = Math.max(lo + 40, Math.min(hi, w.ty));
+      if (!this.occupied(Math.floor(w.tx / CELL), Math.floor(w.ty / CELL))) return;
     }
-    w.tx = Math.max(lo, Math.min(hi, w.tx));
-    w.ty = Math.max(lo + 40, Math.min(hi, w.ty));
+    // 빈 칸이 없으면 그 자리에 선다
+    w.tx = w.x;
+    w.ty = w.y;
   }
 
   private moveWalkers(dt: number) {
@@ -313,12 +338,13 @@ export class VillageScene extends Phaser.Scene {
     }
   }
 
-  /** 그 점 가까이에 있는 주민 */
+  /** 그 점 가까이에 있는 주민. 건물 칸 위를 지나가는 주민은 뺀다 (그때는 건물이 눌린다) */
   private walkerAt(px: number, py: number): ResidentId | null {
     const p = this.worldAt(px, py);
     let best: ResidentId | null = null;
     let bestD = 36;
     for (const [id, w] of this.walkers) {
+      if (this.occupied(Math.floor(w.x / CELL), Math.floor(w.y / CELL))) continue;
       const d = Math.hypot(p.x - w.x, p.y - (w.y - WALK_H / 2));
       if (d < bestD) {
         bestD = d;
@@ -399,8 +425,7 @@ export class VillageScene extends Phaser.Scene {
     this.landStage = stage;
     const { x0, size } = landRect(stage);
     const g = this.ground.clear();
-    const W = GRID_MAX * CELL;
-    g.fillStyle(MATGO.matDark, 1).fillRect(-W, -W, W * 3, W * 3);
+    g.fillStyle(MATGO.matDark, 1).fillRect(NEAR0 * CELL, NEAR0 * CELL, (NEAR1 - NEAR0) * CELL, (NEAR1 - NEAR0) * CELL);
     const l = x0 * CELL;
     const w = size * CELL;
     // 땅: 아래 두께 + 체크 무늬 + 굵은 외곽선
@@ -411,8 +436,8 @@ export class VillageScene extends Phaser.Scene {
     g.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
     // 땅 밖: 나무 (자리는 좌표로 정해 늘 같다)
     this.trees.removeAll(true);
-    for (let y = -3; y < GRID_MAX + 3; y++) {
-      for (let x = -3; x < GRID_MAX + 3; x++) {
+    for (let y = NEAR0; y < NEAR1; y++) {
+      for (let x = NEAR0; x < NEAR1; x++) {
         if (x >= x0 - 1 && x <= x0 + size && y >= x0 - 1 && y <= x0 + size) continue;
         const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
         if (h % 3 !== 0) continue;
@@ -621,7 +646,7 @@ export class VillageScene extends Phaser.Scene {
       this.moveGhost(c.x - Math.floor((def.w - 1) / 2), c.y - Math.floor((def.h - 1) / 2));
       return;
     }
-    // 주민이 먼저 (건물 앞을 걸어 다닌다). 수확 방울은 위에서 이미 걸렀다
+    // 빈 칸에 선 주민이 먼저 (건물 앞에 서 있으면 그림이 건물을 가린다). 건물 칸 위를 지나가는 주민은 건물이 먼저. 수확 방울은 위에서 이미 걸렀다
     const who = this.walkerAt(p.x, p.y);
     if (who) return this.hooks.tapResident(who);
     const hit = this.buildingAt(p.x, p.y);

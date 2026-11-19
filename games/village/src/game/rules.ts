@@ -142,11 +142,13 @@ export function buildCost(type: BuildingType): Cost {
   const d = BUILDING[type];
   return { rice: d.rice, wood: d.wood, stone: d.stone, coin: d.coin };
 }
-/** 레벨 n → n+1 업그레이드 값. 돌은 건물 레벨 stone_from 부터 든다 */
+/** 레벨 n → n+1 업그레이드 값. 돌은 건물 레벨 stone_from 부터, 엽전은 coin_from 부터 든다 */
 export function upgradeCost(type: BuildingType, level: number): Cost {
   const d = BUILDING[type];
   const m = COST_MUL[level - 1];
-  return { rice: Math.floor((d.rice * m) / 10), wood: Math.floor((d.wood * m) / 10), stone: level >= CONST.stone_from ? Math.floor((d.upStone * m) / 10) : 0, coin: 0 };
+  return { rice: Math.floor((d.rice * m) / 10), wood: Math.floor((d.wood * m) / 10), stone: level >= CONST.stone_from ? Math.floor((d.upStone * m) / 10) : 0,
+    coin: level >= CONST.coin_from ? Math.floor(((d.rice + d.wood) * m * CONST.up_coin_pct) / 1000) : 0,
+  };
 }
 export const canPay = (p: Profile, c: Cost) => COST_KEYS.every((k) => p.resources[k] >= c[k]);
 export const upgradeExp = (type: BuildingType, level: number) => UPGRADE_EXP[level - 1] * (type === 'hall' ? CONST.hall_exp_mul : 1);

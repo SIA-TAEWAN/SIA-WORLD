@@ -432,6 +432,36 @@ export async function getApi(user: { id: string; name: string }): Promise<Villag
 
 const kstDayOf = (ms: number) => Math.floor((ms + 9 * 3600_000) / 86400_000) - 20454;
 
+/** 테스트 모드의 다 자란 마을 (?town=1, 화면 확인용): 12×12 땅, 수확 방울은 가득 찬 채로 */
+function makeTown(now: number): VillageState {
+  const s = newVillage(now);
+  Object.assign(s.profile, { level: 16, exp: 0, landStage: 2, goal: 60, name: '시험 마을' });
+  Object.assign(s.profile.resources, { rice: 3000, wood: 3000, stone: 3000, cake: 200, coin: 9000, special: 5 });
+  s.sia = 200;
+  s.buildings[0].level = 7;
+  const list: [BuildingType, number, number, number][] = [
+    ['paddy', 5, 5, 1], ['paddy', 6, 5, 2], ['paddy', 7, 5, 4], ['paddy', 8, 5, 6], ['paddy', 9, 5, 8], ['paddy', 10, 5, 10],
+    ['lumber', 12, 5, 2], ['lumber', 13, 5, 5], ['lumber', 14, 5, 9],
+    ['house', 5, 7, 1], ['house', 6, 7, 3], ['house', 7, 7, 4], ['house', 8, 7, 6], ['house', 9, 7, 8], ['house', 10, 7, 10], ['house', 11, 7, 2], ['house', 12, 7, 5],
+    ['storage', 5, 9, 3], ['storage', 6, 9, 6], ['market', 7, 9, 4], ['quarry', 5, 11, 3], ['quarry', 6, 11, 7], ['mill', 7, 11, 5], ['jar', 8, 11, 8],
+    ['pavilion', 12, 9, 2], ['feast', 12, 12, 1], ['shrine', 5, 13, 3],
+    ['road', 9, 11, 1], ['road', 10, 11, 1], ['road', 11, 11, 1], ['road', 11, 10, 1], ['road', 11, 9, 1],
+    ['tree', 14, 9, 1], ['tree', 14, 10, 1], ['flower', 11, 12, 1], ['lantern', 8, 13, 1], ['lantern', 10, 13, 1], ['pond', 14, 11, 1], ['stonetower', 15, 11, 1],
+    ['well', 11, 14, 1], ['jangseung', 7, 13, 1], ['sotdae', 14, 14, 1], ['haystack', 4, 5, 1], ['scarecrow', 4, 6, 1], ['stonewall', 15, 5, 1], ['bench', 9, 13, 1],
+    ['mon_tank1', 13, 7, 1], ['mon_def12', 14, 7, 1], ['gift_rat', 15, 7, 1],
+  ];
+  list.forEach(([type, x, y, level], i) => s.buildings.push({ id: `town-${i}`, type, level, x, y, state: 'done', finishAt: null, startAt: null, collectedAt: now - 14 * 3600_000, jobN: 0, banked: 0 }));
+  // 하나는 업그레이드 중 (진행 막대)
+  const up = s.buildings.find((b) => b.id === 'town-7')!;
+  Object.assign(up, { state: 'upgrading', startAt: now - 600_000, finishAt: now + 1200_000 });
+  s.residents = (['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep'] as ResidentId[]).map((id, i) => ({ id, affinity: [100, 60, 30, 12, 5, 0, 0, 0][i], building: null, gifted: i === 0 }));
+  s.residents[1].building = 'town-5';
+  s.residents[2].building = 'town-8';
+  s.monuments = ['mon_tank1', 'mon_def12'];
+  refresh(s, now);
+  return s;
+}
+
 /** 테스트 모드의 이웃 마을 셋 */
 function makeBots(): { id: string; nick: string; state: VillageState }[] {
   const mk = (id: string, nick: string, name: string, level: number, list: [BuildingType, number, number, number][], residents: [ResidentId, number][], praise: number) => {
@@ -455,10 +485,11 @@ function makeBots(): { id: string; nick: string; state: VillageState }[] {
 /**
  * 테스트 모드의 마을을 주소로 정한다 (헤드리스 확인용):
  *   ?fresh=1 처음 상태로 · ?rice=500&wood=500&stone=&cake=&coin=&special= 자원 · ?sia=100 시아코인 · ?land=2 땅 단계 · ?aff=95 친밀도 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
+ *   ?town=1 다 자란 마을로 바꾼다 (건물 모습 1 · 2 · 3단계, 가득 찬 수확 방울, 주민 여덟, 특별 건물 · 장식물 · 기념물 · 길)
  */
 function seedLocal(store: Store) {
   if (params.get('fresh') === '1') store.removeItem(LOCAL_KEY);
-  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land', 'aff'].filter((k) => params.get(k) !== null);
+  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land', 'aff', 'town'].filter((k) => params.get(k) !== null);
   if (keys.length === 0) return;
   let d: { state?: unknown; seq?: number; skew?: number } = {};
   try {
@@ -466,7 +497,8 @@ function seedLocal(store: Store) {
   } catch {
     /* 처음 상태 */
   }
-  const s = d.state ? cleanState(d.state) : newVillage(Date.now() + (Number(d.skew) || 0));
+  const t0 = Date.now() + (Number(d.skew) || 0);
+  const s = params.get('town') === '1' ? makeTown(t0) : d.state ? cleanState(d.state) : newVillage(t0);
   const num = (k: string, max: number) => Math.max(0, Math.min(max, Math.floor(Number(params.get(k)) || 0)));
   for (const k of RES_IDS) if (params.get(k) !== null) s.profile.resources[k] = num(k, 1e9);
   if (params.get('lv') !== null) {
