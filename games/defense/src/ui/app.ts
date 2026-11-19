@@ -64,6 +64,13 @@ export const nav = {
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
+/** 받침에 맞는 조사를 붙인다: josa('들판', '을', '를') → '들판을' */
+export function josa(word: string, withFinal: string, withoutFinal: string): string {
+  const code = word.charCodeAt(word.length - 1) - 0xac00;
+  const final = code >= 0 && code <= 11171 ? code % 28 !== 0 : false;
+  return word + (final ? withFinal : withoutFinal);
+}
+
 /** 초 → 0:00 */
 export const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 

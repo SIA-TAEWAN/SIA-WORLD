@@ -10,6 +10,8 @@ import type { GameConfig, State } from './state';
  * '보통 실력'은 이렇게 논다:
  *   · 길이 사거리에 많이 들어오는 칸을 고르지만 가장 좋은 칸을 늘 찾지는 못한다 (좋은 칸 몇 개 가운데 하나, 가끔은 엉뚱한 칸)
  *   · 다음에 할 일(누구를 놓을지 / 누구를 강화할지)을 정해 두고 기운이 모이면 한다. 모이자마자가 아니라 조금 뒤에 알아챈다
+ *   · 소는 다른 캐릭터를 몇 놓은 뒤에, 범위 캐릭터(토끼)만 둘을 먼저 놓지는 않는다
+ *   · 기운을 모으는 사이에 요괴가 새어 나가면 급한 대로 가장 싼 캐릭터를 놓는다
  *   · 되팔기는 하지 않는다
  * 정책의 난수는 판의 시드와 따로다 (같은 판이라도 사람마다 다르게 두는 것을 흉내 낸다).
  */
@@ -52,10 +54,13 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
 
   const pickChar = (s: State): number => {
     const placed = s.towers.reduce((n, t) => n + (t.char >= 0 ? 1 : 0), 0);
+    // 한 마리씩 잡는 캐릭터(표창·발톱)가 아직 없으면 범위 캐릭터를 또 고르지 않는다 (범위 캐릭터만으로는 처음 몇 마리를 못 잡는다)
+    const single = s.towers.some((t) => t.char >= 0 && (TOWERS[t.char].kind === 'shot' || TOWERS[t.char].kind === 'melee'));
+    const lobs = s.towers.some((t) => t.char >= 0 && TOWERS[t.char].kind === 'lob');
     let total = 0;
     const w = s.squad.map((c) => {
       const k = TOWERS[c].kind;
-      const v = k === 'stun' && placed < 3 ? 0 : WEIGHT[k];
+      const v = (k === 'stun' && placed < 3) || (k === 'lob' && lobs && !single) ? 0 : WEIGHT[k];
       total += v;
       return v;
     });

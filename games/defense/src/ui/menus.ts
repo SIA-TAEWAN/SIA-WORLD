@@ -8,7 +8,7 @@ import { buildRoute, cellX, cellY } from '../game/path';
 import { clearedCount, endlessOpen, regionCleared, regionOpen, regionStars, stageOpen, totalStars } from '../game/progress';
 import { worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, loadEngine, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
+import { esc, josa, loadEngine, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
 import { sfx } from './sfx';
 
 const zodiacNick = (id: ZodiacId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
@@ -63,7 +63,7 @@ export function showMain() {
     const b = (e.target as HTMLElement).closest('[data-soon]') as HTMLElement | null;
     if (!b) return;
     sfx('toggle');
-    toast(`${b.dataset.soon}은(는) 아직 준비 중이에요`);
+    toast(`${josa(b.dataset.soon ?? '', '은', '는')} 아직 준비 중이에요`);
   });
   root.append(soundButton());
   void loadEngine();
@@ -111,7 +111,7 @@ export function showRegions() {
     const r = REGIONS[no - 1];
     if (!stagesOf(no).length) {
       sfx('toggle');
-      return toast(`${r.name}은(는) 아직 준비 중이에요`);
+      return toast(`${josa(r.name, '은', '는')} 아직 준비 중이에요`);
     }
     if (!regionOpen(state.profile, no)) {
       sfx('toggle');
@@ -128,7 +128,7 @@ export function showRegions() {
 // ───────────────────────── 스테이지 고르기: 그 지역의 지도 위에 스테이지 5개 ─────────────────────────
 
 /** 지도 위 스테이지 자리 (% — 아래에서 위로 올라가는 굽잇길) */
-const NODE_POS: [number, number][] = [[20, 84], [70, 70], [28, 50], [72, 32], [40, 12]];
+const NODE_POS: [number, number][] = [[20, 84], [70, 70], [28, 50], [72, 33], [40, 16]];
 
 export function showStages(regionNo: number) {
   const region = regionOf(regionNo) ?? REGIONS[0];
@@ -208,6 +208,7 @@ export function showPrepare(stageId: string) {
   const best = state.profile.stages[st.id] ?? 0;
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>출전 준비</h2><span class="spacer"></span></div>
+     <div class="scroll">
      <div class="card prep-stage bg-${region.bg}">
        ${stageThumb(st)}
        <div class="prep-tx">
@@ -231,7 +232,7 @@ export function showPrepare(stageId: string) {
        ).join('')}</div>
        <p class="char-info" id="info"></p>
      </div>
-     <div class="grow"></div>
+     </div>
      <button class="btn primary big" id="start">출전 ▶</button>`,
     'select prepare',
   );
@@ -248,7 +249,7 @@ export function showPrepare(stageId: string) {
     const def = towerOf(focus);
     root.querySelector('#info')!.innerHTML = def
       ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>`
-      : `<b>${esc(r.nick)}</b> <span class="tag role">${esc(r.role)}</span><br/><small>🔒 ${esc(REGIONS[r.unlockRegion - 1]?.name ?? '')}(${r.unlockRegion}지역)을 클리어하면 함께할 수 있어요</small>`;
+      : `<b>${esc(r.nick)}</b> <span class="tag role">${esc(r.role)}</span><br/><small>🔒 ${r.unlockRegion}지역 ${esc(josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를'))} 클리어하면 함께할 수 있어요</small>`;
     startBtn.disabled = picked.size === 0;
   };
   paint();

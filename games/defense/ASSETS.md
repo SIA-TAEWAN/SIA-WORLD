@@ -1,0 +1,115 @@
+# 시아디펜스 — 그림·소리 현황과 나중에 만들 것
+
+요괴 9종·보스 12종은 **시아서바이벌에서 만든 SpriteCook 그림**(`games/survival/public/art/e-*.png` `b-*.png`)을 그대로 복사해 쓴다 (`public/art/`, asset id 는 `spritecook-assets.json`).
+캐릭터는 공용 십이지 그림(`shared/images/zodiac/full/<id>.png` 전신, `face/<id>.png` 얼굴) 한 장을 코드로 움직인다 (숨쉬기·공격할 때 내밀기·좌우 뒤집기).
+나머지(바닥·길·배치 칸·표지판·투사체·이펙트·지역 지도·메인 그림)는 아직 **코드로 그린 임시 그림**이다 (DESIGN.md 색·외곽선 규칙).
+- 판 위의 그림: `src/scenes/art.ts` (Phaser 텍스처) · `src/scenes/GameScene.ts` 의 `drawBoard`(길·표지판)
+- 메뉴의 그림: `src/style.css` (메인의 `.hero`, 지역 지도 `.rmap`, 스테이지 축소 그림 `.thumb`) · HUD 아이콘은 이모지
+
+정식 그림은 SpriteCook으로 만들어 아래 **파일 이름**으로 `games/defense/public/art/`에 넣고,
+`src/scenes/art.ts`의 `ART_FILES`에 그 이름(확장자 빼고)을 적는다. 그러면 그 그림을 먼저 쓰고, 못 불러올 때만 코드 그림으로 대신한다 (시아서바이벌과 같은 방식).
+파일을 넣지 않은 이름은 `ART_FILES`에 적지 않는다 (판마다 404 요청이 나간다).
+지금 `preloadArt`는 요괴·보스·캐릭터만 받는다. 타일·투사체 그림을 넣을 때는 `preloadArt`에 그 이름들을 더한다 (8단계).
+원본 시트와 asset id는 `games/defense/art/`, `games/defense/spritecook-assets.json`에 남긴다.
+
+스타일: 굵은 갈색 외곽선(`#2A1A10`), 밝은 단색, 흐린 그림자 없음, 장난감·스티커 느낌, 2등신 (DESIGN.md).
+요괴도 무섭지 않고 **귀엽게**. 배경은 투명. 캐릭터·요괴는 모두 **오른쪽을 보게** 그린다 (코드가 좌우를 뒤집는다).
+
+## 화면 기준
+
+- 기준 화면 720×1280 (세로). 판은 가로 9칸 × 세로 11칸, 한 칸 80px → 720×880. 위 150px 은 HUD, 아래 250px 은 캐릭터 카드.
+- 판은 위에서 내려다본 모습 (탑뷰에 가까운 3/4 시점). 길 너비 64px, 배치 칸 68×68px.
+- 그림은 화면에 그려지는 크기의 **2배**로 만든다 (휴대폰 3배 화면에서도 선명하게).
+
+## 1. 요괴 9종 · 보스 12종 — 그림 있음 (시아서바이벌 것)
+
+| 이름(`ART_FILES`) | 내용 | 화면 크기 | 지금 쓰는 곳 |
+|---|---|---|---|
+| `e-imp` `e-wisp` | 꼬마 도깨비 · 도깨비불 | 64 · 54 | 1지역 |
+| `e-club` `e-water` `e-fox` `e-bamboo` `e-guard` `e-skeleton` `e-spirit` | 방망이 도깨비 · 물귀신 · 여우불 · 죽순 요괴 · 수문장 요괴 · 해골 병사 · 원혼 | 54~84 | 5~6단계에서 요괴 데이터와 함께 |
+| `b-bigDokkaebi` | 큰 도깨비 | 128 | 1-5 |
+| `b-dueoksini` `b-bulgasal` `b-jangsanbeom` `b-centipede` `b-gumiho` `b-guardCaptain` `b-yagwanggwi` `b-imugi` `b-reaper` `b-gangcheori` `b-yeomra` | 2~12지역 보스 | 120~160 | 5~6단계 |
+
+더 만들면 좋은 것 (없어도 된다. 지금은 같은 그림을 코드로 움직이거나 색을 입힌다):
+
+| 파일 | 내용 | 크기 | 지금 |
+|---|---|---|---|
+| `e-<id>-walk.png` × 9 | 걷기 4프레임 가로 시트 | 프레임 128×128 | 한 장을 통통 튀게 |
+| `e-bamboo-hide.png` · `e-skeleton-down.png` · `e-spirit-ghost.png` | 숨은 죽순 · 쓰러진 해골 · 무적 상태의 원혼 | 128×128 | (요괴가 아직 없다) |
+| `b-bigDokkaebi-dash.png` | 큰 도깨비 돌진 자세 | 256×256 | 벼를 때 부들부들 + 돌진 중 노란 색조 |
+
+## 2. 십이지 캐릭터 공격 동작 (12종)
+
+지금: 전신 그림 한 장(`shared/images/zodiac/full`) + 코드 움직임. 정식 동작을 만들면 `GameScene.drawTowers` 가 시트를 쓰도록 바꾼다.
+
+| 파일 | 내용 | 크기 |
+|---|---|---|
+| `char-<id>-idle.png` × 12 | 서 있는 모습 2프레임 (오른쪽 보기). id: rat ox tiger rabbit dragon snake horse sheep monkey rooster dog pig | 프레임 192×192 (시트 384×192) |
+| `char-<id>-attack.png` × 12 | 공격 3프레임: 쥐 표창 던지기 · 소 방울 울리기 · 호랑이 발톱 휘두르기 · 토끼 떡 던지기 · 용 여의주 광선 · 뱀 독 뱉기 · 말 활 쏘기 · 양 구름 불기 · 원숭이 돌 던지기 · 닭 울기 · 개 짖기(강아지 보내기) · 돼지 엽전 세기 | 프레임 192×192 (시트 576×192) |
+
+## 3. 투사체 · 이펙트
+
+| 이름 | 내용 | 화면 크기 | 만들 크기 | 지금 (코드 그림) |
+|---|---|---|---|---|
+| `p-shuriken` | 쥐의 표창 (빙글빙글 돈다) | 24 | 64×64 | 흰 네 갈래 별 |
+| `p-cake` | 토끼의 달떡 | 32 | 64×64 | 흰 동그란 떡 + 볼 터치 |
+| `fx-slash` | 호랑이의 발톱 자국 (오른쪽 방향, 3줄) | 75~150 | 256×256 | 흰 호 세 줄 |
+| `fx-bell` | 소의 방울 소리 (퍼지는 고리) | 사거리 지름 | 512×512 | 노란 고리 |
+| `fx-burst` | 달떡이 터진 자리 | 범위 지름 | 256×256 | 연노랑 원판 |
+| `fx-pop` | 요괴가 쓰러질 때의 연기 | 60 | 4프레임 128×128 | 흰 고리 |
+| `fx-leak` | 요괴가 마을로 들어갔을 때 | 120 | 256×256 | 분홍 고리 |
+| `fx-dizzy` | 멈춘 요괴 머리 위의 별 | 22 | 64×64 | 노란 별 |
+| `fx-range` | 사거리 원 | 사거리 지름 | (코드 그림 유지) | 노란 반투명 원 + 갈색 테두리 |
+| 5~6단계 | 용 `p-beam` · 뱀 `p-poison` + `fx-poison` · 말 `p-arrow` · 양 `fx-cloud` · 원숭이 `p-stone` · 닭 `fx-cheer` · 개 `p-puppy` · 돼지 `fx-coin` | | 64~256 | (캐릭터가 아직 없다) |
+
+## 4. 배경 4종의 길 타일과 배치 칸
+
+지금: 바닥은 160×160 체크 무늬 타일(`tile-<배경>`), 길은 코드로 그린 굵은 선(테두리 + 바닥색 + 가운데 점), 배치 칸은 크림색 둥근 네모.
+넓은 면의 색은 DESIGN.md 의 기존 값 (시아서바이벌의 맵 4색과 같다).
+
+| 이름 | 내용 | 만들 크기 | 지금 색 |
+|---|---|---|---|
+| `tile-field` | 들판 바닥 (1~3지역): 풀밭 | 320×320 이음매 없는 타일 | `#7CC08A` + `#8FCC9B` 체크 |
+| `tile-bamboo` | 대나무 숲 바닥 (4~6지역) | 320×320 | `#6CC6B5` + `#A9DDC6` |
+| `tile-palace` | 달빛 궁궐 바닥 (7~9지역): 돌바닥 | 320×320 | `#7FB8E8` + `#9CC7F2` |
+| `tile-underworld` | 황천길 바닥 (10~12지역) | 320×320 | `#C9D1DD` + `#EEE2C8` |
+| `road-<배경>` × 4 | 길 타일 세트: 곧은 길(가로·세로) · 굽이 4방향 · 세 갈래 4방향 · 네 갈래 · 끝 (길 너비 64, 칸 80) | 칸 160×160, 시트 4×4 | 들판·대나무 숲 `#FFE9B8`, 궁궐·황천길 `#FFF8E8` |
+| `slot-<배경>` × 4 | 빈 배치 칸 (방석·돌 받침) | 160×160 | 크림 `#FFF8E8` + 연한 테두리 + 더하기 표시 |
+| `slot-on` | 캐릭터가 놓인 받침 | 160×160 | `#FFF4C2` + 갈색 테두리와 아래 두께 |
+| `sign-enter` · `sign-village` | 입구(요괴가 나오는 굴) · 출구(마을 입구 문) | 160×160 | 분홍 '요괴' · 노랑 '마을' 글자 표지판 |
+| `deco-<배경>-1~4` | 길가 꾸밈 (들판: 풀·꽃·바위 / 대나무 숲: 대나무·죽순 / 궁궐: 등불·담 / 황천길: 비석·도깨비불 등) | 128×128 | 없음 (들판 타일에 풀포기·꽃만) |
+
+## 5. 지역 지도 · 메인
+
+| 이름 | 내용 | 만들 크기 | 지금 |
+|---|---|---|---|
+| `map-world` | 지역 지도: 십이지 12지역이 한 장에 이어진 세로 긴 지도 (들판 → 대나무 숲 → 달빛 궁궐 → 황천길) | 720×2400 | 지역 카드 12장이 좌우로 번갈아 놓인 목록 (배경색 + 띠 얼굴) |
+| `map-region-<1~12>` | 지역별 스테이지 지도 (굽잇길 위에 스테이지 5곳, 맨 위가 보스) | 720×900 | 배경색 체크 무늬 + SVG 굽잇길 + 둥근 스테이지 단추 |
+| `node-stage` · `node-boss` · `node-locked` | 스테이지 단추 | 128×128 | 흰 원 + 숫자 / 보스 그림 / 자물쇠 |
+| `main-hero` | 메인 화면 그림: 길목을 지키는 십이지와 몰려오는 요괴 | 720×480 | CSS 로 그린 길 + 캐릭터 3 + 요괴 4 |
+| `icon-endless` | 끝없는 고개 입구 | 128×128 | ♾️ 이모지 |
+
+## 6. 캐릭터 카드 · HUD 아이콘
+
+| 이름 | 내용 | 만들 크기 | 지금 |
+|---|---|---|---|
+| `card-<id>` × 12 | 판 아래의 캐릭터 카드 그림 (얼굴 + 무기) | 192×192 | `shared/images/zodiac/face/<id>.png` 원형 얼굴 |
+| `icon-life` · `icon-energy` · `icon-coin` · `icon-star` | 생명 · 기운 · 엽전 · 별 | 64×64 | 이모지 ❤️ ✨ 🪙 ⭐ / 글자 ★ |
+| `icon-upgrade` · `icon-sell` · `icon-speed` · `icon-pause` | 강화 · 되팔기 · 배속 · 일시정지 | 64×64 | 글자 · 이모지 |
+| `pip-1~3` | 강화 단계 별 | 96×36 | 노란 별 1~3개 (코드 그림) |
+| `shared/images/card-defense.png` | SIA WORLD 게임 선택 화면의 카드 (9단계) | 640×400 | 없음 |
+
+## 7. 소리 (8단계)
+
+지금은 `shared/sound.js` 에 이미 있는 소리만 빌려 쓴다 (`src/ui/gameView.ts` 의 `run.onEvent`, 공용 모듈은 건드리지 않았다). 배경음은 아직 없다.
+8단계에서 `shared/sound.js` 에 시아디펜스 이름을 더한다:
+
+| 이름 | 쓰는 곳 | 지금 빌려 쓰는 소리 |
+|---|---|---|
+| `defPlace` · `defUpgrade` · `defSell` | 배치 · 강화 · 되팔기 | `tankBuild` · `survLevel` · `coin` |
+| `defShot` · `defBell` · `defSlash` · `defPop` (+ 5~6단계 캐릭터 8종) | 캐릭터별 공격음 (합쳐서 0.11초에 한 번, 작게 — `ui/sfx.ts` 의 `attackSfx`) | `survShot` · `tankTurn` · `survSlash` · `survPop` |
+| `defLeak` | 요괴 통과 경고음 | `survHurt` |
+| `defWave` · `defStart` | 웨이브 시작 · 판 시작 | `turn` · `raceGo` |
+| `defBossWarn` · `defBossDash` · `defBossDown` | 보스 경고 · 돌진 · 처치 | `survBossWarn` · `cutin` · `survBossDown` |
+| `defClear` · `defFail` · `defStar` | 클리어 · 실패 · 결과의 별 | `win` · `lose` · `coin` |
+| 배경음 `bgmDefMain` · `bgmDefField` · `bgmDefBamboo` · `bgmDefPalace` · `bgmDefUnderworld` · `bgmDefBoss` | 메인 · 배경별 4종 · 보스 | 없음 (시아서바이벌의 `ui/music.ts` 방식으로 코드 반복곡 → 파일로 교체) |

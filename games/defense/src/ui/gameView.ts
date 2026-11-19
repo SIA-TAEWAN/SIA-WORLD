@@ -8,6 +8,7 @@ import { partialCoins } from '../game/progress';
 import { activeBoss, canPlace, sellValue, towerLevel, upgradeCost } from '../game/sim';
 import { EV, type Ev, type State } from '../game/state';
 import { LOCAL_MODE } from '../net/api';
+import { fillBench } from '../run/devtools';
 import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
 import { artUrl, zodiacFaceUrl } from '../assets';
@@ -17,8 +18,8 @@ import { attackSfx, sfx, sound } from './sfx';
 
 declare global {
   interface Window {
-    /** 점검용: 지금 진행 중인 판 (테스트 모드에서만). slotAt(i) = i번 배치 칸의 화면 좌표 */
-    __def?: { run: Run; game: Phaser.Game | null; slotAt: (i: number) => { x: number; y: number } };
+    /** 점검용: 지금 진행 중인 판 (테스트 모드에서만). slotAt(i) = i번 배치 칸의 화면 좌표 · bench(n) = 성능 재기 (run/devtools.ts) */
+    __def?: { run: Run; game: Phaser.Game | null; slotAt: (i: number) => { x: number; y: number }; bench: (enemies?: number) => { enemies: number; towers: number } };
   }
 }
 
@@ -148,6 +149,7 @@ export function showGame(setup: GameSetup) {
     window.__def = {
       run,
       game: null,
+      bench: (n) => fillBench(s, n),
       slotAt: (i) => {
         const box = fieldEl.getBoundingClientRect();
         const { u, offY } = layout();
@@ -629,7 +631,9 @@ export function showGame(setup: GameSetup) {
     const bossId = boss ? boss.boss : -1;
     if (bossId !== shown.boss) {
       shown.boss = bossId;
+      // 보스가 있는 동안에는 다음 웨이브 줄 자리에 보스 체력 바를 보여 준다 (판의 맨 윗줄을 가리지 않게 한 줄만 쓴다)
       el.bossbar.classList.toggle('hidden', !boss);
+      el.next.classList.toggle('hidden', !!boss);
       if (boss) el.bossName.textContent = BOSSES[bossId].name;
     }
     if (boss) {

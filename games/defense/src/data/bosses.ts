@@ -21,7 +21,7 @@ export interface BossDef {
 
 export const BOSSES: BossDef[] = [
   {
-    id: 'bigDokkaebi', name: '큰 도깨비', desc: '체력이 많고 가끔 빠르게 돌진해요', hp: 2000, speed: 26, bounty: 100, r: 34, size: 128, leak: 5,
+    id: 'bigDokkaebi', name: '큰 도깨비', desc: '체력이 많고 가끔 빠르게 돌진해요', hp: 2200, speed: 26, bounty: 100, r: 34, size: 128, leak: 5,
     // 돌진: every 초마다 warn 초 동안 멈춰 벼른 뒤 dur 초 동안 mul 배 빠르게 달린다
     act: 'dash', p: { every: 8, warn: 0.9, dur: 1.6, mul: 3.2 },
   },

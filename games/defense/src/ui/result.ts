@@ -3,7 +3,7 @@ import { regionOf } from '../data/regions';
 import { nextStage, stageOf } from '../data/stages';
 import { stageOpen } from '../game/progress';
 import { zodiacFullUrl } from '../assets';
-import { esc, nav, screen, state, type GameResult } from './app';
+import { esc, josa, nav, screen, state, type GameResult } from './app';
 import { sfx } from './sfx';
 
 /** 결과 화면: 별 1~3개 · 얻은 엽전 · 첫 클리어 보상 → [다음 스테이지] [다시하기] [메인으로] (PRD 2장) */
@@ -88,7 +88,7 @@ export function showResult(r: GameResult) {
     else if (s.newStars > 0) lines.push(`<p>⭐ 별 <b>${s.bestStars}개</b>로 기록을 새로 썼어요!</p>`);
     const opened = s.opened ? stageOf(s.opened) : null;
     if (opened) lines.push(`<p>🗺️ <b>${esc(opened.id)} ${esc(opened.name)}</b> 열림!</p>`);
-    else if (s.firstClear && !next) lines.push(`<p>🏆 <b>${esc(regionOf(st.region)?.name ?? '')}</b>을(를) 모두 지켜 냈어요!</p>`);
+    else if (s.firstClear && !next) lines.push(`<p>🏆 <b>${esc(josa(regionOf(st.region)?.name ?? '', '을', '를'))}</b> 모두 지켜 냈어요!</p>`);
     if (lines.length) sfx('newRecord', { delay: 900 });
     root.querySelector('#unlocks')!.innerHTML = lines.join('');
     paintNext();

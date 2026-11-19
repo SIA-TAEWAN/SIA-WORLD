@@ -1,9 +1,10 @@
 /**
  * 밸런스 표를 화면 없이, 여러 프로세스로 나눠 뽑는다 (PRD 7장의 밸런스 목표를 맞출 때 쓴다).
- *   npm run balance                    → 전부: 캐릭터 효율 표 + 스테이지별 클리어율·별 분포 (실력 3단계 × 조합 2가지)
+ *   npm run balance                    → 전부: 캐릭터 효율 표 + 스테이지별 클리어율·별 분포 (실력 3단계) + 캐릭터 조합별
  *   npm run balance -- 300             → 스테이지마다 300판
  *   npm run balance -- 200 stages 1    → 1지역만   (towers: 캐릭터 효율 표만)
  *   npm run balance -- 200 stages 1-5  → 그 스테이지만
+ *   npm run balance -- 200 chars 1     → 캐릭터 조합별 (하나를 뺐을 때 · 하나만 데려갔을 때): 쓸모없는 캐릭터가 없는지 본다
  * '보통 실력'은 src/game/policy.ts 의 자동 배치 정책이다. 수십 초 걸리므로 테스트(npm test)에는 넣지 않는다.
  */
 import { spawn } from 'node:child_process';
@@ -27,6 +28,8 @@ const STAGES = [...readFileSync(join(ROOT, 'src', 'data', 'stages.ts'), 'utf8').
   .map((m) => ({ id: m[1], name: m[2] }))
   .filter((s) => !filter || s.id === filter || s.id.startsWith(`${filter}-`));
 const SKILLS = [['novice', '서툰'], ['normal', '보통'], ['expert', '능숙']];
+/** 지금 쓸 수 있는 캐릭터 (src/data/characters.ts 의 TOWERS 와 같은 순서) */
+const CHARS = [['rat', '쥐'], ['ox', '소'], ['tiger', '호랑이'], ['rabbit', '토끼']];
 
 function work(arg) {
   return new Promise((resolve, reject) => {
@@ -81,6 +84,25 @@ if (!only || only === 'stages') {
       );
     }
   }
+}
+
+if (!only || only === 'chars') {
+  // 조합: 전부 · 하나를 뺀 것 · 하나만 (소는 혼자서는 요괴를 잡지 못하므로 '하나만'에서 뺀다)
+  const squads = [
+    { name: '4종 모두', squad: CHARS.map(([id]) => id) },
+    ...CHARS.map(([id, name]) => ({ name: `${name} 없이`, squad: CHARS.map(([c]) => c).filter((c) => c !== id) })),
+    ...CHARS.filter(([id]) => id !== 'ox').map(([id, name]) => ({ name: `${name}만`, squad: [id] })),
+  ];
+  const sum = await sweep(squads.flatMap((q, qi) => STAGES.map((st) => ({ key: `${qi}:${st.id}`, stage: st.id, skill: 'normal', squad: q.squad }))));
+  console.log(`\n■ 캐릭터 조합별 (보통 실력, ${runs}판): 스테이지마다 클리어율 / 별 3개 비율`);
+  console.log(`  ${''.padEnd(8, '　')}${STAGES.map((st) => st.id.padStart(12)).join('')}`);
+  squads.forEach((q, qi) => {
+    const cells = STAGES.map((st) => {
+      const s = sum.get(`${qi}:${st.id}`);
+      return `${pct(s.clears, s.runs)} /${pct(s.stars[3], s.runs)}`.padStart(12);
+    });
+    console.log(`  ${q.name.padEnd(8, '　')}${cells.join('')}`);
+  });
 }
 
 console.log(`\n(${((Date.now() - t0) / 1000).toFixed(0)}초 걸림)`);
