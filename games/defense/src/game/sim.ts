@@ -1,6 +1,7 @@
-import { BOSS_AT, BOSS_WARN_SEC, LIMIT, MAX_LV, SELL_RATE, SQUAD_SIZE, START_LIVES, STUN_GUARD_SEC, TICK, WAVES, WAVE_HP, WAVE_SEC } from '../data/balance';
+import { BOSS_AT, BOSS_WARN_SEC, LIMIT, MAX_LV, RUN_SEC, SELL_RATE, SQUAD_SIZE, START_LIVES, STUN_GUARD_SEC, TICK, WAVES, WAVE_HP, WAVE_SEC } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { TOWERS, TOWER_INDEX, type TowerLevel } from '../data/characters';
+import { levelMods, upgradeMods } from '../data/growth';
 import { ENEMY_INDEX } from '../data/enemies';
 import { stageOf } from '../data/stages';
 import { BOSS_ACTS } from './bosses';
@@ -53,9 +54,19 @@ export function createGame(cfg: GameConfig): State {
   }
   // 같은 시각이면 적어 둔 순서 그대로 (sort 는 순서를 지킨다)
   spawns.sort((a, b) => a.t - b.t);
-  const lives = stage.lives ?? START_LIVES;
+  const um = upgradeMods(cfg.upgrades);
+  const lives = (stage.lives ?? START_LIVES) + um.lives;
+  // 캐릭터 수치에 영구 레벨의 배율을 곱해 둔다 (공격력 +4%/레벨, 4레벨 사거리, 8레벨 비용, 12레벨 공격 간격)
+  const mods = TOWERS.map((t) => levelMods(cfg.levels?.[t.id] ?? 1));
+  const lv = TOWERS.map((t, i) => t.levels.map((L) => ({ ...L, dmg: L.dmg * mods[i].dmg, range: L.range * mods[i].range, every: L.every * mods[i].every })));
+  const price = (i: number, v: number) => Math.max(1, Math.round(v * mods[i].cost));
   return {
     cfg, stage, routes,
+    lv,
+    cost: TOWERS.map((t, i) => price(i, t.cost)),
+    up: TOWERS.map((t, i) => [price(i, t.up[0]), price(i, t.up[1])] as [number, number]),
+    sellRate: SELL_RATE + um.sell,
+    gain: um.gain,
     slotX: stage.slots.map((c) => cellX(c[0])),
     slotY: stage.slots.map((c) => cellY(c[1])),
     squad,
@@ -65,7 +76,7 @@ export function createGame(cfg: GameConfig): State {
     time: 0,
     lives,
     startLives: lives,
-    energy: stage.energy,
+    energy: Math.floor(stage.energy * um.energy + 1e-6),
     kills: 0,
     wave: -1,
     spawns,
@@ -94,19 +105,19 @@ const open = (s: State) => s.phase === 'prep' || s.phase === 'play';
 /** 그 칸의 캐릭터가 지금 단계에서 쓰는 수치 (빈 칸이면 null) */
 export function towerLevel(s: State, slot: number): TowerLevel | null {
   const tw = s.towers[slot];
-  return tw && tw.char >= 0 ? TOWERS[tw.char].levels[tw.lv - 1] : null;
+  return tw && tw.char >= 0 ? s.lv[tw.char][tw.lv - 1] : null;
 }
 
 export function canPlace(s: State, slot: number, char: number): boolean {
   const tw = s.towers[slot];
-  return open(s) && !!tw && tw.char < 0 && s.squad.includes(char) && s.energy >= TOWERS[char].cost;
+  return open(s) && !!tw && tw.char < 0 && s.squad.includes(char) && s.energy >= s.cost[char];
 }
 
 /** 다음 단계로 올리는 비용 (빈 칸이거나 이미 3단계면 null) */
 export function upgradeCost(s: State, slot: number): number | null {
   const tw = s.towers[slot];
   if (!tw || tw.char < 0 || tw.lv >= MAX_LV) return null;
-  return TOWERS[tw.char].up[tw.lv - 1];
+  return s.up[tw.char][tw.lv - 1];
 }
 
 /** 되팔면 돌려받는 기운: 쓴 기운의 70%. 시작 전(prep)에는 전부 돌려받는다 (처음 배치를 고쳐 놓을 수 있게) */
@@ -114,7 +125,7 @@ export function sellValue(s: State, slot: number): number {
   const tw = s.towers[slot];
   if (!tw || tw.char < 0) return 0;
   // (0.7 을 곱한 값이 62.999… 가 되어 1 모자라지 않게 아주 조금 더한 뒤 내림)
-  return s.phase === 'prep' ? tw.spent : Math.floor(tw.spent * SELL_RATE + 1e-6);
+  return s.phase === 'prep' ? tw.spent : Math.floor(tw.spent * s.sellRate + 1e-6);
 }
 
 /**
@@ -133,12 +144,12 @@ export function command(s: State, op: Cmd['op'], slot = -1, char = -1): boolean 
       break;
     case 'place': {
       if (!canPlace(s, slot, char)) return false;
-      const def = TOWERS[char];
-      s.energy -= def.cost;
+      const cost = s.cost[char];
+      s.energy -= cost;
       tw.char = char;
       tw.lv = 1;
       tw.cd = 0.25;
-      tw.spent = def.cost;
+      tw.spent = cost;
       tw.since = 9;
       tw.face = s.slotX[slot] > cellX(4) ? -1 : 1;
       emit(s, EV.place, slot, char, s.slotX[slot], s.slotY[slot]);
@@ -239,7 +250,7 @@ export function step(s: State) {
     tw.cd -= TICK;
     if (tw.cd > 0) continue;
     const def = TOWERS[tw.char];
-    const L = def.levels[tw.lv - 1];
+    const L = s.lv[tw.char][tw.lv - 1];
     if (ATTACKS[def.kind](s, slot, tw, L)) {
       tw.cd = L.every;
       tw.since = 0;
@@ -257,7 +268,8 @@ export function step(s: State) {
   }
 
   // 끝: 나올 요괴가 다 나왔고 길 위에 아무도 없으면 클리어 (3분 뒤에도 남은 요괴·보스가 없어질 때까지 계속된다)
-  if (s.spawnI >= s.spawns.length && s.enemyN === 0) {
+  // (3분이 되기 전에 다 잡았어도 3분까지는 기다린다: 클리어한 판은 늘 180초 이상이다 — 서버 검증의 기준)
+  if (s.spawnI >= s.spawns.length && s.enemyN === 0 && s.time >= RUN_SEC) {
     s.phase = 'clear';
     emit(s, EV.clear);
   }
@@ -277,7 +289,7 @@ export const pendingSpawns = (s: State) => s.spawns.length - s.spawnI;
 
 // ───────────────────────── 결과 · 다시 돌려 보기 ─────────────────────────
 
-export interface RunSummary extends RunReport {
+export interface RunSummary extends Omit<RunReport, 'run'> {
   stars: 0 | 1 | 2 | 3;
   /** 도달한 웨이브 (1~6, 시작 전이면 0) */
   wave: number;
@@ -285,6 +297,9 @@ export interface RunSummary extends RunReport {
   /** 배치해 둔 캐릭터 수 */
   towers: number;
 }
+
+/** 명령 기록에서 센 값 (서버의 싼 정합성 검사용): 배치한 횟수 · 명령 수 */
+export const placedCount = (s: State) => s.log.reduce((n, c) => n + (c.op === 'place' ? 1 : 0), 0);
 
 export function summarize(s: State): RunSummary {
   const cleared = s.phase === 'clear';
@@ -295,6 +310,9 @@ export function summarize(s: State): RunSummary {
     startLives: s.startLives,
     time: Math.floor(s.time),
     kills: s.kills,
+    placed: placedCount(s),
+    cmds: s.log.length,
+    bonus: 0,
     stars: starsOf(cleared, s.lives, s.startLives),
     wave: s.wave + 1,
     bossDown: s.bossDown,

@@ -115,7 +115,7 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
     return slot < 0 ? null : { op: 'place', slot, char };
   };
 
-  const cost = (s: State, g: Exclude<Goal, null>) => (g.op === 'place' ? TOWERS[g.char].cost : (upgradeCost(s, g.slot) ?? Infinity));
+  const cost = (s: State, g: Exclude<Goal, null>) => (g.op === 'place' ? s.cost[g.char] : (upgradeCost(s, g.slot) ?? Infinity));
   const run = (s: State, g: Exclude<Goal, null>) => (g.op === 'place' ? command(s, 'place', g.slot, g.char) : command(s, 'upgrade', g.slot));
 
   return {
@@ -129,7 +129,7 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
           if (s.energy >= cost(s, g)) run(s, g);
           else {
             // 고른 캐릭터를 놓을 기운이 없으면, 놓을 수 있는 가장 싼 캐릭터를 같은 칸에
-            const cheap = s.squad.filter((c) => canPlace(s, g.slot, c)).sort((a, b) => TOWERS[a].cost - TOWERS[b].cost)[0];
+            const cheap = s.squad.filter((c) => canPlace(s, g.slot, c)).sort((a, b) => s.cost[a] - s.cost[b])[0];
             if (cheap === undefined) break;
             command(s, 'place', g.slot, cheap);
           }
@@ -149,8 +149,8 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
         goal = null;
       } else if (goal && s.lives < seenLives) {
         // 기운을 모으는 사이에 요괴가 새어 나갔다: 급한 대로 지금 놓을 수 있는 가장 싼 캐릭터를 놓는다
-        const cheap = [...s.squad].sort((a, b) => TOWERS[a].cost - TOWERS[b].cost)[0];
-        const slot = cheap !== undefined && s.energy >= TOWERS[cheap].cost ? pickSlot(s, cheap) : -1;
+        const cheap = [...s.squad].sort((a, b) => s.cost[a] - s.cost[b])[0];
+        const slot = cheap !== undefined && s.energy >= s.cost[cheap] ? pickSlot(s, cheap) : -1;
         if (slot >= 0) command(s, 'place', slot, cheap);
       }
       seenLives = s.lives;

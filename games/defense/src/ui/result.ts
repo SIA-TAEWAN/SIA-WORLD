@@ -2,7 +2,8 @@ import { STAR2_LIVES } from '../data/balance';
 import { regionOf } from '../data/regions';
 import { nextStage, stageOf } from '../data/stages';
 import { stageOpen } from '../game/progress';
-import { zodiacFullUrl } from '../assets';
+import { ROSTER } from '../data/characters';
+import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, josa, nav, screen, state, type GameResult } from './app';
 import { sfx } from './sfx';
 
@@ -67,9 +68,19 @@ export function showResult(r: GameResult) {
   const note = root.querySelector('#note') as HTMLElement;
   void r.saved.then((s) => {
     if (!root.isConnected) return;
-    if (s === 'rejected') {
+    if (typeof s === 'string') {
+      root.querySelector('#coins')!.textContent = s === 'pending' ? '…' : '0닢';
+      note.textContent =
+        s === 'unrecorded'
+          ? '서버에 연결하지 못한 판이라 기록되지 않았어요'
+          : s === 'pending'
+            ? '결과를 올리지 못했어요. 다음에 들어올 때 다시 보낼게요'
+            : '이 판의 결과는 받아들여지지 않았어요';
+      return;
+    }
+    if (!s.valid) {
       root.querySelector('#coins')!.textContent = '0닢';
-      note.textContent = '이 판은 기록되지 않았어요';
+      note.textContent = '기록이 정상 범위를 벗어나 반영되지 않았어요';
       return;
     }
     root.querySelector('#coins')!.innerHTML = `+${s.coins.toLocaleString()}닢`;
@@ -86,9 +97,13 @@ export function showResult(r: GameResult) {
     const lines: string[] = [];
     if (s.firstClear) lines.push('<p>🎉 <b>첫 클리어!</b></p>');
     else if (s.newStars > 0) lines.push(`<p>⭐ 별 <b>${s.bestStars}개</b>로 기록을 새로 썼어요!</p>`);
+    for (const c of s.unlocked) {
+      const who = ROSTER.find((x) => x.id === c);
+      if (who) lines.push(`<p><img src="${zodiacFaceUrl(c)}" alt="" />🔓 <b>${esc(who.nick)}</b> 해금! <small>${esc(who.role)}</small></p>`);
+    }
     const opened = s.opened ? stageOf(s.opened) : null;
     if (opened) lines.push(`<p>🗺️ <b>${esc(opened.id)} ${esc(opened.name)}</b> 열림!</p>`);
-    else if (s.firstClear && !next) lines.push(`<p>🏆 <b>${esc(josa(regionOf(st.region)?.name ?? '', '을', '를'))}</b> 모두 지켜 냈어요!</p>`);
+    else if (s.firstClear && st.no === 5) lines.push(`<p>🏆 <b>${esc(josa(regionOf(st.region)?.name ?? '', '을', '를'))}</b> 모두 지켜 냈어요!</p>`);
     if (lines.length) sfx('newRecord', { delay: 900 });
     root.querySelector('#unlocks')!.innerHTML = lines.join('');
     paintNext();

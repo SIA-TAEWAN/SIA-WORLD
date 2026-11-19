@@ -53,10 +53,10 @@ export const LIMIT = { enemies: 256, projectiles: 192, fx: 96, events: 96 };
 export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;
 export type ZodiacId = (typeof ZODIAC_IDS)[number];
 
-/** 판 밖 재화(엽전) 규칙 — 4단계에서 서버 함수와 같은 값으로 맞춘다 */
+/** 판 밖 재화(엽전) 규칙 — 서버(048_defense.sql 의 _defense_const)와 같은 값 */
 export const COINS = {
   /** 새로 딴 별 하나마다 */
   perStar: 20,
-  /** 실패·포기: 클리어 보상의 이 비율 × (끝낸 웨이브 수 / 6) */
-  failRate: 0.4,
+  /** 실패·포기: 클리어 보상 × 끝낸 웨이브 수 ÷ 이 값 (15 = 40% × 끝낸 웨이브 / 6. 서버와 같은 정수 계산) */
+  failDiv: 15,
 };

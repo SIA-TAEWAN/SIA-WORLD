@@ -3,6 +3,8 @@
  * 공통 모듈은 빌드에 넣지 않고 실행 중에 ../../shared/ 에서 불러온다.
  * 그래야 로비와 시아디펜스가 같은 Supabase 클라이언트·로그인 세션을 쓴다.
  */
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 export interface WorldUser {
   userId: string;
   loginId: string;
@@ -30,6 +32,14 @@ export function loadAuth(): Promise<AuthModule> {
   authMod ??= import(/* @vite-ignore */ new URL('shared/auth.js', root()).href) as Promise<AuthModule>;
   authMod.catch(() => (authMod = null));
   return authMod;
+}
+
+let supaMod: Promise<{ supabase: SupabaseClient }> | null = null;
+/** SIA WORLD 공용 Supabase 클라이언트 (shared/supabase.js) */
+export async function worldSupabase(): Promise<SupabaseClient> {
+  supaMod ??= import(/* @vite-ignore */ new URL('shared/supabase.js', root()).href) as Promise<{ supabase: SupabaseClient }>;
+  supaMod.catch(() => (supaMod = null));
+  return (await supaMod).supabase;
 }
 
 export interface SoundModule {

@@ -44,7 +44,7 @@ export function spawnEnemy(s: State, kind: number, boss: number, route: number, 
     e.hp = e.maxHp = Math.round(def.hp * hpMul);
     e.speed = def.speed;
     e.r = def.r;
-    e.bounty = def.bounty;
+    e.bounty = def.bounty * s.gain;
     e.leak = def.leak;
     e.air = false;
   } else {
@@ -53,7 +53,7 @@ export function spawnEnemy(s: State, kind: number, boss: number, route: number, 
     // 같은 무리라도 걸음이 조금씩 다르다 (±5%, 시드 난수)
     e.speed = def.speed * (0.95 + s.rng() * 0.1);
     e.r = def.r;
-    e.bounty = def.bounty;
+    e.bounty = def.bounty * s.gain;
     e.leak = ENEMY_LEAK;
     e.air = !!def.air;
   }

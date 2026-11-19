@@ -1,18 +1,19 @@
 import Phaser from 'phaser';
 import { BOARD_H, MAX_LV, RUN_SEC, SLOT_SIZE, SQUAD_SIZE, VIEW_W, WAVES, WAVE_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
-import { TOWERS, type TowerDef } from '../data/characters';
+import { TOWERS, type TowerLevel } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { DASH } from '../game/bosses';
 import { partialCoins } from '../game/progress';
 import { activeBoss, canPlace, sellValue, towerLevel, upgradeCost } from '../game/sim';
 import { EV, type Ev, type State } from '../game/state';
-import { LOCAL_MODE } from '../net/api';
+import { presetUpgrades } from '../data/growth';
+import { ApiError, LOCAL_MODE } from '../net/api';
 import { fillBench } from '../run/devtools';
 import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
 import { artUrl, zodiacFaceUrl } from '../assets';
-import { esc, mmss, nav, screen, setProfile, stage, state, toast, type GameResult, type GameSetup } from './app';
+import { esc, mmss, nav, screen, setProfile, stage, state, toast, whyText, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
 import { attackSfx, sfx, sound } from './sfx';
 
@@ -48,9 +49,8 @@ function saveSpeed(v: Speed) {
 }
 
 /** 캐릭터 수치 한 줄 */
-function statLine(def: TowerDef, lv: number): string {
-  const L = def.levels[lv - 1];
-  const parts = [`피해 ${L.dmg}${L.count && L.count > 1 ? `×${L.count}` : ''}`, `사거리 ${L.range}`, `간격 ${L.every}초`];
+function statLine(L: TowerLevel): string {
+  const parts = [`피해 ${Math.round(L.dmg * 10) / 10}${L.count && L.count > 1 ? `×${L.count}` : ''}`, `사거리 ${Math.round(L.range)}`, `간격 ${Math.round(L.every * 100) / 100}초`];
   if (L.stun) parts.push(`멈춤 ${L.stun}초`);
   if (L.splash) parts.push(`범위 ${L.splash}`);
   return parts.join(' · ');
@@ -58,7 +58,14 @@ function statLine(def: TowerDef, lv: number): string {
 
 /** 게임 화면: 판(캔버스)이 화면을 가득 채우고, 그 위에 HUD(위)와 캐릭터 카드(아래)를 올린다 */
 export function showGame(setup: GameSetup) {
-  const run = new Run({ seed: setup.seed ?? Math.floor(Math.random() * 0xffffffff), stage: setup.stage, squad: setup.squad });
+  const run = new Run({
+    seed: setup.seed ?? Math.floor(Math.random() * 0xffffffff),
+    stage: setup.stage,
+    squad: setup.squad,
+    // 판 밖 성장: 저장된 레벨·강화 (개발용 설정 ?lv=N · ?upg=N 이 있으면 그 값)
+    levels: setup.lv !== undefined ? Object.fromEntries(setup.squad.map((c) => [c, setup.lv])) : state.profile.levels,
+    upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : state.profile.upgrades,
+  });
   run.speed = loadSpeed();
   const s = run.state;
   let game: Phaser.Game | null = null;
@@ -66,13 +73,28 @@ export function showGame(setup: GameSetup) {
   let endTimer: ReturnType<typeof setTimeout> | null = null;
   let cutTimer: ReturnType<typeof setTimeout> | null = null;
   let ended = false;
+  // 판 시작을 서버에 알린다 (잠금·해금 확인 + 시작 시각). 못 알렸으면 이 판은 기록되지 않는다 (플레이는 할 수 있다)
+  const api = state.api;
+  const started: Promise<string | null> =
+    api && !setup.offline
+      ? api.start(setup.stage, setup.squad).catch((e) => {
+          if (e instanceof ApiError) {
+            // 잠긴 스테이지·캐릭터: 스테이지 고르기로 돌아간다
+            toast(whyText(e));
+            nav.stages(s.stage.region);
+          }
+          return null;
+        })
+      : Promise.resolve(null);
+  /** 판 시작을 서버에 알리지 못했다: 이 판은 기록되지 않는다 */
+  let unrecorded = !!setup.offline;
 
   const cardHtml = (i: number) => {
     const c = s.squad[i];
     if (c === undefined) return '<div class="tcard empty">비어있음</div>';
     const def = TOWERS[c];
-    return `<button class="tcard" data-i="${i}" aria-label="${esc(def.nick)} 배치 (기운 ${def.cost})">
-      <span class="key">${i + 1}</span><img src="${zodiacFaceUrl(def.id)}" alt="" /><b>${esc(def.nick)}</b><em>✨${def.cost}</em></button>`;
+    return `<button class="tcard" data-i="${i}" aria-label="${esc(def.nick)} 배치 (기운 ${s.cost[c]})">
+      <span class="key">${i + 1}</span><img src="${zodiacFaceUrl(def.id)}" alt="" /><b>${esc(def.nick)}</b><em>✨${s.cost[c]}</em></button>`;
   };
   const root = screen(
     `<div class="field" id="field"></div>
@@ -91,7 +113,7 @@ export function showGame(setup: GameSetup) {
     <div class="tray">
       <div class="tray-top">
         <span class="energy" id="energy" aria-label="기운"></span>
-        <span class="hint" id="hint"></span>
+        <span class="hint" id="hint"></span><span class="norec hidden" id="norec">기록되지 않는 판</span>
         <button class="btn primary" id="start">시작 ▶</button>
       </div>
       <div class="cards" id="cards">${Array.from({ length: SQUAD_SIZE }, (_, i) => cardHtml(i)).join('')}</div>
@@ -173,10 +195,10 @@ export function showGame(setup: GameSetup) {
     let showSlot = sel;
     let range = 0;
     if (onTower) range = towerLevel(s, sel)!.range;
-    else if (sel >= 0) range = hoverCard >= 0 ? TOWERS[hoverCard].levels[0].range : 0;
+    else if (sel >= 0) range = hoverCard >= 0 ? s.lv[hoverCard][0].range : 0;
     else if (armed >= 0 && hoverSlot >= 0 && s.towers[hoverSlot].char < 0) {
       showSlot = hoverSlot;
-      range = TOWERS[armed].levels[0].range;
+      range = s.lv[armed][0].range;
     }
     const sc = scene();
     sc?.setSelection(showSlot, range);
@@ -202,9 +224,9 @@ export function showGame(setup: GameSetup) {
     if (!tw || tw.char < 0) return;
     const def = TOWERS[tw.char];
     const cost = upgradeCost(s, sel);
-    const nextText = cost === null ? '가장 높은 단계예요' : tw.lv + 1 === MAX_LV ? `▲ 3단계: ${def.special}` : `▲ ${tw.lv + 1}단계: ${statLine(def, tw.lv + 1)}`;
+    const nextText = cost === null ? '가장 높은 단계예요' : tw.lv + 1 === MAX_LV ? `▲ 3단계: ${def.special}` : `▲ ${tw.lv + 1}단계: ${statLine(s.lv[tw.char][tw.lv])}`;
     el.panel.innerHTML = `<img src="${zodiacFaceUrl(def.id)}" alt="" />
-      <div class="tp-tx"><b>${esc(def.nick)} <span class="tag">${tw.lv}단계</span></b><small>${statLine(def, tw.lv)}</small><small class="up">${esc(nextText)}</small></div>
+      <div class="tp-tx"><b>${esc(def.nick)} <span class="tag">${tw.lv}단계</span></b><small>${statLine(s.lv[tw.char][tw.lv - 1])}</small><small class="up">${esc(nextText)}</small></div>
       <div class="tp-btns">
         <button class="btn primary small" data-up ${cost === null ? 'disabled' : ''}>${cost === null ? '강화 완료' : `강화 ✨${cost}`}</button>
         <button class="btn small" data-sell>되팔기 +${sellValue(s, sel)}</button>
@@ -216,7 +238,7 @@ export function showGame(setup: GameSetup) {
   function tryPlace(slot: number, char: number) {
     if (!canPlace(s, slot, char)) {
       sfx('toggle');
-      if (s.towers[slot]?.char < 0 && s.energy < TOWERS[char].cost) toast(`기운이 모자라요 (✨${TOWERS[char].cost} 필요)`, 1400);
+      if (s.towers[slot]?.char < 0 && s.energy < s.cost[char]) toast(`기운이 모자라요 (✨${s.cost[char]} 필요)`, 1400);
       return false;
     }
     return run.cmd('place', slot, char);
@@ -463,16 +485,21 @@ export function showGame(setup: GameSetup) {
     ended = true;
     run.paused = true;
     const summary = run.summary();
-    const api = state.api;
-    const saved: GameResult['saved'] = api
-      ? api.finish({ stage: summary.stage, cleared: summary.cleared, lives: summary.lives, startLives: summary.startLives, time: summary.time, kills: summary.kills }).then(
-          (out) => {
-            setProfile(out.profile);
-            return out.result;
-          },
-          () => 'rejected' as const,
-        )
-      : Promise.resolve('rejected' as const);
+    // 판이 끝날 때 한 번 저장한다. 통신이 안 되면 기기에 보관해 두었다가 다음 접속 때 다시 보낸다
+    const saved: GameResult['saved'] = started.then(async (id) => {
+      if (!id || !api) return 'unrecorded';
+      try {
+        const out = await api.finish({
+          run: id, stage: summary.stage, cleared: summary.cleared, lives: summary.lives, startLives: summary.startLives,
+          time: summary.time, kills: summary.kills, placed: summary.placed, cmds: summary.cmds, bonus: summary.bonus,
+        });
+        if (!out) return 'pending';
+        setProfile(out.profile);
+        return out.result;
+      } catch {
+        return 'rejected';
+      }
+    });
     const result: GameResult = { ...summary, quit, setup, saved };
     if (quit) return nav.result(result);
     endTimer = setTimeout(() => nav.result(result), 1700);
@@ -617,8 +644,8 @@ export function showGame(setup: GameSetup) {
     }
     if (s.energy !== shown.energy) {
       shown.energy = s.energy;
-      el.energy.textContent = `✨ ${s.energy}`;
-      cardEls.forEach((c, i) => c.classList.toggle('poor', s.energy < TOWERS[s.squad[i]].cost));
+      el.energy.textContent = `✨ ${Math.floor(s.energy)}`;
+      cardEls.forEach((c, i) => c.classList.toggle('poor', s.energy < s.cost[s.squad[i]]));
       shown.panelPoor = null;
     }
     // 강화 버튼: 기운이 모자라면 흐리게 (누르면 얼마가 필요한지 알려 준다)
@@ -691,4 +718,13 @@ export function showGame(setup: GameSetup) {
   );
   frame();
   refresh();
+  if (unrecorded) $('#norec').classList.remove('hidden');
+  void started.then((id) => {
+    // 잠긴 스테이지라 돌아갔으면 이 화면은 이미 없다
+    if (id !== null || !root.isConnected || unrecorded) return;
+    // 판 시작을 알리지 못했다 (실패했거나 12초 안에 답이 없다): 판이 끝날 때까지 표시해 둔다
+    unrecorded = true;
+    $('#norec').classList.remove('hidden');
+    if (!ended) toast('서버에 연결하지 못했어요. 이 판은 기록되지 않아요', 5000);
+  });
 }

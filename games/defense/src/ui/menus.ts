@@ -5,7 +5,7 @@ import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { REGIONS, regionOf } from '../data/regions';
 import { stageEnemies, stageOf, stagesOf, type StageDef } from '../data/stages';
 import { buildRoute, cellX, cellY } from '../game/path';
-import { clearedCount, endlessOpen, regionCleared, regionOpen, regionStars, stageOpen, totalStars } from '../game/progress';
+import { charLevel, clearedCount, endlessOpen, regionCleared, regionOpen, regionStars, stageOpen, totalStars } from '../game/progress';
 import { worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, josa, loadEngine, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
@@ -43,7 +43,7 @@ export function showMain() {
      <div class="main-actions">
        <button class="btn primary big" id="go">출전 ▶</button>
        <div class="sub-actions">
-         <button class="btn soon" data-soon="캐릭터 레벨업">🐭 캐릭터</button>
+         <button class="btn" id="chars">🐭 캐릭터</button>
          <button class="btn soon" data-soon="도감">📖 도감</button>
          <button class="btn soon" data-soon="랭킹">🏆 랭킹</button>
        </div>
@@ -58,6 +58,10 @@ export function showMain() {
   root.querySelector('#go')!.addEventListener('click', () => {
     sfx('click');
     nav.regions();
+  });
+  root.querySelector('#chars')!.addEventListener('click', () => {
+    sfx('click');
+    nav.chars();
   });
   root.querySelector('.sub-actions')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('[data-soon]') as HTMLElement | null;
@@ -198,7 +202,8 @@ export function showPrepare(stageId: string) {
   const st = stageOf(stageId);
   if (!st) return nav.regions();
   const region = regionOf(st.region)!;
-  const unlocked = (id: ZodiacId) => !!towerOf(id);
+  // 쓸 수 있는 캐릭터: 해금했고 계산까지 만들어진 것
+  const unlocked = (id: ZodiacId) => !!towerOf(id) && state.profile.unlocked.includes(id);
   // 지난번에 고른 캐릭터부터 (지금 쓸 수 있는 것만)
   let picked = new Set<ZodiacId>(state.squad.filter(unlocked));
   let focus: ZodiacId = [...picked][0] ?? 'rat';
@@ -228,7 +233,7 @@ export function showPrepare(stageId: string) {
      <div class="card">
        <h3>출전 캐릭터 <small id="count"></small></h3>
        <div class="chars" id="chars">${ROSTER.map(
-         (c) => `<button class="char" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span><b class="lock ${unlocked(c.id) ? 'hidden' : ''}">🔒</b></button>`,
+         (c) => `<button class="char" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span>${unlocked(c.id) ? `<b class="lvb">Lv ${charLevel(state.profile, c.id)}</b>` : '<b class="lock">🔒</b>'}</button>`,
        ).join('')}</div>
        <p class="char-info" id="info"></p>
      </div>
@@ -248,7 +253,7 @@ export function showPrepare(stageId: string) {
     const r = ROSTER.find((x) => x.id === focus)!;
     const def = towerOf(focus);
     root.querySelector('#info')!.innerHTML = def
-      ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>`
+      ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em> <small>Lv ${charLevel(state.profile, focus)}</small><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>`
       : `<b>${esc(r.nick)}</b> <span class="tag role">${esc(r.role)}</span><br/><small>🔒 ${r.unlockRegion}지역 ${esc(josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를'))} 클리어하면 함께할 수 있어요</small>`;
     startBtn.disabled = picked.size === 0;
   };

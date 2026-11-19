@@ -318,3 +318,42 @@ button, input { font: inherit; color: inherit; }
   .result-char { height: 64px; }
   .big-stars { font-size: 44px; }
 }
+
+/* ---------- 캐릭터 (영구 레벨업 · 공통 강화) ---------- */
+.roster-top { display: flex; align-items: center; gap: 8px; flex: none; }
+.seg.wide { flex: 1; }
+.seg.wide button { flex: 1; padding: 6px 2px; white-space: nowrap; }
+.info { display: flex; gap: 10px; padding: 0; overflow: hidden; }
+.info-stage { flex: 0 0 34%; background: var(--sky-mid); border-right: var(--line) solid var(--outline); display: flex; align-items: flex-end; justify-content: center; padding: 8px 4px 6px; }
+.info-stage img { width: 100%; max-height: 150px; object-fit: contain; object-position: center bottom; transform-origin: 50% 100%; animation: hero-hop 0.9s ease-in-out infinite; }
+.info-stage img.dimmed { filter: grayscale(1); opacity: 0.55; animation: none; }
+.info-text { flex: 1; min-width: 0; padding: 10px 10px 10px 0; }
+.info-text h3 { margin: 0 0 4px; font-size: 24px; }
+.info-text h3 small { font-size: 13px; color: var(--ink-soft); }
+.info-text p { margin: 4px 0; }
+.info-text .btn { width: 100%; margin-top: 6px; }
+.info-text .btn.poor { background: var(--track); color: var(--ink-soft); }
+.lv-line { display: flex; align-items: center; gap: 8px; }
+.lv-line b { font-weight: normal; font-size: 20px; color: var(--accent); white-space: nowrap; }
+.lv-line .pips { flex: 1; }
+.pips { display: flex; gap: 3px; margin-top: 3px; }
+.pips i { flex: 1 1 0; max-width: 18px; height: 7px; border-radius: var(--radius-pill); background: var(--track); border: 1.5px solid var(--outline); }
+.pips i.on { background: var(--gauge-gradient); }
+.perks { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.perks li { font-size: 12px; color: var(--ink-soft); border: 2px dashed var(--empty-line); border-radius: var(--radius-pill); padding: 0 8px; }
+.perks li b { font-weight: normal; margin-right: 4px; }
+.perks li.on { color: var(--ink); background: var(--panel-strong); border: var(--line-thin) solid var(--outline); }
+.char .lvb { position: absolute; right: -2px; top: -5px; font-weight: normal; font-size: 11px; background: var(--outline); color: var(--white); border-radius: var(--radius-pill); padding: 0 5px; }
+.up-list { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.up-row { display: flex; align-items: center; gap: 8px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 6px 8px; }
+.up-row em { font-style: normal; font-size: 22px; flex: none; width: 30px; text-align: center; }
+.up-tx { flex: 1; min-width: 0; }
+.up-tx b { display: block; font-weight: normal; font-size: 16px; }
+.up-tx b small { font-size: 12px; color: var(--ink-soft); }
+.up-row .btn { flex: none; min-width: 92px; color: var(--accent); }
+.up-row .btn.primary { color: var(--ink); }
+.up-max { flex: none; min-width: 92px; text-align: center; color: var(--win); font-size: 16px; }
+.unlocks img { width: 34px; height: 34px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
+.unlocks small { font-size: 12px; color: var(--ink-soft); }
+/* 판 시작을 서버에 알리지 못한 판 */
+.norec { background: var(--outline); color: var(--white); border-radius: var(--radius-pill); padding: calc(var(--u) * 2) calc(var(--u) * 12); font-size: calc(var(--u) * 20); white-space: nowrap; }

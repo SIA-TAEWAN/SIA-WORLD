@@ -1,4 +1,6 @@
 import { LIMIT, type ZodiacId } from '../data/balance';
+import type { TowerLevel } from '../data/characters';
+import type { Upgrades } from '../data/growth';
 import type { StageDef } from '../data/stages';
 import type { Route } from './path';
 import type { Rng } from './rng';
@@ -15,6 +17,9 @@ export interface GameConfig {
   stage: string;
   /** 데려간 캐릭터 (최대 5종). 배치 메뉴·숫자키 1~5 의 순서 */
   squad: ZodiacId[];
+  /** 판 밖 성장: 캐릭터 영구 레벨(없으면 1) · 공통 강화 (PRD 7장) */
+  levels?: Partial<Record<ZodiacId, number>>;
+  upgrades?: Upgrades;
 }
 
 /** prep 시작 전(시간이 흐르지 않는다) · play 진행 중 · clear 클리어 · fail 실패 */
@@ -197,6 +202,16 @@ export interface State {
   slotY: number[];
   /** 데려간 캐릭터 (TOWERS 번호) */
   squad: number[];
+  /**
+   * 이 판에서 쓰는 캐릭터 수치: 데이터(TOWERS)에 영구 레벨의 배율을 곱해 둔 것. lv[캐릭터 번호][강화 단계 - 1]
+   * cost[캐릭터 번호] = 배치 비용, up[캐릭터 번호] = 2·3단계로 올리는 비용
+   */
+  lv: TowerLevel[][];
+  cost: number[];
+  up: [number, number][];
+  /** 되팔기 환급 비율 · 처치 기운 배율 (공통 강화) */
+  sellRate: number;
+  gain: number;
   rng: Rng;
   phase: Phase;
   /** 시작한 뒤의 걸음 수 · 시간 (초) */

@@ -12,8 +12,11 @@ export const stage = document.getElementById('stage')!;
 export interface GameSetup {
   stage: string;
   squad: ZodiacId[];
-  /** 개발용: 같은 판 다시 보기 */
+  /** 개발용: 같은 판 다시 보기 · 모든 캐릭터 레벨 · 모든 공통 강화 레벨 · 저장하지 않는 판 (잠금을 건너뛰고 시작한 판) */
   seed?: number;
+  lv?: number;
+  upg?: number;
+  offline?: boolean;
 }
 
 /** 결과 화면에 넘기는 것 */
@@ -21,15 +24,18 @@ export interface GameResult extends RunSummary {
   /** 스스로 그만뒀나 */
   quit: boolean;
   setup: GameSetup;
-  /** 저장 결과: 받은 엽전·별·새로 열린 스테이지. 'rejected' 저장되지 않은 판 (개발용 설정으로 잠긴 스테이지를 했을 때 등) */
-  saved: Promise<FinishResult | 'rejected'>;
+  /**
+   * 서버에 올린 결과: 받은 엽전·별·새로 열린 스테이지·해금.
+   * 'unrecorded' 기록되지 않는 판(시작을 서버에 알리지 못함) · 'pending' 통신 실패로 기기에 보관함 · 'rejected' 서버가 받지 않음
+   */
+  saved: Promise<FinishResult | 'unrecorded' | 'pending' | 'rejected'>;
 }
 
 export const state = {
   /** 로그인한 사용자 (테스트 모드는 임시 사용자) */
   user: { id: '', name: '' },
   api: null as DefenseApi | null,
-  /** 엽전·스테이지별 별 */
+  /** 엽전·스테이지별 별·캐릭터 레벨·공통 강화·해금 */
   profile: defaultProfile() as DefenseProfile,
   /** 마지막으로 본 지역 · 고른 출전 캐릭터 */
   region: 1,
@@ -55,6 +61,8 @@ export const nav = {
   regions: () => {},
   /** 그 지역의 스테이지 고르기 */
   stages: (_region: number) => {},
+  /** 캐릭터 레벨업 · 공통 강화 */
+  chars: () => {},
   /** 출전 준비: 캐릭터 5종 고르기 + 요괴 미리 보기 */
   prepare: (_stage: string) => {},
   game: (_setup: GameSetup) => {},
@@ -69,6 +77,17 @@ export function josa(word: string, withFinal: string, withoutFinal: string): str
   const code = word.charCodeAt(word.length - 1) - 0xac00;
   const final = code >= 0 && code <= 11171 ? code % 28 !== 0 : false;
   return word + (final ? withFinal : withoutFinal);
+}
+
+/** 서버(또는 기기 저장)가 거절한 까닭 → 화면 글 */
+export function whyText(e: unknown): string {
+  const m = e instanceof Error ? e.message : '';
+  if (/not enough coins/.test(m)) return '엽전이 모자라요';
+  if (/max level/.test(m)) return '이미 가장 높은 레벨이에요';
+  if (/character locked/.test(m)) return '아직 함께할 수 없는 캐릭터예요';
+  if (/stage locked/.test(m)) return '아직 열리지 않은 스테이지예요';
+  if (/need login/.test(m)) return '로그인이 필요해요';
+  return '서버에 연결하지 못했어요. 잠시 후 다시 해 주세요';
 }
 
 /** 초 → 0:00 */
@@ -111,7 +130,7 @@ export function loadSquad(): ZodiacId[] {
   try {
     const v = JSON.parse(localStorage.getItem(squadKey()) ?? 'null') as unknown;
     if (Array.isArray(v)) {
-      const list = v.filter((c): c is ZodiacId => typeof c === 'string' && !!towerOf(c)).slice(0, SQUAD_SIZE);
+      const list = v.filter((c): c is ZodiacId => typeof c === 'string' && !!towerOf(c) && state.profile.unlocked.includes(c as ZodiacId)).slice(0, SQUAD_SIZE);
       if (list.length) return [...new Set(list)];
     }
   } catch {
