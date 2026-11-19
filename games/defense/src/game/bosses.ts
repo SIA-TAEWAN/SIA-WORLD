@@ -23,6 +23,7 @@ const first = (e: Enemy) => e.t <= TICK;
 function minion(s: State, _e: Enemy, kind: number, route: number, d: number, hpMul: number): Enemy | null {
   const m = spawnEnemy(s, kind, -1, route, hpMul, d);
   if (m) addFx(s, FX.puff, m.x, m.y, 30, 0.3);
+  if (m) s.seenE |= 1 << kind;
   return m;
 }
 
@@ -128,8 +129,9 @@ export const BOSS_ACTS: Record<string, BossAct> = {
     const frac = e.d / s.routes[e.route].len;
     const others = s.ground.filter((r) => r !== e.route);
     for (const r of others.length ? others : [e.route]) {
-      const m = minion(s, e, 0, r, Math.max(0, frac * s.routes[r].len - (others.length ? 0 : 40)), 1);
+      const m = spawnEnemy(s, 0, -1, r, 1, Math.max(0, frac * s.routes[r].len - (others.length ? 0 : 40)));
       if (!m) break;
+      addFx(s, FX.puff, m.x, m.y, 30, 0.3);
       m.look = e.boss;
       m.hp = m.maxHp = Math.round(e.maxHp * p.hp);
       m.speed = e.speed * 1.15;

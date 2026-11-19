@@ -1,7 +1,7 @@
 import { STAR2_LIVES } from '../data/balance';
 import { regionOf } from '../data/regions';
 import { nextStage, stageOf } from '../data/stages';
-import { stageOpen } from '../game/progress';
+import { LIMITS, stageOpen } from '../game/progress';
 import { ROSTER } from '../data/characters';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, josa, nav, screen, state, type GameResult } from './app';
@@ -10,24 +10,29 @@ import { sfx } from './sfx';
 /** 결과 화면: 별 1~3개 · 얻은 엽전 · 첫 클리어 보상 → [다음 스테이지] [다시하기] [메인으로] (PRD 2장) */
 export function showResult(r: GameResult) {
   const st = stageOf(r.stage)!;
-  const title = r.cleared ? '클리어!' : r.quit ? '포기했어요' : '실패…';
-  const next = nextStage(st);
+  const title = r.endless ? `웨이브 ${r.wave}` : r.cleared ? '클리어!' : r.quit ? '포기했어요' : '실패…';
+  const next = r.endless ? undefined : nextStage(st);
   const lost = r.startLives - r.lives;
   // 별 조건 세 줄: 이번 판에 채운 것에 표시
   const goal = (ok: boolean, text: string) => `<li class="${ok ? 'ok' : ''}"><i>★</i>${text}</li>`;
   const root = screen(
-    `<div class="result-card ${r.cleared ? 'won' : 'lost'}">
-       <h2>${esc(st.id)} ${esc(st.name)}</h2>
+    `<div class="result-card ${r.cleared || r.endless ? 'won' : 'lost'}">
+       <h2>${r.endless ? '♾️' : esc(st.id)} ${esc(st.name)}</h2>
        <div class="verdict">${title}</div>
-       <div class="big-stars" aria-label="별 ${r.stars}개">${[1, 2, 3].map((i) => `<i class="${i <= r.stars ? 'on' : ''}" style="animation-delay:${i * 0.25}s">★</i>`).join('')}</div>
+       ${
+         r.endless
+           ? `<p class="soft center">까지 버텼어요 <i class="tag hidden" id="record">새 기록!</i></p>
+              <div class="squad-faces">${r.setup.squad.map((c) => `<img src="${zodiacFaceUrl(c)}" alt="" />`).join('')}</div>`
+           : `<div class="big-stars" aria-label="별 ${r.stars}개">${[1, 2, 3].map((i) => `<i class="${i <= r.stars ? 'on' : ''}" style="animation-delay:${i * 0.25}s">★</i>`).join('')}</div>
        <img class="result-char" src="${zodiacFullUrl(r.setup.squad[0] ?? 'rat')}" alt="" />
        <ul class="goals">
          ${goal(r.stars >= 1, '클리어')}
          ${goal(r.stars >= 2, `생명 ${STAR2_LIVES} 이상 남기기`)}
          ${goal(r.stars >= 3, '생명을 하나도 잃지 않기')}
-       </ul>
+       </ul>`
+       }
        <ul class="stats">
-         <li><span>❤️ 남은 생명</span><b>${r.lives}<small> / ${r.startLives}${lost > 0 ? ` (−${lost})` : ''}</small></b></li>
+         ${r.endless ? `<li><span>🏔️ 내 최고 기록</span><b id="best">${state.profile.endless ? `웨이브 ${state.profile.endless.wave}` : '–'}</b></li>` : `<li><span>❤️ 남은 생명</span><b>${r.lives}<small> / ${r.startLives}${lost > 0 ? ` (−${lost})` : ''}</small></b></li>`}
          <li><span>💀 처치한 요괴</span><b>${r.kills.toLocaleString()}</b></li>
          <li><span>🪙 얻은 엽전</span><b class="coin" id="coins">…</b></li>
        </ul>
@@ -84,6 +89,15 @@ export function showResult(r: GameResult) {
       return;
     }
     root.querySelector('#coins')!.innerHTML = `+${s.coins.toLocaleString()}닢`;
+    if (r.endless) {
+      note.textContent = `넘긴 웨이브마다 ${LIMITS.endless_coin_per_wave}닢 (한 판 ${LIMITS.endless_coin_cap}닢까지)`;
+      root.querySelector('#best')!.textContent = `웨이브 ${s.bestWave}`;
+      if (s.newRecord) {
+        root.querySelector('#record')!.classList.remove('hidden');
+        sfx('newRecord', { delay: 500 });
+      }
+      return;
+    }
     const parts = [
       s.baseCoins > 0 ? `${r.cleared ? '클리어' : '버틴 만큼'} ${s.baseCoins}` : '',
       s.firstCoins > 0 ? `첫 클리어 ${s.firstCoins}` : '',

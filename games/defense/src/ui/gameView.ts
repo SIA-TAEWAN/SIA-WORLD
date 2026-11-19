@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { BOARD_H, MAX_LV, RUN_SEC, SLOT_SIZE, SQUAD_SIZE, VIEW_W, WAVES, WAVE_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
-import { TOWERS, type TowerLevel } from '../data/characters';
+import { TOWERS } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { ACT, DASH } from '../game/bosses';
-import { partialCoins } from '../game/progress';
+import { endlessBoss, endlessWave } from '../data/endless';
+import { endlessCoins, partialCoins } from '../game/progress';
 import { activeBoss, canPlace, sellValue, towerLevel, upgradeCost } from '../game/sim';
 import { EV, type Ev, type State } from '../game/state';
 import { presetUpgrades } from '../data/growth';
@@ -14,6 +15,7 @@ import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
 import { artUrl, zodiacFaceUrl } from '../assets';
 import { esc, mmss, nav, screen, setProfile, stage, state, toast, whyText, type GameResult, type GameSetup } from './app';
+import { levelText } from './codex';
 import { DPR } from './dpr';
 import { attackSfx, sfx, sound } from './sfx';
 
@@ -48,21 +50,7 @@ function saveSpeed(v: Speed) {
   }
 }
 
-/** 캐릭터 수치 한 줄 */
-function statLine(L: TowerLevel): string {
-  const parts = [`피해 ${Math.round(L.dmg * 10) / 10}${L.count && L.count > 1 ? `×${L.count}` : ''}`, `사거리 ${Math.round(L.range)}`, `간격 ${Math.round(L.every * 100) / 100}초`];
-  if (L.income) return `웨이브마다 기운 +${L.income}${L.coin ? ` · 엽전 +${L.coin}` : ''}`;
-  if (L.slow) return `사거리 ${Math.round(L.range)} · 이동 속도 ${Math.round(L.slow * 100)}%로${L.vuln ? ` · 받는 피해 +${Math.round(L.vuln * 100)}%` : ''}`;
-  if (L.stun) parts.push(`멈춤 ${L.stun}초`);
-  if (L.splash) parts.push(`범위 ${L.splash}`);
-  if (L.poison) parts.push(`독 초당 ${Math.round(L.poison)}`);
-  if (L.burn) parts.push(`불 초당 ${Math.round(L.burn)}`);
-  if (L.airMul) parts.push(`공중 ×${L.airMul}`);
-  if (L.bossMul) parts.push(`보스 ×${L.bossMul}`);
-  if (L.haste) parts.push(`주변 공격 속도 +${Math.round(L.haste * 100)}%`);
-  if (L.detect) parts.push('은신 감지');
-  return parts.join(' · ');
-}
+const statLine = levelText;
 
 /** 게임 화면: 판(캔버스)이 화면을 가득 채우고, 그 위에 HUD(위)와 캐릭터 카드(아래)를 올린다 */
 export function showGame(setup: GameSetup) {
@@ -85,15 +73,17 @@ export function showGame(setup: GameSetup) {
   const api = state.api;
   const started: Promise<string | null> =
     api && !setup.offline
-      ? api.start(setup.stage, setup.squad).catch((e) => {
+      ? api.start(setup.stage, setup.squad, s.endless ? 'endless' : 'normal').catch((e) => {
           if (e instanceof ApiError) {
             // 잠긴 스테이지·캐릭터: 스테이지 고르기로 돌아간다
             toast(whyText(e));
-            nav.stages(s.stage.region);
+            leave();
           }
           return null;
         })
       : Promise.resolve(null);
+  /** 판에서 나갈 때 돌아갈 화면: 스테이지 판은 그 지역의 스테이지 고르기, 끝없는 모드는 지역 지도 */
+  const leave = () => (s.endless ? nav.regions() : nav.stages(s.stage.region));
   /** 판 시작을 서버에 알리지 못했다: 이 판은 기록되지 않는다 */
   let unrecorded = !!setup.offline;
 
@@ -403,7 +393,7 @@ export function showGame(setup: GameSetup) {
     const dim = document.createElement('div');
     dim.className = 'dim pause';
     const paint = (confirm: '' | 'quit' | 'retry') => {
-      const part = partialCoins(s.stage, s.time);
+      const part = s.endless ? endlessCoins(s.time) : partialCoins(s.stage, s.time);
       dim.innerHTML =
         confirm === 'quit'
           ? `<div class="dialog"><h3>포기할까요?</h3><p class="soft center">${part > 0 ? `지금까지 번 엽전 ${part}닢은 받아요` : '첫 웨이브를 넘기기 전에는 엽전을 받지 못해요'}</p>
@@ -412,7 +402,7 @@ export function showGame(setup: GameSetup) {
             ? `<div class="dialog"><h3>처음부터 다시 할까요?</h3><p class="soft center">이 판의 기록은 남지 않아요</p>
               <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-again>다시하기</button></div></div>`
             : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
-              <p class="soft center">${esc(s.stage.id)} ${esc(s.stage.name)} · 웨이브 ${Math.max(1, s.wave + 1)}/${WAVES} · ❤️ ${s.lives}</p>
+              <p class="soft center">${s.endless ? '♾️' : esc(s.stage.id)} ${esc(s.stage.name)} · 웨이브 ${Math.max(1, s.wave + 1)}${s.endless ? '' : `/${WAVES}`} · ❤️ ${s.lives}</p>
               <div class="row"><span>🔊 소리</span><div class="seg" data-k="sfx"><button data-v="1" class="${sound.on ? 'sel' : ''}">켜기</button><button data-v="0" class="${sound.on ? '' : 'sel'}">끄기</button></div></div>
               <div class="actions"><button class="btn primary" data-resume>계속하기</button></div>
               <div class="actions"><button class="btn small" data-retry>🔄 다시하기</button><button class="btn small" data-giveup>🏳️ 포기</button></div></div>`;
@@ -429,7 +419,7 @@ export function showGame(setup: GameSetup) {
       else if (t.closest('[data-giveup]')) {
         sfx('click');
         // 시작 전에는 잃을 것이 없다: 바로 나간다
-        if (s.phase === 'prep') nav.stages(s.stage.region);
+        if (s.phase === 'prep') leave();
         else paint('quit');
       } else if (t.closest('[data-retry]')) {
         sfx('click');
@@ -499,7 +489,7 @@ export function showGame(setup: GameSetup) {
       try {
         const out = await api.finish({
           run: id, stage: summary.stage, cleared: summary.cleared, lives: summary.lives, startLives: summary.startLives,
-          time: summary.time, kills: summary.kills, placed: summary.placed, cmds: summary.cmds, bonus: summary.bonus,
+          time: summary.time, kills: summary.kills, placed: summary.placed, cmds: summary.cmds, bonus: summary.bonus, codex: summary.codex,
         });
         if (!out) return 'pending';
         setProfile(out.profile);
@@ -514,7 +504,8 @@ export function showGame(setup: GameSetup) {
   }
   function onFail() {
     sfx('lose');
-    setCut('실패…<small>마을에 요괴가 들어왔어요</small>', 'bad');
+    if (s.endless) setCut(`웨이브 ${s.wave + 1}<small>여기까지 버텼어요</small>`, 'go');
+    else setCut('실패…<small>마을에 요괴가 들어왔어요</small>', 'bad');
     finish(false);
   }
   function onClear() {
@@ -531,7 +522,7 @@ export function showGame(setup: GameSetup) {
         break;
       case EV.wave:
         if (e.a > 0) sfx('turn');
-        setCut(`<small>웨이브 ${e.a + 1} / ${WAVES}</small>`, e.a === WAVES - 1 ? 'bad' : '', 1300);
+        setCut(`<small>웨이브 ${e.a + 1}${s.endless ? '' : ` / ${WAVES}`}</small>`, !s.endless && e.a === WAVES - 1 ? 'bad' : '', 1300);
         break;
       case EV.place:
         sfx('tankBuild');
@@ -596,19 +587,22 @@ export function showGame(setup: GameSetup) {
 
   // ---------- 다음 웨이브 미리 보기 (PRD 3장 편의 기능) ----------
   const foeIcons = (wave: number): string => {
-    const w = s.stage.waves[wave];
+    // 끝없는 모드의 웨이브는 번호로 정해진다
+    const w = s.endless ? endlessWave(wave) : s.stage.waves[wave];
     if (!w) return '';
     const count = new Map<string, number>();
     for (const g of w.groups) count.set(g.enemy, (count.get(g.enemy) ?? 0) + g.count);
     let html = [...count].map(([id, n]) => `<span class="foe"><img src="${artUrl(`e-${id}`)}" alt="${esc(ENEMIES[ENEMY_INDEX[id]]?.name ?? id)}" />×${n}</span>`).join('');
     // 그 웨이브에 보스가 나오면 함께 보여 준다
-    if (s.bossAt >= wave * WAVE_SEC && s.bossAt < (wave + 1) * WAVE_SEC) html += `<span class="foe boss"><img src="${artUrl(`b-${BOSSES[s.bossId].id}`)}" alt="" />보스</span>`;
+    const eb = s.endless ? endlessBoss(wave) : null;
+    if (eb) html += `<span class="foe boss"><img src="${artUrl(`b-${BOSSES[eb.boss].id}`)}" alt="" />보스</span>`;
+    if (!s.endless && s.bossAt >= wave * WAVE_SEC && s.bossAt < (wave + 1) * WAVE_SEC) html += `<span class="foe boss"><img src="${artUrl(`b-${BOSSES[s.bossId].id}`)}" alt="" />보스</span>`;
     return html;
   };
   function paintNext() {
     const w = s.wave;
     if (s.phase === 'prep') el.next.innerHTML = `<b>첫 웨이브</b>${foeIcons(0)}`;
-    else if (w + 1 < WAVES) el.next.innerHTML = `<b>다음 웨이브 <i id="nextIn"></i></b>${foeIcons(w + 1)}`;
+    else if (s.endless || w + 1 < WAVES) el.next.innerHTML = `<b>다음 웨이브 <i id="nextIn"></i></b>${foeIcons(w + 1)}`;
     else el.next.innerHTML = '<b id="left"></b>';
   }
 
@@ -633,21 +627,22 @@ export function showGame(setup: GameSetup) {
     if (s.phase !== shown.phase || s.wave !== shown.wave) {
       shown.phase = s.phase;
       shown.wave = s.wave;
-      el.wave.textContent = `웨이브 ${Math.max(1, s.wave + 1)}/${WAVES}`;
+      el.wave.textContent = `웨이브 ${Math.max(1, s.wave + 1)}${s.endless ? '' : `/${WAVES}`}`;
       el.start.classList.toggle('hidden', s.phase !== 'prep');
       shown.nextIn = shown.left = -1;
       paintNext();
     }
     // 시계: 3분에서 거꾸로. 3분이 지나면 0:00 (남은 요괴가 없어질 때까지 계속된다)
-    const sec = Math.max(0, Math.ceil(RUN_SEC - s.time));
+    // (끝없는 모드는 버틴 시간이 올라간다)
+    const sec = s.endless ? Math.floor(s.time) : Math.max(0, Math.ceil(RUN_SEC - s.time));
     if (sec !== shown.sec) {
       shown.sec = sec;
       el.clock.textContent = mmss(sec);
     }
-    const over = s.time >= RUN_SEC;
+    const over = !s.endless && s.time >= RUN_SEC;
     if (over !== shown.over) el.clock.classList.toggle('final', (shown.over = over));
     if (s.phase === 'play') {
-      if (s.wave + 1 < WAVES) {
+      if (s.endless || s.wave + 1 < WAVES) {
         const left = Math.max(0, Math.ceil((s.wave + 1) * WAVE_SEC - s.time));
         if (left !== shown.nextIn) {
           shown.nextIn = left;

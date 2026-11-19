@@ -5,8 +5,9 @@ import { CHAR_MAX_LV, UPGRADES } from '../data/growth';
 import { STAGES, stageOf } from '../data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, levelUp, minRealTime, openedBy, rejectReason, squadOk, stageOpen, startLivesOf,
-  type DefenseProfile, type FinishResult, type RunReport,
+  endlessOpen, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
 } from '../game/progress';
+import { ENDLESS_ID } from '../data/endless';
 import { dropPending, flushPending, keepPending, type SendOutcome, type Store } from './pending';
 import { worldSupabase } from './world';
 
@@ -37,7 +38,7 @@ export interface DefenseApi {
   kind: 'supabase' | 'local';
   loadProfile(): Promise<DefenseProfile>;
   /** 판 시작: 판 id. 못 받으면 null (그 판은 기록되지 않는다). 잠긴 스테이지·캐릭터면 ApiError */
-  start(stage: string, squad: ZodiacId[]): Promise<string | null>;
+  start(stage: string, squad: ZodiacId[], mode?: RunMode): Promise<string | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
   finish(report: RunReport): Promise<{ profile: DefenseProfile; result: FinishResult } | null>;
   /** 임시 보관해 둔 결과를 다시 보낸다 → 올라간 판 수 */
@@ -65,6 +66,7 @@ function browserStore(): Store {
 export const LOCAL_KEY = 'siadefense:local';
 
 interface LocalRun {
+  mode?: RunMode;
   stage: string;
   squad: ZodiacId[];
   started: number;
@@ -114,12 +116,14 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
     async loadProfile() {
       return read().profile;
     },
-    async start(stageId, squad) {
+    async start(stageId, squad, mode = 'normal') {
       const d = read();
       const stage = stageOf(stageId);
-      if (!stage) throw new ApiError('bad stage');
+      if (!stage || (mode === 'endless') !== (stageId === ENDLESS_ID)) throw new ApiError('bad stage');
       if (new Set(squad).size !== squad.length || squad.length < 1 || squad.length > SQUAD_SIZE) throw new ApiError('bad squad');
-      if (!stageOpen(d.profile, stage)) throw new ApiError('stage locked');
+      if (mode === 'endless') {
+        if (!endlessOpen(d.profile)) throw new ApiError('endless locked');
+      } else if (!stageOpen(d.profile, stage)) throw new ApiError('stage locked');
       if (!squadOk(d.profile, squad)) throw new ApiError('character locked');
       // 서버와 같다: 끝나지 않은 이전 판은 두되, 너무 오래됐거나 많이 쌓인 것만 치우고, 끝난 판은 30일 뒤에 지운다
       const t = now();
@@ -128,7 +132,7 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
         .sort((a, b) => b[1].started - a[1].started)
         .slice(0, LIMITS.open_runs - 1);
       const id = `local-${++d.seq}`;
-      d.runs = { ...Object.fromEntries(open), [id]: { stage: stageId, squad, started: t, startLives: startLivesOf(stage, d.profile.upgrades) } };
+      d.runs = { ...Object.fromEntries(open), [id]: { mode, stage: stageId, squad, started: t, startLives: startLivesOf(stage, d.profile.upgrades) } };
       for (const k of Object.keys(d.done)) if (d.done[k].started < t - 30 * 86400_000) delete d.done[k];
       write(d);
       return id;
@@ -140,7 +144,7 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
       if (!rn) throw new ApiError('no run');
       // 스테이지와 시작 생명은 시작할 때 적어 둔 것을 쓴다 (보고에 적힌 값은 믿지 않는다)
       report = { ...report, stage: rn.stage, startLives: rn.startLives };
-      const why = rejectReason(report, lenient ? 1e6 : (now() - rn.started) / 1000, rn.startLives);
+      const why = rejectReason(report, lenient ? 1e6 : (now() - rn.started) / 1000, rn.startLives, rn.mode ?? 'normal');
       if (why && !(lenient && why === 'too late')) throw new ApiError(why);
       const span = (time: number) => minRealTime(time) * 1000;
       if (!lenient) {
@@ -150,7 +154,7 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
       }
       let out: ReturnType<typeof applyRun>;
       try {
-        out = applyRun(d.profile, report, rn.squad);
+        out = applyRun(d.profile, report, rn.squad, rn.mode ?? 'normal');
       } catch (e) {
         throw new ApiError((e as Error).message);
       }
@@ -224,6 +228,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       const stars = r.cleared ? (r.lives >= r.startLives ? 3 : r.lives >= 10 ? 2 : 1) : 0;
       const { data, error } = await call('defense_finish', {
         p_run: r.run, p_time: r.time, p_cleared: r.cleared, p_lives: r.lives, p_stars: stars, p_kills: r.kills, p_placed: r.placed, p_cmds: r.cmds, p_bonus: r.bonus,
+        p_codex: r.codex ?? { enemies: [], bosses: [] },
       });
       // 'too early': 판 시작 알림이 늦게 닿았을 때. 조금 뒤에 다시 보내면 통과하므로 버리지 않는다
       if (error) return rejected(error) && !/too early/.test(error.message ?? '') ? { outcome: 'rejected', why: error.message } : { outcome: 'failed' };
@@ -244,6 +249,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
             opened: res.firstClear === true && before ? openedBy(before, profile) : null,
             unlocked: (Array.isArray(res.unlocked) ? res.unlocked : []).filter((c): c is ZodiacId => (ZODIAC_IDS as readonly string[]).includes(c)),
             valid: res.valid !== false,
+            wave: num(res.wave), bestWave: num(res.bestWave), newRecord: res.newRecord === true,
           },
         },
       };
@@ -254,11 +260,14 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
   const self: DefenseApi = {
     kind: 'supabase',
     loadProfile: () => profileRpc('defense_profile'),
-    async start(stage, squad) {
+    async start(stage, squad, mode = 'normal') {
       // 통신 문제면 한 번 더 해 본다. 두 번을 합쳐 timeoutMs(12초) 안에 답이 없으면 이 판은 기록되지 않는다
+      // (스테이지 판은 예전과 같은 인자로 부른다. 모드 인자는 끝없는 모드일 때만 붙인다)
+      const args: Record<string, unknown> = { p_stage: stage, p_squad: squad };
+      if (mode === 'endless') args.p_mode = 'endless';
       let why: string | undefined;
       for (let i = 0; i < 2; i++) {
-        const { data, error } = await call('defense_start', { p_stage: stage, p_squad: squad }, timeoutMs / 2);
+        const { data, error } = await call('defense_start', args, timeoutMs / 2);
         if (error && rejected(error)) throw new ApiError(error.message ?? 'error');
         if (!error && typeof data === 'string') return data;
         why = error?.message;

@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COINS, MAX_LV, SQUAD_SIZE, STAR2_LIVES, START_LIVES, WAVES, WAVE_SEC, ZODIAC_IDS } from '../src/data/balance';
+import { BOSSES } from '../src/data/bosses';
 import { ROSTER, STARTERS } from '../src/data/characters';
+import { ENDLESS_COINS, ENDLESS_ID, ENDLESS_MAX_SEC } from '../src/data/endless';
+import { ENEMIES } from '../src/data/enemies';
 import { CHAR_MAX_LV, LEVEL_COSTS, UPGRADES, upgradeCost } from '../src/data/growth';
 import { REGIONS } from '../src/data/regions';
 import { STAGES } from '../src/data/stages';
@@ -62,6 +65,18 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(MAX_LV).toBe(3);
   });
 
+  it('도감에 들어갈 수 있는 id: 요괴 9종 · 보스 12종 (데이터와 같은 순서)', () => {
+    expect(rows('_defense_codex_ids')).toEqual([...ENEMIES.map((e, i) => ['enemies', e.id, i + 1]), ...BOSSES.map((b, i) => ['bosses', b.id, i + 1])]);
+  });
+
+  it('끝없는 모드의 값', () => {
+    expect(consts.endless_max_time).toBe(ENDLESS_MAX_SEC);
+    expect(consts.endless_coin_per_wave).toBe(ENDLESS_COINS.perWave);
+    expect(consts.endless_coin_cap).toBe(ENDLESS_COINS.cap);
+    expect(body('defense_start')).toContain("d.stage_id = '1-5'");
+    expect(ENDLESS_ID).toBe('endless');
+  });
+
   it('캐릭터 목록 · 처음부터 쓸 수 있는 캐릭터', () => {
     expect(body('defense_level_up')).toContain(`(${ZODIAC_IDS.map((c) => `'${c}'`).join(',')})`);
     expect(sql).toContain(`unlocked_characters text[] not null default array[${STARTERS.map((c) => `'${c}'`).join(', ')}]`);
@@ -69,20 +84,25 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
 
   it('엽전 계산식: 서버가 스테이지 표로 계산한다 (화면이 보낸 금액을 받는 인자가 없다)', () => {
     const f = body('defense_finish');
-    expect(f).toContain('base := (st.coins * done) / public._defense_const(\'fail_div\')::int;');
+    expect(f).toContain("base := (st.coins * least(public._defense_const('waves')::int, done)) / public._defense_const('fail_div')::int;");
+    // 끝없는 모드: 넘긴 웨이브마다, 상한까지
+    expect(f).toContain("base := least(public._defense_const('endless_coin_cap')::int, done * public._defense_const('endless_coin_per_wave')::int);");
+    expect(f).toContain('wave := done + 1;');
     expect(f).toContain('coins := ((base + first + star_c + bonus) * (100 + 5 * coin_lv)) / 100;');
     expect(f.slice(0, f.indexOf(') returns jsonb'))).not.toMatch(/coin/);
   });
 
   it('권한: 화면이 부르는 함수는 로그인한 사용자만, 안쪽 함수와 표 쓰기는 아무도', () => {
-    for (const fn of ['defense_profile()', 'defense_now()', 'defense_start(text, text[])', 'defense_finish(uuid, int, boolean, int, int, int, int, int, int)', 'defense_level_up(text)', 'defense_buy_upgrade(text)']) {
+    for (const fn of ['defense_profile()', 'defense_now()', 'defense_start(text, text[], text)', 'defense_finish(uuid, int, boolean, int, int, int, int, int, int, jsonb)', 'defense_level_up(text)', 'defense_buy_upgrade(text)']) {
       expect(sql, fn).toContain(`revoke all on function public.${fn} from public, anon;`);
       expect(sql, fn).toContain(`grant execute on function public.${fn} to authenticated;`);
     }
-    for (const fn of ['_defense_const', '_defense_stages', '_defense_regions', '_defense_level_costs', '_defense_upgrades', '_defense_profile_row', '_defense_profile_json', '_defense_region_open', '_defense_stage_open']) {
+    for (const fn of ['_defense_codex_ids', '_defense_codex_merge', '_defense_const', '_defense_stages', '_defense_regions', '_defense_level_costs', '_defense_upgrades', '_defense_profile_row', '_defense_profile_json', '_defense_region_open', '_defense_stage_open']) {
       expect(sql, fn).toMatch(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon, authenticated;`));
     }
-    for (const t of ['defense_profiles', 'defense_stages', 'defense_runs']) {
+    // 랭킹 뷰 2개는 누구나 읽는다
+    for (const v of ['defense_stage_ranking', 'defense_endless_ranking']) expect(sql).toContain(`grant select on public.${v} to anon, authenticated;`);
+    for (const t of ['defense_profiles', 'defense_stages', 'defense_runs', 'defense_endless']) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);
       expect(sql).toContain(`revoke all on public.${t} from anon, authenticated;`);
     }

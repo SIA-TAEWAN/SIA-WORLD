@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { COINS, STAR2_LIVES } from '../src/data/balance';
 import { CHAR_MAX_LV, LEVEL_COSTS, UPGRADES, levelMods, upgradeCost, upgradeMods } from '../src/data/growth';
+import { ENDLESS_ID } from '../src/data/endless';
 import { stageOf } from '../src/data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, charLevel, cleanProfile, defaultProfile, endlessOpen, isValid, levelUp, partialCoins, regionCleared, regionOpen, regionStars,
-  rejectReason, squadOk, stageOpen, starsOf, totalStars, type RunReport,
+  endlessCoins, mergeCodex, rejectReason, squadOk, stageOpen, starsOf, totalStars, waveOf, type DefenseProfile, type RunReport,
 } from '../src/game/progress';
 import { createGame, command, sellValue } from '../src/game/sim';
 import { ApiError, createLocalApi, createSupabaseApi, type RpcClient, type Store } from '../src/net/api';
@@ -12,7 +13,7 @@ import { readPending } from '../src/net/pending';
 import { T } from './helpers';
 
 const report = (stage: string, lives: number, over: Partial<RunReport> = {}): RunReport => ({
-  run: 'r', stage, cleared: lives > 0, lives, startLives: 20, time: 185, kills: 100, placed: 6, cmds: 12, bonus: 0, ...over,
+  run: 'r', stage, cleared: lives > 0, lives, startLives: 20, time: 185, kills: 100, placed: 6, cmds: 12, bonus: 0, codex: { enemies: [], bosses: [] }, ...over,
 });
 const store = (): Store & { data: Map<string, string> } => {
   const data = new Map<string, string>();
@@ -281,6 +282,11 @@ describe('기기 저장 (서버와 같은 규칙)', () => {
     expect(cleanProfile(null)).toEqual(defaultProfile());
     expect(cleanProfile({ coins: -5, stages: { '1-1': 9, 'x-y': 3, '1-2': 0 }, levels: { rat: 99, cat: 3, ox: 1 }, upgrades: { sell: 7, luck: 2 }, unlocked: ['dragon', 'cat'] })).toEqual({
       coins: 0, stages: { '1-1': 3 }, levels: { rat: 12 }, upgrades: { sell: 3 }, unlocked: ['rat', 'ox', 'tiger', 'rabbit', 'dragon'],
+      codex: { enemies: [], bosses: [] }, endless: null,
+    });
+    // 도감은 알려진 id 만, 끝없는 모드 기록은 웨이브 1 이상만
+    expect(cleanProfile({ codex: { enemies: ['wisp', 'imp', 'cat'], bosses: 'x' }, endless: { wave: 7, squad: ['rat', 'cat'] } })).toMatchObject({
+      codex: { enemies: ['imp', 'wisp'], bosses: [] }, endless: { wave: 7, squad: ['rat'] },
     });
     const st = store();
     st.setItem('k', '{broken');
@@ -306,7 +312,7 @@ describe('서버 저장: 보관 후 재전송', () => {
     expect(out.result).toMatchObject({ stars: 3, coins: 160, opened: '1-2' });
     expect(readPending(st, 'u1')).toEqual([]);
     const sent = calls.find((c) => c.fn === 'defense_finish')!.args!;
-    expect(sent).toMatchObject({ p_run: 'run-1', p_time: 185, p_cleared: true, p_lives: 20, p_stars: 3, p_kills: 100, p_placed: 6, p_cmds: 12, p_bonus: 0 });
+    expect(sent).toMatchObject({ p_run: 'run-1', p_time: 185, p_cleared: true, p_lives: 20, p_stars: 3, p_kills: 100, p_placed: 6, p_cmds: 12, p_bonus: 0, p_codex: { enemies: [], bosses: [] } });
     // 엽전은 보내지 않는다 (서버가 계산한다)
     expect(Object.keys(sent).some((k) => /coin/.test(k))).toBe(false);
   });
@@ -349,5 +355,70 @@ describe('서버 저장: 보관 후 재전송', () => {
   it('잠긴 스테이지로 시작하면 까닭을 알려 준다', async () => {
     const { client } = fake({ defense_start: () => ({ data: null, error: { code: 'P0001', message: 'stage locked' } }) });
     await expect(createSupabaseApi(client, 'u1', store()).start('1-4', ['rat'])).rejects.toThrow('stage locked');
+  });
+});
+
+describe('끝없는 모드 (끝없는 고개)', () => {
+  const cleared1 = (): DefenseProfile => ({ ...defaultProfile(), stages: { '1-1': 1, '1-2': 1, '1-3': 1, '1-4': 1, '1-5': 1 } });
+  const erep = (time: number, over: Partial<RunReport> = {}): RunReport => report(ENDLESS_ID, 0, { cleared: false, time, kills: 400, ...over });
+
+  it('1지역을 클리어해야 열리고, 도달 웨이브가 기록된다 (더 높을 때만 새 기록)', () => {
+    expect(() => applyRun(defaultProfile(), erep(200), ['rat'], 'endless')).toThrow('endless locked');
+    let p = cleared1();
+    const a = applyRun(p, erep(275), ['rat', 'tiger'], 'endless');
+    // 275초 = 웨이브 9개를 넘기고 10번째에서 끝났다
+    expect(a.result).toMatchObject({ wave: 10, bestWave: 10, newRecord: true, stars: 0, firstClear: false, valid: true });
+    expect(a.result.coins).toBe(9 * LIMITS.endless_coin_per_wave);
+    expect(a.profile.endless).toEqual({ wave: 10, squad: ['rat', 'tiger'] });
+    // 스테이지의 별·잠금에는 영향이 없다
+    expect(a.profile.stages).toEqual(p.stages);
+    p = a.profile;
+    const b = applyRun(p, erep(100), ['ox'], 'endless');
+    expect(b.result).toMatchObject({ wave: 4, bestWave: 10, newRecord: false });
+    expect(b.profile.endless).toEqual({ wave: 10, squad: ['rat', 'tiger'] });
+    // 같은 웨이브는 먼저 달성한 기록을 그대로 둔다
+    expect(applyRun(p, erep(299), ['ox'], 'endless').result.newRecord).toBe(false);
+  });
+
+  it('엽전은 넘긴 웨이브마다, 한 판 상한까지. 도감은 만난 요괴·보스가 쌓인다', () => {
+    expect(endlessCoins(29)).toBe(0);
+    expect(endlessCoins(95)).toBe(3 * LIMITS.endless_coin_per_wave);
+    expect(endlessCoins(3000)).toBe(LIMITS.endless_coin_cap);
+    expect(waveOf(0)).toBe(1);
+    expect(waveOf(95)).toBe(4);
+    const out = applyRun(cleared1(), erep(3000, { kills: 5000, codex: { enemies: ['wisp', 'imp', 'nope'], bosses: ['bigDokkaebi'] } }), ['rat'], 'endless');
+    expect(out.result.coins).toBe(LIMITS.endless_coin_cap);
+    expect(out.profile.codex).toEqual({ enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'] });
+    expect(mergeCodex(out.profile.codex, { enemies: ['club'], bosses: [] }).enemies).toEqual(['imp', 'wisp', 'club']);
+  });
+
+  it('클리어 보고·시간 상한 초과는 거절, 요괴를 거의 잡지 않고 버틴 것처럼 꾸민 판은 비정상', () => {
+    expect(rejectReason(erep(300, { cleared: true, lives: 5 }), 9999, 20, 'endless')).toBe('bad result');
+    expect(rejectReason(erep(LIMITS.endless_max_time + 1), 9999, 20, 'endless')).toBe('bad time');
+    expect(rejectReason(erep(1000), 9999, 20, 'endless')).toBeNull();
+    expect(rejectReason(erep(1000), 9999, 20, 'normal')).toBe('bad time');
+    expect(rejectReason(erep(1000), 1000 / 2 - 16, 20, 'endless')).toBe('too early');
+    // 웨이브 20 에 닿았는데 처치가 (20 − 4) × 5 보다 적다
+    const lazy = erep(585, { kills: 79 });
+    expect(isValid(lazy, 'endless')).toBe(false);
+    expect(isValid(erep(585, { kills: 80 }), 'endless')).toBe(true);
+    const out = applyRun(cleared1(), lazy, ['rat'], 'endless');
+    expect(out.result).toMatchObject({ valid: false, coins: 0, wave: 0, newRecord: false });
+    expect(out.profile.endless).toBeNull();
+  });
+
+  it('기기 저장: 끝없는 모드로 시작한 판은 끝없는 모드로 저장된다 (스테이지 id 를 속여도)', async () => {
+    const st = store();
+    let now = 1e8;
+    st.setItem('k', JSON.stringify({ profile: cleared1() }));
+    const api = createLocalApi(st, 'k', () => now);
+    await expect(api.start('1-1', ['rat'], 'endless')).rejects.toThrow('bad stage');
+    await expect(api.start(ENDLESS_ID, ['rat'])).rejects.toThrow('bad stage');
+    const id = (await api.start(ENDLESS_ID, ['rat', 'ox'], 'endless'))!;
+    now += 400_000;
+    const out = (await api.finish(erep(400, { run: id, stage: '1-1' })))!;
+    expect(out.result).toMatchObject({ wave: 14, newRecord: true });
+    expect(out.profile.endless).toEqual({ wave: 14, squad: ['rat', 'ox'] });
+    await expect(createLocalApi(store(), 'k').start(ENDLESS_ID, ['rat'], 'endless')).rejects.toThrow('endless locked');
   });
 });

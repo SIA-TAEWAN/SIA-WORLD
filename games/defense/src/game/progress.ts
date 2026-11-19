@@ -1,5 +1,8 @@
 import { COINS, STAR2_LIVES, START_LIVES, SQUAD_SIZE, WAVES, WAVE_SEC, ZODIAC_IDS, type ZodiacId } from '../data/balance';
+import { BOSSES } from '../data/bosses';
 import { ROSTER, STARTERS } from '../data/characters';
+import { ENDLESS_ID } from '../data/endless';
+import { ENEMIES } from '../data/enemies';
 import { CHAR_MAX_LV, UPGRADES, levelCost, upgradeCost, upgradeMods, upgradeOf, type Upgrades } from '../data/growth';
 import { REGIONS } from '../data/regions';
 import { STAGES, stageOf, stagesOf, type StageDef } from '../data/stages';
@@ -36,7 +39,23 @@ export const LIMITS = {
   cmds_max: 3000,
   /** 3단계 돼지가 벌어 주는 엽전의 한 판 상한 */
   bonus_max: 12,
+  /** 끝없는 모드: 시간 상한(웨이브 120) · 넘긴 웨이브마다의 엽전과 한 판 상한 */
+  endless_max_time: 3600,
+  endless_coin_per_wave: 8,
+  endless_coin_cap: 320,
+  /** 끝없는 모드: 처치 수가 (도달 웨이브 − from) × per_wave 보다 적으면 비정상 판 */
+  endless_kills_from: 4,
+  endless_kills_per_wave: 5,
+  /** 한 번에 보내는 도감 id 수 (종류마다) */
+  codex_max: 40,
 } as const;
+
+export type RunMode = 'normal' | 'endless';
+/** 도감: 만난 요괴·보스의 id */
+export interface Codex {
+  enemies: string[];
+  bosses: string[];
+}
 
 /** 별 평가 (PRD 3장): ★ 클리어 · ★★ 생명 10 이상 · ★★★ 생명을 하나도 잃지 않음 */
 export function starsOf(cleared: boolean, lives: number, startLives: number): 0 | 1 | 2 | 3 {
@@ -55,9 +74,22 @@ export interface DefenseProfile {
   upgrades: Upgrades;
   /** 쓸 수 있는 캐릭터 */
   unlocked: ZodiacId[];
+  /** 도감: 만난 요괴·보스 */
+  codex: Codex;
+  /** 끝없는 모드의 최고 기록 (없으면 null): 도달 웨이브와 그때 데려간 캐릭터 */
+  endless: { wave: number; squad: ZodiacId[] } | null;
 }
 
-export const defaultProfile = (): DefenseProfile => ({ coins: 0, stages: {}, levels: {}, upgrades: {}, unlocked: [...STARTERS] });
+export const defaultProfile = (): DefenseProfile => ({ coins: 0, stages: {}, levels: {}, upgrades: {}, unlocked: [...STARTERS], codex: { enemies: [], bosses: [] }, endless: null });
+
+/** 도감 합치기: 알려진 id 만, 데이터의 순서대로 (서버의 _defense_codex_merge 와 같다) */
+export function mergeCodex(old: Codex | undefined, add: Partial<Codex> | undefined): Codex {
+  const pick = (ids: string[], a: unknown, b: unknown) => {
+    const got = new Set<string>([...(Array.isArray(a) ? a : []), ...(Array.isArray(b) && b.length <= LIMITS.codex_max ? b : [])].filter((x) => typeof x === 'string'));
+    return ids.filter((id) => got.has(id));
+  };
+  return { enemies: pick(ENEMIES.map((e) => e.id), old?.enemies, add?.enemies), bosses: pick(BOSSES.map((b) => b.id), old?.bosses, add?.bosses) };
+}
 
 const isZodiac = (c: unknown): c is ZodiacId => typeof c === 'string' && (ZODIAC_IDS as readonly string[]).includes(c);
 
@@ -88,7 +120,10 @@ export function cleanProfile(raw: unknown): DefenseProfile {
   const got = Array.isArray(d.unlocked) ? d.unlocked.filter(isZodiac) : [];
   // 띠 순서로, 처음 4종은 늘 들어 있다
   const unlocked = ROSTER.map((r) => r.id).filter((id) => STARTERS.includes(id) || got.includes(id));
-  return { coins: Math.max(0, Math.floor(Number(d.coins)) || 0), stages, levels, upgrades, unlocked };
+  const e = d.endless as { wave?: unknown; squad?: unknown } | null | undefined;
+  const wave = Math.floor(Number(e?.wave)) || 0;
+  const endless = wave >= 1 ? { wave, squad: (Array.isArray(e?.squad) ? e.squad : []).filter(isZodiac) } : null;
+  return { coins: Math.max(0, Math.floor(Number(d.coins)) || 0), stages, levels, upgrades, unlocked, codex: mergeCodex(d.codex, undefined), endless };
 }
 
 export const totalStars = (p: DefenseProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);
@@ -143,6 +178,8 @@ export interface RunReport {
   cmds: number;
   /** 3단계 돼지가 벌어 준 엽전 */
   bonus: number;
+  /** 이 판에서 만난 요괴·보스 (도감) */
+  codex: Codex;
 }
 
 /** 저장 결과 (결과 화면에 보여 준다) */
@@ -162,7 +199,16 @@ export interface FinishResult {
   unlocked: ZodiacId[];
   /** 정상 범위의 판인가 (아니면 아무것도 받지 못한다) */
   valid: boolean;
+  /** 끝없는 모드: 이번 판의 도달 웨이브(스테이지 판은 0) · 최고 기록 · 새 기록인가 */
+  wave: number;
+  bestWave: number;
+  newRecord: boolean;
 }
+
+/** 도달 웨이브: 넘긴 웨이브 + 1 (서버도 판 시간으로 이렇게 센다) */
+export const waveOf = (time: number) => Math.floor(time / WAVE_SEC) + 1;
+/** 끝없는 모드의 엽전: 넘긴 웨이브마다, 상한까지 */
+export const endlessCoins = (time: number) => Math.min(LIMITS.endless_coin_cap, Math.floor(time / WAVE_SEC) * LIMITS.endless_coin_per_wave);
 
 /** 실패·포기한 판의 엽전: 클리어 보상 × 끝낸 웨이브 수 ÷ 15 (= 40% × 끝낸 웨이브 / 6). PRD 3장: 포기해도 일부 지급 */
 export function partialCoins(stage: StageDef, time: number): number {
@@ -174,10 +220,12 @@ export function partialCoins(stage: StageDef, time: number): number {
  * 받을 수 없는 판이면 그 까닭 (서버의 raise exception 글자와 같다), 받을 수 있으면 null.
  * elapsed: 판을 시작한 뒤 실제로 흐른 시간(초). startLives: 시작할 때 적어 둔 시작 생명
  */
-export function rejectReason(r: RunReport, elapsed: number, startLives: number): string | null {
+export function rejectReason(r: RunReport, elapsed: number, startLives: number, mode: RunMode = 'normal'): string | null {
   const ints = [r.time, r.lives, r.kills, r.placed, r.cmds, r.bonus];
   if (ints.some((v) => !Number.isInteger(v))) return 'bad result';
-  if (r.time < 0 || r.time > LIMITS.max_time) return 'bad time';
+  if (r.time < 0 || r.time > (mode === 'endless' ? LIMITS.endless_max_time : LIMITS.max_time)) return 'bad time';
+  // 끝없는 모드에는 클리어가 없다
+  if (mode === 'endless' && r.cleared) return 'bad result';
   if (r.lives < 0 || r.lives > startLives || r.kills < 0 || r.placed < 0 || r.cmds < 0 || r.bonus < 0) return 'bad result';
   if (r.placed > LIMITS.placed_max || r.cmds > LIMITS.cmds_max || r.placed > r.cmds) return 'bad result';
   // 클리어: 3분을 채웠고, 생명이 남았고, 캐릭터를 하나 이상 놓았다 (시작 명령 + 배치 명령)
@@ -187,23 +235,39 @@ export function rejectReason(r: RunReport, elapsed: number, startLives: number):
   return null;
 }
 
-/** 정상 범위의 판인가 (처치 수 상한) */
-export const isValid = (r: RunReport) => r.kills <= LIMITS.kills_base + r.time * LIMITS.kills_per_sec;
+/** 정상 범위의 판인가 (처치 수 상한. 끝없는 모드는 도달 웨이브에 걸맞은 처치 수도) */
+export const isValid = (r: RunReport, mode: RunMode = 'normal') =>
+  r.kills <= LIMITS.kills_base + r.time * LIMITS.kills_per_sec &&
+  (mode !== 'endless' || r.kills >= Math.max(0, waveOf(r.time) - LIMITS.endless_kills_from) * LIMITS.endless_kills_per_wave);
 
 /** 판 하나가 실제로 쓴 최소 시간 (초): 가장 빠른 배속 기준 (겹치는 판 확인용) */
 export const minRealTime = (time: number) => Math.max(0, time / LIMITS.max_speed - LIMITS.time_slack);
 
 /** 판 결과를 진행 상황에 반영한다 → 새 진행 상황과 결과. 모르는 스테이지·잠긴 스테이지면 오류 */
-export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string[] = []): { profile: DefenseProfile; result: FinishResult } {
+export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string[] = [], mode: RunMode = 'normal'): { profile: DefenseProfile; result: FinishResult } {
+  const none = { stars: 0, bestStars: 0, newStars: 0, firstClear: false, coins: 0, baseCoins: 0, firstCoins: 0, starCoins: 0, opened: null, unlocked: [] as ZodiacId[], wave: 0, bestWave: p.endless?.wave ?? 0, newRecord: false };
+  const pigBonus = squad.includes('pig') ? Math.min(LIMITS.bonus_max, r.bonus) : 0;
+  const coinMul = 100 + upgradeMods(p.upgrades).coinPct;
+  if (mode === 'endless') {
+    // 끝없는 모드: 도달 웨이브가 기록이고, 엽전은 넘긴 웨이브마다 (상한까지)
+    if (r.stage !== ENDLESS_ID) throw new Error('bad stage');
+    if (!endlessOpen(p)) throw new Error('endless locked');
+    const valid = isValid(r, 'endless');
+    if (!valid || r.time < LIMITS.count_min_time) return { profile: p, result: { ...none, valid } };
+    const wave = waveOf(r.time);
+    const baseCoins = endlessCoins(r.time);
+    const coins = Math.floor(((baseCoins + pigBonus) * coinMul) / 100);
+    const newRecord = wave > (p.endless?.wave ?? 0);
+    const profile: DefenseProfile = { ...p, coins: p.coins + coins, codex: mergeCodex(p.codex, r.codex), endless: newRecord ? { wave, squad: squad.filter(isZodiac) } : p.endless };
+    return { profile, result: { ...none, coins, baseCoins, valid, wave, bestWave: Math.max(wave, p.endless?.wave ?? 0), newRecord } };
+  }
   const stage = stageOf(r.stage);
-  if (!stage) throw new Error('bad stage');
+  if (!stage || stage.id === ENDLESS_ID) throw new Error('bad stage');
   if (!stageOpen(p, stage)) throw new Error('stage locked');
   const before = p.stages[stage.id] ?? 0;
   const valid = isValid(r);
   // 너무 짧은 판·비정상 판: 아무것도 주지 않는다
-  if (!valid || r.time < LIMITS.count_min_time) {
-    return { profile: p, result: { stars: 0, bestStars: before, newStars: 0, firstClear: false, coins: 0, baseCoins: 0, firstCoins: 0, starCoins: 0, opened: null, unlocked: [], valid } };
-  }
+  if (!valid || r.time < LIMITS.count_min_time) return { profile: p, result: { ...none, bestStars: before, valid } };
   const stars = starsOf(r.cleared, r.lives, r.startLives);
   const firstClear = stars > 0 && before === 0;
   const newStars = Math.max(0, stars - before);
@@ -211,18 +275,17 @@ export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string
   const firstCoins = firstClear ? stage.firstCoins : 0;
   const starCoins = newStars * COINS.perStar;
   // 3단계 돼지가 벌어 준 엽전: 돼지를 데려간 판에서만, 상한까지
-  const bonus = squad.includes('pig') ? Math.min(LIMITS.bonus_max, r.bonus) : 0;
-  const coins = Math.floor(((baseCoins + firstCoins + starCoins + bonus) * (100 + upgradeMods(p.upgrades).coinPct)) / 100);
+  const coins = Math.floor(((baseCoins + firstCoins + starCoins + pigBonus) * coinMul) / 100);
   const stages = stars > before ? { ...p.stages, [stage.id]: stars } : p.stages;
   // 캐릭터 해금: 그 지역의 보스 스테이지를 처음 클리어했을 때 (PRD 4장)
   const unlocked: ZodiacId[] = [];
   if (firstClear && stage.no === 5) {
     for (const c of ROSTER) if (c.unlockRegion === stage.region && !p.unlocked.includes(c.id)) unlocked.push(c.id);
   }
-  const profile: DefenseProfile = { ...p, coins: p.coins + coins, stages, unlocked: ROSTER.map((c) => c.id).filter((id) => p.unlocked.includes(id) || unlocked.includes(id)) };
+  const profile: DefenseProfile = { ...p, coins: p.coins + coins, stages, codex: mergeCodex(p.codex, r.codex), unlocked: ROSTER.map((c) => c.id).filter((id) => p.unlocked.includes(id) || unlocked.includes(id)) };
   // 새로 열린 스테이지: 이 판 전에는 잠겨 있었고 지금은 열린 것 가운데 첫 번째
   const opened = firstClear ? (STAGES.find((x) => !stageOpen(p, x) && stageOpen(profile, x))?.id ?? null) : null;
-  return { profile, result: { stars, bestStars: Math.max(before, stars), newStars, firstClear, coins, baseCoins, firstCoins, starCoins, opened, unlocked, valid } };
+  return { profile, result: { ...none, stars, bestStars: Math.max(before, stars), newStars, firstClear, coins, baseCoins, firstCoins, starCoins, opened, unlocked, valid } };
 }
 
 /** 새로 열린 스테이지 (서버 답에는 없어서 앞뒤 진행 상황을 비교해 찾는다) */

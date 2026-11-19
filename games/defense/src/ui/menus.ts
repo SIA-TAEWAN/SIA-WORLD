@@ -1,12 +1,15 @@
-import { BOARD_H, BOARD_W, ROAD_W, SLOT_SIZE, SQUAD_SIZE, START_LIVES, type ZodiacId } from '../data/balance';
+import { BOARD_H, BOARD_W, ROAD_W, SLOT_SIZE, SQUAD_SIZE, type ZodiacId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { ROSTER, towerOf } from '../data/characters';
+import { upgradeMods } from '../data/growth';
+import { ENDLESS_BOSS_EVERY, ENDLESS_ID } from '../data/endless';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { REGIONS, regionOf } from '../data/regions';
 import { stageEnemies, stageOf, stagesOf, type StageDef } from '../data/stages';
 import { buildRoute, cellX, cellY } from '../game/path';
-import { charLevel, clearedCount, endlessOpen, regionCleared, regionOpen, regionStars, stageOpen, totalStars } from '../game/progress';
-import { worldHome } from '../net/world';
+import { charLevel, clearedCount, endlessOpen, startLivesOf, regionCleared, regionOpen, regionStars, stageOpen, totalStars } from '../game/progress';
+import { LOCAL_MODE } from '../net/api';
+import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, josa, loadEngine, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
 import { sfx } from './sfx';
@@ -44,8 +47,8 @@ export function showMain() {
        <button class="btn primary big" id="go">출전 ▶</button>
        <div class="sub-actions">
          <button class="btn" id="chars">🐭 캐릭터</button>
-         <button class="btn soon" data-soon="도감">📖 도감</button>
-         <button class="btn soon" data-soon="랭킹">🏆 랭킹</button>
+         <button class="btn" id="codex">📖 도감</button>
+         <button class="btn" id="ranking">🏆 랭킹</button>
        </div>
      </div>
      <p class="soft foot">${esc(state.user.name)} 님 · 스테이지 ${clearedCount(state.profile)}개 클리어</p>`,
@@ -63,11 +66,15 @@ export function showMain() {
     sfx('click');
     nav.chars();
   });
-  root.querySelector('.sub-actions')!.addEventListener('click', (e) => {
-    const b = (e.target as HTMLElement).closest('[data-soon]') as HTMLElement | null;
-    if (!b) return;
-    sfx('toggle');
-    toast(`${josa(b.dataset.soon ?? '', '은', '는')} 아직 준비 중이에요`);
+  root.querySelector('#codex')!.addEventListener('click', () => {
+    sfx('click');
+    nav.codex();
+  });
+  // 랭킹: SIA WORLD 공용 랭킹 창을 시아디펜스 탭(스테이지 / 끝없는 모드)으로 연다
+  root.querySelector('#ranking')!.addEventListener('click', async () => {
+    sfx('click');
+    if (LOCAL_MODE) return toast('테스트 모드에서는 랭킹을 볼 수 없어요');
+    if (!(await openWorldRanking(state.user.id))) toast('랭킹을 불러오지 못했어요');
   });
   root.append(soundButton());
   void loadEngine();
@@ -92,10 +99,10 @@ export function showRegions() {
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>지역 지도</h2><span class="spacer"></span></div>
      <div class="regions" id="regions">
        ${REGIONS.map(card).join('')}
-       <button class="region endless closed" id="endless">
+       <button class="region endless ${endless ? '' : 'closed'}" id="endless">
          <span class="region-face"><em>♾️</em></span>
-         <span class="region-tx"><b>끝없는 고개</b><small>30초 웨이브가 끝없이 이어져요</small></span>
-         <span class="region-side"><i>${endless ? '준비 중' : '🔒 쥐의 들판 클리어'}</i></span>
+         <span class="region-tx"><b>끝없는 고개</b><small>30초 웨이브가 끝없이 이어져요. 어디까지 버틸까요?</small></span>
+         <span class="region-side">${endless ? `<em>🏔️ ${state.profile.endless ? `최고 웨이브 ${state.profile.endless.wave}` : '도전!'}</em>` : '<i>🔒 쥐의 들판 클리어</i>'}</span>
        </button>
      </div>`,
     'select',
@@ -108,8 +115,12 @@ export function showRegions() {
     const b = (e.target as HTMLElement).closest('.region') as HTMLElement | null;
     if (!b) return;
     if (b.id === 'endless') {
-      sfx('toggle');
-      return toast(endless ? '끝없는 고개는 아직 준비 중이에요' : '🔒 쥐의 들판을 클리어하면 열려요');
+      if (!endless) {
+        sfx('toggle');
+        return toast('🔒 쥐의 들판을 클리어하면 열려요');
+      }
+      sfx('click');
+      return nav.prepare(ENDLESS_ID);
     }
     const no = Number(b.dataset.r);
     const r = REGIONS[no - 1];
@@ -201,34 +212,39 @@ function stageThumb(st: StageDef): string {
 export function showPrepare(stageId: string) {
   const st = stageOf(stageId);
   if (!st) return nav.regions();
-  const region = regionOf(st.region)!;
+  const isEndless = st.id === ENDLESS_ID;
+  const bg = regionOf(st.region)?.bg ?? 'field';
   // 쓸 수 있는 캐릭터: 해금했고 계산까지 만들어진 것
   const unlocked = (id: ZodiacId) => !!towerOf(id) && state.profile.unlocked.includes(id);
   // 지난번에 고른 캐릭터부터 (지금 쓸 수 있는 것만)
   let picked = new Set<ZodiacId>(state.squad.filter(unlocked));
   let focus: ZodiacId = [...picked][0] ?? 'rat';
-  const foes = stageEnemies(st).map((id) => ENEMIES[ENEMY_INDEX[id]]).filter(Boolean);
+  // 끝없는 모드에는 모든 요괴가 차례로 나온다
+  const foes = isEndless ? ENEMIES : stageEnemies(st).map((id) => ENEMIES[ENEMY_INDEX[id]]).filter(Boolean);
   const boss = st.boss ? BOSSES[BOSS_INDEX[st.boss.id]] : null;
   const weakFaces = (ids: ZodiacId[]) => ids.map((z) => `<img class="${unlocked(z) ? '' : 'dimmed'}" src="${zodiacFaceUrl(z)}" alt="${esc(zodiacNick(z))}" title="${esc(zodiacNick(z))}" />`).join('');
   const best = state.profile.stages[st.id] ?? 0;
+  /** 눌러 본 요괴 (설명과 잘 듣는 캐릭터를 아래 한 줄에 보여 준다). 보스는 'boss' */
+  let foeFocus: string = boss ? 'boss' : (foes[0]?.id ?? '');
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>출전 준비</h2><span class="spacer"></span></div>
      <div class="scroll">
-     <div class="card prep-stage bg-${region.bg}">
+     <div class="card prep-stage bg-${bg}">
        ${stageThumb(st)}
        <div class="prep-tx">
-         <h3>${esc(st.id)} ${esc(st.name)}</h3>
-         <p>${starsHtml(best)}</p>
-         <p class="chips"><span>❤️ ${st.lives ?? START_LIVES}</span><span>✨ ${st.energy}</span><span>배치 칸 ${st.slots.length}</span></p>
-         <p class="soft">30초 웨이브 6개 · 3분${boss ? ' · 2분에 보스' : ''}</p>
+         <h3>${isEndless ? '♾️' : esc(st.id)} ${esc(st.name)}</h3>
+         <p>${isEndless ? `<span class="tag role">${state.profile.endless ? `최고 웨이브 ${state.profile.endless.wave}` : '첫 도전'}</span>` : starsHtml(best)}</p>
+         <p class="chips"><span>❤️ ${startLivesOf(st, state.profile.upgrades)}</span><span>✨ ${Math.floor(st.energy * upgradeMods(state.profile.upgrades).energy + 1e-6)}</span><span>배치 칸 ${st.slots.length}</span></p>
+         <p class="soft">${isEndless ? `30초 웨이브가 끝없이 · ${ENDLESS_BOSS_EVERY}웨이브마다 보스` : `30초 웨이브 6개 · 3분${boss ? ' · 2분에 보스' : ''}`}</p>
        </div>
      </div>
-     <div class="card">
-       <h3>나오는 요괴</h3>
-       <ul class="foes">
-         ${foes.map((f) => `<li><img class="foe-art" src="${artUrl(`e-${f.id}`)}" alt="" /><span><b>${esc(f.name)}</b><small>${esc(f.desc)}</small></span><span class="weak"><small>잘 듣는</small>${weakFaces(f.weak)}</span></li>`).join('')}
-         ${boss ? `<li class="boss"><img class="foe-art" src="${artUrl(`b-${boss.id}`)}" alt="" /><span><b>${esc(boss.name)} <i class="tag">보스</i></b><small>${esc(boss.desc)} · 지나가면 생명 ${boss.leak}</small></span></li>` : ''}
-       </ul>
+     <div class="card foe-card">
+       <h3>나오는 요괴 <small>눌러서 살펴봐요</small></h3>
+       <div class="foe-row" id="foes">
+         ${foes.map((f) => `<button class="foe-chip" data-f="${f.id}"><img src="${artUrl(`e-${f.id}`)}" alt="" /><span>${esc(f.name)}</span></button>`).join('')}
+         ${boss ? `<button class="foe-chip boss" data-f="boss"><img src="${artUrl(`b-${boss.id}`)}" alt="" /><span>${esc(boss.name)}</span></button>` : ''}
+       </div>
+       <p class="char-info foe-info" id="foeInfo"></p>
      </div>
      <div class="card">
        <h3>출전 캐릭터 <small id="count"></small></h3>
@@ -242,6 +258,24 @@ export function showPrepare(stageId: string) {
     'select prepare',
   );
   const startBtn = root.querySelector('#start') as HTMLButtonElement;
+  const paintFoe = () => {
+    root.querySelectorAll<HTMLElement>('.foe-chip').forEach((b) => b.classList.toggle('sel', b.dataset.f === foeFocus));
+    const f = foes.find((x) => x.id === foeFocus);
+    root.querySelector('#foeInfo')!.innerHTML =
+      foeFocus === 'boss' && boss
+        ? `<b>${esc(boss.name)}</b> <i class="tag">보스</i><br/><small>${esc(boss.desc)} · 2분에 등장 · 지나가면 생명 ${boss.leak}</small>`
+        : f
+          ? `<b>${esc(f.name)}</b> <span class="weak"><small>잘 듣는</small>${weakFaces(f.weak)}</span><br/><small>${esc(f.desc)}</small>`
+          : '';
+  };
+  paintFoe();
+  root.querySelector('#foes')!.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('.foe-chip') as HTMLElement | null;
+    if (!b) return;
+    sfx('toggle');
+    foeFocus = b.dataset.f ?? '';
+    paintFoe();
+  });
   const paint = () => {
     root.querySelectorAll<HTMLElement>('.char').forEach((b) => {
       const id = b.dataset.c as ZodiacId;
@@ -275,13 +309,14 @@ export function showPrepare(stageId: string) {
   });
   root.querySelector('#back')!.addEventListener('click', () => {
     sfx('click');
-    nav.stages(st.region);
+    if (isEndless) nav.regions();
+    else nav.stages(st.region);
   });
   startBtn.addEventListener('click', () => {
     if (!picked.size) return;
     sfx('click');
     saveSquad([...picked]);
-    nav.game({ stage: st.id, squad: [...picked] });
+    nav.game({ stage: st.id, squad: [...picked], endless: isEndless });
   });
   void loadEngine();
 }

@@ -263,6 +263,11 @@ export interface State {
   kills: number;
   /** 3단계 돼지가 벌어 준 엽전 */
   bonus: number;
+  /** 끝없는 모드인가 (웨이브를 그때그때 만들고, 클리어가 없다) */
+  endless: boolean;
+  /** 이 판에서 만난 요괴·보스 (도감용. 비트 = ENEMIES · BOSSES 번호) */
+  seenE: number;
+  seenB: number;
   /** 지금 웨이브 (0~5, 시작 전에는 -1) */
   wave: number;
   spawns: Spawn[];

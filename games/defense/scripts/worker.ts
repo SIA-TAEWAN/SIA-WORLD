@@ -28,7 +28,8 @@ interface Job {
 }
 
 /** 그 지역에 들어설 때 쓸 수 있는 캐릭터 (앞 지역들을 클리어해 해금한 것) */
-const unlockedAt = (region: number) => ROSTER.filter((c) => c.unlockRegion < region && towerOf(c.id)).map((c) => c.id);
+/** (끝없는 모드의 맵은 지역 0: 모든 캐릭터를 쓸 수 있는 것으로 본다) */
+const unlockedAt = (region: number) => ROSTER.filter((c) => (region === 0 || c.unlockRegion < region) && towerOf(c.id)).map((c) => c.id);
 
 function squadFor(j: Job): ZodiacId[] {
   if (j.squad) return j.squad;
@@ -119,10 +120,12 @@ if (arg === 'info') {
     const lv = j.lv ?? stage.region;
     const levels = Object.fromEntries(squad.map((c) => [c, lv]));
     const upgrades = presetUpgrades(j.upg ?? Math.floor((stage.region - 1) / 2));
-    const out = { key: j.key, runs: 0, clears: 0, stars: [0, 0, 0, 0], lives: 0, time: 0, kills: 0, towers: 0, bossDown: 0, failWave: new Array(WAVES).fill(0) as number[], squad };
+    const out = { key: j.key, runs: 0, clears: 0, stars: [0, 0, 0, 0], lives: 0, time: 0, kills: 0, towers: 0, bossDown: 0, waves: 0, maxWave: 0, failWave: new Array(WAVES).fill(0) as number[], squad };
     for (let i = j.from; i < j.to; i++) {
       // 판 번호마다 정해진 시드: 일꾼을 어떻게 나누든 같은 판이 나온다
-      const r = simulate({ seed: 1 + i * 7919, stage: j.stage, squad, levels, upgrades }, skillPolicy(31 + i * 104729, SKILLS[j.skill])).summary;
+      const r = simulate({ seed: 1 + i * 7919, stage: j.stage, squad, levels, upgrades }, skillPolicy(31 + i * 104729, SKILLS[j.skill]), 3700).summary;
+      out.waves += r.wave;
+      out.maxWave = Math.max(out.maxWave, r.wave);
       out.runs++;
       out.clears += r.cleared ? 1 : 0;
       out.stars[r.stars]++;

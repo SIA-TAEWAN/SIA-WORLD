@@ -5,6 +5,7 @@
  *   npm run balance -- 40 stages [3]    → 스테이지별 클리어율·별 분포 (실력 3단계, 캐릭터 레벨 = 지역 번호). 끝의 숫자는 지역, '3-5' 는 스테이지
  *   npm run balance -- 40 levels        → 지역 × 캐릭터 레벨 표 (N지역은 N레벨쯤에서 클리어되는가)
  *   npm run balance -- 40 chars         → 캐릭터 × 지역 표: 다른 4종만 데려갔을 때 → 그 캐릭터를 다섯째로 더했을 때의 클리어율 (쓸모없는 캐릭터가 없는가)
+ *   npm run balance -- 12 endless       → 끝없는 모드: 캐릭터 레벨별 도달 웨이브 (평균 · 최고)
  *   npm run balance -- 12 journey       → '몇 판째' 어림셈: 처음부터 마지막 스테이지 클리어까지의 판 수 (PRD: 120~150판)
  * 맨 앞 숫자는 조합마다 돌리는 판 수. '보통 실력'은 src/game/policy.ts 의 자동 배치 정책이다.
  * 몇 분 걸리므로 테스트(npm test)에는 넣지 않는다.
@@ -54,8 +55,9 @@ async function sweep(combos) {
   for (let i = 0; i < calls.length; i += WORKERS) lines.push(...(await Promise.all(calls.slice(i, i + WORKERS).map((p) => work(JSON.stringify(p))))).flat());
   const sum = new Map();
   for (const l of lines) {
-    const s = sum.get(l.key) ?? { runs: 0, clears: 0, stars: [0, 0, 0, 0], lives: 0, time: 0, kills: 0, towers: 0, bossDown: 0, failWave: [0, 0, 0, 0, 0, 0], squad: l.squad };
-    for (const k of ['runs', 'clears', 'lives', 'time', 'kills', 'towers', 'bossDown']) s[k] += l[k];
+    const s = sum.get(l.key) ?? { runs: 0, clears: 0, stars: [0, 0, 0, 0], lives: 0, time: 0, kills: 0, towers: 0, bossDown: 0, waves: 0, maxWave: 0, failWave: [0, 0, 0, 0, 0, 0], squad: l.squad };
+    for (const k of ['runs', 'clears', 'lives', 'time', 'kills', 'towers', 'bossDown', 'waves']) s[k] += l[k];
+    s.maxWave = Math.max(s.maxWave, l.maxWave);
     l.stars.forEach((n, i) => (s.stars[i] += n));
     l.failWave.forEach((n, i) => (s.failWave[i] += n));
     sum.set(l.key, s);
@@ -134,6 +136,18 @@ if (!only || only === 'chars') {
     });
     console.log(`  ${c.name.padEnd(6, '　')}${cells.join('')}`);
   }
+}
+
+if (!only || only === 'endless') {
+  // 끝없는 모드: 모든 캐릭터를 쓸 수 있을 때, 캐릭터 레벨(공통 강화는 레벨에 맞춰 0~5)별 도달 웨이브
+  const LV = [1, 3, 6, 9, 12];
+  const sum = await sweep(LV.flatMap((lv) => SKILLS.map(([skill]) => ({ key: `${lv}:${skill}`, stage: 'endless', skill, lv, upg: Math.min(5, Math.floor(lv / 2)) }))));
+  console.log(`\n■ 끝없는 모드 (끝없는 고개, ${runs}판): 도달 웨이브 평균 (최고)`);
+  console.log(`  ${'실력'.padEnd(4, '　')}${LV.map((l) => `Lv${l}`.padStart(14)).join('')}`);
+  for (const [skill, name] of SKILLS) {
+    console.log(`  ${name.padEnd(4, '　')}${LV.map((lv) => { const s = sum.get(`${lv}:${skill}`); return `${(s.waves / s.runs).toFixed(1)} (${s.maxWave})`.padStart(14); }).join('')}`);
+  }
+  console.log(`  고른 5종: ${sum.get('1:normal').squad.join(' ')}`);
 }
 
 if (!only || only === 'journey') {

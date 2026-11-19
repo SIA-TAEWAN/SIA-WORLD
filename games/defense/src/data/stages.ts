@@ -1,3 +1,4 @@
+import { ENDLESS_ID, ENDLESS_STAGE } from './endless';
 import { REGIONS, type BgId } from './regions';
 import { REGION_02 } from './stages/r02';
 import { REGION_03 } from './stages/r03';
@@ -161,7 +162,8 @@ const REGION_1: StageDef[] = [
 export const STAGES: StageDef[] = [...REGION_1, ...REGION_02, ...REGION_03, ...REGION_04, ...REGION_05, ...REGION_06, ...REGION_07, ...REGION_08, ...REGION_09, ...REGION_10, ...REGION_11, ...REGION_12];
 
 export const STAGE_INDEX: Record<string, number> = Object.fromEntries(STAGES.map((s, i) => [s.id, i]));
-export const stageOf = (id: string): StageDef | undefined => STAGES[STAGE_INDEX[id]];
+/** 스테이지 데이터 (끝없는 모드의 맵 'endless' 도 여기서 찾는다. STAGES 에는 들어 있지 않다) */
+export const stageOf = (id: string): StageDef | undefined => (id === ENDLESS_ID ? ENDLESS_STAGE : STAGES[STAGE_INDEX[id]]);
 /** 그 지역의 스테이지들 (번호 순) */
 export const stagesOf = (region: number): StageDef[] => STAGES.filter((s) => s.region === region).sort((a, b) => a.no - b.no);
 /** 스테이지의 배경 (지역이 정한다) */

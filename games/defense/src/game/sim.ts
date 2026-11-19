@@ -1,9 +1,10 @@
 import { BOSS_AT, BOSS_WARN_SEC, LIMIT, MAX_LV, RUN_SEC, SELL_RATE, SQUAD_SIZE, START_LIVES, STUN_GUARD_SEC, TICK, WAVES, WAVE_HP, WAVE_SEC } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { TOWERS, TOWER_INDEX, type TowerLevel } from '../data/characters';
+import { ENDLESS_ID, ENDLESS_MAX_SEC, endlessBoss, endlessWave } from '../data/endless';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { levelMods, upgradeMods } from '../data/growth';
-import { stageOf, type StageDef } from '../data/stages';
+import { stageOf, type StageDef, type WaveDef } from '../data/stages';
 import { BOSS_ACTS } from './bosses';
 import { burn, placeOnRoute, spawnEnemy } from './core';
 import { buildRoute, cellX, cellY } from './path';
@@ -25,6 +26,21 @@ export const RUSH_MUL = 1.4;
 export const MARK_MUL = 0.5;
 
 /** given: 스테이지 데이터를 직접 준다 (아직 목록에 없는 스테이지를 시험할 때 — scripts/gen-stages.ts) */
+/** 웨이브 하나의 무리를 등장 예정으로 편다 (wi 번째 웨이브: wi × 30초부터) */
+function addWave(out: Spawn[], stageId: string, w: WaveDef, wi: number, hpMul: number, ground: number[], sky: number) {
+  for (const g of w.groups) {
+    const kind = ENEMY_INDEX[g.enemy];
+    if (kind === undefined) throw new Error(`unknown enemy: ${g.enemy}`);
+    // 공중 요괴는 길을 적지 않으면 공중 경로로 온다
+    const fly = !!ENEMIES[kind].air;
+    if (fly && g.route === undefined && sky < 0) throw new Error(`${stageId}: ${g.enemy} needs an air route`);
+    for (let k = 0; k < g.count; k++) {
+      const route = g.route === 'alt' ? ground[k % ground.length] : (g.route ?? (fly ? sky : 0));
+      out.push({ t: wi * WAVE_SEC + g.at + k * g.gap, kind, boss: -1, route, hpMul });
+    }
+  }
+}
+
 export function createGame(cfg: GameConfig, given?: StageDef): State {
   const stage = given ?? stageOf(cfg.stage);
   if (!stage) throw new Error(`unknown stage: ${cfg.stage}`);
@@ -36,22 +52,9 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
     const i = TOWER_INDEX[id];
     if (i !== undefined && !squad.includes(i) && squad.length < SQUAD_SIZE) squad.push(i);
   }
-  // 웨이브를 등장 시각 순서로 펴 둔다
+  // 웨이브를 등장 시각 순서로 펴 둔다 (끝없는 모드는 웨이브가 시작될 때마다 그 웨이브만 편다 — step)
   const spawns: Spawn[] = [];
-  stage.waves.slice(0, WAVES).forEach((w, wi) => {
-    const hpMul = stage.hp * (w.hp ?? WAVE_HP[wi] ?? 1);
-    for (const g of w.groups) {
-      const kind = ENEMY_INDEX[g.enemy];
-      if (kind === undefined) throw new Error(`unknown enemy: ${g.enemy}`);
-      // 공중 요괴는 길을 적지 않으면 공중 경로로 온다
-      const fly = !!ENEMIES[kind].air;
-      if (fly && g.route === undefined && sky < 0) throw new Error(`${stage.id}: ${g.enemy} needs an air route`);
-      for (let k = 0; k < g.count; k++) {
-        const route = g.route === 'alt' ? ground[k % ground.length] : (g.route ?? (fly ? sky : 0));
-        spawns.push({ t: wi * WAVE_SEC + g.at + k * g.gap, kind, boss: -1, route, hpMul });
-      }
-    }
-  });
+  stage.waves.slice(0, WAVES).forEach((w, wi) => addWave(spawns, stage.id, w, wi, stage.hp * (w.hp ?? WAVE_HP[wi] ?? 1), ground, sky));
   let bossId = -1;
   let bossAt = -1;
   if (stage.boss) {
@@ -99,6 +102,9 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
     energy: Math.floor(stage.energy * um.energy + 1e-6),
     kills: 0,
     bonus: 0,
+    endless: stage.id === ENDLESS_ID,
+    seenE: 0,
+    seenB: 0,
     wave: -1,
     spawns,
     spawnI: 0,
@@ -230,10 +236,20 @@ export function step(s: State) {
   s.time = s.tick * TICK;
 
   // 웨이브: 30초마다 다음 웨이브 (3분 뒤로는 마지막 웨이브 그대로)
-  const wave = Math.min(WAVES - 1, Math.floor((s.tick - 1) / WAVE_TICKS));
+  // 끝없는 모드: 웨이브가 끝없이 이어지고, 시작될 때마다 그 웨이브의 요괴를 만든다 (웨이브 번호로 정해진다)
+  const wave = s.endless ? Math.floor((s.tick - 1) / WAVE_TICKS) : Math.min(WAVES - 1, Math.floor((s.tick - 1) / WAVE_TICKS));
   if (wave !== s.wave) {
     s.wave = wave;
     emit(s, EV.wave, wave);
+    if (s.endless) {
+      const w = endlessWave(wave);
+      const add: Spawn[] = [];
+      addWave(add, s.stage.id, w, wave, s.stage.hp * (w.hp ?? 1), s.ground, s.routes.findIndex((r) => r.air));
+      const b = endlessBoss(wave);
+      if (b) add.push({ t: wave * WAVE_SEC + 6, kind: -1, boss: b.boss, route: s.ground[0], hpMul: b.hp });
+      add.sort((x, y) => x.t - y.t);
+      for (const sp of add) s.spawns.push(sp);
+    }
     // 돼지: 웨이브가 시작될 때마다 기운을 번다 (3단계는 엽전도)
     for (let slot = 0; slot < s.towers.length; slot++) {
       const tw = s.towers[slot];
@@ -257,7 +273,14 @@ export function step(s: State) {
     const e = spawnEnemy(s, sp.kind, sp.boss, sp.route, sp.hpMul);
     if (!e) break;
     s.spawnI++;
-    if (sp.boss >= 0) emit(s, EV.bossIn, sp.boss, 0, e.x, e.y);
+    // 도감: 이 판에서 만난 요괴·보스
+    if (sp.boss >= 0) {
+      s.seenB |= 1 << sp.boss;
+      // (끝없는 모드는 보스가 여러 번 나온다: 나올 때마다 그 보스가 '지금의 보스'다)
+      s.bossId = sp.boss;
+      s.bossDown = false;
+      emit(s, EV.bossIn, sp.boss, 0, e.x, e.y);
+    } else s.seenE |= 1 << sp.kind;
   }
 
   // 감지: 은신 요괴를 찾아내는 캐릭터의 사거리 안에 있으면 잠깐 드러난다 (0.1초마다 살핀다)
@@ -375,9 +398,14 @@ export function step(s: State) {
 
   // 끝: 나올 요괴가 다 나왔고 길 위에 아무도 없으면 클리어 (3분 뒤에도 남은 요괴·보스가 없어질 때까지 계속된다)
   // (3분이 되기 전에 다 잡았어도 3분까지는 기다린다: 클리어한 판은 늘 180초 이상이다 — 서버 검증의 기준)
-  if (s.spawnI >= s.spawns.length && s.enemyN === 0 && s.time >= RUN_SEC) {
+  if (!s.endless && s.spawnI >= s.spawns.length && s.enemyN === 0 && s.time >= RUN_SEC) {
     s.phase = 'clear';
     emit(s, EV.clear);
+  }
+  // 끝없는 모드에는 클리어가 없다. 시간 상한(웨이브 120)에 닿으면 거기서 끝난다
+  if (s.endless && s.time >= ENDLESS_MAX_SEC - 1) {
+    s.phase = 'fail';
+    emit(s, EV.fail);
   }
 }
 
@@ -402,6 +430,8 @@ export interface RunSummary extends Omit<RunReport, 'run'> {
   bossDown: boolean;
   /** 배치해 둔 캐릭터 수 */
   towers: number;
+  /** 끝없는 모드인가 */
+  endless: boolean;
 }
 
 /** 명령 기록에서 센 값 (서버의 싼 정합성 검사용): 배치한 횟수 */
@@ -419,9 +449,14 @@ export function summarize(s: State): RunSummary {
     placed: placedCount(s),
     cmds: s.log.length,
     bonus: s.bonus,
+    codex: {
+      enemies: ENEMIES.filter((_, i) => s.seenE & (1 << i)).map((e) => e.id),
+      bosses: BOSSES.filter((_, i) => s.seenB & (1 << i)).map((b) => b.id),
+    },
     stars: starsOf(cleared, s.lives, s.startLives),
     wave: s.wave + 1,
     bossDown: s.bossDown,
+    endless: s.endless,
     towers: s.towers.reduce((n, t) => n + (t.char >= 0 ? 1 : 0), 0),
   };
 }

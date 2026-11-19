@@ -12,6 +12,8 @@ export const stage = document.getElementById('stage')!;
 export interface GameSetup {
   stage: string;
   squad: ZodiacId[];
+  /** 끝없는 모드인가 (stage 는 'endless') */
+  endless?: boolean;
   /** 개발용: 같은 판 다시 보기 · 모든 캐릭터 레벨 · 모든 공통 강화 레벨 · 저장하지 않는 판 (잠금을 건너뛰고 시작한 판) */
   seed?: number;
   lv?: number;
@@ -63,6 +65,8 @@ export const nav = {
   stages: (_region: number) => {},
   /** 캐릭터 레벨업 · 공통 강화 */
   chars: () => {},
+  /** 도감 */
+  codex: () => {},
   /** 출전 준비: 캐릭터 5종 고르기 + 요괴 미리 보기 */
   prepare: (_stage: string) => {},
   game: (_setup: GameSetup) => {},

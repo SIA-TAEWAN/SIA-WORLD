@@ -5,6 +5,8 @@ import { LOCAL_MODE, devSetup, getApi } from './net/api';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { loadEngine, loadSquad, nav, screen, setProfile, state, toast } from './ui/app';
 import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
+import { ENDLESS_ID } from './data/endless';
+import { showCodex } from './ui/codex';
 import { showResult } from './ui/result';
 import { showChars } from './ui/roster';
 
@@ -13,6 +15,7 @@ nav.regions = showRegions;
 nav.stages = showStages;
 nav.prepare = showPrepare;
 nav.chars = showChars;
+nav.codex = showCodex;
 const dev = devSetup();
 /** 게임 엔진 묶음을 받는 중인가 (그동안 시작 버튼을 여러 번 눌러도 판은 한 번만 시작한다) */
 let starting = false;
@@ -82,7 +85,7 @@ async function start() {
   // (잠금·해금을 보지 않으므로 이렇게 시작한 판은 저장하지 않는다)
   if (dev?.stage) {
     const squad = dev.squad ?? ROSTER.map((c) => c.id).filter((id) => !!towerOf(id) && (dev.lv !== null || state.profile.unlocked.includes(id))).slice(0, SQUAD_SIZE);
-    nav.game({ stage: dev.stage, squad: squad.length ? squad : [...STARTERS], seed: dev.seed ?? undefined, lv: dev.lv ?? undefined, upg: dev.upg ?? undefined, offline: true });
+    nav.game({ stage: dev.stage, squad: squad.length ? squad : [...STARTERS], seed: dev.seed ?? undefined, lv: dev.lv ?? undefined, upg: dev.upg ?? undefined, offline: true, endless: dev.stage === ENDLESS_ID });
   }
   else nav.main();
 }

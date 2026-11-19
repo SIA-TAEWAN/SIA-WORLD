@@ -98,7 +98,8 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     const s = this.run.state;
-    const keys = stageEnemies(s.stage).map((id) => `e-${id}`);
+    // 끝없는 모드에는 모든 요괴와 보스가 차례로 나온다
+    const keys = s.endless ? [...ENEMIES.map((_, i) => enemyKey(i)), ...BOSSES.map((_, i) => bossKey(i))] : stageEnemies(s.stage).map((id) => `e-${id}`);
     if (s.bossId >= 0) {
       keys.push(bossKey(s.bossId));
       // 보스가 부르는 졸개의 그림
