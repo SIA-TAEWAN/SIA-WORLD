@@ -59,6 +59,8 @@ export const EV = {
   bossAct: 11,
   clear: 12,
   fail: 13,
+  /** 돼지가 기운을 벌었다: a = 기운, b = 칸 */
+  income: 14,
 } as const;
 
 export interface Ev {
@@ -73,10 +75,12 @@ export interface Enemy {
   alive: boolean;
   /** 판 안에서 겹치지 않는 번호 (투사체가 과녁을 기억할 때) */
   uid: number;
-  /** 요괴 종류 (ENEMIES 번호). 보스면 -1 */
+  /** 요괴 종류 (ENEMIES 번호) */
   kind: number;
   /** 보스 번호 (BOSSES). 일반 요괴면 -1 */
   boss: number;
+  /** 보스의 분신·마디: 이 보스의 그림으로 그린다 (아니면 -1) */
+  look: number;
   route: number;
   /** 길을 따라 온 거리 · 지금 구간 */
   d: number;
@@ -98,6 +102,32 @@ export interface Enemy {
   /** 멈춤이 남은 시간 · 멈춤이 다시 먹히기까지 남은 시간 */
   stun: number;
   guard: number;
+  /** 감속: 남은 시간과 속도 배율 · 그동안 더 받는 피해 비율 */
+  slowT: number;
+  slow: number;
+  vuln: number;
+  /** 독·불: 남은 시간과 초당 피해 */
+  dotT: number;
+  dot: number;
+  /** 다른 요괴가 빠르게 해 주는 시간 (수문장 대장) */
+  rush: number;
+  /** 회복: 초당 최대 체력 비율 */
+  regen: number;
+  /** 받는 피해가 줄어드는 비율 (0 = 그대로, 1 = 무적) · 정면 방패 배율 (1 = 없음) */
+  armor: number;
+  shield: number;
+  /** 주기 특성(은신·무적)의 시계와 지금 켜져 있나 */
+  cyc: number;
+  on: boolean;
+  stealth: boolean;
+  ghost: boolean;
+  /** 감지되어 드러나 있는 시간 */
+  seen: number;
+  /** 되살아날 수 있는 횟수 · 쓰러져 있는 시간 (그동안 노릴 수 없다) */
+  revive: number;
+  down: number;
+  /** 사라져 있는 시간 (보스의 특수 행동: 노릴 수도 맞힐 수도 없다) */
+  gone: number;
   /** 맞아서 번쩍이는 시간 (그리기용) */
   flash: number;
   /** 나온 뒤 흐른 시간 */
@@ -120,9 +150,16 @@ export interface Tower {
   /** 마지막으로 공격한 뒤 흐른 시간 · 그때 겨눈 쪽 (그리기용) */
   since: number;
   face: number;
+  /** 둘레의 닭이 올려 주는 공격 속도 (0.2 = +20%) */
+  haste: number;
+  /** 쓸 수 없는 시간 (보스가 멈추거나 칸을 태웠다. 빈 칸이면 그동안 놓을 수 없다) */
+  off: number;
+  /** 공격이 느려진 시간 (저승사자의 표식) */
+  mark: number;
 }
 
-export const PROJ = { shuriken: 0, cake: 1 } as const;
+/** 투사체 그림 (scenes/art.ts 의 PROJ_KEYS 순서) */
+export const PROJ = { shuriken: 0, cake: 1, venom: 2, arrow: 3, stone: 4, feather: 5, puppy: 6 } as const;
 
 export interface Proj {
   kind: number;
@@ -137,14 +174,15 @@ export interface Proj {
   tx: number;
   ty: number;
   speed: number;
-  dmg: number;
-  splash: number;
+  /** 던진 캐릭터와 그때의 강화 단계 (맞았을 때의 효과를 s.lv[char][lv] 에서 읽는다) */
+  char: number;
+  lv: number;
   /** 던진 뒤 흐른 시간 · 날아가는 시간 (던지는 투사체) */
   t: number;
   dur: number;
 }
 
-export const FX = { pulse: 0, slash: 1, burst: 2, pop: 3, leak: 4 } as const;
+export const FX = { pulse: 0, slash: 1, burst: 2, pop: 3, leak: 4, beam: 5, cloud: 6, zap: 7, puff: 8 } as const;
 
 export interface Fx {
   kind: number;
@@ -197,6 +235,8 @@ export interface State {
   cfg: GameConfig;
   stage: StageDef;
   routes: Route[];
+  /** 땅 위 길의 번호들 (보스의 분신·소환이 쓴다) */
+  ground: number[];
   /** 배치 칸의 가운데 (px) */
   slotX: number[];
   slotY: number[];
@@ -221,6 +261,8 @@ export interface State {
   startLives: number;
   energy: number;
   kills: number;
+  /** 3단계 돼지가 벌어 준 엽전 */
+  bonus: number;
   /** 지금 웨이브 (0~5, 시작 전에는 -1) */
   wave: number;
   spawns: Spawn[];
@@ -247,11 +289,12 @@ export interface State {
 }
 
 export const makeEnemy = (): Enemy => ({
-  alive: false, uid: 0, kind: 0, boss: -1, route: 0, d: 0, seg: 0, x: 0, y: 0, dx: 1, dy: 0, hp: 0, maxHp: 1, speed: 0, mul: 1, r: 0,
-  bounty: 0, leak: 1, air: false, stun: 0, guard: 0, flash: 0, t: 0, a: 0, b: 0, c: 0,
+  alive: false, uid: 0, kind: 0, boss: -1, look: -1, route: 0, d: 0, seg: 0, x: 0, y: 0, dx: 1, dy: 0, hp: 0, maxHp: 1, speed: 0, mul: 1, r: 0,
+  bounty: 0, leak: 1, air: false, stun: 0, guard: 0, slowT: 0, slow: 1, vuln: 0, dotT: 0, dot: 0, rush: 0, regen: 0, armor: 0, shield: 1,
+  cyc: 0, on: false, stealth: false, ghost: false, seen: 0, revive: 0, down: 0, gone: 0, flash: 0, t: 0, a: 0, b: 0, c: 0,
 });
-export const makeTower = (): Tower => ({ char: -1, lv: 0, cd: 0, spent: 0, since: 9, face: 1 });
-export const makeProj = (): Proj => ({ kind: 0, x: 0, y: 0, sx: 0, sy: 0, target: -1, uid: 0, tx: 0, ty: 0, speed: 0, dmg: 0, splash: 0, t: 0, dur: 0 });
+export const makeTower = (): Tower => ({ char: -1, lv: 0, cd: 0, spent: 0, since: 9, face: 1, haste: 0, off: 0, mark: 0 });
+export const makeProj = (): Proj => ({ kind: 0, x: 0, y: 0, sx: 0, sy: 0, target: -1, uid: 0, tx: 0, ty: 0, speed: 0, char: 0, lv: 0, t: 0, dur: 0 });
 export const makeFx = (): Fx => ({ kind: 0, x: 0, y: 0, r: 0, a: 0, life: 0, maxLife: 1 });
 export const makeEv = (): Ev => ({ t: 0, a: 0, b: 0, x: 0, y: 0 });
 

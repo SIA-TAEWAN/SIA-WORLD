@@ -10,6 +10,21 @@ import { buildRoute, cellX, cellY, distToRoad } from '../src/game/path';
 import { ATTACKS } from '../src/game/towers';
 
 describe('스테이지 데이터', () => {
+  it('지역마다 5스테이지이고 5번째에만 그 지역의 보스가 나온다. 공중 요괴가 나오는 스테이지에는 공중 경로가 있다', () => {
+    const regions = [...new Set(STAGES.map((s) => s.region))];
+    expect(regions).toEqual(regions.map((_, i) => i + 1));
+    for (const r of regions) {
+      const list = stagesOf(r);
+      expect(list.map((s) => s.no), `${r}지역`).toEqual([1, 2, 3, 4, 5]);
+      expect(list.map((s) => !!s.boss)).toEqual([false, false, false, false, true]);
+      expect(BOSSES[BOSS_INDEX[list[4].boss!.id]].name).toBe(REGIONS[r - 1].boss);
+      for (const s of list) {
+        const flies = stageEnemies(s).some((id) => ENEMIES[ENEMY_INDEX[id]].air);
+        if (flies) expect(s.routes.some((x) => x.air), s.id).toBe(true);
+      }
+    }
+  });
+
   it('1지역은 5스테이지이고 5번째만 2분에 보스(큰 도깨비)가 나온다', () => {
     const list = stagesOf(1);
     expect(list.map((s) => s.id)).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5']);
@@ -38,6 +53,8 @@ describe('스테이지 데이터', () => {
             expect(g.at).toBeGreaterThanOrEqual(0);
             expect(g.at + (g.count - 1) * g.gap).toBeLessThan(WAVE_SEC);
             if (typeof g.route === 'number') expect(routes[g.route]).toBeTruthy();
+          // 번갈아 오는 무리(alt)는 땅 위 요괴만
+          if (g.route === 'alt') expect(ENEMIES[ENEMY_INDEX[g.enemy]].air).toBeFalsy();
           }
         }
       });
@@ -79,6 +96,7 @@ describe('스테이지 데이터', () => {
 
   it('다음 스테이지: 1-1 → 1-2, 마지막 스테이지 뒤는 없다', () => {
     expect(nextStage(STAGES[0])!.id).toBe('1-2');
+    expect(nextStage(STAGES[4])?.id ?? '2-1').toBe('2-1');
     expect(nextStage(STAGES[STAGES.length - 1])).toBeUndefined();
   });
 });
@@ -88,7 +106,9 @@ describe('캐릭터·요괴·보스 데이터', () => {
     expect(ROSTER.map((r) => r.id)).toEqual([...ZODIAC_IDS]);
     expect(STARTERS).toEqual(['rat', 'ox', 'tiger', 'rabbit']);
     expect(ROSTER.slice(4).map((r) => r.unlockRegion)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(TOWERS.map((t) => t.id)).toEqual(STARTERS);
+    // 계산까지 만들어진 캐릭터는 띠 순서대로 (처음 4종이 맨 앞)
+    expect(TOWERS.map((t) => t.id)).toEqual(ROSTER.slice(0, TOWERS.length).map((r) => r.id));
+    expect(TOWERS.length).toBeGreaterThanOrEqual(10);
   });
   it('캐릭터는 강화 3단계이고 단계가 오를수록 피해·사거리가 줄지 않고 공격 간격이 늘지 않는다', () => {
     for (const t of TOWERS) {
@@ -100,12 +120,26 @@ describe('캐릭터·요괴·보스 데이터', () => {
         expect(b.dmg * (b.count ?? 1)).toBeGreaterThanOrEqual(a.dmg * (a.count ?? 1));
         expect(b.range).toBeGreaterThanOrEqual(a.range);
         expect(b.every).toBeLessThanOrEqual(a.every);
+        // 돕는 값도 줄지 않는다
+        expect(b.slow ?? 1).toBeLessThanOrEqual(a.slow ?? 1);
+        expect(b.haste ?? 0).toBeGreaterThanOrEqual(a.haste ?? 0);
+        expect(b.income ?? 0).toBeGreaterThanOrEqual(a.income ?? 0);
+        expect(b.poison ?? 0).toBeGreaterThanOrEqual(a.poison ?? 0);
       }
       expect(spentAt(t, 3)).toBe(t.cost + t.up[0] + t.up[1]);
     }
   });
   it('3단계 특수 효과: 쥐 표창 2개 · 소 멈춤 시간 증가 · 호랑이 범위 베기 · 토끼 폭발 범위 증가', () => {
-    const [rat, ox, tiger, rabbit] = TOWERS;
+    const [rat, ox, tiger, rabbit, dragon, snake, horse, sheep, monkey, rooster] = TOWERS;
+    // 용 광선 지속 피해 · 뱀 독이 번짐 · 말 보스 추가 피해 · 양 감속 중 받는 피해 증가 · 원숭이 은신 감지 · 닭 지원 범위 증가
+    expect([dragon.levels[1].burn, dragon.levels[2].burn! > 0]).toEqual([undefined, true]);
+    expect([snake.levels[1].splash, snake.levels[2].splash! > 0]).toEqual([undefined, true]);
+    expect([horse.levels[1].bossMul, horse.levels[2].bossMul! > 1]).toEqual([undefined, true]);
+    expect([sheep.levels[1].vuln, sheep.levels[2].vuln! > 0]).toEqual([undefined, true]);
+    expect([monkey.levels[1].detect, monkey.levels[2].detect]).toEqual([undefined, true]);
+    expect(rooster.levels[2].range).toBeGreaterThan(rooster.levels[1].range * 1.2);
+    expect(monkey.target).toBe('air');
+    expect(horse.levels[0].range).toBeGreaterThan(300);
     expect(rat.levels[2].count).toBe(2);
     expect(ox.levels[2].stun!).toBeGreaterThan(ox.levels[1].stun! * 1.3);
     expect(tiger.levels[1].splash).toBeUndefined();

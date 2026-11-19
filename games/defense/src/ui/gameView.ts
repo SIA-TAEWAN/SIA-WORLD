@@ -3,7 +3,7 @@ import { BOARD_H, MAX_LV, RUN_SEC, SLOT_SIZE, SQUAD_SIZE, VIEW_W, WAVES, WAVE_SE
 import { BOSSES } from '../data/bosses';
 import { TOWERS, type TowerLevel } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
-import { DASH } from '../game/bosses';
+import { ACT, DASH } from '../game/bosses';
 import { partialCoins } from '../game/progress';
 import { activeBoss, canPlace, sellValue, towerLevel, upgradeCost } from '../game/sim';
 import { EV, type Ev, type State } from '../game/state';
@@ -51,8 +51,16 @@ function saveSpeed(v: Speed) {
 /** 캐릭터 수치 한 줄 */
 function statLine(L: TowerLevel): string {
   const parts = [`피해 ${Math.round(L.dmg * 10) / 10}${L.count && L.count > 1 ? `×${L.count}` : ''}`, `사거리 ${Math.round(L.range)}`, `간격 ${Math.round(L.every * 100) / 100}초`];
+  if (L.income) return `웨이브마다 기운 +${L.income}${L.coin ? ` · 엽전 +${L.coin}` : ''}`;
+  if (L.slow) return `사거리 ${Math.round(L.range)} · 이동 속도 ${Math.round(L.slow * 100)}%로${L.vuln ? ` · 받는 피해 +${Math.round(L.vuln * 100)}%` : ''}`;
   if (L.stun) parts.push(`멈춤 ${L.stun}초`);
   if (L.splash) parts.push(`범위 ${L.splash}`);
+  if (L.poison) parts.push(`독 초당 ${Math.round(L.poison)}`);
+  if (L.burn) parts.push(`불 초당 ${Math.round(L.burn)}`);
+  if (L.airMul) parts.push(`공중 ×${L.airMul}`);
+  if (L.bossMul) parts.push(`보스 ×${L.bossMul}`);
+  if (L.haste) parts.push(`주변 공격 속도 +${Math.round(L.haste * 100)}%`);
+  if (L.detect) parts.push('은신 감지');
   return parts.join(' · ');
 }
 
@@ -538,8 +546,9 @@ export function showGame(setup: GameSetup) {
         const kind = TOWERS[e.a].kind;
         if (kind === 'shot') attackSfx('survShot');
         else if (kind === 'melee') attackSfx('survSlash');
-        else if (kind === 'lob') attackSfx('survPop');
-        else attackSfx('tankTurn', 0.8);
+        else if (kind === 'lob' || kind === 'poison') attackSfx('survPop');
+        else if (kind === 'beam') attackSfx('tankLaser', 1.4);
+        else if (kind === 'stun') attackSfx('tankTurn', 0.8);
         break;
       }
       case EV.leak:
@@ -552,9 +561,21 @@ export function showGame(setup: GameSetup) {
         setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>보스가 다가온다!</small>`, 'bad warn', 2600);
         flashEdge('warn');
         break;
-      case EV.bossAct:
-        if (e.b === DASH.windup) sfx('cutin', { volume: 0.5 });
-        else if (e.b === DASH.dash) setCut('<small>돌진!</small>', 'bad', 900);
+      case EV.bossAct: {
+        // 보스의 특수 행동: 무슨 일인지 짧게 알려 준다
+        const say: Record<number, string> = {
+          [DASH.dash]: '돌진!', [ACT.summon]: '졸개를 불렀다!', [ACT.vanish]: '사라졌다!', [ACT.appear]: '앞에서 나타났다!', [ACT.clone]: '분신!',
+          [ACT.segment]: '마디를 먼저 쓰러뜨려요', [ACT.freeze]: '캐릭터가 멈췄다!', [ACT.geyser]: '물기둥!', [ACT.mark]: '표식!', [ACT.fire]: '불길!', [ACT.raise]: '되살아났다!',
+        };
+        if (e.b === DASH.windup && BOSSES[e.a].act === 'dash') sfx('cutin', { volume: 0.5 });
+        else if (say[e.b] && !(e.b === DASH.dash && BOSSES[e.a].act !== 'dash')) {
+          sfx('cutin', { volume: 0.4 });
+          setCut(`<small>${say[e.b]}</small>`, 'bad', 1000);
+        }
+        break;
+      }
+      case EV.income:
+        sfx('coin', { volume: 0.4 });
         break;
       case EV.bossDown:
         sfx('survBossDown');

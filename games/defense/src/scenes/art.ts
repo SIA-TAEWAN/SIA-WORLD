@@ -25,7 +25,7 @@ export const enemyKey = (kind: number) => `e-${ENEMIES[kind].id}`;
 export const bossKey = (boss: number) => `b-${BOSSES[boss].id}`;
 export const tileKey = (bg: BgId) => `tile-${bg}`;
 /** 투사체 그림 (state.ts 의 PROJ 순서) */
-export const PROJ_KEYS = ['p-shuriken', 'p-cake'];
+export const PROJ_KEYS = ['p-shuriken', 'p-cake', 'p-venom', 'p-arrow', 'p-stone', 'p-feather', 'p-puppy'];
 /** 강화 단계 표시 (별 1~3개) */
 export const pipKey = (lv: number) => `pip-${lv}`;
 
@@ -144,6 +144,45 @@ export function ensureArt(scene: Phaser.Scene, bg: BgId, squad: readonly ZodiacI
     line(g, 5).strokeCircle(32, 32, 24);
     g.fillStyle(COLOR.pink, 1).fillCircle(24, 36, 4).fillCircle(40, 36, 4);
     g.fillStyle(COLOR.outline, 1).fillCircle(26, 28, 3).fillCircle(38, 28, 3);
+  });
+
+  // 독 방울: 초록 물방울
+  make(scene, 'p-venom', 48, 48, (g) => {
+    g.fillStyle(COLOR.win, 1).fillCircle(24, 28, 14).fillTriangle(14, 22, 34, 22, 24, 4);
+    line(g, 4).strokeCircle(24, 28, 14);
+    g.fillStyle(COLOR.white, 1).fillCircle(19, 26, 4);
+  });
+  // 화살: 오른쪽을 향한 굵은 화살 (나는 쪽으로 돌린다)
+  make(scene, 'p-arrow', 64, 32, (g) => {
+    g.fillStyle(COLOR.outline, 1).fillRect(6, 12, 40, 8);
+    g.fillStyle(COLOR.primary, 1).fillTriangle(40, 4, 62, 16, 40, 28);
+    line(g, 4).strokeTriangle(40, 4, 62, 16, 40, 28);
+    g.fillStyle(COLOR.pink, 1).fillTriangle(2, 6, 14, 16, 2, 26);
+  });
+  // 돌멩이
+  make(scene, 'p-stone', 48, 48, (g) => {
+    g.fillStyle(COLOR.inkSoft, 1).fillCircle(24, 24, 15);
+    line(g, 4).strokeCircle(24, 24, 15);
+    g.fillStyle(COLOR.emptyLine, 1).fillCircle(19, 19, 5);
+  });
+  // 깃털
+  make(scene, 'p-feather', 48, 48, (g) => {
+    g.fillStyle(COLOR.white, 1).fillEllipse(24, 24, 36, 16);
+    line(g, 3.5).strokeEllipse(24, 24, 36, 16);
+    line(g, 3).lineBetween(8, 24, 40, 24);
+  });
+  // 강아지: 갈색 동그란 얼굴 + 귀
+  make(scene, 'p-puppy', 64, 64, (g) => {
+    g.fillStyle(COLOR.inkSoft, 1).fillEllipse(14, 22, 16, 24).fillEllipse(50, 22, 16, 24);
+    g.fillStyle(COLOR.emptyLine, 1).fillCircle(32, 34, 22);
+    line(g, 5).strokeCircle(32, 34, 22);
+    g.fillStyle(COLOR.outline, 1).fillCircle(24, 30, 3.5).fillCircle(40, 30, 3.5).fillCircle(32, 40, 4.5);
+  });
+  // 광선: 왼쪽 끝(손)에서 오른쪽으로 뻗는 띠
+  make(scene, 'beam', 256, 40, (g) => {
+    g.fillStyle(COLOR.outline, 1).fillRoundedRect(0, 4, 256, 32, 16);
+    g.fillStyle(COLOR.primary, 1).fillRoundedRect(3, 8, 250, 24, 12);
+    g.fillStyle(COLOR.white, 1).fillRoundedRect(6, 15, 244, 10, 5);
   });
 
   // ───── 이펙트: 고리 · 원판 · 발톱 자국 · 네모 한 점(체력 바) · 그림자 ─────

@@ -99,7 +99,12 @@ export class GameScene extends Phaser.Scene {
   preload() {
     const s = this.run.state;
     const keys = stageEnemies(s.stage).map((id) => `e-${id}`);
-    if (s.bossId >= 0) keys.push(bossKey(s.bossId));
+    if (s.bossId >= 0) {
+      keys.push(bossKey(s.bossId));
+      // 보스가 부르는 졸개의 그림
+      const kind = BOSSES[s.bossId].p.kind;
+      if (kind !== undefined && !keys.includes(enemyKey(kind))) keys.push(enemyKey(kind));
+    }
     preloadArt(this, keys, s.squad.map((c) => TOWERS[c].id as ZodiacId));
     // 그림을 못 불러와도 게임은 진행한다 (create 에서 코드 그림으로 채운다)
     this.load.on('loaderror', () => undefined);
@@ -208,11 +213,19 @@ export class GameScene extends Phaser.Scene {
     for (const r of roads) for (let d = 20; d < r.len; d += 40) g.fillCircle(routePos(r, d, p.seg, p).x, p.y, 4);
 
     // 입구(요괴가 나오는 곳)와 출구(마을 입구) 표지판: 길이 판 가장자리를 지나는 자리에 세운다
-    for (const r of s.routes) {
+    // (길 여러 개가 같은 입구·출구를 쓰면 한 번만 세운다. 공중 경로에는 세우지 않는다)
+    const done = new Set<string>();
+    const once = (x: number, y: number, label: string, fill: number, ink: number) => {
+      const k = `${label}:${Math.round(x / 40)}:${Math.round(y / 40)}`;
+      if (done.has(k)) return;
+      done.add(k);
+      this.sign(x, y, label, fill, ink);
+    };
+    for (const r of roads) {
       const a = this.edge(r, false);
       const b = this.edge(r, true);
-      if (!r.air) this.sign(a.x, a.y, '요괴', COLOR.pink, COLOR.white);
-      this.sign(b.x, b.y, '마을', COLOR.primary, COLOR.ink);
+      once(a.x, a.y, '요괴', COLOR.pink, COLOR.white);
+      once(b.x, b.y, '마을', COLOR.primary, COLOR.ink);
     }
   }
 
@@ -259,6 +272,9 @@ export class GameScene extends Phaser.Scene {
       const slot = this.slots[i];
       const img = this.towers[i];
       const pip = this.pips[i];
+      // 보스가 멈추거나 태운 칸은 붉게 보인다
+      if (tw.off > 0) slot.setTint(COLOR.pink);
+      else if (slot.isTinted) slot.clearTint();
       if (tw.char < 0) {
         if (img.visible) {
           img.setVisible(false);
@@ -284,7 +300,12 @@ export class GameScene extends Phaser.Scene {
       img
         .setPosition(s.slotX[i] + tw.face * 7 * k, s.slotY[i] + SLOT_SIZE / 2 - 8)
         .setScale(base * (1 - breathe + k * 0.06), base * (1 + breathe + k * 0.12))
-        .setFlipX(tw.face < 0);
+        .setFlipX(tw.face < 0)
+        .setAlpha(tw.off > 0 ? 0.55 : 1);
+      // 멈춘 캐릭터는 잿빛, 표식이 찍힌 캐릭터는 분홍, 닭의 지원을 받는 캐릭터는 그대로
+      if (tw.off > 0) img.setTint(COLOR.draw);
+      else if (tw.mark > 0) img.setTint(COLOR.pink);
+      else if (img.isTinted) img.clearTint();
     }
   }
 
@@ -310,10 +331,13 @@ export class GameScene extends Phaser.Scene {
     let stars = 0;
     for (let i = 0; i < s.enemyHi; i++) {
       const e = s.enemies[i];
-      if (!e.alive) continue;
+      // 사라진 보스는 그리지 않는다
+      if (!e.alive || e.gone > 0) continue;
       const boss = e.boss >= 0;
-      const key = boss ? bossKey(e.boss) : enemyKey(e.kind);
-      const size = boss ? BOSSES[e.boss].size : ENEMIES[e.kind].size;
+      // 분신·마디는 보스 그림을 작게 그린다
+      const key = boss ? bossKey(e.boss) : e.look >= 0 ? bossKey(e.look) : enemyKey(e.kind);
+      const hidden = e.stealth && e.on && e.seen <= 0;
+      const size = (boss ? BOSSES[e.boss].size : e.look >= 0 ? e.r * 3 : ENEMIES[e.kind].size) * (hidden ? 0.6 : 1);
       const spr = this.enemies.get(n);
       const shadow = this.shadows.get(n);
       n++;
@@ -325,12 +349,25 @@ export class GameScene extends Phaser.Scene {
       const sc = size / this.w(key);
       // 걸으며 통통 (멈춘 요괴는 가만히). 벼르는 보스는 부들부들 떤다
       const wob = e.stun > 0 ? 0 : Math.sin(e.t * 9 + e.uid) * 0.06;
-      if (boss && e.b === DASH.windup) x += Math.sin(sec * 70) * 3;
+      if (boss && BOSSES[e.boss].act === 'dash' && e.b === DASH.windup) x += Math.sin(sec * 70) * 3;
       const lift = e.air ? 26 : 0;
-      spr.setPosition(x, y - size * 0.12 - lift).setScale(sc * (1 - wob), sc * (1 + wob)).setFlipX(e.dx < -0.1).setVisible(true);
+      // 숨은 요괴는 작고 흐리게, 무적인 요괴는 흐리게, 쓰러진 요괴는 눕혀서
+      const alpha = e.down > 0 ? 0.5 : hidden ? 0.4 : e.ghost && e.on ? 0.4 : e.look >= 0 && !boss ? 0.9 : 1;
+      spr
+        .setPosition(x, y - size * 0.12 - lift)
+        .setScale(sc * (1 - wob), sc * (1 + wob))
+        .setFlipX(e.dx < -0.1)
+        .setRotation(e.down > 0 ? Math.PI / 2 : 0)
+        .setAlpha(alpha)
+        .setVisible(true);
       if (e.flash > 0) spr.setTintFill(COLOR.white);
       else if (e.stun > 0) spr.setTint(COLOR.skyMid);
-      else if (boss && e.b === DASH.dash) spr.setTint(COLOR.primaryLight);
+      else if (e.dotT > 0) spr.setTint(COLOR.win);
+      else if (e.slowT > 0) spr.setTint(COLOR.skyMid);
+      else if (e.armor >= 1) spr.setTint(COLOR.draw);
+      else if (e.armor > 0.3) spr.setTint(COLOR.emptyLine);
+      else if (boss && BOSSES[e.boss].act === 'dash' && e.b === DASH.dash) spr.setTint(COLOR.primaryLight);
+      else if (e.rush > 0) spr.setTint(COLOR.primaryLight);
       else if (spr.isTinted) spr.clearTint();
       shadow.setPosition(x, y + size * 0.28).setScale(size / 96, size / 110).setAlpha(0.22).setVisible(true);
       // 체력 바: 다친 요괴와 보스만
@@ -363,7 +400,11 @@ export class GameScene extends Phaser.Scene {
         // 포물선: 가운데에서 가장 높이 뜨고 조금 커 보인다
         const h = Math.sin(Math.PI * Math.min(1, pr.t / pr.dur));
         spr.setPosition(pr.x, pr.y - h * 70).setScale(0.5 * (1 + h * 0.4)).setRotation(sec * 6).setVisible(true);
-      } else spr.setPosition(pr.x, pr.y).setScale(0.5).setRotation(sec * 18).setVisible(true);
+      } else if (pr.kind === PROJ.arrow || pr.kind === PROJ.feather) {
+        // 화살·깃털은 나는 쪽을 본다
+        spr.setPosition(pr.x, pr.y).setScale(0.5).setRotation(Math.atan2(pr.ty - pr.y, pr.tx - pr.x)).setVisible(true);
+      } else if (pr.kind === PROJ.puppy) spr.setPosition(pr.x, pr.y - Math.abs(Math.sin(sec * 14)) * 6).setScale(0.55).setRotation(0).setVisible(true);
+      else spr.setPosition(pr.x, pr.y).setScale(0.5).setRotation(pr.kind === PROJ.venom ? 0 : sec * 18).setVisible(true);
     }
     this.projs.end(n);
   }
@@ -405,12 +446,34 @@ export class GameScene extends Phaser.Scene {
           alpha = 0.9 * (1 - k);
           break;
         case FX.leak:
+        case FX.zap:
           tint = COLOR.pink;
           sc *= 0.3 + k * 0.9;
           break;
+        case FX.cloud:
+          // 양털 구름: 사거리만 한 흰 원이 옅게 깔린다
+          key = 'disc';
+          sc = (f.r * 2) / 252;
+          alpha = 0.3 * (1 - k * k);
+          break;
+        case FX.puff:
+          key = 'disc';
+          sc = ((f.r * 2) / 252) * (0.5 + k * 0.6);
+          alpha = 0.6 * (1 - k);
+          break;
+        case FX.beam:
+          key = 'beam';
+          rot = f.a;
+          alpha = 1 - k * k;
+          break;
       }
       if (spr.texture.key !== key) spr.setTexture(key);
-      spr.setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(tint).setAlpha(alpha).setVisible(true);
+      if (f.kind === FX.beam) {
+        // 광선: 손에서 사거리 끝까지 (그림의 왼쪽 끝이 손)
+        spr.setOrigin(0, 0.5).setPosition(f.x, f.y).setScale((f.r * Math.min(1, k * 5 + 0.4)) / 256, 0.6).setRotation(rot).clearTint().setAlpha(alpha).setVisible(true);
+        continue;
+      }
+      spr.setOrigin(0.5, 0.5).setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(tint).setAlpha(alpha).setVisible(true);
     }
     this.fxs.end(n);
   }

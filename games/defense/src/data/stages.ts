@@ -1,4 +1,9 @@
 import { REGIONS, type BgId } from './regions';
+import { REGION_02 } from './stages/r02';
+import { REGION_03 } from './stages/r03';
+import { REGION_04 } from './stages/r04';
+import { REGION_05 } from './stages/r05';
+import { REGION_06 } from './stages/r06';
 
 /**
  * 스테이지 데이터 (PRD 1·3·6장). 스테이지 하나 = 이 파일의 객체 하나이고, 코드를 고치지 않고 여기에 추가만 하면 된다.
@@ -11,7 +16,7 @@ import { REGIONS, type BgId } from './regions';
  * 길 하나 = 입구에서 출구까지 꺾이는 점들의 목록. 요괴는 자기 길을 처음부터 끝까지 따라간다.
  *   · 입구 여러 곳: 시작점이 다른 길을 여러 개 적는다
  *   · 갈림·합류: 같은 점들을 함께 지나다가 다른 점으로 갈라지는 길을 여러 개 적는다 (겹치는 구간은 한 번만 그려진다)
- *   · 공중 직선 경로: air: true (길을 그리지 않고, 요괴가 배치 칸 위를 가로질러 난다)
+ *   · 공중 직선 경로: air: true (길을 그리지 않고, 요괴가 배치 칸 위를 가로질러 난다). 공중 요괴는 길을 적지 않으면 이 경로로 온다
  *
  * ── 웨이브 (waves) ──
  * 30초짜리 6개. 웨이브마다 무리(groups)를 적는다: 어느 요괴가(enemy) 몇 마리(count), 웨이브 시작 몇 초 뒤부터(at), 몇 초 간격으로(gap),
@@ -68,7 +73,7 @@ export interface StageDef {
 
 const REGION_1: StageDef[] = [
   {
-    id: '1-1', region: 1, no: 1, name: '들판 어귀', energy: 230, hp: 1.1,
+    id: '1-1', region: 1, no: 1, name: '들판 어귀', energy: 230, hp: 1.24,
     // ㄹ 모양: 왼쪽 위에서 들어와 오른쪽 아래로 나간다
     routes: [{ id: 'main', pts: [[-1, 1], [7, 1], [7, 5], [1, 5], [1, 9], [9, 9]] }],
     slots: [[2, 2], [5, 2], [6, 3], [8, 3], [3, 4], [5, 6], [2, 7], [0, 7], [4, 8], [7, 8]],
@@ -83,7 +88,7 @@ const REGION_1: StageDef[] = [
     coins: 40, firstCoins: 60,
   },
   {
-    id: '1-2', region: 1, no: 2, name: '갈지자 둑길', energy: 230, hp: 1.22,
+    id: '1-2', region: 1, no: 2, name: '갈지자 둑길', energy: 230, hp: 1.38,
     // 위 가운데에서 들어와 갈지자로 내려가 아래로 나간다
     routes: [{ id: 'main', pts: [[4, -1], [4, 2], [1, 2], [1, 6], [7, 6], [7, 9], [3, 9], [3, 11]] }],
     slots: [[5, 1], [2, 1], [2, 3], [0, 4], [2, 5], [4, 5], [5, 7], [8, 7], [6, 8], [4, 8], [2, 10]],
@@ -98,7 +103,7 @@ const REGION_1: StageDef[] = [
     coins: 45, firstCoins: 65,
   },
   {
-    id: '1-3', region: 1, no: 3, name: '굽잇길', energy: 240, hp: 1.25,
+    id: '1-3', region: 1, no: 3, name: '굽잇길', energy: 240, hp: 1.4,
     // 왼쪽에서 들어와 아래로 돌아 다시 위로, 오른쪽 끝에서 길게 내려간다
     routes: [{ id: 'main', pts: [[-1, 2], [2, 2], [2, 8], [5, 8], [5, 2], [8, 2], [8, 11]] }],
     slots: [[1, 4], [3, 3], [4, 5], [3, 7], [1, 7], [6, 3], [7, 5], [6, 7], [4, 1], [7, 9]],
@@ -113,7 +118,7 @@ const REGION_1: StageDef[] = [
     coins: 50, firstCoins: 70,
   },
   {
-    id: '1-4', region: 1, no: 4, name: '뱀길 들판', energy: 240, hp: 1.15,
+    id: '1-4', region: 1, no: 4, name: '뱀길 들판', energy: 240, hp: 1.3,
     // 오른쪽 위에서 들어와 세 번 굽이쳐 오른쪽 아래로 나간다 (길이 길다)
     routes: [{ id: 'main', pts: [[9, 1], [1, 1], [1, 4], [7, 4], [7, 7], [1, 7], [1, 10], [9, 10]] }],
     slots: [[3, 2], [6, 2], [0, 2], [2, 3], [5, 3], [8, 5], [6, 5], [4, 6], [2, 6], [0, 8], [2, 8], [5, 9], [7, 9]],
@@ -128,7 +133,7 @@ const REGION_1: StageDef[] = [
     coins: 55, firstCoins: 75,
   },
   {
-    id: '1-5', region: 1, no: 5, name: '큰 도깨비 고개', energy: 260, hp: 1.2,
+    id: '1-5', region: 1, no: 5, name: '큰 도깨비 고개', energy: 260, hp: 1.32,
     // 위에서 들어와 한 바퀴 감아 아래로 나간다. 2분에 큰 도깨비
     routes: [{ id: 'main', pts: [[4, -1], [4, 1], [7, 1], [7, 5], [1, 5], [1, 8], [6, 8], [6, 11]] }],
     slots: [[3, 0], [5, 0], [5, 2], [6, 3], [8, 3], [4, 4], [2, 4], [0, 6], [2, 6], [4, 6], [3, 7], [5, 7], [7, 7], [5, 9], [7, 9]],
@@ -141,12 +146,13 @@ const REGION_1: StageDef[] = [
       { groups: [{ enemy: 'imp', count: 12, at: 4, gap: 1.5 }, { enemy: 'wisp', count: 8, at: 20, gap: 1.1 }] },
       { groups: [{ enemy: 'imp', count: 16, at: 0, gap: 1.2 }, { enemy: 'wisp', count: 10, at: 20, gap: 0.9 }] },
     ],
-    boss: { id: 'bigDokkaebi' },
+    boss: { id: 'bigDokkaebi', hp: 1.1 },
     coins: 70, firstCoins: 120,
   },
 ];
 
-export const STAGES: StageDef[] = [...REGION_1];
+// 2지역부터는 지역마다 파일 하나 (src/data/stages/rNN.ts — scripts/gen-stages.ts 가 만든 데이터)
+export const STAGES: StageDef[] = [...REGION_1, ...REGION_02, ...REGION_03, ...REGION_04, ...REGION_05, ...REGION_06];
 
 export const STAGE_INDEX: Record<string, number> = Object.fromEntries(STAGES.map((s, i) => [s.id, i]));
 export const stageOf = (id: string): StageDef | undefined => STAGES[STAGE_INDEX[id]];

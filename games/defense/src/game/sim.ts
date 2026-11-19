@@ -1,11 +1,11 @@
 import { BOSS_AT, BOSS_WARN_SEC, LIMIT, MAX_LV, RUN_SEC, SELL_RATE, SQUAD_SIZE, START_LIVES, STUN_GUARD_SEC, TICK, WAVES, WAVE_HP, WAVE_SEC } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { TOWERS, TOWER_INDEX, type TowerLevel } from '../data/characters';
+import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { levelMods, upgradeMods } from '../data/growth';
-import { ENEMY_INDEX } from '../data/enemies';
-import { stageOf } from '../data/stages';
+import { stageOf, type StageDef } from '../data/stages';
 import { BOSS_ACTS } from './bosses';
-import { placeOnRoute, spawnEnemy } from './core';
+import { burn, placeOnRoute, spawnEnemy } from './core';
 import { buildRoute, cellX, cellY } from './path';
 import { starsOf, type RunReport } from './progress';
 import { makeRng } from './rng';
@@ -20,12 +20,17 @@ import { ATTACKS, stepProjectile } from './towers';
  */
 
 const WAVE_TICKS = Math.round(WAVE_SEC / TICK);
+/** 다른 요괴가 빠르게 해 줄 때의 속도 배율 (수문장 대장) · 표식이 찍힌 캐릭터의 공격 속도 배율 (저승사자) */
+export const RUSH_MUL = 1.4;
+export const MARK_MUL = 0.5;
 
-export function createGame(cfg: GameConfig): State {
-  const stage = stageOf(cfg.stage);
+/** given: 스테이지 데이터를 직접 준다 (아직 목록에 없는 스테이지를 시험할 때 — scripts/gen-stages.ts) */
+export function createGame(cfg: GameConfig, given?: StageDef): State {
+  const stage = given ?? stageOf(cfg.stage);
   if (!stage) throw new Error(`unknown stage: ${cfg.stage}`);
   const routes = stage.routes.map(buildRoute);
   const ground = routes.map((r, i) => (r.air ? -1 : i)).filter((i) => i >= 0);
+  const sky = routes.findIndex((r) => r.air);
   const squad: number[] = [];
   for (const id of cfg.squad) {
     const i = TOWER_INDEX[id];
@@ -38,8 +43,11 @@ export function createGame(cfg: GameConfig): State {
     for (const g of w.groups) {
       const kind = ENEMY_INDEX[g.enemy];
       if (kind === undefined) throw new Error(`unknown enemy: ${g.enemy}`);
+      // 공중 요괴는 길을 적지 않으면 공중 경로로 온다
+      const fly = !!ENEMIES[kind].air;
+      if (fly && g.route === undefined && sky < 0) throw new Error(`${stage.id}: ${g.enemy} needs an air route`);
       for (let k = 0; k < g.count; k++) {
-        const route = g.route === 'alt' ? ground[k % ground.length] : (g.route ?? 0);
+        const route = g.route === 'alt' ? ground[k % ground.length] : (g.route ?? (fly ? sky : 0));
         spawns.push({ t: wi * WAVE_SEC + g.at + k * g.gap, kind, boss: -1, route, hpMul });
       }
     }
@@ -58,10 +66,20 @@ export function createGame(cfg: GameConfig): State {
   const lives = (stage.lives ?? START_LIVES) + um.lives;
   // 캐릭터 수치에 영구 레벨의 배율을 곱해 둔다 (공격력 +4%/레벨, 4레벨 사거리, 8레벨 비용, 12레벨 공격 간격)
   const mods = TOWERS.map((t) => levelMods(cfg.levels?.[t.id] ?? 1));
-  const lv = TOWERS.map((t, i) => t.levels.map((L) => ({ ...L, dmg: L.dmg * mods[i].dmg, range: L.range * mods[i].range, every: L.every * mods[i].every })));
+  const lv = TOWERS.map((t, i) =>
+    t.levels.map((L) => ({
+      ...L,
+      dmg: L.dmg * mods[i].dmg,
+      range: L.range * mods[i].range,
+      every: L.every * mods[i].every,
+      // 지속 피해도 공격력과 함께 오른다
+      ...(L.poison ? { poison: L.poison * mods[i].dmg } : {}),
+      ...(L.burn ? { burn: L.burn * mods[i].dmg } : {}),
+    })),
+  );
   const price = (i: number, v: number) => Math.max(1, Math.round(v * mods[i].cost));
   return {
-    cfg, stage, routes,
+    cfg, stage, routes, ground,
     lv,
     cost: TOWERS.map((t, i) => price(i, t.cost)),
     up: TOWERS.map((t, i) => [price(i, t.up[0]), price(i, t.up[1])] as [number, number]),
@@ -78,6 +96,7 @@ export function createGame(cfg: GameConfig): State {
     startLives: lives,
     energy: Math.floor(stage.energy * um.energy + 1e-6),
     kills: 0,
+    bonus: 0,
     wave: -1,
     spawns,
     spawnI: 0,
@@ -110,7 +129,7 @@ export function towerLevel(s: State, slot: number): TowerLevel | null {
 
 export function canPlace(s: State, slot: number, char: number): boolean {
   const tw = s.towers[slot];
-  return open(s) && !!tw && tw.char < 0 && s.squad.includes(char) && s.energy >= s.cost[char];
+  return open(s) && !!tw && tw.char < 0 && tw.off <= 0 && s.squad.includes(char) && s.energy >= s.cost[char];
 }
 
 /** 다음 단계로 올리는 비용 (빈 칸이거나 이미 3단계면 null) */
@@ -126,6 +145,24 @@ export function sellValue(s: State, slot: number): number {
   if (!tw || tw.char < 0) return 0;
   // (0.7 을 곱한 값이 62.999… 가 되어 1 모자라지 않게 아주 조금 더한 뒤 내림)
   return s.phase === 'prep' ? tw.spent : Math.floor(tw.spent * s.sellRate + 1e-6);
+}
+
+/** 닭의 지원: 캐릭터마다, 자기를 사거리 안에 둔 닭 가운데 가장 큰 공격 속도 보너스를 받는다 (배치가 바뀔 때마다 다시 센다) */
+function refreshHaste(s: State) {
+  for (let i = 0; i < s.towers.length; i++) {
+    const tw = s.towers[i];
+    tw.haste = 0;
+    if (tw.char < 0) continue;
+    for (let j = 0; j < s.towers.length; j++) {
+      const o = s.towers[j];
+      if (j === i || o.char < 0) continue;
+      const L = s.lv[o.char][o.lv - 1];
+      if (!L.haste || L.haste <= tw.haste) continue;
+      const dx = s.slotX[i] - s.slotX[j];
+      const dy = s.slotY[i] - s.slotY[j];
+      if (dx * dx + dy * dy <= L.range * L.range) tw.haste = L.haste;
+    }
+  }
 }
 
 /**
@@ -151,6 +188,7 @@ export function command(s: State, op: Cmd['op'], slot = -1, char = -1): boolean 
       tw.cd = 0.25;
       tw.spent = cost;
       tw.since = 9;
+      tw.mark = 0;
       tw.face = s.slotX[slot] > cellX(4) ? -1 : 1;
       emit(s, EV.place, slot, char, s.slotX[slot], s.slotY[slot]);
       break;
@@ -176,6 +214,7 @@ export function command(s: State, op: Cmd['op'], slot = -1, char = -1): boolean 
     default:
       return false;
   }
+  if (op !== 'start') refreshHaste(s);
   s.log.push({ tick: s.tick, op, slot, char });
   return true;
 }
@@ -193,6 +232,17 @@ export function step(s: State) {
   if (wave !== s.wave) {
     s.wave = wave;
     emit(s, EV.wave, wave);
+    // 돼지: 웨이브가 시작될 때마다 기운을 번다 (3단계는 엽전도)
+    for (let slot = 0; slot < s.towers.length; slot++) {
+      const tw = s.towers[slot];
+      if (tw.char < 0) continue;
+      const L = s.lv[tw.char][tw.lv - 1];
+      if (!L.income) continue;
+      s.energy += L.income;
+      s.bonus += L.coin ?? 0;
+      tw.since = 0;
+      emit(s, EV.income, L.income, slot, s.slotX[slot], s.slotY[slot]);
+    }
   }
   if (s.bossAt >= 0 && !s.bossWarned && s.time >= s.bossAt - BOSS_WARN_SEC) {
     s.bossWarned = true;
@@ -208,6 +258,24 @@ export function step(s: State) {
     if (sp.boss >= 0) emit(s, EV.bossIn, sp.boss, 0, e.x, e.y);
   }
 
+  // 감지: 은신 요괴를 찾아내는 캐릭터의 사거리 안에 있으면 잠깐 드러난다 (0.1초마다 살핀다)
+  if (s.tick % 6 === 0) {
+    for (let slot = 0; slot < s.towers.length; slot++) {
+      const tw = s.towers[slot];
+      if (tw.char < 0 || tw.off > 0) continue;
+      const L = s.lv[tw.char][tw.lv - 1];
+      if (!L.detect) continue;
+      const r2 = L.range * L.range;
+      for (let i = 0; i < s.enemyHi; i++) {
+        const e = s.enemies[i];
+        if (!e.alive || !e.stealth) continue;
+        const dx = e.x - s.slotX[slot];
+        const dy = e.y - s.slotY[slot];
+        if (dx * dx + dy * dy <= r2) e.seen = 0.3;
+      }
+    }
+  }
+
   // 요괴: 길을 따라 걷는다. 출구에 닿으면 생명이 준다
   for (let i = 0; i < s.enemyHi; i++) {
     const e = s.enemies[i];
@@ -215,13 +283,45 @@ export function step(s: State) {
     e.t += TICK;
     if (e.flash > 0) e.flash -= TICK;
     if (e.boss >= 0) BOSS_ACTS[BOSSES[e.boss].act]?.(s, e, BOSSES[e.boss]);
+    // 사라져 있거나 쓰러져 있는 동안에는 아무 일도 없다
+    if (e.gone > 0) continue;
+    if (e.down > 0) {
+      e.down -= TICK;
+      continue;
+    }
+    // 주기 특성 (숨었다 나왔다 · 무적이 됐다 풀렸다)
+    if (e.boss < 0 && e.look < 0) {
+      const cycle = ENEMIES[e.kind].cycle;
+      if (cycle) {
+        e.cyc -= TICK;
+        if (e.cyc <= 0) {
+          e.on = !e.on;
+          e.cyc = e.on ? cycle.on : cycle.off;
+        }
+      }
+    }
+    if (e.seen > 0) e.seen -= TICK;
+    // 독·불 (그동안에는 회복하지 못한다) / 회복
+    if (e.dotT > 0) {
+      e.dotT -= TICK;
+      burn(s, e, e.dot * TICK);
+      if (!e.alive || e.down > 0) continue;
+    } else if (e.regen > 0 && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * e.regen * TICK);
+    if (e.slowT > 0) {
+      e.slowT -= TICK;
+      if (e.slowT <= 0) {
+        e.slow = 1;
+        e.vuln = 0;
+      }
+    }
+    if (e.rush > 0) e.rush -= TICK;
     if (e.stun > 0) {
       e.stun -= TICK;
       if (e.stun <= 0) e.guard = STUN_GUARD_SEC;
       continue;
     }
     if (e.guard > 0) e.guard -= TICK;
-    e.d += e.speed * e.mul * TICK;
+    e.d += e.speed * e.mul * (e.slowT > 0 ? e.slow : 1) * (e.rush > 0 ? RUSH_MUL : 1) * TICK;
     const len = s.routes[e.route].len;
     if (e.d < len) {
       placeOnRoute(s, e);
@@ -245,9 +345,13 @@ export function step(s: State) {
   // 캐릭터: 공격 간격이 찼고 사거리 안에 요괴가 있으면 공격
   for (let slot = 0; slot < s.towers.length; slot++) {
     const tw = s.towers[slot];
+    // 보스가 멈추거나 태운 칸: 그동안 공격하지 못한다 (빈 칸이면 놓을 수 없다)
+    if (tw.off > 0) tw.off -= TICK;
     if (tw.char < 0) continue;
     tw.since += TICK;
-    tw.cd -= TICK;
+    if (tw.mark > 0) tw.mark -= TICK;
+    if (tw.off > 0) continue;
+    tw.cd -= TICK * (1 + tw.haste) * (tw.mark > 0 ? MARK_MUL : 1);
     if (tw.cd > 0) continue;
     const def = TOWERS[tw.char];
     const L = s.lv[tw.char][tw.lv - 1];
@@ -298,7 +402,7 @@ export interface RunSummary extends Omit<RunReport, 'run'> {
   towers: number;
 }
 
-/** 명령 기록에서 센 값 (서버의 싼 정합성 검사용): 배치한 횟수 · 명령 수 */
+/** 명령 기록에서 센 값 (서버의 싼 정합성 검사용): 배치한 횟수 */
 export const placedCount = (s: State) => s.log.reduce((n, c) => n + (c.op === 'place' ? 1 : 0), 0);
 
 export function summarize(s: State): RunSummary {
@@ -312,7 +416,7 @@ export function summarize(s: State): RunSummary {
     kills: s.kills,
     placed: placedCount(s),
     cmds: s.log.length,
-    bonus: 0,
+    bonus: s.bonus,
     stars: starsOf(cleared, s.lives, s.startLives),
     wave: s.wave + 1,
     bossDown: s.bossDown,
