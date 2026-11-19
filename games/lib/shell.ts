@@ -1289,6 +1289,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
   /** 연출 재생기가 제때 이미 띄운(띄울) 컷인 ('판:사건 번호'): 새 상태를 그릴 때 한 번 더 띄우지 않는다 */
   const heldCutins = new Set<string>();
+  /** 마지막으로 컷인을 살핀 판 */
+  let cutinRound = -1;
   const showCutins = () => {
     if (closed) return;
     const c = ctx();
@@ -1296,9 +1298,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const maxId = events.reduce((a, e) => Math.max(a, e.id), 0);
     if (lastEvent < 0 || !c) {
       lastEvent = maxId;
+      if (st) cutinRound = st.round_no;
       return;
     }
-    if (maxId < lastEvent) lastEvent = 0; // 새 판
+    // 새 판 (사건 번호가 처음부터 다시 시작했거나, 판 번호가 바뀌었다: 판마다 사건이 하나뿐인 판 — 맞고 총통 — 이 이어져도 컷인이 뜨게)
+    if (maxId < lastEvent || (st && cutinRound !== -1 && st.round_no !== cutinRound)) lastEvent = 0;
+    if (st) cutinRound = st.round_no;
     const fresh = events.filter((e) => e.id > lastEvent && !heldCutins.has(`${st?.round_no}:${e.id}`));
     lastEvent = maxId;
     const hits = fresh.map((e) => ({ e, text: ui.cutin?.(e, c) })).filter((x): x is { e: GameEventLite; text: string } => !!x.text);
@@ -1975,6 +1980,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         replayRound = s.round_no;
         replaySeen = maxEvent(s);
         lastEvent = replaySeen;
+        cutinRound = s.round_no;
         if (room?.status === 'playing' && !s.public_state?.result) liveRound = s.round_no;
         paint();
       },

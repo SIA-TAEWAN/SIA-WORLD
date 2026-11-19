@@ -948,6 +948,13 @@ let planDelayedFor = '';
 /** 내 손패 10장을 다 받는 데 걸리는 시간 (그 뒤에 달 순서로 정렬한다) */
 const HAND_DEAL_MS = 3300;
 let sortTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * 총통 (처음 받은 손패에 같은 달 4장 → 그 자리에서 승리): 패를 다 나눠 준 뒤 그 4장을 바닥 가운데에 펼쳐 보여 주고 '총통!' → 결과 창.
+ * CHONG_CUTIN_AT: 나눠 주기가 끝난 뒤 4장이 다 펼쳐지고 컷인이 뜨기까지
+ */
+let chongTimer: ReturnType<typeof setTimeout> | null = null;
+const CHONG_GAP = 150;
+const CHONG_CUTIN_AT = 3 * CHONG_GAP + 800;
 /** 패를 다 나눠 주는 데 걸리는 시간 (손패 10장씩 + 바닥 8장을 0.13초 간격으로) */
 const DEAL_MS = 4300;
 /** 방금 누른 내 패 (서버 답을 기다리지 않고 바로 바닥에 내려놓는다) */
@@ -1010,6 +1017,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     enableTimer = null;
     if (sortTimer) clearTimeout(sortTimer);
     sortTimer = null;
+    if (chongTimer) clearTimeout(chongTimer);
+    chongTimer = null;
     picked = null;
     onFloorNow.clear();
     planQuiet.clear();
@@ -1095,6 +1104,18 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     }
 
     const DEAL_GAP = 130;
+    // 총통: 나눠 주기가 끝나면 그 4장을 펼쳐 보여 준다 (그때 한 번 다시 그린다). 이어 보는 판(새로고침 등)은 바로 펼친 채로
+    const chongEv = (p.events ?? []).find((e) => e.t === 'chongtong');
+    const chongCards = chongEv && Array.isArray(chongEv.cards) && chongEv.cards.length === 4 ? (chongEv.cards as string[]) : [];
+    const chongSeat = typeof chongEv?.seat === 'number' ? chongEv.seat : null;
+    const chongWait = chongCards.length && dealFresh ? dealStartAt + DEAL_MS - performance.now() : 0;
+    const chongShow = chongCards.length > 0 && chongWait <= 0;
+    if (chongCards.length && chongWait > 0 && !chongTimer) {
+      chongTimer = setTimeout(() => {
+        chongTimer = null;
+        forceRedraw(t);
+      }, chongWait + 30);
+    }
 
     // 자리 판: 아바타 · 이름 · 꼬리표(차례 · 고 · 흔들기 · 폭탄 피) · 점수 방울
     // 차례 표시는 방금 둔 사람의 연출이 다 끝난 뒤에 넘어간다 (내 패를 뒤집는 중인데 '상대 차례'로 보이지 않게)
@@ -1129,8 +1150,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     playerPanel(scene, L.myPanel, { name: t.seatName(me), avatar: t.seatAvatar(me), score: mp.score, tags: tagsOf(mp, me), sub: subOf(mp), turn: turnNow === me });
 
     // 상대 손패(뒷면)
-    for (let i = 0; i < op.handCount; i++) {
-      const back = hwatu(scene, L.oppHand.x + (i - (op.handCount - 1) / 2) * L.backStep, L.oppHand.y, null, L.bw);
+    // (상대의 총통: 펼쳐 보인 4장만큼 뒷면이 줄어든다)
+    const oppBacks = Math.max(0, op.handCount - (chongShow && chongSeat === opp ? 4 : 0));
+    for (let i = 0; i < oppBacks; i++) {
+      const back = hwatu(scene, L.oppHand.x + (i - (oppBacks - 1) / 2) * L.backStep, L.oppHand.y, null, L.bw);
       t.track(back, `opp:${i}`, { from: L.pile, delay: dealing ? (i * 2 + 1) * DEAL_GAP : 0 });
     }
     const pile = L.pile;
@@ -1251,7 +1274,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 바닥에 임시로 놓이는 패 (서버 상태의 바닥에는 아직 없다):
     //   · 방금 누른 내 패: 서버 답을 기다리지 않고 바로 바닥에 내려놓는다
     //   · 고르기 대기 중 (바닥에 같은 달이 2장): 이번 차례에 낸 패·뒤집은 패를 그 묶음 위에 놓아 3장으로 보이게 한 뒤 고른다
-    const rawHand = (t.priv?.hand ?? []).filter((id) => !shownNow.has(id));
+    // (내 총통: 펼쳐 보이는 4장은 손패에서 뺀다 — 손에서 바닥 가운데로 날아간다)
+    const rawHand = (t.priv?.hand ?? []).filter((id) => !shownNow.has(id) && !(chongShow && chongSeat === me && chongCards.includes(id)));
     if (picked && !rawHand.includes(picked)) picked = null;
     const resting: { id: string; mine: boolean; flipped: boolean }[] = [];
     if (p.turnCards && p.choice?.kind === 'choose') {
@@ -1346,6 +1370,39 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         { from: pile, delay: dealingHand ? i * 2 * DEAL_GAP : 0, sound: dealingHand ? 'deal' : undefined },
       );
     });
+
+    // 총통: 그 4장을 바닥 가운데에 크게 펼친다 (내 것은 손에서, 상대 것은 상대 손에서 뒤집히며 한 장씩)
+    if (chongShow) {
+      const mineCt = chongSeat === me;
+      const w = Math.min(fw * 1.35, (L.floor.w - 40) / 4.6);
+      const h = w * 1.55;
+      const gap = w * 1.12;
+      const cx = L.floor.x + L.floor.w / 2;
+      const cy = L.floor.y + L.floor.h / 2;
+      const fs = clamp(w * 0.3, 14, 24);
+      const pw = gap * 3 + w + 28;
+      const ph = h + fs * 2 + 30;
+      const panel = scene.add.graphics().setDepth(28);
+      panel.fillStyle(T.MATGO.matDark, 0.92).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 16);
+      panel.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 16);
+      const who = chongSeat === null ? '' : t.seatName(chongSeat);
+      label(scene, cx, cy - ph / 2 + fs * 0.95, `${who} 총통 · ${cardById(chongCards[0]).month}월 4장`, fs, tc('primary')).setDepth(31);
+      chongCards.forEach((id, i) => {
+        const x = cx + (i - 1.5) * gap;
+        const y = cy + fs * 0.8;
+        const card = hwatu(scene, x, y, id, w).setDepth(30);
+        // 내 패는 손패 자리에서 그대로 이어 날아오고 (같은 패), 상대 패는 상대 손에서 뒤집히며 나온다
+        t.track(card, mineCt ? id : `chong:${id}`, {
+          from: mineCt ? (t.lastPos(id) ?? myHand) : L.oppHand,
+          delay: i * CHONG_GAP,
+          fromScale: (mineCt ? cw : L.bw) / w,
+          flip: !mineCt,
+          sound: 'deal',
+          depth: 30,
+          onLand: () => slapCard(id, scene, x, y, w, false, t.dpr),
+        });
+      });
+    }
   },
 
   controls(t: Ctx, el: HTMLElement) {
@@ -1452,6 +1509,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   },
 
   cutinDelay(ev) {
+    // 총통: 패를 다 나눠 주고 그 4장을 펼친 뒤에 (이어 보는 판이면 평소처럼 연출이 끝난 뒤)
+    if (ev.t === 'chongtong') return dealFresh ? Math.max(0, dealStartAt + DEAL_MS + CHONG_CUTIN_AT - performance.now()) : null;
     // 패의 움직임과 함께 보여야 하는 것만 때를 맞춘다. 고·스톱·박 등은 카드 연출이 끝난 뒤 차례로 (그 뒤에 결과 창)
     if (ev.t !== 'shake' && ev.t !== 'bomb' && ev.t !== 'ppeok' && ev.t !== 'capture' && ev.t !== 'sseul') return null;
     const base = eventBase.get(ev.id);
