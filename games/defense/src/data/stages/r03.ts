@@ -6,7 +6,7 @@ import type { StageDef } from '../stages';
  */
 export const REGION_03: StageDef[] = [
   {
-    id: '3-1', region: 3, no: 1, name: '고갯마루', energy: 256, hp: 1.38,
+    id: '3-1', region: 3, no: 1, name: '고갯마루', energy: 256, hp: 1.33,
     routes: [
       { id: 'main', pts: [[-1, 3], [4, 3], [4, 7], [9, 7]] },
     ],
@@ -38,7 +38,7 @@ export const REGION_03: StageDef[] = [
     coins: 65, firstCoins: 85,
   },
   {
-    id: '3-3', region: 3, no: 3, name: '솔밭 지름길', energy: 256, hp: 1.27,
+    id: '3-3', region: 3, no: 3, name: '솔밭 지름길', energy: 256, hp: 1.19,
     routes: [
       { id: 'main', pts: [[-1, 8], [3, 8], [3, 3], [9, 3]] },
     ],
@@ -54,7 +54,7 @@ export const REGION_03: StageDef[] = [
     coins: 70, firstCoins: 90,
   },
   {
-    id: '3-4', region: 3, no: 4, name: '호랑이 굴 앞', energy: 256, hp: 1.24,
+    id: '3-4', region: 3, no: 4, name: '호랑이 굴 앞', energy: 256, hp: 1.22,
     routes: [
       { id: 'main', pts: [[2, -1], [2, 5], [6, 5], [6, 11]] },
     ],
@@ -70,7 +70,7 @@ export const REGION_03: StageDef[] = [
     coins: 75, firstCoins: 95,
   },
   {
-    id: '3-5', region: 3, no: 5, name: '불가살 고개', energy: 276, hp: 1.38,
+    id: '3-5', region: 3, no: 5, name: '불가살 고개', energy: 276, hp: 1.32,
     routes: [
       { id: 'main', pts: [[-1, 2], [5, 2], [5, 8], [9, 8]] },
     ],
@@ -83,7 +83,7 @@ export const REGION_03: StageDef[] = [
       { groups: [{ enemy: 'imp', count: 7, at: 0, gap: 2.4 }, { enemy: 'water', count: 3, at: 7, gap: 2.4 }, { enemy: 'wisp', count: 6, at: 17, gap: 1.7 }] },
       { groups: [{ enemy: 'water', count: 6, at: 0, gap: 2.4 }, { enemy: 'club', count: 2, at: 7, gap: 2.4 }, { enemy: 'wisp', count: 10, at: 17, gap: 1 }] },
     ],
-    boss: { id: 'bulgasal', hp: 1.08 },
+    boss: { id: 'bulgasal', hp: 1.28 },
     coins: 95, firstCoins: 145,
   },
 ];

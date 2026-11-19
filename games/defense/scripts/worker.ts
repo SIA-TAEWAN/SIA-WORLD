@@ -68,6 +68,9 @@ if (arg === 'info') {
   const levels: Partial<Record<ZodiacId, number>> = {};
   const upgrades: Record<string, number> = {};
   const rows: unknown[] = [];
+  /** 지금까지 깬 스테이지와 그 별 (다시 하기용) */
+  const book: { stage: (typeof STAGES)[number]; stars: number; p: number; mean: number }[] = [];
+  let regionReplays = 0;
   for (const r of REGIONS) {
     const list = stagesOf(r.no);
     if (!list.length) break;
@@ -107,9 +110,36 @@ if (arg === 'info') {
       runs += tries;
       regionRuns += tries;
       stars += got;
+      book.push({ stage, stars: got, p, mean: got });
     }
+    // 다음 지역에 필요한 별이 모자라면 별이 적은 스테이지를 다시 한다 (한 번 다시 하면 그 스테이지의 별이 지금 레벨의 평균만큼 오를 수 있다)
+    const need = REGIONS[r.no]?.stars ?? 0;
+    let replays = 0;
+    while (stars < need && replays < 40) {
+      const low = book.filter((b) => b.stars < 2.5).sort((a, b) => a.stars - b.stars)[0];
+      if (!low) break;
+      // 지금 레벨로 그 스테이지를 다시 재서, 클리어한 판의 평균 별만큼 오른다고 본다 (이미 그보다 높으면 조금만)
+      const squad = pickSquad(low.stage, unlockedAt(r.no));
+      let clears = 0;
+      let starSum = 0;
+      for (let i = 0; i < RUNS; i++) {
+        const out = simulate({ seed: 5 + i * 7919, stage: low.stage.id, squad, levels, upgrades: upgrades as Upgrades }, skillPolicy(77 + i * 104729, SKILLS.normal)).summary;
+        clears += out.cleared ? 1 : 0;
+        starSum += out.stars;
+      }
+      const mean = clears ? starSum / clears : 1;
+      const gain = Math.max(0.25, Math.min(3, mean + 0.5) - low.stars);
+      const tries = Math.min(MAX_TRIES, clears ? RUNS / clears : MAX_TRIES);
+      low.stars = Math.min(3, low.stars + gain);
+      stars += gain;
+      coins += Math.floor(low.stage.coins * tries * 0.8 + gain * COINS.perStar);
+      runs += tries;
+      regionRuns += tries;
+      replays += tries;
+    }
+    regionReplays = replays;
     const squadLv = pickSquad(list[4], unlockedAt(r.no)).map((c) => levels[c] ?? 1);
-    rows.push({ region: r.no, name: r.name, runs: regionRuns, total: runs, enter, lv: squadLv, upg: Object.values(upgrades).reduce((a, b) => a + b, 0), stars, need: REGIONS[r.no]?.stars ?? 0, coins });
+    rows.push({ region: r.no, name: r.name, runs: regionRuns, replays: regionReplays, total: runs, enter, lv: squadLv, upg: Object.values(upgrades).reduce((a, b) => a + b, 0), stars, need: REGIONS[r.no]?.stars ?? 0, coins });
   }
   console.log(JSON.stringify({ journey: rows }));
 } else {

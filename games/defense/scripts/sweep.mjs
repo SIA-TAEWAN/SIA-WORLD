@@ -96,9 +96,13 @@ if (!only || only === 'levels') {
   // 지역 × 캐릭터 레벨: 그 지역의 5스테이지를 합친 클리어율 (공통 강화는 (지역 - 1) / 2 레벨로 고정)
   const LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const stages = ALL_STAGES.filter((s) => !filter || String(s.region) === filter);
-  const sum = await sweep(stages.flatMap((st) => LEVELS.filter((lv) => Math.abs(lv - st.region) <= 3 || lv === 1 || lv === 12).map((lv) => ({ key: `${st.region}:${lv}`, stage: st.id, skill: 'normal', lv }))));
+  const sum = await sweep(stages.flatMap((st) => [
+    ...LEVELS.filter((lv) => Math.abs(lv - st.region) <= 2 || lv === 12).map((lv) => ({ key: `${st.region}:${lv}`, stage: st.id, skill: 'normal', lv })),
+    // 맨 끝 칸: 12레벨 + 공통 강화 최대 (모든 별 3개는 그때의 목표)
+    { key: `${st.region}:max`, stage: st.id, skill: 'normal', lv: 12, upg: 5 },
+  ]));
   console.log(`\n■ 지역 × 캐릭터 레벨 (보통 실력, 스테이지마다 ${runs}판, 지역의 5스테이지 합): 클리어율 / 별 3개 비율   [ ] = 지역 번호와 같은 레벨 (PRD 7장의 목표)`);
-  console.log(`  ${'지역'.padEnd(10, '　')}${LEVELS.map((l) => `Lv${l}`.padStart(11)).join('')}`);
+  console.log(`  ${'지역'.padEnd(10, '　')}${LEVELS.map((l) => `Lv${l}`.padStart(11)).join('')}${'Lv12+강화최대'.padStart(14)}`);
   for (const r of [...new Set(stages.map((s) => s.region))]) {
     const cells = LEVELS.map((lv) => {
       const s = sum.get(`${r}:${lv}`);
@@ -106,7 +110,8 @@ if (!only || only === 'levels') {
       const txt = `${pct(s.clears, s.runs)}/${pct(s.stars[3], s.runs)}`;
       return (lv === r ? `[${txt}]` : ` ${txt} `).padStart(11);
     });
-    console.log(`  ${`${r} ${info.regions[r - 1]}`.padEnd(10, '　')}${cells.join('')}`);
+    const mx = sum.get(`${r}:max`);
+    console.log(`  ${`${r} ${info.regions[r - 1]}`.padEnd(10, '　')}${cells.join('')}${`${pct(mx.clears, mx.runs)}/${pct(mx.stars[3], mx.runs)}`.padStart(14)}`);
   }
 }
 
@@ -153,9 +158,9 @@ if (!only || only === 'endless') {
 if (!only || only === 'journey') {
   const [{ journey }] = await work('journey', String(Math.min(runs, 16)));
   console.log('\n■ 몇 판째 (보통 실력이 스테이지를 차례로 깨며, 번 엽전으로 데려갈 캐릭터를 고르게 올리고 공통 강화를 살 때)');
-  console.log('  지역              이 지역 판 수   누적 판 수   보스 스테이지 명단의 레벨       공통 강화   모은 별 (다음 지역 필요)   남은 엽전');
+  console.log('  지역              이 지역 판 수 (그중 별 채우기)   누적 판 수   보스 스테이지 명단의 레벨       공통 강화   모은 별 (다음 지역 필요)   남은 엽전');
   for (const r of journey) {
-    console.log(`  ${`${r.region} ${r.name}`.padEnd(11, '　')} ${r.runs.toFixed(1).padStart(8)} ${r.total.toFixed(0).padStart(12)}      ${r.lv.join(' ').padEnd(22)} ${String(r.upg).padStart(8)} ${r.stars.toFixed(0).padStart(10)} (${r.need})  ${String(r.coins).padStart(14)}`);
+    console.log(`  ${`${r.region} ${r.name}`.padEnd(11, '　')} ${r.runs.toFixed(1).padStart(8)} (${r.replays.toFixed(1).padStart(4)}) ${r.total.toFixed(0).padStart(16)}      ${r.lv.join(' ').padEnd(22)} ${String(r.upg).padStart(8)} ${r.stars.toFixed(0).padStart(10)} (${r.need})  ${String(r.coins).padStart(14)}`);
   }
 }
 

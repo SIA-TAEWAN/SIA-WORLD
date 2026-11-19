@@ -393,7 +393,7 @@ describe('7~12지역의 캐릭터·요괴', () => {
     expect(s.kills).toBe(1);
   });
 
-  it('원혼: 무적인 동안에는 피해를 받지 않지만 멈춤·감속은 먹힌다', () => {
+  it('원혼: 무적인 동안에는 피해를 받지 않지만, 붙잡으면(멈춤) 무적이 풀린다', () => {
     const s = arena();
     const g = foe(s, 'spirit', 0);
     g.on = true;
@@ -403,10 +403,10 @@ describe('7~12지역의 캐릭터·요괴', () => {
     put(s, 0, 'ox');
     tick(s, 0.4);
     expect(g.stun).toBeGreaterThan(0);
-    expect(g.hp).toBe(1000);
-    g.on = false;
+    expect(g.on).toBe(false);
+    const hp = g.hp;
     hurt(s, g, 100);
-    expect(g.hp).toBe(900);
+    expect(g.hp).toBe(hp - 100);
   });
 });
 

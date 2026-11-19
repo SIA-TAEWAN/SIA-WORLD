@@ -6,7 +6,7 @@ import type { StageDef } from '../stages';
  */
 export const REGION_02: StageDef[] = [
   {
-    id: '2-1', region: 2, no: 1, name: '논두렁길', energy: 248, hp: 1.62,
+    id: '2-1', region: 2, no: 1, name: '논두렁길', energy: 248, hp: 1.59,
     routes: [
       { id: 'main', pts: [[-1, 0], [7, 0], [7, 2], [1, 2], [1, 4], [7, 4], [7, 6], [1, 6], [1, 8], [9, 8]] },
     ],
@@ -22,7 +22,7 @@ export const REGION_02: StageDef[] = [
     coins: 50, firstCoins: 70,
   },
   {
-    id: '2-2', region: 2, no: 2, name: '물꼬 굽이', energy: 248, hp: 1.84,
+    id: '2-2', region: 2, no: 2, name: '물꼬 굽이', energy: 248, hp: 1.87,
     routes: [
       { id: 'main', pts: [[0, -1], [0, 9], [2, 9], [2, 1], [4, 1], [4, 9], [6, 9], [6, 1], [8, 1], [8, 11]] },
     ],
@@ -70,7 +70,7 @@ export const REGION_02: StageDef[] = [
     coins: 65, firstCoins: 85,
   },
   {
-    id: '2-5', region: 2, no: 5, name: '두억시니 논', energy: 268, hp: 1.46,
+    id: '2-5', region: 2, no: 5, name: '두억시니 논', energy: 268, hp: 1.48,
     routes: [
       { id: 'main', pts: [[4, -1], [4, 1], [1, 1], [1, 3], [7, 3], [7, 5], [1, 5], [1, 7], [7, 7], [7, 9], [4, 9], [4, 11]] },
     ],
@@ -83,7 +83,7 @@ export const REGION_02: StageDef[] = [
       { groups: [{ enemy: 'wisp', count: 15, at: 0, gap: 1.8 }, { enemy: 'club', count: 2, at: 12, gap: 2.4 }] },
       { groups: [{ enemy: 'club', count: 4, at: 0, gap: 2.4 }, { enemy: 'wisp', count: 18, at: 12, gap: 0.8 }] },
     ],
-    boss: { id: 'dueoksini', hp: 1.04 },
+    boss: { id: 'dueoksini', hp: 0.68 },
     coins: 85, firstCoins: 135,
   },
 ];

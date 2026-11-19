@@ -3,7 +3,7 @@ import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { ROSTER, TOWERS, towerOf, type TowerDef } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { stageEnemies, type StageDef } from '../data/stages';
-import { coverage } from './path';
+import { coverage, makePoint, routePos } from './path';
 import { makeRng } from './rng';
 import { canPlace, command, createGame, isOver, step, summarize, upgradeCost, type RunSummary } from './sim';
 import type { GameConfig, State } from './state';
@@ -54,6 +54,10 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
   const rng = makeRng(seed);
   /** 캐릭터별 · 칸별 점수 (사거리에 들어오는 길의 길이). 판마다 한 번 계산한다 */
   let score: number[][] | null = null;
+  /** 길 위의 점들 (x, y 가 번갈아. 판 안의 땅 위 길, 16px 간격) · 이 판에 공중·은신 요괴가 나오나 */
+  let road: number[] | null = null;
+  let hasAir = false;
+  let hasStealth = false;
   let goal: Goal = null;
   let nextThink = 0;
   /** 지난번에 살폈을 때의 생명 (줄었으면 급하다는 뜻) */
@@ -64,10 +68,15 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
     let singles = 0;
     let lobs = 0;
     let banks = 0;
+    let helpers = 0;
+    /** 나는 요괴를 칠 수 있는 공격 캐릭터 수 */
+    let airs = 0;
     const have = new Map<number, number>();
     for (const t of s.towers) {
       if (t.char < 0) continue;
       placed++;
+      if (helper(t.char)) helpers++;
+      if (TOWERS[t.char].air && TOWERS[t.char].kind !== 'slow') airs++;
       have.set(t.char, (have.get(t.char) ?? 0) + 1);
       if (single(t.char)) singles++;
       if (TOWERS[t.char].kind === 'lob' || TOWERS[t.char].kind === 'beam') lobs++;
@@ -80,8 +89,13 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
     const w = s.squad.map((c) => {
       const k = TOWERS[c].kind;
       let v = WEIGHT[k];
-      // 돕는 캐릭터는 셋을 놓은 뒤에, 같은 것을 여럿 두지 않는다 (공격 속도·감속은 겹치지 않는다)
-      if (helper(c)) v = placed < 3 ? 0 : v / (1 + 2 * (have.get(c) ?? 0));
+      // 돕는 캐릭터는 셋을 놓은 뒤에, 공격 캐릭터 셋에 하나꼴로, 같은 것을 여럿 두지 않는다 (공격 속도·감속은 겹치지 않는다)
+      if (helper(c)) v = placed < 3 || helpers * 3 >= placed - helpers ? 0 : (v * 1.6) / (1 + 2 * (have.get(c) ?? 0));
+      // 원숭이는 공중·은신 요괴가 나오는 판에서, 개는 은신 요괴가 나오는 판에서 자주 고른다
+      if (TOWERS[c].target === 'air') v = hasAir || hasStealth ? 3.2 : 1.2;
+      if (TOWERS[c].levels[0].detect) v = hasStealth ? 3 : 1.4;
+      // 나는 요괴가 나오는 판인데 아직 칠 캐릭터가 없으면 칠 수 있는 공격 캐릭터를 먼저 (길을 가로질러 일찍 온다)
+      if (hasAir && airs === 0 && placed >= 1 && TOWERS[c].air && !helper(c)) v *= 3;
       // 한 마리씩 잡는 캐릭터가 아직 없으면 범위 캐릭터를 또 고르지 않는다
       if ((k === 'lob' || k === 'beam') && lobs > 0 && singles === 0) v = 0;
       total += v;
@@ -104,16 +118,37 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
     const sc = score![char];
     // 돼지는 길이 가장 덜 보이는 칸에 (좋은 칸을 아낀다)
     if (TOWERS[char].kind === 'bank') return empty.sort((a, b) => score![0][a] - score![0][b] || a - b)[0];
-    // 돕는 캐릭터는 다른 캐릭터 곁에 둔다
-    const near = (i: number) => {
-      if (!helper(char)) return 0;
-      let n = 0;
-      for (let j = 0; j < s.towers.length; j++) {
-        if (s.towers[j].char >= 0 && !helper(s.towers[j].char) && Math.hypot(s.slotX[i] - s.slotX[j], s.slotY[i] - s.slotY[j]) < 170) n++;
-      }
-      return n * 150;
-    };
-    empty.sort((a, b) => sc[b] + near(b) - (sc[a] + near(a)) || a - b);
+    if (helper(char)) {
+      // 돕는 캐릭터는 화력이 모인 곳에 둔다: 닭은 많이 키운 캐릭터들의 곁, 소·양은 여러 캐릭터가 함께 때리는 길목
+      const L = s.lv[char][0];
+      const help = (i: number) => {
+        let v = 0;
+        if (L.haste) {
+          for (let j = 0; j < s.towers.length; j++) {
+            const t = s.towers[j];
+            if (t.char < 0 || helper(t.char) || TOWERS[t.char].kind === 'bank') continue;
+            if (Math.hypot(s.slotX[i] - s.slotX[j], s.slotY[i] - s.slotY[j]) <= L.range) v += t.spent;
+          }
+          return v;
+        }
+        for (let k = 0; k < road!.length; k += 2) {
+          const dx = road![k] - s.slotX[i];
+          const dy = road![k + 1] - s.slotY[i];
+          if (dx * dx + dy * dy > L.range * L.range) continue;
+          for (let j = 0; j < s.towers.length; j++) {
+            const t = s.towers[j];
+            if (t.char < 0 || helper(t.char) || TOWERS[t.char].kind === 'bank') continue;
+            const r = s.lv[t.char][t.lv - 1].range;
+            if ((road![k] - s.slotX[j]) ** 2 + (road![k + 1] - s.slotY[j]) ** 2 <= r * r) v += t.spent;
+          }
+        }
+        return v;
+      };
+      const best = empty.map((i) => ({ i, v: help(i) })).sort((a, b) => b.v - a.v || a.i - b.i)[0];
+      // 도울 캐릭터가 아직 곁에 없으면 놓지 않는다
+      return best.v > 0 ? best.i : -1;
+    }
+    empty.sort((a, b) => sc[b] - sc[a] || a - b);
     const k = Math.min(skill.topK, empty.length);
     // 앞 순위일수록 자주 고른다 (3 : 2 : 1 …)
     const total = (k * (k + 1)) / 2;
@@ -125,6 +160,9 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
     return empty[0];
   };
 
+  /** 지금 놓을 수 있는 가장 싼 공격 캐릭터 */
+  const cheapest = (s: State) => s.squad.filter((c) => !helper(c) && TOWERS[c].kind !== 'bank').sort((a, b) => s.cost[a] - s.cost[b])[0] ?? s.squad[0];
+
   const pickGoal = (s: State): Goal => {
     const placed: number[] = [];
     let empty = 0;
@@ -134,21 +172,43 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
     }
     const total = s.towers.length - empty;
     const wantUp = placed.length > 0 && (empty === 0 || (total >= 3 && rng() < skill.upgrade));
-    if (wantUp) return { op: 'upgrade', slot: placed[Math.floor(rng() * placed.length)] };
+    if (wantUp) {
+      // 강화는 공격 캐릭터부터 (돕는 캐릭터·돼지는 다른 것이 다 올랐을 때)
+      const main = placed.filter((i) => !helper(s.towers[i].char) && TOWERS[s.towers[i].char].kind !== 'bank');
+      const from = main.length && rng() < 0.85 ? main : placed;
+      return { op: 'upgrade', slot: from[Math.floor(rng() * from.length)] };
+    }
     if (empty === 0) return null;
-    const char = pickChar(s);
-    const slot = pickSlot(s, char);
+    let char = pickChar(s);
+    let slot = pickSlot(s, char);
+    // 돕는 캐릭터를 놓을 만한 자리가 없으면 공격 캐릭터를 놓는다
+    if (slot < 0 && helper(char)) {
+      char = cheapest(s);
+      slot = pickSlot(s, char);
+    }
     return slot < 0 ? null : { op: 'place', slot, char };
   };
 
   const cost = (s: State, g: Exclude<Goal, null>) => (g.op === 'place' ? s.cost[g.char] : (upgradeCost(s, g.slot) ?? Infinity));
   const run = (s: State, g: Exclude<Goal, null>) => (g.op === 'place' ? command(s, 'place', g.slot, g.char) : command(s, 'upgrade', g.slot));
-  /** 지금 놓을 수 있는 가장 싼 공격 캐릭터 */
-  const cheapest = (s: State) => s.squad.filter((c) => !helper(c) && TOWERS[c].kind !== 'bank').sort((a, b) => s.cost[a] - s.cost[b])[0] ?? s.squad[0];
 
   return {
     act(s) {
       score ??= TOWERS.map((t) => s.slotX.map((x, i) => coverage(s.routes, x, s.slotY[i], t.levels[0].range, BOARD_W, BOARD_H)));
+      if (!road) {
+        road = [];
+        const p = makePoint();
+        for (const r of s.routes) {
+          if (r.air) continue;
+          for (let d = 0; d <= r.len; d += 16) {
+            routePos(r, d, p.seg, p);
+            if (p.x >= 0 && p.x <= BOARD_W && p.y >= 0 && p.y <= BOARD_H) road.push(p.x, p.y);
+          }
+        }
+        const foes = s.endless ? ENEMIES : stageEnemies(s.stage).map((id) => ENEMIES[ENEMY_INDEX[id]]);
+        hasAir = foes.some((f) => f.air);
+        hasStealth = foes.some((f) => f.stealth);
+      }
       if (s.phase === 'prep') {
         // 처음 배치: 시작 기운으로 놓을 수 있는 만큼 놓고 시작한다
         for (let guard = 0; guard < 20; guard++) {
@@ -198,20 +258,47 @@ const BASE: Record<string, number> = { rat: 2.4, ox: 1.4, tiger: 3, rabbit: 3, d
 export function pickSquad(stage: StageDef, unlocked: readonly ZodiacId[], must?: ZodiacId, size = SQUAD_SIZE): ZodiacId[] {
   const foes = stageEnemies(stage).map((id) => ENEMIES[ENEMY_INDEX[id]]);
   const bossHere = stage.boss ? BOSSES[BOSS_INDEX[stage.boss.id]] : null;
+  // 요괴마다 이 스테이지에서 차지하는 몫 (마릿수 × 체력)
+  const weight = new Map<string, number>();
+  let all = 0;
+  for (const w of stage.waves) {
+    for (const g of w.groups) {
+      const v = g.count * ENEMIES[ENEMY_INDEX[g.enemy]].hp;
+      weight.set(g.enemy, (weight.get(g.enemy) ?? 0) + v);
+      all += v;
+    }
+  }
+  const share = (pred: (f: (typeof foes)[number]) => unknown) => foes.reduce((a, f) => a + (pred(f) ? (weight.get(f.id) ?? 0) : 0), 0) / Math.max(1, all);
+  const stealth = share((f) => f.stealth);
+  const air = share((f) => f.air);
+  const ghost = share((f) => f.ghost);
   const score = (id: ZodiacId) => {
     let v = BASE[id] ?? 1;
-    for (const f of foes) if (f.weak.includes(id)) v += 1.2;
+    // 잘 듣는 요괴가 많이 나올수록 가산점
+    for (const f of foes) if (f.weak.includes(id)) v += 0.5 + (3 * (weight.get(f.id) ?? 0)) / Math.max(1, all);
     if (bossHere && (id === 'horse' || id === 'snake' || id === 'tiger')) v += 0.6;
+    // 꼭 필요한 짝: 숨는 요괴에는 개, 나는 요괴에는 원숭이, 무적인 요괴에는 소 (붙잡아 둔다)
+    if (id === 'dog' && stealth >= 0.08) v += 2.5;
+    // 나는 요괴는 체력이 낮아 몫이 작게 잡히지만 길을 가로질러 와서 자주 샌다: 한 무리라도 나오면 원숭이를 데려간다
+    if (id === 'monkey' && (air >= 0.06 || foes.some((f) => f.air))) v += 2.5;
+    if (id === 'ox' && ghost >= 0.08) v += 2;
     return v;
   };
   const able = ROSTER.map((r) => r.id).filter((id) => unlocked.includes(id) && !!towerOf(id));
   // must: 꼭 데려갈 캐릭터 (점수와 상관없이 넣는다 — 밸런스 표에서 캐릭터의 쓸모를 볼 때)
-  return able
-    .map((id, i) => ({ id, v: id === must ? 99 : score(id), i }))
-    .sort((a, b) => b.v - a.v || a.i - b.i)
-    .slice(0, size)
-    .sort((a, b) => a.i - b.i)
-    .map((x) => x.id);
+  const ranked = able.map((id, i) => ({ id, v: id === must ? 99 : score(id), i })).sort((a, b) => b.v - a.v || a.i - b.i);
+  // 공격 캐릭터가 셋은 있어야 한다: 돕는 캐릭터(소·양·닭·돼지)는 둘까지만
+  const picked: typeof ranked = [];
+  let helpers = 0;
+  for (const x of ranked) {
+    if (picked.length >= size) break;
+    const t = towerOf(x.id)!;
+    const isHelper = t.kind === 'stun' || t.kind === 'slow' || t.kind === 'bank' || !!t.levels[0].haste;
+    if (isHelper && x.id !== must && helpers >= 2) continue;
+    if (isHelper) helpers++;
+    picked.push(x);
+  }
+  return picked.sort((a, b) => a.i - b.i).map((x) => x.id);
 }
 
 /** 정책으로 한 판을 끝까지 돌린다 */

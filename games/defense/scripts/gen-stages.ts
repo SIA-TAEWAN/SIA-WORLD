@@ -5,7 +5,11 @@
  *   1) 길: 아래 LAYOUTS 에 손으로 적은 모양 (지역의 길 특징 — PRD 6장)
  *   2) 배치 칸: 길 옆 칸 가운데 길이 사거리에 많이 들어오는 순서로 고르되 서로 붙지 않게
  *   3) 웨이브: 지역의 요괴 묶음(POOL)과 웨이브 예산으로 무리를 짠다 (뒤 웨이브일수록 많고, 새 요괴가 자주)
- *   4) 체력 배율: '보통 실력' 정책이 그 지역 번호와 같은 캐릭터 레벨로 TARGET 만큼 클리어하도록 맞춘다 (PRD 7장: N지역 = N레벨)
+ *   4) 체력 배율: '보통 실력' 정책이 그 지역 번호와 같은 캐릭터 레벨(CAL_LV)로 TARGET 만큼 클리어하도록 맞춘다 (PRD 7장: N지역 = N레벨).
+ *      보스 스테이지는 보스 처치율(BOSS_KILL)도 맞춘다. 그다음 두 가지 여유를 둔다 (그 지역 레벨의 클리어율이 FLOOR_CLEAR 를 넘지 않는 만큼만):
+ *      · 별 2개: 그 레벨에서 별 2개 이상이 STAR2 보다 드물면 체력을 낮춘다 (다음 지역의 필요 별을 다시 하기 몇 판으로 모으게)
+ *      · 별 3개: 12레벨 + 공통 강화 최대에서 별 3개가 PERFECT 보다 드물면 체력을 낮춘다 (모든 별 3개는 그 이후의 목표)
+ *      7지역부터는 웨이브 체력 배율을 완만하게(LATE_CURVE) 적는다
  * 만든 뒤에는 파일을 손으로 고쳐도 된다 (다시 만들면 덮어쓴다). 048_defense.sql 의 스테이지 표도 함께 맞춘다 (tests/sql.test.ts).
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -140,6 +144,13 @@ const POOL: Record<number, string[]> = {
 /** 요괴 한 마리의 무게 (꼬마 도깨비 = 1). 웨이브 예산을 마릿수로 바꿀 때 쓴다 */
 const WEIGHT: Record<string, number> = { imp: 1, wisp: 0.6, club: 3.6, water: 2, fox: 1, bamboo: 1.5, guard: 3, skeleton: 2, spirit: 1.5 };
 
+/**
+ * 뒤 지역(LATE_FROM~)은 웨이브 체력 배율을 완만하게 (data/balance.ts 의 WAVE_HP 는 마지막 웨이브가 ×1.9 로 크게 뛴다).
+ * 마지막 웨이브에 몰려 새는 일이 줄어, 클리어율이 같아도 생명이 덜 줄고(별 2개) 강해지면 하나도 새지 않게(별 3개) 된다
+ */
+const LATE_FROM = Number(process.env.LATE_FROM ?? 7);
+const LATE_CURVE: number[] | null = process.env.LATE_CURVE === 'off' ? null : (process.env.LATE_CURVE ?? '1,1.1,1.2,1.32,1.45,1.62').split(',').map(Number);
+
 function makeWaves(region: number, no: number, routes: number, boss: boolean): WaveDef[] {
   const rng = makeRng(region * 100 + no);
   const pool = POOL[region];
@@ -167,7 +178,7 @@ function makeWaves(region: number, no: number, routes: number, boss: boolean): W
       if (routes > 1 && enemy !== 'fox') g.route = 'alt';
       return g;
     });
-    waves.push({ groups });
+    waves.push(LATE_CURVE && region >= LATE_FROM ? { groups, hp: LATE_CURVE[w] } : { groups });
   }
   return waves;
 }
@@ -200,19 +211,110 @@ function pickSlots(routes: RouteDef[], n: number): Cell[] {
 
 // ───────────────────────── 4) 체력 배율 맞추기 ─────────────────────────
 const RUNS = 24;
+/**
+ * 맞추는 기준 레벨: N지역은 N레벨 (PRD 7장). 다만 11·12지역은 한 레벨 낮게 맞춘다 —
+ * 12레벨이 끝이라 N레벨에 딱 맞추면 '12레벨 + 공통 강화 최대'로도 하나도 새지 않게(별 3개) 막을 여유가 없다.
+ * (그래서 11·12지역은 N레벨에서 80~90% 클리어된다)
+ */
+const CAL_LV = (region: number) => (region >= 11 ? region - 1 : region);
 /** 그 지역 번호와 같은 캐릭터 레벨의 '보통 실력'이 이만큼 클리어하게 한다 (보스 스테이지는 조금 낮게) */
-const TARGET = [0.8, 0.78, 0.75, 0.72, 0.68];
+const TARGET = [0.8, 0.77, 0.74, 0.71, 0.66];
 
-function clearRate(stage: StageDef, region: number): number {
+/** 보스 스테이지: 그 지역 레벨의 보통 실력이 보스를 이만큼 잡게 한다 (보스 체력 배율을 맞춘다) */
+const BOSS_KILL = 0.45;
+
+function rates(stage: StageDef, region: number): { clear: number; kill: number } {
   const unlocked = ROSTER.filter((c) => c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as ZodiacId[];
   const squad = pickSquad(stage, unlocked);
-  const levels = Object.fromEntries(squad.map((c) => [c, region]));
+  const levels = Object.fromEntries(squad.map((c) => [c, CAL_LV(region)]));
   let clears = 0;
+  let kills = 0;
   for (let i = 0; i < RUNS; i++) {
-    const r = simulate({ seed: 1 + i * 7919, stage: stage.id, squad, levels, upgrades: presetUpgrades(Math.floor((region - 1) / 2)) }, skillPolicy(31 + i * 104729, SKILLS.normal), 900, stage);
+    const r = simulate({ seed: 1 + i * 7919, stage: stage.id, squad, levels, upgrades: presetUpgrades(Math.min(4, Math.floor((region - 1) / 2))) }, skillPolicy(31 + i * 104729, SKILLS.normal), 900, stage);
     clears += r.summary.cleared ? 1 : 0;
+    kills += r.summary.bossDown ? 1 : 0;
   }
-  return clears / RUNS;
+  return { clear: clears / RUNS, kill: kills / RUNS };
+}
+const clearRate = (stage: StageDef, region: number) => rates(stage, region).clear;
+
+/** 보스 체력 배율: 처치율이 BOSS_KILL 이 되는 값 (체력이 높을수록 처치율이 낮다) */
+function calibrateBoss(stage: StageDef, region: number): number {
+  let lo = 0.25;
+  let hi = 3;
+  for (let i = 0; i < 6; i++) {
+    const mid = (lo + hi) / 2;
+    stage.boss!.hp = mid;
+    if (rates(stage, region).kill >= BOSS_KILL) lo = mid;
+    else hi = mid;
+  }
+  return Math.round(lo * 100) / 100;
+}
+
+/** 12레벨 + 공통 강화 최대의 보통 실력이 하나도 새지 않게 막는(별 3개) 비율 — 모든 별 3개는 그때의 목표 */
+const PERFECT = 0.3;
+function perfectRate(stage: StageDef, region: number): number {
+  const unlocked = ROSTER.filter((c) => c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as ZodiacId[];
+  const squad = pickSquad(stage, unlocked);
+  const levels = Object.fromEntries(squad.map((c) => [c, 12]));
+  let n = 0;
+  for (let i = 0; i < RUNS; i++) {
+    const r = simulate({ seed: 3 + i * 7919, stage: stage.id, squad, levels, upgrades: presetUpgrades(5) }, skillPolicy(57 + i * 104729, SKILLS.normal), 900, stage);
+    n += r.summary.stars === 3 ? 1 : 0;
+  }
+  return n / RUNS;
+}
+/**
+ * 별 3개 여유: 12레벨 + 강화 최대로도 별 3개가 PERFECT 보다 드물면 체력을 낮춘다.
+ * 다만 그 지역 레벨의 클리어율이 FLOOR_CLEAR 를 넘을 만큼 낮추지는 않는다 (너무 쉬워지지 않게)
+ */
+const FLOOR_CLEAR = 0.9;
+/**
+ * 별 2개 여유: 그 지역 레벨에서 클리어한 판의 절반쯤은 생명이 10 넘게 남아야(별 2개) 다음 지역의 필요 별을
+ * 다시 하기 몇 판으로 모을 수 있다. 모자라면 체력을 낮추되, 그 지역 레벨의 클리어율이 FLOOR_CLEAR 를 넘을 만큼은 낮추지 않는다
+ */
+const STAR2 = 0.45;
+function star2Rate(stage: StageDef, region: number): number {
+  const unlocked = ROSTER.filter((c) => c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as ZodiacId[];
+  const squad = pickSquad(stage, unlocked);
+  const levels = Object.fromEntries(squad.map((c) => [c, CAL_LV(region)]));
+  let n = 0;
+  for (let i = 0; i < RUNS; i++) {
+    const r = simulate({ seed: 1 + i * 7919, stage: stage.id, squad, levels, upgrades: presetUpgrades(Math.min(4, Math.floor((region - 1) / 2))) }, skillPolicy(31 + i * 104729, SKILLS.normal), 900, stage);
+    n += r.summary.stars >= 2 ? 1 : 0;
+  }
+  return n / RUNS;
+}
+function roomForStar2(stage: StageDef, region: number, hp: number): number {
+  stage.hp = hp;
+  if (star2Rate(stage, region) >= STAR2) return hp;
+  const floor = calibrate(stage, region, FLOOR_CLEAR);
+  let lo = floor;
+  let hi = hp;
+  for (let i = 0; i < 6; i++) {
+    const mid = (lo + hi) / 2;
+    stage.hp = mid;
+    if (star2Rate(stage, region) >= STAR2) lo = mid;
+    else hi = mid;
+  }
+  stage.hp = hp;
+  return Math.round(Math.max(floor, Math.min(hp, lo)) * 100) / 100;
+}
+
+function roomForPerfect(stage: StageDef, region: number, hp: number): number {
+  stage.hp = hp;
+  if (perfectRate(stage, region) >= PERFECT) return hp;
+  const floor = calibrate(stage, region, FLOOR_CLEAR);
+  let lo = floor;
+  let hi = hp;
+  for (let i = 0; i < 6; i++) {
+    const mid = (lo + hi) / 2;
+    stage.hp = mid;
+    if (perfectRate(stage, region) >= PERFECT) lo = mid;
+    else hi = mid;
+  }
+  stage.hp = hp;
+  return Math.round(Math.max(floor, lo) * 100) / 100;
 }
 
 function calibrate(stage: StageDef, region: number, target: number): number {
@@ -253,14 +355,24 @@ for (let region = from; region <= to; region++) {
       ...(boss ? { boss: { id: BOSS[region], hp: Math.round((1 + 0.04 * (region - 1)) * 100) / 100 } } : {}),
       coins: base, firstCoins: base + (boss ? 50 : 20),
     };
-    const hp = calibrate(stage, region, TARGET[no - 1]);
+    let hp = calibrate(stage, region, TARGET[no - 1]);
     stage.hp = hp;
-    console.log(`${stage.id} ${stage.name}: 체력 ×${hp} → 클리어율 ${(clearRate(stage, region) * 100).toFixed(0)}% (레벨 ${region})`);
+    if (stage.boss) {
+      // 보스 체력을 맞춘 뒤 졸개 체력을 한 번 더 맞춘다 (보스가 지나가면 생명 5가 줄어 클리어율이 달라진다)
+      stage.boss.hp = calibrateBoss(stage, region);
+      hp = calibrate(stage, region, TARGET[no - 1]);
+      stage.hp = hp;
+    }
+    hp = roomForStar2(stage, region, hp);
+    hp = roomForPerfect(stage, region, hp);
+    stage.hp = hp;
+    const got = rates(stage, region);
+    console.log(`${stage.id} ${stage.name}: 체력 ×${hp}${stage.boss ? ` 보스 ×${stage.boss.hp} 처치 ${(got.kill * 100).toFixed(0)}%` : ''} → 클리어율 ${(got.clear * 100).toFixed(0)}% (레벨 ${CAL_LV(region)}) · 별 2개 이상 ${(star2Rate(stage, region) * 100).toFixed(0)}% · 12레벨+강화 최대 별 3개 ${(perfectRate(stage, region) * 100).toFixed(0)}%`);
     out.push(
       `  {\n    id: '${stage.id}', region: ${region}, no: ${no}, name: '${stage.name}', energy: ${stage.energy}, hp: ${hp},\n` +
         `    routes: [\n${routes.map((r) => `      { id: '${r.id}', ${r.air ? 'air: true, ' : ''}pts: [${r.pts.map(cell).join(', ')}] },`).join('\n')}\n    ],\n` +
         `    slots: [${stage.slots.map(cell).join(', ')}],\n` +
-        `    waves: [\n${waves.map((w) => `      { groups: [${w.groups.map((g) => `{ enemy: '${g.enemy}', count: ${g.count}, at: ${g.at}, gap: ${g.gap}${g.route !== undefined ? `, route: '${g.route}'` : ''} }`).join(', ')}] },`).join('\n')}\n    ],\n` +
+        `    waves: [\n${waves.map((w) => `      { ${w.hp !== undefined ? `hp: ${w.hp}, ` : ''}groups: [${w.groups.map((g) => `{ enemy: '${g.enemy}', count: ${g.count}, at: ${g.at}, gap: ${g.gap}${g.route !== undefined ? `, route: '${g.route}'` : ''} }`).join(', ')}] },`).join('\n')}\n    ],\n` +
         (stage.boss ? `    boss: { id: '${stage.boss.id}', hp: ${stage.boss.hp} },\n` : '') +
         `    coins: ${stage.coins}, firstCoins: ${stage.firstCoins},\n  },`,
     );

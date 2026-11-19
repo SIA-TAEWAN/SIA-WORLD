@@ -6,7 +6,7 @@ import type { StageDef } from '../stages';
  */
 export const REGION_06: StageDef[] = [
   {
-    id: '6-1', region: 6, no: 1, name: '늪 어귀', energy: 280, hp: 1.92,
+    id: '6-1', region: 6, no: 1, name: '늪 어귀', energy: 280, hp: 2.14,
     routes: [
       { id: 'main', pts: [[-1, 1], [3, 1], [3, 4], [6, 4], [6, 1], [8, 1], [8, 7], [4, 7], [4, 9], [-1, 9]] },
       { id: 'air', air: true, pts: [[9, -1], [-1, 9]] },
@@ -23,7 +23,7 @@ export const REGION_06: StageDef[] = [
     coins: 90, firstCoins: 110,
   },
   {
-    id: '6-2', region: 6, no: 2, name: '갈대 미로', energy: 280, hp: 1.81,
+    id: '6-2', region: 6, no: 2, name: '갈대 미로', energy: 280, hp: 1.96,
     routes: [
       { id: 'main', pts: [[1, -1], [1, 3], [4, 3], [4, 1], [7, 1], [7, 5], [2, 5], [2, 8], [6, 8], [6, 11]] },
       { id: 'air', air: true, pts: [[-1, -1], [6, 11]] },
@@ -40,7 +40,7 @@ export const REGION_06: StageDef[] = [
     coins: 95, firstCoins: 115,
   },
   {
-    id: '6-3', region: 6, no: 3, name: '진흙 굽이', energy: 280, hp: 1.81,
+    id: '6-3', region: 6, no: 3, name: '진흙 굽이', energy: 280, hp: 1.91,
     routes: [
       { id: 'main', pts: [[9, 1], [6, 1], [6, 4], [2, 4], [2, 1], [0, 1], [0, 7], [4, 7], [4, 9], [9, 9]] },
       { id: 'air', air: true, pts: [[-1, -1], [9, 9]] },
@@ -57,7 +57,7 @@ export const REGION_06: StageDef[] = [
     coins: 100, firstCoins: 120,
   },
   {
-    id: '6-4', region: 6, no: 4, name: '안개 늪', energy: 280, hp: 1.59,
+    id: '6-4', region: 6, no: 4, name: '안개 늪', energy: 280, hp: 1.65,
     routes: [
       { id: 'main', pts: [[-1, 9], [2, 9], [2, 6], [5, 6], [5, 9], [8, 9], [8, 3], [4, 3], [4, 1], [-1, 1]] },
       { id: 'air', air: true, pts: [[9, 11], [-1, 1]] },
@@ -74,7 +74,7 @@ export const REGION_06: StageDef[] = [
     coins: 105, firstCoins: 125,
   },
   {
-    id: '6-5', region: 6, no: 5, name: '구미호 늪', energy: 300, hp: 1.43,
+    id: '6-5', region: 6, no: 5, name: '구미호 늪', energy: 300, hp: 1.61,
     routes: [
       { id: 'a', pts: [[1, -1], [1, 4], [4, 4], [4, 8], [1, 8], [1, 11]] },
       { id: 'b', pts: [[7, -1], [7, 4], [4, 4], [4, 8], [7, 8], [7, 11]] },
@@ -89,7 +89,7 @@ export const REGION_06: StageDef[] = [
       { groups: [{ enemy: 'wisp', count: 12, at: 0, gap: 2.2, route: 'alt' }, { enemy: 'bamboo', count: 3, at: 7, gap: 2.4, route: 'alt' }, { enemy: 'fox', count: 4, at: 17, gap: 2.4 }] },
       { groups: [{ enemy: 'water', count: 6, at: 0, gap: 2.4, route: 'alt' }, { enemy: 'wisp', count: 13, at: 7, gap: 1.5, route: 'alt' }, { enemy: 'club', count: 2, at: 17, gap: 2.4, route: 'alt' }] },
     ],
-    boss: { id: 'gumiho', hp: 1.2 },
+    boss: { id: 'gumiho', hp: 1.11 },
     coins: 125, firstCoins: 175,
   },
 ];

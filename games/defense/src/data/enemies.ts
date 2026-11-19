@@ -42,11 +42,11 @@ export const ENEMIES: EnemyDef[] = [
   { id: 'wisp', name: '도깨비불', desc: '빠르고 약해요', hp: 48, speed: 112, bounty: 5, r: 14, size: 54, weak: ['rat', 'sheep'] },
   { id: 'club', name: '방망이 도깨비', desc: '느리고 단단해요', hp: 430, speed: 36, bounty: 16, r: 22, size: 84, weak: ['snake', 'horse'] },
   { id: 'water', name: '물귀신', desc: '체력이 조금씩 회복돼요', hp: 170, speed: 52, bounty: 9, r: 18, size: 66, regen: 0.05, weak: ['tiger', 'snake'] },
-  { id: 'fox', name: '여우불', desc: '공중으로 날아 길을 가로질러 와요', hp: 64, speed: 78, bounty: 8, r: 16, size: 60, air: true, weak: ['monkey'] },
-  { id: 'bamboo', name: '죽순 요괴', desc: '땅속으로 숨어 이동해요. 가끔 고개를 내밀어요', hp: 130, speed: 60, bounty: 9, r: 16, size: 60, stealth: true, cycle: { on: 3.2, off: 1.6 }, weak: ['dog', 'monkey'] },
+  { id: 'fox', name: '여우불', desc: '공중으로 날아 길을 가로질러 와요', hp: 64, speed: 62, bounty: 8, r: 16, size: 60, air: true, weak: ['monkey'] },
+  { id: 'bamboo', name: '죽순 요괴', desc: '땅속으로 숨어 이동해요. 가끔 고개를 내밀어요', hp: 130, speed: 60, bounty: 9, r: 16, size: 60, stealth: true, cycle: { on: 2.4, off: 2.2 }, weak: ['dog', 'monkey'] },
   { id: 'guard', name: '수문장 요괴', desc: '방패로 정면 피해를 줄여요. 줄지어 와요', hp: 290, speed: 44, bounty: 14, r: 20, size: 80, shield: 0.4, weak: ['dragon', 'snake'] },
   { id: 'skeleton', name: '해골 병사', desc: '쓰러져도 한 번 되살아나요', hp: 115, speed: 62, bounty: 9, r: 17, size: 64, revive: 1, weak: ['rabbit', 'tiger'] },
-  { id: 'spirit', name: '원혼', desc: '일정 시간 무적 상태로 지나가요. 붙잡아 두면 좋아요', hp: 125, speed: 66, bounty: 10, r: 16, size: 62, ghost: true, cycle: { on: 2, off: 2.4 }, weak: ['ox', 'sheep'] },
+  { id: 'spirit', name: '원혼', desc: '일정 시간 무적 상태로 지나가요. 붙잡아 두면 좋아요', hp: 125, speed: 66, bounty: 10, r: 16, size: 62, ghost: true, cycle: { on: 1.6, off: 2.8 }, weak: ['ox', 'sheep'] },
 ];
 
 export const ENEMY_INDEX: Record<string, number> = Object.fromEntries(ENEMIES.map((e, i) => [e.id, i]));

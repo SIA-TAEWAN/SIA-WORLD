@@ -6,7 +6,7 @@ import type { StageDef } from '../stages';
  */
 export const REGION_05: StageDef[] = [
   {
-    id: '5-1', region: 5, no: 1, name: '연못 둘레길', energy: 272, hp: 1.4,
+    id: '5-1', region: 5, no: 1, name: '연못 둘레길', energy: 272, hp: 1.6,
     routes: [
       { id: 'main', pts: [[-1, 1], [7, 1], [7, 9], [1, 9], [1, 3], [-1, 3]] },
       { id: 'air', air: true, pts: [[9, 11], [-1, 3]] },
@@ -23,7 +23,7 @@ export const REGION_05: StageDef[] = [
     coins: 80, firstCoins: 100,
   },
   {
-    id: '5-2', region: 5, no: 2, name: '연잎 다리', energy: 272, hp: 1.4,
+    id: '5-2', region: 5, no: 2, name: '연잎 다리', energy: 272, hp: 1.54,
     routes: [
       { id: 'main', pts: [[9, 1], [1, 1], [1, 9], [7, 9], [7, 3], [9, 3]] },
       { id: 'air', air: true, pts: [[-1, 11], [9, 3]] },
@@ -40,7 +40,7 @@ export const REGION_05: StageDef[] = [
     coins: 85, firstCoins: 105,
   },
   {
-    id: '5-3', region: 5, no: 3, name: '물안개 둑', energy: 272, hp: 1.29,
+    id: '5-3', region: 5, no: 3, name: '물안개 둑', energy: 272, hp: 1.42,
     routes: [
       { id: 'main', pts: [[1, -1], [1, 9], [7, 9], [7, 1], [3, 1], [3, -1]] },
       { id: 'air', air: true, pts: [[9, 11], [3, -1]] },
@@ -57,7 +57,7 @@ export const REGION_05: StageDef[] = [
     coins: 90, firstCoins: 110,
   },
   {
-    id: '5-4', region: 5, no: 4, name: '용오름 못', energy: 272, hp: 1.38,
+    id: '5-4', region: 5, no: 4, name: '용오름 못', energy: 272, hp: 1.54,
     routes: [
       { id: 'main', pts: [[7, 11], [7, 1], [1, 1], [1, 9], [5, 9], [5, 11]] },
       { id: 'air', air: true, pts: [[-1, -1], [5, 11]] },
@@ -88,7 +88,7 @@ export const REGION_05: StageDef[] = [
       { groups: [{ enemy: 'fox', count: 7, at: 0, gap: 2.4 }, { enemy: 'bamboo', count: 3, at: 7, gap: 2.4 }, { enemy: 'water', count: 2, at: 17, gap: 2.4 }] },
       { groups: [{ enemy: 'fox', count: 11, at: 0, gap: 2.4 }, { enemy: 'bamboo', count: 5, at: 7, gap: 2.4 }, { enemy: 'water', count: 3, at: 17, gap: 2.4 }] },
     ],
-    boss: { id: 'centipede', hp: 1.16 },
+    boss: { id: 'centipede', hp: 0.89 },
     coins: 115, firstCoins: 165,
   },
 ];

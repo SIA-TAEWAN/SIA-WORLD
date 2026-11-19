@@ -199,5 +199,11 @@ export function ignite(e: Enemy, dps: number, sec: number) {
 
 /** 멈춘다 (멈춤이 풀린 직후의 요괴는 다시 멈추지 않는다. 보스는 짧게) */
 export function stunEnemy(e: Enemy, sec: number, bossMul: number) {
-  if (e.stun <= 0 && e.guard <= 0) e.stun = sec * (e.boss >= 0 ? bossMul : 1);
+  if (e.stun > 0 || e.guard > 0) return;
+  e.stun = sec * (e.boss >= 0 ? bossMul : 1);
+  // 붙잡힌 원혼은 무적이 풀린다 (멈춰 있는 동안과 그 뒤 잠깐은 다친다)
+  if (e.ghost && e.on && e.boss < 0 && e.look < 0) {
+    e.on = false;
+    e.cyc = e.stun + (ENEMIES[e.kind].cycle?.off ?? 0);
+  }
 }

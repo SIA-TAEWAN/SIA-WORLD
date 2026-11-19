@@ -314,10 +314,17 @@ revoke all on function public._defense_profile_json(public.defense_profiles) fro
 
 create or replace function public.defense_profile() returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare me uuid := auth.uid();
+declare me uuid := auth.uid(); pr public.defense_profiles;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
-  return public._defense_profile_json(public._defense_profile_row(me));
+  pr := public._defense_profile_row(me);
+  -- 관리자 계정(시험용): 들어올 때마다 엽전과 시아코인을 1만으로 맞춘다. 일반 사용자는 영향이 없고, 별·랭킹에도 영향이 없다
+  if exists (select 1 from public.profiles where id = me and is_admin) then
+    update public.defense_profiles set coins = 10000 where user_id = me returning * into pr;
+    perform public.ensure_wallet();
+    update public.wallets set sia_coins = 10000 where user_id = me;
+  end if;
+  return public._defense_profile_json(pr);
 end $$;
 revoke all on function public.defense_profile() from public, anon;
 grant execute on function public.defense_profile() to authenticated;
