@@ -10,12 +10,12 @@ import { endlessCoins, partialCoins } from '../game/progress';
 import { activeBoss, canPlace, sellValue, towerLevel, upgradeCost } from '../game/sim';
 import { EV, type Ev, type State } from '../game/state';
 import { presetUpgrades } from '../data/growth';
-import { ApiError, LOCAL_MODE } from '../net/api';
+import { LOCAL_MODE, type StartInfo } from '../net/api';
 import { fillBench } from '../run/devtools';
 import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
 import { artUrl, zodiacFaceUrl } from '../assets';
-import { esc, mmss, nav, screen, setProfile, stage, state, toast, whyText, type GameResult, type GameSetup } from './app';
+import { esc, mmss, nav, screen, setProfile, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { levelText } from './codex';
 import { DPR } from './dpr';
 import { bgTrack, music } from './music';
@@ -54,15 +54,33 @@ function saveSpeed(v: Speed) {
 
 const statLine = levelText;
 
-/** 게임 화면: 판(캔버스)이 화면을 가득 채우고, 그 위에 HUD(위)와 캐릭터 카드(아래)를 올린다 */
-export function showGame(setup: GameSetup) {
+/** 보스가 남아 있나 (끝없는 모드는 보스가 겹쳐 나올 수 있다) */
+const bossAlive = (s: State) => {
+  for (let i = 0; i < s.enemyHi; i++) if (s.enemies[i].alive && s.enemies[i].boss >= 0) return true;
+  return false;
+};
+/** 보스가 태우거나 멈춘 빈 칸을 누르면 보여 줄 까닭 (그 칸을 그렇게 만든 보스의 행동으로) */
+const OFF_TEXT: Record<string, string> = {
+  fire: '불길로 잠시 못 써요',
+  freeze: '얼어붙어서 잠시 못 써요',
+  geyser: '물기둥에 젖어 잠시 못 써요',
+};
+
+/**
+ * 게임 화면: 판(캔버스)이 화면을 가득 채우고, 그 위에 HUD(위)와 캐릭터 카드(아래)를 올린다.
+ * begun: 판 시작을 서버에 알린 답 (main.ts 가 판을 열기 전에 받는다). null 이면 이 판은 기록되지 않는다.
+ * 서버가 알려 준 판 설정(시작 생명 · 공통 강화 · 캐릭터 레벨)이 있으면 그 값으로 판을 만든다 — 별의 기준이 서버와 같다
+ */
+export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   const run = new Run({
     seed: setup.seed ?? Math.floor(Math.random() * 0xffffffff),
     stage: setup.stage,
     squad: setup.squad,
-    // 판 밖 성장: 저장된 레벨·강화 (개발용 설정 ?lv=N · ?upg=N 이 있으면 그 값)
-    levels: setup.lv !== undefined ? Object.fromEntries(setup.squad.map((c) => [c, setup.lv])) : state.profile.levels,
-    upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : state.profile.upgrades,
+    // 판 밖 성장: 서버가 판 시작 때 알려 준 레벨·강화 (없으면 저장된 값. 개발용 설정 ?lv=N · ?upg=N 이 있으면 그 값)
+    levels: setup.lv !== undefined ? Object.fromEntries(setup.squad.map((c) => [c, setup.lv])) : (begun?.levels ?? state.profile.levels),
+    upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : (begun?.upgrades ?? state.profile.upgrades),
+    // 시작 생명은 서버가 적어 둔 값 그대로 (서버는 이 값으로 별을 센다)
+    startLives: begun?.startLives,
   });
   run.speed = loadSpeed();
   const s = run.state;
@@ -71,19 +89,9 @@ export function showGame(setup: GameSetup) {
   let endTimer: ReturnType<typeof setTimeout> | null = null;
   let cutTimer: ReturnType<typeof setTimeout> | null = null;
   let ended = false;
-  // 판 시작을 서버에 알린다 (잠금·해금 확인 + 시작 시각). 못 알렸으면 이 판은 기록되지 않는다 (플레이는 할 수 있다)
+  // 판 시작은 main.ts 가 이 화면을 열기 전에 서버에 알렸다 (잠금·해금 확인 + 시작 시각). 못 알렸으면 이 판은 기록되지 않는다 (플레이는 할 수 있다)
   const api = state.api;
-  const started: Promise<string | null> =
-    api && !setup.offline
-      ? api.start(setup.stage, setup.squad, s.endless ? 'endless' : 'normal').catch((e) => {
-          if (e instanceof ApiError) {
-            // 잠긴 스테이지·캐릭터: 스테이지 고르기로 돌아간다
-            toast(whyText(e));
-            leave();
-          }
-          return null;
-        })
-      : Promise.resolve(null);
+  const started: Promise<string | null> = Promise.resolve(setup.offline ? null : (begun?.run ?? null));
   /** 판에서 나갈 때 돌아갈 화면: 스테이지 판은 그 지역의 스테이지 고르기, 끝없는 모드는 지역 지도 */
   const leave = () => (s.endless ? nav.regions() : nav.stages(s.stage.region));
   /** 판 시작을 서버에 알리지 못했다: 이 판은 기록되지 않는다 */
@@ -238,7 +246,10 @@ export function showGame(setup: GameSetup) {
   function tryPlace(slot: number, char: number) {
     if (!canPlace(s, slot, char)) {
       sfx('toggle');
-      if (s.towers[slot]?.char < 0 && s.energy < s.cost[char]) toast(`기운이 모자라요 (✨${s.cost[char]} 필요)`, 1400);
+      const tw = s.towers[slot];
+      // 보스가 태우거나 멈춘 칸: 잠시 뒤에 다시 쓸 수 있다
+      if (tw && tw.char < 0 && tw.off > 0) toast(OFF_TEXT[BOSSES[s.bossId]?.act ?? ''] ?? '잠시 못 쓰는 칸이에요', 1400);
+      else if (tw && tw.char < 0 && s.energy < s.cost[char]) toast(`기운이 모자라요 (✨${s.cost[char]} 필요)`, 1400);
       return false;
     }
     return run.cmd('place', slot, char);
@@ -315,8 +326,11 @@ export function showGame(setup: GameSetup) {
     refresh();
   });
   fieldEl.addEventListener('contextmenu', (e) => e.preventDefault());
+  /** 누른 카드·버튼에서 초점을 뗀다: 마우스로 누른 뒤 Enter·Space 를 쳐도 그 카드·버튼이 다시 눌리지 않게 */
+  const unfocus = () => (document.activeElement as HTMLElement | null)?.blur?.();
   el.cards.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.tcard[data-i]') as HTMLElement | null;
+    unfocus();
     if (b) tapCard(Number(b.dataset.i));
   });
   // 빈 칸을 고른 채 카드 위에 마우스를 올리면 그 캐릭터의 사거리를 미리 보여 준다
@@ -333,6 +347,7 @@ export function showGame(setup: GameSetup) {
   });
   el.panel.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
+    unfocus();
     if (t.closest('[data-up]')) doUpgrade();
     else if (t.closest('[data-sell]')) doSell();
     else if (t.closest('[data-close]')) {
@@ -341,7 +356,10 @@ export function showGame(setup: GameSetup) {
       refresh();
     }
   });
-  el.start.addEventListener('click', doStart);
+  el.start.addEventListener('click', () => {
+    unfocus();
+    doStart();
+  });
 
   // ---------- 키보드 (PRD 9장): 1~5 캐릭터 · Space 배속 · Esc 일시정지 (+ Enter 시작 · U 강화 · X 되팔기) ----------
   const onKey = (e: KeyboardEvent) => {
@@ -352,14 +370,25 @@ export function showGame(setup: GameSetup) {
       return;
     }
     if (blocked()) return;
+    // 처리한 키는 브라우저의 기본 동작(초점이 남은 카드·버튼 누르기, 화면 내리기)을 막는다
     const digit = /^(?:Digit|Numpad)([1-5])$/.exec(e.code);
-    if (digit) tapCard(Number(digit[1]) - 1);
-    else if (e.code === 'Space') {
-      e.preventDefault();
+    const done = () => e.preventDefault();
+    if (digit) {
+      done();
+      tapCard(Number(digit[1]) - 1);
+    } else if (e.code === 'Space') {
+      done();
       toggleSpeed();
-    } else if (e.code === 'Enter' || e.code === 'NumpadEnter') doStart();
-    else if (e.code === 'KeyU') doUpgrade();
-    else if (e.code === 'KeyX' || e.code === 'Delete') doSell();
+    } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      done();
+      doStart();
+    } else if (e.code === 'KeyU') {
+      done();
+      doUpgrade();
+    } else if (e.code === 'KeyX' || e.code === 'Delete') {
+      done();
+      doSell();
+    }
   };
   // 다른 앱으로 넘어가면 저절로 멈춘다
   const onHide = () => {
@@ -558,11 +587,12 @@ export function showGame(setup: GameSetup) {
         sfx('survHurt');
         flashEdge('hurt');
         scene()?.burst('leak');
-        // 보스가 지나갔으면 배경 곡으로 돌아간다
-        if (e.b >= 0 && st.phase === 'play') music.play(bgm);
+        // 보스가 지나갔으면 (남은 보스가 없을 때) 배경 곡으로 돌아간다
+        if (e.b >= 0 && st.phase === 'play' && !bossAlive(st)) music.play(bgm);
         break;
       case EV.bossWarn:
-        music.play('boss');
+        // 스테이지는 경고와 함께 보스 곡. 끝없는 모드는 보스가 실제로 나올 때 (bossIn) — 앞 보스가 남아 있을 수 있다
+        if (!s.endless) music.play('boss');
         sfx('survBossWarn');
         setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>보스가 다가온다!</small>`, 'bad warn', 2600);
         flashEdge('warn');
@@ -584,8 +614,11 @@ export function showGame(setup: GameSetup) {
         sfx('coin', { volume: 0.4 });
         scene()?.coin(e.b);
         break;
+      case EV.bossIn:
+        music.play('boss');
+        break;
       case EV.bossDown:
-        if (st.phase === 'play') music.play(bgm);
+        if (st.phase === 'play' && !bossAlive(st)) music.play(bgm);
         sfx('survBossDown');
         scene()?.burst('boss');
         flashEdge('good');

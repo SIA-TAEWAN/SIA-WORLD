@@ -400,6 +400,7 @@ export class GameScene extends Phaser.Scene {
         .setRotation(e.down > 0 ? Math.PI / 2 : 0)
         .setAlpha(alpha)
         .setVisible(true);
+      // 맞은 순간만 아주 짧게 하얗게 (game/core.ts 의 FLASH_ON · FLASH_GAP: 집중 공격을 받아도 그림이 대부분 보인다)
       if (e.flash > 0) spr.setTintFill(COLOR.white);
       else if (e.stun > 0) spr.setTint(COLOR.skyMid);
       else if (e.dotT > 0) spr.setTint(COLOR.win);

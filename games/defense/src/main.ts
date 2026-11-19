@@ -1,10 +1,11 @@
 import './style.css';
 import { SQUAD_SIZE } from './data/balance';
 import { ROSTER, STARTERS, towerOf } from './data/characters';
-import { LOCAL_MODE, devSetup, getApi, lobbyNet } from './net/api';
+import { ApiError, LOCAL_MODE, devSetup, getApi, lobbyNet, type StartInfo } from './net/api';
 import { DefenseLobby, LOBBY_MAX, LobbyFullError } from './net/lobby';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
-import { loadEngine, loadSquad, nav, screen, setProfile, state, toast } from './ui/app';
+import { loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
+import { stageOf } from './data/stages';
 import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
 import { ENDLESS_ID } from './data/endless';
 import { showCodex } from './ui/codex';
@@ -18,20 +19,54 @@ nav.prepare = showPrepare;
 nav.chars = showChars;
 nav.codex = showCodex;
 const dev = devSetup();
-/** 게임 엔진 묶음을 받는 중인가 (그동안 시작 버튼을 여러 번 눌러도 판은 한 번만 시작한다) */
+/** 판을 여는 중인가 (보류분 재전송·판 시작 알림·게임 엔진 받기. 그동안 시작 버튼을 여러 번 눌러도 판은 한 번만 시작한다) */
 let starting = false;
+/** 판을 시작하기 전에 보류해 둔 결과를 올리는 데 기다리는 최대 시간 (넘으면 올리기는 뒤에서 계속하고 판을 시작한다) */
+const RESEND_WAIT_MS = 8000;
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * 판 열기: ① 보류해 둔 결과를 먼저 올린다 (실패해도 시작은 한다 — 서버가 열린 판을 정리할 때 다시 보낼 판이 지워지지 않게)
+ * ② 판 시작을 서버에 알리고 판 설정(시작 생명·강화·레벨)을 받는다 ③ 그 값으로 게임 화면을 연다.
+ * 잠긴 스테이지·캐릭터면(서버가 거절) 스테이지 고르기로 돌아간다. 통신 문제면 기록되지 않는 판으로 연다
+ */
+async function openGame(setup: GameSetup) {
+  const api = state.api;
+  const online = !!api && !setup.offline;
+  // 조금 오래 걸리면 기다리는 중이라고 알려 준다
+  const slow = setTimeout(() => toast('출전 준비 중…', 4000), 600);
+  try {
+    if (online) await Promise.race([api!.resend().catch(() => 0), wait(RESEND_WAIT_MS)]);
+    const [m, begun] = await Promise.all([
+      loadEngine().catch(() => null),
+      online ? api!.start(setup.stage, setup.squad, setup.endless ? 'endless' : 'normal').catch((e: unknown) => e) : Promise.resolve(null),
+    ]);
+    if (begun instanceof ApiError) {
+      // 잠긴 스테이지·캐릭터: 스테이지 고르기로 돌아간다
+      toast(whyText(begun));
+      if (setup.endless) nav.regions();
+      else nav.stages(stageOf(setup.stage)?.region ?? 1);
+      return;
+    }
+    if (!m) {
+      toast('게임을 불러오지 못했어요. 다시 눌러 주세요', 3200);
+      return;
+    }
+    clearTimeout(slow);
+    if (document.querySelector('.toast')?.textContent === '출전 준비 중…') document.querySelector('.toast')?.remove();
+    // 개발용 설정(?seed= · ?lv= · ?upg=)은 메뉴에서 시작한 판에도 그대로 적용한다
+    m.showGame(
+      { ...setup, seed: setup.seed ?? dev?.seed ?? undefined, lv: setup.lv ?? dev?.lv ?? undefined, upg: setup.upg ?? dev?.upg ?? undefined },
+      begun && typeof begun === 'object' && 'run' in begun ? (begun as StartInfo) : null,
+    );
+  } finally {
+    clearTimeout(slow);
+  }
+}
 nav.game = (setup) => {
   if (starting) return;
   starting = true;
-  // 지난번에 올리지 못한 결과가 있으면 지금 올린다 (판 시작은 기다리지 않는다)
-  void state.api?.resend().catch(() => 0);
-  void loadEngine()
-    .then(
-      // 개발용 설정(?seed= · ?lv= · ?upg=)은 메뉴에서 시작한 판에도 그대로 적용한다
-      (m) => m.showGame({ ...setup, seed: setup.seed ?? dev?.seed ?? undefined, lv: setup.lv ?? dev?.lv ?? undefined, upg: setup.upg ?? dev?.upg ?? undefined }),
-      () => toast('게임을 불러오지 못했어요. 다시 눌러 주세요', 3200),
-    )
-    .finally(() => (starting = false));
+  void openGame(setup).finally(() => (starting = false));
 };
 nav.result = showResult;
 

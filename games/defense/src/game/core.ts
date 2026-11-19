@@ -8,6 +8,14 @@ import { EV, FX, addFx, emit, type Enemy, type State } from './state';
 
 const P = makePoint();
 
+/**
+ * 맞았을 때의 번쩍임 (그리기만): e.flash > 0 인 동안 하얗게 그린다 (FLASH_ON 초).
+ * 번쩍임이 끝나도 e.flash 는 FLASH_REST 까지 계속 내려가고, 거기 닿아야 다시 번쩍일 수 있다 → 번쩍임 사이는 FLASH_ON + FLASH_GAP 초 이상
+ */
+export const FLASH_ON = 0.05;
+export const FLASH_GAP = 0.15;
+export const FLASH_REST = -FLASH_GAP + 1e-9;
+
 /** 요괴의 자리를 길 위의 거리(d)에 맞춘다 */
 export function placeOnRoute(s: State, e: Enemy) {
   routePos(s.routes[e.route], e.d, e.seg, P);
@@ -38,7 +46,8 @@ export function spawnEnemy(s: State, kind: number, boss: number, route: number, 
   e.d = d;
   e.seg = 0;
   e.mul = 1;
-  e.stun = e.guard = e.flash = e.t = 0;
+  e.stun = e.guard = e.t = 0;
+  e.flash = FLASH_REST;
   e.slowT = e.vuln = e.dotT = e.dot = e.rush = e.seen = e.down = e.gone = e.armor = e.cyc = 0;
   e.slow = 1;
   e.on = false;
@@ -168,7 +177,8 @@ export function hurt(s: State, e: Enemy, dmg: number, fx = NaN, fy = NaN) {
   // 정면 방패: 요괴가 가는 쪽에 있는 캐릭터의 공격은 덜 받는다
   if (e.shield < 1 && fx === fx && (fx - e.x) * e.dx + (fy - e.y) * e.dy > 0) v *= e.shield;
   e.hp -= v;
-  e.flash = 0.12;
+  // 맞으면 잠깐 번쩍인다. 집중 공격을 받아도 계속 하얗게 보이지 않게, 번쩍인 뒤 FLASH_GAP 초는 다시 번쩍이지 않는다
+  if (e.flash <= FLASH_REST) e.flash = FLASH_ON;
   if (e.hp <= 0) fall(s, e);
 }
 

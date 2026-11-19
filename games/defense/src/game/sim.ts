@@ -6,7 +6,7 @@ import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { levelMods, upgradeMods } from '../data/growth';
 import { stageOf, type StageDef, type WaveDef } from '../data/stages';
 import { BOSS_ACTS } from './bosses';
-import { burn, placeOnRoute, spawnEnemy } from './core';
+import { FLASH_REST, burn, placeOnRoute, spawnEnemy } from './core';
 import { buildRoute, cellX, cellY } from './path';
 import { starsOf, type RunReport } from './progress';
 import { makeRng } from './rng';
@@ -21,6 +21,8 @@ import { ATTACKS, stepProjectile } from './towers';
  */
 
 const WAVE_TICKS = Math.round(WAVE_SEC / TICK);
+/** 끝없는 모드: 보스가 나오는 웨이브에서, 웨이브가 시작되고 이만큼 뒤에 보스가 나온다 (초) */
+export const ENDLESS_BOSS_SEC = 6;
 /** 다른 요괴가 빠르게 해 줄 때의 속도 배율 (수문장 대장) · 표식이 찍힌 캐릭터의 공격 속도 배율 (저승사자) */
 export const RUSH_MUL = 1.4;
 export const MARK_MUL = 0.5;
@@ -66,7 +68,7 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
   // 같은 시각이면 적어 둔 순서 그대로 (sort 는 순서를 지킨다)
   spawns.sort((a, b) => a.t - b.t);
   const um = upgradeMods(cfg.upgrades);
-  const lives = (stage.lives ?? START_LIVES) + um.lives;
+  const lives = cfg.startLives !== undefined && cfg.startLives >= 1 ? Math.floor(cfg.startLives) : (stage.lives ?? START_LIVES) + um.lives;
   // 캐릭터 수치에 영구 레벨의 배율을 곱해 둔다 (공격력 +4%/레벨, 4레벨 사거리, 8레벨 비용, 12레벨 공격 간격)
   const mods = TOWERS.map((t) => levelMods(cfg.levels?.[t.id] ?? 1));
   const lv = TOWERS.map((t, i) =>
@@ -110,6 +112,7 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
     spawnI: 0,
     bossId,
     bossAt,
+    bossNext: bossId,
     bossWarned: false,
     bossDown: false,
     enemies: Array.from({ length: LIMIT.enemies }, makeEnemy),
@@ -235,9 +238,10 @@ export function step(s: State) {
   s.tick++;
   s.time = s.tick * TICK;
 
-  // 웨이브: 30초마다 다음 웨이브 (3분 뒤로는 마지막 웨이브 그대로)
+  // 웨이브: 30초마다 다음 웨이브 (3분 뒤로는 마지막 웨이브 그대로). 웨이브 k 는 판 시간 30k초(걸음 1800k)에 시작한다:
+  // 그래서 지금 웨이브 = ⌊판 시간 ÷ 30⌋ — 서버가 보고된 판 시간(초, 내림)으로 도달 웨이브를 세는 것과 같은 기준이다 (첫 웨이브는 첫 걸음에)
   // 끝없는 모드: 웨이브가 끝없이 이어지고, 시작될 때마다 그 웨이브의 요괴를 만든다 (웨이브 번호로 정해진다)
-  const wave = s.endless ? Math.floor((s.tick - 1) / WAVE_TICKS) : Math.min(WAVES - 1, Math.floor((s.tick - 1) / WAVE_TICKS));
+  const wave = s.endless ? Math.floor(s.tick / WAVE_TICKS) : Math.min(WAVES - 1, Math.floor(s.tick / WAVE_TICKS));
   if (wave !== s.wave) {
     s.wave = wave;
     emit(s, EV.wave, wave);
@@ -246,7 +250,13 @@ export function step(s: State) {
       const add: Spawn[] = [];
       addWave(add, s.stage.id, w, wave, s.stage.hp * (w.hp ?? 1), s.ground, s.routes.findIndex((r) => r.air));
       const b = endlessBoss(wave);
-      if (b) add.push({ t: wave * WAVE_SEC + 6, kind: -1, boss: b.boss, route: s.ground[0], hpMul: b.hp });
+      if (b) {
+        add.push({ t: wave * WAVE_SEC + ENDLESS_BOSS_SEC, kind: -1, boss: b.boss, route: s.ground[0], hpMul: b.hp });
+        // 이 보스의 등장 경고 (BOSS_WARN_SEC 초 전)
+        s.bossAt = wave * WAVE_SEC + ENDLESS_BOSS_SEC;
+        s.bossNext = b.boss;
+        s.bossWarned = false;
+      }
       add.sort((x, y) => x.t - y.t);
       for (const sp of add) s.spawns.push(sp);
     }
@@ -264,7 +274,7 @@ export function step(s: State) {
   }
   if (s.bossAt >= 0 && !s.bossWarned && s.time >= s.bossAt - BOSS_WARN_SEC) {
     s.bossWarned = true;
-    emit(s, EV.bossWarn, s.bossId);
+    emit(s, EV.bossWarn, s.bossNext);
   }
 
   // 등장 (자리가 없으면 다음 걸음에 다시)
@@ -306,7 +316,7 @@ export function step(s: State) {
     const e = s.enemies[i];
     if (!e.alive) continue;
     e.t += TICK;
-    if (e.flash > 0) e.flash -= TICK;
+    if (e.flash > FLASH_REST) e.flash -= TICK;
     if (e.boss >= 0) BOSS_ACTS[BOSSES[e.boss].act]?.(s, e, BOSSES[e.boss]);
     // 사라져 있거나 쓰러져 있는 동안에는 아무 일도 없다
     if (e.gone > 0) continue;

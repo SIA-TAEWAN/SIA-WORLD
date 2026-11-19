@@ -80,7 +80,8 @@ describe('판의 흐름', () => {
     start(s);
     const waves = collect(s, RUN_SEC, EV.wave);
     expect(waves.map((w) => w.a)).toEqual([0, 1, 2, 3, 4, 5]);
-    waves.forEach((w, i) => expect(w.time).toBeCloseTo(i * WAVE_SEC + TICK, 5));
+    // 첫 웨이브는 첫 걸음에, 웨이브 k 는 판 시간 30k초에 (지금 웨이브 = ⌊판 시간 ÷ 30⌋: 서버가 도달 웨이브를 세는 기준)
+    waves.forEach((w, i) => expect(w.time).toBeCloseTo(Math.max(TICK, i * WAVE_SEC), 5));
     // 3분: 나올 요괴는 다 나왔고, 길 위에는 아직 요괴가 남아 있다 → 판은 계속된다
     expect(s.spawnI).toBe(s.spawns.length);
     expect(s.enemyN).toBeGreaterThan(0);

@@ -15,6 +15,11 @@ export function showResult(r: GameResult) {
   const lost = r.startLives - r.lives;
   // 별 조건 세 줄: 이번 판에 채운 것에 표시
   const goal = (ok: boolean, text: string) => `<li class="${ok ? 'ok' : ''}"><i>★</i>${text}</li>`;
+  const goals = (stars: number) => `${goal(stars >= 1, '클리어')}
+         ${goal(stars >= 2, `생명 ${STAR2_LIVES} 이상 남기기`)}
+         ${goal(stars >= 3, '생명을 하나도 잃지 않기')}`;
+  const starIcons = (stars: number, animate: boolean) =>
+    [1, 2, 3].map((i) => `<i class="${i <= stars ? 'on' : ''}"${animate ? ` style="animation-delay:${i * 0.25}s"` : ''}>★</i>`).join('');
   const root = screen(
     `<div class="result-card ${r.cleared || r.endless ? 'won' : 'lost'}">
        <h2>${r.endless ? '♾️' : esc(st.id)} ${esc(st.name)}</h2>
@@ -23,12 +28,10 @@ export function showResult(r: GameResult) {
          r.endless
            ? `<p class="soft center">까지 버텼어요 <i class="tag hidden" id="record">새 기록!</i></p>
               <div class="squad-faces">${r.setup.squad.map((c) => `<img src="${zodiacFaceUrl(c)}" alt="" />`).join('')}</div>`
-           : `<div class="big-stars" aria-label="별 ${r.stars}개">${[1, 2, 3].map((i) => `<i class="${i <= r.stars ? 'on' : ''}" style="animation-delay:${i * 0.25}s">★</i>`).join('')}</div>
+           : `<div class="big-stars" id="stars" aria-label="별 ${r.stars}개">${starIcons(r.stars, true)}</div>
        <img class="result-char" src="${zodiacFullUrl(r.setup.squad[0] ?? 'rat')}" alt="" />
-       <ul class="goals">
-         ${goal(r.stars >= 1, '클리어')}
-         ${goal(r.stars >= 2, `생명 ${STAR2_LIVES} 이상 남기기`)}
-         ${goal(r.stars >= 3, '생명을 하나도 잃지 않기')}
+       <ul class="goals" id="goals">
+         ${goals(r.stars)}
        </ul>`
        }
        <ul class="stats">
@@ -89,6 +92,16 @@ export function showResult(r: GameResult) {
       return;
     }
     root.querySelector('#coins')!.innerHTML = `+${s.coins.toLocaleString()}닢`;
+    // 별은 서버가 판 시작 때 적어 둔 시작 생명으로 센 값이 이 판의 별이다 (화면의 계산과 다르면 서버 쪽으로 고친다)
+    if (!r.endless && r.cleared && s.stars !== r.stars) {
+      const box = root.querySelector('#stars');
+      if (box) {
+        box.innerHTML = starIcons(s.stars, false);
+        box.setAttribute('aria-label', `별 ${s.stars}개`);
+      }
+      const g = root.querySelector('#goals');
+      if (g) g.innerHTML = goals(s.stars);
+    }
     if (r.endless) {
       note.textContent = `넘긴 웨이브마다 ${LIMITS.endless_coin_per_wave}닢 (한 판 ${LIMITS.endless_coin_cap}닢까지)`;
       root.querySelector('#best')!.textContent = `웨이브 ${s.bestWave}`;

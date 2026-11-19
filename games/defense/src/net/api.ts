@@ -7,6 +7,7 @@ import {
   LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, levelUp, minRealTime, openedBy, rejectReason, squadOk, stageOpen, startLivesOf,
   endlessOpen, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
 } from '../game/progress';
+import type { Upgrades } from '../data/growth';
 import { ENDLESS_ID } from '../data/endless';
 import { dropPending, flushPending, keepPending, type SendOutcome, type Store } from './pending';
 import { worldSupabase } from './world';
@@ -36,11 +37,23 @@ export type { Store } from './pending';
 /** 서버가 거절했을 때의 까닭 (SQL의 raise exception 글자) */
 export class ApiError extends Error {}
 
+/**
+ * 판 시작의 답: 판 id 와, 서버가 이 판에 적어 둔 판 설정 (060).
+ * 화면은 이 값(시작 생명 · 공통 강화 · 캐릭터 레벨)으로 판을 만든다 — 기기에 남은 프로필이 서버와 달라도 별 기준이 같다
+ */
+export interface StartInfo {
+  run: string;
+  /** 아래 셋은 서버가 알려 주지 않았으면 없다 (그때는 기기의 프로필로 판을 만든다) */
+  startLives?: number;
+  upgrades?: Upgrades;
+  levels?: DefenseProfile['levels'];
+}
+
 export interface DefenseApi {
   kind: 'supabase' | 'local';
   loadProfile(): Promise<DefenseProfile>;
-  /** 판 시작: 판 id. 못 받으면 null (그 판은 기록되지 않는다). 잠긴 스테이지·캐릭터면 ApiError */
-  start(stage: string, squad: ZodiacId[], mode?: RunMode): Promise<string | null>;
+  /** 판 시작: 판 id 와 판 설정. 못 받으면 null (그 판은 기록되지 않는다). 잠긴 스테이지·캐릭터면 ApiError */
+  start(stage: string, squad: ZodiacId[], mode?: RunMode): Promise<StartInfo | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
   finish(report: RunReport): Promise<{ profile: DefenseProfile; result: FinishResult } | null>;
   /** 임시 보관해 둔 결과를 다시 보낸다 → 올라간 판 수 */
@@ -134,10 +147,11 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
         .sort((a, b) => b[1].started - a[1].started)
         .slice(0, LIMITS.open_runs - 1);
       const id = `local-${++d.seq}`;
-      d.runs = { ...Object.fromEntries(open), [id]: { mode, stage: stageId, squad, started: t, startLives: startLivesOf(stage, d.profile.upgrades) } };
+      const startLives = startLivesOf(stage, d.profile.upgrades);
+      d.runs = { ...Object.fromEntries(open), [id]: { mode, stage: stageId, squad, started: t, startLives } };
       for (const k of Object.keys(d.done)) if (d.done[k].started < t - 30 * 86400_000) delete d.done[k];
       write(d);
-      return id;
+      return { run: id, startLives, upgrades: { ...d.profile.upgrades }, levels: { ...d.profile.levels } };
     },
     async finish(report) {
       const d = read();
@@ -180,6 +194,17 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
 }
 
 // ───────────────────────── 서버 ─────────────────────────
+
+/** defense_start 의 답 → StartInfo (모양이 틀리면 null). 060 앞의 서버는 판 id 글자만 돌려줬다 */
+export function startInfo(data: unknown): StartInfo | null {
+  if (typeof data === 'string' && data) return { run: data };
+  const d = data as { run?: unknown; startLives?: unknown; upgrades?: unknown; levels?: unknown } | null;
+  if (!d || typeof d !== 'object' || typeof d.run !== 'string' || !d.run) return null;
+  // 강화·레벨은 프로필과 같은 방법으로 고친다
+  const p = cleanProfile({ upgrades: d.upgrades, levels: d.levels });
+  const lives = Math.floor(Number(d.startLives));
+  return { run: d.run, ...(lives >= 1 ? { startLives: lives } : {}), upgrades: p.upgrades, levels: p.levels };
+}
 
 /** 서버 함수가 낸 오류인가 (raise exception → 코드 P0001). 그 밖(연결 끊김·시간 초과)은 통신 실패로 본다 */
 const rejected = (error: { code?: string; message?: string } | null) => !!error && error.code === 'P0001';
@@ -271,7 +296,10 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       for (let i = 0; i < 2; i++) {
         const { data, error } = await call('defense_start', args, timeoutMs / 2);
         if (error && rejected(error)) throw new ApiError(error.message ?? 'error');
-        if (!error && typeof data === 'string') return data;
+        if (!error) {
+          const info = startInfo(data);
+          if (info) return info;
+        }
         why = error?.message;
       }
       console.warn('[시아디펜스] 판 시작을 서버에 알리지 못했어요 (이 판은 기록되지 않아요)', why);

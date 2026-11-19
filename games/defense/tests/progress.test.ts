@@ -233,7 +233,7 @@ describe('기기 저장 (서버와 같은 규칙)', () => {
     let now = 1_000_000;
     const api = createLocalApi(st, 'k', () => now);
     expect(await api.loadProfile()).toEqual(defaultProfile());
-    const id = (await api.start('1-1', ['rat', 'tiger']))!;
+    const id = (await api.start('1-1', ['rat', 'tiger']))!.run;
     now += 200_000;
     const out = (await api.finish(report('1-1', 20, { run: id })))!;
     expect(out.result.stars).toBe(3);
@@ -256,10 +256,10 @@ describe('기기 저장 (서버와 같은 규칙)', () => {
     const st = store();
     let now = 5_000_000;
     const api = createLocalApi(st, 'k', () => now);
-    const a = (await api.start('1-1', ['rat']))!;
+    const a = (await api.start('1-1', ['rat']))!.run;
     now += 50_000;
     await expect(api.finish(report('1-1', 20, { run: a, time: 200 }))).rejects.toThrow('too early');
-    const b = (await api.start('1-1', ['rat']))!;
+    const b = (await api.start('1-1', ['rat']))!.run;
     now += 100_000;
     // a 는 150초 전에 시작했다: 200초 판(2배속 100초 − 여유 15초)으로 받아들여진다. 스테이지를 속여도 1-1 로 저장된다
     const out = (await api.finish(report('1-5', 20, { run: a, time: 200 })))!;
@@ -272,11 +272,19 @@ describe('기기 저장 (서버와 같은 규칙)', () => {
     let now = 1e7;
     const api = createLocalApi(st, 'k', () => now);
     st.setItem('k', JSON.stringify({ profile: { ...defaultProfile(), upgrades: { lives: 2 } } }));
-    const id = (await api.start('1-1', ['rat']))!;
+    const info = (await api.start('1-1', ['rat']))!;
+    // 판 시작의 답에 판 설정이 함께 온다 (화면은 이 값으로 판을 만든다)
+    expect(info).toMatchObject({ startLives: 22, upgrades: { lives: 2 }, levels: {} });
+    expect(createGame({ seed: 1, stage: '1-1', squad: ['rat'], upgrades: info.upgrades, levels: info.levels, startLives: info.startLives }).startLives).toBe(22);
     now += 300_000;
-    // 22로 시작해 20이 남았다: 별 2개
-    const out = (await api.finish(report('1-1', 20, { run: id, startLives: 20 })))!;
+    // 22로 시작해 20이 남았다: 별 2개 (보고에 적은 시작 생명 20 은 보지 않는다)
+    const out = (await api.finish(report('1-1', 20, { run: info.run, startLives: 20 })))!;
     expect(out.result.stars).toBe(2);
+  });
+  it('판을 만들 때 시작 생명을 주면 그 값이 시작 생명이다 (서버가 적어 둔 값)', () => {
+    const s = createGame({ seed: 1, stage: '1-1', squad: ['rat'], upgrades: {}, startLives: 24 });
+    expect([s.lives, s.startLives]).toEqual([24, 24]);
+    expect(createGame({ seed: 1, stage: '1-1', squad: ['rat'], upgrades: { lives: 3 } }).startLives).toBe(23);
   });
   it('망가진 저장 값은 믿을 수 있는 모양으로 고친다', async () => {
     expect(cleanProfile(null)).toEqual(defaultProfile());
@@ -352,6 +360,14 @@ describe('서버 저장: 보관 후 재전송', () => {
     expect(await api.start('1-1', ['rat'])).toBeNull();
     expect(calls.filter((c) => c.fn === 'defense_start')).toHaveLength(2);
   });
+  it('판 시작의 답(jsonb)에서 판 id 와 판 설정을 읽는다. 060 앞의 답(판 id 글자)도 받는다', async () => {
+    const { client } = fake({ defense_start: () => ({ data: { run: 'r-9', startLives: 23, upgrades: { lives: 3, luck: 9 }, levels: { rat: 4, cat: 2 } }, error: null }) });
+    expect(await createSupabaseApi(client, 'u1', store()).start('1-1', ['rat'])).toEqual({ run: 'r-9', startLives: 23, upgrades: { lives: 3 }, levels: { rat: 4 } });
+    const old = fake({ defense_start: () => ({ data: 'r-1', error: null }) });
+    expect(await createSupabaseApi(old.client, 'u1', store()).start('1-1', ['rat'])).toEqual({ run: 'r-1' });
+    const bad = fake({ defense_start: () => ({ data: { startLives: 20 }, error: null }) });
+    expect(await createSupabaseApi(bad.client, 'u1', store(), 40).start('1-1', ['rat'])).toBeNull();
+  });
   it('잠긴 스테이지로 시작하면 까닭을 알려 준다', async () => {
     const { client } = fake({ defense_start: () => ({ data: null, error: { code: 'P0001', message: 'stage locked' } }) });
     await expect(createSupabaseApi(client, 'u1', store()).start('1-4', ['rat'])).rejects.toThrow('stage locked');
@@ -414,7 +430,7 @@ describe('끝없는 모드 (끝없는 고개)', () => {
     const api = createLocalApi(st, 'k', () => now);
     await expect(api.start('1-1', ['rat'], 'endless')).rejects.toThrow('bad stage');
     await expect(api.start(ENDLESS_ID, ['rat'])).rejects.toThrow('bad stage');
-    const id = (await api.start(ENDLESS_ID, ['rat', 'ox'], 'endless'))!;
+    const id = (await api.start(ENDLESS_ID, ['rat', 'ox'], 'endless'))!.run;
     now += 400_000;
     const out = (await api.finish(erep(400, { run: id, stage: '1-1' })))!;
     expect(out.result).toMatchObject({ wave: 14, newRecord: true });

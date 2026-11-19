@@ -20,6 +20,8 @@ export interface GameConfig {
   /** 판 밖 성장: 캐릭터 영구 레벨(없으면 1) · 공통 강화 (PRD 7장) */
   levels?: Partial<Record<ZodiacId, number>>;
   upgrades?: Upgrades;
+  /** 시작 생명: 판 시작 때 서버가 적어 둔 값 (별의 기준. 없으면 스테이지 값 + 공통 강화) */
+  startLives?: number;
 }
 
 /** prep 시작 전(시간이 흐르지 않는다) · play 진행 중 · clear 클리어 · fail 실패 */
@@ -272,9 +274,11 @@ export interface State {
   wave: number;
   spawns: Spawn[];
   spawnI: number;
-  /** 보스 스테이지: 보스 번호와 등장 시각 (없으면 -1) · 경고를 냈나 · 보스를 잡았나 */
+  /** 보스 스테이지: 보스 번호와 등장 시각 (없으면 -1) · 경고를 냈나 · 보스를 잡았나
+   *  (끝없는 모드: bossAt · bossNext 는 다음에 나올 보스의 등장 시각과 번호 — 웨이브가 시작될 때 정해진다) */
   bossId: number;
   bossAt: number;
+  bossNext: number;
   bossWarned: boolean;
   bossDown: boolean;
   /** 요괴: 칸이 고정이다 (0..enemyHi 까지 훑고 alive 인 것만). enemyN = 살아 있는 수 */

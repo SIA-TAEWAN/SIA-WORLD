@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { TICK, WAVE_SEC } from '../src/data/balance';
+import { BOSS_WARN_SEC, TICK, WAVE_SEC } from '../src/data/balance';
 import { BOSSES } from '../src/data/bosses';
 import { STARTERS } from '../src/data/characters';
 import { ENDLESS_BOSS_EVERY, ENDLESS_ID, ENDLESS_STAGE, endlessBoss, endlessWave } from '../src/data/endless';
 import { ENEMIES, ENEMY_INDEX } from '../src/data/enemies';
 import { buildRoute, cellX, cellY, distToRoad } from '../src/game/path';
 import { normalPolicy, simulate } from '../src/game/policy';
-import { command, createGame, replay, step, summarize } from '../src/game/sim';
+import { ENDLESS_BOSS_SEC, command, createGame, replay, step, summarize } from '../src/game/sim';
 import { EV } from '../src/game/state';
+import { waveOf } from '../src/game/progress';
 
 describe('끝없는 모드의 맵과 웨이브', () => {
   it('맵: 길 하나 + 공중 경로, 배치 칸은 길을 밟지 않는다', () => {
@@ -71,7 +72,9 @@ describe('끝없는 모드의 판', () => {
     expect(s.phase).toBe('fail');
     const r = summarize(s);
     expect(r).toMatchObject({ endless: true, cleared: false, stars: 0, lives: 0 });
-    expect(r.wave).toBe(Math.floor((s.tick - 1) / (WAVE_SEC / TICK)) + 1);
+    expect(r.wave).toBe(Math.floor(s.tick / (WAVE_SEC / TICK)) + 1);
+    // 서버(defense_finish)는 보고한 판 시간(초, 내림)으로 센다: ⌊판 시간 ÷ 30⌋ + 1 — 화면의 도달 웨이브와 같다
+    expect(r.wave).toBe(waveOf(r.time));
     expect(r.codex.enemies).toContain('imp');
   });
 
@@ -83,5 +86,36 @@ describe('끝없는 모드의 판', () => {
     expect(a.summary.codex.bosses).toContain(BOSSES[0].id);
     const b = replay(cfg, a.state.log, 3700);
     expect(summarize(b)).toEqual(a.summary);
+  });
+
+  it('보스가 나오기 3초 전에 경고하고(보스마다), 경고한 보스가 그 시각에 나온다', () => {
+    const s = createGame({ seed: 5, stage: ENDLESS_ID, squad: [...STARTERS] });
+    s.lives = s.startLives = 1e6;
+    command(s, 'start');
+    const seen: { t: number; ev: number; boss: number }[] = [];
+    while (s.phase === 'play' && s.time < 2 * ENDLESS_BOSS_EVERY * WAVE_SEC + 20) {
+      step(s);
+      for (let k = 0; k < s.evN; k++) {
+        const e = s.events[k];
+        if (e.t === EV.bossWarn || e.t === EV.bossIn) seen.push({ t: s.time, ev: e.t, boss: e.a });
+      }
+    }
+    const at = (w: number) => w * WAVE_SEC + ENDLESS_BOSS_SEC;
+    expect(seen.map((x) => [x.ev, x.boss])).toEqual([[EV.bossWarn, 0], [EV.bossIn, 0], [EV.bossWarn, 1], [EV.bossIn, 1]]);
+    expect(seen[0].t).toBeCloseTo(at(ENDLESS_BOSS_EVERY - 1) - BOSS_WARN_SEC, 1);
+    expect(seen[1].t).toBeCloseTo(at(ENDLESS_BOSS_EVERY - 1), 1);
+    expect(seen[2].t).toBeCloseTo(at(2 * ENDLESS_BOSS_EVERY - 1) - BOSS_WARN_SEC, 1);
+  });
+
+  it('웨이브가 바뀌는 걸음에서 끝나도 화면의 도달 웨이브와 서버의 계산(판 시간 ÷ 30 + 1)이 같다', () => {
+    for (const k of [1, 2, 7]) {
+      const s = createGame({ seed: 1, stage: ENDLESS_ID, squad: [...STARTERS] });
+      s.lives = s.startLives = 1e6;
+      command(s, 'start');
+      while (s.tick < k * (WAVE_SEC / TICK)) step(s);
+      const r = summarize(s);
+      expect([r.time, r.wave]).toEqual([k * WAVE_SEC, k + 1]);
+      expect(waveOf(r.time)).toBe(r.wave);
+    }
   });
 });

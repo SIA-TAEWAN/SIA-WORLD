@@ -29,8 +29,8 @@ export const LIMITS = {
   count_min_time: 20,
   /** 시아코인은 60초 넘게 (실제 경과도) 진행한 판에만 */
   coin_min_time: 60,
-  /** 끝내지 않은 판은 5개까지 둔다 */
-  open_runs: 5,
+  /** 끝내지 않은 판은 20개까지 둔다 (보류했다가 다시 보낼 판이 지워지지 않게 넉넉히. 7일이 지난 것은 따로 지운다) */
+  open_runs: 20,
   /** 처치 수 상한 = kills_base + 판 시간 × kills_per_sec (넘으면 비정상 판) */
   kills_base: 50,
   kills_per_sec: 4,
