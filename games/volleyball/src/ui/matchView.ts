@@ -5,7 +5,7 @@ import { Match, type MatchEvent, type MatchSetup } from '../match/game';
 import { OnlineMatch } from '../match/online';
 import { getAiRpc, serverNow } from '../net/api';
 import { MatchRecorder, forfeitResult, pendingStore } from '../net/record';
-import { AiMatchRecorder } from '../net/aiRecord';
+import { AiMatchRecorder, localPending } from '../net/aiRecord';
 import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, openSettings, screen, stage, state, toast } from './app';
@@ -32,8 +32,9 @@ export function showMatch(setup: MatchSetup) {
   window.__match = match;
   // 온라인: 경기 시작을 서버에 알린다 (두 기기가 각자). 끝나면 결과를 보고한다
   const recorder = room && state.api ? new MatchRecorder(state.api, room.key, setup, { store: pendingStore(state.user.id) }) : null;
-  // AI 대전: 경기 시작을 서버에 알리고, 끝나면 승패를 올린다 (중간에 나가면 올리지 않는다 → 기록 없음)
-  const aiRecorder = online ? null : new AiMatchRecorder(getAiRpc(setup.fighters[setup.mySide].char));
+  // AI 대전: 경기 시작을 서버에 알리고, 끝나면 승패를 올린다. 도중에 나가면 최소 시간(15초)이 지난 경기는 패배, 아니면 기록 없음.
+  // 못 올린 결과는 기기에 맡겨 두었다가 다음 경기 시작 전에 다시 올린다 (새 경기를 시작하면 서버가 끝내지 않은 경기를 패배로 마감하므로)
+  const aiRecorder = online ? null : new AiMatchRecorder(getAiRpc(setup.fighters[setup.mySide].char), { store: localPending(`siavolley:ai-pending:${state.user.id}`) });
   // 그림을 받는 동안에도 경기 시계가 돌게 한다 (방장이 늦게 시작해 상대만 기다리지 않도록). 화면이 그려지기 시작하면 멈춘다
   let drawing = false;
   const pump = online ? setInterval(() => drawing || match.update(performance.now()), 50) : null;
@@ -167,9 +168,11 @@ export function showMatch(setup: MatchSetup) {
     releaseAll();
     // 온라인 경기는 멈출 수 없다 (창이 떠 있어도 계속 진행)
     if (!online) match.paused = true;
+    // AI 대전: 시작하고 최소 시간이 지난 경기는 나가면 패배 (물을 때 기준으로 정한다)
+    const forfeit = !!aiRecorder && match.phase !== 'over' && aiRecorder.forfeitable();
     const dim = document.createElement('div');
     dim.className = 'dim';
-    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online ? '지금 나가면 패배로 기록돼요' : '지금 나가면 이 경기는 기록되지 않아요'}</p>
+    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${online || forfeit ? '지금 나가면 패배로 기록돼요' : '지금 나가면 이 경기는 기록되지 않아요'}</p>
       <div class="actions"><button class="btn" data-no>계속하기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -183,6 +186,8 @@ export function showMatch(setup: MatchSetup) {
           // 온라인: 상대에게 알리고(내 자리는 AI가 이어받는다) 방에서도 나간다.
           // 남은 사람의 경기는 계속되므로 방의 '경기 끝'은 알리지 않는다 (이미 혼자였으면 알린다)
           match.quit();
+          // AI 대전: 패배로 올리거나(최소 시간이 지난 경기) 서버에서 지운다. 통신을 기다리지 않고 나간다
+          if (aiRecorder) void aiRecorder.leave(forfeit);
           if (room) {
             room.matchOver(setup.matchNo ?? 0, solo);
             leaveRoom();

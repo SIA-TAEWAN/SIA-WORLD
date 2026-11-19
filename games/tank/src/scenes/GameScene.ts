@@ -42,6 +42,8 @@ export interface GameConfig {
   hudParent: HTMLElement;
   onEnd: (s: MatchSummary) => void;
   onQuit: () => void;
+  /** 나가기를 물을 때 덧붙일 한 줄 (AI 전: 지금 나가면 패배로 기록되는 판). 부를 때마다 그 순간 기준 */
+  quitNote?: () => string | null;
   /** 온라인 대전일 때만 */
   net?: NetHooks;
   /** 재접속: 기준 기기에서 받은 판 상태 */
@@ -567,7 +569,10 @@ export class GameScene extends Phaser.Scene {
     this.quitBtn.className = 'quit';
     this.quitBtn.textContent = '나가기';
     this.quitBtn.onclick = () => {
-      if (confirm(cfg.net ? '게임에서 나갈까요? 30초 뒤에는 AI가 대신 조종하고 다시 들어올 수 없어요.' : '게임을 그만두고 나갈까요?')) cfg.onQuit();
+      // 혼자 하는 판: 승패가 난 뒤(결과 화면으로 넘어가기 직전)에는 나가지 않는다 (끝난 판이 '도중에 나간 판'이 되지 않게)
+      if (!cfg.net && this.phase === 'over') return;
+      const note = cfg.quitNote?.();
+      if (confirm(cfg.net ? '게임에서 나갈까요? 30초 뒤에는 AI가 대신 조종하고 다시 들어올 수 없어요.' : `게임을 그만두고 나갈까요?${note ? `\n${note}` : ''}`)) cfg.onQuit();
     };
     this.hud.root.querySelector('.hud-top')!.prepend(this.quitBtn);
     this.input2.on((e) => this.onControl(e));

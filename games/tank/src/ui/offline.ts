@@ -12,7 +12,7 @@ import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
 import { clientId, getAiRpc, getBackend } from '../net';
-import { AiMatchRecorder, aiRanked, outcomeText, type AiOutcome } from '../net/aiRecord';
+import { AiMatchRecorder, aiRanked, localPending, outcomeText, type AiOutcome } from '../net/aiRecord';
 import { worldHome, openWorldRanking } from '../net/world';
 import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
@@ -135,7 +135,7 @@ export function showSetup() {
     const el = $('#rank-note');
     el.classList.toggle('on', on);
     el.textContent = on
-      ? '🏅 이 판은 전적과 시아코인에 반영돼요 (하루 30판까지)'
+      ? '🏅 이 판은 전적과 시아코인에 반영돼요 (하루 30판까지) · 도중에 나가면 패배로 기록돼요'
       : '보통·어려움 AI 전은 전적과 시아코인에 반영돼요 (게임 모드 일반 · 백발백중 제외)';
   };
 
@@ -286,7 +286,12 @@ function startGame() {
   if (MAPS[mapId].practice && !local) setups.pop();
   // 전적에 반영되는 판(AI 보통·어려움 + 게임 모드 일반)이면 서버에 시작을 알린다.
   // 한 기기 2인·AI 쉬움·초보 모드·백발백중은 알리지 않는다 (056_ai_matches.sql)
-  const record = aiRanked(state.opponent, state.mode, !!MAPS[mapId].practice) ? new AiMatchRecorder(getAiRpc(diff as 'normal' | 'hard')) : null;
+  // 못 올린 결과는 기기에 맡겨 두었다가 다음 판 시작 전에 다시 올린다 (새 판을 시작하면 서버가 끝내지 않은 판을 패배로 마감하므로)
+  const record = aiRanked(state.opponent, state.mode, !!MAPS[mapId].practice)
+    ? new AiMatchRecorder(getAiRpc(diff as 'normal' | 'hard'), { store: localPending('siatank:ai-pending') })
+    : null;
+  // 나가기를 물을 때 '패배로 기록돼요'를 보였는가 (보인 판만 패배로 올린다)
+  let forfeitAsked = false;
   // 판이 끝나면 포인트·아이템 초기화
   state.shop = [[], []];
 
@@ -301,12 +306,16 @@ function startGame() {
     fullUlt: state.isAdmin ? [0] : [],
     onEnd: (s: MatchSummary) => {
       closeGame();
-      // 승패가 난 판만 올린다 (무승부는 사람 대전처럼 기록하지 않는다). 중간에 나간 판(onQuit)은 올리지 않는다
+      // 승패가 난 판만 올린다 (무승부는 사람 대전처럼 기록하지 않는다). 중간에 나간 판은 onQuit 에서
       const meWon = s.players.some((p) => p.team === s.winner && p.mine);
       showResult(s, undefined, record ? (s.winner === -1 ? 'draw' : record.finish(meWon)) : null);
       if (s.practice) void recordTarget(s);
     },
+    // 반영되는 판이 최소 시간(20초)을 넘겼으면 나가기 확인에 한 줄 덧붙인다
+    quitNote: () => ((forfeitAsked = !!record?.forfeitable()) ? '지금 나가면 패배로 기록돼요.' : null),
     onQuit: () => {
+      // 최소 시간이 지난 판은 패배로 올리고, 아니면 서버에서 지운다 (기록 없음). 통신을 기다리지 않고 나간다
+      if (record) void record.leave(forfeitAsked);
       closeGame();
       showSetup();
     },
@@ -392,7 +401,7 @@ export function showResult(s: MatchSummary, actions?: ResultActions, record: Pro
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
       </div>
       ${record ? `<p class="rec-line" id="rec">${record === 'draw' ? '무승부는 전적에 기록되지 않아요' : '전적을 기록하는 중…'}</p>` : ''}
-      <p class="hint">다음 판에는 포인트 1,000이 새로 지급돼요</p>
+      <p class="hint">${record ? 'AI 전은 도중에 나가면 패배로 기록돼요 · ' : ''}다음 판에는 포인트 1,000이 새로 지급돼요</p>
     </div>`,
     'result',
   );

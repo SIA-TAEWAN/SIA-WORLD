@@ -2,7 +2,10 @@
  * AI 대전 한 경기의 전적 기록 (supabase/migrations/056_ai_matches.sql 의 ai_match_start · ai_match_finish).
  * 경기를 시작할 때 서버에 알리고, 끝나면 승패를 올린다. 서버는 시작~종료 시간이 최소 시간(15초) 이상인 경기만 받는다.
  * 사람끼리의 경기(net/record.ts, 양쪽 보고 일치)와는 따로다. 시아탱크 games/tank/src/net/aiRecord.ts 와 같은 모양.
- * 화면·브라우저를 모르는 순수 모듈 (서버 호출은 AiRpc 로 받는다).
+ * 도중에 나간 판: 시작 뒤 최소 시간이 지났으면 패배로 올리고(leave(true)), 아니면 서버에서 지운다(leave(false)).
+ * 창을 그냥 닫아 아무것도 올리지 않은 판은 서버가 다음 시작 때 패배(최소 시간 전이면 버림)로 마감한다.
+ * 그래서 끝난 판의 결과를 통신 실패로 못 올렸으면 기기에 맡겨 두었다가(PendingStore) 다음 판 시작 전에 먼저 다시 올린다.
+ * 화면·브라우저를 모르는 순수 모듈 (서버 호출은 AiRpc 로, 기기 저장은 PendingStore 로 받는다).
  */
 /** ai_match_finish 의 답 */
 export interface AiFinish {
@@ -16,11 +19,50 @@ export interface AiFinish {
   perDay: number;
 }
 
-/** 서버 함수 두 개. 실패하면 예외 (message: 서버가 알려 준 까닭) */
+/** 서버 함수. 실패하면 예외 (message: 서버가 알려 준 까닭) */
 export interface AiRpc {
-  /** 판 시작 → 판 번호, 이 시간(초)이 지나야 종료를 받는다 */
+  /** 판 시작 → 판 번호, 이 시간(초)이 지나야 종료를 받는다 (이 시간이 지난 뒤 버려진 판은 패배) */
   start(): Promise<{ id: string; minSec: number }>;
   finish(id: string, won: boolean): Promise<AiFinish>;
+  /** 최소 시간 전에 나간 판을 지운다 (ai_match_cancel) */
+  cancel(id: string): Promise<void>;
+}
+
+/** 올리지 못한 결과 한 건 */
+export interface PendingResult {
+  id: string;
+  won: boolean;
+}
+
+/** 올리지 못한 결과를 기기에 맡겨 두는 곳 (게임별 한 칸) */
+export interface PendingStore {
+  get(): PendingResult | null;
+  set(v: PendingResult | null): void;
+}
+
+/** localStorage 한 칸. 쓸 수 없는 브라우저(사생활 보호 등)에서는 아무것도 하지 않는다 */
+export function localPending(key: string): PendingStore {
+  const ls = () => (globalThis as { localStorage?: Storage }).localStorage;
+  return {
+    get() {
+      try {
+        const raw = ls()?.getItem(key);
+        if (!raw) return null;
+        const v = JSON.parse(raw) as Partial<PendingResult> | null;
+        return v && typeof v.id === 'string' && typeof v.won === 'boolean' ? { id: v.id, won: v.won } : null;
+      } catch {
+        return null;
+      }
+    },
+    set(v) {
+      try {
+        if (v) ls()?.setItem(key, JSON.stringify(v));
+        else ls()?.removeItem(key);
+      } catch {
+        /* 저장하지 못해도 판은 그대로 */
+      }
+    },
+  };
 }
 
 /**
@@ -34,6 +76,8 @@ export type AiOutcome =
 
 export interface AiRecorderOptions {
   now?: () => number;
+  /** 올리지 못한 결과를 맡겨 둘 곳 (없으면 맡기지 않는다) */
+  store?: PendingStore;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -47,7 +91,10 @@ let busy: Promise<unknown> = Promise.resolve();
 
 export class AiMatchRecorder {
   private started: Promise<{ id: string; okAt: number } | 'none' | null>;
+  /** 시작 답을 받은 뒤: 이 시각부터 나가면 패배 (요청을 보낸 시각부터 센다 — 서버가 적은 시작 시각보다 이르므로 경고가 늦지 않다) */
+  private lossAt: number | null = null;
   private done: Promise<AiOutcome> | null = null;
+  private store: PendingStore | null;
   private rpc: Promise<AiRpc | null>;
   private now: () => number;
   private sleep: (ms: number) => Promise<void>;
@@ -56,6 +103,7 @@ export class AiMatchRecorder {
   constructor(rpc: Promise<AiRpc | null> | AiRpc | null, opts: AiRecorderOptions = {}) {
     const now = (this.now = opts.now ?? (() => Date.now()));
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const store = (this.store = opts.store ?? null);
     const prev = busy;
     // 연결하지 못했으면(reject) 그 판은 기록 실패로 끝난다
     const conn = (this.rpc = Promise.resolve(rpc));
@@ -64,7 +112,19 @@ export class AiMatchRecorder {
       await prev;
       const api = await conn;
       if (!api) return 'none' as const;
+      // 앞 판에서 못 올린 결과를 먼저 올린다 (새 판을 시작하면 서버가 그 판을 패배로 마감하므로). 실패해도 새 판은 시작한다
+      const left = store?.get();
+      if (left) {
+        try {
+          await api.finish(left.id, left.won);
+        } catch {
+          /* 이미 마감된 판·통신 실패: 그대로 새 판 */
+        }
+        store!.set(null);
+      }
+      const sentAt = now();
       const r = await api.start();
+      this.lossAt = sentAt + r.minSec * 1000;
       // 답을 받은 시각부터 센다 (서버가 적은 시작 시각보다 늦으므로 안전한 쪽)
       return { id: r.id, okAt: now() + r.minSec * 1000 + EARLY_MARGIN_MS };
     })().catch(() => null);
@@ -80,11 +140,36 @@ export class AiMatchRecorder {
     return this.done;
   }
 
+  /** 지금 나가면 패배로 기록되는 판인가 (시작을 알렸고, 아직 끝나지 않았고, 최소 시간이 지났다) */
+  forfeitable(): boolean {
+    return !this.done && this.lossAt !== null && this.now() >= this.lossAt;
+  }
+
+  /**
+   * 판 도중에 나간다. forfeit: 나가기를 물을 때 forfeitable() 이었는가 (그때 '패배로 기록돼요'를 보였는가).
+   * true 면 패배로 올리고, false 면 서버에서 판을 지운다 (기록 없음). 기다리지 않아도 된다. 예외를 던지지 않는다
+   */
+  leave(forfeit: boolean): Promise<AiOutcome> {
+    if (forfeit) return this.finish(false);
+    if (!this.done) {
+      this.done = (async (): Promise<AiOutcome> => {
+        const s = await this.started;
+        const api = await this.rpc.catch(() => null);
+        if (s && s !== 'none' && api) await api.cancel(s.id);
+        return { state: 'none' };
+      })().catch((): AiOutcome => ({ state: 'failed' }));
+      busy = this.done;
+    }
+    return this.done;
+  }
+
   private async send(won: boolean): Promise<AiOutcome> {
     const s = await this.started;
     if (s === 'none') return { state: 'none' };
     const api = await this.rpc;
     if (!s || !api) return { state: 'failed' };
+    // 올리기 전에 기기에 맡겨 둔다 (기다리는 사이 창을 닫거나 통신이 끊겨도 다음 판 시작 전에 다시 올린다)
+    this.store?.set({ id: s.id, won });
     // 너무 빨리 끝난 판: 서버가 받아 주는 시각까지 기다렸다가 올린다
     const wait = s.okAt - this.now();
     if (wait > 0) await this.sleep(wait);
@@ -98,6 +183,7 @@ export class AiMatchRecorder {
         await this.sleep(EARLY_RETRY_MS);
       }
     }
+    this.store?.set(null);
     if (!r.counted) return { state: 'limit', perDay: r.perDay, wins: r.wins, losses: r.losses };
     return { state: 'saved', coin: r.coin, wins: r.wins, losses: r.losses };
   }

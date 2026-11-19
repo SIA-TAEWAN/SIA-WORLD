@@ -29,7 +29,7 @@ export function showResult(result: MatchResult) {
       <span class="nm">${ai ? '<i class="ai-tag">AI</i>' : ''}${esc(f.name)}</span><span class="wl">${w ? '승' : '패'}</span></div>`;
   };
   const note = !online
-    ? ''
+    ? 'AI 대전은 도중에 나가면 패배로 기록돼요'
     : iLeft
       ? '연결이 끊겨 AI가 대신했어요 · 이 경기는 패배로 기록돼요'
       : vsAi

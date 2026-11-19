@@ -41,6 +41,7 @@ export async function getAiRpc(difficulty: 'normal' | 'hard'): Promise<AiRpc | n
   return {
     start: async () => parseStart(await rpc('ai_match_start', { p_game: 'tank', p_difficulty: difficulty })),
     finish: async (id, won) => parseFinish(await rpc('ai_match_finish', { p_id: id, p_won: won })),
+    cancel: async (id) => void (await rpc('ai_match_cancel', { p_id: id })),
   };
 }
 

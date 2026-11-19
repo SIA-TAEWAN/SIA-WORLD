@@ -132,6 +132,7 @@ export async function getAiRpc(character: ZodiacId): Promise<AiRpc | null> {
   return {
     start: async () => parseStart(await rpc('ai_match_start', { p_game: 'volleyball', p_difficulty: 'normal', p_character: character })),
     finish: async (id, won) => parseFinish(await rpc('ai_match_finish', { p_id: id, p_won: won })),
+    cancel: async (id) => void (await rpc('ai_match_cancel', { p_id: id })),
   };
 }
 
