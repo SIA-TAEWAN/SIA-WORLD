@@ -362,6 +362,77 @@ describe('특수 규칙', () => {
     expect(s.hands[0]).toEqual(['m05-pi1']);
     expect(s.captured[0]).toContain('m11-pi2');
   });
+  describe('폭탄 피(공짜 패: 손패 대신 더미만 뒤집기)는 자기 차례에 패를 낼 때만', () => {
+    it('차례가 아닌 자리는 폭탄 피가 남아 있어도 뒤집을 수 없다 (상태도 그대로)', () => {
+      // 첫째 자리가 폭탄 피 2개를 가졌지만 지금은 둘째 자리 차례
+      const s = makeTestState({
+        hands: [['m05-pi1', 'm06-pi1'], ['m07-pi1', 'm08-pi1']], floor: ['m10-pi1'], pile: ['m11-pi1', 'm12-yeol', 'm03-pi1'],
+        fill: [2, 0], turn: 1, first: 0,
+      });
+      const before = JSON.stringify(s);
+      expect(matgo.pending(s)).toEqual([1]);
+      expect(() => act(s, 0, { type: 'flip' })).toThrow('차례가 아닙니다');
+      // 차례인 자리(폭탄 피 없음)도 뒤집기만 할 수는 없다
+      expect(() => act(s, 1, { type: 'flip' })).toThrow('폭탄 피가 없습니다');
+      expect(matgo.view(s).public.choice).toEqual({ kind: 'play', seat: 1, canFlip: false });
+      // 시간 초과 자동 행동·AI 도 차례가 아닌 자리로는 부를 수 없다
+      expect(() => matgo.timeout(s, 0, fixedRng())).toThrow(EngineError);
+      const v = matgo.view(s);
+      expect(() => matgo.ai(v.public, v.private[0], 0, fixedRng())).toThrow(EngineError);
+      expect(JSON.stringify(s)).toBe(before);
+      // 둘째 자리가 내고 나면 첫째 자리 차례 → 그때는 된다
+      const s2 = play(s, 1, 'm07-pi1');
+      expect(matgo.view(s2).public.choice).toEqual({ kind: 'play', seat: 0, canFlip: true });
+      expect(act(s2, 0, { type: 'flip' }).fill).toEqual([1, 0]);
+    });
+    it('같은 달 2장 가운데 고르는 중에는 내 차례여도 뒤집을 수 없다 (고르기만 받는다)', () => {
+      let s = makeTestState({
+        hands: [['m06-yeol', 'm05-pi1'], ['m07-pi1', 'm08-pi1']], floor: ['m06-pi1', 'm06-tti'], pile: ['m11-pi1', 'm12-yeol'],
+        fill: [1, 1],
+      });
+      s = play(s, 0, 'm06-yeol');
+      expect(s.phase).toBe('choose');
+      const before = JSON.stringify(s);
+      expect(() => act(s, 0, { type: 'flip' })).toThrow('먹을 패를 골라야 합니다');
+      expect(() => act(s, 1, { type: 'flip' })).toThrow('차례가 아닙니다');
+      expect(JSON.stringify(s)).toBe(before);
+      expect(s.fill).toEqual([1, 1]);
+    });
+    it('고/스톱 · 국진을 정하는 중에도 뒤집을 수 없다', () => {
+      // 고/스톱: 7점이 났고 손패가 남았다
+      let s = makeTestState({
+        hands: [['m10-pi1', 'm05-pi2'], ['m05-pi1', 'm07-pi2']], floor: ['m10-pi2'], pile: ['m07-pi1', 'm11-pi1'],
+        captured: [WIN7, []], fill: [1, 1],
+      });
+      s = play(s, 0, 'm10-pi1');
+      expect(s.phase).toBe('goStop');
+      expect(() => act(s, 0, { type: 'flip' })).toThrow('고 또는 스톱을 골라야 합니다');
+      expect(() => act(s, 1, { type: 'flip' })).toThrow('차례가 아닙니다');
+      // 국진: 9월 열끗을 먹었다
+      let g = makeTestState({
+        hands: [['m09-pi1', 'm05-pi2'], ['m05-pi1', 'm07-pi2']], floor: ['m09-yeol'], pile: ['m07-pi1', 'm11-pi1'], fill: [1, 1],
+      });
+      g = play(g, 0, 'm09-pi1');
+      expect(g.phase).toBe('gukjin');
+      expect(() => act(g, 0, { type: 'flip' })).toThrow('국진을 열끗/쌍피 중에서 골라야 합니다');
+      expect(() => act(g, 1, { type: 'flip' })).toThrow('차례가 아닙니다');
+      expect(g.fill).toEqual([1, 1]);
+    });
+    it('판이 끝난 뒤에는 누구도 뒤집을 수 없다', () => {
+      // 폭탄 피가 남은 채로 7점이 나 스톱한 판
+      const s = play(makeTestState({
+        hands: [['m10-pi1', 'm05-pi2'], ['m05-pi1', 'm07-pi2']], floor: ['m10-pi2'], pile: ['m07-pi1', 'm11-pi1'],
+        captured: [WIN7, []], fill: [1, 1],
+      }), 0, 'm10-pi1');
+      expect(s.phase).toBe('goStop');
+      const done = act(s, 0, { type: 'stop' });
+      expect(done.phase).toBe('done');
+      expect(done.fill).toEqual([1, 1]);
+      expect(matgo.pending(done)).toEqual([]);
+      expect(() => act(done, 0, { type: 'flip' })).toThrow('판이 끝났습니다');
+      expect(() => act(done, 1, { type: 'flip' })).toThrow('판이 끝났습니다');
+    });
+  });
   it('총통: 처음 손패에 같은 달 4장 → 즉시 7점 승리 (나가리 배수 적용)', () => {
     const s = makeTestState({
       hands: [['m04-yeol', 'm04-tti', 'm04-pi1', 'm04-pi2', 'm01-pi1'], ['m05-pi1']], floor: ['m10-pi1'], pile: ['m11-pi1'], nagariMul: 2,

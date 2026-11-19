@@ -1303,11 +1303,20 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }
   };
 
+  /**
+   * 테이블 비우기: 그려 둔 것을 모두 없앤다 (다음 줄에서 새로 그린다).
+   * children.removeAll(true) 는 화면 목록에서 빼기만 하고 없애지는 않는다 (인자는 '없애기'가 아니라 '콜백 건너뛰기'다)
+   * → 누를 수 있게 그렸던 패·버튼이 보이지 않는 채로 입력 목록에 남아, 내 차례가 아닐 때도 예전 자리를 누르면 눌렸다.
+   */
+  const clearScene = (sc: PhaserNS.Scene) => {
+    for (const o of [...sc.children.list]) o.destroy();
+  };
+
   function drawTableOnly() {
     if (closed) return;
     const c = ctx();
     if (!c) return;
-    c.scene.children.removeAll(true);
+    clearScene(c.scene);
     c.scene.tweens.killAll();
     dealSeq = 0;
     movesSnap = new Map(moves);
@@ -1332,7 +1341,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     }
     const c = ctx();
     if (c) {
-      c.scene.children.removeAll(true);
+      clearScene(c.scene);
       c.scene.tweens.killAll();
       dealSeq = 0;
       movesSnap = new Map(moves);
