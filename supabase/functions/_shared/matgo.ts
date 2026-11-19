@@ -260,6 +260,11 @@ export interface MatgoState {
   redeals: number;
   events: GameEvent[];
   evSeq: number;
+  /**
+   * 혼자 하는 판(사람 1명 + AI)을 기기에서 진행할 때 싣는 값 (solo.ts: 씨앗과 지금까지의 행동 수).
+   * 엔진은 건드리지 않고 그대로 넘긴다 (apply 는 상태를 통째로 복사한다). 절대 view 에 넣지 않는다
+   */
+  solo?: { seed: number; n: number };
 }
 
 // ───────────────────────────── 화면 ─────────────────────────────

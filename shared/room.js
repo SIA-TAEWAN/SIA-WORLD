@@ -1,6 +1,6 @@
 // 맞고·카지노 공용 방: 방 목록 · 만들기 · 입장 · 레디 · 퇴장 · 게임 행동 · 실시간 구독.
 // 방 상태 변경은 DB 함수(security definer)로, 게임 행동은 Edge Function(game-action)으로만 한다.
-import { supabase } from './supabase.js';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 
 export const SEATS = { matgo: 2, poker: 4, blackjack: 4, holdem: 4, roulette: 8 };
 export const GAME_NAME = { matgo: '시아맞고', poker: '세븐포커', blackjack: '블랙잭', holdem: '텍사스 홀덤', roulette: '십이지신 룰렛' };
@@ -84,10 +84,19 @@ export const leaveRoom = (roomId) => rpc('leave_room', { p_room: roomId });
 export const setAvatar = (roomId, avatar) => rpc('set_avatar', { p_room: roomId, p_avatar: avatar });
 export const touchRoom = (roomId) => rpc('touch_room', { p_room: roomId }).catch(() => undefined);
 
-/** 레디. 사람이 모두 레디했으면 바로 판을 시작한다 */
-export async function setReady(roomId, ready) {
+/** 레디. 사람이 모두 레디했으면 바로 판을 시작한다 (onStart: 판 시작 응답을 받는다 — 혼자 하는 맞고는 여기에 전체 상태가 온다) */
+export async function setReady(roomId, ready, onStart) {
   const all = await rpc('set_ready', { p_room: roomId, p_ready: ready });
-  if (all) await startRound(roomId).catch(() => undefined);
+  if (all) {
+    const res = await startRound(roomId).catch(() => undefined);
+    if (res && onStart) {
+      try {
+        onStart(res);
+      } catch {
+        /* 화면 쪽 문제로 레디가 실패한 것처럼 보이지 않게 */
+      }
+    }
+  }
   return all;
 }
 
@@ -104,7 +113,11 @@ async function invoke(body) {
     } catch {
       /* 그대로 */
     }
-    throw new RoomError(friendly(msg));
+    const err = new RoomError(friendly(msg));
+    // 서버가 준 원래 문구와 상태 코드 (화면이 'out of sync' 같은 경우를 가려 처리한다). 통신 실패면 status 가 없다
+    err.code = msg;
+    err.status = error.context?.status;
+    throw err;
   }
   return data;
 }
@@ -112,6 +125,41 @@ async function invoke(body) {
 export const startRound = (roomId) => invoke({ roomId, action: 'start' });
 /** 게임 행동 (payload 모양은 게임마다 다르다) */
 export const act = (roomId, payload) => invoke({ roomId, action: 'act', payload });
+
+// ---------- 혼자 하는 맞고: 기기에서 진행 (supabase/functions/_shared/solo.ts) ----------
+
+/** 진행 중인 혼자 하는 판의 전체 상태 → { state, version, round } (새로고침·재접속한 화면이 이어서 두려고) */
+export const soloSync = (roomId) => invoke({ roomId, action: 'sync' });
+/** 기기에서 둔 사람 행동 목록 보내기: payload { n, actions } → { ok, n, done } (끝난 판이면 서버가 정산한다) */
+export const soloReplay = (roomId, payload) => invoke({ roomId, action: 'replay', payload });
+
+// 페이지를 떠나는 순간에는 로그인 정보를 기다려 읽을 수 없다 → 미리 받아 둔다
+let accessToken = null;
+void supabase.auth.getSession().then(({ data }) => {
+  accessToken = data?.session?.access_token ?? accessToken;
+}, () => undefined);
+supabase.auth.onAuthStateChange((_event, session) => {
+  accessToken = session?.access_token ?? null;
+});
+
+/**
+ * 페이지를 떠나는 중(pagehide)에 행동 목록 보내기: 페이지가 닫혀도 요청이 끝까지 가게 한다 (fetch keepalive).
+ * 응답은 기다리지 않고, 실패해도 무시한다 → 보냈으면 true
+ */
+export function soloReplayOnExit(roomId, payload) {
+  if (!accessToken) return false;
+  try {
+    void fetch(`${SUPABASE_URL}/functions/v1/game-action`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ roomId, action: 'replay', payload }),
+    }).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ---------- 방 하나 읽기 · 구독 ----------
 

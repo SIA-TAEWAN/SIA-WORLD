@@ -21,6 +21,7 @@ import {
   type WalletModule,
   type WorldUser,
   type ZodiacModule, type PresenceHandle } from './world.ts';
+import type { LocalHost, LocalPlay } from './solo-play.ts';
 
 export interface GameEventLite {
   id: number;
@@ -210,6 +211,12 @@ export interface GameUI<P = any, Q = any> {
   manual?: string;
   /** Phaser에 미리 불러올 그림 (key → url) */
   preload?(scene: PhaserNS.Scene, avatarUrl: (id: string) => string): void;
+  /**
+   * 기기에서 진행하는 판 (혼자 하는 맞고: lib/solo-play.ts). 있으면 셸이 방에 들어갈 때 만들어, 내 행동을 먼저 여기에 묻고
+   * (기기에서 처리했으면 서버로 보내지 않는다) 서버에서 온 상태도 먼저 여기를 거친다 (기기 진행보다 낡은 것은 버린다).
+   * 없는 게임, 기기 진행 중이 아닌 판(사람이 둘인 방 등)은 예전 그대로 서버가 진행한다.
+   */
+  local?(host: LocalHost): LocalPlay;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, s: string) => root.querySelector<T>(s)!;
@@ -559,6 +566,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   /** 행동을 보낸 시점의 상태 시각 (이보다 새 상태가 오면 버튼을 다시 켠다) */
   let busySince: string | null = null;
   let busyTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 기기에서 진행하는 판 (ui.local 이 있는 게임만. 아래에서 만든다) */
+  let local: LocalPlay | null = null;
   const unbusy = () => {
     busy = false;
     busySince = null;
@@ -769,11 +778,39 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       privWait,
       privNext: pendingPriv && st && pendingPriv.round_no === st.round_no ? pendingPriv.hand : null,
       pending,
-      myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no) && !ctlHold,
+      // (기기에서 진행할 판의 전체 상태를 받아 오는 중이면 잠깐 막는다: 지금 보이는 것은 서버에 저장된 옛 상태다)
+      myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no) && !ctlHold && !local?.waiting(),
       act: async (payload) => {
         if (busy) return false;
         busy = true;
         busySince = st?.updated_at ?? null;
+        if (local) {
+          // 기기에서 진행 중인 판이면 서버에 보내지 않고 바로 적용한다 (새 상태는 실시간으로 받은 것과 같은 길로 들어온다)
+          let done: boolean | null = null;
+          try {
+            done = local.act(payload);
+          } catch (e) {
+            console.warn('local', e);
+            done = false;
+          }
+          if (done !== null) {
+            if (!done) unbusy();
+            else {
+              // 그 상태가 화면에 그려질 때 풀린다 (applyState). 혹시 안 그려지면 연출이 끝난 뒤에 푼다
+              const release = () => {
+                if (replaying || queue.length) {
+                  busyTimer = setTimeout(release, 300);
+                  return;
+                }
+                unbusy();
+                paintControls();
+              };
+              busyTimer = setTimeout(release, 1500);
+            }
+            paintControls();
+            return done;
+          }
+        }
         paintControls();
         try {
           await m.room.act(roomId, payload);
@@ -1032,6 +1069,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           el.innerHTML = `<p class="msg">${c.pub && st?.round_no === room.round_no ? '판이 끝났어요. 결과를 확인하는 중…' : '새 판을 준비하는 중…'}</p>`;
           return;
         }
+        // 기기에서 진행한 판이 끝나 서버에 결과를 보내는 중
+        const note = local?.notice();
+        if (note) {
+          el.innerHTML = `<p class="msg">${esc(note)}</p>`;
+          return;
+        }
         c.busy = busy;
         el.innerHTML = '';
         ui.controls(c, el);
@@ -1070,7 +1113,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     <p class="msg">${!enough ? `${m.wallet.formatAmount(m.wallet.minEntry(room.base_unit))}${unit} 이상 있어야 해요` : !mine.ready ? '레디를 누르면 시작해요' : allHumansReady ? '모두 레디! 곧 시작해요…' : '다른 사람을 기다리는 중… 사람이 모두 레디하면 시작해요'}</p>`;
     el.querySelector('#ready')?.addEventListener('click', async () => {
       try {
-        await m.room.setReady(roomId, !mine.ready);
+        await m.room.setReady(roomId, !mine.ready, (res) => local?.onStart(res));
       } catch (e) {
         toast(m.room.friendly(e));
       }
@@ -1229,7 +1272,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     // 레디 버튼이 이미 시작을 불렀을 수 있으니, 1.5초 뒤에도 아직 대기 중일 때만 (예: 마지막 사람이 레디 대신 나간 경우)
     setTimeout(() => {
       if (closed || room?.status !== 'waiting') return;
-      void m.room.startRound(roomId).catch(() => undefined);
+      void m.room.startRound(roomId).then((res) => !closed && local?.onStart(res), () => undefined);
     }, 1500);
   };
 
@@ -1312,8 +1355,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     pendingPriv = undefined;
     room = r;
     seats = s;
-    st = gs;
-    priv = p;
+    // 기기에서 진행 중인 판이면 서버의 (낡은) 상태 대신 기기 진행 상태를 그대로 둔다 (방·자리를 먼저 넣어 둔다: 내 자리를 알아야 한다)
+    let sub: ReturnType<LocalPlay['onReload']> = null;
+    try {
+      sub = local?.onReload({ room: r, state: gs }) ?? null;
+    } catch (e) {
+      console.warn('local', e);
+    }
+    st = sub ? sub.state : gs;
+    priv = sub ? sub.priv : p;
     if (w) wallet = w;
     if (firstLoad && st && r.status === 'waiting') resultShownFor = st.round_no;
     if (r.status === 'playing' && st?.public_state && !st.public_state.result) liveRound = st.round_no;
@@ -1384,8 +1434,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
   const enqueueState = (s: StateRow) => {
     // 이미 본 것보다 오래된 상태 (다시 불러온 뒤 늦게 온 실시간 등)는 버린다
+    // (기기에서 진행해 만든 상태는 시각이 아니라 순번이라 견주지 않는다. 그쪽의 낡은 서버 상태는 local.filterState 가 먼저 거른다)
     const latest = queue.length ? queue[queue.length - 1].s : st;
-    if (latest && s.updated_at && latest.updated_at && s.updated_at < latest.updated_at) return;
+    if (latest && !s.local && !latest.local && s.updated_at && latest.updated_at && s.updated_at < latest.updated_at) return;
     let f: ReturnType<typeof freshEvents> = { events: [], exact: false, newRound: false };
     try {
       f = freshEvents(s);
@@ -1397,7 +1448,15 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   };
   // 개발 서버 전용: 연출 점검용으로 상태를 직접 넣어 볼 수 있게 (배포 빌드에는 들어가지 않는다)
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
-    (window as unknown as { __siaTable?: unknown }).__siaTable = { enqueue: enqueueState, state: () => st, mySeat: () => mySeatRow()?.seat_no ?? null };
+    (window as unknown as { __siaTable?: unknown }).__siaTable = {
+      enqueue: enqueueState,
+      state: () => st,
+      mySeat: () => mySeatRow()?.seat_no ?? null,
+      // 조작 점검용: 내 패 · 지금 누를 수 있는가 · 행동 넣기 (버튼을 누른 것과 같은 길)
+      hand: () => (priv && st && priv.round_no === st.round_no ? priv.hand : null),
+      myTurn: () => !!ctx()?.myTurn && !busy,
+      act: (payload: unknown) => ctx()?.act(payload),
+    };
   }
   /** 사건 → 연출 한 걸음 (지금 보이는 화면 기준) */
   const stepOf = (ev: GameEventLite): ReplayStep | null => {
@@ -1510,7 +1569,10 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         };
         const gapOf = (step: ReplayStep) => quick(Math.round((step.gap ?? (step.after ? 800 : isAiStep(step) ? 800 : 350)) * PACE));
         // 앞 상태의 카드 연출이 끝난 뒤에 시작
-        await waitA();
+        // (내가 방금 기기에서 둔 행동은 서버 답을 기다릴 일이 없다: 누른 패가 바닥에 내려앉을 시간만 두고 바로 이어 간다.
+        //  이때 남아 있는 연출은 손패가 자리를 고치는 것뿐이다 — 조작은 앞 차례의 연출이 끝난 뒤에만 켜진다)
+        if (item.s.eager) await sleep(Math.max(0, Math.min(animEnd - performance.now() + 40, 260)));
+        else await waitA();
         if (closed) return;
         let afterAt = 0;
         const markAfter = () => {
@@ -1746,21 +1808,82 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     },
     onState: (s) => {
       if (closed) return;
+      // 기기에서 진행 중인 판: 기기 진행보다 낡은 서버 상태(내가 보낸 중간 저장 등)는 버린다. 결과가 든 상태는 그대로 받는다
+      if (local?.filterState(s)) return;
       enqueueState(s);
     },
     onPrivate: (p) => {
       if (closed) return;
-      // 연출 재생 중이면 새 상태와 함께 (새 카드가 미리 보이지 않게)
-      if (replaying && !(itemApplied && !queue.length)) {
-        pendingPriv = p;
-        return;
-      }
-      priv = p;
-      if (replaying) repaint();
-      else paint();
+      if (local?.filterPrivate(p)) return;
+      takePrivate(p);
     },
     onResync: () => void reloadAll(),
   });
+  /** 내 비공개 패 받기 (실시간 · 기기 진행 공통) */
+  function takePrivate(p: PrivateRow) {
+    // 연출 재생 중이면 새 상태와 함께 (새 카드가 미리 보이지 않게)
+    if (replaying && !(itemApplied && !queue.length)) {
+      pendingPriv = p;
+      return;
+    }
+    priv = p;
+    if (replaying) repaint();
+    else paint();
+  }
+  // ── 기기에서 진행하는 판 (혼자 하는 맞고): 게임이 주는 진행기에 셸의 문을 열어 준다 ──
+  if (ui.local) {
+    const maxEvent = (s: StateRow) => ((s.public_state?.events as GameEventLite[] | undefined) ?? []).reduce((a, e) => Math.max(a, e.id), 0);
+    local = ui.local({
+      roomId,
+      get: () => ({ room, seats, mySeat: mySeatRow()?.seat_no ?? null }),
+      api: {
+        sync: () => m.room.soloSync(roomId),
+        replay: (p) => m.room.soloReplay(roomId, p),
+        replayOnExit: (p) => m.room.soloReplayOnExit(roomId, p),
+      },
+      // 실시간으로 받은 것과 같은 길: 상태는 재생 대기열로, 내 패는 그 상태와 함께
+      push: (s, p) => {
+        if (closed) return;
+        enqueueState(s);
+        takePrivate(p);
+      },
+      // 연출 없이 바로 (다시 불러올 때와 같은 길)
+      jump: (s, p) => {
+        if (closed) return;
+        queue.length = 0;
+        epoch++;
+        pendingPriv = undefined;
+        unbusy();
+        st = s;
+        priv = p;
+        replayRound = s.round_no;
+        replaySeen = maxEvent(s);
+        lastEvent = replaySeen;
+        if (room?.status === 'playing' && !s.public_state?.result) liveRound = s.round_no;
+        paint();
+      },
+      settled: async () => {
+        for (let i = 0; i < 2000 && !closed; i++) {
+          if (replaying || queue.length) {
+            await sleep(60);
+            continue;
+          }
+          const wait = Math.max(animEnd, cutinUntil) - performance.now();
+          if (wait <= 0) return;
+          await sleep(wait + 40);
+        }
+      },
+      setDeadline: (iso) => {
+        if (st && !closed) st = { ...st, turn_deadline: iso };
+      },
+      reload: () => reloadAll(),
+      refresh: () => !closed && paint(),
+      toast,
+    });
+  }
+  // 페이지를 떠날 때 (닫기 · 새로고침 · 다른 곳으로): 기기에서 둔 데까지를 서버에 맞춰 둔다
+  const onPageHide = () => void local?.flush('pagehide').catch(() => undefined);
+  window.addEventListener('pagehide', onPageHide);
   const touch = setInterval(() => void m.room.touchRoom(roomId), m.room.TOUCH_MS);
   void m.room.touchRoom(roomId);
   // 백그라운드 탭에서는 타이머가 느려지므로, 다시 보이면 바로 신호를 보내고 상태를 다시 읽는다
@@ -1770,6 +1893,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     void reloadAll();
   };
   document.addEventListener('visibilitychange', onVisible);
+  // 화면이 가려질 때 (다른 앱·탭으로): 기기에서 둔 데까지를 서버에 맞춰 둔다 → 오래 자리를 비워 서버 AI 가 대신 두게 돼도 내가 둔 데서 이어진다
+  const onHidden = () => {
+    if (document.visibilityState === 'hidden' && !closed) void local?.flush('pagehide').catch(() => undefined);
+  };
+  document.addEventListener('visibilitychange', onHidden);
 
   function cleanup() {
     closed = true;
@@ -1777,6 +1905,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     clearInterval(touch);
     clearInterval(timer);
     document.removeEventListener('visibilitychange', onVisible);
+    document.removeEventListener('visibilitychange', onHidden);
+    window.removeEventListener('pagehide', onPageHide);
+    local?.dispose();
     ro.disconnect();
     unbusy();
     game.destroy(true);
@@ -1784,6 +1915,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
 
   $(root, '#leave').addEventListener('click', async () => {
     if (room?.status === 'playing' && mySeatRow() && !confirm('게임 중이에요. 나가면 이번 판은 AI가 대신하고 결과는 내 지갑에 반영돼요. 나갈까요?')) return;
+    // 기기에서 둔 데까지를 먼저 서버에 보낸다 (그 뒤는 서버 AI 가 이어 둔다)
+    await local?.flush('leave').catch(() => undefined);
     await m.room.leaveRoom(roomId).catch(() => undefined);
     cleanup();
     void showLobby(ui, m, me);

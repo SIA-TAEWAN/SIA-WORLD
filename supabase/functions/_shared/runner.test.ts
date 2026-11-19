@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './engine.ts';
 import { ENGINES } from './engines.ts';
-import { Runner, type DeckRow, type GameId, type RoomRow, type SeatRow, type Store } from './runner.ts';
+import { Runner, SOLO_DEADLINE_MS, type DeckRow, type GameId, type RoomRow, type SeatRow, type Store } from './runner.ts';
+import { matgo, type MatgoAction, type MatgoState } from './matgo.ts';
+import { soloOf, soloStep } from './solo.ts';
 
 /** 메모리 DB (SQL 함수와 같은 규칙으로 흉내) */
 function memStore(game: GameId, humans: string[], seatCount: number, balance = 100000) {
@@ -103,7 +105,8 @@ describe('Runner', () => {
     await runner.start('r1', 'u1');
     const last = m.published[m.published.length - 1];
     expect(last.pending).toEqual([0]);
-    expect(last.deadline?.getTime()).toBe(1_000_000 + 20_000);
+    // 혼자 하는 맞고는 기기에서 진행한다: 서버 마감은 버려진 판 정리용 30분
+    expect(last.deadline?.getTime()).toBe(1_000_000 + SOLO_DEADLINE_MS);
     // 비공개 패: AI 자리(user null)에도 쓰지만 user_id가 없으니 아무도 못 읽는다
     expect(last.privates.find((p) => p.seat === 1)?.userId).toBeNull();
   });
@@ -224,5 +227,246 @@ describe('Runner', () => {
     const bets = Object.fromEntries(pub.seats.map((s: any) => [s.seat, s.bet ?? s.hands?.[0]?.bet]));
     expect(bets[0]).toBe(100);
     expect(bets[1]).toBe(200);
+  });
+});
+
+/**
+ * 혼자 하는 맞고: 화면이 기기에서 진행하고 사람 행동 목록만 보낸다 (solo.ts).
+ * '화면'은 여기서 서버와 같은 soloStep 으로 흉내 낸다: 사람 차례는 정해 둔 방식으로 고르고 기록, AI 차례는 soloStep(…, null).
+ */
+describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => {
+  const ME = 0;
+  /** 화면 쪽 진행: 사람 행동을 max개까지 두고(그 앞의 AI 차례 포함), 기록한 행동과 상태를 돌려준다. trailing: 마지막 사람 행동 뒤의 AI 차례도 둔다 */
+  function playLocal(state: MatgoState, pick: (s: MatgoState) => MatgoAction, max = Infinity, trailing = true) {
+    const actions: MatgoAction[] = [];
+    let s = state;
+    for (let i = 0; i < 500 && !matgo.done(s); i++) {
+      const seat = matgo.pending(s)[0];
+      if (seat !== ME) {
+        if (actions.length >= max && !trailing) break;
+        s = soloStep(matgo, s, seat, null);
+        continue;
+      }
+      if (actions.length >= max) break;
+      const a = pick(s);
+      actions.push(a);
+      s = soloStep(matgo, s, ME, a);
+    }
+    return { state: s, actions };
+  }
+  /** 사람 대신 고르기: 엔진의 AI 를 따로 정한 난수로 (서버가 모르는 선택) */
+  const picker = (seed: number) => {
+    const rng = seededRng(seed);
+    return (s: MatgoState) => {
+      const v = matgo.view(s);
+      return matgo.ai(v.public, v.private[ME], ME, rng);
+    };
+  };
+  const begin = async (seed: number, now?: () => number) => {
+    const m = memStore('matgo', ['u1'], 2);
+    const runner = new Runner(m.store, ENGINES, seededRng(seed), now);
+    const r = (await runner.start('r1', 'u1')) as { started: boolean; round?: number; solo?: MatgoState };
+    return { m, runner, r };
+  };
+
+  it('판 시작: 전체 상태를 응답으로 주고, 공개 상태에는 진행 수(soloN)만 싣는다 (씨앗·더미·AI 패는 안 나간다)', async () => {
+    const { m, r } = await begin(3);
+    expect(r.started).toBe(true);
+    const solo = soloOf(r.solo);
+    expect(solo).not.toBeNull();
+    expect(r.solo).toEqual(m.deck.state);
+    expect(matgo.pending(r.solo!)).toEqual([ME]); // AI가 선이면 서버가 먼저 둔 뒤의 상태
+    const last = m.published[m.published.length - 1];
+    expect(last.pub.soloN).toBe(solo!.n);
+    expect(last.pub.solo).toBeUndefined();
+    const sent = JSON.stringify([last.pub, last.privates.filter((p) => p.userId === 'u1')]);
+    expect(sent).not.toContain(String(solo!.seed));
+    for (const id of r.solo!.pile) expect(sent).not.toContain(`"${id}"`);
+    for (const id of r.solo!.hands[1]) expect(sent).not.toContain(`"${id}"`);
+  });
+
+  it('사람이 둘인 방·다른 게임은 서버 진행 그대로 (solo 아님, 마감 20초)', async () => {
+    const two = memStore('matgo', ['u1', 'u2'], 2);
+    const r2 = new Runner(two.store, ENGINES, seededRng(4), () => 1_000_000);
+    const started = (await r2.start('r1', 'u1')) as { solo?: unknown };
+    expect(started.solo).toBeUndefined();
+    expect(soloOf(two.deck.state)).toBeNull();
+    const last = two.published[two.published.length - 1];
+    expect(last.pub.soloN).toBeUndefined();
+    expect(last.deadline?.getTime()).toBe(1_000_000 + 20_000);
+    await expect(r2.sync('r1', 'u1')).rejects.toThrow('not solo');
+    await expect(r2.replay('r1', 'u1', { n: 0, actions: [] })).rejects.toThrow('not solo');
+
+    const pk = memStore('poker', ['u1'], 4);
+    const r3 = new Runner(pk.store, ENGINES, seededRng(5), () => 1_000_000);
+    expect(((await r3.start('r1', 'u1')) as { solo?: unknown }).solo).toBeUndefined();
+    expect(soloOf(pk.deck.state)).toBeNull();
+    expect(pk.published[pk.published.length - 1].deadline?.getTime()).toBe(1_000_000 + 20_000);
+  });
+
+  it('결정성: 화면이 기기에서 둔 결과와 서버가 행동 목록으로 다시 둔 결과(최종 상태·정산)가 같다', async () => {
+    let finished = 0;
+    for (let seed = 1; seed <= 25; seed++) {
+      const { m, runner, r } = await begin(seed * 101);
+      if (!r.solo) continue; // 총통으로 바로 끝난 판
+      const before = m.published.length;
+      const local = playLocal(r.solo, picker(seed * 7 + 1));
+      expect(matgo.done(local.state)).toBe(true);
+      const res = await runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: JSON.parse(JSON.stringify(local.actions)) });
+      expect(res).toEqual({ ok: true, n: soloOf(local.state)!.n, done: true });
+      // 최종 상태가 한 글자도 다르지 않다
+      expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(local.state)));
+      // 정산도 같다
+      const settle = matgo.settle(local.state);
+      expect(m.results.get(1)).toEqual(settle.deltas);
+      expect(m.wallets.u1).toBe(100000 + settle.deltas[ME]);
+      expect(m.room.status).toBe('waiting');
+      // 공개는 한 번 (결과 포함), 사건 번호는 화면이 본 것과 같다 → 화면이 연출을 두 번 하지 않는다
+      expect(m.published.length).toBe(before + 1);
+      const last = m.published[m.published.length - 1];
+      expect(last.pub.result).toEqual(JSON.parse(JSON.stringify(settle.summary)));
+      expect(last.pub.events).toEqual(JSON.parse(JSON.stringify(matgo.view(local.state).public.events)));
+      expect(last.pending).toEqual([]);
+      finished++;
+    }
+    expect(finished).toBeGreaterThan(20);
+  });
+
+  it('행동 하나씩 서버에 보내며 두는 것(act)과도 결과가 같다', async () => {
+    const a = await begin(77);
+    const b = await begin(77);
+    expect(a.r.solo).toEqual(b.r.solo);
+    const local = playLocal(a.r.solo!, picker(5));
+    await a.runner.replay('r1', 'u1', { n: soloOf(a.r.solo)!.n, actions: local.actions });
+    for (const act of local.actions) await b.runner.act('r1', 'u1', act);
+    expect(b.m.deck.state).toEqual(a.m.deck.state);
+    expect(b.m.results.get(1)).toEqual(a.m.results.get(1));
+  });
+
+  it('서버 진행 수와 안 맞으면 out of sync (상태는 그대로)', async () => {
+    const { m, runner, r } = await begin(9);
+    const n = soloOf(r.solo)!.n;
+    const local = playLocal(r.solo!, picker(2), 2);
+    const v = m.deck.version;
+    await expect(runner.replay('r1', 'u1', { n: n + 1, actions: local.actions })).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    await expect(runner.replay('r1', 'u1', { n: n - 1, actions: local.actions })).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    expect(m.deck.version).toBe(v);
+    // 잘못된 모양
+    await expect(runner.replay('r1', 'u1', { n, actions: 'x' })).rejects.toThrow('bad replay');
+    await expect(runner.replay('r1', 'u1', { n, actions: [null] })).rejects.toThrow('bad replay');
+    await expect(runner.replay('r1', 'u1', { actions: [] })).rejects.toThrow('bad replay');
+    await expect(runner.replay('r1', 'u1', null)).rejects.toThrow('bad replay');
+    expect(m.deck.version).toBe(v);
+  });
+
+  it('남의 방: 그 방에 앉은 사람이 아니면 상태도 못 받고 행동도 못 넣는다', async () => {
+    const { m, runner, r } = await begin(10);
+    const n = soloOf(r.solo)!.n;
+    await expect(runner.sync('r1', 'zz')).rejects.toMatchObject({ message: 'not in room', status: 403 });
+    await expect(runner.replay('r1', 'zz', { n, actions: [] })).rejects.toMatchObject({ message: 'not in room', status: 403 });
+    // 판 도중 나간 사람도 마찬가지
+    m.seats[0].left_game = true;
+    await expect(runner.sync('r1', 'u1')).rejects.toThrow('not in room');
+    await expect(runner.replay('r1', 'u1', { n, actions: [] })).rejects.toThrow('not in room');
+  });
+
+  it('AI 행동은 넣을 수 없다: AI 차례는 서버가 직접 두고, 목록의 행동은 모두 사람 차례에만 적용한다', async () => {
+    const { m, runner, r } = await begin(12);
+    const n = soloOf(r.solo)!.n;
+    const one = playLocal(r.solo!, picker(3), 1, false); // 사람 행동 하나만 (그 뒤 AI 차례는 아직)
+    expect(matgo.done(one.state)).toBe(false);
+    const v = m.deck.version;
+    // 사람 행동 뒤에 'AI가 이렇게 뒀다'고 AI 손패의 패를 내는 행동을 끼워 넣는다
+    const aiSeat = one.state.seats.find((x) => x !== ME)!;
+    const aiHand = matgo.view(one.state).private[aiSeat].hand;
+    const forged: MatgoAction = { type: 'play', card: aiHand[aiHand.length - 1] };
+    await expect(runner.replay('r1', 'u1', { n, actions: [...one.actions, forged] })).rejects.toMatchObject({ status: 400 });
+    expect(m.deck.version).toBe(v); // 아무것도 저장되지 않았다
+    // 사람 행동만 보내면 AI 차례는 서버가 정한 대로 (화면의 soloStep(…, null) 과 같은 수)
+    const withAi = playLocal(r.solo!, picker(3), 1, true);
+    const res = await runner.replay('r1', 'u1', { n, actions: one.actions });
+    expect(res.n).toBe(soloOf(withAi.state)!.n);
+    expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(withAi.state)));
+    // 판이 끝난 뒤에 남은 행동이 있어도 거절 (방은 이미 대기)
+    const full = playLocal(withAi.state, picker(4));
+    await runner.replay('r1', 'u1', { n: res.n, actions: full.actions });
+    expect(m.room.status).toBe('waiting');
+    await expect(runner.replay('r1', 'u1', { n: soloOf(full.state)!.n, actions: [{ type: 'stop' }] })).rejects.toMatchObject({ message: 'not playing', status: 409 });
+    expect(m.results.size).toBe(1);
+  });
+
+  it('판이 끝났는데 행동이 더 남아 있으면 거절하고 정산하지 않는다', async () => {
+    const { m, runner, r } = await begin(14);
+    const local = playLocal(r.solo!, picker(6));
+    const v = m.deck.version;
+    await expect(runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: [...local.actions, { type: 'go' }] })).rejects.toMatchObject({ message: 'not your turn', status: 400 });
+    expect(m.deck.version).toBe(v);
+    expect(m.results.size).toBe(0);
+    expect(m.room.status).toBe('playing');
+  });
+
+  it('부분 저장 뒤 이어서: 중간까지 보내 두고(공개·30분 마감), 나머지를 보내면 한 번에 보낸 것과 같다', async () => {
+    const { m, runner, r } = await begin(21, () => 2_000_000);
+    const n0 = soloOf(r.solo)!.n;
+    const all = playLocal(r.solo!, picker(8));
+    expect(all.actions.length).toBeGreaterThan(3);
+    const k = 3;
+    const part = playLocal(r.solo!, picker(8), k, true);
+    expect(part.actions).toEqual(all.actions.slice(0, k));
+    const res = await runner.replay('r1', 'u1', { n: n0, actions: all.actions.slice(0, k) });
+    expect(res).toEqual({ ok: true, n: soloOf(part.state)!.n, done: false });
+    expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(part.state)));
+    expect(m.room.status).toBe('playing');
+    let last = m.published[m.published.length - 1];
+    expect(last.pub.soloN).toBe(res.n);
+    expect(last.pub.result).toBeNull();
+    expect(last.pending).toEqual([ME]);
+    expect(last.deadline?.getTime()).toBe(2_000_000 + SOLO_DEADLINE_MS);
+    // 새로고침한 화면: sync 로 받은 상태에서 이어 간다
+    const synced = await runner.sync('r1', 'u1');
+    expect(synced.state).toEqual(m.deck.state);
+    expect(synced.version).toBe(m.deck.version);
+    expect(synced.round).toBe(1);
+    // 같은 목록을 한 번 더 보내면 (응답을 못 받은 화면) 진행 수가 달라 거절 → 화면은 sync 로 맞춘다
+    await expect(runner.replay('r1', 'u1', { n: n0, actions: all.actions.slice(0, k) })).rejects.toThrow('out of sync');
+    const rest = await runner.replay('r1', 'u1', { n: res.n, actions: all.actions.slice(k) });
+    expect(rest.done).toBe(true);
+    expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(all.state)));
+    expect(m.results.get(1)).toEqual(matgo.settle(all.state).deltas);
+    last = m.published[m.published.length - 1];
+    expect(last.pub.result).toBeTruthy();
+  });
+
+  it('빈 목록도 받는다 (나가기 직전 저장: 달라질 것이 없다)', async () => {
+    const { m, runner, r } = await begin(23);
+    const res = await runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: [] });
+    expect(res).toEqual({ ok: true, n: soloOf(r.solo)!.n, done: false });
+    expect(m.deck.state).toEqual(r.solo);
+  });
+
+  it('나가면 서버 AI가 저장된 데서 이어 두어 정산한다', async () => {
+    const { m, runner, r } = await begin(31);
+    const part = playLocal(r.solo!, picker(9), 2, true);
+    await runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: part.actions });
+    m.seats[0].left_game = true; // leave_room
+    await runner.timeout('r1', m.deck.version, true);
+    expect(m.room.status).toBe('waiting');
+    expect(m.results.has(1)).toBe(true);
+    expect(m.wallets.u1).toBe(100000 + (m.results.get(1)![0] ?? 0));
+    // 사람이 둔 두 수까지는 그대로다 (사건 기록의 앞부분이 같다)
+    const kept = matgo.view(part.state).public.events;
+    const final = (m.deck.state as MatgoState).events;
+    for (const e of kept) if (final.some((x) => x.id === e.id)) expect(final.find((x) => x.id === e.id)).toEqual(e);
+  });
+
+  it('30분 마감이 지나면(버려진 판) 서버가 남은 판을 대신 두어 끝낸다. 그 뒤 화면의 목록은 받지 않는다', async () => {
+    const { m, runner, r } = await begin(41);
+    const local = playLocal(r.solo!, picker(1), 2, false);
+    const out = await runner.timeout('r1', m.deck.version);
+    expect(out.acted).toBe(true);
+    expect(m.room.status).toBe('waiting');
+    expect(m.results.has(1)).toBe(true);
+    await expect(runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: local.actions })).rejects.toMatchObject({ status: 409 });
+    expect(m.results.size).toBe(1);
   });
 });

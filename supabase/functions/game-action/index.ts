@@ -1,6 +1,6 @@
 /**
  * game-action: 모든 게임 행동을 처리하는 딜러.
- * 입력 { roomId, action: 'start' | 'act', payload } (사용자 JWT로 호출)
+ * 입력 { roomId, action: 'start' | 'act' | 'sync' | 'replay', payload } (사용자 JWT로 호출)
  * 권한·차례 확인 → 규칙 검사 → 상태 변경 → AI 차례 이어서 → 판 끝이면 정산 → 공개 상태 저장(Realtime으로 전달)
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
@@ -36,6 +36,9 @@ Deno.serve(async (req) => {
     const runner = new Runner(supabaseStore(sb), ENGINES);
     if (body.action === 'start') return json(await runner.start(roomId, userId));
     if (body.action === 'act') return json(await runner.act(roomId, userId, body.payload));
+    // 혼자 하는 맞고 (기기에서 진행): 전체 상태 받기 · 사람 행동 목록 보내기
+    if (body.action === 'sync') return json(await runner.sync(roomId, userId));
+    if (body.action === 'replay') return json(await runner.replay(roomId, userId, body.payload));
     return json({ error: 'bad action' }, 400);
   } catch (e) {
     if (e instanceof GameError) return json({ error: e.message }, e.status);

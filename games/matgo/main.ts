@@ -2,7 +2,8 @@
 import { bootGame, esc, sfx, type GameUI, type TableCtx, type TrackOpts } from '../lib/shell.ts';
 import { worldRoot } from '../lib/world.ts';
 import { cardBack, clamp, label, sweepTable, tc, theme, viewSize } from '../lib/cards.ts';
-import { CARDS, cardById, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
+import { soloPlay } from '../lib/solo-play.ts';
+import { CARDS, cardById, matgo, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
 type Ctx = TableCtx<MatgoPublic, MatgoPrivate>;
@@ -663,6 +664,11 @@ let planSeen = 0;
 /** 사건 번호 → 그 사건이 든 차례의 연출이 시작되는 때 (계획을 세운 순간부터 ms). 컷인을 그 차례에 맞춰 띄운다 */
 const eventBase = new Map<number, number>();
 let planBuiltAt = 0;
+/**
+ * 연출 없이 건너뛸 곳 (기기 진행을 서버와 다시 맞출 때: 새로고침 뒤 이어 가기 등). 그 판의 이 사건 번호까지는 이미 본 것으로 친다
+ * → 지나간 여러 차례를 처음부터 다시 재생하느라 내 차례가 한참 막히지 않게
+ */
+let planSkip: { key: string; id: number } | null = null;
 
 /**
  * 지금 그리는 차례 연출(상대가 낸 패·뒤집은 패·먹기)이 끝날 때까지 남은 시간 (ms).
@@ -681,6 +687,14 @@ function updatePlan(p: MatgoPublic, round: number, roomId: string) {
   const key = `${roomId}:${round}`;
   // 사건 번호가 처음부터 다시 시작했으면 새 판이다 (판 번호가 늦게 바뀌어도 지난 판의 계획이 남지 않게)
   const maxId = Math.max(0, ...(p.events ?? []).map((e) => e.id));
+  if (planSkip && planSkip.key === key && maxId >= planSkip.id) {
+    planSkip = null;
+    planRound = key;
+    planSeen = maxId;
+    plan.clear();
+    eventBase.clear();
+    return;
+  }
   if (key !== planRound || maxId < planSeen) {
     planRound = key;
     planSeen = 0;
@@ -863,6 +877,20 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   felt: () => theme().COLOR.skyMid,
   // 조작부는 말풍선 한 줄 + 버튼 한 줄이면 충분하다 (기본 210px이면 휴대폰에서 빈 띠가 크게 남는다)
   controlsMin: (w) => (w < 700 ? 104 : 112),
+
+  // 혼자 하는 판(사람 1명 + AI)은 기기에서 진행한다: 서버 응답을 기다리지 않고 바로 두고, AI 는 내 차례의 연출이 다 끝난 뒤에 둔다.
+  // 사람이 둘인 방은 서버가 그렇게 시작하지 않으므로 예전 그대로 서버 진행
+  local: soloPlay(matgo, {
+    // 낸 패 → 뒤집은 패 → 먹기까지의 연출 계획이 끝날 때까지
+    busyLeft: () => animLeft(),
+    onJump: (pub, round, roomId) => {
+      const events = (pub as unknown as MatgoPublic).events ?? [];
+      planSkip = { key: `${roomId}:${round}`, id: Math.max(0, ...events.map((e) => e.id)) };
+      // 이어 가는 판이다: 패를 처음부터 나눠 주는 연출도 하지 않는다
+      dealKey = planSkip.key;
+      dealFresh = false;
+    },
+  }),
 
   preload(scene) {
     for (let m = 1; m <= 12; m++) scene.load.image(plantKey(m), plantUrl(m));
@@ -1235,7 +1263,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 뻑 보너스 (첫 뻑 기본금 ×2 · 두 번째 ×3): 뻑을 낸 사람이 상대에게서 받는다. 예전 판 결과에는 없을 수 있다
     const ppeoks = r.ppeoks ?? [];
     const ppeokLines = ppeoks
-      .map((x) => `<li><span>뻑 보너스 · ${esc(name(x.seat))} ${x.count >= 2 ? '첫뻑 ×2 + 연뻑 ×3' : '첫뻑 ×2'}</span><b>+${t.fmt(x.bonus)}냥</b></li>`)
+      .map((x) => `<li><span>뻑 보너스 · ${esc(name(x.seat))} ${x.count >= 2 ? '첫뻑 ×2 + 연뻑 ×3' : '첫뻑 ×2'}</span><b>${r.winner !== null && x.seat !== r.winner ? '-' : '+'}${t.fmt(x.bonus)}냥</b></li>`)
       .join('');
     if (r.result === 'nagari') {
       // 나가리여도 뻑 보너스는 오간다

@@ -44,6 +44,10 @@ export interface StateRow {
   pending_seats: number[];
   turn_deadline: string | null;
   updated_at: string;
+  /** 서버에서 온 것이 아니라 기기에서 진행해 만든 상태 (혼자 하는 맞고). updated_at 은 서버 시각이 아니라 순번이다 */
+  local?: boolean;
+  /** (local) 내가 방금 기기에서 둔 행동의 상태: 누른 패가 내려앉을 시간만 두고 바로 보여 준다 (손패가 자리를 고치는 것까지 기다리지 않는다) */
+  eager?: boolean;
 }
 
 export interface PrivateRow {
@@ -78,9 +82,15 @@ export interface RoomModule {
   leaveRoom(roomId: string): Promise<void>;
   setAvatar(roomId: string, avatar: string): Promise<void>;
   touchRoom(roomId: string): Promise<void>;
-  setReady(roomId: string, ready: boolean): Promise<boolean>;
+  setReady(roomId: string, ready: boolean, onStart?: (res: unknown) => void): Promise<boolean>;
   startRound(roomId: string): Promise<unknown>;
   act(roomId: string, payload: unknown): Promise<unknown>;
+  /** 혼자 하는 판의 전체 상태 (기기에서 이어서 두려고). 실패하면 code(서버 문구)·status 가 실린 오류 */
+  soloSync(roomId: string): Promise<{ state: unknown; version: number; round: number }>;
+  /** 기기에서 둔 사람 행동 목록 보내기 (n: 목록이 시작되는 서버 진행 수) */
+  soloReplay(roomId: string, payload: { n: number; actions: unknown[] }): Promise<{ ok: boolean; n: number | null; done: boolean }>;
+  /** 페이지를 떠나는 중에 보내기 (응답을 기다리지 않는다) → 보냈으면 true */
+  soloReplayOnExit(roomId: string, payload: { n: number; actions: unknown[] }): boolean;
   getRoom(roomId: string): Promise<RoomRow | null>;
   getSeats(roomId: string): Promise<SeatRow[]>;
   getState(roomId: string): Promise<StateRow | null>;
