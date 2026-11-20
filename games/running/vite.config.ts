@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
@@ -50,4 +51,6 @@ export default defineConfig(({ command }) => ({
   base: command === 'serve' ? '/games/running/' : './',
   plugins: [siaWorldDev()],
   build: { chunkSizeWarningLimit: 2000 },
+  // 몇 초 걸리는 시뮬레이션 테스트가 느린 CI에서 기본 5초를 넘겨 배포 전체를 막지 않게
+  test: { testTimeout: 30000 },
 }));

@@ -28,6 +28,8 @@ export function showRace(start: StartMsg) {
   let game: Phaser.Game | null = null;
   let ro: ResizeObserver | null = null;
   let resultTimer: ReturnType<typeof setTimeout> | null = null;
+  /** '경기를 그만둘까요?' 창 (#stage 에 붙으므로 화면이 바뀔 때 함께 치운다) */
+  let quitDim: HTMLElement | null = null;
   // 키보드: 점프 = 스페이스·↑·W·엔터, 슬라이딩 = ↓·S
   const keyKind = (code: string): 'jump' | 'slide' | null =>
     code === 'Space' || code === 'Enter' || code === 'ArrowUp' || code === 'KeyW' ? 'jump' : code === 'ArrowDown' || code === 'KeyS' ? 'slide' : null;
@@ -62,6 +64,8 @@ export function showRace(start: StartMsg) {
       window.removeEventListener('keyup', onKeyUp);
       ro?.disconnect();
       if (resultTimer) clearTimeout(resultTimer);
+      quitDim?.remove();
+      quitDim = null;
       race.dispose();
       game?.destroy(true);
       game = null;
@@ -103,7 +107,9 @@ export function showRace(start: StartMsg) {
   window.addEventListener('keyup', onKeyUp);
 
   $('#quit').addEventListener('click', () => {
+    if (quitDim?.isConnected) return;
     const dim = document.createElement('div');
+    quitDim = dim;
     dim.className = 'dim';
     dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">나가면 AI가 이어 달리고 기록은 남지 않아요</p>
       <div class="actions"><button class="btn" data-no>계속 달리기</button><button class="btn primary" data-yes>나가기</button></div></div>`;

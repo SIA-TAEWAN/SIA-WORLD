@@ -42,6 +42,19 @@ export interface RaceApi {
 
 /** GO 요청부터 '준비' 표시까지 (서버 029_race.sql 의 lead_ms 와 같은 값) */
 const LEAD_MS = 1200;
+/** 같은 사람이 race_go 를 다시 부를 수 있는 최소 간격 (서버 031_race_150m.sql 의 gap_ms 와 같은 값) */
+export const GO_GAP_MS = 4000;
+
+/**
+ * 서버가 'too soon'(같은 사람이 4초 안에 다시 GO 요청)으로 거절했다.
+ * 이때 기기 시계로 판을 열면 서버에 그 판이 없어 기록·코인이 하나도 남지 않으므로, 조금 뒤 다시 물어야 한다
+ */
+export class GoTooSoonError extends Error {
+  constructor() {
+    super('too soon');
+    this.name = 'GoTooSoonError';
+  }
+}
 
 let offset = 0;
 /** 서버 시각 (ms). syncClock 전에는 기기 시각 */
@@ -117,6 +130,8 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       const { data, error } = await sb.rpc('race_go', { p_room_key: room });
       const t1 = Date.now();
       const d = data as { round: number; ready_at: number; go_at: number; now: number } | null;
+      // 너무 빨리 다시 불렀다: 기기 시계로 대신 열지 않는다 (방에서 남은 시간 뒤에 다시 묻는다)
+      if (error && /too soon/.test(error.message ?? '')) throw new GoTooSoonError();
       if (error || !d) {
         // 서버 함수를 못 쓰면(배포 전·통신 오류) 방장 시계로 정한다. 이 판의 기록은 랭킹에 못 올린다
         console.warn('[시아레이스] 서버에서 GO 시각을 받지 못해 이 기기 시계로 정합니다', error?.message);

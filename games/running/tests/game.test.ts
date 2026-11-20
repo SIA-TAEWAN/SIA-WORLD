@@ -350,7 +350,7 @@ describe('속도 꼼수 점검 (점프·슬라이딩을 이어 눌러도 정상 
       expect(ms, `seed ${seed}`).toBeGreaterThanOrEqual(plain);
       expect(vmax).toBeLessThanOrEqual(TOP_SPEED);
     }
-  });
+  }, 30000);
 
   it('슬라이딩은 부스트를 늘리지 못한다: 부스트가 끝나면 슬라이딩 중에도 바로 원래 속도', () => {
     const obs = [at('boost', 30, 1)];
@@ -435,7 +435,7 @@ describe('AI', () => {
     }
     // AI마다 기록이 다르다
     expect(new Set(times.map((t) => t.toFixed(2))).size).toBeGreaterThan(100);
-  });
+  }, 30000);
 
   it('방해물마다 대략 75% 성공한다', () => {
     let good = 0;

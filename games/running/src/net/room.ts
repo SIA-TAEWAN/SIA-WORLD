@@ -1,5 +1,5 @@
 import { END_AFTER_GO, type ZodiacId } from '../game/constants';
-import { serverNow, type RaceApi } from './api';
+import { GO_GAP_MS, GoTooSoonError, serverNow, type RaceApi } from './api';
 import type { Channel, Member, NetMsg } from './channel';
 import { allReady, hostOf, makeSeats, players, resolveChar, sortMembers, type MemberInfo, type PlayerMeta, type Seat } from './seats';
 
@@ -52,6 +52,10 @@ export class RaceRoom {
   private starting = false;
   private lastRound = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** 'too soon' 으로 거절된 GO 요청을 다시 할 때까지 기다리는 타이머 */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 내가 마지막으로 서버에서 GO 를 받은 시각 (서버 시각 ms, 없으면 0) */
+  private lastGoAt = 0;
 
   constructor(
     private api: RaceApi,
@@ -117,6 +121,9 @@ export class RaceRoom {
     if (this.current?.round === s.round || s.round === this.lastRound) return;
     // 이미 끝났을 시간이면 무시
     if (serverNow() > s.goAt + (END_AFTER_GO + 5) * 1000) return;
+    // 이미 판이 있는데 다른 시작이 왔다 (두 기기가 잠깐 서로 방장이라고 본 경우):
+    // 모두 같은 판으로 모이도록 번호가 작은 쪽만 받는다. 지금 판이 이미 GO 했으면 바꾸지 않는다
+    if (this.current && (s.round > this.current.round || serverNow() >= this.current.goAt)) return;
     this.current = s;
     this.lastRound = s.round;
     this.starting = false;
@@ -148,15 +155,34 @@ export class RaceRoom {
   /** 방장: 모두 레디하면 서버에서 GO 시각을 받아 시작을 알린다 */
   private async start() {
     this.starting = true;
+    let wait = 0;
     try {
       const go = await this.api.go(this.key);
+      this.lastGoAt = serverNow();
       if (this.left || this.current || !this.isHost() || !allReady(this.members)) return;
       const roster: RosterEntry[] = makeSeats(this.key, this.members).map((s) => ({ slot: s.slot, id: s.id, name: s.name, char: s.char }));
       const msg: StartMsg = { t: 'start', round: go.round, seed: Math.floor(Math.random() * 0x7fffffff), readyAt: go.readyAt, goAt: go.goAt, roster };
       this.ch.send(msg);
       this.applyStart(msg, true);
+    } catch (e) {
+      if (!(e instanceof GoTooSoonError)) {
+        console.warn('[시아레이스] GO 요청 실패', e);
+        wait = 1000; // 바로 다시 두드리지 않게 잠깐 쉰다
+      } else {
+        // 서버가 '너무 빨리'라고 했다: 남은 시간(약 4초)만큼 기다렸다가 다시 묻는다.
+        // 그동안 starting 을 유지해 다른 요청을 막고, 다시 물을 때 tick() 이 방 상태(방장·모두 레디·판 없음)를 새로 확인한다
+        const left = this.lastGoAt ? this.lastGoAt + GO_GAP_MS - serverNow() : GO_GAP_MS;
+        // 남은 시간을 모르거나(새로 들어옴) 계산이 어긋나면 4초를 통째로 기다린다 (짧은 간격으로 계속 두드리지 않게)
+        wait = (left > 0 && left <= GO_GAP_MS ? left : GO_GAP_MS) + 300;
+      }
     } finally {
-      this.starting = false;
+      if (wait > 0 && !this.left) {
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          this.starting = false;
+          this.tick();
+        }, wait);
+      } else this.starting = false;
     }
   }
 
@@ -235,6 +261,7 @@ export class RaceRoom {
     if (this.left) return;
     this.left = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.retryTimer) clearTimeout(this.retryTimer);
     this.changeFns.clear();
     this.msgFns.clear();
     this.startFns.clear();
