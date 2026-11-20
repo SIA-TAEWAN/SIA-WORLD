@@ -14,7 +14,7 @@ import type { HeroId } from './sim';
 export type GroundName = 'field' | 'bamboo' | 'palace' | 'underworld';
 
 export type OptionalArt =
-  | `h-${HeroId}` // 구슬형 대원 12종 (판의 구슬 · 아래 파티 줄)
+  | `h-${HeroId}` // 구슬형 대원 12종 (아래 파티 줄. 판 위는 십이지 전신 그림 — 못 읽을 때만 판에도)
   | `cut-${HeroId}` // 필살기 컷인 12종
   | `${string}-hit` // 요괴·보스 맞을 때 표정 (요괴 그림 이름 + -hit, 예: e-imp-hit · b-yeomra-hit)
   | `wall-${GroundName}` // 방 테두리·벽 (지역 바닥마다 1장, 늘여 씀)
