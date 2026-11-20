@@ -216,3 +216,10 @@ img.ball.pierce { border-color: var(--accent); }
 .star-why li.on { color: var(--ink); }
 .star-why li.on::first-letter { color: var(--primary-deep); }
 .troop-pill.over { color: var(--lose); }
+
+/* 4단계: 대원 레벨 · 우정 콤보 단계 */
+.hero-row .hero-info { flex: 1; min-width: 0; }
+.hero-row .btn { min-width: 86px; flex: none; }
+.tiers { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.tiers i { font-style: normal; padding: 0 6px; border-radius: var(--radius-pill); border: 2px solid var(--outline); background: var(--track); color: var(--ink-soft); }
+.tiers i.on { background: var(--accent); color: var(--white); }

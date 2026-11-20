@@ -1,45 +1,66 @@
-import { HERO_IDS, HEROES, STAGES, isHeroId, stageOf, type HeroId } from '../sim';
+import { HERO_IDS, HEROES, MAX_LEVEL, MAX_TURNS, STAGES, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
 import { REGIONS } from '../data/regions';
+import { clearCoins, failCoins, levelCost, levelOf, rewardFor, totalCoins, upgradeCost, upgradeLv, upgradeOf } from '../data/growth';
 
 /**
- * 기록 (1~3단계: 이 기기에만 저장). 4단계에서 서버 저장(finger_profiles · finger_stages)으로 옮긴다.
+ * 판 밖 기록 규칙 (PRD "성장·재화", "서버와 검증"). 서버(066_finger.sql 의 finger_start · finger_finish_verified 등)가
+ * 같은 규칙으로 다시 계산한다. 테스트 모드(?local=1)는 이 파일의 규칙으로 기기에서만 저장한다.
  * 지역 열기·대원 합류 규칙은 돌격대와 같다.
  */
 
 export interface FingerProfile {
-  /** 스테이지 id → 딴 별 (0 = 아직 못 깸) */
+  /** 엽전 (시아핑거 전용 지갑) */
+  coins: number;
+  /** 스테이지 id → 딴 별 (클리어한 스테이지만) */
   stages: Record<string, number>;
-  /** 마지막 파티 (쏘는 순서) */
-  party: HeroId[];
+  /** 공통 강화 단계 */
+  upgrades: Upgrades;
+  /** 대원 → 레벨 (없으면 1) */
+  levels: Partial<Record<HeroId, number>>;
 }
 
-export const emptyProfile = (): FingerProfile => ({ stages: {}, party: [] });
+export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {} });
 
-const KEY = (user: string) => `siafinger:profile:${user}`;
-
-export function loadProfile(user: string): FingerProfile {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY(user)) ?? 'null') as Partial<FingerProfile> | null;
-    if (!raw || typeof raw !== 'object') return emptyProfile();
-    const stages: Record<string, number> = {};
-    for (const [k, v] of Object.entries(raw.stages ?? {})) if (stageOf(k)) stages[k] = Math.max(0, Math.min(3, Math.floor(Number(v) || 0)));
-    const party = Array.isArray(raw.party) ? raw.party.filter(isHeroId).slice(0, 4) : [];
-    return { stages, party: [...new Set(party)] };
-  } catch {
-    return emptyProfile();
+/** 서버·기기에서 읽은 값을 프로필 모양으로 (모르는 값은 버린다) */
+export function normalize(p: unknown): FingerProfile {
+  const o = (p ?? {}) as Record<string, unknown>;
+  const stages: Record<string, number> = {};
+  for (const [k, v] of Object.entries((o.stages as Record<string, unknown>) ?? {})) {
+    const n = Math.max(0, Math.min(3, Math.floor(Number(v) || 0)));
+    if (stageOf(k) && n > 0) stages[k] = n;
   }
+  const upgrades: Upgrades = {};
+  for (const [k, v] of Object.entries((o.upgrades as Record<string, unknown>) ?? {})) {
+    const u = upgradeOf(k);
+    if (u) upgrades[u.key] = Math.max(0, Math.min(u.max, Math.floor(Number(v) || 0)));
+  }
+  const levels: Partial<Record<HeroId, number>> = {};
+  for (const [k, v] of Object.entries((o.levels as Record<string, unknown>) ?? {})) if (isHeroId(k)) levels[k] = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(v) || 1)));
+  return { coins: Math.max(0, Math.floor(Number(o.coins) || 0)), stages, upgrades, levels };
 }
 
-export function saveProfile(user: string, p: FingerProfile) {
-  try {
-    localStorage.setItem(KEY(user), JSON.stringify(p));
-  } catch {
-    /* 저장 공간 없음: 이번 판만 */
-  }
-}
+/** 서버 검증 값 (SQL _finger_const 와 같다) */
+export const LIMITS = {
+  /** 한 턴에 드는 최소 시간 (조준 + 멈춘 뒤 기다림, 초) */
+  turnMinTime: 0.4,
+  /** 날아가는 스텝을 2배속으로 볼 때 1초에 지나는 스텝 수 (1/60초 × 2배속) */
+  stepRate: 120,
+  /** 서버가 잰 시간과의 여유 (초) */
+  timeSlack: 2,
+  /** 시작한 지 이보다 오래된 판은 받지 않는다 (초) */
+  maxAge: 7200,
+  /** 시아코인을 받는 최소 판 시간 (서버 경과, 초) */
+  coinMinTime: 20,
+  /** 한 판 최대 턴 */
+  maxTurns: MAX_TURNS,
+};
+
+/** 판이 끝날 수 있는 가장 짧은 시간 (초): 턴 수 × 턴 최소 시간 + 날아간 스텝 / 2배속 */
+export const minRunTime = (turns: number, steps: number) => turns * LIMITS.turnMinTime + steps / LIMITS.stepRate;
 
 export const cleared = (p: FingerProfile, id: string) => (p.stages[id] ?? 0) > 0;
 export const totalStars = (p: FingerProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);
+export const clearedCount = (p: FingerProfile) => Object.keys(p.stages).length;
 export const regionStarsOf = (p: FingerProfile, r: number) => STAGES.filter((s) => s.region === r).reduce((a, s) => a + (p.stages[s.id] ?? 0), 0);
 
 /** 지역 r 을 여는 데 필요한 별 (+ 앞 지역 5번째 스테이지 클리어). 돌격대와 같다 */
@@ -63,8 +84,139 @@ export function heroesOf(p: FingerProfile): HeroId[] {
 }
 
 /** 판에 들고 갈 파티: 마지막 파티 중 합류한 대원만, 비었으면 합류한 대원 앞에서 4명 */
-export function partyOf(p: FingerProfile): HeroId[] {
+export function partyOf(p: FingerProfile, last: HeroId[]): HeroId[] {
   const open = heroesOf(p);
-  const party = p.party.filter((id) => open.includes(id));
+  const party = last.filter((id) => open.includes(id));
   return party.length ? party : open.slice(0, 4);
+}
+
+// ---------- 마지막 파티 (기기에만) ----------
+
+const PARTY_KEY = (user: string) => `siafinger:party:${user}`;
+
+export function loadParty(user: string): HeroId[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PARTY_KEY(user)) ?? '[]') as unknown;
+    return Array.isArray(raw) ? [...new Set(raw.filter(isHeroId))].slice(0, 4) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveParty(user: string, party: HeroId[]) {
+  try {
+    localStorage.setItem(PARTY_KEY(user), JSON.stringify(party));
+  } catch {
+    /* 저장 공간 없음 */
+  }
+}
+
+// ---------- 판 시작 · 끝 ----------
+
+/** 시작할 수 있는가 (서버 finger_start 와 같은 기준) → 틀리면 까닭 */
+export function checkStart(p: FingerProfile, stage: string, party: string[], mode = 'normal'): string | null {
+  if (mode !== 'normal') return 'bad mode';
+  if (!stageOf(stage)) return 'bad stage';
+  if (!stageOpen(p, stage)) return 'stage locked';
+  if (!Array.isArray(party) || party.length < 1 || party.length > 4 || new Set(party).size !== party.length || !party.every(isHeroId)) return 'bad party';
+  const open = heroesOf(p);
+  if (!party.every((id) => open.includes(id as HeroId))) return 'hero locked';
+  return null;
+}
+
+/** 판 시작 때의 스냅숏 (서버는 finger_runs 에 같은 값을 남긴다): 파티 대원 레벨 + 강화 */
+export function snapshotOf(p: FingerProfile, stage: string, party: HeroId[]): RunSnapshot {
+  const levels: Record<string, number> = {};
+  for (const id of party) levels[id] = levelOf(p.levels, id);
+  const upgrades: Record<string, number> = {};
+  for (const [k, v] of Object.entries(p.upgrades)) if (v) upgrades[k] = v;
+  return { stage, mode: 'normal', party: [...party], levels, upgrades };
+}
+
+export interface FinishResult {
+  /** 받은 엽전 */
+  coins: number;
+  /** 이번 판 별 (실패 0) */
+  stars: number;
+  /** 첫 클리어 */
+  first: boolean;
+  /** 별이 늘었다 */
+  best: boolean;
+  /** 시아코인을 받았다 */
+  siaCoin: boolean;
+  /** 이번에 새로 합류한 대원 */
+  newHeroes: HeroId[];
+}
+
+/** 다시 계산한 결과를 프로필에 반영 (finger_finish_verified 와 같은 식). up = 판 시작 때 강화 */
+export function applyResult(p: FingerProfile, stage: string, r: RunResult, up: Upgrades): FinishResult {
+  const rw = rewardFor(stage);
+  if (!rw) throw new Error('bad stage');
+  const before = heroesOf(p);
+  let raw: number;
+  let stars = 0;
+  let first = false;
+  let best = false;
+  if (r.cleared) {
+    stars = r.stars;
+    first = !cleared(p, stage);
+    raw = clearCoins(rw, stars) + (first ? rw.first : 0);
+    if (stars > (p.stages[stage] ?? 0)) {
+      p.stages[stage] = stars;
+      best = true;
+    }
+  } else raw = failCoins(rw, r.wave, r.waves);
+  const coins = totalCoins(raw, r.coins, up);
+  p.coins += coins;
+  return { coins, stars, first, best, siaCoin: false, newHeroes: heroesOf(p).filter((id) => !before.includes(id)) };
+}
+
+// ---------- 강화 · 레벨 ----------
+
+/** 강화 사기 (프로필을 고친다). 엽전이 모자라거나 최대면 까닭 */
+export function buyUpgrade(p: FingerProfile, key: UpgradeKey): string | null {
+  const u = upgradeOf(key);
+  if (!u) return 'bad upgrade';
+  const lv = upgradeLv(p.upgrades, u.key);
+  if (lv >= u.max) return 'max level';
+  const cost = upgradeCost(u, lv);
+  if (p.coins < cost) return 'not enough coins';
+  p.coins -= cost;
+  p.upgrades[u.key] = lv + 1;
+  return null;
+}
+
+/** 대원 레벨 올리기 (프로필을 고친다) */
+export function levelUp(p: FingerProfile, id: string): string | null {
+  if (!isHeroId(id)) return 'bad hero';
+  if (!heroesOf(p).includes(id)) return 'hero locked';
+  const lv = levelOf(p.levels, id);
+  if (lv >= MAX_LEVEL) return 'max level';
+  const cost = levelCost(lv);
+  if (p.coins < cost) return 'not enough coins';
+  p.coins -= cost;
+  p.levels[id] = lv + 1;
+  return null;
+}
+
+/** 서버가 거절한 까닭 → 화면 글 */
+export function whyText(why: string): string {
+  const m: Record<string, string> = {
+    'stage locked': '아직 열리지 않은 스테이지예요',
+    'hero locked': '아직 합류하지 않은 대원이 있어요',
+    'bad party': '파티를 다시 골라 주세요 (1~4명, 같은 대원 없이)',
+    'bad stage': '아직 준비 중인 스테이지예요',
+    'not enough coins': '엽전이 모자라요',
+    'max level': '이미 최대예요',
+    'need login': '다시 로그인해 주세요',
+    'too early': '판이 너무 빨리 끝나서 기록하지 않았어요',
+    'too late': '너무 오래된 판이라 기록하지 않았어요',
+    overlap: '다른 판과 시간이 겹쳐서 기록하지 않았어요',
+    'already finished': '이미 기록된 판이에요',
+    'no run': '서버에 없는 판이에요',
+    'extra inputs': '판 기록이 맞지 않아 받지 않았어요',
+    'too many turns': `${MAX_TURNS}턴을 넘은 기록은 받지 않아요`,
+    'bad inputs': '판 기록이 맞지 않아 받지 않았어요',
+  };
+  return m[why] ?? '서버가 받아 주지 않았어요';
 }

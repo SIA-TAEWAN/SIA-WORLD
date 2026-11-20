@@ -1,19 +1,23 @@
 import Phaser from 'phaser';
 import { artUrl, zodiacFaceUrl } from '../assets';
+import { COMBO_LEVELS, UPGRADES, levelCost, levelOf, upgradeCost, upgradeLv } from '../data/growth';
 import { REGIONS, REGION_NAMES, groundOf } from '../data/regions';
 import {
   emptyProfile,
   heroesOf,
-  loadProfile,
+  loadParty,
   partyOf,
   regionOpen,
   regionStars,
   regionStarsOf,
-  saveProfile,
+  saveParty,
   stageOpen,
   totalStars,
+  whyText,
   type FingerProfile,
+  type FinishResult,
 } from '../game/progress';
+import { ApiError, type FingerApi } from '../net/api';
 import { DEV_ALL, LOCAL_MODE } from '../net/local';
 import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
@@ -23,10 +27,12 @@ import {
   ENEMIES,
   HEROES,
   HERO_IDS,
+  MAX_LEVEL,
   STAGES,
   buildConfig,
   chiefDef,
   createRun,
+  heroStats,
   resultOf,
   stageOf,
   stagesOf,
@@ -34,15 +40,19 @@ import {
   type RunResult,
   type RunState,
   type StageDef,
+  type UpgradeKey,
 } from '../sim';
 
 /**
- * 판 밖 화면 (돌격대 app.ts 방식, HTML): 메인 → 십이지 지도 → 스테이지 목록 → 파티 고르기 → 판 → 결과.
- * 1~3단계는 기록을 이 기기에만 저장한다 (서버 저장 · 엽전 지갑 · 레벨 · 강화는 4단계).
+ * 판 밖 화면 (돌격대 app.ts 방식, HTML): 메인 → 십이지 지도 → 스테이지 목록 → 파티 고르기 → 판 → 결과, 대원(레벨) · 강화.
+ * 기록은 서버(066_finger.sql 의 RPC + Edge Function finger-finish)로만 바뀐다. 테스트 모드(?local=1)는 기기에만 저장한다.
  */
 
+let api!: FingerApi;
 let me: WorldUser | null = null;
 let profile: FingerProfile = emptyProfile();
+/** 마지막 파티 (쏘는 순서, 기기에만 기억) */
+let lastParty: HeroId[] = [];
 const userKey = () => me?.userId ?? 'local';
 
 let sound: SoundModule | null = null;
@@ -72,8 +82,10 @@ export function toast(text: string, ms = 2200) {
 
 const starsHtml = (n: number) => `<span class="stars">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
 const starPill = () => `<span class="coins-pill star-pill">★ ${totalStars(profile)}</span>`;
+const coinsPill = () => `<span class="coins-pill">🪙 ${profile.coins.toLocaleString()}</span>`;
 const typeName = (id: HeroId) => (HEROES[id].type === 'pierce' ? '관통형' : '반사형');
 const typeTag = (id: HeroId) => `<em class="tag ${HEROES[id].type}">${typeName(id)}</em>`;
+const errText = (e: unknown) => (e instanceof ApiError ? whyText(e.message) : '서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요');
 
 function soundButton(root: HTMLElement) {
   const b = document.createElement('button');
@@ -88,38 +100,50 @@ function soundButton(root: HTMLElement) {
   root.appendChild(b);
 }
 
-/** 처음 한 번: 기록을 불러온다 */
-export function boot(user: WorldUser | null) {
+/** 처음 한 번: 기록을 불러오고, 못 보낸 결과가 있으면 다시 보낸다 */
+export async function boot(a: FingerApi, user: WorldUser | null) {
+  api = a;
   me = user;
-  profile = loadProfile(userKey());
+  profile = await api.loadProfile();
+  lastParty = loadParty(userKey());
   if (DEV_ALL) {
-    // 개발용 ?local=1&all=1: 모든 스테이지·대원을 연 상태로 본다 (저장하지 않음)
-    profile = { ...profile, stages: Object.fromEntries(STAGES.map((s) => [s.id, 3])) };
+    // 개발용 ?local=1&all=1: 모든 스테이지·대원을 연 상태로 본다 (기록하지 않음)
+    profile = { ...profile, coins: Math.max(profile.coins, 99999), stages: Object.fromEntries(STAGES.map((s) => [s.id, 3])) };
     for (let r = 1; r <= REGIONS; r++) profile.stages[`${r}-5`] = 3;
   }
+  void api
+    .resend()
+    .then(async (n) => {
+      if (n > 0) {
+        setProfile(await api.loadProfile());
+        toast(`못 보낸 기록 ${n}판을 올렸어요`);
+      }
+    })
+    .catch(() => null);
 }
 
-function save() {
-  if (!DEV_ALL) saveProfile(userKey(), profile);
+/** 서버가 준 새 프로필 (개발용 ?all=1 은 기기에서 연 상태를 그대로 두고 엽전·레벨·강화만) */
+function setProfile(p: FingerProfile) {
+  profile = DEV_ALL ? { ...p, coins: Math.max(p.coins, 99999), stages: profile.stages } : p;
 }
 
 // ---------- 메인 ----------
 
 export function showMain() {
   const root = screen(`
-    <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><div class="spacer"></div><div class="pills">${starPill()}</div></div>
+    <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><div class="spacer"></div><div class="pills">${starPill()}${coinsPill()}</div></div>
     <div class="title"><h1>시아핑거</h1><p>당겼다 놓아 튕겨서 요괴를 부숴라!</p></div>
     <div class="card">
       <h3>파티 <small>쏘는 순서</small></h3>
-      <div class="party-mini">${partyOf(profile)
-        .map((id, i) => `<span><img src="${zodiacFaceUrl(id)}" alt="" /><b>${i + 1}</b>${HEROES[id].name}</span>`)
+      <div class="party-mini">${partyOf(profile, lastParty)
+        .map((id, i) => `<span><img src="${zodiacFaceUrl(id)}" alt="" /><b>${i + 1}</b>${HEROES[id].name} Lv${levelOf(profile.levels, id)}</span>`)
         .join('')}</div>
     </div>
     <div class="menu-btns">
       <button class="btn primary big" id="go">⚔️ 모험 떠나기</button>
       <div class="row2">
         <button class="btn" id="heroes">🐭 대원</button>
-        <button class="btn soon" id="up">💪 강화 🔒</button>
+        <button class="btn" id="up">💪 강화</button>
       </div>
       <div class="row2">
         <button class="btn soon" id="tower">🏯 끝없는 탑 🔒</button>
@@ -128,7 +152,7 @@ export function showMain() {
       <button class="btn" id="help">❓ 하는 법</button>
     </div>
     <div class="grow"></div>
-    ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 기록은 이 기기에만 저장돼요</p>' : '<p class="soft center light">지금은 기록이 이 기기에만 저장돼요 (서버 저장은 준비 중)</p>'}`);
+    ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 기록은 이 기기에만 저장돼요</p>' : ''}`);
   const on = (sel: string, fn: () => void) =>
     root.querySelector(sel)!.addEventListener('click', () => {
       play('click');
@@ -136,7 +160,7 @@ export function showMain() {
     });
   on('#go', showRegions);
   on('#heroes', showHeroes);
-  on('#up', () => toast('강화는 준비 중이에요'));
+  on('#up', showUpgrades);
   on('#tower', () => toast('끝없는 탑은 준비 중이에요'));
   on('#help', showHelp);
   root.querySelector('#rank')!.addEventListener('click', async () => {
@@ -159,6 +183,7 @@ function showHelp() {
       <li>요괴 머리 위 숫자가 0이 되면 공격해요. <b class="red">빨간 원</b>은 다음에 공격이 떨어질 곳이에요.</li>
       <li>필살기 게이지가 차면 그 대원 차례에 <b>필살기 버튼</b>(PC는 스페이스)을 누르고 쏘세요.</li>
       <li>보스는 <b>노란 점(등 뒤)</b>을 맞히면 피해가 3배예요. 날아가는 동안 화면을 누르고 있으면 2배속.</li>
+      <li>엽전으로 <b>대원 레벨</b>을 올리고 <b>강화</b>하면 더 강해져요. 지역 보스를 깨면 새 대원이 합류해요.</li>
     </ul>
     <button class="btn primary" id="ok">알겠어요</button></div>`;
   app().appendChild(box);
@@ -168,29 +193,92 @@ function showHelp() {
   });
 }
 
-// ---------- 대원 ----------
+// ---------- 대원 (레벨 올리기) ----------
+
+/** 우정 콤보 단계: 1단계 + 레벨 10 · 20 · 30 에 한 단계씩 */
+const tiersHtml = (lv: number) =>
+  `<span class="tiers">우정 콤보 ${1 + Math.floor(lv / 10)}단계 ${COMBO_LEVELS.map((l) => `<i class="${lv >= l ? 'on' : ''}">Lv${l}</i>`).join('')}</span>`;
 
 function heroCard(id: HeroId, open: boolean) {
   const d = HEROES[id];
+  const lv = levelOf(profile.levels, id);
+  const st = heroStats(id, lv, profile.upgrades);
+  const max = lv >= MAX_LEVEL;
+  const cost = max ? 0 : levelCost(lv);
   return `<div class="card hero-row ${open ? '' : 'locked'}">
       <img src="${zodiacFaceUrl(id)}" alt="" class="ball ${d.type}" />
-      <div class="hero-info"><b>${d.name} ${typeTag(id)} <span class="soft">Lv 1</span></b>
+      <div class="hero-info"><b>${d.name} ${typeTag(id)} <span class="soft">Lv ${lv}</span></b>
+        <span class="soft">체력 ${st.hp} · 공격 ${st.atk}</span>
         <span>우정 콤보: ${d.comboName}</span>
+        ${tiersHtml(lv)}
         <span>필살기: ${d.specialName} <span class="soft">(${d.charge}턴)</span></span>
         ${open ? '' : `<span class="soft">🔒 ${d.unlockRegion}지역 보스를 깨면 합류</span>`}</div>
+      ${
+        open
+          ? `<button class="btn ${max ? '' : 'primary'} small" data-up="${id}" ${max || profile.coins < cost ? 'disabled' : ''}>${max ? '최대' : `Lv↑ 🪙 ${cost}`}</button>`
+          : ''
+      }
     </div>`;
 }
 
-function showHeroes() {
+function showHeroes(scrollTop = 0) {
   const open = heroesOf(profile);
   const root = screen(`
-    <div class="bar"><button class="back" id="back">← 뒤로</button><h2>대원</h2><div class="spacer"></div></div>
+    <div class="bar"><button class="back" id="back">← 뒤로</button><h2>대원</h2><div class="pills">${coinsPill()}</div></div>
     <div class="up-list">${HERO_IDS.map((id) => heroCard(id, open.includes(id))).join('')}</div>
-    <p class="soft center light">레벨 올리기는 준비 중이에요</p>`);
+    <p class="soft center light">레벨마다 체력·공격 +4%, 레벨 10·20·30에 우정 콤보가 한 단계씩 강해져요</p>`);
+  root.scrollTop = scrollTop;
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
     showMain();
   });
+  root.querySelectorAll<HTMLButtonElement>('[data-up]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      const y = root.scrollTop;
+      try {
+        setProfile(await api.levelUp(b.dataset.up as HeroId));
+        play('coin');
+      } catch (e) {
+        toast(errText(e));
+      }
+      showHeroes(y);
+    }),
+  );
+}
+
+// ---------- 강화 (돌격대 강화 화면과 같은 모양) ----------
+
+function showUpgrades() {
+  const root = screen(`
+    <div class="bar"><button class="back" id="back">← 뒤로</button><h2>강화</h2><div class="pills">${coinsPill()}</div></div>
+    <div class="up-list">${UPGRADES.map((u) => {
+      const lv = upgradeLv(profile.upgrades, u.key);
+      const max = lv >= u.max;
+      const cost = upgradeCost(u, lv);
+      return `<div class="card up-row">
+          <div class="up-info"><b>${u.name}</b><span class="soft">한 단계 ${u.per}</span>
+            <div class="lv"><i style="width:${(lv / u.max) * 100}%"></i></div><span class="soft">${lv} / ${u.max}</span></div>
+          <button class="btn ${max ? '' : 'primary'} small" data-k="${u.key}" ${max || profile.coins < cost ? 'disabled' : ''}>${max ? '최대' : `🪙 ${cost}`}</button>
+        </div>`;
+    }).join('')}</div>
+    <p class="soft center light">강화는 모든 대원에게 함께 적용돼요. 엽전은 스테이지를 깨면 모여요</p>`);
+  root.querySelector('#back')!.addEventListener('click', () => {
+    play('click');
+    showMain();
+  });
+  root.querySelectorAll<HTMLButtonElement>('[data-k]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        setProfile(await api.buyUpgrade(b.dataset.k as UpgradeKey));
+        play('coin');
+      } catch (e) {
+        toast(errText(e));
+      }
+      showUpgrades();
+    }),
+  );
 }
 
 // ---------- 지역 지도 · 스테이지 ----------
@@ -242,7 +330,7 @@ function foeArts(st: StageDef): string[] {
 
 function showStages(region: number) {
   const root = screen(
-    `<div class="bar"><button class="back" id="back">← 지도</button><h2>${region}. ${REGION_NAMES[region - 1]}</h2><div class="pills">${starPill()}</div></div>
+    `<div class="bar"><button class="back" id="back">← 지도</button><h2>${region}. ${REGION_NAMES[region - 1]}</h2><div class="pills">${coinsPill()}</div></div>
     <div class="stage-list">${stagesOf(region)
       .map((st) => {
         const open = stageOpen(profile, st.id);
@@ -279,7 +367,7 @@ function showStages(region: number) {
 
 function showParty(st: StageDef) {
   const open = heroesOf(profile);
-  let party = partyOf(profile);
+  let party = partyOf(profile, lastParty);
   let focus: HeroId = party[0] ?? open[0];
   const root = screen(
     `<div class="bar"><button class="back" id="back">← ${st.id}</button><h2>파티 고르기</h2><div class="spacer"></div></div>
@@ -306,7 +394,7 @@ function showParty(st: StageDef) {
         </button>`;
     }).join('');
     const d = HEROES[focus];
-    root.querySelector('#info')!.innerHTML = `<b>${d.name} ${typeTag(focus)}</b><span>우정 콤보: ${d.comboName}</span><span>필살기: ${d.specialName} <span class="soft">(${d.charge}턴)</span></span>`;
+    root.querySelector('#info')!.innerHTML = `<b>${d.name} ${typeTag(focus)} <span class="soft">Lv ${levelOf(profile.levels, focus)}</span></b><span>우정 콤보: ${d.comboName}</span><span>필살기: ${d.specialName} <span class="soft">(${d.charge}턴)</span></span>`;
     (root.querySelector('#start') as HTMLButtonElement).disabled = party.length === 0;
     root.querySelectorAll<HTMLButtonElement>('.slot').forEach((b) =>
       b.addEventListener('click', () => {
@@ -338,25 +426,56 @@ function showParty(st: StageDef) {
   root.querySelector('#start')!.addEventListener('click', () => {
     if (!party.length) return;
     play('click');
-    profile.party = party;
-    save();
-    startGame(st.id, party);
+    lastParty = party;
+    saveParty(userKey(), party);
+    void startGame(st.id, party);
   });
 }
 
 // ---------- 판 ----------
 
 let game: Phaser.Game | null = null;
+let busy = false;
 
 function closeGame() {
   game?.destroy(true);
   game = null;
 }
 
-export function startGame(stageId: string, party: HeroId[] = partyOf(profile)) {
+/** 판 결과를 서버로 보낸 뒤의 상태 */
+interface Sent {
+  result: FinishResult | null;
+  /** 서버가 다시 돌린 결과 (화면 결과와 다르면 이쪽을 보여 준다) */
+  replay: RunResult | null;
+  /** 통신 실패로 기기에 보관했다 */
+  offline: boolean;
+  /** 서버가 받지 않은 까닭 (화면 글) */
+  error: string | null;
+  /** 시작을 서버에 알리지 못해 기록되지 않는 판 */
+  unrecorded: boolean;
+}
+
+export async function startGame(stageId: string, party: HeroId[] = partyOf(profile, lastParty)) {
   const st = stageOf(stageId);
-  if (!st) return;
-  const run = createRun(buildConfig({ stage: st.id, party }));
+  if (!st || busy) return;
+  busy = true;
+  let runId = '';
+  try {
+    // 개발용 ?all=1 은 기기에만 연 상태라 기록하지 않는다
+    if (!DEV_ALL) {
+      // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다
+      await api.resend().catch(() => 0);
+      runId = await api.start(st.id, party, 'normal');
+      if (!runId) toast('서버에 연결하지 못했어요. 이번 판은 기록되지 않아요');
+    }
+  } catch (e) {
+    busy = false;
+    toast(errText(e));
+    return;
+  }
+  busy = false;
+  // 서버가 시작 때 남긴 스냅숏(레벨·강화)과 같은 값으로 판을 만든다
+  const run = createRun(buildConfig({ stage: st.id, party, levels: profile.levels, upgrades: profile.upgrades }));
   const root = app();
   root.innerHTML = `
     <div id="game"></div>
@@ -383,6 +502,23 @@ export function startGame(stageId: string, party: HeroId[] = partyOf(profile)) {
   });
   let hinted = false;
   let ended = false;
+  let sent: Promise<Sent> | null = null;
+  /** 조작 목록을 서버로 (한 판에 한 번) */
+  const finish = (s: RunState): Promise<Sent> => {
+    sent ??= (async (): Promise<Sent> => {
+      const out: Sent = { result: null, replay: null, offline: false, error: null, unrecorded: !runId && !DEV_ALL };
+      if (DEV_ALL || !runId) return out;
+      try {
+        const r = await api.finish({ run: runId, stage: st.id, inputs: s.log.slice() });
+        if (!r) return { ...out, offline: true };
+        setProfile(r.profile);
+        return { ...out, result: r.result, replay: r.replay };
+      } catch (e) {
+        return { ...out, error: errText(e) };
+      }
+    })();
+    return sent;
+  };
   game.scene.add('game', scene, true, {
     run,
     ground: groundOf(st.region),
@@ -397,10 +533,10 @@ export function startGame(stageId: string, party: HeroId[] = partyOf(profile)) {
           root.querySelector('#hint')?.remove();
         }
       },
-      onEnd: (s: RunState) => {
+      onEnd: async (s: RunState) => {
         if (ended) return;
         ended = true;
-        showResult(s, st, party);
+        showResult(s, st, party, await finish(s));
       },
     },
   });
@@ -413,34 +549,31 @@ export function startGame(stageId: string, party: HeroId[] = partyOf(profile)) {
     box.innerHTML = `<div class="card pop"><h3>일시정지</h3>
       <button class="btn primary big" id="resume">계속하기</button>
       <button class="btn" id="quit">그만하기</button>
-      <p class="soft center">그만하면 이번 판은 실패예요</p></div>`;
+      <p class="soft center">그만하면 이번 판은 실패로 기록돼요 (간 만큼 엽전은 받아요)</p></div>`;
     root.appendChild(box);
     box.querySelector('#resume')!.addEventListener('click', () => {
       play('click');
       scene.paused = false;
       box.remove();
     });
-    box.querySelector('#quit')!.addEventListener('click', () => {
+    box.querySelector('#quit')!.addEventListener('click', async () => {
       play('click');
       box.remove();
+      // 창이 떠 있는 사이 판이 끝났으면 그 결과(클리어 등)를 그대로 둔다
       if (ended || run.phase === 'clear' || run.phase === 'fail') {
         scene.paused = false;
         return;
       }
       ended = true;
+      // 지금까지의 조작을 보낸다: 서버가 다시 돌리면 판이 끝나지 않은 실패 판이 된다
+      const out = await finish(run);
       closeGame();
+      if (out.error) toast(out.error);
+      else if (out.result?.coins) toast(`실패로 기록했어요 · 엽전 +${out.result.coins}`);
+      else if (out.offline) toast('서버에 연결하지 못해 기록을 보관했어요');
       showStages(st.region);
     });
   });
-}
-
-/** 결과를 기록에 반영하고 새로 합류한 대원을 돌려준다 */
-function record(st: StageDef, r: RunResult): HeroId[] {
-  if (!r.cleared || DEV_ALL) return [];
-  const before = heroesOf(profile);
-  profile.stages[st.id] = Math.max(profile.stages[st.id] ?? 0, r.stars);
-  save();
-  return heroesOf(profile).filter((id) => !before.includes(id));
 }
 
 function nextStageOf(st: StageDef): StageDef | null {
@@ -448,9 +581,10 @@ function nextStageOf(st: StageDef): StageDef | null {
   return STAGES[i + 1] ?? null;
 }
 
-function showResult(s: RunState, st: StageDef, party: HeroId[]) {
-  const r = resultOf(s);
-  const joined = record(st, r);
+function showResult(s: RunState, st: StageDef, party: HeroId[], out: Sent) {
+  // 서버가 다시 돌린 결과가 있으면 그것이 기록이다
+  const r = out.replay ?? resultOf(s);
+  const res = out.result;
   play(r.cleared ? 'win' : 'lose');
   const next = r.cleared ? nextStageOf(st) : null;
   const nextOk = !!next && stageOpen(profile, next.id);
@@ -463,22 +597,26 @@ function showResult(s: RunState, st: StageDef, party: HeroId[]) {
         r.cleared
           ? `<div class="big-stars">${starsHtml(r.stars)}</div>
             <ul class="star-why"><li class="on">★ 클리어</li><li class="${inPar ? 'on' : ''}">★ ${st.par}턴 안에 클리어</li><li class="${noFall ? 'on' : ''}">★ 아무도 안 쓰러짐</li></ul>`
-          : `<p class="soft center">웨이브 ${r.wave + 1}/${r.waves} 까지 갔어요${s.turn >= s.cfg.maxTurns ? ` (${s.cfg.maxTurns}턴을 다 썼어요)` : ''}</p>`
+          : `<p class="soft center">웨이브 ${r.wave + 1}/${r.waves} 까지 갔어요${r.turns >= s.cfg.maxTurns ? ` (${s.cfg.maxTurns}턴을 다 썼어요)` : ''}</p>`
       }
       <div class="rows">
         <div><span>쓴 턴</span><b>${r.turns}</b></div>
         <div><span>쓰러뜨린 요괴</span><b>${r.kills}</b></div>
-        <div><span>주운 엽전</span><b class="coin">🪙 ${r.coins}</b></div>
+        ${res ? `<div><span>엽전</span><b class="coin">🪙 +${res.coins}${res.first ? ' (첫 클리어)' : ''}</b></div>` : `<div><span>주운 엽전</span><b class="coin">🪙 ${r.coins}</b></div>`}
+        ${res?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
-      ${joined.length ? `<div class="new-leaders">${joined.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${HEROES[id].name}이(가) 합류했어요!</span>`).join('')}</div>` : ''}
-      <p class="soft center">엽전 지갑과 대원 레벨은 다음 업데이트에서 열려요</p>
+      ${res && res.newHeroes.length ? `<div class="new-leaders">${res.newHeroes.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${HEROES[id].name}이(가) 합류했어요!</span>`).join('')}</div>` : ''}
+      ${out.offline ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음 판을 시작할 때 다시 보내요</p>' : ''}
+      ${out.unrecorded ? '<p class="soft center">서버에 연결하지 못한 판이라 기록되지 않았어요</p>' : ''}
+      ${out.error ? `<p class="soft center">${out.error}</p>` : ''}
+      ${!r.cleared ? '<p class="soft center">💪 대원 레벨을 올리거나 강화해 보세요</p>' : ''}
       <div class="btns">
         ${nextOk ? `<button class="btn primary big" id="next">다음 스테이지 ▶</button>` : ''}
         <button class="btn ${nextOk ? '' : 'primary big'}" id="again">다시하기</button>
         <button class="btn" id="menu">메뉴로</button>
       </div></div>`;
   app().appendChild(box);
-  if (joined.length) play('newRecord');
+  if (res?.newHeroes.length) play('newRecord');
   box.querySelector('#next')?.addEventListener('click', () => {
     play('click');
     closeGame();
@@ -487,7 +625,7 @@ function showResult(s: RunState, st: StageDef, party: HeroId[]) {
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
     closeGame();
-    startGame(st.id, party);
+    void startGame(st.id, party);
   });
   box.querySelector('#menu')!.addEventListener('click', () => {
     play('click');

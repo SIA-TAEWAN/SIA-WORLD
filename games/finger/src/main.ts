@@ -1,5 +1,6 @@
 import './style.css';
 import { stageOf } from './sim';
+import { getApi } from './net/api';
 import { LOCAL_MODE } from './net/local';
 import { enterLobby, loadAuth, worldHome, type WorldUser } from './net/world';
 import { boot, showMain, startGame } from './ui/app';
@@ -28,7 +29,7 @@ async function start() {
         return;
       }
     }
-    boot(user);
+    await boot(await getApi(user?.userId ?? 'local'), user);
   } catch {
     const app = message(`SIA WORLD에 연결하지 못했어요.<br/>인터넷 연결을 확인하고 다시 시도해 주세요.<br/><br/>
       <button class="btn primary" id="retry">다시 시도</button> <a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a>`);
@@ -37,7 +38,7 @@ async function start() {
   }
   // 개발용: ?local=1&stage=1-3 → 메뉴를 건너뛰고 마지막 파티로 바로 시작
   const st = LOCAL_MODE ? stageOf(params.get('stage') ?? '') : undefined;
-  if (st) startGame(st.id);
+  if (st) void startGame(st.id);
   else showMain();
 }
 

@@ -6,3 +6,4 @@ export * from './stages.ts';
 export * from './sim.ts';
 export * from './config.ts';
 export * from './skills.ts';
+export * from './verify.ts';
