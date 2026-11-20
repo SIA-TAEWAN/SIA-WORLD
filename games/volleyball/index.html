@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <script>/* 안드로이드: viewport-fit=cover 를 그리기 전에 뺀다 (크롬이 아래 기본 버튼 줄 밑까지 그리고 그 높이를 알려 주지 않아 아래 버튼이 가려졌다. 아이폰은 노치 대응으로 그대로) */ if (/Android/i.test(navigator.userAgent)) { var vpm = document.querySelector('meta[name="viewport"]'); if (vpm) vpm.content = vpm.content.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, ''); }</script>
     <meta name="theme-color" content="#4aa8ff" />
     <!-- SIA WORLD 앱(PWA): 로비와 같은 manifest·아이콘·서비스 워커. vite-ignore = Vite 가 건드리지 않고 그대로 둔다 -->
     <link rel="manifest" href="../../manifest.webmanifest" vite-ignore />
