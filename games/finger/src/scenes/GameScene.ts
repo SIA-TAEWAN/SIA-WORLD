@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { artUrl, zodiacFaceUrl } from '../assets';
+import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { choose } from '../game/autopilot';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
 import {
@@ -100,6 +100,11 @@ interface SlotView {
 }
 
 const ringOf = (type: string) => (type === 'pierce' ? COLOR.accent : COLOR.teamA);
+/** 판 위 대원 그림 높이 = 판정 원 반지름 × 이 값 (전신 그림). 못 읽어 구슬로 그릴 때는 지름 × 1.05 */
+const BODY_H = 2.6;
+/** 발밑(그림자·차례 표시) 높이: 판정 원 가운데에서 반지름 × 이 값만큼 아래 */
+const FOOT_FULL = 1.12;
+const FOOT_BALL = 0.95;
 
 export class GameScene extends Phaser.Scene {
   private run!: RunState;
@@ -121,6 +126,8 @@ export class GameScene extends Phaser.Scene {
 
   private floor!: Phaser.GameObjects.Graphics;
   private fx!: Phaser.GameObjects.Graphics;
+  /** 대원 발밑 (그림자 · 타입 색 타원 · 차례 표시) — 대원 그림보다 아래 */
+  private footG!: Phaser.GameObjects.Graphics;
   private aimG!: Phaser.GameObjects.Graphics;
   private barG!: Phaser.GameObjects.Graphics;
   private heroImgs: Phaser.GameObjects.Image[] = [];
@@ -160,6 +167,10 @@ export class GameScene extends Phaser.Scene {
   private heroIcons: Phaser.GameObjects.Image[][] = [];
   /** 대원 구슬 그림 키 (전용 그림 h-<id> 가 있으면 그것) */
   private ballKeys: string[] = [];
+  /** 판 위 대원 그림 키: 십이지 전신 그림(full-<id>), 못 읽었으면 구슬 */
+  private bodyKeys: string[] = [];
+  /** 전신 그림인가 (구슬이면 false — 크기·기울임 규칙이 다르다) */
+  private bodyFull: boolean[] = [];
   private trailAt = 0;
   private lastShakeAt = 0;
 
@@ -196,6 +207,8 @@ export class GameScene extends Phaser.Scene {
     this.warnImgs = [];
     this.heroIcons = [];
     this.ballKeys = [];
+    this.bodyKeys = [];
+    this.bodyFull = [];
     this.heldSpecial = null;
     this.lastAim.clear();
     this.trailAt = 0;
@@ -234,7 +247,10 @@ export class GameScene extends Phaser.Scene {
   preload() {
     for (const k of this.artKeys()) this.load.image(k, artUrl(k));
     for (const k of this.optionalArt()) this.load.image(k, artUrl(k));
-    for (const h of this.run.heroes) this.load.image(`face-${h.id}`, zodiacFaceUrl(h.id));
+    for (const h of this.run.heroes) {
+      this.load.image(`face-${h.id}`, zodiacFaceUrl(h.id));
+      this.load.image(`full-${h.id}`, zodiacFullUrl(h.id));
+    }
   }
 
   create() {
@@ -252,20 +268,25 @@ export class GameScene extends Phaser.Scene {
     this.roomG = this.add.graphics().setDepth(-8);
     this.drawRoom();
     this.floor = this.add.graphics().setDepth(-5);
+    this.footG = this.add.graphics().setDepth(470);
     this.fx = this.add.graphics().setDepth(800);
     this.aimG = this.add.graphics().setDepth(900);
     this.barG = this.add.graphics().setDepth(1000);
 
-    // 대원 구슬
+    // 대원: 판 위는 전신 그림, 아래 파티 줄은 구슬
     s.heroes.forEach((hero, i) => {
-      // 구슬형 대원 그림(h-<id>)이 있으면 그것, 없으면 얼굴을 동그랗게 잘라 만든 구슬
+      // 구슬: 구슬형 대원 그림(h-<id>)이 있으면 그것, 없으면 얼굴을 동그랗게 잘라 만든 구슬
       const own = `h-${hero.id}` as const;
       if (this.has(own)) this.ballKeys[i] = own;
       else {
         makeBall(this, `ball-${hero.id}`, `face-${hero.id}`, ringOf(hero.type), HEROES[hero.id].name.slice(0, 1));
         this.ballKeys[i] = `ball-${hero.id}`;
       }
-      this.heroImgs[i] = this.add.image(0, 0, this.ballKeys[i]).setDepth(500);
+      // 판 위: 십이지 전신 그림. 못 읽었으면 구슬로 대신
+      const full = `full-${hero.id}`;
+      this.bodyFull[i] = this.textures.exists(full);
+      this.bodyKeys[i] = this.bodyFull[i] ? full : this.ballKeys[i];
+      this.heroImgs[i] = this.add.image(0, 0, this.bodyKeys[i]).setDepth(500);
       this.heroIcons[i] = HERO_ICONS.map(([key, tint]) => this.add.image(0, 0, key).setTint(tint).setDisplaySize(26, 26).setDepth(520).setVisible(false));
       const slotImg = this.add.image(i * SLOT_W + 44, BAR_Y + 58, this.ballKeys[i]).setDisplaySize(64, 64).setDepth(1001);
       const name = this.add
@@ -793,9 +814,9 @@ export class GameScene extends Phaser.Scene {
         case 'fall': {
           const h = this.run.heroes[e.hero];
           this.hooks.sound('volleyMiss');
-          const ghost = fx.spawn(this.ballKeys[e.hero], h.x, h.y, 510);
+          const ghost = fx.spawn(this.bodyKeys[e.hero], h.x, h.y, 510);
           if (ghost) {
-            ghost.setDisplaySize(h.r * 2.1, h.r * 2.1).setTint(COLOR.draw);
+            ghost.setScale(this.bodyScale(e.hero, h.r, ghost)).setFlipX(this.heroImgs[e.hero].flipX).setTint(COLOR.draw);
             fx.go(ghost, { angle: 200, alpha: 0, scale: ghost.scale * 0.5, y: ghost.y + 20 }, 520);
           }
           fx.text(h.x, h.y - 50, '쓰러졌다…', HEX.soft, 28);
@@ -1271,10 +1292,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 대원 그림 배율: 전신 그림은 높이 = 반지름 × BODY_H (가로세로 비율 유지), 구슬은 지름 × 1.05 */
+  private bodyScale(hero: number, r: number, img: Phaser.GameObjects.Image): number {
+    return this.bodyFull[hero] ? (r * BODY_H) / img.frame.height : (r * 2.1) / img.frame.width;
+  }
+
   private drawHeroes(time: number) {
     const s = this.run;
     const g = this.fx;
+    const fg = this.footG;
     g.clear();
+    fg.clear();
     s.heroes.forEach((h, i) => {
       const img = this.heroImgs[i];
       const icons = this.heroIcons[i];
@@ -1288,7 +1316,38 @@ export class GameScene extends Phaser.Scene {
       const x = RX + (m ? m.x : h.x) + this.shakeOff(img, time);
       const y = RY + (m ? m.y : h.y);
       const r = m ? m.r : h.r;
-      img.setVisible(true).setPosition(x, y).setDisplaySize(r * 2.1, r * 2.1);
+      const full = this.bodyFull[i];
+      const base = this.bodyScale(i, r, img);
+      // 날아갈 때: 가는 쪽을 보고, 살짝 기울고 늘어난다. 멈추면 똑바로
+      const sp = m && !m.stopped ? Math.hypot(m.vx, m.vy) : 0;
+      const k = full && m && sp > 0.01 ? Math.min(1, sp / Math.max(1, m.v0 * 0.5)) : 0;
+      if (full && m && sp > 0.01 && Math.abs(m.vx) > sp * 0.12) img.setFlipX(m.vx < 0);
+      img
+        .setVisible(true)
+        .setPosition(x, y)
+        .setScale(base * (1 - 0.05 * k), base * (1 + 0.07 * k))
+        .setAngle(k && m ? (m.vx / sp) * 13 * k : 0)
+        .setDepth(500 + y * 0.001);
+      // 발밑: 그림자 + 타입 색 타원 (반사형 파랑 · 관통형 주황)
+      const fy = y + r * (full ? FOOT_FULL : FOOT_BALL);
+      const fw = r * 1.75;
+      const fh = r * 0.58;
+      const mine = i === s.cur && this.mode === 'aim';
+      if (mine) {
+        // 이번 차례: 발밑에서 빛나는 타원이 숨 쉬듯 커졌다 작아진다
+        const p = 0.5 + 0.5 * Math.sin(time / 140);
+        const tint = this.armed ? COLOR.pink : COLOR.primary;
+        fg.fillStyle(tint, 0.22 + 0.1 * p).fillEllipse(x, fy, fw * (1.75 + 0.2 * p), fh * (1.75 + 0.2 * p));
+        fg.fillStyle(COLOR.outline, 0.55).fillEllipse(x, fy, fw * 1.32 + 8, fh * 1.32 + 6);
+        fg.fillStyle(tint, 1).fillEllipse(x, fy, fw * 1.32, fh * 1.32);
+      }
+      fg.fillStyle(COLOR.outline, mine ? 0.3 : 0.24).fillEllipse(x, fy, fw, fh);
+      fg.lineStyle(3, ringOf(h.type), 0.95).strokeEllipse(x, fy, fw, fh);
+      if (h.frozen > 0) {
+        // 얼음: 발밑 얼음판 + 흰 반짝임
+        fg.fillStyle(COLOR.skyMid, 0.85).fillEllipse(x, fy, fw * 1.2, fh * 1.2);
+        fg.fillStyle(COLOR.white, 0.85).fillEllipse(x - fw * 0.22, fy - fh * 0.12, fw * 0.3, fh * 0.22);
+      }
       // 날아가는 꼬리 (옅은 점, 0.05초에 하나)
       if (m && !m.stopped && time >= this.trailAt && time >= this.holdUntil) {
         this.trailAt = time + 50;
@@ -1298,36 +1357,62 @@ export class GameScene extends Phaser.Scene {
           this.efx.go(dot, { alpha: 0, scale: 0.2 }, 240);
         }
       }
-      // 이번 차례 표시
-      if (i === s.cur && this.mode === 'aim') {
-        const k = 1 + 0.08 * Math.sin(time / 140);
-        g.lineStyle(10, COLOR.outline, 0.5).strokeCircle(x, y, (r + 9) * k);
-        g.lineStyle(6, this.armed ? COLOR.pink : COLOR.primary, 1).strokeCircle(x, y, (r + 9) * k);
+      const top = y - r * (full ? BODY_H / 2 : 1.05);
+      // 보호막: 몸을 덮는 옅은 흰 막 (세로로 긴 타원, 위쪽 반짝임)
+      if (h.shield || this.run.guardTurns > 0) {
+        const sw = r * (full ? 2.5 : 2.4);
+        const sh = r * (full ? BODY_H + 0.25 : 2.4);
+        g.fillStyle(COLOR.white, 0.16).fillEllipse(x, y, sw, sh);
+        g.lineStyle(3, COLOR.white, 0.75).strokeEllipse(x, y, sw, sh);
+        g.fillStyle(COLOR.white, 0.7).fillEllipse(x - sw * 0.24, y - sh * 0.3, sw * 0.16, sh * 0.09);
       }
-      if (h.shield || this.run.guardTurns > 0) g.lineStyle(4, COLOR.white, 0.9).strokeCircle(x, y, r + 5);
-      // 나쁜 효과: 얼음 = 하늘색 고리, 독 · 느려짐 · 약해짐 = 머리 위 아이콘
-      if (h.frozen > 0) g.lineStyle(6, COLOR.skyMid, 0.95).strokeCircle(x, y, r + 3);
+      // 얼음: 몸을 가둔 하늘색 얼음덩이 (둥근 네모 + 흰 빗금 반짝임)
+      if (h.frozen > 0) {
+        const iw = r * (full ? 2.3 : 2.3);
+        const ih = r * (full ? BODY_H + 0.15 : 2.3);
+        g.fillStyle(COLOR.skyMid, 0.42).fillRoundedRect(x - iw / 2, y - ih / 2, iw, ih, 14);
+        g.lineStyle(3, COLOR.white, 0.85).strokeRoundedRect(x - iw / 2, y - ih / 2, iw, ih, 14);
+        g.lineStyle(4, COLOR.white, 0.7).lineBetween(x - iw * 0.3, y - ih * 0.18, x - iw * 0.12, y - ih * 0.36);
+        g.lineStyle(3, COLOR.white, 0.55).lineBetween(x - iw * 0.3, y - ih * 0.02, x - iw * 0.02, y - ih * 0.36);
+      }
+      // 나쁜 효과: 독 · 느려짐 · 약해짐 = 머리 위 아이콘
       const on = [h.poisonTurns > 0, h.slow > 0, h.weak > 0];
       let n = 0;
-      icons.forEach((ic, k) => {
-        ic.setVisible(on[k]);
-        if (on[k]) ic.setPosition(x - r + 8 + n++ * 26, y - r - 8);
+      icons.forEach((ic, k2) => {
+        ic.setVisible(on[k2]);
+        if (on[k2]) ic.setPosition(x - r + 8 + n++ * 26, top - 10);
       });
+      // 이번 차례: 머리 위에서 까딱이는 작은 화살표
+      if (mine) {
+        const ay = top - (n ? 34 : 10) + 4 * Math.sin(time / 180);
+        g.fillStyle(COLOR.outline, 1).fillTriangle(x - 14, ay - 15, x + 14, ay - 15, x, ay + 4);
+        g.fillStyle(this.armed ? COLOR.pink : COLOR.primary, 1).fillTriangle(x - 9, ay - 12, x + 9, ay - 12, x, ay);
+      }
       if (!m) {
-        g.fillStyle(COLOR.outline, 1).fillRoundedRect(x - 30, y + r + 4, 60, 10, 5);
-        g.fillStyle(COLOR.win, 1).fillRoundedRect(x - 28, y + r + 6, Math.max(0, (56 * this.shownHp[i]) / h.maxHp), 6, 3);
+        const by = fy + fh / 2 + 5;
+        g.fillStyle(COLOR.outline, 1).fillRoundedRect(x - 30, by, 60, 10, 5);
+        g.fillStyle(COLOR.win, 1).fillRoundedRect(x - 28, by + 2, Math.max(0, (56 * this.shownHp[i]) / h.maxHp), 6, 3);
       }
     });
   }
 
-  /** 원숭이 분신 */
+  /** 원숭이 분신: 같은 전신 그림을 작고 반투명하게 */
   private drawClones() {
     const clones = this.run.movers.filter((m) => m.clone);
-    while (this.cloneImgs.length < clones.length) this.cloneImgs.push(this.add.image(0, 0, this.ballKeys[this.run.cur]).setDepth(490).setAlpha(0.8));
+    while (this.cloneImgs.length < clones.length) this.cloneImgs.push(this.add.image(0, 0, this.bodyKeys[this.run.cur]).setDepth(490).setAlpha(0.6));
     this.cloneImgs.forEach((img, i) => {
       const m = clones[i];
       if (!m) return img.setVisible(false);
-      img.setTexture(this.ballKeys[m.hero]).setVisible(true).setPosition(RX + m.x, RY + m.y).setDisplaySize(m.r * 2.1, m.r * 2.1);
+      const full = this.bodyFull[m.hero];
+      if (img.texture.key !== this.bodyKeys[m.hero]) img.setTexture(this.bodyKeys[m.hero]);
+      const sp = m.stopped ? 0 : Math.hypot(m.vx, m.vy);
+      if (full && sp > 0.01 && Math.abs(m.vx) > sp * 0.12) img.setFlipX(m.vx < 0);
+      img
+        .setVisible(true)
+        .setPosition(RX + m.x, RY + m.y)
+        .setScale(this.bodyScale(m.hero, m.r, img))
+        .setAngle(full && sp > 0.01 ? (m.vx / sp) * 10 : 0);
+      this.footG.fillStyle(COLOR.outline, 0.16).fillEllipse(RX + m.x, RY + m.y + m.r * (full ? FOOT_FULL : FOOT_BALL), m.r * 1.6, m.r * 0.5);
     });
   }
 
@@ -1353,12 +1438,23 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(5, color, 1);
     dashed(g, RX + x0, RY + y0, RX + x1, RY + y1, 18, 14);
     g.fillStyle(color, 1).fillCircle(RX + x1, RY + y1, 8);
-    // 힘 게이지 (대원 둘레 호)
+    // 힘 게이지 (발밑 타원을 따라 도는 호 — 뒤쪽 가운데에서 시계 방향)
     const h = this.run.heroes[this.run.cur];
-    g.lineStyle(7, color, 1);
-    g.beginPath();
-    g.arc(RX + h.x, RY + h.y, h.r + 18, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * pull.p) / 100);
-    g.strokePath();
+    const cx = RX + h.x;
+    const cy = RY + h.y + h.r * (this.bodyFull[this.run.cur] ? FOOT_FULL : FOOT_BALL);
+    const ax = h.r * 1.75 * 0.66 + 12;
+    const ay = h.r * 0.58 * 0.66 + 10;
+    const n = Math.max(1, Math.ceil((32 * pull.p) / 100));
+    for (const [wd, c, al] of [[11, COLOR.outline, 0.55], [7, color, 1]] as const) {
+      g.lineStyle(wd, c, al);
+      g.beginPath();
+      for (let j = 0; j <= n; j++) {
+        const t = -Math.PI / 2 + (Math.PI * 2 * pull.p * j) / (100 * n);
+        if (j === 0) g.moveTo(cx + Math.cos(t) * ax, cy + Math.sin(t) * ay);
+        else g.lineTo(cx + Math.cos(t) * ax, cy + Math.sin(t) * ay);
+      }
+      g.strokePath();
+    }
   }
 
   private drawBar(time: number) {
