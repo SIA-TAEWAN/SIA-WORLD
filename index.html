@@ -291,6 +291,40 @@
     import { onInstallChange, promptInstall, dismissIosHint, openInBrowser } from './shared/pwa.js';
 
     const $ = (s) => document.querySelector(s);
+
+    // ---------- 점검: 로고를 5번 누르면 화면 크기 정보 (설치한 앱에서 아래가 가려지는 원인 찾기) ----------
+    {
+      let taps = 0;
+      let tapTimer = 0;
+      document.querySelector('.logo')?.addEventListener('click', () => {
+        taps++;
+        clearTimeout(tapTimer);
+        tapTimer = setTimeout(() => (taps = 0), 1500);
+        if (taps < 5) return;
+        taps = 0;
+        const probe = document.createElement('div');
+        probe.style.cssText =
+          'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;' +
+          'height:100dvh;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
+        document.body.append(probe);
+        const cs = getComputedStyle(probe);
+        const dvh = probe.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+        probe.style.height = '100vh';
+        const vh = probe.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+        const lines = [
+          `inner ${innerWidth}×${innerHeight}`,
+          `visual ${Math.round(visualViewport?.width ?? 0)}×${Math.round(visualViewport?.height ?? 0)}`,
+          `screen ${screen.width}×${screen.height} · avail ${screen.availWidth}×${screen.availHeight}`,
+          `100dvh ${Math.round(dvh)} · 100vh ${Math.round(vh)}`,
+          `safe-area top ${cs.paddingTop} · bottom ${cs.paddingBottom}`,
+          `dpr ${devicePixelRatio} · standalone ${matchMedia('(display-mode: standalone)').matches}`,
+          `viewport: ${document.querySelector('meta[name=viewport]')?.content}`,
+          navigator.userAgent,
+        ];
+        probe.remove();
+        alert(lines.join('\n'));
+      });
+    }
     const views = ['loading', 'login-view', 'signup-view', 'lobby-view'];
     const show = (id) => views.forEach((v) => $('#' + v).classList.toggle('hidden', v !== id));
 
