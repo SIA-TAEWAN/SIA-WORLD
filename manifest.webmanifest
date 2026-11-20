@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "SIA WORLD",
+  "short_name": "SIA WORLD",
+  "description": "십이지 친구들과 함께하는 SIA WORLD 게임 모음",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#4aa8ff",
+  "background_color": "#4aa8ff",
+  "icons": [
+    { "src": "shared/images/app/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "shared/images/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "shared/images/app/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
