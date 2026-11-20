@@ -1,5 +1,7 @@
 import type { EnemyKind } from './enemies.ts';
 import type { HeroType } from './heroes.ts';
+import type { Pillar, Portal, Zone } from './sim.ts';
+import { GENERATED } from './stages-gen.ts';
 
 /**
  * 시아핑거 스테이지 (PRD "스테이지 구성"). 판 모양(방·기둥)과 웨이브 구성만 둔다.
@@ -32,6 +34,12 @@ export interface StageDef {
   par: number;
   /** 돌기둥 (x, y, 너비, 높이) — 튕김을 만드는 고정 벽 */
   blocks?: [number, number, number, number][];
+  /** 둥근 돌기둥 [x, y, 반지름] */
+  pillars?: Pillar[];
+  /** 가시밭 · 빨래판 */
+  zones?: Zone[];
+  /** 순간이동 구멍 한 쌍 [ax, ay, bx, by] */
+  portals?: Portal[];
   /** 스테이지 목록의 '추천 타입' */
   tip: HeroType;
   /** 요괴 체력 배율 (1 = 기본) */
@@ -86,7 +94,8 @@ const REGION1: StageDef[] = [
   },
 ];
 
-export const STAGES: StageDef[] = [...REGION1];
+/** 60스테이지: 1지역은 손으로, 2~12지역은 games/finger/scripts/gen-stages.ts 가 만든 stages-gen.ts */
+export const STAGES: StageDef[] = [...REGION1, ...GENERATED];
 
 export const stageOf = (id: string): StageDef | undefined => STAGES.find((s) => s.id === id);
 export const stagesOf = (region: number) => STAGES.filter((s) => s.region === region);

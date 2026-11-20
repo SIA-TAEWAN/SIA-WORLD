@@ -328,6 +328,19 @@ function foeArts(st: StageDef): string[] {
   return out;
 }
 
+/** 스테이지 목록 한 줄 설명: 장애물 · 보스 특성 */
+function stageNote(st: StageDef): string {
+  const out: string[] = [];
+  if (st.no === 5) out.push(BOSSES[BOSS_IDS[(st.region - 1) % BOSS_IDS.length]].trait ?? '');
+  const obs: string[] = [];
+  if (st.blocks?.length || st.pillars?.length) obs.push('돌기둥');
+  if (st.zones?.some((z) => z.k === 'thorn')) obs.push('가시밭');
+  if (st.zones?.some((z) => z.k === 'board')) obs.push('빨래판');
+  if (st.portals?.length) obs.push('순간이동');
+  if (obs.length) out.push(obs.join('·'));
+  return out.filter(Boolean).join(' · ');
+}
+
 function showStages(region: number) {
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 지도</button><h2>${region}. ${REGION_NAMES[region - 1]}</h2><div class="pills">${coinsPill()}</div></div>
@@ -336,7 +349,7 @@ function showStages(region: number) {
         const open = stageOpen(profile, st.id);
         return `<button class="btn stage-row ${open ? '' : 'locked'} ${st.no === 5 ? 'boss' : ''}" data-id="${st.id}">
             <b>${st.id}</b>
-            <span class="st-mid"><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>
+            <span class="st-mid"><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>${open && stageNote(st) ? `<small class="st-note">${stageNote(st)}</small>` : ''}
               <span class="foes">${foeArts(st)
                 .slice(0, 4)
                 .map((a) => `<img src="${artUrl(a)}" alt="" />`)

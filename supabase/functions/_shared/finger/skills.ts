@@ -1,5 +1,5 @@
 import { dirOf, dist2 } from './math.ts';
-import { aliveFoes, damageFoe, healHero, settle, type Foe, type RunState, type SimEvent } from './sim.ts';
+import { aliveFoes, damageFoe, healHero, settle, visibleFoes, type Foe, type RunState, type SimEvent } from './sim.ts';
 
 /**
  * 우정 콤보 12종 · 필살기 12종의 효과 (PRD "캐릭터 12종"). 세기는 초안 — 5단계 밸런스에서 조정.
@@ -18,14 +18,14 @@ export const COMBO = {
   /** 독 반지름 */
   poison: 200,
   /** 효과 지우기 반지름 */
-  cleanse: 200,
+  cleanse: 240,
   /** 표창 줄 길이 상한 */
   ray: 1200,
 };
 
 /** (x,y) 에서 가까운 순서의 살아 있는 요괴 (같으면 먼저 나온 요괴) */
 function byDistance(s: RunState, x: number, y: number): Foe[] {
-  return aliveFoes(s)
+  return visibleFoes(s)
     .map((f, i) => ({ f, i, d: dist2(x, y, f.x, f.y) }))
     .sort((a, b) => a.d - b.d || a.i - b.i)
     .map((o) => o.f);
@@ -44,7 +44,7 @@ function toRoomEdge(s: RunState, x: number, y: number, dx: number, dy: number): 
 /** 반직선에 처음 닿는 요괴와 거리 */
 function firstOnRay(s: RunState, x: number, y: number, dx: number, dy: number): { f: Foe; t: number } | null {
   let best: { f: Foe; t: number } | null = null;
-  for (const f of aliveFoes(s)) {
+  for (const f of visibleFoes(s)) {
     const fx = x - f.x;
     const fy = y - f.y;
     const b = fx * dx + fy * dy;
@@ -89,18 +89,18 @@ export function comboEffect(s: RunState, j: number, ev: SimEvent[]) {
       break;
     case 'quake':
       r = COMBO.quake;
-      for (const f of aliveFoes(s)) {
+      for (const f of visibleFoes(s)) {
         const rr = r + f.r;
         if (dist2(x, y, f.x, f.y) < rr * rr) hit(f, 0.8);
       }
       break;
     case 'laserH':
       lines.push([0, y, s.cfg.w, y]);
-      for (const f of aliveFoes(s)) if (Math.abs(f.y - y) < f.r + COMBO.laser) hit(f, 0.7);
+      for (const f of visibleFoes(s)) if (Math.abs(f.y - y) < f.r + COMBO.laser) hit(f, 0.7);
       break;
     case 'laserV':
       lines.push([x, 0, x, s.cfg.h]);
-      for (const f of aliveFoes(s)) if (Math.abs(f.x - x) < f.r + COMBO.laser) hit(f, 0.7);
+      for (const f of visibleFoes(s)) if (Math.abs(f.x - x) < f.r + COMBO.laser) hit(f, 0.7);
       break;
     case 'heal':
       s.heroes.forEach((o, i) => {
@@ -111,7 +111,7 @@ export function comboEffect(s: RunState, j: number, ev: SimEvent[]) {
       break;
     case 'poison':
       r = COMBO.poison;
-      for (const f of aliveFoes(s)) {
+      for (const f of visibleFoes(s)) {
         const rr = r + f.r;
         if (dist2(x, y, f.x, f.y) >= rr * rr) continue;
         targets.push(f.id);
@@ -137,15 +137,36 @@ export function comboEffect(s: RunState, j: number, ev: SimEvent[]) {
       }
       break;
     case 'cleanse':
-      // 주변 요괴의 독·똬리를 뺀 나쁜 효과(공격 예고 자리)를 지우고 작은 피해. 대원 쪽 나쁜 효과는 5단계 요괴 행동과 함께
+    {
+      // 주변 효과 지우기: 범위 안 대원의 나쁜 효과(독·느려짐·약해짐·얼음)와 불길을 지우고,
+      // 범위 안 요괴의 공격 예고 자리와 단단함을 지우며 작은 피해
       r = COMBO.cleanse;
-      for (const f of aliveFoes(s)) {
+      const fixed: number[] = [];
+      s.heroes.forEach((o, i) => {
+        if (o.fallen) return;
+        const rr = r + o.r;
+        if (dist2(x, y, o.x, o.y) >= rr * rr) return;
+        if (o.poisonTurns > 0 || o.slow > 0 || o.weak > 0 || o.frozen > 0) fixed.push(i);
+        o.poisonTurns = 0;
+        o.poison = 0;
+        o.slow = 0;
+        o.weak = 0;
+        o.frozen = 0;
+      });
+      s.fires = s.fires.filter((fi) => dist2(x, y, fi.x, fi.y) >= (r + fi.r) * (r + fi.r));
+      ev.push({ t: 'cleanse', hero: j, heroes: fixed });
+      for (const f of visibleFoes(s)) {
         const rr = r + f.r;
         if (dist2(x, y, f.x, f.y) >= rr * rr) continue;
         hit(f, 0.4);
-        if (f.alive && f.aim) f.aim = null;
+        if (f.alive) {
+          f.aim = null;
+          f.aim2 = null;
+          f.hard = 0;
+        }
       }
       break;
+    }
     case 'fang': {
       const f = byDistance(s, x, y)[0];
       if (f) {
@@ -181,6 +202,7 @@ export function specialEffect(s: RunState, i: number, a: number, ev: SimEvent[])
       for (const f of aliveFoes(s)) {
         f.left += 1;
         f.aim = null;
+        f.aim2 = null;
       }
       break;
     case 'mooncake': {
@@ -195,13 +217,14 @@ export function specialEffect(s: RunState, i: number, a: number, ev: SimEvent[])
         o.fallen = false;
         o.hp = Math.max(1, Math.round(o.maxHp * 0.3 * o.healMul));
         o.shield = false;
+        o.slow = o.weak = o.frozen = o.poisonTurns = 0;
         settle(s, o);
         ev.push({ t: 'revive', hero: j });
       }
       break;
     }
     case 'dragonfall':
-      for (const f of aliveFoes(s)) damageFoe(s, f, h.atk * 2.5, ev);
+      for (const f of visibleFoes(s)) damageFoe(s, f, h.atk * 2.5, ev);
       break;
     case 'coil': {
       // 가장 먼저 공격할 요괴 (남은 턴이 가장 적은, 같으면 먼저 나온)
@@ -228,7 +251,7 @@ export function specialEffect(s: RunState, i: number, a: number, ev: SimEvent[])
       });
       break;
     case 'hunt': {
-      const weak = aliveFoes(s)
+      const weak = visibleFoes(s)
         .map((f, k) => ({ f, k }))
         .sort((x, y) => x.f.hp - y.f.hp || x.k - y.k)
         .slice(0, 3);

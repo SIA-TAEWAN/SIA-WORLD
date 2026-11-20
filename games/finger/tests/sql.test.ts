@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { PICK_CAP } from '../src/data/growth';
 import { heroRows, levelRows, stageRows, upgradeRows } from '../src/data/sqlrows';
 import { LIMITS } from '../src/game/progress';
-import { MAX_SHOT_STEPS } from '../src/sim';
+import { MAX_SHOT_STEPS, STAGES } from '../src/sim';
 
 /**
  * 서버(067_finger.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
@@ -25,6 +25,14 @@ describe('SQL 표', () => {
   it('스테이지 보상 60줄이 같다', () => {
     expect(rowsIn('_finger_stages')).toEqual(stageRows());
     expect(stageRows().length).toBe(60);
+  });
+  it('SQL 스테이지 id 집합 = 시뮬레이션 60스테이지 (서버가 아는 스테이지만 판을 시작할 수 있다)', () => {
+    const ids = rowsIn('_finger_stages').map((l) => l.match(/^\('([^']+)'/)?.[1]);
+    expect(new Set(ids)).toEqual(new Set(STAGES.map((s) => s.id)));
+    expect(ids.length).toBe(STAGES.length);
+    // 지역 · 번호 열도 스테이지 데이터와 같다
+    const rows = rowsIn('_finger_stages');
+    for (const st of STAGES) expect(rows.some((l) => l.startsWith(`('${st.id}', ${st.region}, ${st.no}, `)), st.id).toBe(true);
   });
   it('공통 강화가 같다', () => expect(rowsIn('_finger_upgrades')).toEqual(upgradeRows()));
   it('대원 레벨 가격표 (1~29 → 다음 레벨)가 같다', () => {

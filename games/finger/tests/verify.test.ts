@@ -71,6 +71,25 @@ describe('서버 다시 돌리기 = 브라우저 결과', () => {
   });
 });
 
+describe('장애물 · 요괴 행동이 있는 판도 서버 다시 돌리기 = 브라우저 결과', () => {
+  /** 순간이동·가시밭·빨래판·돌기둥·방패·숨기·분열 (8-2), 해골·원혼·강철이 불길·단단해짐 (11-5), 저승사자 되살아남 (10-5) 등 */
+  const cases: [string, HeroId[], number][] = [
+    ['5-5', ['rabbit', 'dragon', 'snake', 'horse'], 4],
+    ['8-2', ['horse', 'sheep', 'monkey', 'rooster'], 12],
+    ['10-5', ['monkey', 'rooster', 'dog', 'pig'], 17],
+    ['11-5', ['monkey', 'rooster', 'dog', 'pig'], 20],
+    ['12-5', ['monkey', 'rooster', 'dog', 'pig'], 23],
+  ];
+  it.each(cases)('%s (한 스텝씩 · 2배속 섞음)', (stage, party, lv) => {
+    const p: FingerProfile = { ...emptyProfile(), levels: Object.fromEntries(party.map((id) => [id, lv])), upgrades: { hp: 2, heal: 1 } };
+    const r = browserRun(p, stage, party, { pilot: quick, fast: fastOdd, frameMs: 20 });
+    expect(r.s.log.length).toBeGreaterThan(3);
+    expect(verifyRun(r.snap, r.inputs)).toEqual(resultOf(r.s));
+    // 같은 조작을 다시 돌려도 같다 (상태가 설정을 바꾸지 않는다)
+    expect(verifyRun(r.snap, r.inputs)).toEqual(resultOf(r.s));
+  });
+});
+
 describe('다시 돌리기 거절', () => {
   const snap = snapshotOf(emptyProfile(), '1-1', ['rat', 'ox', 'tiger']);
   const err = (f: () => unknown) => {

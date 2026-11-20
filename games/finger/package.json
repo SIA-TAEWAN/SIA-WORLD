@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "sqlrows": "vite-node scripts/sqlrows.ts"
+    "sqlrows": "vite-node scripts/sqlrows.ts",
+    "gen": "vite-node scripts/gen-stages.ts",
+    "calib": "vite-node scripts/calib.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

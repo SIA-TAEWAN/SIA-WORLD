@@ -3,8 +3,11 @@ import { artUrl, zodiacFaceUrl } from '../assets';
 import { choose } from '../game/autopilot';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
 import {
+  DEBUFF_NAMES,
   HEROES,
+  PORTAL_R,
   STEP,
+  dirOf,
   aimPreview,
   beginShot,
   canSpecial,
@@ -149,6 +152,7 @@ export class GameScene extends Phaser.Scene {
       walls.fillStyle(COLOR.emptyLine, 1).fillRect(RX + x0 + 4, RY + y0 + 4, x1 - x0 - 8, (y1 - y0) / 2 - 4);
       walls.lineStyle(5, COLOR.outline, 1).strokeRect(RX + x0, RY + y0, x1 - x0, y1 - y0);
     }
+    this.drawObstacles();
     this.floor = this.add.graphics().setDepth(-5);
     this.fx = this.add.graphics().setDepth(800);
     this.aimG = this.add.graphics().setDepth(900);
@@ -181,6 +185,45 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerup', up);
     this.input.on('pointerupoutside', up);
     this.input.keyboard?.on('keydown-SPACE', () => this.toggleSpecial());
+  }
+
+  /** 장애물 코드 그림 (전용 그림은 7단계): 가시밭 · 빨래판 · 둥근 돌기둥 · 순간이동 구멍 */
+  private drawObstacles() {
+    const cfg = this.run.cfg;
+    const g = this.add.graphics().setDepth(-8);
+    for (const z of cfg.zones ?? []) {
+      const x = RX + z.x;
+      const y = RY + z.y;
+      if (z.k === 'thorn') {
+        g.fillStyle(COLOR.win, 0.45).fillRoundedRect(x, y, z.w, z.h, 12);
+        g.lineStyle(4, COLOR.outline, 0.8).strokeRoundedRect(x, y, z.w, z.h, 12);
+        // 가시 (작은 세모)
+        g.fillStyle(COLOR.outline, 0.75);
+        for (let yy = y + 14; yy < y + z.h - 4; yy += 22)
+          for (let xx = x + 12 + ((yy - y) % 44 ? 11 : 0); xx < x + z.w - 8; xx += 22) g.fillTriangle(xx - 6, yy + 6, xx + 6, yy + 6, xx, yy - 7);
+      } else {
+        g.fillStyle(COLOR.emptyLine, 0.9).fillRoundedRect(x, y, z.w, z.h, 8);
+        g.lineStyle(3, COLOR.inkSoft, 1);
+        for (let xx = x + 10; xx < x + z.w - 4; xx += 12) g.lineBetween(xx, y + 6, xx, y + z.h - 6);
+        g.lineStyle(4, COLOR.outline, 0.9).strokeRoundedRect(x, y, z.w, z.h, 8);
+      }
+    }
+    for (const [px, py, pr] of cfg.pillars ?? []) {
+      g.fillStyle(COLOR.outline, 0.35).fillEllipse(RX + px + 4, RY + py + 8, pr * 2, pr * 1.6);
+      g.fillStyle(COLOR.inkSoft, 1).fillCircle(RX + px, RY + py, pr);
+      g.fillStyle(COLOR.emptyLine, 1).fillCircle(RX + px - pr * 0.25, RY + py - pr * 0.25, pr * 0.55);
+      g.lineStyle(5, COLOR.outline, 1).strokeCircle(RX + px, RY + py, pr);
+    }
+    (cfg.portals ?? []).forEach((p, k) => {
+      const color = k % 2 ? COLOR.pink : COLOR.teamA;
+      for (const [x, y] of [
+        [p[0], p[1]],
+        [p[2], p[3]],
+      ]) {
+        g.fillStyle(COLOR.outline, 0.85).fillCircle(RX + x, RY + y, PORTAL_R);
+        g.lineStyle(6, color, 1).strokeCircle(RX + x, RY + y, PORTAL_R);
+      }
+    });
   }
 
   /** 필살기 켜기/끄기 (버튼 · 스페이스) */
@@ -288,8 +331,9 @@ export class GameScene extends Phaser.Scene {
     while (this.queue.length) {
       const e = this.queue.shift()!;
       this.handle([e]);
-      if (e.t === 'attack' || e.t === 'wave') {
-        this.nextEventAt = time + (e.t === 'wave' ? 700 : 420) / DEV_SPEED;
+      const wait = e.t === 'wave' ? 700 : e.t === 'attack' ? 420 : e.t === 'spawn' || e.t === 'foeHeal' || e.t === 'rise' || e.t === 'tick' ? 300 : 0;
+      if (wait) {
+        this.nextEventAt = time + wait / DEV_SPEED;
         return;
       }
     }
@@ -314,7 +358,78 @@ export class GameScene extends Phaser.Scene {
           this.pop(e.x, e.y, e.weak ? 1.1 : 0.7);
           this.floatText(e.x, e.y - 30, `${e.dmg}`, e.weak ? '#ff4d6d' : '#ffffff', e.weak ? 40 : 30);
           if (e.weak) this.floatText(e.x, e.y - 72, '약점!', '#ffd34d', 28);
+          else if (e.shield) this.floatText(e.x, e.y - 72, '방패!', '#9fd6ff', 26);
           this.shake(this.foeViews.get(e.id)?.img);
+          break;
+        case 'down':
+          this.hooks.sound('survSlash', { rate: 0.8 });
+          this.pop(e.x, e.y, 1.2);
+          this.floatText(e.x, e.y - 50, '다시 일어나요…', '#e2d3b5', 24);
+          break;
+        case 'rise':
+          this.hooks.sound('survLevel', { rate: 0.8 });
+          this.floatText(e.x, e.y - 50, '되살아났다!', '#e86a5a', 30);
+          break;
+        case 'spawn': {
+          this.hooks.sound('survPop', { rate: 0.7 });
+          for (const id of e.kids) {
+            const f = this.run.foes.find((x) => x.id === id);
+            if (f) this.pop(f.x, f.y, 0.9);
+          }
+          const f = this.run.foes.find((x) => x.id === e.id);
+          if (f && e.why === 'summon') this.floatText(f.x, f.y - f.r - 20, '부하를 불렀다!', '#ffd34d', 26);
+          break;
+        }
+        case 'foeHeal': {
+          this.hooks.sound('tankHeal', { rate: 0.8 });
+          for (const h of e.heals) {
+            const f = this.run.foes.find((x) => x.id === h.id);
+            if (f) this.floatText(f.x, f.y - 30, `+${h.v}`, '#4cb86a', 26);
+          }
+          break;
+        }
+        case 'hide': {
+          const f = this.run.foes.find((x) => x.id === e.id);
+          if (f) {
+            this.ring(f.x, f.y, f.r + 16, COLOR.teamA);
+            this.floatText(f.x, f.y - 40, e.hidden ? '숨었다' : '나왔다', '#9fd6ff', 24);
+          }
+          break;
+        }
+        case 'debuff': {
+          const h = this.run.heroes[e.hero];
+          this.floatText(h.x, h.y - 70, DEBUFF_NAMES[e.kind], '#ff4d6d', 24);
+          break;
+        }
+        case 'tick': {
+          const h = this.run.heroes[e.hero];
+          this.floatText(h.x, h.y - 40, `-${e.dmg}`, e.kind === 'fire' ? '#f0a500' : '#4cb86a', 26);
+          this.shake(this.heroImgs[e.hero]);
+          break;
+        }
+        case 'skip': {
+          const h = this.run.heroes[e.hero];
+          this.floatText(h.x, h.y - 40, '얼어서 쉼', '#9fd6ff', 26);
+          break;
+        }
+        case 'cleanse':
+          for (const i of e.heroes) {
+            const h = this.run.heroes[i];
+            this.floatText(h.x, h.y - 60, '깨끗!', '#ffffff', 24);
+          }
+          break;
+        case 'thorn':
+          this.hooks.sound('survHurt', { volume: 0.4, rate: 1.4 });
+          this.floatText(e.x, e.y - 40, `-${e.dmg}`, '#e86a5a', 24);
+          break;
+        case 'board':
+          this.hooks.sound('click', { rate: 0.6 });
+          this.spark(e.x, e.y);
+          break;
+        case 'warp':
+          this.hooks.sound('boost', { rate: 1.3, volume: 0.6 });
+          this.ring(e.x0, e.y0, PORTAL_R + 14, COLOR.teamA);
+          this.ring(e.x1, e.y1, PORTAL_R + 14, COLOR.teamA);
           break;
         case 'kill':
           this.hooks.sound('survSlash');
@@ -354,13 +469,16 @@ export class GameScene extends Phaser.Scene {
           break;
         case 'attack': {
           this.hooks.sound('survHurt');
-          if (e.kind === 'area') this.ring(e.x, e.y, e.area, COLOR.lose);
+          if (e.kind === 'area') {
+            this.ring(e.x, e.y, e.area, COLOR.lose);
+            if (e.x2 !== undefined && e.y2 !== undefined) this.ring(e.x2, e.y2, e.area, COLOR.lose);
+          }
           for (const hit of e.hits) {
             const h = this.run.heroes[hit.hero];
             this.floatText(h.x, h.y - 40, `-${hit.dmg}`, '#e86a5a', 30);
             this.shake(this.heroImgs[hit.hero]);
             const f = this.run.foes.find((x) => x.id === e.id);
-            if (f && e.kind === 'near') this.zap(f.x, f.y, h.x, h.y);
+            if (f && (e.kind === 'near' || e.kind === 'double')) this.zap(f.x, f.y, h.x, h.y);
           }
           if (e.hits.length && navigator.vibrate) navigator.vibrate(30);
           break;
@@ -480,16 +598,38 @@ export class GameScene extends Phaser.Scene {
   private drawThreats(time: number) {
     const g = this.floor;
     g.clear();
+    // 순간이동 구멍 (도는 고리)
+    (this.run.cfg.portals ?? []).forEach((p, k) => {
+      const color = k % 2 ? COLOR.pink : COLOR.teamA;
+      const a = time / 300;
+      for (const [x, y] of [
+        [p[0], p[1]],
+        [p[2], p[3]],
+      ]) {
+        g.lineStyle(4, color, 0.9);
+        g.beginPath();
+        g.arc(RX + x, RY + y, PORTAL_R * 0.62, a, a + Math.PI * 1.2);
+        g.strokePath();
+      }
+    });
+    // 바닥 불길 (남은 턴)
+    for (const f of this.run.fires) {
+      const k = 0.3 + 0.1 * Math.sin(time / 90);
+      g.fillStyle(COLOR.accent, k).fillCircle(RX + f.x, RY + f.y, f.r);
+      g.lineStyle(4, COLOR.pink, 0.8).strokeCircle(RX + f.x, RY + f.y, f.r);
+    }
     if (this.mode === 'fly' || this.mode === 'aim' || this.mode === 'wait') {
       const blink = 0.22 + 0.12 * Math.sin(time / 120);
       for (const t of threats(this.run)) {
         if (t.kind === 'area') {
           g.fillStyle(COLOR.lose, blink).fillCircle(RX + t.x, RY + t.y, t.r);
           g.lineStyle(4, COLOR.lose, 0.9).strokeCircle(RX + t.x, RY + t.y, t.r);
-        } else if (t.kind === 'near' && t.hero !== null) {
+        } else if ((t.kind === 'near' || t.kind === 'double') && t.hero !== null) {
           const h = this.run.heroes[t.hero];
           g.lineStyle(3, COLOR.lose, 0.55);
           dashed(g, RX + t.x, RY + t.y, RX + h.x, RY + h.y, 12, 10);
+        } else if (t.kind === 'all') {
+          for (const h of this.run.heroes) if (!h.fallen) g.lineStyle(4, COLOR.lose, blink * 2.5).strokeCircle(RX + h.x, RY + h.y, h.r + 14);
         }
       }
     }
@@ -497,8 +637,10 @@ export class GameScene extends Phaser.Scene {
 
   private drawFoes(time: number) {
     const seen = new Set<number>();
+    const next = new Map<number, string>();
+    for (const t of threats(this.run)) if (t.kind === 'heal' || t.kind === 'summon' || t.kind === 'all') next.set(t.id, t.kind === 'heal' ? '회복' : t.kind === 'summon' ? '부르기' : '모두');
     for (const f of this.run.foes) {
-      if (!f.alive) continue;
+      if (!f.alive && !f.down) continue;
       seen.add(f.id);
       let v = this.foeViews.get(f.id);
       if (!v) {
@@ -520,9 +662,20 @@ export class GameScene extends Phaser.Scene {
       const x = RX + f.x + this.shakeOff(v.img, time);
       const y = RY + f.y;
       v.img.setPosition(x, y);
+      // 쓰러져 되살아나기를 기다림 · 물웅덩이에 숨음 (흐리게)
+      if (!this.tweens.isTweening(v.img)) v.img.setAlpha(f.down ? 0.3 : f.hidden ? 0.28 : 1);
+      v.img.setTint(f.down ? 0x888888 : 0xffffff);
+      v.bar.clear();
+      if (f.hidden) {
+        v.bar.fillStyle(COLOR.teamA, 0.35).fillEllipse(x, y + f.r * 0.5, f.r * 2.6, f.r * 1.1);
+        v.bar.lineStyle(3, COLOR.white, 0.7).strokeEllipse(x, y + f.r * 0.5, f.r * 2.6, f.r * 1.1);
+      }
+      if (f.down) {
+        v.num.setText('부활').setPosition(x, y - f.r * 0.9).setColor('#e86a5a');
+        continue;
+      }
       const bw = Math.max(60, f.r * 1.6);
       const by = y + f.r + 8;
-      v.bar.clear();
       v.bar.fillStyle(COLOR.outline, 1).fillRoundedRect(x - bw / 2 - 3, by - 3, bw + 6, 14, 6);
       v.bar.fillStyle(COLOR.track, 1).fillRoundedRect(x - bw / 2, by, bw, 8, 4);
       v.bar.fillStyle(COLOR.lose, 1).fillRoundedRect(x - bw / 2, by, Math.max(0, (bw * f.hp) / f.maxHp), 8, 4);
@@ -538,8 +691,25 @@ export class GameScene extends Phaser.Scene {
       // 독(초록 고리) · 똬리(파란 고리)
       if (f.poisonTurns > 0) v.bar.lineStyle(5, COLOR.win, 0.9).strokeCircle(x, y, f.r + 4);
       if (f.frozen > 0) v.bar.lineStyle(6, COLOR.teamA, 0.9).strokeCircle(x, y, f.r + 10);
-      // 머리 위 남은 턴
-      v.num.setText(f.frozen > 0 ? '멈춤' : String(f.left)).setPosition(x - f.r * 0.7, y - f.r * 0.8);
+      // 방패 (방패 방향 반원)
+      const sh = f.traits?.shield;
+      if (sh) {
+        const [sx, sy] = dirOf(sh.dir);
+        const a0 = Math.atan2(sy, sx);
+        v.bar.lineStyle(9, COLOR.outline, 1);
+        v.bar.beginPath();
+        v.bar.arc(x, y, f.r + 7, a0 - Math.PI / 3, a0 + Math.PI / 3);
+        v.bar.strokePath();
+        v.bar.lineStyle(5, COLOR.teamA, 1);
+        v.bar.beginPath();
+        v.bar.arc(x, y, f.r + 7, a0 - Math.PI / 3, a0 + Math.PI / 3);
+        v.bar.strokePath();
+      }
+      // 단단해짐 (회색 고리, 두꺼울수록 단단)
+      if (f.hard > 0 && f.traits?.harden) v.bar.lineStyle(Math.min(10, 2 + f.hard * 1.5), COLOR.draw, 0.9).strokeCircle(x, y, f.r + 2);
+      // 머리 위 남은 턴 (다음 행동이 공격이 아니면 이름도)
+      const act = f.left === 1 ? next.get(f.id) : undefined;
+      v.num.setText(f.frozen > 0 ? '멈춤' : act ? `${f.left} ${act}` : String(f.left)).setPosition(x - f.r * 0.7, y - f.r * 0.8);
       v.num.setColor(f.left <= 1 ? '#ff4d6d' : '#ffffff');
     }
     for (const [id, v] of this.foeViews) {
@@ -594,6 +764,14 @@ export class GameScene extends Phaser.Scene {
         g.lineStyle(6, this.armed ? COLOR.pink : COLOR.primary, 1).strokeCircle(x, y, (r + 9) * k);
       }
       if (h.shield || this.run.guardTurns > 0) g.lineStyle(4, COLOR.white, 0.9).strokeCircle(x, y, r + 5);
+      // 나쁜 효과 (작은 점: 독 초록 · 느려짐 파랑 · 약해짐 분홍 · 얼음 흰 고리)
+      if (h.frozen > 0) g.lineStyle(6, COLOR.skyMid, 0.95).strokeCircle(x, y, r + 3);
+      const dots = [h.poisonTurns > 0 ? COLOR.win : -1, h.slow > 0 ? COLOR.teamA : -1, h.weak > 0 ? COLOR.pink : -1].filter((c) => c >= 0);
+      dots.forEach((c, k) => {
+        const dx = x - r + 6 + k * 16;
+        g.fillStyle(c, 1).fillCircle(dx, y - r - 6, 7);
+        g.lineStyle(3, COLOR.outline, 1).strokeCircle(dx, y - r - 6, 7);
+      });
       if (!m) {
         g.fillStyle(COLOR.outline, 1).fillRoundedRect(x - 30, y + r + 4, 60, 10, 5);
         g.fillStyle(COLOR.win, 1).fillRoundedRect(x - 28, y + r + 6, Math.max(0, (56 * this.shownHp[i]) / h.maxHp), 6, 3);

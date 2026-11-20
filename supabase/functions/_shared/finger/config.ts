@@ -1,6 +1,6 @@
-import { BOSS_IDS, BOSSES, ENEMIES, chiefDef, type FoeDef } from './enemies.ts';
+import { BOSS_IDS, BOSSES, ENEMIES, chiefDef, type FoeDef, type FoeTraits } from './enemies.ts';
 import { HEROES, heroStats, isHeroId, type HeroId, type Upgrades } from './heroes.ts';
-import { MAX_TURNS, type FoeInit, type HeroInit, type RunConfig, type Seg } from './sim.ts';
+import { MAX_TURNS, type FoeInit, type HeroInit, type Pillar, type Portal, type RunConfig, type Seg } from './sim.ts';
 import { ROOM_H, ROOM_W, stageOf, type FoeSpec, type StageDef } from './stages.ts';
 
 /**
@@ -47,6 +47,32 @@ function wallsOf(st: StageDef): Seg[] {
   return out;
 }
 
+/** 요괴 정의 → 판 설정 (스테이지 배율 반영) */
+function initOf(st: StageDef, def: FoeDef, kind: string, rank: 0 | 1 | 2, x: number, y: number, drop: FoeInit['drop']): FoeInit {
+  const hpMul = st.hpMul ?? 1;
+  const atkMul = st.atkMul ?? 1;
+  const out: FoeInit = {
+    kind,
+    name: def.name,
+    art: def.art,
+    rank,
+    x,
+    y,
+    r: def.r,
+    hp: Math.round(def.hp * hpMul),
+    atk: Math.round(def.atk * atkMul),
+    cd: def.cd,
+    pattern: [...def.pattern],
+    area: def.area ?? 0,
+    weak: def.weak ?? null,
+    drop,
+  };
+  if (def.traits) out.traits = JSON.parse(JSON.stringify(def.traits)) as FoeTraits;
+  const sm = def.traits?.summon;
+  if (sm) out.summon = initOf(st, ENEMIES[sm.kind], sm.kind, 0, 0, 0, null);
+  return out;
+}
+
 function foeOf(st: StageDef, f: FoeSpec): FoeInit {
   let def: FoeDef;
   let kind: string;
@@ -63,29 +89,17 @@ function foeOf(st: StageDef, f: FoeSpec): FoeInit {
     def = ENEMIES[f.k];
     kind = f.k;
   }
-  const hpMul = st.hpMul ?? 1;
-  const atkMul = st.atkMul ?? 1;
-  return {
-    kind,
-    name: def.name,
-    art: def.art,
-    rank,
-    x: f.x,
-    y: f.y,
-    r: def.r,
-    hp: Math.round(def.hp * hpMul),
-    atk: Math.round(def.atk * atkMul),
-    cd: def.cd,
-    pattern: [...def.pattern],
-    area: def.area ?? 0,
-    weak: def.weak ?? null,
-    drop: f.drop ?? (rank > 0 ? 'coin' : null),
-  };
+  return initOf(st, def, kind, rank, f.x, f.y, f.drop ?? (rank > 0 ? 'coin' : null));
 }
 
 export function buildConfig(input: BuildInput): RunConfig {
   const st = stageOf(input.stage);
   if (!st) throw new ConfigError('stage');
+  return buildConfigFrom(st, input);
+}
+
+/** 스테이지 데이터로 바로 (밸런스 보정 스크립트가 만든 스테이지를 시험할 때) */
+export function buildConfigFrom(st: StageDef, input: Omit<BuildInput, 'stage'>): RunConfig {
   const ids = checkParty(input.party);
   const party: HeroInit[] = ids.map((id) => {
     const d = HEROES[id];
@@ -110,6 +124,9 @@ export function buildConfig(input: BuildInput): RunConfig {
     w: ROOM_W,
     h: ROOM_H,
     walls: wallsOf(st),
+    pillars: (st.pillars ?? []).map((p) => [...p] as Pillar),
+    zones: (st.zones ?? []).map((z) => ({ ...z })),
+    portals: (st.portals ?? []).map((p) => [...p] as Portal),
     party,
     waves: st.waves.map((w) => w.map((f) => foeOf(st, f))),
     par: st.par,

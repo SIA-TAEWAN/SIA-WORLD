@@ -209,6 +209,7 @@ img.ball.pierce { border-color: var(--accent); }
 .leader.on em { position: static; color: var(--ink); text-shadow: none; font-size: 11px; }
 .st-mid { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
 .btn.stage-row .st-mid > span:first-child { font-size: 15px; }
+.st-note { font-size: 11px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .foes { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .foes img { width: 26px; height: 26px; object-fit: contain; }
 .foes .tag { margin-left: 4px; }
