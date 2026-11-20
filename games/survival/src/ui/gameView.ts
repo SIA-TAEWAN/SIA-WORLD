@@ -96,7 +96,8 @@ export function showGame(setup: GameSetup) {
         if (e instanceof ApiError) {
           // 잠긴 캐릭터·맵·무한 모드: 출전 준비로 돌아간다
           toast(whyText(e));
-          nav.select();
+          // 답이 오기 전에 다른 화면(결과 등)으로 갔으면 끌고 가지 않는다
+          if (root.isConnected && !ended) nav.select();
         }
         return null;
       })
@@ -316,7 +317,9 @@ export function showGame(setup: GameSetup) {
     const box = document.createElement('pre');
     box.style.cssText =
       'position:absolute;left:4px;bottom:4px;z-index:50;margin:0;padding:4px 6px;font:11px/1.3 monospace;color:#fff;background:rgba(0,0,0,.65);pointer-events:none;white-space:pre-wrap;max-width:70%';
-    stage.append(box);
+    // 이 게임 화면(root)에 붙인다: 화면이 바뀌면 함께 사라지고, 그때 리스너·루프도 멈춘다
+    root.append(box);
+    const off = new AbortController();
     const cnt: Record<string, number> = {};
     let last = '';
     const tag = (t: EventTarget | null) => (t instanceof Element ? `${t.tagName.toLowerCase()}${t.id ? '#' + t.id : ''}${t.classList[0] ? '.' + t.classList[0] : ''}` : String(t));
@@ -324,11 +327,11 @@ export function showGame(setup: GameSetup) {
       window.addEventListener(ev, (e) => {
         cnt[ev] = (cnt[ev] ?? 0) + 1;
         if (ev !== 'touchmove' && ev !== 'pointermove') last = `${ev} → ${tag(e.target)}${'pointerType' in e ? ' ' + (e as PointerEvent).pointerType : ''}`;
-      }, { capture: true, passive: true });
+      }, { capture: true, passive: true, signal: off.signal });
     }
     let frames = 0;
     const tick = () => {
-      if (!box.isConnected) return;
+      if (!box.isConnected) return off.abort();
       frames++;
       const p = s.player;
       box.textContent = [
@@ -345,6 +348,8 @@ export function showGame(setup: GameSetup) {
   }
   // 다른 앱으로 넘어가면 저절로 멈춘다
   const onHide = () => {
+    // 아이폰은 뒤로 간 탭을 메모리가 모자라면 pagehide 없이 닫는다 → 숨을 때마다 그때까지의 결과를 기기에 보관해 둔다 (판을 이어 끝내면 같은 판 id 로 덮어쓴다)
+    if (document.hidden) onLeave();
     if (document.hidden && !ended && !run.paused && s.phase === 'play') openPause();
   };
   window.addEventListener('keydown', onKey);

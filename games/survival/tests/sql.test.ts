@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ZODIAC_IDS } from '../src/data/balance';
@@ -18,7 +18,8 @@ import { LIMITS, characterPrice, coinCap, endlessCoinCap } from '../src/game/pro
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
 // 뒤 파일이 같은 함수를 다시 정의하면 그쪽이 실제 값이다
-const sql = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql', '055_survival_hell.sql'].map(read).join('\n');
+const FILES = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql', '055_survival_hell.sql'];
+const sql = FILES.map(read).join('\n');
 
 /** 함수 하나의 본문 */
 function body(name: string): string {
@@ -29,6 +30,16 @@ function body(name: string): string {
 /** values 줄: ('a', 1, 2) → ['a', 1, 2] */
 const rows = (name: string) =>
   [...body(name).matchAll(/^\s*\(([^)]+)\),?\s*$/gm)].map((m) => m[1].split(',').map((c) => (c.trim().startsWith("'") ? c.trim().slice(1, -1) : Number(c))));
+
+describe('SQL 파일 목록', () => {
+  it('서바이벌 함수를 다시 정의하는 마이그레이션은 모두 위 목록에 있다 (빠지면 예전 정의를 검사하게 된다)', () => {
+    const dir = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url));
+    const redefine = readdirSync(dir)
+      .filter((f) => f.endsWith('.sql'))
+      .filter((f) => /create\s+or\s+replace\s+function\s+public\._?survival_/i.test(readFileSync(dir + f, 'utf8')));
+    expect(redefine.filter((f) => !FILES.includes(f))).toEqual([]);
+  });
+});
 
 describe('SQL의 표가 게임 데이터와 같다', () => {
   it('영구 강화: 항목 · 최대 레벨 · 첫 비용 · 배수', () => {
