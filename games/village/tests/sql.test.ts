@@ -13,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, 
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -177,7 +177,7 @@ describe('SQL의 권한 규칙', () => {
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]).filter((f, i, a) => a.indexOf(f) === i);
   /** 화면이 부르는 함수 (전부) */
   const OPEN = [
-    'village_assign', 'village_build', 'village_claim_goal', 'village_craft', 'village_daily_claim', 'village_expand', 'village_feast', 'village_harvest', 'village_monuments', 'village_move', 'village_place',
+    'village_admin_set_state', 'village_assign', 'village_build', 'village_claim_goal', 'village_craft', 'village_daily_claim', 'village_expand', 'village_feast', 'village_harvest', 'village_monuments', 'village_move', 'village_place',
     'village_praise', 'village_rename', 'village_request_done', 'village_request_skip', 'village_sell', 'village_state', 'village_store', 'village_upgrade', 'village_visit',
   ];
 
@@ -295,8 +295,31 @@ describe('SQL의 권한 규칙', () => {
     expect(b).toContain('if coalesce(p_entry, false) and exists (select 1 from public.profiles where id = me and is_admin) then');
     expect(b).toContain("resources = jsonb_set(resources, '{coin}', '10000'::jsonb)");
     expect(b).toContain('update public.wallets set sia_coins = 10000 where user_id = me;');
-    // 다른 함수는 관리자를 따로 보지 않는다
-    for (const f of fns.filter((x) => x !== 'village_state')) expect(body(f), f).not.toContain('is_admin');
+    // 다른 함수는 profiles.is_admin 을 직접 보지 않는다 (062: 관리자인지는 _village_admin 하나로 본다)
+    for (const f of fns.filter((x) => x !== 'village_state' && x !== '_village_admin')) expect(body(f), f).not.toContain('is_admin');
+    expect(body('_village_admin')).toContain('select coalesce((select p.is_admin from public.profiles p where p.id = p_user), false)');
+  });
+
+  it('관리자 계정 (062): 최고 레벨 · 짓기 · 사기 제한 없음 · 값을 내지 않음 · 전시 마을', () => {
+    // 관리자를 보는 함수는 정해져 있다
+    const uses = fns.filter((f) => f !== '_village_admin' && body(f).includes('public._village_admin(')).sort();
+    expect(uses).toEqual(['_village_state_json', 'village_admin_set_state', 'village_build', 'village_expand', 'village_state', 'village_upgrade']);
+    expect(body('_village_state_json')).toContain("'admin', public._village_admin(p_user),");
+    const st = body('village_state').replace(/\s+/g, ' ');
+    expect(st).toContain("if public._village_admin(me) then update public.village_profiles set level = public._village_const('max_level')::int, exp = 0, land_stage = 6");
+    const b = body('village_build').replace(/\s+/g, ' ');
+    expect(b).toContain("if (not adm or p_type = 'hall') and cnt >= mx then raise exception");
+    expect(b).toContain("if not adm and ty.build_sec > 0 and not public._village_slot_free(me) then raise exception 'no slot'; end if;");
+    expect(b).toContain('if not adm then perform public._village_spend(me, ty.rice, ty.wood, ty.stone, ty.coin);');
+    const u = body('village_upgrade').replace(/\s+/g, ' ');
+    expect(u).toContain("if adm then null; elsif b.type = 'hall' then");
+    expect(u).toContain("if not adm and not public._village_slot_free(me) then raise exception 'no slot'; end if;");
+    expect(u).toContain('if not adm then perform public._village_spend(me, ty.rice * m / 10, ty.wood * m / 10, st, cn); end if;');
+    const ex = body('village_expand').replace(/\s+/g, ' ');
+    expect(ex).toContain("if not adm then if p.level < (public._village_table('land_need'))[p.land_stage + 1] then raise exception 'village level'; end if; perform public._spend_sia_coin(");
+    const ss = body('village_admin_set_state');
+    expect(ss.indexOf("if not public._village_admin(me) then raise exception 'not admin'; end if;")).toBeLessThan(ss.indexOf('perform public._village_profile_row(me);'));
+    expect(ss).toContain('why := public._village_place_error(me, ty.type, bx, by_, null);');
   });
 
   it('기념물 (053): 조건 표 · 다른 게임의 기록은 읽기만', () => {

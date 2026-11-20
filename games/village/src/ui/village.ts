@@ -5,9 +5,10 @@ import { GAMES, MONUMENTS, type GameStats } from '../data/monuments';
 import { goalText, josa } from '../data/goals';
 import { RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
-  batchMax, buildCost, buildSec, busyCount, canPay, capSec, countOf, effRate, feasting, goalStatus, hallLevel, market, marketLimit, maxCount, nextUnlock, ratePct, residentOf, residentPct, sellCoins,
-  newVillage, praiseLeft, sellLeft, slots, standing, storageCap, stored, unitSec, upgradeCost, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
+  batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, payOf, ratePct, residentOf, residentPct, sellCoins,
+  newVillage, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
 } from '../game/rules';
+import { makeShowcase } from '../data/showcase';
 import { ApiError, LOCAL_MODE, type Ranking, type VillageApi, type Visit } from '../net/api';
 import { worldHome, zodiacFace, zodiacFull } from '../net/world';
 import { VillageScene, type SceneData, type SceneHooks } from '../scenes/VillageScene';
@@ -60,6 +61,8 @@ function reason(e: unknown, s: VillageState): string {
     'already praised': '오늘은 이 마을을 이미 칭찬했어요',
     'praise limit': '칭찬은 하루에 다섯 번까지 할 수 있어요',
     'need login': '로그인이 필요해요',
+    'not admin': '관리자만 할 수 있어요',
+    'bad state': '전시 마을의 모양이 올바르지 않아요',
   };
   return map[e.message] ?? '지금은 할 수 없어요';
 }
@@ -616,29 +619,38 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         : '<p class="soft empty">보관함이 비어 있어요. 건물이나 장식물을 누르고 [보관]을 누르면 여기에 들어와요</p>';
     } else {
       // 장식 탭에는 길도 함께. 특별 탭에는 시아코인으로 사는 것 (땅 넓히기 · 특별 건물)
-      const list = BUILDINGS.filter((d) => d.id !== 'hall' && !isReward(d.id) && (tab === 'main' ? d.kind === 'main' : tab === 'special' ? d.kind === 'special' : d.kind === 'deco' || d.kind === 'road'));
+      // 주민 선물 · 기념물은 지을 수 없다 (관리자는 장식 탭에서 바로 놓을 수 있다)
+      const list = BUILDINGS.filter((d) => d.id !== 'hall' && (state.admin || !isReward(d.id)) && (tab === 'main' ? d.kind === 'main' : tab === 'special' ? d.kind === 'special' : d.kind === 'deco' || d.kind === 'road'));
       rows = (tab === 'special' ? landRow() : '') + list
         .map((d) => {
           const have = countOf(state, d.id);
           const max = maxCount(d.id, p.level);
           const next = nextUnlock(state, d.id);
+          const more = canHaveMore(state, d.id);
           let side: string;
-          if (have < max) side = `<button class="btn small primary" data-build="${d.id}">${d.kind === 'deco' || d.kind === 'road' ? '놓기' : '짓기'}</button>`;
+          if (more) side = `<button class="btn small primary" data-build="${d.id}">${d.kind === 'deco' || d.kind === 'road' ? '놓기' : '짓기'}</button>`;
           else if (next !== null && next > p.level) side = `<span class="lock">🔒 마을 레벨 ${next}</span>`;
           else side = '<span class="lock">모두 가졌어요</span>';
           const total = d.cap > 0 ? d.cap : Math.max(max, have);
-          return `<div class="b-row ${have < max ? '' : 'off'}">
+          // 관리자: 개수 제한 · 값이 없다
+          const costs = state.admin ? '<span class="cost pts">관리자 무료</span>' : `${siaHtml(d.sia, state.sia)}${costHtml(buildCost(d.id), p.resources)}`;
+          return `<div class="b-row ${more ? '' : 'off'}">
             ${art(d.id, 1)}
-            <div class="b-tx"><b>${d.name} <small>${have}/${total}</small></b><span class="soft">${d.desc}</span>
-              <span class="costs">${siaHtml(d.sia, state.sia)}${costHtml(buildCost(d.id), p.resources)}${d.buildSec ? `<span class="cost">${icon('time')}${duration(buildSec(state, d.id))}</span>` : ''}${d.points ? `<span class="cost pts">번영도 +${d.points}</span>` : ''}</span></div>
+            <div class="b-tx"><b>${d.name} <small>${state.admin ? `${have}개` : `${have}/${total}`}</small></b><span class="soft">${d.desc}</span>
+              <span class="costs">${costs}${d.buildSec ? `<span class="cost">${icon('time')}${duration(buildSec(state, d.id))}</span>` : ''}${d.points ? `<span class="cost pts">번영도 +${d.points}</span>` : ''}</span></div>
             ${side}
           </div>`;
         })
         .join('');
     }
     const note = tab === 'special' ? `<p class="soft sia-note">${icon('sia')} 시아코인 <b>${num(state.sia)}</b> · SIA WORLD 의 어느 게임이든 한 판을 끝낼 때마다 1코인을 받아요</p>` : '';
-    return `<div class="sheet-head"><h3>${menuIcon('build', '🔨')} 짓기</h3><span class="soft">짓는 중 ${busyCount(state)}/${slots(state)}</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
-      <div class="seg wide">${tabs}</div>${note}<div class="b-list">${rows}</div>`;
+    // 관리자만: 마을을 다 자란 모습(전시 마을)으로 바꾼다
+    const admin = state.admin && tab === 'special'
+      ? `<div class="b-row"><span class="b-art land">전시</span><div class="b-tx"><b>전시 마을로 꾸미기 <small>관리자</small></b><span class="soft">모든 땅 · 모든 건물(최고 레벨) · 장식물 · 선물 · 기념물을 다 놓은 최종 모습으로 바꿔요. 지금 마을의 건물 · 주민은 사라져요</span></div>
+          <button class="btn small primary" data-showcase>꾸미기</button></div>`
+      : '';
+    return `<div class="sheet-head"><h3>${menuIcon('build', '🔨')} 짓기</h3><span class="soft">${state.admin ? `짓는 중 ${busyCount(state)} · 제한 없음` : `짓는 중 ${busyCount(state)}/${slots(state)}`}</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+      <div class="seg wide">${tabs}</div>${note}<div class="b-list">${admin}${rows}</div>`;
   }
 
   /** 땅 넓히기 (특별 탭의 첫 줄) */
@@ -648,11 +660,12 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const size = LAND_SIZES[stage];
     if (stage >= LAND_SIZES.length - 1) return `<div class="b-row off"><span class="b-art land">${size}×${size}</span><div class="b-tx"><b>땅 넓히기</b><span class="soft">땅을 끝까지 넓혔어요</span></div><span class="lock">끝</span></div>`;
     const next = LAND_SIZES[stage + 1];
-    const locked = p.level < LAND_NEED[stage];
+    const locked = !landOpen(state);
+    const price = siaOf(state, LAND_PRICE[stage]);
     return `<div class="b-row ${locked ? 'off' : ''}"><span class="b-art land">${next}×${next}</span>
       <div class="b-tx"><b>땅 넓히기 <small>${stage}/6</small></b><span class="soft">${size}×${size} → ${next}×${next} 칸. 건물은 그 자리에 그대로 있어요</span>
-        <span class="costs">${siaHtml(LAND_PRICE[stage], state.sia)}</span></div>
-      ${locked ? `<span class="lock">🔒 마을 레벨 ${LAND_NEED[stage]}</span>` : `<button class="btn small primary" data-expand ${state.sia < LAND_PRICE[stage] ? 'disabled' : ''}>넓히기</button>`}</div>`;
+        <span class="costs">${state.admin ? '<span class="cost pts">관리자 무료</span>' : siaHtml(price, state.sia)}</span></div>
+      ${locked ? `<span class="lock">🔒 마을 레벨 ${LAND_NEED[stage]}</span>` : `<button class="btn small primary" data-expand ${state.sia < price ? 'disabled' : ''}>넓히기</button>`}</div>`;
   }
 
   /** 잔치 마당: 잔치 열기 */
@@ -750,11 +763,13 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (b.state === 'done' && upgradable(b.type)) {
       if (b.level >= CONST.building_max_level) up = '<p class="up-note">최고 레벨이에요</p>';
       else {
-        const c = upgradeCost(b.type, b.level);
+        // 관리자는 레벨 조건 · 건설 슬롯 · 값이 없다
+        const c = payOf(state, upgradeCost(b.type, b.level));
+        const gate = upgradeGate(state, b);
         let block = '';
-        if (b.type === 'hall' && p.level < HALL_NEED[b.level - 1]) block = `마을 레벨 ${HALL_NEED[b.level - 1]}이 되면 올릴 수 있어요`;
-        else if (b.type !== 'hall' && b.level >= hallLevel(state)) block = '마을 회관 레벨을 먼저 올려 주세요';
-        else if (busyCount(state) >= slots(state)) block = `짓는 중인 건물이 ${slots(state)}개예요`;
+        if (gate === 'village level') block = `마을 레벨 ${HALL_NEED[b.level - 1]}이 되면 올릴 수 있어요`;
+        else if (gate === 'hall level') block = '마을 회관 레벨을 먼저 올려 주세요';
+        else if (!slotFree(state)) block = `짓는 중인 건물이 ${slots(state)}개예요`;
         else if (!canPay(p, c)) block = '자원이 모자라요';
         const gain = d.product
           ? ` · 한 시간에 ${num(Math.floor((effRate(state, { ...b, level: b.level + 1 }))))}개`
@@ -765,7 +780,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
               : recipeOf(b.type)
                 ? ` · 한 번에 ${batchMax(b.type, b.level + 1)}개, 더 빨리`
                 : '';
-        up = `<div class="up-box"><div class="up-tx"><b>레벨 ${b.level + 1}로 올리기</b><span class="costs">${costHtml(c, p.resources)}<span class="cost">${icon('time')}${duration(upgradeSec(state, b.type, b.level))}</span></span>
+        up = `<div class="up-box"><div class="up-tx"><b>레벨 ${b.level + 1}로 올리기</b><span class="costs">${state.admin ? '<span class="cost pts">관리자 무료</span>' : costHtml(c, p.resources)}<span class="cost">${icon('time')}${duration(upgradeSec(state, b.type, b.level))}</span></span>
           <span class="soft">${block || `레벨 ${b.level + 1}${gain}`}</span></div>
           <button class="btn primary" data-upgrade="${b.id}" ${block ? 'disabled' : ''}>업그레이드</button></div>`;
       }
@@ -907,6 +922,16 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         openSheet(null);
         apply(s);
       });
+    } else if (d.showcase !== undefined) {
+      // 관리자만 (서버도 관리자가 아니면 'not admin' 으로 거절한다)
+      void ask('전시 마을로 꾸미기', '마을을 <b>최종 모습</b>(모든 땅 · 모든 건물 최고 레벨 · 장식물 · 선물 · 기념물)으로 바꿔요.<br/>지금 마을의 건물 · 주민 · 부탁은 모두 사라지고 되돌릴 수 없어요', '꾸미기').then(
+        (yes) => yes && sheetAct(bt, () => api.adminSetState(makeShowcase(api.now())), (s) => {
+          sfx('win');
+          toast('전시 마을로 꾸몄어요!', 2600);
+          openSheet(null);
+          apply(s);
+        }),
+      );
     } else if (d.feast !== undefined) {
       sheetAct(bt, () => api.feast(), (s) => {
         sfx('win');
@@ -959,7 +984,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         stopPlacing();
         apply(s);
         // 길은 이어서 놓는다 (더 놓을 수 있고 값이 있으면)
-        if (!movingId && BUILDING[type].kind === 'road' && countOf(s, type) < maxCount(type, s.profile.level) && canPay(s.profile, buildCost(type))) startPlacing(type, null);
+        if (!movingId && BUILDING[type].kind === 'road' && canHaveMore(s, type) && canPay(s.profile, payOf(s, buildCost(type)))) startPlacing(type, null);
       },
     ).finally(() => (ok.disabled = false));
   });

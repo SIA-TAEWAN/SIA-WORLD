@@ -6,9 +6,10 @@ import { isResidentId, type ResidentId } from '../data/residents';
 import { GOALS } from '../data/goals';
 import {
   RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, praiseGive, praiseLeft, prosperityOf, refresh, rename,
-  grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
+  adminBoost, adminSetState, grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
   type HarvestResult, type VillageState,
 } from '../game/rules';
+import { makeShowcase } from '../data/showcase';
 import { worldSupabase } from './world';
 
 /**
@@ -121,6 +122,8 @@ export interface VillageApi {
   rename(name: string): Promise<VillageState>;
   /** [기념물] 화면: 조건을 다시 보고, 다른 게임의 기록(stats)과 함께 돌려준다 */
   monuments(): Promise<{ state: VillageState; stats: GameStats }>;
+  /** 관리자만: 내 마을을 주어진 모양(전시 마을, data/showcase.ts 의 makeShowcase)으로 바꾼다. 관리자가 아니면 ApiError('not admin') */
+  adminSetState(state: VillageState): Promise<VillageState>;
 }
 
 export interface Store {
@@ -146,8 +149,9 @@ const LOCAL_KEY = 'siavillage:local';
 /**
  * 이 기기에만 저장하는 마을. fast: 시간을 그 배수로 빨리 돌린다 (개발용 ?fast=60 → 1초가 1분).
  * 빨리 돌린 시간은 저장해 두므로 새로 고쳐도 뒤로 가지 않는다.
+ * admin: 관리자 계정처럼 (개발용 ?admin=1. 서버의 profiles.is_admin)
  */
-export function createLocalApi(store: Store, realNow: () => number = () => Date.now(), fast = 1, me = { id: 'local', name: '시아' }, stats: GameStats = noStats()): VillageApi {
+export function createLocalApi(store: Store, realNow: () => number = () => Date.now(), fast = 1, me = { id: 'local', name: '시아' }, stats: GameStats = noStats(), admin = false): VillageApi {
   interface Saved {
     state: VillageState;
     seq: number;
@@ -169,7 +173,11 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     const t = realNow();
     return Math.floor(t + skew0 + (t - t0) * (fast - 1));
   };
-  const open = (): Saved => read() ?? { state: newVillage(now()), seq: 0, skew: 0 };
+  const open = (): Saved => {
+    const d = read() ?? { state: newVillage(now()), seq: 0, skew: 0 };
+    d.state.admin = admin;
+    return d;
+  };
   const save = (d: Saved) => {
     d.skew = now() - realNow();
     try {
@@ -213,8 +221,13 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     async load() {
       return run((s, d) => {
         settle(s, now());
+        // 관리자: 마을 레벨 최고 · 땅 끝까지 (서버의 village_state 와 같이, 바뀌었으면 한 번 더 마무리)
+        if (adminBoost(s)) settle(s, now());
         grantMonuments(s, stats, now(), () => `local-${++d.seq}`);
       }).state;
+    },
+    async adminSetState(input) {
+      return run((s, d) => adminSetState(s, input, now(), () => `local-${++d.seq}`)).state;
     },
     async monuments() {
       const r = run((s, d) => {
@@ -400,6 +413,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
       return { state: cleanState(d), visit: cleanVisit(d.visit) };
     },
     rename: async (name) => cleanState(await call('village_rename', { p_name: name })),
+    adminSetState: async (state) => cleanState(await call('village_admin_set_state', { p_state: state })),
     async monuments() {
       const d = await call('village_monuments');
       return { state: cleanState(d), stats: cleanStats(d.stats) };
@@ -428,7 +442,8 @@ export async function getApi(user: { id: string; name: string }): Promise<Villag
       const [k, v] = part.split(':');
       if ((STAT_IDS as readonly string[]).includes(k)) stats[k as StatId] = Math.max(0, Math.floor(Number(v) || 0));
     }
-    return (api = createLocalApi(store, undefined, fast, user, stats));
+    // ?admin=1 관리자 계정처럼 (최고 레벨 · 짓기 제한 없음 · 값 없음 · [전시 마을로 꾸미기])
+    return (api = createLocalApi(store, undefined, fast, user, stats, params.get('admin') === '1'));
   }
   return (api = createSupabaseApi(await worldSupabase(), undefined, undefined, user.id));
 }
@@ -501,7 +516,7 @@ function seedLocal(store: Store) {
     /* 처음 상태 */
   }
   const t0 = Date.now() + (Number(d.skew) || 0);
-  const s = params.get('town') === '1' ? makeTown(t0) : d.state ? cleanState(d.state) : newVillage(t0);
+  const s = params.get('town') === 'showcase' ? makeShowcase(t0) : params.get('town') === '1' ? makeTown(t0) : d.state ? cleanState(d.state) : newVillage(t0);
   const num = (k: string, max: number) => Math.max(0, Math.min(max, Math.floor(Number(params.get(k)) || 0)));
   for (const k of RES_IDS) if (params.get(k) !== null) s.profile.resources[k] = num(k, 1e9);
   if (params.get('lv') !== null) {
