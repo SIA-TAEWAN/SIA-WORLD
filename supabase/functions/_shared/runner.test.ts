@@ -866,9 +866,9 @@ describe('Runner: 맞고 규칙 판 (MATGO_RULES)', () => {
   it('replay: 판이 다르면 409 RULES_CHANGED, 같거나 안 실었으면(예전 화면 = 1판) 받는다', async () => {
     const { m, runner, r } = await start();
     const n = soloOf(r.solo)!.n;
-    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [], rules: MATGO_RULES + 1 })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
-    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [], rules: 'x' })).rejects.toMatchObject({ status: 409 });
-    expect(await runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [], rules: MATGO_RULES })).toMatchObject({ ok: true });
+    await expect(runner.replay('r1', 'u1', { n, actions: [], rules: MATGO_RULES + 1 })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
+    await expect(runner.replay('r1', 'u1', { n, actions: [], rules: 'x' })).rejects.toMatchObject({ status: 409 });
+    expect(await runner.replay('r1', 'u1', { n, actions: [], rules: MATGO_RULES })).toMatchObject({ ok: true });
     expect(await runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [] })).toMatchObject({ ok: true });
     // 새 규칙(2판) 서버: 판을 안 실은 예전 화면은 1판으로 보고 거절한다
     const later = new Runner(m.store, bumped, seededRng(1));
