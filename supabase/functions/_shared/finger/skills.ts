@@ -242,7 +242,7 @@ export function specialEffect(s: RunState, i: number, a: number, ev: SimEvent[])
     case 'clone':
       for (const da of [-300, 300]) {
         const [dx, dy] = dirOf(a + da);
-        s.movers.push({ ...m, touching: [], vx: dx * m.v0, vy: dy * m.v0, r: Math.round(h.r * 0.6), atk: h.atk * 0.5, dx, dy, clone: true });
+        s.movers.push({ ...m, touching: [], zones: [], warp: -1, vx: dx * m.v0, vy: dy * m.v0, r: Math.round(h.r * 0.6), atk: h.atk * 0.5, dx, dy, clone: true });
       }
       break;
     case 'dawn':

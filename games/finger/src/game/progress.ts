@@ -246,6 +246,7 @@ export function whyText(why: string): string {
     'too many turns': `${MAX_TURNS}턴(끝없는 탑 ${TOWER_TURNS}턴)을 넘은 기록은 받지 않아요`,
     'tower locked': '끝없는 탑은 1-5 를 깨면 열려요',
     'bad inputs': '판 기록이 맞지 않아 받지 않았어요',
+    'old rules': '게임이 새로 바뀌어 이 판은 기록하지 못했어요. 새로고침해 주세요',
   };
   return m[why] ?? '서버가 받아 주지 않았어요';
 }

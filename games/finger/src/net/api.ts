@@ -29,6 +29,8 @@ export interface RunReport {
   run: string;
   stage: string;
   inputs: ShotInput[];
+  /** 판을 둔 화면의 규칙 판 번호 (FINGER_RULES). 예전에 보관한 판은 없음 → 서버가 'old rules' 로 거절 */
+  rules?: number;
 }
 
 export interface FinishAnswer {
@@ -149,7 +151,7 @@ export interface ServerClient {
 
 /** 서버가 일부러 거절한 까닭 (raise exception · Edge Function error 글자) — 다시 보내도 소용없다 */
 const REJECTS = [
-  'stage locked', 'tower locked', 'hero locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login',
+  'stage locked', 'tower locked', 'hero locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'old rules',
   'extra inputs', 'too many turns', 'bad ',
 ];
 /** 거절이면 까닭, 아니면(통신 문제) null */
@@ -190,7 +192,7 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
   };
   /** finger-finish 호출. 서버가 답한 거절(4xx)은 ApiError, 통신 실패·서버 오류는 Error */
   const send = async (r: RunReport): Promise<FinishAnswer> => {
-    const res = await withTimeout(c.functions.invoke('finger-finish', { body: { runId: r.run, inputs: r.inputs } }), FN_TIMEOUT_MS);
+    const res = await withTimeout(c.functions.invoke('finger-finish', { body: { runId: r.run, inputs: r.inputs, rules: r.rules ?? 0 } }), FN_TIMEOUT_MS);
     if (res.error) {
       const status = res.error.context?.status;
       let msg = res.error.message;

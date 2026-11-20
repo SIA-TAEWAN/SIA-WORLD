@@ -209,7 +209,10 @@ describe('서버 저장: 못 보낸 결과 보관 · 다시 보내기', () => {
     expect(await api.resend()).toBe(5);
     expect(store.map.has('siafinger:pending:u1')).toBe(false);
     const sent = f.calls.filter((x) => x.fn === 'finger-finish').at(-1)!.args as { runId: string; inputs: unknown[] };
-    expect(sent).toEqual({ runId: 'r6', inputs: [{ a: 2700, p: 50, s: 0 }] });
+    // 규칙 판 번호가 없는(예전에 보관한) 판은 0 으로 보낸다 → 서버가 'old rules' 로 거절
+    expect(sent).toEqual({ runId: 'r6', inputs: [{ a: 2700, p: 50, s: 0 }], rules: 0 });
+    await api.finish({ ...report('r7'), rules: 7 });
+    expect((f.calls.filter((x) => x.fn === 'finger-finish').at(-1)!.args as { rules: number }).rules).toBe(7);
   });
 
   it('서버가 거절하면(4xx) 보관하지 않고 까닭을 알린다', async () => {

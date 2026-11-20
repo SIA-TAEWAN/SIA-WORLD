@@ -362,6 +362,18 @@ describe('장애물', () => {
     expect(one.heroes[0].fallen).toBe(false);
   });
 
+  it('원숭이 분신은 본체와 구역 상태를 같이 쓰지 않는다: 가시밭 피해는 본체가 들어갈 때 한 번', () => {
+    const zone = { k: 'thorn' as const, x: 260, y: 300, w: 120, h: 300 };
+    const s = createRun(cfgOf([hero('monkey', { charge0: 99 })], [[foe(590, 50, { hp: 9999, cd: 99, r: 20 })]], { zones: [zone] }));
+    s.heroes[0].x = 320;
+    s.heroes[0].y = 800;
+    const ev = fly(s, { a: 2700, p: 1, s: 1 });
+    // 분신 둘은 본체 양옆으로 나가 좁은 가시밭을 비켜 간다 — 본체만 한 번 (예전에는 같은 배열을 같이 써서 매 스텝 다시 '들어감')
+    const own = ev.filter((e) => e.t === 'thorn');
+    expect(own.length).toBeLessThanOrEqual(3);
+    expect(s.heroes[0].hp).toBeGreaterThanOrEqual(s.heroes[0].maxHp - Math.round(s.heroes[0].maxHp * THORN_DMG));
+  });
+
   it('빨래판: 들어가는 순간 속도가 확 준다 (급제동)', () => {
     const s = base({ zones: [{ k: 'board', x: 200, y: 500, w: 240, h: 60 }] });
     s.heroes[0].x = 320;

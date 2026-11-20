@@ -45,6 +45,7 @@ import {
   type RunState,
   type StageDef,
   type UpgradeKey,
+  FINGER_RULES,
 } from '../sim';
 
 /**
@@ -529,9 +530,16 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   try {
     // 개발용 ?all=1 은 기기에만 연 상태라 기록하지 않는다
     if (!DEV_ALL) {
-      // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다
-      await api.resend().catch(() => 0);
-      runId = await api.start(id, party, mode);
+      // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다.
+      // 통신이 느리면 판마다 기다리느라 출발이 오래 멈추므로 여기서는 8초까지만 기다린다 (남은 것은 다음에)
+      const slow = setTimeout(() => toast('출발 준비 중…', 9000), 600);
+      await Promise.race([api.resend().catch(() => 0), new Promise((ok) => setTimeout(ok, 8000))]);
+      // 서버가 시작 때 남기는 레벨·강화 스냅숏과 같은 값으로 판을 만들려고 프로필을 다시 읽는다 (다른 기기에서 레벨을 올렸을 수 있다)
+      setProfile(await api.loadProfile().catch(() => profile));
+      runId = await api.start(id, party, mode).finally(() => {
+        clearTimeout(slow);
+        document.querySelector('.toast')?.remove();
+      });
       if (!runId) toast('서버에 연결하지 못했어요. 이번 판은 기록되지 않아요');
     }
   } catch (e) {
@@ -563,6 +571,8 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     backgroundColor: '#7cc08a',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3 },
+    // 소리는 공용 shared/sound.js 로만 낸다: Phaser 가 판마다 AudioContext 를 또 만들지 않게 (아이폰은 개수 제한이 있다)
+    audio: { noAudio: true },
     scene: [],
     banner: false,
   });
@@ -577,12 +587,12 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   let ended = false;
   let sent: Promise<Sent> | null = null;
   /** 조작 목록을 서버로 (한 판에 한 번) */
-  const finish = (s: RunState): Promise<Sent> => {
+  const finish = (s: RunState, inputs = s.log.slice()): Promise<Sent> => {
     sent ??= (async (): Promise<Sent> => {
       const out: Sent = { result: null, replay: null, offline: false, error: null, unrecorded: !runId && !DEV_ALL };
       if (DEV_ALL || !runId) return out;
       try {
-        const r = await api.finish({ run: runId, stage: id, inputs: s.log.slice() });
+        const r = await api.finish({ run: runId, stage: id, inputs, rules: FINGER_RULES });
         if (!r) return { ...out, offline: true };
         setProfile(r.profile);
         return { ...out, result: r.result, replay: r.replay };
@@ -657,11 +667,12 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
         return;
       }
       ended = true;
-      // 지금까지의 조작을 보낸다: 서버가 다시 돌리면 판이 끝나지 않은 실패 판이 된다
-      const out = await finish(run);
+      // 지금까지 끝난 턴의 조작만 보낸다: 서버가 다시 돌리면 판이 끝나지 않은 실패 판이 된다.
+      // 날아가는 중(조준이 아닌 때)이면 그 발사는 이미 s.log 에 있으니 빼야 한다 — 넣으면 서버가 그 발사를 끝까지 돌려 클리어로 남길 수 있다
+      const out = await finish(run, run.phase === 'aim' ? run.log.slice() : run.log.slice(0, run.turn));
       closeGame();
       if (out.error) toast(out.error);
-      else if (out.result?.coins) toast(tower ? `${run.wave}층까지 기록했어요 · 엽전 +${out.result.coins}` : `실패로 기록했어요 · 엽전 +${out.result.coins}`);
+      else if (out.result?.coins) toast(tower ? `${out.replay?.floors ?? run.wave}층까지 기록했어요 · 엽전 +${out.result.coins}` : `실패로 기록했어요 · 엽전 +${out.result.coins}`);
       else if (out.offline) toast('서버에 연결하지 못해 기록을 보관했어요');
       if (st) showStages(st.region);
       else showTower();

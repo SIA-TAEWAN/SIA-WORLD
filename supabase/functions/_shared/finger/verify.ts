@@ -24,6 +24,12 @@ export interface RunSnapshot {
 /** 다시 돌리기를 거절한 까닭 (Edge Function 이 그대로 돌려준다) */
 export class VerifyError extends Error {}
 
+/**
+ * 규칙 판 번호: 같은 조작 목록이 다른 결과를 내게 시뮬레이션·스테이지·대원 값을 바꾸면 1 올린다 (맞고 MATGO_RULES 와 같은 뜻).
+ * 화면은 판을 시작할 때의 번호를 결과와 함께 보내고, 서버(finger-finish)는 다르면 'old rules' 로 거절한다 — 예전 화면이 깬 판을 새 규칙으로 다시 돌려 엉뚱한 결과를 남기지 않게.
+ */
+export const FINGER_RULES = 1;
+
 /** 한 판에 받는 조작 수 상한 (= 판의 최대 턴) */
 export const MAX_INPUTS = MAX_TURNS;
 /** 끝없는 탑 한 판에 받는 조작 수 상한 */

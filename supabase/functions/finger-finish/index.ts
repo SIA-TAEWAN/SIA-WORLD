@@ -9,7 +9,7 @@
  * 거절은 4xx { error: '<까닭>' } (화면이 보관하지 않고 버린다), 서버 문제는 5xx (화면이 보관했다 다시 보낸다).
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
-import { VerifyError, verifyRun } from '../_shared/finger/verify.ts';
+import { FINGER_RULES, VerifyError, verifyRun } from '../_shared/finger/verify.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -39,11 +39,13 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   try {
     const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-    const { data: auth } = await sb.auth.getUser(token);
+    const { data: auth, error: authErr } = await sb.auth.getUser(token);
     const userId = auth?.user?.id;
-    if (!userId) return json({ error: 'need login' }, 401);
+    // 인증 서버가 잠깐 안 될 때(5xx · 통신 실패)는 'need login'(4xx: 화면이 기록을 버림) 대신 503: 화면이 보관했다 다시 보낸다
+    if (!userId) return authErr && !(authErr.status && authErr.status < 500) ? json({ error: 'auth unavailable' }, 503) : json({ error: 'need login' }, 401);
 
     const body = await req.json().catch(() => null);
+    if (body?.rules !== FINGER_RULES) return json({ error: 'old rules' }, 409);
     const runId = typeof body?.runId === 'string' ? body.runId : '';
     if (!/^[0-9a-f-]{36}$/i.test(runId)) return json({ error: 'bad run' }, 400);
 
