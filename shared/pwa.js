@@ -26,64 +26,6 @@ if (/Android/i.test(navigator.userAgent)) {
   }
 }
 
-/*
- * 점검 (설치한 앱에서만): 화면 아무 곳이나 2초 안에 6번 누르면 이 페이지의 화면 크기·viewport·판본을 알림으로 보여 준다.
- * 안드로이드 앱에서 아래 버튼이 가려지는 원인을 게임 화면 안에서 재려고 둔다
- */
-{
-  let taps = 0;
-  let first = 0;
-  window.addEventListener(
-    'pointerup',
-    () => {
-      if (!isStandalone()) return;
-      const now = Date.now();
-      if (now - first > 2000) {
-        first = now;
-        taps = 0;
-      }
-      if (++taps < 6) return;
-      taps = 0;
-      first = 0;
-      const probe = document.createElement('div');
-      probe.style.cssText =
-        'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:100dvh;padding-bottom:env(safe-area-inset-bottom)';
-      document.body.append(probe);
-      const dvh = probe.getBoundingClientRect().height - parseFloat(getComputedStyle(probe).paddingBottom);
-      const inset = getComputedStyle(probe).paddingBottom;
-      probe.remove();
-      const html = document.documentElement.outerHTML;
-      const asset = [...document.scripts].map((s) => s.src).find((s) => /assets\//.test(s)) || '';
-      const r = (el) => {
-        if (!el) return '-';
-        const b = el.getBoundingClientRect();
-        return `${Math.round(b.top)}~${Math.round(b.bottom)} (h ${Math.round(b.height)})`;
-      };
-      const name = (el) => (el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.classList[0] ? '.' + el.classList[0] : ''}` : '-');
-      // 화면 맨 아래 가운데에 있는 것과, 그 조상 가운데 화면 틀(가장 큰 것)
-      const low = document.elementFromPoint(innerWidth / 2, innerHeight - 4);
-      let frame = low;
-      for (let e = low; e && e !== document.body; e = e.parentElement) if (e.getBoundingClientRect().height >= innerHeight * 0.9) frame = e;
-      const vv = window.visualViewport;
-      alert(
-        [
-          location.pathname.replace(/^.*SIA-WORLD/, ''),
-          `inner ${innerWidth}×${innerHeight} · client ${document.documentElement.clientHeight} · screen ${screen.width}×${screen.height}`,
-          `100dvh ${Math.round(dvh)} · bottom inset ${inset}`,
-          `visual ${Math.round(vv?.height ?? 0)} top ${Math.round(vv?.offsetTop ?? 0)}/${Math.round(vv?.pageTop ?? 0)} · scroll ${Math.round(scrollY)} · zoom ${getComputedStyle(document.documentElement).zoom}`,
-          `html ${r(document.documentElement)} · body ${r(document.body)}`,
-          `bottom: ${name(low)} ${r(low)}`,
-          `frame: ${name(frame)} ${r(frame)}`,
-          `viewport: ${document.querySelector('meta[name="viewport"]')?.content}`,
-          `written: ${html.includes('처음부터 써 넣는다') ? 'yes' : 'no'} · asset ${asset.split('/').pop()}`,
-          `sw: ${navigator.serviceWorker?.controller ? 'on' : 'off'} · font ${getComputedStyle(document.body).fontSize}`,
-        ].join('\n'),
-      );
-    },
-    true,
-  );
-}
-
 const UPDATE_EVERY_MS = 30 * 60 * 1000;
 const UPDATE_GAP_MS = 60 * 1000;
 
