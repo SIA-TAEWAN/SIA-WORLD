@@ -28,6 +28,15 @@ let online: OnlineGame | null = null;
 const started = new Map<string, number>();
 
 const me = () => ({ id: clientId(), name: state.name });
+/** 이 화면이 마지막으로 다시 보인 때 (다른 앱으로 갔다 온 직후 방에서 빠졌으면 '연결이 끊겨서'로 안내) */
+let shownAt = 0;
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) shownAt = Date.now();
+});
+/** 대기방에서 접속이 안 보여도 이만큼은 기다린다 (아이폰에서 링크 복사 뒤 카카오톡으로 갔다 오는 동안) */
+const ABSENT_GRACE_MS = 12_000;
+/** 방에 막 들어온 사람은 접속 신호가 늦게 올 수 있어 이만큼은 빼지 않는다 */
+const JOIN_GRACE_MS = 10_000;
 /** 마지막 판의 승리 팀 (게임방으로 돌아갈 때 정산이 아직이면 같이 보낸다) */
 let lastWinner: number | null = null;
 export const WIND_LABEL: Record<WindMode, string> = { slow: '느리게 ±2', normal: '보통 ±5', fast: '빠르게 ±8' };
@@ -281,6 +290,8 @@ function renderRoom(id: string) {
   const sess = lobby!;
   const rs = roomSess!;
   const absentSince = new Map<string, number>();
+  /** 이 화면이 각 사람을 방 명단에서 처음 본 때 */
+  const seenSince = new Map<string, number>();
   let lastBeat = Date.now();
   const root = screen(
     `<header class="bar">
@@ -320,7 +331,6 @@ function renderRoom(id: string) {
       unsubC();
       clearInterval(iv);
       window.removeEventListener('pagehide', onHide);
-    window.removeEventListener('pagehide', onHide);
     },
   );
 
@@ -368,20 +378,18 @@ function renderRoom(id: string) {
       unsubC();
       clearInterval(iv);
       window.removeEventListener('pagehide', onHide);
-    window.removeEventListener('pagehide', onHide);
       void rs.leave();
       roomSess = null;
       void sess.setMyRoom(null);
       return renderLobby(sess);
     }
     if (!room.players.some((p) => p.id === clientId())) {
-      toast('방장이 게임방에서 내보냈어요');
+      toast(document.hidden || Date.now() - shownAt < 15_000 ? '연결이 끊겨 게임방에서 나왔어요' : '방장이 게임방에서 내보냈어요');
       unsubA();
       unsubB();
       unsubC();
       clearInterval(iv);
       window.removeEventListener('pagehide', onHide);
-    window.removeEventListener('pagehide', onHide);
       setScreenCleanup(null);
       void rs.leave();
       roomSess = null;
@@ -394,7 +402,6 @@ function renderRoom(id: string) {
       unsubC();
       clearInterval(iv);
       window.removeEventListener('pagehide', onHide);
-    window.removeEventListener('pagehide', onHide);
       setScreenCleanup(null);
       return startOnline(room, null);
     }
@@ -525,7 +532,7 @@ function renderRoom(id: string) {
   const unsubA = sess.subscribe(draw);
   const unsubB = rs.onPresence(draw);
   const unsubC = rs.onChat(() => renderChatLog(root, rs));
-  // 대기방에서 접속이 끊긴 사람은 바로 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
+  // 대기방에서 접속이 끊긴 사람은 잠시(ABSENT_GRACE_MS) 기다린 뒤 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
   const iv = setInterval(() => {
     const room = sess.room(id);
     if (!room || room.status !== 'waiting') return;
@@ -537,9 +544,10 @@ function renderRoom(id: string) {
       void backend!.touchRoom(id, clientId()).catch(() => undefined);
     }
     for (const p of room.players) {
-      if (rs.present.has(p.id)) absentSince.delete(p.id);
+      if (!seenSince.has(p.id)) seenSince.set(p.id, now);
+      if (rs.present.has(p.id) || now - seenSince.get(p.id)! < JOIN_GRACE_MS) absentSince.delete(p.id);
       else if (!absentSince.has(p.id)) absentSince.set(p.id, now);
-      else if (now - absentSince.get(p.id)! > 1500 && here[0]?.id === clientId()) {
+      else if (now - absentSince.get(p.id)! > ABSENT_GRACE_MS && here[0]?.id === clientId()) {
         absentSince.delete(p.id);
         void backend!.leaveRoom(id, p.id).then(() => sess.refetch());
       }
