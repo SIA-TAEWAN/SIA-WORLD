@@ -228,7 +228,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     const sat = excluded
       .map((n) => `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}</td><td>이번 판 쉼</td><td>${t.fmt(0)}</td></tr>`)
       .join('');
-    const satMe = t.resultSeat !== null && excluded.includes(t.resultSeat) ? '<p>칩이 모자라 이번 판은 쉬었어요</p>' : '';
+    const satMe = t.resultSeat !== null && excluded.includes(t.resultSeat) ? '<p>이번 판은 쉬었어요</p>' : '';
     return `<h3>♠️ 판 결과</h3>${satMe}<table>${rows}${sat}</table>`;
   },
 

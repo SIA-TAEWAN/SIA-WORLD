@@ -221,7 +221,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     const sat = excluded
       .map((n) => `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}</td><td>이번 판 쉼</td><td>${t.fmt(0)}</td></tr>`)
       .join('');
-    const satMe = t.resultSeat !== null && excluded.includes(t.resultSeat) ? '<p>칩이 모자라 이번 판은 쉬었어요</p>' : '';
+    const satMe = t.resultSeat !== null && excluded.includes(t.resultSeat) ? '<p>이번 판은 쉬었어요</p>' : '';
     const split = r.pots.some((x) => x.winners.length > 1) ? '<p>동점이라 판돈을 나눴어요</p>' : '';
     return `<h3>♥️ 판 결과</h3>${satMe}${split}<table>${rows}${sat}</table>`;
   },

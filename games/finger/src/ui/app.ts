@@ -649,7 +649,13 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       onEnd: async (s: RunState) => {
         if (ended) return;
         ended = true;
+        // 서버가 조작을 다시 돌려 보는 동안(최대 15초) 기다림 표시
+        const wait = document.createElement('div');
+        wait.className = 'overlay';
+        wait.innerHTML = '<div class="connecting"><div class="spinner"></div><p>기록을 저장하는 중…</p></div>';
+        root.appendChild(wait);
         const out = await finish(s);
+        wait.remove();
         if (st) showResult(s, st, party, out);
         else showTowerResult(s, party, out);
       },

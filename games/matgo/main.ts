@@ -1512,12 +1512,13 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     // 총통: 패를 다 나눠 주고 그 4장을 펼친 뒤에 (이어 보는 판이면 평소처럼 연출이 끝난 뒤)
     if (ev.t === 'chongtong') return dealFresh ? Math.max(0, dealStartAt + DEAL_MS + CHONG_CUTIN_AT - performance.now()) : null;
     // 패의 움직임과 함께 보여야 하는 것만 때를 맞춘다. 고·스톱·박 등은 카드 연출이 끝난 뒤 차례로 (그 뒤에 결과 창)
-    if (ev.t !== 'shake' && ev.t !== 'bomb' && ev.t !== 'ppeok' && ev.t !== 'capture' && ev.t !== 'sseul') return null;
+    if (ev.t !== 'shake' && ev.t !== 'bomb' && ev.t !== 'ppeok' && ev.t !== 'capture' && ev.t !== 'sseul' && !(ev.t === 'ppeok_eat' && ev.own)) return null;
     const base = eventBase.get(ev.id);
     if (base === undefined) return null;
     // 흔들기는 패를 낼 때, 폭탄은 세 장이 다 내려앉은 뒤, 뻑은 뒤집은 패가 내려앉을 때, 5광은 가져간 뒤
     // 판쓸이는 먹은 패가 다 놓인 뒤 (그때 상대 피 1장이 넘어온다)
-    const at = ev.t === 'shake' ? 200 : ev.t === 'bomb' ? BOMB_CUTIN_AT : ev.t === 'ppeok' ? AT_FLIP + 600 : ev.t === 'sseul' ? SSEUL_AT : AT_TAKE + 600;
+    // 자뻑은 뻑 더미를 가져갈 때 (상대 피가 넘어오는 때와 같이)
+    const at = ev.t === 'shake' ? 200 : ev.t === 'bomb' ? BOMB_CUTIN_AT : ev.t === 'ppeok' ? AT_FLIP + 600 : ev.t === 'sseul' ? SSEUL_AT : ev.t === 'ppeok_eat' ? AT_TAKE + 300 : AT_TAKE + 600;
     return Math.max(0, planBuiltAt + base + at - performance.now());
   },
 

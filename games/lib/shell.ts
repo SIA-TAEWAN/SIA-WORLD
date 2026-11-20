@@ -254,10 +254,14 @@ export function toast(msg: string) {
 let outdatedShown = false;
 
 /** 게임 중 나가기 안내: 나간 자리를 어떻게 두는지 (runner 의 leftAction·leftUsesTimeout 과 맞춘다) */
+const BUSY_NOTE = '이번 판이 끝날 때까지 다른 카드 방에는 들어갈 수 없어요.';
 const LEAVE_NOTE: Partial<Record<GameId, string>> = {
-  poker: '나가면 이번 판은 자동으로 체크하거나(낼 돈이 있으면) 다이하고, 이미 낸 칩은 돌려받지 못해요.',
-  holdem: '나가면 이번 판은 자동으로 체크하거나(낼 돈이 있으면) 폴드하고, 이미 낸 칩은 돌려받지 못해요.',
-  blackjack: '나가면 아직 걸지 않았으면 이번 판은 쉬고, 이미 걸었으면 스탠드해요. 결과는 내 지갑에 반영돼요.',
+  poker: `나가면 이번 판은 자동으로 체크하고, 콜해야 하면 다이해요. 이미 낸 칩은 판 결과대로 정산되고, ${BUSY_NOTE}`,
+  holdem: `나가면 이번 판은 자동으로 체크하고, 콜해야 하면 폴드해요. 이미 낸 칩은 판 결과대로 정산되고, ${BUSY_NOTE}`,
+  blackjack: `나가면 아직 걸지 않았으면 이번 판은 쉬고, 이미 걸었으면 스탠드해요. 결과는 내 지갑에 반영되고, ${BUSY_NOTE}`,
+  matgo: `나가면 이번 판은 AI가 대신하고 결과는 내 지갑에 반영돼요. ${BUSY_NOTE}`,
+  // 룰렛: 나가면 자리는 바로 비고, 확정한 베팅은 이미 빠져 결과대로 지급된다 (다른 방 입장도 막지 않는다)
+  roulette: '나가도 이미 확정한 베팅은 결과대로 내 지갑에 반영돼요.',
 };
 export function showOutdated() {
   if (outdatedShown) return;
@@ -489,13 +493,15 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
             const humans = seats.filter((s) => s.user_id && !s.left_game);
             const ais = seats.filter((s) => !s.user_id || s.left_game).length;
             const open = r.status === 'playing' ? seats.filter((s) => (!s.user_id || s.left_game) && !s.pending_user_id).length : ais;
-            const full = open === 0;
+            // 내가 아직 앉아 있는 방 (판 도중 다른 화면으로 나왔을 때): 가득 차 보여도 돌아갈 수 있다
+            const mine = seats.some((s) => s.user_id === me.userId && !s.left_game);
+            const full = open === 0 && !mine;
             const playing = r.status === 'playing';
-            return `<div class="room-row ${playing ? 'playing' : ''}">
+            return `<div class="room-row ${playing ? 'playing' : ''} ${mine ? 'mine' : ''}">
               <div class="rn">${r.has_password ? '🔒 ' : ''}${esc(r.name)}
                 <small>기본 ${m.wallet.formatAmount(r.base_unit)} · ${humans.map((h) => esc(h.nickname)).join(', ')}${ui.noAi ? ` · ${humans.length}/${seats.length}명` : ais ? ` · AI ${ais}` : ''}</small></div>
               <span class="st">${playing ? '게임 중' : '대기'}</span>
-              <button class="btn ${full ? '' : 'primary'}" data-id="${r.id}" data-pw="${r.has_password ? 1 : 0}" ${full ? 'disabled' : ''}>${full ? '가득 참' : playing && !ui.noAi ? '관전·예약' : '입장'}</button>
+              <button class="btn ${full ? '' : 'primary'}" data-id="${r.id}" data-pw="${mine ? 0 : r.has_password ? 1 : 0}" ${full ? 'disabled' : ''}>${mine ? '돌아가기' : full ? '가득 참' : playing && !ui.noAi ? '관전·예약' : '입장'}</button>
             </div>`;
           })
           .join('')

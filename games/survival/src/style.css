@@ -12,7 +12,7 @@ button, input { font: inherit; color: inherit; }
 
 /* 세로 화면 기준: PC에서는 세로 비율(9:16) 그대로 가운데 */
 #stage {
-  position: relative; height: 100%; width: min(100vw, calc(100vh * 9 / 16)); width: min(100vw, calc(100dvh * 9 / 16));
+  position: relative; height: 100%; aspect-ratio: 9 / 16; width: auto; max-width: 100vw;
   margin: 0 auto; overflow: hidden; background: var(--sky-gradient);
 }
 @media (min-aspect-ratio: 9/16) {
@@ -267,17 +267,17 @@ em > .ico { margin: 0 auto; }
 .mood i { position: absolute; display: none; }
 .m-bamboo .mood { background: linear-gradient(color-mix(in srgb, var(--matgo-mat-dark) 30%, transparent), transparent 22%, transparent 78%, color-mix(in srgb, var(--matgo-mat-dark) 30%, transparent)); }
 .m-palace .mood { background: color-mix(in srgb, var(--sky-deep) 26%, transparent); }
-/* 달: 오른쪽 위의 둥근 달 */
+/* 달: 오른쪽 위, HUD(경험치 바·×1·⏸ 버튼) 아래 */
 /* 달빛 궁궐의 달: 테두리 있는 동그라미는 조이스틱처럼 보여서, 은은한 달무리를 두른 초승달로 (안쪽 그림자로 깎는다) */
 .m-palace .mood i:first-child {
-  display: block; right: 9%; top: 12%; width: calc(var(--u) * 84); height: calc(var(--u) * 84); border-radius: 50%; transform: rotate(-24deg);
+  display: block; right: 9%; top: calc(env(safe-area-inset-top) + var(--u) * 150); width: calc(var(--u) * 84); height: calc(var(--u) * 84); border-radius: 50%; transform: rotate(-24deg);
   box-shadow: inset calc(var(--u) * -20) calc(var(--u) * -6) 0 0 var(--panel-strong),
     0 0 calc(var(--u) * 46) calc(var(--u) * 10) color-mix(in srgb, var(--panel-strong) 22%, transparent);
   opacity: 0.92;
 }
 /* 달 둘레의 작은 별 */
 .m-palace .mood i:last-child {
-  display: block; right: 30%; top: 9%; width: calc(var(--u) * 5); height: calc(var(--u) * 5); border-radius: 50%; background: var(--panel-strong); opacity: 0.8;
+  display: block; right: 30%; top: calc(env(safe-area-inset-top) + var(--u) * 130); width: calc(var(--u) * 5); height: calc(var(--u) * 5); border-radius: 50%; background: var(--panel-strong); opacity: 0.8;
   box-shadow: calc(var(--u) * -140) calc(var(--u) * 46) 0 0 var(--panel-strong), calc(var(--u) * 150) calc(var(--u) * 150) 0 calc(var(--u) * -1) var(--panel-strong),
     calc(var(--u) * -60) calc(var(--u) * 120) 0 calc(var(--u) * -1) var(--panel-strong), calc(var(--u) * 40) calc(var(--u) * -14) 0 calc(var(--u) * -1) var(--panel-strong);
 }
@@ -421,3 +421,10 @@ em > .ico { margin: 0 auto; }
   .hero { min-height: 90px; }
   .info-stage img { max-height: 110px; }
 }
+
+/* 세로가 짧은 화면: 목록만 스크롤되고 아래 버튼(시작 ▶ · 강화 초기화 · 다시하기)은 늘 보이게 */
+.select > .maps { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 4px; }
+.select > .maps > .map { flex: none; }
+.upgrade > .up-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.upgrade > .up-list > .up-row { flex: none; }
+.result > .result-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; }

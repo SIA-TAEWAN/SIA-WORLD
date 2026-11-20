@@ -1,11 +1,13 @@
 /**
  * SIA WORLD 앱(PWA) 공용 모듈 — 로비와 모든 게임 페이지가 실행 중에 불러온다 (빌드에 넣지 않는다).
  *  - 사이트 최상위의 sw.js 를 최상위 범위로 등록하고, 새 판본을 자주 확인한다
- *  - 새 판본이 준비되면 아래쪽에 '새 버전이 있어요 · 새로고침' 띠를 띄운다 (눌러야만 새로고침. 게임 중에 저절로 바뀌지 않는다)
+ *  - 새 판본이 준비되면 '새 버전이 있어요 · 새로고침' 띠를 띄운다 (눌러야만 새로고침. 게임 중에 저절로 바뀌지 않는다)
+ *    로비는 아래쪽, 게임 페이지는 아래 조작(조이스틱·버튼)을 덮지 않게 위쪽에 작은 알약으로
  *  - 로비용: 앱 설치 버튼(안드로이드·PC 크롬) / 홈 화면에 추가 안내(아이폰·아이패드 사파리) 상태
  *
  * 게임 페이지: <script type="module" src="../../shared/pwa.js" vite-ignore></script>  (vite-ignore: Vite 가 묶지 않게)
- * 로컬 개발 서버(localhost)에서는 등록하지 않는다 (개발 중 파일이 캐시에 남지 않게). 확인하려면 주소에 ?pwa=1
+ * 로컬 개발 서버(localhost)에서는 등록하지 않고, 예전에 ?pwa=1 로 등록해 둔 워커도 지운다 (개발 중 파일이 캐시에 남지 않게).
+ * 확인하려면 주소에 ?pwa=1 (이 탭에서는 계속 켜진다)
  */
 
 /** 사이트 최상위 (이 파일은 shared/ 에 있다) */
@@ -29,10 +31,11 @@ if (/Android/i.test(navigator.userAgent)) {
 const UPDATE_EVERY_MS = 30 * 60 * 1000;
 const UPDATE_GAP_MS = 60 * 1000;
 
+const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+
 function swAllowed() {
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return false;
-  const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-  if (!local) return true;
+  if (!isLocal) return true;
   try {
     if (new URLSearchParams(location.search).get('pwa') === '1') sessionStorage.setItem('sia-pwa-dev', '1');
     return sessionStorage.getItem('sia-pwa-dev') === '1';
@@ -65,13 +68,30 @@ function checkUpdate() {
 function watchInstalling(worker) {
   if (!worker) return;
   worker.addEventListener('statechange', () => {
-    // 이미 다른 워커가 이 페이지를 맡고 있을 때만 '업데이트' (처음 설치는 그냥 켜진다)
-    if (worker.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+    // 이미 켜진 워커가 있을 때만 '업데이트' (처음 설치는 그냥 켜진다).
+    // controller 가 아니라 reg.active 로 본다: 첫 설치 직후의 페이지는 controller 가 없을 수 있다
+    if (worker.state === 'installed' && reg?.active && reg.active !== worker) showUpdateBanner();
   });
 }
 
+/** localhost 에서 ?pwa=1 없이 열었다: 예전에 등록해 둔 워커와 그 캐시를 지운다 */
+async function unregisterLocal() {
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+    if (regs.length && 'caches' in window) {
+      for (const key of await caches.keys()) if (key.startsWith('sia-')) await caches.delete(key);
+    }
+  } catch {
+    /* 지우지 못해도 개발에는 지장이 없다 */
+  }
+}
+
 async function register() {
-  if (!swAllowed()) return;
+  if (!swAllowed()) {
+    if (isLocal && 'serviceWorker' in navigator && window.isSecureContext) await unregisterLocal();
+    return;
+  }
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (wantReload) return reloadOnce();
     // 다른 탭에서 새 판본으로 넘어갔다 → 이 탭은 예전 화면 그대로. 띠만 띄우고 누르면 새로고침
@@ -86,7 +106,7 @@ async function register() {
     return;
   }
   lastCheck = Date.now();
-  if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner();
+  if (reg.waiting && reg.active) showUpdateBanner();
   watchInstalling(reg.installing);
   reg.addEventListener('updatefound', () => watchInstalling(reg.installing));
   setInterval(checkUpdate, UPDATE_EVERY_MS);
@@ -110,6 +130,12 @@ function applyUpdate() {
 
 let banner = null;
 
+/** 로비(사이트 최상위 index.html)인지. 아니면 게임 페이지 → 띠를 위쪽 작은 알약으로 */
+function isLobby() {
+  const p = location.pathname;
+  return p === ROOT.pathname || p === `${ROOT.pathname}index.html`;
+}
+
 function showUpdateBanner() {
   if (banner || reloading) return;
   const host = document.createElement('div');
@@ -118,16 +144,26 @@ function showUpdateBanner() {
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
     <style>
-      :host { all: initial; }
+      :host { all: initial; pointer-events: none; }
       .bar {
         position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
-        z-index: 2147483000; display: flex; align-items: stretch; max-width: calc(100vw - 32px);
+        z-index: 2147483000; display: flex; align-items: stretch; max-width: calc(100% - 32px); box-sizing: border-box;
+        pointer-events: auto;
         font-family: var(--font, 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif);
         background: var(--panel, #fff8e8); color: var(--ink, #2a1a10);
         border: 3px solid var(--outline, #2a1a10); border-radius: 16px; box-shadow: 0 4px 0 var(--outline, #2a1a10);
         overflow: hidden; animation: up .25s ease-out;
       }
       @keyframes up { from { transform: translate(-50%, 16px); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+      @keyframes down { from { transform: translate(-50%, -16px); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+      /* 게임 페이지: 아래 조작을 덮지 않게 위쪽(안전 영역 아래)에 작은 알약 */
+      .bar.game {
+        bottom: auto; top: calc(8px + env(safe-area-inset-top, 0px));
+        border-width: var(--line-thin, 2px); border-radius: var(--radius-pill, 999px);
+        box-shadow: 0 3px 0 var(--outline, #2a1a10); animation-name: down;
+      }
+      .bar.game .go { padding: 6px 10px 6px 14px; font-size: 14px; }
+      .bar.game .x { padding: 0 12px 0 10px; font-size: 14px; }
       @media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
       button { font: inherit; color: inherit; background: none; border: 0; margin: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
       .go { padding: 10px 14px 10px 16px; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -136,7 +172,7 @@ function showUpdateBanner() {
       .go:active, .x:active { background: var(--panel-strong, #fff4c2); }
       button:focus-visible { outline: 3px solid var(--sky-deep, #1f6fd1); outline-offset: -3px; }
     </style>
-    <div class="bar" role="status">
+    <div class="bar${isLobby() ? '' : ' game'}" role="status">
       <button class="go" type="button">새 버전이 있어요 · <b>새로고침</b></button>
       <button class="x" type="button" aria-label="닫기">✕</button>
     </div>`;

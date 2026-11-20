@@ -155,7 +155,7 @@
   </style>
   <!--
     로비가 '불러오는 중…' 에 멈췄을 때 빠져나갈 길 (모듈을 못 불러왔거나 응답이 오지 않을 때).
-    모듈이 아닌 보통 스크립트라 모듈 쪽이 깨져도 돈다. 10초 뒤에도 그대로면 까닭과 '다시 시도'(카카오톡이면 '사파리로 열기')를 보여 준다
+    모듈이 아닌 보통 스크립트라 모듈 쪽이 깨져도 돈다. 10초 뒤에도 그대로면 까닭과 '다시 시도'(카카오톡이면 '사파리로 열기'·안드로이드는 '브라우저로 열기')를 보여 준다
   -->
   <script>
     (function () {
@@ -172,12 +172,15 @@
         var l = document.getElementById('loading');
         if (!l || l.classList.contains('hidden')) return;
         var kakao = /KAKAOTALK/i.test(navigator.userAgent);
+        // 아이폰·아이패드(아이패드OS 는 맥처럼 보이지만 터치가 된다)면 사파리, 그 밖(안드로이드 등)은 기본 브라우저
+        var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var browser = ios ? '사파리' : '브라우저';
         var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
         l.innerHTML =
           '<div class="stuck"><b>불러오지 못했어요</b>' +
-          '<small>인터넷 연결을 확인하고 다시 시도해 주세요' + (kakao ? '. 계속 안 되면 사파리에서 열어 주세요' : '') + '</small>' +
+          '<small>인터넷 연결을 확인하고 다시 시도해 주세요' + (kakao ? '. 계속 안 되면 ' + browser + '에서 열어 주세요' : '') + '</small>' +
           '<button type="button" class="btn primary" id="stuck-retry">다시 시도</button>' +
-          (kakao ? '<button type="button" class="btn" id="stuck-open">사파리로 열기</button>' : '') +
+          (kakao ? '<button type="button" class="btn" id="stuck-open">' + browser + '로 열기</button>' : '') +
           '<code>' + esc((errs.slice(-3).join(' / ') || '응답 없음') + ' · ' + navigator.userAgent.slice(-40)) + '</code></div>';
         document.getElementById('stuck-retry').onclick = function () { location.reload(); };
         var o = document.getElementById('stuck-open');
@@ -204,6 +207,7 @@
     <span class="txt"><b id="inapp-title">앱으로 설치하려면 사파리에서 열어 주세요</b>
       <small id="inapp-sub">카카오톡 안에서는 홈 화면에 설치할 수 없어요</small></span>
     <button type="button" class="btn small hidden" id="inapp-open">사파리로 열기</button>
+    <button type="button" class="close" id="inapp-hint-close" aria-label="안내 닫기">✕</button>
   </div>
   <div id="login-view" class="auth-wrap hidden">
     <form class="auth-card" id="login-form" novalidate>
@@ -527,11 +531,19 @@
     // 안드로이드·PC 크롬: 설치할 수 있으면 '앱으로 설치' 버튼. 아이폰·아이패드 사파리: 홈 화면에 추가 안내 (닫으면 다시 안 보임)
     // 이미 앱으로 열려 있거나 설치했으면 둘 다 숨긴다
     // 카카오톡 등 앱 안 브라우저: 설치가 안 되니 브라우저로 열기 안내 (카카오톡은 바로 여는 버튼)
+    // 앱 안 브라우저 안내는 ✕ 로 닫으면 이번 창(탭)에서는 다시 띄우지 않는다
+    const INAPP_CLOSED_KEY = 'sia-world-inapp-hint-closed';
+    let inappClosed = false;
+    try {
+      inappClosed = sessionStorage.getItem(INAPP_CLOSED_KEY) === '1';
+    } catch {
+      /* 저장소를 못 쓰면 닫기는 이번에만 */
+    }
     onInstallChange(({ canInstall, iosHint, inApp, ios }) => {
       $('#install-btn').classList.toggle('hidden', !canInstall);
       $('#ios-hint').classList.toggle('hidden', !iosHint);
       const browser = ios ? '사파리' : '브라우저';
-      $('#inapp-hint').classList.toggle('hidden', !inApp);
+      $('#inapp-hint').classList.toggle('hidden', !inApp || inappClosed);
       $('#inapp-title').textContent = `앱으로 설치하려면 ${browser}에서 열어 주세요`;
       $('#inapp-sub').textContent =
         inApp === 'kakao'
@@ -541,6 +553,15 @@
       $('#inapp-open').textContent = `${browser}로 열기`;
     });
     $('#inapp-open').addEventListener('click', () => openInBrowser());
+    $('#inapp-hint-close').addEventListener('click', () => {
+      inappClosed = true;
+      $('#inapp-hint').classList.add('hidden');
+      try {
+        sessionStorage.setItem(INAPP_CLOSED_KEY, '1');
+      } catch {
+        /* 저장 못 하면 이번에만 닫힌다 */
+      }
+    });
     $('#install-btn').addEventListener('click', () => void promptInstall());
     $('#ios-hint-close').addEventListener('click', dismissIosHint);
 

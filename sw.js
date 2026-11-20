@@ -7,8 +7,11 @@
  *
  * 받는 규칙
  *  - 페이지(HTML 이동), shared/*.js, shared/*.css: 네트워크 먼저 → 실패하면 캐시 → 그것도 없으면 offline.html
- *  - Vite 가 해시를 붙인 파일(assets/이름-해시.js|css), 그림·소리·글꼴(구글 글꼴 포함),
- *    판본을 박은 CDN 모듈(cdn.jsdelivr.net/npm/이름@1.2.3): 캐시 먼저
+ *  - Vite 가 해시를 붙인 파일(assets/이름-해시.js|css|png …), 글꼴(구글 글꼴 포함),
+ *    판본을 박은 CDN 모듈(cdn.jsdelivr.net/npm/이름@1.2.3): 캐시 먼저 (주소가 같으면 내용도 같다)
+ *  - 해시 없는 그림·소리(shared/images, sounds 등): 캐시로 바로 주고 뒤에서 새로 받아 캐시를 바꾼다
+ *    (stale-while-revalidate: 파일을 바꿔 올리면 다음번 열 때부터 새 것)
+ *  - 캐시에 넣기는 응답을 기다리게 하지 않고 event.waitUntil 로 (워커가 넣기 전에 꺼지지 않게)
  *  - Supabase(REST·Realtime·Edge Function·로그인), GET 이 아닌 요청, 그 밖의 주소: 손대지 않는다 (바로 네트워크)
  *
  * 새 워커는 설치돼도 스스로 넘어가지 않는다 (게임 중에 갑자기 바뀌지 않게).
@@ -16,7 +19,7 @@
  */
 const VERSION = '__SW_VERSION__';
 const PAGES = `sia-pages-${VERSION}`; // HTML·공용 코드 (네트워크 먼저)
-const STATIC = `sia-static-${VERSION}`; // 해시 파일·그림·소리·글꼴 (캐시 먼저)
+const STATIC = `sia-static-${VERSION}`; // 해시 파일·글꼴(캐시 먼저) · 그림·소리(캐시로 주고 뒤에서 갱신)
 const OFFLINE_URL = new URL('offline.html', self.registration.scope).href;
 /** 설치할 때 미리 받아 두는 것 (인터넷이 끊겨도 안내 화면은 뜨게) */
 const PRECACHE = ['offline.html', 'shared/images/app/icon-192.png'].map((p) => new URL(p, self.registration.scope).href);
@@ -24,8 +27,10 @@ const PRECACHE = ['offline.html', 'shared/images/app/icon-192.png'].map((p) => n
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
 /** 판본을 박은 CDN 모듈 (shared/supabase.js 의 supabase-js@2.x.y 등): 주소가 같으면 내용도 같다 → 캐시 먼저 */
 const PINNED_CDN_RE = /^https:\/\/cdn\.jsdelivr\.net\/npm\/(?:@[^/@]+\/)?[^/@]+@\d+\.\d+\.\d+/;
-const HASHED_RE = /\/assets\/[^/]+-[\w-]{6,}\.(?:js|css)$/;
-const MEDIA_RE = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|mp3|ogg|oga|wav|m4a|aac|woff2?|ttf|otf)$/i;
+/** Vite 가 해시를 붙인 빌드 파일 (assets/이름-해시.js|css, 코드에서 불러온 그림도 assets/이름-해시.png) */
+const HASHED_RE = /\/assets\/[^/]+-[\w-]{6,}\.\w+$/;
+const FONT_RE = /\.(?:woff2?|ttf|otf)$/i;
+const MEDIA_RE = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|mp3|ogg|oga|wav|m4a|aac)$/i;
 const SHARED_CODE_RE = /^shared\/[^/]+\.(?:js|css)$/;
 
 self.addEventListener('install', (event) => {
@@ -59,7 +64,7 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname.endsWith('.supabase.co') || url.hostname.endsWith('.supabase.in')) return;
 
   if (FONT_HOSTS.has(url.hostname) || PINNED_CDN_RE.test(req.url)) {
-    event.respondWith(cacheFirst(req, true));
+    event.respondWith(cacheFirst(event, true));
     return;
   }
   // 같은 사이트, 앱 범위 안만 맡는다
@@ -68,21 +73,26 @@ self.addEventListener('fetch', (event) => {
   const rel = url.pathname.slice(new URL(scope).pathname.length);
 
   if (req.mode === 'navigate') {
-    event.respondWith(networkFirst(req, true));
+    event.respondWith(networkFirst(event, true));
     return;
   }
   if (SHARED_CODE_RE.test(rel)) {
-    event.respondWith(networkFirst(req, false));
+    event.respondWith(networkFirst(event, false));
     return;
   }
-  if (HASHED_RE.test(url.pathname) || MEDIA_RE.test(url.pathname)) {
-    event.respondWith(cacheFirst(req, false));
+  if (HASHED_RE.test(url.pathname) || FONT_RE.test(url.pathname)) {
+    event.respondWith(cacheFirst(event, false));
+    return;
+  }
+  if (MEDIA_RE.test(url.pathname)) {
+    event.respondWith(staleWhileRevalidate(event));
   }
   // 나머지(JSON 등)는 손대지 않는다
 });
 
 /** 네트워크 먼저 (HTTP 캐시도 건너뛰고 서버에 확인) → 실패하면 캐시 → 페이지면 offline.html */
-async function networkFirst(req, isPage) {
+async function networkFirst(event, isPage) {
+  const req = event.request;
   const cache = await caches.open(PAGES);
   // 페이지는 주소 뒤 ?redirect=… 같은 값과 상관없이 한 칸에 둔다
   const key = isPage ? withoutSearch(req.url) : req;
@@ -90,7 +100,7 @@ async function networkFirst(req, isPage) {
     // 이동 요청은 init 을 주면 mode 가 same-origin 으로 바뀌지만 redirect: manual 은 그대로라
     // /games/tank → /games/tank/ 같은 주소 고침은 브라우저가 그대로 따라간다
     const res = await fetch(new Request(req, { cache: 'no-cache' }));
-    if (res.ok && res.type === 'basic') await cache.put(key, res.clone()).catch(() => {});
+    if (res.ok && res.type === 'basic') keep(event, cache, key, res);
     return res;
   } catch (err) {
     const hit = await cache.match(key);
@@ -111,12 +121,42 @@ function withoutSearch(href) {
 }
 
 /** 캐시 먼저 → 없으면 받아서 넣는다. 다른 사이트(구글 글꼴)는 불투명 응답도 넣는다 */
-async function cacheFirst(req, crossOrigin) {
+async function cacheFirst(event, crossOrigin) {
+  const req = event.request;
   const cache = await caches.open(STATIC);
   // 미리 넣어 둔 것(오프라인 화면의 아이콘은 PAGES 칸에 있다)까지 모든 칸에서 찾는다
   const hit = (await cache.match(req)) || (await caches.match(req));
   if (hit) return hit;
   const res = await fetch(req);
-  if (res.ok || (crossOrigin && res.type === 'opaque')) await cache.put(req, res.clone()).catch(() => {});
+  if (res.ok || (crossOrigin && res.type === 'opaque')) keep(event, cache, req, res);
   return res;
+}
+
+/**
+ * 캐시에 있으면 바로 주고, 뒤에서 새로 받아 캐시를 바꿔 둔다 (다음번엔 새 것).
+ * 캐시에 없으면 받은 것을 주면서 넣는다. 뒤에서 받다 실패해도 캐시 것은 그대로 쓴다
+ */
+async function staleWhileRevalidate(event) {
+  const req = event.request;
+  const cache = await caches.open(STATIC);
+  const hit = (await cache.match(req)) || (await caches.match(req));
+  const fresh = fetch(req).then((res) => {
+    if (res.ok && res.type === 'basic') keep(event, cache, req, res);
+    return res;
+  });
+  if (hit) {
+    event.waitUntil(fresh.catch(() => {}));
+    return hit;
+  }
+  return fresh;
+}
+
+/** 응답 사본을 캐시에 넣는다: 응답은 기다리지 않고 바로 주고, 넣기는 waitUntil 로 마저 끝낸다 */
+function keep(event, cache, key, res) {
+  const put = cache.put(key, res.clone()).catch(() => {});
+  try {
+    event.waitUntil(put);
+  } catch {
+    /* 이벤트가 이미 끝났다: 넣기는 그대로 진행된다 */
+  }
 }

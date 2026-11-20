@@ -5,6 +5,7 @@ import { GameError, Runner, SOLO_DEADLINE_MS, type DeckRow, type GameId, type Ro
 import { matgo, MATGO_RULES, type MatgoAction, type MatgoState } from './matgo.ts';
 import { RULES_CHANGED, soloOf, soloStep } from './solo.ts';
 import { payoutOf, type RBet } from './roulette.ts';
+import { freshShoe, stackDeal } from './blackjack.ts';
 
 /** 메모리 DB (SQL 함수와 같은 규칙으로 흉내) */
 function memStore(game: GameId, humans: string[], seatCount: number, balance = 100000) {
@@ -830,6 +831,81 @@ describe('Runner: 판 도중 나간 사람 자리 (포커·홀덤은 체크 아�
       expect(left.out).toBe(true);
       expect(left.bet ?? null).toBeNull();
     }
+  });
+
+  /** 블랙잭: 베팅까지 마친 뒤 u2(자리 1)가 나가는 판을 끝까지. split 이면 u2 는 나가기 전에 스플릿한다 */
+  async function bjLeaveAfterBet(split: boolean) {
+    const m = memStore('blackjack', ['u1', 'u2'], 4);
+    const u2Cards: [string, string] = split ? ['8H', '8D'] : ['10H', '6D'];
+    const shoe = stackDeal([['10S', '7S'], u2Cards, ['5C', '6C'], ['9D', '2D']], ['6S', '10D'], freshShoe().slice(0, 200));
+    m.deck = { version: 0, round_no: 0, state: null, carry: { shoe, cut: 0 } };
+    // apply_round_result 의 시아코인 규칙: 돈이 오간 판에서, 끝까지 자리에 있던(나가지 않은) 사람 중 deltas 에 든 자리
+    const coins: string[] = [];
+    const apply = m.store.applyResult;
+    m.store.applyResult = async (id, round, deltas) => {
+      const played = Object.values(deltas).some((d) => d !== 0);
+      for (const x of m.seats) if (x.user_id && played && !x.left_game && String(x.seat_no) in deltas) coins.push(x.user_id);
+      return apply(id, round, deltas);
+    };
+    const leftActs: string[] = [];
+    const base = ENGINES.blackjack;
+    const spy = { ...base, apply: (st: unknown, seat: number, a: { type: string }, rng: never) => (seat === 1 && m.seats[1].left_game && leftActs.push(a.type), base.apply(st, seat, a, rng)) };
+    const runner = new Runner(m.store, { ...ENGINES, blackjack: spy }, seededRng(7));
+    await runner.start('r1', 'u1');
+    const start = { ...m.wallets };
+    await runner.act('r1', 'u1', { type: 'bet', amount: 100 });
+    await runner.act('r1', 'u2', { type: 'bet', amount: 200 });
+    let didSplit = false;
+    for (let i = 0; i < 200 && m.room.status === 'playing'; i++) {
+      const last = m.published[m.published.length - 1];
+      const seat = last.pending[0];
+      if (seat === 1 && !m.seats[1].left_game) {
+        if (split && !didSplit) {
+          await runner.act('r1', 'u2', { type: 'split' });
+          didSplit = true;
+        }
+        m.seats[1].left_game = true; // leave_room
+        continue;
+      }
+      if (seat === 1) await runner.timeout('r1', m.deck.version, true);
+      else if (seat === 0) await runner.act('r1', 'u1', { type: 'stand' });
+      else await runner.timeout('r1');
+    }
+    expect(m.room.status).toBe('waiting');
+    expect(m.seats[1].left_game).toBe(false); // finish_round 이 정리했다
+    const res = m.results.get(1)!;
+    const final = m.published[m.published.length - 1].pub;
+    const s1 = final.seats.find((x: any) => x.seat === 1);
+    return { m, res, s1, coins, leftActs, start, didSplit };
+  }
+
+  it('블랙잭: 베팅 후 나가면 스탠드로 정산되고 시아코인은 없다', async () => {
+    const { m, res, s1, coins, leftActs, start } = await bjLeaveAfterBet(false);
+    expect(leftActs.length).toBeGreaterThan(0);
+    expect(new Set(leftActs)).toEqual(new Set(['stand']));
+    expect(s1.out).toBeFalsy();
+    expect(s1.hands).toHaveLength(1);
+    expect(s1.hands[0].cards).toHaveLength(2); // 나간 뒤 카드를 더 받지 않았다
+    expect(1 in res).toBe(true); // 건 돈은 판 결과대로 정산된다
+    const sum = s1.hands.reduce((a: number, h: any) => a + h.delta, 0);
+    expect(res[1]).toBe(sum);
+    expect(m.wallets.u2 - start.u2).toBe(sum);
+    expect(coins).not.toContain('u2');
+  });
+
+  it('블랙잭: 스플릿한 뒤 나가면 남은 손은 모두 스탠드, 두 손 결과대로 정산되고 시아코인은 없다', async () => {
+    const { m, res, s1, coins, leftActs, start, didSplit } = await bjLeaveAfterBet(true);
+    expect(didSplit).toBe(true);
+    expect(new Set(leftActs)).toEqual(new Set(['stand']));
+    expect(s1.hands).toHaveLength(2);
+    for (const h of s1.hands) {
+      expect(h.cards).toHaveLength(2);
+      expect(h.result ?? null).not.toBeNull();
+    }
+    const sum = s1.hands.reduce((a: number, h: any) => a + h.delta, 0);
+    expect(res[1]).toBe(sum);
+    expect(m.wallets.u2 - start.u2).toBe(sum);
+    expect(coins).not.toContain('u2');
   });
 
   it('블랙잭: 나간 자리의 행동은 쉬기(베팅 단계) 아니면 스탠드뿐이다', () => {

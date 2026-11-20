@@ -307,6 +307,32 @@ describe('특수 규칙', () => {
     s = play(s, 0, 'm03-gwang');
     expect(s.events.filter((e) => e.t === 'steal').length).toBe(1);
   });
+  it('자뻑: 뒤집은 패로 자기 뻑 더미를 먹어도 피 2장', () => {
+    let s = makeTestState({
+      hands: [['m01-pi1', 'm05-pi1'], ['m06-pi1']], floor: ['m03-tti', 'm03-pi1', 'm03-pi2'], pile: ['m03-gwang'],
+      captured: [[], ['m11-pi1', 'm11-pi2', 'm12-ssangpi']], ppeok: [3],
+    });
+    s.ppeokBy = { '3': 0 };
+    s = play(s, 0, 'm01-pi1');
+    expect(s.captured[0].filter((id) => id.startsWith('m03'))).toHaveLength(4);
+    expect(s.captured[0]).toEqual(expect.arrayContaining(['m11-pi1', 'm11-pi2']));
+    expect(s.captured[1]).toEqual(['m12-ssangpi']);
+    expect(s.events.find((e) => e.t === 'ppeok_eat')).toMatchObject({ own: true, month: 3 });
+    expect(s.events.filter((e) => e.t === 'steal').map((e) => e.reason)).toEqual(['자뻑', '자뻑']);
+    expect(s.ppeok).toEqual([]);
+  });
+  it('자뻑: 상대 피가 1장뿐이면 그 1장만 가져온다 (오류 없음)', () => {
+    let s = makeTestState({
+      hands: [['m03-gwang', 'm05-pi1'], ['m06-pi1']], floor: ['m03-tti', 'm03-pi1', 'm03-pi2', 'm10-pi1'], pile: ['m07-pi1'],
+      captured: [[], ['m11-pi1', 'm01-gwang']], ppeok: [3],
+    });
+    s.ppeokBy = { '3': 0 };
+    s = play(s, 0, 'm03-gwang');
+    expect(s.captured[0]).toContain('m11-pi1');
+    expect(s.captured[1]).toEqual(['m01-gwang']);
+    expect(s.events.find((e) => e.t === 'ppeok_eat')).toMatchObject({ own: true });
+    expect(s.events.filter((e) => e.t === 'steal')).toHaveLength(1);
+  });
   it('뒤집은 패로 뻑 더미를 먹어도 피 1장', () => {
     let s = makeTestState({
       hands: [['m01-pi1', 'm05-pi1'], ['m06-pi1']], floor: ['m03-tti', 'm03-pi1', 'm03-pi2'], pile: ['m03-gwang'],

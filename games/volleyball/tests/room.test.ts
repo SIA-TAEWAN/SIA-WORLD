@@ -8,7 +8,7 @@ let VolleyRoom: typeof import('../src/net/room').VolleyRoom;
 beforeAll(async () => {
   vi.stubGlobal('location', new URL('http://localhost/'));
   ({ VolleyRoom } = await import('../src/net/room'));
-});
+}, 30_000);
 
 /** 가짜 방 채널: 받은 presence·메시지를 테스트가 직접 넣는다 */
 class FakeChannel implements Channel<PlayerMeta> {

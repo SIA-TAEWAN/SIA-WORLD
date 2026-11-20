@@ -12,7 +12,7 @@ button, input { font: inherit; color: inherit; }
 
 /* 세로 화면 기준: PC에서는 세로 비율(9:16) 그대로 가운데 */
 #stage {
-  position: relative; height: 100%; width: min(100vw, calc(100vh * 9 / 16)); width: min(100vw, calc(100dvh * 9 / 16));
+  position: relative; height: 100%; aspect-ratio: 9 / 16; width: auto; max-width: 100vw;
   margin: 0 auto; overflow: hidden; background: var(--matgo-mat-dark);
 }
 @media (min-aspect-ratio: 9/16) {
@@ -70,7 +70,7 @@ button, input { font: inherit; color: inherit; }
 .levelup li b { color: var(--pink); font-weight: normal; margin-right: 4px; }
 
 /* ---------- 마을 ---------- */
-.village .field { position: absolute; inset: 0; touch-action: none; }
+.village .field { position: absolute; inset: 0; touch-action: none; overflow: hidden; }
 .village .field canvas { display: block; }
 
 .hud { position: absolute; left: 0; right: 0; top: 0; z-index: 20; padding: calc(8px + env(safe-area-inset-top)) 8px 0; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }

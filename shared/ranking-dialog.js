@@ -278,8 +278,10 @@ export async function getVillageRanking(meId = null) {
 }
 const CSS = `
 .sia-rank-dim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr); box-sizing: border-box;
   background: rgba(42, 26, 16, 0.55); font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
-.sia-rank { box-sizing: border-box; width: min(460px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+/* 높이는 vh 대신 덮개(화면에 꼭 맞는 fixed 판)의 칸 높이로: 안드로이드 설치 앱은 vh 를 실제보다 크게 잡아 창이 잘렸다 */
+.sia-rank { box-sizing: border-box; width: min(460px, 100%); max-height: 100%; display: flex; flex-direction: column;
   background: #fff8e8; color: #2a1a10; border: 4px solid #2a1a10; border-radius: 28px;
   box-shadow: 0 8px 0 #2a1a10; padding: 16px; }
 .sia-rank * { box-sizing: border-box; }

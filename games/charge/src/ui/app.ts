@@ -47,7 +47,7 @@ function screen(html: string, bg = ''): HTMLElement {
   const root = app();
   root.innerHTML = `<div class="screen ${bg}">${html}</div>`;
   const el = root.firstElementChild as HTMLElement;
-  soundButton(el);
+  soundButton(root); // .screen 밖(#app)에 붙여, 화면이 스크롤돼도 오른쪽 아래 제자리에 둔다
   return el;
 }
 
@@ -161,6 +161,9 @@ export function showMain() {
     ${profile.endless ? `<p class="soft center light">끝없는 길 최고 기록 ${profile.endless.meters.toLocaleString()}m</p>` : ''}
     <div class="grow"></div>
     ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 기록은 이 기기에만 저장돼요</p>' : ''}`);
+  // 메인은 내용이 길어 스크롤된다: 떠 있는 소리 버튼이 아래 '끝없는 길' 버튼을 덮지 않게, 위 그림 오른쪽 모서리에 붙여 내용과 함께 움직이게 한다
+  const sb = app().querySelector<HTMLElement>(':scope > .sound-btn');
+  if (sb) { sb.classList.add('on-hero'); root.appendChild(sb); }
   root.querySelectorAll<HTMLButtonElement>('.leader').forEach((b) =>
     b.addEventListener('click', () => {
       setLeader(b.dataset.id as ZodiacId);

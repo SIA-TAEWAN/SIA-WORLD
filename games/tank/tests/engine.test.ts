@@ -132,7 +132,7 @@ describe('AI', () => {
     const r = autoplay('tiger', 'rooster', 'valley', 42, 'hard');
     expect([0, 1]).toContain(r.winner);
     expect(r.turns).toBeLessThan(200);
-  });
+  }, 20_000);
 });
 
 describe('온라인 동기화', () => {

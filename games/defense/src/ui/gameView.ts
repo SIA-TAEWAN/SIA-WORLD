@@ -151,12 +151,23 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   const scene = () => (game?.scene.getScene('game') as GameScene | undefined) ?? null;
 
   // ---------- 화면 배치: 판은 위 HUD 와 아래 카드 사이 가운데 ----------
+  // 안전 영역(아이폰 노치·홈 막대): .hud 위 여백 = 10u + env(top), .tray 높이 = 250u + env(bottom) 에서 env 만 떼어 낸다
+  // (HUD 전체 높이는 보스 바가 나올 때 바뀌므로 재지 않는다 — 판이 판 도중에 움직이지 않게)
+  const hudEl = $('.hud');
+  const trayEl = $('.tray');
+  const safeInsets = (u: number) => {
+    const top = parseFloat(getComputedStyle(hudEl).paddingTop) - 10 * u;
+    const bot = parseFloat(getComputedStyle(trayEl).height) - BOT_PAD * u;
+    return { top: Number.isFinite(top) ? Math.max(0, top) : 0, bot: Number.isFinite(bot) ? Math.max(0, bot) : 0 };
+  };
   const layout = () => {
     const w = Math.max(120, fieldEl.clientWidth);
     const h = Math.max(120, fieldEl.clientHeight);
     const u = w / VIEW_W;
-    const free = h / u - TOP_PAD - BOT_PAD;
-    return { w, h, u, offY: BOARD_H / 2 - (TOP_PAD + free / 2) };
+    const inset = safeInsets(u);
+    const top = TOP_PAD + inset.top / u;
+    const free = h / u - top - BOT_PAD - inset.bot / u;
+    return { w, h, u, offY: BOARD_H / 2 - (top + free / 2) };
   };
   /** 화면 좌표 → 가장 가까운 배치 칸 (없으면 -1) */
   const slotAtPoint = (cx: number, cy: number): number => {

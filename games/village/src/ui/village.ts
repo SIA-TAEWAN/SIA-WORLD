@@ -1169,7 +1169,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       type: Phaser.AUTO,
       parent: fieldEl,
       width: Math.round(w * DPR),
-      height: Math.round(h * DPR),
+      height: Math.ceil(h * DPR), // 내림이면 아래에 1px 미만 틈이 남는다
       backgroundColor: '#5fa772',
       banner: false,
       audio: { noAudio: true },
@@ -1193,7 +1193,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         const z = size();
         if (`${z.w}x${z.h}` === last || !game) return;
         last = `${z.w}x${z.h}`;
-        game.scale.resize(Math.round(z.w * DPR), Math.round(z.h * DPR));
+        game.scale.resize(Math.round(z.w * DPR), Math.ceil(z.h * DPR));
         scene?.setUnit((z.w * DPR) / VIEW_W);
       }, 150);
     });
