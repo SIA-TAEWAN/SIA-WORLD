@@ -34,3 +34,10 @@ export const ATK_FROM = 6;
 export const ATK_KEEP = 0.9;
 /** 별 기준 턴 = max(testLevel 턴, 예상 레벨 턴 + PAR_SLACK) */
 export const PAR_SLACK = 4;
+
+/** 끝없는 탑을 재는 파티 (scripts/tower.ts · tests): 레벨 level 이 예상 레벨인 가장 늦은 지역(2지역 이상 — 탑은 1-5 를 깨야 열린다)에 들어갈 때의 파티 */
+export function towerParty(level: number): HeroId[] {
+  let region = 2;
+  for (let r = 2; r <= 12; r++) if (expectLevel(r) <= level) region = r;
+  return partyFor(region);
+}

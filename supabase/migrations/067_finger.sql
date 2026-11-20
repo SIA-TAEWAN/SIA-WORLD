@@ -3,7 +3,8 @@
 --   finger_heroes   : 사용자·대원별 레벨 (줄이 없으면 레벨 1. 본인만 읽기, 쓰기는 함수만)
 --   finger_stages   : 사용자·스테이지별 최고 별 · 가장 적은 턴 (본인만 읽기, 쓰기는 함수만)
 --   finger_runs     : 판 한 번 (시작 때 파티 · 레벨 · 강화 스냅숏과 결과. 권한 없음: 함수와 service_role 만)
---   finger_tower    : 끝없는 탑 최고 기록 자리 (6단계에서 쓴다. 누구나 읽기, 쓰기는 함수만)
+--   finger_tower    : 끝없는 탑 사용자별 최고 기록 (올라간 층 · 쓴 턴 · 데려간 대원 · 달성 시각. 누구나 읽기, 쓰기는 함수만)
+--   finger_stage_ranking · finger_tower_ranking : 랭킹 뷰 2개 (PRD "랭킹 2종", 돌격대 061 과 같은 모양)
 -- 검증 방식 (PRD "서버와 검증"): 서버가 조작을 다시 돌려 결과를 직접 계산한다.
 --   · finger_start() 가 판 번호와 시작 시각 · 스냅숏을 남긴다
 --   · 화면은 조작 목록만 Edge Function finger-finish 로 보낸다. 함수가 스냅숏으로 같은 시뮬레이션
@@ -64,7 +65,7 @@ create table if not exists public.finger_runs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   stage_id text not null,
-  -- 'normal' 스테이지 / 'tower' 끝없는 탑 (6단계)
+  -- 'normal' 스테이지 / 'tower' 끝없는 탑 (stage_id = 'tower')
   mode text not null default 'normal' check (mode in ('normal', 'tower')),
   -- 쏘는 순서대로 1~4명
   party text[] not null,
@@ -82,6 +83,8 @@ create table if not exists public.finger_runs (
   picked int,
   fallen int,
   steps int,
+  -- 끝없는 탑: 올라간 층 (스테이지는 0)
+  floors int,
   coins_earned int
 );
 alter table public.finger_runs enable row level security;
@@ -90,7 +93,7 @@ revoke all on public.finger_runs from anon, authenticated;
 grant select on public.finger_runs to service_role;
 create index if not exists finger_runs_user_idx on public.finger_runs (user_id, started_at desc);
 
--- 끝없는 탑 최고 기록: 각자 하나 (올라간 층 · 쓴 턴 · 데려간 대원 · 달성 시각). 6단계에서 finger_finish_verified 가 쓴다
+-- 끝없는 탑 최고 기록: 각자 하나 (올라간 층 · 쓴 턴 · 데려간 대원 · 달성 시각). finger_finish_verified 가 더 높은 층(같은 층이면 적은 턴)일 때만 고친다
 create table if not exists public.finger_tower (
   user_id uuid primary key references public.profiles(id) on delete cascade,
   best_floor int not null check (best_floor >= 0),
@@ -117,11 +120,22 @@ language sql immutable as $$
     when 'max_age' then 7200
     when 'coin_min_time' then 20
     when 'max_turns' then 40
+    when 'tower_turns' then 120
     when 'max_shot_steps' then 360
     when 'pick_cap' then 300
+    when 'tower_floor_coins' then 10
+    when 'tower_boss_coins' then 20
   end
 $$;
 revoke all on function public._finger_const(text) from public, anon, authenticated;
+
+-- 끝없는 탑 엽전 (주운 엽전 · 엽전 강화 전): 올라간 층마다 10 + 보스 층(5층마다)을 넘길 때마다 20. games/finger/src/data/growth.ts 의 towerCoins
+create or replace function public._finger_tower_coins(p_floors int) returns int
+language sql immutable as $$
+  select (public._finger_const('tower_floor_coins') * greatest(0, coalesce(p_floors, 0))
+    + public._finger_const('tower_boss_coins') * (greatest(0, coalesce(p_floors, 0)) / 5))::int
+$$;
+revoke all on function public._finger_tower_coins(int) from public, anon, authenticated;
 
 -- 스테이지 보상: 지역 · 번호 · 별 0개 클리어 엽전 · 별마다 · 첫 클리어 보너스. games/finger/src/data/growth.ts (npm run sqlrows)
 create or replace function public._finger_stages() returns table (stage_id text, region int, no int, clear_coins int, star_coins int, first_coins int)
@@ -344,15 +358,19 @@ language plpgsql security definer set search_path = public as $$
 declare me uuid := auth.uid(); rid uuid; n int; pr public.finger_profiles; lv jsonb;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
-  -- 끝없는 탑('tower')은 6단계에서 연다
-  if p_mode is distinct from 'normal' then raise exception 'bad mode'; end if;
-  if p_stage is null or not exists (select 1 from public._finger_stages() t where t.stage_id = p_stage) then raise exception 'bad stage'; end if;
+  -- 'normal' 스테이지 · 'tower' 끝없는 탑 (스테이지 id 는 'tower' 로 남긴다. 1-5 를 깨야 열린다)
+  if p_mode is null or p_mode not in ('normal', 'tower') then raise exception 'bad mode'; end if;
+  if p_mode = 'tower' then
+    p_stage := 'tower';
+  elsif p_stage is null or not exists (select 1 from public._finger_stages() t where t.stage_id = p_stage) then raise exception 'bad stage'; end if;
   n := coalesce(array_length(p_party, 1), 0);
   if n < 1 or n > 4 or array_position(p_party, null) is not null
     or (select count(distinct x) from unnest(p_party) x) <> n
     or exists (select 1 from unnest(p_party) x where not exists (select 1 from public._finger_heroes() h where h.id = x))
   then raise exception 'bad party'; end if;
-  if not public._finger_stage_open(me, p_stage) then raise exception 'stage locked'; end if;
+  if p_mode = 'tower' then
+    if not public._finger_cleared(me, '1-5') then raise exception 'tower locked'; end if;
+  elsif not public._finger_stage_open(me, p_stage) then raise exception 'stage locked'; end if;
   if not (p_party <@ public._finger_unlocked(me)) then raise exception 'hero locked'; end if;
   pr := public._finger_profile_row(me);
   select jsonb_object_agg(x, coalesce(h.level, 1)) into lv
@@ -383,6 +401,10 @@ declare
   v_picked int;
   v_fallen int;
   v_steps int;
+  v_floors int;
+  tower boolean;
+  old_floor int;
+  old_turns int;
   old_stars int;
   first boolean := false;
   best boolean := false;
@@ -407,11 +429,17 @@ begin
     v_picked := (p_result ->> 'coins')::int;
     v_fallen := (p_result ->> 'fallen')::int;
     v_steps := (p_result ->> 'steps')::int;
+    v_floors := coalesce((p_result ->> 'floors')::int, 0);
   exception when others then raise exception 'bad result';
   end;
+  tower := rn.mode = 'tower';
   if v_cleared is null or v_stars is null or v_turns is null or v_wave is null or v_waves is null
     or v_kills is null or v_picked is null or v_fallen is null or v_steps is null then raise exception 'bad result'; end if;
-  if v_turns < 0 or v_turns > public._finger_const('max_turns') or v_waves < 1 or v_wave < 0 or v_wave >= v_waves
+  -- 끝없는 탑: 120턴까지 · 한 턴에 한 층보다 더 오를 수 없다. 스테이지는 40턴까지 · 층 0
+  if v_turns > public._finger_const(case when tower then 'tower_turns' else 'max_turns' end)
+    or (tower and (v_floors < 0 or v_floors > v_turns or v_floors > v_waves)) or (not tower and v_floors <> 0)
+  then raise exception 'bad result'; end if;
+  if v_turns < 0 or v_waves < 1 or v_wave < 0 or v_wave >= v_waves
     or v_kills < 0 or v_picked < 0 or v_fallen < 0 or v_fallen > 4 or v_steps < 0
     or v_steps > v_turns * public._finger_const('max_shot_steps')
     or v_stars < 0 or v_stars > 3 or (v_cleared and (v_stars < 1 or v_turns < 1)) or (not v_cleared and v_stars <> 0)
@@ -427,14 +455,26 @@ begin
       and o.finished_at > rn.started_at + interval '2 seconds' and o.started_at < now() - interval '2 seconds'
   ) then raise exception 'overlap'; end if;
 
-  select * into st from public._finger_stages() t where t.stage_id = rn.stage_id;
-  if not found then raise exception 'bad stage'; end if;
+  if not tower then
+    select * into st from public._finger_stages() t where t.stage_id = rn.stage_id;
+    if not found then raise exception 'bad stage'; end if;
+  end if;
   pr := public._finger_profile_row(p_user);
   before_heroes := public._finger_unlocked(p_user);
   -- 엽전 강화는 판 시작 때 값 (스냅숏)
   coin_lv := least(5, greatest(0, coalesce((rn.upgrades ->> 'coin')::int, 0)));
 
-  if v_cleared then
+  if tower then
+    -- 끝없는 탑: 엽전은 올라간 층으로. 기록은 더 높은 층, 같은 층이면 더 적은 턴일 때만 (그때 데려간 대원 · 달성 시각과 함께)
+    v_stars := 0;
+    raw := public._finger_tower_coins(v_floors);
+    select t.best_floor, t.turns into old_floor, old_turns from public.finger_tower t where t.user_id = p_user for update;
+    if v_floors >= 1 and (old_floor is null or v_floors > old_floor or (v_floors = old_floor and v_turns < old_turns)) then
+      insert into public.finger_tower (user_id, best_floor, turns, party, achieved_at) values (p_user, v_floors, v_turns, rn.party, now())
+      on conflict (user_id) do update set best_floor = excluded.best_floor, turns = excluded.turns, party = excluded.party, achieved_at = excluded.achieved_at;
+      best := true;
+    end if;
+  elsif v_cleared then
     select s.stars into old_stars from public.finger_stages s where s.user_id = p_user and s.stage_id = rn.stage_id;
     first := old_stars is null;
     old_stars := coalesce(old_stars, 0);
@@ -452,11 +492,11 @@ begin
     coins = coins + n_coins,
     total_stars = coalesce((select sum(s.stars) from public.finger_stages s where s.user_id = p_user), 0),
     cleared_stages = (select count(*) from public.finger_stages s where s.user_id = p_user),
-    stars_updated_at = case when best then now() else stars_updated_at end,
+    stars_updated_at = case when best and not tower then now() else stars_updated_at end,
     updated_at = now()
   where user_id = p_user;
   update public.finger_runs set finished_at = now(), cleared = v_cleared, stars = v_stars, turns = v_turns, wave = v_wave,
-    kills = v_kills, picked = v_picked, fallen = v_fallen, steps = v_steps, coins_earned = n_coins where id = rn.id;
+    kills = v_kills, picked = v_picked, fallen = v_fallen, steps = v_steps, floors = v_floors, coins_earned = n_coins where id = rn.id;
   after_heroes := public._finger_unlocked(p_user);
   -- 시아코인: 서버 경과 20초 넘게 한 판(한 턴 이상)마다 1 (중복·15초·하루 한도는 _grant_sia_coin 안에서)
   if elapsed >= public._finger_const('coin_min_time') and v_turns >= 1 then
@@ -465,7 +505,7 @@ begin
   return jsonb_build_object(
     'profile', public._finger_profile_json(p_user),
     'result', jsonb_build_object(
-      'coins', n_coins, 'stars', v_stars, 'first', first, 'best', best, 'siaCoin', got_coin,
+      'coins', n_coins, 'stars', v_stars, 'floors', v_floors, 'first', first, 'best', best, 'siaCoin', got_coin,
       'newHeroes', to_jsonb(array(select x from unnest(after_heroes) x where not (x = any(before_heroes))))
     )
   );
@@ -514,6 +554,31 @@ begin
 end $$;
 revoke all on function public.finger_level_up(text) from public, anon;
 grant execute on function public.finger_level_up(text) to authenticated;
+
+-- ---------- 7. 랭킹 (돌격대 061 의 charge_stage_ranking · charge_endless_ranking 과 같은 모양) ----------
+
+-- 스테이지 랭킹: 모은 별 → 클리어한 스테이지 수 → 먼저 달성한 순. 줄에 별 수 · 가장 멀리 깬 스테이지
+create or replace view public.finger_stage_ranking as
+  select r.user_id, p.nickname, r.total_stars, r.cleared_stages,
+    (select d.stage_id from public.finger_stages d where d.user_id = r.user_id
+      order by split_part(d.stage_id, '-', 1)::int desc, split_part(d.stage_id, '-', 2)::int desc limit 1) as best_stage,
+    r.stars_updated_at as achieved_at,
+    (row_number() over (order by r.total_stars desc, r.cleared_stages desc, r.stars_updated_at asc, r.user_id))::int as place,
+    (count(*) over ())::int as total
+  from public.finger_profiles r join public.profiles p on p.id = r.user_id
+  where r.total_stars > 0;
+revoke all on public.finger_stage_ranking from anon, authenticated;
+grant select on public.finger_stage_ranking to anon, authenticated;
+
+-- 끝없는 탑 랭킹: 올라간 층 → 쓴 턴(적을수록 위) → 먼저 달성한 순. 각자 최고 기록 하나 (데려간 대원 4명 · 날짜)
+create or replace view public.finger_tower_ranking as
+  select r.user_id, p.nickname, r.best_floor, r.turns, r.party, r.achieved_at,
+    (row_number() over (order by r.best_floor desc, r.turns asc, r.achieved_at asc, r.user_id))::int as place,
+    (count(*) over ())::int as total
+  from public.finger_tower r join public.profiles p on p.id = r.user_id
+  where r.best_floor > 0;
+revoke all on public.finger_tower_ranking from anon, authenticated;
+grant select on public.finger_tower_ranking to anon, authenticated;
 
 -- ---------- 게임 오픈 여부 ----------
 -- 처음에는 닫힌 상태로 추가한다 (관리자만 보이고 들어갈 수 있다. 로비의 오픈 설정에서 연다)

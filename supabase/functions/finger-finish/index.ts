@@ -3,7 +3,9 @@
  * 입력 { runId, inputs: ShotInput[] } (사용자 JWT로 호출). 화면은 조작 목록만 보낸다.
  * finger_runs 에서 판(주인 · 아직 안 끝남)과 시작 때 스냅숏을 읽고 → 같은 시뮬레이션으로 다시 돌려
  * (_shared/finger/verify.ts) → finger_finish_verified(service_role 만)로 엽전·별·합류·시아코인을 저장한다.
- * 출력 { profile, result: { coins, stars, first, best, siaCoin, newHeroes }, replay: RunResult }
+ * 스테이지 판(mode normal, 조작 40개까지)과 끝없는 탑 판(mode tower, stage_id = 'tower', 조작 120개까지)을 같은 길로 처리한다 —
+ * verifyRun 이 스냅숏의 mode 를 보고 탑 설정(_shared/finger/tower.ts)을 만들고, SQL 이 floors(올라간 층)로 탑 기록·엽전을 저장한다.
+ * 출력 { profile, result: { coins, stars, floors, first, best, siaCoin, newHeroes }, replay: RunResult }
  * 거절은 4xx { error: '<까닭>' } (화면이 보관하지 않고 버린다), 서버 문제는 5xx (화면이 보관했다 다시 보낸다).
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';

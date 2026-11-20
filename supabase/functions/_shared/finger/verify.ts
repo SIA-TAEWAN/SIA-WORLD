@@ -1,6 +1,6 @@
 import { ConfigError, buildConfig } from './config.ts';
 import { HERO_IDS, isHeroId, type HeroId, type UpgradeKey, type Upgrades } from './heroes.ts';
-import { MAX_TURNS, POWER_MAX, replayRun, type RunResult, type ShotInput } from './sim.ts';
+import { MAX_TURNS, POWER_MAX, TOWER_TURNS, replayRun, type RunResult, type ShotInput } from './sim.ts';
 
 /**
  * 서버 다시 돌리기 (PRD "서버와 검증"). Edge Function finger-finish 와 테스트가 같은 함수를 부른다.
@@ -26,13 +26,15 @@ export class VerifyError extends Error {}
 
 /** 한 판에 받는 조작 수 상한 (= 판의 최대 턴) */
 export const MAX_INPUTS = MAX_TURNS;
+/** 끝없는 탑 한 판에 받는 조작 수 상한 */
+export const MAX_TOWER_INPUTS = TOWER_TURNS;
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 
 /** 조작 목록 검사: 정규화 없이 정확한 정수 범위만 받는다 (화면은 이미 정규화한 s.log 를 보낸다) */
-export function checkInputs(inputs: unknown): ShotInput[] {
+export function checkInputs(inputs: unknown, max = MAX_INPUTS): ShotInput[] {
   if (!Array.isArray(inputs)) throw new VerifyError('bad inputs');
-  if (inputs.length > MAX_INPUTS) throw new VerifyError('too many turns');
+  if (inputs.length > max) throw new VerifyError('too many turns');
   const out: ShotInput[] = [];
   for (const i of inputs) {
     if (!i || typeof i !== 'object') throw new VerifyError('bad inputs');
@@ -67,17 +69,18 @@ function snapUpgrades(snap: RunSnapshot): Upgrades {
 
 /**
  * 스냅숏 + 조작 목록 → 다시 계산한 결과. 틀리면 VerifyError:
- *  · 'bad inputs' 조작 모양이 틀림 · 'too many turns' 40턴 넘음 · 'extra inputs' 판이 끝난 뒤에도 조작이 남음
+ *  · 'bad inputs' 조작 모양이 틀림 · 'too many turns' 40턴(끝없는 탑 120턴) 넘음 · 'extra inputs' 판이 끝난 뒤에도 조작이 남음
  *  · 'bad mode' · 'bad stage' · 'bad party' 스냅숏이 틀림
  * 판이 끝나지 않은 결과(ended = false)는 '그만하기'로 끝낸 실패 판이다.
  */
 export function verifyRun(snap: RunSnapshot, inputs: unknown): RunResult {
-  if (!snap || snap.mode !== 'normal') throw new VerifyError('bad mode');
+  if (!snap || (snap.mode !== 'normal' && snap.mode !== 'tower')) throw new VerifyError('bad mode');
+  const tower = snap.mode === 'tower';
   if (!Array.isArray(snap.party) || !snap.party.every(isHeroId)) throw new VerifyError('bad party');
-  const list = checkInputs(inputs);
+  const list = checkInputs(inputs, tower ? MAX_TOWER_INPUTS : MAX_INPUTS);
   let cfg;
   try {
-    cfg = buildConfig({ stage: snap.stage, mode: 'normal', party: snap.party, levels: snapLevels(snap), upgrades: snapUpgrades(snap) });
+    cfg = buildConfig({ stage: snap.stage, mode: tower ? 'tower' : 'normal', party: snap.party, levels: snapLevels(snap), upgrades: snapUpgrades(snap) });
   } catch (e) {
     if (e instanceof ConfigError) throw new VerifyError(e.message === 'stage' ? 'bad stage' : 'bad party');
     throw e;

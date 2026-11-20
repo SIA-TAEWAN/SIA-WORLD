@@ -41,7 +41,7 @@ export interface FinishAnswer {
 export interface FingerApi {
   loadProfile(): Promise<FingerProfile>;
   /** 판 시작 → 판 번호 (서버가 거절하면 ApiError, 통신 실패면 '' = 기록되지 않는 판) */
-  start(stage: string, party: HeroId[], mode?: 'normal'): Promise<string>;
+  start(stage: string, party: HeroId[], mode?: 'normal' | 'tower'): Promise<string>;
   /** 판 결과 → 새 프로필과 결과 (통신 실패면 null: 보관했다가 다시 보낸다) */
   finish(report: RunReport): Promise<FinishAnswer | null>;
   /** 보관해 둔 결과 다시 보내기 → 올라간 판 수 */
@@ -91,7 +91,7 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local'): F
       const why = checkStart(p, stage, party, mode);
       if (why) throw new ApiError(why);
       const id = `local-${Date.now()}-${n++}`;
-      runs.set(id, snapshotOf(p, stage, party));
+      runs.set(id, snapshotOf(p, stage, party, mode));
       return id;
     },
     async finish(report) {
@@ -149,7 +149,7 @@ export interface ServerClient {
 
 /** 서버가 일부러 거절한 까닭 (raise exception · Edge Function error 글자) — 다시 보내도 소용없다 */
 const REJECTS = [
-  'stage locked', 'hero locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login',
+  'stage locked', 'tower locked', 'hero locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login',
   'extra inputs', 'too many turns', 'bad ',
 ];
 /** 거절이면 까닭, 아니면(통신 문제) null */
@@ -214,7 +214,7 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
     },
     async start(stage, party, mode = 'normal') {
       try {
-        return String(await call('finger_start', { p_stage: stage, p_party: party, p_mode: mode }));
+        return String(await call('finger_start', { p_stage: mode === 'tower' ? 'tower' : stage, p_party: party, p_mode: mode }));
       } catch (e) {
         if (e instanceof ApiError) throw e;
         return '';

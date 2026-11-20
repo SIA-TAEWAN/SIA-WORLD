@@ -20,7 +20,7 @@ import { buildConfig, createRun, type RunResult } from '../src/sim';
 import { playLikeBrowser } from './helpers';
 
 const result = (o: Partial<RunResult>): RunResult => ({
-  cleared: true, ended: true, stars: 3, starFlags: [true, true, true], turns: 15, wave: 2, waves: 3, kills: 8, coins: 6, fallen: 0, extra: 0, steps: 1500, ...o,
+  cleared: true, ended: true, stars: 3, starFlags: [true, true, true], turns: 15, wave: 2, waves: 3, kills: 8, coins: 6, fallen: 0, extra: 0, steps: 1500, floors: 0, ...o,
 });
 
 /** 067_finger.sql 의 엽전 식을 그대로 옮긴 것 (SQL 표 줄을 파일에서 읽는다) */
@@ -131,7 +131,9 @@ describe('열기 · 강화 · 레벨', () => {
 
   it('스냅숏은 파티 대원 레벨과 강화만, 서버 프로필 모양을 읽는다', () => {
     const p = normalize({ coins: '120', stages: { '1-1': 3, '9-9': 2, '1-2': 0 }, upgrades: { hp: 2, coin: 99, x: 1 }, levels: { rat: 4, cat: 3 }, heroes: ['rat'] });
-    expect(p).toEqual({ coins: 120, stages: { '1-1': 3 }, upgrades: { hp: 2, coin: 5 }, levels: { rat: 4 } });
+    expect(p).toEqual({ coins: 120, stages: { '1-1': 3 }, upgrades: { hp: 2, coin: 5 }, levels: { rat: 4 }, tower: null });
+    expect(normalize({ tower: { floor: '12', turns: 40 } }).tower).toEqual({ floor: 12, turns: 40 });
+    expect(normalize({ tower: { floor: 0, turns: 3 } }).tower).toBeNull();
     expect(snapshotOf(p, '1-1', ['ox', 'rat'])).toEqual({ stage: '1-1', mode: 'normal', party: ['ox', 'rat'], levels: { ox: 1, rat: 4 }, upgrades: { hp: 2, coin: 5 } });
   });
 

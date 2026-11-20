@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { PICK_CAP } from '../src/data/growth';
+import { PICK_CAP, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, towerCoins } from '../src/data/growth';
 import { heroRows, levelRows, stageRows, upgradeRows } from '../src/data/sqlrows';
 import { LIMITS } from '../src/game/progress';
 import { MAX_SHOT_STEPS, STAGES } from '../src/sim';
@@ -51,6 +51,37 @@ describe('SQL 표', () => {
     expect(c('max_turns')).toBe(LIMITS.maxTurns);
     expect(c('max_shot_steps')).toBe(MAX_SHOT_STEPS);
     expect(c('pick_cap')).toBe(PICK_CAP);
+    expect(c('tower_turns')).toBe(LIMITS.towerTurns);
+    expect(c('tower_floor_coins')).toBe(TOWER_FLOOR_COINS);
+    expect(c('tower_boss_coins')).toBe(TOWER_BOSS_COINS);
+  });
+
+  it('끝없는 탑 엽전 식이 growth.ts 의 towerCoins 와 같다', () => {
+    const fn = block('_finger_tower_coins');
+    expect(fn).toContain("public._finger_const('tower_floor_coins') * greatest(0, coalesce(p_floors, 0))");
+    expect(fn).toContain("+ public._finger_const('tower_boss_coins') * (greatest(0, coalesce(p_floors, 0)) / 5))::int");
+    // SQL 식을 그대로 옮겨 계산해 본다 (int 나눗셈 = 내림)
+    const sqlCoins = (n: number) => TOWER_FLOOR_COINS * Math.max(0, n) + TOWER_BOSS_COINS * Math.trunc(Math.max(0, n) / 5);
+    for (let n = 0; n <= 120; n++) expect(sqlCoins(n), String(n)).toBe(towerCoins(n));
+    // 탑 판: 층 엽전 + 주운 엽전, 같은 엽전 강화 식
+    expect(SQL).toContain('raw := public._finger_tower_coins(v_floors);');
+    expect(SQL).toContain("public._finger_const(case when tower then 'tower_turns' else 'max_turns' end)");
+    expect(SQL).toContain('(tower and (v_floors < 0 or v_floors > v_turns or v_floors > v_waves))');
+    // 기록 갱신: 높은 층 · 같은 층이면 적은 턴
+    expect(SQL).toContain('v_floors > old_floor or (v_floors = old_floor and v_turns < old_turns)');
+    expect(SQL).toContain("if not public._finger_cleared(me, '1-5') then raise exception 'tower locked'; end if;");
+  });
+
+  it('랭킹 뷰 2개: 정렬 · 권한 (돌격대 061 과 같은 모양)', () => {
+    expect(SQL).toContain('create or replace view public.finger_stage_ranking as');
+    expect(SQL).toContain('order by r.total_stars desc, r.cleared_stages desc, r.stars_updated_at asc, r.user_id');
+    expect(SQL).toContain('create or replace view public.finger_tower_ranking as');
+    expect(SQL).toContain('order by r.best_floor desc, r.turns asc, r.achieved_at asc, r.user_id');
+    for (const v of ['finger_stage_ranking', 'finger_tower_ranking']) {
+      expect(SQL).toContain(`revoke all on public.${v} from anon, authenticated;`);
+      expect(SQL).toContain(`grant select on public.${v} to anon, authenticated;`);
+    }
+    expect(SQL).toContain('revoke all on function public._finger_tower_coins(int) from public, anon, authenticated;');
   });
 
   it('엽전 식이 growth.ts 와 같다', () => {

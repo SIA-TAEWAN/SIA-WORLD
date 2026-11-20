@@ -137,7 +137,7 @@ describe('다시 돌리기 거절', () => {
     expect(err(() => verifyRun({ ...snap, party: ['cat'] }, []))).toBe('bad party');
     expect(err(() => verifyRun({ ...snap, party: ['rat', 'rat'] }, []))).toBe('bad party');
     expect(err(() => verifyRun({ ...snap, party: [] }, []))).toBe('bad party');
-    expect(err(() => verifyRun({ ...snap, mode: 'tower' }, []))).toBe('bad mode');
+    expect(err(() => verifyRun({ ...snap, mode: 'hell' }, []))).toBe('bad mode');
   });
 
   it('조작이 없으면 시작한 그대로 (실패 · 끝나지 않음)', () => {

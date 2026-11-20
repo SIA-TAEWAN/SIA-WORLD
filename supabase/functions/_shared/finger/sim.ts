@@ -16,6 +16,8 @@ export const STEP = 1 / 60;
 export const MAX_SHOT_STEPS = 360;
 /** 한 판 최대 턴 (넘으면 실패) */
 export const MAX_TURNS = 40;
+/** 끝없는 탑 한 판의 최대 턴 (판이 너무 길어지지 않게) */
+export const TOWER_TURNS = 120;
 /** 대원 반지름 */
 export const HERO_R = 30;
 /** 힘 1 → 가장 느린 속도, 힘 100 → 가장 빠른 속도 (px/초) */
@@ -107,10 +109,21 @@ export type Portal = [number, number, number, number];
 /** 벽 선분 [ax, ay, bx, by] */
 export type Seg = [number, number, number, number];
 
+/** 방 모양: 테두리 + 네모 돌기둥 선분 · 둥근 돌기둥 · 가시밭/빨래판 · 순간이동 구멍 */
+export interface Room {
+  walls: Seg[];
+  pillars?: Pillar[];
+  zones?: Zone[];
+  portals?: Portal[];
+  /** 끝없는 탑: 이 방을 가져온 지역 (화면 바닥 그림용) */
+  region?: number;
+}
+
 export interface RunConfig {
   v: 1;
   stage: string;
-  mode: 'normal';
+  /** normal = 스테이지 · tower = 끝없는 탑 (웨이브 하나 = 한 층) */
+  mode: 'normal' | 'tower';
   /** 방 크기 */
   w: number;
   h: number;
@@ -128,6 +141,9 @@ export interface RunConfig {
   /** 별 하나: 이 턴 안에 클리어 */
   par: number;
   maxTurns: number;
+  /** 끝없는 탑: 층마다 다른 방. rooms[waveRoom[웨이브]] 가 그 층의 방 (없으면 위 walls·pillars·zones·portals 하나) */
+  rooms?: Room[];
+  waveRoom?: number[];
 }
 
 /** 한 턴 조작: 각도(0.1° 단위 0~3599, 0 = 오른쪽, 900 = 아래) · 힘(1~100) · 필살기(0|1) */
@@ -264,6 +280,8 @@ export interface RunState {
   guardTurns: number;
   /** 바닥에 남은 불길 */
   fires: Fire[];
+  /** 지금 방 (스테이지는 cfg 의 방 하나, 끝없는 탑은 층마다 바뀐다) */
+  room: Room;
 }
 
 // ---------- 이벤트 (소리·효과용) ----------
@@ -303,11 +321,19 @@ export type SimEvent =
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
+/** 웨이브(층) w 의 방 */
+export function roomAt(cfg: RunConfig, w: number): Room {
+  if (cfg.rooms && cfg.waveRoom) return cfg.rooms[cfg.waveRoom[w]];
+  return { walls: cfg.walls, pillars: cfg.pillars, zones: cfg.zones, portals: cfg.portals };
+}
+
+/** 대원 i 의 시작 자리 (아래쪽에 나란히) */
+const startX = (cfg: RunConfig, i: number) => (cfg.w * (i + 1)) / (cfg.party.length + 1);
+
 export function createRun(cfg: RunConfig): RunState {
-  const n = cfg.party.length;
   const heroes: Hero[] = cfg.party.map((h, i) => ({
     ...clone(h),
-    x: (cfg.w * (i + 1)) / (n + 1),
+    x: startX(cfg, i),
     y: cfg.h - 80,
     r: HERO_R,
     maxHp: h.hp,
@@ -340,6 +366,7 @@ export function createRun(cfg: RunConfig): RunState {
     comboUsed: [],
     guardTurns: 0,
     fires: [],
+    room: roomAt(cfg, 0),
   };
   spawnWave(s, 0);
   return s;
@@ -370,6 +397,15 @@ function newFoe(s: RunState, f: FoeInit, x: number, y: number): Foe {
 }
 
 function spawnWave(s: RunState, w: number) {
+  if (w > 0 && s.cfg.mode === 'tower') {
+    // 끝없는 탑: 다음 층으로 올라가면 방이 바뀐다. 대원은 체력·쓰러짐·나쁜 효과를 그대로 지닌 채 시작 자리로, 바닥에 남은 것은 사라진다
+    s.room = roomAt(s.cfg, w);
+    s.heroes.forEach((h, i) => {
+      h.x = startX(s.cfg, i);
+      h.y = s.cfg.h - 80;
+    });
+    s.pickups = [];
+  }
   s.wave = w;
   s.foes = s.cfg.waves[w].map((f) => newFoe(s, f, f.x, f.y));
   for (const h of s.heroes) if (!h.fallen) settle(s, h);
@@ -496,7 +532,7 @@ function moveOne(s: RunState, m: Mover, ev: SimEvent[]) {
   }
   sp = Math.sqrt(m.vx * m.vx + m.vy * m.vy);
   let ns = sp - (FRIC_LIN + FRIC_K * sp) * STEP;
-  if (m.zones.length && s.cfg.zones) for (const z of m.zones) if (s.cfg.zones[z].k === 'thorn') ns *= THORN_DRAG;
+  if (m.zones.length && s.room.zones) for (const z of m.zones) if (s.room.zones[z].k === 'thorn') ns *= THORN_DRAG;
   if (ns <= STOP_V) stopMover(m);
   else {
     const k = ns / sp;
@@ -550,12 +586,12 @@ function bounce(m: Mover, o: [number, number, number, number], ev: SimEvent[]) {
 }
 
 function hitWalls(s: RunState, m: Mover, ev: SimEvent[]) {
-  for (const w of s.cfg.walls) {
+  for (const w of s.room.walls) {
     const o = pushOut(m.x, m.y, m.r, w);
     if (o) bounce(m, o, ev);
   }
-  if (s.cfg.pillars)
-    for (const p of s.cfg.pillars) {
+  if (s.room.pillars)
+    for (const p of s.room.pillars) {
       const o = pushOutCircle(m.x, m.y, m.r, p);
       if (o) bounce(m, o, ev);
     }
@@ -563,7 +599,7 @@ function hitWalls(s: RunState, m: Mover, ev: SimEvent[]) {
 
 /** 순간이동 구멍: 가운데가 한쪽 구멍에 들어가면 같은 속도로 짝 구멍에서 나온다 */
 function hitPortals(s: RunState, m: Mover, ev: SimEvent[]) {
-  const ps = s.cfg.portals;
+  const ps = s.room.portals;
   if (!ps || !ps.length) return;
   const r2 = PORTAL_R * PORTAL_R;
   if (m.warp >= 0) {
@@ -597,7 +633,7 @@ const inZone = (z: Zone, x: number, y: number) => x >= z.x && x <= z.x + z.w && 
 
 /** 바닥 장애물: 들어가는 순간 가시밭(체력 조금) · 빨래판(급제동). 가시밭 감속은 moveOne 마찰에서 */
 function hitZones(s: RunState, m: Mover, ev: SimEvent[]) {
-  const zs = s.cfg.zones;
+  const zs = s.room.zones;
   if (!zs || !zs.length) return;
   for (let i = 0; i < zs.length; i++) {
     const z = zs[i];
@@ -775,7 +811,7 @@ function summonFoes(s: RunState, f: Foe, ev: SimEvent[]) {
     if (kids.length >= n || liveCount(s) >= MAX_FOES) break;
     const [x, y] = clampIn(s, sx, sy, tmpl.r);
     const busy = s.foes.some((o) => (o.alive || o.down) && dist2(x, y, o.x, o.y) < (o.r + tmpl.r + 6) * (o.r + tmpl.r + 6));
-    const block = (s.cfg.pillars ?? []).some((p) => dist2(x, y, p[0], p[1]) < (p[2] + tmpl.r) * (p[2] + tmpl.r));
+    const block = (s.room.pillars ?? []).some((p) => dist2(x, y, p[0], p[1]) < (p[2] + tmpl.r) * (p[2] + tmpl.r));
     if (busy || block) continue;
     const kid = newFoe(s, tmpl, x, y);
     kid.left = tmpl.cd + 1;
@@ -827,15 +863,15 @@ export function settle(s: RunState, h: Hero) {
       h.x = f.x + nx * rr;
       h.y = f.y + ny * rr;
     }
-    if (s.cfg.pillars)
-      for (const p of s.cfg.pillars) {
+    if (s.room.pillars)
+      for (const p of s.room.pillars) {
         const o = pushOutCircle(h.x, h.y, h.r, p);
         if (o) {
           h.x = o[0];
           h.y = o[1];
         }
       }
-    for (const w of s.cfg.walls) {
+    for (const w of s.room.walls) {
       const o = pushOut(h.x, h.y, h.r, w);
       if (o) {
         h.x = o[0];
@@ -1166,7 +1202,12 @@ export interface RunResult {
   /** 남은 조작 (판이 끝난 뒤에 더 온 조작 수) */
   extra: number;
   steps: number;
+  /** 끝없는 탑: 올라간 층 (다 깬 층 수). 스테이지는 0 */
+  floors: number;
 }
+
+/** 끝없는 탑에서 다 깬 층 수 (스테이지는 0) */
+export const floorsOf = (s: RunState) => (s.cfg.mode !== 'tower' ? 0 : s.phase === 'clear' ? s.cfg.waves.length : s.wave);
 
 export function resultOf(s: RunState, extra = 0): RunResult {
   const flags = starsOf(s);
@@ -1183,6 +1224,7 @@ export function resultOf(s: RunState, extra = 0): RunResult {
     fallen: s.heroes.filter((h) => h.fallen).length,
     extra,
     steps: s.steps,
+    floors: floorsOf(s),
   };
 }
 
@@ -1205,12 +1247,12 @@ export function aimPreview(s: RunState, a: number): [number, number][] {
   const [dx, dy] = dirOf(a);
   const r = h.r;
   let best = Infinity;
-  for (const w of s.cfg.walls) {
+  for (const w of s.room.walls) {
     const t = rayCapsule(h.x, h.y, dx, dy, w, r);
     if (t !== null && t < best) best = t;
   }
-  if (s.cfg.pillars)
-    for (const p of s.cfg.pillars) {
+  if (s.room.pillars)
+    for (const p of s.room.pillars) {
       const t = rayCircle(h.x, h.y, dx, dy, p[0], p[1], p[2] + r);
       if (t !== null && t < best) best = t;
     }

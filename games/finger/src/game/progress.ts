@@ -1,6 +1,6 @@
-import { HERO_IDS, HEROES, MAX_LEVEL, MAX_TURNS, STAGES, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
+import { HERO_IDS, HEROES, MAX_LEVEL, MAX_TURNS, STAGES, TOWER_TURNS, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
 import { REGIONS } from '../data/regions';
-import { clearCoins, failCoins, levelCost, levelOf, rewardFor, totalCoins, upgradeCost, upgradeLv, upgradeOf } from '../data/growth';
+import { clearCoins, failCoins, levelCost, levelOf, rewardFor, totalCoins, towerCoins, upgradeCost, upgradeLv, upgradeOf } from '../data/growth';
 
 /**
  * 판 밖 기록 규칙 (PRD "성장·재화", "서버와 검증"). 서버(067_finger.sql 의 finger_start · finger_finish_verified 등)가
@@ -17,9 +17,11 @@ export interface FingerProfile {
   upgrades: Upgrades;
   /** 대원 → 레벨 (없으면 1) */
   levels: Partial<Record<HeroId, number>>;
+  /** 끝없는 탑 최고 기록 (올라간 층 · 그때 쓴 턴). 없으면 null */
+  tower: { floor: number; turns: number } | null;
 }
 
-export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {} });
+export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {}, tower: null });
 
 /** 서버·기기에서 읽은 값을 프로필 모양으로 (모르는 값은 버린다) */
 export function normalize(p: unknown): FingerProfile {
@@ -36,7 +38,10 @@ export function normalize(p: unknown): FingerProfile {
   }
   const levels: Partial<Record<HeroId, number>> = {};
   for (const [k, v] of Object.entries((o.levels as Record<string, unknown>) ?? {})) if (isHeroId(k)) levels[k] = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(v) || 1)));
-  return { coins: Math.max(0, Math.floor(Number(o.coins) || 0)), stages, upgrades, levels };
+  const t = o.tower as { floor?: unknown; turns?: unknown } | null | undefined;
+  const floor = Math.max(0, Math.floor(Number(t?.floor) || 0));
+  const tower = floor > 0 ? { floor, turns: Math.max(0, Math.floor(Number(t?.turns) || 0)) } : null;
+  return { coins: Math.max(0, Math.floor(Number(o.coins) || 0)), stages, upgrades, levels, tower };
 }
 
 /** 서버 검증 값 (SQL _finger_const 와 같다) */
@@ -53,6 +58,8 @@ export const LIMITS = {
   coinMinTime: 20,
   /** 한 판 최대 턴 */
   maxTurns: MAX_TURNS,
+  /** 끝없는 탑 한 판 최대 턴 */
+  towerTurns: TOWER_TURNS,
 };
 
 /** 판이 끝날 수 있는 가장 짧은 시간 (초): 턴 수 × 턴 최소 시간 + 날아간 스텝 / 2배속 */
@@ -71,6 +78,9 @@ export function regionOpen(p: FingerProfile, r: number): boolean {
   if (r > REGIONS) return false;
   return cleared(p, `${r - 1}-5`) && totalStars(p) >= regionStars(r);
 }
+
+/** 끝없는 탑: 1-5 를 깨면 열린다 */
+export const towerOpen = (p: FingerProfile) => cleared(p, '1-5');
 
 export function stageOpen(p: FingerProfile, id: string): boolean {
   const st = stageOf(id);
@@ -115,9 +125,13 @@ export function saveParty(user: string, party: HeroId[]) {
 
 /** 시작할 수 있는가 (서버 finger_start 와 같은 기준) → 틀리면 까닭 */
 export function checkStart(p: FingerProfile, stage: string, party: string[], mode = 'normal'): string | null {
-  if (mode !== 'normal') return 'bad mode';
-  if (!stageOf(stage)) return 'bad stage';
-  if (!stageOpen(p, stage)) return 'stage locked';
+  if (mode !== 'normal' && mode !== 'tower') return 'bad mode';
+  if (mode === 'tower') {
+    if (!towerOpen(p)) return 'tower locked';
+  } else {
+    if (!stageOf(stage)) return 'bad stage';
+    if (!stageOpen(p, stage)) return 'stage locked';
+  }
   if (!Array.isArray(party) || party.length < 1 || party.length > 4 || new Set(party).size !== party.length || !party.every(isHeroId)) return 'bad party';
   const open = heroesOf(p);
   if (!party.every((id) => open.includes(id as HeroId))) return 'hero locked';
@@ -125,22 +139,24 @@ export function checkStart(p: FingerProfile, stage: string, party: string[], mod
 }
 
 /** 판 시작 때의 스냅숏 (서버는 finger_runs 에 같은 값을 남긴다): 파티 대원 레벨 + 강화 */
-export function snapshotOf(p: FingerProfile, stage: string, party: HeroId[]): RunSnapshot {
+export function snapshotOf(p: FingerProfile, stage: string, party: HeroId[], mode: 'normal' | 'tower' = 'normal'): RunSnapshot {
   const levels: Record<string, number> = {};
   for (const id of party) levels[id] = levelOf(p.levels, id);
   const upgrades: Record<string, number> = {};
   for (const [k, v] of Object.entries(p.upgrades)) if (v) upgrades[k] = v;
-  return { stage, mode: 'normal', party: [...party], levels, upgrades };
+  return { stage: mode === 'tower' ? 'tower' : stage, mode, party: [...party], levels, upgrades };
 }
 
 export interface FinishResult {
   /** 받은 엽전 */
   coins: number;
-  /** 이번 판 별 (실패 0) */
+  /** 이번 판 별 (실패 · 끝없는 탑 0) */
   stars: number;
+  /** 끝없는 탑: 올라간 층 (스테이지 0) */
+  floors?: number;
   /** 첫 클리어 */
   first: boolean;
-  /** 별이 늘었다 */
+  /** 별이 늘었다 (끝없는 탑: 최고 기록을 고쳤다) */
   best: boolean;
   /** 시아코인을 받았다 */
   siaCoin: boolean;
@@ -150,6 +166,7 @@ export interface FinishResult {
 
 /** 다시 계산한 결과를 프로필에 반영 (finger_finish_verified 와 같은 식). up = 판 시작 때 강화 */
 export function applyResult(p: FingerProfile, stage: string, r: RunResult, up: Upgrades): FinishResult {
+  if (stage === 'tower') return applyTower(p, r, up);
   const rw = rewardFor(stage);
   if (!rw) throw new Error('bad stage');
   const before = heroesOf(p);
@@ -169,6 +186,17 @@ export function applyResult(p: FingerProfile, stage: string, r: RunResult, up: U
   const coins = totalCoins(raw, r.coins, up);
   p.coins += coins;
   return { coins, stars, first, best, siaCoin: false, newHeroes: heroesOf(p).filter((id) => !before.includes(id)) };
+}
+
+/** 끝없는 탑 결과 (finger_finish_verified 의 tower 갈래와 같은 식): 엽전 = 층 엽전 + 주운 엽전 (엽전 강화), 기록은 더 높은 층 · 같은 층이면 적은 턴 */
+function applyTower(p: FingerProfile, r: RunResult, up: Upgrades): FinishResult {
+  const floors = r.floors;
+  const old = p.tower;
+  const best = floors >= 1 && (!old || floors > old.floor || (floors === old.floor && r.turns < old.turns));
+  if (best) p.tower = { floor: floors, turns: r.turns };
+  const coins = totalCoins(towerCoins(floors), r.coins, up);
+  p.coins += coins;
+  return { coins, stars: 0, floors, first: false, best, siaCoin: false, newHeroes: [] };
 }
 
 // ---------- 강화 · 레벨 ----------
@@ -215,7 +243,8 @@ export function whyText(why: string): string {
     'already finished': '이미 기록된 판이에요',
     'no run': '서버에 없는 판이에요',
     'extra inputs': '판 기록이 맞지 않아 받지 않았어요',
-    'too many turns': `${MAX_TURNS}턴을 넘은 기록은 받지 않아요`,
+    'too many turns': `${MAX_TURNS}턴(끝없는 탑 ${TOWER_TURNS}턴)을 넘은 기록은 받지 않아요`,
+    'tower locked': '끝없는 탑은 1-5 를 깨면 열려요',
     'bad inputs': '판 기록이 맞지 않아 받지 않았어요',
   };
   return m[why] ?? '서버가 받아 주지 않았어요';

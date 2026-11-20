@@ -83,3 +83,13 @@ export const totalCoins = (raw: number, picked: number, up: Upgrades) =>
 
 /** 대원 합류 표: [대원, 합류 지역 (0 = 처음부터)] */
 export const HERO_UNLOCKS: [HeroId, number][] = HERO_IDS.map((id) => [id, HEROES[id].unlockRegion]);
+
+// ---------- 끝없는 탑 ----------
+
+/** 끝없는 탑 엽전: 올라간 층마다 TOWER_FLOOR_COINS + 보스 층(5층마다)을 넘길 때마다 TOWER_BOSS_COINS (SQL _finger_tower_coins 와 같다) */
+export const TOWER_FLOOR_COINS = 10;
+export const TOWER_BOSS_COINS = 20;
+export const towerCoins = (floors: number) => {
+  const n = Math.max(0, Math.floor(floors));
+  return TOWER_FLOOR_COINS * n + TOWER_BOSS_COINS * Math.floor(n / 5);
+};

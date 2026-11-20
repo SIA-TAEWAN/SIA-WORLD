@@ -15,10 +15,13 @@ import {
   shotDone,
   stepShot,
   threats,
+  towerFloor,
+  type Room,
   type RunState,
   type ShotInput,
   type SimEvent,
 } from '../sim';
+import { groundOf } from '../data/regions';
 import { COLOR, FONT } from '../theme';
 import { ensureArt, makeBall } from './art';
 
@@ -67,6 +70,12 @@ export class GameScene extends Phaser.Scene {
   private run!: RunState;
   private hooks!: SceneHooks;
   private ground = 'tile-field';
+  /** 끝없는 탑: 층(방)마다 바뀌는 바닥 그림들 */
+  private grounds: string[] = [];
+  private tile!: Phaser.GameObjects.TileSprite;
+  private roomG!: Phaser.GameObjects.Graphics;
+  /** 지금 그려 둔 방 (끝없는 탑은 층마다 바뀐다) */
+  private roomShown: Room | null = null;
   paused = false;
   private mode: Mode = 'aim';
   private acc = 0;
@@ -102,10 +111,12 @@ export class GameScene extends Phaser.Scene {
     super('game');
   }
 
-  init(data: { run: RunState; hooks: SceneHooks; ground?: string }) {
+  init(data: { run: RunState; hooks: SceneHooks; ground?: string; grounds?: string[] }) {
     this.run = data.run;
     this.hooks = data.hooks;
     this.ground = `tile-${data.ground ?? 'field'}`;
+    this.grounds = (data.grounds ?? []).map((g) => `tile-${g}`);
+    this.roomShown = null;
     this.paused = false;
     this.mode = this.run.phase === 'aim' ? 'aim' : 'end';
     this.acc = 0;
@@ -125,7 +136,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 이번 판에 쓰는 그림 키 */
   private artKeys(): string[] {
-    const keys = new Set<string>([this.ground, 'fx-pop', 'fx-coin', 'p-shuriken']);
+    const keys = new Set<string>([this.ground, ...this.grounds, 'fx-pop', 'fx-coin', 'p-shuriken']);
     for (const w of this.run.cfg.waves) for (const f of w) keys.add(f.art);
     return [...keys];
   }
@@ -139,20 +150,11 @@ export class GameScene extends Phaser.Scene {
     ensureArt(this, this.artKeys());
     const s = this.run;
     const { w, h } = s.cfg;
-    // 바닥 · 벽
-    const tile = this.add.tileSprite(RX + w / 2, RY + h / 2, w, h, this.ground).setDepth(-20);
-    tile.tileScaleX = tile.tileScaleY = 0.5;
-    const walls = this.add.graphics().setDepth(-10);
-    walls.lineStyle(10, COLOR.outline, 1).strokeRoundedRect(RX - 5, RY - 5, w + 10, h + 10, 14);
-    // 돌기둥 (방 테두리 4개 다음부터 4개씩)
-    for (let i = 4; i + 3 < s.cfg.walls.length; i += 4) {
-      const [x0, y0] = s.cfg.walls[i];
-      const [x1, y1] = s.cfg.walls[i + 1].slice(2);
-      walls.fillStyle(COLOR.inkSoft, 1).fillRect(RX + x0, RY + y0, x1 - x0, y1 - y0);
-      walls.fillStyle(COLOR.emptyLine, 1).fillRect(RX + x0 + 4, RY + y0 + 4, x1 - x0 - 8, (y1 - y0) / 2 - 4);
-      walls.lineStyle(5, COLOR.outline, 1).strokeRect(RX + x0, RY + y0, x1 - x0, y1 - y0);
-    }
-    this.drawObstacles();
+    // 바닥 · 벽 · 장애물 (끝없는 탑은 층이 바뀌면 다시 그린다)
+    this.tile = this.add.tileSprite(RX + w / 2, RY + h / 2, w, h, this.ground).setDepth(-20);
+    this.tile.tileScaleX = this.tile.tileScaleY = 0.5;
+    this.roomG = this.add.graphics().setDepth(-8);
+    this.drawRoom();
     this.floor = this.add.graphics().setDepth(-5);
     this.fx = this.add.graphics().setDepth(800);
     this.aimG = this.add.graphics().setDepth(900);
@@ -187,10 +189,32 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-SPACE', () => this.toggleSpecial());
   }
 
+  /** 방 그림: 테두리 · 네모 돌기둥 + 장애물 (지금 방이 바뀌었을 때만) */
+  private drawRoom() {
+    const room = this.run.room;
+    if (room === this.roomShown) return;
+    this.roomShown = room;
+    const { w, h } = this.run.cfg;
+    const g = this.roomG.clear();
+    // 끝없는 탑: 방을 가져온 지역의 바닥
+    if (this.grounds.length && room.region) {
+      const key = `tile-${groundOf(room.region)}`;
+      if (this.textures.exists(key)) this.tile.setTexture(key);
+    }
+    g.lineStyle(10, COLOR.outline, 1).strokeRoundedRect(RX - 5, RY - 5, w + 10, h + 10, 14);
+    // 돌기둥 (방 테두리 4개 다음부터 4개씩)
+    for (let i = 4; i + 3 < room.walls.length; i += 4) {
+      const [x0, y0] = room.walls[i];
+      const [x1, y1] = room.walls[i + 1].slice(2);
+      g.fillStyle(COLOR.inkSoft, 1).fillRect(RX + x0, RY + y0, x1 - x0, y1 - y0);
+      g.fillStyle(COLOR.emptyLine, 1).fillRect(RX + x0 + 4, RY + y0 + 4, x1 - x0 - 8, (y1 - y0) / 2 - 4);
+      g.lineStyle(5, COLOR.outline, 1).strokeRect(RX + x0, RY + y0, x1 - x0, y1 - y0);
+    }
+    this.drawObstacles(g, room);
+  }
+
   /** 장애물 코드 그림 (전용 그림은 7단계): 가시밭 · 빨래판 · 둥근 돌기둥 · 순간이동 구멍 */
-  private drawObstacles() {
-    const cfg = this.run.cfg;
-    const g = this.add.graphics().setDepth(-8);
+  private drawObstacles(g: Phaser.GameObjects.Graphics, cfg: Room) {
     for (const z of cfg.zones ?? []) {
       const x = RX + z.x;
       const y = RY + z.y;
@@ -488,7 +512,10 @@ export class GameScene extends Phaser.Scene {
           break;
         case 'wave':
           this.hooks.sound('survLevel');
-          this.banner(`웨이브 ${e.n + 1}`);
+          if (this.run.cfg.mode === 'tower') {
+            const tf = towerFloor(e.n + 1);
+            this.banner(tf.boss ? `${e.n + 1}층 · 보스!` : `${e.n + 1}층`);
+          } else this.banner(`웨이브 ${e.n + 1}`);
           break;
         case 'clear':
           this.hooks.sound('win');
@@ -586,6 +613,7 @@ export class GameScene extends Phaser.Scene {
   // ---------- 그리기 ----------
 
   private draw(time: number) {
+    this.drawRoom();
     this.drawThreats(time);
     this.drawFoes(time);
     this.drawPickups();
@@ -599,7 +627,7 @@ export class GameScene extends Phaser.Scene {
     const g = this.floor;
     g.clear();
     // 순간이동 구멍 (도는 고리)
-    (this.run.cfg.portals ?? []).forEach((p, k) => {
+    (this.run.room.portals ?? []).forEach((p, k) => {
       const color = k % 2 ? COLOR.pink : COLOR.teamA;
       const a = time / 300;
       for (const [x, y] of [

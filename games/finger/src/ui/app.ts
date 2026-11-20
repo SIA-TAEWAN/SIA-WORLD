@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { artUrl, zodiacFaceUrl } from '../assets';
-import { COMBO_LEVELS, UPGRADES, levelCost, levelOf, upgradeCost, upgradeLv } from '../data/growth';
+import { COMBO_LEVELS, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, UPGRADES, levelCost, levelOf, upgradeCost, upgradeLv } from '../data/growth';
 import { REGIONS, REGION_NAMES, groundOf } from '../data/regions';
 import {
   emptyProfile,
@@ -13,6 +13,7 @@ import {
   saveParty,
   stageOpen,
   totalStars,
+  towerOpen,
   whyText,
   type FingerProfile,
   type FinishResult,
@@ -36,6 +37,8 @@ import {
   resultOf,
   stageOf,
   stagesOf,
+  towerFloor,
+  TOWER_TURNS,
   type HeroId,
   type RunResult,
   type RunState,
@@ -146,7 +149,7 @@ export function showMain() {
         <button class="btn" id="up">💪 강화</button>
       </div>
       <div class="row2">
-        <button class="btn soon" id="tower">🏯 끝없는 탑 🔒</button>
+        <button class="btn ${towerOpen(profile) ? '' : 'soon'}" id="tower">🏯 끝없는 탑 ${towerOpen(profile) ? (profile.tower ? `<small>${profile.tower.floor}층</small>` : '') : '🔒'}</button>
         <button class="btn" id="rank">🏆 랭킹</button>
       </div>
       <button class="btn" id="help">❓ 하는 법</button>
@@ -161,7 +164,7 @@ export function showMain() {
   on('#go', showRegions);
   on('#heroes', showHeroes);
   on('#up', showUpgrades);
-  on('#tower', () => toast('끝없는 탑은 준비 중이에요'));
+  on('#tower', () => (towerOpen(profile) ? showTower() : toast('끝없는 탑은 1-5 를 깨면 열려요')));
   on('#help', showHelp);
   root.querySelector('#rank')!.addEventListener('click', async () => {
     play('click');
@@ -378,17 +381,18 @@ function showStages(region: number) {
 
 // ---------- 파티 고르기 ----------
 
-function showParty(st: StageDef) {
+/** 파티 고르기: 스테이지 st, 또는 null 이면 끝없는 탑 */
+function showParty(st: StageDef | null) {
   const open = heroesOf(profile);
   let party = partyOf(profile, lastParty);
   let focus: HeroId = party[0] ?? open[0];
   const root = screen(
-    `<div class="bar"><button class="back" id="back">← ${st.id}</button><h2>파티 고르기</h2><div class="spacer"></div></div>
+    `<div class="bar"><button class="back" id="back">← ${st ? st.id : '끝없는 탑'}</button><h2>파티 고르기</h2><div class="spacer"></div></div>
     <div class="card"><h3>쏘는 순서 <small>칸을 누르면 빠져요</small></h3><div class="party-slots" id="slots"></div></div>
     <div class="card"><h3>대원 <small>누르면 빈 칸에 들어가요</small></h3><div class="pick-grid" id="pick"></div><div id="info" class="hero-info pick-info"></div></div>
     <div class="grow"></div>
-    <button class="btn primary big" id="start">⚔️ ${st.id} 출발!</button>`,
-    `bg-${groundOf(st.region)}`,
+    <button class="btn primary big" id="start">${st ? `⚔️ ${st.id} 출발!` : '🏯 탑 오르기!'}</button>`,
+    `bg-${groundOf(st ? st.region : 1)}`,
   );
   const paint = () => {
     root.querySelector('#slots')!.innerHTML = [0, 1, 2, 3]
@@ -434,14 +438,52 @@ function showParty(st: StageDef) {
   paint();
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
-    showStages(st.region);
+    if (st) showStages(st.region);
+    else showTower();
   });
   root.querySelector('#start')!.addEventListener('click', () => {
     if (!party.length) return;
     play('click');
     lastParty = party;
     saveParty(userKey(), party);
-    void startGame(st.id, party);
+    void startGame(st ? st.id : TOWER, party);
+  });
+}
+
+// ---------- 끝없는 탑 ----------
+
+/** startGame 에 넘기는 끝없는 탑 id */
+const TOWER = 'tower';
+
+function showTower() {
+  const rec = profile.tower;
+  const root = screen(
+    `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>끝없는 탑</h2><div class="pills">${coinsPill()}</div></div>
+    <div class="card tower-card">
+      <h3>🏯 내 최고 기록</h3>
+      <p class="tower-best">${rec ? `<b>${rec.floor}층</b> <span class="soft">${rec.turns}턴</span>` : '<span class="soft">아직 기록이 없어요</span>'}</p>
+    </div>
+    <div class="card help">
+      <h3>규칙</h3>
+      <ul>
+        <li>한 층에 요괴 한 무리. 다 쓰러뜨리면 다음 층으로 올라가요. <b>5층마다 지역 보스</b>가 나와요.</li>
+        <li>대원 체력과 쓰러진 대원은 <b>층을 올라가도 그대로</b>예요. 회복 구슬과 토끼 필살기를 아껴 쓰세요.</li>
+        <li>층마다 방과 요괴가 바뀌고, 위로 갈수록 요괴가 세져요 (5층마다 다음 지역).</li>
+        <li>모두 쓰러지거나 <b>${TOWER_TURNS}턴</b>을 다 쓰면 끝. 올라간 층이 기록이고, 같은 층이면 턴을 적게 쓴 쪽이 위예요.</li>
+        <li>엽전: 층마다 ${TOWER_FLOOR_COINS} + 보스 층을 넘길 때마다 ${TOWER_BOSS_COINS} (+ 주운 엽전)</li>
+      </ul>
+    </div>
+    <div class="grow"></div>
+    <button class="btn primary big" id="go">🏯 파티 고르기</button>`,
+    'bg-palace',
+  );
+  root.querySelector('#back')!.addEventListener('click', () => {
+    play('click');
+    showMain();
+  });
+  root.querySelector('#go')!.addEventListener('click', () => {
+    play('click');
+    showParty(null);
   });
 }
 
@@ -468,9 +510,13 @@ interface Sent {
   unrecorded: boolean;
 }
 
+/** 판 시작: 스테이지 id, 또는 TOWER(끝없는 탑) */
 export async function startGame(stageId: string, party: HeroId[] = partyOf(profile, lastParty)) {
-  const st = stageOf(stageId);
-  if (!st || busy) return;
+  const tower = stageId === TOWER;
+  const st = tower ? null : (stageOf(stageId) ?? null);
+  if ((!tower && !st) || busy) return;
+  const id = st ? st.id : TOWER;
+  const mode = tower ? 'tower' : 'normal';
   busy = true;
   let runId = '';
   try {
@@ -478,7 +524,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     if (!DEV_ALL) {
       // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다
       await api.resend().catch(() => 0);
-      runId = await api.start(st.id, party, 'normal');
+      runId = await api.start(id, party, mode);
       if (!runId) toast('서버에 연결하지 못했어요. 이번 판은 기록되지 않아요');
     }
   } catch (e) {
@@ -488,13 +534,13 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   }
   busy = false;
   // 서버가 시작 때 남긴 스냅숏(레벨·강화)과 같은 값으로 판을 만든다
-  const run = createRun(buildConfig({ stage: st.id, party, levels: profile.levels, upgrades: profile.upgrades }));
+  const run = createRun(buildConfig({ stage: id, mode, party, levels: profile.levels, upgrades: profile.upgrades }));
   const root = app();
   root.innerHTML = `
     <div id="game"></div>
     <div class="hud">
       <button class="icon-btn" id="pause">⏸</button>
-      <div class="hud-mid"><b>${st.id} ${st.name}</b><span id="wave"></span></div>
+      <div class="hud-mid"><b>${st ? `${st.id} ${st.name}` : '🏯 끝없는 탑'}</b><span id="wave"></span></div>
       <span class="troop-pill" id="turns"></span>
     </div>
     <div class="hint" id="hint">화면을 누른 채 당겼다 놓으세요</div>`;
@@ -522,7 +568,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       const out: Sent = { result: null, replay: null, offline: false, error: null, unrecorded: !runId && !DEV_ALL };
       if (DEV_ALL || !runId) return out;
       try {
-        const r = await api.finish({ run: runId, stage: st.id, inputs: s.log.slice() });
+        const r = await api.finish({ run: runId, stage: id, inputs: s.log.slice() });
         if (!r) return { ...out, offline: true };
         setProfile(r.profile);
         return { ...out, result: r.result, replay: r.replay };
@@ -534,13 +580,21 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   };
   game.scene.add('game', scene, true, {
     run,
-    ground: groundOf(st.region),
+    ground: groundOf(st ? st.region : 1),
+    grounds: tower ? (['field', 'bamboo', 'palace', 'underworld'] as const).slice() : undefined,
     hooks: {
       sound: play,
       onFrame: (s: RunState) => {
-        waveEl.textContent = `웨이브 ${s.wave + 1}/${s.cfg.waves.length}`;
-        turnsEl.textContent = `턴 ${s.turn}/${s.cfg.par}`;
-        turnsEl.classList.toggle('over', s.turn > s.cfg.par);
+        if (tower) {
+          const tf = towerFloor(s.wave + 1);
+          waveEl.textContent = `${s.wave + 1}층${tf.boss ? ' · 보스' : tf.chief ? ' · 작은 대장' : ''} · ${REGION_NAMES[tf.region - 1]}`;
+          turnsEl.textContent = `턴 ${s.turn}/${s.cfg.maxTurns}`;
+          turnsEl.classList.toggle('over', s.cfg.maxTurns - s.turn <= 10);
+        } else {
+          waveEl.textContent = `웨이브 ${s.wave + 1}/${s.cfg.waves.length}`;
+          turnsEl.textContent = `턴 ${s.turn}/${s.cfg.par}`;
+          turnsEl.classList.toggle('over', s.turn > s.cfg.par);
+        }
         if (!hinted && s.phase !== 'aim') {
           hinted = true;
           root.querySelector('#hint')?.remove();
@@ -549,7 +603,9 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       onEnd: async (s: RunState) => {
         if (ended) return;
         ended = true;
-        showResult(s, st, party, await finish(s));
+        const out = await finish(s);
+        if (st) showResult(s, st, party, out);
+        else showTowerResult(s, party, out);
       },
     },
   });
@@ -562,7 +618,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     box.innerHTML = `<div class="card pop"><h3>일시정지</h3>
       <button class="btn primary big" id="resume">계속하기</button>
       <button class="btn" id="quit">그만하기</button>
-      <p class="soft center">그만하면 이번 판은 실패로 기록돼요 (간 만큼 엽전은 받아요)</p></div>`;
+      <p class="soft center">${tower ? '그만하면 지금까지 올라간 층이 기록돼요' : '그만하면 이번 판은 실패로 기록돼요 (간 만큼 엽전은 받아요)'}</p></div>`;
     root.appendChild(box);
     box.querySelector('#resume')!.addEventListener('click', () => {
       play('click');
@@ -582,10 +638,51 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       const out = await finish(run);
       closeGame();
       if (out.error) toast(out.error);
-      else if (out.result?.coins) toast(`실패로 기록했어요 · 엽전 +${out.result.coins}`);
+      else if (out.result?.coins) toast(tower ? `${run.wave}층까지 기록했어요 · 엽전 +${out.result.coins}` : `실패로 기록했어요 · 엽전 +${out.result.coins}`);
       else if (out.offline) toast('서버에 연결하지 못해 기록을 보관했어요');
-      showStages(st.region);
+      if (st) showStages(st.region);
+      else showTower();
     });
+  });
+}
+
+/** 끝없는 탑 결과: 올라간 층 · 쓴 턴 · 엽전 · 시아코인 · 최고 기록 */
+function showTowerResult(s: RunState, party: HeroId[], out: Sent) {
+  const r = out.replay ?? resultOf(s);
+  const res = out.result;
+  const best = !!res?.best;
+  play(best ? 'newRecord' : r.floors > 0 ? 'win' : 'lose');
+  const why = r.turns >= s.cfg.maxTurns ? `${s.cfg.maxTurns}턴을 다 썼어요` : r.cleared ? '탑 꼭대기까지 올랐어요!' : '모두 쓰러졌어요';
+  const box = document.createElement('div');
+  box.className = 'overlay';
+  box.innerHTML = `<div class="card pop result ${r.floors > 0 ? 'win' : 'lose'}">
+      <h2>${r.floors}층</h2>
+      <p class="soft center">${why}${best ? ' · <b>새 기록!</b>' : profile.tower ? ` · 최고 ${profile.tower.floor}층` : ''}</p>
+      <div class="rows">
+        <div><span>올라간 층</span><b>${r.floors}층</b></div>
+        <div><span>쓴 턴</span><b>${r.turns}</b></div>
+        <div><span>쓰러뜨린 요괴</span><b>${r.kills}</b></div>
+        ${res ? `<div><span>엽전</span><b class="coin">🪙 +${res.coins}</b></div>` : `<div><span>주운 엽전</span><b class="coin">🪙 ${r.coins}</b></div>`}
+        ${res?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
+      </div>
+      <div class="party-mini">${party.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${HEROES[id].name}</span>`).join('')}</div>
+      ${out.offline ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음 판을 시작할 때 다시 보내요</p>' : ''}
+      ${out.unrecorded ? '<p class="soft center">서버에 연결하지 못한 판이라 기록되지 않았어요</p>' : ''}
+      ${out.error ? `<p class="soft center">${out.error}</p>` : ''}
+      <div class="btns">
+        <button class="btn primary big" id="again">다시 오르기</button>
+        <button class="btn" id="menu">메뉴로</button>
+      </div></div>`;
+  app().appendChild(box);
+  box.querySelector('#again')!.addEventListener('click', () => {
+    play('click');
+    closeGame();
+    void startGame(TOWER, party);
+  });
+  box.querySelector('#menu')!.addEventListener('click', () => {
+    play('click');
+    closeGame();
+    showTower();
   });
 }
 
