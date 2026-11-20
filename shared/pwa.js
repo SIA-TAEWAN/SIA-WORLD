@@ -13,6 +13,19 @@ const ROOT = new URL('../', import.meta.url);
 
 // ---------- 서비스 워커 등록 · 새 판본 확인 ----------
 
+/*
+ * 안드로이드: viewport-fit=cover 를 뺀다.
+ * 크롬(특히 홈 화면에 설치한 앱)은 이 값이 있으면 화면을 아래 기본 버튼 줄(홈·뒤로) 밑까지 그리는데,
+ * 그 줄의 높이를 env(safe-area-inset-bottom) 으로 알려 주지 않는 경우가 있어 아래쪽 버튼이 가려졌다.
+ * 노치 대응이 필요한 아이폰은 그대로 둔다 (안드로이드에는 이 값이 필요 없다)
+ */
+if (/Android/i.test(navigator.userAgent)) {
+  const vp = document.querySelector('meta[name="viewport"]');
+  if (vp && /viewport-fit\s*=\s*cover/i.test(vp.content)) {
+    vp.content = vp.content.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, '');
+  }
+}
+
 const UPDATE_EVERY_MS = 30 * 60 * 1000;
 const UPDATE_GAP_MS = 60 * 1000;
 
