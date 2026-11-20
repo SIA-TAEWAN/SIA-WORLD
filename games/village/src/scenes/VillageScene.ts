@@ -3,7 +3,7 @@ import { CAPPED, GRID_MAX, lookOf } from '../data/balance';
 import { BUILDING, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import type { ResidentId } from '../data/residents';
 import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, storageCap, stored, workplace, type Building, type VillageState } from '../game/rules';
-import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
+import { COLOR, FONT, MATGO, css } from '../theme';
 import { ART_FILES, BUBBLE, CELL, GLOWS, bubbleKey, makeTextures, pickNature, texKey, texSize } from './art';
 import { skyAt } from './sky';
 
@@ -77,6 +77,14 @@ interface View {
 
 const ZOOM_MIN = 0.34;
 /** 땅 밖의 나무: 이 칸 범위(20×20 좌표 기준, 끝은 빼고)는 한 그루씩, 그 밖은 숲 무늬를 깔아 끝까지 줄여도 빈 바탕이 보이지 않게 */
+/** 땅 둘레: 돌담이 서는 흙 자리의 너비 · 아래 흙 두께 · 돌담 토막의 너비와 높이 · 마을 어귀의 너비 (장면 좌표) */
+const EDGE = 22;
+const BANK = 14;
+const WALL_W = 76;
+const WALL_H = 40;
+const GATE = 84;
+/** 어귀 밖으로 나가는 흙길의 길이 */
+const LANE = 78;
 const NEAR0 = -6;
 const NEAR1 = GRID_MAX + 6;
 const FOREST_PAD = 40; // 숲 무늬 한 장(art.ts 의 FOREST_CELLS = 8칸)의 배수: NEAR1 - NEAR0 도 8의 배수
@@ -95,7 +103,14 @@ export class VillageScene extends Phaser.Scene {
   private zoom = 0.82;
   private ground!: Phaser.GameObjects.Graphics;
   /** 땅 위: 바닥 무늬(그림 파일) · 체크 무늬와 외곽선 */
-  private grass: Phaser.GameObjects.TileSprite | null = null;
+  /** 마당 흙 무늬 (tile-yard) */
+  private yard: Phaser.GameObjects.TileSprite | null = null;
+  /** 마을 어귀에서 밖으로 나가는 흙길 (같은 무늬) */
+  private lane: Phaser.GameObjects.TileSprite | null = null;
+  /** 땅 둘레의 돌담 · 발치의 풀 */
+  private fence!: Phaser.GameObjects.Container;
+  /** 놓을 자리를 고르는 동안에만 보이는 칸 금 */
+  private gridHint!: Phaser.GameObjects.Graphics;
   private groundTop!: Phaser.GameObjects.Graphics;
   /** 그림 파일로 불러온 텍스처 이름 */
   private files = new Set<string>();
@@ -161,6 +176,8 @@ export class VillageScene extends Phaser.Scene {
     } else this.add.tileSprite(f0, f0, fw, fw, 'forest').setOrigin(0, 0).setDepth(-11);
     this.ground = this.add.graphics().setDepth(-10);
     this.groundTop = this.add.graphics().setDepth(-9);
+    this.gridHint = this.add.graphics().setDepth(-8.5).setVisible(false);
+    this.fence = this.add.container(0, 0).setDepth(-8);
     this.trees = this.add.container(0, 0).setDepth(-5);
     this.ghostTile = this.add.graphics();
     this.ghostImg = this.add.image(0, 0, texKey('paddy', 1)).setOrigin(0, 1).setAlpha(0.8);
@@ -181,7 +198,7 @@ export class VillageScene extends Phaser.Scene {
   fit() {
     const { x0, size } = landRect(this.hooks.state().profile.landStage);
     const c = (x0 + size / 2) * CELL;
-    this.zoom = Math.max(ZOOM_MIN, Math.min(0.82, 720 / ((size + 0.8) * CELL)));
+    this.zoom = Math.max(ZOOM_MIN, Math.min(0.82, 720 / ((size + 1.1) * CELL)));
     this.cameras.main.setZoom(this.unit * this.zoom).centerOn(c, c - CELL * 0.4);
   }
 
@@ -438,6 +455,7 @@ export class VillageScene extends Phaser.Scene {
     const sz = texSize(d.w, d.h);
     this.ghostImg.setTexture(texKey(type, lookOf(moving?.level ?? 1))).setDisplaySize(sz.w, sz.h).setPosition(0, d.h * CELL);
     this.ghost.setVisible(true);
+    this.gridHint.setVisible(true);
     if (movingId) this.views.get(movingId)?.box.setAlpha(0.25);
     this.updateGhost();
     this.tickViews();
@@ -447,6 +465,7 @@ export class VillageScene extends Phaser.Scene {
     if (this.place?.movingId) this.views.get(this.place.movingId)?.box.setAlpha(1);
     this.place = null;
     this.ghost.setVisible(false);
+    this.gridHint.setVisible(false);
     this.tickViews();
   }
 
@@ -473,18 +492,36 @@ export class VillageScene extends Phaser.Scene {
     if (!this.files.has('tile-meadow')) g.fillStyle(MATGO.matDark, 1).fillRect(NEAR0 * CELL, NEAR0 * CELL, (NEAR1 - NEAR0) * CELL, (NEAR1 - NEAR0) * CELL);
     const l = x0 * CELL;
     const w = size * CELL;
-    // 땅: 아래 두께 + (풀밭 무늬) + 체크 무늬 + 굵은 외곽선
-    g.fillStyle(COLOR.outline, 1).fillRoundedRect(l - 6, l - 6 + 12, w + 12, w + 12, 18);
-    g.fillStyle(TABLE.matgo, 1).fillRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
-    const hasGrass = this.files.has('tile-grass');
-    if (hasGrass) {
-      this.grass ??= this.add.tileSprite(0, 0, 1, 1, 'tile-grass').setOrigin(0, 0).setDepth(-9.5).setTileScale(CELL / 192, CELL / 192);
-      this.grass.setPosition(l - 2, l - 2).setSize(w + 4, w + 4);
+    // 땅: 다져진 마당 흙. 둘레로 EDGE 만큼 더 넓혀 돌담이 설 자리를 둔다. 아래쪽은 흙 두께(둑)
+    const e0 = l - EDGE;
+    const ew = w + EDGE * 2;
+    g.fillStyle(COLOR.outline, 1).fillRoundedRect(e0 - 3, e0 - 3, ew + 6, ew + 6 + BANK, 16);
+    g.fillStyle(COLOR.inkSoft, 1).fillRoundedRect(e0, e0, ew, ew + BANK - 3, 14);
+    // 마을 어귀: 아래 가운데에서 밖으로 나가는 짧은 흙길
+    const lx = l + w / 2 - GATE / 2 + 6;
+    const lw = GATE - 12;
+    const ly = e0 + ew - 20;
+    const lh = 20 + BANK + LANE;
+    g.fillStyle(COLOR.outline, 1).fillRoundedRect(lx - 3, ly, lw + 6, lh + 3, 16);
+    g.fillStyle(COLOR.emptyLine, 1).fillRoundedRect(lx, ly, lw, lh, 14);
+    g.fillStyle(COLOR.emptyLine, 1).fillRoundedRect(e0, e0, ew, ew, 14);
+    const hasYard = this.files.has('tile-yard');
+    if (hasYard) {
+      // 무늬 한 장(640px)이 5칸 (무늬 속 조약돌이 칸마다 같은 자리에 오지 않게). 땅이 넓어져도 무늬가 제자리에 있게 시작을 장면 좌표에 맞춘다
+      const k = (CELL * 5) / 640;
+      const tile = (t: Phaser.GameObjects.TileSprite | null, x: number, y: number, tw: number, th: number) =>
+        (t ?? this.add.tileSprite(0, 0, 1, 1, 'tile-yard').setOrigin(0, 0).setDepth(-9.5).setTileScale(k, k)).setPosition(x, y).setSize(tw, th).setTilePosition(x / k, y / k);
+      this.yard = tile(this.yard, e0 + 5, e0 + 5, ew - 10, ew - 10);
+      this.lane = tile(this.lane, lx + 5, ly, lw - 10, lh - 5);
     }
+    // 칸 표시: 밟아 다진 자리처럼 한 칸 건너 옅게 (그림이 없을 때는 또렷한 체크 무늬)
     const top = this.groundTop.clear();
-    top.fillStyle(MATGO.matLight, hasGrass ? 0.35 : 1);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if ((x + y) % 2 === 0) top.fillRoundedRect(l + x * CELL + 3, l + y * CELL + 3, CELL - 6, CELL - 6, 10);
-    top.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(l - 6, l - 6, w + 12, w + 12, 18);
+    top.fillStyle(hasYard ? COLOR.panel : COLOR.lineSoft, hasYard ? 0.14 : 1);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if ((x + y) % 2 === 0) top.fillRoundedRect(l + x * CELL + 4, l + y * CELL + 4, CELL - 8, CELL - 8, 14);
+    // 놓을 자리를 고를 때: 모든 칸의 금
+    const hint = this.gridHint.clear().lineStyle(3, COLOR.panel, 0.7);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) hint.strokeRoundedRect(l + x * CELL + 4, l + y * CELL + 4, CELL - 8, CELL - 8, 14);
+    this.drawFence(l, w);
     // 땅 밖: 나무 (자리는 좌표로 정해 늘 같다)
     this.trees.removeAll(true);
     for (let y = NEAR0; y < NEAR1; y++) {
@@ -498,6 +535,77 @@ export class VillageScene extends Phaser.Scene {
           const img = this.add.image(x * CELL + (h % 17) - 8 + CELL / 2, (y + 1) * CELL + ((h >> 5) % 17) - 8, n.key).setOrigin(0.5, 1).setTint(0xd6e8d6);
           this.trees.add(img.setDisplaySize(CELL * n.size, (CELL * n.size * img.height) / img.width));
         } else this.trees.add(this.add.image(x * CELL + (h % 17) - 8, y * CELL + ((h >> 5) % 17) - 8, 'tree').setOrigin(0, 0).setDisplaySize(CELL, CELL));
+      }
+    }
+  }
+
+  /** 땅 둘레의 돌담: 위 · 아래는 앞에서 본 토막, 양옆은 돌무더기를 위에서 아래로 겹쳐 쌓는다. 아래 가운데는 마을 어귀로 비운다 */
+  private drawFence(l: number, w: number) {
+    const f = this.fence;
+    f.removeAll(true);
+    const has = (k: string) => this.files.has(k);
+    const hash = (a: number, b: number) => (((a * 73856093) ^ (b * 19349663)) >>> 0) % 1000;
+    const put = (key: string, x: number, y: number, dw: number) => {
+      const img = this.add.image(x, y, key).setOrigin(0.5, 1);
+      f.add(img.setDisplaySize(dw, (dw * img.height) / img.width));
+    };
+    const top = l - 6; // 위 돌담의 발
+    const bot = l + w + EDGE + WALL_H - 10; // 아래 돌담의 발 (맨 아래 칸을 가리지 않게 땅 밖으로 내린다)
+    // 돌담의 왼쪽 · 오른쪽 끝 (양옆 돌담이 첫 칸 · 끝 칸을 가리지 않게 땅 밖에 선다)
+    const x0 = l - EDGE - 18;
+    const x1 = l + w + EDGE + 18;
+    const gate = l + w / 2;
+    if (has('w-wall-1') && has('w-wall-2') && has('w-post')) {
+      const n = Math.max(2, Math.round((x1 - x0) / WALL_W));
+      const sw = (x1 - x0) / n;
+      const row = (y: number, door: boolean) => {
+        for (let i = 0; i < n; i++) {
+          const cx = x0 + sw * (i + 0.5);
+          if (door && Math.abs(cx - gate) < GATE / 2 + sw / 2 - 6) continue;
+          put(hash(i, y) % 3 === 0 ? 'w-wall-2' : 'w-wall-1', cx, y, sw + 4);
+        }
+      };
+      row(top, false);
+      // 양옆: 위에서 아래로 (아래 것이 위 것을 덮는다)
+      const m = Math.max(2, Math.round((bot - top) / 26));
+      for (let i = 1; i < m; i++) {
+        const y = top + ((bot - top) * i) / m;
+        put('w-post', x0 + 19 + (hash(i, 1) % 5) - 2, y, 38);
+        put('w-post', x1 - 19 + (hash(i, 2) % 5) - 2, y, 38);
+      }
+      row(bot, true);
+      // 모퉁이 · 어귀 양쪽의 돌무더기
+      for (const [x, y] of [[x0 + 20, top + 2], [x1 - 20, top + 2], [x0 + 20, bot + 3], [x1 - 20, bot + 3], [gate - GATE / 2 - 8, bot + 3], [gate + GATE / 2 + 8, bot + 3]]) put('w-post', x, y, 46);
+    } else {
+      // 그림이 없을 때: 굵은 갈색 외곽선만 (흙 둑은 drawGround 가 그렸다)
+      const g = this.add.graphics();
+      g.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(l - EDGE, l - EDGE, w + EDGE * 2, w + EDGE * 2, 14);
+      f.add(g);
+    }
+    // 돌담 발치의 풀포기 · 들꽃 · 조약돌 (자리는 좌표로 정해 늘 같다)
+    const bits = ['g-tuft', 'g-tuft', 'g-flowers', 'g-pebbles'].filter(has);
+    if (!bits.length) return;
+    // 마당 안: 칸 모서리에 드문드문 (건물 아래에 깔린다)
+    for (let cy = 1; cy * CELL < w; cy++) {
+      for (let cx = 1; cx * CELL < w; cx++) {
+        const h = hash(Math.round(l / CELL) + cx, Math.round(l / CELL) + cy + 31);
+        if (h % 6 !== 0) continue;
+        const key = bits[(h >> 2) % bits.length];
+        put(key, l + cx * CELL + (h % 13) - 6, l + cy * CELL + ((h >> 4) % 9) + 2, key === 'g-tuft' ? 20 + (h % 7) : 30 + (h % 7));
+      }
+    }
+    const step = CELL / 2;
+    for (let i = 0; i * step < w; i++) {
+      const at = l + i * step;
+      for (const [side, bx, by] of [[0, at, top + 10], [1, at, bot + 10], [2, x0 + 40, at + 30], [3, x1 - 40, at + 30]] as const) {
+        const h = hash(Math.round(at), side + 7);
+        if (h % 5 > 1) continue;
+        const horizontal = side < 2;
+        const x = bx + (horizontal ? (h % 37) + 4 : (h % 9) - 4);
+        const y = by + (horizontal ? (h % 7) - 3 : (h % 31));
+        if (side === 1 && Math.abs(x - gate) < GATE / 2 + 20) continue;
+        const key = bits[(h >> 3) % bits.length];
+        put(key, x, y, key === 'g-tuft' ? 24 + (h % 8) : 34 + (h % 8));
       }
     }
   }

@@ -35,6 +35,10 @@ SHEET = {
     'nature': ('g32', ['n-pine', 'n-tree', 'n-bamboo', 'n-bush', 'n-rocks', 'n-flowers']),
     # 아래 메뉴 아이콘 (마지막 초가집 칸은 쓰지 않는다)
     'menu': ('g32', ['menu-build', 'menu-residents', 'menu-requests', 'menu-monuments', 'menu-ranking', None]),
+    # 마을 땅 둘레의 돌담 (앞에서 본 토막 둘 · 모퉁이 돌무더기. 기울어진 둘째 칸은 쓰지 않는다)
+    'doldam': ('g22', ['w-wall-1', None, 'w-wall-2', 'w-post']),
+    # 돌담 발치에 찍는 풀포기 · 들꽃 · 조약돌 (윗줄의 비스듬한 돌담 시안은 쓰지 않는다)
+    'yardbits': ('g32', [None, None, None, 'g-tuft', 'g-flowers', 'g-pebbles']),
 }
 BIG = {'hall', 'pavilion', 'feast', 'shrine'}
 
@@ -121,6 +125,13 @@ def sprite(name, src):
         return place(src, 96, 96, 0.92, 0.92, 4)
     if name.startswith('n-'):
         return place(src, 192, 272, 0.92, 0.96, 6)
+    if name.startswith('w-wall-'):
+        # 돌담 토막: 가로를 꽉 채운다 (장면에서 옆 토막과 맞닿게)
+        return place(src, 192, 104, 1.0, 1.0, 0)
+    if name == 'w-post':
+        return place(src, 96, 112, 1.0, 1.0, 0)
+    if name.startswith('g-'):
+        return place(src, 96, 96, 0.96, 0.96, 2)
     if name == 'b-road-1':
         # 길: 칸을 꽉 채우는 바닥 (위로 솟지 않는다)
         tile = shrink(src, 192, 192)
@@ -177,6 +188,20 @@ def grass():
     return Image.blend(src, tone, 0.45).convert('RGBA')
 
 
+def yard():
+    """마을 땅 바닥 무늬: 다져진 마당 흙, 이어 붙는 640×640 (장면 5칸).
+    원본의 짙은 흙 얼룩은 가장자리에서 잘려 이음새가 보이므로 바탕색으로 메운다 (풀포기 · 조약돌 · 잔금은 남긴다)"""
+    import numpy as np
+    from PIL import ImageFilter
+    a = np.asarray(Image.open(os.path.join(SHEETS, 'yard.png')).convert('RGB')).astype(np.float32)
+    d = np.array([227, 192, 138], np.float32) - a
+    dark = d.sum(2) / 3.0                           # 바탕보다 어두운 정도
+    off = np.abs(d - dark[..., None]).max(2)        # 흙빛 축에서 벗어난 정도 (풀 · 돌은 크다)
+    m = Image.fromarray((((dark > 1) & (dark < 30) & (off < 9)) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.2))
+    out = a + d * (np.asarray(m).astype(np.float32) / 255)[..., None]
+    return Image.fromarray(out.clip(0, 255).astype(np.uint8)).resize((640, 640), Image.LANCZOS).convert('RGBA')
+
+
 def meadow():
     """땅 밖 들판 무늬: 이어 붙는 384×384 (장면 4칸). 마을 밖 초록(MATGO.matDark #5FA772) 쪽으로 색을 맞춰 땅보다 차분하게"""
     src = Image.open(os.path.join(SHEETS, 'meadow.png')).convert('RGB').resize((384, 384), Image.LANCZOS)
@@ -201,6 +226,7 @@ if __name__ == '__main__':
         made.append(save(bubble(res, trim(icons[res])), f'bubble-{res}'))
     made.append(save(grass(), 'tile-grass'))
     made.append(save(meadow(), 'tile-meadow'))
+    made.append(save(yard(), 'tile-yard'))
     made.append(card())
     total = sum(os.path.getsize(f) for f in made)
     print(f'{len(made)} files, {total // 1024} KB')

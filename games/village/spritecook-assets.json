@@ -144,6 +144,25 @@
       "label": "art/sheets/menu.png — 아래 메뉴 아이콘 짓기·주민·부탁·기념물·랭킹 (+ 안 쓰는 초가집) → menu-*"
     },
     {
+      "asset_id": "8e10f15d-47c2-411e-9d0a-3d999fe8e2a3",
+      "sha12": "a2033ee5f4bf",
+      "label": "art/sheets/yard.png — 마을 땅의 마당 흙 무늬 (texture 모드) → tile-yard (640 = 5칸. 가장자리에서 잘리는 짙은 흙 얼룩은 build.py 가 바탕색으로 메운다)"
+    },
+    {
+      "asset_id": "82d5de58-364a-4891-900b-d8074861740f",
+      "sha12": "2a45f9fac97b",
+      "label": "art/sheets/doldam.png — 땅 둘레 돌담: 앞에서 본 토막 2 · 모퉁이 돌무더기 (+ 안 쓰는 기울어진 토막) → w-wall-1 · w-wall-2 · w-post"
+    },
+    {
+      "asset_id": "ecacb632-3c2e-4300-83bd-ada702157871",
+      "sha12": "c29f29c2bf12",
+      "label": "art/sheets/yardbits.png — 돌담 발치 · 마당의 풀포기 · 들꽃 · 조약돌 (+ 안 쓰는 비스듬한 돌담 3) → g-tuft · g-flowers · g-pebbles"
+    },
+    {
+      "asset_id": "b56d55b6-1f34-40e2-b695-3d3536f85c15",
+      "label": "(쓰지 않음) 마당 흙 무늬 다른 시안: 얼룩이 크고 이음새가 보여서 버림"
+    },
+    {
       "asset_id": "7840a7bb-9303-4e2c-8278-9179a98b83a3",
       "label": "(쓰지 않음) 들판 무늬 다른 시안: 이음새가 보여서 버림"
     },
