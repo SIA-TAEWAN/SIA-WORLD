@@ -137,6 +137,9 @@
       border: var(--line) solid var(--outline); border-radius: var(--radius-item); padding: 10px 12px; margin: 0 0 16px;
       box-shadow: 0 3px 0 var(--outline); }
     .ios-hint .ic { font-size: 24px; line-height: 1; }
+    .inapp-hint { align-items: center; width: calc(100% - 32px); max-width: 400px;
+      margin: calc(12px + env(safe-area-inset-top, 0px)) auto 0; }
+    .inapp-hint .btn { flex: 0 0 auto; }
     .ios-hint .txt { flex: 1; min-width: 0; }
     .ios-hint b { display: block; font-weight: normal; font-size: 16px; }
     .ios-hint small { display: block; color: var(--ink-soft); font-size: 13px; margin-top: 2px; line-height: 1.4; }
@@ -153,6 +156,13 @@
   <div id="loading" class="center">불러오는 중…</div>
 
   <!-- 로그인 -->
+  <!-- 카카오톡 등 앱 안 브라우저: 여기서는 홈 화면 설치가 안 되니 브라우저로 열도록 안내 (로그인·로비 모두) -->
+  <div class="ios-hint inapp-hint hidden" id="inapp-hint">
+    <span class="ic">📲</span>
+    <span class="txt"><b id="inapp-title">앱으로 설치하려면 사파리에서 열어 주세요</b>
+      <small id="inapp-sub">카카오톡 안에서는 홈 화면에 설치할 수 없어요</small></span>
+    <button type="button" class="btn small hidden" id="inapp-open">사파리로 열기</button>
+  </div>
   <div id="login-view" class="auth-wrap hidden">
     <form class="auth-card" id="login-form" novalidate>
       <div class="brand"><img src="shared/images/zodiac/full/tiger.png" alt="" /><h1>SIA <b>WORLD</b></h1><p>로그인하고 친구들과 놀아요</p></div>
@@ -238,7 +248,7 @@
     import { claimAttendance, refill, canRefill, formatAmount, REFILLS_PER_DAY } from './shared/wallet.js';
     import { openRanking } from './shared/ranking-dialog.js';
     import { watchGameCounts, GAME_MAX } from './shared/presence.js';
-    import { onInstallChange, promptInstall, dismissIosHint } from './shared/pwa.js';
+    import { onInstallChange, promptInstall, dismissIosHint, openInBrowser } from './shared/pwa.js';
 
     const $ = (s) => document.querySelector(s);
     const views = ['loading', 'login-view', 'signup-view', 'lobby-view'];
@@ -440,10 +450,21 @@
     // ---------- 앱 설치 (shared/pwa.js) ----------
     // 안드로이드·PC 크롬: 설치할 수 있으면 '앱으로 설치' 버튼. 아이폰·아이패드 사파리: 홈 화면에 추가 안내 (닫으면 다시 안 보임)
     // 이미 앱으로 열려 있거나 설치했으면 둘 다 숨긴다
-    onInstallChange(({ canInstall, iosHint }) => {
+    // 카카오톡 등 앱 안 브라우저: 설치가 안 되니 브라우저로 열기 안내 (카카오톡은 바로 여는 버튼)
+    onInstallChange(({ canInstall, iosHint, inApp, ios }) => {
       $('#install-btn').classList.toggle('hidden', !canInstall);
       $('#ios-hint').classList.toggle('hidden', !iosHint);
+      const browser = ios ? '사파리' : '브라우저';
+      $('#inapp-hint').classList.toggle('hidden', !inApp);
+      $('#inapp-title').textContent = `앱으로 설치하려면 ${browser}에서 열어 주세요`;
+      $('#inapp-sub').textContent =
+        inApp === 'kakao'
+          ? '카카오톡 안에서는 홈 화면에 설치할 수 없어요'
+          : "이 앱 안에서는 설치할 수 없어요. 메뉴(⋯)에서 '다른 브라우저로 열기'를 눌러 주세요";
+      $('#inapp-open').classList.toggle('hidden', inApp !== 'kakao');
+      $('#inapp-open').textContent = `${browser}로 열기`;
     });
+    $('#inapp-open').addEventListener('click', () => openInBrowser());
     $('#install-btn').addEventListener('click', () => void promptInstall());
     $('#ios-hint-close').addEventListener('click', dismissIosHint);
 

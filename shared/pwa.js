@@ -164,6 +164,23 @@ const isIOSSafari =
   /Safari\//.test(UA) &&
   !/CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|YaBrowser|DuckDuckGo|KAKAOTALK|NAVER|DaumApps|Whale|Line\/|Instagram|FBAN|FBAV|FB_IAB|GSA\//i.test(UA);
 
+/**
+ * 메신저·SNS 앱 안의 브라우저 (여기서는 홈 화면 설치가 안 된다) → 'kakao' · 'other' · null
+ * 카카오톡은 kakaotalk://web/openExternal 로 기본 브라우저(아이폰은 사파리)에서 바로 열 수 있다
+ */
+const IN_APP = /KAKAOTALK/i.test(UA)
+  ? 'kakao'
+  : /NAVER\(inapp|DaumApps|Line\/|Instagram|FBAN|FBAV|FB_IAB|everytimeApp|BAND\//i.test(UA)
+    ? 'other'
+    : null;
+
+/** 지금 주소를 카카오톡 밖 기본 브라우저로 연다 (카카오톡 안에서만 의미가 있다) */
+export function openInBrowser() {
+  if (IN_APP !== 'kakao') return false;
+  location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(location.href)}`;
+  return true;
+}
+
 function iosHintClosed() {
   try {
     return localStorage.getItem(IOS_HINT_KEY) === '1';
@@ -172,13 +189,18 @@ function iosHintClosed() {
   }
 }
 
-/** 지금 보여 줄 설치 안내: canInstall(설치 버튼) · iosHint(홈 화면에 추가 안내) */
+/**
+ * 지금 보여 줄 설치 안내: canInstall(설치 버튼) · iosHint(홈 화면에 추가 안내)
+ * · inApp(앱 안 브라우저라 설치가 안 됨: 'kakao' 면 '브라우저로 열기' 버튼, 'other' 면 메뉴 안내) · ios(아이폰·아이패드)
+ */
 export function installState() {
   const standalone = isStandalone();
   return {
     standalone,
     canInstall: !standalone && !installed && !!deferredPrompt,
     iosHint: !standalone && isIOSSafari && !iosHintClosed(),
+    inApp: standalone ? null : IN_APP,
+    ios: isIOS,
   };
 }
 
