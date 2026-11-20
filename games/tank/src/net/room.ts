@@ -17,6 +17,7 @@ export class RoomSession {
   private msgFns = new Set<(m: NetMsg) => void>();
   private presFns = new Set<() => void>();
   private chatFns = new Set<() => void>();
+  private reconnFns = new Set<() => void>();
   private joined = false;
   /** 이 방 사람끼리만 보는 채팅 */
   chat: ChatMsg[] = [];
@@ -54,6 +55,7 @@ export class RoomSession {
       this.seen = true;
       this.presFns.forEach((f) => f());
     });
+    this.ch.onReconnect?.(() => this.reconnFns.forEach((f) => f()));
   }
 
   async join() {
@@ -84,6 +86,12 @@ export class RoomSession {
     return () => this.presFns.delete(fn);
   }
 
+  /** 연결이 끊겼다 다시 이어졌을 때 (남들은 내가 나갔다 들어온 것으로 봤다) */
+  onReconnect(fn: () => void) {
+    this.reconnFns.add(fn);
+    return () => this.reconnFns.delete(fn);
+  }
+
   send(m: NetMsg) {
     this.ch.send(m);
   }
@@ -110,6 +118,7 @@ export class RoomSession {
     this.msgFns.clear();
     this.presFns.clear();
     this.chatFns.clear();
+    this.reconnFns.clear();
     await this.ch.leave();
   }
 }

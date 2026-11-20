@@ -73,6 +73,7 @@ function fakeSession(present: string[]) {
     async setAway(v: boolean) {
       awayCalls.push(v);
     },
+    onReconnect: () => () => undefined,
   };
   return {
     session: s as unknown as RoomSession,
@@ -246,3 +247,163 @@ describe('OnlineGame', () => {
     expect(sc.calls.loaded).toBe(1);
   });
 });
+
+// ---------- 여러 기기를 잇는 가짜 채널 (메시지·자리 비움이 서로에게 간다) ----------
+
+type Vis = { onVisibility(h: boolean): void; currentHost(): string };
+
+function linkedNet(ids: string[]) {
+  const devs = new Map<string, { msgFns: Set<(m: NetMsg) => void>; presFns: Set<() => void>; reconnFns: Set<() => void>; present: Set<string>; away: Set<string>; awayMe: boolean; sent: NetMsg[]; awayCalls: boolean[] }>();
+  /** true 면 자리 비움(presence) 변화가 남에게 가지 않는다 (늦거나 잃어버림) */
+  const net = { dropPresence: false };
+  const later = (f: () => void) => queueMicrotask(f);
+  for (const id of ids) devs.set(id, { msgFns: new Set(), presFns: new Set(), reconnFns: new Set(), present: new Set(ids), away: new Set(), awayMe: false, sent: [], awayCalls: [] });
+  const session = (me: string) => {
+    const d = devs.get(me)!;
+    return {
+      present: d.present,
+      away: d.away,
+      on: (fn: (m: NetMsg) => void) => (d.msgFns.add(fn), () => d.msgFns.delete(fn)),
+      onPresence: (fn: () => void) => (d.presFns.add(fn), () => d.presFns.delete(fn)),
+      onReconnect: (fn: () => void) => (d.reconnFns.add(fn), () => d.reconnFns.delete(fn)),
+      send(m: NetMsg) {
+        d.sent.push(m);
+        for (const [id, o] of devs) if (id !== me && o.present.has(me)) later(() => o.msgFns.forEach((f) => f(m)));
+      },
+      async setAway(v: boolean) {
+        d.awayCalls.push(v);
+        if (d.awayMe === v) return;
+        d.awayMe = v;
+        if (net.dropPresence) return;
+        for (const [id, o] of devs) {
+          if (id === me) continue;
+          if (v) o.away.add(me);
+          else o.away.delete(me);
+          later(() => o.presFns.forEach((f) => f()));
+        }
+      },
+    } as unknown as RoomSession;
+  };
+  const games = new Map<string, OnlineGame>();
+  for (const id of ids) {
+    const g = new OnlineGame(session(id), room(ids), id);
+    g.attach(fakeScene(ids.length).scene);
+    // 기준 기기가 답할 수 있게 턴 시작 상태를 둔다
+    g.turnStarted({ snapshot: () => ({ turn: 1 }), turn: 1 } as never);
+    games.set(id, g);
+  }
+  return {
+    net,
+    devs,
+    g: (id: string) => games.get(id)!,
+    vis: (id: string, h: boolean) => (games.get(id)! as unknown as Vis).onVisibility(h),
+    /** 기기마다 생각하는 기준 기기 */
+    hosts: () => ids.map((id) => (games.get(id)! as unknown as Vis).currentHost()),
+    /** 다른 기기들이 본 접속 목록에서 id 가 빠졌다 들어온다 (id 자신은 모른다) */
+    blip(id: string) {
+      for (const [k, o] of devs) {
+        if (k === id) continue;
+        o.present.delete(id);
+        o.presFns.forEach((f) => f());
+        o.present.add(id);
+        o.presFns.forEach((f) => f());
+      }
+    },
+    reconnect: (id: string) => devs.get(id)!.reconnFns.forEach((f) => f()),
+    dispose: () => games.forEach((g) => g.dispose()),
+  };
+}
+
+describe('기준 기기가 둘이거나 없어지지 않게', () => {
+  let n: ReturnType<typeof linkedNet> | null = null;
+  afterEach(() => {
+    n?.dispose();
+    n = null;
+    vi.useRealTimers();
+  });
+
+  it('기준 기기가 가렸다 돌아왔는데 away 타이머가 못 돌았으면(아이폰 잠금) 먼저 away를 알리고 다음 기기가 답한다', async () => {
+    vi.useFakeTimers();
+    n = linkedNet(['a', 'b']);
+    expect(n.hosts()).toEqual(['a', 'a']);
+    n.vis('a', true);
+    vi.setSystemTime(Date.now() + 2500); // 시계만 가고 타이머는 안 돎
+    n.vis('a', false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(n.devs.get('a')!.awayCalls[0]).toBe(true);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(n.g('a').frozen()).toBe(false);
+    expect(n.devs.get('b')!.sent.some((m) => m.t === 'snap' && m.to === 'a')).toBe(true);
+    expect(n.hosts()).toEqual(['b', 'b']);
+    expect([n.g('a').isHost(), n.g('b').isHost()]).toEqual([false, true]);
+    expect(n.devs.get('a')!.awayCalls).toEqual([true, false]);
+  });
+
+  it('away 알림이 늦거나 사라져도, 기준 기기로 알던 기기가 판 상태를 청하면 다음 기기가 넘겨받아 답한다', async () => {
+    vi.useFakeTimers();
+    n = linkedNet(['a', 'b']);
+    n.net.dropPresence = true;
+    n.vis('a', true);
+    vi.setSystemTime(Date.now() + 2500);
+    n.vis('a', false);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(n.g('a').frozen()).toBe(false);
+    expect(n.hosts()).toEqual(['b', 'b']);
+    expect([n.g('a').isHost(), n.g('b').isHost()]).toEqual([false, true]);
+  });
+
+  it('기준 기기의 연결이 끊겼다 다시 이어지면(남들만 나갔다 들어온 것으로 봄) 스스로 뒤로 가서 기준 기기가 하나', async () => {
+    vi.useFakeTimers();
+    n = linkedNet(['a', 'b']);
+    n.blip('a');
+    expect(n.hosts()).toEqual(['a', 'b']); // 고치기 전에는 여기서 그대로 둘 다 기준 기기
+    n.reconnect('a');
+    expect(n.g('a').frozen()).toBe(true);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(n.g('a').frozen()).toBe(false);
+    expect(n.hosts()).toEqual(['b', 'b']);
+    expect([n.g('a').isHost(), n.g('b').isHost()]).toEqual([false, true]);
+    expect(n.g('a').trusted('b')).toBe(true);
+  });
+
+  it('세 기기: 기준 기기가 다시 이어져도 모두 같은 기기를 기준으로 본다', async () => {
+    vi.useFakeTimers();
+    n = linkedNet(['a', 'b', 'c']);
+    n.blip('a');
+    n.reconnect('a');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(n.hosts()).toEqual(['b', 'b', 'b']);
+    expect(['a', 'b', 'c'].filter((id) => n!.g(id).isHost())).toEqual(['b']);
+  });
+
+  it('다시 맞추는 사이에 화면을 또 가리면 away 그대로 두고, 돌아오면 다시 맞춘다', async () => {
+    vi.useFakeTimers();
+    n = linkedNet(['a', 'b']);
+    n.vis('a', true);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(n.devs.get('a')!.awayCalls).toEqual([true]);
+    n.vis('a', false); // snapreq 보냄
+    n.vis('a', true); // 답이 오기 전에 또 가림
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(n.devs.get('a')!.awayCalls).toEqual([true]);
+    expect(n.hosts()).toEqual(['b', 'b']);
+    const reqs = n.devs.get('a')!.sent.filter((m) => m.t === 'snapreq').length;
+    n.vis('a', false);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(n.devs.get('a')!.sent.filter((m) => m.t === 'snapreq').length).toBeGreaterThan(reqs);
+    expect(n.devs.get('a')!.awayCalls).toEqual([true, false]);
+    expect(n.g('a').frozen()).toBe(false);
+    expect(n.hosts()).toEqual(['b', 'b']);
+  });
+
+  it('다른 사람이 없으면 다시 이어져도 기다리지 않는다', async () => {
+    vi.useFakeTimers();
+    n = linkedNet(['a', 'b']);
+    n.devs.get('a')!.present.delete('b');
+    n.reconnect('a');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(n.g('a').frozen()).toBe(false);
+    expect(n.devs.get('a')!.sent.some((m) => m.t === 'snapreq')).toBe(false);
+  });
+});
+

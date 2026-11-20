@@ -6,6 +6,7 @@ class SupaChannel<M> implements Channel<M> {
   private ch: RealtimeChannel;
   private presenceCbs: ((m: Member<M>[]) => void)[] = [];
   private msgCbs: ((m: NetMsg) => void)[] = [];
+  private reconnectCbs: (() => void)[] = [];
 
   constructor(sb: SupabaseClient, name: string, key: string) {
     this.ch = sb.channel(name, { config: { presence: { key }, broadcast: { self: false, ack: false } } });
@@ -27,6 +28,9 @@ class SupaChannel<M> implements Channel<M> {
   onMessage(cb: (m: NetMsg) => void) {
     this.msgCbs.push(cb);
   }
+  onReconnect(cb: () => void) {
+    this.reconnectCbs.push(cb);
+  }
 
   /** 마지막으로 올린 내 정보 (다시 연결되면 처음 정보가 아니라 이걸 올린다) */
   private meta: M | null = null;
@@ -41,6 +45,9 @@ class SupaChannel<M> implements Channel<M> {
           if (!done) {
             done = true;
             resolve();
+          } else {
+            // 소켓이 끊겼다 다시 이어짐 (와이파이→LTE 등): 그동안 남들은 내가 나갔다 들어온 것으로 봤다
+            this.reconnectCbs.forEach((cb) => cb());
           }
         } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !done) {
           done = true;
@@ -62,6 +69,7 @@ class SupaChannel<M> implements Channel<M> {
   async leave() {
     this.presenceCbs = [];
     this.msgCbs = [];
+    this.reconnectCbs = [];
     await this.ch.unsubscribe();
   }
 }

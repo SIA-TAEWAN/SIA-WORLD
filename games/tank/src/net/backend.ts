@@ -46,6 +46,8 @@ export interface Member<M> {
 export interface Channel<M> {
   onPresence(cb: (members: Member<M>[]) => void): void;
   onMessage(cb: (msg: NetMsg) => void): void;
+  /** 끊겼던 연결이 다시 이어졌을 때 (처음 join 은 빼고). 다시 이어지는 일이 없는 채널(로컬)은 없어도 된다 */
+  onReconnect?(cb: () => void): void;
   /** 구독하고 내 정보를 올린다 */
   join(meta: M): Promise<void>;
   track(meta: M): Promise<void>;

@@ -78,6 +78,8 @@ export class OnlineGame implements NetHooks {
   /** 내 화면이 가려져 있다고 알렸는가 */
   private away = false;
   private hiddenAt = 0;
+  /** 지금 화면이 가려져 있는가 (visibilitychange 로 받은 마지막 값) */
+  private hidden = false;
   private awayTimer: ReturnType<typeof setTimeout> | null = null;
   /** 돌아와서 판 상태를 다시 받는 중 (그동안 화면 진행·전송을 멈춘다) */
   private resyncing = false;
@@ -97,6 +99,8 @@ export class OnlineGame implements NetHooks {
     this.hostOrder = [...new Set([room.host_id ?? this.ids[0], ...this.ids])];
     this.off.push(session.on((m) => this.onMsg(m)));
     this.off.push(session.onPresence(() => this.onPresence()));
+    // 연결이 끊겼다 이어지면 남들은 나를 순서 뒤로 보냈다 → 돌아온 것처럼 다시 맞춘다
+    this.off.push(session.onReconnect(() => this.onReconnect()));
     this.timer = setInterval(() => this.tick(), 500);
     this.wasActive = this.activeIds();
     if (typeof document !== 'undefined') {
@@ -153,6 +157,7 @@ export class OnlineGame implements NetHooks {
 
   /** 화면이 가려지면 잠시 뒤 자리 비움으로 알리고, 돌아오면 판 상태를 다시 받는다 */
   private onVisibility(hidden: boolean) {
+    this.hidden = hidden;
     if (this.kicked || this.disposed) return;
     if (hidden) {
       this.hiddenAt = Date.now();
@@ -184,15 +189,29 @@ export class OnlineGame implements NetHooks {
     void this.session.setAway(true).catch(() => undefined);
   }
 
-  /** 돌아왔다: 기준 기기의 판 상태로 맞춘 뒤에야 다시 움직이고 away를 푼다 */
+  /** 소켓이 다시 이어짐: 남들은 내가 나갔다 들어온 것으로 보고 나를 순서 뒤로 보냈으므로 나도 뒤로 가서 판 상태를 다시 받는다 */
+  private onReconnect() {
+    if (this.kicked || this.disposed || !this.scene) return;
+    void this.rejoin();
+  }
+
+  /**
+   * 돌아왔다(화면을 오래 가렸거나 연결이 다시 이어짐): 기준 기기의 판 상태로 맞춘 뒤에야 다시 움직이고 away를 푼다.
+   * away 타이머가 못 돌았으면(아이폰 잠금·탭 타이머 지연) 남들은 아직 나를 기준 기기로 알고 있으므로
+   * 먼저 away를 알려서 다음 후보가 기준 기기가 되어 답하게 한다.
+   */
   private async rejoin() {
     if (this.resyncing) return;
     this.resyncing = true;
     if (!this.away) {
       this.away = true;
       this.hostOrder = demote(this.hostOrder, this.me);
+      await this.session.setAway(true).catch(() => undefined);
+      if (this.disposed || this.kicked) return;
     }
-    const r = await this.resume(10000);
+    // 판에 남은 다른 사람이 없으면 기다리지 않고 가진 상태로 이어 간다
+    const others = this.ids.some((id) => id !== this.me && !this.takenOver.has(id) && this.session.present.has(id));
+    const r = others ? await this.resume(10000) : 'timeout';
     if (this.disposed || this.kicked) return;
     if (r === 'denied') return this.kick();
     if (r !== 'timeout' && this.scene) {
@@ -201,6 +220,8 @@ export class OnlineGame implements NetHooks {
     }
     // 아무도 답하지 않으면(혼자 남았거나 판이 끝남) 가진 상태로 이어 간다
     this.resyncing = false;
+    // 다시 맞추는 사이에 화면을 또 가렸으면 away 그대로 (돌아오면 다시 맞춘다)
+    if (this.hidden) return;
     this.away = false;
     void this.session.setAway(false).catch(() => undefined);
   }
@@ -319,7 +340,11 @@ export class OnlineGame implements NetHooks {
         this.compare(m.turn);
         break;
       case 'snapreq': {
-        if (!this.isHost() || m.from === this.me || this.stale) break;
+        if (m.from === this.me) break;
+        // 판 상태를 청하는 기기는 기준 기기 노릇을 못 한다 (돌아오는 중). 내가 아직 그 기기를 기준으로 알면
+        // 순서 뒤로 보내 다음 후보(대개 나)가 답하게 한다 — 그 기기도 스스로 뒤로 갔으므로 순서가 같아진다
+        if (this.currentHost() === m.from) this.hostOrder = demote(this.hostOrder, m.from);
+        if (!this.isHost() || this.stale) break;
         if (this.takenOver.has(m.from)) {
           this.send({ t: 'snap', to: m.from, from: this.me, denied: true });
           break;
