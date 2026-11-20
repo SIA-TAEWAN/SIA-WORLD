@@ -14,7 +14,7 @@ export type OptionalArt =
   | 'h-bamboo' // 죽순 요괴가 숨은 흙더미
   | 'main'; // 메인 화면 그림
 
-export const ART_FILES: readonly OptionalArt[] = [];
+export const ART_FILES: readonly OptionalArt[] = ['gate', 'o-log', 'o-blade', 'o-pit', 'crate', 'h-water', 'h-bamboo', 'main'];
 
 export const hasArt = (name: OptionalArt) => ART_FILES.includes(name);
 

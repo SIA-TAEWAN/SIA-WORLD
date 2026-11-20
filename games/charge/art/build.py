@@ -53,6 +53,44 @@ def fit(src, w, h, stretch):
     return canvas
 
 
+def wide(src, w, h):
+    """배경이 있는 그림(main · 로비 카드): 가운데를 w:h 비율로 잘라 w×h 로 줄인다 (디펜스 build.py 와 같은 방식)"""
+    src = src.convert('RGB')
+    if src.width / src.height > w / h:
+        cw = round(src.height * w / h)
+        x = (src.width - cw) // 2
+        src = src.crop((x, 0, x + cw, src.height))
+    else:
+        ch = round(src.width * h / w)
+        y = (src.height - ch) // 2
+        src = src.crop((0, y, src.width, y + ch))
+    return src.resize((w, h), Image.LANCZOS)
+
+
+def gate_panel(im, alpha=150):
+    """문 틀 가운데 흰 판을 반투명하게 (뒤의 대원·요괴가 비쳐 보이게). 가운데에서 밝은 칸만 채워 나간다"""
+    im = im.copy()
+    px = im.load()
+    w, h = im.size
+    seen = set()
+    stack = [(w // 2, h // 2)]
+    while stack:
+        x, y = stack.pop()
+        if (x, y) in seen or not (0 <= x < w and 0 <= y < h):
+            continue
+        seen.add((x, y))
+        r, g, b, a = px[x, y]
+        if a < 200 or min(r, g, b) < 200:
+            continue
+        px[x, y] = (r, g, b, alpha)
+        stack.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+    return im
+
+
+WIDE = {'main'}
+CARD_OUT = os.path.join(HERE, '..', '..', '..', 'shared', 'images', 'card-charge.png')
+
+
 def main():
     manifest = json.load(open(MANIFEST, encoding='utf-8'))
     made = []
@@ -60,13 +98,26 @@ def main():
         path = os.path.join(HERE, name + '.png')
         if not os.path.exists(path):
             continue
-        im = fit(Image.open(path), w, h, name in STRETCH)
         out = os.path.join(OUT, name + '.png')
-        im.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE).save(out, optimize=True)
+        if name in WIDE:
+            im = wide(Image.open(path), w, h)
+            im.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG).save(out, optimize=True)
+        else:
+            im = fit(Image.open(path), w, h, name in STRETCH)
+            if name == 'gate':
+                im = gate_panel(im)
+            im.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE).save(out, optimize=True)
         for a in manifest['assets']:
             if a.get('label', '').startswith(name + ' '):
                 a['sha12'] = sha12(path)
         made.append(name)
+    card = os.path.join(HERE, 'card.png')
+    if os.path.exists(card):
+        wide(Image.open(card), 640, 400).quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG).save(CARD_OUT, optimize=True)
+        for a in manifest['assets']:
+            if a.get('label', '').startswith('card '):
+                a['sha12'] = sha12(card)
+        print('로비 카드: shared/images/card-charge.png (640x400)')
     json.dump(manifest, open(MANIFEST, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
     open(MANIFEST, 'a', encoding='utf-8').write('\n')
     print('만듦:', ', '.join(made) or '(원본 없음)')

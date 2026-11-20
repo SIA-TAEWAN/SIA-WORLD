@@ -1,4 +1,50 @@
 {
   "note": "시아돌격대 전용 SpriteCook 그림 목록. public/art 의 요괴·보스·바닥·이펙트는 시아디펜스(games/defense/public/art)에서 복사한 것이고, 원본 asset id 는 games/survival/spritecook-assets.json 과 games/defense/spritecook-assets.json 에 있다. 전용 그림은 ASSETS.md 의 '전용 그림 만들기' 표대로 만들어 여기에 {asset_id, sha12, label} 로 적는다 (label 은 그림 이름으로 시작, sha12 는 art/build.py 가 적는다).",
-  "assets": []
+  "assets": [
+    {
+      "asset_id": "829c09d9-7294-4db1-a8a9-e6b4aec2e554",
+      "label": "gate → public/art/gate.png (256x140, 늘여 씀 · 가운데 판 반투명)",
+      "sha12": "6df9099d1234"
+    },
+    {
+      "asset_id": "99ba2967-465d-4699-b9e0-487083e33dfa",
+      "label": "o-log → public/art/o-log.png (280x104)",
+      "sha12": "d2623b205da9"
+    },
+    {
+      "asset_id": "7a0e8f72-8b5c-4ac1-83b2-39e14c11178b",
+      "label": "o-blade → public/art/o-blade.png (240x240)",
+      "sha12": "940abcf299f7"
+    },
+    {
+      "asset_id": "e144ae49-64d6-418a-b521-c89930e3030a",
+      "label": "o-pit → public/art/o-pit.png (360x140)",
+      "sha12": "848030c83867"
+    },
+    {
+      "asset_id": "bb79f52a-b78e-4fa9-ab1a-177ca9775d4d",
+      "label": "crate → public/art/crate.png (184x148)",
+      "sha12": "f9373b0b544b"
+    },
+    {
+      "asset_id": "b1eaf3e1-905f-4ddd-ac5f-03f2fbdfb6ca",
+      "label": "h-water → public/art/h-water.png (400x140)",
+      "sha12": "0eb95107292d"
+    },
+    {
+      "asset_id": "41f97c8a-b76e-434c-8a76-63e7bca62c9f",
+      "label": "h-bamboo → public/art/h-bamboo.png (400x100)",
+      "sha12": "880337ebe2bc"
+    },
+    {
+      "asset_id": "5816bd02-96d5-4add-a674-b66d388f1ca2",
+      "label": "main → public/art/main.png (1080x600, 메뉴 위 그림)",
+      "sha12": "971ae162f824"
+    },
+    {
+      "asset_id": "1b358e9c-d4d5-4170-884d-12fae6260ca7",
+      "label": "card → shared/images/card-charge.png (640x400, 로비 카드)",
+      "sha12": "a43b55df2127"
+    }
+  ]
 }

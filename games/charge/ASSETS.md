@@ -6,13 +6,13 @@
 - 요괴·보스·이펙트·바닥: **시아디펜스 그림을 그대로 복사**해 `public/art/` 에 두었다 (원래는 시아서바이벌·시아디펜스에서 SpriteCook 으로 만든 것).
   - 요괴 9종 `e-*` (작은 대장은 지역에 따라 방망이 · 물귀신 · 수문장 · 해골 그림을 크게) · 보스 12종 `b-*`
   - 바닥 4종 `tile-field` · `tile-bamboo` · `tile-palace` · `tile-underworld` (3지역씩) · `p-shuriken`(표창) · `fx-pop`(터짐) · `fx-coin`
-- 로비 카드 `shared/images/card-charge.png`: 위 그림과 쥐 전신 그림을 합쳐 만들었다 (SpriteCook 아님).
-- 코드로 그리는 것: 길(흙색 + 굵은 테두리 + 가운데 점선) · 숫자 문(좋은 문 파랑 `teamA`, 나쁜 문 빨강 `teamB`) · 통나무 · 회전 칼날 · 구덩이 · 상자 · 물웅덩이(물귀신) · 흙더미(죽순 요괴) · 보스 체력 바 · 보스 공격 예고(빨간 깜빡임) · 불길(주황).
+- **전용 그림 (SpriteCook, 2026-11-20)**: 문 틀 `gate` · 통나무 `o-log` · 칼날 `o-blade` · 구덩이 `o-pit` · 상자 `crate` · 물웅덩이 `h-water` · 흙더미 `h-bamboo` · 메인 그림 `main` · 로비 카드 `shared/images/card-charge.png`. 원본은 `art/*.png`, asset id 는 `spritecook-assets.json`. 문 틀은 build.py 가 가운데 흰 판을 반투명(알파 150)으로 바꾼다.
+- 코드로 그리는 것: 길(흙색 + 굵은 테두리 + 가운데 점선) · 보스 체력 바 · 보스 공격 예고(빨간 깜빡임) · 불길(주황). 전용 그림을 못 읽으면 문·장애물·상자·숨은 자리도 코드 그림으로 그린다.
 - 소리: 공용 `shared/sound.js` 효과음 (survShot · survPop · survHurt · boost · logHit · tick · survBossWarn · survBossDown · win · lose · click). 소리 파일이 없으면 공용 모듈이 만든 소리를 쓴다 (`shared/sounds/*.ogg` 404 는 정상).
 
 ## 전용 그림 만들기 (SpriteCook) — 작업 지시
 
-PC의 Claude Code(SpriteCook 연결됨)에서 이 장대로 만든다. 클라우드 세션에는 SpriteCook 이 연결돼 있지 않아 코드만 준비해 두었다.
+**완료 (2026-11-20)** — 아래 9장을 만들어 넣었다. 다시 만들 때도 이 순서를 따른다 (로비 카드는 `art/card.png` 로 두면 build.py 가 함께 만든다).
 
 **순서**
 1. `get_credit_balance` 로 크레딧 확인 (아래 9장 · 모델 `gemini-3.1-flash-image`, `smart_crop_mode="tightest"`, 배경 투명).
