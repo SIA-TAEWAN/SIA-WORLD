@@ -1,6 +1,6 @@
 import { choose, type PilotOptions } from '../game/autopilot';
 import { buildConfigFrom, createRun, playShot, resultOf, stageOf, type HeroId, type RunResult, type StageDef } from '../sim';
-import { ATK_FROM, ATK_KEEP, PAR_SLACK, TURN_GOAL, atkMulOf, expectLevel, partyFor, testLevel } from './balance';
+import { ATK_FROM, ATK_KEEP, CALIB_PILOT, PAR_SLACK, TURN_GOAL, atkMulOf, expectLevel, partyFor, testLevel } from './balance';
 import { stageFrom, type Calib, type Layout } from './stagegen';
 
 /**
@@ -27,7 +27,7 @@ export const passes = (r: RunResult, boss: boolean) => r.cleared && r.turns <= (
 
 /** 지역 기준 (testLevel · 예상 레벨 · 파티) 으로 한 판 */
 export const playAt = (st: StageDef, which: 'test' | 'expect' | 'one') =>
-  autoPlay(st, { level: which === 'test' ? testLevel(st.region) : which === 'expect' ? expectLevel(st.region) : 1, party: partyFor(st.region) });
+  autoPlay(st, { level: which === 'test' ? testLevel(st.region) : which === 'expect' ? expectLevel(st.region) : 1, party: partyFor(st.region), pilot: CALIB_PILOT });
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 

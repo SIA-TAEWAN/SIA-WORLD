@@ -101,7 +101,12 @@ function soundButton(root: HTMLElement) {
     paint();
     play('click');
   });
-  root.appendChild(b);
+  // 위 줄(.bar)이 있으면 그 끝에 둔다: 떠 있는 버튼이 아래쪽 큰 버튼·목록 마지막 줄을 가리지 않게 (작은 아이폰 포함)
+  const bar = root.querySelector('.bar');
+  if (bar) {
+    b.classList.remove('sound-btn');
+    bar.appendChild(b);
+  } else root.appendChild(b);
 }
 
 /** 처음 한 번: 기록을 불러오고, 못 보낸 결과가 있으면 다시 보낸다 */
@@ -562,6 +567,13 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     banner: false,
   });
   let hinted = false;
+  // 손가락을 대자마자 안내 글을 치운다 (조준선 위에 남지 않게). 발사 뒤 onFrame 에서도 한 번 더 치운다
+  const dropHint = () => {
+    hinted = true;
+    root.querySelector('#hint')?.remove();
+  };
+  root.addEventListener('pointerdown', dropHint, { once: true });
+  root.addEventListener('touchstart', dropHint, { once: true, passive: true });
   let ended = false;
   let sent: Promise<Sent> | null = null;
   /** 조작 목록을 서버로 (한 판에 한 번) */

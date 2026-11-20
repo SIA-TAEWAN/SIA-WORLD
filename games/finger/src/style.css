@@ -234,8 +234,6 @@ img.ball.pierce { border-color: var(--accent); }
 .bar .icon-btn { width: 34px; height: 34px; font-size: 15px; }
 /* 밝은 바탕(하늘 아래쪽 · 저승 바닥) 위의 흰 글자: 사방 갈색 테두리로 읽히게 */
 .light, .region span { text-shadow: 0 2px 0 var(--outline), 1px 0 0 var(--outline), -1px 0 0 var(--outline), 0 -1px 0 var(--outline); }
-/* 맨 아래 큰 버튼은 오른쪽 아래 소리 버튼 자리를 비운다 */
-.screen > .btn.big:last-of-type { margin-right: 50px; }
 /* 대원 줄: 얼굴 · 이름/능력치 · 레벨 버튼, 아래에 콤보·필살기 설명을 넓게 */
 .hero-row { display: grid; grid-template-columns: 54px 1fr auto; grid-template-areas: 'img head btn' 'img more more'; align-items: center; gap: 4px 10px; }
 .hero-row img { grid-area: img; align-self: start; }
@@ -245,4 +243,7 @@ img.ball.pierce { border-color: var(--accent); }
 .hero-row.locked { grid-template-areas: 'img head head' 'img more more'; }
 .tiers i { font-size: 12px; }
 .bar .back { white-space: nowrap; }
-.menu-btns .row2:last-child { margin-right: 50px; }
+/* 폰 화면: 위 줄에 뒤로 · 별 · 엽전 · 도움말 · 소리가 함께 들어가게 줄인다 */
+@media (max-width: 430px) { .bar { gap: 5px; } .bar .back { font-size: 14px; padding: 6px 2px; } .bar .coins-pill { padding: 3px 8px; font-size: 14px; } .bar .icon-btn { width: 30px; height: 30px; font-size: 13px; flex: none; } }
+/* 아주 좁은 화면(아이폰 SE 1세대 320px): 뒤로는 화살표만 */
+@media (max-width: 360px) { .bar .back { font-size: 0; } .bar .back::before { content: '←'; font-size: 18px; } .bar .coins-pill { padding: 2px 6px; font-size: 13px; } }

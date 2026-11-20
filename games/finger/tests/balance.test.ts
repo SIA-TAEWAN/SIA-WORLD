@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXPECT_LEVEL, expectLevel, partyFor, testLevel } from '../src/data/balance';
+import { CALIB_PILOT, EXPECT_LEVEL, expectLevel, partyFor, testLevel } from '../src/data/balance';
 import { autoPlay } from '../src/data/calibrate';
 import { levelCost, rewardOf } from '../src/data/growth';
 import { HEROES, buildConfig, createRun, stageOf, type StageDef } from '../src/sim';
@@ -25,8 +25,9 @@ describe('밸런스: 지역 대표 스테이지를 자동 플레이어가 깬다
     expect(r.turns).toBeLessThanOrEqual(st.par);
   }, 60_000);
 
+  // 밸런스 기준인 보정용 자동 플레이어(사람에 가까운 30° 탐색)로 잰다. 10° 탐색 자동 플레이어는 앞을 다 보는 거의 완벽한 수라 11-5 를 레벨 1로도 깬다
   it('늦은 지역 보스는 레벨 1로 못 깬다', () => {
-    for (const id of ['11-5', '12-5']) expect(autoPlay(stageOf(id)!, { level: 1, party: partyFor(12) }).cleared, id).toBe(false);
+    for (const id of ['11-5', '12-5']) expect(autoPlay(stageOf(id)!, { level: 1, party: partyFor(12), pilot: CALIB_PILOT }).cleared, id).toBe(false);
   }, 60_000);
 });
 
