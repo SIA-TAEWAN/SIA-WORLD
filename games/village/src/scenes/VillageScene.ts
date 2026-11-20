@@ -90,6 +90,16 @@ const NEAR1 = GRID_MAX + 6;
 const FOREST_PAD = 40; // 숲 무늬 한 장(art.ts 의 FOREST_CELLS = 8칸)의 배수: NEAR1 - NEAR0 도 8의 배수
 const ZOOM_MAX = 1.8;
 const DRAG_PX = 10;
+/**
+ * 무늬(TileSprite) 하나의 실제 크기 상한. Phaser 의 TileSprite 는 보이는 크기만큼 캔버스를 따로 만든다 (WebGL 에선 쓰지도 않는다).
+ * 숲·들판처럼 1만 px 이 넘는 무늬를 그대로 만들면 캔버스만 900MB 가 넘어 아이폰 Safari 가 페이지를 죽이고 다시 연다 (들어가다 다시 들어가기를 되풀이)
+ * → 작게 만들고 setScale 로 키워 깐다. 무늬 반복 수·위치는 같다
+ */
+const TILE_MAX = 512;
+function fitTile(t: Phaser.GameObjects.TileSprite, w: number, h: number, tileScale = 1) {
+  const s = Math.max(1, Math.ceil(Math.max(w, h) / TILE_MAX));
+  return t.setScale(s).setSize(w / s, h / s).setTileScale(tileScale / s, tileScale / s);
+}
 
 const mmss = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -165,15 +175,15 @@ export class VillageScene extends Phaser.Scene {
     const fw = (NEAR1 - NEAR0 + FOREST_PAD * 2) * CELL;
     // 땅 밖 들판 무늬 (SpriteCook tile-meadow, 384px = 4칸 한 장): 숲 무늬와 땅 둘레 아래에 깐다
     if (this.files.has('tile-meadow')) {
-      this.add.tileSprite(f0, f0, fw, fw, 'tile-meadow').setOrigin(0, 0).setDepth(-12);
+      fitTile(this.add.tileSprite(f0, f0, 1, 1, 'tile-meadow').setOrigin(0, 0).setDepth(-12), fw, fw);
       // 숲 무늬는 땅 둘레(한 그루씩 찍는 곳)를 비운 네 띠로 깐다. 띠의 시작이 무늬 한 장(8칸)의 배수라 무늬가 이어진다
       const p = FOREST_PAD * CELL;
       const n0 = NEAR0 * CELL;
       const nw = (NEAR1 - NEAR0) * CELL;
       for (const [x, y, w, h] of [[f0, f0, fw, p], [f0, n0 + nw, fw, p], [f0, n0, p, nw], [n0 + nw, n0, p, nw]]) {
-        this.add.tileSprite(x, y, w, h, 'forest').setOrigin(0, 0).setDepth(-11);
+        fitTile(this.add.tileSprite(x, y, 1, 1, 'forest').setOrigin(0, 0).setDepth(-11), w, h);
       }
-    } else this.add.tileSprite(f0, f0, fw, fw, 'forest').setOrigin(0, 0).setDepth(-11);
+    } else fitTile(this.add.tileSprite(f0, f0, 1, 1, 'forest').setOrigin(0, 0).setDepth(-11), fw, fw);
     this.ground = this.add.graphics().setDepth(-10);
     this.groundTop = this.add.graphics().setDepth(-9);
     this.gridHint = this.add.graphics().setDepth(-8.5).setVisible(false);
@@ -510,7 +520,7 @@ export class VillageScene extends Phaser.Scene {
       // 무늬 한 장(640px)이 5칸 (무늬 속 조약돌이 칸마다 같은 자리에 오지 않게). 땅이 넓어져도 무늬가 제자리에 있게 시작을 장면 좌표에 맞춘다
       const k = (CELL * 5) / 640;
       const tile = (t: Phaser.GameObjects.TileSprite | null, x: number, y: number, tw: number, th: number) =>
-        (t ?? this.add.tileSprite(0, 0, 1, 1, 'tile-yard').setOrigin(0, 0).setDepth(-9.5).setTileScale(k, k)).setPosition(x, y).setSize(tw, th).setTilePosition(x / k, y / k);
+        fitTile(t ?? this.add.tileSprite(0, 0, 1, 1, 'tile-yard').setOrigin(0, 0).setDepth(-9.5), tw, th, k).setPosition(x, y).setTilePosition(x / k, y / k);
       this.yard = tile(this.yard, e0 + 5, e0 + 5, ew - 10, ew - 10);
       this.lane = tile(this.lane, lx + 5, ly, lw - 10, lh - 5);
     }
