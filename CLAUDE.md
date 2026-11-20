@@ -63,7 +63,7 @@ Consequences:
 
 - State-changing access goes through `security definer` functions with `set search_path`, explicit `revoke`/`grant`, and RLS on tables; clients do not write tables directly.
 - Shared economy: `wallets` (게임 화폐 + 시아코인 via `_grant_sia_coin`), `app_settings` (`game_open:<id>` flags, lobby caps), `user_sessions` (one session per account).
-- Adding a game means: an entry in `shared/games.js`, a `game_open:<id>` row, a channel in `shared/presence.js` `GAME_CHANNELS`, a ranking tab in `shared/ranking-dialog.js`, and build/copy steps in `deploy.yml`.
+- Adding a game means: an entry in `shared/games.js`, a `game_open:<id>` row, a channel in `shared/presence.js` `GAME_CHANNELS`, a ranking tab in `shared/ranking-dialog.js`, build/copy steps in `deploy.yml`, and the PWA head block in its `index.html` (manifest + apple-touch-icon links, theme-color + 3 app metas, `<script type="module" src="…/shared/pwa.js" vite-ignore>` — copy it from `games/tank/index.html`, fixing the relative path).
 
 ## Working conventions in this repo
 
@@ -72,3 +72,4 @@ Consequences:
 - 맞고 runs the same engine on the device and the server: when a rules change makes the same action list produce a different result, bump `MATGO_RULES` in `supabase/functions/_shared/matgo.ts` (older tabs then get a reload prompt).
 - Seats a player left mid-hand (`left_game`): the Runner plays them with `engine.leftAction` (blackjack: sit out / stand) or `engine.timeout` when `leftUsesTimeout` (poker, hold'em: check else fold), otherwise AI. Seats that sat out are left out of `settle().deltas`, because `apply_round_result` grants 시아코인 to every seat present in `deltas`.
 - Realtime games with a host device (tank, race): a hidden tab must not stay host — tank marks presence `away`, race drops devices whose position stream went silent. Keep this in mind when adding host-only duties.
+- PWA: one app for the whole site. `manifest.webmanifest`, `sw.js` (root scope; `__SW_VERSION__` is replaced with the commit hash in deploy.yml, so every deploy installs a new worker and drops old caches) and `offline.html` live at the root; `shared/pwa.js` registers the worker and shows the "새 버전이 있어요" banner and install hints. Pages, `shared/*.js|css` are network-first; hashed assets, images, sounds, fonts are cache-first; Supabase and non-GET requests are never cached. On localhost the worker registers only with `?pwa=1`. Icons: `scripts/make-app-icons.py` → `shared/images/app/`.

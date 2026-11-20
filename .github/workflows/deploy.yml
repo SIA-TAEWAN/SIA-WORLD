@@ -46,6 +46,10 @@ jobs:
       - name: 로비·공용 코드 문법 검사
         run: |
           for f in shared/*.js; do node --check "$f" || exit 1; done
+          # 앱(PWA) 서비스 워커: 최상위 sw.js 도 빌드 없이 그대로 올라간다
+          node --check sw.js
+          grep -q "__SW_VERSION__" sw.js || { echo 'sw.js 에 판본 자리(__SW_VERSION__)가 없어요'; exit 1; }
+          node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
           # index.html 의 인라인 스크립트를 꺼내 파일로 쓰고 각각 node --check (type=module 은 .mjs)
           node --input-type=module <<'JS'
           import fs from 'node:fs';
@@ -168,6 +172,12 @@ jobs:
           mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense _site/games/village _site/games/charge
           cp index.html _site/
           cp -r shared _site/
+          # 앱(PWA): manifest·오프라인 화면·서비스 워커 (아이콘은 shared/images/app/ 에 있어 위에서 같이 복사된다)
+          cp manifest.webmanifest offline.html _site/
+          # 서비스 워커 판본 = 이번 커밋 → 배포마다 sw.js 내용이 바뀌어 브라우저가 새 판본을 받고 예전 캐시를 지운다
+          sed "s/__SW_VERSION__/${GITHUB_SHA}/" sw.js > _site/sw.js
+          grep -q "$GITHUB_SHA" _site/sw.js
+          test -f _site/shared/images/app/icon-512.png
           cp -r games/tank/dist/. _site/games/tank/
           cp -r games/dist/. _site/games/
           cp -r games/running/dist/. _site/games/running/
