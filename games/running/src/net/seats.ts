@@ -1,4 +1,4 @@
-import { LANES, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
+import { END_AFTER_FIRST, END_AFTER_GO, LANES, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
 import { hashSeed, makeRng, shuffle } from '../game/rng';
 
 /** 방에 있는 사람이 실시간 채널(Presence)에 올리는 정보 */
@@ -79,11 +79,65 @@ export function allReady(members: readonly MemberInfo[]): boolean {
   return humans.length > 0 && humans.every((m) => m.ready);
 }
 
+/** 기준 기기 후보에서 빼는 위치 공백 (ms): 이만큼 위치가 안 오면 화면이 멈춘 기기로 본다 */
+export const HOST_SILENT_MS = 1500;
+/** 조용했던 기기가 다시 '자리 잡은' 후보가 되려면 위치가 이만큼 이어져 와야 한다 (기준 기기가 오락가락하지 않게) */
+export const HOST_BACK_MS = 1500;
+/** 기준 기기가 없어 끝 알림이 안 올 때, 끝날 시각에서 이만큼 더 기다렸다가 스스로 끝낸다 (초) */
+export const FALLBACK_MARGIN = 4;
+
+/** 한 사람에게서 위치를 받은 기록: 마지막으로 받은 시각과, 끊기지 않고 이어져 온 시작 시각 */
+export interface Heard {
+  last: number;
+  since: number;
+}
+
+/** 위치를 하나 받았다. HOST_SILENT_MS 보다 오래 끊겼다가 오면 새로 이어지기 시작한 것으로 본다 */
+export function noteHeard(h: Heard | undefined, now: number): Heard {
+  if (!h || now - h.last > HOST_SILENT_MS) return { last: now, since: now };
+  return { last: Math.max(h.last, now), since: h.since };
+}
+
+/** 지금도 위치가 오고 있는가 */
+export function isFresh(h: Heard | undefined, now: number): boolean {
+  return !!h && now - h.last <= HOST_SILENT_MS;
+}
+
+/** 위치가 오고 있고, 끊겼다 돌아왔다면 HOST_BACK_MS 이상 이어져 왔는가 */
+export function isSettled(h: Heard | undefined, now: number): boolean {
+  return isFresh(h, now) && now - h!.since >= HOST_BACK_MS;
+}
+
 /**
- * 경기 중 기준 기기: 출전 명단의 사람 중, 지금 접속해 있고 AI로 넘어가지 않은 첫 사람.
- * (AI를 계산하고 경기 끝을 정한다. 나가면 다음 사람이 넘겨받는다)
+ * 경기 중 기준 기기: 출전 명단 순서로, 지금 접속해 있고 AI로 넘어가지 않은 사람 중
+ * 위치가 오고 있는 첫 사람 (화면이 멈춘 기기는 건너뛴다).
+ * - heard 를 주면: 자리 잡은(isSettled) 사람을 먼저, 그런 사람이 없으면 위치가 오는(isFresh) 사람을 고른다.
+ *   돌아온 기기는 HOST_BACK_MS 동안 다른 후보에게 밀리므로 기준 기기가 오락가락하지 않는다.
+ * - 모든 기기가 같은 위치 흐름을 받으므로 같은 사람을 고른다 (도착 시각 차이만큼 잠깐 어긋날 수 있다).
+ * (AI를 계산하고 경기 끝을 정한다. 나가거나 멈추면 다음 사람이 넘겨받는다)
  */
-export function raceHostOf(roster: readonly { slot: number; id: string | null }[], present: ReadonlySet<string>, taken: readonly boolean[]): string | undefined {
-  for (const r of roster) if (r.id && !taken[r.slot] && present.has(r.id)) return r.id;
+export function raceHostOf(
+  roster: readonly { slot: number; id: string | null }[],
+  present: ReadonlySet<string>,
+  taken: readonly boolean[],
+  heard?: { get(id: string): Heard | undefined },
+  now = 0,
+): string | undefined {
+  const ok = (r: { slot: number; id: string | null }): r is { slot: number; id: string } => !!r.id && !taken[r.slot] && present.has(r.id);
+  if (!heard) {
+    for (const r of roster) if (ok(r)) return r.id;
+    return undefined;
+  }
+  for (const r of roster) if (ok(r) && isSettled(heard.get(r.id), now)) return r.id;
+  for (const r of roster) if (ok(r) && isFresh(heard.get(r.id), now)) return r.id;
   return undefined;
+}
+
+/**
+ * 기준 기기가 아닌 기기가 끝 알림 없이 스스로 끝낼 때인가.
+ * t: GO부터 흐른 초, firstMs: 가장 빠른 도착 기록(ms, 아무도 도착 안 했으면 null)
+ */
+export function fallbackEndDue(t: number, firstMs: number | null): boolean {
+  if (t > END_AFTER_GO + FALLBACK_MARGIN) return true;
+  return firstMs !== null && t > firstMs / 1000 + END_AFTER_FIRST + FALLBACK_MARGIN;
 }
