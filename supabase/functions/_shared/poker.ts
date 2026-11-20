@@ -374,7 +374,8 @@ function finish(s: PokerState, pots: PokerPotResult[], uncontested: boolean, han
     }
   }
   const deltas: Record<number, number> = {};
-  for (const p of s.players) deltas[p.seat] = p.excluded ? 0 : (won[p.seat] ?? 0) - p.total;
+  // 이번 판에서 빠진 자리(excluded)는 넣지 않는다: 정산 SQL 은 deltas 에 자리가 있으면 시아코인을 준다
+  for (const p of s.players) if (!p.excluded) deltas[p.seat] = (won[p.seat] ?? 0) - p.total;
   const winners = [...new Set(pots.flatMap((p) => p.winners))].sort((a, b) => a - b);
   for (const w of winners) emit(s, 'win', { seat: w, amount: won[w] ?? 0 });
   s.phase = 'done';
@@ -492,7 +493,9 @@ export const AI_MISTAKE = 0.1;
 
 function aiBet(pub: PokerPublic, priv: PokerPrivate | undefined, seat: number, rng: Rng): PokerAction {
   const a = aiBetPlan(pub, priv, seat, rng);
-  if (rng.next() >= AI_MISTAKE) return a;
+  // 실수는 진짜 AI 자리에만: 판 도중 나간 사람 자리는 AI 가 대신 두지만 그 사람의 실제 칩이다 (난수는 똑같이 하나 쓴다)
+  const roll = rng.next();
+  if (roll >= AI_MISTAKE || pub.seats.find((x) => x.seat === seat)?.kind !== 'ai') return a;
   const has = (t: BetType) => pub.actions.some((x) => x.type === t);
   // 레이즈 → 콜·체크만 (값을 덜 뽑는다), 콜 → 다이 (판을 내준다), 다이 → 콜 (사람의 큰 패에 따라간다)
   if (a.type === 'half' || a.type === 'ddadang' || a.type === 'bbing') return has('call') ? { type: 'call' } : has('check') ? { type: 'check' } : a;
@@ -593,7 +596,7 @@ export const poker: Engine<PokerState, PokerAction, PokerCarry, PokerPublic, Pok
     if (ps.length < 2) {
       s.phase = 'done';
       const deltas: Record<number, number> = {};
-      for (const p of s.players) deltas[p.seat] = 0;
+      for (const p of s.players) if (!p.excluded) deltas[p.seat] = 0;
       s.result = {
         cancelled: true,
         uncontested: false,

@@ -310,7 +310,8 @@ function finish(s: HoldemState, pots: HoldemPotResult[], uncontested: boolean, h
     for (const [seat, v] of Object.entries(share)) won[Number(seat)] = (won[Number(seat)] ?? 0) + v;
   }
   const deltas: Record<number, number> = {};
-  for (const p of s.players) deltas[p.seat] = p.excluded ? 0 : (won[p.seat] ?? 0) - p.total;
+  // 이번 판에서 빠진 자리(excluded)는 넣지 않는다: 정산 SQL 은 deltas 에 자리가 있으면 시아코인을 준다
+  for (const p of s.players) if (!p.excluded) deltas[p.seat] = (won[p.seat] ?? 0) - p.total;
   const winners = [...new Set(pots.flatMap((p) => p.winners))].sort((a, b) => a - b);
   for (const w of winners) {
     const pl = findPlayer(s, w);
@@ -423,7 +424,9 @@ export const AI_MISTAKE = 0.1;
 function aiAct(pub: HoldemPublic, priv: HoldemPrivate | undefined, seat: number, rng: Rng): HoldemAction {
   const a = aiPlan(pub, priv, seat, rng);
   const o = pub.options!;
-  if (rng.next() >= AI_MISTAKE) return a;
+  // 실수는 진짜 AI 자리에만: 판 도중 나간 사람 자리는 AI 가 대신 두지만 그 사람의 실제 칩이다 (난수는 똑같이 하나 쓴다)
+  const roll = rng.next();
+  if (roll >= AI_MISTAKE || pub.seats.find((x) => x.seat === seat)?.kind !== 'ai') return a;
   // 레이즈·올인 → 콜·체크만 (값을 덜 뽑는다), 콜 → 폴드 (판을 내준다), 폴드 → 콜 (사람의 큰 패에 따라간다)
   if (a.type === 'raise' || a.type === 'allin') return o.call > 0 ? { type: 'call' } : o.canCheck ? { type: 'check' } : a;
   if (a.type === 'call') return { type: 'fold' };
@@ -519,7 +522,7 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
     if (ps.length < 2) {
       s.phase = 'done';
       const deltas: Record<number, number> = {};
-      for (const p of s.players) deltas[p.seat] = 0;
+      for (const p of s.players) if (!p.excluded) deltas[p.seat] = 0;
       s.result = { cancelled: true, uncontested: false, winners: [], pots: [], hands: {}, deltas, excluded: s.players.filter((p) => p.excluded).map((p) => p.seat), board: [] };
       return s;
     }

@@ -669,7 +669,8 @@ export const blackjack: Engine<BjState, BjAction, BjCarry, BjPublic, BjPrivate> 
   settle(s): Settlement<BjCarry> {
     if (s.phase !== 'done') throw new EngineError('아직 끝나지 않은 판입니다');
     const deltas: Record<number, number> = {};
-    for (const st of s.seats) deltas[st.seat] = st.hands.reduce((a, h) => a + (h.delta ?? 0), 0);
+    // 쉰 자리(out)는 넣지 않는다: 정산 SQL 은 deltas 에 자리가 있으면 시아코인을 준다 (쉬기만 해도 코인을 받지 않게)
+    for (const st of s.seats) if (!st.out) deltas[st.seat] = st.hands.reduce((a, h) => a + (h.delta ?? 0), 0);
     return { deltas, summary: summaryOf(s), carry: { shoe: s.shoe.slice(), cut: s.cut } };
   },
 

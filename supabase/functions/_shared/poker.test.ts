@@ -392,7 +392,7 @@ describe('흐름', () => {
     // 베팅할 사람이 1명뿐이라 바로 쇼다운
     expect(poker.done(s)).toBe(true);
     const d = poker.settle(s).deltas;
-    expect(d[0]).toBe(0);
+    expect(d[0]).toBeUndefined(); // 빠진 자리는 정산에 없다
     expect(d[1] + d[2]).toBe(0);
     expect(Math.abs(d[1])).toBe(1000);
     expect(s.result!.excluded).toEqual([0]);
@@ -402,7 +402,7 @@ describe('흐름', () => {
     const s = start([seat(0, 'human', 100), seat(1, 'ai')]);
     expect(poker.done(s)).toBe(true);
     expect(s.result!.cancelled).toBe(true);
-    expect(poker.settle(s).deltas).toEqual({ 0: 0, 1: 0 });
+    expect(poker.settle(s).deltas).toEqual({ 1: 0 }); // 빠진 자리(0)는 정산에 없다
   });
 
   it('시간 초과: 선택은 가장 낮은 카드 버리고 그다음 낮은 카드 공개, 베팅은 체크 아니면 다이', () => {
@@ -504,9 +504,12 @@ describe('무작위 500판', () => {
       const sum = Object.values(st.deltas).reduce((a, b) => a + b, 0);
       expect(sum).toBe(0);
       for (const si of seats) {
-        expect(st.deltas[si.seat]).toBeDefined();
-        if (si.stack !== null) expect(st.deltas[si.seat]).toBeGreaterThanOrEqual(-si.stack);
-        if (si.stack !== null && si.stack < base) expect(st.deltas[si.seat]).toBe(0);
+        // 앤티를 못 내 빠진 자리는 정산에 넣지 않는다 (정산 SQL 이 deltas 에 있는 자리에 시아코인을 준다)
+        const excluded = s.players.find((p) => p.seat === si.seat)!.excluded;
+        if (excluded) expect(st.deltas[si.seat]).toBeUndefined();
+        else expect(st.deltas[si.seat]).toBeDefined();
+        if (si.stack !== null && si.stack < base) expect(st.deltas[si.seat] ?? 0).toBe(0);
+        if (si.stack !== null && st.deltas[si.seat] !== undefined) expect(st.deltas[si.seat]).toBeGreaterThanOrEqual(-si.stack);
       }
       const pub = poker.view(s).public;
       const pubStr = JSON.stringify(pub);

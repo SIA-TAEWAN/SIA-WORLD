@@ -302,13 +302,13 @@ describe('베팅', () => {
     expect(blackjack.pending(s)).toEqual([1]);
     s = act(s, 1, { type: 'bet', amount: B });
     s = act(s, 1, { type: 'stand' });
-    expect(deltas(s)).toEqual({ 0: 0, 1: B });
+    expect(deltas(s)).toEqual({ 1: B }); // 쉰 자리는 정산에 없다 (시아코인을 받지 않게)
     expect(blackjack.view(s).public.seats[0].out).toBe(true);
   });
   it('모두 빠지면 카드 없이 끝', () => {
     const s = newRoundWithShoe({ seats: [human(0, 10)], baseUnit: B, rng }, FILLER);
     expect(blackjack.done(s)).toBe(true);
-    expect(deltas(s)).toEqual({ 0: 0 });
+    expect(deltas(s)).toEqual({});
     expect(blackjack.settle(s).carry.shoe).toHaveLength(FILLER.length);
     let s2 = newRoundWithShoe({ seats: [human(0)], baseUnit: B, rng }, FILLER);
     s2 = act(s2, 0, { type: 'sitout' });
