@@ -179,13 +179,14 @@ export function showGame(setup: GameSetup) {
 
   // ---------- 조작: 키보드(WASD·방향키) + 화면 아무 곳이나 누르면 그 자리에 가상 조이스틱 ----------
   const keys = new Set<string>();
-  let touchId = -1;
+  /** 지금 조이스틱을 쥔 손가락·포인터 ("t<번호>" 터치 · "p<번호>" 포인터, 없으면 null). 아이폰은 손가락 번호가 음수일 때도 있어 번호 크기로 판단하면 안 된다 */
+  let touchId: string | null = null;
   let ox = 0;
   let oy = 0;
   let jx = 0;
   let jy = 0;
   function applyInput() {
-    if (touchId >= 0) {
+    if (touchId !== null) {
       run.input.mx = jx;
       run.input.my = jy;
       return;
@@ -206,7 +207,7 @@ export function showGame(setup: GameSetup) {
     endTouch();
   }
   function endTouch() {
-    touchId = -1;
+    touchId = null;
     jx = jy = 0;
     stick.classList.add('hidden');
     applyInput();
@@ -244,7 +245,7 @@ export function showGame(setup: GameSetup) {
     knob.style.transform = `translate(${jx * STICK_R}px, ${jy * STICK_R}px)`;
     applyInput();
   };
-  const beginTouch = (id: number, p: { clientX: number; clientY: number }) => {
+  const beginTouch = (id: string, p: { clientX: number; clientY: number }) => {
     touchId = id;
     ox = p.clientX;
     oy = p.clientY;
@@ -256,19 +257,18 @@ export function showGame(setup: GameSetup) {
   };
   // 손가락은 터치 이벤트로 받는다. 아이폰(WebKit)은 손가락을 오래 대고 있거나 조금 끌면 자기 제스처(길게 누름·돋보기·스크롤)가
   // 끼어들어 포인터 이벤트를 pointercancel 로 끊어 버린다 → touchstart 에서 기본 동작을 막아야 끝까지 이어진다.
-  // 터치 쪽 id 는 포인터 id 와 겹치지 않게 TOUCH_BASE 를 더한다
-  const TOUCH_BASE = 1_000_000;
+  // 터치 쪽 id 는 포인터 id 와 겹치지 않게 "t" 를 붙인다
   const findTouch = (list: TouchList) => {
-    for (let i = 0; i < list.length; i++) if (list[i].identifier + TOUCH_BASE === touchId) return list[i];
+    for (let i = 0; i < list.length; i++) if (`t${list[i].identifier}` === touchId) return list[i];
     return null;
   };
   fieldEl.addEventListener(
     'touchstart',
     (e) => {
       e.preventDefault();
-      if (touchId >= 0 || blocked()) return;
+      if (touchId !== null || blocked()) return;
       const t = e.changedTouches[0];
-      if (t) beginTouch(t.identifier + TOUCH_BASE, t);
+      if (t) beginTouch(`t${t.identifier}`, t);
     },
     { passive: false },
   );
@@ -288,20 +288,20 @@ export function showGame(setup: GameSetup) {
   fieldEl.addEventListener('touchcancel', onTouchListEnd);
   // 마우스·펜은 포인터 이벤트로 (손가락은 위의 터치 이벤트가 맡는다)
   fieldEl.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'touch' || touchId >= 0 || blocked()) return;
+    if (e.pointerType === 'touch' || touchId !== null || blocked()) return;
     e.preventDefault();
     try {
       fieldEl.setPointerCapture(e.pointerId);
     } catch {
       /* 잡지 못해도 계속 */
     }
-    beginTouch(e.pointerId, e);
+    beginTouch(`p${e.pointerId}`, e);
   });
   fieldEl.addEventListener('pointermove', (e) => {
-    if (e.pointerId === touchId) moveTouch(e);
+    if (`p${e.pointerId}` === touchId) moveTouch(e);
   });
   const onTouchEnd = (e: PointerEvent) => {
-    if (e.pointerId === touchId) endTouch();
+    if (`p${e.pointerId}` === touchId) endTouch();
   };
   fieldEl.addEventListener('pointerup', onTouchEnd);
   fieldEl.addEventListener('pointercancel', onTouchEnd);
