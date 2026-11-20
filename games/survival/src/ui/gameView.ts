@@ -311,6 +311,38 @@ export function showGame(setup: GameSetup) {
     if (e.target === fieldEl) onTouchEnd(e);
   });
   fieldEl.addEventListener('contextmenu', (e) => e.preventDefault());
+  // 점검용 (?debug=1): 아이폰에서 손가락이 어디에 닿고 입력이 어떻게 들어가는지 화면 왼쪽 아래에 보여 준다
+  if (new URLSearchParams(location.search).get('debug') === '1') {
+    const box = document.createElement('pre');
+    box.style.cssText =
+      'position:absolute;left:4px;bottom:4px;z-index:50;margin:0;padding:4px 6px;font:11px/1.3 monospace;color:#fff;background:rgba(0,0,0,.65);pointer-events:none;white-space:pre-wrap;max-width:70%';
+    stage.append(box);
+    const cnt: Record<string, number> = {};
+    let last = '';
+    const tag = (t: EventTarget | null) => (t instanceof Element ? `${t.tagName.toLowerCase()}${t.id ? '#' + t.id : ''}${t.classList[0] ? '.' + t.classList[0] : ''}` : String(t));
+    for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel']) {
+      window.addEventListener(ev, (e) => {
+        cnt[ev] = (cnt[ev] ?? 0) + 1;
+        if (ev !== 'touchmove' && ev !== 'pointermove') last = `${ev} → ${tag(e.target)}${'pointerType' in e ? ' ' + (e as PointerEvent).pointerType : ''}`;
+      }, { capture: true, passive: true });
+    }
+    let frames = 0;
+    const tick = () => {
+      if (!box.isConnected) return;
+      frames++;
+      const p = s.player;
+      box.textContent = [
+        `ts ${cnt.touchstart ?? 0} tm ${cnt.touchmove ?? 0} te ${cnt.touchend ?? 0} tc ${cnt.touchcancel ?? 0}`,
+        `pd ${cnt.pointerdown ?? 0} pm ${cnt.pointermove ?? 0} pu ${cnt.pointerup ?? 0} pc ${cnt.pointercancel ?? 0}`,
+        `last ${last}`,
+        `touchId ${touchId} in ${run.input.mx.toFixed(2)},${run.input.my.toFixed(2)}`,
+        `phase ${s.phase} paused ${run.paused} blocked ${blocked()} dim ${!!stage.querySelector('.dim')}`,
+        `p ${Math.round(p.x)},${Math.round(p.y)} t ${s.time.toFixed(1)} f ${frames}`,
+      ].join('\n');
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
   // 다른 앱으로 넘어가면 저절로 멈춘다
   const onHide = () => {
     if (document.hidden && !ended && !run.paused && s.phase === 'play') openPause();
