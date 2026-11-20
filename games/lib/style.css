@@ -13,6 +13,8 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 button, input { font: inherit; }
+/* 빠르게 여러 번 누르는 버튼·룰렛 칸: 아이폰에서 두 번 누르기가 화면 확대로 먹히지 않게 (끌기·밀기 스크롤은 그대로) */
+button, .btn, .rboard, .rc, .rl-units .btn { touch-action: manipulation; }
 .center { min-height: 100vh; display: grid; place-items: center; text-align: center; color: var(--white); font-size: 18px; padding: 16px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
 
 /* ---------- 버튼 (시아탱크 .btn) ---------- */

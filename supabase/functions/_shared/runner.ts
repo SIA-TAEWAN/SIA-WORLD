@@ -256,6 +256,8 @@ export class Runner {
    * 같은 행동이 두 번 오거나 순서가 뒤바뀌어 다른 자리에 적용되는 것을 막는다. 없으면 예전처럼 지금 상태에 적용한다
    */
   async act(roomId: string, userId: string, action: unknown, n?: number) {
+    // 행동은 늘 객체다. null 은 solo 걸음 규칙에서 'AI가 정한다'는 뜻이라 화면이 보내면 안 된다
+    if (!action || typeof action !== 'object' || Array.isArray(action)) throw new GameError('bad action');
     for (let attempt = 0; attempt < 3; attempt++) {
       const { room, seats, deck, engine } = await this.load(roomId);
       if (room.status !== 'playing' || !deck.state || deck.round_no !== room.round_no) throw new GameError('not playing', 409);
@@ -390,7 +392,8 @@ export class Runner {
     const fixed = engine.deadlineAt ? engine.deadlineAt(state) : undefined;
     const solo = soloOf(state);
     // 혼자 하는 판만 길게 (화면이 기기에서 시간을 잰다). 사람이 둘인 판은 행동을 하나씩 받으므로 차례 시간 그대로
-    const lone = !!solo && this.humans(seats).length <= 1;
+    //   사람 둘이 시작한 판(duo)은 상대가 나가도 남은 화면이 sync 로 혼자 하는 판으로 넘어가 duo 가 떨어지기 전까지는 차례 시간 그대로 (timeout 과 같은 기준)
+    const lone = !!solo && this.humans(seats).length <= 1 && !solo.duo;
     const deadline = fixed !== undefined ? (fixed === null ? null : new Date(fixed)) : humanPending ? new Date(this.now() + (lone ? SOLO_DEADLINE_MS : TURN_MS)) : null;
     // soloN: 기기에서 진행하는 판이면 지금까지 적용한 행동 수 (화면이 자기 진행과 견줘 낡은 공개 상태를 가려낸다. 씨앗은 싣지 않는다)
     const pub = {
@@ -403,7 +406,14 @@ export class Runner {
     const privates = seats.map((s) => ({ seat: s.seat_no, userId: s.user_id, hand: view.private[s.seat_no] ?? null }));
     // 룰렛: 결과가 나온 스핀은 공개 전에 지급 (기록 기준, 한 번만). 실패해도 다음 마감 처리 때 다시 지급한다
     const spun = engine.spinResult ? engine.spinResult(state) : null;
-    if (spun && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, spun.spin, spun.result);
+    // 지급이 실패해도 상태는 이미 저장됐으니 공개는 한다 (결과가 화면에 보이게). 지급은 다음 단계로 넘어가기 전에(timeout·advance) 다시 한다
+    if (spun && this.store.paySpin) {
+      try {
+        await this.store.paySpin(roomId, room.round_no, spun.spin, spun.result);
+      } catch (e) {
+        console.error('paySpin failed', e);
+      }
+    }
     await this.store.publish(roomId, version + 1, room.round_no, pub, pending, deadline, privates);
 
     if (settlement) {

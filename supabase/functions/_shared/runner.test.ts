@@ -120,6 +120,43 @@ describe('Runner', () => {
     await expect(runner.act('r1', 'u1', { type: 'bet', amount: 100 })).rejects.toThrow('not your turn');
   });
 
+  it('행동이 객체가 아니면 400 으로 거절 (null 은 solo 걸음 규칙에서 AI 가 정한다는 뜻이라 화면이 보내면 안 된다)', async () => {
+    const m = memStore('matgo', ['u1'], 2);
+    const runner = new Runner(m.store, ENGINES, seededRng(3));
+    await runner.start('r1', 'u1');
+    const v = m.deck.version;
+    for (const bad of [null, undefined, 0, 'play', [], [{ type: 'play' }]]) {
+      await expect(runner.act('r1', 'u1', bad)).rejects.toMatchObject({ message: 'bad action', status: 400 });
+    }
+    expect(m.deck.version).toBe(v);
+  });
+
+  it('룰렛: 결과 지급이 실패해도 결과는 공개하고, 다음 스핀으로 넘어가기 전에 다시 지급한다', async () => {
+    const m = memStore('roulette', ['u1'], 1);
+    const paid: number[] = [];
+    let fail = true;
+    m.store.placeBet = async () => undefined;
+    m.store.paySpin = async (_id, _r, spin) => {
+      if (fail) throw new Error('network');
+      paid.push(spin);
+    };
+    const runner = new Runner(m.store, ENGINES, seededRng(4), () => 1_000_000);
+    await runner.start('r1', 'u1');
+    const pubs = m.published.length;
+    await runner.act('r1', 'u1', { type: 'bet', bets: [] });
+    // 지급은 실패했지만 결과가 나온 상태는 공개됐다
+    expect(m.published.length).toBe(pubs + 1);
+    const last = m.published[m.published.length - 1];
+    expect(last.pub.phase).toBe('spin');
+    expect(last.pub.landed).not.toBeNull();
+    expect(paid).toEqual([]);
+    // 확인을 누르면 다음 스핀을 열기 전에 그 스핀을 다시 지급한다
+    fail = false;
+    await runner.act('r1', 'u1', { type: 'next' });
+    expect(paid).toContain(last.pub.spin);
+    expect(m.published[m.published.length - 1].pub.phase).toBe('bet');
+  });
+
   it('시간 초과: 상태 버전이 바뀌었으면 건너뛰고, 아니면 자동 행동', async () => {
     const m = memStore('poker', ['u1'], 4);
     const runner = new Runner(m.store, ENGINES, seededRng(9));
@@ -655,10 +692,15 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     expect(soloOf(after)!.n).toBeGreaterThan(n0);
     expect(hand0 - cardsLeft(after, 0)).toBeLessThanOrEqual(1);
     expect(matgo.pending(after)).toEqual([0]);
+    // 남은 화면이 아직 sync 하지 않아(duo 표시 그대로) 다음 차례 마감도 20초 (30분이면 방이 몇 시간씩 'playing' 으로 남는다)
+    expect(soloOf(after)!.duo).toBe(true);
+    expect(deadlineOf(m)).toBe(now + 20_000);
     expect(matgo.view(after).public.events.filter((e) => e.id > Math.max(0, ...matgo.view(s).public.events.map((x) => x.id)) && e.seat === 0 && (e.t === 'play' || e.t === 'bomb')).length).toBeLessThanOrEqual(1);
     // 남은 사람은 이어서 둘 수 있다
     await runner.act('r1', 'u1', pick(after, 0), soloOf(after)!.n);
     expect(soloOf(m.deck.state)!.n).toBeGreaterThan(soloOf(after)!.n);
+    // sync 전이면 남은 사람이 직접 둔 뒤의 마감도 20초 그대로
+    if (!matgo.done(m.deck.state as MatgoState)) expect(deadlineOf(m)).toBe(now + 20_000);
   });
 
   it('상대가 나간 뒤 남은 사람이 sync 하면 혼자 하는 판이 된다: 마감이 20초에서 30분으로 바뀌어 화면의 (기기) 차례 시간과 어긋나지 않는다', async () => {

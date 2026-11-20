@@ -272,7 +272,8 @@ describe('전체검사 보강', () => {
     let clock = 0;
     const runner = new Runner(store, ENGINES, fixed(2), () => clock);
     await runner.start('r1', 'u1');
-    await expect(runner.act('r1', 'u1', { type: 'bet', bets: [{ kind: 'zodiac', target: 2, amount: 1000 }] })).rejects.toThrow('network');
+    // 지급이 실패해도 행동은 성공으로 끝난다 (상태는 저장됐고 결과도 공개된다)
+    await runner.act('r1', 'u1', { type: 'bet', bets: [{ kind: 'zodiac', target: 2, amount: 1000 }] });
     expect(wallet).toBe(9000);
     clock += 10_000;
     await runner.timeout('r1');

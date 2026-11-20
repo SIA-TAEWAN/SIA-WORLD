@@ -42,6 +42,31 @@ jobs:
             games/defense/package-lock.json
             games/village/package-lock.json
             games/charge/package-lock.json
+      # shared/*.js 와 index.html 은 빌드를 거치지 않고 그대로 올라간다 → 문법 오류만이라도 배포 전에 잡는다
+      - name: 로비·공용 코드 문법 검사
+        run: |
+          for f in shared/*.js; do node --check "$f" || exit 1; done
+          # index.html 의 인라인 스크립트를 꺼내 파일로 쓰고 각각 node --check (type=module 은 .mjs)
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          import cp from 'node:child_process';
+          const html = fs.readFileSync('index.html', 'utf8');
+          const re = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+          let m;
+          let i = 0;
+          while ((m = re.exec(html))) {
+            const attrs = m[1] ?? '';
+            if (/\ssrc\s*=/.test(attrs) || !m[2].trim()) continue;
+            const ext = /type\s*=\s*["']?module/i.test(attrs) ? 'mjs' : 'cjs';
+            const f = path.join(os.tmpdir(), `index-inline-${i++}.${ext}`);
+            fs.writeFileSync(f, m[2]);
+            cp.execFileSync(process.execPath, ['--check', f], { stdio: 'inherit' });
+          }
+          if (!i) throw new Error('index.html 에서 인라인 스크립트를 찾지 못했어요');
+          console.log(`index.html 인라인 스크립트 ${i}개 문법 확인`);
+          JS
       - name: 시아탱크 테스트·빌드
         working-directory: games/tank
         run: |

@@ -208,10 +208,14 @@ async function checkSession() {
   const { data: s } = await supabase.auth.getSession();
   const uid = s.session?.user?.id;
   if (!uid) return;
+  // 이 브라우저의 표식은 서버를 읽기 전에 먼저 읽는다: 읽는 사이 다른 탭이 다시 로그인하면
+  // (서버는 옛 표식, 여기는 새 표식으로 엇갈려) 나를 밀려난 것으로 보고 같이 쓰는 로그인까지 끊게 된다
+  const before = readToken();
   const { data, error } = await supabase.from('user_sessions').select('token').eq('user_id', uid).maybeSingle();
   if (error || !watching) return; // 못 읽으면 다음에 다시
-  // 같은 브라우저의 다른 탭이 새로 로그인했으면 그 표식을 따라간다 (내 표식을 서버에 올리지 못한 상태면 비교하지 않는다)
   const local = readToken();
+  if (local !== before) return; // 그 사이 다른 탭이 표식을 바꿨다 → 이번은 건너뛴다 (다음 확인 때 다시)
+  // 같은 브라우저의 다른 탭이 새로 로그인했으면 그 표식을 따라간다 (내 표식을 서버에 올리지 못한 상태면 비교하지 않는다)
   if (local && myToken) myToken = local;
   if (!data || !myToken) return void claimSession(false); // 아직 올린 적이 없다 (이 기능 전부터 로그인해 있던 경우 · 올리기에 실패했던 경우)
   if (data.token === myToken) return;
@@ -351,12 +355,16 @@ function logVisit() {
 async function isClosedHere() {
   const game = gameHere();
   if (!game) return false;
-  try {
-    return (await loadGameOpen())[game.id] === false;
-  } catch {
-    // 서버에서 못 읽으면 목록의 기본값 (기본이 닫힘인 게임은 닫힌 것으로)
-    return game.open === false;
+  // 잠깐 통신이 끊긴 것일 수 있어 한 번 더 읽는다. 그래도 못 읽으면 들여보낸다
+  // (목록의 기본값은 실제로 열린 게임도 '닫힘'인 경우가 있어, 그걸 따르면 보통 사용자에게 '준비 중'이 뜬다. 닫기는 가벼운 문일 뿐이다)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return (await loadGameOpen())[game.id] === false;
+    } catch {
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
+    }
   }
+  return false;
 }
 
 /** 닫힌 게임 안내 (화면 전체) → 로비로 */

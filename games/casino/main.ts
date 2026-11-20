@@ -10,6 +10,8 @@ app.innerHTML = '<div class="center">불러오는 중…</div>';
 async function main() {
   const auth = await world.auth();
   await auth.requireLogin();
+  // 다른 탭·기기에서 로그아웃(또는 다른 곳 로그인으로 밀려남)하면 로그인 화면으로 (다른 게임과 같다)
+  auth.onSignedOut(() => location.replace(auth.loginUrl()));
   const wallet = await world.wallet();
   const w = await wallet.ensureWallet().catch(() => null);
   // 게임 그림(shared/images/casino): 카드 오른쪽에 깔고 왼쪽은 판 색으로 자연스럽게 번지게
