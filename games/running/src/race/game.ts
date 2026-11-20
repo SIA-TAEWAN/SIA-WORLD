@@ -1,5 +1,5 @@
 import { makeAiPlan, aiPress, type AiPlan } from '../game/ai';
-import { DT, END_AFTER_FIRST, END_AFTER_GO, LANES, NET_INTERVAL_MS, TOP_SPEED, TRACK_LEN, type ZodiacId } from '../game/constants';
+import { BOOST_FACTOR, DT, END_AFTER_FIRST, END_AFTER_GO, LANES, MUD_FACTOR, NET_INTERVAL_MS, TOP_SPEED, TRACK_LEN, type ZodiacId } from '../game/constants';
 import { rankResults, type RaceEntry, type RankedEntry } from '../game/ranking';
 import { foul, newRunner, stepRunner, type Press, type RunState, type Runner, type SimEvent } from '../game/sim';
 import { makeTrack, type Obstacle } from '../game/track';
@@ -75,6 +75,10 @@ export class RaceGame {
   private snaps: Snap[][] = [];
   /** 사람 자리였는데 AI가 이어 달리는 자리 */
   readonly taken: boolean[] = [];
+  /** 그 자리의 마지막 받은 위치가 AI 계산(기준 기기)에서 온 것인가 (사람 기기가 보낸 것이면 false) */
+  private aiSnap: boolean[] = [];
+  /** 실시간 채널이 이어진 시각 (끊겨 있으면 0). 다시 이어진 직후 '조용했다'고 잘못 보지 않게 */
+  private linkedSince = 0;
   private lastState: RunState[] = [];
   private goneSince = new Map<number, number>();
   private pendingPress: Press = false;
@@ -108,6 +112,7 @@ export class RaceGame {
     this.mySlot = start.roster.find((r) => r.id === room.me.id)?.slot ?? -1;
     for (let s = 0; s < LANES; s++) {
       this.taken[s] = false;
+      this.aiSnap[s] = false;
       this.snaps[s] = [];
       this.lastState[s] = 'wait';
       this.plans[s] = null;
@@ -122,6 +127,8 @@ export class RaceGame {
     // 처음에는 모두 자리 잡은 것으로 본다 ('준비' 전에는 아무도 위치를 보내지 않으므로 그때까지는 조용해도 괜찮다)
     const base = Math.max(serverNow(), this.readyAt);
     for (const r of start.roster) if (r.id) this.heard.set(r.id, { last: base, since: -Infinity });
+    if (room.connected()) this.linkedSince = serverNow();
+    else this.heard.delete(room.me.id);
     this.off.push(room.onMsg((m) => this.onMsg(m)));
     if (typeof document !== 'undefined') {
       const onVis = () => this.onVisibility(document.visibilityState === 'hidden');
@@ -133,7 +140,7 @@ export class RaceGame {
 
   // ───────────── 기준 기기 ─────────────
 
-  /** 지금 기준 기기 (명단 순서로, 접속해 있고 위치가 오고 있는 첫 사람) */
+  /** 지금 기준 기기 (명단 순서로, 접속해 있고 위치가 오고 있는 첫 사람). 내 채널이 끊겨 있으면 나는 빠진다 */
   hostId(now = serverNow()): string | undefined {
     return raceHostOf(this.roster, this.room.present, this.taken, this.heard, now);
   }
@@ -167,7 +174,8 @@ export class RaceGame {
     const host = this.isHost(now);
     for (const r of this.roster) {
       if (!this.aiSeat(r.slot)) continue;
-      if (host && this.control[r.slot] === 'remote') this.adopt(r.slot, r.id === null);
+      // 원래 AI와, 앞 기준 기기가 AI로 계산해 보낸 자리는 멈춰 있던 시간을 따라잡는다
+      if (host && this.control[r.slot] === 'remote') this.adopt(r.slot, r.id === null, r.id === null || this.aiSnap[r.slot]);
       else if (!host && this.control[r.slot] === 'ai') this.release(r.slot);
     }
   }
@@ -184,21 +192,27 @@ export class RaceGame {
         logX: lx === undefined ? -2 : lx, fin: r.finishMs ?? 0, mud: r.inMud,
       }];
       this.lastState[slot] = r.state;
+      this.aiSnap[slot] = true;
     }
     this.runners[slot] = null;
     this.plans[slot] = null;
     this.control[slot] = 'remote';
   }
 
-  /** 이 자리를 AI로 이 기기에서 계산한다 (마지막으로 받은 위치에서 이어서) */
-  private adopt(slot: number, tuned: boolean) {
+  /**
+   * 이 자리를 AI로 이 기기에서 계산한다 (마지막으로 받은 위치에서 이어서).
+   * catchUp: 마지막 받은 위치의 시각부터 계산해 따라잡는다 (기준 기기가 바뀐 경우). 아니면 지금부터 (방금 사람에게서 넘겨받음)
+   */
+  private adopt(slot: number, tuned: boolean, catchUp = tuned) {
     const last = this.snaps[slot][this.snaps[slot].length - 1];
     const r = newRunner();
     const t = Math.max(0, (serverNow() - this.goAt) / 1000);
     if (last) {
       r.x = last.x;
       r.v = last.v;
-      r.base = Math.min(TOP_SPEED, last.v);
+      // 받은 속도는 진흙·가속판이 곱해진 값: 원래 속도로 되돌려 이어 달린다
+      const k = (last.mud ? MUD_FACTOR : 1) * (last.boostT > 0 ? BOOST_FACTOR : 1);
+      r.base = Math.min(TOP_SPEED, last.v / k);
       r.state = last.st;
       r.jumpT = last.st === 'jump' ? last.jumpT : 0;
       r.slideT = last.st === 'slide' ? last.jumpT : 0;
@@ -206,8 +220,8 @@ export class RaceGame {
       r.stunT = last.stunT;
       r.boostT = last.boostT;
       r.finishMs = last.fin > 0 ? last.fin : null;
-      // 원래 AI는 멈춰 있던 시간을 따라잡고(기준 기기가 바뀐 탓이므로), 사람 자리를 이어받은 AI는 지금부터 달린다
-      r.t = tuned ? Math.max(0, (last.ts - this.goAt) / 1000) : t;
+      // AI가 달리던 자리는 멈춰 있던 시간을 따라잡고(기준 기기가 바뀐 탓이므로), 방금 사람에게서 이어받은 AI는 지금부터 달린다
+      r.t = catchUp ? Math.max(0, (last.ts - this.goAt) / 1000) : t;
       for (const o of this.obs) {
         if (o.kind === 'log' && last.logX > -2) r.logX[o.id] = last.logX;
         if (o.kind === 'boost' && o.x < r.x) r.usedBoost.push(o.id);
@@ -262,8 +276,16 @@ export class RaceGame {
   update() {
     const now = serverNow();
     const t = (now - this.goAt) / 1000;
-    // 화면이 보이고 매 프레임이 도는 동안만 나를 기준 기기 후보로 둔다
-    if (!this.hidden()) this.heard.set(this.room.me.id, noteHeard(this.heard.get(this.room.me.id), now));
+    // 화면이 보이고 매 프레임이 돌고, 실시간 채널로 받을 수 있는 동안만 나를 기준 기기 후보로 둔다.
+    // (다시 연결하는 중에는 보내기만 REST 로 되고 받는 것이 없다: 남의 위치를 모르면서 기준 기기를 맡으면 안 된다)
+    const linked = this.room.connected();
+    if (!linked) {
+      this.linkedSince = 0;
+      this.heard.delete(this.room.me.id);
+    } else {
+      if (!this.linkedSince) this.linkedSince = now;
+      if (!this.hidden()) this.heard.set(this.room.me.id, noteHeard(this.heard.get(this.room.me.id), now));
+    }
     this.syncHost(now);
     if (t >= 0 && !this.results) {
       for (let s = 0; s < LANES; s++) {
@@ -403,7 +425,10 @@ export class RaceGame {
     if (!s.length) return;
     let tk = 0;
     this.taken.forEach((v, i) => v && (tk |= 1 << i));
-    this.room.send({ t: 'pos', r: this.round, f: this.room.me.id, ts: Math.round(now), tk, s });
+    // nh: 내 채널이 끊겨 있다 (받는 쪽은 나를 기준 기기 후보에서 뺀다. 내 자리 위치는 그대로 받는다)
+    const msg: NetMsg = { t: 'pos', r: this.round, f: this.room.me.id, ts: Math.round(now), tk, s };
+    if (!this.room.connected()) msg.nh = 1;
+    this.room.send(msg);
   }
 
   private onMsg(m: NetMsg) {
@@ -411,10 +436,14 @@ export class RaceGame {
     if (m.t === 'pos') {
       const now = serverNow();
       if (typeof m.f === 'string' && m.f !== this.room.me.id && this.roster.some((r) => r.id === m.f)) {
-        this.heard.set(m.f, noteHeard(this.heard.get(m.f), now));
+        if (m.nh) this.heard.delete(m.f);
+        else this.heard.set(m.f, noteHeard(this.heard.get(m.f), now));
       }
-      const tk = Number(m.tk) || 0;
-      for (let i = 0; i < LANES; i++) if (tk & (1 << i)) this.applyTakeover(i);
+      // 넘겨받은 자리 표시는 내가 보는 기준 기기 것만 따른다
+      if (this.fromHost(m.f, now)) {
+        const tk = Number(m.tk) || 0;
+        for (let i = 0; i < LANES; i++) if (tk & (1 << i)) this.applyTakeover(i);
+      }
       this.syncHost(now);
       const host = this.hostId(now);
       for (const p of m.s as number[][]) {
@@ -435,6 +464,7 @@ export class RaceGame {
         if (buf.length && snap.ts <= buf[buf.length - 1].ts) continue;
         buf.push(snap);
         if (buf.length > 30) buf.shift();
+        this.aiSnap[slot] = !owner || (this.taken[slot] && owner !== m.f);
       }
     } else if (m.t === 'away') {
       // 그 기기의 화면이 가려졌다: 기다리지 않고 바로 다음 사람이 기준 기기를 넘겨받는다
@@ -443,8 +473,10 @@ export class RaceGame {
         this.syncHost();
       }
     } else if (m.t === 'takeover') {
-      this.applyTakeover(Number(m.slot));
+      if (this.fromHost(m.f)) this.applyTakeover(Number(m.slot));
     } else if (m.t === 'end') {
+      // 끝과 순위도 내가 보는 기준 기기 것만 (못 받으면 fallbackEndDue 로 스스로 끝낸다)
+      if (!this.fromHost(m.f)) return;
       // 네트워크로 온 값은 그대로 화면(HTML)에 넣지 않는다: 숫자·정해진 값만 골라 쓴다
       if (Array.isArray(m.results)) {
         const n = this.roster.length;
@@ -466,10 +498,17 @@ export class RaceGame {
     }
   }
 
+  /** 내가 보는 기준 기기가 보낸 것인가 (기준 기기를 모르면 받는다) */
+  private fromHost(f: unknown, now = serverNow()): boolean {
+    const host = this.hostId(now);
+    return host === undefined || host === f;
+  }
+
   /** 사람 자리를 AI가 이어 달린다 */
   private applyTakeover(slot: number) {
     if (!(slot >= 0 && slot < LANES) || this.taken[slot] || this.roster[slot].id === null) return;
     this.taken[slot] = true;
+    this.aiSnap[slot] = false;
     if (slot === this.mySlot && this.control[slot] === 'me') {
       // 내 자리가 넘어갔다: 구경만 하고 기록은 남기지 않는다
       const r = this.runners[slot]!;
@@ -478,16 +517,19 @@ export class RaceGame {
       this.control[slot] = 'remote';
       this.onLostSeat?.();
     }
-    if (this.isHost() && this.control[slot] === 'remote') this.adopt(slot, false);
+    if (this.isHost() && this.control[slot] === 'remote') this.adopt(slot, false, false);
   }
 
   /** 기준 기기: 접속이 끊긴 사람을 AI로 넘긴다 */
   private checkGone(now: number) {
+    // 내 채널이 끊겨 있으면 남이 조용한 것인지 내가 못 받는 것인지 모른다
+    if (!this.room.connected() || !this.linkedSince) return;
     for (const r of this.roster) {
       if (!r.id || r.id === this.room.me.id || this.taken[r.slot]) continue;
       const buf = this.snaps[r.slot];
       const last = buf[buf.length - 1];
-      const silent = now > this.goAt && now - Math.max(last?.ts ?? 0, this.goAt) > SILENT_MS;
+      // 다시 이어진 뒤로는 그때부터 잰다 (끊긴 동안 못 받은 것을 '조용했다'고 보지 않게)
+      const silent = now > this.goAt && now - Math.max(last?.ts ?? 0, this.goAt, this.linkedSince) > SILENT_MS;
       if (this.room.present.has(r.id) && !silent) {
         this.goneSince.delete(r.slot);
         continue;
@@ -497,7 +539,7 @@ export class RaceGame {
         // 이미 도착했거나 실격이면 그대로 둔다
         const st = this.view(r.slot).state;
         if (st === 'done' || st === 'foul') continue;
-        this.room.send({ t: 'takeover', round: this.round, slot: r.slot });
+        this.room.send({ t: 'takeover', round: this.round, f: this.room.me.id, slot: r.slot });
         this.applyTakeover(r.slot);
       }
     }
@@ -520,7 +562,7 @@ export class RaceGame {
     if (Number.isFinite(first) && t >= first / 1000 + END_AFTER_FIRST) end = true;
     if (!end) return;
     const results = rankResults(this.entries());
-    const msg = { t: 'end', round: this.round, results };
+    const msg = { t: 'end', round: this.round, f: this.room.me.id, results };
     this.room.send(msg);
     // 놓친 기기를 위해 몇 번 더 보낸다
     for (const d of [400, 1200]) setTimeout(() => this.room.send(msg), d);

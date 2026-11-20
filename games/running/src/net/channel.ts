@@ -16,6 +16,11 @@ export interface Channel<M> {
   join(meta: M): Promise<void>;
   track(meta: M): Promise<void>;
   send(msg: NetMsg): void;
+  /**
+   * 지금 실시간으로 주고받을 수 있는가 (구독해 있고 연결이 살아 있음).
+   * 다시 연결하는 동안에는 false: 보내기는 REST 로 넘어가 상대에게 닿지만 받는 것은 아무것도 오지 않는다
+   */
+  connected(): boolean;
   leave(): Promise<void>;
 }
 
@@ -74,6 +79,11 @@ export class SupaChannel<M> implements Channel<M> {
 
   send(msg: NetMsg) {
     void this.ch.send({ type: 'broadcast', event: 'm', payload: msg });
+  }
+
+  connected(): boolean {
+    // realtime-js 의 canPush() 와 같은 조건 (이게 false 면 send 는 REST 로 넘어간다)
+    return this.ch.socket.isConnected() && this.ch.state === 'joined';
   }
 
   async leave() {
@@ -161,8 +171,13 @@ export class LocalChannel<M> implements Channel<M> {
     this.bc.postMessage({ k: this.key, type: 'msg', msg });
   }
 
+  connected(): boolean {
+    return this.timer !== null;
+  }
+
   async leave() {
     if (this.timer) clearInterval(this.timer);
+    this.timer = null;
     this.bc.postMessage({ k: this.key, type: 'bye' });
     this.bc.close();
     this.presenceCbs = [];

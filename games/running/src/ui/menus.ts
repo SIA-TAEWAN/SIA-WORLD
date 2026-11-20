@@ -160,6 +160,7 @@ export async function enterRoom(code: string) {
   if (!state.room) {
     screen('<div class="connecting"><div class="spinner"></div><p>방에 들어가는 중…</p></div>', 'center', 'lobby');
     const room = new RaceRoom(api, code, state.user, state.char);
+    room.onNewerVersion = () => toast('새 버전이 있어요. 새로고침해 주세요', 4000);
     try {
       await room.join();
     } catch {

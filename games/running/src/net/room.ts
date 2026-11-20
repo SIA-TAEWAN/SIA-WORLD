@@ -1,7 +1,7 @@
 import { END_AFTER_GO, type ZodiacId } from '../game/constants';
 import { GO_GAP_MS, GoTooSoonError, serverNow, type RaceApi } from './api';
 import type { Channel, Member, NetMsg } from './channel';
-import { allReady, hostOf, makeSeats, players, resolveChar, sortMembers, type MemberInfo, type PlayerMeta, type Seat } from './seats';
+import { CLIENT_VERSION, allReady, hostOf, makeSeats, players, resolveChar, sortMembers, type MemberInfo, type PlayerMeta, type Seat } from './seats';
 
 /** 출전 명단 한 줄 (시작할 때 방장이 정해서 보낸다) */
 export interface RosterEntry {
@@ -56,6 +56,9 @@ export class RaceRoom {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   /** 내가 마지막으로 서버에서 GO 를 받은 시각 (서버 시각 ms, 없으면 0) */
   private lastGoAt = 0;
+  /** 같은 방에 더 새 판본의 기기가 있다 (한 번만 부른다) */
+  onNewerVersion: (() => void) | null = null;
+  private toldNewer = false;
 
   constructor(
     private api: RaceApi,
@@ -63,7 +66,7 @@ export class RaceRoom {
     readonly me: { id: string; name: string },
     char: ZodiacId,
   ) {
-    this.meta = { name: me.name, char, ready: false, at: 0, pickAt: 0 };
+    this.meta = { name: me.name, char, ready: false, at: 0, pickAt: 0, ver: CLIENT_VERSION };
     this.ch = api.channel<PlayerMeta>(`race:${key}`, me.id);
     this.ch.onPresence((list) => this.onPresence(list));
     this.ch.onMessage((m) => this.onMessage(m));
@@ -89,6 +92,11 @@ export class RaceRoom {
     this.members = sortMembers([...others, { id: this.me.id, ...this.meta }]);
     this.present.clear();
     this.members.forEach((m) => this.present.add(m.id));
+    // 다른 기기가 더 새 판본이면 새로고침을 권한다 (경기는 막지 않는다)
+    if (!this.toldNewer && others.some((m) => typeof m.ver === 'number' && m.ver > CLIENT_VERSION)) {
+      this.toldNewer = true;
+      this.onNewerVersion?.();
+    }
     // 캐릭터가 겹치면 늦게 고른 쪽이 다음 빈 캐릭터로
     const mine = this.members.find((m) => m.id === this.me.id)!;
     const char = resolveChar(mine, this.members);
@@ -177,6 +185,7 @@ export class RaceRoom {
       }
     } finally {
       if (wait > 0 && !this.left) {
+        if (this.retryTimer) clearTimeout(this.retryTimer);
         this.retryTimer = setTimeout(() => {
           this.retryTimer = null;
           this.starting = false;
@@ -255,6 +264,11 @@ export class RaceRoom {
 
   send(m: NetMsg) {
     if (!this.left) this.ch.send(m);
+  }
+
+  /** 실시간 채널로 지금 받을 수 있는가 (다시 연결하는 중이면 false) */
+  connected(): boolean {
+    return !this.left && this.ch.connected();
   }
 
   async leave() {

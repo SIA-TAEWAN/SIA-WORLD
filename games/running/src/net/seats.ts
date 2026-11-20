@@ -10,7 +10,12 @@ export interface PlayerMeta {
   at: number;
   /** 캐릭터를 고른 시각 — 같은 캐릭터를 고르면 먼저 고른 사람 것 */
   pickAt: number;
+  /** 기기 판본 (CLIENT_VERSION). 예전 기기에는 없다 */
+  ver?: number;
 }
+
+/** 이 기기의 판본. 기기끼리 주고받는 내용이 바뀌면 올린다 (더 새 판본이 방에 있으면 새로고침 안내) */
+export const CLIENT_VERSION = 2;
 
 export interface MemberInfo extends PlayerMeta {
   id: string;

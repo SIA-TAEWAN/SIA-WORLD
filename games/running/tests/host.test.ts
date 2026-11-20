@@ -123,15 +123,21 @@ function installDocument() {
 function makeRace(ids: string[]) {
   const listeners = new Map<string, ((m: Msg) => void)[]>();
   const present = new Set(ids);
+  /** 채널이 끊긴(다시 연결하는 중인) 기기: 보내기는 되지만(REST) 아무것도 받지 못한다 */
+  const down = new Set<string>();
   const goAt = clock.now + 3000;
+  const chars = ['rat', 'ox', 'tiger', 'rabbit'] as const;
   const start = {
     t: 'start' as const, round: 7, seed: 12345, readyAt: clock.now + 1000, goAt,
-    roster: [
-      { slot: 0, id: ids[0], name: 'A', char: 'rat' as const },
-      { slot: 1, id: ids[1], name: 'B', char: 'ox' as const },
-      { slot: 2, id: null, name: 'AI 1', char: 'tiger' as const },
-      { slot: 3, id: null, name: 'AI 2', char: 'rabbit' as const },
-    ],
+    roster: chars.map((char, slot) => ({ slot, id: ids[slot] ?? null, name: ids[slot] ? ids[slot].toUpperCase() : `AI ${slot}`, char })),
+  };
+  /** 그 기기에 메시지 하나를 넣는다 */
+  const deliver = (to: string, m: Msg) => {
+    if (down.has(to)) return;
+    const was = docState.current;
+    docState.current = to;
+    (listeners.get(to) ?? []).forEach((f) => f(JSON.parse(JSON.stringify(m))));
+    docState.current = was;
   };
   const api = { submit: () => Promise.resolve({ saved: false, bestMs: 0, improved: false }) };
   const devices: FakeDevice[] = ids.map((id) => {
@@ -143,21 +149,16 @@ function makeRace(ids: string[]) {
       },
       // 다른 기기에만 간다 (broadcast self: false)
       send(m: Msg) {
-        for (const [to, fns] of listeners) {
-          if (to === id) continue;
-          const was = docState.current;
-          docState.current = to;
-          fns.forEach((f) => f(JSON.parse(JSON.stringify(m))));
-          docState.current = was;
-        }
+        for (const to of listeners.keys()) if (to !== id) deliver(to, m);
       },
+      connected: () => !down.has(id),
       raceOver() {},
     };
     docState.current = id;
     const game = new RaceGame(room as never, api as never, start);
     return { id, game, running: true };
   });
-  return { devices, goAt };
+  return { devices, goAt, down, deliver };
 }
 
 const FRAME = 1000 / 60;
@@ -262,5 +263,108 @@ describe('기준 기기의 화면이 멈추면 다른 기기가 넘겨받는다'
     for (const slot of [2, 3]) expect(ra.find((r) => r.slot === slot)!.status).toBe('finish');
     // 3초 가린 것은 자리를 빼앗기지 않는다
     expect(A.game.taken[0]).toBe(false);
+  });
+});
+
+describe('채널이 끊긴 기기는 기준 기기를 맡지 않는다', () => {
+  beforeEach(() => {
+    clock.now = 1_000_000;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('다시 연결하는 동안(보내기만 됨) 스스로 빠지고, 남의 자리를 AI로 넘기지 않는다', () => {
+    const { devices, goAt, down } = makeRace(['a', 'b']);
+    const [A, B] = devices;
+    step(devices, goAt + 50);
+    A.game.press();
+    B.game.press();
+    step(devices, goAt + 8000);
+    expect(A.game.isHost()).toBe(true);
+    // a 의 채널이 끊긴다: a 의 위치는 계속 b 에게 가지만 a 는 아무것도 받지 못한다
+    down.add('a');
+    step(devices, clock.now + 100);
+    expect(A.game.isHost()).toBe(false);
+    // b 는 'nh' 를 보고 바로 넘겨받는다 (a 의 위치는 계속 오므로 a 의 자리는 그대로)
+    expect(B.game.isHost()).toBe(true);
+    const sent: Msg[] = [];
+    const listen = (m: Msg) => sent.push(m);
+    const offB = (B.game as any).room.onMsg(listen);
+    // SILENT_MS(8초)보다 오래 끊겨 있어도 a 는 b 의 자리를 넘기지도, 경기를 끝내지도 않는다
+    step(devices, clock.now + 12_000);
+    offB();
+    expect(sent.some((m) => m.t === 'takeover' || m.t === 'end')).toBe(false);
+    expect(sent.filter((m) => m.t === 'pos').every((m) => !m.tk && m.nh === 1)).toBe(true);
+    expect(A.game.taken).toEqual([false, false, false, false]);
+    expect(B.game.taken).toEqual([false, false, false, false]);
+    expect(A.game.results).toBeNull();
+    // 다시 이어진다: 이어진 직후 '조용했다'고 보고 b 를 넘기지 않는다
+    down.delete('a');
+    step(devices, goAt + 120_000);
+    expect(A.game.taken).toEqual([false, false, false, false]);
+    expect(B.game.taken).toEqual([false, false, false, false]);
+    const ra = A.game.results!;
+    expect(ra).toBeTruthy();
+    expect(B.game.results).toEqual(ra);
+    for (const slot of [2, 3]) expect(ra.find((r) => r.slot === slot)!.status).toBe('finish');
+  });
+
+  it('자리 넘김·끝 알림·tk 표시는 내가 보는 기준 기기 것만 받는다', () => {
+    const { devices, goAt, deliver } = makeRace(['a', 'b']);
+    const [A, B] = devices;
+    step(devices, goAt + 50);
+    A.game.press();
+    B.game.press();
+    step(devices, goAt + 5000);
+    expect(A.game.isHost()).toBe(true);
+    // 기준 기기가 아닌 b 가 보낸 것은 a 가 무시한다
+    deliver('a', { t: 'takeover', round: 7, f: 'b', slot: 0 });
+    deliver('a', { t: 'pos', r: 7, f: 'b', ts: clock.now, tk: 0b11, s: [] });
+    deliver('a', { t: 'end', round: 7, f: 'b', results: [{ slot: 1, place: 1, status: 'finish', timeMs: 30_000, x: 150 }] });
+    // 보낸 사람이 없는 것도 (기준 기기가 있으면) 무시
+    deliver('a', { t: 'takeover', round: 7, slot: 1 });
+    expect(A.game.taken).toEqual([false, false, false, false]);
+    expect(A.game.amRacing()).toBe(true);
+    expect(A.game.results).toBeNull();
+    // 기준 기기 a 가 보낸 것은 b 가 받는다
+    deliver('b', { t: 'pos', r: 7, f: 'a', ts: clock.now, tk: 0b10, s: [] });
+    expect(B.game.taken[1]).toBe(true);
+    expect(B.game.amRacing()).toBe(false);
+  });
+});
+
+describe('기준 기기가 바뀌면 사람 자리를 이어받은 AI도 따라잡는다', () => {
+  beforeEach(() => {
+    clock.now = 1_000_000;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('앞 기준 기기가 AI로 달리던 사람 자리를 마지막 위치 시각부터 이어 달린다', () => {
+    const { devices, goAt } = makeRace(['a', 'b', 'c']);
+    const [A, B, C] = devices;
+    step(devices, goAt + 50);
+    A.game.press();
+    B.game.press();
+    C.game.press();
+    step(devices, goAt + 3000);
+    // c 의 화면이 멈춘다: SILENT_MS 뒤 기준 기기 a 가 c 의 자리를 AI로 넘긴다
+    C.running = false;
+    step(devices, clock.now + 9000);
+    expect(A.game.taken[2]).toBe(true);
+    expect(B.game.taken[2]).toBe(true);
+    step(devices, clock.now + 2000);
+    // 이번에는 기준 기기 a 의 화면이 멈춘다
+    A.running = false;
+    const stopAt = clock.now;
+    const x0 = B.game.view(2).x;
+    step(devices, stopAt + HOST_SILENT_MS + 200);
+    expect(B.game.isHost()).toBe(true);
+    // 멈춰 있던 약 1.5초를 따라잡는다 (지금부터 달리면 1m 남짓밖에 못 간다)
+    expect(B.game.view(2).x).toBeGreaterThan(x0 + 5);
   });
 });
