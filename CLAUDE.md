@@ -14,7 +14,7 @@ SIA WORLD: a set of browser games behind one login, served as a static site on G
   - `games/` — 맞고 and 카지노 (poker, holdem, blackjack, roulette). Shared shell in `games/lib/`.
   - `games/tank`, `games/running` (dev port 5290), `games/volleyball` (5291), `games/survival` (5292), `games/defense` (5293), `games/village` (5294), `games/charge` (5295, 시아돌격대).
   - `games/finger` (5296) — 시아핑거, 1인 턴제 튕기기 RPG. Simulation in `supabase/functions/_shared/finger/` (shared with the `finger-finish` Edge Function, which re-plays the submitted inputs), SQL in `067_finger.sql`.
-- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 067; check `ls supabase/migrations` before adding one).
+- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 068; check `ls supabase/migrations` before adding one).
 - `supabase/functions/_shared/` — card-game rule engines and round runner; `game-action` and `game-timeout` are the card-game Edge Functions; `finger-finish` (시아핑거) re-plays a run with `_shared/finger/`.
 - Each newer game keeps its spec in `games/<name>/PRD.md` and art notes in `ASSETS.md`.
 
