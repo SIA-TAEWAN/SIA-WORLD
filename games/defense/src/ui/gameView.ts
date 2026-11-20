@@ -6,7 +6,7 @@ import { TOWERS } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { ACT, DASH } from '../game/bosses';
 import { endlessBoss, endlessWave } from '../data/endless';
-import { endlessCoins, partialCoins } from '../game/progress';
+import { quitCoins } from '../game/progress';
 import { activeBoss, canPlace, sellValue, towerLevel, upgradeCost } from '../game/sim';
 import { EV, type Ev, type State } from '../game/state';
 import { presetUpgrades } from '../data/growth';
@@ -424,10 +424,16 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     const dim = document.createElement('div');
     dim.className = 'dim pause';
     const paint = (confirm: '' | 'quit' | 'retry') => {
-      const part = s.endless ? endlessCoins(s.time) : partialCoins(s.stage, s.time);
+      // 서버와 같은 계산 (엽전 획득 강화 · 돼지 엽전 포함). 서버는 끝낼 때의 강화 단계로 센다
+      const part = quitCoins(s.stage, Math.floor(s.time), s.endless ? 'endless' : 'normal', setup.squad, s.bonus, state.profile.upgrades);
+      const quitText = unrecorded
+        ? '기록되지 않는 판이에요. 엽전은 받지 못해요'
+        : part > 0
+          ? `지금까지 번 엽전 ${part}닢은 받아요`
+          : '첫 웨이브를 넘기기 전에는 엽전을 받지 못해요';
       dim.innerHTML =
         confirm === 'quit'
-          ? `<div class="dialog"><h3>포기할까요?</h3><p class="soft center">${part > 0 ? `지금까지 번 엽전 ${part}닢은 받아요` : '첫 웨이브를 넘기기 전에는 엽전을 받지 못해요'}</p>
+          ? `<div class="dialog"><h3>포기할까요?</h3><p class="soft center">${quitText}</p>
               <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-quit>포기하기</button></div></div>`
           : confirm === 'retry'
             ? `<div class="dialog"><h3>처음부터 다시 할까요?</h3><p class="soft center">이 판의 기록은 남지 않아요</p>

@@ -91,6 +91,8 @@ export function whyText(e: unknown): string {
   if (/max level/.test(m)) return '이미 가장 높은 레벨이에요';
   if (/character locked/.test(m)) return '아직 함께할 수 없는 캐릭터예요';
   if (/stage locked/.test(m)) return '아직 열리지 않은 스테이지예요';
+  if (/endless locked/.test(m)) return '끝없는 고개는 1지역을 모두 클리어하면 열려요';
+  if (/bad squad/.test(m)) return '출전 캐릭터를 다시 골라 주세요 (1~5종, 겹치지 않게)';
   if (/need login/.test(m)) return '로그인이 필요해요';
   return '서버에 연결하지 못했어요. 잠시 후 다시 해 주세요';
 }

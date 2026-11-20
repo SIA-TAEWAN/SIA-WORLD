@@ -217,6 +217,17 @@ export function partialCoins(stage: StageDef, time: number): number {
 }
 
 /**
+ * 지금 포기하면 받을 엽전 (applyRun · 서버와 같은 계산): (끝낸 웨이브 몫 + 돼지 엽전) × 엽전 획득 강화. 너무 짧은 판은 0.
+ * time: 판 시간(초, 내림). bonus: 3단계 돼지가 벌어 준 엽전. 처치 수 검사(isValid)는 보지 않는다 (정상 판이면 늘 통과)
+ */
+export function quitCoins(stage: StageDef, time: number, mode: RunMode, squad: readonly string[], bonus: number, up: Upgrades | undefined): number {
+  if (time < LIMITS.count_min_time) return 0;
+  const base = mode === 'endless' ? endlessCoins(time) : partialCoins(stage, time);
+  const pig = squad.includes('pig') ? Math.min(LIMITS.bonus_max, bonus) : 0;
+  return Math.floor(((base + pig) * (100 + upgradeMods(up).coinPct)) / 100);
+}
+
+/**
  * 받을 수 없는 판이면 그 까닭 (서버의 raise exception 글자와 같다), 받을 수 있으면 null.
  * elapsed: 판을 시작한 뒤 실제로 흐른 시간(초). startLives: 시작할 때 적어 둔 시작 생명
  */

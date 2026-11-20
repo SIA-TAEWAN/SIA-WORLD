@@ -4,7 +4,7 @@ import { ROSTER, STARTERS, towerOf } from './data/characters';
 import { ApiError, LOCAL_MODE, devSetup, getApi, lobbyNet, type StartInfo } from './net/api';
 import { DefenseLobby, LOBBY_MAX, LobbyFullError } from './net/lobby';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
-import { loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
+import { app, loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
 import { stageOf } from './data/stages';
 import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
 import { ENDLESS_ID } from './data/endless';
@@ -13,8 +13,15 @@ import { showResult } from './ui/result';
 import { showChars } from './ui/roster';
 
 nav.main = showMain;
-nav.regions = showRegions;
-nav.stages = showStages;
+// 지도 화면(지역 지도 · 스테이지 고르기)에 들어올 때마다 보류해 둔 결과를 다시 보낸다
+nav.regions = () => {
+  showRegions();
+  resendPending(showRegions);
+};
+nav.stages = (no) => {
+  showStages(no);
+  resendPending(() => showStages(no));
+};
 nav.prepare = showPrepare;
 nav.chars = showChars;
 nav.codex = showCodex;
@@ -24,6 +31,34 @@ let starting = false;
 /** 판을 시작하기 전에 보류해 둔 결과를 올리는 데 기다리는 최대 시간 (넘으면 올리기는 뒤에서 계속하고 판을 시작한다) */
 const RESEND_WAIT_MS = 8000;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** 보류분 재전송이 진행 중인가 (겹쳐 부르지 않게) */
+let resending = false;
+/**
+ * 보류해 둔 판 결과를 다시 보낸다 (지도 화면에 들어올 때 · 인터넷이 다시 연결될 때).
+ * 올라간 판이 있으면 프로필을 새로 읽고, 그동안 같은 화면에 머물러 있으면 redraw 로 다시 그린다 (판 안에서는 알림도 띄우지 않는다)
+ */
+function resendPending(redraw?: () => void) {
+  const api = state.api;
+  if (!api || resending) return;
+  resending = true;
+  const shown = app.firstElementChild;
+  void (async () => {
+    try {
+      const sent = await api.resend().catch(() => 0);
+      if (sent <= 0) return;
+      setProfile(await api.loadProfile());
+      const here = app.firstElementChild === shown && !!shown?.isConnected;
+      if (here && redraw) redraw();
+      if (!app.querySelector('.screen.game')) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
+    } catch {
+      // 프로필을 못 읽었다: 다음 기회에 다시 읽는다 (resend 가 받은 프로필은 onProfile 로 이미 반영된다)
+    } finally {
+      resending = false;
+    }
+  })();
+}
+window.addEventListener('online', () => resendPending());
 
 /**
  * 판 열기: ① 보류해 둔 결과를 먼저 올린다 (실패해도 시작은 한다 — 서버가 열린 판을 정리할 때 다시 보낼 판이 지워지지 않게)

@@ -423,7 +423,8 @@ export const isOver = (s: State) => s.phase === 'clear' || s.phase === 'fail';
 
 /** 지금 살아 있는 보스 (없으면 null) */
 export function activeBoss(s: State) {
-  if (s.bossId < 0 || s.bossDown) return null;
+  // 끝없는 모드는 보스가 둘 함께 있을 수 있다: 하나가 쓰러져(bossDown) 남은 보스의 체력 바도 보여 준다
+  if (s.bossId < 0 || (s.bossDown && !s.endless)) return null;
   for (let i = 0; i < s.enemyHi; i++) if (s.enemies[i].alive && s.enemies[i].boss >= 0) return s.enemies[i];
   return null;
 }
