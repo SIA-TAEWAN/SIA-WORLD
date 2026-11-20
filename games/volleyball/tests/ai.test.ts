@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BALL_R, MOVE_SPEED, NET_X, PLAYER_MAX_X, RIGHT, START_X, WIN_SCORE } from '../src/game/constants';
 import { NO_INPUT, createState, step } from '../src/game/sim';
 import { AI_NORMAL, aiInput, makeAi, predictLanding } from '../src/game/ai';
-import { ai, chaser, idle, playMatch, playSeries } from './helpers';
+import { ai, chaser, idle, playMatch, playSeries, playSeriesAsync, type Series } from './helpers';
 
 describe('경기가 끝나는가', () => {
   it('가만히 있는 둘이 붙어도 경기는 끝난다 (서브 공이 머리 위에서 끝없이 튀지 않는다)', () => {
@@ -114,13 +114,33 @@ describe('AI', () => {
     expect(AI_NORMAL.error).toBe(20);
   });
 
-  it('AI끼리 붙어도 경기가 끝나고, 한쪽으로 치우치지 않는다', () => {
-    const r = playSeries(ai(), ai(), 400);
-    console.log(`[AI 대 AI 400경기] 왼쪽 ${r.leftWins}승 · 오른쪽 ${r.rightWins}승 · 안 끝남 ${r.unfinished} · 평균 ${r.avgSec.toFixed(0)}초 · 가장 긴 랠리 ${r.longestRallySec.toFixed(0)}초`);
-    expect(r.unfinished).toBe(0);
-    expect(r.leftWins / r.games).toBeGreaterThan(0.42);
-    expect(r.leftWins / r.games).toBeLessThan(0.58);
-  }, 300000);
+  // AI 대 AI 400경기: 한 테스트에 몰면 일꾼을 15~30초 붙잡아 vitest 가 "Timeout calling onTaskUpdate" 로 멈출 수 있어
+  // 100경기씩 네 묶음으로 나누고(경기마다 양보), 마지막에 합쳐서 본다. 씨앗은 예전 한 번에 돌릴 때(1 + i*101, i=0~399)와 같다
+  describe('AI끼리 붙어도 경기가 끝나고, 한쪽으로 치우치지 않는다', () => {
+    const CHUNK = 100;
+    const parts: Series[] = [];
+    for (let k = 0; k < 4; k++) {
+      it(`${k * CHUNK + 1}~${(k + 1) * CHUNK}번째 경기: 모두 끝난다`, async () => {
+        const r = await playSeriesAsync(ai(), ai(), CHUNK, 1 + k * CHUNK * 101);
+        parts[k] = r;
+        expect(r.unfinished).toBe(0);
+      }, 120000);
+    }
+    it('400경기를 합치면 한쪽으로 치우치지 않는다', () => {
+      expect(parts.filter(Boolean)).toHaveLength(4);
+      const games = parts.reduce((n, r) => n + r.games, 0);
+      const left = parts.reduce((n, r) => n + r.leftWins, 0);
+      const right = parts.reduce((n, r) => n + r.rightWins, 0);
+      const unfinished = parts.reduce((n, r) => n + r.unfinished, 0);
+      const avg = parts.reduce((n, r) => n + r.avgSec * r.games, 0) / games;
+      const longest = Math.max(...parts.map((r) => r.longestRallySec));
+      console.log(`[AI 대 AI ${games}경기] 왼쪽 ${left}승 · 오른쪽 ${right}승 · 안 끝남 ${unfinished} · 평균 ${avg.toFixed(0)}초 · 가장 긴 랠리 ${longest.toFixed(0)}초`);
+      expect(games).toBe(400);
+      expect(unfinished).toBe(0);
+      expect(left / games).toBeGreaterThan(0.42);
+      expect(left / games).toBeLessThan(0.58);
+    });
+  });
 
   it('가만히 있는 상대에게는 거의 항상 이긴다', () => {
     const a = playSeries(idle, ai(), 200);
@@ -135,27 +155,28 @@ describe('AI', () => {
   // 상대마다 따로 나누고 100경기(씨앗 고정이라 결과는 늘 같다)만 돌린다. 300경기 때 수치: 96% · 85% · 15% · 74%
   describe('난이도 확인: 사람 흉내 상대들과의 승률 (수치 보고용)', () => {
     const N = 100;
-    const rate = (name: string, maker: Parameters<typeof playSeries>[0]) => {
-      const a = playSeries(maker, ai(), N / 2);
-      const b = playSeries(ai(), maker, N / 2, 5000);
+    // 경기마다 양보한다 (빠르고 정확한 상대와는 경기가 길어 한 테스트가 10초 가까이 걸린다)
+    const rate = async (name: string, maker: Parameters<typeof playSeries>[0]) => {
+      const a = await playSeriesAsync(maker, ai(), N / 2);
+      const b = await playSeriesAsync(ai(), maker, N / 2, 5000);
       const wins = a.rightWins + b.leftWins;
       console.log(`[AI 승률] ${name}: ${((100 * wins) / N).toFixed(0)}% (${wins}/${N}, 안 끝남 ${a.unfinished + b.unfinished}, 평균 ${((a.avgSec + b.avgSec) / 2).toFixed(0)}초)`);
       expect(a.unfinished + b.unfinished).toBe(0);
       return wins / N;
     };
-    it('공만 따라다니는 초보 (떨어질 곳을 내다보지 않음)에게는 대부분 이긴다', () => {
-      expect(rate('공만 따라다니는 초보 (반응 0.2초)', chaser(0.2))).toBeGreaterThan(0.7);
+    it('공만 따라다니는 초보 (떨어질 곳을 내다보지 않음)에게는 대부분 이긴다', async () => {
+      expect(await rate('공만 따라다니는 초보 (반응 0.2초)', chaser(0.2))).toBeGreaterThan(0.7);
     }, 120000);
-    it('AI와 같은 방식이지만 느리고 부정확한 상대에게는 대부분 이긴다', () => {
-      expect(rate('느린 상대 (반응 0.30~0.45초, 오차 ±45)', ai({ ...AI_NORMAL, reactMin: 0.3, reactMax: 0.45, error: 45 }))).toBeGreaterThan(0.6);
+    it('AI와 같은 방식이지만 느리고 부정확한 상대에게는 대부분 이긴다', async () => {
+      expect(await rate('느린 상대 (반응 0.30~0.45초, 오차 ±45)', ai({ ...AI_NORMAL, reactMin: 0.3, reactMax: 0.45, error: 45 }))).toBeGreaterThan(0.6);
     }, 120000);
-    it('AI보다 빠르고 정확한 상대에게는 진다 (이길 수 있는 AI), 그래도 가끔은 이긴다', () => {
-      const strong = rate('빠르고 정확한 상대 (반응 0.05초, 오차 0)', ai({ ...AI_NORMAL, reactMin: 0.05, reactMax: 0.05, error: 0 }));
+    it('AI보다 빠르고 정확한 상대에게는 진다 (이길 수 있는 AI), 그래도 가끔은 이긴다', async () => {
+      const strong = await rate('빠르고 정확한 상대 (반응 0.05초, 오차 0)', ai({ ...AI_NORMAL, reactMin: 0.05, reactMax: 0.05, error: 0 }));
       expect(strong).toBeLessThan(0.5);
       expect(strong).toBeGreaterThan(0.03);
     }, 120000);
-    it('사람만큼 느리지만(반응 0.25~0.35초) 욕심내지 않고 안전하게 넘기기만 하는 상대 (수치만)', () => {
-      rate('안전하게 넘기기만 하는 상대 (반응 0.25~0.35초)', ai({ ...AI_NORMAL, reactMin: 0.25, reactMax: 0.35, behind: 20, safety: 16, jumpRate: 0, riskRate: 0 }));
+    it('사람만큼 느리지만(반응 0.25~0.35초) 욕심내지 않고 안전하게 넘기기만 하는 상대 (수치만)', async () => {
+      await rate('안전하게 넘기기만 하는 상대 (반응 0.25~0.35초)', ai({ ...AI_NORMAL, reactMin: 0.25, reactMax: 0.35, behind: 20, safety: 16, jumpRate: 0, riskRate: 0 }));
     }, 120000);
   });
 });

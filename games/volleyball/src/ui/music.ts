@@ -252,10 +252,15 @@ function start(name: TrackName) {
     });
   }
   if (url) {
-    fileEl = new Audio(url);
-    fileEl.loop = true;
-    fileEl.volume = 0.5;
-    playFile(fileEl);
+    const el = new Audio(url);
+    fileEl = el;
+    el.loop = true;
+    el.volume = 0.5;
+    // 아이폰: 전화·Siri 가 화면을 가리지 않고 곡을 멈추면 다음 입력에서 다시 튼다 (곡을 바꾸거나 끈 경우는 fileEl 이 달라 무시)
+    el.addEventListener('pause', () => {
+      if (current && fileEl === el && !document.hidden) armWake();
+    });
+    playFile(el);
     return;
   }
   startSynth();

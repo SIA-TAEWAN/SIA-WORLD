@@ -21,25 +21,27 @@ export interface Channel<M> {
   connected(): boolean;
 }
 
-/** Supabase Realtime 채널 */
+/** 채널에 들어가는 데 이보다 오래 걸리면 실패로 끝낸다 (화면이 "들어가는 중…"에 멈추지 않게) */
+const JOIN_TIMEOUT_MS = 15000;
+/**
+ * 이름별로 아직 끝나지 않은 나가기. supabase-js 의 sb.channel(이름)은 같은 이름의 채널이 남아 있으면 그것을 돌려주는데,
+ * 나가는 중('leaving')인 채널에 subscribe 하면 아무 일도 일어나지 않아 join 이 끝나지 않는다.
+ * 그래서 같은 이름으로 다시 들어갈 때는 앞의 나가기가 끝나기를 기다리고, 남은 채널을 치운 뒤 새로 만든다.
+ */
+const leaving = new Map<string, Promise<void>>();
+
+/** Supabase Realtime 채널 (실제 채널은 join 때 만든다) */
 export class SupaChannel<M> implements Channel<M> {
-  private ch: RealtimeChannel;
+  private ch: RealtimeChannel | null = null;
   private presenceCbs: ((m: Member<M>[]) => void)[] = [];
   private msgCbs: ((m: NetMsg) => void)[] = [];
+  private closed = false;
 
-  constructor(sb: SupabaseClient, name: string, key: string) {
-    this.ch = sb.channel(name, { config: { presence: { key }, broadcast: { self: false, ack: false } } });
-    this.ch.on('presence', { event: 'sync' }, () => {
-      const state = this.ch.presenceState<{ meta: M }>();
-      const list: Member<M>[] = [];
-      for (const [k, metas] of Object.entries(state)) {
-        const last = metas[metas.length - 1];
-        if (last) list.push({ key: k, meta: last.meta });
-      }
-      this.presenceCbs.forEach((cb) => cb(list));
-    });
-    this.ch.on('broadcast', { event: 'm' }, ({ payload }) => this.msgCbs.forEach((cb) => cb(payload as NetMsg)));
-  }
+  constructor(
+    private sb: SupabaseClient,
+    private name: string,
+    private key: string,
+  ) {}
 
   onPresence(cb: (m: Member<M>[]) => void) {
     this.presenceCbs.push(cb);
@@ -48,26 +50,64 @@ export class SupaChannel<M> implements Channel<M> {
     this.msgCbs.push(cb);
   }
 
+  /** 앞의 나가기를 기다리고, 같은 이름으로 남아 있는 채널을 치운 뒤 새 채널을 만든다 */
+  private async open(): Promise<RealtimeChannel> {
+    const prev = leaving.get(this.name);
+    if (prev) await prev.catch(() => undefined);
+    const topic = `realtime:${this.name}`;
+    for (const old of this.sb.getChannels().filter((c) => c.topic === topic)) await this.sb.removeChannel(old).catch(() => undefined);
+    const ch = this.sb.channel(this.name, { config: { presence: { key: this.key }, broadcast: { self: false, ack: false } } });
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<{ meta: M }>();
+      const list: Member<M>[] = [];
+      for (const [k, metas] of Object.entries(state)) {
+        const last = metas[metas.length - 1];
+        if (last) list.push({ key: k, meta: last.meta });
+      }
+      this.presenceCbs.forEach((cb) => cb(list));
+    });
+    ch.on('broadcast', { event: 'm' }, ({ payload }) => this.msgCbs.forEach((cb) => cb(payload as NetMsg)));
+    return ch;
+  }
+
   join(meta: M): Promise<void> {
     this.lastMeta ??= meta;
     return new Promise((resolve, reject) => {
       let done = false;
-      this.ch.subscribe(async (status) => {
-        // 채널 상태를 적어 둔다: SUBSCRIBED 면 이어져 있고, CHANNEL_ERROR · TIMED_OUT · CLOSED 면 끊긴 것
-        this.up = status === 'SUBSCRIBED';
-        if (status === 'SUBSCRIBED') {
-          // 다시 연결됐을 때도 내 정보를 다시 올린다
-          await this.ch.track({ meta: this.lastMeta ?? meta });
-          if (!done) {
-            done = true;
-            resolve();
+      const fail = (why: string) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(new Error(why));
+      };
+      const timer = setTimeout(() => fail('JOIN_TIMEOUT'), JOIN_TIMEOUT_MS);
+      void this.open().then(
+        (ch) => {
+          // 기다리는 사이에 나갔거나 시간이 다 됐으면 만든 채널을 바로 치운다
+          if (this.closed || done) {
+            void this.sb.removeChannel(ch).catch(() => undefined);
+            return fail('CLOSED');
           }
-        } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !done) {
-          // 이어지기 전에 닫혀도(CLOSED) 실패로 끝낸다 (안 그러면 "방에 들어가는 중…"에 멈추고 [다시 시도]도 듣지 않는다)
-          done = true;
-          reject(new Error(status));
-        }
-      });
+          this.ch = ch;
+          ch.subscribe(async (status) => {
+            // 채널 상태를 적어 둔다: SUBSCRIBED 면 이어져 있고, CHANNEL_ERROR · TIMED_OUT · CLOSED 면 끊긴 것
+            this.up = status === 'SUBSCRIBED';
+            if (status === 'SUBSCRIBED') {
+              // 다시 연결됐을 때도 내 정보를 다시 올린다
+              await ch.track({ meta: this.lastMeta ?? meta });
+              if (!done) {
+                done = true;
+                clearTimeout(timer);
+                resolve();
+              }
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              // 이어지기 전에 닫혀도(CLOSED) 실패로 끝낸다 (안 그러면 "방에 들어가는 중…"에 멈추고 [다시 시도]도 듣지 않는다)
+              fail(status);
+            }
+          });
+        },
+        () => fail('CHANNEL_ERROR'),
+      );
     });
   }
 
@@ -79,17 +119,31 @@ export class SupaChannel<M> implements Channel<M> {
   private lastMeta: M | null = null;
   async track(meta: M) {
     this.lastMeta = meta;
-    await this.ch.track({ meta });
+    // 아직 채널이 없으면 join 때 이 정보를 올린다
+    if (this.ch) await this.ch.track({ meta });
   }
 
   send(msg: NetMsg) {
-    void this.ch.send({ type: 'broadcast', event: 'm', payload: msg });
+    if (this.ch) void this.ch.send({ type: 'broadcast', event: 'm', payload: msg });
   }
 
   async leave() {
+    this.closed = true;
+    this.up = false;
     this.presenceCbs = [];
     this.msgCbs = [];
-    await this.ch.unsubscribe();
+    const ch = this.ch;
+    this.ch = null;
+    if (!ch) return;
+    // 나가기가 끝날 때까지 같은 이름으로 다시 들어오는 쪽이 기다린다 (removeChannel: 나가고 목록에서도 뺀다)
+    const p: Promise<void> = this.sb
+      .removeChannel(ch)
+      .then(() => undefined, () => undefined)
+      .finally(() => {
+        if (leaving.get(this.name) === p) leaving.delete(this.name);
+      });
+    leaving.set(this.name, p);
+    await p;
   }
 }
 

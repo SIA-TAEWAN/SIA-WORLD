@@ -97,3 +97,26 @@ export function playSeries(left: PolicyMaker, right: PolicyMaker, games: number,
   return r;
 }
 
+
+/** 다른 일(vitest 일꾼의 보고 등)이 끼어들 수 있게 잠깐 양보한다 */
+export const yieldWorker = () => new Promise<void>((r) => setImmediate(r));
+
+/**
+ * playSeries 와 같은 결과(같은 씨앗)를 내지만, 경기마다 잠깐 양보한다.
+ * 오래 도는 테스트가 일꾼을 수십 초 붙잡으면 vitest 가 "Timeout calling onTaskUpdate" 로 멈출 수 있어서.
+ */
+export async function playSeriesAsync(left: PolicyMaker, right: PolicyMaker, games: number, seed0 = 1): Promise<Series> {
+  const r: Series = { games, leftWins: 0, rightWins: 0, unfinished: 0, avgSec: 0, longestRallySec: 0 };
+  let ticks = 0;
+  for (let i = 0; i < games; i++) {
+    const m = playMatch(left, right, seed0 + i * 101);
+    if (m.winner === 0) r.leftWins++;
+    else if (m.winner === 1) r.rightWins++;
+    else r.unfinished++;
+    ticks += m.ticks;
+    r.longestRallySec = Math.max(r.longestRallySec, m.longestRally / TICK_RATE);
+    await yieldWorker();
+  }
+  r.avgSec = ticks / games / TICK_RATE;
+  return r;
+}

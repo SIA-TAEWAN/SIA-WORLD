@@ -4,6 +4,7 @@ import {
   PLAYER_R, POINT_PAUSE_TICKS, RALLY_STAGE_TICKS, RESTITUTION, RIGHT, SERVE_Y, START_X, STEP_MS, WIN_SCORE,
 } from '../src/game/constants';
 import { makeRng } from '../src/game/rng';
+import { yieldWorker } from './helpers';
 import {
   NO_INPUT, applyBall, applyScore, cloneState, createState, maxBallSpeed, newClock, setPlayer, speedMult, step, stepBallOnly, ticksFor,
   type BallState, type Input, type SimEvent, type SimState,
@@ -428,16 +429,34 @@ describe('고정 시간 간격 (프레임 속도와 무관)', () => {
   });
 });
 
+// 12판 × 6000프레임을 한 테스트에 몰면 일꾼을 15~25초 붙잡아 vitest 가 "Timeout calling onTaskUpdate" 로 멈출 수 있어
+// 판(씨앗)마다 테스트를 나누고 500프레임마다 양보한다. 프레임마다 expect 를 부르는 대신 처음 어긋난 곳을 적어 두었다가 한 번에 본다
 describe('무작위 조작 수천 프레임', () => {
-  it('캐릭터는 자기 코트를, 공은 경기장을 벗어나지 않고, 공이 네트 속에 들어가지 않는다', () => {
-    let hits = 0;
-    let nets = 0;
-    let points = 0;
-    for (let seed = 1; seed <= 12; seed++) {
+  const E = 1e-6;
+  /** 이 프레임에서 지켜야 할 것을 어긴 곳 (없으면 null) */
+  const violation = (s: SimState): string | null => {
+    const b = s.ball;
+    if (!Number.isFinite(b.x + b.y + b.vx + b.vy)) return '공 값이 수가 아님';
+    if (b.x < LEFT + BALL_R - E || b.x > RIGHT - BALL_R + E) return `공 x ${b.x}`;
+    if (b.y < CEIL + BALL_R - E || b.y > FLOOR_Y - BALL_R + E) return `공 y ${b.y}`;
+    if (Math.hypot(b.vx, b.vy) > maxBallSpeed(s.stage) + E) return `공 속도 ${Math.hypot(b.vx, b.vy)}`;
+    const netGap = b.y >= NET_CAP_Y ? Math.abs(b.x - NET_X) : Math.hypot(b.x - NET_X, b.y - NET_CAP_Y);
+    if (netGap < BALL_R + NET_W / 2 - E) return `공이 네트 속 (${b.x}, ${b.y})`;
+    for (const side of [0, 1] as const) {
+      const p = s.players[side];
+      if (p.x < PLAYER_MIN_X[side] || p.x > PLAYER_MAX_X[side]) return `캐릭터 ${side} x ${p.x}`;
+      if (p.y > GROUND_Y || p.y <= GROUND_Y - 140) return `캐릭터 ${side} y ${p.y}`;
+    }
+    return null;
+  };
+  const totals = { hits: 0, nets: 0, points: 0, runs: 0 };
+  for (let seed = 1; seed <= 12; seed++) {
+    it(`씨앗 ${seed}: 캐릭터는 자기 코트를, 공은 경기장을 벗어나지 않고, 공이 네트 속에 들어가지 않는다`, async () => {
       const s = createState(seed);
       const inp = randomInputs(seed * 31);
       const ev: SimEvent[] = [];
-      for (let i = 0; i < 6000; i++) {
+      let bad: string | null = null;
+      for (let i = 0; i < 6000 && !bad; i++) {
         if (s.phase === 'over') {
           // 경기가 끝나면 점수만 지우고 계속 (오래 돌려 보려고)
           s.score = [0, 0];
@@ -446,32 +465,23 @@ describe('무작위 조작 수천 프레임', () => {
           s.pause = 1;
         }
         step(s, inp(s.tick), ev);
-        const b = s.ball;
-        expect(Number.isFinite(b.x + b.y + b.vx + b.vy)).toBe(true);
-        expect(b.x).toBeGreaterThanOrEqual(LEFT + BALL_R - 1e-6);
-        expect(b.x).toBeLessThanOrEqual(RIGHT - BALL_R + 1e-6);
-        expect(b.y).toBeGreaterThanOrEqual(CEIL + BALL_R - 1e-6);
-        expect(b.y).toBeLessThanOrEqual(FLOOR_Y - BALL_R + 1e-6);
-        expect(Math.hypot(b.vx, b.vy)).toBeLessThanOrEqual(maxBallSpeed(s.stage) + 1e-6);
-        if (b.y >= NET_CAP_Y) expect(Math.abs(b.x - NET_X)).toBeGreaterThanOrEqual(BALL_R + NET_W / 2 - 1e-6);
-        else expect(Math.hypot(b.x - NET_X, b.y - NET_CAP_Y)).toBeGreaterThanOrEqual(BALL_R + NET_W / 2 - 1e-6);
-        for (const side of [0, 1] as const) {
-          const p = s.players[side];
-          expect(p.x).toBeGreaterThanOrEqual(PLAYER_MIN_X[side]);
-          expect(p.x).toBeLessThanOrEqual(PLAYER_MAX_X[side]);
-          expect(p.y).toBeLessThanOrEqual(GROUND_Y);
-          expect(p.y).toBeGreaterThan(GROUND_Y - 140);
-        }
+        const v = violation(s);
+        if (v) bad = `${i}번째 프레임: ${v}`;
+        if (i % 500 === 499) await yieldWorker();
       }
-      hits += ev.filter((e) => e.t === 'hit').length;
-      nets += ev.filter((e) => e.t === 'net').length;
-      points += ev.filter((e) => e.t === 'point').length;
-    }
-    // 실제로 여러 가지 일이 일어난 판이었다
-    expect(hits).toBeGreaterThan(200);
-    expect(nets).toBeGreaterThan(20);
-    expect(points).toBeGreaterThan(50);
-  }, 60000);
+      expect(bad).toBeNull();
+      totals.hits += ev.filter((e) => e.t === 'hit').length;
+      totals.nets += ev.filter((e) => e.t === 'net').length;
+      totals.points += ev.filter((e) => e.t === 'point').length;
+      totals.runs++;
+    }, 60000);
+  }
+  it('12판을 합치면 실제로 여러 가지 일이 일어난 판이었다', () => {
+    expect(totals.runs).toBe(12);
+    expect(totals.hits).toBeGreaterThan(200);
+    expect(totals.nets).toBeGreaterThan(20);
+    expect(totals.points).toBeGreaterThan(50);
+  });
 });
 
 describe('밖에서 받은 값으로 덮어쓰기 (온라인 준비)', () => {

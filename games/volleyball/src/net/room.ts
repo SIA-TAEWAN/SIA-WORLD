@@ -39,6 +39,8 @@ export class VolleyRoom {
   current: StartMsg | null = null;
   /** current 가 늦게 들어와 state 로 받은 경기인가 (이 기기에서 돌고 있지 않은 경기) */
   private adopted = false;
+  /** 첫 presence 동기화를 받았는가 (그 전에는 present 에 나만 있어 "경기하던 사람이 아무도 없다"고 잘못 볼 수 있다) */
+  private presenceSeen = false;
   private lastNo = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private resend: ReturnType<typeof setTimeout>[] = [];
@@ -71,6 +73,7 @@ export class VolleyRoom {
 
   private onPresence(list: Member<PlayerMeta>[]) {
     if (this.left) return;
+    this.presenceSeen = true;
     // 들어온 시각이 유한한 수가 아닌 정보는 버린다 (자리 순서가 기기마다 달라지지 않게)
     const others = list.filter((m) => m.key !== this.me.id && m.meta && Number.isFinite(m.meta.at)).map((m) => ({ id: m.key, ...m.meta }));
     this.members = sortMembers([...others, { id: this.me.id, ...this.meta }]);
@@ -137,8 +140,14 @@ export class VolleyRoom {
       const late = serverNow() > cur.startAt + MATCH_MAX_MS;
       // state 로 받은 경기(새로고침 뒤 다시 들어온 선수 등)는 이 기기에서 돌지 않으므로 나는 세지 않는다
       // (안 그러면 상대가 나가도 내가 방에 있어 끝난 것으로 안 보고 레디가 35분 동안 막힌다)
-      const nobody = !cur.players.some((p) => this.present.has(p.id) && !(this.adopted && p.id === this.me.id));
-      if (late || nobody) this.matchOver(cur.matchNo, false);
+      // 들어오자마자(첫 presence 동기화 전)는 present 에 나만 있으므로 이 검사를 미룬다
+      const nobody = this.presenceSeen && !cur.players.some((p) => this.present.has(p.id) && !(this.adopted && p.id === this.me.id));
+      // state 로 받은 경기에서 다른 선수가 레디해 있으면 그 경기는 끝난 것이다 (시작하면 레디가 꺼지므로).
+      // 끝 알림(over)을 놓쳐도 상대가 방에 남아 있는 동안 레디가 막히지 않게.
+      // 이 기기에서 도는 경기는 시작 직후 상대의 레디가 아직 꺼지기 전일 수 있어 보지 않는다
+      const readyAgain =
+        this.adopted && cur.players.some((p) => p.id !== this.me.id && this.present.has(p.id) && this.members.some((m) => m.id === p.id && m.ready));
+      if (late || nobody || readyAgain) this.matchOver(cur.matchNo, false);
       return;
     }
     if (this.isHost() && bothReady(this.members)) this.start();
