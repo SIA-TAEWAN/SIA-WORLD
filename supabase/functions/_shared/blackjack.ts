@@ -653,6 +653,11 @@ export const blackjack: Engine<BjState, BjAction, BjCarry, BjPublic, BjPrivate> 
     return aiPlay(pub, seat, rng);
   },
 
+  // 판 도중 나간 사람 자리: 베팅 전이면 이번 판은 쉬고, 이미 걸었으면 스탠드 (AI 가 그 사람 칩으로 무작위 베팅·더블하지 않게)
+  leftAction(s) {
+    return s.phase === 'bet' ? { type: 'sitout' } : { type: 'stand' };
+  },
+
   timeout(s, seat) {
     if (s.phase === 'bet') {
       const st = seatOf(s, seat);

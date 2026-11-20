@@ -457,76 +457,90 @@ describe('흐름', () => {
 
 // ───────────────────────── 무작위 ─────────────────────────
 
+// 500판을 100판씩 나눠 돌린다 (한 테스트가 오래 CPU를 잡으면 부하가 큰 배포 기기에서
+// vitest 워커 RPC가 시간 초과로 실패한다). 묶음마다 시드가 따로이고, 쇼다운·무혈 승리 수는 마지막에 합쳐 본다
 describe('무작위 500판', () => {
-  it('불변식: 정산 합 0, 사람 손실 ≤ stack, 예외 없음, 종료, 비공개 유지', () => {
-    const r = seededRng(20261117);
-    const STACKS = [500, 1000, 1500, 3000, 8000, 50000, 1000000];
-    let showdowns = 0;
-    let uncontested = 0;
-    for (let g = 0; g < 500; g++) {
-      const n = 2 + r.int(3);
-      const pool = [0, 1, 2, 3, 4, 5];
-      const chosenSeats: number[] = [];
-      while (chosenSeats.length < n) chosenSeats.push(pool.splice(r.int(pool.length), 1)[0]);
-      const seats: SeatInfo[] = chosenSeats
-        .sort((a, b) => a - b)
-        .map((x) => (r.next() < 0.5 ? seat(x, 'ai') : seat(x, 'human', STACKS[r.int(STACKS.length)])));
-      const base = [100, 500, 1000][r.int(3)];
-      let s = poker.newRound({ seats, baseUnit: base, carry: null, rng: r });
-      let steps = 0;
-      while (!poker.done(s)) {
-        expect(++steps).toBeLessThan(500);
-        expectConserved(s);
-        const v = poker.view(s);
-        // 공개 화면에 덱/버린 카드/선택 카드/남의 비공개 카드가 없어야 한다
-        const pubStr = JSON.stringify(v.public);
-        const secret = [...s.deck, ...s.discards, ...s.players.flatMap((p) => [...p.choices, ...p.down])];
-        if (s.phase === 'choose') secret.push(...s.players.flatMap((p) => p.up));
-        for (const c of secret) expect(pubStr.includes(`"${c}"`)).toBe(false);
-        const pend = poker.pending(s);
-        expect(pend.length).toBeGreaterThan(0);
-        const st = pend[r.int(pend.length)];
-        const p = s.players.find((x) => x.seat === st)!;
-        let action: PokerAction;
-        if (p.kind === 'ai') action = poker.ai(v.public, v.private[st], st, r);
-        else if (r.next() < 0.15) action = poker.timeout(s, st, r);
-        else if (s.phase === 'choose') {
-          const cs = v.private[st].choices.slice();
-          const d = cs.splice(r.int(4), 1)[0];
-          action = { type: 'choose', discard: d, open: cs[r.int(3)] };
-        } else {
-          const acts = v.public.actions;
-          action = { type: acts[r.int(acts.length)].type } as PokerAction;
+  const STACKS = [500, 1000, 1500, 3000, 8000, 50000, 1000000];
+  const CHUNKS = 5;
+  const PER_CHUNK = 100;
+  /** 이벤트 루프에 잠깐 양보 (워커가 진행 상황을 보낼 수 있게) */
+  const breathe = () => new Promise<void>((res) => setTimeout(res, 0));
+  let showdowns = 0;
+  let uncontested = 0;
+  let played = 0;
+  for (let k = 0; k < CHUNKS; k++) {
+    it(`불변식: 정산 합 0, 사람 손실 ≤ stack, 예외 없음, 종료, 비공개 유지 (${k * PER_CHUNK + 1}~${(k + 1) * PER_CHUNK}판)`, async () => {
+      const r = seededRng(20261117 + k);
+      for (let g = 0; g < PER_CHUNK; g++) {
+        if (g % 10 === 0) await breathe();
+        const n = 2 + r.int(3);
+        const pool = [0, 1, 2, 3, 4, 5];
+        const chosenSeats: number[] = [];
+        while (chosenSeats.length < n) chosenSeats.push(pool.splice(r.int(pool.length), 1)[0]);
+        const seats: SeatInfo[] = chosenSeats
+          .sort((a, b) => a - b)
+          .map((x) => (r.next() < 0.5 ? seat(x, 'ai') : seat(x, 'human', STACKS[r.int(STACKS.length)])));
+        const base = [100, 500, 1000][r.int(3)];
+        let s = poker.newRound({ seats, baseUnit: base, carry: null, rng: r });
+        let steps = 0;
+        while (!poker.done(s)) {
+          expect(++steps).toBeLessThan(500);
+          expectConserved(s);
+          const v = poker.view(s);
+          // 공개 화면에 덱/버린 카드/선택 카드/남의 비공개 카드가 없어야 한다
+          const pubStr = JSON.stringify(v.public);
+          const secret = [...s.deck, ...s.discards, ...s.players.flatMap((p) => [...p.choices, ...p.down])];
+          if (s.phase === 'choose') secret.push(...s.players.flatMap((p) => p.up));
+          for (const c of secret) expect(pubStr.includes(`"${c}"`)).toBe(false);
+          const pend = poker.pending(s);
+          expect(pend.length).toBeGreaterThan(0);
+          const st = pend[r.int(pend.length)];
+          const p = s.players.find((x) => x.seat === st)!;
+          let action: PokerAction;
+          if (p.kind === 'ai') action = poker.ai(v.public, v.private[st], st, r);
+          else if (r.next() < 0.15) action = poker.timeout(s, st, r);
+          else if (s.phase === 'choose') {
+            const cs = v.private[st].choices.slice();
+            const d = cs.splice(r.int(4), 1)[0];
+            action = { type: 'choose', discard: d, open: cs[r.int(3)] };
+          } else {
+            const acts = v.public.actions;
+            action = { type: acts[r.int(acts.length)].type } as PokerAction;
+          }
+          s = poker.apply(s, st, action, r);
         }
-        s = poker.apply(s, st, action, r);
+        const st = poker.settle(s);
+        const sum = Object.values(st.deltas).reduce((a, b) => a + b, 0);
+        expect(sum).toBe(0);
+        for (const si of seats) {
+          // 앤티를 못 내 빠진 자리는 정산에 넣지 않는다 (정산 SQL 이 deltas 에 있는 자리에 시아코인을 준다)
+          const excluded = s.players.find((p) => p.seat === si.seat)!.excluded;
+          if (excluded) expect(st.deltas[si.seat]).toBeUndefined();
+          else expect(st.deltas[si.seat]).toBeDefined();
+          if (si.stack !== null && si.stack < base) expect(st.deltas[si.seat] ?? 0).toBe(0);
+          if (si.stack !== null && st.deltas[si.seat] !== undefined) expect(st.deltas[si.seat]).toBeGreaterThanOrEqual(-si.stack);
+        }
+        const pub = poker.view(s).public;
+        const pubStr = JSON.stringify(pub);
+        for (const c of [...s.deck, ...s.discards]) expect(pubStr.includes(`"${c}"`)).toBe(false);
+        for (const p of s.players) {
+          const shown = !!s.result && !s.result.uncontested && !s.result.cancelled && !p.folded && !p.excluded;
+          if (!shown) for (const c of p.down) expect(pubStr.includes(`"${c}"`)).toBe(false);
+        }
+        if (s.result!.uncontested) uncontested++;
+        else if (!s.result!.cancelled) {
+          showdowns++;
+          expectConserved(s);
+        }
+        // 이벤트 id 증가, 30개 이하
+        expect(pub.events.length).toBeLessThanOrEqual(30);
+        for (let i = 1; i < pub.events.length; i++) expect(pub.events[i].id).toBe(pub.events[i - 1].id + 1);
+        played++;
       }
-      const st = poker.settle(s);
-      const sum = Object.values(st.deltas).reduce((a, b) => a + b, 0);
-      expect(sum).toBe(0);
-      for (const si of seats) {
-        // 앤티를 못 내 빠진 자리는 정산에 넣지 않는다 (정산 SQL 이 deltas 에 있는 자리에 시아코인을 준다)
-        const excluded = s.players.find((p) => p.seat === si.seat)!.excluded;
-        if (excluded) expect(st.deltas[si.seat]).toBeUndefined();
-        else expect(st.deltas[si.seat]).toBeDefined();
-        if (si.stack !== null && si.stack < base) expect(st.deltas[si.seat] ?? 0).toBe(0);
-        if (si.stack !== null && st.deltas[si.seat] !== undefined) expect(st.deltas[si.seat]).toBeGreaterThanOrEqual(-si.stack);
-      }
-      const pub = poker.view(s).public;
-      const pubStr = JSON.stringify(pub);
-      for (const c of [...s.deck, ...s.discards]) expect(pubStr.includes(`"${c}"`)).toBe(false);
-      for (const p of s.players) {
-        const shown = !!s.result && !s.result.uncontested && !s.result.cancelled && !p.folded && !p.excluded;
-        if (!shown) for (const c of p.down) expect(pubStr.includes(`"${c}"`)).toBe(false);
-      }
-      if (s.result!.uncontested) uncontested++;
-      else if (!s.result!.cancelled) {
-        showdowns++;
-        expectConserved(s);
-      }
-      // 이벤트 id 증가, 30개 이하
-      expect(pub.events.length).toBeLessThanOrEqual(30);
-      for (let i = 1; i < pub.events.length; i++) expect(pub.events[i].id).toBe(pub.events[i - 1].id + 1);
-    }
+    });
+  }
+  it('쇼다운과 무혈 승리가 고루 나온다 (500판 합계)', () => {
+    expect(played).toBe(CHUNKS * PER_CHUNK);
     expect(showdowns).toBeGreaterThan(20);
     expect(uncontested).toBeGreaterThan(20);
   });

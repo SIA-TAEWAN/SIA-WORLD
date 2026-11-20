@@ -126,7 +126,9 @@ export class Runner {
    */
   private autoAction(engine: AnyEngine, seats: SeatRow[], state: unknown, seat: number) {
     const s = seats.find((x) => x.seat_no === seat);
-    if (engine.leftUsesTimeout && s && s.user_id !== null && s.left_game) return engine.timeout(state, seat, this.rng);
+    const left = !!s && s.user_id !== null && s.left_game;
+    if (left && engine.leftAction) return engine.leftAction(state, seat);
+    if (left && engine.leftUsesTimeout) return engine.timeout(state, seat, this.rng);
     return this.aiAction(engine, state, seat);
   }
 

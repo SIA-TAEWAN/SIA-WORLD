@@ -223,7 +223,13 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         return `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}${r.winners.includes(n) ? ' 🏆' : ''}</td><td>${esc(hand)}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
       })
       .join('');
-    return `<h3>♠️ 판 결과</h3><table>${rows}</table>`;
+    // 칩이 모자라 이번 판에서 빠진 자리는 deltas 에 없다 → 따로 보여 준다 (내 자리면 안내 한 줄)
+    const excluded = (r.excluded ?? []).filter((n) => !(String(n) in r.deltas));
+    const sat = excluded
+      .map((n) => `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}</td><td>이번 판 쉼</td><td>${t.fmt(0)}</td></tr>`)
+      .join('');
+    const satMe = t.resultSeat !== null && excluded.includes(t.resultSeat) ? '<p>칩이 모자라 이번 판은 쉬었어요</p>' : '';
+    return `<h3>♠️ 판 결과</h3>${satMe}<table>${rows}${sat}</table>`;
   },
 
   // 판 정리: 모든 카드를 더미로 차례로 모으고 (가까운 카드부터) 판돈 칩을 치운다

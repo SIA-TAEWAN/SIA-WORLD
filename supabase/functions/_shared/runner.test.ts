@@ -188,7 +188,7 @@ describe('Runner', () => {
     await runner.timeout('r1', m.deck.version, true);
     const pub = m.published[m.published.length - 1].pub;
     expect(pub.waitingBets).toEqual([0]); // u1은 그대로 고민 중
-    expect(pub.seats.find((x: any) => x.seat === 1).bet).not.toBeNull(); // 나간 자리는 AI가 베팅
+    expect(pub.seats.find((x: any) => x.seat === 1).out).toBe(true); // 나간 자리는 이번 판을 쉰다 (그 사람 칩을 걸지 않는다)
   });
 
   it('블랙잭: 판 시작 때 AI는 바로 베팅하고, 사람이 모두 베팅하면 마감을 기다리지 않고 바로 카드를 나눈다', async () => {
@@ -222,12 +222,12 @@ describe('Runner', () => {
     const runner = new Runner(m.store, ENGINES, seededRng(62));
     await runner.start('r1', 'u1');
     await runner.act('r1', 'u2', { type: 'sitout' });
-    m.seats[2].left_game = true; // u3는 베팅 단계에서 나감 → 다음 행동 때 AI가 대신 베팅
+    m.seats[2].left_game = true; // u3는 베팅 단계에서 나감 → 다음 행동 때 이번 판을 쉰다
     await runner.act('r1', 'u1', { type: 'bet', amount: 100 });
     const last = m.published[m.published.length - 1];
     expect(last.pub.phase).not.toBe('bet');
     expect(last.pub.seats.find((x: any) => x.seat === 1).out).toBe(true);
-    expect(last.pub.seats.find((x: any) => x.seat === 2).hands.length).toBeGreaterThan(0);
+    expect(last.pub.seats.find((x: any) => x.seat === 2).out).toBe(true);
   });
 
   it('시작하다 멈춘 방(이번 판 상태 없음)은 정산 없이 대기로 되돌린다', async () => {
@@ -818,14 +818,25 @@ describe('Runner: 판 도중 나간 사람 자리 (포커·홀덤은 체크 아�
     });
   }
 
-  it('블랙잭은 예전 그대로 나간 자리를 AI 가 둔다 (나간 자리 베팅은 AI 베팅)', async () => {
-    const m = memStore('blackjack', ['u1', 'u2'], 4);
-    const runner = new Runner(m.store, ENGINES, seededRng(31));
-    await runner.start('r1', 'u1');
-    m.seats[1].left_game = true;
-    await runner.timeout('r1', m.deck.version, true);
-    const pub = m.published[m.published.length - 1].pub;
-    expect(pub.seats.find((x: any) => x.seat === 1).bet).not.toBeNull();
+  it('블랙잭: 베팅 단계에 나간 자리는 이번 판을 쉰다 (AI 가 그 사람 칩으로 걸지 않는다)', async () => {
+    for (const seed of [31, 32, 33, 34]) {
+      const m = memStore('blackjack', ['u1', 'u2'], 4);
+      const runner = new Runner(m.store, ENGINES, seededRng(seed));
+      await runner.start('r1', 'u1');
+      m.seats[1].left_game = true;
+      await runner.timeout('r1', m.deck.version, true);
+      const pub = m.published[m.published.length - 1].pub;
+      const left = pub.seats.find((x: any) => x.seat === 1);
+      expect(left.out).toBe(true);
+      expect(left.bet ?? null).toBeNull();
+    }
+  });
+
+  it('블랙잭: 나간 자리의 행동은 쉬기(베팅 단계) 아니면 스탠드뿐이다', () => {
+    const bet = { phase: 'bet' } as any;
+    const play = { phase: 'play' } as any;
+    expect(ENGINES.blackjack.leftAction!(bet, 1)).toEqual({ type: 'sitout' });
+    expect(ENGINES.blackjack.leftAction!(play, 1)).toEqual({ type: 'stand' });
   });
 });
 

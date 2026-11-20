@@ -252,17 +252,29 @@ export function toast(msg: string) {
  * 닫기 버튼은 두지 않는다 — 이 탭으로는 판을 맞게 이어 갈 수 없다
  */
 let outdatedShown = false;
+
+/** 게임 중 나가기 안내: 나간 자리를 어떻게 두는지 (runner 의 leftAction·leftUsesTimeout 과 맞춘다) */
+const LEAVE_NOTE: Partial<Record<GameId, string>> = {
+  poker: '나가면 이번 판은 자동으로 체크하거나(낼 돈이 있으면) 다이하고, 이미 낸 칩은 돌려받지 못해요.',
+  holdem: '나가면 이번 판은 자동으로 체크하거나(낼 돈이 있으면) 폴드하고, 이미 낸 칩은 돌려받지 못해요.',
+  blackjack: '나가면 아직 걸지 않았으면 이번 판은 쉬고, 이미 걸었으면 스탠드해요. 결과는 내 지갑에 반영돼요.',
+};
 export function showOutdated() {
   if (outdatedShown) return;
   outdatedShown = true;
   const d = document.createElement('div');
   d.className = 'modal';
   d.setAttribute('role', 'alertdialog');
-  d.innerHTML = `<div class="box"><h3>게임이 새 버전으로 바뀌었어요</h3><p class="note">새로고침해 주세요</p>
+  d.innerHTML = `<div class="box"><h3>게임이 새 버전으로 바뀌었어요</h3><p class="note">새로고침해 주세요 (방금 바뀌었다면 잠시 뒤에 다시 새로고침해 주세요)</p>
     <div class="row"><button type="button" class="btn primary" data-reload>새로고침</button></div></div>`;
   document.body.append(d);
   const b = $<HTMLButtonElement>(d, '[data-reload]');
-  b.addEventListener('click', () => location.reload());
+  // 캐시에 남은 예전 화면 파일을 다시 받지 않게 주소에 시각을 붙여 새로 연다
+  b.addEventListener('click', () => {
+    const u = new URL(location.href);
+    u.searchParams.set('v', String(Date.now()));
+    location.replace(u.href);
+  });
   b.focus();
 }
 
@@ -2157,7 +2169,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   }
 
   $(root, '#leave').addEventListener('click', async () => {
-    if (room?.status === 'playing' && mySeatRow() && !confirm('게임 중이에요. 나가면 이번 판은 AI가 대신하고 결과는 내 지갑에 반영돼요. 나갈까요?')) return;
+    if (room?.status === 'playing' && mySeatRow() && !confirm(`게임 중이에요. ${LEAVE_NOTE[ui.game] ?? '나가면 이번 판은 AI가 대신하고 결과는 내 지갑에 반영돼요.'} 나갈까요?`)) return;
     // 기기에서 둔 데까지를 먼저 서버에 보낸다 (그 뒤는 서버 AI 가 이어 둔다)
     await local?.flush('leave').catch(() => undefined);
     await m.room.leaveRoom(roomId).catch(() => undefined);

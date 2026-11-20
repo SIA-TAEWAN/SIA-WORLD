@@ -165,33 +165,43 @@ describe('쇼다운', () => {
   });
 });
 
+// 300판을 30판씩 나눠 돌린다 (한 테스트가 수십 초 CPU를 잡으면 부하가 큰 배포 기기에서
+// vitest 워커 RPC가 시간 초과로 실패한다). 판마다 시드가 따로라 나눠도 검사하는 판은 같다
+const RANDOM_GAMES = 300;
+const RANDOM_CHUNK = 30;
+/** 이벤트 루프에 잠깐 양보 (워커가 진행 상황을 보낼 수 있게) */
+const breathe = () => new Promise<void>((r) => setTimeout(r, 0));
+
 describe('무작위 판 (AI끼리 · 사람 섞어서)', () => {
-  it('불변식: 정산 합 0, 사람 손실 ≤ 칩, 종료, 공개 정보에 남의 개인 카드 없음', () => {
-    for (let g = 0; g < 300; g++) {
-      const rng = seededRng(1000 + g);
-      const n = 2 + rng.int(3);
-      const seats: SeatInfo[] = Array.from({ length: n }, (_, i) =>
-        rng.next() < 0.5 ? { seat: i, kind: 'ai', name: `AI${i}`, stack: null } : human(i, 400 + rng.int(20_000)),
-      );
-      let s = holdem.newRound({ seats, baseUnit: 100, carry: { button: rng.int(n) }, rng });
-      let guard = 0;
-      while (!holdem.done(s)) {
-        const seat = holdem.pending(s)[0];
-        const v = holdem.view(s);
-        // 공개 정보에 개인 카드가 없어야 한다
-        const pubText = JSON.stringify(v.public);
-        for (const p of s.players) for (const c of p.hole) if (!s.board.includes(c)) expect(pubText.includes(`"${c}"`)).toBe(false);
-        const a = rng.next() < 0.05 ? holdem.timeout(s, seat, rng) : holdem.ai(v.public, v.private[seat], seat, rng);
-        s = holdem.apply(s, seat, a, rng);
-        if (++guard > 200) throw new Error('끝나지 않음');
+  for (let from = 0; from < RANDOM_GAMES; from += RANDOM_CHUNK) {
+    it(`불변식: 정산 합 0, 사람 손실 ≤ 칩, 종료, 공개 정보에 남의 개인 카드 없음 (시드 ${1000 + from}~${1000 + from + RANDOM_CHUNK - 1})`, async () => {
+      for (let g = from; g < from + RANDOM_CHUNK; g++) {
+        if (g % 5 === 0) await breathe();
+        const rng = seededRng(1000 + g);
+        const n = 2 + rng.int(3);
+        const seats: SeatInfo[] = Array.from({ length: n }, (_, i) =>
+          rng.next() < 0.5 ? { seat: i, kind: 'ai', name: `AI${i}`, stack: null } : human(i, 400 + rng.int(20_000)),
+        );
+        let s = holdem.newRound({ seats, baseUnit: 100, carry: { button: rng.int(n) }, rng });
+        let guard = 0;
+        while (!holdem.done(s)) {
+          const seat = holdem.pending(s)[0];
+          const v = holdem.view(s);
+          // 공개 정보에 개인 카드가 없어야 한다
+          const pubText = JSON.stringify(v.public);
+          for (const p of s.players) for (const c of p.hole) if (!s.board.includes(c)) expect(pubText.includes(`"${c}"`)).toBe(false);
+          const a = rng.next() < 0.05 ? holdem.timeout(s, seat, rng) : holdem.ai(v.public, v.private[seat], seat, rng);
+          s = holdem.apply(s, seat, a, rng);
+          if (++guard > 200) throw new Error('끝나지 않음');
+        }
+        const st = holdem.settle(s);
+        const sum = Object.values(st.deltas).reduce((a, b) => a + b, 0);
+        expect(sum).toBe(0);
+        for (const x of seats) if (x.stack !== null) expect(st.deltas[x.seat]).toBeGreaterThanOrEqual(-x.stack);
+        // 보드 5장 + 개인 카드 + 버린 카드 = 겹침 없음
+        const all = [...s.board, ...s.players.flatMap((p) => p.hole), ...s.deck];
+        expect(new Set(all).size).toBe(all.length);
       }
-      const st = holdem.settle(s);
-      const sum = Object.values(st.deltas).reduce((a, b) => a + b, 0);
-      expect(sum).toBe(0);
-      for (const x of seats) if (x.stack !== null) expect(st.deltas[x.seat]).toBeGreaterThanOrEqual(-x.stack);
-      // 보드 5장 + 개인 카드 + 버린 카드 = 겹침 없음
-      const all = [...s.board, ...s.players.flatMap((p) => p.hole), ...s.deck];
-      expect(new Set(all).size).toBe(all.length);
-    }
-  });
+    });
+  }
 });

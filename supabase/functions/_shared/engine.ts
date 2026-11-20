@@ -110,6 +110,11 @@ export interface Engine<S, A, C = unknown, P = unknown, Q = unknown> {
    */
   readonly leftUsesTimeout?: boolean;
   /**
+   * 판 도중 나간 사람 자리에서 둘 행동 (있으면 leftUsesTimeout·AI 보다 먼저 쓴다).
+   * 블랙잭: 베팅 단계면 이번 판은 쉬고, 이미 걸었으면 스탠드 (그 사람 칩을 AI 가 무작위로 걸거나 더블하지 않게)
+   */
+  leftAction?(s: S, seat: number): A;
+  /**
    * 규칙 판 (기기에서 먼저 진행하는 게임만: 맞고). 서버와 화면이 같은 엔진 코드로 같은 판을 두므로,
    * 규칙이 바뀐 서버와 예전 화면이 만나면 영영 어긋난다 → 서로 이 값을 견주어 다르면 화면이 새로고침을 안내한다
    */
