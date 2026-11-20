@@ -151,6 +151,46 @@
     }
     @media (prefers-reduced-motion: reduce) { .btn:active, .game-card:active { transform: none; } .notice { animation: none; } }
   </style>
+  <!--
+    로비가 '불러오는 중…' 에 멈췄을 때 빠져나갈 길 (모듈을 못 불러왔거나 응답이 오지 않을 때).
+    모듈이 아닌 보통 스크립트라 모듈 쪽이 깨져도 돈다. 10초 뒤에도 그대로면 까닭과 '다시 시도'(카카오톡이면 '사파리로 열기')를 보여 준다
+  -->
+  <script>
+    (function () {
+      var errs = [];
+      window.addEventListener('error', function (e) {
+        var t = e && e.target;
+        errs.push(e.message || (t && (t.src || t.href)) || 'error');
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e && e.reason;
+        errs.push(String((r && r.message) || r));
+      });
+      setTimeout(function () {
+        var l = document.getElementById('loading');
+        if (!l || l.classList.contains('hidden')) return;
+        var kakao = /KAKAOTALK/i.test(navigator.userAgent);
+        var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+        l.innerHTML =
+          '<div class="stuck"><b>불러오지 못했어요</b>' +
+          '<small>인터넷 연결을 확인하고 다시 시도해 주세요' + (kakao ? '. 계속 안 되면 사파리에서 열어 주세요' : '') + '</small>' +
+          '<button type="button" class="btn primary" id="stuck-retry">다시 시도</button>' +
+          (kakao ? '<button type="button" class="btn" id="stuck-open">사파리로 열기</button>' : '') +
+          '<code>' + esc((errs.slice(-3).join(' / ') || '응답 없음') + ' · ' + navigator.userAgent.slice(-40)) + '</code></div>';
+        document.getElementById('stuck-retry').onclick = function () { location.reload(); };
+        var o = document.getElementById('stuck-open');
+        if (o) o.onclick = function () { location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href); };
+      }, 10000);
+    })();
+  </script>
+  <style>
+    .stuck { width: calc(100% - 32px); max-width: 360px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; text-align: center;
+      background: var(--panel); color: var(--ink); -webkit-text-stroke: 0; border: var(--line-big) solid var(--outline);
+      border-radius: var(--radius-panel-big); box-shadow: 0 var(--depth-big) 0 var(--outline); padding: 20px 18px; }
+    .stuck b { font-weight: normal; font-size: 20px; }
+    .stuck small { color: var(--ink-soft); font-size: 14px; }
+    .stuck code { font-size: 11px; color: var(--ink-soft); word-break: break-all; font-family: ui-monospace, Menlo, monospace; }
+  </style>
 </head>
 <body>
   <div id="loading" class="center">불러오는 중…</div>
