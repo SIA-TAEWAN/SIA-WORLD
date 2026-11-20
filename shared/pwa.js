@@ -54,14 +54,29 @@ if (/Android/i.test(navigator.userAgent)) {
       probe.remove();
       const html = document.documentElement.outerHTML;
       const asset = [...document.scripts].map((s) => s.src).find((s) => /assets\//.test(s)) || '';
+      const r = (el) => {
+        if (!el) return '-';
+        const b = el.getBoundingClientRect();
+        return `${Math.round(b.top)}~${Math.round(b.bottom)} (h ${Math.round(b.height)})`;
+      };
+      const name = (el) => (el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.classList[0] ? '.' + el.classList[0] : ''}` : '-');
+      // 화면 맨 아래 가운데에 있는 것과, 그 조상 가운데 화면 틀(가장 큰 것)
+      const low = document.elementFromPoint(innerWidth / 2, innerHeight - 4);
+      let frame = low;
+      for (let e = low; e && e !== document.body; e = e.parentElement) if (e.getBoundingClientRect().height >= innerHeight * 0.9) frame = e;
+      const vv = window.visualViewport;
       alert(
         [
           location.pathname.replace(/^.*SIA-WORLD/, ''),
-          `inner ${innerWidth}×${innerHeight} · screen ${screen.width}×${screen.height}`,
+          `inner ${innerWidth}×${innerHeight} · client ${document.documentElement.clientHeight} · screen ${screen.width}×${screen.height}`,
           `100dvh ${Math.round(dvh)} · bottom inset ${inset}`,
+          `visual ${Math.round(vv?.height ?? 0)} top ${Math.round(vv?.offsetTop ?? 0)}/${Math.round(vv?.pageTop ?? 0)} · scroll ${Math.round(scrollY)} · zoom ${getComputedStyle(document.documentElement).zoom}`,
+          `html ${r(document.documentElement)} · body ${r(document.body)}`,
+          `bottom: ${name(low)} ${r(low)}`,
+          `frame: ${name(frame)} ${r(frame)}`,
           `viewport: ${document.querySelector('meta[name="viewport"]')?.content}`,
-          `head fix: ${html.includes('그리기 전에 뺀다') ? 'yes' : 'no'} · asset ${asset.split('/').pop()}`,
-          `sw: ${navigator.serviceWorker?.controller ? 'on' : 'off'}`,
+          `written: ${html.includes('처음부터 써 넣는다') ? 'yes' : 'no'} · asset ${asset.split('/').pop()}`,
+          `sw: ${navigator.serviceWorker?.controller ? 'on' : 'off'} · font ${getComputedStyle(document.body).fontSize}`,
         ].join('\n'),
       );
     },
