@@ -312,8 +312,10 @@ function accrued(s: VillageState, b: Building, now: number): { units: number; ne
   const p = s.profile;
   const over = Math.max(0, Math.floor((Math.min(fin, p.feastUntil) - Math.max(b.collectedAt, p.feastFrom)) / 1000));
   const extra = Math.floor((over * rate * p.feastPct) / 360000);
-  return { units: Math.min(b.banked + base + extra, Math.floor((cap * rate * (100 + CONST.bonus_room_pct)) / 360000)), next: Math.min(now, used + (now - fin)) };
+  return { units: Math.min(b.banked + base + extra, storedMax(s, b)), next: Math.min(now, used + (now - fin)) };
 }
+/** 생산 건물에 쌓일 수 있는 최대 양 (최대 시간 × 시간당 생산량에 bonus_room_pct 만큼 여유: 잔치 · 적어 둔 양도 이 안에서) */
+export const storedMax = (s: VillageState, b: Building) => Math.floor((capSec(s) * effRate(s, b) * (100 + CONST.bonus_room_pct)) / 360000);
 
 /** 쌓인 양: 생산 건물은 위의 식, 가공 건물은 다 끝난 묶음 */
 export function stored(s: VillageState, b: Building, now: number): number {

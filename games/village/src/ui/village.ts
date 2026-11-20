@@ -5,8 +5,8 @@ import { GAMES, MONUMENTS, type GameStats } from '../data/monuments';
 import { goalText, josa } from '../data/goals';
 import { RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
-  batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, payOf, ratePct, residentOf, residentPct, sellCoins,
-  newVillage, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
+  batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, pavilionRange, payOf, ratePct, residentOf, residentPct, sellCoins,
+  newVillage, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, storedMax, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
 } from '../game/rules';
 import { makeShowcase } from '../data/showcase';
 import { ApiError, LOCAL_MODE, type RankRow, type Ranking, type VillageApi, type Visit } from '../net/api';
@@ -417,8 +417,16 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     });
   });
 
-  /** 서버 상태를 다시 읽는다 (게임에 들어올 때가 아니므로 entry = false). 이것이 실패해도 또 다시 읽지는 않는다 */
-  const reload = (quiet = true) => act(() => api.load(false), apply, quiet, false);
+  /**
+   * 서버 상태를 다시 읽는다 (게임에 들어올 때가 아니므로 entry = false). 이것이 실패해도 또 다시 읽지는 않는다.
+   * 이미 줄에 선 다시 읽기가 있으면 그것을 같이 기다린다 (통신이 멈춘 동안 2초마다 다시 읽기가 쌓이지 않게)
+   */
+  let reloading: Promise<boolean> | null = null;
+  const reload = (quiet = true) =>
+    reloading ??
+    (reloading = act(() => api.load(false), apply, quiet, false).finally(() => {
+      reloading = null;
+    }));
 
   // ───────────────────────── 수확 (끌면서 지나간 건물을 모아 한 번에 보낸다) ─────────────────────────
 
@@ -623,8 +631,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         : '<p class="soft empty">보관함이 비어 있어요. 건물이나 장식물을 누르고 [보관]을 누르면 여기에 들어와요</p>';
     } else {
       // 장식 탭에는 길도 함께. 특별 탭에는 시아코인으로 사는 것 (땅 넓히기 · 특별 건물)
-      // 주민 선물 · 기념물은 지을 수 없다 (관리자는 장식 탭에서 바로 놓을 수 있다)
-      const list = BUILDINGS.filter((d) => d.id !== 'hall' && (state.admin || !isReward(d.id)) && (tab === 'main' ? d.kind === 'main' : tab === 'special' ? d.kind === 'special' : d.kind === 'deco' || d.kind === 'road'));
+      // 주민 선물 · 기념물은 지을 수 없다. 관리자도 여기서는 못 놓는다 (서버 village_build 는 선물 표시 · 기념물 기록을 남기지 않아 나중에 또 생긴다 → 전시 마을 [꾸미기]로)
+      const list = BUILDINGS.filter((d) => d.id !== 'hall' && !isReward(d.id) && (tab === 'main' ? d.kind === 'main' : tab === 'special' ? d.kind === 'special' : d.kind === 'deco' || d.kind === 'road'));
       rows = (tab === 'special' ? landRow() : '') + list
         .map((d) => {
           const have = countOf(state, d.id);
@@ -751,7 +759,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       lines.push(`<p>${icon(d.product)} 한 시간에 <b>${num(effRate(state, b))}</b>개${bonus ? ` <small class="bonus">${bonus}</small>` : ''} · 최대 ${capSec(state) / 3600}시간 분량까지 쌓여요</p>`);
       if (b.state === 'done') lines.push(`<p class="live">지금 쌓인 양 <b data-live="stored"></b></p>`);
     }
-    if (b.type === 'pavilion') lines.push(`<p>둘레 ${CONST.pavilion_range}칸 안의 생산 건물이 <b>${CONST.pavilion_pct + CONST.pavilion_pct_per * (b.level - 1)}%</b> 더 만들어요${b.state === 'building' ? ' (다 지은 뒤부터)' : ''}</p>`);
+    if (b.type === 'pavilion') lines.push(`<p>둘레 ${pavilionRange(state)}칸 안의 생산 건물이 <b>${CONST.pavilion_pct + CONST.pavilion_pct_per * (b.level - 1)}%</b> 더 만들어요${b.state === 'building' ? ' (다 지은 뒤부터)' : ''}</p>`);
     if (b.type === 'feast') lines.push(feastBox(b));
     if (b.type === 'shrine') lines.push('<p class="soft">마을의 상징이에요. 주민과 더 빨리 친해지고 번영도가 크게 올라요 (주민 · 랭킹이 열리면 힘을 내요)</p>');
     if (b.type === 'storage') lines.push(`<p>창고 용량 <b>+${num(STORAGE_CAP[b.level - 1])}</b></p>`);
@@ -823,7 +831,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (!b) return;
     const now = api.now();
     const st = sheetEl.querySelector('[data-live="stored"]');
-    if (st) st.textContent = `${num(stored(state, b, now))} / ${num(Math.floor((capSec(state) * effRate(state, b)) / 3600))}`;
+    if (st) st.textContent = `${num(stored(state, b, now))} / ${num(storedMax(state, b))}`;
     const fe = sheetEl.querySelector('[data-live="feast"]');
     if (fe) fe.textContent = state.profile.feastUntil > now ? `${duration((state.profile.feastUntil - now) / 1000)} 남았어요` : '잔치가 끝났어요';
     const left = sheetEl.querySelector('[data-live="left"]');

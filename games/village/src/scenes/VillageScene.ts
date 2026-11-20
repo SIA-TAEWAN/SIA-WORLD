@@ -98,7 +98,10 @@ const DRAG_PX = 10;
 const TILE_MAX = 512;
 function fitTile(t: Phaser.GameObjects.TileSprite, w: number, h: number, tileScale = 1) {
   const s = Math.max(1, Math.ceil(Math.max(w, h) / TILE_MAX));
-  return t.setScale(s).setSize(w / s, h / s).setTileScale(tileScale / s, tileScale / s);
+  // 크기는 정수로 (Phaser 는 캔버스 크기와 this.width 가 다르면 매 프레임 캔버스를 다시 만든다). 남는 몫은 가로·세로 배율로 따로 맞춘다
+  const sw = Math.max(1, Math.ceil(w / s));
+  const sh = Math.max(1, Math.ceil(h / s));
+  return t.setSize(sw, sh).setScale(w / sw, h / sh).setTileScale((tileScale * sw) / w, (tileScale * sh) / h);
 }
 
 const mmss = (ms: number) => {
@@ -793,6 +796,8 @@ export class VillageScene extends Phaser.Scene {
     if (t.length >= 2) {
       // 두 손가락: 확대축소
       this.pinch = { dist: Phaser.Math.Distance.Between(t[0].x, t[0].y, t[1].x, t[1].y), zoom: this.zoom };
+      // 쓸어 담던 중이면 끝을 알린다 (안 그러면 수확 묻기가 열린 채로 남아 뒤의 수확이 보내지지 않는다)
+      if (this.down?.mode === 'harvest') this.hooks.harvestEnd();
       this.down = null;
       return;
     }
