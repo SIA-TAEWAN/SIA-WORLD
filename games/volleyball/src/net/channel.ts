@@ -62,7 +62,8 @@ export class SupaChannel<M> implements Channel<M> {
             done = true;
             resolve();
           }
-        } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !done) {
+        } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !done) {
+          // 이어지기 전에 닫혀도(CLOSED) 실패로 끝낸다 (안 그러면 "방에 들어가는 중…"에 멈추고 [다시 시도]도 듣지 않는다)
           done = true;
           reject(new Error(status));
         }

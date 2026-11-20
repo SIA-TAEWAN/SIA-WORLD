@@ -37,6 +37,8 @@ export class VolleyRoom {
   private left = false;
   /** 지금 진행 중인 경기 (끝나면 null) */
   current: StartMsg | null = null;
+  /** current 가 늦게 들어와 state 로 받은 경기인가 (이 기기에서 돌고 있지 않은 경기) */
+  private adopted = false;
   private lastNo = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private resend: ReturnType<typeof setTimeout>[] = [];
@@ -105,6 +107,7 @@ export class VolleyRoom {
     if (!s) return;
     if (this.current?.matchNo === s.matchNo || s.matchNo <= this.lastNo) return;
     this.current = s;
+    this.adopted = !live;
     this.lastNo = s.matchNo;
     if (this.meta.ready) this.setReady(false);
     this.emit();
@@ -132,7 +135,9 @@ export class VolleyRoom {
     if (cur) {
       // 끝 알림을 못 받았어도: 너무 오래됐거나, 경기하던 사람이 아무도 없으면 끝난 것으로 본다
       const late = serverNow() > cur.startAt + MATCH_MAX_MS;
-      const nobody = !cur.players.some((p) => this.present.has(p.id));
+      // state 로 받은 경기(새로고침 뒤 다시 들어온 선수 등)는 이 기기에서 돌지 않으므로 나는 세지 않는다
+      // (안 그러면 상대가 나가도 내가 방에 있어 끝난 것으로 안 보고 레디가 35분 동안 막힌다)
+      const nobody = !cur.players.some((p) => this.present.has(p.id) && !(this.adopted && p.id === this.me.id));
       if (late || nobody) this.matchOver(cur.matchNo, false);
       return;
     }

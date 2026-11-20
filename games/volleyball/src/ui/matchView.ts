@@ -154,7 +154,7 @@ export function showMatch(setup: MatchSetup) {
   };
   pad.addEventListener('pointerup', onTouchEnd);
   pad.addEventListener('pointercancel', onTouchEnd);
-  // lostpointercapture 는 거품처럼 올라온다: 아이폰(WebKit)은 손가락이 닿은 안쪽 버튼(.pbtn)을 저절로 잡아 두므로,
+  // lostpointercapture 는 거품처럼 올라온다: 아이폰(WebKit)은 손가락이 닿은 안쪽 요소(.pad-move — .pbtn 은 pointer-events: none 이라 대상이 되지 않는다)를 저절로 잡아 두므로,
   // 판이 잡아 오면 버튼이 "놓쳤다"를 보낸다 → 그걸 판 자신의 것으로 알면 누르자마자 손이 떨어진 것이 된다. 판 자신의 것만 본다
   pad.addEventListener('lostpointercapture', (e) => {
     if (e.target === pad) onTouchEnd(e);

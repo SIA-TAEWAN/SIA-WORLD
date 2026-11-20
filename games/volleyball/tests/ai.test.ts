@@ -130,24 +130,32 @@ describe('AI', () => {
     expect(a.rightWins + b.leftWins).toBeGreaterThanOrEqual(392);
   }, 120000);
 
-  it('난이도 확인: 사람 흉내 상대들과의 승률 (수치 보고용)', () => {
-    const N = 300;
+  // 난이도 확인: 사람 흉내 상대들과의 승률 (수치 보고용).
+  // 한 테스트에 몰아 300경기씩 돌리면 30초 넘게 일꾼을 붙잡아 vitest 가 "Timeout calling onTaskUpdate" 로 멈춘 적이 있어,
+  // 상대마다 따로 나누고 100경기(씨앗 고정이라 결과는 늘 같다)만 돌린다. 300경기 때 수치: 96% · 85% · 15% · 74%
+  describe('난이도 확인: 사람 흉내 상대들과의 승률 (수치 보고용)', () => {
+    const N = 100;
     const rate = (name: string, maker: Parameters<typeof playSeries>[0]) => {
       const a = playSeries(maker, ai(), N / 2);
       const b = playSeries(ai(), maker, N / 2, 5000);
       const wins = a.rightWins + b.leftWins;
       console.log(`[AI 승률] ${name}: ${((100 * wins) / N).toFixed(0)}% (${wins}/${N}, 안 끝남 ${a.unfinished + b.unfinished}, 평균 ${((a.avgSec + b.avgSec) / 2).toFixed(0)}초)`);
+      expect(a.unfinished + b.unfinished).toBe(0);
       return wins / N;
     };
-    // 공만 따라다니는 초보 (떨어질 곳을 내다보지 않음)
-    expect(rate('공만 따라다니는 초보 (반응 0.2초)', chaser(0.2))).toBeGreaterThan(0.7);
-    // AI와 같은 방식이지만 느리고 부정확한 상대
-    expect(rate('느린 상대 (반응 0.30~0.45초, 오차 ±45)', ai({ ...AI_NORMAL, reactMin: 0.3, reactMax: 0.45, error: 45 }))).toBeGreaterThan(0.6);
-    // AI보다 빠르고 정확한 상대에게는 진다 → 이길 수 있는 AI
-    const strong = rate('빠르고 정확한 상대 (반응 0.05초, 오차 0)', ai({ ...AI_NORMAL, reactMin: 0.05, reactMax: 0.05, error: 0 }));
-    expect(strong).toBeLessThan(0.5);
-    expect(strong).toBeGreaterThan(0.03);
-    // 사람만큼 느리지만(반응 0.25~0.35초) 욕심내지 않고 안전하게 넘기기만 하는 상대
-    rate('안전하게 넘기기만 하는 상대 (반응 0.25~0.35초)', ai({ ...AI_NORMAL, reactMin: 0.25, reactMax: 0.35, behind: 20, safety: 16, jumpRate: 0, riskRate: 0 }));
-  }, 600000);
+    it('공만 따라다니는 초보 (떨어질 곳을 내다보지 않음)에게는 대부분 이긴다', () => {
+      expect(rate('공만 따라다니는 초보 (반응 0.2초)', chaser(0.2))).toBeGreaterThan(0.7);
+    }, 120000);
+    it('AI와 같은 방식이지만 느리고 부정확한 상대에게는 대부분 이긴다', () => {
+      expect(rate('느린 상대 (반응 0.30~0.45초, 오차 ±45)', ai({ ...AI_NORMAL, reactMin: 0.3, reactMax: 0.45, error: 45 }))).toBeGreaterThan(0.6);
+    }, 120000);
+    it('AI보다 빠르고 정확한 상대에게는 진다 (이길 수 있는 AI), 그래도 가끔은 이긴다', () => {
+      const strong = rate('빠르고 정확한 상대 (반응 0.05초, 오차 0)', ai({ ...AI_NORMAL, reactMin: 0.05, reactMax: 0.05, error: 0 }));
+      expect(strong).toBeLessThan(0.5);
+      expect(strong).toBeGreaterThan(0.03);
+    }, 120000);
+    it('사람만큼 느리지만(반응 0.25~0.35초) 욕심내지 않고 안전하게 넘기기만 하는 상대 (수치만)', () => {
+      rate('안전하게 넘기기만 하는 상대 (반응 0.25~0.35초)', ai({ ...AI_NORMAL, reactMin: 0.25, reactMax: 0.35, behind: 20, safety: 16, jumpRate: 0, riskRate: 0 }));
+    }, 120000);
+  });
 });
