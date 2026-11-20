@@ -6,3 +6,5 @@ const worldRoot = () => new URL('../../', document.baseURI);
 export const zodiacFaceUrl = (id: HeroId) => new URL(`shared/images/zodiac/face/${id}.png`, worldRoot()).href;
 /** 게임 그림 (public/art/<이름>.png, ASSETS.md). 요괴·보스·바닥은 시아디펜스·시아돌격대 그림을 그대로 쓴다 */
 export const artUrl = (name: string) => `${import.meta.env.BASE_URL}art/${name}.png`;
+/** 로비 카드 그림 (shared/images/card-finger.png, 있는 그림 합성) — 전용 메인 그림이 없을 때 메인 화면에 쓴다 */
+export const cardUrl = () => new URL('shared/images/card-finger.png', worldRoot()).href;

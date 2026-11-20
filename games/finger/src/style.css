@@ -224,3 +224,25 @@ img.ball.pierce { border-color: var(--accent); }
 .tiers { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .tiers i { font-style: normal; padding: 0 6px; border-radius: var(--radius-pill); border: 2px solid var(--outline); background: var(--track); color: var(--ink-soft); }
 .tiers i.on { background: var(--accent); color: var(--white); }
+
+/* 7단계: 메인 그림 — 전용 그림(main)이 없으면 로비 카드 그림을 액자처럼 */
+.hero.thumb { margin: 0 auto; aspect-ratio: 16 / 7; object-fit: cover; object-position: center 40%; background: var(--table-matgo);
+  border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+/* 메인: 그림이 들어가도 아이폰 한 화면에 들어오게 제목을 조금 줄인다 */
+.title h1 { font-size: 46px; margin-top: 0; }
+.title p { margin-top: 2px; font-size: 15px; }
+.bar .icon-btn { width: 34px; height: 34px; font-size: 15px; }
+/* 밝은 바탕(하늘 아래쪽 · 저승 바닥) 위의 흰 글자: 사방 갈색 테두리로 읽히게 */
+.light, .region span { text-shadow: 0 2px 0 var(--outline), 1px 0 0 var(--outline), -1px 0 0 var(--outline), 0 -1px 0 var(--outline); }
+/* 맨 아래 큰 버튼은 오른쪽 아래 소리 버튼 자리를 비운다 */
+.screen > .btn.big:last-of-type { margin-right: 50px; }
+/* 대원 줄: 얼굴 · 이름/능력치 · 레벨 버튼, 아래에 콤보·필살기 설명을 넓게 */
+.hero-row { display: grid; grid-template-columns: 54px 1fr auto; grid-template-areas: 'img head btn' 'img more more'; align-items: center; gap: 4px 10px; }
+.hero-row img { grid-area: img; align-self: start; }
+.hero-row .hero-head { grid-area: head; }
+.hero-row .hero-more { grid-area: more; }
+.hero-row .btn { grid-area: btn; }
+.hero-row.locked { grid-template-areas: 'img head head' 'img more more'; }
+.tiers i { font-size: 12px; }
+.bar .back { white-space: nowrap; }
+.menu-btns .row2:last-child { margin-right: 50px; }

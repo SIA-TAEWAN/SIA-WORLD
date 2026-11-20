@@ -1,0 +1,4 @@
+{
+  "note": "시아핑거 전용 SpriteCook 그림 목록. public/art 의 요괴·보스·바닥·효과는 시아돌격대(games/charge/public/art = 시아디펜스 games/defense/public/art)에서 복사한 것이고, 원본 asset id 는 games/survival/spritecook-assets.json 과 games/defense/spritecook-assets.json 에 있다. 전용 그림은 ASSETS.md 의 '전용 그림 자리' 표대로 만들어 public/art/<이름>.png 로 넣고, 여기에 {asset_id, sha12, label} 로 적은 다음(label 은 그림 이름으로 시작: \"h-rat → public/art/h-rat.png (256x256)\") src/artlist.ts 의 ART_FILES 에 이름을 적는다. 아직 만든 그림이 없다.",
+  "assets": []
+}

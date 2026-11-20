@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { artUrl, zodiacFaceUrl } from '../assets';
+import { artUrl, cardUrl, zodiacFaceUrl } from '../assets';
+import { hasArt } from '../artlist';
 import { COMBO_LEVELS, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, UPGRADES, levelCost, levelOf, upgradeCost, upgradeLv } from '../data/growth';
 import { REGIONS, REGION_NAMES, groundOf } from '../data/regions';
 import {
@@ -134,8 +135,9 @@ function setProfile(p: FingerProfile) {
 
 export function showMain() {
   const root = screen(`
-    <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><div class="spacer"></div><div class="pills">${starPill()}${coinsPill()}</div></div>
+    <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><div class="spacer"></div><div class="pills">${starPill()}${coinsPill()}</div><button class="icon-btn" id="help" aria-label="하는 법">❓</button></div>
     <div class="title"><h1>시아핑거</h1><p>당겼다 놓아 튕겨서 요괴를 부숴라!</p></div>
+    ${hasArt('main') ? `<img class="hero" src="${artUrl('main')}" alt="" />` : `<img class="hero thumb" src="${cardUrl()}" alt="" />`}
     <div class="card">
       <h3>파티 <small>쏘는 순서</small></h3>
       <div class="party-mini">${partyOf(profile, lastParty)
@@ -152,7 +154,6 @@ export function showMain() {
         <button class="btn ${towerOpen(profile) ? '' : 'soon'}" id="tower">🏯 끝없는 탑 ${towerOpen(profile) ? (profile.tower ? `<small>${profile.tower.floor}층</small>` : '') : '🔒'}</button>
         <button class="btn" id="rank">🏆 랭킹</button>
       </div>
-      <button class="btn" id="help">❓ 하는 법</button>
     </div>
     <div class="grow"></div>
     ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 기록은 이 기기에만 저장돼요</p>' : ''}`);
@@ -210,8 +211,9 @@ function heroCard(id: HeroId, open: boolean) {
   const cost = max ? 0 : levelCost(lv);
   return `<div class="card hero-row ${open ? '' : 'locked'}">
       <img src="${zodiacFaceUrl(id)}" alt="" class="ball ${d.type}" />
-      <div class="hero-info"><b>${d.name} ${typeTag(id)} <span class="soft">Lv ${lv}</span></b>
-        <span class="soft">체력 ${st.hp} · 공격 ${st.atk}</span>
+      <div class="hero-info hero-head"><b>${d.name} ${typeTag(id)} <span class="soft">Lv ${lv}</span></b>
+        <span class="soft">체력 ${st.hp} · 공격 ${st.atk}</span></div>
+      <div class="hero-info hero-more">
         <span>우정 콤보: ${d.comboName}</span>
         ${tiersHtml(lv)}
         <span>필살기: ${d.specialName} <span class="soft">(${d.charge}턴)</span></span>
@@ -617,9 +619,18 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     box.className = 'overlay';
     box.innerHTML = `<div class="card pop"><h3>일시정지</h3>
       <button class="btn primary big" id="resume">계속하기</button>
+      <button class="btn" id="mute"></button>
       <button class="btn" id="quit">그만하기</button>
       <p class="soft center">${tower ? '그만하면 지금까지 올라간 층이 기록돼요' : '그만하면 이번 판은 실패로 기록돼요 (간 만큼 엽전은 받아요)'}</p></div>`;
     root.appendChild(box);
+    // 판 안에서는 여기서 소리를 켜고 끈다 (다른 화면의 오른쪽 아래 버튼과 같은 설정)
+    const mute = box.querySelector<HTMLButtonElement>('#mute')!;
+    const paintMute = () => (mute.textContent = sound?.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐');
+    paintMute();
+    mute.addEventListener('click', () => {
+      sound?.setMuted(!sound.isMuted());
+      paintMute();
+    });
     box.querySelector('#resume')!.addEventListener('click', () => {
       play('click');
       scene.paused = false;
