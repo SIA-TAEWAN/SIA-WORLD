@@ -4,6 +4,8 @@
  */
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* 화면 틀은 100dvh 대신 100%: 안드로이드 크롬 설치 앱은 dvh·vh 를 좁아지기 전 높이로 계산하고 다시 셈하지 않아 아래 버튼이 가렸다 */
+#app { height: 100%; }
 body {
   font-family: var(--font);
   font-size: var(--fs-body);
@@ -15,7 +17,7 @@ body {
 button, input { font: inherit; }
 /* 빠르게 여러 번 누르는 버튼·룰렛 칸: 아이폰에서 두 번 누르기가 화면 확대로 먹히지 않게 (끌기·밀기 스크롤은 그대로) */
 button, .btn, .rboard, .rc, .rl-units .btn { touch-action: manipulation; }
-.center { min-height: 100vh; display: grid; place-items: center; text-align: center; color: var(--white); font-size: 18px; padding: 16px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
+.center { min-height: 100%; display: grid; place-items: center; text-align: center; color: var(--white); font-size: 18px; padding: 16px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
 
 /* ---------- 버튼 (시아탱크 .btn) ---------- */
 .btn {
@@ -215,7 +217,7 @@ input:focus { outline: var(--line) solid var(--primary); }
 @media (max-width: 520px) { .pick { grid-template-columns: 1fr; } }
 
 /* ---------- 방 화면 ---------- */
-.table-page { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--sky-gradient);
+.table-page { height: 100%; display: flex; flex-direction: column; background: var(--sky-gradient);
   /* 가로로 눕힌 아이폰: 노치·둥근 모서리 쪽으로 판이 들어가지 않게 (안전 영역이 없으면 0) */
   padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
 .table-page .bar { padding: calc(6px + env(safe-area-inset-top)) 12px 6px; }
