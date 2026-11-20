@@ -487,7 +487,21 @@ function draws(cards: string[]): { flush4: boolean; straight4: boolean } {
   return { flush4, straight4 };
 }
 
+/** AI 실수 확률: 이만큼은 사람에게 유리한 쪽으로 잘못 고른다 (난이도 10% 낮춤. AI 는 돈을 잃어도 된다) */
+export const AI_MISTAKE = 0.1;
+
 function aiBet(pub: PokerPublic, priv: PokerPrivate | undefined, seat: number, rng: Rng): PokerAction {
+  const a = aiBetPlan(pub, priv, seat, rng);
+  if (rng.next() >= AI_MISTAKE) return a;
+  const has = (t: BetType) => pub.actions.some((x) => x.type === t);
+  // 레이즈 → 콜·체크만 (값을 덜 뽑는다), 콜 → 다이 (판을 내준다), 다이 → 콜 (사람의 큰 패에 따라간다)
+  if (a.type === 'half' || a.type === 'ddadang' || a.type === 'bbing') return has('call') ? { type: 'call' } : has('check') ? { type: 'check' } : a;
+  if (a.type === 'call' && has('die')) return { type: 'die' };
+  if (a.type === 'die' && has('call')) return { type: 'call' };
+  return a;
+}
+
+function aiBetPlan(pub: PokerPublic, priv: PokerPrivate | undefined, seat: number, rng: Rng): PokerAction {
   const acts = pub.actions;
   const has = (t: BetType) => acts.some((a) => a.type === t);
   const me = pub.seats.find((x) => x.seat === seat);

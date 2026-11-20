@@ -417,7 +417,21 @@ export function estimateEquity(hole: string[], board: string[], opponents: numbe
   return score / iters;
 }
 
+/** AI 실수 확률: 이만큼은 사람에게 유리한 쪽으로 잘못 고른다 (난이도 10% 낮춤. AI 는 돈을 잃어도 된다) */
+export const AI_MISTAKE = 0.1;
+
 function aiAct(pub: HoldemPublic, priv: HoldemPrivate | undefined, seat: number, rng: Rng): HoldemAction {
+  const a = aiPlan(pub, priv, seat, rng);
+  const o = pub.options!;
+  if (rng.next() >= AI_MISTAKE) return a;
+  // 레이즈·올인 → 콜·체크만 (값을 덜 뽑는다), 콜 → 폴드 (판을 내준다), 폴드 → 콜 (사람의 큰 패에 따라간다)
+  if (a.type === 'raise' || a.type === 'allin') return o.call > 0 ? { type: 'call' } : o.canCheck ? { type: 'check' } : a;
+  if (a.type === 'call') return { type: 'fold' };
+  if (a.type === 'fold' && o.call > 0) return { type: 'call' };
+  return a;
+}
+
+function aiPlan(pub: HoldemPublic, priv: HoldemPrivate | undefined, seat: number, rng: Rng): HoldemAction {
   const o = pub.options;
   if (!o) throw new EngineError('차례가 아닙니다');
   const hole = priv?.hole ?? [];
