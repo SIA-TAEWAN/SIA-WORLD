@@ -147,7 +147,7 @@ function start(name: TrackName) {
     fileEl = new Audio(url);
     fileEl.loop = true;
     fileEl.volume = 0.45;
-    void fileEl.play().catch(() => undefined);
+    playFile(fileEl);
     return;
   }
   startSynth();
@@ -181,6 +181,25 @@ export const music = {
   },
   refresh: apply,
 };
+
+/**
+ * 파일 곡 재생: 막히면(입력 밖에서 부름) 다음 입력 때 다시 시도한다.
+ * 아이폰은 pointerdown 이 아니라 손을 뗄 때(touchend/click)에야 재생을 허락한다. 코드로 만든 곡의 오디오 깨우기는 vsound.ts 의 audioCtx 가 맡는다.
+ */
+const WAKE_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click'];
+let wakeOn = false;
+function playFile(el: HTMLAudioElement) {
+  void el.play().catch(() => {
+    if (fileEl !== el || wakeOn) return;
+    wakeOn = true;
+    for (const ev of WAKE_EVENTS) window.addEventListener(ev, retryFile, { capture: true, passive: true });
+  });
+}
+function retryFile() {
+  wakeOn = false;
+  for (const ev of WAKE_EVENTS) window.removeEventListener(ev, retryFile, { capture: true });
+  if (current && fileEl?.paused) playFile(fileEl);
+}
 
 // 첫 입력 뒤에 시작 (app.ts 의 unlock 이 먼저 불린다: capture)
 window.addEventListener('pointerdown', () => setTimeout(apply, 0), { passive: true });

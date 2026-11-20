@@ -190,13 +190,15 @@ export const music = {
   },
 };
 
-// 브라우저는 사용자가 한 번 누른 뒤에야 소리를 낼 수 있다
+// 브라우저는 사용자가 한 번 누른 뒤에야 소리를 낼 수 있다.
+// 아이폰은 손을 뗄 때(touchend/click)에야 허락하므로 그 입력들도 듣는다. 오디오가 실제로 깨어날 때까지의 재시도는 sfx.ts 의 audioCtx 가 맡는다.
+const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click'];
 const unlock = () => {
+  for (const ev of UNLOCK_EVENTS) window.removeEventListener(ev, unlock, { capture: true });
   if (unlocked) return;
   unlocked = true;
   apply();
 };
-window.addEventListener('pointerdown', unlock, { once: false, passive: true });
-window.addEventListener('keydown', unlock);
+for (const ev of UNLOCK_EVENTS) window.addEventListener(ev, unlock, { capture: true, passive: true });
 document.addEventListener('visibilitychange', apply);
 sfx.onMute(() => apply());

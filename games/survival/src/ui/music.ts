@@ -158,12 +158,54 @@ const freq = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 let ctx: AudioContext | null = null;
 function audioCtx(): AudioContext | null {
   try {
-    ctx ??= new AudioContext();
-    if (ctx.state === 'suspended') void ctx.resume();
+    if (!ctx) {
+      const a = new AudioContext();
+      ctx = a;
+      // 전화·백그라운드 뒤에 멈추면('interrupted'/'suspended') 다음 입력에서 다시 깨운다
+      a.addEventListener('statechange', () => (a.state === 'running' ? disarmWake() : a.state !== 'closed' && armWake()));
+    }
+    if (ctx.state !== 'running' && ctx.state !== 'closed') {
+      void ctx.resume().catch(() => undefined);
+      armWake();
+    }
     return ctx;
   } catch {
     return null;
   }
+}
+
+/**
+ * 오디오 깨우기 (shared/sound.js 와 같은 방식): 첫 입력 한 번으로 끝내지 않고 실제로 소리가 날 때까지 입력마다 다시 깨운다.
+ * 아이폰은 pointerdown 이 아니라 손을 뗄 때(touchend/click)에야 소리를 허락하고, 입력 밖(타이머)에서 부른 resume 은 막힌다.
+ */
+const WAKE_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click'];
+let wakeOn = false;
+function armWake() {
+  if (wakeOn) return;
+  wakeOn = true;
+  for (const ev of WAKE_EVENTS) window.addEventListener(ev, wake, { capture: true, passive: true });
+}
+function disarmWake() {
+  if (!wakeOn) return;
+  wakeOn = false;
+  for (const ev of WAKE_EVENTS) window.removeEventListener(ev, wake, { capture: true });
+}
+function wake() {
+  // 브라우저는 사용자가 한 번 누른 뒤에야 소리를 낼 수 있다
+  if (!unlocked) {
+    unlocked = true;
+    apply();
+  }
+  if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') void ctx.resume().catch(() => undefined);
+  if (current && fileEl?.paused) playFile(fileEl);
+  const ctxOk = !ctx || ctx.state === 'running' || ctx.state === 'closed';
+  if (ctxOk && !(current && fileEl?.paused)) disarmWake();
+}
+/** 파일 곡 재생: 막히면(입력 밖에서 부름) 다음 입력 때 다시 시도 */
+function playFile(el: HTMLAudioElement) {
+  void el.play().catch(() => {
+    if (fileEl === el) armWake();
+  });
 }
 
 let current: TrackName | null = null;
@@ -299,7 +341,7 @@ function start(name: TrackName) {
     fileEl = new Audio(url);
     fileEl.loop = true;
     fileEl.volume = 0.5;
-    void fileEl.play().catch(() => undefined);
+    playFile(fileEl);
     return;
   }
   startSynth();
@@ -335,14 +377,8 @@ export const music = {
   refresh: apply,
 };
 
-// 브라우저는 사용자가 한 번 누른 뒤에야 소리를 낼 수 있다
-const unlock = () => {
-  if (unlocked) return;
-  unlocked = true;
-  apply();
-};
-window.addEventListener('pointerdown', unlock, { passive: true });
-window.addEventListener('keydown', unlock);
+// 첫 입력을 기다린다 (wake 가 unlocked 를 켠다)
+armWake();
 document.addEventListener('visibilitychange', apply);
 whenSound(() => {
   sound.onBgm(() => apply());

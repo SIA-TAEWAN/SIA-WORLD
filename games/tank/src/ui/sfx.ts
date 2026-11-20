@@ -31,12 +31,41 @@ const muteListeners = new Set<(m: boolean) => void>();
 /** 소리 끔 상태와 상관없이 오디오 장치를 얻는다 (배경음악용) */
 export function audioCtx(): AudioContext | null {
   try {
-    ctx ??= new AudioContext();
-    if (ctx.state === 'suspended') void ctx.resume();
+    if (!ctx) {
+      const a = new AudioContext();
+      ctx = a;
+      // 전화·백그라운드 뒤에 멈추면('interrupted'/'suspended') 다음 입력에서 다시 깨운다
+      a.addEventListener('statechange', () => (a.state === 'running' ? disarmWake() : a.state !== 'closed' && armWake()));
+    }
+    if (ctx.state !== 'running' && ctx.state !== 'closed') {
+      void ctx.resume().catch(() => undefined);
+      armWake();
+    }
     return ctx;
   } catch {
     return null;
   }
+}
+
+/**
+ * 오디오 깨우기 (shared/sound.js 와 같은 방식): 실제로 소리가 날 때까지 입력마다 다시 깨운다.
+ * 아이폰은 pointerdown 이 아니라 손을 뗄 때(touchend/click)에야 소리를 허락하고, 입력 밖(타이머)에서 부른 resume 은 막힌다.
+ */
+const WAKE_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click'];
+let wakeOn = false;
+function armWake() {
+  if (wakeOn) return;
+  wakeOn = true;
+  for (const ev of WAKE_EVENTS) window.addEventListener(ev, wake, { capture: true, passive: true });
+}
+function disarmWake() {
+  if (!wakeOn) return;
+  wakeOn = false;
+  for (const ev of WAKE_EVENTS) window.removeEventListener(ev, wake, { capture: true });
+}
+function wake() {
+  if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return disarmWake();
+  void ctx.resume().catch(() => undefined);
 }
 
 function ac(): AudioContext | null {
