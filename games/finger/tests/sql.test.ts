@@ -6,10 +6,10 @@ import { LIMITS } from '../src/game/progress';
 import { MAX_SHOT_STEPS } from '../src/sim';
 
 /**
- * 서버(066_finger.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 서버(067_finger.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
  * 다르면 npm run sqlrows 로 줄을 만들어 넣는다 (이미 올라간 마이그레이션은 고치지 않고 새 파일에 넣는다).
  */
-const SQL = readFileSync(new URL('../../../supabase/migrations/066_finger.sql', import.meta.url), 'utf8');
+const SQL = readFileSync(new URL('../../../supabase/migrations/067_finger.sql', import.meta.url), 'utf8');
 const block = (fn: string) => {
   const i = SQL.indexOf(`function public.${fn}(`);
   expect(i, fn).toBeGreaterThan(0);

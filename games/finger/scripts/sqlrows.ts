@@ -1,4 +1,4 @@
-/** SQL 표 줄 출력: npm run sqlrows (066_finger.sql 의 _finger_stages · _finger_upgrades · _finger_levels · _finger_heroes 에 붙여 넣는다) */
+/** SQL 표 줄 출력: npm run sqlrows (067_finger.sql 의 _finger_stages · _finger_upgrades · _finger_levels · _finger_heroes 에 붙여 넣는다) */
 import { heroRows, levelRows, stageRows, upgradeRows } from '../src/data/sqlrows';
 
 console.log('-- stages\n' + stageRows().join(',\n'));

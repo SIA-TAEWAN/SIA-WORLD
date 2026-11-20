@@ -45,7 +45,7 @@ import {
 
 /**
  * 판 밖 화면 (돌격대 app.ts 방식, HTML): 메인 → 십이지 지도 → 스테이지 목록 → 파티 고르기 → 판 → 결과, 대원(레벨) · 강화.
- * 기록은 서버(066_finger.sql 의 RPC + Edge Function finger-finish)로만 바뀐다. 테스트 모드(?local=1)는 기기에만 저장한다.
+ * 기록은 서버(067_finger.sql 의 RPC + Edge Function finger-finish)로만 바뀐다. 테스트 모드(?local=1)는 기기에만 저장한다.
  */
 
 let api!: FingerApi;

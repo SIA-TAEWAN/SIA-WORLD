@@ -3,7 +3,7 @@ import { REGIONS } from './regions';
 
 /**
  * 판 밖 성장 (PRD "성장·재화"): 스테이지 보상 · 대원 레벨 가격 · 공통 강화.
- * 서버(supabase/migrations/066_finger.sql)가 같은 표로 다시 계산한다. 값을 바꾸면 SQL 도 함께 바꾸고
+ * 서버(supabase/migrations/067_finger.sql)가 같은 표로 다시 계산한다. 값을 바꾸면 SQL 도 함께 바꾸고
  * tests/sql.test.ts 로 확인한다 (npm run sqlrows 로 SQL 줄을 만든다).
  * 강화 효과(체력 +3% 등)는 판에 들어가는 값이라 _shared/finger/heroes.ts 의 heroStats 에 있다.
  */

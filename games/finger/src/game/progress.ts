@@ -3,7 +3,7 @@ import { REGIONS } from '../data/regions';
 import { clearCoins, failCoins, levelCost, levelOf, rewardFor, totalCoins, upgradeCost, upgradeLv, upgradeOf } from '../data/growth';
 
 /**
- * 판 밖 기록 규칙 (PRD "성장·재화", "서버와 검증"). 서버(066_finger.sql 의 finger_start · finger_finish_verified 등)가
+ * 판 밖 기록 규칙 (PRD "성장·재화", "서버와 검증"). 서버(067_finger.sql 의 finger_start · finger_finish_verified 등)가
  * 같은 규칙으로 다시 계산한다. 테스트 모드(?local=1)는 이 파일의 규칙으로 기기에서만 저장한다.
  * 지역 열기·대원 합류 규칙은 돌격대와 같다.
  */

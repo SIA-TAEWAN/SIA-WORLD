@@ -23,8 +23,8 @@ const result = (o: Partial<RunResult>): RunResult => ({
   cleared: true, ended: true, stars: 3, starFlags: [true, true, true], turns: 15, wave: 2, waves: 3, kills: 8, coins: 6, fallen: 0, extra: 0, steps: 1500, ...o,
 });
 
-/** 066_finger.sql 의 엽전 식을 그대로 옮긴 것 (SQL 표 줄을 파일에서 읽는다) */
-const SQL = readFileSync(new URL('../../../supabase/migrations/066_finger.sql', import.meta.url), 'utf8');
+/** 067_finger.sql 의 엽전 식을 그대로 옮긴 것 (SQL 표 줄을 파일에서 읽는다) */
+const SQL = readFileSync(new URL('../../../supabase/migrations/067_finger.sql', import.meta.url), 'utf8');
 const sqlStages = new Map(
   [...SQL.matchAll(/\('(\d+-\d)', (\d+), (\d), (\d+), (\d+), (\d+)\)/g)].map((m) => [m[1], { clear: +m[4], star: +m[5], first: +m[6] }]),
 );

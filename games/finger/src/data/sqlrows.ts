@@ -1,7 +1,7 @@
 import { HERO_UNLOCKS, LEVEL_TABLE, STAGE_REWARDS, UPGRADES } from './growth';
 
 /**
- * SQL 표(066_finger.sql)에 들어갈 줄을 게임 데이터에서 만든다 (npm run sqlrows · tests/sql.test.ts).
+ * SQL 표(067_finger.sql)에 들어갈 줄을 게임 데이터에서 만든다 (npm run sqlrows · tests/sql.test.ts).
  */
 /** ('1-1', 1, 1, 28, 8, 45) = 스테이지, 지역, 번호, 클리어, 별마다, 첫 클리어 */
 export const stageRows = () => STAGE_REWARDS.map((s) => `('${s.id}', ${s.region}, ${s.no}, ${s.clear}, ${s.star}, ${s.first})`);
