@@ -161,6 +161,9 @@ describe('관리자 규칙', () => {
     const plain = await createLocalApi(memStore(), () => T).ranking();
     expect(plain.mine).not.toBeNull();
     expect(plain.total).toBe(rk.total + 1);
+    // 관리자 마을은 따로 구경 갈 수 있게 목록에 나온다
+    expect(rk.admins.map((r) => r.userId)).toEqual(['local']);
+    expect(plain.admins).toEqual([]);
   });
 
   it('테스트 모드 (?admin=1)', async () => {

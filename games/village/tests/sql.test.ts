@@ -13,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, 
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -322,6 +322,10 @@ describe('SQL의 권한 규칙', () => {
     // 랭킹에는 관리자 계정이 나오지 않는다 (순위 번호도 차지하지 않는다)
     const at = sql.lastIndexOf('create or replace view public.village_ranking as');
     expect(sql.slice(at, sql.indexOf(';', at)).replace(/\s+/g, ' ')).toContain('where not coalesce(p.is_admin, false)');
+    // 관리자 마을은 따로 구경 갈 수 있게 목록만 내준다 (로그인한 사람만 읽는다)
+    const av = sql.slice(sql.lastIndexOf('create or replace view public.village_admin_villages as'));
+    expect(av.slice(0, av.indexOf(';')).replace(/\s+/g, ' ')).toContain('where coalesce(p.is_admin, false)');
+    expect(av).toContain('grant select on public.village_admin_villages to authenticated;');
     expect(body('_village_state_json')).toContain("'admin', public._village_admin(p_user),");
     const st = body('village_state').replace(/\s+/g, ' ');
     expect(st).toContain("if public._village_admin(me) then update public.village_profiles set level = public._village_const('max_level')::int, exp = 0, land_stage = 6");

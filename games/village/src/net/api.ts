@@ -43,6 +43,8 @@ export interface Ranking {
   /** 내 줄 (100위 밖이어도) */
   mine: RankRow | null;
   total: number;
+  /** 관리자 계정의 마을 (랭킹에는 나오지 않고 따로 구경만 간다. place 는 0) */
+  admins: RankRow[];
 }
 /** 구경하는 마을 (읽기 전용: 자원 · 시아코인 · 부탁은 오지 않는다) */
 export interface Visit {
@@ -292,7 +294,8 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
         .map((v) => ({ userId: v.id, nickname: v.nick, name: v.state.profile.name, level: v.state.profile.level, prosperity: prosperityOf(v.state), at: v.state.profile.prosperityAt }))
         .sort((a, b) => b.prosperity - a.prosperity || a.at - b.at)
         .map(({ at: _at, ...r }, i) => ({ ...r, place: i + 1 }));
-      return { rows: all, mine: all.find((r) => r.userId === me.id) ?? null, total: all.length };
+      const admins = mine.admin ? [{ userId: me.id, nickname: me.name, name: mine.profile.name, level: mine.profile.level, prosperity: prosperityOf(mine), place: 0 }] : [];
+      return { rows: all, mine: all.find((r) => r.userId === me.id) ?? null, total: all.length, admins };
     },
     async visit(id) {
       return visitOf(id);
@@ -394,8 +397,13 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
         userId: String(r.user_id), nickname: String(r.nickname ?? ''), name: typeof r.village_name === 'string' ? r.village_name : '',
         level: num0(r.level), prosperity: num0(r.prosperity), place: num0(r.place),
       });
-      const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(100);
+      const [{ data, error }, adm] = await Promise.all([
+        view().select(cols).order('place', { ascending: true }).limit(100),
+        // 관리자 마을 목록은 못 읽어도 랭킹은 보여 준다
+        (sb as SupabaseClient).from('village_admin_villages').select('user_id,nickname,village_name,level,prosperity').order('prosperity', { ascending: false }).limit(20),
+      ]);
       if (error) throw new Error('network');
+      const admins = ((adm.data ?? []) as Record<string, unknown>[]).map((r) => ({ ...map(r), place: 0 }));
       const rows = ((data ?? []) as Record<string, unknown>[]).map(map);
       let mine = rows.find((r) => r.userId === uid) ?? null;
       let total = num0((data as Record<string, unknown>[] | null)?.[0]?.total);
@@ -406,7 +414,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
           total = num0((res.data as Record<string, unknown>).total);
         }
       }
-      return { rows, mine, total };
+      return { rows, mine, total, admins };
     },
     visit: async (id) => cleanVisit(await call('village_visit', { p_user: id })),
     async praise(id) {

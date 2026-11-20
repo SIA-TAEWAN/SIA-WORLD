@@ -9,7 +9,7 @@ import {
   newVillage, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
 } from '../game/rules';
 import { makeShowcase } from '../data/showcase';
-import { ApiError, LOCAL_MODE, type Ranking, type VillageApi, type Visit } from '../net/api';
+import { ApiError, LOCAL_MODE, type RankRow, type Ranking, type VillageApi, type Visit } from '../net/api';
 import { worldHome, zodiacFace, zodiacFull } from '../net/world';
 import { VillageScene, type SceneData, type SceneHooks } from '../scenes/VillageScene';
 import { texKey } from '../scenes/art';
@@ -328,8 +328,12 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const row = (r: Ranking['rows'][number]) => `<div class="r-row ${r.userId === user.id ? 'me' : ''}"><em class="r-pl ${r.place <= 3 ? `top${r.place}` : ''}">${r.place}</em>
         <div class="p-tx"><b>${esc(r.nickname)}</b><span class="soft">${esc(villageName(r.name, r.nickname))} · 레벨 ${r.level}</span></div>
         <span class="r-pt">🏵 ${num(r.prosperity)}</span>${r.userId === user.id ? '<span class="lock on">내 마을</span>' : `<button class="btn small" data-visit="${esc(r.userId)}">구경</button>`}</div>`;
+    const adminRow = (r: RankRow) => `<div class="r-row ${r.userId === user.id ? 'me' : ''}"><em class="r-pl">👑</em>
+        <div class="p-tx"><b>${esc(r.nickname)}</b><span class="soft">${esc(villageName(r.name, r.nickname))} · 레벨 ${r.level}</span></div>
+        ${r.userId === user.id ? '<span class="lock on">내 마을</span>' : `<button class="btn small" data-visit="${esc(r.userId)}">구경</button>`}</div>`;
     const mine = ranking.mine;
     return `${head}<p class="soft note">${mine ? `내 순위 <b>${mine.place}위</b> / ${num(ranking.total)}곳 · 번영도 ${num(mine.prosperity)}` : state.admin ? '관리자는 랭킹에 나오지 않아요' : '아직 순위가 없어요'} · 건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬을 더한 값이에요</p>
+      ${ranking.admins.length ? `<h4>👑 관리자 마을 <small class="soft">랭킹에는 나오지 않아요</small></h4><div class="b-list">${ranking.admins.map(adminRow).join('')}</div><h4>🏆 순위</h4>` : ''}
       <div class="b-list">${mine && !ranking.rows.some((r) => r.userId === mine.userId) ? row(mine) : ''}${ranking.rows.map(row).join('') || '<p class="soft empty">아직 마을이 없어요</p>'}</div>`;
   }
   function openRanking() {
