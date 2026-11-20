@@ -121,3 +121,63 @@ export function makeBall(scene: Phaser.Scene, key: string, faceKey: string, ring
   ctx.stroke();
   tex.refresh();
 }
+
+const SLICE_FRAMES = ['tl', 't', 'tr', 'l', 'm', 'r', 'bl', 'b', 'br'] as const;
+
+/**
+ * 9칸 그림 (art/build.py 의 slice9 · artlist.ts 의 ART_SLICE) 을 x,y,w,h (화면 px) 에 이어 붙인다.
+ * 모서리는 그대로, 변·가운데는 늘이지 않고 E 칸을 되풀이한다 (칸 수를 반올림해 조금만 늘이거나 줄인다 — 거울 그림이라 이음매가 없다).
+ * 작은 장애물은 모서리를 w/2·h/2 까지 줄인다. hollow 면 가운데를 비운다 (방 테두리).
+ * 방이 바뀔 때만 부른다 (컨테이너 하나 — 지울 때 destroy).
+ */
+export function tiled9(
+  scene: Phaser.Scene,
+  key: string,
+  [b, E]: readonly [number, number],
+  gap: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  scale: number,
+  hollow: boolean,
+): Phaser.GameObjects.Container {
+  const tex = scene.textures.get(key);
+  if (!tex.has('tl')) {
+    const p = [0, b + gap, b + gap + E + gap];
+    const s = [b, E, b];
+    SLICE_FRAMES.forEach((f, i) => tex.add(f, 0, p[i % 3], p[Math.floor(i / 3)], s[i % 3], s[Math.floor(i / 3)]));
+  }
+  const box = scene.add.container(x, y);
+  const c = Math.min(b * scale, w / 2, h / 2);
+  const e = E * scale * (c / (b * scale));
+  const put = (f: string, px: number, py: number, pw: number, ph: number) => {
+    if (pw <= 0 || ph <= 0) return;
+    // 반 px 겹쳐 그려 소수 좌표에서 생기는 실선 틈을 막는다
+    box.add(scene.add.image(px, py, key, f).setOrigin(0).setDisplaySize(pw + 0.5, ph + 0.5));
+  };
+  const span = (len: number) => {
+    const n = Math.max(1, Math.round(len / e));
+    return { n, d: len / n };
+  };
+  const ix = w - 2 * c;
+  const iy = h - 2 * c;
+  const sx = span(ix);
+  const sy = span(iy);
+  put('tl', 0, 0, c, c);
+  put('tr', w - c, 0, c, c);
+  put('bl', 0, h - c, c, c);
+  put('br', w - c, h - c, c, c);
+  if (ix > 0.5)
+    for (let i = 0; i < sx.n; i++) {
+      put('t', c + i * sx.d, 0, sx.d, c);
+      put('b', c + i * sx.d, h - c, sx.d, c);
+    }
+  if (iy > 0.5)
+    for (let j = 0; j < sy.n; j++) {
+      put('l', 0, c + j * sy.d, c, sy.d);
+      put('r', w - c, c + j * sy.d, c, sy.d);
+    }
+  if (!hollow && ix > 0.5 && iy > 0.5) for (let j = 0; j < sy.n; j++) for (let i = 0; i < sx.n; i++) put('m', c + i * sx.d, c + j * sy.d, sx.d, sy.d);
+  return box;
+}

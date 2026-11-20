@@ -21,11 +21,11 @@ import {
   type ShotInput,
   type SimEvent,
 } from '../sim';
-import { ART_SLICE, artFor, hasArt, type GroundName, type OptionalArt } from '../artlist';
+import { ART_SLICE, SLICE_GAP, WALL_INSET, artFor, hasArt, type GroundName, type OptionalArt } from '../artlist';
 import { groundOf } from '../data/regions';
 import { COLOR, FONT, MATGO, css } from '../theme';
 import { chainRate, makeBuzzer } from '../ui/feel';
-import { ensureArt, makeBall } from './art';
+import { ensureArt, makeBall, tiled9 } from './art';
 import { Fx, G, ensureFxArt } from './fx';
 
 /** 기준 화면 크기 (세로 9:16) */
@@ -336,9 +336,9 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(COLOR.outline, 0.16).fillRect(RX, RY, w, 10);
     const wall = `wall-${ground.slice(5) as GroundName}` as const;
     if (this.has(wall)) {
-      // 전용 방 테두리: 그림 파일은 화면의 2배, 가장자리(ART_SLICE)만 남기고 늘인다
-      const sl = ART_SLICE[wall] ?? 64;
-      this.roomObjs.push(this.add.nineslice(RX + w / 2, RY + h / 2, wall, undefined, (w + sl) * 2, (h + sl) * 2, sl, sl, sl, sl).setScale(0.5).setDepth(-7));
+      // 전용 방 테두리: 그림 파일은 화면의 2배, 벽 안쪽 선(WALL_INSET)이 방 가장자리에 오게 바깥으로 둘러 9칸을 이어 붙인다
+      const o = WALL_INSET / 2;
+      this.roomObjs.push(tiled9(this, wall, ART_SLICE[wall]!, SLICE_GAP, RX - o, RY - o, w + o * 2, h + o * 2, 0.5, true).setDepth(-7));
     } else {
       // 코드 그림: 굵은 갈색 외곽선 + 나무 띠 + 밝은 줄 + 모서리 못
       g.lineStyle(22, COLOR.outline, 1).strokeRoundedRect(RX - 11, RY - 11, w + 22, h + 22, 16);
@@ -358,8 +358,7 @@ export class GameScene extends Phaser.Scene {
       const X = RX + x0;
       const Y = RY + y0;
       if (this.has('o-block')) {
-        const sl = ART_SLICE['o-block'] ?? 28;
-        this.roomObjs.push(this.add.nineslice(X + bw / 2, Y + bh / 2, 'o-block', undefined, bw * 2, bh * 2, sl, sl, sl, sl).setScale(0.5).setDepth(-7));
+        this.roomObjs.push(tiled9(this, 'o-block', ART_SLICE['o-block']!, SLICE_GAP, X, Y, bw, bh, 0.5, false).setDepth(-7));
         continue;
       }
       // 돌: 어두운 옆면 위에 밝은 윗면 (아래쪽 두께로 입체감)
@@ -383,8 +382,7 @@ export class GameScene extends Phaser.Scene {
       const y = RY + z.y;
       const art = z.k === 'thorn' ? 'o-thorn' : 'o-board';
       if (this.has(art)) {
-        const sl = ART_SLICE[art] ?? 24;
-        this.roomObjs.push(this.add.nineslice(x + z.w / 2, y + z.h / 2, art, undefined, z.w * 2, z.h * 2, sl, sl, sl, sl).setScale(0.5).setDepth(-7));
+        this.roomObjs.push(tiled9(this, art, ART_SLICE[art]!, SLICE_GAP, x, y, z.w, z.h, 0.5, false).setDepth(-7));
         continue;
       }
       if (z.k === 'thorn') {
@@ -590,6 +588,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** 전용 효과 그림이 있으면 그것(물들이지 않음), 없으면 흰 코드 그림 + 색 */
+  /** 레이저 그림: 세로는 파랑(fx-laser-v), 가로는 분홍(fx-laser). 없으면 코드 줄 */
+  private laserArt(vertical: boolean): string | undefined {
+    const k = vertical ? 'fx-laser-v' : 'fx-laser';
+    return this.has(k) ? k : undefined;
+  }
+
   private fxKey(art: OptionalArt, fallback: string, tint: number): [string, number | null] {
     return this.has(art) ? [art, null] : [fallback, tint];
   }
@@ -973,7 +977,7 @@ export class GameScene extends Phaser.Scene {
       case 'laserH':
       case 'laserV':
         this.hooks.sound('tankLaser', { volume: 0.7, rate: e.kind === 'laserV' ? 0.85 : 1 });
-        for (const [x0, y0, x1, y1] of e.lines) fx.beam(x0, y0, x1, y1, 28, e.kind === 'laserV' ? COLOR.teamA : COLOR.pink, 360, this.has('fx-laser') ? 'fx-laser' : undefined);
+        for (const [x0, y0, x1, y1] of e.lines) fx.beam(x0, y0, x1, y1, 28, e.kind === 'laserV' ? COLOR.teamA : COLOR.pink, 360, this.laserArt(e.kind === 'laserV'));
         fx.burst(h.x, h.y, G.dot, COLOR.white, 5, 50, 12, 260);
         break;
       case 'heal': {
