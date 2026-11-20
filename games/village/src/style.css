@@ -114,7 +114,8 @@ button, input { font: inherit; color: inherit; }
 .menu button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; cursor: pointer; background: var(--white); border: var(--line) solid var(--outline); border-radius: var(--radius-button); box-shadow: 0 var(--depth-button) 0 var(--outline); padding: 5px 2px 6px; font-size: 14px; }
 .menu button:first-child { background: var(--primary-gradient); }
 .menu button:active { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
-.menu em { font-style: normal; font-size: 22px; line-height: 1.15; }
+.menu em { font-style: normal; font-size: 22px; line-height: 1.15; display: flex; align-items: center; justify-content: center; height: 32px; }
+.menu .mico { width: 32px; height: 32px; display: block; pointer-events: none; }
 .village .sound { position: absolute; right: 10px; bottom: calc(88px + env(safe-area-inset-bottom)); z-index: 20; }
 
 .place-bar { position: absolute; left: 8px; right: 8px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 25; background: var(--panel); border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); padding: 10px; }
@@ -132,6 +133,7 @@ button, input { font: inherit; color: inherit; }
 .sheet-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .sheet-head h3 { flex: 1; margin: 0; font-weight: normal; font-size: var(--fs-panel); }
 .sheet-head h3 small { font-size: 14px; color: var(--ink-soft); }
+.sheet-head h3 .mico { width: 30px; height: 30px; vertical-align: -7px; }
 .b-art { flex: none; width: 56px; height: 56px; object-fit: contain; object-position: center bottom; }
 .b-list { display: flex; flex-direction: column; gap: 6px; }
 .b-row { display: flex; align-items: center; gap: 8px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 5px 8px; }

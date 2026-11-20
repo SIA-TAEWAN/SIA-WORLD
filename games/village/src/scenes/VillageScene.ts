@@ -4,7 +4,7 @@ import { BUILDING, recipeOf, upgradable, type BuildingType } from '../data/build
 import type { ResidentId } from '../data/residents';
 import { feasting, isFull, landRect, pavilionRange, placeError, ratePct, storageCap, stored, workplace, type Building, type VillageState } from '../game/rules';
 import { COLOR, FONT, MATGO, TABLE, css } from '../theme';
-import { ART_FILES, BUBBLE, CELL, GLOWS, bubbleKey, makeTextures, texKey, texSize } from './art';
+import { ART_FILES, BUBBLE, CELL, GLOWS, bubbleKey, makeTextures, pickNature, texKey, texSize } from './art';
 import { skyAt } from './sky';
 
 /**
@@ -148,7 +148,17 @@ export class VillageScene extends Phaser.Scene {
     // 숲 무늬: 무늬 한 장의 경계가 NEAR0 에 맞게 깐다 (무늬 속 나무는 가장자리에 걸치지 않는다)
     const f0 = (NEAR0 - FOREST_PAD) * CELL;
     const fw = (NEAR1 - NEAR0 + FOREST_PAD * 2) * CELL;
-    this.add.tileSprite(f0, f0, fw, fw, 'forest').setOrigin(0, 0).setDepth(-11);
+    // 땅 밖 들판 무늬 (SpriteCook tile-meadow, 384px = 4칸 한 장): 숲 무늬와 땅 둘레 아래에 깐다
+    if (this.files.has('tile-meadow')) {
+      this.add.tileSprite(f0, f0, fw, fw, 'tile-meadow').setOrigin(0, 0).setDepth(-12);
+      // 숲 무늬는 땅 둘레(한 그루씩 찍는 곳)를 비운 네 띠로 깐다. 띠의 시작이 무늬 한 장(8칸)의 배수라 무늬가 이어진다
+      const p = FOREST_PAD * CELL;
+      const n0 = NEAR0 * CELL;
+      const nw = (NEAR1 - NEAR0) * CELL;
+      for (const [x, y, w, h] of [[f0, f0, fw, p], [f0, n0 + nw, fw, p], [f0, n0, p, nw], [n0 + nw, n0, p, nw]]) {
+        this.add.tileSprite(x, y, w, h, 'forest').setOrigin(0, 0).setDepth(-11);
+      }
+    } else this.add.tileSprite(f0, f0, fw, fw, 'forest').setOrigin(0, 0).setDepth(-11);
     this.ground = this.add.graphics().setDepth(-10);
     this.groundTop = this.add.graphics().setDepth(-9);
     this.trees = this.add.container(0, 0).setDepth(-5);
@@ -459,7 +469,8 @@ export class VillageScene extends Phaser.Scene {
     this.landStage = stage;
     const { x0, size } = landRect(stage);
     const g = this.ground.clear();
-    g.fillStyle(MATGO.matDark, 1).fillRect(NEAR0 * CELL, NEAR0 * CELL, (NEAR1 - NEAR0) * CELL, (NEAR1 - NEAR0) * CELL);
+    // 들판 무늬가 없을 때만 땅 둘레를 단색으로 덮는다 (숲 무늬 속 나무가 둘레에 비치지 않게)
+    if (!this.files.has('tile-meadow')) g.fillStyle(MATGO.matDark, 1).fillRect(NEAR0 * CELL, NEAR0 * CELL, (NEAR1 - NEAR0) * CELL, (NEAR1 - NEAR0) * CELL);
     const l = x0 * CELL;
     const w = size * CELL;
     // 땅: 아래 두께 + (풀밭 무늬) + 체크 무늬 + 굵은 외곽선
@@ -481,10 +492,11 @@ export class VillageScene extends Phaser.Scene {
         if (x >= x0 - 1 && x <= x0 + size && y >= x0 - 1 && y <= x0 + size) continue;
         const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
         if (h % 3 !== 0) continue;
-        if (this.files.has(texKey('tree', 1))) {
-          // 그림 파일의 나무 (마을 안 장식물과 같은 그림, 조금 어둡게)
-          const img = this.add.image(x * CELL + (h % 17) - 8 + CELL / 2, (y + 1) * CELL + ((h >> 5) % 17) - 8, texKey('tree', 1)).setOrigin(0.5, 1).setTint(0xd6e8d6);
-          this.trees.add(img.setDisplaySize(CELL * 0.95, (CELL * 0.95 * img.height) / img.width));
+        const n = pickNature(h, this.files);
+        if (n) {
+          // 그림 파일의 자연물 (나무 · 소나무 · 대나무 · 덤불 · 바위 · 들꽃, 조금 어둡게)
+          const img = this.add.image(x * CELL + (h % 17) - 8 + CELL / 2, (y + 1) * CELL + ((h >> 5) % 17) - 8, n.key).setOrigin(0.5, 1).setTint(0xd6e8d6);
+          this.trees.add(img.setDisplaySize(CELL * n.size, (CELL * n.size * img.height) / img.width));
         } else this.trees.add(this.add.image(x * CELL + (h % 17) - 8, y * CELL + ((h >> 5) % 17) - 8, 'tree').setOrigin(0, 0).setDisplaySize(CELL, CELL));
       }
     }

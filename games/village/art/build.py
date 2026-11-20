@@ -31,6 +31,10 @@ SHEET = {
     'monC': ('g22', ['b-mon_def9-1', 'b-mon_def12-1', 'b-mon_matgo-1', 'b-mon_casino-1']),
     'icons': ('g32', ['icon-rice', 'icon-wood', 'icon-stone', 'icon-cake', 'icon-coin', 'icon-special']),
     'misc': ('row3', ['site-1', 'site-2', 'b-road-1']),
+    # 땅 밖 자연물 (숲 무늬 · 땅 둘레에 섞어 찍는다)
+    'nature': ('g32', ['n-pine', 'n-tree', 'n-bamboo', 'n-bush', 'n-rocks', 'n-flowers']),
+    # 아래 메뉴 아이콘 (마지막 초가집 칸은 쓰지 않는다)
+    'menu': ('g32', ['menu-build', 'menu-residents', 'menu-requests', 'menu-monuments', 'menu-ranking', None]),
 }
 BIG = {'hall', 'pavilion', 'feast', 'shrine'}
 
@@ -113,8 +117,10 @@ def place(src, W, H, fit_w, fit_h, bottom):
 
 def sprite(name, src):
     src = trim(src)
-    if name.startswith('icon-'):
+    if name.startswith('icon-') or name.startswith('menu-'):
         return place(src, 96, 96, 0.92, 0.92, 4)
+    if name.startswith('n-'):
+        return place(src, 192, 272, 0.92, 0.96, 6)
     if name == 'b-road-1':
         # 길: 칸을 꽉 채우는 바닥 (위로 솟지 않는다)
         tile = shrink(src, 192, 192)
@@ -171,6 +177,13 @@ def grass():
     return Image.blend(src, tone, 0.45).convert('RGBA')
 
 
+def meadow():
+    """땅 밖 들판 무늬: 이어 붙는 384×384 (장면 4칸). 마을 밖 초록(MATGO.matDark #5FA772) 쪽으로 색을 맞춰 땅보다 차분하게"""
+    src = Image.open(os.path.join(SHEETS, 'meadow.png')).convert('RGB').resize((384, 384), Image.LANCZOS)
+    tone = Image.new('RGB', src.size, (95, 167, 114))
+    return Image.blend(src, tone, 0.3).convert('RGBA')
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     made = []
@@ -187,6 +200,7 @@ if __name__ == '__main__':
     for res in ['rice', 'wood', 'stone', 'cake', 'special']:
         made.append(save(bubble(res, trim(icons[res])), f'bubble-{res}'))
     made.append(save(grass(), 'tile-grass'))
+    made.append(save(meadow(), 'tile-meadow'))
     made.append(card())
     total = sum(os.path.getsize(f) for f in made)
     print(f'{len(made)} files, {total // 1024} KB')

@@ -16,7 +16,7 @@ import { kstHour, skyAt } from '../scenes/sky';
 import { music } from './music';
 import { duration, esc, num, screen, sfx, sound, stage, toast } from './app';
 import { DPR } from './dpr';
-import { icon } from './icons';
+import { icon, menuIcon } from './icons';
 import { bonusOf, claimable, requestsPanel, residentsPanel, workersBox } from './people';
 
 /** 길잡이 캐릭터: 첫 주민 찍찍이 (DESIGN.md: 어느 화면이든 캐릭터가 하나 이상) */
@@ -111,11 +111,11 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     </div>
     <button class="icon-btn sound" id="sound" aria-label="소리"></button>
     <nav class="menu" id="menu">
-      <button data-m="build"><em>🔨</em>짓기</button>
-      <button data-m="residents"><em>🐭</em>주민</button>
-      <button data-m="requests"><em>📜</em>부탁<i class="dot hidden" id="reqdot"></i></button>
-      <button data-m="monuments"><em>🗿</em>기념물</button>
-      <button data-m="ranking"><em>🏆</em>랭킹</button>
+      <button data-m="build"><em>${menuIcon('build', '🔨')}</em>짓기</button>
+      <button data-m="residents"><em>${menuIcon('residents', '🐭')}</em>주민</button>
+      <button data-m="requests"><em>${menuIcon('requests', '📜')}</em>부탁<i class="dot hidden" id="reqdot"></i></button>
+      <button data-m="monuments"><em>${menuIcon('monuments', '🏯')}</em>기념물</button>
+      <button data-m="ranking"><em>${menuIcon('ranking', '🏆')}</em>랭킹</button>
     </nav>
     <div class="sheet-wrap hidden" id="sheetwrap"><div class="sheet" id="sheet"></div></div>`,
     'village',
@@ -257,7 +257,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     }
     const fresh = next.monuments.filter((m) => !prev.monuments.includes(m));
     if (fresh.length) {
-      toast(`새 기념물: ${fresh.map((m) => BUILDING[m].name).join(' · ')} — 보관함에 들어왔어요 🗿`, 3500);
+      toast(`새 기념물: ${fresh.map((m) => BUILDING[m].name).join(' · ')} — 보관함에 들어왔어요 🏯`, 3500);
       sfx('win');
     }
     paintHud();
@@ -271,7 +271,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   let gameStats: GameStats | null = null;
   let statsFailed = false;
   function monumentsPanel(): string {
-    const head = `<div class="sheet-head"><h3>🗿 기념물</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+    const head = `<div class="sheet-head"><h3>${menuIcon('monuments', '🏯')} 기념물</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
       <p class="soft note">SIA WORLD 의 다른 게임에서 성과를 내면 열려요. 열린 기념물은 보관함으로 들어오고, 번영도가 크게 올라요 · <b>${state.monuments.length}</b> / ${MONUMENTS.length}</p>`;
     const groups = GAMES.map((g) => {
       const rows = MONUMENTS.filter((m) => m.game === g.id)
@@ -319,7 +319,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   const villageName = (name: string, nick: string) => name || `${nick}네 마을`;
 
   function rankingPanel(): string {
-    const head = `<div class="sheet-head"><h3>🏆 번영도 랭킹</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>`;
+    const head = `<div class="sheet-head"><h3>${menuIcon('ranking', '🏆')} 번영도 랭킹</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>`;
     if (rankingFailed) return `${head}<p class="soft empty">랭킹을 불러오지 못했어요</p>`;
     if (!ranking) return `${head}<p class="soft empty">불러오는 중…</p>`;
     const row = (r: Ranking['rows'][number]) => `<div class="r-row ${r.userId === user.id ? 'me' : ''}"><em class="r-pl ${r.place <= 3 ? `top${r.place}` : ''}">${r.place}</em>
@@ -637,7 +637,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         .join('');
     }
     const note = tab === 'special' ? `<p class="soft sia-note">${icon('sia')} 시아코인 <b>${num(state.sia)}</b> · SIA WORLD 의 어느 게임이든 한 판을 끝낼 때마다 1코인을 받아요</p>` : '';
-    return `<div class="sheet-head"><h3>🔨 짓기</h3><span class="soft">짓는 중 ${busyCount(state)}/${slots(state)}</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+    return `<div class="sheet-head"><h3>${menuIcon('build', '🔨')} 짓기</h3><span class="soft">짓는 중 ${busyCount(state)}/${slots(state)}</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
       <div class="seg wide">${tabs}</div>${note}<div class="b-list">${rows}</div>`;
   }
 

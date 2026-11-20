@@ -129,6 +129,25 @@
       "label": "art/sheets/card.png — 로비 카드 → shared/images/card-village.png (16:10 가운데 자르기, 640x400)"
     },
     {
+      "asset_id": "b87621ba-b46c-4d0f-a1f5-3e571db99fc4",
+      "sha12": "41d23c3e8929",
+      "label": "art/sheets/meadow.png — 땅 밖 들판 무늬 (texture 모드) → tile-meadow (384, matDark 쪽으로 30% 섞음)"
+    },
+    {
+      "asset_id": "3ec73d8e-c0d7-4b99-805c-337fb5bd4290",
+      "sha12": "e886ae9f95e7",
+      "label": "art/sheets/nature.png — 땅 밖 자연물 소나무·둥근 나무·대나무·덤불·바위·들꽃 → n-*"
+    },
+    {
+      "asset_id": "c26b69c5-775d-44cb-a124-da8cd3969e6e",
+      "sha12": "27c0a556664b",
+      "label": "art/sheets/menu.png — 아래 메뉴 아이콘 짓기·주민·부탁·기념물·랭킹 (+ 안 쓰는 초가집) → menu-*"
+    },
+    {
+      "asset_id": "7840a7bb-9303-4e2c-8278-9179a98b83a3",
+      "label": "(쓰지 않음) 들판 무늬 다른 시안: 이음새가 보여서 버림"
+    },
+    {
       "asset_id": "a98140e3-0ff5-47cd-bf6f-c7e5b39847d2",
       "label": "(쓰지 않음) 첫 화풍 시험: 마름모 시점이라 격자와 맞지 않아 버림"
     },

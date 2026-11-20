@@ -5,7 +5,7 @@ import { AFF_BONUS, AFF_NEED, DRAGON_BONUS, RESIDENT, RESIDENTS, TASKS, affLevel
 import { dailyBonus, residentOf, standing, workplace, type Building, type DailyTask, type VillageState } from '../game/rules';
 import { zodiacFace } from '../net/world';
 import { num } from './app';
-import { icon } from './icons';
+import { icon, menuIcon } from './icons';
 
 /**
  * 주민 · 부탁 · 오늘의 할 일 화면 (글과 모양만 만든다. 누르는 일은 ui/village.ts 가 받는다:
@@ -48,7 +48,7 @@ export function residentsPanel(s: VillageState): string {
         <span class="soft">${skill(d, lv)}</span>
         <span class="p-st">${at ? `<i class="tag work">${BUILDING[at.type].name}에서 일하는 중</i>` : d.work ? '<i class="soft">쉬는 중</i>' : ''}<small class="soft">${need === null ? '친밀도 가득 🎁' : `친밀도 ${r.affinity}/${need}`}</small></span></div>${side}</div>`;
   }).join('');
-  return `<div class="sheet-head"><h3>🐭 주민</h3><span class="soft">${s.residents.length}/12명 · 집 ${houses}채</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+  return `<div class="sheet-head"><h3>${menuIcon('residents', '🐭')} 주민</h3><span class="soft">${s.residents.length}/12명 · 집 ${houses}채</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
     <p class="soft note">주민 집을 지으면 마을 레벨에 맞춰 한 명씩 이사 와요. 부탁을 들어주면 친해지고, 다섯 단계가 되면 선물을 줘요</p><div class="b-list">${rows}</div>`;
 }
 
@@ -101,7 +101,7 @@ export function requestsPanel(s: VillageState): string {
         ${t.claimed ? '<span class="lock on">받았어요</span>' : `<button class="btn small primary" data-daily="${t.slot}" ${done ? '' : 'disabled'}>받기</button>`}</div>`;
     })
     .join('');
-  return `<div class="sheet-head"><h3>📜 부탁</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+  return `<div class="sheet-head"><h3>${menuIcon('requests', '📜')} 부탁</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
     <h4>주민 부탁</h4><div class="b-list">${asks}</div>
     <h4>오늘의 할 일 <small class="soft">날마다 새로 바뀌어요</small></h4><div class="b-list">${daily}
       <div class="d-row bonus ${got ? 'off' : ''}"><div class="p-tx"><b>셋을 모두 끝내면</b>${reward(bonus.coin, bonus.exp)}</div>

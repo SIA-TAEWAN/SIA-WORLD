@@ -32,9 +32,30 @@ export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + R
 /** 그림 파일로 먼저 채우는 텍스처 이름 (public/art/<이름>.png) */
 export const ART_FILES: string[] = [
   ...BUILDINGS.flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
-  'site-1', 'site-2', 'tile-grass',
+  'site-1', 'site-2', 'tile-grass', 'tile-meadow',
   ...['rice', 'wood', 'stone', 'cake', 'special'].map((r) => `bubble-${r}`),
+  'n-pine', 'n-tree', 'n-bamboo', 'n-bush', 'n-rocks', 'n-flowers',
 ];
+
+/** 땅 밖 자연물: 그림 이름 · 칸 너비에 대한 크기 · 고르는 비율 (나무가 대부분, 사이사이 덤불 · 바위 · 들꽃) */
+const NATURE: readonly { key: string; size: number; weight: number }[] = [
+  { key: 'b-tree-1', size: 0.95, weight: 4 },
+  { key: 'n-pine', size: 1.0, weight: 4 },
+  { key: 'n-tree', size: 1.02, weight: 3 },
+  { key: 'n-bamboo', size: 0.88, weight: 2 },
+  { key: 'n-bush', size: 0.72, weight: 2 },
+  { key: 'n-rocks', size: 0.62, weight: 1 },
+  { key: 'n-flowers', size: 0.6, weight: 1 },
+];
+const NATURE_SUM = NATURE.reduce((a, n) => a + n.weight, 0);
+/** 좌표 해시로 자연물 하나를 고른다 (늘 같은 자리에 같은 것). 그림 파일이 없는 것은 b-tree-1 로, 그것도 없으면 null */
+export function pickNature(h: number, files: Set<string>): { key: string; size: number } | null {
+  let r = (h >>> 7) % NATURE_SUM;
+  for (const n of NATURE) {
+    if ((r -= n.weight) < 0) return files.has(n.key) ? n : files.has('b-tree-1') ? NATURE[0] : null;
+  }
+  return null;
+}
 /** 밤에 빛나는 것: 종류 → 모습 몇부터 (등불 · 사당의 돌 등 · 잔치 마당의 초롱 · 정자의 등 · 기와집의 등) */
 export const GLOWS: Partial<Record<BuildingType, number>> = { lantern: 1, shrine: 1, feast: 1, pavilion: 2, house: 3, hall: 3 };
 
@@ -509,18 +530,23 @@ export function makeTextures(scene: Phaser.Scene, files: Set<string> = new Set()
     const ct = scene.textures.createCanvas('forest', T, T);
     if (ct) {
       const c = ct.getContext();
-      c.fillStyle = `#${MATGO.matDark.toString(16).padStart(6, '0')}`;
-      c.fillRect(0, 0, T, T);
-      const src = scene.textures.get(texKey('tree', 1)).getSourceImage() as HTMLImageElement;
-      const tw = CELL * 0.95;
-      const th = (tw * src.height) / src.width;
+      // 들판 무늬가 있으면 그 위에 겹쳐 깔리므로 바탕은 비워 둔다 (VillageScene 이 tile-meadow 를 아래에 깐다)
+      if (!files.has('tile-meadow')) {
+        c.fillStyle = `#${MATGO.matDark.toString(16).padStart(6, '0')}`;
+        c.fillRect(0, 0, T, T);
+      }
       c.filter = 'brightness(0.88) saturate(0.9)';
       for (let y = 0; y < FOREST_CELLS; y++) {
         for (let x = 0; x < FOREST_CELLS; x++) {
           const h = ((x * 73856093) ^ (y * 19349663) ^ 0x5bd1e995) >>> 0;
           if (h % 3 !== 0) continue;
-          const ox = Math.min(T - tw - 2, Math.max(2, x * CELL + (h % 17) - 8));
-          const oy = Math.min(T - th - 2, Math.max(2, y * CELL + ((h >> 5) % 17) - 8 - CELL * 0.4));
+          const n = pickNature(h, files);
+          if (!n) continue;
+          const src = scene.textures.get(n.key).getSourceImage() as HTMLImageElement;
+          const tw = CELL * n.size;
+          const th = (tw * src.height) / src.width;
+          const ox = Math.min(T - tw - 2, Math.max(2, x * CELL + (CELL - tw) / 2 + (h % 17) - 8));
+          const oy = Math.min(T - th - 2, Math.max(2, y * CELL + CELL - th + ((h >> 5) % 17) - 8 + CELL * 0.6));
           c.drawImage(src, ox, oy, tw, th);
         }
       }

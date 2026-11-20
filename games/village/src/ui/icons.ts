@@ -22,6 +22,9 @@ export type IconId = keyof typeof ART;
 /** 그림 파일(SpriteCook, public/art/icon-<자원>.png)이 있는 자원. 시아코인 · 경험치 · 시간은 SVG 그대로 */
 const FILES: readonly IconId[] = ['rice', 'wood', 'stone', 'cake', 'coin', 'special'];
 const BASE = `${import.meta.env.BASE_URL}art/`;
+/** 아래 메뉴 아이콘 (SpriteCook, public/art/menu-<이름>.png). 그림을 못 불러오면 그림 글자로 바꾼다 */
+export const menuIcon = (id: 'build' | 'residents' | 'requests' | 'monuments' | 'ranking', fallback: string) =>
+  `<img class="mico" src="${BASE}menu-${id}.png" alt="" aria-hidden="true" draggable="false" onerror="this.replaceWith('${fallback}')">`;
 export const icon = (id: IconId) =>
   FILES.includes(id)
     ? `<img class="ico" src="${BASE}icon-${id}.png" alt="" aria-hidden="true" draggable="false">`
