@@ -626,6 +626,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   game.scene.add('game', scene, true, {
     run,
     ground: groundOf(st ? st.region : 1),
+    region: st ? st.region : undefined,
     grounds: tower ? (['field', 'bamboo', 'palace', 'underworld'] as const).slice() : undefined,
     hooks: {
       sound: play,
