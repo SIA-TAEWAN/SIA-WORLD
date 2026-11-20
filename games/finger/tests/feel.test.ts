@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ART_FILES, ART_SLICE, artFor, hasArt } from '../src/artlist';
+import { ART_FILES, ART_SLICE, SLICE_GAP, artFor, hasArt, type OptionalArt } from '../src/artlist';
 import { BUZZ_GAP, CHAIN_MAX, chainRate, makeBuzzer } from '../src/ui/feel';
 
 describe('튕김 소리 높이', () => {
@@ -58,11 +58,22 @@ describe('전용 그림 자리', () => {
     const got = artFor(['rat', 'ox'], ['e-imp'], ['field']);
     for (const n of got) expect(hasArt(n)).toBe(true);
     expect(got).not.toContain('main');
+    expect(got.some((n) => n.startsWith('bg-') || n.startsWith('ui-'))).toBe(false);
+    expect(got.filter((n) => n.startsWith('wall-'))).toEqual(['wall-field']);
+    expect(got.filter((n) => n.endsWith('-hit'))).toEqual(['e-imp-hit']);
     expect(got.filter((n) => n.startsWith('h-')).every((n) => n === 'h-rat' || n === 'h-ox')).toBe(true);
   });
 
   it('늘여 쓰는 그림 · spritecook-assets.json 모양', () => {
-    for (const v of Object.values(ART_SLICE)) expect(v).toBeGreaterThan(0);
+    // 9칸 그림 파일은 [모서리 b][틈][변 E][틈][모서리 b] 정사각형 (PNG 머리의 너비·높이)
+    for (const [n, v] of Object.entries(ART_SLICE)) {
+      const [b, E] = v!;
+      expect(b, n).toBeGreaterThan(0);
+      expect(E, n).toBeGreaterThan(0);
+      if (!hasArt(n as OptionalArt)) continue;
+      const png = readFileSync(`${ART}${n}.png`);
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)], n).toEqual([2 * b + E + 2 * SLICE_GAP, 2 * b + E + 2 * SLICE_GAP]);
+    }
     const json = JSON.parse(readFileSync(fileURLToPath(new URL('../spritecook-assets.json', import.meta.url)), 'utf8')) as { note: string; assets: { asset_id: string; label: string }[] };
     expect(typeof json.note).toBe('string');
     expect(Array.isArray(json.assets)).toBe(true);

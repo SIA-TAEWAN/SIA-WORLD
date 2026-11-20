@@ -247,3 +247,22 @@ img.ball.pierce { border-color: var(--accent); }
 @media (max-width: 430px) { .bar { gap: 5px; } .bar .back { font-size: 14px; padding: 6px 2px; } .bar .coins-pill { padding: 3px 8px; font-size: 14px; } .bar .icon-btn { width: 30px; height: 30px; font-size: 13px; flex: none; } }
 /* 아주 좁은 화면(아이폰 SE 1세대 320px): 뒤로는 화살표만 */
 @media (max-width: 360px) { .bar .back { font-size: 0; } .bar .back::before { content: '←'; font-size: 18px; } .bar .coins-pill { padding: 2px 6px; font-size: 13px; } }
+
+/* ---------- 전용 그림 (SpriteCook, ASSETS.md) ---------- */
+.bg-tower { --bg: var(--table-blackjack); --bg-light: var(--roulette-spring); }
+/* 화면 배경 그림: 위쪽에 16:9 로 깔고 아래로 갈수록 그 지역의 단색 바닥으로 이어진다. 그림을 못 읽으면 단색 그대로 */
+.screen.has-art::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; aspect-ratio: 16 / 9; pointer-events: none;
+  background: linear-gradient(to bottom, transparent 45%, var(--bg) 98%), var(--bg-art) center top / cover no-repeat;
+}
+.screen.has-art > *:not(.sound-btn) { position: relative; }
+/* 지역 카드: 지역 그림 위에 아래쪽만 갈색으로 눌러 흰 글자가 읽히게 */
+.region.has-art { background: linear-gradient(to bottom, transparent 20%, rgba(42, 26, 16, 0.55) 100%), var(--bg-art) center / cover no-repeat, var(--bg); }
+.region.has-art.locked { background-blend-mode: normal, luminosity, normal; }
+/* 메뉴 버튼 아이콘 (이모지 자리) */
+.btn .mi { width: 30px; height: 30px; object-fit: contain; flex: none; margin: -4px 0; }
+.btn.big .mi { width: 38px; height: 38px; margin: -8px 0; }
+.btn.soon .mi { filter: grayscale(0.7); }
+/* 머리 그림 (스테이지 목록 · 끝없는 탑): 메인 그림과 같은 액자 */
+.scene-art { display: block; width: 100%; aspect-ratio: 16 / 5; object-fit: cover; object-position: center 60%; flex: none; background: var(--bg);
+  border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }

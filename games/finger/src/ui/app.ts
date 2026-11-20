@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { artUrl, cardUrl, zodiacFaceUrl } from '../assets';
-import { hasArt } from '../artlist';
+import { hasArt, type OptionalArt } from '../artlist';
 import { COMBO_LEVELS, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, UPGRADES, levelCost, levelOf, upgradeCost, upgradeLv } from '../data/growth';
 import { REGIONS, REGION_NAMES, groundOf } from '../data/regions';
 import {
@@ -68,9 +68,26 @@ const play = (name: string, opts?: { volume?: number; rate?: number }) => sound?
 
 const app = () => document.getElementById('app')!;
 
-function screen(html: string, bg = ''): HTMLElement {
+/** 화면 배경 그림(bg-*)이 있으면 위쪽에 깔 그림 주소 (CSS 변수 --bg-art). 못 읽으면 지금처럼 단색 배경 */
+const bgStyle = (bg: string) => (bg.startsWith('bg-') && hasArt(bg as OptionalArt) ? ` has-art" style="--bg-art: url('${artUrl(bg)}')` : '');
+
+/** 메뉴 버튼 아이콘: 그림(ui-*)이 있으면 그림, 없거나 못 읽으면 이모지 */
+const menuIcon = (name: OptionalArt, emoji: string) =>
+  hasArt(name) ? `<img class="mi" src="${artUrl(name)}" alt="" onerror="this.outerHTML='${emoji}'" />` : emoji;
+
+/** 화면 머리 그림 (스테이지 목록·끝없는 탑): 지역 그림을 액자처럼. 못 읽으면 빠진다 */
+const sceneArt = (bg: string) => (hasArt(bg as OptionalArt) ? `<img class="scene-art" src="${artUrl(bg)}" alt="" onerror="this.remove()" />` : '');
+
+/** bg = 배경 class (bg-<지역> · bg-tower). backdrop 이면 그 그림을 화면 위쪽에 깐다 (머리 그림을 따로 넣는 화면은 false) */
+/** 파티 칸 구슬: 구슬 그림(h-<id>)이 있으면 그것 (판 아래 대원 줄과 같은 그림), 없거나 못 읽으면 얼굴 + 타입 색 테두리 */
+const ballImg = (id: HeroId) =>
+  hasArt(`h-${id}`)
+    ? `<img src="${artUrl(`h-${id}`)}" alt="" class="ball-art" onerror="this.onerror=null;this.src='${zodiacFaceUrl(id)}';this.className='ball ${HEROES[id].type}'" />`
+    : `<img src="${zodiacFaceUrl(id)}" alt="" class="ball ${HEROES[id].type}" />`;
+
+function screen(html: string, bg = '', backdrop = true): HTMLElement {
   const root = app();
-  root.innerHTML = `<div class="screen ${bg}">${html}</div>`;
+  root.innerHTML = `<div class="screen ${bg}${backdrop ? bgStyle(bg) : ''}">${html}</div>`;
   const el = root.firstElementChild as HTMLElement;
   soundButton(el);
   return el;
@@ -143,7 +160,7 @@ export function showMain() {
   const root = screen(`
     <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><div class="spacer"></div><div class="pills">${starPill()}${coinsPill()}</div><button class="icon-btn" id="help" aria-label="하는 법">❓</button></div>
     <div class="title"><h1>시아핑거</h1><p>당겼다 놓아 튕겨서 요괴를 부숴라!</p></div>
-    ${hasArt('main') ? `<img class="hero" src="${artUrl('main')}" alt="" />` : `<img class="hero thumb" src="${cardUrl()}" alt="" />`}
+    <img class="hero thumb" src="${hasArt('main') ? artUrl('main') : cardUrl()}" alt="" ${hasArt('main') ? `onerror="this.onerror=null;this.src='${cardUrl()}'"` : ''} />
     <div class="card">
       <h3>파티 <small>쏘는 순서</small></h3>
       <div class="party-mini">${partyOf(profile, lastParty)
@@ -151,14 +168,14 @@ export function showMain() {
         .join('')}</div>
     </div>
     <div class="menu-btns">
-      <button class="btn primary big" id="go">⚔️ 모험 떠나기</button>
+      <button class="btn primary big" id="go">${menuIcon('ui-go', '⚔️')} 모험 떠나기</button>
       <div class="row2">
-        <button class="btn" id="heroes">🐭 대원</button>
-        <button class="btn" id="up">💪 강화</button>
+        <button class="btn" id="heroes">${menuIcon('ui-heroes', '🐭')} 대원</button>
+        <button class="btn" id="up">${menuIcon('ui-up', '💪')} 강화</button>
       </div>
       <div class="row2">
-        <button class="btn ${towerOpen(profile) ? '' : 'soon'}" id="tower">🏯 끝없는 탑 ${towerOpen(profile) ? (profile.tower ? `<small>${profile.tower.floor}층</small>` : '') : '🔒'}</button>
-        <button class="btn" id="rank">🏆 랭킹</button>
+        <button class="btn ${towerOpen(profile) ? '' : 'soon'}" id="tower">${menuIcon('ui-tower', '🏯')} 끝없는 탑 ${towerOpen(profile) ? (profile.tower ? `<small>${profile.tower.floor}층</small>` : '') : '🔒'}</button>
+        <button class="btn" id="rank">${menuIcon('ui-rank', '🏆')} 랭킹</button>
       </div>
     </div>
     <div class="grow"></div>
@@ -304,7 +321,7 @@ function showRegions() {
       const open = ready && regionOpen(profile, r);
       const need = regionStars(r);
       const sub = !ready ? '준비 중' : open ? `★ ${regionStarsOf(profile, r)}/15` : ts < need ? `🔒 ★${need}` : `🔒 ${r - 1}-5`;
-      return `<button class="region bg-${groundOf(r)} ${open ? '' : 'locked'}" data-r="${r}">
+      return `<button class="region bg-${groundOf(r)} ${open ? '' : 'locked'}${bgStyle(`bg-${groundOf(r)}`)}" data-r="${r}">
           <img src="${zodiacFaceUrl(HERO_IDS[r - 1])}" alt="" />
           <b>${r}</b><span>${REGION_NAMES[r - 1]}</span><em>${sub}</em>
         </button>`;
@@ -355,6 +372,7 @@ function stageNote(st: StageDef): string {
 function showStages(region: number) {
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 지도</button><h2>${region}. ${REGION_NAMES[region - 1]}</h2><div class="pills">${coinsPill()}</div></div>
+    ${sceneArt(`bg-${groundOf(region)}`)}
     <div class="stage-list">${stagesOf(region)
       .map((st) => {
         const open = stageOpen(profile, st.id);
@@ -371,6 +389,7 @@ function showStages(region: number) {
       .join('')}</div>
     <div class="grow"></div>`,
     `bg-${groundOf(region)}`,
+    false,
   );
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
@@ -400,14 +419,14 @@ function showParty(st: StageDef | null) {
     <div class="card"><h3>대원 <small>누르면 빈 칸에 들어가요</small></h3><div class="pick-grid" id="pick"></div><div id="info" class="hero-info pick-info"></div></div>
     <div class="grow"></div>
     <button class="btn primary big" id="start">${st ? `⚔️ ${st.id} 출발!` : '🏯 탑 오르기!'}</button>`,
-    `bg-${groundOf(st ? st.region : 1)}`,
+    st ? `bg-${groundOf(st.region)}` : 'bg-tower',
   );
   const paint = () => {
     root.querySelector('#slots')!.innerHTML = [0, 1, 2, 3]
       .map((i) => {
         const id = party[i];
         return id
-          ? `<button class="slot" data-i="${i}"><i>${i + 1}</i><img src="${zodiacFaceUrl(id)}" alt="" class="ball ${HEROES[id].type}" /><b>${HEROES[id].name}</b></button>`
+          ? `<button class="slot" data-i="${i}"><i>${i + 1}</i>${ballImg(id)}<b>${HEROES[id].name}</b></button>`
           : `<button class="slot empty" data-i="${i}"><i>${i + 1}</i><span>빈 칸</span></button>`;
       })
       .join('');
@@ -467,6 +486,7 @@ function showTower() {
   const rec = profile.tower;
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>끝없는 탑</h2><div class="pills">${coinsPill()}</div></div>
+    ${sceneArt('bg-tower')}
     <div class="card tower-card">
       <h3>🏯 내 최고 기록</h3>
       <p class="tower-best">${rec ? `<b>${rec.floor}층</b> <span class="soft">${rec.turns}턴</span>` : '<span class="soft">아직 기록이 없어요</span>'}</p>
@@ -483,7 +503,8 @@ function showTower() {
     </div>
     <div class="grow"></div>
     <button class="btn primary big" id="go">🏯 파티 고르기</button>`,
-    'bg-palace',
+    'bg-tower',
+    false,
   );
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
