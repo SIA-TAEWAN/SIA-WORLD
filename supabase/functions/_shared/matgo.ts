@@ -10,7 +10,8 @@
  * 규칙 해석 메모
  * - 바닥에 같은 달 2장이 있고 두 장이 완전히 같은 가치(예: 일반 피 2장)면 선택 없이 자동으로 먹는다.
  * - 처음부터 바닥에 깔린 같은 달 3장은 뻑처럼 쌓여 있다가 4번째 장으로 한꺼번에 먹지만,
- *   실제로 '뻑'이 난 것이 아니므로 피를 빼앗지 않는다. 판 중에 생긴 뻑 더미를 먹을 때만 피 1장.
+ *   실제로 '뻑'이 난 것이 아니므로 피를 빼앗지 않는다. 판 중에 생긴 뻑 더미를 먹을 때만 피 1장,
+ *   자기가 낸 뻑을 자기가 먹으면(자뻑) 피 2장.
  * - 폭탄: 같은 달 3장을 한꺼번에 내므로 손패가 상대보다 2장 적어진다. 그만큼 '폭탄 피'(bombFill) 2개를 받아
  *   이후 자기 차례에 손패를 내지 않고 더미만 뒤집을 수 있다({ type: 'flip' }). 손패를 내도 된다.
  *   손패가 비고 bombFill도 0이면 그 사람은 패를 다 쓴 것이다.
@@ -34,7 +35,7 @@ import type { Engine, GameEvent, Rng, RoundInput, SeatInfo, SeatKind } from './e
  * 화면 표시만 바뀌는 수정에는 올리지 않는다 (올리면 그때 판을 하던 사람이 모두 새로고침해야 한다).
  * 판을 싣지 않는 예전 화면(이 값이 생기기 전에 열린 탭)은 1 로 본다 (solo.ts RULES_BASELINE).
  */
-export const MATGO_RULES = 1;
+export const MATGO_RULES = 2; // 2: 자뻑 피 2장
 
 // ───────────────────────────── 카드 ─────────────────────────────
 
@@ -251,6 +252,8 @@ export interface MatgoState {
   captured: string[][];
   /** 판 중에 뻑이 나서 쌓인 달 */
   ppeok: number[];
+  /** 그 뻑을 낸 사람 (달 → idx). 자기 뻑을 먹으면(자뻑) 피 2장. 예전에 저장된 상태에는 없다 (그 뻑은 1장) */
+  ppeokBy?: Record<string, number>;
   /** 이번 판에 각자 낸 뻑 횟수 (idx 순). 예전에 저장된 상태에는 없을 수 있다 */
   ppeokCount?: number[];
   /**
@@ -502,6 +505,7 @@ function setup(o: SetupOpts): MatgoState {
     pile: o.pile.slice(),
     captured: o.captured.map((c) => c.slice()),
     ppeok: [],
+    ppeokBy: {},
     ppeokCount: [0, 0],
     turns: [0, 0],
     ppeokUnits: [0, 0],
@@ -693,8 +697,15 @@ function finalize(s: MatgoState, me: number): void {
   const eatPpeok = (m: number) => {
     if (s.ppeok.includes(m)) {
       s.ppeok = s.ppeok.filter((x) => x !== m);
-      ev(s, 'ppeok_eat', me, { month: m });
-      steals.push('뻑 먹기');
+      // 자뻑: 자기가 낸 뻑을 자기가 먹으면 피 2장 (남의 뻑은 1장)
+      const own = s.ppeokBy?.[String(m)] === me;
+      if (s.ppeokBy) {
+        const { [String(m)]: _gone, ...rest } = s.ppeokBy;
+        s.ppeokBy = rest;
+      }
+      ev(s, 'ppeok_eat', me, { month: m, own });
+      steals.push(own ? '자뻑' : '뻑 먹기');
+      if (own) steals.push('자뻑');
     }
   };
   const flipSame = c.flipped !== null && monthOf(c.flipped) === c.month;
@@ -716,6 +727,7 @@ function finalize(s: MatgoState, me: number): void {
       } else if (k === 1) {
         toFloor.push(P, F);
         s.ppeok.push(m);
+        s.ppeokBy = { ...(s.ppeokBy ?? {}), [String(m)]: me };
         const counts = s.ppeokCount ?? [0, 0];
         // 예전 저장 상태(새 칸 없음): 이미 난 뻑은 그때 규칙대로 셈해 두고, 차례를 모르므로 이번 뻑에는 보너스가 없다
         const units = s.ppeokUnits ?? counts.map(ppeokBonusUnits);

@@ -1554,6 +1554,9 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         if (bonus === 2) return '첫뻑 ×2';
         return '뻑!';
       }
+      // 자기가 낸 뻑을 자기가 먹었다 (상대 피 2장)
+      case 'ppeok_eat':
+        return ev.own ? '자뻑!' : null;
       case 'nagari':
         return '나가리';
       default: {

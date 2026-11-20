@@ -343,7 +343,7 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
       const before = m.published.length;
       const local = playLocal(r.solo, picker(seed * 7 + 1));
       expect(matgo.done(local.state)).toBe(true);
-      const res = await runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: JSON.parse(JSON.stringify(local.actions)) });
+      const res = await runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(r.solo)!.n, actions: JSON.parse(JSON.stringify(local.actions)) });
       expect(res).toEqual({ ok: true, n: soloOf(local.state)!.n, done: true });
       // 최종 상태가 한 글자도 다르지 않다
       expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(local.state)));
@@ -368,7 +368,7 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     const b = await begin(77);
     expect(a.r.solo).toEqual(b.r.solo);
     const local = playLocal(a.r.solo!, picker(5));
-    await a.runner.replay('r1', 'u1', { n: soloOf(a.r.solo)!.n, actions: local.actions });
+    await a.runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(a.r.solo)!.n, actions: local.actions });
     for (const act of local.actions) await b.runner.act('r1', 'u1', act);
     expect(b.m.deck.state).toEqual(a.m.deck.state);
     expect(b.m.results.get(1)).toEqual(a.m.results.get(1));
@@ -379,12 +379,12 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     const n = soloOf(r.solo)!.n;
     const local = playLocal(r.solo!, picker(2), 2);
     const v = m.deck.version;
-    await expect(runner.replay('r1', 'u1', { n: n + 1, actions: local.actions })).rejects.toMatchObject({ message: 'out of sync', status: 409 });
-    await expect(runner.replay('r1', 'u1', { n: n - 1, actions: local.actions })).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n: n + 1, actions: local.actions })).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n: n - 1, actions: local.actions })).rejects.toMatchObject({ message: 'out of sync', status: 409 });
     expect(m.deck.version).toBe(v);
     // 잘못된 모양
-    await expect(runner.replay('r1', 'u1', { n, actions: 'x' })).rejects.toThrow('bad replay');
-    await expect(runner.replay('r1', 'u1', { n, actions: [null] })).rejects.toThrow('bad replay');
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: 'x' })).rejects.toThrow('bad replay');
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [null] })).rejects.toThrow('bad replay');
     await expect(runner.replay('r1', 'u1', { actions: [] })).rejects.toThrow('bad replay');
     await expect(runner.replay('r1', 'u1', null)).rejects.toThrow('bad replay');
     expect(m.deck.version).toBe(v);
@@ -394,11 +394,11 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     const { m, runner, r } = await begin(10);
     const n = soloOf(r.solo)!.n;
     await expect(runner.sync('r1', 'zz')).rejects.toMatchObject({ message: 'not in room', status: 403 });
-    await expect(runner.replay('r1', 'zz', { n, actions: [] })).rejects.toMatchObject({ message: 'not in room', status: 403 });
+    await expect(runner.replay('r1', 'zz', { rules: MATGO_RULES, n, actions: [] })).rejects.toMatchObject({ message: 'not in room', status: 403 });
     // 판 도중 나간 사람도 마찬가지
     m.seats[0].left_game = true;
     await expect(runner.sync('r1', 'u1')).rejects.toThrow('not in room');
-    await expect(runner.replay('r1', 'u1', { n, actions: [] })).rejects.toThrow('not in room');
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [] })).rejects.toThrow('not in room');
   });
 
   it('AI 행동은 넣을 수 없다: AI 차례는 서버가 직접 두고, 목록의 행동은 모두 사람 차례에만 적용한다', async () => {
@@ -411,18 +411,18 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     const aiSeat = one.state.seats.find((x) => x !== ME)!;
     const aiHand = matgo.view(one.state).private[aiSeat].hand;
     const forged: MatgoAction = { type: 'play', card: aiHand[aiHand.length - 1] };
-    await expect(runner.replay('r1', 'u1', { n, actions: [...one.actions, forged] })).rejects.toMatchObject({ status: 400 });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [...one.actions, forged] })).rejects.toMatchObject({ status: 400 });
     expect(m.deck.version).toBe(v); // 아무것도 저장되지 않았다
     // 사람 행동만 보내면 AI 차례는 서버가 정한 대로 (화면의 soloStep(…, null) 과 같은 수)
     const withAi = playLocal(r.solo!, picker(3), 1, true);
-    const res = await runner.replay('r1', 'u1', { n, actions: one.actions });
+    const res = await runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: one.actions });
     expect(res.n).toBe(soloOf(withAi.state)!.n);
     expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(withAi.state)));
     // 판이 끝난 뒤에 남은 행동이 있어도 거절 (방은 이미 대기)
     const full = playLocal(withAi.state, picker(4));
-    await runner.replay('r1', 'u1', { n: res.n, actions: full.actions });
+    await runner.replay('r1', 'u1', { rules: MATGO_RULES, n: res.n, actions: full.actions });
     expect(m.room.status).toBe('waiting');
-    await expect(runner.replay('r1', 'u1', { n: soloOf(full.state)!.n, actions: [{ type: 'stop' }] })).rejects.toMatchObject({ message: 'not playing', status: 409 });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(full.state)!.n, actions: [{ type: 'stop' }] })).rejects.toMatchObject({ message: 'not playing', status: 409 });
     expect(m.results.size).toBe(1);
   });
 
@@ -430,7 +430,7 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     const { m, runner, r } = await begin(14);
     const local = playLocal(r.solo!, picker(6));
     const v = m.deck.version;
-    await expect(runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: [...local.actions, { type: 'go' }] })).rejects.toMatchObject({ message: 'not your turn', status: 400 });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(r.solo)!.n, actions: [...local.actions, { type: 'go' }] })).rejects.toMatchObject({ message: 'not your turn', status: 400 });
     expect(m.deck.version).toBe(v);
     expect(m.results.size).toBe(0);
     expect(m.room.status).toBe('playing');
@@ -444,7 +444,7 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     const k = 3;
     const part = playLocal(r.solo!, picker(8), k, true);
     expect(part.actions).toEqual(all.actions.slice(0, k));
-    const res = await runner.replay('r1', 'u1', { n: n0, actions: all.actions.slice(0, k) });
+    const res = await runner.replay('r1', 'u1', { rules: MATGO_RULES, n: n0, actions: all.actions.slice(0, k) });
     expect(res).toEqual({ ok: true, n: soloOf(part.state)!.n, done: false });
     expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(part.state)));
     expect(m.room.status).toBe('playing');
@@ -459,8 +459,8 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     expect(synced.version).toBe(m.deck.version);
     expect(synced.round).toBe(1);
     // 같은 목록을 한 번 더 보내면 (응답을 못 받은 화면) 진행 수가 달라 거절 → 화면은 sync 로 맞춘다
-    await expect(runner.replay('r1', 'u1', { n: n0, actions: all.actions.slice(0, k) })).rejects.toThrow('out of sync');
-    const rest = await runner.replay('r1', 'u1', { n: res.n, actions: all.actions.slice(k) });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n: n0, actions: all.actions.slice(0, k) })).rejects.toThrow('out of sync');
+    const rest = await runner.replay('r1', 'u1', { rules: MATGO_RULES, n: res.n, actions: all.actions.slice(k) });
     expect(rest.done).toBe(true);
     expect(m.deck.state).toEqual(JSON.parse(JSON.stringify(all.state)));
     expect(m.results.get(1)).toEqual(matgo.settle(all.state).deltas);
@@ -470,7 +470,7 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
 
   it('빈 목록도 받는다 (나가기 직전 저장: 달라질 것이 없다)', async () => {
     const { m, runner, r } = await begin(23);
-    const res = await runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: [] });
+    const res = await runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(r.solo)!.n, actions: [] });
     expect(res).toEqual({ ok: true, n: soloOf(r.solo)!.n, done: false });
     expect(m.deck.state).toEqual(r.solo);
   });
@@ -478,7 +478,7 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
   it('나가면 서버 AI가 저장된 데서 이어 두어 정산한다', async () => {
     const { m, runner, r } = await begin(31);
     const part = playLocal(r.solo!, picker(9), 2, true);
-    await runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: part.actions });
+    await runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(r.solo)!.n, actions: part.actions });
     m.seats[0].left_game = true; // leave_room
     await runner.timeout('r1', m.deck.version, true);
     expect(m.room.status).toBe('waiting');
@@ -497,7 +497,7 @@ describe('Runner: 혼자 하는 맞고 (기기에서 진행 → replay)', () => 
     expect(out.acted).toBe(true);
     expect(m.room.status).toBe('waiting');
     expect(m.results.has(1)).toBe(true);
-    await expect(runner.replay('r1', 'u1', { n: soloOf(r.solo)!.n, actions: local.actions })).rejects.toMatchObject({ status: 409 });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(r.solo)!.n, actions: local.actions })).rejects.toMatchObject({ status: 409 });
     expect(m.results.size).toBe(1);
   });
 });
@@ -544,7 +544,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     }
     await expect(runner.sync('r1', 'u1')).rejects.toThrow('not solo');
     await expect(runner.sync('r1', 'u9', { duo: true })).rejects.toMatchObject({ status: 403 });
-    await expect(runner.replay('r1', 'u1', { n: 0, actions: [] })).rejects.toThrow('not solo');
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n: 0, actions: [] })).rejects.toThrow('not solo');
     // 혼자 하는 판은 표시가 있든 없든 받고, duo 가 아니라고 알려 준다
     const one = memStore('matgo', ['u1'], 2);
     const r1 = new Runner(one.store, ENGINES, seededRng(4));
@@ -560,20 +560,20 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     const a = pick(s, seat);
     const n0 = soloOf(s)!.n;
     // 앞선 진행 수 · 지난 진행 수는 거절
-    await expect(runner.act('r1', userOf(seat), a, n0 + 1)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
-    await expect(runner.act('r1', userOf(seat), a, n0 - 1)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    await expect(runner.act('r1', userOf(seat), { ...a, rules: MATGO_RULES }, n0 + 1)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    await expect(runner.act('r1', userOf(seat), { ...a, rules: MATGO_RULES }, n0 - 1)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
     expect(m.deck.state).toEqual(s);
     // 내 차례가 아닌 사람은 진행 수가 맞아도 거절
-    await expect(runner.act('r1', userOf(1 - seat), a, n0)).rejects.toMatchObject({ message: 'not your turn', status: 409 });
-    expect(await runner.act('r1', userOf(seat), a, n0)).toEqual({ ok: true, n: n0 + 1 });
+    await expect(runner.act('r1', userOf(1 - seat), { ...a, rules: MATGO_RULES }, n0)).rejects.toMatchObject({ message: 'not your turn', status: 409 });
+    expect(await runner.act('r1', userOf(seat), { ...a, rules: MATGO_RULES }, n0)).toEqual({ ok: true, n: n0 + 1 });
     s = m.deck.state as MatgoState;
     expect(soloOf(s)!.n).toBe(n0 + 1);
     // 같은 행동이 한 번 더 오면 (응답을 못 받아 다시 보냈다) 거절: 두 번 적용되지 않는다
-    await expect(runner.act('r1', userOf(seat), a, n0)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    await expect(runner.act('r1', userOf(seat), { ...a, rules: MATGO_RULES }, n0)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
     expect(m.deck.state).toEqual(s);
     // 규칙 위반은 진행 수가 맞아도 거절
     const next = matgo.pending(s)[0];
-    await expect(runner.act('r1', userOf(next), { type: 'play', card: 'm99-x' }, n0 + 1)).rejects.toBeInstanceOf(GameError);
+    await expect(runner.act('r1', userOf(next), { type: 'play', card: 'm99-x', rules: MATGO_RULES }, n0 + 1)).rejects.toBeInstanceOf(GameError);
     expect(m.deck.state).toEqual(s);
   });
 
@@ -602,7 +602,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
         const n = soloOf(a)!.n;
         a = soloStep(matgo, a, seat, act);
         b = soloStep(matgo, b, seat, act);
-        await runner.act('r1', userOf(seat), act, n);
+        await runner.act('r1', userOf(seat), { ...act, rules: MATGO_RULES }, n);
         expect(JSON.parse(JSON.stringify(a))).toEqual(m.deck.state);
         expect(b).toEqual(a);
         // 서버가 공개한 상태 = 화면이 만든 공개 상태 + 서버가 덧붙인 칸
@@ -631,7 +631,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     // 고르기·고/스톱처럼 같은 사람이 이어 정할 수도 있으니 '적어도 한 걸음' 으로 본다 (끝까지 두지는 않는다)
     expect(soloOf(after)!.n).toBe(n0 + 1);
     expect(m.room.status).toBe('playing');
-    await expect(runner.act('r1', userOf(seat), late, n0)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
+    await expect(runner.act('r1', userOf(seat), { ...late, rules: MATGO_RULES }, n0)).rejects.toMatchObject({ message: 'out of sync', status: 409 });
   });
 
   it('상대가 나가면: 그 자리는 서버 AI 가 같은 걸음 규칙으로 이어 두고, 남은 사람은 sync 로 따라간다 (혼자 하는 판이 된다)', async () => {
@@ -652,7 +652,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
       s = got.state as MatgoState;
       // 이제 혼자 하는 판과 같다: 내 행동 뒤에 서버가 AI 차례를 이어 둔다
       const n = soloOf(s)!.n;
-      await runner.act('r1', 'u1', pick(s, 0), n);
+      await runner.act('r1', 'u1', { ...pick(s, 0), rules: MATGO_RULES }, n);
       const next = m.deck.state as MatgoState;
       expect(matgo.done(next) || matgo.pending(next).includes(0)).toBe(true);
       expect(soloOf(next)!.n).toBeGreaterThan(n);
@@ -663,7 +663,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
   const toSeat0 = async (m: ReturnType<typeof memStore>, runner: Runner, s0: MatgoState) => {
     let s = s0;
     for (let i = 0; i < 20 && !matgo.pending(s).includes(0); i++) {
-      await runner.act('r1', 'u2', pick(s, 1, seededRng(40 + i)), soloOf(s)!.n);
+      await runner.act('r1', 'u2', { ...pick(s, 1, seededRng(40 + i)), rules: MATGO_RULES }, soloOf(s)!.n);
       s = m.deck.state as MatgoState;
     }
     expect(matgo.done(s)).toBe(false);
@@ -698,7 +698,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     expect(deadlineOf(m)).toBe(now + 20_000);
     expect(matgo.view(after).public.events.filter((e) => e.id > Math.max(0, ...matgo.view(s).public.events.map((x) => x.id)) && e.seat === 0 && (e.t === 'play' || e.t === 'bomb')).length).toBeLessThanOrEqual(1);
     // 남은 사람은 이어서 둘 수 있다
-    await runner.act('r1', 'u1', pick(after, 0), soloOf(after)!.n);
+    await runner.act('r1', 'u1', { ...pick(after, 0), rules: MATGO_RULES }, soloOf(after)!.n);
     expect(soloOf(m.deck.state)!.n).toBeGreaterThan(soloOf(after)!.n);
     // sync 전이면 남은 사람이 직접 둔 뒤의 마감도 20초 그대로
     if (!matgo.done(m.deck.state as MatgoState)) expect(deadlineOf(m)).toBe(now + 20_000);
@@ -725,7 +725,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     expect((await runner.sync('r1', 'u1', { duo: true })).version).toBe(v);
     expect(m.published.length).toBe(pubs);
     // 이제 혼자 하는 판: 행동 목록(replay)도 받는다
-    const res = await runner.replay('r1', 'u1', { n: soloOf(s)!.n, actions: [pick(got.state as MatgoState, 0)] });
+    const res = await runner.replay('r1', 'u1', { rules: MATGO_RULES, n: soloOf(s)!.n, actions: [pick(got.state as MatgoState, 0)] });
     expect(res.ok).toBe(true);
     // 30분 마감이 지나면 버려진 판이다 → 서버가 남은 판을 대신 두어 끝낸다 (혼자 하는 판과 같다)
     if (m.room.status === 'playing') {
@@ -741,7 +741,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     let s = r.duo!;
     // u2(자리 1) 차례가 될 때까지
     for (let i = 0; i < 20 && !matgo.pending(s).includes(1); i++) {
-      await runner.act('r1', 'u1', pick(s, 0, seededRng(60 + i)), soloOf(s)!.n);
+      await runner.act('r1', 'u1', { ...pick(s, 0, seededRng(60 + i)), rules: MATGO_RULES }, soloOf(s)!.n);
       s = m.deck.state as MatgoState;
     }
     expect(matgo.pending(s)).toEqual([1]);
@@ -866,10 +866,10 @@ describe('Runner: 맞고 규칙 판 (MATGO_RULES)', () => {
   it('replay: 판이 다르면 409 RULES_CHANGED, 같거나 안 실었으면(예전 화면 = 1판) 받는다', async () => {
     const { m, runner, r } = await start();
     const n = soloOf(r.solo)!.n;
-    await expect(runner.replay('r1', 'u1', { n, actions: [], rules: MATGO_RULES + 1 })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
-    await expect(runner.replay('r1', 'u1', { n, actions: [], rules: 'x' })).rejects.toMatchObject({ status: 409 });
-    expect(await runner.replay('r1', 'u1', { n, actions: [], rules: MATGO_RULES })).toMatchObject({ ok: true });
-    expect(await runner.replay('r1', 'u1', { n, actions: [] })).toMatchObject({ ok: true });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [], rules: MATGO_RULES + 1 })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
+    await expect(runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [], rules: 'x' })).rejects.toMatchObject({ status: 409 });
+    expect(await runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [], rules: MATGO_RULES })).toMatchObject({ ok: true });
+    expect(await runner.replay('r1', 'u1', { rules: MATGO_RULES, n, actions: [] })).toMatchObject({ ok: true });
     // 새 규칙(2판) 서버: 판을 안 실은 예전 화면은 1판으로 보고 거절한다
     const later = new Runner(m.store, bumped, seededRng(1));
     await expect(later.replay('r1', 'u1', { n, actions: [] })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
