@@ -26,6 +26,49 @@ if (/Android/i.test(navigator.userAgent)) {
   }
 }
 
+/*
+ * 점검 (설치한 앱에서만): 화면 아무 곳이나 2초 안에 6번 누르면 이 페이지의 화면 크기·viewport·판본을 알림으로 보여 준다.
+ * 안드로이드 앱에서 아래 버튼이 가려지는 원인을 게임 화면 안에서 재려고 둔다
+ */
+{
+  let taps = 0;
+  let first = 0;
+  window.addEventListener(
+    'pointerup',
+    () => {
+      if (!isStandalone()) return;
+      const now = Date.now();
+      if (now - first > 2000) {
+        first = now;
+        taps = 0;
+      }
+      if (++taps < 6) return;
+      taps = 0;
+      first = 0;
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:100dvh;padding-bottom:env(safe-area-inset-bottom)';
+      document.body.append(probe);
+      const dvh = probe.getBoundingClientRect().height - parseFloat(getComputedStyle(probe).paddingBottom);
+      const inset = getComputedStyle(probe).paddingBottom;
+      probe.remove();
+      const html = document.documentElement.outerHTML;
+      const asset = [...document.scripts].map((s) => s.src).find((s) => /assets\//.test(s)) || '';
+      alert(
+        [
+          location.pathname.replace(/^.*SIA-WORLD/, ''),
+          `inner ${innerWidth}×${innerHeight} · screen ${screen.width}×${screen.height}`,
+          `100dvh ${Math.round(dvh)} · bottom inset ${inset}`,
+          `viewport: ${document.querySelector('meta[name="viewport"]')?.content}`,
+          `head fix: ${html.includes('그리기 전에 뺀다') ? 'yes' : 'no'} · asset ${asset.split('/').pop()}`,
+          `sw: ${navigator.serviceWorker?.controller ? 'on' : 'off'}`,
+        ].join('\n'),
+      );
+    },
+    true,
+  );
+}
+
 const UPDATE_EVERY_MS = 30 * 60 * 1000;
 const UPDATE_GAP_MS = 60 * 1000;
 
