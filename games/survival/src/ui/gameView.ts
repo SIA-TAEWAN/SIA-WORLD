@@ -231,7 +231,7 @@ export function showGame(setup: GameSetup) {
   const onKeyUp = (e: KeyboardEvent) => {
     if (keys.delete(e.code)) applyInput();
   };
-  const moveTouch = (e: PointerEvent) => {
+  const moveTouch = (e: { clientX: number; clientY: number }) => {
     const dx = e.clientX - ox;
     const dy = e.clientY - oy;
     const d = Math.hypot(dx, dy);
@@ -244,22 +244,58 @@ export function showGame(setup: GameSetup) {
     knob.style.transform = `translate(${jx * STICK_R}px, ${jy * STICK_R}px)`;
     applyInput();
   };
+  const beginTouch = (id: number, p: { clientX: number; clientY: number }) => {
+    touchId = id;
+    ox = p.clientX;
+    oy = p.clientY;
+    const box = stage.getBoundingClientRect();
+    stick.style.left = `${ox - box.left}px`;
+    stick.style.top = `${oy - box.top}px`;
+    stick.classList.remove('hidden');
+    moveTouch(p);
+  };
+  // 손가락은 터치 이벤트로 받는다. 아이폰(WebKit)은 손가락을 오래 대고 있거나 조금 끌면 자기 제스처(길게 누름·돋보기·스크롤)가
+  // 끼어들어 포인터 이벤트를 pointercancel 로 끊어 버린다 → touchstart 에서 기본 동작을 막아야 끝까지 이어진다.
+  // 터치 쪽 id 는 포인터 id 와 겹치지 않게 TOUCH_BASE 를 더한다
+  const TOUCH_BASE = 1_000_000;
+  const findTouch = (list: TouchList) => {
+    for (let i = 0; i < list.length; i++) if (list[i].identifier + TOUCH_BASE === touchId) return list[i];
+    return null;
+  };
+  fieldEl.addEventListener(
+    'touchstart',
+    (e) => {
+      e.preventDefault();
+      if (touchId >= 0 || blocked()) return;
+      const t = e.changedTouches[0];
+      if (t) beginTouch(t.identifier + TOUCH_BASE, t);
+    },
+    { passive: false },
+  );
+  fieldEl.addEventListener(
+    'touchmove',
+    (e) => {
+      e.preventDefault();
+      const t = findTouch(e.changedTouches);
+      if (t) moveTouch(t);
+    },
+    { passive: false },
+  );
+  const onTouchListEnd = (e: TouchEvent) => {
+    if (findTouch(e.changedTouches)) endTouch();
+  };
+  fieldEl.addEventListener('touchend', onTouchListEnd);
+  fieldEl.addEventListener('touchcancel', onTouchListEnd);
+  // 마우스·펜은 포인터 이벤트로 (손가락은 위의 터치 이벤트가 맡는다)
   fieldEl.addEventListener('pointerdown', (e) => {
-    if (touchId >= 0 || blocked()) return;
+    if (e.pointerType === 'touch' || touchId >= 0 || blocked()) return;
     e.preventDefault();
     try {
       fieldEl.setPointerCapture(e.pointerId);
     } catch {
       /* 잡지 못해도 계속 */
     }
-    touchId = e.pointerId;
-    ox = e.clientX;
-    oy = e.clientY;
-    const box = stage.getBoundingClientRect();
-    stick.style.left = `${ox - box.left}px`;
-    stick.style.top = `${oy - box.top}px`;
-    stick.classList.remove('hidden');
-    moveTouch(e);
+    beginTouch(e.pointerId, e);
   });
   fieldEl.addEventListener('pointermove', (e) => {
     if (e.pointerId === touchId) moveTouch(e);
