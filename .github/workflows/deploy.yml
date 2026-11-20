@@ -67,6 +67,54 @@ jobs:
           if (!i) throw new Error('index.html 에서 인라인 스크립트를 찾지 못했어요');
           console.log(`index.html 인라인 스크립트 ${i}개 문법 확인`);
           JS
+          # index.html·shared/*.js 가 이름으로 가져오는 것이 그 공용 파일에 실제로 있는지 (없으면 브라우저에서 모듈 전체가 안 열린다)
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          // 이름을 붙여 가져오는 것(import { a, b as c } from './shared/x.js')이 그 파일에 실제로 export 돼 있는지
+          const exportsOf = new Map();
+          const exportNames = (file) => {
+            if (exportsOf.has(file)) return exportsOf.get(file);
+            const src = fs.readFileSync(file, 'utf8');
+            const names = new Set();
+            for (const m of src.matchAll(/^\s*export\s+(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+([\w$]+)/gm)) names.add(m[1]);
+            for (const m of src.matchAll(/^\s*export\s*\{([^}]*)\}/gm))
+              for (const part of m[1].split(',')) {
+                const p = part.trim().split(/\s+as\s+/);
+                if (p[0]) names.add((p[1] ?? p[0]).trim());
+              }
+            exportsOf.set(file, names);
+            return names;
+          };
+          const sources = [['index.html', fs.readFileSync('index.html', 'utf8')]];
+          for (const f of fs.readdirSync('shared')) if (f.endsWith('.js')) sources.push([`shared/${f}`, fs.readFileSync(`shared/${f}`, 'utf8')]);
+          const bad = [];
+          let n = 0;
+          for (const [from, src] of sources) {
+            const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+            for (const m of code.matchAll(/\bimport\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*['"](\.{1,2}\/[^'"]+\.js)['"]/g)) {
+              const target = path.posix.normalize(path.posix.join(path.posix.dirname(from), m[2]));
+              if (!target.startsWith('shared/')) continue;
+              if (!fs.existsSync(target)) {
+                bad.push(`${from}: ${m[2]} 파일이 없어요`);
+                continue;
+              }
+              const names = exportNames(target);
+              for (const part of m[1].split(',')) {
+                const name = part.trim().split(/\s+as\s+/)[0].trim();
+                if (!name) continue;
+                n++;
+                if (!names.has(name)) bad.push(`${from}: '${name}' 이(가) ${target} 에 export 돼 있지 않아요`);
+              }
+            }
+          }
+          if (bad.length) {
+            console.error(bad.join('\n'));
+            process.exit(1);
+          }
+          if (!n) throw new Error('가져오는 이름을 하나도 찾지 못했어요');
+          console.log(`공용 모듈 가져오기 ${n}개 확인`);
+          JS
       - name: 시아탱크 테스트·빌드
         working-directory: games/tank
         run: |

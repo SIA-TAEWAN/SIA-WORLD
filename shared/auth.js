@@ -174,15 +174,31 @@ function newToken() {
 }
 
 let myToken = null;
+/** 이 탭이 표식을 서버에 올리는 중이면 그 Promise (그동안은 서버가 아직 옛 표식이라 밀려난 것으로 보면 안 된다) */
+let claiming = null;
 /** 이 브라우저를 내 계정의 '지금 접속한 곳'으로 올린다. fresh: 새로 로그인했다 (표식을 새로 만든다) */
-async function claimSession(fresh) {
-  myToken = (!fresh && readToken()) || newToken();
-  const { error } = await supabase.rpc('claim_session', { p_token: myToken });
-  // 서버에 아직 함수가 없거나 통신이 안 되면 막지 않는다 (표식도 지워 다음에 다시 올린다)
-  if (error) {
-    myToken = null;
-    dropToken();
-  }
+function claimSession(fresh) {
+  const token = (!fresh && readToken()) || newToken();
+  myToken = token;
+  const run = (async () => {
+    let failed = true;
+    try {
+      const { error } = await supabase.rpc('claim_session', { p_token: token });
+      failed = !!error;
+    } catch {
+      /* 통신이 안 되면 아래에서 실패로 */
+    }
+    // 서버에 아직 함수가 없거나 통신이 안 되면 막지 않는다 (표식도 지워 다음에 다시 올린다)
+    if (failed && myToken === token) {
+      myToken = null;
+      if (readToken() === token) dropToken();
+    }
+  })();
+  claiming = run;
+  void run.finally(() => {
+    if (claiming === run) claiming = null;
+  });
+  return run;
 }
 
 /** 다른 곳에서 로그인해서 밀려났다는 표시를 한 번 꺼낸다 (로그인 화면이 안내에 쓴다) */
@@ -198,11 +214,21 @@ export function takeKickedNotice() {
 
 let watchTimer = null;
 let watching = false;
+let listening = false;
 function stopWatch() {
   if (watchTimer) clearInterval(watchTimer);
   watchTimer = null;
   watching = false;
 }
+// 로그아웃되면(다른 탭에서 한 것 포함) 지켜보기를 멈추고 표식도 잊는다.
+// 로그인 화면에 남은 탭이 옛 표식으로 계속 확인하면, 다른 탭이 다시 로그인하는 사이(여기 저장소는 새 표식, 서버는 아직 옛 표식)
+// 밀려난 것으로 보고 같이 쓰는 새 로그인까지 끊는다. 다시 로그인하면 getCurrentUser → ensureSession 이 다시 시작한다
+supabase.auth.onAuthStateChange((event) => {
+  if (event !== 'SIGNED_OUT') return;
+  stopWatch();
+  myToken = null;
+  profileCache = null;
+});
 async function checkSession() {
   if (!watching) return;
   const { data: s } = await supabase.auth.getSession();
@@ -216,9 +242,21 @@ async function checkSession() {
   const local = readToken();
   if (local !== before) return; // 그 사이 다른 탭이 표식을 바꿨다 → 이번은 건너뛴다 (다음 확인 때 다시)
   // 같은 브라우저의 다른 탭이 새로 로그인했으면 그 표식을 따라간다 (내 표식을 서버에 올리지 못한 상태면 비교하지 않는다)
-  if (local && myToken) myToken = local;
+  let adopted = false;
+  if (local && myToken && local !== myToken) {
+    myToken = local;
+    adopted = true;
+  }
   if (!data || !myToken) return void claimSession(false); // 아직 올린 적이 없다 (이 기능 전부터 로그인해 있던 경우 · 올리기에 실패했던 경우)
   if (data.token === myToken) return;
+  // 이 탭이 표식을 올리는 중이면 끝나기를 기다렸다가 처음부터 다시 본다
+  if (claiming) {
+    await claiming.catch(() => {});
+    return checkSession();
+  }
+  // 다른 탭이 방금 바꾼 표식을 지금 따라갔다 → 그 탭이 아직 서버에 올리는 중일 수 있으니 이번은 넘기고 다음 확인 때 본다
+  // (다른 기기의 로그인이면 다음 확인에서도 여전히 달라 그때 로그아웃된다)
+  if (adopted) return;
   // 다른 기기에서 로그인했다 → 이 브라우저만 로그아웃
   stopWatch();
   profileCache = null;
@@ -235,6 +273,10 @@ function watchSession() {
   if (watching) return;
   watching = true;
   watchTimer = setInterval(() => void checkSession(), CHECK_MS);
+  // 화면으로 돌아올 때의 확인은 한 번만 붙인다 (로그아웃 뒤 다시 로그인해 지켜보기를 다시 시작해도 늘어나지 않게.
+  // 지켜보지 않는 동안에는 checkSession 이 바로 돌아간다)
+  if (listening) return;
+  listening = true;
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void checkSession());
   window.addEventListener('focus', () => void checkSession());
 }
