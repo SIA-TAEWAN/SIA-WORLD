@@ -23,6 +23,8 @@ export const GAMES = [
     path: 'games/village/', image: 'shared/images/card-village.png', open: false },
   { id: 'charge', name: '시아돌격대', desc: '숫자 문으로 대원을 불려 요괴를 뚫어라 · 1인용',
     path: 'games/charge/', image: 'shared/images/card-charge.png', open: false },
+  { id: 'finger', name: '시아핑거', desc: '당겼다 놓아 튕겨서 요괴를 부숴라 · 십이지 대원 턴제 RPG · 1인용',
+    path: 'games/finger/', image: 'shared/images/card-finger.png', open: false },
 ];
 
 const KEY = 'game_open:';

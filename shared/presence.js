@@ -19,6 +19,7 @@ export const GAME_CHANNELS = {
   defense: ['defense-lobby'],
   village: ['village-lobby'],
   charge: ['charge-lobby'],
+  finger: ['finger-lobby'],
 };
 
 /** 맞고·카지노 게임 하나의 접속 채널 이름 */
