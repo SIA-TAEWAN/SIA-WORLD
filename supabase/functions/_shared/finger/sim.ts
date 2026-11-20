@@ -1,4 +1,5 @@
 import { COS45, closestOnSeg, dirOf, dist2, normAngle } from './math.ts';
+import { comboEffect, specialEffect } from './skills.ts';
 import type { AttackKind } from './enemies.ts';
 import type { ComboKind, HeroId, HeroType, SpecialKind } from './heroes.ts';
 
@@ -120,6 +121,11 @@ export interface Foe extends FoeInit {
   alive: boolean;
   /** area 공격이 떨어질 자리 (한 턴 전에 정해져 보인다) */
   aim: [number, number] | null;
+  /** 독: 요괴 차례마다 이만큼 피해 (poisonTurns 턴 동안) */
+  poison: number;
+  poisonTurns: number;
+  /** 똬리: 이 횟수만큼 요괴 차례를 건너뛴다 (숫자가 줄지 않고 공격하지 않음) */
+  frozen: number;
 }
 
 export interface Mover {
@@ -140,6 +146,14 @@ export interface Mover {
   /** 멈추기 직전 방향 */
   dx: number;
   dy: number;
+  /** 처음 속도 */
+  v0: number;
+  /** 원숭이 분신 (콤보·줍기 없음, 발사가 끝나면 사라진다) */
+  clone: boolean;
+  /** 말 질주: 멈추면 한 번 더 달린다 */
+  rerun: boolean;
+  /** 돼지 굴러가기: 벽에 튕길수록 피해 커짐 */
+  roll: boolean;
 }
 
 export interface Pickup {
@@ -176,6 +190,10 @@ export interface RunState {
   everFell: boolean;
   /** 지금까지의 조작 (서버로 보낸다) */
   log: ShotInput[];
+  /** 이번 발사에서 우정 콤보를 쓴 대원 (한 발사에 아군마다 한 번) */
+  comboUsed: number[];
+  /** 양털 장막: 남은 요괴 차례 동안 받는 피해 반 */
+  guardTurns: number;
 }
 
 // ---------- 이벤트 (소리·효과용) ----------
@@ -188,6 +206,11 @@ export type SimEvent =
   | { t: 'pick'; kind: 'heal' | 'coin'; x: number; y: number; hero: number; v: number }
   | { t: 'drop'; kind: 'heal' | 'coin'; x: number; y: number }
   | { t: 'stop'; hero: number }
+  | { t: 'combo'; hero: number; kind: ComboKind; x: number; y: number; r: number; lines: [number, number, number, number][]; targets: number[] }
+  | { t: 'special'; hero: number; kind: SpecialKind }
+  | { t: 'dash'; hero: number }
+  | { t: 'revive'; hero: number }
+  | { t: 'heal'; hero: number; v: number }
   | { t: 'attack'; id: number; kind: AttackKind; x: number; y: number; area: number; hits: { hero: number; dmg: number }[] }
   | { t: 'fall'; hero: number }
   | { t: 'wave'; n: number }
@@ -227,6 +250,8 @@ export function createRun(cfg: RunConfig): RunState {
     kills: 0,
     everFell: false,
     log: [],
+    comboUsed: [],
+    guardTurns: 0,
   };
   spawnWave(s, 0);
   return s;
@@ -234,7 +259,7 @@ export function createRun(cfg: RunConfig): RunState {
 
 function spawnWave(s: RunState, w: number) {
   s.wave = w;
-  s.foes = s.cfg.waves[w].map((f) => ({ ...clone(f), id: s.nextId++, maxHp: f.hp, left: f.cd, pi: 0, alive: true, aim: null }));
+  s.foes = s.cfg.waves[w].map((f) => ({ ...clone(f), id: s.nextId++, maxHp: f.hp, left: f.cd, pi: 0, alive: true, aim: null, poison: 0, poisonTurns: 0, frozen: 0 }));
   for (const h of s.heroes) if (!h.fallen) settle(s, h);
   lockAims(s);
 }
@@ -269,11 +294,17 @@ export function beginShot(s: RunState, input: ShotInput): SimEvent[] {
   const [dx, dy] = dirOf(inp.a);
   const v0 = speedOf(inp.p);
   s.movers = [
-    { hero: s.cur, x: h.x, y: h.y, vx: dx * v0, vy: dy * v0, r: h.r, atk: h.atk, pierce: h.type === 'pierce', touching: [], bounces: 0, stopped: false, dx, dy },
+    { hero: s.cur, x: h.x, y: h.y, vx: dx * v0, vy: dy * v0, r: h.r, atk: h.atk, pierce: h.type === 'pierce', touching: [], bounces: 0, stopped: false, dx, dy, v0, clone: false, rerun: false, roll: false },
   ];
+  s.comboUsed = [];
   s.shotSteps = 0;
   s.phase = 'shot';
   ev.push({ t: 'shot', hero: s.cur, a: inp.a, p: inp.p });
+  if (inp.s === 1 && h.charge >= h.chargeMax) {
+    h.charge = 0;
+    ev.push({ t: 'special', hero: s.cur, kind: h.special });
+    specialEffect(s, s.cur, inp.a, ev);
+  }
   return ev;
 }
 
@@ -285,6 +316,16 @@ export function stepShot(s: RunState): SimEvent[] {
   s.steps++;
   for (const m of s.movers) if (!m.stopped) moveOne(s, m, ev);
   if (s.shotSteps >= MAX_SHOT_STEPS) for (const m of s.movers) stopMover(m);
+  const main = s.movers[0];
+  if (main.stopped && main.rerun && s.shotSteps < MAX_SHOT_STEPS) {
+    // 말 질주: 멈춘 방향으로 처음 속도의 70% 로 한 번 더
+    main.rerun = false;
+    main.stopped = false;
+    main.vx = main.dx * main.v0 * 0.7;
+    main.vy = main.dy * main.v0 * 0.7;
+    main.touching = [];
+    ev.push({ t: 'dash', hero: main.hero });
+  }
   if (s.movers.every((m) => m.stopped)) {
     const m = s.movers[0];
     const h = s.heroes[m.hero];
@@ -321,7 +362,10 @@ function moveOne(s: RunState, m: Mover, ev: SimEvent[]) {
     m.y += m.vy * dt;
     hitWalls(s, m, ev);
     hitFoes(s, m, ev);
-    hitPickups(s, m, ev);
+    if (!m.clone) {
+      hitPickups(s, m, ev);
+      hitAllies(s, m, ev);
+    }
   }
   sp = Math.sqrt(m.vx * m.vx + m.vy * m.vy);
   const ns = sp - (FRIC_LIN + FRIC_K * sp) * STEP;
@@ -411,11 +455,25 @@ function strike(s: RunState, m: Mover, f: Foe, nx: number, ny: number, ev: SimEv
       weak = true;
     }
   }
+  if (m.roll) mul *= 1 + 0.3 * m.bounces;
   damageFoe(s, f, m.atk * mul, ev, weak);
 }
 
+/** 날아가는 대원이 가만히 있는 아군을 스치면 그 아군의 우정 콤보 (한 발사에 아군마다 한 번) */
+function hitAllies(s: RunState, m: Mover, ev: SimEvent[]) {
+  for (let j = 0; j < s.heroes.length; j++) {
+    if (j === m.hero || s.comboUsed.includes(j)) continue;
+    const h = s.heroes[j];
+    if (h.fallen) continue;
+    const rr = m.r + h.r;
+    if (dist2(m.x, m.y, h.x, h.y) >= rr * rr) continue;
+    s.comboUsed.push(j);
+    comboEffect(s, j, ev);
+  }
+}
+
 /** 요괴 피해 (정수로 반올림, 최소 1) */
-function damageFoe(s: RunState, f: Foe, raw: number, ev: SimEvent[], weak = false) {
+export function damageFoe(s: RunState, f: Foe, raw: number, ev: SimEvent[], weak = false) {
   if (!f.alive) return;
   const dmg = Math.max(1, Math.round(raw));
   f.hp -= dmg;
@@ -453,7 +511,7 @@ function hitPickups(s: RunState, m: Mover, ev: SimEvent[]) {
 }
 
 /** 회복 (회복량 강화 반영, 정수). 실제로 오른 양 */
-function healHero(h: Hero, raw: number): number {
+export function healHero(h: Hero, raw: number): number {
   if (h.fallen) return 0;
   const before = h.hp;
   h.hp = Math.min(h.maxHp, h.hp + Math.max(1, Math.round(raw * h.healMul)));
@@ -461,7 +519,7 @@ function healHero(h: Hero, raw: number): number {
 }
 
 /** 멈춘 대원을 요괴·벽 밖으로 (겹쳐 멈추지 않게) */
-function settle(s: RunState, h: Hero) {
+export function settle(s: RunState, h: Hero) {
   for (let k = 0; k < 3; k++) {
     for (const f of s.foes) {
       if (!f.alive) continue;
@@ -486,7 +544,7 @@ function settle(s: RunState, h: Hero) {
 
 // ---------- 턴 끝 · 요괴 차례 ----------
 
-const aliveFoes = (s: RunState) => s.foes.filter((f) => f.alive);
+export const aliveFoes = (s: RunState) => s.foes.filter((f) => f.alive);
 const aliveHeroes = (s: RunState) => s.heroes.filter((h) => !h.fallen);
 
 /** (x,y) 에서 가장 가까운 살아 있는 대원 번호 (같으면 앞 순서). 없으면 null */
@@ -505,9 +563,9 @@ export function nearestHero(s: RunState, x: number, y: number): number | null {
 }
 
 /** 다음 차례에 area 공격을 할 요괴는 떨어질 자리를 미리 정한다 (화면에 보인다) */
-function lockAims(s: RunState) {
+export function lockAims(s: RunState) {
   for (const f of s.foes) {
-    if (!f.alive || f.left !== 1 || f.pattern[f.pi] !== 'area' || f.aim) continue;
+    if (!f.alive || f.left !== 1 || f.frozen > 0 || f.pattern[f.pi] !== 'area' || f.aim) continue;
     const t = nearestHero(s, f.x, f.y);
     if (t !== null) f.aim = [s.heroes[t].x, s.heroes[t].y];
   }
@@ -516,6 +574,7 @@ function lockAims(s: RunState) {
 function hurtHero(s: RunState, i: number, raw: number): number {
   const h = s.heroes[i];
   let d = raw;
+  if (s.guardTurns > 0) d *= 0.5;
   if (h.shield) {
     d *= 0.5;
     h.shield = false;
@@ -590,12 +649,23 @@ export function endTurn(s: RunState): SimEvent[] {
   if (!waveCheck(s, ev)) {
     for (const f of s.foes) {
       if (!f.alive) continue;
+      if (f.poisonTurns > 0) {
+        f.poisonTurns--;
+        damageFoe(s, f, f.poison, ev);
+        if (!f.alive) continue;
+      }
+      if (f.frozen > 0) {
+        f.frozen--;
+        continue;
+      }
       f.left--;
       if (f.left > 0) continue;
       foeAttack(s, f, ev);
       f.left = f.cd;
       if (!aliveHeroes(s).length) break;
     }
+    if (s.guardTurns > 0) s.guardTurns--;
+    if (aliveHeroes(s).length) waveCheck(s, ev);
     lockAims(s);
   }
   if ((s.phase as Phase) === 'clear') return ev;
@@ -752,7 +822,7 @@ function rayCapsule(x: number, y: number, dx: number, dy: number, w: Seg, r: num
 export function threats(s: RunState): { id: number; kind: AttackKind; x: number; y: number; r: number; hero: number | null }[] {
   const out: { id: number; kind: AttackKind; x: number; y: number; r: number; hero: number | null }[] = [];
   for (const f of s.foes) {
-    if (!f.alive || f.left !== 1) continue;
+    if (!f.alive || f.left !== 1 || f.frozen > 0) continue;
     const kind = f.pattern[f.pi];
     if (kind === 'area' && f.aim) out.push({ id: f.id, kind, x: f.aim[0], y: f.aim[1], r: f.area, hero: null });
     else if (kind === 'near') {

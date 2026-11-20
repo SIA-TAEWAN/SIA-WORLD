@@ -5,3 +5,4 @@ export * from './enemies.ts';
 export * from './stages.ts';
 export * from './sim.ts';
 export * from './config.ts';
+export * from './skills.ts';

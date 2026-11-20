@@ -179,3 +179,40 @@ button, input { font: inherit; color: inherit; }
 body { -webkit-touch-callout: none; }
 /* 처음 안내는 대원 줄보다 위에 */
 #app .hint { bottom: 34%; }
+
+/* 타입: 반사형 = 팀 파랑, 관통형 = 주황 (판의 구슬 테두리와 같은 색) */
+.tag.reflect { background: var(--team-a); }
+.tag.pierce { background: var(--accent); }
+img.ball { border-radius: 50%; background: var(--panel); border: 4px solid var(--team-a); box-shadow: 0 0 0 2px var(--outline); }
+img.ball.pierce { border-color: var(--accent); }
+.party-mini { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.party-mini span { position: relative; display: flex; flex-direction: column; align-items: center; font-size: 14px; }
+.party-mini img { width: 48px; height: 48px; }
+.party-mini b { position: absolute; top: -4px; left: 6px; font-weight: normal; font-size: 13px; background: var(--outline); color: var(--white); border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; }
+.hero-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.hero-row img { width: 54px; height: 54px; flex: none; }
+.hero-row.locked img { filter: grayscale(1) brightness(0.7); }
+.hero-row.locked { opacity: 0.8; }
+.hero-info { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.hero-info b { font-weight: normal; font-size: 18px; }
+.pick-info { margin-top: 10px; background: var(--panel-strong); border-radius: var(--radius-item); padding: 8px 12px; }
+.party-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.slot { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 92px; cursor: pointer;
+  background: var(--white); border: var(--line) solid var(--outline); border-radius: var(--radius-item); box-shadow: 0 3px 0 var(--outline); font-size: 14px; padding: 6px 2px; }
+.slot img { width: 52px; height: 52px; }
+.slot b { font-weight: normal; }
+.slot i { position: absolute; top: 4px; left: 6px; font-style: normal; font-size: 13px; background: var(--outline); color: var(--white); border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; }
+.slot.empty { background: var(--track); color: var(--ink-soft); box-shadow: none; border-style: dashed; }
+.pick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.pick-grid .leader img { max-width: 44px; }
+.leader.focus { outline: 3px solid var(--pink); outline-offset: 1px; }
+.leader.on em { position: static; color: var(--ink); text-shadow: none; font-size: 11px; }
+.st-mid { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.btn.stage-row .st-mid > span:first-child { font-size: 15px; }
+.foes { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.foes img { width: 26px; height: 26px; object-fit: contain; }
+.foes .tag { margin-left: 4px; }
+.star-why { list-style: none; margin: 0 auto; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--ink-soft); }
+.star-why li.on { color: var(--ink); }
+.star-why li.on::first-letter { color: var(--primary-deep); }
+.troop-pill.over { color: var(--lose); }

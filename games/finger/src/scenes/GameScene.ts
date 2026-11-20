@@ -77,6 +77,7 @@ export class GameScene extends Phaser.Scene {
   private aimG!: Phaser.GameObjects.Graphics;
   private barG!: Phaser.GameObjects.Graphics;
   private heroImgs: Phaser.GameObjects.Image[] = [];
+  private cloneImgs: Phaser.GameObjects.Image[] = [];
   private foeViews = new Map<number, FoeView>();
   private pickViews = new Map<number, Phaser.GameObjects.Image | Phaser.GameObjects.Graphics>();
   private slots: SlotView[] = [];
@@ -107,6 +108,7 @@ export class GameScene extends Phaser.Scene {
     this.acc = 0;
     this.queue = [];
     this.heroImgs = [];
+    this.cloneImgs = [];
     this.foeViews.clear();
     this.pickViews.clear();
     this.slots = [];
@@ -321,6 +323,31 @@ export class GameScene extends Phaser.Scene {
           break;
         case 'drop':
           break;
+        case 'combo':
+          this.combo(e);
+          break;
+        case 'special': {
+          const h = this.run.heroes[e.hero];
+          this.hooks.sound('cutin');
+          this.banner(`${HEROES[h.id].name} · ${HEROES[h.id].specialName}`, 40);
+          if (e.kind === 'dragonfall') this.cameras.main.flash(250, 255, 211, 77);
+          if (e.kind === 'roar' || e.kind === 'dragonfall') this.cameras.main.shake(250, 0.008);
+          break;
+        }
+        case 'dash':
+          this.hooks.sound('boost');
+          break;
+        case 'revive': {
+          const h = this.run.heroes[e.hero];
+          this.shownHp[e.hero] = h.hp;
+          this.floatText(h.x, h.y - 40, '일어났다!', '#ffd34d', 30);
+          break;
+        }
+        case 'heal': {
+          const h = this.run.heroes[e.hero];
+          this.floatText(h.x, h.y - 30, `+${e.v}`, '#4cb86a', 26);
+          break;
+        }
         case 'pick':
           this.hooks.sound(e.kind === 'heal' ? 'tankHeal' : 'coin');
           this.floatText(e.x, e.y - 20, e.kind === 'heal' ? `+${e.v}` : `🪙+${e.v}`, e.kind === 'heal' ? '#4cb86a' : '#f0a500', 28);
@@ -358,6 +385,33 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 우정 콤보 효과: 줄(레이저·표창·날려차기) · 원(땅 울림·독·효과 지우기) · 이름 */
+  private combo(e: Extract<SimEvent, { t: 'combo' }>) {
+    const h = this.run.heroes[e.hero];
+    const sounds: Record<string, string> = { heal: 'tankHeal', guard: 'tankHeal', coin: 'coin', quake: 'tankBoom', poison: 'tankBoom', cleanse: 'tankBoom' };
+    this.hooks.sound(sounds[e.kind] ?? 'tankLaser');
+    const color = e.kind === 'poison' ? COLOR.win : e.kind === 'heal' || e.kind === 'guard' ? COLOR.white : e.kind === 'laserH' || e.kind === 'laserV' ? COLOR.pink : COLOR.primary;
+    const g = this.add.graphics().setDepth(780);
+    for (const [x0, y0, x1, y1] of e.lines) {
+      const thick = e.kind === 'laserH' || e.kind === 'laserV' ? 26 : 10;
+      g.lineStyle(thick + 8, COLOR.outline, 0.6).lineBetween(RX + x0, RY + y0, RX + x1, RY + y1);
+      g.lineStyle(thick, color, 1).lineBetween(RX + x0, RY + y0, RX + x1, RY + y1);
+      if (e.kind === 'shuriken' || e.kind === 'balls') {
+        const img = this.add.image(RX + x0, RY + y0, e.kind === 'shuriken' ? 'p-shuriken' : 'fx-pop').setDisplaySize(36, 36).setDepth(790);
+        this.tweens.add({ targets: img, x: RX + x1, y: RY + y1, angle: 360, duration: 220, onComplete: () => img.destroy() });
+      }
+    }
+    if (e.r > 0) {
+      g.fillStyle(color, 0.35).fillCircle(RX + e.x, RY + e.y, e.r);
+      g.lineStyle(6, color, 1).strokeCircle(RX + e.x, RY + e.y, e.r);
+    }
+    if (e.kind === 'heal' || e.kind === 'guard') {
+      for (const o of this.run.heroes) if (!o.fallen) g.lineStyle(6, e.kind === 'heal' ? COLOR.win : COLOR.white, 1).strokeCircle(RX + o.x, RY + o.y, o.r + 10);
+    }
+    this.tweens.add({ targets: g, alpha: 0, delay: 120, duration: 380, onComplete: () => g.destroy() });
+    this.floatText(h.x, h.y - 46, HEROES[h.id].comboName, '#ffffff', 24);
+  }
+
   private spark(x: number, y: number) {
     const g = this.add.graphics().setDepth(700);
     g.fillStyle(COLOR.white, 0.9).fillCircle(RX + x, RY + y, 10);
@@ -391,9 +445,9 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: t, y: t.y - 40, alpha: 0, duration: 700, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });
   }
 
-  private banner(text: string) {
+  private banner(text: string, size = 64) {
     const t = this.add
-      .text(W / 2, RY + 360, text, { fontFamily: FONT, fontSize: '64px', color: '#ffd34d', stroke: '#2a1a10', strokeThickness: 10 })
+      .text(W / 2, RY + 360, text, { fontFamily: FONT, fontSize: `${size}px`, color: '#ffd34d', stroke: '#2a1a10', strokeThickness: 10 })
       .setOrigin(0.5)
       .setDepth(1100)
       .setScale(0.6);
@@ -418,6 +472,7 @@ export class GameScene extends Phaser.Scene {
     this.drawFoes(time);
     this.drawPickups();
     this.drawHeroes(time);
+    this.drawClones();
     this.drawAim();
     this.drawBar(time);
   }
@@ -480,8 +535,11 @@ export class GameScene extends Phaser.Scene {
         v.bar.fillStyle(COLOR.primary, 1).fillCircle(wx, wy, 13 * k);
         v.bar.lineStyle(4, COLOR.outline, 1).strokeCircle(wx, wy, 13 * k);
       }
+      // 독(초록 고리) · 똬리(파란 고리)
+      if (f.poisonTurns > 0) v.bar.lineStyle(5, COLOR.win, 0.9).strokeCircle(x, y, f.r + 4);
+      if (f.frozen > 0) v.bar.lineStyle(6, COLOR.teamA, 0.9).strokeCircle(x, y, f.r + 10);
       // 머리 위 남은 턴
-      v.num.setText(String(f.left)).setPosition(x - f.r * 0.7, y - f.r * 0.8);
+      v.num.setText(f.frozen > 0 ? '멈춤' : String(f.left)).setPosition(x - f.r * 0.7, y - f.r * 0.8);
       v.num.setColor(f.left <= 1 ? '#ff4d6d' : '#ffffff');
     }
     for (const [id, v] of this.foeViews) {
@@ -535,10 +593,22 @@ export class GameScene extends Phaser.Scene {
         const k = 1 + 0.08 * Math.sin(time / 140);
         g.lineStyle(6, this.armed ? COLOR.pink : COLOR.primary, 1).strokeCircle(x, y, (r + 9) * k);
       }
+      if (h.shield || this.run.guardTurns > 0) g.lineStyle(4, COLOR.white, 0.9).strokeCircle(x, y, r + 5);
       if (!m) {
         g.fillStyle(COLOR.outline, 1).fillRoundedRect(x - 30, y + r + 4, 60, 10, 5);
         g.fillStyle(COLOR.win, 1).fillRoundedRect(x - 28, y + r + 6, Math.max(0, (56 * this.shownHp[i]) / h.maxHp), 6, 3);
       }
+    });
+  }
+
+  /** 원숭이 분신 */
+  private drawClones() {
+    const clones = this.run.movers.filter((m) => m.clone);
+    while (this.cloneImgs.length < clones.length) this.cloneImgs.push(this.add.image(0, 0, `ball-${this.run.heroes[this.run.cur].id}`).setDepth(490).setAlpha(0.8));
+    this.cloneImgs.forEach((img, i) => {
+      const m = clones[i];
+      if (!m) return img.setVisible(false);
+      img.setTexture(`ball-${this.run.heroes[m.hero].id}`).setVisible(true).setPosition(RX + m.x, RY + m.y).setDisplaySize(m.r * 2.1, m.r * 2.1);
     });
   }
 
