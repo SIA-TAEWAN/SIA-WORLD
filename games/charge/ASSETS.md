@@ -7,7 +7,8 @@
   - 요괴 9종 `e-*` (작은 대장은 지역에 따라 방망이 · 물귀신 · 수문장 · 해골 그림을 크게) · 보스 12종 `b-*`
   - 바닥 4종 `tile-field` · `tile-bamboo` · `tile-palace` · `tile-underworld` (3지역씩) · `p-shuriken`(표창) · `fx-pop`(터짐) · `fx-coin`
 - **전용 그림 (SpriteCook, 2026-11-20)**: 문 틀 `gate` · 통나무 `o-log` · 칼날 `o-blade` · 구덩이 `o-pit` · 상자 `crate` · 물웅덩이 `h-water` · 흙더미 `h-bamboo` · 메인 그림 `main` · 로비 카드 `shared/images/card-charge.png`. 원본은 `art/*.png`, asset id 는 `spritecook-assets.json`. 문 틀은 build.py 가 가운데 흰 판을 반투명(알파 150)으로 바꾼다.
-- 코드로 그리는 것: 길(흙색 + 굵은 테두리 + 가운데 점선) · 보스 체력 바 · 보스 공격 예고(빨간 깜빡임) · 불길(주황). 전용 그림을 못 읽으면 문·장애물·상자·숨은 자리도 코드 그림으로 그린다.
+- **길·길가·불길 그림 (SpriteCook, 2026-11-20 2차)**: 지역 바닥 4종마다 이어 붙이는 길 바닥 `road-field` · `road-bamboo` · `road-palace` · `road-underworld` (512×512, 화면에서는 256px 로 깔고 달리는 만큼 흐른다) 와 길가 장식 2종씩 — 들판 `d-field-1`(꽃 덤불) · `d-field-2`(돌탑), 대숲 `d-bamboo-1`(대나무) · `d-bamboo-2`(이끼 바위), 궁궐 `d-palace-1`(석등) · `d-palace-2`(청사초롱), 저승 `d-underworld-1`(도깨비불 화로) · `d-underworld-2`(마른 나무) — 그리고 강철이 불길 `fx-fire`. 판은 그 지역의 길·장식만 받는다 (`art.ts` 의 `artFor`). 길 바닥은 build.py 의 `TONE` 으로 밝은 색을 섞어 대원·요괴가 잘 보이게 했다 (들판 50% · 대숲 40% · 저승 45%).
+- 코드로 그리는 것: 길 테두리(굵은 갈색 선) · 보스 체력 바 · 보스 공격 예고(빨간 깜빡임) · 불길 밑의 옅은 주황 바탕. 전용 그림을 못 읽으면 문·장애물·상자·숨은 자리·길(단색 + 가운데 점선)·불길(주황 띠)도 코드 그림으로 그리고, 길가 장식은 그리지 않는다.
 - 소리: 공용 `shared/sound.js` 효과음 (survShot · survPop · survHurt · boost · logHit · tick · survBossWarn · survBossDown · win · lose · click). 소리 파일이 없으면 공용 모듈이 만든 소리를 쓴다 (`shared/sounds/*.ogg` 404 는 정상).
 
 ## 전용 그림 만들기 (SpriteCook) — 작업 지시
@@ -38,7 +39,17 @@
 | `main` | 1080×600 | 메뉴 위 그림 | 넓은 흙길을 위쪽으로 우르르 달리는 십이지 쥐 대원 무리, 앞에 파란 숫자 문과 빨간 숫자 문, 멀리 길 끝에 큰 도깨비 보스, 양옆 풀밭 (16:9, 글자 없음) | 메인 화면 맨 위 |
 | 로비 카드 | 640×400 | 로비 | `main` 과 같은 장면을 16:10 로. 받은 그림을 `shared/images/card-charge.png` 로 가운데 잘라 640×400 으로 줄인다 (지금은 기존 그림을 합친 임시 카드) | 로비 |
 
+### 길 · 길가 장식 · 불길 (2차, 2026-11-20)
+
+같은 순서로 만든다. 다른 점만 적는다.
+
+- 길 바닥 `road-<지역>`: `mode="texture"`, `bg_mode="include"`, `smart_crop=false`, 512×512, 화풍 참고는 들판 바닥(`12011533-…`) 하나. 프롬프트 요지: "Seamless tileable top-down ground texture … very flat and calm, low contrast, sparse small details, no shadows, no objects, no text". 받은 그림은 **2×2 로 이어 붙여 이은 자리가 보이는지 확인**하고 쓴다 (대숲 1차는 얼룩 때문에 이은 자리가 보여 버렸다 — "one single perfectly uniform flat colour, no blotches" 를 넣어 다시 만들었다). build.py 의 `TILES` 에 이름을, 색을 차분하게 하려면 `TONE` 에 섞을 색을 적는다.
+- 길가 장식 `d-<지역>-1|2`: 투명 배경, 한 개짜리 물건, "seen from slightly above, roadside decoration". 파일 160×160, 화면 68~82px. 길 양옆 80px 풀밭에 `GameScene.drawDecor` 가 길 위치 190 마다 한 자리씩(35% 는 비움) 정해진 순서로 놓는다 (오른쪽은 좌우 뒤집기).
+- 불길 `fx-fire`: 불꽃 하나 (128×152). `drawBoss` 가 불길 구역에 엇갈린 4줄로 깔고 제각기 일렁이게 한다.
+- 새 지역 바닥을 더하면 `art.ts` 의 `GroundName` · `ART_FILES` · `ART_SIZE` 와 build.py 의 `SIZES` · `TILES` 에 같은 이름을 적는다.
+
 ## 더 만들면 좋은 것 (나중에)
 
 - 대원이 뛰는 모습: `run-<id>.png` × 12 (4프레임 가로 시트, 프레임 96×96). 지금은 전신 그림 한 장을 위아래로 흔든다. 넣으면 `GameScene.drawCrowd` 를 시트 애니메이션으로 바꾼다.
-- 보스 공격 그림 (내려찍기 · 불길) — 지금은 빨간/주황 깜빡이는 띠.
+- 보스 공격 예고 그림 (내려찍기) — 지금은 빨간 깜빡이는 띠. 불길은 `fx-fire` 로 바꿨다.
+- 길 테두리 그림 (지역마다 돌담 · 대나무 울타리 등) — 지금은 굵은 갈색 선.

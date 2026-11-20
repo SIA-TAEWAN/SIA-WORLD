@@ -4,6 +4,7 @@
 - 투명 여백을 잘라 내고 아래 SIZES 의 칸(너비×높이, 화면 크기의 2배) 가운데에 맞춰 놓는다.
   칸의 크기는 src/scenes/art.ts 의 ART_SIZE × 2 와 같아야 한다.
 - 문 틀(gate)은 늘여 쓰므로 칸을 꽉 채운다 (비율 무시).
+- 길 바닥(road-*)은 이어 붙이는 그림이라 자르지 않고 TILES 의 크기로 줄이기만 한다.
 - 256색 팔레트 PNG 로 저장해 용량을 줄이고, spritecook-assets.json 의 sha12 를 새로 적는다.
 - 만든 다음 src/scenes/art.ts 의 ART_FILES 에 이름을 적어야 게임이 쓴다.
 """
@@ -26,8 +27,31 @@ SIZES = {
     'h-water': (400, 140),
     'h-bamboo': (400, 100),
     'main': (1080, 600),
+    # 길가 장식 (지역 바닥마다 2종) · 불길
+    'd-field-1': (160, 160),
+    'd-field-2': (160, 160),
+    'd-bamboo-1': (160, 160),
+    'd-bamboo-2': (160, 160),
+    'd-palace-1': (160, 160),
+    'd-palace-2': (160, 160),
+    'd-underworld-1': (160, 160),
+    'd-underworld-2': (160, 160),
+    'fx-fire': (128, 152),
 }
 STRETCH = {'gate'}
+# 이어 붙이는 길 바닥 (배경 포함 · 여백 자르지 않고 통째로 512×512 로 줄인다)
+TILES = {
+    'road-field': 512,
+    'road-bamboo': 512,
+    'road-palace': 512,
+    'road-underworld': 512,
+}
+# 길 바닥은 대원·요괴가 잘 보이도록 밝은 색을 섞어 차분하게 만든다: (섞을 색, 섞는 정도 0~1)
+TONE = {
+    'road-field': ((0xEE, 0xE2, 0xC8), 0.5),
+    'road-bamboo': ((0xEE, 0xE2, 0xC8), 0.4),
+    'road-underworld': ((0xE2, 0xD3, 0xB5), 0.45),
+}
 
 
 def sha12(path):
@@ -111,7 +135,20 @@ def main():
             if a.get('label', '').startswith(name + ' '):
                 a['sha12'] = sha12(path)
         made.append(name)
-    card = os.path.join(HERE, 'card.png')
+    for name, size in TILES.items():
+        path = os.path.join(HERE, name + '.png')
+        if not os.path.exists(path):
+            continue
+        im = Image.open(path).convert('RGB').resize((size, size), Image.LANCZOS)
+        if name in TONE:
+            colour, amount = TONE[name]
+            im = Image.blend(im, Image.new('RGB', im.size, colour), amount)
+        im.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(os.path.join(OUT, name + '.png'), optimize=True)
+        for a in manifest['assets']:
+            if a.get('label', '').startswith(name + ' '):
+                a['sha12'] = sha12(path)
+        made.append(name)
+    card =os.path.join(HERE, 'card.png')
     if os.path.exists(card):
         wide(Image.open(card), 640, 400).quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG).save(CARD_OUT, optimize=True)
         for a in manifest['assets']:

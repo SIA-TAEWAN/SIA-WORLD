@@ -45,6 +45,75 @@
       "asset_id": "1b358e9c-d4d5-4170-884d-12fae6260ca7",
       "label": "card → shared/images/card-charge.png (640x400, 로비 카드)",
       "sha12": "a43b55df2127"
+    },
+    {
+      "asset_id": "c244f116-a8cf-4a3d-b952-fbe0459dd99b",
+      "label": "road-field → public/art/road-field.png (512x512, 이어 붙이는 길 바닥 · 들판 1~3지역)",
+      "sha12": "948d28b26b02"
+    },
+    {
+      "asset_id": "510e27c0-3594-47f1-9507-947640b7749c",
+      "label": "road-bamboo → public/art/road-bamboo.png (512x512, 이어 붙이는 길 바닥 · 대숲 4~6지역)",
+      "sha12": "b256f6afcf56"
+    },
+    {
+      "asset_id": "76b17cdc-5190-42e1-a4dd-5a6d7f057288",
+      "label": "road-palace → public/art/road-palace.png (512x512, 이어 붙이는 길 바닥 · 궁궐 7~9지역)",
+      "sha12": "2c2962723926"
+    },
+    {
+      "asset_id": "caf5644e-0ed0-43a8-9b38-8414b7677e76",
+      "label": "road-underworld → public/art/road-underworld.png (512x512, 이어 붙이는 길 바닥 · 저승 10~12지역)",
+      "sha12": "a661135b9ab9"
+    },
+    {
+      "asset_id": "d8ef6bf1-df04-43b5-965b-773465e50187",
+      "label": "d-field-1 → public/art/d-field-1.png (160x160, 길가 장식 · 꽃 덤불)",
+      "sha12": "e5e440ca437a"
+    },
+    {
+      "asset_id": "8224be10-e68a-404f-8d00-eb5f4550b33b",
+      "label": "d-field-2 → public/art/d-field-2.png (160x160, 길가 장식 · 돌탑)",
+      "sha12": "4fb1362374d0"
+    },
+    {
+      "asset_id": "6d0cfa33-05f5-420b-ad49-10febf6d0b9b",
+      "label": "d-bamboo-1 → public/art/d-bamboo-1.png (160x160, 길가 장식 · 대나무)",
+      "sha12": "6e81501e60dd"
+    },
+    {
+      "asset_id": "79a093e9-31c3-40a3-a938-791f83a7fe34",
+      "label": "d-bamboo-2 → public/art/d-bamboo-2.png (160x160, 길가 장식 · 이끼 바위)",
+      "sha12": "afb6247ce2ed"
+    },
+    {
+      "asset_id": "c2370e4b-fcd0-49fb-9aa4-fd75adb87d0f",
+      "label": "d-palace-1 → public/art/d-palace-1.png (160x160, 길가 장식 · 석등)",
+      "sha12": "d646e79447a2"
+    },
+    {
+      "asset_id": "5829af4a-be4c-45d0-9249-6dd858370354",
+      "label": "d-palace-2 → public/art/d-palace-2.png (160x160, 길가 장식 · 청사초롱)",
+      "sha12": "d6d71ec415c6"
+    },
+    {
+      "asset_id": "b5c406a5-d321-4c83-aa7d-f3b449bcbaf5",
+      "label": "d-underworld-1 → public/art/d-underworld-1.png (160x160, 길가 장식 · 도깨비불 화로)",
+      "sha12": "00d93bfa317c"
+    },
+    {
+      "asset_id": "7a3f13b2-161a-4331-838b-3baa0cef9014",
+      "label": "d-underworld-2 → public/art/d-underworld-2.png (160x160, 길가 장식 · 마른 나무)",
+      "sha12": "4ed5a58608a5"
+    },
+    {
+      "asset_id": "5d1665c8-79ed-4258-9772-3674e06ecc6a",
+      "label": "fx-fire → public/art/fx-fire.png (128x152, 강철이 불길)",
+      "sha12": "6e4c18ca73ea"
+    },
+    {
+      "asset_id": "597c9a2a-af05-4fcc-8377-2989b0000500",
+      "label": "(쓰지 않음) road-bamboo 1차 — 얼룩 때문에 이은 자리가 보여서 버림"
     }
   ]
 }

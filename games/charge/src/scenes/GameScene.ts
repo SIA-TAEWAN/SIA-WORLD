@@ -6,7 +6,7 @@ import { autopilot } from '../game/autopilot';
 import { CRATE_HALF, STEP, isGood, obstacleX, setTarget, step, type Gate, type Horde, type RunState, type SimEvent } from '../game/sim';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
 import { COLOR } from '../theme';
-import { ART_FILES, ART_SIZE, GATE_SLICE, hasArt, type OptionalArt } from './art';
+import { ART_SIZE, GATE_SLICE, artFor, hasArt, type GroundName, type OptionalArt } from './art';
 
 /** 기준 화면 크기 (세로 9:16) */
 export const W = 720;
@@ -18,12 +18,20 @@ const CX = W / 2;
 const HORDE_DRAW = 70;
 const FONT = "'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif";
 /** 지역 바닥 그림과 길 색 (DESIGN.md 의 기존 값) */
-const GROUND: Record<string, { tile: string; road: number }> = {
-  field: { tile: 'tile-field', road: COLOR.track },
-  bamboo: { tile: 'tile-bamboo', road: COLOR.track },
-  palace: { tile: 'tile-palace', road: COLOR.panel },
-  underworld: { tile: 'tile-underworld', road: COLOR.lineSoft },
+const GROUND: Record<GroundName, { name: GroundName; tile: string; road: number }> = {
+  field: { name: 'field', tile: 'tile-field', road: COLOR.track },
+  bamboo: { name: 'bamboo', tile: 'tile-bamboo', road: COLOR.track },
+  palace: { name: 'palace', tile: 'tile-palace', road: COLOR.panel },
+  underworld: { name: 'underworld', tile: 'tile-underworld', road: COLOR.lineSoft },
 };
+/** 길가 장식을 놓는 간격 (길 위치 기준) */
+const DECOR_GAP = 190;
+
+/** 자리 번호 → 0~1 (판마다 같은 자리에 같은 장식이 놓인다) */
+function hash01(i: number, salt: number) {
+  const n = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
+  return n - Math.floor(n);
+}
 
 export interface SceneHooks {
   /** 판이 끝났다 (클리어·실패 연출 뒤) */
@@ -67,6 +75,8 @@ export class GameScene extends Phaser.Scene {
 
   private grass!: Phaser.GameObjects.TileSprite;
   private road!: Phaser.GameObjects.Graphics;
+  /** 길 바닥 그림 (road-<지역>.png 가 있을 때. 없으면 단색 길) */
+  private roadTile: Phaser.GameObjects.TileSprite | null = null;
   private things!: Phaser.GameObjects.Graphics;
   private crowd: Phaser.GameObjects.Image[] = [];
   private leaderImg!: Phaser.GameObjects.Image;
@@ -123,12 +133,15 @@ export class GameScene extends Phaser.Scene {
     const bosses = this.run.endless ? Object.values(BOSS_ART) : [bossArt(this.run.boss.kind, this.run.stage.region)];
     for (const b of bosses) this.load.image(b.art, artUrl(b.art));
     for (const n of [this.ground.tile, 'p-shuriken', 'fx-pop', 'fx-coin']) this.load.image(n, artUrl(n));
-    for (const n of ART_FILES) if (n !== 'main') this.load.image(n, artUrl(n));
+    for (const n of artFor(this.ground.name)) this.load.image(n, artUrl(n));
   }
 
   create() {
     this.grass = this.add.tileSprite(CX, H / 2, W, H, this.ground.tile).setDepth(-20);
     this.grass.tileScaleX = this.grass.tileScaleY = 0.5;
+    const roadArt: OptionalArt = `road-${this.ground.name}`;
+    this.roadTile = hasArt(roadArt) && this.textures.exists(roadArt) ? this.add.tileSprite(CX, H / 2, ROAD_W, H, roadArt).setDepth(-15) : null;
+    if (this.roadTile) this.roadTile.tileScaleX = this.roadTile.tileScaleY = 0.5;
     this.road = this.add.graphics().setDepth(-10);
     this.things = this.add.graphics().setDepth(900);
 
@@ -222,16 +235,21 @@ export class GameScene extends Phaser.Scene {
     const g = this.road;
     g.clear();
     const x0 = CX - ROAD_W / 2;
-    g.fillStyle(this.ground.road, 1).fillRect(x0, 0, ROAD_W, H);
+    if (this.roadTile) this.roadTile.tilePositionY = -s.z * 2;
+    else g.fillStyle(this.ground.road, 1).fillRect(x0, 0, ROAD_W, H);
     g.fillStyle(COLOR.outline, 1).fillRect(x0 - 8, 0, 8, H).fillRect(x0 + ROAD_W, 0, 8, H);
-    g.fillStyle(COLOR.emptyLine, 0.6);
-    const off = s.z % 120;
-    for (let y = -120 + off; y < H; y += 120) g.fillRect(CX - 4, y, 8, 60);
+    if (!this.roadTile) {
+      // 단색 길일 때만 가운데 점선으로 달리는 느낌을 낸다 (그림 길은 바닥 무늬가 흐른다)
+      g.fillStyle(COLOR.emptyLine, 0.6);
+      const off = s.z % 120;
+      for (let y = -120 + off; y < H; y += 120) g.fillRect(CX - 4, y, 8, 60);
+    }
     // 화력 강화 중: 무리 아래가 노랗게 빛난다
     if (s.t < s.powerUntil) g.fillStyle(COLOR.primary, 0.35 + 0.15 * Math.sin(now * 12)).fillEllipse(CX + s.x, CROWD_Y + 40, crowdRadius(s.troops) * 2 + 60, 130);
 
     this.things.clear();
     this.seen.clear();
+    this.drawDecor();
     this.drawObstacles(now);
     this.drawCrates();
     this.drawGates();
@@ -256,6 +274,23 @@ export class GameScene extends Phaser.Scene {
     }
     this.seen.add(key);
     return img.setPosition(x, y).setDisplaySize(w, h).setDepth(depth);
+  }
+
+  /** 길가 장식: 길 양옆 풀밭에 지역마다 다른 그림 2종을 띄엄띄엄 (그림이 없으면 아무것도 그리지 않는다) */
+  private drawDecor() {
+    const first = Math.floor((this.run.z - (H - CROWD_Y) - 60) / DECOR_GAP);
+    const last = Math.ceil((this.run.z + CROWD_Y + 60) / DECOR_GAP);
+    const edge = (W - ROAD_W) / 2 - 8;
+    for (let i = first; i <= last; i++) {
+      for (const side of [0, 1]) {
+        if (hash01(i, side) < 0.35) continue;
+        const name: OptionalArt = `d-${this.ground.name}-${hash01(i, side + 2) < 0.5 ? 1 : 2}`;
+        const size = 68 + hash01(i, side + 4) * 14;
+        const dx = edge / 2 + (hash01(i, side + 6) - 0.5) * 10;
+        const y = this.sy(i * DECOR_GAP + hash01(i, side + 8) * 90);
+        this.art(name, `${side}:${i}`, side ? W - dx : dx, y, -5, size, size)?.setFlipX(side === 1);
+      }
+    }
   }
 
   private drawObstacles(now: number) {
@@ -473,9 +508,24 @@ export class GameScene extends Phaser.Scene {
     }
     // 공격 예고: 떨어질 자리가 빨갛게 깜빡인다 · 남은 불길은 주황
     this.band.clear();
-    for (const f of s.burns) {
-      this.band.fillStyle(COLOR.accent, 0.35 + 0.15 * Math.sin(now * 20)).fillRect(CX + f.band[0], CROWD_Y - 120, f.band[1] - f.band[0], 300);
-    }
+    s.burns.forEach((f, fi) => {
+      const fx = CX + f.band[0];
+      const fw = f.band[1] - f.band[0];
+      const fire = hasArt('fx-fire') && this.textures.exists('fx-fire');
+      this.band.fillStyle(COLOR.accent, fire ? 0.22 : 0.35 + 0.15 * Math.sin(now * 20)).fillRect(fx, CROWD_Y - 120, fw, 300);
+      if (!fire) return;
+      // 불길 그림을 엇갈린 줄로 깔고 제각기 일렁이게 한다
+      const cols = Math.max(1, Math.floor(fw / 60));
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < cols; c++) {
+          const k = r * 7 + c * 3 + fi;
+          const wob = 1 + 0.12 * Math.sin(now * 11 + k * 1.9);
+          const x = fx + ((c + 0.5 + (r % 2 ? 0.25 : -0.25)) * fw) / cols;
+          const y = CROWD_Y - 70 + r * 72;
+          this.art('fx-fire', `${fi}:${r}:${c}`, x, y, 1900 + r, ART_SIZE['fx-fire'][0] * wob, ART_SIZE['fx-fire'][1] * (2 - wob));
+        }
+      }
+    });
     if (s.phase === 'boss') {
       const blink = 0.25 + 0.2 * Math.sin(now * 18);
       for (const bd of b.bands) {
