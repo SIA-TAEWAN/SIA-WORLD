@@ -8,7 +8,7 @@ import {
   type EndlessRecord, type FinishResult, type HellRecord, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../game/progress';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
-import { dropPending, flushPending, keepPending, type SendOutcome, type Store } from './pending';
+import { dropPending, flushPending, keepPending, mayBeLive, type SendOutcome, type Store } from './pending';
 import { worldSupabase } from './world';
 
 /**
@@ -17,7 +17,8 @@ import { worldSupabase } from './world';
  *   · 출전할 때 start, 판이 끝나면 finish 한 번
  *   · finish 는 보내기 전에 결과를 기기에 보관하고, 서버가 받았거나 거절하면 지운다. 통신 문제(12초 안에 답 없음 포함)면
  *     남겨 두었다가 다음 판을 시작할 때·다음 저장이 성공했을 때·다음 접속 때 다시 보낸다 (net/pending.ts)
- *   · 판 도중에 창이 닫히면(새로고침·탭 닫기·로그아웃) 그때까지의 결과를 보관해 둔다 (stash)
+ *   · 판 도중에 창이 닫히거나 숨으면(새로고침·탭 닫기·로그아웃·다른 앱) 그때까지의 결과를 중간 결과로 보관해 둔다 (stash).
+ *     판을 하는 동안은 판 잠금(hold, navigator.locks)을 잡아 두어, 다른 탭의 다시 보내기가 아직 이어지는 판의 중간 결과를 올리지 않게 한다
  * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql, 044_survival_endless.sql, 045_survival_review.sql, 055_survival_hell.sql).
  */
 
@@ -52,6 +53,8 @@ export interface SurvivalApi {
   resend(): Promise<number>;
   /** 판 도중에 창이 닫힐 때: 그때까지의 결과를 보내지 않고 보관만 한다 (다음 접속 때 올라간다. 판이 이어져 끝나면 finish 가 덮어쓴다) */
   stash(report: RunReport): void;
+  /** 판을 하는 동안 잡아 두는 잠금 (다른 탭이 이 판의 중간 결과를 올리지 않게). 돌려준 함수를 부르면 푼다 (여러 번 불러도 된다) */
+  hold(run: string): () => void;
   /** 다시 보내기(resend)로 새 프로필을 받았을 때 부른다 (화면의 엽전·해금 갱신용) */
   onProfile: ((p: SurvivalProfile) => void) | null;
   /** 아래 셋은 새 프로필을 돌려준다. 안 되면 ApiError(까닭) */
@@ -191,6 +194,7 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
     },
     // 테스트 모드는 결과를 기기에 바로 적으므로 보관할 것이 없다
     stash() {},
+    hold: () => () => {},
     onProfile: null,
     async buyUpgrade(key) {
       return change((p) => buyUpgrade(p, key));
@@ -206,6 +210,44 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
 
 // ───────────────────────── 서버 ─────────────────────────
 
+/** 판 잠금에 쓰는 만큼의 navigator.locks (시험에서는 가짜를 넣는다) */
+export interface RunLocks {
+  request(name: string, cb: () => Promise<void>): Promise<unknown>;
+  query(): Promise<{ held?: { name?: string }[] }>;
+}
+const LOCK_PREFIX = 'siasurv-run:';
+
+/** 이 탭의 id (sessionStorage: 새로고침해도 같고, 다른 탭과는 다르다). 못 쓰면 이번 접속 동안만 */
+let tabFallback = '';
+export function tabId(): string {
+  const make = () => (tabFallback ||= typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
+  try {
+    let id = sessionStorage.getItem('siasurvival:tab');
+    if (!id) sessionStorage.setItem('siasurvival:tab', (id = make()));
+    return id;
+  } catch {
+    return make();
+  }
+}
+
+export interface SupabaseApiOptions {
+  /** 이 탭의 id (기본: tabId()) */
+  tab?: string;
+  /** 판 잠금 (기본: navigator.locks. 없는 브라우저면 null → 다른 탭의 젊은 중간 결과는 시간으로 건너뛴다) */
+  locks?: RunLocks | null;
+  /** 지금 시각 (ms) */
+  now?: () => number;
+}
+
+function browserLocks(): RunLocks | null {
+  try {
+    const l = typeof navigator === 'undefined' ? null : (navigator as Navigator & { locks?: RunLocks }).locks;
+    return l && typeof l.request === 'function' && typeof l.query === 'function' ? l : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 서버 함수가 낸 오류인가 (raise exception → 코드 P0001). 그 밖(연결 끊김·시간 초과)은 통신 실패로 본다 */
 const rejected = (error: { code?: string; message?: string } | null) => !!error && error.code === 'P0001';
 
@@ -219,7 +261,24 @@ export interface RpcClient {
   rpc(fn: string, args?: Record<string, unknown>): PromiseLike<RpcAnswer> & { abortSignal?(signal: AbortSignal): PromiseLike<RpcAnswer> };
 }
 
-export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, store: Store, timeoutMs = RPC_TIMEOUT_MS): SurvivalApi {
+export function createSupabaseApi(
+  sb: SupabaseClient | RpcClient, uid: string, store: Store, timeoutMs = RPC_TIMEOUT_MS, opts: SupabaseApiOptions = {},
+): SurvivalApi {
+  const tab = opts.tab ?? tabId();
+  const locks = opts.locks === undefined ? browserLocks() : opts.locks;
+  const clock = opts.now ?? (() => Date.now());
+  /** 이 탭에서 지금 하고 있는 판 (잠금을 못 써도 자기 탭의 판은 건너뛴다) */
+  const live = new Set<string>();
+  /** 지금 어느 탭에서든 잠겨 있는 판 id. 잠금을 못 쓰거나 못 읽으면 null */
+  const heldRuns = async (): Promise<Set<string> | null> => {
+    if (!locks) return null;
+    try {
+      const q = await locks.query();
+      return new Set((q.held ?? []).map((h) => h.name ?? '').filter((n) => n.startsWith(LOCK_PREFIX)).map((n) => n.slice(LOCK_PREFIX.length)));
+    } catch {
+      return null;
+    }
+  };
   /** 서버 함수를 부른다. ms 안에 답이 없으면 요청을 끊고 통신 실패(error.code 없음)로 돌려준다. 던지지 않는다 */
   const call = async (fn: string, args?: Record<string, unknown>, ms = timeoutMs): Promise<RpcAnswer> => {
     const ctrl = typeof AbortController === 'undefined' ? null : new AbortController();
@@ -326,20 +385,43 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       return null;
     },
     resend() {
-      flushing ??= flushPending(
-        store,
-        uid,
-        async (r) => {
-          const out = await send(r);
-          if (out.outcome === 'ok') self.onProfile?.(out.data!.profile);
-          return out.outcome;
-        },
-        (run) => sending.has(run),
-      ).finally(() => (flushing = null));
+      flushing ??= (async () => {
+        const held = await heldRuns();
+        return flushPending(
+          store,
+          uid,
+          async (r) => {
+            const out = await send(r);
+            if (out.outcome === 'ok') self.onProfile?.(out.data!.profile);
+            return out.outcome;
+          },
+          // 보내는 중인 판 · 이 탭에서 하고 있는 판 · 다른 탭에서 아직 이어지고 있을 수 있는 판은 건너뛴다
+          (r) => sending.has(r.run) || live.has(r.run) || mayBeLive(r, tab, clock(), held),
+        );
+      })().finally(() => (flushing = null));
       return flushing;
     },
     stash(report) {
-      if (!sending.has(report.run)) keepPending(store, uid, report);
+      if (!sending.has(report.run)) keepPending(store, uid, report, { tab, at: clock() });
+    },
+    hold(run) {
+      live.add(run);
+      let release: () => void = () => {};
+      let done = false;
+      if (locks) {
+        try {
+          void Promise.resolve(
+            locks.request(LOCK_PREFIX + run, () => (done ? Promise.resolve() : new Promise<void>((r) => (release = r)))),
+          ).catch(() => {});
+        } catch {
+          /* 잠금 없이 계속 (시간으로 건너뛴다) */
+        }
+      }
+      return () => {
+        done = true;
+        live.delete(run);
+        release();
+      };
     },
     onProfile: null,
     buyUpgrade: (key) => profileRpc('survival_buy_upgrade', { p_key: key }),

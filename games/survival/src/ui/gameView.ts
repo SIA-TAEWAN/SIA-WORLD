@@ -106,6 +106,8 @@ export function showGame(setup: GameSetup) {
   let runId: string | null = null;
   /** 판 시작을 서버에 알리지 못했다: 이 판은 기록되지 않는다 */
   let unrecorded = false;
+  /** 판 잠금 풀기 (판을 하는 동안 다른 탭이 이 판의 중간 결과를 올리지 않게, api.hold) */
+  let unhold = () => {};
   // 판 도중에 창이 닫히면(새로고침·탭 닫기·강제 로그아웃 이동) 그때까지의 결과를 기기에 보관한다 → 다음 접속 때 올라간다
   const onLeave = () => {
     if (!ended && runId && api) api.stash({ ...run.summary(), run: runId });
@@ -136,6 +138,8 @@ export function showGame(setup: GameSetup) {
       window.removeEventListener('blur', releaseAll);
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', onLeave);
+      // 끝난 판의 잠금은 끝 저장이 끝난 뒤에 푼다 (finish)
+      if (!ended) unhold();
       ro?.disconnect();
       if (endTimer) clearTimeout(endTimer);
       if (cutTimer) clearTimeout(cutTimer);
@@ -560,6 +564,9 @@ export function showGame(setup: GameSetup) {
         return out.result;
       } catch {
         return 'rejected';
+      } finally {
+        // 끝 결과를 보관하고 보낸 뒤에 판 잠금을 푼다 (그 전에 풀면 다른 탭이 같은 판을 먼저 올릴 수 있다)
+        unhold();
       }
     });
     // 저장 답이 오기 전의 값 (답이 오면 프로필이 바뀐다)
@@ -773,6 +780,7 @@ export function showGame(setup: GameSetup) {
   frame();
   void started.then((id) => {
     runId = id;
+    if (id !== null && api && root.isConnected && !ended) unhold = api.hold(id);
     // 잠긴 캐릭터·맵이라 출전 준비로 돌아갔으면 이 화면은 이미 없다
     if (id !== null || !root.isConnected) return;
     // 판 시작을 알리지 못했다 (실패했거나 12초 안에 답이 없다): 판이 끝날 때까지 시계 아래에 표시해 둔다

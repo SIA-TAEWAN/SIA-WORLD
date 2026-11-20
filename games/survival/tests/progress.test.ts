@@ -8,10 +8,10 @@ import {
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
 import { createRun, makeInput, step, summarize, type RunSummary } from '../src/game/sim';
-import { createLocalApi, createSupabaseApi, ApiError, type RpcClient } from '../src/net/api';
+import { createLocalApi, createSupabaseApi, ApiError, type RpcClient, type RunLocks } from '../src/net/api';
 import { SPEEDS } from '../src/run/run';
 import { lobbyCount, lobbyOrder, lobbyPlace, LOBBY_MAX } from '../src/net/capacity';
-import { PENDING_MAX, flushPending, keepPending, readPending, type SendOutcome, type Store } from '../src/net/pending';
+import { PARTIAL_LIVE_MS, PENDING_MAX, flushPending, keepPending, mayBeLive, readPending, type SendOutcome, type Store } from '../src/net/pending';
 
 const run = (o: Partial<RunSummary> = {}): RunSummary => ({
   map: 'field', character: 'rat', time: 120, kills: 300, level: 10, coins: 40, cleared: false, bossKills: 0, cakes: 1,
@@ -432,6 +432,56 @@ describe('테스트 모드의 기기 저장 프로필 (서버와 같은 규칙)'
   });
 });
 
+describe('판 도중 중간 결과 (숨을 때 보관)', () => {
+  const report = (id: string, time = 120): RunReport => ({ ...run(), run: id, time });
+
+  it('다른 탭이 남긴 젊은 중간 결과만 살아 있다고 본다. 잠금을 알 수 있으면 잠금만 본다', () => {
+    const e = { ...report('r'), partial: true as const, tab: 'A', at: 1000 };
+    expect(mayBeLive(e, 'B', 1000 + PARTIAL_LIVE_MS - 1, null)).toBe(true);
+    expect(mayBeLive(e, 'B', 1000 + PARTIAL_LIVE_MS, null)).toBe(false);
+    expect(mayBeLive(e, 'A', 1000, null)).toBe(false); // 자기 탭 (새로고침 뒤)
+    expect(mayBeLive(report('r'), 'B', 1000, null)).toBe(false); // 끝 결과
+    expect(mayBeLive(e, 'B', 1000, new Set())).toBe(false); // 잠금이 풀렸다: 그 탭은 닫혔거나 판이 끝났다
+    expect(mayBeLive(report('r'), 'B', 1000, new Set(['r']))).toBe(true);
+  });
+
+  it('중간 결과는 못 올린 끝 결과를 밀어내지 않는다 (자리가 없으면 가장 최근 중간 결과 하나만 따로)', () => {
+    const st = memStore();
+    for (let i = 0; i < PENDING_MAX; i++) keepPending(st, 'u1', report(`f${i}`));
+    keepPending(st, 'u1', report('p1', 30), { tab: 'A', at: 1 });
+    keepPending(st, 'u1', report('p1', 40), { tab: 'A', at: 2 }); // 같은 판: 덮어쓴다
+    expect(readPending(st, 'u1').map((r) => r.run)).toEqual(['f0', 'f1', 'f2', 'f3', 'f4', 'p1']);
+    keepPending(st, 'u1', report('p2', 30), { tab: 'B', at: 3 });
+    expect(readPending(st, 'u1').map((r) => r.run)).toEqual(['f0', 'f1', 'f2', 'f3', 'f4', 'p2']);
+    // 자리가 남으면 중간 결과도 여럿 둔다
+    const t = memStore();
+    keepPending(t, 'u1', report('f0'));
+    for (const id of ['p1', 'p2', 'p3']) keepPending(t, 'u1', report(id), { tab: 'A', at: 1 });
+    expect(readPending(t, 'u1').map((r) => r.run)).toEqual(['f0', 'p1', 'p2', 'p3']);
+    // 끝 결과가 중간 결과를 덮어쓰면 표시가 사라진다
+    keepPending(t, 'u1', report('p1', 240));
+    const p1 = readPending(t, 'u1').find((r) => r.run === 'p1')!;
+    expect([p1.partial, p1.tab, p1.at, p1.time]).toEqual([undefined, undefined, undefined, 240]);
+  });
+
+  it('보내는 사이에 다른 탭이 끝 결과로 덮어쓰면 그것을 지우지 않는다. 보내기 직전에 다시 읽는다', async () => {
+    const st = memStore();
+    keepPending(st, 'u1', report('a', 30), { tab: 'A', at: 1 });
+    keepPending(st, 'u1', report('b', 30), { tab: 'A', at: 1 });
+    const sentTimes: number[] = [];
+    await flushPending(st, 'u1', async (r) => {
+      sentTimes.push(r.time);
+      if (r.run === 'a') {
+        keepPending(st, 'u1', report('a', 240)); // 다른 탭이 a 를 끝냈다
+        keepPending(st, 'u1', report('b', 200)); // b 도 (아직 보내기 전)
+      }
+      return 'ok';
+    });
+    expect(sentTimes).toEqual([30, 200]);
+    expect(readPending(st, 'u1').map((r) => [r.run, r.time])).toEqual([['a', 240]]);
+  });
+});
+
 describe('서버에 끝 저장: 먼저 보관하고 보낸다', () => {
   const report = (id: string): RunReport => ({ ...run(), run: id });
   const okAnswer = (coins = 40) => ({ data: { profile: { ...defaultProfile(), coins }, result: { coins, valid: true, newRecord: false, unlockedCharacters: [], unlockedMaps: [] } }, error: null });
@@ -552,6 +602,71 @@ describe('서버에 끝 저장: 먼저 보관하고 보낸다', () => {
     const slow = createSupabaseApi(g.sb, 'u1', st, 30);
     expect(await slow.finish({ ...report('r2'), time: 240 })).toBeNull();
     expect(readPending(st, 'u1').map((r) => [r.run, r.time])).toEqual([['r2', 240]]);
+  });
+
+  it('두 탭 (잠금 없음): 다른 탭이 숨으며 남긴 젊은 중간 결과는 올리지 않고, 그 탭이 끝내면 끝 결과가 올라간다', async () => {
+    const st = memStore();
+    let t = 1_000_000;
+    const now = () => t;
+    const f = fake(() => okAnswer(7));
+    const tab1 = createSupabaseApi(f.sb, 'u1', st, 200, { tab: 'T1', locks: null, now });
+    const tab2 = createSupabaseApi(f.sb, 'u1', st, 200, { tab: 'T2', locks: null, now });
+    tab1.stash({ ...report('B'), time: 45 });
+    const kept = readPending(st, 'u1')[0];
+    expect([kept.partial, kept.tab, kept.at]).toEqual([true, 'T1', t]);
+    // 탭 2 를 열거나 판을 시작: B 는 탭 1 에서 아직 이어지고 있을 수 있다
+    expect(await tab2.resend()).toBe(0);
+    expect(f.calls.length).toBe(0);
+    // 탭 1 이 B 를 끝낸다 → 끝 결과가 올라간다
+    t += 60_000;
+    expect((await tab1.finish({ ...report('B'), time: 240 }))?.profile.coins).toBe(7);
+    expect(f.calls.map((c) => c.run)).toEqual(['B']);
+    expect(readPending(st, 'u1')).toEqual([]);
+    // 탭 1 이 숨은 채로 닫혔다: 30분이 지나면 다른 탭이 중간 결과를 올린다
+    tab1.stash({ ...report('C'), time: 50 });
+    t += PARTIAL_LIVE_MS - 1;
+    expect(await tab2.resend()).toBe(0);
+    t += 1;
+    expect(await tab2.resend()).toBe(1);
+    expect(readPending(st, 'u1')).toEqual([]);
+  });
+
+  it('두 탭 (잠금 있음): 판 잠금이 잡혀 있으면 건너뛰고, 풀리면(탭이 닫힘) 젊어도 올린다. 자기 탭의 판도 건너뛴다', async () => {
+    const held = new Set<string>();
+    const locks: RunLocks = {
+      async request(name, cb) {
+        held.add(name);
+        try {
+          await cb();
+        } finally {
+          held.delete(name);
+        }
+      },
+      async query() {
+        return { held: [...held].map((name) => ({ name })) };
+      },
+    };
+    const st = memStore();
+    const f = fake(() => okAnswer(3));
+    const tab1 = createSupabaseApi(f.sb, 'u1', st, 200, { tab: 'T1', locks });
+    const tab2 = createSupabaseApi(f.sb, 'u1', st, 200, { tab: 'T2', locks });
+    const unhold = tab1.hold('B');
+    await Promise.resolve();
+    expect(held.has('siasurv-run:B')).toBe(true);
+    tab1.stash({ ...report('B'), time: 45 });
+    expect(await tab2.resend()).toBe(0);
+    expect(await tab1.resend()).toBe(0); // 이 탭에서 하고 있는 판
+    unhold();
+    unhold(); // 여러 번 불러도 된다
+    await new Promise((r) => setTimeout(r, 0));
+    expect(held.size).toBe(0);
+    expect(await tab2.resend()).toBe(1);
+    expect(f.calls.map((c) => c.run)).toEqual(['B']);
+    // 잠금을 받기 전에 풀어도 잠긴 채로 남지 않는다
+    const early = tab1.hold('C');
+    early();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(held.size).toBe(0);
   });
 });
 
