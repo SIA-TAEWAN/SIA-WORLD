@@ -281,9 +281,9 @@ export class Fx {
 
   /**
    * 필살기 컷인: 기울어진 색 띠가 지나가며 얼굴(또는 컷인 그림) + 필살기 이름. DESIGN.md "컷인"(방사형 노란 빛, 흰 글자 + 외곽선).
-   * 걸리는 시간(ms)을 돌려준다.
+   * 걸리는 시간(ms)을 돌려준다. 다 지나가 지워지면 done 을 부른다.
    */
-  cutin(faceKey: string, isArt: boolean, hero: string, title: string, desc: string, color: number): number {
+  cutin(faceKey: string, isArt: boolean, hero: string, title: string, desc: string, color: number, done?: () => void): number {
     const sc = this.scene;
     const W = this.w + this.ox * 2;
     const cy = this.oy + 330;
@@ -314,7 +314,17 @@ export class Fx {
     box.setAngle(-4);
     sc.tweens.add({ targets: rays, angle: 60, duration: IN + HOLD + OUT });
     sc.tweens.add({ targets: box, x: 0, duration: IN, ease: 'Back.easeOut' });
-    sc.tweens.add({ targets: box, x: W, delay: IN + HOLD, duration: OUT, ease: 'Cubic.easeIn', onComplete: () => box.destroy() });
+    sc.tweens.add({
+      targets: box,
+      x: W,
+      delay: IN + HOLD,
+      duration: OUT,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        box.destroy();
+        done?.();
+      },
+    });
     return IN + HOLD + OUT;
   }
 

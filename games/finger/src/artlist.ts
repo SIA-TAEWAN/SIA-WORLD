@@ -15,7 +15,8 @@ export type GroundName = 'field' | 'bamboo' | 'palace' | 'underworld';
 
 export type OptionalArt =
   | `h-${HeroId}` // 구슬형 대원 12종 (아래 파티 줄. 판 위는 십이지 전신 그림 — 못 읽을 때만 판에도)
-  | `cut-${HeroId}` // 필살기 컷인 12종
+  | `cut-${HeroId}` // 필살기 컷인 12종 (판을 열 때 받지 않고 필살기가 가까워지면 그 대원 것만 — GameScene.fetchArt)
+  | `floor-r${string}` // 지역 12곳의 방 바닥 (floor-r01 … floor-r12, 이어 붙는 무늬 320px)
   | `${string}-hit` // 요괴·보스 맞을 때 표정 (요괴 그림 이름 + -hit, 예: e-imp-hit · b-yeomra-hit)
   | `wall-${GroundName}` // 방 테두리·벽 (지역 바닥마다 1장, 늘여 씀)
   | 'o-block' // 네모 돌기둥 (늘여 씀)
@@ -37,13 +38,23 @@ export type OptionalArt =
 
 const HERO_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const satisfies readonly HeroId[];
 const GROUNDS = ['field', 'bamboo', 'palace', 'underworld'] as const satisfies readonly GroundName[];
-const HIT_FOES = ['e-imp', 'e-wisp', 'e-club', 'e-water', 'e-fox', 'e-bamboo', 'e-guard', 'e-skeleton', 'e-spirit'] as const;
+const HIT_FOES = [
+  ...['e-imp', 'e-wisp', 'e-club', 'e-water', 'e-fox', 'e-bamboo', 'e-guard', 'e-skeleton', 'e-spirit'],
+  // 보스 12종 (지역 순서)
+  ...['b-bigDokkaebi', 'b-dueoksini', 'b-bulgasal', 'b-jangsanbeom', 'b-centipede', 'b-gumiho'],
+  ...['b-guardCaptain', 'b-yagwanggwi', 'b-imugi', 'b-reaper', 'b-gangcheori', 'b-yeomra'],
+] as const;
+const REGION_COUNT = 12;
+
+/** 지역의 방 바닥 그림 이름 (1 → floor-r01) */
+export const floorOf = (region: number) => `floor-r${String(Math.min(REGION_COUNT, Math.max(1, region))).padStart(2, '0')}` as const;
 
 /** 넣은 그림 이름. 파일을 넣지 않은 이름은 적지 않는다 */
 export const ART_FILES: readonly OptionalArt[] = [
   ...HERO_IDS.map((h) => `h-${h}` as const),
   ...HERO_IDS.map((h) => `cut-${h}` as const),
   ...HIT_FOES.map((f) => `${f}-hit` as const),
+  ...Array.from({ length: REGION_COUNT }, (_, i) => floorOf(i + 1)),
   ...GROUNDS.map((g) => `wall-${g}` as const),
   'o-block',
   'o-pillar',
@@ -90,13 +101,15 @@ export const SLICE_GAP = 4;
 export const WALL_INSET = 64;
 
 /**
- * 이번 판에 받을 전용 그림: 데려간 대원의 구슬·컷인, 나오는 요괴의 맞는 표정, 쓰는 바닥의 방 테두리, 장애물·효과.
+ * 판을 열 때 받을 전용 그림: 데려간 대원의 구슬, 나오는 요괴·보스의 맞는 표정, 쓰는 바닥의 방 테두리, 첫 방의 바닥, 장애물·효과.
+ * 필살기 컷인(cut-*)과 끝없는 탑의 다음 지역 바닥은 판이 열린 뒤 쓸 때가 되면 받는다 (GameScene.fetchArt — 아이폰 메모리).
  * 메인 그림·화면 배경(bg-*)·메뉴 아이콘(ui-*)은 판에서 받지 않는다.
  */
-export function artFor(heroes: readonly HeroId[], foeArts: readonly string[], grounds: readonly GroundName[]): OptionalArt[] {
+export function artFor(heroes: readonly HeroId[], foeArts: readonly string[], grounds: readonly GroundName[], regions: readonly number[] = []): OptionalArt[] {
   const want = new Set<string>();
-  for (const id of heroes) want.add(`h-${id}`).add(`cut-${id}`);
+  for (const id of heroes) want.add(`h-${id}`);
   for (const a of foeArts) want.add(`${a}-hit`);
   for (const g of grounds) want.add(`wall-${g}`);
+  for (const r of regions) want.add(floorOf(r));
   return ART_FILES.filter((n) => want.has(n) || n.startsWith('o-') || n.startsWith('fx-'));
 }

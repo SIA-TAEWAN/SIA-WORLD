@@ -21,7 +21,7 @@ import {
   type ShotInput,
   type SimEvent,
 } from '../sim';
-import { ART_SLICE, SLICE_GAP, WALL_INSET, artFor, hasArt, type GroundName, type OptionalArt } from '../artlist';
+import { ART_SLICE, SLICE_GAP, WALL_INSET, artFor, floorOf, hasArt, type GroundName, type OptionalArt } from '../artlist';
 import { groundOf } from '../data/regions';
 import { COLOR, FONT, MATGO, css } from '../theme';
 import { chainRate, makeBuzzer } from '../ui/feel';
@@ -102,6 +102,10 @@ interface SlotView {
 const ringOf = (type: string) => (type === 'pierce' ? COLOR.accent : COLOR.teamA);
 /** 판 위 대원 그림 높이 = 판정 원 반지름 × 이 값 (전신 그림). 못 읽어 구슬로 그릴 때는 지름 × 1.05 */
 const BODY_H = 2.6;
+/** 필살기 컷인 그림은 게이지가 이만큼(턴) 남았을 때 받는다 */
+const CUT_AHEAD = 2;
+/** 바닥 그림을 하나도 못 읽었을 때의 코드 그림 바닥 */
+const FLOOR_CODE = 'tile-code';
 /** 발밑(그림자·차례 표시) 높이: 판정 원 가운데에서 반지름 × 이 값만큼 아래 */
 const FOOT_FULL = 1.12;
 const FOOT_BALL = 0.95;
@@ -112,6 +116,16 @@ export class GameScene extends Phaser.Scene {
   private ground = 'tile-field';
   /** 끝없는 탑: 층(방)마다 바뀌는 바닥 그림들 */
   private grounds: string[] = [];
+  /** 스테이지의 지역 (방 바닥 그림). 끝없는 탑은 방마다 room.region */
+  private region = 1;
+  /** 판이 열린 뒤 받는 그림 (컷인 · 탑의 다음 지역 바닥): 키 → 받으면 부를 함수들. 못 받은 키도 남겨 다시 부르지 않는다 */
+  private lazy = new Map<string, Array<() => void>>();
+  /** 지금 깔린 바닥 그림 키 */
+  private floorKey = '';
+  /** 지금 깔아야 할 바닥 [지역, 옛 바닥 키] */
+  private floorWant: [number, string] = [1, 'tile-field'];
+  /** 판이 열린 뒤 받다가 못 받은 그림 */
+  private failed = new Set<string>();
   private tile!: Phaser.GameObjects.TileSprite;
   private roomG!: Phaser.GameObjects.Graphics;
   /** 지금 그려 둔 방 (끝없는 탑은 층마다 바뀐다) */
@@ -178,11 +192,15 @@ export class GameScene extends Phaser.Scene {
     super('game');
   }
 
-  init(data: { run: RunState; hooks: SceneHooks; ground?: string; grounds?: string[] }) {
+  init(data: { run: RunState; hooks: SceneHooks; ground?: string; grounds?: string[]; region?: number }) {
     this.run = data.run;
     this.hooks = data.hooks;
     this.ground = `tile-${data.ground ?? 'field'}`;
     this.grounds = (data.grounds ?? []).map((g) => `tile-${g}`);
+    this.region = data.region ?? this.run.room.region ?? 1;
+    this.lazy = new Map();
+    this.failed = new Set();
+    this.floorKey = '';
     this.roomShown = null;
     this.paused = false;
     this.mode = this.run.phase === 'aim' ? 'aim' : 'end';
@@ -217,7 +235,9 @@ export class GameScene extends Phaser.Scene {
 
   /** 이번 판에 쓰는 그림 키 */
   private artKeys(): string[] {
-    const keys = new Set<string>([this.ground, ...this.grounds, 'fx-pop', 'fx-coin', 'p-shuriken']);
+    // 바닥: 지역 바닥 그림(floor-rNN)을 받으면 옛 4종(tile-*)은 받지 않는다 (못 읽었을 때만 판이 열린 뒤 받는다)
+    const floors = hasArt(floorOf(this.region)) ? [] : [this.ground, ...this.grounds];
+    const keys = new Set<string>([...floors, 'fx-pop', 'fx-coin', 'p-shuriken']);
     for (const k of this.foeArts()) keys.add(k);
     return [...keys];
   }
@@ -233,10 +253,73 @@ export class GameScene extends Phaser.Scene {
     return [...keys];
   }
 
-  /** 이번 판에 받을 전용 그림 (artlist.ts 의 ART_FILES 에 적힌 것만 — 지금은 없다) */
+  /** 판을 열 때 받을 전용 그림 (artlist.ts 의 ART_FILES 에 적힌 것만. 컷인 · 탑의 다음 지역 바닥은 fetchArt 로 나중에) */
   private optionalArt(): OptionalArt[] {
     const grounds = [this.ground, ...this.grounds].map((g) => g.slice(5) as GroundName);
-    return artFor(this.run.heroes.map((h) => h.id), this.foeArts(), grounds);
+    // 끝없는 탑은 보스 12종이 다 나올 수 있어 보스 맞는 표정은 그 보스가 나올 때 받는다 (drawFoes)
+    const foes = this.grounds.length ? this.foeArts().filter((a) => !a.startsWith('b-')) : this.foeArts();
+    return artFor(this.run.heroes.map((h) => h.id), foes, grounds, [this.region]);
+  }
+
+  /**
+   * 판이 열린 뒤 그림 하나를 받는다 (Phaser 로더를 다시 돌린다). 이미 있으면 done 을 바로 부른다.
+   * 못 받으면 done 을 부르지 않는다 — 부르는 쪽은 그동안 대체 그림을 쓴다.
+   */
+  private fetchArt(key: string, done?: () => void) {
+    if (this.textures.exists(key)) {
+      done?.();
+      return;
+    }
+    const waiting = this.lazy.get(key);
+    if (waiting) {
+      if (done) waiting.push(done);
+      return;
+    }
+    this.lazy.set(key, done ? [done] : []);
+    this.load.image(key, artUrl(key));
+    if (!this.load.isLoading()) this.load.start();
+  }
+
+  /** 판이 열린 뒤 받은 그림을 텍스처에서 뺀다 (다음에 쓸 때 fetchArt 가 다시 받는다) */
+  private dropArt(key: string) {
+    const waiting = this.lazy.get(key);
+    if (!waiting || waiting.length || !this.textures.exists(key)) return;
+    this.lazy.delete(key);
+    this.textures.remove(key);
+  }
+
+  /** 필살기 컷인: 게이지가 CUT_AHEAD 턴 안으로 남았거나 필살기를 쓸 때 그 대원 것만 받는다 */
+  private wantCut(id: string) {
+    const key = `cut-${id}` as OptionalArt;
+    if (hasArt(key)) this.fetchArt(key);
+  }
+
+  /** 바닥 그림을 바꾼다. 지역 바닥(320px)은 1:1, 옛 바닥(512px)·코드 그림은 반으로 (TileSprite 가 반 크기 × 2배라서 ×0.5 · ×0.25) */
+  private setFloor(key: string) {
+    if (!this.textures.exists(key) || key === this.floorKey) return;
+    const old = this.floorKey;
+    this.floorKey = key;
+    this.tile.setTexture(key);
+    this.tile.tileScaleX = this.tile.tileScaleY = key.startsWith('floor-') ? 0.5 : 0.25;
+    // 끝없는 탑: 지나간 지역의 바닥은 텍스처에서 뺀다 (아이폰 메모리. 다시 쓰면 fetchArt 가 다시 받는다)
+    if (old.startsWith('floor-') && this.textures.exists(old)) {
+      this.lazy.delete(old);
+      this.textures.remove(old);
+    }
+  }
+
+  /** 지역의 바닥을 깐다: 지역 바닥 그림 → 없거나 못 받았으면 옛 4종 바닥(tile-*) → 그것도 없으면 코드 그림 */
+  private showFloor(region: number, ground: string) {
+    this.floorWant = [region, ground];
+    const floor = floorOf(region);
+    const want = () => this.floorWant[0] === region;
+    if (hasArt(floor) && !this.failed.has(floor)) {
+      if (this.textures.exists(floor)) return this.setFloor(floor);
+      this.fetchArt(floor, () => want() && this.setFloor(floor));
+      if (this.floorKey !== FLOOR_CODE) return; // 받는 동안은 지금 바닥 그대로
+    }
+    if (this.textures.exists(ground)) return this.setFloor(ground);
+    if (!this.failed.has(ground)) this.fetchArt(ground, () => want() && !this.floorKey.startsWith('floor-') && this.setFloor(ground));
   }
 
   /** 전용 그림이 목록에 있고 실제로 읽혔나 (못 읽었으면 코드 그림·있는 그림으로) */
@@ -255,6 +338,27 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     ensureArt(this, this.artKeys());
+    // 판이 열린 뒤 받는 그림이 도착하면 기다리던 쪽을 부른다
+    this.load.on(Phaser.Loader.Events.FILE_COMPLETE, (key: string) => {
+      const cbs = this.lazy.get(key);
+      if (!cbs || !this.sys.isActive()) return;
+      this.lazy.set(key, []);
+      for (const f of cbs) f();
+    });
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      if (!this.lazy.has(file.key) || !this.sys.isActive()) return;
+      this.failed.add(file.key);
+      // 지역 바닥을 못 받았으면 옛 바닥으로
+      if (file.key.startsWith('floor-')) this.showFloor(...this.floorWant);
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      // 판을 닫을 때: 받는 중인 것은 버리고, 나중에 받은 그림(컷인 · 바닥)은 텍스처에서 뺀다
+      this.load.off(Phaser.Loader.Events.FILE_COMPLETE);
+      this.load.off(Phaser.Loader.Events.FILE_LOAD_ERROR);
+      this.load.reset();
+      for (const k of this.lazy.keys()) if (this.textures.exists(k)) this.textures.remove(k);
+      this.lazy.clear();
+    });
     ensureFxArt(this);
     const s = this.run;
     const { w, h } = s.cfg;
@@ -263,8 +367,12 @@ export class GameScene extends Phaser.Scene {
     this.tweens.timeScale = DEV_SPEED;
     // 바닥 · 벽 · 장애물 (끝없는 탑은 층이 바뀌면 다시 그린다).
     // TileSprite 는 보이는 크기만큼 캔버스를 만든다 → 반 크기로 만들고 2배로 늘인다 (아이폰 메모리)
-    this.tile = this.add.tileSprite(RX + w / 2, RY + h / 2, w / 2, h / 2, this.ground).setScale(2).setDepth(-20);
-    this.tile.tileScaleX = this.tile.tileScaleY = 0.25;
+    // 처음 깔 바닥: 지역 바닥 그림이 읽혔으면 그것, 아니면 옛 바닥(못 읽었으면 그것도 판이 열린 뒤 받는다)
+    const first = this.textures.exists(floorOf(this.region)) ? floorOf(this.region) : this.textures.exists(this.ground) ? this.ground : FLOOR_CODE;
+    ensureArt(this, [FLOOR_CODE]);
+    this.tile = this.add.tileSprite(RX + w / 2, RY + h / 2, w / 2, h / 2, first).setScale(2).setDepth(-20);
+    this.floorKey = first;
+    this.tile.tileScaleX = this.tile.tileScaleY = this.floorKey.startsWith('floor-') ? 0.5 : 0.25;
     this.roomG = this.add.graphics().setDepth(-8);
     this.drawRoom();
     this.floor = this.add.graphics().setDepth(-5);
@@ -323,15 +431,14 @@ export class GameScene extends Phaser.Scene {
     for (const o of this.roomObjs) o.destroy();
     this.roomObjs = [];
     this.portalImgs = [];
-    // 끝없는 탑: 방을 가져온 지역의 바닥
+    // 바닥: 스테이지는 그 지역, 끝없는 탑은 방을 가져온 지역의 바닥 (다음 지역 바닥은 그때 받는다)
     let ground = this.ground;
+    let region = this.region;
     if (this.grounds.length && room.region) {
-      const key = `tile-${groundOf(room.region)}`;
-      if (this.textures.exists(key)) {
-        this.tile.setTexture(key);
-        ground = key;
-      }
+      ground = `tile-${groundOf(room.region)}`;
+      region = room.region;
     }
+    this.showFloor(region, ground);
     // 바닥 위쪽 가장자리의 옅은 그늘 (벽 두께)
     g.fillStyle(COLOR.outline, 0.16).fillRect(RX, RY, w, 10);
     const wall = `wall-${ground.slice(5) as GroundName}` as const;
@@ -750,8 +857,11 @@ export class GameScene extends Phaser.Scene {
           const d = HEROES[h.id];
           this.hooks.sound('cutin');
           const cut = `cut-${h.id}` as const;
+          // 아직 못 받았으면 이번에는 얼굴 그림 컷인, 다음부터 그림 컷인
+          this.wantCut(h.id);
           const [title, desc] = d.specialName.includes(': ') ? d.specialName.split(': ') : [d.specialName, ''];
-          const ms = fx.cutin(this.has(cut) ? cut : `face-${h.id}`, this.has(cut), d.name, title, desc, ringOf(h.type));
+          // 컷인이 지나가 지워지면 그 그림은 텍스처에서 뺀다 (게이지가 다시 차 가면 브라우저 캐시에서 다시 받는다)
+          const ms = fx.cutin(this.has(cut) ? cut : `face-${h.id}`, this.has(cut), d.name, title, desc, ringOf(h.type), () => this.dropArt(cut));
           // 컷인이 지나가는 동안 발사를 멈춘다 (화면만 — 판 계산은 이미 끝났다)
           this.holdUntil = this.time.now + ms / DEV_SPEED;
           this.heldSpecial = e;
@@ -1177,6 +1287,11 @@ export class GameScene extends Phaser.Scene {
           hitArt: this.has(hit) ? hit : null,
         };
         this.foeViews.set(f.id, v);
+        // 아직 없는 맞는 표정(끝없는 탑의 보스): 지금 받고, 받기 전에는 하얗게 번쩍
+        if (!v.hitArt && hasArt(hit)) {
+          const view = v;
+          this.fetchArt(hit, () => (view.hitArt = hit));
+        }
         img.setAlpha(0);
         this.tweens.add({ targets: img, alpha: 1, duration: 250 });
       }
@@ -1271,7 +1386,21 @@ export class GameScene extends Phaser.Scene {
       const img = v.img;
       this.tweens.killTweensOf(img);
       img.setTexture(v.hitArt ?? v.art).setTintFill(COLOR.white).setAlpha(0.95);
-      this.tweens.add({ targets: img, scale: v.base * 0.35, alpha: 0, angle: 40, y: img.y - 18, duration: 260, ease: 'Cubic.easeIn', onComplete: () => img.destroy() });
+      const hit = v.hitArt;
+      this.tweens.add({
+        targets: img,
+        scale: v.base * 0.35,
+        alpha: 0,
+        angle: 40,
+        y: img.y - 18,
+        duration: 260,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          img.destroy();
+          // 판이 열린 뒤 받은 맞는 표정(탑의 보스)은 같은 요괴가 더 없으면 뺀다
+          if (hit && ![...this.foeViews.values()].some((o) => o.hitArt === hit)) this.dropArt(hit);
+        },
+      });
     }
   }
 
@@ -1484,8 +1613,9 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(COLOR.outline, 1).fillRoundedRect(bx - 2, BAR_Y + 46, bw + 4, 16, 6);
       g.fillStyle(COLOR.track, 1).fillRoundedRect(bx, BAR_Y + 48, bw, 12, 5);
       g.fillStyle(COLOR.win, 1).fillRoundedRect(bx, BAR_Y + 48, Math.max(0, (bw * this.shownHp[i]) / h.maxHp), 12, 5);
-      // 필살기 게이지
+      // 필살기 게이지 (CUT_AHEAD 턴 안으로 남으면 그 대원의 컷인 그림을 받아 둔다)
       const full = h.charge >= h.chargeMax;
+      if (!h.fallen && h.chargeMax - h.charge <= CUT_AHEAD) this.wantCut(h.id);
       g.fillStyle(COLOR.outline, 1).fillRoundedRect(bx - 2, BAR_Y + 72, bw + 4, 14, 6);
       g.fillStyle(COLOR.track, 1).fillRoundedRect(bx, BAR_Y + 74, bw, 10, 4);
       g.fillStyle(full ? COLOR.pink : COLOR.teamA, 1).fillRoundedRect(bx, BAR_Y + 74, (bw * Math.min(h.charge, h.chargeMax)) / h.chargeMax, 10, 4);

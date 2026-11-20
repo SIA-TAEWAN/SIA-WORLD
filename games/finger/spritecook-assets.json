@@ -77,8 +77,8 @@
       "label": "h-rat → public/art/h-rat.png (192x192)"
     },
     {
-      "asset_id": "eb7b02cc-2d47-4b29-bb89-b0700c9caedf",
-      "sha12": "5099f9445dd8",
+      "asset_id": "165c2478-29f1-4e4d-8a49-b9b8e740f0c0",
+      "sha12": "a98404c377ce",
       "label": "cut-rat → public/art/cut-rat.png (400x400)"
     },
     {
@@ -107,8 +107,8 @@
       "label": "h-rabbit → public/art/h-rabbit.png (192x192)"
     },
     {
-      "asset_id": "9d3e2828-e605-4064-ba78-ea06a48256ee",
-      "sha12": "3812110d1df8",
+      "asset_id": "b79acc56-c452-4e58-b2c6-de6796d190a5",
+      "sha12": "8890e2bcd907",
       "label": "cut-rabbit → public/art/cut-rabbit.png (400x400)"
     },
     {
@@ -280,6 +280,126 @@
       "asset_id": "550729a1-31fd-4124-9dd1-cd28fe61a0be",
       "sha12": "b47ce70f465f",
       "label": "e-spirit-hit → public/art/e-spirit-hit.png (128x128, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "ac0551d9-2061-4660-9164-70ff722491bb",
+      "sha12": "bdb575af1c69",
+      "label": "b-bigDokkaebi-hit → public/art/b-bigDokkaebi-hit.png (512x512, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "3125c9ad-1b8d-4074-836b-a7d426217a27",
+      "sha12": "574b76bd9818",
+      "label": "b-dueoksini-hit → public/art/b-dueoksini-hit.png (512x512, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "d44ef59b-73cd-4441-8325-1ac3d0b6f575",
+      "sha12": "ec95e76b76a8",
+      "label": "b-bulgasal-hit → public/art/b-bulgasal-hit.png (640x640, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "c69d2e64-773a-4a12-b8c0-6a478c617134",
+      "sha12": "e081b992a4c6",
+      "label": "b-jangsanbeom-hit → public/art/b-jangsanbeom-hit.png (512x512, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "a9362050-8391-42a6-bdfc-494c1fa79287",
+      "sha12": "5468fb17b3f6",
+      "label": "b-centipede-hit → public/art/b-centipede-hit.png (512x512, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "ab43a3e7-2159-4c7a-a70c-22e18c20993a",
+      "sha12": "014ca1bd0b87",
+      "label": "b-gumiho-hit → public/art/b-gumiho-hit.png (640x640, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "d154c55f-d36d-4f0e-b2fe-9a2ee486183f",
+      "sha12": "2208f5fd5bbf",
+      "label": "b-guardCaptain-hit → public/art/b-guardCaptain-hit.png (512x512, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "204abb50-8700-4026-b6ad-d46f3edf9ef2",
+      "sha12": "ed6a9cad15d8",
+      "label": "b-yagwanggwi-hit → public/art/b-yagwanggwi-hit.png (512x512, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "68ba5fcf-684d-498b-977b-32decca339df",
+      "sha12": "e941dcb35106",
+      "label": "b-imugi-hit → public/art/b-imugi-hit.png (640x640, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "888fac95-b9f3-4dfb-9b5c-ba98d460c972",
+      "sha12": "9ce6091a21cf",
+      "label": "b-reaper-hit → public/art/b-reaper-hit.png (512x512, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "fa5ea4d6-46a2-4d89-9dba-1b2ab6a27cec",
+      "sha12": "3c7e1083a351",
+      "label": "b-gangcheori-hit → public/art/b-gangcheori-hit.png (640x640, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "8d27b7aa-c852-473d-97af-71cd252baf1a",
+      "sha12": "2aece84991c5",
+      "label": "b-yeomra-hit → public/art/b-yeomra-hit.png (640x640, 원래 그림과 같은 자리)"
+    },
+    {
+      "asset_id": "b0422e49-57c9-47e8-a4d3-72359ffdeb5e",
+      "sha12": "e73a5b3047b5",
+      "label": "floor-r01 → public/art/floor-r01.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "2043893f-52d2-45f7-ac1c-7a26a957e532",
+      "sha12": "7a85284d7804",
+      "label": "floor-r02 → public/art/floor-r02.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "49b0ee8b-07fd-412c-bd75-8bd9902cfe40",
+      "sha12": "135e6270393c",
+      "label": "floor-r03 → public/art/floor-r03.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "315bd57a-c302-4ff1-879a-bd3cc13a20ef",
+      "sha12": "b48bc7b4702f",
+      "label": "floor-r04 → public/art/floor-r04.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "57cd2732-4dc8-42f5-bb48-69a9b7ae0aad",
+      "sha12": "21fc095a4746",
+      "label": "floor-r05 → public/art/floor-r05.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "083a08b8-8379-4c95-ba50-7f0cb307af5a",
+      "sha12": "8d81f88c958b",
+      "label": "floor-r06 → public/art/floor-r06.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "0fb9516f-00ac-442a-a7f1-ee0cf01aefd3",
+      "sha12": "4f8ca0801065",
+      "label": "floor-r07 → public/art/floor-r07.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "b86b9470-746f-4729-9e70-faae55e1f898",
+      "sha12": "b38147e80115",
+      "label": "floor-r08 → public/art/floor-r08.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "23599234-9c08-4b92-80e1-a35cdbdccdaa",
+      "sha12": "cd498897eafd",
+      "label": "floor-r09 → public/art/floor-r09.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "e4493aa7-4cf1-4c99-ae97-a234a344c6f2",
+      "sha12": "653b31e0d39f",
+      "label": "floor-r10 → public/art/floor-r10.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "601c79c5-83c5-41b5-8be2-5f3c7893462a",
+      "sha12": "6f56946c9f78",
+      "label": "floor-r11 → public/art/floor-r11.png (320x320, 이어 붙는 바닥 무늬)"
+    },
+    {
+      "asset_id": "7707797b-1595-4ba6-bb0f-d63bc4906116",
+      "sha12": "d7af56530509",
+      "label": "floor-r12 → public/art/floor-r12.png (320x320, 이어 붙는 바닥 무늬)"
     },
     {
       "asset_id": "50f9a9f5-5f66-4a66-8585-4388904d51ef",

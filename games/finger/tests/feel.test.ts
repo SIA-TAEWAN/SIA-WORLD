@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ART_FILES, ART_SLICE, SLICE_GAP, artFor, hasArt, type OptionalArt } from '../src/artlist';
+import { ART_FILES, ART_SLICE, SLICE_GAP, artFor, floorOf, hasArt, type OptionalArt } from '../src/artlist';
 import { BUZZ_GAP, CHAIN_MAX, chainRate, makeBuzzer } from '../src/ui/feel';
 
 describe('튕김 소리 높이', () => {
@@ -62,6 +62,14 @@ describe('전용 그림 자리', () => {
     expect(got.filter((n) => n.startsWith('wall-'))).toEqual(['wall-field']);
     expect(got.filter((n) => n.endsWith('-hit'))).toEqual(['e-imp-hit']);
     expect(got.filter((n) => n.startsWith('h-')).every((n) => n === 'h-rat' || n === 'h-ox')).toBe(true);
+    // 컷인은 판을 열 때 받지 않는다 (필살기가 가까워지면 GameScene.fetchArt) · 바닥은 그 지역 것만
+    expect(got.some((n) => n.startsWith('cut-'))).toBe(false);
+    expect(artFor(['rat'], ['b-yeomra'], ['underworld'], [12]).filter((n) => n.startsWith('floor-') || n.endsWith('-hit'))).toEqual([
+      'b-yeomra-hit',
+      'floor-r12',
+    ]);
+    expect(floorOf(1)).toBe('floor-r01');
+    expect(floorOf(12)).toBe('floor-r12');
   });
 
   it('늘여 쓰는 그림 · spritecook-assets.json 모양', () => {

@@ -13,7 +13,7 @@
 import hashlib
 import json
 import os
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, 'raw')
@@ -25,6 +25,12 @@ GAP = 4
 
 HEROES = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig']
 FOES = ['e-imp', 'e-wisp', 'e-club', 'e-water', 'e-fox', 'e-bamboo', 'e-guard', 'e-skeleton', 'e-spirit']
+# 보스: 맞는 표정을 원래 그림(public/art/b-*.png, 512 / 640)과 같은 크기·같은 자리에
+BOSSES = ['b-bigDokkaebi', 'b-dueoksini', 'b-bulgasal', 'b-jangsanbeom', 'b-centipede', 'b-gumiho',
+          'b-guardCaptain', 'b-yagwanggwi', 'b-imugi', 'b-reaper', 'b-gangcheori', 'b-yeomra']
+# 지역 12곳의 방 바닥: 이어 붙는(seamless) 1024 원본 → FLOOR px. 채도·대비를 조금 낮추고(요괴·대원이 잘 보이게), 어두운 바닥은 조금 밝힌다
+FLOOR = 320
+FLOOR_TUNE = {'floor-r06': 1.12, 'floor-r11': 1.08, 'floor-r12': 1.06}
 
 SIZES = {
     'o-pillar': (160, 160),
@@ -280,6 +286,21 @@ def hit(name):
     return canvas
 
 
+def floor(name):
+    """이어 붙는 바닥: 3×3 으로 붙여 줄인 뒤 가운데를 잘라 가장자리도 이어지게 줄인다"""
+    src = Image.open(os.path.join(RAW, name + '.png')).convert('RGB')
+    W, H = src.size
+    big = Image.new('RGB', (W * 3, H * 3))
+    for i in range(3):
+        for j in range(3):
+            big.paste(src, (i * W, j * H))
+    small = big.resize((FLOOR * 3, FLOOR * 3), Image.LANCZOS).crop((FLOOR, FLOOR, FLOOR * 2, FLOOR * 2))
+    small = ImageEnhance.Contrast(ImageEnhance.Color(small).enhance(0.85)).enhance(0.88)
+    if name in FLOOR_TUNE:
+        small = ImageEnhance.Brightness(small).enhance(FLOOR_TUNE[name])
+    return small
+
+
 def main():
     ids = dict(line.rstrip('\n').split('\t') for line in open(os.path.join(HERE, 'ids.tsv'), encoding='utf-8') if line.strip())
     made = {}
@@ -315,11 +336,16 @@ def main():
         save(blue, os.path.join(OUT, 'fx-laser-v.png'))
         made['fx-laser'] = ('fx-laser', '256x64, 가로로 늘여 씀')
         made['fx-laser-v'] = ('fx-laser', '256x64, fx-laser 를 파랑으로 바꾼 것')
-    for foe in FOES:
+    for foe in FOES + BOSSES:
         if os.path.exists(raw(foe + '-hit')):
             im = hit(foe)
             save(im, os.path.join(OUT, foe + '-hit.png'))
             made[foe + '-hit'] = (foe + '-hit', f'{im.width}x{im.height}, 원래 그림과 같은 자리')
+    for r in range(1, 13):
+        name = f'floor-r{r:02d}'
+        if os.path.exists(raw(name)):
+            save(floor(name), os.path.join(OUT, name + '.png'), Image.Quantize.MEDIANCUT, Image.Dither.FLOYDSTEINBERG)
+            made[name] = (name, f'{FLOOR}x{FLOOR}, 이어 붙는 바닥 무늬')
     for name, (w, h) in WIDE.items():
         if not os.path.exists(raw(name)):
             continue
