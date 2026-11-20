@@ -9,6 +9,7 @@ name: Deploy to GitHub Pages
 #   /games/defense/ 시아디펜스 빌드 결과 (games/defense/dist)
 #   /games/village/ 시아마을 빌드 결과 (games/village/dist)
 #   /games/charge/ 시아돌격대 빌드 결과 (games/charge/dist)
+#   /games/finger/ 시아핑거 빌드 결과 (games/finger/dist)
 on:
   push:
     branches: [main]
@@ -42,6 +43,7 @@ jobs:
             games/defense/package-lock.json
             games/village/package-lock.json
             games/charge/package-lock.json
+            games/finger/package-lock.json
       # shared/*.js 와 index.html 은 빌드를 거치지 않고 그대로 올라간다 → 문법 오류만이라도 배포 전에 잡는다
       - name: 로비·공용 코드 문법 검사
         run: |
@@ -167,9 +169,15 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: 시아핑거 테스트·빌드
+        working-directory: games/finger
+        run: |
+          npm ci
+          npm test
+          npm run build
       - name: 사이트 파일 모으기
         run: |
-          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense _site/games/village _site/games/charge
+          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense _site/games/village _site/games/charge _site/games/finger
           cp index.html _site/
           cp -r shared _site/
           # 앱(PWA): manifest·오프라인 화면·서비스 워커 (아이콘은 shared/images/app/ 에 있어 위에서 같이 복사된다)
@@ -186,6 +194,7 @@ jobs:
           cp -r games/defense/dist/. _site/games/defense/
           cp -r games/village/dist/. _site/games/village/
           cp -r games/charge/dist/. _site/games/charge/
+          cp -r games/finger/dist/. _site/games/finger/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
@@ -212,7 +221,7 @@ jobs:
       - run: supabase db push --remote "$DB_URL" --yes
       - run: supabase migration list --remote "$DB_URL"
 
-  # Edge Function 배포 (게임 딜러 game-action, 시간 초과 game-timeout)
+  # Edge Function 배포 (게임 딜러 game-action, 시간 초과 game-timeout, 시아핑거 판 검증 finger-finish)
   functions:
     needs: migrate
     runs-on: ubuntu-latest
@@ -227,6 +236,8 @@ jobs:
       - run: supabase functions deploy game-action --project-ref "$PROJECT_REF" --use-api --yes
       # cron(pg_net)이 사용자 JWT 없이 부르므로 JWT 확인을 끄고, 함수 안에서 DB 비밀값으로 확인한다
       - run: supabase functions deploy game-timeout --project-ref "$PROJECT_REF" --use-api --no-verify-jwt --yes
+      # 시아핑거 판 결과: 화면이 사용자 JWT 로 부른다 (JWT 확인은 켠 채로)
+      - run: supabase functions deploy finger-finish --project-ref "$PROJECT_REF" --use-api --yes
 
   deploy:
     needs: [build, migrate, functions]

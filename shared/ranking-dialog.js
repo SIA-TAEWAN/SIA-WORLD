@@ -18,7 +18,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger'];
 
 /**
  * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
@@ -60,9 +60,16 @@ export const CHARGE_MODES = [
   { id: 'stage', name: '스테이지' },
   { id: 'endless', name: '끝없는 길' },
 ];
+/** 시아핑거: 스테이지 랭킹(모은 별)과 끝없는 탑 랭킹(올라간 층)은 따로다 (games/finger/PRD.md "랭킹 2종"). 고르기 줄은 디펜스·돌격대와 같이 쓴다 */
+const FINGER_INFO = { label: '👆 핑거', note: '모은 별 순 (같으면 클리어한 스테이지 수, 그다음 먼저 달성한 사람이 위)' };
+const FINGER_TOWER_NOTE = '끝없는 탑 · 올라간 층 순 (같으면 쓴 턴이 적은 사람, 그다음 먼저 달성한 사람이 위)';
+export const FINGER_MODES = [
+  { id: 'stage', name: '스테이지' },
+  { id: 'tower', name: '끝없는 탑' },
+];
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : RANKINGS[g]);
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : RANKINGS[g]);
 
 /** 기록(ms) → 등급 */
 export function raceTier(ms) {
@@ -218,6 +225,33 @@ export async function getChargeRanking(mode = 'stage', meId = null) {
   }
   return { rows, mine, total };
 }
+/**
+ * 시아핑거 랭킹. mode 'stage': finger_stage_ranking 뷰 (모은 별 → 클리어 수 → 먼저 달성한 순),
+ * 'tower': finger_tower_ranking 뷰 (올라간 층 → 쓴 턴 적은 순 → 먼저 달성한 순).
+ * → { rows: 상위 100명 [{ key, nickname, stars, cleared, best, floor, turns, party, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getFingerRanking(mode = 'stage', meId = null) {
+  const tower = mode === 'tower';
+  const cols = tower ? 'user_id,nickname,best_floor,turns,party,achieved_at,place,total' : 'user_id,nickname,total_stars,cleared_stages,best_stage,achieved_at,place,total';
+  const view = () => supabase.from(tower ? 'finger_tower_ranking' : 'finger_stage_ranking');
+  const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(DEFENSE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({
+    key: r.user_id, nickname: r.nickname, stars: Number(r.total_stars ?? 0), cleared: Number(r.cleared_stages ?? 0), best: r.best_stage ?? '',
+    floor: Number(r.best_floor ?? 0), turns: Number(r.turns ?? 0), party: Array.isArray(r.party) ? r.party : [], at: r.achieved_at, place: Number(r.place),
+  });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= DEFENSE_TOP) {
+    const res = await view().select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 /** 시아마을 주소 (구경: ?visit=<사용자 id>) */
 const villageUrl = (userId) => `${new URL('../games/village/', import.meta.url).href}?visit=${encodeURIComponent(userId)}`;
 
@@ -302,7 +336,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
   // 닫힌 게임 안에서 연 창(관리자가 미리 해 보는 중)은 그 게임 탭만 보이게 둔다. 로비에서는 열린 게임만
@@ -345,7 +379,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     const sm = e.target.closest('[data-sm]');
     if (sm) void showSurvival(survivalMap, sm.dataset.sm);
     const dm = e.target.closest('[data-dm]');
-    if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : showDefense(dm.dataset.dm));
+    if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : showDefense(dm.dataset.dm));
   });
 
   let shown = '';
@@ -356,10 +390,11 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     $('.subs').classList.toggle('on', game === 'survival');
     $('.modes').classList.toggle('on', game === 'survival');
     // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스 탭에서만 보인다
-    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge');
+    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger');
     if (game === 'survival') return showSurvival(survivalMap);
     if (game === 'defense') return showDefense(defenseMode);
     if (game === 'charge') return showCharge(chargeMode);
+    if (game === 'finger') return showFinger(fingerMode);
     if (game === 'race') return showRace();
     if (game === 'volley') return showVolley();
     if (game === 'village') return showVillage();
@@ -556,6 +591,50 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'charge' && chargeMode === mode) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /**
+   * 시아핑거: 스테이지 랭킹(별 · 클리어한 스테이지) / 끝없는 탑 랭킹(층 · 쓴 턴 · 데려간 대원 4명 얼굴 · 달성 날짜). 상위 100명 + 내 순위
+   */
+  let fingerMode = FINGER_MODES[0].id;
+  async function showFinger(mode = fingerMode) {
+    // 고르기 줄 버튼의 data-dm 은 디펜스 모드 id (stage / endless) → 같은 자리의 핑거 모드로
+    const at = DEFENSE_MODES.findIndex((d) => d.id === mode);
+    if (at >= 0 && FINGER_MODES[at]) mode = FINGER_MODES[at].id;
+    if (!FINGER_MODES.some((m) => m.id === mode)) mode = FINGER_MODES[0].id;
+    fingerMode = mode;
+    const tower = mode === 'tower';
+    dim.querySelectorAll('.dmodes button').forEach((b) => {
+      // 고르기 줄 버튼은 디펜스 모드 id(stage / endless)로 만들어져 있다 → 두 번째 버튼이 끝없는 탑
+      const m = FINGER_MODES[DEFENSE_MODES.findIndex((d) => d.id === b.dataset.dm)];
+      b.classList.toggle('sel', m?.id === mode);
+      if (m) b.textContent = m.name;
+    });
+    $('.note').textContent = `${tower ? FINGER_TOWER_NOTE : FINGER_INFO.note} · 상위 ${DEFENSE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getFingerRanking(mode, meId);
+      if (shown !== 'finger' || fingerMode !== mode) return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      const amount = (r) => (tower ? `${r.floor}층<small>${r.turns}턴 · ${esc(dateText(r.at))}</small>` : `⭐ ${r.stars}<small>클리어 ${esc(r.best)} (${r.cleared}곳)</small>`);
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${tower ? `${mine.floor}층 · ${mine.turns}턴` : `⭐ ${mine.stars} · 클리어 ${esc(mine.best)}`}`
+        : tower
+          ? '아직 끝없는 탑 기록이 없어요'
+          : '아직 클리어한 스테이지가 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="nm">${esc(r.nickname)}</td>` +
+              (tower ? `<td class="sq">${r.party.slice(0, 4).map((c) => `<img src="${faceUrl(c)}" alt="" />`).join('')}</td>` : '') +
+              `<td class="am">${amount(r)}</td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'finger' && fingerMode === mode) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   /** 시아마을: 번영도 순 상위 100곳 + 내 순위. 줄마다 순위 · 등급 · 닉네임(마을 이름 · 마을 레벨) · 번영도 · [구경] */

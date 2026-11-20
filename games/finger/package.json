@@ -1,0 +1,26 @@
+{
+  "name": "sia-finger",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5296 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "sqlrows": "vite-node scripts/sqlrows.ts",
+    "gen": "vite-node scripts/gen-stages.ts",
+    "calib": "vite-node scripts/calib.ts",
+    "tower": "vite-node scripts/tower.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "phaser": "3.90.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "5.9.3",
+    "vite": "7.3.8",
+    "vitest": "3.2.7"
+  }
+}
