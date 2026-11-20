@@ -317,7 +317,12 @@ export async function startGame(stage: StageDef, endless: boolean) {
   let runId = '';
   try {
     // 개발용 ?all=1 은 기기에만 연 상태라 기록하지 않는다
-    if (!DEV_ALL) runId = await api.start(endless ? ENDLESS_ID : stage.id, leader, endless ? 'endless' : 'normal');
+    if (!DEV_ALL) {
+      // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다
+      await api.resend().catch(() => 0);
+      runId = await api.start(endless ? ENDLESS_ID : stage.id, leader, endless ? 'endless' : 'normal');
+      if (!runId) toast('서버에 연결하지 못했어요. 이번 판은 기록되지 않아요');
+    }
   } catch (e) {
     busy = false;
     if (app().querySelector('.connecting')) showMain();
@@ -374,7 +379,8 @@ export async function startGame(stage: StageDef, endless: boolean) {
     };
     try {
       const r = await api.finish(report);
-      if (!r) return { result: null, offline: true };
+      // 시작을 서버에 알리지 못한 판(runId 없음)은 보관되지 않으므로 "보관했어요" 안내를 하지 않는다
+      if (!r) return { result: null, offline: !!runId };
       if (!DEV_ALL) profile = r.profile;
       return { result: r.result, offline: false };
     } catch (e) {
@@ -402,7 +408,8 @@ export async function startGame(stage: StageDef, endless: boolean) {
     },
   });
   root.querySelector('#pause')!.addEventListener('click', () => {
-    if (scene.paused || sent) return;
+    // 판이 끝난 뒤(클리어·전멸 연출 1~1.4초 동안)에는 멈추지 않는다: 그만하기가 클리어를 실패로 덮어쓰지 않게
+    if (scene.paused || sent || run.phase === 'clear' || run.phase === 'fail') return;
     play('click');
     scene.paused = true;
     const box = document.createElement('div');
@@ -420,6 +427,11 @@ export async function startGame(stage: StageDef, endless: boolean) {
     box.querySelector('#quit')!.addEventListener('click', async () => {
       play('click');
       box.remove();
+      // 창이 떠 있는 사이 판이 끝났으면 그 결과(클리어 등)를 그대로 둔다
+      if (sent || run.phase === 'clear' || run.phase === 'fail') {
+        scene.paused = false;
+        return;
+      }
       run.phase = 'fail';
       const out = await finish(run);
       if (endless) return showResult(run, true, out?.result ?? null, !!out?.offline);
