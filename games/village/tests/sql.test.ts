@@ -13,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, 
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -303,7 +303,25 @@ describe('SQL의 권한 규칙', () => {
   it('관리자 계정 (062): 최고 레벨 · 짓기 · 사기 제한 없음 · 값을 내지 않음 · 전시 마을', () => {
     // 관리자를 보는 함수는 정해져 있다
     const uses = fns.filter((f) => f !== '_village_admin' && body(f).includes('public._village_admin(')).sort();
-    expect(uses).toEqual(['_village_state_json', 'village_admin_set_state', 'village_build', 'village_expand', 'village_state', 'village_upgrade']);
+    expect(uses).toEqual([
+      '_village_state_json', 'village_admin_set_state', 'village_build', 'village_craft', 'village_expand', 'village_feast', 'village_request_done', 'village_sell', 'village_state', 'village_upgrade',
+    ]);
+    // 063: 가공 · 판매 · 잔치 · 부탁도 관리자는 내지 않는다 (받는 것은 그대로)
+    const cr = body('village_craft').replace(/\s+/g, ' ');
+    expect(cr).toContain("if not adm then if public._village_res(me, rc.in1) < rc.n1 * p_n");
+    expect(cr).toContain('perform public._village_add(me, rc.in1, -rc.n1 * p_n);');
+    const se = body('village_sell').replace(/\s+/g, ' ');
+    expect(se).toContain("if not adm and sold + coins > public._village_market_limit(me) then raise exception 'sell limit'; end if;");
+    expect(se).toContain('if not adm then perform public._village_add(me, p_res, -p_n); end if;');
+    expect(se).toContain("perform public._village_add(me, 'coin', coins);");
+    const fe = body('village_feast').replace(/\s+/g, ' ');
+    expect(fe).toContain("if not adm then perform public._village_add(me, 'cake', -public._village_const('feast_cake')::bigint); end if;");
+    const rq = body('village_request_done').replace(/\s+/g, ' ');
+    expect(rq).toContain("if not adm then if public._village_res(me, res) < n then raise exception 'not enough'; end if; perform public._village_add(me, res, -n); end if;");
+    expect(rq).toContain("perform public._village_add(me, 'coin', (q.content->>'coin')::bigint);");
+    // 랭킹에는 관리자 계정이 나오지 않는다 (순위 번호도 차지하지 않는다)
+    const at = sql.lastIndexOf('create or replace view public.village_ranking as');
+    expect(sql.slice(at, sql.indexOf(';', at)).replace(/\s+/g, ' ')).toContain('where not coalesce(p.is_admin, false)');
     expect(body('_village_state_json')).toContain("'admin', public._village_admin(p_user),");
     const st = body('village_state').replace(/\s+/g, ' ');
     expect(st).toContain("if public._village_admin(me) then update public.village_profiles set level = public._village_const('max_level')::int, exp = 0, land_stage = 6");

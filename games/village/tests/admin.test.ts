@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CONST, LAND_SIZES } from '../src/data/balance';
+import { CONST, LAND_SIZES, kstDay } from '../src/data/balance';
 import { makeShowcase } from '../src/data/showcase';
 import { MONUMENTS } from '../src/data/monuments';
 import { RESIDENT_IDS } from '../src/data/residents';
-import { RuleError, adminBoost, adminSetState, build, cleanState, expand, newVillage, upgrade, type VillageState } from '../src/game/rules';
+import {
+  RuleError, adminBoost, adminSetState, build, cleanState, craft, expand, feast, marketLimit, newVillage, requestDone, sell, sellCoins, settle, upgrade, type VillageState,
+} from '../src/game/rules';
 import { ApiError, createLocalApi, type Store } from '../src/net/api';
 
 /** 관리자 계정 (062): 최고 레벨 · 제한 없음 · 값 없음 · 전시 마을. SQL 은 supabase/migrations/062_village_admin.sql */
@@ -105,6 +107,60 @@ describe('관리자 규칙', () => {
     bad.buildings.push({ ...bad.buildings[0], id: 'again' });
     expect(() => adminSetState(s, bad, T, () => 'z')).toThrow(new RuleError('bad state'));
     expect(JSON.stringify(s)).toBe(before);
+  });
+
+  it('가공 · 장터 판매 · 잔치 · 부탁도 무료 (063. 받는 것은 그대로, 일반 사용자는 그대로)', () => {
+    const mk = (admin: boolean) => {
+      const s = makeShowcase(T);
+      s.admin = admin;
+      zero(s);
+      s.profile.dailyDay = kstDay(T);
+      return s;
+    };
+    const idOf = (s: VillageState, t: string) => s.buildings.find((b) => b.type === t)!.id;
+    // 가공: 재료 없이 만든다
+    const a = mk(true);
+    craft(a, idOf(a, 'mill'), 10, T);
+    craft(a, idOf(a, 'jar'), 2, T);
+    expect(a.profile.resources).toEqual({ rice: 0, wood: 0, stone: 0, cake: 0, coin: 0, special: 0 });
+    expect(a.buildings.find((b) => b.type === 'mill')!).toMatchObject({ state: 'working', jobN: 10 });
+    const u = mk(false);
+    expect(() => craft(u, idOf(u, 'mill'), 10, T)).toThrow(new RuleError('not enough'));
+    // 장터: 가진 것이 없어도 · 한도를 넘어도 팔고, 자원은 줄지 않는다
+    const coins = sell(a, 'special', 100, T);
+    expect(coins).toBeGreaterThan(marketLimit(a));
+    sell(a, 'rice', 100000, T);
+    expect([a.profile.resources.special, a.profile.resources.rice, a.profile.resources.coin]).toEqual([0, 0, coins + sellCoins(a, 'rice', 100000, T)]);
+    expect(() => sell(u, 'rice', 100, T)).toThrow(new RuleError('not enough'));
+    u.profile.resources.special = 100;
+    expect(() => sell(u, 'special', 100, T)).toThrow(new RuleError('sell limit'));
+    // 잔치: 떡 없이
+    const cake0 = a.profile.resources.cake;
+    feast(a, T);
+    expect([a.profile.resources.cake, a.profile.feastUntil > T]).toEqual([cake0, true]);
+    expect(() => feast(u, T)).toThrow(new RuleError('not enough'));
+    // 부탁: 자원을 내지 않고 엽전 · 경험치 · 친밀도는 받는다
+    settle(a, T);
+    const q = { ...a.requests.find((v) => v.state === 'open')! };
+    const before = { ...a.profile.resources };
+    requestDone(a, q.slot, T, 'gift-x');
+    expect(a.profile.resources).toEqual({ ...before, coin: before.coin + q.coin });
+    expect(q.n).toBeGreaterThan(0);
+    settle(u, T);
+    const uq = u.requests.find((v) => v.state === 'open')!;
+    expect(() => requestDone(u, uq.slot, T, 'g')).toThrow(new RuleError('not enough'));
+  });
+
+  it('테스트 모드: 관리자는 랭킹에 나오지 않는다', async () => {
+    const api = createLocalApi(memStore(), () => T, 1, undefined, undefined, true);
+    await api.load();
+    const rk = await api.ranking();
+    expect(rk.mine).toBeNull();
+    expect(rk.rows.map((r) => r.place)).toEqual(rk.rows.map((_, i) => i + 1));
+    expect(rk.rows.some((r) => r.userId === 'local')).toBe(false);
+    const plain = await createLocalApi(memStore(), () => T).ranking();
+    expect(plain.mine).not.toBeNull();
+    expect(plain.total).toBe(rk.total + 1);
   });
 
   it('테스트 모드 (?admin=1)', async () => {

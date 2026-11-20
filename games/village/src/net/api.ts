@@ -287,7 +287,8 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     },
     async ranking() {
       const mine = run((s) => settle(s, now())).state;
-      const all = [{ id: me.id, nick: me.name, state: mine }, ...bots]
+      // 관리자 계정은 랭킹에 나오지 않는다 (서버의 village_ranking 뷰와 같이)
+      const all = [...(mine.admin ? [] : [{ id: me.id, nick: me.name, state: mine }]), ...bots]
         .map((v) => ({ userId: v.id, nickname: v.nick, name: v.state.profile.name, level: v.state.profile.level, prosperity: prosperityOf(v.state), at: v.state.profile.prosperityAt }))
         .sort((a, b) => b.prosperity - a.prosperity || a.at - b.at)
         .map(({ at: _at, ...r }, i) => ({ ...r, place: i + 1 }));

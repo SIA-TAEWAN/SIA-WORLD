@@ -124,7 +124,8 @@ export interface VillageState {
   monuments: BuildingType[];
   /**
    * 관리자 계정 (profiles.is_admin, 062): 마을 레벨은 늘 최고 · 땅은 끝까지 열림, 짓기 · 사기에 개수 · 해금 · 건설 슬롯 제한이 없고
-   * 짓기 · 업그레이드 · 땅 넓히기에 아무 값도 내지 않는다 (마을 회관은 하나, 자리 확인 · 최고 레벨 10 은 그대로)
+   * 짓기 · 업그레이드 · 땅 넓히기에 아무 값도 내지 않는다 (마을 회관은 하나, 자리 확인 · 최고 레벨 10 은 그대로).
+   * 063: 가공 재료 · 판 자원(장터 하루 한도도 없음) · 잔치 떡 · 부탁한 자원도 내지 않는다 (받는 것은 그대로). 번영도 랭킹에 나오지 않는다
    */
   admin: boolean;
 }
@@ -662,7 +663,8 @@ export function craft(s: VillageState, id: string, n: number, now: number): void
   const r = recipeOf(b.type) ?? fail('no recipe');
   if (b.state !== 'done') fail('busy');
   if (!Number.isInteger(n) || n < 1 || n > batchMax(b.type, b.level)) fail('bad count');
-  const need = (res: ResId) => (r.in1 === res ? r.n1 * n : 0) + (r.in2 === res ? r.n2 * n : 0);
+  // 관리자는 재료를 내지 않는다 (063)
+  const need = (res: ResId) => (s.admin ? 0 : (r.in1 === res ? r.n1 * n : 0) + (r.in2 === res ? r.n2 * n : 0));
   for (const k of RES_IDS) if (s.profile.resources[k] < need(k)) fail('not enough');
   for (const k of RES_IDS) s.profile.resources[k] -= need(k);
   const unit = unitSec(s, b);
@@ -679,16 +681,17 @@ export function sell(s: VillageState, res: string, n: number, now: number): numb
   const price = PRICES.find((v) => v.res === res) ?? fail('bad resource');
   if (!Number.isInteger(n) || n < 1 || n > 1000000) fail('bad count');
   const p = s.profile;
-  if (p.resources[price.res] < n) fail('not enough');
+  // 관리자는 판 자원이 줄지 않고 하루 한도가 없다 (엽전은 받는다. 063)
+  if (!s.admin && p.resources[price.res] < n) fail('not enough');
   const day = kstDay(now);
   const sold = p.marketDay === day ? p.marketSold : 0;
   const coins = sellCoins(s, price.res, n, now);
   if (coins < 1) fail('too few');
-  if (sold + coins > marketLimit(s)) fail('sell limit');
-  p.resources[price.res] -= n;
+  if (!s.admin && sold + coins > marketLimit(s)) fail('sell limit');
+  if (!s.admin) p.resources[price.res] -= n;
   p.resources.coin += coins;
   p.marketDay = day;
-  p.marketSold = sold + coins;
+  p.marketSold = Math.min(sold + coins, 2e9);
   progress(s, 'sell', '', coins);
   return coins;
 }
@@ -812,10 +815,12 @@ export function feast(s: VillageState, now: number): void {
   const f = s.buildings.find((b) => b.type === 'feast' && b.state === 'done') ?? fail('no feast');
   const p = s.profile;
   if (now < p.feastUntil) fail('feast active');
-  if (p.resources.cake < CONST.feast_cake) fail('not enough');
+  // 관리자는 떡을 내지 않는다 (063)
+  const cake = s.admin ? 0 : CONST.feast_cake;
+  if (p.resources.cake < cake) fail('not enough');
   // 지난 잔치의 몫까지 쌓인 양을 적어 둔 다음에 새 잔치를 연다
   bankAll(s, now);
-  p.resources.cake -= CONST.feast_cake;
+  p.resources.cake -= cake;
   p.feastFrom = now;
   p.feastUntil = now + CONST.feast_sec * 1000;
   p.feastPct = CONST.feast_pct + CONST.feast_pct_per * (f.level - 1);
@@ -856,8 +861,11 @@ export function requestDone(s: VillageState, slot: number, now: number, giftId: 
   const q = s.requests.find((v) => v.slot === slot) ?? fail('no request');
   if (q.state !== 'open' || q.res === '' || q.resident === '') return fail('no request');
   const p = s.profile;
-  if (p.resources[q.res] < q.n) fail('not enough');
-  p.resources[q.res] -= q.n;
+  // 관리자는 부탁한 자원을 내지 않는다 (받는 것은 그대로. 063)
+  if (!s.admin) {
+    if (p.resources[q.res] < q.n) fail('not enough');
+    p.resources[q.res] -= q.n;
+  }
   p.resources.coin += q.coin;
   const r = residentOf(s, q.resident);
   let gift: Building | null = null;

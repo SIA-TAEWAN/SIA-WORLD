@@ -83,9 +83,11 @@ export function requestsPanel(s: VillageState): string {
         if (q.state !== 'open' || !q.resident || !q.res) return `<div class="q-row wait"><span class="q-wait">💤</span><div class="p-tx"><b>새 부탁을 기다리는 중</b><span class="soft" data-live="wait-${q.slot}"></span></div></div>`;
         const d = RESIDENT[q.resident];
         const have = p.resources[q.res];
-        const lack = have < q.n;
+        // 관리자는 부탁한 자원을 내지 않는다 (063)
+        const lack = !s.admin && have < q.n;
+        const need = s.admin ? '<small class="soft">(관리자 무료)</small>' : `<small class="${lack ? 'lack' : 'soft'}">(${num(Math.min(have, q.n))}/${num(q.n)})</small>`;
         return `<div class="q-row">${face(d.id)}<div class="p-tx"><b>${d.nick}</b>
-            <span class="q-say">${icon(q.res)} ${RES_NAME[q.res]} ${num(q.n)}개만 구해 줘! <small class="${lack ? 'lack' : 'soft'}">(${num(Math.min(have, q.n))}/${num(q.n)})</small></span>${reward(q.coin, q.exp, q.aff)}</div>
+            <span class="q-say">${icon(q.res)} ${RES_NAME[q.res]} ${num(q.n)}개만 구해 줘! ${need}</span>${reward(q.coin, q.exp, q.aff)}</div>
           <span class="q-btns"><button class="btn small primary" data-done="${q.slot}" ${lack ? 'disabled' : ''}>들어주기</button><button class="btn small" data-skip="${q.slot}">넘기기</button></span></div>`;
       })
       .join('');
@@ -110,7 +112,7 @@ export function requestsPanel(s: VillageState): string {
 
 /** 지금 받을 수 있는 것의 수 (아래 메뉴의 [부탁]에 띄우는 숫자) */
 export function claimable(s: VillageState): number {
-  const asks = s.requests.filter((q) => q.state === 'open' && q.res && s.profile.resources[q.res] >= q.n).length;
+  const asks = s.requests.filter((q) => q.state === 'open' && q.res && (s.admin || s.profile.resources[q.res] >= q.n)).length;
   const tasks = s.daily.filter((t) => !t.claimed && t.progress >= t.n).length;
   const bonus = s.daily.length >= 3 && s.daily.every((t) => t.claimed) && s.profile.dailyBonusDay !== s.profile.dailyDay ? 1 : 0;
   return asks + tasks + bonus;

@@ -329,7 +329,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         <div class="p-tx"><b>${esc(r.nickname)}</b><span class="soft">${esc(villageName(r.name, r.nickname))} · 레벨 ${r.level}</span></div>
         <span class="r-pt">🏵 ${num(r.prosperity)}</span>${r.userId === user.id ? '<span class="lock on">내 마을</span>' : `<button class="btn small" data-visit="${esc(r.userId)}">구경</button>`}</div>`;
     const mine = ranking.mine;
-    return `${head}<p class="soft note">${mine ? `내 순위 <b>${mine.place}위</b> / ${num(ranking.total)}곳 · 번영도 ${num(mine.prosperity)}` : '아직 순위가 없어요'} · 건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬을 더한 값이에요</p>
+    return `${head}<p class="soft note">${mine ? `내 순위 <b>${mine.place}위</b> / ${num(ranking.total)}곳 · 번영도 ${num(mine.prosperity)}` : state.admin ? '관리자는 랭킹에 나오지 않아요' : '아직 순위가 없어요'} · 건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬을 더한 값이에요</p>
       <div class="b-list">${mine && !ranking.rows.some((r) => r.userId === mine.userId) ? row(mine) : ''}${ranking.rows.map(row).join('') || '<p class="soft empty">아직 마을이 없어요</p>'}</div>`;
   }
   function openRanking() {
@@ -674,8 +674,10 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const pct = CONST.feast_pct + CONST.feast_pct_per * (b.level - 1);
     if (feasting(state, api.now())) return `<p>🎉 잔치가 한창이에요! 마을 전체 생산 <b>+${p.feastPct}%</b></p><p class="live"><span data-live="feast"></span></p>`;
     if (b.state !== 'done') return `<p class="soft">다 지으면 떡 ${CONST.feast_cake}개로 잔치를 열 수 있어요</p>`;
-    const lack = p.resources.cake < CONST.feast_cake;
-    return `<div class="up-box"><div class="up-tx"><b>잔치 열기</b><span class="costs"><span class="cost ${lack ? 'lack' : ''}">${icon('cake')}${CONST.feast_cake}</span><span class="cost">${icon('time')}하루</span></span>
+    // 관리자는 떡을 내지 않는다 (063)
+    const lack = !state.admin && p.resources.cake < CONST.feast_cake;
+    const cake = state.admin ? '<span class="cost pts">관리자 무료</span>' : `<span class="cost ${lack ? 'lack' : ''}">${icon('cake')}${CONST.feast_cake}</span>`;
+    return `<div class="up-box"><div class="up-tx"><b>잔치 열기</b><span class="costs">${cake}<span class="cost">${icon('time')}하루</span></span>
         <span class="soft">${lack ? '떡이 모자라요 (방앗간에서 만들어요)' : `하루 동안 마을 전체 생산 +${pct}%`}</span></div>
       <button class="btn primary" data-feast ${lack ? 'disabled' : ''}>잔치 열기</button></div>`;
   }
@@ -686,18 +688,19 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const p = state.profile;
     const m = market(state);
     if (!m) return '<p class="soft">다 지으면 자원을 엽전으로 팔 수 있어요</p>';
-    const left = sellLeft(state, now);
+    // 관리자는 하루 한도가 없고 판 자원이 줄지 않는다 (063)
+    const left = state.admin ? Infinity : sellLeft(state, now);
     const day = kstDay(now);
-    const rows = PRICES.filter((v) => v.res !== 'special' || p.resources.special > 0)
+    const rows = PRICES.filter((v) => state.admin || v.res !== 'special' || p.resources.special > 0)
       .map((v) => {
         const pct = pricePct(day, v.idx);
         const have = p.resources[v.res];
         // 한도 안에서 팔 수 있는 가장 많은 개수
-        let all = have;
+        let all = state.admin ? Math.min(have, 1000000) : have;
         while (all > 0 && sellCoins(state, v.res, all, now) > left) all = Math.floor(all * 0.9);
         const btn = (n: number, label: string) => {
           const coins = sellCoins(state, v.res, n, now);
-          return `<button class="btn small" data-sell="${v.res}" data-n="${n}" ${n < 1 || n > have || coins < 1 || coins > left ? 'disabled' : ''}>${label}</button>`;
+          return `<button class="btn small" data-sell="${v.res}" data-n="${n}" ${n < 1 || (!state.admin && n > have) || coins < 1 || coins > left ? 'disabled' : ''}>${label}</button>`;
         };
         const unit = v.res === 'special' ? 1 : 100;
         return `<div class="m-row">${icon(v.res)}<div class="m-tx"><b>${RES_NAME[v.res]} <small>${num(have)}개</small></b>
@@ -706,7 +709,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       })
       .join('');
     const pig = residentPct(state, 'pig');
-    return `<p>오늘 더 벌 수 있는 엽전 <b>${num(left)}</b> / ${num(marketLimit(state))} <small class="soft">(시세는 날마다 바뀌어요)</small>${pig ? ` <small class="bonus">${RESIDENT.pig.nick} 값 +${pig}%</small>` : ''}</p><div class="m-list">${rows}</div>`;
+    const limit = state.admin ? '관리자 무료 · 하루 한도 없음 · 판 자원은 줄지 않아요' : `오늘 더 벌 수 있는 엽전 <b>${num(left)}</b> / ${num(marketLimit(state))}`;
+    return `<p>${limit} <small class="soft">(시세는 날마다 바뀌어요)</small>${pig ? ` <small class="bonus">${RESIDENT.pig.nick} 값 +${pig}%</small>` : ''}</p><div class="m-list">${rows}</div>`;
   }
 
   /** 방앗간 · 장독대: 재료를 넣고 만들기 */
@@ -717,10 +721,11 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const recipe = `<p>${icon(r.in1)}${r.n1}${r.in2 ? ` + ${icon(r.in2)}${r.n2}` : ''} → ${icon(r.out)}1 <small class="soft">(하나에 ${duration(unit)})</small></p>`;
     if (b.state === 'working') return `${recipe}<p class="live"><span data-live="job"></span></p>`;
     if (b.state !== 'done') return recipe;
-    const afford = Math.min(Math.floor(p.resources[r.in1] / r.n1), r.in2 ? Math.floor(p.resources[r.in2] / r.n2) : Infinity);
+    // 관리자는 재료를 내지 않는다 (063)
+    const afford = state.admin ? Infinity : Math.min(Math.floor(p.resources[r.in1] / r.n1), r.in2 ? Math.floor(p.resources[r.in2] / r.n2) : Infinity);
     const max = Math.min(batchMax(b.type, b.level), afford);
     if (craftN < 1 || craftN > max) craftN = Math.max(1, max);
-    return `${recipe}<div class="up-box"><div class="up-tx"><b>${RES_NAME[r.out]} 만들기</b>
+    return `${recipe}<div class="up-box"><div class="up-tx"><b>${RES_NAME[r.out]} 만들기${state.admin ? ' <small class="soft">관리자 무료</small>' : ''}</b>
         <span class="stepper"><button class="btn small" data-step="-1" ${craftN <= 1 ? 'disabled' : ''}>−</button><b>${craftN}개</b><button class="btn small" data-step="1" ${craftN >= max ? 'disabled' : ''}>+</button><button class="btn small" data-step="max" ${craftN >= max ? 'disabled' : ''}>최대</button></span>
         <span class="soft">${max < 1 ? '재료가 모자라요' : `한 번에 ${batchMax(b.type, b.level)}개까지 · ${duration(unit * craftN)}`}</span></div>
       <button class="btn primary" data-craft="${b.id}" ${max < 1 ? 'disabled' : ''}>만들기</button></div>`;
