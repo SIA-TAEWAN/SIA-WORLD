@@ -241,7 +241,7 @@
     // 순서는 이 브라우저에 기억해 두고 처음부터 그 순서로 그린다 (서버 응답을 기다렸다가 카드가 자리를 바꾸지 않게).
     // 서버의 접속 이력은 로비를 열 때마다 받아 와 기억만 고친다 → 다음에 로비를 열 때 반영된다.
     const ORDER_KEY = 'sia-world-game-order:';
-    /** 많이 들어간 순서의 게임 id (들어간 적 없는 게임은 없다 → 목록의 기본 순서로 뒤에 붙는다) */
+    /** 내가 많이 들어간 순서의 게임 id (들어간 적 없는 게임은 없다 → 최신 게임부터 뒤에 붙는다) */
     let gameOrder = [];
     function readGameOrder(userId) {
       try {
@@ -252,11 +252,11 @@
       }
     }
     function orderedGames() {
-      const rank = (g) => { const i = gameOrder.indexOf(g.id); return i < 0 ? Infinity : i; };
-      // 순위가 같으면(들어간 적 없는 게임끼리) 목록의 기본 순서 그대로 (sort 는 자리를 지킨다)
-      return [...GAMES].sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) - rank(b)));
+      // 들어간 게임: 내 접속 이력 순. 들어간 적 없는 게임(새로 가입한 사람은 전부): 개발 완료의 역순 = 목록(GAMES)의 거꾸로, 최신 게임부터
+      const rank = (g) => { const i = gameOrder.indexOf(g.id); return i < 0 ? GAMES.length * 2 - GAMES.indexOf(g) : i; };
+      return [...GAMES].sort((a, b) => rank(a) - rank(b));
     }
-    /** 서버의 내 접속 이력으로 다음에 쓸 순서를 기억한다: 횟수 많은 순 → 같으면 최근에 들어간 순 → 기본 순서 */
+    /** 서버의 내 접속 이력으로 다음에 쓸 순서를 기억한다: 횟수 많은 순 → 같으면 최근에 들어간 순 (그 밖은 orderedGames 가 최신 게임부터) */
     async function rememberGameOrder(userId) {
       try {
         const { data, error } = await supabase.rpc('my_game_visits');
