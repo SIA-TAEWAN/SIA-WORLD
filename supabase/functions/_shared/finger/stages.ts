@@ -40,14 +40,48 @@ export interface StageDef {
   atkMul?: number;
 }
 
-const top = 150;
-
-/** 1지역: 쥐의 들판 (손으로 만든 5스테이지) */
+/** 1지역: 쥐의 들판 (손으로 만든 5스테이지). 1~4번째는 마지막 웨이브에 작은 대장, 5번째는 지역 보스(큰 도깨비) */
 const REGION1: StageDef[] = [
   {
-    id: '1-1', region: 1, no: 1, name: '들판 입구', par: 12, tip: 'reflect',
+    id: '1-1', region: 1, no: 1, name: '들판 입구', par: 16, tip: 'reflect',
     waves: [
-      [{ k: 'imp', x: 220, y: top + 120 }, { k: 'imp', x: 420, y: top + 120 }],
+      [{ k: 'imp', x: 200, y: 250 }, { k: 'imp', x: 440, y: 250 }],
+      [{ k: 'imp', x: 160, y: 200 }, { k: 'imp', x: 320, y: 330 }, { k: 'imp', x: 480, y: 200, drop: 'heal' }],
+      [{ k: 'wisp', x: 150, y: 330 }, { k: 'wisp', x: 490, y: 330 }, { k: 'chief', x: 320, y: 220 }],
+    ],
+  },
+  {
+    id: '1-2', region: 1, no: 2, name: '도깨비불 길', par: 16, tip: 'pierce',
+    waves: [
+      [{ k: 'wisp', x: 160, y: 220 }, { k: 'wisp', x: 320, y: 220 }, { k: 'wisp', x: 480, y: 220 }],
+      [{ k: 'imp', x: 200, y: 180 }, { k: 'wisp', x: 320, y: 380, drop: 'heal' }, { k: 'imp', x: 440, y: 180 }],
+      [{ k: 'imp', x: 130, y: 420 }, { k: 'imp', x: 510, y: 420 }, { k: 'chief', x: 320, y: 220 }],
+    ],
+  },
+  {
+    id: '1-3', region: 1, no: 3, name: '돌기둥 마당', par: 15, tip: 'reflect',
+    blocks: [[110, 540, 90, 40], [440, 540, 90, 40]],
+    waves: [
+      [{ k: 'imp', x: 200, y: 220 }, { k: 'club', x: 440, y: 260 }],
+      [{ k: 'wisp', x: 140, y: 180 }, { k: 'club', x: 320, y: 230 }, { k: 'wisp', x: 500, y: 180, drop: 'heal' }],
+      [{ k: 'imp', x: 160, y: 400 }, { k: 'imp', x: 480, y: 400 }, { k: 'chief', x: 320, y: 210 }],
+    ],
+  },
+  {
+    id: '1-4', region: 1, no: 4, name: '방망이 고개', par: 17, tip: 'pierce',
+    blocks: [[280, 600, 80, 40]],
+    waves: [
+      [{ k: 'club', x: 200, y: 250 }, { k: 'club', x: 440, y: 250 }],
+      [{ k: 'imp', x: 120, y: 200 }, { k: 'club', x: 320, y: 300, drop: 'heal' }, { k: 'imp', x: 520, y: 200 }],
+      [{ k: 'club', x: 150, y: 400 }, { k: 'club', x: 490, y: 400 }, { k: 'chief', x: 320, y: 210 }],
+    ],
+  },
+  {
+    id: '1-5', region: 1, no: 5, name: '큰 도깨비', par: 19, tip: 'reflect',
+    waves: [
+      [{ k: 'imp', x: 200, y: 240 }, { k: 'imp', x: 440, y: 240 }, { k: 'wisp', x: 320, y: 420 }],
+      [{ k: 'club', x: 320, y: 250 }, { k: 'wisp', x: 150, y: 420, drop: 'heal' }, { k: 'wisp', x: 490, y: 420 }],
+      [{ k: 'boss', x: 320, y: 250 }, { k: 'imp', x: 140, y: 520, drop: 'heal' }, { k: 'imp', x: 500, y: 520 }],
     ],
   },
 ];
