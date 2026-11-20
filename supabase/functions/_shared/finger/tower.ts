@@ -17,9 +17,9 @@ export const TOWER_BLOCK = 5;
 
 /** 층 세기: 체력 배율 = HP0 × (1 + HP_STEP × (층 − 1)), 공격 배율 = ATK0 × (1 + ATK_STEP × (층 − 1)) */
 export const TOWER_HP0 = 0.3;
-export const TOWER_HP_STEP = 0.04;
+export const TOWER_HP_STEP = 0.05;
 export const TOWER_ATK0 = 1;
-export const TOWER_ATK_STEP = 0.2;
+export const TOWER_ATK_STEP = 0.1;
 
 /** 묶음 안 순번 → [스테이지 번호, 가져올 웨이브 번호(0부터)] */
 const PICK: [number, number][] = [

@@ -17,7 +17,7 @@ export const MAX_SHOT_STEPS = 360;
 /** 한 판 최대 턴 (넘으면 실패) */
 export const MAX_TURNS = 40;
 /** 끝없는 탑 한 판의 최대 턴 (판이 너무 길어지지 않게) */
-export const TOWER_TURNS = 120;
+export const TOWER_TURNS = 200;
 /** 대원 반지름 */
 export const HERO_R = 30;
 /** 힘 1 → 가장 느린 속도, 힘 100 → 가장 빠른 속도 (px/초) */

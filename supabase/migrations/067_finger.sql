@@ -120,7 +120,7 @@ language sql immutable as $$
     when 'max_age' then 7200
     when 'coin_min_time' then 20
     when 'max_turns' then 40
-    when 'tower_turns' then 120
+    when 'tower_turns' then 200
     when 'max_shot_steps' then 360
     when 'pick_cap' then 300
     when 'tower_floor_coins' then 10
@@ -435,7 +435,7 @@ begin
   tower := rn.mode = 'tower';
   if v_cleared is null or v_stars is null or v_turns is null or v_wave is null or v_waves is null
     or v_kills is null or v_picked is null or v_fallen is null or v_steps is null then raise exception 'bad result'; end if;
-  -- 끝없는 탑: 120턴까지 · 한 턴에 한 층보다 더 오를 수 없다. 스테이지는 40턴까지 · 층 0
+  -- 끝없는 탑: 200턴까지 · 한 턴에 한 층보다 더 오를 수 없다. 스테이지는 40턴까지 · 층 0
   if v_turns > public._finger_const(case when tower then 'tower_turns' else 'max_turns' end)
     or (tower and (v_floors < 0 or v_floors > v_turns or v_floors > v_waves)) or (not tower and v_floors <> 0)
   then raise exception 'bad result'; end if;

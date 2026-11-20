@@ -19,7 +19,7 @@ describe('밸런스: 지역 대표 스테이지를 자동 플레이어가 깬다
   it.each(cases)('%s', (_, st) => {
     const lv = testLevel(st.region);
     if (st.region <= 5) expect(lv).toBeLessThanOrEqual(3);
-    const r = autoPlay(st, { level: lv, party: partyFor(st.region) });
+    const r = autoPlay(st, { level: lv, party: partyFor(st.region), pilot: CALIB_PILOT });
     expect(r.cleared).toBe(true);
     expect(r.fallen).toBeLessThanOrEqual(1);
     expect(r.turns).toBeLessThanOrEqual(st.par);

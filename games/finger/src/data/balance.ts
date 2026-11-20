@@ -20,7 +20,9 @@ export const testLevel = (region: number) => Math.max(1, expectLevel(region) - (
 export const levelGrow = (lv: number) => 1 + 0.04 * (lv - 1);
 
 /** 요괴 공격 배율: 예상 레벨의 대원 체력에 맞추고, 지역마다 1.5%씩 더 아프게 (8단계: 3% 는 사람에게 늦은 지역 전멸이 잦았다) */
-export const atkMulOf = (region: number) => Math.round(levelGrow(expectLevel(region)) * (1 + 0.015 * (region - 1)) * 100) / 100;
+/** 지역별 공격 덜기: 사람 흉내 측정에서 전멸이 유독 잦은 지역 (10 저승사자 되살아남·연속 공격, 12 염라대왕 부르기·불길) */
+export const ATK_EASE: Partial<Record<number, number>> = { 10: 0.75, 12: 0.8 };
+export const atkMulOf = (region: number) => Math.round(levelGrow(expectLevel(region)) * (1 + 0.015 * (region - 1)) * (ATK_EASE[region] ?? 1) * 100) / 100;
 
 /** 그 지역을 처음 할 때 열려 있는 대원 (n지역 5번째를 깨면 합류 → n+1지역부터) */
 export const heroesOpenAt = (region: number): HeroId[] => HERO_IDS.filter((id) => HEROES[id].unlockRegion < region);

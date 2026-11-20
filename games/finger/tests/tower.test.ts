@@ -127,7 +127,7 @@ describe('층을 올라가도 이어진다', () => {
     const r = resultOf(s);
     expect(r).toMatchObject({ ended: true, cleared: false, floors: 1, turns: 2 });
   });
-  it('최대 턴(120)을 다 쓰면 끝', () => {
+  it('최대 턴(200)을 다 쓰면 끝', () => {
     const cfg = miniTower();
     cfg.waves[0] = [foe(320, 200, { hp: 99999, cd: 99, atk: 0 })];
     const s = createRun(cfg);
@@ -157,10 +157,10 @@ describe('서버 다시 돌리기 (끝없는 탑)', () => {
     expect(server.ended).toBe(s.phase !== 'aim');
   });
 
-  it('조작 상한: 탑은 120개까지, 121개는 too many turns (스테이지는 40)', () => {
+  it('조작 상한: 탑은 200개까지, 201개는 too many turns (스테이지는 40)', () => {
     const many = (n: number) => Array.from({ length: n }, () => ({ a: 0, p: 1, s: 0 as const }));
-    expect(MAX_TOWER_INPUTS).toBe(120);
-    expect(checkInputs(many(120), MAX_TOWER_INPUTS).length).toBe(120);
+    expect(MAX_TOWER_INPUTS).toBe(200);
+    expect(checkInputs(many(200), MAX_TOWER_INPUTS).length).toBe(200);
     const err = (f: () => unknown) => {
       try {
         f();
@@ -169,7 +169,7 @@ describe('서버 다시 돌리기 (끝없는 탑)', () => {
         return e instanceof VerifyError ? e.message : 'other';
       }
     };
-    expect(err(() => verifyRun(snap, many(121)))).toBe('too many turns');
+    expect(err(() => verifyRun(snap, many(201)))).toBe('too many turns');
     expect(err(() => checkInputs(many(41)))).toBe('too many turns');
     // 41개가 탑에서는 상한에 걸리지 않는다 (판이 먼저 끝나면 extra inputs 가 될 수는 있다)
     expect(err(() => verifyRun(snap, many(41)))).not.toBe('too many turns');

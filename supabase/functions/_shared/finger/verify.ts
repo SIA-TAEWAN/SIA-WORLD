@@ -75,7 +75,7 @@ function snapUpgrades(snap: RunSnapshot): Upgrades {
 
 /**
  * 스냅숏 + 조작 목록 → 다시 계산한 결과. 틀리면 VerifyError:
- *  · 'bad inputs' 조작 모양이 틀림 · 'too many turns' 40턴(끝없는 탑 120턴) 넘음 · 'extra inputs' 판이 끝난 뒤에도 조작이 남음
+ *  · 'bad inputs' 조작 모양이 틀림 · 'too many turns' 40턴(끝없는 탑 200턴) 넘음 · 'extra inputs' 판이 끝난 뒤에도 조작이 남음
  *  · 'bad mode' · 'bad stage' · 'bad party' 스냅숏이 틀림
  * 판이 끝나지 않은 결과(ended = false)는 '그만하기'로 끝낸 실패 판이다.
  */
