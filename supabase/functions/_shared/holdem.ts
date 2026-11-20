@@ -473,6 +473,8 @@ function aiPlan(pub: HoldemPublic, priv: HoldemPrivate | undefined, seat: number
 
 export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic, HoldemPrivate> = {
   game: 'holdem',
+  // 판 도중 나간 사람: 공짜면 체크, 아니면 폴드. AI 가 그 사람 돈으로 계속 걸지 않는다
+  leftUsesTimeout: true,
 
   newRound(input: RoundInput<HoldemCarry>): HoldemState {
     const { baseUnit, rng } = input;

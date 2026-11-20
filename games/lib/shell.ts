@@ -21,7 +21,7 @@ import {
   type WalletModule,
   type WorldUser,
   type ZodiacModule, type PresenceHandle } from './world.ts';
-import type { LocalHost, LocalPlay } from './solo-play.ts';
+import { isRulesChanged, type LocalHost, type LocalPlay } from './solo-play.ts';
 
 export interface GameEventLite {
   id: number;
@@ -245,6 +245,25 @@ export function toast(msg: string) {
   t.textContent = msg;
   document.body.append(t);
   setTimeout(() => t.remove(), 2600);
+}
+
+/**
+ * 서버의 규칙 판이 이 탭에 실린 엔진과 다르다 (탭을 연 뒤 새 규칙이 배포됐다): 새로고침 안내 창 (한 번만 띄운다).
+ * 닫기 버튼은 두지 않는다 — 이 탭으로는 판을 맞게 이어 갈 수 없다
+ */
+let outdatedShown = false;
+export function showOutdated() {
+  if (outdatedShown) return;
+  outdatedShown = true;
+  const d = document.createElement('div');
+  d.className = 'modal';
+  d.setAttribute('role', 'alertdialog');
+  d.innerHTML = `<div class="box"><h3>게임이 새 버전으로 바뀌었어요</h3><p class="note">새로고침해 주세요</p>
+    <div class="row"><button type="button" class="btn primary" data-reload>새로고침</button></div></div>`;
+  document.body.append(d);
+  const b = $<HTMLButtonElement>(d, '[data-reload]');
+  b.addEventListener('click', () => location.reload());
+  b.focus();
 }
 
 /** 확인 창 대신 쓰는 간단한 입력 창 */
@@ -914,7 +933,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           }
           unbusy();
         } catch (e) {
-          toast(m.room.friendly(e));
+          if (isRulesChanged(e)) showOutdated();
+          else toast(m.room.friendly(e));
           unbusy();
           paintControls();
           return false;
@@ -2084,6 +2104,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       reload: () => reloadAll(),
       refresh: () => !closed && paint(),
       toast,
+      outdated: () => !closed && showOutdated(),
     });
   }
   // 페이지를 떠날 때 (닫기 · 새로고침 · 다른 곳으로): 기기에서 둔 데까지를 서버에 맞춰 둔다

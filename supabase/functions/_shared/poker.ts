@@ -554,6 +554,8 @@ function aiBetPlan(pub: PokerPublic, priv: PokerPrivate | undefined, seat: numbe
 
 export const poker: Engine<PokerState, PokerAction, PokerCarry, PokerPublic, PokerPrivate> = {
   game: 'poker',
+  // 판 도중 나간 사람: 공짜면 체크, 아니면 다이 (고르기 단계는 정해진 자동 고르기). AI 가 그 사람 돈으로 계속 걸지 않는다
+  leftUsesTimeout: true,
 
   newRound(input: RoundInput<PokerCarry>): PokerState {
     const { baseUnit, rng } = input;

@@ -95,6 +95,25 @@ export interface Engine<S, A, C = unknown, P = unknown, Q = unknown> {
   charge?(s: S, seat: number, action: A): { spin: number; bets: unknown; total: number } | null;
   /** 결과가 나와 지급할 스핀 (없으면 null) */
   spinResult?(s: S): { spin: number; result: number } | null;
+  /** 베팅을 받는 중인 스핀 번호 (아니면 null). 러너가 그 스핀의 확정 기록을 읽어 상태에 채운다 (adoptBets) */
+  betSpin?(s: S): number | null;
+  /**
+   * 기록(SQL)에 남은 확정 베팅을 상태에 채운다: 아직 확정 안 된 자리만 확정으로. 모두 확정되면 결과까지 정한다.
+   * (확정 요청과 마감 처리가 엇갈려 돈은 빠졌는데 상태에는 '안 걸었다'로 남는 일 방지)
+   */
+  adoptBets?(s: S, rows: { seat: number; bets: unknown }[], rng: Rng): S;
+  /** 이미 처리됐거나 지난 단계의 행동이라 조용히 받아 넘길 것인가 (예: 룰렛 결과 '확인'을 두 번) */
+  redundant?(s: S | null, seat: number, action: A): boolean;
+  /**
+   * 참이면 판 도중 나간 사람 자리는 AI 대신 시간 초과 행동(engine.timeout)으로 둔다
+   * (포커·홀덤: 그 사람 지갑 전부를 걸고 AI 가 계속 두지 않게 — 공짜면 체크, 아니면 다이/폴드)
+   */
+  readonly leftUsesTimeout?: boolean;
+  /**
+   * 규칙 판 (기기에서 먼저 진행하는 게임만: 맞고). 서버와 화면이 같은 엔진 코드로 같은 판을 두므로,
+   * 규칙이 바뀐 서버와 예전 화면이 만나면 영영 어긋난다 → 서로 이 값을 견주어 다르면 화면이 새로고침을 안내한다
+   */
+  readonly rulesVersion?: number;
 }
 
 export class EngineError extends Error {

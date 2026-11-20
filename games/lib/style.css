@@ -296,6 +296,8 @@ input:focus { outline: var(--line) solid var(--primary); }
 .modal input { width: 100%; }
 .modal .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 .modal .btn.ghost { color: var(--ink); -webkit-text-stroke: 0; }
+/* 짧은 안내 한 줄 (새 버전 안내 등) */
+.modal .note { margin: 0; color: var(--ink); }
 /* 동물 고르기 (시아탱크 .zodiac-pick) */
 .avatars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .av {

@@ -73,5 +73,10 @@ export function supabaseStore(sb: SupabaseClient): Store {
     async paySpin(id, round, spin, result) {
       must(await sb.rpc('roulette_pay', { p_room: id, p_round: round, p_spin: spin, p_result: result }));
     },
+    async spinBets(id, round, spin) {
+      // roulette_bets (026): 기본 키 (room_id, round_no, spin_no, user_id). service role 이라 RLS 를 거치지 않는다
+      const r = await sb.from('roulette_bets').select('user_id,bets').eq('room_id', id).eq('round_no', round).eq('spin_no', spin);
+      return ((must(r) ?? []) as { user_id: string; bets: unknown }[]).map((x) => ({ userId: x.user_id, bets: x.bets }));
+    },
   };
 }

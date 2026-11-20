@@ -27,6 +27,15 @@
 import { clone, EngineError, shuffle } from './engine.ts';
 import type { Engine, GameEvent, Rng, RoundInput, SeatInfo, SeatKind } from './engine.ts';
 
+/**
+ * 규칙 판 (기기에서 진행하는 판의 판 확인용). **규칙·점수·AI·난수를 쓰는 순서처럼, 같은 행동 목록을 두었을 때 결과가
+ * 달라지는 수정을 배포할 때마다 1씩 올린다.** 서버는 판 시작·sync 응답의 solo.rules 로 이 값을 내려 주고, replay·act 에
+ * 실려 온 값이 다르면 409 로 거절한다 → 그 전에 열어 둔 탭은 새 규칙의 서버와 어긋나는 대신 '새로고침해 주세요' 안내를 띄운다.
+ * 화면 표시만 바뀌는 수정에는 올리지 않는다 (올리면 그때 판을 하던 사람이 모두 새로고침해야 한다).
+ * 판을 싣지 않는 예전 화면(이 값이 생기기 전에 열린 탭)은 1 로 본다 (solo.ts RULES_BASELINE).
+ */
+export const MATGO_RULES = 1;
+
 // ───────────────────────────── 카드 ─────────────────────────────
 
 export type CardKind = 'gwang' | 'yeol' | 'tti' | 'pi';
@@ -1045,6 +1054,7 @@ function aiDecide(pub: MatgoPublic, priv: MatgoPrivate | undefined, seat: number
 
 export const matgo: Engine<MatgoState, MatgoAction, MatgoCarry, MatgoPublic, MatgoPrivate> = {
   game: 'matgo',
+  rulesVersion: MATGO_RULES,
 
   newRound(input: RoundInput<MatgoCarry>): MatgoState {
     if (input.seats.length !== 2) throw new EngineError('맞고는 2명이 합니다');

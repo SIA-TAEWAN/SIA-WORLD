@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { seededRng } from './engine.ts';
 import { ENGINES } from './engines.ts';
 import { GameError, Runner, SOLO_DEADLINE_MS, type DeckRow, type GameId, type RoomRow, type SeatRow, type Store } from './runner.ts';
-import { matgo, type MatgoAction, type MatgoState } from './matgo.ts';
-import { soloOf, soloStep } from './solo.ts';
+import { matgo, MATGO_RULES, type MatgoAction, type MatgoState } from './matgo.ts';
+import { RULES_CHANGED, soloOf, soloStep } from './solo.ts';
+import { payoutOf, type RBet } from './roulette.ts';
 
 /** 메모리 DB (SQL 함수와 같은 규칙으로 흉내) */
 function memStore(game: GameId, humans: string[], seatCount: number, balance = 100000) {
@@ -646,7 +647,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
       const got = await runner.sync('r1', 'u1', { duo: true });
       expect(got.duo).toBe(false);
       // 판은 그대로이고, 혼자 하는 판으로 바뀌었다 (duo 표시만 떨어진다)
-      expect(got.state).toEqual({ ...s, solo: { seed: soloOf(s)!.seed, n: soloOf(s)!.n } });
+      expect(got.state).toEqual({ ...s, solo: { seed: soloOf(s)!.seed, n: soloOf(s)!.n, rules: MATGO_RULES } });
       expect(got.state).toEqual(m.deck.state);
       s = got.state as MatgoState;
       // 이제 혼자 하는 판과 같다: 내 행동 뒤에 서버가 AI 차례를 이어 둔다
@@ -713,7 +714,7 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     now += 5_000;
     const got = await runner.sync('r1', 'u1', { duo: true });
     expect(got.duo).toBe(false);
-    expect(soloOf(got.state)).toEqual({ seed: soloOf(s)!.seed, n: soloOf(s)!.n });
+    expect(soloOf(got.state)).toEqual({ seed: soloOf(s)!.seed, n: soloOf(s)!.n, rules: MATGO_RULES });
     expect(got.version).toBe(m.deck.version);
     expect(deadlineOf(m)).toBe(now + SOLO_DEADLINE_MS);
     // 공개 상태의 진행 수는 그대로 (판은 한 걸음도 나아가지 않았다)
@@ -763,5 +764,253 @@ describe('Runner: 사람 둘이 하는 맞고 (기기에서 먼저 진행 → ac
     expect(soloOf(st)!.duo).toBeUndefined();
     expect(soloOf(st)!.n).toBeGreaterThan(soloOf(s)!.n);
     expect(matgo.done(st) || matgo.pending(st).includes(0)).toBe(true);
+  });
+});
+
+describe('Runner: 판 도중 나간 사람 자리 (포커·홀덤은 체크 아니면 다이/폴드만)', () => {
+  /** 상태 JSON 안의 카드 id 두 개씩을 맞바꾼다 (중복 없이 원하는 카드를 쥐여 주기) */
+  const swapCards = (state: unknown, pairs: [string, string][]) => {
+    let j = JSON.stringify(state);
+    for (const [a, b] of pairs) {
+      if (a === b) continue;
+      j = j.split(`"${a}"`).join('"@@"').split(`"${b}"`).join(`"${a}"`).split('"@@"').join(`"${b}"`);
+    }
+    return JSON.parse(j);
+  };
+  for (const game of ['holdem', 'poker'] as const) {
+    it(`${game}: 센 패를 쥔 채 나간 자리도 레이즈·콜 없이 체크 아니면 ${game === 'poker' ? '다이' : '폴드'}, 잃는 돈은 이미 낸 것까지`, async () => {
+      let actedLeft = 0;
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const m = memStore(game, ['u1', 'u2'], 4);
+        const left: { type: string }[] = [];
+        const base = ENGINES[game];
+        const spy = { ...base, apply: (s: unknown, seat: number, a: { type: string }, rng: never) => (seat === 1 && left.push(a), base.apply(s, seat, a, rng)) };
+        const runner = new Runner(m.store, { ...ENGINES, [game]: spy }, seededRng(seed));
+        await runner.start('r1', 'u1');
+        // u2 가 나갔다 (leave_room). 그 자리에는 에이스를 쥐여 준다 (AI 라면 크게 걸 패)
+        m.seats[1].left_game = true;
+        const st = m.deck.state as { players: { seat: number; hole?: string[]; choices?: string[]; total: number }[] };
+        const me = st.players.find((p) => p.seat === 1)!;
+        const mine = (game === 'holdem' ? me.hole : me.choices) ?? [];
+        const aces = ['AS', 'AH', 'AD', 'AC'].slice(0, mine.length);
+        m.deck = { ...m.deck, state: swapCards(st, aces.map((a, i) => [a, mine[i]] as [string, string])) };
+        const paid = me.total;
+        await runner.timeout('r1', m.deck.version, true);
+        const rng = seededRng(seed * 31);
+        for (let i = 0; i < 500 && m.room.status === 'playing'; i++) {
+          const last = m.published[m.published.length - 1];
+          if (!last.pending.includes(0)) {
+            await runner.timeout('r1');
+            continue;
+          }
+          const priv = last.privates.find((p) => p.seat === 0)?.hand;
+          await runner.act('r1', 'u1', ENGINES[game].ai(last.pub, priv, 0, rng));
+        }
+        expect(m.room.status).toBe('waiting');
+        const betting = left.filter((a) => a.type !== 'choose');
+        actedLeft += betting.length;
+        for (const a of betting) expect(['check', game === 'poker' ? 'die' : 'fold']).toContain(a.type);
+        // 나간 자리의 손실은 나가기 전에 이미 낸 돈(앤티·블라인드)을 넘지 않는다 (체크로 이기면 딸 수는 있다)
+        expect(m.results.get(1)![1] ?? 0).toBeGreaterThanOrEqual(-paid);
+      }
+      // 나간 자리가 실제로 차례를 받아 뒀다 (검사가 비어 있지 않다)
+      expect(actedLeft).toBeGreaterThan(0);
+    });
+  }
+
+  it('블랙잭은 예전 그대로 나간 자리를 AI 가 둔다 (나간 자리 베팅은 AI 베팅)', async () => {
+    const m = memStore('blackjack', ['u1', 'u2'], 4);
+    const runner = new Runner(m.store, ENGINES, seededRng(31));
+    await runner.start('r1', 'u1');
+    m.seats[1].left_game = true;
+    await runner.timeout('r1', m.deck.version, true);
+    const pub = m.published[m.published.length - 1].pub;
+    expect(pub.seats.find((x: any) => x.seat === 1).bet).not.toBeNull();
+  });
+});
+
+describe('Runner: 맞고 규칙 판 (MATGO_RULES)', () => {
+  const bumped = { ...ENGINES, matgo: { ...matgo, rulesVersion: MATGO_RULES + 1 } };
+  const start = async (engines = ENGINES, humans = ['u1']) => {
+    const m = memStore('matgo', humans, 2);
+    const runner = new Runner(m.store, engines, seededRng(5));
+    const r = (await runner.start('r1', 'u1')) as { solo?: MatgoState; duo?: MatgoState };
+    return { m, runner, r };
+  };
+
+  it('판 시작: 상태의 solo 에 규칙 판을 싣고, sync 도 지금 서버의 규칙 판을 준다', async () => {
+    const { m, runner, r } = await start();
+    expect(soloOf(r.solo)!.rules).toBe(MATGO_RULES);
+    expect(soloOf(m.deck.state)!.rules).toBe(MATGO_RULES);
+    expect(soloOf((await runner.sync('r1', 'u1')).state)!.rules).toBe(MATGO_RULES);
+    // 걸음을 둬도 규칙 판은 남는다
+    const seat = matgo.pending(r.solo!)[0];
+    expect(soloOf(soloStep(matgo, r.solo!, seat, null))!.rules).toBe(MATGO_RULES);
+    // 판 도중 서버가 새 규칙으로 바뀌었으면 sync 는 새 판을 알려 준다 (저장된 상태는 그대로)
+    const later = new Runner(m.store, bumped, seededRng(1));
+    expect(soloOf((await later.sync('r1', 'u1')).state)!.rules).toBe(MATGO_RULES + 1);
+    expect(soloOf(m.deck.state)!.rules).toBe(MATGO_RULES);
+  });
+
+  it('replay: 판이 다르면 409 RULES_CHANGED, 같거나 안 실었으면(예전 화면 = 1판) 받는다', async () => {
+    const { m, runner, r } = await start();
+    const n = soloOf(r.solo)!.n;
+    await expect(runner.replay('r1', 'u1', { n, actions: [], rules: MATGO_RULES + 1 })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
+    await expect(runner.replay('r1', 'u1', { n, actions: [], rules: 'x' })).rejects.toMatchObject({ status: 409 });
+    expect(await runner.replay('r1', 'u1', { n, actions: [], rules: MATGO_RULES })).toMatchObject({ ok: true });
+    expect(await runner.replay('r1', 'u1', { n, actions: [] })).toMatchObject({ ok: true });
+    // 새 규칙(2판) 서버: 판을 안 실은 예전 화면은 1판으로 보고 거절한다
+    const later = new Runner(m.store, bumped, seededRng(1));
+    await expect(later.replay('r1', 'u1', { n, actions: [] })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
+    expect(await later.replay('r1', 'u1', { n, actions: [], rules: MATGO_RULES + 1 })).toMatchObject({ ok: true });
+  });
+
+  it('act: 진행 수(n)와 함께 온 행동은 판을 견주고(행동에 실린 rules 는 떼어 낸다), 서버 진행(n 없음)은 그대로 받는다', async () => {
+    const { m, runner, r } = await start(ENGINES, ['u1', 'u2']);
+    let s = r.duo!;
+    const turn = () => matgo.pending(s)[0];
+    const user = () => (turn() === 0 ? 'u1' : 'u2');
+    const pick = () => {
+      const v = matgo.view(s);
+      return matgo.ai(v.public, v.private[turn()], turn(), seededRng(3));
+    };
+    const n = soloOf(s)!.n;
+    await expect(runner.act('r1', user(), { ...pick(), rules: MATGO_RULES + 1 }, n)).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
+    await runner.act('r1', user(), { ...pick(), rules: MATGO_RULES }, n);
+    s = m.deck.state as MatgoState;
+    expect(soloOf(s)!.n).toBe(n + 1);
+    // 서버가 새 규칙이면: 판을 안 실은 n 행동(예전 화면)은 거절, n 없는 행동(서버가 진행하는 화면)은 받는다
+    const later = new Runner(m.store, bumped, seededRng(1));
+    await expect(later.act('r1', user(), pick(), soloOf(s)!.n)).rejects.toMatchObject({ message: RULES_CHANGED });
+    await later.act('r1', user(), pick());
+    expect(soloOf(m.deck.state)!.n).toBe(soloOf(s)!.n + 1);
+  });
+
+  it('sync: 판을 실어 보내면 견준다 (지금 화면은 싣지 않는다 → 응답을 보고 화면이 가린다)', async () => {
+    const { runner } = await start();
+    await expect(runner.sync('r1', 'u1', { duo: true, rules: MATGO_RULES + 1 })).rejects.toMatchObject({ message: RULES_CHANGED, status: 409 });
+    expect((await runner.sync('r1', 'u1', { duo: true, rules: MATGO_RULES })).round).toBe(1);
+    expect((await runner.sync('r1', 'u1', { duo: true })).round).toBe(1);
+  });
+});
+
+describe('Runner: 룰렛 확정·마감 엇갈림과 결과 확인', () => {
+  /** 룰렛 메모리 DB: roulette_place_bet · roulette_pay · roulette_bets 읽기를 SQL 과 같은 규칙으로 */
+  function rouletteStore(humans: string[]) {
+    const m = memStore('roulette', humans, 8);
+    const bets = new Map<string, { bets: unknown; total: number; paid: boolean }>();
+    const closed = new Set<string>();
+    const gate = { wait: null as Promise<void> | null };
+    m.store.placeBet = async (_id, round, spin, user, b, total) => {
+      const key = `${round}:${spin}:${user}`;
+      if (closed.has(`${round}:${spin}`)) throw new Error('spin closed');
+      if (bets.has(key)) return;
+      m.wallets[user] -= total;
+      bets.set(key, { bets: JSON.parse(JSON.stringify(b)), total, paid: false });
+      // 기록한 뒤 응답이 늦어진다 (그 사이 마감 처리가 끼어든다)
+      if (gate.wait) {
+        const g = gate.wait;
+        gate.wait = null;
+        await g;
+      }
+    };
+    m.store.paySpin = async (_id, round, spin, result) => {
+      closed.add(`${round}:${spin}`);
+      for (const [key, row] of bets) {
+        if (!key.startsWith(`${round}:${spin}:`) || row.paid) continue;
+        row.paid = true;
+        m.wallets[key.split(':')[2]] += payoutOf(row.bets as RBet[], result);
+      }
+    };
+    m.store.spinBets = async (_id, round, spin) =>
+      [...bets].filter(([k]) => k.startsWith(`${round}:${spin}:`)).map(([k, v]) => ({ userId: k.split(':')[2], bets: JSON.parse(JSON.stringify(v.bets)) }));
+    return { m, gate };
+  }
+
+  it('마지막 사람의 확정이 칩을 뺀 뒤 마감 처리가 먼저 저장해도, 공개 상태에 그 베팅과 받은 돈이 보인다 (확정 요청도 오류 없이 끝난다)', async () => {
+    const { m, gate } = rouletteStore(['u1']);
+    let clock = 1_000_000;
+    // 결과는 용(4)
+    const runner = new Runner(m.store, ENGINES, { next: () => 4 / 12, int: () => 4 }, () => clock);
+    await runner.start('r1', 'u1');
+    let release!: () => void;
+    gate.wait = new Promise((r) => (release = r));
+    const actP = runner.act('r1', 'u1', { type: 'bet', bets: [{ kind: 'zodiac', target: 4, amount: 500 }] }).then(
+      (x) => x,
+      (e) => ({ error: (e as Error).message }),
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    clock += 21_000;
+    await runner.timeout('r1');
+    release();
+    expect(await actP).toEqual({ ok: true });
+    const pub = m.published[m.published.length - 1].pub;
+    expect(pub.phase).toBe('spin');
+    expect(pub.landed).toBe(4);
+    expect(pub.bets['0']).toEqual([{ kind: 'zodiac', target: 4, amount: 500 }]);
+    expect(pub.wins['0']).toBe(6000);
+    expect(pub.confirmed).toEqual([0]);
+    // 돈: 500 을 걸고 6000 을 받았다 (한 번만)
+    expect(m.wallets.u1).toBe(100000 - 500 + 6000);
+  });
+
+  it('여럿 중 한 사람의 확정만 기록에 있고 상태에는 없을 때: 마감 처리가 그 사람은 확정으로, 나머지는 안 건 것으로 결과를 낸다', async () => {
+    const { m } = rouletteStore(['u1', 'u2']);
+    let clock = 1_000_000;
+    const runner = new Runner(m.store, ENGINES, { next: () => 0, int: () => 0 }, () => clock);
+    await runner.start('r1', 'u1');
+    // u2 의 확정이 칩을 빼고 기록만 남긴 채 끊겼다
+    await m.store.placeBet!('r1', 1, 1, 'u2', [{ kind: 'yinyang', target: 0, amount: 100 }], 100);
+    clock += 21_000;
+    await runner.timeout('r1');
+    const pub = m.published[m.published.length - 1].pub;
+    expect(pub.phase).toBe('spin');
+    expect(pub.bets).toEqual({ '1': [{ kind: 'yinyang', target: 0, amount: 100 }] });
+    expect(pub.wins).toEqual({ '1': 200 });
+    expect(m.wallets.u2).toBe(100000 - 100 + 200);
+  });
+
+  it('확정하자 다른 사람 확정이 기록에서 채워져 모두 확정되면 바로 결과를 낸다 (회전 단계를 마감으로 바로 넘기지 않는다)', async () => {
+    const { m } = rouletteStore(['u1', 'u2']);
+    const runner = new Runner(m.store, ENGINES, { next: () => 0, int: () => 2 }, () => 1_000_000);
+    await runner.start('r1', 'u1');
+    await m.store.placeBet!('r1', 1, 1, 'u2', [{ kind: 'zodiac', target: 2, amount: 100 }], 100);
+    await runner.act('r1', 'u1', { type: 'bet', bets: [] });
+    const pub = m.published[m.published.length - 1].pub;
+    expect(pub.phase).toBe('spin');
+    expect(pub.acked).toEqual([]);
+    expect(pub.wins).toEqual({ '1': 1200 });
+    // 마감 처리가 기록을 채워 결과를 낸 경우도 회전 단계를 바로 넘기지 않는다
+    const r2 = rouletteStore(['u1', 'u2']);
+    let clock = 1_000_000;
+    const runner2 = new Runner(r2.m.store, ENGINES, { next: () => 0, int: () => 2 }, () => clock);
+    await runner2.start('r1', 'u1');
+    await r2.m.store.placeBet!('r1', 1, 1, 'u1', [{ kind: 'zodiac', target: 2, amount: 100 }], 100);
+    await r2.m.store.placeBet!('r1', 1, 1, 'u2', [{ kind: 'zodiac', target: 3, amount: 100 }], 100);
+    clock += 21_000;
+    await runner2.timeout('r1');
+    const pub2 = r2.m.published[r2.m.published.length - 1].pub;
+    expect(pub2.phase).toBe('spin');
+    expect(pub2.acked).toEqual([]);
+    expect(pub2.confirmed.sort()).toEqual([0, 1]);
+  });
+
+  it('결과 확인(next)은 여럿이 한꺼번에 눌러도, 두 번 눌러도, 단계가 넘어간 뒤에 와도 오류 없이 받는다', async () => {
+    const users = Array.from({ length: 8 }, (_, i) => `u${i + 1}`);
+    const { m } = rouletteStore(users);
+    const runner = new Runner(m.store, ENGINES, seededRng(3), () => 1_000_000);
+    await runner.start('r1', 'u1');
+    for (const u of users) await runner.act('r1', u, { type: 'bet', bets: [] });
+    expect(m.published[m.published.length - 1].pub.phase).toBe('spin');
+    const out = await Promise.all(users.map((u) => runner.act('r1', u, { type: 'next' }).then(() => 'ok', (e) => (e as Error).message)));
+    expect(out).toEqual(users.map(() => 'ok'));
+    // 모두 확인했다 → 다음 스핀 베팅
+    const pub = m.published[m.published.length - 1].pub;
+    expect(pub.phase).toBe('bet');
+    expect(pub.spin).toBe(2);
+    // 늦게 온 확인 · 두 번째 확인
+    expect(await runner.act('r1', 'u1', { type: 'next' })).toEqual({ ok: true });
+    // 베팅 단계의 다른 행동은 그대로 규칙 검사를 받는다
+    await expect(runner.act('r1', 'u1', { type: 'bet', bets: 'x' })).rejects.toThrow();
   });
 });

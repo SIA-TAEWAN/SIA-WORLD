@@ -19,13 +19,19 @@
  * 화면(DOM·Phaser)을 모른다 → 셸이 주는 LocalHost 로만 일한다 (단위 테스트는 가짜 host 로 돌린다).
  */
 import { EngineError, seededRng, type Engine } from '../../supabase/functions/_shared/engine.ts';
-import { soloOf, soloStep } from '../../supabase/functions/_shared/solo.ts';
+import { RULES_CHANGED, soloOf, soloStep } from '../../supabase/functions/_shared/solo.ts';
 import type { PrivateRow, RoomRow, SeatRow, StateRow } from './world.ts';
 
-/** 서버에 보내는 사람 행동 목록 (n: 이 목록이 시작되는 서버 진행 수) */
+/** 서버에 보내는 사람 행동 목록 (n: 이 목록이 시작되는 서버 진행 수, rules: 이 화면에 실린 엔진의 규칙 판) */
 export interface ReplayPayload {
   n: number;
   actions: unknown[];
+  rules?: number;
+}
+
+/** 서버가 '규칙 판이 다르다'고 거절한 오류인가 (화면은 새로고침을 안내한다) */
+export function isRulesChanged(e: unknown): boolean {
+  return String((e as { code?: unknown } | null)?.code ?? '').includes(RULES_CHANGED);
 }
 
 /** 셸이 기기 진행에 주는 것 */
@@ -58,6 +64,11 @@ export interface LocalHost {
   /** 다시 그리기 (조작부 · 누를 수 있는 패) */
   refresh(): void;
   toast(msg: string): void;
+  /**
+   * 서버의 규칙 판이 이 화면(이 탭이 열릴 때 받은 엔진)과 다르다: 기기에서 진행하지 않는다.
+   * 셸은 '게임이 새 버전으로 바뀌었어요' 안내와 새로고침 버튼을 띄운다
+   */
+  outdated?(): void;
 }
 
 /** 기기 진행이 셸에 주는 것 */
@@ -156,6 +167,11 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
     /** 서버가 이만큼(걸음)까지만 앞서 있으면 다시 맞출 때 그 걸음을 연출로 보여 준다 (한 차례가 내기 + 고르기 + 고/스톱으로 3걸음일 수 있다 → 한두 차례) */
     const AHEAD_MAX = 4;
     const storage = opts.storage === undefined ? defaultStorage() : opts.storage;
+    /** 이 화면에 실린 엔진의 규칙 판 (서버에 보내는 목록·행동에 싣는다) */
+    const RULES = engine.rulesVersion;
+    const withRules = (p: ReplayPayload): ReplayPayload => (RULES === undefined ? p : { ...p, rules: RULES });
+    /** 서버가 다른 규칙 판이다: 이 탭에서는 더 기기에서 진행하지 않는다 (새로고침해야 풀린다) */
+    let outdated = false;
 
     interface Cur {
       round: number;
@@ -342,6 +358,21 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       cur = null;
       host.refresh();
     };
+    /**
+     * 서버의 규칙 판이 다르다 (판 시작·sync 응답의 solo.rules, 또는 서버가 409 RULES_CHANGED 로 거절했다).
+     * 기기 진행을 끝내고 다시 받아 오지도 않는다 (받아도 또 어긋난다) → 셸이 새로고침 안내를 띄운다
+     */
+    const markOutdated = () => {
+      if (outdated) return;
+      outdated = true;
+      wanted = 0;
+      drop();
+      try {
+        host.outdated?.();
+      } catch (e) {
+        console.warn('outdated', e);
+      }
+    };
 
     /** 사람이 아닌 자리의 차례를 이어서 둔다 (연출 없이: 보관한 행동을 다시 적용할 때만 쓴다) */
     const runAi = (state: S, seat: number): S => {
@@ -361,7 +392,12 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
     const adopt = (state: unknown, round: number, mode: 'start' | 'sync' | 'resync', duo = false): boolean => {
       const solo = soloOf(state);
       const seat = host.get().mySeat;
-      if (!solo || seat === null || disposed) return false;
+      if (!solo || seat === null || disposed || outdated) return false;
+      // 서버 엔진의 규칙 판이 이 화면과 다르다: 같은 행동을 두어도 결과가 달라 영영 어긋난다 → 기기에서 진행하지 않는다
+      if (RULES !== undefined && solo.rules !== undefined && solo.rules !== RULES) {
+        markOutdated();
+        return false;
+      }
       // 사람이 둘인 판인데 행동을 하나씩 보낼 길이 없으면 기기에서 진행하지 않는다 (서버 진행 그대로)
       if (duo && !host.api.act) return false;
       // 이미 이 판을 더 앞서 진행 중이면 그대로 둔다 (늦게 온 판 시작 응답 등)
@@ -527,13 +563,18 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           const m = c.outbox[0];
           if (!m) return;
           try {
-            await host.api.act(m.a, m.n);
+            // 규칙 판을 행동에 실어 보낸다 (서버가 떼어 내고 견준다)
+            await host.api.act(RULES === undefined ? m.a : { ...(m.a as object), rules: RULES }, m.n);
             if (cur !== c) return;
             c.outbox.shift();
             attempt = 0;
           } catch (e) {
             if (cur !== c) return;
             const err = e as { code?: unknown; status?: unknown } | null;
+            if (isRulesChanged(err)) {
+              markOutdated();
+              return;
+            }
             if (isGone(err)) {
               // 서버에서는 이미 끝난 판: 서버 상태를 따른다
               drop();
@@ -641,7 +682,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           if (!batch.length && !done) return;
           sendAgain = false;
           try {
-            const res = await host.api.replay({ n: c.savedN, actions: batch.map((e) => e.a) });
+            const res = await host.api.replay(withRules({ n: c.savedN, actions: batch.map((e) => e.a) }));
             if (cur !== c) return;
             if (typeof res?.n === 'number') {
               c.savedN = res.n;
@@ -674,6 +715,10 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           } catch (e) {
             if (cur !== c) return;
             const err = e as { code?: unknown; status?: unknown } | null;
+            if (isRulesChanged(err)) {
+              markOutdated();
+              return;
+            }
             if (isGone(err)) {
               // 서버에서는 이미 끝난 판 (30분 마감으로 대신 뒀거나, 내가 방에서 빠졌다): 서버 상태를 따른다
               drop();
@@ -696,14 +741,15 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
 
     /** 서버 상태로 다시 맞춘다 (기기 진행을 버리고 sync → 보관한 행동 가운데 맞는 것만 이어 붙인다) */
     const resync = async () => {
-      if (syncing || disposed) return;
+      if (syncing || disposed || outdated) return;
       syncing = true;
       stop();
       try {
         const r = await syncOnce();
         if (!disposed) adopt(r.state, r.round, 'resync', !!r.duo);
       } catch (e) {
-        if (isGone(e)) {
+        if (isRulesChanged(e)) markOutdated();
+        else if (isGone(e)) {
           drop();
           void host.reload();
         } else setTimeout(() => !disposed && cur && void resync(), 3000);
@@ -723,7 +769,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         if (!wanted && !disposed) host.refresh();
       };
       const go = () => {
-        if (syncing || disposed || (cur && cur.round === round) || host.get().mySeat === null) return end();
+        if (syncing || disposed || outdated || (cur && cur.round === round) || host.get().mySeat === null) return end();
         if (Date.now() - lastSyncTry < 1500) return end();
         lastSyncTry = Date.now();
         syncing = true;
@@ -736,8 +782,9 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           (e) => {
             // 받지 못하면 (오류 · 5초 안에 답이 없음) 서버 진행 그대로 (행동은 하나씩 서버로 간다): 조작은 바로 풀고, 뒤에서 두 번 더 받아 본다
             syncing = false;
+            if (isRulesChanged(e)) markOutdated();
             end();
-            if (!isGone(e) && tries < 2 && !disposed) setTimeout(() => !disposed && !cur && wantSync(round, 0, tries + 1), 2000);
+            if (!isGone(e) && !outdated && tries < 2 && !disposed) setTimeout(() => !disposed && !cur && wantSync(round, 0, tries + 1), 2000);
           },
         );
       };
@@ -885,7 +932,7 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
           return;
         }
         const batch = unsent(c);
-        const payload: ReplayPayload = { n: c.savedN, actions: batch.map((e) => e.a) };
+        const payload: ReplayPayload = withRules({ n: c.savedN, actions: batch.map((e) => e.a) });
         if (kind === 'pagehide') {
           // 페이지가 살아 돌아올 수도 있으니 기기 진행은 그대로 둔다
           if (batch.length) host.api.replayOnExit(payload);
@@ -910,11 +957,12 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       },
 
       notice() {
+        if (outdated) return RULES_CHANGED;
         return cur && engine.done(cur.state) ? '결과를 저장하는 중…' : null;
       },
 
       waiting() {
-        return wanted > 0 && !cur;
+        return wanted > 0 && !cur && !outdated;
       },
 
       dispose() {

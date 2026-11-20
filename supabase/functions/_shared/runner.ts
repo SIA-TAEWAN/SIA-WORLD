@@ -4,7 +4,7 @@
  * DB 접근은 Store 인터페이스로만 한다.
  */
 import { cryptoRng, EngineError, type Engine, type Rng, type SeatInfo } from './engine.ts';
-import { soloOf, soloStep } from './solo.ts';
+import { RULES_BASELINE, RULES_CHANGED, soloOf, soloStep } from './solo.ts';
 
 export type GameId = 'matgo' | 'poker' | 'blackjack' | 'holdem' | 'roulette';
 
@@ -61,6 +61,8 @@ export interface Store {
   placeBet?(id: string, round: number, spin: number, userId: string, bets: unknown, total: number): Promise<void>;
   /** (룰렛) 결과 지급: 그 스핀 기록 기준으로 한 번만 */
   paySpin?(id: string, round: number, spin: number, result: number): Promise<void>;
+  /** (룰렛) 그 스핀에 확정해 기록된 베팅 (사람마다 한 줄) */
+  spinBets?(id: string, round: number, spin: number): Promise<{ userId: string; bets: unknown }[]>;
 }
 
 /** 사람 차례 제한 시간 */
@@ -117,6 +119,58 @@ export class Runner {
     return !s || s.user_id === null || s.left_game;
   }
 
+  /**
+   * 사람이 두지 않는 자리의 행동 (solo 판이 아닐 때).
+   * 포커·홀덤(leftUsesTimeout)에서 판 도중 나간 사람 자리는 AI 가 그 사람 지갑으로 계속 걸지 않게
+   * 시간 초과 행동(공짜면 체크, 아니면 다이/폴드)만 한다. 처음부터 AI 인 자리와 다른 게임은 AI 그대로
+   */
+  private autoAction(engine: AnyEngine, seats: SeatRow[], state: unknown, seat: number) {
+    const s = seats.find((x) => x.seat_no === seat);
+    if (engine.leftUsesTimeout && s && s.user_id !== null && s.left_game) return engine.timeout(state, seat, this.rng);
+    return this.aiAction(engine, state, seat);
+  }
+
+  /**
+   * (룰렛) 베팅을 받는 중인 스핀이면 그 스핀의 확정 기록(roulette_bets)을 읽어 상태에 채운다.
+   * 마지막 사람의 확정(칩을 먼저 뺀다)과 마감 처리가 같은 상태를 읽고 마감 처리가 먼저 저장하면,
+   * 지급은 기록 기준이라 맞지만 상태(화면)에는 '안 걸었다'로 남는다 → 결과를 정하기 직전에 기록을 따른다
+   */
+  /** 기록을 읽어 볼 상태인가 (룰렛의 베팅 단계만. 다른 게임은 기다림 없이 그대로 지나가게 따로 묻는다) */
+  private recordsBets(engine: AnyEngine, state: unknown) {
+    return !!engine.adoptBets && !!this.store.spinBets && !!state && engine.betSpin?.(state) != null;
+  }
+
+  private async withRecordedBets(roomId: string, room: RoomRow, seats: SeatRow[], engine: AnyEngine, state: unknown) {
+    if (!engine.adoptBets || !engine.betSpin || !this.store.spinBets) return state;
+    const spin = engine.betSpin(state);
+    if (spin === null) return state;
+    const rows = await this.store.spinBets(roomId, room.round_no, spin);
+    if (!rows.length) return state;
+    const seatOf = new Map(seats.filter((s) => s.user_id).map((s) => [s.user_id!, s.seat_no]));
+    const mapped = rows.flatMap((r) => (seatOf.has(r.userId) ? [{ seat: seatOf.get(r.userId)!, bets: r.bets }] : []));
+    return mapped.length ? engine.adoptBets(state, mapped, this.rng) : state;
+  }
+
+  /**
+   * 기기에서 진행하는 판의 규칙 판 확인: 화면이 보낸 판이 서버 엔진과 다르면 409 (화면이 새로고침 안내를 띄운다).
+   * 판을 싣지 않는 화면(이 검사가 생기기 전에 열린 탭)은 기준 판(RULES_BASELINE = 1)으로 본다 — 그때의 규칙이 1판이다
+   */
+  private checkRules(engine: AnyEngine, sent: unknown) {
+    if (engine.rulesVersion === undefined) return;
+    const v = sent === undefined || sent === null ? RULES_BASELINE : sent;
+    if (v !== engine.rulesVersion) throw new GameError(RULES_CHANGED, 409);
+  }
+
+  /**
+   * 화면에 내려 주는 전체 상태의 solo.rules 를 지금 서버 엔진의 규칙 판으로 (판 도중 서버가 새 규칙으로 바뀌었으면 화면이 알게).
+   * 저장된 상태는 건드리지 않는다
+   */
+  private withRules(engine: AnyEngine, state: unknown) {
+    const solo = soloOf(state);
+    if (!solo || engine.rulesVersion === undefined) return state;
+    return { ...(state as object), solo: { ...solo, rules: engine.rulesVersion } };
+  }
+
   /** 판 시작 (사람이 모두 레디했을 때 아무 참가자나 부른다) */
   async start(roomId: string, userId: string) {
     const loaded = await this.load(roomId);
@@ -138,7 +192,9 @@ export class Runner {
     const solo = room.game === 'matgo' && humans >= 1 && !engine.done(state);
     if (solo) {
       const seed = Math.floor(this.rng.next() * 4294967296) >>> 0;
-      state = { ...state, solo: humans >= 2 ? { seed, n: 0, duo: true } : { seed, n: 0 } };
+      // rules: 이 판을 만든 서버 엔진의 규칙 판 (화면이 자기 것과 견주어 다르면 기기에서 진행하지 않는다)
+      const rules = engine.rulesVersion !== undefined ? { rules: engine.rulesVersion } : {};
+      state = { ...state, solo: humans >= 2 ? { seed, n: 0, duo: true, ...rules } : { seed, n: 0, ...rules } };
     }
     const saved = await this.advance(roomId, { ...room, status: 'playing', round_no: round }, seats, engine, deck.version, state);
     // 화면이 이어서 둘 수 있게 전체 상태를 같이 돌려준다 (그 판에 앉아 있는 사람만 부를 수 있는 응답).
@@ -178,33 +234,40 @@ export class Runner {
    * → 여기서 혼자 하는 판으로 바꾼다: duo 표시를 떼고 다시 공개해 마감을 혼자 하는 판처럼 길게 (30분) 잡는다.
    */
   async sync(roomId: string, userId: string, payload?: unknown) {
-    const wantDuo = !!(payload as { duo?: unknown } | null | undefined)?.duo;
+    const p = payload as { duo?: unknown; rules?: unknown } | null | undefined;
+    const wantDuo = !!p?.duo;
     for (let attempt = 0; attempt < 3; attempt++) {
       const { room, seats, deck, engine, humans, solo } = await this.loadSolo(roomId, userId, wantDuo);
+      // 판을 실어 보낸 화면만 검사한다 (지금 화면은 sync 에 판을 싣지 않는다 → 응답의 solo.rules 를 보고 화면이 스스로 가린다)
+      if (p?.rules !== undefined) this.checkRules(engine, p.rules);
       if (humans === 1 && solo.duo && !engine.done(deck.state)) {
-        const lone = { ...(deck.state as object), solo: { seed: solo.seed, n: solo.n } };
+        const { duo: _duo, ...rest } = solo;
+        const lone = { ...(deck.state as object), solo: rest };
         // (나간 자리 차례였으면 AI 가 이어 둔 데까지) 저장 · 공개. 그 사이 다른 저장이 끼어들었으면 다시 읽는다
         const saved = await this.advance(roomId, room, seats, engine, deck.version, lone);
         if (saved === null) continue;
-        return { state: saved, version: deck.version + 1, round: room.round_no, duo: false };
+        return { state: this.withRules(engine, saved), version: deck.version + 1, round: room.round_no, duo: false };
       }
-      return { state: deck.state, version: deck.version, round: room.round_no, duo: humans !== 1 };
+      return { state: this.withRules(engine, deck.state), version: deck.version, round: room.round_no, duo: humans !== 1 };
     }
     throw new GameError('busy, try again', 409);
   }
 
   /**
    * 혼자 하는 판: 화면이 기기에서 둔 사람 행동 목록을 받아 서버 상태에서 그대로 다시 둔다.
-   * payload { n, actions }: n = 이 목록이 시작되는 서버 상태의 solo.n (다르면 409 'out of sync').
+   * payload { n, actions, rules }: n = 이 목록이 시작되는 서버 상태의 solo.n (다르면 409 'out of sync').
+   * rules = 화면에 실린 엔진의 규칙 판 (서버와 다르면 409 RULES_CHANGED → 화면이 새로고침 안내를 띄운다).
    * AI 차례는 서버가 직접 둔다 (화면이 보낸 것은 사람 행동으로만 쓴다). 판이 안 끝나는 부분 목록도 받는다 (중간 저장).
    */
   async replay(roomId: string, userId: string, payload: unknown) {
-    const p = payload as { n?: unknown; actions?: unknown } | null;
+    const p = payload as { n?: unknown; actions?: unknown; rules?: unknown } | null;
     const actions = p?.actions;
     if (!p || !Number.isInteger(p.n) || !Array.isArray(actions) || actions.length > MAX_REPLAY_ACTIONS) throw new GameError('bad replay');
     if (actions.some((a) => !a || typeof a !== 'object' || Array.isArray(a))) throw new GameError('bad replay');
     for (let attempt = 0; attempt < 3; attempt++) {
       const { room, seats, deck, engine, seat, solo } = await this.loadSolo(roomId, userId);
+      // 다른 규칙으로 둔 목록은 받지 않는다 (받으면 다시 두다 어긋나 거절 → 다시 맞추기 → 또 어긋나기를 되풀이한다)
+      this.checkRules(engine, p.rules);
       if (solo.n !== p.n) throw new GameError('out of sync', 409);
       let state = deck.state;
       try {
@@ -255,15 +318,33 @@ export class Runner {
    * n (기기에서 먼저 진행하는 화면이 보낸다): 이 행동을 적용할 서버 상태의 solo.n. 다르면 409 'out of sync' —
    * 같은 행동이 두 번 오거나 순서가 뒤바뀌어 다른 자리에 적용되는 것을 막는다. 없으면 예전처럼 지금 상태에 적용한다
    */
-  async act(roomId: string, userId: string, action: unknown, n?: number) {
+  async act(roomId: string, userId: string, action0: unknown, n?: number) {
     // 행동은 늘 객체다. null 은 solo 걸음 규칙에서 'AI가 정한다'는 뜻이라 화면이 보내면 안 된다
-    if (!action || typeof action !== 'object' || Array.isArray(action)) throw new GameError('bad action');
-    for (let attempt = 0; attempt < 3; attempt++) {
+    if (!action0 || typeof action0 !== 'object' || Array.isArray(action0)) throw new GameError('bad action');
+    // 기기에서 먼저 진행하는 화면(맞고)은 행동에 규칙 판(rules)을 실어 보낸다 → 떼어 내고 아래에서 검사한다
+    let action: unknown = action0;
+    let rules: unknown;
+    if ('rules' in action0) {
+      const { rules: r, ...rest } = action0 as { rules?: unknown };
+      rules = r;
+      action = rest;
+    }
+    // 여럿이 한꺼번에 누르는 경우(룰렛 8명의 결과 확인 등)가 있어 저장 충돌을 넉넉히 다시 시도한다
+    // 이 요청이 이미 기록한 확정 베팅의 스핀 (다시 시도할 때 그 스핀이 마감 처리로 이미 확정·결과까지 갔으면 받아들여진 것이다)
+    let placed: number | null = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
       const { room, seats, deck, engine } = await this.load(roomId);
-      if (room.status !== 'playing' || !deck.state || deck.round_no !== room.round_no) throw new GameError('not playing', 409);
       const seat = seats.find((s) => s.user_id === userId && !s.left_game);
+      const live = room.status === 'playing' && !!deck.state && deck.round_no === room.round_no;
+      // 이미 처리됐거나 단계가 넘어간 행동 (룰렛 결과 '확인'을 여럿이 한꺼번에 · 늦게): 오류 대신 조용히 받는다
+      if (seat && engine.redundant?.(live ? deck.state : null, seat.seat_no, action)) return { ok: true };
+      if (!live) throw new GameError('not playing', 409);
       if (!seat) throw new GameError('not in room', 403);
+      // 진행 수(n)를 붙여 보낸 행동 = 기기에서 먼저 진행한 화면의 것 → 규칙 판이 같아야 한다 (안 실었으면 기준 판으로 본다)
+      if (n !== undefined || rules !== undefined) this.checkRules(engine, rules);
       if (n !== undefined && soloOf(deck.state)?.n !== n) throw new GameError('out of sync', 409);
+      // 앞선 시도에서 확정 베팅을 이미 기록했는데 그 사이 마감 처리가 기록을 따라 확정·결과까지 저장했다: 받아들여진 것이다
+      if (placed !== null && (!engine.pending(deck.state).includes(seat.seat_no) || engine.betSpin?.(deck.state) !== placed)) return { ok: true };
       if (!engine.pending(deck.state).includes(seat.seat_no)) throw new GameError('not your turn', 409);
       let state;
       let charge: { spin: number; bets: unknown; total: number } | null = null;
@@ -279,6 +360,7 @@ export class Runner {
       if (charge && this.store.placeBet) {
         try {
           await this.store.placeBet(roomId, room.round_no, charge.spin, userId, charge.bets, charge.total);
+          placed = charge.spin;
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           if (/not enough money/.test(msg)) throw new GameError('not enough money');
@@ -308,9 +390,15 @@ export class Runner {
       return { acted: true, recovered: true };
     }
     let state: unknown = deck.state;
+    // (룰렛) 확정 기록이 있는데 상태에는 아직 확정 안 된 자리: 기록을 따른다 (칩이 빠진 자리를 '안 걸었다'로 마감하지 않게)
+    if (this.recordsBets(engine, state)) state = await this.withRecordedBets(roomId, room, seats, engine, state);
+    // 기록을 채우자 모두 확정돼 결과가 났다: 이번 마감 처리는 여기까지 (새 회전·결과 단계를 바로 '확인'으로 넘기지 않는다)
+    const resolvedNow = state !== deck.state && engine.betSpin?.(state) === null;
     // 사람 차례가 없던 상태(룰렛 회전·결과)에서 마감이 지났으면 다음 단계로
     const waitingTimer = !engine.done(state) && engine.pending(state).length === 0;
-    if (waitingTimer && engine.tick && !autoOnly) {
+    if (resolvedNow) {
+      /* 아래 advance 가 저장·공개·지급한다 */
+    } else if (waitingTimer && engine.tick && !autoOnly) {
       // 지난번 지급이 실패했어도 여기서 마저 (기록 기준, 한 번만) — 다음 스핀으로 넘어가면 결과를 잃는다
       const prev = engine.spinResult ? engine.spinResult(state) : null;
       if (prev && this.store.paySpin) await this.store.paySpin(roomId, room.round_no, prev.spin, prev.result);
@@ -336,8 +424,8 @@ export class Runner {
         if (!engine.pending(state).includes(seat)) continue;
         const auto = this.auto(seats, seat);
         if (autoOnly && !auto) continue;
-        // 나간 사람은 AI가, 자리에 있는데 시간을 넘긴 사람은 정해진 자동 행동
-        const a = auto ? this.aiAction(engine, state, seat) : engine.timeout(state, seat, this.rng);
+        // 나간 사람은 AI가 (포커·홀덤은 공짜면 체크, 아니면 다이/폴드), 자리에 있는데 시간을 넘긴 사람은 정해진 자동 행동
+        const a = auto ? this.autoAction(engine, seats, state, seat) : engine.timeout(state, seat, this.rng);
         state = engine.apply(state, seat, a, this.rng);
       }
     }
@@ -356,6 +444,8 @@ export class Runner {
     let steps = 0;
     // solo 판: AI 차례는 solo.ts 의 걸음 규칙으로 둔다 (화면이 같은 결과를 내도록)
     if (soloOf(state)) state = this.soloAutos(engine, seats, state);
+    // (룰렛) 다른 사람의 확정이 기록에만 있고 상태에는 없으면 채운다 (나간 자리를 '안 걸었다'로 두거나 결과를 정하기 전에)
+    else if (this.recordsBets(engine, state)) state = await this.withRecordedBets(roomId, room, seats, engine, state);
     // 이번 호출에서 새로 나온 결과(저장 전)로는 여기서 지급·다음 단계로 넘기지 않는다 (savedSpin과 다르면 저장 전)
     while (!engine.done(state)) {
       const autos = engine.pending(state).filter((s: number) => this.auto(seats, s));
@@ -374,7 +464,7 @@ export class Runner {
       }
       for (const seat of autos) {
         if (!engine.pending(state).includes(seat)) continue;
-        state = engine.apply(state, seat, this.aiAction(engine, state, seat), this.rng);
+        state = engine.apply(state, seat, this.autoAction(engine, seats, state, seat), this.rng);
         if (++steps > MAX_AUTO_STEPS) throw new Error('AI loop');
       }
     }

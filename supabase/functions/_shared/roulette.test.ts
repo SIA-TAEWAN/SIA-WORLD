@@ -280,3 +280,35 @@ describe('전체검사 보강', () => {
     expect(wallet).toBe(9000 + 12_000);
   });
 });
+
+describe('기록에 남은 확정 채우기 (adoptBets) · 늦게 온 결과 확인 (redundant)', () => {
+  const start = () => roulette.newRound({ seats: [human(0), human(1)], baseUnit: 100, carry: null, rng: seededRng(1) });
+  const bet = [{ kind: 'zodiac' as const, target: 5, amount: 200 }];
+
+  it('확정 안 된 자리만 채우고, 모두 확정되면 결과를 낸다. 이미 확정한 자리 · 참가하지 않은 자리 · 빈 목록은 그대로', () => {
+    let s = roulette.apply(start(), 0, { type: 'bet', bets: [] }, fixed(5));
+    expect(roulette.betSpin(s)).toBe(1);
+    // 0번은 이미 확정 (기록이 있어도 바꾸지 않는다), 7번은 참가자가 아니다
+    const same = roulette.adoptBets(s, [{ seat: 0, bets: bet }, { seat: 7, bets: bet }, { seat: 1, bets: [] }], fixed(5));
+    expect(same).toBe(s);
+    s = roulette.adoptBets(s, [{ seat: 1, bets: bet }], fixed(5));
+    expect(s.phase).toBe('spin');
+    expect(s.bets).toEqual({ '1': bet });
+    expect(s.wins).toEqual({ '1': 2400 });
+    expect(roulette.betSpin(s)).toBeNull();
+    // 결과가 난 뒤에는 채우지 않는다
+    expect(roulette.adoptBets(s, [{ seat: 0, bets: bet }], fixed(5))).toBe(s);
+  });
+
+  it('결과 확인: 확인한 자리 · 회전 단계가 아닌 때 · 상태가 없을 때는 이미 처리된 것으로 본다. 베팅은 해당 없음', () => {
+    let s = roulette.apply(start(), 0, { type: 'bet', bets: [] }, fixed(5));
+    expect(roulette.redundant(s, 0, { type: 'next' })).toBe(true); // 아직 베팅 단계
+    s = roulette.apply(s, 1, { type: 'bet', bets: [] }, fixed(5));
+    expect(roulette.redundant(s, 0, { type: 'next' })).toBe(false);
+    s = roulette.apply(s, 0, { type: 'next' }, fixed(5));
+    expect(roulette.redundant(s, 0, { type: 'next' })).toBe(true);
+    expect(roulette.redundant(s, 1, { type: 'next' })).toBe(false);
+    expect(roulette.redundant(null, 1, { type: 'next' })).toBe(true);
+    expect(roulette.redundant(s, 1, { type: 'bet', bets: [] })).toBe(false);
+  });
+});

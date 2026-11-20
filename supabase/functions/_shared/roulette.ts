@@ -195,6 +195,9 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
   tickNow(s: RouletteState): boolean;
   charge(s: RouletteState, seat: number, action: RouletteAction): { spin: number; bets: RBet[]; total: number } | null;
   spinResult(s: RouletteState): { spin: number; result: number } | null;
+  betSpin(s: RouletteState): number | null;
+  adoptBets(s: RouletteState, rows: { seat: number; bets: unknown }[], rng: Rng): RouletteState;
+  redundant(s: RouletteState | null, seat: number, action: RouletteAction): boolean;
 } = {
   game: 'roulette',
 
@@ -353,5 +356,44 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
   /** 결과가 나온 스핀 (지급할 것) */
   spinResult(s: RouletteState) {
     return s.result !== null && (s.phase === 'spin' || s.phase === 'done') ? { spin: s.spin, result: s.result } : null;
+  },
+
+  /** 베팅을 받는 중인 스핀 (러너가 이 스핀의 확정 기록을 읽는다) */
+  betSpin(s: RouletteState) {
+    return s?.phase === 'bet' ? s.spin : null;
+  },
+
+  /**
+   * 기록(roulette_bets)에 남은 확정 베팅을 상태에 채운다 — 확정 요청이 칩을 뺀 뒤 마감 처리가 먼저 저장하면
+   * 상태에는 '안 걸었다'로 남는다(돈은 기록 기준으로 지급되므로 맞다). 기록이 있는 자리는 확정한 것으로 본다.
+   * 모두 확정되면 여기서 결과를 정한다 (apply 와 같은 흐름)
+   */
+  adoptBets(s0: RouletteState, rows: { seat: number; bets: unknown }[], rng: Rng): RouletteState {
+    if (s0.phase !== 'bet') return s0;
+    let s: RouletteState | null = null;
+    for (const r of rows) {
+      if (!s0.players.some((p) => p.seat === r.seat) || (s ?? s0).confirmed.includes(r.seat)) continue;
+      let bets: RBet[];
+      try {
+        bets = normalizeBets(r.bets, s0.baseUnit);
+      } catch {
+        continue; // SQL 이 이미 검사한 기록이라 여기 올 일은 없다
+      }
+      if (!bets.length) continue;
+      s ??= clone(s0);
+      s.confirmed.push(r.seat);
+      s.bets[String(r.seat)] = bets;
+      emit(s, 'confirm', { seat: r.seat, total: bets.reduce((a, b) => a + b.amount, 0) });
+    }
+    if (!s) return s0;
+    if (s.players.every((p) => s!.confirmed.includes(p.seat))) resolve(s, rng);
+    return s;
+  },
+
+  /** 결과 '확인'이 이미 처리됐거나 단계가 넘어갔다 (여럿이 한꺼번에 누르면 늦게 온 것) → 조용히 받는다 */
+  redundant(s: RouletteState | null, seat: number, action: RouletteAction) {
+    if (!action || action.type !== 'next') return false;
+    if (!s || s.phase !== 'spin') return true;
+    return !s.players.some((p) => p.seat === seat) || (s.acked ?? []).includes(seat);
   },
 };

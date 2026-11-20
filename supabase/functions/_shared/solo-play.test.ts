@@ -5,9 +5,9 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './engine.ts';
 import { ENGINES } from './engines.ts';
-import { matgo, type MatgoAction, type MatgoPublic } from './matgo.ts';
+import { matgo, MATGO_RULES, type MatgoAction, type MatgoPublic } from './matgo.ts';
 import { GameError, Runner, type DeckRow, type RoomRow, type SeatRow, type Store } from './runner.ts';
-import { soloOf } from './solo.ts';
+import { RULES_CHANGED, soloOf } from './solo.ts';
 import { soloPlay, type LocalHost, type LocalPlay, type ReplayPayload } from '../../../games/lib/solo-play.ts';
 import type { PrivateRow, StateRow } from '../../../games/lib/world.ts';
 
@@ -21,7 +21,7 @@ async function until(cond: () => boolean, ms = 8000) {
 }
 
 /** 메모리 DB + 판 진행기 (runner.test.ts 와 같은 규칙) */
-function server(humans: string[], seed: number) {
+function server(humans: string[], seed: number, engines: typeof ENGINES = ENGINES) {
   const room: RoomRow = { id: 'r1', game: 'matgo', base_unit: 100, status: 'waiting', round_no: 0 };
   const seats: (SeatRow & { pending_user_id: string | null })[] = [0, 1].map((i) => ({
     seat_no: i, user_id: humans[i] ?? null, nickname: humans[i] ?? `AI ${i}`, avatar: 'tiger', ready: true, left_game: false, pending_user_id: null,
@@ -75,7 +75,7 @@ function server(humans: string[], seed: number) {
       return true;
     },
   };
-  const runner = new Runner(store, ENGINES, seededRng(seed));
+  const runner = new Runner(store, engines, seededRng(seed));
   return { room, seats, wallets, published, results, subs, runner, get deck() { return deck; } };
 }
 
@@ -124,7 +124,7 @@ function screen(
   let priv: PrivateRow | null = null;
   let busyUntil = 0;
   const jumps: StateRow[] = [];
-  const calls = { sync: 0, replay: [] as ReplayPayload[], exit: [] as ReplayPayload[], reload: 0, toast: [] as string[], act: [] as { n: number; a: unknown; ok: boolean }[] };
+  const calls = { sync: 0, outdated: 0, replay: [] as ReplayPayload[], exit: [] as ReplayPayload[], reload: 0, toast: [] as string[], act: [] as { n: number; a: unknown; ok: boolean }[] };
   /** 서버 오류를 화면이 받는 모양으로 (shared/room.js: code = 서버 문구, status = HTTP 상태) */
   const wrap = async <T,>(f: () => Promise<T>): Promise<T> => {
     if (o.fail?.()) throw new Error('network');
@@ -199,6 +199,7 @@ function screen(
     },
     refresh: () => undefined,
     toast: (m) => void calls.toast.push(m),
+    outdated: () => void calls.outdated++,
   };
   play = soloPlay(matgo, { thinkMs: 0, turnMs: o.turnMs ?? 60_000, storage: o.storage ?? null, ...(o.syncMs ? { syncMs: o.syncMs } : {}) })(host);
   // 실시간: 서버가 공개한 상태 → 진행기가 거른 뒤 화면으로
@@ -814,4 +815,60 @@ describe('기기에서 먼저 진행하는 2인 맞고 (화면 쪽 진행기)', 
     }
     expect(sv.room.status).toBe('waiting');
   }
+});
+
+describe('규칙 판 (MATGO_RULES): 서버가 다른 규칙이면 기기에서 진행하지 않고 새로고침을 안내한다', () => {
+  const bumpedMatgo = { ...matgo, rulesVersion: MATGO_RULES + 1 };
+
+  it('판 시작 응답의 규칙 판이 다르면 기기에서 진행하지 않고 안내한다 (다시 받아 오지도 않는다)', async () => {
+    const sv = server(['u1'], 11, { ...ENGINES, matgo: bumpedMatgo });
+    const sc = screen(sv, 'u1');
+    const res = await sv.runner.start('r1', 'u1');
+    expect(soloOf((res as { solo: unknown }).solo)!.rules).toBe(MATGO_RULES + 1);
+    sc.play.onStart(res);
+    expect(sc.calls.outdated).toBe(1);
+    expect(sc.play.notice()).toBe(RULES_CHANGED);
+    // 기기 진행이 없다 (셸은 안내 창으로 막는다)
+    expect(sc.play.act({ type: 'flip' })).toBeNull();
+    expect(sc.play.waiting()).toBe(false);
+    // 공개 상태를 받아도 전체 상태를 다시 받아 오지 않는다 (받아도 또 어긋난다)
+    await sc.host.reload();
+    await sleep(900);
+    expect(sc.calls.sync).toBe(0);
+    expect(sc.calls.outdated).toBe(1);
+    sc.off();
+  });
+
+  it('새로고침 뒤 sync 응답의 규칙 판이 다르면 안내한다', async () => {
+    const sv = server(['u1'], 12, { ...ENGINES, matgo: bumpedMatgo });
+    await sv.runner.start('r1', 'u1');
+    const sc = screen(sv, 'u1');
+    await sc.host.reload();
+    await until(() => sc.calls.outdated === 1);
+    expect(sc.calls.sync).toBe(1);
+    expect(sc.calls.replay).toEqual([]);
+    sc.off();
+  });
+
+  it('판 도중 서버가 새 규칙으로 바뀌면 replay 가 409 로 거절되고 안내한다. 같은 판이면 목록에 판을 실어 보내 받아들여진다', async () => {
+    const engines = { ...ENGINES };
+    const sv = server(['u1'], 13, engines);
+    const sc = screen(sv, 'u1');
+    sc.play.onStart(await sv.runner.start('r1', 'u1'));
+    // 구경하는 사람이 있으면 내 행동을 그때그때 보낸다
+    sv.seats[1].pending_user_id = 'watcher';
+    await until(() => sc.myTurn());
+    const pubs = sv.published.length;
+    expect(sc.play.act(sc.pick())).toBe(true);
+    await until(() => sc.calls.replay.length === 1 && sv.published.length > pubs);
+    expect(sc.calls.replay[0].rules).toBe(MATGO_RULES);
+    expect(sc.calls.outdated).toBe(0);
+    // 서버가 새 규칙으로 배포됐다
+    engines.matgo = bumpedMatgo;
+    await until(() => sc.myTurn(), 8000);
+    sc.play.act(sc.pick());
+    await until(() => sc.calls.outdated === 1);
+    expect(sc.play.notice()).toBe(RULES_CHANGED);
+    sc.off();
+  });
 });

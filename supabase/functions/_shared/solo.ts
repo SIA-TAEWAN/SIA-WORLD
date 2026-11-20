@@ -19,14 +19,29 @@ export interface SoloInfo {
   n: number;
   /** 사람 둘이 시작한 판 (상대가 나가 혼자 남아도 '버려진 혼자 하는 판'으로 보지 않는다) */
   duo?: boolean;
+  /**
+   * 규칙 판 (engine.rulesVersion). 판을 시작한 서버가 싣고, 판 시작·sync 응답에서는 지금 서버의 값으로 바꿔 내려 준다.
+   * 화면은 자기 엔진의 값과 다르면 기기에서 진행하지 않고 새로고침을 안내한다. 없으면(예전 서버가 시작한 판) 견주지 않는다
+   */
+  rules?: number;
 }
+
+/** 규칙 판을 싣지 않는 예전 화면(판 확인이 생기기 전에 열린 탭)이 쓰던 규칙의 판 */
+export const RULES_BASELINE = 1;
+/** 서버가 다른 규칙 판의 화면을 거절할 때의 문구 (화면은 이 문구로 가려 새로고침 안내를 띄운다. 예전 화면은 그대로 알림으로 보여 준다) */
+export const RULES_CHANGED = '게임이 새 버전으로 바뀌었어요. 새로고침해 주세요';
 
 /** 상태에 실린 solo 칸 (없거나 모양이 틀리면 null) */
 export function soloOf(state: unknown): SoloInfo | null {
   const s = (state as { solo?: unknown } | null | undefined)?.solo as Partial<SoloInfo> | null | undefined;
   if (!s || typeof s !== 'object') return null;
   if (!Number.isInteger(s.seed) || !Number.isInteger(s.n) || (s.n as number) < 0) return null;
-  return s.duo === true ? { seed: s.seed as number, n: s.n as number, duo: true } : { seed: s.seed as number, n: s.n as number };
+  return {
+    seed: s.seed as number,
+    n: s.n as number,
+    ...(s.duo === true ? { duo: true } : {}),
+    ...(Number.isInteger(s.rules) ? { rules: s.rules as number } : {}),
+  };
 }
 
 /** (seed, n) → 그 걸음의 난수. 정수 연산만 써서 어느 실행 환경에서도 같은 값이 나온다 */
@@ -55,7 +70,7 @@ export function soloStep<S, A>(engine: AnyEngine<S, A>, state: S, seat: number, 
     a = engine.ai(v.public, v.private[seat], seat, rng) as A;
   }
   const next = engine.apply(state, seat, a, rng);
-  return { ...next, solo: solo.duo ? { seed: solo.seed, n: solo.n + 1, duo: true } : { seed: solo.seed, n: solo.n + 1 } } as S;
+  return { ...next, solo: { ...solo, n: solo.n + 1 } } as S;
 }
 
 /** AI 자리 차례를 사람 차례(또는 판 끝)까지 이어서 둔다. isAuto(seat): 사람이 직접 두지 않는 자리인가 */
