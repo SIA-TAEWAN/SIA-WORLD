@@ -5,7 +5,7 @@ import { GAMES, MONUMENTS, type GameStats } from '../data/monuments';
 import { goalText, josa } from '../data/goals';
 import { RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
-  batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, pavilionRange, payOf, ratePct, residentOf, residentPct, sellCoins,
+  batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, pavilionRange, payOf, ratePct, residentOf, residentPct, sellCoins, isFull, normalMax,
   newVillage, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, storedMax, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
 } from '../game/rules';
 import { makeShowcase } from '../data/showcase';
@@ -831,7 +831,12 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (!b) return;
     const now = api.now();
     const st = sheetEl.querySelector('[data-live="stored"]');
-    if (st) st.textContent = `${num(stored(state, b, now))} / ${num(storedMax(state, b))}`;
+    if (st) {
+      // 분모는 보통 최대(최대 시간 분량). 잔치·적어 둔 양으로 그보다 많이 쌓였을 때만 여유분까지 넣은 최대를 보인다
+      const n = stored(state, b, now);
+      const max = normalMax(state, b);
+      st.textContent = `${num(n)} / ${num(n > max ? storedMax(state, b) : max)}${isFull(state, b, now) ? ' · 가득' : ''}`;
+    }
     const fe = sheetEl.querySelector('[data-live="feast"]');
     if (fe) fe.textContent = state.profile.feastUntil > now ? `${duration((state.profile.feastUntil - now) / 1000)} 남았어요` : '잔치가 끝났어요';
     const left = sheetEl.querySelector('[data-live="left"]');

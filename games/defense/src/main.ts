@@ -13,14 +13,15 @@ import { showResult } from './ui/result';
 import { showChars } from './ui/roster';
 
 nav.main = showMain;
-// 지도 화면(지역 지도 · 스테이지 고르기)에 들어올 때마다 보류해 둔 결과를 다시 보낸다
+// 지도 화면(지역 지도 · 스테이지 고르기)에 들어올 때마다 보류해 둔 결과를 다시 보낸다.
+// 올라가서 프로필이 바뀌면 그 화면이 watchProfile 로 스스로 다시 그린다
 nav.regions = () => {
   showRegions();
-  resendPending(showRegions);
+  resendPending();
 };
 nav.stages = (no) => {
   showStages(no);
-  resendPending(() => showStages(no));
+  resendPending();
 };
 nav.prepare = showPrepare;
 nav.chars = showChars;
@@ -36,20 +37,17 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 let resending = false;
 /**
  * 보류해 둔 판 결과를 다시 보낸다 (지도 화면에 들어올 때 · 인터넷이 다시 연결될 때).
- * 올라간 판이 있으면 프로필을 새로 읽고, 그동안 같은 화면에 머물러 있으면 redraw 로 다시 그린다 (판 안에서는 알림도 띄우지 않는다)
+ * 올라간 판이 있으면 프로필을 새로 읽는다: 떠 있는 화면(메인·지도·스테이지·캐릭터)은 watchProfile 로 다시 그린다 (판 안에서는 알림도 띄우지 않는다)
  */
-function resendPending(redraw?: () => void) {
+function resendPending() {
   const api = state.api;
   if (!api || resending) return;
   resending = true;
-  const shown = app.firstElementChild;
   void (async () => {
     try {
       const sent = await api.resend().catch(() => 0);
       if (sent <= 0) return;
       setProfile(await api.loadProfile());
-      const here = app.firstElementChild === shown && !!shown?.isConnected;
-      if (here && redraw) redraw();
       if (!app.querySelector('.screen.game')) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
     } catch {
       // 프로필을 못 읽었다: 다음 기회에 다시 읽는다 (resend 가 받은 프로필은 onProfile 로 이미 반영된다)

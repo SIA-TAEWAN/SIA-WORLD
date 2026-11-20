@@ -314,6 +314,8 @@ function accrued(s: VillageState, b: Building, now: number): { units: number; ne
   const extra = Math.floor((over * rate * p.feastPct) / 360000);
   return { units: Math.min(b.banked + base + extra, storedMax(s, b)), next: Math.min(now, used + (now - fin)) };
 }
+/** 보통 때 쌓이는 최대 양 = 최대 시간 × 시간당 생산량 (잔치·적어 둔 양이 없을 때 가득 찬 양. 화면에 보이는 "최대 n시간 분량") */
+export const normalMax = (s: VillageState, b: Building) => Math.floor((capSec(s) * effRate(s, b)) / 3600);
 /** 생산 건물에 쌓일 수 있는 최대 양 (최대 시간 × 시간당 생산량에 bonus_room_pct 만큼 여유: 잔치 · 적어 둔 양도 이 안에서) */
 export const storedMax = (s: VillageState, b: Building) => Math.floor((capSec(s) * effRate(s, b) * (100 + CONST.bonus_room_pct)) / 360000);
 

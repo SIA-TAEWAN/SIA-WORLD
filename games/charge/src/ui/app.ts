@@ -22,6 +22,7 @@ import { ApiError, type ChargeApi } from '../net/api';
 import { DEV_ALL, LOCAL_MODE } from '../net/local';
 import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
+import { TABLE } from '../theme';
 
 /**
  * 메뉴·지역 지도·강화·게임 화면·결과 (PRD 10장).
@@ -76,6 +77,22 @@ function soundButton(root: HTMLElement) {
   root.appendChild(b);
 }
 
+/** 화면 위에 덮는 기다림 창 (스피너 + 글) — 끝나면 .remove() */
+function waitBox(text: string): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'overlay';
+  box.innerHTML = `<div class="connecting"><div class="spinner"></div><p>${text}</p></div>`;
+  app().appendChild(box);
+  return box;
+}
+
+/** 못 보낸 기록이 올라갔으면 프로필을 다시 읽고 알린다 (다시 읽기 실패는 무시) */
+async function noteResent(n: number) {
+  if (n <= 0) return;
+  profile = await api.loadProfile().catch(() => profile);
+  toast(`못 보낸 기록 ${n}판을 올렸어요`);
+}
+
 function errText(e: unknown) {
   return e instanceof ApiError ? whyText(e.message) : '서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요';
 }
@@ -97,12 +114,7 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
   }
   void api
     .resend()
-    .then(async (n) => {
-      if (n > 0) {
-        profile = await api.loadProfile();
-        toast(`못 보낸 기록 ${n}판을 올렸어요`);
-      }
-    })
+    .then(noteResent)
     .catch(() => null);
 }
 
@@ -305,6 +317,8 @@ function showUpgrades() {
 
 let game: Phaser.Game | null = null;
 let busy = false;
+/** 판을 시작하기 전 못 보낸 기록을 기다리는 최대 시간: 넘으면 보내기는 뒤에서 계속하고 판을 시작한다 */
+const RESEND_WAIT_MS = 4000;
 
 function closeGame() {
   game?.destroy(true);
@@ -315,21 +329,32 @@ export async function startGame(stage: StageDef, endless: boolean) {
   if (busy) return;
   busy = true;
   let runId = '';
+  // 처음 불러오는 화면(main.ts 의 .connecting)에서 바로 시작한 경우: 실패하면 메인으로
+  const fromBoot = !!app().querySelector('.connecting');
+  // 개발용 ?all=1 은 기기에만 연 상태라 기록하지 않는다
+  const wait = DEV_ALL ? null : waitBox('연결 중…');
   try {
-    // 개발용 ?all=1 은 기기에만 연 상태라 기록하지 않는다
     if (!DEV_ALL) {
-      // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다
-      await api.resend().catch(() => 0);
+      // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다.
+      // 오래 걸리면 RESEND_WAIT_MS 만 기다리고, 남은 보내기는 뒤에서 마저 한다
+      const resending = api.resend().catch(() => 0);
+      const n = await Promise.race([resending, new Promise<null>((ok) => setTimeout(() => ok(null), RESEND_WAIT_MS))]);
+      if (n === null) void resending.then(noteResent);
+      else await noteResent(n);
       runId = await api.start(endless ? ENDLESS_ID : stage.id, leader, endless ? 'endless' : 'normal');
-      if (!runId) toast('서버에 연결하지 못했어요. 이번 판은 기록되지 않아요');
     }
   } catch (e) {
     busy = false;
-    if (app().querySelector('.connecting')) showMain();
+    wait?.remove();
+    if (fromBoot) showMain();
     toast(errText(e));
     return;
   }
   busy = false;
+  // 기다리는 사이 다른 화면으로 갔으면(기다림 창이 화면과 함께 사라짐) 시작하지 않는다
+  if (wait && !wait.isConnected) return;
+  wait?.remove();
+  if (!DEV_ALL && !runId) toast('서버에 연결하지 못했어요. 이번 판은 기록되지 않아요');
   const run = createRun(stage, leader, modsOf(profile.upgrades));
   const root = app();
   root.innerHTML = `
@@ -353,7 +378,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
     parent: root.querySelector<HTMLElement>('#game')!,
     width: W,
     height: H,
-    backgroundColor: '#7cc08a',
+    backgroundColor: TABLE.matgo,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3 },
     scene: [],
@@ -362,7 +387,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
   const finish = async (s: RunState) => {
     if (sent) return null;
     sent = true;
-    if (DEV_ALL) return { result: null, offline: false };
+    if (DEV_ALL) return { result: null, note: null };
     const report: RunReport = {
       run: runId,
       stage: endless ? ENDLESS_ID : stage.id,
@@ -380,12 +405,12 @@ export async function startGame(stage: StageDef, endless: boolean) {
     try {
       const r = await api.finish(report);
       // 시작을 서버에 알리지 못한 판(runId 없음)은 보관되지 않으므로 "보관했어요" 안내를 하지 않는다
-      if (!r) return { result: null, offline: !!runId };
+      if (!r) return { result: null, note: runId ? 'kept' : 'unrecorded' } as const;
       if (!DEV_ALL) profile = r.profile;
-      return { result: r.result, offline: false };
+      return { result: r.result, note: null };
     } catch (e) {
       toast(errText(e));
-      return { result: null, offline: false };
+      return { result: null, note: null };
     }
   };
   game.scene.add('game', scene, true, {
@@ -403,7 +428,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
       },
       onEnd: async (s: RunState) => {
         const out = await finish(s);
-        showResult(s, endless, out?.result ?? null, !!out?.offline);
+        showResult(s, endless, out?.result ?? null, out?.note ?? null);
       },
     },
   });
@@ -433,15 +458,20 @@ export async function startGame(stage: StageDef, endless: boolean) {
         return;
       }
       run.phase = 'fail';
+      const wait = waitBox('기록 보내는 중…');
       const out = await finish(run);
-      if (endless) return showResult(run, true, out?.result ?? null, !!out?.offline);
+      wait.remove();
+      if (endless) return showResult(run, true, out?.result ?? null, out?.note ?? null);
       closeGame();
       showMain();
     });
   });
 }
 
-function showResult(s: RunState, endless: boolean, r: FinishResult | null, offline: boolean) {
+/** note: 'kept' = 서버에 못 보내 기기에 보관, 'unrecorded' = 시작을 알리지 못해 기록되지 않는 판 */
+type RecordNote = 'kept' | 'unrecorded' | null;
+
+function showResult(s: RunState, endless: boolean, r: FinishResult | null, note: RecordNote) {
   const st = s.stage;
   const win = !endless && s.phase === 'clear';
   const stars = win ? starsFor(s) : 0;
@@ -462,7 +492,8 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, offli
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
       ${r && r.newLeaders.length ? `<div class="new-leaders">${r.newLeaders.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${leaderOf(id).name} 대장이 합류했어요!</span>`).join('')}</div>` : ''}
-      ${offline ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요</p>' : ''}
+      ${note === 'kept' ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요</p>' : ''}
+      ${note === 'unrecorded' ? '<p class="soft center">이번 판은 기록되지 않았어요</p>' : ''}
       ${win && stars < 3 ? `<p class="soft center">별 ${stars + 1}개: 대원 ${st.stars[stars - 1]}명 이상 남기기</p>` : ''}
       ${!endless && !win ? '<p class="soft center">💪 강화하거나 다른 길을 골라 보세요</p>' : ''}
       <div class="btns">

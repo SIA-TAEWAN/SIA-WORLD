@@ -88,7 +88,13 @@ export function showMain() {
 
 // ───────────────────────── 지역 지도: 십이지 12지역 + 끝없는 고개 입구 ─────────────────────────
 
+/** 지역 지도. 화면에 있는 동안 진행 상황이 바뀌면(뒤에서 보류분이 올라감 등) 다시 그린다 */
 export function showRegions() {
+  drawRegions(null);
+}
+
+/** keepScroll: 다시 그릴 때 이전 스크롤 위치 (null = 처음 들어옴 → 마지막으로 본 지역이 보이게) */
+function drawRegions(keepScroll: number | null) {
   const card = (r: (typeof REGIONS)[number]) => {
     const list = stagesOf(r.no);
     const ready = list.length > 0;
@@ -113,7 +119,9 @@ export function showRegions() {
        </button>
      </div>`,
     'select',
+    () => off(),
   );
+  const off = watchProfile(() => drawRegions(root.scrollTop));
   root.querySelector('#back')!.addEventListener('click', () => {
     sfx('click');
     nav.main();
@@ -142,8 +150,9 @@ export function showRegions() {
     sfx('click');
     nav.stages(no);
   });
-  // 마지막으로 본 지역이 보이게
-  root.querySelector(`.region[data-r="${state.region}"]`)?.scrollIntoView({ block: 'center' });
+  // 처음 들어오면 마지막으로 본 지역이 보이게, 다시 그릴 때는 보던 자리 그대로
+  if (keepScroll === null) root.querySelector(`.region[data-r="${state.region}"]`)?.scrollIntoView({ block: 'center' });
+  else root.scrollTop = keepScroll;
   void loadEngine();
 }
 
@@ -152,7 +161,8 @@ export function showRegions() {
 /** 지도 위 스테이지 자리 (% — 아래에서 위로 올라가는 굽잇길) */
 const NODE_POS: [number, number][] = [[20, 84], [70, 70], [28, 50], [72, 33], [40, 16]];
 
-export function showStages(regionNo: number) {
+/** 스테이지 고르기. 화면에 있는 동안 진행 상황이 바뀌면 보던 자리 그대로 다시 그린다 */
+export function showStages(regionNo: number, keepScroll = 0) {
   const region = regionOf(regionNo) ?? REGIONS[0];
   state.region = region.no;
   const list = stagesOf(region.no);
@@ -181,7 +191,10 @@ export function showStages(regionNo: number) {
      </div>
      <p class="soft foot">스테이지를 누르면 출전 준비로 가요</p>`,
     'select',
+    () => off(),
   );
+  const off = watchProfile(() => showStages(region.no, root.scrollTop));
+  root.scrollTop = keepScroll;
   root.querySelector('#back')!.addEventListener('click', () => {
     sfx('click');
     nav.regions();
