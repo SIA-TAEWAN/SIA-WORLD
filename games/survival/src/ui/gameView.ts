@@ -269,7 +269,11 @@ export function showGame(setup: GameSetup) {
   };
   fieldEl.addEventListener('pointerup', onTouchEnd);
   fieldEl.addEventListener('pointercancel', onTouchEnd);
-  fieldEl.addEventListener('lostpointercapture', onTouchEnd);
+  // lostpointercapture 는 거품처럼 올라온다. 아이폰(WebKit)은 손가락이 닿은 요소(안쪽 캔버스)를 누르는 순간 저절로 잡아 두므로,
+  // 위에서 판이 잡아 오면 캔버스가 "놓쳤다"를 보낸다 → 그걸 판 자신의 것으로 알면 누르자마자 조이스틱이 꺼진다. 판 자신의 것만 본다
+  fieldEl.addEventListener('lostpointercapture', (e) => {
+    if (e.target === fieldEl) onTouchEnd(e);
+  });
   fieldEl.addEventListener('contextmenu', (e) => e.preventDefault());
   // 다른 앱으로 넘어가면 저절로 멈춘다
   const onHide = () => {

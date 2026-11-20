@@ -224,6 +224,8 @@ em > .ico { margin: 0 auto; }
 /* ---------- 게임: 필드가 화면을 가득 채우고 그 위에 HUD (가로 720 기준, --u = 기준 1px의 실제 크기) ---------- */
 .game { padding: 0; gap: 0; overflow: hidden; }
 .field { position: absolute; inset: 0; background: var(--table-matgo); touch-action: none; cursor: crosshair; }
+/* 조작은 판(.field)이 받는다: 캔버스(Phaser 입력은 꺼 둠)가 누름의 대상이 되지 않게 (아이폰이 캔버스를 저절로 잡아 두지 않도록) */
+.field canvas { pointer-events: none; }
 .field canvas { display: block; width: 100% !important; height: 100% !important; }
 .hud { position: absolute; left: 0; right: 0; top: 0; z-index: 5; padding: env(safe-area-inset-top) 0 0; pointer-events: none; display: flex; flex-direction: column; gap: calc(var(--u) * 8); }
 /* 경험치 바: 화면 맨 위 가로 전체 */
