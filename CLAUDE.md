@@ -12,14 +12,14 @@ SIA WORLD: a set of browser games behind one login, served as a static site on G
 - `shared/*.js` — plain ES modules (auth, supabase client, games list, wallet, room, presence, ranking dialog, sound, zodiac art). **Loaded at runtime by every game, not bundled**, so all games share one login session. A change here affects every game.
 - Separate Vite + TypeScript packages, each with its own `package.json`, `node_modules` and tests:
   - `games/` — 맞고 and 카지노 (poker, holdem, blackjack, roulette). Shared shell in `games/lib/`.
-  - `games/tank`, `games/running` (dev port 5290), `games/volleyball` (5291), `games/survival` (5292), `games/defense` (5293), `games/village` (5294).
-- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 057).
+  - `games/tank`, `games/running` (dev port 5290), `games/volleyball` (5291), `games/survival` (5292), `games/defense` (5293), `games/village` (5294), `games/charge` (5295, 시아돌격대).
+- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 066; check `ls supabase/migrations` before adding one).
 - `supabase/functions/_shared/` — card-game rule engines and round runner; `game-action` and `game-timeout` are the Edge Functions.
 - Each newer game keeps its spec in `games/<name>/PRD.md` and art notes in `ASSETS.md`.
 
 ## Commands
 
-Run inside the package directory (`games`, `games/tank`, `games/running`, `games/volleyball`, `games/survival`, `games/defense`, `games/village`):
+Run inside the package directory (`games`, `games/tank`, `games/running`, `games/volleyball`, `games/survival`, `games/defense`, `games/village`, `games/charge`):
 
 ```bash
 npm run dev            # Vite dev server
@@ -69,3 +69,6 @@ Consequences:
 
 - Commit messages are Korean, conventional-prefix style (`feat(matgo): …`).
 - Generated art comes from SpriteCook; asset ids are recorded in each game's `spritecook-assets.json`, and code-drawn fallbacks are kept for when an image fails to load.
+- 맞고 runs the same engine on the device and the server: when a rules change makes the same action list produce a different result, bump `MATGO_RULES` in `supabase/functions/_shared/matgo.ts` (older tabs then get a reload prompt).
+- Seats a player left mid-hand (`left_game`): the Runner plays them with `engine.leftAction` (blackjack: sit out / stand) or `engine.timeout` when `leftUsesTimeout` (poker, hold'em: check else fold), otherwise AI. Seats that sat out are left out of `settle().deltas`, because `apply_round_result` grants 시아코인 to every seat present in `deltas`.
+- Realtime games with a host device (tank, race): a hidden tab must not stay host — tank marks presence `away`, race drops devices whose position stream went silent. Keep this in mind when adding host-only duties.
