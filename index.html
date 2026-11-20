@@ -2,8 +2,9 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <script>/* 안드로이드: viewport-fit=cover 를 그리기 전에 뺀다 (크롬이 아래 기본 버튼 줄 밑까지 그리고 그 높이를 알려 주지 않아 아래 버튼이 가려졌다. 아이폰은 노치 대응으로 그대로) */ if (/Android/i.test(navigator.userAgent)) { var vpm = document.querySelector('meta[name="viewport"]'); if (vpm) vpm.content = vpm.content.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, ''); }</script>
+  <!-- viewport: 안드로이드는 viewport-fit=cover 없이 처음부터 써 넣는다. 크롬이 cover 를 보면 아래 기본 버튼 줄 밑까지 그리면서 그 높이를 알려 주지 않고,
+       나중에 빼도 이미 잡힌 100dvh 높이를 다시 계산하지 않아 아래 버튼이 가려졌다. 아이폰은 노치 대응으로 cover 를 둔다 -->
+  <script>(function () { var c = 'width=device-width, initial-scale=1, viewport-fit=cover'; if (/Android/i.test(navigator.userAgent)) c = c.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, ''); document.write('<meta name="viewport" content="' + c + '" />'); })();</script>
   <meta name="theme-color" content="#4aa8ff" />
   <title>SIA WORLD</title>
   <link rel="icon" type="image/png" sizes="32x32" href="./shared/images/app/favicon-32.png" />
