@@ -39,6 +39,11 @@ const ABSENT_GRACE_MS = 12_000;
 const JOIN_GRACE_MS = 10_000;
 /** 마지막 판의 승리 팀 (게임방으로 돌아갈 때 정산이 아직이면 같이 보낸다) */
 let lastWinner: number | null = null;
+/** 마지막 판의 결과 정리가 끝날 때 (게임방으로 돌아갈 때 먼저 기다린다) */
+let settling: Promise<void> | null = null;
+/** 기준 기기가 아니면 결과 정리를 이만큼 기다렸다가, 방이 아직 진행 중일 때만 대신 한다 */
+const SETTLE_WAIT_MS = 5000;
+const KICKED_TEXT = '자리를 오래 비워 AI가 이어서 조종하고 있어요';
 export const WIND_LABEL: Record<WindMode, string> = { slow: '느리게 ±2', normal: '보통 ±5', fast: '빠르게 ±8' };
 const myPlayer = (room?: Room): RoomPlayer => {
   const p = room?.players.find((x) => x.id === clientId());
@@ -655,6 +660,20 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     if (online !== g) return clearInterval(beat);
     if (g.isHost()) void backend!.touchRoom(room.id, clientId()).catch(() => undefined);
   }, 30_000);
+  // 게임 중 나가기 (나가기 버튼, 또는 자리를 오래 비워 AI가 내 탱크를 넘겨받았을 때)
+  const quit = () => {
+    if (online !== g) return;
+    clearInterval(beat);
+    // 모두 나가면 서버가 방을 지운다
+    void backend!.quitGame(room.id, clientId()).then(() => sess.refetch());
+    g.dispose();
+    online = null;
+    closeGame();
+    void roomSess?.leave();
+    roomSess = null;
+    void sess.setMyRoom(null);
+    renderLobby(sess);
+  };
   launchGame({
     setups: setupsOf(room),
     mapId: mapOf(room),
@@ -669,17 +688,31 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
       clearInterval(beat);
       // 판 결과 정리 (실패하면 몇 번 더 시도)
       const present = g.presentIds();
+      // 결과는 기준 기기만 올린다. 다른 기기는 잠깐 기다렸다가 방이 아직 진행 중일 때만 (화면이 어긋난 기기가 먼저 정산하지 않게)
+      const settler = g.isHost();
       // 백발백중은 승패를 기록하지 않는다 (점수는 백발백중 랭킹으로)
-      lastWinner = s.winner === -1 || s.practice ? null : s.winner;
-      const finish = async () => {
+      const winner = s.winner === -1 || s.practice ? null : s.winner;
+      lastWinner = winner;
+      const settle = async () => {
+        if (!settler) {
+          await new Promise((r) => setTimeout(r, SETTLE_WAIT_MS));
+          await sess.refetch();
+          const now = sess.room(room.id);
+          if (!now || now.status !== 'playing' || now.game_no !== g.gameNo) return;
+        }
         for (let i = 0; i < 4; i++) {
           try {
-            await backend!.endGame(room.id, g.gameNo, present, lastWinner);
+            await backend!.endGame(room.id, g.gameNo, present, winner);
             break;
           } catch {
             await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
           }
         }
+      };
+      const done = settle().catch(() => undefined);
+      settling = done;
+      const finish = async () => {
+        await done;
         await sess.refetch();
         await refreshRanking();
         if (s.practice) return void recordTarget(s);
@@ -697,23 +730,18 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
         onPrimary: () => backToRoom(room.id),
       });
     },
-    onQuit: () => {
-      clearInterval(beat);
-      // 게임 중 나가기: 모두 나가면 서버가 방을 지운다
-      void backend!.quitGame(room.id, clientId()).then(() => sess.refetch());
-      g.dispose();
-      online = null;
-      closeGame();
-      void roomSess?.leave();
-      roomSess = null;
-      void sess.setMyRoom(null);
-      renderLobby(sess);
-    },
+    onQuit: quit,
+  });
+  g.whenKicked(() => {
+    toast(KICKED_TEXT);
+    quit();
   });
 }
 
 async function backToRoom(id: string) {
   const sess = lobby!;
+  // 이 기기의 결과 정리(기준 기기가 아니면 몇 초 기다림)가 끝난 뒤에 본다
+  if (settling) await settling;
   await sess.refetch();
   const room = sess.room(id);
   if (!room || !room.players.some((p) => p.id === clientId())) {

@@ -1,6 +1,9 @@
 import type { Match, MatchSnapshot } from '../game/match';
 import type { TurnInput } from '../game/types';
 
+/** 기준 기기가 턴 시간을 이만큼(초) 더 넘겨도 턴을 넘기지 않으면 다음 후보 기기가 대신 넘긴다 */
+export const BACKUP_OVERDUE = 10;
+
 /** 한 턴의 결과로 주고받는 것: 이동 기록 + 발사 입력(시간 초과면 null) */
 export interface TurnRecord {
   turn: number;
@@ -10,6 +13,8 @@ export interface TurnRecord {
   facing: 1 | -1;
   /** 이번 턴에 바로 쓴 아이템 칸 (수리킷) */
   used?: number[];
+  /** 보낸 기기 (AI 탱크의 턴은 기준 기기가 보낸 것만 받는다) */
+  from?: string;
 }
 
 /** 조종 중인 기기가 0.12초마다 보내는 진행 상황 (화면 표시용) */
@@ -40,6 +45,12 @@ export interface SceneApi {
 export interface NetHooks {
   myIdx: number;
   isHost(): boolean;
+  /** 기준 기기가 멈췄을 때 대신 턴을 넘길 기기인가 */
+  isBackup(): boolean;
+  /** 판 상태를 다시 받는 중이라 화면을 진행하지 않는다 */
+  frozen(): boolean;
+  /** 기준 기기만 보내는 것(AI 탱크의 턴)을 이 기기가 보냈다고 믿을 수 있는가 */
+  trusted(from?: string): boolean;
   sendLive(l: LiveState): void;
   sendTurn(r: TurnRecord): void;
   /** 턴을 계산한 직후의 상태 지문 */

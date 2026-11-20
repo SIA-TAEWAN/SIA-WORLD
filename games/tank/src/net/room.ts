@@ -3,12 +3,17 @@ import type { ChatMsg } from './lobby';
 
 export interface RoomMeta {
   name: string;
+  /** 게임 중 화면을 가림 (기준 기기에서 빠진다) */
+  away?: boolean;
 }
 
 /** 게임방 채널: 누가 접속해 있는지(Presence)와 게임 메시지(Broadcast) */
 export class RoomSession {
   private ch: Channel<RoomMeta>;
   readonly present = new Set<string>();
+  /** 게임 중 화면을 가린 다른 사람 */
+  readonly away = new Set<string>();
+  private awayMe = false;
   private msgFns = new Set<(m: NetMsg) => void>();
   private presFns = new Set<() => void>();
   private chatFns = new Set<() => void>();
@@ -34,8 +39,10 @@ export class RoomSession {
     this.ch.onPresence((list: Member<RoomMeta>[]) => {
       const before = new Set(this.present);
       this.present.clear();
+      this.away.clear();
       list.forEach((m) => {
         this.present.add(m.key);
+        if (m.meta?.away && m.key !== me.id) this.away.add(m.key);
         this.names.set(m.key, m.meta.name);
       });
       this.present.add(me.id);
@@ -53,7 +60,18 @@ export class RoomSession {
     if (this.joined) return;
     this.joined = true;
     this.present.add(this.me.id);
-    await this.ch.join({ name: this.me.name });
+    await this.ch.join(this.meta());
+  }
+
+  private meta(): RoomMeta {
+    return this.awayMe ? { name: this.me.name, away: true } : { name: this.me.name };
+  }
+
+  /** 게임 중 화면을 가렸다/다시 본다 (접속 정보에 올린다) */
+  async setAway(away: boolean) {
+    if (this.awayMe === away) return;
+    this.awayMe = away;
+    if (this.joined) await this.ch.track(this.meta());
   }
 
   on(fn: (m: NetMsg) => void) {

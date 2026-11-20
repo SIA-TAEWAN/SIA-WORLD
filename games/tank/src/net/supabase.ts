@@ -28,12 +28,16 @@ class SupaChannel<M> implements Channel<M> {
     this.msgCbs.push(cb);
   }
 
+  /** 마지막으로 올린 내 정보 (다시 연결되면 처음 정보가 아니라 이걸 올린다) */
+  private meta: M | null = null;
+
   join(meta: M): Promise<void> {
+    this.meta = meta;
     return new Promise((resolve, reject) => {
       let done = false;
       this.ch.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await this.ch.track({ meta });
+          await this.ch.track({ meta: this.meta ?? meta });
           if (!done) {
             done = true;
             resolve();
@@ -47,6 +51,7 @@ class SupaChannel<M> implements Channel<M> {
   }
 
   async track(meta: M) {
+    this.meta = meta;
     await this.ch.track({ meta });
   }
 

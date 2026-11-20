@@ -5,7 +5,7 @@ import { TURN_SECONDS, ITEMS } from '../game/data';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput, Zone } from '../game/types';
 import { MAPS, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
-import type { LiveState, NetHooks, TurnRecord } from '../net/protocol';
+import { BACKUP_OVERDUE, type LiveState, type NetHooks, type TurnRecord } from '../net/protocol';
 import { decideMove, decideShot } from '../ai/ai';
 import { buildTerrainArt, drawBackground, hex, TEAM_COLORS, TERRAIN_TEX, type TexPixels } from './art';
 import { ICON_IDS, iconUrl } from '../ui/icons';
@@ -1080,6 +1080,8 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(deltaMs, 50) / 1000;
     const m = this.match;
     if (m.current < 0) return;
+    // 화면을 가렸다 돌아와 판 상태를 다시 받는 중이면 오래된 상태로 진행하지 않는다
+    if (this.cfg.net?.frozen()) return;
     const t = m.cur;
 
     if (this.phase === 'aim') this.updateHuman(dt);
@@ -1329,6 +1331,12 @@ export class GameScene extends Phaser.Scene {
   /** 상대 기기가 턴을 끝냈다 */
   onRemoteTurn(rec: TurnRecord) {
     if (rec.turn < this.match.turn) return;
+    // AI 탱크(넘겨받은 탱크 포함)의 턴은 기준 기기가 보낸 것만 (자리를 비웠다 온 기기의 오래된 기록은 버린다)
+    const net = this.cfg.net;
+    if (net && rec.turn === this.match.turn && this.match.cur.ai && !net.trusted(rec.from)) {
+      if (this.records.get(rec.turn) === rec) this.records.delete(rec.turn);
+      return;
+    }
     if (!this.records.has(rec.turn)) this.records.set(rec.turn, rec);
     if (this.phase !== 'remote' || rec.turn !== this.match.turn || this.remote.stage !== 'wait') return;
     this.remote.rec = this.records.get(rec.turn);
@@ -1345,8 +1353,10 @@ export class GameScene extends Phaser.Scene {
     this.timeLeft -= dt;
 
     if (r.stage === 'wait') {
+      // 기준 기기가 멈춰(화면을 가렸는데 접속은 살아 있음 등) 턴 시간을 한참 넘겼으면 다음 후보 기기가 대신한다
+      const overdue = this.timeLeft < -4 - BACKUP_OVERDUE && net.isBackup();
       // 조종하던 사람 대신 AI가 넘겨받았으면 기준 기기가 이어서 둔다
-      if (this.controlOf(t) === 'ai') {
+      if (this.controlOf(t) === 'ai' || (t.ai && this.timeLeft < -BACKUP_OVERDUE && net.isBackup())) {
         if (r.applied === 0) this.startAi();
         else {
           // 이미 움직인 걸음은 그대로 두고 그 자리에서 턴을 넘긴다
@@ -1357,7 +1367,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       // 시간이 넘었는데 아무 입력도 안 오면 기준 기기가 턴을 넘긴다
-      if (this.timeLeft < -4 && net.isHost()) {
+      if ((this.timeLeft < -4 && net.isHost()) || overdue) {
         const rec: TurnRecord = { turn: m.turn, runs: [...r.liveRuns], input: null, facing: t.facing };
         this.records.set(rec.turn, rec);
         net.sendTurn(rec);
