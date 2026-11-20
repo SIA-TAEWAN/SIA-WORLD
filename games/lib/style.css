@@ -41,7 +41,9 @@ button, .btn, .rboard, .rc, .rl-units .btn { touch-action: manipulation; }
 @media (prefers-reduced-motion: reduce) { .btn:active:not(:disabled) { transform: none; } }
 
 /* ---------- 상단 바 (← 돌아가기 · 제목 · 알약) ---------- */
-.bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; color: var(--white); }
+.bar { display: flex; align-items: center; gap: 10px; color: var(--white);
+  /* 홈 화면 앱·노치: 상태 표시줄·노치 밑으로 들어가지 않게 (안전 영역이 없으면 10px 16px 그대로) */
+  padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left)); }
 .bar h1 {
   margin: 0;
   flex: 1;
@@ -67,7 +69,7 @@ button, .btn, .rboard, .rc, .rl-units .btn { touch-action: manipulation; }
 }
 
 /* ---------- 방 목록 ---------- */
-.lobby { max-width: 900px; margin: 0 auto; padding-bottom: 40px; }
+.lobby { max-width: 900px; margin: 0 auto; padding: 0 env(safe-area-inset-right) calc(40px + env(safe-area-inset-bottom)) env(safe-area-inset-left); }
 .card {
   background: var(--panel);
   border: var(--line) solid var(--outline);
@@ -213,8 +215,10 @@ input:focus { outline: var(--line) solid var(--primary); }
 @media (max-width: 520px) { .pick { grid-template-columns: 1fr; } }
 
 /* ---------- 방 화면 ---------- */
-.table-page { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--sky-gradient); }
-.table-page .bar { padding: 6px 12px; }
+.table-page { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--sky-gradient);
+  /* 가로로 눕힌 아이폰: 노치·둥근 모서리 쪽으로 판이 들어가지 않게 (안전 영역이 없으면 0) */
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.table-page .bar { padding: calc(6px + env(safe-area-inset-top)) 12px 6px; }
 .table-page .bar h1 { font-size: 20px; }
 .seats { display: flex; gap: 6px; padding: 4px 10px 8px; overflow-x: auto; }
 .seat {
@@ -367,7 +371,7 @@ input:focus { outline: var(--line) solid var(--primary); }
 /* 낮은 화면(가로로 눕힌 휴대폰): 자리 줄은 숨기고(테이블 위 이름패와 같은 정보) 위·아래를 얇게 */
 @media (max-height: 520px) {
   .seats { display: none; }
-  .table-page .bar { padding: 3px 10px; }
+  .table-page .bar { padding: calc(3px + env(safe-area-inset-top)) 10px 3px; }
   .table-page .bar h1 { font-size: 15px; }
   .table-page .bar .btn { padding: 3px 8px; font-size: 13px; }
   .money { font-size: 13px; padding: 1px 8px; }

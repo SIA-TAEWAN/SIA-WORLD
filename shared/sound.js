@@ -200,6 +200,16 @@ function unlock() {
   if (a && a.state === 'running') for (const ev of UNLOCK_EVENTS) removeEventListener(ev, unlock, true);
 }
 if (typeof addEventListener === 'function') for (const ev of UNLOCK_EVENTS) addEventListener(ev, unlock, true);
+// 홈 화면 앱(특히 아이폰)은 다른 앱에 다녀오면 오디오가 멈춘 채(interrupted/suspended) 남는다
+// → 화면으로 돌아왔을 때 멈춰 있으면 다음 입력에서 다시 깨우도록 걸어 둔다
+if (typeof document !== 'undefined' && typeof addEventListener === 'function') {
+  const rearm = () => {
+    if (document.visibilityState !== 'visible' || !ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    for (const ev of UNLOCK_EVENTS) addEventListener(ev, unlock, true);
+  };
+  document.addEventListener('visibilitychange', rearm);
+  addEventListener('pageshow', rearm);
+}
 
 const soundsBase = () => new URL('sounds/', import.meta.url).href;
 
