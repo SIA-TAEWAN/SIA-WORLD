@@ -9,8 +9,6 @@ import { R02 } from '../src/data/maps/r02';
 import { R03 } from '../src/data/maps/r03';
 import { ALL_MAP_IDS, MAPS_PER_REGION, REGIONS, REGIONS_READY, REGION_TABLE, mapId, mapLevel, mapScale, parseMapId } from '../src/data/regions';
 import { readFileSync } from 'node:fs';
-import { regionTier } from '../src/data/economy';
-import { tierAtk } from '../src/data/weapons';
 import { createRun } from '../src/game/sim';
 import { lo } from './helpers';
 import { autoplay } from './bot';
@@ -188,15 +186,7 @@ describe('맵 한 판 (자동 조종)', () => {
     expect(hard.boss!.maxHp).toBeGreaterThan(s.boss!.maxHp * 5);
   });
 
-  it.each(MAPS.map((m) => [m.id, m] as const))('%s: 끝까지 깰 수 있다 (무적 자동 조종, 숨은 상자 포함)', (_id, m) => {
-    const s = createRun(m, 'normal', { ...lo('ox', 'sword', mapLevel(m.region, m.no, 'normal')), weaponAtk: tierAtk(regionTier(m.region, 'normal')) }, { seed: 11, god: true });
-    const r = autoplay(s, 1500, { chest: true });
-    expect(r.phase).toBe('clear');
-    expect(s.chest).toBe(true);
-    if (m.boss) expect(s.bossDead).toBe(true);
-    // 서툰 자동 조종으로도 별 기준 시간의 세 배 안에는 끝난다
-    expect(r.time).toBeLessThan(m.par * 3);
-  });
+  // 맵마다 끝까지 깨 보는 시험은 tests/play1~3.test.ts 에 있다 (지형 넷씩)
 
   it('1-1 은 Lv1 로 물약만 쓰고도 깬다 (무적 아님)', () => {
     const s = createRun(mapOf('1-1')!, 'normal', lo('rat', 'sword', 1), { seed: 3, potions: [3, 3] });
