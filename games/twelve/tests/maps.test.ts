@@ -5,8 +5,12 @@ import { ENEMIES, ENEMY_IDS } from '../src/data/enemies';
 import { elitesAt, generateRegion, kindsAt, regionFile } from '../src/data/mapgen';
 import { MAPS, mapKillMax, mapOf, mapsOf, nextMap, type MapDef } from '../src/data/maps';
 import { R01 } from '../src/data/maps/r01';
+import { R02 } from '../src/data/maps/r02';
+import { R03 } from '../src/data/maps/r03';
 import { ALL_MAP_IDS, MAPS_PER_REGION, REGIONS, REGIONS_READY, REGION_TABLE, mapId, mapLevel, mapScale, parseMapId } from '../src/data/regions';
 import { readFileSync } from 'node:fs';
+import { regionTier } from '../src/data/economy';
+import { tierAtk } from '../src/data/weapons';
 import { createRun } from '../src/game/sim';
 import { lo } from './helpers';
 import { autoplay } from './bot';
@@ -75,9 +79,12 @@ describe('맵 데이터', () => {
       expect(maps.filter((m) => m.boss).map((m) => m.no)).toEqual([8]);
     }
     expect(mapOf('1-3')!.no).toBe(3);
-    expect(mapOf('2-1')).toBeNull();
+    expect(REGIONS_READY).toBe(3);
+    expect(MAPS.length).toBe(24);
+    expect(mapOf('4-1')).toBeNull();
     expect(nextMap('1-3')!.id).toBe('1-4');
-    expect(nextMap('1-8')).toBeNull(); // 2지형은 준비 중
+    expect(nextMap('1-8')!.id).toBe('2-1');
+    expect(nextMap('3-8')).toBeNull(); // 4지형은 준비 중
   });
 
   it.each(MAPS.map((m) => [m.id, m] as const))('%s: 타일·자리가 올바르고 시작에서 모두 닿는다', (_id, m) => {
@@ -120,9 +127,26 @@ describe('맵 데이터', () => {
     for (const k of kinds) expect(ENEMIES[k].hp).toBeGreaterThan(0);
   });
 
-  it('지형 파일은 생성 스크립트(npm run gen) 결과와 같다', () => {
-    const file = readFileSync(new URL('../src/data/maps/r01.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-    expect(file).toBe(regionFile(1, generateRegion(1)));
+  it('2·3지형: 그 지형의 새 요괴(분열 · 덮치기)와 지형 조각(진흙 논 · 바위 고개)이 나온다', () => {
+    for (const [list, r, fresh] of [[R02, 2, 'mud'], [R03, 3, 'lynx']] as const) {
+      const kinds = new Set(list.flatMap((m) => m.groups.flatMap((g) => g.list.map(([k]) => k))));
+      expect([...kinds].sort()).toEqual([...REGION_TABLE[r - 1].enemies].sort());
+      expect(kinds.has(fresh)).toBe(true);
+      expect(new Set(list.map((m) => m.name)).size).toBe(8);
+    }
+    // 1지형에는 새 요괴가 없다
+    expect(R01.some((m) => m.groups.some((g) => g.list.some(([k]) => k === 'mud' || k === 'lynx')))).toBe(false);
+    expect(ENEMIES.mud.split).toBeDefined();
+    expect(ENEMIES.lynx.ai).toBe('leap');
+    const mudTiles = (list: MapDef[]) => list.reduce((a, m) => a + m.rows.join('').split('~').length - 1, 0);
+    expect(mudTiles(R02)).toBeGreaterThan(mudTiles(R01) * 1.5);
+    const wallTiles = (list: MapDef[]) => list.reduce((a, m) => a + m.rows.join('').split('#').length - 1, 0) / list.reduce((a, m) => a + m.rows.length, 0);
+    expect(wallTiles(R03)).toBeGreaterThan(wallTiles(R02));
+  });
+
+  it.each([1, 2, 3])('%i지형 파일은 생성 스크립트(npm run gen) 결과와 같다', (r) => {
+    const file = readFileSync(new URL(`../src/data/maps/r0${r}.ts`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    expect(file).toBe(regionFile(r, generateRegion(r)));
   });
 });
 
@@ -139,7 +163,7 @@ describe('맵 한 판 (자동 조종)', () => {
   });
 
   it.each(MAPS.map((m) => [m.id, m] as const))('%s: 끝까지 깰 수 있다 (무적 자동 조종, 숨은 상자 포함)', (_id, m) => {
-    const s = createRun(m, 'normal', lo('ox', 'sword', mapLevel(m.region, m.no, 'normal')), { seed: 11, god: true });
+    const s = createRun(m, 'normal', { ...lo('ox', 'sword', mapLevel(m.region, m.no, 'normal')), weaponAtk: tierAtk(regionTier(m.region, 'normal')) }, { seed: 11, god: true });
     const r = autoplay(s, 1500, { chest: true });
     expect(r.phase).toBe('clear');
     expect(s.chest).toBe(true);

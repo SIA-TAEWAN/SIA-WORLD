@@ -16,7 +16,8 @@ export type OptionalArt =
   | 'chest' // 숨은 상자
   | 'exit' // 출구 (봉인 문)
   | 'fx-slash' // 베기 효과
-  | 'main'; // 메인 화면 그림
+  | 'main' // 메인 화면 그림
+  | `story-${1 | 2 | 3 | 4}`; // 시작 장면 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
 
 export const ART_FILES: readonly OptionalArt[] = [];
 export const hasArt = (name: OptionalArt) => ART_FILES.includes(name);
@@ -28,6 +29,15 @@ export const GROUND: Record<Ground, { tile: string; floor: number; wall: number;
   palace: { tile: 'tile-palace', floor: TABLE.blackjack, wall: COLOR.lineSoft, wallDark: COLOR.inkSoft, slow: ROULETTE.spring },
   underworld: { tile: 'tile-underworld', floor: ROULETTE.winter, wall: COLOR.inkSoft, wallDark: COLOR.outline, slow: COLOR.emptyLine },
 };
+
+/** 2지형은 물웅덩이 대신 진흙탕이다 (흙색) */
+export const groundOf = (region: number) => {
+  const r = regionOf(region);
+  return r.env === 'mud' ? { ...GROUND[r.ground], slow: COLOR.inkSoft } : GROUND[r.ground];
+};
+
+/** 기존 그림을 돌려 쓰는 요괴의 색 (전용 그림이 생기면 지운다 — ASSETS.md) */
+export const ENEMY_TINT: Partial<Record<EnemyKind, number>> = { mud: COLOR.emptyLine, lynx: COLOR.primaryLight };
 
 /** 이 맵에서 받을 기본 그림 이름 (요괴·보스·바닥·효과) */
 export function artFor(map: MapDef): string[] {
@@ -44,5 +54,6 @@ export function artFor(map: MapDef): string[] {
     kinds.add(b.summon.kind);
   }
   for (const k of kinds) names.push(ENEMIES[k].art);
-  return names;
+  // 같은 그림을 돌려 쓰는 요괴가 있다
+  return [...new Set(names)];
 }

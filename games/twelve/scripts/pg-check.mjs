@@ -131,7 +131,7 @@ eq((await as(u1, `select public.character_progress('twelve') as j`))[0].j, { hav
 // ---------- 시작 검사 ----------
 await rejects(start(u1, '1-2'), 'map locked', '잠긴 맵');
 await rejects(start(u1, '9-9'), 'bad map', '없는 맵');
-await rejects(start(u1, '2-1'), 'bad map', '준비 안 된 지형');
+await rejects(start(u1, '4-1'), 'bad map', '준비 안 된 지형');
 await rejects(start(u1, '1-1', 'rat', 'hard'), 'bad map', '어려움 모드는 준비 중');
 await rejects(start(u1, '1-1', 'rat', 'easy'), 'bad mode', '없는 모드');
 await rejects(start(u1, '1-1', 'rabbit'), 'hero locked', '합류 안 한 대원');

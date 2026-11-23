@@ -68,17 +68,36 @@ describe('맵 열림', () => {
     expect(continueMap(p)).toBe('1-2');
   });
 
-  it('2지형부터와 어려움 모드는 준비 중', () => {
+  it('지형 보스를 잡으면 다음 지형이 열린다. 4지형부터와 어려움 모드는 준비 중', () => {
     const p = emptyProfile();
+    expect(regionOpen(p, 2)).toBe(false);
+    expect(mapOpen(p, '2-1')).toBe(false);
     for (let n = 1; n <= 8; n++) applyReport(p, report(`1-${n}`));
     expect(regionOpen(p, 2)).toBe(true);
-    expect(regionReady(1)).toBe(true);
-    expect(regionReady(2)).toBe(false);
-    expect(mapOpen(p, '2-1')).toBe(false);
+    expect(mapOpen(p, '2-1')).toBe(true);
+    expect(mapOpen(p, '3-1')).toBe(false);
+    expect(continueMap(p)).toBe('2-1');
+    expect(heroesOf(p)).toContain('rabbit'); // 2지형의 진흙을 막는 대원은 1지형 보스를 잡으면 합류한다
+    for (const r of [2, 3]) for (let n = 1; n <= 8; n++) applyReport(p, report(`${r}-${n}`));
+    expect(regionReady(3)).toBe(true);
+    expect(regionOpen(p, 4)).toBe(true);
+    expect(regionReady(4)).toBe(false);
+    expect(mapOpen(p, '4-1')).toBe(false);
     expect(mapOpen(p, '1-1', 'hard')).toBe(false);
-    expect(continueMap(p)).toBe('1-8');
-    expect(checkStart(p, '2-1', 'normal', 'rat')).toBe('bad map');
+    expect(continueMap(p)).toBe('3-8');
+    expect(checkStart(p, '4-1', 'normal', 'rat')).toBe('bad map');
     expect(checkStart(p, '1-1', 'hard', 'rat')).toBe('map locked');
+  });
+
+  it('추천 대원: 고향 대원 + 환경을 막는 대원 — 그 지형에 올 때 이미 함께하는 대원이다', () => {
+    expect(recommended(1)).toEqual(['rat']); // 환경 효과가 없는 지형
+    expect(recommended(2)).toEqual(['ox', 'rabbit']);
+    expect(recommended(3)).toEqual(['tiger', 'ox']);
+    const p = emptyProfile();
+    for (const r of [1, 2, 3]) {
+      for (const h of recommended(r)) expect(heroesOf(p), `${r}지형 ${h}`).toContain(h);
+      for (let n = 1; n <= 8; n++) applyReport(p, report(`${r}-${n}`));
+    }
   });
 
   it('어려움 모드는 진행과 별을 따로 센다', () => {
@@ -195,7 +214,7 @@ describe('대원', () => {
   });
 
   it('추천 대원: 고향 대원 + 환경을 막는 대원', () => {
-    expect(recommended(1)).toEqual(['rat', 'ox']);
+    expect(recommended(1)).toEqual(['rat']); // 환경 효과가 없는 지형
     for (let r = 1; r <= 12; r++) expect(recommended(r).length).toBeGreaterThan(0);
   });
 });

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { heroFaceUrl } from '../assets';
+import { artUrl, heroFaceUrl, heroFullUrl } from '../assets';
 import { skillLevelMul } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { BAG, MAX_PLUS, POTION, POTION_NAME, bagPrice, enhanceCost } from '../data/economy';
@@ -7,7 +7,7 @@ import { expNeed, playerStats } from '../data/growth';
 import { HEROES, STAT_KEYS, STAT_NAME, heroOf, isHero, type HeroId } from '../data/heroes';
 import { ACC_TEXT, FX_DESC, FX_NAME, ITEMS, SLOTS, SLOT_NAME, canEnhance, itemDef, itemLevel, itemNote, itemStats, normalWeapon, regionRares, type Item, type Slot } from '../data/items';
 import { MAPS, mapOf, mapsOf, nextMap, type MapDef } from '../data/maps';
-import { MAPS_PER_REGION, MODE_NAME, REGIONS, REGION_TABLE, mapLevel, regionOf } from '../data/regions';
+import { ENV_ICON, ENV_NAME, MAPS_PER_REGION, MODE_NAME, REGIONS, REGION_TABLE, mapLevel, regionOf } from '../data/regions';
 import { TIER_LEVELS, WEAPONS, WEAPON_KINDS } from '../data/weapons';
 import {
   applyReport,
@@ -43,7 +43,7 @@ import { ApiError, type TwelveApi } from '../net/api';
 import { DEV_ALL, DEV_GOD, DEV_HERO, DEV_LEVEL, DEV_MAP, DEV_WEAPON, LOCAL_MODE } from '../net/local';
 import { buyCharacter, loadOwnedCharacters, loadSound, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W, dropIcon, dropName } from '../scenes/GameScene';
-import { GROUND } from '../scenes/art';
+import { groundOf, hasArt } from '../scenes/art';
 import { COLOR, css } from '../theme';
 import { createControls, type Controls } from './controls';
 
@@ -76,6 +76,7 @@ interface Settings {
 }
 const SETTINGS_KEY = 'siatwelve:settings';
 const RUN_KEY = 'siatwelve:inrun';
+const INTRO_KEY = 'siatwelve:intro';
 const settings: Settings = { vibrate: true, lefty: false, numbers: true };
 function loadSettings() {
   try {
@@ -183,6 +184,14 @@ export async function boot(a: TwelveApi, _user: WorldUser | null) {
 export function showFirst() {
   const m = mapOf(DEV_MAP);
   if (m) return void startMap(m, 0);
+  // 처음 온 사람에게는 시작 장면부터 (PRD '이야기'. 건너뛸 수 있고, 설정에서 다시 볼 수 있다)
+  let seen = true;
+  try {
+    seen = !!localStorage.getItem(INTRO_KEY);
+  } catch {
+    /* 못 읽으면 건너뛴다 */
+  }
+  if (!seen && !DEV_PLAY && !Object.keys(profile.maps.normal).length) return showIntro(showMain);
   showMain();
   // 맵 도중에 앱을 닫았다: 중간 저장이 없으므로 쓰러진 것과 같다 (PRD '죽으면')
   let left: string | null = null;
@@ -195,6 +204,54 @@ export function showFirst() {
     mark(RUN_KEY, null);
     toast(`${left} ${mapOf(left)!.name}: 도중에 나가서 그 맵을 다시 시작해요`, 3200);
   }
+}
+
+// ---------- 시작 장면 ----------
+
+/** 그림 4장 + 자막. 전용 그림(public/art/story-N.png)이 생기기 전에는 기존 그림을 모아 장면을 만든다 */
+const STORY: { bg: string; text: string; art: () => string }[] = [
+  {
+    bg: 'bg-underworld',
+    text: '아주 먼 옛날, 십이지 대원들은 요괴를 열두 지형에 가두고 봉인했어요.',
+    art: () => `<div class="story-ring">${HEROES.filter((h) => !h.hidden).map((h, i) => `<img style="--a:${i * 30}deg" src="${heroFaceUrl(h.id)}" alt="" />`).join('')}<span>🔒</span></div>`,
+  },
+  {
+    bg: 'bg-bamboo',
+    text: '그런데 어느 밤, 봉인이 풀려 버렸어요. 요괴들이 들판과 고개로 쏟아져 나왔죠.',
+    art: () => `<div class="story-row">${['e-imp', 'e-wisp', 'b-bigDokkaebi', 'e-fox', 'e-club'].map((n, i) => `<img class="${i === 2 ? 'big' : ''}" src="${artUrl(n)}" alt="" />`).join('')}</div><span class="story-mark">🔓</span>`,
+  },
+  {
+    bg: 'bg-palace',
+    text: '지형마다 우두머리 요괴가 봉인의 열쇠를 하나씩 차지했어요. 열쇠는 모두 열두 개예요.',
+    art: () => `<div class="story-row">${['b-bigDokkaebi', 'b-dueoksini', 'b-bulgasal'].map((n) => `<figure><em>🗝️</em><img class="big" src="${artUrl(n)}" alt="" /></figure>`).join('')}</div>`,
+  },
+  {
+    bg: 'bg-field',
+    text: '찍찍이·우직이·어흥이가 먼저 길을 나서요. 열쇠를 모아 다시 봉인하러, 열두 길로 출발!',
+    art: () => `<div class="story-row">${(['rat', 'ox', 'tiger'] as const).map((id) => `<img class="hero" src="${heroFullUrl(id)}" alt="${heroOf(id).name}" />`).join('')}</div>`,
+  },
+];
+
+function showIntro(done: () => void) {
+  let i = 0;
+  const end = () => {
+    mark(INTRO_KEY, '1');
+    done();
+  };
+  const paint = () => {
+    const sc = STORY[i];
+    const name = `story-${i + 1}` as 'story-1';
+    const root = screen(`
+      <div class="bar"><div class="spacer"></div><button class="btn small" id="skip">건너뛰기 ▶▶</button></div>
+      <div class="grow"></div>
+      <div class="story-art ${sc.bg}">${hasArt(name) ? `<img class="story-img" src="${artUrl(name)}" alt="" />` : sc.art()}</div>
+      <div class="card story-text"><p>${sc.text}</p><div class="story-dots">${STORY.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div></div>
+      <button class="btn primary big" id="next">${i === STORY.length - 1 ? '출발!' : '다음 ▶'}</button>
+      <div class="grow"></div>`);
+    on(root, '#skip', end);
+    on(root, '#next', () => (++i < STORY.length ? paint() : end()));
+  };
+  paint();
 }
 
 // ---------- 메인 ----------
@@ -238,7 +295,9 @@ function showSettings() {
     ${row('vibrate', '진동', settings.vibrate)}
     ${row('lefty', '왼손잡이 (조이스틱과 버튼 좌우 바꾸기)', settings.lefty)}
     ${row('numbers', '피해 숫자', settings.numbers)}
+    <button class="btn" id="story">📖 이야기 다시 보기</button>
     <button class="btn primary" id="ok">닫기</button></div>`);
+  on(box, '#story', () => showIntro(showMain));
   on(box, '.toggle', (el) => {
     const k = el.dataset.k!;
     let v: boolean;
@@ -285,7 +344,7 @@ function showHeroes(back: () => void, region = 0) {
       <div class="stat-grid">${STAT_KEYS.map((k) => `<div class="stat"><span>${STAT_NAME[k]}</span><div class="lv"><i style="width:${Math.round(((h.stats[k] - 0.9) / 0.2) * 100)}%"></i></div><b>${k === 'crit' ? `${Math.round(st.crit * 100)}%` : Math.round(st[k])}</b></div>`).join('')}</div>
       ${profile.level >= 10 ? `<p class="soft">⭐ 스킬 강화 ${Math.floor(profile.level / 10)}단계: 스킬 피해 +${Math.round((skillLevelMul(profile.level) - 1) * 100)}% (10레벨마다 한 단계)</p>` : '<p class="soft">⭐ 10레벨마다 스킬이 한 단계 강해져요</p>'}
       <p class="skill-line"><span class="key">U</span> <b>${h.unique.icon} ${h.unique.name}</b> ${h.unique.desc} <small>마력 ${h.unique.mp} · ${h.unique.cd}초</small></p>
-      ${st.home ? '<p class="soft">🏠 고향 지형: 공격·방어 +10%</p>' : ''}${st.affinity ? '<p class="soft">✨ 잘 다루는 무기: 공격 +5%</p>' : ''}
+      ${st.home ? '<p class="soft">🏠 고향 지형: 공격·방어 +10%</p>' : ''}${region && regionOf(region).env !== 'none' && regionOf(region).counter === pick ? `<p class="soft">${ENV_ICON[regionOf(region).env]} 이 지형의 ${ENV_NAME[regionOf(region).env]}에 걸리지 않아요</p>` : ''}${st.affinity ? '<p class="soft">✨ 잘 다루는 무기: 공격 +5%</p>' : ''}
       ${ok ? '' : h.hidden ? `<p class="soft">🐱 경주에 늦어 빠진 13번째 대원이에요. 이 게임에서 따로 열어요</p><button class="btn primary" id="buycat">시아코인 ${h.price}개로 열기</button>` : `<p class="soft">🔒 ${h.join}지형 보스를 처음 잡으면 합류해요</p>`}`;
     root.querySelector('#buycat')?.addEventListener('click', async () => {
       play('click');
@@ -326,11 +385,11 @@ function showWorld() {
       const open = ready && regionOpen(profile, r.region);
       const sub = !ready ? '준비 중' : open ? `${hasKey(profile, r.region) ? '🗝️ ' : ''}★ ${regionStarCount(profile, r.region)}/${MAPS_PER_REGION * 3}` : `🔒 ${r.region - 1}지형 보스`;
       return `<button class="region bg-${r.ground} ${open ? '' : 'locked'}" data-r="${r.region}">
-          ${face(r.home)}<b>${r.region}</b><span>${r.name}</span><em>${sub}</em>
+          ${face(r.home)}${ready && recommended(r.region).length > 1 ? `<i class="counter">${face(r.counter)}</i>` : ''}<b>${r.region}</b><span>${r.name}</span><em>${sub}</em>
         </button>`;
     }).join('')}</div>
     <button class="btn soon final" data-soon="열쇠 12개를 모으면 열려요 (준비 중)">🗝️ 최종보스 <small>열쇠 ${profile.keys[profile.mode].length} / ${REGIONS}</small></button>
-    <p class="soft center light">지형 보스를 잡으면 다음 지형이 열리고 대원이 합류해요</p>`);
+    <p class="soft center light">큰 얼굴 = 고향 대원(공격·방어 +10%) · 작은 얼굴 = 지형 환경을 막는 대원<br/>지형 보스를 잡으면 다음 지형이 열리고 대원이 합류해요</p>`);
   on(root, '#back', showMain);
   on(root, '[data-soon]', (el) => toast(el.dataset.soon!));
   on(root, '.region', (el) => {
@@ -354,7 +413,7 @@ function showRegion(region: number) {
         <button class="btn small" id="smith">⚒️ 대장간</button>
         <button class="btn small" id="bag">🎒 가방${boxItems(profile).length ? ` <em class="tag">${boxItems(profile).length}</em>` : ''}</button>
       </div>
-      <p class="soft rec">추천 대원 ${recommended(region).map((h) => `${face(h)} ${heroOf(h).name}`).join(' ')}</p>
+      <p class="soft rec">추천 대원 ${recommended(region).map((h) => `${face(h)} ${heroOf(h).name} <small>${[h === r.home ? '고향 +10%' : '', h === r.counter && r.env !== 'none' ? `${ENV_NAME[r.env]} 막음` : ''].filter(Boolean).join(' · ')}</small>`).join(' ')}</p>
     </div>
     <div class="stage-list">${mapsOf(region)
       .map((m) => {
@@ -438,10 +497,12 @@ async function startMap(map: MapDef, deaths: number) {
         <div class="gauge mp"><i id="mp"></i></div>
         <div class="gauge exp"><i id="exp"></i></div>
       </div>
-      <div class="hud-side"><span class="hud-pill" id="time"></span><span class="hud-pill" id="kills"></span></div>
+      <div class="hud-side"><span class="hud-pill" id="time"></span><span class="hud-pill" id="kills"></span>${
+        run.env.id === 'mud' || run.env.id === 'wind' ? `<span class="hud-pill env ${run.env.f < 1 ? 'ok' : ''}">${ENV_ICON[run.env.id]} ${ENV_NAME[run.env.id]}${run.env.f === 0 ? ' 막음' : run.env.f < 1 ? ' 절반' : ''}</span>` : ''
+      }</div>
       <canvas id="mini" width="64" height="144"></canvas>
     </div>
-    ${bossDef ? `<div class="boss-bar hidden" id="boss"><b>👹 ${bossDef.name}</b><div class="gauge"><i id="bossHp"></i></div></div>` : ''}
+    ${bossDef ? `<div class="boss-bar hidden" id="boss"><b>👹 ${bossDef.name}</b><div class="gauge"><i id="bossHp"></i></div></div><div class="boss-say hidden" id="say"></div>` : ''}
     <div class="note hidden" id="note"></div>`;
   const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
   const pause = () => {
@@ -516,8 +577,12 @@ async function startMap(map: MapDef, deaths: number) {
   const note = $('note');
   const bossBox = bossDef ? $('boss') : null;
   const bossHp = bossDef ? $('bossHp') : null;
+  // 보스 대사: 보스가 깨어나면 한 줄씩, 쓰러지면 마지막 한마디 (PRD '이야기')
+  const sayEl = bossDef ? $('say') : null;
+  let sayFrom = -1;
+  let downAt = 0;
   const mini = $<HTMLCanvasElement>('mini').getContext('2d')!;
-  const look = GROUND[region.ground];
+  const look = groundOf(map.region);
   const needExp = expNeed(profile.level);
   let noteT = 0;
   let frame = 0;
@@ -593,6 +658,13 @@ async function startMap(map: MapDef, deaths: number) {
         if (bossBox && bossHp && s.boss) {
           set('bossOn', String(s.boss.awake && !s.boss.dead), (v) => bossBox.classList.toggle('hidden', v !== 'true'));
           set('bossHp', String(Math.round((s.boss.hp / s.boss.maxHp) * 100)), (v) => (bossHp.style.width = `${v}%`));
+          if (s.boss.awake && sayFrom < 0) sayFrom = s.t;
+          if (s.bossDead && !downAt) downAt = performance.now();
+          const line = s.bossDead ? (performance.now() - downAt < 3200 ? bossDef!.last : '') : sayFrom >= 0 ? (bossDef!.lines[Math.floor((s.t - sayFrom) / 2.6)] ?? '') : '';
+          set('say', line, (v) => {
+            sayEl!.textContent = v ? `“${v}”` : '';
+            sayEl!.classList.toggle('hidden', !v);
+          });
         }
         if (noteT && performance.now() > noteT) {
           noteT = 0;
@@ -649,7 +721,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
       ${r && win ? lootHtml(r) : ''}
-      ${r?.joined ? `<div class="new-hero">${face(r.joined)} ${heroOf(r.joined).name}(${heroOf(r.joined).animal})가 합류했어요!</div>` : ''}
+      ${r?.joined ? `<div class="new-hero">${face(r.joined)}<span>${heroOf(r.joined).name}(${heroOf(r.joined).animal})가 합류했어요!${heroOf(r.joined).hello ? `<small>“${heroOf(r.joined).hello}”</small>` : ''}</span></div>` : ''}
       ${DEV_PLAY ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : r ? '' : '<p class="soft center">기록을 저장하지 못했어요</p>'}
       <div class="btns">
         ${nextOk ? `<button class="btn primary big" id="next">다음 맵 ▶</button>` : ''}

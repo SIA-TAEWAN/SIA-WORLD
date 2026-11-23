@@ -9,7 +9,7 @@ import type { HeroId } from './heroes';
 export const REGIONS = 12;
 export const MAPS_PER_REGION = 8;
 /** 지금 열려 있는 지형 수 (나머지는 지도에 '준비 중') */
-export const REGIONS_READY = 1;
+export const REGIONS_READY = 3;
 /** 어려움 모드 · 최종보스가 준비됐는지 */
 export const HARD_READY = false;
 
@@ -33,8 +33,14 @@ export const ALL_MAP_IDS: MapId[] = Array.from({ length: REGIONS * MAPS_PER_REGI
 
 /** 바닥 그림 (시아디펜스 바닥 4종을 3지형씩. 지형 전용 타일셋이 생기면 art.ts 가 바꿔 쓴다) */
 export type Ground = 'field' | 'bamboo' | 'palace' | 'underworld';
-/** 지형 환경 효과 (6단계에서 구현. 지금은 물 = 느려짐만 있다) */
+/** 지형 환경 효과 (숫자는 balance.ts 의 ENV). 2지형 진흙 · 3지형 골바람까지 만들었고, 4지형부터는 이름·설명만 있다 */
 export type EnvId = 'none' | 'mud' | 'wind' | 'dark' | 'water' | 'poison' | 'arrow' | 'sleep' | 'slip' | 'glare' | 'cold' | 'fire';
+
+/** 환경 효과의 짧은 이름 · 그림 글자 (화면용) */
+export const ENV_NAME: Record<EnvId, string> = {
+  none: '', mud: '진흙', wind: '골바람', dark: '달그림자', water: '물길', poison: '독안개', arrow: '성벽 화살', sleep: '졸음 꽃가루', slip: '미끄러운 마루', glare: '새벽빛', cold: '찬 강바람', fire: '불길',
+};
+export const ENV_ICON: Record<EnvId, string> = { none: '', mud: '🟤', wind: '🌬️', dark: '🌙', water: '🌊', poison: '☠️', arrow: '🏹', sleep: '🌼', slip: '🧊', glare: '🌅', cold: '❄️', fire: '🔥' };
 
 export interface RegionDef {
   region: number;
@@ -44,7 +50,7 @@ export interface RegionDef {
   ground: Ground;
   env: EnvId;
   envText: string;
-  /** 환경 효과를 막는 대원 (지형 화면의 '추천 대원'에 고향 대원과 함께 보인다) */
+  /** 환경 효과를 막는 대원 (지형 화면의 '추천 대원'에 고향 대원과 함께 보인다). 그 지형에 올 때 이미 함께하는 대원이어야 한다 */
   counter: HeroId;
   boss: BossId;
   /** 나오는 요괴 (4~6종) */
@@ -58,8 +64,8 @@ const R = (region: number, name: string, home: HeroId, ground: Ground, env: EnvI
 /** 십이지 지도 (다른 게임과 같은 이름·보스 순서) */
 export const REGION_TABLE: RegionDef[] = [
   R(1, '쥐의 들판', 'rat', 'field', 'none', '환경 효과 없음 · 물웅덩이에서는 느려져요', 'ox', 'bigDokkaebi', ['imp', 'wisp', 'water', 'fox', 'club']),
-  R(2, '소의 논밭', 'ox', 'field', 'mud', '진흙: 구르기 거리가 짧아져요', 'horse', 'dueoksini', ['imp', 'water', 'club', 'bamboo', 'fox']),
-  R(3, '호랑이 고개', 'tiger', 'field', 'wind', '골바람: 주기적으로 한쪽으로 밀려요', 'ox', 'bulgasal', ['wisp', 'club', 'fox', 'bamboo', 'guard']),
+  R(2, '소의 논밭', 'ox', 'field', 'mud', '진흙: 진흙탕에서는 더 느려지고 구르기가 짧아져요', 'rabbit', 'dueoksini', ['imp', 'mud', 'fox', 'club', 'bamboo']),
+  R(3, '호랑이 고개', 'tiger', 'field', 'wind', '골바람: 가끔 바람이 불어 한쪽으로 밀려요', 'ox', 'bulgasal', ['guard', 'wisp', 'lynx', 'spirit', 'bamboo']),
   R(4, '토끼의 달동산', 'rabbit', 'bamboo', 'dark', '달그림자: 멀리 있는 요괴가 안 보여요', 'rooster', 'jangsanbeom', ['wisp', 'fox', 'bamboo', 'spirit', 'imp']),
   R(5, '용의 연못', 'dragon', 'bamboo', 'water', '물길: 물이 많고 물에서 더 느려져요', 'snake', 'centipede', ['water', 'bamboo', 'fox', 'guard', 'wisp']),
   R(6, '뱀의 늪', 'snake', 'bamboo', 'poison', '독안개: 늪에 서 있으면 독 피해', 'pig', 'gumiho', ['water', 'spirit', 'fox', 'bamboo', 'club']),

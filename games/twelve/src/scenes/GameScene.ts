@@ -2,13 +2,12 @@ import Phaser from 'phaser';
 import { artUrl, heroFullUrl } from '../assets';
 import type { Shape } from '../data/acts';
 import { MAP_W, PLAYER_R, TILE } from '../data/balance';
-import { ELITE } from '../data/enemies';
 import { itemDef } from '../data/items';
 import { regionOf } from '../data/regions';
 import type { Drop } from '../game/drops';
 import { STEP, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
-import { GROUND, artFor } from './art';
+import { ENEMY_TINT, artFor, groundOf } from './art';
 
 /** 기준 화면 크기 (세로 9:16) */
 export const W = 720;
@@ -281,6 +280,11 @@ export class GameScene extends Phaser.Scene {
           this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
           break;
         }
+        case 'env':
+          // 골바람 예고
+          this.sfx('boost', 0, { volume: 0.5, rate: 0.7 });
+          this.hooks.note(this.run.env.f > 0 ? `🌬️ 골바람이 불어와요 ${ev.dir > 0 ? '→' : '←'}` : `🌬️ 골바람! ${this.run.hero.name}는 밀리지 않아요`);
+          break;
         case 'exit':
           this.sfx('newRecord', 0);
           this.hooks.note(this.run.map.boss ? '보스를 쓰러뜨렸어요! 출구가 열렸어요' : '출구가 열렸어요!');
@@ -459,6 +463,26 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // 골바람 (3지형): 예고 = 대원 옆 화살표, 부는 동안 = 바람 줄기가 화면을 가로지른다
+    const env = s.env;
+    if (env.warn && Math.floor(now * 6) % 2) {
+      for (let i = 0; i < 3; i++) {
+        const ax = p.x + env.warn * (58 + i * 22);
+        o.lineStyle(7, COLOR.outline, 1).beginPath().moveTo(ax - env.warn * 10, p.y - 34).lineTo(ax + env.warn * 4, p.y - 20).lineTo(ax - env.warn * 10, p.y - 6).strokePath();
+        o.lineStyle(3, COLOR.white, 1).beginPath().moveTo(ax - env.warn * 10, p.y - 34).lineTo(ax + env.warn * 4, p.y - 20).lineTo(ax - env.warn * 10, p.y - 6).strokePath();
+      }
+    }
+    if (env.gust) {
+      o.lineStyle(4, COLOR.white, 0.6);
+      for (let i = 0; i < 12; i++) {
+        const span = W + 260;
+        const off = (((now * 760 + i * 197) % span) + span) % span;
+        const wx = this.camX + (env.gust > 0 ? off - 130 : W + 130 - off);
+        const wy = this.camY + ((i * 109 + 60) % H) + Math.sin(now * 3 + i) * 12;
+        o.lineBetween(wx, wy, wx - env.gust * (70 + (i % 3) * 30), wy);
+      }
+    }
+
     // 피해 숫자 · 터짐
     for (const u of this.nums) {
       if (u.life <= 0) continue;
@@ -503,7 +527,9 @@ export class GameScene extends Phaser.Scene {
         v.setTexture(key).setOrigin(0.5, 0.82).setVisible(true);
         this.views.set(e.id, v);
       }
-      const size = e.bossDef ? e.bossDef.size : e.def.size * (e.elite ? ELITE.size : 1);
+      // 정예는 크게, 갈라져 나온 것은 작게 (몸 반지름 비율대로)
+      const size = e.bossDef ? e.bossDef.size : e.def.size * (e.r / e.def.r);
+      const tint = e.bossDef ? undefined : ENEMY_TINT[e.kind];
       const wob = e.awake && e.busy <= 0 && e.stun <= 0 ? Math.sin(now * 9 + e.id) * 2.5 : 0;
       // 공격을 예고하는 동안 몸을 부풀린다
       const puff = e.busy > 0 ? 1.08 : 1;
@@ -512,6 +538,7 @@ export class GameScene extends Phaser.Scene {
       else if (e.stun > 0) v.setTint(COLOR.primaryLight);
       else if (e.slowT > 0) v.setTint(COLOR.skyMid);
       else if (e.dotT > 0) v.setTint(COLOR.lose);
+      else if (tint !== undefined) v.setTint(tint);
       else v.clearTint();
       g.fillStyle(COLOR.outline, 0.22).fillEllipse(e.x, e.y + e.r * 0.7, e.r * 2.2, e.r * 0.9);
       if (e.elite) g.lineStyle(5, COLOR.primary, 0.95).strokeEllipse(e.x, e.y + e.r * 0.7, e.r * 2.8, e.r * 1.3);
@@ -586,7 +613,8 @@ export class GameScene extends Phaser.Scene {
   /** 바닥 조각 하나를 캔버스에 한 번 그려 둔다: 바닥 무늬(절반 섞기) · 물 · 벽 */
   private makeChunk(idx: number): Phaser.GameObjects.Image {
     const s = this.run;
-    const look = GROUND[regionOf(s.map.region).ground];
+    const look = groundOf(s.map.region);
+    const mud = regionOf(s.map.region).env === 'mud';
     const y0 = idx * CHUNK_ROWS;
     const rows = Math.min(CHUNK_ROWS, s.rows - y0);
     const tex = this.textures.createCanvas(`chunk${idx}`, WORLD_W, rows * TILE)!;
@@ -617,7 +645,7 @@ export class GameScene extends Phaser.Scene {
           c.globalAlpha = 0.85;
           c.fillRect(px, py, TILE, TILE);
           c.globalAlpha = 1;
-          c.strokeStyle = css(COLOR.white);
+          c.strokeStyle = css(mud ? COLOR.emptyLine : COLOR.white);
           c.lineWidth = 3;
           c.beginPath();
           const wx = px + 10 + hash(x, y, 1) * 20;
@@ -649,7 +677,7 @@ export class GameScene extends Phaser.Scene {
         if (t === 0) continue;
         const px = x * TILE;
         const py = ry * TILE;
-        c.strokeStyle = css(t === 1 ? COLOR.outline : COLOR.skyDeep);
+        c.strokeStyle = css(t === 1 || mud ? COLOR.outline : COLOR.skyDeep);
         c.lineWidth = t === 1 ? 5 : 2;
         c.globalAlpha = t === 1 ? 1 : 0.5;
         const edge = (nx: number, ny: number, x1: number, y1: number, x2: number, y2: number) => {

@@ -29,6 +29,16 @@ export const WAKE_DIST = 430;
 export const EXIT_KILL_RATIO = 0.7;
 /** 물(느려지는 땅) 위의 이동 배율 */
 export const SLOW_TILE_MUL = 0.6;
+/**
+ * 지형 환경 효과 (PRD '캐릭터 — 지형 특성 대응'). 막는 대원(regions.ts 의 counter)은 영향을 받지 않고, 레어 방어구 '수호'는 절반만 받는다.
+ * - mud  (2지형): 진흙탕(~) 위에서는 더 느려지고(이동 ×slow) 구르기 거리가 줄어든다(×roll)
+ * - wind (3지형): every 초마다 골바람이 dur 초 동안 한쪽(좌우 번갈아)으로 초당 push 만큼 민다. warn 초 전에 알린다
+ */
+export const ENV = {
+  mud: { slow: 0.45, roll: 0.5 },
+  wind: { every: 10, warn: 1.5, dur: 2.6, push: 150 },
+} as const;
+
 /** 10레벨마다 스킬 피해 +8% */
 export const skillLevelMul = (level: number) => 1 + 0.08 * Math.floor(Math.max(1, level) / 10);
 

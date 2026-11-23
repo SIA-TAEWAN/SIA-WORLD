@@ -9,6 +9,7 @@ import type { Act, OnHit, Shape, ShotLook, ZoneLook } from '../data/acts';
 import {
   AIM_HALF,
   CRIT_MUL,
+  ENV,
   EXIT_KILL_RATIO,
   HURT_INVULN,
   MAP_W,
@@ -29,7 +30,7 @@ import { ELITE, ENEMIES, type EnemyDef, type EnemyKind } from '../data/enemies';
 import { playerStats, type Loadout, type PlayerStats } from '../data/growth';
 import { heroOf, type HeroDef } from '../data/heroes';
 import { T_SLOW, T_WALL, groupList, type MapDef } from '../data/maps';
-import { mapScale, regionOf, type Mode } from '../data/regions';
+import { mapScale, regionOf, type EnvId, type Mode } from '../data/regions';
 import { WEAPONS, type SkillDef, type WeaponDef } from '../data/weapons';
 import { bossDrop, copyCtx, eliteDrop, normalDrop, type Drop, type DropCtx } from './drops';
 
@@ -176,8 +177,8 @@ export interface Warn {
   dmg: number;
   /** 낸 요괴 (-1 = 없음) */
   src: number;
-  /** 터진 뒤: 요괴가 그 자리로 돌진 / 불을 쏜다 */
-  after: 'none' | 'dash' | 'shoot';
+  /** 터진 뒤: 요괴가 그 자리로 돌진 / 불을 쏜다 / 범위 가운데로 뛰어든다 */
+  after: 'none' | 'dash' | 'shoot' | 'jump';
   /** 큰 공격 (진하게 그리고 소리로 알린다) */
   big: boolean;
 }
@@ -196,6 +197,8 @@ export type SimEvent =
   | { e: 'drop'; x: number; y: number; drop: Drop; pick: number }
   | { e: 'pick'; id: number; drop: Drop }
   | { e: 'exit' }
+  /** 지형 환경: 골바람이 곧 분다 (dir -1 왼쪽 · 1 오른쪽) */
+  | { e: 'env'; id: EnvId; dir: number }
   | { e: 'nope'; why: 'mp' | 'target' };
 
 export interface RunOpts {
@@ -270,6 +273,11 @@ export interface RunState {
   loot: Drop[];
   picks: Pickup[];
   god: boolean;
+  /**
+   * 지형 환경 효과 (balance.ts 의 ENV). f = 받는 정도: 1 그대로 · 수호 방어구 0.5 · 막는 대원 0.
+   * gust = 지금 부는 골바람 방향 (-1 왼쪽 · 1 오른쪽 · 0 없음), warn = 곧 불 방향 (예고 중일 때만)
+   */
+  env: { id: EnvId; f: number; gust: number; warn: number };
   tag: number;
   nextId: number;
   reward: number;
@@ -431,10 +439,10 @@ function inShape(shape: Shape, x: number, y: number, ang: number, px: number, py
 
 // ---------- 판 만들기 ----------
 
-function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: number, o: { elite?: boolean; summoned?: boolean; boss?: BossDef } = {}): Enemy {
+function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: number, o: { elite?: boolean; summoned?: boolean; boss?: BossDef; mini?: { hp: number; size: number } } = {}): Enemy {
   const sc = mapScale(s.map.region, s.map.no, s.mode);
   const b = o.boss;
-  const hp = Math.round((b ? b.hp : def.hp * (o.elite ? ELITE.hp : 1)) * sc.hp);
+  const hp = Math.max(1, Math.round((b ? b.hp : def.hp * (o.elite ? ELITE.hp : 1) * (o.mini?.hp ?? 1)) * sc.hp));
   const e: Enemy = {
     id: s.nextId++,
     kind: def.kind,
@@ -445,7 +453,7 @@ function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: numbe
     group,
     x,
     y,
-    r: b ? b.r : def.r * (o.elite ? ELITE.size : 1),
+    r: b ? b.r : def.r * (o.elite ? ELITE.size : 1) * (o.mini?.size ?? 1),
     hp,
     maxHp: hp,
     atk: (b ? b.atk : def.atk * (o.elite ? ELITE.atk : 1)) * sc.atk,
@@ -493,6 +501,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) grid[y * cols + x] = map.rows[y][x] === T_WALL ? 1 : map.rows[y][x] === T_SLOW ? 2 : 0;
   const sc = mapScale(map.region, map.no, mode);
   const stats = playerStats(loadout, map.region);
+  const region = regionOf(map.region);
   const s: RunState = {
     map,
     mode,
@@ -556,6 +565,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     loot: [],
     picks: [],
     god: !!opts.god,
+    env: { id: region.env, f: loadout.hero === region.counter ? 0 : loadout.fx?.includes('ward') ? FX.ward.env : 1, gust: 0, warn: 0 },
     tag: 1,
     nextId: 1,
     reward: sc.reward,
@@ -586,7 +596,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
   });
   s.total = s.enemies.length;
   if (map.boss) {
-    const def = BOSSES[regionOf(map.region).boss];
+    const def = BOSSES[region.boss];
     s.boss = newEnemy(s, ENEMIES[def.summon.kind], center(map.boss[0]), center(map.boss[1]), -1, { boss: def });
     s.boss.cd = 1.5;
   }
@@ -631,6 +641,18 @@ function killEnemy(s: RunState, e: Enemy) {
   e.hp = 0;
   push(s, { e: 'kill', x: e.x, y: e.y, size: e.r, elite: e.elite, boss: !!e.bossDef });
   if (e.summoned) return;
+  // 분열: 작은 것 여럿으로 갈라진다 (작은 것은 다시 갈라지지 않고, 처치 수·보상에 넣지 않는다)
+  const split = e.bossDef ? undefined : e.def.split;
+  if (split) {
+    for (let i = 0; i < split.n; i++) {
+      const a = (i / split.n) * Math.PI * 2 + e.id;
+      const m = newEnemy(s, e.def, e.x, e.y, -1, { summoned: true, mini: { hp: split.hp * (e.elite ? 2 : 1), size: split.size * (e.elite ? ELITE.size : 1) } });
+      move(s, m, Math.cos(a) * 34, Math.sin(a) * 34, Math.min(m.r, TILE * 0.45));
+      m.kx = Math.cos(a) * 260;
+      m.ky = Math.sin(a) * 260;
+      m.cd = 0.9;
+    }
+  }
   s.exp += e.exp;
   s.coins += e.coin;
   if (e.bossDef) {
@@ -891,6 +913,13 @@ function hurtPlayer(s: RunState, raw: number) {
   }
 }
 
+/** 번호로 요괴 찾기 (번호는 떨어진 것과 같이 쓰므로 자리와 다를 수 있다) */
+function enemyById(s: RunState, id: number): Enemy | null {
+  const e = s.enemies[id - 1];
+  if (e && e.id === id) return e;
+  return s.enemies.find((o) => o.id === id) ?? null;
+}
+
 function addWarn(s: RunState, w: Partial<Warn> & { shape: Warn['shape']; t: number; dmg: number; src: number }): Warn {
   const full: Warn = { x: 0, y: 0, ang: 0, r: 0, len: 0, w: 0, half: 0, delay: 0, total: w.t, after: 'none', big: false, ...w };
   s.warns.push(full);
@@ -901,7 +930,7 @@ function stepWarns(s: RunState) {
   const p = s.p;
   for (let i = s.warns.length - 1; i >= 0; i--) {
     const w = s.warns[i];
-    const src = w.src >= 0 ? s.enemies[w.src - 1] : null;
+    const src = w.src >= 0 ? enemyById(s, w.src) : null;
     // 낸 요괴가 쓰러지거나 기절하면 공격이 끊긴다
     if (src && (src.dead || src.stun > 0)) {
       s.warns.splice(i, 1);
@@ -926,6 +955,7 @@ function stepWarns(s: RunState) {
     }
     if (!src) continue;
     if (w.after === 'dash') move(s, src, Math.cos(w.ang) * (w.len - src.r), Math.sin(w.ang) * (w.len - src.r), src.r);
+    else if (w.after === 'jump') move(s, src, w.x - src.x, w.y - src.y, Math.min(src.r, TILE * 0.45));
     else if (w.after === 'shoot') shoot(s, true, 'fire', src.x, src.y, Math.atan2(p.y - src.y, p.x - src.x), src.def.area, 620, 13, w.dmg, 0, null);
   }
 }
@@ -959,6 +989,17 @@ function bossAct(s: RunState, e: Enemy, def: BossDef, dist: number, ang: number)
     busy += (n - 1) * (m.gap ?? 0);
   } else if (m.t === 'charge') {
     addWarn(s, { shape: 'line', x: e.x, y: e.y, ang, len: m.len, w: m.w, t: m.warn, dmg, src: e.id, after: 'dash', big: true });
+  } else if (m.t === 'barrage') {
+    // 대원 자리에 하나, 나머지는 그 둘레에 흩어서 — 조금씩 늦게 터진다
+    for (let i = 0; i < m.n; i++) {
+      const a = rand(s) * Math.PI * 2;
+      const d = i === 0 ? 0 : m.spread * (0.35 + 0.65 * rand(s));
+      const t = m.warn + i * (m.gap ?? 0);
+      addWarn(s, { shape: 'circle', x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: m.r, t, dmg, src: e.id, big: true });
+    }
+    busy += (m.n - 1) * (m.gap ?? 0);
+  } else if (m.t === 'cross') {
+    for (let i = 0; i < m.n; i++) addWarn(s, { shape: 'line', x: e.x, y: e.y, ang: ang + (m.turn ?? 0) + (i / m.n) * Math.PI * 2, len: m.len, w: m.w, t: m.warn, dmg, src: e.id, big: true });
   } else if (m.t === 'cone') {
     addWarn(s, { shape: 'arc', x: e.x, y: e.y, ang, r: m.r, half: m.half, t: m.warn, dmg, src: e.id, big: true });
   } else {
@@ -1078,6 +1119,17 @@ function stepEnemies(s: RunState) {
         // 가까우면 옆으로 돌며 틈을 본다
         else moveEnemy(s, e, -uy * (e.id % 2 ? 1 : -1), ux * (e.id % 2 ? 1 : -1), 0.6);
         break;
+      case 'leap':
+        if (dist <= reach && dist > 70 && e.cd <= 0) {
+          // 대원이 서 있는 자리로 뛰어든다 (예고가 끝나면 그 자리에 떨어진다)
+          addWarn(s, { shape: 'circle', x: p.x, y: p.y, r: d.area + (e.r - d.r), t: d.windup, dmg: e.atk, src: e.id, after: 'jump', big: true });
+          e.busy = d.windup + 0.3;
+          e.cd = d.cd;
+        } else if (dist > reach * 0.8) approach(s, e, ux, uy);
+        // 틈을 보며 둘레를 돈다 (너무 붙으면 물러난다)
+        else if (dist < 110) moveEnemy(s, e, -ux, -uy, 0.7);
+        else moveEnemy(s, e, -uy * (e.id % 2 ? 1 : -1), ux * (e.id % 2 ? 1 : -1), 0.7);
+        break;
       case 'ranged':
         if (dist <= reach && e.cd <= 0) {
           addWarn(s, { shape: 'none', t: d.windup, dmg: e.atk, src: e.id, after: 'shoot' });
@@ -1176,6 +1228,27 @@ function stepZones(s: RunState) {
   }
 }
 
+// ---------- 지형 환경 ----------
+
+/** 느려지는 땅 위의 이동 배율: 물 0.6, 2지형 진흙탕은 더 느리다 (막는 대원은 물과 같다) */
+export const slowTileMul = (s: RunState) => (s.env.id === 'mud' ? SLOW_TILE_MUL - (SLOW_TILE_MUL - ENV.mud.slow) * s.env.f : SLOW_TILE_MUL);
+
+/** 골바람 (3지형): 시간만으로 정해진다 — every 초마다 dur 초 동안, 좌우 번갈아. 예고는 warn 초 전 */
+function stepEnv(s: RunState) {
+  const env = s.env;
+  if (env.id !== 'wind') return;
+  const w = ENV.wind;
+  const k = Math.floor(s.t / w.every);
+  const ph = s.t - k * w.every;
+  const dirOf = (n: number) => (n % 2 ? 1 : -1);
+  const warn = ph >= w.every - w.warn ? dirOf(k + 1) : 0;
+  if (warn && !env.warn) push(s, { e: 'env', id: 'wind', dir: warn });
+  env.warn = warn;
+  env.gust = k >= 1 && ph < w.dur ? dirOf(k) : 0;
+  // 돌진 스킬 중에는 밀리지 않는다
+  if (env.gust && env.f > 0 && s.p.dashT <= 0) move(s, s.p, env.gust * w.push * env.f * STEP, 0, PLAYER_R);
+}
+
 // ---------- 한 간격 ----------
 
 function stepPlayer(s: RunState, inp: Input) {
@@ -1247,7 +1320,8 @@ function stepPlayer(s: RunState, inp: Input) {
   if (inp.roll && p.rollCd <= 0) {
     const dx = p.moving ? mx / (len > 1 ? 1 : len) : p.fx;
     const dy = p.moving ? my / (len > 1 ? 1 : len) : p.fy;
-    const v = ROLL.dist / ROLL.time;
+    // 진흙탕 위에서는 구르기가 짧다 (2지형 환경)
+    const v = (ROLL.dist * (s.env.id === 'mud' && tileAt(s, p.x, p.y) === 2 ? 1 - (1 - ENV.mud.roll) * s.env.f : 1)) / ROLL.time;
     p.rollT = ROLL.time;
     p.rollCd = ROLL.cd;
     p.rvx = dx * v;
@@ -1261,7 +1335,7 @@ function stepPlayer(s: RunState, inp: Input) {
     const d = Math.hypot(mx, my);
     p.fx = mx / d;
     p.fy = my / d;
-    const v = s.stats.speed * (b.speedT > 0 ? b.speed : 1) * (tileAt(s, p.x, p.y) === 2 ? SLOW_TILE_MUL : 1) * STEP;
+    const v = s.stats.speed * (b.speedT > 0 ? b.speed : 1) * (tileAt(s, p.x, p.y) === 2 ? slowTileMul(s) : 1) * STEP;
     move(s, p, mx * v, my * v, PLAYER_R);
   }
 
@@ -1275,6 +1349,7 @@ function stepPlayer(s: RunState, inp: Input) {
 export function step(s: RunState, inp: Input) {
   if (s.phase !== 'play') return;
   s.t += STEP;
+  stepEnv(s);
   stepPlayer(s, inp);
   for (let i = s.queue.length - 1; i >= 0; i--) {
     if (s.queue[i].at > s.t) continue;

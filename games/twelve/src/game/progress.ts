@@ -154,10 +154,10 @@ export function heroesOf(p: TwelveProfile, cat = false): HeroId[] {
   return HEROES.filter((h) => (h.hidden ? cat : h.join === 0 || cleared(p, `${h.join}-${MAPS_PER_REGION}`, 'normal') || cleared(p, `${h.join}-${MAPS_PER_REGION}`, 'hard'))).map((h) => h.id);
 }
 
-/** 지형 화면의 추천 대원: 고향 대원 + 환경을 막는 대원 */
+/** 지형 화면의 추천 대원: 고향 대원 + 환경을 막는 대원 (환경 효과가 없는 지형은 고향 대원만) */
 export const recommended = (region: number): HeroId[] => {
   const r = regionOf(region);
-  return r.counter === r.home ? [r.home] : [r.home, r.counter];
+  return r.counter === r.home || r.env === 'none' ? [r.home] : [r.home, r.counter];
 };
 
 /** 맵에 들고 들어가는 것: 착용한 무기·방어구·장신구 */

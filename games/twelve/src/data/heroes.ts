@@ -31,6 +31,8 @@ export interface HeroDef {
   join: number;
   /** 보통 모드를 클리어하기 전에는 보이지 않는다 (고양이) */
   hidden?: boolean;
+  /** 합류할 때 한마디 (PRD '이야기') */
+  hello?: string;
   /** 시아코인 값 (고양이만) */
   price?: number;
   unique: SkillDef;
@@ -54,14 +56,17 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: 'rabbit', animal: '토끼', name: '깡총이', stats: S({ speed: 1.05, mp: 1.03, hp: 0.96 }), weapon: 'bow', home: 4, join: 1,
+    hello: '달동산까지 같이 가요! 진흙쯤은 깡총 뛰어넘으면 돼요.',
     unique: U('달떡', '체력을 35% 회복한다', '🐰', 28, 'tankHeal', [{ t: 'heal', hp: 0.35 }]),
   },
   {
     id: 'dragon', animal: '용', name: '여의룡', stats: S({ atk: 1.04, mp: 1.05, def: 0.955 }), weapon: 'fan', home: 5, join: 2,
+    hello: '논물이 마르기 전에 내 연못도 되찾아야지. 함께 가자.',
     unique: U('용숨', '앞쪽에 불길을 뿜는다', '🐲', 20, 'tankFire', [{ t: 'hit', shape: { k: 'arc', r: 330, half: 0.6 }, mul: 3, kb: 80, dot: { mul: 0.5, dur: 4 } }]),
   },
   {
     id: 'snake', animal: '뱀', name: '스르르', stats: S({ crit: 1.05, mp: 1.04, hp: 0.955 }), weapon: 'fan', home: 6, join: 3,
+    hello: '스르르… 고개 너머 길은 내가 잘 알아. 따라와.',
     unique: U('독안개', '내 자리에 독안개를 깐다', '🐍', 20, 'slide', [{ t: 'zone', look: 'poison', ahead: 0, r: 200, dur: 5, tick: 0.5, mul: 0.5, slow: { mul: 0.6, dur: 1 } }]),
   },
   {

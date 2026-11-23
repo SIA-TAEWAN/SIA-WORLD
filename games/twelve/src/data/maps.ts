@@ -5,12 +5,14 @@
  */
 import type { EnemyKind } from './enemies';
 import { R01 } from './maps/r01';
+import { R02 } from './maps/r02';
+import { R03 } from './maps/r03';
 import { mapScale, parseMapId, type MapId, type Mode } from './regions';
 
 /** 타일 글자 */
 export const T_WALL = '#';
 export const T_FLOOR = '.';
-/** 느려지는 땅 (물웅덩이) */
+/** 느려지는 땅 (물웅덩이. 2지형에서는 진흙탕) */
 export const T_SLOW = '~';
 
 /** 칸 좌표 [가로, 세로]. 세로 0 이 맨 위(출구 쪽)이고, 대원은 아래에서 위로 올라간다 */
@@ -44,7 +46,7 @@ export interface MapDef {
 }
 
 /** 준비된 맵 (없는 지형은 지도에 '준비 중') */
-const LIST: MapDef[] = [...R01];
+const LIST: MapDef[] = [...R01, ...R02, ...R03];
 const BY_ID = new Map<string, MapDef>(LIST.map((m) => [m.id, m]));
 export const MAPS: readonly MapDef[] = LIST;
 export const mapOf = (id: string): MapDef | null => BY_ID.get(id) ?? null;
