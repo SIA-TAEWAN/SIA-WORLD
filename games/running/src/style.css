@@ -128,7 +128,8 @@ button, input { font: inherit; color: inherit; }
 .room .invite { display: flex; align-items: center; gap: 8px; }
 .room .invite .code { flex: 1; min-width: 0; font-size: 15px; }
 .room .invite .code b { font-weight: normal; color: var(--accent); font-size: 19px; }
-.room .status { align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
+/* flex: none — 대기실은 flex 열이라 화면이 낮으면 알약이 줄어 글자가 밖으로 넘쳤다 */
+.room .status { flex: none; align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
 .room .grow { flex: 1; min-height: 4px; }
 .room .btn.big { width: 100%; flex: none; }
 
@@ -205,4 +206,14 @@ button, input { font: inherit; color: inherit; }
   .char span { font-size: 10px; }
   .char { padding: 2px 0 1px; }
   .char img { width: 70%; }
+}
+/* 아이폰 SE 사파리(375×553) 같은 더 낮은 화면: 대기실·로비가 한 화면에 들어가게 덜 중요한 글을 숨기고 그림을 줄인다 */
+@media (max-height: 600px) {
+  .room .invite .soft { display: none; }
+  .lobby .tagline { display: none; }
+  .seat .av { max-width: 34px; }
+  .char img { width: 62%; }
+  .room .btn.big { padding-top: 9px; padding-bottom: 9px; }
+  .room .status { font-size: 13px; padding: 3px 12px; word-break: keep-all; }
+  .room .card { padding-top: 9px; padding-bottom: 9px; }
 }

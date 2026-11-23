@@ -836,7 +836,8 @@ describe('Runner: 판 도중 나간 사람 자리 (포커·홀덤은 체크 아�
   /** 블랙잭: 베팅까지 마친 뒤 u2(자리 1)가 나가는 판을 끝까지. split 이면 u2 는 나가기 전에 스플릿한다 */
   async function bjLeaveAfterBet(split: boolean) {
     const m = memStore('blackjack', ['u1', 'u2'], 4);
-    const u2Cards: [string, string] = split ? ['8H', '8D'] : ['10H', '6D'];
+    // 스플릿 아닌 쪽은 11 (딜러 6): AI 라면 더블 → leftAction 이 없으면 카드를 더 받아 아래 검사가 실패한다
+    const u2Cards: [string, string] = split ? ['8H', '8D'] : ['5H', '6D'];
     const shoe = stackDeal([['10S', '7S'], u2Cards, ['5C', '6C'], ['9D', '2D']], ['6S', '10D'], freshShoe().slice(0, 200));
     m.deck = { version: 0, round_no: 0, state: null, carry: { shoe, cut: 0 } };
     // apply_round_result 의 시아코인 규칙: 돈이 오간 판에서, 끝까지 자리에 있던(나가지 않은) 사람 중 deltas 에 든 자리

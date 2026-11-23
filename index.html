@@ -142,6 +142,8 @@
     .inapp-hint { align-items: center; width: calc(100% - 32px); max-width: 400px;
       margin: calc(12px + env(safe-area-inset-top, 0px)) auto 0; }
     .inapp-hint .btn { flex: 0 0 auto; }
+    /* 좁은 화면에서 '브 / 라우저에서' 처럼 낱말 가운데가 끊기지 않게 낱말 단위로 줄을 바꾼다 */
+    .inapp-hint .txt { word-break: keep-all; overflow-wrap: anywhere; }
     .ios-hint .txt { flex: 1; min-width: 0; }
     .ios-hint b { display: block; font-weight: normal; font-size: 16px; }
     .ios-hint small { display: block; color: var(--ink-soft); font-size: 13px; margin-top: 2px; line-height: 1.4; }

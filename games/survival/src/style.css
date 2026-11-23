@@ -203,7 +203,8 @@ em > .ico { margin: 0 auto; }
 /* 모드 고르기: 맵을 고른 뒤 4분 모드 / 헬 모드 / 무한 모드 (잠긴 헬·무한 모드는 조건을 적는다) */
 .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; flex: none; }
 .mode { min-width: 0; text-align: left; cursor: pointer; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 8px 8px; min-height: 76px; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
-.mode b { font-weight: normal; font-size: 16px; white-space: nowrap; }
+/* 좁은 판(아이폰 SE 사파리 375×553 은 판 너비 311px)에서도 카드 안에 들어가게 판 너비(--u)를 따라 줄이고, 그래도 넘치면 말줄임 */
+.mode b { font-weight: normal; font-size: clamp(13px, calc(var(--u) * 30), 16px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mode small { font-size: 11.5px; color: var(--ink-soft); line-height: 1.25; }
 .mode.sel { border-color: var(--outline); background: var(--panel-strong); box-shadow: inset 0 0 0 3px var(--primary), 0 var(--depth-button) 0 var(--outline); }
 .mode.closed { opacity: 0.72; cursor: default; }
@@ -394,6 +395,8 @@ em > .ico { margin: 0 auto; }
 /* 헬 판의 결과: 어두운 갈색 머리띠 + 분홍 테, 아래에서 불씨가 올라온다 */
 .result-card h2 .tag.hell { background: var(--pink); border: var(--line-thin) solid var(--outline); vertical-align: 2px; }
 .result-card.hell { overflow: hidden; box-shadow: inset 0 0 0 3px var(--pink), 0 var(--depth-big) 0 var(--outline); background: linear-gradient(color-mix(in srgb, var(--outline) 90%, var(--pink)) 0, color-mix(in srgb, var(--outline) 72%, var(--pink)) 170px, var(--panel) 171px); }
+/* 결과 카드가 짧은 화면에서 스크롤될 때 어두운 머리 그라디언트도 글과 같이 움직이게 */
+.result-card.hell { background-attachment: local; }
 .result-card.hell > * { position: relative; }
 .result-card.hell h2 { color: var(--panel-strong); }
 .result-card.hell.won .verdict { color: var(--primary); }

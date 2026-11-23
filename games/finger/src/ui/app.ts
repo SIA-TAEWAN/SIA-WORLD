@@ -623,6 +623,18 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     })();
     return sent;
   };
+  /** 서버가 조작을 다시 돌려 보는 동안(최대 15초) 기다림 표시를 띄워 두고 보낸다. 실패·시간 초과에도 표시는 꼭 지운다 */
+  const finishWithWait = async (s: RunState, inputs?: RunState['log']): Promise<Sent> => {
+    const wait = document.createElement('div');
+    wait.className = 'overlay';
+    wait.innerHTML = '<div class="connecting"><div class="spinner"></div><p>기록을 저장하는 중…</p></div>';
+    root.appendChild(wait);
+    try {
+      return await finish(s, inputs);
+    } finally {
+      wait.remove();
+    }
+  };
   game.scene.add('game', scene, true, {
     run,
     ground: groundOf(st ? st.region : 1),
@@ -649,13 +661,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       onEnd: async (s: RunState) => {
         if (ended) return;
         ended = true;
-        // 서버가 조작을 다시 돌려 보는 동안(최대 15초) 기다림 표시
-        const wait = document.createElement('div');
-        wait.className = 'overlay';
-        wait.innerHTML = '<div class="connecting"><div class="spinner"></div><p>기록을 저장하는 중…</p></div>';
-        root.appendChild(wait);
-        const out = await finish(s);
-        wait.remove();
+        const out = await finishWithWait(s);
         if (st) showResult(s, st, party, out);
         else showTowerResult(s, party, out);
       },
@@ -697,7 +703,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       ended = true;
       // 지금까지 끝난 턴의 조작만 보낸다: 서버가 다시 돌리면 판이 끝나지 않은 실패 판이 된다.
       // 날아가는 중(조준이 아닌 때)이면 그 발사는 이미 s.log 에 있으니 빼야 한다 — 넣으면 서버가 그 발사를 끝까지 돌려 클리어로 남길 수 있다
-      const out = await finish(run, run.phase === 'aim' ? run.log.slice() : run.log.slice(0, run.turn));
+      const out = await finishWithWait(run, run.phase === 'aim' ? run.log.slice() : run.log.slice(0, run.turn));
       closeGame();
       if (out.error) toast(out.error);
       else if (out.result?.coins) toast(tower ? `${out.replay?.floors ?? run.wave}층까지 기록했어요 · 엽전 +${out.result.coins}` : `실패로 기록했어요 · 엽전 +${out.result.coins}`);

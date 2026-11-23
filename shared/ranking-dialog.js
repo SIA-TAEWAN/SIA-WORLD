@@ -290,7 +290,7 @@ const CSS = `
 .sia-rank .rh button { font: inherit; font-size: 15px; cursor: pointer; color: #2a1a10; background: #fff;
   border: 3px solid #2a1a10; border-radius: 12px; padding: 4px 12px; box-shadow: 0 3px 0 #2a1a10; }
 .sia-rank .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.sia-rank .tabs button { flex: 1; min-width: 72px; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
+.sia-rank .tabs button { flex: 1 0 auto; min-width: 72px; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
   border: 2px solid #2a1a10; background: #fff; border-radius: 12px; padding: 7px 4px; }
 .sia-rank .tabs button[hidden] { display: none; }
 .sia-rank .tabs button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
@@ -331,6 +331,20 @@ const CSS = `
 .sia-rank .note { font-size: 12px; color: #8a6a4a; text-align: center; margin: 8px 0 0; }
 .sia-rank td.go a { display: inline-block; font-size: 13px; color: #2a1a10; text-decoration: none; white-space: nowrap; background: #fff;
   border: 2px solid #2a1a10; border-radius: 12px; padding: 3px 9px; box-shadow: 0 2px 0 #2a1a10; }
+/* 휴대폰 가로처럼 낮은 화면: 탭은 한 줄 가로 스크롤, 설명 줄은 숨기고 여백을 줄여 순위 칸을 남긴다.
+   그래도 모자라면 순위 칸은 160px 를 지키고 창 전체가 스크롤된다 */
+@media (max-height: 500px) {
+  .sia-rank-dim { padding: 8px; }
+  .sia-rank { height: 100%; overflow-y: auto; padding: 10px 12px; border-radius: 22px; }
+  .sia-rank .rh { margin-bottom: 6px; }
+  .sia-rank .rh h3 { font-size: 19px; }
+  .sia-rank .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; margin-bottom: 6px; scrollbar-width: thin; }
+  .sia-rank .tabs button { flex: 0 0 auto; padding: 5px 8px; }
+  .sia-rank .modes button, .sia-rank .dmodes button { padding: 3px 4px; }
+  .sia-rank .me-line { margin: 4px 0; }
+  .sia-rank .list { flex: 1 0 auto; min-height: 160px; height: 0; }
+  .sia-rank .note { display: none; }
+}
 `;
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -388,6 +402,10 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
   async function show(game) {
     shown = game;
     dim.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
+    // 낮은 화면에서 탭 줄이 가로 스크롤일 때 고른 탭이 보이게
+    const tabs = $('.tabs');
+    const selTab = tabs.querySelector('.sel');
+    if (selTab && tabs.scrollWidth > tabs.clientWidth) tabs.scrollLeft = selTab.offsetLeft - tabs.offsetLeft - (tabs.clientWidth - selTab.offsetWidth) / 2;
     // 모드·맵 고르기 줄은 시아서바이벌 탭에서만 보인다
     $('.subs').classList.toggle('on', game === 'survival');
     $('.modes').classList.toggle('on', game === 'survival');

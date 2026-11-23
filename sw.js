@@ -135,12 +135,15 @@ async function cacheFirst(event, crossOrigin) {
 /**
  * 캐시에 있으면 바로 주고, 뒤에서 새로 받아 캐시를 바꿔 둔다 (다음번엔 새 것).
  * 캐시에 없으면 받은 것을 주면서 넣는다. 뒤에서 받다 실패해도 캐시 것은 그대로 쓴다
+ * (no-cors 그림의 불투명 응답은 type 이 basic 이 아니라 넣지 않는다 — 같은 사이트 그림은 basic 이다)
  */
 async function staleWhileRevalidate(event) {
   const req = event.request;
   const cache = await caches.open(STATIC);
   const hit = (await cache.match(req)) || (await caches.match(req));
-  const fresh = fetch(req).then((res) => {
+  // 뒤에서 다시 받을 때는 HTTP 캐시(GitHub Pages max-age=600)를 건너뛰고 서버에 확인한다.
+  // new Request(req, init) 는 mode(그림은 no-cors)·credentials 를 그대로 물려받는다 (networkFirst 와 같은 방식)
+  const fresh = fetch(hit ? new Request(req, { cache: 'no-cache' }) : req).then((res) => {
     if (res.ok && res.type === 'basic') keep(event, cache, req, res);
     return res;
   });
