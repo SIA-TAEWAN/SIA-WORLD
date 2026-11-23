@@ -144,3 +144,20 @@
 - 로비 오늘 1위 칸: 1위 고스트(그날 1위 본인 것)를 받으면 왕관 대신 그 캐릭터 얼굴.
 - 서버 095: 최소 기록 28초 → 27초(`_race_const` min_ms, race_records check — 146m 트랙에서 부스트가 끝날 때 점프하면 27.8초대가 나온다. 기기 `MIN_VALID_MS` 도 27000). 표 `race_ghosts`(그날·사람마다 가장 빠른 것 하나, RLS 켜고 정책 없음), 7일 지난 고스트는 넣을 때마다 지운다.
 - `?local=1` 테스트 모드: 서버 없이 기기(localStorage `siarace:ghost:<id>:<날짜>`)에 그날 내 최고 고스트를 두고 다음 판에 같이 달린다(이름 `👻 1위 나`).
+
+### 변경 (2026-11-23): 출발 반응 · 주간 랭킹
+**출발 반응 (서버 변경 없음, `src/game/reaction.ts` 순수 함수)**
+- 반응 시간 = GO 부터 내가 출발한 걸음의 시각까지 (`badges.ts` 의 `Tally.startT`, 고정 걸음 1/120초 기준이라 고스트·시뮬레이션과 같다. GO 뒤 첫 걸음이 가장 빠른 값 0.008초). 실격 판에는 없다.
+- 판정(`constants.ts`): PERFECT 0.25초 이하 · GOOD 0.40초 이하 · LATE 그보다 늦음 (`REACT_PERFECT` · `REACT_GOOD`). 판정은 화면에 보이는 0.01초 값(올림)으로 해서 보이는 숫자와 어긋나지 않는다. 0.10초 미만(`REACT_LUCKY`)은 운으로 보고 표시는 하되 최고 반응 기록에는 넣지 않는다.
+- 화면: 출발 직후 내 캐릭터 머리 위에 `PERFECT 0.21` 알약 0.8초 (PERFECT 노랑 · GOOD 초록 · LATE 흰색). 결과 화면 내 기록 줄 아래 `반응 0.21초 · PERFECT`, 최고 반응을 갱신하면 `⚡ 반응 신기록`. 로비에 `⚡ 최고 반응 0.18초` 한 줄. ❓ 방법에 판정 한 줄.
+- 저장: 최고 반응은 기기에만 (localStorage `siarace:react:<사용자 id>`, 읽기·쓰기 실패는 무시). 서버 저장·반응 랭킹은 없다.
+
+**주간 랭킹 (서버 `supabase/migrations/096_race_weekly.sql`)**
+- 한 주 = 한국 시간 월요일 00:00 ~ 일요일 23:59. 그 주에 세운 오늘의 도전 완주 기록 중 가장 빠른 것으로 순위, 동률은 먼저 세운 기록이 위. 상위 100명 + 내 순위.
+- 표 `race_weekly (week, user_id, best_ms, best_at, character, plays)` — 기본 키 (week, user_id), RLS 켜고 정책 없음 (뷰·함수로만). week 는 그 주 월요일.
+- 기록 넣기: race_submit · race_daily_submit 은 그대로. `race_runs.daily_day` 가 채워질 때(null → 값) 트리거가 그 날이 속한 주의 줄을 넣거나, 더 빠를 때만 best_ms · best_at · character 를 바꾼다 (plays 는 늘 +1). 그냥 race_runs 에 들어온 기록(오늘의 도전 아님)은 세지 않는다. 자정을 넘겨 도착해 전날로 들어간 기록은 그 전날의 주로 간다.
+- 캐릭터(사용자 결정): 그날 race_ghosts 의 캐릭터(그 기록과 같은 ms 일 때), 없으면 race_records.character. 고스트는 race_daily_submit 뒤에 따로 올라오므로 race_ghosts 넣기/바꾸기 트리거가 그 고스트의 ms 가 그 주 best_ms 와 같으면 character 를 고스트 캐릭터로 고친다.
+- 뷰 `race_weekly_ranking`: race_ranking 과 같은 열(user_id, nickname, best_ms, best_at, character, plays, place, total) + week, 이번 주만. anon · authenticated 읽기 (race_ranking 과 같은 권한).
+- `race_weekly_last_top()`: 지난주 1~3등 + 서버의 한국 날짜 (anon · authenticated). 4주(28일) 이상 지난 줄은 넣을 때마다 지운다.
+- 랭킹 창(`shared/ranking-dialog.js`) 시아레이스 탭: 고르기 줄 순서 `오늘의 도전`(처음 열리는 모드) / `주간` / `최고 기록`. 주간 위 줄에 `📅 이번 주 3일 남음`(한국 날짜, 오늘 포함 · 일요일은 `이번 주 오늘 마감`)과 `지난주 🥇 닉 29.10초 · 🥈 … · 🥉 …`. 주간 줄마다 순위 · 등급 · 캐릭터 얼굴 · 닉네임 · 기록. 등급은 오늘의 도전 탭과 같은 순위 비율(해 10% · 달 30% · 별 60%, 사용자 결정), 최고 기록 탭만 1·2·3위 한 명씩. 주간 단추는 레이스 탭에만 보인다.
+- 결과 화면: 판 전(경기 화면을 열 때)과 오늘 기록이 들어간 뒤 이번 주 순위를 읽어 오르면 오늘의 도전 칸에 `📈 이번 주 12위 ↑` (처음 들어간 주도 오른 것으로 본다). 못 읽으면 조용히 숨긴다. `?local=1` 에서는 없다.

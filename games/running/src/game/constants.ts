@@ -71,6 +71,14 @@ export const AI_FINISH_MIN = 33;
 export const AI_FINISH_MAX = 37.5;
 
 /**
+ * 출발 반응 시간 판정 (GO 부터 내가 출발한 걸음까지, 초. src/game/reaction.ts).
+ * PERFECT 0.25초 이하 · GOOD 0.40초 이하 · LATE 그보다 늦음. 0.10초 미만은 운으로 보고 표시는 하되 최고 반응 기록에는 넣지 않는다
+ */
+export const REACT_PERFECT = 0.25;
+export const REACT_GOOD = 0.4;
+export const REACT_LUCKY = 0.1;
+
+/**
  * 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/095_race_ghost.sql 의 min_ms, 031 의 28000 에서 낮춤).
  * 146m 트랙에서 부스트가 끝날 때 점프하면 27.8초대가 나오므로 27초 (2026-11-23 사용자 결정)
  */

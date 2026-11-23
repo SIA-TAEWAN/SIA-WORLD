@@ -4,6 +4,7 @@ import { LOCKED_MSG } from '../game/unlock';
 import { loadRankIcons, worldDailyRanking } from '../net/world';
 import { DAILY_GAME, dailyLabel, dailyMs } from '../game/daily';
 import { ghostDiffText } from '../game/ghost';
+import { reactionLine, saveBestReaction } from '../game/reaction';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
 import { esc, nav, screen, state, toast } from './app';
@@ -25,10 +26,16 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
     gh && mine?.status === 'finish'
       ? `<p class="ghost-diff ${beatGhost ? 'win' : ''}">👻 ${esc(ghostDiffText(mine.timeMs!, gh.ghost.ms, ghostWho, formatTime))}</p>`
       : '';
+  // 출발 반응: 실격한 판에는 없다. 최고 반응(기기 저장, 운으로 본 0.10초 미만은 빼고)을 갱신했으면 '⚡ 반응 신기록'
+  const react = raced && mine.status !== 'foul' ? race.reaction() : null;
+  const reactBest = react ? saveBestReaction(state.user.id, react) : false;
+  const reactHtml = react
+    ? `<p class="react-line g-${react.grade.toLowerCase()}">${esc(reactionLine(react))}${reactBest ? ' <span class="react-rec">⚡ 반응 신기록</span>' : ''}</p>`
+    : '';
   const root = screen(
     `<div class="result-card">
       <h2>🏁 경기 결과</h2>
-      <div class="daily-line" id="daily-line"><span class="tag">오늘의 도전</span><div id="daily-place"></div></div>
+      <div class="daily-line" id="daily-line"><span class="tag">오늘의 도전</span><div id="daily-place"></div><div class="week-up" id="week-up" hidden></div></div>
       <p class="mine" id="mine">${
         !mine
           ? ''
@@ -38,6 +45,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
                 ? '실격! GO가 뜬 뒤에 눌러요'
                 : `미완주 (${Math.floor(mine.x)}m)`
       }</p>
+      ${reactHtml}
       ${ghostLine}
       ${
         badges.length
@@ -146,6 +154,23 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
         })
         .catch(hide);
     }
+  }
+
+  // 이번 주 순위: 판 전(경기 화면이 읽어 둔 것)과 오늘 기록이 들어간 뒤를 비교해 오르면 '이번 주 12위 ↑'. 못 읽으면 조용히 숨김
+  if (!LOCAL_MODE && raced && mine.status === 'finish' && race.dailySaved && race.weekBefore && state.api) {
+    const api = state.api;
+    const before = race.weekBefore;
+    void race.dailySaved
+      .then(async (day) => {
+        if (!day) return;
+        const [b, a] = await Promise.all([before, api.weeklyPlace()]);
+        if (b === undefined || a === undefined || a === null || (b !== null && a >= b)) return;
+        const el = root.querySelector<HTMLElement>('#week-up');
+        if (!el) return;
+        el.innerHTML = `📈 이번 주 <b>${a}</b>위 ↑`;
+        el.hidden = false;
+      })
+      .catch(() => undefined);
   }
 
   $('#again').addEventListener('click', () => {

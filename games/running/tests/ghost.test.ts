@@ -274,6 +274,53 @@ function fakeApi(over: Partial<Api> = {}): Api & { calls: string[] } {
     dailySubmit: async (_r, _n, day) => day,
     ghostTop: async () => null,
     ghostSubmit: async (room, round) => (calls.push(`ghost:${room}:${round}`), 'ok'),
+    weeklyPlace: async () => undefined,
     ...over,
   } as Api & { calls: string[] };
 }
+
+describe('출발 반응 (RaceGame)', () => {
+  const day = '2026-11-23';
+  const open = (round: number) => {
+    const go = clock.now + 2000;
+    const race = new RaceGame(fakeApi(), {
+      key: 'dailyabcd2345', round, seed: dailyTrackSeed(day), readyAt: go - 1800, goAt: go, day, roster: soloRoster(me, 'tiger', 3),
+    });
+    return { race, go };
+  };
+
+  it('GO 뒤 누른 걸음의 시각 = 반응 (고스트 기록의 출발 걸음과 같다)', () => {
+    const { race, go } = open(11);
+    expect(race.reaction()).toBeNull();
+    clock.now = go + 205; // 0.205초에 누름 → 다음 걸음(25 = 0.2083초)에 출발
+    race.update();
+    race.press('jump');
+    clock.now = go + 215;
+    race.update();
+    const r = race.reaction()!;
+    expect(r).toMatchObject({ grade: 'PERFECT', text: '0.21', lucky: false });
+    // 같은 판을 끝까지 달려(더 누르지 않아도 넘어지며 완주한다) 고스트로 만들면 첫 누름(출발)의 걸음 × DT 가 반응과 같다
+    for (let t = 300; t < 89_000 && race.view(0).finishMs === null; t += 16) {
+      clock.now = go + t;
+      race.update();
+    }
+    const ms = race.view(0).finishMs;
+    expect(ms).not.toBeNull();
+    const g = race.myGhost(ms!)!;
+    expect(g.presses).toEqual([[25, 0]]);
+    expect(Math.round(g.presses[0][0] * DT * 1000)).toBe(r.ms);
+  });
+
+  it('실격하면 반응이 없다', () => {
+    const { race, go } = open(12);
+    clock.now = go - 500;
+    race.update();
+    race.press('jump');
+    clock.now = go + 400;
+    race.update();
+    race.press('jump');
+    clock.now = go + 500;
+    race.update();
+    expect(race.reaction()).toBeNull();
+  });
+});

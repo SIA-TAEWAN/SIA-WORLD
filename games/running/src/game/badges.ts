@@ -24,7 +24,7 @@ export const BADGE_ORDER: readonly BadgeId[] = ['clean', 'boostAll', 'tumbler'];
 
 /** 한 판 동안 센 것 */
 export interface Tally {
-  /** 출발한 시각 (GO 뒤 초). 출발 전이면 null. (칼출발 배지는 없앴다: 4단계에서 출발 반응 시간을 따로 보인다) */
+  /** 출발한 시각 (GO 뒤 초). 출발 전이면 null. (칼출발 배지 대신 출발 반응: src/game/reaction.ts 의 reactionOf 가 이 값을 쓴다) */
   startT: number | null;
   /** 넘어지거나 미끄러진 횟수 (허들·낮은 막대·통나무·바나나) */
   falls: number;

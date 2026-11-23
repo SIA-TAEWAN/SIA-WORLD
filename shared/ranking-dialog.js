@@ -2,7 +2,8 @@
 //   탭: 💣 시아탱크(승패) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수) · 👹 시아서바이벌(맵별 생존 시간)
 //   탭은 관리자가 로비에서 연 게임만 보인다 (shared/games.js 의 game_open). 닫힌 게임 안에서 연 창은 그 게임 탭만 예외
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
-//   시아레이스 최고 기록은 순위 기준, 한 명씩: 1위 해 · 2위 달 · 3위 별 · 4위부터 구름 (RACE_TIERS, raceTierOfPlace). 오늘의 도전은 다른 게임과 같은 비율
+//   시아레이스 탭은 [오늘의 도전(처음) · 주간 · 최고 기록]. 최고 기록은 순위 기준, 한 명씩: 1위 해 · 2위 달 · 3위 별 · 4위부터 구름 (RACE_TIERS, raceTierOfPlace).
+//   오늘의 도전 · 주간(096_race_weekly.sql: 한국 시간 월~일, 이번 주 최고 기록 순 + 지난주 🥇🥈🥉)은 다른 게임과 같은 비율
 //   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
 //   시아서바이벌은 맵마다 따로: 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순. 등급은 그 맵 안의 순위 기준
 //   시아서바이벌 무한 모드는 4분 모드와 따로 (모드 전환 줄): 생존 시간 → 처치 수 → 먼저 달성한 순
@@ -103,6 +104,12 @@ const DAILY_TABS = {
 };
 /** 레이스 탭의 고르기 줄 첫 단추 (레이스는 원래 모드가 없다) */
 const RACE_BEST_NAME = '최고 기록';
+/** 레이스 탭의 주간 랭킹 (096_race_weekly.sql: race_weekly_ranking 뷰 · race_weekly_last_top) — 레이스 탭에만 보이는 단추 */
+const WEEKLY_MODE = 'weekly';
+const WEEKLY_NAME = '주간';
+const RACE_WEEKLY_NOTE = '이번 주(월~일) 오늘의 도전 최고 기록 순 (같으면 먼저 세운 사람이 위)';
+/** 레이스 탭 고르기 줄의 보이는 순서: 오늘의 도전 · 주간 · 최고 기록 (단추는 DOM 순서 그대로 두고 CSS order 로) */
+const RACE_MODE_ORDER = { [DAILY_MODE]: 0, [WEEKLY_MODE]: 1, best: 2 };
 const isDay = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 /** '2026-11-23' → '11월 23일' */
 const dayLabel = (day) => (isDay(day) ? `${Number(day.slice(5, 7))}월 ${Number(day.slice(8, 10))}일` : '');
@@ -121,6 +128,26 @@ export function raceTierOfPlace(place) {
   if (p === RACE_TIERS.silver) return 'silver';
   if (p === RACE_TIERS.bronze) return 'bronze';
   return 'white';
+}
+/** 'YYYY-MM-DD' 가 속한 주의 월요일 (한국 날짜를 넣는다. 서버 _race_week 와 같은 계산: 월요일 시작) */
+export function raceWeekStart(day) {
+  if (!isDay(day)) return null;
+  const [y, m, d] = day.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  const dow = (t.getUTCDay() + 6) % 7; // 월 0 … 일 6
+  return new Date(Date.UTC(y, m - 1, d - dow)).toISOString().slice(0, 10);
+}
+/** 이번 주 남은 날 (오늘 포함): 월요일 7 … 일요일 1 */
+export function raceWeekDaysLeft(day) {
+  const start = raceWeekStart(day);
+  if (!start) return null;
+  return 7 - Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
+}
+/** '이번 주 3일 남음' (일요일은 '이번 주 오늘 마감') */
+export function raceWeekLeftText(day) {
+  const n = raceWeekDaysLeft(day);
+  if (n === null) return '';
+  return n <= 1 ? '이번 주 오늘 마감' : `이번 주 ${n}일 남음`;
 }
 /** 기록 표시: 0.01초 단위 (버림) */
 export const raceTime = (ms) => {
@@ -148,6 +175,40 @@ export async function getRaceRanking(meId = null) {
     }
   }
   return { rows, mine, total };
+}
+/**
+ * 시아레이스 주간 랭킹 (race_weekly_ranking 뷰: 이번 주 최고 기록 빠른 순, 동률은 먼저 세운 기록 우선).
+ * → { rows: 상위 100명 [{ key, nickname, ms, character, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getRaceWeeklyRanking(meId = null) {
+  const cols = 'user_id,nickname,best_ms,character,place,total';
+  const { data, error } = await supabase.from('race_weekly_ranking').select(cols).order('place', { ascending: true }).limit(RACE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, ms: Number(r.best_ms), character: r.character, place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= RACE_TOP) {
+    const res = await supabase.from('race_weekly_ranking').select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
+/** 지난주 1~3등 (race_weekly_last_top) → { today, top: [{ place, nickname, ms, character }] }. 못 읽으면 null */
+export async function getRaceWeeklyLastTop() {
+  try {
+    const { data, error } = await supabase.rpc('race_weekly_last_top');
+    if (error || !data || typeof data !== 'object') return null;
+    const top = (Array.isArray(data.top) ? data.top : [])
+      .map((t) => ({ place: Number(t.place), nickname: t.nickname, ms: Number(t.best_ms), character: t.character }))
+      .filter((t) => t.place >= 1 && t.place <= 3);
+    return { today: isDay(data.today) ? data.today : null, top };
+  } catch {
+    return null;
+  }
 }
 /** 승률 표시: 승 ÷ (승 + 패), 소수점 없이 */
 export const volleyRate = (wins, losses) => (wins + losses > 0 ? `${Math.round((wins / (wins + losses)) * 100)}%` : '-');
@@ -400,6 +461,12 @@ const CSS = `
 .sia-rank td.sq { line-height: 0; white-space: nowrap; }
 .sia-rank td.sq img { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #2a1a10; background: #fff; object-fit: cover; margin-right: -5px; }
 .sia-rank td.am i { font-style: normal; display: inline-block; background: #4cb86a; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; margin-right: 4px; vertical-align: 1px; }
+.sia-rank .wk { display: none; text-align: center; font-size: 14px; color: #2a1a10; margin: 0 0 2px; line-height: 1.5; }
+.sia-rank .wk.on { display: block; }
+.sia-rank .wk .left { display: inline-block; background: #fff4c2; border: 2px solid #2a1a10; border-radius: 999px; padding: 0 10px; }
+.sia-rank .wk .last { display: block; font-size: 13px; color: #8a6a4a; word-break: keep-all; }
+.sia-rank .wk .last b { font-weight: normal; color: #2a1a10; }
+.sia-rank .wk .last i { font-style: normal; white-space: nowrap; }
 .sia-rank .me-line { text-align: center; font-size: 15px; margin: 6px 0; }
 .sia-rank .me-line b { font-weight: normal; color: #f0a500; }
 .sia-rank .list { flex: 1; min-height: 0; overflow-y: auto; border-top: 2px dashed #e2d3b5; }
@@ -461,8 +528,9 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       .join('')}</div>
     <div class="modes">${SURVIVAL_MODES.map((m) => `<button type="button" data-sm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-sm="${DAILY_MODE}">${DAILY_NAME}</button></div>
     <div class="subs">${SURVIVAL_MAPS.map((m) => `<button type="button" data-m="${m.id}">${m.name}</button>`).join('')}</div>
-    <div class="dmodes">${DEFENSE_MODES.map((m) => `<button type="button" data-dm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-dm="${DAILY_MODE}">${DAILY_NAME}</button></div>
+    <div class="dmodes">${DEFENSE_MODES.map((m) => `<button type="button" data-dm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-dm="${DAILY_MODE}">${DAILY_NAME}</button><button type="button" data-dm="${WEEKLY_MODE}" hidden>${WEEKLY_NAME}</button></div>
     <div class="dday"><button type="button" data-dd="-1" aria-label="하루 전" disabled>◀</button><span></span><button type="button" data-dd="1" aria-label="하루 뒤" disabled>▶</button></div>
+    <p class="wk"></p>
     <p class="me-line"></p>
     <div class="list"><table></table></div>
     <p class="note"></p>
@@ -484,7 +552,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     const sm = e.target.closest('[data-sm]');
     if (sm) void showSurvival(survivalMap, sm.dataset.sm);
     const dm = e.target.closest('[data-dm]');
-    if (dm && shown === 'race') void showRace(dm.dataset.dm === DAILY_MODE ? DAILY_MODE : 'best');
+    if (dm && shown === 'race') void showRace(dm.dataset.dm === DAILY_MODE || dm.dataset.dm === WEEKLY_MODE ? dm.dataset.dm : 'best');
     else if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : showDefense(dm.dataset.dm));
     const dd = e.target.closest('[data-dd]');
     if (dd && !dd.disabled) moveDaily(Number(dd.dataset.dd));
@@ -503,8 +571,14 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     $('.modes').classList.toggle('on', game === 'survival');
     // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스·돌격대·핑거·열두길 탭에서만 보인다 (버튼 글자는 탭마다 바꾼다)
     $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve' || game === 'race');
-    // 레이스는 [최고 기록 · 오늘의 도전] 둘뿐, 열두길은 오늘의 도전이 없다
-    dim.querySelectorAll('.dmodes button').forEach((b, i) => b.toggleAttribute('hidden', b.dataset.dm === DAILY_MODE ? !DAILY_TABS[game] : game === 'race' && i > 0));
+    // 레이스는 [오늘의 도전 · 주간 · 최고 기록] 셋 (보이는 순서는 CSS order), 주간 단추는 레이스에만. 열두길은 오늘의 도전이 없다
+    dim.querySelectorAll('.dmodes button').forEach((b, i) => {
+      const dm = b.dataset.dm;
+      b.toggleAttribute('hidden', dm === DAILY_MODE ? !DAILY_TABS[game] : dm === WEEKLY_MODE ? game !== 'race' : game === 'race' && i > 0);
+      b.style.order = game === 'race' ? String(RACE_MODE_ORDER[dm === DAILY_MODE || dm === WEEKLY_MODE ? dm : 'best']) : '';
+    });
+    // 주간 줄(남은 날 · 지난주 1~3등)은 레이스 주간에서만 (showRace 가 켠다)
+    $('.wk').classList.remove('on');
     // 날짜 줄은 오늘의 도전을 볼 때만 (showDaily 가 켠다). 탭을 옮기면 오늘로 돌아간다
     $('.dday').classList.remove('on');
     dailyDay = null;
@@ -542,15 +616,19 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     }
   }
   /** 시아레이스: 최고 기록 빠른 순 상위 100명 + 내 순위, 등급은 순위 기준 (1·2·3위 해·달·별, 나머지 구름) */
-  let raceMode = 'best';
+  // 처음 열리는 모드는 오늘의 도전 (2026-11-23: 오늘의 도전이 시아레이스의 메인)
+  let raceMode = DAILY_MODE;
   async function showRace(mode = raceMode) {
-    raceMode = mode === DAILY_MODE ? DAILY_MODE : 'best';
+    raceMode = mode === DAILY_MODE || mode === WEEKLY_MODE ? mode : 'best';
     dim.querySelectorAll('.dmodes button').forEach((b, i) => {
-      b.classList.toggle('sel', b.dataset.dm === DAILY_MODE ? raceMode === DAILY_MODE : i === 0 && raceMode === 'best');
+      const dm = b.dataset.dm;
+      b.classList.toggle('sel', dm === DAILY_MODE || dm === WEEKLY_MODE ? raceMode === dm : i === 0 && raceMode === 'best');
       if (i === 0) b.textContent = RACE_BEST_NAME;
     });
     $('.dday').classList.toggle('on', raceMode === DAILY_MODE);
+    $('.wk').classList.toggle('on', raceMode === WEEKLY_MODE);
     if (raceMode === DAILY_MODE) return showDaily('race');
+    if (raceMode === WEEKLY_MODE) return showRaceWeekly();
     $('.note').textContent = `${RACE_INFO.note} · 상위 ${RACE_TOP}명 · ${RACE_TIERS.gold}위 해 · ${RACE_TIERS.silver}위 달 · ${RACE_TIERS.bronze}위 별 · 그 외 구름`;
     $('.me-line').textContent = '불러오는 중…';
     $('table').innerHTML = '';
@@ -571,6 +649,50 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     } catch {
       if (shown === 'race' && raceMode === 'best') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
+  }
+  /**
+   * 시아레이스 주간: 이번 주 최고 기록 순 상위 100명 + 내 순위. 등급은 순위 비율 (오늘의 도전 탭과 같은 기준: 해 10% · 달 30% · 별 60%).
+   * 위 줄에 '이번 주 3일 남음'(한국 날짜) 과 지난주 🥇🥈🥉. 줄마다 순위 · 등급 · 캐릭터 얼굴 · 닉네임 · 기록
+   */
+  let weeklySeq = 0;
+  async function showRaceWeekly() {
+    const seq = ++weeklySeq;
+    const current = () => seq === weeklySeq && shown === 'race' && raceMode === WEEKLY_MODE;
+    $('.note').textContent = `${RACE_WEEKLY_NOTE} · 상위 ${RACE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    const medals = ['🥇', '🥈', '🥉'];
+    const paintWeek = (today, last) => {
+      const lastHtml =
+        last && last.top.length
+          ? `<span class="last">지난주 ${last.top.map((t) => `<i>${medals[t.place - 1]} <b>${esc(t.nickname)}</b> ${raceTime(t.ms)}</i>`).join(' · ')}</span>`
+          : '';
+      $('.wk').innerHTML = `<span class="left">📅 ${esc(raceWeekLeftText(today))}</span>${lastHtml}`;
+    };
+    paintWeek(dailyToday ?? localDailyDay(), null);
+    const lastP = getRaceWeeklyLastTop();
+    try {
+      const { rows, mine, total } = await getRaceWeeklyRanking(meId);
+      if (!current()) return;
+      const tier = (place) => tierOfPlace(place, total);
+      $('.me-line').innerHTML = mine
+        ? `이번 주 내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine.place), 20)} · ${raceTime(mine.ms)}`
+        : '아직 이번 주 기록이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r.place), 26)}</td>` +
+              `<td class="ch"><img src="${faceUrl(r.character)}" alt="" /></td><td class="nm">${esc(r.nickname)}</td><td class="am">${raceTime(r.ms)}</td></tr>`,
+          )
+          .join('') || '<tr><td>이번 주에는 아직 아무도 완주하지 않았어요</td></tr>';
+    } catch {
+      if (current()) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+    const last = await lastP;
+    if (!current()) return;
+    // 서버가 알려 준 한국 날짜로 남은 날을 다시 센다 (기기 시계가 틀려도)
+    paintWeek(last?.today ?? dailyToday ?? localDailyDay(), last);
   }
   /** 시아배구: 승수 순 상위 100명 + 내 순위. 줄마다 순위 · 등급 · 최근 캐릭터 얼굴 · 닉네임 · 승 패 · 승률 */
   async function showVolley() {

@@ -1,5 +1,6 @@
 import { makeAiPlan, aiPress, type AiPlan } from '../game/ai';
 import { badgesOf, newTally, tallyEvent, type Badge } from '../game/badges';
+import { reactionOf, type Reaction } from '../game/reaction';
 import { DT, END_AFTER_FIRST, END_AFTER_GO, TRACK_LEN, type ZodiacId } from '../game/constants';
 import { rankResults, type RaceEntry, type RankedEntry } from '../game/ranking';
 import { foul, newRunner, stepRunner, type Press, type RunState, type Runner, type SimEvent } from '../game/sim';
@@ -72,6 +73,8 @@ export class RaceGame {
   /** 오늘의 도전 기록을 넣은 결과 (들어갔으면 기록된 날짜, 아니면 null) */
   dailySaved: Promise<string | null> | null = null;
   onOver: ((r: RankedEntry[]) => void) | null = null;
+  /** 판 전에 읽은 내 이번 주 순위 (경기 화면이 연다. 순위 없음 null, 못 읽음 undefined) — 결과 화면이 판 뒤 순위와 비교한다 */
+  weekBefore: Promise<number | null | undefined> | null = null;
 
   constructor(
     private api: RaceApi,
@@ -196,6 +199,12 @@ export class RaceGame {
   badges(finished = true): Badge[] {
     if (this.mySlot < 0) return [];
     return badgesOf(this.tally, this.obs.filter((o) => o.kind === 'boost').length, finished);
+  }
+
+  /** 내 출발 반응 (GO 부터 내가 출발한 걸음까지). 출발 전·실격이면 null */
+  reaction(): Reaction | null {
+    if (this.mySlot < 0) return null;
+    return reactionOf(this.tally.startT);
   }
 
   myChar(): ZodiacId | null {

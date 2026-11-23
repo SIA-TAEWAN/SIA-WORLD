@@ -73,6 +73,11 @@ export interface RaceApi {
   ghostTop(day: string): Promise<GhostTop | null>;
   /** 오늘의 도전 기록이 들어간 판의 고스트 올리기 (race_ghost_submit) */
   ghostSubmit(room: string, round: number, ghost: Ghost): Promise<GhostSubmitResult>;
+  /**
+   * 내 이번 주 순위 (096_race_weekly.sql 의 race_weekly_ranking 뷰 place, 읽기만).
+   * 이번 주 기록이 없으면 null, 못 읽으면(통신 오류·테스트 모드) undefined
+   */
+  weeklyPlace(): Promise<number | null | undefined>;
 }
 
 /** race_ghost_top 의 답 → GhostTop (모양이 이상하면 null) */
@@ -180,6 +185,9 @@ function createLocalApi(uid: string): RaceApi {
       }
       return 'ok';
     },
+    async weeklyPlace() {
+      return undefined; // 테스트 모드: 서버 순위 없음
+    },
   };
 }
 
@@ -275,6 +283,16 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
         return error.code === 'P0001' ? 'rejected' : 'retry';
       } catch {
         return 'retry';
+      }
+    },
+    async weeklyPlace() {
+      try {
+        const { data, error } = await sb.from('race_weekly_ranking').select('place').eq('user_id', uid).maybeSingle();
+        if (error) return undefined;
+        const p = Number((data as { place?: unknown } | null)?.place);
+        return data ? (p >= 1 ? p : undefined) : null;
+      } catch {
+        return undefined;
       }
     },
   };

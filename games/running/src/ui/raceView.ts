@@ -22,6 +22,8 @@ export function showRace(start: SoloStart) {
   if (!api) return nav.lobby();
   const race = new RaceGame(api, start);
   window.__race = race;
+  // 판 전 이번 주 순위 (결과 화면이 판 뒤 순위와 비교해 '이번 주 N위 ↑'). 오늘의 도전 날짜가 있는 판만
+  if (start.day) race.weekBefore = api.weeklyPlace().catch(() => undefined);
   const me = race.mySlot;
 
   let game: Phaser.Game | null = null;

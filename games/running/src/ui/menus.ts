@@ -8,6 +8,7 @@ import { loadRankIcons, openWorldRanking, worldDailyRanking, worldDailyTodayStri
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, unlockButtonHtml } from './unlockBtn';
+import { loadBestReaction, reactionText } from '../game/reaction';
 import { esc, loadEngine, nav, openSettings, saveChar, screen, state, toast } from './app';
 import { sfx } from './sfx';
 
@@ -79,7 +80,8 @@ export function showLobby() {
     </div>
     <button class="btn primary big" id="run">달리기 ▶</button>
     <div class="sub-actions"><button class="btn" id="rank">🏆 랭킹</button><button class="btn" id="howto">❓ 방법</button></div>
-    <div class="best-line"><span>🏅 내 최고 기록</span><span id="best"><span class="soft">불러오는 중…</span></span></div>`,
+    <div class="best-line"><span>🏅 내 최고 기록</span><span id="best"><span class="soft">불러오는 중…</span></span></div>
+    ${reactLineHtml()}`,
     'lobby',
     'lobby',
     () => {
@@ -168,6 +170,14 @@ export function showLobby() {
   void loadEngine();
 }
 
+/** 로비 한 줄: 내 최고 출발 반응 (기기 저장, 사용자별) */
+function reactLineHtml(): string {
+  const ms = loadBestReaction(state.user.id);
+  return `<div class="best-line react-best"><span>⚡ 최고 반응</span>${
+    ms === null ? '<span class="soft">아직 없어요</span>' : `<span class="best-v"><b>${reactionText(ms)}</b>초</span>`
+  }</div>`;
+}
+
 function showHowTo() {
   sfx('click');
   const dim = document.createElement('div');
@@ -176,6 +186,7 @@ function showHowTo() {
     <div class="row"><span>📅 하루 한 트랙! 오늘은 모두 <b style="font-weight:normal;color:var(--accent)">같은 트랙</b>을 달리고, 가장 빠른 기록으로 오늘 순위를 매겨요</span></div>
     <div class="row"><span>🏁 '준비' 뒤 <b style="font-weight:normal;color:var(--accent)">GO!</b>가 뜨면 버튼을 눌러 출발</span></div>
     <div class="row"><span>⚠️ GO 전에 누르면 실격</span></div>
+    <div class="row"><span>⚡ 출발 반응: 0.25초 안 PERFECT · 0.40초 안 GOOD</span></div>
     <div class="row"><span>🦘 <b style="font-weight:normal;color:var(--accent)">점프</b> 버튼: 2.5m를 뛰어요 (스페이스·↑)</span></div>
     <div class="row"><span>🛷 <b style="font-weight:normal;color:var(--accent)">슬라이딩</b> 버튼: 몸을 낮춰 미끄러져요 (↓·S)</span></div>
     <div class="row"><span>🚧 허들·바나나·통나무는 뛰어넘기</span></div>

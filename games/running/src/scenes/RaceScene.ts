@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { JUMP_TIME, LANES, SLIDE_TIME, TRACK_LEN, isCharId, type ZodiacId } from '../game/constants';
 import { livePlace } from '../game/ranking';
+import { reactionPop, type ReactionGrade } from '../game/reaction';
 import type { RunState } from '../game/sim';
 import type { Obstacle } from '../game/track';
 import type { RaceEvent, RaceGame, RunnerView } from '../race/game';
@@ -609,6 +610,7 @@ export class RaceScene extends Phaser.Scene {
     switch (e.ev) {
       case 'start':
         if (vis) this.puff('dust', a.spr.x - 10, gy - 4, a.row, 0.5, -70, -20, 380);
+        if (mine) this.reactionPop(a);
         break;
       case 'jump':
         say('jump');
@@ -663,6 +665,30 @@ export class RaceScene extends Phaser.Scene {
       case 'getup':
         break;
     }
+  }
+
+  /** 출발 직후 내 머리 위에 반응 시간 'PERFECT 0.21' (0.8초) */
+  private reactionPop(a: Actor) {
+    const r = this.race.reaction();
+    if (!r) return;
+    const look: Record<ReactionGrade, { bg: number; fg: number }> = {
+      PERFECT: { bg: COLOR.primary, fg: COLOR.ink },
+      GOOD: { bg: COLOR.win, fg: COLOR.white },
+      LATE: { bg: COLOR.white, fg: COLOR.inkSoft },
+    };
+    const { bg, fg } = look[r.grade];
+    const fs = Math.max(12, Math.min(16, Math.round(this.laneH * 0.17)));
+    const t = this.text(0, 0, reactionPop(r), fs, fg);
+    const w = t.width + 16;
+    const h = fs + 8;
+    const g = this.add.graphics();
+    g.fillStyle(bg, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    g.lineStyle(2, COLOR.outline, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    const x = Phaser.Math.Clamp(a.label.x, w / 2 + 4, this.W - w / 2 - 4);
+    const y = Math.max(h / 2 + 2, a.label.y - h - 4);
+    const pop = this.add.container(x, y, [g, t]).setDepth(130).setScale(0.6);
+    this.tweens.add({ targets: pop, scale: 1, duration: 160, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: pop, y: y - 8, alpha: 0, delay: 620, duration: 180, onComplete: () => pop.destroy() });
   }
 
   /** 발소리 (내 캐릭터가 달리는 동안) — update 뒤에 부른다 */
