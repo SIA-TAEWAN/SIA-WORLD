@@ -28,6 +28,7 @@ import {
   BOSS_IDS,
   ENEMIES,
   HEROES,
+  ALL_HERO_IDS,
   HERO_IDS,
   MAX_LEVEL,
   STAGES,
@@ -105,6 +106,9 @@ export function toast(text: string, ms = 2200) {
 const starsHtml = (n: number) => `<span class="stars">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
 const starPill = () => `<span class="coins-pill star-pill">★ ${totalStars(profile)}</span>`;
 const coinsPill = () => `<span class="coins-pill">🪙 ${profile.coins.toLocaleString()}</span>`;
+/** 아직 못 쓰는 대원의 안내 (추가 대원 고양이는 지역이 아니라 로비에서 시아코인으로 연다) */
+const lockHint = (id: HeroId, long: boolean) =>
+  HEROES[id].unlockRegion < 0 ? '로비에서 열 수 있어요' : long ? `${HEROES[id].unlockRegion}지역 보스를 깨면 합류` : `${HEROES[id].unlockRegion}지역`;
 const typeName = (id: HeroId) => (HEROES[id].type === 'pierce' ? '관통형' : '반사형');
 const typeTag = (id: HeroId) => `<em class="tag ${HEROES[id].type}">${typeName(id)}</em>`;
 const errText = (e: unknown) => (e instanceof ApiError ? whyText(e.message) : '서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요');
@@ -240,7 +244,7 @@ function heroCard(id: HeroId, open: boolean) {
         <span>우정 콤보: ${d.comboName}</span>
         ${tiersHtml(lv)}
         <span>필살기: ${d.specialName} <span class="soft">(${d.charge}턴)</span></span>
-        ${open ? '' : `<span class="soft">🔒 ${d.unlockRegion}지역 보스를 깨면 합류</span>`}</div>
+        ${open ? '' : `<span class="soft">🔒 ${lockHint(id, true)}</span>`}</div>
       ${
         open
           ? `<button class="btn ${max ? '' : 'primary'} small" data-up="${id}" ${max || profile.coins < cost ? 'disabled' : ''}>${max ? '최대' : `Lv↑ 🪙 ${cost}`}</button>`
@@ -253,7 +257,7 @@ function showHeroes(scrollTop = 0) {
   const open = heroesOf(profile);
   const root = screen(`
     <div class="bar"><button class="back" id="back">← 뒤로</button><h2>대원</h2><div class="pills">${coinsPill()}</div></div>
-    <div class="up-list">${HERO_IDS.map((id) => heroCard(id, open.includes(id))).join('')}</div>
+    <div class="up-list">${ALL_HERO_IDS.map((id) => heroCard(id, open.includes(id))).join('')}</div>
     <p class="soft center light">레벨마다 체력·공격 +4%, 레벨 10·20·30에 우정 콤보가 한 단계씩 강해져요</p>`);
   root.scrollTop = scrollTop;
   root.querySelector('#back')!.addEventListener('click', () => {
@@ -430,11 +434,11 @@ function showParty(st: StageDef | null) {
           : `<button class="slot empty" data-i="${i}"><i>${i + 1}</i><span>빈 칸</span></button>`;
       })
       .join('');
-    root.querySelector('#pick')!.innerHTML = HERO_IDS.map((id) => {
+    root.querySelector('#pick')!.innerHTML = ALL_HERO_IDS.map((id) => {
       const ok = open.includes(id);
       const at = party.indexOf(id);
       return `<button class="leader ${at >= 0 ? 'on' : ''} ${ok ? '' : 'locked'} ${id === focus ? 'focus' : ''}" data-id="${id}" ${ok ? '' : 'disabled'}>
-          <img src="${zodiacFaceUrl(id)}" alt="${HEROES[id].name}" /><b>${HEROES[id].name}</b>${ok ? (at >= 0 ? `<em>${at + 1}번</em>` : '') : `<em>🔒 ${HEROES[id].unlockRegion}지역</em>`}
+          <img src="${zodiacFaceUrl(id)}" alt="${HEROES[id].name}" /><b>${HEROES[id].name}</b>${ok ? (at >= 0 ? `<em>${at + 1}번</em>` : '') : `<em>🔒 ${lockHint(id, false)}</em>`}
         </button>`;
     }).join('');
     const d = HEROES[focus];

@@ -16,7 +16,10 @@ const LOB_SEC = 0.5;
 const SLOW_SEC = 0.75;
 
 const P = makePoint();
-const aimOf = (char: number) => (TOWERS[char].target === 'strong' ? AIM.strong : TOWERS[char].target === 'air' ? AIM.air : AIM.first);
+const aimOf = (char: number) => {
+  const t = TOWERS[char].target;
+  return t === 'strong' ? AIM.strong : t === 'air' ? AIM.air : t === 'weak' ? AIM.weak : AIM.first;
+};
 
 function face(s: State, slot: number, tw: Tower, e: Enemy) {
   const dx = e.x - s.slotX[slot];
@@ -186,6 +189,23 @@ export const ATTACKS: Record<AttackKind, Attack> = {
 
   /** 돼지: 공격하지 않는다 (웨이브가 시작될 때 기운을 번다 — sim.ts) */
   bank: () => false,
+
+  /**
+   * 고양이: 사거리 안에서 남은 체력이 가장 적은 요괴에게 달려들어 바로 할퀸다 (투사체 없음, 공중 요괴도).
+   * execute 가 있으면 할퀸 뒤 체력이 그 비율 이하로 남은 요괴(보스·보스의 분신 제외)는 바로 쓰러진다 (쓰러진 자리는 FX.pop)
+   */
+  pounce(s, slot, tw, L) {
+    const x = s.slotX[slot];
+    const y = s.slotY[slot];
+    const i = findTarget(s, x, y, L.range, TOWERS[tw.char].air, aimOf(tw.char));
+    if (i < 0) return false;
+    const e = s.enemies[i];
+    face(s, slot, tw, e);
+    addFx(s, FX.slash, e.x, e.y, 30, 0.18, Math.atan2(e.y - y, e.x - x));
+    hurt(s, e, L.dmg, x, y);
+    if (L.execute && e.alive && e.down <= 0 && e.boss < 0 && e.look < 0 && e.hp <= e.maxHp * L.execute) hurt(s, e, Infinity);
+    return true;
+  },
 };
 
 /** 투사체가 맞았다: 던진 캐릭터의 효과를 준다 */

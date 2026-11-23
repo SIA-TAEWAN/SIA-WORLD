@@ -1,5 +1,5 @@
 import { LOBBY_MAX } from '../net/lobby';
-import { LANES, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
+import { CHAR_IDS, LANES, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
 import { formatTime, tierOf } from '../game/ranking';
 import { LOCAL_MODE } from '../net/api';
 import { RaceRoom, newRoomCode } from '../net/room';
@@ -212,7 +212,7 @@ export function showWaiting() {
           <img class="av" src="${zodiacFaceUrl(s.char)}" alt="" /><div class="nm">${esc(s.name)}</div>${st}</div>`;
       })
       .join('');
-    $('#chars').innerHTML = ZODIAC_IDS.map((c) => {
+    $('#chars').innerHTML = CHAR_IDS.map((c) => {
       const sel = c === room.char;
       const taken = !sel && room.isTaken(c);
       return `<button class="char ${sel ? 'sel' : ''} ${taken ? 'taken' : ''}" data-c="${c}" ${taken ? 'disabled' : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`;

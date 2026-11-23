@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { COLOR, RACE } from '../theme';
-import { ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { isCharId, type ZodiacId } from '../game/constants';
 import { zodiacFullUrl } from '../assets';
 
 /**
@@ -15,7 +15,7 @@ export const zKey = (id: ZodiacId) => `z-${id}`;
 export function preloadArt(scene: Phaser.Scene, chars: readonly ZodiacId[]) {
   const base = import.meta.env.BASE_URL;
   for (const k of ART_FILES) if (!scene.textures.exists(k)) scene.load.image(k, `${base}art/${k}.png`);
-  for (const id of chars) if (ZODIAC_IDS.includes(id) && !scene.textures.exists(zKey(id))) scene.load.image(zKey(id), zodiacFullUrl(id));
+  for (const id of chars) if (isCharId(id) && !scene.textures.exists(zKey(id))) scene.load.image(zKey(id), zodiacFullUrl(id));
 }
 
 type G = Phaser.GameObjects.Graphics;

@@ -61,6 +61,11 @@
       "asset_id": "75a9f006-4fcb-4cbd-9ad8-c4efaf41f7ae",
       "sha12": "cb8835fdc228",
       "label": "대기실 그림 → public/lobby.jpg"
+    },
+    {
+      "asset_id": "eec6ab71-b9a7-47e5-8386-7e81fb3c59e3",
+      "sha12": "26198e55e44f",
+      "label": "고양이(cat) 탱크 원본 = art/spritecook/cat/tank-src.png (1688x1688) → public/tanks/cat.png · shared/images/zodiac/cat.png (125x137, 무한궤도 108px 로 축소)"
     }
   ]
 }

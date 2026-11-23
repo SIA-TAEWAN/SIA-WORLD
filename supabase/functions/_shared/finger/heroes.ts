@@ -3,8 +3,13 @@
  * 능력치 차이는 10% 안팎으로 작게 둔다.
  */
 
+/** 십이지 대원 12종 (지역을 깨면 합류하는 순서) */
 export const HERO_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;
-export type HeroId = (typeof HERO_IDS)[number];
+/** 지역 합류 규칙 밖의 추가 대원 (고양이 = 13번째 대원. 시아코인으로 계정마다 한 번 연다 — 071_characters.sql) */
+export const EXTRA_HERO_IDS = ['cat'] as const;
+/** 고를 수 있는 대원 전체 (십이지 12 + 추가) */
+export const ALL_HERO_IDS = [...HERO_IDS, ...EXTRA_HERO_IDS] as const;
+export type HeroId = (typeof ALL_HERO_IDS)[number];
 
 /** 반사형: 요괴에서 튕겨 나온다 · 관통형: 요괴를 뚫고 지나간다 */
 export type HeroType = 'reflect' | 'pierce';
@@ -22,7 +27,8 @@ export type ComboKind =
   | 'balls' // 튕김 구슬 3개: 가까운 요괴 3마리
   | 'cleanse' // 주변 효과 지우기 + 작은 피해
   | 'fang' // 따라가는 이빨: 가장 가까운 요괴 두 번
-  | 'coin'; // 엽전 조금
+  | 'coin' // 엽전 조금
+  | 'scratch'; // 냥냥 펀치: 가장 가까운 요괴 세 번 할퀴기
 
 /** 필살기 (충전 턴이 차면 그 대원 차례에 쓴다) */
 export type SpecialKind =
@@ -37,7 +43,8 @@ export type SpecialKind =
   | 'clone' // 원숭이: 작은 분신 2명이 함께 날아감
   | 'dawn' // 닭: 다른 대원 필살기 충전 +2
   | 'hunt' // 개: 체력 낮은 요괴 3마리 공격
-  | 'roll'; // 돼지: 벽에 닿을 때마다 피해 커짐
+  | 'roll' // 돼지: 벽에 닿을 때마다 피해 커짐
+  | 'pounce'; // 고양이: 멈추면 가장 가까운 요괴에게 한 번 덮친다
 
 export interface HeroDef {
   id: HeroId;
@@ -53,11 +60,11 @@ export interface HeroDef {
   specialName: string;
   /** 필살기 충전 턴 (판 전체 턴 기준: 누가 쏘든 한 턴 끝날 때마다 1씩 찬다) */
   charge: number;
-  /** 0 = 처음부터, n = n지역 5번째 스테이지를 깨면 합류 */
+  /** 0 = 처음부터, n = n지역 5번째 스테이지를 깨면 합류, -1 = 지역 합류 밖 (추가 대원: 시아코인으로 연다) */
   unlockRegion: number;
 }
 
-/** 대원 12종 (PRD 표). 충전 턴·세기는 초안 — 5단계 밸런스에서 조정 */
+/** 대원 12종 (PRD 표) + 고양이. 충전 턴·세기는 초안 — 5단계 밸런스에서 조정 */
 export const HEROES: Record<HeroId, HeroDef> = {
   rat: { id: 'rat', name: '쥐', type: 'reflect', hp: 100, atk: 30, combo: 'shuriken', comboName: '표창 4방향', special: 'swift', specialName: '다음 발사 속도 2배', charge: 4, unlockRegion: 0 },
   ox: { id: 'ox', name: '소', type: 'pierce', hp: 115, atk: 33, combo: 'quake', comboName: '땅 울림', special: 'charge', specialName: '돌진: 크기 2배 관통', charge: 6, unlockRegion: 0 },
@@ -71,9 +78,14 @@ export const HEROES: Record<HeroId, HeroDef> = {
   rooster: { id: 'rooster', name: '닭', type: 'pierce', hp: 100, atk: 31, combo: 'cleanse', comboName: '주변 효과 지우기', special: 'dawn', specialName: '새벽 울음: 모든 필살기 +2', charge: 9, unlockRegion: 7 },
   dog: { id: 'dog', name: '개', type: 'reflect', hp: 105, atk: 31, combo: 'fang', comboName: '따라가는 이빨', special: 'hunt', specialName: '쫓기: 약한 요괴 3마리', charge: 7, unlockRegion: 8 },
   pig: { id: 'pig', name: '돼지', type: 'pierce', hp: 115, atk: 30, combo: 'coin', comboName: '엽전 조금', special: 'roll', specialName: '굴러가기: 벽마다 피해 커짐', charge: 8, unlockRegion: 9 },
+  // 13번째 대원. 능력치는 평균(체력 100 · 공격 31), 특색은 필살기 '덮치기': 멈춘 자리에서 가장 가까운 요괴를 노려 한 번 더 뛰어든다
+  // (말 '질주'는 같은 방향으로 한 번 더 — 덮치기는 방향을 스스로 고른다). 우정 콤보 냥냥 펀치 = 0.4 × 3번 (날려차기 1.2 와 같은 합)
+  cat: { id: 'cat', name: '고양이', type: 'reflect', hp: 100, atk: 31, combo: 'scratch', comboName: '냥냥 펀치', special: 'pounce', specialName: '덮치기: 가장 가까운 요괴에게 한 번 더', charge: 7, unlockRegion: -1 },
 };
 
-export const isHeroId = (id: unknown): id is HeroId => typeof id === 'string' && (HERO_IDS as readonly string[]).includes(id);
+export const isHeroId = (id: unknown): id is HeroId => typeof id === 'string' && (ALL_HERO_IDS as readonly string[]).includes(id);
+/** 지역 합류 규칙 밖의 추가 대원인가 (고양이) */
+export const isExtraHero = (id: HeroId) => (EXTRA_HERO_IDS as readonly string[]).includes(id);
 
 /** 대원 레벨 상한 (PRD "성장·재화") */
 export const MAX_LEVEL = 30;

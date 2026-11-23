@@ -1,4 +1,4 @@
-import { TANKS, TANK_IDS, WEAPONS, randomTank, type TankChoice, type TankId } from '../game/data';
+import { TANKS, TANK_IDS, RANDOM_TANK_IDS, WEAPONS, randomTank, type TankChoice, type TankId } from '../game/data';
 import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { Difficulty, PlayerSetup } from '../game/types';
 import { Rng, randomSeed } from '../game/rng';
@@ -159,7 +159,7 @@ export function showSetup() {
     );
     $('#name2-row').style.display = state.opponent === 'local' ? '' : 'none';
     renderRankNote();
-    const ot: (TankId | 'random')[] = ['random', ...TANK_IDS];
+    const ot: (TankId | 'random')[] = ['random', ...RANDOM_TANK_IDS];
     $('#opp-tank').innerHTML = ot.map((v) => `<button data-v="${v}" class="${state.oppTank === v ? 'sel' : ''}">${v === 'random' ? '랜덤' : TANKS[v].name}</button>`).join('');
     $('#opp-tank').querySelectorAll<HTMLElement>('button').forEach((b) =>
       b.addEventListener('click', () => {

@@ -1,5 +1,6 @@
-import { SQUAD_SIZE, VIEW_W, type ZodiacId } from '../data/balance';
-import { STARTERS, towerOf } from '../data/characters';
+import { SQUAD_SIZE, VIEW_W, type CharId } from '../data/balance';
+import { BOUGHT, STARTERS, towerOf, type RosterEntry } from '../data/characters';
+import { REGIONS } from '../data/regions';
 import type { RunSummary } from '../game/sim';
 import { defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
 import type { DefenseApi } from '../net/api';
@@ -12,7 +13,7 @@ export const stage = document.getElementById('stage')!;
 /** 판을 시작할 때 넘기는 것 */
 export interface GameSetup {
   stage: string;
-  squad: ZodiacId[];
+  squad: CharId[];
   /** 끝없는 모드인가 (stage 는 'endless') */
   endless?: boolean;
   /** 개발용: 같은 판 다시 보기 · 모든 캐릭터 레벨 · 모든 공통 강화 레벨 · 저장하지 않는 판 (잠금을 건너뛰고 시작한 판) */
@@ -42,7 +43,7 @@ export const state = {
   profile: defaultProfile() as DefenseProfile,
   /** 마지막으로 본 지역 · 고른 출전 캐릭터 */
   region: 1,
-  squad: [...STARTERS] as ZodiacId[],
+  squad: [...STARTERS] as CharId[],
 };
 
 /** 진행 상황이 바뀌면 부를 함수들 (지금 떠 있는 화면이 엽전·별 표시를 다시 그린다) */
@@ -78,6 +79,12 @@ const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"
 export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /** 받침에 맞는 조사를 붙인다: josa('들판', '을', '를') → '들판을' */
+/** 잠긴 캐릭터를 여는 방법 (고양이는 스테이지가 아니라 로비에서 연다). then: 지역을 클리어한 뒤의 말 */
+export function lockHint(r: RosterEntry, then = '함께할 수 있어요'): string {
+  if (r.unlockRegion === BOUGHT) return '로비에서 열 수 있어요';
+  return `${r.unlockRegion}지역 ${josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를')} 클리어하면 ${then}`;
+}
+
 export function josa(word: string, withFinal: string, withoutFinal: string): string {
   const code = word.charCodeAt(word.length - 1) - 0xac00;
   const final = code >= 0 && code <= 11171 ? code % 28 !== 0 : false;
@@ -135,11 +142,11 @@ new ResizeObserver(fitUnit).observe(stage);
 
 // ---------- 마지막으로 고른 출전 캐릭터 (기기에 기억) ----------
 const squadKey = () => `siadefense:squad:${state.user.id}`;
-export function loadSquad(): ZodiacId[] {
+export function loadSquad(): CharId[] {
   try {
     const v = JSON.parse(localStorage.getItem(squadKey()) ?? 'null') as unknown;
     if (Array.isArray(v)) {
-      const list = v.filter((c): c is ZodiacId => typeof c === 'string' && !!towerOf(c) && state.profile.unlocked.includes(c as ZodiacId)).slice(0, SQUAD_SIZE);
+      const list = v.filter((c): c is CharId => typeof c === 'string' && !!towerOf(c) && state.profile.unlocked.includes(c as CharId)).slice(0, SQUAD_SIZE);
       if (list.length) return [...new Set(list)];
     }
   } catch {
@@ -147,7 +154,7 @@ export function loadSquad(): ZodiacId[] {
   }
   return [...STARTERS];
 }
-export function saveSquad(list: ZodiacId[]) {
+export function saveSquad(list: CharId[]) {
   state.squad = list;
   try {
     localStorage.setItem(squadKey(), JSON.stringify(list));

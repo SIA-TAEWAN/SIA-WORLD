@@ -131,6 +131,10 @@ describe('받은 시작 알림 검사 (L3)', () => {
     for (const b of bad) expect(cleanStart({ ...ok(), ...b }, NOW), JSON.stringify(b)).toBeNull();
     for (const v of [null, undefined, 'start', 7, []]) expect(cleanStart(v, NOW)).toBeNull();
   });
+  it('고양이(추가 캐릭터)는 그대로 통과', () => {
+    const cat = { ...ok(), players: [{ id: 'a', name: '시아', char: 'cat' }, { id: 'b', name: '태완', char: 'dog' }] };
+    expect(cleanStart(cat, NOW)!.players[0].char).toBe('cat');
+  });
   it('다듬는다: 배경 번호는 0~2, 긴 이름은 12자, 모르는 캐릭터는 기본값', () => {
     expect(cleanStart({ ...ok(), bg: NaN }, NOW)!.bg).toBe(0);
     expect(cleanStart({ ...ok(), bg: 7 }, NOW)!.bg).toBe(1);

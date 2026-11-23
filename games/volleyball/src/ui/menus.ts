@@ -1,4 +1,4 @@
-import { WIN_SCORE, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
+import { CHAR_IDS, WIN_SCORE, ZODIAC_IDS, ZODIAC_NICK, isCharId, type ZodiacId } from '../game/constants';
 import type { MatchSetup } from '../match/game';
 import { VolleyRoom, newRoomCode, type StartMsg } from '../net/room';
 import { SEATS, cleanTitle } from '../net/seats';
@@ -13,7 +13,7 @@ import { sfx } from './sfx';
 const bgParam = new URLSearchParams(location.search).get('bg');
 const testBg = LOCAL_MODE && bgParam !== null && /^[0-2]$/.test(bgParam) ? Number(bgParam) : null;
 
-/** AI 대전 설정: 내가 왼쪽, AI는 내 캐릭터를 뺀 것 중 무작위 */
+/** AI 대전 설정: 내가 왼쪽, AI는 내 캐릭터를 뺀 십이지 중 무작위 (추가 캐릭터는 고르지 않는다) */
 export function aiSetup(myChar: ZodiacId): MatchSetup {
   const others = ZODIAC_IDS.filter((c) => c !== myChar);
   const aiChar = others[Math.floor(Math.random() * others.length)];
@@ -31,7 +31,7 @@ export function aiSetup(myChar: ZodiacId): MatchSetup {
 
 /** 온라인 대전 설정: 시작 알림에 담긴 값 그대로 (두 기기가 같은 시드·배경·시작 시각을 쓴다) */
 export function onlineSetup(s: StartMsg, myId: string): MatchSetup {
-  const f = (i: 0 | 1) => ({ id: s.players[i].id, name: s.players[i].name, char: ZODIAC_IDS.includes(s.players[i].char) ? s.players[i].char : 'tiger', ai: false });
+  const f = (i: 0 | 1) => ({ id: s.players[i].id, name: s.players[i].name, char: isCharId(s.players[i].char) ? s.players[i].char : 'tiger', ai: false });
   return {
     mode: 'online',
     fighters: [f(0), f(1)],
@@ -203,7 +203,7 @@ export function showCharSelect() {
   const paint = () => {
     $<HTMLImageElement>('#pick-img').src = zodiacFullUrl(char);
     $('#pick-name').textContent = ZODIAC_NICK[char];
-    $('#chars').innerHTML = ZODIAC_IDS.map(
+    $('#chars').innerHTML = CHAR_IDS.map(
       (c) => `<button class="char ${c === char ? 'sel' : ''}" data-c="${c}"><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`,
     ).join('');
   };
@@ -298,10 +298,10 @@ export function showWaiting() {
       if (!p) return `<div class="${cls}"><div class="av blank">?</div><div class="nm">비어있음</div><div class="st">${i === 0 ? '왼쪽' : '오른쪽'}</div></div>`;
       const st = p.ready ? '<div class="st on">레디!</div>' : '<div class="st">준비 중</div>';
       return `<div class="${cls}">${p.id === host ? '<span class="host" title="방장">👑</span>' : ''}
-        <img class="av" src="${zodiacFaceUrl(ZODIAC_IDS.includes(p.char) ? p.char : 'tiger')}" alt="" /><div class="nm">${esc(p.name)}</div>${st}</div>`;
+        <img class="av" src="${zodiacFaceUrl(isCharId(p.char) ? p.char : 'tiger')}" alt="" /><div class="nm">${esc(p.name)}</div>${st}</div>`;
     };
     $('#duo').innerHTML = `${seat(0)}<div class="vs-mark">VS</div>${seat(1)}`;
-    $('#chars').innerHTML = ZODIAC_IDS.map(
+    $('#chars').innerHTML = CHAR_IDS.map(
       (c) => `<button class="char ${c === room.char ? 'sel' : ''}" data-c="${c}"><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`,
     ).join('');
     const busy = room.current !== null;

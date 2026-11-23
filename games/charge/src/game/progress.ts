@@ -1,4 +1,4 @@
-import { LEADERS, METER, RUN_SPEED, leaderOf, type ZodiacId } from '../data/balance';
+import { LEADERS, METER, RUN_SPEED, leaderOf, type LeaderId } from '../data/balance';
 import {
   UPGRADES,
   clearCoins,
@@ -37,7 +37,7 @@ export interface RunReport {
   /** 서버가 charge_start 로 준 판 번호 (기록되지 않는 판은 '') */
   run: string;
   stage: string;
-  leader: ZodiacId;
+  leader: LeaderId;
   mode: 'normal' | 'endless';
   /** 판 시간 (초, 내림) */
   time: number;
@@ -61,7 +61,7 @@ export interface FinishResult {
   /** 시아코인을 받았다 */
   siaCoin: boolean;
   /** 이번에 새로 열린 대장 */
-  newLeaders: ZodiacId[];
+  newLeaders: LeaderId[];
 }
 
 /** 서버 검증 값 (SQL _charge_const 와 같다) */
@@ -80,7 +80,16 @@ export const LIMITS = {
 
 export const totalStars = (p: ChargeProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);
 export const cleared = (p: ChargeProfile, id: string) => (p.stages[id] ?? 0) > 0;
-export const leadersOf = (p: ChargeProfile) => unlockedLeaders((id) => cleared(p, id));
+/**
+ * 추가 캐릭터(고양이)를 고를 수 있는가. 진행으로는 열리지 않는다.
+ * 지금은 누구나 고를 수 있다 — 시아코인으로 여는 잠금(서버 _check_character 의 'locked character')은 여기 한 곳에 넣는다.
+ */
+export const extraOpen = (_p: ChargeProfile, _id: LeaderId) => true;
+/** 고를 수 있는 대장: 진행으로 열린 십이지 + 열린 추가 캐릭터 (LEADERS 순서) */
+export const leadersOf = (p: ChargeProfile): LeaderId[] => [
+  ...unlockedLeaders((id) => cleared(p, id)),
+  ...LEADERS.filter((l) => l.extra && extraOpen(p, l.id)).map((l) => l.id),
+];
 
 export function regionOpen(p: ChargeProfile, region: number): boolean {
   if (region <= 1) return true;
@@ -165,7 +174,7 @@ export function buyUpgrade(p: ChargeProfile, key: UpgradeKey): string | null {
 /** 시작할 수 있는가 (잠긴 스테이지·대장이면 까닭) */
 export function checkStart(p: ChargeProfile, stage: string, leader: string, mode: 'normal' | 'endless'): string | null {
   if (!LEADERS.some((l) => l.id === leader)) return 'bad leader';
-  if (!leadersOf(p).includes(leader as ZodiacId)) return 'leader locked';
+  if (!leadersOf(p).includes(leader as LeaderId)) return 'leader locked';
   if (mode === 'endless') return stage === ENDLESS_ID ? (endlessOpen(p) ? null : 'endless locked') : 'bad stage';
   if (!stageOf(stage)) return 'bad stage';
   return stageOpen(p, stage) ? null : 'stage locked';

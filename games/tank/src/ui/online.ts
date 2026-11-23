@@ -1,4 +1,4 @@
-import { TANKS, TANK_IDS, randomTank, type TankChoice } from '../game/data';
+import { TANKS, TANK_IDS, RANDOM_TANK_IDS, randomTank, type TankChoice } from '../game/data';
 import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { PlayerSetup } from '../game/types';
 import type { WindMode } from '../game/match';
@@ -621,7 +621,7 @@ function setupsOf(room: Room): PlayerSetup[] {
   if (list.length === 3 && Math.abs(n0 - n1) === 1 && room.map !== 'target') {
     const r = new Rng(((room.seed ?? 1) ^ 0x2545f491) >>> 0);
     const easy = r.next() < 0.5;
-    list.push({ name: easy ? 'AI(초보)' : 'AI(보통)', tank: r.pick(TANK_IDS), team: n0 < n1 ? 0 : 1, ai: easy ? 'easy' : 'normal', items: [] });
+    list.push({ name: easy ? 'AI(초보)' : 'AI(보통)', tank: r.pick(RANDOM_TANK_IDS), team: n0 < n1 ? 0 : 1, ai: easy ? 'easy' : 'normal', items: [] });
   }
   return list;
 }

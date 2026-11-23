@@ -75,7 +75,7 @@ function addMod(sum: Record<StatKey, number>, stat: StatKey, value: number) {
 
 const ZERO: Record<StatKey, number> = {
   might: 0, area: 0, cooldown: 0, speed: 0, maxHpPct: 0, maxHpFlat: 0, armor: 0, taken: 0,
-  pickup: 0, coin: 0, xp: 0, dot: 0, projSpeed: 0, regen: 0, revive: 0, reroll: 0,
+  pickup: 0, coin: 0, xp: 0, dot: 0, projSpeed: 0, regen: 0, revive: 0, reroll: 0, dodge: 0,
 };
 
 /** 캐릭터 특성 + 패시브 + 영구 강화를 더해 지금 능력치를 다시 계산한다 */
@@ -99,6 +99,7 @@ export function recalcStats(s: State) {
   st.dot = 1 + sum.dot;
   st.projSpeed = 1 + sum.projSpeed;
   st.regen = sum.regen;
+  st.dodge = sum.dodge;
   // 최대 체력이 늘면 늘어난 만큼 지금 체력도 는다
   if (oldMax > 0 && st.maxHp > oldMax) s.player.hp += st.maxHp - oldMax;
   if (s.player.hp > st.maxHp) s.player.hp = st.maxHp;
@@ -106,7 +107,7 @@ export function recalcStats(s: State) {
 }
 
 export function makeStats(): Stats {
-  return { might: 1, area: 1, cooldown: 1, speed: PLAYER.speed, maxHp: 0, armor: 0, taken: 1, pickup: PLAYER.pickupR, coin: 1, xp: 1, dot: 1, projSpeed: 1, regen: 0 };
+  return { might: 1, area: 1, cooldown: 1, speed: PLAYER.speed, maxHp: 0, armor: 0, taken: 1, pickup: PLAYER.pickupR, coin: 1, xp: 1, dot: 1, projSpeed: 1, regen: 0, dodge: 0 };
 }
 
 // ───────────────────────── 이펙트·피해 숫자 ─────────────────────────
@@ -321,6 +322,14 @@ export function killEnemy(s: State, e: Enemy, drops: boolean) {
 export function hurtPlayer(s: State, raw: number): boolean {
   const p = s.player;
   if (p.inv > 0 || s.phase !== 'play') return false;
+  // 고양이 특성: 몸놀림이 준비돼 있으면 이 피해를 통째로 피하고(맞은 것처럼 잠시 무적), 간격만큼 다시 기다린다
+  if (s.stats.dodge > 0 && p.dodge <= 0) {
+    p.dodge = Math.round(s.stats.dodge * TICKS_PER_SEC);
+    p.inv = Math.round(PLAYER.invSec * TICKS_PER_SEC);
+    emit(s, EV.dodge);
+    addFx(s, FX.shock, p.x, p.y, PLAYER.r * 3, 0, 0, 0.3);
+    return false;
+  }
   const dmg = Math.max(1, Math.round(raw * s.stats.taken - s.stats.armor));
   p.hp -= dmg;
   s.dmgTaken += dmg;

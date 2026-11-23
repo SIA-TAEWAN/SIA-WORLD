@@ -44,6 +44,10 @@ describe('판 밖 기록', () => {
     expect(checkStart(p, '2-1', 'rabbit', 'normal')).toBeNull();
     expect(checkStart(p, '2-2', 'rat', 'normal')).toBe('stage locked');
     expect(checkStart(p, '1-1', 'dragon', 'normal')).toBe('leader locked');
+    // 고양이는 진행과 무관하게 고를 수 있다 (시아코인 잠금은 3단계에서 extraOpen 에)
+    expect(leadersOf(emptyProfile())).toEqual(['rat', 'ox', 'tiger', 'cat']);
+    expect(checkStart(emptyProfile(), '1-1', 'cat', 'normal')).toBeNull();
+    expect(checkStart(p, '1-1', 'lion', 'normal')).toBe('bad leader');
   });
 
   it('테스트 모드 저장: 강화를 사면 엽전이 줄고, 모자라면 거절', async () => {

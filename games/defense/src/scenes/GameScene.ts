@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BOARD_H, BOARD_W, CELL, ROAD_W, SLOT_SIZE, type ZodiacId } from '../data/balance';
+import { BOARD_H, BOARD_W, CELL, ROAD_W, SLOT_SIZE, type CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { TOWERS } from '../data/characters';
 import { ENEMIES } from '../data/enemies';
@@ -114,7 +114,7 @@ export class GameScene extends Phaser.Scene {
       if (kind !== undefined && !keys.includes(enemyKey(kind))) keys.push(enemyKey(kind));
     }
     keys.push(tileKey(stageBg(s.stage)), ...COMMON_ART);
-    preloadArt(this, keys, s.squad.map((c) => TOWERS[c].id as ZodiacId));
+    preloadArt(this, keys, s.squad.map((c) => TOWERS[c].id as CharId));
     // 그림을 못 불러와도 게임은 진행한다 (create 에서 코드 그림으로 채운다)
     this.load.on('loaderror', () => undefined);
   }
@@ -191,7 +191,7 @@ export class GameScene extends Phaser.Scene {
   create() {
     const s = this.run.state;
     const bg = stageBg(s.stage);
-    const squadIds = s.squad.map((c) => TOWERS[c].id as ZodiacId);
+    const squadIds = s.squad.map((c) => TOWERS[c].id as CharId);
     ensureArt(this, bg, squadIds);
     this.cameras.main.setBackgroundColor(css(BG[bg].ground));
     this.cameras.main.setRoundPixels(false);
@@ -211,7 +211,7 @@ export class GameScene extends Phaser.Scene {
       this.pips.push(this.add.image(x, y + SLOT_SIZE / 2 + 4, pipKey(1)).setDepth(D.tower + 0.5).setScale(0.72).setVisible(false));
     }
     for (const c of s.squad) {
-      const src = this.textures.get(zKey(TOWERS[c].id as ZodiacId)).getSourceImage();
+      const src = this.textures.get(zKey(TOWERS[c].id as CharId)).getSourceImage();
       this.charBase[c] = Math.min(CHAR_H / src.height, CHAR_MAX_W / src.width);
     }
     this.rangeG = this.add.graphics().setDepth(D.range);
@@ -322,7 +322,7 @@ export class GameScene extends Phaser.Scene {
         slot.setScale(this.hint ? 0.5 * (1 + Math.sin(sec * 6 + i) * 0.05) : 0.5);
         continue;
       }
-      const key = zKey(TOWERS[tw.char].id as ZodiacId);
+      const key = zKey(TOWERS[tw.char].id as CharId);
       if (!img.visible || img.texture.key !== key) {
         img.setTexture(key).setVisible(true);
         slot.setTexture('slotOn').setScale(0.5);
@@ -471,7 +471,7 @@ export class GameScene extends Phaser.Scene {
           alpha = 0.9 * (1 - k * k);
           break;
         case FX.slash:
-          // 호랑이의 발톱 자국 (받은 그림이 있으면 그것, 없으면 코드 그림)
+          // 호랑이·고양이의 발톱 자국 (받은 그림이 있으면 그것, 없으면 코드 그림)
           key = this.slashKey;
           sc = (f.r * 2.2) / 256;
           rot = f.a;

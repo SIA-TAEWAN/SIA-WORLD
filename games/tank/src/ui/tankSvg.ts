@@ -116,6 +116,18 @@ function look(id: TankId): Look {
           <ellipse cx="35.4" cy="22.2" rx="2.1" ry="1.7" fill="${O}"/><path d="M32.5 25 q1 2.6 2.4 0" fill="#ff7a9a" ${s(0.8)}/>`,
         face: `<ellipse cx="31.5" cy="19" rx="3.4" ry="3.6" fill="${a}" fill-opacity=".35"/>`,
       };
+    case 'cat':
+      // 고양이(야옹이): 크림색 몸, 뾰족한 귀, 비뚤어진 금관, 보라 망토 띠, 수염
+      return {
+        back: `<path d="M15.5 15 L15 4.5 L22 11 Z" fill="${c}" ${s(1.5)}/><path d="M16.6 12.6 L16.3 7.4 L19.8 10.7 Z" fill="#ffb3c7"/>
+          <path d="M25.5 11 L31 3.5 L32.5 14 Z" fill="${c}" ${s(1.5)}/><path d="M27.4 10.8 L30.4 6.8 L31.2 12.2 Z" fill="#ffb3c7"/>
+          <g transform="rotate(-14 22 9)"><path d="M17.5 11.5 L18 5.5 L20.5 8.5 L22.5 4.5 L24.5 8.5 L27 5.5 L27 11.5 Z" fill="#ffd23a" ${s(1.2)}/><circle cx="22.5" cy="9" r="1" fill="${a}"/></g>
+          <path d="M9 29 Q2 27 3.5 20 Q5 15.5 8.5 17.5" fill="none" stroke="${O}" stroke-width="4.4" stroke-linecap="round"/>
+          <path d="M9 29 Q2 27 3.5 20 Q5 15.5 8.5 17.5" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`,
+        plate: `<path d="M9.5 22.5 L38.5 22.5 L37.5 25.6 L10.5 25.6 Z" fill="${a}" fill-opacity=".85"/><circle cx="24" cy="24" r="1.5" fill="#ffd23a" ${s(0.6)}/>`,
+        front: `<path d="M34.3 21.6 L36.3 21.6 L35.3 22.9 Z" fill="#ff8fab" ${s(0.6)}/><path d="M33.6 24 q1.2 1.1 2.4 0 q1.2 1.1 2.4 0" fill="none" stroke="${O}" stroke-width=".9"/>
+          <path d="M35 22.8 L41.5 21.2 M35 23.6 L41.5 24.4" stroke="${O}" stroke-width=".7" stroke-linecap="round"/>`,
+      };
     case 'zodiac': {
       // 십이지신: 금빛 몸, 왕관, 열두 띠 색 구슬
       const cols = ['#a9b2c3', '#8a5a3c', '#ff9a2e', '#f4f1f6', '#3fbf8f', '#7bc04a', '#b8763e', '#fff7e6', '#a8693c', '#ff3b3b', '#e0a85a', '#ffb3c7'];

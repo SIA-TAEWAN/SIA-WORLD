@@ -2,7 +2,7 @@ import { dirOf, dist2 } from './math.ts';
 import { aliveFoes, damageFoe, healHero, settle, visibleFoes, type Foe, type RunState, type SimEvent } from './sim.ts';
 
 /**
- * 우정 콤보 12종 · 필살기 12종의 효과 (PRD "캐릭터 12종"). 세기는 초안 — 5단계 밸런스에서 조정.
+ * 우정 콤보 13종 · 필살기 13종의 효과 (십이지 12 + 고양이) (PRD "캐릭터 12종"). 세기는 초안 — 5단계 밸런스에서 조정.
  * 콤보 세기는 대원 공격력 × 배율 × 콤보 단계 배율(1 + 0.25 × (단계 - 1), 레벨 10·20·30 에 한 단계씩).
  */
 
@@ -179,6 +179,15 @@ export function comboEffect(s: RunState, j: number, ev: SimEvent[]) {
     case 'coin':
       s.coins += 1 + Math.floor(k);
       break;
+    case 'scratch': {
+      // 냥냥 펀치: 가장 가까운 요괴를 세 번 할퀸다 (0.4 × 3)
+      const f = byDistance(s, x, y)[0];
+      if (f) {
+        lines.push([x, y, f.x, f.y]);
+        for (let n = 0; n < 3 && f.alive; n++) hit(f, 0.4);
+      }
+      break;
+    }
   }
   out.r = r;
 }
@@ -260,6 +269,9 @@ export function specialEffect(s: RunState, i: number, a: number, ev: SimEvent[])
     }
     case 'roll':
       m.roll = true;
+      break;
+    case 'pounce':
+      m.pounce = true;
       break;
   }
 }

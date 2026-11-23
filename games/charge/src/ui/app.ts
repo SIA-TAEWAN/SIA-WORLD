@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { artUrl, zodiacFaceUrl } from '../assets';
 import { hasArt } from '../scenes/art';
-import { LEADERS, ZODIAC_IDS, leaderOf, type ZodiacId } from '../data/balance';
+import { LEADERS, ZODIAC_IDS, leaderOf, type LeaderId } from '../data/balance';
 import { REGIONS, REGION_NAMES, UPGRADES, groundOf, modsOf, regionStars, upgradeCost, type UpgradeKey } from '../data/growth';
 import { ENDLESS_ID, STAGES, endlessStage, nextStage, stageOf, stagesOf, type StageDef } from '../data/stages';
 import {
@@ -33,7 +33,7 @@ let api!: ChargeApi;
 let me: WorldUser | null = null;
 let profile: ChargeProfile = emptyProfile();
 const LEADER_KEY = 'siacharge:leader';
-let leader: ZodiacId = 'rat';
+let leader: LeaderId = 'rat';
 
 let sound: SoundModule | null = null;
 void loadSound()
@@ -107,7 +107,7 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
     profile = { ...profile, coins: Math.max(profile.coins, 99999), stages: Object.fromEntries(STAGES.map((s) => [s.id, 3])) };
   }
   try {
-    const saved = localStorage.getItem(LEADER_KEY) as ZodiacId | null;
+    const saved = localStorage.getItem(LEADER_KEY) as LeaderId | null;
     if (saved && leadersOf(profile).includes(saved)) leader = saved;
   } catch {
     /* 저장 공간 없음 */
@@ -118,7 +118,7 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
     .catch(() => null);
 }
 
-function setLeader(id: ZodiacId) {
+function setLeader(id: LeaderId) {
   leader = id;
   try {
     localStorage.setItem(LEADER_KEY, id);
@@ -138,11 +138,12 @@ export function showMain() {
     ${hasArt('main') ? `<img class="hero" src="${artUrl('main')}" alt="" />` : ''}
     <div class="title"><h1>시아돌격대</h1><p>숫자 문을 골라 대원을 불리고 요괴를 뚫어라!</p></div>
     <div class="card">
-      <h3>대장 <small>대장과 같은 띠 대원들이 함께 달려요</small></h3>
+      <h3>대장 <small>대장과 같은 동물 대원들이 함께 달려요</small></h3>
       <div class="leaders">${LEADERS.map((l) => {
         const ok = open.includes(l.id);
-        return `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'}" data-id="${l.id}" ${ok ? '' : 'disabled'}>
-            <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒 ${l.unlockRegion}지역</em>`}
+        // 고를 수 있는지는 leadersOf(profile) 한 곳에서 정한다 (고양이 잠금은 progress.ts 의 extraOpen)
+        return `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok ? '' : 'disabled'}>
+            <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒 ${l.extra ? '로비' : `${l.unlockRegion}지역`}</em>`}
           </button>`;
       }).join('')}</div>
       <p class="soft center" id="trait">${leaderOf(leader).trait}</p>
@@ -166,7 +167,7 @@ export function showMain() {
   if (sb) { sb.classList.add('on-hero'); root.appendChild(sb); }
   root.querySelectorAll<HTMLButtonElement>('.leader').forEach((b) =>
     b.addEventListener('click', () => {
-      setLeader(b.dataset.id as ZodiacId);
+      setLeader(b.dataset.id as LeaderId);
       play('click');
       showMain();
     }),

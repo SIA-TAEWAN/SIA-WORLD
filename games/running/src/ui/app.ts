@@ -1,4 +1,4 @@
-import { ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { isCharId, type ZodiacId } from '../game/constants';
 import type { RankedEntry } from '../game/ranking';
 import type { RaceApi } from '../net/api';
 import type { RaceLobby } from '../net/lobby';
@@ -61,7 +61,7 @@ const charKey = () => `sia-world:avatar:${state.user.id}`;
 export function loadChar(): ZodiacId {
   try {
     const v = localStorage.getItem(charKey()) as ZodiacId | null;
-    if (v && ZODIAC_IDS.includes(v)) return v;
+    if (isCharId(v)) return v;
   } catch {
     /* 기본값 */
   }

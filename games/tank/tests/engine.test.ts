@@ -320,6 +320,23 @@ describe('보급 상자·십이지신', () => {
   });
 });
 
+it('고양이(야옹이): 능력치·무기 수치는 어흥이와 같고, 랜덤·AI 는 고르지 않는다', async () => {
+  const { randomTank, TANKS, WEAPONS, TANK_IDS, RANDOM_TANK_IDS } = await import('../src/game/data');
+  const { weapons: cw, name: _n, zodiac: _z, animal: _a, role: _r, color: _c, accent: _ac, ...catStats } = TANKS.cat;
+  const { weapons: tw, name: _n2, zodiac: _z2, animal: _a2, role: _r2, color: _c2, accent: _ac2, ...tigerStats } = TANKS.tiger;
+  expect(catStats).toEqual(tigerStats);
+  cw.forEach((w, i) => {
+    const { name: _x, desc: _d, ...a } = WEAPONS[w];
+    const { name: _y, desc: _e, ...b } = WEAPONS[tw[i]];
+    expect(a).toEqual(b);
+  });
+  expect(TANK_IDS).toContain('cat');
+  expect(RANDOM_TANK_IDS).toHaveLength(12);
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 3000; i++) expect(randomTank(rand)).not.toBe('cat');
+});
+
 it('필살기를 쓴 발사로는 게이지가 다시 차지 않는다', () => {
   const m = new Match(duo('tiger', 'ox'), 'valley', 4);
   m.current = 0;

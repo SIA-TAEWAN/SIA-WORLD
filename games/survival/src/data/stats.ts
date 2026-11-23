@@ -18,6 +18,7 @@ export type StatKey =
   | 'projSpeed' // 투사체 속도 (+비율)
   | 'regen' // 체력 자연 회복 (초당 값)
   | 'revive' // 부활 횟수 (+값)
+  | 'dodge' // 이 간격(초)마다 한 번 맞는 피해를 피한다 (값: 간격 초. 0이면 없음. 고양이 특성만 쓴다)
   | 'reroll'; // 레벨업 카드 다시 뽑기 (+값)
 
 export interface Mod {

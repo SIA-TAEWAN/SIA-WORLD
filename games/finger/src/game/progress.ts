@@ -1,4 +1,4 @@
-import { HERO_IDS, HEROES, MAX_LEVEL, MAX_TURNS, STAGES, TOWER_TURNS, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
+import { EXTRA_HERO_IDS, HERO_IDS, HEROES, MAX_LEVEL, MAX_TURNS, STAGES, TOWER_TURNS, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
 import { REGIONS } from '../data/regions';
 import { clearCoins, failCoins, levelCost, levelOf, rewardFor, totalCoins, towerCoins, upgradeCost, upgradeLv, upgradeOf } from '../data/growth';
 
@@ -90,9 +90,16 @@ export function stageOpen(p: FingerProfile, id: string): boolean {
   return st.no === 1 || cleared(p, `${st.region}-${st.no - 1}`);
 }
 
-/** 합류한 대원: 처음 3종 + 합류 지역의 5번째 스테이지를 깬 대원 */
+/**
+ * 추가 대원(고양이)을 쓸 수 있나. 지역 합류와 상관없다 — 시아코인으로 계정마다 연다 (서버 _check_character).
+ * 지금은 모두에게 열려 있다. 잠금(3단계)은 여기 한 곳만 바꾸면 heroesOf · 파티 고르기 · 시작 검사 · 레벨 올리기가 따라간다.
+ */
+export const extraOpen = (_p: FingerProfile, _id: HeroId): boolean => true;
+
+/** 합류한 대원: 처음 3종 + 합류 지역의 5번째 스테이지를 깬 대원 (십이지 순서) + 연 추가 대원 */
 export function heroesOf(p: FingerProfile): HeroId[] {
-  return HERO_IDS.filter((id) => HEROES[id].unlockRegion === 0 || cleared(p, `${HEROES[id].unlockRegion}-5`));
+  const zodiac: HeroId[] = HERO_IDS.filter((id) => HEROES[id].unlockRegion === 0 || cleared(p, `${HEROES[id].unlockRegion}-5`));
+  return [...zodiac, ...EXTRA_HERO_IDS.filter((id) => extraOpen(p, id))];
 }
 
 /** 판에 들고 갈 파티: 마지막 파티 중 합류한 대원만, 비었으면 합류한 대원 앞에서 4명 */

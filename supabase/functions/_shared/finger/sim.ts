@@ -50,6 +50,8 @@ export const MAX_FOES = 9;
 export const DEBUFF = { poisonMul: 0.3, poisonTurns: 3, slowMul: 0.7, weakMul: 0.6 };
 /** 불길 피해 = 요괴 공격력 × 이 값 */
 export const FIRE_MUL = 0.4;
+/** 고양이 덮치기: 멈춘 뒤 가장 가까운 요괴를 향해 이 속도(px/초)로 한 번 더 (방 끝에서 끝까지 닿는 빠르기) */
+export const POUNCE_SPEED = 1500;
 
 // ---------- 설정 (직렬화 가능한 값) ----------
 
@@ -234,6 +236,8 @@ export interface Mover {
   rerun: boolean;
   /** 돼지 굴러가기: 벽에 튕길수록 피해 커짐 */
   roll: boolean;
+  /** 고양이 덮치기: 멈추면 가장 가까운 요괴에게 한 번 더 뛰어든다 */
+  pounce: boolean;
   /** 지금 안에 있는 바닥 장애물 번호 (들어갈 때 한 번만) */
   zones: number[];
   /** 순간이동해 나온 구멍 (구멍 번호 × 2 + 끝). 그 구멍을 벗어나기 전에는 다시 빨려 들지 않는다. 없으면 -1 */
@@ -297,6 +301,7 @@ export type SimEvent =
   | { t: 'combo'; hero: number; kind: ComboKind; x: number; y: number; r: number; lines: [number, number, number, number][]; targets: number[] }
   | { t: 'special'; hero: number; kind: SpecialKind }
   | { t: 'dash'; hero: number }
+  | { t: 'pounce'; hero: number; x: number; y: number; tx: number; ty: number }
   | { t: 'revive'; hero: number }
   | { t: 'heal'; hero: number; v: number }
   | { t: 'attack'; id: number; kind: AttackKind; x: number; y: number; area: number; hits: { hero: number; dmg: number }[]; x2?: number; y2?: number }
@@ -454,7 +459,7 @@ export function beginShot(s: RunState, input: ShotInput): SimEvent[] {
   s.movers = [
     {
       hero: s.cur, x: h.x, y: h.y, vx: dx * v0, vy: dy * v0, r: h.r, atk, pierce: h.type === 'pierce', touching: [], bounces: 0, stopped: false, dx, dy, v0,
-      clone: false, rerun: false, roll: false, zones: [], warp: -1,
+      clone: false, rerun: false, roll: false, pounce: false, zones: [], warp: -1,
     },
   ];
   s.comboUsed = [];
@@ -486,6 +491,28 @@ export function stepShot(s: RunState): SimEvent[] {
     main.vy = main.dy * main.v0 * 0.7;
     main.touching = [];
     ev.push({ t: 'dash', hero: main.hero });
+  } else if (main.stopped && main.pounce && s.shotSteps < MAX_SHOT_STEPS) {
+    // 고양이 덮치기: 멈춘 자리에서 가장 가까운 요괴(같으면 먼저 나온)를 향해 한 번 더. 요괴가 없으면 그대로 멈춘다
+    main.pounce = false;
+    let t: Foe | null = null;
+    let bd = 0;
+    for (const f of visibleFoes(s)) {
+      const d = dist2(main.x, main.y, f.x, f.y);
+      if (!t || d < bd) {
+        t = f;
+        bd = d;
+      }
+    }
+    if (t && bd > 1e-6) {
+      const d = Math.sqrt(bd);
+      main.stopped = false;
+      main.dx = (t.x - main.x) / d;
+      main.dy = (t.y - main.y) / d;
+      main.vx = main.dx * POUNCE_SPEED;
+      main.vy = main.dy * POUNCE_SPEED;
+      main.touching = [];
+      ev.push({ t: 'pounce', hero: main.hero, x: main.x, y: main.y, tx: t.x, ty: t.y });
+    }
   }
   if (s.movers.every((m) => m.stopped)) {
     const m = s.movers[0];

@@ -1,9 +1,9 @@
-import { HELL, ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
+import { HELL, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
-import { characterPrice, endlessOpen, hellOpen } from '../game/progress';
+import { characterOpen, characterPrice, endlessOpen, hellOpen } from '../game/progress';
 import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
@@ -16,7 +16,7 @@ import { whyText } from './upgrade';
 /** 잠금을 적용한다: 프로필의 해금 목록에 없는 캐릭터·맵은 고를 수 없다 (해금은 서버가 판 결과를 보고 정한다) */
 const LOCKS_ON = true;
 
-const charLocked = (id: ZodiacId) => LOCKS_ON && !state.profile.unlockedCharacters.includes(id);
+const charLocked = (id: CharId) => LOCKS_ON && !characterOpen(state.profile, id);
 const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includes(id);
 /** 무한 모드는 그 맵을 4분 모드로 클리어해야 열린다 (서버의 맵별 최고 기록 기준) */
 const endlessLocked = (id: string) => LOCKS_ON && !endlessOpen(state.profile, id);
@@ -28,7 +28,7 @@ const modeLocked = (mode: RunMode, id: string) => (mode === 'endless' ? endlessL
 // ───────────────────────── 메인 ─────────────────────────
 
 export function showMain() {
-  const others = ZODIAC_IDS.filter((c) => c !== state.char).sort(() => Math.random() - 0.5);
+  const others = CHAR_IDS.filter((c) => c !== state.char).sort(() => Math.random() - 0.5);
   let off: (() => void) | null = null;
   const coinsText = () => `🪙 ${state.profile.coins.toLocaleString()}`;
   const root = screen(
@@ -104,7 +104,7 @@ export function showMain() {
 // ───────────────────────── 출전 준비 1: 캐릭터 고르기 ─────────────────────────
 
 export function showCharSelect() {
-  let pick: ZodiacId = charLocked(state.char) ? 'rat' : state.char;
+  let pick: CharId = charLocked(state.char) ? 'rat' : state.char;
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>캐릭터 고르기</h2><span class="spacer"></span></div>
      <div class="card info" id="info"></div>
@@ -140,7 +140,7 @@ export function showCharSelect() {
     const price = characterPrice(pick);
     root.querySelector('#mycoins')!.textContent = `${state.profile.coins.toLocaleString()}닢`;
     root.querySelectorAll<HTMLElement>('.char').forEach((b) => {
-      const l = charLocked(b.dataset.c as ZodiacId);
+      const l = charLocked(b.dataset.c as CharId);
       b.classList.toggle('locked', l);
       b.querySelector('.lock')?.classList.toggle('hidden', !l);
     });
@@ -154,7 +154,7 @@ export function showCharSelect() {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
     sfx('toggle');
-    pick = b.dataset.c as ZodiacId;
+    pick = b.dataset.c as CharId;
     paint();
   });
   root.querySelector('#back')!.addEventListener('click', () => {

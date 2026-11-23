@@ -1,10 +1,9 @@
-import type { ZodiacId } from '../data/balance';
+import type { CharId } from '../data/balance';
 import { ROSTER, towerOf } from '../data/characters';
 import { CHAR_MAX_LV, LEVEL_DMG, PERKS, UPGRADES, levelCost, upgradeCost } from '../data/growth';
-import { REGIONS } from '../data/regions';
 import { charLevel, upgradeLevel } from '../game/progress';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, josa, nav, screen, setProfile, state, toast, watchProfile, whyText } from './app';
+import { esc, lockHint, nav, screen, setProfile, state, toast, watchProfile, whyText } from './app';
 import { sfx } from './sfx';
 
 /**
@@ -13,7 +12,7 @@ import { sfx } from './sfx';
  */
 export function showChars() {
   let tab: 'chars' | 'common' = 'chars';
-  let pick: ZodiacId = state.profile.unlocked[0] ?? 'rat';
+  let pick: CharId = state.profile.unlocked[0] ?? 'rat';
   let busy = false;
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>캐릭터</h2><span class="spacer"></span></div>
@@ -45,7 +44,7 @@ export function showChars() {
                  <ul class="perks">${perks}</ul>
                  ${def ? `<p class="soft">${esc(def.desc)}<br/>3단계: ${esc(def.special)}</p>` : '<p class="soft">아직 준비 중인 캐릭터예요</p>'}
                  <button class="btn primary" id="up" ${cost === null ? 'disabled' : ''}>${cost === null ? '최대 레벨' : `레벨업 🪙 ${cost.toLocaleString()}`}</button>`
-              : `<p class="soft">🔒 ${r.unlockRegion}지역 ${esc(josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를'))} 클리어하면 함께할 수 있어요</p>`
+              : `<p class="soft">🔒 ${esc(lockHint(r))}</p>`
           }
         </div>
       </div>
@@ -101,7 +100,7 @@ export function showChars() {
     const ch = t.closest('.char') as HTMLElement | null;
     if (ch) {
       sfx('toggle');
-      pick = ch.dataset.c as ZodiacId;
+      pick = ch.dataset.c as CharId;
       return paint();
     }
     if (t.closest('#up')) return void act(() => state.api!.levelUp(pick), 'survLevel');

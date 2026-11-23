@@ -241,9 +241,10 @@ describe('도감', () => {
   });
 
   it('모은 수: 처음에는 캐릭터 셋뿐', () => {
-    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 15 + 8 + 12 });
+    // 캐릭터: 쥐·소·호랑이 + 고양이 (고양이는 로비에서 연다: characterOpen. 지금은 언제나 열려 있다)
+    expect(codexCount(defaultProfile())).toEqual({ have: 4, all: 9 + 12 + 15 + 8 + 13 });
     const run2 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
-    expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);
+    expect(codexCount(run2.profile).have).toBe(4 + 1 + 2 + 1 + 1);
   });
 
   it('판에서 만난 요괴·보스, 얻은 무기·패시브·진화가 판 결과에 담긴다', () => {

@@ -186,7 +186,7 @@ button, input { font: inherit; color: inherit; }
 .weak { flex: none; display: flex; align-items: center; gap: 3px; }
 .weak img { width: 28px; height: 28px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
 .weak img.dimmed { filter: grayscale(1); opacity: 0.5; }
-.chars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.chars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .char { position: relative; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 3px 0 2px; cursor: pointer; text-align: center; min-width: 0; }
 /* 캐릭터 얼굴은 모두 같은 크기의 원 안에 (그림마다 여백이 달라 크기가 들쭉날쭉해 보이지 않게) */
 .char img { width: 78%; aspect-ratio: 1; object-fit: cover; display: block; margin: 0 auto; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); }

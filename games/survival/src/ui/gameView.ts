@@ -656,6 +656,10 @@ export function showGame(setup: GameSetup) {
         sfx('cutin', { volume: 0.6 });
         setCut(`<small>${esc(ENEMIES[e.a].name)} 떼가 몰려온다!</small>`, 'bad', 1500);
         break;
+      case EV.dodge:
+        // 고양이 특성: 피해 한 번을 피했다 (자주 나오므로 소리만 작게)
+        sfx('boost', { volume: 0.45, rate: 1.5 });
+        break;
       case EV.revive:
         sfx('tankHeal');
         scene()?.burst('evolve');

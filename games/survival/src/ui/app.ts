@@ -1,4 +1,4 @@
-import { VIEW_W, ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
+import { VIEW_W, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
 import type { RunSummary } from '../game/sim';
 import { defaultProfile, type FinishResult, type SurvivalProfile } from '../game/progress';
 import type { SurvivalApi } from '../net/api';
@@ -11,7 +11,7 @@ export const stage = document.getElementById('stage')!;
 
 /** 판을 시작할 때 넘기는 것 */
 export interface GameSetup {
-  char: ZodiacId;
+  char: CharId;
   map: string;
   /** 모드 (없으면 4분 모드) */
   mode?: RunMode;
@@ -44,7 +44,7 @@ export const state = {
   /** 접속 인원 채널 */
   lobby: null as SurvivalLobby | null,
   /** 마지막으로 고른 캐릭터·맵·모드 */
-  char: 'tiger' as ZodiacId,
+  char: 'tiger' as CharId,
   map: 'field',
   mode: 'normal' as RunMode,
 };
@@ -113,16 +113,16 @@ new ResizeObserver(fitUnit).observe(stage);
 
 // ---------- 마지막으로 고른 캐릭터 (SIA WORLD 공용 저장 위치: shared/zodiac.js 와 같은 열쇠) ----------
 const charKey = () => `sia-world:avatar:${state.user.id}`;
-export function loadChar(): ZodiacId {
+export function loadChar(): CharId {
   try {
-    const v = localStorage.getItem(charKey()) as ZodiacId | null;
-    if (v && ZODIAC_IDS.includes(v)) return v;
+    const v = localStorage.getItem(charKey()) as CharId | null;
+    if (v && CHAR_IDS.includes(v)) return v;
   } catch {
     /* 기본값 */
   }
   return 'tiger';
 }
-export function saveChar(c: ZodiacId) {
+export function saveChar(c: CharId) {
   state.char = c;
   try {
     localStorage.setItem(charKey(), c);

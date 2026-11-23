@@ -3,14 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { PICK_CAP, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, towerCoins } from '../src/data/growth';
 import { heroRows, levelRows, stageRows, upgradeRows } from '../src/data/sqlrows';
 import { LIMITS } from '../src/game/progress';
-import { MAX_SHOT_STEPS, STAGES } from '../src/sim';
+import { EXTRA_HERO_IDS, HEROES, MAX_SHOT_STEPS, STAGES } from '../src/sim';
 
 /**
- * 서버(067_finger.sql · 070_finger_limits.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 서버(067_finger.sql · 070_finger_limits.sql · 077_cat_finger.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
  * 다르면 npm run sqlrows 로 줄을 만들어 넣는다 (이미 올라간 마이그레이션은 고치지 않고 새 파일에 넣는다).
  */
 // 시아핑거 함수를 정의하는 마이그레이션 (순서대로). 함수를 다시 정의하는 새 파일을 만들면 여기에 넣는다 — 마지막 정의를 본다
-const FILES = ['067_finger.sql', '070_finger_limits.sql'];
+const FILES = ['067_finger.sql', '070_finger_limits.sql', '077_cat_finger.sql'];
 const SQL = FILES.map((f) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8')).join('\n');
 /** fn 의 최신 정의 (뒤 파일의 create or replace 가 이긴다) */
 const block = (fn: string) => {
@@ -43,6 +43,18 @@ describe('SQL 표', () => {
     expect(levelRows().length).toBe(29);
   });
   it('대원 합류 지역이 같다', () => expect(rowsIn('_finger_heroes')).toEqual(heroRows()));
+  it('추가 대원(고양이)은 지역 합류 표 밖, 같은 목록 · 공용 캐릭터 검사를 거친다 (077)', () => {
+    const ids = block('_finger_extra_heroes').match(/array\[([^\]]*)\]/)?.[1].split(',').map((x) => x.trim().replace(/'/g, ''));
+    expect(ids).toEqual([...EXTRA_HERO_IDS]);
+    for (const id of EXTRA_HERO_IDS) {
+      expect(HEROES[id].unlockRegion).toBe(-1);
+      expect(rowsIn('_finger_heroes').some((l) => l.startsWith(`('${id}'`))).toBe(false);
+    }
+    expect(block('_finger_unlocked')).toContain('|| public._finger_extra_heroes()');
+    expect(block('finger_start')).toContain('perform public._check_character(me, x);');
+    expect(block('finger_start')).toContain('not public._finger_is_hero(y)');
+    expect(block('finger_level_up')).toContain('perform public._check_character(me, p_hero);');
+  });
 
   it('검증 기준 값이 같다', () => {
     const c = (name: string) => Number(block('_finger_const').match(new RegExp(`when '${name}' then ([0-9.]+)`))?.[1]);

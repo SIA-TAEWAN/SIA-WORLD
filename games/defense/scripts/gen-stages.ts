@@ -15,7 +15,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BOARD_H, BOARD_W, COLS, ROAD_W, ROWS, SLOT_SIZE, type ZodiacId } from '../src/data/balance';
+import { BOARD_H, BOARD_W, COLS, ROAD_W, ROWS, SLOT_SIZE, type CharId } from '../src/data/balance';
 import { ROSTER, towerOf } from '../src/data/characters';
 import { ENEMY_INDEX } from '../src/data/enemies';
 import { presetUpgrades } from '../src/data/growth';
@@ -224,7 +224,7 @@ const TARGET = [0.8, 0.77, 0.74, 0.71, 0.66];
 const BOSS_KILL = 0.45;
 
 function rates(stage: StageDef, region: number): { clear: number; kill: number } {
-  const unlocked = ROSTER.filter((c) => c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as ZodiacId[];
+  const unlocked = ROSTER.filter((c) => c.unlockRegion >= 0 && c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as CharId[];
   const squad = pickSquad(stage, unlocked);
   const levels = Object.fromEntries(squad.map((c) => [c, CAL_LV(region)]));
   let clears = 0;
@@ -254,7 +254,7 @@ function calibrateBoss(stage: StageDef, region: number): number {
 /** 12레벨 + 공통 강화 최대의 보통 실력이 하나도 새지 않게 막는(별 3개) 비율 — 모든 별 3개는 그때의 목표 */
 const PERFECT = 0.3;
 function perfectRate(stage: StageDef, region: number): number {
-  const unlocked = ROSTER.filter((c) => c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as ZodiacId[];
+  const unlocked = ROSTER.filter((c) => c.unlockRegion >= 0 && c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as CharId[];
   const squad = pickSquad(stage, unlocked);
   const levels = Object.fromEntries(squad.map((c) => [c, 12]));
   let n = 0;
@@ -275,7 +275,7 @@ const FLOOR_CLEAR = 0.9;
  */
 const STAR2 = 0.45;
 function star2Rate(stage: StageDef, region: number): number {
-  const unlocked = ROSTER.filter((c) => c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as ZodiacId[];
+  const unlocked = ROSTER.filter((c) => c.unlockRegion >= 0 && c.unlockRegion < region && towerOf(c.id)).map((c) => c.id) as CharId[];
   const squad = pickSquad(stage, unlocked);
   const levels = Object.fromEntries(squad.map((c) => [c, CAL_LV(region)]));
   let n = 0;

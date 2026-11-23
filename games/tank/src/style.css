@@ -1636,9 +1636,10 @@ body.in-game .sound-fab {
 }
 
 /* 12지신 선택 */
+/* 탱크 13대(12지신 + 고양이) + 랜덤 = 14칸: 넓은 화면 7칸 × 2줄 */
 .zodiac-pick {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 6px;
 }
 .zodiac-pick button {

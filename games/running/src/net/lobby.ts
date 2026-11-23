@@ -1,4 +1,4 @@
-import { LANES, ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { LANES, isCharId, type ZodiacId } from '../game/constants';
 import type { RaceApi } from './api';
 import type { Channel, Member } from './channel';
 
@@ -57,7 +57,7 @@ export function roomsFrom(members: readonly Member<LobbyMeta>[]): RoomInfo[] {
     rooms.push({
       code,
       host: String(host.name ?? '').slice(0, 12) || '이름 없음',
-      hostChar: ZODIAC_IDS.includes(host.char) ? host.char : 'tiger',
+      hostChar: isCharId(host.char) ? host.char : 'tiger',
       count: list.length,
       busy: list.some((m) => m.meta.busy === true),
       at: Number(host.at) || 0,

@@ -1,4 +1,4 @@
-import { SCREEN_W, ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { SCREEN_W, isCharId, type ZodiacId } from '../game/constants';
 import type { MatchResult, MatchSetup } from '../match/game';
 import type { VolleyApi } from '../net/api';
 import type { VolleyLobby } from '../net/lobby';
@@ -71,7 +71,7 @@ const charKey = () => `sia-world:avatar:${state.user.id}`;
 export function loadChar(): ZodiacId {
   try {
     const v = localStorage.getItem(charKey()) as ZodiacId | null;
-    if (v && ZODIAC_IDS.includes(v)) return v;
+    if (isCharId(v)) return v;
   } catch {
     /* 기본값 */
   }

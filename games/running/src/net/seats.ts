@@ -15,7 +15,7 @@ export interface PlayerMeta {
 }
 
 /** 이 기기의 판본. 기기끼리 주고받는 내용이 바뀌면 올린다 (더 새 판본이 방에 있으면 새로고침 안내) */
-export const CLIENT_VERSION = 2;
+export const CLIENT_VERSION = 3;
 
 export interface MemberInfo extends PlayerMeta {
   id: string;
@@ -55,7 +55,8 @@ export function resolveChar(me: MemberInfo, members: readonly MemberInfo[]): Zod
   const lost = others.some((m) => m.char === me.char && (m.pickAt < me.pickAt || (m.pickAt === me.pickAt && m.id < me.id)));
   if (!lost) return me.char;
   const used = new Set(others.map((m) => m.char));
-  const start = ZODIAC_IDS.indexOf(me.char);
+  // 다시 고르는 건 십이지 12개 안에서만 (추가 캐릭터는 열어야 쓴다). 내가 추가 캐릭터면 start = -1 → 쥐부터
+  const start = (ZODIAC_IDS as readonly ZodiacId[]).indexOf(me.char);
   for (let i = 1; i <= ZODIAC_IDS.length; i++) {
     const id = ZODIAC_IDS[(start + i) % ZODIAC_IDS.length];
     if (!used.has(id)) return id;
@@ -63,7 +64,7 @@ export function resolveChar(me: MemberInfo, members: readonly MemberInfo[]): Zod
   return me.char;
 }
 
-/** AI 캐릭터: 사람이 고르지 않은 것 중에서 방마다 정해진 무작위 순서로 (모든 기기가 같게) */
+/** AI 캐릭터: 사람이 고르지 않은 십이지 중에서 (추가 캐릭터는 고르지 않는다) 방마다 정해진 무작위 순서로 (모든 기기가 같게) */
 export function aiChars(roomKey: string, taken: readonly ZodiacId[], n: number): ZodiacId[] {
   const order = shuffle(ZODIAC_IDS, makeRng(hashSeed(`ai:${roomKey}`)));
   return order.filter((c) => !taken.includes(c)).slice(0, n);

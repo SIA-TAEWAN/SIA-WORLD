@@ -3,8 +3,8 @@
  * 인자: 일감 목록(JSON) [{ key, stage, skill, lv?, upg?, squad?, without?, with?, from, to }] → 일감마다 한 줄씩 결과(JSON)를 찍는다.
  * 인자가 'towers' 면 캐릭터별 효율 표, 'journey' 면 처음부터 끝까지 가는 데 걸리는 판 수 어림셈, 'info' 면 스테이지·캐릭터 목록.
  */
-import { COINS, WAVES, type ZodiacId } from '../src/data/balance';
-import { ROSTER, TOWERS, spentAt, towerOf } from '../src/data/characters';
+import { COINS, WAVES, type CharId } from '../src/data/balance';
+import { BOUGHT, ROSTER, TOWERS, spentAt, towerOf } from '../src/data/characters';
 import { CHAR_MAX_LV, UPGRADES, levelCost, presetUpgrades, upgradeCost, type Upgrades } from '../src/data/growth';
 import { REGIONS } from '../src/data/regions';
 import { STAGES, stageOf, stagesOf } from '../src/data/stages';
@@ -19,25 +19,26 @@ interface Job {
   lv?: number;
   upg?: number;
   /** 데려갈 캐릭터 (없으면 그 지역에서 쓸 수 있는 캐릭터 가운데 보통 실력이 고르는 5종) */
-  squad?: ZodiacId[];
+  squad?: CharId[];
   /** 이 캐릭터를 뺀 4종만 / 그 4종에 이 캐릭터를 더한 5종 */
-  without?: ZodiacId;
-  with?: ZodiacId;
+  without?: CharId;
+  with?: CharId;
   from: number;
   to: number;
 }
 
 /** 그 지역에 들어설 때 쓸 수 있는 캐릭터 (앞 지역들을 클리어해 해금한 것) */
 /** (끝없는 모드의 맵은 지역 0: 모든 캐릭터를 쓸 수 있는 것으로 본다) */
-const unlockedAt = (region: number) => ROSTER.filter((c) => (region === 0 || c.unlockRegion < region) && towerOf(c.id)).map((c) => c.id);
+/** (고양이처럼 스테이지로 열리지 않는 캐릭터는 넣지 않는다: 밸런스의 바탕은 고양이가 없는 명단. 'chars' 표의 with 로만 더한다) */
+const unlockedAt = (region: number) => ROSTER.filter((c) => c.unlockRegion !== BOUGHT && (region === 0 || c.unlockRegion < region) && towerOf(c.id)).map((c) => c.id);
 
-function squadFor(j: Job): ZodiacId[] {
+function squadFor(j: Job): CharId[] {
   if (j.squad) return j.squad;
   const stage = stageOf(j.stage)!;
   const pool = unlockedAt(stage.region);
   // 캐릭터 한 종의 쓸모: 그 캐릭터를 뺀 나머지에서 고른 4종만 데려갔을 때(without)와, 거기에 그 캐릭터를 다섯째로 더했을 때(with)를 견준다
   if (j.without) return pickSquad(stage, pool.filter((c) => c !== j.without), undefined, 4);
-  if (j.with) return pickSquad(stage, pool, j.with);
+  if (j.with) return pickSquad(stage, pool.includes(j.with) ? pool : [...pool, j.with], j.with);
   return pickSquad(stage, pool);
 }
 
@@ -52,7 +53,7 @@ if (arg === 'info') {
     levels: t.levels.map((L, i) => {
       const dps = (L.dmg * (L.count ?? 1)) / L.every + (L.poison ?? 0) + (L.burn ?? 0);
       const spent = spentAt(t, i + 1);
-      const note = [L.splash ? `범위${L.splash}` : '', L.stun ? `멈춤${L.stun}초` : '', L.slow ? `감속${L.slow}` : '', L.haste ? `지원+${Math.round(L.haste * 100)}%` : '', L.income ? `기운+${L.income}` : '', L.airMul ? `공중×${L.airMul}` : '', L.bossMul ? `보스×${L.bossMul}` : ''].filter(Boolean).join(' ');
+      const note = [L.splash ? `범위${L.splash}` : '', L.stun ? `멈춤${L.stun}초` : '', L.slow ? `감속${L.slow}` : '', L.haste ? `지원+${Math.round(L.haste * 100)}%` : '', L.income ? `기운+${L.income}` : '', L.airMul ? `공중×${L.airMul}` : '', L.bossMul ? `보스×${L.bossMul}` : '', L.execute ? `마무리${Math.round(L.execute * 100)}%` : '', t.target === 'weak' && i === 0 ? '약한 요괴부터' : ''].filter(Boolean).join(' ');
       return { spent, dps, per: dps / spent, range: L.range, note };
     }),
   }));
@@ -65,7 +66,7 @@ if (arg === 'info') {
   let coins = 0;
   let runs = 0;
   let stars = 0;
-  const levels: Partial<Record<ZodiacId, number>> = {};
+  const levels: Partial<Record<CharId, number>> = {};
   const upgrades: Record<string, number> = {};
   const rows: unknown[] = [];
   /** 지금까지 깬 스테이지와 그 별 (다시 하기용) */

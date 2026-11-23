@@ -2,7 +2,7 @@
  * 판의 상태. 화면(Phaser·DOM)과 무관한 순수 자료이고, step(state, input) 이 한 걸음씩 바꾼다.
  * 적·투사체·지대·아이템·이펙트·피해 숫자는 모두 풀(Pool)에 미리 만들어 두고 다시 쓴다 (판 도중에 객체를 새로 만들지 않는다).
  */
-import type { RunMode, ZodiacId } from '../data/balance';
+import type { RunMode, CharId } from '../data/balance';
 import type { CharacterDef } from '../data/characters';
 import type { MapDef } from '../data/maps';
 import type { UpgradeLevels } from '../data/upgrades';
@@ -228,6 +228,8 @@ export const EV = {
   kill: 16,
   /** 헬 모드: 보스가 헬 전용 패턴을 시작함 (a: 보스 번호) */
   hellPattern: 17,
+  /** 고양이 특성: 피해를 피함 */
+  dodge: 18,
 } as const;
 
 export interface Ev {
@@ -255,13 +257,15 @@ export interface Stats {
   dot: number;
   projSpeed: number;
   regen: number;
+  /** 피하기 간격 (초, 0이면 없음): 고양이 특성 */
+  dodge: number;
 }
 
 export type Phase = 'play' | 'levelup' | 'over' | 'clear';
 
 export interface RunConfig {
   seed: number;
-  char: ZodiacId;
+  char: CharId;
   map: string;
   /** 모드 (없으면 4분 모드) */
   mode?: RunMode;
@@ -318,6 +322,8 @@ export interface State {
     revives: number;
     /** 느려진 남은 걸음 수 (야광귀에게 맞았을 때) */
     slow: number;
+    /** 다음 피하기까지 남은 걸음 수 (0이면 준비됨. 고양이 특성) */
+    dodge: number;
   };
   stats: Stats;
   level: number;

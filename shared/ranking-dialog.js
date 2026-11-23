@@ -12,6 +12,7 @@ import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg, tierOfPlace } from './rank.js';
 import { supabase } from './supabase.js';
 import { GAMES, loadGameOpen } from './games.js';
+import { ALL_CHARACTER_IDS } from './characters.js';
 
 const STYLE_ID = 'sia-ranking-style';
 /** 탭 → 게임 id (shared/games.js). 관리자가 로비에서 연 게임의 탭만 보인다 */
@@ -107,7 +108,8 @@ export async function getRaceRanking(meId = null) {
 }
 /** 승률 표시: 승 ÷ (승 + 패), 소수점 없이 */
 export const volleyRate = (wins, losses) => (wins + losses > 0 ? `${Math.round((wins / (wins + losses)) * 100)}%` : '-');
-const ZODIAC = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'];
+// 십이지 12 + 고양이
+const ZODIAC = ALL_CHARACTER_IDS;
 /** 캐릭터 얼굴 그림 (shared/images/zodiac/face) */
 const faceUrl = (id) => new URL(`images/zodiac/face/${ZODIAC.includes(id) ? id : 'tiger'}.png`, import.meta.url).href;
 

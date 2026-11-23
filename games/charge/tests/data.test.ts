@@ -49,6 +49,13 @@ describe('스테이지 데이터', () => {
   it('대장: 처음 3종, 나머지는 지역 보스를 깨면 하나씩', () => {
     expect(unlockedLeaders(() => false)).toEqual(['rat', 'ox', 'tiger']);
     expect(unlockedLeaders((id) => id === '1-5')).toContain('rabbit');
-    expect(unlockedLeaders(() => true)).toHaveLength(LEADERS.length);
+    expect(unlockedLeaders(() => true)).toHaveLength(12);
+  });
+
+  it('고양이: 13번째 대장, 진행으로는 열리지 않는다', () => {
+    expect(LEADERS).toHaveLength(13);
+    expect(new Set(LEADERS.map((l) => l.id)).size).toBe(13);
+    expect(LEADERS.filter((l) => l.extra).map((l) => l.id)).toEqual(['cat']);
+    expect(unlockedLeaders(() => true)).not.toContain('cat');
   });
 });

@@ -68,6 +68,23 @@ describe('요괴 무리와 보스', () => {
     expect(s.phase).toBe('fail');
   });
 
+  it('고양이 아홉 목숨: 모두 쓰러지면 한 번만 최소 9명으로 다시 일어난다', () => {
+    const s = createRun(tiny({ startTroops: 3, items: [{ t: 'horde', z: 20, kind: 'club', count: 30, span: 'full' }] }), 'cat');
+    step(s);
+    expect(s.phase).toBe('run');
+    expect(s.troops).toBe(9);
+    expect(s.lives).toBe(0);
+    expect(s.events.some((e) => e.type === 'lives')).toBe(true);
+    for (let i = 0; i < 30 && s.phase === 'run'; i++) step(s);
+    expect(s.phase).toBe('fail');
+  });
+
+  it('고양이: 다시 일어날 때는 이번 판 최대 대원의 15%', () => {
+    const s = createRun(tiny({ startTroops: 200, items: [{ t: 'horde', z: 20, kind: 'club', count: 300, span: 'full' }] }), 'cat');
+    step(s);
+    expect(s.troops).toBe(30);
+  });
+
   it('보스를 쓰러뜨리면 클리어, 공격 자리에서 비키면 잃지 않는다', () => {
     const s = createRun(tiny({ startTroops: 20, bossZ: 600, boss: { kind: 'chief', hp: 400, every: 1.5, warn: 1, width: 120, frac: 0.5 } }), 'rat');
     for (let i = 0; i < 60 / STEP && s.phase !== 'clear' && s.phase !== 'fail'; i++) {

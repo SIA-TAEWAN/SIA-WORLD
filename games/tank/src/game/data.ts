@@ -2,7 +2,7 @@ import tanksJson from '../data/tanks.json';
 import weaponsJson from '../data/weapons.json';
 import itemsJson from '../data/items.json';
 
-export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig' | 'zodiac';
+export type TankId = 'rat' | 'ox' | 'tiger' | 'rabbit' | 'dragon' | 'snake' | 'horse' | 'sheep' | 'monkey' | 'rooster' | 'dog' | 'pig' | 'cat' | 'zodiac';
 export type ItemId = 'double' | 'power' | 'repair' | 'teleport';
 export type Behavior = 'normal' | 'drill' | 'drop' | 'laser' | 'bounce' | 'build' | 'push' | 'split' | 'roll' | 'homing' | 'skip' | 'meteor' | 'firework';
 
@@ -84,15 +84,19 @@ export interface ItemDef {
 export const TANKS = tanksJson as Record<TankId, TankDef>;
 export const WEAPONS = weaponsJson as Record<string, WeaponDef>;
 export const ITEMS = itemsJson as Record<ItemId, ItemDef>;
-/** 고를 수 있는 12지신 탱크 (십이지신은 랜덤으로만) */
+/** 십이지 밖의 추가 캐릭터 (shared/characters.js 의 EXTRA_IDS 와 같게). 계정마다 열어야 쓰는 캐릭터라 랜덤·AI 는 고르지 않는다 */
+export const EXTRA_TANK_IDS: readonly TankId[] = ['cat'];
+/** 고를 수 있는 탱크: 12지신 + 추가 캐릭터 (십이지신은 랜덤으로만) */
 export const TANK_IDS: TankId[] = (Object.keys(TANKS) as TankId[]).filter((t) => t !== 'zodiac');
+/** 랜덤·AI 가 고르는 12지신 탱크 (추가 캐릭터 제외. 온라인에서 시드로 모든 기기가 같은 결과를 내야 하므로 순서를 바꾸지 않는다) */
+export const RANDOM_TANK_IDS: TankId[] = TANK_IDS.filter((t) => !EXTRA_TANK_IDS.includes(t));
 export const ALL_TANK_IDS = Object.keys(TANKS) as TankId[];
-/** 탱크 고르기: 12지신 중 하나 또는 '랜덤'(게임 시작 때 정해짐) */
+/** 탱크 고르기: 고를 수 있는 탱크 중 하나 또는 '랜덤'(게임 시작 때 정해짐) */
 export type TankChoice = TankId | 'random';
-/** 랜덤 선택: 20% 확률로 십이지신, 나머지는 12대 중 하나 (alwaysZodiac: 관리자는 언제나 열두빛) */
+/** 랜덤 선택: 20% 확률로 십이지신, 나머지는 12지신 12대 중 하나 (alwaysZodiac: 관리자는 언제나 열두빛) */
 export function randomTank(rand: () => number = Math.random, alwaysZodiac = false): TankId {
   if (alwaysZodiac) return 'zodiac';
-  return rand() < 0.2 ? 'zodiac' : TANK_IDS[Math.floor(rand() * TANK_IDS.length)];
+  return rand() < 0.2 ? 'zodiac' : RANDOM_TANK_IDS[Math.floor(rand() * RANDOM_TANK_IDS.length)];
 }
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 

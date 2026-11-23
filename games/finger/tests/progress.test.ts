@@ -88,7 +88,7 @@ describe('열기 · 강화 · 레벨', () => {
     const p = emptyProfile();
     expect(stageOpen(p, '1-1')).toBe(true);
     expect(stageOpen(p, '1-2')).toBe(false);
-    expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger']);
+    expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger', 'cat']); // 고양이는 지역 합류 밖 (지금은 모두에게 열림 — 잠금은 extraOpen)
     for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5']) p.stages[id] = 1;
     expect(regionOpen(p, 2)).toBe(false); // 별 5개 < 9
     for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5']) p.stages[id] = 2;
@@ -130,7 +130,7 @@ describe('열기 · 강화 · 레벨', () => {
   });
 
   it('스냅숏은 파티 대원 레벨과 강화만, 서버 프로필 모양을 읽는다', () => {
-    const p = normalize({ coins: '120', stages: { '1-1': 3, '9-9': 2, '1-2': 0 }, upgrades: { hp: 2, coin: 99, x: 1 }, levels: { rat: 4, cat: 3 }, heroes: ['rat'] });
+    const p = normalize({ coins: '120', stages: { '1-1': 3, '9-9': 2, '1-2': 0 }, upgrades: { hp: 2, coin: 99, x: 1 }, levels: { rat: 4, wolf: 3 }, heroes: ['rat'] });
     expect(p).toEqual({ coins: 120, stages: { '1-1': 3 }, upgrades: { hp: 2, coin: 5 }, levels: { rat: 4 }, tower: null });
     expect(normalize({ tower: { floor: '12', turns: 40 } }).tower).toEqual({ floor: 12, turns: 40 });
     expect(normalize({ tower: { floor: 0, turns: 3 } }).tower).toBeNull();

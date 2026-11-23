@@ -1,10 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ENDLESS, RUN_SEC, ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
+import { ENDLESS, RUN_SEC, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
 import { CHARACTERS } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { UPGRADE_TOTAL } from '../data/upgrades';
 import {
-  LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, endlessOpen, hellOpen, minRealTime, rejectReason, resetUpgrades, unlockCharacter, withRecords,
+  LIMITS, applyRun, buyUpgrade, characterOpen, cleanProfile, defaultProfile, endlessOpen, hellOpen, minRealTime, rejectReason, resetUpgrades, unlockCharacter, withRecords,
   type EndlessRecord, type FinishResult, type HellRecord, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../game/progress';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
@@ -46,7 +46,7 @@ export interface SurvivalApi {
    * mode: 무한 모드면 'endless' (그 맵을 4분 모드로 클리어하지 않았으면 — 클리어 기록도 없고 다음 맵도 안 열렸으면 — ApiError 'endless locked'),
    *       헬 모드면 'hell' (같은 조건. 안 열렸으면 ApiError 'hell locked')
    */
-  start(map: string, character: ZodiacId, skipSec?: number, mode?: RunMode): Promise<string | null>;
+  start(map: string, character: CharId, skipSec?: number, mode?: RunMode): Promise<string | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
   finish(report: RunReport): Promise<{ profile: SurvivalProfile; result: FinishResult } | null>;
   /** 임시 보관해 둔 결과를 다시 보낸다 → 올라간 판 수 (이미 보내는 중이면 그 일이 끝나기를 기다린다) */
@@ -60,7 +60,7 @@ export interface SurvivalApi {
   /** 아래 셋은 새 프로필을 돌려준다. 안 되면 ApiError(까닭) */
   buyUpgrade(key: string): Promise<SurvivalProfile>;
   resetUpgrades(): Promise<SurvivalProfile>;
-  unlockCharacter(id: ZodiacId): Promise<SurvivalProfile>;
+  unlockCharacter(id: CharId): Promise<SurvivalProfile>;
 }
 
 function browserStore(): Store {
@@ -142,7 +142,7 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
     async start(map, character, skipSec = 0, mode = 'normal') {
       const d = read();
       if (!d.profile.unlockedMaps.includes(map)) throw new ApiError('map locked');
-      if (!d.profile.unlockedCharacters.includes(character)) throw new ApiError('character locked');
+      if (!characterOpen(d.profile, character)) throw new ApiError('character locked');
       if (mode === 'endless' && !endlessOpen(d.profile, map)) throw new ApiError('endless locked');
       if (mode === 'hell' && !hellOpen(d.profile, map)) throw new ApiError('hell locked');
       // 서버(039)와 같다: 끝나지 않은 이전 판을 지우지 않는다 (겹치는 판은 finish 가 막는다).
@@ -327,7 +327,7 @@ export function createSupabaseApi(
             valid: res.valid !== false,
             lowKills: res.lowKills === true,
             newRecord: res.newRecord === true,
-            unlockedCharacters: (Array.isArray(res.unlockedCharacters) ? res.unlockedCharacters : []).filter((c) => ZODIAC_IDS.includes(c)),
+            unlockedCharacters: (Array.isArray(res.unlockedCharacters) ? res.unlockedCharacters : []).filter((c) => CHAR_IDS.includes(c)),
             unlockedMaps: (Array.isArray(res.unlockedMaps) ? res.unlockedMaps : []).filter((m) => MAP_INDEX[m] !== undefined),
           },
         },
@@ -477,7 +477,7 @@ function seedLocal(store: Store) {
  */
 export interface DevSetup {
   map: string | null;
-  char: ZodiacId | null;
+  char: CharId | null;
   /** 강화를 몇 레벨 찍은 상태인가 (0~49). 적지 않았으면 null (저장된 강화를 쓴다) */
   upg: number | null;
   /** 시작 시각 (초) */
@@ -492,9 +492,9 @@ export interface DevSetup {
 export function devSetup(): DevSetup | null {
   if (!LOCAL_MODE) return null;
   const map = params.get('map');
-  const char = params.get('char') as ZodiacId | null;
+  const char = params.get('char') as CharId | null;
   const okMap = map !== null && MAP_INDEX[map] !== undefined ? map : null;
-  const okChar = char !== null && ZODIAC_IDS.includes(char) ? char : null;
+  const okChar = char !== null && CHAR_IDS.includes(char) ? char : null;
   const num = (k: string, max: number) => Math.max(0, Math.min(max, Math.floor(Number(params.get(k)) || 0)));
   const seed = params.get('seed');
   const mode: RunMode = params.get('mode') === 'endless' ? 'endless' : params.get('mode') === 'hell' ? 'hell' : 'normal';

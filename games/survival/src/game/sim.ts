@@ -53,7 +53,7 @@ export function createRun(cfg: RunConfig): State {
     tick: 0,
     time: 0,
     phase: 'play',
-    player: { x: 0, y: 0, hp: 0, fx: 1, fy: 0, inv: 0, moving: false, revives: 0, slow: 0 },
+    player: { x: 0, y: 0, hp: 0, fx: 1, fy: 0, inv: 0, moving: false, revives: 0, slow: 0, dodge: 0 },
     stats: makeStats(),
     level: 1,
     xp: 0,
@@ -541,6 +541,7 @@ export function step(s: State, input: Input) {
     p.fy = my / Math.min(1, len);
   }
   if (p.inv > 0) p.inv--;
+  if (p.dodge > 0) p.dodge--;
   if (s.stats.regen > 0 && p.hp < s.stats.maxHp) p.hp = Math.min(s.stats.maxHp, p.hp + s.stats.regen * TICK);
 
   updateSpawns(s);

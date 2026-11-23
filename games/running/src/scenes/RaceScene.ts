@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { JUMP_TIME, LANES, SLIDE_TIME, TRACK_LEN, ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { JUMP_TIME, LANES, SLIDE_TIME, TRACK_LEN, isCharId, type ZodiacId } from '../game/constants';
 import { livePlace } from '../game/ranking';
 import type { RunState } from '../game/sim';
 import type { Obstacle } from '../game/track';
@@ -103,7 +103,7 @@ export class RaceScene extends Phaser.Scene {
   preload() {
     const chars = this.race.roster.map((r) => r.char);
     preloadArt(this, chars);
-    for (const id of chars) if (ZODIAC_IDS.includes(id) && !this.textures.exists(`f-${id}`)) this.load.image(`f-${id}`, zodiacFaceUrl(id));
+    for (const id of chars) if (isCharId(id) && !this.textures.exists(`f-${id}`)) this.load.image(`f-${id}`, zodiacFaceUrl(id));
     // 그림을 못 불러와도 게임은 진행한다 (create에서 코드 그림으로 채운다)
     this.load.on('loaderror', () => undefined);
   }

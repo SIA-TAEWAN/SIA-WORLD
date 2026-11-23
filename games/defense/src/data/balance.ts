@@ -50,8 +50,14 @@ export const BOSS_STUN_MUL = 0.4;
 /** 한꺼번에 살아 있을 수 있는 수 (미리 만들어 두고 돌려 쓴다) */
 export const LIMIT = { enemies: 256, projectiles: 192, fx: 96, events: 96 };
 
+/** 십이지 12종 (지역 12곳의 주인) */
 export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;
 export type ZodiacId = (typeof ZODIAC_IDS)[number];
+/** 십이지 밖의 캐릭터 (shared/characters.js 의 EXTRA_IDS): 스테이지로 열리지 않고 로비에서 시아코인으로 연다 */
+export const EXTRA_IDS = ['cat'] as const;
+/** 출전할 수 있는 모든 캐릭터 = 십이지 12 + 고양이 (071_characters.sql 의 _character_ids 와 같다) */
+export const CHAR_IDS = [...ZODIAC_IDS, ...EXTRA_IDS] as const;
+export type CharId = (typeof CHAR_IDS)[number];
 
 /** 판 밖 재화(엽전) 규칙 — 서버(048_defense.sql 의 _defense_const)와 같은 값 */
 export const COINS = {

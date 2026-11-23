@@ -1,4 +1,4 @@
-import { BOARD_H, BOARD_W, ROAD_W, SLOT_SIZE, SQUAD_SIZE, type ZodiacId } from '../data/balance';
+import { BOARD_H, BOARD_W, ROAD_W, SLOT_SIZE, SQUAD_SIZE, type CharId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { ROSTER, towerOf } from '../data/characters';
 import { upgradeMods } from '../data/growth';
@@ -11,10 +11,10 @@ import { charLevel, clearedCount, endlessOpen, startLivesOf, regionCleared, regi
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, josa, loadEngine, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
+import { esc, josa, loadEngine, lockHint, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
 import { sfx } from './sfx';
 
-const zodiacNick = (id: ZodiacId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
+const zodiacNick = (id: CharId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
 
 /** 지역이 잠긴 까닭 (열려 있으면 빈 글자) */
 function regionLockText(no: number): string {
@@ -235,14 +235,14 @@ export function showPrepare(stageId: string) {
   const isEndless = st.id === ENDLESS_ID;
   const bg = regionOf(st.region)?.bg ?? 'field';
   // 쓸 수 있는 캐릭터: 해금했고 계산까지 만들어진 것
-  const unlocked = (id: ZodiacId) => !!towerOf(id) && state.profile.unlocked.includes(id);
+  const unlocked = (id: CharId) => !!towerOf(id) && state.profile.unlocked.includes(id);
   // 지난번에 고른 캐릭터부터 (지금 쓸 수 있는 것만)
-  let picked = new Set<ZodiacId>(state.squad.filter(unlocked));
-  let focus: ZodiacId = [...picked][0] ?? 'rat';
+  let picked = new Set<CharId>(state.squad.filter(unlocked));
+  let focus: CharId = [...picked][0] ?? 'rat';
   // 끝없는 모드에는 모든 요괴가 차례로 나온다
   const foes = isEndless ? ENEMIES : stageEnemies(st).map((id) => ENEMIES[ENEMY_INDEX[id]]).filter(Boolean);
   const boss = st.boss ? BOSSES[BOSS_INDEX[st.boss.id]] : null;
-  const weakFaces = (ids: ZodiacId[]) => ids.map((z) => `<img class="${unlocked(z) ? '' : 'dimmed'}" src="${zodiacFaceUrl(z)}" alt="${esc(zodiacNick(z))}" title="${esc(zodiacNick(z))}" />`).join('');
+  const weakFaces = (ids: CharId[]) => ids.map((z) => `<img class="${unlocked(z) ? '' : 'dimmed'}" src="${zodiacFaceUrl(z)}" alt="${esc(zodiacNick(z))}" title="${esc(zodiacNick(z))}" />`).join('');
   const best = state.profile.stages[st.id] ?? 0;
   /** 눌러 본 요괴 (설명과 잘 듣는 캐릭터를 아래 한 줄에 보여 준다). 보스는 'boss' */
   let foeFocus: string = boss ? 'boss' : (foes[0]?.id ?? '');
@@ -298,7 +298,7 @@ export function showPrepare(stageId: string) {
   });
   const paint = () => {
     root.querySelectorAll<HTMLElement>('.char').forEach((b) => {
-      const id = b.dataset.c as ZodiacId;
+      const id = b.dataset.c as CharId;
       b.classList.toggle('sel', picked.has(id));
       b.classList.toggle('locked', !unlocked(id));
       b.classList.toggle('focus', id === focus);
@@ -308,21 +308,21 @@ export function showPrepare(stageId: string) {
     const def = towerOf(focus);
     root.querySelector('#info')!.innerHTML = def
       ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em> <small>Lv ${charLevel(state.profile, focus)}</small><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>`
-      : `<b>${esc(r.nick)}</b> <span class="tag role">${esc(r.role)}</span><br/><small>🔒 ${r.unlockRegion}지역 ${esc(josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를'))} 클리어하면 함께할 수 있어요</small>`;
+      : `<b>${esc(r.nick)}</b> <span class="tag role">${esc(r.role)}</span><br/><small>🔒 ${esc(lockHint(r))}</small>`;
     startBtn.disabled = picked.size === 0;
   };
   paint();
   root.querySelector('#chars')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
-    const id = b.dataset.c as ZodiacId;
+    const id = b.dataset.c as CharId;
     focus = id;
     sfx('toggle');
     if (unlocked(id)) {
       if (picked.has(id)) picked.delete(id);
       else if (picked.size >= SQUAD_SIZE) toast(`한 판에 ${SQUAD_SIZE}종까지 데려갈 수 있어요`);
       else picked.add(id);
-      // 고른 순서가 아니라 띠 순서로 (카드와 숫자키 1~5 의 순서)
+      // 고른 순서가 아니라 명단 순서로 (띠 순서, 고양이는 맨 뒤 — 카드와 숫자키 1~5 의 순서)
       picked = new Set(ROSTER.map((r) => r.id).filter((x) => picked.has(x)));
     }
     paint();

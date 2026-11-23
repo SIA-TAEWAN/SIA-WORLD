@@ -16,7 +16,7 @@ const upg = Number(process.argv[4] ?? 5);
 const skill = (process.argv[5] ?? 'normal') as keyof typeof SKILLS;
 const runs = Number(process.argv[6] ?? 16);
 const levels = Object.fromEntries(ROSTER.map((c) => [c.id, lv]));
-const unlocked = ROSTER.filter((c) => c.unlockRegion < region && TOWERS.some((t) => t.id === c.id)).map((c) => c.id);
+const unlocked = ROSTER.filter((c) => c.unlockRegion >= 0 && c.unlockRegion < region && TOWERS.some((t) => t.id === c.id)).map((c) => c.id);
 
 for (const stage of STAGES.filter((s) => s.region === region)) {
   const squad = pickSquad(stage, unlocked);

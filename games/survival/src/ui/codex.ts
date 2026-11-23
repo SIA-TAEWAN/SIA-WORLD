@@ -4,7 +4,7 @@ import { ENEMIES } from '../data/enemies';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { PASSIVES } from '../data/passives';
 import { WEAPONS } from '../data/weapons';
-import { codexCount, evolutionHints } from '../game/progress';
+import { characterOpen, codexCount, evolutionHints } from '../game/progress';
 import { artUrl, zodiacFaceUrl } from '../assets';
 import { esc, mmss, nav, screen, state } from './app';
 import { icon } from './icons';
@@ -78,14 +78,14 @@ export function showCodex() {
         <p class="soft">무기를 5레벨까지 올리고 짝 패시브를 가진 채로 보스의 보물상자를 열면 진화해요</p>${evo.join('')}`;
     } else {
       const chars = CHARACTERS.map((c) => {
-        const known = p.unlockedCharacters.includes(c.id);
+        const known = characterOpen(p, c.id);
         const w = WEAPONS.find((x) => x.id === c.weapon)!;
         return `<div class="cx ${known ? '' : 'unknown'}"><span class="cx-art"><img src="${zodiacFaceUrl(c.id)}" alt="" /></span>
           <span class="cx-tx"><b>${esc(c.nick)} <i class="soft">${esc(c.name)}</i></b>
           <small>${known ? `${esc(w.name)} · ${esc(c.trait.text)}` : `🔒 ${esc(c.unlock.text)}`}</small></span></div>`;
       });
       const maps = MAPS.map((m) => cell(p.unlockedMaps.includes(m.id), `<i class="blob m-${m.id}"></i>`, m.name, `${m.desc} · ${m.level} · 엽전 ×${m.coinMul}`));
-      body.innerHTML = `<h3>캐릭터 ${p.unlockedCharacters.length}/${CHARACTERS.length}</h3>${chars.join('')}<h3>맵 ${p.unlockedMaps.filter((m) => MAP_INDEX[m] !== undefined).length}/${MAPS.length}</h3>${maps.join('')}`;
+      body.innerHTML = `<h3>캐릭터 ${CHARACTERS.filter((c) => characterOpen(p, c.id)).length}/${CHARACTERS.length}</h3>${chars.join('')}<h3>맵 ${p.unlockedMaps.filter((m) => MAP_INDEX[m] !== undefined).length}/${MAPS.length}</h3>${maps.join('')}`;
     }
     body.scrollTop = 0;
   };
