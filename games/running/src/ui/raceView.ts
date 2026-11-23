@@ -1,13 +1,11 @@
 import Phaser from 'phaser';
 import { END_AFTER_GO, TRACK_LEN } from '../game/constants';
-import { EMOTE_SHOW_MS } from '../game/emote';
 import { formatTime, livePlace } from '../game/ranking';
-import type { StartMsg } from '../net/room';
+import type { SoloStart } from '../net/solo';
 import { RaceGame } from '../race/game';
 import { RaceScene, type SceneData } from '../scenes/RaceScene';
 import { zodiacFaceUrl } from '../assets';
-import { leaveRoom, nav, screen, stage, state, toast } from './app';
-import { emoteBarHtml, wireEmoteBar } from './emote';
+import { nav, screen, stage, state } from './app';
 import { DPR } from './dpr';
 import { sfx } from './sfx';
 
@@ -19,14 +17,19 @@ declare global {
 }
 
 /** 경기 화면: 위에서부터 HUD 15% · 트랙 55% · 버튼 30% */
-export function showRace(start: StartMsg) {
-  const room = state.room;
+export function showRace(start: SoloStart) {
   const api = state.api;
-  if (!room || !api) return nav.lobby();
-  const race = new RaceGame(room, api, start);
-  // 오늘의 도전 방에서 연 판이면 그 날짜를 알려 둔다 (도착하면 그날 기록으로 넣는다)
-  if (state.daily && start.seed === state.daily.seed) race.dailyDay = state.daily.day;
+  if (!api) return nav.lobby();
+  const race = new RaceGame(api, start);
   window.__race = race;
+  // 판 전 이번 주 순위 (결과 화면이 판 뒤 순위와 비교해 '이번 주 N위 ↑'). 오늘의 도전 날짜가 있는 판만.
+  // 앞 판 기록이 아직 올라가는 중이면(결과 화면에서 바로 '다시 도전') 그것이 끝난 뒤에 읽는다
+  const prevDaily = state.dailyAfter;
+  state.dailyAfter = null;
+  if (start.day)
+    race.weekBefore = (prevDaily ? prevDaily.catch(() => undefined) : Promise.resolve())
+      .then(() => api.weeklyPlace())
+      .catch(() => undefined);
   const me = race.mySlot;
 
   let game: Phaser.Game | null = null;
@@ -55,10 +58,10 @@ export function showRace(start: StartMsg) {
         <div class="place" id="place"><b>-</b>등</div>
       </div>
       <div class="prog" id="prog"><div class="rail"><i></i></div><span class="flag">🏁</span>
-        ${race.roster.map((r) => `<img data-slot="${r.slot}" class="${r.slot === me ? 'me' : ''}" src="${zodiacFaceUrl(r.char)}" alt="" />`).join('')}
+        ${race.roster.map((r) => `<img data-slot="${r.slot}" class="${r.slot === me ? 'me' : r.role === 'ghost' ? 'ghost' : ''}" src="${zodiacFaceUrl(r.char)}" alt="" />`).join('')}
       </div>
     </div>
-    <div class="track" id="track"><div class="cutin" id="cutin"></div>${me >= 0 ? emoteBarHtml(true) : ''}</div>
+    <div class="track" id="track"><div class="cutin" id="cutin"></div></div>
     <div class="pad solo" id="pad"><div class="pad-btns"><div class="go-btn slide" id="slide">슬라이딩</div><div class="go-btn" id="go">출발</div></div>
       <p class="hint" id="hint">스페이스 키 · 이 아래 아무 곳이나 눌러도 돼요</p></div>`,
     'race',
@@ -67,10 +70,11 @@ export function showRace(start: StartMsg) {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
       ro?.disconnect();
-      offEmote();
       if (resultTimer) clearTimeout(resultTimer);
       quitDim?.remove();
       quitDim = null;
+      // 이 판의 기록 올리기가 아직 끝나지 않았을 수 있다: 다음 판의 판 전 주간 순위는 이것을 기다린다
+      if (race.dailySaved) state.dailyAfter = race.dailySaved;
       race.dispose();
       game?.destroy(true);
       game = null;
@@ -87,18 +91,6 @@ export function showRace(start: StartMsg) {
   const cutin = $('#cutin');
   const rail = $<HTMLElement>('.rail i');
   const icons = [...root.querySelectorAll<HTMLImageElement>('#prog img')];
-
-  // ---------- 짧은 말: 트랙 위쪽(하늘) 구석의 말풍선 버튼. 점프·슬라이딩 버튼(아래)과 멀리 떨어져 있다 ----------
-  /** 자리마다 지금 떠 있는 말과 사라질 시각 */
-  const says = new Map<number, { text: string; until: number }>();
-  const sayOf = (slot: number): string | null => {
-    const s = says.get(slot);
-    return s && performance.now() < s.until ? s.text : null;
-  };
-  const offEmote = wireEmoteBar(root, room, (id, text) => {
-    const slot = race.roster.find((r) => r.id === id)?.slot;
-    if (slot !== undefined) says.set(slot, { text, until: performance.now() + EMOTE_SHOW_MS });
-  });
 
   /** 버튼이 둘(슬라이딩·점프)로 나뉘어 있는가. 출발 전에는 '출발' 하나 */
   let split = false;
@@ -128,20 +120,18 @@ export function showRace(start: StartMsg) {
     const dim = document.createElement('div');
     quitDim = dim;
     dim.className = 'dim';
-    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">나가면 AI가 이어 달리고 기록은 남지 않아요</p>
+    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">나가면 이번 판 기록은 남지 않아요</p>
       <div class="actions"><button class="btn" data-no>계속 달리기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
       if (el.closest('[data-yes]')) {
         dim.remove();
-        leaveRoom();
         nav.lobby();
       } else if (el === dim || el.closest('[data-no]')) dim.remove();
     });
     stage.append(dim);
   });
 
-  race.onLostSeat = () => toast('연결이 끊겨 AI가 이어 달려요 (기록은 남지 않아요)', 3500);
   race.onOver = (results) => {
     resultTimer = setTimeout(() => nav.result(race, results), 1400);
   };
@@ -223,7 +213,7 @@ export function showRace(start: StartMsg) {
   const size = () => ({ w: Math.max(200, trackEl.clientWidth), h: Math.max(160, trackEl.clientHeight) });
   const data = (): SceneData => {
     const { w, h } = size();
-    return { race, width: w, height: h, dpr: DPR, sfx: (name, opts) => sfx(name, opts), emote: sayOf, onFrame: frame };
+    return { race, width: w, height: h, dpr: DPR, sfx: (name, opts) => sfx(name, opts), onFrame: frame };
   };
   const boot = () => {
     const { w, h } = size();

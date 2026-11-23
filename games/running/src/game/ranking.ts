@@ -1,5 +1,3 @@
-import { TIER_MOON_MS, TIER_STAR_MS, TIER_SUN_MS } from './constants';
-
 export type ResultStatus = 'finish' | 'dnf' | 'foul';
 
 export interface RaceEntry {
@@ -40,11 +38,14 @@ export function livePlace(entries: readonly RaceEntry[], slot: number): number {
 
 export type Tier = 'gold' | 'silver' | 'bronze' | 'white';
 
-/** 등급: 해(30.75초 이내) · 달(33초 이내) · 별(37.5초 이내) · 구름 */
-export function tierOf(ms: number): Tier {
-  if (ms <= TIER_SUN_MS) return 'gold';
-  if (ms <= TIER_MOON_MS) return 'silver';
-  if (ms <= TIER_STAR_MS) return 'bronze';
+/**
+ * 등급: 역대 최고 기록 순위(서버 race_ranking 뷰의 place)로 정한다. 1위 해 · 2위 달 · 3위 별 — 각각 한 명뿐.
+ * 4위부터와 순위 없음(기록 없음·못 읽음)은 구름. shared/ranking-dialog.js 의 raceTierOfPlace 와 같은 기준
+ */
+export function tierOfPlace(place: number | null | undefined): Tier {
+  if (place === 1) return 'gold';
+  if (place === 2) return 'silver';
+  if (place === 3) return 'bronze';
   return 'white';
 }
 
