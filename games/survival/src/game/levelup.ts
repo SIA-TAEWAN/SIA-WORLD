@@ -33,9 +33,9 @@ function hasEvolution(def: number): boolean {
   return false;
 }
 
-/** 가진 무기(아직 진화 전)의 진화 짝 패시브인가 */
+/** 가진 무기(아직 진화 전)의 진화 짝 패시브인가 (더 자주 낼 것만: plainPassive 인 조합은 뺀다) */
 function evoPartner(s: State, passive: number): boolean {
-  for (const ev of EVOLUTIONS) if (PASSIVE_INDEX[ev.passive] === passive && hasWeapon(s, WEAPON_INDEX[ev.weapon])) return true;
+  for (const ev of EVOLUTIONS) if (!ev.plainPassive && PASSIVE_INDEX[ev.passive] === passive && hasWeapon(s, WEAPON_INDEX[ev.weapon])) return true;
   return false;
 }
 

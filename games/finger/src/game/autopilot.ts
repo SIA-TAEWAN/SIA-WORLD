@@ -10,6 +10,8 @@ export interface PilotOptions {
   /** 거친 탐색 각도 간격 (0.1° 단위) */
   coarse?: number;
   powers?: number[];
+  /** 필살기를 켠 수(1) · 끈 수(0)로 정해 놓고 고른다. 없으면 쓸 수 있을 때 늘 켠다 */
+  special?: 0 | 1;
 }
 
 /** 한 수의 점수: 준 피해 · 쓰러뜨림 · 웨이브 넘김 · 클리어는 +, 잃은 체력 · 쓰러짐 · 다음 공격 범위 안에 선 대원은 − */
@@ -48,11 +50,14 @@ function tryShot(s: RunState, inp: ShotInput): number {
   return scoreShot(s, c, ev);
 }
 
-/** 이번 차례에 쏠 조작 하나 */
-export function choose(s: RunState, opts: PilotOptions = {}): ShotInput {
+/**
+ * 탐색을 한 수씩 나눠서 돈다 (후보 하나를 돌려 볼 때마다 한 번 멈춘다). 끝나면 고른 조작을 돌려준다.
+ * choose 와 힌트(game/hint.ts — 화면을 멈추지 않게 프레임마다 조금씩)가 같이 쓴다.
+ */
+export function* chooseSteps(s: RunState, opts: PilotOptions = {}): Generator<void, ShotInput, void> {
   const coarse = opts.coarse ?? 100;
   const powers = opts.powers ?? [40, 70, 100];
-  const sp: 0 | 1 = canSpecial(s) ? 1 : 0;
+  const sp: 0 | 1 = opts.special ?? (canSpecial(s) ? 1 : 0);
   let best: ShotInput = { a: 2700, p: 70, s: sp };
   let bestSc = -Infinity;
   const consider = (a: number, p: number) => {
@@ -63,10 +68,28 @@ export function choose(s: RunState, opts: PilotOptions = {}): ShotInput {
       best = inp;
     }
   };
-  for (let a = 0; a < 3600; a += coarse) for (const p of powers) consider(a + 50, p);
+  for (let a = 0; a < 3600; a += coarse)
+    for (const p of powers) {
+      consider(a + 50, p);
+      yield;
+    }
   // 고른 수 둘레를 촘촘히
   const a0 = best.a;
   const p0 = best.p;
-  for (let da = -40; da <= 40; da += 10) for (const dp of [-15, 0, 15]) if (da || dp) consider(a0 + da, p0 + dp);
+  for (let da = -40; da <= 40; da += 10)
+    for (const dp of [-15, 0, 15])
+      if (da || dp) {
+        consider(a0 + da, p0 + dp);
+        yield;
+      }
   return best;
+}
+
+/** 이번 차례에 쏠 조작 하나 */
+export function choose(s: RunState, opts: PilotOptions = {}): ShotInput {
+  const it = chooseSteps(s, opts);
+  for (;;) {
+    const r = it.next();
+    if (r.done) return r.value;
+  }
 }

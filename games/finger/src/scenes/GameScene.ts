@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { choose } from '../game/autopilot';
+import { hintJoined, hintPath, hintSearch, type HintSearch } from '../game/hint';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
 import {
   DEBUFF_NAMES,
@@ -162,6 +163,12 @@ export class GameScene extends Phaser.Scene {
   /** 자동 플레이: 고른 수와 쏠 시각 */
   private autoPick: { inp: ShotInput; at: number } | null = null;
   private autoAt = 0;
+  /** 힌트 한 수 (game/hint.ts): 계산 중인 탐색 · 보여 주는 조준 (쏘면 사라진다) */
+  private hintJob: HintSearch | null = null;
+  private hint: ShotInput | null = null;
+  /** 힌트대로 쏘면 지나가는 길 (방 좌표) */
+  private hintPts: [number, number][] = [];
+  private hintText!: Phaser.GameObjects.Text;
 
   // ---------- 7단계: 효과 · 컷인 · 소리 · 진동 ----------
   private efx!: Fx;
@@ -216,6 +223,8 @@ export class GameScene extends Phaser.Scene {
     this.armed = false;
     this.autoPick = null;
     this.autoAt = 0;
+    this.hintJob = null;
+    this.hint = null;
     this.shownHp = this.run.heroes.map((h) => h.hp);
     this.chain = 0;
     this.holdUntil = 0;
@@ -407,6 +416,11 @@ export class GameScene extends Phaser.Scene {
       .text(SP_X + SP_W / 2, BAR_Y + 70, '필살기', { fontFamily: FONT, fontSize: '24px', color: '#2a1a10', align: 'center' })
       .setOrigin(0.5)
       .setDepth(1002);
+    this.hintText = this.add
+      .text(0, 0, '힌트', { fontFamily: FONT, fontSize: '26px', color: HEX.white, stroke: css(COLOR.outline), strokeThickness: 6 })
+      .setOrigin(0.5)
+      .setDepth(901)
+      .setVisible(false);
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.down(p));
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
@@ -554,6 +568,35 @@ export class GameScene extends Phaser.Scene {
     }
     this.armed = !this.armed;
     this.hooks.sound(this.armed ? 'toggle' : 'click');
+    // 힌트는 필살기를 켠 수 · 끈 수가 다르다: 보여 주던(계산하던) 힌트를 지금 상태로 다시 고른다 (횟수는 더 쓰지 않는다)
+    if (this.hint || this.hintJob) {
+      this.hint = null;
+      this.hintPts = [];
+      this.hintJob = hintSearch(this.run, this.armed ? 1 : 0);
+    }
+  }
+
+  /** 힌트 상태 (HUD 버튼): 쓸 수 있음 · 계산 중 · 보여 주는 중 · 지금은 못 씀(날아가는 중 등) */
+  get hintState(): 'ready' | 'thinking' | 'shown' | 'off' {
+    if (this.mode !== 'aim' || DEV_AUTO) return 'off';
+    return this.hintJob ? 'thinking' : this.hint ? 'shown' : 'ready';
+  }
+
+  /** 힌트 한 수를 청한다: 자동 조종이 고른 조준선을 이번 차례 동안 보여 준다 (쏘지는 않는다). 시작했으면 true */
+  requestHint(): boolean {
+    if (this.paused || this.hintState !== 'ready') return false;
+    this.hintJob = hintSearch(this.run, this.armed && canSpecial(this.run) ? 1 : 0);
+    return true;
+  }
+
+  /** 힌트 계산을 화면 한 장에 조금씩 (HINT_SLICE_MS) */
+  private hintStep() {
+    const got = this.hintJob?.step();
+    if (!got) return;
+    this.hintJob = null;
+    this.hint = got;
+    this.hintPts = hintPath(this.run, got);
+    this.hooks.sound('toggle');
   }
 
   private down(p: Phaser.Input.Pointer) {
@@ -596,6 +639,8 @@ export class GameScene extends Phaser.Scene {
   private fire(inp: ShotInput) {
     const ev = beginShot(this.run, inp);
     this.armed = false;
+    this.hintJob = null;
+    this.hint = null;
     this.mode = 'fly';
     this.acc = 0;
     const k = ev.findIndex((e) => e.t === 'special');
@@ -620,6 +665,7 @@ export class GameScene extends Phaser.Scene {
     const s = this.run;
     if (!this.paused) {
       if (this.mode === 'aim' && DEV_AUTO) this.autoStep(time);
+      if (this.mode === 'aim' && this.hintJob) this.hintStep();
       if (this.mode === 'fly' && time < this.holdUntil) {
         // 필살기 컷인이 지나가는 중
       } else if (this.mode === 'fly') {
@@ -1221,7 +1267,7 @@ export class GameScene extends Phaser.Scene {
     this.drawPickups();
     this.drawHeroes(time);
     this.drawClones();
-    this.drawAim();
+    this.drawAim(time);
     this.drawBar(time);
   }
 
@@ -1568,34 +1614,80 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private drawAim() {
+  private drawAim(time: number) {
     const g = this.aimG;
     g.clear();
+    this.hintText.setVisible(false);
     if (this.mode !== 'aim') return;
     let pull: { a: number; p: number } | null = null;
     if (this.autoPick) pull = this.autoPick.inp;
     else if (this.drag) pull = this.pullOf(this.drag.x0, this.drag.y0, this.drag.x, this.drag.y);
+    // 힌트: 내 조준선 아래에 파란 점선(흐르는 무늬) + 바깥쪽 힘 고리 + '힌트' 글자. 내 선을 여기에 겹치게 당기면 된다
+    if (this.hint) {
+      const [hx, hy] = this.hintLine(time);
+      this.powerRing(this.hint.p, COLOR.teamA, 12);
+      // 글자는 길 끝 위에 (대원 바로 위면 더 위로 올려 대원을 가리지 않게)
+      const h = this.run.heroes[this.run.cur];
+      const near = Math.abs(hx - (RX + h.x)) < 150 && Math.abs(hy - (RY + h.y)) < 90;
+      this.hintText
+        .setPosition(Math.max(RX + 130, Math.min(W - RX - 130, hx)), Math.max(RY + 30, Math.min(BAR_Y - 40, (near ? RY + h.y - 80 : hy) - 34)))
+        .setText(`힌트 · 힘 ${this.hint.p}`)
+        .setVisible(true);
+    }
     if (this.drag) {
       // 당기는 손가락 자리 (시작 → 지금)
       g.lineStyle(4, COLOR.white, 0.6).lineBetween(this.drag.x0, this.drag.y0, this.drag.x, this.drag.y);
       g.lineStyle(3, COLOR.white, 0.6).strokeCircle(this.drag.x0, this.drag.y0, CANCEL_R);
     }
     if (!pull) return;
+    const color = pull.p >= 80 ? COLOR.pink : pull.p >= 45 ? COLOR.primary : COLOR.white;
     const pts = aimPreview(this.run, pull.a);
     const [x0, y0] = pts[0];
     const [x1, y1] = pts[pts.length - 1];
-    const color = pull.p >= 80 ? COLOR.pink : pull.p >= 45 ? COLOR.primary : COLOR.white;
     g.lineStyle(8, COLOR.outline, 0.5);
     dashed(g, RX + x0, RY + y0, RX + x1, RY + y1, 18, 14);
     g.lineStyle(5, color, 1);
     dashed(g, RX + x0, RY + y0, RX + x1, RY + y1, 18, 14);
     g.fillStyle(color, 1).fillCircle(RX + x1, RY + y1, 8);
+    this.powerRing(pull.p, color, 0);
+    // 힌트를 보는 중이면 내 힘도 숫자로 (힌트의 힘과 맞춰 보게)
+    if (this.hint && this.drag) {
+      this.hintText.setText(`힌트 · 힘 ${this.hint.p} (지금 ${pull.p})`);
+    }
+  }
+
+  /** 힌트 길: 힌트대로 쏘면 지나가는 자리를 파란 토막으로 (토막이 앞으로 흐른다). 길 끝의 화면 좌표를 돌려준다 */
+  private hintLine(time: number): [number, number] {
+    const g = this.aimG;
+    const pts = this.hintPts;
+    const flow = Math.floor(time / 140) % 2;
+    for (const [wd, c, al] of [[10, COLOR.outline, 0.5], [6, COLOR.teamA, 1]] as const) {
+      g.lineStyle(wd, c, al);
+      for (let i = 1; i < pts.length; i++) {
+        if ((i + flow) % 2) continue;
+        const [ax, ay] = pts[i - 1];
+        const [bx, by] = pts[i];
+        // 순간이동 구멍을 지난 자리는 잇지 않는다 (직선 거리 기준: 빠른 대각선 발사가 구멍으로 잘못 걸리지 않게)
+        if (!hintJoined(pts[i - 1], pts[i])) continue;
+        g.lineBetween(RX + ax, RY + ay, RX + bx, RY + by);
+      }
+    }
+    const [ex, ey] = pts[pts.length - 1];
+    g.fillStyle(COLOR.outline, 0.5).fillCircle(RX + ex, RY + ey, 12);
+    g.fillStyle(COLOR.teamA, 1).fillCircle(RX + ex, RY + ey, 9);
+    return [RX + ex, RY + ey];
+  }
+
+  /** 발밑 힘 고리 (grow 만큼 바깥) */
+  private powerRing(p: number, color: number, grow: number) {
+    const g = this.aimG;
+    const pull = { p };
     // 힘 게이지 (발밑 타원을 따라 도는 호 — 뒤쪽 가운데에서 시계 방향)
     const h = this.run.heroes[this.run.cur];
     const cx = RX + h.x;
     const cy = RY + h.y + h.r * (this.bodyFull[this.run.cur] ? FOOT_FULL : FOOT_BALL);
-    const ax = h.r * 1.75 * 0.66 + 12;
-    const ay = h.r * 0.58 * 0.66 + 10;
+    const ax = h.r * 1.75 * 0.66 + 12 + grow;
+    const ay = h.r * 0.58 * 0.66 + 10 + grow;
     const n = Math.max(1, Math.ceil((32 * pull.p) / 100));
     for (const [wd, c, al] of [[11, COLOR.outline, 0.55], [7, color, 1]] as const) {
       g.lineStyle(wd, c, al);

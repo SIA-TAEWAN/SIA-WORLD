@@ -8,12 +8,14 @@
 //   시아서바이벌 무한 모드는 4분 모드와 따로 (모드 전환 줄): 생존 시간 → 처치 수 → 먼저 달성한 순
 //   시아마을은 번영도 순 → 먼저 달성한 순. 줄마다 [구경]으로 그 마을에 가 볼 수 있다
 //   시아열두길은 레벨 랭킹(레벨 → 경험치 → 먼저 달성한 순)과 끝없는 탑 랭킹(최고 층 → 걸린 시간 → 먼저 달성한 순)이 따로다
+//   오늘의 도전(레이스 · 서바이벌 · 돌격대 · 핑거 · 디펜스): 모드 고르기 줄의 "오늘의 도전" → 그날 순위 상위 50명 + 내 순위 (shared/daily.js, 082_daily.sql). ◀ ▶ 로 30일 전까지
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg, tierOfPlace } from './rank.js';
 import { supabase } from './supabase.js';
 import { GAMES, loadGameOpen } from './games.js';
 import { ALL_CHARACTER_IDS } from './characters.js';
+import { loadDailyRanking, localDailyDay } from './daily.js';
 
 const STYLE_ID = 'sia-ranking-style';
 /** 탭 → 게임 id (shared/games.js). 관리자가 로비에서 연 게임의 탭만 보인다 */
@@ -83,6 +85,32 @@ export const TWELVE_MODES = [
 export const TWELVE_REGIONS = ['쥐의 들판', '소의 논밭', '호랑이 고개', '토끼의 달동산', '용의 연못', '뱀의 늪', '말의 성문', '양의 뜰', '원숭이의 누각', '닭의 새벽길', '개의 삼도천', '돼지의 염라전'];
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
+/**
+ * 오늘의 도전 (shared/daily.js · 082_daily.sql): 탭 → daily_ranking 의 게임 이름과 순서 설명.
+ * 모드 고르기 줄에 '오늘의 도전' 단추가 하나 더 붙는다 (SURVIVAL_MODES 같은 내보낸 목록에는 넣지 않는다 — 게임들이 그대로 쓴다)
+ */
+const DAILY_MODE = 'daily';
+const DAILY_NAME = '오늘의 도전';
+const DAILY_TOP = 50;
+const DAILY_BACK_DAYS = 30;
+const DAILY_TABS = {
+  race: { game: 'running', note: '오늘의 트랙 · 빠른 기록 순' },
+  survival: { game: 'survival', note: '모두 같은 맵 · 캐릭터 · 생존 시간 순 (같으면 클리어, 처치 수)' },
+  charge: { game: 'charge', note: '오늘의 길 · 달린 거리 순' },
+  finger: { game: 'finger', note: '오늘의 스테이지 · 깬 판의 턴 수가 적은 순' },
+  defense: { game: 'defense', note: '오늘의 고개 · 클리어한 판이 위, 그다음 남은 생명, 처치 수 순' },
+};
+/** 레이스 탭의 고르기 줄 첫 단추 (레이스는 원래 모드가 없다) */
+const RACE_BEST_NAME = '최고 기록';
+const isDay = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+/** '2026-11-23' → '11월 23일' */
+const dayLabel = (day) => (isDay(day) ? `${Number(day.slice(5, 7))}월 ${Number(day.slice(8, 10))}일` : '');
+/** 'YYYY-MM-DD' 에서 n일 옮긴 날짜 */
+const shiftDay = (day, n) => {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+const num = (v) => Math.max(0, Math.floor(Number(v) || 0));
 const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : RANKINGS[g]);
 
 /** 기록(ms) → 등급 */
@@ -349,17 +377,24 @@ const CSS = `
   border: 2px solid #e2d3b5; background: #fff; border-radius: 999px; padding: 4px 2px; }
 .sia-rank .subs button.sel { border-color: #2a1a10; background: #fff4c2; }
 .sia-rank .modes { display: none; gap: 6px; margin-bottom: 6px; }
-.sia-rank .modes.on { display: flex; }
-.sia-rank .modes button { flex: 1; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
+.sia-rank .modes.on { display: flex; flex-wrap: wrap; }
+.sia-rank .modes button { flex: 1 0 auto; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
   border: 2px solid #2a1a10; background: #fff; border-radius: 12px; padding: 5px 4px; }
 .sia-rank .modes button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
 .sia-rank .modes button[data-sm="hell"].sel { background: #ff4d6d; color: #ffffff; }
 .sia-rank td.am i.hell { background: #ff4d6d; }
 .sia-rank .dmodes { display: none; gap: 6px; margin-bottom: 6px; }
-.sia-rank .dmodes.on { display: flex; }
-.sia-rank .dmodes button { flex: 1; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
+.sia-rank .dmodes.on { display: flex; flex-wrap: wrap; }
+.sia-rank .dmodes button { flex: 1 0 auto; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
   background: #fff; border: 2px solid #2a1a10; border-radius: 12px; padding: 4px 6px; }
 .sia-rank .dmodes button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
+.sia-rank .dmodes button[hidden] { display: none; }
+.sia-rank .dday { display: none; align-items: center; gap: 6px; margin-bottom: 2px; }
+.sia-rank .dday.on { display: flex; }
+.sia-rank .dday span { flex: 1; min-width: 0; text-align: center; font-size: 14px; color: #2a1a10; }
+.sia-rank .dday button { flex: 0 0 auto; min-width: 40px; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
+  background: #fff; border: 2px solid #2a1a10; border-radius: 12px; padding: 4px 10px; }
+.sia-rank .dday button:disabled { cursor: default; color: #e2d3b5; border-color: #e2d3b5; }
 .sia-rank td.sq { line-height: 0; white-space: nowrap; }
 .sia-rank td.sq img { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #2a1a10; background: #fff; object-fit: cover; margin-right: -5px; }
 .sia-rank td.am i { font-style: normal; display: inline-block; background: #4cb86a; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; margin-right: 4px; vertical-align: 1px; }
@@ -389,7 +424,9 @@ const CSS = `
   .sia-rank .rh h3 { font-size: 19px; }
   .sia-rank .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; margin-bottom: 6px; scrollbar-width: thin; }
   .sia-rank .tabs button { flex: 0 0 auto; padding: 5px 8px; }
-  .sia-rank .modes button, .sia-rank .dmodes button { padding: 3px 4px; }
+  .sia-rank .modes.on { flex-wrap: nowrap; }
+  .sia-rank .modes button { flex: 1 1 auto; }
+  .sia-rank .modes button, .sia-rank .dmodes button, .sia-rank .dday button { padding: 3px 4px; }
   .sia-rank .me-line { margin: 4px 0; }
   .sia-rank .list { flex: 1 0 auto; min-height: 160px; height: 0; }
   .sia-rank .note { display: none; }
@@ -420,9 +457,10 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     <div class="tabs">${TAB_ORDER.filter((g) => tabInfo(g) && (defaultOpen(g) || g === inside))
       .map((g) => `<button type="button" data-g="${g}">${tabInfo(g).label}</button>`)
       .join('')}</div>
-    <div class="modes">${SURVIVAL_MODES.map((m) => `<button type="button" data-sm="${m.id}">${m.name}</button>`).join('')}</div>
+    <div class="modes">${SURVIVAL_MODES.map((m) => `<button type="button" data-sm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-sm="${DAILY_MODE}">${DAILY_NAME}</button></div>
     <div class="subs">${SURVIVAL_MAPS.map((m) => `<button type="button" data-m="${m.id}">${m.name}</button>`).join('')}</div>
-    <div class="dmodes">${DEFENSE_MODES.map((m) => `<button type="button" data-dm="${m.id}">${m.name}</button>`).join('')}</div>
+    <div class="dmodes">${DEFENSE_MODES.map((m) => `<button type="button" data-dm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-dm="${DAILY_MODE}">${DAILY_NAME}</button></div>
+    <div class="dday"><button type="button" data-dd="-1" aria-label="하루 전" disabled>◀</button><span></span><button type="button" data-dd="1" aria-label="하루 뒤" disabled>▶</button></div>
     <p class="me-line"></p>
     <div class="list"><table></table></div>
     <p class="note"></p>
@@ -444,7 +482,10 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     const sm = e.target.closest('[data-sm]');
     if (sm) void showSurvival(survivalMap, sm.dataset.sm);
     const dm = e.target.closest('[data-dm]');
-    if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : showDefense(dm.dataset.dm));
+    if (dm && shown === 'race') void showRace(dm.dataset.dm === DAILY_MODE ? DAILY_MODE : 'best');
+    else if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : showDefense(dm.dataset.dm));
+    const dd = e.target.closest('[data-dd]');
+    if (dd && !dd.disabled) moveDaily(Number(dd.dataset.dd));
   });
 
   let shown = '';
@@ -459,7 +500,12 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     $('.subs').classList.toggle('on', game === 'survival');
     $('.modes').classList.toggle('on', game === 'survival');
     // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스·돌격대·핑거·열두길 탭에서만 보인다 (버튼 글자는 탭마다 바꾼다)
-    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve');
+    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve' || game === 'race');
+    // 레이스는 [최고 기록 · 오늘의 도전] 둘뿐, 열두길은 오늘의 도전이 없다
+    dim.querySelectorAll('.dmodes button').forEach((b, i) => b.toggleAttribute('hidden', b.dataset.dm === DAILY_MODE ? !DAILY_TABS[game] : game === 'race' && i > 0));
+    // 날짜 줄은 오늘의 도전을 볼 때만 (showDaily 가 켠다). 탭을 옮기면 오늘로 돌아간다
+    $('.dday').classList.remove('on');
+    dailyDay = null;
     if (game === 'survival') return showSurvival(survivalMap);
     if (game === 'defense') return showDefense(defenseMode);
     if (game === 'charge') return showCharge(chargeMode);
@@ -494,14 +540,22 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     }
   }
   /** 시아레이스: 최고 기록 빠른 순 상위 100명 + 내 순위, 등급은 기록 기준 */
-  async function showRace() {
+  let raceMode = 'best';
+  async function showRace(mode = raceMode) {
+    raceMode = mode === DAILY_MODE ? DAILY_MODE : 'best';
+    dim.querySelectorAll('.dmodes button').forEach((b, i) => {
+      b.classList.toggle('sel', b.dataset.dm === DAILY_MODE ? raceMode === DAILY_MODE : i === 0 && raceMode === 'best');
+      if (i === 0) b.textContent = RACE_BEST_NAME;
+    });
+    $('.dday').classList.toggle('on', raceMode === DAILY_MODE);
+    if (raceMode === DAILY_MODE) return showDaily('race');
     const sec = (ms) => (ms / 1000).toString();
     $('.note').textContent = `${RACE_INFO.note} · 상위 ${RACE_TOP}명 · 해 ${sec(RACE_TIERS.gold)}초 · 달 ${sec(RACE_TIERS.silver)}초 · 별 ${sec(RACE_TIERS.bronze)}초 이내 · 그 외 구름`;
     $('.me-line').textContent = '불러오는 중…';
     $('table').innerHTML = '';
     try {
       const { rows, mine, total } = await getRaceRanking(meId);
-      if (shown !== 'race') return;
+      if (shown !== 'race' || raceMode !== 'best') return;
       $('.me-line').innerHTML = mine
         ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(raceTier(mine.ms), 20)} · ${raceTime(mine.ms)}`
         : '아직 완주 기록이 없어요';
@@ -514,7 +568,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           )
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
-      if (shown === 'race') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+      if (shown === 'race' && raceMode === 'best') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   /** 시아배구: 승수 순 상위 100명 + 내 순위. 줄마다 순위 · 등급 · 최근 캐릭터 얼굴 · 닉네임 · 승 패 · 승률 */
@@ -550,6 +604,15 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
   let survivalMode = SURVIVAL_MODES[0].id;
   async function showSurvival(mapId, mode = survivalMode) {
     if (!SURVIVAL_MAPS.some((m) => m.id === mapId)) mapId = SURVIVAL_MAPS[0].id;
+    // 오늘의 도전은 그날 맵 하나뿐이라 맵 고르기 줄을 숨긴다
+    $('.subs').classList.toggle('on', mode !== DAILY_MODE);
+    $('.dday').classList.toggle('on', mode === DAILY_MODE);
+    if (mode === DAILY_MODE) {
+      survivalMap = mapId;
+      survivalMode = mode;
+      dim.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('sel', b.dataset.sm === mode));
+      return showDaily('survival');
+    }
     if (!SURVIVAL_MODES.some((m) => m.id === mode)) mode = SURVIVAL_MODES[0].id;
     survivalMap = mapId;
     survivalMode = mode;
@@ -589,6 +652,15 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
    */
   let defenseMode = DEFENSE_MODES[0].id;
   async function showDefense(mode = defenseMode) {
+    $('.dday').classList.toggle('on', mode === DAILY_MODE);
+    if (mode === DAILY_MODE) {
+      defenseMode = mode;
+      dim.querySelectorAll('.dmodes button').forEach((b, i) => {
+        b.classList.toggle('sel', b.dataset.dm === DAILY_MODE);
+        if (DEFENSE_MODES[i]) b.textContent = DEFENSE_MODES[i].name;
+      });
+      return showDaily('defense');
+    }
     if (!DEFENSE_MODES.some((m) => m.id === mode)) mode = DEFENSE_MODES[0].id;
     defenseMode = mode;
     const endless = mode === 'endless';
@@ -628,6 +700,15 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
    */
   let chargeMode = CHARGE_MODES[0].id;
   async function showCharge(mode = chargeMode) {
+    $('.dday').classList.toggle('on', mode === DAILY_MODE);
+    if (mode === DAILY_MODE) {
+      chargeMode = mode;
+      dim.querySelectorAll('.dmodes button').forEach((b, i) => {
+        b.classList.toggle('sel', b.dataset.dm === DAILY_MODE);
+        if (CHARGE_MODES[i]) b.textContent = CHARGE_MODES[i].name;
+      });
+      return showDaily('charge');
+    }
     if (!CHARGE_MODES.some((m) => m.id === mode)) mode = CHARGE_MODES[0].id;
     chargeMode = mode;
     const endless = mode === 'endless';
@@ -668,6 +749,15 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
    */
   let fingerMode = FINGER_MODES[0].id;
   async function showFinger(mode = fingerMode) {
+    $('.dday').classList.toggle('on', mode === DAILY_MODE);
+    if (mode === DAILY_MODE) {
+      fingerMode = mode;
+      dim.querySelectorAll('.dmodes button').forEach((b, i) => {
+        b.classList.toggle('sel', b.dataset.dm === DAILY_MODE);
+        if (FINGER_MODES[i]) b.textContent = FINGER_MODES[i].name;
+      });
+      return showDaily('finger');
+    }
     // 고르기 줄 버튼의 data-dm 은 디펜스 모드 id (stage / endless) → 같은 자리의 핑거 모드로
     const at = DEFENSE_MODES.findIndex((d) => d.id === mode);
     if (at >= 0 && FINGER_MODES[at]) mode = FINGER_MODES[at].id;
@@ -753,6 +843,114 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     } catch {
       if (shown === 'twelve' && twelveMode === mode) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
+  }
+  /**
+   * 오늘의 도전: 그날 순위 상위 50명 + 내 순위 (daily_ranking). 표 모양은 그 탭의 다른 랭킹과 같다.
+   * 점수는 게임마다 detail 로 읽는다 — 레이스 { ms } · 서바이벌 { time, kills, cleared, level, map, character } ·
+   * 돌격대 { meters, kills, bosses, leader } · 핑거 { turns, fallen, stage } · 디펜스 { cleared, lives, kills, time, stage }
+   */
+  let dailyDay = null; // 보고 있는 날짜 (null = 오늘)
+  let dailyToday = null; // 서버가 알려 준 오늘
+  let dailySeq = 0;
+  const modeOfTab = (tab) => (tab === 'race' ? raceMode : tab === 'survival' ? survivalMode : tab === 'defense' ? defenseMode : tab === 'charge' ? chargeMode : tab === 'finger' ? fingerMode : '');
+  const DAILY_VIEW = {
+    race: (d, score) => {
+      const ms = Number(d.ms) > 0 ? Number(d.ms) : Math.abs(Number(score) || 0);
+      return { main: raceTime(ms), line: raceTime(ms) };
+    },
+    survival: (d) => ({
+      face: `<td class="ch"><img src="${faceUrl(d.character)}" alt="" /></td>`,
+      main: `${d.cleared === true ? '<i>클리어</i>' : ''}${survivalTime(d.time)}`,
+      sub: `처치 ${num(d.kills).toLocaleString()} · Lv ${num(d.level)}`,
+      line: `${survivalTime(d.time)}${d.cleared === true ? ' 클리어' : ''} · 처치 ${num(d.kills).toLocaleString()}`,
+    }),
+    charge: (d, score) => {
+      const m = `${(num(d.meters) || num(score)).toLocaleString()}m`;
+      return {
+        squad: `<td class="sq">${d.leader ? `<img src="${faceUrl(d.leader)}" alt="" />` : ''}</td>`,
+        main: m,
+        sub: `처치 ${num(d.kills).toLocaleString()} · 보스 ${num(d.bosses)}`,
+        line: `${m} · 처치 ${num(d.kills).toLocaleString()}`,
+      };
+    },
+    finger: (d, score) => {
+      const turns = num(d.turns) || Math.abs(Number(score) || 0);
+      const fallen = num(d.fallen);
+      return { main: `${turns}턴`, sub: fallen > 0 ? `쓰러짐 ${fallen}` : '모두 무사', line: `${turns}턴${fallen > 0 ? ` · 쓰러짐 ${fallen}` : ''}` };
+    },
+    defense: (d) => {
+      const cleared = d.cleared === true;
+      return {
+        main: cleared ? `<i>클리어</i>생명 ${num(d.lives)}` : `처치 ${num(d.kills).toLocaleString()}`,
+        sub: cleared ? `처치 ${num(d.kills).toLocaleString()} · ${survivalTime(d.time)}` : `${survivalTime(d.time)} 버팀`,
+        line: cleared ? `클리어 · 생명 ${num(d.lives)} · 처치 ${num(d.kills).toLocaleString()}` : `처치 ${num(d.kills).toLocaleString()} · ${survivalTime(d.time)} 버팀`,
+      };
+    },
+  };
+  /** 그날 모두가 같이 한 곳 (맵 · 스테이지). 순위에 있는 아무 기록에서 읽는다 */
+  const dailyWhere = (tab, d) => {
+    if (tab === 'survival') return SURVIVAL_MAPS.find((m) => m.id === d.map)?.name ?? '';
+    if (tab === 'finger' || tab === 'defense') return typeof d.stage === 'string' && d.stage ? `스테이지 ${d.stage}` : '';
+    return '';
+  };
+  /** 날짜 줄: "11월 23일 오늘의 도전 · N명" 과 ◀ ▶ (30일 전 ~ 오늘) */
+  function paintDailyDay(day, total = null, where = '') {
+    const today = dailyToday ?? localDailyDay();
+    const isToday = day === today;
+    $('.dday span').textContent = `${dayLabel(day)}${isToday ? ' 오늘의 도전' : '의 도전'}${where ? ` · ${where}` : ''}${total === null ? '' : ` · ${total}명`}`;
+    $('.dday [data-dd="-1"]').disabled = day <= shiftDay(today, -DAILY_BACK_DAYS);
+    $('.dday [data-dd="1"]').disabled = day >= today;
+  }
+  function moveDaily(step) {
+    if (!DAILY_TABS[shown] || modeOfTab(shown) !== DAILY_MODE) return;
+    const today = dailyToday ?? localDailyDay();
+    const next = shiftDay(dailyDay ?? today, step);
+    if (next > today || next < shiftDay(today, -DAILY_BACK_DAYS)) return;
+    dailyDay = next === today ? null : next;
+    void showDaily(shown);
+  }
+  async function showDaily(tab) {
+    const info = DAILY_TABS[tab];
+    const view = DAILY_VIEW[tab];
+    const seq = ++dailySeq;
+    const asked = dailyDay;
+    const current = () => seq === dailySeq && shown === tab && modeOfTab(tab) === DAILY_MODE;
+    $('.dday').classList.add('on');
+    $('.note').textContent = `${info.note} · 상위 ${DAILY_TOP}명 · 그날 가장 좋은 기록 하나`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    paintDailyDay(asked ?? dailyToday ?? localDailyDay());
+    const res = await loadDailyRanking(info.game, asked);
+    if (!current()) return;
+    if (!res || !Array.isArray(res.top)) {
+      $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+      return;
+    }
+    if (isDay(res.today)) dailyToday = res.today;
+    const day = isDay(res.day) ? res.day : (asked ?? dailyToday ?? localDailyDay());
+    const total = num(res.total);
+    const obj = (v) => (v && typeof v === 'object' ? v : {});
+    const where = dailyWhere(tab, obj(res.top[0]?.detail ?? res.mine?.detail));
+    paintDailyDay(day, total, where);
+    const tier = (place) => tierOfPlace(place, total);
+    const mine = res.mine && typeof res.mine === 'object' ? res.mine : null;
+    $('.me-line').innerHTML = mine
+      ? `내 순위 <b>${num(mine.place)}위</b> / ${total}명 · ${tierSvg(tier(num(mine.place)), 20)} · ${esc(view(obj(mine.detail), mine.score).line)}`
+      : day === (dailyToday ?? day)
+        ? '아직 오늘 기록이 없어요'
+        : '이날 기록이 없어요';
+    $('table').innerHTML =
+      res.top
+        .map((r) => {
+          const v = view(obj(r.detail), r.score);
+          const place = num(r.place);
+          return (
+            `<tr class="${r.me === true ? 'me' : ''}"><td class="pl">${place}</td><td class="tr">${tierSvg(tier(place), 26)}</td>` +
+            `${v.face ?? ''}<td class="nm">${esc(r.nickname)}</td>${v.squad ?? ''}` +
+            `<td class="am">${v.main}${v.sub ? `<small>${esc(v.sub)}</small>` : ''}</td></tr>`
+          );
+        })
+        .join('') || `<tr><td>${day === (dailyToday ?? day) ? '아직 아무도 도전하지 않았어요' : '이날은 아무도 도전하지 않았어요'}</td></tr>`;
   }
   /** 시아마을: 번영도 순 상위 100곳 + 내 순위. 줄마다 순위 · 등급 · 닉네임(마을 이름 · 마을 레벨) · 번영도 · [구경] */
   async function showVillage() {

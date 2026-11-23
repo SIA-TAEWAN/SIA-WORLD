@@ -2,6 +2,7 @@ import { TANKS, TANK_IDS, RANDOM_TANK_IDS, randomTank, tankOr, type TankChoice }
 import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { PlayerSetup } from '../game/types';
 import type { WindMode } from '../game/match';
+import { SUDDEN_TURN } from '../game/sudden';
 import { Rng, randomSeed } from '../game/rng';
 import type { MatchSummary } from '../scenes/GameScene';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
@@ -10,7 +11,7 @@ import { allReady, friendly, hostOf, type Backend, type Room, type RoomPlayer } 
 import { LobbyFullError, LobbySession } from '../net/lobby';
 import { worldHome, openWorldRanking } from '../net/world';
 import { showManualModal } from './manual';
-import { RoomSession } from '../net/room';
+import { RoomSession, SUDDEN_VERSION } from '../net/room';
 import { OnlineGame } from '../net/online';
 import { $, closeGame, launchGame, nav, screen, setScreenCleanup, state, toast } from './app';
 import { escapeHtml } from './hud';
@@ -320,6 +321,7 @@ function renderRoom(id: string) {
         <div class="opt-row"><span class="lbl">게임 모드</span><div class="seg small" id="mode"></div></div>
         <div class="opt-row"><span class="lbl">게임 속도</span><div class="seg small" id="speed"></div></div>
         <div class="opt-row"><span class="lbl">바람 변화</span><div class="seg small" id="wind"></div></div>
+        <p class="opt-note" id="sudden-note"></p>
       </section>
       <section class="card shop-card">
         <h3>아이템 상점 <small>게임 시작 전까지</small></h3>
@@ -489,6 +491,12 @@ function renderRoom(id: string) {
     $(root, '#wind').innerHTML = (['slow', 'normal', 'fast'] as const)
       .map((v) => `<button data-v="${v}" class="${wind === v ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${WIND_LABEL[v]}</button>`)
       .join('');
+    $(root, '#sudden-note').textContent =
+      room.map === 'target' ? '' : suddenFor(room)
+        ? `🌊 서든데스: ${SUDDEN_TURN}턴 뒤부터 물이 차올라요`
+        : roomSess?.anyUnseen(room.players.map((p) => p.id))
+          ? '🌊 서든데스: 접속을 확인하는 중이에요'
+          : '🌊 서든데스 꺼짐 — 새로고침하지 않은 기기가 있어요';
     const setOpt = async (sp: number, wd: WindMode) => {
       sfx.click();
       await backend!.setOptions(id, clientId(), sp, wd).catch((e) => toast(friendly(e)));
@@ -661,6 +669,11 @@ function setupsOf(room: Room): PlayerSetup[] {
   return list;
 }
 
+/** 이 판에 서든데스를 켤지: 방 사람들의 기기가 모두 서든데스를 알 때만 */
+function suddenFor(room: Room): number {
+  return roomSess?.allAtLeast(room.players.map((p) => p.id), SUDDEN_VERSION) ? SUDDEN_TURN : 0;
+}
+
 function mapOf(room: Room): MapId {
   return room.map === 'random' ? new Rng((room.seed ?? 0) ^ 0x51ed270b).pick(RANDOM_MAP_IDS) : room.map;
 }
@@ -716,6 +729,8 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     speed: room.speed ?? 1.5,
     mode: room.mode ?? 'normal',
     wind: room.wind ?? 'slow',
+    // 서든데스: 방의 모든 기기가 아는 판본일 때만 (예전 탭이 섞이면 끈다). 다시 들어온 판은 받은 판 상태의 설정을 따른다
+    sudden: suddenFor(room),
     chat: roomSess ?? undefined,
     net: g,
     resume,

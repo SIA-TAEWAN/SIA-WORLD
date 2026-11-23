@@ -22,7 +22,7 @@ export const zKey = (id: CharId) => `z-${id}`;
 export const enemyKey = (kind: number) => `e-${ENEMIES[kind].id}`;
 export const bossKey = (boss: number) => `b-${BOSSES[boss].id}`;
 /** 투사체 그림 (state.ts 의 PROJ 순서) */
-export const PROJ_KEYS = ['p-shuriken', 'p-cake', 'p-pearl', 'p-foxfire', 'p-shurikenEvo', 'p-pearlEvo', 'p-feather', 'p-pig', 'p-puppy', 'p-orb'];
+export const PROJ_KEYS = ['p-shuriken', 'p-cake', 'p-pearl', 'p-foxfire', 'p-shurikenEvo', 'p-pearlEvo', 'p-feather', 'p-pig', 'p-puppy', 'p-orb', 'p-cakeEvo', 'p-pigEvo'];
 /** 장애물 그림 (data/maps.ts 의 terrain.kind) */
 export const obstacleKey = (kind: string) => `ob-${kind}`;
 /** 맵의 바탕색 (타일을 못 그렸을 때·화면 가장자리) */
@@ -218,6 +218,12 @@ export function ensureArt(scene: Phaser.Scene, char: CharId, map: string) {
     line(g).strokeCircle(32, 32, 26);
     g.fillStyle(COLOR.panelStrong, 1).fillCircle(24, 26, 7).fillCircle(40, 38, 5);
   });
+  // 한가위 보름달떡 (달떡의 진화): 노란 보름달
+  make(scene, 'p-cakeEvo', 64, 64, (g) => {
+    g.fillStyle(COLOR.primary, 1).fillCircle(32, 32, 27);
+    line(g).strokeCircle(32, 32, 27);
+    g.fillStyle(COLOR.primaryLight, 1).fillCircle(23, 24, 8).fillCircle(41, 39, 7).fillCircle(42, 20, 4);
+  });
   const pearl = (key: string, fill: number) =>
     make(scene, key, 64, 64, (g) => {
       g.fillStyle(fill, 1).fillCircle(32, 32, 26);
@@ -255,17 +261,20 @@ export function ensureArt(scene: Phaser.Scene, char: CharId, map: string) {
     line(g, 4).strokeEllipse(32, 32, 54, 18);
     g.lineStyle(3, COLOR.lose, 1).lineBetween(8, 32, 56, 32);
   });
-  // 복돼지 (오른쪽을 향함)
-  make(scene, 'p-pig', 96, 96, (g) => {
-    g.fillStyle(COLOR.pink, 1).fillTriangle(30, 22, 44, 30, 26, 40).fillTriangle(56, 20, 70, 30, 52, 34);
-    g.fillStyle(COLOR.skyBottom, 1).fillCircle(46, 50, 34);
-    line(g, 6).strokeCircle(46, 50, 34);
-    g.fillStyle(COLOR.pink, 1).fillEllipse(72, 54, 26, 22);
-    line(g, 4).strokeEllipse(72, 54, 26, 22);
-    g.fillStyle(COLOR.outline, 1).fillCircle(68, 54, 3).fillCircle(77, 54, 3).fillCircle(52, 40, 4);
-    g.fillStyle(COLOR.primary, 1).fillCircle(30, 62, 9);
-    line(g, 3).strokeCircle(30, 62, 9);
-  });
+  // 복돼지 (오른쪽을 향함). 황금 복돼지(진화)는 같은 모양에 몸이 노랗다
+  const pig = (key: string, body: number, snout: number, ear: number, coin: number) =>
+    make(scene, key, 96, 96, (g) => {
+      g.fillStyle(ear, 1).fillTriangle(30, 22, 44, 30, 26, 40).fillTriangle(56, 20, 70, 30, 52, 34);
+      g.fillStyle(body, 1).fillCircle(46, 50, 34);
+      line(g, 6).strokeCircle(46, 50, 34);
+      g.fillStyle(snout, 1).fillEllipse(72, 54, 26, 22);
+      line(g, 4).strokeEllipse(72, 54, 26, 22);
+      g.fillStyle(COLOR.outline, 1).fillCircle(68, 54, 3).fillCircle(77, 54, 3).fillCircle(52, 40, 4);
+      g.fillStyle(coin, 1).fillCircle(30, 62, 9);
+      line(g, 3).strokeCircle(30, 62, 9);
+    });
+  pig('p-pig', COLOR.skyBottom, COLOR.pink, COLOR.pink, COLOR.primary);
+  pig('p-pigEvo', COLOR.primary, COLOR.primaryLight, COLOR.primaryDeep, COLOR.primaryDeep);
   // 동료 강아지 (오른쪽을 향함)
   make(scene, 'p-puppy', 96, 96, (g) => {
     g.fillStyle(COLOR.inkSoft, 1).fillEllipse(28, 34, 18, 30).fillEllipse(60, 30, 18, 30);

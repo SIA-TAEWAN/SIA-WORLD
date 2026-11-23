@@ -5,15 +5,15 @@ import { ALL_MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
- * 서버(078_twelve.sql + 089_twelve_full.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
- * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 089 가 create or replace 로 다시 정의하므로 089 의 블록을 대조하고,
- * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 089 의 gen 블록을 다시 만든다.
+ * 서버(078_twelve.sql + 094_twelve_full.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하므로 094 의 블록을 대조하고,
+ * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 094 의 gen 블록을 다시 만든다.
  * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
  */
 const read = (name: string) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const sql078 = read('078_twelve.sql');
-const sql089 = read('089_twelve_full.sql');
-const sql = `${sql078}\n${sql089}`;
+const sql094 = read('094_twelve_full.sql');
+const sql = `${sql078}\n${sql094}`;
 const fn = (name: string) => {
   const i = sql.lastIndexOf(`create or replace function public.${name}(`);
   return i < 0 ? '' : sql.slice(i, sql.indexOf('$$;', i));
@@ -22,30 +22,30 @@ const fn = (name: string) => {
 describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
   const blocks = sqlBlocks();
   for (const name of Object.keys(blocks)) {
-    it(`${name} 블록이 src/data 와 같다`, () => expect(blockIn(sql089, name)).toBe(blocks[name]));
+    it(`${name} 블록이 src/data 와 같다`, () => expect(blockIn(sql094, name)).toBe(blocks[name]));
   }
-  it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql089)).toBe(sql089));
+  it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql094)).toBe(sql094));
 
-  it('089 는 078 의 함수를 같은 모양으로 다시 정의한다 (create or replace · 표 함수는 권한 빼기, RPC 는 로그인한 사람만)', () => {
+  it('094 는 078 의 함수를 같은 모양으로 다시 정의한다 (create or replace · 표 함수는 권한 빼기, RPC 는 로그인한 사람만)', () => {
     const head = (s: string, name: string) => {
       const i = s.indexOf(`create or replace function public.${name}(`);
       return i < 0 ? '' : s.slice(i, s.indexOf('$$', i));
     };
-    const NEW_IN_089 = ['twelve_set_mode'];
-    const names = [...new Set(sql089.match(/create or replace function public\.\w+/g)!.map((s) => s.split('public.')[1]))];
+    const NEW_IN_094 = ['twelve_set_mode'];
+    const names = [...new Set(sql094.match(/create or replace function public\.\w+/g)!.map((s) => s.split('public.')[1]))];
     expect(names.length).toBeGreaterThanOrEqual(Object.keys(blocks).length);
     for (const name of names) {
-      // 089 에서 새로 만든 함수(어려움 모드의 twelve_set_mode)는 078 에 없다
-      if (head(sql078, name)) expect(head(sql089, name), name).toBe(head(sql078, name));
-      else expect(NEW_IN_089, name).toContain(name);
-      if (name.startsWith('_')) expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
+      // 094 에서 새로 만든 함수(어려움 모드의 twelve_set_mode)는 078 에 없다
+      if (head(sql078, name)) expect(head(sql094, name), name).toBe(head(sql078, name));
+      else expect(NEW_IN_094, name).toContain(name);
+      if (name.startsWith('_')) expect(sql094).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
       else {
-        expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon;`));
-        expect(sql089).toMatch(new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to authenticated;`));
-        expect(head(sql089, name)).toContain('security definer set search_path = public');
+        expect(sql094).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon;`));
+        expect(sql094).toMatch(new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to authenticated;`));
+        expect(head(sql094, name)).toContain('security definer set search_path = public');
       }
     }
-    expect(sql089).not.toMatch(/create table|drop |alter table/);
+    expect(sql094).not.toMatch(/create table|drop |alter table/);
   });
 
   it('줄 수: 맵(지형 맵 96 + 최종보스맵, 보통·어려움) · 레벨 1~98 · 장비 216 · 지형 24', () => {

@@ -3,6 +3,7 @@ import type { ZodiacId } from '../game/constants';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { worldSupabase } from './world';
 import { parseCancel, parseFinish, parseStart, type AiRpc } from './aiRecord';
+import { parseH2h, parseH2hParam, type H2h } from './h2h';
 
 /**
  * 서버 연결 (시아레이스 games/running/src/net/api.ts 와 같은 모양).
@@ -23,6 +24,8 @@ export interface VolleyApi {
   settle(match: string): Promise<SaveResult>;
   /** 내 전적 (없으면 0승 0패, 못 읽으면 null) */
   myRecord(): Promise<{ wins: number; losses: number } | null>;
+  /** 맞대결 전적: 나와 그 사람 사이의 확정 경기만 (090_volley_h2h.sql). 못 읽으면 null → 화면에서 그 줄을 숨긴다 */
+  h2h(opponent: string): Promise<H2h | null>;
 }
 
 /** 결과 저장 답: error 는 통신·검증 실패 (code: 서버가 알려 준 까닭) */
@@ -61,6 +64,10 @@ function createLocalApi(): VolleyApi {
     },
     async myRecord() {
       return null;
+    },
+    // 화면 확인용: ?h2h=7,4,2 (승,패,이어진 판 수 — 음수면 연패). 없으면 숨김
+    async h2h() {
+      return parseH2hParam(params.get('h2h'));
     },
   };
 }
@@ -113,6 +120,10 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): VolleyApi {
       if (error) return null;
       const d = data as { wins: number; losses: number } | null;
       return { wins: Number(d?.wins ?? 0), losses: Number(d?.losses ?? 0) };
+    },
+    async h2h(opponent) {
+      const { data, error } = await sb.rpc('volleyball_h2h', { p_opponent: opponent });
+      return error ? null : parseH2h(data);
     },
   };
 }

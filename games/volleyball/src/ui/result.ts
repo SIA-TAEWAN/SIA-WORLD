@@ -7,6 +7,7 @@ import { outcomeText } from '../net/aiRecord';
 import { LOCKED_MSG } from '../game/unlock';
 import { highlightView } from '../game/highlight';
 import { bubble, emoteChips, emoteHub, wireChips } from './emote';
+import { fillH2h } from './h2h';
 
 /**
  * 결과 화면: 승/패, 점수, 하이라이트(최장 랠리·최고 가속·내 터치), 이모티콘, [다시하기] · [로비로].
@@ -52,6 +53,7 @@ export function showResult(result: MatchResult) {
       ${hl}
       <p class="soft note" id="note">${note}</p>
       <p class="soft note" id="rec">${online || result.aiRecord ? '기록을 올리는 중…' : ''}</p>
+      <p class="h2h" id="h2h"></p>
       <p class="again-st" id="again-st"></p>
       <div class="actions"><button class="btn" id="exit">로비로</button><button class="btn primary" id="again">다시하기 ▶</button></div>
       <div class="emo-row" id="emo">${emoteChips()}</div>
@@ -109,6 +111,10 @@ export function showResult(result: MatchResult) {
     else if (o.state === 'limit') rec.textContent = '오늘 이 상대와는 30판을 채워서 기록되지 않아요';
     else if (o.state === 'locked') rec.textContent = LOCKED_MSG;
     else rec.textContent = '테스트 모드라 기록되지 않아요';
+    // 맞대결 전적: 이 경기가 기록된 뒤에만 읽는다 (방금 경기까지 센 숫자). 기록되지 않은 경기(실패·무효·하루 한도·잠김)에는
+    // 방금 경기가 빠진 숫자라 보이지 않는다. 내가 끊긴 경기도 아직 확정 전이라 보이지 않는다
+    const opp = setup.fighters[me === 0 ? 1 : 0];
+    if (o.state === 'saved' && !iLeft && opp.id) void fillH2h($('#h2h'), { id: opp.id, name: opp.name }, false);
   });
 
   // ---------- 온라인: 다시하기 = 이 방에서 레디. 둘 다 누르면 방장이 바로 시작을 알린다 ----------

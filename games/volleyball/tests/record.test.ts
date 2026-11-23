@@ -30,6 +30,9 @@ function fakeApi(over: Partial<VolleyApi> = {}) {
       calls.push(`settle ${m}`);
       return { status: 'done', wins: 4, losses: 2 };
     },
+    async h2h() {
+      return null;
+    },
     async myRecord() {
       calls.push('myRecord');
       return { wins: 1, losses: 1 };

@@ -1,8 +1,8 @@
--- 089_twelve_full.sql — 시아열두길 2차: 4~12지형 · 최종보스 · 어려움 모드를 더하면서 바뀌는 표와 함수.
+-- 094_twelve_full.sql — 시아열두길 2차: 4~12지형 · 최종보스 · 어려움 모드를 더하면서 바뀌는 표와 함수.
 --
 -- 078_twelve.sql 은 운영에 있으므로 고치지 않는다. 여기서 같은 함수를 create or replace 로 다시 정의한다 (뒤 정의가 이긴다).
 --   · 표와 기준 값: `-- <gen:이름>` ~ `-- </gen:이름>` 사이는 games/twelve 의 `npm run sqlgen` 이 src/data 에서 만들어 넣는다
---     (손으로 고치지 않는다 — games/twelve/tests/sql.test.ts 가 078 + 089 를 합친 마지막 정의를 src/data 와 대조한다).
+--     (손으로 고치지 않는다 — games/twelve/tests/sql.test.ts 가 078 + 094 를 합친 마지막 정의를 src/data 와 대조한다).
 --   · 맵 표(_twelve_maps)에 줄이 있는 맵만 시작할 수 있다: 지형을 열 때마다 이 표가 늘어난다.
 
 -- ---------- 1. 기준 값 · 표 (npm run sqlgen 이 채운다) ----------
@@ -1028,7 +1028,7 @@ begin
     if mp.boss and first and not public._twelve_joined(me, mp.region) then
       select h.id into joined from public._twelve_heroes() h where h.join_region = mp.region;
     end if;
-    -- 보스의 선물 (089): 대원이 합류하지 않는 지형(10~12)의 보스 · 최종보스를 이 모드에서 처음 잡으면 강화석 꾸러미 (src/data/economy.ts 의 BOSS_GIFT · FINAL_GIFT)
+    -- 보스의 선물 (094): 대원이 합류하지 않는 지형(10~12)의 보스 · 최종보스를 이 모드에서 처음 잡으면 강화석 꾸러미 (src/data/economy.ts 의 BOSS_GIFT · FINAL_GIFT)
     if mp.boss and v_boss and first then
       n_gift := coalesce(public._twelve_const('boss_gift_' || case when mp.no > 8 then 'final' else mp.region::text end), 0)::int;
       n_stones := n_stones + n_gift;

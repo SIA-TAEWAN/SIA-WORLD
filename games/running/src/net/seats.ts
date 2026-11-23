@@ -1,4 +1,4 @@
-import { END_AFTER_FIRST, END_AFTER_GO, LANES, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
+import { END_AFTER_FIRST, END_AFTER_GO, LANES, ZODIAC_IDS, ZODIAC_NICK, type AiLevel, type ZodiacId } from '../game/constants';
 import { hashSeed, makeRng, shuffle } from '../game/rng';
 
 /** 방에 있는 사람이 실시간 채널(Presence)에 올리는 정보 */
@@ -12,10 +12,12 @@ export interface PlayerMeta {
   pickAt: number;
   /** 기기 판본 (CLIENT_VERSION). 예전 기기에는 없다 */
   ver?: number;
+  /** AI 난이도: 방장의 값이 그 방의 난이도 (다른 사람은 방장 것을 따라 둔다). 예전 기기에는 없다 → 보통 */
+  level?: AiLevel;
 }
 
 /** 이 기기의 판본. 기기끼리 주고받는 내용이 바뀌면 올린다 (더 새 판본이 방에 있으면 새로고침 안내) */
-export const CLIENT_VERSION = 4;
+export const CLIENT_VERSION = 5;
 
 export interface MemberInfo extends PlayerMeta {
   id: string;

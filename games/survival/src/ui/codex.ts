@@ -4,7 +4,8 @@ import { ENEMIES } from '../data/enemies';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { PASSIVES } from '../data/passives';
 import { WEAPONS } from '../data/weapons';
-import { characterOpen, codexCount, evolutionHints } from '../game/progress';
+import { characterOpen, codexCount, evolutionHints, knownWeapons } from '../game/progress';
+import { readMade } from '../net/made';
 import { artUrl, zodiacFaceUrl } from '../assets';
 import { esc, mmss, nav, screen, state } from './app';
 import { icon } from './icons';
@@ -23,7 +24,10 @@ export function showCodex() {
   const p = state.profile;
   const cx = p.codex;
   let tab: Tab = 'enemy';
-  const count = codexCount(p, state.owned);
+  // 서버 도감 목록에 아직 없는 무기가 있으면 이 기기의 기록으로 본다 (net/made.ts — 지금은 없다)
+  const made = readMade();
+  const known = knownWeapons(cx, made);
+  const count = codexCount(p, state.owned, made);
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>도감</h2><span class="spacer"></span></div>
      <p class="tagline small">모은 것 ${count.have} / ${count.all}</p>
@@ -64,17 +68,17 @@ export function showCodex() {
       });
       body.innerHTML = `<h3>요괴 ${cx.enemies.length}/${ENEMIES.length}</h3>${enemies.join('')}<h3>보스 ${cx.bosses.length}/${BOSSES.length}</h3>${bosses.join('')}`;
     } else if (tab === 'gear') {
-      const weapons = WEAPONS.filter((w) => !w.evolved).map((w) => cell(cx.weapons.includes(w.id), `<em>${icon('w', w.id)}</em>`, w.name, w.desc));
+      const weapons = WEAPONS.filter((w) => !w.evolved).map((w) => cell(known.includes(w.id), `<em>${icon('w', w.id)}</em>`, w.name, w.desc));
       const passives = PASSIVES.map((x) => cell(cx.passives.includes(x.id), `<em>${icon('p', x.id)}</em>`, x.name, `${x.text} (레벨마다)`));
       // 진화 조합 힌트: 아는 재료만 보이고 나머지는 ? 로 가린다
-      const evo = evolutionHints(cx).map((h) => {
+      const evo = evolutionHints(cx, made).map((h) => {
         const part = (known: boolean, ic: string, name: string) => `<span class="evo-part ${known ? '' : 'unknown'}"><em>${known ? ic : icon('x', 'unknown')}</em>${known ? esc(name) : '?'}</span>`;
         return `<div class="evo">${part(h.weaponKnown, icon('w', h.weapon.id), `${h.weapon.name} Lv5`)}<b>+</b>${part(h.passiveKnown, icon('p', h.passive.id), h.passive.name)}<b>→</b>${part(h.resultKnown, icon('w', h.result.id), h.result.name)}</div>`;
       });
       const have = (list: { id: string }[], known: string[]) => list.filter((x) => known.includes(x.id)).length;
-      body.innerHTML = `<h3>무기 ${have(WEAPONS.filter((w) => !w.evolved), cx.weapons)}/${WEAPONS.filter((w) => !w.evolved).length}</h3>${weapons.join('')}
+      body.innerHTML = `<h3>무기 ${have(WEAPONS.filter((w) => !w.evolved), known)}/${WEAPONS.filter((w) => !w.evolved).length}</h3>${weapons.join('')}
         <h3>패시브 ${cx.passives.length}/${PASSIVES.length}</h3>${passives.join('')}
-        <h3>진화 ${have(WEAPONS.filter((w) => w.evolved), cx.weapons)}/${WEAPONS.filter((w) => w.evolved).length}</h3>
+        <h3>진화 ${have(WEAPONS.filter((w) => w.evolved), known)}/${WEAPONS.filter((w) => w.evolved).length}</h3>
         <p class="soft">무기를 5레벨까지 올리고 짝 패시브를 가진 채로 보스의 보물상자를 열면 진화해요</p>${evo.join('')}`;
     } else {
       const chars = CHARACTERS.map((c) => {

@@ -38,6 +38,8 @@ export const state = {
   wind: 'slow' as 'slow' | 'normal' | 'fast',
   /** 게임 모드 (초보: 내 탄이 적 쪽으로 휜다) */
   mode: 'normal' as 'easy' | 'normal',
+  /** 서든데스 (30턴 뒤 물이 차오른다). AI 1:1 설정에서 끌 수 있다 */
+  sudden: saved.sudden !== false,
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */

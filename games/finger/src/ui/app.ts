@@ -26,9 +26,10 @@ import {
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
+import { HINT_USES, hintMode } from '../game/hint';
 import { dailyChallenge, dailyDetailText, dailyLevels, dailySeed, dayLabel, localDay, type DailyChallenge, type DailyRanking } from '../game/daily';
 import { ApiError, type FingerApi, type StageBests } from '../net/api';
-import { DEV_ALL, LOCAL_MODE } from '../net/local';
+import { DEV_ALL, DEV_AUTO, LOCAL_MODE } from '../net/local';
 import { loadDaily, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
 import {
@@ -290,6 +291,8 @@ export function showMain() {
     </div>
     <div class="grow"></div>
     ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 기록은 이 기기에만 저장돼요</p>' : ''}`);
+  // 짧은 화면(아이폰 SE 가로 375 × 세로 553 등)에서 한 화면에 들어오게 줄이는 규칙을 메인에만 건다 (style.css .screen.home)
+  root.classList.add('home');
   const on = (sel: string, fn: () => void) =>
     root.querySelector(sel)!.addEventListener('click', () => {
       play('click');
@@ -873,17 +876,53 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   // (오늘의 도전은 내 레벨·강화 대신 정해진 레벨 · 강화 없음 — finger_daily_start 가 남기는 스냅숏과 같다)
   const run = createRun(buildConfig({ stage: id, mode, party, levels: daily ? dailyLevels(daily) : profile.levels, upgrades: daily ? {} : profile.upgrades }));
   const root = app();
+  // 힌트 한 수 (game/hint.ts): 스테이지 2회 · 끝없는 탑 1회 · 오늘의 도전은 없음. 자동 조종 중(?auto=1)에는 버튼을 두지 않는다
+  let hintsLeft = DEV_AUTO ? 0 : HINT_USES[hintMode(tower, !!daily)];
+  const hintBtn = hintsLeft ? `<button class="icon-btn hint-btn" id="hint-btn" aria-label="힌트">💡<i id="hint-n">${hintsLeft}</i></button>` : '';
   root.innerHTML = `
     <div id="game"></div>
     <div class="hud">
       <button class="icon-btn" id="pause">⏸</button>
       <div class="hud-mid"><b>${st ? `${daily ? '📅 ' : ''}${st.id} ${st.name}` : '🏯 끝없는 탑'}</b><span id="wave"></span></div>
+      ${hintBtn}
       <span class="troop-pill" id="turns"></span>
     </div>
     <div class="hint" id="hint">화면을 누른 채 당겼다 놓으세요</div>`;
   const waveEl = root.querySelector<HTMLElement>('#wave')!;
   const turnsEl = root.querySelector<HTMLElement>('#turns')!;
   const scene = new GameScene();
+  const hintEl = root.querySelector<HTMLButtonElement>('#hint-btn');
+  let hintKey = '';
+  /** 힌트를 청했고 아직 길이 보이지 않았다 (계산 중) */
+  let hintAsked = false;
+  /** 힌트 버튼 모습: 남은 횟수 · 계산 중 · 지금 못 누름 (바뀔 때만 고친다) */
+  const paintHint = () => {
+    if (!hintEl) return;
+    const st8 = scene.hintState;
+    // 횟수는 힌트가 실제로 보였을 때 줄인다: 계산이 끝나기 전에 쏴 버리면(길이 안 보였다) 쓰지 않은 것으로 친다
+    if (hintAsked && st8 !== 'thinking') {
+      hintAsked = false;
+      if (st8 === 'shown') {
+        hintsLeft--;
+        toast(hintsLeft ? `파란 선에 맞춰 당겨 보세요 · 힌트 ${hintsLeft}번 남음` : '파란 선에 맞춰 당겨 보세요 · 마지막 힌트');
+      }
+    }
+    const key = `${hintsLeft}:${st8}`;
+    if (key === hintKey) return;
+    hintKey = key;
+    hintEl.querySelector('#hint-n')!.textContent = String(hintsLeft);
+    hintEl.classList.toggle('thinking', st8 === 'thinking');
+    hintEl.classList.toggle('shown', st8 === 'shown');
+    hintEl.disabled = st8 === 'off' || (st8 === 'ready' && hintsLeft <= 0);
+  };
+  hintEl?.addEventListener('click', () => {
+    if (scene.hintState !== 'ready') return;
+    if (hintsLeft <= 0) return void toast('이번 판의 힌트를 다 썼어요');
+    if (!scene.requestHint()) return;
+    hintAsked = true;
+    play('click');
+    paintHint();
+  });
   closeGame();
   game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -944,6 +983,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     hooks: {
       sound: play,
       onFrame: (s: RunState) => {
+        paintHint();
         if (tower) {
           const tf = towerFloor(s.wave + 1);
           waveEl.textContent = `${s.wave + 1}층${tf.boss ? ' · 보스' : tf.chief ? ' · 작은 대장' : ''} · ${REGION_NAMES[tf.region - 1]}`;

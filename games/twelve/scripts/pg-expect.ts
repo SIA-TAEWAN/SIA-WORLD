@@ -1,7 +1,7 @@
 /**
  * 서버 확인용 기대값: `npx vite-node scripts/pg-expect.ts > expect.json`
  * 정해 둔 순서(맵 깨기 · 쓰러지기 · 상점 · 대장간 · 가방 · 끝없는 탑)를 기기 규칙(src/game/progress.ts · rules.ts · drops.ts · tower.ts)으로 돌려,
- * 단계마다의 기록을 JSON 으로 낸다. scripts/pg-check.mjs 가 같은 순서를 078_twelve.sql · 089_twelve_full.sql 의 RPC 로 돌려 맞춰 본다.
+ * 단계마다의 기록을 JSON 으로 낸다. scripts/pg-check.mjs 가 같은 순서를 078_twelve.sql · 094_twelve_full.sql 의 RPC 로 돌려 맞춰 본다.
  * 장비 id 는 서버와 기기가 다르게 붙으므로, 장비는 '번호 순서로 몇 번째인지'로 가리킨다.
  */
 import { regionTier } from '../src/data/economy';
@@ -172,13 +172,13 @@ for (let k = 0; k < 6; k++) {
 }
 towerEnd();
 
-// 9) 2지형부터 준비된 마지막 지형까지 차례로 (089 의 맵 표 · 지형 등급이 오른 드랍 · 레벨 차이 보정 · 지형이 열리며 오르는 상점 등급)
+// 9) 2지형부터 준비된 마지막 지형까지 차례로 (094 의 맵 표 · 지형 등급이 오른 드랍 · 레벨 차이 보정 · 지형이 열리며 오르는 상점 등급)
 for (let r = 2; r <= REGIONS_READY; r++) for (let n = 1; n <= 8; n++) play(`${r}-${n}`, 20000 + r * 1000 + n * 37, { time: 200 });
 // 보스의 선물(10~12지형 보스 첫 처치의 강화석 꾸러미)은 한 번만: 다시 잡으면 없다
 for (const r of [9, 10, 12]) if (r <= REGIONS_READY) play(`${r}-8`, 31000 + r, { time: 200 });
 rpc('twelve_buy', { p_what: `w-spear-${regionTier(REGIONS_READY, 'normal')}`, p_n: 1 }, buy(p, `w-spear-${regionTier(REGIONS_READY, 'normal')}`));
 
-// 10) 최종보스맵 (089 의 twelve_start · twelve_finish): 열쇠 12개가 모이기 전에는 'need keys' → 지형 보스를 다시 잡아 열쇠를 채운다(40% · 3번째 확정)
+// 10) 최종보스맵 (094 의 twelve_start · twelve_finish): 열쇠 12개가 모이기 전에는 'need keys' → 지형 보스를 다시 잡아 열쇠를 채운다(40% · 3번째 확정)
 //     → 열림 → 첫 처치(강화석 꾸러미 · 보통 모드 클리어) → 다시 잡으면 꾸러미 없음 → 쓰러진 판
 const tryStart = (map: string, mode: Mode = 'normal') => steps.push({ op: 'start', map, mode, why: checkStart(p, map, mode, 'rat'), state: canon(p) });
 if (REGIONS_READY >= 12) {
@@ -192,7 +192,7 @@ if (REGIONS_READY >= 12) {
   play('final', 77002, { time: 300, deaths: 1, chest: false });
   play('final', 77003, { time: 120, cleared: false, kills: { imp: 2 }, elites: 0, boss: false, chest: false });
 
-  // 11) 어려움 모드 (089 의 twelve_set_mode · _twelve_region_open · 맵 표의 어려움 줄): 전환 → 상점 등급(Lv72 는 어려움 1지형) →
+  // 11) 어려움 모드 (094 의 twelve_set_mode · _twelve_region_open · 맵 표의 어려움 줄): 전환 → 상점 등급(Lv72 는 어려움 1지형) →
   //     96맵을 차례로 (어려움 전용 레어 · 등급 8~11 드랍 · 별 24개 보상 · 보스의 선물) → 열쇠 12개 → 어려움 최종보스(진짜 끝) → 보통으로 돌아갔다가 다시
   rpc('twelve_set_mode', { p_mode: 'easy' }, setMode(p, 'easy'));
   rpc('twelve_set_mode', { p_mode: 'hard' }, setMode(p, 'hard'));

@@ -4,6 +4,7 @@ import { hasArt } from '../scenes/art';
 import { LEADERS, ZODIAC_IDS, leaderOf, type LeaderId } from '../data/balance';
 import { REGIONS, REGION_NAMES, UPGRADES, groundOf, modsOf, regionStars, upgradeCost, type UpgradeKey } from '../data/growth';
 import { DAILY_ID, STAGES, dailyStage, endlessStage, nextStage, stageOf, stagesOf, type StageDef } from '../data/stages';
+import { CODEX, codexEntry, createCodex, firstStageOf, seenOf, stageFoeIds, type Codex, type CodexEntry, type CodexId } from '../game/codex';
 import { DAILY_GAME, dailyCourse, dayLabel, isDay, isPastDay, localDay, normalizeDaily, placeText, type DailyCourse, type DailyRanking } from '../game/daily';
 import {
   emptyProfile,
@@ -23,7 +24,7 @@ import {
   type FinishResult,
   type RunReport,
 } from '../game/progress';
-import { createRun, metersOf, progressOf, starsFor, type RunState } from '../game/sim';
+import { createRun, metersOf, progressOf, starsFor, type RunState, type SimEvent } from '../game/sim';
 import { ApiError, type ChargeApi, type StageTop, type StageTops } from '../net/api';
 import { DEV_ALL, DEV_CAT_READY, DEV_OWNED, LOCAL_MODE } from '../net/local';
 import { buyCharacter, loadDaily, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
@@ -38,6 +39,8 @@ import { TABLE } from '../theme';
 let api!: ChargeApi;
 let me: WorldUser | null = null;
 let profile: ChargeProfile = emptyProfile();
+/** 요괴 도감: 만난 것은 이 기기에만 저장한다 (계정마다 따로) */
+let codex: Codex = createCodex(null, 'local');
 const LEADER_KEY = 'siacharge:leader';
 let leader: LeaderId = 'rat';
 
@@ -90,13 +93,28 @@ async function loadTops(region: number): Promise<StageTops | null> {
   }
 }
 
-/** 한 줄: 🥇 닉네임 123 · 🥈 … · 🥉 …, 내가 3위 밖이면 오른쪽에 "나 5위 77". 닉네임은 좁으면 줄인다 */
-function topsHtml(t: StageTop): string {
+/**
+ * 🥇 닉네임 123 · 🥈 … · 🥉 … (chips) 와, 내가 3위 밖일 때의 "나 5위 77" (mine).
+ * 메달과 대원 수는 줄어들지 않고 닉네임만 줄인다 (메달이 닉네임과 함께 잘려 숫자와 겹치지 않게 메달은 따로 둔다).
+ */
+function topsParts(t: StageTop): { chips: string; mine: string } {
   const chips = t.top
-    .map((x) => `<em class="${x.me ? 'me' : ''}"><u>${MEDALS[x.place - 1]} ${esc(x.me ? '나' : x.nickname)}</u><var>${x.troops.toLocaleString()}</var></em>`)
+    .map((x) => `<em class="${x.me ? 'me' : ''}"><i>${MEDALS[x.place - 1]}</i><u>${esc(x.me ? '나' : x.nickname)}</u><var>${x.troops.toLocaleString()}</var></em>`)
     .join('');
   const mine = t.mine && t.mine.place > 3 ? `<strong>나 ${t.mine.place}위 ${t.mine.troops.toLocaleString()}</strong>` : '';
-  return chips + mine;
+  return { chips: `<bdi class="tc">${chips}</bdi>`, mine };
+}
+
+/** 스테이지 줄: 한 줄에 chips + 오른쪽에 내 순위 (좁은 화면에서는 내 순위가 아랫줄로 내려간다, style.css) */
+function topsHtml(t: StageTop): string {
+  const p = topsParts(t);
+  return p.chips + p.mine;
+}
+
+/** 결과 창 상자: 내 순위는 제목 줄 오른쪽에 (기록 줄은 늘 한 줄이라 받아 온 뒤에도 버튼이 밀리지 않는다) */
+function topsBoxHtml(t: StageTop): string {
+  const p = topsParts(t);
+  return `<span class="soft tops-head"><span>🏅 최다 생존 대원 · ${t.total.toLocaleString()}명 기록</span>${p.mine}</span><small class="tops">${p.chips}</small>`;
 }
 
 function soundButton(root: HTMLElement) {
@@ -136,6 +154,13 @@ function errText(e: unknown) {
 export async function boot(a: ChargeApi, user: WorldUser | null) {
   api = a;
   me = user;
+  let store: Storage | null = null;
+  try {
+    store = localStorage;
+  } catch {
+    /* 저장 공간 없음: 이번 실행 동안만 기억 */
+  }
+  codex = createCodex(store, user?.userId ?? 'local');
   profile = await api.loadProfile();
   if (DEV_ALL) {
     // 개발용 ?local=1&all=1: 모든 스테이지·대장을 연 상태로 본다 (저장하지 않음)
@@ -250,7 +275,8 @@ export function showMain() {
         <button class="btn" id="up">💪 강화</button>
         <button class="btn ${eOpen ? '' : 'soon'}" id="endless">♾️ 끝없는 길${eOpen ? '' : ' 🔒'}</button>
       </div>
-      <div class="row2">
+      <div class="row2 row3">
+        <button class="btn" id="codex">📖 도감</button>
         <button class="btn" id="rank">🏆 랭킹</button>
         <button class="btn" id="help">❓ 하는 법</button>
       </div>
@@ -319,6 +345,79 @@ export function showMain() {
   root.querySelector('#help')!.addEventListener('click', () => {
     play('click');
     showHelp();
+  });
+  root.querySelector('#codex')!.addEventListener('click', () => {
+    play('click');
+    showCodex();
+  });
+}
+
+// ---------- 요괴 도감 ----------
+
+/** 도감 그림: 만난 것은 그대로, 안 만난 것은 실루엣 (.unseen, style.css) */
+const foeImg = (c: CodexEntry, seen: boolean) => `<img class="${seen ? '' : 'unseen'}" src="${artUrl(c.art)}" alt="${seen ? c.name : '???'}" />`;
+
+/** 스테이지 줄의 "이번에 나오는 요괴": 작은 그림 줄 (보스는 테두리로 구분, 안 만난 것은 실루엣) */
+function foesHtml(st: StageDef): string {
+  const ids = stageFoeIds(st);
+  if (!ids.length) return '';
+  return `<small class="foes"><span>나오는 요괴</span>${ids
+    .map((id) => {
+      const c = codexEntry(id);
+      return `<i class="${c.group === 'boss' ? 'boss' : ''}">${foeImg(c, codex.has(id))}</i>`;
+    })
+    .join('')}</small>`;
+}
+
+function showCodex() {
+  const tile = (c: CodexEntry) => {
+    const seen = codex.has(c.id);
+    return `<button class="foe ${seen ? '' : 'unseen'}" data-id="${c.id}">${foeImg(c, seen)}<b>${seen ? c.name : '???'}</b></button>`;
+  };
+  const group = (g: CodexEntry['group'], title: string) => {
+    const list = CODEX.filter((c) => c.group === g);
+    return `<div class="card"><h3>${title} <small>${list.filter((c) => codex.has(c.id)).length} / ${list.length}</small></h3><div class="foe-grid">${list.map(tile).join('')}</div></div>`;
+  };
+  const root = screen(`
+    <div class="bar"><button class="back" id="back">← 뒤로</button><h2>요괴 도감</h2><div class="pills"><span class="coins-pill">📖 ${codex.count()}/${CODEX.length}</span></div></div>
+    ${group('enemy', '요괴')}
+    ${group('boss', '지역 보스')}
+    <p class="soft center light">판에서 만난 요괴와 보스가 여기에 적혀요 (이 기기에만 저장)</p>`);
+  root.querySelector('#back')!.addEventListener('click', () => {
+    play('click');
+    showMain();
+  });
+  root.querySelectorAll<HTMLButtonElement>('.foe').forEach((b) =>
+    b.addEventListener('click', () => {
+      play('click');
+      showFoe(b.dataset.id as CodexId);
+    }),
+  );
+}
+
+/** 도감 한 장: 만난 것은 설명과 수치, 안 만난 것은 실루엣과 어디서 나오는지만 */
+function showFoe(id: CodexId) {
+  const c = codexEntry(id);
+  const seen = codex.has(id);
+  const first = firstStageOf(id);
+  const where = c.group === 'boss' ? `${first} 스테이지의 보스예요` : `${first} 스테이지부터 나와요`;
+  const box = document.createElement('div');
+  box.className = 'overlay';
+  box.innerHTML = `<div class="card pop foe-card">
+    <div class="foe-pic ${c.group}">${foeImg(c, seen)}</div>
+    <h3>${seen ? c.name : '???'} <em class="tag ${c.group === 'boss' ? '' : 'role'}">${c.group === 'boss' ? '보스' : '요괴'}</em></h3>
+    ${
+      seen
+        ? `<p class="foe-desc">${c.desc}</p>
+    <div class="rows">${c.facts.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}${first ? `<div><span>처음 나오는 곳</span><b>${first}</b></div>` : ''}</div>`
+        : `<p class="foe-desc soft">아직 만나지 못했어요.${first ? `<br/>${where}` : ''}</p>`
+    }
+    <button class="btn primary" id="ok">닫기</button></div>`;
+  app().appendChild(box);
+  box.addEventListener('click', (e) => {
+    if (e.target !== box && !(e.target as HTMLElement).closest('#ok')) return;
+    play('click');
+    box.remove();
   });
 }
 
@@ -509,7 +608,7 @@ function showStages(region: number) {
         const open = stageOpen(profile, st.id);
         const boss = st.no === 5;
         return `<button class="btn stage-row ${open ? '' : 'locked'} ${boss ? 'boss' : ''}" data-id="${st.id}">
-            <b>${st.id}</b><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>${starsHtml(profile.stages[st.id] ?? 0)}${open ? `<small class="tops" data-tops="${st.id}"></small>` : ''}
+            <b>${st.id}</b><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>${starsHtml(profile.stages[st.id] ?? 0)}${open ? `${foesHtml(st)}<small class="tops" data-tops="${st.id}"></small>` : ''}
           </button>`;
       })
       .join('')}</div>
@@ -613,13 +712,16 @@ export async function startGame(stage: StageDef, endless: boolean) {
       const n = await Promise.race([resending, new Promise<null>((ok) => setTimeout(() => ok(null), RESEND_WAIT_MS))]);
       if (n === null) void resending.then(noteResent);
       else await noteResent(n);
-      runId = await api.start(stage.id, leader, daily ? 'daily' : endless ? 'endless' : 'normal');
+      // 오늘의 길은 코스를 만든 날짜(runDay)를 함께 보낸다: 서버가 그 날짜로 기록하고, 자정을 넘겨 닿으면 거절한다 (bad day)
+      runId = await api.start(stage.id, leader, daily ? 'daily' : endless ? 'endless' : 'normal', daily ? runDay : undefined);
     }
   } catch (e) {
     busy = false;
     wait?.remove();
-    if (fromBoot) showMain();
-    toast(errText(e));
+    // 오늘의 길: 날짜가 바뀌었으면(자정) 새 날짜로 오늘의 도전 화면을 다시 그린다
+    if (daily && e instanceof ApiError && e.message === 'bad day') showDaily();
+    else if (fromBoot) showMain();
+    toast(errText(e), 3200);
     return;
   }
   busy = false;
@@ -643,6 +745,8 @@ export async function startGame(stage: StageDef, endless: boolean) {
   const troops = root.querySelector<HTMLElement>('#troops')!;
   let hinted = false;
   let sent = false;
+  /** 이번 판에서 도감에 새로 적힌 것 (결과 창에 알린다). 개발용 ?all=1 은 기록하지 않는다 */
+  const newFoes: CodexId[] = [];
   const scene = new GameScene();
   closeGame();
   game = new Phaser.Game({
@@ -689,6 +793,11 @@ export async function startGame(stage: StageDef, endless: boolean) {
     run,
     hooks: {
       sound: play,
+      onEvent: (e: SimEvent, s: RunState) => {
+        if (DEV_ALL) return;
+        const id = seenOf(s, e);
+        if (id && codex.add(id)) newFoes.push(id);
+      },
       onFrame: (s: RunState) => {
         if (prog) prog.style.width = `${Math.round(progressOf(s) * 100)}%`;
         if (meters) meters.textContent = `${metersOf(s).toLocaleString()}m · 보스 ${s.bosses}`;
@@ -700,7 +809,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
       },
       onEnd: async (s: RunState) => {
         const out = await finish(s);
-        showResult(s, endless, out?.result ?? null, out?.note ?? null);
+        showResult(s, endless, out?.result ?? null, out?.note ?? null, newFoes);
       },
     },
   });
@@ -733,7 +842,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
       const wait = waitBox('기록 보내는 중…');
       const out = await finish(run);
       wait.remove();
-      if (endless) return showResult(run, true, out?.result ?? null, out?.note ?? null);
+      if (endless) return showResult(run, true, out?.result ?? null, out?.note ?? null, newFoes);
       closeGame();
       showMain();
     });
@@ -743,7 +852,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
 /** note: 'kept' = 서버에 못 보내 기기에 보관, 'unrecorded' = 시작을 알리지 못해 기록되지 않는 판 */
 type RecordNote = 'kept' | 'unrecorded' | null;
 
-function showResult(s: RunState, endless: boolean, r: FinishResult | null, note: RecordNote) {
+function showResult(s: RunState, endless: boolean, r: FinishResult | null, note: RecordNote, newFoes: CodexId[] = []) {
   const st = s.stage;
   const daily = st.id === DAILY_ID;
   const win = !endless && s.phase === 'clear';
@@ -768,6 +877,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
       ${r && r.newLeaders.length ? `<div class="new-leaders">${r.newLeaders.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${leaderOf(id).name} 대장이 합류했어요!</span>`).join('')}</div>` : ''}
+      ${newFoes.length ? `<p class="new-foes"><span>📖 도감에 새로 적었어요</span>${newFoes.map((id) => `<i>${foeImg(codexEntry(id), true)}</i>`).join('')}</p>` : ''}
       ${daily ? '<p class="daily-place" hidden></p>' : ''}
       ${wantTops ? '<div class="tops-box wait"><span class="soft">🏅 최다 생존 대원</span><small class="tops"><em><u>&nbsp;</u></em></small></div>' : ''}
       ${note === 'kept' ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요</p>' : ''}
@@ -788,7 +898,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
       if (!tops || !box.isConnected) return;
       const t = tops[st.id];
       topsBox.innerHTML = t
-        ? `<span class="soft">🏅 최다 생존 대원 · ${t.total.toLocaleString()}명 기록</span><small class="tops">${topsHtml(t)}</small>`
+        ? topsBoxHtml(t)
         : '<span class="soft">🏅 최다 생존 대원</span><small class="tops"><em><u>아직 클리어한 친구가 없어요</u></em></small>';
       topsBox.classList.remove('wait');
     });

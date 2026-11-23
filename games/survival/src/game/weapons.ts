@@ -83,6 +83,7 @@ const lob: WeaponFire = (s, w, slot, L) => {
   const p = s.player;
   const range = L.range ?? 300;
   const count = L.count ?? 1;
+  const evo = WEAPONS[w.def].evolved;
   for (let i = 0; i < count; i++) {
     let tx: number;
     let ty: number;
@@ -96,7 +97,7 @@ const lob: WeaponFire = (s, w, slot, L) => {
       tx = p.x + Math.cos(a) * range * 0.6;
       ty = p.y + Math.sin(a) * range * 0.6;
     }
-    const pr = addProjectile(s, PROJ.cake, MODE.lob, slot, w.def, p.x, p.y, 0, 0, 12, L.dmg * s.stats.might, 5);
+    const pr = addProjectile(s, evo ? PROJ.cakeEvo : PROJ.cake, MODE.lob, slot, w.def, p.x, p.y, 0, 0, 12, L.dmg * s.stats.might, 5);
     if (!pr) return;
     pr.sx = p.x;
     pr.sy = p.y;
@@ -152,7 +153,7 @@ const trail: WeaponFire = (s, w, slot, L) => {
   const p = s.player;
   const r = (L.radius ?? 90) * s.stats.area;
   // 한 번만 때리는 지대: 간격을 아주 길게
-  addZone(s, ZONE.hoof, 0, slot, w.def, p.x, p.y, r, 0, 0.35, 99, L.dmg * s.stats.might);
+  addZone(s, WEAPONS[w.def].evolved ? ZONE.hoofEvo : ZONE.hoof, 0, slot, w.def, p.x, p.y, r, 0, 0.35, 99, L.dmg * s.stats.might);
 };
 
 /** 양털 구름: 적이 있는 곳에 구름을 띄운다. 구름 속의 적은 조금씩 피해를 입고 느려진다 */
@@ -245,15 +246,23 @@ const minion: WeaponFire = (s, w, slot, L) => {
   }
 };
 
-/** 복돼지 돌진: 겨눈 쪽으로 큰 복돼지가 내달리며 닿는 적을 모두 친다 */
+/** 돌진하는 복돼지가 여러 마리일 때 서로 벌어지는 각도 (라디안) */
+export const DASH_SPREAD = 0.5;
+
+/** 복돼지 돌진: 겨눈 쪽으로 큰 복돼지가 내달리며 닿는 적을 모두 친다 (황금 복돼지는 여러 마리가 부채꼴로 벌어져 달린다) */
 const dash: WeaponFire = (s, w, slot, L) => {
   const p = s.player;
   aim(s, 420);
+  const n = L.count ?? 1;
+  const base = Math.atan2(AIM.y, AIM.x);
   const speed = (L.speed ?? 620) * s.stats.projSpeed;
-  const pr = addProjectile(s, PROJ.pig, MODE.line, slot, w.def, p.x, p.y, AIM.x * speed, AIM.y * speed, (L.size ?? 30) * Math.sqrt(s.stats.area), L.dmg * s.stats.might, L.life ?? 0.6);
-  if (pr) {
+  const kind = WEAPONS[w.def].evolved ? PROJ.pigEvo : PROJ.pig;
+  for (let i = 0; i < n; i++) {
+    const a = base + (i - (n - 1) / 2) * DASH_SPREAD;
+    const pr = addProjectile(s, kind, MODE.line, slot, w.def, p.x, p.y, Math.cos(a) * speed, Math.sin(a) * speed, (L.size ?? 30) * Math.sqrt(s.stats.area), L.dmg * s.stats.might, L.life ?? 0.6);
+    if (!pr) return;
     pr.pierce = 99;
-    pr.a = Math.atan2(AIM.y, AIM.x);
+    pr.a = a;
   }
 };
 

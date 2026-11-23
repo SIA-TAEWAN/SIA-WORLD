@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EVOLUTIONS } from '../src/data/evolutions';
 import { WEAPONS } from '../src/data/weapons';
 import { weaponDps } from '../src/game/policy';
 import { breathe } from './helpers';
@@ -44,9 +45,16 @@ describe('무기 12종의 세기', () => {
     }
   }, 240000);
 
-  it('진화 무기는 5레벨보다 두 배 넘게 세다', async () => {
-    for (const [base, evo] of [['shuriken', 'shurikenEvo'], ['pearl', 'pearlEvo'], ['claw', 'clawEvo']]) {
-      expect(await dpsOf(evo, 1)).toBeGreaterThan((await dpsOf(base, 5)) * 2);
+  it('진화 무기 7종은 5레벨보다 두 배 넘게 세고, 2차 4종의 세기는 처음 3종의 범위 안이다', async () => {
+    const dps: Record<string, number> = {};
+    for (const e of EVOLUTIONS) {
+      dps[e.result] = await dpsOf(e.result, 1);
+      expect(dps[e.result], e.result).toBeGreaterThan((await dpsOf(e.weapon, 5)) * 2);
     }
-  }, 120000);
+    const first = ['shurikenEvo', 'pearlEvo', 'clawEvo'].map((id) => dps[id]);
+    for (const e of EVOLUTIONS.slice(3)) {
+      expect(dps[e.result], e.result).toBeGreaterThanOrEqual(Math.min(...first));
+      expect(dps[e.result], e.result).toBeLessThanOrEqual(Math.max(...first));
+    }
+  }, 240000);
 });

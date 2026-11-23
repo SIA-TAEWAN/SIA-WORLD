@@ -1,4 +1,4 @@
-import { isCharId, type ZodiacId } from '../game/constants';
+import { aiLevelOf, isCharId, type AiLevel, type ZodiacId } from '../game/constants';
 import { isCharOpen } from '../game/unlock';
 import type { RankedEntry } from '../game/ranking';
 import type { RaceApi } from '../net/api';
@@ -76,6 +76,23 @@ export function saveChar(c: ZodiacId) {
   state.char = c;
   try {
     localStorage.setItem(charKey(), c);
+  } catch {
+    /* 무시 */
+  }
+}
+
+// ---------- 마지막으로 고른 AI 난이도 (내가 방장인 방에 쓴다) ----------
+const LEVEL_KEY = 'sia-race:ai-level';
+export function loadAiLevel(): AiLevel {
+  try {
+    return aiLevelOf(localStorage.getItem(LEVEL_KEY));
+  } catch {
+    return 'normal';
+  }
+}
+export function saveAiLevel(level: AiLevel) {
+  try {
+    localStorage.setItem(LEVEL_KEY, level);
   } catch {
     /* 무시 */
   }

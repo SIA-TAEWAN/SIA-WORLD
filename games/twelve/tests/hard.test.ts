@@ -291,7 +291,7 @@ describe('어려움 모드 — 저장', () => {
   });
 
   it('SQL: 어려움은 보통 모드를 끝낸 뒤에만 (시작 · 모드 바꾸기 · 지형 열림), 랭킹의 👑 는 어려움 최종보스 기록', () => {
-    const sql = ['078_twelve.sql', '089_twelve_full.sql'].map((n) => readFileSync(new URL(`../../../supabase/migrations/${n}`, import.meta.url), 'utf8')).join('\n');
+    const sql = ['078_twelve.sql', '094_twelve_full.sql'].map((n) => readFileSync(new URL(`../../../supabase/migrations/${n}`, import.meta.url), 'utf8')).join('\n');
     const fn = (name: string) => {
       const i = sql.lastIndexOf(`create or replace function public.${name}(`);
       return sql.slice(i, sql.indexOf('$$;', i));

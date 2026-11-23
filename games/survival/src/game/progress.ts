@@ -14,7 +14,7 @@ import { EVOLUTIONS } from '../data/evolutions';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { PASSIVES, PASSIVE_INDEX, type PassiveDef } from '../data/passives';
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, upgradeSpent, type UpgradeLevels } from '../data/upgrades';
-import { WEAPONS, WEAPON_INDEX, type WeaponDef } from '../data/weapons';
+import { SERVER_CODEX_WEAPONS, WEAPONS, WEAPON_INDEX, type WeaponDef } from '../data/weapons';
 import type { Codex, RunSummary } from './sim';
 
 /** 판 밖에 저장하는 것 (survival_profiles) */
@@ -373,7 +373,8 @@ export function applyRun(
   p.codex = {
     enemies: merge(profile.codex.enemies, run.codex.enemies, ENEMIES.map((e) => e.id)),
     bosses: merge(profile.codex.bosses, run.time < LIMITS.boss1_time ? [] : run.codex.bosses, BOSSES.map((e) => e.id)),
-    weapons: merge(profile.codex.weapons, run.codex.weapons, WEAPONS.map((e) => e.id)),
+    // 서버 도감 목록에 없는 무기(DEVICE_CODEX)는 서버처럼 적지 않는다
+    weapons: merge(profile.codex.weapons, run.codex.weapons, SERVER_CODEX_WEAPONS),
     passives: merge(profile.codex.passives, run.codex.passives, PASSIVES.map((e) => e.id)),
   };
   return { profile: withRecords(p, rec, end, hl), records: rec, endless: end, hell: hl, result };
@@ -438,22 +439,30 @@ export interface EvolutionHint {
   resultKnown: boolean;
 }
 
-/** 진화 조합 힌트: 재료(무기·패시브)는 얻어 본 것만 보이고, 진화 무기는 한 번 만들어 봐야 보인다 */
-export function evolutionHints(codex: Codex): EvolutionHint[] {
+/**
+ * 진화 조합 힌트: 재료(무기·패시브)는 얻어 본 것만 보이고, 진화 무기는 한 번 만들어 봐야 보인다.
+ * made: 이 기기에서 만들어 본 진화 무기 (net/made.ts. 서버 도감 목록에 아직 없는 진화 무기는 이 기록으로 본다)
+ */
+export function evolutionHints(codex: Codex, made: readonly string[] = []): EvolutionHint[] {
   return EVOLUTIONS.map((e) => ({
     weapon: WEAPONS[WEAPON_INDEX[e.weapon]],
     passive: PASSIVES[PASSIVE_INDEX[e.passive]],
     result: WEAPONS[WEAPON_INDEX[e.result]],
     weaponKnown: codex.weapons.includes(e.weapon),
     passiveKnown: codex.passives.includes(e.passive),
-    resultKnown: codex.weapons.includes(e.result),
+    resultKnown: codex.weapons.includes(e.result) || made.includes(e.result),
   }));
 }
 
+/** 도감에서 아는 무기: 서버 도감 + 이 기기에서 만들어 본 진화 무기(made, net/made.ts) */
+export function knownWeapons(codex: Codex, made: readonly string[] = []): string[] {
+  return WEAPONS.map((w) => w.id).filter((id) => codex.weapons.includes(id) || made.includes(id));
+}
+
 /** 도감을 얼마나 모았나: 요괴·보스·무기(진화 포함)·패시브·캐릭터 */
-export function codexCount(p: SurvivalProfile, owned: readonly string[] = []): { have: number; all: number } {
+export function codexCount(p: SurvivalProfile, owned: readonly string[] = [], made: readonly string[] = []): { have: number; all: number } {
   return {
-    have: p.codex.enemies.length + p.codex.bosses.length + p.codex.weapons.length + p.codex.passives.length + CHARACTERS.filter((c) => characterOpen(p, c.id, owned)).length,
+    have: p.codex.enemies.length + p.codex.bosses.length + knownWeapons(p.codex, made).length + p.codex.passives.length + CHARACTERS.filter((c) => characterOpen(p, c.id, owned)).length,
     all: ENEMIES.length + BOSSES.length + WEAPONS.length + PASSIVES.length + CHARACTERS.length,
   };
 }

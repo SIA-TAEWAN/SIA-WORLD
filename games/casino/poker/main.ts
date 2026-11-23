@@ -1,6 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { POKER_MANUAL } from '../../lib/manuals.ts';
-import { pokerHint } from '../../lib/extras.ts';
+import { pokerHint, pokerStory, pokerWeak } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
@@ -26,6 +26,19 @@ let lastPub: PokerPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 
+// ── 판 요약 한 줄용 사건 기록: 공개 상태에는 최근 사건만 실리므로 판 동안 모아 둔다 ──
+type Ev = PokerPublic['events'][number];
+const evLog = new Map<number, Ev>();
+let evKey = '';
+function noteEvents(t: Ctx) {
+  const evs = t.pub?.events ?? [];
+  const key = `${t.room.id}:${t.room.round_no}`;
+  // 방·판이 바뀌었거나, 같은 번호에 다른 사건이 왔으면(새 판의 사건 번호는 1부터 다시 센다) 새로 모은다
+  if (key !== evKey || evs.some((e) => evLog.has(e.id) && evLog.get(e.id)!.t !== e.t)) evLog.clear();
+  evKey = key;
+  for (const e of evs) evLog.set(e.id, e);
+}
+
 
 const ui: GameUI<PokerPublic, PokerPrivate> = {
   game: 'poker',
@@ -43,6 +56,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     const { W, H } = viewSize(scene);
     const p = t.pub;
     lastPub = p;
+    noteEvents(t);
     drawTable(scene, 'poker');
     const portrait = H > W * 1.15 || W < 520;
     // 내 카드 크기: 화면 비율에 맞춰 (7장이 한 줄에 들어오게). 다른 사람은 0.6배
@@ -243,7 +257,19 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       .map((n) => `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}</td><td>이번 판 쉼</td><td>${t.fmt(0)}</td></tr>`)
       .join('');
     const satMe = t.resultSeat !== null && excluded.includes(t.resultSeat) ? '<p>이번 판은 쉬었어요</p>' : '';
-    return `<h3>♠️ 판 결과</h3>${satMe}<table>${rows}${sat}</table>`;
+    // 판 요약 한 줄 ('어흥이의 하프에 2명 다이' · '7구 역전!'): 이번 판의 사건과 결과로 셈한다
+    noteEvents(t);
+    const w = r.winners[0];
+    // 무혈 승리한 사람이 나일 때만 패를 안다 → 원페어 이하였으면 '뻥카'
+    const bluff = r.uncontested && w !== undefined && w === t.resultSeat && !!t.priv && !t.priv.choices.length && pokerWeak([...t.priv.hidden, ...t.priv.open]);
+    const story = pokerStory({
+      events: [...evLog.values()].sort((a, b) => a.id - b.id),
+      summary: r,
+      showdown: t.pub?.showdown,
+      nameOf: (n) => short(names.get(n) ?? t.seatName(n)),
+      bluff,
+    });
+    return `<h3>♠️ 판 결과</h3>${story ? `<p class="story">${esc(story)}</p>` : ''}${satMe}<table>${rows}${sat}</table>`;
   },
 
   // 판 정리: 모든 카드를 더미로 차례로 모으고 (가까운 카드부터) 판돈 칩을 치운다

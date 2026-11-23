@@ -294,8 +294,8 @@ describe('고양이 (테스트 모드: 구매를 흉내 낸다)', () => {
   });
 });
 
-describe('SQL (089): 최종보스맵', () => {
-  const sql = readFileSync(new URL('../../../supabase/migrations/089_twelve_full.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+describe('SQL (094): 최종보스맵', () => {
+  const sql = readFileSync(new URL('../../../supabase/migrations/094_twelve_full.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const sql078 = readFileSync(new URL('../../../supabase/migrations/078_twelve.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const fn = (name: string) => {
     const i = sql.lastIndexOf(`create or replace function public.${name}(`);
