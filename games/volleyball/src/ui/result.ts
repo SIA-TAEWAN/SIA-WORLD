@@ -67,10 +67,12 @@ export function showResult(result: MatchResult) {
   sfx(won ? 'win' : 'lose', { delay: 150 });
   if (won) confetti($('#cheer'));
 
-  // 이모티콘: 얼굴 위 말풍선. 온라인은 상대에게도 보낸다 (방에서 나갔으면 내 쪽에만)
+  // 이모티콘: 얼굴 위 말풍선. 온라인은 상대에게도 보낸다 (방에서 나갔으면 내 쪽에만).
+  // 한쪽이 나가 AI 가 마무리한 경기(내가 끊겼든 상대가 나갔든)는 주고받지 않는다: 상대 칸은 AI 이거나, 이미 다른 경기를 보고 있다
   const says = [bubble($('#say0')), bubble($('#say1'))] as const;
-  const hub = emoteHub({ link: room, myId: state.user.id, oppId: setup.fighters[me === 0 ? 1 : 0].id, mySide: me, show: (s, text) => says[s].say(text) });
-  const chips = wireChips($('#emo'), hub);
+  const hub = emoteHub({ link: reason === 'leave' ? null : room, myId: state.user.id, oppId: setup.fighters[me === 0 ? 1 : 0].id, mySide: me, show: (s, text) => says[s].say(text) });
+  // 결과 카드는 낮은 화면에서 스크롤된다 → 누른 순간이 아니라 눌렀다 뗀 것(click)만 보낸다
+  const chips = wireChips($('#emo'), hub, undefined, 'click');
   offEmote = () => {
     chips.dispose();
     hub.dispose();

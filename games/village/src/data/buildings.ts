@@ -115,10 +115,10 @@ const ROWS: Row[] = [
   ['mon_casino', 'deco', '행운의 분수', '시아카지노 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
   ['mon_charge30', 'deco', '돌격 북', '시아돌격대 별 30개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
   ['mon_charge100', 'deco', '황금 돌격 깃발', '시아돌격대 별 100개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 45, [99]],
-  ['mon_charge_road', 'deco', '끝없는 길 이정표', '끝없는 길 1,000m 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
+  ['mon_charge_road', 'deco', '끝없는 길 이정표', '시아돌격대 끝없는 길 1,000m 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
   ['mon_finger30', 'deco', '튕김 구슬', '시아핑거 별 30개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
   ['mon_finger100', 'deco', '황금 구슬', '시아핑거 별 100개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 45, [99]],
-  ['mon_finger_tower', 'deco', '요괴 탑', '끝없는 탑 20층 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
+  ['mon_finger_tower', 'deco', '요괴 탑', '시아핑거 끝없는 탑 20층 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
 ];
 
 export const BUILDINGS: BuildingDef[] = ROWS.map(([id, kind, name, desc, w, h, rice, wood, stone, coin, sia, upStone, buildSec, product, rate, buildExp, cap, points, unlock]) => ({

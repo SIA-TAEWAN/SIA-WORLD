@@ -4,7 +4,7 @@ import { BLACKJACK_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { BjPublic, BjResult, BjSummary } from '../../../supabase/functions/_shared/blackjack.ts';
-import { bjDayKey, bjLoad, bjRecord, bjStrip, nextStreak, streakCutin, type BjDay } from '../../lib/extras.ts';
+import { bjDayKey, bjLoad, bjRecord, bjSeenAdd, bjSeenLoad, bjStripHtml, nextStreak, streakCutin, type BjDay } from '../../lib/extras.ts';
 import { worldRoot } from '../../lib/world.ts';
 import { rewindBlackjack } from '../../../supabase/functions/_shared/blackjack-rewind.ts';
 
@@ -52,6 +52,32 @@ function saveDay(userId: string, d: BjDay) {
     /* 저장하지 못해도 화면은 그대로 */
   }
 }
+/** 요즘 적은 판 열쇠 (저장소를 못 쓰면 이번에 연 화면 동안만 기억한다) */
+let seenKeys: readonly string[] = [];
+let seenUser = '';
+const seenKeyOf = (userId: string) => `${dayKeyOf(userId)}:seen`;
+function mySeen(userId: string): readonly string[] {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(seenKeyOf(userId));
+  } catch {
+    /* 저장소를 못 쓰는 환경 */
+  }
+  if (raw !== null || seenUser !== userId) seenKeys = bjSeenLoad(raw);
+  seenUser = userId;
+  // 예전 판(이 목록이 생기기 전)에 마지막으로 적은 판도 본 것으로 친다
+  const last = myDay(userId).last;
+  return last && !seenKeys.includes(last) ? (seenKeys = bjSeenAdd(seenKeys, last)) : seenKeys;
+}
+function saveSeen(userId: string, seen: readonly string[]) {
+  seenKeys = seen;
+  seenUser = userId;
+  try {
+    localStorage.setItem(seenKeyOf(userId), JSON.stringify(seen));
+  } catch {
+    /* 저장하지 못해도 화면은 그대로 */
+  }
+}
 /** 이 방에서 본 자리별 연승 (자리 → 이름·횟수) */
 const streaks = new Map<number, { name: string; n: number }>();
 let streakRoom = '';
@@ -61,13 +87,12 @@ const stopCutinTimer = () => {
   if (cutinTimer) clearInterval(cutinTimer);
   cutinTimer = null;
 };
-/** 연승 컷인: 결과 창을 닫은 뒤에 띄운다 (결과 창이 컷인을 가린다) */
+/** 연승 컷인: 결과 창을 닫은 뒤에 띄운다 (결과 창이 컷인을 가린다). 결과 창을 오래 두어도 기다린다 — 방을 나가면(#cutin 이 사라지면) 멈춘다 */
 function streakCut(text: string, avatar: string) {
   stopCutinTimer();
-  let tries = 0;
   cutinTimer = setInterval(() => {
     const el = document.getElementById('cutin');
-    if (!el || ++tries > 300) return stopCutinTimer();
+    if (!el) return stopCutinTimer();
     if (document.querySelector('.modal .result')) return;
     stopCutinTimer();
     el.innerHTML = `<div><img src="${new URL(`shared/images/zodiac/full/${avatar}.png`, worldRoot()).href}" alt=""/><span>${esc(text)}</span></div>`;
@@ -77,29 +102,53 @@ function streakCut(text: string, avatar: string) {
     sfx('cutin');
   }, 200);
 }
-/** 끝난 판 적기 (결과 창을 띄울 때 한 번): 자리별 연승, 내 오늘 기록, 3·5연승 컷인 */
-function recordRound(t: Ctx, r: BjSummary) {
+/** 결과 창이 뜰 때 띄울 연승 컷인 (판 열쇠와 함께 들고 있는다) */
+let pendingCut: { key: string; text: string; avatar: string } | null = null;
+/**
+ * 끝난 판 적기: 자리별 연승, 내 오늘 기록, 3·5연승 컷인 (같은 판은 한 번만 적는다).
+ * 끝난 판을 그릴 때 적는다 → 결과 창을 건너뛴 판(새로고침·다시 들어옴)도 빠지지 않는다. 컷인은 결과 창이 뜰 때(showCut) 건다
+ */
+function recordRound(t: Ctx, r: BjSummary, showCut: boolean) {
+  const cutKey = `${t.room.id}:${t.room.round_no}`;
+  try {
+    recordOnce(t, r);
+  } catch (e) {
+    console.warn('bj-today', e);
+  }
+  if (showCut && pendingCut) {
+    if (pendingCut.key === cutKey) streakCut(pendingCut.text, pendingCut.avatar);
+    pendingCut = null;
+  }
+}
+function recordOnce(t: Ctx, r: BjSummary) {
   if (streakRoom !== t.room.id) {
     streakRoom = t.room.id;
     streaks.clear();
     streakRound = '';
   }
   const key = `${t.room.id}:${t.room.round_no}`;
-  if (key === streakRound) return;
-  streakRound = key;
-  for (const s of r.seats) {
-    if (s.out) continue;
-    const was = streaks.get(s.seat);
-    streaks.set(s.seat, { name: s.name, n: nextStreak(was && was.name === s.name ? was.n : 0, s.delta) });
+  if (key !== streakRound) {
+    streakRound = key;
+    for (const s of r.seats) {
+      if (s.out) continue;
+      const was = streaks.get(s.seat);
+      streaks.set(s.seat, { name: s.name, n: nextStreak(was && was.name === s.name ? was.n : 0, s.delta) });
+    }
   }
+  // 내 기록은 판 열쇠로 중복을 막는다 (bjRecord) → 내 자리 정보가 늦게 와도 다음에 그릴 때 적힌다
   const mine = t.resultSeat === null ? null : r.seats.find((s) => s.seat === t.resultSeat);
   if (!mine || mine.out) return;
   const before = myDay(t.me.userId);
+  // 요즘 적은 판이면 건너뛴다 (방을 오가다 예전 방의 끝난 판을 다시 보았을 때)
+  const seen = mySeen(t.me.userId);
+  const seenNow = bjSeenAdd(seen, key);
+  if (seenNow === seen) return;
+  saveSeen(t.me.userId, seenNow);
   const after = bjRecord(before, { key, delta: mine.delta, blackjacks: mine.hands.filter((h) => h.result === 'blackjack').length });
   if (after === before) return;
   saveDay(t.me.userId, after);
   const cut = mine.delta > 0 ? streakCutin(after.streak) : null;
-  if (cut) streakCut(cut, t.seatAvatar(mine.seat));
+  pendingCut = cut ? { key, text: cut, avatar: t.seatAvatar(mine.seat) } : null;
 }
 /** 이름패 옆 연승 꼬리표 (2연승부터) */
 function streakBadge(t: Ctx, seat: number): string | undefined {
@@ -125,6 +174,8 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     const { scene } = t;
     const { W, H } = viewSize(scene);
     const p = t.pub;
+    // 끝난 판은 여기서 적는다 (다음 판이 시작되기 전까지만: 방 정보가 먼저 바뀐 순간에 지난 판을 새 판 번호로 적지 않게)
+    if (p?.summary && t.room.status === 'waiting') recordRound(t, p.summary, false);
     drawTable(scene, 'blackjack');
     // 세로 화면(휴대폰): 왼쪽 위 딜러 · 왼쪽 가운데 카드 더미 · 왼쪽 아래 나 · 오른쪽에 다른 사람 1·2·3
     const portrait = H > W * 1.15 || W < 520;
@@ -272,17 +323,13 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     playControls(t, el);
     // 조작부 위 띠: 오늘 기록 (이 기기에서 한 판만 센다)
     const d = myDay(t.me.userId);
-    el.insertAdjacentHTML('afterbegin', `<p class="bj-today">${esc(bjStrip(d, t.fmt))}${d.streak >= 2 ? `<span class="tag">${d.streak}연승</span>` : ''}</p>`);
+    el.insertAdjacentHTML('afterbegin', `<p class="bj-today">${bjStripHtml(d, t.fmt)}${d.streak >= 2 ? `<span class="tag">${d.streak}연승</span>` : ''}</p>`);
   },
 
   resultHtml(t: Ctx) {
     const r = t.pub?.summary ?? ((t.pub as unknown as { result?: BjPublic['summary'] })?.result ?? null);
     if (!r) return '<p>판이 끝났어요</p>';
-    try {
-      recordRound(t, r);
-    } catch (e) {
-      console.warn('bj-today', e);
-    }
+    recordRound(t, r, true);
     const rows = r.seats
       .map((s) => {
         const d = s.delta;
@@ -293,7 +340,10 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     return `<h3>🃏 판 결과</h3><p>딜러 ${r.dealer.total}${r.dealer.blackjack ? ' (블랙잭)' : r.dealer.bust ? ' (버스트)' : ''}</p><table>${rows}</table>`;
   },
 
-  leave: stopCutinTimer,
+  leave() {
+    stopCutinTimer();
+    pendingCut = null;
+  },
 
   // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
   replay(ev, t: Ctx) {

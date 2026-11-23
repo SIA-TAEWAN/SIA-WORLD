@@ -22,7 +22,7 @@ import {
   type WorldUser,
   type ZodiacModule, type PresenceHandle } from './world.ts';
 import { isRulesChanged, type LocalHost, type LocalPlay } from './solo-play.ts';
-import { EMOTES, EMOTE_GAP_MS, EMOTE_SHOW_MS, emoteReady, parseEmote } from './emote.ts';
+import { EMOTES, EMOTE_GAP_MS, EMOTE_SHOW_MS, emoteReady, emoteSpread, parseEmote } from './emote.ts';
 
 export interface GameEventLite {
   id: number;
@@ -1359,8 +1359,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const lost = c.resultSeat !== null && (deltas?.[String(c.resultSeat)] ?? 0) < 0;
     if (won) sfx('win');
     else if (lost) sfx('lose');
-    d.innerHTML = `<div class="box result ${won ? 'win' : ''}">${sparkles}${ui.resultHtml(c)}<div class="row"><button class="btn primary" data-x>확인</button></div></div>`;
+    d.innerHTML = `<div class="box result ${won ? 'win' : ''}">${sparkles}${ui.resultHtml(c)}<div class="row">${
+      mySeatRow() ? '<button type="button" class="btn small emote-btn" data-emote-open aria-label="한마디 보내기" title="한마디 보내기">💬</button>' : ''
+    }<button class="btn primary" data-x>확인</button></div></div>`;
     document.body.append(d);
+    // 결과 창이 상단 바의 💬 를 가린다 → 결과 창 안에서도 한마디를 보낼 수 있게
+    const eo = d.querySelector<HTMLButtonElement>('[data-emote-open]');
+    eo?.addEventListener('click', () => toggleEmotePop(eo));
     // 결과를 확인하면 판을 정리하고 (게임에 맞는 연출) 그 뒤에 레디 버튼
     const round = st?.round_no ?? -1;
     if (ui.cleanup && room?.status === 'waiting') {
@@ -1372,6 +1377,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     else paintControls();
     const okBtn = $<HTMLButtonElement>(d, '[data-x]');
     okBtn.addEventListener('click', () => {
+      closeEmotePop();
       d.remove();
       if (tidy === 'wait' && tidyRound === round) runTidy(round);
       else paintControls();
@@ -2106,8 +2112,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     let y: number;
     let below = false;
     if (sr.width > 0 && sr.height > 0 && (up || down)) {
-      below = !up;
-      const a = (up ?? down)!;
+      // 아래 기준점을 먼저 본다: 위쪽 자리(포커·홀덤 상대)는 칩·말풍선용 'seat:' 도 함께 등록하는데, 그 위에 띄우면 카드를 가린다
+      below = !!down;
+      const a = (down ?? up)!;
       x = sr.left + a.x;
       y = sr.top + (below ? a.y : Math.max(a.y, 48));
     } else {
@@ -2117,8 +2124,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         x = chip.left + chip.width / 2;
         y = chip.bottom;
       } else {
-        x = window.innerWidth / 2;
-        y = (sr.height > 0 ? sr.top : 60) + 8;
+        // 기준점도 자리 칸도 없다 (룰렛 · 낮은 화면에서 자리 줄을 숨겼을 때): 누가 말했는지 이름을 붙이고, 자리 순서대로 옆으로 벌린다
+        const p = emoteSpread(seats.map((s) => s.seat_no), seat, window.innerWidth);
+        const who = seats.find((s) => s.seat_no === seat)?.nickname;
+        if (who) b.textContent = `${who}: ${text}`;
+        x = p.x;
+        y = (sr.height > 0 ? sr.top : 60) + 8 + p.dy;
       }
     }
     if (below) b.classList.add('below');
@@ -2151,22 +2162,26 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     emoteBtn?.setAttribute('aria-expanded', 'false');
   }
   const onDocDown = (e: Event) => {
-    const el = e.target as Node | null;
-    if (el && (emotePop?.contains(el) || emoteBtn?.contains(el))) return;
+    const el = e.target as Element | null;
+    if (el && (emotePop?.contains(el) || el.closest?.('.emote-btn'))) return;
     closeEmotePop();
   };
   document.addEventListener('pointerdown', onDocDown);
-  emoteBtn?.addEventListener('click', () => {
+  /** 한마디 고르는 판 열기/닫기 (from: 누른 버튼 — 상단 바의 💬 또는 결과 창 안의 💬) */
+  function toggleEmotePop(from: HTMLElement) {
     if (!emotePop) return;
     if (!emotePop.hidden) return closeEmotePop();
-    // 버튼 바로 아래, 화면 밖으로 나가지 않게
-    const r = emoteBtn.getBoundingClientRect();
+    // 버튼 바로 아래 (아래에 틈이 없으면 위), 화면 밖으로 나가지 않게
+    const r = from.getBoundingClientRect();
     emotePop.hidden = false;
     const w = emotePop.offsetWidth;
-    emotePop.style.top = `${r.bottom + 8}px`;
+    const h = emotePop.offsetHeight;
+    const top = r.bottom + 8 + h > window.innerHeight - 8 ? r.top - 8 - h : r.bottom + 8;
+    emotePop.style.top = `${Math.max(8, top)}px`;
     emotePop.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
-    emoteBtn.setAttribute('aria-expanded', 'true');
-  });
+    emoteBtn?.setAttribute('aria-expanded', 'true');
+  }
+  emoteBtn?.addEventListener('click', () => toggleEmotePop(emoteBtn));
   emotePop?.querySelectorAll<HTMLButtonElement>('[data-emote]').forEach((b) =>
     b.addEventListener('click', () => {
       closeEmotePop();
@@ -2179,11 +2194,10 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       emoteSentAt = now;
       showEmote(mine.seat_no, EMOTES[i]);
       cast?.emote?.({ seat: mine.seat_no, i });
-      // 다음에 보낼 수 있을 때까지 버튼을 흐리게
-      if (emoteBtn) {
-        emoteBtn.disabled = true;
-        setTimeout(() => !closed && (emoteBtn.disabled = false), EMOTE_GAP_MS);
-      }
+      // 다음에 보낼 수 있을 때까지 버튼을 흐리게 (상단 바 + 결과 창 안)
+      const btns = [...document.querySelectorAll<HTMLButtonElement>('.emote-btn')];
+      btns.forEach((x) => (x.disabled = true));
+      setTimeout(() => !closed && btns.forEach((x) => (x.disabled = false)), EMOTE_GAP_MS);
     }),
   );
 

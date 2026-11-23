@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, NAME_RE, PRICES, RES_IDS, RES_NAME, STORAGE_CAP, VIEW_W, kstDay, lookOf, pricePct, type ResId } from '../data/balance';
 import { BUILDING, BUILDINGS, isReward, recipeOf, upgradable, type BuildingType } from '../data/buildings';
-import { GAMES, MONUMENTS, type GameStats } from '../data/monuments';
+import { GAMES, visibleMonuments, type GameStats } from '../data/monuments';
 import { goalText, josa } from '../data/goals';
 import { CAT_LAND_STAGE, CAT_PRICE, RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
@@ -10,7 +10,7 @@ import {
 } from '../game/rules';
 import { makeShowcase } from '../data/showcase';
 import { ApiError, LOCAL_MODE, type RankRow, type Ranking, type VillageApi, type Visit } from '../net/api';
-import { worldHome, zodiacFace, zodiacFull } from '../net/world';
+import { worldGameOpen, worldHome, zodiacFace, zodiacFull } from '../net/world';
 import { VillageScene, type SceneData, type SceneHooks } from '../scenes/VillageScene';
 import { texKey } from '../scenes/art';
 import { kstHour, skyAt } from '../scenes/sky';
@@ -273,17 +273,34 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
 
   let gameStats: GameStats | null = null;
   let statsFailed = false;
+  /** 게임별 오픈 여부 (아직 못 읽었거나 못 불러왔으면 null → 기념물을 모두 보여 준다) */
+  let gameOpen: Record<string, boolean> | null = null;
+  /** 한 번만 읽는다 (못 읽었으면 [기념물]을 열 때 다시 해 본다. 테스트 모드는 서버가 없다 → 모두 보인다) */
+  function loadGameOpen() {
+    if (gameOpen || LOCAL_MODE) return;
+    void worldGameOpen().then((o) => {
+      if (!o) return;
+      gameOpen = o;
+      if (sheet?.kind === 'monuments') paintSheet();
+    });
+  }
+  // 창을 열기 전에 미리 읽어 둔다 (닫힌 게임의 기념물이 잠깐 보였다 사라지지 않게)
+  loadGameOpen();
   function monumentsPanel(): string {
+    // 닫힌 게임의 기념물은 감춘다 (관리자 · 이미 받은 것은 그대로). 합계도 보이는 것만 센다
+    const list = visibleMonuments(gameOpen, state.admin, state.monuments);
     const head = `<div class="sheet-head"><h3>${menuIcon('monuments', '🏯')} 기념물</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
-      <p class="soft note">SIA WORLD 의 다른 게임에서 성과를 내면 열려요. 열린 기념물은 보관함으로 들어오고, 번영도가 크게 올라요 · <b>${state.monuments.length}</b> / ${MONUMENTS.length}</p>`;
+      <p class="soft note">SIA WORLD 의 다른 게임에서 성과를 내면 열려요. 열린 기념물은 보관함으로 들어오고, 번영도가 크게 올라요 · <b>${list.filter((m) => state.monuments.includes(m.id)).length}</b> / ${list.length}</p>`;
     const groups = GAMES.map((g) => {
-      const rows = MONUMENTS.filter((m) => m.game === g.id)
+      const mine = list.filter((m) => m.game === g.id);
+      if (!mine.length) return '';
+      const rows = mine
         .map((m) => {
           const d = BUILDING[m.id];
           const open = state.monuments.includes(m.id);
           const b = state.buildings.find((v) => v.type === m.id);
           const have = Math.min(m.need, gameStats?.[m.stat] ?? 0);
-          const side = !open ? `<span class="lock">🔒 ${gameStats && m.need > 1 ? `${have} / ${m.need}` : '잠김'}</span>`
+          const side = !open ? `<span class="lock">🔒 ${gameStats && m.need > 1 ? `${num(have)} / ${num(m.need)}` : '잠김'}</span>`
             : b?.state === 'stored' ? `<button class="btn small primary" data-take="${b.id}">놓기</button>`
             : '<span class="lock on">마을에 세웠어요</span>';
           return `<div class="b-row mon ${open ? '' : 'shut'}">${art(m.id, 1)}
@@ -297,6 +314,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   function openMonuments() {
     statsFailed = false;
     openSheet({ kind: 'monuments' });
+    loadGameOpen();
     // 다른 서버 일과 같은 줄에서 (늦게 온 답이 그 뒤의 새 상태를 덮지 않게)
     void act(
       () => api.monuments(),

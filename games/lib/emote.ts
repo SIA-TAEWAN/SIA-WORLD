@@ -27,3 +27,15 @@ export function parseEmote(msg: unknown, humanSeats: readonly number[], mySeat: 
   if (m.seat === mySeat || !humanSeats.includes(m.seat)) return null;
   return { seat: m.seat, text: EMOTES[m.i] };
 }
+
+/**
+ * 기준점이 없을 때(룰렛 · 자리 줄을 숨긴 낮은 화면) 말풍선 자리: 자리 순서대로 가운데에서 옆으로 벌리고,
+ * 이웃끼리 겹치지 않게 한 칸씩 번갈아 내린다 → { x: 화면 x, dy: 아래로 내릴 높이 }
+ */
+export function emoteSpread(seatNos: readonly number[], seat: number, width: number): { x: number; dy: number } {
+  const order = [...new Set(seatNos)].sort((a, b) => a - b);
+  const n = Math.max(1, order.length);
+  const i = Math.max(0, order.indexOf(seat));
+  const step = Math.min(170, Math.max(0, width - 120) / n);
+  return { x: width / 2 + (i - (n - 1) / 2) * step, dy: (i % 2) * 40 };
+}

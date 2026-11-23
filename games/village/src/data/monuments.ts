@@ -27,16 +27,17 @@ export interface MonumentDef {
   need: number;
 }
 
-export const GAMES: { id: string; name: string; icon: string }[] = [
-  { id: 'tank', name: '시아탱크', icon: '💣' },
-  { id: 'volley', name: '시아배구', icon: '🏐' },
-  { id: 'race', name: '시아레이스', icon: '🏁' },
-  { id: 'survival', name: '시아서바이벌', icon: '⚔️' },
-  { id: 'defense', name: '시아디펜스', icon: '🏯' },
-  { id: 'matgo', name: '시아맞고', icon: '🎴' },
-  { id: 'casino', name: '시아카지노', icon: '🎰' },
-  { id: 'charge', name: '시아돌격대', icon: '🚩' },
-  { id: 'finger', name: '시아핑거', icon: '👆' },
+/** world: SIA WORLD 게임 목록(shared/games.js)의 id — 그 게임이 열려 있는지(game_open) 볼 때 쓴다 */
+export const GAMES: { id: string; name: string; icon: string; world: string }[] = [
+  { id: 'tank', name: '시아탱크', icon: '💣', world: 'tank' },
+  { id: 'volley', name: '시아배구', icon: '🏐', world: 'volleyball' },
+  { id: 'race', name: '시아레이스', icon: '🏁', world: 'race' },
+  { id: 'survival', name: '시아서바이벌', icon: '⚔️', world: 'survival' },
+  { id: 'defense', name: '시아디펜스', icon: '🏯', world: 'defense' },
+  { id: 'matgo', name: '시아맞고', icon: '🎴', world: 'matgo' },
+  { id: 'casino', name: '시아카지노', icon: '🎰', world: 'casino' },
+  { id: 'charge', name: '시아돌격대', icon: '🚩', world: 'charge' },
+  { id: 'finger', name: '시아핑거', icon: '👆', world: 'finger' },
 ];
 
 export const MONUMENTS: MonumentDef[] = [
@@ -64,3 +65,16 @@ export const MONUMENTS: MonumentDef[] = [
   { id: 'mon_finger_tower', game: 'finger', cond: '끝없는 탑 20층 오르기', stat: 'finger_floor', need: 20 },
 ];
 export const MONUMENT = Object.fromEntries(MONUMENTS.map((m) => [m.id, m])) as Partial<Record<BuildingType, MonumentDef>>;
+
+/**
+ * [기념물] 화면에 보여 줄 기념물: 아직 열지 않은(닫힌) 게임의 기념물은 감춘다 — 할 수 없는 게임의 조건이 보이지 않게.
+ *   gameOpen: 게임별 오픈 여부 (shared/games.js loadGameOpen). 못 불러왔으면 null → 모두 보인다
+ *   admin: 관리자는 닫힌 게임도 할 수 있으므로 모두 보인다
+ *   owned: 이미 열린 기념물 — 게임이 닫혀 있어도 내가 받은 것은 그대로 보인다 (놓기 버튼이 사라지지 않게)
+ * 합계(열린 수 / 전체)도 이 목록으로 센다
+ */
+export function visibleMonuments(gameOpen: Readonly<Record<string, boolean>> | null, admin: boolean, owned: readonly BuildingType[]): MonumentDef[] {
+  if (!gameOpen || admin) return MONUMENTS;
+  const shut = new Set(GAMES.filter((g) => gameOpen[g.world] === false).map((g) => g.id));
+  return MONUMENTS.filter((m) => !shut.has(m.game) || owned.includes(m.id));
+}

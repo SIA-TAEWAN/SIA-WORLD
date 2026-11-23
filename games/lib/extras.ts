@@ -24,11 +24,12 @@ export function pokerHint(cards: readonly string[]): string | null {
     return null;
   }
   const d = draws(list);
+  // 높은 족보부터 (두 개까지만 말하므로, 낮은 것 때문에 풀하우스·포카드가 잘리지 않게)
   const want: string[] = [];
+  if (cat === HandCat.TRIPS) want.push('포카드');
+  if (cat === HandCat.TWO_PAIR) want.push('풀하우스');
   if (d.flush4 && cat < HandCat.FLUSH) want.push('플러시');
   if (d.straight4 && cat < HandCat.STRAIGHT) want.push('스트레이트');
-  if (cat === HandCat.TWO_PAIR) want.push('풀하우스');
-  if (cat === HandCat.TRIPS) want.push('포카드');
   return want.length ? `${want.slice(0, 2).join('·')}까지 1장` : null;
 }
 
@@ -51,7 +52,7 @@ const hashOf = (s: string) => {
  * 내 패 + 공개 정보(공용 카드 · 남은 상대 수 · 판돈 · 콜 금액)만으로 셈한다. 상대 패는 모른다고 보고 고르게 뽑는다
  * (엔진 AI 와 같은 estimateEquity). 같은 상황이면 늘 같은 값이 나오게 카드로 씨앗을 만든다 (다시 그려도 숫자가 흔들리지 않게)
  */
-export function holdemAdvice(i: { hole: readonly string[]; board: readonly string[]; opponents: number; pot: number; call: number }, iters = 400): HoldemAdvice | null {
+export function holdemAdvice(i: { hole: readonly string[]; board: readonly string[]; opponents: number; pot: number; call: number }, iters = 200): HoldemAdvice | null {
   if (i.hole.length !== 2 || i.board.length > 5) return null;
   const opp = Math.max(1, Math.min(8, Math.floor(i.opponents)));
   const rng = seededRng(hashOf(`${i.hole.join('')}|${i.board.join('')}|${opp}`));
@@ -61,17 +62,25 @@ export function holdemAdvice(i: { hole: readonly string[]; board: readonly strin
   } catch {
     return null;
   }
-  const need = i.call > 0 ? i.call / (Math.max(0, i.pot) + i.call) : null;
+  const need = potOddsNeed(i.pot, i.call);
   return { equity, need };
 }
 
 const pct = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 100);
 
-/** '이길 확률 약 62% · 콜하려면 25% 이상' */
-export function holdemAdviceText(a: HoldemAdvice): string {
+/**
+ * '이길 확률 약 62% · 콜하려면 25% 이상'.
+ * o.allIn: 올인 콜 — 내 칩이 모자라 남은 만큼만 내는 콜이라 판돈 가운데 내가 딸 수 있는 몫이 다르다 → 어림값이라고 적는다
+ */
+export function holdemAdviceText(a: HoldemAdvice, o: { allIn?: boolean; short?: boolean } = {}): string {
   const win = `이길 확률 약 ${pct(a.equity)}%`;
-  return a.need === null ? `${win} · 돈을 내지 않고 체크할 수 있어요` : `${win} · 콜하려면 ${pct(a.need)}% 이상`;
+  // short: 좁은 조작부용 짧은 글 ('체크 가능')
+  if (a.need === null) return `${win} · ${o.short ? '체크 가능' : '돈을 내지 않고 체크할 수 있어요'}`;
+  return `${win} · 콜하려면 ${o.allIn ? '약 ' : ''}${pct(a.need)}% 이상`;
 }
+
+/** 판돈·콜 금액만으로 다시 셈하는 필요 승률 (승률 추정은 그대로 두고 이 값만 바꿔 끼운다) */
+export const potOddsNeed = (pot: number, call: number): number | null => (call > 0 ? call / (Math.max(0, pot) + call) : null);
 
 // ───────────────────────── 블랙잭: 오늘 기록 · 연승 ─────────────────────────
 
@@ -117,10 +126,33 @@ export function bjRecord(s: BjDay, r: { key: string; delta: number; blackjacks: 
   return { day: s.day, rounds: s.rounds + 1, net: s.net + r.delta, bj: s.bj + Math.max(0, r.blackjacks), streak: nextStreak(s.streak, r.delta), last: r.key };
 }
 
+/**
+ * 요즘 적은 판 열쇠들 (최근 12개). 끝난 판을 그릴 때마다 적으므로, 방을 오가다 예전 방의 끝난 판을 다시 보아도 두 번 적지 않게 기억해 둔다.
+ * bjSeenLoad: 저장해 둔 글(JSON 배열) 읽기 (깨졌으면 빈 목록), bjSeenAdd: 열쇠 하나 더하기 (이미 있으면 그대로 돌려준다)
+ */
+export const BJ_SEEN_MAX = 12;
+export function bjSeenLoad(raw: string | null): string[] {
+  try {
+    const v: unknown = raw ? JSON.parse(raw) : null;
+    return Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string').slice(-BJ_SEEN_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+export function bjSeenAdd(seen: readonly string[], key: string): readonly string[] {
+  return !key || seen.includes(key) ? seen : [...seen, key].slice(-BJ_SEEN_MAX);
+}
+
 /** '오늘 3판 · +1,200칩 · 블랙잭 1번' */
 export function bjStrip(s: BjDay, fmt: (n: number) => string): string {
   const net = s.net > 0 ? `+${fmt(s.net)}` : s.net < 0 ? `-${fmt(-s.net)}` : '±0';
   return `오늘 ${s.rounds}판 · ${net}칩 · 블랙잭 ${s.bj}번`;
+}
+
+/** 같은 띠를 화면용 HTML 로: 손익을 <b> 로 감싼다 (잃었으면 class="minus"). 숫자·정해진 글자뿐이라 따로 이스케이프할 것이 없다 */
+export function bjStripHtml(s: BjDay, fmt: (n: number) => string): string {
+  const net = s.net > 0 ? `+${fmt(s.net)}` : s.net < 0 ? `-${fmt(-s.net)}` : '±0';
+  return `오늘 ${s.rounds}판 · <b${s.net < 0 ? ' class="minus"' : ''}>${net}칩</b> · 블랙잭 ${s.bj}번`;
 }
 
 /** 이 연승에서 컷인을 띄우는가 (3 · 5연승) */

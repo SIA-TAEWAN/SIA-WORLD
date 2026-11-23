@@ -11,7 +11,7 @@ import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, openSettings, screen, stage, state, toast } from './app';
 import { DPR } from './dpr';
-import { bubble, emoteChips, emoteHub, wireChips } from './emote';
+import { bubble, emoteChips, emoteHub, primaryPress, wireChips } from './emote';
 import { sfx } from './sfx';
 
 declare global {
@@ -112,6 +112,8 @@ export function showMatch(setup: MatchSetup) {
       placeSay(s);
       says[s].say(text);
     },
+    // 상대가 끊겨 AI 가 이어받은 뒤: 그 사람이 보낸 이모티콘을 AI 캐릭터 위에 띄우지 않는다
+    oppGone: () => match instanceof OnlineMatch && match.solo,
   });
   const tray = $('#emo-tray');
   let trayTimer: ReturnType<typeof setTimeout> | null = null;
@@ -124,6 +126,7 @@ export function showMatch(setup: MatchSetup) {
   }
   const chips = wireChips($('#emo'), hub, () => openTray(false));
   $('#emo-open').addEventListener('pointerdown', (e) => {
+    if (!primaryPress(e)) return;
     e.preventDefault();
     openTray(tray.classList.contains('hidden'));
   });

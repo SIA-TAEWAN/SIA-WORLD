@@ -2587,3 +2587,20 @@ a.btn { text-decoration: none; text-align: center; }
     top: 96px;
   }
 }
+/* 가로로 눕힌 좁은 휴대폰(너비 640 이하): 한 줄(6칸)이면 왼쪽의 채팅 버튼·미니맵까지 닿는다 → 3칸 두 줄 그대로 */
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) and (max-width: 640px) {
+  .emo-tray {
+    grid-template-columns: repeat(3, auto);
+    gap: 6px;
+  }
+  .emo-pick {
+    height: 44px;
+  }
+}
+/* 좁은 세로 화면: 문구 3칸이 화면 안에 들어오게 */
+@media (max-width: 380px) {
+  .emo-pick {
+    min-width: 64px;
+    padding: 0 6px;
+  }
+}

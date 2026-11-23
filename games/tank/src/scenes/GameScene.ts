@@ -607,8 +607,9 @@ export class GameScene extends Phaser.Scene {
     this.hud.onEmote = (i) => {
       const me = this.emoteTank();
       if (!me) return;
+      // 온라인: 먼저 보내 보고, 간격 제한에 걸려 나가지 않았으면 내 화면에도 띄우지 않는다 (나만 보이는 말풍선이 되지 않게)
+      if (cfg.net && cfg.chat?.sendEmote && !cfg.chat.sendEmote(i)) return;
       this.showEmote(me.idx, i);
-      cfg.chat?.sendEmote?.(i);
     };
     this.emoteOff =
       cfg.chat?.onEmote?.((from, i) => {
@@ -1717,9 +1718,12 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- 감정 표현 ----------
 
-  /** 감정 표현을 띄울 내 탱크. 온라인: 내 탱크 / 한 기기: 지금 조종 중인 사람(없으면 첫 번째 사람) */
+  /** 감정 표현을 띄울 내 탱크. 온라인: 내 탱크 (AI가 넘겨받았으면 없다 — 받는 쪽도 그 탱크에는 띄우지 않는다) / 한 기기: 지금 조종 중인 사람(없으면 첫 번째 사람) */
   private emoteTank(): TankState | null {
-    if (this.cfg.net) return this.match.tanks[this.cfg.net.myIdx] ?? null;
+    if (this.cfg.net) {
+      const t = this.match.tanks[this.cfg.net.myIdx];
+      return t && !t.ai ? t : null;
+    }
     return this.viewer();
   }
 

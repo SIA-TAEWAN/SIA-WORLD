@@ -224,7 +224,8 @@ export function nameTag(scene: Scene, x: number, y: number, name: string, avatar
     const bt = scene.add.text(0, 0, opts.badge, { fontFamily: T.FONT, fontSize: `${Math.round(12 * k)}px`, color: css(C.white) }).setOrigin(0.5);
     const bw = bt.width + 12 * k;
     const bh = 18 * k;
-    const bx = -4 * k + wdt - bw * 0.35;
+    // 꼬리표 오른쪽 끝을 알약 오른쪽 끝에 맞춘다 (더 나가면 화면 오른쪽 자리에서 잘린다)
+    const bx = -4 * k + wdt - bw / 2;
     const by = -ht / 2 - bh * 0.25;
     const bg = scene.add.graphics();
     bg.fillStyle(C.pink, 1).fillRoundedRect(bx - bw / 2, by - bh / 2, bw, bh, bh / 2);

@@ -31,13 +31,14 @@ export interface EmoteHub {
 /**
  * link: 온라인이면 방, AI 대전이면 null (내 쪽에만 뜬다). oppId: 상대의 사용자 ID (그 사람이 보낸 것만 받는다).
  * show(side, 말): 그 자리 캐릭터 위에 말풍선을 띄운다.
+ * oppGone(): 상대 자리를 AI 가 이어받았는가 — 그러면 받은 이모티콘을 띄우지 않는다 (AI 캐릭터가 말한 것처럼 보이지 않게).
  */
-export function emoteHub(o: { link: EmoteLink | null; myId: string; oppId?: string; mySide: Side; show: (side: Side, text: string) => void }): EmoteHub {
+export function emoteHub(o: { link: EmoteLink | null; myId: string; oppId?: string; mySide: Side; show: (side: Side, text: string) => void; oppGone?: () => boolean }): EmoteHub {
   const recvGate = new EmoteGate(EMOTE_RECV_GAP_MS);
   const oppSide: Side = o.mySide === 0 ? 1 : 0;
   const off = o.link?.onMsg((m) => {
     const i = readEmote(m, o.oppId);
-    if (i < 0 || !recvGate.pass(performance.now())) return;
+    if (i < 0 || o.oppGone?.() || !recvGate.pass(performance.now())) return;
     o.show(oppSide, emoteText(i)!);
     sfx('toggle', { volume: 0.5 });
   });
@@ -82,12 +83,16 @@ export function bubble(el: HTMLElement) {
   };
 }
 
+/** 마우스는 왼쪽 버튼만 받는다 (오른쪽·가운데 버튼으로 눌러도 보내지지 않게). 손가락·펜은 그대로 */
+export const primaryPress = (e: PointerEvent) => e.pointerType !== 'mouse' || e.button === 0;
+
 /**
  * 버튼 줄을 잇는다: 누르면 보내고, 간격 제한 동안 box 에 'cool' 을 붙여 흐리게 한다.
- * pointerdown 으로 받는다 — 다른 손가락으로 조작 버튼을 누른 채여도 바로 눌리고(아이폰은 그럴 때 click 을 안 낸다), 포커스도 옮겨 가지 않는다.
+ * 경기 중(기본)은 pointerdown 으로 받는다 — 다른 손가락으로 조작 버튼을 누른 채여도 바로 눌리고(아이폰은 그럴 때 click 을 안 낸다), 포커스도 옮겨 가지 않는다.
+ * 결과 화면(on: 'click')은 click 으로 받는다 — 카드를 스크롤하려고 손가락을 댄 것만으로 보내지지 않게.
  * sync(): 다른 길(숫자 키)로 보낸 뒤 흐림 표시를 맞춘다.
  */
-export function wireChips(box: HTMLElement, hub: EmoteHub, onSent?: () => void): { sync(): void; dispose(): void } {
+export function wireChips(box: HTMLElement, hub: EmoteHub, onSent?: () => void, on: 'pointerdown' | 'click' = 'pointerdown'): { sync(): void; dispose(): void } {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const cool = () => {
     if (timer) clearTimeout(timer);
@@ -95,20 +100,21 @@ export function wireChips(box: HTMLElement, hub: EmoteHub, onSent?: () => void):
     box.classList.toggle('cool', left > 0);
     timer = left > 0 ? setTimeout(cool, left + 20) : null;
   };
-  const onDown = (e: PointerEvent) => {
+  const onDown = (e: Event) => {
     const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-emo]');
     if (!chip) return;
+    if (on === 'pointerdown' && !primaryPress(e as PointerEvent)) return;
     e.preventDefault();
     if (hub.send(Number(chip.dataset.emo))) onSent?.();
     cool();
   };
-  box.addEventListener('pointerdown', onDown);
+  box.addEventListener(on, onDown);
   cool();
   return {
     sync: cool,
     dispose() {
       if (timer) clearTimeout(timer);
-      box.removeEventListener('pointerdown', onDown);
+      box.removeEventListener(on, onDown);
     },
   };
 }

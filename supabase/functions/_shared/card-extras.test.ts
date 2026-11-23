@@ -222,3 +222,39 @@ describe('맞고 게임 방법 (설명서의 숫자가 엔진과 같은가)', ()
     expect(MATGO_MANUAL).toContain('세 번 뻑을 내면 그 자리에서 7점');
   });
 });
+
+// ---- 전체검사 뒤 고친 것 ----
+import { bjSeenAdd, bjSeenLoad, bjStripHtml, BJ_SEEN_MAX, potOddsNeed } from '../../../games/lib/extras.ts';
+import { emoteSpread } from '../../../games/lib/emote.ts';
+
+describe('전체검사 고침', () => {
+  it('포커 힌트는 높은 족보부터', () => {
+    expect(pokerHint(['4S', '4D', '9S', '9C', 'KS', '2S'])).toBe('풀하우스·플러시까지 1장');
+    expect(pokerHint(['4S', '4D', '4H', '9S', 'KS', '2S'])).toBe('포카드·플러시까지 1장');
+  });
+  it('홀덤 문구: 올인 콜은 약, 체크는 짧게', () => {
+    expect(holdemAdviceText({ equity: 0.62, need: 0.25 } as never, { allIn: true })).toBe('이길 확률 약 62% · 콜하려면 약 25% 이상');
+    expect(holdemAdviceText({ equity: 0.4, need: null } as never, { short: true })).toBe('이길 확률 약 40% · 체크 가능');
+  });
+  it('팟 오즈', () => {
+    expect(potOddsNeed(300, 100)).toBeCloseTo(0.25);
+    expect(potOddsNeed(300, 0)).toBeNull();
+  });
+  it('블랙잭 본 판 기억은 최근 것만, 중복은 그대로', () => {
+    let seen: readonly string[] = bjSeenLoad(null);
+    for (let i = 0; i < BJ_SEEN_MAX + 3; i++) seen = bjSeenAdd(seen, `r:${i}`);
+    expect(seen.length).toBe(BJ_SEEN_MAX);
+    expect(seen).toContain(`r:${BJ_SEEN_MAX + 2}`);
+    expect(bjSeenAdd(seen, `r:${BJ_SEEN_MAX + 2}`)).toBe(seen);
+    expect(bjSeenLoad('not json')).toEqual([]);
+  });
+  it('블랙잭 띠는 손익을 b 로 감싼다', () => {
+    const day = bjRecord(bjLoad(null, '2026-11-23'), { key: 'a', delta: -500, blackjacks: 0 });
+    expect(bjStripHtml(day, (n) => String(n))).toMatch(/<b class="minus">/);
+  });
+  it('기준점 없는 한마디는 자리마다 벌어진다', () => {
+    const a = emoteSpread([0, 1, 2], 0, 300);
+    const b = emoteSpread([0, 1, 2], 1, 300);
+    expect(a.x).not.toBe(b.x);
+  });
+});

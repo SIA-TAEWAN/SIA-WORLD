@@ -471,10 +471,15 @@ function statsPanel(p: RoulettePublic, t: Ctx) {
   const s = rouletteStats(spinning ? p.history.slice(0, -1) : p.history);
   const names = WHEEL.map((id) => NAME[id]);
   const notes = s.n ? rouletteNotes(s, names, SEASONS) : [];
-  const head = `<div class="rstats-head"><button type="button" class="btn small" id="rl-stats" aria-expanded="${statsOpen}">📊 흐름 ${statsOpen ? '▴' : '▾'}</button>${
+  // 확정했거나 돌아가는 동안에는 펼쳐 두었어도 접힌 모양 (휠이 작아지지 않게 — style.css 의 rl-watch 규칙과 짝)
+  const betting = ui.pageClass?.(t) === 'rl-betting';
+  const shown = statsOpen && betting;
+  const head = `<div class="rstats-head"><button type="button" class="btn small" id="rl-stats" aria-expanded="${shown}" ${betting ? '' : 'disabled title="베팅하는 동안 펼칠 수 있어요"'}>📊 흐름 ${shown ? '▴' : '▾'}</button>${
     notes.length ? notes.map((n) => `<span class="tag">${esc(n)}</span>`).join('') : `<small>${s.n ? `최근 ${s.n}판` : '아직 결과가 없어요'}</small>`
   }</div>`;
-  if (!statsOpen) return `<div class="rstats">${head}</div>`;
+  if (!shown) return `<div class="rstats">${head}</div>`;
+  // 기록이 없으면 0% 막대 대신 안내 한 줄
+  if (!s.n) return `<div class="rstats">${head}<div class="rstats-body"><p class="rs-empty">아직 결과가 없어요. 한 판이 끝나면 여기에 모여요</p></div></div>`;
   const most = Math.max(1, ...s.counts);
   // 휠 순서 대신 계절 순서(봄 → 겨울)로: 베팅판과 같은 줄 순서
   const order = [0, 1, 2, 3].flatMap((x) => seasonCells(x));
