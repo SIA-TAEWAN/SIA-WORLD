@@ -2,7 +2,10 @@
 //   게임마다 실시간 채널(Presence)이 있고, 들어온 사람은 그 채널에 자기 정보를 올린다 (같은 계정은 탭이 여러 개여도 한 명).
 //   - 시아탱크 lobby:main · 시아레이스 race-lobby · 시아배구 volley-lobby · 시아서바이벌 survival-lobby 는 각 게임의 대기실 채널을 그대로 센다.
 //   - 맞고·카지노는 이 파일의 enterGame()으로 card-lobby:<게임> 채널에 들어간다.
-//   - SIA WORLD 로비는 watchGameCounts()로 구독만 해서 게임 카드에 인원을 보여 준다 (자기 정보는 올리지 않는다).
+//   - 시아돌격대·시아핑거도 enterGame()으로 charge-lobby · finger-lobby 에 들어간다.
+//   - SIA WORLD 로비는 watchWorld()로 게임 채널을 구독만 해서(게임 채널에는 자기 정보를 올리지 않는다 → 게임 정원과 무관)
+//     게임 카드에 인원과 닉네임 목록을 보여 주고, 로비 전용 채널 world-lobby 에만 자기 정보를 올려 로비 사람끼리 보이게 한다.
+//   - 모든 채널이 같은 모양으로 올린다: key = 사용자 ID, 내용 = { meta: { name: 닉네임, ... } }
 import { supabase } from './supabase.js';
 
 /** 게임 하나에 동시에 들어올 수 있는 사람 수 */
@@ -25,6 +28,90 @@ export const GAME_CHANNELS = {
 /** 맞고·카지노 게임 하나의 접속 채널 이름 */
 export const cardChannel = (game) => `card-lobby:${game}`;
 
+/** SIA WORLD 로비에 있는 사람들의 채널 (게임 채널이 아니라서 게임 정원 30명과 상관없고, 정원도 없다) */
+export const WORLD_LOBBY_CHANNEL = 'world-lobby';
+
+/** 채널에 올라온 사람들: [{ id, name }] (이름을 올리지 않은 사람은 name 이 '') */
+function peopleOf(ch) {
+  const list = [];
+  for (const [id, metas] of Object.entries(ch.presenceState())) {
+    const last = metas[metas.length - 1];
+    const m = last?.meta ?? last ?? {};
+    list.push({ id, name: typeof m.name === 'string' ? m.name.trim().slice(0, 16) : '' });
+  }
+  return list;
+}
+
+/**
+ * 로비용: 지금 누가 어디에 있는지 받는다. 게임 채널은 구독만 하고, user 를 주면 로비 채널(world-lobby)에 내 정보를 올린다.
+ * cb({
+ *   counts: { tank: 3, ... },                    게임마다 사람 수 (같은 계정은 한 번)
+ *   games:  { tank: [{ id, name }], ... },       게임마다 있는 사람 (name 이 '' 이면 이름을 모르는 사람)
+ *   lobby:  [{ id, name }],                      로비에 있는 사람
+ *   online: [{ id, name, games: ['tank'], lobby: true }]   전체 (같은 사람은 한 번, 이름 모르는 사람은 뺀다)
+ * }) 가 바뀔 때마다 불린다. 돌려주는 함수를 부르면 그만 보고 로비 채널에서도 나온다.
+ * @param {(w: object) => void} cb
+ * @param {{ user?: { userId: string, nickname: string } | null, lobby?: boolean }} [opt] lobby: false 면 로비 채널을 보지 않는다
+ */
+export function watchWorld(cb, opt = {}) {
+  const user = opt.user ?? null;
+  const withLobby = opt.lobby !== false;
+  const seen = new Map(); // 채널 이름 → [{ id, name }]
+  let stopped = false;
+  const emit = () => {
+    if (stopped) return;
+    const counts = {};
+    const games = {};
+    const online = new Map(); // id → { id, name, games, lobby }
+    const person = (p) => {
+      let o = online.get(p.id);
+      if (!o) online.set(p.id, (o = { id: p.id, name: '', games: [], lobby: false }));
+      if (!o.name && p.name) o.name = p.name;
+      return o;
+    };
+    for (const [game, topics] of Object.entries(GAME_CHANNELS)) {
+      const byId = new Map();
+      for (const t of topics) {
+        for (const p of seen.get(t) ?? []) {
+          if (!byId.get(p.id)?.name) byId.set(p.id, p);
+        }
+      }
+      games[game] = [...byId.values()];
+      counts[game] = byId.size;
+      for (const p of byId.values()) person(p).games.push(game);
+    }
+    const lobby = withLobby ? [...(seen.get(WORLD_LOBBY_CHANNEL) ?? [])] : [];
+    for (const p of lobby) person(p).lobby = true;
+    cb({ counts, games, lobby, online: [...online.values()].filter((o) => o.name) });
+  };
+  const channels = [];
+  const watch = (topic, config, onUp) => {
+    const ch = config ? supabase.channel(topic, { config }) : supabase.channel(topic);
+    ch.on('presence', { event: 'sync' }, () => {
+      seen.set(topic, peopleOf(ch));
+      emit();
+    });
+    ch.subscribe((status) => {
+      if (status === 'SUBSCRIBED') onUp?.(ch);
+    });
+    channels.push(ch);
+  };
+  for (const topic of new Set(Object.values(GAME_CHANNELS).flat())) watch(topic);
+  if (withLobby) {
+    if (user?.userId) {
+      const meta = { name: user.nickname, seen: Date.now() };
+      // 다시 연결됐을 때도 내 정보를 다시 올린다
+      watch(WORLD_LOBBY_CHANNEL, { presence: { key: user.userId } }, (ch) => void ch.track({ meta }).catch(() => undefined));
+    } else {
+      watch(WORLD_LOBBY_CHANNEL);
+    }
+  }
+  return () => {
+    stopped = true;
+    channels.forEach((ch) => void supabase.removeChannel(ch));
+  };
+}
+
 /** 채널에 올라온 사람들: [{ key, seen }] (들어온 순) */
 function membersOf(ch) {
   const list = [];
@@ -43,27 +130,7 @@ function membersOf(ch) {
  * cb({ tank: 3, matgo: 0, ... }) 가 바뀔 때마다 불린다. 돌려주는 함수를 부르면 그만 본다.
  */
 export function watchGameCounts(cb) {
-  const keys = new Map(); // 채널 이름 → Set(사용자 key)
-  const emit = () => {
-    const out = {};
-    for (const [game, topics] of Object.entries(GAME_CHANNELS)) {
-      const all = new Set();
-      for (const t of topics) for (const k of keys.get(t) ?? []) all.add(k);
-      out[game] = all.size;
-    }
-    cb(out);
-  };
-  const channels = [];
-  for (const topic of new Set(Object.values(GAME_CHANNELS).flat())) {
-    const ch = supabase.channel(topic);
-    ch.on('presence', { event: 'sync' }, () => {
-      keys.set(topic, new Set(Object.keys(ch.presenceState())));
-      emit();
-    });
-    ch.subscribe();
-    channels.push(ch);
-  }
-  return () => channels.forEach((ch) => void supabase.removeChannel(ch));
+  return watchWorld((w) => cb(w.counts), { lobby: false });
 }
 
 /**
