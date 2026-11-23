@@ -30,10 +30,8 @@ export const texKey = (type: BuildingType, look: number) => `b-${type}-${upgrada
 export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + RISE * w });
 
 /** 그림 파일로 먼저 채우는 텍스처 이름 (public/art/<이름>.png) */
-/** 그림 파일이 아직 없는 것 (코드 그림만 쓴다. 고양이 선물은 SpriteCook 그림을 만들면 public/art/b-gift_cat-1.png 를 넣고 여기서 뺀다) */
-const NO_FILE: readonly string[] = ['gift_cat'];
 export const ART_FILES: string[] = [
-  ...BUILDINGS.filter((d) => !NO_FILE.includes(d.id)).flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
+  ...BUILDINGS.flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
   'site-1', 'site-2', 'tile-yard', 'tile-meadow',
   'w-wall-1', 'w-wall-2', 'w-post', 'g-tuft', 'g-flowers', 'g-pebbles',
   ...['rice', 'wood', 'stone', 'cake', 'special'].map((r) => `bubble-${r}`),
