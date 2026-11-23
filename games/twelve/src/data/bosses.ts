@@ -260,8 +260,8 @@ export const BOSSES: Record<BossId, BossDef> = {
   // 볼수록 커진다 (단계마다 몸이 커지고 빨라진다). 예고는 모두 0.75초 이상
   eoduksini: B(FINAL_BOSS, '어둑시니', 230, 'spirit', ['열두 열쇠를 다 모아 왔구나. 고맙다.', '그 열쇠가 나를 가둔 문도 여는 줄은 몰랐겠지.', '볼수록 커지는 어둠을 본 적이 있느냐?'], {
     last: '나는… 그림자일 뿐이다. 봉인 아래에는 아직…',
-    // 그림은 야광귀(어두운 덩어리에 빛나는 눈)를 크게 쓴다 — 전용 그림은 ASSETS.md
-    art: 'b-yagwanggwi',
+    // 전용 그림 (ASSETS.md): 볼수록 커지는 어둠 덩어리. 단계마다 같은 그림을 키운다
+    art: 'b-final',
     r: 68, hp: 9000, atk: 22, speed: 90, gap: 1.4, exp: 800, coin: 500,
     summonAt: [0.85, 0.5, 0.2], summon: { kind: 'spirit', n: 4 },
     // 1단계: 1~5지형 보스의 공격 + 열두 시

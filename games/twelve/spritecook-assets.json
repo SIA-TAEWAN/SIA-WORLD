@@ -1,4 +1,70 @@
 {
-  "note": "시아열두길 전용 SpriteCook 그림 목록. 아직 없다 (ASSETS.md 의 목록대로 만들면 {asset_id, sha12, label} 로 적는다). public/art 의 요괴·보스·바닥·이펙트는 시아디펜스(games/defense/public/art)에서 복사한 것이다.",
-  "assets": []
+  "note": "시아열두길 전용 SpriteCook 그림 목록 (art/build.py 가 적는다). b-final 은 열두길에서 만든 그림, floor-r01~r12 는 시아핑거의 지형 바닥을 복사한 것이다. public/art 의 요괴(e-*)·보스(b-* 12종)·tile-*·fx-pop 은 시아디펜스(games/defense/public/art)에서 복사한 것이고 asset id 는 games/defense/spritecook-assets.json 에 있다.",
+  "assets": [
+    {
+      "asset_id": "b95d130f-e387-476f-a179-24857b250a97",
+      "sha12": "284af06586e3",
+      "label": "b-final → public/art/b-final.png (512x512) · 최종보스 어둑시니 (gpt-image-2 low · 화풍 참고 야광귀·염라대왕·저승사자 · 둘레의 열쇠는 build.py 가 뺀다)"
+    },
+    {
+      "asset_id": "b0422e49-57c9-47e8-a4d3-72359ffdeb5e",
+      "sha12": "9bc5303d2cd5",
+      "label": "floor-r01 → public/art/floor-r01.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "2043893f-52d2-45f7-ac1c-7a26a957e532",
+      "sha12": "c0faf6cc9d8f",
+      "label": "floor-r02 → public/art/floor-r02.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "49b0ee8b-07fd-412c-bd75-8bd9902cfe40",
+      "sha12": "2c8a88c5cc6d",
+      "label": "floor-r03 → public/art/floor-r03.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "315bd57a-c302-4ff1-879a-bd3cc13a20ef",
+      "sha12": "a42168f1275e",
+      "label": "floor-r04 → public/art/floor-r04.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "57cd2732-4dc8-42f5-bb48-69a9b7ae0aad",
+      "sha12": "6a43c82134cb",
+      "label": "floor-r05 → public/art/floor-r05.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "083a08b8-8379-4c95-ba50-7f0cb307af5a",
+      "sha12": "00bb9917b0a3",
+      "label": "floor-r06 → public/art/floor-r06.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "0fb9516f-00ac-442a-a7f1-ee0cf01aefd3",
+      "sha12": "f9d9d372b901",
+      "label": "floor-r07 → public/art/floor-r07.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "b86b9470-746f-4729-9e70-faae55e1f898",
+      "sha12": "868a6debc9ce",
+      "label": "floor-r08 → public/art/floor-r08.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "23599234-9c08-4b92-80e1-a35cdbdccdaa",
+      "sha12": "58bf8696fcc2",
+      "label": "floor-r09 → public/art/floor-r09.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "e4493aa7-4cf1-4c99-ae97-a234a344c6f2",
+      "sha12": "b1ea83904ef1",
+      "label": "floor-r10 → public/art/floor-r10.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "601c79c5-83c5-41b5-8be2-5f3c7893462a",
+      "sha12": "6d37f755cbee",
+      "label": "floor-r11 → public/art/floor-r11.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    },
+    {
+      "asset_id": "7707797b-1595-4ba6-bb0f-d63bc4906116",
+      "sha12": "c66219e011e6",
+      "label": "floor-r12 → public/art/floor-r12.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)"
+    }
+  ]
 }

@@ -12,7 +12,9 @@ import { COLOR, MATGO, ROULETTE, TABLE } from '../theme';
 
 export type OptionalArt =
   | `hero-${HeroId}` // 대원 걷기·공격·구르기 시트 (지금은 공용 전신 그림 한 장을 흔든다)
-  | `tiles-${number}` // 지형 전용 타일셋 (지금은 시아디펜스 바닥 + 코드 벽)
+  | `tiles-${number}` // 지형 전용 타일셋 (지금은 지형 바닥 무늬 + 코드 벽)
+  | `floor-r${string}` // 지형 바닥 무늬 12종 (시아핑거의 지형 바닥과 같은 그림)
+  | 'b-final' // 최종보스 어둑시니
   | 'chest' // 숨은 상자
   | 'exit' // 출구 (봉인 문)
   | 'fx-slash' // 베기 효과
@@ -22,7 +24,10 @@ export type OptionalArt =
   | `finale-${1 | 2 | 3 | 4}` // 진짜 엔딩(어려움 최종보스) 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
   | 'cat-scene'; // 고양이(13번째 대원) 등장 장면
 
-export const ART_FILES: readonly OptionalArt[] = [];
+/** 지형 바닥 무늬의 이름 (1 → floor-r01) */
+export const floorArt = (region: number): OptionalArt => `floor-r${String(region).padStart(2, '0')}`;
+
+export const ART_FILES: readonly OptionalArt[] = ['b-final', ...Array.from({ length: 12 }, (_, i) => floorArt(i + 1))];
 export const hasArt = (name: OptionalArt) => ART_FILES.includes(name);
 
 /** 바닥 4종의 색 (DESIGN.md 의 기존 값만 쓴다: 시아서바이벌·시아디펜스와 같은 바닥색) */
@@ -44,15 +49,21 @@ export const ENEMY_TINT: Partial<Record<EnemyKind, number>> = { mud: COLOR.empty
   sleeper: COLOR.pink, acorn: COLOR.primaryDeep, yaksha: COLOR.cardRed, ferryman: COLOR.teamA, firecart: COLOR.lose,
 };
 
+/** 어려움 모드의 보스는 같은 그림에 붉은빛을 입힌다 (PRD: 어려움은 색 변형) */
+export const HARD_BOSS_TINT = COLOR.pink;
+
+/** 이 지형의 바닥 무늬: 지형 전용 무늬가 있으면 그것(320px 그대로 — 맵 너비 960 에 세 장), 없으면 시아디펜스 바닥 4종(512px 를 256px 로, 바닥색과 절반 섞기) */
+export const floorOf = (region: number): { key: string; size: number; alpha: number } =>
+  hasArt(floorArt(region)) ? { key: floorArt(region), size: 320, alpha: 1 } : { key: GROUND[regionOf(region).ground].tile, size: 256, alpha: 0.5 };
+
 /** 이 맵에서 받을 기본 그림 이름 (요괴·보스·바닥·효과) */
 export function artFor(map: MapDef): string[] {
-  const region = regionOf(map.region);
   const kinds = new Set<EnemyKind>();
   for (const g of map.groups) {
     for (const [k] of g.list) kinds.add(k);
     if (g.elite) kinds.add(g.elite);
   }
-  const names = [GROUND[region.ground].tile, 'fx-pop'];
+  const names = [floorOf(map.region).key, 'fx-pop'];
   if (map.boss) {
     const b = BOSSES[bossIdOf(map)];
     names.push(b.art);

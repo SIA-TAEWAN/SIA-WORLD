@@ -7,7 +7,7 @@ import { envOf } from '../data/maps';
 import type { Drop } from '../game/drops';
 import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
-import { ENEMY_TINT, artFor, groundOf } from './art';
+import { ENEMY_TINT, HARD_BOSS_TINT, artFor, floorOf, groundOf } from './art';
 
 /** 기준 화면 크기 (세로 9:16). 더 긴 화면(아이폰 19.5:9 등)은 위아래로 더 보여 준다 — 띠를 남기지 않게 */
 export const W = 720;
@@ -606,7 +606,7 @@ export class GameScene extends Phaser.Scene {
       }
       // 정예는 크게, 갈라져 나온 것은 작게 (몸 반지름 비율대로)
       const size = e.bossDef ? (e.bossDef.phases?.[e.phase - 1]?.size ?? e.bossDef.size) : e.def.size * (e.r / e.def.r);
-      const tint = e.bossDef ? undefined : ENEMY_TINT[e.kind];
+      const tint = e.bossDef ? (this.run.mode === 'hard' ? HARD_BOSS_TINT : undefined) : ENEMY_TINT[e.kind];
       const wob = e.awake && e.busy <= 0 && e.stun <= 0 ? Math.sin(now * 9 + e.id) * 2.5 : 0;
       // 공격을 예고하는 동안 몸을 부풀린다
       const puff = e.busy > 0 ? 1.08 : 1;
@@ -705,12 +705,13 @@ export class GameScene extends Phaser.Scene {
     const tile = (x: number, y: number) => (x < 0 || y < 0 || x >= s.cols || y >= s.rows ? 1 : s.grid[y * s.cols + x]);
     c.fillStyle = css(look.floor);
     c.fillRect(0, 0, WORLD_W, rows * TILE);
-    if (this.textures.exists(look.tile)) {
-      // 받은 바닥 무늬를 바닥색과 절반쯤 섞는다 (DESIGN.md: 시아디펜스 바닥과 같은 방식). 512px 무늬를 256px 로 깐다
-      const img = this.textures.get(look.tile).getSourceImage() as HTMLImageElement;
-      c.globalAlpha = 0.5;
-      const off = (idx * CHUNK_H) % 256;
-      for (let y = -off; y < rows * TILE; y += 256) for (let x = 0; x < WORLD_W; x += 256) c.drawImage(img, x, y, 256, 256);
+    const floor = floorOf(s.map.region);
+    if (this.textures.exists(floor.key)) {
+      // 받은 바닥 무늬를 이어 깐다 (지형 전용 무늬는 그대로, 시아디펜스 바닥은 바닥색과 절반쯤 섞는다 — DESIGN.md)
+      const img = this.textures.get(floor.key).getSourceImage() as HTMLImageElement;
+      c.globalAlpha = floor.alpha;
+      const off = (idx * CHUNK_H) % floor.size;
+      for (let y = -off; y < rows * TILE; y += floor.size) for (let x = 0; x < WORLD_W; x += floor.size) c.drawImage(img, x, y, floor.size, floor.size);
       c.globalAlpha = 1;
     }
     const hash = (x: number, y: number, k: number) => {
