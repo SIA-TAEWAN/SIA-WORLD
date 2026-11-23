@@ -12,6 +12,7 @@ import { R05 } from './maps/r05';
 import { R06 } from './maps/r06';
 import { R07 } from './maps/r07';
 import { R08 } from './maps/r08';
+import { R09 } from './maps/r09';
 import { mapScale, parseMapId, type MapId, type Mode } from './regions';
 
 /** 타일 글자 */
@@ -53,7 +54,7 @@ export interface MapDef {
 }
 
 /** 준비된 맵 (없는 지형은 지도에 '준비 중') */
-const LIST: MapDef[] = [...R01, ...R02, ...R03, ...R04, ...R05, ...R06, ...R07, ...R08];
+const LIST: MapDef[] = [...R01, ...R02, ...R03, ...R04, ...R05, ...R06, ...R07, ...R08, ...R09];
 const BY_ID = new Map<string, MapDef>(LIST.map((m) => [m.id, m]));
 export const MAPS: readonly MapDef[] = LIST;
 export const mapOf = (id: string): MapDef | null => BY_ID.get(id) ?? null;
