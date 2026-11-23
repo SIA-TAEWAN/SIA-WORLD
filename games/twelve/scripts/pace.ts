@@ -1,6 +1,6 @@
 /**
  * 성장 속도 계산 (PRD '성장과 플레이 시간' · '밸런스 도구'): 능력치·드랍·경험치 표만으로 플레이 시간과 레벨 곡선을 본다.
- *   npm run pace                 → 1~3지형, 씨앗 3개 평균
+ *   npm run pace                 → 준비된 지형 전부(1~7지형), 씨앗 3개 평균
  *   npm run pace -- 3 5          → 지형 수, 씨앗 수
  *   npm run pace -- weapons      → 무기 4종 비교 (같은 맵·같은 레벨·같은 등급)
  *
@@ -8,12 +8,13 @@
  * 보상·드랍·레벨·상점·대장간은 게임과 같은 함수(progress.ts · rules.ts)를 그대로 쓴다. 화면·서버는 쓰지 않는다.
  *
  * 가정 (사람은 이렇게 한다고 본다):
- *  - 대원은 그 지형의 고향 대원(쥐 → 소 → 호랑이), 무기는 그 대원이 잘 다루는 종류.
+ *  - 대원은 그 지형의 고향 대원(쥐 → 소 → 호랑이 → 토끼 → 용 → 뱀 → 말), 무기는 그 대원이 잘 다루는 종류.
  *  - 맵에 들어가기 전에: 보관함 받기 → 가장 좋은 무기·방어구·장신구 착용(상점에 더 좋은 것이 있고 돈이 되면 산다)
  *    → 안 쓰는 일반 장비는 분해(강화석이 모자랄 때)하거나 판다 → 무기·방어구 강화 → 물약 채우기(체력 8 · 마력 4).
  *  - 쓰러지면 다시 도전하고, 같은 맵에서 두 번 쓰러질 때마다 바로 앞 맵을 한 번 돌고 온다(사냥).
  *  - 지형 보스는 열쇠가 나올 때까지 다시 잡는다 (40%, 3번째 확정).
  *  - 지형을 끝낼 때마다 정예가 둘씩 나오는 6·7번 맵을 한 번씩 더 돈다 (레어·별 모으기 — PRD: 15시간 중 6시간이 사냥·열쇠·레어).
+ *    5지형부터는 두 번씩 (PRD 성장 표: 1~4지형은 지형마다 1시간, 5~8지형은 1시간 15분).
  *    표에는 'N사냥' 줄로 따로 보인다.
  *  - 사람의 시간 = 자동 조종 시간 × HUMAN + 판마다 BETWEEN 초 (결과 화면·쉼터). 자동 조종은 망설이지 않고 길을 알고 있어서 사람보다 빠르다.
  */
@@ -38,8 +39,9 @@ const BETWEEN = 30;
 const POTIONS = [8, 4];
 /** 판 최대 시간 (자동 조종이 헤매면 끊는다) */
 const MAX_RUN = 1500;
-/** 지형을 끝낸 뒤 한 번씩 더 도는 맵 (정예가 둘씩 나온다) */
+/** 지형을 끝낸 뒤 더 도는 맵 (정예가 둘씩 나온다). 5지형부터는 두 바퀴 — 장비 값·강화 비용·레어 목록이 늘어 사냥이 길어진다 */
 const FARM_MAPS = [6, 7];
+const farmRounds = (region: number) => (region >= 5 ? 2 : 1);
 
 const args = process.argv.slice(2);
 const pad = (v: string | number, n: number) => String(v).padStart(n);
@@ -68,7 +70,7 @@ function prepare(p: TwelveProfile, map: MapDef): HeroId {
 
   // 무기·방어구: 가방에서 가장 좋은 것, 상점에 더 좋은 것이 있으면 산다
   const wearable = (it: Item) => !it.box && p.level >= itemLevel(defOf(it));
-  const best = (ok: (it: Item) => boolean) => p.items.filter((it) => wearable(it) && ok(it)).sort((a, b) => power(b) - power(a))[0];
+  const best = (ok: (it: Item) => boolean) => p.items.filter((it) => wearable(it) && ok(it)).sort((a, b) => power(b) - power(a) || defOf(b).tier - defOf(a).tier)[0];
   const tier = Math.min(shopTier(p), tierForLevel(p.level));
   for (const [slot, base, ok] of [
     ['weapon', normalWeapon(kind, tier), (it: Item) => defOf(it).kind === kind],
@@ -77,7 +79,8 @@ function prepare(p: TwelveProfile, map: MapDef): HeroId {
     let top = best(ok);
     const shop = itemDef(base)!;
     const shopPower = slot === 'weapon' ? itemStats(shop, 0).atk : itemStats(shop, 0).hp + itemStats(shop, 0).def * 8;
-    if ((!top || shopPower > power(top)) && p.coins >= shop.buy + 40 && bagCount(p) < p.bag && !buy(p, base)) top = best(ok);
+    // 강화한 낮은 등급(+9 = 다음 등급 일반과 같다)보다 새 등급을 사서 다시 강화하는 쪽이 낫다
+    if ((!top || shopPower > power(top) || (!defOf(top).rare && defOf(top).tier < tier && shopPower >= power(top))) && p.coins >= shop.buy + 40 && bagCount(p) < p.bag && !buy(p, base)) top = best(ok);
     if (top) equip(p, top.id);
   }
   const acc = p.items.filter((it) => wearable(it) && defOf(it).slot === 'acc').sort((a, b) => defOf(b).tier - defOf(a).tier || ACC_ORDER.indexOf(defOf(a).stat!) - ACC_ORDER.indexOf(defOf(b).stat!))[0];
@@ -195,7 +198,7 @@ function journey(seed: number, regions: number): Row[] {
     if (!map.boss) continue;
     // 레어·별 모으기: 6·7번 맵을 한 번씩 더
     const farm: Row = { ...row, id: `${map.region}사냥`, name: '사냥', level: 0, enemies: 0, par: 0, runs: 0, deaths: 0, clear: 0, total: 0, gear: 0, potions: 0, sim: 0 };
-    for (const no of FARM_MAPS) {
+    for (const no of Array.from({ length: farmRounds(map.region) }, () => FARM_MAPS).flat()) {
       const o = playRun(p, mapOf(`${map.region}-${no}`)!, roll(seed, 7, ++n), 0);
       farm.runs++;
       farm.total += human(o);
@@ -264,13 +267,14 @@ function paceTable(regions: number, seeds: number) {
     prevMaps = e.maps;
   }
   console.log('');
-  // PRD 성장 표와 견주기: 1~4지형 약 4시간에 Lv25 → 지형 수에 맞춰 줄인 목표
-  const t = GROWTH_TARGETS[0];
+  // PRD 성장 표와 견주기: 표의 구간(1~4지형 4시간 Lv25 · 5~8지형 9시간 Lv45 · 9~12지형 15시간 Lv65) 사이는 지형 수로 고르게 나눈다
   const last = ends[ends.length - 1];
   if (last) {
-    const share = last.region / t.region;
-    const goalLv = 1 + (t.level - 1) * (mapLevel(last.region, MAPS_PER_REGION, 'normal') / mapLevel(t.region, MAPS_PER_REGION, 'normal'));
-    console.log(`목표 (PRD 성장 표: 보통 1~${t.region}지형 약 ${t.hours}시간에 Lv${t.level}, 맵 한 판 5~6분) → 1~${last.region}지형: 약 ${(t.hours * share).toFixed(1)}시간, Lv ${goalLv.toFixed(0)} 안팎`);
+    const marks = [{ region: 0, hours: 0, level: 1 }, ...GROWTH_TARGETS.filter((g) => g.mode === 'normal')];
+    const hi = marks.find((m) => m.region >= last.region) ?? marks[marks.length - 1];
+    const lo = marks[marks.indexOf(hi) - 1] ?? marks[0];
+    const f = hi.region === lo.region ? 1 : (last.region - lo.region) / (hi.region - lo.region);
+    console.log(`목표 (PRD 성장 표: 보통 1~${hi.region}지형 약 ${hi.hours}시간에 Lv${hi.level}, 맵 한 판 5~6분) → 1~${last.region}지형: 약 ${(lo.hours + (hi.hours - lo.hours) * f).toFixed(1)}시간, Lv ${(lo.level + (hi.level - lo.level) * f).toFixed(0)} 안팎`);
     console.log(`결과: ${last.hours.toFixed(2)}시간, Lv ${last.lv.toFixed(1)}, 맵 한 판 평균 ${min(last.first / last.maps)}분 (첫 클리어 판 기준)`);
   }
   if (ends.length < regions) console.log(`\n✗ ${all[0][count - 1].id} 에서 막혔어요 (12번 쓰러짐) — 요괴가 너무 세거나 경험치가 모자라요`);
@@ -283,7 +287,7 @@ function weaponTable() {
   console.log('');
   console.log(`| 맵 | ${WEAPON_KINDS.map((k) => padEnd(k, 16)).join(' | ')} |`);
   console.log(`|---|${WEAPON_KINDS.map(() => '---').join('|')}|`);
-  for (const id of ['1-2', '1-5', '1-8', '2-3', '2-6', '2-8', '3-3', '3-6', '3-8']) {
+  for (const id of ['1-2', '1-5', '1-8', '2-3', '2-6', '2-8', '3-3', '3-6', '3-8', '4-3', '4-6', '4-8', '5-3', '5-6', '5-8', '6-3', '6-6', '6-8', '7-3', '7-6', '7-8']) {
     const m = mapOf(id);
     if (!m) continue;
     const lv = mapLevel(m.region, m.no, 'normal') + 2;

@@ -9,7 +9,7 @@ import type { HeroId } from './heroes';
 export const REGIONS = 12;
 export const MAPS_PER_REGION = 8;
 /** 지금 열려 있는 지형 수 (나머지는 지도에 '준비 중') */
-export const REGIONS_READY = 4;
+export const REGIONS_READY = 5;
 /** 어려움 모드 · 최종보스가 준비됐는지 */
 export const HARD_READY = false;
 
@@ -87,10 +87,16 @@ export function mapLevel(region: number, no: number, mode: Mode): number {
   return mode === 'hard' ? Math.round(66 + f * 33) : Math.round(1 + f * 64);
 }
 
+/**
+ * 5지형부터 요괴가 더 단단해진다: 권장 레벨 from 을 넘는 레벨마다 체력 배율 +step (span 레벨까지만 쌓인다).
+ * 4지형까지의 식 그대로면 5~7지형 맵 한 판이 4.5분쯤으로 짧았다 (PRD: 5~6분 — npm run pace).
+ */
+export const HP_RAMP = { from: 22, span: 12, step: 0.2 };
+
 /** 권장 레벨 → 요괴 배율 (체력·공격·방어·경험치·엽전). count = 무리마다 요괴 수 배율. 끝없는 탑(data/tower.ts)도 이 식을 쓴다 */
 export const levelScale = (lv: number, count = 1) => ({
   level: lv,
-  hp: 1 + 0.22 * (lv - 1),
+  hp: 1 + 0.22 * (lv - 1) + HP_RAMP.step * Math.max(0, Math.min(HP_RAMP.span, lv - HP_RAMP.from)),
   atk: 1 + 0.2 * (lv - 1),
   def: 0.8 * (lv - 1),
   reward: 1 + 0.15 * (lv - 1),

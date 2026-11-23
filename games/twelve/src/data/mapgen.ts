@@ -504,13 +504,15 @@ export interface RegionGen {
 }
 
 const DEFAULT_ROOMS = [12, 12, 12, 13, 13, 13, 13, 6];
+/** 5지형부터: 보스 맵 앞길을 방 하나 더 길게 */
+const BIG_BOSS_ROOMS = [12, 12, 12, 13, 13, 13, 13, 7];
 export const REGION_GEN: Partial<Record<number, RegionGen>> = {
   1: { names: ['들머리', '풀숲 길', '물웅덩이 길', '여우불 언덕', '방망이 고개', '갈대밭', '도깨비 터 앞', '큰 도깨비의 놀이터'], rooms: DEFAULT_ROOMS },
   2: { names: ['논두렁 길', '물꼬 옆', '허수아비 밭', '진흙 벌판', '죽순 둑', '모내기 논', '두억시니 굴 앞', '두억시니의 논'], rooms: DEFAULT_ROOMS, extra: PADDY },
   3: { names: ['고개 들머리', '바위 비탈', '살쾡이 굴', '벼랑 사잇길', '바람골', '대숲 고개', '쇠가시 길', '불가살의 고갯마루'], rooms: DEFAULT_ROOMS, extra: PASS },
   4: { names: ['달맞이 길', '대숲 들머리', '그슨대 숲', '달못가', '여우불 대숲', '죽순 언덕', '달동산 마루 앞', '장산범의 달동산'], rooms: [13, 13, 13, 14, 14, 14, 14, 7], extra: MOON },
-  5: { names: ['연못 들머리', '징검다리', '메기 웅덩이', '연잎 길', '물안개 둑', '깊은 못가', '지네 굴 앞', '왕지네의 연못'], rooms: DEFAULT_ROOMS, extra: POND },
-  6: { names: ['늪 들머리', '두꺼비 못', '썩은 나무 숲', '독안개 길', '여우불 늪', '깊은 수렁', '구슬 굴 앞', '구미호의 늪'], rooms: DEFAULT_ROOMS, extra: SWAMP },
+  5: { names: ['연못 들머리', '징검다리', '메기 웅덩이', '연잎 길', '물안개 둑', '깊은 못가', '지네 굴 앞', '왕지네의 연못'], rooms: BIG_BOSS_ROOMS, extra: POND },
+  6: { names: ['늪 들머리', '두꺼비 못', '썩은 나무 숲', '독안개 길', '여우불 늪', '깊은 수렁', '구슬 굴 앞', '구미호의 늪'], rooms: BIG_BOSS_ROOMS, extra: SWAMP },
   7: { names: ['성 밖 길', '화약 창고', '해골 병영', '궁수 성벽', '옹성 마당', '안뜰', '성문 앞', '수문장 대장의 성문'], rooms: DEFAULT_ROOMS, extra: GATE },
 };
 

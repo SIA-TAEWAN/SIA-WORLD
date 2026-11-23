@@ -99,8 +99,11 @@ export const SELL_PCT = { normal: 10, rare: 40, acc: 15 } as const;
 export const sellPrice = (tier: number, kind: keyof typeof SELL_PCT) => Math.floor((buyPrice(tier) * SELL_PCT[kind]) / 100);
 /** 분해해서 받는 강화석: 1 + 등급÷2 (레어 +3 + 등급÷2), 강화한 단계마다 +1 */
 export const scrapStones = (tier: number, rare: boolean) => 1 + Math.floor(tier / 2) + (rare ? 3 + Math.floor(tier / 2) : 0);
-/** 강화: +(n-1) → +n 의 값 (항상 성공) */
-export const enhanceCost = (tier: number, n: number) => ({ coins: 60 * (tier + 1) * n, stones: Math.ceil(n / 2) + Math.floor(tier / 3) });
+/**
+ * 강화: +(n-1) → +n 의 값 (항상 성공). 엽전 = 60 × (등급+1) × 단계, 강철(등급 3)부터는 × (등급+1)÷3 —
+ * 요괴가 주는 엽전은 레벨에 따라 빨리 늘어서, 등급에 곧게 오르는 값으로는 5지형부터 엽전이 수만 개씩 남았다 (npm run pace)
+ */
+export const enhanceCost = (tier: number, n: number) => ({ coins: Math.round(60 * (tier + 1) * n * (tier >= 3 ? (tier + 1) / 3 : 1)), stones: Math.ceil(n / 2) + Math.floor(tier / 3) });
 
 /** 물약 소·중·대: 회복량(최대치의 비율) · 값 */
 export const POTION_SIZES = 3;

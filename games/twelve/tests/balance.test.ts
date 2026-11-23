@@ -20,11 +20,11 @@ const mapCoins = (id: string) => {
 };
 
 describe('성장 곡선 (PRD 성장 표: 보통 1~4지형 약 4시간에 Lv25)', () => {
-  /** pace 와 같은 가정: 맵마다 한 번, 보스는 열쇠 때문에 두 번쯤, 지형마다 6·7번 맵을 한 번 더 */
+  /** pace 와 같은 가정: 맵마다 한 번, 보스는 열쇠 때문에 두 번쯤, 지형마다 6·7번 맵을 한 번 더 (5지형부터는 두 번 더) */
   const levelAfter = (regions: number) => {
     let lv = { level: 1, exp: 0 };
     for (let r = 1; r <= regions; r++) {
-      for (const m of mapsOf(r)) lv = addExp(lv.level, lv.exp, mapExp(m.id) * (m.boss ? 2 : m.no >= 6 ? 2 : 1));
+      for (const m of mapsOf(r)) lv = addExp(lv.level, lv.exp, mapExp(m.id) * (m.boss ? 2 : m.no >= 6 ? (r >= 5 ? 3 : 2) : 1));
     }
     return lv.level;
   };
@@ -37,9 +37,15 @@ describe('성장 곡선 (PRD 성장 표: 보통 1~4지형 약 4시간에 Lv25)',
     expect(got[2]).toBeLessThanOrEqual(21);
     expect(got[3]).toBeGreaterThanOrEqual(t.level - 2);
     expect(got[3]).toBeLessThanOrEqual(t.level + 2);
+    // 5~8지형은 9시간에 Lv45 (8지형 마지막 맵 권장 44) — 권장 레벨과의 차이가 줄어든다. 7지형 끝은 Lv40 안팎
+    if (REGIONS_READY >= 7) {
+      expect(GROWTH_TARGETS[1]).toMatchObject({ region: 8, hours: 9, level: 45 });
+      expect(got[6]).toBeGreaterThanOrEqual(38);
+      expect(got[6]).toBeLessThanOrEqual(42);
+    }
     got.forEach((lv, i) => {
       const rec = mapLevel(i + 1, MAPS_PER_REGION, 'normal');
-      expect(lv, `${i + 1}지형`).toBeGreaterThanOrEqual(rec + 1);
+      expect(lv, `${i + 1}지형`).toBeGreaterThanOrEqual(i < 4 ? rec + 1 : rec);
       expect(lv, `${i + 1}지형`).toBeLessThanOrEqual(rec + 5);
     });
   });
@@ -62,11 +68,11 @@ describe('맵 크기 · 별 시간', () => {
     }
   });
 
-  it('별 시간은 길이와 때려야 하는 횟수로 정한다 (3~11분)', () => {
+  it('별 시간은 길이와 때려야 하는 횟수로 정한다 (3~12분)', () => {
     for (const m of MAPS) {
       expect(m.par).toBe(parOf(m.region, m.no, m.rows.length, m.groups, !!m.boss));
       expect(m.par, m.id).toBeGreaterThanOrEqual(180);
-      expect(m.par, m.id).toBeLessThanOrEqual(660);
+      expect(m.par, m.id).toBeLessThanOrEqual(720);
     }
     expect(PAR.slack).toBeGreaterThan(1.2);
   });

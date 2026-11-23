@@ -1,5 +1,5 @@
-import { TILE } from '../src/data/balance';
-import { STEP, noInput, sightOf, step, type Input, type RunState } from '../src/game/sim';
+import { ENV, TILE } from '../src/data/balance';
+import { STEP, noInput, sightOf, step, tileAt, type Input, type RunState } from '../src/game/sim';
 
 /**
  * 시험용 자동 조종: 가까운 요괴를 찾아가 치고, 빨간 범위에 서 있으면 구르고, 출구가 열리면 출구로 간다.
@@ -106,6 +106,8 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
     const close = fight && best < (ranged ? Math.min(s.weapon.aim * 0.55, sightOf(s) * 0.8) : s.weapon.kind === 'sword' ? 85 : 140) && (!ranged || sees(s, p.x, p.y, tx, ty));
     inp.mx = close ? 0 : dx / d;
     inp.my = close ? 0 : dy / d;
+    // 물길(5지형): 물살에 떠밀리는 만큼 거슬러 올라간다 (사람도 그렇게 한다)
+    if (s.env.id === 'water' && s.env.f > 0 && tileAt(s, p.x, p.y) === 2) inp.my -= (ENV.water.push * s.env.f) / (s.stats.speed * 0.6);
     inp.attack = fight && best < s.weapon.aim + 40;
     const skillRange = ranged ? s.weapon.aim * 0.8 : 200;
     inp.skill[0] = fight && best < skillRange && p.skillCd[0] <= 0;
