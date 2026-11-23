@@ -6,11 +6,12 @@
  */
 import { regionTier } from '../src/data/economy';
 import { mapKillMax, mapOf } from '../src/data/maps';
-import { REGIONS_READY } from '../src/data/regions';
+import { REGIONS_READY, type Mode } from '../src/data/regions';
+import { towerRareRate } from '../src/data/tower';
 import { roll } from '../src/game/drops';
-import { applyReport, bagCount, checkStart, emptyProfile, type FinishResult, type RunReport, type TwelveProfile } from '../src/game/progress';
+import { applyReport, bagCount, checkStart, emptyProfile, setMode, type FinishResult, type RunReport, type TwelveProfile } from '../src/game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../src/game/rules';
-import { applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, type TowerFloorResult, type TowerRun } from '../src/game/tower';
+import { TOWER_TAG, applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, type TowerFloorResult, type TowerRun } from '../src/game/tower';
 
 const p = emptyProfile();
 const steps: unknown[] = [];
@@ -44,10 +45,11 @@ const idAt = (i: number) => sorted(p)[i].id;
 
 function play(map: string, seed: number, over: Partial<RunReport> = {}) {
   const m = mapOf(map)!;
-  const max = mapKillMax(m, 'normal');
-  const report: RunReport = { run: '', map, mode: 'normal', hero: 'rat', time: 100, cleared: true, kills: { ...max.kinds }, elites: max.elites, boss: !!m.boss, chest: true, deaths: 0, ...over };
+  const mode = over.mode ?? 'normal';
+  const max = mapKillMax(m, mode);
+  const report: RunReport = { run: '', map, mode, hero: 'rat', time: 100, cleared: true, kills: { ...max.kinds }, elites: max.elites, boss: !!m.boss, chest: true, deaths: 0, ...over };
   const result = applyReport(p, report, seed);
-  steps.push({ op: 'play', map, seed, report: { time: report.time, cleared: report.cleared, kills: report.kills, elites: report.elites, boss: report.boss, chest: report.chest, deaths: report.deaths, potions: report.potions ?? null }, result: canonResult(result), state: canon(p) });
+  steps.push({ op: 'play', map, mode, seed, report: { time: report.time, cleared: report.cleared, kills: report.kills, elites: report.elites, boss: report.boss, chest: report.chest, deaths: report.deaths, potions: report.potions ?? null }, result: canonResult(result), state: canon(p) });
 }
 /** RPC 하나: fn · 인자(items = 장비 순서 번호) · 기기 규칙의 결과(why = 거절 까닭) */
 function rpc(fn: string, args: Record<string, unknown>, why: string | null) {
@@ -178,14 +180,57 @@ rpc('twelve_buy', { p_what: `w-spear-${regionTier(REGIONS_READY, 'normal')}`, p_
 
 // 10) 최종보스맵 (089 의 twelve_start · twelve_finish): 열쇠 12개가 모이기 전에는 'need keys' → 지형 보스를 다시 잡아 열쇠를 채운다(40% · 3번째 확정)
 //     → 열림 → 첫 처치(강화석 꾸러미 · 보통 모드 클리어) → 다시 잡으면 꾸러미 없음 → 쓰러진 판
-const tryStart = (map: string) => steps.push({ op: 'start', map, why: checkStart(p, map, 'normal', 'rat'), state: canon(p) });
+const tryStart = (map: string, mode: Mode = 'normal') => steps.push({ op: 'start', map, mode, why: checkStart(p, map, mode, 'rat'), state: canon(p) });
 if (REGIONS_READY >= 12) {
+  // 어려움 모드는 보통 모드를 끝내기 전에는 잠겨 있다
+  rpc('twelve_set_mode', { p_mode: 'hard' }, setMode(p, 'hard'));
+  tryStart('1-1', 'hard');
   tryStart('final');
   for (let r = 2; r <= 12; r++) for (let k = 0; k < 3 && !p.keys.normal.includes(r); k++) play(`${r}-8`, 40000 + r * 100 + k, { time: 200 });
   tryStart('final');
   play('final', 77001, { time: 300 });
   play('final', 77002, { time: 300, deaths: 1, chest: false });
   play('final', 77003, { time: 120, cleared: false, kills: { imp: 2 }, elites: 0, boss: false, chest: false });
+
+  // 11) 어려움 모드 (089 의 twelve_set_mode · _twelve_region_open · 맵 표의 어려움 줄): 전환 → 상점 등급(Lv72 는 어려움 1지형) →
+  //     96맵을 차례로 (어려움 전용 레어 · 등급 8~11 드랍 · 별 24개 보상 · 보스의 선물) → 열쇠 12개 → 어려움 최종보스(진짜 끝) → 보통으로 돌아갔다가 다시
+  rpc('twelve_set_mode', { p_mode: 'easy' }, setMode(p, 'easy'));
+  rpc('twelve_set_mode', { p_mode: 'hard' }, setMode(p, 'hard'));
+  tryStart('1-2', 'hard');
+  tryStart('final', 'hard');
+  p.coins += 400000;
+  steps.push({ op: 'coins', add: 400000 });
+  // 가방이 꽉 차 있으니(7번 순서) 나무 갑옷 하나를 분해해 자리를 낸다
+  const freeSlot = () => {
+    const i = sorted(p).findIndex((it) => !it.box && !Object.values(p.eq).includes(it.id) && it.base === 'a-0');
+    const id = idAt(i);
+    rpc('twelve_scrap', { items: [i] }, scrap(p, [id]));
+  };
+  freeSlot();
+  rpc('twelve_buy', { p_what: 'w-sword-8', p_n: 1 }, buy(p, 'w-sword-8'));
+  rpc('twelve_buy', { p_what: 'w-sword-9', p_n: 1 }, buy(p, 'w-sword-9'));
+  for (let r = 1; r <= 12; r++) for (let n = 1; n <= 8; n++) play(`${r}-${n}`, 50000 + r * 1000 + n * 37, { mode: 'hard', time: 250 });
+  freeSlot();
+  rpc('twelve_buy', { p_what: 'w-sword-11', p_n: 1 }, buy(p, 'w-sword-11'));
+  tryStart('final', 'hard');
+  for (let r = 1; r <= 12; r++) for (let k = 0; k < 3 && !p.keys.hard.includes(r); k++) play(`${r}-8`, 60000 + r * 100 + k, { mode: 'hard', time: 250 });
+  tryStart('final', 'hard');
+  play('final', 88001, { mode: 'hard', time: 400 });
+  play('final', 88002, { mode: 'hard', time: 400, deaths: 1 });
+  rpc('twelve_set_mode', { p_mode: 'normal' }, setMode(p, 'normal'));
+  play('1-1', 88003);
+  rpc('twelve_set_mode', { p_mode: 'hard' }, setMode(p, 'hard'));
+  // 끝없는 탑: 장비 등급과 레어 목록에 어려움에서 연 지형이 들어간다 (여의 · 어려움 전용 레어)
+  // 레어는 드물어서(정예·보스 층에서만) 레어가 나오는 씨앗을 골라 쓴다 — 레어 목록(보통 12지형 + 어려움 12지형)에서 고르는 길을 지나가게
+  const rareSeeds: number[] = [];
+  for (let seed = 70000; rareSeeds.length < 4; seed++) {
+    if ([25, 30, 35, 40, 45, 50].some((f) => roll(seed, TOWER_TAG.rare, f) % 10000 < towerRareRate(f))) rareSeeds.push(seed);
+  }
+  for (const seed of rareSeeds) {
+    towerStart(21, seed);
+    towerClimb(30, 10);
+  }
+  towerEnd();
 }
 
 const rolls = [[1, 1, 1], [123456789, 12, 1], [2147483647, 7, 250], [0, 3, 2], [4242, 25, 10], [99, 27, 20]].map(([s, t, n]) => ({ seed: s, tag: t, n, value: roll(s, t, n) }));

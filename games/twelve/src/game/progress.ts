@@ -9,7 +9,7 @@ import { ELITE, ENEMIES, ENEMY_IDS, type EnemyKind } from '../data/enemies';
 import { BAG, FINAL_GIFT, POTION, POTION_SIZES, bossGift } from '../data/economy';
 import { addExp, expPenaltyPct, type Loadout } from '../data/growth';
 import { HEROES, STARTERS, heroOf, isHero, joinsAt, type HeroId } from '../data/heroes';
-import { bossIdOf, mapKillMax, mapOf, mapsOf, type MapDef } from '../data/maps';
+import { bossIdOf, mapKillMax, mapOf, mapPar, mapsOf, type MapDef } from '../data/maps';
 import { FINAL_MAP, HARD_READY, MAPS_PER_REGION, REGIONS, REGIONS_READY, mapScale, parseMapId, regionOf, type Mode } from '../data/regions';
 import { SLOTS, itemDef, itemStats, normalArmor, normalWeapon, starReward, type Item, type Slot } from '../data/items';
 import { WEAPON_KINDS, type WeaponKind } from '../data/weapons';
@@ -135,12 +135,14 @@ export const regionStarCount = (p: TwelveProfile, region: number, mode: Mode = p
 /** 지형이 준비됐는지 (아니면 지도에 '준비 중') */
 export const regionReady = (region: number) => region <= REGIONS_READY && mapsOf(region).length === MAPS_PER_REGION;
 /** 지형이 열렸는지: 1지형이거나 앞 지형 보스를 잡았다 */
-export const regionOpen = (p: TwelveProfile, region: number, mode: Mode = p.mode) => region === 1 || cleared(p, `${region - 1}-${MAPS_PER_REGION}`, mode);
+export const regionOpen = (p: TwelveProfile, region: number, mode: Mode = p.mode) => modeOpen(p, mode) && (region === 1 || cleared(p, `${region - 1}-${MAPS_PER_REGION}`, mode));
+/** 모드가 열렸는지: 어려움 모드는 보통 모드의 최종보스를 잡은 뒤에 (서버 _twelve_region_open · twelve_set_mode) */
+export const modeOpen = (p: TwelveProfile, mode: Mode) => mode === 'normal' || (HARD_READY && (p.maps.normal[FINAL_MAP]?.clears ?? 0) > 0);
 
 export function mapOpen(p: TwelveProfile, id: string, mode: Mode = p.mode): boolean {
   const m = parseMapId(id);
   if (!m || !mapOf(id) || !regionReady(m.region)) return false;
-  if (mode === 'hard' && !HARD_READY) return false;
+  if (!modeOpen(p, mode)) return false;
   // 최종보스맵: 12지형 보스를 잡았고 그 모드의 열쇠 12개를 다 모았다
   if (id === FINAL_MAP) return finalOpen(p, mode);
   return m.no === 1 ? regionOpen(p, m.region, mode) : cleared(p, `${m.region}-${m.no - 1}`, mode);
@@ -205,8 +207,9 @@ export const coinBonus = (p: TwelveProfile) => loadoutOf(p).bonus?.coin ?? 0;
 /** 판을 시작할 수 없는 까닭 (없으면 null) */
 export function checkStart(p: TwelveProfile, id: string, mode: Mode, hero: string, cat = false): string | null {
   if (!mapOf(id)) return 'bad map';
+  if (!modeOpen(p, mode)) return 'mode locked';
   // 최종보스맵: 12지형 보스를 잡았어도 열쇠가 모자라면 못 들어간다
-  if (id === FINAL_MAP && (mode === 'normal' || HARD_READY) && cleared(p, `${REGIONS}-${MAPS_PER_REGION}`, mode) && keyCount(p, mode) < REGIONS) return 'need keys';
+  if (id === FINAL_MAP && cleared(p, `${REGIONS}-${MAPS_PER_REGION}`, mode) && keyCount(p, mode) < REGIONS) return 'need keys';
   if (!mapOpen(p, id, mode)) return 'map locked';
   if (!isHero(hero)) return 'bad hero';
   if (!heroesOf(p, cat).includes(hero)) return 'hero locked';
@@ -384,7 +387,7 @@ export function applyReport(p: TwelveProfile, r: RunReport, seed = 0): FinishRes
     coins,
     ups: up.ups,
     level: p.level,
-    stars: starBits(r.cleared, r.time, map.par, r.deaths, r.chest),
+    stars: starBits(r.cleared, r.time, mapPar(map, r.mode), r.deaths, r.chest),
     newStars: 0,
     first: false,
     joined: null,
@@ -444,6 +447,16 @@ export function applyReport(p: TwelveProfile, r: RunReport, seed = 0): FinishRes
   return out;
 }
 
+/** 모드 바꾸기 (보통 ↔ 어려움) → 못 바꾸는 까닭 (없으면 null). 레벨·장비는 그대로, 맵 진행·열쇠·별은 모드마다 따로다. 서버 twelve_set_mode */
+export function setMode(p: TwelveProfile, mode: string): string | null {
+  if (mode !== 'normal' && mode !== 'hard') return 'bad mode';
+  if (!modeOpen(p, mode)) return 'mode locked';
+  p.mode = mode;
+  return null;
+}
+/** 어려움 모드를 끝냈는지 (어려움 최종보스 — 진짜 엔딩 · 랭킹의 👑) */
+export const hardDone = (p: TwelveProfile) => (p.maps.hard[FINAL_MAP]?.clears ?? 0) > 0;
+
 /** 대표 대원 바꾸기 → 못 바꾸는 까닭 (없으면 null) */
 export function setHero(p: TwelveProfile, hero: string, cat = false): string | null {
   if (!isHero(hero)) return 'bad hero';
@@ -463,6 +476,7 @@ export const joinText = (region: number) => {
 export function whyText(why: string): string {
   switch (why) {
     case 'map locked': return '아직 열리지 않은 맵이에요';
+    case 'mode locked': return '보통 모드를 끝내야 어려움 모드가 열려요';
     case 'need keys': return '열쇠 12개를 모두 모아야 열려요';
     case 'hero locked': return '아직 합류하지 않은 대원이에요';
     case 'locked character': return '아직 열지 않은 대원이에요';

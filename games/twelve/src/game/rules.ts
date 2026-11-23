@@ -5,14 +5,13 @@
  */
 import { BAG, MAX_PLUS, POTION, POTION_SIZES, bagPrice, enhanceCost, regionTier } from '../data/economy';
 import { canEnhance, itemDef, itemLevel, type Item, type ItemDef } from '../data/items';
-import { HARD_READY, MODES, REGIONS, REGIONS_READY } from '../data/regions';
+import { MODES, REGIONS, REGIONS_READY } from '../data/regions';
 import { addItem, bagCount, isEquipped, itemOf, regionOpen, type TwelveProfile } from './progress';
 
 /** 상점이 파는 가장 높은 등급: 열린 지형까지 (PRD: 열린 지형까지의 등급) */
 export function shopTier(p: TwelveProfile): number {
   let t = 0;
   for (const mode of MODES) {
-    if (mode === 'hard' && !HARD_READY) continue;
     for (let r = 1; r <= Math.min(REGIONS, REGIONS_READY); r++) if (regionOpen(p, r, mode)) t = Math.max(t, regionTier(r, mode));
   }
   return t;

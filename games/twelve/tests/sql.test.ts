@@ -31,10 +31,13 @@ describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
       const i = s.indexOf(`create or replace function public.${name}(`);
       return i < 0 ? '' : s.slice(i, s.indexOf('$$', i));
     };
+    const NEW_IN_089 = ['twelve_set_mode'];
     const names = [...new Set(sql089.match(/create or replace function public\.\w+/g)!.map((s) => s.split('public.')[1]))];
     expect(names.length).toBeGreaterThanOrEqual(Object.keys(blocks).length);
     for (const name of names) {
-      expect(head(sql089, name), name).toBe(head(sql078, name));
+      // 089 에서 새로 만든 함수(어려움 모드의 twelve_set_mode)는 078 에 없다
+      if (head(sql078, name)) expect(head(sql089, name), name).toBe(head(sql078, name));
+      else expect(NEW_IN_089, name).toContain(name);
       if (name.startsWith('_')) expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
       else {
         expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon;`));
@@ -45,8 +48,9 @@ describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
     expect(sql089).not.toMatch(/create table|drop |alter table/);
   });
 
-  it('줄 수: 준비된 맵(지형 맵 96 + 최종보스맵) · 레벨 1~98 · 장비 216 · 지형 24', () => {
-    expect(mapRows().length).toBe(ALL_MAPS.length);
+  it('줄 수: 맵(지형 맵 96 + 최종보스맵, 보통·어려움) · 레벨 1~98 · 장비 216 · 지형 24', () => {
+    expect(mapRows().length).toBe(ALL_MAPS.length * 2);
+    expect(mapRows().filter((r) => r.includes("'hard'")).length).toBe(97);
     expect(levelRows().length).toBe(98);
     expect(itemRows().length).toBe(216);
     expect(regionRows().length).toBe(24);
@@ -105,7 +109,7 @@ describe('SQL 규칙', () => {
 
   it('화면이 부르는 함수는 security definer + search_path + 로그인한 사람만', () => {
     const rpcs = [...new Set(sql.match(/create or replace function public\.twelve_\w+/g)!.map((s) => s.split('public.')[1]))];
-    expect(rpcs.sort()).toEqual(['twelve_buy', 'twelve_claim', 'twelve_enhance', 'twelve_equip', 'twelve_finish', 'twelve_lock', 'twelve_scrap', 'twelve_sell', 'twelve_set_hero', 'twelve_start', 'twelve_state', 'twelve_tower_end', 'twelve_tower_floor', 'twelve_tower_start', 'twelve_unequip']);
+    expect(rpcs.sort()).toEqual(['twelve_buy', 'twelve_claim', 'twelve_enhance', 'twelve_equip', 'twelve_finish', 'twelve_lock', 'twelve_scrap', 'twelve_sell', 'twelve_set_hero', 'twelve_set_mode', 'twelve_start', 'twelve_state', 'twelve_tower_end', 'twelve_tower_floor', 'twelve_tower_start', 'twelve_unequip']);
     for (const name of rpcs) {
       expect(fn(name)).toContain('security definer set search_path = public');
       expect(fn(name)).toContain("raise exception 'need login'");

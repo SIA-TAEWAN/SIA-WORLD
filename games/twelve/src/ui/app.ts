@@ -2,12 +2,12 @@ import Phaser from 'phaser';
 import { artUrl, heroFaceUrl, heroFullUrl } from '../assets';
 import { skillLevelMul } from '../data/balance';
 import { BOSSES, FINAL_BOSS } from '../data/bosses';
-import { BAG, MAX_PLUS, POTION, POTION_NAME, bagPrice, enhanceCost } from '../data/economy';
+import { BAG, MAX_PLUS, POTION, POTION_NAME, bagPrice, enhanceCost, regionTier } from '../data/economy';
 import { expNeed, playerStats } from '../data/growth';
 import { HEROES, STAT_KEYS, STAT_NAME, heroOf, isHero, type HeroId } from '../data/heroes';
 import { ACC_TEXT, FX_DESC, FX_NAME, ITEMS, SLOTS, SLOT_NAME, canEnhance, itemDef, itemLevel, itemNote, itemStats, normalWeapon, regionRares, type Item, type Slot } from '../data/items';
-import { FINAL, MAPS, bossIdOf, mapOf, mapsOf, nextMap, type MapDef } from '../data/maps';
-import { ENV_ICON, ENV_NAME, MAPS_PER_REGION, MODE_NAME, REGIONS, REGION_TABLE, mapLevel, regionOf } from '../data/regions';
+import { FINAL, MAPS, bossIdOf, mapOf, mapPar, mapsOf, nextMap, type MapDef } from '../data/maps';
+import { ENV_ICON, ENV_NAME, MAPS_PER_REGION, MODE_NAME, REGIONS, REGION_TABLE, mapLevel, regionOf, type Mode } from '../data/regions';
 import { TOWER, floorKind, floorMinTime, towerFloor, towerRegion } from '../data/tower';
 import { TIER_LEVELS, WEAPONS, WEAPON_KINDS } from '../data/weapons';
 import {
@@ -20,6 +20,7 @@ import {
   equipped,
   exitNeed,
   finalOpen,
+  hardDone,
   hasKey,
   cleared,
   heroesOf,
@@ -45,7 +46,7 @@ import { forSale, scrapOf, shopTier } from '../game/rules';
 import { STAR_CHEST, STAR_NO_DEATH, STAR_TIME, createRun, type RunState } from '../game/sim';
 import { applyTowerFloor, beginTower, startFloors, type TowerFloorResult, type TowerRun } from '../game/tower';
 import { ApiError, buyLocalCat, localCatOwned, type TwelveApi } from '../net/api';
-import { DEV_ALL, DEV_GOD, DEV_HERO, DEV_LEVEL, DEV_MAP, DEV_WEAPON, LOCAL_MODE } from '../net/local';
+import { DEV_ALL, DEV_MODE, DEV_GOD, DEV_HERO, DEV_LEVEL, DEV_MAP, DEV_WEAPON, LOCAL_MODE } from '../net/local';
 import { buyCharacter, loadCharacterProgress, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, W, dropIcon, dropName, viewHeight } from '../scenes/GameScene';
 import { groundOf, hasArt } from '../scenes/art';
@@ -65,8 +66,8 @@ let me: WorldUser | null = null;
 let cat = false;
 /** 지금 고를 수 있는 대원 */
 const myHeroes = () => heroesOf(profile, cat);
-/** 개발 옵션(?map= · lv= · god= · all= · hero= · weapon=)으로 하는 판은 기록하지 않는다 */
-const DEV_PLAY = DEV_ALL || DEV_GOD || DEV_LEVEL > 0 || !!DEV_HERO || !!DEV_WEAPON || !!DEV_MAP;
+/** 개발 옵션(?map= · lv= · god= · all= · hero= · weapon= · mode=)으로 하는 판은 기록하지 않는다 */
+const DEV_PLAY = DEV_ALL || DEV_MODE || DEV_GOD || DEV_LEVEL > 0 || !!DEV_HERO || !!DEV_WEAPON || !!DEV_MAP;
 
 let sound: SoundModule | null = null;
 void loadSound()
@@ -176,10 +177,15 @@ function view(p: TwelveProfile): TwelveProfile {
   if (!DEV_PLAY) return p;
   const v: TwelveProfile = { ...p, eq: { ...p.eq }, maps: { normal: { ...p.maps.normal }, hard: { ...p.maps.hard } } };
   if (DEV_LEVEL) v.level = DEV_LEVEL;
+  if (DEV_MODE) {
+    // 어려움 모드로 본다: 보통 모드를 끝낸 것으로 친다
+    v.maps.normal[FINAL.id] ??= { stars: 0, clears: 1, best: 0 };
+    v.mode = 'hard';
+  }
   if (DEV_ALL) {
-    for (const m of MAPS) v.maps.normal[m.id] ??= { stars: 0, clears: 1, best: 0 };
+    for (const m of MAPS) v.maps[v.mode][m.id] ??= { stars: 0, clears: 1, best: 0 };
     // 최종보스맵도 열린다 (열쇠 12개)
-    v.keys = { ...v.keys, normal: Array.from({ length: REGIONS }, (_, i) => i + 1) };
+    v.keys = { ...v.keys, [v.mode]: Array.from({ length: REGIONS }, (_, i) => i + 1) };
   }
   if (isHero(DEV_HERO)) v.hero = DEV_HERO;
   // ?weapon=bow: 가방에 있는 그 종류의 무기를 든다 (없으면 나무 칼)
@@ -278,14 +284,42 @@ const ENDING: typeof STORY = [
   },
 ];
 
+/**
+ * 진짜 엔딩 (PRD '이야기': 어려움 모드의 최종보스를 잡으면). 그림 4장 + 자막, 건너뛰기.
+ * 전용 그림(public/art/finale-N.png)이 생기기 전에는 기존 그림을 모아 장면을 만든다
+ */
+const TRUE_ENDING: typeof STORY = [
+  {
+    bg: 'bg-underworld',
+    text: '봉인 아래의 깊은 어둠, 진짜 어둑시니가 마침내 무릎을 꿇었어요. 이번에는 그림자가 아니에요.',
+    art: () => `<div class="story-row"><img class="big dark fade" src="${artUrl(BOSSES[FINAL_BOSS].art)}" alt="" /></div><span class="story-mark">✨</span>`,
+  },
+  {
+    bg: 'bg-palace',
+    text: '열두 열쇠가 하나로 모여 봉인의 문을 다시 잠갔어요. 이제 다시는 흔들리지 않아요.',
+    art: () => `<div class="story-ring"><span>🔒</span></div><div class="story-keys">${'🗝️'.repeat(6)}<br/>${'🗝️'.repeat(6)}</div>`,
+  },
+  {
+    bg: 'bg-bamboo',
+    text: '요괴들은 저마다의 자리로 돌아갔어요. 논밭에는 벼가 익고, 고개에는 바람이 불고, 연못에는 달이 떴어요.',
+    art: () => `<div class="story-row">${['e-imp', 'e-wisp', 'e-fox', 'e-club'].map((n) => `<img src="${artUrl(n)}" alt="" />`).join('')}</div><span class="story-mark">🌕</span>`,
+  },
+  {
+    bg: 'bg-field',
+    text: '열두 길을 두 번 걸은 대원들이 손을 흔들어요. “끝까지 함께해 줘서 고마워요!” — 끝없는 탑은 언제나 열려 있어요.',
+    art: () => `<div class="story-ring">${HEROES.filter((h) => !h.hidden).map((h, i) => `<img style="--a:${i * 30}deg" src="${heroFaceUrl(h.id)}" alt="" />`).join('')}<span>👑</span></div><span class="story-mark">🎉</span>`,
+  },
+];
+
 const showIntro = (done: () => void) => showStory(STORY, 'story', '출발!', () => (mark(INTRO_KEY, '1'), done()));
 const showEnding = (done: () => void) => showStory(ENDING, 'ending', '계속 ▶', done);
+const showTrueEnding = (done: () => void) => showStory(TRUE_ENDING, 'finale', '끝 ▶', done);
 
-function showStory(scenes: typeof STORY, art: 'story' | 'ending', lastLabel: string, end: () => void) {
+function showStory(scenes: typeof STORY, art: 'story' | 'ending' | 'finale', lastLabel: string, end: () => void) {
   let i = 0;
   const paint = () => {
     const sc = scenes[i];
-    const name = `${art}-${i + 1}` as 'story-1';
+    const name = `${art}-${i + 1}` as `${typeof art}-1`;
     const root = screen(`
       <div class="bar"><div class="spacer"></div><button class="btn small" id="skip">건너뛰기 ▶▶</button></div>
       <div class="grow"></div>
@@ -314,12 +348,12 @@ export function showMain() {
       ${face(hero.id)}
       <div class="me-info"><b>${hero.name} <small>${hero.animal} · ${WEAPONS[weaponOf(profile)].icon} ${equipName('weapon')}</small></b>
         <div class="lv"><i style="width:${need ? Math.min(100, (profile.exp / need) * 100) : 100}%"></i></div>
-        <span class="soft">Lv ${profile.level}${need ? ` · 경험치 ${profile.exp.toLocaleString()} / ${need.toLocaleString()}` : ' (최고 레벨)'} · ${MODE_NAME[profile.mode]} 모드${done && profile.mode === 'normal' ? ' 클리어 ✔' : ''}</span></div>
+        <span class="soft">Lv ${profile.level}${need ? ` · 경험치 ${profile.exp.toLocaleString()} / ${need.toLocaleString()}` : ' (최고 레벨)'} · ${MODE_NAME[profile.mode]} 모드${cleared(profile, FINAL.id) ? ' 클리어 ✔' : ''}${hardDone(profile) ? ' 👑' : ''}</span></div>
     </div>
     <div class="menu-btns">
       <button class="btn primary big" id="go">▶ 이어하기${nm ? ` <small>${nm.final ? '최종보스' : nm.id} ${nm.name}</small>` : ''}</button>
       <button class="btn big" id="world">🗺️ 십이지 지도</button>
-      ${done ? `<button class="btn big hard" id="hard">🔥 어려움 모드 <small>준비 중</small></button>` : ''}
+      ${done ? (profile.mode === 'hard' ? `<button class="btn big hard" id="hard">🌿 보통 모드로 <small>지금: 어려움 모드${hardDone(profile) ? ' 👑' : ''}</small></button>` : `<button class="btn big hard" id="hard">🔥 어려움 모드 <small>권장 Lv ${mapLevel(1, 1, 'hard')}~${mapLevel(REGIONS, MAPS_PER_REGION, 'hard')}${hardDone(profile) ? ' · 클리어 👑' : ''}</small></button>`) : ''}
       <div class="row2"><button class="btn" id="heroes">🐾 대원${done && !cat ? ' <em class="tag">🐱 새 대원</em>' : ''}</button><button class="btn" id="bag">🎒 가방${boxItems(profile).length ? ` <em class="tag">보관함 ${boxItems(profile).length}</em>` : ''}</button></div>
       <div class="row2"><button class="btn" id="tower">🗼 끝없는 탑${profile.tower?.floor ? ` <small>${profile.tower.floor}층</small>` : ''}</button><button class="btn" id="rank">🏆 랭킹</button></div>
       <button class="btn" id="settings">⚙️ 설정</button>
@@ -327,8 +361,8 @@ export function showMain() {
     <div class="grow"></div>
     ${LOCAL_MODE ? `<p class="soft center light">테스트 모드: 기록은 이 기기에만 저장돼요${DEV_PLAY ? ' (개발 옵션으로 하는 판은 저장하지 않아요)' : ''}</p>` : ''}`);
   on(root, '#go', () => (nm ? restOf(nm) : showWorld()));
-  // 어려움 모드: 보통 모드를 끝내면 버튼이 나타난다 (모드 자체는 다음 단계에서 열린다)
-  on(root, '#hard', () => toast('어려움 모드는 준비 중이에요. 봉인 아래의 더 깊은 어둠이 곧 깨어나요', 3000));
+  // 어려움 모드: 보통 모드를 끝내면 버튼이 나타난다. 보통 ↔ 어려움을 오갈 수 있다
+  on(root, '#hard', () => askMode(profile.mode === 'hard' ? 'normal' : 'hard'));
   on(root, '#world', showWorld);
   on(root, '#heroes', () => showHeroes(showMain));
   on(root, '#bag', () => showBag(showMain));
@@ -337,6 +371,42 @@ export function showMain() {
   on(root, '#rank', async () => {
     if (LOCAL_MODE || !me) return toast('테스트 모드에서는 랭킹을 볼 수 없어요');
     if (!(await openWorldRanking(me.userId))) toast('랭킹을 불러오지 못했어요');
+  });
+}
+
+/** 모드 바꾸기 확인 창 (PRD '전체 구조': 레벨·장비는 그대로, 맵 진행·열쇠·별은 모드마다 따로) */
+function askMode(to: Mode) {
+  const hard = to === 'hard';
+  const box = overlay(`<div class="card pop">
+    <h3>${hard ? '🔥 어려움 모드' : '🌿 보통 모드'}로 갈까요?</h3>
+    ${
+      hard
+        ? `<p class="soft">같은 열두 길을 다시 걸어요. 요괴가 더 세고 많아지고, 보스마다 공격이 하나씩 늘어요.</p>
+    <div class="rows"><div><span>권장 레벨</span><b>Lv ${mapLevel(1, 1, 'hard')} ~ ${mapLevel(REGIONS, MAPS_PER_REGION, 'hard')}</b></div><div><span>장비</span><b>Lv ${TIER_LEVELS[regionTier(1, 'hard')]}~${TIER_LEVELS[regionTier(REGIONS, 'hard')]} · 어려움 전용 레어</b></div><div><span>모은 열쇠</span><b>🗝️ ${keyCount(profile, 'hard')} / ${REGIONS}${hardDone(profile) ? ' · 클리어 👑' : ''}</b></div></div>
+    <p class="soft center">레벨·장비·엽전은 그대로 이어가요. 맵 진행·열쇠·별은 어려움 모드에서 따로 모아요.</p>`
+        : `<p class="soft center">보통 모드의 맵 진행·열쇠·별로 돌아가요. 레벨·장비는 그대로예요. 어려움 모드의 진행은 남아 있어요.</p>`
+    }
+    <button class="btn primary big" id="yes">${hard ? '어려움 모드로 ▶' : '보통 모드로 ▶'}</button>
+    <button class="btn" id="no">취소</button></div>`);
+  on(box, '#no', () => box.remove());
+  on(box, '#yes', async () => {
+    if (busy) return;
+    if (DEV_PLAY) {
+      box.remove();
+      return toast('개발 옵션으로 볼 때는 모드를 바꿀 수 없어요 (&mode=hard 를 쓰세요)', 3000);
+    }
+    busy = true;
+    try {
+      profile = view(await api.setMode(to));
+      box.remove();
+      toast(hard ? '어려움 모드예요. 더 험해진 열두 길이 기다려요' : '보통 모드로 돌아왔어요', 2500);
+      showMain();
+    } catch (e) {
+      box.remove();
+      toast(errText(e), 2500);
+    } finally {
+      busy = false;
+    }
   });
 }
 
@@ -350,9 +420,11 @@ function showSettings() {
     ${row('numbers', '피해 숫자', settings.numbers)}
     <button class="btn" id="story">📖 이야기 다시 보기</button>
     ${normalDone(profile) ? '<button class="btn" id="ending">🎬 엔딩 다시 보기</button>' : ''}
+    ${hardDone(profile) ? '<button class="btn" id="finale">👑 진짜 엔딩 다시 보기</button>' : ''}
     <button class="btn primary" id="ok">닫기</button></div>`);
   on(box, '#story', () => showIntro(showMain));
   on(box, '#ending', () => showEnding(showMain));
+  on(box, '#finale', () => showTrueEnding(showMain));
   on(box, '.toggle', (el) => {
     const k = el.dataset.k!;
     let v: boolean;
@@ -429,7 +501,7 @@ function showHeroes(back: () => void, region = 0) {
 
 function showWorld() {
   const root = screen(`
-    <div class="bar"><button class="back" id="back">← 뒤로</button><h2>십이지 지도</h2><div class="pills">${levelPill()}</div></div>
+    <div class="bar"><button class="back" id="back">← 뒤로</button><h2>십이지 지도${profile.mode === 'hard' ? ' <small class="mode-tag">🔥 어려움</small>' : ''}</h2><div class="pills">${levelPill()}</div></div>
     <div class="region-grid">${REGION_TABLE.map((r) => {
       const ready = regionReady(r.region);
       const open = ready && regionOpen(profile, r.region);
@@ -550,9 +622,10 @@ function showFinal() {
     </div>
     <div class="card final-card">
       <img class="final-boss" src="${artUrl(boss.art)}" alt="${boss.name}" />
-      <h3>👹 ${boss.name} <small class="${low ? 'warn' : ''}">권장 Lv ${lv}${low ? ' ⚠️' : ''} · ⏱ ${time(m.par)}</small></h3>
+      <h3>👹 ${boss.name} <small class="${low ? 'warn' : ''}">권장 Lv ${lv}${low ? ' ⚠️' : ''} · ⏱ ${time(mapPar(m, profile.mode))}</small></h3>
       <p class="soft">열두 길의 봉인 뒤에 갇혀 있던 어둠이에요. <b>세 단계</b>로 싸워요 — 체력이 줄 때마다 몸이 커지고, 앞에서 만난 보스들의 공격을 섞어 써요.</p>
       <p class="soft">🕛 <b>열두 시</b>: 둘레의 줄이 차례로 쳐요. 도는 쪽을 따라 돌거나 굴러서 넘어요<br/>🧱 <b>무너지는 봉인</b>: 바둑판 칸이 번갈아 터져요. 안 터진 칸으로 옮겨 서요</p>
+      ${profile.mode === 'hard' ? '<p class="soft">🔥 <b>어려움</b>: 무너지는 봉인이 더 넓게 한 번 더 와요. 이번에 쓰러뜨리면 진짜 끝이에요</p>' : ''}
       <div class="final-keys">${'🗝️'.repeat(REGIONS)}</div>
       ${win ? `<p class="soft center">${starsHtml(starsOfMap(profile, m.id))} ${MODE_NAME[profile.mode]} 모드 클리어!</p>` : ''}
     </div>
@@ -574,7 +647,7 @@ function showRegion(region: number) {
   const r = regionOf(region);
   const boss = BOSSES[r.boss];
   const root = screen(
-    `<div class="bar"><button class="back" id="back">← 지도</button><h2>${region}. ${r.name}</h2><div class="pills">${coinsPill()}</div></div>
+    `<div class="bar"><button class="back" id="back">← 지도</button><h2>${region}. ${r.name}${profile.mode === 'hard' ? ' <small class="mode-tag">🔥</small>' : ''}</h2><div class="pills">${coinsPill()}</div></div>
     <div class="card rest">
       <h3>🏕️ 쉼터 <small>${r.envText}</small></h3>
       <div class="rest-row">
@@ -592,7 +665,7 @@ function showRegion(region: number) {
         const lv = mapLevel(m.region, m.no, profile.mode);
         const low = profile.level < lv;
         return `<button class="btn stage-row ${m.boss ? 'boss' : ''} ${open ? '' : 'locked'}" data-id="${m.id}">
-          <b>${m.id}</b><span>${m.boss ? `👹 ${boss.name}` : m.name}<small class="${low && open ? 'warn' : ''}">권장 Lv ${lv}${low && open ? ' ⚠️' : ''} · ⏱ ${time(m.par)}</small></span>
+          <b>${m.id}</b><span>${m.boss ? `👹 ${boss.name}` : m.name}<small class="${low && open ? 'warn' : ''}">권장 Lv ${lv}${low && open ? ' ⚠️' : ''} · ⏱ ${time(mapPar(m, profile.mode))}</small></span>
           ${open ? starsHtml(starsOfMap(profile, m.id)) : '<span>🔒</span>'}
         </button>`;
       })
@@ -602,7 +675,7 @@ function showRegion(region: number) {
       <div class="rare-list">${regionRares(region, profile.mode).map((b) => `<span class="${profile.codex.includes(b) ? 'on' : ''}">${itemDef(b)!.icon} ${itemDef(b)!.name}</span>`).join('')}</div>
       <p class="soft">★ ${regionStarCount(profile, region)} / ${MAPS_PER_REGION * 3} — 별을 모두 모으면 장신구를 하나 받아요</p>
     </div>
-    <p class="soft center light">★ 시간 안에 · 안 쓰러지고 · 숨은 상자 — 따로따로 모아도 돼요<br/>${joinText(region)}</p>`,
+    <p class="soft center light">★ 시간 안에 · 안 쓰러지고 · 숨은 상자 — 따로따로 모아도 돼요<br/>${profile.mode === 'hard' ? `🔥 어려움: 요괴가 더 많고, ${boss.name}의 공격이 하나 늘어요` : joinText(region)}</p>`,
     `bg-${r.ground}`,
   );
   on(root, '#back', showWorld);
@@ -695,7 +768,7 @@ async function startMap(map: MapDef, deaths: number) {
     title: map.final ? `최종보스 · ${map.name}` : `${map.id} ${map.name}`,
     exp: true,
     time: (s) => {
-      const left = map.par - s.t;
+      const left = mapPar(map, s.mode) - s.t;
       return { text: left >= 0 ? `⏱ ${time(left)}` : `⏱ +${time(-left)}`, late: left < 0 };
     },
     quitNote: '그만하면 쓰러진 것과 같아요: 이 맵에서 얻은 엽전은 잃고 경험치는 남아요',
@@ -921,11 +994,11 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
   const ending = win && !!map.final && !!r?.first;
   const stars = r?.stars ?? 0;
   const box = overlay(`<div class="card pop result ${win ? 'win' : 'lose'}">
-      <h2>${win ? (map.final ? '봉인 완료!' : '클리어!') : '쓰러졌어요'}</h2>
+      <h2>${win ? (map.final ? (s.mode === 'hard' ? '진짜 봉인 완료! 👑' : '봉인 완료!') : '클리어!') : '쓰러졌어요'}</h2>
       ${
         win
           ? `<div class="big-stars">${starsHtml(stars)}</div>
-             <div class="star-rows">${STAR_LABEL.map(([b, name]) => `<span class="${stars & b ? 'on' : ''}">${stars & b ? '★' : '☆'} ${name}${b === STAR_TIME ? ` (${time(s.t)} / ${time(map.par)})` : ''}</span>`).join('')}</div>`
+             <div class="star-rows">${STAR_LABEL.map(([b, name]) => `<span class="${stars & b ? 'on' : ''}">${stars & b ? '★' : '☆'} ${name}${b === STAR_TIME ? ` (${time(s.t)} / ${time(mapPar(map, s.mode))})` : ''}</span>`).join('')}</div>`
           : `<p class="soft center">이 맵을 처음부터 다시 해요. 이 맵에서 얻은 엽전은 잃고, 경험치는 남아요</p>`
       }
       <div class="rows">
@@ -944,7 +1017,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
         ${ending ? '' : `<button class="btn ${nextOk ? '' : 'primary big'}" id="again">${win ? '다시 하기' : '다시 도전'}</button><button class="btn" id="rest">쉼터로</button>`}
       </div></div>`);
   if (r?.ups) play('survLevel');
-  on(box, '#ending', () => showEnding(showMain));
+  on(box, '#ending', () => (s.mode === 'hard' ? showTrueEnding(showMain) : showEnding(showMain)));
   on(box, '#next', () => (next!.final ? showFinal() : void startMap(next!, 0)));
   on(box, '#again', () => void startMap(map, win ? 0 : deaths + 1));
   on(box, '#rest', () => restOf(map));
@@ -1036,7 +1109,7 @@ function playFloor(t: TowerPlay, stock: number[][], carry: { hp: number; mp: num
   closeGame();
   t.sending = false;
   const map = towerFloor(t.floor);
-  const run = createRun(map, profile.mode, loadoutOf(profile), { seed: (Math.random() * 0xffffffff) >>> 0, stock, god: DEV_GOD, carry: carry ?? undefined });
+  const run = createRun(map, 'normal', loadoutOf(profile), { seed: (Math.random() * 0xffffffff) >>> 0, stock, god: DEV_GOD, carry: carry ?? undefined });
   if (LOCAL_MODE) (window as unknown as { __twelve?: RunState }).__twelve = run;
   const kind = floorKind(t.floor);
   playRun(run, {

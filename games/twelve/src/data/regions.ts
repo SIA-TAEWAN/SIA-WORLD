@@ -11,7 +11,7 @@ export const MAPS_PER_REGION = 8;
 /** 지금 열려 있는 지형 수 (나머지는 지도에 '준비 중') */
 export const REGIONS_READY = 12;
 /** 어려움 모드가 준비됐는지 */
-export const HARD_READY = false;
+export const HARD_READY = true;
 
 export type Mode = 'normal' | 'hard';
 export const MODES: readonly Mode[] = ['normal', 'hard'];
@@ -125,5 +125,21 @@ export const levelScale = (lv: number, count = 1) => ({
 });
 export type Scale = ReturnType<typeof levelScale>;
 
+/**
+ * 어려움 모드 (PRD '전체 구조': 요괴가 더 세고 많다): 권장 레벨(Lv66~99)의 배율에 더 곱한다.
+ * count = 무리마다 요괴 수 · hp(+ 권장 레벨이 Lv66 에서 하나 오를 때마다 hpStep) · atk = 체력 · 공격 · par = 별 시간(맵이 길어지는 만큼)
+ * final = 최종보스맵의 체력 · 공격 배율
+ * 경험치는 권장 레벨의 식 그대로다 (요괴가 많아진 만큼 더 받는다) — 대신 Lv66 부터 필요한 경험치가 가파르다 (growth.ts 의 EXP_HARD)
+ * 숫자는 npm run pace 로 맞췄다 (어려움 1~6지형 약 22시간 Lv82 · 7~12지형 + 최종보스 약 30시간 Lv99)
+ */
+export const HARD = { count: 1.3, hp: 1.15, hpStep: 0.006, atk: 1.35, par: 1.3, final: { hp: 1.2, atk: 1.1 } };
+
 /** 맵 요괴 배율 (권장 레벨 → 체력·공격·경험치·엽전). 어려움은 수도 늘어난다 */
-export const mapScale = (region: number, no: number, mode: Mode): Scale => levelScale(mapLevel(region, no, mode), mode === 'hard' ? 1.3 : 1);
+export function mapScale(region: number, no: number, mode: Mode): Scale {
+  const lv = mapLevel(region, no, mode);
+  if (mode !== 'hard') return levelScale(lv);
+  const sc = levelScale(lv, HARD.count);
+  // 최종보스맵: Lv99 · 여의 장비가 끝이라 더 클 수 없다 — 지형 맵보다 덜 올린다 (어둑시니는 어려움 전용 공격이 하나 더 있다)
+  const k = no > MAPS_PER_REGION ? HARD.final : { hp: HARD.hp + HARD.hpStep * (lv - 66), atk: HARD.atk };
+  return { ...sc, hp: sc.hp * k.hp, atk: sc.atk * k.atk };
+}

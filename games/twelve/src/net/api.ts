@@ -5,7 +5,7 @@ import { SLOTS, itemDef, type Item } from '../data/items';
 import { REGIONS, type Mode } from '../data/regions';
 import { towerCoins } from '../data/tower';
 import type { Pity } from '../game/drops';
-import { applyReport, checkReport, checkStart, emptyProfile, setHero, type FinishResult, type MapRecord, type RunReport, type TowerRecord, type TwelveProfile } from '../game/progress';
+import { applyReport, checkReport, checkStart, emptyProfile, setHero, setMode, type FinishResult, type MapRecord, type RunReport, type TowerRecord, type TwelveProfile } from '../game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../game/rules';
 import { applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, type TowerFloorResult, type TowerRun } from '../game/tower';
 import { LOCAL_MODE } from './local';
@@ -34,6 +34,8 @@ export interface TwelveApi {
   finish(report: RunReport): Promise<{ profile: TwelveProfile; result: FinishResult } | null>;
   /** 못 보낸 결과 다시 보내기 → 보낸 수 */
   resend(): Promise<number>;
+  /** 모드 바꾸기 (보통 ↔ 어려움. 어려움은 보통 모드를 끝낸 뒤에) */
+  setMode(mode: Mode): Promise<TwelveProfile>;
   /** 대표 대원 바꾸기 */
   setHero(hero: string): Promise<TwelveProfile>;
   equip(id: string): Promise<TwelveProfile>;
@@ -205,6 +207,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
     async resend() {
       return 0;
     },
+    setMode: (mode) => act((p) => setMode(p, mode)),
     setHero: (hero) => act((p) => setHero(p, hero, cat())),
     equip: (id) => act((p) => equip(p, id)),
     unequip: (slot) => act((p) => unequip(p, slot)),
@@ -379,6 +382,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       }
     },
     resend,
+    setMode: (mode) => state('twelve_set_mode', { p_mode: mode }),
     setHero: (hero) => state('twelve_set_hero', { p_hero: hero }),
     equip: (id) => state('twelve_equip', { p_item: Number(id) }),
     unequip: (slot) => state('twelve_unequip', { p_slot: slot }),

@@ -18,7 +18,7 @@ import { R09 } from './maps/r09';
 import { R10 } from './maps/r10';
 import { R11 } from './maps/r11';
 import { R12 } from './maps/r12';
-import { MAPS_PER_REGION, REGIONS, mapScale, parseMapId, regionOf, type EnvId, type MapId, type Mode } from './regions';
+import { HARD, MAPS_PER_REGION, REGIONS, mapScale, parseMapId, regionOf, type EnvId, type MapId, type Mode } from './regions';
 
 /** 타일 글자 */
 export const T_WALL = '#';
@@ -83,6 +83,9 @@ export const bossIdOf = (map: MapDef): BossId => (map.final ? FINAL_BOSS : regio
 export const envOf = (map: MapDef): EnvId => (map.final ? 'none' : regionOf(map.region).env);
 /** 고향 보너스를 따지는 지형 (최종보스맵은 0 = 누구의 고향도 아니다) */
 export const homeRegionOf = (map: MapDef): number => (map.final ? 0 : map.region);
+
+/** 별 '시간 안에'의 기준 시간 (초). 어려움은 요괴가 더 세고 많은 만큼 넉넉하다 (서버 맵 표의 par) */
+export const mapPar = (map: MapDef, mode: Mode): number => (mode === 'hard' ? Math.round(map.par * HARD.par) : map.par);
 
 /** 그 모드에서 무리의 [요괴, 마리 수] (어려움은 수가 늘어난다) */
 export function groupList(g: GroupDef, countMul: number): [EnemyKind, number][] {

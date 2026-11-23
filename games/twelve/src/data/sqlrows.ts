@@ -8,7 +8,7 @@ import { ACC_STATS, BAG, BOSS_GIFT, DROP, FINAL_GIFT, MAX_PLUS, PITY, POTION, PO
 import { EXP_PENALTY, MAX_LEVEL, expNeed } from './growth';
 import { HEROES } from './heroes';
 import { ITEMS, canEnhance, regionRares, starReward } from './items';
-import { ALL_MAPS } from './maps';
+import { ALL_MAPS, mapPar } from './maps';
 import { TOWER } from './tower';
 import { HARD_READY, MODES, REGIONS, type Mode } from './regions';
 import { WEAPON_KINDS } from './weapons';
@@ -26,7 +26,7 @@ export function mapRows(): string[] {
     for (const m of ALL_MAPS) {
       const r = mapReward(m, mode);
       const kinds = Object.fromEntries(Object.entries(r.kinds).map(([k, v]) => [k, [v.max, v.exp, v.coin]]));
-      out.push(row(q(m.id), q(mode), m.region, m.no, r.level, m.par, !!m.boss, r.total, r.elites, r.eliteExp, r.eliteCoin, r.bossExp, r.bossCoin, r.chestCoin, `${q(JSON.stringify(kinds))}::jsonb`));
+      out.push(row(q(m.id), q(mode), m.region, m.no, r.level, mapPar(m, mode), !!m.boss, r.total, r.elites, r.eliteExp, r.eliteCoin, r.bossExp, r.bossCoin, r.chestCoin, `${q(JSON.stringify(kinds))}::jsonb`));
     }
   }
   return out;

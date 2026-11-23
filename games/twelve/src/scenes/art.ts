@@ -19,6 +19,7 @@ export type OptionalArt =
   | 'main' // 메인 화면 그림
   | `story-${1 | 2 | 3 | 4}` // 시작 장면 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
   | `ending-${1 | 2 | 3 | 4}` // 보통 모드 엔딩 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
+  | `finale-${1 | 2 | 3 | 4}` // 진짜 엔딩(어려움 최종보스) 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
   | 'cat-scene'; // 고양이(13번째 대원) 등장 장면
 
 export const ART_FILES: readonly OptionalArt[] = [];

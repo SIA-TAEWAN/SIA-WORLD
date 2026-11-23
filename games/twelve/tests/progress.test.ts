@@ -68,7 +68,7 @@ describe('맵 열림', () => {
     expect(continueMap(p)).toBe('1-2');
   });
 
-  it('지형 보스를 잡으면 다음 지형이 열린다. 4지형부터와 어려움 모드는 준비 중', () => {
+  it('지형 보스를 잡으면 다음 지형이 열린다. 어려움 모드는 보통 모드를 끝내야 열린다', () => {
     const p = emptyProfile();
     expect(regionOpen(p, 2)).toBe(false);
     expect(mapOpen(p, '2-1')).toBe(false);
@@ -88,7 +88,7 @@ describe('맵 열림', () => {
     expect(mapOpen(p, '1-1', 'hard')).toBe(false);
     expect(continueMap(p)).toBe(`${last}-8`);
     expect(checkStart(p, `${last + 1}-1`, 'normal', 'rat')).toBe('bad map');
-    expect(checkStart(p, '1-1', 'hard', 'rat')).toBe('map locked');
+    expect(checkStart(p, '1-1', 'hard', 'rat')).toBe('mode locked');
   });
 
   it('추천 대원: 고향 대원 + 환경을 막는 대원 — 그 지형에 올 때 이미 함께하는 대원이다', () => {

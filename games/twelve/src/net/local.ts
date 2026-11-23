@@ -10,6 +10,8 @@ export const DEV_LEVEL = LOCAL_MODE ? Math.max(0, Math.min(99, Math.floor(Number
 export const DEV_GOD = LOCAL_MODE && params.get('god') === '1';
 /** 개발용: 모든 맵·대원이 열린 상태로 본다 (?local=1&all=1, 저장하지 않음) */
 export const DEV_ALL = LOCAL_MODE && params.get('all') === '1';
+/** 개발용: 어려움 모드로 본다 (?local=1&mode=hard, 저장하지 않음 — 보통 모드를 끝낸 것으로 친다) */
+export const DEV_MODE = LOCAL_MODE && params.get('mode') === 'hard';
 /** 개발용: 대원·무기를 정해서 본다 (?local=1&hero=tiger&weapon=bow) */
 export const DEV_HERO = LOCAL_MODE ? (params.get('hero') ?? '') : '';
 export const DEV_WEAPON = LOCAL_MODE ? (params.get('weapon') ?? '') : '';

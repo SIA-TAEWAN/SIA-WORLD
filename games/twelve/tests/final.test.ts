@@ -150,7 +150,7 @@ describe('최종보스맵 (final)', () => {
     expect(row.bossCoin).toBe(sc.coin);
     expect(row.bossExp).toBeGreaterThan(mapReward(mapOf('12-8')!, 'normal').bossExp);
     const rows = mapRows();
-    expect(rows.length).toBe(97);
+    expect(rows.length).toBe(97 * 2); // 보통 + 어려움
     expect(rows[96].startsWith(`('final', 'normal', 12, 9, 65, ${FINAL.par}, true, `)).toBe(true);
   });
 });
