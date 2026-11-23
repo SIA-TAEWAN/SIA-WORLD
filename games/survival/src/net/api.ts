@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ENDLESS, RUN_SEC, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
-import { CHARACTERS } from '../data/characters';
+import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { UPGRADE_TOTAL } from '../data/upgrades';
 import {
@@ -142,7 +142,10 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
     async start(map, character, skipSec = 0, mode = 'normal') {
       const d = read();
       if (!d.profile.unlockedMaps.includes(map)) throw new ApiError('map locked');
-      if (!characterOpen(d.profile, character)) throw new ApiError('character locked');
+      // 서버와 같은 까닭: 로비에서 여는 캐릭터는 071 의 'locked character', 십이지는 'character locked'
+      if (CHARACTER_BY_ID[character].unlock.kind === 'world') {
+        if (!localOwned().includes(character)) throw new ApiError('locked character');
+      } else if (!characterOpen(d.profile, character, [])) throw new ApiError('character locked');
       if (mode === 'endless' && !endlessOpen(d.profile, map)) throw new ApiError('endless locked');
       if (mode === 'hell' && !hellOpen(d.profile, map)) throw new ApiError('hell locked');
       // 서버(039)와 같다: 끝나지 않은 이전 판을 지우지 않는다 (겹치는 판은 finish 가 막는다).
@@ -487,6 +490,13 @@ export interface DevSetup {
   mode: RunMode;
   /** map 과 char 를 모두 적었으면 메뉴를 건너뛰고 바로 판을 시작한다 */
   auto: boolean;
+}
+
+/**
+ * 테스트 모드(?local=1)에서 연 추가 캐릭터: 로그인이 없으니 모두 열린 것으로 본다. &cat=0 이면 고양이가 잠긴 상태
+ */
+export function localOwned(): string[] {
+  return params.get('cat') === '0' ? [] : CHARACTERS.filter((c) => c.unlock.kind === 'world').map((c) => c.id);
 }
 
 export function devSetup(): DevSetup | null {

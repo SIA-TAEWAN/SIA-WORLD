@@ -120,6 +120,15 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     // 고양이는 시아서바이벌의 해금 목록을 보지 않는다 (로비에서 연다): 엽전 값 표에도, 판 결과 해금 목록에도 없다
     expect(b).toContain("if p_character <> 'cat' and not (p_character = any(pr.unlocked_characters)) then raise exception 'character locked'; end if;");
     expect(rows('_survival_character_prices').map((r) => r[0])).not.toContain('cat');
+    // 071: 고양이를 여는 값(시아코인)은 SQL 과 shared/characters.js 가 같다
+    const price = (src: string, re: RegExp) => Object.fromEntries([...src.matchAll(re)].map((m) => [m[1], Number(m[2])]));
+    const fn = shared.slice(shared.indexOf('function public._character_price('), shared.indexOf('$$;', shared.indexOf('function public._character_price(')));
+    const sqlPrice = price(fn, /when '(\w+)' then (\d+)/g);
+    const js = readFileSync(fileURLToPath(new URL('../../../shared/characters.js', import.meta.url)), 'utf8');
+    const block = /export const CHARACTER_PRICE = \{([^}]*)\}/.exec(js)![1];
+    const jsPrice = price(block, /(\w+)\s*:\s*(\d+)/g);
+    expect(sqlPrice).toEqual(jsPrice);
+    expect(sqlPrice.cat).toBeGreaterThan(0);
     const f = body('survival_finish');
     const cond: Record<string, string> = {};
     for (const m of f.matchAll(/\(c = '(\w+)' and ([^)]+)\)/g)) cond[m[1]] = m[2].trim();

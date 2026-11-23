@@ -10,9 +10,12 @@ import {
   levelUp,
   minRunTime,
   normalize,
+  partyOf,
   regionOpen,
   snapshotOf,
   stageOpen,
+  whyText,
+  CAT_LOCKED_TEXT,
   type FingerProfile,
 } from '../src/game/progress';
 import { ApiError, createLocalApi, createSupabaseApi, rejectOf, type ServerClient, type Store } from '../src/net/api';
@@ -88,7 +91,7 @@ describe('열기 · 강화 · 레벨', () => {
     const p = emptyProfile();
     expect(stageOpen(p, '1-1')).toBe(true);
     expect(stageOpen(p, '1-2')).toBe(false);
-    expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger', 'cat']); // 고양이는 지역 합류 밖 (지금은 모두에게 열림 — 잠금은 extraOpen)
+    expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger']); // 고양이는 지역 합류 밖 · 시아코인으로 연 사람만 (extraOpen)
     for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5']) p.stages[id] = 1;
     expect(regionOpen(p, 2)).toBe(false); // 별 5개 < 9
     for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5']) p.stages[id] = 2;
@@ -131,7 +134,7 @@ describe('열기 · 강화 · 레벨', () => {
 
   it('스냅숏은 파티 대원 레벨과 강화만, 서버 프로필 모양을 읽는다', () => {
     const p = normalize({ coins: '120', stages: { '1-1': 3, '9-9': 2, '1-2': 0 }, upgrades: { hp: 2, coin: 99, x: 1 }, levels: { rat: 4, wolf: 3 }, heroes: ['rat'] });
-    expect(p).toEqual({ coins: 120, stages: { '1-1': 3 }, upgrades: { hp: 2, coin: 5 }, levels: { rat: 4 }, tower: null });
+    expect(p).toEqual({ coins: 120, stages: { '1-1': 3 }, upgrades: { hp: 2, coin: 5 }, levels: { rat: 4 }, tower: null, owned: [] });
     expect(normalize({ tower: { floor: '12', turns: 40 } }).tower).toEqual({ floor: 12, turns: 40 });
     expect(normalize({ tower: { floor: 0, turns: 3 } }).tower).toBeNull();
     expect(snapshotOf(p, '1-1', ['ox', 'rat'])).toEqual({ stage: '1-1', mode: 'normal', party: ['ox', 'rat'], levels: { ox: 1, rat: 4 }, upgrades: { hp: 2, coin: 5 } });
@@ -146,6 +149,41 @@ const memStore = (): Store & { map: Map<string, string> } => {
   const map = new Map<string, string>();
   return { map, getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v), removeItem: (k) => void map.delete(k) };
 };
+
+describe('고양이 잠금 (시아코인으로 연 사람만)', () => {
+  it('안 열었으면 파티 · 시작 · 레벨 올리기에서 빠지고, owned 에 있으면 쓴다', () => {
+    const p = emptyProfile();
+    expect(heroesOf(p)).not.toContain('cat');
+    expect(checkStart(p, '1-1', ['cat', 'rat'])).toBe('locked character');
+    p.coins = 99999;
+    expect(levelUp(p, 'cat')).toBe('locked character');
+    // 마지막 파티에 고양이가 남아 있어도 잠겨 있으면 뺀다
+    expect(partyOf(p, ['cat', 'ox'])).toEqual(['ox']);
+    expect(partyOf(p, ['cat'])).toEqual(['rat', 'ox', 'tiger']);
+    const q: FingerProfile = { ...emptyProfile(), owned: ['cat'], coins: 99999 };
+    expect(heroesOf(q)).toEqual(['rat', 'ox', 'tiger', 'cat']);
+    expect(checkStart(q, '1-1', ['cat', 'rat'])).toBeNull();
+    expect(levelUp(q, 'cat')).toBeNull();
+    expect(partyOf(q, ['cat', 'ox'])).toEqual(['cat', 'ox']);
+  });
+  it('서버 프로필의 owned 를 읽는다 (모르는 id 는 버린다)', () => {
+    expect(normalize({ owned: ['cat', 'lion', 'rat'] }).owned).toEqual(['cat']);
+    expect(normalize({}).owned).toEqual([]);
+  });
+  it('서버 거절 locked character → 안내 글 · 다시 보내지 않는 거절', () => {
+    expect(rejectOf('P0001: locked character')).toBe('locked character');
+    expect(whyText('locked character')).toBe(CAT_LOCKED_TEXT);
+    expect(CAT_LOCKED_TEXT).toBe('고양이는 로비에서 시아코인으로 열 수 있어요');
+  });
+  it('테스트 모드: 고양이는 기본으로 열림, owned 를 비우면(?cat=0) 잠김', async () => {
+    const open = createLocalApi(memStore());
+    expect((await open.loadProfile()).owned).toEqual(['cat']);
+    expect(await open.start('1-1', ['cat'])).toMatch(/^local-/);
+    const locked = createLocalApi(memStore(), undefined, []);
+    expect((await locked.loadProfile()).owned).toEqual([]);
+    await expect(locked.start('1-1', ['cat'])).rejects.toThrow('locked character');
+  });
+});
 
 describe('테스트 모드 저장 (?local=1)', () => {
   it('시작 → 실제 판의 조작 → 기기에서 다시 돌려 엽전 · 별, 레벨 올리기', async () => {

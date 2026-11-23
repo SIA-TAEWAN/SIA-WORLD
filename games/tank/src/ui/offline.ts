@@ -18,6 +18,8 @@ import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
 import { mapBgUrl } from './icons';
+import { LOCKED_MSG, isTankOpen, onUnlockChange } from '../game/unlock';
+import { lockBadge, lockNote, lockTitle } from './lock';
 
 // ---------- 1. 처음 화면 ----------
 // 로그인하면 바로 대기실로 간다. 이 화면은 대기실에 못 들어갔을 때(서버 문제 등) 보인다.
@@ -102,9 +104,11 @@ export function showSetup() {
   const renderTanks = () => {
     const rnd = state.tank === 'random';
     const d = TANKS[rnd ? 'zodiac' : (state.tank as TankId)];
-    $('#tanks').innerHTML = `<div class="zodiac-pick">${TANK_IDS.map(
-      (id) => `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''}" title="${TANKS[id].name} (${TANKS[id].animal}) · ${TANKS[id].role}">${tankSvg(id, 46)}<span>${TANKS[id].name}</span></button>`,
-    ).join('')}<button data-id="random" class="rand ${rnd ? 'sel' : ''}" title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button></div>
+    $('#tanks').innerHTML = `<div class="zodiac-pick">${TANK_IDS.map((id) => {
+      // 안 연 고양이는 그림을 보여 주되 자물쇠 (누르면 안내만)
+      const lock = state.tank !== id && !isTankOpen(id);
+      return `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''} ${lock ? 'locked' : ''}" title="${lock ? lockTitle(id) : `${TANKS[id].name} (${TANKS[id].animal}) · ${TANKS[id].role}`}">${tankSvg(id, 46)}<span>${TANKS[id].name}</span>${lock ? lockBadge : ''}</button>`;
+    }).join('')}<button data-id="random" class="rand ${rnd ? 'sel' : ''}" title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button></div>${lockNote()}
       ${rnd ? `<div class="tank-card sel"><div class="pic">${tankSvg('random', 92)}</div><div class="info"><div class="tn">랜덤 <small>게임을 시작할 때 정해져요</small></div><p>12지신 중 하나가 무작위로 나오고, <b>20% 확률</b>로 전설의 <b>십이지신 '열두빛'</b>(다른 탱크보다 20% 강함)이 나와요.</p></div></div>` : ''}
       <div class="tank-card sel" style="${rnd ? 'display:none' : ''}">
         <div class="pic">${tankSvg(state.tank, 92)}</div>
@@ -120,6 +124,7 @@ export function showSetup() {
       </div>`;
     root.querySelectorAll<HTMLElement>('.zodiac-pick button').forEach((b) =>
       b.addEventListener('click', () => {
+        if (!isTankOpen(b.dataset.id!)) return toast(LOCKED_MSG);
         state.tank = b.dataset.id as TankChoice;
         save({ tank: state.tank });
         sfx.click();
@@ -240,6 +245,8 @@ export function showSetup() {
   };
 
   renderTanks();
+  // 로비에서 고양이를 열고 돌아오면 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
+  const offUnlock = onUnlockChange(() => (root.isConnected ? renderTanks() : offUnlock()));
   renderOpp();
   renderMaps();
   renderOpts();

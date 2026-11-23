@@ -80,11 +80,18 @@ export const LIMITS = {
 
 export const totalStars = (p: ChargeProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);
 export const cleared = (p: ChargeProfile, id: string) => (p.stages[id] ?? 0) > 0;
+/** 잠긴 추가 캐릭터 안내 (shared/characters.js 의 LOCK_HINT 와 같은 글) */
+export const LOCK_HINT = '로비에서 열 수 있어요';
+/** 내가 시아코인으로 연 추가 캐릭터 (shared/characters.js 의 loadOwnedCharacters 결과. 테스트 모드는 net/local.ts 가 정한다) */
+let ownedExtras: string[] = [];
+export const setOwnedExtras = (ids: readonly string[]) => {
+  ownedExtras = [...ids];
+};
 /**
- * 추가 캐릭터(고양이)를 고를 수 있는가. 진행으로는 열리지 않는다.
- * 지금은 누구나 고를 수 있다 — 시아코인으로 여는 잠금(서버 _check_character 의 'locked character')은 여기 한 곳에 넣는다.
+ * 추가 캐릭터(고양이)를 고를 수 있는가: 진행으로는 열리지 않고, 로비에서 시아코인으로 연 사람만 (서버 _check_character 의 'locked character').
+ * 선택 화면·시작 검사·저장된 대장 복원이 모두 leadersOf 를 거쳐 여기를 본다.
  */
-export const extraOpen = (_p: ChargeProfile, _id: LeaderId) => true;
+export const extraOpen = (_p: ChargeProfile, id: LeaderId) => ownedExtras.includes(id);
 /** 고를 수 있는 대장: 진행으로 열린 십이지 + 열린 추가 캐릭터 (LEADERS 순서) */
 export const leadersOf = (p: ChargeProfile): LeaderId[] => [
   ...unlockedLeaders((id) => cleared(p, id)),
@@ -173,7 +180,9 @@ export function buyUpgrade(p: ChargeProfile, key: UpgradeKey): string | null {
 
 /** 시작할 수 있는가 (잠긴 스테이지·대장이면 까닭) */
 export function checkStart(p: ChargeProfile, stage: string, leader: string, mode: 'normal' | 'endless'): string | null {
-  if (!LEADERS.some((l) => l.id === leader)) return 'bad leader';
+  const def = LEADERS.find((l) => l.id === leader);
+  if (!def) return 'bad leader';
+  if (def.extra && !extraOpen(p, def.id)) return 'locked character';
   if (!leadersOf(p).includes(leader as LeaderId)) return 'leader locked';
   if (mode === 'endless') return stage === ENDLESS_ID ? (endlessOpen(p) ? null : 'endless locked') : 'bad stage';
   if (!stageOf(stage)) return 'bad stage';
@@ -185,6 +194,7 @@ export function whyText(why: string): string {
   const m: Record<string, string> = {
     'stage locked': '아직 열리지 않은 스테이지예요',
     'leader locked': '아직 열리지 않은 대장이에요',
+    'locked character': '고양이는 로비에서 시아코인으로 열 수 있어요',
     'endless locked': '끝없는 모드는 1-5를 깨면 열려요',
     'not enough coins': '엽전이 모자라요',
     'max level': '이미 최대 강화예요',

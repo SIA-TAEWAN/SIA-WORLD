@@ -390,13 +390,17 @@ export function resetUpgrades(profile: SurvivalProfile): SurvivalProfile {
   return { ...profile, coins: profile.coins + upgradeSpent(profile.upgrades), upgrades: {} };
 }
 
+/** 로비에서 여는 캐릭터가 잠겨 있을 때의 안내 (shared/characters.js 의 LOCK_HINT 와 같은 글) */
+export const LOCK_HINT = '로비에서 열 수 있어요';
+
 /**
- * 이 캐릭터를 고를 수 있나. 십이지는 프로필의 해금 목록으로 본다.
- * 로비에서 여는 캐릭터(unlock.kind 'world': 고양이)는 시아서바이벌의 해금 목록에 들어가지 않는다.
- * 지금은 언제나 열려 있고, 로비 잠금이 생기면 여기서 계정의 열림 여부를 본다 (서버는 071 의 _check_character 가 거른다)
+ * 이 캐릭터를 고를 수 있나 (잠금 판단은 모두 여기서). 십이지는 프로필의 해금 목록으로 본다.
+ * 로비에서 여는 캐릭터(unlock.kind 'world': 고양이)는 시아서바이벌의 해금 목록에 들어가지 않고,
+ * 계정에서 연 캐릭터 목록(owned: shared/characters.js 의 loadOwnedCharacters)에 있어야 열린다.
+ * 서버도 판 시작 때 071 의 _check_character 로 다시 거른다 ('locked character')
  */
-export function characterOpen(profile: SurvivalProfile, id: CharId): boolean {
-  if (CHARACTER_BY_ID[id].unlock.kind === 'world') return true;
+export function characterOpen(profile: SurvivalProfile, id: CharId, owned: readonly string[]): boolean {
+  if (CHARACTER_BY_ID[id].unlock.kind === 'world') return owned.includes(id);
   return profile.unlockedCharacters.includes(id);
 }
 
@@ -439,9 +443,9 @@ export function evolutionHints(codex: Codex): EvolutionHint[] {
 }
 
 /** 도감을 얼마나 모았나: 요괴·보스·무기(진화 포함)·패시브·캐릭터 */
-export function codexCount(p: SurvivalProfile): { have: number; all: number } {
+export function codexCount(p: SurvivalProfile, owned: readonly string[] = []): { have: number; all: number } {
   return {
-    have: p.codex.enemies.length + p.codex.bosses.length + p.codex.weapons.length + p.codex.passives.length + CHARACTERS.filter((c) => characterOpen(p, c.id)).length,
+    have: p.codex.enemies.length + p.codex.bosses.length + p.codex.weapons.length + p.codex.passives.length + CHARACTERS.filter((c) => characterOpen(p, c.id, owned)).length,
     all: ENEMIES.length + BOSSES.length + WEAPONS.length + PASSIVES.length + CHARACTERS.length,
   };
 }

@@ -42,6 +42,21 @@ export async function worldSupabase(): Promise<SupabaseClient> {
   return (await supaMod).supabase;
 }
 
+interface CharactersModule {
+  loadOwnedCharacters(force?: boolean): Promise<string[]>;
+}
+let charMod: Promise<CharactersModule> | null = null;
+/** 시아코인으로 연 추가 캐릭터 id (shared/characters.js). force 면 다시 묻는다 (로비에서 사고 돌아왔을 때). 못 읽으면 null */
+export async function loadOwnedCharacters(force = false): Promise<string[] | null> {
+  try {
+    charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+    return await (await charMod).loadOwnedCharacters(force);
+  } catch {
+    charMod = null;
+    return null;
+  }
+}
+
 interface RankingDialogModule {
   openRanking(opts: { meId?: string | null; first?: string }): () => void;
 }

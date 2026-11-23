@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { COINS, STAR2_LIVES } from '../src/data/balance';
 import { CHAR_MAX_LV, LEVEL_COSTS, UPGRADES, levelMods, upgradeCost, upgradeMods } from '../src/data/growth';
 import { ENDLESS_ID } from '../src/data/endless';
 import { stageOf } from '../src/data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, charLevel, cleanProfile, defaultProfile, endlessOpen, isValid, levelUp, partialCoins, regionCleared, regionOpen, regionStars,
-  endlessCoins, mergeCodex, rejectReason, squadOk, stageOpen, starsOf, totalStars, waveOf, type DefenseProfile, type RunReport,
+  endlessCoins, extraOpen, mergeCodex, rejectReason, setOwnedExtras, squadOk, stageOpen, starsOf, totalStars, waveOf, type DefenseProfile, type RunReport,
 } from '../src/game/progress';
 import { createGame, command, sellValue } from '../src/game/sim';
 import { ApiError, createLocalApi, createSupabaseApi, type RpcClient, type Store } from '../src/net/api';
@@ -19,6 +19,31 @@ const store = (): Store & { data: Map<string, string> } => {
   const data = new Map<string, string>();
   return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v), removeItem: (k) => void data.delete(k) };
 };
+
+// 따로 적지 않은 테스트는 고양이를 연 계정으로 본다 (잠긴 경우는 '고양이 잠금')
+beforeEach(() => setOwnedExtras(['cat']));
+
+describe('고양이 잠금 (로비에서 시아코인으로 연 계정만)', () => {
+  it('열지 않았으면 명단에 없고 출전·레벨업이 거절된다. 연 뒤 cleanProfile 을 다시 거치면 쓸 수 있다', async () => {
+    setOwnedExtras([]);
+    expect(extraOpen('cat')).toBe(false);
+    const p = { ...defaultProfile(), coins: 1e6 };
+    expect(p.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit']);
+    // 저장된 목록에 cat 이 있어도 (서버 목록·기기 저장) 연 기록이 없으면 넣지 않는다
+    expect(cleanProfile({ unlocked: ['cat', 'dragon'] }).unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon']);
+    expect(squadOk(p, ['rat', 'cat'])).toBe(false);
+    expect(() => levelUp(p, 'cat')).toThrow('locked character');
+    const api = createLocalApi(store(), 'k');
+    await expect(api.start('1-1', ['rat', 'cat'])).rejects.toThrow('locked character');
+    // 로비에서 열고 돌아왔다
+    setOwnedExtras(['cat', 'lion']);
+    const q = cleanProfile(p);
+    expect(q.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'cat']);
+    expect(squadOk(q, ['rat', 'cat'])).toBe(true);
+    expect(charLevel(levelUp(q, 'cat'), 'cat')).toBe(2);
+    expect(await api.start('1-1', ['rat', 'cat'])).toMatchObject({ startLives: 20 });
+  });
+});
 
 describe('별 평가', () => {
   it('★ 클리어 · ★★ 생명 10 이상 · ★★★ 생명을 하나도 잃지 않음', () => {
@@ -72,7 +97,7 @@ describe('잠금과 해금', () => {
 
   it('지역의 보스 스테이지를 처음 클리어하면 그 지역의 캐릭터가 해금된다 (1지역 → 용)', () => {
     let p = defaultProfile();
-    // 고양이는 스테이지와 상관없이 (지금은 모두에게) 함께한다
+    // 고양이는 스테이지와 상관없이 (연 계정이면) 함께한다
     expect(p.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'cat']);
     for (const id of ['1-1', '1-2', '1-3', '1-4']) p = applyRun(p, report(id, 15)).profile;
     expect(p.unlocked).not.toContain('dragon');

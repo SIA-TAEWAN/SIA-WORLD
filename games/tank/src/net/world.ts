@@ -75,3 +75,20 @@ export function loadSound(): Promise<SoundModule> {
   soundMod.catch(() => (soundMod = null));
   return soundMod;
 }
+
+interface CharactersModule {
+  loadOwnedCharacters(force?: boolean): Promise<string[]>;
+}
+let charMod: Promise<CharactersModule> | null = null;
+
+/** 내가 시아코인으로 연 추가 캐릭터 id (shared/characters.js). 못 불러오거나 로그인 전이면 [] (잠긴 것으로 본다) */
+export async function loadOwnedCharacters(force = false): Promise<string[]> {
+  try {
+    charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+    const list = await (await charMod).loadOwnedCharacters(force);
+    return Array.isArray(list) ? list.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    charMod = null;
+    return [];
+  }
+}

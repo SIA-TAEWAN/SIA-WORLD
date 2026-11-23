@@ -77,3 +77,19 @@ export function loadSound(): Promise<SoundModule> {
   soundMod.catch(() => (soundMod = null));
   return soundMod;
 }
+
+interface CharactersModule {
+  loadOwnedCharacters(force?: boolean): Promise<string[]>;
+}
+let charMod: Promise<CharactersModule> | null = null;
+/** 이 계정이 시아코인으로 연 추가 캐릭터 id (shared/characters.js). 못 읽으면 [] (잠긴 것으로 본다. 서버도 판 시작 때 다시 본다) */
+export async function loadOwnedCharacters(force = false): Promise<string[]> {
+  try {
+    charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+    const list = await (await charMod).loadOwnedCharacters(force);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    charMod = null;
+    return [];
+  }
+}

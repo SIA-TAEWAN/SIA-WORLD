@@ -3,7 +3,7 @@ import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
-import { characterOpen, characterPrice, endlessOpen, hellOpen } from '../game/progress';
+import { LOCK_HINT, characterOpen, characterPrice, endlessOpen, hellOpen } from '../game/progress';
 import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
@@ -16,7 +16,9 @@ import { whyText } from './upgrade';
 /** 잠금을 적용한다: 프로필의 해금 목록에 없는 캐릭터·맵은 고를 수 없다 (해금은 서버가 판 결과를 보고 정한다) */
 const LOCKS_ON = true;
 
-const charLocked = (id: CharId) => LOCKS_ON && !characterOpen(state.profile, id);
+const charLocked = (id: CharId) => LOCKS_ON && !characterOpen(state.profile, id, state.owned);
+/** 로비에서 여는 캐릭터(고양이): 여기서는 풀 수 없다 */
+const worldChar = (id: CharId) => CHARACTER_BY_ID[id].unlock.kind === 'world';
 const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includes(id);
 /** 무한 모드는 그 맵을 4분 모드로 클리어해야 열린다 (서버의 맵별 최고 기록 기준) */
 const endlessLocked = (id: string) => LOCKS_ON && !endlessOpen(state.profile, id);
@@ -121,6 +123,8 @@ export function showCharSelect() {
   const info = root.querySelector('#info') as HTMLElement;
   const next = root.querySelector('#next') as HTMLButtonElement;
   const paint = () => {
+    // 로비에서 여는 캐릭터는 잠겨 있으면 고를 수 없다 (열린 목록이 늦게 바뀌었을 때)
+    if (worldChar(pick) && charLocked(pick)) pick = 'rat';
     const c = CHARACTER_BY_ID[pick];
     const own = WEAPONS[WEAPON_INDEX[c.weapon]];
     const start = WEAPONS[startWeapon(pick)];
@@ -143,6 +147,7 @@ export function showCharSelect() {
       const l = charLocked(b.dataset.c as CharId);
       b.classList.toggle('locked', l);
       b.querySelector('.lock')?.classList.toggle('hidden', !l);
+      b.title = l && worldChar(b.dataset.c as CharId) ? LOCK_HINT : '';
     });
     next.disabled = locked && (price === null || state.profile.coins < price);
     next.textContent = !locked ? '맵 고르기 ▶' : price !== null ? `🪙 ${price.toLocaleString()}닢으로 풀기` : `🔒 ${c.unlock.text}`;
@@ -154,7 +159,10 @@ export function showCharSelect() {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
     sfx('toggle');
-    pick = b.dataset.c as CharId;
+    const id = b.dataset.c as CharId;
+    // 잠긴 고양이: 고르지 않고 안내만 (로비에서 시아코인으로 연다)
+    if (worldChar(id) && charLocked(id)) return toast(`${CHARACTER_BY_ID[id].nick}: ${LOCK_HINT}`);
+    pick = id;
     paint();
   });
   root.querySelector('#back')!.addEventListener('click', () => {

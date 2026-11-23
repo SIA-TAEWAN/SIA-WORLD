@@ -6,6 +6,7 @@ import { RaceRoom, newRoomCode } from '../net/room';
 import { hostOf } from '../net/seats';
 import { loadRankIcons, openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
+import { LOCK_HINT, LOCKED_MSG, isCharOpen, onUnlockChange } from '../game/unlock';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, state, toast } from './app';
 import { sfx } from './sfx';
 
@@ -190,13 +191,16 @@ export function showWaiting() {
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>대기실</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 초대</button></div>
     <div class="card"><h3>출전 선수 <span class="soft">빈 자리는 AI가 달려요</span></h3><div class="seats" id="seats"></div></div>
-    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요</span></h3><div class="chars" id="chars"></div></div>
+    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요</span></h3><div class="chars" id="chars"></div><p class="lock-note soft" id="lock-note" hidden></p></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
     <button class="btn primary big" id="ready">레디 ▶</button>`,
     'room',
     'lobby',
-    () => off?.(),
+    () => {
+      off?.();
+      offUnlock();
+    },
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
 
@@ -212,11 +216,17 @@ export function showWaiting() {
           <img class="av" src="${zodiacFaceUrl(s.char)}" alt="" /><div class="nm">${esc(s.name)}</div>${st}</div>`;
       })
       .join('');
+    // 잠긴 칸(안 연 고양이)은 그림을 보여 주되 자물쇠. 누르면 안내만 (남이 고른 고양이는 자리 쪽에 그대로 보인다)
+    const locked = CHAR_IDS.filter((c) => !isCharOpen(c));
     $('#chars').innerHTML = CHAR_IDS.map((c) => {
       const sel = c === room.char;
       const taken = !sel && room.isTaken(c);
-      return `<button class="char ${sel ? 'sel' : ''} ${taken ? 'taken' : ''}" data-c="${c}" ${taken ? 'disabled' : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`;
+      const lock = !sel && locked.includes(c);
+      return `<button class="char ${sel ? 'sel' : ''} ${taken ? 'taken' : ''} ${lock ? 'locked' : ''}" data-c="${c}" ${taken ? 'disabled' : ''} ${lock ? `title="${LOCK_HINT}" aria-label="${ZODIAC_NICK[c]} (잠김 · ${LOCK_HINT})"` : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span>${lock ? '<i class="lock" aria-hidden="true">🔒</i>' : ''}</button>`;
     }).join('');
+    const note = $('#lock-note');
+    note.hidden = locked.length === 0;
+    note.textContent = locked.length ? `🔒 ${locked.map((c) => ZODIAC_NICK[c]).join('·')}는 ${LOCK_HINT}` : '';
     const busy = room.current !== null;
     const full = room.isFull();
     const humans = seats.filter((s) => s.id !== null).length;
@@ -235,6 +245,8 @@ export function showWaiting() {
             : '레디하면 AI 3명과 바로 출발해요';
   };
   off = room.onChange(paint);
+  // 로비에서 열고 돌아오면 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
+  const offUnlock = onUnlockChange(paint);
   paint();
 
   $('#chars').addEventListener('click', (e) => {
@@ -244,6 +256,10 @@ export function showWaiting() {
       return;
     }
     const c = b.dataset.c as ZodiacId;
+    if (!isCharOpen(c)) {
+      toast(LOCKED_MSG, 2600);
+      return;
+    }
     sfx('click');
     room.setChar(c);
     saveChar(room.char);

@@ -51,6 +51,21 @@ function fakeRpc(over: Partial<AiRpc> = {}, minSec = 15) {
 }
 
 describe('AI 판 기록 순서', () => {
+  it('잠긴 캐릭터(안 연 고양이)로 시작하면 서버 거절 → locked, 결과는 올리지 않는다', async () => {
+    const c = clock();
+    const { rpc, calls } = fakeRpc({
+      async start() {
+        throw new Error('locked character');
+      },
+    });
+    const rec = new AiMatchRecorder(rpc, c);
+    await tick();
+    c.pass(120_000);
+    const o = await rec.finish(true);
+    expect(o).toEqual({ state: 'locked' });
+    expect(outcomeText(o)).toBe('고양이는 로비에서 시아코인으로 열 수 있어요');
+    expect(calls).toEqual([]);
+  });
   it('만들 때 시작을 알리고, 끝나면 결과를 올린다', async () => {
     const c = clock();
     const { rpc, calls } = fakeRpc();

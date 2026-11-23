@@ -1,10 +1,11 @@
 -- 077: 시아핑거에 고양이(cat, 13번째 대원) 추가
 --   · _finger_extra_heroes(): 지역 합류 규칙 밖의 추가 대원 (_shared/finger/heroes.ts 의 EXTRA_HERO_IDS).
 --     _finger_heroes()(십이지 12종 · 합류 지역)는 그대로 둔다 — 고양이는 지역을 깨도 합류하지 않는다.
---   · _finger_unlocked(): 합류한 십이지 + 쓸 수 있는 추가 대원 (지금은 모두. 3단계에서 시아코인으로 연 사람만)
+--   · _finger_unlocked(): 합류한 십이지 + 시아코인으로 연 추가 대원 (owned_characters, 071)
+--   · _finger_profile_json(): owned (연 추가 대원) 를 더한다 — 화면 잠금 판단 (games/finger progress.ts extraOpen)
 --   · finger_start · finger_level_up: 대원마다 public._check_character (071) 를 거친다
---     (3단계에서 그 함수가 'locked character' 를 내면 여기도 따라 막힌다)
--- 마지막 정의: _finger_unlocked · finger_start · finger_level_up 은 067_finger.sql (070 은 이 셋을 고치지 않았다)
+--     (안 연 고양이는 'locked character')
+-- 마지막 정의: _finger_unlocked · _finger_profile_json · finger_start · finger_level_up 은 067_finger.sql (070 은 이것들을 고치지 않았다)
 
 create or replace function public._finger_extra_heroes() returns text[]
 language sql immutable as $$
@@ -21,8 +22,16 @@ language sql immutable as $$
 $$;
 revoke all on function public._finger_is_hero(text) from public, anon, authenticated;
 
--- 합류한 대원 (처음 3종 + 합류 지역의 5번째를 클리어한 대원, 십이지 순서) + 추가 대원
--- 3단계: 추가 대원은 시아코인으로 연 사람만 (여기에 조건을 더한다)
+-- 시아코인으로 연 추가 대원 (_finger_extra_heroes 순서)
+create or replace function public._finger_owned(p_user uuid) returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(e.id order by e.ord), array[]::text[])
+  from unnest(public._finger_extra_heroes()) with ordinality as e(id, ord)
+  where exists (select 1 from public.owned_characters o where o.user_id = p_user and o.character_id = e.id)
+$$;
+revoke all on function public._finger_owned(uuid) from public, anon, authenticated;
+
+-- 합류한 대원 (처음 3종 + 합류 지역의 5번째를 클리어한 대원, 십이지 순서) + 시아코인으로 연 추가 대원
 create or replace function public._finger_unlocked(p_user uuid) returns text[]
 language sql stable security definer set search_path = public as $$
   select coalesce((
@@ -30,9 +39,25 @@ language sql stable security definer set search_path = public as $$
       select t.id, row_number() over () as ord, t.unlock_region from public._finger_heroes() t
     ) h
     where h.unlock_region = 0 or public._finger_cleared(p_user, h.unlock_region::text || '-5')
-  ), array[]::text[]) || public._finger_extra_heroes()
+  ), array[]::text[]) || public._finger_owned(p_user)
 $$;
 revoke all on function public._finger_unlocked(uuid) from public, anon, authenticated;
+
+-- 화면에 주는 모양: { coins, upgrades, levels: { "rat": 3 }, heroes: [합류한 대원], owned: [연 추가 대원], stages: { "1-1": 3 }, tower: { floor, turns } | null }
+create or replace function public._finger_profile_json(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'coins', coalesce(p.coins, 0),
+    'upgrades', coalesce(p.upgrades, '{}'::jsonb),
+    'levels', coalesce((select jsonb_object_agg(h.hero, h.level) from public.finger_heroes h where h.user_id = p_user), '{}'::jsonb),
+    'heroes', to_jsonb(public._finger_unlocked(p_user)),
+    'owned', to_jsonb(public._finger_owned(p_user)),
+    'stages', coalesce((select jsonb_object_agg(s.stage_id, s.stars) from public.finger_stages s where s.user_id = p_user), '{}'::jsonb),
+    'tower', (select jsonb_build_object('floor', t.best_floor, 'turns', t.turns) from public.finger_tower t where t.user_id = p_user)
+  )
+  from (select 1) one left join public.finger_profiles p on p.user_id = p_user
+$$;
+revoke all on function public._finger_profile_json(uuid) from public, anon, authenticated;
 
 create or replace function public.finger_start(p_stage text, p_party text[], p_mode text default 'normal') returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -49,7 +74,7 @@ begin
     or (select count(distinct y) from unnest(p_party) y) <> n
     or exists (select 1 from unnest(p_party) y where not public._finger_is_hero(y))
   then raise exception 'bad party'; end if;
-  -- 공용 캐릭터 검사 (071: 모르는 id 'bad character', 3단계: 안 연 고양이 'locked character')
+  -- 공용 캐릭터 검사 (071: 모르는 id 'bad character', 안 연 고양이 'locked character')
   foreach x in array p_party loop
     perform public._check_character(me, x);
   end loop;

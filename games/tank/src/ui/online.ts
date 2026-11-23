@@ -18,6 +18,8 @@ import { renderShop } from './shop';
 import { rankedName, ranking, setRanking, setTargetRanking, showRankingModal } from './rank';
 import { tankSvg } from './tankSvg';
 import { sfx } from './sfx';
+import { LOCKED_MSG, isTankOpen, onUnlockChange } from '../game/unlock';
+import { lockBadge, lockNote, lockTitle } from './lock';
 import { recordTarget, showResult } from './offline';
 
 let backend: Backend | null = null;
@@ -309,6 +311,7 @@ function renderRoom(id: string) {
         <div class="slots4" id="slots"></div>
         <h3>내 탱크 <small id="tank-name"></small></h3>
         <div class="zodiac-pick" id="tank"></div>
+        <div id="tank-lock"></div>
         <div id="team-box"><h3>팀 선택</h3><div class="seg" id="team"></div></div>
         <h3>맵 <small id="map-note"></small></h3>
         <div class="seg small" id="map"></div>
@@ -444,14 +447,17 @@ function renderRoom(id: string) {
         await sess.refetch();
       }),
     );
-    const tankHtml = TANK_IDS.map(
-      (t) => `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''}" ${locked ? 'disabled' : ''} title="${TANKS[t].name} (${TANKS[t].animal}) · ${TANKS[t].role}">${tankSvg(t, 40)}<span>${TANKS[t].name}</span></button>`,
-    ).join('') + `<button data-v="random" class="rand ${mineP.tank === 'random' ? 'sel' : ''}" ${locked ? 'disabled ' : ''}title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button>`;
+    // 안 연 고양이는 그림을 보여 주되 자물쇠 (누르면 안내만). 남이 고른 고양이는 위 자리 그림에 그대로 보인다
+    const tankHtml = TANK_IDS.map((t) => {
+      const lock = mineP.tank !== t && !isTankOpen(t);
+      return `<button data-v="${t}" class="${mineP.tank === t ? 'sel' : ''} ${lock ? 'locked' : ''}" ${locked ? 'disabled' : ''} title="${lock ? lockTitle(t) : `${TANKS[t].name} (${TANKS[t].animal}) · ${TANKS[t].role}`}">${tankSvg(t, 40)}<span>${TANKS[t].name}</span>${lock ? lockBadge : ''}</button>`;
+    }).join('') + `<button data-v="random" class="rand ${mineP.tank === 'random' ? 'sel' : ''}" ${locked ? 'disabled ' : ''}title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button>`;
     const tankEl = $(root, '#tank');
     if (tankEl.dataset.html !== tankHtml) {
       tankEl.innerHTML = tankHtml;
       tankEl.dataset.html = tankHtml;
     }
+    $(root, '#tank-lock').innerHTML = lockNote();
     $(root, '#tank-name').textContent =
       mineP.tank === 'random' ? '랜덤 · 게임 시작 때 정해져요 (20% 확률로 십이지신 열두빛)' : `${TANKS[mineP.tank].name} (${TANKS[mineP.tank].animal}) · ${TANKS[mineP.tank].role}`;
     $(root, '#map-note').textContent = (room.map === 'target' ? '🎯 백발백중: 모두 꼬꼬댁 · 깃털탄만 · 개인전 · 과녁(인원 × 5개)을 먼저 맞히면 200점 (높은 층일수록 +50점씩)! · ' : room.map !== 'random' && MAPS[room.map].lockTank ? '🐶 아슬아슬: 모두 멍뭉이 · 땅파기탄(2번)만! · ' : '') + (iAmHost ? '방장만 바꿀 수 있어요' : '방장이 정해요');
@@ -490,6 +496,7 @@ function renderRoom(id: string) {
     root.querySelectorAll<HTMLElement>('#wind button').forEach((b) => b.addEventListener('click', () => void setOpt(speed, b.dataset.v as WindMode)));
     root.querySelectorAll<HTMLElement>('#tank button').forEach((b) =>
       b.addEventListener('click', () => {
+        if (!isTankOpen(b.dataset.v!)) return toast(LOCKED_MSG);
         state.tank = b.dataset.v as TankChoice;
         sfx.click();
         void update({ tank: state.tank });
@@ -537,6 +544,8 @@ function renderRoom(id: string) {
   const unsubA = sess.subscribe(draw);
   const unsubB = rs.onPresence(draw);
   const unsubC = rs.onChat(() => renderChatLog(root, rs));
+  // 로비에서 고양이를 열고 돌아오면 자물쇠를 바로 푼다 (이 화면을 떠났으면 스스로 끈다)
+  const offUnlock = onUnlockChange(() => (root.isConnected ? draw() : offUnlock()));
   // 대기방에서 접속이 끊긴 사람은 잠시(ABSENT_GRACE_MS) 기다린 뒤 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
   const iv = setInterval(() => {
     const room = sess.room(id);

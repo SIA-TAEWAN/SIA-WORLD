@@ -1,6 +1,6 @@
 import { BOARD_H, BOARD_W, ROAD_W, SLOT_SIZE, SQUAD_SIZE, type CharId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
-import { ROSTER, towerOf } from '../data/characters';
+import { EXTRAS, ROSTER, towerOf } from '../data/characters';
 import { upgradeMods } from '../data/growth';
 import { ENDLESS_BOSS_EVERY, ENDLESS_ID } from '../data/endless';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
@@ -11,7 +11,7 @@ import { charLevel, clearedCount, endlessOpen, startLivesOf, regionCleared, regi
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, josa, loadEngine, lockHint, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
+import { CAT_LOCKED, esc, josa, loadEngine, lockHint, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
 import { sfx } from './sfx';
 
 const zodiacNick = (id: CharId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
@@ -246,6 +246,11 @@ export function showPrepare(stageId: string) {
   const best = state.profile.stages[st.id] ?? 0;
   /** 눌러 본 요괴 (설명과 잘 듣는 캐릭터를 아래 한 줄에 보여 준다). 보스는 'boss' */
   let foeFocus: string = boss ? 'boss' : (foes[0]?.id ?? '');
+  /** 출전 캐릭터 칸 (잠긴 캐릭터는 자물쇠, 고양이는 로비에서 연다) */
+  const charsHtml = () =>
+    ROSTER.map(
+      (c) => `<button class="char" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span>${unlocked(c.id) ? `<b class="lvb">Lv ${charLevel(state.profile, c.id)}</b>` : '<b class="lock">🔒</b>'}</button>`,
+    ).join('');
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>출전 준비</h2><span class="spacer"></span></div>
      <div class="scroll">
@@ -268,14 +273,13 @@ export function showPrepare(stageId: string) {
      </div>
      <div class="card">
        <h3>출전 캐릭터 <small id="count"></small></h3>
-       <div class="chars" id="chars">${ROSTER.map(
-         (c) => `<button class="char" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span>${unlocked(c.id) ? `<b class="lvb">Lv ${charLevel(state.profile, c.id)}</b>` : '<b class="lock">🔒</b>'}</button>`,
-       ).join('')}</div>
+       <div class="chars" id="chars">${charsHtml()}</div>
        <p class="char-info" id="info"></p>
      </div>
      </div>
      <button class="btn primary big" id="start">출전 ▶</button>`,
     'select prepare',
+    () => off(),
   );
   const startBtn = root.querySelector('#start') as HTMLButtonElement;
   const paintFoe = () => {
@@ -307,7 +311,7 @@ export function showPrepare(stageId: string) {
     const r = ROSTER.find((x) => x.id === focus)!;
     const def = towerOf(focus);
     root.querySelector('#info')!.innerHTML = def
-      ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em> <small>Lv ${charLevel(state.profile, focus)}</small><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>`
+      ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em> <small>Lv ${charLevel(state.profile, focus)}</small><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>${unlocked(focus) ? '' : `<br/><small>🔒 ${esc(lockHint(r))}</small>`}`
       : `<b>${esc(r.nick)}</b> <span class="tag role">${esc(r.role)}</span><br/><small>🔒 ${esc(lockHint(r))}</small>`;
     startBtn.disabled = picked.size === 0;
   };
@@ -324,7 +328,13 @@ export function showPrepare(stageId: string) {
       else picked.add(id);
       // 고른 순서가 아니라 명단 순서로 (띠 순서, 고양이는 맨 뒤 — 카드와 숫자키 1~5 의 순서)
       picked = new Set(ROSTER.map((r) => r.id).filter((x) => picked.has(x)));
-    }
+    } else if (EXTRAS.includes(id)) toast(CAT_LOCKED);
+    paint();
+  });
+  // 로비에서 고양이를 열고 돌아오면(또는 잠기면) 바로 반영한다 (main.ts 가 화면이 다시 보일 때 다시 묻는다)
+  const off = watchProfile(() => {
+    picked = new Set([...picked].filter(unlocked));
+    root.querySelector('#chars')!.innerHTML = charsHtml();
     paint();
   });
   root.querySelector('#back')!.addEventListener('click', () => {

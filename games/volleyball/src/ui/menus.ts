@@ -8,6 +8,29 @@ import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
 import { sfx } from './sfx';
+import { LOCK_HINT, LOCKED_MSG, isCharOpen, onUnlockChange } from '../game/unlock';
+
+/**
+ * 캐릭터 고르기 칸 (AI 대전 고르기·게임방 같이 씀). 안 연 고양이는 그림을 보여 주되 자물쇠 (누르면 안내만).
+ * 남이 고른 캐릭터(상대 자리)는 잠금과 상관없이 그대로 보인다 — 여기는 내가 고르는 칸만.
+ */
+function charButtons(selected: ZodiacId): string {
+  return CHAR_IDS.map((c) => {
+    const lock = c !== selected && !isCharOpen(c);
+    return `<button class="char ${c === selected ? 'sel' : ''} ${lock ? 'locked' : ''}" data-c="${c}" ${lock ? `title="${LOCK_HINT}" aria-label="${ZODIAC_NICK[c]} (잠김 · ${LOCK_HINT})"` : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span>${lock ? '<i class="lock" aria-hidden="true">🔒</i>' : ''}</button>`;
+  }).join('');
+}
+/** 잠긴 캐릭터 한 줄 안내 (모두 열렸으면 빈 글) */
+function lockNote(): string {
+  const locked = CHAR_IDS.filter((c) => !isCharOpen(c));
+  return locked.length ? `🔒 ${locked.map((c) => ZODIAC_NICK[c]).join('·')}는 ${LOCK_HINT}` : '';
+}
+/** 고를 수 있으면 true, 잠겼으면 안내를 띄우고 false */
+function pickable(c: ZodiacId): boolean {
+  if (isCharOpen(c)) return true;
+  toast(LOCKED_MSG, 2600);
+  return false;
+}
 
 /** 테스트 모드에서 배경을 고른다 (?local=1&bg=0~2). 평소에는 경기마다 무작위 */
 const bgParam = new URLSearchParams(location.search).get('bg');
@@ -192,27 +215,31 @@ export function showCharSelect() {
     `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>캐릭터 선택</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card pick"><div class="pick-stage"><img id="pick-img" src="" alt="" /></div>
       <div class="pick-name" id="pick-name"></div><div class="soft">겉모습만 달라요. 능력은 모두 같아요</div></div>
-    <div class="card"><h3>십이지신 <span class="soft">누구로 할까요?</span></h3><div class="chars" id="chars"></div></div>
+    <div class="card"><h3>캐릭터 <span class="soft">누구로 할까요?</span></h3><div class="chars" id="chars"></div><p class="lock-note soft" id="lock-note"></p></div>
     <div class="grow"></div>
     <p class="status">내가 왼쪽 · AI가 오른쪽 · 전적과 시아코인에 반영돼요 (하루 30판) · 도중에 나가면 패배로 기록돼요</p>
     <button class="btn primary big" id="start">경기 시작 ▶</button>`,
     'room',
     'lobby',
+    () => offUnlock(),
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
   const paint = () => {
     $<HTMLImageElement>('#pick-img').src = zodiacFullUrl(char);
     $('#pick-name').textContent = ZODIAC_NICK[char];
-    $('#chars').innerHTML = CHAR_IDS.map(
-      (c) => `<button class="char ${c === char ? 'sel' : ''}" data-c="${c}"><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`,
-    ).join('');
+    $('#chars').innerHTML = charButtons(char);
+    $('#lock-note').textContent = lockNote();
   };
+  // 로비에서 열고 돌아오면 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
+  const offUnlock = onUnlockChange(paint);
   paint();
   $('#chars').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
+    const c = b.dataset.c as ZodiacId;
+    if (!pickable(c)) return;
     sfx('click');
-    char = b.dataset.c as ZodiacId;
+    char = c;
     paint();
   });
   $('#back').addEventListener('click', () => {
@@ -271,13 +298,16 @@ export function showWaiting() {
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>게임방</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 링크 복사</button></div>
     <div class="card"><div class="duo" id="duo"></div></div>
-    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요 · 같은 캐릭터도 돼요</span></h3><div class="chars" id="chars"></div></div>
+    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요 · 같은 캐릭터도 돼요</span></h3><div class="chars" id="chars"></div><p class="lock-note soft" id="lock-note"></p></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
     <button class="btn primary big" id="ready">레디 ▶</button>`,
     'room',
     'lobby',
-    () => off?.(),
+    () => {
+      off?.();
+      offUnlock();
+    },
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
 
@@ -301,9 +331,8 @@ export function showWaiting() {
         <img class="av" src="${zodiacFaceUrl(isCharId(p.char) ? p.char : 'tiger')}" alt="" /><div class="nm">${esc(p.name)}</div>${st}</div>`;
     };
     $('#duo').innerHTML = `${seat(0)}<div class="vs-mark">VS</div>${seat(1)}`;
-    $('#chars').innerHTML = CHAR_IDS.map(
-      (c) => `<button class="char ${c === room.char ? 'sel' : ''}" data-c="${c}"><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`,
-    ).join('');
+    $('#chars').innerHTML = charButtons(room.char);
+    $('#lock-note').textContent = lockNote();
     const busy = room.current !== null;
     const alone = ps.length < SEATS;
     const btn = $<HTMLButtonElement>('#ready');
@@ -321,6 +350,7 @@ export function showWaiting() {
           : '둘 다 레디하면 3초 뒤에 시작해요';
   };
   off = room.onChange(paint);
+  const offUnlock = onUnlockChange(paint);
   paint();
   if (state.room !== room) return;
 
@@ -328,8 +358,10 @@ export function showWaiting() {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
     if (room.ready) return toast('레디를 풀고 바꿔 주세요');
+    const c = b.dataset.c as ZodiacId;
+    if (!pickable(c)) return;
     sfx('click');
-    room.setChar(b.dataset.c as ZodiacId);
+    room.setChar(c);
     saveChar(room.char);
   });
   $('#ready').addEventListener('click', () => {

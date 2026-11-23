@@ -1,4 +1,4 @@
-import { EXTRA_HERO_IDS, HERO_IDS, HEROES, MAX_LEVEL, MAX_TURNS, STAGES, TOWER_TURNS, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
+import { EXTRA_HERO_IDS, HERO_IDS, HEROES, isExtraHero, MAX_LEVEL, MAX_TURNS, STAGES, TOWER_TURNS, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
 import { REGIONS } from '../data/regions';
 import { clearCoins, failCoins, levelCost, levelOf, rewardFor, totalCoins, towerCoins, upgradeCost, upgradeLv, upgradeOf } from '../data/growth';
 
@@ -19,9 +19,11 @@ export interface FingerProfile {
   levels: Partial<Record<HeroId, number>>;
   /** 끝없는 탑 최고 기록 (올라간 층 · 그때 쓴 턴). 없으면 null */
   tower: { floor: number; turns: number } | null;
+  /** 시아코인으로 연 추가 대원 (고양이). 서버 _finger_profile_json 의 owned (077), 로비에서 사고 오면 다시 읽는다 */
+  owned: HeroId[];
 }
 
-export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {}, tower: null });
+export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {}, tower: null, owned: [] });
 
 /** 서버·기기에서 읽은 값을 프로필 모양으로 (모르는 값은 버린다) */
 export function normalize(p: unknown): FingerProfile {
@@ -41,7 +43,8 @@ export function normalize(p: unknown): FingerProfile {
   const t = o.tower as { floor?: unknown; turns?: unknown } | null | undefined;
   const floor = Math.max(0, Math.floor(Number(t?.floor) || 0));
   const tower = floor > 0 ? { floor, turns: Math.max(0, Math.floor(Number(t?.turns) || 0)) } : null;
-  return { coins: Math.max(0, Math.floor(Number(o.coins) || 0)), stages, upgrades, levels, tower };
+  const owned = EXTRA_HERO_IDS.filter((id) => Array.isArray(o.owned) && o.owned.includes(id));
+  return { coins: Math.max(0, Math.floor(Number(o.coins) || 0)), stages, upgrades, levels, tower, owned };
 }
 
 /** 서버 검증 값 (SQL _finger_const 와 같다) */
@@ -91,10 +94,10 @@ export function stageOpen(p: FingerProfile, id: string): boolean {
 }
 
 /**
- * 추가 대원(고양이)을 쓸 수 있나. 지역 합류와 상관없다 — 시아코인으로 계정마다 연다 (서버 _check_character).
- * 지금은 모두에게 열려 있다. 잠금(3단계)은 여기 한 곳만 바꾸면 heroesOf · 파티 고르기 · 시작 검사 · 레벨 올리기가 따라간다.
+ * 추가 대원(고양이)을 쓸 수 있나 — 잠금 판단은 이 한 곳. 지역 합류와 상관없이 시아코인으로 계정마다 연다
+ * (서버 _check_character 가 'locked character' 로 막는다). heroesOf · 파티 고르기 · 시작 검사 · 레벨 올리기가 이걸 따른다.
  */
-export const extraOpen = (_p: FingerProfile, _id: HeroId): boolean => true;
+export const extraOpen = (p: FingerProfile, id: HeroId): boolean => (p.owned ?? []).includes(id);
 
 /** 합류한 대원: 처음 3종 + 합류 지역의 5번째 스테이지를 깬 대원 (십이지 순서) + 연 추가 대원 */
 export function heroesOf(p: FingerProfile): HeroId[] {
@@ -142,6 +145,8 @@ export function checkStart(p: FingerProfile, stage: string, party: string[], mod
     if (!stageOpen(p, stage)) return 'stage locked';
   }
   if (!Array.isArray(party) || party.length < 1 || party.length > 4 || new Set(party).size !== party.length || !party.every(isHeroId)) return 'bad party';
+  // 서버와 같은 순서: 공용 캐릭터 검사(안 연 고양이)가 먼저
+  if (party.some((id) => isExtraHero(id as HeroId) && !extraOpen(p, id as HeroId))) return 'locked character';
   const open = heroesOf(p);
   if (!party.every((id) => open.includes(id as HeroId))) return 'hero locked';
   return null;
@@ -226,6 +231,7 @@ export function buyUpgrade(p: FingerProfile, key: UpgradeKey): string | null {
 /** 대원 레벨 올리기 (프로필을 고친다) */
 export function levelUp(p: FingerProfile, id: string): string | null {
   if (!isHeroId(id)) return 'bad hero';
+  if (isExtraHero(id) && !extraOpen(p, id)) return 'locked character';
   if (!heroesOf(p).includes(id)) return 'hero locked';
   const lv = levelOf(p.levels, id);
   if (lv >= MAX_LEVEL) return 'max level';
@@ -236,11 +242,17 @@ export function levelUp(p: FingerProfile, id: string): string | null {
   return null;
 }
 
+/** 잠긴 고양이 안내 (선택 화면 칸 · shared/characters.js 의 LOCK_HINT 와 같은 글) · 서버 거절 'locked character' */
+export const LOCK_HINT = '로비에서 열 수 있어요';
+export const CAT_LOCKED_TEXT = '고양이는 로비에서 시아코인으로 열 수 있어요';
+
 /** 서버가 거절한 까닭 → 화면 글 */
 export function whyText(why: string): string {
   const m: Record<string, string> = {
     'stage locked': '아직 열리지 않은 스테이지예요',
     'hero locked': '아직 합류하지 않은 대원이 있어요',
+    'locked character': CAT_LOCKED_TEXT,
+    'bad character': '파티를 다시 골라 주세요',
     'bad party': '파티를 다시 골라 주세요 (1~4명, 같은 대원 없이)',
     'bad stage': '아직 준비 중인 스테이지예요',
     'not enough coins': '엽전이 모자라요',

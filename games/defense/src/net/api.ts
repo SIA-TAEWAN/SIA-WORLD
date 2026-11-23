@@ -1,11 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SQUAD_SIZE, CHAR_IDS, type CharId } from '../data/balance';
-import { ROSTER } from '../data/characters';
+import { EXTRAS, ROSTER } from '../data/characters';
 import { CHAR_MAX_LV, UPGRADES } from '../data/growth';
 import { STAGES, stageOf } from '../data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, levelUp, minRealTime, openedBy, rejectReason, squadOk, stageOpen, startLivesOf,
-  endlessOpen, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
+  endlessOpen, extraOpen, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
 } from '../game/progress';
 import type { Upgrades } from '../data/growth';
 import { ENDLESS_ID } from '../data/endless';
@@ -136,6 +136,8 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
       const stage = stageOf(stageId);
       if (!stage || (mode === 'endless') !== (stageId === ENDLESS_ID)) throw new ApiError('bad stage');
       if (new Set(squad).size !== squad.length || squad.length < 1 || squad.length > SQUAD_SIZE) throw new ApiError('bad squad');
+      // 서버(074 → 071 _check_character)와 같다: 열지 않은 고양이
+      if (squad.some((c) => EXTRAS.includes(c) && !extraOpen(c))) throw new ApiError('locked character');
       if (mode === 'endless') {
         if (!endlessOpen(d.profile)) throw new ApiError('endless locked');
       } else if (!stageOpen(d.profile, stage)) throw new ApiError('stage locked');

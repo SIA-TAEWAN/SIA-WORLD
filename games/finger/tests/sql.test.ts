@@ -50,7 +50,11 @@ describe('SQL 표', () => {
       expect(HEROES[id].unlockRegion).toBe(-1);
       expect(rowsIn('_finger_heroes').some((l) => l.startsWith(`('${id}'`))).toBe(false);
     }
-    expect(block('_finger_unlocked')).toContain('|| public._finger_extra_heroes()');
+    // 추가 대원은 시아코인으로 연 사람만 (owned_characters, 071) · 프로필에 owned 로 준다
+    expect(block('_finger_unlocked')).toContain('|| public._finger_owned(p_user)');
+    expect(block('_finger_owned')).toContain('from public.owned_characters o where o.user_id = p_user and o.character_id = e.id');
+    expect(block('_finger_profile_json')).toContain("'owned', to_jsonb(public._finger_owned(p_user))");
+    expect(SQL).toContain('revoke all on function public._finger_owned(uuid) from public, anon, authenticated;');
     expect(block('finger_start')).toContain('perform public._check_character(me, x);');
     expect(block('finger_start')).toContain('not public._finger_is_hero(y)');
     expect(block('finger_level_up')).toContain('perform public._check_character(me, p_hero);');

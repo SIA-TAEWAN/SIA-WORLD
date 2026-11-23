@@ -16,12 +16,14 @@ import {
   totalStars,
   towerOpen,
   whyText,
+  LOCK_HINT,
+  CAT_LOCKED_TEXT,
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
 import { ApiError, type FingerApi } from '../net/api';
 import { DEV_ALL, LOCAL_MODE } from '../net/local';
-import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
+import { loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
 import {
   BOSSES,
@@ -29,6 +31,8 @@ import {
   ENEMIES,
   HEROES,
   ALL_HERO_IDS,
+  EXTRA_HERO_IDS,
+  isExtraHero,
   HERO_IDS,
   MAX_LEVEL,
   STAGES,
@@ -86,7 +90,11 @@ const ballImg = (id: HeroId) =>
     ? `<img src="${artUrl(`h-${id}`)}" alt="" class="ball-art" onerror="this.onerror=null;this.src='${zodiacFaceUrl(id)}';this.className='ball ${HEROES[id].type}'" />`
     : `<img src="${zodiacFaceUrl(id)}" alt="" class="ball ${HEROES[id].type}" />`;
 
+/** 연 추가 대원이 바뀌었을 때 지금 화면을 다시 그린다 (파티 고르기 화면만 — 다른 화면은 다음에 열 때 반영) */
+let onOwnedChange: (() => void) | null = null;
+
 function screen(html: string, bg = '', backdrop = true): HTMLElement {
+  onOwnedChange = null;
   const root = app();
   root.innerHTML = `<div class="screen ${bg}${backdrop ? bgStyle(bg) : ''}">${html}</div>`;
   const el = root.firstElementChild as HTMLElement;
@@ -108,7 +116,7 @@ const starPill = () => `<span class="coins-pill star-pill">★ ${totalStars(prof
 const coinsPill = () => `<span class="coins-pill">🪙 ${profile.coins.toLocaleString()}</span>`;
 /** 아직 못 쓰는 대원의 안내 (추가 대원 고양이는 지역이 아니라 로비에서 시아코인으로 연다) */
 const lockHint = (id: HeroId, long: boolean) =>
-  HEROES[id].unlockRegion < 0 ? '로비에서 열 수 있어요' : long ? `${HEROES[id].unlockRegion}지역 보스를 깨면 합류` : `${HEROES[id].unlockRegion}지역`;
+  HEROES[id].unlockRegion < 0 ? LOCK_HINT : long ? `${HEROES[id].unlockRegion}지역 보스를 깨면 합류` : `${HEROES[id].unlockRegion}지역`;
 const typeName = (id: HeroId) => (HEROES[id].type === 'pierce' ? '관통형' : '반사형');
 const typeTag = (id: HeroId) => `<em class="tag ${HEROES[id].type}">${typeName(id)}</em>`;
 const errText = (e: unknown) => (e instanceof ApiError ? whyText(e.message) : '서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요');
@@ -137,6 +145,7 @@ export async function boot(a: FingerApi, user: WorldUser | null) {
   me = user;
   profile = await api.loadProfile();
   lastParty = loadParty(userKey());
+  watchOwned();
   if (DEV_ALL) {
     // 개발용 ?local=1&all=1: 모든 스테이지·대원을 연 상태로 본다 (기록하지 않음)
     profile = { ...profile, coins: Math.max(profile.coins, 99999), stages: Object.fromEntries(STAGES.map((s) => [s.id, 3])) };
@@ -151,6 +160,24 @@ export async function boot(a: FingerApi, user: WorldUser | null) {
       }
     })
     .catch(() => null);
+}
+
+/**
+ * 로비에서 고양이를 사고 이 탭으로 돌아오면 새로고침 없이 쓸 수 있게: 화면이 다시 보일 때 연 캐릭터를 다시 묻는다.
+ * (처음 값은 서버 프로필의 owned. 테스트 모드는 ?cat=0 이 아니면 연 것으로 본다)
+ */
+function watchOwned() {
+  if (LOCAL_MODE) return;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    void loadOwnedCharacters(true).then((list) => {
+      if (!list) return;
+      const owned = EXTRA_HERO_IDS.filter((id) => list.includes(id));
+      if (owned.join() === profile.owned.join()) return;
+      profile = { ...profile, owned };
+      onOwnedChange?.();
+    });
+  });
 }
 
 /** 서버가 준 새 프로필 (개발용 ?all=1 은 기기에서 연 상태를 그대로 두고 엽전·레벨·강화만) */
@@ -414,7 +441,7 @@ function showStages(region: number) {
 
 /** 파티 고르기: 스테이지 st, 또는 null 이면 끝없는 탑 */
 function showParty(st: StageDef | null) {
-  const open = heroesOf(profile);
+  let open = heroesOf(profile);
   let party = partyOf(profile, lastParty);
   let focus: HeroId = party[0] ?? open[0];
   const root = screen(
@@ -426,6 +453,10 @@ function showParty(st: StageDef | null) {
     st ? `bg-${groundOf(st.region)}` : 'bg-tower',
   );
   const paint = () => {
+    open = heroesOf(profile);
+    // 잠긴 대원(로비에서 산 고양이를 다른 기기에서 되돌린 경우 등)은 파티에서 뺀다
+    party = party.filter((id) => open.includes(id));
+    if (!open.includes(focus)) focus = party[0] ?? open[0];
     root.querySelector('#slots')!.innerHTML = [0, 1, 2, 3]
       .map((i) => {
         const id = party[i];
@@ -437,7 +468,7 @@ function showParty(st: StageDef | null) {
     root.querySelector('#pick')!.innerHTML = ALL_HERO_IDS.map((id) => {
       const ok = open.includes(id);
       const at = party.indexOf(id);
-      return `<button class="leader ${at >= 0 ? 'on' : ''} ${ok ? '' : 'locked'} ${id === focus ? 'focus' : ''}" data-id="${id}" ${ok ? '' : 'disabled'}>
+      return `<button class="leader ${at >= 0 ? 'on' : ''} ${ok ? '' : 'locked'} ${isExtraHero(id) ? 'extra' : ''} ${id === focus ? 'focus' : ''}" data-id="${id}" ${ok || isExtraHero(id) ? '' : 'disabled'}>
           <img src="${zodiacFaceUrl(id)}" alt="${HEROES[id].name}" /><b>${HEROES[id].name}</b>${ok ? (at >= 0 ? `<em>${at + 1}번</em>` : '') : `<em>🔒 ${lockHint(id, false)}</em>`}
         </button>`;
     }).join('');
@@ -457,6 +488,8 @@ function showParty(st: StageDef | null) {
       b.addEventListener('click', () => {
         const id = b.dataset.id as HeroId;
         play('click');
+        // 안 연 고양이: 고르지 않고 안내만 (그림·설명은 보여 준다)
+        if (!open.includes(id)) return toast(CAT_LOCKED_TEXT);
         focus = id;
         if (!party.includes(id)) {
           if (party.length >= 4) toast('4칸이 다 찼어요. 위 칸을 눌러 빼 주세요');
@@ -467,6 +500,7 @@ function showParty(st: StageDef | null) {
     );
   };
   paint();
+  onOwnedChange = paint;
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
     if (st) showStages(st.region);

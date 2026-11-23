@@ -1,6 +1,7 @@
 import type { ItemId, TankChoice } from '../game/data';
 import type { MapId } from '../data/maps';
 import type { GameMode, WindMode } from '../game/match';
+import { LOCKED_MSG } from '../game/unlock';
 
 export interface RoomPlayer {
   id: string;
@@ -120,6 +121,7 @@ export class NetError extends Error {}
 /** 서버 오류 메시지를 사람이 읽을 말로 */
 export function friendly(e: unknown): string {
   const m = String((e as Error)?.message ?? e);
+  if (m.includes('locked character')) return LOCKED_MSG;
   if (m.includes('need login')) return '로그인이 풀렸어요. SIA WORLD에서 다시 로그인해 주세요';
   if (m.includes('room is full')) return '게임방이 가득 찼어요 (최대 4명)';
   if (m.includes('room is playing') || m.includes('already playing')) return '이미 게임이 진행 중인 방이에요';

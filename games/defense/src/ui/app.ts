@@ -78,13 +78,17 @@ export const nav = {
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
-/** 받침에 맞는 조사를 붙인다: josa('들판', '을', '를') → '들판을' */
+/** 시아코인으로 여는 캐릭터의 안내 (shared/characters.js 의 LOCK_HINT 와 같은 글) · 서버가 'locked character' 로 거절했을 때 */
+export const LOCK_HINT = '로비에서 열 수 있어요';
+export const CAT_LOCKED = '고양이는 로비에서 시아코인으로 열 수 있어요';
+
 /** 잠긴 캐릭터를 여는 방법 (고양이는 스테이지가 아니라 로비에서 연다). then: 지역을 클리어한 뒤의 말 */
 export function lockHint(r: RosterEntry, then = '함께할 수 있어요'): string {
-  if (r.unlockRegion === BOUGHT) return '로비에서 열 수 있어요';
+  if (r.unlockRegion === BOUGHT) return LOCK_HINT;
   return `${r.unlockRegion}지역 ${josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를')} 클리어하면 ${then}`;
 }
 
+/** 받침에 맞는 조사를 붙인다: josa('들판', '을', '를') → '들판을' */
 export function josa(word: string, withFinal: string, withoutFinal: string): string {
   const code = word.charCodeAt(word.length - 1) - 0xac00;
   const final = code >= 0 && code <= 11171 ? code % 28 !== 0 : false;
@@ -97,6 +101,8 @@ export function whyText(e: unknown): string {
   if (/not enough coins/.test(m)) return '엽전이 모자라요';
   if (/max level/.test(m)) return '이미 가장 높은 레벨이에요';
   if (/character locked/.test(m)) return '아직 함께할 수 없는 캐릭터예요';
+  // 071 _check_character: 시아코인으로 열어야 하는 캐릭터를 안 열었다
+  if (/locked character/.test(m)) return CAT_LOCKED;
   if (/stage locked/.test(m)) return '아직 열리지 않은 스테이지예요';
   if (/endless locked/.test(m)) return '끝없는 고개는 1지역을 모두 클리어하면 열려요';
   if (/bad squad/.test(m)) return '출전 캐릭터를 다시 골라 주세요 (1~5종, 겹치지 않게)';

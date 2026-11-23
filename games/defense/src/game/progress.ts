@@ -82,9 +82,15 @@ export interface DefenseProfile {
 
 /**
  * 스테이지로 열리지 않는 캐릭터(고양이)를 이 계정이 쓸 수 있나 — 출전·레벨업·선택 화면이 모두 p.unlocked 를 보므로 여기 한 곳에서 정한다.
- * 지금은 모두 쓸 수 있다. (다음 단계: 로비에서 시아코인으로 연 계정만. 서버는 _check_character 가 막는다)
+ * 로비에서 시아코인으로 연 계정만 쓴다 (shared/characters.js 의 loadOwnedCharacters → setOwnedExtras. 서버는 071 의 _check_character 가 막는다).
+ * 연 목록을 바꾼 뒤에는 cleanProfile 을 다시 거쳐야 p.unlocked 에 반영된다 (main.ts).
  */
-export const extraOpen = (_id: CharId): boolean => true;
+let ownedExtras: CharId[] = [];
+/** 이 계정이 연 추가 캐릭터 (모르는 id 는 버린다). 처음에는 아무것도 열지 않은 것으로 본다 */
+export function setOwnedExtras(list: readonly string[]) {
+  ownedExtras = EXTRAS.filter((id) => list.includes(id));
+}
+export const extraOpen = (id: CharId): boolean => ownedExtras.includes(id);
 const openExtras = () => EXTRAS.filter(extraOpen);
 
 export const defaultProfile = (): DefenseProfile => ({ coins: 0, stages: {}, levels: {}, upgrades: {}, unlocked: [...STARTERS, ...openExtras()], codex: { enemies: [], bosses: [] }, endless: null });
@@ -314,6 +320,8 @@ export const openedBy = (before: DefenseProfile, after: DefenseProfile): string 
 /** 캐릭터 레벨업 → 새 진행 상황. 안 되면 오류(까닭) */
 export function levelUp(p: DefenseProfile, id: string): DefenseProfile {
   if (!isChar(id)) throw new Error('bad character');
+  // 서버와 같다: 시아코인으로 여는 캐릭터는 071 _check_character 의 'locked character'
+  if (EXTRAS.includes(id) && !extraOpen(id)) throw new Error('locked character');
   if (!p.unlocked.includes(id)) throw new Error('character locked');
   const cost = levelCost(charLevel(p, id));
   if (cost === null) throw new Error('max level');

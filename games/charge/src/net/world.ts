@@ -42,6 +42,21 @@ export async function worldSupabase(): Promise<SupabaseClient> {
   return (await supaMod).supabase;
 }
 
+interface CharactersModule {
+  loadOwnedCharacters(force?: boolean): Promise<string[]>;
+}
+let charMod: Promise<CharactersModule> | null = null;
+/** 내가 시아코인으로 연 추가 캐릭터 (shared/characters.js). 못 불러오면 [] (잠긴 것으로 본다. 서버도 시작 때 다시 검사한다) */
+export async function loadOwnedCharacters(force = false): Promise<string[]> {
+  try {
+    charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+    return await (await charMod).loadOwnedCharacters(force);
+  } catch {
+    charMod = null;
+    return [];
+  }
+}
+
 interface RankingDialogModule {
   openRanking(opts: { meId?: string | null; first?: string }): () => void;
 }

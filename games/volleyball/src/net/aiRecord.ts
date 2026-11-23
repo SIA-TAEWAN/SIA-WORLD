@@ -8,6 +8,7 @@
  * 다시 올리기가 통신 실패면 맡겨 둔 채 새 판은 서버에 알리지 않는다 (기록되지 않는 판).
  * 화면·브라우저를 모르는 순수 모듈 (서버 호출은 AiRpc 로, 기기 저장은 PendingStore 로 받는다).
  */
+import { LOCKED_MSG, isLockedError } from '../game/unlock';
 /** ai_match_finish 의 답 */
 export interface AiFinish {
   /** 전적에 반영했는가 (false: 하루 한도를 넘긴 판) */
@@ -74,6 +75,7 @@ export function localPending(key: string): PendingStore {
 /**
  * saved 전적에 반영됨 · limit 하루 한도를 넘겨 반영 안 됨 · draw 무승부로 마감(기록 없음) · failed 올리지 못함
  * · unrecorded 앞 판 결과를 아직 올리지 못해 이 판은 서버에 알리지 않았다 · none 올릴 것이 없음(테스트 모드)
+ * · locked 잠긴 캐릭터(안 연 고양이)라서 서버가 시작을 거절했다
  */
 export type AiOutcome =
   | { state: 'saved'; coin: boolean; wins: number; losses: number }
@@ -81,6 +83,7 @@ export type AiOutcome =
   | { state: 'draw' }
   | { state: 'failed' }
   | { state: 'unrecorded' }
+  | { state: 'locked' }
   | { state: 'none' };
 
 export interface AiRecorderOptions {
@@ -103,7 +106,7 @@ export function rejected(e: unknown): boolean {
 /** 서버 요청은 한 번에 하나씩, 순서대로 (앞 판의 종료가 올라간 다음에 새 판의 시작을 알린다. 절대 reject 하지 않는다) */
 let busy: Promise<unknown> = Promise.resolve();
 
-type Started = { id: string; okAt: number } | 'none' | 'blocked' | null;
+type Started = { id: string; okAt: number } | 'none' | 'blocked' | 'locked' | null;
 
 export class AiMatchRecorder {
   /** 'blocked': 앞 판 결과를 통신 실패로 다시 올리지 못해 이 판의 시작을 알리지 않았다 (기록되지 않는 판) */
@@ -146,7 +149,13 @@ export class AiMatchRecorder {
         }
       }
       const sentAt = now();
-      const r = await api.start();
+      let r: { id: string; minSec: number };
+      try {
+        r = await api.start();
+      } catch (e) {
+        if (isLockedError((e as Error)?.message)) return 'locked';
+        throw e;
+      }
       this.lossAt = sentAt + r.minSec * 1000;
       // 답을 받은 시각부터 센다 (서버가 적은 시작 시각보다 늦으므로 안전한 쪽)
       return { id: r.id, okAt: now() + r.minSec * 1000 + EARLY_MARGIN_MS };
@@ -180,6 +189,7 @@ export class AiMatchRecorder {
     return this.once(async (): Promise<AiOutcome> => {
       const s = await this.started;
       if (s === 'blocked') return { state: 'unrecorded' };
+      if (s === 'locked') return { state: 'locked' };
       const api = await this.rpc.catch(() => null);
       if (s && s !== 'none' && api) {
         if ((await api.cancel(s.id)) === 'kept') return this.send(false);
@@ -200,6 +210,7 @@ export class AiMatchRecorder {
     const s = await this.started;
     if (s === 'none') return { state: 'none' };
     if (s === 'blocked') return { state: 'unrecorded' };
+    if (s === 'locked') return { state: 'locked' };
     const api = await this.rpc;
     if (!s || !api) return { state: 'failed' };
     // 올리기 전에 기기에 맡겨 둔다 (기다리는 사이 창을 닫거나 통신이 끊겨도 다음 판 시작 전에 다시 올린다)
@@ -226,6 +237,7 @@ export class AiMatchRecorder {
     const s = await this.started;
     if (s === 'none') return { state: 'none' };
     if (s === 'blocked') return { state: 'unrecorded' };
+    if (s === 'locked') return { state: 'locked' };
     const api = await this.rpc;
     if (!s || !api?.draw) return { state: 'failed' };
     // 못 올리면 다음 판 시작 전에 다시 알린다
@@ -263,6 +275,7 @@ export function outcomeText(o: AiOutcome): string {
   if (o.state === 'limit') return `오늘은 AI 대전 ${o.perDay}판을 채워서 전적·시아코인에 반영되지 않았어요`;
   if (o.state === 'draw') return '무승부는 전적에 기록되지 않아요';
   if (o.state === 'failed') return '전적을 기록하지 못했어요';
+  if (o.state === 'locked') return LOCKED_MSG;
   if (o.state === 'unrecorded') return '앞 판 결과를 아직 서버에 올리지 못해 이 판은 기록되지 않아요 · 인터넷 연결을 확인해 주세요';
   return '테스트 모드라 기록되지 않아요';
 }

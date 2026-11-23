@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ZodiacId } from '../game/constants';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { worldSupabase } from './world';
+import { isLockedError } from '../game/unlock';
 
 /** 한 판의 시각 (모두 서버 시각 ms): '준비' 표시와 GO */
 export interface GoInfo {
@@ -17,6 +18,8 @@ export interface SubmitResult {
   bestMs: number;
   /** 이번 기록이 개인 최고 기록인가 */
   improved: boolean;
+  /** 서버가 잠긴 캐릭터라서 거절했다 ('locked character') */
+  locked?: boolean;
 }
 
 export interface RankRow {
@@ -146,7 +149,7 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       const d = data as { best_ms: number; improved: boolean } | null;
       if (error || !d) {
         console.warn('[시아레이스] 기록을 서버에 올리지 못했어요', error?.message);
-        return saveLocalBest(uid, ms);
+        return { ...saveLocalBest(uid, ms), locked: isLockedError(error?.message) };
       }
       saveLocalBest(uid, d.best_ms);
       return { saved: true, bestMs: d.best_ms, improved: d.improved };

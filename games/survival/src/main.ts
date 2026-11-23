@@ -1,5 +1,8 @@
 import './style.css';
 import { LOCAL_MODE, devSetup, getApi } from './net/api';
+import { loadOwned } from './net/characters';
+import { CHARACTER_BY_ID } from './data/characters';
+import { characterOpen } from './game/progress';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { LOBBY_MAX, LobbyFullError, SurvivalLobby } from './net/lobby';
 import { loadChar, loadEngine, nav, screen, setProfile, state, toast } from './ui/app';
@@ -110,10 +113,26 @@ async function start() {
     toast('서버에 연결하지 못했어요. 지금은 기록되지 않아요', 3600);
   }
 
+  // 로비에서 연 추가 캐릭터(고양이). 마지막으로 고른 캐릭터가 잠긴 고양이면 기본 캐릭터로
+  await refreshOwned(false);
+  // 로비에서 고양이를 열고 이 탭으로 돌아오면 새로고침 없이 쓸 수 있게 다시 묻는다
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void refreshOwned(true);
+  });
+
   // 개발용 테스트 설정: ?local=1&map=field&char=tiger&upg=10&t=120 → 메뉴를 건너뛰고 그 상태로 바로 시작
   if (dev?.char) state.char = dev.char;
   if (dev?.auto) nav.game({ char: dev.char!, map: dev.map!, mode: dev.mode, upg: dev.upg ?? undefined, startAt: dev.t, seed: dev.seed ?? undefined });
   else nav.main();
+}
+
+/** 연 추가 캐릭터를 다시 읽고, 떠 있는 화면(선택 화면·도감)을 다시 그린다 */
+async function refreshOwned(force: boolean) {
+  const owned = await loadOwned(force);
+  const changed = owned.join() !== state.owned.join();
+  state.owned = owned;
+  if (CHARACTER_BY_ID[state.char].unlock.kind === 'world' && !characterOpen(state.profile, state.char, owned)) state.char = 'tiger';
+  if (changed) setProfile(state.profile);
 }
 
 void start();

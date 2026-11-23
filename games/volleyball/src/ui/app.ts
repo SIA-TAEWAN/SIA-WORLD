@@ -1,4 +1,5 @@
 import { SCREEN_W, isCharId, type ZodiacId } from '../game/constants';
+import { isCharOpen } from '../game/unlock';
 import type { MatchResult, MatchSetup } from '../match/game';
 import type { VolleyApi } from '../net/api';
 import type { VolleyLobby } from '../net/lobby';
@@ -71,7 +72,7 @@ const charKey = () => `sia-world:avatar:${state.user.id}`;
 export function loadChar(): ZodiacId {
   try {
     const v = localStorage.getItem(charKey()) as ZodiacId | null;
-    if (isCharId(v)) return v;
+    if (isCharId(v) && isCharOpen(v)) return v; // 잠긴 고양이면 기본 캐릭터
   } catch {
     /* 기본값 */
   }

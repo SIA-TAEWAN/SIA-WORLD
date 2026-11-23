@@ -7,8 +7,10 @@ import { ENDLESS_ID, STAGES, endlessStage, nextStage, stageOf, stagesOf, type St
 import {
   emptyProfile,
   endlessOpen,
+  LOCK_HINT,
   leadersOf,
   regionOpen,
+  setOwnedExtras,
   regionStarsOf,
   stageOpen,
   totalStars,
@@ -19,8 +21,8 @@ import {
 } from '../game/progress';
 import { createRun, metersOf, progressOf, starsFor, type RunState } from '../game/sim';
 import { ApiError, type ChargeApi } from '../net/api';
-import { DEV_ALL, LOCAL_MODE } from '../net/local';
-import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
+import { DEV_ALL, DEV_OWNED, LOCAL_MODE } from '../net/local';
+import { loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
 import { TABLE } from '../theme';
 
@@ -106,6 +108,19 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
     // 개발용 ?local=1&all=1: 모든 스테이지·대장을 연 상태로 본다 (저장하지 않음)
     profile = { ...profile, coins: Math.max(profile.coins, 99999), stages: Object.fromEntries(STAGES.map((s) => [s.id, 3])) };
   }
+  // 고양이(시아코인으로 여는 대장): 들어올 때 한 번, 로비에서 사고 돌아오면(화면이 다시 보이면) 다시 묻는다
+  setOwnedExtras(LOCAL_MODE ? DEV_OWNED : await loadOwnedCharacters());
+  if (!LOCAL_MODE) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadOwnedCharacters(true).then((ids) => {
+        const was = leadersOf(profile).join();
+        setOwnedExtras(ids);
+        // 메인(대장 고르기)을 보고 있으면 바로 다시 그린다
+        if (leadersOf(profile).join() !== was && document.querySelector('.leaders')) showMain();
+      });
+    });
+  }
   try {
     const saved = localStorage.getItem(LEADER_KEY) as LeaderId | null;
     if (saved && leadersOf(profile).includes(saved)) leader = saved;
@@ -142,7 +157,8 @@ export function showMain() {
       <div class="leaders">${LEADERS.map((l) => {
         const ok = open.includes(l.id);
         // 고를 수 있는지는 leadersOf(profile) 한 곳에서 정한다 (고양이 잠금은 progress.ts 의 extraOpen)
-        return `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok ? '' : 'disabled'}>
+        // 잠긴 고양이는 눌러서 안내를 볼 수 있게 disabled 로 두지 않는다
+        return `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok || l.extra ? '' : 'disabled'}>
             <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒 ${l.extra ? '로비' : `${l.unlockRegion}지역`}</em>`}
           </button>`;
       }).join('')}</div>
@@ -167,7 +183,12 @@ export function showMain() {
   if (sb) { sb.classList.add('on-hero'); root.appendChild(sb); }
   root.querySelectorAll<HTMLButtonElement>('.leader').forEach((b) =>
     b.addEventListener('click', () => {
-      setLeader(b.dataset.id as LeaderId);
+      const id = b.dataset.id as LeaderId;
+      if (!open.includes(id)) {
+        play('click');
+        return toast(`🔒 ${leaderOf(id).name}는 ${LOCK_HINT} (시아코인)`);
+      }
+      setLeader(id);
       play('click');
       showMain();
     }),

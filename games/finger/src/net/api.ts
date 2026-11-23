@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { verifyRun, VerifyError, type HeroId, type RunResult, type RunSnapshot, type ShotInput, type UpgradeKey } from '../sim';
+import { EXTRA_HERO_IDS, verifyRun, VerifyError, type HeroId, type RunResult, type RunSnapshot, type ShotInput, type UpgradeKey } from '../sim';
 import {
   applyResult,
   buyUpgrade,
@@ -11,7 +11,7 @@ import {
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
-import { LOCAL_MODE } from './local';
+import { DEV_CAT_LOCKED, LOCAL_MODE } from './local';
 import { worldSupabase } from './world';
 
 /**
@@ -72,13 +72,17 @@ const safeStore = (): Store => {
 
 // ---------- 테스트 모드: 이 기기에만 ----------
 
-export function createLocalApi(store: Store, key = 'siafinger:profile:local'): FingerApi {
+/** owned = 테스트 모드에서 연 것으로 볼 추가 대원 (기본: 모두. ?local=1&cat=0 이면 없음) */
+export function createLocalApi(store: Store, key = 'siafinger:profile:local', owned: readonly HeroId[] = EXTRA_HERO_IDS): FingerApi {
   const load = () => {
+    let p: FingerProfile;
     try {
-      return normalize(JSON.parse(store.getItem(key) ?? 'null'));
+      p = normalize(JSON.parse(store.getItem(key) ?? 'null'));
     } catch {
-      return emptyProfile();
+      p = emptyProfile();
     }
+    p.owned = [...owned];
+    return p;
   };
   const save = (p: FingerProfile) => store.setItem(key, JSON.stringify(p));
   /** 판 번호 → 시작 때 스냅숏 (서버의 finger_runs 대신) */
@@ -151,7 +155,7 @@ export interface ServerClient {
 
 /** 서버가 일부러 거절한 까닭 (raise exception · Edge Function error 글자) — 다시 보내도 소용없다 */
 const REJECTS = [
-  'stage locked', 'tower locked', 'hero locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'old rules',
+  'stage locked', 'tower locked', 'hero locked', 'locked character', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'old rules',
   'extra inputs', 'too many turns', 'bad ',
 ];
 /** 거절이면 까닭, 아니면(통신 문제) null */
@@ -266,6 +270,6 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
 let api: FingerApi | null = null;
 export async function getApi(uid: string): Promise<FingerApi> {
   if (api) return api;
-  if (LOCAL_MODE) return (api = createLocalApi(safeStore()));
+  if (LOCAL_MODE) return (api = createLocalApi(safeStore(), undefined, DEV_CAT_LOCKED ? [] : EXTRA_HERO_IDS));
   return (api = createSupabaseApi(await worldSupabase(), uid, safeStore()));
 }

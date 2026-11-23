@@ -47,6 +47,8 @@ export const state = {
   char: 'tiger' as CharId,
   map: 'field',
   mode: 'normal' as RunMode,
+  /** 계정에서 연 추가 캐릭터 (로비에서 시아코인으로 연 고양이 등. net/characters.ts 가 채운다) */
+  owned: [] as string[],
 };
 
 /** 프로필이 바뀌면 부를 함수들 (지금 떠 있는 화면이 엽전·해금 표시를 다시 그린다) */

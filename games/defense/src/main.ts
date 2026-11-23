@@ -1,9 +1,10 @@
 import './style.css';
 import { SQUAD_SIZE } from './data/balance';
-import { ROSTER, STARTERS, towerOf } from './data/characters';
+import { EXTRAS, ROSTER, STARTERS, towerOf } from './data/characters';
+import { cleanProfile, setOwnedExtras } from './game/progress';
 import { ApiError, LOCAL_MODE, devSetup, getApi, lobbyNet, type StartInfo } from './net/api';
 import { DefenseLobby, LOBBY_MAX, LobbyFullError } from './net/lobby';
-import { loadAuth, worldHome, type WorldUser } from './net/world';
+import { loadAuth, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
 import { app, loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
 import { stageOf } from './data/stages';
 import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
@@ -133,6 +134,22 @@ async function start() {
     return;
   }
   state.user = { id: user.userId, name: user.nickname };
+  // 시아코인으로 연 추가 캐릭터(고양이): 프로필을 읽기 전에 (cleanProfile 이 이 목록으로 p.unlocked 를 만든다).
+  // 테스트 모드는 로그인이 없으니 열린 것으로 (&cat=0 이면 잠긴 모습)
+  if (LOCAL_MODE) setOwnedExtras(new URLSearchParams(location.search).get('cat') === '0' ? [] : [...EXTRAS]);
+  else {
+    setOwnedExtras(await loadOwnedCharacters());
+    // 로비에서 열고 돌아오면 새로 고치지 않아도 쓸 수 있게: 화면이 다시 보일 때 다시 묻는다
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadOwnedCharacters(true).then((list) => {
+        const before = state.profile.unlocked.join();
+        setOwnedExtras(list);
+        const p = cleanProfile(state.profile);
+        if (p.unlocked.join() !== before) setProfile(p);
+      });
+    });
+  }
   try {
     state.api = await getApi(user.userId);
   } catch {

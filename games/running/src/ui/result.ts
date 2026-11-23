@@ -1,5 +1,6 @@
 import { formatTime, tierOf, type RankedEntry } from '../game/ranking';
 import { LOCAL_MODE } from '../net/api';
+import { LOCKED_MSG } from '../game/unlock';
 import { loadRankIcons } from '../net/world';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
@@ -69,7 +70,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
         sfx('newRecord', { delay: 900 });
         confetti($('#cheer'));
       } else el.innerHTML = `<span class="soft">최고 ${formatTime(rec.bestMs)}초</span>`;
-      if (!rec.saved && !LOCAL_MODE) el.insertAdjacentHTML('beforeend', '<br/><span class="soft">서버에 기록을 올리지 못했어요</span>');
+      if (!rec.saved && !LOCAL_MODE) el.insertAdjacentHTML('beforeend', `<br/><span class="soft">${rec.locked ? LOCKED_MSG : '서버에 기록을 올리지 못했어요'}</span>`);
     });
   }
 

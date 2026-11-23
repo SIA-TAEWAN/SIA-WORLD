@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { clearCoins, endlessCoins, failCoins, firstCoins } from '../src/data/growth';
 import { createLocalApi } from '../src/net/api';
-import { applyReport, checkStart, emptyProfile, leadersOf, regionOpen, stageOpen, type RunReport } from '../src/game/progress';
+import { applyReport, checkStart, emptyProfile, leadersOf, regionOpen, setOwnedExtras, stageOpen, whyText, type RunReport } from '../src/game/progress';
+import { STAGES } from '../src/data/stages';
 
 const report = (o: Partial<RunReport>): RunReport => ({
   run: 'r', stage: '1-1', leader: 'rat', mode: 'normal', time: 58, cleared: true, troops: 120, kills: 50, progress: 1, meters: 0, bosses: 0, crate: 0, ...o,
@@ -44,10 +45,21 @@ describe('판 밖 기록', () => {
     expect(checkStart(p, '2-1', 'rabbit', 'normal')).toBeNull();
     expect(checkStart(p, '2-2', 'rat', 'normal')).toBe('stage locked');
     expect(checkStart(p, '1-1', 'dragon', 'normal')).toBe('leader locked');
-    // 고양이는 진행과 무관하게 고를 수 있다 (시아코인 잠금은 3단계에서 extraOpen 에)
+    expect(checkStart(p, '1-1', 'lion', 'normal')).toBe('bad leader');
+  });
+
+  it('고양이: 진행과 무관하게, 시아코인으로 연 사람만 고를 수 있다', () => {
+    const p = emptyProfile();
+    setOwnedExtras([]);
+    expect(leadersOf(p)).toEqual(['rat', 'ox', 'tiger']);
+    expect(checkStart(p, '1-1', 'cat', 'normal')).toBe('locked character');
+    expect(whyText('locked character')).toBe('고양이는 로비에서 시아코인으로 열 수 있어요');
+    for (const st of STAGES) p.stages[st.id] = 3;
+    expect(leadersOf(p)).not.toContain('cat');
+    setOwnedExtras(['cat']);
     expect(leadersOf(emptyProfile())).toEqual(['rat', 'ox', 'tiger', 'cat']);
     expect(checkStart(emptyProfile(), '1-1', 'cat', 'normal')).toBeNull();
-    expect(checkStart(p, '1-1', 'lion', 'normal')).toBe('bad leader');
+    setOwnedExtras([]);
   });
 
   it('테스트 모드 저장: 강화를 사면 엽전이 줄고, 모자라면 거절', async () => {

@@ -15,6 +15,8 @@ export function whyText(e: unknown): string {
   if (m.includes('already unlocked')) return '이미 풀린 캐릭터예요';
   if (m.includes('endless locked')) return '무한 모드는 이 맵을 4분 모드로 클리어하면 열려요';
   if (m.includes('hell locked')) return '헬 모드는 이 맵을 4분 모드로 클리어하면 열려요';
+  // 071 의 _check_character: 로비에서 여는 캐릭터(고양이)를 열지 않았다
+  if (m.includes('locked character')) return '고양이는 로비에서 시아코인으로 열 수 있어요';
   if (m.includes('locked')) return '아직 잠겨 있어요';
   if (m.includes('need login')) return '로그인이 필요해요';
   return '지금은 할 수 없어요';
