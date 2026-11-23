@@ -25,6 +25,8 @@ export const GAMES = [
     path: 'games/charge/', image: 'shared/images/card-charge.png', open: false },
   { id: 'finger', name: '시아핑거', desc: '당겼다 놓아 튕겨서 요괴를 부숴라 · 십이지 대원 턴제 RPG · 1인용',
     path: 'games/finger/', image: 'shared/images/card-finger.png', open: false },
+  { id: 'twelve', name: '시아열두길', desc: '열두 지형의 요괴를 베고 열쇠를 모아라 · 십이지 액션 RPG · 1인용',
+    path: 'games/twelve/', image: 'shared/images/card-twelve.png', open: false },
 ];
 
 const KEY = 'game_open:';

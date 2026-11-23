@@ -1,18 +1,19 @@
 # 시아열두길 — 진행 상황 (다음 단계를 맡는 사람이 먼저 읽을 것)
 
-마지막 갱신: 2026-11-23 · **1~5단계 + 6단계의 2~3지형 · `npm run pace` 끝** (핵심 전투 · 무기/스킬/대원/물약 · 1~3지형 · 장비/드랍 · 쉼터/성장/서버 저장 · 밸런스 1차). 다음은 레벨 랭킹 · 끝없는 탑 · 로비 등록(닫힌 상태).
-브랜치 `feature/twelve` 는 고양이 PR #9(071~077)가 들어간 `origin/main` 위로 rebase 했다 (푸시하지 않음).
+마지막 갱신: 2026-11-23 · **첫 공개분 끝: 1~5단계 + 2~3지형 · `npm run pace` + 끝없는 탑 · 랭킹 2종 · 로비 등록(닫힌 상태)**. 남은 것은 4~12지형 · 최종보스 · 어려움 모드(모두 '준비 중'으로 보인다) · 그림/소리 · 실제 폰 확인.
+브랜치 `feature/twelve` 는 고양이 PR #9(071~077, 운영 중)가 들어간 `origin/main` 위에 있다 (푸시하지 않음 — 078 은 아직 고쳐도 된다).
 
 ## 해 보기
 
 ```bash
 cd games/twelve
 npm run dev      # http://localhost:5297/games/twelve/?local=1
-npm test         # 253개
+npm test         # 276개
 npm run build
 npm run gen      # src/data/maps/r01~r03.ts 다시 만들기 (맵 생성)
 npm run sqlgen   # src/data 의 숫자로 supabase/migrations/078_twelve.sql 의 표(gen 블록)를 다시 쓴다
 npm run pace     # 플레이 시간·레벨 곡선 표 (1~3지형, 10초쯤).  -- 3 5 = 지형 수·씨앗 수,  -- weapons = 무기 4종 비교
+npm run tower    # 끝없는 탑을 자동 조종이 몇 층까지 오르는지 (레벨별, 30초쯤).  -- 5 = 씨앗 수
 ```
 
 개발 옵션 (`?local=1` 뒤에): `&map=1-3`(바로 그 맵) · `&lv=50` · `&god=1`(무적) · `&all=1`(모두 열림) · `&hero=tiger` · `&weapon=bow`(가방의 그 종류 무기를 든다).
@@ -21,6 +22,9 @@ npm run pace     # 플레이 시간·레벨 곡선 표 (1~3지형, 10초쯤).  -
 PC 키: WASD/방향키 이동, J 공격, K·L 스킬, U 고유 스킬, 스페이스 구르기, 1·2 물약, Esc 일시정지.
 
 ## 만든 것
+
+- **8단계 일부 (끝없는 탑):** 메인의 '🗼 끝없는 탑' → 내 기록 · 시작할 층 고르기(1층 + 깬 보스 층의 다음 층) → 층마다 방 하나(16×22칸), 5층마다 정예, 10층마다 보스. 층을 깨면 그 자리에서 엽전·강화석·장비를 받고(카드가 잠깐 뜨고 다음 층으로, 보스 층은 계속/그만 고르기), 쓰러지면 판이 끝난다. 체력·마력·물약은 층을 넘어 이어진다. 서버 RPC 3개(`twelve_tower_start` · `_floor` · `_end`) + `?local=1` 같은 규칙. 세부 규칙·숫자는 PRD '구현 메모 — 8단계 일부'.
+- **8단계 일부 (랭킹 2종 · 로비 등록):** `shared/ranking-dialog.js` 의 '🗝️ 열두길' 탭(레벨 / 끝없는 탑 고르기 줄), 메인의 '🏆 랭킹' 버튼, `shared/games.js` · `shared/presence.js`(`twelve-lobby`) · `deploy.yml`(테스트·빌드·복사·lockfile 캐시) · `CLAUDE.md` · 로비 카드 그림 `shared/images/card-twelve.png`(임시). `game_open:twelve` 는 닫힘(078).
 
 - **1~3단계:** 패키지 골격, 전투 시뮬레이션, 무기 4종·스킬·대원 13종, 1지형 맵 8개·요괴 5종·정예·보스, 별 3개, 메인 → 지도 → 지형 → 맵 → 결과, 설정.
 - **4단계 (장비·드랍):** 일반·레어 무기(4종 × 12등급)·방어구·장신구, 가방 40칸·보관함·잠금, 장비 비교(초록 ▲ · 빨강 ▼), 드랍표, 확정 보정(레어: 정예 100/보스 8, 아직 없는 것부터 · 열쇠: 40%, 3번째 확정), 레어 특수 효과 7가지, 레어 빛기둥·소리·진동, 자동 줍기, 결과 화면의 얻은 것.
@@ -39,25 +43,31 @@ PC 키: WASD/방향키 이동, J 공격, K·L 스킬, U 고유 스킬, 스페이
 | `src/game/drops.ts` | 드랍 판정 (`roll(seed, 종류, 순번)` · `normalDrop` · `eliteDrop` · `bossDrop` · `rollRun`) |
 | `src/game/progress.ts` | 프로필(`TwelveProfile`), 맵 열림, 보상 표(`mapReward`), 결과 검사·적기(`checkReport` · `applyReport`), 가방 도구 |
 | `src/game/rules.ts` | 착용·잠금·보관함, 상점(`buy` · `sell`), 대장간(`enhance` · `scrap`) |
-| `src/game/sim.ts` | 전투 (레어 효과 · 물약 소·중·대 `stock`/`used` · 드랍 `drops`/`loot`/`picks`) |
-| `src/net/api.ts` | `TwelveApi`: `createLocalApi`(기기) · `createSupabaseApi`(RPC, 못 보낸 결과 보관·다시 보내기) · `normalize` |
+| `src/game/sim.ts` | 전투 (레어 효과 · 물약 소·중·대 `stock`/`used` · 드랍 `drops`/`loot`/`picks`). 요괴 배율은 `scaleOf(map)` (맵 = 권장 레벨, 탑 = 층), `RunOpts.carry` = 앞 층에서 이어 온 체력·마력 |
+| `src/data/tower.ts` | **끝없는 탑 숫자 `TOWER`** · 층의 방 만들기 `towerFloor(층)` (`MapDef` + `tower: 층`) · 층 종류 · 보상 식 (`towerCoins` · `towerStones` · `towerRareRate`) |
+| `src/game/tower.ts` | 탑 기록 규칙: `checkTowerStart` · `beginTower` · `checkTowerFloor` · `applyTowerFloor` · `endTower` (서버 RPC 와 같은 규칙), 판정 번호 `TOWER_TAG` |
+| `src/net/api.ts` | `TwelveApi`: `createLocalApi`(기기) · `createSupabaseApi`(RPC, 못 보낸 결과 보관·다시 보내기) · `normalize`. 탑: `towerStart` · `towerFloor` · `towerEnd` |
 | `src/net/world.ts` | 공용 모듈 연결 + 고양이(`loadOwnedCharacters` · `buyCharacter`) |
-| `src/ui/app.ts` | 화면 전부 (끝부분: 가방 `showBag` · 상점 `showShop` · 대장간 `showSmith` · 장비 팝업 `itemPopup`) |
-| `supabase/migrations/078_twelve.sql` | 표 8개 + RPC 12개 + 랭킹 뷰 2개 + `_cat_progress_twelve` + `game_open:twelve`(닫힘) |
+| `src/ui/app.ts` | 화면 전부. 전투 화면은 `playRun(run, opts)` 하나를 맵(`startMap`)과 탑의 층(`playFloor`)이 같이 쓴다. 탑: `showTower` · `startTower` · `floorCleared` · `endTowerPlay`. 끝부분: 가방 `showBag` · 상점 `showShop` · 대장간 `showSmith` · 장비 팝업 `itemPopup` |
+| `supabase/migrations/078_twelve.sql` | 표 9개 + RPC 15개 + 랭킹 뷰 2개 + `_cat_progress_twelve` + `game_open:twelve`(닫힘) |
+| `scripts/tower.ts` | 탑 오르기 계산 (`npm run tower`) |
+| `scripts/make-card.py` | 로비 카드 임시 그림 만들기 (Pillow) |
 | `scripts/pg-expect.ts` · `scripts/pg-check.mjs` | SQL 을 실제로 돌려 기기 규칙과 맞춰 보는 도구 (아래) |
 | `scripts/pace.ts` | **성장 속도 계산** (`npm run pace`): 가정은 파일 머리말, 사람 시간 = 자동 조종 × 1.3 + 판마다 30초 |
 | `tests/bot.ts` | 자동 조종 (테스트와 pace 가 같이 쓴다): 길 찾기 · 예고 피하기 · 날아오는 불 비키기 · 활·부채는 떨어져서 쏘기 |
 | `src/data/mapgen.ts` | 맵 생성: 공용 조각 + 지형 조각(`PADDY` · `PASS`), 방 수 `DEFAULT_ROOMS`, 무리 크기, **별 시간 `PAR` · `parOf`** |
 | `src/data/balance.ts` | 전투 기준 값 + **환경 효과 `ENV`**(진흙 · 골바람) |
 | `src/data/regions.ts` | 지형 표(환경 · 막는 대원 · 보스 · 요괴 목록), `REGIONS_READY = 3`, `mapLevel` · `mapScale` |
-| `tests/` | sim · skills · heroes · enemies(요괴 행동 · 보스 · 환경 효과) · maps · progress · **items**(장비·드랍·가방·상점·대장간) · **api**(서버 연결·성장) · **sql**(078 대조) · **balance**(성장 곡선 · 맵 크기 · 드랍 · 값) |
+| `tests/` | sim · skills · heroes · enemies(요괴 행동 · 보스 · 환경 효과) · maps · progress · **items**(장비·드랍·가방·상점·대장간) · **api**(서버 연결·성장) · **sql**(078 대조) · **balance**(성장 곡선 · 맵 크기 · 드랍 · 값) · **tower**(방 · 보상 식 · 기록 규칙 · 기기 저장 · SQL 대조) |
 
 ## 서버 (078_twelve.sql)
 
 - **RPC:** `twelve_state()` · `twelve_start(map, mode, hero)` → `{run, seed}` · `twelve_finish(run, report)` → `{state, result}` · `twelve_set_hero` · `twelve_equip` · `twelve_unequip` · `twelve_lock` · `twelve_claim` · `twelve_sell` · `twelve_scrap` · `twelve_enhance` · `twelve_buy(what, n)`. 모두 `{…state}`(= `TwelveProfile` 모양)를 돌려준다.
+- **끝없는 탑 RPC:** `twelve_tower_start(floor, hero)` → `{run, seed, base}` · `twelve_tower_floor(run, floor, time, potions)` → `{state, result: {floor, coins, stones, items, siaCoin, time, best}}` · `twelve_tower_end(run, potions)` → `{…state}`. 기록은 `twelve_tower`(최고 층 · 시간 · 레벨 · 대원 · 날짜 · 체크포인트 `cps`), 진행 중인 판은 `twelve_tower_runs`. 상태(`state.tower`)에 내 탑 기록이 들어 있다(없으면 null).
+- **랭킹 뷰:** `twelve_level_ranking`(한 맵이라도 깬 사람) · `twelve_tower_ranking`(탑에 한 번이라도 들어간 사람). 누구나 읽는다 — 랭킹 창이 다른 게임처럼 뷰를 바로 읽는다.
 - **화면이 보내는 것:** 종류별 잡은 수 · 정예 수 · 보스 · 시간 · 상자 · 쓰러진 횟수 · 쓴 물약. 경험치·엽전·드랍·확정 보정·열쇠·별·시아코인은 서버가 계산한다.
 - **표는 손으로 고치지 않는다:** `-- <gen:이름>` 블록은 `npm run sqlgen` 이 만든다. `tests/sql.test.ts` 가 블록마다 대조하므로, `src/data` 숫자를 바꾸고 sqlgen 을 안 돌리면 테스트가 깨진다.
-- **규칙이 두 곳에 있다:** `progress.ts`(checkReport · applyReport) · `drops.ts` · `rules.ts` ↔ `twelve_finish` 와 상점·대장간 RPC. 한쪽을 바꾸면 다른 쪽도 바꾸고 아래 확인 도구를 돌릴 것.
+- **규칙이 두 곳에 있다:** `progress.ts`(checkReport · applyReport) · `drops.ts` · `rules.ts` · `tower.ts` ↔ `twelve_finish` 와 상점·대장간 · 탑 RPC. 한쪽을 바꾸면 다른 쪽도 바꾸고 아래 확인 도구를 돌릴 것.
 - **078 은 아직 푸시 전이라 고쳐도 된다.** 배포된 뒤에는 새 번호 마이그레이션에 함수를 다시 정의하고 `scripts/sqlgen.ts` 의 `FILE` 과 `tests/sql.test.ts` 가 읽는 파일을 바꾼다.
 
 ### SQL 을 실제로 돌려 보기 (PGlite)
@@ -74,6 +84,8 @@ node scripts/pg-check.mjs ~/pg                                         # 001~078
 마이그레이션 전체를 적용한 뒤 ① `_twelve_roll` = `roll` ② 권한(직접 쓰기·내부 함수 거절) ③ 시작·끝 검사(잠긴 맵, 최대치 초과, 너무 빠름, 겹침, 너무 늦음, 시아코인 조건) ④ **정해 둔 57단계(1지형 전부 → 보스 반복 → 쓰러짐 → 확정 보정 → 상점 → 대장간 → 가방 꽉 참 → 보관함)를 기기 규칙과 서버가 단계마다 같은 기록을 내는지** ⑤ 고양이(조건 → 구매 → 선택)를 본다. 2026-11-23 에 모두 통과했다.
 순서를 더하려면 `scripts/pg-expect.ts` 에 `play(…)` · `rpc(…)` 줄을 더하면 된다.
 6단계에서 맵·숫자를 바꾼 뒤(2026-11-23) 다시 돌려 63단계가 모두 맞는 것을 확인했다 (PGlite 는 임시 폴더에 설치해서 썼다).
+끝없는 탑을 더한 뒤(2026-11-23): ⑥ **탑 시나리오 179단계**(시작 거절 → 층 보고의 거절(순서 · 최소 시간 · 서버 시간 · 물약 모양) → 10층 체크포인트 → 11층에서 시작(시간 더하기) → 더 빠른 체크포인트 → 끝내지 않고 새 판 → 20층 × 6판의 보상 판정)를 기기 규칙과 단계마다 맞춰 보고, ⑦ 새 계정으로 권한 · '들어가기만 해도 0층 기록' · 10층 시아코인(`sia_coin_logs` 의 `판:층`) · 탑 랭킹 뷰 · '탑만 한 사람은 레벨 랭킹에 없다'를 본다. 모두 242단계 · 확인 108개 통과.
+탑 순서를 더하려면 `scripts/pg-expect.ts` 의 `towerStart(층, 씨앗)` · `towerClimb(층 수, 초)` · `towerFloor(…)` · `towerEnd()` 줄을 더한다.
 
 ## 다음 단계가 알아야 할 것
 
@@ -84,9 +96,11 @@ node scripts/pg-check.mjs ~/pg                                         # 001~078
 - **경험치 곡선은 1~3지형에만 맞췄다.** `EXP_CURVE = 154 × n^1.4`. 4지형을 더하면 `npm run pace -- 4` 로 1~4지형 약 4시간 · Lv25 를 다시 본다 (`GROWTH_TARGETS`).
 - **어려움 모드:** `HARD_READY` 를 켜면 sqlgen 이 어려움 맵 줄도 만든다. 모드를 바꾸는 RPC(`twelve_set_mode`)와 화면은 아직 없다 (`profile.mode` 는 늘 `normal`). 열쇠·확정 보정·별·맵 기록은 이미 모드별로 저장한다.
 - **최종보스:** 맵 id 는 `'final'` 로 약속했다 (`FINAL_MAP`, `_twelve_normal_done`, `_cat_progress_twelve`). 지금 `MapId` 타입·`parseMapId`·`_twelve_maps` 는 `'지형-맵'` 만 다루므로 7단계에서 넓혀야 한다. 열쇠 12개 검사도 그때.
-- **끝없는 탑:** `twelve_tower` 표와 `twelve_tower_ranking` 뷰만 있다. 시작·끝 RPC, 층 최소 시간 검사, 10층마다 시아코인은 8단계.
-- **랭킹:** `twelve_level_ranking` 뷰(level · exp · mode · hero · region · hard_done · place · total)가 있다. `shared/ranking-dialog.js` 탭과 메인의 랭킹 버튼(지금 '준비 중')은 로비 등록 때.
-- **로비 등록(shared/games.js · presence · deploy.yml · CLAUDE.md)은 아직 안 했다.** `shared/characters.js` 의 `CHARACTER_GAMES` 와 071 의 `_character_games` 에는 이미 `'twelve'` 가 있다.
+- **끝없는 탑을 고칠 때:** 숫자는 `src/data/tower.ts` 의 `TOWER` → `npm run sqlgen`(기준 값 `tower_*`) → `npm test`. 규칙(보상 순서 · 검사)을 바꾸면 `src/game/tower.ts` 와 078 의 `twelve_tower_floor` 를 같이 바꾸고 pg-check 를 돌린다. 방 모양·요괴 구성은 서버와 상관없다(`towerFloor`). `npm run tower` 로 오르는 층을 본다.
+- **탑의 층 = 맵과 같은 `MapDef`** (`tower: 층`, id `0-<층>`, 숨은 상자 없음). `mapOf('0-5')` 는 null 이므로 탑의 방에 맵용 함수(`mapReward` · `checkReport`)를 쓰지 말 것. 4지형부터 환경 효과를 더하면 탑의 그 지형 층(31층~)에도 걸린다 — 방에 그 효과가 걸리는 땅이 필요하면 `towerFloor` 에 더한다(지금은 진흙만).
+- **지형을 더 열면(REGIONS_READY)** 탑의 장비 등급과 레어 목록이 따라 늘어난다 (`shopTier` · `towerRareLists` ↔ `_twelve_shop_tier` · `twelve_tower_floor`). 어려움 모드를 열면(HARD_READY) 어려움 지형의 등급·레어도 들어온다.
+- **랭킹 창(`shared/ranking-dialog.js`)은 모든 게임이 같이 쓴다.** 열두길 탭은 `TWELVE_MODES` · `getTwelveRanking` · `showTwelve`. 지형 이름 `TWELVE_REGIONS` 는 `regions.ts` 의 이름을 옮겨 적은 것이라 이름을 바꾸면 같이 고친다. 게임 화면의 CSS 클래스가 창의 클래스(`.note` · `.tabs` · `.list` · `.modes` · `.subs`)와 겹치지 않게 할 것 — HUD 알림을 `.note` 로 뒀다가 창의 설명 줄이 화면 위로 떠서 `.hud-note` 로 바꿨다.
+- **로비에서 여는 법:** 관리자 계정으로 로비의 오픈 설정에서 '시아열두길'을 켠다. 닫혀 있는 동안에도 관리자는 들어갈 수 있고, 게임 안의 랭킹 버튼은 열두길 탭만 보여 준다. `shared/characters.js` 의 `CHARACTER_GAMES` 와 071 의 `_character_games` 에는 이미 `'twelve'` 가 있다.
 - **고양이:** 보통 모드를 끝내기 전에는 대원 화면에 보이지 않는다. 끝낸 뒤 '시아코인 100개로 열기' 버튼이 나온다 (`buyCharacter('cat')` → 071 의 `buy_character('twelve','cat')`, 조건은 `_cat_progress_twelve`). 최종보스가 없어 화면으로는 못 봤고 pg-check 로 서버 쪽만 확인했다. '13번째 대원' 이야기 장면은 없다.
 - **레어 효과 더하기:** `economy.ts` 의 `FX` 에 숫자, `sim.ts` 의 `hitEnemy`(무기) · `hurtPlayer`(방어구)에 동작, `items.ts` 의 `FX_NAME` · `FX_DESC`. 방어구 '수호'는 지형 환경 효과를 절반만 받는다(`FX.ward.env` → `RunState.env.f`).
 - **전투 화면의 드랍은 미리보기다.** 서버가 준 씨앗으로 같은 규칙을 돌려 보여 주고, 실제로 받는 것은 `twelve_finish` 의 결과다(결과 화면). 개발 판·통신 실패 판은 기기 씨앗이라 저장되지 않는다.
@@ -173,7 +187,13 @@ node scripts/pg-check.mjs ~/pg                                         # 001~078
 - **골바람은 요괴를 밀지 않는다** (대원만). 진흙도 대원만 느려진다.
 - **한꺼번에 팔기·분해**는 일반 무기·방어구만 한다 (착용 · 잠금 · 레어 · 장신구 · 강화한 것 · 종류마다 가장 좋은 무기 하나는 남긴다). 장신구는 하나씩 정리해야 한다.
 - **정예를 보스보다 나중에 잡으면** 확정 보정 경계에서 전투 화면의 빛기둥과 결과가 다를 수 있다 (서버는 정예 → 보스 순서로 판정).
-- **서버 RPC 를 진짜 Supabase 에서 불러 보지 않았다.** PGlite 확인과 `createSupabaseApi` 단위 테스트(가짜 RPC)만 했다. 게임은 닫혀 있고 로비에도 없으니, 배포 뒤 관리자 계정으로 한 판 해 볼 것.
+- **서버 RPC 를 진짜 Supabase 에서 불러 보지 않았다.** PGlite 확인과 `createSupabaseApi` 단위 테스트(가짜 RPC)만 했다. 게임은 닫혀 있으니, 배포 뒤 관리자 계정으로 맵 한 판 · 탑 몇 층 · 랭킹 창을 해 볼 것.
+- **끝없는 탑 밸런스는 자동 조종 기준이다.** 일반 장비·강화 없이 Lv1 약 14층 · Lv9 약 21층 · Lv18 약 35층 · Lv36 약 62층, 한 층 40초쯤(Lv1 은 70초쯤으로 길다). 자동 조종은 예고를 다 피하고 층마다 체력이 10% 차서 높이 오른다 — 사람이 해 보고 `TOWER.heal` · 층 레벨(`towerLevel`) · 요괴 수(`floorCount`)를 맞출 것.
+- **탑 화면은 PC 크롬(450×800)에서 시작 화면 · 1~2층 · 층 카드 · 끝 카드 · '너무 빠름' 거절만 봤다** (테스트 모드, 콘솔로 출구에 옮겨서). 보스 층 카드(계속/그만)와 체크포인트에서 시작하는 흐름은 화면으로 못 보고 단위 테스트·PGlite 로만 봤다. 층마다 Phaser 게임을 새로 만들어 넘어갈 때 잠깐 끊긴다.
+- **탑에서 통신이 끊기면** 그 층 보고를 한 번 더 보내 보고 안 되면 판이 끝난다(그 층 보상과 그 층에서 쓴 물약 빠짐은 없던 일이 된다). 맵처럼 보관했다가 다시 보내지 않는다.
+- **탑 도중에 앱을 닫으면** 그 판은 끝나지 않은 채로 남고(다음 탑을 시작할 때 닫힌다) 그 층에서 쓴 물약은 빠지지 않는다.
+- **탑과 맵 판의 시간 겹침은 서버가 보지 않는다** (탑 안에서는 층마다 서버 시계로 본다).
+- **로비 카드 그림은 임시다** (`shared/images/card-twelve.png` — 기존 그림 모음). 4~12지형 보스는 탑에서 기본 공격 패턴으로 먼저 나온다.
+- **랭킹 창은 가짜 응답으로만 봤다** (뷰가 운영 DB 에 아직 없다). 레벨 탭 · 탑 탭의 줄 모양은 확인했다.
 - **맵 도중에 앱을 닫으면** 그 판에서 쓴 물약은 빠지지 않는다 (판이 끝나지 않아 서버가 모른다).
 - 실제 폰·아이폰 사파리 확인(10단계), 엔딩 장면(7단계), 4~12지형의 환경 효과·보스 패턴, 소리 추가(레어 드랍은 기존 `newRecord` 를 빠르게 튼다)는 아직. 2~3지형 화면은 PC 크롬(450×800)에서만 봤다.
-- `CLAUDE.md` 의 열두길 설명·마이그레이션 번호 갱신은 로비 등록 때.

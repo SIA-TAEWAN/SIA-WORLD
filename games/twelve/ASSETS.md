@@ -13,6 +13,9 @@
 - **버튼 그림**: 글자 그림(이모지) — 무기 🗡️🔱🏹🪭, 스킬·고유 스킬 아이콘은 `data/weapons.ts` · `data/heroes.ts` 의 `icon`.
 - **소리**: 공용 `shared/sound.js` 의 기존 효과음만 쓴다 (survSlash · survShot · survPop · survHurt · survBossWarn · survBossDown · survChest · survLevel · tankHeal · tankBoom · boost · jump · goal · newRecord · fold · win · lose · click 등). 새 소리는 9단계.
 
+- **로비 카드**: `shared/images/card-twelve.png` (640×400) 는 기존 그림(대원 셋 · 1지형 요괴·보스 · 들판 바닥)을 모아 `scripts/make-card.py` 로 만든 임시 그림이다. 다른 게임 카드처럼 한 장면으로 그린 전용 그림이 필요하다 (아래 표).
+- **끝없는 탑**: 전용 그림 없음. 층의 지형(10층마다 바뀐다)에 맞는 바닥·요괴·보스 그림을 그대로 쓴다.
+
 ## 그림을 넣는 방법 (시아돌격대와 같은 방식)
 
 1. `public/art/<이름>.png` 로 넣는다.
@@ -46,6 +49,6 @@
 | 방어구·장신구·레어 아이콘 | 4단계에서 정함 | 64×64 | — | 없음 |
 | 스킬 버튼 아이콘 | 무기 8 + 고유 13 | 56×56 | 버튼 안 그림 | 이모지 |
 | `main` | 1 | 540×300 | 메인 화면 그림 (대원 셋이 열두 길 앞에 선 모습) | 없음 |
-| `shared/images/card-twelve.png` | 1 | 640×400 | 로비 카드 (로비 등록 단계) | 없음 |
+| `shared/images/card-twelve.png` | 1 | 640×400 | 로비 카드: 대원 셋이 열쇠를 든 보스와 맞서는 한 장면 | 기존 그림을 모은 임시 그림 (`scripts/make-card.py`) |
 | 이야기 장면 | 3~4장 + 엔딩 2 | 540×300 | 시작 장면·엔딩 (PRD '이야기') | 없음 |
 | 쉼터 화면 · UI 키트 | 1세트 | — | 상점·대장간 배경 (5단계) | DESIGN.md 공용 UI |

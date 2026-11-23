@@ -279,7 +279,7 @@ export function showMain() {
       <button class="btn primary big" id="go">▶ 이어하기${nm ? ` <small>${nm.id} ${nm.name}</small>` : ''}</button>
       <button class="btn big" id="world">🗺️ 십이지 지도</button>
       <div class="row2"><button class="btn" id="heroes">🐾 대원</button><button class="btn" id="bag">🎒 가방${boxItems(profile).length ? ` <em class="tag">보관함 ${boxItems(profile).length}</em>` : ''}</button></div>
-      <div class="row2"><button class="btn" id="tower">🗼 끝없는 탑${profile.tower ? ` <small>최고 ${profile.tower.floor}층</small>` : ''}</button><button class="btn" id="rank">🏆 랭킹</button></div>
+      <div class="row2"><button class="btn" id="tower">🗼 끝없는 탑${profile.tower?.floor ? ` <small>${profile.tower.floor}층</small>` : ''}</button><button class="btn" id="rank">🏆 랭킹</button></div>
       <button class="btn" id="settings">⚙️ 설정</button>
     </div>
     <div class="grow"></div>
@@ -579,7 +579,7 @@ function playRun(run: RunState, o: PlayOpts) {
       <canvas id="mini" width="64" height="144"></canvas>
     </div>
     ${bossDef ? `<div class="boss-bar hidden" id="boss"><b>👹 ${bossDef.name}</b><div class="gauge"><i id="bossHp"></i></div></div><div class="boss-say hidden" id="say"></div>` : ''}
-    <div class="note hidden" id="note"></div>`;
+    <div class="hud-note hidden" id="note"></div>`;
   const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
   const pause = () => {
     // 판이 끝난 뒤에는 멈추지 않는다 (그만하기가 클리어를 덮어쓰지 않게)

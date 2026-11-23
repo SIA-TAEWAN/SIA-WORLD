@@ -10,7 +10,7 @@ import { roll } from '../src/game/drops';
 import { LIMITS, emptyProfile, type TwelveProfile } from '../src/game/progress';
 import { createRun, scaleOf } from '../src/game/sim';
 import { TOWER_TAG, applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, startFloors, towerRareLists, type TowerRun } from '../src/game/tower';
-import { ApiError, createLocalApi, normalize, type Store } from '../src/net/api';
+import { ApiError, createLocalApi, createSupabaseApi, normalize, type RpcClient, type Store } from '../src/net/api';
 import { autoplay } from './bot';
 
 const memStore = (): Store => {
@@ -317,6 +317,77 @@ describe('끝없는 탑 — 테스트 모드(기기 저장)도 같은 규칙', (
       floor: 12, time: 300, level: 9, hero: 'ox', at: '2026-11-23T00:00:00.000Z', cps: { '10': 250 },
     });
     expect(normalize({ tower: { floor: -3, hero: 'lion' } }).tower).toEqual({ floor: 0, time: 0, level: 1, hero: 'rat', at: '', cps: {} });
+  });
+});
+
+describe('끝없는 탑 — 서버 연결', () => {
+  /** 서버 흉내: 부른 것을 적어 두고, 정해 둔 답을 준다 (던지면 그 글자의 오류) */
+  function fake(answers: Record<string, (args?: Record<string, unknown>) => unknown>) {
+    const calls: [string, Record<string, unknown> | undefined][] = [];
+    const sb: RpcClient = {
+      rpc: async (fn, args) => {
+        calls.push([fn, args]);
+        try {
+          return { data: answers[fn]?.(args) ?? null, error: null };
+        } catch (e) {
+          return { data: null, error: { message: (e as Error).message } };
+        }
+      },
+    };
+    return { sb, calls };
+  }
+  const none = [[0, 0, 0], [0, 0, 0]];
+
+  it('시작 · 층 보고 · 끝이 RPC 로 가고, 서버가 준 기록과 결과를 쓴다', async () => {
+    const state = { ...emptyProfile(), coins: 26, tower: { floor: 1, time: 20, level: 1, hero: 'rat', at: '2026-11-23T00:00:00Z', cps: {} } };
+    const { sb, calls } = fake({
+      twelve_tower_start: () => ({ run: 'r1', seed: 5, base: 200 }),
+      twelve_tower_floor: () => ({ state, result: { floor: 11, coins: 86, stones: 1, items: [{ id: 9, base: 'a-0', box: true }], siaCoin: true, time: 220, best: true } }),
+      twelve_tower_end: () => state,
+    });
+    const api = createSupabaseApi(sb, 'u', memStore());
+    expect(await api.towerStart(11, 'rat')).toEqual({ run: 'r1', seed: 5, base: 200 });
+    const r = await api.towerFloor('r1', 11, 20.9, none);
+    expect(r!.result).toEqual({ floor: 11, coins: 86, stones: 1, items: [{ id: '9', base: 'a-0', plus: 0, lock: false, box: true }], siaCoin: true, time: 220, best: true });
+    expect(r!.profile.tower).toMatchObject({ floor: 1, time: 20 });
+    expect((await api.towerEnd('r1', none))!.coins).toBe(26);
+    expect(calls).toEqual([
+      ['twelve_tower_start', { p_floor: 11, p_hero: 'rat' }],
+      ['twelve_tower_floor', { p_run: 'r1', p_floor: 11, p_time: 20, p_potions: none }],
+      ['twelve_tower_end', { p_run: 'r1', p_potions: none }],
+    ]);
+  });
+
+  it('거절은 ApiError, 통신 문제는 한 번 더 보내 보고 null', async () => {
+    const no = fake({
+      twelve_tower_start: () => {
+        throw new Error('floor locked');
+      },
+      twelve_tower_floor: () => {
+        throw new Error('too early');
+      },
+    });
+    const a = createSupabaseApi(no.sb, 'u', memStore());
+    await expect(a.towerStart(11, 'rat')).rejects.toBeInstanceOf(ApiError);
+    await expect(a.towerFloor('r1', 1, 2, none)).rejects.toThrow('too early');
+    expect(no.calls.length).toBe(2);
+    const down = fake({
+      twelve_tower_start: () => {
+        throw new Error('Failed to fetch');
+      },
+      twelve_tower_floor: () => {
+        throw new Error('Failed to fetch');
+      },
+      twelve_tower_end: () => {
+        throw new Error('Failed to fetch');
+      },
+    });
+    const b = createSupabaseApi(down.sb, 'u', memStore());
+    // 탑은 기록되지 않는 판으로 시작하지 않는다
+    await expect(b.towerStart(1, 'rat')).rejects.not.toBeInstanceOf(ApiError);
+    expect(await b.towerFloor('r1', 1, 20, none)).toBeNull();
+    expect(down.calls.filter(([fn]) => fn === 'twelve_tower_floor').length).toBe(2);
+    expect(await b.towerEnd('r1', none)).toBeNull();
   });
 });
 

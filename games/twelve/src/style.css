@@ -180,7 +180,7 @@ button, input { font: inherit; color: inherit; }
   background: var(--panel); border: var(--line) solid var(--outline); border-radius: var(--radius-item); padding: 6px 12px; font-size: 15px; animation: pop-in 220ms cubic-bezier(0.2, 1.6, 0.4, 1); }
 .hud-pill.env { font-size: 12px; }
 .hud-pill.env.ok { background: var(--panel-strong); }
-.note { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 10; background: var(--outline); color: var(--white);
+.hud-note { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 10; background: var(--outline); color: var(--white);
   border-radius: var(--radius-item); padding: 8px 14px; font-size: 15px; pointer-events: none; white-space: nowrap; }
 
 /* 아래 조작: 조이스틱(왼쪽) + 버튼(오른쪽). .lefty 는 좌우를 바꾼다 */
