@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Match, type CrateDrop, type MatchSnapshot, type WindMode, type GameMode } from '../game/match';
+import { Match, type CrateDrop, type Flood, type MatchSnapshot, type WindMode, type GameMode } from '../game/match';
 import { Rng } from '../game/rng';
 import { TURN_SECONDS, ITEMS } from '../game/data';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput, Zone } from '../game/types';
@@ -66,7 +66,14 @@ export interface GameConfig {
   mode?: GameMode;
   /** 필살기 게이지가 항상 가득 찬 탱크 번호 */
   fullUlt?: number[];
+  /** 서든데스가 시작되는 턴 수 (없거나 0이면 끔) */
+  sudden?: number;
 }
+
+/** 서든데스 물 색: shared/theme 의 skyDeep · skyTop · white */
+const WATER_DEEP = 0x1f6fd1;
+const WATER_TOP = 0x4aa8ff;
+const WATER_FOAM = 0xffffff;
 
 type Phase = 'intro' | 'aim' | 'ai' | 'remote' | 'fly' | 'settle' | 'over';
 type Control = 'human' | 'ai' | 'remote';
@@ -528,7 +535,7 @@ export class GameScene extends Phaser.Scene {
       const makeText = fac.text.bind(fac);
       fac.text = ((x: number, y: number, text: string | string[], style?: Phaser.Types.GameObjects.Text.TextStyle) => makeText(x, y, text, style).setResolution(DPR)) as typeof fac.text;
     }
-    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal', fullUlt: cfg.fullUlt, mode: cfg.mode ?? 'normal' });
+    this.match = cfg.resume ? Match.fromSnapshot(cfg.resume.snap) : new Match(cfg.setups, cfg.mapId, cfg.seed, { wind: cfg.wind ?? 'normal', fullUlt: cfg.fullUlt, mode: cfg.mode ?? 'normal', sudden: cfg.sudden ?? 0 });
     this.speed = cfg.speed ?? 1;
     this.time.timeScale = this.speed;
     this.tweens.timeScale = this.speed;
@@ -572,6 +579,9 @@ export class GameScene extends Phaser.Scene {
 
     this.views = this.match.tanks.map((t) => new TankView(this, t, this.fx));
     this.shellG = this.add.graphics().setDepth(20);
+    // 서든데스 물: 탱크 앞에 반투명하게 (잠긴 탱크가 비쳐 보인다)
+    this.waterG = this.add.graphics().setDepth(13);
+    this.waterShown = this.match.water;
 
     // UI
     this.input2 = new Input();
@@ -791,9 +801,98 @@ export class GameScene extends Phaser.Scene {
     return t.idx === net.myIdx ? 'human' : 'remote';
   }
 
+  // ---------- 서든데스 ----------
+
+  private waterG!: Phaser.GameObjects.Graphics;
+  /** 화면에 보이는 수면 높이 (엔진 수위를 부드럽게 따라간다) */
+  private waterShown: number | null = null;
+  private waterT = 0;
+
+  /** 물을 그린다: 수면 아래를 반투명하게 덮고, 수면에는 잔물결 */
+  private drawWater(dt: number) {
+    const target = this.match.water;
+    const g = this.waterG;
+    if (target === null) {
+      if (this.waterShown !== null) g.clear();
+      this.waterShown = null;
+      return;
+    }
+    // 처음에는 맵 아래에서 올라온다
+    if (this.waterShown === null) this.waterShown = target + 60;
+    this.waterShown += (target - this.waterShown) * Math.min(1, dt * 2.5);
+    if (Math.abs(target - this.waterShown) < 0.3) this.waterShown = target;
+    this.waterT += dt;
+    const y = this.waterShown;
+    // 카메라가 움직이는 중에도 끊겨 보이지 않게 보이는 폭만큼 양옆으로 넉넉히 그린다
+    const view = this.cameras.main.worldView;
+    const x0 = Math.floor((view.x - view.width) / 24) * 24;
+    const x1 = view.right + view.width;
+    const bottom = Math.max(view.bottom, this.match.terrain.h) + 3000;
+    g.clear();
+    const wave = (x: number) => y + Math.sin(x * 0.045 + this.waterT * 2.2) * 2.5;
+    g.fillStyle(WATER_DEEP, 0.5);
+    g.beginPath();
+    g.moveTo(x0, bottom);
+    for (let x = x0; x <= x1; x += 12) g.lineTo(x, wave(x));
+    g.lineTo(x1 + 12, wave(x1 + 12));
+    g.lineTo(x1 + 12, bottom);
+    g.closePath();
+    g.fillPath();
+    // 수면 띠
+    g.lineStyle(5, WATER_TOP, 0.85);
+    g.beginPath();
+    for (let x = x0; x <= x1; x += 12) (x === x0 ? g.moveTo(x, wave(x) + 2) : g.lineTo(x, wave(x) + 2));
+    g.strokePath();
+    g.lineStyle(2, WATER_FOAM, 0.9);
+    g.beginPath();
+    for (let x = x0; x <= x1; x += 12) (x === x0 ? g.moveTo(x, wave(x)) : g.lineTo(x, wave(x)));
+    g.strokePath();
+  }
+
+  /** 턴 시작에 물이 차오른 결과를 보여 준다 */
+  private playFlood(fl: Flood) {
+    if (fl.first) {
+      this.hud.alert('🌊 물이 차오른다! 높은 곳으로 피하세요');
+      this.cameras.main.shake(350, 0.006);
+    }
+    for (const h of fl.hits) {
+      const v = this.views[h.target];
+      if (!v) continue;
+      v.hp = Math.max(0, v.hp - h.amount);
+      v.drawHp();
+      v.hurt();
+      this.puff(v.x, v.y - 8, WATER_TOP, 8);
+      this.floatText(v.x, v.y - 60, h.dead ? '🌊 꼬르륵…' : `🌊 -${h.amount}`, '#9fd6ff');
+      if (h.dead) this.time.delayedCall(250, () => v.kill());
+    }
+  }
+
+  /** HUD 수위 표시: 물이 오기 전에는 남은 턴, 온 뒤에는 내 탱크 발밑까지 남은 높이 */
+  private waterText(v: TankState): string | null {
+    const m = this.match;
+    if (m.water === null) {
+      const left = m.suddenIn;
+      if (left === null || left > 5) return null;
+      return left > 0 ? `🌊 ${left}턴 뒤` : '🌊 곧 차올라요';
+    }
+    if (!v.alive) return `🌊 수위 ${m.terrain.h - m.water}`;
+    const gap = m.water - v.y;
+    return gap < 0 ? '🌊 잠겼어요!' : `🌊 물까지 ${gap}`;
+  }
+
   private nextTurn() {
     if (this.match.over) return this.finish();
     this.match.startTurn();
+    const flood = this.match.lastFlood;
+    if (flood) this.playFlood(flood);
+    // 물이 차올라 판이 끝났다
+    if (this.match.over) {
+      this.phase = 'settle';
+      this.views.forEach((v) => v.arrow.setVisible(false));
+      this.time.delayedCall(1200, () => this.finish());
+      return;
+    }
+    if (this.match.suddenIn === 3) this.hud.alert('🌊 3턴 뒤부터 물이 차올라요');
     if (this.match.lastDrop) this.playDrop(this.match.lastDrop);
     this.cfg.net?.turnStarted(this.match);
     this.beginTurn(0);
@@ -1127,6 +1226,7 @@ export class GameScene extends Phaser.Scene {
     this.syncTargets();
     if (this.phase !== 'fly') this.syncZones();
     this.syncWall();
+    this.drawWater(dt);
 
     // 내가 조종 중이면 다른 기기에 진행 상황을 보낸다
     if ((this.phase === 'aim' || this.phase === 'ai') && this.cfg.net) {
@@ -1182,6 +1282,7 @@ export class GameScene extends Phaser.Scene {
     // HUD는 항상 내 탱크 기준 (상대 차례에도 내 게이지·무기를 보여준다)
     const v = this.viewer() ?? t;
     const mine = v === t;
+    this.hud.setWater(this.waterText(v), m.water !== null && v.alive && v.y > m.water - 30);
     const s = this.sel.get(v.idx) ?? 0;
     this.hud.update(m, v, {
       power: mine ? this.power : 0,
@@ -1462,6 +1563,8 @@ export class GameScene extends Phaser.Scene {
     this.crateViews.forEach((v) => v.destroy());
     this.crateViews.clear();
     this.falling.clear();
+    this.waterShown = this.match.water;
+    if (this.match.water === null) this.waterG.clear();
     this.match.pickups = [];
     if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = this.match;
     if (this.match.over) return this.finish();

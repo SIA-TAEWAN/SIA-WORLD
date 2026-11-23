@@ -60,13 +60,18 @@ export class Hud {
   onMiniClick: ((fx: number, fy: number) => void) | null = null;
   private miniBase = document.createElement('canvas');
   private toastEl = el('div', 'toast');
+  /** 서든데스 수위 표시 (타이머 옆) */
+  private waterEl = el('div', 'water-chip hidden');
+  private waterShown = '';
+  /** 서든데스 안내 (다른 안내 글에 덮이지 않게 따로 띄운다) */
+  private alertEl = el('div', 'toast water-alert');
   private lastTimer = -1;
 
   constructor(parent: HTMLElement, input: Input, touch: boolean, chat?: GameChat) {
     this.root = el('div', 'hud');
     const top = el('div', 'hud-top');
     const timerBox = el('div', 'timer-box');
-    timerBox.append(this.timer);
+    timerBox.append(this.timer, this.waterEl);
     const mute = el('button', 'mute', sfx.muted ? '🔇' : '🔊') as HTMLButtonElement;
     mute.title = '소리 켜기/끄기';
     mute.onclick = () => sfx.toggleMute();
@@ -139,7 +144,7 @@ export class Hud {
     });
     bottom.append(angleBox, gauges, wbox, ibox);
 
-    this.root.append(top, miniBox, this.banner, this.toastEl, bottom);
+    this.root.append(top, miniBox, this.banner, this.toastEl, this.alertEl, bottom);
     if (chat) this.buildChat(chat);
     this.buildEmotes();
 
@@ -456,6 +461,14 @@ export class Hud {
       c.fill();
       c.stroke();
     }
+    // 서든데스 물
+    if (match.water !== null) {
+      const wy = match.water * sy;
+      c.fillStyle = 'rgba(31, 111, 209, 0.55)';
+      c.fillRect(0, wy, W, H - wy);
+      c.fillStyle = '#fff';
+      c.fillRect(0, wy, W, 1);
+    }
     // 특수 벽 (천장부터 그 자리 땅까지 빛나는 기둥)
     const w = match.wall;
     if (w) {
@@ -473,6 +486,24 @@ export class Hud {
     c.strokeStyle = 'rgba(255,255,255,0.8)';
     c.lineWidth = 1;
     c.strokeRect(view.x * sx, view.y * sy, view.w * sx, view.h * sy);
+  }
+
+  /** 서든데스 수위 표시. text 가 없으면 숨긴다. danger: 곧 잠긴다 */
+  setWater(text: string | null, danger = false) {
+    const key = `${text ?? ''}|${danger ? 1 : 0}`;
+    if (key === this.waterShown) return;
+    this.waterShown = key;
+    this.waterEl.classList.toggle('hidden', !text);
+    this.waterEl.classList.toggle('danger', danger);
+    this.waterEl.textContent = text ?? '';
+  }
+
+  /** 서든데스 안내: 보통 안내 글 아래에 조금 더 오래 띄운다 */
+  alert(msg: string) {
+    this.alertEl.textContent = msg;
+    this.alertEl.classList.remove('show');
+    void this.alertEl.offsetWidth;
+    this.alertEl.classList.add('show');
   }
 
   toast(msg: string) {

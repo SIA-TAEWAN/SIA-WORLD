@@ -2,6 +2,7 @@ import { TANKS, TANK_IDS, RANDOM_TANK_IDS, WEAPONS, randomTank, tankOr, type Tan
 import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { Difficulty, PlayerSetup } from '../game/types';
 import { Rng, randomSeed } from '../game/rng';
+import { SUDDEN_TURN } from '../game/sudden';
 import { aiItems } from '../ai/ai';
 import type { MatchSummary } from '../scenes/GameScene';
 import { escapeHtml } from './hud';
@@ -89,6 +90,7 @@ export function showSetup() {
         <div class="opt-row"><span class="lbl">게임 모드</span><div class="seg small" id="mode"></div></div>
         <div class="opt-row"><span class="lbl">게임 속도</span><div class="seg small" id="speed"></div></div>
         <div class="opt-row"><span class="lbl">바람 변화</span><div class="seg small" id="wind"></div></div>
+        <div class="opt-row"><span class="lbl">서든데스</span><div class="seg small" id="sudden"></div></div>
       </section>
       <section class="card shop-card">
         <h3>아이템 상점 <small>매 판 1,000 포인트 · 3칸</small></h3>
@@ -192,6 +194,17 @@ export function showSetup() {
     $('#speed').innerHTML = [1, 1.5].map((v) => `<button data-v="${v}" class="${state.speed === v ? 'sel' : ''}">${v === 1 ? '보통 (1배)' : '빠르게 (1.5배)'}</button>`).join('');
     const winds = [['slow', '느리게 ±2'], ['normal', '보통 ±5'], ['fast', '빠르게 ±8']] as const;
     $('#wind').innerHTML = winds.map(([v, l]) => `<button data-v="${v}" class="${state.wind === v ? 'sel' : ''}">${l}</button>`).join('');
+    $('#sudden').innerHTML = ([1, 0] as const)
+      .map((v) => `<button data-v="${v}" class="${state.sudden === !!v ? 'sel' : ''}" title="${v ? `${SUDDEN_TURN}턴 뒤부터 턴마다 물이 차올라요` : ''}">${v ? `켬 (${SUDDEN_TURN}턴 뒤 물)` : '끔'}</button>`)
+      .join('');
+    root.querySelectorAll<HTMLElement>('#sudden button').forEach((b) =>
+      b.addEventListener('click', () => {
+        state.sudden = b.dataset.v === '1';
+        sfx.click();
+        save({ sudden: state.sudden });
+        renderOpts();
+      }),
+    );
     root.querySelectorAll<HTMLElement>('#speed button').forEach((b) =>
       b.addEventListener('click', () => {
         state.speed = Number(b.dataset.v);
@@ -325,6 +338,7 @@ function startGame() {
     speed: state.speed,
     wind: state.wind,
     mode: state.mode,
+    sudden: state.sudden ? SUDDEN_TURN : 0,
     // 관리자 계정은 AI 대전에서 필살기 게이지가 늘 가득 (1P = 나)
     fullUlt: state.isAdmin ? [0] : [],
     onEnd: (s: MatchSummary) => {

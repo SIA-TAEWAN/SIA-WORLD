@@ -6,6 +6,8 @@ export interface Saved {
   map?: string;
   difficulty?: string;
   opponent?: string;
+  /** 서든데스 켬/끔 (AI 1:1) */
+  sudden?: boolean;
 }
 
 export function load(): Saved {

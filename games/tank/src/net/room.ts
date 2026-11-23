@@ -6,8 +6,19 @@ import { EMOTE_COOLDOWN_MS, EmoteGate, parseEmote } from '../game/emote';
  * 이 기기의 판본. 기기끼리 주고받는 내용(새 탱크 등)이 바뀌면 올린다.
  * 방에 더 새 판본의 기기가 있으면 새로고침을 권한다 (예: 고양이 탱크를 모르는 예전 탭).
  * 1: 고양이(cat) 탱크 추가
+ * 2: 서든데스 (30턴 뒤 물이 차오른다) — 방의 모든 기기가 2 이상일 때만 켠다
  */
-export const CLIENT_VERSION = 1;
+export const CLIENT_VERSION = 2;
+/** 서든데스를 아는 판본 */
+export const SUDDEN_VERSION = 2;
+
+/**
+ * 이 사람들(ids)의 기기가 모두 need 판본 이상인가. 나(me)는 지금 판본이고,
+ * 접속 정보가 안 보이거나 판본을 모르는(예전) 기기가 하나라도 있으면 false.
+ * 판 규칙이 바뀌는 기능은 이걸로 켠다 — 예전 기기는 그 규칙을 계산하지 못해 화면이 어긋난다.
+ */
+export const allAtLeast = (ids: readonly string[], vers: ReadonlyMap<string, number>, me: string, need: number): boolean =>
+  ids.every((id) => id === me || (vers.get(id) ?? 0) >= need);
 
 export interface RoomMeta {
   name: string;
@@ -28,6 +39,8 @@ export class RoomSession {
   /** 게임 중 화면을 가린 다른 사람 */
   readonly away = new Set<string>();
   private awayMe = false;
+  /** 접속해 있는 다른 기기의 판본 (모르면 0) */
+  readonly vers = new Map<string, number>();
   private msgFns = new Set<(m: NetMsg) => void>();
   private presFns = new Set<() => void>();
   private chatFns = new Set<() => void>();
@@ -72,8 +85,10 @@ export class RoomSession {
       const before = new Set(this.present);
       this.present.clear();
       this.away.clear();
+      this.vers.clear();
       list.forEach((m) => {
         this.present.add(m.key);
+        this.vers.set(m.key, typeof m.meta?.ver === 'number' ? m.meta.ver : 0);
         if (m.meta?.away && m.key !== me.id) this.away.add(m.key);
         this.names.set(m.key, m.meta.name);
       });
@@ -110,6 +125,11 @@ export class RoomSession {
     if (this.awayMe === away) return;
     this.awayMe = away;
     if (this.joined) await this.ch.track(this.meta());
+  }
+
+  /** 이 사람들의 기기가 모두 need 판본 이상인가 (allAtLeast) */
+  allAtLeast(ids: readonly string[], need: number): boolean {
+    return allAtLeast(ids, this.vers, this.me.id, need);
   }
 
   on(fn: (m: NetMsg) => void) {
