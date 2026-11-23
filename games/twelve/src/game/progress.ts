@@ -297,7 +297,7 @@ export function mapReward(map: MapDef, mode: Mode): MapReward {
 }
 
 /** 출구가 열리는 처치 수 (보스 맵은 보스) — 클리어 보고의 최소 처치 수이기도 하다 */
-export const exitNeed = (total: number) => Math.ceil(total * EXIT_KILL_RATIO);
+export const exitNeed = (total: number) => Math.ceil((total * Math.round(EXIT_KILL_RATIO * 100)) / 100);
 const normalKills = (r: Pick<RunReport, 'kills'>) => ENEMY_IDS.reduce((n, k) => n + (r.kills[k] ?? 0), 0);
 const potionGrid = (v: unknown): number[][] | null => {
   if (v === undefined || v === null) return [0, 1].map(() => Array<number>(POTION_SIZES).fill(0));

@@ -42,6 +42,46 @@ export async function worldSupabase(): Promise<SupabaseClient> {
   return (await supaMod).supabase;
 }
 
+/** 고양이 같은 추가 캐릭터는 게임마다 따로 연다: 이 게임의 id (shared/games.js) */
+const GAME_ID = 'twelve';
+export interface BuyResult {
+  ok: boolean;
+  reason?: string;
+  siaCoins?: number;
+  price?: number;
+  have?: number;
+  need?: number;
+}
+interface CharactersModule {
+  loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
+  buyCharacter(game: string, id: string): Promise<BuyResult>;
+  buyMessage(r: BuyResult, id?: string): string;
+}
+let charMod: Promise<CharactersModule> | null = null;
+function characters(): Promise<CharactersModule> {
+  charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+  charMod.catch(() => (charMod = null));
+  return charMod;
+}
+/** 이 게임에서 시아코인으로 연 추가 캐릭터 (shared/characters.js). 못 읽으면 null ([] = 연 것 없음과 구분) */
+export async function loadOwnedCharacters(force = false): Promise<string[] | null> {
+  try {
+    return await (await characters()).loadOwnedCharacters(GAME_ID, force);
+  } catch {
+    return null;
+  }
+}
+/** 이 게임에서 캐릭터 열기 → 결과와 화면에 띄울 한 줄 (조건: 보통 모드 최종보스 처치 = 078 의 _cat_progress_twelve) */
+export async function buyCharacter(id: string): Promise<{ r: BuyResult; text: string }> {
+  try {
+    const m = await characters();
+    const r = await m.buyCharacter(GAME_ID, id);
+    return { r, text: m.buyMessage(r, id) };
+  } catch {
+    return { r: { ok: false, reason: 'error' }, text: '열지 못했어요. 잠시 후 다시 시도해 주세요' };
+  }
+}
+
 interface RankingDialogModule {
   openRanking(opts: { meId?: string | null; first?: string }): () => void;
 }

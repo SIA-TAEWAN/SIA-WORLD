@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "gen": "vite-node scripts/gen-maps.ts"
+    "gen": "vite-node scripts/gen-maps.ts",
+    "sqlgen": "vite-node scripts/sqlgen.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

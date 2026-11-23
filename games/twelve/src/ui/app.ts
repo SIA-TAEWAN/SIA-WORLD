@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { heroFaceUrl } from '../assets';
+import { skillLevelMul } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { BAG, MAX_PLUS, POTION, POTION_NAME, bagPrice, enhanceCost } from '../data/economy';
 import { expNeed, playerStats } from '../data/growth';
@@ -23,6 +24,7 @@ import {
   itemOf,
   joinText,
   loadoutOf,
+  normalDone,
   mapOpen,
   recommended,
   regionOpen,
@@ -39,7 +41,7 @@ import { forSale, scrapOf, shopTier } from '../game/rules';
 import { STAR_CHEST, STAR_NO_DEATH, STAR_TIME, createRun, type RunState } from '../game/sim';
 import { ApiError, type TwelveApi } from '../net/api';
 import { DEV_ALL, DEV_GOD, DEV_HERO, DEV_LEVEL, DEV_MAP, DEV_WEAPON, LOCAL_MODE } from '../net/local';
-import { loadSound, worldHome, type SoundModule, type WorldUser } from '../net/world';
+import { buyCharacter, loadOwnedCharacters, loadSound, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W, dropIcon, dropName } from '../scenes/GameScene';
 import { GROUND } from '../scenes/art';
 import { COLOR, css } from '../theme';
@@ -52,6 +54,10 @@ import { createControls, type Controls } from './controls';
 
 let api!: TwelveApi;
 let profile: TwelveProfile = emptyProfile();
+/** 고양이를 이 게임에서 샀는지 (shared/characters.js — 게임마다 따로 산다). 테스트 모드에서는 늘 false */
+let cat = false;
+/** 지금 고를 수 있는 대원 */
+const myHeroes = () => heroesOf(profile, cat);
 /** 개발 옵션(?map= · lv= · god= · all= · hero= · weapon=)으로 하는 판은 기록하지 않는다 */
 const DEV_PLAY = DEV_ALL || DEV_GOD || DEV_LEVEL > 0 || !!DEV_HERO || !!DEV_WEAPON || !!DEV_MAP;
 
@@ -165,7 +171,12 @@ export async function boot(a: TwelveApi, _user: WorldUser | null) {
   api = a;
   loadSettings();
   profile = view(await api.loadProfile());
-  if (!heroesOf(profile).includes(profile.hero) && !DEV_PLAY) profile.hero = heroesOf(profile)[0];
+  if (!LOCAL_MODE) {
+    cat = !!(await loadOwnedCharacters())?.includes('cat');
+    // 지난번에 못 보낸 판 결과가 있으면 다시 보내고 기록을 새로 읽는다
+    if ((await api.resend().catch(() => 0)) > 0) profile = view(await api.loadProfile());
+  }
+  if (!myHeroes().includes(profile.hero) && !DEV_PLAY) profile.hero = myHeroes()[0];
 }
 
 /** 처음 화면: 개발용 ?map= 이면 바로 그 맵, 아니면 메인 */
@@ -247,16 +258,18 @@ function showSettings() {
 // ---------- 대원 · 무기 ----------
 
 function showHeroes(back: () => void, region = 0) {
-  const mine = heroesOf(profile);
+  const mine = myHeroes();
   const rec = region ? recommended(region) : [];
+  // 고양이: 보통 모드를 끝낸 뒤에만 보인다 (그 전에는 숨김). 시아코인 100개로 이 게임에서 따로 산다
+  const catShown = (h: { hidden?: boolean }) => !h.hidden || cat || normalDone(profile);
   let pick: HeroId = profile.hero;
   const weapon = weaponOf(profile);
   const root = screen(`
     <div class="bar"><button class="back" id="back">← 뒤로</button><h2>대원</h2><div class="pills">${levelPill()}</div></div>
-    <div class="card"><div class="heroes">${HEROES.filter((h) => !h.hidden || mine.includes(h.id))
+    <div class="card"><div class="heroes">${HEROES.filter(catShown)
       .map((h) => {
         const ok = mine.includes(h.id);
-        return `<button class="hero-btn ${ok ? '' : 'locked'}" data-id="${h.id}">${face(h.id)}<b>${h.name}</b>${ok ? (rec.includes(h.id) ? '<em class="tag">추천</em>' : '') : `<em>🔒 ${h.join}지형</em>`}</button>`;
+        return `<button class="hero-btn ${ok ? '' : 'locked'}" data-id="${h.id}">${face(h.id)}<b>${h.name}</b>${ok ? (rec.includes(h.id) ? '<em class="tag">추천</em>' : '') : `<em>🔒 ${h.hidden ? `시아코인 ${h.price}` : `${h.join}지형`}</em>`}</button>`;
       })
       .join('')}</div></div>
     <div class="card" id="detail"></div>
@@ -270,9 +283,19 @@ function showHeroes(back: () => void, region = 0) {
     root.querySelector('#detail')!.innerHTML = `
       <h3>${h.name} <small>${h.animal} · 고향 ${h.home ? `${h.home}지형 ${regionOf(h.home).name}` : '없음'} · 잘 다루는 무기 ${WEAPONS[h.weapon].icon}${WEAPONS[h.weapon].name}</small></h3>
       <div class="stat-grid">${STAT_KEYS.map((k) => `<div class="stat"><span>${STAT_NAME[k]}</span><div class="lv"><i style="width:${Math.round(((h.stats[k] - 0.9) / 0.2) * 100)}%"></i></div><b>${k === 'crit' ? `${Math.round(st.crit * 100)}%` : Math.round(st[k])}</b></div>`).join('')}</div>
+      ${profile.level >= 10 ? `<p class="soft">⭐ 스킬 강화 ${Math.floor(profile.level / 10)}단계: 스킬 피해 +${Math.round((skillLevelMul(profile.level) - 1) * 100)}% (10레벨마다 한 단계)</p>` : '<p class="soft">⭐ 10레벨마다 스킬이 한 단계 강해져요</p>'}
       <p class="skill-line"><span class="key">U</span> <b>${h.unique.icon} ${h.unique.name}</b> ${h.unique.desc} <small>마력 ${h.unique.mp} · ${h.unique.cd}초</small></p>
       ${st.home ? '<p class="soft">🏠 고향 지형: 공격·방어 +10%</p>' : ''}${st.affinity ? '<p class="soft">✨ 잘 다루는 무기: 공격 +5%</p>' : ''}
-      ${ok ? '' : `<p class="soft">🔒 ${h.join}지형 보스를 처음 잡으면 합류해요</p>`}`;
+      ${ok ? '' : h.hidden ? `<p class="soft">🐱 경주에 늦어 빠진 13번째 대원이에요. 이 게임에서 따로 열어요</p><button class="btn primary" id="buycat">시아코인 ${h.price}개로 열기</button>` : `<p class="soft">🔒 ${h.join}지형 보스를 처음 잡으면 합류해요</p>`}`;
+    root.querySelector('#buycat')?.addEventListener('click', async () => {
+      play('click');
+      const { r, text } = await buyCharacter('cat');
+      toast(text, 3000);
+      if (r.ok || r.reason === 'owned') {
+        cat = (await loadOwnedCharacters(true))?.includes('cat') ?? true;
+        showHeroes(back, region);
+      }
+    });
     const wd = WEAPONS[weapon];
     root.querySelector('#wdetail')!.innerHTML = `<p class="soft">${wd.desc}</p>${wd.skills.map((sk, i) => `<p class="skill-line"><span class="key">${'KL'[i]}</span> <b>${sk.icon} ${sk.name}</b> ${sk.desc} <small>마력 ${sk.mp} · ${sk.cd}초</small></p>`).join('')}`;
     (root.querySelector('#save') as HTMLButtonElement).disabled = !ok;
@@ -621,6 +644,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
       <div class="rows">
         <div><span>쓰러뜨린 요괴</span><b>${s.killed} / ${s.total}${s.bossDead ? ' + 보스' : ''}</b></div>
         ${r ? `<div><span>경험치</span><b>+${r.exp.toLocaleString()}${r.ups ? ` · 레벨 업! Lv ${r.level}` : ''}</b></div>` : ''}
+        ${r && r.ups && Math.floor(r.level / 10) > Math.floor((r.level - r.ups) / 10) ? `<div><span>스킬 강화</span><b>${Math.floor(r.level / 10)}단계 (피해 +${Math.round((skillLevelMul(r.level) - 1) * 100)}%)</b></div>` : ''}
         ${r && win ? `<div><span>엽전</span><b class="coin">+${r.coins.toLocaleString()}</b></div>` : ''}
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
