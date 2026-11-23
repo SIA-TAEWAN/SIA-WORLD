@@ -1,5 +1,6 @@
 import type { Backend, Channel, Member, NetMsg } from './backend';
 import type { ChatMsg } from './lobby';
+import { EMOTE_COOLDOWN_MS, EmoteGate, parseEmote } from '../game/emote';
 
 /**
  * 이 기기의 판본. 기기끼리 주고받는 내용(새 탱크 등)이 바뀌면 올린다.
@@ -30,6 +31,10 @@ export class RoomSession {
   private msgFns = new Set<(m: NetMsg) => void>();
   private presFns = new Set<() => void>();
   private chatFns = new Set<() => void>();
+  private emoteFns = new Set<(from: string, i: number) => void>();
+  /** 감정 표현 보내기 간격 제한 (받는 쪽도 사람마다 같은 간격으로 거른다) */
+  private emoteGate = new EmoteGate(EMOTE_COOLDOWN_MS - 100);
+  private emoteSeen = new Map<string, EmoteGate>();
   private reconnFns = new Set<() => void>();
   private joined = false;
   /** 이 방 사람끼리만 보는 채팅 */
@@ -49,6 +54,16 @@ export class RoomSession {
     this.ch.onMessage((m) => {
       if (m.t === 'chat') {
         this.push({ name: String(m.name).slice(0, 10), text: String(m.text).slice(0, 120), at: Date.now() });
+        return;
+      }
+      if (m.t === 'emote') {
+        // 빠른 감정 표현: 누가(from) 몇 번 문구(i)를 눌렀는지만 온다. 모르는 번호·너무 잦은 것은 버린다
+        const i = parseEmote(m.i);
+        const from = typeof m.from === 'string' ? m.from : '';
+        if (i === null || !from || from === me.id) return;
+        let gate = this.emoteSeen.get(from);
+        if (!gate) this.emoteSeen.set(from, (gate = new EmoteGate(1000)));
+        if (gate.try(Date.now())) this.emoteFns.forEach((f) => f(from, i));
         return;
       }
       this.msgFns.forEach((f) => f(m));
@@ -135,10 +150,24 @@ export class RoomSession {
     return () => this.chatFns.delete(fn);
   }
 
+  /** 빠른 감정 표현을 방 사람들에게 보낸다. 간격 제한에 걸리면 false (보내지 않는다) */
+  sendEmote(i: number): boolean {
+    if (parseEmote(i) === null || !this.emoteGate.try(Date.now())) return false;
+    this.ch.send({ t: 'emote', from: this.me.id, i });
+    return true;
+  }
+
+  /** 다른 사람의 감정 표현 (from = 보낸 사람 ID) */
+  onEmote(fn: (from: string, i: number) => void) {
+    this.emoteFns.add(fn);
+    return () => this.emoteFns.delete(fn);
+  }
+
   async leave() {
     this.msgFns.clear();
     this.presFns.clear();
     this.chatFns.clear();
+    this.emoteFns.clear();
     this.reconnFns.clear();
     await this.ch.leave();
   }

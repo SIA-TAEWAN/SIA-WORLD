@@ -1,5 +1,6 @@
 import { ITEMS, ITEM_IDS, TANKS, WEAPONS, tankOr, type ItemId, type WeaponDef } from './data';
 import { Rng } from './rng';
+import { cloneAwardStats, newAwardStats, parseAwardStats, recordSelfFall, recordShot, type AwardStats, type TankBefore } from './awards';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput, Wall, WallKind, Zone } from './types';
 import { MAPS, STEP_W, targetSteps, type MapId } from '../data/maps';
 import { Terrain } from '../physics/terrain';
@@ -100,6 +101,8 @@ export class Match {
 
   readonly setups: PlayerSetup[];
   readonly options: MatchOptions;
+  /** 판 끝 상장용 집계 (시뮬레이션에는 쓰지 않는다) */
+  awards: AwardStats = newAwardStats(0);
 
   constructor(setups: PlayerSetup[], mapId: MapId, seed: number, options: MatchOptions = {}) {
     this.setups = setups;
@@ -178,6 +181,7 @@ export class Match {
       t.y = Math.max(0, this.terrain.surface(gx));
       return t;
     });
+    this.awards = newAwardStats(this.tanks.length);
     if (map.practice) this.placeTargets();
   }
 
@@ -368,7 +372,9 @@ export class Match {
     t.y = ny;
     this.moveLeft--;
     this.movedThisTurn++;
+    const hpWas = t.hp;
     this.settle(t);
+    if (!t.alive) recordSelfFall(this.awards, t.idx, hpWas);
     this.pickup();
     if (!t.alive) this.checkWinner();
     return true;
@@ -434,6 +440,7 @@ export class Match {
   fire(input: TurnInput): ShotResult {
     const t = this.cur;
     const events: SimEvent[] = [];
+    const before: TankBefore[] = this.tanks.map((o) => ({ idx: o.idx, team: o.team, x: o.x, y: o.y, hp: o.hp, alive: o.alive }));
     t.facing = input.facing;
     this.setAngle(input.angle);
     t.lastPower = input.power;
@@ -606,6 +613,7 @@ export class Match {
     this.settleZones();
     result.frames = this.applyDots(t, afflicted, events, endF, fresh, dotMul);
     events.sort((a, b) => a.f - b.f);
+    recordShot(this.awards, t.idx, before, events);
     this.refillUlt();
     this.pickup();
     this.checkWinner();
@@ -726,6 +734,7 @@ export class Match {
       nextZone: this.nextZone,
       wall: this.wall ? { ...this.wall } : null,
       targets: this.targets.map((g) => ({ ...g })),
+      awards: cloneAwardStats(this.awards),
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
         alive: t.alive, items: [...t.items], damageDealt: t.damageDealt, ai: t.ai, lastPower: t.lastPower, poison: t.poison ?? 0, poisonMul: t.poisonMul ?? 1, shots: t.shots ?? 0, hits: t.hits ?? 0,
@@ -750,6 +759,8 @@ export class Match {
     m.wall = s.wall ? { ...s.wall } : null;
     if (s.targets) m.targets = s.targets.map((g) => ({ ...g }));
     s.tanks.forEach((d, i) => Object.assign(m.tanks[i], d));
+    // 예전 판본이 보낸 판 상태에는 없다 → 그때부터 다시 센다
+    m.awards = parseAwardStats(s.awards, m.tanks.length) ?? newAwardStats(m.tanks.length);
     return m;
   }
 
@@ -777,5 +788,7 @@ export interface MatchSnapshot {
   nextZone?: number;
   wall?: Wall | null;
   targets?: Target[];
+  /** 판 끝 상장용 집계 (예전 판본에는 없다) */
+  awards?: AwardStats;
   tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison' | 'poisonMul' | 'shots' | 'hits'>[];
 }

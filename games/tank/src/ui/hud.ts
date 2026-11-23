@@ -7,6 +7,7 @@ import type { GameChat } from '../scenes/GameScene';
 import { sfx } from './sfx';
 import { iconUrl } from './icons';
 import { DPR } from './dpr';
+import { EMOTES, EmoteGate } from '../game/emote';
 
 export interface HudView {
   power: number;
@@ -140,6 +141,7 @@ export class Hud {
 
     this.root.append(top, miniBox, this.banner, this.toastEl, bottom);
     if (chat) this.buildChat(chat);
+    this.buildEmotes();
 
     if (touch) {
       const pad = el('div', 'touch-pad');
@@ -235,6 +237,52 @@ export class Hud {
       clearTimeout(fade);
     };
     shown = chat.chat.length;
+  }
+
+  /** 감정 표현 문구를 눌렀을 때 (간격 제한을 통과한 것만) */
+  onEmote: ((i: number) => void) | null = null;
+  private emoteTimers: ReturnType<typeof setTimeout>[] = [];
+
+  /**
+   * 빠른 감정 표현: 오른쪽 위 동그란 버튼을 누르면 문구 6개가 펼쳐지고, 문구를 누를 때마다 바로 나간다.
+   * 펼친 채로 두면 잠시 뒤 스스로 접힌다 (조작을 가리지 않게).
+   */
+  private buildEmotes() {
+    const box = el('div', 'emo');
+    const btn = el('button', 'emo-btn', '😆') as HTMLButtonElement;
+    btn.title = '감정 표현';
+    btn.setAttribute('aria-label', '감정 표현');
+    const tray = el('div', 'emo-tray hidden');
+    const gate = new EmoteGate();
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    let cool: ReturnType<typeof setTimeout> | undefined;
+    const close = () => tray.classList.add('hidden');
+    const keepOpen = (ms: number) => {
+      clearTimeout(idle);
+      idle = setTimeout(close, ms);
+      this.emoteTimers[0] = idle;
+    };
+    EMOTES.forEach((text, i) => {
+      const b = el('button', 'emo-pick') as HTMLButtonElement;
+      b.textContent = text;
+      b.onclick = () => {
+        keepOpen(3000);
+        const now = performance.now();
+        if (!gate.try(now)) return;
+        this.onEmote?.(i);
+        // 다음에 보낼 수 있을 때까지 흐리게
+        tray.classList.add('cool');
+        clearTimeout(cool);
+        cool = setTimeout(() => tray.classList.remove('cool'), gate.left(now));
+        this.emoteTimers[1] = cool;
+      };
+      tray.append(b);
+    });
+    btn.onclick = () => {
+      if (!tray.classList.toggle('hidden')) keepOpen(5000);
+    };
+    box.append(btn, tray);
+    this.root.append(box);
   }
 
   /** 화면 아래 조작판 높이(px) */
@@ -438,6 +486,7 @@ export class Hud {
     this.ro?.disconnect();
     this.offMute();
     this.chatOff?.();
+    this.emoteTimers.forEach((t) => clearTimeout(t));
     this.root.remove();
   }
 }
