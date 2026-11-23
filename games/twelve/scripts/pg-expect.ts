@@ -142,7 +142,7 @@ towerStart(2, 1);
 towerStart(11, 1);
 towerStart(1, 4242);
 towerFloor(2, 20, 20);
-towerFloor(1, 3, 20);
+towerFloor(1, 1, 20);
 towerFloor(1, 30, 10);
 towerClimb(2, 20);
 towerFloor(3, 60, 20, [[1, 0, 0], [1, 0, 0]]);

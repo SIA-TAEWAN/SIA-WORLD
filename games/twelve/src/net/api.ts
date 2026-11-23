@@ -3,6 +3,7 @@ import { BAG, MAX_PLUS, POTION, POTION_SIZES } from '../data/economy';
 import { isHero } from '../data/heroes';
 import { SLOTS, itemDef, type Item } from '../data/items';
 import { REGIONS, type Mode } from '../data/regions';
+import { towerCoins } from '../data/tower';
 import type { Pity } from '../game/drops';
 import { applyReport, checkReport, checkStart, emptyProfile, setHero, type FinishResult, type MapRecord, type RunReport, type TowerRecord, type TwelveProfile } from '../game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../game/rules';
@@ -47,7 +48,8 @@ export interface TwelveApi {
   buy(what: string, n?: number): Promise<TwelveProfile>;
   /** 끝없는 탑에 들어간다 (floor = 1 또는 깬 보스 층의 다음 층). 거절이면 ApiError, 통신 실패면 Error */
   towerStart(floor: number, hero: string): Promise<TowerStart>;
-  /** 깬 층 보고. time = 이 판에서 지금까지 논 시간(초), potions = 그 층에서 쓴 물약 (통신 실패면 null) */
+  /** 깬 층 보고. time = 이 판에서 지금까지 논 시간(초), potions = 그 층에서 쓴 물약 (통신 실패면 null).
+   * 답을 못 받아 다시 보냈는데 서버가 이미 받은 층이면 상태를 다시 읽어 결과를 맞춰 돌려준다 */
   towerFloor(run: string, floor: number, time: number, potions: number[][]): Promise<{ profile: TwelveProfile; result: TowerFloorResult } | null>;
   /** 탑 판 끝 (쓰러졌거나 그만뒀다). potions = 마지막 층에서 쓴 물약 (통신 실패면 null) */
   towerEnd(run: string, potions: number[][]): Promise<TwelveProfile | null>;
@@ -293,7 +295,12 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     }
     return res.data;
   };
-  const state = async (fn: string, args?: Record<string, unknown>) => normalize(await call(fn, args));
+  /** 서버가 마지막으로 알려 준 프로필 (탑 층 보고를 다시 보냈을 때 '이미 받았는지'를 견줘 보는 데 쓴다) */
+  let known: TwelveProfile | null = null;
+  const keep = (p: TwelveProfile) => (known = p);
+  const state = async (fn: string, args?: Record<string, unknown>) => keep(normalize(await call(fn, args)));
+  /** 탑 판마다 체크포인트에서 더해지는 시간 (초) */
+  const towerBase = new Map<string, number>();
   const send = async (r: RunReport) => {
     const data = (await call('twelve_finish', {
       p_run: r.run,
@@ -316,7 +323,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       key: !!res.key,
       starItem: typeof res.starItem === 'string' ? res.starItem : null,
     };
-    return { profile: normalize(data.state), result };
+    return { profile: keep(normalize(data.state)), result };
   };
   let sending: Promise<number> | null = null;
   const resend = () => {
@@ -377,16 +384,19 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     async towerStart(floor, hero) {
       const d = (await call('twelve_tower_start', { p_floor: floor, p_hero: hero })) as { run?: string; seed?: number; base?: number };
       if (!d?.run) throw new Error('no run');
+      towerBase.clear();
+      towerBase.set(String(d.run), Number(d.base) || 0);
       return { run: String(d.run), seed: Number(d.seed) || 0, base: Number(d.base) || 0 };
     },
     async towerFloor(run, floor, time, potions) {
+      const before = known;
       // 통신 문제면 한 번 더 보내 본다 (서버는 같은 층을 두 번 받지 않는다: 이미 받았으면 'bad floor')
       for (let i = 0; i < 2; i++) {
         try {
           const data = (await call('twelve_tower_floor', { p_run: run, p_floor: floor, p_time: Math.floor(time), p_potions: potions })) as { state: unknown; result: Partial<TowerFloorResult> };
           const res = data.result ?? {};
           return {
-            profile: normalize(data.state),
+            profile: keep(normalize(data.state)),
             result: {
               floor: Number(res.floor) || floor,
               coins: Number(res.coins) || 0,
@@ -398,14 +408,43 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
             },
           };
         } catch (e) {
-          if (e instanceof ApiError) throw e;
+          if (!(e instanceof ApiError)) continue;
+          // 다시 보낸 것이 'bad floor' 면 앞 요청이 닿았는데 답만 못 받은 것일 수 있다 → 상태를 다시 읽어 확인한다
+          if (i === 0 || e.message !== 'bad floor' || !before) throw e;
+          let now: TwelveProfile;
+          try {
+            now = normalize(await call('twelve_state'));
+          } catch {
+            return null;
+          }
+          // 층을 받았으면 엽전이 그 층 몫만큼 늘어 있다 (탑 도중에는 엽전이 줄지 않고, 장신구 보너스는 늘리기만 한다)
+          const coins = now.coins - before.coins;
+          if (coins < towerCoins(floor)) throw e;
+          keep(now);
+          const had = new Set(before.items.map((it) => it.id));
+          const total = (towerBase.get(run) ?? 0) + Math.floor(time);
+          return {
+            profile: now,
+            result: {
+              floor,
+              coins,
+              stones: Math.max(0, now.stones - before.stones),
+              items: now.items.filter((it) => !had.has(it.id)).map((it) => ({ ...it })),
+              // 답을 못 받아 알 수 없다 (받았다면 지갑에는 들어가 있다)
+              siaCoin: false,
+              time: total,
+              best: !!now.tower && now.tower.floor === floor && now.tower.time === total && !(before.tower && before.tower.floor === floor && before.tower.time === total),
+            },
+          };
         }
       }
       return null;
     },
     async towerEnd(run, potions) {
       try {
-        return await state('twelve_tower_end', { p_run: run, p_potions: potions });
+        const p = await state('twelve_tower_end', { p_run: run, p_potions: potions });
+        towerBase.delete(run);
+        return p;
       } catch (e) {
         if (e instanceof ApiError) throw e;
         return null;

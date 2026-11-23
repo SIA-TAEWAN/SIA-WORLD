@@ -15,9 +15,10 @@ export const TOWER = {
   cp: 10,
   /** 정예가 나오는 층 간격 (보스 층은 빼고) */
   eliteEvery: 5,
-  /** 한 층을 이보다 빨리 올라간 기록은 받지 않는다 (초). 방 끝에서 끝까지 걷는 데만 4초쯤 걸린다 */
-  minTime: 4,
-  bossMinTime: 8,
+  /** 한 층을 이보다 빨리 올라간 기록은 받지 않는다 (초). 빠른 대원은 방을 4초 안에 가로지르므로 넉넉히 낮게 잡는다.
+   * 화면은 보내는 시간을 이 값 이상으로 올려 보낸다 (ui/app.ts 의 floorCleared) */
+  minTime: 2,
+  bossMinTime: 4,
   /** 엽전 = (base + step × 층) × (정예 층 elite · 보스 층 boss) */
   coin: { base: 20, step: 6, elite: 2, boss: 5 },
   /**

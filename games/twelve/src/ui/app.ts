@@ -8,7 +8,7 @@ import { HEROES, STAT_KEYS, STAT_NAME, heroOf, isHero, type HeroId } from '../da
 import { ACC_TEXT, FX_DESC, FX_NAME, ITEMS, SLOTS, SLOT_NAME, canEnhance, itemDef, itemLevel, itemNote, itemStats, normalWeapon, regionRares, type Item, type Slot } from '../data/items';
 import { MAPS, mapOf, mapsOf, nextMap, type MapDef } from '../data/maps';
 import { ENV_ICON, ENV_NAME, MAPS_PER_REGION, MODE_NAME, REGIONS, REGION_TABLE, mapLevel, regionOf } from '../data/regions';
-import { TOWER, floorKind, towerFloor, towerRegion } from '../data/tower';
+import { TOWER, floorKind, floorMinTime, towerFloor, towerRegion } from '../data/tower';
 import { TIER_LEVELS, WEAPONS, WEAPON_KINDS } from '../data/weapons';
 import {
   applyReport,
@@ -888,14 +888,16 @@ function playFloor(t: TowerPlay, stock: number[][], carry: { hp: number; mp: num
 async function floorCleared(t: TowerPlay, s: RunState) {
   if (t.sending) return;
   t.sending = true;
-  const total = t.played + s.t;
+  // 보내는 시간: 서버는 정수 초만 받고 층마다 최소 시간을 본다 — 빠른 층이 내림 때문에 걸리지 않게 앞에 보낸 시간 + 최소 시간까지 올린다
+  // (올리는 폭은 서버의 경과 시간 여유 LIMITS.timeSlack 3초 안이다)
+  const total = Math.max(Math.floor(t.played + s.t), t.played + floorMinTime(t.floor));
   const used = s.used.map((r) => [...r]);
   let res: TowerFloorResult | null = null;
   let why = '';
-  if (t.dev) res = applyTowerFloor(structuredClone(profile), t.dev, t.floor, Math.floor(total), used, Date.now());
+  if (t.dev) res = applyTowerFloor(structuredClone(profile), t.dev, t.floor, total, used, Date.now());
   else {
     try {
-      const r = await api.towerFloor(t.run, t.floor, Math.floor(total), used);
+      const r = await api.towerFloor(t.run, t.floor, total, used);
       if (r) {
         profile = view(r.profile);
         res = r.result;

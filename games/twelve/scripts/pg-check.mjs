@@ -346,7 +346,7 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
   await rejects(tFloor(u4, a.run, 1, 20), 'too early', '바로 보고한 층 (서버가 잰 시간보다 김)');
   await rejects(tFloor(u1, a.run, 1, 20), 'no run', '남의 탑 판');
   await tAgo(a.run, 20);
-  await rejects(tFloor(u4, a.run, 1, 3), 'too early', '층 최소 시간보다 빠름');
+  await rejects(tFloor(u4, a.run, 1, 1), 'too early', '층 최소 시간보다 빠름');
   await rejects(tFloor(u4, a.run, 2, 20), 'bad floor', '층 건너뛰기');
   await rejects(tFloor(u4, a.run, 1, null), 'bad time', '시간 없음');
   await rejects(tFloor(u4, a.run, 1, 20, [[99, 0, 0], [0, 0, 0]]), 'bad potions', '너무 많은 물약');

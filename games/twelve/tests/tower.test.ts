@@ -389,6 +389,51 @@ describe('끝없는 탑 — 서버 연결', () => {
     expect(down.calls.filter(([fn]) => fn === 'twelve_tower_floor').length).toBe(2);
     expect(await b.towerEnd('r1', none)).toBeNull();
   });
+
+  it("다시 보낸 층이 'bad floor' 면 상태를 다시 읽어, 서버가 이미 받았으면 이어 간다", async () => {
+    const before = { ...emptyProfile(), coins: 100, stones: 2 };
+    /** 층 보고: 처음은 답이 안 오고, 다시 보내면 bad floor. received = 처음 보낸 것을 서버가 받았는지 */
+    const server = (received: boolean) => {
+      let n = 0;
+      let reads = 0;
+      const after = received
+        ? { ...before, coins: 100 + towerCoins(10) + 13, stones: 5, items: [...before.items, { id: '77', base: before.items[0].base, plus: 0, lock: false, box: false }], tower: { floor: 10, time: 260, level: 1, hero: 'rat', at: '', cps: { 10: 260 } } }
+        : before;
+      return fake({
+        twelve_state: () => (reads++ === 0 ? before : after),
+        twelve_tower_start: () => ({ run: 'r1', seed: 5, base: 200 }),
+        twelve_tower_floor: () => {
+          throw new Error(n++ === 0 ? 'Failed to fetch' : 'bad floor');
+        },
+      });
+    };
+    const yes = server(true);
+    const a = createSupabaseApi(yes.sb, 'u', memStore());
+    await a.loadProfile();
+    await a.towerStart(1, 'rat');
+    const r = await a.towerFloor('r1', 10, 60, none);
+    expect(r!.result).toMatchObject({ floor: 10, coins: towerCoins(10) + 13, stones: 3, siaCoin: false, time: 260, best: true });
+    expect(r!.result.items.map((it) => it.id)).toEqual(['77']);
+    expect(r!.profile.coins).toBe(100 + towerCoins(10) + 13);
+    expect(yes.calls.map(([fn]) => fn)).toEqual(['twelve_state', 'twelve_tower_start', 'twelve_tower_floor', 'twelve_tower_floor', 'twelve_state']);
+    // 서버가 받지 않았으면 (엽전이 그대로) 거절 그대로
+    const no = server(false);
+    const b = createSupabaseApi(no.sb, 'u', memStore());
+    await b.loadProfile();
+    await b.towerStart(1, 'rat');
+    await expect(b.towerFloor('r1', 10, 60, none)).rejects.toThrow('bad floor');
+    // 처음 보낸 것이 바로 'bad floor' 면 다시 읽지 않는다
+    const first = fake({
+      twelve_state: () => before,
+      twelve_tower_floor: () => {
+        throw new Error('bad floor');
+      },
+    });
+    const c = createSupabaseApi(first.sb, 'u', memStore());
+    await c.loadProfile();
+    await expect(c.towerFloor('r1', 10, 60, none)).rejects.toThrow('bad floor');
+    expect(first.calls.length).toBe(2);
+  });
 });
 
 describe('끝없는 탑 — SQL (078_twelve.sql)', () => {

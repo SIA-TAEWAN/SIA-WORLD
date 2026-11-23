@@ -221,8 +221,8 @@ language sql immutable as $$
     when 'max_plus' then 9
     when 'tower_cp' then 10
     when 'tower_elite_every' then 5
-    when 'tower_min_time' then 4
-    when 'tower_boss_min_time' then 8
+    when 'tower_min_time' then 2
+    when 'tower_boss_min_time' then 4
     when 'tower_coin_base' then 20
     when 'tower_coin_step' then 6
     when 'tower_coin_elite' then 2
