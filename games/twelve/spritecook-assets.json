@@ -1,0 +1,4 @@
+{
+  "note": "시아열두길 전용 SpriteCook 그림 목록. 아직 없다 (ASSETS.md 의 목록대로 만들면 {asset_id, sha12, label} 로 적는다). public/art 의 요괴·보스·바닥·이펙트는 시아디펜스(games/defense/public/art)에서 복사한 것이다.",
+  "assets": []
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport: 안드로이드는 viewport-fit=cover 없이 처음부터 써 넣는다. 크롬이 cover 를 보면 아래 기본 버튼 줄 밑까지 그리면서 그 높이를 알려 주지 않고,
+         나중에 빼도 이미 잡힌 100dvh 높이를 다시 계산하지 않아 아래 버튼이 가려졌다. 아이폰은 노치 대응으로 cover 를 둔다 -->
+    <script>(function () { var c = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'; if (/Android/i.test(navigator.userAgent)) c = c.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, ''); document.write('<meta name="viewport" content="' + c + '" />'); })();</script>
+    <meta name="theme-color" content="#4aa8ff" />
+    <!-- SIA WORLD 앱(PWA): 로비와 같은 manifest·아이콘·서비스 워커. vite-ignore = Vite 가 건드리지 않고 그대로 둔다 -->
+    <link rel="manifest" href="../../manifest.webmanifest" vite-ignore />
+    <link rel="apple-touch-icon" href="../../shared/images/app/apple-touch-icon.png" vite-ignore />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SIA WORLD" />
+    <script type="module" src="../../shared/pwa.js" vite-ignore></script>
+    <meta name="description" content="십이지 대원으로 열두 지형의 요괴를 베고 열쇠를 모으는 액션 RPG" />
+    <title>시아열두길</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗝️</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="stage">
+      <div id="app"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
