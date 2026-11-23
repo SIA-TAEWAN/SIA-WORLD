@@ -9,7 +9,7 @@ import type { HeroId } from './heroes';
 export const REGIONS = 12;
 export const MAPS_PER_REGION = 8;
 /** 지금 열려 있는 지형 수 (나머지는 지도에 '준비 중') */
-export const REGIONS_READY = 11;
+export const REGIONS_READY = 12;
 /** 어려움 모드 · 최종보스가 준비됐는지 */
 export const HARD_READY = false;
 
