@@ -326,3 +326,21 @@ img.ball.pierce { border-color: var(--accent); }
   .screen.home .menu-btns .row2 { gap: 7px; }
   .screen.home .menu-btns .btn.big { padding-top: 9px; padding-bottom: 9px; }
 }
+
+/* ---------- 힌트 한 수 (game/hint.ts): HUD 의 전구 버튼 + 남은 횟수 배지 ---------- */
+.hint-btn { position: relative; }
+.hint-btn i { position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px; padding: 0 3px; border-radius: var(--radius-pill); background: var(--pink); color: var(--white);
+  border: 2px solid var(--outline); font-style: normal; font-size: 12px; line-height: 14px; text-align: center; }
+.hint-btn.shown { background: var(--primary); }
+.hint-btn.thinking { background: var(--primary); animation: hint-blink 0.35s ease-in-out infinite alternate; }
+.hint-btn:disabled { background: var(--track); cursor: default; }
+.hint-btn:disabled i { background: var(--ink-soft); }
+.hint-btn:disabled:active { transform: none; box-shadow: 0 3px 0 var(--outline); }
+/* 버튼이 하나 늘어 좁아진 가운데 글: 스테이지 이름은 한 줄(넘치면 …), 좁은 화면에서는 글과 턴 알약을 조금 작게 */
+.hud-mid { min-width: 0; }
+.hud-mid b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 360px), (max-height: 600px) {
+  .hud { gap: 6px; }
+  .hud-mid { font-size: 13px; gap: 2px; }
+  .hud .troop-pill { font-size: 15px; padding: 4px 8px; }
+}
