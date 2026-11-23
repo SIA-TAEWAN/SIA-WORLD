@@ -35,10 +35,18 @@ export const SLOW_TILE_MUL = 0.6;
  * 지형 환경 효과 (PRD '캐릭터 — 지형 특성 대응'). 막는 대원(regions.ts 의 counter)은 영향을 받지 않고, 레어 방어구 '수호'는 절반만 받는다.
  * - mud  (2지형): 진흙탕(~) 위에서는 더 느려지고(이동 ×slow) 구르기 거리가 줄어든다(×roll)
  * - wind (3지형): every 초마다 골바람이 dur 초 동안 한쪽(좌우 번갈아)으로 초당 push 만큼 민다. warn 초 전에 알린다
+ * - dark   (4지형): 대원에게서 see 보다 먼 요괴는 보이지 않고 조준 보정도 안 된다 (수호 갑옷은 두 배 멀리 본다)
+ * - water  (5지형): 물(~) 위에 서 있으면 물살이 아래(시작 쪽)로 초당 push 만큼 민다
+ * - poison (6지형): 늪(~) 위에 서 있으면 tick 초마다 최대 체력의 pct 만큼 독 피해 (방어 무시)
+ * - arrow  (7지형): every 초마다 화살 n 발이 대원 둘레(spread)에 떨어진다 (원 반지름 r, 예고 warn 초, 피해 dmg × 요괴 공격 배율)
  */
 export const ENV = {
   mud: { slow: 0.45, roll: 0.5 },
   wind: { every: 10, warn: 1.5, dur: 2.6, push: 150 },
+  dark: { see: 330 },
+  water: { push: 65 },
+  poison: { tick: 1, pct: 0.025 },
+  arrow: { every: 7, warn: 1.2, n: 3, r: 85, spread: 210, gap: 0.15, dmg: 11 },
 } as const;
 
 /** 10레벨마다 스킬 피해 +8% */

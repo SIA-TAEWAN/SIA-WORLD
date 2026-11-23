@@ -126,6 +126,9 @@ export interface Enemy {
   move: number;
   calls: number;
   ringCd: number;
+  /** 숨는 요괴(lurk): 지금 숨어 있는지 · 드러나 있는 남은 시간 */
+  hidden: boolean;
+  show: number;
 }
 
 export interface Shot {
@@ -179,8 +182,13 @@ export interface Warn {
   dmg: number;
   /** 낸 요괴 (-1 = 없음) */
   src: number;
-  /** 터진 뒤: 요괴가 그 자리로 돌진 / 불을 쏜다 / 범위 가운데로 뛰어든다 */
-  after: 'none' | 'dash' | 'shoot' | 'jump';
+  /**
+   * 터진 뒤: 요괴가 그 자리로 돌진 / 불을 쏜다 / 범위 가운데로 뛰어든다 / 맞은 대원을 끌어당긴다(aux = 거리) /
+   * 독 웅덩이가 남는다(aux = 시간, aux2 = 피해) / 낸 요괴가 터져 사라진다 / 구슬을 사방으로 쏜다(aux = 수, aux2 = 속도)
+   */
+  after: 'none' | 'dash' | 'shoot' | 'jump' | 'pull' | 'pool' | 'boom' | 'nova';
+  aux: number;
+  aux2: number;
   /** 큰 공격 (진하게 그리고 소리로 알린다) */
   big: boolean;
 }
@@ -225,6 +233,18 @@ export interface Pickup {
   drop: Drop;
   got: boolean;
 }
+/** 요괴가 남긴 독 웅덩이: 서 있으면 0.5초마다 피해 */
+export interface Pool {
+  x: number;
+  y: number;
+  r: number;
+  left: number;
+  total: number;
+  dmg: number;
+  acc: number;
+}
+/** 독 웅덩이가 피해를 주는 간격 */
+export const POOL_TICK = 0.5;
 /** 자동으로 줍는 거리 */
 export const PICK_DIST = 110;
 
@@ -252,6 +272,7 @@ export interface RunState {
   shots: Shot[];
   zones: Zone[];
   warns: Warn[];
+  pools: Pool[];
   /** 조금 뒤에 나갈 동작 */
   queue: { at: number; act: Act; power: number }[];
   events: SimEvent[];
@@ -279,9 +300,12 @@ export interface RunState {
   god: boolean;
   /**
    * 지형 환경 효과 (balance.ts 의 ENV). f = 받는 정도: 1 그대로 · 수호 방어구 0.5 · 막는 대원 0.
-   * gust = 지금 부는 골바람 방향 (-1 왼쪽 · 1 오른쪽 · 0 없음), warn = 곧 불 방향 (예고 중일 때만)
+   * gust = 지금 부는 골바람 방향 (-1 왼쪽 · 1 오른쪽 · 0 없음), warn = 곧 불 방향 (예고 중일 때만),
+   * acc = 늪에 서 있던 시간(독), k = 마지막으로 쏟아진 화살 차례
    */
-  env: { id: EnvId; f: number; gust: number; warn: number };
+  env: { id: EnvId; f: number; gust: number; warn: number; acc: number; k: number };
+  /** 요괴 공격 배율 (환경 피해에 쓴다) */
+  foeAtk: number;
   tag: number;
   nextId: number;
   reward: number;
@@ -486,6 +510,8 @@ function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: numbe
     move: 0,
     calls: 0,
     ringCd: ELITE.ringEvery * 0.6,
+    hidden: !b && def.ai === 'lurk',
+    show: 0,
   };
   s.enemies.push(e);
   return e;
@@ -552,6 +578,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     shots: [],
     zones: [],
     warns: [],
+    pools: [],
     queue: [],
     events: [],
     total: 0,
@@ -573,7 +600,8 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     loot: [],
     picks: [],
     god: !!opts.god,
-    env: { id: region.env, f: loadout.hero === region.counter ? 0 : loadout.fx?.includes('ward') ? FX.ward.env : 1, gust: 0, warn: 0 },
+    env: { id: region.env, f: loadout.hero === region.counter ? 0 : loadout.fx?.includes('ward') ? FX.ward.env : 1, gust: 0, warn: 0, acc: 0, k: 0 },
+    foeAtk: sc.atk,
     tag: 1,
     nextId: 1,
     reward: sc.reward,
@@ -709,6 +737,8 @@ function hitEnemy(s: RunState, e: Enemy, mul: number, on: OnHit | null, fromX: n
   }
   e.hp -= n;
   e.flash = 0.12;
+  // 숨은 요괴는 맞으면 잠깐 드러난다
+  if (e.def.ai === 'lurk' && !e.bossDef) (e.show = Math.max(e.show, 1.5)), (e.hidden = false);
   if (!e.awake) {
     e.awake = true;
     wakeGroup(s, e.group);
@@ -743,12 +773,14 @@ function aim(s: RunState, range: number): number {
   const face = Math.atan2(p.fy, p.fx);
   let best: Enemy | null = null;
   let bd = Infinity;
+  // 달그림자(4지형): 보이는 거리 밖의 요괴는 조준하지 못한다. 숨은 요괴도 마찬가지
+  const sight = sightOf(s);
   for (const e of s.enemies) {
-    if (e.dead || !e.awake) continue;
+    if (e.dead || !e.awake || e.hidden) continue;
     const dx = e.x - p.x;
     const dy = e.y - p.y;
     const d = Math.hypot(dx, dy) - e.r;
-    if (d > range || d >= bd) continue;
+    if (d > range || d >= bd || d > sight) continue;
     // 움직이는 중에는 가는 쪽 요괴만, 서 있으면 둘레 어디든
     if (p.moving && d > PLAYER_R * 2 && angDiff(Math.atan2(dy, dx), face) > AIM_HALF) continue;
     best = e;
@@ -765,7 +797,7 @@ function nearest(s: RunState, x: number, y: number, range: number, skipTag = 0):
   let best: Enemy | null = null;
   let bd = range;
   for (const e of s.enemies) {
-    if (e.dead || !e.awake || (skipTag && e.tag === skipTag)) continue;
+    if (e.dead || !e.awake || e.hidden || (skipTag && e.tag === skipTag)) continue;
     const d = Math.hypot(e.x - x, e.y - y) - e.r;
     if (d <= bd) {
       best = e;
@@ -934,7 +966,7 @@ function enemyById(s: RunState, id: number): Enemy | null {
 }
 
 function addWarn(s: RunState, w: Partial<Warn> & { shape: Warn['shape']; t: number; dmg: number; src: number }): Warn {
-  const full: Warn = { x: 0, y: 0, ang: 0, r: 0, len: 0, w: 0, half: 0, delay: 0, total: w.t, after: 'none', big: false, ...w };
+  const full: Warn = { x: 0, y: 0, ang: 0, r: 0, len: 0, w: 0, half: 0, delay: 0, total: w.t, after: 'none', aux: 0, aux2: 0, big: false, ...w };
   s.warns.push(full);
   return full;
 }
@@ -963,11 +995,27 @@ function stepWarns(s: RunState) {
     if (w.shape !== 'none') {
       const shape: Shape = w.shape === 'circle' ? { k: 'circle', r: w.r } : w.shape === 'arc' ? { k: 'arc', r: w.r, half: w.half } : { k: 'line', len: w.len, w: w.w };
       // 대원에게 너그럽게: 몸 가운데가 범위 안에 있어야 맞는다
-      if (inShape(shape, w.x, w.y, w.ang, p.x, p.y, 0)) hurtPlayer(s, w.dmg);
+      const hit = inShape(shape, w.x, w.y, w.ang, p.x, p.y, 0);
+      const open = p.invuln <= 0;
+      if (hit) hurtPlayer(s, w.dmg);
+      // 끌어당기기: 맞았으면(구르는 중이 아니면) 낸 요괴 앞으로 끌려간다
+      if (hit && open && w.after === 'pull' && src && s.phase === 'play') {
+        const dx = src.x - p.x;
+        const dy = src.y - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const go = Math.max(0, Math.min(w.aux, d - src.r - PLAYER_R - 12));
+        move(s, p, (dx / d) * go, (dy / d) * go, PLAYER_R);
+      }
       if (w.big) push(s, { e: 'boom', x: w.shape === 'line' ? w.x + (Math.cos(w.ang) * w.len) / 2 : w.x, y: w.shape === 'line' ? w.y + (Math.sin(w.ang) * w.len) / 2 : w.y, r: w.shape === 'line' ? w.w : w.r });
     }
+    if (w.after === 'pool') s.pools.push({ x: w.x, y: w.y, r: w.r, left: w.aux, total: w.aux, dmg: w.aux2, acc: 0 });
     if (!src) continue;
-    if (w.after === 'dash') move(s, src, Math.cos(w.ang) * (w.len - src.r), Math.sin(w.ang) * (w.len - src.r), src.r);
+    if (w.after === 'boom') {
+      // 자폭: 터지면 사라진다 (정예는 남는다)
+      if (!src.elite && !src.bossDef) killEnemy(s, src);
+    } else if (w.after === 'nova') {
+      for (let k = 0; k < w.aux; k++) shoot(s, true, 'fire', src.x, src.y, w.ang + (k / w.aux) * Math.PI * 2, w.aux2, 560, 14, w.dmg * 0.8, 0, null);
+    } else if (w.after === 'dash') move(s, src, Math.cos(w.ang) * (w.len - src.r), Math.sin(w.ang) * (w.len - src.r), src.r);
     else if (w.after === 'jump') move(s, src, w.x - src.x, w.y - src.y, Math.min(src.r, TILE * 0.45));
     else if (w.after === 'shoot') shoot(s, true, 'fire', src.x, src.y, Math.atan2(p.y - src.y, p.x - src.x), src.def.area, 620, 13, w.dmg, 0, null);
   }
@@ -1008,9 +1056,29 @@ function bossAct(s: RunState, e: Enemy, def: BossDef, dist: number, ang: number)
       const a = rand(s) * Math.PI * 2;
       const d = i === 0 ? 0 : m.spread * (0.35 + 0.65 * rand(s));
       const t = m.warn + i * (m.gap ?? 0);
-      addWarn(s, { shape: 'circle', x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: m.r, t, dmg, src: e.id, big: true });
+      addWarn(s, { shape: 'circle', x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: m.r, t, dmg, src: e.id, big: true, ...(m.pool ? { after: 'pool' as const, aux: m.pool.dur, aux2: e.atk * m.pool.mul } : {}) });
     }
     busy += (m.n - 1) * (m.gap ?? 0);
+  } else if (m.t === 'leap') {
+    const n = m.count ?? 1;
+    for (let i = 0; i < n; i++) addWarn(s, { shape: 'circle', x: p.x, y: p.y, r: m.r, t: m.warn, delay: i * (m.gap ?? 0), dmg, src: e.id, after: 'jump', big: true });
+    busy += (n - 1) * (m.gap ?? 0);
+  } else if (m.t === 'rake') {
+    // 나란한 줄: 가운데 줄이 대원을 지난다 (짝수면 대원이 줄 사이에 선다)
+    const px = -Math.sin(ang);
+    const py = Math.cos(ang);
+    for (let i = 0; i < m.n; i++) {
+      const off = (i - (m.n - 1) / 2) * m.space;
+      addWarn(s, { shape: 'line', x: e.x + px * off - Math.cos(ang) * 60, y: e.y + py * off - Math.sin(ang) * 60, ang, len: m.len, w: m.w, t: m.warn, dmg, src: e.id, big: true });
+    }
+  } else if (m.t === 'nova') {
+    addWarn(s, { shape: 'circle', x: e.x, y: e.y, r: m.r, t: m.warn, ang: ang + (m.turn ?? 0), dmg, src: e.id, after: 'nova', aux: m.n, aux2: m.speed, big: true });
+  } else if (m.t === 'march') {
+    for (let i = 0; i < m.n; i++) {
+      const d = e.r + m.r * 0.6 + i * m.step;
+      addWarn(s, { shape: 'circle', x: e.x + Math.cos(ang) * d, y: e.y + Math.sin(ang) * d, r: m.r, t: m.warn + i * m.gap, dmg, src: e.id, big: true });
+    }
+    busy += (m.n - 1) * m.gap;
   } else if (m.t === 'cross') {
     for (let i = 0; i < m.n; i++) addWarn(s, { shape: 'line', x: e.x, y: e.y, ang: ang + (m.turn ?? 0) + (i / m.n) * Math.PI * 2, len: m.len, w: m.w, t: m.warn, dmg, src: e.id, big: true });
   } else if (m.t === 'cone') {
@@ -1143,6 +1211,53 @@ function stepEnemies(s: RunState) {
         else if (dist < 110) moveEnemy(s, e, -ux, -uy, 0.7);
         else moveEnemy(s, e, -uy * (e.id % 2 ? 1 : -1), ux * (e.id % 2 ? 1 : -1), 0.7);
         break;
+      case 'lurk':
+        // 숨어서 다가온다. 바로 옆에 오면 나타나서 치고, 한동안 드러나 있다가 다시 숨는다
+        if (e.show > 0) e.show -= STEP;
+        if (dist <= reach) {
+          e.hidden = false;
+          e.show = Math.max(e.show, 0.6);
+          if (e.cd <= 0) {
+            addWarn(s, { shape: 'circle', x: e.x + ux * d.area * 0.5, y: e.y + uy * d.area * 0.5, r: d.area + (e.r - d.r), t: d.windup, dmg: e.atk, src: e.id });
+            e.busy = d.windup + 0.1;
+            e.cd = d.cd;
+            e.show = d.cd * 0.8;
+          }
+        } else {
+          e.hidden = e.show <= 0;
+          approach(s, e, ux, uy);
+        }
+        break;
+      case 'pull':
+        if (dist <= reach && e.cd <= 0 && clearLine(s, e.x, e.y, 10)) {
+          addWarn(s, { shape: 'line', x: e.x, y: e.y, ang, len: d.area, w: 64, t: d.windup, dmg: e.atk * 0.7, src: e.id, after: 'pull', aux: d.pull ?? 200, big: true });
+          e.busy = d.windup + 0.3;
+          e.cd = d.cd;
+        } else if (dist > reach * 0.8) approach(s, e, ux, uy);
+        else if (dist <= 80 + (e.r - d.r) && e.cd <= d.cd - 1.2) {
+          // 끌려온 대원을 문다
+          addWarn(s, { shape: 'circle', x: e.x + ux * 40, y: e.y + uy * 40, r: 70 + (e.r - d.r), t: 0.5, dmg: e.atk, src: e.id });
+          e.busy = 0.6;
+          e.cd = Math.max(e.cd, 1.4);
+        }
+        break;
+      case 'spit':
+        if (dist <= reach && e.cd <= 0) {
+          addWarn(s, { shape: 'circle', x: p.x, y: p.y, r: d.area, t: d.windup, dmg: e.atk, src: e.id, after: 'pool', aux: d.pool?.dur ?? 3, aux2: e.atk * (d.pool?.mul ?? 0.4), big: true });
+          e.busy = d.windup + 0.2;
+          e.cd = d.cd;
+        } else if (dist < reach * 0.45) moveEnemy(s, e, -ux, -uy, 0.8);
+        else if (dist > reach * 0.85) approach(s, e, ux, uy);
+        break;
+      case 'bomb':
+        if (dist <= reach) {
+          if (e.cd <= 0) {
+            addWarn(s, { shape: 'circle', x: e.x, y: e.y, r: d.area + (e.r - d.r), t: d.windup, dmg: e.atk, src: e.id, after: 'boom', big: true });
+            e.busy = d.windup + 0.2;
+            e.cd = d.cd;
+          }
+        } else approach(s, e, ux, uy);
+        break;
       case 'ranged':
         if (dist <= reach && e.cd <= 0) {
           addWarn(s, { shape: 'none', t: d.windup, dmg: e.atk, src: e.id, after: 'shoot' });
@@ -1246,9 +1361,88 @@ function stepZones(s: RunState) {
 /** 느려지는 땅 위의 이동 배율: 물 0.6, 2지형 진흙탕은 더 느리다 (막는 대원은 물과 같다) */
 export const slowTileMul = (s: RunState) => (s.env.id === 'mud' ? SLOW_TILE_MUL - (SLOW_TILE_MUL - ENV.mud.slow) * s.env.f : SLOW_TILE_MUL);
 
-/** 골바람 (3지형): 시간만으로 정해진다 — every 초마다 dur 초 동안, 좌우 번갈아. 예고는 warn 초 전 */
+/** 달그림자(4지형)에서 요괴가 보이는 거리 (다른 지형 · 막는 대원은 끝없이) */
+export const sightOf = (s: RunState) => (s.env.id === 'dark' && s.env.f > 0 ? ENV.dark.see / s.env.f : Infinity);
+
+/** 환경이 주는 피해: 방어·무적과 상관없이 그대로 받는다 (독) */
+function envHurt(s: RunState, n: number) {
+  const p = s.p;
+  if (s.phase !== 'play' || n <= 0) return;
+  if (!s.god) p.hp -= n;
+  p.hurt = 0.2;
+  push(s, { e: 'hurt', x: p.x, y: p.y - 30, n });
+  if (p.hp <= 0) {
+    p.hp = 0;
+    s.phase = 'dead';
+  }
+}
+
+/** 0~1 (환경 효과용: 시간 차례와 번호만으로 정해진다) */
+const envHash = (a: number, b: number) => {
+  const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return n - Math.floor(n);
+};
+
+/** 요괴가 남긴 독 웅덩이: 서 있으면 POOL_TICK 마다 피해 */
+function stepPools(s: RunState) {
+  const p = s.p;
+  for (let i = s.pools.length - 1; i >= 0; i--) {
+    const z = s.pools[i];
+    z.left -= STEP;
+    if (z.left <= 0) {
+      s.pools.splice(i, 1);
+      continue;
+    }
+    if (Math.hypot(p.x - z.x, p.y - z.y) > z.r) {
+      z.acc = 0;
+      continue;
+    }
+    z.acc += STEP;
+    if (z.acc >= POOL_TICK) {
+      z.acc -= POOL_TICK;
+      hurtPlayer(s, z.dmg);
+    }
+  }
+}
+
+/**
+ * 지형 환경. 무작위를 쓰지 않는다 (시간과 자리만으로 정해진다).
+ * 골바람 (3지형): every 초마다 dur 초 동안, 좌우 번갈아. 예고는 warn 초 전
+ */
 function stepEnv(s: RunState) {
   const env = s.env;
+  const p = s.p;
+  if (env.id === 'water') {
+    // 물길 (5지형): 물 위에서는 물살이 아래로 민다 (돌진 스킬 중에는 밀리지 않는다)
+    if (env.f > 0 && p.dashT <= 0 && tileAt(s, p.x, p.y) === 2) move(s, p, 0, ENV.water.push * env.f * STEP, PLAYER_R);
+    return;
+  }
+  if (env.id === 'poison') {
+    // 독안개 (6지형): 늪 위에 서 있으면 tick 초마다 독 피해
+    if (env.f > 0 && tileAt(s, p.x, p.y) === 2) {
+      env.acc += STEP;
+      if (env.acc >= ENV.poison.tick) {
+        env.acc -= ENV.poison.tick;
+        envHurt(s, Math.max(1, Math.round(s.stats.hp * ENV.poison.pct * env.f)));
+      }
+    }
+    return;
+  }
+  if (env.id === 'arrow') {
+    // 성벽 화살 (7지형): every 초마다 대원 자리에 하나, 그 둘레에 나머지
+    const a = ENV.arrow;
+    const k = Math.floor(s.t / a.every);
+    if (k <= env.k) return;
+    env.k = k;
+    push(s, { e: 'env', id: 'arrow', dir: 0 });
+    if (env.f <= 0) return;
+    for (let i = 0; i < a.n; i++) {
+      const ang = envHash(k, i) * Math.PI * 2;
+      const d = i === 0 ? 0 : a.spread * (0.45 + 0.55 * envHash(i, k));
+      addWarn(s, { shape: 'circle', x: p.x + Math.cos(ang) * d, y: p.y + Math.sin(ang) * d, r: a.r, t: a.warn + i * a.gap, dmg: a.dmg * s.foeAtk * env.f, src: -1, big: true });
+    }
+    return;
+  }
   if (env.id !== 'wind') return;
   const w = ENV.wind;
   const k = Math.floor(s.t / w.every);
@@ -1374,6 +1568,7 @@ export function step(s: RunState, inp: Input) {
   stepZones(s);
   stepEnemies(s);
   stepWarns(s);
+  stepPools(s);
 
   const p = s.p;
   if (!s.chest && Math.hypot(p.x - s.chestX, p.y - s.chestY) < 50) {

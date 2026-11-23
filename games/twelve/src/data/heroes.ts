@@ -71,10 +71,12 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: 'horse', animal: '말', name: '따각이', stats: S({ speed: 1.05, atk: 1.02, mp: 0.955 }), weapon: 'spear', home: 7, join: 4,
+    hello: '따각따각! 달밤 길은 내가 제일 빨라. 성문까지 태워 줄게.',
     unique: U('질주', '멀리 달려가며 들이받는다', '🐴', 18, 'boost', [{ t: 'dash', dist: 520, time: 0.32, w: 110, mul: 3.2, kb: 220, stun: 0.6 }]),
   },
   {
     id: 'sheep', animal: '양', name: '몽실이', stats: S({ hp: 1.04, mp: 1.05, atk: 0.96 }), weapon: 'fan', home: 8, join: 5,
+    hello: '연못이 다시 맑아졌네… 몽실몽실, 나도 같이 갈래요.',
     unique: U('솜구름', '주변 요괴를 느리게 하고 체력을 15% 회복한다', '🐑', 24, 'tankHeal', [
       { t: 'hit', shape: { k: 'circle', r: 260 }, mul: 0.6, slow: { mul: 0.45, dur: 4 } },
       { t: 'heal', hp: 0.15 },
@@ -82,10 +84,12 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: 'monkey', animal: '원숭이', name: '재롱이', stats: S({ crit: 1.05, speed: 1.03, def: 0.955 }), weapon: 'bow', home: 9, join: 6,
+    hello: '끼끼! 늪에서 꺼내 줘서 고마워. 성벽 화살쯤은 내가 다 잡아 줄게!',
     unique: U('재주넘기', '주변을 세 번 휩쓴다', '🐵', 20, 'survSlash', [0, 0.18, 0.36].map((at): Act => ({ t: 'hit', at, shape: { k: 'circle', r: 190 }, mul: 1.3, kb: 90 }))),
   },
   {
     id: 'rooster', animal: '닭', name: '꼬꼬댁', stats: S({ atk: 1.05, speed: 1.02, hp: 0.96 }), weapon: 'bow', home: 10, join: 7,
+    hello: '꼬끼오! 성문이 열렸으니 새벽도 머지않았어. 내가 길을 깨울게.',
     unique: U('새벽 울음', '6초 동안 공격 +40%', '🐔', 24, 'raceGo', [{ t: 'buff', dur: 6, atk: 1.4 }]),
   },
   {

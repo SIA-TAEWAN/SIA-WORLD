@@ -3,7 +3,7 @@ import { BOSSES } from '../src/data/bosses';
 import { ENEMIES } from '../src/data/enemies';
 import { MAX_LEVEL, addExp, expNeed, expPenalty } from '../src/data/growth';
 import { mapKillMax, mapOf } from '../src/data/maps';
-import { mapLevel, mapScale } from '../src/data/regions';
+import { REGIONS_READY, mapLevel, mapScale } from '../src/data/regions';
 import {
   LIMITS,
   applyReport,
@@ -78,14 +78,16 @@ describe('맵 열림', () => {
     expect(mapOpen(p, '3-1')).toBe(false);
     expect(continueMap(p)).toBe('2-1');
     expect(heroesOf(p)).toContain('rabbit'); // 2지형의 진흙을 막는 대원은 1지형 보스를 잡으면 합류한다
-    for (const r of [2, 3]) for (let n = 1; n <= 8; n++) applyReport(p, report(`${r}-${n}`));
-    expect(regionReady(3)).toBe(true);
-    expect(regionOpen(p, 4)).toBe(true);
-    expect(regionReady(4)).toBe(false);
-    expect(mapOpen(p, '4-1')).toBe(false);
+    // 준비된 마지막 지형까지 깬다 → 그다음 지형은 열렸지만 아직 준비 중
+    const last = REGIONS_READY;
+    for (let r = 2; r <= last; r++) for (let n = 1; n <= 8; n++) applyReport(p, report(`${r}-${n}`));
+    expect(regionReady(last)).toBe(true);
+    expect(regionOpen(p, last + 1)).toBe(true);
+    expect(regionReady(last + 1)).toBe(false);
+    expect(mapOpen(p, `${last + 1}-1`)).toBe(false);
     expect(mapOpen(p, '1-1', 'hard')).toBe(false);
-    expect(continueMap(p)).toBe('3-8');
-    expect(checkStart(p, '4-1', 'normal', 'rat')).toBe('bad map');
+    expect(continueMap(p)).toBe(`${last}-8`);
+    expect(checkStart(p, `${last + 1}-1`, 'normal', 'rat')).toBe('bad map');
     expect(checkStart(p, '1-1', 'hard', 'rat')).toBe('map locked');
   });
 

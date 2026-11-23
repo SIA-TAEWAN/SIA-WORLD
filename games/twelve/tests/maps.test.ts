@@ -79,12 +79,13 @@ describe('맵 데이터', () => {
       expect(maps.filter((m) => m.boss).map((m) => m.no)).toEqual([8]);
     }
     expect(mapOf('1-3')!.no).toBe(3);
-    expect(REGIONS_READY).toBe(3);
-    expect(MAPS.length).toBe(24);
-    expect(mapOf('4-1')).toBeNull();
+    expect(REGIONS_READY).toBeGreaterThanOrEqual(4);
+    expect(MAPS.length).toBe(REGIONS_READY * MAPS_PER_REGION);
+    expect(mapOf(`${REGIONS_READY + 1}-1`)).toBeNull();
     expect(nextMap('1-3')!.id).toBe('1-4');
     expect(nextMap('1-8')!.id).toBe('2-1');
-    expect(nextMap('3-8')).toBeNull(); // 4지형은 준비 중
+    expect(nextMap('3-8')!.id).toBe('4-1');
+    expect(nextMap(`${REGIONS_READY}-8`)).toBeNull(); // 그다음 지형은 준비 중
   });
 
   it.each(MAPS.map((m) => [m.id, m] as const))('%s: 타일·자리가 올바르고 시작에서 모두 닿는다', (_id, m) => {
@@ -144,8 +145,33 @@ describe('맵 데이터', () => {
     expect(wallTiles(R03)).toBeGreaterThan(wallTiles(R02));
   });
 
-  it.each([1, 2, 3])('%i지형 파일은 생성 스크립트(npm run gen) 결과와 같다', (r) => {
-    const file = readFileSync(new URL(`../src/data/maps/r0${r}.ts`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  it('4~7지형: 지형마다 새 행동의 요괴가 2번 맵부터 나오고, 그 지형의 땅(대숲 · 연못 · 늪 · 성벽)이 깔린다', () => {
+    const fresh = { 4: ['shade', 'lurk'], 5: ['catfish', 'pull'], 6: ['toad', 'spit'], 7: ['bomber', 'bomb'] } as const;
+    const slow = (list: readonly MapDef[]) => list.reduce((a, m) => a + m.rows.join('').split('~').length - 1, 0);
+    for (const r of [4, 5, 6, 7] as const) {
+      if (r > REGIONS_READY) continue;
+      const list = mapsOf(r);
+      const [kind, ai] = fresh[r];
+      expect(ENEMIES[kind].ai).toBe(ai);
+      expect(REGION_TABLE[r - 1].enemies[1]).toBe(kind);
+      const has = (m: MapDef) => m.groups.some((g) => g.list.some(([k]) => k === kind));
+      expect(has(list[0])).toBe(false);
+      for (const m of list.slice(1)) expect(has(m), m.id).toBe(true);
+      // 새 요괴는 앞 지형에 나오지 않는다
+      expect(MAPS.filter((m) => m.region < r).some(has)).toBe(false);
+      const kinds = new Set(list.flatMap((m) => m.groups.flatMap((g) => g.list.map(([k]) => k))));
+      expect([...kinds].sort()).toEqual([...REGION_TABLE[r - 1].enemies].sort());
+      expect(new Set(list.map((m) => m.name)).size).toBe(8);
+      // 한 지형에 같은 그림을 쓰는 요괴가 겹치지 않는다 (색만 바꿔 쓰는 요괴 때문에)
+      expect(new Set(REGION_TABLE[r - 1].enemies.map((k) => ENEMIES[k].art)).size).toBe(REGION_TABLE[r - 1].enemies.length);
+    }
+    // 연못(5) · 늪(6)은 느려지는 땅이 훨씬 많다 (환경 효과가 걸리는 땅)
+    if (REGIONS_READY >= 5) expect(slow(mapsOf(5))).toBeGreaterThan(slow(R01) * 2);
+    if (REGIONS_READY >= 6) expect(slow(mapsOf(6))).toBeGreaterThan(slow(R01) * 1.5);
+  });
+
+  it.each(Array.from({ length: REGIONS_READY }, (_, i) => i + 1))('%i지형 파일은 생성 스크립트(npm run gen) 결과와 같다', (r) => {
+    const file = readFileSync(new URL(`../src/data/maps/r${String(r).padStart(2, '0')}.ts`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
     expect(file).toBe(regionFile(r, generateRegion(r)));
   });
 });

@@ -30,14 +30,14 @@ export const GROUND: Record<Ground, { tile: string; floor: number; wall: number;
   underworld: { tile: 'tile-underworld', floor: ROULETTE.winter, wall: COLOR.inkSoft, wallDark: COLOR.outline, slow: COLOR.emptyLine },
 };
 
-/** 2지형은 물웅덩이 대신 진흙탕이다 (흙색) */
+/** 2지형은 물웅덩이 대신 진흙탕(흙색), 6지형은 독이 낀 늪(잿빛)이다 */
 export const groundOf = (region: number) => {
   const r = regionOf(region);
-  return r.env === 'mud' ? { ...GROUND[r.ground], slow: COLOR.inkSoft } : GROUND[r.ground];
+  return r.env === 'mud' ? { ...GROUND[r.ground], slow: COLOR.inkSoft } : r.env === 'poison' ? { ...GROUND[r.ground], slow: COLOR.draw } : GROUND[r.ground];
 };
 
 /** 기존 그림을 돌려 쓰는 요괴의 색 (전용 그림이 생기면 지운다 — ASSETS.md) */
-export const ENEMY_TINT: Partial<Record<EnemyKind, number>> = { mud: COLOR.emptyLine, lynx: COLOR.primaryLight };
+export const ENEMY_TINT: Partial<Record<EnemyKind, number>> = { mud: COLOR.emptyLine, lynx: COLOR.primaryLight, shade: COLOR.skyDeep, catfish: COLOR.teamA, toad: COLOR.win, bomber: COLOR.lose };
 
 /** 이 맵에서 받을 기본 그림 이름 (요괴·보스·바닥·효과) */
 export function artFor(map: MapDef): string[] {

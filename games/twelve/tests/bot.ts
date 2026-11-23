@@ -1,5 +1,5 @@
 import { TILE } from '../src/data/balance';
-import { STEP, noInput, step, type Input, type RunState } from '../src/game/sim';
+import { STEP, noInput, sightOf, step, type Input, type RunState } from '../src/game/sim';
 
 /**
  * 시험용 자동 조종: 가까운 요괴를 찾아가 치고, 빨간 범위에 서 있으면 구르고, 출구가 열리면 출구로 간다.
@@ -102,7 +102,8 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
     const d = Math.hypot(dx, dy) || 1;
     // 칼·창은 붙어서, 활·부채는 떨어져서 싸운다 (조준 거리의 절반쯤에서 멈춰 쏜다)
     const ranged = s.weapon.kind === 'bow' || s.weapon.kind === 'fan';
-    const close = fight && best < (ranged ? s.weapon.aim * 0.55 : s.weapon.kind === 'sword' ? 85 : 140) && (!ranged || sees(s, p.x, p.y, tx, ty));
+    // 달그림자(4지형)에서는 보이는 거리 안까지 다가가서 쏜다
+    const close = fight && best < (ranged ? Math.min(s.weapon.aim * 0.55, sightOf(s) * 0.8) : s.weapon.kind === 'sword' ? 85 : 140) && (!ranged || sees(s, p.x, p.y, tx, ty));
     inp.mx = close ? 0 : dx / d;
     inp.my = close ? 0 : dy / d;
     inp.attack = fight && best < s.weapon.aim + 40;

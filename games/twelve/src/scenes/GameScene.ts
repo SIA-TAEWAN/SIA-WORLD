@@ -5,7 +5,7 @@ import { MAP_W, PLAYER_R, TILE } from '../data/balance';
 import { itemDef } from '../data/items';
 import { regionOf } from '../data/regions';
 import type { Drop } from '../game/drops';
-import { STEP, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
+import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
 import { ENEMY_TINT, artFor, groundOf } from './art';
 
@@ -290,6 +290,12 @@ export class GameScene extends Phaser.Scene {
           break;
         }
         case 'env':
+          if (ev.id === 'arrow') {
+            // 성벽 화살 (7지형)
+            this.sfx('survBossWarn', 0, { volume: 0.4, rate: 1.3 });
+            this.hooks.note(this.run.env.f > 0 ? '🏹 성벽에서 화살이 쏟아져요!' : `🏹 화살! ${this.run.hero.name}가 다 잡아냈어요`);
+            break;
+          }
           // 골바람 예고
           this.sfx('boost', 0, { volume: 0.5, rate: 0.7 });
           this.hooks.note(this.run.env.f > 0 ? `🌬️ 골바람이 불어와요 ${ev.dir > 0 ? '→' : '←'}` : `🌬️ 골바람! ${this.run.hero.name}는 밀리지 않아요`);
@@ -382,6 +388,14 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(COLOR.primary, a * 0.7).fillRect(m.x - 22, m.y - 300, 44, 310);
       g.fillStyle(COLOR.white, a).fillRect(m.x - 8, m.y - 300, 16, 310);
       g.lineStyle(4, COLOR.primary, 0.9).strokeCircle(m.x, m.y + 6, 30 + 4 * Math.sin(now * 5));
+    }
+    // 요괴가 남긴 독 웅덩이: 서 있으면 다친다 (사라지기 전에 옅어진다)
+    for (const z of s.pools) {
+      if (!this.onScreen(z.x, z.y, z.r)) continue;
+      const f = Math.min(1, z.left / 0.6);
+      g.fillStyle(COLOR.win, 0.42 * f).fillCircle(z.x, z.y, z.r);
+      g.lineStyle(4, COLOR.outline, 0.7 * f).strokeCircle(z.x, z.y, z.r);
+      for (let i = 0; i < 4; i++) g.fillStyle(COLOR.white, 0.5 * f).fillCircle(z.x + Math.cos(i * 1.7 + now * 1.3) * z.r * 0.55, z.y + Math.sin(i * 2.3 + now * 1.1) * z.r * 0.5, 5 + 2 * Math.sin(now * 4 + i));
     }
     // 땅에 남는 범위 (화살 비 · 회오리 · 독안개)
     for (const z of s.zones) {
@@ -482,6 +496,14 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // 달그림자 (4지형): 보이는 거리 밖을 어둡게 덮는다
+    const see = sightOf(s);
+    if (see !== Infinity) {
+      const thick = 1500;
+      o.lineStyle(thick, COLOR.outline, 0.42).strokeCircle(p.x, p.y, see + 50 + thick / 2);
+      o.lineStyle(50, COLOR.outline, 0.2).strokeCircle(p.x, p.y, see + 25);
+    }
+
     // 골바람 (3지형): 예고 = 대원 옆 화살표, 부는 동안 = 바람 줄기가 화면을 가로지른다
     const env = s.env;
     if (env.warn && Math.floor(now * 6) % 2) {
@@ -528,8 +550,11 @@ export class GameScene extends Phaser.Scene {
 
   private drawEnemies(g: Phaser.GameObjects.Graphics, o: Phaser.GameObjects.Graphics, now: number) {
     const s = this.run;
+    // 달그림자(4지형): 보이는 거리 밖의 요괴는 그리지 않는다 (가장자리에서 서서히 사라진다)
+    const sight = sightOf(s);
     for (const e of s.enemies) {
-      const show = !e.dead && this.onScreen(e.x, e.y, MARGIN);
+      const far = sight === Infinity ? 0 : Math.hypot(e.x - s.p.x, e.y - s.p.y) - e.r - sight;
+      const show = !e.dead && far < 60 && this.onScreen(e.x, e.y, MARGIN);
       let v = this.views.get(e.id);
       if (!show) {
         if (v) {
@@ -552,7 +577,10 @@ export class GameScene extends Phaser.Scene {
       const wob = e.awake && e.busy <= 0 && e.stun <= 0 ? Math.sin(now * 9 + e.id) * 2.5 : 0;
       // 공격을 예고하는 동안 몸을 부풀린다
       const puff = e.busy > 0 ? 1.08 : 1;
-      v.setPosition(e.x, e.y + e.r * 0.8 + wob).setDisplaySize(size * puff, size * puff).setFlipX(!e.left).setDepth(10 + e.y / 100000);
+      // 숨은 요괴(그슨대)는 아지랑이처럼 희미하게만 보인다
+      const alpha = (e.hidden ? 0.16 + 0.06 * Math.sin(now * 5 + e.id) : 1) * (far > 0 ? 1 - far / 60 : 1);
+      v.setPosition(e.x, e.y + e.r * 0.8 + wob).setDisplaySize(size * puff, size * puff).setFlipX(!e.left).setDepth(10 + e.y / 100000).setAlpha(alpha);
+      if (e.hidden) continue;
       if (e.flash > 0) v.setTintFill(COLOR.white);
       else if (e.stun > 0) v.setTint(COLOR.primaryLight);
       else if (e.slowT > 0) v.setTint(COLOR.skyMid);
@@ -633,7 +661,8 @@ export class GameScene extends Phaser.Scene {
   private makeChunk(idx: number): Phaser.GameObjects.Image {
     const s = this.run;
     const look = groundOf(s.map.region);
-    const mud = regionOf(s.map.region).env === 'mud';
+    const envId = regionOf(s.map.region).env;
+    const mud = envId === 'mud' || envId === 'poison';
     const y0 = idx * CHUNK_ROWS;
     const rows = Math.min(CHUNK_ROWS, s.rows - y0);
     const tex = this.textures.createCanvas(`chunk${idx}`, WORLD_W, rows * TILE)!;
@@ -664,7 +693,7 @@ export class GameScene extends Phaser.Scene {
           c.globalAlpha = 0.85;
           c.fillRect(px, py, TILE, TILE);
           c.globalAlpha = 1;
-          c.strokeStyle = css(mud ? COLOR.emptyLine : COLOR.white);
+          c.strokeStyle = css(envId === 'poison' ? COLOR.win : mud ? COLOR.emptyLine : COLOR.white);
           c.lineWidth = 3;
           c.beginPath();
           const wx = px + 10 + hash(x, y, 1) * 20;

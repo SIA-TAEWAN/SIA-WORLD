@@ -578,7 +578,7 @@ function playRun(run: RunState, o: PlayOpts) {
         <div class="gauge exp"><i id="exp"></i></div>
       </div>
       <div class="hud-side"><span class="hud-pill" id="time"></span><span class="hud-pill" id="kills"></span>${
-        run.env.id === 'mud' || run.env.id === 'wind' ? `<span class="hud-pill env ${run.env.f < 1 ? 'ok' : ''}">${ENV_ICON[run.env.id]} ${ENV_NAME[run.env.id]}${run.env.f === 0 ? ' 막음' : run.env.f < 1 ? ' 절반' : ''}</span>` : ''
+        run.env.id !== 'none' ? `<span class="hud-pill env ${run.env.f < 1 ? 'ok' : ''}">${ENV_ICON[run.env.id]} ${ENV_NAME[run.env.id]}${run.env.f === 0 ? ' 막음' : run.env.f < 1 ? ' 절반' : ''}</span>` : ''
       }</div>
       <canvas id="mini" width="64" height="144"></canvas>
     </div>

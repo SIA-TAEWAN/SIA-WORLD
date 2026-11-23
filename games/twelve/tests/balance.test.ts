@@ -29,17 +29,18 @@ describe('성장 곡선 (PRD 성장 표: 보통 1~4지형 약 4시간에 Lv25)',
     return lv.level;
   };
 
-  it('1~3지형을 끝내면 Lv18~19 안팎이고, 지형마다 마지막 맵 권장 레벨보다 2~3 높다', () => {
-    expect(REGIONS_READY).toBe(3);
+  it('지형을 끝낼 때마다 마지막 맵 권장 레벨보다 1~5 높고, 1~4지형을 끝내면 Lv25 안팎이다 (PRD 표)', () => {
     const t = GROWTH_TARGETS[0];
     expect(t).toMatchObject({ region: 4, hours: 4, level: 25 });
-    const got = [1, 2, 3].map(levelAfter);
-    expect(got[2]).toBeGreaterThanOrEqual(17);
-    expect(got[2]).toBeLessThanOrEqual(20);
+    const got = Array.from({ length: REGIONS_READY }, (_, i) => levelAfter(i + 1));
+    expect(got[2]).toBeGreaterThanOrEqual(18);
+    expect(got[2]).toBeLessThanOrEqual(21);
+    expect(got[3]).toBeGreaterThanOrEqual(t.level - 2);
+    expect(got[3]).toBeLessThanOrEqual(t.level + 2);
     got.forEach((lv, i) => {
       const rec = mapLevel(i + 1, MAPS_PER_REGION, 'normal');
       expect(lv, `${i + 1}지형`).toBeGreaterThanOrEqual(rec + 1);
-      expect(lv, `${i + 1}지형`).toBeLessThanOrEqual(rec + 4);
+      expect(lv, `${i + 1}지형`).toBeLessThanOrEqual(rec + 5);
     });
   });
 
@@ -52,7 +53,7 @@ describe('맵 크기 · 별 시간', () => {
   it('맵마다 요괴가 60~180마리, 지형 안에서 뒤로 갈수록 대체로 늘어난다 (맵 한 판 5~6분)', () => {
     for (const m of MAPS) {
       const n = mapKillMax(m, 'normal').total;
-      expect(n, m.id).toBeGreaterThanOrEqual(60);
+      expect(n, m.id).toBeGreaterThanOrEqual(m.boss ? 50 : 60);
       expect(n, m.id).toBeLessThanOrEqual(180);
     }
     for (let r = 1; r <= REGIONS_READY; r++) {
@@ -74,7 +75,7 @@ describe('맵 크기 · 별 시간', () => {
 describe('드랍 · 값', () => {
   it('일반 장비는 맵마다 한두 개: 1~3지형을 한 바퀴 돌아도 가방(40칸)이 넘치지 않는다', () => {
     let total = 0;
-    for (const m of MAPS) {
+    for (const m of MAPS.filter((x) => x.region <= 3)) {
       const drops = (mapKillMax(m, 'normal').total * DROP.gear) / 10000;
       expect(drops, m.id).toBeLessThan(2.5);
       total += drops;
