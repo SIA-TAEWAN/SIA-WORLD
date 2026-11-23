@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { PICK_CAP, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, towerCoins } from '../src/data/growth';
 import { heroRows, levelRows, stageRows, upgradeRows } from '../src/data/sqlrows';
 import { CAT_NEED, CAT_PRICE, CAT_STAGE, LIMITS, UNLOCK_LABEL } from '../src/game/progress';
+import { EXPECT_LEVEL } from '../src/data/balance';
+import { DAILY_FROM_REGION, DAILY_PARTY, dailyLevel } from '../src/game/daily';
 import { EXTRA_HERO_IDS, HEROES, MAX_SHOT_STEPS, STAGES } from '../src/sim';
 
 /**
@@ -10,7 +12,7 @@ import { EXTRA_HERO_IDS, HEROES, MAX_SHOT_STEPS, STAGES } from '../src/sim';
  * 다르면 npm run sqlrows 로 줄을 만들어 넣는다 (이미 올라간 마이그레이션은 고치지 않고 새 파일에 넣는다).
  */
 // 시아핑거 함수를 정의하는 마이그레이션 (순서대로). 함수를 다시 정의하는 새 파일을 만들면 여기에 넣는다 — 마지막 정의를 본다
-const FILES = ['067_finger.sql', '070_finger_limits.sql', '076_cat_finger.sql'];
+const FILES = ['067_finger.sql', '070_finger_limits.sql', '076_cat_finger.sql', '086_finger_daily.sql'];
 const SQL = FILES.map((f) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8')).join('\n');
 /** fn 의 최신 정의 (뒤 파일의 create or replace 가 이긴다) */
 const block = (fn: string) => {
@@ -118,6 +120,43 @@ describe('SQL 표', () => {
     // 기록 갱신: 높은 층 · 같은 층이면 적은 턴
     expect(block('finger_finish_verified')).toContain('v_floors > old_floor or (v_floors = old_floor and v_turns < old_turns)');
     expect(SQL).toContain("if not public._finger_cleared(me, '1-5') then raise exception 'tower locked'; end if;");
+  });
+
+  it('오늘의 도전 (086): 레벨 표 · 시작 검사 · 판 끝 갈래가 game/daily.ts 와 같다', () => {
+    const lv = block('_finger_daily_level').match(/array\[([^\]]*)\]/)?.[1].split(',').map((x) => Number(x.trim()));
+    expect(lv).toEqual(EXPECT_LEVEL);
+    for (let r = 1; r <= 12; r++) expect(dailyLevel(r)).toBe(lv![r - 1]);
+    const start = block('finger_daily_start');
+    expect(start).toContain(`if reg is null or reg < ${DAILY_FROM_REGION} then raise exception 'bad stage'; end if;`);
+    expect(start).toContain(`if n <> ${DAILY_PARTY} or array_position(p_party, null) is not null`);
+    expect(start).toContain("if d is null or d <> public._daily_day() then raise exception 'bad day'; end if;");
+    // 보통 판 모양(mode normal) + 정해진 레벨 · 강화 없음 + 날짜 → finger-finish 의 다시 돌리기는 그대로
+    expect(start).toContain("values (me, p_stage, 'normal', p_party, lvs, '{}'::jsonb, d)");
+    expect(start).toContain('security definer set search_path = public');
+    expect(SQL).toContain('revoke all on function public.finger_daily_start(text, text[], text) from public, anon;');
+    expect(SQL).toContain('grant execute on function public.finger_daily_start(text, text[], text) to authenticated;');
+    expect(SQL).toContain('revoke all on function public._finger_daily_level(int) from public, anon, authenticated;');
+    // 판 끝: 오늘의 판은 엽전·별 없이 깬 판만 −턴 수로 그날 순위에 (판은 한 번만 끝난다)
+    const fin = block('finger_finish_verified');
+    expect(fin).toContain('if rn.daily is not null then');
+    expect(fin).toContain("v_daily := public._daily_record(p_user, 'finger', (-v_turns)::bigint,");
+    expect(fin).toContain("jsonb_build_object('turns', v_turns, 'fallen', v_fallen, 'stage', rn.stage_id), p_run::text, rn.daily)");
+    expect(fin).toContain("if rn.finished_at is not null then raise exception 'already finished'; end if;");
+    expect(SQL).toContain('revoke all on function public.finger_finish_verified(uuid, uuid, jsonb) from public, anon, authenticated;');
+  });
+
+  it('판 끝 함수는 070 의 정의를 그대로 잇는다 (오늘의 도전 갈래와 변수 하나만 다르다)', () => {
+    const fnOf = (file: string) => {
+      const t = readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+      const i = t.lastIndexOf('create or replace function public.finger_finish_verified(');
+      return t.slice(i, t.indexOf('end $$;', i));
+    };
+    const now = fnOf('086_finger_daily.sql');
+    const a = now.indexOf('  -- 오늘의 도전:');
+    const b = now.indexOf('  if not tower then\n    select * into st');
+    expect(a).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(a);
+    expect((now.slice(0, a) + now.slice(b)).replace('  v_daily jsonb;\n', '')).toBe(fnOf('070_finger_limits.sql'));
   });
 
   it('랭킹 뷰 2개: 정렬 · 권한 (돌격대 061 과 같은 모양)', () => {

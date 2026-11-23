@@ -137,26 +137,30 @@ export const soloSync = (roomId) => invoke({ roomId, action: 'sync', payload: { 
 
 /**
  * 방 채널: 같은 방에 있는 화면끼리 바로 주고받는 알림 (Realtime Broadcast, DB·서버 함수를 거치지 않는다).
- * 사람 둘이 하는 맞고에서 내 행동을 상대 화면에 바로 보여 주는 데 쓴다. 누구나 보낼 수 있는 길이므로
- * 받은 쪽은 내용을 믿지 않는다 (규칙 검사를 통과한 것만 쓰고, 진실은 서버가 공개한 상태다).
+ *   'act'   — 사람 둘이 하는 맞고에서 내 행동을 상대 화면에 바로 보여 준다 (onMessage / send)
+ *   'emote' — 카드 게임 5종 공통 한마디: 자리 위 말풍선 (onEmote / emote)
+ * 누구나 보낼 수 있는 길이므로 받은 쪽은 내용을 믿지 않는다 (규칙·모양 검사를 통과한 것만 쓰고, 진실은 서버가 공개한 상태다).
  * 인원 집계 채널(card-lobby:*)·DB 변경 구독 채널(room:*)과는 따로 쓴다.
+ * (채널 이름의 'matgo-room' 은 처음 맞고 전용이던 때의 이름이다. 먼저 열어 둔 탭과 어긋나지 않게 그대로 둔다)
  */
-export function roomCast(roomId, onMessage) {
+export function roomCast(roomId, onMessage, onEmote) {
+  const guard = (fn) => (m) => {
+    try {
+      fn?.(m?.payload);
+    } catch {
+      /* 받은 쪽 문제로 채널이 끊기지 않게 */
+    }
+  };
   const ch = supabase
     .channel(`matgo-room:${roomId}`, { config: { broadcast: { self: false, ack: false } } })
-    .on('broadcast', { event: 'act' }, (m) => {
-      try {
-        onMessage?.(m?.payload);
-      } catch {
-        /* 받은 쪽 문제로 채널이 끊기지 않게 */
-      }
-    })
+    .on('broadcast', { event: 'act' }, guard(onMessage))
+    .on('broadcast', { event: 'emote' }, guard(onEmote))
     .subscribe();
+  // 아직 연결 전이면 라이브러리가 HTTP 로 대신 보낸다. 실패해도 된다 (맞고 상대는 서버 공개 상태로 따라오고, 한마디는 그냥 안 보인다)
+  const cast = (event, msg) => void Promise.resolve(ch.send({ type: 'broadcast', event, payload: msg })).catch(() => undefined);
   return {
-    send: (msg) => {
-      // 아직 연결 전이면 라이브러리가 HTTP 로 대신 보낸다. 실패해도 된다 (상대는 서버 공개 상태로 따라온다)
-      void Promise.resolve(ch.send({ type: 'broadcast', event: 'act', payload: msg })).catch(() => undefined);
-    },
+    send: (msg) => cast('act', msg),
+    emote: (msg) => cast('emote', msg),
     close: () => void supabase.removeChannel(ch),
   };
 }

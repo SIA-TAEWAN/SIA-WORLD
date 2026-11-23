@@ -13,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, CAT_BONUS, CAT_LAND_STAGE, CAT_PRICE, DRAGON
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql', '077_cat_village.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql', '077_cat_village.sql', '081_village_monuments2.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -370,7 +370,7 @@ describe('SQL의 권한 규칙', () => {
     expect(ss).toContain('why := public._village_place_error(me, ty.type, bx, by_, null);');
   });
 
-  it('기념물 (053): 조건 표 · 다른 게임의 기록은 읽기만', () => {
+  it('기념물 (053 · 081): 조건 표 · 다른 게임의 기록은 읽기만', () => {
     expect(rows('_village_monument_defs')).toEqual(MONUMENTS.map((m, i) => [m.id, i + 1, m.stat, m.need]));
     // 기념물은 지을 수 없는 장식물이고 (열리는 레벨 99), 번영도 점수가 장식물보다 높다
     const best = Math.max(...BUILDINGS.filter((d) => d.kind === 'deco' && !isReward(d.id)).map((d) => d.points));
@@ -386,14 +386,15 @@ describe('SQL의 권한 규칙', () => {
     expect(st).not.toMatch(/\b(insert|update|delete)\b/);
     expect(st).toContain("if to_regclass('public.defense_stages') is not null then");
     // 059: 다른 게임의 표 · 함수가 하나 없어도 나머지는 읽는다 (그 기록만 0)
-    for (const t of ['player_points', 'volleyball_rankings', 'race_records', 'survival_profiles', 'wallet_logs', 'roulette_bets']) {
+    // 081: 돌격대 · 핑거의 표도 같은 식으로 감싼다
+    for (const t of ['player_points', 'volleyball_rankings', 'race_records', 'survival_profiles', 'wallet_logs', 'roulette_bets', 'charge_profiles', 'charge_endless', 'finger_profiles', 'finger_tower']) {
       const at = st.indexOf(`public.${t}`);
       expect(at, t).toBeGreaterThan(0);
       expect(st.slice(at, st.indexOf('end;', at)), t).toContain('exception when undefined_table');
       expect(st.lastIndexOf('begin', at), t).toBeGreaterThan(st.lastIndexOf('end;', at));
     }
     expect(st).toContain("if to_regprocedure('public._survival_map_cleared(uuid, text, text[])') is not null then");
-    for (const f of fns) if (f !== '_village_game_stats') expect(body(f), f).not.toMatch(/player_points|volleyball_rankings|race_records|survival_|wallet_logs|roulette_bets|defense_/);
+    for (const f of fns) if (f !== '_village_game_stats') expect(body(f), f).not.toMatch(/player_points|volleyball_rankings|race_records|survival_|wallet_logs|roulette_bets|defense_|public\.charge_|public\.finger_/);
     // 여는 곳: 들어올 때와 [기념물] 화면
     const sync = 'perform public._village_monument_sync(me, t);';
     expect(fns.filter((f) => body(f).includes(sync)).sort()).toEqual(['village_monuments', 'village_state']);

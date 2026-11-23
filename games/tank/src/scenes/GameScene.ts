@@ -19,6 +19,8 @@ import { music } from '../ui/music';
 import { Hud } from '../ui/hud';
 import { Input, type ControlEvent } from '../ui/input';
 import { sfx } from '../ui/sfx';
+import { pickAwards, type Award } from '../game/awards';
+import { EMOTES, EMOTE_SHOW_MS, parseEmote } from '../game/emote';
 
 export interface MatchSummary {
   winner: 0 | 1 | -1;
@@ -26,12 +28,18 @@ export interface MatchSummary {
   turns: number;
   /** 백발백중 (damage가 점수) */
   practice?: boolean;
+  /** 판 끝 상장 (holders = players 순번). 해당자가 없는 칭호는 들어 있지 않다 */
+  awards?: Award[];
 }
 
 export interface GameChat {
   chat: { name: string; text: string; system?: boolean }[];
   sendChat(text: string): void;
   onChat(fn: () => void): () => void;
+  /** 빠른 감정 표현 (온라인: 방 사람들에게 보낸다) */
+  sendEmote?(i: number): boolean;
+  /** 다른 사람의 감정 표현 (from = 보낸 사람 ID = PlayerSetup.id) */
+  onEmote?(fn: (from: string, i: number) => void): () => void;
 }
 
 export interface GameConfig {
@@ -212,6 +220,11 @@ class TankView {
 
   private status: Phaser.GameObjects.Text | null = null;
 
+  /** 말풍선 꼬리가 닿는 높이 (이름·차례 화살표 위) */
+  get headY() {
+    return -84 + this.dy;
+  }
+
   setStatus(text: string | null) {
     if (!text) {
       this.status?.destroy();
@@ -299,6 +312,10 @@ export class GameScene extends Phaser.Scene {
   private targetViews = new Map<number, Phaser.GameObjects.Container>();
   private board: HTMLElement | null = null;
   private boardKey = '';
+  /** 탱크 위 감정 표현 말풍선 (탱크 번호별, age = 뜬 뒤 지난 초) */
+  private emotes = new Map<number, { c: Phaser.GameObjects.Container; age: number }>();
+  private emoteOff: (() => void) | null = null;
+
   /** 땅에 남은 불·독안개 그림 */
   private zoneViews = new Map<number, Phaser.GameObjects.Container>();
 
@@ -586,6 +603,20 @@ export class GameScene extends Phaser.Scene {
       cfg.onQuit();
     };
     this.hud.root.querySelector('.hud-top')!.prepend(this.quitBtn);
+    // 빠른 감정 표현: 내 탱크 위에 말풍선 (온라인이면 방 사람들에게도 보낸다)
+    this.hud.onEmote = (i) => {
+      const me = this.emoteTank();
+      if (!me) return;
+      // 온라인: 먼저 보내 보고, 간격 제한에 걸려 나가지 않았으면 내 화면에도 띄우지 않는다 (나만 보이는 말풍선이 되지 않게)
+      if (cfg.net && cfg.chat?.sendEmote && !cfg.chat.sendEmote(i)) return;
+      this.showEmote(me.idx, i);
+    };
+    this.emoteOff =
+      cfg.chat?.onEmote?.((from, i) => {
+        const idx = cfg.setups.findIndex((s) => s.id === from);
+        // AI가 넘겨받은 탱크는 더 이상 그 사람의 탱크가 아니다
+        if (idx >= 0 && this.match.tanks[idx] && !this.match.tanks[idx].ai) this.showEmote(idx, i);
+      }) ?? null;
     this.input2.on((e) => this.onControl(e));
 
     // 카메라
@@ -637,6 +668,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cleanup() {
+    this.emoteOff?.();
+    this.emoteOff = null;
     this.scale.off('resize', this.setupCamera, this);
     this.input2?.destroy();
     this.hud?.destroy();
@@ -1079,6 +1112,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, deltaMs: number) {
     const dt = Math.min(deltaMs, 50) / 1000;
     const m = this.match;
+    this.updateEmotes(dt);
     if (m.current < 0) return;
     // 화면을 가렸다 돌아와 판 상태를 다시 받는 중이면 오래된 상태로 진행하지 않는다
     if (this.cfg.net?.frozen()) return;
@@ -1677,8 +1711,64 @@ export class GameScene extends Phaser.Scene {
       turns: m.turn,
       practice: m.practice,
       players: m.tanks.map((t) => ({ name: t.name, tank: t.tankId, team: t.team, damage: t.damageDealt, hits: t.hits ?? 0, alive: t.alive, ai: !!t.ai, mine: this.cfg.net ? t.idx === this.cfg.net.myIdx : !t.ai })),
+      awards: pickAwards(m.awards),
     };
     this.time.delayedCall(1400, () => this.cfg.onEnd(summary));
+  }
+
+  // ---------- 감정 표현 ----------
+
+  /** 감정 표현을 띄울 내 탱크. 온라인: 내 탱크 (AI가 넘겨받았으면 없다 — 받는 쪽도 그 탱크에는 띄우지 않는다) / 한 기기: 지금 조종 중인 사람(없으면 첫 번째 사람) */
+  private emoteTank(): TankState | null {
+    if (this.cfg.net) {
+      const t = this.match.tanks[this.cfg.net.myIdx];
+      return t && !t.ai ? t : null;
+    }
+    return this.viewer();
+  }
+
+  /** 탱크 위에 말풍선을 띄운다 (EMOTE_SHOW_MS 뒤에 사라진다. 다시 누르면 새 것으로 바뀐다) */
+  showEmote(idx: number, i: number) {
+    const n = parseEmote(i);
+    if (n === null || !this.views[idx]) return;
+    this.emotes.get(idx)?.c.destroy();
+    const text = this.add
+      .text(0, 0, EMOTES[n], { fontFamily: 'Jua, sans-serif', fontSize: '17px', color: '#2a1a10' })
+      .setOrigin(0.5)
+      .setResolution(Math.min(4, Math.ceil(DPR * 1.5)));
+    const w = Math.max(40, text.width + 22);
+    const h = text.height + 12;
+    const tail = 8;
+    text.setPosition(0, -tail - h / 2);
+    // 크림 판 + 갈색 외곽선 (DESIGN.md), 아래 가운데에 꼬리
+    const g = this.add.graphics();
+    g.fillStyle(0xfff8e8).lineStyle(3, 0x2a1a10);
+    g.fillRoundedRect(-w / 2, -tail - h, w, h, 11).strokeRoundedRect(-w / 2, -tail - h, w, h, 11);
+    g.fillTriangle(-6, -tail - 2, 6, -tail - 2, 0, 0);
+    g.lineBetween(-6, -tail, 0, 0).lineBetween(6, -tail, 0, 0);
+    const c = this.add.container(0, 0, [g, text]).setDepth(45).setScale(0);
+    this.emotes.set(idx, { c, age: 0 });
+    this.updateEmotes(0);
+  }
+
+  /** 말풍선: 탱크를 따라다니고, 멀리 본 화면에서도 읽히게 키운다. 시간(프레임 dt)으로 직접 움직여 다시 맞추기(loadSnapshot)에도 남는다 */
+  private updateEmotes(dt: number) {
+    if (!this.emotes.size) return;
+    const total = EMOTE_SHOW_MS / 1000;
+    const base = Math.max(1, Math.min(2.6, 1.15 / this.zoomCss));
+    for (const [idx, e] of this.emotes) {
+      const v = this.views[idx];
+      e.age += dt;
+      if (!v || e.age >= total) {
+        e.c.destroy();
+        this.emotes.delete(idx);
+        continue;
+      }
+      // 통 튀어나왔다가(0.14초) 마지막 0.3초에 흐려진다
+      const k = Math.min(1, e.age / 0.14);
+      const pop = 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2);
+      e.c.setPosition(v.label.x, v.label.y + v.headY).setScale(base * (0.5 + 0.5 * pop)).setAlpha(Math.min(1, (total - e.age) / 0.3));
+    }
   }
 
   // ---------- 효과 ----------

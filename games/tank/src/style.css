@@ -2328,3 +2328,279 @@ a.btn { text-decoration: none; text-align: center; }
   .screen.lobby .bar h2 small { display: block; }
   .screen.lobby .bar #rank, .screen.lobby .bar #copy, .screen.lobby .bar .my-points { min-width: 0; font-size: 13px; white-space: nowrap; }
 }
+
+/* ==========================================================
+   판 끝 상장 (결과 화면) · 빠른 감정 표현 (전투 HUD)
+   ========================================================== */
+.awards {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.awards li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 10px 4px 6px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.awards li.mine {
+  background: #fff4c2;
+  box-shadow: 0 3px 0 var(--ink);
+}
+.awards .aw-ic {
+  font-size: 18px;
+}
+.awards .aw-t {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.awards b {
+  font-weight: normal;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.awards small {
+  color: #8a6a4a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* 좁은 휴대폰: 표가 카드 밖으로 밀리지 않게 */
+@media (max-width: 420px) {
+  .result-card {
+    padding: 16px 12px;
+  }
+  .result-card h2 {
+    font-size: 36px;
+  }
+  .score td,
+  .score th {
+    padding-left: 3px;
+    padding-right: 3px;
+    font-size: 14px;
+  }
+}
+/* 세로로 짧은 휴대폰: 트로피·제목을 줄여 버튼까지 한 화면에 가깝게 */
+@media (max-height: 700px) and (orientation: portrait) {
+  .result-card .trophy {
+    font-size: 44px;
+  }
+  .result-card h2 {
+    font-size: 36px;
+  }
+  .result-card .sub {
+    margin-bottom: 8px;
+  }
+  .result-card .score {
+    margin-bottom: 10px;
+  }
+  .result-card .score td {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .awards {
+    margin-bottom: 10px;
+    gap: 4px;
+  }
+  .awards li {
+    padding: 3px 8px 3px 5px;
+    font-size: 13px;
+  }
+}
+/* 가로로 눕힌 휴대폰(짧은 화면): 트로피와 제목을 한 줄로, 간격을 줄여 한 화면에 */
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) {
+  .screen.result {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .result-card {
+    width: min(680px, 100%);
+    padding: 10px 16px 12px;
+    border-radius: 22px;
+    box-shadow: 0 5px 0 var(--ink);
+  }
+  .result-card .trophy {
+    display: inline-block;
+    vertical-align: middle;
+    font-size: 30px;
+    margin-right: 6px;
+    animation: none;
+  }
+  .result-card h2 {
+    display: inline-block;
+    vertical-align: middle;
+    font-size: 30px;
+    -webkit-text-stroke-width: 2px;
+  }
+  .result-card .sub {
+    margin: 2px 0 6px;
+    font-size: 13px;
+  }
+  .result-card .score {
+    margin-bottom: 8px;
+  }
+  .result-card .score th {
+    padding: 3px 6px;
+    font-size: 12px;
+  }
+  .result-card .score td {
+    padding: 4px 6px;
+    font-size: 14px;
+  }
+  /* 표 옆에 상장을 세로로 */
+  .result-body.two {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .result-body.two .awards {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+  .awards {
+    margin-bottom: 8px;
+    gap: 4px;
+  }
+  .awards li {
+    padding: 2px 8px 2px 5px;
+    font-size: 13px;
+  }
+  .awards .aw-ic {
+    font-size: 15px;
+  }
+  .result-card .actions .btn.big {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 18px;
+  }
+  .result-card .hint,
+  .result-card .rec-line {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+}
+
+/* 감정 표현: 오른쪽 위 동그란 버튼 → 왼쪽으로 문구 6개 (3×2). 아래쪽 터치 버튼·조작판과 겹치지 않는 높이 */
+.emo {
+  position: absolute;
+  right: calc(8px + env(safe-area-inset-right));
+  top: 64px;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+.emo-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--cream);
+  box-shadow: 0 3px 0 var(--ink);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.emo-tray {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 6px;
+}
+.emo-pick {
+  min-width: 76px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 3px solid var(--ink);
+  background: #fff;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.emo-btn:active,
+.emo-pick:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+/* 다음에 보낼 수 있을 때까지 (1.5초) */
+.emo-tray.cool .emo-pick {
+  background: #eee2c8;
+  color: #8a6a4a;
+}
+/* 휴대폰 세로: 바람 표시(오른쪽 위) 아래로 */
+@media (max-width: 760px) {
+  .emo {
+    top: 140px;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) {
+  .emo {
+    top: 40px;
+    right: calc(4px + env(safe-area-inset-right));
+    gap: 4px;
+  }
+  .emo-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+  /* 가로 화면: 한 줄로 얇게 펼쳐 탱크와 오른쪽 터치 버튼을 가리지 않는다 */
+  .emo-tray {
+    grid-template-columns: repeat(6, auto);
+    gap: 4px;
+  }
+  .emo-pick {
+    min-width: 62px;
+    height: 40px;
+    padding: 0 8px;
+    font-size: 15px;
+  }
+}
+/* 가로로 눕힌 작은 휴대폰(너비 760 이하): 바람 표시가 오른쪽 위에 있으므로 그 아래로 */
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) and (max-width: 760px) {
+  .emo {
+    top: 96px;
+  }
+}
+/* 가로로 눕힌 좁은 휴대폰(너비 640 이하): 한 줄(6칸)이면 왼쪽의 채팅 버튼·미니맵까지 닿는다 → 3칸 두 줄 그대로 */
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) and (max-width: 640px) {
+  .emo-tray {
+    grid-template-columns: repeat(3, auto);
+    gap: 6px;
+  }
+  .emo-pick {
+    height: 44px;
+  }
+}
+/* 좁은 세로 화면: 문구 3칸이 화면 안에 들어오게 */
+@media (max-width: 380px) {
+  .emo-pick {
+    min-width: 64px;
+    padding: 0 6px;
+  }
+}

@@ -8,10 +8,12 @@ import { stageOf, type StageDef, type WaveDef } from '../data/stages';
 import { BOSS_ACTS } from './bosses';
 import { FLASH_REST, burn, placeOnRoute, spawnEnemy } from './core';
 import { buildRoute, cellX, cellY } from './path';
-import { starsOf, type RunReport } from './progress';
+import { featsOf, type Feats } from './feats';
+import { LIMITS, starsOf, type RunReport } from './progress';
 import { makeRng } from './rng';
-import { EV, FX, addFx, drop, emit, makeEnemy, makeEv, makeFx, makePool, makeProj, makeTower, type Cmd, type GameConfig, type Spawn, type State } from './state';
-import { ATTACKS, stepProjectile } from './towers';
+import { EV, FX, addFx, drop, emit, makeEnemy, makeEv, makeFx, makePool, makeProj, makeStats, makeTower, type Cmd, type GameConfig, type Spawn, type State } from './state';
+import { AIM_CHOICES } from './core';
+import { ATTACKS, aimMode, canAim, stepProjectile } from './towers';
 
 /**
  * 한 판의 계산. 화면 없이 돌아가는 순수 모듈이다:
@@ -26,6 +28,11 @@ export const ENDLESS_BOSS_SEC = 6;
 /** 다른 요괴가 빠르게 해 줄 때의 속도 배율 (수문장 대장) · 표식이 찍힌 캐릭터의 공격 속도 배율 (저승사자) */
 export const RUSH_MUL = 1.4;
 export const MARK_MUL = 0.5;
+/**
+ * 조준 바꾸기는 명령이 이만큼 쌓이기 전까지만 받는다: 명령 수 상한(cmds_max)을 넘은 판은 서버가 받지 않으므로,
+ * 조준을 아무리 눌러도 배치·강화·되팔기에 쓸 자리가 남게 한다
+ */
+export const AIM_CMDS_MAX = LIMITS.cmds_max - 600;
 
 /** given: 스테이지 데이터를 직접 준다 (아직 목록에 없는 스테이지를 시험할 때 — scripts/gen-stages.ts) */
 /** 웨이브 하나의 무리를 등장 예정으로 편다 (wi 번째 웨이브: wi × 30초부터) */
@@ -56,14 +63,17 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
   }
   // 웨이브를 등장 시각 순서로 펴 둔다 (끝없는 모드는 웨이브가 시작될 때마다 그 웨이브만 편다 — step)
   const spawns: Spawn[] = [];
-  stage.waves.slice(0, WAVES).forEach((w, wi) => addWave(spawns, stage.id, w, wi, stage.hp * (w.hp ?? WAVE_HP[wi] ?? 1), ground, sky));
+  // 오늘의 고개의 조건 (없으면 1: × 1 은 값을 바꾸지 않는다)
+  const hpMod = cfg.mods?.hp ?? 1;
+  const energyMod = cfg.mods?.energy ?? 1;
+  stage.waves.slice(0, WAVES).forEach((w, wi) => addWave(spawns, stage.id, w, wi, stage.hp * (w.hp ?? WAVE_HP[wi] ?? 1) * hpMod, ground, sky));
   let bossId = -1;
   let bossAt = -1;
   if (stage.boss) {
     bossId = BOSS_INDEX[stage.boss.id];
     if (bossId === undefined) throw new Error(`unknown boss: ${stage.boss.id}`);
     bossAt = stage.boss.at ?? BOSS_AT;
-    spawns.push({ t: bossAt, kind: -1, boss: bossId, route: stage.boss.route ?? 0, hpMul: stage.boss.hp ?? 1 });
+    spawns.push({ t: bossAt, kind: -1, boss: bossId, route: stage.boss.route ?? 0, hpMul: (stage.boss.hp ?? 1) * hpMod });
   }
   // 같은 시각이면 적어 둔 순서 그대로 (sort 는 순서를 지킨다)
   spawns.sort((a, b) => a.t - b.t);
@@ -101,7 +111,7 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
     time: 0,
     lives,
     startLives: lives,
-    energy: Math.floor(stage.energy * um.energy + 1e-6),
+    energy: Math.floor(stage.energy * um.energy * energyMod + 1e-6),
     kills: 0,
     bonus: 0,
     endless: stage.id === ENDLESS_ID,
@@ -125,6 +135,10 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
     events: Array.from({ length: LIMIT.events }, makeEv),
     evN: 0,
     log: [],
+    stats: makeStats(TOWERS.length),
+    src: -1,
+    srcBoost: 0,
+    srcBoostBy: -1,
   };
 }
 
@@ -158,11 +172,18 @@ export function sellValue(s: State, slot: number): number {
   return s.phase === 'prep' ? tw.spent : Math.floor(tw.spent * s.sellRate + 1e-6);
 }
 
+/** 조준을 그 방식으로 바꿀 수 있나: 과녁을 골라 공격하는 캐릭터이고, 지금과 다른 방식이고, 명령 자리가 남아 있을 때 */
+export function canSetAim(s: State, slot: number, aim: number): boolean {
+  const tw = s.towers[slot];
+  return open(s) && !!tw && canAim(tw.char) && AIM_CHOICES.includes(aim) && aimMode(tw) !== aim && s.log.length < AIM_CMDS_MAX;
+}
+
 /** 닭의 지원: 캐릭터마다, 자기를 사거리 안에 둔 닭 가운데 가장 큰 공격 속도 보너스를 받는다 (배치가 바뀔 때마다 다시 센다) */
 function refreshHaste(s: State) {
   for (let i = 0; i < s.towers.length; i++) {
     const tw = s.towers[i];
     tw.haste = 0;
+    tw.hasteBy = -1;
     if (tw.char < 0) continue;
     for (let j = 0; j < s.towers.length; j++) {
       const o = s.towers[j];
@@ -171,7 +192,10 @@ function refreshHaste(s: State) {
       if (!L.haste || L.haste <= tw.haste) continue;
       const dx = s.slotX[i] - s.slotX[j];
       const dy = s.slotY[i] - s.slotY[j];
-      if (dx * dx + dy * dy <= L.range * L.range) tw.haste = L.haste;
+      if (dx * dx + dy * dy <= L.range * L.range) {
+        tw.haste = L.haste;
+        tw.hasteBy = o.char;
+      }
     }
   }
 }
@@ -200,6 +224,7 @@ export function command(s: State, op: Cmd['op'], slot = -1, char = -1): boolean 
       tw.spent = cost;
       tw.since = 9;
       tw.mark = 0;
+      tw.aim = -1;
       tw.face = s.slotX[slot] > cellX(4) ? -1 : 1;
       emit(s, EV.place, slot, char, s.slotX[slot], s.slotY[slot]);
       break;
@@ -220,12 +245,18 @@ export function command(s: State, op: Cmd['op'], slot = -1, char = -1): boolean 
       tw.char = -1;
       tw.lv = 0;
       tw.spent = 0;
+      tw.aim = -1;
       break;
     }
+    // 조준 바꾸기: char = 방식 (AIM 의 first · strong · weak · last). 다음 공격부터 그 방식으로 과녁을 고른다
+    case 'aim':
+      if (!canSetAim(s, slot, char)) return false;
+      tw.aim = char;
+      break;
     default:
       return false;
   }
-  if (op !== 'start') refreshHaste(s);
+  if (op !== 'start' && op !== 'aim') refreshHaste(s);
   s.log.push({ tick: s.tick, op, slot, char });
   return true;
 }
@@ -267,6 +298,7 @@ export function step(s: State) {
       const L = s.lv[tw.char][tw.lv - 1];
       if (!L.income) continue;
       s.energy += L.income;
+      s.stats.energy[tw.char] += L.income;
       s.bonus += L.coin ?? 0;
       tw.since = 0;
       emit(s, EV.income, L.income, slot, s.slotX[slot], s.slotY[slot]);
@@ -344,6 +376,7 @@ export function step(s: State) {
     } else if (e.regen > 0 && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * e.regen * TICK);
     if (e.slowT > 0) {
       e.slowT -= TICK;
+      if (e.slowBy >= 0) s.stats.slow[e.slowBy] += TICK;
       if (e.slowT <= 0) {
         e.slow = 1;
         e.vuln = 0;
@@ -390,12 +423,18 @@ export function step(s: State) {
     if (tw.cd > 0) continue;
     const def = TOWERS[tw.char];
     const L = s.lv[tw.char][tw.lv - 1];
+    // 활약상: 이 공격이 주는 피해는 이 캐릭터의 것 (닭이 빠르게 해 준 몫은 닭에게도 적는다)
+    s.src = tw.char;
+    s.srcBoost = tw.haste;
+    s.srcBoostBy = tw.hasteBy;
     if (ATTACKS[def.kind](s, slot, tw, L)) {
       tw.cd = L.every;
       tw.since = 0;
       emit(s, EV.fire, tw.char, slot);
     } else tw.cd = 0;
   }
+  s.src = -1;
+  s.srcBoost = 0;
 
   // 투사체 · 이펙트
   const pr = s.projectiles;
@@ -443,6 +482,8 @@ export interface RunSummary extends Omit<RunReport, 'run'> {
   towers: number;
   /** 끝없는 모드인가 */
   endless: boolean;
+  /** 활약상: 캐릭터별 피해·처치·지원 기여와 오늘의 일꾼 (결과 화면용. 서버에는 올리지 않는다) */
+  feats: Feats;
 }
 
 /** 명령 기록에서 센 값 (서버의 싼 정합성 검사용): 배치한 횟수 */
@@ -469,6 +510,7 @@ export function summarize(s: State): RunSummary {
     bossDown: s.bossDown,
     endless: s.endless,
     towers: s.towers.reduce((n, t) => n + (t.char >= 0 ? 1 : 0), 0),
+    feats: featsOf(s),
   };
 }
 

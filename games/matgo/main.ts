@@ -3,6 +3,7 @@ import { bootGame, esc, sfx, type GameUI, type TableCtx, type TrackOpts } from '
 import { worldRoot } from '../lib/world.ts';
 import { cardBack, clamp, label, sweepTable, tc, theme, viewSize } from '../lib/cards.ts';
 import { soloPlay } from '../lib/solo-play.ts';
+import { MATGO_MANUAL } from '../lib/manuals.ts';
 import { CARDS, cardById, matgo, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
@@ -263,6 +264,13 @@ interface PanelOpts {
   turn: boolean;
   /** 오른쪽에 비워 둘 너비 (상대 손패 뒷면이 놓이는 자리) */
   reserve?: number;
+}
+
+/** 한마디(이모티콘) 말풍선 자리: 자리 판의 아바타 쪽. 위쪽 자리(상대)는 판 아래에, 아래쪽 자리(나)는 판 위에 띄운다 */
+function sayAnchor(t: Ctx, seat: number, R: Rect, below: boolean) {
+  const x = R.x + R.h / 2 + 24;
+  if (below) t.anchor(`seat-below:${seat}`, x, R.y + R.h + 4);
+  else t.anchor(`seat:${seat}`, x, R.y - 2);
 }
 
 /**
@@ -985,6 +993,7 @@ const fiveGwang = new Set<string>();
 const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   game: 'matgo',
   title: '시아맞고',
+  manual: MATGO_MANUAL,
   icon: '🎴',
   back: '',
   backLabel: 'SIA WORLD',
@@ -1061,6 +1070,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       const waitTag = (s: (typeof t.seats)[number]): PanelTag[] => [!s.user_id || s.left_game ? { text: 'AI', color: 'track' } : s.ready ? { text: '레디!', color: 'win' } : { text: '준비 중', color: 'track' }];
       if (other) playerPanel(scene, L.oppPanel, { name: other.nickname, avatar: other.avatar, score: null, tags: waitTag(other), turn: false });
       if (mine) playerPanel(scene, L.myPanel, { name: mine.nickname, avatar: mine.avatar, score: null, tags: waitTag(mine), turn: false });
+      if (other) sayAnchor(t, other.seat_no, L.oppPanel, true);
+      if (mine) sayAnchor(t, mine.seat_no, L.myPanel, false);
       captured(t, scene, L.oppTray, null, capW, () => ({}));
       captured(t, scene, L.myTray, null, capW, () => ({}));
       deck(scene, L.pile.x, L.pile.y, L.pw, null);
@@ -1148,6 +1159,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const subOf = (pl: (typeof P)[number]) => pl.breakdown.map((l) => `${l.label} ${l.points}점`).join(' · ');
     playerPanel(scene, L.oppPanel, { name: t.seatName(opp), avatar: t.seatAvatar(opp), score: op.score, tags: tagsOf(op, opp), sub: portrait ? undefined : subOf(op), turn: turnNow === opp, reserve: L.oppReserve });
     playerPanel(scene, L.myPanel, { name: t.seatName(me), avatar: t.seatAvatar(me), score: mp.score, tags: tagsOf(mp, me), sub: subOf(mp), turn: turnNow === me });
+    sayAnchor(t, opp, L.oppPanel, true);
+    sayAnchor(t, me, L.myPanel, false);
 
     // 상대 손패(뒷면)
     // (상대의 총통: 펼쳐 보인 4장만큼 뒷면이 줄어든다)

@@ -1,21 +1,30 @@
+import { EMOTE_SHOW_MS } from '../game/emote';
 import { formatTime, tierOf, type RankedEntry } from '../game/ranking';
+import { seriesKey, standings } from '../game/series';
 import { LOCAL_MODE } from '../net/api';
 import { LOCKED_MSG } from '../game/unlock';
-import { loadRankIcons } from '../net/world';
+import { loadRankIcons, worldDailyRanking } from '../net/world';
+import { DAILY_GAME, dailyLabel, dailyMs } from '../game/daily';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, screen, state } from './app';
+import { emoteBarHtml, wireEmoteBar } from './emote';
 import { showRanking } from './menus';
 import { sfx } from './sfx';
 
-/** 결과 화면: 1~4등, 기록, 개인 최고 기록 갱신 여부, '한 판 더' · '나가기' */
+/** 결과 화면: 1~4등, 기록, 연속전 누적 점수, 개인 최고 기록 갱신 여부, 짧은 말, '한 판 더' · '나가기' */
 export function showResult(race: RaceGame, results: RankedEntry[]) {
   const me = race.mySlot;
   const mine = results.find((r) => r.slot === me);
   const raced = mine && !race.taken[me];
+  // 오늘의 도전: 혼자 달리는 전용 방이라 연속전 점수·짧은 말은 보이지 않는다
+  const daily = state.daily;
+  const room = daily ? null : state.room;
+  let offRoom: (() => void) | null = null;
+  let offEmote: (() => void) | null = null;
   const root = screen(
     `<div class="result-card">
-      <h2>🏁 경기 결과</h2>
+      <h2>🏁 경기 결과 <span class="tag hidden" id="gp-n"></span></h2>
       <p class="mine" id="mine">${
         !mine
           ? ''
@@ -27,28 +36,71 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
                 ? '실격! GO가 뜬 뒤에 눌러요'
                 : `미완주 (${Math.floor(mine.x)}m)`
       }</p>
+      ${daily ? '<p class="daily-line" id="daily-line"><span class="tag">오늘의 도전</span> <span id="daily-place"></span></p>' : ''}
       <div class="rows">${results
         .map((r, i) => {
           const p = race.roster[r.slot];
           const isMe = r.slot === me;
           const tm =
             r.status === 'finish'
-              ? `<span class="tm">${formatTime(r.timeMs!)}초</span><span class="tier" data-ms="${r.timeMs}"></span>`
+              ? `<span class="tm">${formatTime(r.timeMs!)}초</span>`
               : r.status === 'foul'
                 ? '<span class="tm foul">실격</span>'
                 : `<span class="tm dnf">미완주 ${Math.floor(r.x)}m</span>`;
-          const sub = p.id && race.taken[r.slot] ? '<small>AI가 이어 달림</small>' : '';
-          return `<div class="rrow p${r.place} ${isMe ? 'me' : ''}" style="animation-delay:${200 + i * 260}ms"><span class="pl">${r.place}</span>
-            <img class="av" src="${zodiacFaceUrl(p.char)}" alt="" /><span class="nm">${esc(p.name)}${sub}</span>${tm}</div>`;
+          // 이름 아래 작은 글: AI가 이어 달렸는지 + 연속전 점수 (paintGp 가 채운다)
+          const sub = `<small data-k="${esc(seriesKey(p))}" data-pre="${p.id && race.taken[r.slot] ? 'AI가 이어 달림' : ''}"></small>`;
+          return `<div class="rrow p${r.place} ${isMe ? 'me' : ''}" data-id="${esc(p.id ?? '')}" style="animation-delay:${200 + i * 260}ms"><span class="pl">${r.place}</span>
+            <img class="av" src="${zodiacFaceUrl(p.char)}" alt="" /><span class="body"><span class="top"><span class="nm">${esc(p.name)}</span>${tm}</span>${sub}</span>${
+              r.status === 'finish' ? `<span class="tier" data-ms="${r.timeMs}"></span>` : ''
+            }</div>`;
         })
         .join('')}</div>
-      <div class="actions"><button class="btn" id="exit">나가기</button><button class="btn primary" id="again">한 판 더 ▶</button></div>
+      ${room && me >= 0 ? emoteBarHtml(false) : ''}
+      <div class="actions"><button class="btn" id="exit">나가기</button><button class="btn primary" id="again">${daily ? '다시 도전 ▶' : '한 판 더 ▶'}</button></div>
       <div class="sub"><button class="btn small" id="rank">🏆 랭킹</button></div>
     </div><div class="cheer" id="cheer"></div>`,
     'result',
     'result',
+    () => {
+      offRoom?.();
+      offEmote?.();
+    },
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
+
+  // 연속전 점수: 이번 판에 얻은 점수와 누적 점수·순위 (방장이 보낸 점수판이 늦게 오면 다시 그린다)
+  const paintGp = () => {
+    const series = room?.series;
+    // 지금 자리에 있는 사람·AI 와 이번 판을 달린 줄만 골라 그 안에서 순위를 매긴다 (예전에 나간 사람 줄은 세지 않는다)
+    const table = series && room ? standings(series, [...room.seats().map(seriesKey), ...race.roster.map(seriesKey)]) : [];
+    // 이번 판이 점수판에 들어가 있을 때만 '+점수'를 보인다
+    const fresh = !!series && series.done[series.done.length - 1] === race.round;
+    root.querySelectorAll<HTMLElement>('.rrow small[data-k]').forEach((el) => {
+      const st = table.find((t) => t.k === el.dataset.k);
+      const parts = [el.dataset.pre ?? ''];
+      if (st) parts.push(`누적 ${st.pts}점 · ${st.rank}위${fresh ? ` (+${st.add})` : ''}`);
+      el.textContent = parts.filter(Boolean).join(' · ');
+      el.classList.toggle('hidden', !el.textContent);
+    });
+    const tag = $('#gp-n');
+    tag.classList.toggle('hidden', !series || series.n < 1);
+    if (series) tag.textContent = `연속전 ${series.n}판째`;
+  };
+  paintGp();
+  if (room) {
+    offRoom = room.onChange(paintGp);
+    // 짧은 말: 보낸 사람 줄 옆에 2.5초
+    offEmote = wireEmoteBar(root, room, (id, text) => {
+      const row = [...root.querySelectorAll<HTMLElement>('.rrow')].find((el) => el.dataset.id === id);
+      if (!row) return;
+      row.querySelector('.emo-pop')?.remove();
+      const pop = document.createElement('span');
+      pop.className = 'emo-pop';
+      pop.textContent = text;
+      row.append(pop);
+      setTimeout(() => pop.remove(), EMOTE_SHOW_MS);
+    });
+  }
 
   // 순위 발표 소리 (한 줄씩)
   results.forEach((_, i) => sfx('rankShow', { delay: 200 + i * 260, rate: 1.3 - i * 0.1 }));
@@ -74,9 +126,41 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
     });
   }
 
+  // 오늘의 도전: 그날 기록에 넣은 뒤 오늘 순위를 보인다 (못 넣었거나 못 읽으면 줄을 숨긴다)
+  if (daily) {
+    const line = $('#daily-line');
+    const place = $('#daily-place');
+    const hide = () => line.classList.add('hidden');
+    if (!raced || mine.status !== 'finish') place.innerHTML = '<span class="soft">완주해야 오늘 기록이 남아요</span>';
+    else if (LOCAL_MODE) place.innerHTML = '<span class="soft">테스트 모드에서는 순위가 남지 않아요</span>';
+    else if (!race.dailySaved) hide();
+    else {
+      place.innerHTML = '<span class="soft">순위를 확인하는 중…</span>';
+      void race.dailySaved
+        .then(async (day) => {
+          if (!day) {
+            // 통신 실패(다시 해 봐도 안 됨)거나 서버가 받지 않았다
+            place.innerHTML = '<span class="soft">오늘 기록을 올리지 못했어요</span>';
+            return;
+          }
+          const r = await worldDailyRanking(DAILY_GAME, day);
+          const ms = dailyMs(r?.mine);
+          if (!r || !r.mine || ms === null) return hide();
+          // 기록된 날이 서버의 오늘이 아니면(자정을 넘겨 도착) '오늘' 대신 날짜로
+          const past = r.today !== day;
+          const when = past ? dailyLabel(day) : '오늘';
+          place.innerHTML = `${when} <b>${Number(r.mine.place) || '-'}위</b> <span class="soft">· ${past ? '그날' : '오늘'} 최고 ${formatTime(ms)}초 · ${Number(r.total) || 1}명 중</span>`;
+        })
+        .catch(hide);
+    }
+  }
+
   $('#again').addEventListener('click', () => {
     sfx('click');
-    if (state.room) nav.waiting();
+    if (daily) {
+      leaveRoom();
+      nav.daily();
+    } else if (state.room) nav.waiting();
     else nav.lobby();
   });
   $('#exit').addEventListener('click', () => {

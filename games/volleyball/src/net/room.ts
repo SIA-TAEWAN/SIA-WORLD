@@ -23,7 +23,8 @@ export const validRoomCode = (c: string) => /^[a-z0-9]{4,24}$/.test(c);
 /**
  * 게임방: 실시간 채널 하나 (방 코드마다). 시아레이스 RaceRoom 을 2인용으로 바꾼 것.
  * - Presence: 누가 있는지, 캐릭터, 레디, 방 이름. 가장 먼저 들어온 사람이 방장(왼쪽).
- * - Broadcast: 시작 알림(start) · 끝 알림(over) · 늦게 온 사람용(hello/state) · 경기 중 메시지(pos · snap · quit · end).
+ * - Broadcast: 시작 알림(start) · 끝 알림(over) · 늦게 온 사람용(hello/state) · 경기 중 메시지(pos · snap · quit · end) · 이모티콘(emo: 경기·결과 화면).
+ *   NetMsg 종류 목록은 net/channel.ts.
  */
 export class VolleyRoom {
   private ch: Channel<PlayerMeta>;
@@ -126,7 +127,7 @@ export class VolleyRoom {
     this.resend = [];
     if (tell) {
       const ok = end && end.score.length === 2 && (end.score[0] === WIN_SCORE) !== (end.score[1] === WIN_SCORE);
-      this.ch.send({ t: 'over', n: matchNo, from: this.me.id, ...(ok ? { r: { score: [end.score[0], end.score[1]], winner: end.winner } } : {}) });
+      this.ch.send({ t: 'over', n: matchNo, from: this.me.id, ...(ok ? { r: { score: [end.score[0], end.score[1]], winner: end.winner, ...(end.hl ? { hl: end.hl } : {}) } } : {}) });
     }
     this.emit();
     this.tick();

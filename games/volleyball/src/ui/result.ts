@@ -5,9 +5,11 @@ import { aiSetup } from './menus';
 import { sfx } from './sfx';
 import { outcomeText } from '../net/aiRecord';
 import { LOCKED_MSG } from '../game/unlock';
+import { highlightView } from '../game/highlight';
+import { bubble, emoteChips, emoteHub, wireChips } from './emote';
 
 /**
- * 결과 화면: 승/패, 점수, [다시하기] · [로비로].
+ * 결과 화면: 승/패, 점수, 하이라이트(최장 랠리·최고 가속·내 터치), 이모티콘, [다시하기] · [로비로].
  * - AI전은 'AI 대전'으로 표시하고 전적 반영 결과를 한 줄로 알린다. 다시하기를 누르면 바로 새 경기.
  * - 온라인: 두 사람 모두 다시하기를 누르면 같은 방에서 바로 재경기. 상대가 나가면 남은 사람은 그 방의 대기 상태로.
  */
@@ -26,7 +28,7 @@ export function showResult(result: MatchResult) {
     const f = setup.fighters[s];
     const ai = reason === 'leave' && leaver === s && !iLeft;
     const w = iLeft ? s !== me : s === winner;
-    return `<div class="vs-side s${s} ${w ? 'win' : ''}"><img class="av" src="${zodiacFaceUrl(f.char)}" alt="" />
+    return `<div class="vs-side s${s} ${w ? 'win' : ''}"><div class="emo-say" id="say${s}"></div><img class="av" src="${zodiacFaceUrl(f.char)}" alt="" />
       <span class="nm">${ai ? '<i class="ai-tag">AI</i>' : ''}${esc(f.name)}</span><span class="wl">${w ? '승' : '패'}</span></div>`;
   };
   const note = !online
@@ -36,24 +38,46 @@ export function showResult(result: MatchResult) {
       : vsAi
         ? '상대가 나가서 AI와 마무리했어요'
         : '';
+  const hv = result.highlight ? highlightView(result.highlight, me) : null;
+  const hl = hv
+    ? `<div class="hl" aria-label="하이라이트"><div><small>최장 랠리</small><b>${hv.rally}</b></div><div><small>최고 가속</small><b>${hv.speed}</b></div><div><small>내 터치</small><b>${hv.touches}</b></div></div>`
+    : '';
+  let offEmote: (() => void) | null = null;
   const root = screen(
     `<div class="result-card ${won ? 'won' : 'lost'}">
       <h2>🏐 경기 결과</h2>
       ${online ? '' : '<p class="kind"><span class="tag">AI 대전</span></p>'}
       <p class="verdict">${won ? '승리!' : '패배…'}</p>
       <div class="vs">${row(0)}<div class="vs-score"><b>${score[0]}</b><i>:</i><b>${score[1]}</b></div>${row(1)}</div>
+      ${hl}
       <p class="soft note" id="note">${note}</p>
       <p class="soft note" id="rec">${online || result.aiRecord ? '기록을 올리는 중…' : ''}</p>
       <p class="again-st" id="again-st"></p>
       <div class="actions"><button class="btn" id="exit">로비로</button><button class="btn primary" id="again">다시하기 ▶</button></div>
+      <div class="emo-row" id="emo">${emoteChips()}</div>
     </div><div class="cheer" id="cheer"></div>`,
     'result',
     'result',
-    () => off?.(),
+    () => {
+      off?.();
+      offEmote?.();
+    },
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
   sfx(won ? 'win' : 'lose', { delay: 150 });
   if (won) confetti($('#cheer'));
+
+  // 이모티콘: 얼굴 위 말풍선. 온라인은 상대에게도 보낸다 (방에서 나갔으면 내 쪽에만).
+  // 한쪽이 나가 AI 가 마무리한 경기(내가 끊겼든 상대가 나갔든)는 주고받지 않는다: 상대 칸은 AI 이거나, 이미 다른 경기를 보고 있다
+  const says = [bubble($('#say0')), bubble($('#say1'))] as const;
+  const hub = emoteHub({ link: reason === 'leave' ? null : room, myId: state.user.id, oppId: setup.fighters[me === 0 ? 1 : 0].id, mySide: me, show: (s, text) => says[s].say(text) });
+  // 결과 카드는 낮은 화면에서 스크롤된다 → 누른 순간이 아니라 눌렀다 뗀 것(click)만 보낸다
+  const chips = wireChips($('#emo'), hub, undefined, 'click');
+  offEmote = () => {
+    chips.dispose();
+    hub.dispose();
+    says.forEach((b) => b.clear());
+  };
 
   if (!online) {
     // AI 대전: 전적 +1 · 시아코인 / 하루 한도 / 기록 실패

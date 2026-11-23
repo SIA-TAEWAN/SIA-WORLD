@@ -190,9 +190,9 @@ export function chipStack(scene: Scene, x: number, y: number, amount: number, la
 
 /**
  * 자리 이름패: 원형 아바타(흰 바탕 + 외곽선) + 닉네임 알약 (+ 작은 설명).
- * 차례: 알약이 --primary(노랑), 나: 외곽선 굵게
+ * 차례: 알약이 --primary(노랑), 나: 외곽선 굵게. badge: 알약 오른쪽 위에 붙는 분홍 꼬리표 (예: '3연승')
  */
-export function nameTag(scene: Scene, x: number, y: number, name: string, avatar: string, opts: { turn?: boolean; me?: boolean; sub?: string; size?: number } = {}) {
+export function nameTag(scene: Scene, x: number, y: number, name: string, avatar: string, opts: { turn?: boolean; me?: boolean; sub?: string; size?: number; badge?: string } = {}) {
   const C = T.COLOR;
   const k = opts.size ?? 1;
   const c = scene.add.container(x, y);
@@ -219,6 +219,21 @@ export function nameTag(scene: Scene, x: number, y: number, name: string, avatar
   }
   c.add(nm);
   if (sub) c.add(sub);
+  if (opts.badge) {
+    // 꼬리표: 분홍 알약 + 흰 글자 (DESIGN.md 태그), 이름 알약의 오른쪽 위 모서리에 걸친다
+    const bt = scene.add.text(0, 0, opts.badge, { fontFamily: T.FONT, fontSize: `${Math.round(12 * k)}px`, color: css(C.white) }).setOrigin(0.5);
+    const bw = bt.width + 12 * k;
+    const bh = 18 * k;
+    // 꼬리표 오른쪽 끝을 알약 오른쪽 끝에 맞춘다 (더 나가면 화면 오른쪽 자리에서 잘린다)
+    const bx = -4 * k + wdt - bw / 2;
+    const by = -ht / 2 - bh * 0.25;
+    const bg = scene.add.graphics();
+    bg.fillStyle(C.pink, 1).fillRoundedRect(bx - bw / 2, by - bh / 2, bw, bh, bh / 2);
+    bg.lineStyle(T.SHAPE.lineThin, C.outline, 1).strokeRoundedRect(bx - bw / 2, by - bh / 2, bw, bh, bh / 2);
+    bt.setPosition(bx, by);
+    c.add(bg);
+    c.add(bt);
+  }
   return c;
 }
 

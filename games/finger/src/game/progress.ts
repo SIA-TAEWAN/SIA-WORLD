@@ -178,6 +178,8 @@ export interface FinishResult {
   siaCoin: boolean;
   /** 이번에 새로 합류한 대원 */
   newHeroes: HeroId[];
+  /** 오늘의 도전 판만 (086): 그날 순위에 넣었는지 · 내 그날 최고 점수(−턴 수) · 이번에 고쳤는지 */
+  daily?: { day: string; recorded: boolean; improved?: boolean; best?: number; first?: boolean };
 }
 
 /** 다시 계산한 결과를 프로필에 반영 (finger_finish_verified 와 같은 식). up = 판 시작 때 강화 */
@@ -324,6 +326,7 @@ export function whyText(why: string): string {
     'too many turns': `${MAX_TURNS}턴(끝없는 탑 ${TOWER_TURNS}턴)을 넘은 기록은 받지 않아요`,
     'tower locked': '끝없는 탑은 1-5 를 깨면 열려요',
     'bad inputs': '판 기록이 맞지 않아 받지 않았어요',
+    'bad day': '날짜가 바뀌었어요. 오늘의 도전을 새로 불러왔어요',
     'old rules': '게임이 새로 바뀌어 이 판은 기록하지 못했어요. 새로고침해 주세요',
   };
   return m[why] ?? '서버가 받아 주지 않았어요';

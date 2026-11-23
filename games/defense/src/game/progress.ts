@@ -206,6 +206,15 @@ export interface RunReport {
   codex: Codex;
 }
 
+/** 오늘의 고개 기록 결과 (082 _daily_record 의 답 + 이번 판의 점수): best 오늘 내 최고 점수 · improved 이번 판이 최고인가 · first 오늘 첫 판인가 */
+export interface DailyRecord {
+  day: string;
+  score: number;
+  best: number;
+  improved: boolean;
+  first: boolean;
+}
+
 /** 저장 결과 (결과 화면에 보여 준다) */
 export interface FinishResult {
   /** 이번 판의 별 · 지금까지의 최고 별 · 이번에 새로 딴 별 수 */
@@ -227,6 +236,8 @@ export interface FinishResult {
   wave: number;
   bestWave: number;
   newRecord: boolean;
+  /** 오늘의 고개 판이고 서버가 오늘 순위에 기록했으면 그 결과 (아니면 없거나 null) */
+  daily?: DailyRecord | null;
 }
 
 /** 도달 웨이브: 넘긴 웨이브 + 1 (서버도 판 시간으로 이렇게 센다) */
@@ -279,7 +290,7 @@ export const isValid = (r: RunReport, mode: RunMode = 'normal') =>
 export const minRealTime = (time: number) => Math.max(0, time / LIMITS.max_speed - LIMITS.time_slack);
 
 /** 판 결과를 진행 상황에 반영한다 → 새 진행 상황과 결과. 모르는 스테이지·잠긴 스테이지면 오류 */
-export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string[] = [], mode: RunMode = 'normal'): { profile: DefenseProfile; result: FinishResult } {
+export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string[] = [], mode: RunMode = 'normal', daily = false): { profile: DefenseProfile; result: FinishResult } {
   const none = { stars: 0, bestStars: 0, newStars: 0, firstClear: false, coins: 0, baseCoins: 0, firstCoins: 0, starCoins: 0, opened: null, unlocked: [] as CharId[], wave: 0, bestWave: p.endless?.wave ?? 0, newRecord: false };
   const pigBonus = squad.includes('pig') ? Math.min(LIMITS.bonus_max, r.bonus) : 0;
   const coinMul = 100 + upgradeMods(p.upgrades).coinPct;
@@ -298,6 +309,16 @@ export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string
   }
   const stage = stageOf(r.stage);
   if (!stage || stage.id === ENDLESS_ID) throw new Error('bad stage');
+  if (daily) {
+    // 오늘의 고개 (서버 087 defense_finish 와 같다): 스테이지 잠금을 보지 않고, 별·첫 클리어·해금에 반영하지 않는다.
+    // 엽전은 스테이지를 다시 한 판과 같다 (클리어 보상 또는 버틴 만큼 + 돼지)
+    const valid = isValid(r);
+    if (!valid || r.time < LIMITS.count_min_time) return { profile: p, result: { ...none, valid, daily: null } };
+    const baseCoins = r.cleared ? stage.coins : partialCoins(stage, r.time);
+    const coins = Math.floor(((baseCoins + pigBonus) * coinMul) / 100);
+    const profile: DefenseProfile = { ...p, coins: p.coins + coins, codex: mergeCodex(p.codex, r.codex) };
+    return { profile, result: { ...none, stars: starsOf(r.cleared, r.lives, r.startLives), coins, baseCoins, valid, daily: null } };
+  }
   if (!stageOpen(p, stage)) throw new Error('stage locked');
   const before = p.stages[stage.id] ?? 0;
   const valid = isValid(r);

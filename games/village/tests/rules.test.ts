@@ -1478,13 +1478,23 @@ describe('8단계: 기념물', () => {
     expect(why(() => build(s, 'mon_tank1', 8, 8, T0, 'x'))).toMatch(/locked|limit/);
   });
 
+  it('돌격대 · 핑거 기념물 (081): 모은 별 · 끝없는 길 거리 · 탑 층', () => {
+    const s = newVillage(T0);
+    let n = 0;
+    const id = () => `mon-${++n}`;
+    expect(grantMonuments(s, { ...noStats(), charge_stars: 29, charge_meters: 999, finger_stars: 30, finger_floor: 19 }, T0, id).map((b) => b.type)).toEqual(['mon_finger30']);
+    expect(grantMonuments(s, { ...noStats(), charge_stars: 100, charge_meters: 1000, finger_stars: 99, finger_floor: 20 }, T0, id).map((b) => b.type))
+      .toEqual(['mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger_tower']);
+    expect(s.monuments).toEqual(['mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger_tower']);
+  });
+
   it('서버 답의 기념물 목록', () => {
     const s = cleanState({ monuments: ['mon_def3', 'nope', 'mon_tank1', 5] });
     expect(s.monuments).toEqual(['mon_tank1', 'mon_def3']);
     const c = cloneState(s);
     c.monuments.push('mon_def6');
     expect(s.monuments).toHaveLength(2);
-    expect(MONUMENTS).toHaveLength(16);
+    expect(MONUMENTS).toHaveLength(22);
     expect(new Set(MONUMENTS.map((m) => m.game)).size).toBe(GAMES.length);
   });
 });

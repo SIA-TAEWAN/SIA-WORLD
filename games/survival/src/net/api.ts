@@ -19,7 +19,7 @@ import { worldSupabase } from './world';
  *     남겨 두었다가 다음 판을 시작할 때·다음 저장이 성공했을 때·다음 접속 때 다시 보낸다 (net/pending.ts)
  *   · 판 도중에 창이 닫히거나 숨으면(새로고침·탭 닫기·로그아웃·다른 앱) 그때까지의 결과를 중간 결과로 보관해 둔다 (stash).
  *     판을 하는 동안은 판 잠금(hold, navigator.locks)을 잡아 두어, 다른 탭의 다시 보내기가 아직 이어지는 판의 중간 결과를 올리지 않게 한다
- * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql, 044_survival_endless.sql, 045_survival_review.sql, 055_survival_hell.sql).
+ * 엽전·강화·해금·기록은 모두 서버 함수가 정한다 (supabase/migrations/038_survival.sql, 039_survival_hardening.sql, 040_survival_5min.sql, 041_survival_3min.sql, 042_survival_speed.sql, 043_survival_4min.sql, 044_survival_endless.sql, 045_survival_review.sql, 055_survival_hell.sql, 073_cat_survival.sql, 084_survival_daily.sql).
  */
 
 /** 주소 (화면 없이 시험할 때는 없다) */
@@ -45,8 +45,9 @@ export interface SurvivalApi {
    * 판 시작: 판 id. 못 받으면 null (그 판은 기록되지 않는다). skipSec: 테스트 모드에서 시작 시각을 건너뛴 판(?t=120)의 시작을 그만큼 앞당긴다.
    * mode: 무한 모드면 'endless' (그 맵을 4분 모드로 클리어하지 않았으면 — 클리어 기록도 없고 다음 맵도 안 열렸으면 — ApiError 'endless locked'),
    *       헬 모드면 'hell' (같은 조건. 안 열렸으면 ApiError 'hell locked')
+   * daily: 오늘의 도전 판 (084: 서버에는 모드 'daily' 로 알린다. 4분 판이고 맵 잠금을 보지 않는다. 판 자체는 mode 'normal' 로 돈다)
    */
-  start(map: string, character: CharId, skipSec?: number, mode?: RunMode): Promise<string | null>;
+  start(map: string, character: CharId, skipSec?: number, mode?: RunMode, daily?: boolean): Promise<string | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
   finish(report: RunReport): Promise<{ profile: SurvivalProfile; result: FinishResult } | null>;
   /** 임시 보관해 둔 결과를 다시 보낸다 → 올라간 판 수 (이미 보내는 중이면 그 일이 끝나기를 기다린다) */
@@ -91,6 +92,8 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
     /** 헬 모드의 맵별 최고 기록 (4분 모드·무한 모드 기록과 따로) 과, 진행 중인 판 가운데 헬 모드인 것 */
     hell: Record<string, HellRecord>;
     hellRuns: Record<string, true>;
+    /** 진행 중인 판 가운데 오늘의 도전인 것 (서버의 모드 'daily') */
+    dailyRuns: Record<string, true>;
     /** 끝난 판: id → 시작 시각과 생존 시간 (겹치는 판 확인용. 서버처럼 30일 뒤에 지운다) */
     done: Record<string, { started: number; time: number }>;
     seq: number;
@@ -105,13 +108,13 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
         // 클리어한 맵·무한 모드·헬 모드 최고 기록은 기록에서 나온다
         return {
           profile: withRecords(cleanProfile(d.profile), records, endless, hell), records, endless, hell,
-          runs: d.runs ?? {}, endlessRuns: d.endlessRuns ?? {}, hellRuns: d.hellRuns ?? {}, done: d.done ?? {}, seq: Number(d.seq) || 0,
+          runs: d.runs ?? {}, endlessRuns: d.endlessRuns ?? {}, hellRuns: d.hellRuns ?? {}, dailyRuns: d.dailyRuns ?? {}, done: d.done ?? {}, seq: Number(d.seq) || 0,
         };
       }
     } catch {
       /* 처음 상태 */
     }
-    return { profile: defaultProfile(), records: {}, endless: {}, hell: {}, runs: {}, endlessRuns: {}, hellRuns: {}, done: {}, seq: 0 };
+    return { profile: defaultProfile(), records: {}, endless: {}, hell: {}, runs: {}, endlessRuns: {}, hellRuns: {}, dailyRuns: {}, done: {}, seq: 0 };
   };
   const write = (d: Saved) => {
     try {
@@ -139,9 +142,12 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
     async loadProfile() {
       return read().profile;
     },
-    async start(map, character, skipSec = 0, mode = 'normal') {
+    async start(map, character, skipSec = 0, mode = 'normal', daily = false) {
       const d = read();
-      if (!d.profile.unlockedMaps.includes(map)) throw new ApiError('map locked');
+      // 오늘의 도전은 4분 판이고 맵 잠금을 보지 않는다. 시아코인으로 여는 캐릭터는 쓰지 않는다 (084)
+      if (daily) mode = 'normal';
+      if (daily && CHARACTER_BY_ID[character].unlock.kind === 'sia') throw new ApiError('bad character');
+      if (!daily && !d.profile.unlockedMaps.includes(map)) throw new ApiError('map locked');
       // 서버와 같은 까닭: 시아코인으로 여는 캐릭터는 071 의 'locked character', 십이지는 'character locked'
       if (CHARACTER_BY_ID[character].unlock.kind === 'sia') {
         if (!localOpen.has(character)) throw new ApiError('locked character');
@@ -162,6 +168,8 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       if (mode === 'endless') d.endlessRuns[id] = true;
       d.hellRuns = Object.fromEntries(open.filter(([k]) => d.hellRuns[k]).map(([k]) => [k, true as const]));
       if (mode === 'hell') d.hellRuns[id] = true;
+      d.dailyRuns = Object.fromEntries(open.filter(([k]) => d.dailyRuns[k]).map(([k]) => [k, true as const]));
+      if (daily) d.dailyRuns[id] = true;
       for (const k of Object.keys(d.done)) if (d.done[k].started < t - 30 * 86400_000) delete d.done[k];
       write(d);
       return id;
@@ -172,6 +180,7 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       const started = d.runs[report.run];
       if (started === undefined) throw new ApiError('no run');
       // 모드는 시작할 때 정해진 것을 쓴다 (보고에 적힌 값은 믿지 않는다)
+      const daily = d.dailyRuns[report.run] === true;
       report = { ...report, mode: d.endlessRuns[report.run] ? 'endless' : d.hellRuns[report.run] ? 'hell' : 'normal' };
       const why = rejectReason(report, (now() - started) / 1000);
       if (why) throw new ApiError(why);
@@ -183,8 +192,9 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
       delete d.runs[report.run];
       delete d.endlessRuns[report.run];
       delete d.hellRuns[report.run];
+      delete d.dailyRuns[report.run];
       d.done[report.run] = { started, time: report.time };
-      const out = applyRun(d.profile, d.records, report, now(), d.endless, d.hell);
+      const out = applyRun(d.profile, d.records, report, now(), d.endless, d.hell, daily);
       d.profile = out.profile;
       d.records = out.records;
       d.endless = out.endless;
@@ -318,9 +328,10 @@ export function createSupabaseApi(
       });
       // 'too early': 판 시작 알림이 늦게 닿았을 때. 조금 뒤에 다시 보내면 통과하므로 버리지 않는다
       if (error) return rejected(error) && !/too early/.test(error.message ?? '') ? { outcome: 'rejected', why: error.message } : { outcome: 'failed' };
-      const d = data as { profile?: unknown; result?: Partial<FinishResult> } | null;
+      const d = data as { profile?: unknown; result?: Partial<FinishResult>; daily?: { day?: unknown; improved?: unknown; first?: unknown } | null } | null;
       if (!d?.result) return { outcome: 'failed' };
       const res = d.result;
+      const dl = d.daily;
       return {
         outcome: 'ok',
         data: {
@@ -332,6 +343,8 @@ export function createSupabaseApi(
             newRecord: res.newRecord === true,
             unlockedCharacters: (Array.isArray(res.unlockedCharacters) ? res.unlockedCharacters : []).filter((c) => CHAR_IDS.includes(c)),
             unlockedMaps: (Array.isArray(res.unlockedMaps) ? res.unlockedMaps : []).filter((m) => MAP_INDEX[m] !== undefined),
+            // 084: 오늘의 도전 판이 그날 순위에 들어갔으면 (답의 맨 위 'daily' 칸. 옛 서버 답에는 없다)
+            daily: dl && typeof dl.day === 'string' ? { day: dl.day, improved: dl.improved === true, first: dl.first === true } : null,
           },
         },
       };
@@ -349,11 +362,13 @@ export function createSupabaseApi(
       return error || typeof data !== 'number' ? t1 : data + (t1 - t0) / 2;
     },
     loadProfile: () => profileRpc('survival_profile'),
-    async start(map, character, _skipSec = 0, mode = 'normal') {
+    async start(map, character, _skipSec = 0, mode = 'normal', daily = false) {
       // 통신 문제면 한 번 더 해 본다. 두 번을 합쳐 timeoutMs(12초) 안에 답이 없으면 이 판은 기록되지 않는다
       // 4분 모드는 예전과 같은 인자로 부른다 (모드 인자는 무한 모드·헬 모드일 때만 붙인다)
       const args: Record<string, unknown> = { p_map: map, p_character: character };
       if (mode === 'endless' || mode === 'hell') args.p_mode = mode;
+      // 오늘의 도전: 서버의 모드는 'daily' (084)
+      if (daily) args.p_mode = 'daily';
       let why: string | undefined;
       for (let i = 0; i < 2; i++) {
         const { data, error } = await call('survival_start', args, timeoutMs / 2);

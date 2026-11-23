@@ -54,6 +54,7 @@ export function showMain() {
      </div>
      <div class="main-actions">
        <button class="btn primary big" id="go">출전 ▶</button>
+       <button class="btn daily-go" id="daily">📅 오늘의 도전 <small>모두 같은 조건으로 겨뤄요</small></button>
        <div class="sub-actions">
          <button class="btn" id="upgrade">⚒️ 강화</button>
          <button class="btn" id="codex">📖 도감</button>
@@ -82,6 +83,10 @@ export function showMain() {
   root.querySelector('#go')!.addEventListener('click', () => {
     sfx('click');
     nav.select();
+  });
+  root.querySelector('#daily')!.addEventListener('click', () => {
+    sfx('click');
+    nav.daily();
   });
   root.querySelector('#settings')!.addEventListener('click', () => openSettings());
   root.querySelector('#upgrade')!.addEventListener('click', () => {

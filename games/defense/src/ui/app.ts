@@ -2,6 +2,7 @@ import { SQUAD_SIZE, VIEW_W, type CharId } from '../data/balance';
 import { BOUGHT, CAT_STAGE, EXTRA_PRICE, STARTERS, towerOf, type RosterEntry } from '../data/characters';
 import { REGIONS } from '../data/regions';
 import type { RunSummary } from '../game/sim';
+import type { DailyChallenge } from '../game/daily';
 import { catCondition as catConditionOf, defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
 import type { DefenseApi } from '../net/api';
 import { music } from './music';
@@ -21,6 +22,8 @@ export interface GameSetup {
   lv?: number;
   upg?: number;
   offline?: boolean;
+  /** 오늘의 고개 판: 그날의 스테이지·조건·시드 (game/daily.ts) */
+  daily?: DailyChallenge;
 }
 
 /** 결과 화면에 넘기는 것 */
@@ -70,7 +73,9 @@ export const nav = {
   /** 도감 */
   codex: () => {},
   /** 출전 준비: 캐릭터 5종 고르기 + 요괴 미리 보기 */
-  prepare: (_stage: string) => {},
+  prepare: (_stage: string, _daily?: DailyChallenge) => {},
+  /** 오늘의 고개: 오늘의 스테이지·조건과 오늘 순위 */
+  daily: () => {},
   game: (_setup: GameSetup) => {},
   result: (_result: GameResult) => {},
 };
@@ -158,6 +163,7 @@ export function whyText(e: unknown): string {
   if (/stage locked/.test(m)) return '아직 열리지 않은 스테이지예요';
   if (/endless locked/.test(m)) return '끝없는 고개는 1지역을 모두 클리어하면 열려요';
   if (/bad squad/.test(m)) return '출전 캐릭터를 다시 골라 주세요 (1~5종, 겹치지 않게)';
+  if (/bad day/.test(m)) return '날짜가 바뀌었어요. 오늘의 고개를 다시 열어 주세요';
   if (/need login/.test(m)) return '로그인이 필요해요';
   return '서버에 연결하지 못했어요. 잠시 후 다시 해 주세요';
 }

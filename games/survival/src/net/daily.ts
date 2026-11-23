@@ -1,0 +1,36 @@
+/**
+ * 오늘의 도전: SIA WORLD 공통 모듈(shared/daily.js)을 실행 중에 불러와 쓴다 (빌드에 넣지 않는다: 로비와 같은 로그인 세션).
+ * 테스트 모드(?local=1)는 서버 없이 기기 시계의 날짜와 조건만으로 한다 (순위 없음).
+ * 조건 계산은 game/daily.ts (순수 함수).
+ */
+import { DAILY_GAME, cleanDailyRanking, dailyChallenge, dailySeed, isDay, localDay, type DailyChallenge, type DailyRanking } from '../game/daily';
+import { LOCAL_MODE } from './api';
+
+import { loadDaily as shared } from './world';
+
+/**
+ * 오늘의 조건. 날짜는 서버의 한국 날짜만 쓴다 (dailyTodayStrict): 기록이 서버로 가는 판이라 기기 시계로 대신하지 않는다.
+ * 날짜를 못 받았으면(통신 실패·5초 초과·공통 모듈 실패) null → 화면은 안내하고 시작을 막는다. 테스트 모드만 기기 시계
+ */
+export async function loadDailyChallenge(): Promise<DailyChallenge | null> {
+  if (LOCAL_MODE) return dailyChallenge(localDay());
+  try {
+    const m = await shared();
+    if (typeof m.dailyTodayStrict !== 'function') return null;
+    const day = await m.dailyTodayStrict();
+    if (!isDay(day)) return null;
+    return dailyChallenge(day, typeof m.dailySeed === 'function' ? m.dailySeed : dailySeed);
+  } catch {
+    return null;
+  }
+}
+
+/** 그날 순위 (상위 50명 + 내 기록). 못 읽으면 null (던지지 않는다). 테스트 모드에는 순위가 없다 */
+export async function loadDailyRank(day: string): Promise<DailyRanking | null> {
+  if (LOCAL_MODE) return null;
+  try {
+    return cleanDailyRanking(await (await shared()).loadDailyRanking(DAILY_GAME, day));
+  } catch {
+    return null;
+  }
+}

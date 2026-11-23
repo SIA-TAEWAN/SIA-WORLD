@@ -5,7 +5,7 @@ import { CHAR_MAX_LV, UPGRADES } from '../data/growth';
 import { STAGES, stageOf } from '../data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, levelUp, minRealTime, openedBy, rejectReason, squadOk, stageOpen, startLivesOf,
-  endlessOpen, extraOpen, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
+  endlessOpen, extraOpen, type DailyRecord, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
 } from '../game/progress';
 import type { Upgrades } from '../data/growth';
 import { ENDLESS_ID } from '../data/endless';
@@ -53,7 +53,8 @@ export interface DefenseApi {
   kind: 'supabase' | 'local';
   loadProfile(): Promise<DefenseProfile>;
   /** 판 시작: 판 id 와 판 설정. 못 받으면 null (그 판은 기록되지 않는다). 잠긴 스테이지·캐릭터면 ApiError */
-  start(stage: string, squad: CharId[], mode?: RunMode): Promise<StartInfo | null>;
+  /** daily: 오늘의 고개 판이면 그 날짜('YYYY-MM-DD'). 스테이지 잠금을 보지 않고, 서버의 오늘과 다르면 ApiError('bad day') */
+  start(stage: string, squad: CharId[], mode?: RunMode, daily?: string): Promise<StartInfo | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
   finish(report: RunReport): Promise<{ profile: DefenseProfile; result: FinishResult } | null>;
   /** 임시 보관해 둔 결과를 다시 보낸다 → 올라간 판 수 */
@@ -86,6 +87,8 @@ interface LocalRun {
   squad: CharId[];
   started: number;
   startLives: number;
+  /** 오늘의 고개 판 */
+  daily?: boolean;
 }
 interface Saved {
   profile: DefenseProfile;
@@ -131,8 +134,9 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
     async loadProfile() {
       return read().profile;
     },
-    async start(stageId, squad, mode = 'normal') {
+    async start(stageId, squad, mode = 'normal', daily) {
       const d = read();
+      if (daily && mode !== 'normal') throw new ApiError('bad stage');
       const stage = stageOf(stageId);
       if (!stage || (mode === 'endless') !== (stageId === ENDLESS_ID)) throw new ApiError('bad stage');
       if (new Set(squad).size !== squad.length || squad.length < 1 || squad.length > SQUAD_SIZE) throw new ApiError('bad squad');
@@ -140,7 +144,7 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
       if (squad.some((c) => EXTRAS.includes(c) && !extraOpen(c))) throw new ApiError('locked character');
       if (mode === 'endless') {
         if (!endlessOpen(d.profile)) throw new ApiError('endless locked');
-      } else if (!stageOpen(d.profile, stage)) throw new ApiError('stage locked');
+      } else if (!daily && !stageOpen(d.profile, stage)) throw new ApiError('stage locked');
       if (!squadOk(d.profile, squad)) throw new ApiError('character locked');
       // 서버와 같다: 끝나지 않은 이전 판은 두되, 너무 오래됐거나 많이 쌓인 것만 치우고, 끝난 판은 30일 뒤에 지운다
       const t = now();
@@ -150,7 +154,7 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
         .slice(0, LIMITS.open_runs - 1);
       const id = `local-${++d.seq}`;
       const startLives = startLivesOf(stage, d.profile.upgrades);
-      d.runs = { ...Object.fromEntries(open), [id]: { mode, stage: stageId, squad, started: t, startLives } };
+      d.runs = { ...Object.fromEntries(open), [id]: { mode, stage: stageId, squad, started: t, startLives, ...(daily ? { daily: true } : {}) } };
       for (const k of Object.keys(d.done)) if (d.done[k].started < t - 30 * 86400_000) delete d.done[k];
       write(d);
       return { run: id, startLives, upgrades: { ...d.profile.upgrades }, levels: { ...d.profile.levels } };
@@ -172,7 +176,7 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
       }
       let out: ReturnType<typeof applyRun>;
       try {
-        out = applyRun(d.profile, report, rn.squad, rn.mode ?? 'normal');
+        out = applyRun(d.profile, report, rn.squad, rn.mode ?? 'normal', !!rn.daily);
       } catch (e) {
         throw new ApiError((e as Error).message);
       }
@@ -206,6 +210,14 @@ export function startInfo(data: unknown): StartInfo | null {
   const p = cleanProfile({ upgrades: d.upgrades, levels: d.levels });
   const lives = Math.floor(Number(d.startLives));
   return { run: d.run, ...(lives >= 1 ? { startLives: lives } : {}), upgrades: p.upgrades, levels: p.levels };
+}
+
+/** defense_finish 의 result.daily → DailyRecord (오늘의 고개 판이 아니거나 기록되지 않았으면 null) */
+export function dailyRecord(v: unknown): DailyRecord | null {
+  const d = v as { day?: unknown; score?: unknown; best?: unknown; improved?: unknown; first?: unknown } | null;
+  if (!d || typeof d !== 'object' || typeof d.day !== 'string' || !Number.isFinite(Number(d.score))) return null;
+  const score = Number(d.score);
+  return { day: d.day, score, best: Number.isFinite(Number(d.best)) ? Number(d.best) : score, improved: d.improved === true, first: d.first === true };
 }
 
 /** 서버 함수가 낸 오류인가 (raise exception → 코드 P0001). 그 밖(연결 끊김·시간 초과)은 통신 실패로 본다 */
@@ -279,6 +291,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
             unlocked: (Array.isArray(res.unlocked) ? res.unlocked : []).filter((c): c is CharId => (CHAR_IDS as readonly string[]).includes(c)),
             valid: res.valid !== false,
             wave: num(res.wave), bestWave: num(res.bestWave), newRecord: res.newRecord === true,
+            daily: dailyRecord(res.daily),
           },
         },
       };
@@ -289,14 +302,16 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
   const self: DefenseApi = {
     kind: 'supabase',
     loadProfile: () => profileRpc('defense_profile'),
-    async start(stage, squad, mode = 'normal') {
+    async start(stage, squad, mode = 'normal', daily) {
       // 통신 문제면 한 번 더 해 본다. 두 번을 합쳐 timeoutMs(12초) 안에 답이 없으면 이 판은 기록되지 않는다
       // (스테이지 판은 예전과 같은 인자로 부른다. 모드 인자는 끝없는 모드일 때만 붙인다)
       const args: Record<string, unknown> = { p_stage: stage, p_squad: squad };
       if (mode === 'endless') args.p_mode = 'endless';
+      // 오늘의 고개: 스테이지 잠금을 보지 않는 시작 함수 (087). 판에 날짜가 적혀 끝낼 때 오늘 순위에 기록된다
+      if (daily) args.p_day = daily;
       let why: string | undefined;
       for (let i = 0; i < 2; i++) {
-        const { data, error } = await call('defense_start', args, timeoutMs / 2);
+        const { data, error } = await call(daily ? 'defense_daily_start' : 'defense_start', args, timeoutMs / 2);
         if (error && rejected(error)) throw new ApiError(error.message ?? 'error');
         if (!error) {
           const info = startInfo(data);

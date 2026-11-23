@@ -370,6 +370,9 @@ input:focus { outline: var(--line) solid var(--primary); }
   /* 자동 시작 스위치는 제목 줄 오른쪽에 (위 줄이 넘쳐 초대 버튼이 따로 떨어지지 않게) */
   .table-page .bar:has(.auto-sw) h1 { flex-basis: 50%; flex-grow: 1; }
   .table-page .bar .auto-sw { order: 6; }
+  /* 한마디 버튼도 제목 줄 오른쪽 끝에 (위 줄: 나가기 · 금액 · 초대) */
+  .table-page .bar:has(.emote-btn:not([hidden])) h1 { flex-basis: 50%; flex-grow: 1; }
+  .table-page .bar .emote-btn { order: 7; }
   .controls .btn.big { font-size: 17px; padding: 9px 14px; }
 }
 /* 낮은 화면(가로로 눕힌 휴대폰): 자리 줄은 숨기고(테이블 위 이름패와 같은 정보) 위·아래를 얇게 */
@@ -665,4 +668,142 @@ input:focus { outline: var(--line) solid var(--primary); }
   .mg-say { font-size: 18px; padding: 4px 18px 4px 5px; }
   .mg-say img { width: 36px; height: 36px; }
   .table-page[data-game='matgo'] .hw { width: 56px; height: 87px; }
+}
+
+/* ---------- 한마디(이모티콘): 상단 바 버튼 · 고르는 판 · 자리 위 말풍선 ---------- */
+.emote-btn[hidden], .emote-pop[hidden] { display: none; }
+/* 터치 영역: 낮은 화면에서 상단 바 버튼이 얇아져도 💬 는 손가락 크기를 지킨다 */
+.emote-btn { padding: 5px 10px; min-width: 40px; min-height: 32px; }
+/* 결과 창 안의 💬: 버튼 줄 왼쪽 끝 */
+.modal .row .emote-btn { margin-right: auto; }
+/* 결과 창(.modal 100) 위에 뜬다: 결과를 보는 동안에도 한마디가 보이고, 보낼 수 있게 */
+.emote-pop {
+  position: fixed;
+  z-index: 120;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel);
+  border: var(--line) solid var(--outline);
+  border-radius: var(--radius-button);
+  box-shadow: 0 var(--depth-button) 0 var(--outline);
+}
+.emote-pop .btn { white-space: nowrap; }
+.emote-say {
+  position: fixed;
+  z-index: 110;
+  transform: translate(-50%, calc(-100% - 10px));
+  padding: 6px 14px;
+  border-radius: var(--radius-item);
+  background: var(--panel-strong);
+  border: var(--line) solid var(--outline);
+  box-shadow: 0 3px 0 var(--outline);
+  color: var(--ink);
+  font-size: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: emote-pop 2.5s ease-out forwards;
+}
+.emote-say::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 12px;
+  height: 12px;
+  background: var(--panel-strong);
+  border-right: var(--line) solid var(--outline);
+  border-bottom: var(--line) solid var(--outline);
+  transform: translateX(-50%) rotate(45deg);
+}
+/* 기준점 아래에 뜨는 말풍선 (화면 위쪽 자리 · 자리 줄): 꼬리가 위로 */
+.emote-say.below { transform: translate(-50%, 12px); animation-name: emote-pop-below; }
+.emote-say.below::after { bottom: auto; top: -9px; border: none; border-left: var(--line) solid var(--outline); border-top: var(--line) solid var(--outline); }
+@keyframes emote-pop {
+  0% { opacity: 0; transform: translate(-50%, calc(-100% - 2px)) scale(0.6); }
+  8% { opacity: 1; transform: translate(-50%, calc(-100% - 10px)) scale(1.1); }
+  14% { transform: translate(-50%, calc(-100% - 10px)) scale(1); }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, calc(-100% - 18px)); }
+}
+@keyframes emote-pop-below {
+  0% { opacity: 0; transform: translate(-50%, 4px) scale(0.6); }
+  8% { opacity: 1; transform: translate(-50%, 12px) scale(1.1); }
+  14% { transform: translate(-50%, 12px) scale(1); }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, 18px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .emote-say { animation: none; }
+}
+
+/* ---------- 블랙잭: 오늘 기록 띠 ---------- */
+.controls .bj-today { margin: 0 0 6px; text-align: center; font-size: 13px; color: var(--ink-soft); }
+.controls .bj-today b { font-weight: normal; color: var(--accent); }
+.controls .bj-today b.minus { color: var(--lose); }
+.controls .bj-today .tag { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--pink); color: var(--white); }
+/* 낮은 화면(가로로 눕힌 휴대폰): 조작부가 얇아 띠는 숨긴다 (연승은 이름패 꼬리표에 그대로 보인다) */
+@media (max-height: 520px) {
+  .controls .bj-today { display: none; }
+}
+
+/* ---------- 홀덤: 승률 · 팟 오즈 도우미 ---------- */
+.controls .hd-help { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; justify-content: center; margin-top: 9px; font-size: 14px; color: var(--ink); }
+.controls .hd-help .auto-sw { flex: none; min-height: 34px; font-size: 13px; padding: 3px 10px; }
+.controls .hd-help b { font-weight: normal; color: var(--accent); white-space: nowrap; }
+@media (max-width: 420px) {
+  .controls .hd-help b { font-size: 13px; }
+}
+/* 낮은 화면: 스위치와 숫자를 한 줄에 */
+@media (max-height: 520px) {
+  .controls .hd-help { flex-wrap: nowrap; margin-top: 8px; }
+  .controls .hd-help b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ---------- 룰렛: 흐름 통계판 ---------- */
+.rstats { width: min(640px, 100%); margin: 4px auto; }
+.rstats-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rstats-head .btn { flex: none; min-height: 36px; }
+.rs-empty { margin: 0; text-align: center; font-size: 13px; color: var(--ink-soft); }
+/* 확정했거나 돌아가는 동안: 펼친 통계판은 접힌 모양으로 (휠이 작아지지 않게) */
+.table-page[data-mode='rl-watch'] .controls .rstats-body { display: none; }
+.rstats-head .tag { padding: 1px 9px; border-radius: var(--radius-pill); background: var(--pink); color: var(--white); font-size: 13px; white-space: nowrap; }
+.rstats-head small { font-size: 12px; color: var(--ink-soft); }
+.rstats-body { margin-top: 6px; padding: 8px; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); display: grid; gap: 6px; }
+.rs-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.rs-z { position: relative; display: flex; flex-direction: column; align-items: center; padding: 3px 2px 2px; border: var(--line-thin) solid var(--outline); border-radius: 10px; font-size: 11px; line-height: 1.15; color: var(--ink); }
+.rs-z.spring { background: var(--roulette-spring); }
+.rs-z.summer { background: var(--roulette-summer); }
+.rs-z.autumn { background: var(--roulette-autumn); }
+.rs-z.winter { background: var(--roulette-winter); }
+.rs-z.zero { opacity: 0.6; }
+.rs-z.top { box-shadow: inset 0 0 0 3px var(--primary-deep); }
+.rs-z img { width: 24px; height: 24px; }
+.rs-z b { font-weight: normal; font-size: 14px; }
+.rs-z em { font-style: normal; font-size: 10px; color: var(--ink-soft); }
+.rs-bar { display: flex; align-items: stretch; gap: 6px; font-size: 12px; color: var(--ink); }
+.rs-bar > span { flex: none; width: 34px; align-self: center; color: var(--ink-soft); }
+.rs-bar > div { flex: 1; display: flex; min-width: 0; border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); overflow: hidden; background: var(--track); }
+.rs-bar i { font-style: normal; flex: 1 1 0; min-width: max-content; padding: 2px 6px; text-align: center; white-space: nowrap; border-left: var(--line-thin) solid var(--outline); }
+.rs-bar i:first-child { border-left: none; }
+.rs-bar i.spring { background: var(--roulette-spring); }
+.rs-bar i.summer { background: var(--roulette-summer); }
+.rs-bar i.autumn { background: var(--roulette-autumn); }
+.rs-bar i.winter { background: var(--roulette-winter); }
+.rs-bar i.yang { background: var(--white); }
+.rs-bar i.yin { background: var(--outline); color: var(--white); }
+.rs-note { margin: 0; text-align: center; font-size: 11px; color: var(--ink-soft); }
+@media (min-width: 700px) {
+  .rs-grid { grid-template-columns: repeat(12, 1fr); }
+}
+/* 좁은 폭: 비율 막대 글자를 줄여 네 칸이 한 줄에 들어가게 */
+@media (max-width: 420px) {
+  .rs-bar i { font-size: 11px; padding: 2px 3px; }
+}
+/* 키 작은 화면: 머리줄은 한 줄로 (넘치는 꼬리표는 자른다), 배당 안내 줄은 숨긴다 */
+@media (max-height: 700px) {
+  .rstats-head { flex-wrap: nowrap; overflow: hidden; }
+  .rstats-head small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rhint { display: none; }
 }

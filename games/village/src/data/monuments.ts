@@ -10,6 +10,8 @@ import type { BuildingType } from './buildings';
 export const STAT_IDS = [
   'tank_wins', 'volley_wins', 'race_plays', 'surv_field', 'surv_bamboo', 'surv_palace', 'surv_underworld',
   'def_3', 'def_6', 'def_9', 'def_12', 'matgo_wins', 'casino_wins',
+  // 081: 시아돌격대(모은 별 · 끝없는 길 최고 거리 m) · 시아핑거(모은 별 · 끝없는 탑 최고 층)
+  'charge_stars', 'charge_meters', 'finger_stars', 'finger_floor',
 ] as const;
 export type StatId = (typeof STAT_IDS)[number];
 export type GameStats = Record<StatId, number>;
@@ -25,14 +27,17 @@ export interface MonumentDef {
   need: number;
 }
 
-export const GAMES: { id: string; name: string; icon: string }[] = [
-  { id: 'tank', name: '시아탱크', icon: '💣' },
-  { id: 'volley', name: '시아배구', icon: '🏐' },
-  { id: 'race', name: '시아레이스', icon: '🏁' },
-  { id: 'survival', name: '시아서바이벌', icon: '⚔️' },
-  { id: 'defense', name: '시아디펜스', icon: '🏯' },
-  { id: 'matgo', name: '시아맞고', icon: '🎴' },
-  { id: 'casino', name: '시아카지노', icon: '🎰' },
+/** world: SIA WORLD 게임 목록(shared/games.js)의 id — 그 게임이 열려 있는지(game_open) 볼 때 쓴다 */
+export const GAMES: { id: string; name: string; icon: string; world: string }[] = [
+  { id: 'tank', name: '시아탱크', icon: '💣', world: 'tank' },
+  { id: 'volley', name: '시아배구', icon: '🏐', world: 'volleyball' },
+  { id: 'race', name: '시아레이스', icon: '🏁', world: 'race' },
+  { id: 'survival', name: '시아서바이벌', icon: '⚔️', world: 'survival' },
+  { id: 'defense', name: '시아디펜스', icon: '🏯', world: 'defense' },
+  { id: 'matgo', name: '시아맞고', icon: '🎴', world: 'matgo' },
+  { id: 'casino', name: '시아카지노', icon: '🎰', world: 'casino' },
+  { id: 'charge', name: '시아돌격대', icon: '🚩', world: 'charge' },
+  { id: 'finger', name: '시아핑거', icon: '👆', world: 'finger' },
 ];
 
 export const MONUMENTS: MonumentDef[] = [
@@ -52,5 +57,24 @@ export const MONUMENTS: MonumentDef[] = [
   { id: 'mon_def12', game: 'defense', cond: '12지역 클리어', stat: 'def_12', need: 1 },
   { id: 'mon_matgo', game: 'matgo', cond: '첫 승리 (한 판 따기)', stat: 'matgo_wins', need: 1 },
   { id: 'mon_casino', game: 'casino', cond: '첫 승리 (한 판 따기)', stat: 'casino_wins', need: 1 },
+  { id: 'mon_charge30', game: 'charge', cond: '별 30개 모으기', stat: 'charge_stars', need: 30 },
+  { id: 'mon_charge100', game: 'charge', cond: '별 100개 모으기', stat: 'charge_stars', need: 100 },
+  { id: 'mon_charge_road', game: 'charge', cond: '끝없는 길 1,000m 달리기', stat: 'charge_meters', need: 1000 },
+  { id: 'mon_finger30', game: 'finger', cond: '별 30개 모으기', stat: 'finger_stars', need: 30 },
+  { id: 'mon_finger100', game: 'finger', cond: '별 100개 모으기', stat: 'finger_stars', need: 100 },
+  { id: 'mon_finger_tower', game: 'finger', cond: '끝없는 탑 20층 오르기', stat: 'finger_floor', need: 20 },
 ];
 export const MONUMENT = Object.fromEntries(MONUMENTS.map((m) => [m.id, m])) as Partial<Record<BuildingType, MonumentDef>>;
+
+/**
+ * [기념물] 화면에 보여 줄 기념물: 아직 열지 않은(닫힌) 게임의 기념물은 감춘다 — 할 수 없는 게임의 조건이 보이지 않게.
+ *   gameOpen: 게임별 오픈 여부 (shared/games.js loadGameOpen). 못 불러왔으면 null → 모두 보인다
+ *   admin: 관리자는 닫힌 게임도 할 수 있으므로 모두 보인다
+ *   owned: 이미 열린 기념물 — 게임이 닫혀 있어도 내가 받은 것은 그대로 보인다 (놓기 버튼이 사라지지 않게)
+ * 합계(열린 수 / 전체)도 이 목록으로 센다
+ */
+export function visibleMonuments(gameOpen: Readonly<Record<string, boolean>> | null, admin: boolean, owned: readonly BuildingType[]): MonumentDef[] {
+  if (!gameOpen || admin) return MONUMENTS;
+  const shut = new Set(GAMES.filter((g) => gameOpen[g.world] === false).map((g) => g.id));
+  return MONUMENTS.filter((m) => !shut.has(m.game) || owned.includes(m.id));
+}

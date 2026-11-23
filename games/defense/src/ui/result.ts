@@ -3,15 +3,47 @@ import { regionOf } from '../data/regions';
 import { nextStage, stageOf } from '../data/stages';
 import { LIMITS, stageOpen } from '../game/progress';
 import { ROSTER } from '../data/characters';
+import { featScore, supportLine, type Feats } from '../game/feats';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, josa, nav, screen, state, type GameResult } from './app';
 import { sfx } from './sfx';
+import { DAILY_GAME, dailyScore } from '../game/daily';
+import { LOCAL_MODE } from '../net/api';
+import { loadDaily } from '../net/world';
+import { dayLabel } from './daily';
+
+/**
+ * 활약상: 캐릭터별 피해 막대(가장 큰 값이 꽉 찬다)와 처치 수, 오늘의 일꾼, 지원 기여 한 줄.
+ * 아무도 놓지 않은 판이면 빈 글
+ */
+function featsHtml(f: Feats): string {
+  if (!f.rows.length) return '';
+  const nick = (id: string) => ROSTER.find((x) => x.id === id)?.nick ?? id;
+  const top = Math.max(1, ...f.rows.map((r) => r.dmg));
+  const rows = [...f.rows].sort((a, b) => featScore(b) - featScore(a) || b.kills - a.kills);
+  return `<div class="feats">
+    <h3><span>활약상</span>${f.mvp ? `<b>👑 오늘의 일꾼 ${esc(nick(f.mvp))}</b>` : ''}</h3>
+    <ul>${rows
+      .map((r) => {
+        const sup = supportLine(r);
+        return `<li class="${r.char === f.mvp ? 'mvp' : ''}" aria-label="${esc(nick(r.char))}: 피해 ${r.dmg.toLocaleString()}, 처치 ${r.kills}">
+          <img src="${zodiacFaceUrl(r.char)}" alt="" />
+          <div class="fbar">${r.dmg > 0 ? `<i style="width:${Math.round((r.dmg / top) * 100)}%"></i>` : ""}<span>${r.dmg.toLocaleString()}</span></div>
+          <span class="kills">💀 ${r.kills.toLocaleString()}</span>
+          ${sup ? `<small class="sup">🤝 ${esc(sup)}</small>` : ''}
+        </li>`;
+      })
+      .join('')}</ul>
+  </div>`;
+}
 
 /** 결과 화면: 별 1~3개 · 얻은 엽전 · 첫 클리어 보상 → [다음 스테이지] [다시하기] [메인으로] (PRD 2장) */
 export function showResult(r: GameResult) {
   const st = stageOf(r.stage)!;
   const title = r.endless ? `웨이브 ${r.wave}` : r.cleared ? '클리어!' : r.quit ? '포기했어요' : '실패…';
-  const next = r.endless ? undefined : nextStage(st);
+  /** 오늘의 고개 판: 별·다음 스테이지가 없고, 오늘 순위를 보여 준다 */
+  const daily = r.setup.daily;
+  const next = r.endless || daily ? undefined : nextStage(st);
   const lost = r.startLives - r.lives;
   // 별 조건 세 줄: 이번 판에 채운 것에 표시
   const goal = (ok: boolean, text: string) => `<li class="${ok ? 'ok' : ''}"><i>★</i>${text}</li>`;
@@ -22,12 +54,15 @@ export function showResult(r: GameResult) {
     [1, 2, 3].map((i) => `<i class="${i <= stars ? 'on' : ''}"${animate ? ` style="animation-delay:${i * 0.25}s"` : ''}>★</i>`).join('');
   const root = screen(
     `<div class="result-card ${r.cleared || r.endless ? 'won' : 'lost'}">
-       <h2>${r.endless ? '♾️' : esc(st.id)} ${esc(st.name)}</h2>
+       <h2>${daily ? '📅 ' : ''}${r.endless ? '♾️' : esc(st.id)} ${esc(st.name)}</h2>
        <div class="verdict">${title}</div>
        ${
          r.endless
            ? `<p class="soft center">까지 버텼어요 <i class="tag hidden" id="record">새 기록!</i></p>
               <div class="squad-faces">${r.setup.squad.map((c) => `<img src="${zodiacFaceUrl(c)}" alt="" />`).join('')}</div>`
+           : daily
+             ? `<p class="soft center daily-rule"><span class="tag">오늘의 고개 · ${esc(daily.title)}</span><br/>${esc(daily.desc)}</p>
+       <img class="result-char" src="${zodiacFullUrl(r.setup.squad[0] ?? 'rat')}" alt="" />`
            : `<div class="big-stars" id="stars" aria-label="별 ${r.stars}개">${starIcons(r.stars, true)}</div>
        <img class="result-char" src="${zodiacFullUrl(r.setup.squad[0] ?? 'rat')}" alt="" />
        <ul class="goals" id="goals">
@@ -38,12 +73,14 @@ export function showResult(r: GameResult) {
          ${r.endless ? `<li><span>🏔️ 내 최고 기록</span><b id="best">${state.profile.endless ? `웨이브 ${state.profile.endless.wave}` : '–'}</b></li>` : `<li><span>❤️ 남은 생명</span><b>${r.lives}<small> / ${r.startLives}${lost > 0 ? ` (−${lost})` : ''}</small></b></li>`}
          <li><span>💀 처치한 요괴</span><b>${r.kills.toLocaleString()}</b></li>
          <li><span>🪙 얻은 엽전</span><b class="coin" id="coins">…</b></li>
+         ${daily ? '<li id="dailyRow"><span>📅 오늘 순위</span><b id="dailyRank">…</b></li>' : ''}
        </ul>
+       ${featsHtml(r.feats)}
        <div class="unlocks" id="unlocks"></div>
        <p class="soft note" id="note">결과를 저장하는 중…</p>
      </div>
      <div class="actions">
-       <button class="btn" id="home">메인으로</button>
+       <button class="btn" id="home">${daily ? '오늘 순위' : '메인으로'}</button>
        <button class="btn" id="again">다시하기</button>
      </div>
      <button class="btn primary big" id="next">다음 스테이지 ▶</button>
@@ -74,9 +111,17 @@ export function showResult(r: GameResult) {
   };
   paintNext();
   const note = root.querySelector('#note') as HTMLElement;
+  /** 오늘의 고개: 오늘 순위 칸. text 가 null 이면 칸을 숨긴다 (순위를 못 읽었을 때 조용히) */
+  const paintRank = (html: string | null) => {
+    const row = root.querySelector('#dailyRow');
+    if (!row) return;
+    row.classList.toggle('hidden', html === null);
+    if (html !== null) row.querySelector('#dailyRank')!.innerHTML = html;
+  };
   void r.saved.then((s) => {
     if (!root.isConnected) return;
     if (typeof s === 'string') {
+      paintRank(null);
       root.querySelector('#coins')!.textContent = s === 'pending' ? '…' : '0닢';
       note.textContent =
         s === 'unrecorded'
@@ -89,6 +134,40 @@ export function showResult(r: GameResult) {
     if (!s.valid) {
       root.querySelector('#coins')!.textContent = '0닢';
       note.textContent = '기록이 정상 범위를 벗어나 반영되지 않았어요';
+      paintRank(null);
+      return;
+    }
+    if (daily) {
+      root.querySelector('#coins')!.innerHTML = `+${s.coins.toLocaleString()}닢`;
+      // 서버가 오늘 순위에 기록했으면 내 순위를 읽어 온다. 기록되지 않았으면(너무 짧은 판 · 테스트 모드) 점수만
+      const rec = s.daily ?? null;
+      const score = rec?.score ?? dailyScore(r.cleared, r.lives, r.kills);
+      if (!rec) paintRank(LOCAL_MODE ? `${score.toLocaleString()}<small>점 (기록 안 함)</small>` : '<small>기록 없음</small>');
+      else {
+        /** 기록 한 줄과 순위 칸 이름: when = '오늘' 또는 기록된 날짜('11월 22일') */
+        const paintDay = (when: string) => {
+          root.querySelector('#unlocks')!.innerHTML = rec.improved
+            ? `<p class="daily-line">📅 ${esc(when)} ${rec.first ? '첫 기록' : '최고 기록'} <b>${rec.score.toLocaleString()}점</b></p>`
+            : `<p class="daily-line">📅 ${esc(when)} 내 최고 <b>${rec.best.toLocaleString()}점</b> <small>(이번 ${rec.score.toLocaleString()}점)</small></p>`;
+          const label = root.querySelector('#dailyRow span');
+          if (label) label.textContent = `📅 ${when} 순위`;
+        };
+        paintDay('오늘');
+        paintRank('…');
+        void (async () => {
+          const mod = await loadDaily();
+          const rank = mod ? await mod.loadDailyRanking(DAILY_GAME, rec.day).catch(() => null) : null;
+          if (!root.isConnected) return;
+          const place = Number(rank?.mine?.place);
+          paintRank(place >= 1 ? `${place}위<small> / ${Number(rank!.total) || place}명</small>` : null);
+          // 자정을 넘겨 끝낸 판: 기록된 날이 서버의 오늘이 아니면 "오늘" 대신 그 날짜로 적는다
+          const today = typeof rank?.today === 'string' ? rank.today : mod ? await mod.dailyTodayStrict().catch(() => null) : null;
+          if (!root.isConnected) return;
+          if (today && today !== rec.day) paintDay(dayLabel(rec.day));
+          if (place >= 1 && rec.improved) sfx('rankShow', { delay: 300 });
+        })();
+      }
+      note.textContent = s.baseCoins > 0 ? `${r.cleared ? '클리어' : '버틴 만큼'} ${s.baseCoins}` : r.cleared ? '' : '웨이브를 하나라도 넘기면 엽전을 조금 받아요';
       return;
     }
     root.querySelector('#coins')!.innerHTML = `+${s.coins.toLocaleString()}닢`;
@@ -142,11 +221,12 @@ export function showResult(r: GameResult) {
   });
   againBtn.addEventListener('click', () => {
     sfx('click');
-    // 같은 스테이지·같은 캐릭터로 새 판 (시드만 새로)
+    // 같은 스테이지·같은 캐릭터로 새 판 (시드만 새로. 오늘의 고개는 늘 그날의 시드)
     nav.game({ ...r.setup, seed: undefined });
   });
   root.querySelector('#home')!.addEventListener('click', () => {
     sfx('click');
-    nav.main();
+    if (daily) nav.daily();
+    else nav.main();
   });
 }

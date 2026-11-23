@@ -34,6 +34,8 @@ const START_AHEAD_MAX_MS = 30 * 1000;
 export interface EndInfo {
   score: [number, number];
   winner: 0 | 1;
+  /** 방장이 모은 하이라이트 (game/highlight.ts packHighlight) */
+  hl?: [number, number, number, number];
 }
 
 /**

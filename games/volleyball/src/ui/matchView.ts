@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { COURT_H, COURT_W, WIN_SCORE } from '../game/constants';
+import { COURT_H, COURT_W, PLAYER_R, WIN_SCORE } from '../game/constants';
+import { packHighlight } from '../game/highlight';
 import type { Side } from '../game/sim';
 import { Match, type MatchEvent, type MatchSetup } from '../match/game';
 import { OnlineMatch } from '../match/online';
@@ -10,6 +11,7 @@ import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, openSettings, screen, stage, state, toast } from './app';
 import { DPR } from './dpr';
+import { bubble, emoteChips, emoteHub, primaryPress, wireChips } from './emote';
 import { sfx } from './sfx';
 
 declare global {
@@ -57,7 +59,9 @@ export function showMatch(setup: MatchSetup) {
       <div class="mid"><div class="mid-btns"><button class="icon-btn" id="quit" aria-label="나가기">✕</button><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
         <div class="speed" id="speed">${online ? '' : 'AI 대전'}</div></div>
       ${side(1)}</div>
-    <div class="court bg${setup.bg}" id="court"><div class="cutin" id="cutin"></div><div class="waitbox hidden" id="waitbox"></div></div>
+    <div class="court bg${setup.bg}" id="court"><div class="cutin" id="cutin"></div><div class="waitbox hidden" id="waitbox"></div>
+      <div class="emo-say" id="say0"></div><div class="emo-say" id="say1"></div>
+      <div class="emo-box s${me}" id="emo"><button type="button" class="emo-open" id="emo-open" tabindex="-1" aria-label="이모티콘">💬</button><div class="emo-tray hidden" id="emo-tray">${emoteChips()}</div></div></div>
     <div class="pad" id="pad">
       <div class="pad-move"><div class="pbtn" data-b="left">◀</div><div class="pbtn" data-b="right">▶</div></div>
       <div class="pbtn jump" data-b="jump">점프</div>
@@ -72,6 +76,10 @@ export function showMatch(setup: MatchSetup) {
       ro?.disconnect();
       if (resultTimer) clearTimeout(resultTimer);
       if (cutTimer) clearTimeout(cutTimer);
+      if (trayTimer) clearTimeout(trayTimer);
+      chips.dispose();
+      hub.dispose();
+      says.forEach((b) => b.clear());
       match.dispose();
       game?.destroy(true);
       game = null;
@@ -85,6 +93,43 @@ export function showMatch(setup: MatchSetup) {
   const speedEl = $('#speed');
   const waitbox = $('#waitbox');
   const btnEls: Record<Btn, HTMLElement> = { left: $('[data-b="left"]'), right: $('[data-b="right"]'), jump: $('[data-b="jump"]') };
+
+  // ---------- 이모티콘: 경기장 위쪽 내 자리 구석의 💬 → 말 여섯 개. 조작 버튼(아래 판)과 멀리 떨어져 있어 잘못 눌리지 않는다 ----------
+  const says = [bubble($('#say0')), bubble($('#say1'))] as const;
+  /** 말풍선을 그 캐릭터 머리 위(이름표 위)에 둔다. 경기장 좌표(720×840) → % */
+  function placeSay(s: Side) {
+    const v = match.playerView(s);
+    const el = says[s].el;
+    el.style.left = `${(Math.min(COURT_W - 110, Math.max(110, v.x)) / COURT_W) * 100}%`;
+    el.style.top = `${(Math.max(70, v.y - PLAYER_R - 62) / COURT_H) * 100}%`;
+  }
+  const hub = emoteHub({
+    link: room,
+    myId: state.user.id,
+    oppId: setup.fighters[me === 0 ? 1 : 0].id,
+    mySide: me,
+    show: (s, text) => {
+      placeSay(s);
+      says[s].say(text);
+    },
+    // 상대가 끊겨 AI 가 이어받은 뒤: 그 사람이 보낸 이모티콘을 AI 캐릭터 위에 띄우지 않는다
+    oppGone: () => match instanceof OnlineMatch && match.solo,
+  });
+  const tray = $('#emo-tray');
+  let trayTimer: ReturnType<typeof setTimeout> | null = null;
+  function openTray(open: boolean) {
+    if (trayTimer) clearTimeout(trayTimer);
+    trayTimer = null;
+    tray.classList.toggle('hidden', !open);
+    // 열어 두고 잊어도 경기장을 계속 가리지 않게
+    if (open) trayTimer = setTimeout(() => openTray(false), 4000);
+  }
+  const chips = wireChips($('#emo'), hub, () => openTray(false));
+  $('#emo-open').addEventListener('pointerdown', (e) => {
+    if (!primaryPress(e)) return;
+    e.preventDefault();
+    openTray(tray.classList.contains('hidden'));
+  });
 
   // ---------- 조작: 키보드 + 터치(여러 손가락) → match.input ----------
   const keys = new Set<Btn>();
@@ -104,6 +149,13 @@ export function showMatch(setup: MatchSetup) {
   const keyBtn = (code: string): Btn | null =>
     code === 'ArrowLeft' || code === 'KeyA' ? 'left' : code === 'ArrowRight' || code === 'KeyD' ? 'right' : code === 'ArrowUp' || code === 'KeyW' || code === 'Space' ? 'jump' : null;
   const onKey = (e: KeyboardEvent) => {
+    // PC: 숫자 1~6 = 이모티콘
+    const emo = /^Digit[1-6]$/.test(e.code) ? Number(e.code.slice(5)) - 1 : -1;
+    if (emo >= 0 && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !stage.querySelector('.dim')) {
+      hub.send(emo);
+      chips.sync();
+      return;
+    }
     const b = keyBtn(e.code);
     if (!b || stage.querySelector('.dim')) return;
     e.preventDefault();
@@ -138,6 +190,7 @@ export function showMatch(setup: MatchSetup) {
     apply();
   };
   pad.addEventListener('pointerdown', (e) => {
+    openTray(false);
     try {
       pad.setPointerCapture(e.pointerId);
     } catch {
@@ -230,7 +283,7 @@ export function showMatch(setup: MatchSetup) {
     // 내가 끊겼던 쪽이면 남은 사람은 아직 AI와 경기 중이므로 내 기기에서만 정리한다
     const iLeft = result.reason === 'leave' && result.leaver === me;
     // 방장이 정상 종료했으면 결과도 함께 알린다 (상대가 끝 스냅샷을 못 받았어도 같은 결과로 끝나게)
-    room?.matchOver(setup.matchNo ?? 0, !iLeft, result.reason === 'normal' && me === 0 ? { score: result.score, winner: result.winner } : undefined);
+    room?.matchOver(setup.matchNo ?? 0, !iLeft, result.reason === 'normal' && me === 0 ? { score: result.score, winner: result.winner, hl: result.highlight && packHighlight(result.highlight) } : undefined);
     if (match instanceof OnlineMatch) window.__lastStats = { side: me, solo: match.solo, ...match.stats };
     if (recorder) result.record = recorder.finish(result);
     if (aiRecorder) result.aiRecord = aiRecorder.finish(result.winner === me);
@@ -275,6 +328,7 @@ export function showMatch(setup: MatchSetup) {
   let lastWait = 0;
   function frame(events: MatchEvent[]) {
     drawing = true;
+    for (const s of [0, 1] as const) if (says[s].on) placeSay(s);
     // 상대 연결을 기다리는 중 (10초가 지나면 AI가 상대 캐릭터를 이어받는다)
     if (match.waitingSec !== lastWait) {
       lastWait = match.waitingSec;

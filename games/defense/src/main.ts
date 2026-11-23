@@ -12,6 +12,7 @@ import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
 import { ENDLESS_ID } from './data/endless';
 import { showCodex } from './ui/codex';
 import { showResult } from './ui/result';
+import { DAY_CHANGED_TEXT, NO_DAY_TEXT, showDaily, todayChallenge } from './ui/daily';
 import { showChars } from './ui/roster';
 
 nav.main = showMain;
@@ -26,6 +27,7 @@ nav.stages = (no) => {
   resendPending();
 };
 nav.prepare = showPrepare;
+nav.daily = showDaily;
 nav.chars = showChars;
 nav.codex = showCodex;
 const dev = devSetup();
@@ -71,15 +73,30 @@ async function openGame(setup: GameSetup) {
   // 조금 오래 걸리면 기다리는 중이라고 알려 준다
   const slow = setTimeout(() => toast('출전 준비 중…', 4000), 600);
   try {
+    // 오늘의 고개: 시작할 때 날짜를 다시 받는다. 못 받으면 시작하지 않고, 화면의 날짜와 다르면 새 날짜로 다시 그린다 (그 판은 시작하지 않는다)
+    if (setup.daily && online) {
+      const { ch } = await todayChallenge();
+      if (!ch) {
+        toast(NO_DAY_TEXT, 3200);
+        return;
+      }
+      if (ch.day !== setup.daily.day) {
+        toast(DAY_CHANGED_TEXT, 3200);
+        nav.daily();
+        return;
+      }
+    }
     if (online) await Promise.race([api!.resend().catch(() => 0), wait(RESEND_WAIT_MS)]);
     const [m, begun] = await Promise.all([
       loadEngine().catch(() => null),
-      online ? api!.start(setup.stage, setup.squad, setup.endless ? 'endless' : 'normal').catch((e: unknown) => e) : Promise.resolve(null),
+      online ? api!.start(setup.stage, setup.squad, setup.endless ? 'endless' : 'normal', setup.daily?.day).catch((e: unknown) => e) : Promise.resolve(null),
     ]);
     if (begun instanceof ApiError) {
       // 잠긴 스테이지·캐릭터: 스테이지 고르기로 돌아간다
-      toast(whyText(begun));
-      if (setup.endless) nav.regions();
+      toast(whyText(begun), setup.daily ? 3200 : undefined);
+      // 오늘의 고개: 날짜가 바뀌었으면 새 날짜로 다시 그린다
+      if (setup.daily) nav.daily();
+      else if (setup.endless) nav.regions();
       else nav.stages(stageOf(setup.stage)?.region ?? 1);
       return;
     }

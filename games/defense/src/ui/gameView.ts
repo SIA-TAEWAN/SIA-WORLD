@@ -1,3 +1,4 @@
+import { dailyMods } from '../game/daily';
 import Phaser from 'phaser';
 import { BOARD_H, MAX_LV, RUN_SEC, SLOT_SIZE, SQUAD_SIZE, VIEW_W, WAVES, WAVE_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
@@ -7,7 +8,9 @@ import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
 import { ACT, DASH } from '../game/bosses';
 import { endlessBoss, endlessWave } from '../data/endless';
 import { quitCoins } from '../game/progress';
-import { activeBoss, canPlace, sellValue, towerLevel, upgradeCost } from '../game/sim';
+import { AIM } from '../game/core';
+import { AIM_CMDS_MAX, activeBoss, canPlace, canSetAim, sellValue, towerLevel, upgradeCost } from '../game/sim';
+import { aimMode, airFirst, canAim } from '../game/towers';
 import { EV, type Ev, type State } from '../game/state';
 import { presetUpgrades } from '../data/growth';
 import { LOCAL_MODE, type StartInfo } from '../net/api';
@@ -54,6 +57,14 @@ function saveSpeed(v: Speed) {
 
 const statLine = levelText;
 
+/** 조준 고르기 (배치한 캐릭터를 눌렀을 때): 방식과 버튼 글 · 누가 과녁이 되는지 */
+const AIM_BTNS: [number, string, string][] = [
+  [AIM.first, '앞쪽', '마을에 가장 가까운 요괴'],
+  [AIM.strong, '강한 놈', '체력이 가장 많은 요괴'],
+  [AIM.weak, '약한 놈', '남은 체력이 가장 적은 요괴'],
+  [AIM.last, '뒤쪽', '마을에서 가장 먼 요괴'],
+];
+
 /** 보스가 남아 있나 (끝없는 모드는 보스가 겹쳐 나올 수 있다) */
 const bossAlive = (s: State) => {
   for (let i = 0; i < s.enemyHi; i++) if (s.enemies[i].alive && s.enemies[i].boss >= 0) return true;
@@ -73,7 +84,8 @@ const OFF_TEXT: Record<string, string> = {
  */
 export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   const run = new Run({
-    seed: setup.seed ?? Math.floor(Math.random() * 0xffffffff),
+    // 오늘의 고개는 모두가 같은 시드로 한다
+    seed: setup.daily?.seed ?? setup.seed ?? Math.floor(Math.random() * 0xffffffff),
     stage: setup.stage,
     squad: setup.squad,
     // 판 밖 성장: 서버가 판 시작 때 알려 준 레벨·강화 (없으면 저장된 값. 개발용 설정 ?lv=N · ?upg=N 이 있으면 그 값)
@@ -81,6 +93,8 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : (begun?.upgrades ?? state.profile.upgrades),
     // 시작 생명은 서버가 적어 둔 값 그대로 (서버는 이 값으로 별을 센다)
     startLives: begun?.startLives,
+    // 오늘의 고개의 조건 (요괴 체력 · 시작 기운). 보통 판에는 없다
+    ...(setup.daily && dailyMods(setup.daily) ? { mods: dailyMods(setup.daily) } : {}),
   });
   run.speed = loadSpeed();
   const s = run.state;
@@ -93,7 +107,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   const api = state.api;
   const started: Promise<string | null> = Promise.resolve(setup.offline ? null : (begun?.run ?? null));
   /** 판에서 나갈 때 돌아갈 화면: 스테이지 판은 그 지역의 스테이지 고르기, 끝없는 모드는 지역 지도 */
-  const leave = () => (s.endless ? nav.regions() : nav.stages(s.stage.region));
+  const leave = () => (setup.daily ? nav.daily() : s.endless ? nav.regions() : nav.stages(s.stage.region));
   /** 판 시작을 서버에 알리지 못했다: 이 판은 기록되지 않는다 */
   let unrecorded = !!setup.offline;
 
@@ -122,6 +136,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
       <div class="tray-top">
         <span class="energy" id="energy" aria-label="기운"></span>
         <span class="hint" id="hint"></span><span class="norec hidden" id="norec">기록되지 않는 판</span>
+        <div class="seg aim hidden" id="aim" role="group" aria-label="조준">${AIM_BTNS.map(([m, t, d]) => `<button data-aim="${m}" title="${d}">${t}</button>`).join('')}</div>
         <button class="btn primary" id="start">시작 ▶</button>
       </div>
       <div class="cards" id="cards">${Array.from({ length: SQUAD_SIZE }, (_, i) => cardHtml(i)).join('')}</div>
@@ -145,7 +160,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   const edge = $('#edge');
   const el = {
     lives: $('#lives'), wave: $('#wave'), clock: $('#clock'), energy: $('#energy'), hint: $('#hint'), start: $<HTMLButtonElement>('#start'),
-    next: $('#next'), cards: $('#cards'), panel: $('#panel'), bossbar: $('#bossbar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
+    next: $('#next'), cards: $('#cards'), panel: $('#panel'), aim: $('#aim'), bossbar: $('#bossbar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
   };
   const cardEls = [...el.cards.querySelectorAll<HTMLElement>('.tcard[data-i]')];
   const scene = () => (game?.scene.getScene('game') as GameScene | undefined) ?? null;
@@ -224,6 +239,19 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     sc?.setHint(armed >= 0 || (sel >= 0 && !onTower));
     el.cards.classList.toggle('hidden', onTower);
     el.panel.classList.toggle('hidden', !onTower);
+    // 조준 고르기: 과녁을 골라 공격하는 캐릭터만 (안내 글 자리에 뜬다)
+    const aiming = onTower && canAim(tw!.char);
+    el.aim.classList.toggle('hidden', !aiming);
+    el.aim.parentElement!.classList.toggle('aiming', aiming);
+    if (aiming) {
+      const mode = aimMode(tw!);
+      el.aim.setAttribute('aria-label', airFirst(tw!.char) ? '조준 (공중 요괴 먼저)' : '조준');
+      el.aim.querySelectorAll<HTMLElement>('[data-aim]').forEach((b) => {
+        const on = Number(b.dataset.aim) === mode;
+        b.classList.toggle('sel', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+    }
     el.cards.classList.toggle('pick', sel >= 0 && !onTower);
     cardEls.forEach((c, i) => c.classList.toggle('armed', s.squad[i] === armed));
     el.hint.textContent =
@@ -245,7 +273,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     const cost = upgradeCost(s, sel);
     const nextText = cost === null ? '가장 높은 단계예요' : tw.lv + 1 === MAX_LV ? `▲ 3단계: ${def.special}` : `▲ ${tw.lv + 1}단계: ${statLine(s.lv[tw.char][tw.lv])}`;
     el.panel.innerHTML = `<img src="${zodiacFaceUrl(def.id)}" alt="" />
-      <div class="tp-tx"><b>${esc(def.nick)} <span class="tag">${tw.lv}단계</span></b><small>${statLine(s.lv[tw.char][tw.lv - 1])}</small><small class="up">${esc(nextText)}</small></div>
+      <div class="tp-tx"><b${airFirst(tw.char) ? ' class="air"' : ''}>${esc(def.nick)} <span class="tag">${tw.lv}단계</span>${airFirst(tw.char) ? ' <span class="tag air">공중 요괴 먼저</span>' : ''}</b><small>${statLine(s.lv[tw.char][tw.lv - 1])}</small><small class="up">${esc(nextText)}</small></div>
       <div class="tp-btns">
         <button class="btn primary small" data-up ${cost === null ? 'disabled' : ''}>${cost === null ? '강화 완료' : `강화 ✨${cost}`}</button>
         <button class="btn small" data-sell>되팔기 +${sellValue(s, sel)}</button>
@@ -303,6 +331,17 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     if (!run.cmd('upgrade', sel)) {
       sfx('toggle');
       toast(`기운이 모자라요 (✨${cost} 필요)`, 1400);
+    }
+    refresh();
+  }
+  function doAim(mode: number) {
+    if (sel < 0 || blocked()) return;
+    const tw = s.towers[sel];
+    if (!tw || aimMode(tw) === mode) return;
+    if (run.cmd('aim', sel, mode)) sfx('click');
+    else {
+      sfx('toggle');
+      if (!canSetAim(s, sel, mode) && s.log.length >= AIM_CMDS_MAX) toast('이 판에서는 조준을 더 바꿀 수 없어요', 1400);
     }
     refresh();
   }
@@ -366,6 +405,11 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
       sfx('click');
       refresh();
     }
+  });
+  el.aim.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('[data-aim]') as HTMLElement | null;
+    unfocus();
+    if (b) doAim(Number(b.dataset.aim));
   });
   el.start.addEventListener('click', () => {
     unfocus();
@@ -450,7 +494,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
             ? `<div class="dialog"><h3>처음부터 다시 할까요?</h3><p class="soft center">이 판의 기록은 남지 않아요</p>
               <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-again>다시하기</button></div></div>`
             : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
-              <p class="soft center">${s.endless ? '♾️' : esc(s.stage.id)} ${esc(s.stage.name)} · 웨이브 ${Math.max(1, s.wave + 1)}${s.endless ? '' : `/${WAVES}`} · ❤️ ${s.lives}</p>
+              <p class="soft center">${setup.daily ? '📅 오늘의 고개 · ' : ''}${s.endless ? '♾️' : esc(s.stage.id)} ${esc(s.stage.name)} · 웨이브 ${Math.max(1, s.wave + 1)}${s.endless ? '' : `/${WAVES}`} · ❤️ ${s.lives}</p>
               <div class="row"><span>🔊 소리</span><div class="seg" data-k="sfx"><button data-v="1" class="${sound.on ? 'sel' : ''}">켜기</button><button data-v="0" class="${sound.on ? '' : 'sel'}">끄기</button></div></div>
               <div class="actions"><button class="btn primary" data-resume>계속하기</button></div>
               <div class="actions"><button class="btn small" data-retry>🔄 다시하기</button><button class="btn small" data-giveup>🏳️ 포기</button></div></div>`;

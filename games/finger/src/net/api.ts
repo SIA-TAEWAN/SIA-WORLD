@@ -14,6 +14,7 @@ import {
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
+import { checkDaily, dailySnapshot, type DailyChallenge } from '../game/daily';
 import { DEV_CAT_COND, DEV_CAT_LOCKED, LOCAL_MODE } from './local';
 import { worldSupabase } from './world';
 
@@ -43,10 +44,38 @@ export interface FinishAnswer {
   replay: RunResult | null;
 }
 
+/** 스테이지 하나의 최소 턴 기록: 내 기록(없으면 null)과 모두 가운데 1등 (080 finger_stage_bests) */
+export interface StageBest {
+  mine: number | null;
+  top: number;
+  /** 1등의 닉네임 */
+  name: string;
+  /** 1등이 나인지 */
+  me: boolean;
+}
+export type StageBests = Record<string, StageBest>;
+
+/** finger_stage_bests 의 줄 → 스테이지 id 로 찾는 표 (모양이 다른 줄은 버린다) */
+export function bestsOf(rows: unknown): StageBests {
+  const out: StageBests = {};
+  if (!Array.isArray(rows)) return out;
+  for (const r of rows as Record<string, unknown>[]) {
+    const top = Number(r?.top_turns);
+    if (!r || typeof r.stage_id !== 'string' || !Number.isFinite(top) || top <= 0) continue;
+    const mine = r.my_turns == null ? null : Number(r.my_turns);
+    out[r.stage_id] = { mine: mine != null && Number.isFinite(mine) && mine > 0 ? mine : null, top, name: String(r.top_nickname ?? ''), me: r.top_is_me === true };
+  }
+  return out;
+}
+
 export interface FingerApi {
+  /** 스테이지별 내 최소 턴 · 1등 (서버만. 테스트 모드는 빈 표, 실패하면 던진다 — 화면은 조용히 숨긴다) */
+  stageBests(): Promise<StageBests>;
   loadProfile(): Promise<FingerProfile>;
   /** 판 시작 → 판 번호 (서버가 거절하면 ApiError, 통신 실패면 '' = 기록되지 않는 판) */
   start(stage: string, party: HeroId[], mode?: 'normal' | 'tower'): Promise<string>;
+  /** 오늘의 도전 판 시작 (086 finger_daily_start) → 판 번호. 날짜가 바뀌었으면 ApiError('bad day'), 통신 실패면 '' */
+  startDaily(c: DailyChallenge): Promise<string>;
   /** 판 결과 → 새 프로필과 결과 (통신 실패면 null: 보관했다가 다시 보낸다) */
   finish(report: RunReport): Promise<FinishAnswer | null>;
   /** 보관해 둔 결과 다시 보내기 → 올라간 판 수 */
@@ -96,8 +125,13 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local', ow
   const save = (p: FingerProfile) => store.setItem(key, JSON.stringify(p));
   /** 판 번호 → 시작 때 스냅숏 (서버의 finger_runs 대신) */
   const runs = new Map<string, RunSnapshot>();
+  /** 오늘의 도전 판 번호 → 날짜 (엽전·별을 주지 않는다) */
+  const dailyRuns = new Map<string, string>();
   let n = 0;
   return {
+    async stageBests() {
+      return {};
+    },
     async loadProfile() {
       return load();
     },
@@ -107,6 +141,14 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local', ow
       if (why) throw new ApiError(why);
       const id = `local-${Date.now()}-${n++}`;
       runs.set(id, snapshotOf(p, stage, party, mode));
+      return id;
+    },
+    async startDaily(c) {
+      const why = checkDaily(c);
+      if (why) throw new ApiError(why);
+      const id = `local-${Date.now()}-${n++}`;
+      runs.set(id, dailySnapshot(c));
+      dailyRuns.set(id, c.day);
       return id;
     },
     async finish(report) {
@@ -121,6 +163,12 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local', ow
         throw e;
       }
       const p = load();
+      const day = dailyRuns.get(report.run);
+      if (day !== undefined) {
+        // 오늘의 도전: 서버(086)처럼 엽전·별·기록은 그대로. 테스트 모드에는 순위가 없다
+        dailyRuns.delete(report.run);
+        return { profile: p, result: { coins: 0, stars: replay.stars, floors: 0, first: false, best: false, siaCoin: false, newHeroes: [], daily: { day, recorded: false } }, replay };
+      }
       const result = applyResult(p, snap.stage, replay, snap.upgrades);
       save(p);
       return { profile: p, result, replay };
@@ -246,12 +294,23 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
       const profile = await call('finger_profile').then(normalize).catch(() => null);
       return { answer, profile };
     },
+    async stageBests() {
+      return bestsOf(await call('finger_stage_bests'));
+    },
     async loadProfile() {
       return normalize(await call('finger_profile'));
     },
     async start(stage, party, mode = 'normal') {
       try {
         return String(await call('finger_start', { p_stage: mode === 'tower' ? 'tower' : stage, p_party: party, p_mode: mode }));
+      } catch (e) {
+        if (e instanceof ApiError) throw e;
+        return '';
+      }
+    },
+    async startDaily(c) {
+      try {
+        return String(await call('finger_daily_start', { p_stage: c.stage, p_party: c.party, p_day: c.day }));
       } catch (e) {
         if (e instanceof ApiError) throw e;
         return '';

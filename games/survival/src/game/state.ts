@@ -269,6 +269,8 @@ export interface RunConfig {
   map: string;
   /** 모드 (없으면 4분 모드) */
   mode?: RunMode;
+  /** 오늘의 도전 판인가: 엽전 배수를 맵과 상관없이 1(들판 기준)로 한다 (084 의 survival_finish 와 같은 상한) */
+  daily?: boolean;
   /** 영구 강화 (없으면 0) */
   upgrades?: UpgradeLevels;
   /** 피해 숫자를 만들까 (화면 없는 시험에서는 끈다) */

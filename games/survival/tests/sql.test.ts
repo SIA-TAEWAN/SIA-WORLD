@@ -13,12 +13,12 @@ import { ENDLESS, HELL, RUN_SEC } from '../src/data/balance';
 import { LIMITS, characterPrice, coinCap, endlessCoinCap } from '../src/game/progress';
 
 /**
- * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044 · 045 · 055 · 073)의 표·상수가 게임 데이터와 같은지 본다.
+ * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044 · 045 · 055 · 073 · 084)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
 // 뒤 파일이 같은 함수를 다시 정의하면 그쪽이 실제 값이다
-const FILES = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql', '055_survival_hell.sql', '073_cat_survival.sql'];
+const FILES = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql', '055_survival_hell.sql', '073_cat_survival.sql', '084_survival_daily.sql'];
 const sql = FILES.map(read).join('\n');
 
 /** 함수 하나의 본문 */
@@ -286,13 +286,45 @@ describe('SQL의 권한 규칙', () => {
     expect(CHARACTERS.find((x) => x.unlock.kind === 'clear')!.unlock.text).toContain('최종 보스 물리치기');
   });
 
+  it('오늘의 도전 (084): 모드 칸 · 맵 잠금 없이 시작 · 기록과 해금에는 넣지 않고 그날 순위에만', () => {
+    const own = read('084_survival_daily.sql');
+    // 판 검증 상수는 건드리지 않는다 (LIMITS 와 맞춘 값 그대로)
+    expect(own).not.toContain('function public._survival_const(');
+    expect(own).toContain('alter table public.survival_runs drop constraint if exists survival_runs_mode_check;');
+    expect(own).toContain("alter table public.survival_runs add constraint survival_runs_mode_check check (mode in ('normal', 'endless', 'hell', 'daily'));");
+    // 시작: 인자 모양은 그대로 (p_mode = 'daily'). 맵 잠금만 건너뛰고, 캐릭터 잠금은 그대로 본다. 고양이는 받지 않는다
+    const s = body('survival_start');
+    expect(own).toContain(s);
+    expect(own).not.toContain('drop function');
+    expect(s).toContain("if p_mode <> 'daily' and not (p_map = any(pr.unlocked_maps)) then raise exception 'map locked'; end if;");
+    expect(s).toContain("if p_mode = 'daily' and public._character_price(p_character) is not null then raise exception 'bad character'; end if;");
+    expect(own).toContain('revoke all on function public.survival_start(text, text, text) from public, anon;');
+    expect(own).toContain('grant execute on function public.survival_start(text, text, text) to authenticated;');
+    // 끝: 4분 판의 검증 그대로. 맵별 기록 · 다음 맵 해금 · 시간/클리어 조건 해금 · 최고 생존 시간에는 넣지 않는다
+    const f = body('survival_finish').replace(/\s+/g, ' ');
+    expect(own.replace(/\s+/g, ' ')).toContain(f);
+    expect(f).toContain("daily := rn.mode = 'daily';");
+    expect(f).toContain('elsif daily then');
+    expect(f).toContain('if not daily and next_map is not null and not (next_map = any(pr.unlocked_maps)) then');
+    const skip = /continue when daily and c in \(([^)]+)\);/.exec(f)![1].split(',').map((x) => x.trim().slice(1, -1));
+    expect(skip).toEqual(CHARACTERS.filter((c) => ['time', 'clear'].includes(c.unlock.kind)).map((c) => c.id));
+    expect(f).toContain("if daily then tot := jsonb_set(tot, '{bestTime}', to_jsonb(coalesce((pr.totals->>'bestTime')::int, 0))); end if;");
+    // 그날 순위: 082 의 안쪽 함수로만 넣고, 어제·오늘 시작한 판만 (그보다 오래된 보류 판은 판 저장만 한다)
+    expect(f).toContain('if daily and ok and enough then');
+    expect(f).toContain('if d_day >= public._daily_day() - 1 and d_day <= public._daily_day() then');
+    expect(f).toContain("'daily', d_res,");
+    expect(own).toContain('revoke all on function public.survival_finish(uuid, int, int, int, int, boolean, int, int, jsonb) from public, anon;');
+    expect(own).toContain('grant execute on function public.survival_finish(uuid, int, int, int, int, boolean, int, int, jsonb) to authenticated;');
+  });
+
   it('헬 모드 (055): 모드 칸 · 잠금은 그 맵의 클리어 · 엽전 상한 2배 · 기록 표와 랭킹 뷰 · 해금 제외', () => {
     // 모드 칸의 check 를 바꿔 'hell' 을 받는다 (044 가 만든 이름 그대로 지우고 다시 만든다: 여러 번 올려도 된다)
     expect(sql).toContain('alter table public.survival_runs drop constraint if exists survival_runs_mode_check;');
     expect(sql).toContain("alter table public.survival_runs add constraint survival_runs_mode_check check (mode in ('normal', 'endless', 'hell'));");
     const s = body('survival_start');
     expect(s).toContain("public.survival_start(p_map text, p_character text, p_mode text default 'normal') returns uuid");
-    expect(s).toContain("if p_mode is null or p_mode not in ('normal', 'endless', 'hell') then raise exception 'bad mode'; end if;");
+    // 084: 오늘의 도전(daily)이 더해졌다
+    expect(s).toContain("if p_mode is null or p_mode not in ('normal', 'endless', 'hell', 'daily') then raise exception 'bad mode'; end if;");
     // 잠금: 무한 모드와 같은 함수(045 의 _survival_map_cleared)로 **그 맵**을 본다
     expect(s).toContain("if p_mode = 'hell' and not public._survival_map_cleared(me, p_map, pr.unlocked_maps) then");
     expect(s).toContain("raise exception 'hell locked'");

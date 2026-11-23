@@ -1,5 +1,6 @@
 /** 텍사스 홀덤 화면: 가운데 공용 카드 5장 · 나는 아래 · 다른 사람은 왼쪽·위·오른쪽 (세로 화면은 위 한 줄) */
 import { HOLDEM_MANUAL } from '../../lib/manuals.ts';
+import { holdemAdvice, holdemAdviceText, potOddsNeed } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { HoldemPrivate, HoldemPublic } from '../../../supabase/functions/_shared/holdem.ts';
@@ -19,6 +20,63 @@ let deckPos = { x: 0, y: 0 };
 let lastPub: HoldemPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
+
+// ── 승률 · 팟 오즈 도우미 (켜고 끄기는 이 기기에 기억) ──
+const HELP_KEY = 'sia-holdem-helper';
+let helpOn: boolean | null = null;
+function helperOn(): boolean {
+  if (helpOn === null) {
+    helpOn = false;
+    try {
+      helpOn = localStorage.getItem(HELP_KEY) === '1';
+    } catch {
+      /* 기억하지 못해도 스위치는 쓴다 */
+    }
+  }
+  return helpOn;
+}
+function setHelper(on: boolean) {
+  helpOn = on;
+  try {
+    localStorage.setItem(HELP_KEY, on ? '1' : '0');
+  } catch {
+    /* 무시 */
+  }
+}
+/** 같은 상황이면 다시 셈하지 않는다 (조작부를 다시 그릴 때마다 수백 판을 돌리지 않게) */
+let adviceKey = '';
+/** adviceKey 상황의 승률 (셈하지 못했으면 null) */
+let adviceEquity: number | null = null;
+let adviceTimer: ReturnType<typeof setTimeout> | null = null;
+const stopAdvice = () => {
+  if (adviceTimer) clearTimeout(adviceTimer);
+  adviceTimer = null;
+};
+/**
+ * 내 패 + 공개 정보(공용 카드 · 남은 상대 수 · 판돈 · 콜 금액)만 쓴다.
+ * 승률(수백 판 돌려 보기)은 카드·상대 수가 바뀔 때만 다시 셈하고, 판돈·콜 금액으로 정해지는 필요 승률은 그릴 때마다 가볍게 셈한다.
+ * → { text } 이미 셈해 둔 상황, { fill } 아직 셈하지 않은 상황 (버튼을 먼저 그린 뒤에 불러서 숫자를 채운다)
+ */
+function helperAdvice(t: Ctx): { text: string; fill?: () => string } {
+  const p = t.pub;
+  const hole = t.priv?.hole ?? [];
+  if (!p || !p.options || hole.length !== 2) return { text: '' };
+  const { call, callAllIn } = p.options;
+  const pot = p.pot;
+  const board = p.board;
+  const opponents = p.seats.filter((s) => s.seat !== t.mySeat && !s.folded && !s.excluded).length;
+  const key = `${t.room.id}:${t.room.round_no}:${hole.join('')}:${board.join('')}:${opponents}`;
+  const textOf = () => (adviceEquity === null ? '' : holdemAdviceText({ equity: adviceEquity, need: potOddsNeed(pot, call) }, { allIn: !!callAllIn, short: true }));
+  if (key === adviceKey) return { text: textOf() };
+  return {
+    text: '',
+    fill: () => {
+      adviceKey = key;
+      adviceEquity = holdemAdvice({ hole, board, opponents, pot, call })?.equity ?? null;
+      return textOf();
+    },
+  };
+}
 
 
 /** 딜러 버튼 표시: 흰 알약에 '딜러' (예전의 'D' 한 글자는 뜻을 알기 어려웠다) */
@@ -46,6 +104,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
   back: 'games/casino/',
   backLabel: '카지노',
   felt: () => theme().COLOR.skyMid,
+  leave: stopAdvice,
 
   draw(t: Ctx) {
     const { scene } = t;
@@ -141,6 +200,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       const tagY = y + w * 0.71 + 24 * k;
       nameTag(scene, Math.max(26, Math.min(x - 52 * k, W - 160 * k)), tagY, t.seatName(s.seat), t.seatAvatar(s.seat), { turn: p.turn === s.seat, me, size: k, sub: sub || undefined });
       t.anchor(`seat:${s.seat}`, x, y - w * 0.72);
+      // 위쪽 줄 자리: 한마디 말풍선이 카드를 가리지 않게 이름패 아래에 띄운다
+      if (!me && (portrait || y < H * 0.3)) t.anchor(`seat-below:${s.seat}`, x, tagY + 22 * k);
       // 딜러 버튼
       if (s.seat === p.button) marker(scene, x + ((cards.length || 2) / 2) * gap + w * 0.42, y + w * 0.5, 'D', clamp(w * 0.16, 9, 15));
       // 이번 라운드에 낸 칩 (가운데 쪽으로)
@@ -173,6 +234,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     const quick = (frac: number) => clamp(Math.round(p.curBet + potAfterCall * frac), o.minTo, o.maxTo);
     const raiseLabel = o.isBet ? '베트' : '레이즈';
     const step = Math.max(1, p.sb);
+    stopAdvice();
+    const advice = helperOn() ? helperAdvice(t) : null;
     el.innerHTML = `<div class="row">
         <button class="btn big" data-a="fold" ${dis}>폴드</button>
         ${o.canCheck ? `<button class="btn big primary" data-a="check" ${dis}>체크</button>` : `<button class="btn big primary" data-a="call" ${dis}>콜 ${t.fmt(o.call)}${o.callAllIn ? ' (올인)' : ''}</button>`}
@@ -186,7 +249,21 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       </div>`
           : ''
       }
+      <div class="hd-help"><button type="button" class="btn small auto-sw ${helperOn() ? 'on' : ''}" id="helper" role="switch" aria-checked="${helperOn()}" title="내 패와 공개된 카드만으로 어림한 값이에요">도우미<i></i></button>${advice ? `<b id="hd-advice">${advice.fill ? '셈하는 중…' : esc(advice.text)}</b>` : ''}</div>
       <p class="msg">20초가 지나면 체크(안 되면 폴드)</p>`;
+    // 승률을 새로 셈해야 하면 버튼을 먼저 그리고 나서 (휴대폰에서 조작부가 늦게 뜨지 않게)
+    if (advice?.fill) {
+      const fill = advice.fill;
+      adviceTimer = setTimeout(() => {
+        adviceTimer = null;
+        const out = el.querySelector('#hd-advice');
+        if (out?.isConnected) out.textContent = fill();
+      }, 30);
+    }
+    el.querySelector('#helper')?.addEventListener('click', () => {
+      setHelper(!helperOn());
+      t.redraw();
+    });
     el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));
     const btn = el.querySelector<HTMLButtonElement>('#raise');
     const range = el.querySelector<HTMLInputElement>('#raise-range');

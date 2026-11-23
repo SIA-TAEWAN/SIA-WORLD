@@ -45,6 +45,22 @@ export async function worldSupabase(): Promise<SupabaseClient> {
   return (await supaMod).supabase;
 }
 
+interface GamesModule {
+  loadGameOpen(): Promise<Record<string, boolean>>;
+}
+let gamesMod: Promise<GamesModule> | null = null;
+
+/** 게임별 오픈 여부 (shared/games.js): { tank: true, charge: false, … }. 못 불러오면 null */
+export async function worldGameOpen(): Promise<Record<string, boolean> | null> {
+  try {
+    gamesMod ??= import(/* @vite-ignore */ new URL('shared/games.js', root()).href) as Promise<GamesModule>;
+    return await (await gamesMod).loadGameOpen();
+  } catch {
+    gamesMod = null;
+    return null;
+  }
+}
+
 interface RankingDialogModule {
   openRanking(opts: { meId?: string | null; first?: 'tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' }): () => void;
 }

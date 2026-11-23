@@ -28,7 +28,7 @@ import {
   type ObstacleKind,
 } from '../data/balance';
 import { NO_MODS, type RunMods } from '../data/growth';
-import { ENDLESS_ID, ENDLESS_SEG, endlessSegment, type BossSpec, type Item, type Op, type Span, type StageDef } from '../data/stages';
+import { ENDLESS_SEG, endlessSegment, isEndlessId, type BossSpec, type Item, type Op, type Span, type StageDef } from '../data/stages';
 
 /** 고정 시간 간격 (초) */
 export const STEP = 1 / 60;
@@ -224,7 +224,7 @@ export function createRun(stage: StageDef, leaderId: string, mods: RunMods = NO_
   const troops = Math.max(1, Math.round(stage.startTroops * leader.startMul) + mods.startAdd);
   const s: RunState = {
     stage,
-    endless: stage.id === ENDLESS_ID,
+    endless: isEndlessId(stage.id),
     leader,
     mods,
     t: 0,
@@ -443,7 +443,7 @@ function bossDown(s: RunState) {
   s.obstacles = [];
   s.crates = [];
   s.segment++;
-  const seg = endlessSegment(s.segment);
+  const seg = endlessSegment(s.segment, s.stage.seed);
   addItems(s, seg.items);
   s.boss = bossOf(seg.boss, seg.bossZ);
   s.phase = 'run';

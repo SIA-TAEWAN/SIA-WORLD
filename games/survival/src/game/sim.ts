@@ -3,7 +3,7 @@
  * Phaser·DOM·Math.random 을 쓰지 않는다 (같은 시드·같은 조작이면 언제나 같은 결과).
  * 화면은 이 상태를 그리기만 하고, 화면 없이도 수천 판을 돌려 밸런스를 볼 수 있다 (game/policy.ts).
  */
-import { BOSS_WARN_SEC, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
+import { BOSS_WARN_SEC, DAILY_COIN_MUL, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
@@ -16,6 +16,7 @@ import {
   addFx, collect, edgePoint, emit, endlessMul, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
   spawnBoss, spawnEnemy, sweep,
 } from './core';
+import { runBuild, type RunBuild } from './build';
 import { updateEnemies } from './enemies';
 import { Grid } from './grid';
 import { addWeapon, applyCard, checkLevelUp, drawCards, openChest, pickCard } from './levelup';
@@ -35,7 +36,9 @@ export function startWeapon(charId: RunConfig['char']): number {
 export function createRun(cfg: RunConfig): State {
   const hell = cfg.mode === 'hell';
   // 헬 모드: 같은 맵에 '요괴 강함'만 헬 배율을 곱하고 엽전 배율을 2배로 한 맵을 쓴다
-  const map = (hell ? HELL_MAPS : MAPS)[MAP_INDEX[cfg.map] ?? 0];
+  const base = (hell ? HELL_MAPS : MAPS)[MAP_INDEX[cfg.map] ?? 0];
+  // 오늘의 도전: 잠긴 맵도 누구나 하는 판이라 엽전 배수는 들판과 같은 1 (서버의 상한도 1배로 본다, 084)
+  const map = cfg.daily ? { ...base, coinMul: DAILY_COIN_MUL } : base;
   const char = CHARACTER_BY_ID[cfg.char] ?? CHARACTER_BY_ID.rat;
   const upgrades: UpgradeLevels = {};
   for (const u of UPGRADES) upgrades[u.id] = Math.max(0, Math.min(u.max, Math.floor(cfg.upgrades?.[u.id] ?? 0)));
@@ -607,6 +610,8 @@ export interface RunSummary {
   cakes: number;
   /** 도감: 이번 판에 만난 요괴·보스, 얻은 무기·패시브의 id */
   codex: Codex;
+  /** 든 무기·패시브와 무기별 피해 (결과 화면의 빌드 요약용. 서버에는 보내지 않는다) */
+  build?: RunBuild;
 }
 
 export interface Codex {
@@ -636,5 +641,6 @@ export function summarize(s: State): RunSummary {
       weapons: marked(s.gotWeapon, WEAPONS),
       passives: marked(s.gotPassive, PASSIVES),
     },
+    build: runBuild(s),
   };
 }

@@ -4,6 +4,7 @@ import { formatTime, tierOf } from '../game/ranking';
 import { LOCAL_MODE } from '../net/api';
 import { RaceRoom, newRoomCode } from '../net/room';
 import { hostOf } from '../net/seats';
+import { seriesKey, standings } from '../game/series';
 import { loadRankIcons, openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
@@ -50,7 +51,7 @@ export function showLobby() {
       ${cast.map((c, i) => `<img class="runner" src="${zodiacFullUrl(c)}" alt="" style="left:${48.3 + (i - 1.5) * 21}%;" />`).join('')}
     </div>
     <div class="card best"><span>🏅 내 최고 기록</span><span id="best"><span class="soft">불러오는 중…</span></span></div>
-    <div class="main-actions"><button class="btn primary big" id="create">방 만들기 ▶</button></div>
+    <div class="main-actions"><button class="btn primary big" id="create">방 만들기 ▶</button><button class="btn big daily-btn" id="daily">📅 오늘의 도전</button></div>
     <div class="card rooms-card"><h3>방 목록 <span class="soft" id="rooms-n"></span></h3><div class="rooms" id="rooms"><p class="empty">불러오는 중…</p></div></div>
     <div class="sub-actions"><button class="btn" id="rank">🏆 랭킹</button><button class="btn" id="howto">❓ 방법</button></div>`,
     'lobby',
@@ -64,6 +65,10 @@ export function showLobby() {
   $('#create').addEventListener('click', () => {
     sfx('click');
     nav.room(newRoomCode());
+  });
+  $('#daily').addEventListener('click', () => {
+    sfx('click');
+    nav.daily();
   });
 
   // 방 목록: 열려 있는 방을 눌러 들어간다 (대기실 채널에서 실시간으로 받는다)
@@ -156,6 +161,7 @@ export async function enterRoom(code: string) {
   if (state.room && state.room.key !== code) {
     await state.room.leave();
     state.room = null;
+    state.daily = null;
     state.lobby?.setRoom(null);
   }
   setRoomInUrl(code);
@@ -191,7 +197,7 @@ export function showWaiting() {
   const root = screen(
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>대기실</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 초대</button></div>
-    <div class="card"><h3>출전 선수 <span class="soft">빈 자리는 AI가 달려요</span></h3><div class="seats" id="seats"></div></div>
+    <div class="card"><h3>출전 선수 <span class="soft" id="seats-note">빈 자리는 AI가 달려요</span></h3><div class="seats" id="seats"></div></div>
     <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
@@ -228,11 +234,18 @@ export function showWaiting() {
     const seats = room.seats();
     const host = hostOf(room.members);
     $('#room-name').textContent = `${room.members.find((m) => m.id === host)?.name ?? state.user.name}의 방`;
+    // 연속전: 같은 방에서 이어 달리면 자리마다 누적 순위·점수를 보인다
+    // 지금 자리에 있는 사람·AI 만 골라 그 안에서 순위를 매긴다 (나간 사람 줄은 세지 않는다)
+    const table = room.series.n > 0 ? standings(room.series, seats.map(seriesKey)) : [];
+    $('#seats-note').textContent = table.length ? `연속전 ${room.series.n}판 · 누적 점수` : '빈 자리는 AI가 달려요';
+    $('#seats').classList.toggle('has-gp', table.length > 0);
     $('#seats').innerHTML = seats
       .map((s) => {
         const me = s.id === state.user.id;
+        const gp = table.find((t) => t.k === seriesKey(s));
+        const gpHtml = gp ? `<span class="gp ${gp.rank === 1 && gp.pts > 0 ? 'top' : ''}">${gp.rank}위 ${gp.pts}점</span>` : '';
         const st = s.id === null ? '<div class="st">AI</div>' : s.ready ? '<div class="st on">레디!</div>' : '<div class="st">준비 중</div>';
-        return `<div class="seat ${me ? 'me' : ''} ${s.id === null ? 'ai' : ''}">${s.id && s.id === host ? '<span class="host" title="방장">👑</span>' : ''}
+        return `<div class="seat ${me ? 'me' : ''} ${s.id === null ? 'ai' : ''}">${s.id && s.id === host ? '<span class="host" title="방장">👑</span>' : ''}${gpHtml}
           <img class="av" src="${zodiacFaceUrl(s.char)}" alt="" /><div class="nm">${esc(s.name)}</div>${st}</div>`;
       })
       .join('');

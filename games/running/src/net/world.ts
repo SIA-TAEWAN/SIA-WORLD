@@ -152,3 +152,55 @@ export async function buyMessage(r: BuyResult, id = 'cat'): Promise<string> {
     return r.ok ? '열었어요!' : '열지 못했어요. 잠시 후 다시 시도해 주세요';
   }
 }
+
+/** 오늘의 도전 순위 한 줄 (shared/daily.js · 082_daily.sql 의 daily_ranking) */
+export interface DailyRow {
+  place: number;
+  nickname?: string;
+  score: number;
+  detail?: { ms?: number };
+  me?: boolean;
+  plays?: number;
+}
+export interface DailyRanking {
+  day: string;
+  today: string;
+  top: DailyRow[];
+  mine: DailyRow | null;
+  total: number;
+}
+interface DailyModule {
+  dailyToday(): Promise<string>;
+  /** 5초 안에 서버 날짜를 못 받으면 null (기기 시계로 돌아가지 않는다) */
+  dailyTodayStrict(): Promise<string | null>;
+  loadDailyRanking(game: string, day?: string | null): Promise<DailyRanking | null>;
+}
+let dailyMod: Promise<DailyModule> | null = null;
+const loadDailyMod = () => {
+  dailyMod ??= import(/* @vite-ignore */ new URL('shared/daily.js', root()).href) as Promise<DailyModule>;
+  dailyMod.catch(() => (dailyMod = null));
+  return dailyMod;
+};
+
+/**
+ * 서버 기준 오늘 'YYYY-MM-DD' (shared/daily.js 의 dailyTodayStrict). 못 받으면 null — 기기 시계로 돌아가지 않는다
+ * (기록이 서버로 가는 판은 날짜가 틀리면 다른 트랙이 되므로 시작을 막는다)
+ */
+export async function worldDailyTodayStrict(): Promise<string | null> {
+  try {
+    const day = await (await loadDailyMod()).dailyTodayStrict();
+    return typeof day === 'string' ? day : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 그날 순위 (shared/daily.js 의 loadDailyRanking). 못 불러오면 null */
+export async function worldDailyRanking(game: string, day: string | null = null): Promise<DailyRanking | null> {
+  try {
+    const r = await (await loadDailyMod()).loadDailyRanking(game, day);
+    return r && Array.isArray(r.top) ? r : null;
+  } catch {
+    return null;
+  }
+}

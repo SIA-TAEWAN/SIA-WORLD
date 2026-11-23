@@ -375,6 +375,19 @@ export async function recordTarget(s: MatchSummary) {
   }
 }
 
+/** 판 끝 상장 줄 (해당자가 없으면 빈 문자열) */
+export function awardsHtml(s: MatchSummary): string {
+  const list = (s.awards ?? [])
+    .map((a) => {
+      const names = a.holders.map((h) => s.players[h]?.name).filter((n): n is string => !!n);
+      if (!names.length) return '';
+      const mine = a.holders.some((h) => s.players[h]?.mine);
+      return `<li class="${mine ? 'mine' : ''}"><span class="aw-ic">${a.icon}</span><span class="aw-t">${a.title}</span><b>${names.map(escapeHtml).join(' · ')}</b><small>${escapeHtml(a.text)}</small></li>`;
+    })
+    .join('');
+  return list ? `<ul class="awards" aria-label="이번 판 상장">${list}</ul>` : '';
+}
+
 function showTargetResult(s: MatchSummary, act: ResultActions) {
   const players = [...s.players].sort((a, b) => b.damage - a.damage);
   const top = players[0];
@@ -383,12 +396,15 @@ function showTargetResult(s: MatchSummary, act: ResultActions) {
       <div class="trophy">🎯</div>
       <h2>${players.length > 1 ? `${escapeHtml(top.name)} 1등!` : `${top.damage.toLocaleString()}점!`}</h2>
       <p class="sub">백발백중 · 1층 200점 · 한 층 오를 때마다 +50점</p>
+      <div class="result-body ${s.awards?.length ? 'two' : ''}">
       <table class="score">
         <thead><tr><th>순위</th><th>플레이어</th><th>맞힌 과녁</th><th>점수</th></tr></thead>
         <tbody>${players
           .map((p, i) => `<tr class="${i === 0 ? 'win' : ''}"><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${p.hits ?? 0}개</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`)
           .join('')}</tbody>
       </table>
+      ${awardsHtml(s)}
+      </div>
       <div class="actions ${act.secondary ? '' : 'one'}">
         <button class="btn big primary" id="again">${act.primary}</button>
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}
@@ -422,6 +438,7 @@ export function showResult(s: MatchSummary, actions?: ResultActions, record: Pro
       <div class="trophy">${s.winner === -1 ? '🤝' : vsAi ? (meWon ? '🏆' : '💥') : '🏆'}</div>
       <h2 style="color:${s.winner === -1 ? '#fff' : TEAM_COLORS[s.winner]}">${winText}</h2>
       <p class="sub">${vsAi ? (meWon ? '멋진 포격이었어요!' : '아깝다! 바람을 다시 계산해볼까요?') : ''} · ${s.turns}턴</p>
+      <div class="result-body ${s.awards?.length ? 'two' : ''}">
       <table class="score">
         <thead><tr><th>플레이어</th><th>팀</th><th>탱크</th><th>가한 피해</th></tr></thead>
         <tbody>${players
@@ -432,6 +449,8 @@ export function showResult(s: MatchSummary, actions?: ResultActions, record: Pro
           )
           .join('')}</tbody>
       </table>
+      ${awardsHtml(s)}
+      </div>
       <div class="actions ${act.secondary ? '' : 'one'}">
         <button class="btn big primary" id="again">${act.primary}</button>
         ${act.secondary ? `<button class="btn" id="home">${act.secondary}</button>` : ''}

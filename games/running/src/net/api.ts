@@ -3,6 +3,7 @@ import type { ZodiacId } from '../game/constants';
 import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { worldSupabase } from './world';
 import { isLockedError } from '../game/unlock';
+import { retryDaily } from '../game/daily';
 
 /** 한 판의 시각 (모두 서버 시각 ms): '준비' 표시와 GO */
 export interface GoInfo {
@@ -41,6 +42,11 @@ export interface RaceApi {
   submit(room: string, round: number, ms: number, character: ZodiacId): Promise<SubmitResult>;
   /** 내 최고 기록 (없으면 null) */
   myBest(): Promise<number | null>;
+  /**
+   * 오늘의 도전: 방금 올린 완주 기록(race_runs)을 그날 기록으로 넣는다 (083_race_daily.sql).
+   * 들어갔으면 기록된 날짜 'YYYY-MM-DD', 못 넣었으면 null. 통신이 실패하면 두 번까지 다시 해 본다
+   */
+  dailySubmit(room: string, round: number, day: string): Promise<string | null>;
 }
 
 /** GO 요청부터 '준비' 표시까지 (서버 029_race.sql 의 lead_ms 와 같은 값) */
@@ -107,6 +113,9 @@ function createLocalApi(uid: string): RaceApi {
     async myBest() {
       return readLocalBest(uid);
     },
+    async dailySubmit() {
+      return null; // 테스트 모드: 서버 기록 없음
+    },
   };
 }
 
@@ -158,6 +167,21 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       const { data, error } = await sb.from('race_records').select('best_ms').eq('user_id', uid).maybeSingle();
       if (error) return readLocalBest(uid);
       return (data as { best_ms: number } | null)?.best_ms ?? null;
+    },
+    dailySubmit(room, round, day) {
+      return retryDaily(async () => {
+        try {
+          const { data, error } = await sb.rpc('race_daily_submit', { p_room_key: room, p_round: round, p_day: day });
+          if (!error) return data ? { done: true, day: typeof (data as { day?: unknown }).day === 'string' ? (data as { day: string }).day : day } : { done: true, day: null };
+          // 앞선 요청이 서버에는 닿았다 (응답만 못 받음): 들어간 것으로 본다
+          if (/already submitted/.test(error.message ?? '')) return { done: true, day };
+          // 서버가 검사해서 거절한 것(raise exception)은 다시 해도 같다
+          if (error.code === 'P0001') return { done: true, day: null };
+          return { done: false };
+        } catch {
+          return { done: false };
+        }
+      });
     },
   };
 }

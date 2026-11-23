@@ -15,7 +15,7 @@ export interface PlayerMeta {
 }
 
 /** 이 기기의 판본. 기기끼리 주고받는 내용이 바뀌면 올린다 (더 새 판본이 방에 있으면 새로고침 안내) */
-export const CLIENT_VERSION = 3;
+export const CLIENT_VERSION = 4;
 
 export interface MemberInfo extends PlayerMeta {
   id: string;

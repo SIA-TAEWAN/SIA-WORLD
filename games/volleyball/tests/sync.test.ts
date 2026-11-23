@@ -6,6 +6,8 @@ import {
   EXTRAPOLATE_MAX, LINK_LOST_MS, LINK_WAIT_MS, SNAP_DIST, carryOffset, cleanPlayer, decayOffset, extrapolatePlayer, linkState, makeSnapshot, repredict, snapshotEvents,
   validSnapshot, type OwnFrame,
 } from '../src/game/sync';
+import { emoteMsg } from '../src/game/emote';
+import { packHighlight } from '../src/game/highlight';
 import type { NetMsg } from '../src/net/channel';
 import type { MatchResult, MatchSetup } from '../src/match/game';
 import { OnlineMatch } from '../src/match/online';
@@ -247,6 +249,8 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
       let diffMax = 0;
       let n = 0;
       const counts = { host: [0, 0, 0], guest: [0, 0, 0] };
+      const hostHits = [0, 0];
+      let hostStage = 0;
       while ((!p.results[0] || !p.results[1]) && frames < 60 * 60 * 10) {
         p.advance(STEP_MS);
         frames++;
@@ -255,6 +259,8 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
             if (e.t === 'point') counts[k][0]++;
             if (e.t === 'serve') counts[k][1]++;
             if (e.t === 'over') counts[k][2]++;
+            if (k === 'host' && e.t === 'hit') hostHits[e.side]++;
+            if (k === 'host' && e.t === 'speedup') hostStage = Math.max(hostStage, e.stage);
           }
         if (p.host.phase === 'play' && p.guest.phase === 'play' && p.host.state.phase === 'play' && p.guest.state.phase === 'play') {
           // 같은 순간 두 화면에 보이는 공의 차이
@@ -276,6 +282,12 @@ describe('방장과 상대 기기를 붙여서 (가짜 통신)', () => {
       // 득점·서브·끝 알림 수가 두 기기에서 같다 (상대 기기는 방장 값으로만 알린다)
       expect(counts.guest).toEqual(counts.host);
       expect(counts.host[0]).toBe(rh!.score[0] + rh!.score[1]);
+      // 하이라이트(최장 랠리·최고 가속·터치 수): 방장이 모은 값이 기준이라 두 기기의 결과 화면에 같은 값이 나온다
+      expect(rh!.highlight).toBeDefined();
+      expect(rg!.highlight).toEqual(rh!.highlight);
+      expect(rh!.highlight!.longest).toBeGreaterThan(0);
+      expect(rh!.highlight!.touches).toEqual(hostHits);
+      expect(rh!.highlight!.maxStage).toBe(hostStage);
       const st = p.guest.stats;
       console.log(
         `[지연 ${lag}ms] ${(frames / 60).toFixed(0)}초 · 스냅샷 ${st.snaps}개(초당 ${(st.snaps / (frames / 60 - 3)).toFixed(1)}) · 위치 ${p.guest.stats.sentPos}개(초당 ${(st.sentPos / (frames / 60 - 3)).toFixed(1)})` +
@@ -666,6 +678,7 @@ describe('마지막 스냅샷을 못 받아도 정상 종료로 끝난다 (M1)',
     for (let i = 0; i < 60 * 2 && !p.results[1]; i++) p.advance(STEP_MS);
     expect(dropped()).toBe(1);
     expect(p.results[1]).toMatchObject({ reason: 'normal', winner: p.results[0]!.winner, score: p.results[0]!.score });
+    expect(p.results[1]!.highlight).toEqual(p.results[0]!.highlight);
     expect(p.guest.solo).toBe(false);
     p.dispose();
   });
@@ -676,8 +689,10 @@ describe('마지막 스냅샷을 못 받아도 정상 종료로 끝난다 (M1)',
     expect(p.results[1]).toBeNull();
     const r = p.results[0]!;
     // 방(VolleyRoom.matchOver)이 보내는 알림과 같은 모양
-    p.inject(1, { t: 'over', n: 42, from: 'L', r: { score: r.score, winner: r.winner } });
+    p.inject(1, { t: 'over', n: 42, from: 'L', r: { score: r.score, winner: r.winner, hl: packHighlight(r.highlight!) } });
     expect(p.results[1]).toMatchObject({ reason: 'normal', winner: r.winner, score: r.score });
+    // 하이라이트도 방장이 함께 알린 값으로 (끝 스냅샷을 못 받아 마지막 랠리가 빠진 값이 아니라)
+    expect(p.results[1]!.highlight).toEqual(r.highlight);
     expect(p.guest.solo).toBe(false);
     p.dispose();
   });
@@ -815,4 +830,65 @@ describe('받은 스냅샷 검사 (L3)', () => {
 it('캐릭터 시작 자리', () => {
   const s = createState(1);
   expect(s.players.map((p) => p.x)).toEqual([START_X[0], START_X[1]]);
+});
+
+describe('하이라이트와 이모티콘 (온라인)', () => {
+  it('이어받은 경기: 남은 기기가 지금까지의 값에서 이어서 모은다 (방장이 나간 경우, 상대 기기는 방장이 보낸 값에서)', () => {
+    const p = pair(30, 13);
+    for (let i = 0; i < 60 * 9; i++) p.advance(STEP_MS);
+    expect(p.guest.phase).toBe('play');
+    const hostSaw = p.host.highlight();
+    // 방장이 보낸 값이 30ms 늦게 닿으므로 상대 기기의 값은 방장 것과 같거나 바로 앞의 것이다
+    const before = p.guest.highlight();
+    expect(before.longest).toBeGreaterThan(0);
+    expect(before.longest).toBeLessThanOrEqual(hostSaw.longest);
+    expect(hostSaw.longest - before.longest).toBeLessThanOrEqual(6);
+    p.host.quit();
+    for (let i = 0; i < 60 * 600 && !p.results[1]; i++) p.advance(STEP_MS);
+    const r = p.results[1]!;
+    expect(r).toMatchObject({ reason: 'leave', leaver: 0 });
+    expect(r.highlight!.longest).toBeGreaterThanOrEqual(before.longest);
+    expect(r.highlight!.maxStage).toBeGreaterThanOrEqual(before.maxStage);
+    expect(r.highlight!.touches[0]).toBeGreaterThanOrEqual(before.touches[0]);
+    expect(r.highlight!.touches[1]).toBeGreaterThanOrEqual(before.touches[1]);
+    p.dispose();
+  });
+
+  it('예전 버전 방장(하이라이트를 안 보냄): 상대 기기는 자기가 본 값과 방장이 센 타격 수를 쓴다', () => {
+    const p = pair(30);
+    // 스냅샷에서 hl 을 떼어 낸다 (pair 는 메시지를 복사해 넣으므로 방장 쪽에는 영향이 없다)
+    p.hook.drop = (_to, m) => {
+      delete m.hl;
+      return false;
+    };
+    for (let i = 0; i < 60 * 600 && (!p.results[0] || !p.results[1]); i++) p.advance(STEP_MS);
+    const [rh, rg] = p.results;
+    expect(rg!.highlight!.touches).toEqual(rh!.highlight!.touches);
+    expect(rg!.highlight!.maxStage).toBe(rh!.highlight!.maxStage);
+    expect(Math.abs(rg!.highlight!.longest - rh!.highlight!.longest)).toBeLessThan(60);
+    p.dispose();
+  });
+
+  it('잘못된 하이라이트 값은 버리고 앞서 받은 값을 지킨다', () => {
+    const p = pair(0);
+    for (let i = 0; i < 60 * 6; i++) p.advance(STEP_MS);
+    const good = p.guest.highlight();
+    expect(good.longest).toBeGreaterThan(0);
+    const snap = [...p.sent].reverse().find((m) => m.t === 'snap')!;
+    for (const hl of [[-5, 0, 0, 0], [1, 9, 0, 0], 'x', [0, 0, 0, 0]]) p.inject(1, { ...snap, hl });
+    expect(p.guest.highlight()).toEqual(good);
+    p.dispose();
+  });
+
+  it('이모티콘 메시지(emo)는 경기 계산에 끼어들지 않는다 (경기 번호가 없는 방 메시지)', () => {
+    const p = pair(30);
+    for (let i = 0; i < 60 * 5; i++) p.advance(STEP_MS);
+    const before = [JSON.stringify(p.host.state), JSON.stringify(p.guest.state)];
+    p.inject(0, emoteMsg('R', 1));
+    p.inject(1, emoteMsg('L', 4));
+    expect([JSON.stringify(p.host.state), JSON.stringify(p.guest.state)]).toEqual(before);
+    expect(p.results).toEqual([null, null]);
+    expect(p.host.solo || p.guest.solo).toBe(false);
+    p.dispose();
+  });
 });

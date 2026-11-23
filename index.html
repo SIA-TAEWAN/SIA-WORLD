@@ -96,9 +96,41 @@
     .game-card .gi { padding: 10px 14px 14px; }
     .game-card h3 { margin: 0; font-size: var(--fs-panel); font-weight: normal; }
     .game-card p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
-    .game-card .here { position: absolute; top: 10px; right: 10px; padding: 2px 10px; border-radius: var(--radius-pill);
-      border: var(--line-thin) solid var(--outline); background: var(--panel); color: var(--ink); font-size: 14px; }
-    .game-card .here.full { background: var(--pink); color: var(--white); }
+    /* 카드 한 칸: 카드(링크)와 접속 인원 버튼이 나란히 들어 있다 (버튼을 링크 안에 넣지 않으려고) */
+    .game-cell { position: relative; display: flex; min-width: 0; }
+    .game-cell > .game-card { flex: 1; min-width: 0; }
+    .game-cell .here { position: absolute; top: 10px; right: 10px; padding: 5px 12px; border-radius: var(--radius-pill);
+      border: var(--line-thin) solid var(--outline); background: var(--panel); color: var(--ink); font-size: 14px; cursor: pointer; }
+    /* 손가락으로 누르기 쉽게 누르는 범위만 넓힌다 */
+    .game-cell .here::after { content: ''; position: absolute; inset: -10px; }
+    .game-cell .here.full { background: var(--pink); color: var(--white); }
+    .game-cell .here:focus-visible { outline: var(--line) solid var(--sky-deep); outline-offset: 2px; }
+    /* 지금 접속 중: 로비 + 게임에 있는 사람 (닉네임 · 어디) */
+    .online { background: var(--panel); border: var(--line) solid var(--outline); border-radius: var(--radius-panel);
+      padding: 10px 12px 12px; margin: 0 0 16px; box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+    .online-head { margin: 0 0 8px; font-size: 16px; }
+    .online-head b { font-weight: normal; color: var(--accent); }
+    .who-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .online .who-list { max-height: 104px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .who { display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; min-width: 0; padding: 2px 10px;
+      border-radius: var(--radius-pill); border: var(--line-thin) solid var(--outline); background: var(--white); font-size: 14px; }
+    .who.me { background: var(--primary); }
+    .who .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .who .at { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); font-size: 13px; }
+    .who.me .at { color: var(--ink); }
+    /* 게임 카드의 인원을 눌렀을 때: 그 게임에 있는 사람 */
+    .who-dim { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--dim); overscroll-behavior: contain;
+      padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px))
+        calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)); }
+    .who-box { width: 100%; max-width: 340px; max-height: 100%; display: flex; flex-direction: column; background: var(--panel);
+      border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); padding: 16px 16px 14px;
+      box-shadow: 0 var(--depth-big) 0 var(--outline); }
+    .who-box h2 { margin: 0; font-size: var(--fs-panel); font-weight: normal; overflow-wrap: anywhere; }
+    .who-box .sub { margin: 2px 0 10px; color: var(--ink-soft); font-size: 14px; }
+    .who-box .who-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 2px; }
+    .who-box .empty { margin: 4px 0; padding: 12px; text-align: center; color: var(--ink-soft); font-size: 14px;
+      border: var(--line-thin) dashed var(--empty-line); border-radius: var(--radius-item); }
+    .who-box .btn { flex: 0 0 auto; margin-top: 12px; padding: 9px; font-size: var(--fs-button); background: var(--white); box-shadow: 0 3px 0 var(--outline); }
     /* 관리자: 닫힌 게임 카드 · 오픈 설정 */
     .game-card { position: relative; }
     .game-card.closed img { filter: grayscale(.8); opacity: .7; }
@@ -272,6 +304,10 @@
           <small>아래(아이패드는 위)의 공유 버튼을 누르고 '홈 화면에 추가'를 고르면 앱처럼 쓸 수 있어요</small></span>
         <button type="button" class="close" id="ios-hint-close" aria-label="안내 닫기">✕</button>
       </div>
+      <section class="online hidden" id="online" aria-labelledby="online-head">
+        <p class="online-head" id="online-head">👥 지금 접속 중 <b id="online-n">0명</b></p>
+        <ul class="who-list" id="online-list"></ul>
+      </section>
       <div class="notice hidden" id="attend">🎁 오늘의 출석 보너스! 칩 +10,000 · 냥 +10,000</div>
       <section class="wallet">
         <div class="pill"><span class="ic">🪙</span>
@@ -304,6 +340,16 @@
     </main>
   </div>
 
+  <!-- 게임 카드의 접속 인원을 누르면: 그 게임에 지금 있는 사람 -->
+  <div class="who-dim hidden" id="who-dim">
+    <div class="who-box" role="dialog" aria-modal="true" aria-labelledby="who-title">
+      <h2 id="who-title"></h2>
+      <p class="sub" id="who-sub"></p>
+      <ul class="who-list" id="who-list"></ul>
+      <p class="empty hidden" id="who-empty">지금은 아무도 없어요</p>
+      <button type="button" class="btn" id="who-close">닫기</button>
+    </div>
+  </div>
 
   <script type="module">
     import {
@@ -314,7 +360,7 @@
     import { supabase } from './shared/supabase.js';
     import { claimAttendance, refill, canRefill, formatAmount, REFILLS_PER_DAY } from './shared/wallet.js';
     import { openRanking } from './shared/ranking-dialog.js';
-    import { watchGameCounts, GAME_MAX } from './shared/presence.js';
+    import { watchWorld, GAME_MAX } from './shared/presence.js';
     import { onInstallChange, promptInstall, dismissIosHint, openInBrowser } from './shared/pwa.js';
     import { CAT, CAT_PRICE } from './shared/characters.js';
 
@@ -368,16 +414,95 @@
     }
 
     // ---------- 로비 ----------
-    /** 게임마다 지금 들어와 있는 사람 수 (실시간) */
-    let gameCounts = {};
+    /** 지금 누가 어디에 있나 (실시간, shared/presence.js watchWorld): 게임마다 사람 수·사람들, 로비에 있는 사람, 전체 */
+    let world = { counts: {}, games: {}, lobby: [], online: [] };
     let stopCounts = null;
+    /** 로비에 들어와 있는 나 */
+    let lobbyUser = null;
+    /** 사람 목록을 열어 둔 게임 id (닫혀 있으면 null) */
+    let whoGame = null;
+    const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
+    /** 이 사람이 볼 수 있는 게임인가 (닫힌 게임은 관리자만) */
+    const gameShown = (id) => !!gameOpen[id] || !!lobbyUser?.isAdmin;
+    /** 사람 알약: 닉네임 (+ 어디) */
+    function whoChip(p, where) {
+      const li = document.createElement('li');
+      li.className = 'who' + (p.id === lobbyUser?.userId ? ' me' : '');
+      const nm = document.createElement('span');
+      nm.className = 'nm'; nm.textContent = p.name;
+      li.append(nm);
+      if (where) {
+        const at = document.createElement('span');
+        at.className = 'at'; at.textContent = `· ${where}`;
+        li.append(at);
+      }
+      return li;
+    }
     function paintCounts() {
-      document.querySelectorAll('.game-card .here').forEach((el) => {
-        const n = gameCounts[el.dataset.game];
+      document.querySelectorAll('.game-cell .here').forEach((el) => {
+        const n = world.counts[el.dataset.game];
         el.textContent = typeof n === 'number' ? `👥 ${Math.min(n, GAME_MAX)}/${GAME_MAX}명` : '';
         el.classList.toggle('hidden', typeof n !== 'number');
         el.classList.toggle('full', n >= GAME_MAX);
       });
+    }
+    /** 로비 위 '지금 접속 중' 줄: 나 → 게임에 있는 사람 → 로비에 있는 사람 (같은 사람은 한 번) */
+    function paintOnline() {
+      const rows = world.online.map((p) => {
+        const names = p.games.filter(gameShown).map((id) => GAMES.find((g) => g.id === id)?.name).filter(Boolean);
+        // 닫힌 게임에만 있는 사람(관리자가 아니면 그 게임이 안 보인다)은 어디인지 적지 않는다
+        return { p, where: names.length ? names.join(', ') : p.lobby ? '로비' : '', rank: p.id === lobbyUser?.userId ? 0 : names.length ? 1 : 2 };
+      }).sort((a, b) => a.rank - b.rank || byName(a.p, b.p));
+      $('#online').classList.toggle('hidden', rows.length === 0);
+      $('#online-n').textContent = `${rows.length}명`;
+      $('#online-list').replaceChildren(...rows.map((r) => whoChip(r.p, r.where)));
+    }
+    /** 게임 카드의 인원을 눌러 연 창: 그 게임에 지금 있는 사람 */
+    function paintWho() {
+      const g = GAMES.find((x) => x.id === whoGame);
+      $('#who-dim').classList.toggle('hidden', !g);
+      // 창이 열린 동안 뒤의 로비가 따라 스크롤되지 않게
+      document.body.style.overflow = g ? 'hidden' : '';
+      if (!g) return;
+      const all = world.games[g.id] ?? [];
+      const named = all.filter((p) => p.name).sort(byName);
+      const unknown = all.length - named.length;
+      $('#who-title').textContent = g.name;
+      $('#who-sub').textContent = `지금 ${all.length}명이 있어요` + (unknown > 0 && named.length ? ` (이름을 알 수 없는 ${unknown}명 포함)` : '');
+      $('#who-list').replaceChildren(...named.map((p) => whoChip(p, '')));
+      $('#who-list').classList.toggle('hidden', named.length === 0);
+      $('#who-empty').classList.toggle('hidden', named.length > 0);
+      $('#who-empty').textContent = all.length ? '이름을 알 수 없어요' : '지금은 아무도 없어요';
+    }
+    let whoOpener = null;
+    function openWho(id, opener) {
+      whoGame = id;
+      whoOpener = opener ?? null;
+      paintWho();
+      $('#who-close').focus();
+    }
+    function closeWho() {
+      if (!whoGame) return;
+      whoGame = null;
+      paintWho();
+      if (whoOpener?.isConnected) whoOpener.focus();
+      whoOpener = null;
+    }
+    $('#who-close').addEventListener('click', closeWho);
+    $('#who-dim').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeWho(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeWho(); });
+    function paintWorld() {
+      paintCounts();
+      paintOnline();
+      paintWho();
+    }
+    function stopWorld() {
+      stopCounts?.();
+      stopCounts = null;
+      lobbyUser = null;
+      world = { counts: {}, games: {}, lobby: [], online: [] };
+      whoGame = null;
+      paintWorld();
     }
     // ---------- 게임 순서: 내가 많이 들어간 게임부터 ----------
     // 순서는 이 브라우저에 기억해 두고 처음부터 그 순서로 그린다 (서버 응답을 기다렸다가 카드가 자리를 바꾸지 않게).
@@ -437,14 +562,19 @@
             tag.className = 'tag'; tag.textContent = '닫힘';
             a.append(tag);
           }
-          // 지금 들어와 있는 사람 수 (게임마다 최대 30명)
-          const here = document.createElement('span');
+          // 지금 들어와 있는 사람 수 (게임마다 최대 30명). 누르면 그 게임에 있는 사람 목록
+          const here = document.createElement('button');
+          here.type = 'button';
           here.className = 'here'; here.dataset.game = g.id;
-          a.append(here);
-          return a;
+          here.setAttribute('aria-label', `${g.name}에 지금 있는 사람 보기`);
+          here.addEventListener('click', () => openWho(g.id, here));
+          const cell = document.createElement('div');
+          cell.className = 'game-cell';
+          cell.append(a, here);
+          return cell;
         }),
       );
-      paintCounts();
+      paintWorld();
       // 관리자: 게임마다 열기/닫기
       $('#admin-box').classList.toggle('hidden', !user.isAdmin);
       if (!user.isAdmin) return;
@@ -483,14 +613,15 @@
       );
     }
     function showLobby(user) {
+      lobbyUser = user;
       $('#me').textContent = `${user.nickname}님`;
       $('#admin-err').textContent = '';
       gameOrder = readGameOrder(user.userId);
       void rememberGameOrder(user.userId);
       renderGames(user);
       show('lobby-view');
-      // 게임별 접속 인원 (한 번만 구독)
-      stopCounts ??= watchGameCounts((c) => { gameCounts = c; paintCounts(); });
+      // 지금 누가 어디에 있나 (한 번만 구독. 로비 채널에는 내 닉네임을 올린다)
+      stopCounts ??= watchWorld((w) => { world = w; paintWorld(); }, { user });
       void loadWallet(user);
       renderCat();
       // 서버의 오픈 여부로 다시 그린다 (못 읽으면 기본값 그대로)
@@ -554,8 +685,7 @@
     // ---------- 랭킹 (시아탱크와 같은 창: shared/ranking-dialog.js) ----------
     $('#rank-btn').addEventListener('click', () => openRanking({ meId: me?.userId ?? null, first: 'tank' }));
     $('#logout').addEventListener('click', async () => {
-      stopCounts?.();
-      stopCounts = null;
+      stopWorld();
       await signOut();
       showLogin();
     });
@@ -712,8 +842,7 @@
     // ---------- 시작 ----------
     // 다른 기기에서 같은 계정으로 로그인하면 여기는 로그아웃된다 → 로그인 화면으로
     onSignedOut(() => {
-      stopCounts?.();
-      stopCounts = null;
+      stopWorld();
       showLogin();
     });
     try {

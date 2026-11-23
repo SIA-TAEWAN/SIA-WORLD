@@ -12,12 +12,12 @@ import { STAGES } from '../src/data/stages';
 import { LIMITS } from '../src/game/progress';
 
 /**
- * 서버 SQL(supabase/migrations/048_defense.sql · 060_defense_review.sql · 074_cat_defense.sql)의 표·상수가 게임 데이터와 같은지 본다.
+ * 서버 SQL(supabase/migrations/048_defense.sql · 060_defense_review.sql · 074_cat_defense.sql · 087_defense_daily.sql)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·레벨업·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤에 이 함수들을 다시 정의하는 마이그레이션이 생기면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
-const FILES = ['048_defense.sql', '060_defense_review.sql', '074_cat_defense.sql'];
+const FILES = ['048_defense.sql', '060_defense_review.sql', '074_cat_defense.sql', '087_defense_daily.sql'];
 const sql = FILES.map(read).join('\n');
 
 /** 함수 하나의 본문 */

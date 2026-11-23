@@ -58,6 +58,33 @@ export async function openWorldRanking(meId: string): Promise<boolean> {
   }
 }
 
+/** 그날 순위 (shared/daily.js loadDailyRanking · 082 daily_ranking) */
+export interface DailyRanking {
+  day: string;
+  today: string;
+  top: { place: number; nickname: string; score: number; detail: unknown; me: boolean }[];
+  mine: { place: number; score: number; detail: unknown; plays: number } | null;
+  total: number;
+}
+export interface DailyModule {
+  dailyToday(): Promise<string>;
+  /** 서버 기준 오늘. 5초 안에 못 받거나 실패하면 null (기록이 서버로 가는 판은 이것을 쓴다) */
+  dailyTodayStrict(): Promise<string | null>;
+  dailySeed(game: string, day: string, salt?: string): number;
+  loadDailyRanking(game: string, day?: string | null): Promise<DailyRanking | null>;
+}
+let dailyMod: Promise<DailyModule> | null = null;
+/** 오늘의 도전 공용 모듈 (shared/daily.js). 못 받으면 null (화면은 조용히 숨기거나 기기 계산으로 대신한다) */
+export async function loadDaily(): Promise<DailyModule | null> {
+  try {
+    dailyMod ??= import(/* @vite-ignore */ new URL('shared/daily.js', root()).href) as Promise<DailyModule>;
+    return await dailyMod;
+  } catch {
+    dailyMod = null;
+    return null;
+  }
+}
+
 export interface SoundModule {
   play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
   isMuted(): boolean;

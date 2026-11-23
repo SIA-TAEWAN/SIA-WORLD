@@ -473,7 +473,7 @@ function aiChoose(choices: string[]): PokerAction {
 }
 
 /** 드로우 가능성 (같은 무늬 4장, 연속 4숫자) */
-function draws(cards: string[]): { flush4: boolean; straight4: boolean } {
+export function draws(cards: string[]): { flush4: boolean; straight4: boolean } {
   const suits = new Map<string, number>();
   for (const c of cards) suits.set(c[1], (suits.get(c[1]) ?? 0) + 1);
   const flush4 = Math.max(0, ...suits.values()) >= 4;

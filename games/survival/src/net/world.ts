@@ -45,20 +45,43 @@ export async function worldSupabase(): Promise<SupabaseClient> {
   return (await supaMod).supabase;
 }
 
+/** getSurvivalRanking 이 주는 랭킹 한 줄 */
+export interface WorldSurvivalRow {
+  key: string;
+  nickname: string;
+  time: number;
+  kills: number;
+  cleared: boolean;
+  place: number;
+}
 interface RankingDialogModule {
   openRanking(opts: { meId?: string | null; first?: 'tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' }): () => void;
+  getSurvivalRanking(mapId: string, meId?: string | null, mode?: string): Promise<{ rows: WorldSurvivalRow[]; mine: WorldSurvivalRow | null; total: number }>;
 }
 let rankMod: Promise<RankingDialogModule> | null = null;
+/** 못 불러왔으면 비워서 다음에 다시 불러온다 */
+function loadRanking(): Promise<RankingDialogModule> {
+  rankMod ??= import(/* @vite-ignore */ new URL('shared/ranking-dialog.js', root()).href) as Promise<RankingDialogModule>;
+  rankMod.catch(() => (rankMod = null));
+  return rankMod;
+}
 
 /** SIA WORLD 로비와 같은 랭킹 창 (shared/ranking-dialog.js). 못 불러오면 false */
 export async function openWorldRanking(meId: string, first: 'tank' | 'target' | 'race' | 'volley' | 'survival' = 'survival'): Promise<boolean> {
   try {
-    rankMod ??= import(/* @vite-ignore */ new URL('shared/ranking-dialog.js', root()).href) as Promise<RankingDialogModule>;
-    (await rankMod).openRanking({ meId, first });
+    (await loadRanking()).openRanking({ meId, first });
     return true;
   } catch {
-    rankMod = null;
     return false;
+  }
+}
+
+/** 맵·모드별 생존 시간 랭킹 (상위 100명 + 내 줄). 못 불러오면 null */
+export async function worldSurvivalRanking(mapId: string, meId: string, mode = 'normal'): Promise<{ rows: WorldSurvivalRow[]; mine: WorldSurvivalRow | null } | null> {
+  try {
+    return await (await loadRanking()).getSurvivalRanking(mapId, meId, mode);
+  } catch {
+    return null;
   }
 }
 
@@ -80,6 +103,22 @@ export function loadSound(): Promise<SoundModule> {
   soundMod ??= import(/* @vite-ignore */ new URL('shared/sound.js', root()).href) as Promise<SoundModule>;
   soundMod.catch(() => (soundMod = null));
   return soundMod;
+}
+
+/** 오늘의 도전 공통 모듈 (shared/daily.js) */
+export interface DailyModule {
+  /** 서버 기준 오늘. 5초 안에 못 받거나 실패하면 null */
+  dailyTodayStrict(): Promise<string | null>;
+  /** 서버 기준 오늘. 실패하면 기기 시계 (기록이 서버로 가는 판에는 쓰지 않는다) */
+  dailyToday(): Promise<string>;
+  dailySeed(game: string, day: string, salt?: string): number;
+  loadDailyRanking(game: string, day?: string | null): Promise<unknown>;
+}
+let dailyMod: Promise<DailyModule> | null = null;
+export function loadDaily(): Promise<DailyModule> {
+  dailyMod ??= import(/* @vite-ignore */ new URL('shared/daily.js', root()).href) as Promise<DailyModule>;
+  dailyMod.catch(() => (dailyMod = null));
+  return dailyMod;
 }
 
 interface RankIconModule {

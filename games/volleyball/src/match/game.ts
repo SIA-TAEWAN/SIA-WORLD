@@ -1,6 +1,7 @@
 import { aiInput, makeAi, type Ai } from '../game/ai';
 import { COUNTDOWN_SEC, STEP_MS, type ZodiacId } from '../game/constants';
 import { createState, newClock, step, ticksFor, type Input, type Side, type SimEvent, type SimState } from '../game/sim';
+import { copyHighlight, newHighlight, tally, type Highlight } from '../game/highlight';
 import type { Pos } from '../game/sync';
 import type { AiOutcome } from '../net/aiRecord';
 
@@ -43,6 +44,8 @@ export interface MatchResult {
   record?: Promise<RecordOutcome>;
   /** AI 대전: 서버에 승패를 올린 결과 (056_ai_matches.sql) */
   aiRecord?: Promise<AiOutcome>;
+  /** 하이라이트: 최장 랠리·최고 가속 단계·터치 수 (온라인은 방장 기기 값 기준 — game/highlight.ts) */
+  highlight?: Highlight;
 }
 
 /** 결과 저장이 어떻게 됐는가 */
@@ -91,6 +94,8 @@ export class Match {
   protected prevPlayers: [Pos, Pos];
   /** 다음 틱까지 얼마나 왔는가 (0~1) */
   protected frac = 0;
+  /** 이 기기가 모은 하이라이트 (틱마다 tally) */
+  protected hl = newHighlight();
 
   constructor(readonly setup: MatchSetup) {
     this.state = createState(setup.seed);
@@ -124,11 +129,16 @@ export class Match {
     this.prevPlayers = [{ x: s.players[0].x, y: s.players[0].y }, { x: s.players[1].x, y: s.players[1].y }];
   }
 
+  /** 지금까지의 하이라이트 (온라인의 상대 기기는 방장이 보낸 값 — OnlineMatch) */
+  highlight(): Highlight {
+    return copyHighlight(this.hl);
+  }
+
   protected finish(reason: 'normal' | 'leave', winner: Side, leaver?: Side) {
     if (this.phase === 'over') return;
     this.phase = 'over';
     const s = this.state;
-    this.onOver?.({ setup: this.setup, score: [s.score[0], s.score[1]], winner, reason, leaver });
+    this.onOver?.({ setup: this.setup, score: [s.score[0], s.score[1]], winner, reason, leaver, highlight: this.highlight() });
   }
 
   /** nowMs: performance.now() 같은, 계속 늘어나는 시각 */
@@ -147,7 +157,9 @@ export class Match {
     for (let n = ticksFor(this.clock, dt); n > 0; n--) {
       this.savePrev();
       const other = this.ai ? aiInput(this.ai, s) : this.input;
+      const from = this.events.length;
       step(s, this.mySide === 0 ? [this.input, other] : [other, this.input], this.events as SimEvent[]);
+      tally(this.hl, s, this.events, from);
       if (s.phase === 'over') {
         this.finish('normal', s.winner as Side);
         break;

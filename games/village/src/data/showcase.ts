@@ -34,7 +34,7 @@ import { newVillage, refresh, type Building, type VillageState } from '../game/r
  *   동쪽      쉼터: 정자 · 연못 · 꽃밭 · 평상, 그 아래 놀이 마당 (그네 · 배구 네트 · 깃발)
  *   남서      들녘: 논 여덟 마지기 · 허수아비 · 볏가리 · 솟대, 그 아래 방앗간
  *   남동      장터와 창고, 잔치 마당
- *   어귀      장승 · 솟대 · 망루 · 성문 · 등불
+ *   어귀      장승 · 솟대 · 망루 · 성문 · 등불. 큰길 양쪽에 돌격대(서) · 핑거(동) 기념물 세 개씩
  *
  * 한 줄이 땅의 한 줄(y), 두 글자가 한 칸(x). '..' 빈 칸 · '==' 길 · '##' 2×2 건물의 나머지 칸.
  */
@@ -56,7 +56,7 @@ const MAP = [
   'sc PD PD PD PD sc hy hy .. == == .. g6 MK gb == ST ST ST ..', // 13
   'sc PD PD PD PD sc hy g1 ln == == ln .. .. .. == .. g0 .. sw', // 14
   '.. .. .. == == == == == == == == == == == == == ST ST ST sw', // 15
-  'hy hy .. .. .. .. .. .. .. == == .. .. .. .. .. .. .. .. ..', // 16
+  'hy hy .. .. .. .. mg mh mi == == mj mk ml .. .. .. .. .. ..', // 16
   'hy .. .. ML ML ML ML g3 ma == == mb ln FE ## ln bn me .. tr', // 17
   'tr .. .. .. .. .. .. .. sd == == sd bn ## ## .. mf .. .. ..', // 18
   '.. .. .. .. .. .. .. jg jg == == jg jg .. .. .. .. .. .. ..', // 19
@@ -69,8 +69,8 @@ const CODES: Record<string, BuildingType> = {
   '==': 'road',
   // 주민 선물: g0 … gb = 십이지 순서 (쥐 … 돼지), gc = 고양이
   ...Object.fromEntries(RESIDENT_IDS.map((id, i) => [`g${i.toString(16)}`, `gift_${id}`])),
-  // 기념물: m0 … mf = monuments.ts 의 순서
-  ...Object.fromEntries(MONUMENTS.map((m, i) => [`m${i.toString(16)}`, m.id])),
+  // 기념물: m0 … m9 · ma … ml = monuments.ts 의 순서 (36진수 한 글자)
+  ...Object.fromEntries(MONUMENTS.map((m, i) => [`m${i.toString(36)}`, m.id])),
 };
 
 /** 지도에 적힌 것들: 종류와 왼쪽 위 칸 (마을 회관이 맨 앞, 나머지는 위에서 아래 · 왼쪽에서 오른쪽) */
