@@ -53,7 +53,7 @@ def fit(src, w, h):
 
 
 def main():
-    ids = dict(line.rstrip('\n').split('\t') for line in open(os.path.join(HERE, 'ids.tsv'), encoding='utf-8') if '\t' in line)
+    ids = dict(line.strip().split('\t') for line in open(os.path.join(HERE, 'ids.tsv'), encoding='utf-8') if '\t' in line)
     assets = []
     for name, (w, h) in SIZES.items():
         raw = os.path.join(RAW, name + '.png')
