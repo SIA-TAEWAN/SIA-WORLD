@@ -1,6 +1,6 @@
 /**
  * 대원 (PRD '캐릭터'): 십이지 12종 + 고양이(숨김).
- * - 능력치 배율은 0.95~1.05 (대원끼리 차이 최대 10%). 고양이는 가장 좋은 대원보다 5% 안쪽으로만 좋다.
+ * - 능력치 배율은 0.955~1.05 (대원끼리 차이 최대 10%: 1.05 ÷ 0.955 = 1.0995). 고양이는 가장 좋은 대원보다 5% 안쪽으로만 좋다.
  * - home: 고향 지형 (공격·방어 +10%), weapon: 잘 다루는 무기 (공격 +5%), join: 합류하는 지형 보스 (0 = 처음부터).
  * - 고유 스킬은 무기 스킬과 같은 동작 조각(acts.ts)으로 만든다.
  */
@@ -41,15 +41,15 @@ const U = (name: string, desc: string, icon: string, cd: number, sound: string, 
 
 export const HEROES: HeroDef[] = [
   {
-    id: 'rat', animal: '쥐', name: '찍찍이', stats: S({ speed: 1.05, crit: 1.05, hp: 0.95 }), weapon: 'sword', home: 1, join: 0,
+    id: 'rat', animal: '쥐', name: '찍찍이', stats: S({ speed: 1.05, crit: 1.05, hp: 0.955 }), weapon: 'sword', home: 1, join: 0,
     unique: U('잽싼 발', '6초 동안 이동 +40%, 치명타 +30%', '🐭', 22, 'boost', [{ t: 'buff', dur: 6, speed: 1.4, crit: 0.3 }]),
   },
   {
-    id: 'ox', animal: '소', name: '우직이', stats: S({ hp: 1.05, def: 1.05, speed: 0.95 }), weapon: 'spear', home: 2, join: 0,
+    id: 'ox', animal: '소', name: '우직이', stats: S({ hp: 1.05, def: 1.05, speed: 0.955 }), weapon: 'spear', home: 2, join: 0,
     unique: U('버티기', '6초 동안 받는 피해 60% 줄이기', '🐮', 24, 'tankBuild', [{ t: 'buff', dur: 6, guard: 0.4 }]),
   },
   {
-    id: 'tiger', animal: '호랑이', name: '어흥이', stats: S({ atk: 1.05, crit: 1.03, def: 0.97, mp: 0.95 }), weapon: 'sword', home: 3, join: 0,
+    id: 'tiger', animal: '호랑이', name: '어흥이', stats: S({ atk: 1.05, crit: 1.03, def: 0.97, mp: 0.955 }), weapon: 'sword', home: 3, join: 0,
     unique: U('포효', '주변 요괴를 기절시킨다', '🐯', 22, 'survBossWarn', [{ t: 'hit', shape: { k: 'circle', r: 270 }, mul: 1.2, stun: 2.5, kb: 60 }]),
   },
   {
@@ -57,15 +57,15 @@ export const HEROES: HeroDef[] = [
     unique: U('달떡', '체력을 35% 회복한다', '🐰', 28, 'tankHeal', [{ t: 'heal', hp: 0.35 }]),
   },
   {
-    id: 'dragon', animal: '용', name: '여의룡', stats: S({ atk: 1.04, mp: 1.05, def: 0.95 }), weapon: 'fan', home: 5, join: 2,
+    id: 'dragon', animal: '용', name: '여의룡', stats: S({ atk: 1.04, mp: 1.05, def: 0.955 }), weapon: 'fan', home: 5, join: 2,
     unique: U('용숨', '앞쪽에 불길을 뿜는다', '🐲', 20, 'tankFire', [{ t: 'hit', shape: { k: 'arc', r: 330, half: 0.6 }, mul: 3, kb: 80, dot: { mul: 0.5, dur: 4 } }]),
   },
   {
-    id: 'snake', animal: '뱀', name: '스르르', stats: S({ crit: 1.05, mp: 1.04, hp: 0.95 }), weapon: 'fan', home: 6, join: 3,
+    id: 'snake', animal: '뱀', name: '스르르', stats: S({ crit: 1.05, mp: 1.04, hp: 0.955 }), weapon: 'fan', home: 6, join: 3,
     unique: U('독안개', '내 자리에 독안개를 깐다', '🐍', 20, 'slide', [{ t: 'zone', look: 'poison', ahead: 0, r: 200, dur: 5, tick: 0.5, mul: 0.5, slow: { mul: 0.6, dur: 1 } }]),
   },
   {
-    id: 'horse', animal: '말', name: '따각이', stats: S({ speed: 1.05, atk: 1.02, mp: 0.95 }), weapon: 'spear', home: 7, join: 4,
+    id: 'horse', animal: '말', name: '따각이', stats: S({ speed: 1.05, atk: 1.02, mp: 0.955 }), weapon: 'spear', home: 7, join: 4,
     unique: U('질주', '멀리 달려가며 들이받는다', '🐴', 18, 'boost', [{ t: 'dash', dist: 520, time: 0.32, w: 110, mul: 3.2, kb: 220, stun: 0.6 }]),
   },
   {
@@ -76,7 +76,7 @@ export const HEROES: HeroDef[] = [
     ]),
   },
   {
-    id: 'monkey', animal: '원숭이', name: '재롱이', stats: S({ crit: 1.05, speed: 1.03, def: 0.95 }), weapon: 'bow', home: 9, join: 6,
+    id: 'monkey', animal: '원숭이', name: '재롱이', stats: S({ crit: 1.05, speed: 1.03, def: 0.955 }), weapon: 'bow', home: 9, join: 6,
     unique: U('재주넘기', '주변을 세 번 휩쓴다', '🐵', 20, 'survSlash', [0, 0.18, 0.36].map((at): Act => ({ t: 'hit', at, shape: { k: 'circle', r: 190 }, mul: 1.3, kb: 90 }))),
   },
   {
