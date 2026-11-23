@@ -551,7 +551,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   try {
     // 개발용 ?all=1 은 기기에만 연 상태라 기록하지 않는다
     if (!DEV_ALL) {
-      // 보관해 둔(못 보낸) 판을 먼저 보낸다: 새 판이 끝난 뒤에 보내면 서버가 시간이 겹친다(overlap)며 버린다.
+      // 보관해 둔(못 보낸) 판을 먼저 보낸다 (늦게 도착해도 서버는 먼저 시작한 판의 최소 판 시간으로만 겹침을 본다: 070).
       // 통신이 느리면 판마다 기다리느라 출발이 오래 멈추므로 여기서는 8초까지만 기다린다 (남은 것은 다음에)
       const slow = setTimeout(() => toast('출발 준비 중…', 9000), 600);
       await Promise.race([api.resend().catch(() => 0), new Promise((ok) => setTimeout(ok, 8000))]);
