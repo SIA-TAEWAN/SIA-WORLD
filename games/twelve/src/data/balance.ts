@@ -18,8 +18,6 @@ export const ROLL = { time: 0.28, dist: 200, cd: 1, invuln: 0.36 };
 export const HURT_INVULN = 0.35;
 /** 물약 공통 대기 */
 export const POTION_CD = 3;
-/** 물약(소) 회복량 (최대치의 비율) */
-export const POTION_HEAL = { hp: 0.4, mp: 0.5 };
 /** 마력이 저절로 차는 양 (초당, 최대 마력의 비율) */
 export const MP_REGEN = 0.03;
 export const CRIT_MUL = 1.5;

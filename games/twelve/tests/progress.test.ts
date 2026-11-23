@@ -20,7 +20,8 @@ import {
   regionReady,
   regionStarCount,
   rewardOf,
-  setLoadout,
+  setHero,
+  weaponOf,
   type RunReport,
 } from '../src/game/progress';
 import { STAR_CHEST, STAR_NO_DEATH, STAR_TIME, chestCoins, createRun } from '../src/game/sim';
@@ -30,7 +31,7 @@ import { autoplay } from './bot';
 const report = (map: string, over: Partial<RunReport> = {}): RunReport => {
   const m = mapOf(map)!;
   const max = mapKillMax(m, over.mode ?? 'normal');
-  return { run: 'r', map, mode: 'normal', hero: 'rat', weapon: 'sword', time: 100, cleared: true, kills: { ...max.kinds }, elites: max.elites, boss: !!m.boss, chest: true, deaths: 0, ...over };
+  return { run: 'r', map, mode: 'normal', hero: 'rat', time: 100, cleared: true, kills: { ...max.kinds }, elites: max.elites, boss: !!m.boss, chest: true, deaths: 0, ...over };
 };
 
 const memStore = (): Store => {
@@ -76,8 +77,8 @@ describe('맵 열림', () => {
     expect(mapOpen(p, '2-1')).toBe(false);
     expect(mapOpen(p, '1-1', 'hard')).toBe(false);
     expect(continueMap(p)).toBe('1-8');
-    expect(checkStart(p, '2-1', 'normal', 'rat', 'sword')).toBe('bad map');
-    expect(checkStart(p, '1-1', 'hard', 'rat', 'sword')).toBe('map locked');
+    expect(checkStart(p, '2-1', 'normal', 'rat')).toBe('bad map');
+    expect(checkStart(p, '1-1', 'hard', 'rat')).toBe('map locked');
   });
 
   it('어려움 모드는 진행과 별을 따로 센다', () => {
@@ -148,7 +149,7 @@ describe('결과 적기', () => {
       const s = createRun(mapOf(id)!, 'normal', loadoutOf(p), { seed: 4, god: true });
       autoplay(s, 1500, { chest: true });
       expect(s.phase).toBe('clear');
-      const rep: RunReport = { run: 'r', map: id, mode: 'normal', hero: 'rat', weapon: 'sword', time: Math.floor(s.t), cleared: true, kills: s.kills, elites: s.eliteKills, boss: s.bossDead, chest: s.chest, deaths: 0 };
+      const rep: RunReport = { run: 'r', map: id, mode: 'normal', hero: 'rat', time: Math.floor(s.t), cleared: true, kills: s.kills, elites: s.eliteKills, boss: s.bossDead, chest: s.chest, deaths: 0 };
       expect(checkReport(rep)).toBeNull();
       expect(rewardOf(id, 'normal', rep)).toEqual({ exp: s.exp, coins: s.coins });
     }
@@ -173,21 +174,24 @@ describe('대원', () => {
   it('처음엔 3종, 1지형 보스를 처음 잡으면 토끼가 합류한다', () => {
     const p = emptyProfile();
     expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger']);
-    expect(checkStart(p, '1-1', 'normal', 'rabbit', 'bow')).toBe('hero locked');
-    expect(checkStart(p, '1-1', 'normal', 'cat', 'sword')).toBe('hero locked');
+    expect(checkStart(p, '1-1', 'normal', 'rabbit')).toBe('hero locked');
+    expect(checkStart(p, '1-1', 'normal', 'cat')).toBe('hero locked');
     for (let n = 1; n <= 7; n++) expect(applyReport(p, report(`1-${n}`)).joined).toBeNull();
     expect(applyReport(p, report('1-8')).joined).toBe('rabbit');
     expect(applyReport(p, report('1-8')).joined).toBeNull();
     expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger', 'rabbit']);
   });
 
-  it('대원·무기 바꾸기', () => {
+  it('대표 대원 바꾸기 · 무기는 착용한 장비가 정한다', () => {
     const p = emptyProfile();
-    expect(setLoadout(p, 'tiger', 'bow')).toBeNull();
-    expect([p.hero, p.weapon]).toEqual(['tiger', 'bow']);
-    expect(setLoadout(p, 'dragon', 'bow')).toBe('hero locked');
-    expect(setLoadout(p, 'tiger', 'gun')).toBe('bad weapon');
-    expect(loadoutOf(p).hero).toBe('tiger');
+    expect(setHero(p, 'tiger')).toBeNull();
+    expect(p.hero).toBe('tiger');
+    expect(setHero(p, 'dragon')).toBe('hero locked');
+    expect(setHero(p, 'lion')).toBe('bad hero');
+    expect(setHero(p, 'cat')).toBe('hero locked');
+    expect(setHero(p, 'cat', true)).toBeNull();
+    expect(weaponOf(p)).toBe('sword');
+    expect(loadoutOf(p).hero).toBe('cat');
   });
 
   it('추천 대원: 고향 대원 + 환경을 막는 대원', () => {
@@ -201,20 +205,22 @@ describe('기기 저장 (?local=1)', () => {
     const store = memStore();
     const api = createLocalApi(store);
     expect(await api.loadProfile()).toEqual(emptyProfile());
-    expect(await api.start('1-1', 'normal', 'rat', 'sword')).toMatch(/^local-/);
-    await expect(api.start('1-2', 'normal', 'rat', 'sword')).rejects.toBeInstanceOf(ApiError);
-    const out = await api.finish(report('1-1'));
+    const st = await api.start('1-1', 'normal', 'rat');
+    expect(st.run).toMatch(/^local-/);
+    expect(st.seed).toBeGreaterThanOrEqual(0);
+    await expect(api.start('1-2', 'normal', 'rat')).rejects.toBeInstanceOf(ApiError);
+    const out = await api.finish(report('1-1', { run: st.run }));
     expect(out!.result.first).toBe(true);
     const again = await createLocalApi(store).loadProfile();
     expect(again).toEqual(out!.profile);
     expect(again.maps.normal['1-1'].clears).toBe(1);
     await expect(api.finish(report('1-1', { time: 1 }))).rejects.toThrow('too early');
-    expect((await api.setLoadout('ox', 'spear')).hero).toBe('ox');
+    expect((await api.setHero('ox')).hero).toBe('ox');
   });
 
   it('깨진 저장 값은 기본값으로', () => {
     expect(normalize(null)).toEqual(emptyProfile());
-    expect(normalize({ level: 500, exp: -3, coins: 'x', hero: 'lion', weapon: 'gun', mode: 'easy', maps: { normal: { '1-1': { stars: 99, clears: 2, best: 30 }, '1-2': { clears: 0 } } } })).toEqual({
+    expect(normalize({ level: 500, exp: -3, coins: 'x', hero: 'lion', mode: 'easy', maps: { normal: { '1-1': { stars: 99, clears: 2, best: 30 }, '1-2': { clears: 0 } } } })).toEqual({
       ...emptyProfile(),
       level: 99,
       maps: { normal: { '1-1': { stars: 3, clears: 2, best: 30 } }, hard: {} },

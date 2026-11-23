@@ -3,7 +3,9 @@ import { artUrl, heroFullUrl } from '../assets';
 import type { Shape } from '../data/acts';
 import { MAP_W, PLAYER_R, TILE } from '../data/balance';
 import { ELITE } from '../data/enemies';
+import { itemDef } from '../data/items';
 import { regionOf } from '../data/regions';
+import type { Drop } from '../game/drops';
 import { STEP, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
 import { GROUND, artFor } from './art';
@@ -40,7 +42,15 @@ export interface SceneHooks {
   hurt(): void;
   /** 피해 숫자를 그릴지 (설정) */
   numbers(): boolean;
+  /** 레어·열쇠가 떨어졌다 (진동) */
+  rare(): void;
 }
+
+/** 떨어진 것의 그림 글자 · 이름 */
+export const dropIcon = (d: Drop) => (d.t === 'potion' ? (d.slot ? '💧' : '❤️') : d.t === 'stone' ? '💎' : d.t === 'key' ? '🗝️' : (itemDef(d.base)?.icon ?? '🎁'));
+export const dropName = (d: Drop) =>
+  d.t === 'potion' ? `${d.slot ? '마력' : '체력'} 물약(${'소중대'[d.size]})` : d.t === 'stone' ? `강화석 ${d.n}개` : d.t === 'key' ? '지형 열쇠' : (itemDef(d.base)?.name ?? '장비');
+const isRare = (d: Drop) => d.t === 'key' || (d.t === 'item' && d.rare);
 
 interface Num {
   o: Phaser.GameObjects.BitmapText;
@@ -79,6 +89,8 @@ export class GameScene extends Phaser.Scene {
   private popNext = 0;
   private fx: Fx[] = [];
   private chains: { pts: number[]; t: number }[] = [];
+  /** 땅에 떨어진 것 (번호 → 그림 글자). 떨어질 때 한 번 만들고 주우면 지운다 */
+  private dropMarks = new Map<number, { o: Phaser.GameObjects.Text; x: number; y: number; rare: boolean; born: number }>();
   private lastSound = new Map<string, number>();
   private camX = 0;
   private camY = 0;
@@ -247,6 +259,28 @@ export class GameScene extends Phaser.Scene {
           this.sfx('survChest', 0);
           this.hooks.note(`🎁 숨은 상자! 엽전 +${ev.coins}`);
           break;
+        case 'drop': {
+          const rare = isRare(ev.drop);
+          if (ev.pick >= 0) {
+            const o = this.add.text(ev.x, ev.y, dropIcon(ev.drop), { fontFamily: FONT, fontSize: rare ? '42px' : '32px' }).setOrigin(0.5).setDepth(3);
+            this.dropMarks.set(ev.pick, { o, x: ev.x, y: ev.y, rare, born: this.time.now / 1000 });
+          } else this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
+          if (rare) {
+            // 레어·열쇠: 빛기둥 + 특별한 소리 + 진동 (PRD '드랍 보이기')
+            this.sfx('newRecord', 0, { rate: 1.5 });
+            this.hooks.rare();
+            this.hooks.note(`✨ ${dropName(ev.drop)}!`);
+          }
+          break;
+        }
+        case 'pick': {
+          const m = this.dropMarks.get(ev.id);
+          m?.o.destroy();
+          this.dropMarks.delete(ev.id);
+          this.sfx(isRare(ev.drop) ? 'survChest' : 'coin', 80, { volume: 0.7 });
+          this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
+          break;
+        }
         case 'exit':
           this.sfx('newRecord', 0);
           this.hooks.note(this.run.map.boss ? '보스를 쓰러뜨렸어요! 출구가 열렸어요' : '출구가 열렸어요!');
@@ -314,6 +348,18 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(5, COLOR.outline, 1).strokeCircle(s.exitX, s.exitY, 40);
     this.exitMark.setText(open ? '🚪' : '🔒');
     this.chestMark.setVisible(!s.chest);
+    // 떨어진 것: 통통 튀고, 레어·열쇠는 빛기둥이 선다
+    for (const m of this.dropMarks.values()) {
+      if (!this.onScreen(m.x, m.y, 320)) continue;
+      const age = now - m.born;
+      m.o.setY(m.y - Math.abs(Math.sin(age * 4)) * 8 - Math.max(0, 0.3 - age) * 120);
+      g.fillStyle(COLOR.outline, 0.25).fillEllipse(m.x, m.y + 16, 34, 12);
+      if (!m.rare) continue;
+      const a = 0.55 + 0.2 * Math.sin(now * 5);
+      g.fillStyle(COLOR.primary, a * 0.7).fillRect(m.x - 22, m.y - 300, 44, 310);
+      g.fillStyle(COLOR.white, a).fillRect(m.x - 8, m.y - 300, 16, 310);
+      g.lineStyle(4, COLOR.primary, 0.9).strokeCircle(m.x, m.y + 6, 30 + 4 * Math.sin(now * 5));
+    }
     // 땅에 남는 범위 (화살 비 · 회오리 · 독안개)
     for (const z of s.zones) {
       if (!this.onScreen(z.x, z.y, z.r)) continue;

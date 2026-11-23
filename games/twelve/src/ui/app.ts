@@ -1,18 +1,26 @@
 import Phaser from 'phaser';
 import { heroFaceUrl } from '../assets';
-import { EXIT_KILL_RATIO } from '../data/balance';
 import { BOSSES } from '../data/bosses';
+import { BAG, MAX_PLUS, POTION, POTION_NAME, bagPrice, enhanceCost } from '../data/economy';
 import { expNeed, playerStats } from '../data/growth';
 import { HEROES, STAT_KEYS, STAT_NAME, heroOf, isHero, type HeroId } from '../data/heroes';
+import { ACC_TEXT, FX_DESC, FX_NAME, ITEMS, SLOTS, SLOT_NAME, canEnhance, itemDef, itemLevel, itemNote, itemStats, normalWeapon, regionRares, type Item, type Slot } from '../data/items';
 import { MAPS, mapOf, mapsOf, nextMap, type MapDef } from '../data/maps';
 import { MAPS_PER_REGION, MODE_NAME, REGIONS, REGION_TABLE, mapLevel, regionOf } from '../data/regions';
-import { WEAPONS, WEAPON_KINDS, type WeaponKind } from '../data/weapons';
+import { TIER_LEVELS, WEAPONS, WEAPON_KINDS } from '../data/weapons';
 import {
-  START_POTIONS,
   applyReport,
+  bagCount,
+  boxItems,
   continueMap,
+  dropCtx,
   emptyProfile,
+  equipped,
+  exitNeed,
+  hasKey,
   heroesOf,
+  isEquipped,
+  itemOf,
   joinText,
   loadoutOf,
   mapOpen,
@@ -21,16 +29,18 @@ import {
   regionReady,
   regionStarCount,
   starsOfMap,
+  weaponOf,
   whyText,
   type FinishResult,
   type RunReport,
   type TwelveProfile,
 } from '../game/progress';
+import { forSale, scrapOf, shopTier } from '../game/rules';
 import { STAR_CHEST, STAR_NO_DEATH, STAR_TIME, createRun, type RunState } from '../game/sim';
 import { ApiError, type TwelveApi } from '../net/api';
 import { DEV_ALL, DEV_GOD, DEV_HERO, DEV_LEVEL, DEV_MAP, DEV_WEAPON, LOCAL_MODE } from '../net/local';
 import { loadSound, worldHome, type SoundModule, type WorldUser } from '../net/world';
-import { GameScene, H, W } from '../scenes/GameScene';
+import { GameScene, H, W, dropIcon, dropName } from '../scenes/GameScene';
 import { GROUND } from '../scenes/art';
 import { COLOR, css } from '../theme';
 import { createControls, type Controls } from './controls';
@@ -127,16 +137,26 @@ const levelPill = () => `<span class="coins-pill lv-pill">Lv ${profile.level}</s
 const STAR_LABEL: [number, string][] = [[STAR_TIME, '시간 안에'], [STAR_NO_DEATH, '안 쓰러지고'], [STAR_CHEST, '숨은 상자']];
 const starsHtml = (bits: number) => `<span class="stars">${STAR_LABEL.map(([b]) => `<i class="${bits & b ? 'on' : ''}">★</i>`).join('')}</span>`;
 const face = (id: HeroId) => (heroOf(id).hidden ? `<span class="face emoji">${heroOf(id).unique.icon}</span>` : `<img class="face" src="${heroFaceUrl(id)}" alt="${heroOf(id).name}" />`);
+/** 착용한 장비 이름 (+강화) */
+const equipName = (slot: Slot) => {
+  const it = equipped(profile, slot);
+  const d = it && itemDef(it.base);
+  return d ? `${d.name}${it!.plus ? ` +${it!.plus}` : ''}` : `${SLOT_NAME[slot]} 없음`;
+};
 const time = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 /** 개발 옵션을 입힌 프로필 (저장되지 않는다) */
 function view(p: TwelveProfile): TwelveProfile {
   if (!DEV_PLAY) return p;
-  const v: TwelveProfile = { ...p, maps: { normal: { ...p.maps.normal }, hard: { ...p.maps.hard } } };
+  const v: TwelveProfile = { ...p, eq: { ...p.eq }, maps: { normal: { ...p.maps.normal }, hard: { ...p.maps.hard } } };
   if (DEV_LEVEL) v.level = DEV_LEVEL;
   if (DEV_ALL) for (const m of MAPS) v.maps.normal[m.id] ??= { stars: 0, clears: 1, best: 0 };
   if (isHero(DEV_HERO)) v.hero = DEV_HERO;
-  if ((WEAPON_KINDS as readonly string[]).includes(DEV_WEAPON)) v.weapon = DEV_WEAPON as WeaponKind;
+  // ?weapon=bow: 가방에 있는 그 종류의 무기를 든다 (없으면 나무 칼)
+  if ((WEAPON_KINDS as readonly string[]).includes(DEV_WEAPON)) {
+    const it = v.items.find((x) => !x.box && itemDef(x.base)?.kind === DEV_WEAPON) ?? v.items.find((x) => x.base === normalWeapon('sword', 0));
+    if (it) v.eq.weapon = it.id;
+  }
   return v;
 }
 
@@ -178,14 +198,14 @@ export function showMain() {
     <div class="title"><h1>시아열두길</h1><p>열두 지형의 요괴를 베고 열쇠를 모아라!</p></div>
     <div class="card me">
       ${face(hero.id)}
-      <div class="me-info"><b>${hero.name} <small>${hero.animal} · ${WEAPONS[profile.weapon].icon} ${WEAPONS[profile.weapon].name}</small></b>
+      <div class="me-info"><b>${hero.name} <small>${hero.animal} · ${WEAPONS[weaponOf(profile)].icon} ${equipName('weapon')}</small></b>
         <div class="lv"><i style="width:${need ? Math.min(100, (profile.exp / need) * 100) : 100}%"></i></div>
         <span class="soft">Lv ${profile.level}${need ? ` · 경험치 ${profile.exp.toLocaleString()} / ${need.toLocaleString()}` : ' (최고 레벨)'} · ${MODE_NAME[profile.mode]} 모드</span></div>
     </div>
     <div class="menu-btns">
       <button class="btn primary big" id="go">▶ 이어하기${nm ? ` <small>${nm.id} ${nm.name}</small>` : ''}</button>
       <button class="btn big" id="world">🗺️ 십이지 지도</button>
-      <div class="row2"><button class="btn" id="heroes">🐾 대원</button><button class="btn soon" data-soon="가방은 장비가 생기면 열려요">🎒 가방</button></div>
+      <div class="row2"><button class="btn" id="heroes">🐾 대원</button><button class="btn" id="bag">🎒 가방${boxItems(profile).length ? ` <em class="tag">보관함 ${boxItems(profile).length}</em>` : ''}</button></div>
       <div class="row2"><button class="btn soon" data-soon="끝없는 탑은 준비 중이에요">🗼 끝없는 탑</button><button class="btn soon" data-soon="랭킹은 준비 중이에요">🏆 랭킹</button></div>
       <button class="btn" id="settings">⚙️ 설정</button>
     </div>
@@ -194,6 +214,7 @@ export function showMain() {
   on(root, '#go', () => (nm ? showRegion(nm.region) : showWorld()));
   on(root, '#world', showWorld);
   on(root, '#heroes', () => showHeroes(showMain));
+  on(root, '#bag', () => showBag(showMain));
   on(root, '#settings', showSettings);
   on(root, '[data-soon]', (el) => toast(el.dataset.soon!));
 }
@@ -229,7 +250,7 @@ function showHeroes(back: () => void, region = 0) {
   const mine = heroesOf(profile);
   const rec = region ? recommended(region) : [];
   let pick: HeroId = profile.hero;
-  let weapon: WeaponKind = profile.weapon;
+  const weapon = weaponOf(profile);
   const root = screen(`
     <div class="bar"><button class="back" id="back">← 뒤로</button><h2>대원</h2><div class="pills">${levelPill()}</div></div>
     <div class="card"><div class="heroes">${HEROES.filter((h) => !h.hidden || mine.includes(h.id))
@@ -239,14 +260,13 @@ function showHeroes(back: () => void, region = 0) {
       })
       .join('')}</div></div>
     <div class="card" id="detail"></div>
-    <div class="card"><h3>무기 <small>장비가 생기기 전까지는 종류만 골라요</small></h3><div class="weapons">${WEAPON_KINDS.map((k) => `<button class="btn small weapon" data-w="${k}">${WEAPONS[k].icon} ${WEAPONS[k].name}</button>`).join('')}</div><div id="wdetail"></div></div>
+    <div class="card"><h3>${WEAPONS[weapon].icon} ${equipName('weapon')} <small>무기는 가방에서 바꿔요</small></h3><div id="wdetail"></div></div>
     <button class="btn primary big" id="save">이 대원으로</button>`);
   const paint = () => {
     const h = heroOf(pick);
     const ok = mine.includes(pick);
-    const st = playerStats({ ...loadoutOf(profile), hero: pick, weapon }, region);
+    const st = playerStats(loadoutOf(profile, pick), region);
     root.querySelectorAll<HTMLElement>('.hero-btn').forEach((b) => b.classList.toggle('on', b.dataset.id === pick));
-    root.querySelectorAll<HTMLElement>('.weapon').forEach((b) => b.classList.toggle('on', b.dataset.w === weapon));
     root.querySelector('#detail')!.innerHTML = `
       <h3>${h.name} <small>${h.animal} · 고향 ${h.home ? `${h.home}지형 ${regionOf(h.home).name}` : '없음'} · 잘 다루는 무기 ${WEAPONS[h.weapon].icon}${WEAPONS[h.weapon].name}</small></h3>
       <div class="stat-grid">${STAT_KEYS.map((k) => `<div class="stat"><span>${STAT_NAME[k]}</span><div class="lv"><i style="width:${Math.round(((h.stats[k] - 0.9) / 0.2) * 100)}%"></i></div><b>${k === 'crit' ? `${Math.round(st.crit * 100)}%` : Math.round(st[k])}</b></div>`).join('')}</div>
@@ -263,13 +283,9 @@ function showHeroes(back: () => void, region = 0) {
     pick = el.dataset.id as HeroId;
     paint();
   });
-  on(root, '.weapon', (el) => {
-    weapon = el.dataset.w as WeaponKind;
-    paint();
-  });
   on(root, '#save', async () => {
     try {
-      profile = view(await api.setLoadout(pick, weapon));
+      profile = view(await api.setHero(pick));
       back();
     } catch (e) {
       toast(errText(e));
@@ -285,12 +301,12 @@ function showWorld() {
     <div class="region-grid">${REGION_TABLE.map((r) => {
       const ready = regionReady(r.region);
       const open = ready && regionOpen(profile, r.region);
-      const sub = !ready ? '준비 중' : open ? `★ ${regionStarCount(profile, r.region)}/${MAPS_PER_REGION * 3}` : `🔒 ${r.region - 1}지형 보스`;
+      const sub = !ready ? '준비 중' : open ? `${hasKey(profile, r.region) ? '🗝️ ' : ''}★ ${regionStarCount(profile, r.region)}/${MAPS_PER_REGION * 3}` : `🔒 ${r.region - 1}지형 보스`;
       return `<button class="region bg-${r.ground} ${open ? '' : 'locked'}" data-r="${r.region}">
           ${face(r.home)}<b>${r.region}</b><span>${r.name}</span><em>${sub}</em>
         </button>`;
     }).join('')}</div>
-    <button class="btn soon final" data-soon="열쇠 12개를 모으면 열려요 (준비 중)">🗝️ 최종보스 <small>열쇠 0 / ${REGIONS}</small></button>
+    <button class="btn soon final" data-soon="열쇠 12개를 모으면 열려요 (준비 중)">🗝️ 최종보스 <small>열쇠 ${profile.keys[profile.mode].length} / ${REGIONS}</small></button>
     <p class="soft center light">지형 보스를 잡으면 다음 지형이 열리고 대원이 합류해요</p>`);
   on(root, '#back', showMain);
   on(root, '[data-soon]', (el) => toast(el.dataset.soon!));
@@ -311,8 +327,9 @@ function showRegion(region: number) {
       <h3>🏕️ 쉼터 <small>${r.envText}</small></h3>
       <div class="rest-row">
         <button class="btn small" id="heroes">${face(profile.hero)} 대원 바꾸기</button>
-        <button class="btn small soon" data-soon="상점은 준비 중이에요">🛒 상점</button>
-        <button class="btn small soon" data-soon="대장간은 준비 중이에요">⚒️ 대장간</button>
+        <button class="btn small" id="shop">🛒 상점</button>
+        <button class="btn small" id="smith">⚒️ 대장간</button>
+        <button class="btn small" id="bag">🎒 가방${boxItems(profile).length ? ` <em class="tag">${boxItems(profile).length}</em>` : ''}</button>
       </div>
       <p class="soft rec">추천 대원 ${recommended(region).map((h) => `${face(h)} ${heroOf(h).name}`).join(' ')}</p>
     </div>
@@ -327,12 +344,19 @@ function showRegion(region: number) {
         </button>`;
       })
       .join('')}</div>
+    <div class="card">
+      <h3>이 지형의 레어 <small>정예·보스가 떨어뜨려요 · ${hasKey(profile, region) ? '🗝️ 열쇠를 얻었어요' : '🗝️ 열쇠는 보스가 가끔 떨어뜨려요'}</small></h3>
+      <div class="rare-list">${regionRares(region, profile.mode).map((b) => `<span class="${profile.codex.includes(b) ? 'on' : ''}">${itemDef(b)!.icon} ${itemDef(b)!.name}</span>`).join('')}</div>
+      <p class="soft">★ ${regionStarCount(profile, region)} / ${MAPS_PER_REGION * 3} — 별을 모두 모으면 장신구를 하나 받아요</p>
+    </div>
     <p class="soft center light">★ 시간 안에 · 안 쓰러지고 · 숨은 상자 — 따로따로 모아도 돼요<br/>${joinText(region)}</p>`,
     `bg-${r.ground}`,
   );
   on(root, '#back', showWorld);
   on(root, '#heroes', () => showHeroes(() => showRegion(region), region));
-  on(root, '[data-soon]', (el) => toast(el.dataset.soon!));
+  on(root, '#shop', () => showShop(region));
+  on(root, '#smith', () => showSmith(region));
+  on(root, '#bag', () => showBag(() => showRegion(region)));
   on(root, '.stage-row', (el) => {
     const m = mapOf(el.dataset.id!)!;
     if (!mapOpen(profile, m.id)) return toast('앞 맵을 깨야 열려요');
@@ -358,8 +382,9 @@ async function startMap(map: MapDef, deaths: number) {
   if (busy) return;
   busy = true;
   let runId = '';
+  let seed = (Math.random() * 0x7fffffff) >>> 0;
   try {
-    if (!DEV_PLAY) runId = await api.start(map.id, profile.mode, profile.hero, profile.weapon);
+    if (!DEV_PLAY) ({ run: runId, seed } = await api.start(map.id, profile.mode, profile.hero));
     // 숫자 그림(피해 숫자)을 그리기 전에 글꼴이 있어야 한다
     await Promise.race([document.fonts.load("34px 'Jua'"), new Promise((ok) => setTimeout(ok, 1500))]).catch(() => null);
   } catch (e) {
@@ -371,13 +396,14 @@ async function startMap(map: MapDef, deaths: number) {
   busy = false;
   closeGame();
   const mode = profile.mode;
-  const run = createRun(map, mode, loadoutOf(profile), { seed: (Math.random() * 0xffffffff) >>> 0, potions: START_POTIONS, god: DEV_GOD });
+  // 전투 무작위(치명타 등)는 기기 씨앗, 드랍은 서버가 준 씨앗 (서버가 같은 규칙으로 다시 판정한다)
+  const run = createRun(map, mode, loadoutOf(profile), { seed: (Math.random() * 0xffffffff) >>> 0, stock: profile.potions, drops: dropCtx(profile, map.id, mode, seed), god: DEV_GOD });
   if (!DEV_PLAY) mark(RUN_KEY, map.id);
   // 개발용: 콘솔에서 판 상태를 들여다보거나 고칠 수 있게 (테스트 모드에서만)
   if (LOCAL_MODE) (window as unknown as { __twelve?: RunState }).__twelve = run;
   const region = regionOf(map.region);
   const bossDef = map.boss ? BOSSES[region.boss] : null;
-  const need = Math.ceil(run.total * EXIT_KILL_RATIO);
+  const need = exitNeed(run.total);
   const root = app();
   root.innerHTML = `
     <div id="game"></div>
@@ -429,7 +455,6 @@ async function startMap(map: MapDef, deaths: number) {
       map: map.id,
       mode,
       hero: s.hero.id,
-      weapon: s.weapon.kind,
       time: Math.floor(s.t),
       cleared: s.phase === 'clear',
       kills: { ...s.kills },
@@ -437,9 +462,10 @@ async function startMap(map: MapDef, deaths: number) {
       boss: s.bossDead,
       chest: s.chest,
       deaths,
+      potions: s.used.map((r) => [...r]),
     };
     // 개발 판: 같은 규칙으로 계산만 하고 저장하지 않는다
-    if (DEV_PLAY) return applyReport(structuredClone(profile), report);
+    if (DEV_PLAY) return applyReport(structuredClone(profile), report, seed);
     try {
       const r = await api.finish(report);
       if (!r) return null;
@@ -520,6 +546,9 @@ async function startMap(map: MapDef, deaths: number) {
       hurt: () => {
         if (settings.vibrate) navigator.vibrate?.(30);
       },
+      rare: () => {
+        if (settings.vibrate) navigator.vibrate?.([40, 40, 80]);
+      },
       note: (text: string) => {
         note.textContent = text;
         note.classList.remove('hidden');
@@ -556,6 +585,24 @@ async function startMap(map: MapDef, deaths: number) {
   });
 }
 
+/** 결과 화면의 얻은 것: 레어·열쇠는 크게 (PRD '화면 구성' 5) */
+function lootHtml(r: FinishResult): string {
+  const big: string[] = [];
+  const small: string[] = [];
+  if (r.key) big.push(`<div class="loot-big key">🗝️ <b>지형 열쇠</b>를 얻었어요!</div>`);
+  for (const it of r.items) {
+    const d = itemDef(it.base);
+    if (!d) continue;
+    const where = it.box ? ' <small>(가방이 꽉 차서 보관함으로)</small>' : '';
+    if (d.rare) big.push(`<div class="loot-big"><span class="ic">${d.icon}</span> <b>${d.name}</b>${it.base === r.starItem ? ' <small>별 24개 보상</small>' : ' <em class="tag">레어</em>'}${where}<small>${itemNote(d)}</small></div>`);
+    else small.push(`<span>${d.icon} ${d.name}${where}</span>`);
+  }
+  if (r.stones) small.push(`<span>💎 강화석 ${r.stones}</span>`);
+  r.potions.forEach((row, s) => row.forEach((n, z) => n && small.push(`<span>${dropIcon({ t: 'potion', slot: s, size: z })} ${dropName({ t: 'potion', slot: s, size: z })} ${n}</span>`)));
+  if (!big.length && !small.length) return '';
+  return `${big.join('')}${small.length ? `<div class="loot">${small.join('')}</div>` : ''}`;
+}
+
 function showResult(s: RunState, r: FinishResult | null, deaths: number) {
   const map = s.map;
   const win = s.phase === 'clear';
@@ -577,6 +624,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
         ${r && win ? `<div><span>엽전</span><b class="coin">+${r.coins.toLocaleString()}</b></div>` : ''}
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
+      ${r && win ? lootHtml(r) : ''}
       ${r?.joined ? `<div class="new-hero">${face(r.joined)} ${heroOf(r.joined).name}(${heroOf(r.joined).animal})가 합류했어요!</div>` : ''}
       ${DEV_PLAY ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : r ? '' : '<p class="soft center">기록을 저장하지 못했어요</p>'}
       <div class="btns">
@@ -588,4 +636,203 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
   on(box, '#next', () => void startMap(next!, 0));
   on(box, '#again', () => void startMap(map, win ? 0 : deaths + 1));
   on(box, '#rest', () => showRegion(map.region));
+}
+
+// ---------- 가방 · 상점 · 대장간 ----------
+
+/** 서버(기기)에 한 가지를 시키고, 되면 새 기록으로 화면을 다시 그린다 */
+async function act(fn: () => Promise<TwelveProfile>, after: () => void, sfx = 'click') {
+  if (busy) return;
+  busy = true;
+  try {
+    profile = view(await fn());
+    play(sfx);
+    after();
+  } catch (e) {
+    toast(errText(e));
+  } finally {
+    busy = false;
+  }
+}
+
+const stonesPill = () => `<span class="coins-pill stone-pill">💎 ${profile.stones.toLocaleString()}</span>`;
+const plusText = (it: Item) => (it.plus ? ` +${it.plus}` : '');
+
+/** 장비 한 칸 (가방 격자) */
+function cell(it: Item): string {
+  const d = itemDef(it.base)!;
+  const low = profile.level < itemLevel(d);
+  return `<button class="item-cell ${d.rare ? 'rare' : ''} ${isEquipped(profile, it.id) ? 'on' : ''} ${low ? 'low' : ''}" data-id="${it.id}">
+    <span class="ic">${d.icon}</span><small>Lv ${itemLevel(d)}</small>${it.plus ? `<b>+${it.plus}</b>` : ''}${it.lock ? '<i>🔒</i>' : ''}${isEquipped(profile, it.id) ? '<em>착용</em>' : ''}
+  </button>`;
+}
+const SLOT_ORDER: Record<Slot, number> = { weapon: 0, armor: 1, acc: 2 };
+/** 가방 정렬: 종류 → 등급 높은 순 → 레어 먼저 → 강화 높은 순 */
+function sorted(list: Item[]): Item[] {
+  return [...list].sort((a, b) => {
+    const da = itemDef(a.base)!;
+    const db = itemDef(b.base)!;
+    return SLOT_ORDER[da.slot] - SLOT_ORDER[db.slot] || db.tier - da.tier || Number(db.rare) - Number(da.rare) || b.plus - a.plus || Number(a.id) - Number(b.id);
+  });
+}
+const grid = (list: Item[], empty: string) => (list.length ? `<div class="item-grid">${sorted(list).map(cell).join('')}</div>` : `<p class="soft center">${empty}</p>`);
+
+/** 능력치 줄: 지금 착용한 것과의 차이를 초록(오름)·빨강(내림)으로 (PRD '가방') */
+function statRows(it: Item): string {
+  const d = itemDef(it.base)!;
+  const cur = equipped(profile, d.slot);
+  const cd = cur && cur.id !== it.id ? itemDef(cur.base)! : null;
+  const a = itemStats(d, it.plus);
+  const b = cd ? itemStats(cd, cur!.plus) : null;
+  const rows: string[] = [];
+  for (const [k, name] of [['atk', '공격'], ['hp', '체력'], ['def', '방어']] as const) {
+    if (!a[k] && !b?.[k]) continue;
+    const diff = b ? a[k] - b[k] : 0;
+    rows.push(`<div><span>${name}</span><b>${a[k]}${diff ? ` <em class="${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '▲' : '▼'}${Math.abs(diff)}</em>` : ''}</b></div>`);
+  }
+  if (d.stat) {
+    const same = cd?.stat === d.stat ? (d.value ?? 0) - (cd.value ?? 0) : 0;
+    rows.push(`<div><span>${ACC_TEXT[d.stat]}</span><b>+${d.value}${d.stat === 'crit' ? '%p' : '%'}${same ? ` <em class="${same > 0 ? 'up' : 'down'}">${same > 0 ? '▲' : '▼'}${Math.abs(same)}</em>` : ''}</b></div>`);
+  }
+  if (d.fx) rows.push(`<div class="fx"><span>✨ ${FX_NAME[d.fx]}</span><b>${FX_DESC[d.fx]}</b></div>`);
+  if (cd) rows.push(`<div class="cmp"><span>지금 착용</span><b>${cd.icon} ${cd.name}${plusText(cur!)}${cd.stat || cd.fx ? ` · ${itemNote(cd)}` : ''}</b></div>`);
+  return rows.join('');
+}
+
+type ItemCtx = 'bag' | 'sell' | 'smith';
+/** 장비 하나를 눌렀을 때: 비교 + 할 수 있는 일 (가방: 착용·잠금 / 상점: 팔기 / 대장간: 강화·분해) */
+function itemPopup(id: string, ctx: ItemCtx, redraw: () => void) {
+  const it = itemOf(profile, id);
+  const d = it && itemDef(it.base);
+  if (!it || !d) return;
+  const worn = isEquipped(profile, it.id);
+  const low = profile.level < itemLevel(d);
+  const cost = canEnhance(d) && it.plus < MAX_PLUS ? enhanceCost(d.tier, it.plus + 1) : null;
+  const btns: string[] = [];
+  if (it.box) btns.push(`<button class="btn primary" data-a="claim">가방으로 꺼내기</button>`);
+  else if (ctx === 'bag') {
+    if (!worn) btns.push(`<button class="btn primary" data-a="equip" ${low ? 'disabled' : ''}>${low ? `Lv ${itemLevel(d)}부터 착용` : '착용'}</button>`);
+    else if (d.slot !== 'weapon') btns.push(`<button class="btn" data-a="unequip">벗기</button>`);
+  }
+  if (ctx === 'sell') btns.push(`<button class="btn primary" data-a="sell" ${worn || it.lock ? 'disabled' : ''}>팔기 🪙 ${d.sell.toLocaleString()}</button>`);
+  if (ctx === 'smith') {
+    if (cost) btns.push(`<button class="btn primary" data-a="enhance" ${profile.coins < cost.coins || profile.stones < cost.stones ? 'disabled' : ''}>강화 +${it.plus + 1} <small>🪙 ${cost.coins.toLocaleString()} · 💎 ${cost.stones}</small></button>`);
+    else if (canEnhance(d)) btns.push(`<button class="btn" disabled>최고 단계예요</button>`);
+    btns.push(`<button class="btn" data-a="scrap" ${worn || it.lock ? 'disabled' : ''}>분해 💎 +${scrapOf(d, it.plus)}</button>`);
+  }
+  btns.push(`<button class="btn" data-a="lock">${it.lock ? '🔓 잠금 풀기' : '🔒 잠그기'}</button>`);
+  const box = overlay(`<div class="card pop item-pop ${d.rare ? 'rare' : ''}">
+    <h3><span class="ic">${d.icon}</span> ${d.name}${plusText(it)} ${d.rare ? '<em class="tag">레어</em>' : ''}</h3>
+    <p class="soft">${SLOT_NAME[d.slot]} · 착용 Lv ${itemLevel(d)}${low ? ' <b class="warn">(레벨이 모자라요)</b>' : ''}${worn ? ' · 착용 중' : ''}${it.lock ? ' · 🔒 잠금' : ''}${it.box ? ' · 보관함' : ''}</p>
+    <div class="rows">${statRows(it)}</div>
+    ${cost && ctx === 'smith' ? `<p class="soft">강화하면 ${d.slot === 'weapon' ? `공격 ${itemStats(d, it.plus).atk} → ${itemStats(d, it.plus + 1).atk}` : `체력 ${itemStats(d, it.plus).hp} → ${itemStats(d, it.plus + 1).hp} · 방어 ${itemStats(d, it.plus).def} → ${itemStats(d, it.plus + 1).def}`} (항상 성공)</p>` : ''}
+    ${(ctx === 'sell' || ctx === 'smith') && (worn || it.lock) ? `<p class="soft">${worn ? '착용 중인' : '잠근'} 장비는 팔거나 분해할 수 없어요</p>` : ''}
+    <div class="btns">${btns.join('')}<button class="btn" data-a="close">닫기</button></div></div>`);
+  const again = () => {
+    box.remove();
+    redraw();
+    if (itemOf(profile, id)) itemPopup(id, ctx, redraw);
+  };
+  const done = () => {
+    box.remove();
+    redraw();
+  };
+  on(box, '[data-a]', (el) => {
+    switch (el.dataset.a) {
+      case 'equip': return void act(() => api.equip(id), done, 'tankBuild');
+      case 'unequip': return void act(() => api.unequip(d.slot), done);
+      case 'claim': return void act(() => api.claim([id]), again);
+      case 'lock': return void act(() => api.lock(id, !it.lock), again);
+      case 'sell': return void act(() => api.sell([id]), done, 'coin');
+      case 'scrap': return void act(() => api.scrap([id]), done, 'tankBuild');
+      case 'enhance': return void act(() => api.enhance(id), again, 'survLevel');
+      default: box.remove();
+    }
+  });
+}
+
+/** 가방: 착용 중 3칸 + 가방 격자 + 보관함 (PRD '화면 구성' 6) */
+function showBag(back: () => void) {
+  const mine = profile.items.filter((it) => !it.box);
+  const boxed = boxItems(profile);
+  const st = playerStats(loadoutOf(profile), 0);
+  const slot = (s: Slot) => {
+    const it = equipped(profile, s);
+    const d = it && itemDef(it.base);
+    return `<button class="eq-slot ${d?.rare ? 'rare' : ''}" ${it ? `data-id="${it.id}"` : 'disabled'}><span class="ic">${d?.icon ?? '➕'}</span><b>${d ? `${d.name}${plusText(it!)}` : `${SLOT_NAME[s]} 없음`}</b><small>${d ? (d.slot === 'acc' || d.fx ? itemNote(d) : `Lv ${itemLevel(d)}`) : ''}</small></button>`;
+  };
+  const root = screen(`
+    <div class="bar"><button class="back" id="back">← 뒤로</button><h2>가방</h2><div class="pills">${stonesPill()}${coinsPill()}</div></div>
+    <div class="card"><h3>착용 중 <small>공격 ${Math.round(st.atk)} · 체력 ${st.hp} · 방어 ${Math.round(st.def)}</small></h3><div class="eq-row">${SLOTS.map(slot).join('')}</div></div>
+    <div class="card"><h3>가방 <small>${mine.length} / ${profile.bag}칸 · 눌러서 비교·착용·잠금</small></h3>${grid(mine, '가방이 비었어요')}</div>
+    ${boxed.length ? `<div class="card"><h3>보관함 <small>${boxed.length}개 · 가방이 꽉 차서 여기로 왔어요</small></h3>${grid(boxed, '')}<button class="btn primary" id="claim">모두 가방으로</button></div>` : ''}
+    <div class="card"><h3>물약</h3><div class="potion-row">${[0, 1].map((s) => POTION_NAME.map((n, z) => `<span>${s ? '💧' : '❤️'}${n} <b>${profile.potions[s][z]}</b></span>`).join('')).join('')}</div>
+      <p class="soft">전투에서는 모자란 만큼을 채우는 가장 작은 물약부터 써요. 팔기는 상점, 강화·분해는 대장간에서 해요</p></div>`);
+  const redraw = () => showBag(back);
+  on(root, '#back', back);
+  on(root, '[data-id]', (el) => itemPopup(el.dataset.id!, 'bag', redraw));
+  on(root, '#claim', () => void act(() => api.claim(), redraw));
+}
+
+/** 상점: 물약 · 일반 장비 · 가방 늘리기 / 팔기 (PRD '마을·상점·대장간') */
+function showShop(region: number, tab: 'buy' | 'sell' = 'buy') {
+  const top = shopTier(profile);
+  const back = () => showRegion(region);
+  const redraw = () => showShop(region, tab);
+  let body: string;
+  if (tab === 'buy') {
+    const potions = [0, 1]
+      .map((s) =>
+        POTION_NAME.map((n, z) => {
+          const have = profile.potions[s][z];
+          const price = POTION.price[s][z];
+          return `<div class="shop-row"><span class="ic">${s ? '💧' : '❤️'}</span><span>${s ? '마력' : '체력'} 물약(${n}) <small>${Math.round(POTION.heal[s][z] * 100)}% 회복 · 가진 수 ${have}/${POTION.max}</small></span>
+            <button class="btn small" data-buy="potion:${s}:${z}" data-n="1" ${have >= POTION.max || profile.coins < price ? 'disabled' : ''}>🪙 ${price}</button>
+            <button class="btn small" data-buy="potion:${s}:${z}" data-n="5" ${have + 5 > POTION.max || profile.coins < price * 5 ? 'disabled' : ''}>×5</button></div>`;
+        }).join(''),
+      )
+      .join('');
+    const gear = ITEMS.filter((d) => forSale(profile, d))
+      .sort((a, b) => b.tier - a.tier)
+      .map((d) => {
+        const stt = itemStats(d, 0);
+        return `<div class="shop-row ${profile.level < itemLevel(d) ? 'low' : ''}"><span class="ic">${d.icon}</span><span>${d.name} <small>Lv ${itemLevel(d)} · ${d.slot === 'weapon' ? `공격 ${stt.atk}` : `체력 ${stt.hp} · 방어 ${stt.def}`}</small></span>
+          <button class="btn small" data-buy="${d.id}" data-n="1" ${profile.coins < d.buy ? 'disabled' : ''}>🪙 ${d.buy.toLocaleString()}</button></div>`;
+      })
+      .join('');
+    const bagRow =
+      profile.bag >= BAG.max
+        ? `<div class="shop-row"><span class="ic">🎒</span><span>가방 <small>${profile.bag}칸 (더 늘릴 수 없어요)</small></span></div>`
+        : `<div class="shop-row"><span class="ic">🎒</span><span>가방 늘리기 <small>${profile.bag}칸 → ${profile.bag + BAG.step}칸</small></span>
+          <button class="btn small" data-buy="bag" data-n="1" ${profile.coins < bagPrice(profile.bag) ? 'disabled' : ''}>🪙 ${bagPrice(profile.bag).toLocaleString()}</button></div>`;
+    body = `<div class="card"><h3>물약</h3>${potions}</div>
+      <div class="card"><h3>일반 장비 <small>열린 지형까지의 등급 (착용 Lv ${TIER_LEVELS[top]}까지) · 가방 ${bagCount(profile)}/${profile.bag}</small></h3>${gear}</div>
+      <div class="card"><h3>가방</h3>${bagRow}</div>`;
+  } else {
+    const list = profile.items.filter((it) => !isEquipped(profile, it.id));
+    body = `<div class="card"><h3>팔 장비 고르기 <small>착용 중인 것과 🔒 잠근 것은 팔 수 없어요</small></h3>${grid(list, '팔 장비가 없어요')}</div>`;
+  }
+  const root = screen(
+    `<div class="bar"><button class="back" id="back">← 쉼터</button><h2>🛒 상점</h2><div class="pills">${coinsPill()}</div></div>
+    <div class="tabs"><button class="btn small ${tab === 'buy' ? 'on' : ''}" data-tab="buy">사기</button><button class="btn small ${tab === 'sell' ? 'on' : ''}" data-tab="sell">팔기</button></div>
+    ${body}`,
+    `bg-${regionOf(region).ground}`,
+  );
+  on(root, '#back', back);
+  on(root, '[data-tab]', (el) => showShop(region, el.dataset.tab as 'buy' | 'sell'));
+  on(root, '[data-buy]', (el) => void act(() => api.buy(el.dataset.buy!, Number(el.dataset.n)), redraw, 'coin'));
+  on(root, '[data-id]', (el) => itemPopup(el.dataset.id!, 'sell', redraw));
+}
+
+/** 대장간: 강화(+1~+9, 항상 성공) · 분해(→ 강화석) */
+function showSmith(region: number) {
+  const redraw = () => showSmith(region);
+  const root = screen(
+    `<div class="bar"><button class="back" id="back">← 쉼터</button><h2>⚒️ 대장간</h2><div class="pills">${stonesPill()}${coinsPill()}</div></div>
+    <div class="card"><h3>장비 고르기 <small>강화는 엽전 + 강화석, 항상 성공해요</small></h3>${grid(profile.items, '장비가 없어요')}
+      <p class="soft">+${MAX_PLUS}까지 올리면 다음 등급 일반 장비와 비슷해져요. 안 쓰는 장비는 분해해서 강화석으로 바꿔요 (강화한 단계마다 +1)</p></div>`,
+    `bg-${regionOf(region).ground}`,
+  );
+  on(root, '#back', () => showRegion(region));
+  on(root, '[data-id]', (el) => itemPopup(el.dataset.id!, 'smith', redraw));
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { POTION_CD, POTION_HEAL, skillLevelMul } from '../src/data/balance';
+import { POTION_CD, skillLevelMul } from '../src/data/balance';
+import { POTION } from '../src/data/economy';
+
+const POTION_HEAL = { hp: POTION.heal[0][0], mp: POTION.heal[1][0] };
 import { WEAPONS, WEAPON_KINDS, TIER_LEVELS, tierAtk, tierForLevel } from '../src/data/weapons';
 import { noInput, step, type RunState } from '../src/game/sim';
 import { arena, group, place, play, run } from './helpers';

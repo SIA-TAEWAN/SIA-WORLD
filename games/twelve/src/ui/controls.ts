@@ -5,7 +5,7 @@
  * 아이폰 함정 (시아서바이벌에서 겪은 것): 손가락 번호(Touch.identifier)가 음수일 수 있다 → "없음"은 null 로.
  * 조이스틱·버튼은 touch 이벤트 + preventDefault 로 받는다 (길게 누름 제스처가 조작을 끊지 않게). 마우스는 PC 확인용.
  */
-import { noInput, type Input, type RunState } from '../game/sim';
+import { mpCost, noInput, type Input, type RunState } from '../game/sim';
 
 export interface Controls {
   input: Input;
@@ -199,9 +199,9 @@ export function createControls(root: HTMLElement, run: RunState, opts: { lefty: 
       input.mx = kx || sx;
       input.my = ky || sy;
       const p = s.p;
-      cool('s0', p.skillCd[0], s.weapon.skills[0].cd, p.mp < s.weapon.skills[0].mp);
-      cool('s1', p.skillCd[1], s.weapon.skills[1].cd, p.mp < s.weapon.skills[1].mp);
-      cool('uq', p.uniqueCd, s.hero.unique.cd, p.mp < s.hero.unique.mp);
+      cool('s0', p.skillCd[0], s.weapon.skills[0].cd, p.mp < mpCost(s, s.weapon.skills[0]));
+      cool('s1', p.skillCd[1], s.weapon.skills[1].cd, p.mp < mpCost(s, s.weapon.skills[1]));
+      cool('uq', p.uniqueCd, s.hero.unique.cd, p.mp < mpCost(s, s.hero.unique));
       cool('roll', p.rollCd, 1, false);
       for (const i of [0, 1] as const) {
         const k = i ? 'p1' : 'p0';

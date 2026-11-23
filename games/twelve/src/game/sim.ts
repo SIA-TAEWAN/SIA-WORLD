@@ -8,13 +8,13 @@
 import type { Act, OnHit, Shape, ShotLook, ZoneLook } from '../data/acts';
 import {
   AIM_HALF,
+  CRIT_MUL,
   EXIT_KILL_RATIO,
   HURT_INVULN,
   MAP_W,
   MP_REGEN,
   PLAYER_R,
   POTION_CD,
-  POTION_HEAL,
   ROLL,
   SLOW_TILE_MUL,
   STEP,
@@ -24,12 +24,14 @@ import {
   skillLevelMul,
 } from '../data/balance';
 import { BOSSES, type BossDef, type BossMove } from '../data/bosses';
+import { FX, POTION, POTION_SIZES } from '../data/economy';
 import { ELITE, ENEMIES, type EnemyDef, type EnemyKind } from '../data/enemies';
 import { playerStats, type Loadout, type PlayerStats } from '../data/growth';
 import { heroOf, type HeroDef } from '../data/heroes';
 import { T_SLOW, T_WALL, groupList, type MapDef } from '../data/maps';
 import { mapScale, regionOf, type Mode } from '../data/regions';
 import { WEAPONS, type SkillDef, type WeaponDef } from '../data/weapons';
+import { bossDrop, copyCtx, eliteDrop, normalDrop, type Drop, type DropCtx } from './drops';
 
 export { STEP };
 
@@ -190,16 +192,34 @@ export type SimEvent =
   | { e: 'boom'; x: number; y: number; r: number }
   | { e: 'sound'; name: string }
   | { e: 'chest'; coins: number }
+  /** 무언가 떨어졌다 (pick = 땅에 남는 것의 번호, -1 = 바로 주웠다) · 땅에 있던 것을 주웠다 */
+  | { e: 'drop'; x: number; y: number; drop: Drop; pick: number }
+  | { e: 'pick'; id: number; drop: Drop }
   | { e: 'exit' }
   | { e: 'nope'; why: 'mp' | 'target' };
 
 export interface RunOpts {
   seed?: number;
-  /** 들고 들어가는 물약 [체력, 마력] */
+  /** 들고 들어가는 물약 [체력, 마력] (크기를 나누지 않을 때: 모두 '소') */
   potions?: [number, number];
+  /** 들고 들어가는 물약 [체력 소·중·대, 마력 소·중·대] (potions 대신) */
+  stock?: number[][];
+  /** 드랍 판정에 쓸 것 (없으면 아무것도 떨어지지 않는다). progress.ts 의 dropCtx */
+  drops?: DropCtx;
   /** 개발용 무적 (?god=1) */
   god?: boolean;
 }
+
+/** 땅에 떨어진 것 (장비·강화석·열쇠). 가까이 가면 자동으로 줍는다 */
+export interface Pickup {
+  id: number;
+  x: number;
+  y: number;
+  drop: Drop;
+  got: boolean;
+}
+/** 자동으로 줍는 거리 */
+export const PICK_DIST = 110;
 
 export interface RunState {
   map: MapDef;
@@ -240,8 +260,15 @@ export interface RunState {
   /** 이 판에서 얻은 경험치·엽전 (화면 표시용. 저장은 progress.ts / 서버가 다시 계산한다) */
   exp: number;
   coins: number;
+  /** 남은 물약 [체력, 마력] (크기 합) · 크기별 남은 수 · 크기별 쓴 수 */
   potions: [number, number];
+  stock: number[][];
+  used: number[][];
   potionsUsed: number;
+  /** 드랍 판정 상태 (없으면 드랍 없음) · 이 판에서 떨어진 것 전부 · 땅에 남은 것 */
+  drops: DropCtx | null;
+  loot: Drop[];
+  picks: Pickup[];
   god: boolean;
   tag: number;
   nextId: number;
@@ -521,8 +548,13 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     chest: false,
     exp: 0,
     coins: 0,
-    potions: opts.potions ? [opts.potions[0], opts.potions[1]] : [0, 0],
+    potions: [0, 0],
+    stock: opts.stock ? opts.stock.map((r) => [...r]) : [0, 1].map((k) => [opts.potions?.[k] ?? 0, 0, 0]),
+    used: [0, 1].map(() => Array<number>(POTION_SIZES).fill(0)),
     potionsUsed: 0,
+    drops: opts.drops ? copyCtx(opts.drops) : null,
+    loot: [],
+    picks: [],
     god: !!opts.god,
     tag: 1,
     nextId: 1,
@@ -532,6 +564,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     chestX: center(map.chest[0]),
     chestY: center(map.chest[1]),
   };
+  s.potions = [sum(s.stock[0]), sum(s.stock[1])];
   map.groups.forEach((g, gi) => {
     const list = groupList(g, sc.count);
     const n = list.reduce((a, [, c]) => a + c, 0) + (g.elite ? 1 : 0);
@@ -562,6 +595,24 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
 
 // ---------- 대원의 공격 ----------
 
+const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+const hasFx = (s: RunState, id: keyof typeof FX) => !!s.loadout.fx?.includes(id);
+/** 스킬에 드는 마력 (레어 '마력 절약') */
+export const mpCost = (s: RunState, def: SkillDef, basic = false) => (basic || !hasFx(s, 'thrift') ? def.mp : Math.round(def.mp * FX.thrift.mul));
+
+/** 요괴가 쓰러진 자리에 떨어뜨린다. 물약은 바로 줍고(자동), 나머지는 땅에 남아 가까이 가면 줍는다 */
+function dropAt(s: RunState, e: Enemy, drops: Drop[]) {
+  drops.forEach((drop, i) => {
+    s.loot.push(drop);
+    if (drop.t === 'potion') return push(s, { e: 'drop', x: e.x, y: e.y, drop, pick: -1 });
+    const a = (i / Math.max(1, drops.length)) * Math.PI * 2 + e.id;
+    const far = drops.length > 1 ? 34 : 0;
+    const pk: Pickup = { id: s.nextId++, x: e.x + Math.cos(a) * far, y: e.y + Math.sin(a) * far, drop, got: false };
+    s.picks.push(pk);
+    push(s, { e: 'drop', x: pk.x, y: pk.y, drop, pick: pk.id });
+  });
+}
+
 const atkNow = (s: RunState) => s.stats.atk * (s.p.buff.atkT > 0 ? s.p.buff.atk : 1);
 const critNow = (s: RunState) => s.stats.crit + (s.p.buff.critT > 0 ? s.p.buff.crit : 0);
 
@@ -584,14 +635,20 @@ function killEnemy(s: RunState, e: Enemy) {
   s.coins += e.coin;
   if (e.bossDef) {
     s.bossDead = true;
+    if (s.drops) dropAt(s, e, bossDrop(s.drops));
     // 보스가 쓰러지면 부하와 남은 예고도 사라진다
     for (const o of s.enemies) if (o.summoned && !o.dead) killEnemy(s, o);
     s.warns.length = 0;
     for (const sh of s.shots) if (sh.foe) sh.on = false;
   } else {
     s.killed++;
-    if (e.elite) s.eliteKills++;
-    else s.kills[e.kind] = (s.kills[e.kind] ?? 0) + 1;
+    if (e.elite) {
+      s.eliteKills++;
+      if (s.drops) dropAt(s, e, eliteDrop(s.drops, s.eliteKills));
+    } else {
+      s.kills[e.kind] = (s.kills[e.kind] ?? 0) + 1;
+      if (s.drops) dropAt(s, e, normalDrop(s.drops, s.killed - s.eliteKills));
+    }
   }
   const open = s.map.boss ? s.bossDead : s.killed >= Math.ceil(s.total * EXIT_KILL_RATIO);
   if (open && !s.exitOpen) {
@@ -601,10 +658,25 @@ function killEnemy(s: RunState, e: Enemy) {
 }
 
 /** 요괴에게 피해를 준다 (치명타는 여기서 굴린다) */
-function hitEnemy(s: RunState, e: Enemy, mul: number, on: OnHit | null, fromX: number, fromY: number) {
+function hitEnemy(s: RunState, e: Enemy, mul: number, on: OnHit | null, fromX: number, fromY: number, again = false) {
   if (e.dead) return;
   const crit = rand(s) < critNow(s);
-  const n = damageOf(atkNow(s), mul, e.armor, crit);
+  let n = damageOf(atkNow(s), mul, e.armor, crit);
+  // 레어 무기 효과 (economy.ts 의 FX)
+  const fx = s.loadout.fx;
+  if (fx?.length) {
+    if (crit && hasFx(s, 'keen')) n = Math.round((n * FX.keen.mul) / CRIT_MUL);
+    if (hasFx(s, 'leech')) s.p.hp = Math.min(s.stats.hp, s.p.hp + n * FX.leech.rate);
+    if (hasFx(s, 'burn')) {
+      e.dotT = Math.max(e.dotT, FX.burn.dur);
+      e.dotDps = Math.max(e.dotDps, atkNow(s) * FX.burn.mul);
+    }
+    if (hasFx(s, 'ice')) {
+      const ice = e.bossDef ? Math.max(0.8, FX.ice.mul) : FX.ice.mul;
+      e.slowMul = e.slowT > 0 ? Math.min(e.slowMul, ice) : ice;
+      e.slowT = Math.max(e.slowT, FX.ice.dur);
+    }
+  }
   e.hp -= n;
   e.flash = 0.12;
   if (!e.awake) {
@@ -632,6 +704,7 @@ function hitEnemy(s: RunState, e: Enemy, mul: number, on: OnHit | null, fromX: n
     }
   }
   if (e.hp <= 0) killEnemy(s, e);
+  else if (!again && hasFx(s, 'twin') && rand(s) < FX.twin.chance) hitEnemy(s, e, mul * FX.twin.mul, null, fromX, fromY, true);
 }
 
 /** 조준: 바라보는 쪽 ±AIM_HALF, range 안의 가장 가까운 요괴를 향해 돌아선다 → 각도 */
@@ -779,7 +852,8 @@ function runAct(s: RunState, act: Act, power: number) {
 function cast(s: RunState, def: SkillDef, basic: boolean): boolean {
   const p = s.p;
   let power = basic ? 1 : skillLevelMul(s.loadout.level);
-  if (p.mp < def.mp) {
+  const mp = mpCost(s, def, basic);
+  if (p.mp < mp) {
     // 기본 공격은 마력이 없어도 나가지만 약해진다 (부채)
     if (!basic) {
       push(s, { e: 'nope', why: 'mp' });
@@ -790,7 +864,7 @@ function cast(s: RunState, def: SkillDef, basic: boolean): boolean {
     push(s, { e: 'nope', why: 'target' });
     return false;
   } else {
-    p.mp -= def.mp;
+    p.mp -= mp;
   }
   aim(s, basic || def === s.weapon.skills[0] || def === s.weapon.skills[1] ? s.weapon.aim : 300);
   push(s, { e: 'sound', name: def.sound });
@@ -806,7 +880,7 @@ function cast(s: RunState, def: SkillDef, basic: boolean): boolean {
 function hurtPlayer(s: RunState, raw: number) {
   const p = s.p;
   if (p.invuln > 0 || s.phase !== 'play') return;
-  const n = Math.max(1, Math.round(raw * (p.buff.guardT > 0 ? p.buff.guard : 1) - s.stats.def));
+  const n = Math.max(1, Math.round(raw * (p.buff.guardT > 0 ? p.buff.guard : 1) * (hasFx(s, 'ward') ? FX.ward.mul : 1) - s.stats.def));
   if (!s.god) p.hp -= n;
   p.invuln = HURT_INVULN;
   p.hurt = 0.25;
@@ -1134,12 +1208,19 @@ function stepPlayer(s: RunState, inp: Input) {
   // 물약 (구르는 중에도 먹을 수 있다)
   for (const k of [0, 1] as const) {
     if (!inp.potion[k] || p.potionCd > 0 || s.potions[k] <= 0) continue;
-    const full = k === 0 ? p.hp >= s.stats.hp : p.mp >= s.stats.mp;
-    if (full) continue;
+    const lack = k === 0 ? 1 - p.hp / s.stats.hp : 1 - p.mp / s.stats.mp;
+    if (lack <= 0) continue;
+    // 모자란 만큼을 채우는 가장 작은 물약, 없으면 가진 것 중 가장 큰 물약
+    const boost = 1 + (s.loadout.bonus?.potion ?? 0) / 100;
+    const have = [0, 1, 2].filter((z) => s.stock[k][z] > 0);
+    const size = have.find((z) => POTION.heal[k][z] * boost >= lack) ?? have[have.length - 1];
+    s.stock[k][size]--;
+    s.used[k][size]++;
     s.potions[k]--;
     s.potionsUsed++;
     p.potionCd = POTION_CD;
-    runAct(s, k === 0 ? { t: 'heal', hp: POTION_HEAL.hp } : { t: 'heal', mp: POTION_HEAL.mp }, 1);
+    const heal = POTION.heal[k][size] * boost;
+    runAct(s, k === 0 ? { t: 'heal', hp: heal } : { t: 'heal', mp: heal }, 1);
     push(s, { e: 'sound', name: 'tankHeal' });
   }
 
@@ -1212,6 +1293,11 @@ export function step(s: RunState, inp: Input) {
     const coins = chestCoins(s.reward);
     s.coins += coins;
     push(s, { e: 'chest', coins });
+  }
+  for (const pk of s.picks) {
+    if (pk.got || Math.hypot(p.x - pk.x, p.y - pk.y) > PICK_DIST) continue;
+    pk.got = true;
+    push(s, { e: 'pick', id: pk.id, drop: pk.drop });
   }
   if (s.phase === 'play' && s.exitOpen && Math.hypot(p.x - s.exitX, p.y - s.exitY) < 44) s.phase = 'clear';
 }
