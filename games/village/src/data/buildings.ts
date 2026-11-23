@@ -20,6 +20,7 @@ export const BUILDING_IDS = [
   // 기념물: 다른 게임의 성과로 열린다 (지을 수 없다: 보관함으로 들어온다. 조건은 monuments.ts)
   'mon_tank1', 'mon_tank10', 'mon_volley1', 'mon_volley10', 'mon_race1', 'mon_race2', 
   'mon_surv_field', 'mon_surv_bamboo', 'mon_surv_palace', 'mon_surv_underworld', 'mon_def3', 'mon_def6', 'mon_def9', 'mon_def12', 'mon_matgo', 'mon_casino',
+  'mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger100', 'mon_finger_tower',
 ] as const;
 export type BuildingType = (typeof BUILDING_IDS)[number];
 
@@ -112,6 +113,12 @@ const ROWS: Row[] = [
   ['mon_def12', 'deco', '십이지 탑', '시아디펜스 12지역 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 60, [99]],
   ['mon_matgo', 'deco', '화투 평상', '시아맞고 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
   ['mon_casino', 'deco', '행운의 분수', '시아카지노 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
+  ['mon_charge30', 'deco', '돌격 북', '시아돌격대 별 30개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
+  ['mon_charge100', 'deco', '황금 돌격 깃발', '시아돌격대 별 100개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 45, [99]],
+  ['mon_charge_road', 'deco', '끝없는 길 이정표', '끝없는 길 1,000m 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
+  ['mon_finger30', 'deco', '튕김 구슬', '시아핑거 별 30개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
+  ['mon_finger100', 'deco', '황금 구슬', '시아핑거 별 100개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 45, [99]],
+  ['mon_finger_tower', 'deco', '요괴 탑', '끝없는 탑 20층 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
 ];
 
 export const BUILDINGS: BuildingDef[] = ROWS.map(([id, kind, name, desc, w, h, rice, wood, stone, coin, sia, upStone, buildSec, product, rate, buildExp, cap, points, unlock]) => ({

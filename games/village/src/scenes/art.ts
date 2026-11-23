@@ -29,9 +29,11 @@ export const texKey = (type: BuildingType, look: number) => `b-${type}-${upgrada
 /** 건물 그림의 크기 (장면 좌표) */
 export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + RISE * w });
 
+/** 아직 그림 파일이 없는 것 (ASSETS.md "그릴 것"): 불러오지 않고 코드 그림을 쓴다. 그림을 넣으면 여기서 뺀다 */
+const NO_FILE: ReadonlySet<BuildingType> = new Set<BuildingType>(['mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger100', 'mon_finger_tower']);
 /** 그림 파일로 먼저 채우는 텍스처 이름 (public/art/<이름>.png) */
 export const ART_FILES: string[] = [
-  ...BUILDINGS.flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
+  ...BUILDINGS.filter((d) => !NO_FILE.has(d.id)).flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
   'site-1', 'site-2', 'tile-yard', 'tile-meadow',
   'w-wall-1', 'w-wall-2', 'w-post', 'g-tuft', 'g-flowers', 'g-pebbles',
   ...['rice', 'wood', 'stone', 'cake', 'special'].map((r) => `bubble-${r}`),
@@ -415,6 +417,14 @@ const MON: Partial<Record<BuildingType, (g: G) => void>> = {
   mon_def12(g) { box(g, 14, BASE - 12, 68, 12, 4, COLOR.primary); [0, 1, 2, 3].forEach((i) => { const w = 60 - i * 12; box(g, 48 - w / 2 + 5, BASE - 30 - i * 24, w - 10, 20, 3, COLOR.panel, 2.5); roof(g, 48, BASE - 40 - i * 24, w + 6, 12, 3); }); dot(g, 48, BASE - 116, 6, COLOR.primary, 2); },
   mon_matgo(g) { for (const x of [18, 72]) box(g, x, BASE - 16, 7, 16, 2, COLOR.inkSoft, 2); box(g, 8, BASE - 30, 80, 16, 5, COLOR.emptyLine); box(g, 20, BASE - 52, 18, 26, 3, COLOR.cardRed, 2.5); dot(g, 29, BASE - 40, 5, COLOR.white, 0); box(g, 42, BASE - 56, 18, 26, 3, COLOR.outline, 2.5); dot(g, 51, BASE - 46, 6, COLOR.primary, 0); box(g, 62, BASE - 50, 18, 26, 3, COLOR.cardRed, 2.5); dot(g, 71, BASE - 36, 4, COLOR.pink, 0); },
   mon_casino(g) { box(g, 8, BASE - 22, 80, 22, 10, ROULETTE.winter); box(g, 16, BASE - 18, 64, 10, 5, COLOR.teamA, 2); box(g, 42, BASE - 54, 12, 36, 4, COLOR.lineSoft); box(g, 28, BASE - 62, 40, 10, 5, ROULETTE.winter); dot(g, 48, BASE - 72, 9, COLOR.primary, 2.5); for (const [x, y] of [[26, BASE - 44], [70, BASE - 44], [20, BASE - 30], [76, BASE - 30]]) dot(g, x, y, 3.5, COLOR.teamA, 1.5); },
+  // 시아돌격대: 북 · 금빛 깃발과 창 · 이정표 돌
+  mon_charge30(g) { plinth(g); seg(g, 30, BASE - 14, 24, BASE - 30, 4); seg(g, 66, BASE - 14, 72, BASE - 30, 4); box(g, 22, BASE - 66, 52, 44, 12, COLOR.cardRed); box(g, 22, BASE - 72, 52, 16, 8, COLOR.panel); for (const x of [32, 48, 64]) dot(g, x, BASE - 30, 3, COLOR.primary, 1.5); seg(g, 58, BASE - 76, 82, BASE - 94, 4); dot(g, 58, BASE - 76, 5, COLOR.primary, 2); },
+  mon_charge100(g) { plinth(g, true); seg(g, 22, BASE - 14, 40, BASE - 70, 4); seg(g, 74, BASE - 14, 56, BASE - 70, 4); seg(g, 48, BASE - 14, 48, BASE - 96, 5); poly(g, [50, BASE - 96, 86, BASE - 88, 74, BASE - 76, 86, BASE - 62, 50, BASE - 56], COLOR.primary); dot(g, 62, BASE - 76, 7, COLOR.cardRed, 2); dot(g, 48, BASE - 98, 5, COLOR.primaryLight, 2); },
+  mon_charge_road(g) { plinth(g); box(g, 34, BASE - 80, 28, 68, 10, COLOR.lineSoft); box(g, 40, BASE - 70, 16, 6, 3, COLOR.outline, 0); box(g, 40, BASE - 58, 16, 6, 3, COLOR.outline, 0); poly(g, [56, BASE - 44, 76, BASE - 44, 86, BASE - 34, 76, BASE - 24, 56, BASE - 24], COLOR.primary, 2.5); dot(g, 22, BASE - 18, 6, COLOR.win, 2); },
+  // 시아핑거: 받침 위의 구슬 (튕기는 자국) · 금 구슬 · 요괴 탑
+  mon_finger30(g) { plinth(g); for (const [x, y] of [[14, 70], [22, 60], [30, 50]]) dot(g, x, BASE - y, 3, COLOR.white, 1.5); dot(g, 52, BASE - 40, 26, COLOR.teamA); dot(g, 43, BASE - 50, 7, COLOR.white, 0); seg(g, 34, BASE - 22, 70, BASE - 22, 3); },
+  mon_finger100(g) { plinth(g, true); dot(g, 48, BASE - 42, 28, COLOR.primary); dot(g, 38, BASE - 54, 8, COLOR.primaryLight, 0); dot(g, 48, BASE - 42, 10, COLOR.cardRed, 2); poly(g, [76, BASE - 86, 80, BASE - 76, 90, BASE - 72, 80, BASE - 68, 76, BASE - 58, 72, BASE - 68, 62, BASE - 72, 72, BASE - 76], COLOR.white, 2); },
+  mon_finger_tower(g) { box(g, 12, BASE - 12, 72, 12, 4, ROULETTE.winter); [0, 1, 2, 3].forEach((i) => { const w = 60 - i * 11; box(g, 48 - w / 2, BASE - 32 - i * 20, w, 20, 3, i % 2 ? COLOR.lineSoft : ROULETTE.winter, 2.5); }); box(g, 41, BASE - 30, 14, 18, 6, COLOR.outline, 0); poly(g, [34, BASE - 92, 36, BASE - 108, 44, BASE - 92], COLOR.cardRed, 2); poly(g, [52, BASE - 92, 60, BASE - 108, 62, BASE - 92], COLOR.cardRed, 2); for (const x of [42, 54]) dot(g, x, BASE - 82, 2.5, COLOR.primary, 0); },
 };
 /** 석상의 몸 (서바이벌 보스 석상의 바탕) */
 function statue(g: G, fill: number) {
