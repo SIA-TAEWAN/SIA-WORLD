@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { CHARACTERS } from '../src/data/characters';
 import { UPGRADES, presetUpgrades, upgradeCost, upgradeSpent } from '../src/data/upgrades';
+import { DEVICE_CODEX } from '../src/data/weapons';
+import { readMade, rememberMade } from '../src/net/made';
 import { TICKS_PER_SEC } from '../src/data/balance';
 import { idlePolicy, normalPolicy, simulate, type Policy } from '../src/game/policy';
 import {
-  LIMITS, applyRun, betterRecord, buyUpgrade, characterOpen, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, rejectReason, resetUpgrades,
+  LIMITS, applyRun, betterRecord, buyUpgrade, characterOpen, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, knownWeapons, rejectReason, resetUpgrades,
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
 import { createRun, makeInput, step, summarize, type RunSummary } from '../src/game/sim';
@@ -230,19 +232,53 @@ describe('해금', () => {
 describe('도감', () => {
   it('진화 조합 힌트는 아는 재료만 보인다', () => {
     const none = evolutionHints(defaultProfile().codex);
-    expect(none.length).toBe(3);
+    expect(none.length).toBe(7);
     expect(none.every((h) => !h.weaponKnown && !h.passiveKnown && !h.resultKnown)).toBe(true);
     const some = evolutionHints({ enemies: [], bosses: [], weapons: ['shuriken', 'clawEvo'], passives: ['sleeve'] });
-    expect(some.map((h) => [h.weapon.id, h.weaponKnown, h.passive.id, h.passiveKnown, h.result.id, h.resultKnown])).toEqual([
+    expect(some.slice(0, 3).map((h) => [h.weapon.id, h.weaponKnown, h.passive.id, h.passiveKnown, h.result.id, h.resultKnown])).toEqual([
       ['shuriken', true, 'fan', false, 'shurikenEvo', false],
       ['pearl', false, 'sleeve', true, 'pearlEvo', false],
       ['claw', false, 'might', false, 'clawEvo', true],
     ]);
+    expect(some.slice(3).map((h) => `${h.weapon.id}+${h.passive.id}=${h.result.id}`)).toEqual(['bell+shell=bellEvo', 'mooncake+ginseng=mooncakeEvo', 'hoof+wind=hoofEvo', 'piggy+knot=piggyEvo']);
+  });
+
+  it('진화 2차 4종도 서버 도감에 적힌다 (093): 기기에만 남는 무기는 없다', () => {
+    expect(DEVICE_CODEX).toEqual([]);
+    // 판 결과에 담겨 오면 프로필 도감에 넣는다 (서버와 같은 규칙 · 같은 순서)
+    const s = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: [], bosses: [], weapons: ['hoofEvo', 'hoof', 'clawEvo', 'piggyEvo', 'nope'], passives: ['wind'] } }), 1);
+    expect(s.profile.codex.weapons).toEqual(['clawEvo', 'hoof', 'hoofEvo', 'piggyEvo']);
+    const hint = (id: string) => evolutionHints(s.profile.codex).find((h) => h.result.id === id)!;
+    expect([hint('hoofEvo').weaponKnown, hint('hoofEvo').passiveKnown, hint('hoofEvo').resultKnown]).toEqual([true, true, true]);
+    // 아직 만들어 보지 않은 진화 무기는 가려져 있다
+    expect(hint('bellEvo').resultKnown).toBe(false);
+    // 기기 기록(made)을 넘기면 서버 도감에 더해 본다. 이미 있는 것은 두 번 세지 않는다
+    expect(knownWeapons(s.profile.codex, ['bellEvo', 'nope'])).toEqual(['clawEvo', 'hoof', 'bellEvo', 'hoofEvo', 'piggyEvo']);
+    expect(codexCount(s.profile, [], ['bellEvo']).have).toBe(codexCount(s.profile).have + 1);
+    expect(codexCount(s.profile, [], ['clawEvo']).have).toBe(codexCount(s.profile).have);
+  });
+
+  it('기기 기록 (net/made.ts): 서버 목록에 없는 무기만 기억한다 — 지금은 그런 무기가 없어 아무것도 적지 않는다', () => {
+    const m = new Map<string, string>();
+    const store = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    expect(readMade(store)).toEqual([]);
+    expect(rememberMade('clawEvo', store)).toEqual([]);
+    // 서버 도감에 들어간 진화 4종은 기기에 적지 않는다 (예전에 적힌 값이 있어도 읽지 않는다)
+    expect(rememberMade('piggyEvo', store)).toEqual([]);
+    expect(m.size).toBe(0);
+    store.setItem('siasurvival:made', '["bellEvo","piggyEvo"]');
+    expect(readMade(store)).toEqual([]);
+    store.setItem('siasurvival:made', '{"x":1}');
+    expect(readMade(store)).toEqual([]);
+    store.setItem('siasurvival:made', 'oops');
+    expect(readMade(store)).toEqual([]);
+    expect(readMade(null)).toEqual([]);
+    expect(rememberMade('hoofEvo', null)).toEqual([]);
   });
 
   it('모은 수: 처음에는 캐릭터 셋뿐', () => {
     // 캐릭터: 쥐·소·호랑이 (고양이는 이 게임에서 시아코인으로 열었을 때만 센다)
-    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 15 + 8 + 13 });
+    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 19 + 8 + 13 });
     expect(codexCount(defaultProfile(), ['cat']).have).toBe(4);
     const run2 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
     expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);

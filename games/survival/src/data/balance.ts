@@ -121,7 +121,7 @@ export const BONUS = { heal: 30, coins: 10 };
  * 카드가 뽑힐 가중치 (나머지 카드는 1). 진화(무기 5레벨 + 짝 패시브)가 카드 운에만 달리지 않게, 키우던 것이 더 자주 나온다.
  *   ownedWeapon: 이미 가진 무기의 강화 카드
  *   evoWeapon: 가진 무기 가운데 진화가 있는 무기(data/evolutions.ts)의 강화 카드 (ownedWeapon 대신 이 값)
- *   evoPassive: 가진 무기의 진화 짝 패시브를 아직 못 얻었을 때 그 패시브 카드
+ *   evoPassive: 가진 무기의 진화 짝 패시브를 아직 못 얻었을 때 그 패시브 카드 (data/evolutions.ts 의 plainPassive 조합은 빼고: 2차 진화 4종)
  * 가진 무기 전부를 똑같이 올리면 무기가 6개로 늘수록 서로 묻혀서, 진화할 무기를 한 단계 더 올린다.
  */
 export const CARD_WEIGHT = { ownedWeapon: 2, evoWeapon: 3, evoPassive: 4 };

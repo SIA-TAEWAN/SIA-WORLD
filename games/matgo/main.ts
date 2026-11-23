@@ -4,6 +4,7 @@ import { worldRoot } from '../lib/world.ts';
 import { cardBack, clamp, label, sweepTable, tc, theme, viewSize } from '../lib/cards.ts';
 import { soloPlay } from '../lib/solo-play.ts';
 import { MATGO_MANUAL } from '../lib/manuals.ts';
+import { matgoChips, matgoMulText, matgoRiskText, matgoStopPreview } from '../lib/extras.ts';
 import { CARDS, cardById, matgo, type MatgoPrivate, type MatgoPublic, type MatgoSummary } from '../../supabase/functions/_shared/matgo.ts';
 import type PhaserNS from 'phaser';
 
@@ -1146,6 +1147,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       // 이번 판에 낸 뻑 횟수 (세 번이면 삼뻑 승리. 보너스는 첫 차례의 첫뻑 ×2 · 이어진 둘째 차례의 연뻑 ×3 뿐이다)
       ...(pl.ppeok ? [{ text: pl.ppeok >= 3 ? '삼뻑!' : `뻑 ${pl.ppeok}`, color: 'pink' } as PanelTag] : []),
       ...(pl.bombFill ? [{ text: `폭탄 피 ${pl.bombFill}`, color: 'track' } as PanelTag] : []),
+      // 족보 진행 · 박 경고 ('고도리 2/3' · '피 6장 · 피박 위험'): 자리가 모자라면 뒤쪽 칸부터 빠진다 (경고가 앞)
+      ...(p.phase === 'done' ? [] : matgoChips(pl, seat === me ? op : mp).map((c) => ({ text: c.text, color: c.warn ? 'pink' : 'white' }) as PanelTag)),
     ];
     function seatTags(seat: number): PanelTag[] {
       const row = t.seats.find((s) => s.seat_no === seat);
@@ -1468,8 +1471,16 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       return;
     }
     if (c.kind === 'goStop') {
-      el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, `${c.score}점! 고 할까요, 스톱 할까요?${c.go ? ` (지금 ${c.go}고)` : ''}`, '', true)}<div class="mg-btns">
-        <button class="btn big primary mg-go" id="go" ${dis}>고! ▶</button><button class="btn big mg-stop" id="stop" ${dis}>스톱 ✋</button></div></div>`;
+      // 판단 도우미: 지금 스톱하면 받을 금액(배수 포함, 엔진 정산과 같은 식)과 상대 위험(점수 · 남은 손패)
+      const pre = matgoStopPreview(p, t.mySeat, t.room.base_unit);
+      const oppSeat = p.seats.find((s) => s !== t.mySeat);
+      const oppNow = oppSeat === undefined ? undefined : p.players[oppSeat];
+      const mulText = pre ? matgoMulText(pre.multipliers) : '';
+      // 상대 위험을 앞에: 아랫줄은 한 줄로 자르므로(말줄임) 배수가 많아도 위험 문구는 늘 보인다
+      const risk = [oppNow ? matgoRiskText(oppNow) : '', mulText].filter(Boolean).join(' · ');
+      const gain = pre ? `<small>${pre.total < 0 ? '-' : '+'}${t.fmt(Math.abs(pre.total))}냥</small>` : '';
+      el.innerHTML = `<div class="mg-ctl gs">${say(t.mySeat, `${c.score}점! 고 할까요, 스톱 할까요?${c.go ? ` (지금 ${c.go}고)` : ''}`, esc(risk), true)}<div class="mg-btns">
+        <button class="btn big primary mg-go" id="go" ${dis}>고! ▶</button><button class="btn big mg-stop" id="stop" ${dis} ${pre ? `title="지금 스톱하면 ${t.fmt(pre.score)}점${mulText ? ` · ${esc(mulText)}` : ''}"` : ''}>스톱 ✋${gain}</button></div></div>`;
       el.querySelector('#go')!.addEventListener('click', () => send({ type: 'go' }));
       el.querySelector('#stop')!.addEventListener('click', () => send({ type: 'stop' }));
     }

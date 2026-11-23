@@ -70,6 +70,25 @@ export const AI_REACT_MAX = 0.5;
 export const AI_FINISH_MIN = 33;
 export const AI_FINISH_MAX = 37.5;
 
+/** AI 난이도: 방장이 대기실에서 고른다 (보통 = 위의 값 그대로). 오늘의 도전은 보통 고정 */
+export const AI_LEVEL_IDS = ['easy', 'normal', 'hard'] as const;
+export type AiLevel = (typeof AI_LEVEL_IDS)[number];
+export interface AiLevelSpec {
+  label: string;
+  /** 방해물마다 잘 넘을 확률 */
+  success: number;
+  /** 도착 시간 범위 (초) */
+  finishMin: number;
+  finishMax: number;
+}
+export const AI_LEVELS: Record<AiLevel, AiLevelSpec> = {
+  easy: { label: '쉬움', success: 0.55, finishMin: 37, finishMax: 42 },
+  normal: { label: '보통', success: AI_SUCCESS, finishMin: AI_FINISH_MIN, finishMax: AI_FINISH_MAX },
+  hard: { label: '어려움', success: 0.92, finishMin: 30.5, finishMax: 33 },
+};
+/** 네트워크·저장소에서 온 값을 난이도로 (모르는 값·없는 값은 보통: 예전 기기는 난이도를 보내지 않는다) */
+export const aiLevelOf = (v: unknown): AiLevel => (typeof v === 'string' && (AI_LEVEL_IDS as readonly string[]).includes(v) ? (v as AiLevel) : 'normal');
+
 /** 등급 기준 (ms 이내). 임시 값 — shared/ranking-dialog.js 의 RACE_TIERS 와 같이 고친다 */
 export const TIER_SUN_MS = 30750;
 export const TIER_MOON_MS = 33000;

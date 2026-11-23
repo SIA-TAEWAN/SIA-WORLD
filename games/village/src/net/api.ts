@@ -9,6 +9,7 @@ import {
   adminBoost, adminSetState, buyCat, grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
   type CatBuy, type HarvestResult, type VillageState,
 } from '../game/rules';
+import { cleanInbox, localInbox, seenAfter, type LocalPraises, type PraiseInbox } from '../game/praise';
 import { makeShowcase } from '../data/showcase';
 import { worldSupabase } from './world';
 
@@ -120,6 +121,10 @@ export interface VillageApi {
   visit(userId: string): Promise<Visit>;
   /** 칭찬하기 → 내 새 상태와 그 마을의 새 모습 */
   praise(userId: string): Promise<{ state: VillageState; visit: Visit }>;
+  /** 받은 칭찬: 최근 20개와 새로 받은 수 (마지막으로 본 뒤) */
+  praiseInbox(): Promise<PraiseInbox>;
+  /** 받은 칭찬을 다 봤음 (at = 그 목록의 now. 그 뒤에 온 칭찬은 새 것으로 남는다) */
+  praiseSeen(at: number): Promise<void>;
   /** 마을 이름 바꾸기 */
   rename(name: string): Promise<VillageState>;
   /** [기념물] 화면: 조건을 다시 보고, 다른 게임의 기록(stats)과 함께 돌려준다 */
@@ -164,11 +169,13 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     seq: number;
     /** 마을 시각 − 기기 시각 (빨리 돌린 만큼 앞서 있다) */
     skew: number;
+    /** 이웃에게 받은 칭찬 (받은 칭찬을 처음 볼 때 만든다) */
+    praise?: LocalPraises;
   }
   const read = (): Saved | null => {
     try {
       const d = JSON.parse(store.getItem(LOCAL_KEY) ?? 'null') as Saved | null;
-      if (d?.state) return { state: cleanState(d.state), seq: Number(d.seq) || 0, skew: Number(d.skew) || 0 };
+      if (d?.state) return { state: cleanState(d.state), seq: Number(d.seq) || 0, skew: Number(d.skew) || 0, praise: cleanLocalPraises(d.praise) };
     } catch {
       /* 처음 상태 */
     }
@@ -316,9 +323,38 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
       bot.state.profile.praiseCount++;
       return { state: r.state, visit: visitOf(id) };
     },
+    async praiseInbox() {
+      const d = open();
+      const t = now();
+      if (!d.praise) {
+        // 처음: 이웃 둘이 오늘 칭찬했고(새 것), 그제 받은 것 하나는 이미 봤다
+        d.praise = { seenAt: t - 24 * 3600_000, log: [{ from: 'bot-1', at: t - 2 * 3600_000 }, { from: 'bot-2', at: t - 5 * 3600_000 }, { from: 'bot-1', at: t - 30 * 3600_000 }] };
+        save(d);
+      }
+      return localInbox(d.praise, t, (id) => {
+        const b = bots.find((v) => v.id === id);
+        return b ? { nickname: b.nick, name: b.state.profile.name } : null;
+      });
+    },
+    async praiseSeen(at) {
+      const d = open();
+      if (!d.praise) return;
+      d.praise.seenAt = seenAfter(d.praise.seenAt, at, now());
+      save(d);
+    },
     async rename(name) {
       return run((s) => rename(s, name, now())).state;
     },
+  };
+}
+
+/** 저장해 둔 테스트 모드의 받은 칭찬 (모양이 다르면 없는 것으로) */
+function cleanLocalPraises(raw: unknown): LocalPraises | undefined {
+  const r = raw as Partial<LocalPraises> | null | undefined;
+  if (!r || typeof r !== 'object' || !Array.isArray(r.log)) return undefined;
+  return {
+    seenAt: Number(r.seenAt) || 0,
+    log: r.log.filter((x) => x && typeof x.from === 'string' && Number.isFinite(x.at)).map((x) => ({ from: x.from, at: x.at })),
   };
 }
 
@@ -447,6 +483,10 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
       const d = await call('village_praise', { p_user: id });
       return { state: cleanState(d), visit: cleanVisit(d.visit) };
     },
+    praiseInbox: async () => cleanInbox(await call('village_praise_inbox')),
+    async praiseSeen(at) {
+      await call('village_praise_seen', { p_at: at });
+    },
     rename: async (name) => cleanState(await call('village_rename', { p_name: name })),
     adminSetState: async (state) => cleanState(await call('village_admin_set_state', { p_state: state })),
     async monuments() {
@@ -543,9 +583,9 @@ function makeBots(): { id: string; nick: string; state: VillageState }[] {
  */
 function seedLocal(store: Store) {
   if (params.get('fresh') === '1') store.removeItem(LOCAL_KEY);
-  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land', 'aff', 'town', 'cat'].filter((k) => params.get(k) !== null);
+  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land', 'aff', 'town', 'cat', 'praised'].filter((k) => params.get(k) !== null);
   if (keys.length === 0) return;
-  let d: { state?: unknown; seq?: number; skew?: number } = {};
+  let d: { state?: unknown; seq?: number; skew?: number; praise?: LocalPraises } = {};
   try {
     d = JSON.parse(store.getItem(LOCAL_KEY) ?? '{}') ?? {};
   } catch {
@@ -573,6 +613,11 @@ function seedLocal(store: Store) {
     s.catOwned = false;
     s.residents = s.residents.filter((r) => r.id !== 'cat');
     s.profile.landStage = cat === '0' ? Math.max(s.profile.landStage, CAT_LAND_STAGE) : Math.min(s.profile.landStage, 1);
+  }
+  // ?praised=3 방금 받은 칭찬 3개 (이웃 셋이 돌아가며) · ?praised=0 받은 칭찬 없음
+  if (params.get('praised') !== null) {
+    const n = num('praised', 40);
+    d.praise = { seenAt: t0 - 3600_000, log: Array.from({ length: n }, (_, i) => ({ from: `bot-${n === 2 ? 1 : (i % 3) + 1}`, at: t0 - 60_000 * (1 + i * 7) })) };
   }
   store.setItem(LOCAL_KEY, JSON.stringify({ ...d, state: s }));
 }

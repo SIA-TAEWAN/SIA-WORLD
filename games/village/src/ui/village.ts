@@ -11,6 +11,7 @@ import {
 import { makeShowcase } from '../data/showcase';
 import { ApiError, LOCAL_MODE, type RankRow, type Ranking, type VillageApi, type Visit } from '../net/api';
 import { worldGameOpen, worldHome, zodiacFace, zodiacFull } from '../net/world';
+import { PRAISE_LIST_MAX, agoText, praiseNotice, type PraiseInbox } from '../game/praise';
 import { VillageScene, type SceneData, type SceneHooks } from '../scenes/VillageScene';
 import { texKey } from '../scenes/art';
 import { kstHour, skyAt } from '../scenes/sky';
@@ -83,7 +84,7 @@ declare global {
 }
 
 type Tab = 'main' | 'deco' | 'special' | 'stored';
-type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | { kind: 'residents' } | { kind: 'requests' } | { kind: 'ranking' } | { kind: 'monuments' } | null;
+type Sheet = { kind: 'build'; tab: Tab } | { kind: 'building'; id: string } | { kind: 'residents' } | { kind: 'requests' } | { kind: 'ranking'; praise?: boolean } | { kind: 'monuments' } | null;
 
 export function showVillage(api: VillageApi, user: { id: string; name: string }, first: VillageState) {
   let state = first;
@@ -103,6 +104,10 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       </div>
       <div class="res-row" id="res"></div>
       <button class="goal" id="goal"></button>
+      <div class="praise-note hidden" id="praisenote">
+        <button class="pn-main" id="praisego"><em>👏</em><b id="praisetx"></b><i class="tag" id="praisetag"></i></button>
+        <button class="icon-btn" id="praisex" aria-label="칭찬 알림 닫기">✕</button>
+      </div>
     </header>
     <div class="visit-top hidden" id="visittop"></div>
     <div class="visit-bar hidden" id="visitbar">
@@ -118,7 +123,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       <button data-m="residents"><em>${menuIcon('residents', '🐭')}</em>주민</button>
       <button data-m="requests"><em>${menuIcon('requests', '📜')}</em>부탁<i class="dot hidden" id="reqdot"></i></button>
       <button data-m="monuments"><em>${menuIcon('monuments', '🏯')}</em>기념물</button>
-      <button data-m="ranking"><em>${menuIcon('ranking', '🏆')}</em>랭킹</button>
+      <button data-m="ranking"><em>${menuIcon('ranking', '🏆')}</em>랭킹<i class="dot hidden" id="praisedot"></i></button>
     </nav>
     <div class="sheet-wrap hidden" id="sheetwrap"><div class="sheet" id="sheet"></div></div>`,
     'village',
@@ -339,8 +344,10 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   let viewState: VillageState | null = null;
   const villageName = (name: string, nick: string) => name || `${nick}네 마을`;
 
-  function rankingPanel(): string {
-    const head = `<div class="sheet-head"><h3>${menuIcon('ranking', '🏆')} 번영도 랭킹</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>`;
+  function rankingPanel(praise: boolean): string {
+    const head = `<div class="sheet-head"><h3>${praise ? '👏 받은 칭찬' : `${menuIcon('ranking', '🏆')} 번영도 랭킹`}</h3><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+      <div class="seg wide"><button data-rtab="rank" class="${praise ? '' : 'sel'}">🏆 순위</button><button data-rtab="praise" class="${praise ? 'sel' : ''}">👏 받은 칭찬</button></div>`;
+    if (praise) return head + praiseBody();
     if (rankingFailed) return `${head}<p class="soft empty">랭킹을 불러오지 못했어요</p>`;
     if (!ranking) return `${head}<p class="soft empty">불러오는 중…</p>`;
     const row = (r: Ranking['rows'][number]) => `<div class="r-row ${r.userId === user.id ? 'me' : ''}"><em class="r-pl ${r.place <= 3 ? `top${r.place}` : ''}">${r.place}</em>
@@ -369,6 +376,86 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       },
     );
   }
+
+  // ───────────────────────── 받은 칭찬: 접속했을 때의 알림 · 목록 · 답방 ─────────────────────────
+
+  let inbox: PraiseInbox | null = null;
+  let inboxFailed = false;
+  /** 알림을 눌렀거나 닫았다 (새로 읽을 때까지 다시 띄우지 않는다) */
+  let noteOff = false;
+  /** 읽기와 "다 봤음"은 보낸 순서대로 (다 봤다고 한 것이 늦게 온 옛 목록으로 되살아나지 않게) */
+  let praiseJob: Promise<unknown> = Promise.resolve();
+  const praiseOpen = () => sheet?.kind === 'ranking' && sheet.praise === true;
+  function paintPraise() {
+    const n = noteOff ? null : praiseNotice(inbox);
+    $('#praisenote').classList.toggle('hidden', !n);
+    $('#praisedot').classList.toggle('hidden', !n);
+    if (!n) return;
+    $('#praisedot').textContent = String(Math.min(99, n.count));
+    $('#praisetx').textContent = n.text;
+    $('#praisetag').textContent = n.visit ? '구경 가기' : '모두 보기';
+  }
+  function loadInbox(): Promise<unknown> {
+    praiseJob = praiseJob
+      .then(() => api.praiseInbox())
+      .then(
+        (r) => {
+          inbox = r;
+          inboxFailed = false;
+          noteOff = false;
+        },
+        () => {
+          inboxFailed = true;
+        },
+      )
+      .then(() => {
+        paintPraise();
+        if (praiseOpen()) paintSheet();
+      });
+    return praiseJob;
+  }
+  /** 다 봤음: 알림을 내리고 서버에 적는다 (목록의 "새 칭찬" 표시는 다음에 읽을 때까지 남는다) */
+  function markSeen(box: PraiseInbox | null = inbox) {
+    // 그사이 목록을 새로 읽었으면(더 새 칭찬이 있을 수 있다) 알림은 그대로 두고, 그때 본 것까지만 서버에 적는다
+    const cur = box === inbox;
+    const had = (!cur || !noteOff) && !!box && box.fresh > 0;
+    if (cur) {
+      noteOff = true;
+      paintPraise();
+    }
+    // 본 시각 = 실제로 받은 목록의 가장 최근 칭찬 시각 (서버가 +1ms 해서 그 칭찬까지 본 것으로 친다).
+    // 서버의 '지금'(box.now)을 보내면, 읽는 순간 아직 커밋되지 않은 칭찬(created_at 이 그보다 앞)이 본 것으로 묻힌다
+    const at = box?.rows.length ? Math.max(...box.rows.map((r) => r.at)) : null;
+    if (had && at !== null) praiseJob = praiseJob.then(() => api.praiseSeen(at)).catch(() => undefined);
+  }
+  function openPraises() {
+    openSheet({ kind: 'ranking', praise: true });
+    void loadInbox().then(() => markSeen());
+  }
+  function praiseBody(): string {
+    if (!inbox) return `<p class="soft empty">${inboxFailed ? '받은 칭찬을 불러오지 못했어요' : '불러오는 중…'}</p>`;
+    const now = api.now();
+    const rows = inbox.rows
+      .map((r) => `<div class="r-row pr-row ${r.fresh ? 'me' : ''}"><em class="r-pl">👏</em>
+        <div class="p-tx"><b>${esc(r.nickname)}${r.fresh ? ' <i class="tag">새 칭찬</i>' : ''}</b><span class="soft">${esc(villageName(r.name, r.nickname))} · ${agoText(r.at, now)}</span></div>
+        <button class="btn small" data-visit="${esc(r.userId)}">구경</button></div>`)
+      .join('');
+    return `<p class="soft note">지금까지 받은 칭찬 <b>${num(state.profile.praiseCount)}번</b> · 한 번에 번영도 +${CONST.praise_points} · 최근 ${PRAISE_LIST_MAX}개까지 보여요. 구경 가서 답방해 보세요</p>
+      <div class="b-list">${rows || '<p class="soft empty">아직 받은 칭찬이 없어요.<br />다른 마을을 구경하고 먼저 칭찬해 보세요</p>'}</div>`;
+  }
+  $('#praisego').addEventListener('click', () => {
+    const n = noteOff ? null : praiseNotice(inbox);
+    if (!n || visiting || scene?.placing) return;
+    sfx('click');
+    if (!n.visit) return openPraises();
+    // 구경이 성공한 뒤에 본 것으로 적는다 (통신 오류로 못 갔는데 알림만 사라지지 않게)
+    const box = inbox;
+    startVisit(n.visit, () => markSeen(box));
+  });
+  $('#praisex').addEventListener('click', () => {
+    sfx('click');
+    markSeen();
+  });
 
   /** 구경하는 마을을 장면이 그릴 수 있는 모양으로 (수확 방울 · 진행 막대는 뜨지 않는다) */
   function toViewState(v: Visit): VillageState {
@@ -405,8 +492,11 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     scene?.refresh();
     scene?.fit();
   }
-  function startVisit(id: string) {
-    void act(() => api.visit(id), showVisit);
+  function startVisit(id: string, then?: () => void) {
+    void act(() => api.visit(id), (v) => {
+      showVisit(v);
+      then?.();
+    });
   }
   function endVisit() {
     visiting = null;
@@ -589,7 +679,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       sheet.kind === 'build' ? buildMenu(sheet.tab)
       : sheet.kind === 'residents' ? residentsPanel(state)
       : sheet.kind === 'requests' ? requestsPanel(state)
-      : sheet.kind === 'ranking' ? rankingPanel()
+      : sheet.kind === 'ranking' ? rankingPanel(sheet.praise === true)
       : sheet.kind === 'monuments' ? monumentsPanel()
       : buildingPanel(state.buildings.find((b) => b.id === (sheet as { id: string }).id)!);
     sheetEl.scrollTop = top;
@@ -877,7 +967,13 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     const bt = el.closest('button') as HTMLButtonElement | null;
     if (!bt || bt.disabled) return;
     const d = bt.dataset;
-    if (d.tab) {
+    if (d.rtab) {
+      sfx('click');
+      sheetEl.scrollTop = 0;
+      if (d.rtab === 'praise') openPraises();
+      else if (ranking) openSheet({ kind: 'ranking' });
+      else openRanking();
+    } else if (d.tab) {
       sfx('click');
       sheetEl.scrollTop = 0;
       openSheet({ kind: 'build', tab: d.tab as Tab });
@@ -1063,7 +1159,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (b.dataset.m === 'build') openSheet({ kind: 'build', tab: 'main' });
     else if (b.dataset.m === 'residents') openSheet({ kind: 'residents' });
     else if (b.dataset.m === 'requests') openSheet({ kind: 'requests' });
-    else if (b.dataset.m === 'ranking') openRanking();
+    // 랭킹 버튼에 새 칭찬 배지가 떠 있으면 받은 칭찬 탭을 연다 (배지를 보고 눌렀는데 순위만 보이지 않게)
+    else if (b.dataset.m === 'ranking') (!noteOff && praiseNotice(inbox) ? openPraises : openRanking)();
     else if (b.dataset.m === 'monuments') openMonuments();
     else toast('준비 중이에요');
   });
@@ -1255,6 +1352,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   const wantVisit = new URLSearchParams(location.search).get('visit');
   if (wantVisit && wantVisit !== user.id) setTimeout(() => startVisit(wantVisit), 600);
   paintHud();
+  // 받은 칭찬: 들어왔을 때 한 번, 그리고 화면으로 돌아왔을 때
+  void loadInbox();
   // 판의 남은 시간 · 쌓인 양, 잔치의 남은 시간
   setInterval(() => {
     tickSheet();
@@ -1265,5 +1364,6 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     void reload();
+    void loadInbox();
   });
 }

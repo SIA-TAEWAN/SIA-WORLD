@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PLAYER } from '../data/balance';
 import { ENEMIES } from '../data/enemies';
+import { WEAPONS } from '../data/weapons';
 import { bossWinding } from '../game/bosses';
 import { FX, MODE, PROJ, ZONE, type State } from '../game/state';
 import { eachObstacle } from '../game/terrain';
@@ -26,7 +27,7 @@ const CHAR_MAX_W = 96;
 /** 그림 깊이 */
 const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
 /** 지대 색 (state.ts 의 ZONE 순서): 독안개 · 예고 · 독 · 불길 · 물기둥 · 양털 구름 · 말발굽 */
-const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft];
+const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft, COLOR.primary];
 /** 두 색을 섞는다 (t: b 쪽으로 얼마나) */
 const mix = (a: number, b: number, t: number) => {
   const ch = (sh: number) => Math.round(((a >> sh) & 255) * (1 - t) + ((b >> sh) & 255) * t);
@@ -345,7 +346,7 @@ export class GameScene extends Phaser.Scene {
       spr.setPosition(pr.x, y).setScale(sc).setVisible(true).setFlipX(false);
       if (pr.kind === PROJ.shuriken || pr.kind === PROJ.shurikenEvo) spr.setRotation(sec * 16);
       else if (pr.kind === PROJ.feather) spr.setRotation(pr.a);
-      else if (pr.kind === PROJ.pig) {
+      else if (pr.kind === PROJ.pig || pr.kind === PROJ.pigEvo) {
         // 복돼지: 달리는 쪽을 본다 (왼쪽으로 갈 때는 뒤집는다), 통통 튄다
         spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 18)) * 8);
       } else if (pr.kind === PROJ.puppy) spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 12 + i)) * 5);
@@ -366,7 +367,7 @@ export class GameScene extends Phaser.Scene {
       if (z.owner === 0) {
         // 내 지대: 독안개(초록)·양털 구름(흰색)은 숨 쉬듯 일렁이고 끝날 때 옅어진다, 말발굽은 한 번 번쩍
         const fade = Math.min(1, z.life / 0.4) * Math.min(1, (z.maxLife - z.life) / 0.2);
-        const a = z.kind === ZONE.hoof ? 0.55 * (z.life / z.maxLife) : z.kind === ZONE.cloud ? 0.5 * fade : 0.38 * fade;
+        const a = z.kind === ZONE.hoof || z.kind === ZONE.hoofEvo ? 0.55 * (z.life / z.maxLife) : z.kind === ZONE.cloud ? 0.5 * fade : 0.38 * fade;
         spr.setPosition(z.x, z.y).setScale(sc * (1 + Math.sin(sec * 5 + i) * 0.04)).setTint(tint).setAlpha(a).setVisible(true);
       } else if (z.delay > 0) {
         // 보스의 범위 공격: 분홍 원이 미리 보이고, 안쪽 원이 다 차면 터진다
@@ -381,11 +382,12 @@ export class GameScene extends Phaser.Scene {
     }
     this.zones.end(n);
     this.zoneCores.end(cores);
-    // 방울 장판: 내 둘레의 노란 원
+    // 방울 장판: 내 둘레의 노란 원 (수호의 범종은 더 짙고 진하게)
     let a = 0;
     for (const w of s.weapons) {
       if (w.view <= 0) continue;
-      this.auras.get(a++).setPosition(s.player.x, s.player.y).setScale((w.view * 2) / 252).setTint(COLOR.primary).setAlpha(0.2 + Math.sin(sec * 6) * 0.04).setVisible(true);
+      const evo = WEAPONS[w.def].evolved === true;
+      this.auras.get(a++).setPosition(s.player.x, s.player.y).setScale((w.view * 2) / 252).setTint(evo ? COLOR.primaryDeep : COLOR.primary).setAlpha((evo ? 0.26 : 0.2) + Math.sin(sec * 6) * 0.04).setVisible(true);
     }
     this.auras.end(a);
   }

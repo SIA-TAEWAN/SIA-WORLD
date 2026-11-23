@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AI_FINISH_MAX, AI_FINISH_MIN, BANANA_STUN, BAR_STUN, BOOST_FACTOR, BOOST_TIME, DT, HURDLE_STUN, IMMUNE_TIME, JUMP_TIME, LOG_STUN, MIN_VALID_MS,
+  AI_FINISH_MAX, AI_FINISH_MIN, AI_LEVELS, AI_LEVEL_IDS, aiLevelOf, BANANA_STUN, BAR_STUN, BOOST_FACTOR, BOOST_TIME, DT, HURDLE_STUN, IMMUNE_TIME, JUMP_TIME, LOG_STUN, MIN_VALID_MS,
   OBSTACLE_COUNTS, SLIDE_TIME, TOP_SPEED, TRACK_LEN,
 } from '../src/game/constants';
 import { makeTrack, trackProblems, type Obstacle } from '../src/game/track';
@@ -436,6 +436,40 @@ describe('AI', () => {
     // AI마다 기록이 다르다
     expect(new Set(times.map((t) => t.toFixed(2))).size).toBeGreaterThan(100);
   }, 30000);
+
+  it('난이도: 쉬움·보통·어려움마다 정해진 도착 시간 범위에 들고, 어려울수록 빠르다', () => {
+    const avg: Record<string, number> = {};
+    for (const level of AI_LEVEL_IDS) {
+      const spec = AI_LEVELS[level];
+      let sum = 0;
+      let n = 0;
+      for (let seed = 1; seed <= 80; seed++) {
+        const obs = makeTrack(seed * 104729);
+        for (let slot = 0; slot <= 3; slot++) {
+          const t = simulatePlan(obs, makeAiPlan(seed, slot, obs, true, level));
+          expect(t, `${level} seed ${seed} slot ${slot}`).toBeGreaterThanOrEqual(spec.finishMin);
+          expect(t, `${level} seed ${seed} slot ${slot}`).toBeLessThanOrEqual(spec.finishMax);
+          sum += t;
+          n++;
+        }
+      }
+      avg[level] = sum / n;
+    }
+    console.log('AI 평균 도착', avg);
+    expect(avg.hard).toBeLessThan(avg.normal);
+    expect(avg.normal).toBeLessThan(avg.easy);
+  }, 60000);
+
+  it('난이도: 보통은 지금까지의 값 그대로이고(난이도를 안 주면 보통), 모르는 값은 보통으로 읽는다', () => {
+    expect(AI_LEVELS.normal).toMatchObject({ success: 0.75, finishMin: AI_FINISH_MIN, finishMax: AI_FINISH_MAX });
+    const obs = makeTrack(4242);
+    expect(makeAiPlan(4242, 2, obs)).toEqual(makeAiPlan(4242, 2, obs, true, 'normal'));
+    expect(makeAiPlan(4242, 2, obs, true, 'hard')).not.toEqual(makeAiPlan(4242, 2, obs, true, 'easy'));
+    expect(aiLevelOf('hard')).toBe('hard');
+    expect(aiLevelOf(undefined)).toBe('normal');
+    expect(aiLevelOf('insane')).toBe('normal');
+    expect(aiLevelOf(2)).toBe('normal');
+  });
 
   it('방해물마다 대략 75% 성공한다', () => {
     let good = 0;

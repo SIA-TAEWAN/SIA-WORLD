@@ -122,24 +122,37 @@ describe('카드 뽑기 규칙', () => {
     expect(CARD_WEIGHT.ownedWeapon).toBeGreaterThan(1);
     expect(CARD_WEIGHT.evoWeapon).toBeGreaterThan(CARD_WEIGHT.ownedWeapon);
     expect(CARD_WEIGHT.evoPassive).toBeGreaterThan(1);
-    // 호랑이: 발톱(가진 무기, 진화가 있다) + 힘의 부적(발톱의 진화 짝). 방울은 진화가 없는 가진 무기
+    // 호랑이: 발톱(가진 무기, 진화가 있다) + 힘의 부적(발톱의 진화 짝). 독안개는 진화가 없는 가진 무기
     const s = emptyRun({ char: 'tiger' });
-    addWeapon(s, WEAPON_INDEX.bell, 1);
+    addWeapon(s, WEAPON_INDEX.mist, 1);
     const n = tally(s, 3000);
     const others = PASSIVES.filter((p) => p.id !== 'might').map((p) => n(`p:${p.id}`));
     const plain = others.reduce((a, b) => a + b, 0) / others.length;
     // 3장을 겹치지 않게 뽑으므로 나온 횟수의 비는 가중치보다 조금 작다
     expect(n('w:claw') / plain).toBeGreaterThan(CARD_WEIGHT.evoWeapon * 0.65);
     expect(n('w:claw') / plain).toBeLessThan(CARD_WEIGHT.evoWeapon * 1.1);
-    expect(n('w:bell') / plain).toBeGreaterThan(CARD_WEIGHT.ownedWeapon * 0.7);
-    expect(n('w:bell') / plain).toBeLessThan(CARD_WEIGHT.ownedWeapon * 1.1);
-    expect(n('w:claw')).toBeGreaterThan(n('w:bell') * 1.15);
+    expect(n('w:mist') / plain).toBeGreaterThan(CARD_WEIGHT.ownedWeapon * 0.7);
+    expect(n('w:mist') / plain).toBeLessThan(CARD_WEIGHT.ownedWeapon * 1.1);
+    expect(n('w:claw')).toBeGreaterThan(n('w:mist') * 1.15);
     expect(n('p:might') / plain).toBeGreaterThan(CARD_WEIGHT.evoPassive * 0.65);
     expect(n('p:might') / plain).toBeLessThan(CARD_WEIGHT.evoPassive * 1.1);
     // 새 무기와 짝이 아닌 패시브는 모두 같은 무게
     expect(n('w:shuriken') / plain).toBeGreaterThan(0.75);
     expect(n('w:shuriken') / plain).toBeLessThan(1.25);
     for (const c of others) expect(c / plain).toBeGreaterThan(0.75);
+  });
+
+  it('2차 진화 4종(plainPassive): 무기 강화는 진화가 있는 무기만큼 자주 나오지만, 짝 패시브는 밀어주지 않는다', () => {
+    expect(EVOLUTIONS.filter((e) => e.plainPassive).map((e) => e.result)).toEqual(['bellEvo', 'mooncakeEvo', 'hoofEvo', 'piggyEvo']);
+    // 말: 말발굽(가진 무기, 진화가 있다) + 바람의 신(짝이지만 보통 무게)
+    const s = emptyRun({ char: 'horse' });
+    const n = tally(s, 3000);
+    const others = PASSIVES.filter((p) => p.id !== 'wind').map((p) => n(`p:${p.id}`));
+    const plain = others.reduce((a, b) => a + b, 0) / others.length;
+    expect(n('w:hoof') / plain).toBeGreaterThan(CARD_WEIGHT.evoWeapon * 0.65);
+    expect(n('w:hoof') / plain).toBeLessThan(CARD_WEIGHT.evoWeapon * 1.1);
+    expect(n('p:wind') / plain).toBeGreaterThan(0.75);
+    expect(n('p:wind') / plain).toBeLessThan(1.25);
   });
 
   it('짝 패시브를 얻은 뒤에는 그 패시브의 강화가 보통 무게로 돌아가고, 진화한 뒤에는 짝 패시브를 밀어주지 않는다', () => {
@@ -255,8 +268,11 @@ describe('카드 뽑기 규칙', () => {
 });
 
 describe('진화와 보물상자', () => {
-  it('진화 조합 3종: 표창+부채, 여의주+넓은 소매, 발톱+힘의 부적', () => {
-    expect(EVOLUTIONS.map((e) => `${e.weapon}+${e.passive}=${e.result}`)).toEqual(['shuriken+fan=shurikenEvo', 'pearl+sleeve=pearlEvo', 'claw+might=clawEvo']);
+  it('진화 조합 7종: 표창+부채, 여의주+넓은 소매, 발톱+힘의 부적, 방울+거북 등껍질, 달떡+인삼, 말발굽+바람의 신, 복돼지+복주머니 매듭', () => {
+    expect(EVOLUTIONS.map((e) => `${e.weapon}+${e.passive}=${e.result}`)).toEqual([
+      'shuriken+fan=shurikenEvo', 'pearl+sleeve=pearlEvo', 'claw+might=clawEvo',
+      'bell+shell=bellEvo', 'mooncake+ginseng=mooncakeEvo', 'hoof+wind=hoofEvo', 'piggy+knot=piggyEvo',
+    ]);
   });
 
   it('무기 5레벨 + 짝 패시브가 있어야 진화한다', () => {

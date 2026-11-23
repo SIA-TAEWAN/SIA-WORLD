@@ -4,7 +4,7 @@ import { BLACKJACK_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { BjPublic, BjResult, BjSummary } from '../../../supabase/functions/_shared/blackjack.ts';
-import { bjDayKey, bjLoad, bjRecord, bjSeenAdd, bjSeenLoad, bjStripHtml, nextStreak, streakCutin, type BjDay } from '../../lib/extras.ts';
+import { bjAddBet, bjClampBet, bjDayKey, bjDoubleBet, bjHint, bjLoad, bjRecord, bjSeenAdd, bjSeenLoad, bjStripHtml, nextStreak, streakCutin, type BjDay } from '../../lib/extras.ts';
 import { worldRoot } from '../../lib/world.ts';
 import { rewindBlackjack } from '../../../supabase/functions/_shared/blackjack-rewind.ts';
 
@@ -14,6 +14,32 @@ const RESULT: Record<BjResult, string> = { blackjack: '블랙잭!', win: '승', 
 const ACTION: Record<string, string> = { hit: '히트', stand: '스탠드', double: '더블다운', split: '스플릿' };
 
 let betAmount = 0;
+/** 지난번에 건 금액 ('같은 금액' · '2배' 버튼. 기본 단위가 다른 방으로 옮기면 지운다) */
+let lastBet = 0;
+let lastBetUnit = 0;
+
+// ── 기본 전략 힌트 (켜고 끄기는 이 기기에 기억) ──
+const HINT_KEY = 'sia-bj-hint';
+let hintOn: boolean | null = null;
+function hinting(): boolean {
+  if (hintOn === null) {
+    hintOn = false;
+    try {
+      hintOn = localStorage.getItem(HINT_KEY) === '1';
+    } catch {
+      /* 기억하지 못해도 스위치는 쓴다 */
+    }
+  }
+  return hintOn;
+}
+function setHinting(on: boolean) {
+  hintOn = on;
+  try {
+    localStorage.setItem(HINT_KEY, on ? '1' : '0');
+  } catch {
+    /* 무시 */
+  }
+}
 /** 카드 통(슈) 자리 (판 정리 때 카드를 이리로 걷는다) */
 let shoePos = { x: 0, y: 0 };
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
@@ -418,30 +444,65 @@ function playControls(t: Ctx, el: HTMLElement) {
   if (!p || t.mySeat === null) return;
   const mine = p.seats.find((s) => s.seat === t.mySeat);
   if (p.phase === 'bet' && p.waitingBets.includes(t.mySeat) && t.myTurn) {
-    // 베팅은 기본 단위의 배수만
-    const max = Math.floor((mine?.maxBet ?? p.maxBet) / p.minBet) * p.minBet;
-    if (betAmount < p.minBet || betAmount > max) betAmount = p.minBet;
-    el.innerHTML = `<div class="row">
-      <button class="btn" data-m="1">×1</button><button class="btn" data-m="2">×2</button><button class="btn" data-m="5">×5</button>
-      <button class="btn" data-m="10">×10</button><button class="btn" data-m="max">최대</button>
+    // 베팅은 기본 단위의 배수만, 상한(테이블 최대 · 내 잔액) 안에서
+    const min = p.minBet;
+    const max = Math.max(min, Math.floor((mine?.maxBet ?? p.maxBet) / min) * min);
+    if (betAmount < min || betAmount > max) betAmount = min;
+    if (lastBetUnit !== min) lastBet = 0;
+    const noLast = lastBet > 0 ? '' : 'disabled';
+    // 칩: 누를 때마다 그만큼 더한다 (기본 단위의 1 · 5 · 10 · 50배. 상한을 넘는 칩은 끈다)
+    const chips = [1, 5, 10, 50]
+      .map((n) => n * min)
+      .map((v) => `<button type="button" class="btn bj-chip" data-add="${v}" ${betAmount + v > max ? 'disabled' : ''}>+${t.fmt(v)}</button>`)
+      .join('');
+    el.innerHTML = `<div class="row bj-bet">${chips}
+      <button type="button" class="btn" data-set="min" ${betAmount > min ? '' : 'disabled'}>지우기</button>
+      <button type="button" class="btn" data-set="same" ${noLast} title="지난번에 건 금액">같은 금액</button>
+      <button type="button" class="btn" data-set="double" ${noLast} title="지난번에 건 금액의 2배">2배</button>
+      <button type="button" class="btn" data-set="max">최대</button></div>
+      <div class="row bj-go">
       <span class="amount">${t.fmt(betAmount)}</span>
       <button class="btn big primary" id="bet" ${t.busy ? 'disabled' : ''}>베팅</button>
       <button class="btn" id="sit" ${t.busy ? 'disabled' : ''}>이번 판 쉬기</button></div>
-      <p class="msg">베팅 ${t.fmt(p.minBet)} ~ ${t.fmt(max)}</p>`;
-    el.querySelectorAll<HTMLButtonElement>('[data-m]').forEach((b) =>
+      <p class="msg bj-range">베팅 ${t.fmt(min)} ~ ${t.fmt(max)}${lastBet > 0 ? ` · 지난번 ${t.fmt(lastBet)}` : ''}</p>`;
+    el.querySelectorAll<HTMLButtonElement>('[data-add]').forEach((b) =>
       b.addEventListener('click', () => {
-        betAmount = b.dataset.m === 'max' ? max : Math.min(max, p.minBet * Number(b.dataset.m));
+        betAmount = bjAddBet(betAmount, Number(b.dataset.add), min, max);
+        sfx('chip');
         t.redraw();
       }),
     );
-    el.querySelector('#bet')!.addEventListener('click', () => void t.act({ type: 'bet', amount: betAmount }));
+    el.querySelectorAll<HTMLButtonElement>('[data-set]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const k = b.dataset.set;
+        betAmount = k === 'max' ? max : k === 'same' ? bjClampBet(lastBet, min, max) : k === 'double' ? bjDoubleBet(lastBet, min, max) : min;
+        t.redraw();
+      }),
+    );
+    el.querySelector('#bet')!.addEventListener('click', () => {
+      const amount = betAmount;
+      void t.act({ type: 'bet', amount }).then((ok) => {
+        if (!ok) return;
+        lastBet = amount;
+        lastBetUnit = min;
+      });
+    });
     el.querySelector('#sit')!.addEventListener('click', () => void t.act({ type: 'sitout' }));
     return;
   }
   if (p.phase === 'play' && t.myTurn && p.turn?.seat === t.mySeat) {
+    // 기본 전략 힌트 (켰을 때만): 엔진의 기본 전략표가 고르는 행동의 버튼에 '추천' 꼬리표
+    const hand = mine?.hands[p.turn.hand ?? 0];
+    const rec = hinting() && hand ? bjHint(hand.cards, p.dealer.cards[0], p.legal) : null;
     el.innerHTML = `<div class="row">${p.legal
-      .map((a) => `<button class="btn big ${a === 'hit' ? 'primary' : a === 'stand' ? 'alt' : ''}" data-a="${a}" ${t.busy ? 'disabled' : ''}>${ACTION[a]}</button>`)
-      .join('')}</div><p class="msg">${(mine?.hands.length ?? 0) > 1 ? `${(p.turn.hand ?? 0) + 1}번째 핸드 · ` : ''}20초 안에 고르지 않으면 스탠드해요</p>`;
+      .map((a) => `<button class="btn big ${a === 'hit' ? 'primary' : a === 'stand' ? 'alt' : ''} ${a === rec ? 'rec' : ''}" data-a="${a}" ${t.busy ? 'disabled' : ''}>${ACTION[a]}${a === rec ? '<em class="rec-tag">추천</em>' : ''}</button>`)
+      .join('')}</div>
+      <div class="hd-help bj-help"><button type="button" class="btn small auto-sw ${hinting() ? 'on' : ''}" id="bj-hint" role="switch" aria-checked="${hinting()}" title="기본 전략표가 고르는 행동을 알려 줘요 (이긴다는 뜻은 아니에요)">전략 힌트<i></i></button>${rec ? `<b>기본 전략: ${ACTION[rec]}</b>` : ''}</div>
+      <p class="msg">${(mine?.hands.length ?? 0) > 1 ? `${(p.turn.hand ?? 0) + 1}번째 핸드 · ` : ''}20초 안에 고르지 않으면 스탠드해요</p>`;
+    el.querySelector('#bj-hint')?.addEventListener('click', () => {
+      setHinting(!hinting());
+      t.redraw();
+    });
     el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));
     return;
   }

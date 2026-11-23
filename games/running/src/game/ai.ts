@@ -1,4 +1,4 @@
-import { AI_FINISH_MAX, AI_FINISH_MIN, AI_REACT_MAX, AI_REACT_MIN, AI_SUCCESS, DT, END_AFTER_GO, JUMP_TIME, LOG_SPEED, SLIDE_TIME } from './constants';
+import { AI_LEVELS, AI_REACT_MAX, AI_REACT_MIN, DT, END_AFTER_GO, JUMP_TIME, LOG_SPEED, SLIDE_TIME, type AiLevel } from './constants';
 import { makeRng, type Rng } from './rng';
 import { logPos, newRunner, stepRunner, type Press, type Runner } from './sim';
 import type { Obstacle } from './track';
@@ -58,22 +58,24 @@ function pick<T>(list: T[], rng: Rng): T {
 }
 
 /**
- * AI 계획 만들기. 방해물마다 75% 확률로 잘 넘는다 (낮은 막대는 같은 확률로 슬라이딩).
- * tune=true 면 도착 시간이 33~37.5초에 들도록 성공·실패를 하나씩 바꿔 맞춘다 (PRD: AI는 33~37.5초 도착).
+ * AI 계획 만들기. 방해물마다 난이도의 확률(보통 75%)로 잘 넘는다 (낮은 막대는 같은 확률로 슬라이딩).
+ * tune=true 면 도착 시간이 난이도의 범위(보통 33~37.5초)에 들도록 성공·실패를 하나씩 바꿔 맞춘다.
  * 사람 대신 이어 달리는 AI는 tune=false (이미 달린 구간이 있어서 맞출 수 없다).
+ * level: AI 난이도 (StartMsg 에 실려 와 모든 기기가 같은 계획을 만든다)
  */
-export function makeAiPlan(seed: number, slot: number, obs: readonly Obstacle[], tune = true): AiPlan {
+export function makeAiPlan(seed: number, slot: number, obs: readonly Obstacle[], tune = true, level: AiLevel = 'normal'): AiPlan {
+  const spec = AI_LEVELS[level];
   const rng = makeRng((seed ^ Math.imul(slot + 1, 0x9e3779b9)) >>> 0);
   const plan: AiPlan = { react: AI_REACT_MIN + rng() * (AI_REACT_MAX - AI_REACT_MIN), jump: {} };
   for (const o of obs) {
-    const good = rng() < AI_SUCCESS;
+    const good = rng() < spec.success;
     plan.jump[o.id] = goodIsJump(o) ? good : !good;
   }
   if (!tune) return plan;
   for (let i = 0; i < 40; i++) {
     const t = simulatePlan(obs, plan);
-    if (t >= AI_FINISH_MIN && t <= AI_FINISH_MAX) break;
-    const tooFast = t < AI_FINISH_MIN;
+    if (t >= spec.finishMin && t <= spec.finishMax) break;
+    const tooFast = t < spec.finishMin;
     // 너무 빠르면 잘 넘던 것 하나를 실수로, 너무 느리면 실수 하나를 성공으로
     const cand = obs.filter((o) => (plan.jump[o.id] === goodIsJump(o)) === tooFast);
     if (!cand.length) break;

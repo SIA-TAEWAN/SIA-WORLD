@@ -18,10 +18,17 @@ describe('데이터 표 (PRD 4~7장)', () => {
     expect(CHARACTERS.filter((c) => c.unlock.kind === 'base').map((c) => c.id)).toEqual(['rat', 'ox', 'tiger']);
   });
 
-  it('패시브 8종 · 진화 3종 · 요괴 9종 · 보스 12종 · 맵 4종', () => {
+  it('패시브 8종 · 진화 7종 · 요괴 9종 · 보스 12종 · 맵 4종', () => {
     expect(PASSIVES.length).toBe(8);
-    expect(EVOLUTIONS.length).toBe(3);
+    expect(EVOLUTIONS.length).toBe(7);
+    // 무기·짝 패시브·진화 무기는 조합마다 다르다 (한 패시브가 두 진화의 짝이 되지 않는다)
+    for (const k of ['weapon', 'passive', 'result'] as const) expect(new Set(EVOLUTIONS.map((e) => e[k])).size).toBe(EVOLUTIONS.length);
+    expect(WEAPONS.filter((w) => w.evolved).map((w) => w.id).sort()).toEqual(EVOLUTIONS.map((e) => e.result).sort());
     for (const e of EVOLUTIONS) {
+      expect(WEAPONS[WEAPON_INDEX[e.weapon]].evolved).toBeFalsy();
+      // 진화 무기는 원래 무기와 같은 동작이고, 수치는 한 줄이다
+      expect(WEAPONS[WEAPON_INDEX[e.result]].kind).toBe(WEAPONS[WEAPON_INDEX[e.weapon]].kind);
+      expect(WEAPONS[WEAPON_INDEX[e.result]].levels.length).toBe(1);
       expect(WEAPONS[WEAPON_INDEX[e.result]].evolved).toBe(true);
       expect(PASSIVE_INDEX[e.passive]).toBeGreaterThanOrEqual(0);
     }

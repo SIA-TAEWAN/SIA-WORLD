@@ -69,9 +69,37 @@ function pickTarget(match: Match, me: TankState): TankState {
   return enemies[0];
 }
 
+/** 물이 이만큼(px) 아래까지 올라오면 높은 곳을 찾는다 */
+export const FLEE_MARGIN = 60;
+
+/**
+ * 서든데스: 물이 가까우면 걸어서 갈 수 있는 가장 높은 곳으로 (부호 = 방향, 걸음 수).
+ * 물이 없거나 아직 멀거나 더 높은 곳이 없으면 null.
+ */
+export function fleeWater(match: Match): number | null {
+  const water = match.water;
+  if (water === null) return null;
+  const me = match.cur;
+  if (me.y < water - FLEE_MARGIN) return null;
+  let best: { steps: number; y: number } | null = null;
+  for (const dir of [1, -1] as const) {
+    const path = match.probeWalk(dir);
+    path.forEach((p, i) => {
+      const steps = (i + 1) * dir;
+      // 더 높은 곳, 같으면 덜 걷는 쪽
+      if (!best || p.y < best.y || (p.y === best.y && Math.abs(steps) < Math.abs(best.steps))) best = { steps, y: p.y };
+    });
+  }
+  const found = best as { steps: number; y: number } | null;
+  return found && found.y <= me.y - 3 ? found.steps : null;
+}
+
 /** 이동할 거리(부호 = 방향). 조준이 잘 안 나오면 조금 움직인다. */
 export function decideMove(match: Match, diff: Difficulty, rng: Rng): number {
   const me = match.cur;
+  // 서든데스: 물이 차오르면 먼저 높은 곳으로 피한다 (물이 없으면 예전과 똑같이 움직인다)
+  const flee = fleeWater(match);
+  if (flee !== null) return flee;
   if (diff === 'easy') return rng.next() < 0.3 ? Math.round(rng.range(-25, 25)) : 0;
   const target = pickTarget(match, me);
   if (!target) return 0;

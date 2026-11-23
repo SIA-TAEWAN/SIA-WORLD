@@ -112,6 +112,22 @@ export const BOSS_ART: Record<BossId, BossArt> = {
   yeomra: { name: '염라대왕', art: 'b-yeomra', size: 280 },
 };
 
+/** 지역 보스 도감 설명 (버릇은 data/stages.ts 의 BOSS_TRAITS 와 같은 내용이어야 한다) */
+export const BOSS_DESC: Record<BossId, string> = {
+  bigDokkaebi: '큰 방망이를 넓게 내리친다. 한 번 맞으면 많이 잃는다',
+  dueoksini: '싸우는 중에 꼬마 도깨비 무리를 불러낸다',
+  bulgasal: '싸움이 길어질수록 단단해진다. 빨리 쓰러뜨리자',
+  jangsanbeom: '예고가 짧고 공격이 잦다. 눈을 떼지 말자',
+  centipede: '긴 몸으로 길의 절반 넘게 휩쓴다. 끝까지 비켜 서자',
+  gumiho: '한 번에 두 군데를 친다. 빈 곳을 찾자',
+  guardCaptain: '방패로 정면 사격을 막고 수문장 요괴를 부른다. 가운데를 비켜 쏘자',
+  yagwanggwi: '맞으면 잠깐 얼어붙어 쏘지 못한다',
+  imugi: '넓은 공격을 두 군데에 한꺼번에 떨어뜨린다',
+  reaper: '예고가 짧은 공격을 두 군데에 내리친다',
+  gangcheori: '친 자리에 불길이 남아 대원을 태운다',
+  yeomra: '두 군데를 치고 해골 병사를 불러낸다',
+};
+
 /** 작은 대장 요괴: 그 지역 요괴 하나를 크게 */
 export function chiefArt(region: number): BossArt {
   const k: EnemyKind = region <= 3 ? 'club' : region <= 6 ? 'water' : region <= 9 ? 'guard' : 'skeleton';

@@ -4,9 +4,11 @@
  * 규칙 엔진의 결과는 바꾸지 않는다: 엔진의 순수 함수를 읽기만 한다.
  */
 import { seededRng } from '../../supabase/functions/_shared/engine.ts';
-import { HandCat, draws, evaluate7, evaluateOpen } from '../../supabase/functions/_shared/poker.ts';
+import { HandCat, compareHands, draws, evaluate7, evaluateOpen } from '../../supabase/functions/_shared/poker.ts';
 import { estimateEquity } from '../../supabase/functions/_shared/holdem.ts';
-import { seasonCells } from '../../supabase/functions/_shared/roulette.ts';
+import { MULT, seasonCells, type BetKind, type RBet } from '../../supabase/functions/_shared/roulette.ts';
+import { applyGo, cardById, scoreCards, type MatgoPlayerPublic, type MatgoPublic } from '../../supabase/functions/_shared/matgo.ts';
+import { basicStrategy, cardPoint, type BjPlayAction } from '../../supabase/functions/_shared/blackjack.ts';
 
 // ───────────────────────── 세븐포커: 한 줄 힌트 ─────────────────────────
 
@@ -237,4 +239,313 @@ export function rouletteNotes(s: RouletteStats, names: readonly string[], season
   if (s.seasonRun && s.seasonRun.len >= 3) out.push(`${seasonNames[s.seasonRun.season]} ${s.seasonRun.len}연속`);
   if (s.cold && s.cold.gap >= 8) out.push(`${names[s.cold.cell]} ${s.cold.gap}판째 안 나옴`);
   return out;
+}
+
+// ───────────────────────── 맞고: 고/스톱 판단 도우미 · 족보 진행 ─────────────────────────
+
+const flatCap = (p: MatgoPlayerPublic) => [...p.captured.gwang, ...p.captured.yeol, ...p.captured.tti, ...p.captured.pi];
+
+export interface MatgoStopPreview {
+  /** 고 보너스까지 넣은 점수 */
+  score: number;
+  /** 붙는 배수 이름 ('피박' · '광박' · '멍박' · '고박' · '흔들기' · '폭탄' · '나가리 ×2') */
+  multipliers: string[];
+  multiplier: number;
+  /** 점수 금액 = 점수 × 점당 × 배수 (엔진 summarize 의 amount 와 같은 식) */
+  amount: number;
+  /** 뻑 보너스까지 넣어 내가 받는 금액 (상대가 가진 냥이 모자라면 실제로는 그만큼까지만 받는다) */
+  total: number;
+}
+
+/**
+ * 지금 스톱하면 받을 금액 미리 보기 (seat 가 고/스톱을 고르는 중일 때). 공개 상태만으로 셈한다.
+ * 식은 엔진(matgo.ts summarize)과 같다: (족보 점수 + 고 보너스) × 고 배수 × 점당 × 박·흔들기·폭탄·나가리 배수.
+ * 엔진을 건드리지 않으려고 여기 따로 두고, 검사(card-extras.test.ts)가 실제로 스톱한 결과와 같은지 여러 판으로 견준다
+ */
+export function matgoStopPreview(pub: MatgoPublic, seat: number, baseUnit: number): MatgoStopPreview | null {
+  const me = pub.players[seat];
+  const oppSeat = pub.seats.find((x) => x !== seat);
+  const opp = oppSeat === undefined ? undefined : pub.players[oppSeat];
+  if (!me || !opp) return null;
+  const ws = scoreCards(flatCap(me), pub.gukjinAs);
+  const ls = scoreCards(flatCap(opp), pub.gukjinAs);
+  const score = applyGo(ws.total, me.go);
+  const multipliers: string[] = [];
+  let multiplier = 1;
+  const mul = (label: string, x: number) => {
+    multipliers.push(label);
+    multiplier *= x;
+  };
+  if (ws.piPoints > 0 && ls.counts.pi >= 1 && ls.counts.pi <= 7) mul('피박', 2);
+  if (ws.gwangPoints > 0 && ls.counts.gwang === 0) mul('광박', 2);
+  if (ws.counts.yeol >= 7) mul('멍박', 2);
+  if (opp.go > 0) mul('고박', 2);
+  for (let i = 0; i < me.shakes + opp.shakes; i++) mul('흔들기', 2);
+  for (let i = 0; i < me.bombs + opp.bombs; i++) mul('폭탄', 2);
+  if (pub.nagariMul > 1) mul(`나가리 ×${pub.nagariMul}`, pub.nagariMul);
+  const amount = score * baseUnit * multiplier;
+  return { score, multipliers, multiplier, amount, total: amount + ((me.ppeokBonus ?? 0) - (opp.ppeokBonus ?? 0)) * baseUnit };
+}
+
+/** 배수 이름을 짧게 모은다: ['피박','흔들기','흔들기'] → '피박 ×2 · 흔들기 ×4' */
+export function matgoMulText(multipliers: readonly string[]): string {
+  const m = new Map<string, number>();
+  for (const x of multipliers) m.set(x, (m.get(x) ?? 0) + 1);
+  return [...m].map(([k, n]) => (k.includes('×') ? k : `${k} ×${2 ** n}`)).join(' · ');
+}
+
+/** 상대 위험 한 줄: '상대 5점 · 손패 3장' (+ '위험!' — 맞고는 7점부터 스톱할 수 있으므로 5점 이상이면 가깝다) */
+export function matgoRiskText(opp: Pick<MatgoPlayerPublic, 'score' | 'handCount' | 'bombFill' | 'go'>): string {
+  const left = opp.handCount + (opp.bombFill ?? 0);
+  const near = opp.score >= 5 && left > 0;
+  return `상대 ${opp.score}점${opp.go ? ` (${opp.go}고)` : ''} · 손패 ${left}장${left === 0 ? ' · 더 못 내요' : near ? ' · 위험!' : ''}`;
+}
+
+export interface MatgoChip {
+  text: string;
+  /** 박 경고 (분홍 꼬리표) */
+  warn?: boolean;
+}
+
+/**
+ * 자리 판에 붙일 족보 진행·박 경고 칸 (급한 것부터): '피 6장 · 피박 위험' · '광박 위험' · '고도리 2/3' · '청단 2/3' · '광 2장'.
+ * 세 장 족보는 두 장을 모았고 남은 한 장을 상대가 먹지 않았을 때만 (이미 못 이루는 족보는 말하지 않는다).
+ * 다 이룬 족보는 점수 내역에 나오므로 여기서는 뺀다
+ */
+export function matgoChips(me: MatgoPlayerPublic, opp: MatgoPlayerPublic): MatgoChip[] {
+  const out: MatgoChip[] = [];
+  const mine = flatCap(me).map(cardById);
+  const theirs = flatCap(opp).map(cardById);
+  // 박 경고: 상대가 그 족보로 점수를 냈거나 곧 낼 때
+  if (me.piCount >= 1 && me.piCount <= 7 && opp.piCount >= 8) out.push({ text: `피 ${me.piCount}장 · 피박 위험`, warn: true });
+  if (me.captured.gwang.length === 0 && opp.captured.gwang.length >= 2) out.push({ text: '광박 위험', warn: true });
+  if (opp.captured.yeol.length >= 6) out.push({ text: '멍박 위험', warn: true });
+  const set = (name: string, has: (c: (typeof mine)[number]) => boolean) => {
+    const n = mine.filter(has).length;
+    if (n === 2 && !theirs.some(has)) out.push({ text: `${name} 2/3` });
+  };
+  set('고도리', (c) => !!c.godori);
+  set('홍단', (c) => c.dan === 'hong');
+  set('청단', (c) => c.dan === 'cheong');
+  set('초단', (c) => c.dan === 'cho');
+  if (me.captured.gwang.length === 2) out.push({ text: '광 2장' });
+  return out;
+}
+
+// ───────────────────────── 세븐포커: 판 요약 한 줄 ─────────────────────────
+
+interface StoryEvent {
+  t: string;
+  seat?: number;
+  [k: string]: unknown;
+}
+export interface PokerStoryInput {
+  /** 이번 판의 사건 (오래된 것부터. 앞부분이 잘려 있어도 된다) */
+  events: readonly StoryEvent[];
+  /** winners = 모든 팟 승자의 합집합(자리 번호순)이라 동점 목록이 아니다. pots 가 있으면 그것으로 주인공·동점을 정한다 */
+  summary: {
+    cancelled: boolean;
+    uncontested: boolean;
+    winners: number[];
+    hands: Record<number, { name: string }>;
+    pots?: readonly { eligible: readonly number[]; winners: readonly number[] }[];
+  } | null;
+  /** 쇼다운한 자리의 7장 (엔진 순서: 비공개 2장 · 7구 히든 · 공개 4장) */
+  showdown?: readonly { seat: number; cards: readonly string[] }[] | null;
+  nameOf(seat: number): string;
+  /** 무혈 승리한 사람의 패가 약했는지 아는 경우 (내 패일 때만 안다): true 면 '뻥카' */
+  bluff?: boolean;
+}
+
+const RAISES: Record<string, string> = { bbing: '삥', ddadang: '따당', half: '하프' };
+
+/** 6구까지의 족보로 앞서던 자리들 (7구 히든 = cards[2] 를 뺀 6장) */
+function leadersBefore7(showdown: readonly { seat: number; cards: readonly string[] }[]): number[] | null {
+  if (showdown.length < 2 || showdown.some((h) => h.cards.length !== 7)) return null;
+  try {
+    const vals = showdown.map((h) => ({ seat: h.seat, v: evaluate7(h.cards.filter((_, i) => i !== 2)) }));
+    let best = vals[0];
+    for (const x of vals) if (compareHands(x.v, best.v) > 0) best = x;
+    return vals.filter((x) => compareHands(x.v, best.v) === 0).map((x) => x.seat);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 판 결과 창 한 줄: '어흥이의 하프에 2명 다이' · '7구 역전! 깡총이의 플러시' · '올인 승부! …' (없으면 null).
+ * 사건(events)과 결과 요약(summary), 쇼다운 카드만으로 셈한다
+ */
+export function pokerStory(i: PokerStoryInput): string | null {
+  const r = i.summary;
+  if (!r || r.cancelled || !r.winners.length) return null;
+  // 주인공 = 메인팟(겨룬 사람이 둘 이상인 첫 팟)의 승자. 혼자만 자격인 남는 팟·사이드팟 승자는 주인공도 동점도 아니다
+  const main = r.pots?.find((p) => p.eligible.length >= 2 && p.winners.length > 0) ?? r.pots?.find((p) => p.winners.length > 0);
+  const top = main ? [...main.winners].sort((a, b) => a - b) : r.winners;
+  const w = top[0];
+  const who = i.nameOf(w);
+  if (r.uncontested) {
+    // 이긴 사람의 마지막 올림(삥·따당·하프) 뒤에 다이한 사람 수
+    let at = -1;
+    let how = '';
+    i.events.forEach((e, k) => {
+      if (e.seat === w && RAISES[e.t]) {
+        at = k;
+        how = RAISES[e.t];
+      }
+    });
+    const allDies = i.events.filter((e) => e.t === 'die').length;
+    if (at < 0) return allDies ? `모두 다이! ${who}의 무혈 승리` : `${who}의 무혈 승리`;
+    const dies = i.events.slice(at + 1).filter((e) => e.t === 'die').length;
+    if (!dies) return `${who}의 무혈 승리`;
+    return `${who}의 ${i.bluff ? '뻥카' : how}에 ${dies}명 다이`;
+  }
+  if (top.length > 1) return `동점! ${top.map(i.nameOf).join(' · ')} 판돈 나눔`;
+  const hand = r.hands[w]?.name ?? '';
+  const of = hand ? `${who}의 ${hand}` : who;
+  const lead = i.showdown ? leadersBefore7(i.showdown) : null;
+  if (lead && !lead.includes(w)) return `7구 역전! ${of}`;
+  if (i.events.some((e) => e.t === 'allin')) return `올인 승부! ${of} 승리`;
+  const n = i.showdown?.length ?? Object.keys(r.hands).length;
+  return n >= 2 ? `${n}명 쇼다운 · ${of} 승리` : null;
+}
+
+// ───────────────────────── 홀덤: 미리 고르기 (남의 차례에 예약) ─────────────────────────
+
+/** 예약: 체크/폴드 (체크할 수 있으면 체크, 아니면 폴드) · 콜 (예약할 때의 베팅 금액 curBet 을 적어 둔다) */
+export type HoldemBook = { kind: 'checkfold' } | { kind: 'call'; curBet: number };
+
+/** 베팅 금액이 바뀌면 콜 예약은 취소 (체크/폴드 예약은 그대로) */
+export const holdemBookKeep = (b: HoldemBook | null, curBet: number): HoldemBook | null => (b && b.kind === 'call' && b.curBet !== curBet ? null : b);
+
+/** 내 차례가 왔을 때 예약을 행동으로 (실행하지 않으면 null) */
+export function holdemBookAction(b: HoldemBook | null, o: { canCheck: boolean; call: number }, curBet: number): 'check' | 'fold' | 'call' | null {
+  const k = holdemBookKeep(b, curBet);
+  if (!k) return null;
+  if (k.kind === 'checkfold') return o.canCheck ? 'check' : 'fold';
+  // 콜 예약: 낼 돈이 없으면(체크 가능) 체크
+  return o.canCheck ? 'check' : o.call > 0 ? 'call' : null;
+}
+
+/** 남의 차례에 내가 콜하려면 낼 칩 (남은 칩까지만) */
+export const holdemToCall = (curBet: number, betRound: number, stackLeft: number) => Math.max(0, Math.min(curBet - betRound, stackLeft));
+
+// ───────────────────────── 블랙잭: 베팅 금액 · 기본 전략 힌트 ─────────────────────────
+
+/** 베팅 금액을 기본 단위(min)의 배수로, min ~ max 안으로 */
+export function bjClampBet(amount: number, min: number, max: number): number {
+  if (!(min > 0)) return 0;
+  const top = Math.max(min, Math.floor(max / min) * min);
+  const v = Math.floor((Number.isFinite(amount) ? amount : 0) / min) * min;
+  return Math.max(min, Math.min(top, v));
+}
+/** 칩을 눌러 더하기 (상한·잔액 안) */
+export const bjAddBet = (cur: number, chip: number, min: number, max: number) => bjClampBet(cur + chip, min, max);
+/** 지난 판 금액의 2배 (상한·잔액 안) */
+export const bjDoubleBet = (last: number, min: number, max: number) => bjClampBet(last * 2, min, max);
+
+/**
+ * 기본 전략 추천 (엔진 AI 와 같은 basicStrategy 표 · 같은 고르기, 무작위 실수는 없다).
+ * cards = 내 핸드, up = 딜러의 보이는 카드, legal = 지금 할 수 있는 행동 → 추천 행동 (없으면 null)
+ */
+export function bjHint(cards: readonly string[], up: string | null | undefined, legal: readonly BjPlayAction[]): BjPlayAction | null {
+  if (!cards.length || !legal.length || !up) return null;
+  const pt = cardPoint(up);
+  const m = basicStrategy(cards, pt === 1 ? 11 : pt, legal.includes('split'));
+  let pick: BjPlayAction;
+  if (m === 'P') pick = 'split';
+  else if (m === 'D') pick = legal.includes('double') ? 'double' : 'hit';
+  else if (m === 'Ds') pick = legal.includes('double') ? 'double' : 'stand';
+  else pick = m === 'H' ? 'hit' : 'stand';
+  if (!legal.includes(pick)) pick = legal.includes('hit') ? 'hit' : legal[0];
+  return pick;
+}
+
+// ───────────────────────── 룰렛: 되돌리기 · 2배 · 자주 쓰는 배치 · 따라 걸기 ─────────────────────────
+
+const R_TARGETS: Record<BetKind, number> = { zodiac: 12, pair: 12, season: 4, yinyang: 2 };
+const rSum = (bs: readonly RBet[]) => bs.reduce((a, b) => a + b.amount, 0);
+const rCopy = (bs: readonly RBet[]): RBet[] => bs.map((b) => ({ kind: b.kind, target: b.target, amount: b.amount }));
+
+/** 놓은 칩 전부 2배 (놓은 것이 없거나 한도를 넘으면 null) */
+export function rlDouble(bets: readonly RBet[], max: number): RBet[] | null {
+  if (!bets.length || rSum(bets) * 2 > max) return null;
+  return bets.map((b) => ({ kind: b.kind, target: b.target, amount: b.amount * 2 }));
+}
+
+/** 다른 사람의 확정 배치를 내 놓기로 (따라 걸기). 비었거나 한도를 넘으면 null */
+export function rlFollow(bets: readonly RBet[] | undefined, max: number): RBet[] | null {
+  if (!bets?.length || rSum(bets) > max) return null;
+  return rCopy(bets);
+}
+
+/** 되돌리기 기록: 바꾸기 직전의 배치를 쌓아 둔다 (최근 30번) */
+export const RL_UNDO_MAX = 30;
+export const rlPush = (log: readonly RBet[][], bets: readonly RBet[]): RBet[][] => [...log, rCopy(bets)].slice(-RL_UNDO_MAX);
+/** 한 번 되돌리기 → 남은 기록과 되돌린 배치 (기록이 없으면 null) */
+export function rlUndo(log: readonly RBet[][]): { log: RBet[][]; bets: RBet[] } | null {
+  if (!log.length) return null;
+  return { log: log.slice(0, -1), bets: rCopy(log[log.length - 1]) };
+}
+
+/** 자주 쓰는 배치 칸 수 */
+export const RL_PRESETS = 3;
+/** 저장한 배치 한 칸: 금액은 기본 단위의 몇 배인지로 적는다 (기본 단위가 다른 방에서도 쓴다) */
+export type RlPreset = { kind: BetKind; target: number; units: number }[];
+
+/** 저장해 둔 글(JSON)에서 배치 칸 읽기. 깨졌거나 잘못된 칸은 빈 칸(null) */
+export function rlPresetsLoad(raw: string | null): (RlPreset | null)[] {
+  const out: (RlPreset | null)[] = Array<RlPreset | null>(RL_PRESETS).fill(null);
+  let v: unknown = null;
+  try {
+    v = raw ? JSON.parse(raw) : null;
+  } catch {
+    return out;
+  }
+  if (!Array.isArray(v)) return out;
+  for (let i = 0; i < RL_PRESETS; i++) {
+    const slot: unknown = v[i];
+    if (!Array.isArray(slot) || !slot.length || slot.length > 60) continue;
+    const ok = slot.every((b: unknown) => {
+      const x = b as Partial<RlPreset[number]> | null;
+      return (
+        !!x &&
+        typeof x === 'object' &&
+        typeof x.kind === 'string' &&
+        Object.prototype.hasOwnProperty.call(MULT, x.kind) &&
+        Number.isInteger(x.target) &&
+        (x.target as number) >= 0 &&
+        (x.target as number) < R_TARGETS[x.kind as BetKind] &&
+        Number.isInteger(x.units) &&
+        (x.units as number) >= 1 &&
+        (x.units as number) <= 1000
+      );
+    });
+    if (ok) out[i] = (slot as RlPreset).map((b) => ({ kind: b.kind, target: b.target, units: b.units }));
+  }
+  return out;
+}
+
+/** 지금 배치를 저장용으로 (비었거나 기본 단위의 배수가 아닌 금액이 있으면 null) */
+export function rlToPreset(bets: readonly RBet[], base: number): RlPreset | null {
+  if (!bets.length || !(base > 0) || bets.some((b) => b.amount < base || b.amount % base !== 0)) return null;
+  return bets.map((b) => ({ kind: b.kind, target: b.target, units: b.amount / base }));
+}
+
+/** 저장한 배치를 이 방의 금액으로 (빈 칸이거나 한도를 넘으면 null) */
+export function rlFromPreset(p: RlPreset | null, base: number, max: number): RBet[] | null {
+  if (!p?.length) return null;
+  const bets = p.map((b) => ({ kind: b.kind, target: b.target, amount: b.units * base }));
+  return rSum(bets) > max ? null : bets;
+}
+
+/** 약한 패인가 (원페어 이하) — 무혈 승리가 '뻥카'였는지 가릴 때 */
+export function pokerWeak(cards: readonly string[]): boolean {
+  if (!cards.length) return false;
+  try {
+    const v = cards.length >= 5 ? evaluate7(cards.slice()) : evaluateOpen(cards.slice());
+    return (v?.cat ?? 0) <= HandCat.PAIR;
+  } catch {
+    return false;
+  }
 }

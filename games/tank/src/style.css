@@ -2604,3 +2604,58 @@ a.btn { text-decoration: none; text-align: center; }
     padding: 0 6px;
   }
 }
+
+/* 서든데스 수위 표시 (타이머 오른쪽에 붙는다) · 게임방 안내 */
+.water-chip {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1;
+  padding: 5px 9px;
+  background: var(--cream);
+  color: var(--sky-d);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 3px 0 var(--ink);
+}
+.water-chip.danger {
+  background: var(--sky-d);
+  color: #fff;
+  animation: water-pulse 0.5s infinite alternate;
+}
+@keyframes water-pulse {
+  to {
+    transform: translateY(-50%) scale(1.08);
+  }
+}
+.toast.water-alert {
+  margin-top: 46px;
+  background: var(--sky-d);
+  color: #fff;
+  font-size: 16px;
+  max-width: calc(100vw - 24px);
+  white-space: normal;
+  text-align: center;
+  width: max-content;
+}
+.toast.water-alert.show {
+  animation-duration: 3.4s;
+}
+.opt-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #8a6a4a;
+}
+.opt-note:empty {
+  display: none;
+}
+@media (max-height: 520px) and (orientation: landscape) and (min-width: 560px) {
+  .water-chip {
+    font-size: 12px;
+    padding: 3px 7px;
+    border-width: 2px;
+  }
+}

@@ -26,16 +26,49 @@ async function call(fn, args) {
 
 /**
  * 지갑 확인(없으면 10,000 / 10,000으로 생성)
- * → { chips, nyang, siaCoins, chipsRefillsLeft, nyangRefillsLeft }
+ * → { chips, nyang, siaCoins, streak, chipsRefillsLeft, nyangRefillsLeft }
  *   siaCoins: 시아코인 (게임 한 판을 정상적으로 끝낼 때마다 서버가 1개씩 준다. 033_sia_coin.sql)
  */
 export const ensureWallet = () => call('ensure_wallet');
 
 /**
  * 출석 보너스 (한국 시간으로 오늘 처음이면 칩·냥 각 +10,000). 지갑이 없으면 만든다.
- * → { granted, chips, nyang, chipsRefillsLeft, nyangRefillsLeft }
+ * 이어서 온 날을 세고(어제도 받았으면 +1, 아니면 1), 3일째·7일마다 시아코인 보너스를 준다 (092_attendance_streak_notice.sql).
+ * → { granted, streak, siaBonus, chips, nyang, siaCoins, chipsRefillsLeft, nyangRefillsLeft }
+ *   streak: 연속 출석 일수, siaBonus: 이번에 받은 보너스 시아코인 (없으면 0)
  */
 export const claimAttendance = () => call('claim_attendance');
+
+/** 연속 출석 보너스 시아코인: 3일째 1개, 7일째와 그 뒤 7일마다 3개 (SQL _attendance_bonus 와 같다) */
+export function attendanceBonus(streak) {
+  const n = Math.floor(Number(streak));
+  if (!(n > 0)) return 0;
+  if (n % 7 === 0) return 3;
+  return n === 3 ? 1 : 0;
+}
+
+/** 다음 보너스: { days: 며칠 더 오면, coins: 몇 개 } (오늘 받은 것은 빼고 그다음 것) */
+export function nextAttendanceBonus(streak) {
+  const n = Math.max(0, Math.floor(Number(streak)) || 0);
+  for (let d = 1; d <= 7; d++) {
+    const coins = attendanceBonus(n + d);
+    if (coins > 0) return { days: d, coins };
+  }
+  return { days: 7, coins: 3 };
+}
+
+/**
+ * 로비 출석 알림의 둘째 줄: '🔥 연속 3일째 · 🌟 시아코인 +1' / '🔥 연속 4일째 · 3일 더 오면 시아코인 +3'
+ * 연속 일수를 모르면(예전 서버 응답) 빈 글자.
+ */
+export function attendanceStreakText(w) {
+  const n = Math.floor(Number(w?.streak));
+  if (!(n > 0)) return '';
+  const got = Math.floor(Number(w?.siaBonus)) || 0;
+  if (got > 0) return `🔥 연속 ${n}일째 · 🌟 시아코인 +${got}`;
+  const next = nextAttendanceBonus(n);
+  return `🔥 연속 ${n}일째 · ${next.days === 1 ? '내일도' : `${next.days}일 더`} 오면 시아코인 +${next.coins}`;
+}
 
 /** 무료 충전 버튼을 켤지: 잔액이 최소 입장 금액보다 적고, 채우면 늘어나고, 오늘 횟수가 남았을 때 */
 export function canRefill(wallet, currency, baseUnit) {

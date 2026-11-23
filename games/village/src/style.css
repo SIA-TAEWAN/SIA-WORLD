@@ -263,3 +263,18 @@ button, input { font: inherit; color: inherit; }
 img.ico { width: 1em; height: 1em; border: 0; border-radius: 0; background: none; object-fit: contain; -webkit-user-drag: none; }
 /* [보상 받기]를 보내고 답을 기다리는 동안 (연타 막기) */
 .goal.busy { pointer-events: none; opacity: 0.7; animation: none; }
+
+/* ---------- 받은 칭찬: 알림 줄 (마을 목표 아래) · 목록 ---------- */
+.praise-note { display: flex; align-items: center; gap: 6px; }
+.pn-main { flex: 1; min-width: 0; min-height: 40px; display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; background: var(--panel-strong); border: var(--line) solid var(--outline); border-radius: var(--radius-button); box-shadow: 0 3px 0 var(--outline); padding: 3px 8px 3px 5px; animation: pn-in 200ms ease-out; }
+@keyframes pn-in { from { opacity: 0; transform: translateY(-6px); } }
+.pn-main:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--outline); }
+.pn-main em { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 17px; line-height: 1; background: var(--white); border: var(--line-thin) solid var(--outline); }
+/* 좁은 화면에서는 두 줄까지 (닉네임이 길면 그 뒤는 줄인다) */
+.pn-main b { flex: 1; min-width: 0; font-weight: normal; font-size: 15px; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.pn-main .tag { flex: none; }
+/* 아주 짧은 화면(무대 폭 270px 안팎): 손뼉 그림을 빼고 글에 자리를 준다 */
+@media (max-height: 520px) { .pn-main { padding-left: 10px; } .pn-main em { display: none; } }
+.pr-row .btn.small { min-height: 38px; }
+.pr-row .p-tx b .tag { vertical-align: 1px; margin-left: 2px; }
+.pr-row .p-tx span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

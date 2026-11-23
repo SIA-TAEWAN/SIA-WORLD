@@ -1,5 +1,6 @@
 import { ITEMS, ITEM_IDS, TANKS, WEAPONS, tankOr, type ItemId, type WeaponDef } from './data';
 import { Rng } from './rng';
+import { SUDDEN_TURN, SUDDEN_GAP, SUDDEN_RISE, SUDDEN_DAMAGE, SUDDEN_DROWN } from './sudden';
 import { cloneAwardStats, newAwardStats, parseAwardStats, recordSelfFall, recordShot, type AwardStats, type TankBefore } from './awards';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput, Wall, WallKind, Zone } from './types';
 import { MAPS, STEP_W, targetSteps, type MapId } from '../data/maps';
@@ -59,8 +60,25 @@ export interface CrateDrop {
   landed: boolean;
 }
 
+/**
+ * 서든데스: 이 턴 수가 지나면 턴마다 물이 차오른다 (판이 끝나지 않는 것을 막는다).
+ * 물은 가장 낮은 탱크 발밑 조금 아래에서 시작해, 한 바퀴(살아 있는 탱크 수만큼의 턴)에 SUDDEN_RISE 만큼 오른다.
+ * 발이 잠긴 탱크는 한 바퀴에 최대 체력의 SUDDEN_DAMAGE 만큼 피해, 몸이 다 잠기면(SUDDEN_DROWN) 탈락.
+ */
+export { SUDDEN_TURN, SUDDEN_GAP, SUDDEN_RISE, SUDDEN_DAMAGE, SUDDEN_DROWN };
+/** 이번 턴 시작에 물이 차오른 결과 (화면 연출용) */
+export interface Flood {
+  /** 새 수면 높이 (y) */
+  level: number;
+  /** 물이 처음 나타났다 */
+  first: boolean;
+  hits: { target: number; amount: number; dead: boolean }[];
+}
+
 export interface MatchOptions {
   wind?: WindMode;
+  /** 서든데스가 시작되는 턴 수 (SUDDEN_TURN). 없거나 0이면 끔 */
+  sudden?: number;
   /** 게임 모드: 초보면 사람이 쏜 탄이 적 쪽으로 휜다 (AI는 제외) */
   mode?: GameMode;
   /** 필살기 게이지가 항상 가득 찬 탱크 (AI 대전 관리자) */
@@ -94,6 +112,10 @@ export class Match {
   nextZone = 0;
   /** 백발백중 과녁 (맞히면 사라진다) */
   targets: Target[] = [];
+  /** 서든데스 수면 높이 (y, 이 아래가 물). 아직 물이 없으면 null */
+  water: number | null = null;
+  /** 이번 턴 시작에 물이 차오른 결과 (화면 연출용) */
+  lastFlood: Flood | null = null;
   /** 이번 턴 시작에 떨어진 상자 (화면 연출용) */
   lastDrop: CrateDrop[] | null = null;
   /** 상자를 주운 기록 (화면이 꺼내 간다) */
@@ -250,7 +272,55 @@ export class Match {
     return this.tanks.filter((t) => t.alive && (!this.practice || (t.shots ?? 0) < PRACTICE_TURNS)).sort((a, b) => a.delay - b.delay || a.idx - b.idx);
   }
 
+  /** 서든데스를 쓰는 판인가 (백발백중은 5발이면 끝나므로 뺀다) */
+  get suddenTurn(): number {
+    return this.practice ? 0 : Math.max(0, Math.floor(this.options.sudden ?? 0));
+  }
+
+  /** 서든데스까지 남은 턴 수 (0이면 다음 턴부터 물이 오른다). 끈 판이면 null */
+  get suddenIn(): number | null {
+    const at = this.suddenTurn;
+    return at > 0 ? Math.max(0, at - this.turn) : null;
+  }
+
+  /** 물이 차오른다: 수면을 올리고, 잠긴 탱크에 피해·탈락. 난수는 쓰지 않는다 */
+  private flood(): Flood {
+    const alive = this.tanks.filter((t) => t.alive);
+    const n = Math.max(1, alive.length);
+    const first = this.water === null;
+    // 처음에는 가장 낮은 탱크 발밑 조금 아래 (맵 바닥보다 낮게는 두지 않는다)
+    if (this.water === null) this.water = Math.min(this.terrain.h, Math.max(0, ...alive.map((t) => t.y)) + SUDDEN_GAP);
+    else this.water -= Math.max(4, Math.round(SUDDEN_RISE / n));
+    const hits: Flood['hits'] = [];
+    for (const t of alive) {
+      const depth = t.y - this.water;
+      if (depth <= 0) continue;
+      const amount = depth >= SUDDEN_DROWN ? t.hp : Math.min(t.hp, Math.max(1, Math.round((t.maxHp * SUDDEN_DAMAGE) / n)));
+      t.hp -= amount;
+      if (t.hp <= 0) {
+        t.hp = 0;
+        t.alive = false;
+      }
+      hits.push({ target: t.idx, amount, dead: !t.alive });
+    }
+    if (hits.some((h) => h.dead)) this.checkWinner();
+    return { level: this.water, first, hits };
+  }
+
+  /**
+   * 다음 턴을 시작한다. 서든데스로 물이 차올라 판이 끝났으면(over) 턴을 시작하지 않고 돌아온다
+   * — 부른 쪽은 over 를 먼저 확인한다 (lastFlood 에 마지막 결과가 있다).
+   */
   startTurn(): TankState {
+    this.lastFlood = null;
+    const at = this.suddenTurn;
+    if (at > 0 && this.turn >= at && !this.over) {
+      this.lastFlood = this.flood();
+      if (this.over) {
+        this.lastDrop = null;
+        return this.tanks[Math.max(0, this.current)];
+      }
+    }
     const next = this.order()[0];
     this.current = next.idx;
     this.turn++;
@@ -378,6 +448,41 @@ export class Match {
     this.pickup();
     if (!t.alive) this.checkWinner();
     return true;
+  }
+
+  /**
+   * 현재 탱크가 dir 쪽으로 걸으면 차례로 서게 되는 자리 (상태는 바꾸지 않는다, moveStep 과 같은 규칙).
+   * 막히거나 맵 밖으로 떨어지는 걸음에서 멈춘다. AI가 높은 곳을 찾을 때 쓴다.
+   */
+  probeWalk(dir: 1 | -1, max = this.moveLeft): { x: number; y: number }[] {
+    const t = this.cur;
+    const out: { x: number; y: number }[] = [];
+    if (!t.alive || this.inCloud(t)) return out;
+    const p = { x: t.x, y: t.y };
+    for (let i = 0; i < Math.min(max, this.moveLeft); i++) {
+      const nx = p.x + dir;
+      if (nx < 8 || nx > this.terrain.w - 8) break;
+      let ny = p.y;
+      if (this.terrain.solid(nx, ny - 1)) {
+        let k = 1;
+        while (k <= 4 && this.terrain.solid(nx, ny - 1 - k)) k++;
+        if (k > 4) break;
+        ny -= k;
+      }
+      p.x = nx;
+      p.y = ny;
+      let up = 0;
+      while (this.terrain.solid(p.x, p.y - 1) && up < 160) {
+        p.y--;
+        up++;
+      }
+      while (!this.supported(p) && p.y < this.terrain.h + FALL_OUT_Y) p.y++;
+      if (p.y >= this.terrain.h + FALL_OUT_Y) break;
+      out.push({ x: p.x, y: p.y });
+      // 구름 안으로 들어가면 거기서 멈춘다
+      if (this.inCloud({ ...t, x: p.x, y: p.y })) break;
+    }
+    return out;
   }
 
   /**
@@ -711,7 +816,9 @@ export class Match {
     const zones = this.zones.map((z) => `${z.id}:${z.kind}:${z.x},${z.y}`).join(';');
     const wall = this.wall ? `${this.wall.kind}:${this.wall.x}:${this.wall.until}` : '';
     const tg = this.targets.map((g) => g.id).join(',');
-    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}|${wall}|${tg}`;
+    // 물이 차오르기 전에는 예전 지문과 똑같다
+    const water = this.water === null ? '' : `|w${this.water}`;
+    return `${this.turn}|${this.rng.state}|${this.terrain.hash()}|${tanks}|${crates}|${zones}|${wall}|${tg}${water}`;
   }
 
   snapshot(): MatchSnapshot {
@@ -734,6 +841,7 @@ export class Match {
       nextZone: this.nextZone,
       wall: this.wall ? { ...this.wall } : null,
       targets: this.targets.map((g) => ({ ...g })),
+      water: this.water,
       awards: cloneAwardStats(this.awards),
       tanks: this.tanks.map((t) => ({
         x: t.x, y: t.y, hp: t.hp, facing: t.facing, angle: t.angle, delay: t.delay, ult: t.ult,
@@ -758,6 +866,7 @@ export class Match {
     m.nextZone = s.nextZone ?? 0;
     m.wall = s.wall ? { ...s.wall } : null;
     if (s.targets) m.targets = s.targets.map((g) => ({ ...g }));
+    m.water = typeof s.water === 'number' ? s.water : null;
     s.tanks.forEach((d, i) => Object.assign(m.tanks[i], d));
     // 예전 판본이 보낸 판 상태에는 없다 → 그때부터 다시 센다
     m.awards = parseAwardStats(s.awards, m.tanks.length) ?? newAwardStats(m.tanks.length);
@@ -788,6 +897,8 @@ export interface MatchSnapshot {
   nextZone?: number;
   wall?: Wall | null;
   targets?: Target[];
+  /** 서든데스 수면 높이 (예전 판본에는 없다) */
+  water?: number | null;
   /** 판 끝 상장용 집계 (예전 판본에는 없다) */
   awards?: AwardStats;
   tanks: Pick<TankState, 'x' | 'y' | 'hp' | 'facing' | 'angle' | 'delay' | 'ult' | 'alive' | 'items' | 'damageDealt' | 'ai' | 'lastPower' | 'poison' | 'poisonMul' | 'shots' | 'hits'>[];

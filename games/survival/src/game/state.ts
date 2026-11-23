@@ -60,7 +60,7 @@ export interface Enemy {
 /** 투사체 움직임 종류 */
 export const MODE = { line: 0, lob: 1, orbit: 2, enemy: 3, minion: 4 } as const;
 /** 투사체 그림 종류 */
-export const PROJ = { shuriken: 0, cake: 1, pearl: 2, foxfire: 3, shurikenEvo: 4, pearlEvo: 5, feather: 6, pig: 7, puppy: 8, orb: 9 } as const;
+export const PROJ = { shuriken: 0, cake: 1, pearl: 2, foxfire: 3, shurikenEvo: 4, pearlEvo: 5, feather: 6, pig: 7, puppy: 8, orb: 9, cakeEvo: 10, pigEvo: 11 } as const;
 
 export interface Projectile {
   kind: number;
@@ -96,7 +96,7 @@ export interface Projectile {
 }
 
 /** 지대 그림 종류 */
-export const ZONE = { mist: 0, warn: 1, poison: 2, fire: 3, water: 4, cloud: 5, hoof: 6 } as const;
+export const ZONE = { mist: 0, warn: 1, poison: 2, fire: 3, water: 4, cloud: 5, hoof: 6, hoofEvo: 7 } as const;
 /** 보스 패턴 데이터의 zone 이름 → 번호 */
 export const ZONE_OF: Record<string, number> = { warn: ZONE.warn, poison: ZONE.poison, fire: ZONE.fire, water: ZONE.water };
 

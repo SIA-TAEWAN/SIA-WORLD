@@ -1,4 +1,4 @@
-import { END_AFTER_GO, type ZodiacId } from '../game/constants';
+import { END_AFTER_GO, aiLevelOf, type AiLevel, type ZodiacId } from '../game/constants';
 import { EMOTE_RECV_GAP_MS, emoteReady, validEmote } from '../game/emote';
 import type { RankedEntry } from '../game/ranking';
 import { addRound, cleanSeries, newSeries, shouldAdopt, type Series } from '../game/series';
@@ -23,6 +23,8 @@ export interface StartMsg {
   readyAt: number;
   goAt: number;
   roster: RosterEntry[];
+  /** AI 난이도 (방장이 고른 것. 예전 기기가 보낸 시작에는 없다 → 보통) */
+  level?: AiLevel;
 }
 
 /** 방 코드: 영문 소문자·숫자 6자 (주소 ?room=코드) */
@@ -79,8 +81,9 @@ export class RaceRoom {
     readonly key: string,
     readonly me: { id: string; name: string },
     char: ZodiacId,
+    level: AiLevel = 'normal',
   ) {
-    this.meta = { name: me.name, char, ready: false, at: 0, pickAt: 0, ver: CLIENT_VERSION };
+    this.meta = { name: me.name, char, ready: false, at: 0, pickAt: 0, ver: CLIENT_VERSION, level };
     this.ch = api.channel<PlayerMeta>(`race:${key}`, me.id);
     this.ch.onPresence((list) => this.onPresence(list));
     this.ch.onMessage((m) => this.onMessage(m));
@@ -120,8 +123,10 @@ export class RaceRoom {
     // 캐릭터가 겹치면 늦게 고른 쪽이 다음 빈 캐릭터로
     const mine = this.members.find((m) => m.id === this.me.id)!;
     const char = resolveChar(mine, this.members);
-    if (char !== this.meta.char) {
-      this.meta = { ...this.meta, char, pickAt: serverNow() };
+    // AI 난이도는 방장 것을 따라 둔다 (방장이 나가 내가 방장이 되어도 그대로 이어지게)
+    const level = this.level;
+    if (char !== this.meta.char || level !== this.meta.level) {
+      this.meta = { ...this.meta, char, pickAt: char !== this.meta.char ? serverNow() : this.meta.pickAt, level };
       void this.ch.track(this.meta);
       this.members = sortMembers([...others, { id: this.me.id, ...this.meta }]);
     }
@@ -260,7 +265,7 @@ export class RaceRoom {
       this.lastGoAt = serverNow();
       if (this.left || this.current || !this.isHost() || !allReady(this.members)) return;
       const roster: RosterEntry[] = makeSeats(this.key, this.members).map((s) => ({ slot: s.slot, id: s.id, name: s.name, char: s.char }));
-      const msg: StartMsg = { t: 'start', round: go.round, seed: this.fixedSeed ?? Math.floor(Math.random() * 0x7fffffff), readyAt: go.readyAt, goAt: go.goAt, roster };
+      const msg: StartMsg = { t: 'start', round: go.round, seed: this.fixedSeed ?? Math.floor(Math.random() * 0x7fffffff), readyAt: go.readyAt, goAt: go.goAt, roster, level: this.level };
       this.ch.send(msg);
       this.applyStart(msg, true);
     } catch (e) {
@@ -308,6 +313,19 @@ export class RaceRoom {
   }
   get ready(): boolean {
     return this.meta.ready;
+  }
+
+  /** 이 방의 AI 난이도: 방장이 고른 것 (오늘의 도전 방은 보통 고정) */
+  get level(): AiLevel {
+    if (this.fixedSeed !== null) return 'normal';
+    const host = hostOf(this.members);
+    return aiLevelOf((this.members.find((m) => m.id === host) ?? this.meta).level);
+  }
+
+  /** 방장만 AI 난이도를 바꾼다 (경기 중에는 다음 판부터) */
+  setLevel(level: AiLevel) {
+    if (!this.isHost() || this.fixedSeed !== null || level === this.meta.level) return;
+    this.update({ level });
   }
 
   /** 다른 사람이 이미 고른 캐릭터인가 */
