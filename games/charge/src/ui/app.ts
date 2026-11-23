@@ -90,13 +90,28 @@ async function loadTops(region: number): Promise<StageTops | null> {
   }
 }
 
-/** 한 줄: 🥇 닉네임 123 · 🥈 … · 🥉 …, 내가 3위 밖이면 오른쪽에 "나 5위 77". 닉네임은 좁으면 줄인다 */
-function topsHtml(t: StageTop): string {
+/**
+ * 🥇 닉네임 123 · 🥈 … · 🥉 … (chips) 와, 내가 3위 밖일 때의 "나 5위 77" (mine).
+ * 메달과 대원 수는 줄어들지 않고 닉네임만 줄인다 (메달이 닉네임과 함께 잘려 숫자와 겹치지 않게 메달은 따로 둔다).
+ */
+function topsParts(t: StageTop): { chips: string; mine: string } {
   const chips = t.top
-    .map((x) => `<em class="${x.me ? 'me' : ''}"><u>${MEDALS[x.place - 1]} ${esc(x.me ? '나' : x.nickname)}</u><var>${x.troops.toLocaleString()}</var></em>`)
+    .map((x) => `<em class="${x.me ? 'me' : ''}"><i>${MEDALS[x.place - 1]}</i><u>${esc(x.me ? '나' : x.nickname)}</u><var>${x.troops.toLocaleString()}</var></em>`)
     .join('');
   const mine = t.mine && t.mine.place > 3 ? `<strong>나 ${t.mine.place}위 ${t.mine.troops.toLocaleString()}</strong>` : '';
-  return chips + mine;
+  return { chips: `<bdi class="tc">${chips}</bdi>`, mine };
+}
+
+/** 스테이지 줄: 한 줄에 chips + 오른쪽에 내 순위 (좁은 화면에서는 내 순위가 아랫줄로 내려간다, style.css) */
+function topsHtml(t: StageTop): string {
+  const p = topsParts(t);
+  return p.chips + p.mine;
+}
+
+/** 결과 창 상자: 내 순위는 제목 줄 오른쪽에 (기록 줄은 늘 한 줄이라 받아 온 뒤에도 버튼이 밀리지 않는다) */
+function topsBoxHtml(t: StageTop): string {
+  const p = topsParts(t);
+  return `<span class="soft tops-head"><span>🏅 최다 생존 대원 · ${t.total.toLocaleString()}명 기록</span>${p.mine}</span><small class="tops">${p.chips}</small>`;
 }
 
 function soundButton(root: HTMLElement) {
@@ -613,13 +628,16 @@ export async function startGame(stage: StageDef, endless: boolean) {
       const n = await Promise.race([resending, new Promise<null>((ok) => setTimeout(() => ok(null), RESEND_WAIT_MS))]);
       if (n === null) void resending.then(noteResent);
       else await noteResent(n);
-      runId = await api.start(stage.id, leader, daily ? 'daily' : endless ? 'endless' : 'normal');
+      // 오늘의 길은 코스를 만든 날짜(runDay)를 함께 보낸다: 서버가 그 날짜로 기록하고, 자정을 넘겨 닿으면 거절한다 (bad day)
+      runId = await api.start(stage.id, leader, daily ? 'daily' : endless ? 'endless' : 'normal', daily ? runDay : undefined);
     }
   } catch (e) {
     busy = false;
     wait?.remove();
-    if (fromBoot) showMain();
-    toast(errText(e));
+    // 오늘의 길: 날짜가 바뀌었으면(자정) 새 날짜로 오늘의 도전 화면을 다시 그린다
+    if (daily && e instanceof ApiError && e.message === 'bad day') showDaily();
+    else if (fromBoot) showMain();
+    toast(errText(e), 3200);
     return;
   }
   busy = false;
@@ -788,7 +806,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
       if (!tops || !box.isConnected) return;
       const t = tops[st.id];
       topsBox.innerHTML = t
-        ? `<span class="soft">🏅 최다 생존 대원 · ${t.total.toLocaleString()}명 기록</span><small class="tops">${topsHtml(t)}</small>`
+        ? topsBoxHtml(t)
         : '<span class="soft">🏅 최다 생존 대원</span><small class="tops"><em><u>아직 클리어한 친구가 없어요</u></em></small>';
       topsBox.classList.remove('wait');
     });

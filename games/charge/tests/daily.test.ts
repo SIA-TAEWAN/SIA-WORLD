@@ -6,7 +6,7 @@ import { DAILY_ID, ENDLESS_SEG, dailyBossShift, dailyStage, endlessSegment, endl
 import { DAILY_GAME, dailyCourse, dailySeed, dayLabel, isDay, isPastDay, localDay, normalizeDaily, placeText } from '../src/game/daily';
 import { applyReport, checkReport, checkStart, emptyProfile, type RunReport } from '../src/game/progress';
 import { STEP, createRun, metersOf, setTarget, step } from '../src/game/sim';
-import { createLocalApi } from '../src/net/api';
+import { ApiError, createLocalApi, createSupabaseApi } from '../src/net/api';
 import { greedy } from './policy';
 
 // shared/daily.js 는 실행 중에 불러오는 공통 모듈이다. 테스트에서는 Supabase 클라이언트만 빼고 그대로 읽는다
@@ -216,5 +216,34 @@ describe('SQL 085', () => {
     expect(sql.match(/raw := floor\(p_meters \/ 20\.0\) \+ 5 \* p_bosses;/g)).toHaveLength(2);
     expect(sql).toContain("p_mode not in ('normal', 'endless', 'daily')");
     expect(sql).toContain("check (mode in ('normal', 'endless', 'daily'))");
+  });
+});
+
+describe('SQL 088: 오늘의 길 날짜는 기기가 코스를 만든 날짜로', () => {
+  const sql = readFileSync(new URL('../../../supabase/migrations/088_charge_daily_day.sql', import.meta.url), 'utf8');
+  it('옛 시그니처를 지우고(오버로드 금지) 날짜를 저장해 그 날짜로 적는다', () => {
+    expect(sql).toContain('drop function if exists public.charge_start(text, text, text);');
+    expect(sql).toContain("p_mode text default 'normal', p_day text default null) returns uuid");
+    expect(sql).toContain('values (me, p_stage, p_leader, p_mode, d_day)');
+    expect(sql).toContain("d_day := coalesce(rn.daily_day, (rn.started_at at time zone 'Asia/Seoul')::date);");
+    expect(sql).toContain("public._daily_record(me, 'charge', p_meters::bigint,");
+  });
+
+  it('기기는 오늘의 길에서만 p_day 를 보내고, bad day 는 거절로 읽는다', async () => {
+    const mem = new Map<string, string>();
+    const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
+    const calls: Record<string, unknown>[] = [];
+    let error: { message: string } | null = null;
+    const api = createSupabaseApi({ rpc: async (_fn: string, args?: Record<string, unknown>) => (calls.push(args ?? {}), { data: 'run-1', error }) }, 'u1', store);
+    await api.start(DAILY_ID, 'rat', 'daily', DAY);
+    await api.start('1-1', 'rat', 'normal', DAY);
+    await api.start('endless', 'rat', 'endless');
+    expect(calls[0]).toEqual({ p_stage: DAILY_ID, p_leader: 'rat', p_mode: 'daily', p_day: DAY });
+    expect(calls[1]).toEqual({ p_stage: '1-1', p_leader: 'rat', p_mode: 'normal' });
+    expect(calls[2]).toEqual({ p_stage: 'endless', p_leader: 'rat', p_mode: 'endless' });
+    error = { message: 'bad day' };
+    const e = await api.start(DAILY_ID, 'rat', 'daily', DAY).catch((x) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).message).toBe('bad day');
   });
 });
