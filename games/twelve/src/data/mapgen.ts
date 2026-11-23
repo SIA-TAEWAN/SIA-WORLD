@@ -185,7 +185,7 @@ export interface RegionGen {
   rooms: number[];
 }
 
-const DEFAULT_ROOMS = [5, 6, 6, 7, 7, 8, 8, 3];
+const DEFAULT_ROOMS = [7, 8, 9, 9, 10, 10, 11, 4];
 export const REGION_GEN: Partial<Record<number, RegionGen>> = {
   1: { names: ['들머리', '풀숲 길', '물웅덩이 길', '여우불 언덕', '방망이 고개', '갈대밭', '도깨비 터 앞', '큰 도깨비의 놀이터'], rooms: DEFAULT_ROOMS },
 };
@@ -271,7 +271,9 @@ export function generateMap(region: number, no: number): MapDef {
     groups[Math.min(groups.length - 1, idx)].elite = kinds[kinds.length - 1];
   }
 
-  const par = Math.round((40 + groups.length * 22 + (boss ? 100 : 0)) / 10) * 10;
+  // 별 기준 시간: 요괴 수에 맞춘다 (자동 조종이 깨는 시간의 2~3배쯤)
+  const enemies = groups.reduce((a, g) => a + g.list.reduce((b, [, n]) => b + n, 0) + (g.elite ? 3 : 0), 0);
+  const par = Math.round((50 + enemies * 3.2 + (boss ? 120 : 0)) / 10) * 10;
   return { id: mapId(region, no), region, no, name: gen?.names[no - 1] ?? `${regionOf(region).name} ${no}`, rows, start, exit, chest, groups, ...(bossAt ? { boss: bossAt } : {}), par };
 }
 

@@ -18,7 +18,7 @@ const CHUNK_H = CHUNK_ROWS * TILE;
 /** 화면 밖 이만큼까지 그린다 */
 const MARGIN = 120;
 const DIGITS = '0123456789';
-const DIGIT_W = 30;
+const DIGIT_W = 22;
 const DIGIT_H = 40;
 const NUM_POOL = 28;
 const POP_POOL = 14;

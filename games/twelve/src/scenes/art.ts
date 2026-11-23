@@ -37,7 +37,7 @@ export function artFor(map: MapDef): string[] {
     for (const [k] of g.list) kinds.add(k);
     if (g.elite) kinds.add(g.elite);
   }
-  const names = [GROUND[region.ground].tile, 'fx-pop', 'p-arrow'];
+  const names = [GROUND[region.ground].tile, 'fx-pop'];
   if (map.boss) {
     const b = BOSSES[region.boss];
     names.push(b.art);

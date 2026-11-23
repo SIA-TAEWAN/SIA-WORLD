@@ -373,6 +373,8 @@ async function startMap(map: MapDef, deaths: number) {
   const mode = profile.mode;
   const run = createRun(map, mode, loadoutOf(profile), { seed: (Math.random() * 0xffffffff) >>> 0, potions: START_POTIONS, god: DEV_GOD });
   if (!DEV_PLAY) mark(RUN_KEY, map.id);
+  // 개발용: 콘솔에서 판 상태를 들여다보거나 고칠 수 있게 (테스트 모드에서만)
+  if (LOCAL_MODE) (window as unknown as { __twelve?: RunState }).__twelve = run;
   const region = regionOf(map.region);
   const bossDef = map.boss ? BOSSES[region.boss] : null;
   const need = Math.ceil(run.total * EXIT_KILL_RATIO);
