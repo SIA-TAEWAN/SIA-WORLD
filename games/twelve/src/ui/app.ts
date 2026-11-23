@@ -127,7 +127,16 @@ function screen(html: string, bg = ''): HTMLElement {
   closeGame();
   const root = app();
   root.innerHTML = `<div class="screen ${bg}">${html}</div>`;
+  fitTitle(root);
   return root.firstElementChild as HTMLElement;
+}
+
+/** 윗줄 제목이 자리보다 길면 글자를 줄인다 ('12. 돼지의 염라전 🔥' 처럼 긴 지형 이름이 '…'로 잘리지 않게. 그래도 넘치면 말줄임) */
+function fitTitle(root: ParentNode) {
+  const h = root.querySelector<HTMLElement>('.bar h2');
+  if (!h || !h.clientWidth) return;
+  let size = parseFloat(getComputedStyle(h).fontSize) || 0;
+  while (size > 16 && h.scrollWidth > h.clientWidth) h.style.fontSize = `${(size -= 1)}px`;
 }
 
 export function toast(text: string, ms = 2200) {
@@ -908,7 +917,13 @@ function playRun(run: RunState, o: PlayOpts) {
     banner: false,
   });
   if (typeof ResizeObserver !== 'undefined') {
-    gameWatch = new ResizeObserver(() => game?.scale.refresh());
+    // refresh() 만 부르면 안 된다: 그 안의 가운데 맞추기가 새 자리 크기를 읽어 가 버려서(옛 크기로 그린 채), 그 뒤로는 Phaser 가 '바뀐 것 없음'으로 본다.
+    // 자리 크기를 먼저 읽히고 나서 맞춘다 (느린 기기에서 그림판이 화면보다 작게 굳던 문제)
+    gameWatch = new ResizeObserver(() => {
+      if (!game) return;
+      game.scale.getParentBounds();
+      game.scale.refresh();
+    });
     gameWatch.observe($('game'));
   }
   // 개발용: 콘솔·확인 도구가 그림 메모리(game.textures)를 잴 수 있게 (테스트 모드에서만)

@@ -176,7 +176,10 @@ button, input { font: inherit; color: inherit; }
   padding: calc(8px + env(safe-area-inset-top)) 8px 8px; pointer-events: none; }
 .hud > button { pointer-events: auto; }
 .hud-bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.hud-name { display: flex; align-items: center; gap: 5px; color: var(--white); text-shadow: 0 2px 0 var(--outline); font-size: 14px; white-space: nowrap; overflow: hidden; }
+/* 밝은 바닥(양의 뜰 · 탑)에서도 읽히게 외곽선을 두른다. 맵 이름이 길면 말줄임 (글자 중간에서 잘리지 않게) */
+.hud-name { display: flex; align-items: center; gap: 5px; color: var(--white); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; font-size: 14px; white-space: nowrap; min-width: 0; }
+.hud-name .face, .hud-name b { flex: none; }
+.hud-name span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 2px 0; }
 .hud-name .face { width: 26px; height: 26px; background: var(--white); border: 2px solid var(--outline); border-radius: 50%; }
 .hud-name b { font-weight: normal; color: var(--primary); }
 .gauge { position: relative; height: 16px; background: var(--track); border: var(--line) solid var(--outline); border-radius: var(--radius-pill); overflow: hidden; }
@@ -201,7 +204,10 @@ button, input { font: inherit; color: inherit; }
 .hud-pill.env { font-size: 12px; }
 .hud-pill.env.ok { background: var(--panel-strong); }
 .hud-note { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 10; background: var(--outline); color: var(--white);
-  border-radius: var(--radius-item); padding: 8px 14px; font-size: 15px; pointer-events: none; white-space: nowrap; }
+  border-radius: var(--radius-item); padding: 8px 14px; font-size: 15px; pointer-events: none; width: max-content; max-width: calc(100% - 24px); text-align: center; word-break: keep-all; }
+/* 보스 막대·대사가 떠 있는 동안에는 알림을 그 아래로 내린다 (겹치지 않게) */
+.boss-bar:not(.hidden) ~ .hud-note { top: max(24%, calc(178px + env(safe-area-inset-top))); }
+.boss-say:not(.hidden) ~ .hud-note { top: max(24%, calc(224px + env(safe-area-inset-top))); }
 
 /* 아래 조작: 조이스틱(왼쪽) + 버튼(오른쪽). .lefty 는 좌우를 바꾼다 */
 .pad { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
