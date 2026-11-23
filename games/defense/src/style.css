@@ -280,10 +280,17 @@ button, input { font: inherit; color: inherit; }
 .tp-btns { flex: none; display: flex; flex-direction: column; gap: calc(var(--u) * 12); }
 .tp-btns .btn { font-size: calc(var(--u) * 26); padding: calc(var(--u) * 8) calc(var(--u) * 16); white-space: nowrap; min-width: calc(var(--u) * 190); }
 .tp-btns .btn.poor { background: var(--track); color: var(--ink-soft); }
+/* 조준 고르기: 캐릭터를 골랐을 때 안내 글 자리에 뜬다 (앞쪽 · 강한 놈 · 약한 놈 · 뒤쪽) */
+.tray-top.aiming .hint, .tray-top.aiming .norec { display: none; }
+.seg.aim { flex: 1; min-width: 0; gap: calc(var(--u) * 6); }
+.seg.aim button { flex: 1 1 auto; min-width: 0; padding: calc(var(--u) * 7) calc(var(--u) * 2); font-size: calc(var(--u) * 21); white-space: nowrap; line-height: 1.2; }
+.seg.aim button.sel { box-shadow: 0 calc(var(--u) * 4) 0 var(--outline); }
 .tpanel .icon-btn { align-self: flex-start; width: calc(var(--u) * 52); height: calc(var(--u) * 52); min-width: 28px; min-height: 28px; font-size: calc(var(--u) * 24); }
 
 /* ---------- 결과 ---------- */
-.result { justify-content: center; }
+/* 가운데에 두되, 화면보다 길면 위에서부터 쌓여 끝까지 내려 볼 수 있게 (center 는 넘친 윗부분을 볼 수 없다) */
+.result { justify-content: flex-start; }
+.result::before, .result::after { content: ''; flex: 1 0 0px; margin: -5px 0; }
 .result-card { position: relative; background: var(--panel); border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); box-shadow: 0 var(--depth-big) 0 var(--outline); padding: 16px 14px; flex: none; }
 .result-card h2 { margin: 0 0 4px; text-align: center; font-weight: normal; font-size: var(--fs-panel); color: var(--ink-soft); }
 .result-card .verdict { margin: 4px 0 0; text-align: center; font-size: 52px; line-height: 1.1; color: var(--win); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); animation: cut-pop 360ms cubic-bezier(0.2, 1.6, 0.4, 1); }
@@ -315,11 +322,57 @@ button, input { font: inherit; color: inherit; }
 .cheer i { position: absolute; top: -12px; width: 10px; height: 10px; animation: fall 2.4s linear forwards; }
 @keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
 
+/* 활약상: 캐릭터별 피해 막대 · 처치 수 · 오늘의 일꾼 · 지원 기여 한 줄 */
+.feats { margin: 8px 0 0; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 6px 10px 8px; }
+.feats h3 { margin: 0 0 4px; font-weight: normal; font-size: 14px; color: var(--ink-soft); display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.feats h3 b { font-weight: normal; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feats ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.feats li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; column-gap: 7px; font-size: 13px; }
+.feats li img { grid-row: 1 / span 2; width: 26px; height: 26px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
+.feats li.mvp img { background: var(--primary); }
+.feats .fbar { position: relative; height: 16px; background: var(--track); border-radius: var(--radius-pill); overflow: hidden; }
+.feats .fbar i { position: absolute; left: 0; top: 0; bottom: 0; min-width: 4px; border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--primary), var(--accent)); }
+.feats .fbar span { position: absolute; left: 7px; top: 0; line-height: 16px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.feats .kills { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-soft); min-width: 44px; text-align: right; }
+.feats .sup { grid-column: 2 / span 2; font-size: 11px; color: var(--ink-soft); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feats .tag { font-size: 11px; padding: 0 6px; }
+
 @media (max-height: 640px) {
   .screen { gap: 6px; }
   .hero { min-height: 90px; }
   .result-char { height: 64px; }
   .big-stars { font-size: 44px; }
+}
+/* 짧은 화면(아이폰 SE 등): 결과 카드는 위에서부터 쌓고, 넘치면 화면이 아래로 밀린다. 그림과 여백을 줄여 한 화면에 들어오게 한다 */
+@media (max-height: 760px) {
+  .result-card { padding: 10px 12px; }
+  .result-card .verdict { font-size: 40px; }
+  .result-char { height: 56px; margin-bottom: 4px; }
+  .big-stars { font-size: 40px; }
+  .goals { margin-bottom: 5px; gap: 4px; }
+  .goals li { font-size: 12px; padding: 0 7px; }
+  .stats { gap: 4px; }
+  .stats li { padding: 3px 10px; font-size: 15px; }
+  .stats b { font-size: 18px; }
+  .feats { margin-top: 5px; padding: 4px 8px 6px; }
+  .feats ul { gap: 3px; }
+  .feats li img { width: 22px; height: 22px; }
+  .feats li { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .feats .fbar { height: 14px; }
+  .feats .fbar span { line-height: 14px; font-size: 11px; }
+  .result-card .note { margin-top: 5px; }
+  .result .actions { margin-top: 6px; }
+  .result .btn { padding-top: 8px; padding-bottom: 8px; }
+  .squad-faces { margin: 4px 0; }
+  .squad-faces img { width: 36px; height: 36px; }
+}
+/* 아주 짧은 화면: 그림을 빼고, 숫자 세 줄을 한 줄 세 칸으로 */
+@media (max-height: 640px) {
+  .result-char { display: none; }
+  .stats { flex-direction: row; }
+  .stats li { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 0; padding: 2px 4px; font-size: 11px; white-space: nowrap; }
+  .stats b { font-size: 16px; }
+  .stats b small { font-size: 10px; }
 }
 
 /* ---------- 캐릭터 (영구 레벨업 · 공통 강화) ---------- */

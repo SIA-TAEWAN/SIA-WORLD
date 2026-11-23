@@ -1,8 +1,8 @@
 import { BOSS_STUN_MUL } from '../data/balance';
 import { TOWERS, type AttackKind, type TowerLevel } from '../data/characters';
-import { AIM, canTarget, findTarget, hurt, hurtAround, ignite, stunEnemy } from './core';
+import { AIM, AIM_AIR, canTarget, findTarget, hurt, hurtAround, ignite, stunEnemy } from './core';
 import { makePoint, routePos } from './path';
-import { FX, PROJ, addFx, take, type Enemy, type State, type Tower } from './state';
+import { FX, PROJ, addFx, take, type Enemy, type Proj, type State, type Tower } from './state';
 
 /**
  * 공격 방식 표 (data/characters.ts 의 kind). 함수 하나 = 공격 한 번: 사거리 안에 노릴 요괴가 없으면 false 를 돌려주고 아무것도 하지 않는다.
@@ -16,10 +16,20 @@ const LOB_SEC = 0.5;
 const SLOW_SEC = 0.75;
 
 const P = makePoint();
-const aimOf = (char: number) => {
+/** 캐릭터의 기본 조준 (data/characters.ts 의 target. 적지 않았으면 앞쪽) */
+export const defaultAim = (char: number): number => {
   const t = TOWERS[char].target;
   return t === 'strong' ? AIM.strong : t === 'air' ? AIM.air : t === 'weak' ? AIM.weak : AIM.first;
 };
+/** 과녁을 하나 골라 공격하는 캐릭터만 조준을 바꿀 수 있다 (소·양은 둘레 전부, 돼지는 공격하지 않는다) */
+const AIMED: readonly AttackKind[] = ['shot', 'poison', 'melee', 'lob', 'beam', 'pounce'];
+export const canAim = (char: number): boolean => char >= 0 && AIMED.includes(TOWERS[char].kind);
+/** 공중 요괴를 먼저 노리는 캐릭터인가 (조준을 바꿔도 이 제약은 남는다) */
+export const airFirst = (char: number): boolean => defaultAim(char) === AIM.air;
+/** 지금 고른 것으로 보이는 방식: first · strong · weak · last 가운데 하나 (공중 먼저는 '앞쪽'으로 보인다) */
+export const aimMode = (tw: Tower): number => (tw.aim >= 0 ? tw.aim : airFirst(tw.char) ? AIM.first : defaultAim(tw.char));
+/** 이 캐릭터가 과녁을 고르는 방식 (findTarget 의 aim). 고르지 않았으면 기본값 그대로 */
+const aimOf = (tw: Tower): number => (tw.aim < 0 ? defaultAim(tw.char) : airFirst(tw.char) ? tw.aim | AIM_AIR : tw.aim);
 
 function face(s: State, slot: number, tw: Tower, e: Enemy) {
   const dx = e.x - s.slotX[slot];
@@ -43,6 +53,8 @@ function shoot(s: State, slot: number, tw: Tower, target: number, side: number) 
   p.lv = tw.lv - 1;
   p.t = 0;
   p.dur = 0;
+  p.boost = tw.haste;
+  p.boostBy = tw.hasteBy;
 }
 
 /** 던지는 공격 (표창·독·화살·돌·깃털·강아지): 과녁에게 날아가 맞으면 그 캐릭터의 효과를 준다 */
@@ -50,14 +62,14 @@ const shot: Attack = (s, slot, tw, L) => {
   const x = s.slotX[slot];
   const y = s.slotY[slot];
   const def = TOWERS[tw.char];
-  const first = findTarget(s, x, y, L.range, def.air, aimOf(tw.char));
+  const first = findTarget(s, x, y, L.range, def.air, aimOf(tw));
   if (first < 0) return false;
   face(s, slot, tw, s.enemies[first]);
   const n = L.count ?? 1;
   shoot(s, slot, tw, first, n > 1 ? -1 : 0);
   // 둘째부터는 다음 요괴에게 (하나뿐이면 같은 요괴에게)
   for (let k = 1; k < n; k++) {
-    const other = findTarget(s, x, y, L.range, def.air, aimOf(tw.char), s.enemies[first].uid);
+    const other = findTarget(s, x, y, L.range, def.air, aimOf(tw), s.enemies[first].uid);
     shoot(s, slot, tw, other >= 0 ? other : first, 1);
   }
   return true;
@@ -79,18 +91,18 @@ export const ATTACKS: Record<AttackKind, Attack> = {
       const dx = e.x - x;
       const dy = e.y - y;
       if (dx * dx + dy * dy > r2) continue;
-      stunEnemy(e, L.stun ?? 0, BOSS_STUN_MUL);
+      stunEnemy(s, e, L.stun ?? 0, BOSS_STUN_MUL);
       hurt(s, e, L.dmg);
     }
     addFx(s, FX.pulse, x, y, L.range, 0.4);
     return true;
   },
 
-  /** 호랑이: 가장 앞선 요괴를 크게 벤다. splash 가 있으면 그 둘레의 요괴도 함께 */
+  /** 호랑이: 가장 앞선 요괴(조준을 바꿨으면 그 방식의 요괴)를 크게 벤다. splash 가 있으면 그 둘레의 요괴도 함께 */
   melee(s, slot, tw, L) {
     const x = s.slotX[slot];
     const y = s.slotY[slot];
-    const i = findTarget(s, x, y, L.range, false);
+    const i = findTarget(s, x, y, L.range, false, aimOf(tw));
     if (i < 0) return false;
     const e = s.enemies[i];
     face(s, slot, tw, e);
@@ -113,7 +125,7 @@ export const ATTACKS: Record<AttackKind, Attack> = {
   lob(s, slot, tw, L) {
     const x = s.slotX[slot];
     const y = s.slotY[slot];
-    const i = findTarget(s, x, y, L.range, false);
+    const i = findTarget(s, x, y, L.range, false, aimOf(tw));
     if (i < 0) return false;
     const e = s.enemies[i];
     face(s, slot, tw, e);
@@ -135,6 +147,8 @@ export const ATTACKS: Record<AttackKind, Attack> = {
     p.lv = tw.lv - 1;
     p.t = 0;
     p.dur = LOB_SEC;
+    p.boost = tw.haste;
+    p.boostBy = tw.hasteBy;
     return true;
   },
 
@@ -142,7 +156,7 @@ export const ATTACKS: Record<AttackKind, Attack> = {
   beam(s, slot, tw, L) {
     const x = s.slotX[slot];
     const y = s.slotY[slot];
-    const i = findTarget(s, x, y, L.range, true);
+    const i = findTarget(s, x, y, L.range, true, aimOf(tw));
     if (i < 0) return false;
     const t = s.enemies[i];
     face(s, slot, tw, t);
@@ -159,14 +173,14 @@ export const ATTACKS: Record<AttackKind, Attack> = {
       const side = Math.abs((e.x - x) * uy - (e.y - y) * ux);
       if (side > w + e.r) continue;
       hurt(s, e, L.dmg);
-      if (L.burn && e.alive) ignite(e, L.burn, L.burnSec ?? 2);
+      if (L.burn && e.alive) ignite(e, L.burn, L.burnSec ?? 2, tw.char);
     }
     addFx(s, FX.beam, x, y - 10, L.range, 0.22, Math.atan2(uy, ux));
     return true;
   },
 
   /** 양: 사거리 안의 요괴를 느리게 한다 (공중 요괴도). vuln 이 있으면 느려진 동안 피해를 더 받는다 */
-  slow(s, slot, _tw, L) {
+  slow(s, slot, tw, L) {
     const x = s.slotX[slot];
     const y = s.slotY[slot];
     const r2 = L.range * L.range;
@@ -179,9 +193,15 @@ export const ATTACKS: Record<AttackKind, Attack> = {
       if (dx * dx + dy * dy > r2) continue;
       any = true;
       // 더 센 감속이 남는다
-      if (e.slowT <= 0 || (L.slow ?? 1) < e.slow) e.slow = L.slow ?? 1;
+      if (e.slowT <= 0 || (L.slow ?? 1) < e.slow) {
+        e.slow = L.slow ?? 1;
+        e.slowBy = tw.char;
+      }
       e.slowT = SLOW_SEC;
-      if ((L.vuln ?? 0) > e.vuln) e.vuln = L.vuln ?? 0;
+      if ((L.vuln ?? 0) > e.vuln) {
+        e.vuln = L.vuln ?? 0;
+        e.vulnBy = tw.char;
+      }
     }
     if (any) addFx(s, FX.cloud, x, y, L.range, 0.5);
     return any;
@@ -197,7 +217,7 @@ export const ATTACKS: Record<AttackKind, Attack> = {
   pounce(s, slot, tw, L) {
     const x = s.slotX[slot];
     const y = s.slotY[slot];
-    const i = findTarget(s, x, y, L.range, TOWERS[tw.char].air, aimOf(tw.char));
+    const i = findTarget(s, x, y, L.range, TOWERS[tw.char].air, aimOf(tw));
     if (i < 0) return false;
     const e = s.enemies[i];
     face(s, slot, tw, e);
@@ -214,12 +234,12 @@ function land(s: State, e: Enemy, char: number, lv: number, sx: number, sy: numb
   let dmg = L.dmg;
   if (e.boss >= 0 && L.bossMul) dmg *= L.bossMul;
   if (e.air && L.airMul) dmg *= L.airMul;
-  if (L.stun) stunEnemy(e, L.stun, BOSS_STUN_MUL);
+  if (L.stun) stunEnemy(s, e, L.stun, BOSS_STUN_MUL);
   hurt(s, e, dmg, sx, sy);
   if (!L.poison) return;
   // 독: 초당 피해 + 최대 체력에 비례 (보스는 1/4). 3단계는 둘레의 요괴에게도 번진다
   const dur = L.dur ?? 4;
-  const venom = (o: Enemy) => ignite(o, L.poison! + o.maxHp * (L.poisonPct ?? 0) * (o.boss >= 0 || o.look >= 0 ? 0.25 : 1), dur);
+  const venom = (o: Enemy) => ignite(o, L.poison! + o.maxHp * (L.poisonPct ?? 0) * (o.boss >= 0 || o.look >= 0 ? 0.25 : 1), dur, char);
   if (e.alive) venom(e);
   if (L.splash) {
     for (let k = 0; k < s.enemyHi; k++) {
@@ -235,6 +255,17 @@ function land(s: State, e: Enemy, char: number, lv: number, sx: number, sy: numb
 /** 투사체 한 걸음. 다 됐으면(맞았거나 사라졌으면) true */
 export function stepProjectile(s: State, i: number, dt: number): boolean {
   const p = s.projectiles.items[i];
+  // 활약상: 이 투사체가 주는 피해는 던진 캐릭터의 것
+  s.src = p.char;
+  s.srcBoost = p.boost;
+  s.srcBoostBy = p.boostBy;
+  const done = fly(s, p, dt);
+  s.src = -1;
+  s.srcBoost = 0;
+  return done;
+}
+
+function fly(s: State, p: Proj, dt: number): boolean {
   if (p.kind === PROJ.cake) {
     p.t += dt;
     const k = Math.min(1, p.t / p.dur);

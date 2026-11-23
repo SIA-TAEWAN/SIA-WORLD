@@ -3,9 +3,35 @@ import { regionOf } from '../data/regions';
 import { nextStage, stageOf } from '../data/stages';
 import { LIMITS, stageOpen } from '../game/progress';
 import { ROSTER } from '../data/characters';
+import { featScore, supportLine, type Feats } from '../game/feats';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, josa, nav, screen, state, type GameResult } from './app';
 import { sfx } from './sfx';
+
+/**
+ * 활약상: 캐릭터별 피해 막대(가장 큰 값이 꽉 찬다)와 처치 수, 오늘의 일꾼, 지원 기여 한 줄.
+ * 아무도 놓지 않은 판이면 빈 글
+ */
+function featsHtml(f: Feats): string {
+  if (!f.rows.length) return '';
+  const nick = (id: string) => ROSTER.find((x) => x.id === id)?.nick ?? id;
+  const top = Math.max(1, ...f.rows.map((r) => r.dmg));
+  const rows = [...f.rows].sort((a, b) => featScore(b) - featScore(a) || b.kills - a.kills);
+  return `<div class="feats">
+    <h3><span>활약상</span>${f.mvp ? `<b>👑 오늘의 일꾼 ${esc(nick(f.mvp))}</b>` : ''}</h3>
+    <ul>${rows
+      .map((r) => {
+        const sup = supportLine(r);
+        return `<li class="${r.char === f.mvp ? 'mvp' : ''}" aria-label="${esc(nick(r.char))}: 피해 ${r.dmg.toLocaleString()}, 처치 ${r.kills}">
+          <img src="${zodiacFaceUrl(r.char)}" alt="" />
+          <div class="fbar">${r.dmg > 0 ? `<i style="width:${Math.round((r.dmg / top) * 100)}%"></i>` : ""}<span>${r.dmg.toLocaleString()}</span></div>
+          <span class="kills">💀 ${r.kills.toLocaleString()}</span>
+          ${sup ? `<small class="sup">🤝 ${esc(sup)}</small>` : ''}
+        </li>`;
+      })
+      .join('')}</ul>
+  </div>`;
+}
 
 /** 결과 화면: 별 1~3개 · 얻은 엽전 · 첫 클리어 보상 → [다음 스테이지] [다시하기] [메인으로] (PRD 2장) */
 export function showResult(r: GameResult) {
@@ -39,6 +65,7 @@ export function showResult(r: GameResult) {
          <li><span>💀 처치한 요괴</span><b>${r.kills.toLocaleString()}</b></li>
          <li><span>🪙 얻은 엽전</span><b class="coin" id="coins">…</b></li>
        </ul>
+       ${featsHtml(r.feats)}
        <div class="unlocks" id="unlocks"></div>
        <p class="soft note" id="note">결과를 저장하는 중…</p>
      </div>

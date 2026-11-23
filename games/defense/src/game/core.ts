@@ -50,6 +50,7 @@ export function spawnEnemy(s: State, kind: number, boss: number, route: number, 
   e.flash = FLASH_REST;
   e.slowT = e.vuln = e.dotT = e.dot = e.rush = e.seen = e.down = e.gone = e.armor = e.cyc = 0;
   e.slow = 1;
+  e.dotBy = e.slowBy = e.vulnBy = -1;
   e.on = false;
   e.a = e.b = e.c = 0;
   if (boss >= 0) {
@@ -97,8 +98,15 @@ export function canTarget(e: Enemy, air: boolean): boolean {
   return e.alive && e.down <= 0 && e.gone <= 0 && e.armor < 1 && (air || !e.air) && !(e.stealth && e.on && e.seen <= 0);
 }
 
-/** 과녁 고르는 방식: 출구에 가장 가까운 요괴 · 체력이 가장 많은 요괴 · 공중 요괴 먼저 · 남은 체력이 가장 적은 요괴 */
-export const AIM = { first: 0, strong: 1, air: 2, weak: 3 } as const;
+/**
+ * 과녁 고르는 방식: 출구에 가장 가까운 요괴(앞쪽) · 체력이 가장 많은 요괴(강한 놈) · 공중 요괴 먼저 · 남은 체력이 가장 적은 요괴(약한 놈)
+ * · 출구에서 가장 먼 요괴(뒤쪽). air 는 '공중 먼저 + 앞쪽'이다.
+ * AIM_AIR 를 더하면(aim | AIM_AIR) 공중 요괴를 먼저 고르고 그 안에서 그 방식을 따른다 (공중 전담 캐릭터가 조준을 바꿨을 때)
+ */
+export const AIM = { first: 0, strong: 1, air: 2, weak: 3, last: 4 } as const;
+export const AIM_AIR = 8;
+/** 플레이어가 고를 수 있는 방식 (화면의 순서) */
+export const AIM_CHOICES: readonly number[] = [AIM.first, AIM.strong, AIM.weak, AIM.last];
 
 /**
  * (x, y) 에서 사거리 안에 있는, 노릴 수 있는 요괴 가운데 하나 → 요괴 칸 번호 (없으면 -1).
@@ -106,21 +114,27 @@ export const AIM = { first: 0, strong: 1, air: 2, weak: 3 } as const;
  */
 export function findTarget(s: State, x: number, y: number, range: number, air = true, aim = 0, skip = -1): number {
   const r2 = range * range;
+  const airFirst = aim === AIM.air || aim >= AIM_AIR;
+  const mode = aim & (AIM_AIR - 1);
   let best = -1;
   let bestV = Infinity;
+  // 공중 먼저: 공중 요괴(0)가 하나라도 있으면 땅 위 요괴(1)는 고르지 않는다
+  let bestTier = 2;
   for (let i = 0; i < s.enemyHi; i++) {
     const e = s.enemies[i];
     if (e.uid === skip || !canTarget(e, air)) continue;
     const dx = e.x - x;
     const dy = e.y - y;
     if (dx * dx + dy * dy > r2) continue;
-    // 값이 작을수록 먼저: 남은 거리 / (체력이 많을수록 작게) / (공중이면 크게 당긴다)
+    // 값이 작을수록 먼저: 남은 거리 / (체력이 많을수록 작게) / (뒤쪽이면 남은 거리가 클수록 작게)
     let v = s.routes[e.route].len - e.d;
-    if (aim === AIM.strong) v = -e.hp;
+    if (mode === AIM.strong) v = -e.hp;
     // (체력이 같으면 앞선 요괴: 남은 거리를 아주 조금 더한다)
-    else if (aim === AIM.weak) v = e.hp + v * 1e-6;
-    else if (aim === AIM.air && e.air) v -= 1e6;
-    if (v < bestV) {
+    else if (mode === AIM.weak) v = e.hp + v * 1e-6;
+    else if (mode === AIM.last) v = -v;
+    const tier = airFirst && e.air ? 0 : 1;
+    if (tier < bestTier || (tier === bestTier && v < bestV)) {
+      bestTier = tier;
       bestV = v;
       best = i;
     }
@@ -158,6 +172,7 @@ function fall(s: State, e: Enemy) {
   e.alive = false;
   s.enemyN--;
   s.kills++;
+  if (s.src >= 0) s.stats.kills[s.src]++;
   s.energy += e.bounty;
   addFx(s, FX.pop, e.x, e.y, e.r * 1.6, 0.3);
   if (e.boss >= 0) {
@@ -178,6 +193,14 @@ export function hurt(s: State, e: Enemy, dmg: number, fx = NaN, fy = NaN) {
   if (e.slowT > 0 && e.vuln > 0) v *= 1 + e.vuln;
   // 정면 방패: 요괴가 가는 쪽에 있는 캐릭터의 공격은 덜 받는다
   if (e.shield < 1 && fx === fx && (fx - e.x) * e.dx + (fy - e.y) * e.dy > 0) v *= e.shield;
+  // 활약상: 실제로 깎은 체력만 센다 (남은 체력보다 큰 피해는 남은 체력까지)
+  if (s.src >= 0) {
+    const dealt = Math.min(v, e.hp);
+    const st = s.stats;
+    st.dmg[s.src] += dealt;
+    if (s.srcBoost > 0 && s.srcBoostBy >= 0) st.boost[s.srcBoostBy] += (dealt * s.srcBoost) / (1 + s.srcBoost);
+    if (e.slowT > 0 && e.vuln > 0 && e.vulnBy >= 0) st.boost[e.vulnBy] += (dealt * e.vuln) / (1 + e.vuln);
+  }
   e.hp -= v;
   // 맞으면 잠깐 번쩍인다. 집중 공격을 받아도 계속 하얗게 보이지 않게, 번쩍인 뒤 FLASH_GAP 초는 다시 번쩍이지 않는다
   if (e.flash <= FLASH_REST) e.flash = FLASH_ON;
@@ -187,8 +210,14 @@ export function hurt(s: State, e: Enemy, dmg: number, fx = NaN, fy = NaN) {
 /** 독·불: 걸음마다 조금씩. 방패를 무시하고, 번쩍이지 않는다 */
 export function burn(s: State, e: Enemy, dmg: number) {
   if ((e.ghost && e.on) || e.armor >= 1 || e.gone > 0 || e.down > 0) return;
-  e.hp -= dmg * (1 - e.armor);
+  const v = dmg * (1 - e.armor);
+  // 활약상: 독·불을 건 캐릭터의 피해·처치로 센다
+  const was = s.src;
+  s.src = e.dotBy;
+  if (s.src >= 0) s.stats.dmg[s.src] += Math.min(v, e.hp);
+  e.hp -= v;
   if (e.hp <= 0) fall(s, e);
+  s.src = was;
 }
 
 /** (x, y) 둘레 radius 안의 모든 요괴에게 피해 (요괴의 몸 크기만큼 넉넉하게). air: 공중 요괴도 맞나 */
@@ -203,16 +232,20 @@ export function hurtAround(s: State, x: number, y: number, radius: number, dmg: 
   }
 }
 
-/** 독·불을 건다: 초당 dps 로 sec 초 (더 센 것이 남는다) */
-export function ignite(e: Enemy, dps: number, sec: number) {
-  if (e.dotT <= 0 || dps >= e.dot) e.dot = dps;
+/** 독·불을 건다: 초당 dps 로 sec 초 (더 센 것이 남는다). by: 건 캐릭터 (활약상용) */
+export function ignite(e: Enemy, dps: number, sec: number, by = -1) {
+  if (e.dotT <= 0 || dps >= e.dot) {
+    e.dot = dps;
+    e.dotBy = by;
+  }
   if (sec > e.dotT) e.dotT = sec;
 }
 
 /** 멈춘다 (멈춤이 풀린 직후의 요괴는 다시 멈추지 않는다. 보스는 짧게) */
-export function stunEnemy(e: Enemy, sec: number, bossMul: number) {
+export function stunEnemy(s: State, e: Enemy, sec: number, bossMul: number) {
   if (e.stun > 0 || e.guard > 0) return;
   e.stun = sec * (e.boss >= 0 ? bossMul : 1);
+  if (s.src >= 0) s.stats.stun[s.src] += e.stun;
   // 붙잡힌 원혼은 무적이 풀린다 (멈춰 있는 동안과 그 뒤 잠깐은 다친다)
   if (e.ghost && e.on && e.boss < 0 && e.look < 0) {
     e.on = false;

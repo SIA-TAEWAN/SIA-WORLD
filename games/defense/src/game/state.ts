@@ -33,10 +33,29 @@ export type Phase = 'prep' | 'play' | 'clear' | 'fail';
  */
 export interface Cmd {
   tick: number;
-  op: 'start' | 'place' | 'upgrade' | 'sell';
+  op: 'start' | 'place' | 'upgrade' | 'sell' | 'aim';
   slot: number;
+  /** place: 캐릭터 번호 · aim: 조준 방식 (core.ts 의 AIM: first · strong · weak · last) */
   char: number;
 }
+
+/**
+ * 활약상 (결과 화면용. 판의 진행에는 쓰이지 않는다 — 적기만 하고 계산이 읽지 않는다). 모두 캐릭터 번호(TOWERS)별 합계:
+ * dmg 준 피해 · kills 처치 수 · stun 요괴를 멈춘 시간(초) · slow 요괴를 느리게 한 시간(초)
+ * boost 올려 준 피해 (닭: 빨라진 만큼 더 준 피해 · 양: 느려진 동안 더 들어간 피해) · energy 벌어 준 기운 (돼지)
+ */
+export interface RunStats {
+  dmg: number[];
+  kills: number[];
+  stun: number[];
+  slow: number[];
+  boost: number[];
+  energy: number[];
+}
+export const makeStats = (n: number): RunStats => {
+  const z = () => new Array<number>(n).fill(0);
+  return { dmg: z(), kills: z(), stun: z(), slow: z(), boost: z(), energy: z() };
+};
 
 /** 걸음마다 생긴 일 (소리·연출용). a·b·x·y 의 뜻은 종류마다 다르다 */
 export const EV = {
@@ -111,6 +130,10 @@ export interface Enemy {
   /** 독·불: 남은 시간과 초당 피해 */
   dotT: number;
   dot: number;
+  /** 활약상용: 독·불을 건 캐릭터 · 느리게 한 캐릭터 · 피해를 더 받게 한 캐릭터 (TOWERS 번호, 없으면 -1) */
+  dotBy: number;
+  slowBy: number;
+  vulnBy: number;
   /** 다른 요괴가 빠르게 해 주는 시간 (수문장 대장) */
   rush: number;
   /** 회복: 초당 최대 체력 비율 */
@@ -152,8 +175,11 @@ export interface Tower {
   /** 마지막으로 공격한 뒤 흐른 시간 · 그때 겨눈 쪽 (그리기용) */
   since: number;
   face: number;
-  /** 둘레의 닭이 올려 주는 공격 속도 (0.2 = +20%) */
+  /** 둘레의 닭이 올려 주는 공격 속도 (0.2 = +20%) · 올려 주는 캐릭터 (활약상용, 없으면 -1) */
   haste: number;
+  hasteBy: number;
+  /** 플레이어가 고른 조준 방식 (AIM 의 first · strong · weak · last). -1 = 캐릭터의 기본값 그대로 */
+  aim: number;
   /** 쓸 수 없는 시간 (보스가 멈추거나 칸을 태웠다. 빈 칸이면 그동안 놓을 수 없다) */
   off: number;
   /** 공격이 느려진 시간 (저승사자의 표식) */
@@ -182,6 +208,9 @@ export interface Proj {
   /** 던진 뒤 흐른 시간 · 날아가는 시간 (던지는 투사체) */
   t: number;
   dur: number;
+  /** 활약상용: 던질 때 받고 있던 공격 속도 보너스와 그것을 준 캐릭터 */
+  boost: number;
+  boostBy: number;
 }
 
 export const FX = { pulse: 0, slash: 1, burst: 2, pop: 3, leak: 4, beam: 5, cloud: 6, zap: 7, puff: 8 } as const;
@@ -295,15 +324,20 @@ export interface State {
   evN: number;
   /** 지금까지 받은 명령 (다시 돌려 보기·서버 검증용) */
   log: Cmd[];
+  /** 활약상 집계 · 지금 피해를 주고 있는 캐릭터(없으면 -1)와 그 캐릭터가 받는 공격 속도 보너스 */
+  stats: RunStats;
+  src: number;
+  srcBoost: number;
+  srcBoostBy: number;
 }
 
 export const makeEnemy = (): Enemy => ({
   alive: false, uid: 0, kind: 0, boss: -1, look: -1, route: 0, d: 0, seg: 0, x: 0, y: 0, dx: 1, dy: 0, hp: 0, maxHp: 1, speed: 0, mul: 1, r: 0,
-  bounty: 0, leak: 1, air: false, stun: 0, guard: 0, slowT: 0, slow: 1, vuln: 0, dotT: 0, dot: 0, rush: 0, regen: 0, armor: 0, shield: 1,
+  bounty: 0, leak: 1, air: false, stun: 0, guard: 0, slowT: 0, slow: 1, vuln: 0, dotT: 0, dot: 0, dotBy: -1, slowBy: -1, vulnBy: -1, rush: 0, regen: 0, armor: 0, shield: 1,
   cyc: 0, on: false, stealth: false, ghost: false, seen: 0, revive: 0, down: 0, gone: 0, flash: 0, t: 0, a: 0, b: 0, c: 0,
 });
-export const makeTower = (): Tower => ({ char: -1, lv: 0, cd: 0, spent: 0, since: 9, face: 1, haste: 0, off: 0, mark: 0 });
-export const makeProj = (): Proj => ({ kind: 0, x: 0, y: 0, sx: 0, sy: 0, target: -1, uid: 0, tx: 0, ty: 0, speed: 0, char: 0, lv: 0, t: 0, dur: 0 });
+export const makeTower = (): Tower => ({ char: -1, lv: 0, cd: 0, spent: 0, since: 9, face: 1, haste: 0, hasteBy: -1, aim: -1, off: 0, mark: 0 });
+export const makeProj = (): Proj => ({ kind: 0, x: 0, y: 0, sx: 0, sy: 0, target: -1, uid: 0, tx: 0, ty: 0, speed: 0, char: 0, lv: 0, t: 0, dur: 0, boost: 0, boostBy: -1 });
 export const makeFx = (): Fx => ({ kind: 0, x: 0, y: 0, r: 0, a: 0, life: 0, maxLife: 1 });
 export const makeEv = (): Ev => ({ t: 0, a: 0, b: 0, x: 0, y: 0 });
 
