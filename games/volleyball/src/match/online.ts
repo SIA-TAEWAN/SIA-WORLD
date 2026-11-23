@@ -1,6 +1,7 @@
 import { makeAi, aiInput } from '../game/ai';
 import { STEP_MS, WIN_SCORE } from '../game/constants';
 import { setPlayer, step, type Input, type Side, type SimEvent } from '../game/sim';
+import { copyHighlight, packHighlight, tally, unpackHighlight, type Highlight } from '../game/highlight';
 import {
   LINK_WAIT_MS, POS_EVERY, REPREDICT_MAX, SNAP_DIST, SNAP_EVERY, carryOffset, decayOffset, extrapolatePlayer, linkState, makeSnapshot, repredict, snapshotEvents, validPacket,
   validSnapshot, type OwnFrame, type PlayerPacket, type Pos, type Snapshot,
@@ -64,6 +65,8 @@ function validEnd(r: unknown): r is { score: [number, number]; winner: Side } {
  *   그래도 둘 다 이어받았으면 더 늦게 이어받은 쪽(같으면 오른쪽)이 양보한다.
  * - 메시지(모두 n: 경기 번호, from: 보낸 사람): pos(내 캐릭터, 초당 약 30번) · snap(방장 스냅샷) · quit(나감)
  *   · taken(AI가 이어받았음, at: 이어받은 시각) · over(방 채널의 경기 끝 알림, r: 방장이 정한 결과)
+ * - 하이라이트(최장 랠리·최고 가속·터치 수)는 방장이 모은 값이 기준: snap 메시지의 hl 과 over 의 r.hl 로 함께 보내고,
+ *   상대는 받은 값을 그대로 쓴다 (받은 적이 없으면 — 예전 버전 방장 — 자기 기기에서 본 값). AI가 이어받은 뒤에는 남은 기기가 이어서 모은다.
  */
 export class OnlineMatch extends Match {
   private readonly host: boolean;
@@ -107,6 +110,8 @@ export class OnlineMatch extends Match {
   private own = new Map<number, OwnFrame>();
   /** 캐릭터가 공을 친 횟수 [왼쪽, 오른쪽] */
   private hits: [number, number] = [0, 0];
+  /** 상대: 방장이 보낸 최신 하이라이트 (받은 적 없으면 null) */
+  private hostHl: Highlight | null = null;
   /** 상대: 내 기기가 미리 낸 타격 소리 (방장 확인을 기다리는 틱) */
   private guessed: [number[], number[]] = [[], []];
   /** 화면에 보이는 자리와 계산 자리의 차이 (조금씩 줄인다) */
@@ -154,6 +159,18 @@ export class OnlineMatch extends Match {
     this.phase = 'over';
   }
 
+  /** 하이라이트: 방장은 자기가 모은 값, 상대는 방장이 보낸 값 (없으면 자기 기기에서 본 값 + 방장이 센 타격 수) */
+  highlight(): Highlight {
+    if (this.host || this.solo) return copyHighlight(this.hl);
+    if (this.hostHl) return copyHighlight(this.hostHl);
+    return { longest: this.hl.longest, maxStage: this.hl.maxStage, touches: [this.hits[0], this.hits[1]] };
+  }
+
+  /** 방장: 스냅샷 메시지 (하이라이트를 함께 싣는다) */
+  private snapMsg(s: Snapshot): NetMsg {
+    return { t: 'snap', s, hl: packHighlight(this.hl) };
+  }
+
   private get oppSide(): Side {
     return this.mySide === 0 ? 1 : 0;
   }
@@ -174,7 +191,7 @@ export class OnlineMatch extends Match {
       // 방장: 경기가 끝난 뒤에도 상대가 계속 소식을 보내면 끝 스냅샷을 못 받은 것 → 다시 보낸다
       if (this.host && m.t === 'pos' && this.finalSnap && now - this.lastReplyMs >= END_REPLY_MS) {
         this.lastReplyMs = now;
-        this.send({ t: 'snap', s: this.finalSnap });
+        this.send(this.snapMsg(this.finalSnap));
       }
       return;
     }
@@ -195,6 +212,7 @@ export class OnlineMatch extends Match {
       // 방 채널의 '경기 끝' 알림 (상대가 보냄). 오른쪽: 끝 스냅샷을 못 받았어도 방장이 정한 결과로 끝낸다
       if (this.host || this.solo) return;
       if (validEnd(m.r)) {
+        this.hostHl = unpackHighlight((m.r as { hl?: unknown }).hl) ?? this.hostHl;
         this.state.score = [m.r.score[0], m.r.score[1]];
         this.state.winner = m.r.winner;
         this.state.phase = 'over';
@@ -218,6 +236,10 @@ export class OnlineMatch extends Match {
       }
     } else if (m.t === 'snap' && !this.host) {
       this.lastHeard = now;
+      // 하이라이트는 늘기만 하는 값이라 순서가 뒤바뀌어 온 옛 소식은 버린다
+      const hl = unpackHighlight(m.hl);
+      const old = this.hostHl;
+      if (hl && (!old || (hl.longest >= old.longest && hl.touches[0] + hl.touches[1] >= old.touches[0] + old.touches[1]))) this.hostHl = hl;
       if (validSnapshot(m.s) && (!this.pending || m.s.tick >= this.pending.tick)) this.pending = m.s;
     }
   }
@@ -314,7 +336,7 @@ export class OnlineMatch extends Match {
     this.lastSentIn = inKey(this.input);
     if (this.host) {
       this.stats.sentSnap++;
-      this.send({ t: 'snap', s: makeSnapshot(this.state, this.input, this.hits) });
+      this.send(this.snapMsg(makeSnapshot(this.state, this.input, this.hits)));
     } else {
       this.stats.sentPos++;
       const k: PlayerPacket = { tick: this.done, p: { ...this.state.players[1] }, in: { ...this.input } };
@@ -342,6 +364,7 @@ export class OnlineMatch extends Match {
     this.savePrev();
     const evs: SimEvent[] = [];
     step(s, [this.input, remoteIn], evs);
+    tally(this.hl, s, evs);
     this.done++;
     this.decay();
     let important = inKey(this.input) !== this.lastSentIn;
@@ -354,7 +377,7 @@ export class OnlineMatch extends Match {
     if (s.phase === 'over') {
       // 끝 스냅샷은 몇 번 더 보낸다. 그래도 못 받은 상대가 소식을 보내오면 그때마다 다시 보낸다 (onMsg)
       this.finalSnap = makeSnapshot(s, this.input, this.hits);
-      for (const ms of [250, 700]) this.endTimers.push(setTimeout(() => this.disposed || this.send({ t: 'snap', s: this.finalSnap }), ms));
+      for (const ms of [250, 700]) this.endTimers.push(setTimeout(() => this.disposed || !this.finalSnap || this.send(this.snapMsg(this.finalSnap)), ms));
       this.finish('normal', s.winner as Side);
     }
   }
@@ -368,6 +391,8 @@ export class OnlineMatch extends Match {
     this.savePrev();
     const evs: SimEvent[] = [];
     step(s, [this.hostIn, this.input], evs);
+    // 방장 값을 못 받았을 때만 쓰는 값 (터치 수는 방장이 센 hits 를 쓴다)
+    tally(this.hl, s);
     this.done++;
     this.decay();
     // 점수·서브·가속·끝은 방장 스냅샷으로만 알린다. 여기서는 소리·이펙트가 필요한 것만
@@ -443,6 +468,8 @@ export class OnlineMatch extends Match {
   private takeover(now: number) {
     if (this.solo || this.phase === 'over') return;
     const opp = this.oppSide;
+    // 하이라이트: 지금까지의 값(상대 기기였으면 방장이 보낸 값)에서 이어서 이 기기가 모은다
+    this.hl = this.highlight();
     this.solo = true;
     this.takenAt = now;
     this.frozen = false;
@@ -482,7 +509,9 @@ export class OnlineMatch extends Match {
     for (; n > 0 && this.phase === 'play'; n--) {
       this.savePrev();
       const other = this.ai ? aiInput(this.ai, s) : { left: false, right: false, jump: false };
+      const from = this.events.length;
       step(s, this.mySide === 0 ? [this.input, other] : [other, this.input], this.events as SimEvent[]);
+      tally(this.hl, s, this.events, from);
       this.done++;
       if (s.phase === 'over') this.finish('leave', s.winner as Side, opp);
     }

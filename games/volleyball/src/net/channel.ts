@@ -5,6 +5,12 @@ export interface Member<M> {
   meta: M;
 }
 
+/**
+ * 방 채널로 오가는 메시지. t = 종류:
+ * - 방(net/room.ts): start · over · hello · state
+ * - 경기(match/online.ts, n: 경기 번호): pos · snap(hl: 하이라이트) · quit · taken
+ * - 이모티콘(game/emote.ts EmoteMsg): emo { from, i } — 경기 중·결과 화면에서 상대 캐릭터 위 말풍선
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type NetMsg = { t: string; [k: string]: any };
 
