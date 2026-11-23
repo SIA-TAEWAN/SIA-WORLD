@@ -92,12 +92,12 @@ export function showGame(setup: GameSetup) {
   // 판 시작을 서버에 알린다 (해금 확인 + 시작 시각). 못 알렸으면 이 판은 기록되지 않는다 (플레이는 할 수 있다)
   const api = state.api;
   const started: Promise<string | null> = api
-    ? api.start(setup.map, setup.char, setup.startAt ?? 0, setup.mode ?? 'normal').catch((e) => {
+    ? api.start(setup.map, setup.char, setup.startAt ?? 0, setup.mode ?? 'normal', !!setup.daily).catch((e) => {
         if (e instanceof ApiError) {
           // 잠긴 캐릭터·맵·무한 모드: 출전 준비로 돌아간다
           toast(whyText(e));
           // 답이 오기 전에 다른 화면(결과 등)으로 갔으면 끌고 가지 않는다
-          if (root.isConnected && !ended) nav.select();
+          if (root.isConnected && !ended) (setup.daily ? nav.daily : nav.select)();
         }
         return null;
       })
@@ -120,7 +120,7 @@ export function showGame(setup: GameSetup) {
       <div class="xp"><i id="xpFill"></i><b id="lv">Lv 1</b></div>
       <div class="hud-row">
         <div class="owned" id="owned"></div>
-        <div class="hud-mid">${s.endless ? '<span class="mode-tag">♾️ 무한 모드</span>' : s.hell ? '<span class="mode-tag hell">🔥 헬</span>' : ''}<b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
+        <div class="hud-mid">${setup.daily ? '<span class="mode-tag">📅 오늘의 도전</span>' : s.endless ? '<span class="mode-tag">♾️ 무한 모드</span>' : s.hell ? '<span class="mode-tag hell">🔥 헬</span>' : ''}<b class="clock" id="clock">0:00</b><span class="counts"><span id="kills">💀 0</span><span id="coins">🪙 0</span></span><span class="norec hidden" id="norec">기록되지 않는 판</span></div>
         <div class="hud-btns"><button class="icon-btn speed" id="speed"></button><button class="icon-btn" id="pause" aria-label="일시정지">⏸</button></div>
       </div>
       <div class="bossbar hidden" id="bossbar"><span id="bossName"></span><div class="track"><i id="bossFill"></i></div></div>

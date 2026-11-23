@@ -101,6 +101,9 @@ em > .ico { margin: 0 auto; }
 .hero .hero-foe.f4 { right: 34%; top: 1%; height: 22%; scale: -1 1; animation-delay: -0.2s; }
 @keyframes imp-walk { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(10px) rotate(6deg); } }
 .main-actions { display: flex; flex-direction: column; gap: 10px; flex: none; }
+/* 오늘의 도전 들어가기 (출전 아래 한 줄) */
+.btn.daily-go { flex-wrap: wrap; gap: 2px 8px; padding: 7px 12px; }
+.btn.daily-go small { font-size: 13px; color: var(--ink-soft); }
 .sub-actions { display: flex; gap: 8px; }
 .sub-actions .btn { flex: 1; padding-left: 6px; padding-right: 6px; }
 .foot { text-align: center; margin: 0; color: var(--ink); }
@@ -393,6 +396,8 @@ em > .ico { margin: 0 auto; }
 .stats b.coin { color: var(--accent); }
 .result-card .note { text-align: center; margin: 10px 0 0; }
 .result-card h2 .tag.endless { background: var(--outline); vertical-align: 2px; }
+.result-card h2 .tag.daily { background: var(--team-a); vertical-align: 2px; }
+.rank-gap small { font-size: 13px; color: var(--ink-soft); }
 /* 헬 판의 결과: 어두운 갈색 머리띠 + 분홍 테, 아래에서 불씨가 올라온다 */
 .result-card h2 .tag.hell { background: var(--pink); border: var(--line-thin) solid var(--outline); vertical-align: 2px; }
 .result-card.hell { overflow: hidden; box-shadow: inset 0 0 0 3px var(--pink), 0 var(--depth-big) 0 var(--outline); background: linear-gradient(color-mix(in srgb, var(--outline) 90%, var(--pink)) 0, color-mix(in srgb, var(--outline) 72%, var(--pink)) 170px, var(--panel) 171px); }
@@ -434,6 +439,42 @@ em > .ico { margin: 0 auto; }
 .cheer { position: absolute; left: 0; right: 0; top: 0; height: 100%; pointer-events: none; overflow: hidden; }
 .cheer i { position: absolute; top: -12px; width: 10px; height: 10px; animation: fall 2.4s linear forwards; }
 @keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
+
+/* ---------- 오늘의 도전 ---------- */
+.daily .bar h2 { white-space: nowrap; }
+.daily .bar h2 + .spacer { flex-basis: 40px; }
+.daily-cond { display: flex; flex-direction: column; gap: 8px; }
+.daily-cond > p { margin: 0; text-align: center; }
+.daily-head { display: flex; align-items: center; gap: 10px; }
+.daily-head img { flex: none; width: 64px; height: 64px; border-radius: 50%; border: var(--line) solid var(--outline); background: var(--white); object-fit: cover; }
+.daily-head > div { flex: 1; min-width: 0; }
+.daily-head .tag { background: var(--team-a); }
+.daily-head h3 { margin: 2px 0 0; font-size: var(--fs-panel); overflow-wrap: anywhere; }
+.daily-head p { margin: 0; }
+.daily-rules { list-style: none; margin: 0; padding: 6px 10px; display: flex; flex-direction: column; gap: 3px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); font-size: 13px; color: var(--ink); }
+.daily-rules li::before { content: '· '; color: var(--accent); }
+/* 순위: 목록만 스크롤되고 아래 [도전 ▶]은 늘 보인다 */
+.daily > .daily-rank { flex: 0 1 auto; min-height: 96px; display: flex; flex-direction: column; overflow: hidden; }
+.daily-rank h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex: none; }
+.daily-rank h3 small { font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
+.daily-rank h3 small b { font-weight: normal; color: var(--accent); }
+.daily-rank .empty { margin: 4px 0; text-align: center; }
+.daily-rows { list-style: none; margin: 0; padding: 0 2px 2px 0; display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.daily-rows li { flex: none; display: flex; align-items: center; gap: 6px; background: var(--white); border: var(--line-thin) solid var(--line-soft); border-radius: var(--radius-item); padding: 4px 8px; font-size: 15px; }
+.daily-rows li.me { border-color: var(--outline); background: var(--primary-light); }
+.daily-rows li.gap { justify-content: center; background: none; border: 0; padding: 0; line-height: 0.8; color: var(--ink-soft); }
+.daily-rows i { flex: none; width: 1.7em; text-align: center; font-style: normal; font-variant-numeric: tabular-nums; }
+.daily-rows span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.daily-rows em.tag { flex: none; font-style: normal; background: var(--win); }
+.daily-rows b { flex: none; font-weight: normal; font-variant-numeric: tabular-nums; }
+.daily-rows small { flex: none; min-width: 4.6em; text-align: right; font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.daily > .btn.big { flex: none; }
+@media (max-height: 640px) {
+  .daily-head img { width: 48px; height: 48px; }
+  .daily-rules { font-size: 12px; padding: 4px 8px; gap: 1px; }
+  .daily-cond { gap: 6px; padding: 8px 10px; }
+  .daily-rows li { padding: 2px 8px; font-size: 14px; }
+}
 
 @media (max-height: 640px) {
   .screen { gap: 6px; }

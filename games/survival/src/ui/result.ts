@@ -6,6 +6,9 @@ import { PASSIVES, PASSIVE_INDEX } from '../data/passives';
 import { damageShares, type RunBuild } from '../game/build';
 import { LOCAL_MODE } from '../net/api';
 import { loadRankGap, type RankGap } from '../net/rank';
+import { loadDailyRank } from '../net/daily';
+import { dailyScore } from '../game/daily';
+import { startDaily } from './daily';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { icon } from './icons';
 import { esc, mmss, nav, screen, state, type GameResult } from './app';
@@ -56,7 +59,9 @@ export function showResult(r: GameResult) {
   const hell = isHell(r);
   // 무한 모드에는 클리어가 없다: 생존 시간 · 처치 수 · 새 기록만 보여 준다
   const title = r.cleared ? (hell ? '헬 클리어!' : '클리어!') : r.quit ? '그만뒀어요' : '게임 오버';
-  const modeTag = endless ? ' <span class="tag endless">♾️ 무한 모드</span>' : hell ? ' <span class="tag hell">🔥 헬 모드</span>' : '';
+  /** 오늘의 도전 판이면 그 날짜 */
+  const daily = r.setup.daily;
+  const modeTag = daily ? ' <span class="tag daily">📅 오늘의 도전</span>' : endless ? ' <span class="tag endless">♾️ 무한 모드</span>' : hell ? ' <span class="tag hell">🔥 헬 모드</span>' : '';
   const capped = endless && r.coins >= endlessCoinCap(r.map);
   const root = screen(
     `<div class="result-card ${r.cleared ? 'won' : 'lost'}${hell ? ' hell' : ''}">
@@ -77,7 +82,7 @@ export function showResult(r: GameResult) {
      </div>
      <div class="actions">
        <button class="btn" id="home">메인으로</button>
-       <button class="btn" id="upgrade">⚒️ 강화하러 가기</button>
+       ${daily ? '<button class="btn" id="dailyRank">📅 오늘 순위</button>' : '<button class="btn" id="upgrade">⚒️ 강화하러 가기</button>'}
      </div>
      <button class="btn primary big" id="again">다시하기 ▶</button>
      ${r.cleared ? '<div class="cheer" id="cheer"></div>' : ''}`,
@@ -112,7 +117,23 @@ export function showResult(r: GameResult) {
   void r.saved.then((s) => {
     if (!root.isConnected) return;
     // 같은 맵·모드 랭킹에서 내 바로 위 사람과의 차이 (저장이 끝난 뒤의 랭킹으로. 못 읽으면 조용히 숨긴다. 테스트 모드에는 랭킹이 없다)
-    if (!LOCAL_MODE && s !== 'rejected') {
+    if (daily) {
+      // 오늘의 도전: 맵별 랭킹 대신 오늘 순위에서 내 자리 (저장이 끝난 뒤의 순위로. 못 읽으면 조용히 숨긴다)
+      const el = root.querySelector('#gap') as HTMLElement;
+      if (LOCAL_MODE) {
+        el.innerHTML = `📅 오늘의 점수 <b>${dailyScore(r).toLocaleString()}</b> · 테스트 모드에는 순위가 없어요`;
+        el.classList.remove('hidden');
+      } else if (typeof s === 'object') {
+        const day = s.daily?.day ?? daily;
+        const improved = s.daily?.improved === true;
+        void loadDailyRank(day).then((rk) => {
+          if (!rk?.mine || !root.isConnected) return;
+          const place = `<b>${rk.mine.place.toLocaleString()}위</b> <small>(${rk.total.toLocaleString()}명 도전)</small>`;
+          el.innerHTML = improved ? `📅 오늘 ${place}${s.daily?.first ? '' : ' · 오늘 내 최고 기록!'}` : `📅 오늘 내 최고 기록은 ${place}`;
+          el.classList.remove('hidden');
+        });
+      }
+    } else if (!LOCAL_MODE && s !== 'rejected') {
       void loadRankGap(r.map, state.user.id, r.mode ?? 'normal').then((g) => {
         const el = root.querySelector('#gap');
         if (!g || !el || !root.isConnected) return;
@@ -129,6 +150,10 @@ export function showResult(r: GameResult) {
         ? '기록이 정상 범위를 벗어나 랭킹에는 오르지 않아요'
         : s.lowKills
           ? '요괴를 너무 적게 잡은 판이라 기록과 엽전에 들어가지 않았어요'
+          : daily
+          ? s.daily || LOCAL_MODE
+            ? '오늘의 도전 기록은 오늘 순위에만 남아요. 몇 번이든 다시 도전할 수 있어요'
+            : '너무 늦게 올라간 판이라 오늘 순위에는 들어가지 않았어요'
           : capped
           ? `무한 모드는 한 판에 ${endlessCoinCap(r.map).toLocaleString()}닢까지 받아요`
           : hell
@@ -153,11 +178,17 @@ export function showResult(r: GameResult) {
   root.querySelector('#again')!.addEventListener('click', () => {
     sfx('click');
     // 같은 캐릭터·맵·모드로 새 판 (개발용 설정도 그대로, 시드만 새로)
+    // 오늘의 도전은 같은 조건(시드도 같다)으로. 자정이 지났으면 새 날의 도전 화면으로 간다
+    if (daily) return void startDaily(daily);
     nav.game({ ...r.setup, seed: undefined });
   });
-  root.querySelector('#upgrade')!.addEventListener('click', () => {
+  root.querySelector('#upgrade')?.addEventListener('click', () => {
     sfx('click');
     nav.upgrade();
+  });
+  root.querySelector('#dailyRank')?.addEventListener('click', () => {
+    sfx('click');
+    nav.daily();
   });
   root.querySelector('#home')!.addEventListener('click', () => {
     sfx('click');

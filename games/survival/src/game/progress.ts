@@ -75,6 +75,11 @@ export interface FinishResult {
   newRecord: boolean;
   unlockedCharacters: CharId[];
   unlockedMaps: string[];
+  /**
+   * 오늘의 도전 판이 그날 순위에 들어갔을 때만 (084 의 survival_finish): 넣은 날짜 · 내 오늘 기록을 넘었나 · 오늘 첫 기록인가.
+   * 오늘의 도전이 아니거나 순위에 넣지 않은 판(비정상·처치 수 하한 미달·너무 늦게 올린 판)은 없다
+   */
+  daily?: { day: string; improved: boolean; first: boolean } | null;
 }
 
 /** 판 검증 값. SQL의 _survival_const (055_survival_hell.sql) 와 같아야 한다 (열쇠 이름은 SQL 이름을 그대로 쓴다) */
@@ -303,6 +308,8 @@ export function applyRun(
   now: number,
   endless: Record<string, EndlessRecord> = {},
   hell: Record<string, HellRecord> = {},
+  /** 오늘의 도전 판인가 (084): 맵별 기록·다음 맵 해금·시간/클리어 조건 해금·최고 생존 시간에 넣지 않는다. 엽전·누적·도감은 4분 모드와 같다 */
+  daily = false,
 ): { profile: SurvivalProfile; records: Record<string, SurvivalRecord>; endless: Record<string, EndlessRecord>; hell: Record<string, HellRecord>; result: FinishResult } {
   const inf = isEndless(run);
   const hel = isHell(run);
@@ -326,7 +333,7 @@ export function applyRun(
 
   p.totals.kills += run.kills;
   p.totals.cakes += run.cakes;
-  if (!inf && !hel) p.totals.bestTime = Math.max(p.totals.bestTime, run.time);
+  if (!inf && !hel && !daily) p.totals.bestTime = Math.max(p.totals.bestTime, run.time);
   p.totals.bossKills += run.bossKills;
   p.totals.clears += run.cleared ? 1 : 0;
   p.totals.runs += 1;
@@ -342,17 +349,20 @@ export function applyRun(
       hl[run.map] = { time: run.time, kills: run.kills, cleared: run.cleared, character: run.character, at: now };
       result.newRecord = true;
     }
+  } else if (daily) {
+    // 오늘의 도전은 맵별 기록에 넣지 않는다 (그날 순위에만 남는다)
   } else if (betterRecord(run, rec[run.map])) {
     rec[run.map] = { time: run.time, kills: run.kills, cleared: run.cleared, character: run.character, at: now };
     result.newRecord = true;
   }
   for (const c of CHARACTERS) {
     if (p.unlockedCharacters.includes(c.id) || !characterEarned(c.id, run, p.totals)) continue;
+    if (daily && (c.unlock.kind === 'time' || c.unlock.kind === 'clear')) continue;
     p.unlockedCharacters.push(c.id);
     result.unlockedCharacters.push(c.id);
   }
   // 다음 맵 해금: 4분 모드로 클리어했을 때만 (헬 모드의 클리어는 해금에 쓰지 않는다)
-  if (run.cleared && !hel) {
+  if (run.cleared && !hel && !daily) {
     const next = MAPS[(MAP_INDEX[run.map] ?? 0) + 1];
     if (next && !p.unlockedMaps.includes(next.id)) {
       p.unlockedMaps.push(next.id);

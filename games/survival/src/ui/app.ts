@@ -21,6 +21,8 @@ export interface GameSetup {
   upg?: number;
   startAt?: number;
   seed?: number;
+  /** 오늘의 도전 판이면 그 날짜 'YYYY-MM-DD' (맵·캐릭터·시드·강화 단계는 game/daily.ts 가 날짜에서 만든 값) */
+  daily?: string;
 }
 
 /** 결과 화면에 넘기는 것 */
@@ -102,6 +104,8 @@ export const nav = {
   upgrade: () => {},
   /** 도감 */
   codex: () => {},
+  /** 오늘의 도전 */
+  daily: () => {},
   game: (_setup: GameSetup) => {},
   result: (_result: GameResult) => {},
 };

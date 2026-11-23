@@ -4,6 +4,7 @@ import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { LOBBY_MAX, LobbyFullError, SurvivalLobby } from './net/lobby';
 import { loadChar, loadEngine, nav, refreshOwned, screen, setProfile, state, toast } from './ui/app';
 import { showCodex } from './ui/codex';
+import { showDaily } from './ui/daily';
 import { showCharSelect, showMain, showMapSelect } from './ui/menus';
 import { showResult } from './ui/result';
 import { showUpgrade } from './ui/upgrade';
@@ -13,6 +14,7 @@ nav.select = showCharSelect;
 nav.maps = showMapSelect;
 nav.upgrade = showUpgrade;
 nav.codex = showCodex;
+nav.daily = showDaily;
 // 개발용 테스트 설정(?upg=10&t=120)은 메뉴에서 시작한 판에도 그대로 적용한다
 const dev = devSetup();
 /** 게임 엔진 묶음을 받는 중인가 (그동안 시작 버튼을 여러 번 눌러도 판은 한 번만 시작한다) */
@@ -24,7 +26,8 @@ nav.game = (setup) => {
   void state.api?.resend().catch(() => 0);
   void loadEngine()
     .then(
-      (m) => m.showGame({ ...setup, upg: setup.upg ?? dev?.upg ?? undefined, startAt: setup.startAt ?? (dev?.t || undefined) }),
+      // 오늘의 도전은 조건이 정해진 판이라 개발용 설정을 얹지 않는다
+      (m) => m.showGame(setup.daily ? setup : { ...setup, upg: setup.upg ?? dev?.upg ?? undefined, startAt: setup.startAt ?? (dev?.t || undefined) }),
       () => toast('게임을 불러오지 못했어요. 다시 눌러 주세요', 3200),
     )
     .finally(() => (starting = false));
