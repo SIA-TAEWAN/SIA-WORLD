@@ -1,4 +1,4 @@
-// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 · 시아레이스 · 시아배구 · 시아서바이벌 공용).
+// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 · 시아레이스 · 시아배구 · 시아서바이벌 · 시아열두길 공용).
 //
 // - 소리는 ZzFX 방식(코드로 파형을 만든다, MIT · Frank Force)으로 만든다. 외부 파일 없음.
 // - shared/sounds/<이름>.ogg 또는 .mp3 파일을 넣으면 그 소리를 처음 낼 때 확인해서 파일로 바꿔 쓴다.
@@ -81,10 +81,17 @@ export const SOUNDS = {
   survBossWarn: [0.7, 0, 196, 0.03, 0.3, 0.3, 2, 1.2, 0, 0, -40, 0.15, 0.15],
   survBossDown: [0.9, 0.05, 110, 0.01, 0.2, 0.6, 4, 2.2, -0.2, 0, 0, 0, 0, 1.8],
   survChest: [0.6, 0, 880, 0.01, 0.1, 0.3, 1, 1.5, 0, 0, 440, 0.06, 0.06],
+  // 시아열두길 (베기 · 활 · 마법 · 피격 · 레어 드랍 · 레벨업. 나머지는 서바이벌·공통 소리를 같이 쓴다)
+  twelveSlash: [0.45, 0.05, 760, 0, 0.015, 0.09, 4, 2.4, -14, 0, 0, 0, 0, 1.6],
+  twelveBow: [0.45, 0.03, 330, 0, 0.01, 0.11, 1, 1.8, 22, 0, 0, 0, 0, 0.3],
+  twelveMagic: [0.4, 0.03, 620, 0.01, 0.05, 0.16, 0, 1.2, 9, 0, 310, 0.04, 0, 0, 30],
+  twelveHurt: [0.75, 0.05, 150, 0, 0.04, 0.2, 2, 1.6, -3, 0, 0, 0, 0, 0.9],
+  twelveRare: [0.65, 0, 784, 0.01, 0.14, 0.45, 1, 1.6, 0, 0, 392, 0.07, 0.07],
+  twelveLevel: [0.65, 0, 523, 0.02, 0.2, 0.4, 1, 1.5, 6, 0, 262, 0.08, 0.08],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150 };
+const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 

@@ -22,7 +22,8 @@
   - 공격 예고(분홍 범위가 차오름), 베기 자국, 화살·창·구슬·불, 번개, 화살 비·회오리·독안개 범위, 체력 바, 출구(동그라미 + 🔒/🚪), 숨은 상자(🎁), 바라보는 방향 세모.
   - 피해 숫자: 숫자 10개를 캔버스에 한 번 그려 BitmapText 로 찍는다.
 - **버튼 그림**: 글자 그림(이모지) — 무기 🗡️🔱🏹🪭, 스킬·고유 스킬 아이콘은 `data/weapons.ts` · `data/heroes.ts` 의 `icon`.
-- **소리**: 공용 `shared/sound.js` 의 기존 효과음만 쓴다 (survSlash · survShot · survPop · survHurt · survBossWarn · survBossDown · survChest · survLevel · tankHeal · tankBoom · boost · jump · goal · newRecord · fold · win · lose · click 등). 새 소리는 9단계.
+- **소리**: 공용 `shared/sound.js` 에 열두길 소리 6개를 더했다(9단계, ZzFX 방식 — 다른 게임의 소리는 그대로): `twelveSlash`(칼·창 베기) · `twelveBow`(활) · `twelveMagic`(부채 구슬) · `twelveHurt`(피격) · `twelveRare`(레어·열쇠 드랍) · `twelveLevel`(결과 화면의 레벨 업). 나머지는 기존 소리(survShot · survPop · survBossWarn · survBossDown · survChest · survLevel · tankHeal · tankBoom · tankLaser · boost · jump · goal · newRecord · fold · coin · click 등). `tests/sound.test.ts` 가 쓰는 이름이 모두 목록에 있는지 본다. `shared/sounds/<이름>.ogg|.mp3` 를 넣으면 그 파일로 바뀐다.
+- **진동**: 피격 30ms · 레어 드랍 40-40-80ms (`app.ts` 의 `hooks.hurt` · `hooks.rare`, 설정의 진동을 끄면 없음. 아이폰 사파리는 `navigator.vibrate` 가 없어 아무 일도 없다).
 
 - **로비 카드**: `shared/images/card-twelve.png` (640×400) 는 기존 그림(대원 셋 · 1지형 요괴·보스 · 들판 바닥)을 모아 `scripts/make-card.py` 로 만든 임시 그림이다. 다른 게임 카드처럼 한 장면으로 그린 전용 그림이 필요하다 (아래 표).
 - **끝없는 탑**: 전용 그림 없음. 층의 지형(10층마다 바뀐다)에 맞는 바닥·요괴·보스 그림을 그대로 쓴다.

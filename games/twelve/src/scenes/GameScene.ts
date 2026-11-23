@@ -242,7 +242,7 @@ export class GameScene extends Phaser.Scene {
           break;
         case 'hurt':
           this.number(ev.x, ev.y, ev.n, COLOR.pink, 1.1);
-          this.sfx('survHurt', 150);
+          this.sfx('twelveHurt', 150);
           this.shake = 0.18;
           this.hooks.hurt();
           break;
@@ -275,7 +275,7 @@ export class GameScene extends Phaser.Scene {
           } else this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
           if (rare) {
             // 레어·열쇠: 빛기둥 + 특별한 소리 + 진동 (PRD '드랍 보이기')
-            this.sfx('newRecord', 0, { rate: 1.5 });
+            this.sfx('twelveRare', 0);
             this.hooks.rare();
             this.hooks.note(`✨ ${dropName(ev.drop)}!`);
           }

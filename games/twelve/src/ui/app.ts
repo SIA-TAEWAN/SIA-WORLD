@@ -1016,7 +1016,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
         ${ending ? `<button class="btn primary big" id="ending">이야기 계속 ▶</button>` : nextOk ? `<button class="btn primary big" id="next">${next!.final ? '최종보스로 ▶' : '다음 맵 ▶'}</button>` : ''}
         ${ending ? '' : `<button class="btn ${nextOk ? '' : 'primary big'}" id="again">${win ? '다시 하기' : '다시 도전'}</button><button class="btn" id="rest">쉼터로</button>`}
       </div></div>`);
-  if (r?.ups) play('survLevel');
+  if (r?.ups) play('twelveLevel');
   on(box, '#ending', () => (s.mode === 'hard' ? showTrueEnding(showMain) : showEnding(showMain)));
   on(box, '#next', () => (next!.final ? showFinal() : void startMap(next!, 0)));
   on(box, '#again', () => void startMap(map, win ? 0 : deaths + 1));
