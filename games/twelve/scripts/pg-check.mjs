@@ -91,9 +91,10 @@ const finish = async (u, run, report) => (await as(u, 'select public.twelve_fini
 /** 판 시작 시각을 sec 초 앞으로 (시간이 지난 것처럼) · 끝난 판을 하루 전으로 (다음 판과 겹치지 않게) */
 const ago = (run, sec) => su(`update public.twelve_runs set started_at = now() - make_interval(secs => $2) where id = $1`, [run, sec]);
 const old = (run) => su(`update public.twelve_runs set started_at = started_at - interval '1 day', finished_at = finished_at - interval '1 day' where id = $1`, [run]);
-const R = (o = {}) => ({ time: 100, cleared: true, kills: { imp: 39 }, elites: 0, boss: false, chest: true, deaths: 0, potions: null, ...o });
-
 const expect = JSON.parse(readFileSync(join(pgDir, 'expect.json'), 'utf8').replace(/^﻿/, ''));
+/** 1-1 의 꼬마 도깨비 수 (맵을 다시 만들면 바뀐다 — 기대값의 첫 판에서 읽는다). 1-1 은 Lv1 맵이라 한 마리에 경험치 4 */
+const IMP = expect.steps[0].report.kills.imp;
+const R = (o = {}) => ({ time: 100, cleared: true, kills: { imp: IMP }, elites: 0, boss: false, chest: true, deaths: 0, potions: null, ...o });
 const u1 = await signUp('twelveone', '열두1');
 const u2 = await signUp('twelvetwo', '열두2');
 const u3 = await signUp('twelvethree', '열두3');
@@ -150,7 +151,7 @@ await as(u1, `select public.twelve_set_hero('rat')`);
   await rejects(finish(u1, a.run, R()), 'no run', '남의 판');
   await rejects(finish(u2, '00000000-0000-0000-0000-000000000000', R()), 'no run', '없는 판');
   await ago(a.run, 200);
-  await rejects(finish(u2, a.run, R({ kills: { imp: 40 } })), 'bad kills', '최대치를 넘는 처치 수');
+  await rejects(finish(u2, a.run, R({ kills: { imp: IMP + 1 } })), 'bad kills', '최대치를 넘는 처치 수');
   await rejects(finish(u2, a.run, R({ kills: { club: 1 } })), 'bad kills', '그 맵에 없는 요괴');
   await rejects(finish(u2, a.run, R({ kills: { imp: 1.5 } })), 'bad kills', '정수가 아닌 처치 수');
   await rejects(finish(u2, a.run, R({ kills: [1] })), 'bad kills', '모양이 다른 처치 수');
@@ -160,11 +161,11 @@ await as(u1, `select public.twelve_set_hero('rat')`);
   await rejects(finish(u2, a.run, R({ time: 3601 })), 'bad time', '너무 긴 판');
   await rejects(finish(u2, a.run, R({ time: 'x' })), 'bad result', '숫자가 아닌 시간');
   await rejects(finish(u2, a.run, { cleared: true }), 'bad result', '값이 빠짐');
-  await rejects(finish(u2, a.run, R({ kills: { imp: 20 } })), 'bad result', '요괴 70% 를 안 잡고 클리어');
+  await rejects(finish(u2, a.run, R({ kills: { imp: Math.floor(IMP / 2) } })), 'bad result', '요괴 70% 를 안 잡고 클리어');
   await rejects(finish(u2, a.run, R({ potions: [[1, 0], [0, 0, 0]] })), 'bad potions', '모양이 다른 물약');
   await rejects(finish(u2, a.run, R({ potions: [[99, 0, 0], [0, 0, 0]] })), 'bad potions', '너무 많은 물약');
   const j = await finish(u2, a.run, R());
-  ok(j.result.exp === 39 * 4 && j.result.first === true && j.result.stars === 7, `1-1 클리어: 경험치 ${j.result.exp} · 별 ${j.result.stars}`);
+  ok(j.result.exp === IMP * 4 && j.result.first === true && j.result.stars === 7, `1-1 클리어: 경험치 ${j.result.exp} · 별 ${j.result.stars}`);
   ok(j.result.siaCoin === true, '100초 판 → 시아코인');
   eq((await su('select sia_coins from public.wallets where user_id = $1', [u2]))[0].sia_coins, 1, '지갑 시아코인 +1');
   eq((await su(`select count(*)::int as n from public.sia_coin_logs where game = 'twelve' and ref = $1`, [a.run]))[0].n, 1, "sia_coin_logs ('twelve', 판 번호)");
@@ -191,7 +192,7 @@ await as(u1, `select public.twelve_set_hero('rat')`);
   await ago(d.run, 200);
   const jd = await finish(u2, d.run, R());
   ok(jd.result.siaCoin === false, 'Lv16 이 권장 Lv1 맵을 깨면 시아코인 없음');
-  ok(jd.result.exp === Math.floor((39 * 4 * 25) / 100), `레벨 차이 10 이상 → 경험치 25% (${jd.result.exp})`);
+  ok(jd.result.exp === Math.floor((IMP * 4 * 25) / 100), `레벨 차이 10 이상 → 경험치 25% (${jd.result.exp})`);
 }
 
 // ---------- 기기 규칙과 맞춰 보기 (u1) ----------

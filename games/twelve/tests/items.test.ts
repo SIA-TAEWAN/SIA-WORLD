@@ -98,7 +98,7 @@ describe('드랍 판정', () => {
     }
   });
 
-  it('확률이 드랍 표와 맞는다 (일반 요괴: 물약 5% · 일반 장비 3%)', () => {
+  it('확률이 드랍 표와 맞는다 (일반 요괴: 물약 2.5% · 일반 장비 1.2%)', () => {
     let potion = 0;
     let gear = 0;
     const N = 40000;
@@ -108,10 +108,12 @@ describe('드랍 판정', () => {
         else gear++;
       }
     }
-    expect(potion / N).toBeGreaterThan(0.042);
-    expect(potion / N).toBeLessThan(0.058);
-    expect(gear / N).toBeGreaterThan(0.024);
-    expect(gear / N).toBeLessThan(0.036);
+    expect(DROP.potion).toBe(250);
+    expect(DROP.gear).toBe(120);
+    expect(potion / N).toBeGreaterThan(0.021);
+    expect(potion / N).toBeLessThan(0.029);
+    expect(gear / N).toBeGreaterThan(0.0095);
+    expect(gear / N).toBeLessThan(0.0145);
     expect(DROP.potion + DROP.gear).toBeLessThan(10000);
   });
 

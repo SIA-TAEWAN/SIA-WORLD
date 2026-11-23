@@ -871,6 +871,37 @@ function showBag(back: () => void) {
 }
 
 /** 상점: 물약 · 일반 장비 · 가방 늘리기 / 팔기 (PRD '마을·상점·대장간') */
+/**
+ * 한꺼번에 정리할 장비: 일반 무기·방어구만 (가방이 금방 차지 않게).
+ * 착용·잠금·레어·장신구·강화한 것은 두고, 무기는 종류마다 가장 좋은 것 하나씩도 남긴다 (다른 무기를 써 볼 수 있게).
+ */
+function spareItems(): Item[] {
+  const keep = new Set<string>();
+  for (const k of WEAPON_KINDS) {
+    const best = profile.items.filter((it) => itemDef(it.base)?.kind === k).sort((a, b) => itemStats(itemDef(b.base)!, b.plus).atk - itemStats(itemDef(a.base)!, a.plus).atk)[0];
+    if (best) keep.add(best.id);
+  }
+  return profile.items.filter((it) => {
+    const d = itemDef(it.base);
+    return !!d && !d.rare && d.slot !== 'acc' && !it.plus && !it.lock && !isEquipped(profile, it.id) && !keep.has(it.id);
+  });
+}
+/** 한꺼번에 팔기·분해: 한 번 더 묻고 한다 */
+function bulk(kind: 'sell' | 'scrap', after: () => void) {
+  const list = spareItems();
+  if (!list.length) return;
+  const gain = list.reduce((n, it) => n + (kind === 'sell' ? itemDef(it.base)!.sell : scrapOf(itemDef(it.base)!, it.plus)), 0);
+  const box = overlay(`<div class="card pop"><h3>일반 장비 ${list.length}개를 모두 ${kind === 'sell' ? '팔까요' : '분해할까요'}?</h3>
+    <p class="soft center">${kind === 'sell' ? `🪙 엽전 ${gain.toLocaleString()}` : `💎 강화석 ${gain}`}을(를) 받아요.<br/>착용 중인 것, 🔒 잠근 것, 레어, 장신구, 강화한 장비와<br/>종류마다 가장 좋은 무기 하나씩은 그대로 둬요</p>
+    <button class="btn primary" id="yes">모두 ${kind === 'sell' ? '팔기' : '분해'}</button><button class="btn" id="no">그만두기</button></div>`);
+  on(box, '#no', () => box.remove());
+  on(box, '#yes', () => {
+    box.remove();
+    const ids = list.map((it) => it.id);
+    void act(() => (kind === 'sell' ? api.sell(ids) : api.scrap(ids)), after, 'coin');
+  });
+}
+
 function showShop(region: number, tab: 'buy' | 'sell' = 'buy') {
   const top = shopTier(profile);
   const back = () => showRegion(region);
@@ -906,7 +937,9 @@ function showShop(region: number, tab: 'buy' | 'sell' = 'buy') {
       <div class="card"><h3>가방</h3>${bagRow}</div>`;
   } else {
     const list = profile.items.filter((it) => !isEquipped(profile, it.id));
-    body = `<div class="card"><h3>팔 장비 고르기 <small>착용 중인 것과 🔒 잠근 것은 팔 수 없어요</small></h3>${grid(list, '팔 장비가 없어요')}</div>`;
+    const spare = spareItems();
+    body = `<div class="card"><h3>팔 장비 고르기 <small>착용 중인 것과 🔒 잠근 것은 팔 수 없어요</small></h3>${grid(list, '팔 장비가 없어요')}
+      <button class="btn small bulk" id="bulk" ${spare.length ? '' : 'disabled'}>🧹 일반 장비 모두 팔기${spare.length ? ` (${spare.length}개 · 🪙 ${spare.reduce((n, it) => n + itemDef(it.base)!.sell, 0).toLocaleString()})` : ''}</button></div>`;
   }
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 쉼터</button><h2>🛒 상점</h2><div class="pills">${coinsPill()}</div></div>
@@ -918,6 +951,7 @@ function showShop(region: number, tab: 'buy' | 'sell' = 'buy') {
   on(root, '[data-tab]', (el) => showShop(region, el.dataset.tab as 'buy' | 'sell'));
   on(root, '[data-buy]', (el) => void act(() => api.buy(el.dataset.buy!, Number(el.dataset.n)), redraw, 'coin'));
   on(root, '[data-id]', (el) => itemPopup(el.dataset.id!, 'sell', redraw));
+  on(root, '#bulk', () => bulk('sell', redraw));
 }
 
 /** 대장간: 강화(+1~+9, 항상 성공) · 분해(→ 강화석) */
@@ -926,9 +960,11 @@ function showSmith(region: number) {
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 쉼터</button><h2>⚒️ 대장간</h2><div class="pills">${stonesPill()}${coinsPill()}</div></div>
     <div class="card"><h3>장비 고르기 <small>강화는 엽전 + 강화석, 항상 성공해요</small></h3>${grid(profile.items, '장비가 없어요')}
-      <p class="soft">+${MAX_PLUS}까지 올리면 다음 등급 일반 장비와 비슷해져요. 안 쓰는 장비는 분해해서 강화석으로 바꿔요 (강화한 단계마다 +1)</p></div>`,
+      <p class="soft">+${MAX_PLUS}까지 올리면 다음 등급 일반 장비와 비슷해져요. 안 쓰는 장비는 분해해서 강화석으로 바꿔요 (강화한 단계마다 +1)</p>
+      <button class="btn small bulk" id="bulk" ${spareItems().length ? '' : 'disabled'}>🧹 일반 장비 모두 분해${spareItems().length ? ` (${spareItems().length}개 · 💎 ${spareItems().reduce((n, it) => n + scrapOf(itemDef(it.base)!, it.plus), 0)})` : ''}</button></div>`,
     `bg-${regionOf(region).ground}`,
   );
   on(root, '#back', () => showRegion(region));
   on(root, '[data-id]', (el) => itemPopup(el.dataset.id!, 'smith', redraw));
+  on(root, '#bulk', () => bulk('scrap', redraw));
 }

@@ -21,6 +21,8 @@ export const POTION_CD = 3;
 /** 마력이 저절로 차는 양 (초당, 최대 마력의 비율) */
 export const MP_REGEN = 0.03;
 export const CRIT_MUL = 1.5;
+/** 마력이 모자랄 때 부채 기본 공격의 피해 배율 (스킬을 쓰면 마력이 늘 바닥이라, 너무 낮으면 부채만 약해진다) */
+export const NO_MP_MUL = 0.8;
 /** 조준 보정: 바라보는 쪽 ±half 안에서 가장 가까운 요괴를 향한다 */
 export const AIM_HALF = 1.05;
 /** 요괴 무리가 깨어나는 거리 */

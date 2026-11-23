@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { POTION_CD, skillLevelMul } from '../src/data/balance';
+import { NO_MP_MUL, POTION_CD, skillLevelMul } from '../src/data/balance';
 import { POTION } from '../src/data/economy';
 
 const POTION_HEAL = { hp: POTION.heal[0][0], mp: POTION.heal[1][0] };
@@ -124,16 +124,32 @@ describe('창', () => {
 });
 
 describe('활', () => {
-  it('쏘기: 멀리 있는 요괴 하나를 맞히고 사라진다', () => {
-    const s = run(arena({ groups: [group(8, 5, 'imp', 2)] }), { weapon: 'bow' });
+  it('쏘기: 멀리 있는 요괴 하나를 뚫고 둘째까지 맞힌 뒤 사라진다', () => {
+    const s = run(arena({ groups: [group(8, 5, 'imp', 3)] }), { weapon: 'bow' });
     const near = dummy(s, 0, 0, -300);
     const behind = dummy(s, 1, 0, -400);
+    const last = dummy(s, 2, 0, -500);
     step(s, { ...noInput(), attack: true });
     expect(lost(near)).toBe(0); // 날아가는 중
+    expect(s.events.some((v) => v.e === 'fx')).toBe(false); // 붙은 요괴가 없으면 활대를 휘두르지 않는다
     play(s, 1);
     expect(lost(near)).toBeGreaterThan(0);
-    expect(lost(behind)).toBe(0);
+    expect(lost(behind)).toBeGreaterThan(0);
+    expect(lost(last)).toBe(0);
     expect(s.shots.every((sh) => !sh.on)).toBe(true);
+  });
+
+  it.each(['bow', 'fan'] as const)('%s: 바짝 붙은 요괴는 밀쳐 낸다 (근접 약점 보완)', (weapon) => {
+    const s = run(arena({ groups: [group(8, 5, 'imp', 2)] }), { weapon });
+    const close = dummy(s, 0, 0, -60);
+    const far = dummy(s, 1, 0, -200);
+    const y0 = close.y;
+    step(s, { ...noInput(), attack: true });
+    expect(s.events.some((v) => v.e === 'fx')).toBe(true);
+    expect(lost(close)).toBeGreaterThan(0);
+    expect(lost(far)).toBe(0); // 멀리 있는 요괴는 밀쳐 내기에 맞지 않는다 (화살·구슬은 아직 날아가는 중)
+    play(s, 0.3);
+    expect(y0 - close.y).toBeGreaterThan(60);
   });
 
   it('화살은 벽에서 멈춘다', () => {
@@ -178,7 +194,7 @@ describe('부채', () => {
     s.p.atkCd = 0;
     s.seed = 99; // 치명타가 섞이지 않게 같은 흐름으로 다시
     step(s, { ...noInput(), attack: true });
-    expect(s.shots.find((sh) => sh.on)!.mul).toBeCloseTo(1.2 * 0.6);
+    expect(Math.min(...s.shots.filter((sh) => sh.on).map((sh) => sh.mul))).toBeCloseTo(1.3 * NO_MP_MUL);
   });
 
   it('회오리바람: 요괴를 가운데로 끌어당긴다', () => {

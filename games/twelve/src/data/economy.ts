@@ -63,9 +63,9 @@ export const WEAPON_FX: readonly FxId[] = ['burn', 'twin', 'leech', 'ice', 'thri
 // ---------- 드랍 (PRD 드랍 표. 확률은 1/10000 단위 — SQL 과 같은 정수 비교) ----------
 
 export const DROP = {
-  /** 일반 요괴: 물약 5% · 일반 장비 3% */
-  potion: 500,
-  gear: 300,
+  /** 일반 요괴: 물약 2.5% · 일반 장비 1.2% (PRD 초안은 5% · 3% — 맵마다 요괴가 100마리쯤이라 가방이 금방 차서 npm run pace 로 낮췄다) */
+  potion: 250,
+  gear: 120,
   /** 정예: 강화석 30% · 장신구 5% · 레어 1% */
   eliteStone: 3000,
   eliteAcc: 500,
@@ -93,14 +93,14 @@ export const bagPrice = (size: number) => {
 // ---------- 상점 · 대장간 ----------
 
 /** 일반 무기·방어구 값 */
-export const buyPrice = (tier: number) => 50 * (tier + 1) * (tier + 1);
+export const buyPrice = (tier: number) => 300 * (tier + 1) * (tier + 1);
 /** 파는 값 = 그 등급 일반 장비 값의 비율 (%) */
-export const SELL_PCT = { normal: 25, rare: 60, acc: 30 } as const;
+export const SELL_PCT = { normal: 10, rare: 40, acc: 15 } as const;
 export const sellPrice = (tier: number, kind: keyof typeof SELL_PCT) => Math.floor((buyPrice(tier) * SELL_PCT[kind]) / 100);
 /** 분해해서 받는 강화석: 1 + 등급÷2 (레어 +3 + 등급÷2), 강화한 단계마다 +1 */
 export const scrapStones = (tier: number, rare: boolean) => 1 + Math.floor(tier / 2) + (rare ? 3 + Math.floor(tier / 2) : 0);
 /** 강화: +(n-1) → +n 의 값 (항상 성공) */
-export const enhanceCost = (tier: number, n: number) => ({ coins: 30 * (tier + 1) * n, stones: Math.ceil(n / 2) + Math.floor(tier / 3) });
+export const enhanceCost = (tier: number, n: number) => ({ coins: 60 * (tier + 1) * n, stones: Math.ceil(n / 2) + Math.floor(tier / 3) });
 
 /** 물약 소·중·대: 회복량(최대치의 비율) · 값 */
 export const POTION_SIZES = 3;
@@ -111,8 +111,8 @@ export const POTION = {
     [0.5, 0.8, 1],
   ],
   price: [
-    [15, 60, 200],
-    [15, 60, 200],
+    [20, 80, 240],
+    [20, 80, 240],
   ],
   /** 종류마다 가질 수 있는 수 */
   max: 20,

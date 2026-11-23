@@ -56,10 +56,14 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     ],
   },
   bow: {
-    kind: 'bow', name: '활', icon: '🏹', desc: '멀리 한 발씩 쏜다', aim: 560,
+    kind: 'bow', name: '활', icon: '🏹', desc: '멀리 쏜다. 바짝 붙은 요괴는 활대로 밀쳐 낸다', aim: 560,
     basic: {
-      name: '쏘기', desc: '멀리 한 발', icon: '🏹', mp: 0, cd: 0.8, sound: 'survShot',
-      acts: [{ t: 'shot', n: 1, spread: 0, speed: 840, range: 660, radius: 11, mul: 1.55, pierce: 0, look: 'arrow', kb: 60 }],
+      name: '쏘기', desc: '멀리 한 발 (하나를 뚫는다) + 붙은 요괴 밀쳐 내기', icon: '🏹', mp: 0, cd: 0.7, sound: 'survShot',
+      acts: [
+        { t: 'shot', n: 1, spread: 0, speed: 840, range: 660, radius: 11, mul: 1.55, pierce: 1, look: 'arrow', kb: 60 },
+        // 근접 약점 보완: 바짝 붙은 요괴를 활대로 밀쳐 낸다 (거리를 벌려 다시 쏠 수 있게)
+        { t: 'hit', shape: { k: 'arc', r: 84, half: 1.15 }, mul: 0.5, kb: 240, quiet: true },
+      ],
     },
     skills: [
       { name: '화살 비', desc: '요괴가 있는 자리에 화살이 쏟아진다', icon: '🌧️', mp: 18, cd: 8, sound: 'survShot', acts: [{ t: 'zone', look: 'rain', ahead: 300, aim: 540, r: 150, dur: 2.4, tick: 0.4, mul: 0.75 }] },
@@ -70,10 +74,14 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     ],
   },
   fan: {
-    kind: 'fan', name: '부채', icon: '🪭', desc: '마법 구슬을 날린다 (마력 조금)', aim: 480,
+    kind: 'fan', name: '부채', icon: '🪭', desc: '마법 구슬을 날린다 (마력 조금). 바짝 붙은 요괴는 부채 바람으로 밀어 낸다', aim: 480,
     basic: {
-      name: '구슬', desc: '작은 마법 구슬', icon: '🪭', mp: 1, cd: 0.5, sound: 'survShot',
-      acts: [{ t: 'shot', n: 1, spread: 0, speed: 560, range: 520, radius: 15, mul: 1.2, pierce: 0, look: 'orb', kb: 50 }],
+      name: '구슬', desc: '작은 마법 구슬 (하나를 뚫는다) + 붙은 요괴 밀어 내기', icon: '🪭', mp: 1, cd: 0.5, sound: 'survShot',
+      acts: [
+        { t: 'shot', n: 1, spread: 0, speed: 640, range: 540, radius: 16, mul: 1.3, pierce: 1, look: 'orb', kb: 70 },
+        // 근접 약점 보완: 부채 바람 (넓게 밀어 낸다)
+        { t: 'hit', shape: { k: 'arc', r: 92, half: 1.3 }, mul: 0.45, kb: 220, quiet: true },
+      ],
     },
     skills: [
       { name: '회오리바람', desc: '요괴를 끌어당기며 벤다', icon: '🌪️', mp: 18, cd: 9, sound: 'boost', acts: [{ t: 'zone', look: 'wind', ahead: 240, aim: 420, r: 175, dur: 3, tick: 0.5, mul: 0.55, pull: 150 }] },

@@ -27,7 +27,7 @@ export const GROWTH_TARGETS = [
 ] as const;
 
 /** 경험치 곡선: 레벨 n → n+1 에 필요한 경험치 = round(base × n^pow + add). 바꾸면 npm run sqlgen (서버 _twelve_levels 표) */
-export const EXP_CURVE = { base: 30, pow: 1.55, add: 20 };
+export const EXP_CURVE = { base: 154, pow: 1.4, add: 0 };
 export const expNeed = (level: number) => (level >= MAX_LEVEL ? 0 : Math.round(EXP_CURVE.base * Math.pow(level, EXP_CURVE.pow) + EXP_CURVE.add));
 
 /** 경험치를 더한 뒤의 레벨·경험치 */

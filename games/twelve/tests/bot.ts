@@ -24,6 +24,25 @@ function flow(s: RunState, tx: number, ty: number): Int16Array {
   return d;
 }
 
+/** (x, y) 에서 (tx, ty) 까지 벽이 없는지 (활·부채가 쏠 수 있는 자리인지) */
+function sees(s: RunState, x: number, y: number, tx: number, ty: number): boolean {
+  const d = Math.hypot(tx - x, ty - y) || 1;
+  const n = Math.ceil(d / (TILE * 0.15));
+  // 모서리를 스치는 길은 막힌 것으로 본다 (양옆 16px 도 본다)
+  const ox = (-(ty - y) / d) * 16;
+  const oy = ((tx - x) / d) * 16;
+  for (let i = 1; i < n; i++) {
+    const px = x + ((tx - x) * i) / n;
+    const py = y + ((ty - y) * i) / n;
+    for (const k of [-1, 0, 1]) {
+      const cx = Math.floor((px + ox * k) / TILE);
+      const cy = Math.floor((py + oy * k) / TILE);
+      if (s.grid[cy * s.cols + cx] === 1) return false;
+    }
+  }
+  return true;
+}
+
 export interface BotResult {
   phase: RunState['phase'];
   time: number;
@@ -81,17 +100,26 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
     const dx = gx - p.x;
     const dy = gy - p.y;
     const d = Math.hypot(dx, dy) || 1;
-    const close = fight && best < (s.weapon.kind === 'sword' ? 85 : 140);
+    // 칼·창은 붙어서, 활·부채는 떨어져서 싸운다 (조준 거리의 절반쯤에서 멈춰 쏜다)
+    const ranged = s.weapon.kind === 'bow' || s.weapon.kind === 'fan';
+    const close = fight && best < (ranged ? s.weapon.aim * 0.55 : s.weapon.kind === 'sword' ? 85 : 140) && (!ranged || sees(s, p.x, p.y, tx, ty));
     inp.mx = close ? 0 : dx / d;
     inp.my = close ? 0 : dy / d;
     inp.attack = fight && best < s.weapon.aim + 40;
-    inp.skill[0] = fight && best < 200 && p.skillCd[0] <= 0;
-    inp.skill[1] = fight && best < 200 && p.skillCd[1] <= 0;
+    const skillRange = ranged ? s.weapon.aim * 0.8 : 200;
+    inp.skill[0] = fight && best < skillRange && p.skillCd[0] <= 0;
+    inp.skill[1] = fight && best < skillRange && p.skillCd[1] <= 0;
     inp.unique = fight && best < 200 && p.uniqueCd <= 0;
     inp.potion[0] = p.hp < s.stats.hp * 0.45;
     inp.potion[1] = p.mp < s.stats.mp * 0.2;
     // 빨간 범위 안에 서 있고 곧 터지면 범위 밖으로 구른다
     inp.roll = false;
+    // 활·부채: 요괴가 바짝 붙으면 반대쪽으로 굴러 거리를 벌린다
+    if (ranged && fight && best < 90 && p.rollCd <= 0) {
+      inp.roll = true;
+      inp.mx = -(tx - p.x) / (best || 1);
+      inp.my = -(ty - p.y) / (best || 1);
+    }
     for (const w of s.warns) {
       if (w.delay > 0 || w.shape === 'none' || w.t > 0.3) continue;
       const wd = Math.hypot(p.x - w.x, p.y - w.y);
@@ -102,6 +130,24 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
         const ay = w.shape === 'line' ? Math.cos(w.ang) : (p.y - w.y) / (wd || 1);
         inp.mx = ax || 1;
         inp.my = ay;
+      }
+    }
+    // 날아오는 불: 곧 맞을 것 같으면 옆으로 비킨다 (구를 수 있으면 구른다)
+    if (!inp.roll) {
+      for (const sh of s.shots) {
+        if (!sh.on || !sh.foe) continue;
+        const rx = p.x - sh.x;
+        const ry = p.y - sh.y;
+        const v = Math.hypot(sh.vx, sh.vy) || 1;
+        const along = (rx * sh.vx + ry * sh.vy) / v;
+        if (along < 0 || along > 100) continue;
+        const side = (rx * sh.vy - ry * sh.vx) / v;
+        if (Math.abs(side) > 36) continue;
+        const sgn = side >= 0 ? 1 : -1;
+        inp.mx = (sh.vy / v) * sgn;
+        inp.my = (-sh.vx / v) * sgn;
+        inp.roll = along < 60 && p.rollCd <= 0;
+        break;
       }
     }
     step(s, inp);

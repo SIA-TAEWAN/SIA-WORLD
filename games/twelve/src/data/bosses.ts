@@ -57,7 +57,7 @@ const BASE_MOVES: BossMove[] = [
 const HARD_MOVES: BossMove[] = [{ t: 'slam', r: 130, warn: 0.75, mul: 1.1, count: 3, gap: 0.45 }];
 
 const B = (id: BossId, name: string, size: number, summon: EnemyKind, lines: string[], over: Partial<BossDef> = {}): BossDef => ({
-  id, name, art: `b-${id}`, size, r: 62, hp: 2200, atk: 16, speed: 85, gap: 1.5,
+  id, name, art: `b-${id}`, size, r: 62, hp: 2900, atk: 16, speed: 85, gap: 1.5,
   moves: BASE_MOVES, hardMoves: HARD_MOVES, summonAt: [0.66, 0.33], summon: { kind: summon, n: 3 }, exp: 150, coin: 80, lines, last: '', ...over,
 });
 
@@ -67,7 +67,7 @@ export const BOSSES: Record<BossId, BossDef> = {
   // 2지형: 진흙 덩이를 여기저기 던지고, 두 번 이어 찍는다 (느리지만 아프다)
   dueoksini: B('dueoksini', '두억시니', 190, 'mud', ['누가 내 논두렁을 밟느냐.', '진흙에 발이 묶이면 끝이다.', '납작하게 눌러 주마!'], {
     last: '논이… 다 말라 버리겠구나…',
-    hp: 2500, atk: 17, speed: 70, gap: 1.7,
+    hp: 3250, atk: 17, speed: 70, gap: 1.7,
     moves: [
       { t: 'barrage', n: 5, r: 105, spread: 260, warn: 1.0, mul: 1.1, gap: 0.14 },
       { t: 'slam', r: 160, warn: 0.9, mul: 1.3, count: 2, gap: 0.6 },
@@ -80,7 +80,7 @@ export const BOSSES: Record<BossId, BossDef> = {
   // 3지형: 쇠가시를 사방으로 뻗고, 빠르게 연달아 돌진한다
   bulgasal: B('bulgasal', '불가살', 200, 'wisp', ['쇠란 쇠는 다 내 밥이다.', '네 칼도 맛있어 보이는구나.', '죽지 않는 몸을 벨 수 있겠느냐?'], {
     last: '이 몸이… 부서지다니…',
-    hp: 2400, atk: 17, speed: 105, gap: 1.3,
+    hp: 3100, atk: 17, speed: 105, gap: 1.3,
     moves: [
       { t: 'cross', n: 4, len: 520, w: 90, warn: 0.9, mul: 1.2 },
       { t: 'charge', len: 640, w: 120, warn: 0.7, mul: 1.3 },

@@ -6,9 +6,13 @@
  * 같은 (지형, 맵 번호)는 늘 같은 맵이 나온다. `npm run gen` 이 src/data/maps/rNN.ts 를 다시 쓴다.
  */
 import { MAP_W } from './balance';
-import { ENEMIES, type EnemyKind } from './enemies';
+import { BOSSES } from './bosses';
+import { regionTier } from './economy';
+import { ELITE, ENEMIES, type EnemyKind } from './enemies';
+import { baseStats } from './growth';
 import type { Cell, GroupDef, MapDef } from './maps';
-import { MAPS_PER_REGION, mapId, regionOf } from './regions';
+import { MAPS_PER_REGION, mapId, mapScale, regionOf } from './regions';
+import { tierAtk } from './weapons';
 
 type Piece = string[];
 
@@ -292,7 +296,7 @@ export interface RegionGen {
   extra?: Piece[];
 }
 
-const DEFAULT_ROOMS = [7, 8, 9, 9, 10, 10, 11, 4];
+const DEFAULT_ROOMS = [12, 12, 12, 13, 13, 13, 13, 6];
 export const REGION_GEN: Partial<Record<number, RegionGen>> = {
   1: { names: ['들머리', '풀숲 길', '물웅덩이 길', '여우불 언덕', '방망이 고개', '갈대밭', '도깨비 터 앞', '큰 도깨비의 놀이터'], rooms: DEFAULT_ROOMS },
   2: { names: ['논두렁 길', '물꼬 옆', '허수아비 밭', '진흙 벌판', '죽순 둑', '모내기 논', '두억시니 굴 앞', '두억시니의 논'], rooms: DEFAULT_ROOMS, extra: PADDY },
@@ -308,7 +312,7 @@ export const kindsAt = (region: number, no: number): EnemyKind[] => {
 export const elitesAt = (no: number) => (no < 3 ? 0 : no <= 5 ? 1 : no <= 7 ? 2 : 1);
 
 function makeGroup(at: Cell, kinds: EnemyKind[], no: number, rand: () => number): GroupDef {
-  const size = 3 + Math.floor(no / 2) + (rand() < 0.4 ? 1 : 0) - (rand() < 0.25 ? 1 : 0);
+  const size = 4 + Math.floor((no - 1) / 3) + (rand() < 0.4 ? 1 : 0) - (rand() < 0.25 ? 1 : 0);
   const counts = new Map<EnemyKind, number>();
   for (let i = 0; i < Math.max(2, size); i++) {
     // 첫 요괴(그 지형의 기본 요괴)가 가장 흔하다. 내려찍기·원거리 요괴는 한 무리에 둘까지
@@ -318,6 +322,27 @@ function makeGroup(at: Cell, kinds: EnemyKind[], no: number, rand: () => number)
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }
   return { at, list: kinds.filter((k) => counts.has(k)).map((k) => [k, counts.get(k)!]) };
+}
+
+/**
+ * 별 기준 시간 (PRD '맵 별 3개' — 시간 안에 깨기). 권장 레벨 +2 · 그 지형 등급 무기로 싸울 때 걸리는 시간을
+ * 길이(줄 수)와 '때려야 하는 횟수'(요괴 체력 ÷ 내 공격력)로 어림하고 여유를 둔다. 계수는 npm run pace 의 자동 조종 시간에 맞췄다
+ * (PACE_PAR=1 npm run pace 가 맵마다 별 시간 ÷ 사람이 깬 시간을 보여 준다 — 1.2~1.5 가 되게).
+ */
+export const PAR = { base: 0, row: 0.9, hit: 0.18, bossHit: 0.48, slack: 1.5 };
+export function parHits(region: number, no: number, groups: GroupDef[], boss: boolean): { hits: number; bossHits: number } {
+  const sc = mapScale(region, no, 'normal');
+  const atk = baseStats(sc.level + 2).atk + tierAtk(regionTier(region, 'normal'));
+  let hp = 0;
+  for (const g of groups) {
+    for (const [k, n] of g.list) hp += ENEMIES[k].hp * n * (1 + (ENEMIES[k].split ? ENEMIES[k].split!.n * ENEMIES[k].split!.hp : 0));
+    if (g.elite) hp += ENEMIES[g.elite].hp * ELITE.hp;
+  }
+  return { hits: (hp * sc.hp) / atk, bossHits: boss ? (BOSSES[regionOf(region).boss].hp * sc.hp) / atk : 0 };
+}
+export function parOf(region: number, no: number, rows: number, groups: GroupDef[], boss: boolean): number {
+  const h = parHits(region, no, groups, boss);
+  return Math.round(((PAR.base + PAR.row * rows + PAR.hit * h.hits + PAR.bossHit * h.bossHits) * PAR.slack) / 10) * 10;
 }
 
 export function generateMap(region: number, no: number): MapDef {
@@ -383,9 +408,7 @@ export function generateMap(region: number, no: number): MapDef {
     groups[Math.min(groups.length - 1, idx)].elite = kinds[kinds.length - 1];
   }
 
-  // 별 기준 시간: 요괴 수에 맞춘다 (자동 조종이 깨는 시간의 2~3배쯤)
-  const enemies = groups.reduce((a, g) => a + g.list.reduce((b, [, n]) => b + n, 0) + (g.elite ? 3 : 0), 0);
-  const par = Math.round((50 + enemies * 3.2 + (boss ? 120 : 0)) / 10) * 10;
+  const par = parOf(region, no, rows.length, groups, boss);
   return { id: mapId(region, no), region, no, name: gen?.names[no - 1] ?? `${regionOf(region).name} ${no}`, rows, start, exit, chest, groups, ...(bossAt ? { boss: bossAt } : {}), par };
 }
 

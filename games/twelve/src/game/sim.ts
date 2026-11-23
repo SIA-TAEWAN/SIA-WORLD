@@ -14,6 +14,7 @@ import {
   HURT_INVULN,
   MAP_W,
   MP_REGEN,
+  NO_MP_MUL,
   PLAYER_R,
   POTION_CD,
   ROLL,
@@ -794,12 +795,17 @@ function runAct(s: RunState, act: Act, power: number) {
   const ang = Math.atan2(p.fy, p.fx);
   switch (act.t) {
     case 'hit': {
-      p.swing = 0.18;
-      push(s, { e: 'fx', shape: act.shape, x: p.x, y: p.y, ang });
+      let hits = 0;
       for (const e of s.enemies) {
         // 잠든 요괴도 맞으면 깨어난다
         if (e.dead || Math.abs(e.x - p.x) > 450 || Math.abs(e.y - p.y) > 450) continue;
-        if (inShape(act.shape, p.x, p.y, ang, e.x, e.y, e.r)) hitEnemy(s, e, act.mul * power, act, p.x, p.y);
+        if (!inShape(act.shape, p.x, p.y, ang, e.x, e.y, e.r)) continue;
+        hits++;
+        hitEnemy(s, e, act.mul * power, act, p.x, p.y);
+      }
+      if (hits || !act.quiet) {
+        p.swing = 0.18;
+        push(s, { e: 'fx', shape: act.shape, x: p.x, y: p.y, ang });
       }
       break;
     }
@@ -881,7 +887,7 @@ function cast(s: RunState, def: SkillDef, basic: boolean): boolean {
       push(s, { e: 'nope', why: 'mp' });
       return false;
     }
-    power *= 0.6;
+    power *= NO_MP_MUL;
   } else if (def.acts.some((a) => a.t === 'chain') && !nearest(s, p.x, p.y, (def.acts.find((a) => a.t === 'chain') as Extract<Act, { t: 'chain' }>).range)) {
     push(s, { e: 'nope', why: 'target' });
     return false;

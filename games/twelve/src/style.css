@@ -303,3 +303,6 @@ button, input { font: inherit; color: inherit; }
 .story-dots { display: flex; justify-content: center; gap: 6px; }
 .story-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--track); border: 2px solid var(--outline); }
 .story-dots i.on { background: var(--primary); }
+
+/* 가방 정리: 일반 장비 한꺼번에 팔기·분해 */
+.btn.bulk { margin-top: 10px; width: 100%; }

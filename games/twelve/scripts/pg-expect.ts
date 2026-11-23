@@ -90,8 +90,8 @@ rpc('twelve_lock', { item: 1, p_on: false }, setLock(p, idAt(1), false));
   rpc('twelve_scrap', { items: [2] }, scrap(p, [id]));
 }
 // 7) 가방 채우기 → 드랍이 보관함으로 → 꺼내기
-p.coins += 5000;
-steps.push({ op: 'coins', add: 5000 });
+p.coins += 30000;
+steps.push({ op: 'coins', add: 30000 });
 while (bagCount(p) < p.bag) rpc('twelve_buy', { p_what: 'a-0', p_n: 1 }, buy(p, 'a-0'));
 rpc('twelve_buy', { p_what: 'a-0', p_n: 1 }, buy(p, 'a-0'));
 for (let n = 0; n < 3; n++) play('1-8', 9000 + n * 13, { time: 300 });

@@ -26,8 +26,8 @@ export type ZoneLook = 'rain' | 'wind' | 'poison';
 
 /** at = 버튼을 누른 뒤 이 시간(초)이 지나서 나간다 */
 export type Act =
-  /** 범위 한 번 때리기 */
-  | ({ t: 'hit'; at?: number; shape: Shape; mul: number } & OnHit)
+  /** 범위 한 번 때리기. quiet = 맞은 요괴가 있을 때만 휘두른 자국을 그린다 (활·부채의 밀쳐 내기) */
+  | ({ t: 'hit'; at?: number; shape: Shape; mul: number; quiet?: boolean } & OnHit)
   /** 날아가는 것 n 발 (spread = 발 사이 각도). pierce = 뚫고 지나가는 요괴 수 */
   | ({ t: 'shot'; at?: number; n: number; spread: number; speed: number; range: number; radius: number; mul: number; pierce: number; look: ShotLook } & OnHit)
   /** 앞으로 돌진하며 지나간 자리의 요괴를 벤다 (돌진 동안 무적) */
