@@ -80,15 +80,18 @@ export const LIMITS = {
 
 export const totalStars = (p: ChargeProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);
 export const cleared = (p: ChargeProfile, id: string) => (p.stages[id] ?? 0) > 0;
-/** 잠긴 추가 캐릭터 안내 (shared/characters.js 의 LOCK_HINT 와 같은 글) */
-export const LOCK_HINT = '로비에서 열 수 있어요';
-/** 내가 시아코인으로 연 추가 캐릭터 (shared/characters.js 의 loadOwnedCharacters 결과. 테스트 모드는 net/local.ts 가 정한다) */
+/** 고양이를 여는 값 (시아코인). shared/characters.js 의 CHARACTER_PRICE.cat · SQL _character_price 와 같다 (tests/progress.test.ts 가 대조) */
+export const CAT_PRICE = 100;
+/** 잠긴 고양이 칸의 버튼 글 (shared/characters.js 의 unlockLabel('cat') 과 같은 글) */
+export const UNLOCK_LABEL = `시아코인 ${CAT_PRICE}개로 열기`;
+/** 이 게임(charge)에서 시아코인으로 연 추가 캐릭터 (shared/characters.js 의 loadOwnedCharacters('charge') 결과. 테스트 모드는 net/local.ts 가 정한다) */
 let ownedExtras: string[] = [];
 export const setOwnedExtras = (ids: readonly string[]) => {
   ownedExtras = [...ids];
 };
 /**
- * 추가 캐릭터(고양이)를 고를 수 있는가: 진행으로는 열리지 않고, 로비에서 시아코인으로 연 사람만 (서버 _check_character 의 'locked character').
+ * 추가 캐릭터(고양이)를 고를 수 있는가: 진행으로는 열리지 않고, 이 게임의 대장 고르기 화면에서 시아코인으로 연 사람만
+ * (게임마다 따로 연다. 서버 _check_character(user, id, 'charge') 의 'locked character').
  * 선택 화면·시작 검사·저장된 대장 복원이 모두 leadersOf 를 거쳐 여기를 본다.
  */
 export const extraOpen = (_p: ChargeProfile, id: LeaderId) => ownedExtras.includes(id);
@@ -194,7 +197,7 @@ export function whyText(why: string): string {
   const m: Record<string, string> = {
     'stage locked': '아직 열리지 않은 스테이지예요',
     'leader locked': '아직 열리지 않은 대장이에요',
-    'locked character': '고양이는 로비에서 시아코인으로 열 수 있어요',
+    'locked character': `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`,
     'endless locked': '끝없는 모드는 1-5를 깨면 열려요',
     'not enough coins': '엽전이 모자라요',
     'max level': '이미 최대 강화예요',

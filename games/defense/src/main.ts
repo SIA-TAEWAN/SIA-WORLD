@@ -2,10 +2,11 @@ import './style.css';
 import { SQUAD_SIZE } from './data/balance';
 import { EXTRAS, ROSTER, STARTERS, towerOf } from './data/characters';
 import { cleanProfile, setOwnedExtras } from './game/progress';
+import type { CharId } from './data/balance';
 import { ApiError, LOCAL_MODE, devSetup, getApi, lobbyNet, type StartInfo } from './net/api';
 import { DefenseLobby, LOBBY_MAX, LobbyFullError } from './net/lobby';
-import { loadAuth, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
-import { app, loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
+import { buyCharacter, loadAuth, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
+import { app, extraShop, loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
 import { stageOf } from './data/stages';
 import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
 import { ENDLESS_ID } from './data/endless';
@@ -134,19 +135,41 @@ async function start() {
     return;
   }
   state.user = { id: user.userId, name: user.nickname };
-  // 시아코인으로 연 추가 캐릭터(고양이): 프로필을 읽기 전에 (cleanProfile 이 이 목록으로 p.unlocked 를 만든다).
-  // 테스트 모드는 로그인이 없으니 열린 것으로 (&cat=0 이면 잠긴 모습)
-  if (LOCAL_MODE) setOwnedExtras(new URLSearchParams(location.search).get('cat') === '0' ? [] : [...EXTRAS]);
-  else {
-    setOwnedExtras(await loadOwnedCharacters());
-    // 로비에서 열고 돌아오면 새로 고치지 않아도 쓸 수 있게: 화면이 다시 보일 때 다시 묻는다
+  // 시아디펜스에서 시아코인으로 연 추가 캐릭터(고양이, 게임마다 따로): 프로필을 읽기 전에 (cleanProfile 이 이 목록으로 p.unlocked 를 만든다).
+  // 테스트 모드는 로그인이 없으니 열린 것으로 (&cat=0 이면 잠긴 모습, 열기 버튼은 서버 없이 바로 열린다)
+  let owned: string[] = [];
+  /** 연 목록을 바꾸고 화면에 반영한다 (열린 캐릭터가 달라졌을 때만 다시 그린다) */
+  const applyOwned = (list: string[]) => {
+    owned = list;
+    setOwnedExtras(list);
+    const p = cleanProfile(state.profile);
+    if (p.unlocked.join() !== state.profile.unlocked.join()) setProfile(p);
+  };
+  if (LOCAL_MODE) {
+    owned = new URLSearchParams(location.search).get('cat') === '0' ? [] : [...EXTRAS];
+    setOwnedExtras(owned);
+    extraShop.buy = async (id: CharId) => {
+      applyOwned([...new Set([...owned, id])]);
+      toast('열었어요! (테스트 모드: 시아코인을 쓰지 않아요)');
+      return true;
+    };
+  } else {
+    // 처음에 못 읽으면 잠긴 것으로 시작한다 (서버도 판 시작 때 다시 본다)
+    owned = (await loadOwnedCharacters()) ?? [];
+    setOwnedExtras(owned);
+    extraShop.buy = async (id: CharId) => {
+      const { r, msg } = await buyCharacter(id);
+      toast(msg, 2800);
+      if (!r?.ok && r?.reason !== 'owned') return false;
+      // 연 목록을 다시 묻는다 (못 읽으면 방금 연 것을 더해 둔다)
+      applyOwned((await loadOwnedCharacters(true)) ?? [...new Set([...owned, id])]);
+      return true;
+    };
+    // 다른 기기에서 열었으면 화면이 다시 보일 때 반영한다. 못 읽었으면(null) 가진 목록을 그대로 둔다
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       void loadOwnedCharacters(true).then((list) => {
-        const before = state.profile.unlocked.join();
-        setOwnedExtras(list);
-        const p = cleanProfile(state.profile);
-        if (p.unlocked.join() !== before) setProfile(p);
+        if (list) applyOwned(list);
       });
     });
   }

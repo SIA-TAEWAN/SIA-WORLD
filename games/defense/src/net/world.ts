@@ -78,18 +78,45 @@ export function loadSound(): Promise<SoundModule> {
   return soundMod;
 }
 
+/** 추가 캐릭터(고양이)를 여는 게임 id (071 의 _character_games · shared/games.js). 게임마다 따로 연다 */
+export const GAME_ID = 'defense';
+
+export interface BuyResult {
+  ok: boolean;
+  reason?: 'owned' | 'coin' | 'login' | 'error';
+  siaCoins?: number;
+  price?: number;
+}
 interface CharactersModule {
-  loadOwnedCharacters(force?: boolean): Promise<string[]>;
+  loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
+  buyCharacter(game: string, id: string): Promise<BuyResult>;
+  buyMessage(r: BuyResult, id?: string): string;
 }
 let charMod: Promise<CharactersModule> | null = null;
-/** 이 계정이 시아코인으로 연 추가 캐릭터 id (shared/characters.js). 못 읽으면 [] (잠긴 것으로 본다. 서버도 판 시작 때 다시 본다) */
-export async function loadOwnedCharacters(force = false): Promise<string[]> {
+const characters = () => {
+  charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+  charMod.catch(() => (charMod = null));
+  return charMod;
+};
+/**
+ * 시아디펜스에서 시아코인으로 연 추가 캐릭터 id (shared/characters.js).
+ * 서버를 못 읽으면 null ([] = 연 것 없음과 구분. null 이면 가진 목록을 그대로 둔다. 서버도 판 시작 때 다시 본다)
+ */
+export async function loadOwnedCharacters(force = false): Promise<string[] | null> {
   try {
-    charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
-    const list = await (await charMod).loadOwnedCharacters(force);
-    return Array.isArray(list) ? list : [];
+    const list = await (await characters()).loadOwnedCharacters(GAME_ID, force);
+    return Array.isArray(list) ? list : null;
   } catch {
-    charMod = null;
-    return [];
+    return null;
+  }
+}
+/** 시아디펜스에서 캐릭터 열기 → 결과와 화면에 띄울 한 줄 */
+export async function buyCharacter(id: string): Promise<{ r: BuyResult; msg: string }> {
+  try {
+    const mod = await characters();
+    const r = await mod.buyCharacter(GAME_ID, id);
+    return { r, msg: mod.buyMessage(r, id) };
+  } catch {
+    return { r: { ok: false, reason: 'error' }, msg: '열지 못했어요. 잠시 후 다시 시도해 주세요' };
   }
 }

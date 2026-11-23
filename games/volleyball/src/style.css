@@ -119,8 +119,12 @@ button, input { font: inherit; color: inherit; }
 .char.locked img { filter: grayscale(0.85); opacity: 0.55; }
 .char.locked span { color: var(--ink-soft); }
 .char .lock { position: absolute; top: 1px; right: 2px; font-size: 13px; font-style: normal; line-height: 1; }
-.lock-note { margin: 6px 0 0; font-size: 12px; text-align: center; }
+.lock-note { margin: 8px 0 0; text-align: center; }
 .lock-note:empty { display: none; }
+/* '시아코인 100개로 열기': 한 번 누르면 확인 글(armed), 한 번 더 누르면 산다 */
+.unlock-btn { font: inherit; font-size: 14px; color: var(--ink); background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 6px 14px; cursor: pointer; max-width: 100%; }
+.unlock-btn.armed { background: var(--primary); }
+.unlock-btn:disabled { opacity: 0.6; cursor: default; }
 /* flex: none — 대기실은 flex 열이라 화면이 낮으면 알약이 줄어 글자가 밖으로 넘쳤다 */
 .room .status { flex: none; align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
 .room .grow { flex: 1; min-height: 4px; }

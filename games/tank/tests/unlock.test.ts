@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { RANDOM_TANK_IDS } from '../src/game/data';
-import { LOCK_HINT, initUnlock, isLockedError, isTankOpen, onUnlockChange, openTankOr, setAllOpen, setOwned } from '../src/game/unlock';
+import { RANDOM_TANK_IDS, TANKS, tankOr } from '../src/game/data';
+import { CAT_PRICE, GAME_ID, LOCKED_MSG, UNLOCK_LABEL, initUnlock, isLockedError, isTankOpen, onUnlockChange, openTankOr, setAllOpen, setOwned, unlockCat } from '../src/game/unlock';
 import { friendly } from '../src/net/backend';
+import { CLIENT_VERSION, hasNewerVersion } from '../src/net/room';
+import { Match } from '../src/game/match';
 
-describe('고양이 탱크 잠금', () => {
-  it('12지신·랜덤은 늘 열려 있고, 고양이는 연 사람만. 열두빛은 고를 수 없다', () => {
-    setAllOpen(false);
-    setOwned([]);
+const reset = () => {
+  setAllOpen(false);
+  setOwned([]);
+};
+
+describe('고양이 탱크 잠금 (게임마다 따로)', () => {
+  it('12지신·랜덤은 늘 열려 있고, 고양이는 시아탱크에서 연 사람만. 열두빛은 고를 수 없다', () => {
+    reset();
     for (const t of RANDOM_TANK_IDS) expect(isTankOpen(t)).toBe(true);
     expect(isTankOpen('random')).toBe(true);
     expect(isTankOpen('zodiac')).toBe(false);
@@ -18,39 +24,97 @@ describe('고양이 탱크 잠금', () => {
     setOwned(['cat']);
     expect(isTankOpen('cat')).toBe(true);
     expect(openTankOr('cat')).toBe('cat');
-    setOwned([]);
+    reset();
   });
-  it('연 목록이 바뀔 때만 화면에 알린다', () => {
-    setOwned([]);
+  it('서버를 못 읽으면(null) 가진 목록을 그대로 둔다. 바뀔 때만 화면에 알린다', () => {
+    reset();
     let n = 0;
     const off = onUnlockChange(() => n++);
     setOwned([]);
     setOwned(['cat']);
+    setOwned(null);
+    expect(isTankOpen('cat')).toBe(true);
     setOwned(['cat', 'cat']);
     setOwned([]);
     off();
     setOwned(['cat']);
     expect(n).toBe(2);
-    setOwned([]);
+    reset();
   });
-  it('테스트 모드: 서버를 부르지 않고 열림, &cat=0 이면 잠김', async () => {
+  it("처음 불러오기: 'tank' 로 묻고, 못 읽으면 잠긴 것으로 시작", async () => {
+    reset();
+    const asked: string[] = [];
+    await initUnlock(async (g) => (asked.push(g), null), false, null);
+    expect(asked).toEqual(['tank']);
+    expect(GAME_ID).toBe('tank');
+    expect(isTankOpen('cat')).toBe(false);
+    reset();
+  });
+  it('열기: 성공·이미 연 것이면 열린다, 시아코인이 모자라면 그대로', async () => {
+    reset();
+    let list: string[] = [];
+    await initUnlock(async () => list, false, null);
+    const coin = await unlockCat(async () => ({ ok: false, reason: 'coin', siaCoins: 20, price: CAT_PRICE }));
+    expect(coin.opened).toBe(false);
+    expect(isTankOpen('cat')).toBe(false);
+    list = ['cat'];
+    const games: string[] = [];
+    expect((await unlockCat(async (g) => (games.push(g), { ok: true, siaCoins: 50 }))).opened).toBe(true);
+    expect(isTankOpen('cat')).toBe(true);
+    expect(games).toEqual(['tank']);
+    reset();
+    list = [];
+    expect((await unlockCat(async () => ({ ok: false, reason: 'owned' }))).opened).toBe(true);
+    expect(isTankOpen('cat')).toBe(true);
+    reset();
+  });
+  it('테스트 모드: 기본은 열림, &cat=0 이면 잠김, 열기는 서버 없이 바로', async () => {
     let called = 0;
     const load = async () => (called++, ['cat']);
     await initUnlock(load, true, null);
     expect(isTankOpen('cat')).toBe(true);
     await initUnlock(load, true, '0');
     expect(isTankOpen('cat')).toBe(false);
-    expect(called).toBe(0);
-    await initUnlock(load, false, null);
-    expect(called).toBe(1);
+    const r = await unlockCat(async () => {
+      throw new Error('서버를 부르면 안 된다');
+    });
+    expect(r).toMatchObject({ opened: true, local: true });
     expect(isTankOpen('cat')).toBe(true);
-    setOwned([]);
+    expect(called).toBe(0);
+    reset();
   });
-  it('서버 거절 locked character 는 화면 문구로, 안내 글은 shared/characters.js 와 같다', () => {
+  it('서버 거절 locked character 는 화면 문구로, 글·가격은 shared/characters.js · 071 과 같다', () => {
     expect(isLockedError('locked character')).toBe(true);
     expect(isLockedError('bad character')).toBe(false);
-    expect(friendly(new Error('locked character'))).toBe('고양이는 로비에서 시아코인으로 열 수 있어요');
+    expect(friendly(new Error('locked character'))).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
+    expect(friendly(new Error('locked character'))).toBe(LOCKED_MSG);
     const shared = readFileSync(new URL('../../../shared/characters.js', import.meta.url), 'utf8');
-    expect(shared).toContain(`LOCK_HINT = '${LOCK_HINT}'`);
+    expect(shared).toMatch(new RegExp(String.raw`CHARACTER_PRICE = \{ cat: ${CAT_PRICE} \}`));
+    expect(UNLOCK_LABEL).toBe(`시아코인 ${CAT_PRICE}개로 열기`);
+    const sql = readFileSync(new URL('../../../supabase/migrations/071_characters.sql', import.meta.url), 'utf8');
+    expect(sql).toMatch(new RegExp(String.raw`'cat'\s+then\s+${CAT_PRICE}`));
+  });
+});
+
+describe('판본이 다른 기기', () => {
+  it('방에 더 새 판본이 있으면 알아본다 (예전 기기는 ver 가 없다)', () => {
+    expect(hasNewerVersion([{ name: 'a' }, { name: 'b', ver: CLIENT_VERSION }])).toBe(false);
+    expect(hasNewerVersion([{ name: 'a', ver: CLIENT_VERSION + 1 }])).toBe(true);
+    expect(hasNewerVersion([null, undefined])).toBe(false);
+  });
+  it('모르는 탱크 id 는 어흥이로 그리고 계산한다', () => {
+    expect(tankOr('cat')).toBe('cat');
+    expect(tankOr('unicorn')).toBe('tiger');
+    expect(tankOr('constructor')).toBe('tiger');
+    const m = new Match(
+      [
+        { name: 'A', tank: 'unicorn' as never, team: 0, ai: null, items: [] },
+        { name: 'B', tank: 'ox', team: 1, ai: null, items: [] },
+      ],
+      'valley',
+      3,
+    );
+    expect(m.tanks[0].tankId).toBe('tiger');
+    expect(m.tanks[0].hp).toBe(TANKS.tiger.hp);
   });
 });

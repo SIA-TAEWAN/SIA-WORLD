@@ -16,8 +16,10 @@ import {
   totalStars,
   towerOpen,
   whyText,
-  LOCK_HINT,
-  CAT_LOCKED_TEXT,
+  UNLOCK_LABEL,
+  UNLOCK_CONFIRM,
+  unlockText,
+  extraOpen,
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
@@ -114,9 +116,45 @@ export function toast(text: string, ms = 2200) {
 const starsHtml = (n: number) => `<span class="stars">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
 const starPill = () => `<span class="coins-pill star-pill">★ ${totalStars(profile)}</span>`;
 const coinsPill = () => `<span class="coins-pill">🪙 ${profile.coins.toLocaleString()}</span>`;
-/** 아직 못 쓰는 대원의 안내 (추가 대원 고양이는 지역이 아니라 로비에서 시아코인으로 연다) */
-const lockHint = (id: HeroId, long: boolean) =>
-  HEROES[id].unlockRegion < 0 ? LOCK_HINT : long ? `${HEROES[id].unlockRegion}지역 보스를 깨면 합류` : `${HEROES[id].unlockRegion}지역`;
+/** 아직 합류하지 않은 십이지 대원의 안내 (추가 대원 고양이는 지역이 아니라 '시아코인으로 열기' 버튼) */
+const lockHint = (id: HeroId, long: boolean) => (long ? `${HEROES[id].unlockRegion}지역 보스를 깨면 합류` : `${HEROES[id].unlockRegion}지역`);
+
+let unlocking = false;
+/**
+ * 고양이 '시아코인 100개로 열기': 첫 번째 누름은 글을 "한 번 더 누르기" 로 4초간 바꾸고, 그 안에 한 번 더 누르면 산다.
+ * 사는 동안 버튼을 막아 두 번 사지 않게. 열렸으면(이미 연 경우 포함) 새 프로필을 받고 opened(true).
+ */
+async function askUnlock(btn: HTMLButtonElement, label: HTMLElement, id: HeroId, opened: (ok: boolean) => void) {
+  if (unlocking) return;
+  const until = Number(btn.dataset.confirm ?? 0);
+  if (until < Date.now()) {
+    play('click');
+    btn.dataset.confirm = String(Date.now() + 4000);
+    label.textContent = UNLOCK_CONFIRM;
+    btn.classList.add('confirm');
+    setTimeout(() => {
+      if (!btn.isConnected || unlocking || Number(btn.dataset.confirm ?? 0) > Date.now()) return;
+      delete btn.dataset.confirm;
+      label.textContent = `🔒 ${UNLOCK_LABEL}`;
+      btn.classList.remove('confirm');
+    }, 4050);
+    return;
+  }
+  unlocking = true;
+  btn.disabled = true;
+  delete btn.dataset.confirm;
+  label.textContent = '여는 중…';
+  try {
+    const { answer, profile: p } = await api.unlock(id);
+    if (p) setProfile(p);
+    const ok = !!p && extraOpen(profile, id);
+    if (ok) play('coin');
+    toast(unlockText(answer));
+    opened(ok);
+  } finally {
+    unlocking = false;
+  }
+}
 const typeName = (id: HeroId) => (HEROES[id].type === 'pierce' ? '관통형' : '반사형');
 const typeTag = (id: HeroId) => `<em class="tag ${HEROES[id].type}">${typeName(id)}</em>`;
 const errText = (e: unknown) => (e instanceof ApiError ? whyText(e.message) : '서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요');
@@ -163,7 +201,8 @@ export async function boot(a: FingerApi, user: WorldUser | null) {
 }
 
 /**
- * 로비에서 고양이를 사고 이 탭으로 돌아오면 새로고침 없이 쓸 수 있게: 화면이 다시 보일 때 연 캐릭터를 다시 묻는다.
+ * 다른 기기(다른 탭)에서 시아핑거의 고양이를 열고 돌아오면 새로고침 없이 쓸 수 있게: 화면이 다시 보일 때 연 캐릭터를 다시 묻는다.
+ * 잠김 → 열림만 반영한다 (통신 실패 null 이면 그대로 두고, 열린 것을 닫지는 않는다 — 서버가 시작 때 다시 검사).
  * (처음 값은 서버 프로필의 owned. 테스트 모드는 ?cat=0 이 아니면 연 것으로 본다)
  */
 function watchOwned() {
@@ -172,8 +211,8 @@ function watchOwned() {
     if (document.visibilityState !== 'visible') return;
     void loadOwnedCharacters(true).then((list) => {
       if (!list) return;
-      const owned = EXTRA_HERO_IDS.filter((id) => list.includes(id));
-      if (owned.join() === profile.owned.join()) return;
+      const owned = EXTRA_HERO_IDS.filter((id) => list.includes(id) || profile.owned.includes(id));
+      if (owned.length === profile.owned.length) return;
       profile = { ...profile, owned };
       onOwnedChange?.();
     });
@@ -271,11 +310,13 @@ function heroCard(id: HeroId, open: boolean) {
         <span>우정 콤보: ${d.comboName}</span>
         ${tiersHtml(lv)}
         <span>필살기: ${d.specialName} <span class="soft">(${d.charge}턴)</span></span>
-        ${open ? '' : `<span class="soft">🔒 ${lockHint(id, true)}</span>`}</div>
+        ${open || isExtraHero(id) ? '' : `<span class="soft">🔒 ${lockHint(id, true)}</span>`}</div>
       ${
         open
           ? `<button class="btn ${max ? '' : 'primary'} small" data-up="${id}" ${max || profile.coins < cost ? 'disabled' : ''}>${max ? '최대' : `Lv↑ 🪙 ${cost}`}</button>`
-          : ''
+          : isExtraHero(id)
+            ? `<button class="btn primary small unlock" data-unlock="${id}"><span>🔒 ${UNLOCK_LABEL}</span></button>`
+            : ''
       }
     </div>`;
 }
@@ -291,6 +332,9 @@ function showHeroes(scrollTop = 0) {
     play('click');
     showMain();
   });
+  root.querySelectorAll<HTMLButtonElement>('[data-unlock]').forEach((b) =>
+    b.addEventListener('click', () => void askUnlock(b, b.querySelector('span')!, b.dataset.unlock as HeroId, () => showHeroes(root.scrollTop))),
+  );
   root.querySelectorAll<HTMLButtonElement>('[data-up]').forEach((b) =>
     b.addEventListener('click', async () => {
       b.disabled = true;
@@ -454,7 +498,7 @@ function showParty(st: StageDef | null) {
   );
   const paint = () => {
     open = heroesOf(profile);
-    // 잠긴 대원(로비에서 산 고양이를 다른 기기에서 되돌린 경우 등)은 파티에서 뺀다
+    // 잠긴 대원(열지 않은 고양이 등)은 파티에서 뺀다
     party = party.filter((id) => open.includes(id));
     if (!open.includes(focus)) focus = party[0] ?? open[0];
     root.querySelector('#slots')!.innerHTML = [0, 1, 2, 3]
@@ -469,7 +513,7 @@ function showParty(st: StageDef | null) {
       const ok = open.includes(id);
       const at = party.indexOf(id);
       return `<button class="leader ${at >= 0 ? 'on' : ''} ${ok ? '' : 'locked'} ${isExtraHero(id) ? 'extra' : ''} ${id === focus ? 'focus' : ''}" data-id="${id}" ${ok || isExtraHero(id) ? '' : 'disabled'}>
-          <img src="${zodiacFaceUrl(id)}" alt="${HEROES[id].name}" /><b>${HEROES[id].name}</b>${ok ? (at >= 0 ? `<em>${at + 1}번</em>` : '') : `<em>🔒 ${lockHint(id, false)}</em>`}
+          <img src="${zodiacFaceUrl(id)}" alt="${HEROES[id].name}" /><b>${HEROES[id].name}</b>${ok ? (at >= 0 ? `<em>${at + 1}번</em>` : '') : `<em>🔒 ${isExtraHero(id) ? UNLOCK_LABEL : lockHint(id, false)}</em>`}
         </button>`;
     }).join('');
     const d = HEROES[focus];
@@ -487,9 +531,16 @@ function showParty(st: StageDef | null) {
     root.querySelectorAll<HTMLButtonElement>('#pick .leader').forEach((b) =>
       b.addEventListener('click', () => {
         const id = b.dataset.id as HeroId;
+        // 안 연 고양이: 이 칸이 '시아코인 100개로 열기' 버튼 (두 번 눌러 산다). 열리면 골라 둔다
+        if (!open.includes(id))
+          return void askUnlock(b, b.querySelector('em')!, id, (ok) => {
+            if (ok) {
+              focus = id;
+              if (!party.includes(id) && party.length < 4) party = [...party, id];
+            }
+            paint();
+          });
         play('click');
-        // 안 연 고양이: 고르지 않고 안내만 (그림·설명은 보여 준다)
-        if (!open.includes(id)) return toast(CAT_LOCKED_TEXT);
         focus = id;
         if (!party.includes(id)) {
           if (party.length >= 4) toast('4칸이 다 찼어요. 위 칸을 눌러 빼 주세요');

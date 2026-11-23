@@ -1,7 +1,8 @@
--- 077: 시아핑거에 고양이(cat, 13번째 대원) 추가
+-- 076: 시아핑거에 고양이(cat, 13번째 대원) 추가
 --   · _finger_extra_heroes(): 지역 합류 규칙 밖의 추가 대원 (_shared/finger/heroes.ts 의 EXTRA_HERO_IDS).
 --     _finger_heroes()(십이지 12종 · 합류 지역)는 그대로 둔다 — 고양이는 지역을 깨도 합류하지 않는다.
---   · _finger_unlocked(): 합류한 십이지 + 시아코인으로 연 추가 대원 (owned_characters, 071)
+--   · _finger_unlocked(): 합류한 십이지 + 시아핑거에서 시아코인으로 연 추가 대원 (owned_characters.game = 'finger', 071)
+--     고양이는 이 게임의 캐릭터 선택 화면(파티 고르기·대원)에서 buy_character('finger', 'cat') 으로 연다 (게임마다 따로)
 --   · _finger_profile_json(): owned (연 추가 대원) 를 더한다 — 화면 잠금 판단 (games/finger progress.ts extraOpen)
 --   · finger_start · finger_level_up: 대원마다 public._check_character (071) 를 거친다
 --     (안 연 고양이는 'locked character')
@@ -22,12 +23,12 @@ language sql immutable as $$
 $$;
 revoke all on function public._finger_is_hero(text) from public, anon, authenticated;
 
--- 시아코인으로 연 추가 대원 (_finger_extra_heroes 순서)
+-- 시아핑거에서 시아코인으로 연 추가 대원 (_finger_extra_heroes 순서. 다른 게임에서 연 기록은 보지 않는다)
 create or replace function public._finger_owned(p_user uuid) returns text[]
 language sql stable security definer set search_path = public as $$
   select coalesce(array_agg(e.id order by e.ord), array[]::text[])
   from unnest(public._finger_extra_heroes()) with ordinality as e(id, ord)
-  where exists (select 1 from public.owned_characters o where o.user_id = p_user and o.character_id = e.id)
+  where exists (select 1 from public.owned_characters o where o.user_id = p_user and o.game = 'finger' and o.character_id = e.id)
 $$;
 revoke all on function public._finger_owned(uuid) from public, anon, authenticated;
 
@@ -76,7 +77,7 @@ begin
   then raise exception 'bad party'; end if;
   -- 공용 캐릭터 검사 (071: 모르는 id 'bad character', 안 연 고양이 'locked character')
   foreach x in array p_party loop
-    perform public._check_character(me, x);
+    perform public._check_character(me, x, 'finger');
   end loop;
   if p_mode = 'tower' then
     if not public._finger_cleared(me, '1-5') then raise exception 'tower locked'; end if;
@@ -99,7 +100,7 @@ declare me uuid := auth.uid(); pr public.finger_profiles; lv int; price int;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   if not public._finger_is_hero(p_hero) then raise exception 'bad hero'; end if;
-  perform public._check_character(me, p_hero);
+  perform public._check_character(me, p_hero, 'finger');
   if not (p_hero = any(public._finger_unlocked(me))) then raise exception 'hero locked'; end if;
   pr := public._finger_profile_row(me);
   select h.level into lv from public.finger_heroes h where h.user_id = me and h.hero = p_hero for update;

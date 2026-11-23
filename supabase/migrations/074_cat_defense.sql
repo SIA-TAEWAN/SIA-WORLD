@@ -1,11 +1,11 @@
 -- 074: 시아디펜스에 고양이(cat, 13번째 대원) — 048 · 060 은 운영에 적용됨. 바꾸는 함수만 여기서 다시 정의한다 (뒤 파일의 정의가 실제 값이다)
---   · 캐릭터 id 검사는 071 의 _check_character(user, character) 로 (모르는 id → 'bad character'. 다음 단계에서 '산 캐릭터인가' 도 여기서 본다)
+--   · 캐릭터 id 검사는 071 의 _check_character(user, character, 'defense') 로 (모르는 id → 'bad character', 시아디펜스에서 열지 않은 고양이 → 'locked character')
 --   · 고양이는 스테이지로 열리지 않는다: defense_profiles.unlocked_characters 에 들어가지 않고, _defense_regions 의 해금 표에도 없다.
 --     출전(defense_start)·레벨업(defense_level_up)의 'character locked' 검사는 스테이지로 여는 캐릭터에만 한다 (_defense_extra_ids 는 빼고)
 --   · 고양이의 특성(남은 체력이 가장 적은 요괴부터 · 3단계 빈사 요괴 마무리)은 서버 규칙(엽전·별·돼지 보너스)에 영향이 없어 defense_finish 는 그대로
 -- games/defense/tests/sql.test.ts 가 이 파일도 읽는다 (060 뒤에).
 
--- 스테이지로 열리지 않는 캐릭터 (로비에서 시아코인으로 연다). games/defense/src/data/characters.ts 의 EXTRAS (ROSTER 의 unlockRegion = BOUGHT)
+-- 스테이지로 열리지 않는 캐릭터 (이 게임의 캐릭터 선택 화면에서 시아코인으로 연다 (게임마다 따로)). games/defense/src/data/characters.ts 의 EXTRAS (ROSTER 의 unlockRegion = BOUGHT)
 create or replace function public._defense_extra_ids() returns text[]
 language sql immutable as $$
   select array['cat']::text[]
@@ -26,9 +26,9 @@ begin
   n := coalesce(array_length(p_squad, 1), 0);
   if n < 1 or n > public._defense_const('squad_max') or array_position(p_squad, null) is not null
      or (select count(distinct x) from unnest(p_squad) x) <> n then raise exception 'bad squad'; end if;
-  -- 캐릭터마다: 아는 id 인가 (+ 다음 단계: 산 캐릭터인가)
+  -- 캐릭터마다: 아는 id 인가, 시아코인으로 여는 캐릭터면 시아디펜스에서 열었나
   foreach c in array p_squad loop
-    perform public._check_character(me, c);
+    perform public._check_character(me, c, 'defense');
   end loop;
   pr := public._defense_profile_row(me);
   if p_mode = 'endless' then
@@ -64,7 +64,7 @@ language plpgsql security definer set search_path = public as $$
 declare me uuid := auth.uid(); pr public.defense_profiles; cur int; price int;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
-  perform public._check_character(me, p_character);
+  perform public._check_character(me, p_character, 'defense');
   pr := public._defense_profile_row(me);
   if not (p_character = any(pr.unlocked_characters)) and not (p_character = any(public._defense_extra_ids())) then raise exception 'character locked'; end if;
   cur := greatest(1, coalesce((pr.character_levels->>p_character)::int, 1));

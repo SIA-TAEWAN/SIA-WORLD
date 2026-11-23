@@ -1,8 +1,8 @@
--- 076: 시아돌격대에 고양이(cat) 대장 추가 (071_characters.sql 의 _check_character 를 쓴다)
+-- 075: 시아돌격대에 고양이(cat) 대장 추가 (071_characters.sql 의 _check_character 를 쓴다)
 --   · _charge_leaders(): cat 줄 추가. unlock_region -1 = 지역으로 열리지 않는 추가 캐릭터 (games/charge/src/data/balance.ts 의 LEADERS)
 --   · _charge_unlocked(): 진행으로 열리는 십이지만 (unlock_region >= 0). 고양이는 들어가지 않는다 → 결과의 newLeaders 에도 안 나온다
 --   · charge_start(): 대장 검사를 _check_character 로 먼저 하고, 십이지는 그대로 진행 잠금을 본다.
---     고양이는 진행 잠금 대신 _check_character 에만 맡긴다 (시아코인으로 여는 잠금은 그 함수에 더해진다)
+--     고양이는 진행 잠금 대신 _check_character(me, id, 'charge') 에만 맡긴다: 이 게임의 대장 고르기 화면에서 시아코인으로 연다 (게임마다 따로, 071)
 --   charge_finish 는 그대로 (_charge_leaders 의 coin_mul 을 읽기만 한다: cat 은 1)
 
 create or replace function public._charge_leaders() returns table (id text, unlock_region int, coin_mul numeric)
@@ -42,7 +42,7 @@ begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   if p_mode is null or p_mode not in ('normal', 'endless') then raise exception 'bad mode'; end if;
   if p_leader is null or not exists (select 1 from public._charge_leaders() l where l.id = p_leader) then raise exception 'bad leader'; end if;
-  perform public._check_character(me, p_leader);
+  perform public._check_character(me, p_leader, 'charge');
   select l.unlock_region < 0 into extra from public._charge_leaders() l where l.id = p_leader;
   if not extra and not (p_leader = any(public._charge_unlocked(me))) then raise exception 'leader locked'; end if;
   if p_mode = 'endless' then

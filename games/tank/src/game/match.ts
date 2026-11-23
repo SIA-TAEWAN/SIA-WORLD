@@ -1,4 +1,4 @@
-import { ITEMS, ITEM_IDS, TANKS, WEAPONS, type ItemId, type WeaponDef } from './data';
+import { ITEMS, ITEM_IDS, TANKS, WEAPONS, tankOr, type ItemId, type WeaponDef } from './data';
 import { Rng } from './rng';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, Team, TurnInput, Wall, WallKind, Zone } from './types';
 import { MAPS, STEP_W, targetSteps, type MapId } from '../data/maps';
@@ -148,12 +148,13 @@ export class Match {
     });
 
     this.tanks = setups.map((s, idx) => {
-      const def = TANKS[s.tank];
+      const tankId = tankOr(s.tank);
+      const def = TANKS[tankId];
       const x = slotX.get(s)!;
       const t: TankState = {
         idx,
         name: s.name,
-        tankId: s.tank,
+        tankId,
         def,
         team: s.team,
         x,

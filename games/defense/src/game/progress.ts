@@ -82,7 +82,7 @@ export interface DefenseProfile {
 
 /**
  * 스테이지로 열리지 않는 캐릭터(고양이)를 이 계정이 쓸 수 있나 — 출전·레벨업·선택 화면이 모두 p.unlocked 를 보므로 여기 한 곳에서 정한다.
- * 로비에서 시아코인으로 연 계정만 쓴다 (shared/characters.js 의 loadOwnedCharacters → setOwnedExtras. 서버는 071 의 _check_character 가 막는다).
+ * 시아디펜스의 출전 준비 화면에서 시아코인으로 연 계정만 쓴다 (게임마다 따로. shared/characters.js 의 loadOwnedCharacters('defense') → setOwnedExtras. 서버는 071 의 _check_character 가 막는다).
  * 연 목록을 바꾼 뒤에는 cleanProfile 을 다시 거쳐야 p.unlocked 에 반영된다 (main.ts).
  */
 let ownedExtras: CharId[] = [];

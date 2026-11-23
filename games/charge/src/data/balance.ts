@@ -143,7 +143,7 @@ export interface LeaderDef {
   trait: string;
   /** 처음 열려 있는 대장인가 (아니면 unlockRegion 지역을 클리어하면 열린다) */
   starter: boolean;
-  /** 이 지역 5번째 스테이지를 클리어하면 열린다. -1 = 지역으로 열리지 않는 추가 캐릭터 (고양이: 로비에서 시아코인으로 연다) */
+  /** 이 지역 5번째 스테이지를 클리어하면 열린다. -1 = 지역으로 열리지 않는 추가 캐릭터 (고양이: 대장 고르기 화면에서 시아코인으로 연다, 게임마다 따로) */
   unlockRegion: number;
   /** 십이지 밖의 추가 캐릭터 (진행으로 열리지 않는다, progress.ts 의 extraOpen) */
   extra?: boolean;
@@ -198,7 +198,7 @@ export const LEADERS: LeaderDef[] = [
   { ...base, id: 'rooster', name: '닭', trait: '× 문 결과 +5%', starter: false, unlockRegion: 7, timesMul: 1.05 },
   { ...base, id: 'dog', name: '개', trait: '보스 공격 예고 0.3초 빨리, 보스에게 잃는 대원 -10%', starter: false, unlockRegion: 8, warnAdd: 0.3, bossLossMul: 0.9 },
   { ...base, id: 'pig', name: '돼지', trait: '엽전 획득 +10%', starter: false, unlockRegion: 9, coinMul: 1.1 },
-  // 13번째 대원: 수치 대신 한 번 쓰는 특성. 지역으로 열리지 않는다 (로비에서 시아코인으로 연다)
+  // 13번째 대원: 수치 대신 한 번 쓰는 특성. 지역으로 열리지 않는다 (대장 고르기 화면에서 시아코인으로 연다, 게임마다 따로)
   { ...base, id: 'cat', name: '고양이', trait: '아홉 목숨: 모두 쓰러져도 한 번, 이번 판 최대 대원의 15%(최소 9명)로 다시 일어나요', starter: false, unlockRegion: -1, extra: true, lives: 1, livesFrac: 0.15, livesMin: 9 },
 ];
 

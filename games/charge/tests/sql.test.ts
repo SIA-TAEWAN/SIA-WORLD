@@ -12,7 +12,7 @@ import { LIMITS } from '../src/game/progress';
 const mig = (f: string) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8');
 const sql = mig('061_charge.sql');
 /** 함수를 다시 정의한 뒤 마이그레이션 (뒤 파일이 이긴다). 함수를 다시 정의하는 파일을 더하면 여기에 넣는다 */
-const LATER = ['076_cat_charge.sql'].map(mig);
+const LATER = ['075_cat_charge.sql'].map(mig);
 const block = (fn: string) => {
   const src = [...LATER].reverse().find((t) => t.includes(`function public.${fn}(`)) ?? sql;
   const i = src.indexOf(`function public.${fn}(`);
@@ -47,8 +47,8 @@ describe('SQL 표', () => {
     expect(sql).toContain('(p_region - 1) * 9');
   });
 
-  it('대장 검사는 공용 _check_character 를 쓴다 (076)', () => {
-    expect(block('charge_start')).toContain('perform public._check_character(me, p_leader);');
+  it('대장 검사는 공용 _check_character 를 쓴다 (075)', () => {
+    expect(block('charge_start')).toContain("perform public._check_character(me, p_leader, 'charge');");
   });
 
   it('게임 오픈 여부는 닫힌 채로 추가', () => expect(sql).toContain("('game_open:charge', 'false'::jsonb)"));

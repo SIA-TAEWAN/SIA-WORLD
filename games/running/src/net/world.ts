@@ -94,19 +94,49 @@ export function loadRankIcons(): Promise<RankIconModule> {
   return rankIconMod;
 }
 
+
+interface BuyResult {
+  ok: boolean;
+  reason?: string;
+  siaCoins?: number;
+  price?: number;
+}
 interface CharactersModule {
-  loadOwnedCharacters(force?: boolean): Promise<string[]>;
+  loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
+  buyCharacter(game: string, id: string): Promise<BuyResult>;
+  buyMessage(r: BuyResult, id?: string): string;
 }
 let charMod: Promise<CharactersModule> | null = null;
+const loadCharMod = () => {
+  charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+  charMod.catch(() => (charMod = null));
+  return charMod;
+};
 
-/** 내가 시아코인으로 연 추가 캐릭터 id (shared/characters.js). 못 불러오거나 로그인 전이면 [] (잠긴 것으로 본다) */
-export async function loadOwnedCharacters(force = false): Promise<string[]> {
+/** 이 게임에서 내가 시아코인으로 연 추가 캐릭터 id (shared/characters.js). 서버를 못 읽으면 null ([] = 연 것 없음) */
+export async function loadOwnedCharacters(game: string, force = false): Promise<string[] | null> {
   try {
-    charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
-    const list = await (await charMod).loadOwnedCharacters(force);
-    return Array.isArray(list) ? list.filter((v): v is string => typeof v === 'string') : [];
+    const list = await (await loadCharMod()).loadOwnedCharacters(game, force);
+    return Array.isArray(list) ? list.filter((v): v is string => typeof v === 'string') : null;
   } catch {
-    charMod = null;
-    return [];
+    return null;
+  }
+}
+
+/** 이 게임에서 캐릭터 열기 (shared/characters.js 의 buyCharacter). 예외를 던지지 않는다 */
+export async function buyCharacter(game: string, id: string): Promise<BuyResult> {
+  try {
+    return (await (await loadCharMod()).buyCharacter(game, id)) ?? { ok: false, reason: 'error' };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}
+
+/** 구매 결과 → 화면 한 줄 (shared/characters.js 의 buyMessage. 못 불러오면 짧은 기본 글) */
+export async function buyMessage(r: BuyResult, id = 'cat'): Promise<string> {
+  try {
+    return (await loadCharMod()).buyMessage(r, id);
+  } catch {
+    return r.ok ? '열었어요!' : '열지 못했어요. 잠시 후 다시 시도해 주세요';
   }
 }

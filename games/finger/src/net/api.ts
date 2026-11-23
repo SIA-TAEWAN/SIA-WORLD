@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { EXTRA_HERO_IDS, verifyRun, VerifyError, type HeroId, type RunResult, type RunSnapshot, type ShotInput, type UpgradeKey } from '../sim';
+import { EXTRA_HERO_IDS, isExtraHero, verifyRun, VerifyError, type HeroId, type RunResult, type RunSnapshot, type ShotInput, type UpgradeKey } from '../sim';
 import {
   applyResult,
   buyUpgrade,
@@ -8,6 +8,8 @@ import {
   levelUp,
   normalize,
   snapshotOf,
+  CAT_PRICE,
+  type UnlockAnswer,
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
@@ -50,6 +52,8 @@ export interface FingerApi {
   resend(): Promise<number>;
   buyUpgrade(key: UpgradeKey): Promise<FingerProfile>;
   levelUp(hero: HeroId): Promise<FingerProfile>;
+  /** 추가 대원(고양이)을 시아코인으로 열기 — 시아핑거에서만 열린다 (071 buy_character(game, id)). 성공·이미 연 경우면 새 프로필도 */
+  unlock(hero: HeroId): Promise<{ answer: UnlockAnswer; profile: FingerProfile | null }>;
 }
 
 export interface Store {
@@ -73,7 +77,9 @@ const safeStore = (): Store => {
 // ---------- 테스트 모드: 이 기기에만 ----------
 
 /** owned = 테스트 모드에서 연 것으로 볼 추가 대원 (기본: 모두. ?local=1&cat=0 이면 없음) */
-export function createLocalApi(store: Store, key = 'siafinger:profile:local', owned: readonly HeroId[] = EXTRA_HERO_IDS): FingerApi {
+export function createLocalApi(store: Store, key = 'siafinger:profile:local', ownedAtStart: readonly HeroId[] = EXTRA_HERO_IDS): FingerApi {
+  // 테스트 모드의 '연 대원' (서버 없이 흉내: 열기 버튼을 누르면 바로 열린다. 새로고침하면 ?cat= 대로 처음부터)
+  const owned: HeroId[] = [...ownedAtStart];
   const load = () => {
     let p: FingerProfile;
     try {
@@ -132,6 +138,12 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local', ow
       if (why) throw new ApiError(why);
       save(p);
       return p;
+    },
+    async unlock(id) {
+      if (!isExtraHero(id)) return { answer: { ok: false, reason: 'error' }, profile: null };
+      if (owned.includes(id)) return { answer: { ok: false, reason: 'owned', price: CAT_PRICE }, profile: load() };
+      owned.push(id);
+      return { answer: { ok: true, price: CAT_PRICE }, profile: load() };
     },
   };
 }
@@ -215,6 +227,19 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
   const drop = (run: string) => writePending(readPending().filter((x) => x.run !== run));
   let sending: Promise<number> | null = null;
   return {
+    async unlock(id) {
+      let answer: UnlockAnswer;
+      try {
+        const res = await withTimeout(c.rpc('buy_character', { p_game: 'finger', p_id: id }), RPC_TIMEOUT_MS);
+        if (res.error) answer = { ok: false, reason: /need login|permission denied|JWT/i.test(res.error.message) ? 'login' : 'error' };
+        else answer = (res.data as UnlockAnswer) ?? { ok: false, reason: 'error' };
+      } catch {
+        answer = { ok: false, reason: 'error' };
+      }
+      if (!answer.ok && answer.reason !== 'owned') return { answer, profile: null };
+      const profile = await call('finger_profile').then(normalize).catch(() => null);
+      return { answer, profile };
+    },
     async loadProfile() {
       return normalize(await call('finger_profile'));
     },

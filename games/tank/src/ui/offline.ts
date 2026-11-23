@@ -1,4 +1,4 @@
-import { TANKS, TANK_IDS, RANDOM_TANK_IDS, WEAPONS, randomTank, type TankChoice, type TankId } from '../game/data';
+import { TANKS, TANK_IDS, RANDOM_TANK_IDS, WEAPONS, randomTank, tankOr, type TankChoice, type TankId } from '../game/data';
 import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { Difficulty, PlayerSetup } from '../game/types';
 import { Rng, randomSeed } from '../game/rng';
@@ -18,7 +18,8 @@ import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
 import { mapBgUrl } from './icons';
-import { LOCKED_MSG, isTankOpen, onUnlockChange } from '../game/unlock';
+import { isTankOpen, onUnlockChange } from '../game/unlock';
+import { pressUnlock, type UnlockHooks } from './unlockBtn';
 import { lockBadge, lockNote, lockTitle } from './lock';
 
 // ---------- 1. 처음 화면 ----------
@@ -124,7 +125,7 @@ export function showSetup() {
       </div>`;
     root.querySelectorAll<HTMLElement>('.zodiac-pick button').forEach((b) =>
       b.addEventListener('click', () => {
-        if (!isTankOpen(b.dataset.id!)) return toast(LOCKED_MSG);
+        if (!isTankOpen(b.dataset.id!)) return; // 잠긴 칸은 아래 #tanks 클릭에서 (열기 버튼을 누른 것처럼)
         state.tank = b.dataset.id as TankChoice;
         save({ tank: state.tank });
         sfx.click();
@@ -245,7 +246,22 @@ export function showSetup() {
   };
 
   renderTanks();
-  // 로비에서 고양이를 열고 돌아오면 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
+  // 잠긴 고양이: 칸이나 아래 '시아코인 100개로 열기' 를 누르면 확인 글 → 한 번 더 누르면 산다. 열리면 골라 둔다
+  const unlockHooks: UnlockHooks = {
+    repaint: () => root.isConnected && renderTanks(),
+    toast,
+    opened: () => {
+      state.tank = 'cat';
+      save({ tank: state.tank });
+    },
+  };
+  $('#tanks').addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (!t.closest('[data-unlock], .zodiac-pick button.locked')) return;
+    sfx.click();
+    void pressUnlock(unlockHooks);
+  });
+  // 다른 기기에서 열고 돌아와도 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
   const offUnlock = onUnlockChange(() => (root.isConnected ? renderTanks() : offUnlock()));
   renderOpp();
   renderMaps();
@@ -410,7 +426,7 @@ export function showResult(s: MatchSummary, actions?: ResultActions, record: Pro
           .map(
             (p) => `<tr class="${p.team === s.winner ? 'win' : ''}"><td>${escapeHtml(p.name)}${p.alive ? '' : ' <small>💀</small>'}</td>
           <td><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]}</td>
-          <td>${TANKS[p.tank as TankId].name}</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`,
+          <td>${TANKS[tankOr(p.tank)].name}</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`,
           )
           .join('')}</tbody>
       </table>

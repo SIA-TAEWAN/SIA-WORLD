@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COINS, MAX_LV, SQUAD_SIZE, STAR2_LIVES, START_LIVES, WAVES, WAVE_SEC } from '../src/data/balance';
 import { BOSSES } from '../src/data/bosses';
-import { EXTRAS, ROSTER, STARTERS } from '../src/data/characters';
+import { EXTRAS, EXTRA_PRICE, ROSTER, STARTERS } from '../src/data/characters';
 import { ENDLESS_COINS, ENDLESS_ID, ENDLESS_MAX_SEC } from '../src/data/endless';
 import { ENEMIES } from '../src/data/enemies';
 import { CHAR_MAX_LV, LEVEL_COSTS, UPGRADES, upgradeCost } from '../src/data/growth';
@@ -79,9 +79,10 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
   });
 
   it('캐릭터 목록 · 처음부터 쓸 수 있는 캐릭터 · 스테이지로 열리지 않는 캐릭터(고양이)', () => {
-    // 캐릭터 id 는 071 의 _check_character 가 본다 (모르는 id · 다음 단계에서 사지 않은 캐릭터)
-    expect(body('defense_level_up')).toContain('perform public._check_character(me, p_character);');
-    expect(body('defense_start')).toContain('perform public._check_character(me, c);');
+    // 캐릭터 id 는 071 의 _check_character 가 본다 (모르는 id · 시아디펜스에서 열지 않은 고양이. 게임마다 따로 연다)
+    expect(body('defense_level_up')).toContain("perform public._check_character(me, p_character, 'defense');");
+    expect(body('defense_start')).toContain("perform public._check_character(me, c, 'defense');");
+    expect(read('071_characters.sql')).toMatch(/_character_games\(\)[\s\S]*'defense'/);
     // 고양이는 해금 표(unlocked_characters)가 아니라 _defense_extra_ids 로 'character locked' 를 피한다
     expect(EXTRAS).toEqual(['cat']);
     expect(body('_defense_extra_ids')).toContain(`array[${EXTRAS.map((c) => `'${c}'`).join(',')}]::text[]`);
@@ -89,6 +90,16 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     // 071 의 _character_ids 에 명단 전체가 있다
     const ids = read('071_characters.sql').match(/select array\[([^\]]+)\]::text\[\]/)![1].split(',').map((c) => c.trim().slice(1, -1));
     expect(ROSTER.map((r) => r.id)).toEqual(ids);
+    // 여는 값: 071 의 _character_price = shared/characters.js 의 CHARACTER_PRICE = 게임의 EXTRA_PRICE (화면 글 "시아코인 100개로 열기" 가 이 값을 쓴다)
+    const sqlPrice = Number(read('071_characters.sql').match(/when 'cat' then (\d+)/)![1]);
+    const shared = readFileSync(fileURLToPath(new URL('../../../shared/characters.js', import.meta.url)), 'utf8');
+    const sharedPrice = Number(shared.match(/CHARACTER_PRICE = \{ cat: (\d+) \}/)![1]);
+    expect([EXTRA_PRICE.cat, sharedPrice]).toEqual([sqlPrice, sqlPrice]);
+    // 열기 버튼 글은 shared 의 unlockLabel 과 같은 모양
+    expect(shared).toContain('`시아코인 ${CHARACTER_PRICE[id] ?? \'\'}개로 열기`');
+    const appTs = readFileSync(fileURLToPath(new URL('../src/ui/app.ts', import.meta.url)), 'utf8');
+    expect(appTs).toContain('`시아코인 ${EXTRA_PRICE[id] ?? 0}개로 열기`');
+    expect(appTs).not.toContain('로비에서');
     expect(sql).toContain(`unlocked_characters text[] not null default array[${STARTERS.map((c) => `'${c}'`).join(', ')}]`);
   });
 

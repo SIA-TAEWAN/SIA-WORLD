@@ -1,7 +1,9 @@
 import { VIEW_W, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
 import type { RunSummary } from '../game/sim';
-import { defaultProfile, type FinishResult, type SurvivalProfile } from '../game/progress';
+import { characterOpen, defaultProfile, type FinishResult, type SurvivalProfile } from '../game/progress';
 import type { SurvivalApi } from '../net/api';
+import { loadOwned } from '../net/characters';
+import { CHARACTER_BY_ID } from '../data/characters';
 import type { SurvivalLobby } from '../net/lobby';
 import { music, type TrackName } from './music';
 import { sfx, sound } from './sfx';
@@ -47,7 +49,7 @@ export const state = {
   char: 'tiger' as CharId,
   map: 'field',
   mode: 'normal' as RunMode,
-  /** 계정에서 연 추가 캐릭터 (로비에서 시아코인으로 연 고양이 등. net/characters.ts 가 채운다) */
+  /** 이 게임에서 연 추가 캐릭터 (시아코인으로 연 고양이 등. refreshOwned 가 채운다) */
   owned: [] as string[],
 };
 
@@ -62,6 +64,21 @@ export function setProfile(p: SurvivalProfile) {
 export function watchProfile(fn: () => void): () => void {
   profileWatchers.add(fn);
   return () => void profileWatchers.delete(fn);
+}
+
+/**
+ * 이 게임에서 연 추가 캐릭터를 다시 읽고, 떠 있는 화면(선택 화면·도감)을 다시 그린다.
+ * 서버를 못 읽으면(null) 가진 목록을 그대로 둔다 (처음이면 빈 목록 = 잠긴 것으로 시작. 서버도 판 시작 때 다시 검사한다).
+ * 마지막으로 고른 캐릭터가 잠긴 고양이면 기본 캐릭터로
+ */
+export async function refreshOwned(force: boolean) {
+  const owned = await loadOwned(force);
+  if (owned) {
+    const changed = owned.join() !== state.owned.join();
+    state.owned = owned;
+    if (changed) setProfile(state.profile);
+  }
+  if (CHARACTER_BY_ID[state.char].unlock.kind === 'sia' && !characterOpen(state.profile, state.char, state.owned)) state.char = 'tiger';
 }
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */

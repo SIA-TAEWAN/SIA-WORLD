@@ -140,8 +140,8 @@ export function cleanProfile(raw: unknown): SurvivalProfile {
     const lv = Math.min(u.max, count(ru[u.id]));
     if (lv > 0) up[u.id] = lv;
   }
-  // 로비에서 여는 캐릭터(고양이)는 시아서바이벌의 해금 목록에 들어가지 않는다 (characterOpen)
-  const chars = strings(r.unlockedCharacters, CHARACTERS.filter((c) => c.unlock.kind !== 'world').map((c) => c.id)) as CharId[];
+  // 시아코인으로 여는 캐릭터(고양이)는 시아서바이벌의 해금 목록에 들어가지 않는다 (characterOpen)
+  const chars = strings(r.unlockedCharacters, CHARACTERS.filter((c) => c.unlock.kind !== 'sia').map((c) => c.id)) as CharId[];
   const maps = strings(r.unlockedMaps, MAPS.map((m) => m.id));
   const cx = (r.codex && typeof r.codex === 'object' ? r.codex : {}) as Record<string, unknown>;
   const tt = (r.totals && typeof r.totals === 'object' ? r.totals : {}) as Record<string, unknown>;
@@ -390,17 +390,14 @@ export function resetUpgrades(profile: SurvivalProfile): SurvivalProfile {
   return { ...profile, coins: profile.coins + upgradeSpent(profile.upgrades), upgrades: {} };
 }
 
-/** 로비에서 여는 캐릭터가 잠겨 있을 때의 안내 (shared/characters.js 의 LOCK_HINT 와 같은 글) */
-export const LOCK_HINT = '로비에서 열 수 있어요';
-
 /**
  * 이 캐릭터를 고를 수 있나 (잠금 판단은 모두 여기서). 십이지는 프로필의 해금 목록으로 본다.
- * 로비에서 여는 캐릭터(unlock.kind 'world': 고양이)는 시아서바이벌의 해금 목록에 들어가지 않고,
- * 계정에서 연 캐릭터 목록(owned: shared/characters.js 의 loadOwnedCharacters)에 있어야 열린다.
+ * 시아코인으로 여는 캐릭터(unlock.kind 'sia': 고양이)는 시아서바이벌의 해금 목록에 들어가지 않고,
+ * 이 게임에서 연 캐릭터 목록(owned: shared/characters.js 의 loadOwnedCharacters('survival'))에 있어야 열린다. 게임마다 따로 연다.
  * 서버도 판 시작 때 071 의 _check_character 로 다시 거른다 ('locked character')
  */
 export function characterOpen(profile: SurvivalProfile, id: CharId, owned: readonly string[]): boolean {
-  if (CHARACTER_BY_ID[id].unlock.kind === 'world') return owned.includes(id);
+  if (CHARACTER_BY_ID[id].unlock.kind === 'sia') return owned.includes(id);
   return profile.unlockedCharacters.includes(id);
 }
 

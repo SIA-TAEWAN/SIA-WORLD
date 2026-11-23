@@ -8,27 +8,45 @@ import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
 import { sfx } from './sfx';
-import { LOCK_HINT, LOCKED_MSG, isCharOpen, onUnlockChange } from '../game/unlock';
+import { UNLOCK_LABEL, isCharOpen, onUnlockChange } from '../game/unlock';
+import { pressUnlock, unlockButtonHtml, type UnlockHooks } from './unlockBtn';
 
 /**
- * 캐릭터 고르기 칸 (AI 대전 고르기·게임방 같이 씀). 안 연 고양이는 그림을 보여 주되 자물쇠 (누르면 안내만).
+ * 캐릭터 고르기 칸 (AI 대전 고르기·게임방 같이 씀). 안 연 고양이는 그림을 보여 주되 자물쇠 (누르면 아래 '시아코인 100개로 열기' 를 누른 것처럼).
  * 남이 고른 캐릭터(상대 자리)는 잠금과 상관없이 그대로 보인다 — 여기는 내가 고르는 칸만.
  */
 function charButtons(selected: ZodiacId): string {
   return CHAR_IDS.map((c) => {
     const lock = c !== selected && !isCharOpen(c);
-    return `<button class="char ${c === selected ? 'sel' : ''} ${lock ? 'locked' : ''}" data-c="${c}" ${lock ? `title="${LOCK_HINT}" aria-label="${ZODIAC_NICK[c]} (잠김 · ${LOCK_HINT})"` : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span>${lock ? '<i class="lock" aria-hidden="true">🔒</i>' : ''}</button>`;
+    return `<button class="char ${c === selected ? 'sel' : ''} ${lock ? 'locked' : ''}" data-c="${c}" ${lock ? `title="${UNLOCK_LABEL}" aria-label="${ZODIAC_NICK[c]} (잠김 · ${UNLOCK_LABEL})"` : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span>${lock ? '<i class="lock" aria-hidden="true">🔒</i>' : ''}</button>`;
   }).join('');
 }
-/** 잠긴 캐릭터 한 줄 안내 (모두 열렸으면 빈 글) */
+/** 잠긴 고양이 아래 '시아코인 100개로 열기' 버튼 (모두 열렸으면 빈 글) */
 function lockNote(): string {
-  const locked = CHAR_IDS.filter((c) => !isCharOpen(c));
-  return locked.length ? `🔒 ${locked.map((c) => ZODIAC_NICK[c]).join('·')}는 ${LOCK_HINT}` : '';
+  return unlockButtonHtml(CHAR_IDS.filter((c) => !isCharOpen(c)).map((c) => ZODIAC_NICK[c]));
 }
-/** 고를 수 있으면 true, 잠겼으면 안내를 띄우고 false */
-function pickable(c: ZodiacId): boolean {
+/** #lock-note 의 열기 버튼을 잇는다. opened: 열렸을 때 고양이를 골라 둔다 */
+function wireUnlock(root: HTMLElement, opened: () => void): UnlockHooks {
+  const note = root.querySelector('#lock-note') as HTMLElement;
+  const hooks: UnlockHooks = {
+    repaint: () => {
+      if (note.isConnected) note.innerHTML = lockNote();
+    },
+    toast: (m) => toast(m, 2600),
+    opened,
+  };
+  note.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-unlock]')) return;
+    sfx('click');
+    void pressUnlock(hooks);
+  });
+  return hooks;
+}
+/** 고를 수 있으면 true. 잠겼으면 열기 버튼을 누른 것처럼 (확인 글로 바뀐다) 하고 false */
+function pickable(c: ZodiacId, hooks: UnlockHooks): boolean {
   if (isCharOpen(c)) return true;
-  toast(LOCKED_MSG, 2600);
+  sfx('click');
+  void pressUnlock(hooks);
   return false;
 }
 
@@ -215,7 +233,7 @@ export function showCharSelect() {
     `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>캐릭터 선택</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card pick"><div class="pick-stage"><img id="pick-img" src="" alt="" /></div>
       <div class="pick-name" id="pick-name"></div><div class="soft">겉모습만 달라요. 능력은 모두 같아요</div></div>
-    <div class="card"><h3>캐릭터 <span class="soft">누구로 할까요?</span></h3><div class="chars" id="chars"></div><p class="lock-note soft" id="lock-note"></p></div>
+    <div class="card"><h3>캐릭터 <span class="soft">누구로 할까요?</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status">내가 왼쪽 · AI가 오른쪽 · 전적과 시아코인에 반영돼요 (하루 30판) · 도중에 나가면 패배로 기록돼요</p>
     <button class="btn primary big" id="start">경기 시작 ▶</button>`,
@@ -228,16 +246,20 @@ export function showCharSelect() {
     $<HTMLImageElement>('#pick-img').src = zodiacFullUrl(char);
     $('#pick-name').textContent = ZODIAC_NICK[char];
     $('#chars').innerHTML = charButtons(char);
-    $('#lock-note').textContent = lockNote();
+    $('#lock-note').innerHTML = lockNote();
   };
-  // 로비에서 열고 돌아오면 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
+  // 열면 고양이를 골라 둔다. 다른 기기에서 열고 돌아와도(화면이 다시 보일 때 다시 불러온다) 자물쇠를 푼다
+  const unlockHooks = wireUnlock(root, () => {
+    char = 'cat';
+    paint();
+  });
   const offUnlock = onUnlockChange(paint);
   paint();
   $('#chars').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
     const c = b.dataset.c as ZodiacId;
-    if (!pickable(c)) return;
+    if (!pickable(c, unlockHooks)) return;
     sfx('click');
     char = c;
     paint();
@@ -298,7 +320,7 @@ export function showWaiting() {
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>게임방</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 링크 복사</button></div>
     <div class="card"><div class="duo" id="duo"></div></div>
-    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요 · 같은 캐릭터도 돼요</span></h3><div class="chars" id="chars"></div><p class="lock-note soft" id="lock-note"></p></div>
+    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요 · 같은 캐릭터도 돼요</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
     <button class="btn primary big" id="ready">레디 ▶</button>`,
@@ -332,7 +354,7 @@ export function showWaiting() {
     };
     $('#duo').innerHTML = `${seat(0)}<div class="vs-mark">VS</div>${seat(1)}`;
     $('#chars').innerHTML = charButtons(room.char);
-    $('#lock-note').textContent = lockNote();
+    $('#lock-note').innerHTML = lockNote();
     const busy = room.current !== null;
     const alone = ps.length < SEATS;
     const btn = $<HTMLButtonElement>('#ready');
@@ -350,6 +372,11 @@ export function showWaiting() {
           : '둘 다 레디하면 3초 뒤에 시작해요';
   };
   off = room.onChange(paint);
+  const unlockHooks = wireUnlock(root, () => {
+    if (state.room !== room || room.ready) return;
+    room.setChar('cat');
+    saveChar(room.char);
+  });
   const offUnlock = onUnlockChange(paint);
   paint();
   if (state.room !== room) return;
@@ -359,7 +386,7 @@ export function showWaiting() {
     if (!b) return;
     if (room.ready) return toast('레디를 풀고 바꿔 주세요');
     const c = b.dataset.c as ZodiacId;
-    if (!pickable(c)) return;
+    if (!pickable(c, unlockHooks)) return;
     sfx('click');
     room.setChar(c);
     saveChar(room.char);

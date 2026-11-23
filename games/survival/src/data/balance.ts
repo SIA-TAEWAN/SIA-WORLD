@@ -58,7 +58,7 @@ export const VIEW_H = 1280;
 /**
  * 고를 수 있는 캐릭터: 십이지 12 + 고양이(cat, "13번째 대원").
  * 서버의 _character_ids()(071) · shared/characters.js 의 ALL_CHARACTER_IDS 와 같은 순서다.
- * 고양이는 시아서바이벌 안에서 풀지 않는다 (로비에서 시아코인으로 연다)
+ * 고양이는 판 결과·엽전으로 풀지 않는다 (캐릭터 고르기 화면에서 시아코인으로 연다. 게임마다 따로)
  */
 export const CHAR_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig', 'cat'] as const;
 export type CharId = (typeof CHAR_IDS)[number];

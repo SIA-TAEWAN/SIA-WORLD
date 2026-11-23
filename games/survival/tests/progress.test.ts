@@ -241,14 +241,14 @@ describe('도감', () => {
   });
 
   it('모은 수: 처음에는 캐릭터 셋뿐', () => {
-    // 캐릭터: 쥐·소·호랑이 (고양이는 로비에서 열었을 때만 센다)
+    // 캐릭터: 쥐·소·호랑이 (고양이는 이 게임에서 시아코인으로 열었을 때만 센다)
     expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 15 + 8 + 13 });
     expect(codexCount(defaultProfile(), ['cat']).have).toBe(4);
     const run2 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
     expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);
   });
 
-  it('고양이 잠금: 계정에서 연 목록(owned)으로만 열린다. 시아서바이벌의 해금 목록·엽전으로는 열리지 않는다', () => {
+  it('고양이 잠금: 이 게임에서 연 목록(owned)으로만 열린다. 시아서바이벌의 해금 목록·엽전으로는 열리지 않는다', () => {
     const p = defaultProfile();
     expect(characterOpen(p, 'cat', [])).toBe(false);
     expect(characterOpen(p, 'cat', ['cat'])).toBe(true);

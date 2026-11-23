@@ -95,6 +95,9 @@ button, input { font: inherit; color: inherit; }
 .leader.locked { cursor: default; }
 .leader.locked img { filter: grayscale(1) brightness(0.6); }
 .leader em { position: absolute; top: 2px; left: 0; right: 0; font-style: normal; font-size: 10px; color: var(--white); text-shadow: 0 1px 0 var(--outline); }
+/* 잠긴 고양이 옆 "시아코인으로 열기" (셋째 줄의 남은 5칸) */
+.leaders .unlock { grid-column: span 5; font-size: 15px; padding: 4px 8px; line-height: 1.2; }
+.leaders .unlock.armed { background: var(--white); }
 #trait { margin-top: 8px; font-size: 15px; color: var(--ink); }
 .stage-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .btn.stage { flex-direction: column; gap: 1px; padding: 8px 2px; font-size: 14px; }

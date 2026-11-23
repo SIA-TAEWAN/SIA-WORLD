@@ -1,9 +1,10 @@
 -- 073: 시아서바이벌에 고양이(cat, "13번째 대원")
 --   · survival_start: 캐릭터 검사를 071 의 _check_character 로 바꾼다 (십이지 12 + cat).
 --     고양이는 시아서바이벌의 해금 목록(unlocked_characters)에 들어가지 않는다: 엽전으로도(survival_unlock_character 의 값 표에 없다),
---     판 결과로도(survival_finish 의 해금 목록은 그대로) 풀리지 않고, 로비에서 시아코인으로 연다 (_check_character 가 본다).
+--     판 결과로도(survival_finish 의 해금 목록은 그대로) 풀리지 않고, 이 게임의 캐릭터 선택 화면에서 시아코인으로 연다
+--     (게임마다 따로: owned_characters 의 game = 'survival'. _check_character 가 본다).
 --   · 나머지(판 끝 검증 상수·해금 조건·기록)는 055 그대로. 고양이 특성(피해를 일정 간격마다 한 번 피함)은 처치·레벨·엽전 상한에 닿지 않는다.
---   055 의 정의를 그대로 옮기고 위 두 줄만 바꿨다.
+--   055 의 정의를 그대로 옮기고 위 두 줄만 바꿨다. 시아코인으로 여는 캐릭터(_character_price 가 있는 것)는 모두 같은 규칙이다.
 
 create or replace function public.survival_start(p_map text, p_character text, p_mode text default 'normal') returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -11,13 +12,13 @@ declare me uuid := auth.uid(); pr public.survival_profiles; rid uuid;
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   if p_map is null or not exists (select 1 from public._survival_maps() m where m.map_id = p_map) then raise exception 'bad map'; end if;
-  -- 071: 고를 수 있는 캐릭터인지는 공용 함수가 본다 (모르는 id 면 'bad character'. 로비에서 여는 캐릭터의 잠금도 여기서)
-  perform public._check_character(me, p_character);
+  -- 071: 고를 수 있는 캐릭터인지는 공용 함수가 본다 (모르는 id 면 'bad character'. 시아코인으로 여는 캐릭터를 이 게임에서 안 열었으면 'locked character')
+  perform public._check_character(me, p_character, 'survival');
   if p_mode is null or p_mode not in ('normal', 'endless', 'hell') then raise exception 'bad mode'; end if;
   pr := public._survival_profile_row(me);
   if not (p_map = any(pr.unlocked_maps)) then raise exception 'map locked'; end if;
-  -- 십이지는 시아서바이벌의 해금 목록으로 본다. 고양이(cat)는 이 목록에 들어가지 않는다 (로비에서 열고, 위의 _check_character 가 본다)
-  if p_character <> 'cat' and not (p_character = any(pr.unlocked_characters)) then raise exception 'character locked'; end if;
+  -- 십이지는 시아서바이벌의 해금 목록으로 본다. 시아코인으로 여는 캐릭터(고양이)는 이 목록에 들어가지 않는다 (위의 _check_character 가 본다)
+  if public._character_price(p_character) is null and not (p_character = any(pr.unlocked_characters)) then raise exception 'character locked'; end if;
   -- 무한 모드는 그 맵을 4분 모드로 클리어했어야 열린다 (클리어 기록이 있거나 다음 맵이 열려 있다)
   if p_mode = 'endless' and not public._survival_map_cleared(me, p_map, pr.unlocked_maps) then
     raise exception 'endless locked';

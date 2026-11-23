@@ -1,4 +1,5 @@
 import { UPGRADES, UPGRADE_TOTAL, upgradeSpent } from '../data/upgrades';
+import { CHARACTER_PRICE } from '../data/characters';
 import { upgradeCount, upgradeOffer } from '../game/progress';
 import { ApiError } from '../net/api';
 import { esc, nav, screen, setProfile, stage, state, toast, watchProfile } from './app';
@@ -15,8 +16,8 @@ export function whyText(e: unknown): string {
   if (m.includes('already unlocked')) return '이미 풀린 캐릭터예요';
   if (m.includes('endless locked')) return '무한 모드는 이 맵을 4분 모드로 클리어하면 열려요';
   if (m.includes('hell locked')) return '헬 모드는 이 맵을 4분 모드로 클리어하면 열려요';
-  // 071 의 _check_character: 로비에서 여는 캐릭터(고양이)를 열지 않았다
-  if (m.includes('locked character')) return '고양이는 로비에서 시아코인으로 열 수 있어요';
+  // 071 의 _check_character: 시아코인으로 여는 캐릭터(고양이)를 이 게임에서 열지 않았다
+  if (m.includes('locked character')) return `고양이는 캐릭터 고르기 화면에서 시아코인 ${CHARACTER_PRICE.cat}개로 열 수 있어요`;
   if (m.includes('locked')) return '아직 잠겨 있어요';
   if (m.includes('need login')) return '로그인이 필요해요';
   return '지금은 할 수 없어요';

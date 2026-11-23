@@ -43,14 +43,14 @@ export async function worldSupabase(): Promise<SupabaseClient> {
 }
 
 interface CharactersModule {
-  loadOwnedCharacters(force?: boolean): Promise<string[]>;
+  loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
 }
 let charMod: Promise<CharactersModule> | null = null;
-/** 시아코인으로 연 추가 캐릭터 id (shared/characters.js). force 면 다시 묻는다 (로비에서 사고 돌아왔을 때). 못 읽으면 null */
+/** 시아핑거에서 시아코인으로 연 추가 캐릭터 id (shared/characters.js, 게임마다 따로). force 면 다시 묻는다. 못 읽으면 null */
 export async function loadOwnedCharacters(force = false): Promise<string[] | null> {
   try {
     charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
-    return await (await charMod).loadOwnedCharacters(force);
+    return await (await charMod).loadOwnedCharacters('finger', force);
   } catch {
     charMod = null;
     return null;

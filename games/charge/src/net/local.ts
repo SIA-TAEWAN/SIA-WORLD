@@ -8,5 +8,5 @@ export const DEV_SPEED = LOCAL_MODE ? Math.max(1, Math.min(8, Number(params.get(
 export const DEV_AUTO = LOCAL_MODE && params.get('auto') === '1';
 /** 개발용: 처음부터 모든 것이 열린 프로필 (?local=1&all=1) */
 export const DEV_ALL = LOCAL_MODE && params.get('all') === '1';
-/** 테스트 모드의 고양이: 로그인이 없으니 열린 것으로 본다. ?local=1&cat=0 이면 잠긴 화면을 본다 */
+/** 테스트 모드의 고양이: 로그인이 없으니 열린 것으로 본다. ?local=1&cat=0 이면 잠긴 화면 (열기 버튼은 서버 없이 바로 열린다) */
 export const DEV_OWNED: string[] = LOCAL_MODE && params.get('cat') !== '0' ? ['cat'] : [];

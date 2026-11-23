@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CHAR_IDS } from '../src/data/balance';
 import { BOSSES } from '../src/data/bosses';
-import { CHARACTERS } from '../src/data/characters';
+import { CHARACTERS, CHARACTER_PRICE, unlockLabel } from '../src/data/characters';
 import { ENEMIES } from '../src/data/enemies';
 import { MAPS } from '../src/data/maps';
 import { PASSIVES } from '../src/data/passives';
@@ -112,13 +112,13 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
   it('캐릭터 목록과 해금 조건', () => {
     // 073: 캐릭터 목록은 공용 함수(071 의 _character_ids · _check_character)가 본다. 그 목록이 게임의 캐릭터 목록과 같다
     const b = body('survival_start');
-    expect(b).toContain('perform public._check_character(me, p_character);');
+    expect(b).toContain("perform public._check_character(me, p_character, 'survival');");
     expect(b).not.toContain('p_character not in');
     const shared = read('071_characters.sql');
     const list = /array\[([^\]]+)\]::text\[\]/.exec(shared.slice(shared.indexOf('function public._character_ids()')))![1].split(',').map((s) => s.trim().slice(1, -1));
     expect(list).toEqual([...CHAR_IDS]);
-    // 고양이는 시아서바이벌의 해금 목록을 보지 않는다 (로비에서 연다): 엽전 값 표에도, 판 결과 해금 목록에도 없다
-    expect(b).toContain("if p_character <> 'cat' and not (p_character = any(pr.unlocked_characters)) then raise exception 'character locked'; end if;");
+    // 시아코인으로 여는 캐릭터(고양이)는 시아서바이벌의 해금 목록을 보지 않는다 (이 게임의 선택 화면에서 연다): 엽전 값 표에도, 판 결과 해금 목록에도 없다
+    expect(b).toContain("if public._character_price(p_character) is null and not (p_character = any(pr.unlocked_characters)) then raise exception 'character locked'; end if;");
     expect(rows('_survival_character_prices').map((r) => r[0])).not.toContain('cat');
     // 071: 고양이를 여는 값(시아코인)은 SQL 과 shared/characters.js 가 같다
     const price = (src: string, re: RegExp) => Object.fromEntries([...src.matchAll(re)].map((m) => [m[1], Number(m[2])]));
@@ -128,12 +128,18 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const block = /export const CHARACTER_PRICE = \{([^}]*)\}/.exec(js)![1];
     const jsPrice = price(block, /(\w+)\s*:\s*(\d+)/g);
     expect(sqlPrice).toEqual(jsPrice);
-    expect(sqlPrice.cat).toBeGreaterThan(0);
+    // 게임 안의 값(버튼 글·안내)도 같다. 지금은 고양이 100개
+    expect(sqlPrice).toEqual(CHARACTER_PRICE);
+    expect(sqlPrice.cat).toBe(100);
+    // 버튼 글: shared 의 unlockLabel 과 같은 모양
+    expect(js).toContain("export const unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`;");
+    expect(unlockLabel('cat')).toBe('시아코인 100개로 열기');
+    expect(CHARACTERS.filter((c) => c.unlock.kind === 'sia').map((c) => [c.id, c.unlock.value])).toEqual(Object.entries(CHARACTER_PRICE));
     const f = body('survival_finish');
     const cond: Record<string, string> = {};
     for (const m of f.matchAll(/\(c = '(\w+)' and ([^)]+)\)/g)) cond[m[1]] = m[2].trim();
     const want = Object.fromEntries(
-      CHARACTERS.filter((c) => !['base', 'coins', 'world'].includes(c.unlock.kind)).map((c) => {
+      CHARACTERS.filter((c) => !['base', 'coins', 'sia'].includes(c.unlock.kind)).map((c) => {
         const v = c.unlock.value;
         const text = { time: `p_time >= ${v}`, boss: `p_boss_kills >= ${v}`, kills: `n_kills >= ${v}`, cakes: `n_cakes >= ${v}`, clear: 'p_cleared' }[c.unlock.kind as 'time'];
         return [c.id, text];

@@ -7,7 +7,8 @@ import { ENDLESS_ID, STAGES, endlessStage, nextStage, stageOf, stagesOf, type St
 import {
   emptyProfile,
   endlessOpen,
-  LOCK_HINT,
+  CAT_PRICE,
+  UNLOCK_LABEL,
   leadersOf,
   regionOpen,
   setOwnedExtras,
@@ -22,7 +23,7 @@ import {
 import { createRun, metersOf, progressOf, starsFor, type RunState } from '../game/sim';
 import { ApiError, type ChargeApi } from '../net/api';
 import { DEV_ALL, DEV_OWNED, LOCAL_MODE } from '../net/local';
-import { loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
+import { buyCharacter, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
 import { TABLE } from '../theme';
 
@@ -108,14 +109,15 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
     // 개발용 ?local=1&all=1: 모든 스테이지·대장을 연 상태로 본다 (저장하지 않음)
     profile = { ...profile, coins: Math.max(profile.coins, 99999), stages: Object.fromEntries(STAGES.map((s) => [s.id, 3])) };
   }
-  // 고양이(시아코인으로 여는 대장): 들어올 때 한 번, 로비에서 사고 돌아오면(화면이 다시 보이면) 다시 묻는다
-  setOwnedExtras(LOCAL_MODE ? DEV_OWNED : await loadOwnedCharacters());
+  // 고양이(이 게임에서 시아코인으로 여는 대장): 들어올 때 한 번 (못 읽으면 잠긴 것으로 시작),
+  // 다른 기기에서 열었을 수 있으니 화면이 다시 보이면 또 묻는다 (못 읽으면 가진 목록을 그대로 둔다)
+  applyOwned(LOCAL_MODE ? DEV_OWNED : ((await loadOwnedCharacters()) ?? []));
   if (!LOCAL_MODE) {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       void loadOwnedCharacters(true).then((ids) => {
         const was = leadersOf(profile).join();
-        setOwnedExtras(ids);
+        applyOwned(ids);
         // 메인(대장 고르기)을 보고 있으면 바로 다시 그린다
         if (leadersOf(profile).join() !== was && document.querySelector('.leaders')) showMain();
       });
@@ -131,6 +133,43 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
     .resend()
     .then(noteResent)
     .catch(() => null);
+}
+
+/** 이 게임에서 연 추가 캐릭터 */
+let owned: string[] = [];
+/** 연 캐릭터 목록 반영 (null = 못 읽음 → 그대로). 고른 대장이 잠기면 첫 대장으로 */
+function applyOwned(ids: string[] | null) {
+  if (!ids) return;
+  owned = [...ids];
+  setOwnedExtras(owned);
+  const open = leadersOf(profile);
+  if (!open.includes(leader)) setLeader(open[0] ?? 'rat');
+}
+
+let buying = false;
+/** 고양이 열기 (시아코인). 테스트 모드는 서버 없이 바로 연다 */
+async function unlockCat(btn: HTMLButtonElement) {
+  if (buying) return;
+  buying = true;
+  btn.disabled = true;
+  btn.textContent = '여는 중…';
+  try {
+    if (LOCAL_MODE) {
+      applyOwned([...owned, 'cat']);
+      toast('열었어요! (테스트 모드)');
+    } else {
+      const { r, text } = await buyCharacter('cat');
+      if (r.ok || r.reason === 'owned') applyOwned((await loadOwnedCharacters(true)) ?? [...owned, 'cat']);
+      toast(text);
+    }
+    if (leadersOf(profile).includes('cat')) {
+      setLeader('cat');
+      play('boost');
+    }
+  } finally {
+    buying = false;
+  }
+  showMain();
 }
 
 function setLeader(id: LeaderId) {
@@ -157,10 +196,11 @@ export function showMain() {
       <div class="leaders">${LEADERS.map((l) => {
         const ok = open.includes(l.id);
         // 고를 수 있는지는 leadersOf(profile) 한 곳에서 정한다 (고양이 잠금은 progress.ts 의 extraOpen)
-        // 잠긴 고양이는 눌러서 안내를 볼 수 있게 disabled 로 두지 않는다
-        return `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok || l.extra ? '' : 'disabled'}>
-            <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒 ${l.extra ? '로비' : `${l.unlockRegion}지역`}</em>`}
+        // 잠긴 고양이는 눌러서 특성을 볼 수 있게 disabled 로 두지 않고, 옆에 "시아코인으로 열기" 버튼을 둔다 (게임마다 따로 연다)
+        const tile = `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok || l.extra ? '' : 'disabled'}>
+            <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒${l.extra ? '' : ` ${l.unlockRegion}지역`}</em>`}
           </button>`;
+        return ok || !l.extra ? tile : `${tile}<button class="btn primary unlock" data-unlock="${l.id}">🔒 ${UNLOCK_LABEL}</button>`;
       }).join('')}</div>
       <p class="soft center" id="trait">${leaderOf(leader).trait}</p>
     </div>
@@ -186,13 +226,34 @@ export function showMain() {
       const id = b.dataset.id as LeaderId;
       if (!open.includes(id)) {
         play('click');
-        return toast(`🔒 ${leaderOf(id).name}는 ${LOCK_HINT} (시아코인)`);
+        return toast(`🔒 ${leaderOf(id).name} — ${leaderOf(id).trait}`, 3200);
       }
       setLeader(id);
       play('click');
       showMain();
     }),
   );
+  // 열기 버튼: 한 번 누르면 확인 글로 바뀌고, 4초 안에 한 번 더 누르면 연다
+  root.querySelectorAll<HTMLButtonElement>('[data-unlock]').forEach((b) => {
+    let armed = 0;
+    b.addEventListener('click', () => {
+      play('click');
+      if (buying) return;
+      if (!armed) {
+        b.textContent = `${CAT_PRICE}코인을 쓸까요? 한 번 더 누르기`;
+        b.classList.add('armed');
+        armed = window.setTimeout(() => {
+          armed = 0;
+          b.textContent = `🔒 ${UNLOCK_LABEL}`;
+          b.classList.remove('armed');
+        }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      armed = 0;
+      void unlockCat(b);
+    });
+  });
   root.querySelector('#go')!.addEventListener('click', () => {
     play('click');
     showRegions();

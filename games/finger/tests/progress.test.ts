@@ -16,6 +16,9 @@ import {
   stageOpen,
   whyText,
   CAT_LOCKED_TEXT,
+  CAT_PRICE,
+  UNLOCK_LABEL,
+  unlockText,
   type FingerProfile,
 } from '../src/game/progress';
 import { ApiError, createLocalApi, createSupabaseApi, rejectOf, type ServerClient, type Store } from '../src/net/api';
@@ -173,7 +176,12 @@ describe('고양이 잠금 (시아코인으로 연 사람만)', () => {
   it('서버 거절 locked character → 안내 글 · 다시 보내지 않는 거절', () => {
     expect(rejectOf('P0001: locked character')).toBe('locked character');
     expect(whyText('locked character')).toBe(CAT_LOCKED_TEXT);
-    expect(CAT_LOCKED_TEXT).toBe('고양이는 로비에서 시아코인으로 열 수 있어요');
+    expect(CAT_LOCKED_TEXT).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
+    expect(CAT_PRICE).toBe(100);
+    expect(UNLOCK_LABEL).toBe('시아코인 100개로 열기');
+    expect(unlockText({ ok: true, siaCoins: 1234 })).toBe('열었어요! 남은 시아코인 1,234개');
+    expect(unlockText({ ok: false, reason: 'owned' })).toBe('이미 열었어요');
+    expect(unlockText({ ok: false, reason: 'coin', siaCoins: 40 })).toBe('시아코인이 모자라요 (40 / 100)');
   });
   it('테스트 모드: 고양이는 기본으로 열림, owned 를 비우면(?cat=0) 잠김', async () => {
     const open = createLocalApi(memStore());
@@ -182,6 +190,43 @@ describe('고양이 잠금 (시아코인으로 연 사람만)', () => {
     const locked = createLocalApi(memStore(), undefined, []);
     expect((await locked.loadProfile()).owned).toEqual([]);
     await expect(locked.start('1-1', ['cat'])).rejects.toThrow('locked character');
+    // 테스트 모드의 열기 버튼: 서버 없이 바로 열린다 · 두 번째는 '이미 열었어요'
+    const r = await locked.unlock('cat');
+    expect(r.answer.ok).toBe(true);
+    expect(r.profile?.owned).toEqual(['cat']);
+    expect(await locked.start('1-1', ['cat'])).toMatch(/^local-/);
+    expect((await locked.unlock('cat')).answer.reason).toBe('owned');
+  });
+
+  it("서버: buy_character('finger', id) 로 열고 새 프로필(owned)을 받는다 · 모자라면 프로필 없음", async () => {
+    const calls: { fn: string; args?: Record<string, unknown> }[] = [];
+    let coins = 150;
+    const owned: string[] = [];
+    const c: ServerClient = {
+      rpc(fn, args) {
+        calls.push({ fn, args });
+        if (fn === 'buy_character') {
+          if (owned.includes(String(args?.p_id))) return Promise.resolve({ data: { ok: false, reason: 'owned', siaCoins: coins, price: 100 }, error: null });
+          if (coins < 100) return Promise.resolve({ data: { ok: false, reason: 'coin', siaCoins: coins, price: 100 }, error: null });
+          coins -= 100;
+          owned.push(String(args?.p_id));
+          return Promise.resolve({ data: { ok: true, siaCoins: coins, price: 100 }, error: null });
+        }
+        if (fn === 'finger_profile') return Promise.resolve({ data: { coins: 0, owned: [...owned] }, error: null });
+        return Promise.resolve({ data: null, error: { message: 'no' } });
+      },
+      functions: { invoke: () => Promise.resolve({ data: null, error: { message: 'no' } }) },
+    };
+    const api = createSupabaseApi(c, 'u1', memStore());
+    const a = await api.unlock('cat');
+    expect(calls[0]).toEqual({ fn: 'buy_character', args: { p_game: 'finger', p_id: 'cat' } });
+    expect(a.answer).toMatchObject({ ok: true, siaCoins: 50 });
+    expect(a.profile?.owned).toEqual(['cat']);
+    expect((await api.unlock('cat')).answer.reason).toBe('owned');
+    owned.length = 0;
+    const b = await api.unlock('cat');
+    expect(b.answer.reason).toBe('coin');
+    expect(b.profile).toBeNull();
   });
 });
 

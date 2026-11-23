@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { CHAR_IDS, ZODIAC_IDS } from '../src/game/constants';
-import { LOCK_HINT, initUnlock, isCharOpen, isLockedError, onUnlockChange, openOr, setAllOpen, setOwned } from '../src/game/unlock';
 import { readFileSync } from 'node:fs';
+import { CHAR_IDS, ZODIAC_IDS } from '../src/game/constants';
+import { CAT_PRICE, GAME_ID, LOCKED_MSG, UNLOCK_LABEL, initUnlock, isCharOpen, isLockedError, onUnlockChange, openOr, setAllOpen, setOwned, unlockCat } from '../src/game/unlock';
 
-describe('고양이 잠금', () => {
-  it('십이지는 늘 열려 있고, 고양이는 연 사람만', () => {
-    setAllOpen(false);
-    setOwned([]);
+const reset = () => {
+  setAllOpen(false);
+  setOwned([]);
+};
+
+describe('고양이 잠금 (게임마다 따로)', () => {
+  it('십이지는 늘 열려 있고, 고양이는 이 게임에서 연 사람만', () => {
+    reset();
     for (const c of ZODIAC_IDS) expect(isCharOpen(c)).toBe(true);
     expect(isCharOpen('cat')).toBe(false);
     expect(isCharOpen('nope')).toBe(false);
@@ -15,39 +19,78 @@ describe('고양이 잠금', () => {
     expect(isCharOpen('cat')).toBe(true);
     expect(openOr('cat')).toBe('cat');
     expect(CHAR_IDS.every((c) => isCharOpen(c))).toBe(true);
-    setOwned([]);
+    reset();
   });
-  it('연 목록이 바뀔 때만 화면에 알린다', () => {
-    setOwned([]);
+  it('서버를 못 읽으면(null) 가진 목록을 그대로 둔다. 바뀔 때만 화면에 알린다', () => {
+    reset();
     let n = 0;
     const off = onUnlockChange(() => n++);
     setOwned([]);
     setOwned(['cat']);
+    setOwned(null);
+    expect(isCharOpen('cat')).toBe(true);
     setOwned(['cat']);
     setOwned([]);
     off();
     setOwned(['cat']);
     expect(n).toBe(2);
-    setOwned([]);
+    reset();
   });
-  it('테스트 모드: 서버를 부르지 않고 열림, &cat=0 이면 잠김', async () => {
+  it('처음 불러오기: 이 게임 id 로 묻고, 못 읽으면 잠긴 것으로 시작', async () => {
+    reset();
+    const asked: string[] = [];
+    await initUnlock(async (g) => (asked.push(g), null), false, null);
+    expect(asked).toEqual([GAME_ID]);
+    expect(isCharOpen('cat')).toBe(false);
+    await initUnlock(async () => ['cat'], false, null);
+    expect(isCharOpen('cat')).toBe(true);
+    reset();
+  });
+  it('열기: 성공·이미 연 것이면 열린다, 시아코인이 모자라면 그대로', async () => {
+    reset();
+    let list: string[] = [];
+    await initUnlock(async () => list, false, null);
+    const games: string[] = [];
+    const coin = await unlockCat(async (g) => (games.push(g), { ok: false, reason: 'coin', siaCoins: 20, price: CAT_PRICE }));
+    expect(coin.opened).toBe(false);
+    expect(isCharOpen('cat')).toBe(false);
+    list = ['cat'];
+    const ok = await unlockCat(async (g) => (games.push(g), { ok: true, siaCoins: 50, price: CAT_PRICE }));
+    expect(ok.opened).toBe(true);
+    expect(isCharOpen('cat')).toBe(true);
+    reset();
+    list = [];
+    const owned = await unlockCat(async () => ({ ok: false, reason: 'owned' }));
+    expect(owned.opened).toBe(true);
+    expect(isCharOpen('cat')).toBe(true); // 다시 읽기가 [] 여도 산 것은 확실
+    expect(games).toEqual([GAME_ID, GAME_ID]);
+    reset();
+  });
+  it('테스트 모드: 기본은 열림, &cat=0 이면 잠김, 열기는 서버 없이 바로', async () => {
     let called = 0;
     const load = async () => (called++, ['cat']);
     await initUnlock(load, true, null);
     expect(isCharOpen('cat')).toBe(true);
     await initUnlock(load, true, '0');
     expect(isCharOpen('cat')).toBe(false);
-    expect(called).toBe(0);
-    await initUnlock(load, false, null);
-    expect(called).toBe(1);
+    const r = await unlockCat(async () => {
+      throw new Error('서버를 부르면 안 된다');
+    });
+    expect(r).toMatchObject({ opened: true, local: true });
     expect(isCharOpen('cat')).toBe(true);
-    setOwned([]);
+    expect(called).toBe(0);
+    reset();
   });
-  it('서버 거절 문구 알아보기, 안내 글은 shared/characters.js 와 같다', () => {
+  it('글·가격은 shared/characters.js · 071 과 같다', () => {
     expect(isLockedError('locked character')).toBe(true);
     expect(isLockedError('bad character')).toBe(false);
-    expect(isLockedError(undefined)).toBe(false);
+    expect(LOCKED_MSG).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
     const shared = readFileSync(new URL('../../../shared/characters.js', import.meta.url), 'utf8');
-    expect(shared).toContain(`LOCK_HINT = '${LOCK_HINT}'`);
+    expect(shared).toMatch(new RegExp(String.raw`CHARACTER_PRICE = \{ cat: ${CAT_PRICE} \}`));
+    expect(shared).toContain("unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`");
+    expect(UNLOCK_LABEL).toBe(`시아코인 ${CAT_PRICE}개로 열기`);
+    expect(shared).toContain(`'${GAME_ID}'`);
+    const sql = readFileSync(new URL('../../../supabase/migrations/071_characters.sql', import.meta.url), 'utf8');
+    expect(sql).toMatch(new RegExp(String.raw`'cat'\s+then\s+${CAT_PRICE}`));
   });
 });

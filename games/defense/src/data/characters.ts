@@ -210,7 +210,7 @@ export const TOWERS: TowerDef[] = [
 export const TOWER_INDEX: Record<string, number> = Object.fromEntries(TOWERS.map((t, i) => [t.id, i]));
 export const towerOf = (id: string): TowerDef | undefined => TOWERS[TOWER_INDEX[id]];
 
-/** RosterEntry.unlockRegion: 스테이지 진행으로 열리지 않는 캐릭터 (고양이 — 로비에서 시아코인으로 연다) */
+/** RosterEntry.unlockRegion: 스테이지 진행으로 열리지 않는 캐릭터 (고양이 — 이 게임의 캐릭터 선택 화면에서 시아코인으로 연다 (게임마다 따로)) */
 export const BOUGHT = -1;
 
 /**
@@ -241,8 +241,10 @@ export const ROSTER: RosterEntry[] = [
   { id: 'cat', name: '고양이', nick: '야옹이', role: '마무리 사냥', unlockRegion: BOUGHT },
 ];
 
-/** 스테이지로 열리지 않는 캐릭터 (로비에서 시아코인으로 연다) */
+/** 스테이지로 열리지 않는 캐릭터 (이 게임의 캐릭터 선택 화면에서 시아코인으로 연다 (게임마다 따로)) */
 export const EXTRAS: CharId[] = ROSTER.filter((r) => r.unlockRegion === BOUGHT).map((r) => r.id);
+/** 여는 값 (시아코인). 071 의 _character_price · shared/characters.js 의 CHARACTER_PRICE 와 같다 (tests/sql.test.ts 가 대조) */
+export const EXTRA_PRICE: Partial<Record<CharId, number>> = { cat: 100 };
 
 /** 처음부터 쓸 수 있는 캐릭터 */
 export const STARTERS: CharId[] = ROSTER.filter((r) => r.unlockRegion === 0).map((r) => r.id);

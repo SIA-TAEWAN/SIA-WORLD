@@ -19,7 +19,7 @@ export interface FingerProfile {
   levels: Partial<Record<HeroId, number>>;
   /** 끝없는 탑 최고 기록 (올라간 층 · 그때 쓴 턴). 없으면 null */
   tower: { floor: number; turns: number } | null;
-  /** 시아코인으로 연 추가 대원 (고양이). 서버 _finger_profile_json 의 owned (077), 로비에서 사고 오면 다시 읽는다 */
+  /** 시아핑거에서 시아코인으로 연 추가 대원 (고양이 — 게임마다 따로). 서버 _finger_profile_json 의 owned (076) */
   owned: HeroId[];
 }
 
@@ -242,9 +242,32 @@ export function levelUp(p: FingerProfile, id: string): string | null {
   return null;
 }
 
-/** 잠긴 고양이 안내 (선택 화면 칸 · shared/characters.js 의 LOCK_HINT 와 같은 글) · 서버 거절 'locked character' */
-export const LOCK_HINT = '로비에서 열 수 있어요';
-export const CAT_LOCKED_TEXT = '고양이는 로비에서 시아코인으로 열 수 있어요';
+/** 고양이를 여는 값 (시아코인, 게임마다 따로). SQL 071 _character_price · shared/characters.js CHARACTER_PRICE 와 같다 (tests/sql.test.ts) */
+export const CAT_PRICE = 100;
+/** 잠긴 고양이 칸의 버튼 글 (shared/characters.js 의 unlockLabel('cat') 과 같은 글) */
+export const UNLOCK_LABEL = `시아코인 ${CAT_PRICE}개로 열기`;
+/** 한 번 더 눌러야 산다 (두 번 누르기 확인) */
+export const UNLOCK_CONFIRM = `${CAT_PRICE}코인을 쓸까요? 한 번 더 누르기`;
+/** 서버 거절 'locked character' */
+export const CAT_LOCKED_TEXT = `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`;
+
+/** 고양이 열기 결과 → 화면 한 줄 (shared/characters.js 의 buyMessage 와 같은 글) */
+export function unlockText(r: UnlockAnswer): string {
+  const n = (v: number | undefined) => Number(v ?? 0).toLocaleString('ko-KR');
+  if (r.ok) return r.siaCoins === undefined ? '열었어요!' : `열었어요! 남은 시아코인 ${n(r.siaCoins)}개`;
+  if (r.reason === 'owned') return '이미 열었어요';
+  if (r.reason === 'coin') return `시아코인이 모자라요 (${n(r.siaCoins)} / ${CAT_PRICE})`;
+  if (r.reason === 'login') return '로그인이 필요해요';
+  return '열지 못했어요. 잠시 후 다시 시도해 주세요';
+}
+
+/** 서버 buy_character 결과 모양 (071) */
+export interface UnlockAnswer {
+  ok: boolean;
+  reason?: 'owned' | 'coin' | 'login' | 'error';
+  siaCoins?: number;
+  price?: number;
+}
 
 /** 서버가 거절한 까닭 → 화면 글 */
 export function whyText(why: string): string {

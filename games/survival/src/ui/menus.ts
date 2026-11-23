@@ -1,14 +1,15 @@
 import { HELL, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
-import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
+import { CHARACTERS, CHARACTER_BY_ID, CHARACTER_PRICE, unlockLabel } from '../data/characters';
+import { buyChar, buyText } from '../net/characters';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
-import { LOCK_HINT, characterOpen, characterPrice, endlessOpen, hellOpen } from '../game/progress';
+import { characterOpen, characterPrice, endlessOpen, hellOpen } from '../game/progress';
 import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, loadEngine, mmss, nav, openSettings, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
+import { esc, loadEngine, mmss, nav, openSettings, refreshOwned, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
 import { whyText } from './upgrade';
@@ -17,8 +18,8 @@ import { whyText } from './upgrade';
 const LOCKS_ON = true;
 
 const charLocked = (id: CharId) => LOCKS_ON && !characterOpen(state.profile, id, state.owned);
-/** 로비에서 여는 캐릭터(고양이): 여기서는 풀 수 없다 */
-const worldChar = (id: CharId) => CHARACTER_BY_ID[id].unlock.kind === 'world';
+/** 시아코인으로 여는 캐릭터(고양이): 이 화면의 버튼으로 연다 (게임마다 따로) */
+const siaChar = (id: CharId) => CHARACTER_BY_ID[id].unlock.kind === 'sia';
 const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includes(id);
 /** 무한 모드는 그 맵을 4분 모드로 클리어해야 열린다 (서버의 맵별 최고 기록 기준) */
 const endlessLocked = (id: string) => LOCKS_ON && !endlessOpen(state.profile, id);
@@ -118,13 +119,18 @@ export function showCharSelect() {
      <button class="btn primary big" id="next">맵 고르기 ▶</button>`,
     'select',
     'main',
-    () => off(),
+    () => {
+      off();
+      if (confirmTimer) clearTimeout(confirmTimer);
+    },
   );
   const info = root.querySelector('#info') as HTMLElement;
   const next = root.querySelector('#next') as HTMLButtonElement;
+  /** 시아코인 열기: 한 번 누르면 확인 글로 바뀌고, 이 시각 전에 한 번 더 누르면 산다 */
+  let confirmUntil = 0;
+  let confirmTimer: ReturnType<typeof setTimeout> | null = null;
+  let buying = false;
   const paint = () => {
-    // 로비에서 여는 캐릭터는 잠겨 있으면 고를 수 없다 (열린 목록이 늦게 바뀌었을 때)
-    if (worldChar(pick) && charLocked(pick)) pick = 'rat';
     const c = CHARACTER_BY_ID[pick];
     const own = WEAPONS[WEAPON_INDEX[c.weapon]];
     const start = WEAPONS[startWeapon(pick)];
@@ -147,8 +153,15 @@ export function showCharSelect() {
       const l = charLocked(b.dataset.c as CharId);
       b.classList.toggle('locked', l);
       b.querySelector('.lock')?.classList.toggle('hidden', !l);
-      b.title = l && worldChar(b.dataset.c as CharId) ? LOCK_HINT : '';
+      b.title = l && siaChar(b.dataset.c as CharId) ? unlockLabel(b.dataset.c!) : '';
     });
+    if (locked && siaChar(pick)) {
+      // 시아코인으로 연다 (이 게임에서만. 다른 게임에서 열었어도 여기서 따로 연다)
+      const sure = Date.now() < confirmUntil;
+      next.disabled = buying;
+      next.textContent = buying ? '여는 중…' : sure ? `시아코인 ${CHARACTER_PRICE[pick]}개를 쓸까요? 한 번 더 누르기` : `🔒 ${unlockLabel(pick)}`;
+      return;
+    }
     next.disabled = locked && (price === null || state.profile.coins < price);
     next.textContent = !locked ? '맵 고르기 ▶' : price !== null ? `🪙 ${price.toLocaleString()}닢으로 풀기` : `🔒 ${c.unlock.text}`;
   };
@@ -159,10 +172,8 @@ export function showCharSelect() {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
     sfx('toggle');
-    const id = b.dataset.c as CharId;
-    // 잠긴 고양이: 고르지 않고 안내만 (로비에서 시아코인으로 연다)
-    if (worldChar(id) && charLocked(id)) return toast(`${CHARACTER_BY_ID[id].nick}: ${LOCK_HINT}`);
-    pick = id;
+    pick = b.dataset.c as CharId;
+    confirmUntil = 0;
     paint();
   });
   root.querySelector('#back')!.addEventListener('click', () => {
@@ -171,6 +182,33 @@ export function showCharSelect() {
   });
   let busy = false;
   next.addEventListener('click', async () => {
+    if (charLocked(pick) && siaChar(pick)) {
+      if (buying) return;
+      // 처음 누르면 4초 동안 확인 글, 그 안에 한 번 더 누르면 연다
+      if (Date.now() >= confirmUntil) {
+        sfx('toggle');
+        confirmUntil = Date.now() + 4000;
+        if (confirmTimer) clearTimeout(confirmTimer);
+        confirmTimer = setTimeout(() => root.isConnected && paint(), 4050);
+        return paint();
+      }
+      confirmUntil = 0;
+      buying = true;
+      paint();
+      const id = pick;
+      const r = await buyChar(id);
+      if (r.ok || r.reason === 'owned') {
+        await refreshOwned(true);
+        // 서버가 열었다고 답했는데 목록을 못 읽었으면 (통신) 이 화면에서는 열린 것으로 둔다. 판 시작 때 서버가 다시 본다
+        if (!state.owned.includes(id)) state.owned = [...state.owned, id];
+      }
+      buying = false;
+      const open = characterOpen(state.profile, id, state.owned);
+      sfx(open ? 'newRecord' : 'toggle');
+      toast(open ? `${await buyText(r, id)} · ${CHARACTER_BY_ID[id].nick}와(과) 함께할 수 있어요!` : await buyText(r, id), 3000);
+      if (root.isConnected) paint();
+      return;
+    }
     if (charLocked(pick)) {
       // 엽전으로 푼다 (원숭이·닭·개)
       if (characterPrice(pick) === null || busy || !state.api) return;

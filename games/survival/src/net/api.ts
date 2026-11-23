@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ENDLESS, RUN_SEC, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
-import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
+import { CHARACTERS, CHARACTER_BY_ID, CHARACTER_PRICE } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { UPGRADE_TOTAL } from '../data/upgrades';
 import {
@@ -142,9 +142,9 @@ export function createLocalApi(store: Store, now: () => number = () => Date.now(
     async start(map, character, skipSec = 0, mode = 'normal') {
       const d = read();
       if (!d.profile.unlockedMaps.includes(map)) throw new ApiError('map locked');
-      // 서버와 같은 까닭: 로비에서 여는 캐릭터는 071 의 'locked character', 십이지는 'character locked'
-      if (CHARACTER_BY_ID[character].unlock.kind === 'world') {
-        if (!localOwned().includes(character)) throw new ApiError('locked character');
+      // 서버와 같은 까닭: 시아코인으로 여는 캐릭터는 071 의 'locked character', 십이지는 'character locked'
+      if (CHARACTER_BY_ID[character].unlock.kind === 'sia') {
+        if (!localOpen.has(character)) throw new ApiError('locked character');
       } else if (!characterOpen(d.profile, character, [])) throw new ApiError('character locked');
       if (mode === 'endless' && !endlessOpen(d.profile, map)) throw new ApiError('endless locked');
       if (mode === 'hell' && !hellOpen(d.profile, map)) throw new ApiError('hell locked');
@@ -493,10 +493,16 @@ export interface DevSetup {
 }
 
 /**
- * 테스트 모드(?local=1)에서 연 추가 캐릭터: 로그인이 없으니 모두 열린 것으로 본다. &cat=0 이면 고양이가 잠긴 상태
+ * 테스트 모드(?local=1)에서 연 추가 캐릭터: 로그인이 없으니 처음부터 모두 열린 것으로 본다. &cat=0 이면 고양이가 잠긴 상태로 시작하고,
+ * 고양이 열기 버튼은 서버 없이 바로 연다 (localBuy, 화면 확인용. 새로고침하면 처음 상태)
  */
-export function localOwned(): string[] {
-  return params.get('cat') === '0' ? [] : CHARACTERS.filter((c) => c.unlock.kind === 'world').map((c) => c.id);
+const localOpen = new Set<string>(params.get('cat') === '0' ? [] : CHARACTERS.filter((c) => c.unlock.kind === 'sia').map((c) => c.id));
+export const localOwned = (): string[] => [...localOpen];
+export function localBuy(id: string): { ok: boolean; reason?: 'owned'; siaCoins: number; price: number } {
+  const price = CHARACTER_PRICE[id] ?? 0;
+  if (localOpen.has(id)) return { ok: false, reason: 'owned', siaCoins: 0, price };
+  localOpen.add(id);
+  return { ok: true, siaCoins: 0, price };
 }
 
 export function devSetup(): DevSetup | null {

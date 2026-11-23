@@ -91,6 +91,11 @@ export const TANK_IDS: TankId[] = (Object.keys(TANKS) as TankId[]).filter((t) =>
 /** 랜덤·AI 가 고르는 12지신 탱크 (추가 캐릭터 제외. 온라인에서 시드로 모든 기기가 같은 결과를 내야 하므로 순서를 바꾸지 않는다) */
 export const RANDOM_TANK_IDS: TankId[] = TANK_IDS.filter((t) => !EXTRA_TANK_IDS.includes(t));
 export const ALL_TANK_IDS = Object.keys(TANKS) as TankId[];
+/**
+ * 모르는 탱크 id(더 새 판본의 기기가 고른 새 캐릭터 등)는 어흥이(tiger)로 그리고 계산한다.
+ * 새 캐릭터는 기존 탱크의 능력치를 그대로 쓰므로(고양이 = 어흥이) 결과도 같다. 방·게임 화면에서 남의 탱크를 읽는 곳에 쓴다.
+ */
+export const tankOr = (id: string): TankId => (Object.prototype.hasOwnProperty.call(TANKS, id) ? (id as TankId) : 'tiger');
 /** 탱크 고르기: 고를 수 있는 탱크 중 하나 또는 '랜덤'(게임 시작 때 정해짐) */
 export type TankChoice = TankId | 'random';
 /** 랜덤 선택: 20% 확률로 십이지신, 나머지는 12지신 12대 중 하나 (alwaysZodiac: 관리자는 언제나 열두빛) */

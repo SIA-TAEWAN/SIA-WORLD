@@ -1,4 +1,4 @@
-import { TANKS, type TankId } from '../game/data';
+import { TANKS, tankOr, type TankId } from '../game/data';
 import tankArtJson from '../data/tankArt.json';
 
 /** SpriteCook으로 만든 탱크 그림 (public/tanks/*.png). w·h는 px, cx는 무한궤도 가운데(0~1). 무한궤도 폭 108px = 게임 36px */
@@ -152,6 +152,7 @@ function look(id: TankId): Look {
 
 /** 얼굴(눈 주변) 색: 눈 깜빡임 눈꺼풀 색으로 쓴다 */
 export function faceColor(id: TankId): string {
+  id = tankOr(id);
   if (id === 'sheep') return '#ecd3b3';
   if (id === 'monkey') return '#f6d1a8';
   return TANKS[id].color;
@@ -210,6 +211,8 @@ function bodyParts(id: TankId): string {
 
 /** 메뉴 화면용 탱크 그림 ('random'은 물음표 탱크) */
 export function tankSvg(id: TankId | 'random', size = 96, flip = false): string {
+  // 모르는 탱크(더 새 판본의 기기가 고른 캐릭터)는 어흥이로
+  if (id !== 'random') id = tankOr(id);
   const art = id !== 'random' ? TANK_ART[id] : undefined;
   if (art) {
     // 그림 탱크: 포신(뒤) + PNG. 무한궤도 바닥 y=38, 가운데 x=24
@@ -244,6 +247,7 @@ export const TEX_BOX = { x: 0, y: -8, w: 48, h: 48 };
 /** 게임 안 텍스처 해상도 배율 (선명하게) */
 export const TEX_SCALE = 3;
 export function tankTextureSvg(id: TankId): string {
+  id = tankOr(id);
   const b = TEX_BOX;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" width="${b.w * TEX_SCALE}" height="${b.h * TEX_SCALE}">
     <ellipse cx="24" cy="39" rx="18" ry="2.4" fill="#000" fill-opacity=".18"/>

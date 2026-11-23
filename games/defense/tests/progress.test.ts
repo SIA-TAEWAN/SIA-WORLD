@@ -23,7 +23,7 @@ const store = (): Store & { data: Map<string, string> } => {
 // 따로 적지 않은 테스트는 고양이를 연 계정으로 본다 (잠긴 경우는 '고양이 잠금')
 beforeEach(() => setOwnedExtras(['cat']));
 
-describe('고양이 잠금 (로비에서 시아코인으로 연 계정만)', () => {
+describe('고양이 잠금 (시아디펜스에서 시아코인으로 연 계정만, 게임마다 따로)', () => {
   it('열지 않았으면 명단에 없고 출전·레벨업이 거절된다. 연 뒤 cleanProfile 을 다시 거치면 쓸 수 있다', async () => {
     setOwnedExtras([]);
     expect(extraOpen('cat')).toBe(false);
@@ -35,7 +35,7 @@ describe('고양이 잠금 (로비에서 시아코인으로 연 계정만)', () 
     expect(() => levelUp(p, 'cat')).toThrow('locked character');
     const api = createLocalApi(store(), 'k');
     await expect(api.start('1-1', ['rat', 'cat'])).rejects.toThrow('locked character');
-    // 로비에서 열고 돌아왔다
+    // 출전 준비 화면에서 열었다
     setOwnedExtras(['cat', 'lion']);
     const q = cleanProfile(p);
     expect(q.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'cat']);

@@ -1,5 +1,5 @@
 import { SQUAD_SIZE, VIEW_W, type CharId } from '../data/balance';
-import { BOUGHT, STARTERS, towerOf, type RosterEntry } from '../data/characters';
+import { BOUGHT, EXTRA_PRICE, STARTERS, towerOf, type RosterEntry } from '../data/characters';
 import { REGIONS } from '../data/regions';
 import type { RunSummary } from '../game/sim';
 import { defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
@@ -78,14 +78,56 @@ export const nav = {
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
-/** 시아코인으로 여는 캐릭터의 안내 (shared/characters.js 의 LOCK_HINT 와 같은 글) · 서버가 'locked character' 로 거절했을 때 */
-export const LOCK_HINT = '로비에서 열 수 있어요';
-export const CAT_LOCKED = '고양이는 로비에서 시아코인으로 열 수 있어요';
+/** 시아코인으로 여는 캐릭터(고양이)의 열기 버튼 글 (shared/characters.js 의 unlockLabel 과 같은 글. 값은 EXTRA_PRICE) */
+export const unlockLabel = (id: CharId) => `시아코인 ${EXTRA_PRICE[id] ?? 0}개로 열기`;
+/** 서버가 'locked character' 로 거절했을 때 */
+export const CAT_LOCKED = `고양이는 캐릭터 고르기 화면에서 시아코인 ${EXTRA_PRICE.cat ?? 0}개로 열 수 있어요`;
 
-/** 잠긴 캐릭터를 여는 방법 (고양이는 스테이지가 아니라 로비에서 연다). then: 지역을 클리어한 뒤의 말 */
+/** 잠긴 캐릭터를 여는 방법 (고양이는 스테이지가 아니라 출전 준비 화면에서 시아코인으로 연다). then: 지역을 클리어한 뒤의 말 */
 export function lockHint(r: RosterEntry, then = '함께할 수 있어요'): string {
-  if (r.unlockRegion === BOUGHT) return LOCK_HINT;
+  if (r.unlockRegion === BOUGHT) return `출전 준비 화면에서 시아코인 ${EXTRA_PRICE[r.id] ?? 0}개로 열 수 있어요`;
   return `${r.unlockRegion}지역 ${josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를')} 클리어하면 ${then}`;
+}
+
+/** 시아코인으로 캐릭터 열기 (main.ts 가 서버 또는 테스트 모드 흉내를 연결한다). 열렸으면(이미 열었어도) true, 결과 글은 스스로 토스트한다 */
+export const extraShop = { buy: async (_id: CharId): Promise<boolean> => false };
+
+/**
+ * 잠긴 고양이의 [시아코인 100개로 열기] 버튼: 한 번 누르면 4초 동안 확인 글로 바뀌고, 그 사이 다시 누르면 산다.
+ * 사는 동안에는 버튼을 막아 두 번 사지 않는다. 열렸으면 onOpen
+ */
+let buying = false;
+export function bindUnlock(btn: HTMLButtonElement, id: CharId, onOpen: () => void) {
+  let armed = 0;
+  let timer = 0;
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    // (화면이 다시 그려져 버튼이 새로 생겨도 사는 중이면 막는다)
+    if (btn.disabled || buying) return;
+    sfx('click');
+    if (!armed) {
+      armed = 1;
+      btn.textContent = `${EXTRA_PRICE[id] ?? 0}코인을 쓸까요? 한 번 더 누르기`;
+      btn.classList.add('armed');
+      timer = window.setTimeout(() => {
+        armed = 0;
+        btn.textContent = unlockLabel(id);
+        btn.classList.remove('armed');
+      }, 4000);
+      return;
+    }
+    clearTimeout(timer);
+    btn.disabled = true;
+    btn.textContent = '여는 중…';
+    buying = true;
+    const ok = await extraShop.buy(id).catch(() => false);
+    buying = false;
+    if (ok) return onOpen();
+    armed = 0;
+    btn.disabled = false;
+    btn.textContent = unlockLabel(id);
+    btn.classList.remove('armed');
+  });
 }
 
 /** 받침에 맞는 조사를 붙인다: josa('들판', '을', '를') → '들판을' */

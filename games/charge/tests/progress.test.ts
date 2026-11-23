@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { clearCoins, endlessCoins, failCoins, firstCoins } from '../src/data/growth';
 import { createLocalApi } from '../src/net/api';
-import { applyReport, checkStart, emptyProfile, leadersOf, regionOpen, setOwnedExtras, stageOpen, whyText, type RunReport } from '../src/game/progress';
+import { readFileSync } from 'node:fs';
+import { CAT_PRICE, UNLOCK_LABEL, applyReport, checkStart, emptyProfile, leadersOf, regionOpen, setOwnedExtras, stageOpen, whyText, type RunReport } from '../src/game/progress';
 import { STAGES } from '../src/data/stages';
 
 const report = (o: Partial<RunReport>): RunReport => ({
@@ -53,7 +54,7 @@ describe('판 밖 기록', () => {
     setOwnedExtras([]);
     expect(leadersOf(p)).toEqual(['rat', 'ox', 'tiger']);
     expect(checkStart(p, '1-1', 'cat', 'normal')).toBe('locked character');
-    expect(whyText('locked character')).toBe('고양이는 로비에서 시아코인으로 열 수 있어요');
+    expect(whyText('locked character')).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
     for (const st of STAGES) p.stages[st.id] = 3;
     expect(leadersOf(p)).not.toContain('cat');
     setOwnedExtras(['cat']);
@@ -71,5 +72,14 @@ describe('판 밖 기록', () => {
     const p = await api.buyUpgrade('troops');
     expect(p.upgrades.troops).toBe(1);
     expect(p.coins).toBe(65 - 60);
+  });
+
+  it('고양이 값·버튼 글이 shared/characters.js · 071 과 같다', () => {
+    const js = readFileSync(new URL('../../../shared/characters.js', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../../../supabase/migrations/071_characters.sql', import.meta.url), 'utf8');
+    expect(Number(js.match(/CHARACTER_PRICE = \{ cat: (\d+) \}/)?.[1])).toBe(CAT_PRICE);
+    expect(Number(sql.match(/when 'cat' then (\d+)/)?.[1])).toBe(CAT_PRICE);
+    expect(js).toContain("unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`");
+    expect(UNLOCK_LABEL).toBe(`시아코인 ${CAT_PRICE}개로 열기`);
   });
 });

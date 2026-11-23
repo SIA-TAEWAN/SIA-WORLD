@@ -1,5 +1,6 @@
 -- 072: 대전 게임 3개(시아탱크·시아레이스·시아배구)에 고양이(cat) 추가
---   캐릭터 검사를 071 의 _check_character(user, character) 로 바꾼다 (모르는 id 면 'bad character', 나중에 잠금 검사도 여기서).
+--   캐릭터 검사를 071 의 _check_character(user, character, 게임) 으로 바꾼다 (모르는 id 면 'bad character', 이 게임에서 안 연 고양이면 'locked character').
+--   고양이는 게임마다 따로, 각 게임의 캐릭터(탱크) 고르기 화면에서 시아코인으로 연다 (게임 id: 'tank' · 'race' · 'volleyball').
 --   능력치는 서버에 없다 (화면 쪽 데이터: 탱크는 tanks.json 의 cat = 어흥이 수치, 레이스·배구는 캐릭터마다 같다).
 --   · _valid_player (015)               : 시아탱크 방 create_room·join_room·update_player 가 부른다. 'zodiac'·'random' 밖은 _check_character
 --   · race_submit (033)                 : 시아레이스 완주 기록
@@ -20,7 +21,7 @@ begin
   if nick is null then raise exception 'need login'; end if;
   -- 'zodiac'(열두빛)·'random' 은 탱크 고르기 전용 값. 나머지는 캐릭터 검사(071)로: 모르는 id 면 'bad character'
   if coalesce(p->>'tank', '') not in ('zodiac', 'random') then
-    perform public._check_character(auth.uid(), p->>'tank');
+    perform public._check_character(auth.uid(), p->>'tank', 'tank');
   end if;
   if jsonb_typeof(items) <> 'array' or jsonb_array_length(items) > 3 then raise exception 'bad items'; end if;
   if exists (select 1 from jsonb_array_elements_text(items) i where i not in ('double', 'power', 'repair', 'teleport')) then
@@ -41,7 +42,7 @@ language plpgsql security definer set search_path = public as $$
 declare rd public.race_rounds; elapsed numeric; rec public.race_records; old_best int;
 begin
   if auth.uid() is null or not exists (select 1 from public.profiles where id = auth.uid()) then raise exception 'need login'; end if;
-  perform public._check_character(auth.uid(), p_character);
+  perform public._check_character(auth.uid(), p_character, 'race');
   if p_time_ms is null or p_time_ms < public._race_const('min_ms') or p_time_ms > public._race_const('max_ms') then raise exception 'bad time'; end if;
   select * into rd from public.race_rounds where room_key = p_room_key and round = p_round;
   if not found then raise exception 'no round'; end if;
@@ -80,7 +81,7 @@ begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   if p_room_key is null or p_room_key !~ '^[a-z0-9]{4,24}$' then raise exception 'bad room'; end if;
   if p_side is null or p_side not in (0, 1) then raise exception 'bad side'; end if;
-  perform public._check_character(me, p_character);
+  perform public._check_character(me, p_character, 'volleyball');
   if p_opponent is null or p_opponent = me then raise exception 'bad opponent'; end if;
   if not exists (select 1 from public.profiles where id = p_opponent) then raise exception 'bad opponent'; end if;
   -- 경기 번호는 방장이 서버 시각(ms)으로 만든다: 지금과 너무 다르면 거절 (미리 만들어 두거나 옛 번호를 다시 쓰지 못하게)
@@ -158,7 +159,7 @@ begin
     p_character := null;
   else
     if p_difficulty is distinct from 'normal' then raise exception 'bad difficulty'; end if;
-    perform public._check_character(me, p_character);
+    perform public._check_character(me, p_character, 'volleyball');
   end if;
   -- 같은 사람·같은 게임의 요청은 한 번에 하나씩
   perform pg_advisory_xact_lock(hashtext('ai-match:' || me::text || ':' || p_game));

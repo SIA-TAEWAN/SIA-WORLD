@@ -63,7 +63,7 @@ describe('AI 판 기록 순서', () => {
     c.pass(120_000);
     const o = await rec.finish(true);
     expect(o).toEqual({ state: 'locked' });
-    expect(outcomeText(o)).toBe('고양이는 로비에서 시아코인으로 열 수 있어요');
+    expect(outcomeText(o)).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
     expect(calls).toEqual([]);
   });
   it('만들 때 시작을 알리고, 끝나면 결과를 올린다', async () => {
