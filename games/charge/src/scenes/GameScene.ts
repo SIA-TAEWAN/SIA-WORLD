@@ -38,6 +38,8 @@ export interface SceneHooks {
   onEnd(s: RunState): void;
   /** 매 화면마다 (HUD 갱신) */
   onFrame(s: RunState): void;
+  /** 판 이벤트 하나마다 (도감 기록) */
+  onEvent?(e: SimEvent, s: RunState): void;
   /** 효과음 */
   sound(name: string, opts?: { volume?: number; rate?: number }): void;
 }
@@ -211,7 +213,10 @@ export class GameScene extends Phaser.Scene {
         if (DEV_AUTO) setTarget(s, autopilot(s));
         step(s);
         this.acc -= STEP;
-        for (const e of s.events) this.onEvent(e);
+        for (const e of s.events) {
+          this.onEvent(e);
+          this.hooks.onEvent?.(e, s);
+        }
         s.events.length = 0;
         if (s.phase === 'clear' || s.phase === 'fail') break;
       }
