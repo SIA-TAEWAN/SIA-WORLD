@@ -29,6 +29,39 @@ export interface ChargeApi {
   /** 보관해 둔 결과 다시 보내기 → 올라간 판 수 */
   resend(): Promise<number>;
   buyUpgrade(key: UpgradeKey): Promise<ChargeProfile>;
+  /** 한 지역의 스테이지별 친구 기록 (079 charge_stage_tops). 테스트 모드는 빈 값. 실패하면 던진다 → 화면은 조용히 숨긴다 */
+  stageTops(region: number): Promise<StageTops>;
+}
+
+/** 한 스테이지의 최다 생존 대원: 1~3위 · 기록한 사람 수 · 내 기록 (없으면 null) */
+export interface StageTop {
+  top: { place: number; nickname: string; troops: number; me: boolean }[];
+  total: number;
+  mine: { place: number; troops: number } | null;
+}
+/** 스테이지 id → 기록 (기록이 없는 스테이지는 빠진다) */
+export type StageTops = Record<string, StageTop>;
+
+export function normalizeTops(v: unknown): StageTops {
+  const out: StageTops = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [id, raw] of Object.entries(v as Record<string, unknown>)) {
+    const o = (raw ?? {}) as { top?: unknown; total?: unknown; mine?: { place?: unknown; troops?: unknown } | null };
+    const top = (Array.isArray(o.top) ? o.top : [])
+      .map((t: { place?: unknown; nickname?: unknown; troops?: unknown; me?: unknown }) => ({
+        place: Number(t?.place) || 0,
+        nickname: String(t?.nickname ?? ''),
+        troops: Math.max(0, Number(t?.troops) || 0),
+        me: t?.me === true,
+      }))
+      .filter((t) => t.place >= 1 && t.place <= 3)
+      .sort((a, b) => a.place - b.place);
+    if (!top.length) continue;
+    const m = o.mine;
+    const mine = m && Number(m.place) >= 1 ? { place: Number(m.place), troops: Math.max(0, Number(m.troops) || 0) } : null;
+    out[id] = { top, total: Math.max(top.length, Number(o.total) || 0), mine };
+  }
+  return out;
 }
 
 export interface Store {
@@ -96,6 +129,9 @@ export function createLocalApi(store: Store, key = 'sia-charge-local-v1'): Charg
       if (why) throw new ApiError(why);
       save(p);
       return p;
+    },
+    async stageTops() {
+      return {};
     },
   };
 }
@@ -204,6 +240,9 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     },
     async buyUpgrade(k) {
       return normalize(await call('charge_buy_upgrade', { p_key: k }));
+    },
+    async stageTops(region) {
+      return normalizeTops(await call('charge_stage_tops', { p_region: region }));
     },
   };
 }

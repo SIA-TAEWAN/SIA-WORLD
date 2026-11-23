@@ -23,7 +23,7 @@ import {
   type RunReport,
 } from '../game/progress';
 import { createRun, metersOf, progressOf, starsFor, type RunState } from '../game/sim';
-import { ApiError, type ChargeApi } from '../net/api';
+import { ApiError, type ChargeApi, type StageTop, type StageTops } from '../net/api';
 import { DEV_ALL, DEV_CAT_READY, DEV_OWNED, LOCAL_MODE } from '../net/local';
 import { buyCharacter, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
@@ -68,6 +68,35 @@ export function toast(text: string, ms = 2200) {
 const starsHtml = (n: number) => `<span class="stars">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
 const coinsPill = () => `<span class="coins-pill">🪙 ${profile.coins.toLocaleString()}</span>`;
 const starPill = () => `<span class="coins-pill star-pill">★ ${totalStars(profile)}</span>`;
+
+// ---------- 스테이지별 친구 기록 (079 charge_stage_tops) ----------
+
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const MEDALS = ['🥇', '🥈', '🥉'];
+/** 지역별로 받아 둔 기록 (스테이지 화면을 다시 열 때 바로 그리고, 오래됐으면 다시 받는다) */
+const topsCache = new Map<number, { at: number; data: StageTops }>();
+const TOPS_FRESH_MS = 30_000;
+
+/** 한 지역의 기록. 테스트 모드·실패는 null (화면은 아무것도 그리지 않는다) */
+async function loadTops(region: number): Promise<StageTops | null> {
+  if (LOCAL_MODE || DEV_ALL) return null;
+  try {
+    const data = await api.stageTops(region);
+    topsCache.set(region, { at: Date.now(), data });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** 한 줄: 🥇 닉네임 123 · 🥈 … · 🥉 …, 내가 3위 밖이면 오른쪽에 "나 5위 77". 닉네임은 좁으면 줄인다 */
+function topsHtml(t: StageTop): string {
+  const chips = t.top
+    .map((x) => `<em class="${x.me ? 'me' : ''}"><u>${MEDALS[x.place - 1]} ${esc(x.me ? '나' : x.nickname)}</u><var>${x.troops.toLocaleString()}</var></em>`)
+    .join('');
+  const mine = t.mine && t.mine.place > 3 ? `<strong>나 ${t.mine.place}위 ${t.mine.troops.toLocaleString()}</strong>` : '';
+  return chips + mine;
+}
 
 function soundButton(root: HTMLElement) {
   const b = document.createElement('button');
@@ -351,14 +380,32 @@ function showStages(region: number) {
         const open = stageOpen(profile, st.id);
         const boss = st.no === 5;
         return `<button class="btn stage-row ${open ? '' : 'locked'} ${boss ? 'boss' : ''}" data-id="${st.id}">
-            <b>${st.id}</b><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>${starsHtml(profile.stages[st.id] ?? 0)}
+            <b>${st.id}</b><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>${starsHtml(profile.stages[st.id] ?? 0)}${open ? `<small class="tops" data-tops="${st.id}"></small>` : ''}
           </button>`;
       })
       .join('')}</div>
+    <p class="soft center light" id="tops-note" hidden>🏅 스테이지마다 대원을 가장 많이 남긴 친구들</p>
     <div class="grow"></div>
     <p class="soft center light">대장: ${leaderOf(leader).name} · ${leaderOf(leader).trait}</p>`,
     `bg-${groundOf(region)}`,
   );
+  // 친구 기록: 받아 둔 것이 있으면 바로, 없거나 오래됐으면 받아서 그린다 (실패·테스트 모드는 그대로 숨김)
+  const paintTops = (tops: StageTops) => {
+    let any = false;
+    root.querySelectorAll<HTMLElement>('[data-tops]').forEach((el) => {
+      const t = tops[el.dataset.tops!];
+      el.innerHTML = t ? topsHtml(t) : '';
+      any ||= !!t;
+    });
+    root.querySelector<HTMLElement>('#tops-note')!.hidden = !any;
+  };
+  const cached = topsCache.get(region);
+  if (cached && !LOCAL_MODE && !DEV_ALL) paintTops(cached.data);
+  if (!cached || Date.now() - cached.at > TOPS_FRESH_MS) {
+    void loadTops(region).then((tops) => {
+      if (tops && root.isConnected) paintTops(tops);
+    });
+  }
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
     showRegions();
@@ -587,6 +634,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
       ${r && r.newLeaders.length ? `<div class="new-leaders">${r.newLeaders.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${leaderOf(id).name} 대장이 합류했어요!</span>`).join('')}</div>` : ''}
+      ${endless ? '' : '<div class="tops-box" hidden></div>'}
       ${note === 'kept' ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요</p>' : ''}
       ${note === 'unrecorded' ? '<p class="soft center">이번 판은 기록되지 않았어요</p>' : ''}
       ${win && stars < 3 ? `<p class="soft center">별 ${stars + 1}개: 대원 ${st.stars[stars - 1]}명 이상 남기기</p>` : ''}
@@ -598,6 +646,16 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
       </div></div>`;
   app().appendChild(box);
   if (r?.newLeaders.length) play('newRecord');
+  // 이 스테이지 친구 기록: 방금 판이 반영되게 새로 받는다 (실패·테스트 모드는 숨긴 채로)
+  const topsBox = box.querySelector<HTMLElement>('.tops-box');
+  if (topsBox) {
+    void loadTops(st.region).then((tops) => {
+      const t = tops?.[st.id];
+      if (!t || !box.isConnected) return;
+      topsBox.innerHTML = `<span class="soft">🏅 최다 생존 대원 · ${t.total.toLocaleString()}명 기록</span><small class="tops">${topsHtml(t)}</small>`;
+      topsBox.hidden = false;
+    });
+  }
   box.querySelector('#next')?.addEventListener('click', () => {
     play('click');
     closeGame();

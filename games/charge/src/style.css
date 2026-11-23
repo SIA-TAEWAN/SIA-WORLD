@@ -162,6 +162,20 @@ button, input { font: inherit; color: inherit; }
 /* 보스 줄은 바탕이 노랑이라 딴 별(노랑)이 묻힌다: 별을 흰 알약 위에 올린다 */
 .btn.stage-row.boss .stars { background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 0 6px; }
 .btn.stage-row.locked { opacity: 0.6; }
+/* 스테이지별 친구 기록 (079): 줄 아래 한 줄. 닉네임만 줄어들고 대원 수와 내 순위는 그대로 남는다 */
+.btn.stage-row { flex-wrap: wrap; row-gap: 4px; }
+.tops { display: flex; align-items: center; gap: 8px; flex-basis: 100%; min-width: 0; font-size: 12px; line-height: 1.3; color: var(--ink-soft); text-align: left; }
+.tops:empty { display: none; }
+.tops em { display: flex; gap: 3px; min-width: 0; flex: 0 1 auto; font-style: normal; }
+.tops em u { text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tops em var { font-style: normal; flex: none; color: var(--ink); }
+.tops em.me u, .tops strong { color: var(--team-a); }
+.tops strong { font-weight: normal; flex: none; margin-left: auto; white-space: nowrap; }
+.btn.stage-row.boss .tops { color: var(--ink); }
+.tops-box { display: flex; flex-direction: column; gap: 2px; background: var(--panel-strong); border-radius: var(--radius-item); padding: 6px 12px; min-width: 0; }
+.tops-box[hidden] { display: none; }
+/* 결과 창이 짧은 화면(아이폰 SE 등)에서 넘치면 창 안에서 스크롤 */
+.card.pop.result { max-height: 100%; overflow-y: auto; }
 .up-list { display: flex; flex-direction: column; gap: 8px; flex: none; }
 .up-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
 .up-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
