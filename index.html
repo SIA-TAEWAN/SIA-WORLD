@@ -145,6 +145,14 @@
     .admin-box .row b { font-weight: normal; }
     .admin-box .row .on { color: var(--win); }
     .admin-box .row .off { color: var(--lose); }
+    .admin-box h3 { margin: 0 0 6px; font-size: 16px; font-weight: normal; }
+    .admin-notice { display: flex; gap: 8px; align-items: stretch; }
+    .admin-notice input { flex: 1; min-width: 0; min-height: 40px; padding: 8px 12px; border-radius: var(--radius-item);
+      border: var(--line-thin) solid var(--outline); font-size: 16px; outline: none; background: var(--white); color: var(--ink); }
+    .admin-notice input:focus { box-shadow: 0 0 0 var(--line) var(--primary); }
+    .admin-notice .btn { flex: 0 0 auto; min-height: 40px; }
+    .admin-box .hint { margin: 6px 0 14px; color: var(--ink-soft); font-size: 13px; min-height: 16px; }
+    .admin-box .hint.bad { color: var(--pink); }
     .admin-box .err { color: var(--pink); font-size: 14px; min-height: 18px; margin: 6px 0 0; }
     .center { min-height: 100vh; display: grid; place-items: center; color: var(--white); font-size: 18px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
 
@@ -152,6 +160,13 @@
     .notice { background: var(--panel-strong); border: var(--line) solid var(--outline); color: var(--ink); border-radius: var(--radius-item);
       padding: 10px 14px; margin: 0 0 14px; font-size: 17px; text-align: center; box-shadow: 0 3px 0 var(--outline); animation: pop .35s ease-out; }
     @keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: none; opacity: 1; } }
+    .notice small { display: block; margin-top: 2px; font-size: 14px; color: var(--ink-soft); }
+    /* 공지 한 줄 (관리자가 적는다. 비어 있으면 숨김) */
+    .board { display: flex; align-items: flex-start; gap: 8px; background: var(--panel); border: var(--line) solid var(--outline);
+      border-radius: var(--radius-item); padding: 9px 12px; margin: 0 0 14px; box-shadow: 0 3px 0 var(--outline); font-size: 16px; line-height: 1.35; }
+    .board .tag { flex: 0 0 auto; padding: 1px 10px; border-radius: var(--radius-pill); border: var(--line-thin) solid var(--outline);
+      background: var(--pink); color: var(--white); font-size: 13px; white-space: nowrap; }
+    .board .txt { flex: 1; min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
     .wallet { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 0 0 22px; }
     .pill { flex: 1 1 220px; display: flex; align-items: center; gap: 10px; background: var(--panel);
       border: var(--line) solid var(--outline); border-radius: var(--radius-button); padding: 10px 12px; box-shadow: 0 var(--depth-button) 0 var(--outline); }
@@ -298,6 +313,7 @@
       <button class="btn small" id="logout">로그아웃</button>
     </header>
     <main class="lobby">
+      <div class="board hidden" id="board" role="status"><span class="tag">📢 공지</span><span class="txt" id="board-text"></span></div>
       <div class="ios-hint hidden" id="ios-hint">
         <span class="ic">📲</span>
         <span class="txt"><b>홈 화면에 추가하는 법</b>
@@ -308,7 +324,7 @@
         <p class="online-head" id="online-head">👥 지금 접속 중 <b id="online-n">0명</b></p>
         <ul class="who-list" id="online-list"></ul>
       </section>
-      <div class="notice hidden" id="attend">🎁 오늘의 출석 보너스! 칩 +10,000 · 냥 +10,000</div>
+      <div class="notice hidden" id="attend">🎁 오늘의 출석 보너스! 칩 +10,000 · 냥 +10,000<small id="attend-streak"></small></div>
       <section class="wallet">
         <div class="pill"><span class="ic">🪙</span>
           <span class="amt"><small>카지노 칩</small><b id="w-chips">-</b><span class="left" id="l-chips"></span></span>
@@ -332,7 +348,14 @@
       <div class="games-head"><h2>게임</h2><button class="btn small hidden" id="install-btn">📲 앱으로 설치</button><button class="btn small" id="rank-btn">🏆 랭킹</button></div>
       <div class="games" id="games"></div>
       <section class="admin-box hidden" id="admin-box">
-        <h2>🔧 게임 오픈 설정 (관리자)</h2>
+        <h2>🔧 관리자 설정</h2>
+        <h3><label for="notice-input">📢 공지 한 줄</label></h3>
+        <form class="admin-notice" id="notice-form" novalidate>
+          <input id="notice-input" maxlength="100" autocomplete="off" enterkeyhint="done" placeholder="비워 두면 공지를 숨겨요" />
+          <button class="btn small" id="notice-save">저장</button>
+        </form>
+        <p class="hint" id="notice-hint"></p>
+        <h3>게임 오픈 설정</h3>
         <p>닫은 게임은 다른 사람에게 보이지 않아요. 이미 들어가 있는 사람은 그대로 할 수 있어요.</p>
         <div id="admin-games"></div>
         <p class="err" id="admin-err"></p>
@@ -358,7 +381,7 @@
     } from './shared/auth.js';
     import { GAMES, loadGameOpen, setGameOpen } from './shared/games.js';
     import { supabase } from './shared/supabase.js';
-    import { claimAttendance, refill, canRefill, formatAmount, REFILLS_PER_DAY } from './shared/wallet.js';
+    import { claimAttendance, refill, canRefill, formatAmount, attendanceStreakText, REFILLS_PER_DAY } from './shared/wallet.js';
     import { openRanking } from './shared/ranking-dialog.js';
     import { watchWorld, GAME_MAX } from './shared/presence.js';
     import { onInstallChange, promptInstall, dismissIosHint, openInBrowser } from './shared/pwa.js';
@@ -503,6 +526,9 @@
       world = { counts: {}, games: {}, lobby: [], online: [] };
       whoGame = null;
       paintWorld();
+      // 로그아웃: 공지도 지운다 (다음 사람이 들어오면 다시 읽는다)
+      noticeSeq++;
+      paintNotice('');
     }
     // ---------- 게임 순서: 내가 많이 들어간 게임부터 ----------
     // 순서는 이 브라우저에 기억해 두고 처음부터 그 순서로 그린다 (서버 응답을 기다렸다가 카드가 자리를 바꾸지 않게).
@@ -623,6 +649,7 @@
       // 지금 누가 어디에 있나 (한 번만 구독. 로비 채널에는 내 닉네임을 올린다)
       stopCounts ??= watchWorld((w) => { world = w; paintWorld(); }, { user });
       void loadWallet(user);
+      void loadNotice();
       renderCat();
       // 서버의 오픈 여부로 다시 그린다 (못 읽으면 기본값 그대로)
       const seq = openSeq;
@@ -651,6 +678,8 @@
       try {
         // 출석 확인 (지갑이 없으면 이때 10,000 / 10,000으로 만들어진다)
         wallet = await claimAttendance();
+        // 연속 N일째 (+ 3일째·7일마다 시아코인 보너스, 아니면 다음 보너스까지 남은 날)
+        $('#attend-streak').textContent = attendanceStreakText(wallet);
         if (wallet.granted) $('#attend').classList.remove('hidden');
       } catch {
         wallet = null;
@@ -672,6 +701,56 @@
         renderWallet();
       }),
     );
+
+    // ---------- 공지 한 줄 (app_settings 'notice'. 관리자만 set_app_setting 으로 바꾼다, 092) ----------
+    const NOTICE_MAX = 100;
+    /** 공지를 바꾼 횟수 (늦게 온 예전 응답으로 화면을 덮지 않게) */
+    let noticeSeq = 0;
+    function paintNotice(text) {
+      const t = typeof text === 'string' ? text.trim() : '';
+      $('#board-text').textContent = t;
+      $('#board').classList.toggle('hidden', !t);
+      return t;
+    }
+    const noticeHint = (text, bad = false) => {
+      $('#notice-hint').textContent = text;
+      $('#notice-hint').classList.toggle('bad', bad);
+    };
+    const noticeCount = () => noticeHint(`${[...$('#notice-input').value].length}/${NOTICE_MAX}자`);
+    async function loadNotice() {
+      const seq = noticeSeq;
+      try {
+        const { data, error } = await supabase.from('app_settings').select('value').eq('key', 'notice').maybeSingle();
+        if (error || seq !== noticeSeq) return;
+        const t = paintNotice(data?.value);
+        // 관리자 입력칸: 쓰고 있는 중이 아니면 지금 공지로 채운다
+        if (document.activeElement !== $('#notice-input')) { $('#notice-input').value = t; noticeCount(); }
+      } catch {
+        /* 못 읽으면 공지 없이 */
+      }
+    }
+    $('#notice-input').addEventListener('input', noticeCount);
+    $('#notice-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = $('#notice-save');
+      if (btn.disabled) return;
+      const text = $('#notice-input').value.replace(/\s+/g, ' ').trim();
+      if ([...text].length > NOTICE_MAX) return noticeHint(`${NOTICE_MAX}자까지 쓸 수 있어요`, true);
+      btn.disabled = true;
+      const seq = ++noticeSeq;
+      try {
+        const { data, error } = await supabase.rpc('set_app_setting', { p_key: 'notice', p_value: text });
+        if (error) throw error;
+        if (seq === noticeSeq) {
+          $('#notice-input').value = paintNotice(typeof data === 'string' ? data : text);
+          noticeHint(text ? '공지를 저장했어요' : '공지를 숨겼어요');
+        }
+      } catch {
+        noticeHint('저장하지 못했어요. 잠시 후 다시 시도해 주세요', true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     // ---------- 13번째 대원: 고양이 소개 (여는 곳은 각 게임의 캐릭터 선택 화면, 게임마다 따로) ----------
     function renderCat() {
