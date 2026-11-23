@@ -90,9 +90,10 @@ export interface RoomModule {
   soloSync(roomId: string): Promise<{ state: unknown; version: number; round: number; duo?: boolean }>;
   /**
    * 방 채널 (같은 방 화면끼리 바로 주고받는 알림. 서버를 거치지 않으므로 받은 내용은 믿으면 안 된다)
-   * → send(msg): 다른 화면들에 보낸다, close(): 닫는다
+   * → send(msg): 다른 화면들에 보낸다 (맞고 2인전의 행동), emote(msg): 한마디 (카드 5종 공통), close(): 닫는다
+   * (emote 는 예전 shared/room.js 에는 없다 → 없으면 한마디만 쉰다)
    */
-  roomCast?(roomId: string, onMessage: (msg: unknown) => void): { send(msg: unknown): void; close(): void };
+  roomCast?(roomId: string, onMessage: (msg: unknown) => void, onEmote?: (msg: unknown) => void): { send(msg: unknown): void; emote?(msg: unknown): void; close(): void };
   /** 기기에서 둔 사람 행동 목록 보내기 (n: 목록이 시작되는 서버 진행 수) */
   soloReplay(roomId: string, payload: { n: number; actions: unknown[] }): Promise<{ ok: boolean; n: number | null; done: boolean }>;
   /** 페이지를 떠나는 중에 보내기 (응답을 기다리지 않는다) → 보냈으면 true */

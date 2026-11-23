@@ -1,5 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { POKER_MANUAL } from '../../lib/manuals.ts';
+import { pokerHint } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
@@ -123,6 +124,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       else cards = [...Array(Math.min(2, s.hiddenCount)).fill(null), ...s.open, ...Array(Math.max(0, s.hiddenCount - 2)).fill(null)];
       const w = me ? cw : oc;
       const gap = w * (me ? 0.72 : 0.4);
+      // 쇼다운: 족보를 이룬 5장(서버가 내려 준 best)은 살짝 올리고 나머지 2장은 흐리게
+      const best = sd && sd.best.length === 5 ? new Set(sd.best) : null;
       // 카드 고르기 단계: 내 카드를 눌러서 버릴 카드 → 공개할 카드를 고른다 (아래 버튼과 같은 동작)
       // 카드를 다 받은 뒤에 고른다 (t.myTurn: 앞선 연출이 끝난 내 차례)
       const picking = choosing && !s.chosen && !t.busy && t.myTurn && !sent;
@@ -140,8 +143,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
         const cx = x + (ci - (cards.length - 1) / 2) * gap;
         const opening = (choosing && !!sent && c === sent.open) || (c !== null && waitingOpen.includes(c));
         const card = playingCard(scene, cx, y, c, w, {
-          dim: s.folded,
-          lift: (me && !!c && !isOpen && p.phase !== 'choose') || picking || opening,
+          dim: s.folded || (!!best && !!c && !best.has(c)),
+          lift: best ? !!c && best.has(c) : (me && !!c && !isOpen && p.phase !== 'choose') || picking || opening,
         });
         if (opening) label(scene, cx, y - w * 0.98, '공개', clamp(w * 0.22, 13, 20), tc('primary'));
         if (me && c) {
@@ -166,6 +169,9 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       t.anchor(`seat:${s.seat}`, x, y - w * 0.72);
       const fs = clamp(w * (me ? 0.2 : 0.28), 12, 22);
       if (s.total) label(scene, x + ((cards.length - 1) / 2) * gap + w * 0.62, y - w * 0.55, `${t.fmt(s.total)}`, fs * 0.85, tc('primary'));
+      // 진행 중 내 패 옆 한 줄 힌트: 한 장만 더 오면 되는 족보 ('플러시까지 1장'). 화면의 카드와 내 패가 같은 때만
+      const hint = me && !sd && !s.folded && handNow && pv && /^bet[4-6]$/.test(p.phase) ? pokerHint([...pv.hidden, ...pv.open]) : null;
+      if (hint) label(scene, x, y - w * 1.02, `💡 ${hint}`, clamp(w * 0.19, 12, 18), tc('primary'));
       if (sd) label(scene, x, y - w * 0.92, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, fs, p.winners.includes(s.seat) ? tc('primary') : tc('white'));
     });
   },

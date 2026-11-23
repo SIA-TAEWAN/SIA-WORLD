@@ -22,6 +22,7 @@ import {
   type WorldUser,
   type ZodiacModule, type PresenceHandle } from './world.ts';
 import { isRulesChanged, type LocalHost, type LocalPlay } from './solo-play.ts';
+import { EMOTES, EMOTE_GAP_MS, EMOTE_SHOW_MS, emoteReady, parseEmote } from './emote.ts';
 
 export interface GameEventLite {
   id: number;
@@ -66,7 +67,11 @@ export interface TableCtx<P = any, Q = any> {
   redraw(): void;
   /** 테이블만 다시 그리기 (아래 버튼은 그대로: 누르던 버튼·포커스가 끊기지 않게) */
   redrawTable(): void;
-  /** 연출 기준점 등록 (그릴 때마다): 'pot', 'dealer', 'seat:<번호>' 등 → 말풍선·칩 이동 위치 */
+  /**
+   * 연출 기준점 등록 (그릴 때마다): 'pot', 'dealer', 'seat:<번호>' 등 → 말풍선·칩 이동 위치.
+   * 'seat:<번호>' 는 한마디(이모티콘) 말풍선 자리로도 쓴다 (그 점 위에 뜬다). 화면 위쪽에 붙은 자리라 위에 띄울 틈이 없으면
+   * 'seat-below:<번호>' 를 등록한다 (그 점 아래에 뜬다). 둘 다 없으면 자리 줄의 그 사람 칸 아래에 뜬다
+   */
   anchor(name: string, x: number, y: number): void;
   /** 효과음 (shared/sound.js) */
   sound(name: SoundName, opts?: { delay?: number; volume?: number; rate?: number }): void;
@@ -755,12 +760,13 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   app().innerHTML = `<div class="table-page" data-game="${ui.game}">
     <header class="bar"><button class="btn ghost" id="leave">← 나가기</button>
       <h1>${esc(room.name)} <small>${ui.icon} 기본 ${m.wallet.formatAmount(room.base_unit)}</small></h1>
-      <span class="money" id="money">-</span>${ui.autoStart ? '<button class="btn small auto-sw" id="auto" role="switch" aria-checked="false" title="결과 창을 3초 뒤 닫고 다음 판에 자동으로 레디해요">자동 시작<i></i></button>' : ''}<button class="btn small" id="invite">🔗 초대</button></header>
+      <span class="money" id="money">-</span>${ui.autoStart ? '<button class="btn small auto-sw" id="auto" role="switch" aria-checked="false" title="결과 창을 3초 뒤 닫고 다음 판에 자동으로 레디해요">자동 시작<i></i></button>' : ''}<button class="btn small emote-btn" id="emote" aria-label="한마디 보내기" aria-haspopup="true" aria-expanded="false" title="한마디 보내기" hidden>💬</button><button class="btn small" id="invite">🔗 초대</button></header>
     <div class="seats" id="seats"></div>
     <div class="stage" id="stage"></div>
     <div class="timer"><i id="timer"></i></div>
     <div class="controls" id="controls"></div>
     <div class="cutin" id="cutin"></div>
+    <div class="emote-pop" id="emote-pop" role="menu" aria-label="한마디" hidden>${EMOTES.map((e, i) => `<button type="button" class="btn small" role="menuitem" data-emote="${i}">${esc(e)}</button>`).join('')}</div>
   </div>`;
   const root = app();
 
@@ -1134,11 +1140,18 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         const tag = room?.status === 'playing'
           ? pending.includes(s.seat_no) && !(meHere && ctlHold) ? '<b class="turn">차례</b>' : s.left_game ? '<em>AI 대신</em>' : ''
           : human ? (s.ready ? '<b class="ready">레디</b>' : '<em>대기</em>') : '<em>AI</em>';
-        return `<div class="seat ${meHere ? 'me' : ''} ${human ? '' : 'ai'}">
+        return `<div class="seat ${meHere ? 'me' : ''} ${human ? '' : 'ai'}" data-seat="${s.seat_no}">
           <img src="${m.z.avatarUrl(s.avatar)}" alt=""/><span class="nm">${esc(s.nickname)}${meHere ? ' (나)' : ''}${room?.host_id && s.user_id === room.host_id ? ' 👑' : ''}</span>${tag}
           ${s.pending_user_id ? `<small>다음 판: ${esc(s.pending_nickname ?? '')}</small>` : ''}</div>`;
       })
       .join('');
+    // 한마디 버튼은 자리에 앉은 사람만 (구경·예약 중에는 보기만 한다)
+    const eb = root.querySelector<HTMLButtonElement>('#emote');
+    if (eb) {
+      const seated = !!mySeatRow();
+      if (eb.hidden === seated) eb.hidden = !seated;
+      if (!seated) closeEmotePop();
+    }
   };
 
   let wasMyTurn = false;
@@ -2064,13 +2077,117 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   }
   // ── 기기에서 진행하는 판 (혼자 하는 맞고): 게임이 주는 진행기에 셸의 문을 열어 준다 ──
   /** 방 채널 (기기에서 진행하는 게임만): 상대 화면이 알려 온 행동을 진행기에 넘긴다 */
-  let cast: { send(msg: unknown): void; close(): void } | null = null;
-  if (ui.local) {
-    try {
-      cast = m.room.roomCast?.(roomId, (msg) => !closed && local?.onCast(msg)) ?? null;
-    } catch (e) {
-      console.warn('cast', e);
+  let cast: { send(msg: unknown): void; emote?(msg: unknown): void; close(): void } | null = null;
+  // 방 채널은 카드 게임 5종 모두 연다: 한마디(이모티콘)는 어느 방에서나 오간다. 행동 알림('act')은 기기에서 진행하는 게임(맞고)만 쓴다
+  try {
+    cast = m.room.roomCast?.(roomId, (msg) => !closed && local?.onCast(msg), (msg) => takeEmote(msg)) ?? null;
+  } catch (e) {
+    console.warn('cast', e);
+  }
+
+  // ── 한마디(이모티콘): 자리 위 말풍선 2.5초. 방 채널로 { seat, i(문구 번호) } 만 보낸다 ──
+  let emoteSentAt = -EMOTE_GAP_MS;
+  /** 자리별로 마지막에 띄운 시각 (남이 마구 보내도 화면이 덮이지 않게, 받는 쪽에서도 간격을 둔다) */
+  const emoteSeenAt = new Map<number, number>();
+  const emoteBubbles = new Map<number, HTMLElement>();
+  const showEmote = (seat: number, text: string) => {
+    if (closed) return;
+    const page = root.querySelector<HTMLElement>('.table-page');
+    if (!page) return;
+    emoteBubbles.get(seat)?.remove();
+    const b = document.createElement('div');
+    b.className = 'emote-say';
+    b.textContent = text;
+    // 자리 기준점 (테이블 좌표) → 화면 좌표. 테이블이 숨겨졌거나(룰렛 베팅 중 휴대폰) 기준점이 없으면 자리 줄의 그 사람 칸 아래
+    const sr = stage.getBoundingClientRect();
+    const up = anchors.get(`seat:${seat}`);
+    const down = anchors.get(`seat-below:${seat}`);
+    let x: number;
+    let y: number;
+    let below = false;
+    if (sr.width > 0 && sr.height > 0 && (up || down)) {
+      below = !up;
+      const a = (up ?? down)!;
+      x = sr.left + a.x;
+      y = sr.top + (below ? a.y : Math.max(a.y, 48));
+    } else {
+      const chip = root.querySelector<HTMLElement>(`#seats [data-seat="${seat}"]`)?.getBoundingClientRect();
+      below = true;
+      if (chip && chip.width > 0) {
+        x = chip.left + chip.width / 2;
+        y = chip.bottom;
+      } else {
+        x = window.innerWidth / 2;
+        y = (sr.height > 0 ? sr.top : 60) + 8;
+      }
     }
+    if (below) b.classList.add('below');
+    b.style.left = `${Math.max(48, Math.min(window.innerWidth - 48, x))}px`;
+    b.style.top = `${y}px`;
+    page.append(b);
+    emoteBubbles.set(seat, b);
+    sfx('toggle', { volume: 0.6 });
+    setTimeout(() => {
+      b.remove();
+      if (emoteBubbles.get(seat) === b) emoteBubbles.delete(seat);
+    }, EMOTE_SHOW_MS);
+  };
+  /** 방 채널로 받은 한마디 (믿지 않는다: 모양 · 사람이 앉은 자리 · 간격을 확인한 것만 띄운다) */
+  function takeEmote(msg: unknown) {
+    if (closed) return;
+    const humans = seats.filter((s) => s.user_id && !s.left_game).map((s) => s.seat_no);
+    const e = parseEmote(msg, humans, mySeatRow()?.seat_no ?? null);
+    if (!e) return;
+    const now = performance.now();
+    if (!emoteReady(emoteSeenAt.get(e.seat) ?? -EMOTE_GAP_MS, now, EMOTE_GAP_MS - 300)) return;
+    emoteSeenAt.set(e.seat, now);
+    showEmote(e.seat, e.text);
+  }
+  const emoteBtn = root.querySelector<HTMLButtonElement>('#emote');
+  const emotePop = root.querySelector<HTMLElement>('#emote-pop');
+  function closeEmotePop() {
+    if (!emotePop || emotePop.hidden) return;
+    emotePop.hidden = true;
+    emoteBtn?.setAttribute('aria-expanded', 'false');
+  }
+  const onDocDown = (e: Event) => {
+    const el = e.target as Node | null;
+    if (el && (emotePop?.contains(el) || emoteBtn?.contains(el))) return;
+    closeEmotePop();
+  };
+  document.addEventListener('pointerdown', onDocDown);
+  emoteBtn?.addEventListener('click', () => {
+    if (!emotePop) return;
+    if (!emotePop.hidden) return closeEmotePop();
+    // 버튼 바로 아래, 화면 밖으로 나가지 않게
+    const r = emoteBtn.getBoundingClientRect();
+    emotePop.hidden = false;
+    const w = emotePop.offsetWidth;
+    emotePop.style.top = `${r.bottom + 8}px`;
+    emotePop.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+    emoteBtn.setAttribute('aria-expanded', 'true');
+  });
+  emotePop?.querySelectorAll<HTMLButtonElement>('[data-emote]').forEach((b) =>
+    b.addEventListener('click', () => {
+      closeEmotePop();
+      const mine = mySeatRow();
+      const i = Number(b.dataset.emote);
+      // 관전자는 보기만. 보내기는 1.5초에 한 번
+      if (closed || !mine || !EMOTES[i]) return;
+      const now = performance.now();
+      if (!emoteReady(emoteSentAt, now)) return void toast('한마디는 잠깐 쉬었다가 보낼 수 있어요');
+      emoteSentAt = now;
+      showEmote(mine.seat_no, EMOTES[i]);
+      cast?.emote?.({ seat: mine.seat_no, i });
+      // 다음에 보낼 수 있을 때까지 버튼을 흐리게
+      if (emoteBtn) {
+        emoteBtn.disabled = true;
+        setTimeout(() => !closed && (emoteBtn.disabled = false), EMOTE_GAP_MS);
+      }
+    }),
+  );
+
+  if (ui.local) {
     const maxEvent = (s: StateRow) => ((s.public_state?.events as GameEventLite[] | undefined) ?? []).reduce((a, e) => Math.max(a, e.id), 0);
     local = ui.local({
       roomId,
@@ -2150,6 +2267,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     clearInterval(timer);
     document.removeEventListener('visibilitychange', onVisible);
     document.removeEventListener('visibilitychange', onHidden);
+    document.removeEventListener('pointerdown', onDocDown);
     window.removeEventListener('pagehide', onPageHide);
     local?.dispose();
     try {

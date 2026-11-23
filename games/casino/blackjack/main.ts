@@ -3,7 +3,9 @@ import type PhaserNS from 'phaser';
 import { BLACKJACK_MANUAL } from '../../lib/manuals.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
-import type { BjPublic, BjResult } from '../../../supabase/functions/_shared/blackjack.ts';
+import type { BjPublic, BjResult, BjSummary } from '../../../supabase/functions/_shared/blackjack.ts';
+import { bjDayKey, bjLoad, bjRecord, bjStrip, nextStreak, streakCutin, type BjDay } from '../../lib/extras.ts';
+import { worldRoot } from '../../lib/world.ts';
 import { rewindBlackjack } from '../../../supabase/functions/_shared/blackjack-rewind.ts';
 
 type Ctx = TableCtx<BjPublic, Record<string, never>>;
@@ -21,6 +23,89 @@ const cardKey = (seat: number, hi: number, ci: number, split: boolean) =>
   !split ? `${seat}:0:${ci}` : ci === 0 ? `${seat}:0:${hi}` : `${seat}:${hi ? 'b' : 'a'}:${ci}`;
 /** 처음 두 장의 지난번 크기 (스플릿 때 크기도 자연스럽게 줄어들게) */
 const lastWidth = new Map<string, number>();
+
+// ── 오늘 기록 · 연승 (내 것은 이 기기에 저장: 날이 바뀌면 오늘 칸을 비운다. 다른 사람 연승은 이 방에서 본 판만 센다) ──
+const dayKeyOf = (userId: string) => `sia-bj-today:${userId}`;
+let day: BjDay | null = null;
+let dayUser = '';
+/** 내 기록 읽기 (저장소를 못 쓰면 이번에 연 화면 동안만 센다) */
+function myDay(userId: string): BjDay {
+  const today = bjDayKey(new Date());
+  if (day && dayUser === userId && day.day === today) return day;
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(dayKeyOf(userId));
+  } catch {
+    /* 저장소를 못 쓰는 환경 */
+  }
+  // 저장소에서 못 읽었으면 화면에 들고 있던 기록에서 날짜만 넘긴다
+  day = raw === null && day && dayUser === userId ? bjLoad(JSON.stringify(day), today) : bjLoad(raw, today);
+  dayUser = userId;
+  return day;
+}
+function saveDay(userId: string, d: BjDay) {
+  day = d;
+  dayUser = userId;
+  try {
+    localStorage.setItem(dayKeyOf(userId), JSON.stringify(d));
+  } catch {
+    /* 저장하지 못해도 화면은 그대로 */
+  }
+}
+/** 이 방에서 본 자리별 연승 (자리 → 이름·횟수) */
+const streaks = new Map<number, { name: string; n: number }>();
+let streakRoom = '';
+let streakRound = '';
+let cutinTimer: ReturnType<typeof setInterval> | null = null;
+const stopCutinTimer = () => {
+  if (cutinTimer) clearInterval(cutinTimer);
+  cutinTimer = null;
+};
+/** 연승 컷인: 결과 창을 닫은 뒤에 띄운다 (결과 창이 컷인을 가린다) */
+function streakCut(text: string, avatar: string) {
+  stopCutinTimer();
+  let tries = 0;
+  cutinTimer = setInterval(() => {
+    const el = document.getElementById('cutin');
+    if (!el || ++tries > 300) return stopCutinTimer();
+    if (document.querySelector('.modal .result')) return;
+    stopCutinTimer();
+    el.innerHTML = `<div><img src="${new URL(`shared/images/zodiac/full/${avatar}.png`, worldRoot()).href}" alt=""/><span>${esc(text)}</span></div>`;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    sfx('cutin');
+  }, 200);
+}
+/** 끝난 판 적기 (결과 창을 띄울 때 한 번): 자리별 연승, 내 오늘 기록, 3·5연승 컷인 */
+function recordRound(t: Ctx, r: BjSummary) {
+  if (streakRoom !== t.room.id) {
+    streakRoom = t.room.id;
+    streaks.clear();
+    streakRound = '';
+  }
+  const key = `${t.room.id}:${t.room.round_no}`;
+  if (key === streakRound) return;
+  streakRound = key;
+  for (const s of r.seats) {
+    if (s.out) continue;
+    const was = streaks.get(s.seat);
+    streaks.set(s.seat, { name: s.name, n: nextStreak(was && was.name === s.name ? was.n : 0, s.delta) });
+  }
+  const mine = t.resultSeat === null ? null : r.seats.find((s) => s.seat === t.resultSeat);
+  if (!mine || mine.out) return;
+  const before = myDay(t.me.userId);
+  const after = bjRecord(before, { key, delta: mine.delta, blackjacks: mine.hands.filter((h) => h.result === 'blackjack').length });
+  if (after === before) return;
+  saveDay(t.me.userId, after);
+  const cut = mine.delta > 0 ? streakCutin(after.streak) : null;
+  if (cut) streakCut(cut, t.seatAvatar(mine.seat));
+}
+/** 이름패 옆 연승 꼬리표 (2연승부터) */
+function streakBadge(t: Ctx, seat: number): string | undefined {
+  const n = seat === t.mySeat ? myDay(t.me.userId).streak : streakRoom === t.room.id ? (streaks.get(seat)?.n ?? 0) : 0;
+  return n >= 2 ? `${n}연승` : undefined;
+}
 
 
 const ui: GameUI<BjPublic, Record<string, never>> = {
@@ -93,6 +178,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
         me,
         size: k,
         sub: s.out ? '쉬는 중' : s.bet ? `베팅 ${t.fmt(s.bet)}` : undefined,
+        badge: streakBadge(t, s.seat),
       });
       const hands = s.hands;
       const hw = hands.length > 1 ? Math.min(scw * 1.5, slot / 2.05) : 0;
@@ -182,50 +268,21 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
   },
 
   controls(t: Ctx, el: HTMLElement) {
-    const p = t.pub;
-    if (!p || t.mySeat === null) return;
-    const mine = p.seats.find((s) => s.seat === t.mySeat);
-    if (p.phase === 'bet' && p.waitingBets.includes(t.mySeat) && t.myTurn) {
-      // 베팅은 기본 단위의 배수만
-      const max = Math.floor((mine?.maxBet ?? p.maxBet) / p.minBet) * p.minBet;
-      if (betAmount < p.minBet || betAmount > max) betAmount = p.minBet;
-      el.innerHTML = `<div class="row">
-        <button class="btn" data-m="1">×1</button><button class="btn" data-m="2">×2</button><button class="btn" data-m="5">×5</button>
-        <button class="btn" data-m="10">×10</button><button class="btn" data-m="max">최대</button>
-        <span class="amount">${t.fmt(betAmount)}</span>
-        <button class="btn big primary" id="bet" ${t.busy ? 'disabled' : ''}>베팅</button>
-        <button class="btn" id="sit" ${t.busy ? 'disabled' : ''}>이번 판 쉬기</button></div>
-        <p class="msg">베팅 ${t.fmt(p.minBet)} ~ ${t.fmt(max)}</p>`;
-      el.querySelectorAll<HTMLButtonElement>('[data-m]').forEach((b) =>
-        b.addEventListener('click', () => {
-          betAmount = b.dataset.m === 'max' ? max : Math.min(max, p.minBet * Number(b.dataset.m));
-          t.redraw();
-        }),
-      );
-      el.querySelector('#bet')!.addEventListener('click', () => void t.act({ type: 'bet', amount: betAmount }));
-      el.querySelector('#sit')!.addEventListener('click', () => void t.act({ type: 'sitout' }));
-      return;
-    }
-    if (p.phase === 'play' && t.myTurn && p.turn?.seat === t.mySeat) {
-      el.innerHTML = `<div class="row">${p.legal
-        .map((a) => `<button class="btn big ${a === 'hit' ? 'primary' : a === 'stand' ? 'alt' : ''}" data-a="${a}" ${t.busy ? 'disabled' : ''}>${ACTION[a]}</button>`)
-        .join('')}</div><p class="msg">${(mine?.hands.length ?? 0) > 1 ? `${(p.turn.hand ?? 0) + 1}번째 핸드 · ` : ''}20초 안에 고르지 않으면 스탠드해요</p>`;
-      el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));
-      return;
-    }
-    // 내 차례여도 앞선 연출(베팅 말풍선·카드 나누기)이 끝나기 전에는 버튼 대신 안내만
-    const who =
-      p.phase === 'bet'
-        ? p.waitingBets.includes(t.mySeat) ? '베팅을 받는 중…' : '다른 사람이 베팅하는 중…'
-        : p.turn
-          ? p.turn.seat === t.mySeat ? '카드를 받는 중…' : `${esc(t.seatName(p.turn.seat))} 차례…`
-          : '딜러 차례…';
-    el.innerHTML = `<p class="msg">${who}</p>`;
+    if (!t.pub || t.mySeat === null) return;
+    playControls(t, el);
+    // 조작부 위 띠: 오늘 기록 (이 기기에서 한 판만 센다)
+    const d = myDay(t.me.userId);
+    el.insertAdjacentHTML('afterbegin', `<p class="bj-today">${esc(bjStrip(d, t.fmt))}${d.streak >= 2 ? `<span class="tag">${d.streak}연승</span>` : ''}</p>`);
   },
 
   resultHtml(t: Ctx) {
     const r = t.pub?.summary ?? ((t.pub as unknown as { result?: BjPublic['summary'] })?.result ?? null);
     if (!r) return '<p>판이 끝났어요</p>';
+    try {
+      recordRound(t, r);
+    } catch (e) {
+      console.warn('bj-today', e);
+    }
     const rows = r.seats
       .map((s) => {
         const d = s.delta;
@@ -235,6 +292,8 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       .join('');
     return `<h3>🃏 판 결과</h3><p>딜러 ${r.dealer.total}${r.dealer.blackjack ? ' (블랙잭)' : r.dealer.bust ? ' (버스트)' : ''}</p><table>${rows}</table>`;
   },
+
+  leave: stopCutinTimer,
 
   // 서버 응답에 행동이 여러 개면 하나씩: 말풍선 + 칩 (AI는 0.8초 간격)
   replay(ev, t: Ctx) {
@@ -302,5 +361,48 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     return null;
   },
 };
+
+/** 게임 중 조작 버튼: 베팅 · 히트/스탠드/더블/스플릿 · 안내 */
+function playControls(t: Ctx, el: HTMLElement) {
+  const p = t.pub;
+  if (!p || t.mySeat === null) return;
+  const mine = p.seats.find((s) => s.seat === t.mySeat);
+  if (p.phase === 'bet' && p.waitingBets.includes(t.mySeat) && t.myTurn) {
+    // 베팅은 기본 단위의 배수만
+    const max = Math.floor((mine?.maxBet ?? p.maxBet) / p.minBet) * p.minBet;
+    if (betAmount < p.minBet || betAmount > max) betAmount = p.minBet;
+    el.innerHTML = `<div class="row">
+      <button class="btn" data-m="1">×1</button><button class="btn" data-m="2">×2</button><button class="btn" data-m="5">×5</button>
+      <button class="btn" data-m="10">×10</button><button class="btn" data-m="max">최대</button>
+      <span class="amount">${t.fmt(betAmount)}</span>
+      <button class="btn big primary" id="bet" ${t.busy ? 'disabled' : ''}>베팅</button>
+      <button class="btn" id="sit" ${t.busy ? 'disabled' : ''}>이번 판 쉬기</button></div>
+      <p class="msg">베팅 ${t.fmt(p.minBet)} ~ ${t.fmt(max)}</p>`;
+    el.querySelectorAll<HTMLButtonElement>('[data-m]').forEach((b) =>
+      b.addEventListener('click', () => {
+        betAmount = b.dataset.m === 'max' ? max : Math.min(max, p.minBet * Number(b.dataset.m));
+        t.redraw();
+      }),
+    );
+    el.querySelector('#bet')!.addEventListener('click', () => void t.act({ type: 'bet', amount: betAmount }));
+    el.querySelector('#sit')!.addEventListener('click', () => void t.act({ type: 'sitout' }));
+    return;
+  }
+  if (p.phase === 'play' && t.myTurn && p.turn?.seat === t.mySeat) {
+    el.innerHTML = `<div class="row">${p.legal
+      .map((a) => `<button class="btn big ${a === 'hit' ? 'primary' : a === 'stand' ? 'alt' : ''}" data-a="${a}" ${t.busy ? 'disabled' : ''}>${ACTION[a]}</button>`)
+      .join('')}</div><p class="msg">${(mine?.hands.length ?? 0) > 1 ? `${(p.turn.hand ?? 0) + 1}번째 핸드 · ` : ''}20초 안에 고르지 않으면 스탠드해요</p>`;
+    el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));
+    return;
+  }
+  // 내 차례여도 앞선 연출(베팅 말풍선·카드 나누기)이 끝나기 전에는 버튼 대신 안내만
+  const who =
+    p.phase === 'bet'
+      ? p.waitingBets.includes(t.mySeat) ? '베팅을 받는 중…' : '다른 사람이 베팅하는 중…'
+      : p.turn
+        ? p.turn.seat === t.mySeat ? '카드를 받는 중…' : `${esc(t.seatName(p.turn.seat))} 차례…`
+        : '딜러 차례…';
+  el.innerHTML = `<p class="msg">${who}</p>`;
+}
 
 void bootGame(ui);

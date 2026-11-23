@@ -4,6 +4,7 @@
  * 모든 화면이 같은 칸에 멈추도록, 회전은 서버 결과로 정해진 각도까지 같은 시간(6초) 동안 돈다.
  */
 import { ROULETTE_MANUAL } from '../../lib/manuals.ts';
+import { rouletteNotes, rouletteStats, share } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, sfxMany, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { clamp, drawTable, label, tc, theme, viewSize } from '../../lib/cards.ts';
 import { BET_MS, MULT, SEASONS, WHEEL, hits, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
@@ -41,6 +42,8 @@ let skewSeen = false;
 let lastPhase = '';
 let lastBase = 0;
 let lastTick = '';
+/** 흐름 통계판을 펼쳤는가 (조작부를 다시 그려도 그대로) */
+let statsOpen = false;
 
 function enterRoom(id: string, base: number) {
   if (id === roomId && base === lastBase) return;
@@ -273,6 +276,28 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
   },
 
   controls(t: Ctx, el: HTMLElement) {
+    betControls(t, el);
+    // 흐름 통계판 펼치기/접기 (어느 단계의 조작부에서나)
+    el.querySelector('#rl-stats')?.addEventListener('click', () => {
+      statsOpen = !statsOpen;
+      t.redraw();
+    });
+  },
+
+  resultHtml(t: Ctx) {
+    const r = (t.pub as unknown as { result?: { stopReason?: string; spins?: number } })?.result;
+    if (r?.stopReason === 'idle') return '<h3>🎡 잠깐 쉬어요</h3><p>3번 연속 아무도 걸지 않아 멈췄어요. 레디하면 다시 시작해요.</p>';
+    return '<h3>🎡 룰렛을 멈췄어요</h3><p>레디하면 다시 시작해요.</p>';
+  },
+
+  cutin() {
+    return null;
+  },
+};
+
+/** 조작부: 베팅판 (칩 놓기 · 확정) 또는 안내 */
+function betControls(t: Ctx, el: HTMLElement) {
+  {
     const p = t.pub;
     // 자동 확정 예약은 그릴 때마다 새로 (확정했거나 회전 중이면 다시 걸지 않는다)
     if (autoTimer) clearTimeout(autoTimer);
@@ -365,18 +390,8 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     el.querySelector('#rl-go')?.addEventListener('click', send);
     // 마감 직전 자동 확정 (놓은 칩이 있을 때만, 없으면 서버가 '안 걸기'로 처리)
     if (p.endsAt && local.length && sentFor !== k && p.endsAt - serverNow() > 300) autoTimer = setTimeout(send, Math.max(0, p.endsAt - serverNow() - 1500));
-  },
-
-  resultHtml(t: Ctx) {
-    const r = (t.pub as unknown as { result?: { stopReason?: string; spins?: number } })?.result;
-    if (r?.stopReason === 'idle') return '<h3>🎡 잠깐 쉬어요</h3><p>3번 연속 아무도 걸지 않아 멈췄어요. 레디하면 다시 시작해요.</p>';
-    return '<h3>🎡 룰렛을 멈췄어요</h3><p>레디하면 다시 시작해요.</p>';
-  },
-
-  cutin() {
-    return null;
-  },
-};
+  }
+}
 
 /** 회전 연출이 끝났는가 */
 /** 결과 창: 휠이 멈추고 당첨 연출이 지난 뒤 한 번 띄운다. '확인'을 누르면 다음 판 (모두 확인하면 바로, 아니면 마감 때) */
@@ -447,6 +462,37 @@ function showResult(t: Ctx, p: RoulettePublic, key: string) {
   resultTimer = setTimeout(open, wait);
 }
 
+/**
+ * 흐름 통계판: 공개 상태의 최근 결과(history, 20판까지)로 띠별 횟수 · 계절·음양 비율 · 눈에 띄는 흐름을 보여 준다.
+ * 휠이 도는 동안에는 방금 정해진 결과를 빼고 센다 (멈추기 전에 결과가 보이지 않게)
+ */
+function statsPanel(p: RoulettePublic, t: Ctx) {
+  const spinning = p.phase === 'spin' && !wheelStopped(`${p.spin}:${t.room.round_no}`);
+  const s = rouletteStats(spinning ? p.history.slice(0, -1) : p.history);
+  const names = WHEEL.map((id) => NAME[id]);
+  const notes = s.n ? rouletteNotes(s, names, SEASONS) : [];
+  const head = `<div class="rstats-head"><button type="button" class="btn small" id="rl-stats" aria-expanded="${statsOpen}">📊 흐름 ${statsOpen ? '▴' : '▾'}</button>${
+    notes.length ? notes.map((n) => `<span class="tag">${esc(n)}</span>`).join('') : `<small>${s.n ? `최근 ${s.n}판` : '아직 결과가 없어요'}</small>`
+  }</div>`;
+  if (!statsOpen) return `<div class="rstats">${head}</div>`;
+  const most = Math.max(1, ...s.counts);
+  // 휠 순서 대신 계절 순서(봄 → 겨울)로: 베팅판과 같은 줄 순서
+  const order = [0, 1, 2, 3].flatMap((x) => seasonCells(x));
+  const cells = order
+    .map((c) => `<span class="rs-z ${SEASON_KEY[seasonOf(c)]} ${s.counts[c] ? '' : 'zero'} ${s.n && s.counts[c] === most ? 'top' : ''}"><img src="${faceUrl(WHEEL[c])}" alt=""/>${NAME[WHEEL[c]]}<b>${s.counts[c]}번</b><em>${
+      s.n === 0 ? '-' : s.gaps[c] === 0 ? '방금' : s.counts[c] ? `${s.gaps[c]}판 전` : `${s.n}판째 없음`
+    }</em></span>`)
+    .join('');
+  const seasons = [0, 1, 2, 3].map((x) => `<i class="${SEASON_KEY[x]}" style="flex-grow:${Math.max(1, s.seasons[x])}">${SEASONS[x]} ${share(s.seasons[x], s.n)}%</i>`).join('');
+  const yy = `<i class="yang" style="flex-grow:${Math.max(1, s.yang)}">☀ 양 ${share(s.yang, s.n)}%</i><i class="yin" style="flex-grow:${Math.max(1, s.yin)}">☾ 음 ${share(s.yin, s.n)}%</i>`;
+  return `<div class="rstats">${head}<div class="rstats-body">
+    <div class="rs-grid">${cells}</div>
+    <div class="rs-bar"><span>계절</span><div>${seasons}</div></div>
+    <div class="rs-bar"><span>음양</span><div>${yy}</div></div>
+    <p class="rs-note">최근 ${s.n}판 기록이에요. 휠은 매번 고르게 돌아서 다음 결과와는 상관없어요.</p>
+  </div></div>`;
+}
+
 function wheelStopped(key: string) {
   const t0 = spinStart.get(key);
   return t0 === undefined || performance.now() - t0 >= SPIN_ANIM;
@@ -491,7 +537,7 @@ function board(p: RoulettePublic, t: Ctx, active: boolean) {
     })
     .join('');
   const yy = `<div class="rrow yy">${cell('yinyang', 0, '<i>☀ 양</i><small>×2</small>', 'y', '양')}${cell('yinyang', 1, '<i>☾ 음</i><small>×2</small>', 'y', '음')}</div>`;
-  return `<div class="rboard ${active ? '' : 'off'}"><p class="rhint">띠 ×12 · ↔ 이웃 두 칸 ×6 · 계절 ×4 · 음양 ×2</p>${rows}${yy}</div>`;
+  return `${statsPanel(p, t)}<div class="rboard ${active ? '' : 'off'}"><p class="rhint">띠 ×12 · ↔ 이웃 두 칸 ×6 · 계절 ×4 · 음양 ×2</p>${rows}${yy}</div>`;
 }
 
 void bootGame(ui);
