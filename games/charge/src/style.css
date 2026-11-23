@@ -194,3 +194,25 @@ button, input { font: inherit; color: inherit; }
 .help b.blue { color: var(--team-a); }
 .help b.red { color: var(--pink); }
 .hero { display: block; width: 100%; max-width: 540px; margin: 0 auto -18px; flex: none; }
+
+/* 오늘의 도전 (오늘의 길) */
+.daily-card { display: flex; flex-direction: column; gap: 8px; }
+.daily-card h3 { margin: 0; }
+.daily-rule { margin: 0; text-align: center; font-size: 15px; line-height: 1.45; }
+.daily-rule b { font-weight: normal; color: var(--team-a); }
+.daily-boss { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; background: var(--panel-strong); border-radius: var(--radius-item); padding: 6px 10px; font-size: 13px; }
+.daily-boss[hidden], .daily-rank[hidden], .daily-place[hidden] { display: none; }
+.daily-boss span { color: var(--ink-soft); flex-basis: 100%; text-align: center; font-size: 12px; }
+.daily-boss em { font-style: normal; white-space: nowrap; }
+.daily-boss var { font-style: normal; color: var(--team-a); }
+.daily-rank h3 { margin: 0 0 6px; }
+.daily-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.daily-list li { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px; border-radius: var(--radius-item); font-size: 15px; }
+.daily-list li.me { background: var(--panel-strong); }
+.daily-list li.gap { justify-content: center; padding: 0; color: var(--ink-soft); font-size: 12px; }
+.daily-list i { font-style: normal; flex: none; min-width: 26px; text-align: center; color: var(--ink-soft); }
+.daily-list u { text-decoration: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-list li.me u { color: var(--team-a); }
+.daily-list var { font-style: normal; flex: none; }
+.daily-list small { flex: none; min-width: 62px; text-align: right; font-size: 12px; color: var(--ink-soft); }
+.daily-place { margin: 0; text-align: center; font-size: 16px; color: var(--team-a); background: var(--panel-strong); border-radius: var(--radius-item); padding: 6px 10px; }

@@ -7,6 +7,7 @@ import {
   emptyProfile,
   type ChargeProfile,
   type FinishResult,
+  type RunMode,
   type RunReport,
 } from '../game/progress';
 import { LOCAL_MODE } from './local';
@@ -23,7 +24,7 @@ export class ApiError extends Error {}
 export interface ChargeApi {
   loadProfile(): Promise<ChargeProfile>;
   /** 판 시작 → 판 번호 (서버가 거절하면 ApiError, 통신 실패면 '' = 기록되지 않는 판) */
-  start(stage: string, leader: string, mode: 'normal' | 'endless'): Promise<string>;
+  start(stage: string, leader: string, mode: RunMode): Promise<string>;
   /** 판 결과 → 새 프로필과 결과 (통신 실패면 null: 보관했다가 다시 보낸다) */
   finish(report: RunReport): Promise<{ profile: ChargeProfile; result: FinishResult } | null>;
   /** 보관해 둔 결과 다시 보내기 → 올라간 판 수 */

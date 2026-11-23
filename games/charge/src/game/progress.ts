@@ -13,7 +13,7 @@ import {
   type UpgradeKey,
   type Upgrades,
 } from '../data/growth';
-import { ENDLESS_ID, ENDLESS_SEG, STAGES, crateCoinsOf, stageOf } from '../data/stages';
+import { DAILY_ID, ENDLESS_ID, ENDLESS_SEG, STAGES, crateCoinsOf, stageOf } from '../data/stages';
 import { starsOf } from './sim';
 
 /**
@@ -32,13 +32,16 @@ export interface ChargeProfile {
 
 export const emptyProfile = (): ChargeProfile => ({ coins: 0, stages: {}, upgrades: {}, endless: null });
 
+/** 'daily' = 오늘의 도전(오늘의 길): 끝없는 길과 같은 규칙, 기록은 오늘 순위에만 */
+export type RunMode = 'normal' | 'endless' | 'daily';
+
 /** 판 하나의 결과 (화면 → 서버) */
 export interface RunReport {
   /** 서버가 charge_start 로 준 판 번호 (기록되지 않는 판은 '') */
   run: string;
   stage: string;
   leader: LeaderId;
-  mode: 'normal' | 'endless';
+  mode: RunMode;
   /** 판 시간 (초, 내림) */
   time: number;
   cleared: boolean;
@@ -62,6 +65,8 @@ export interface FinishResult {
   siaCoin: boolean;
   /** 이번에 새로 열린 대장 */
   newLeaders: LeaderId[];
+  /** 오늘의 도전 판: 기록된 날 · 오늘 기록이 늘었는지 · 오늘 최고 거리 (기록하지 못했으면 없음) */
+  daily?: { day: string; improved: boolean; best: number } | null;
 }
 
 /** 서버 검증 값 (SQL _charge_const 와 같다) */
@@ -127,8 +132,8 @@ export const endlessOpen = (p: ChargeProfile) => cleared(p, '1-5');
 
 /** 판 결과 검사 (서버와 같은 기준. 시간 겹침·경과 시간은 서버만 본다) → 틀리면 까닭 */
 export function checkReport(r: RunReport): string | null {
-  const endless = r.mode === 'endless';
-  if (endless !== (r.stage === ENDLESS_ID)) return 'bad stage';
+  const endless = r.mode !== 'normal';
+  if ((r.mode === 'endless') !== (r.stage === ENDLESS_ID) || (r.mode === 'daily') !== (r.stage === DAILY_ID)) return 'bad stage';
   if (!endless && !stageOf(r.stage)) return 'bad stage';
   if (![r.time, r.troops, r.kills, r.progress, r.meters, r.bosses, r.crate].every(Number.isFinite)) return 'bad result';
   if (r.time < 0 || r.time > (endless ? LIMITS.endlessMaxTime : LIMITS.maxTime)) return 'bad time';
@@ -153,7 +158,10 @@ export function applyReport(p: ChargeProfile, r: RunReport): FinishResult {
   let stars = 0;
   let first = false;
   let best = false;
-  if (r.mode === 'endless') {
+  if (r.mode === 'daily') {
+    // 오늘의 길: 엽전은 끝없는 길과 같고, 끝없는 길 최고 기록은 건드리지 않는다
+    raw = endlessCoins(r.meters, r.bosses);
+  } else if (r.mode === 'endless') {
     raw = endlessCoins(r.meters, r.bosses);
     if (!p.endless || r.meters > p.endless.meters) {
       p.endless = { meters: r.meters, leader: r.leader };
@@ -192,11 +200,12 @@ export function buyUpgrade(p: ChargeProfile, key: UpgradeKey): string | null {
 }
 
 /** 시작할 수 있는가 (잠긴 스테이지·대장이면 까닭) */
-export function checkStart(p: ChargeProfile, stage: string, leader: string, mode: 'normal' | 'endless'): string | null {
+export function checkStart(p: ChargeProfile, stage: string, leader: string, mode: RunMode): string | null {
   const def = LEADERS.find((l) => l.id === leader);
   if (!def) return 'bad leader';
   if (def.extra && !extraOpen(p, def.id)) return 'locked character';
   if (!leadersOf(p).includes(leader as LeaderId)) return 'leader locked';
+  if (mode === 'daily') return stage === DAILY_ID ? null : 'bad stage';
   if (mode === 'endless') return stage === ENDLESS_ID ? (endlessOpen(p) ? null : 'endless locked') : 'bad stage';
   if (!stageOf(stage)) return 'bad stage';
   return stageOpen(p, stage) ? null : 'stage locked';

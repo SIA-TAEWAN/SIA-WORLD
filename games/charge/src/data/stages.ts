@@ -76,6 +76,8 @@ export interface StageDef {
   stars: [number, number];
   /** 만든 스테이지: 잘 고른 사람이 보스 앞에 왔을 때의 예상 대원 수 */
   expect?: number;
+  /** 오늘의 길: 그날의 코스 씨앗 (끝없는 길 구간을 이 씨앗으로 만든다) */
+  seed?: number;
 }
 
 const chief = (hp: number): BossSpec => ({ kind: 'chief', hp, every: 3.2, warn: 1.2, width: 220, frac: 0.4 });
@@ -332,16 +334,32 @@ export const ENDLESS_ID = 'endless';
 export const ENDLESS_SEG = 9000;
 
 /** 끝없는 모드 k번째 구간 (0부터): 물건 + 끝의 보스. 구간마다 조금씩 어려워진다 */
-export function endlessSegment(k: number): { items: Item[]; bossZ: number; boss: BossSpec } {
+export function endlessSegment(k: number, seed?: number): { items: Item[]; bossZ: number; boss: BossSpec } {
   const f = Math.min(1, k / 10);
-  const r = rng(777 + k * 31);
+  // 씨앗이 없으면 늘 같은 끝없는 길, 있으면(오늘의 길) 그 씨앗의 코스
+  const daily = seed !== undefined;
+  const r = rng(daily ? (seed ^ Math.imul(k + 1, 0x9e3779b1)) >>> 0 : 777 + k * 31);
   const z0 = k * ENDLESS_SEG;
   // 앞 구간에서 얼마나 남았는지 모르므로, 구간마다 예상 대원이 늘어난다고 본다
   const seg = buildSegment(r, f, REGION_ENEMIES[Math.min(11, k)], z0, ENDLESS_SEG, 20 * Math.pow(1.35, k));
   const big = k % 3 === 2;
-  const id = BOSS_IDS[Math.floor(k / 3) % BOSS_IDS.length];
+  const id = BOSS_IDS[(Math.floor(k / 3) + (daily ? dailyBossShift(seed) : 0)) % BOSS_IDS.length];
   const boss: BossSpec = big ? { kind: id, hp: bossHp(seg.troops, 14, f), ...BOSS_TRAITS[id] } : chief(bossHp(seg.troops, 7, f));
   return { items: seg.items, bossZ: z0 + ENDLESS_SEG, boss };
+}
+
+// ---------- 오늘의 도전: 오늘의 길 ----------
+
+export const DAILY_ID = 'daily';
+/** 오늘의 길에서 지역 보스가 나오는 순서의 시작 (씨앗마다 다르다) */
+export const dailyBossShift = (seed: number) => (seed >>> 0) % BOSS_IDS.length;
+/** 끝없는 길처럼 구간을 이어 붙이는 판인가 (끝없는 길 · 오늘의 길) */
+export const isEndlessId = (id: string) => id === ENDLESS_ID || id === DAILY_ID;
+
+/** 오늘의 길 판의 시작 모양: 끝없는 길과 같은 규칙, 코스만 그날의 씨앗으로 */
+export function dailyStage(seed: number): StageDef {
+  const seg = endlessSegment(0, seed);
+  return { id: DAILY_ID, region: 0, no: 0, name: '오늘의 길', startTroops: 8, items: seg.items, bossZ: seg.bossZ, boss: seg.boss, stars: [0, 0], seed };
 }
 
 /** 끝없는 모드 판의 시작 모양 (첫 구간) */
