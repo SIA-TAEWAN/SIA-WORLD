@@ -115,6 +115,38 @@ describe('서버 저장 (createSupabaseApi)', () => {
     expect(await api.resend()).toBe(0);
   });
 
+  it('시작 전에 못 보낸 결과를 보냈으면 새 프로필을 함께 돌려준다 (없으면 돌려주지 않는다)', async () => {
+    const store = memStore();
+    let down = true;
+    const { sb } = fake({
+      twelve_finish: () => {
+        if (down) throw new Error('fetch failed');
+        return { state: serverState({ level: 9, maps: { normal: { '1-1': { stars: 3, clears: 1, best: 90 } }, hard: {} } }), result: { exp: 1 } };
+      },
+      twelve_start: () => ({ run: 'run-9', seed: 1 }),
+    });
+    const api = createSupabaseApi(sb, 'u1', store);
+    expect(await api.finish(report())).toBeNull();
+    down = false;
+    const st = await api.start('1-2', 'normal', 'rat');
+    expect(st.run).toBe('run-9');
+    expect(st.profile?.level).toBe(9);
+    expect(st.profile?.maps.normal['1-1']?.clears).toBe(1);
+    // 보관된 결과가 없으면 프로필은 없다
+    expect((await api.start('1-2', 'normal', 'rat')).profile).toBeUndefined();
+  });
+
+  it('최종보스맵 열쇠가 모자라면 need keys 로 거절한다', async () => {
+    const { sb } = fake({
+      twelve_start: () => {
+        throw new Error('need keys');
+      },
+    });
+    const api = createSupabaseApi(sb, 'u1', memStore());
+    await expect(api.start('final', 'normal', 'rat')).rejects.toThrow('need keys');
+    await expect(api.start('final', 'normal', 'rat')).rejects.toBeInstanceOf(ApiError);
+  });
+
   it('상점·대장간·가방은 장비 번호를 숫자로 보낸다', async () => {
     const { sb, calls } = fake({});
     const api = createSupabaseApi(sb, 'u1', memStore());

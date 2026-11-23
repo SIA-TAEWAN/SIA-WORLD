@@ -529,6 +529,7 @@
       // 로그아웃: 공지도 지운다 (다음 사람이 들어오면 다시 읽는다)
       noticeSeq++;
       paintNotice('');
+      clearWallet();
     }
     // ---------- 게임 순서: 내가 많이 들어간 게임부터 ----------
     // 순서는 이 브라우저에 기억해 두고 처음부터 그 순서로 그린다 (서버 응답을 기다렸다가 카드가 자리를 바꾸지 않게).
@@ -671,17 +672,30 @@
       }
       renderCat();
     }
+    // 로그아웃: 앞 사람의 지갑·출석 알림·고양이 소개를 지운다 (다음 사람이 들어오면 다시 읽는다)
+    function clearWallet() {
+      me = null;
+      wallet = null;
+      $('#w-note').textContent = '';
+      $('#attend').classList.add('hidden');
+      $('#attend-streak').textContent = '';
+      renderWallet();
+    }
     async function loadWallet(user) {
       me = user;
       $('#w-note').textContent = '';
       $('#attend').classList.add('hidden');
       try {
         // 출석 확인 (지갑이 없으면 이때 10,000 / 10,000으로 만들어진다)
-        wallet = await claimAttendance();
+        const w = await claimAttendance();
+        // 기다리는 사이 로그아웃했으면 버린다
+        if (me !== user) return;
+        wallet = w;
         // 연속 N일째 (+ 3일째·7일마다 시아코인 보너스, 아니면 다음 보너스까지 남은 날)
         $('#attend-streak').textContent = attendanceStreakText(wallet);
         if (wallet.granted) $('#attend').classList.remove('hidden');
       } catch {
+        if (me !== user) return;
         wallet = null;
         $('#w-note').textContent = '지갑을 불러오지 못했어요. 새로고침해 주세요';
       }
@@ -692,7 +706,9 @@
         b.disabled = true;
         $('#w-note').textContent = '';
         try {
+          const who = me;
           const r = await refill(b.dataset.c, LOBBY_BASE_UNIT);
+          if (me !== who) return;
           wallet = r;
           if (!r.ok) $('#w-note').textContent = r.reason === 'limit' ? '오늘 무료 충전을 모두 썼어요 (하루 3번)' : '아직 충분해요. 5,000보다 적을 때 충전할 수 있어요';
         } catch {

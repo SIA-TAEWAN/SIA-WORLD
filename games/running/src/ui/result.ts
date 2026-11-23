@@ -93,7 +93,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
     // 지금 자리에 있는 사람·AI 와 이번 판을 달린 줄만 골라 그 안에서 순위를 매긴다 (예전에 나간 사람 줄은 세지 않는다)
     const table = series && room ? standings(series, [...room.seats().map(seriesKey), ...race.roster.map(seriesKey)]) : [];
     // 이번 판이 점수판에 들어가 있을 때만 '+점수'를 보인다
-    const fresh = !!series && series.done[series.done.length - 1] === race.round;
+    const fresh = !!series && series.done[series.done.length - 1] === race.key;
     root.querySelectorAll<HTMLElement>('.rrow small[data-k]').forEach((el) => {
       const st = table.find((t) => t.k === el.dataset.k);
       const parts = [el.dataset.pre ?? ''];

@@ -53,6 +53,11 @@ export interface TableCtx<P = any, Q = any> {
    * 내 카드를 맞게 그릴 때 쓴다. 지금 화면보다 앞선 내용일 수 있으니 공개 상태에 맞는 만큼만 그려야 한다
    */
   privNext: Q | null;
+  /**
+   * 연출 재생 중이면 재생해 가는 새 공개 상태 (한 동작씩 보여 주는 중간 화면에서는 pub 이 되돌린 상태라 결과가 비어 있다).
+   * 재생 중이 아니면 pub 과 같다. 사건 하나가 무엇이었는지 판 결과(누가 진짜 이겼나)로 가를 때 쓴다
+   */
+  pubNext: P | null;
   pending: number[];
   /** 내가 지금 조작할 수 있다: 내 차례이고 앞선 연출(카드·칩·말풍선)이 다 끝났다. 조작 버튼은 이 값으로 켠다 */
   myTurn: boolean;
@@ -737,6 +742,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   const resultPending = () =>
     !!st?.public_state?.result && room?.status === 'waiting' && !closed && (resultDue === st.round_no || resultShownFor !== st.round_no);
   let replaying = false;
+  /** 재생 중인 항목의 새 공개 상태 (ctx.pubNext) */
+  let playingNext: unknown = null;
   let inApply = false;
   /** 다시 불러올 때마다 늘린다: 그 전에 꺼내 둔 재생 항목은 적용하지 않는다 */
   let epoch = 0;
@@ -890,6 +897,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const pending = st?.pending_seats ?? [];
     // 먼저 계산한다: 미뤄 둔 내 패를 여기서 꺼내 쓸 수 있다 (아래 priv보다 앞서야 한다)
     const privWait = privWaiting(!!mine);
+    // 판이 끝났어도 그 판의 연출을 재생하는 중이면 마지막 상태까지 그대로 보여 준다
+    // 판 정리를 마친 뒤에는 빈 테이블 (다음 판을 기다린다)
+    const pub = (room.status === 'playing' || st?.public_state?.result || replaying || queue.length || awaitingResult()) && st?.round_no && !tidied() ? st.public_state : null;
     return {
       scene,
       Phaser,
@@ -898,12 +908,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       me,
       mySeat: mine?.seat_no ?? null,
       resultSeat: priv && st && priv.round_no === st.round_no ? priv.seat_no : null,
-      // 판이 끝났어도 그 판의 연출을 재생하는 중이면 마지막 상태까지 그대로 보여 준다
-      // 판 정리를 마친 뒤에는 빈 테이블 (다음 판을 기다린다)
-      pub: (room.status === 'playing' || st?.public_state?.result || replaying || queue.length || awaitingResult()) && st?.round_no && !tidied() ? st.public_state : null,
+      pub,
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       privWait,
       privNext: pendingPriv && st && pendingPriv.round_no === st.round_no ? pendingPriv.hand : null,
+      pubNext: pub ? (playingNext ?? pub) : null,
       pending,
       // (기기에서 진행할 판의 전체 상태를 받아 오는 중이면 잠깐 막는다: 지금 보이는 것은 서버에 저장된 옛 상태다)
       myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no) && !ctlHold && !local?.waiting(),
@@ -1795,6 +1804,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     try {
       while (queue.length && !closed) {
         const item = queue.shift()!;
+        playingNext = item.s.public_state ?? null;
         const myEpoch = epoch;
         const stale = () => closed || myEpoch !== epoch;
         const mine = seats.find((x) => x.user_id === me.userId);
@@ -1949,6 +1959,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       }
     } finally {
       replaying = false;
+      playingNext = null;
       holdResult = false;
       ctlHold = false;
       itemApplied = false;

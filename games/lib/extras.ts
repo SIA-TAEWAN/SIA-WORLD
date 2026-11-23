@@ -410,6 +410,31 @@ export function pokerStory(i: PokerStoryInput): string | null {
   return n >= 2 ? `${n}명 쇼다운 · ${of} 승리` : null;
 }
 
+// ───────────────────────── 포커·홀덤: 진짜 승자 · 돌려받은 팟 ─────────────────────────
+
+/** 판 결과 중 승자를 가르는 데 쓰는 부분 (세븐포커 · 홀덤 요약 공용) */
+export interface PotWinSummary {
+  uncontested: boolean;
+  /** 모든 팟 승자의 합집합 — 혼자만 받을 수 있는 남는 팟(못 받은 콜 차액)을 돌려받은 사람도 들어 있다 */
+  winners: readonly number[];
+  pots?: readonly { eligible: readonly number[]; winners: readonly number[] }[];
+}
+
+/**
+ * 진짜 승자 (자리 번호순): 무혈 승리면 winners, 아니면 받을 사람이 2명 이상인 팟의 승자만.
+ * 혼자만 받을 수 있는 팟은 겨뤄서 딴 돈이 아니라 더 건 칩을 돌려받은 것이다
+ */
+export function potRealWinners(r: PotWinSummary | null | undefined): number[] {
+  if (!r) return [];
+  if (r.uncontested || !r.pots?.length) return [...r.winners].sort((a, b) => a - b);
+  const out = new Set<number>();
+  for (const p of r.pots) if (p.eligible.length >= 2) for (const w of p.winners) out.add(w);
+  return out.size ? [...out].sort((a, b) => a - b) : [...r.winners].sort((a, b) => a - b);
+}
+
+/** 이 자리의 'win' 사건이 돌려받은 것뿐인가 (진짜 승자가 아닌데 받았다). 결과를 모르면 false */
+export const potRefundOnly = (seat: number, r: PotWinSummary | null | undefined): boolean => !!r && r.winners.includes(seat) && !potRealWinners(r).includes(seat);
+
 // ───────────────────────── 홀덤: 미리 고르기 (남의 차례에 예약) ─────────────────────────
 
 /** 예약: 체크/폴드 (체크할 수 있으면 체크, 아니면 폴드) · 콜 (예약할 때의 베팅 금액 curBet 을 적어 둔다) */

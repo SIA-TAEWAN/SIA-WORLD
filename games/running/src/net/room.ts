@@ -1,7 +1,7 @@
 import { END_AFTER_GO, aiLevelOf, type AiLevel, type ZodiacId } from '../game/constants';
 import { EMOTE_RECV_GAP_MS, emoteReady, validEmote } from '../game/emote';
 import type { RankedEntry } from '../game/ranking';
-import { addRound, cleanSeries, newSeries, shouldAdopt, type Series } from '../game/series';
+import { addRound, cleanSeries, newSeries, roundKey, shouldAdopt, type Series } from '../game/series';
 import { GO_GAP_MS, GoTooSoonError, serverNow, type RaceApi } from './api';
 import type { Channel, Member, NetMsg } from './channel';
 import { CLIENT_VERSION, allReady, hostOf, makeSeats, players, resolveChar, sortMembers, type MemberInfo, type PlayerMeta, type Seat } from './seats';
@@ -55,7 +55,8 @@ export class RaceRoom {
   /** 지금 진행 중인 판 (끝나면 null) */
   current: StartMsg | null = null;
   private starting = false;
-  private lastRound = 0;
+  /** 마지막으로 받은 시작의 판 열쇠 (roundKey — 판 번호는 서버에서 다시 쓰일 수 있다) */
+  private lastKey = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   /** 'too soon' 으로 거절된 GO 요청을 다시 할 때까지 기다리는 타이머 */
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -66,7 +67,7 @@ export class RaceRoom {
   private toldNewer = false;
   /** 연속전 점수판 (이 방에 있는 동안만. 나가면 사라진다) */
   series: Series = newSeries();
-  /** 끝 알림을 못 받아 스스로 끝내고 더한 판 번호 (확정이 아니라 알리지 않았다). 확정된 점수판을 받으면 null */
+  /** 끝 알림을 못 받아 스스로 끝내고 더한 판 열쇠 (roundKey, 확정이 아니라 알리지 않았다). 확정된 점수판을 받으면 null */
   unsureRound: number | null = null;
   /** 오늘의 도전: 이 방의 판은 이 시드(날짜로 만든 트랙)로 연다. 보통 방은 null (판마다 무작위) */
   fixedSeed: number | null = null;
@@ -75,6 +76,8 @@ export class RaceRoom {
   private lastEmote = 0;
   /** 사람마다 마지막으로 짧은 말을 받은 시각 */
   private emoteSeen = new Map<string, number>();
+  /** 화면 가림 감시 해제 */
+  private offVis: (() => void) | null = null;
 
   constructor(
     private api: RaceApi,
@@ -95,7 +98,14 @@ export class RaceRoom {
     await this.api.syncClock().catch(() => undefined);
     if (this.left) return;
     const now = serverNow();
-    this.meta = { ...this.meta, at: now, pickAt: now };
+    // 화면을 가리면(아이폰은 JS 가 멈춘다) away 를 올려 대기실 방장·레디 확인에서 빠지고, 돌아오면 푼다
+    const hidden = typeof document !== 'undefined' && document.hidden;
+    this.meta = { ...this.meta, at: now, pickAt: now, away: hidden || undefined };
+    if (typeof document !== 'undefined') {
+      const onVis = () => this.setAway(document.hidden);
+      document.addEventListener('visibilitychange', onVis);
+      this.offVis = () => document.removeEventListener('visibilitychange', onVis);
+    }
     this.members = [{ id: this.me.id, ...this.meta }];
     this.present.add(this.me.id);
     await this.ch.join(this.meta);
@@ -164,14 +174,16 @@ export class RaceRoom {
 
   private applyStart(s: StartMsg, live: boolean) {
     if (!s || typeof s.round !== 'number' || !Array.isArray(s.roster)) return;
-    if (this.current?.round === s.round || s.round === this.lastRound) return;
+    if (typeof s.goAt !== 'number') return;
+    const key = roundKey(s);
+    if ((this.current && roundKey(this.current) === key) || key === this.lastKey) return;
     // 이미 끝났을 시간이면 무시
     if (serverNow() > s.goAt + (END_AFTER_GO + 5) * 1000) return;
     // 이미 판이 있는데 다른 시작이 왔다 (두 기기가 잠깐 서로 방장이라고 본 경우):
     // 모두 같은 판으로 모이도록 번호가 작은 쪽만 받는다. 지금 판이 이미 GO 했으면 바꾸지 않는다
     if (this.current && (s.round > this.current.round || serverNow() >= this.current.goAt)) return;
     this.current = s;
-    this.lastRound = s.round;
+    this.lastKey = key;
     this.starting = false;
     if (this.meta.ready) this.setReady(false);
     this.emit();
@@ -197,7 +209,7 @@ export class RaceRoom {
   }
 
   /**
-   * 한 판이 끝났다: 순위별 점수를 더하고 알린다 (같은 판은 한 번만).
+   * 한 판이 끝났다: 순위별 점수를 더하고 알린다 (같은 판은 한 번만). round 는 판 열쇠(roundKey(start)).
    * 달린 기기마다 자기 것에 더해 두고, 방장이 보낸 것이 기준이 된다 (방장이 그 판을 달리지 않았으면 달린 기기 것이 방장에게 간다)
    * sure: 기준 기기의 끝 알림(또는 내가 기준 기기)으로 정해진 결과인가.
    *   false(끝 알림을 못 받아 스스로 끝냄)면 순위가 틀릴 수 있으므로 내 기기에만 더하고 알리지 않으며,
@@ -338,6 +350,12 @@ export class RaceRoom {
     this.update({ char: c, pickAt: serverNow() });
   }
 
+  /** 화면을 가렸다(true) / 다시 본다(false): 접속 정보에 올린다 */
+  setAway(away: boolean) {
+    if (this.left || away === !!this.meta.away) return;
+    this.update({ away: away || undefined });
+  }
+
   setReady(ready: boolean) {
     if (ready === this.meta.ready) return;
     this.update({ ready });
@@ -385,6 +403,7 @@ export class RaceRoom {
     this.left = true;
     if (this.timer) clearInterval(this.timer);
     if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.offVis?.();
     this.changeFns.clear();
     this.msgFns.clear();
     this.startFns.clear();

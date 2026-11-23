@@ -156,6 +156,8 @@ export const POWER_MUL = 2;
 export interface LeaderDef {
   id: LeaderId;
   name: string;
+  /** 화면에 보이는 이름 (DESIGN.md 6장 · shared/zodiac.js · shared/characters.js 의 nick 과 같다) */
+  nick: string;
   trait: string;
   /** 처음 열려 있는 대장인가 (아니면 unlockRegion 지역을 클리어하면 열린다) */
   starter: boolean;
@@ -202,20 +204,20 @@ const base = {
 
 /** 대장 12종 + 고양이 (PRD 6장). 차이는 10% 안팎으로 작게. 해금 지역은 SQL(_charge_regions)과 같다 */
 export const LEADERS: LeaderDef[] = [
-  { ...base, id: 'rat', name: '쥐', trait: '시작 대원 +10%', starter: true, unlockRegion: 0, startMul: 1.1 },
-  { ...base, id: 'ox', name: '소', trait: '요괴·보스·장애물에 잃는 대원 -10%', starter: true, unlockRegion: 0, lossMul: 0.9 },
-  { ...base, id: 'tiger', name: '호랑이', trait: '보스에게 주는 피해 +10%', starter: true, unlockRegion: 0, bossMul: 1.1 },
-  { ...base, id: 'rabbit', name: '토끼', trait: '좌우 이동 속도 +15%', starter: false, unlockRegion: 1, moveMul: 1.15 },
-  { ...base, id: 'dragon', name: '용', trait: '문 숫자 오르는 속도 +10%', starter: false, unlockRegion: 2, gateMul: 1.1 },
-  { ...base, id: 'snake', name: '뱀', trait: '요괴 무리에게 주는 피해 +10%', starter: false, unlockRegion: 3, hordeMul: 1.1 },
-  { ...base, id: 'horse', name: '말', trait: '사거리 +10%', starter: false, unlockRegion: 4, rangeMul: 1.1 },
-  { ...base, id: 'sheep', name: '양', trait: '요괴와 부딪힐 때 잃는 대원 -10%', starter: false, unlockRegion: 5, clashMul: 0.9 },
-  { ...base, id: 'monkey', name: '원숭이', trait: '상자 보상 +20%', starter: false, unlockRegion: 6, crateMul: 1.2 },
-  { ...base, id: 'rooster', name: '닭', trait: '× 문 결과 +5%', starter: false, unlockRegion: 7, timesMul: 1.05 },
-  { ...base, id: 'dog', name: '개', trait: '보스 공격 예고 0.3초 빨리, 보스에게 잃는 대원 -10%', starter: false, unlockRegion: 8, warnAdd: 0.3, bossLossMul: 0.9 },
-  { ...base, id: 'pig', name: '돼지', trait: '엽전 획득 +10%', starter: false, unlockRegion: 9, coinMul: 1.1 },
+  { ...base, id: 'rat', name: '쥐', nick: '찍찍이', trait: '시작 대원 +10%', starter: true, unlockRegion: 0, startMul: 1.1 },
+  { ...base, id: 'ox', name: '소', nick: '우직이', trait: '요괴·보스·장애물에 잃는 대원 -10%', starter: true, unlockRegion: 0, lossMul: 0.9 },
+  { ...base, id: 'tiger', name: '호랑이', nick: '어흥이', trait: '보스에게 주는 피해 +10%', starter: true, unlockRegion: 0, bossMul: 1.1 },
+  { ...base, id: 'rabbit', name: '토끼', nick: '깡총이', trait: '좌우 이동 속도 +15%', starter: false, unlockRegion: 1, moveMul: 1.15 },
+  { ...base, id: 'dragon', name: '용', nick: '여의룡', trait: '문 숫자 오르는 속도 +10%', starter: false, unlockRegion: 2, gateMul: 1.1 },
+  { ...base, id: 'snake', name: '뱀', nick: '스르르', trait: '요괴 무리에게 주는 피해 +10%', starter: false, unlockRegion: 3, hordeMul: 1.1 },
+  { ...base, id: 'horse', name: '말', nick: '따각이', trait: '사거리 +10%', starter: false, unlockRegion: 4, rangeMul: 1.1 },
+  { ...base, id: 'sheep', name: '양', nick: '몽실이', trait: '요괴와 부딪힐 때 잃는 대원 -10%', starter: false, unlockRegion: 5, clashMul: 0.9 },
+  { ...base, id: 'monkey', name: '원숭이', nick: '재롱이', trait: '상자 보상 +20%', starter: false, unlockRegion: 6, crateMul: 1.2 },
+  { ...base, id: 'rooster', name: '닭', nick: '꼬꼬댁', trait: '× 문 결과 +5%', starter: false, unlockRegion: 7, timesMul: 1.05 },
+  { ...base, id: 'dog', name: '개', nick: '멍뭉이', trait: '보스 공격 예고 0.3초 빨리, 보스에게 잃는 대원 -10%', starter: false, unlockRegion: 8, warnAdd: 0.3, bossLossMul: 0.9 },
+  { ...base, id: 'pig', name: '돼지', nick: '꿀꿀이', trait: '엽전 획득 +10%', starter: false, unlockRegion: 9, coinMul: 1.1 },
   // 13번째 대원: 수치 대신 한 번 쓰는 특성. 지역으로 열리지 않는다 (대장 고르기 화면에서 시아코인으로 연다, 게임마다 따로)
-  { ...base, id: 'cat', name: '고양이', trait: '아홉 목숨: 모두 쓰러져도 한 번, 이번 판 최대 대원의 15%(최소 9명)로 다시 일어나요', starter: false, unlockRegion: -1, extra: true, lives: 1, livesFrac: 0.15, livesMin: 9 },
+  { ...base, id: 'cat', name: '고양이', nick: '야옹이', trait: '아홉 목숨: 모두 쓰러져도 한 번, 이번 판 최대 대원의 15%(최소 9명)로 다시 일어나요', starter: false, unlockRegion: -1, extra: true, lives: 1, livesFrac: 0.15, livesMin: 9 },
 ];
 
 export const leaderOf = (id: string): LeaderDef => LEADERS.find((l) => l.id === id) ?? LEADERS[0];

@@ -1,6 +1,6 @@
 /** 텍사스 홀덤 화면: 가운데 공용 카드 5장 · 나는 아래 · 다른 사람은 왼쪽·위·오른쪽 (세로 화면은 위 한 줄) */
 import { HOLDEM_MANUAL } from '../../lib/manuals.ts';
-import { holdemAdvice, holdemAdviceText, holdemBookAction, holdemBookKeep, holdemToCall, potOddsNeed, type HoldemBook } from '../../lib/extras.ts';
+import { holdemAdvice, holdemAdviceText, holdemBookAction, holdemBookKeep, holdemToCall, potOddsNeed, potRealWinners, potRefundOnly, type HoldemBook } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { HoldemPrivate, HoldemPublic } from '../../../supabase/functions/_shared/holdem.ts';
@@ -20,6 +20,9 @@ let deckPos = { x: 0, y: 0 };
 let lastPub: HoldemPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
+
+/** 이 자리가 받은 것이 혼자만 받는 남는 팟뿐인가 (재생 중이면 재생해 가는 판 결과로 가른다: 중간 화면의 pub 은 결과가 비어 있다) */
+const refunded = (t: Ctx, seat: number) => potRefundOnly(seat, (t.pubNext ?? t.pub)?.summary);
 
 // ── 미리 고르기: 남의 차례에 [체크/폴드]·[콜] 을 예약해 두면 내 차례가 오자마자 실행한다 (베팅 금액이 바뀌면 콜 예약은 취소) ──
 let book: HoldemBook | null = null;
@@ -216,7 +219,9 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
         const toward = me ? -1 : 1;
         chipStack(scene, x - ((cards.length || 2) / 2) * gap - w * 0.42, y + toward * w * 0.1, s.betRound, t.fmt(s.betRound), clamp(w * 0.16, 9, 16));
       }
-      if (sd) label(scene, x, y - w * 0.95, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, clamp(w * (me ? 0.2 : 0.26), 12, 22), p.winners.includes(s.seat) ? tc('primary') : tc('white'));
+      // 🏆 는 진짜 승자만 (혼자만 받는 남는 팟을 돌려받은 사람은 빼고)
+      const won = p.winners.includes(s.seat) && !refunded(t, s.seat);
+      if (sd) label(scene, x, y - w * 0.95, `${sd.hand}${won ? ' 🏆' : ''}`, clamp(w * (me ? 0.2 : 0.26), 12, 22), won ? tc('primary') : tc('white'));
     });
   },
 
@@ -336,11 +341,12 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     if (!r) return '<p>판이 끝났어요</p>';
     if (r.cancelled) return '<h3>판이 취소됐어요</h3><p>참가할 수 있는 사람이 2명보다 적었어요</p>';
     const names = new Map((t.pub?.seats ?? []).map((s) => [s.seat, s.name]));
+    const real = potRealWinners(r);
     const rows = Object.entries(r.deltas)
       .map(([seat, d]) => {
         const n = Number(seat);
         const hand = r.hands[n]?.name ?? (r.winners.includes(n) && r.uncontested ? '무혈 승리' : '');
-        return `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}${r.winners.includes(n) ? ' 🏆' : ''}</td><td>${esc(hand)}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
+        return `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}${real.includes(n) ? ' 🏆' : ''}</td><td>${esc(hand)}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
       })
       .join('');
     // 칩이 모자라 이번 판에서 빠진 자리는 deltas 에 없다 → 따로 보여 준다 (내 자리면 안내 한 줄)
@@ -386,6 +392,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       case 'allin':
         return { at: ev.seat, text: `${who} 올인!`, gap: 500 };
       case 'win':
+        // 혼자만 받는 남는 팟(못 받은 콜 차액)은 이긴 것이 아니다: '돌려받음' 으로, 코인 소리 없이
+        if (refunded(t, ev.seat)) return { at: ev.seat, text: `${who} 돌려받음 ${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, gap: 900, after: true };
         return { at: ev.seat, text: `${who} +${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, sound: 'coin', gap: 900, after: true };
       default:
         return null;
@@ -396,6 +404,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     if (ev.t === 'royal') return '로열 스트레이트 플러시!';
     if (ev.t === 'straight_flush') return '스트레이트 플러시!';
     if (ev.t === 'four_kind') return '포카드!';
+    // 돌려받은 남는 팟은 승리가 아니다 → 컷인 없음
+    if (ev.t === 'win' && typeof ev.seat === 'number' && refunded(t, ev.seat)) return null;
     if (ev.t === 'win' && ev.allIn) return '올인 승리!';
     if (ev.t === 'win' && typeof ev.amount === 'number' && t.pub && ev.amount >= t.pub.bb * 50) return '대박 판돈!';
     if (ev.t === 'allin' && ev.seat === t.mySeat) return '올인!';

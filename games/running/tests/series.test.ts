@@ -187,3 +187,11 @@ describe('짧은 말', () => {
     expect(emoteReady(1000, 2100, EMOTE_RECV_GAP_MS)).toBe(true);
   });
 });
+
+describe('판 열쇠', () => {
+  it('GO 시각(정수 ms)이 열쇠라 판 번호가 같아도 다른 판은 다르게 센다', async () => {
+    const { roundKey } = await import('../src/game/series');
+    expect(roundKey({ round: 1, goAt: 1000.4 })).toBe(1000);
+    expect(roundKey({ round: 1, goAt: 1000 })).not.toBe(roundKey({ round: 1, goAt: 5000 }));
+  });
+});

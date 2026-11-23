@@ -4,6 +4,7 @@ import { BOOST_FACTOR, DT, END_AFTER_FIRST, END_AFTER_GO, LANES, MUD_FACTOR, NET
 import { rankResults, type RaceEntry, type RankedEntry } from '../game/ranking';
 import { foul, newRunner, stepRunner, type Press, type RunState, type Runner, type SimEvent } from '../game/sim';
 import { makeTrack, type Obstacle } from '../game/track';
+import { roundKey } from '../game/series';
 import { serverNow, type RaceApi, type SubmitResult } from '../net/api';
 import type { NetMsg } from '../net/channel';
 import type { RaceRoom, RosterEntry, StartMsg } from '../net/room';
@@ -65,6 +66,8 @@ export class RaceGame {
   readonly obs: Obstacle[];
   readonly roster: RosterEntry[];
   readonly round: number;
+  /** 판 열쇠 (roundKey: 판 번호는 서버에서 다시 쓰일 수 있어 점수판에는 이것을 쓴다) */
+  readonly key: number;
   readonly seed: number;
   readonly readyAt: number;
   readonly goAt: number;
@@ -113,6 +116,7 @@ export class RaceGame {
     start: StartMsg,
   ) {
     this.round = start.round;
+    this.key = roundKey(start);
     this.seed = start.seed;
     this.readyAt = start.readyAt;
     this.goAt = start.goAt;
@@ -595,7 +599,7 @@ export class RaceGame {
     if (this.results) return;
     this.results = results;
     // 연속전 점수판에 이 판의 점수를 더한다 (기록 제출·순위 판정과는 따로)
-    this.room.addResult(this.round, this.roster, results, this.taken, sure);
+    this.room.addResult(this.key, this.roster, results, this.taken, sure);
     this.room.raceOver(this.round);
     this.onOver?.(results);
   }

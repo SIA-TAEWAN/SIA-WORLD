@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GAMES, MONUMENTS, noStats } from '../src/data/monuments';
-import { accStart, grantMonuments, isFull } from '../src/game/rules';
+import { accStart, grantMonuments, isFull, nextUnlock } from '../src/game/rules';
 import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, RATE_MUL, RES_IDS, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, lookOf } from '../src/data/balance';
 import { BUILDING, BUILDINGS, RECIPES, isBuildingType, upgradable, type BuildingType } from '../src/data/buildings';
 import { ASKS, CAT_BONUS, RESIDENTS, RESIDENT_IDS, TASKS, affLevel, mix, type ResidentId } from '../src/data/residents';
@@ -983,6 +983,31 @@ describe('6단계: 주민 이사', () => {
     put(t, 'house', 7, 0);
     settle(t, T0);
     expect(t.residents.map((r) => r.id)).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'cat']);
+  });
+
+  it('고양이를 산 마을: 다음 주민 집이 열리는 레벨은 고양이 몫 한 채를 빼고 센다', () => {
+    const s = town(5);
+    s.profile.level = 7;
+    expect(nextUnlock(s, 'house')).toBe(9);
+    s.catOwned = true;
+    // 고양이 몫 한 채는 레벨과 상관없이 바로 지을 수 있다
+    expect(canHaveMore(s, 'house')).toBe(true);
+    put(s, 'house', 5, 0);
+    // 레벨 몫 5채 + 고양이 몫 1채 → 다음은 6번째 레벨 해금 (9)
+    expect(countOf(s, 'house')).toBe(6);
+    expect(nextUnlock(s, 'house')).toBe(9);
+    expect(canHaveMore(s, 'house')).toBe(false);
+    // 모두 지은 마을 (12 + 1)
+    const t = town(12);
+    t.profile.level = 30;
+    t.catOwned = true;
+    put(t, 'house', 12, 0);
+    expect(nextUnlock(t, 'house')).toBeNull();
+    // 집이 하나도 없어도 0 아래로 가지 않는다
+    const e = town(1);
+    e.buildings = e.buildings.filter((b) => b.type !== 'house');
+    e.catOwned = true;
+    expect(nextUnlock(e, 'house')).toBe(1);
   });
 
   it('고양이: 새 부탁의 엽전 · 경험치 + (친밀도 단계마다)', () => {

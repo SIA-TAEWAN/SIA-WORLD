@@ -14,10 +14,15 @@ export interface PlayerMeta {
   ver?: number;
   /** AI 난이도: 방장의 값이 그 방의 난이도 (다른 사람은 방장 것을 따라 둔다). 예전 기기에는 없다 → 보통 */
   level?: AiLevel;
+  /** 화면을 가림 (아이폰은 JS 가 멈춘다): 대기실 방장·레디 확인에서 건너뛴다. 예전 기기에는 없다 */
+  away?: boolean;
 }
 
-/** 이 기기의 판본. 기기끼리 주고받는 내용이 바뀌면 올린다 (더 새 판본이 방에 있으면 새로고침 안내) */
-export const CLIENT_VERSION = 5;
+/**
+ * 이 기기의 판본. 기기끼리 주고받는 내용이 바뀌면 올린다 (더 새 판본이 방에 있으면 새로고침 안내)
+ * 6: 화면을 가린 사람(away)은 대기실 방장에서 빠진다 · 판 열쇠를 GO 시각으로 (series.done)
+ */
+export const CLIENT_VERSION = 6;
 
 export interface MemberInfo extends PlayerMeta {
   id: string;
@@ -38,9 +43,13 @@ export function sortMembers(list: readonly MemberInfo[]): MemberInfo[] {
   return [...list].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
-/** 방장: 지금 있는 사람 중 가장 먼저 들어온 사람 (나가면 다음 사람) */
+/**
+ * 방장: 지금 있는 사람 중 화면을 보고 있는(away 아님) 가장 먼저 들어온 사람 (나가거나 화면을 가리면 다음 사람).
+ * 모두 화면을 가렸으면 가장 먼저 들어온 사람
+ */
 export function hostOf(members: readonly MemberInfo[]): string | undefined {
-  return sortMembers(members)[0]?.id;
+  const sorted = sortMembers(members);
+  return (sorted.find((m) => !m.away) ?? sorted[0])?.id;
 }
 
 /** 달리는 사람: 먼저 들어온 4명. 그 뒤는 자리가 없다 */
@@ -81,9 +90,9 @@ export function makeSeats(roomKey: string, members: readonly MemberInfo[]): Seat
   return seats;
 }
 
-/** 시작할 수 있는가: 사람이 한 명 이상이고 모두 레디 */
+/** 시작할 수 있는가: 화면을 보고 있는(away 아님) 사람이 한 명 이상이고 그 사람들이 모두 레디 (화면을 가린 사람은 기다리지 않는다) */
 export function allReady(members: readonly MemberInfo[]): boolean {
-  const humans = players(members);
+  const humans = players(members).filter((m) => !m.away);
   return humans.length > 0 && humans.every((m) => m.ready);
 }
 

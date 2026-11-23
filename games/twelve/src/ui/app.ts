@@ -707,8 +707,11 @@ let controls: Controls | null = null;
 let busy = false;
 /** 전투 화면 자리의 크기가 바뀌면 그림판을 다시 맞춘다 (Phaser 는 창 크기 변화만 믿을 만하게 따라온다) */
 let gameWatch: ResizeObserver | null = null;
+/** 탭을 가리면 멈추는 리스너 떼기 (판이 끝날 때 · closeGame) */
+let hideWatch: (() => void) | null = null;
 
 function closeGame() {
+  hideWatch?.();
   gameWatch?.disconnect();
   gameWatch = null;
   controls?.destroy();
@@ -724,7 +727,12 @@ async function startMap(map: MapDef, deaths: number) {
   let runId = '';
   let seed = (Math.random() * 0x7fffffff) >>> 0;
   try {
-    if (!DEV_PLAY) ({ run: runId, seed } = await api.start(map.id, profile.mode, profile.hero));
+    if (!DEV_PLAY) {
+      const st = await api.start(map.id, profile.mode, profile.hero);
+      ({ run: runId, seed } = st);
+      // 시작 전에 못 보낸 결과를 먼저 보냈다: 그 결과가 반영된 프로필로 판을 연다 (장비·물약·결과 화면의 '다음 맵')
+      if (st.profile) profile = view(st.profile);
+    }
     // 숫자 그림(피해 숫자)을 그리기 전에 글꼴이 있어야 한다
     await Promise.race([document.fonts.load("34px 'Jua'"), new Promise((ok) => setTimeout(ok, 1500))]).catch(() => null);
   } catch (e) {
@@ -845,8 +853,18 @@ function playRun(run: RunState, o: PlayOpts) {
       box.remove();
       if (o.locked() || run.phase !== 'play') return void (scene.paused = false);
       run.phase = 'dead';
+      unwatch();
       await o.onQuit(run);
     });
+  };
+  // 탭을 가리거나 창을 닫으면 멈춘다 (가려진 사이에 쓰러지지 않게)
+  const onHide = () => {
+    if (document.hidden) pause();
+  };
+  const unwatch = () => {
+    document.removeEventListener('visibilitychange', onHide);
+    window.removeEventListener('pagehide', pause);
+    if (hideWatch === unwatch) hideWatch = null;
   };
   const ctl = createControls(root, run, { lefty: settings.lefty, onPause: pause });
   controls = ctl;
@@ -976,9 +994,16 @@ function playRun(run: RunState, o: PlayOpts) {
         }
         if (frame++ % 12 === 0) drawMini(s);
       },
-      onEnd: (s: RunState) => void o.onEnd(s),
+      onEnd: (s: RunState) => {
+        unwatch();
+        void o.onEnd(s);
+      },
     },
   });
+  hideWatch?.();
+  hideWatch = unwatch;
+  document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('pagehide', pause);
 }
 
 /** 결과 화면의 얻은 것: 레어·열쇠는 크게 (PRD '화면 구성' 5) */

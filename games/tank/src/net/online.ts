@@ -277,8 +277,14 @@ export class OnlineGame implements NetHooks {
     this.myHashes.set(turn, hash);
     if (this.stale) return;
     // 넘겨받은 탱크 목록도 함께 보낸다 (오래 자리를 비웠다 돌아온 기기가 알 수 있게)
-    if (this.isHost()) this.send({ t: 'sync', turn, hash, from: this.me, taken: [...this.takenOver] });
+    // 서든데스 켬 여부도 함께 보낸다 (기기마다 따로 정했으면 기준 기기 값으로 맞춘다)
+    if (this.isHost()) this.send({ t: 'sync', turn, hash, from: this.me, taken: [...this.takenOver], sudden: this.suddenOpt() });
     else this.compare(turn);
+  }
+
+  /** 이 기기 판의 서든데스 설정 (Match options.sudden) */
+  private suddenOpt(): number {
+    return this.scene?.matchState.options?.sudden ?? 0;
   }
 
   private compare(turn: number) {
@@ -337,7 +343,9 @@ export class OnlineGame implements NetHooks {
         this.mergeTaken(m.taken);
         if (m.from === this.me || !this.trusted(m.from)) break;
         this.hostHashes.set(m.turn, m.hash);
-        this.compare(m.turn);
+        // 서든데스 켬 여부가 기준 기기와 다르면(시작할 때 기기마다 접속 정보가 달랐음) 기준 기기 판 상태(설정 포함)를 받는다
+        if (typeof m.sudden === 'number' && this.scene && m.sudden !== this.suddenOpt()) this.requestSnap();
+        else this.compare(m.turn);
         break;
       case 'snapreq': {
         if (m.from === this.me) break;

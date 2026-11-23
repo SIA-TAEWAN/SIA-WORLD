@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EngineError, seededRng, type SeatInfo } from './engine.ts';
 import {
+  basicStrategy,
   blackjack,
   CUT,
   freshShoe,
@@ -487,5 +488,12 @@ describe('무작위 500판', () => {
       }
     }
     expect(violations).toBe(0);
+  });
+});
+
+describe('기본 전략', () => {
+  it('소프트 12 (A,A 인데 스플릿 못 할 때)는 딜러 카드와 상관없이 히트', () => {
+    for (const up of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) expect(basicStrategy(['AS', 'AD'], up, false)).toBe('H');
+    expect(basicStrategy(['AS', 'AD'], 6, true)).toBe('P');
   });
 });

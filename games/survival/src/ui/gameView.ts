@@ -14,6 +14,7 @@ import { rememberMade } from '../net/made';
 import { fillBench } from '../run/devtools';
 import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
+import { COLOR } from '../theme';
 import { esc, mmss, nav, openSettings, screen, setProfile, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
 import { icon } from './icons';
@@ -748,7 +749,7 @@ export function showGame(setup: GameSetup) {
       parent: fieldEl,
       width: Math.round(w * DPR),
       height: Math.round(h * DPR),
-      backgroundColor: '#9fd6ff',
+      backgroundColor: COLOR.skyMid,
       banner: false,
       audio: { noAudio: true },
       input: { keyboard: false, mouse: false, touch: false, gamepad: false },

@@ -271,3 +271,89 @@ describe('AI 난이도: 방장이 고른 것이 시작 알림에 실린다', () 
     expect(starts(hub)[0]).toMatchObject({ seed: 12345, level: 'normal' });
   });
 });
+
+describe('대기실: 화면을 가린 방장', () => {
+  const vis = { hidden: false };
+  const listeners = new Set<() => void>();
+  beforeEach(() => {
+    vis.hidden = false;
+    listeners.clear();
+    vi.stubGlobal('document', {
+      get hidden() {
+        return vis.hidden;
+      },
+      addEventListener: (_: string, f: () => void) => void listeners.add(f),
+      removeEventListener: (_: string, f: () => void) => void listeners.delete(f),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  const setHidden = (h: boolean) => {
+    vis.hidden = h;
+    listeners.forEach((f) => f());
+  };
+
+  it('방장이 화면을 가리면 away 를 올려 다음 사람이 방장이 되어 시작하고, 돌아오면 away 를 푼다', async () => {
+    const hub = new Hub();
+    const rooms: Room[] = [];
+    let round = 0;
+    for (const id of ['a', 'b']) {
+      const api = { channel: () => new FakeChannel(hub, id), syncClock: async () => undefined, go: async () => ({ round: ++round, readyAt: clock.now + 3000, goAt: clock.now + 5000 }) };
+      const room = new RaceRoom(api as never, 'room1', { id, name: id }, id === 'a' ? 'tiger' : 'rat');
+      rooms.push(room);
+      await room.join();
+      clock.now += 10;
+    }
+    const [a, b] = rooms;
+    expect(a.isHost()).toBe(true);
+    b.setReady(true);
+    // a 의 화면이 가려졌다 (두 기기가 같은 document 를 보므로 a 에게만 알린다)
+    a.setAway(true);
+    expect(hub.chans.find((c) => c.key === 'a')!.meta?.away).toBe(true);
+    expect(b.isHost()).toBe(true);
+    expect(a.isHost()).toBe(false);
+    await vi.advanceTimersByTimeAsync(600);
+    // 레디하지 않은 a 를 기다리지 않고 b 가 시작한다
+    expect(hub.sent.filter((m) => m.t === 'start')).toHaveLength(1);
+    expect(hub.sent.find((m) => m.t === 'start')!.roster[0].id).toBe('a');
+    a.setAway(false);
+    expect(hub.chans.find((c) => c.key === 'a')!.meta?.away).toBeUndefined();
+    expect(a.isHost()).toBe(true);
+  });
+
+  it('visibilitychange 를 받아 away 를 올리고 내린다, 나가면 감시를 푼다', async () => {
+    const { hub, rooms } = await makeRooms(['a']);
+    const [a] = rooms;
+    setHidden(true);
+    expect(hub.chans[0].meta?.away).toBe(true);
+    setHidden(false);
+    expect(hub.chans[0].meta?.away).toBeUndefined();
+    await a.leave();
+    expect(listeners.size).toBe(0);
+  });
+});
+
+describe('판 열쇠: 서버가 판 번호를 다시 써도(1시간 뒤 1부터) 새 판으로 본다', () => {
+  it('같은 판 번호라도 GO 시각이 다르면 시작을 받고 점수판에도 따로 센다', async () => {
+    const { rooms } = await makeRooms(['a', 'b']);
+    const [, b] = rooms;
+    const start = (goAt: number) => ({ t: 'start', round: 1, seed: 7, readyAt: goAt - 2000, goAt, roster });
+    const send = (m: unknown) => rooms[0].send(m as never);
+    const g1 = clock.now + 5000;
+    send(start(g1));
+    expect(b.current?.goAt).toBe(g1);
+    b.addResult(g1, roster, right, none);
+    b.raceOver(1);
+    expect(b.series.n).toBe(1);
+    // 한 시간 뒤: 서버가 다시 1번을 준다
+    clock.now += 3_600_000;
+    const g2 = clock.now + 5000;
+    send(start(g2));
+    expect(b.current?.goAt).toBe(g2);
+    b.addResult(g2, roster, right, none);
+    expect(b.series.n).toBe(2);
+    // 같은 시작이 다시 오면 무시한다
+    b.raceOver(1);
+    send(start(g2));
+    expect(b.current).toBeNull();
+  });
+});

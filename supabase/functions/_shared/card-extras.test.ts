@@ -13,6 +13,8 @@ import {
   holdemAdviceText,
   nextStreak,
   pokerHint,
+  potRealWinners,
+  potRefundOnly,
   rouletteNotes,
   rouletteStats,
   seasonOfCell,
@@ -483,6 +485,37 @@ describe('세븐포커 판 요약 한 줄', () => {
   });
 });
 
+describe('포커·홀덤 진짜 승자 (혼자만 받는 남는 팟은 돌려받음)', () => {
+  it('실제 엔진: 모자란 올인 콜로 진 사람이 돌려받은 차액은 승리가 아니다', () => {
+    const r = shortAllInRound();
+    const main = r.pots.find((p) => p.eligible.length >= 2)!;
+    const rest = r.pots.find((p) => p.eligible.length === 1)!;
+    expect(potRealWinners(r)).toEqual([0]);
+    expect(main.winners).toEqual([0]);
+    // 남는 팟은 더 많이 건 1번에게만 돌아간다 → 🏆·코인 소리·컷인 없이 '돌려받음'
+    expect(rest.eligible).toEqual([1]);
+    expect(potRefundOnly(1, r)).toBe(true);
+    expect(potRefundOnly(0, r)).toBe(false);
+  });
+  it('메인팟도 이기고 남는 팟도 받으면 승자 · 사이드팟 승자는 승자', () => {
+    const pots = [
+      { amount: 900, eligible: [0, 1, 2], winners: [1] },
+      { amount: 400, eligible: [0, 2], winners: [2] },
+      { amount: 200, eligible: [2], winners: [2] },
+    ];
+    expect(potRealWinners({ uncontested: false, winners: [1, 2], pots })).toEqual([1, 2]);
+    expect(potRefundOnly(2, { uncontested: false, winners: [1, 2], pots })).toBe(false);
+  });
+  it('무혈 승리 · 결과 모름', () => {
+    const pots = [{ amount: 500, eligible: [3], winners: [3] }];
+    expect(potRealWinners({ uncontested: true, winners: [3], pots })).toEqual([3]);
+    expect(potRefundOnly(3, { uncontested: true, winners: [3], pots })).toBe(false);
+    expect(potRealWinners(null)).toEqual([]);
+    expect(potRefundOnly(1, null)).toBe(false);
+    expect(potRefundOnly(1, undefined)).toBe(false);
+  });
+});
+
 describe('홀덤 미리 고르기', () => {
   it('체크/폴드: 체크할 수 있으면 체크, 아니면 폴드', () => {
     expect(holdemBookAction({ kind: 'checkfold' }, { canCheck: true, call: 0 }, 0)).toBe('check');
@@ -528,6 +561,8 @@ describe('블랙잭 베팅 금액 · 기본 전략 힌트', () => {
     expect(bjHint(['AS', '7D'], '5H', ['hit', 'stand'])).toBe('stand');
     expect(bjHint(['AS', '7D'], '5H', ['hit', 'stand', 'double'])).toBe('double');
     expect(bjHint(['10S', '6D'], 'AH', ['hit', 'stand'])).toBe('hit');
+    // 소프트 12 (A,A 인데 스플릿 못 함): 딜러 6 이어도 더블이 아니라 히트
+    expect(bjHint(['AS', 'AD'], '6H', ['hit', 'stand', 'double'])).toBe('hit');
     expect(bjHint(['10S', '7D'], 'AH', ['hit', 'stand'])).toBe('stand');
     expect(bjHint(['10S', '7D'], null, ['hit', 'stand'])).toBeNull();
     expect(bjHint(['10S', '7D'], 'AH', [])).toBeNull();

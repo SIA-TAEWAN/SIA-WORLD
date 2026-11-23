@@ -181,11 +181,11 @@ export function maxCount(type: BuildingType, villageLevel: number): number {
 export const countCap = (s: VillageState, type: BuildingType): number => maxCount(type, s.profile.level) + (type === 'house' && s.catOwned ? 1 : 0);
 /** 가진 개수 (보관함에 든 것도 센다) */
 export const countOf = (s: VillageState, type: BuildingType) => s.buildings.filter((b) => b.type === type).length;
-/** 다음 하나가 열리는 마을 레벨 (더 없으면 null) */
+/** 다음 하나가 열리는 마을 레벨 (더 없으면 null). 고양이를 산 마을의 주민 집 한 채(countCap 의 +1)는 레벨 해금 몫에서 뺀다 */
 export function nextUnlock(s: VillageState, type: BuildingType): number | null {
   const d = BUILDING[type];
   if (d.cap > 0) return countOf(s, type) < d.cap ? d.unlock[0] : null;
-  return d.unlock[countOf(s, type)] ?? null;
+  return d.unlock[Math.max(0, countOf(s, type) - (type === 'house' && s.catOwned ? 1 : 0))] ?? null;
 }
 
 export const hallLevel = (s: VillageState) => s.buildings.find((b) => b.type === 'hall')?.level ?? 1;

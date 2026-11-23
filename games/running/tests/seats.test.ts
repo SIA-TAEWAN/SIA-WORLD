@@ -73,6 +73,16 @@ describe('방과 자리', () => {
     expect(allReady([...four, m('e', 9, 'pig', false)])).toBe(true);
   });
 
+  it('화면을 가린(away) 사람은 방장·레디 확인에서 건너뛴다. 모두 가렸으면 먼저 들어온 사람이 방장', () => {
+    const a = { ...m('a', 1, 'rat', false), away: true };
+    expect(hostOf([a, m('b', 2, 'ox', true)])).toBe('b');
+    expect(allReady([a, m('b', 2, 'ox', true)])).toBe(true);
+    expect(allReady([a, m('b', 2, 'ox', false)])).toBe(false);
+    expect(allReady([a])).toBe(false);
+    expect(hostOf([a, { ...m('b', 2, 'ox'), away: true }])).toBe('a');
+    expect(hostOf([{ ...a, away: false }, m('b', 2, 'ox')])).toBe('a');
+  });
+
   it('경기 중 기준 기기: 명단에서 접속해 있는 첫 사람 (나가거나 AI로 넘어가면 다음 사람)', () => {
     const roster = [
       { slot: 0, id: 'a' },

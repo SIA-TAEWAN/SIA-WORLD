@@ -20,7 +20,7 @@ export interface SeriesRow {
 export interface Series {
   /** 지금까지 센 판 수 */
   n: number;
-  /** 이미 센 판 번호 (같은 판을 두 번 세지 않게, 최근 몇 개만) */
+  /** 이미 센 판의 열쇠 (roundKey, 같은 판을 두 번 세지 않게, 최근 몇 개만) */
   done: number[];
   rows: SeriesRow[];
 }
@@ -29,6 +29,12 @@ const MAX_ROWS = 24;
 const MAX_DONE = 8;
 
 export const newSeries = (): Series => ({ n: 0, done: [], rows: [] });
+
+/**
+ * 판을 구분하는 열쇠: GO 시각(서버 시각 ms). 판 번호(round)는 서버가 1시간 지난 판을 지우면 1부터 다시 나오므로
+ * 점수판(done)·같은 시작 거르기에는 이것을 쓴다. GO 는 방마다 4초 넘게 띄워 주므로 겹치지 않는다
+ */
+export const roundKey = (s: { round: number; goAt: number }): number => Math.round(s.goAt);
 
 /** 점수판에서 쓰는 열쇠: 사람은 사용자 ID, AI는 캐릭터 */
 export const seriesKey = (p: { id: string | null; char: string }): string => (p.id ? `u:${p.id}` : `ai:${p.char}`);
@@ -40,7 +46,7 @@ export function pointsFor(e: Pick<RankedEntry, 'place' | 'status'>): number {
 }
 
 /**
- * 한 판의 결과를 더한 새 점수판. 이미 센 판이면 받은 것을 그대로 돌려준다.
+ * 한 판의 결과를 더한 새 점수판. 이미 센 판이면 받은 것을 그대로 돌려준다. round 는 판 열쇠(roundKey).
  * taken: AI가 이어 달린 사람 자리 (그 사람은 0점)
  * 줄이 가득 차면(24줄) 이번 판에 달리지 않은(방에 없는) 줄 가운데 오래된 것부터 버리고 새 줄을 넣는다.
  */
