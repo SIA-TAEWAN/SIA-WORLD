@@ -245,6 +245,8 @@ export const ROSTER: RosterEntry[] = [
 export const EXTRAS: CharId[] = ROSTER.filter((r) => r.unlockRegion === BOUGHT).map((r) => r.id);
 /** 여는 값 (시아코인). 071 의 _character_price · shared/characters.js 의 CHARACTER_PRICE 와 같다 (tests/sql.test.ts 가 대조) */
 export const EXTRA_PRICE: Partial<Record<CharId, number>> = { cat: 100 };
+/** 고양이를 살 수 있는 진행 조건: 이 스테이지(3지역 보스)를 클리어. 074 의 _cat_progress_defense 와 같다 (tests/sql.test.ts 가 대조) */
+export const CAT_STAGE = '3-5';
 
 /** 처음부터 쓸 수 있는 캐릭터 */
 export const STARTERS: CharId[] = ROSTER.filter((r) => r.unlockRegion === 0).map((r) => r.id);

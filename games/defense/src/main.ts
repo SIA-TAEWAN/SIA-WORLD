@@ -5,8 +5,8 @@ import { cleanProfile, setOwnedExtras } from './game/progress';
 import type { CharId } from './data/balance';
 import { ApiError, LOCAL_MODE, devSetup, getApi, lobbyNet, type StartInfo } from './net/api';
 import { DefenseLobby, LOBBY_MAX, LobbyFullError } from './net/lobby';
-import { buyCharacter, loadAuth, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
-import { app, extraShop, loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
+import { buyCharacter, loadAuth, loadCharacterProgress, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
+import { app, catCondition, extraShop, loadEngine, loadSquad, nav, screen, setProfile, state, toast, whyText, type GameSetup } from './ui/app';
 import { stageOf } from './data/stages';
 import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
 import { ENDLESS_ID } from './data/endless';
@@ -146,9 +146,16 @@ async function start() {
     if (p.unlocked.join() !== state.profile.unlocked.join()) setProfile(p);
   };
   if (LOCAL_MODE) {
-    owned = new URLSearchParams(location.search).get('cat') === '0' ? [] : [...EXTRAS];
+    // &cat=0 잠김 + 조건 통과(열기 버튼) · &cat=cond 잠김 + 조건 미달 (3-5 를 아직 못 깸)
+    const cat = new URLSearchParams(location.search).get('cat');
+    owned = cat === '0' || cat === 'cond' ? [] : [...EXTRAS];
     setOwnedExtras(owned);
+    extraShop.progress = { have: cat === 'cond' ? 0 : 1, need: 1 };
     extraShop.buy = async (id: CharId) => {
+      if (!catCondition(state.profile).done) {
+        toast('아직 열 수 없어요 (조건 0 / 1)');
+        return false;
+      }
       applyOwned([...new Set([...owned, id])]);
       toast('열었어요! (테스트 모드: 시아코인을 쓰지 않아요)');
       return true;
@@ -157,9 +164,21 @@ async function start() {
     // 처음에 못 읽으면 잠긴 것으로 시작한다 (서버도 판 시작 때 다시 본다)
     owned = (await loadOwnedCharacters()) ?? [];
     setOwnedExtras(owned);
+    // 구매 조건 진행 (잠겨 있을 때만 묻는다. 못 읽으면 기기의 프로필로 본다)
+    const loadProgress = async () => {
+      if (!EXTRAS.some((id) => !owned.includes(id))) return;
+      const p = await loadCharacterProgress();
+      if (p) extraShop.progress = { have: p.have, need: p.need };
+    };
+    await loadProgress();
     extraShop.buy = async (id: CharId) => {
       const { r, msg } = await buyCharacter(id);
       toast(msg, 2800);
+      if (r?.reason === 'condition') {
+        // 서버가 본 진행으로 글을 고친다
+        extraShop.progress = { have: Number(r.have) || 0, need: Number(r.need) || 1 };
+        setProfile(state.profile);
+      }
       if (!r?.ok && r?.reason !== 'owned') return false;
       // 연 목록을 다시 묻는다 (못 읽으면 방금 연 것을 더해 둔다)
       applyOwned((await loadOwnedCharacters(true)) ?? [...new Set([...owned, id])]);
@@ -171,6 +190,7 @@ async function start() {
       void loadOwnedCharacters(true).then((list) => {
         if (list) applyOwned(list);
       });
+      void loadProgress();
     });
   }
   try {

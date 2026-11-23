@@ -3,7 +3,7 @@
  * shared/characters.js 를 실행 중에 불러와 쓴다 (빌드에 넣지 않는다: 로비와 같은 로그인 세션).
  * 테스트 모드(?local=1)는 로그인이 없으니 api.ts 의 localOwned · localBuy (처음부터 열림, &cat=0 이면 잠김 → 버튼으로 바로 열림).
  */
-import { LOCAL_MODE, localBuy, localOwned } from './api';
+import { LOCAL_MODE, localBuy, localOwned, localProgress } from './api';
 
 /** shared/games.js 의 이 게임 id */
 export const GAME_ID = 'survival';
@@ -11,13 +11,22 @@ export const GAME_ID = 'survival';
 /** 열기 결과 (shared/characters.js 의 buyCharacter) */
 export interface BuyResult {
   ok: boolean;
-  reason?: 'owned' | 'coin' | 'login' | 'error';
+  reason?: 'owned' | 'coin' | 'condition' | 'login' | 'error';
+  have?: number;
+  need?: number;
   siaCoins?: number;
   price?: number;
 }
 
+/** 구매 조건 진행 (서버 character_progress: 시아서바이벌은 클리어한 맵 수 / 2) */
+export interface CatProgress {
+  have: number;
+  need: number;
+}
+
 interface CharactersModule {
   loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
+  loadCharacterProgress(game: string): Promise<CatProgress | null>;
   buyCharacter(game: string, id: string): Promise<BuyResult>;
   buyMessage(r: BuyResult, id?: string): string;
 }
@@ -35,6 +44,17 @@ export async function loadOwned(force = false): Promise<string[] | null> {
   try {
     const list = await (await shared()).loadOwnedCharacters(GAME_ID, force);
     return Array.isArray(list) ? list.filter((x) => typeof x === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 구매 조건 진행. 못 읽으면 null (부르는 쪽이 가진 값을 그대로 둔다) */
+export async function loadProgress(): Promise<CatProgress | null> {
+  if (LOCAL_MODE) return localProgress();
+  try {
+    const p = await (await shared()).loadCharacterProgress(GAME_ID);
+    return p && Number.isFinite(p.have) && Number.isFinite(p.need) ? { have: p.have, need: p.need } : null;
   } catch {
     return null;
   }
@@ -61,6 +81,7 @@ export async function buyText(r: BuyResult, id: string): Promise<string> {
   }
   if (r.ok) return LOCAL_MODE ? '열었어요! (테스트 모드)' : '열었어요!';
   if (r.reason === 'owned') return '이미 열었어요';
+  if (r.reason === 'condition') return '아직 열 수 없어요';
   if (r.reason === 'coin') return '시아코인이 모자라요';
   if (r.reason === 'login') return '로그인이 필요해요';
   return '열지 못했어요. 잠시 후 다시 시도해 주세요';

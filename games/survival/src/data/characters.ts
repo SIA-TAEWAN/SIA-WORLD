@@ -9,6 +9,14 @@ export const DODGE_SEC = 18;
  * 071 의 _character_price · shared/characters.js 의 CHARACTER_PRICE 와 같아야 한다 (tests/sql.test.ts 가 대조)
  */
 export const CHARACTER_PRICE: Record<string, number> = { cat: 100 };
+/**
+ * 고양이를 살 수 있는 진행 조건: 맵 몇 개를 4분 모드로 클리어했나 (서버 073 의 _cat_progress_survival 의 need 와 같다, tests/sql.test.ts 가 대조).
+ * 클리어 판정은 프로필의 clearedMaps 와 같다 (클리어 기록이 있거나 다음 맵이 열려 있다)
+ */
+export const SURVIVAL_CAT_MAPS = 2;
+/** 조건을 아직 못 넘었을 때의 안내 (have: 지금 클리어한 맵 수, 모르면 null) */
+export const catConditionText = (have: number | null) =>
+  `맵 ${SURVIVAL_CAT_MAPS}개를 클리어하면 열 수 있어요${have === null ? '' : ` · 지금 ${have}개`}`;
 /** 잠긴 캐릭터의 버튼 글 (shared/characters.js 의 unlockLabel 과 같은 글) */
 export const unlockLabel = (id: string) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`;
 

@@ -6,6 +6,7 @@
 --   · _finger_profile_json(): owned (연 추가 대원) 를 더한다 — 화면 잠금 판단 (games/finger progress.ts extraOpen)
 --   · finger_start · finger_level_up: 대원마다 public._check_character (071) 를 거친다
 --     (안 연 고양이는 'locked character')
+--   · _cat_progress_finger(): 고양이 구매 조건 = 3-5 클리어 ({have 0|1, need 1}). buy_character 가 조건 미달이면 거절 (071)
 -- 마지막 정의: _finger_unlocked · _finger_profile_json · finger_start · finger_level_up 은 067_finger.sql (070 은 이것들을 고치지 않았다)
 
 create or replace function public._finger_extra_heroes() returns text[]
@@ -115,3 +116,11 @@ begin
 end $$;
 revoke all on function public.finger_level_up(text) from public, anon;
 grant execute on function public.finger_level_up(text) to authenticated;
+
+-- 고양이 구매 조건 (071 _character_progress 가 이름으로 찾아 부른다): 시아핑거 3-5 클리어.
+-- games/finger/src/game/progress.ts 의 CAT_STAGE · CAT_NEED 와 같다 (tests/sql.test.ts 가 대조)
+create or replace function public._cat_progress_finger(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('have', case when public._finger_cleared(p_user, '3-5') then 1 else 0 end, 'need', 1)
+$$;
+revoke all on function public._cat_progress_finger(uuid) from public, anon, authenticated;

@@ -3,10 +3,10 @@ import { GAMES, MONUMENTS, noStats } from '../src/data/monuments';
 import { accStart, grantMonuments, isFull } from '../src/game/rules';
 import { CONST, COST_MUL, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP, MARKET_LIMIT, RATE_MUL, RES_IDS, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, lookOf } from '../src/data/balance';
 import { BUILDING, BUILDINGS, RECIPES, isBuildingType, upgradable, type BuildingType } from '../src/data/buildings';
-import { ASKS, RESIDENTS, RESIDENT_IDS, TASKS, affLevel, mix, type ResidentId } from '../src/data/residents';
+import { ASKS, CAT_BONUS, RESIDENTS, RESIDENT_IDS, TASKS, affLevel, mix, type ResidentId } from '../src/data/residents';
 import { GOALS, goalText, josa } from '../src/data/goals';
 import {
-  RuleError, addExp, assign, batchMax, build, buildSec, capSec, claimGoal, dailyBonus, dailyClaim, makeAsk, makeDaily, marketLimit, pavilionRange, praiseGive, praiseLeft, praiseTake, prosperityOf,
+  RuleError, addExp, assign, batchMax, build, buildSec, canHaveMore, capSec, countCap, claimGoal, dailyBonus, dailyClaim, makeAsk, makeDaily, marketLimit, pavilionRange, praiseGive, praiseLeft, praiseTake, prosperityOf,
   refresh, rename, requestDone, requestSkip, residentOf,
   residentPct, workersAt, workplace, cleanState, cloneState, countOf, craft, effRate, expand, feast, feasting, goalStatus, nearPavilion, ratePct, harvest, landRect, maxCount, move, newVillage, place, placeError, priceOf,
   ratePerHour, sell, sellCoins, sellLeft, settle, slots, storageCap, store, stored, unitSec, upgrade, upgradeCost, upgradeSec, type Building, type VillageState,
@@ -905,12 +905,15 @@ function town(n: number): VillageState {
 const aff = (s: VillageState, rid: ResidentId, points: number) => (residentOf(s, rid)!.affinity = points);
 
 describe('6단계: 주민 이사', () => {
-  it('표: 십이지 12명, 이사 오는 마을 레벨은 PRD 7장 그대로, 집도 그 레벨에 한 채씩 열린다', () => {
+  it('표: 십이지 12명 + 고양이, 이사 오는 마을 레벨은 PRD 7장 그대로, 집도 그 레벨에 한 채씩 열린다', () => {
     expect(RESIDENTS.map((r) => r.id)).toEqual([...RESIDENT_IDS]);
-    expect(RESIDENTS.map((r) => r.level)).toEqual([1, 2, 3, 5, 7, 9, 11, 13, 15, 18, 21, 24]);
-    expect(RESIDENTS.map((r) => r.level)).toEqual(BUILDING.house.unlock);
-    expect(RESIDENTS.map((r) => r.work)).toEqual(['storage', 'paddy', 'lumber', 'mill', 'hall', 'jar', 'market', 'pavilion', 'quarry', '', '', 'market']);
-    expect(RESIDENTS.map((r) => r.nick)).toEqual(['찍찍이', '우직이', '어흥이', '깡총이', '여의룡', '스르르', '따각이', '몽실이', '재롱이', '꼬꼬댁', '멍뭉이', '꿀꿀이']);
+    const zodiac = RESIDENTS.filter((r) => !r.buy);
+    expect(zodiac.map((r) => r.level)).toEqual([1, 2, 3, 5, 7, 9, 11, 13, 15, 18, 21, 24]);
+    expect(zodiac.map((r) => r.level)).toEqual(BUILDING.house.unlock);
+    expect(RESIDENTS.map((r) => r.work)).toEqual(['storage', 'paddy', 'lumber', 'mill', 'hall', 'jar', 'market', 'pavilion', 'quarry', '', '', 'market', '']);
+    expect(RESIDENTS.map((r) => r.nick)).toEqual(['찍찍이', '우직이', '어흥이', '깡총이', '여의룡', '스르르', '따각이', '몽실이', '재롱이', '꼬꼬댁', '멍뭉이', '꿀꿀이', '야옹이']);
+    // 고양이는 끝에 하나 (시아코인으로 산다: 레벨 해금에 섞이지 않는다)
+    expect(RESIDENTS.filter((r) => r.buy).map((r) => [r.id, r.level])).toEqual([['cat', 0]]);
     for (const r of RESIDENTS) expect(isBuildingType(`gift_${r.id}`)).toBe(true);
     expect([0, 9, 10, 29, 30, 60, 99, 100, 5000].map(affLevel)).toEqual([1, 1, 2, 2, 3, 4, 4, 5, 5]);
   });
@@ -946,7 +949,58 @@ describe('6단계: 주민 이사', () => {
     // 이사 온 주민은 집을 보관해도 떠나지 않는다
     store(s, h1.id, T0 + HOUR);
     expect(s.residents).toHaveLength(4);
-    expect(town(12).residents.map((r) => r.id)).toEqual([...RESIDENT_IDS]);
+    expect(town(12).residents.map((r) => r.id)).toEqual(RESIDENT_IDS.filter((r) => r !== 'cat'));
+  });
+
+  it('고양이: 사야 이사 온다 (레벨이 아니라). 산 마을은 주민 집을 한 채 더 지을 수 있다', () => {
+    const s = town(12);
+    s.profile.level = 30;
+    expect(maxCount('house', 30)).toBe(12);
+    expect(countCap(s, 'house')).toBe(12);
+    expect(canHaveMore(s, 'house')).toBe(false);
+    put(s, 'house', 12, 0);
+    settle(s, T0);
+    expect(residentOf(s, 'cat')).toBeNull();
+    s.catOwned = true;
+    expect(countCap(s, 'house')).toBe(13);
+    settle(s, T0);
+    expect(s.residents.map((r) => r.id)).toEqual([...RESIDENT_IDS]);
+    expect(residentPct(s, 'cat')).toBe(CAT_BONUS[0]);
+    // 산 뒤 빈 집이 없으면 집이 생길 때. 레벨이 되는 다른 주민이 먼저 들어간다 (순서대로)
+    const t = town(5);
+    t.profile.level = 9;
+    t.catOwned = true;
+    settle(t, T0);
+    expect(t.residents.map((r) => r.id)).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon']);
+    put(t, 'house', 5, 0);
+    settle(t, T0);
+    expect(t.residents.map((r) => r.id)).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake']);
+    put(t, 'house', 6, 0);
+    settle(t, T0);
+    expect(t.residents.map((r) => r.id)).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'cat']);
+    // 레벨이 오르면 다음 십이지가 이어서 (고양이는 끝에 그대로)
+    t.profile.level = 11;
+    put(t, 'house', 7, 0);
+    settle(t, T0);
+    expect(t.residents.map((r) => r.id)).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'cat']);
+  });
+
+  it('고양이: 새 부탁의 엽전 · 경험치 + (친밀도 단계마다)', () => {
+    const base = makeAsk(7, 10, ['rat']);
+    const plus = makeAsk(7, 10, ['rat'], 12);
+    expect(plus.coin).toBe(Math.floor((base.coin * 112) / 100));
+    expect(plus.exp).toBe(Math.floor((base.exp * 112) / 100));
+    expect([plus.n, plus.res, plus.aff]).toEqual([base.n, base.res, base.aff]);
+    const s = town(12);
+    s.catOwned = true;
+    put(s, 'house', 12, 0);
+    settle(s, T0);
+    aff(s, 'cat', 100);
+    for (const q of s.requests) Object.assign(q, { state: 'wait', readyAt: T0 });
+    settle(s, T0 + SEC);
+    const q = s.requests[0];
+    const want = makeAsk(s.profile.reqSeq - 2, s.profile.level, s.residents.map((r) => r.id), CAT_BONUS[4]);
+    expect([q.coin, q.exp]).toEqual([want.coin, want.exp]);
   });
 
   it('목표: 주민 수', () => {
@@ -1294,8 +1348,8 @@ describe('6단계: 오늘의 할 일', () => {
 describe('6단계: 서버 답 다듬기', () => {
   it('주민 · 부탁 · 오늘의 할 일', () => {
     const s = cleanState({
-      residents: [{ id: 'ox', affinity: 12, building: 'b1' }, { id: 'cat' }, { id: 'rat', affinity: -5, gifted: true }, { id: 'ox' }],
-      requests: [{ slot: 1, state: 'wait', readyAt: 99 }, { slot: 0, state: 'open', resident: 'rat', res: 'rice', n: 30, coin: 20, exp: 9, aff: 3 }, { slot: 2, state: 'open', resident: 'cat', res: 'rice' }],
+      residents: [{ id: 'ox', affinity: 12, building: 'b1' }, { id: 'lion' }, { id: 'rat', affinity: -5, gifted: true }, { id: 'ox' }],
+      requests: [{ slot: 1, state: 'wait', readyAt: 99 }, { slot: 0, state: 'open', resident: 'rat', res: 'rice', n: 30, coin: 20, exp: 9, aff: 3 }, { slot: 2, state: 'open', resident: 'lion', res: 'rice' }],
       daily: [{ slot: 0, task: 'harvest', n: 7, progress: 2, claimed: false, coin: 25, exp: 12 }, { slot: 1, task: 'dance' }],
       profile: { reqSeq: 4, dailyDay: 321, roosterDay: 320 },
     });

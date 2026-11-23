@@ -18,7 +18,7 @@ import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
 import { mapBgUrl } from './icons';
-import { isTankOpen, onUnlockChange } from '../game/unlock';
+import { isTankOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, type UnlockHooks } from './unlockBtn';
 import { lockBadge, lockNote, lockTitle } from './lock';
 
@@ -263,6 +263,8 @@ export function showSetup() {
   });
   // 다른 기기에서 열고 돌아와도 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
   const offUnlock = onUnlockChange(() => (root.isConnected ? renderTanks() : offUnlock()));
+  // 잠긴 동안 구매 조건 진행을 다시 읽는다 (판을 하고 돌아오면 숫자가 늘어 있다)
+  void refreshProgress();
   renderOpp();
   renderMaps();
   renderOpts();

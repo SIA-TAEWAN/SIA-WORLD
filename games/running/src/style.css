@@ -135,6 +135,8 @@ button, input { font: inherit; color: inherit; }
 .unlock-btn { font: inherit; font-size: 14px; color: var(--ink); background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 6px 14px; cursor: pointer; max-width: 100%; }
 .unlock-btn.armed { background: var(--primary); }
 .unlock-btn:disabled { opacity: 0.6; cursor: default; }
+/* 구매 조건을 아직 못 넘었을 때: 남은 조건과 지금 값 */
+.unlock-cond { margin: 0; font-size: 13px; color: var(--ink-soft); }
 .room .invite { display: flex; align-items: center; gap: 8px; }
 .room .invite .code { flex: 1; min-width: 0; font-size: 15px; }
 .room .invite .code b { font-weight: normal; color: var(--accent); font-size: 19px; }

@@ -4,6 +4,7 @@
 --   · charge_start(): 대장 검사를 _check_character 로 먼저 하고, 십이지는 그대로 진행 잠금을 본다.
 --     고양이는 진행 잠금 대신 _check_character(me, id, 'charge') 에만 맡긴다: 이 게임의 대장 고르기 화면에서 시아코인으로 연다 (게임마다 따로, 071)
 --   charge_finish 는 그대로 (_charge_leaders 의 coin_mul 을 읽기만 한다: cat 은 1)
+--   · _cat_progress_charge(): 고양이 구매 조건 = 3-5 클리어 (071 buy_character · character_progress 가 부른다)
 
 create or replace function public._charge_leaders() returns table (id text, unlock_region int, coin_mul numeric)
 language sql immutable as $$
@@ -58,3 +59,11 @@ begin
 end $$;
 revoke all on function public.charge_start(text, text, text) from public, anon;
 grant execute on function public.charge_start(text, text, text) to authenticated;
+
+-- 고양이 구매 조건 (071 의 _character_progress 가 부른다): 3-5 스테이지 클리어 → {have 1/0, need 1}
+-- 조건 스테이지는 games/charge/src/game/progress.ts 의 CAT_STAGE 와 같다 (tests/sql.test.ts 가 대조)
+create or replace function public._cat_progress_charge(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('have', case when public._charge_cleared(p_user, '3-5') then 1 else 0 end, 'need', 1)
+$$;
+revoke all on function public._cat_progress_charge(uuid) from public, anon, authenticated;

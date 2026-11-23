@@ -83,14 +83,17 @@ export const GAME_ID = 'defense';
 
 export interface BuyResult {
   ok: boolean;
-  reason?: 'owned' | 'coin' | 'login' | 'error';
+  reason?: 'owned' | 'coin' | 'condition' | 'login' | 'error';
   siaCoins?: number;
   price?: number;
+  have?: number;
+  need?: number;
 }
 interface CharactersModule {
   loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
   buyCharacter(game: string, id: string): Promise<BuyResult>;
   buyMessage(r: BuyResult, id?: string): string;
+  loadCharacterProgress(game: string): Promise<{ have: number; need: number; owned: string[] } | null>;
 }
 let charMod: Promise<CharactersModule> | null = null;
 const characters = () => {
@@ -106,6 +109,15 @@ export async function loadOwnedCharacters(force = false): Promise<string[] | nul
   try {
     const list = await (await characters()).loadOwnedCharacters(GAME_ID, force);
     return Array.isArray(list) ? list : null;
+  } catch {
+    return null;
+  }
+}
+/** 고양이 구매 조건 진행 (071 character_progress('defense')) → { have, need, owned } · 못 읽으면 null */
+export async function loadCharacterProgress(): Promise<{ have: number; need: number; owned: string[] } | null> {
+  try {
+    const mod = await characters();
+    return (await mod.loadCharacterProgress(GAME_ID)) ?? null;
   } catch {
     return null;
   }

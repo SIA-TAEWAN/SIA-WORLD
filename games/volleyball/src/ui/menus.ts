@@ -8,7 +8,7 @@ import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
 import { sfx } from './sfx';
-import { UNLOCK_LABEL, isCharOpen, onUnlockChange } from '../game/unlock';
+import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, unlockButtonHtml, type UnlockHooks } from './unlockBtn';
 
 /**
@@ -255,6 +255,8 @@ export function showCharSelect() {
   });
   const offUnlock = onUnlockChange(paint);
   paint();
+  // 잠긴 동안 구매 조건 진행을 다시 읽는다 (판을 하고 돌아오면 숫자가 늘어 있다)
+  void refreshProgress();
   $('#chars').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
@@ -379,6 +381,8 @@ export function showWaiting() {
   });
   const offUnlock = onUnlockChange(paint);
   paint();
+  // 잠긴 동안 구매 조건 진행을 다시 읽는다 (판을 하고 돌아오면 숫자가 늘어 있다)
+  void refreshProgress();
   if (state.room !== room) return;
 
   $('#chars').addEventListener('click', (e) => {

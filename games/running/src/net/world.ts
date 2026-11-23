@@ -100,11 +100,14 @@ interface BuyResult {
   reason?: string;
   siaCoins?: number;
   price?: number;
+  have?: number;
+  need?: number;
 }
 interface CharactersModule {
   loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
   buyCharacter(game: string, id: string): Promise<BuyResult>;
   buyMessage(r: BuyResult, id?: string): string;
+  loadCharacterProgress(game: string): Promise<{ have: number; need: number; owned: string[] } | null>;
 }
 let charMod: Promise<CharactersModule> | null = null;
 const loadCharMod = () => {
@@ -118,6 +121,15 @@ export async function loadOwnedCharacters(game: string, force = false): Promise<
   try {
     const list = await (await loadCharMod()).loadOwnedCharacters(game, force);
     return Array.isArray(list) ? list.filter((v): v is string => typeof v === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 이 게임의 고양이 구매 조건 진행 {have, need, owned} (shared/characters.js). 못 읽으면 null */
+export async function loadCharacterProgress(game: string): Promise<{ have: number; need: number; owned: string[] } | null> {
+  try {
+    return (await (await loadCharMod()).loadCharacterProgress(game)) ?? null;
   } catch {
     return null;
   }

@@ -1679,6 +1679,31 @@ body.in-game .sound-fab {
   font-style: normal;
   line-height: 1;
 }
+/* '시아코인 100개로 열기': 한 번 누르면 확인 글(armed), 한 번 더 누르면 산다 */
+.unlock-btn {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  max-width: 100%;
+}
+.unlock-btn.armed {
+  background: var(--sun);
+}
+.unlock-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+/* 구매 조건(30판)을 아직 못 넘었을 때: 남은 조건과 지금 값 */
+.unlock-cond {
+  margin: 0;
+  font-size: 13px;
+  color: #8a6a4a;
+}
 .lock-note {
   margin: 6px 0 0;
   font-size: 12px;

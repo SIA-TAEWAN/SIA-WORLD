@@ -5,7 +5,7 @@ import { ENDLESS_ID } from '../src/data/endless';
 import { stageOf } from '../src/data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, charLevel, cleanProfile, defaultProfile, endlessOpen, isValid, levelUp, partialCoins, regionCleared, regionOpen, regionStars,
-  endlessCoins, extraOpen, mergeCodex, rejectReason, setOwnedExtras, squadOk, stageOpen, starsOf, totalStars, waveOf, type DefenseProfile, type RunReport,
+  catCondition, endlessCoins, extraOpen, mergeCodex, rejectReason, setOwnedExtras, squadOk, stageOpen, starsOf, totalStars, waveOf, type DefenseProfile, type RunReport,
 } from '../src/game/progress';
 import { createGame, command, sellValue } from '../src/game/sim';
 import { ApiError, createLocalApi, createSupabaseApi, type RpcClient, type Store } from '../src/net/api';
@@ -42,6 +42,19 @@ describe('고양이 잠금 (시아디펜스에서 시아코인으로 연 계정�
     expect(squadOk(q, ['rat', 'cat'])).toBe(true);
     expect(charLevel(levelUp(q, 'cat'), 'cat')).toBe(2);
     expect(await api.start('1-1', ['rat', 'cat'])).toMatchObject({ startLives: 20 });
+  });
+});
+
+describe('고양이 구매 조건 (3-5 클리어)', () => {
+  it('3-5 기록이 있거나 서버 진행이 통과하면 살 수 있다. 아니면 지금 가장 멀리 간 스테이지를 함께 보여 준다', () => {
+    const p = defaultProfile();
+    expect(catCondition(p, null)).toEqual({ done: false, text: '3-5 스테이지를 클리어하면 열 수 있어요 · 아직 클리어한 스테이지가 없어요' });
+    p.stages = { '1-1': 3, '1-2': 1, '2-3': 2 };
+    expect(catCondition(p, { have: 0, need: 1 })).toEqual({ done: false, text: '3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-3까지' });
+    expect(catCondition(p, { have: 1, need: 1 }).done).toBe(true);
+    p.stages['3-5'] = 1;
+    expect(catCondition(p, null).done).toBe(true);
+    expect(catCondition(p, { have: 0, need: 1 }).done).toBe(true);
   });
 });
 

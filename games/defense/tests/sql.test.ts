@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COINS, MAX_LV, SQUAD_SIZE, STAR2_LIVES, START_LIVES, WAVES, WAVE_SEC } from '../src/data/balance';
 import { BOSSES } from '../src/data/bosses';
-import { EXTRAS, EXTRA_PRICE, ROSTER, STARTERS } from '../src/data/characters';
+import { CAT_STAGE, EXTRAS, EXTRA_PRICE, ROSTER, STARTERS } from '../src/data/characters';
 import { ENDLESS_COINS, ENDLESS_ID, ENDLESS_MAX_SEC } from '../src/data/endless';
 import { ENEMIES } from '../src/data/enemies';
 import { CHAR_MAX_LV, LEVEL_COSTS, UPGRADES, upgradeCost } from '../src/data/growth';
@@ -100,6 +100,13 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const appTs = readFileSync(fileURLToPath(new URL('../src/ui/app.ts', import.meta.url)), 'utf8');
     expect(appTs).toContain('`시아코인 ${EXTRA_PRICE[id] ?? 0}개로 열기`');
     expect(appTs).not.toContain('로비에서');
+    // 구매 조건: 3-5 클리어 (have 1|0, need 1). 071 의 _character_progress 가 이 이름으로 찾아 부른다
+    const cond = body('_cat_progress_defense');
+    expect(CAT_STAGE).toBe('3-5');
+    expect(cond).toContain(`d.stage_id = '${CAT_STAGE}'`);
+    expect(cond).toContain("'need', 1)");
+    expect(cond).toContain('security definer set search_path = public');
+    expect(read('071_characters.sql')).toContain("format('public._cat_progress_%s(uuid)', p_game)");
     expect(sql).toContain(`unlocked_characters text[] not null default array[${STARTERS.map((c) => `'${c}'`).join(', ')}]`);
   });
 
@@ -130,7 +137,7 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
       expect(sql, fn).toContain(`revoke all on function public.${fn} from public, anon;`);
       expect(sql, fn).toContain(`grant execute on function public.${fn} to authenticated;`);
     }
-    for (const fn of ['_defense_codex_ids', '_defense_codex_merge', '_defense_const', '_defense_stages', '_defense_regions', '_defense_level_costs', '_defense_upgrades', '_defense_profile_row', '_defense_profile_json', '_defense_region_open', '_defense_stage_open', '_defense_extra_ids']) {
+    for (const fn of ['_defense_codex_ids', '_defense_codex_merge', '_defense_const', '_defense_stages', '_defense_regions', '_defense_level_costs', '_defense_upgrades', '_defense_profile_row', '_defense_profile_json', '_defense_region_open', '_defense_stage_open', '_defense_extra_ids', '_cat_progress_defense']) {
       expect(sql, fn).toMatch(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon, authenticated;`));
     }
     // 랭킹 뷰 2개는 누구나 읽는다

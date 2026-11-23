@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CHAR_IDS } from '../src/data/balance';
 import { BOSSES } from '../src/data/bosses';
-import { CHARACTERS, CHARACTER_PRICE, unlockLabel } from '../src/data/characters';
+import { CHARACTERS, CHARACTER_PRICE, SURVIVAL_CAT_MAPS, catConditionText, unlockLabel } from '../src/data/characters';
 import { ENEMIES } from '../src/data/enemies';
 import { MAPS } from '../src/data/maps';
 import { PASSIVES } from '../src/data/passives';
@@ -135,6 +135,14 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(js).toContain("export const unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`;");
     expect(unlockLabel('cat')).toBe('시아코인 100개로 열기');
     expect(CHARACTERS.filter((c) => c.unlock.kind === 'sia').map((c) => [c.id, c.unlock.value])).toEqual(Object.entries(CHARACTER_PRICE));
+    // 구매 조건 (073 의 _cat_progress_survival): 맵 클리어 수, need 는 게임 상수와 같다. 클리어 판정은 프로필의 clearedMaps 와 같은 함수
+    const prog = body('_cat_progress_survival').replace(/\s+/g, ' ');
+    expect(prog).toContain('security definer set search_path = public');
+    expect(prog).toContain('where public._survival_map_cleared(p_user, m.map_id, coalesce(maps, array[]::text[]))');
+    expect(Number(/'need', (\d+)\)/.exec(prog)![1])).toBe(SURVIVAL_CAT_MAPS);
+    expect(SURVIVAL_CAT_MAPS).toBe(2);
+    expect(sql).toContain('revoke all on function public._cat_progress_survival(uuid) from public, anon, authenticated;');
+    expect(catConditionText(1)).toBe('맵 2개를 클리어하면 열 수 있어요 · 지금 1개');
     const f = body('survival_finish');
     const cond: Record<string, string> = {};
     for (const m of f.matchAll(/\(c = '(\w+)' and ([^)]+)\)/g)) cond[m[1]] = m[2].trim();

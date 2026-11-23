@@ -207,6 +207,11 @@ button, input { font: inherit; color: inherit; }
 .hearts i.on { color: var(--pink); -webkit-text-stroke: 0; }
 .p-row .lock, .d-row .lock { flex: none; font-size: 12px; color: var(--ink-soft); text-align: right; max-width: 104px; }
 .lock.on { color: var(--win); }
+.p-row .lock.wide { max-width: 136px; }
+.p-buy { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.p-buy .btn { white-space: normal; max-width: 112px; line-height: 1.25; }
+.p-buy small { font-size: 11px; }
+.p-buy small.lack { color: var(--lose); }
 .q-row.wait { border-style: dashed; border-color: var(--empty-line); }
 .q-wait { flex: none; width: 46px; height: 46px; display: grid; place-items: center; font-size: 24px; }
 .q-say { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; font-size: 14px; }

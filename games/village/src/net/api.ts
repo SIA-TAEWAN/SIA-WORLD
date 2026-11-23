@@ -2,12 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { STAT_IDS, noStats, type GameStats, type StatId } from '../data/monuments';
 import { CONST, LEVEL_EXP, RES_IDS } from '../data/balance';
 import { isBuildingType, type BuildingType } from '../data/buildings';
-import { isResidentId, type ResidentId } from '../data/residents';
+import { CAT_LAND_STAGE, isResidentId, type ResidentId } from '../data/residents';
 import { GOALS } from '../data/goals';
 import {
   RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, praiseGive, praiseLeft, prosperityOf, refresh, rename,
-  adminBoost, adminSetState, grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
-  type HarvestResult, type VillageState,
+  adminBoost, adminSetState, buyCat, grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
+  type CatBuy, type HarvestResult, type VillageState,
 } from '../game/rules';
 import { makeShowcase } from '../data/showcase';
 import { worldSupabase } from './world';
@@ -126,6 +126,11 @@ export interface VillageApi {
   monuments(): Promise<{ state: VillageState; stats: GameStats }>;
   /** 관리자만: 내 마을을 주어진 모양(전시 마을, data/showcase.ts 의 makeShowcase)으로 바꾼다. 관리자가 아니면 ApiError('not admin') */
   adminSetState(state: VillageState): Promise<VillageState>;
+  /**
+   * 고양이(13번째 주민) 사기: 071 buy_character('village', 'cat') — 시아코인 100개, 조건은 땅 3단계 (서버가 다시 본다).
+   * 샀거나 이미 샀으면(owned) 마을을 다시 읽어 state 로 준다 (빈 집이 있으면 그때 이사 온다). 아니면 state 는 null
+   */
+  buyCat(): Promise<{ result: CatBuy; state: VillageState | null }>;
 }
 
 export interface Store {
@@ -230,6 +235,10 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
     },
     async adminSetState(input) {
       return run((s, d) => adminSetState(s, input, now(), () => `local-${++d.seq}`)).state;
+    },
+    async buyCat() {
+      const r = run((s) => buyCat(s, now()));
+      return { result: r.out, state: r.state };
     },
     async monuments() {
       const r = run((s, d) => {
@@ -357,10 +366,27 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
     if (typeof d.now === 'number') offset = d.now - (sent + got) / 2;
     return d;
   };
+  const load = async (entry = false) => cleanState(await call('village_state', { p_entry: entry }));
   return {
     kind: 'supabase',
     now: () => Math.floor(deviceNow() + offset),
-    load: async (entry = false) => cleanState(await call('village_state', { p_entry: entry })),
+    load,
+    async buyCat() {
+      let d: Record<string, unknown>;
+      try {
+        d = await call('buy_character', { p_game: 'village', p_id: 'cat' });
+      } catch (e) {
+        return { result: { ok: false, reason: e instanceof ApiError && /need login/.test(e.message) ? 'login' : 'error' }, state: null };
+      }
+      const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+      const reason = (['owned', 'coin', 'condition'] as const).find((x) => x === d.reason);
+      const result: CatBuy = { ok: d.ok === true, reason, have: n(d.have), need: n(d.need), siaCoins: n(d.siaCoins), price: n(d.price) };
+      if (!result.ok && !reason) result.reason = 'error';
+      // 샀으면 마을을 다시 읽는다 (시아코인 · 이사 · 주민 집 한 채 더). 못 읽어도 산 것은 그대로
+      let state: VillageState | null = null;
+      if (result.ok || reason === 'owned') state = await load().catch(() => null);
+      return { result, state };
+    },
     async build(type, x, y) {
       const d = await call('village_build', { p_type: type, p_x: x, p_y: y });
       return { state: cleanState(d), id: String(d.id ?? '') };
@@ -513,10 +539,11 @@ function makeBots(): { id: string; nick: string; state: VillageState }[] {
  * 테스트 모드의 마을을 주소로 정한다 (헤드리스 확인용):
  *   ?fresh=1 처음 상태로 · ?rice=500&wood=500&stone=&cake=&coin=&special= 자원 · ?sia=100 시아코인 · ?land=2 땅 단계 · ?aff=95 친밀도 · ?lv=5 마을 레벨 · ?goal=7 목표 번호 · ?fast=60 시간을 60배로
  *   ?town=1 다 자란 마을로 바꾼다 (건물 모습 1 · 2 · 3단계, 가득 찬 수확 방울, 주민 여덟, 특별 건물 · 장식물 · 기념물 · 길)
+ *   고양이: ?cat=1 산 것으로 · ?cat=0 안 샀고 조건은 넘음(땅 3단계 이상, [주민]에 열기 버튼) · ?cat=cond 안 샀고 조건 미달(땅 1단계)
  */
 function seedLocal(store: Store) {
   if (params.get('fresh') === '1') store.removeItem(LOCAL_KEY);
-  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land', 'aff', 'town'].filter((k) => params.get(k) !== null);
+  const keys = [...RES_IDS, 'lv', 'goal', 'sia', 'land', 'aff', 'town', 'cat'].filter((k) => params.get(k) !== null);
   if (keys.length === 0) return;
   let d: { state?: unknown; seq?: number; skew?: number } = {};
   try {
@@ -539,6 +566,13 @@ function seedLocal(store: Store) {
   if (params.get('goal') !== null) {
     s.profile.goal = num('goal', GOALS.length);
     s.profile.goalProgress = 0;
+  }
+  const cat = params.get('cat');
+  if (cat === '1') s.catOwned = true;
+  else if (cat === '0' || cat === 'cond') {
+    s.catOwned = false;
+    s.residents = s.residents.filter((r) => r.id !== 'cat');
+    s.profile.landStage = cat === '0' ? Math.max(s.profile.landStage, CAT_LAND_STAGE) : Math.min(s.profile.landStage, 1);
   }
   store.setItem(LOCAL_KEY, JSON.stringify({ ...d, state: s }));
 }

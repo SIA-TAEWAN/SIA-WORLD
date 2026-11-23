@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ENDLESS, RUN_SEC, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
-import { CHARACTERS, CHARACTER_BY_ID, CHARACTER_PRICE } from '../data/characters';
+import { CHARACTERS, CHARACTER_BY_ID, CHARACTER_PRICE, SURVIVAL_CAT_MAPS } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { UPGRADE_TOTAL } from '../data/upgrades';
 import {
@@ -494,13 +494,19 @@ export interface DevSetup {
 
 /**
  * 테스트 모드(?local=1)에서 연 추가 캐릭터: 로그인이 없으니 처음부터 모두 열린 것으로 본다. &cat=0 이면 고양이가 잠긴 상태로 시작하고,
- * 고양이 열기 버튼은 서버 없이 바로 연다 (localBuy, 화면 확인용. 새로고침하면 처음 상태)
+ * 고양이 열기 버튼은 서버 없이 바로 연다 (localBuy, 화면 확인용. 새로고침하면 처음 상태).
+ * &cat=cond 이면 잠긴 데다 구매 조건(맵 2개 클리어)도 못 넘은 상태 (지금 1개)
  */
-const localOpen = new Set<string>(params.get('cat') === '0' ? [] : CHARACTERS.filter((c) => c.unlock.kind === 'sia').map((c) => c.id));
+const localCond = params.get('cat') === 'cond';
+const localOpen = new Set<string>(params.get('cat') === '0' || localCond ? [] : CHARACTERS.filter((c) => c.unlock.kind === 'sia').map((c) => c.id));
 export const localOwned = (): string[] => [...localOpen];
-export function localBuy(id: string): { ok: boolean; reason?: 'owned'; siaCoins: number; price: number } {
+/** 테스트 모드의 구매 조건 진행 (서버 _cat_progress_survival 흉내) */
+export const localProgress = () => ({ have: localCond ? 1 : SURVIVAL_CAT_MAPS, need: SURVIVAL_CAT_MAPS });
+export function localBuy(id: string): { ok: boolean; reason?: 'owned' | 'condition'; siaCoins: number; price: number; have?: number; need?: number } {
   const price = CHARACTER_PRICE[id] ?? 0;
   if (localOpen.has(id)) return { ok: false, reason: 'owned', siaCoins: 0, price };
+  const p = localProgress();
+  if (p.have < p.need) return { ok: false, reason: 'condition', siaCoins: 0, price, ...p };
   localOpen.add(id);
   return { ok: true, siaCoins: 0, price };
 }

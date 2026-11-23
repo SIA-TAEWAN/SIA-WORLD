@@ -2,6 +2,7 @@
 --   · 캐릭터 id 검사는 071 의 _check_character(user, character, 'defense') 로 (모르는 id → 'bad character', 시아디펜스에서 열지 않은 고양이 → 'locked character')
 --   · 고양이는 스테이지로 열리지 않는다: defense_profiles.unlocked_characters 에 들어가지 않고, _defense_regions 의 해금 표에도 없다.
 --     출전(defense_start)·레벨업(defense_level_up)의 'character locked' 검사는 스테이지로 여는 캐릭터에만 한다 (_defense_extra_ids 는 빼고)
+--   · 고양이 구매 조건: 3-5 클리어 (_cat_progress_defense, 맨 끝)
 --   · 고양이의 특성(남은 체력이 가장 적은 요괴부터 · 3단계 빈사 요괴 마무리)은 서버 규칙(엽전·별·돼지 보너스)에 영향이 없어 defense_finish 는 그대로
 -- games/defense/tests/sql.test.ts 가 이 파일도 읽는다 (060 뒤에).
 
@@ -79,3 +80,14 @@ begin
 end $$;
 revoke all on function public.defense_level_up(text) from public, anon;
 grant execute on function public.defense_level_up(text) to authenticated;
+
+-- ---------- 고양이 구매 조건 (071 의 _character_progress 가 이름으로 찾아 부른다) ----------
+-- 시아디펜스에서 고양이를 사려면 3-5 스테이지(3지역 보스)를 클리어했어야 한다 → { have: 1|0, need: 1 }
+-- 조건 스테이지는 games/defense/src/data/characters.ts 의 CAT_STAGE 와 같다 (tests/sql.test.ts 가 대조)
+create or replace function public._cat_progress_defense(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'have', case when exists (select 1 from public.defense_stages d where d.user_id = p_user and d.stage_id = '3-5') then 1 else 0 end,
+    'need', 1)
+$$;
+revoke all on function public._cat_progress_defense(uuid) from public, anon, authenticated;

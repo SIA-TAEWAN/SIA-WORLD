@@ -11,7 +11,7 @@ import { charLevel, clearedCount, endlessOpen, startLivesOf, regionCleared, regi
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { bindUnlock, esc, josa, loadEngine, lockHint, unlockLabel, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
+import { bindUnlock, catCondition, esc, josa, loadEngine, lockHint, unlockLabel, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
 import { sfx } from './sfx';
 
 const zodiacNick = (id: CharId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
@@ -311,7 +311,7 @@ export function showPrepare(stageId: string) {
     const r = ROSTER.find((x) => x.id === focus)!;
     const def = towerOf(focus);
     root.querySelector('#info')!.innerHTML = def
-      ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em> <small>Lv ${charLevel(state.profile, focus)}</small><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>${unlocked(focus) ? '' : EXTRAS.includes(focus) ? `<br/><button class="btn small primary unlock" id="unlock">${esc(unlockLabel(focus))}</button>` : `<br/><small>🔒 ${esc(lockHint(r))}</small>`}`
+      ? `<b>${esc(def.nick)}</b> <span class="tag role">${esc(def.role)}</span> <em>✨${def.cost}</em> <small>Lv ${charLevel(state.profile, focus)}</small><br/><small>${esc(def.desc)} · 3단계: ${esc(def.special)}</small>${unlocked(focus) ? '' : EXTRAS.includes(focus) ? (catCondition(state.profile).done ? `<br/><button class="btn small primary unlock" id="unlock">${esc(unlockLabel(focus))}</button>` : `<br/><small class="cond">🔒 ${esc(catCondition(state.profile).text)}</small>`) : `<br/><small>🔒 ${esc(lockHint(r))}</small>`}`
       : `<b>${esc(r.nick)}</b> <span class="tag role">${esc(r.role)}</span><br/><small>🔒 ${esc(lockHint(r))}</small>`;
     startBtn.disabled = picked.size === 0;
     const unlock = root.querySelector('#unlock') as HTMLButtonElement | null;

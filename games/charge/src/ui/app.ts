@@ -9,6 +9,8 @@ import {
   endlessOpen,
   CAT_PRICE,
   UNLOCK_LABEL,
+  catConditionText,
+  catReady,
   leadersOf,
   regionOpen,
   setOwnedExtras,
@@ -22,7 +24,7 @@ import {
 } from '../game/progress';
 import { createRun, metersOf, progressOf, starsFor, type RunState } from '../game/sim';
 import { ApiError, type ChargeApi } from '../net/api';
-import { DEV_ALL, DEV_OWNED, LOCAL_MODE } from '../net/local';
+import { DEV_ALL, DEV_CAT_READY, DEV_OWNED, LOCAL_MODE } from '../net/local';
 import { buyCharacter, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
 import { TABLE } from '../theme';
@@ -160,6 +162,8 @@ async function unlockCat(btn: HTMLButtonElement) {
     } else {
       const { r, text } = await buyCharacter('cat');
       if (r.ok || r.reason === 'owned') applyOwned((await loadOwnedCharacters(true)) ?? [...owned, 'cat']);
+      // 조건 미달로 거절되면 기록을 다시 읽어 조건 글을 고친다
+      if (r.reason === 'condition') profile = await api.loadProfile().catch(() => profile);
       toast(text);
     }
     if (leadersOf(profile).includes('cat')) {
@@ -200,7 +204,12 @@ export function showMain() {
         const tile = `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok || l.extra ? '' : 'disabled'}>
             <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒${l.extra ? '' : ` ${l.unlockRegion}지역`}</em>`}
           </button>`;
-        return ok || !l.extra ? tile : `${tile}<button class="btn primary unlock" data-unlock="${l.id}">🔒 ${UNLOCK_LABEL}</button>`;
+        if (ok || !l.extra) return tile;
+        // 구매 조건(3-5 클리어)을 넘었으면 열기 버튼, 아니면 남은 조건 글
+        const ready = DEV_CAT_READY ?? catReady(profile);
+        return ready
+          ? `${tile}<button class="btn primary unlock" data-unlock="${l.id}">🔒 ${UNLOCK_LABEL}</button>`
+          : `${tile}<p class="unlock cond">🔒 ${catConditionText(profile)}</p>`;
       }).join('')}</div>
       <p class="soft center" id="trait">${leaderOf(leader).trait}</p>
     </div>

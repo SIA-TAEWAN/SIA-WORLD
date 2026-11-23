@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PICK_CAP, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, towerCoins } from '../src/data/growth';
 import { heroRows, levelRows, stageRows, upgradeRows } from '../src/data/sqlrows';
-import { CAT_PRICE, LIMITS, UNLOCK_LABEL } from '../src/game/progress';
+import { CAT_NEED, CAT_PRICE, CAT_STAGE, LIMITS, UNLOCK_LABEL } from '../src/game/progress';
 import { EXTRA_HERO_IDS, HEROES, MAX_SHOT_STEPS, STAGES } from '../src/sim';
 
 /**
@@ -58,6 +58,13 @@ describe('SQL 표', () => {
     expect(block('_finger_profile_json')).toContain("'owned', to_jsonb(public._finger_owned(p_user))");
     expect(SQL).toContain('revoke all on function public._finger_owned(uuid) from public, anon, authenticated;');
     expect(block('finger_start')).toContain('not public._finger_is_hero(y)');
+  });
+
+  it('고양이 구매 조건: _cat_progress_finger = 3-5 클리어 (게임 안 CAT_STAGE · CAT_NEED)', () => {
+    const fn = block('_cat_progress_finger');
+    expect(fn).toContain(`'have', case when public._finger_cleared(p_user, '${CAT_STAGE}') then 1 else 0 end, 'need', ${CAT_NEED})`);
+    expect(fn).toContain('security definer set search_path = public');
+    expect(SQL).toContain('revoke all on function public._cat_progress_finger(uuid) from public, anon, authenticated;');
   });
 
   it('고양이 값: 게임 안 CAT_PRICE = 071 _character_price = shared/characters.js CHARACTER_PRICE · 버튼 글', () => {

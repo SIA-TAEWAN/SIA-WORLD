@@ -2,7 +2,7 @@ import './style.css';
 import { LOCAL_MODE, getApi } from './net/api';
 import { LOBBY_MAX, RaceLobby } from './net/lobby';
 import { cleanRoomCode, validRoomCode } from './net/room';
-import { loadAuth, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
+import { loadAuth, loadCharacterProgress, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
 import { initUnlock } from './game/unlock';
 import { loadChar, loadEngine, nav, screen, state } from './ui/app';
 import { enterRoom, showLobby, showWaiting } from './ui/menus';
@@ -53,7 +53,7 @@ async function start() {
   }
   state.user = { id: user.userId, name: user.nickname };
   // 연 추가 캐릭터(고양이)를 먼저 불러온다: 저장된 캐릭터가 잠겨 있으면 기본 캐릭터로
-  await initUnlock(loadOwnedCharacters, LOCAL_MODE, new URLSearchParams(location.search).get('cat'));
+  await initUnlock(loadOwnedCharacters, LOCAL_MODE, new URLSearchParams(location.search).get('cat'), loadCharacterProgress);
   state.char = loadChar();
   state.api = await getApi(user.userId);
   // 대기실 채널: 방 목록을 받고, 내가 들어간 방을 알린다 (연결을 기다리지 않는다)

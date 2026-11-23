@@ -3,6 +3,7 @@
 --     고양이는 시아서바이벌의 해금 목록(unlocked_characters)에 들어가지 않는다: 엽전으로도(survival_unlock_character 의 값 표에 없다),
 --     판 결과로도(survival_finish 의 해금 목록은 그대로) 풀리지 않고, 이 게임의 캐릭터 선택 화면에서 시아코인으로 연다
 --     (게임마다 따로: owned_characters 의 game = 'survival'. _check_character 가 본다).
+--   · _cat_progress_survival: 고양이 구매 조건 = 맵 2개 클리어 (071 의 buy_character 가 조건을 넘었는지 본다. 파일 끝)
 --   · 나머지(판 끝 검증 상수·해금 조건·기록)는 055 그대로. 고양이 특성(피해를 일정 간격마다 한 번 피함)은 처치·레벨·엽전 상한에 닿지 않는다.
 --   055 의 정의를 그대로 옮기고 위 두 줄만 바꿨다. 시아코인으로 여는 캐릭터(_character_price 가 있는 것)는 모두 같은 규칙이다.
 
@@ -41,3 +42,18 @@ begin
 end $$;
 revoke all on function public.survival_start(text, text, text) from public, anon;
 grant execute on function public.survival_start(text, text, text) to authenticated;
+
+-- ---------- 고양이 구매 조건 (071 의 _character_progress 가 부른다) ----------
+-- 시아서바이벌: 맵 2개를 4분 모드로 클리어 (have = 클리어한 맵 수, need = 2).
+-- 클리어 판정은 프로필의 clearedMaps 와 같은 _survival_map_cleared (045: 클리어 기록이 있거나 다음 맵이 열려 있다).
+-- need 는 games/survival/src/data/characters.ts 의 SURVIVAL_CAT_MAPS 와 같다 (tests/sql.test.ts 가 대조)
+create or replace function public._cat_progress_survival(p_user uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare maps text[]; n int;
+begin
+  select s.unlocked_maps into maps from public.survival_profiles s where s.user_id = p_user;
+  select count(*)::int into n from public._survival_maps() m
+    where public._survival_map_cleared(p_user, m.map_id, coalesce(maps, array[]::text[]));
+  return jsonb_build_object('have', coalesce(n, 0), 'need', 2);
+end $$;
+revoke all on function public._cat_progress_survival(uuid) from public, anon, authenticated;

@@ -1,6 +1,6 @@
 import { HELL, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
-import { CHARACTERS, CHARACTER_BY_ID, CHARACTER_PRICE, unlockLabel } from '../data/characters';
+import { CHARACTERS, CHARACTER_BY_ID, CHARACTER_PRICE, SURVIVAL_CAT_MAPS, catConditionText, unlockLabel } from '../data/characters';
 import { buyChar, buyText } from '../net/characters';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
@@ -9,7 +9,7 @@ import { startWeapon } from '../game/sim';
 import { LOCAL_MODE } from '../net/api';
 import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { esc, loadEngine, mmss, nav, openSettings, refreshOwned, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
+import { esc, loadEngine, mmss, nav, openSettings, refreshOwned, refreshProgress, saveChar, screen, setProfile, state, toast, watchProfile } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
 import { whyText } from './upgrade';
@@ -20,6 +20,11 @@ const LOCKS_ON = true;
 const charLocked = (id: CharId) => LOCKS_ON && !characterOpen(state.profile, id, state.owned);
 /** 시아코인으로 여는 캐릭터(고양이): 이 화면의 버튼으로 연다 (게임마다 따로) */
 const siaChar = (id: CharId) => CHARACTER_BY_ID[id].unlock.kind === 'sia';
+/**
+ * 고양이 구매 조건 진행 (맵 2개 클리어): 서버가 준 값, 아직 못 읽었으면 프로필의 clearedMaps 로 센다 (같은 판정).
+ * 버튼만 막는 것이고 실제 확인은 서버의 buy_character 가 한다
+ */
+const catProgress = () => state.catProgress ?? { have: state.profile.clearedMaps.length, need: SURVIVAL_CAT_MAPS };
 const mapLocked = (id: string) => LOCKS_ON && !state.profile.unlockedMaps.includes(id);
 /** 무한 모드는 그 맵을 4분 모드로 클리어해야 열린다 (서버의 맵별 최고 기록 기준) */
 const endlessLocked = (id: string) => LOCKS_ON && !endlessOpen(state.profile, id);
@@ -142,7 +147,7 @@ export function showCharSelect() {
         <ul class="facts">
           <li><em>${icon('w', start.id)}</em><span><b>시작 무기 · ${esc(start.name)}</b><small>${esc(start.desc)}</small></span></li>
           <li><em>✨</em><span><b>고유 특성</b><small>${esc(c.trait.text)}</small></span></li>
-          <li><em>${locked ? '🔒' : '🔓'}</em><span><b>해금</b><small>${esc(c.unlock.text)}</small></span></li>
+          <li><em>${locked ? '🔒' : '🔓'}</em><span><b>해금</b><small>${esc(locked && siaChar(pick) && catProgress().have < catProgress().need ? `${catConditionText(catProgress().have)} · ${c.unlock.text}` : c.unlock.text)}</small></span></li>
         </ul>
         ${own.id !== start.id ? `<p class="soft note">${esc(own.name)}(${esc(own.desc)})은 아직 준비 중이라, 지금은 ${esc(start.name)}으로 시작해요</p>` : ''}
       </div>`;
@@ -156,6 +161,14 @@ export function showCharSelect() {
       b.title = l && siaChar(b.dataset.c as CharId) ? unlockLabel(b.dataset.c!) : '';
     });
     if (locked && siaChar(pick)) {
+      // 구매 조건(맵 2개 클리어)을 못 넘었으면 남은 조건과 지금 값만 보여 준다
+      const prog = catProgress();
+      if (prog.have < prog.need) {
+        next.disabled = true;
+        // 버튼에는 짧게 (긴 글은 위 해금 줄에)
+        next.textContent = `🔒 맵 ${prog.need}개 클리어 · 지금 ${prog.have}개`;
+        return;
+      }
       // 시아코인으로 연다 (이 게임에서만. 다른 게임에서 열었어도 여기서 따로 연다)
       const sure = Date.now() < confirmUntil;
       next.disabled = buying;
@@ -168,6 +181,8 @@ export function showCharSelect() {
   paint();
   // 판 저장 답이 늦게 오면 엽전·해금 표시를 새로 그린다
   const off = watchProfile(paint);
+  // 고양이가 잠겨 있으면 구매 조건 진행을 서버에서 읽어 온다 (다 읽으면 setProfile → paint)
+  if (CHARACTERS.some((x) => siaChar(x.id) && charLocked(x.id))) void refreshProgress();
   root.querySelector('#chars')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
@@ -197,6 +212,11 @@ export function showCharSelect() {
       paint();
       const id = pick;
       const r = await buyChar(id);
+      // 조건을 못 넘었다는 답이면 진행을 다시 읽어 글을 고친다
+      if (r.reason === 'condition') {
+        if (Number.isFinite(r.have) && Number.isFinite(r.need)) state.catProgress = { have: r.have!, need: r.need! };
+        void refreshProgress();
+      }
       if (r.ok || r.reason === 'owned') {
         await refreshOwned(true);
         // 서버가 열었다고 답했는데 목록을 못 읽었으면 (통신) 이 화면에서는 열린 것으로 둔다. 판 시작 때 서버가 다시 본다

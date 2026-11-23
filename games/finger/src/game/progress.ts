@@ -21,6 +21,8 @@ export interface FingerProfile {
   tower: { floor: number; turns: number } | null;
   /** 시아핑거에서 시아코인으로 연 추가 대원 (고양이 — 게임마다 따로). 서버 _finger_profile_json 의 owned (076) */
   owned: HeroId[];
+  /** 테스트 모드(?local=1)만: 고양이 구매 조건을 넘은 것으로/못 넘은 것으로 본다 (?cat=0 · ?cat=cond). 서버 프로필에는 없다 */
+  catReady?: boolean;
 }
 
 export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {}, tower: null, owned: [] });
@@ -251,11 +253,41 @@ export const UNLOCK_CONFIRM = `${CAT_PRICE}코인을 쓸까요? 한 번 더 누�
 /** 서버 거절 'locked character' */
 export const CAT_LOCKED_TEXT = `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`;
 
+/** 고양이 구매 조건: 시아핑거 3-5 클리어 (SQL 076 _cat_progress_finger 와 같다 — tests/sql.test.ts) */
+export const CAT_STAGE = '3-5';
+export const CAT_NEED = 1;
+
+/** 고양이 구매 조건 진행 {have, need} (서버 _cat_progress_finger 와 같은 규칙. 프로필의 스테이지 기록으로 센다) */
+export const catProgress = (p: FingerProfile) => ({ have: (p.catReady ?? cleared(p, CAT_STAGE)) ? 1 : 0, need: CAT_NEED });
+export const catReady = (p: FingerProfile) => {
+  const c = catProgress(p);
+  return c.have >= c.need;
+};
+
+/** 가장 멀리 깬 스테이지 (없으면 null) */
+export function farthestStage(p: FingerProfile): string | null {
+  let best: { id: string; r: number; n: number } | null = null;
+  for (const id of Object.keys(p.stages)) {
+    const st = stageOf(id);
+    if (st && (!best || st.region > best.r || (st.region === best.r && st.no > best.n))) best = { id, r: st.region, n: st.no };
+  }
+  return best?.id ?? null;
+}
+
+/** 조건을 못 넘었을 때 안내 (대원 화면 · 칸을 눌렀을 때) */
+export function catConditionText(p: FingerProfile): string {
+  const far = farthestStage(p);
+  return `${CAT_STAGE} 스테이지를 클리어하면 열 수 있어요 · ${far ? `지금 ${far}까지` : '아직 클리어한 스테이지가 없어요'}`;
+}
+/** 칸 안의 짧은 안내 */
+export const CAT_CONDITION_SHORT = `${CAT_STAGE}를 깨면 열려요`;
+
 /** 고양이 열기 결과 → 화면 한 줄 (shared/characters.js 의 buyMessage 와 같은 글) */
 export function unlockText(r: UnlockAnswer): string {
   const n = (v: number | undefined) => Number(v ?? 0).toLocaleString('ko-KR');
   if (r.ok) return r.siaCoins === undefined ? '열었어요!' : `열었어요! 남은 시아코인 ${n(r.siaCoins)}개`;
   if (r.reason === 'owned') return '이미 열었어요';
+  if (r.reason === 'condition') return `아직 열 수 없어요 · ${CAT_STAGE} 스테이지를 클리어해 주세요`;
   if (r.reason === 'coin') return `시아코인이 모자라요 (${n(r.siaCoins)} / ${CAT_PRICE})`;
   if (r.reason === 'login') return '로그인이 필요해요';
   return '열지 못했어요. 잠시 후 다시 시도해 주세요';
@@ -264,7 +296,9 @@ export function unlockText(r: UnlockAnswer): string {
 /** 서버 buy_character 결과 모양 (071) */
 export interface UnlockAnswer {
   ok: boolean;
-  reason?: 'owned' | 'coin' | 'login' | 'error';
+  reason?: 'owned' | 'coin' | 'condition' | 'login' | 'error';
+  have?: number;
+  need?: number;
   siaCoins?: number;
   price?: number;
 }

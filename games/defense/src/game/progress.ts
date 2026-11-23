@@ -1,6 +1,6 @@
 import { COINS, STAR2_LIVES, START_LIVES, SQUAD_SIZE, WAVES, WAVE_SEC, CHAR_IDS, type CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
-import { EXTRAS, ROSTER, STARTERS } from '../data/characters';
+import { CAT_STAGE, EXTRAS, ROSTER, STARTERS } from '../data/characters';
 import { ENDLESS_ID } from '../data/endless';
 import { ENEMIES } from '../data/enemies';
 import { CHAR_MAX_LV, UPGRADES, levelCost, upgradeCost, upgradeMods, upgradeOf, type Upgrades } from '../data/growth';
@@ -138,6 +138,16 @@ export function cleanProfile(raw: unknown): DefenseProfile {
   const wave = Math.floor(Number(e?.wave)) || 0;
   const endless = wave >= 1 ? { wave, squad: (Array.isArray(e?.squad) ? e.squad : []).filter(isChar) } : null;
   return { coins: Math.max(0, Math.floor(Number(d.coins)) || 0), stages, levels, upgrades, unlocked, codex: mergeCodex(d.codex, undefined), endless };
+}
+
+/**
+ * 고양이를 살 수 있나 (CAT_STAGE = 3-5 클리어): 서버가 본 진행(071 character_progress)이 통과했거나, 프로필에 그 스테이지 기록이 있으면 통과.
+ * progress 를 못 읽었으면(null) 프로필로만 본다. text: 아직이면 "3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-3까지"
+ */
+export function catCondition(p: DefenseProfile, progress: { have: number; need: number } | null): { done: boolean; text: string } {
+  const done = p.stages[CAT_STAGE] !== undefined || (!!progress && progress.have >= progress.need);
+  const far = [...STAGES].reverse().find((s) => p.stages[s.id] !== undefined)?.id ?? null;
+  return { done, text: `${CAT_STAGE} 스테이지를 클리어하면 열 수 있어요 · ${far ? `지금 ${far}까지` : '아직 클리어한 스테이지가 없어요'}` };
 }
 
 export const totalStars = (p: DefenseProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);

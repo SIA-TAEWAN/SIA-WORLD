@@ -1,8 +1,8 @@
 import { SQUAD_SIZE, VIEW_W, type CharId } from '../data/balance';
-import { BOUGHT, EXTRA_PRICE, STARTERS, towerOf, type RosterEntry } from '../data/characters';
+import { BOUGHT, CAT_STAGE, EXTRA_PRICE, STARTERS, towerOf, type RosterEntry } from '../data/characters';
 import { REGIONS } from '../data/regions';
 import type { RunSummary } from '../game/sim';
-import { defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
+import { catCondition as catConditionOf, defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
 import type { DefenseApi } from '../net/api';
 import { music } from './music';
 import { sfx, sound } from './sfx';
@@ -85,12 +85,22 @@ export const CAT_LOCKED = `고양이는 캐릭터 고르기 화면에서 시아�
 
 /** 잠긴 캐릭터를 여는 방법 (고양이는 스테이지가 아니라 출전 준비 화면에서 시아코인으로 연다). then: 지역을 클리어한 뒤의 말 */
 export function lockHint(r: RosterEntry, then = '함께할 수 있어요'): string {
-  if (r.unlockRegion === BOUGHT) return `출전 준비 화면에서 시아코인 ${EXTRA_PRICE[r.id] ?? 0}개로 열 수 있어요`;
+  if (r.unlockRegion === BOUGHT) return `${CAT_STAGE} 스테이지를 클리어한 뒤 출전 준비 화면에서 시아코인 ${EXTRA_PRICE[r.id] ?? 0}개로 열 수 있어요`;
   return `${r.unlockRegion}지역 ${josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를')} 클리어하면 ${then}`;
 }
 
-/** 시아코인으로 캐릭터 열기 (main.ts 가 서버 또는 테스트 모드 흉내를 연결한다). 열렸으면(이미 열었어도) true, 결과 글은 스스로 토스트한다 */
-export const extraShop = { buy: async (_id: CharId): Promise<boolean> => false };
+/**
+ * 시아코인으로 캐릭터 열기 (main.ts 가 서버 또는 테스트 모드 흉내를 연결한다).
+ * buy: 열렸으면(이미 열었어도) true, 결과 글은 스스로 토스트한다.
+ * progress: 서버가 본 구매 조건 진행 { have, need } (071 character_progress. 못 읽었으면 null — 그때는 기기의 프로필로 본다)
+ */
+export const extraShop = {
+  buy: async (_id: CharId): Promise<boolean> => false,
+  progress: null as { have: number; need: number } | null,
+};
+
+/** 고양이를 살 수 있나 (3-5 클리어) · 아직이면 남은 조건 글 (progress.ts 의 catCondition, 서버 진행은 extraShop.progress) */
+export const catCondition = (p: DefenseProfile) => catConditionOf(p, extraShop.progress);
 
 /**
  * 잠긴 고양이의 [시아코인 100개로 열기] 버튼: 한 번 누르면 4초 동안 확인 글로 바뀌고, 그 사이 다시 누르면 산다.

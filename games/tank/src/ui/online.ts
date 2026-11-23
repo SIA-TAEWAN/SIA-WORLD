@@ -18,7 +18,7 @@ import { renderShop } from './shop';
 import { rankedName, ranking, setRanking, setTargetRanking, showRankingModal } from './rank';
 import { tankSvg } from './tankSvg';
 import { sfx } from './sfx';
-import { isTankOpen, onUnlockChange } from '../game/unlock';
+import { isTankOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, type UnlockHooks } from './unlockBtn';
 import { lockBadge, lockNote, lockTitle } from './lock';
 import { recordTarget, showResult } from './offline';
@@ -571,6 +571,7 @@ function renderRoom(id: string) {
   $(root, '#tank-lock').addEventListener('click', onUnlockClick);
   // 다른 기기에서 열고 돌아와도 자물쇠를 바로 푼다 (이 화면을 떠났으면 스스로 끈다)
   const offUnlock = onUnlockChange(() => (root.isConnected ? draw() : offUnlock()));
+  void refreshProgress();
   // 대기방에서 접속이 끊긴 사람은 잠시(ABSENT_GRACE_MS) 기다린 뒤 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
   const iv = setInterval(() => {
     const room = sess.room(id);

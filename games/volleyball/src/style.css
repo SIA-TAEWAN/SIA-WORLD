@@ -125,6 +125,8 @@ button, input { font: inherit; color: inherit; }
 .unlock-btn { font: inherit; font-size: 14px; color: var(--ink); background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 6px 14px; cursor: pointer; max-width: 100%; }
 .unlock-btn.armed { background: var(--primary); }
 .unlock-btn:disabled { opacity: 0.6; cursor: default; }
+/* 구매 조건을 아직 못 넘었을 때: 남은 조건과 지금 값 */
+.unlock-cond { margin: 0; font-size: 13px; color: var(--ink-soft); }
 /* flex: none — 대기실은 flex 열이라 화면이 낮으면 알약이 줄어 글자가 밖으로 넘쳤다 */
 .room .status { flex: none; align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
 .room .grow { flex: 1; min-height: 4px; }

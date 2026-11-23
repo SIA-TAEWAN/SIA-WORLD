@@ -19,6 +19,9 @@ import {
   UNLOCK_LABEL,
   UNLOCK_CONFIRM,
   unlockText,
+  catReady,
+  catConditionText,
+  CAT_CONDITION_SHORT,
   extraOpen,
   type FingerProfile,
   type FinishResult,
@@ -310,11 +313,11 @@ function heroCard(id: HeroId, open: boolean) {
         <span>우정 콤보: ${d.comboName}</span>
         ${tiersHtml(lv)}
         <span>필살기: ${d.specialName} <span class="soft">(${d.charge}턴)</span></span>
-        ${open || isExtraHero(id) ? '' : `<span class="soft">🔒 ${lockHint(id, true)}</span>`}</div>
+        ${open ? '' : isExtraHero(id) ? (catReady(profile) ? '' : `<span class="soft">🔒 ${catConditionText(profile)}</span>`) : `<span class="soft">🔒 ${lockHint(id, true)}</span>`}</div>
       ${
         open
           ? `<button class="btn ${max ? '' : 'primary'} small" data-up="${id}" ${max || profile.coins < cost ? 'disabled' : ''}>${max ? '최대' : `Lv↑ 🪙 ${cost}`}</button>`
-          : isExtraHero(id)
+          : isExtraHero(id) && catReady(profile)
             ? `<button class="btn primary small unlock" data-unlock="${id}"><span>🔒 ${UNLOCK_LABEL}</span></button>`
             : ''
       }
@@ -513,7 +516,7 @@ function showParty(st: StageDef | null) {
       const ok = open.includes(id);
       const at = party.indexOf(id);
       return `<button class="leader ${at >= 0 ? 'on' : ''} ${ok ? '' : 'locked'} ${isExtraHero(id) ? 'extra' : ''} ${id === focus ? 'focus' : ''}" data-id="${id}" ${ok || isExtraHero(id) ? '' : 'disabled'}>
-          <img src="${zodiacFaceUrl(id)}" alt="${HEROES[id].name}" /><b>${HEROES[id].name}</b>${ok ? (at >= 0 ? `<em>${at + 1}번</em>` : '') : `<em>🔒 ${isExtraHero(id) ? UNLOCK_LABEL : lockHint(id, false)}</em>`}
+          <img src="${zodiacFaceUrl(id)}" alt="${HEROES[id].name}" /><b>${HEROES[id].name}</b>${ok ? (at >= 0 ? `<em>${at + 1}번</em>` : '') : `<em>🔒 ${isExtraHero(id) ? (catReady(profile) ? UNLOCK_LABEL : CAT_CONDITION_SHORT) : lockHint(id, false)}</em>`}
         </button>`;
     }).join('');
     const d = HEROES[focus];
@@ -532,6 +535,11 @@ function showParty(st: StageDef | null) {
       b.addEventListener('click', () => {
         const id = b.dataset.id as HeroId;
         // 안 연 고양이: 이 칸이 '시아코인 100개로 열기' 버튼 (두 번 눌러 산다). 열리면 골라 둔다
+        // 구매 조건(3-5 클리어)을 아직 못 넘었으면 조건과 지금 값만 알린다
+        if (!open.includes(id) && !catReady(profile)) {
+          play('click');
+          return toast(catConditionText(profile));
+        }
         if (!open.includes(id))
           return void askUnlock(b, b.querySelector('em')!, id, (ok) => {
             if (ok) {

@@ -9,11 +9,12 @@ import {
   normalize,
   snapshotOf,
   CAT_PRICE,
+  catProgress,
   type UnlockAnswer,
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
-import { DEV_CAT_LOCKED, LOCAL_MODE } from './local';
+import { DEV_CAT_COND, DEV_CAT_LOCKED, LOCAL_MODE } from './local';
 import { worldSupabase } from './world';
 
 /**
@@ -77,7 +78,7 @@ const safeStore = (): Store => {
 // ---------- 테스트 모드: 이 기기에만 ----------
 
 /** owned = 테스트 모드에서 연 것으로 볼 추가 대원 (기본: 모두. ?local=1&cat=0 이면 없음) */
-export function createLocalApi(store: Store, key = 'siafinger:profile:local', ownedAtStart: readonly HeroId[] = EXTRA_HERO_IDS): FingerApi {
+export function createLocalApi(store: Store, key = 'siafinger:profile:local', ownedAtStart: readonly HeroId[] = EXTRA_HERO_IDS, catReadyAs?: boolean): FingerApi {
   // 테스트 모드의 '연 대원' (서버 없이 흉내: 열기 버튼을 누르면 바로 열린다. 새로고침하면 ?cat= 대로 처음부터)
   const owned: HeroId[] = [...ownedAtStart];
   const load = () => {
@@ -88,6 +89,8 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local', ow
       p = emptyProfile();
     }
     p.owned = [...owned];
+    // 구매 조건: 지정하지 않으면 실제 기록(3-5 클리어)으로 본다
+    if (catReadyAs !== undefined) p.catReady = catReadyAs;
     return p;
   };
   const save = (p: FingerProfile) => store.setItem(key, JSON.stringify(p));
@@ -142,6 +145,8 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local', ow
     async unlock(id) {
       if (!isExtraHero(id)) return { answer: { ok: false, reason: 'error' }, profile: null };
       if (owned.includes(id)) return { answer: { ok: false, reason: 'owned', price: CAT_PRICE }, profile: load() };
+      const prog = catProgress(load());
+      if (prog.have < prog.need) return { answer: { ok: false, reason: 'condition', price: CAT_PRICE, ...prog }, profile: load() };
       owned.push(id);
       return { answer: { ok: true, price: CAT_PRICE }, profile: load() };
     },
@@ -236,7 +241,8 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
       } catch {
         answer = { ok: false, reason: 'error' };
       }
-      if (!answer.ok && answer.reason !== 'owned') return { answer, profile: null };
+      // 조건 미달이면 진행(스테이지 기록)을 다시 받아 안내를 고친다
+      if (!answer.ok && answer.reason !== 'owned' && answer.reason !== 'condition') return { answer, profile: null };
       const profile = await call('finger_profile').then(normalize).catch(() => null);
       return { answer, profile };
     },
@@ -295,6 +301,6 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
 let api: FingerApi | null = null;
 export async function getApi(uid: string): Promise<FingerApi> {
   if (api) return api;
-  if (LOCAL_MODE) return (api = createLocalApi(safeStore(), undefined, DEV_CAT_LOCKED ? [] : EXTRA_HERO_IDS));
+  if (LOCAL_MODE) return (api = createLocalApi(safeStore(), undefined, DEV_CAT_LOCKED ? [] : EXTRA_HERO_IDS, DEV_CAT_LOCKED ? !DEV_CAT_COND : undefined));
   return (api = createSupabaseApi(await worldSupabase(), uid, safeStore()));
 }

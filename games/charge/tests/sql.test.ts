@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { METER, RUN_SPEED } from '../src/data/balance';
 import { leaderRows, stageRows, upgradeRows } from '../src/data/sqlrows';
 import { ENDLESS_SEG } from '../src/data/stages';
-import { LIMITS } from '../src/game/progress';
+import { CAT_STAGE, LIMITS } from '../src/game/progress';
 
 /**
  * 서버(061_charge.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
@@ -49,6 +49,12 @@ describe('SQL 표', () => {
 
   it('대장 검사는 공용 _check_character 를 쓴다 (075)', () => {
     expect(block('charge_start')).toContain("perform public._check_character(me, p_leader, 'charge');");
+  });
+
+  it('고양이 구매 조건(_cat_progress_charge)이 CAT_STAGE 클리어', () => {
+    const f = block('_cat_progress_charge');
+    expect(f).toContain(`public._charge_cleared(p_user, '${CAT_STAGE}')`);
+    expect(f).toContain("'need', 1");
   });
 
   it('게임 오픈 여부는 닫힌 채로 추가', () => expect(sql).toContain("('game_open:charge', 'false'::jsonb)"));

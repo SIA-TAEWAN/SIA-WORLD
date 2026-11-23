@@ -6,7 +6,7 @@ import { RaceRoom, newRoomCode } from '../net/room';
 import { hostOf } from '../net/seats';
 import { loadRankIcons, openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
-import { UNLOCK_LABEL, isCharOpen, onUnlockChange } from '../game/unlock';
+import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, unlockButtonHtml } from './unlockBtn';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, state, toast } from './app';
 import { sfx } from './sfx';
@@ -266,6 +266,8 @@ export function showWaiting() {
   // 다른 기기에서 열고 돌아와도 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
   const offUnlock = onUnlockChange(paint);
   paint();
+  // 잠긴 동안 구매 조건 진행을 다시 읽는다 (판을 하고 돌아오면 숫자가 늘어 있다)
+  void refreshProgress();
 
   $('#chars').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;

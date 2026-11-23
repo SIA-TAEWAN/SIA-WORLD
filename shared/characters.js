@@ -36,7 +36,7 @@ export const CHARACTER_PRICE = { cat: 100 };
 export const CAT_PRICE = CHARACTER_PRICE.cat;
 
 /** 추가 캐릭터를 고를 수 있는 게임 (shared/games.js 의 id). SQL _character_games 와 같게 */
-export const CHARACTER_GAMES = ['tank', 'race', 'volleyball', 'survival', 'defense', 'charge', 'finger'];
+export const CHARACTER_GAMES = ['tank', 'race', 'volleyball', 'survival', 'defense', 'charge', 'finger', 'village', 'twelve'];
 
 /** 잠긴 캐릭터 칸의 버튼 글 */
 export const unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`;
@@ -64,12 +64,31 @@ export function loadOwnedCharacters(game, force = false) {
   return ownedPromise.get(game);
 }
 
+/**
+ * 이 게임의 구매 조건 진행 → { have, need, owned: [..] } (서버 character_progress). 못 읽으면 null.
+ * 조건 값(need)은 서버가 정한다 (각 게임 마이그레이션의 _cat_progress_<game> 상수 = 게임 클라이언트 상수).
+ */
+export async function loadCharacterProgress(game) {
+  try {
+    const { supabase } = await import('./supabase.js');
+    const { data, error } = await supabase.rpc('character_progress', { p_game: game });
+    if (error || !data || typeof data !== 'object') return null;
+    return { have: Number(data.have) || 0, need: Number(data.need) || 0, owned: Array.isArray(data.owned) ? data.owned : [] };
+  } catch {
+    return null;
+  }
+}
+
+/** 조건을 넘었는지 */
+export const progressDone = (p) => !!p && p.have >= p.need;
+
 /** 고를 수 있는지: 십이지는 늘, 추가 캐릭터는 이 게임에서 연 경우만 (owned = loadOwnedCharacters(game) 결과) */
 export const isCharacterOpen = (id, owned) => isCharacterId(id) && (!needsUnlock(id) || (owned ?? []).includes(id));
 
 /**
  * 이 게임에서 캐릭터 열기 (각 게임의 캐릭터 선택 화면에서 부른다)
- * → { ok: true, siaCoins, price } | { ok: false, reason: 'owned' | 'coin' | 'login' | 'error', siaCoins?, price? }
+ * → { ok: true, siaCoins, price } | { ok: false, reason: 'owned' | 'coin' | 'condition' | 'login' | 'error', siaCoins?, price?, have?, need? }
+ *   'condition' = 이 게임의 진행 조건을 아직 못 넘음 (서버가 그 게임 기록으로 확인)
  *   'owned' 는 이미 연 것이라 열린 것으로 다루면 된다.
  */
 export async function buyCharacter(game, id) {
@@ -89,6 +108,7 @@ export function buyMessage(r, id = 'cat') {
   const price = CHARACTER_PRICE[id] ?? 0;
   if (r?.ok) return `열었어요! 남은 시아코인 ${Number(r.siaCoins ?? 0).toLocaleString('ko-KR')}개`;
   if (r?.reason === 'owned') return '이미 열었어요';
+  if (r?.reason === 'condition') return `아직 열 수 없어요 (조건 ${r.have ?? 0} / ${r.need ?? '?'})`;
   if (r?.reason === 'coin') return `시아코인이 모자라요 (${Number(r.siaCoins ?? 0).toLocaleString('ko-KR')} / ${price})`;
   if (r?.reason === 'login') return '로그인이 필요해요';
   return '열지 못했어요. 잠시 후 다시 시도해 주세요';

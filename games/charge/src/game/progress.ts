@@ -95,6 +95,16 @@ export const setOwnedExtras = (ids: readonly string[]) => {
  * 선택 화면·시작 검사·저장된 대장 복원이 모두 leadersOf 를 거쳐 여기를 본다.
  */
 export const extraOpen = (_p: ChargeProfile, id: LeaderId) => ownedExtras.includes(id);
+
+/** 고양이 구매 조건: 이 스테이지를 클리어 (서버 075 의 _cat_progress_charge 와 같다, tests/sql.test.ts 가 대조) */
+export const CAT_STAGE = '3-5';
+/** 고양이를 살 수 있는가 (조건만. 서버 buy_character 가 같은 기록으로 다시 확인한다) */
+export const catReady = (p: ChargeProfile) => cleared(p, CAT_STAGE);
+/** 잠긴 동안 보여 줄 남은 조건 글: "3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-4까지" */
+export function catConditionText(p: ChargeProfile): string {
+  const far = [...STAGES].reverse().find((s) => cleared(p, s.id));
+  return `${CAT_STAGE} 스테이지를 클리어하면 열 수 있어요 · ${far ? `지금 ${far.id}까지` : '아직 클리어한 스테이지가 없어요'}`;
+}
 /** 고를 수 있는 대장: 진행으로 열린 십이지 + 열린 추가 캐릭터 (LEADERS 순서) */
 export const leadersOf = (p: ChargeProfile): LeaderId[] => [
   ...unlockedLeaders((id) => cleared(p, id)),

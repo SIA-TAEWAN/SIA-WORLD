@@ -13,7 +13,7 @@ import { newVillage, refresh, type Building, type VillageState } from '../game/r
  *   - 건물 id 는 'show-000' … 처럼 놓인 순서대로 (마을 회관이 show-000). 주민의 일터(building)는 이 id 를 가리킨다
  *   - 모두 다 지어진 상태(done)이고 보관함에 든 것이 없다. 겹치지 않고 땅 안에 있다
  *   - 종류마다 그 마을 레벨에서 가질 수 있는 개수(maxCount)를 꽉 채운다
- *   - 주민 12명이 모두 이사 와 있고, 친밀도는 5단계 · 선물은 받은 것으로 · 일터가 있는 주민은 일터에 배치
+ *   - 주민 13명(십이지 + 고양이)이 모두 이사 와 있고, 친밀도는 5단계 · 선물은 받은 것으로 · 일터가 있는 주민은 일터에 배치
  *
  * 서버로 보낼 때 (관리자 [전시 마을로 꾸미기] → village_admin_set_state, supabase/migrations/062_village_admin.sql):
  *   - 이 함수가 돌려준 VillageState 를 그대로 jsonb 로 보낸다. 서버가 보는 것은
@@ -46,7 +46,7 @@ const MAP = [
   'g2 LB LB .. .. LB .. .. m6 == == m7 sw sw sw .. .. QR QR sw', // 3
   'sw sw sw .. == sw sw sw fl == == fl .. .. .. == sw sw sw ..', // 4
   'HS HS HS .. == HS HS .. m8 == == m9 .. tr fl == fl g7 fl tr', // 5
-  'g9 .. .. .. == .. .. wl fl == == fl .. pn pn == PV ## .. fl', // 6
+  'g9 .. .. .. == .. .. wl fl == == fl gc pn pn == PV ## .. fl', // 6
   'HS HS .. ga == HS HS HS m0 == == m1 .. fl .. == ## ## .. ..', // 7
   '.. .. .. ln == .. .. .. == == == == .. .. bn == .. ln bn tr', // 8
   '.. HS HS .. == JR JR JR == HL ## == g4 m2 m3 == g8 .. m4 m5', // 9
@@ -67,7 +67,7 @@ const CODES: Record<string, BuildingType> = {
   PV: 'pavilion', FE: 'feast', SH: 'shrine',
   tr: 'tree', hy: 'haystack', fl: 'flower', sc: 'scarecrow', sw: 'stonewall', bn: 'bench', ln: 'lantern', wl: 'well', jg: 'jangseung', sd: 'sotdae', pn: 'pond', tw: 'stonetower',
   '==': 'road',
-  // 주민 선물: g0 … gb = 십이지 순서 (쥐 … 돼지)
+  // 주민 선물: g0 … gb = 십이지 순서 (쥐 … 돼지), gc = 고양이
   ...Object.fromEntries(RESIDENT_IDS.map((id, i) => [`g${i.toString(16)}`, `gift_${id}`])),
   // 기념물: m0 … mf = monuments.ts 의 순서
   ...Object.fromEntries(MONUMENTS.map((m, i) => [`m${i.toString(16)}`, m.id])),

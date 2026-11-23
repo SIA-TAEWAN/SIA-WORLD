@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { clearCoins, endlessCoins, failCoins, firstCoins } from '../src/data/growth';
 import { createLocalApi } from '../src/net/api';
 import { readFileSync } from 'node:fs';
-import { CAT_PRICE, UNLOCK_LABEL, applyReport, checkStart, emptyProfile, leadersOf, regionOpen, setOwnedExtras, stageOpen, whyText, type RunReport } from '../src/game/progress';
+import { CAT_PRICE, CAT_STAGE, UNLOCK_LABEL, applyReport, catConditionText, catReady, checkStart, emptyProfile, leadersOf, regionOpen, setOwnedExtras, stageOpen, whyText, type RunReport } from '../src/game/progress';
 import { STAGES } from '../src/data/stages';
 
 const report = (o: Partial<RunReport>): RunReport => ({
@@ -81,5 +81,16 @@ describe('판 밖 기록', () => {
     expect(Number(sql.match(/when 'cat' then (\d+)/)?.[1])).toBe(CAT_PRICE);
     expect(js).toContain("unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`");
     expect(UNLOCK_LABEL).toBe(`시아코인 ${CAT_PRICE}개로 열기`);
+  });
+
+  it('고양이 구매 조건: 3-5 클리어, 남은 조건 글', () => {
+    const p = emptyProfile();
+    expect(CAT_STAGE).toBe('3-5');
+    expect(catReady(p)).toBe(false);
+    expect(catConditionText(p)).toBe('3-5 스테이지를 클리어하면 열 수 있어요 · 아직 클리어한 스테이지가 없어요');
+    for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5', '2-1', '2-2', '2-3', '2-4']) p.stages[id] = 2;
+    expect(catConditionText(p)).toBe('3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-4까지');
+    p.stages['3-5'] = 1;
+    expect(catReady(p)).toBe(true);
   });
 });
