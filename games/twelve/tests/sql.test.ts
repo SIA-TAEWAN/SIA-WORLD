@@ -82,7 +82,7 @@ describe('SQL 규칙', () => {
 
   it('화면이 부르는 함수는 security definer + search_path + 로그인한 사람만', () => {
     const rpcs = sql.match(/create or replace function public\.twelve_\w+/g)!.map((s) => s.split('public.')[1]);
-    expect(rpcs.sort()).toEqual(['twelve_buy', 'twelve_claim', 'twelve_enhance', 'twelve_equip', 'twelve_finish', 'twelve_lock', 'twelve_scrap', 'twelve_sell', 'twelve_set_hero', 'twelve_start', 'twelve_state', 'twelve_unequip']);
+    expect(rpcs.sort()).toEqual(['twelve_buy', 'twelve_claim', 'twelve_enhance', 'twelve_equip', 'twelve_finish', 'twelve_lock', 'twelve_scrap', 'twelve_sell', 'twelve_set_hero', 'twelve_start', 'twelve_state', 'twelve_tower_end', 'twelve_tower_floor', 'twelve_tower_start', 'twelve_unequip']);
     for (const name of rpcs) {
       expect(fn(name)).toContain('security definer set search_path = public');
       expect(fn(name)).toContain("raise exception 'need login'");
@@ -95,7 +95,7 @@ describe('SQL 규칙', () => {
 
   it('표는 RLS 를 켜고 직접 쓰지 못한다', () => {
     const tables = sql.match(/create table if not exists public\.(twelve_\w+)/g)!.map((s) => s.split('public.')[1]);
-    expect(tables.sort()).toEqual(['twelve_codex', 'twelve_items', 'twelve_keys', 'twelve_maps', 'twelve_pity', 'twelve_profiles', 'twelve_runs', 'twelve_tower']);
+    expect(tables.sort()).toEqual(['twelve_codex', 'twelve_items', 'twelve_keys', 'twelve_maps', 'twelve_pity', 'twelve_profiles', 'twelve_runs', 'twelve_tower', 'twelve_tower_runs']);
     for (const t of tables) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);
       expect(sql).toContain(`revoke all on public.${t} from anon, authenticated;`);

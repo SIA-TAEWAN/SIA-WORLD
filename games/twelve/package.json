@@ -10,7 +10,8 @@
     "test": "vitest run",
     "gen": "vite-node scripts/gen-maps.ts",
     "sqlgen": "vite-node scripts/sqlgen.ts",
-    "pace": "vite-node scripts/pace.ts"
+    "pace": "vite-node scripts/pace.ts",
+    "tower": "vite-node scripts/tower.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

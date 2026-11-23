@@ -43,6 +43,8 @@ export interface MapDef {
   boss?: Cell;
   /** 별 기준 시간 (초) */
   par: number;
+  /** 끝없는 탑의 층 (data/tower.ts 가 만든 방. 요괴 배율은 층으로 정하고, 숨은 상자가 없다) */
+  tower?: number;
 }
 
 /** 준비된 맵 (없는 지형은 지도에 '준비 중') */

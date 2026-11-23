@@ -87,16 +87,17 @@ export function mapLevel(region: number, no: number, mode: Mode): number {
   return mode === 'hard' ? Math.round(66 + f * 33) : Math.round(1 + f * 64);
 }
 
+/** 권장 레벨 → 요괴 배율 (체력·공격·방어·경험치·엽전). count = 무리마다 요괴 수 배율. 끝없는 탑(data/tower.ts)도 이 식을 쓴다 */
+export const levelScale = (lv: number, count = 1) => ({
+  level: lv,
+  hp: 1 + 0.22 * (lv - 1),
+  atk: 1 + 0.2 * (lv - 1),
+  def: 0.8 * (lv - 1),
+  reward: 1 + 0.15 * (lv - 1),
+  /** 무리마다 요괴 수 배율 */
+  count,
+});
+export type Scale = ReturnType<typeof levelScale>;
+
 /** 맵 요괴 배율 (권장 레벨 → 체력·공격·경험치·엽전). 어려움은 수도 늘어난다 */
-export function mapScale(region: number, no: number, mode: Mode) {
-  const lv = mapLevel(region, no, mode);
-  return {
-    level: lv,
-    hp: 1 + 0.22 * (lv - 1),
-    atk: 1 + 0.2 * (lv - 1),
-    def: 0.8 * (lv - 1),
-    reward: 1 + 0.15 * (lv - 1),
-    /** 무리마다 요괴 수 배율 */
-    count: mode === 'hard' ? 1.3 : 1,
-  };
-}
+export const mapScale = (region: number, no: number, mode: Mode): Scale => levelScale(mapLevel(region, no, mode), mode === 'hard' ? 1.3 : 1);

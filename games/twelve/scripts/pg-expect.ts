@@ -1,6 +1,6 @@
 /**
  * 서버 확인용 기대값: `npx vite-node scripts/pg-expect.ts > expect.json`
- * 정해 둔 순서(맵 깨기 · 쓰러지기 · 상점 · 대장간 · 가방)를 기기 규칙(src/game/progress.ts · rules.ts · drops.ts)으로 돌려,
+ * 정해 둔 순서(맵 깨기 · 쓰러지기 · 상점 · 대장간 · 가방 · 끝없는 탑)를 기기 규칙(src/game/progress.ts · rules.ts · drops.ts · tower.ts)으로 돌려,
  * 단계마다의 기록을 JSON 으로 낸다. scripts/pg-check.mjs 가 같은 순서를 078_twelve.sql 의 RPC 로 돌려 맞춰 본다.
  * 장비 id 는 서버와 기기가 다르게 붙으므로, 장비는 '번호 순서로 몇 번째인지'로 가리킨다.
  */
@@ -8,6 +8,7 @@ import { mapKillMax, mapOf } from '../src/data/maps';
 import { roll } from '../src/game/drops';
 import { applyReport, bagCount, emptyProfile, type FinishResult, type RunReport, type TwelveProfile } from '../src/game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../src/game/rules';
+import { applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, type TowerFloorResult, type TowerRun } from '../src/game/tower';
 
 const p = emptyProfile();
 const steps: unknown[] = [];
@@ -32,6 +33,8 @@ function canon(q: TwelveProfile) {
     keys: structuredClone(q.keys),
     pity: structuredClone(q.pity),
     codex: [...q.codex].sort(),
+    // 날짜(at)는 맞춰 보지 않는다
+    tower: q.tower ? { floor: q.tower.floor, time: q.tower.time, level: q.tower.level, hero: q.tower.hero, cps: { ...q.tower.cps } } : null,
   };
 }
 const canonResult = (r: FinishResult) => ({ ...r, siaCoin: undefined, items: r.items.map((it) => ({ base: it.base, box: it.box })) });
@@ -103,5 +106,67 @@ rpc('twelve_claim', { items: [] }, claim(p, []));
 }
 rpc('twelve_claim', { items: [] }, claim(p, []));
 
-const rolls = [[1, 1, 1], [123456789, 12, 1], [2147483647, 7, 250], [0, 3, 2]].map(([s, t, n]) => ({ seed: s, tag: t, n, value: roll(s, t, n) }));
+// 8) 끝없는 탑: 시작 검사 → 층 보고(검사 · 보상 · 기록 · 체크포인트) → 끝. sec = 앞 보고부터 서버 시계로 흐른 시간
+let now = 1_700_000_000_000;
+let tw: TowerRun | null = null;
+let tn = 0;
+function towerStart(floor: number, seed: number) {
+  const why = checkTowerStart(p, floor, 'rat');
+  if (!why) {
+    if (tw) tw.done = true;
+    tw = beginTower(p, floor, 'rat', `t${tn++}`, seed, now);
+  }
+  steps.push({ op: 'tower_start', floor, seed, why, base: why ? 0 : tw!.base, state: canon(p) });
+}
+const canonFloor = (r: TowerFloorResult) => ({ ...r, siaCoin: undefined, items: r.items.map((it) => ({ base: it.base, box: it.box })) });
+/** time = 이 판에서 지금까지 논 시간 */
+function towerFloor(floor: number, time: number, sec: number, potions: number[][] | null = null) {
+  const at = now + sec * 1000;
+  const why = checkTowerFloor(tw!, floor, time, potions ?? undefined, at);
+  let result: unknown = null;
+  if (!why) {
+    now = at;
+    result = canonFloor(applyTowerFloor(p, tw!, floor, time, potions ?? undefined, at));
+  }
+  steps.push({ op: 'tower_floor', floor, time, sec, potions, why, result, state: canon(p) });
+}
+function towerEnd(potions: number[][] | null = null) {
+  const why = endTower(p, tw!, potions ?? undefined);
+  steps.push({ op: 'tower_end', potions, why, state: canon(p) });
+}
+/** n 층을 sec 초씩 걸려 오른다 */
+const towerClimb = (n: number, sec: number) => {
+  for (let i = 0; i < n; i++) towerFloor(tw!.floor + 1, tw!.played + sec, sec);
+};
+towerStart(2, 1);
+towerStart(11, 1);
+towerStart(1, 4242);
+towerFloor(2, 20, 20);
+towerFloor(1, 3, 20);
+towerFloor(1, 30, 10);
+towerClimb(2, 20);
+towerFloor(3, 60, 20, [[1, 0, 0], [1, 0, 0]]);
+towerClimb(7, 20);
+towerFloor(11, 220, 20, [[1, 0], [0, 0, 0]]);
+towerEnd([[0, 1, 0], [0, 0, 0]]);
+towerFloor(11, 220, 20);
+towerEnd();
+// 체크포인트(11층)에서 시작: 10층까지의 시간이 더해진다
+towerStart(21, 2);
+towerStart(11, 99);
+towerClimb(10, 15);
+towerEnd();
+// 더 빨리 10층: 체크포인트 시간만 줄어든다. 끝내지 않고 새 판을 시작하면 앞 판은 끝난다
+towerStart(1, 31337);
+towerClimb(12, 10);
+towerStart(21, 5);
+towerClimb(5, 12);
+// 보상 판정을 넉넉히 (가방이 꽉 차 있어 장비는 보관함으로 간다)
+for (let k = 0; k < 6; k++) {
+  towerStart(1, 1000 + k * 7717);
+  towerClimb(20, 10);
+}
+towerEnd();
+
+const rolls = [[1, 1, 1], [123456789, 12, 1], [2147483647, 7, 250], [0, 3, 2], [4242, 25, 10], [99, 27, 20]].map(([s, t, n]) => ({ seed: s, tag: t, n, value: roll(s, t, n) }));
 console.log(JSON.stringify({ first: canon(emptyProfile()), rolls, steps }));

@@ -5,8 +5,9 @@
 --   twelve_keys     : 모드별로 열쇠를 얻은 지형
 --   twelve_pity     : 확정 보정 카운터 (모드·지형별: 레어 없이 잡은 정예 수·보스 수, 열쇠 없이 잡은 보스 수)
 --   twelve_codex    : 얻어 본 레어·별 보상 ('아직 없는 것부터', 지형 화면의 레어 목록)
---   twelve_tower    : 끝없는 탑 최고 층 (자리만. 탑은 8단계에서 채운다. 누구나 읽기 → twelve_tower_ranking)
+--   twelve_tower    : 끝없는 탑 최고 기록 (층 · 그 층까지 걸린 시간 · 그때 레벨·대원 · 날짜 · 체크포인트. 누구나 읽기 → twelve_tower_ranking)
 --   twelve_runs     : 진행 중인 판 (시작 시각·드랍 씨앗·결과. 권한 없음: 함수로만 읽고 쓴다)
+--   twelve_tower_runs : 진행 중인 끝없는 탑 판 (마지막으로 깬 층 · 논 시간 · 마지막 보고 시각. 권한 없음)
 -- 대원은 따로 저장하지 않는다: 처음 3종 + 지형 보스(1~9지형)를 처음 잡은 기록(twelve_maps)에서 나온다. 고양이는 071 의 owned_characters.
 --
 -- 전투는 기기에서만 돌기 때문에 서버는 보고된 값을 그대로 믿지 않는다 (시아돌격대 061 과 같은 방식):
@@ -19,7 +20,10 @@
 --   · 표와 기준 값: `-- <gen:이름>` ~ `-- </gen:이름>` 사이는 games/twelve 의 `npm run sqlgen` 이 src/data 에서 만들어 넣는다.
 --     손으로 고치지 말 것. tests/sql.test.ts 가 대조한다.
 --   · 규칙: twelve_finish = src/game/progress.ts 의 checkReport · applyReport, 드랍 = src/game/drops.ts,
---     상점·대장간·착용 = src/game/rules.ts. 한쪽을 바꾸면 다른 쪽도 바꾼다 (scripts/pg-check.mjs 가 두 쪽 결과를 맞춰 본다).
+--     상점·대장간·착용 = src/game/rules.ts, 끝없는 탑(twelve_tower_start · _floor · _end) = src/game/tower.ts.
+--     한쪽을 바꾸면 다른 쪽도 바꾼다 (scripts/pg-check.mjs 가 두 쪽 결과를 맞춰 본다).
+-- 끝없는 탑: 층을 깰 때마다 twelve_tower_floor 로 보고한다. 앞 보고부터 서버가 잰 시간이 층에서 논 시간보다 짧거나
+--   층 최소 시간보다 빨리 올라간 기록은 받지 않는다. 보상(엽전·강화석·장비)은 판 씨앗과 층 번호로 서버가 계산한다.
 -- 시간 단위는 모두 초.
 
 -- ---------- 1. 표 ----------
@@ -122,14 +126,16 @@ create policy twelve_codex_read_own on public.twelve_codex for select using (aut
 revoke all on public.twelve_codex from anon, authenticated;
 grant select on public.twelve_codex to authenticated;
 
--- 끝없는 탑: 각자 최고 기록 하나 (층 · 그 층까지 걸린 시간 · 그때 레벨·대원). 누구나 읽기, 쓰기는 함수만 (8단계)
+-- 끝없는 탑: 각자 최고 기록 하나 (층 · 그 층까지 걸린 시간 · 그때 레벨·대원). 누구나 읽기, 쓰기는 함수만
+-- 한 번 들어가면 1층을 못 깨도 줄이 생긴다 (best_floor 0). cps = 체크포인트: { "10": 보스 층을 깬 가장 빠른 누적 시간, "20": … }
 create table if not exists public.twelve_tower (
   user_id uuid primary key references public.profiles(id) on delete cascade,
   best_floor int not null default 0 check (best_floor >= 0),
   best_time int not null default 0 check (best_time >= 0),
   level int not null default 1,
   hero text not null default 'rat',
-  achieved_at timestamptz not null default now()
+  achieved_at timestamptz not null default now(),
+  cps jsonb not null default '{}'::jsonb
 );
 alter table public.twelve_tower enable row level security;
 drop policy if exists twelve_tower_read on public.twelve_tower;
@@ -162,6 +168,27 @@ alter table public.twelve_runs enable row level security;
 revoke all on public.twelve_runs from anon, authenticated;
 create index if not exists twelve_runs_user_idx on public.twelve_runs (user_id, started_at desc);
 
+-- 진행 중인 끝없는 탑 판. floor = 마지막으로 깬 층, played = 이 판에서 논 시간, base_time = 체크포인트에서 시작했을 때 더하는 시간
+create table if not exists public.twelve_tower_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  hero text not null,
+  seed int not null,
+  coin_pct int not null default 0,
+  start_floor int not null,
+  floor int not null,
+  base_time int not null default 0,
+  played int not null default 0,
+  started_at timestamptz not null default now(),
+  -- 마지막 보고(처음에는 시작) 시각
+  floor_at timestamptz not null default now(),
+  finished_at timestamptz
+);
+alter table public.twelve_tower_runs enable row level security;
+-- 정책 없음 + 권한 없음: 함수(security definer)로만 읽고 쓴다
+revoke all on public.twelve_tower_runs from anon, authenticated;
+create index if not exists twelve_tower_runs_user_idx on public.twelve_tower_runs (user_id, started_at desc);
+
 -- ---------- 2. 기준 값 · 표 (npm run sqlgen 이 채운다) ----------
 
 create or replace function public._twelve_const(p_name text) returns numeric
@@ -192,6 +219,29 @@ language sql immutable as $$
     when 'bag_max' then 80
     when 'potion_max' then 20
     when 'max_plus' then 9
+    when 'tower_cp' then 10
+    when 'tower_elite_every' then 5
+    when 'tower_min_time' then 4
+    when 'tower_boss_min_time' then 8
+    when 'tower_coin_base' then 20
+    when 'tower_coin_step' then 6
+    when 'tower_coin_elite' then 2
+    when 'tower_coin_boss' then 5
+    when 'tower_stone_rate' then 1000
+    when 'tower_stone_elite' then 1
+    when 'tower_stone_elite_step' then 50
+    when 'tower_stone_boss' then 2
+    when 'tower_stone_boss_step' then 10
+    when 'tower_stone_max' then 12
+    when 'tower_gear' then 400
+    when 'tower_acc_elite' then 1500
+    when 'tower_acc_boss' then 4000
+    when 'tower_rare_elite' then 100
+    when 'tower_rare_elite_step' then 2
+    when 'tower_rare_elite_max' then 500
+    when 'tower_rare_boss' then 800
+    when 'tower_rare_boss_step' then 10
+    when 'tower_rare_boss_max' then 3000
 -- </gen:const>
   end
 $$;
@@ -954,7 +1004,9 @@ language sql stable security definer set search_path = public as $$
         from public.twelve_pity t where t.user_id = p_user and t.mode = 'normal' and t.elite + t.boss + t.key > 0), '{}'::jsonb),
       'hard', coalesce((select jsonb_object_agg(t.region::text, jsonb_build_object('elite', t.elite, 'boss', t.boss, 'key', t.key))
         from public.twelve_pity t where t.user_id = p_user and t.mode = 'hard' and t.elite + t.boss + t.key > 0), '{}'::jsonb)),
-    'codex', coalesce((select jsonb_agg(c.base order by c.got_at, c.base) from public.twelve_codex c where c.user_id = p_user), '[]'::jsonb)
+    'codex', coalesce((select jsonb_agg(c.base order by c.got_at, c.base) from public.twelve_codex c where c.user_id = p_user), '[]'::jsonb),
+    'tower', (select jsonb_build_object('floor', t.best_floor, 'time', t.best_time, 'level', t.level, 'hero', t.hero, 'at', t.achieved_at, 'cps', t.cps)
+      from public.twelve_tower t where t.user_id = p_user)
   )
   from public.twelve_profiles p where p.user_id = p_user
 $$;
@@ -1487,7 +1539,209 @@ end $$;
 revoke all on function public.twelve_buy(text, int) from public, anon;
 grant execute on function public.twelve_buy(text, int) to authenticated;
 
--- ---------- 9. 랭킹 (PRD '랭킹과 시아코인') ----------
+-- ---------- 9. 끝없는 탑 (src/game/tower.ts · src/data/tower.ts) ----------
+
+-- 층의 종류: 보스 층(tower_cp 마다) · 정예 층(tower_elite_every 마다) · 보통 층
+create or replace function public._twelve_tower_kind(p_floor int) returns text
+language sql immutable as $$
+  select case when p_floor % public._twelve_const('tower_cp')::int = 0 then 'boss'
+    when p_floor % public._twelve_const('tower_elite_every')::int = 0 then 'elite' else 'normal' end
+$$;
+revoke all on function public._twelve_tower_kind(int) from public, anon, authenticated;
+
+-- 쓴 물약 [[소,중,대],[소,중,대]] → 수 6개 (없으면 모두 0). 모양이 틀리면 'bad potions'
+create or replace function public._twelve_potion_grid(p_used jsonb) returns int[]
+language plpgsql immutable as $$
+declare cap int := public._twelve_const('potion_max')::int; used int[];
+begin
+  if p_used is null or jsonb_typeof(p_used) = 'null' then return array[0, 0, 0, 0, 0, 0]; end if;
+  if jsonb_typeof(p_used) <> 'array' or jsonb_array_length(p_used) <> 2
+    or jsonb_typeof(p_used -> 0) <> 'array' or jsonb_array_length(p_used -> 0) <> 3
+    or jsonb_typeof(p_used -> 1) <> 'array' or jsonb_array_length(p_used -> 1) <> 3 then raise exception 'bad potions'; end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_used) a, jsonb_array_elements(a) e
+    where jsonb_typeof(e) <> 'number' or e::text::numeric <> floor(e::text::numeric) or e::text::numeric < 0 or e::text::numeric > cap
+  ) then raise exception 'bad potions'; end if;
+  select array_agg((e.value)::text::int order by a.ord, e.ord) into used
+  from jsonb_array_elements(p_used) with ordinality a(value, ord), jsonb_array_elements(a.value) with ordinality e(value, ord);
+  return used;
+end $$;
+revoke all on function public._twelve_potion_grid(jsonb) from public, anon, authenticated;
+
+-- 쓴 물약을 뺀다
+create or replace function public._twelve_use_potions(p_user uuid, p_used int[]) returns void
+language plpgsql security definer set search_path = public as $$
+declare pots int[]; i int;
+begin
+  select array_agg((e.value)::text::int order by a.ord, e.ord) into pots
+  from public.twelve_profiles p, jsonb_array_elements(p.potions) with ordinality a(value, ord), jsonb_array_elements(a.value) with ordinality e(value, ord)
+  where p.user_id = p_user;
+  for i in 1..6 loop pots[i] := greatest(0, pots[i] - p_used[i]); end loop;
+  update public.twelve_profiles set
+    potions = jsonb_build_array(jsonb_build_array(pots[1], pots[2], pots[3]), jsonb_build_array(pots[4], pots[5], pots[6])), updated_at = now()
+  where user_id = p_user;
+end $$;
+revoke all on function public._twelve_use_potions(uuid, int[]) from public, anon, authenticated;
+
+-- 탑에 들어간다. p_floor = 1 또는 깬 보스 층의 다음 층(11 · 21 · …) → { run, seed, base }
+-- 처음부터 누구나 들어갈 수 있고, 들어가면 1층을 못 깨도 기록(0층)이 생겨 랭킹에 보인다. 한 번에 한 판 (앞 판은 여기서 끝난다)
+create or replace function public.twelve_tower_start(p_floor int, p_hero text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  pr public.twelve_profiles;
+  cp int := public._twelve_const('tower_cp')::int;
+  v_cps jsonb;
+  v_base int := 0;
+  v_seed int;
+  v_pct int;
+  rid uuid;
+begin
+  if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
+  if p_floor is null or p_floor < 1 or (p_floor - 1) % cp <> 0 then raise exception 'bad floor'; end if;
+  pr := public._twelve_profile_row(me);
+  if p_floor > 1 then
+    select t.cps into v_cps from public.twelve_tower t where t.user_id = me;
+    if v_cps is null or not (v_cps ? (p_floor - 1)::text) then raise exception 'floor locked'; end if;
+    v_base := (v_cps ->> (p_floor - 1)::text)::int;
+  end if;
+  perform public._twelve_check_hero(me, p_hero);
+  if pr.eq_weapon is null then raise exception 'no weapon'; end if;
+  insert into public.twelve_tower (user_id, level, hero) values (me, pr.level, p_hero) on conflict (user_id) do nothing;
+  select coalesce(max(t.coin_pct), 0) into v_pct from public.twelve_items i join public._twelve_items() t on t.base = i.base
+  where i.user_id = me and i.id = pr.eq_acc;
+  update public.twelve_tower_runs set finished_at = now() where user_id = me and finished_at is null;
+  v_seed := floor(random() * 2147483647)::int;
+  insert into public.twelve_tower_runs (user_id, hero, seed, coin_pct, start_floor, floor, base_time)
+  values (me, p_hero, v_seed, v_pct, p_floor, p_floor - 1, v_base) returning id into rid;
+  return jsonb_build_object('run', rid, 'seed', v_seed, 'base', v_base);
+end $$;
+revoke all on function public.twelve_tower_start(int, text) from public, anon;
+grant execute on function public.twelve_tower_start(int, text) to authenticated;
+
+-- 깬 층 보고. p_time = 이 판에서 지금까지 논 시간(초), p_potions = 그 층에서 쓴 물약
+-- → { state, result: { floor, coins, stones, items: [{id, base, box}], siaCoin, time, best } }
+-- 보상은 그 자리에서 받는다 (쓰러져도 남는다). 경험치는 없다. 판정 종류 번호는 src/game/tower.ts 의 TOWER_TAG, 순번은 층
+create or replace function public.twelve_tower_floor(p_run uuid, p_floor int, p_time int, p_potions jsonb default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  rn public.twelve_tower_runs;
+  pr public.twelve_profiles;
+  tw public.twelve_tower;
+  kind text; ft int; elapsed numeric; used int[];
+  tier int; seed bigint;
+  n_coins bigint; n_stones int := 0; items jsonb := '[]'::jsonb;
+  gear text[]; accs text[]; rare_list text[]; n_reg int; rate numeric; base text;
+  total int; best boolean; got_coin boolean := false;
+begin
+  if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
+  select * into rn from public.twelve_tower_runs where id = p_run for update;
+  if not found or rn.user_id <> me then raise exception 'no run'; end if;
+  if rn.finished_at is not null then raise exception 'already finished'; end if;
+
+  -- 1) 검사 (src/game/tower.ts 의 checkTowerFloor)
+  if p_floor is null or p_floor <> rn.floor + 1 then raise exception 'bad floor'; end if;
+  if p_time is null then raise exception 'bad time'; end if;
+  ft := p_time - rn.played;
+  if ft > public._twelve_const('max_time') then raise exception 'bad time'; end if;
+  used := public._twelve_potion_grid(p_potions);
+  kind := public._twelve_tower_kind(p_floor);
+  if ft < public._twelve_const(case when kind = 'boss' then 'tower_boss_min_time' else 'tower_min_time' end) then raise exception 'too early'; end if;
+  elapsed := extract(epoch from (now() - rn.floor_at));
+  if elapsed < ft - public._twelve_const('time_slack') then raise exception 'too early'; end if;
+  if elapsed > public._twelve_const('max_age') then raise exception 'too late'; end if;
+
+  -- 2) 보상 (applyTowerFloor): 쓴 물약 → 강화석 → 일반 장비 → 장신구 → 레어 → 엽전
+  pr := public._twelve_profile_row(me);
+  perform public._twelve_use_potions(me, used);
+  tier := public._twelve_shop_tier(me);
+  seed := rn.seed;
+  n_coins := (public._twelve_const('tower_coin_base') + public._twelve_const('tower_coin_step') * p_floor)
+    * (case kind when 'boss' then public._twelve_const('tower_coin_boss') when 'elite' then public._twelve_const('tower_coin_elite') else 1 end);
+  n_coins := floor(n_coins * (100 + rn.coin_pct) / 100.0);
+  if kind = 'boss' then
+    n_stones := least(public._twelve_const('tower_stone_max'), public._twelve_const('tower_stone_boss') + p_floor / public._twelve_const('tower_stone_boss_step')::int)::int;
+    rate := least(public._twelve_const('tower_rare_boss_max'), public._twelve_const('tower_rare_boss') + public._twelve_const('tower_rare_boss_step') * p_floor);
+  elsif kind = 'elite' then
+    n_stones := least(public._twelve_const('tower_stone_max'), public._twelve_const('tower_stone_elite') + p_floor / public._twelve_const('tower_stone_elite_step')::int)::int;
+    rate := least(public._twelve_const('tower_rare_elite_max'), public._twelve_const('tower_rare_elite') + public._twelve_const('tower_rare_elite_step') * p_floor);
+  else
+    rate := 0;
+  end if;
+  if kind = 'normal' then
+    if public._twelve_roll(seed, 20, p_floor) % 10000 < public._twelve_const('tower_stone_rate') then n_stones := n_stones + 1; end if;
+    if public._twelve_roll(seed, 21, p_floor) % 10000 < public._twelve_const('tower_gear') then
+      gear := public._twelve_gear();
+      base := gear[(public._twelve_roll(seed, 22, p_floor) % array_length(gear, 1))::int + 1] || tier::text;
+      items := items || public._twelve_grant(me, base);
+    end if;
+  elsif public._twelve_roll(seed, 23, p_floor) % 10000 < public._twelve_const(case when kind = 'boss' then 'tower_acc_boss' else 'tower_acc_elite' end) then
+    accs := public._twelve_acc();
+    base := 'c-' || accs[(public._twelve_roll(seed, 24, p_floor) % array_length(accs, 1))::int + 1] || '-' || tier::text;
+    items := items || public._twelve_grant(me, base);
+  end if;
+  if public._twelve_roll(seed, 25, p_floor) % 10000 < rate then
+    -- 레어: 연 지형(보통 → 어려움, 지형 번호 순서) 가운데 하나의 레어 목록에서
+    select count(*) into n_reg from public._twelve_regions() r
+    where exists (select 1 from public._twelve_maps() m where m.mode = r.mode and m.region = r.region) and public._twelve_region_open(me, r.mode, r.region);
+    select t.rares into rare_list from (
+      select r.rares, row_number() over (order by (r.mode = 'hard'), r.region) as ord from public._twelve_regions() r
+      where exists (select 1 from public._twelve_maps() m where m.mode = r.mode and m.region = r.region) and public._twelve_region_open(me, r.mode, r.region)
+    ) t where t.ord = (public._twelve_roll(seed, 26, p_floor) % n_reg) + 1;
+    base := rare_list[(public._twelve_roll(seed, 27, p_floor) % array_length(rare_list, 1))::int + 1];
+    insert into public.twelve_codex (user_id, base) values (me, base) on conflict do nothing;
+    items := items || public._twelve_grant(me, base);
+  end if;
+  update public.twelve_profiles set coins = coins + n_coins, stones = stones + n_stones, updated_at = now() where user_id = me;
+  update public.twelve_tower_runs set floor = p_floor, played = p_time, floor_at = now() where id = rn.id;
+
+  -- 3) 기록: 최고 층 → 그 층까지 걸린 시간. 보스 층은 체크포인트(가장 빠른 누적 시간)
+  total := rn.base_time + p_time;
+  insert into public.twelve_tower (user_id, level, hero) values (me, pr.level, rn.hero) on conflict (user_id) do nothing;
+  select * into tw from public.twelve_tower where user_id = me for update;
+  best := p_floor > tw.best_floor or (p_floor = tw.best_floor and total < tw.best_time);
+  update public.twelve_tower set
+    best_floor = case when best then p_floor else best_floor end,
+    best_time = case when best then total else best_time end,
+    level = case when best then pr.level else level end,
+    hero = case when best then rn.hero else hero end,
+    achieved_at = case when best then now() else achieved_at end,
+    cps = case when kind = 'boss' then jsonb_set(cps, array[p_floor::text], to_jsonb(least(coalesce((cps ->> p_floor::text)::int, total), total))) else cps end
+  where user_id = me;
+
+  -- 시아코인: 보스 층(10층마다)을 깰 때 1개 (중복·15초·하루 한도는 _grant_sia_coin 안에서)
+  if kind = 'boss' then
+    got_coin := public._grant_sia_coin(me, 'twelve', p_run::text || ':' || p_floor::text);
+  end if;
+
+  return jsonb_build_object(
+    'state', public._twelve_state_json(me),
+    'result', jsonb_build_object('floor', p_floor, 'coins', n_coins, 'stones', n_stones, 'items', items, 'siaCoin', got_coin, 'time', total, 'best', best)
+  );
+end $$;
+revoke all on function public.twelve_tower_floor(uuid, int, int, jsonb) from public, anon;
+grant execute on function public.twelve_tower_floor(uuid, int, int, jsonb) to authenticated;
+
+-- 탑 판 끝 (쓰러졌거나 그만뒀다): 마지막 층에서 쓴 물약만 빠진다 → 새 상태
+create or replace function public.twelve_tower_end(p_run uuid, p_potions jsonb default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); rn public.twelve_tower_runs; used int[];
+begin
+  if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
+  select * into rn from public.twelve_tower_runs where id = p_run for update;
+  if not found or rn.user_id <> me then raise exception 'no run'; end if;
+  if rn.finished_at is not null then raise exception 'already finished'; end if;
+  used := public._twelve_potion_grid(p_potions);
+  perform public._twelve_profile_row(me);
+  perform public._twelve_use_potions(me, used);
+  update public.twelve_tower_runs set finished_at = now() where id = rn.id;
+  return public._twelve_state_json(me);
+end $$;
+revoke all on function public.twelve_tower_end(uuid, jsonb) from public, anon;
+grant execute on function public.twelve_tower_end(uuid, jsonb) to authenticated;
+
+-- ---------- 10. 랭킹 (PRD '랭킹과 시아코인') ----------
 
 -- 레벨 랭킹: 레벨 → 경험치 → 먼저 달성한 순 (Lv99 는 먼저 도달한 사람이 위). 한 맵이라도 깬 사람만
 create or replace view public.twelve_level_ranking as
@@ -1503,7 +1757,7 @@ create or replace view public.twelve_level_ranking as
 revoke all on public.twelve_level_ranking from anon, authenticated;
 grant select on public.twelve_level_ranking to anon, authenticated;
 
--- 끝없는 탑 랭킹: 최고 층 → 그 층까지 걸린 시간 → 먼저 달성한 순. 한 번이라도 해 본 사람 (탑은 8단계)
+-- 끝없는 탑 랭킹: 최고 층 → 그 층까지 걸린 시간 → 먼저 달성한 순. 한 번이라도 들어가 본 사람 (1층을 못 깼으면 0층)
 create or replace view public.twelve_tower_ranking as
   select r.user_id, p.nickname, r.best_floor, r.best_time, r.level, r.hero, r.achieved_at,
     (row_number() over (order by r.best_floor desc, r.best_time asc, r.achieved_at asc, r.user_id))::int as place,

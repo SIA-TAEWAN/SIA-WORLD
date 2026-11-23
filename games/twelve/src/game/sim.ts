@@ -32,6 +32,7 @@ import { playerStats, type Loadout, type PlayerStats } from '../data/growth';
 import { heroOf, type HeroDef } from '../data/heroes';
 import { T_SLOW, T_WALL, groupList, type MapDef } from '../data/maps';
 import { mapScale, regionOf, type EnvId, type Mode } from '../data/regions';
+import { towerScale } from '../data/tower';
 import { WEAPONS, type SkillDef, type WeaponDef } from '../data/weapons';
 import { bossDrop, copyCtx, eliteDrop, normalDrop, type Drop, type DropCtx } from './drops';
 
@@ -212,6 +213,8 @@ export interface RunOpts {
   drops?: DropCtx;
   /** 개발용 무적 (?god=1) */
   god?: boolean;
+  /** 끝없는 탑: 앞 층에서 이어 온 체력·마력 (없으면 가득) */
+  carry?: { hp: number; mp: number };
 }
 
 /** 땅에 떨어진 것 (장비·강화석·열쇠). 가까이 가면 자동으로 줍는다 */
@@ -440,8 +443,11 @@ function inShape(shape: Shape, x: number, y: number, ang: number, px: number, py
 
 // ---------- 판 만들기 ----------
 
+/** 이 판의 요괴 배율: 맵은 권장 레벨, 끝없는 탑은 층 */
+export const scaleOf = (map: MapDef, mode: Mode) => (map.tower ? towerScale(map.tower) : mapScale(map.region, map.no, mode));
+
 function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: number, o: { elite?: boolean; summoned?: boolean; boss?: BossDef; mini?: { hp: number; size: number } } = {}): Enemy {
-  const sc = mapScale(s.map.region, s.map.no, s.mode);
+  const sc = scaleOf(s.map, s.mode);
   const b = o.boss;
   const hp = Math.max(1, Math.round((b ? b.hp : def.hp * (o.elite ? ELITE.hp : 1) * (o.mini?.hp ?? 1)) * sc.hp));
   const e: Enemy = {
@@ -500,7 +506,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
   const rows = map.rows.length;
   const grid = new Uint8Array(cols * rows);
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) grid[y * cols + x] = map.rows[y][x] === T_WALL ? 1 : map.rows[y][x] === T_SLOW ? 2 : 0;
-  const sc = mapScale(map.region, map.no, mode);
+  const sc = scaleOf(map, mode);
   const stats = playerStats(loadout, map.region);
   const region = regionOf(map.region);
   const s: RunState = {
@@ -524,8 +530,8 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
       y: center(map.start[1]),
       fx: 0,
       fy: -1,
-      hp: stats.hp,
-      mp: stats.mp,
+      hp: opts.carry ? Math.max(1, Math.min(stats.hp, opts.carry.hp)) : stats.hp,
+      mp: opts.carry ? Math.max(0, Math.min(stats.mp, opts.carry.mp)) : stats.mp,
       moving: false,
       atkCd: 0,
       skillCd: [0, 0],
@@ -555,7 +561,8 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     boss: null,
     bossDead: false,
     exitOpen: false,
-    chest: false,
+    // 끝없는 탑에는 숨은 상자가 없다 (이미 연 것으로 둔다)
+    chest: !!map.tower,
     exp: 0,
     coins: 0,
     potions: [0, 0],

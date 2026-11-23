@@ -7,6 +7,7 @@
 //
 // 하는 일: 마이그레이션 전체(001~078)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고,
 // expect.json(기기 규칙으로 계산한 기대값)과 같은 순서로 RPC 를 돌려 단계마다 서버 기록이 기기 규칙과 같은지 맞춰 본다.
+// 끝없는 탑(시작 · 층 보고 · 끝)도 같은 방식으로 맞춰 보고, 권한 · 시아코인(10층마다) · 랭킹 뷰를 따로 본다.
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
@@ -82,7 +83,9 @@ const signUp = async (login, nick) => (await su(`insert into auth.users (email, 
 const canon = (s) => {
   const list = [...s.items].sort((a, b) => Number(a.id) - Number(b.id));
   const at = (id) => (id === null ? null : list.findIndex((it) => it.id === id));
-  return { ...s, eq: { weapon: at(s.eq.weapon), armor: at(s.eq.armor), acc: at(s.eq.acc) }, items: list.map((it) => ({ base: it.base, plus: it.plus, lock: it.lock, box: it.box })), codex: [...s.codex].sort() };
+  // 탑 기록의 날짜(at)는 맞춰 보지 않는다
+  const tower = s.tower ? { floor: s.tower.floor, time: s.tower.time, level: s.tower.level, hero: s.tower.hero, cps: s.tower.cps } : null;
+  return { ...s, eq: { weapon: at(s.eq.weapon), armor: at(s.eq.armor), acc: at(s.eq.acc) }, items: list.map((it) => ({ base: it.base, plus: it.plus, lock: it.lock, box: it.box })), codex: [...s.codex].sort(), tower };
 };
 const state = async (u) => (await as(u, 'select public.twelve_state() as j'))[0].j;
 const ids = async (u) => (await state(u)).items.map((it) => Number(it.id)).sort((a, b) => a - b);
@@ -98,6 +101,12 @@ const R = (o = {}) => ({ time: 100, cleared: true, kills: { imp: IMP }, elites: 
 const u1 = await signUp('twelveone', '열두1');
 const u2 = await signUp('twelvetwo', '열두2');
 const u3 = await signUp('twelvethree', '열두3');
+const u4 = await signUp('twelvefour', '열두4');
+const tStart = async (u, floor, hero = 'rat') => (await as(u, 'select public.twelve_tower_start($1, $2) as j', [floor, hero]))[0].j;
+const tFloor = async (u, run, floor, time, potions = null) => (await as(u, 'select public.twelve_tower_floor($1, $2, $3, $4) as j', [run, floor, time, potions]))[0].j;
+const tEnd = async (u, run, potions = null) => (await as(u, 'select public.twelve_tower_end($1, $2) as j', [run, potions]))[0].j;
+/** 탑 판의 마지막 보고 시각을 sec 초 앞으로 (그만큼 시간이 지난 것처럼) */
+const tAgo = (run, sec) => su(`update public.twelve_tower_runs set floor_at = now() - make_interval(secs => $2) where id = $1`, [run, sec]);
 
 // ---------- 무작위 ----------
 for (const v of expect.rolls) {
@@ -117,6 +126,10 @@ await rejects(as(u1, `insert into public.twelve_maps (user_id, mode, map_id, cle
 await rejects(as(u1, `insert into public.twelve_keys (user_id, mode, region) values ($1, 'normal', 1)`, [u1]), 'permission denied', '열쇠 직접 넣기');
 await rejects(as(u1, `update public.twelve_pity set elite = 99`), 'permission denied', '확정 보정 직접 고치기');
 await rejects(as(u1, `insert into public.twelve_tower (user_id, best_floor) values ($1, 99)`, [u1]), 'permission denied', '탑 기록 직접 넣기');
+await rejects(as(u1, 'select * from public.twelve_tower_runs'), 'permission denied', 'twelve_tower_runs 직접 읽기');
+await rejects(as(u1, `select public._twelve_tower_kind(10)`), 'permission denied', '내부 함수 _twelve_tower_kind');
+await rejects(as(u1, `select public._twelve_use_potions($1, array[0,0,0,0,0,0])`, [u1]), 'permission denied', '내부 함수 _twelve_use_potions');
+await rejects(as(null, `select public.twelve_tower_start(1, 'rat')`, [], 'anon'), 'permission denied', 'anon 이 twelve_tower_start');
 for (const fn of ['_twelve_profile_row($1)', '_twelve_grant($1, \'r-n1-1\')', '_twelve_state_json($1)', '_cat_progress_twelve($1)', '_twelve_check_hero($1, \'rat\')']) {
   await rejects(as(u1, `select public.${fn}`, [u1]), 'permission denied', `내부 함수 ${fn.split('(')[0]}`);
 }
@@ -208,9 +221,47 @@ const itemArgs = async (args) => {
 };
 let n = 0;
 let diff = 0;
+let towerRun = null;
 for (const st of expect.steps) {
   n++;
-  const name = `#${n} ${st.op} ${st.map ?? st.fn ?? ''} ${st.fn ? JSON.stringify(st.args) : ''}`;
+  const name = `#${n} ${st.op} ${st.map ?? st.fn ?? ''} ${st.fn ? JSON.stringify(st.args) : st.floor !== undefined ? `${st.floor}층` : ''}`;
+  if (st.op.startsWith('tower_')) {
+    let why = null;
+    let j = null;
+    try {
+      if (st.op === 'tower_start') {
+        j = await tStart(u1, st.floor);
+        towerRun = j.run;
+        await su(`update public.twelve_tower_runs set seed = $2 where id = $1`, [towerRun, st.seed]);
+      } else if (st.op === 'tower_floor') {
+        await tAgo(towerRun, st.sec);
+        j = await tFloor(u1, towerRun, st.floor, st.time, st.potions);
+      } else j = { state: await tEnd(u1, towerRun, st.potions) };
+    } catch (e) {
+      why = e.message;
+    }
+    if ((why === null) !== (st.why === null) || (st.why && !why.includes(st.why))) {
+      diff++;
+      ok(false, `${name}: 서버 ${why ?? '됨'} / 기기 ${st.why ?? '됨'}`);
+    }
+    if (st.op === 'tower_start' && !why && j.base !== st.base) {
+      diff++;
+      ok(false, `${name}: 더해지는 시간 서버 ${j.base} / 기기 ${st.base}`);
+    }
+    if (st.op === 'tower_floor' && !why) {
+      const res = { ...j.result, siaCoin: undefined, items: j.result.items.map((it) => ({ base: it.base, box: it.box })) };
+      if (!same(res, st.result)) {
+        diff++;
+        eq(res, st.result, `${name} 결과`);
+      }
+    }
+    const got = canon(await state(u1));
+    if (!same(got, st.state)) {
+      diff++;
+      eq(got, st.state, `${name} 뒤 기록`);
+    }
+    continue;
+  }
   if (st.op === 'pity') {
     await su(`insert into public.twelve_pity (user_id, mode, region, elite, boss, key) values ($1, 'normal', $2, $3, $4, $5)
       on conflict (user_id, mode, region) do update set elite = excluded.elite, boss = excluded.boss, key = excluded.key`, [u1, st.region, st.elite, st.boss, st.key]);
@@ -252,7 +303,13 @@ for (const st of expect.steps) {
     eq(got, st.state, `${name} 뒤 기록`);
   }
 }
-ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 같다 (드랍·확정 보정·열쇠·별 보상·상점·대장간·가방)`);
+ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 같다 (드랍·확정 보정·열쇠·별 보상·상점·대장간·가방·끝없는 탑)`);
+{
+  const t = expect.steps.filter((x) => x.op === 'tower_floor' && !x.why);
+  const items = t.flatMap((x) => x.result.items.map((it) => it.base));
+  console.log(`     탑: 받은 층 보고 ${t.length}개 · 일반 장비 ${items.filter((b) => /^[wa]-/.test(b)).length} · 장신구 ${items.filter((b) => b.startsWith('c-')).length} · 레어 ${items.filter((b) => b.startsWith('r-')).length}`);
+  ok(items.some((b) => b.startsWith('r-')) && items.some((b) => b.startsWith('c-')) && items.some((b) => /^[wa]-/.test(b)), '탑 시나리오에 일반 장비 · 장신구 · 레어가 모두 나왔다');
+}
 {
   const s = await state(u1);
   console.log(`     끝 기록: Lv ${s.level} · 엽전 ${s.coins} · 강화석 ${s.stones} · 장비 ${s.items.length}개(보관함 ${s.items.filter((i) => i.box).length}) · 열쇠 ${JSON.stringify(s.keys.normal)} · 얻어 본 것 ${JSON.stringify(s.codex)}`);
@@ -273,6 +330,45 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
   const a = await start(u3, '1-1', 'cat');
   ok(!!a.run, '고양이로 판 시작');
   await rejects(start(u1, '1-1', 'cat'), 'locked character', '다른 사람은 여전히 못 고른다');
+}
+
+// ---------- 끝없는 탑: 처음부터 누구나 · 들어가면 기록 · 10층마다 시아코인 · 랭킹 (u4) ----------
+{
+  ok((await as(null, 'select count(*)::int as n from public.twelve_tower_ranking where user_id = $1', [u4], 'anon'))[0].n === 0, '탑 랭킹: 들어가기 전에는 없음');
+  await rejects(tStart(u4, 11), 'floor locked', '체크포인트 없이 11층');
+  await rejects(tStart(u4, 5), 'bad floor', '시작할 수 없는 층');
+  await rejects(tStart(u4, 1, 'rabbit'), 'hero locked', '합류 안 한 대원으로 탑');
+  await rejects(tStart(u4, 1, 'cat'), 'locked character', '안 산 고양이로 탑');
+  const a = await tStart(u4, 1);
+  ok(typeof a.run === 'string' && Number.isInteger(a.seed) && a.base === 0, `탑 시작 → { run, seed ${a.seed}, base 0 }`);
+  eq((await state(u4)).tower, { ...(await state(u4)).tower, floor: 0, time: 0, level: 1, hero: 'rat', cps: {} }, '들어가기만 해도 0층 기록');
+  eq((await as(null, 'select best_floor, best_time, level, hero, place, total from public.twelve_tower_ranking where user_id = $1', [u4], 'anon'))[0].best_floor, 0, '1층을 못 깨도 탑 랭킹에 보인다 (0층)');
+  await rejects(tFloor(u4, a.run, 1, 20), 'too early', '바로 보고한 층 (서버가 잰 시간보다 김)');
+  await rejects(tFloor(u1, a.run, 1, 20), 'no run', '남의 탑 판');
+  await tAgo(a.run, 20);
+  await rejects(tFloor(u4, a.run, 1, 3), 'too early', '층 최소 시간보다 빠름');
+  await rejects(tFloor(u4, a.run, 2, 20), 'bad floor', '층 건너뛰기');
+  await rejects(tFloor(u4, a.run, 1, null), 'bad time', '시간 없음');
+  await rejects(tFloor(u4, a.run, 1, 20, [[99, 0, 0], [0, 0, 0]]), 'bad potions', '너무 많은 물약');
+  let j = null;
+  for (let f = 1; f <= 10; f++) {
+    await tAgo(a.run, 20);
+    j = await tFloor(u4, a.run, f, f * 20);
+    if (f === 9) ok(j.result.siaCoin === false, '9층: 시아코인 없음');
+  }
+  ok(j.result.siaCoin === true && j.result.best === true && j.result.time === 200, `10층(보스): 시아코인 +1 · 걸린 시간 ${j.result.time}`);
+  eq((await su('select sia_coins from public.wallets where user_id = $1', [u4]))[0].sia_coins, 1, '지갑 시아코인 +1');
+  eq((await su(`select count(*)::int as n from public.sia_coin_logs where user_id = $1 and game = 'twelve' and ref = $2`, [u4, `${a.run}:10`]))[0].n, 1, "sia_coin_logs ('twelve', 판 번호:층)");
+  ok(j.state.exp === 0 && j.state.level === 1 && j.state.coins > 0, `탑은 경험치가 없다 (엽전 ${j.state.coins} · 강화석 ${j.state.stones})`);
+  eq((await as(null, 'select best_floor, best_time, level, hero, place from public.twelve_tower_ranking where user_id = $1', [u4], 'anon'))[0], { best_floor: 10, best_time: 200, level: 1, hero: 'rat', place: (await su('select place from public.twelve_tower_ranking where user_id = $1', [u4]))[0].place }, '탑 랭킹 줄: 층 · 시간 · 레벨 · 대원');
+  const rank = await as(null, 'select user_id, best_floor, best_time, place, total from public.twelve_tower_ranking order by place', [], 'anon');
+  ok(rank.length === 2 && rank.every((r, i) => r.place === i + 1 && r.total === 2) && rank[0].best_floor >= rank[1].best_floor, `탑 랭킹 ${rank.length}명: ${rank.map((r) => `${r.best_floor}층 ${r.best_time}초`).join(' > ')}`);
+  await tEnd(u4, a.run);
+  await rejects(tEnd(u4, a.run), 'already finished', '두 번 끝내기');
+  await rejects(tFloor(u4, a.run, 11, 220), 'already finished', '끝난 판에 보고');
+  const b = await tStart(u4, 11);
+  ok(b.base === 200, `11층에서 시작: 더해지는 시간 ${b.base}`);
+  ok((await as(null, 'select count(*)::int as n from public.twelve_level_ranking where user_id = $1', [u4], 'anon'))[0].n === 0, '탑만 한 사람은 레벨 랭킹에 없다');
 }
 
 console.log(fails ? `\n실패 ${fails}개` : '\n모두 통과');

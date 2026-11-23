@@ -9,6 +9,7 @@ import { EXP_PENALTY, MAX_LEVEL, expNeed } from './growth';
 import { HEROES } from './heroes';
 import { ITEMS, canEnhance, regionRares, starReward } from './items';
 import { MAPS } from './maps';
+import { TOWER } from './tower';
 import { HARD_READY, MODES, REGIONS, type Mode } from './regions';
 import { WEAPON_KINDS } from './weapons';
 import { LIMITS, STARTER_ITEMS, mapReward } from '../game/progress';
@@ -103,6 +104,30 @@ export function constRows(): string[] {
     bag_max: BAG.max,
     potion_max: POTION.max,
     max_plus: MAX_PLUS,
+    // 끝없는 탑 (data/tower.ts 의 TOWER)
+    tower_cp: TOWER.cp,
+    tower_elite_every: TOWER.eliteEvery,
+    tower_min_time: TOWER.minTime,
+    tower_boss_min_time: TOWER.bossMinTime,
+    tower_coin_base: TOWER.coin.base,
+    tower_coin_step: TOWER.coin.step,
+    tower_coin_elite: TOWER.coin.elite,
+    tower_coin_boss: TOWER.coin.boss,
+    tower_stone_rate: TOWER.stone.rate,
+    tower_stone_elite: TOWER.stone.elite,
+    tower_stone_elite_step: TOWER.stone.eliteStep,
+    tower_stone_boss: TOWER.stone.boss,
+    tower_stone_boss_step: TOWER.stone.bossStep,
+    tower_stone_max: TOWER.stone.max,
+    tower_gear: TOWER.gear,
+    tower_acc_elite: TOWER.acc.elite,
+    tower_acc_boss: TOWER.acc.boss,
+    tower_rare_elite: TOWER.rare.elite,
+    tower_rare_elite_step: TOWER.rare.eliteStep,
+    tower_rare_elite_max: TOWER.rare.eliteMax,
+    tower_rare_boss: TOWER.rare.boss,
+    tower_rare_boss_step: TOWER.rare.bossStep,
+    tower_rare_boss_max: TOWER.rare.bossMax,
   };
   return Object.entries(c).map(([k, v]) => `    when ${q(k)} then ${v}`);
 }

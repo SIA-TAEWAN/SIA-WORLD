@@ -4,8 +4,9 @@ import { isHero } from '../data/heroes';
 import { SLOTS, itemDef, type Item } from '../data/items';
 import { REGIONS, type Mode } from '../data/regions';
 import type { Pity } from '../game/drops';
-import { applyReport, checkReport, checkStart, emptyProfile, setHero, type FinishResult, type MapRecord, type RunReport, type TwelveProfile } from '../game/progress';
+import { applyReport, checkReport, checkStart, emptyProfile, setHero, type FinishResult, type MapRecord, type RunReport, type TowerRecord, type TwelveProfile } from '../game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../game/rules';
+import { applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, type TowerFloorResult, type TowerRun } from '../game/tower';
 import { LOCAL_MODE } from './local';
 import { worldSupabase } from './world';
 
@@ -44,6 +45,20 @@ export interface TwelveApi {
   enhance(id: string): Promise<TwelveProfile>;
   /** what = 장비 id · 'potion:<0|1>:<0~2>' · 'bag' */
   buy(what: string, n?: number): Promise<TwelveProfile>;
+  /** 끝없는 탑에 들어간다 (floor = 1 또는 깬 보스 층의 다음 층). 거절이면 ApiError, 통신 실패면 Error */
+  towerStart(floor: number, hero: string): Promise<TowerStart>;
+  /** 깬 층 보고. time = 이 판에서 지금까지 논 시간(초), potions = 그 층에서 쓴 물약 (통신 실패면 null) */
+  towerFloor(run: string, floor: number, time: number, potions: number[][]): Promise<{ profile: TwelveProfile; result: TowerFloorResult } | null>;
+  /** 탑 판 끝 (쓰러졌거나 그만뒀다). potions = 마지막 층에서 쓴 물약 (통신 실패면 null) */
+  towerEnd(run: string, potions: number[][]): Promise<TwelveProfile | null>;
+}
+
+export interface TowerStart {
+  run: string;
+  /** 보상 판정 씨앗 (서버만 쓴다) */
+  seed: number;
+  /** 체크포인트에서 시작했을 때 더해지는 시간 (초) */
+  base: number;
 }
 
 export interface Store {
@@ -86,6 +101,16 @@ const pities = (v: unknown): Record<string, Pity> => {
   return out;
 };
 
+const towerRec = (v: unknown): TowerRecord | null => {
+  if (typeof v !== 'object' || !v) return null;
+  const o = v as Partial<TowerRecord>;
+  const cps: Record<string, number> = {};
+  if (typeof o.cps === 'object' && o.cps) {
+    for (const [f, t] of Object.entries(o.cps)) if (Number.isInteger(Number(f)) && Number(f) > 0 && Number.isFinite(Number(t))) cps[String(Number(f))] = Math.max(0, Math.floor(Number(t)));
+  }
+  return { floor: int(o.floor, 0, 1e6), time: int(o.time, 0, 1e9), level: int(o.level, 1, 99), hero: typeof o.hero === 'string' && isHero(o.hero) ? o.hero : 'rat', at: typeof o.at === 'string' ? o.at : '', cps };
+};
+
 /** 저장된 값(기기·서버)을 프로필 모양으로. 장비가 하나도 없는(처음이거나 깨진) 기록은 처음 장비로 */
 export function normalize(v: unknown): TwelveProfile {
   const o = (v ?? {}) as Partial<TwelveProfile> & { maps?: Partial<TwelveProfile['maps']>; keys?: Partial<TwelveProfile['keys']>; pity?: Partial<TwelveProfile['pity']> };
@@ -124,10 +149,11 @@ export function normalize(v: unknown): TwelveProfile {
     keys: { normal: regions(o.keys?.normal), hard: regions(o.keys?.hard) },
     pity: { normal: pities(o.pity?.normal), hard: pities(o.pity?.hard) },
     codex: Array.isArray(o.codex) ? [...new Set(o.codex.map(String).filter((b) => itemDef(b)))] : [],
+    tower: towerRec(o.tower),
   };
 }
 
-export function createLocalApi(store: Store, key = 'sia-twelve-local-v2'): TwelveApi {
+export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock: () => number = Date.now): TwelveApi {
   const load = () => {
     try {
       return normalize(JSON.parse(store.getItem(key) ?? 'null'));
@@ -145,6 +171,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2'): Twelv
     return p;
   };
   const seeds = new Map<string, number>();
+  const towers = new Map<string, TowerRun>();
   let n = 0;
   return {
     async loadProfile() {
@@ -179,6 +206,37 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2'): Twelv
     scrap: (ids) => act((p) => scrap(p, ids)),
     enhance: (id) => act((p) => enhance(p, id)),
     buy: (what, cnt = 1) => act((p) => buy(p, what, cnt)),
+    async towerStart(floor, hero) {
+      const p = load();
+      const why = checkTowerStart(p, floor, hero);
+      if (why) throw new ApiError(why);
+      // 한 번에 한 판: 끝내지 않은 앞 판은 여기서 끝난 것으로 한다
+      for (const r of towers.values()) r.done = true;
+      const run = beginTower(p, floor, hero as TowerRun['hero'], `tower-${clock()}-${n++}`, Math.floor(Math.random() * 0x7fffffff), clock());
+      towers.set(run.id, run);
+      save(p);
+      return { run: run.id, seed: run.seed, base: run.base };
+    },
+    async towerFloor(id, floor, time, potions) {
+      const run = towers.get(id);
+      if (!run) throw new ApiError('no run');
+      const why = checkTowerFloor(run, floor, time, potions, clock());
+      if (why) throw new ApiError(why);
+      const p = load();
+      const result = applyTowerFloor(p, run, floor, time, potions, clock());
+      save(p);
+      return { profile: p, result };
+    },
+    async towerEnd(id, potions) {
+      const run = towers.get(id);
+      if (!run) throw new ApiError('no run');
+      const p = load();
+      const why = endTower(p, run, potions);
+      if (why) throw new ApiError(why);
+      towers.delete(id);
+      save(p);
+      return p;
+    },
   };
 }
 
@@ -198,7 +256,7 @@ export interface RpcClient {
 /** 서버가 일부러 거절한 까닭 (raise exception 글자) — 다시 보내도 소용없다 */
 const REJECTS = [
   'map locked', 'hero locked', 'locked character', 'mode locked', 'not enough coins', 'not enough stones', 'low level', 'locked item', 'equipped', 'bag full',
-  'max plus', 'max bag', 'max potions', 'not for sale', 'no weapon', 'no item', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'bad ',
+  'max plus', 'max bag', 'max potions', 'not for sale', 'no weapon', 'no item', 'floor locked', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'bad ',
 ];
 /** 거절이면 까닭, 아니면(통신 문제) null */
 const rejectOf = (msg: string) => {
@@ -316,6 +374,43 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     scrap: (list) => state('twelve_scrap', { p_items: nums(list) }),
     enhance: (id) => state('twelve_enhance', { p_item: Number(id) }),
     buy: (what, n = 1) => state('twelve_buy', { p_what: what, p_n: n }),
+    async towerStart(floor, hero) {
+      const d = (await call('twelve_tower_start', { p_floor: floor, p_hero: hero })) as { run?: string; seed?: number; base?: number };
+      if (!d?.run) throw new Error('no run');
+      return { run: String(d.run), seed: Number(d.seed) || 0, base: Number(d.base) || 0 };
+    },
+    async towerFloor(run, floor, time, potions) {
+      // 통신 문제면 한 번 더 보내 본다 (서버는 같은 층을 두 번 받지 않는다: 이미 받았으면 'bad floor')
+      for (let i = 0; i < 2; i++) {
+        try {
+          const data = (await call('twelve_tower_floor', { p_run: run, p_floor: floor, p_time: Math.floor(time), p_potions: potions })) as { state: unknown; result: Partial<TowerFloorResult> };
+          const res = data.result ?? {};
+          return {
+            profile: normalize(data.state),
+            result: {
+              floor: Number(res.floor) || floor,
+              coins: Number(res.coins) || 0,
+              stones: Number(res.stones) || 0,
+              items: (Array.isArray(res.items) ? res.items : []).map((it) => ({ id: String(it.id), base: String(it.base), plus: 0, lock: false, box: !!it.box })),
+              siaCoin: !!res.siaCoin,
+              time: Number(res.time) || 0,
+              best: !!res.best,
+            },
+          };
+        } catch (e) {
+          if (e instanceof ApiError) throw e;
+        }
+      }
+      return null;
+    },
+    async towerEnd(run, potions) {
+      try {
+        return await state('twelve_tower_end', { p_run: run, p_potions: potions });
+      } catch (e) {
+        if (e instanceof ApiError) throw e;
+        return null;
+      }
+    },
   };
 }
 

@@ -54,6 +54,20 @@ export interface TwelveProfile {
   pity: Record<Mode, Record<string, Pity>>;
   /** 얻어 본 레어·별 보상 (지형 화면의 레어 목록, '아직 없는 것부터') */
   codex: string[];
+  /** 끝없는 탑 기록 (한 번도 들어가지 않았으면 null). 규칙은 game/tower.ts */
+  tower: TowerRecord | null;
+}
+
+/** 끝없는 탑 최고 기록 (서버 twelve_tower 의 한 줄). 한 번 들어가면 1층을 못 깨도 생긴다 (floor 0) */
+export interface TowerRecord {
+  /** 가장 높이 깬 층 · 그 층까지 걸린 시간(초) · 그때의 레벨·대원 · 날짜 */
+  floor: number;
+  time: number;
+  level: number;
+  hero: HeroId;
+  at: string;
+  /** 체크포인트: 보스 층(10 · 20 · …)을 깬 가장 빠른 누적 시간. 있으면 그 다음 층에서 시작할 수 있다 */
+  cps: Record<string, number>;
 }
 
 /** 처음 받는 장비: 나무 무기 4종(칼을 들고 시작)과 나무 갑옷 — 서버의 _twelve_profile_row 와 같다 */
@@ -74,6 +88,7 @@ export const emptyProfile = (): TwelveProfile => ({
   keys: { normal: [], hard: [] },
   pity: { normal: {}, hard: {} },
   codex: [],
+  tower: null,
 });
 
 export const LIMITS = {
@@ -299,7 +314,7 @@ export function mapReward(map: MapDef, mode: Mode): MapReward {
 /** 출구가 열리는 처치 수 (보스 맵은 보스) — 클리어 보고의 최소 처치 수이기도 하다 */
 export const exitNeed = (total: number) => Math.ceil((total * Math.round(EXIT_KILL_RATIO * 100)) / 100);
 const normalKills = (r: Pick<RunReport, 'kills'>) => ENEMY_IDS.reduce((n, k) => n + (r.kills[k] ?? 0), 0);
-const potionGrid = (v: unknown): number[][] | null => {
+export const potionGrid = (v: unknown): number[][] | null => {
   if (v === undefined || v === null) return [0, 1].map(() => Array<number>(POTION_SIZES).fill(0));
   if (!Array.isArray(v) || v.length !== 2) return null;
   for (const row of v) {
@@ -448,6 +463,8 @@ export function whyText(why: string): string {
     case 'not for sale': return '상점에서 팔지 않는 물건이에요';
     case 'no weapon': return '무기를 착용해 주세요';
     case 'no item': return '없는 장비예요';
+    case 'floor locked': return '아직 갈 수 없는 층이에요';
+    case 'no run': return '기록할 수 없는 판이에요';
     default: return why.startsWith('bad ') ? '기록할 수 없는 결과예요' : '서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요';
   }
 }

@@ -8,6 +8,7 @@ import { HEROES, STAT_KEYS, STAT_NAME, heroOf, isHero, type HeroId } from '../da
 import { ACC_TEXT, FX_DESC, FX_NAME, ITEMS, SLOTS, SLOT_NAME, canEnhance, itemDef, itemLevel, itemNote, itemStats, normalWeapon, regionRares, type Item, type Slot } from '../data/items';
 import { MAPS, mapOf, mapsOf, nextMap, type MapDef } from '../data/maps';
 import { ENV_ICON, ENV_NAME, MAPS_PER_REGION, MODE_NAME, REGIONS, REGION_TABLE, mapLevel, regionOf } from '../data/regions';
+import { TOWER, floorKind, towerFloor, towerRegion } from '../data/tower';
 import { TIER_LEVELS, WEAPONS, WEAPON_KINDS } from '../data/weapons';
 import {
   applyReport,
@@ -39,9 +40,10 @@ import {
 } from '../game/progress';
 import { forSale, scrapOf, shopTier } from '../game/rules';
 import { STAR_CHEST, STAR_NO_DEATH, STAR_TIME, createRun, type RunState } from '../game/sim';
+import { applyTowerFloor, beginTower, startFloors, type TowerFloorResult, type TowerRun } from '../game/tower';
 import { ApiError, type TwelveApi } from '../net/api';
 import { DEV_ALL, DEV_GOD, DEV_HERO, DEV_LEVEL, DEV_MAP, DEV_WEAPON, LOCAL_MODE } from '../net/local';
-import { buyCharacter, loadOwnedCharacters, loadSound, worldHome, type SoundModule, type WorldUser } from '../net/world';
+import { buyCharacter, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W, dropIcon, dropName } from '../scenes/GameScene';
 import { groundOf, hasArt } from '../scenes/art';
 import { COLOR, css } from '../theme';
@@ -54,6 +56,8 @@ import { createControls, type Controls } from './controls';
 
 let api!: TwelveApi;
 let profile: TwelveProfile = emptyProfile();
+/** 로그인한 사람 (테스트 모드는 null) */
+let me: WorldUser | null = null;
 /** 고양이를 이 게임에서 샀는지 (shared/characters.js — 게임마다 따로 산다). 테스트 모드에서는 늘 false */
 let cat = false;
 /** 지금 고를 수 있는 대원 */
@@ -168,8 +172,9 @@ function view(p: TwelveProfile): TwelveProfile {
 }
 
 /** 처음 한 번: 기록을 불러온다 */
-export async function boot(a: TwelveApi, _user: WorldUser | null) {
+export async function boot(a: TwelveApi, user: WorldUser | null) {
   api = a;
+  me = user;
   loadSettings();
   profile = view(await api.loadProfile());
   if (!LOCAL_MODE) {
@@ -274,7 +279,7 @@ export function showMain() {
       <button class="btn primary big" id="go">▶ 이어하기${nm ? ` <small>${nm.id} ${nm.name}</small>` : ''}</button>
       <button class="btn big" id="world">🗺️ 십이지 지도</button>
       <div class="row2"><button class="btn" id="heroes">🐾 대원</button><button class="btn" id="bag">🎒 가방${boxItems(profile).length ? ` <em class="tag">보관함 ${boxItems(profile).length}</em>` : ''}</button></div>
-      <div class="row2"><button class="btn soon" data-soon="끝없는 탑은 준비 중이에요">🗼 끝없는 탑</button><button class="btn soon" data-soon="랭킹은 준비 중이에요">🏆 랭킹</button></div>
+      <div class="row2"><button class="btn" id="tower">🗼 끝없는 탑${profile.tower ? ` <small>최고 ${profile.tower.floor}층</small>` : ''}</button><button class="btn" id="rank">🏆 랭킹</button></div>
       <button class="btn" id="settings">⚙️ 설정</button>
     </div>
     <div class="grow"></div>
@@ -284,7 +289,11 @@ export function showMain() {
   on(root, '#heroes', () => showHeroes(showMain));
   on(root, '#bag', () => showBag(showMain));
   on(root, '#settings', showSettings);
-  on(root, '[data-soon]', (el) => toast(el.dataset.soon!));
+  on(root, '#tower', showTower);
+  on(root, '#rank', async () => {
+    if (LOCAL_MODE || !me) return toast('테스트 모드에서는 랭킹을 볼 수 없어요');
+    if (!(await openWorldRanking(me.userId))) toast('랭킹을 불러오지 못했어요');
+  });
 }
 
 function showSettings() {
@@ -483,51 +492,6 @@ async function startMap(map: MapDef, deaths: number) {
   if (!DEV_PLAY) mark(RUN_KEY, map.id);
   // 개발용: 콘솔에서 판 상태를 들여다보거나 고칠 수 있게 (테스트 모드에서만)
   if (LOCAL_MODE) (window as unknown as { __twelve?: RunState }).__twelve = run;
-  const region = regionOf(map.region);
-  const bossDef = map.boss ? BOSSES[region.boss] : null;
-  const need = exitNeed(run.total);
-  const root = app();
-  root.innerHTML = `
-    <div id="game"></div>
-    <div class="hud">
-      <button class="icon-btn" id="pause">⏸</button>
-      <div class="hud-bars">
-        <div class="hud-name">${face(run.hero.id)}<b>Lv ${run.loadout.level}</b><span>${map.id} ${map.name}</span></div>
-        <div class="gauge hp"><i id="hp"></i><em id="hpT"></em></div>
-        <div class="gauge mp"><i id="mp"></i></div>
-        <div class="gauge exp"><i id="exp"></i></div>
-      </div>
-      <div class="hud-side"><span class="hud-pill" id="time"></span><span class="hud-pill" id="kills"></span>${
-        run.env.id === 'mud' || run.env.id === 'wind' ? `<span class="hud-pill env ${run.env.f < 1 ? 'ok' : ''}">${ENV_ICON[run.env.id]} ${ENV_NAME[run.env.id]}${run.env.f === 0 ? ' 막음' : run.env.f < 1 ? ' 절반' : ''}</span>` : ''
-      }</div>
-      <canvas id="mini" width="64" height="144"></canvas>
-    </div>
-    ${bossDef ? `<div class="boss-bar hidden" id="boss"><b>👹 ${bossDef.name}</b><div class="gauge"><i id="bossHp"></i></div></div><div class="boss-say hidden" id="say"></div>` : ''}
-    <div class="note hidden" id="note"></div>`;
-  const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
-  const pause = () => {
-    // 판이 끝난 뒤에는 멈추지 않는다 (그만하기가 클리어를 덮어쓰지 않게)
-    if (scene.paused || sent || run.phase !== 'play') return;
-    scene.paused = true;
-    const box = overlay(`<div class="card pop"><h3>일시정지</h3>
-      <button class="btn primary big" id="resume">계속하기</button>
-      <button class="btn" id="quit">그만하기</button>
-      <p class="soft center">그만하면 쓰러진 것과 같아요: 이 맵에서 얻은 엽전은 잃고 경험치는 남아요</p></div>`);
-    on(box, '#resume', () => {
-      scene.paused = false;
-      box.remove();
-    });
-    on(box, '#quit', async () => {
-      box.remove();
-      if (sent || run.phase !== 'play') return void (scene.paused = false);
-      run.phase = 'dead';
-      await finish(run);
-      showRegion(map.region);
-    });
-  };
-  const ctl = createControls(root, run, { lefty: settings.lefty, onPause: pause });
-  controls = ctl;
-  on(root, '#pause', pause);
 
   let sent = false;
   const finish = async (s: RunState): Promise<FinishResult | null> => {
@@ -560,6 +524,85 @@ async function startMap(map: MapDef, deaths: number) {
       return null;
     }
   };
+  playRun(run, {
+    title: `${map.id} ${map.name}`,
+    exp: true,
+    time: (s) => {
+      const left = map.par - s.t;
+      return { text: left >= 0 ? `⏱ ${time(left)}` : `⏱ +${time(-left)}`, late: left < 0 };
+    },
+    quitNote: '그만하면 쓰러진 것과 같아요: 이 맵에서 얻은 엽전은 잃고 경험치는 남아요',
+    locked: () => sent,
+    onQuit: async (s) => {
+      await finish(s);
+      showRegion(map.region);
+    },
+    onEnd: async (s) => showResult(s, await finish(s), deaths),
+  });
+}
+
+/** 전투 화면 하나 (맵 한 판 · 끝없는 탑의 한 층이 같이 쓴다) */
+interface PlayOpts {
+  /** HUD 의 이름 */
+  title: string;
+  /** 경험치 막대가 이 판에서 얻은 만큼 차는지 (탑은 경험치가 없다) */
+  exp: boolean;
+  /** 시간 알약 */
+  time: (s: RunState) => { text: string; late: boolean };
+  /** 일시정지 창의 '그만하기' 설명 */
+  quitNote: string;
+  /** 결과를 이미 보내는 중인지 (그 뒤에는 멈추거나 그만둘 수 없다) */
+  locked: () => boolean;
+  onQuit: (s: RunState) => Promise<void> | void;
+  onEnd: (s: RunState) => Promise<void> | void;
+}
+
+function playRun(run: RunState, o: PlayOpts) {
+  const map = run.map;
+  const region = regionOf(map.region);
+  const bossDef = map.boss ? BOSSES[region.boss] : null;
+  const need = exitNeed(run.total);
+  const root = app();
+  root.innerHTML = `
+    <div id="game"></div>
+    <div class="hud">
+      <button class="icon-btn" id="pause">⏸</button>
+      <div class="hud-bars">
+        <div class="hud-name">${face(run.hero.id)}<b>Lv ${run.loadout.level}</b><span>${o.title}</span></div>
+        <div class="gauge hp"><i id="hp"></i><em id="hpT"></em></div>
+        <div class="gauge mp"><i id="mp"></i></div>
+        <div class="gauge exp"><i id="exp"></i></div>
+      </div>
+      <div class="hud-side"><span class="hud-pill" id="time"></span><span class="hud-pill" id="kills"></span>${
+        run.env.id === 'mud' || run.env.id === 'wind' ? `<span class="hud-pill env ${run.env.f < 1 ? 'ok' : ''}">${ENV_ICON[run.env.id]} ${ENV_NAME[run.env.id]}${run.env.f === 0 ? ' 막음' : run.env.f < 1 ? ' 절반' : ''}</span>` : ''
+      }</div>
+      <canvas id="mini" width="64" height="144"></canvas>
+    </div>
+    ${bossDef ? `<div class="boss-bar hidden" id="boss"><b>👹 ${bossDef.name}</b><div class="gauge"><i id="bossHp"></i></div></div><div class="boss-say hidden" id="say"></div>` : ''}
+    <div class="note hidden" id="note"></div>`;
+  const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
+  const pause = () => {
+    // 판이 끝난 뒤에는 멈추지 않는다 (그만하기가 클리어를 덮어쓰지 않게)
+    if (scene.paused || o.locked() || run.phase !== 'play') return;
+    scene.paused = true;
+    const box = overlay(`<div class="card pop"><h3>일시정지</h3>
+      <button class="btn primary big" id="resume">계속하기</button>
+      <button class="btn" id="quit">그만하기</button>
+      <p class="soft center">${o.quitNote}</p></div>`);
+    on(box, '#resume', () => {
+      scene.paused = false;
+      box.remove();
+    });
+    on(box, '#quit', async () => {
+      box.remove();
+      if (o.locked() || run.phase !== 'play') return void (scene.paused = false);
+      run.phase = 'dead';
+      await o.onQuit(run);
+    });
+  };
+  const ctl = createControls(root, run, { lefty: settings.lefty, onPause: pause });
+  controls = ctl;
+  on(root, '#pause', pause);
 
   // HUD: 값이 바뀔 때만 DOM 을 건드린다
   const shown = new Map<string, string>();
@@ -648,11 +691,11 @@ async function startMap(map: MapDef, deaths: number) {
         set('hp', String(Math.round((p.hp / s.stats.hp) * 100)), (v) => (hp.style.width = `${v}%`));
         set('hpT', `${Math.ceil(p.hp)} / ${s.stats.hp}`, (v) => (hpT.textContent = v));
         set('mp', String(Math.round((p.mp / s.stats.mp) * 100)), (v) => (mp.style.width = `${v}%`));
-        set('exp', String(needExp ? Math.min(100, Math.round(((profile.exp + s.exp) / needExp) * 100)) : 100), (v) => (exp.style.width = `${v}%`));
-        const left = s.map.par - s.t;
-        set('time', left >= 0 ? `⏱ ${time(left)}` : `⏱ +${time(-left)}`, (v) => {
+        set('exp', String(needExp ? Math.min(100, Math.round(((profile.exp + (o.exp ? s.exp : 0)) / needExp) * 100)) : 100), (v) => (exp.style.width = `${v}%`));
+        const tm = o.time(s);
+        set('time', tm.text, (v) => {
           timeEl.textContent = v;
-          timeEl.classList.toggle('late', left < 0);
+          timeEl.classList.toggle('late', tm.late);
         });
         set('kills', s.map.boss ? (s.bossDead ? '🚪 출구로!' : '👹 보스') : s.exitOpen ? '🚪 출구로!' : `👹 ${s.killed}/${need}`, (v) => (kills.textContent = v));
         if (bossBox && bossHp && s.boss) {
@@ -672,10 +715,7 @@ async function startMap(map: MapDef, deaths: number) {
         }
         if (frame++ % 12 === 0) drawMini(s);
       },
-      onEnd: async (s: RunState) => {
-        const result = await finish(s);
-        showResult(s, result, deaths);
-      },
+      onEnd: (s: RunState) => void o.onEnd(s),
     },
   });
 }
@@ -732,6 +772,210 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
   on(box, '#next', () => void startMap(next!, 0));
   on(box, '#again', () => void startMap(map, win ? 0 : deaths + 1));
   on(box, '#rest', () => showRegion(map.region));
+}
+
+// ---------- 끝없는 탑 ----------
+
+/** 탑 한 판 (화면 쪽 상태). 기록은 층을 깰 때마다 api.towerFloor 로 남는다 */
+interface TowerPlay {
+  /** 판 번호 ('' = 개발 옵션으로 하는, 기록하지 않는 판) */
+  run: string;
+  /** 개발 판의 계산용 (저장하지 않는다) */
+  dev: TowerRun | null;
+  first: number;
+  /** 지금 하는 층 */
+  floor: number;
+  /** 체크포인트에서 시작했을 때 더하는 시간 · 이 판에서 깬 층들에 쓴 시간 (초) */
+  base: number;
+  played: number;
+  /** 결과를 보내는 중 (멈추거나 그만둘 수 없다) */
+  sending: boolean;
+  /** 이 판에서 받은 것 */
+  coins: number;
+  stones: number;
+  items: Item[];
+  sia: number;
+  best: boolean;
+}
+
+function showTower() {
+  const rec = profile.tower;
+  const floors = startFloors(profile);
+  let pick = floors[floors.length - 1];
+  const paint = () => {
+    const r = regionOf(towerRegion(pick));
+    const root = screen(
+      `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>🗼 끝없는 탑</h2><div class="pills">${levelPill()}${coinsPill()}</div></div>
+      <div class="card">
+        <h3>내 기록 <small>${rec ? '가장 높이 오른 층' : '아직 올라 본 적이 없어요'}</small></h3>
+        ${rec ? `<div class="rows"><div><span>최고 층</span><b>${rec.floor}층</b></div><div><span>걸린 시간</span><b>${time(rec.time)}</b></div><div><span>그때</span><b>Lv ${rec.level} · ${heroOf(rec.hero).name}</b></div></div>` : ''}
+        <p class="soft">층마다 방 하나, ${TOWER.cp}층마다 보스가 있어요. 올라갈수록 요괴가 세지고 엽전·강화석·레어가 늘어나요.<br/>
+        쓰러지면 그 판은 끝나고, 그때까지 받은 것은 그대로예요. 보스 층을 넘으면 다음에는 그 위에서 시작할 수 있어요.<br/>
+        장비는 지금까지 연 지형의 등급까지 나와요. ${TOWER.cp}층마다 시아코인 1개. 경험치는 오르지 않아요.</p>
+      </div>
+      <div class="card">
+        <h3>시작할 층 <small>${pick}층 · ${r.name}</small></h3>
+        <div class="weapons">${floors.map((f) => `<button class="btn small ${f === pick ? 'primary' : ''}" data-f="${f}">${f}층</button>`).join('')}</div>
+        <p class="soft rec">${face(profile.hero)} ${heroOf(profile.hero).name} · ${WEAPONS[weaponOf(profile)].icon} ${equipName('weapon')}</p>
+      </div>
+      <button class="btn primary big" id="go">▶ ${pick}층부터 오르기</button>
+      <div class="row2"><button class="btn" id="heroes">🐾 대원 바꾸기</button><button class="btn" id="bag">🎒 가방</button></div>
+      <div class="grow"></div>`,
+      `bg-${r.ground}`,
+    );
+    on(root, '#back', showMain);
+    on(root, '#heroes', () => showHeroes(showTower));
+    on(root, '#bag', () => showBag(showTower));
+    on(root, '[data-f]', (el) => {
+      pick = Number(el.dataset.f);
+      paint();
+    });
+    on(root, '#go', () => void startTower(pick));
+  };
+  paint();
+}
+
+async function startTower(floor: number) {
+  if (busy) return;
+  busy = true;
+  const t: TowerPlay = { run: '', dev: null, first: floor, floor, base: 0, played: 0, sending: false, coins: 0, stones: 0, items: [], sia: 0, best: false };
+  try {
+    if (DEV_PLAY) t.dev = beginTower(structuredClone(profile), floor, profile.hero, 'dev', (Math.random() * 0x7fffffff) >>> 0, Date.now());
+    else {
+      const st = await api.towerStart(floor, profile.hero);
+      t.run = st.run;
+      t.base = st.base;
+    }
+    await Promise.race([document.fonts.load("34px 'Jua'"), new Promise((ok) => setTimeout(ok, 1500))]).catch(() => null);
+  } catch (e) {
+    busy = false;
+    return toast(errText(e));
+  }
+  busy = false;
+  playFloor(t, profile.potions, null);
+}
+
+/** 탑의 한 층. stock = 들고 있는 물약, carry = 앞 층에서 이어 온 체력·마력 */
+function playFloor(t: TowerPlay, stock: number[][], carry: { hp: number; mp: number } | null) {
+  closeGame();
+  t.sending = false;
+  const map = towerFloor(t.floor);
+  const run = createRun(map, profile.mode, loadoutOf(profile), { seed: (Math.random() * 0xffffffff) >>> 0, stock, god: DEV_GOD, carry: carry ?? undefined });
+  if (LOCAL_MODE) (window as unknown as { __twelve?: RunState }).__twelve = run;
+  const kind = floorKind(t.floor);
+  playRun(run, {
+    title: `🗼 ${t.floor}층${kind === 'boss' ? ' 보스' : kind === 'elite' ? ' 정예' : ''}`,
+    exp: false,
+    time: (s) => ({ text: `⏱ ${time(t.base + t.played + s.t)}`, late: false }),
+    quitNote: '그만하면 이 판은 여기서 끝나요. 지금까지 받은 것은 그대로예요',
+    locked: () => t.sending,
+    onQuit: (s) => endTowerPlay(t, s.used, ''),
+    onEnd: (s) => (s.phase === 'clear' ? floorCleared(t, s) : endTowerPlay(t, s.used, '')),
+  });
+}
+
+async function floorCleared(t: TowerPlay, s: RunState) {
+  if (t.sending) return;
+  t.sending = true;
+  const total = t.played + s.t;
+  const used = s.used.map((r) => [...r]);
+  let res: TowerFloorResult | null = null;
+  let why = '';
+  if (t.dev) res = applyTowerFloor(structuredClone(profile), t.dev, t.floor, Math.floor(total), used, Date.now());
+  else {
+    try {
+      const r = await api.towerFloor(t.run, t.floor, Math.floor(total), used);
+      if (r) {
+        profile = view(r.profile);
+        res = r.result;
+      } else why = '서버에 연결하지 못해 여기까지만 기록됐어요';
+    } catch (e) {
+      why = errText(e);
+    }
+  }
+  // 기록하지 못한 층에서 판을 끝낸다 (그 층에서 쓴 물약은 이미 못 보냈다)
+  if (!res) return void endTowerPlay(t, [], why, true);
+  t.played = total;
+  t.coins += res.coins;
+  t.stones += res.stones;
+  t.items.push(...res.items);
+  if (res.siaCoin) t.sia++;
+  t.best ||= res.best;
+  const boss = floorKind(t.floor) === 'boss';
+  play(boss ? 'win' : 'goal');
+  const box = overlay(`<div class="card pop result win">
+      <h2>${t.floor}층 클리어!</h2>
+      <div class="rows">
+        <div><span>엽전</span><b class="coin">+${res.coins.toLocaleString()}</b></div>
+        ${res.stones ? `<div><span>강화석</span><b>+${res.stones}</b></div>` : ''}
+        ${res.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
+        <div><span>걸린 시간</span><b>${time(res.time)}${res.best ? ' · 최고 기록!' : ''}</b></div>
+      </div>
+      ${lootHtml(lootOf(res.items, 0))}
+      ${boss ? `<p class="soft center">보스 층을 넘었어요! 다음에는 ${t.floor + 1}층에서 시작할 수 있어요. 체력·마력이 가득 찼어요</p>` : ''}
+      ${t.dev ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : ''}
+      <div class="btns">
+        <button class="btn primary big" id="next">${t.floor + 1}층으로 ▶</button>
+        ${boss ? '<button class="btn" id="stop">여기서 그만하기</button>' : ''}
+      </div></div>`);
+  let gone = false;
+  const next = () => {
+    if (gone) return;
+    gone = true;
+    const st = s.stats;
+    const heal = boss ? 1 : TOWER.heal;
+    t.floor++;
+    playFloor(t, s.stock.map((r) => [...r]), { hp: Math.min(st.hp, s.p.hp + st.hp * heal), mp: Math.min(st.mp, s.p.mp + st.mp * heal) });
+  };
+  on(box, '#next', next);
+  on(box, '#stop', () => {
+    if (gone) return;
+    gone = true;
+    t.floor++;
+    void endTowerPlay(t, [], '', true);
+  });
+  // 보스 층이 아니면 잠깐 보여 주고 바로 다음 층으로
+  if (!boss) setTimeout(next, 1800);
+}
+
+const lootOf = (items: Item[], stones: number): FinishResult =>
+  ({ exp: 0, coins: 0, ups: 0, level: profile.level, stars: 0, newStars: 0, first: false, joined: null, siaCoin: false, items, stones, potions: [[0, 0, 0], [0, 0, 0]], key: false, starItem: null });
+
+/**
+ * 탑 판 끝 (쓰러졌거나 · 그만뒀거나 · 기록하지 못했다). used = 마지막 층에서 쓴 물약, note = 덧붙일 말.
+ * t.floor = 끝난 층 (그 아래 층까지 깼다)
+ */
+async function endTowerPlay(t: TowerPlay, used: number[][], note: string, force = false) {
+  if (t.sending && !force) return;
+  t.sending = true;
+  if (t.run) {
+    try {
+      const p = await api.towerEnd(t.run, used.length ? used.map((r) => [...r]) : [[0, 0, 0], [0, 0, 0]]);
+      if (p) profile = view(p);
+    } catch {
+      /* 이미 끝난 판이면 그대로 둔다 */
+    }
+  }
+  const reached = t.floor - 1;
+  const rec = profile.tower;
+  play(reached >= t.first ? 'win' : 'lose');
+  const box = overlay(`<div class="card pop result ${reached >= t.first ? 'win' : 'lose'}">
+      <h2>${reached >= t.first ? `${reached}층까지 올랐어요` : `${t.floor}층에서 끝났어요`}</h2>
+      <div class="rows">
+        <div><span>이번 판</span><b>${t.first}층 → ${reached >= t.first ? `${reached}층` : '-'}${reached >= t.first ? ` · ${time(t.base + t.played)}` : ''}</b></div>
+        ${rec ? `<div><span>내 최고 기록</span><b>${rec.floor}층 · ${time(rec.time)}${t.best ? ' · 새 기록!' : ''}</b></div>` : ''}
+        <div><span>엽전</span><b class="coin">+${t.coins.toLocaleString()}</b></div>
+        ${t.sia ? `<div><span>시아코인</span><b class="coin">+${t.sia}</b></div>` : ''}
+      </div>
+      ${lootHtml(lootOf(t.items, t.stones))}
+      ${note ? `<p class="soft center">${note}</p>` : ''}
+      ${t.dev ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : ''}
+      <div class="btns">
+        <button class="btn primary big" id="again">다시 오르기</button>
+        <button class="btn" id="home">메인으로</button>
+      </div></div>`);
+  on(box, '#again', showTower);
+  on(box, '#home', showMain);
 }
 
 // ---------- 가방 · 상점 · 대장간 ----------
