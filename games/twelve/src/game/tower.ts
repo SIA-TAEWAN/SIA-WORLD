@@ -11,7 +11,7 @@
 import { ACC_STATS } from '../data/economy';
 import { isHero, type HeroId } from '../data/heroes';
 import { accessory, gearDrops, regionRares, type Item } from '../data/items';
-import { HARD_READY, MODES, REGIONS, REGIONS_READY } from '../data/regions';
+import { MODES, REGIONS, REGIONS_READY } from '../data/regions';
 import { TOWER, floorKind, floorMinTime, isStartFloor, towerCoins, towerRareRate, towerStones } from '../data/tower';
 import { roll } from './drops';
 import { LIMITS, addItem, coinBonus, equipped, heroesOf, potionGrid, regionOpen, type TwelveProfile } from './progress';
@@ -76,7 +76,6 @@ export function beginTower(p: TwelveProfile, floor: number, hero: HeroId, id: st
 export function towerRareLists(p: TwelveProfile): string[][] {
   const out: string[][] = [];
   for (const mode of MODES) {
-    if (mode === 'hard' && !HARD_READY) continue;
     for (let r = 1; r <= Math.min(REGIONS, REGIONS_READY); r++) if (regionOpen(p, r, mode)) out.push(regionRares(r, mode));
   }
   return out;

@@ -1,29 +1,56 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { blockIn, fillBlocks, itemRows, levelRows, mapRows, regionRows, sqlBlocks } from '../src/data/sqlrows';
-import { MAPS } from '../src/data/maps';
+import { ALL_MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
- * 서버(078_twelve.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
- * 다르면 `npm run sqlgen` 으로 gen 블록을 다시 만든다 (078 이 배포된 뒤에는 새 번호의 마이그레이션에 — scripts/sqlgen.ts 의 설명).
- * 이 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
+ * 서버(078_twelve.sql + 094_twelve_full.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하므로 094 의 블록을 대조하고,
+ * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 094 의 gen 블록을 다시 만든다.
+ * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
  */
-const sql = readFileSync(new URL('../../../supabase/migrations/078_twelve.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const read = (name: string) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const sql078 = read('078_twelve.sql');
+const sql094 = read('094_twelve_full.sql');
+const sql = `${sql078}\n${sql094}`;
 const fn = (name: string) => {
-  const i = sql.indexOf(`function public.${name}(`);
+  const i = sql.lastIndexOf(`create or replace function public.${name}(`);
   return i < 0 ? '' : sql.slice(i, sql.indexOf('$$;', i));
 };
 
 describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
   const blocks = sqlBlocks();
   for (const name of Object.keys(blocks)) {
-    it(`${name} 블록이 src/data 와 같다`, () => expect(blockIn(sql, name)).toBe(blocks[name]));
+    it(`${name} 블록이 src/data 와 같다`, () => expect(blockIn(sql094, name)).toBe(blocks[name]));
   }
-  it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql)).toBe(sql));
+  it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql094)).toBe(sql094));
 
-  it('줄 수: 준비된 맵 · 레벨 1~98 · 장비 216 · 지형 24', () => {
-    expect(mapRows().length).toBe(MAPS.length);
+  it('094 는 078 의 함수를 같은 모양으로 다시 정의한다 (create or replace · 표 함수는 권한 빼기, RPC 는 로그인한 사람만)', () => {
+    const head = (s: string, name: string) => {
+      const i = s.indexOf(`create or replace function public.${name}(`);
+      return i < 0 ? '' : s.slice(i, s.indexOf('$$', i));
+    };
+    const NEW_IN_094 = ['twelve_set_mode'];
+    const names = [...new Set(sql094.match(/create or replace function public\.\w+/g)!.map((s) => s.split('public.')[1]))];
+    expect(names.length).toBeGreaterThanOrEqual(Object.keys(blocks).length);
+    for (const name of names) {
+      // 094 에서 새로 만든 함수(어려움 모드의 twelve_set_mode)는 078 에 없다
+      if (head(sql078, name)) expect(head(sql094, name), name).toBe(head(sql078, name));
+      else expect(NEW_IN_094, name).toContain(name);
+      if (name.startsWith('_')) expect(sql094).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
+      else {
+        expect(sql094).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon;`));
+        expect(sql094).toMatch(new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to authenticated;`));
+        expect(head(sql094, name)).toContain('security definer set search_path = public');
+      }
+    }
+    expect(sql094).not.toMatch(/create table|drop |alter table/);
+  });
+
+  it('줄 수: 맵(지형 맵 96 + 최종보스맵, 보통·어려움) · 레벨 1~98 · 장비 216 · 지형 24', () => {
+    expect(mapRows().length).toBe(ALL_MAPS.length * 2);
+    expect(mapRows().filter((r) => r.includes("'hard'")).length).toBe(97);
     expect(levelRows().length).toBe(98);
     expect(itemRows().length).toBe(216);
     expect(regionRows().length).toBe(24);
@@ -81,8 +108,8 @@ describe('SQL 규칙', () => {
   });
 
   it('화면이 부르는 함수는 security definer + search_path + 로그인한 사람만', () => {
-    const rpcs = sql.match(/create or replace function public\.twelve_\w+/g)!.map((s) => s.split('public.')[1]);
-    expect(rpcs.sort()).toEqual(['twelve_buy', 'twelve_claim', 'twelve_enhance', 'twelve_equip', 'twelve_finish', 'twelve_lock', 'twelve_scrap', 'twelve_sell', 'twelve_set_hero', 'twelve_start', 'twelve_state', 'twelve_tower_end', 'twelve_tower_floor', 'twelve_tower_start', 'twelve_unequip']);
+    const rpcs = [...new Set(sql.match(/create or replace function public\.twelve_\w+/g)!.map((s) => s.split('public.')[1]))];
+    expect(rpcs.sort()).toEqual(['twelve_buy', 'twelve_claim', 'twelve_enhance', 'twelve_equip', 'twelve_finish', 'twelve_lock', 'twelve_scrap', 'twelve_sell', 'twelve_set_hero', 'twelve_set_mode', 'twelve_start', 'twelve_state', 'twelve_tower_end', 'twelve_tower_floor', 'twelve_tower_start', 'twelve_unequip']);
     for (const name of rpcs) {
       expect(fn(name)).toContain('security definer set search_path = public');
       expect(fn(name)).toContain("raise exception 'need login'");
@@ -94,7 +121,7 @@ describe('SQL 규칙', () => {
   });
 
   it('표는 RLS 를 켜고 직접 쓰지 못한다', () => {
-    const tables = sql.match(/create table if not exists public\.(twelve_\w+)/g)!.map((s) => s.split('public.')[1]);
+    const tables = [...new Set(sql.match(/create table if not exists public\.(twelve_\w+)/g)!.map((s) => s.split('public.')[1]))];
     expect(tables.sort()).toEqual(['twelve_codex', 'twelve_items', 'twelve_keys', 'twelve_maps', 'twelve_pity', 'twelve_profiles', 'twelve_runs', 'twelve_tower', 'twelve_tower_runs']);
     for (const t of tables) {
       expect(sql).toContain(`alter table public.${t} enable row level security;`);

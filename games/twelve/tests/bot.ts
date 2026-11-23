@@ -1,5 +1,5 @@
-import { TILE } from '../src/data/balance';
-import { STEP, noInput, step, type Input, type RunState } from '../src/game/sim';
+import { ENV, TILE } from '../src/data/balance';
+import { STEP, noInput, sightOf, step, tileAt, type Input, type RunState } from '../src/game/sim';
 
 /**
  * 시험용 자동 조종: 가까운 요괴를 찾아가 치고, 빨간 범위에 서 있으면 구르고, 출구가 열리면 출구로 간다.
@@ -9,6 +9,8 @@ function flow(s: RunState, tx: number, ty: number): Int16Array {
   const d = new Int16Array(s.cols * s.rows).fill(-1);
   const q = [Math.floor(ty / TILE) * s.cols + Math.floor(tx / TILE)];
   d[q[0]] = 0;
+  // 불바닥(12지형)은 돌아서 간다: 불 칸은 여섯 걸음으로 친다 (사람도 불은 피해 다닌다)
+  const hot = s.env.id === 'fire' && s.env.f > 0 ? 6 : 1;
   for (let h = 0; h < q.length; h++) {
     const c = q[h];
     const x = c % s.cols;
@@ -16,8 +18,10 @@ function flow(s: RunState, tx: number, ty: number): Int16Array {
     for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       if (nx < 0 || ny < 0 || nx >= s.cols || ny >= s.rows) continue;
       const n = ny * s.cols + nx;
-      if (s.grid[n] === 1 || d[n] >= 0) continue;
-      d[n] = d[c] + 1;
+      if (s.grid[n] === 1) continue;
+      const cost = d[c] + (s.grid[n] === 2 ? hot : 1);
+      if (d[n] >= 0 && d[n] <= cost) continue;
+      d[n] = cost;
       q.push(n);
     }
   }
@@ -60,10 +64,13 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
     let ty = s.exitY;
     let fight = false;
     let best = Infinity;
+    let real = Infinity;
     for (const e of s.enemies) {
       if (e.dead || !e.awake) continue;
       const d = Math.hypot(e.x - p.x, e.y - p.y);
-      if (d < best) (best = d), (tx = e.x), (ty = e.y), (fight = true);
+      // 불러내는 요괴(11지형 뱃사공 망령)는 가까이 있으면 먼저 노린다 (사람도 그렇게 한다) · 불러낸 것은 뒤로 미룬다
+      const w = d * (e.def.call && !e.owner && !e.bossDef ? 0.4 : e.owner ? 1.5 : 1);
+      if (w < best) (best = w), (real = d), (tx = e.x), (ty = e.y), (fight = true);
     }
     if (!fight) {
       if (o.chest && !s.chest) (tx = s.chestX), (ty = s.chestY);
@@ -74,7 +81,7 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
           if (d < best) (best = d), (tx = e.x), (ty = e.y);
         }
       }
-    }
+    } else best = real;
     const k = `${Math.floor(tx / TILE)},${Math.floor(ty / TILE)}`;
     if (k !== key || !field) {
       key = k;
@@ -87,13 +94,16 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
     let gy = ty;
     const here = field[cy * s.cols + cx];
     if (here > 1) {
+      let low = here;
       for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
         if (nx < 0 || ny < 0 || nx >= s.cols || ny >= s.rows) continue;
         const d = field[ny * s.cols + nx];
-        if (d >= 0 && d < here) {
+        if (d >= 0 && d < low) {
           gx = (nx + 0.5) * TILE;
           gy = (ny + 0.5) * TILE;
-          break;
+          // 불바닥이 없으면 예전처럼 처음 찾은 칸으로 (1~11지형의 길은 그대로다)
+          if (s.env.id !== 'fire') break;
+          low = d;
         }
       }
     }
@@ -102,9 +112,25 @@ export function autoplay(s: RunState, maxSec = 900, o: { chest?: boolean } = {})
     const d = Math.hypot(dx, dy) || 1;
     // 칼·창은 붙어서, 활·부채는 떨어져서 싸운다 (조준 거리의 절반쯤에서 멈춰 쏜다)
     const ranged = s.weapon.kind === 'bow' || s.weapon.kind === 'fan';
-    const close = fight && best < (ranged ? s.weapon.aim * 0.55 : s.weapon.kind === 'sword' ? 85 : 140) && (!ranged || sees(s, p.x, p.y, tx, ty));
+    // 달그림자(4지형)에서는 보이는 거리 안까지 다가가서 쏜다
+    const close = fight && best < (ranged ? Math.min(s.weapon.aim * 0.55, sightOf(s) * 0.8) : s.weapon.kind === 'sword' ? 85 : 140) && (!ranged || sees(s, p.x, p.y, tx, ty));
     inp.mx = close ? 0 : dx / d;
     inp.my = close ? 0 : dy / d;
+    // 불바닥(12지형) 위에서는 멈춰 서지 않는다: 가장 가까운 마른 칸으로 비켜서 싸운다
+    if (close && s.env.id === 'fire' && s.env.f > 0 && tileAt(s, p.x, p.y) === 2) {
+      let bd = Infinity;
+      for (let oy = -2; oy <= 2; oy++) {
+        for (let ox = -2; ox <= 2; ox++) {
+          const sx = (cx + ox + 0.5) * TILE;
+          const sy = (cy + oy + 0.5) * TILE;
+          if (tileAt(s, sx, sy) !== 0) continue;
+          const sd = Math.hypot(sx - p.x, sy - p.y);
+          if (sd < bd) (bd = sd), (inp.mx = (sx - p.x) / sd), (inp.my = (sy - p.y) / sd);
+        }
+      }
+    }
+    // 물길(5지형): 물살에 떠밀리는 만큼 거슬러 올라간다 (사람도 그렇게 한다)
+    if (s.env.id === 'water' && s.env.f > 0 && tileAt(s, p.x, p.y) === 2) inp.my -= (ENV.water.push * s.env.f) / (s.stats.speed * 0.6);
     inp.attack = fight && best < s.weapon.aim + 40;
     const skillRange = ranged ? s.weapon.aim * 0.8 : 200;
     inp.skill[0] = fight && best < skillRange && p.skillCd[0] <= 0;

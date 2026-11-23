@@ -26,9 +26,16 @@ export const GROWTH_TARGETS = [
   { mode: 'hard', region: 12, hours: 30, level: 99 },
 ] as const;
 
-/** 경험치 곡선: 레벨 n → n+1 에 필요한 경험치 = round(base × n^pow + add). 바꾸면 npm run sqlgen (서버 _twelve_levels 표) */
-export const EXP_CURVE = { base: 154, pow: 1.4, add: 0 };
-export const expNeed = (level: number) => (level >= MAX_LEVEL ? 0 : Math.round(EXP_CURVE.base * Math.pow(level, EXP_CURVE.pow) + EXP_CURVE.add));
+/** 경험치 곡선: 레벨 n → n+1 에 필요한 경험치 = round(base × n^pow + add) (Lv66 부터는 EXP_HARD 로 더). 바꾸면 npm run sqlgen (서버 _twelve_levels 표) */
+export const EXP_CURVE = { base: 130, pow: 1.4, add: 0 };
+/**
+ * 어려움 모드의 레벨(Lv66~): 필요한 경험치를 ÷ (base − fade × (레벨 − from)) 로 올린다 (Lv66 ×1.27 → Lv98 ×2.08).
+ * 어려움은 요괴가 1.3배 많아 위 식 그대로면 어려움 9지형에서 Lv99 가 됐다 (npm run pace: 어려움 1~6지형 Lv82 · 최종보스까지 Lv99).
+ * 보통 모드(Lv65 까지)의 곡선은 그대로다
+ */
+export const EXP_HARD = { from: 66, base: 0.785, fade: 0.0095 };
+export const expNeed = (level: number) =>
+  level >= MAX_LEVEL ? 0 : Math.round((EXP_CURVE.base * Math.pow(level, EXP_CURVE.pow) + EXP_CURVE.add) / (level >= EXP_HARD.from ? EXP_HARD.base - EXP_HARD.fade * (level - EXP_HARD.from) : 1));
 
 /** 경험치를 더한 뒤의 레벨·경험치 */
 export function addExp(level: number, exp: number, gain: number): { level: number; exp: number; ups: number } {
@@ -82,7 +89,7 @@ export interface PlayerStats extends Record<StatKey, number> {
 export function playerStats(lo: Loadout, region: number): PlayerStats {
   const hero = heroOf(lo.hero);
   const b = baseStats(lo.level);
-  const home = hero.home === region;
+  const home = hero.home > 0 && hero.home === region;
   const affinity = hero.weapon === lo.weapon;
   return {
     hp: Math.round((b.hp + (lo.armorHp ?? 0)) * hero.stats.hp),

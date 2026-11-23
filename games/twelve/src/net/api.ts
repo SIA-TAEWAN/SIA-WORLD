@@ -5,7 +5,7 @@ import { SLOTS, itemDef, type Item } from '../data/items';
 import { REGIONS, type Mode } from '../data/regions';
 import { towerCoins } from '../data/tower';
 import type { Pity } from '../game/drops';
-import { applyReport, checkReport, checkStart, emptyProfile, setHero, type FinishResult, type MapRecord, type RunReport, type TowerRecord, type TwelveProfile } from '../game/progress';
+import { applyReport, checkReport, checkStart, emptyProfile, setHero, setMode, type FinishResult, type MapRecord, type RunReport, type TowerRecord, type TwelveProfile } from '../game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../game/rules';
 import { applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, type TowerFloorResult, type TowerRun } from '../game/tower';
 import { LOCAL_MODE } from './local';
@@ -34,6 +34,8 @@ export interface TwelveApi {
   finish(report: RunReport): Promise<{ profile: TwelveProfile; result: FinishResult } | null>;
   /** 못 보낸 결과 다시 보내기 → 보낸 수 */
   resend(): Promise<number>;
+  /** 모드 바꾸기 (보통 ↔ 어려움. 어려움은 보통 모드를 끝낸 뒤에) */
+  setMode(mode: Mode): Promise<TwelveProfile>;
   /** 대표 대원 바꾸기 */
   setHero(hero: string): Promise<TwelveProfile>;
   equip(id: string): Promise<TwelveProfile>;
@@ -155,7 +157,13 @@ export function normalize(v: unknown): TwelveProfile {
   };
 }
 
+/** 테스트 모드(?local=1)의 고양이: 시아코인이 없으니 구매를 흉내만 낸다 (이 기기에 적어 둔다) */
+export const LOCAL_CAT_KEY = 'sia-twelve-local-cat';
+export const localCatOwned = (store: Store = safeStore()) => store.getItem(LOCAL_CAT_KEY) === '1';
+export const buyLocalCat = (store: Store = safeStore()) => store.setItem(LOCAL_CAT_KEY, '1');
+
 export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock: () => number = Date.now): TwelveApi {
+  const cat = () => localCatOwned(store);
   const load = () => {
     try {
       return normalize(JSON.parse(store.getItem(key) ?? 'null'));
@@ -180,7 +188,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
       return load();
     },
     async start(map, mode, hero) {
-      const why = checkStart(load(), map, mode, hero);
+      const why = checkStart(load(), map, mode, hero, cat());
       if (why) throw new ApiError(why);
       const run = `local-${Date.now()}-${n++}`;
       const seed = Math.floor(Math.random() * 0x7fffffff);
@@ -199,7 +207,8 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
     async resend() {
       return 0;
     },
-    setHero: (hero) => act((p) => setHero(p, hero)),
+    setMode: (mode) => act((p) => setMode(p, mode)),
+    setHero: (hero) => act((p) => setHero(p, hero, cat())),
     equip: (id) => act((p) => equip(p, id)),
     unequip: (slot) => act((p) => unequip(p, slot)),
     lock: (id, on) => act((p) => setLock(p, id, on)),
@@ -210,7 +219,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
     buy: (what, cnt = 1) => act((p) => buy(p, what, cnt)),
     async towerStart(floor, hero) {
       const p = load();
-      const why = checkTowerStart(p, floor, hero);
+      const why = checkTowerStart(p, floor, hero, cat());
       if (why) throw new ApiError(why);
       // 한 번에 한 판: 끝내지 않은 앞 판은 여기서 끝난 것으로 한다
       for (const r of towers.values()) r.done = true;
@@ -316,6 +325,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       newStars: Number(res.newStars) || 0,
       first: !!res.first,
       joined: typeof res.joined === 'string' && isHero(res.joined) ? res.joined : null,
+      gift: Number(res.gift) || 0,
       siaCoin: !!res.siaCoin,
       items: (Array.isArray(res.items) ? res.items : []).map((it) => ({ id: String(it.id), base: String(it.base), plus: 0, lock: false, box: !!it.box })),
       stones: Number(res.stones) || 0,
@@ -372,6 +382,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       }
     },
     resend,
+    setMode: (mode) => state('twelve_set_mode', { p_mode: mode }),
     setHero: (hero) => state('twelve_set_hero', { p_hero: hero }),
     equip: (id) => state('twelve_equip', { p_item: Number(id) }),
     unequip: (slot) => state('twelve_unequip', { p_slot: slot }),

@@ -35,10 +35,10 @@ export interface WeaponDef {
 export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   sword: {
     kind: 'sword', name: '칼', icon: '🗡️', desc: '앞쪽 반원을 빠르게 벤다', aim: 170,
-    basic: { name: '베기', desc: '앞쪽 반원 베기', icon: '🗡️', mp: 0, cd: 0.42, sound: 'survSlash', acts: [{ t: 'hit', shape: { k: 'arc', r: 108, half: 1.2 }, mul: 1, kb: 110 }] },
+    basic: { name: '베기', desc: '앞쪽 반원 베기', icon: '🗡️', mp: 0, cd: 0.42, sound: 'twelveSlash', acts: [{ t: 'hit', shape: { k: 'arc', r: 108, half: 1.2 }, mul: 1, kb: 110 }] },
     skills: [
       {
-        name: '연속 베기', desc: '빠르게 세 번 벤다', icon: '⚔️', mp: 12, cd: 5, sound: 'survSlash',
+        name: '연속 베기', desc: '빠르게 세 번 벤다', icon: '⚔️', mp: 12, cd: 5, sound: 'twelveSlash',
         acts: [0, 0.14, 0.28].map((at): Act => ({ t: 'hit', at, shape: { k: 'arc', r: 120, half: 1.3 }, mul: 0.95, kb: 60 })),
       },
       { name: '돌진 베기', desc: '앞으로 돌진하며 벤다', icon: '💨', mp: 16, cd: 7, sound: 'boost', acts: [{ t: 'dash', dist: 300, time: 0.2, w: 80, mul: 2.3, kb: 140 }] },
@@ -46,9 +46,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   },
   spear: {
     kind: 'spear', name: '창', icon: '🔱', desc: '길고 좁게 찌른다', aim: 220,
-    basic: { name: '찌르기', desc: '길고 좁게 찌르기', icon: '🔱', mp: 0, cd: 0.62, sound: 'survSlash', acts: [{ t: 'hit', shape: { k: 'line', len: 185, w: 52 }, mul: 1.4, kb: 130 }] },
+    basic: { name: '찌르기', desc: '길고 좁게 찌르기', icon: '🔱', mp: 0, cd: 0.62, sound: 'twelveSlash', acts: [{ t: 'hit', shape: { k: 'line', len: 185, w: 52 }, mul: 1.4, kb: 130 }] },
     skills: [
-      { name: '회전 베기', desc: '주변을 전부 휩쓴다', icon: '🌀', mp: 14, cd: 6, sound: 'survSlash', acts: [{ t: 'hit', shape: { k: 'circle', r: 170 }, mul: 1.9, kb: 180 }] },
+      { name: '회전 베기', desc: '주변을 전부 휩쓴다', icon: '🌀', mp: 14, cd: 6, sound: 'twelveSlash', acts: [{ t: 'hit', shape: { k: 'circle', r: 170 }, mul: 1.9, kb: 180 }] },
       {
         name: '창 던지기', desc: '멀리 뚫고 날아간다', icon: '☄️', mp: 16, cd: 6, sound: 'survShot',
         acts: [{ t: 'shot', n: 1, spread: 0, speed: 900, range: 760, radius: 20, mul: 2.5, pierce: 99, look: 'spear', kb: 80 }],
@@ -58,7 +58,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   bow: {
     kind: 'bow', name: '활', icon: '🏹', desc: '멀리 쏜다. 바짝 붙은 요괴는 활대로 밀쳐 낸다', aim: 560,
     basic: {
-      name: '쏘기', desc: '멀리 한 발 (하나를 뚫는다) + 붙은 요괴 밀쳐 내기', icon: '🏹', mp: 0, cd: 0.7, sound: 'survShot',
+      name: '쏘기', desc: '멀리 한 발 (하나를 뚫는다) + 붙은 요괴 밀쳐 내기', icon: '🏹', mp: 0, cd: 0.7, sound: 'twelveBow',
       acts: [
         { t: 'shot', n: 1, spread: 0, speed: 840, range: 660, radius: 11, mul: 1.55, pierce: 1, look: 'arrow', kb: 60 },
         // 근접 약점 보완: 바짝 붙은 요괴를 활대로 밀쳐 낸다 (거리를 벌려 다시 쏠 수 있게)
@@ -66,9 +66,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
       ],
     },
     skills: [
-      { name: '화살 비', desc: '요괴가 있는 자리에 화살이 쏟아진다', icon: '🌧️', mp: 18, cd: 8, sound: 'survShot', acts: [{ t: 'zone', look: 'rain', ahead: 300, aim: 540, r: 150, dur: 2.4, tick: 0.4, mul: 0.75 }] },
+      { name: '화살 비', desc: '요괴가 있는 자리에 화살이 쏟아진다', icon: '🌧️', mp: 18, cd: 8, sound: 'twelveBow', acts: [{ t: 'zone', look: 'rain', ahead: 300, aim: 540, r: 150, dur: 2.4, tick: 0.4, mul: 0.75 }] },
       {
-        name: '세 갈래 화살', desc: '부채꼴로 세 발', icon: '🪶', mp: 10, cd: 4, sound: 'survShot',
+        name: '세 갈래 화살', desc: '부채꼴로 세 발', icon: '🪶', mp: 10, cd: 4, sound: 'twelveBow',
         acts: [{ t: 'shot', n: 3, spread: 0.3, speed: 840, range: 600, radius: 11, mul: 1.3, pierce: 1, look: 'arrow', kb: 60 }],
       },
     ],
@@ -76,7 +76,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   fan: {
     kind: 'fan', name: '부채', icon: '🪭', desc: '마법 구슬을 날린다 (마력 조금). 바짝 붙은 요괴는 부채 바람으로 밀어 낸다', aim: 480,
     basic: {
-      name: '구슬', desc: '작은 마법 구슬 (하나를 뚫는다) + 붙은 요괴 밀어 내기', icon: '🪭', mp: 1, cd: 0.5, sound: 'survShot',
+      name: '구슬', desc: '작은 마법 구슬 (하나를 뚫는다) + 붙은 요괴 밀어 내기', icon: '🪭', mp: 1, cd: 0.5, sound: 'twelveMagic',
       acts: [
         { t: 'shot', n: 1, spread: 0, speed: 640, range: 540, radius: 16, mul: 1.3, pierce: 1, look: 'orb', kb: 70 },
         // 근접 약점 보완: 부채 바람 (넓게 밀어 낸다)

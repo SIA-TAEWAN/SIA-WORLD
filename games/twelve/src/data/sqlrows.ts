@@ -1,14 +1,14 @@
 /**
- * 서버 표 줄 만들기: 게임 데이터(src/data) → supabase/migrations/078_twelve.sql 의 `-- <gen:이름>` ~ `-- </gen:이름>` 사이.
+ * 서버 표 줄 만들기: 게임 데이터(src/data) → supabase/migrations/094_twelve_full.sql 의 `-- <gen:이름>` ~ `-- </gen:이름>` 사이.
  * `npm run sqlgen` 이 그 사이를 다시 쓰고, tests/sql.test.ts 가 파일과 여기 결과가 같은지 본다.
  * 숫자(경험치 곡선·요괴 보상·드랍 확률·값)를 바꾸면 sqlgen 만 다시 돌리면 된다 — SQL 의 계산 순서는 그대로다.
  */
 import { EXIT_KILL_RATIO } from './balance';
-import { ACC_STATS, BAG, DROP, MAX_PLUS, PITY, POTION, POTION_SIZES, TIERS, bagPrice, bossStones, eliteStones, enhanceCost, potionSizeForTier, regionTier } from './economy';
+import { ACC_STATS, BAG, BOSS_GIFT, DROP, FINAL_GIFT, MAX_PLUS, PITY, POTION, POTION_SIZES, TIERS, bagPrice, bossStones, eliteStones, enhanceCost, potionSizeForTier, regionTier } from './economy';
 import { EXP_PENALTY, MAX_LEVEL, expNeed } from './growth';
 import { HEROES } from './heroes';
 import { ITEMS, canEnhance, regionRares, starReward } from './items';
-import { MAPS } from './maps';
+import { ALL_MAPS, mapPar } from './maps';
 import { TOWER } from './tower';
 import { HARD_READY, MODES, REGIONS, type Mode } from './regions';
 import { WEAPON_KINDS } from './weapons';
@@ -19,14 +19,14 @@ const row = (...cols: (string | number | boolean)[]) => `(${cols.join(', ')})`;
 /** 준비된 모드 (어려움은 HARD_READY 뒤에) */
 const readyModes = (): Mode[] => MODES.filter((m) => m === 'normal' || HARD_READY);
 
-/** 맵: id · 모드 · 지형 · 번호 · 권장 레벨 · 별 시간 · 보스 맵 · 요괴 수 · 정예 수 · 정예 경험치/엽전 · 보스 경험치/엽전 · 상자 엽전 · 종류별 [최대, 경험치, 엽전] */
+/** 맵(지형 맵 96개 + 최종보스맵 'final' = 12지형의 9번째): id · 모드 · 지형 · 번호 · 권장 레벨 · 별 시간 · 보스 맵 · 요괴 수 · 정예 수 · 정예 경험치/엽전 · 보스 경험치/엽전 · 상자 엽전 · 종류별 [최대, 경험치, 엽전] */
 export function mapRows(): string[] {
   const out: string[] = [];
   for (const mode of readyModes()) {
-    for (const m of MAPS) {
+    for (const m of ALL_MAPS) {
       const r = mapReward(m, mode);
       const kinds = Object.fromEntries(Object.entries(r.kinds).map(([k, v]) => [k, [v.max, v.exp, v.coin]]));
-      out.push(row(q(m.id), q(mode), m.region, m.no, r.level, m.par, !!m.boss, r.total, r.elites, r.eliteExp, r.eliteCoin, r.bossExp, r.bossCoin, r.chestCoin, `${q(JSON.stringify(kinds))}::jsonb`));
+      out.push(row(q(m.id), q(mode), m.region, m.no, r.level, mapPar(m, mode), !!m.boss, r.total, r.elites, r.eliteExp, r.eliteCoin, r.bossExp, r.bossCoin, r.chestCoin, `${q(JSON.stringify(kinds))}::jsonb`));
     }
   }
   return out;
@@ -104,6 +104,10 @@ export function constRows(): string[] {
     bag_max: BAG.max,
     potion_max: POTION.max,
     max_plus: MAX_PLUS,
+    // 보스의 선물 (economy.ts 의 BOSS_GIFT): 그 지형 보스를 처음 잡으면 받는 강화석
+    ...Object.fromEntries(Object.entries(BOSS_GIFT).map(([r, n]) => [`boss_gift_${r}`, n])),
+    // 최종보스를 처음 잡으면 받는 강화석 (economy.ts 의 FINAL_GIFT)
+    boss_gift_final: FINAL_GIFT,
     // 끝없는 탑 (data/tower.ts 의 TOWER)
     tower_cp: TOWER.cp,
     tower_elite_every: TOWER.eliteEvery,
@@ -175,7 +179,7 @@ export function fillBlocks(sql: string): string {
   for (const [name, body] of Object.entries(sqlBlocks())) {
     const a = out.indexOf(open(name));
     const b = out.indexOf(close(name));
-    if (a < 0 || b < a) throw new Error(`078_twelve.sql 에 ${open(name)} 블록이 없어요`);
+    if (a < 0 || b < a) throw new Error(`094_twelve_full.sql 에 ${open(name)} 블록이 없어요`);
     out = `${out.slice(0, out.indexOf('\n', a) + 1)}${body}\n${out.slice(out.lastIndexOf('\n', b) + 1)}`;
   }
   return out;
