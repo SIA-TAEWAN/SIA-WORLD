@@ -3,6 +3,8 @@ import type { ZodiacId } from '../game/constants';
 import { worldSupabase } from './world';
 import { isLockedError } from '../game/unlock';
 import { retryDaily } from '../game/daily';
+import { isCharId } from '../game/constants';
+import { parseGhost, type Ghost } from '../game/ghost';
 
 /** 한 판의 시각 (모두 서버 시각 ms): '준비' 표시와 GO */
 export interface GoInfo {
@@ -30,6 +32,23 @@ export interface RankRow {
   character: string;
 }
 
+/** 그날 1위 고스트 (095_race_ghost.sql 의 race_ghost_top). ghost 는 아직 확인 전 (받는 기기가 다시 달려 본다) */
+export interface GhostTop {
+  ghost: unknown;
+  nickname: string;
+  char: ZodiacId;
+  ms: number;
+  /** 그 사람의 역대 최고 기록 순위 (없으면 null) */
+  place: number | null;
+  /** 그날 순위 (1위의 고스트가 없으면 고스트가 있는 사람 중 가장 높은 순위) */
+  dayPlace: number;
+  /** 내 고스트인가 */
+  me: boolean;
+}
+
+/** 고스트 올리기 결과: 받음(빠를 때만 바뀐다) · 서버가 거절(다시 해도 같다) · 통신 실패(다시 해 볼 것) */
+export type GhostSubmitResult = 'ok' | 'rejected' | 'retry';
+
 export interface RaceApi {
   kind: 'supabase' | 'local';
   /** 기기 시계를 서버 시각에 맞춘다 */
@@ -50,6 +69,22 @@ export interface RaceApi {
    * 들어갔으면 기록된 날짜 'YYYY-MM-DD', 못 넣었으면 null. 통신이 실패하면 두 번까지 다시 해 본다
    */
   dailySubmit(room: string, round: number, day: string): Promise<string | null>;
+  /** 그날 1위 고스트 (없거나 못 읽으면 null) */
+  ghostTop(day: string): Promise<GhostTop | null>;
+  /** 오늘의 도전 기록이 들어간 판의 고스트 올리기 (race_ghost_submit) */
+  ghostSubmit(room: string, round: number, ghost: Ghost): Promise<GhostSubmitResult>;
+}
+
+/** race_ghost_top 의 답 → GhostTop (모양이 이상하면 null) */
+export function ghostTopOf(d: unknown): GhostTop | null {
+  if (!d || typeof d !== 'object') return null;
+  const o = d as Record<string, unknown>;
+  const ch = o.character;
+  const dayPlace = Number(o.day_place);
+  const ms = Number(o.ms);
+  if (!isCharId(ch) || !(dayPlace >= 1) || !(ms > 0) || !o.ghost) return null;
+  const place = Number(o.place);
+  return { ghost: o.ghost, nickname: String(o.nickname ?? ''), char: ch, ms, place: place >= 1 ? place : null, dayPlace, me: o.me === true };
 }
 
 /** GO 요청부터 '준비' 표시까지 (서버 029_race.sql 의 lead_ms 와 같은 값) */
@@ -102,6 +137,16 @@ function saveLocalBest(uid: string, ms: number): SubmitResult {
   return { saved: false, bestMs: improved ? ms : old!, improved };
 }
 
+/** 테스트 모드: 기기에 그날 내 최고 고스트 (다음 판에 같이 달린다) */
+const ghostKey = (uid: string, day: string) => `siarace:ghost:${uid}:${day}`;
+function readLocalGhost(uid: string, day: string): Ghost | null {
+  try {
+    return parseGhost(JSON.parse(localStorage.getItem(ghostKey(uid, day)) ?? 'null'));
+  } catch {
+    return null;
+  }
+}
+
 function createLocalApi(uid: string): RaceApi {
   return {
     kind: 'local',
@@ -120,6 +165,20 @@ function createLocalApi(uid: string): RaceApi {
     },
     async dailySubmit() {
       return null; // 테스트 모드: 서버 기록 없음
+    },
+    async ghostTop(day) {
+      const g = readLocalGhost(uid, day);
+      return g ? { ghost: g, nickname: '나', char: g.char, ms: g.ms, place: null, dayPlace: 1, me: true } : null;
+    },
+    async ghostSubmit(_room, _round, ghost) {
+      const old = readLocalGhost(uid, ghost.day);
+      if (old && old.ms <= ghost.ms) return 'ok';
+      try {
+        localStorage.setItem(ghostKey(uid, ghost.day), JSON.stringify(ghost));
+      } catch {
+        return 'rejected';
+      }
+      return 'ok';
     },
   };
 }
@@ -199,6 +258,24 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
           return { done: false };
         }
       });
+    },
+    async ghostTop(day) {
+      try {
+        const { data, error } = await sb.rpc('race_ghost_top', { p_day: day });
+        return error ? null : ghostTopOf(data);
+      } catch {
+        return null;
+      }
+    },
+    async ghostSubmit(room, round, ghost) {
+      try {
+        const { error } = await sb.rpc('race_ghost_submit', { p_room_key: room, p_round: round, p_ghost: ghost });
+        if (!error) return 'ok';
+        // 서버가 검사해서 거절한 것(raise exception)은 다시 해도 같다
+        return error.code === 'P0001' ? 'rejected' : 'retry';
+      } catch {
+        return 'retry';
+      }
     },
   };
 }

@@ -108,12 +108,20 @@ export class RaceScene extends Phaser.Scene {
     this.load.on('loaderror', () => undefined);
   }
 
-  /** 내 자리가 맨 아래(3), 나머지는 자리 순서대로 위에서부터 */
+  /** 내 자리가 맨 아래(3), 고스트는 내 바로 위(2), 나머지(AI)는 자리 순서대로 위에서부터 */
   private rowOf(slot: number): number {
     const me = this.race.mySlot;
     if (me < 0) return slot;
     if (slot === me) return LANES - 1;
-    return slot < me ? slot : slot - 1;
+    const roster = this.race.roster;
+    const ghost = roster.find((r) => r.role === 'ghost')?.slot ?? -1;
+    if (slot === ghost) return LANES - 2;
+    return roster.filter((r) => r.slot !== me && r.slot !== ghost && r.slot < slot).length;
+  }
+
+  /** 고스트 자리인가 (반투명으로 그린다) */
+  private isGhost(slot: number): boolean {
+    return this.race.roster[slot]?.role === 'ghost';
   }
 
   private laneTop(row: number) {
@@ -245,6 +253,11 @@ export class RaceScene extends Phaser.Scene {
       const h = this.laneH * 0.74;
       spr.setScale(h / tex.height);
       shadow.setDisplaySize(spr.displayWidth * 0.8, this.laneH * 0.14);
+      // 고스트: 반투명 (이름표는 읽히게 그대로)
+      if (this.isGhost(r.slot)) {
+        spr.setAlpha(0.5);
+        shadow.setAlpha(0.11);
+      }
 
       // 머리 위 이름표: 순위 + ID. 내 것은 노란 바탕
       const fs = Math.max(10, Math.min(13, Math.round(this.laneH * 0.14)));
@@ -270,6 +283,7 @@ export class RaceScene extends Phaser.Scene {
       const arrowBg = this.add.graphics();
       const arrow = this.add.container(0, this.laneTop(row) + this.laneH * 0.52, [arrowBg, face, arrowText]).setDepth(120).setVisible(false);
       arrow.setData('face', face);
+      if (this.isGhost(r.slot)) face.setAlpha(0.6);
 
       const logO = this.race.obs.find((o) => o.kind === 'log');
       let logSpr: Phaser.GameObjects.Image | null = null;
@@ -541,7 +555,7 @@ export class RaceScene extends Phaser.Scene {
       if (a.ghostT <= 0) {
         a.ghostT = 0.06;
         const gimg = this.add.image(a.spr.x, a.spr.y, a.spr.texture.key).setOrigin(0.5, 1).setDepth(a.spr.depth - 1);
-        gimg.setScale(a.spr.scaleX, a.spr.scaleY).setRotation(a.spr.rotation).setTintFill(COLOR.primary).setAlpha(0.45);
+        gimg.setScale(a.spr.scaleX, a.spr.scaleY).setRotation(a.spr.rotation).setTintFill(COLOR.primary).setAlpha(0.45 * a.spr.alpha);
         this.tweens.add({ targets: gimg, alpha: 0, x: gimg.x - 26, duration: 260, onComplete: () => gimg.destroy() });
         if (Math.random() < 0.5) this.puff('spark', x - h * 0.4, gy - h * (0.2 + Math.random() * 0.6), a.row, 0.5, -90, 0, 220);
       }

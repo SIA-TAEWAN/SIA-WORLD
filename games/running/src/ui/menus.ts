@@ -2,7 +2,8 @@ import { CHAR_IDS, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/consta
 import { formatTime, tierOfPlace } from '../game/ranking';
 import { DAILY_GAME, dailyLabel, dailyMs, isDailyDay, localDailyDay } from '../game/daily';
 import { LOCAL_MODE } from '../net/api';
-import { SoloSession } from '../net/solo';
+import { SoloSession, loadGhostRun, type GhostRun } from '../net/solo';
+import type { RaceApi } from '../net/api';
 import { loadRankIcons, openWorldRanking, worldDailyRanking, worldDailyTodayStrict, worldHome, type DailyRanking } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
@@ -37,6 +38,23 @@ async function fetchToday(): Promise<string | null> {
   if (LOCAL_MODE) return localDailyDay();
   const d = await worldDailyTodayStrict();
   return isDailyDay(d) ? d : null;
+}
+
+/** 그날 1위 고스트를 새로 읽기 시작한다 (2초 안에 못 받으면 null → AI 3명) */
+export function reloadGhost(api: RaceApi, day: string): Promise<GhostRun | null> {
+  const after = state.ghostAfter;
+  state.ghostAfter = null;
+  const p = after
+    ? Promise.race([after.catch(() => undefined), new Promise((r) => setTimeout(r, 1500))]).then(() => loadGhostRun(api, day))
+    : loadGhostRun(api, day);
+  state.ghostLoad = { day, p };
+  return p;
+}
+
+/** 그날 고스트: 같은 날 읽어 둔 것이 있으면 그것, 아니면 새로 */
+function ghostFor(api: RaceApi, day: string): Promise<GhostRun | null> {
+  const g = state.ghostLoad;
+  return g && g.day === day ? g.p : reloadGhost(api, day);
 }
 
 // ───────────────────────── 첫 화면: 오늘의 도전 ─────────────────────────
@@ -77,8 +95,11 @@ export function showLobby() {
     nav.pick();
   });
 
-  // 오늘 1위 · 내 오늘 기록 (daily_ranking)
+  // 오늘 1위 · 내 오늘 기록 (daily_ranking). 1위의 얼굴은 1위 고스트의 캐릭터 (고스트가 없으면 왕관)
+  let ghost: GhostRun | null = null;
+  let lastRank: DailyRanking | null = null;
   const paintToday = (r: DailyRanking | null, note?: string) => {
+    lastRank = r;
     if (!alive) return;
     const top = $('#top');
     const mine = $('#mine');
@@ -94,11 +115,14 @@ export function showLobby() {
     }
     const first = r.top.find((t) => Number(t.place) === 1) ?? r.top[0];
     const ms1 = dailyMs(first);
-    // 1위의 캐릭터는 지금 detail 에 없다 (detail = { ms }): 얼굴 대신 기본 표시(왕관).
-    // 3단계(1위 고스트)에서 detail 에 캐릭터가 실리면 여기서 zodiacFaceUrl 로 얼굴을 그린다.
+    // 1위의 캐릭터는 daily detail 에 없다 (detail = { ms }): 1위 고스트(race_ghost_top)가 그 사람 것이면 그 캐릭터 얼굴, 아니면 왕관
+    const face =
+      ghost && ghost.dayPlace === 1 && ghost.nickname === (first?.nickname ?? '')
+        ? `<img src="${zodiacFaceUrl(ghost.ghost.char)}" alt="" />`
+        : '<span class="crown" aria-hidden="true">👑</span>';
     top.innerHTML =
       first && ms1 !== null
-        ? `<span class="crown" aria-hidden="true">👑</span><span class="t1">오늘 1위<b class="nm">${esc(first.nickname ?? '')}</b></span><span class="tm">${formatTime(ms1)}<small>초</small></span>`
+        ? `${face}<span class="t1">오늘 1위<b class="nm">${esc(first.nickname ?? '')}</b></span><span class="tm">${formatTime(ms1)}<small>초</small></span>`
         : '<span class="soft first-empty">아직 1위가 없어요. 첫 기록을 세워 보세요!</span>';
     const msMine = dailyMs(r.mine);
     mine.innerHTML =
@@ -107,13 +131,21 @@ export function showLobby() {
         : `<img src="${zodiacFaceUrl(state.char)}" alt="" /><span class="soft">아직 안 달렸어요</span>`;
   };
 
-  if (LOCAL_MODE) paintToday(null, '테스트 모드에서는 순위가 남지 않아요');
-  else
+  if (LOCAL_MODE) {
+    paintToday(null, '테스트 모드에서는 순위가 남지 않아요');
+    if (state.api) void reloadGhost(state.api, localDailyDay());
+  } else
     void fetchToday().then(async (day) => {
       if (!alive) return;
       if (!day) return paintToday(null, NO_DAY);
       state.today = day;
       $('#day').textContent = dailyLabel(day);
+      // 1위 고스트를 새로 읽는다 (출발할 때 쓴다). 받으면 1위 칸의 얼굴을 바꾼다
+      if (state.api)
+        void reloadGhost(state.api, day).then((g) => {
+          ghost = g;
+          if (alive && g && lastRank) paintToday(lastRank);
+        });
       paintToday(await worldDailyRanking(DAILY_GAME, day));
     });
 
@@ -164,7 +196,7 @@ function showHowTo() {
 export function showPick() {
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>캐릭터</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
-    <div class="pick-hero"><img id="pick-img" alt="" /><div class="pick-name" id="pick-name"></div><div class="soft">능력은 모두 같아요 · AI 3명과 달려요</div></div>
+    <div class="pick-hero"><img id="pick-img" alt="" /><div class="pick-name" id="pick-name"></div><div class="soft" id="pick-sub">능력은 모두 같아요 · AI 3명과 달려요</div></div>
     <div class="card"><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <button class="btn primary big" id="go">출발 ▶</button>`,
@@ -229,6 +261,10 @@ export function showPick() {
   // 다른 기기에서 열고 돌아와도 자물쇠를 바로 푼다. 잠긴 동안 구매 조건 진행을 다시 읽는다
   const offUnlock = onUnlockChange(paint);
   paint();
+  // 1위 고스트가 있으면 안내를 바꾼다
+  void state.ghostLoad?.p.then((g) => {
+    if (g && root.isConnected) $('#pick-sub').textContent = `능력은 모두 같아요 · 👻 ${g.me ? '내 1위 기록' : `오늘 ${g.dayPlace}위`} 고스트 · AI 2명과 달려요`;
+  });
   void refreshProgress();
   void loadEngine();
 }
@@ -267,7 +303,8 @@ export async function startRun() {
   state.today = day;
   state.solo ??= new SoloSession(api, state.user);
   try {
-    const start = await state.solo.start(state.char, day, () => cancelled);
+    // 1위 고스트: 로비에서 읽어 둔 것(같은 날) 또는 새로. 2초 안에 못 받으면 AI 3명으로 바로
+    const start = await state.solo.start(state.char, day, () => cancelled, Math.random, ghostFor(api, day));
     if (!start || cancelled) return;
     const m = await loadEngine();
     if (!cancelled) m.showRace(start);

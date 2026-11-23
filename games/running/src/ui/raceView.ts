@@ -50,7 +50,7 @@ export function showRace(start: SoloStart) {
         <div class="place" id="place"><b>-</b>등</div>
       </div>
       <div class="prog" id="prog"><div class="rail"><i></i></div><span class="flag">🏁</span>
-        ${race.roster.map((r) => `<img data-slot="${r.slot}" class="${r.slot === me ? 'me' : ''}" src="${zodiacFaceUrl(r.char)}" alt="" />`).join('')}
+        ${race.roster.map((r) => `<img data-slot="${r.slot}" class="${r.slot === me ? 'me' : r.role === 'ghost' ? 'ghost' : ''}" src="${zodiacFaceUrl(r.char)}" alt="" />`).join('')}
       </div>
     </div>
     <div class="track" id="track"><div class="cutin" id="cutin"></div></div>

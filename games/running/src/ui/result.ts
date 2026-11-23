@@ -3,6 +3,7 @@ import { LOCAL_MODE } from '../net/api';
 import { LOCKED_MSG } from '../game/unlock';
 import { loadRankIcons, worldDailyRanking } from '../net/world';
 import { DAILY_GAME, dailyLabel, dailyMs } from '../game/daily';
+import { ghostDiffText } from '../game/ghost';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
 import { esc, nav, screen, state, toast } from './app';
@@ -16,6 +17,14 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   const raced = mine !== undefined;
   // 배지: 이번 판에 내가 한 일 (무결점 완주·부스트 싹쓸이·오뚝이). 실격한 판에는 없다
   const badges = raced && mine.status !== 'foul' ? race.badges(mine.status === 'finish') : [];
+  // 고스트와 비교: "1위보다 0.42초 빨랐어요! 🎉" / "1위까지 0.42초" (내 1위 기록의 고스트면 '내 1위 기록')
+  const gh = race.ghost;
+  const ghostWho = gh ? (gh.me ? '내 1위 기록' : `${gh.dayPlace}위`) : '';
+  const beatGhost = !!gh && mine?.status === 'finish' && mine.timeMs! < gh.ghost.ms;
+  const ghostLine =
+    gh && mine?.status === 'finish'
+      ? `<p class="ghost-diff ${beatGhost ? 'win' : ''}">👻 ${esc(ghostDiffText(mine.timeMs!, gh.ghost.ms, ghostWho, formatTime))}</p>`
+      : '';
   const root = screen(
     `<div class="result-card">
       <h2>🏁 경기 결과</h2>
@@ -29,6 +38,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
                 ? '실격! GO가 뜬 뒤에 눌러요'
                 : `미완주 (${Math.floor(mine.x)}m)`
       }</p>
+      ${ghostLine}
       ${
         badges.length
           ? `<ul class="badges" aria-label="이번 판 배지">${badges.map((b, i) => `<li class="badge" role="button" tabindex="0" data-desc="${esc(`${b.label}: ${b.desc}`)}" title="${esc(b.desc)}" style="animation-delay:${500 + i * 160}ms"><i aria-hidden="true">${b.icon}</i>${esc(b.label)}</li>`).join('')}</ul>`
@@ -38,15 +48,18 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
         .map((r, i) => {
           const p = race.roster[r.slot];
           const isMe = r.slot === me;
+          const isGhost = p.role === 'ghost' && !!gh;
           const tm =
             r.status === 'finish'
               ? `<span class="tm">${formatTime(r.timeMs!)}초</span>`
               : r.status === 'foul'
                 ? '<span class="tm foul">실격</span>'
                 : `<span class="tm dnf">미완주 ${Math.floor(r.x)}m</span>`;
-          return `<div class="rrow p${r.place} ${isMe ? 'me' : ''}" data-id="${esc(p.id ?? '')}" style="animation-delay:${200 + i * 260}ms"><span class="pl">${r.place}</span>
-            <img class="av" src="${zodiacFaceUrl(p.char)}" alt="" /><span class="body"><span class="top"><span class="nm">${esc(p.name)}</span>${tm}</span></span>${
-              isMe ? `<span class="tier" data-uid="${esc(p.id ?? '')}"></span>` : ''
+          return `<div class="rrow p${r.place} ${isMe ? 'me' : ''} ${isGhost ? 'ghost' : ''}" data-id="${esc(p.id ?? '')}" style="animation-delay:${200 + i * 260}ms"><span class="pl">${r.place}</span>
+            <img class="av" src="${zodiacFaceUrl(p.char)}" alt="" /><span class="body"><span class="top"><span class="nm">${esc(isGhost ? gh!.nickname : p.name)}</span>${tm}</span>${
+              isGhost ? `<small>👻 ${gh!.me ? '내 1위 기록' : `오늘 ${gh!.dayPlace}위`} 고스트</small>` : ''
+            }</span>${
+              isMe ? `<span class="tier" data-uid="${esc(p.id ?? '')}"></span>` : isGhost ? `<span class="tier" data-place="${gh!.place ?? 0}"></span>` : ''
             }</div>`;
         })
         .join('')}</div>
@@ -75,10 +88,12 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
 
   // 등급 아이콘 (해·달·별·구름): 내 줄에만, 내 역대 최고 기록 순위로 (1위 해 · 2위 달 · 3위 별 · 그 밖과 순위 없음은 구름).
   // AI 줄에는 없다. 이번 판으로 순위가 바뀌었을 수 있으니 내 기록이 서버에 올라간 뒤(race_submit) 다시 읽는다. 못 읽으면 구름
+  // 고스트 줄: 그 사람의 역대 최고 기록 순위 (race_ghost_top 이 준 place) 그대로
   const paintTiers = async () => {
+    const icons = await loadRankIcons();
+    root.querySelectorAll<HTMLElement>('.tier[data-place]').forEach((el) => (el.innerHTML = icons.tierSvg(tierOfPlace(Number(el.dataset.place) || null), 26)));
     const els = [...root.querySelectorAll<HTMLElement>('.tier[data-uid]')];
     if (!els.length) return;
-    const icons = await loadRankIcons();
     await race.record?.catch(() => null);
     const places = (await state.api?.places(els.map((el) => el.dataset.uid ?? '')).catch(() => null)) ?? {};
     const myId = state.user.id;
@@ -126,6 +141,8 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
           const past = r.today !== day;
           const when = past ? dailyLabel(day) : '오늘';
           place.innerHTML = `<div class="dp-big">${when} <b>${Number(r.mine.place) || '-'}</b>위</div><div class="soft">${past ? '그날' : '오늘'} 내 최고 ${formatTime(ms)}초 · ${Number(r.total) || 1}명 중</div>`;
+          // 고스트(다른 사람)를 이기고 서버 그날 순위가 1위가 됐으면: 👑 오늘의 1위!
+          if (beatGhost && !gh!.me && !past && Number(r.mine.place) === 1) crownCut(root);
         })
         .catch(hide);
     }
@@ -133,14 +150,29 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
 
   $('#again').addEventListener('click', () => {
     sfx('click');
-    // 캐릭터를 다시 고르지 않고 바로 다음 판
+    // 캐릭터를 다시 고르지 않고 바로 다음 판. 1위가 바뀌었을 수 있으니 고스트는 새로 읽는다
+    state.ghostLoad = null;
+    state.ghostAfter = race.ghostSaved;
     nav.run();
   });
   $('#exit').addEventListener('click', () => {
     sfx('click');
+    state.ghostAfter = race.ghostSaved;
     nav.lobby();
   });
   $('#rank').addEventListener('click', () => void showRanking());
+}
+
+/** 👑 오늘의 1위! (고스트를 이기고 서버 그날 순위 1위를 확인한 뒤) */
+function crownCut(root: HTMLElement) {
+  // 제목 자리를 바꾼다 (낮은 화면에서도 카드 높이가 늘지 않게)
+  const h2 = root.querySelector('.result-card h2');
+  if (!h2 || h2.classList.contains('crown-cut')) return;
+  h2.classList.add('crown-cut');
+  h2.innerHTML = '<span aria-hidden="true">👑</span> 오늘의 1위!';
+  sfx('newRecord');
+  confetti(root.querySelector('#cheer') as HTMLElement);
+  toast('👑 오늘의 1위가 되었어요! 다음 판부터 내 고스트가 달려요', 3200);
 }
 
 /** 색종이 (DESIGN.md: 승리 = 별·색종이) */

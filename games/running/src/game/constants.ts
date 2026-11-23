@@ -70,8 +70,11 @@ export const AI_REACT_MAX = 0.5;
 export const AI_FINISH_MIN = 33;
 export const AI_FINISH_MAX = 37.5;
 
-/** 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/031_race_150m.sql 의 min_ms) */
-export const MIN_VALID_MS = 28000;
+/**
+ * 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/095_race_ghost.sql 의 min_ms, 031 의 28000 에서 낮춤).
+ * 146m 트랙에서 부스트가 끝날 때 점프하면 27.8초대가 나오므로 27초 (2026-11-23 사용자 결정)
+ */
+export const MIN_VALID_MS = 27000;
 
 /** 십이지 12 (띠 순서). AI·겹칠 때 다시 고르기·로비 그림은 이 12개에서만 (추가 캐릭터는 계정마다 열어야 쓴다) */
 export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;

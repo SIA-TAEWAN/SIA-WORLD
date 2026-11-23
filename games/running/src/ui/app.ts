@@ -2,7 +2,7 @@ import { isCharId, type ZodiacId } from '../game/constants';
 import { isCharOpen } from '../game/unlock';
 import type { RankedEntry } from '../game/ranking';
 import type { RaceApi } from '../net/api';
-import type { SoloSession, SoloStart } from '../net/solo';
+import type { GhostRun, SoloSession, SoloStart } from '../net/solo';
 import type { RaceGame } from '../race/game';
 import { music, type TrackName } from './music';
 import { sfx, sound } from './sfx';
@@ -24,6 +24,10 @@ export const state = {
   place: null as number | null,
   /** 서버에서 받은 오늘 날짜 ('YYYY-MM-DD'). 못 받았으면 null (테스트 모드는 기기 시계) */
   today: null as string | null,
+  /** 그날 1위 고스트 읽기 (로비를 열 때 · '다시 도전' 때 새로 읽는다). day: 읽은 날짜 */
+  ghostLoad: null as { day: string; p: Promise<GhostRun | null> } | null,
+  /** 방금 판의 내 고스트 올리기 ('다시 도전' 때 이것이 끝난 뒤(최대 1.5초) 고스트를 읽는다: 내가 1위가 됐으면 내 고스트와) */
+  ghostAfter: null as Promise<unknown> | null,
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */
