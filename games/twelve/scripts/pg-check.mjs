@@ -1,11 +1,11 @@
-// 078_twelve.sql 을 실제 Postgres(PGlite)에서 돌려 보는 확인 도구. npm test 에는 들어가지 않는다 (PGlite 를 저장소에 넣지 않는다).
+// 078_twelve.sql + 079_twelve_full.sql 을 실제 Postgres(PGlite)에서 돌려 보는 확인 도구. npm test 에는 들어가지 않는다 (PGlite 를 저장소에 넣지 않는다).
 //
 //   1) PGlite 가 있는 폴더를 하나 마련한다:  mkdir pg && cd pg && npm init -y && npm i @electric-sql/pglite
 //   2) cd games/twelve
 //      npx vite-node scripts/pg-expect.ts > <pg 폴더>/expect.json
 //      node scripts/pg-check.mjs <pg 폴더> [마이그레이션 폴더 = ../../supabase/migrations]
 //
-// 하는 일: 마이그레이션 전체(001~078)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고,
+// 하는 일: 마이그레이션 전체(001~079)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고,
 // expect.json(기기 규칙으로 계산한 기대값)과 같은 순서로 RPC 를 돌려 단계마다 서버 기록이 기기 규칙과 같은지 맞춰 본다.
 // 끝없는 탑(시작 · 층 보고 · 끝)도 같은 방식으로 맞춰 보고, 권한 · 시아코인(10층마다) · 랭킹 뷰를 따로 본다.
 import { readFileSync, readdirSync } from 'node:fs';
@@ -145,7 +145,8 @@ eq((await as(u1, `select public.character_progress('twelve') as j`))[0].j, { hav
 // ---------- 시작 검사 ----------
 await rejects(start(u1, '1-2'), 'map locked', '잠긴 맵');
 await rejects(start(u1, '9-9'), 'bad map', '없는 맵');
-await rejects(start(u1, '4-1'), 'bad map', '준비 안 된 지형');
+await rejects(start(u1, '8-1'), 'bad map', '준비 안 된 지형');
+await rejects(start(u1, '4-1'), 'map locked', '4지형은 준비됐지만 3지형 보스를 잡아야 열린다');
 await rejects(start(u1, '1-1', 'rat', 'hard'), 'bad map', '어려움 모드는 준비 중');
 await rejects(start(u1, '1-1', 'rat', 'easy'), 'bad mode', '없는 모드');
 await rejects(start(u1, '1-1', 'rabbit'), 'hero locked', '합류 안 한 대원');
@@ -313,7 +314,7 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
 {
   const s = await state(u1);
   console.log(`     끝 기록: Lv ${s.level} · 엽전 ${s.coins} · 강화석 ${s.stones} · 장비 ${s.items.length}개(보관함 ${s.items.filter((i) => i.box).length}) · 열쇠 ${JSON.stringify(s.keys.normal)} · 얻어 본 것 ${JSON.stringify(s.codex)}`);
-  ok(s.keys.normal.length === 1 && s.codex.includes('s-n1'), '열쇠 1개 · 별 24개 보상을 받았다');
+  ok(s.keys.normal.includes(1) && s.codex.includes('s-n1') && s.codex.includes('s-n7') && s.level > 25, '1지형 열쇠 · 별 24개 보상(1 · 7지형)을 받았고, 7지형까지 깨서 레벨이 올랐다');
 }
 
 // ---------- 고양이: 조건(보통 모드 최종보스) 뒤에 사서 고른다 (u3) ----------

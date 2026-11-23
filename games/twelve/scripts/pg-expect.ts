@@ -1,10 +1,12 @@
 /**
  * 서버 확인용 기대값: `npx vite-node scripts/pg-expect.ts > expect.json`
  * 정해 둔 순서(맵 깨기 · 쓰러지기 · 상점 · 대장간 · 가방 · 끝없는 탑)를 기기 규칙(src/game/progress.ts · rules.ts · drops.ts · tower.ts)으로 돌려,
- * 단계마다의 기록을 JSON 으로 낸다. scripts/pg-check.mjs 가 같은 순서를 078_twelve.sql 의 RPC 로 돌려 맞춰 본다.
+ * 단계마다의 기록을 JSON 으로 낸다. scripts/pg-check.mjs 가 같은 순서를 078_twelve.sql · 079_twelve_full.sql 의 RPC 로 돌려 맞춰 본다.
  * 장비 id 는 서버와 기기가 다르게 붙으므로, 장비는 '번호 순서로 몇 번째인지'로 가리킨다.
  */
+import { regionTier } from '../src/data/economy';
 import { mapKillMax, mapOf } from '../src/data/maps';
+import { REGIONS_READY } from '../src/data/regions';
 import { roll } from '../src/game/drops';
 import { applyReport, bagCount, emptyProfile, type FinishResult, type RunReport, type TwelveProfile } from '../src/game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../src/game/rules';
@@ -167,6 +169,10 @@ for (let k = 0; k < 6; k++) {
   towerClimb(20, 10);
 }
 towerEnd();
+
+// 9) 2지형부터 준비된 마지막 지형까지 차례로 (079 의 맵 표 · 지형 등급이 오른 드랍 · 레벨 차이 보정 · 지형이 열리며 오르는 상점 등급)
+for (let r = 2; r <= REGIONS_READY; r++) for (let n = 1; n <= 8; n++) play(`${r}-${n}`, 20000 + r * 1000 + n * 37, { time: 200 });
+rpc('twelve_buy', { p_what: `w-spear-${regionTier(REGIONS_READY, 'normal')}`, p_n: 1 }, buy(p, `w-spear-${regionTier(REGIONS_READY, 'normal')}`));
 
 const rolls = [[1, 1, 1], [123456789, 12, 1], [2147483647, 7, 250], [0, 3, 2], [4242, 25, 10], [99, 27, 20]].map(([s, t, n]) => ({ seed: s, tag: t, n, value: roll(s, t, n) }));
 console.log(JSON.stringify({ first: canon(emptyProfile()), rolls, steps }));
