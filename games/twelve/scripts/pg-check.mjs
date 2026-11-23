@@ -1,11 +1,11 @@
-// 078_twelve.sql 을 실제 Postgres(PGlite)에서 돌려 보는 확인 도구. npm test 에는 들어가지 않는다 (PGlite 를 저장소에 넣지 않는다).
+// 078_twelve.sql + 094_twelve_full.sql 을 실제 Postgres(PGlite)에서 돌려 보는 확인 도구. npm test 에는 들어가지 않는다 (PGlite 를 저장소에 넣지 않는다).
 //
 //   1) PGlite 가 있는 폴더를 하나 마련한다:  mkdir pg && cd pg && npm init -y && npm i @electric-sql/pglite
 //   2) cd games/twelve
 //      npx vite-node scripts/pg-expect.ts > <pg 폴더>/expect.json
 //      node scripts/pg-check.mjs <pg 폴더> [마이그레이션 폴더 = ../../supabase/migrations]
 //
-// 하는 일: 마이그레이션 전체(001~078)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고,
+// 하는 일: 마이그레이션 전체(001~094)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고 (최종보스맵 · 고양이 구매 · 어려움 모드 포함),
 // expect.json(기기 규칙으로 계산한 기대값)과 같은 순서로 RPC 를 돌려 단계마다 서버 기록이 기기 규칙과 같은지 맞춰 본다.
 // 끝없는 탑(시작 · 층 보고 · 끝)도 같은 방식으로 맞춰 보고, 권한 · 시아코인(10층마다) · 랭킹 뷰를 따로 본다.
 import { readFileSync, readdirSync } from 'node:fs';
@@ -145,8 +145,14 @@ eq((await as(u1, `select public.character_progress('twelve') as j`))[0].j, { hav
 // ---------- 시작 검사 ----------
 await rejects(start(u1, '1-2'), 'map locked', '잠긴 맵');
 await rejects(start(u1, '9-9'), 'bad map', '없는 맵');
-await rejects(start(u1, '4-1'), 'bad map', '준비 안 된 지형');
-await rejects(start(u1, '1-1', 'rat', 'hard'), 'bad map', '어려움 모드는 준비 중');
+await rejects(start(u1, 'final'), 'map locked', '최종보스맵: 12지형 보스를 잡기 전에는 잠김');
+await rejects(start(u1, 'final', 'rat', 'hard'), 'mode locked', '어려움 모드의 최종보스맵: 보통 모드를 끝내기 전에는 잠김');
+await rejects(start(u1, '13-1'), 'bad map', '없는 지형');
+await rejects(start(u1, '12-1'), 'map locked', '12지형은 준비됐지만 11지형 보스를 잡아야 열린다');
+await rejects(start(u1, '4-1'), 'map locked', '4지형은 준비됐지만 3지형 보스를 잡아야 열린다');
+await rejects(start(u1, '1-1', 'rat', 'hard'), 'mode locked', '어려움 모드: 보통 모드를 끝내기 전에는 잠김');
+await rejects(as(u1, `select public.twelve_set_mode('hard')`), 'mode locked', '모드 바꾸기: 보통 모드를 끝내기 전에는 잠김');
+await rejects(as(null, `select public.twelve_set_mode('hard')`, [], 'anon'), 'permission denied', 'anon 이 twelve_set_mode');
 await rejects(start(u1, '1-1', 'rat', 'easy'), 'bad mode', '없는 모드');
 await rejects(start(u1, '1-1', 'rabbit'), 'hero locked', '합류 안 한 대원');
 await rejects(start(u1, '1-1', 'cat'), 'locked character', '안 산 고양이');
@@ -273,8 +279,21 @@ for (const st of expect.steps) {
   }
   let got;
   let why = null;
+  if (st.op === 'start') {
+    // 시작만 해 본다 (끝내지 않은 판은 다음 판에 걸리지 않는다)
+    try {
+      await start(u1, st.map, 'rat', st.mode ?? 'normal');
+    } catch (e) {
+      why = e.message;
+    }
+    if ((why === null) !== (st.why === null) || (st.why && !why.includes(st.why))) {
+      diff++;
+      ok(false, `${name}: 서버 ${why ?? '됨'} / 기기 ${st.why ?? '됨'}`);
+    }
+    continue;
+  }
   if (st.op === 'play') {
-    const a = await start(u1, st.map);
+    const a = await start(u1, st.map, 'rat', st.mode ?? 'normal');
     await su(`update public.twelve_runs set seed = $2, started_at = now() - make_interval(secs => $3) where id = $1`, [a.run, st.seed, st.report.time + 30]);
     const j = await finish(u1, a.run, st.report);
     await old(a.run);
@@ -313,7 +332,108 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
 {
   const s = await state(u1);
   console.log(`     끝 기록: Lv ${s.level} · 엽전 ${s.coins} · 강화석 ${s.stones} · 장비 ${s.items.length}개(보관함 ${s.items.filter((i) => i.box).length}) · 열쇠 ${JSON.stringify(s.keys.normal)} · 얻어 본 것 ${JSON.stringify(s.codex)}`);
-  ok(s.keys.normal.length === 1 && s.codex.includes('s-n1'), '열쇠 1개 · 별 24개 보상을 받았다');
+  ok(s.keys.normal.length === 12 && s.codex.includes('s-n1') && s.codex.includes('s-n12') && s.level > 40 && s.maps.normal.final?.clears === 2, '열쇠 12개 · 별 24개 보상(1 · 12지형)을 받았고, 12지형과 최종보스맵까지 깨서 레벨이 올랐다');
+}
+
+// ---------- 최종보스 · 보통 모드 클리어 · 고양이 (u1 — 위 순서에서 최종보스맵을 실제로 깼다) ----------
+{
+  const tries = expect.steps.filter((x) => x.op === 'start' && x.map === 'final' && (x.mode ?? 'normal') === 'normal');
+  ok(tries.length === 2 && tries[0].why === 'need keys' && tries[1].why === null, `최종보스맵: 열쇠가 모자라면 need keys, 12개를 모으면 열린다 (기기 ${tries.map((x) => x.why ?? '됨').join(' → ')})`);
+  const plays = expect.steps.filter((x) => x.op === 'play' && x.map === 'final' && (x.mode ?? 'normal') === 'normal');
+  ok(plays.length === 3 && plays[0].result.first && plays[0].result.gift === 50 && plays[1].result.gift === 0 && !plays[0].result.key, `최종보스 첫 처치: 강화석 꾸러미 ${plays[0].result.gift}개 한 번만, 열쇠는 없다`);
+  const s = await state(u1);
+  eq(s.maps.normal.final, { stars: 7, clears: 2, best: 300 }, "맵 기록 ('normal', 'final'): 두 번 깸 · 별 3개(따로 모아서)");
+  eq(s.keys.normal, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], '열쇠 12개');
+  eq((await su('select public._twelve_normal_done($1) as v', [u1]))[0].v, true, '_twelve_normal_done');
+  eq((await su('select public._cat_progress_twelve($1) as j', [u1]))[0].j, { have: 1, need: 1 }, '최종보스를 실제로 깨면 고양이 조건 1/1');
+  eq((await as(u1, `select public.character_progress('twelve') as j`))[0].j, { have: 1, need: 1, owned: [] }, 'character_progress(twelve) 1/1');
+  const coins = Number((await su('select sia_coins from public.wallets where user_id = $1', [u1]))[0]?.sia_coins ?? 0);
+  ok(coins >= 1, `최종보스맵도 시아코인 규칙이 같다 (지갑 ${coins}개 · 판마다 1, 하루 한도 안에서)`);
+  ok((await su(`select count(*)::int as n from public.sia_coin_logs l join public.twelve_runs r on r.id::text = l.ref where l.user_id = $1 and l.game = 'twelve' and r.map_id = 'final'`, [u1]))[0].n <= 2, '쓰러진 최종보스 판에는 시아코인이 없다');
+  await su(`update public.wallets set sia_coins = 99 where user_id = $1`, [u1]);
+  const poor = (await as(u1, `select public.buy_character('twelve', 'cat') as j`))[0].j;
+  ok(poor.ok === false && poor.reason === 'coin', `시아코인이 모자라면 못 산다 (${JSON.stringify(poor)})`);
+  await su(`update public.wallets set sia_coins = 130 where user_id = $1`, [u1]);
+  const yes = (await as(u1, `select public.buy_character('twelve', 'cat') as j`))[0].j;
+  ok(yes.ok === true && yes.siaCoins === 30 && yes.price === 100, `시아코인 100개로 산다 (${JSON.stringify(yes)})`);
+  const twice = (await as(u1, `select public.buy_character('twelve', 'cat') as j`))[0].j;
+  ok(twice.ok === false && twice.reason === 'owned', '두 번은 안 산다 (owned)');
+  eq((await as(u1, `select public.my_characters('twelve') as j`))[0].j, ['cat'], "my_characters('twelve') = [cat]");
+  eq((await as(u1, `select public.my_characters('survival') as j`))[0].j, [], '다른 게임에서는 따로 사야 한다');
+  eq((await as(u1, `select public.twelve_set_hero('cat') as j`))[0].j.hero, 'cat', '고양이를 대표 대원으로');
+  const a = await start(u1, 'final', 'cat');
+  ok(!!a.run, '고양이로 최종보스맵 시작 (_check_character 통과)');
+  ok(!!(await tStart(u1, 1, 'cat')).run, '고양이로 끝없는 탑 시작');
+  await as(u1, `select public.twelve_set_hero('rat')`);
+}
+
+// ---------- 어려움 모드 (u1 — 위 순서에서 전환 → 96맵 → 열쇠 12개 → 어려움 최종보스까지 실제로 깼다) ----------
+{
+  const hs = expect.steps.filter((x) => x.mode === 'hard');
+  const locked = expect.steps.filter((x) => x.fn === 'twelve_set_mode').map((x) => x.why ?? '됨');
+  eq(locked, ['mode locked', 'bad mode', '됨', '됨', '됨'], '모드 바꾸기: 보통 모드를 끝내기 전에는 mode locked → 없는 모드 → 어려움 → 보통 → 어려움');
+  const tries = hs.filter((x) => x.op === 'start').map((x) => `${x.map} ${x.why ?? '됨'}`);
+  eq(tries, ['1-1 mode locked', '1-2 map locked', 'final map locked', 'final need keys', 'final 됨'], '어려움 시작 검사: 잠김 → 앞 맵 → 최종보스맵은 12지형 보스 + 열쇠 12개');
+  const plays = hs.filter((x) => x.op === 'play');
+  const fin = plays.filter((x) => x.map === 'final');
+  ok(plays.length >= 98 && fin.length === 2 && fin[0].result.first && fin[0].result.gift === 50 && fin[1].result.gift === 0, `어려움 판 ${plays.length}개 (96맵 + 열쇠 채우기 + 최종보스 2번): 최종보스 첫 처치 강화석 ${fin[0].result.gift}개 한 번만`);
+  const drops = plays.flatMap((x) => x.result.items.map((it) => it.base));
+  ok(drops.some((b) => /^r-h\d+-\d$/.test(b)) && drops.some((b) => /^s-h\d+$/.test(b)) && drops.some((b) => /^(w-\w+|a)-(8|9|10|11)$/.test(b)) && !drops.some((b) => /^[rs]-n/.test(b)) && !drops.some((b) => /^(w-\w+|a)-[0-7]$/.test(b)),
+    `어려움 드랍: 전용 레어 ${drops.filter((b) => b.startsWith('r-h')).length} · 별 24개 보상 ${drops.filter((b) => b.startsWith('s-h')).length} · Lv72~99 일반 장비 ${drops.filter((b) => /^[wa]-/.test(b)).length} (보통 모드의 레어·등급은 없다)`);
+  const gifts = plays.filter((x) => x.result.gift > 0).map((x) => `${x.map} ${x.result.gift}`);
+  eq(gifts, ['10-8 15', '11-8 20', '12-8 30', 'final 50'], '보스의 선물은 어려움에서 다시 한 번씩');
+  const buys = expect.steps.filter((x) => x.fn === 'twelve_buy' && /^w-sword-(8|9|11)$/.test(x.args.p_what)).map((x) => `${x.args.p_what} ${x.why ?? '됨'}`);
+  eq(buys, ['w-sword-8 됨', 'w-sword-9 not for sale', 'w-sword-11 됨'], '상점 등급: 보통 모드를 끝내면 Lv72, 어려움 지형을 열수록 Lv99 까지');
+  const tw = expect.steps.filter((x) => x.op === 'tower_floor' && !x.why).slice(-120).flatMap((x) => x.result.items.map((it) => it.base));
+  ok(tw.some((b) => /-11$/.test(b)) && tw.filter((b) => b.startsWith('r-')).length >= 4, `끝없는 탑(어려움을 끝낸 뒤 21~50층 네 판): 여의 등급 ${tw.filter((b) => /-11$/.test(b)).length}개 · 레어 ${tw.filter((b) => b.startsWith('r-')).length}개 (어려움 전용 ${tw.filter((b) => b.startsWith('r-h')).length})`);
+  const s = await state(u1);
+  ok(s.mode === 'hard' && s.keys.hard.length === 12 && s.maps.hard.final?.clears === 2 && s.maps.normal.final?.clears === 2 && s.maps.normal['1-1'].clears > s.maps.hard['1-1'].clears && Object.keys(s.maps.hard).length === 97,
+    `어려움 기록은 따로: 맵 ${Object.keys(s.maps.hard).length}개 · 열쇠 ${s.keys.hard.length}개 · 최종보스 ${s.maps.hard.final?.clears}번 (보통 기록은 그대로) · Lv ${s.level}`);
+  ok(['s-h1', 's-h12', 's-n1'].every((b) => s.codex.includes(b)), '별 24개 보상은 모드마다 따로 받는다 (s-n1 · s-h1 · s-h12)');
+  const rank = (await as(null, 'select level, mode, region, hard_done from public.twelve_level_ranking where user_id = $1', [u1], 'anon'))[0];
+  ok(rank.region === 12 && rank.hard_done === true && rank.mode === 'hard' && rank.level === s.level, `레벨 랭킹 줄: ${rank.mode} · ${rank.region}지형 · Lv ${rank.level} · 어려움 최종보스 처치 표시 ${rank.hard_done}`);
+  eq((await as(u1, `select public.twelve_set_mode('normal') as j`))[0].j.mode, 'normal', '보통 모드로 돌아가기');
+  const back = (await as(null, 'select mode, region, hard_done from public.twelve_level_ranking where user_id = $1', [u1], 'anon'))[0];
+  ok(back.mode === 'normal' && back.region === 12 && back.hard_done === true, `보통으로 돌아가면 랭킹 줄의 모드도 보통 (처치 표시는 남는다): ${JSON.stringify(back)}`);
+  await as(u1, `select public.twelve_set_mode('hard')`);
+}
+
+// ---------- 어려움 모드: 새 계정의 잠김 · 랭킹의 모드/지형 · 시아코인은 어려움 권장 레벨로 (u5) ----------
+{
+  const u5 = await signUp('twelvefive', '열두5');
+  await state(u5);
+  await rejects(as(u5, `select public.twelve_set_mode('hard')`), 'mode locked', '새 계정은 어려움 모드로 못 바꾼다');
+  ok((await su('select public._twelve_shop_tier($1) as t', [u5]))[0].t === 0, '보통 모드를 끝내기 전: 어려움 1지형은 열린 지형으로 치지 않는다 (상점 등급 0)');
+  // 보통 모드를 끝낸 것으로 (지형 보스 12 + 최종보스 기록)
+  await su(`insert into public.twelve_maps (user_id, mode, map_id, stars, clears) select $1, 'normal', r::text || '-8', 0, 1 from generate_series(1, 12) r`, [u5]);
+  await su(`insert into public.twelve_maps (user_id, mode, map_id, stars, clears) values ($1, 'normal', 'final', 0, 1)`, [u5]);
+  await su(`update public.twelve_profiles set cleared_maps = 13 where user_id = $1`, [u5]);
+  ok((await su('select public._twelve_shop_tier($1) as t', [u5]))[0].t === 8, '보통 모드를 끝내면 상점 등급 8 (Lv72 — 어려움 1지형)');
+  eq((await as(u5, `select public.twelve_set_mode('hard') as j`))[0].j.mode, 'hard', '어려움 모드로 바꾸기');
+  const r0 = (await as(null, 'select mode, region, hard_done from public.twelve_level_ranking where user_id = $1', [u5], 'anon'))[0];
+  ok(r0.mode === 'hard' && r0.region === 1 && r0.hard_done === false, `어려움으로 바꾸면 랭킹 줄: 어려움 · 1지형 · 처치 표시 없음 (${JSON.stringify(r0)})`);
+  await rejects(start(u5, '1-2', 'rat', 'hard'), 'map locked', '어려움 1-2 는 어려움 1-1 을 깨야 열린다 (보통 기록과 따로)');
+  const rep = expect.steps.find((x) => x.op === 'play' && x.mode === 'hard' && x.map === '1-1').report;
+  // 권장 레벨 66 의 맵: Lv81 (+15) 이면 시아코인이 없고, Lv80 이면 받는다
+  await su(`update public.twelve_profiles set level = 81, exp = 0 where user_id = $1`, [u5]);
+  const a = await start(u5, '1-1', 'rat', 'hard');
+  await ago(a.run, 300);
+  const ja = await finish(u5, a.run, rep);
+  await old(a.run);
+  ok(ja.result.siaCoin === false && ja.result.first === true, `어려움 1-1 (권장 Lv66) 을 Lv81 로 깨면 시아코인 없음 · 경험치 ${ja.result.exp}`);
+  await su(`update public.twelve_profiles set level = 80, exp = 0 where user_id = $1`, [u5]);
+  const b = await start(u5, '1-1', 'rat', 'hard');
+  await ago(b.run, 300);
+  const jb = await finish(u5, b.run, rep);
+  await old(b.run);
+  ok(jb.result.siaCoin === true, 'Lv80 으로 깨면 시아코인 +1 (권장 레벨이 어려움의 66 이다 — 보통의 Lv1 이었다면 없다)');
+  eq(jb.state.maps.hard['1-1'], { stars: 7, clears: 2, best: rep.time }, "맵 기록 ('hard', '1-1')");
+  ok(jb.state.maps.normal['1-1'] === undefined && jb.state.keys.hard.length === 0, '보통 모드 기록·열쇠는 그대로');
+  await rejects(start(u5, 'final', 'rat', 'hard'), 'map locked', '어려움 최종보스맵: 어려움 12지형 보스를 잡기 전에는 잠김');
+  await su(`insert into public.twelve_maps (user_id, mode, map_id, stars, clears) select $1, 'hard', r::text || '-' || n::text, 0, 1 from generate_series(1, 12) r, generate_series(1, 8) n on conflict do nothing`, [u5]);
+  await su(`insert into public.twelve_keys (user_id, mode, region) select $1, 'normal', r from generate_series(1, 12) r`, [u5]);
+  await rejects(start(u5, 'final', 'rat', 'hard'), 'need keys', '보통 모드의 열쇠 12개로는 어려움 최종보스맵이 안 열린다');
+  ok((await su('select public._twelve_shop_tier($1) as t', [u5]))[0].t === 11, '어려움 지형을 다 열면 상점 등급 11 (Lv99)');
 }
 
 // ---------- 고양이: 조건(보통 모드 최종보스) 뒤에 사서 고른다 (u3) ----------
@@ -329,7 +449,7 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
   eq((await as(u3, `select public.twelve_set_hero('cat') as j`))[0].j.hero, 'cat', '고양이를 대표 대원으로');
   const a = await start(u3, '1-1', 'cat');
   ok(!!a.run, '고양이로 판 시작');
-  await rejects(start(u1, '1-1', 'cat'), 'locked character', '다른 사람은 여전히 못 고른다');
+  await rejects(start(u2, '1-1', 'cat'), 'locked character', '다른 사람은 여전히 못 고른다');
 }
 
 // ---------- 끝없는 탑: 처음부터 누구나 · 들어가면 기록 · 10층마다 시아코인 · 랭킹 (u4) ----------

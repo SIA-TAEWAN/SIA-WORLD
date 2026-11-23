@@ -3,11 +3,11 @@ import { artUrl, heroFullUrl } from '../assets';
 import type { Shape } from '../data/acts';
 import { MAP_W, PLAYER_R, TILE } from '../data/balance';
 import { itemDef } from '../data/items';
-import { regionOf } from '../data/regions';
+import { envOf } from '../data/maps';
 import type { Drop } from '../game/drops';
-import { STEP, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
+import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
-import { ENEMY_TINT, artFor, groundOf } from './art';
+import { ENEMY_TINT, HARD_BOSS_TINT, artFor, floorOf, groundOf } from './art';
 
 /** 기준 화면 크기 (세로 9:16). 더 긴 화면(아이폰 19.5:9 등)은 위아래로 더 보여 준다 — 띠를 남기지 않게 */
 export const W = 720;
@@ -242,7 +242,7 @@ export class GameScene extends Phaser.Scene {
           break;
         case 'hurt':
           this.number(ev.x, ev.y, ev.n, COLOR.pink, 1.1);
-          this.sfx('survHurt', 150);
+          this.sfx('twelveHurt', 150);
           this.shake = 0.18;
           this.hooks.hurt();
           break;
@@ -275,7 +275,7 @@ export class GameScene extends Phaser.Scene {
           } else this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
           if (rare) {
             // 레어·열쇠: 빛기둥 + 특별한 소리 + 진동 (PRD '드랍 보이기')
-            this.sfx('newRecord', 0, { rate: 1.5 });
+            this.sfx('twelveRare', 0);
             this.hooks.rare();
             this.hooks.note(`✨ ${dropName(ev.drop)}!`);
           }
@@ -289,7 +289,30 @@ export class GameScene extends Phaser.Scene {
           this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
           break;
         }
+        case 'phase':
+          // 최종보스가 다음 단계로: 화면이 흔들리고 알림이 뜬다
+          this.cameras.main.shake(380, 0.012);
+          this.sfx('survBossWarn', 0, { rate: 0.7 });
+          this.hooks.note(`👹 ${ev.text}`);
+          break;
         case 'env':
+          if (ev.id === 'arrow') {
+            // 성벽 화살 (7지형)
+            this.sfx('survBossWarn', 0, { volume: 0.4, rate: 1.3 });
+            this.hooks.note(this.run.env.f > 0 ? '🏹 성벽에서 화살이 쏟아져요!' : `🏹 화살! ${this.run.hero.name}가 다 잡아냈어요`);
+            break;
+          }
+          if (ev.id === 'sleep') {
+            // 졸음 꽃가루 (8지형): 졸기 시작할 때
+            this.hooks.note('🌼 꾸벅… 졸려요. 움직이거나 구르면 깨요');
+            break;
+          }
+          if (ev.id === 'glare') {
+            // 새벽빛 (10지형) 예고
+            this.sfx('boost', 0, { volume: 0.4, rate: 1.4 });
+            this.hooks.note(this.run.env.f > 0 ? '🌅 곧 새벽빛이 비쳐요. 눈이 부셔요!' : `🌅 새벽빛! ${this.run.hero.name}는 눈이 부시지 않아요`);
+            break;
+          }
           // 골바람 예고
           this.sfx('boost', 0, { volume: 0.5, rate: 0.7 });
           this.hooks.note(this.run.env.f > 0 ? `🌬️ 골바람이 불어와요 ${ev.dir > 0 ? '→' : '←'}` : `🌬️ 골바람! ${this.run.hero.name}는 밀리지 않아요`);
@@ -382,6 +405,14 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(COLOR.primary, a * 0.7).fillRect(m.x - 22, m.y - 300, 44, 310);
       g.fillStyle(COLOR.white, a).fillRect(m.x - 8, m.y - 300, 16, 310);
       g.lineStyle(4, COLOR.primary, 0.9).strokeCircle(m.x, m.y + 6, 30 + 4 * Math.sin(now * 5));
+    }
+    // 요괴가 남긴 독 웅덩이: 서 있으면 다친다 (사라지기 전에 옅어진다)
+    for (const z of s.pools) {
+      if (!this.onScreen(z.x, z.y, z.r)) continue;
+      const f = Math.min(1, z.left / 0.6);
+      g.fillStyle(z.fire ? COLOR.lose : COLOR.win, (z.fire ? 0.5 : 0.42) * f).fillCircle(z.x, z.y, z.r);
+      g.lineStyle(4, COLOR.outline, 0.7 * f).strokeCircle(z.x, z.y, z.r);
+      for (let i = 0; i < 4; i++) g.fillStyle(z.fire ? COLOR.primary : COLOR.white, (z.fire ? 0.8 : 0.5) * f).fillCircle(z.x + Math.cos(i * 1.7 + now * 1.3) * z.r * 0.55, z.y + Math.sin(i * 2.3 + now * 1.1) * z.r * 0.5, 5 + 2 * Math.sin(now * 4 + i));
     }
     // 땅에 남는 범위 (화살 비 · 회오리 · 독안개)
     for (const z of s.zones) {
@@ -482,9 +513,33 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // 달그림자 (4지형): 보이는 거리 밖을 어둡게 덮는다
+    const see = sightOf(s);
+    if (see !== Infinity) {
+      // 새벽빛 (10지형)은 어둠 대신 흰빛으로 덮는다
+      const glare = s.env.id === 'glare';
+      const thick = 1500;
+      o.lineStyle(thick, glare ? COLOR.panelStrong : COLOR.outline, glare ? 0.8 : 0.42).strokeCircle(p.x, p.y, see + 50 + thick / 2);
+      o.lineStyle(50, glare ? COLOR.panelStrong : COLOR.outline, glare ? 0.4 : 0.2).strokeCircle(p.x, p.y, see + 25);
+    }
+    // 졸음 (8지형): 졸음이 쌓이면 머리 위에 Z 가 떠오른다 · 꽃가루에 맞아 느려진 동안에는 발밑에 고리
+    if (s.env.id === 'sleep' && s.env.acc > 0) {
+      for (let i = 0; i < 3; i++) {
+        const f = (now * 0.8 + i / 3) % 1;
+        const zx = p.x + 16 + f * 22;
+        const zy = p.y - 64 - f * 34;
+        const k = (5 + i * 2) * (0.5 + s.env.acc * 0.5);
+        o.lineStyle(4, COLOR.outline, (1 - f) * s.env.acc).beginPath().moveTo(zx - k, zy - k).lineTo(zx + k, zy - k).lineTo(zx - k, zy + k).lineTo(zx + k, zy + k).strokePath();
+        o.lineStyle(2, COLOR.white, (1 - f) * s.env.acc).beginPath().moveTo(zx - k, zy - k).lineTo(zx + k, zy - k).lineTo(zx - k, zy + k).lineTo(zx + k, zy + k).strokePath();
+      }
+    }
+    if (p.slowT > 0) o.lineStyle(4, COLOR.pink, 0.8).strokeEllipse(p.x, p.y + 14, 58 + 6 * Math.sin(now * 8), 22);
+    // 새벽빛 예고: 화면 가장자리가 깜박인다
+    if (s.env.id === 'glare' && s.env.warn && s.env.f > 0 && Math.floor(now * 6) % 2) o.lineStyle(26, COLOR.panelStrong, 0.7).strokeRect(this.camX, this.camY, W, this.vh);
+
     // 골바람 (3지형): 예고 = 대원 옆 화살표, 부는 동안 = 바람 줄기가 화면을 가로지른다
     const env = s.env;
-    if (env.warn && Math.floor(now * 6) % 2) {
+    if (env.id === 'wind' && env.warn && Math.floor(now * 6) % 2) {
       for (let i = 0; i < 3; i++) {
         const ax = p.x + env.warn * (58 + i * 22);
         o.lineStyle(7, COLOR.outline, 1).beginPath().moveTo(ax - env.warn * 10, p.y - 34).lineTo(ax + env.warn * 4, p.y - 20).lineTo(ax - env.warn * 10, p.y - 6).strokePath();
@@ -528,8 +583,11 @@ export class GameScene extends Phaser.Scene {
 
   private drawEnemies(g: Phaser.GameObjects.Graphics, o: Phaser.GameObjects.Graphics, now: number) {
     const s = this.run;
+    // 달그림자(4지형): 보이는 거리 밖의 요괴는 그리지 않는다 (가장자리에서 서서히 사라진다)
+    const sight = sightOf(s);
     for (const e of s.enemies) {
-      const show = !e.dead && this.onScreen(e.x, e.y, MARGIN);
+      const far = sight === Infinity ? 0 : Math.hypot(e.x - s.p.x, e.y - s.p.y) - e.r - sight;
+      const show = !e.dead && far < 60 && this.onScreen(e.x, e.y, MARGIN);
       let v = this.views.get(e.id);
       if (!show) {
         if (v) {
@@ -547,16 +605,21 @@ export class GameScene extends Phaser.Scene {
         this.views.set(e.id, v);
       }
       // 정예는 크게, 갈라져 나온 것은 작게 (몸 반지름 비율대로)
-      const size = e.bossDef ? e.bossDef.size : e.def.size * (e.r / e.def.r);
-      const tint = e.bossDef ? undefined : ENEMY_TINT[e.kind];
+      const size = e.bossDef ? (e.bossDef.phases?.[e.phase - 1]?.size ?? e.bossDef.size) : e.def.size * (e.r / e.def.r);
+      const tint = e.bossDef ? (this.run.mode === 'hard' ? HARD_BOSS_TINT : undefined) : ENEMY_TINT[e.kind];
       const wob = e.awake && e.busy <= 0 && e.stun <= 0 ? Math.sin(now * 9 + e.id) * 2.5 : 0;
       // 공격을 예고하는 동안 몸을 부풀린다
       const puff = e.busy > 0 ? 1.08 : 1;
-      v.setPosition(e.x, e.y + e.r * 0.8 + wob).setDisplaySize(size * puff, size * puff).setFlipX(!e.left).setDepth(10 + e.y / 100000);
+      // 숨은 요괴(그슨대)는 아지랑이처럼 희미하게만 보인다
+      const alpha = (e.hidden ? 0.16 + 0.06 * Math.sin(now * 5 + e.id) : 1) * (far > 0 ? 1 - far / 60 : 1);
+      v.setPosition(e.x, e.y + e.r * 0.8 + wob).setDisplaySize(size * puff, size * puff).setFlipX(!e.left).setDepth(10 + e.y / 100000).setAlpha(alpha);
+      if (e.hidden) continue;
       if (e.flash > 0) v.setTintFill(COLOR.white);
       else if (e.stun > 0) v.setTint(COLOR.primaryLight);
       else if (e.slowT > 0) v.setTint(COLOR.skyMid);
       else if (e.dotT > 0) v.setTint(COLOR.lose);
+      // 날뛰는 야차 (10지형): 붉게 깜박인다
+      else if (e.def.rage && !e.bossDef && e.hp <= e.maxHp * e.def.rage.at && Math.floor(now * 8) % 2) v.setTint(COLOR.primary);
       else if (tint !== undefined) v.setTint(tint);
       else v.clearTint();
       g.fillStyle(COLOR.outline, 0.22).fillEllipse(e.x, e.y + e.r * 0.7, e.r * 2.2, e.r * 0.9);
@@ -633,7 +696,8 @@ export class GameScene extends Phaser.Scene {
   private makeChunk(idx: number): Phaser.GameObjects.Image {
     const s = this.run;
     const look = groundOf(s.map.region);
-    const mud = regionOf(s.map.region).env === 'mud';
+    const envId = envOf(s.map);
+    const mud = envId === 'mud' || envId === 'poison';
     const y0 = idx * CHUNK_ROWS;
     const rows = Math.min(CHUNK_ROWS, s.rows - y0);
     const tex = this.textures.createCanvas(`chunk${idx}`, WORLD_W, rows * TILE)!;
@@ -641,12 +705,13 @@ export class GameScene extends Phaser.Scene {
     const tile = (x: number, y: number) => (x < 0 || y < 0 || x >= s.cols || y >= s.rows ? 1 : s.grid[y * s.cols + x]);
     c.fillStyle = css(look.floor);
     c.fillRect(0, 0, WORLD_W, rows * TILE);
-    if (this.textures.exists(look.tile)) {
-      // 받은 바닥 무늬를 바닥색과 절반쯤 섞는다 (DESIGN.md: 시아디펜스 바닥과 같은 방식). 512px 무늬를 256px 로 깐다
-      const img = this.textures.get(look.tile).getSourceImage() as HTMLImageElement;
-      c.globalAlpha = 0.5;
-      const off = (idx * CHUNK_H) % 256;
-      for (let y = -off; y < rows * TILE; y += 256) for (let x = 0; x < WORLD_W; x += 256) c.drawImage(img, x, y, 256, 256);
+    const floor = floorOf(s.map.region);
+    if (this.textures.exists(floor.key)) {
+      // 받은 바닥 무늬를 이어 깐다 (지형 전용 무늬는 그대로, 시아디펜스 바닥은 바닥색과 절반쯤 섞는다 — DESIGN.md)
+      const img = this.textures.get(floor.key).getSourceImage() as HTMLImageElement;
+      c.globalAlpha = floor.alpha;
+      const off = (idx * CHUNK_H) % floor.size;
+      for (let y = -off; y < rows * TILE; y += floor.size) for (let x = 0; x < WORLD_W; x += floor.size) c.drawImage(img, x, y, floor.size, floor.size);
       c.globalAlpha = 1;
     }
     const hash = (x: number, y: number, k: number) => {
@@ -664,7 +729,7 @@ export class GameScene extends Phaser.Scene {
           c.globalAlpha = 0.85;
           c.fillRect(px, py, TILE, TILE);
           c.globalAlpha = 1;
-          c.strokeStyle = css(mud ? COLOR.emptyLine : COLOR.white);
+          c.strokeStyle = css(envId === 'poison' ? COLOR.win : envId === 'fire' ? COLOR.primary : mud ? COLOR.emptyLine : COLOR.white);
           c.lineWidth = 3;
           c.beginPath();
           const wx = px + 10 + hash(x, y, 1) * 20;

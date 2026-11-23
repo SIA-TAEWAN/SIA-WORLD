@@ -52,8 +52,14 @@ export interface BuyResult {
   have?: number;
   need?: number;
 }
+export interface CharProgress {
+  have: number;
+  need: number;
+  owned: string[];
+}
 interface CharactersModule {
   loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
+  loadCharacterProgress(game: string): Promise<CharProgress | null>;
   buyCharacter(game: string, id: string): Promise<BuyResult>;
   buyMessage(r: BuyResult, id?: string): string;
 }
@@ -67,6 +73,14 @@ function characters(): Promise<CharactersModule> {
 export async function loadOwnedCharacters(force = false): Promise<string[] | null> {
   try {
     return await (await characters()).loadOwnedCharacters(GAME_ID, force);
+  } catch {
+    return null;
+  }
+}
+/** 이 게임의 구매 조건 진행 (서버 character_progress → 078 의 _cat_progress_twelve: 보통 모드 최종보스 처치 = 1/1). 못 읽으면 null */
+export async function loadCharacterProgress(): Promise<CharProgress | null> {
+  try {
+    return await (await characters()).loadCharacterProgress(GAME_ID);
   } catch {
     return null;
   }
