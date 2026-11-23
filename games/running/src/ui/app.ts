@@ -28,6 +28,8 @@ export const state = {
   ghostLoad: null as { day: string; p: Promise<GhostRun | null> } | null,
   /** 방금 판의 내 고스트 올리기 ('다시 도전' 때 이것이 끝난 뒤(최대 1.5초) 고스트를 읽는다: 내가 1위가 됐으면 내 고스트와) */
   ghostAfter: null as Promise<unknown> | null,
+  /** 앞 판의 오늘의 도전 기록 올리기 (다음 판은 이것이 끝난 뒤에 판 전 주간 순위를 읽는다: 앞 판 몫이 '이번 주 ↑'에 섞이지 않게) */
+  dailyAfter: null as Promise<unknown> | null,
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */

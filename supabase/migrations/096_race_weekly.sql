@@ -4,8 +4,9 @@
 --   race_submit · race_daily_submit · race_ghost_submit 은 다시 정의하지 않는다. 대신 트리거 둘:
 --     · race_runs.daily_day 가 채워질 때(null → 값, 083 race_daily_submit): 그 날이 속한 주(월요일)의 내 줄을 넣거나, 더 빠를 때만 바꾼다.
 --       캐릭터 = 그날 race_ghosts 의 캐릭터(같은 기록일 때), 없으면 race_records.character (2026-11-23 사용자 결정).
---     · race_ghosts 에 넣기/바꾸기(095 race_ghost_submit, race_daily_submit 뒤에 따로 올라온다): 그 고스트의 ms 가
---       그 주 내 best_ms 와 같으면 character 를 고스트 캐릭터로 고친다.
+--     · race_ghosts 에 넣기/바꾸기(095 race_ghost_submit, race_daily_submit 뒤에 따로 올라온다): 그 고스트가 그 주 내 최고 기록을
+--       세운 판의 것일 때만(고스트 day = 그 주 최고 기록의 오늘의 도전 날짜 best_day, ms = best_ms) character 를 고스트 캐릭터로 고친다.
+--       (월요일 29.000초 뒤 화요일에 같은 29.000초 고스트가 올라와도 월요일 기록의 캐릭터는 그대로)
 --   4주 지난 줄(그 주 월요일이 이번 주 월요일보다 28일 이상 앞)은 넣을 때마다 지운다 (기본 키가 week 로 시작해 가볍다).
 --
 --   1. race_weekly                : (주, 사람)마다 그 주 최고 기록 하나. RLS 켜고 정책 없음 (아래 뷰·함수로만).
@@ -21,6 +22,8 @@ create table if not exists public.race_weekly (
   user_id uuid not null references auth.users(id) on delete cascade,
   best_ms int not null check (best_ms > 0),
   best_at timestamptz not null default now(),
+  -- 그 주 최고 기록이 들어간 오늘의 도전 날짜 (race_runs.daily_day. 자정을 넘겨 도착한 기록은 전날이라 best_at 의 날짜와 다를 수 있다)
+  best_day date not null,
   character text not null,
   -- 그 주에 오늘의 도전 기록으로 들어간 판 수
   plays int not null default 1 check (plays >= 0),
@@ -53,11 +56,12 @@ begin
     select r.character into ch from public.race_records r where r.user_id = new.user_id;
   end if;
 
-  insert into public.race_weekly as w (week, user_id, best_ms, best_at, character, plays)
-    values (wk, new.user_id, new.time_ms, now(), coalesce(ch, 'tiger'), 1)
+  insert into public.race_weekly as w (week, user_id, best_ms, best_at, best_day, character, plays)
+    values (wk, new.user_id, new.time_ms, now(), new.daily_day, coalesce(ch, 'tiger'), 1)
   on conflict (week, user_id) do update set
     plays = w.plays + 1,
     best_at = case when excluded.best_ms < w.best_ms then excluded.best_at else w.best_at end,
+    best_day = case when excluded.best_ms < w.best_ms then excluded.best_day else w.best_day end,
     character = case when excluded.best_ms < w.best_ms then excluded.character else w.character end,
     best_ms = least(w.best_ms, excluded.best_ms);
 
@@ -80,7 +84,8 @@ create or replace function public._race_weekly_on_ghost() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   update public.race_weekly set character = new.character
-    where week = public._race_week(new.day) and user_id = new.user_id and best_ms = new.ms and character is distinct from new.character;
+    where week = public._race_week(new.day) and user_id = new.user_id and best_ms = new.ms and best_day = new.day
+      and character is distinct from new.character;
   return null;
 end $$;
 revoke all on function public._race_weekly_on_ghost() from public, anon, authenticated;

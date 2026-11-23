@@ -21,7 +21,8 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   // 고스트와 비교: "1위보다 0.42초 빨랐어요! 🎉" / "1위까지 0.42초" (내 1위 기록의 고스트면 '내 1위 기록')
   const gh = race.ghost;
   const ghostWho = gh ? (gh.me ? '내 1위 기록' : `${gh.dayPlace}위`) : '';
-  const beatGhost = !!gh && mine?.status === 'finish' && mine.timeMs! < gh.ghost.ms;
+  // 이겼는지도 화면에 보이는 0.01초 기록끼리 (문구가 '똑같아요'인데 이긴 색이 되지 않게)
+  const beatGhost = !!gh && mine?.status === 'finish' && Math.floor(mine.timeMs! / 10) < Math.floor(gh.ghost.ms / 10);
   const ghostLine =
     gh && mine?.status === 'finish'
       ? `<p class="ghost-diff ${beatGhost ? 'win' : ''}">👻 ${esc(ghostDiffText(mine.timeMs!, gh.ghost.ms, ghostWho, formatTime))}</p>`

@@ -1,4 +1,4 @@
-import { CHAR_IDS, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
+import { CHAR_IDS, ZODIAC_IDS, ZODIAC_NICK, isCharId, type ZodiacId } from '../game/constants';
 import { formatTime, tierOfPlace } from '../game/ranking';
 import { DAILY_GAME, dailyLabel, dailyMs, isDailyDay, localDailyDay } from '../game/daily';
 import { LOCAL_MODE } from '../net/api';
@@ -127,9 +127,17 @@ export function showLobby() {
         ? `${face}<span class="t1">오늘 1위<b class="nm">${esc(first.nickname ?? '')}</b></span><span class="tm">${formatTime(ms1)}<small>초</small></span>`
         : '<span class="soft first-empty">아직 1위가 없어요. 첫 기록을 세워 보세요!</span>';
     const msMine = dailyMs(r.mine);
+    // 내 오늘 기록의 얼굴: 그 기록을 세운 캐릭터를 알 때만 (detail 에 캐릭터가 있거나, 1위 고스트가 내 그 기록이면 그 캐릭터). 모르면 중립 아이콘
+    const detailChar = (r.mine?.detail as { char?: unknown } | undefined)?.char;
+    const recChar: ZodiacId | null = isCharId(detailChar)
+      ? detailChar
+      : ghost && ghost.me && ghost.ghost.day === r.day && ghost.ghost.ms === msMine
+        ? ghost.ghost.char
+        : null;
+    const mineFace = recChar ? `<img src="${zodiacFaceUrl(recChar)}" alt="" />` : '<i class="face-none" aria-hidden="true">🏁</i>';
     mine.innerHTML =
       r.mine && msMine !== null
-        ? `<img src="${zodiacFaceUrl(state.char)}" alt="" /><span>내 기록 <b>${formatTime(msMine)}</b>초</span><span class="pl"><b>${Number(r.mine.place) || '-'}</b>위${r.total > 0 ? `<small> / ${Number(r.total)}명</small>` : ''}</span>`
+        ? `${mineFace}<span>내 기록 <b>${formatTime(msMine)}</b>초</span><span class="pl"><b>${Number(r.mine.place) || '-'}</b>위${r.total > 0 ? `<small> / ${Number(r.total)}명</small>` : ''}</span>`
         : `<img src="${zodiacFaceUrl(state.char)}" alt="" /><span class="soft">아직 안 달렸어요</span>`;
   };
 
@@ -272,8 +280,12 @@ export function showPick() {
   // 다른 기기에서 열고 돌아와도 자물쇠를 바로 푼다. 잠긴 동안 구매 조건 진행을 다시 읽는다
   const offUnlock = onUnlockChange(paint);
   paint();
-  // 1위 고스트가 있으면 안내를 바꾼다
-  void state.ghostLoad?.p.then((g) => {
+  // 1위 고스트가 있으면 안내를 바꾼다. 아직 읽기 시작하지 않았으면(로비에서 날짜를 받기 전에 넘어옴 등) 여기서 읽는다:
+  // 출발할 때(startRun → ghostFor)도 같은 것을 쓰므로 안내와 실제 구성이 맞는다
+  const gl = state.ghostLoad;
+  const day = state.today;
+  const ghostP = gl && (!day || gl.day === day) ? gl.p : state.api && day ? reloadGhost(state.api, day) : null;
+  void ghostP?.then((g) => {
     if (g && root.isConnected) $('#pick-sub').textContent = `능력은 모두 같아요 · 👻 ${g.me ? '내 1위 기록' : `오늘 ${g.dayPlace}위`} 고스트 · AI 2명과 달려요`;
   });
   void refreshProgress();

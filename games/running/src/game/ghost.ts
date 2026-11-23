@@ -135,13 +135,19 @@ export function ghostName(dayPlace: number, nickname: string): string {
   return `👻 ${dayPlace > 0 ? dayPlace : 1}위 ${nickname}`;
 }
 
+/** '와' / '과': 마지막 글자에 받침이 있으면 '과' ('1위와', '내 1위 기록과') */
+function withJosa(word: string): '와' | '과' {
+  const c = word.charCodeAt(word.length - 1) - 0xac00;
+  return c >= 0 && c < 11172 && c % 28 !== 0 ? '과' : '와';
+}
+
 /**
  * 결과 문구: 고스트와 내 기록의 차이. who: '1위' · '3위' · '내 1위 기록'.
- * 차이는 화면에 보이는 0.01초 단위 기록끼리 센다 (30.57 과 30.58 이면 0.01초. 보이는 기록이 같으면 '똑같은 기록')
+ * 차이는 화면에 보이는 0.01초 단위 기록끼리 센다 (30.57 과 30.58 이면 0.01초. 보이는 기록이 같으면 '…와 똑같아요')
  */
 export function ghostDiffText(myMs: number, ghostMs: number, who: string, fmt: (ms: number) => string): string {
   const d = (Math.floor(ghostMs / 10) - Math.floor(myMs / 10)) * 10;
   if (d > 0) return `${who}보다 ${fmt(d)}초 빨랐어요! 🎉`;
-  if (d === 0) return `${who}와 똑같은 기록이에요!`;
+  if (d === 0) return `${who}${withJosa(who)} 똑같아요!`;
   return `${who}까지 ${fmt(-d)}초`;
 }

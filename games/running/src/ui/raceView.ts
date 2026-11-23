@@ -22,8 +22,14 @@ export function showRace(start: SoloStart) {
   if (!api) return nav.lobby();
   const race = new RaceGame(api, start);
   window.__race = race;
-  // 판 전 이번 주 순위 (결과 화면이 판 뒤 순위와 비교해 '이번 주 N위 ↑'). 오늘의 도전 날짜가 있는 판만
-  if (start.day) race.weekBefore = api.weeklyPlace().catch(() => undefined);
+  // 판 전 이번 주 순위 (결과 화면이 판 뒤 순위와 비교해 '이번 주 N위 ↑'). 오늘의 도전 날짜가 있는 판만.
+  // 앞 판 기록이 아직 올라가는 중이면(결과 화면에서 바로 '다시 도전') 그것이 끝난 뒤에 읽는다
+  const prevDaily = state.dailyAfter;
+  state.dailyAfter = null;
+  if (start.day)
+    race.weekBefore = (prevDaily ? prevDaily.catch(() => undefined) : Promise.resolve())
+      .then(() => api.weeklyPlace())
+      .catch(() => undefined);
   const me = race.mySlot;
 
   let game: Phaser.Game | null = null;
@@ -67,6 +73,8 @@ export function showRace(start: SoloStart) {
       if (resultTimer) clearTimeout(resultTimer);
       quitDim?.remove();
       quitDim = null;
+      // 이 판의 기록 올리기가 아직 끝나지 않았을 수 있다: 다음 판의 판 전 주간 순위는 이것을 기다린다
+      if (race.dailySaved) state.dailyAfter = race.dailySaved;
       race.dispose();
       game?.destroy(true);
       game = null;

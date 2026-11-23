@@ -30,7 +30,10 @@ export type RaceEvent = { slot: number; ev: SimEvent | 'foul' };
 /**
  * 한 판의 진행 (오늘의 도전: 나 + AI. 모두 이 기기에서 계산한다).
  * - 고정 간격(DT) 물리, 서버 시각(serverNow) 기준 '준비'·GO.
- * - 화면이 가려졌다 돌아오면 그동안의 걸음을 한꺼번에 따라잡는다 (update 의 while 루프).
+ * - 화면이 가려졌다 돌아오면 그동안의 걸음을 한꺼번에 따라잡는다 (update 의 while 루프). 모든 자리를 한 걸음씩 함께 돌리고,
+ *   끝 시각(1등 도착 뒤 15초 · GO 뒤 90초)을 넘는 걸음은 돌리지 않는다 → 오래 가렸다 와도 끝 시각 뒤 도착은 미완주.
+ * - 내 누름은 누른 시각(서버 시각)을 함께 받아, 그 시각이 들어 있는 걸음(그 시각 이후 첫 걸음)에 넣는다
+ *   → 프레임 간격이 커도 반응 시간·점프 자리가 실제로 누른 시각에 맞는다.
  * - GO 전에 누르면 실격. 모두 도착(또는 내가 실격)하거나, 1등 도착 뒤 15초 · GO 뒤 90초에 끝난다.
  * - 고스트 자리(role 'ghost'): 그날 1위가 누른 걸음 기록(start.ghost)을 같은 고정 걸음 루프에서 그대로 다시 누른다.
  * - 내가 누른 것은 걸음 번호(GO 뒤 첫 걸음 = 1)로 적어 두었다가(GhostRecorder), 완주하면 고스트로 올린다.
@@ -53,15 +56,18 @@ export class RaceGame {
   private plans: (AiPlan | null)[] = [];
   /** 고스트 자리의 버튼 (자리 번호 → 재생기) */
   private ghosts: (GhostPlayer | null)[] = [];
-  /** 자리마다 GO 뒤 계산한 걸음 수 (고스트 기록·재생의 걸음 번호) */
-  private steps: number[] = [];
+  /** GO 뒤 계산한 걸음 수 (모든 자리가 함께 돈다. 고스트 기록·재생의 걸음 번호) */
+  private step = 0;
+  /** 가장 먼저 도착한 기록 (ms, 아직 없으면 Infinity) */
+  private firstMs = Infinity;
   /** 이번 판에 내가 누른 것 (완주하면 고스트로) */
   private recorder = new GhostRecorder();
   /** 같이 달린 고스트 (없으면 null) */
   readonly ghost: GhostRun | null;
   /** 내 고스트를 올린 결과 (완주하고 오늘의 도전 기록이 들어갔을 때) */
   ghostSaved: Promise<boolean> | null = null;
-  private pendingPress: Press = false;
+  /** 아직 걸음에 넣지 않은 내 누름 (GO 뒤 초 · 버튼), 누른 순서대로 */
+  private pending: { t: number; kind: 'jump' | 'slide' }[] = [];
   private endAt = 0;
   private fouledAt = 0;
   /** 이번 프레임에 생긴 일 (화면·소리에서 읽고 비운다) */
@@ -92,7 +98,6 @@ export class RaceGame {
     this.ghost = start.ghost ?? null;
     for (const r of start.roster) {
       this.runners[r.slot] = newRunner();
-      this.steps[r.slot] = 0;
       this.ghosts[r.slot] = r.role === 'ghost' && this.ghost ? new GhostPlayer(this.ghost.ghost) : null;
       // AI 계획은 (트랙 시드, 자리)로 정한다: 같은 날 같은 자리의 AI 는 늘 같게 달린다
       this.plans[r.slot] = r.role === 'ai' || (r.role === 'ghost' && !this.ghost) ? makeAiPlan(this.seed, r.slot, this.obs) : null;
@@ -101,11 +106,14 @@ export class RaceGame {
 
   // ───────────── 입력 ─────────────
 
-  /** 버튼(출발·점프·슬라이딩). '준비'와 GO 사이에 누르면 실격. 출발 전에는 어느 버튼이든 출발 */
-  press(kind: 'jump' | 'slide' = 'jump') {
+  /**
+   * 버튼(출발·점프·슬라이딩). '준비'와 GO 사이에 누르면 실격. 출발 전에는 어느 버튼이든 출발.
+   * at: 누른 시각 (서버 시각 ms, 기본은 지금). 다음 update 에서 그 시각 이후 첫 걸음에 들어간다.
+   */
+  press(kind: 'jump' | 'slide' = 'jump', at = serverNow()) {
     const me = this.mySlot >= 0 ? this.runners[this.mySlot] : null;
     if (!me || this.results) return;
-    const now = serverNow();
+    const now = at;
     if (now < this.readyAt) return;
     if (now < this.goAt) {
       if (me.state === 'wait') {
@@ -115,7 +123,9 @@ export class RaceGame {
       }
       return;
     }
-    this.pendingPress = kind;
+    // 한 프레임에 여러 번 눌러도 각각 제 걸음에 (너무 많이 쌓이면 오래된 것부터 버린다)
+    if (this.pending.length >= 8) this.pending.shift();
+    this.pending.push({ t: (now - this.goAt) / 1000, kind });
   }
 
   // ───────────── 매 프레임 ─────────────
@@ -135,37 +145,50 @@ export class RaceGame {
     const now = serverNow();
     const t = (now - this.goAt) / 1000;
     if (t >= 0 && !this.results) {
-      for (const entry of this.roster) {
-        const s = entry.slot;
-        const r = this.runners[s];
-        const mine = s === this.mySlot;
-        const plan = this.plans[s];
-        const ghost = this.ghosts[s];
-        let first = true;
-        // 고정 간격으로 지금 시각까지 계산 (화면이 잠깐 멈췄거나 가려졌다 와도 따라잡는다)
-        while (r.t + DT <= t + 1e-9) {
-          const step = ++this.steps[s];
-          const press: Press = mine ? (first ? this.pendingPress : false) : ghost ? ghost.press(step) : plan ? aiPress(r, this.obs, plan) : false;
-          const seen = r.events.length;
+      // 고정 간격으로 지금 시각까지 (단, 끝 시각까지만) 모든 자리를 한 걸음씩 함께 계산한다
+      // (화면이 잠깐 멈췄거나 가려졌다 와도 따라잡는다. 1등이 이 루프 안에서 도착하면 끝 시각도 그 걸음부터 당겨진다)
+      while ((this.step + 1) * DT <= Math.min(t, this.endT()) + 1e-9) {
+        const step = ++this.step;
+        const stepT = step * DT;
+        for (const entry of this.roster) {
+          const s = entry.slot;
+          const r = this.runners[s];
+          const mine = s === this.mySlot;
+          const plan = this.plans[s];
+          const ghost = this.ghosts[s];
+          let press: Press = false;
+          if (mine) {
+            // 누른 시각이 이 걸음 안(이 걸음의 끝 시각 이전)이면 이 걸음에 넣는다. 한 걸음에 하나씩
+            if (this.pending.length && this.pending[0].t <= stepT + 1e-9) press = this.pending.shift()!.kind;
+          } else press = ghost ? ghost.press(step) : plan ? aiPress(r, this.obs, plan) : false;
+          const before = r.events.length;
           stepRunner(r, this.obs, press);
           if (mine) {
             // 배지용 집계: 생긴 걸음의 시각으로 센다
-            for (let i = seen; i < r.events.length; i++) tallyEvent(this.tally, r.events[i], r.t);
+            for (let i = before; i < r.events.length; i++) tallyEvent(this.tally, r.events[i], r.t);
             // 고스트 기록: 누른 것이 실제로 들어간 걸음만 (출발·점프·슬라이딩이 생긴 걸음)
             if (press) {
-              const kind = pressKindOf(r.events.slice(seen));
+              const kind = pressKindOf(r.events.slice(before));
               if (kind !== null) this.recorder.recordPress(step, kind);
             }
-            if (first) this.pendingPress = false;
           }
-          first = false;
+          if (r.finishMs !== null && r.finishMs < this.firstMs) this.firstMs = r.finishMs;
         }
+      }
+      for (const entry of this.roster) {
+        const s = entry.slot;
+        const r = this.runners[s];
         for (const ev of r.events) this.events.push({ slot: s, ev });
         r.events.length = 0;
-        if (mine && r.finishMs !== null && !this.record) this.submit(r.finishMs);
+        if (s === this.mySlot && r.finishMs !== null && !this.record) this.submit(r.finishMs);
       }
     }
     if (!this.results) this.checkEnd(now, t);
+  }
+
+  /** 판이 끝나는 시각 (GO 뒤 초): GO 뒤 90초, 누가 도착했으면 1등 도착 뒤 15초 중 이른 쪽 */
+  private endT(): number {
+    return Math.min(END_AFTER_GO, this.firstMs / 1000 + END_AFTER_FIRST);
   }
 
   // ───────────── 화면용 ─────────────
@@ -225,6 +248,7 @@ export class RaceGame {
       if (!this.endAt) this.endAt = now + (iFouled ? 1500 : 1200);
       end = now >= this.endAt;
     }
+    // 끝 시각 (update 는 이 시각 뒤의 걸음을 돌리지 않는다)
     if (t >= END_AFTER_GO) end = true;
     if (Number.isFinite(first) && t >= first / 1000 + END_AFTER_FIRST) end = true;
     if (end) this.finish(rankResults(this.entries()));

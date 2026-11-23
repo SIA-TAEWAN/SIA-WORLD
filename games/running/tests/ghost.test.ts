@@ -249,10 +249,11 @@ describe('이름표·결과 문구', () => {
     expect(ghostName(4, '시아')).toBe('👻 4위 시아');
     expect(ghostDiffText(29000, 29420, '1위', formatTime)).toBe('1위보다 0.42초 빨랐어요! 🎉');
     expect(ghostDiffText(29420, 29000, '1위', formatTime)).toBe('1위까지 0.42초');
-    expect(ghostDiffText(29000, 29000, '1위', formatTime)).toBe('1위와 똑같은 기록이에요!');
+    expect(ghostDiffText(29000, 29000, '1위', formatTime)).toBe('1위와 똑같아요!');
+    expect(ghostDiffText(29000, 29000, '내 1위 기록', formatTime)).toBe('내 1위 기록과 똑같아요!');
     // 보이는 기록(0.01초 버림)끼리: 30.576 → 30.57, 30.582 → 30.58 → 0.01초
     expect(ghostDiffText(30582, 30576, '내 1위 기록', formatTime)).toBe('내 1위 기록까지 0.01초');
-    expect(ghostDiffText(30571, 30576, '1위', formatTime)).toBe('1위와 똑같은 기록이에요!');
+    expect(ghostDiffText(30571, 30576, '1위', formatTime)).toBe('1위와 똑같아요!');
   });
   it('GhostPlayer: 적힌 걸음에만 누른다', () => {
     const p = new GhostPlayer({ v: 1, day: '2026-11-23', char: 'ox', ms: 1, presses: [[3, 0], [10, 1], [11, 2]] });
@@ -311,6 +312,35 @@ describe('출발 반응 (RaceGame)', () => {
     expect(Math.round(g.presses[0][0] * DT * 1000)).toBe(r.ms);
   });
 
+  it('프레임 간격이 커도(100ms) 반응은 실제로 누른 시각의 걸음으로 잡히고, 고스트 재생도 같다', () => {
+    const { race, go } = open(13);
+    clock.now = go + 200;
+    race.update();
+    // 0.270초에 누름 (다음 프레임은 0.300초) → 0.270초가 든 걸음 33 (0.275초)에 출발. 프레임 시각(0.2083초)이 아니다
+    race.press('jump', go + 270);
+    clock.now = go + 300;
+    race.update();
+    const r = race.reaction()!;
+    expect(r).toMatchObject({ ms: 275, text: '0.28', grade: 'GOOD' });
+    // 달리는 중에도 100ms 프레임 사이에 누른 시각 그대로 (한 프레임에 두 번 눌러도 각각 제 걸음에)
+    const acts: [number, 'jump' | 'slide'][] = [[3010, 'jump'], [7030, 'slide'], [7040, 'jump'], [12050, 'jump'], [18020, 'slide']];
+    for (let t = 400; t < 89_000 && race.view(0).finishMs === null; t += 100) {
+      for (const [at, k] of acts) if (at > t - 100 && at <= t) race.press(k, go + at);
+      clock.now = go + t;
+      race.update();
+    }
+    const ms = race.view(0).finishMs;
+    expect(ms).not.toBeNull();
+    const g = race.myGhost(ms!)!;
+    expect(g).not.toBeNull();
+    expect(g.presses[0]).toEqual([33, 0]);
+    // 적힌 누름은 모두 누른 시각이 든 걸음 (넘어짐·공중·슬라이딩 중이라 안 들어간 누름은 빠진다)
+    const want = new Map(acts.map(([at, k]) => [Math.ceil(at / 1000 / DT - 1e-9), k === 'slide' ? 2 : 1]));
+    expect(g.presses.length).toBeGreaterThan(1);
+    for (const [step, kind] of g.presses.slice(1)) expect(want.get(step), `걸음 ${step}`).toBe(kind);
+    expect(replayGhost(g, dailyTrack(day)).finishMs).toBe(ms);
+  });
+
   it('실격하면 반응이 없다', () => {
     const { race, go } = open(12);
     clock.now = go - 500;
@@ -322,5 +352,58 @@ describe('출발 반응 (RaceGame)', () => {
     clock.now = go + 500;
     race.update();
     expect(race.reaction()).toBeNull();
+  });
+});
+
+describe('끝 시각 (탭을 오래 가렸다 돌아와도)', () => {
+  const day = '2026-11-22';
+  const obs = dailyTrack(day);
+  const { ms, rec } = recordRun(obs, goodPlan(obs));
+  const ghost = rec.build(day, 'rat', ms!)!;
+  const open = (round: number) => {
+    const go = (clock.now += 200_000);
+    const race = new RaceGame(fakeApi(), {
+      key: 'dailyabcd2345', round, seed: dailyTrackSeed(day), readyAt: go - 1800, goAt: go, day,
+      roster: soloRoster(me, 'tiger', 9, { char: 'rat', name: ghostName(1, '일등이') }), ghost: { ghost, nickname: '일등이', dayPlace: 1, place: 1, me: false },
+    });
+    return { race, go };
+  };
+
+  it('출발하고 바로 가렸다가 1등 도착 뒤 15초가 지나서 돌아오면, 그 뒤에 도착했을 걸음은 계산하지 않는다 → 미완주', () => {
+    const { race, go } = open(21);
+    clock.now = go + 500;
+    race.update();
+    race.press('jump');
+    clock.now = go + 600;
+    race.update();
+    // 60초에 돌아옴 (고스트는 약 29초에 도착, 끝은 약 44초)
+    clock.now = go + 60_000;
+    race.update();
+    expect(race.results).not.toBeNull();
+    expect(race.view(1).finishMs).toBe(ms);
+    const mine = race.results!.find((e) => e.slot === 0)!;
+    expect(mine.status).toBe('dnf');
+    expect(race.view(0).finishMs).toBeNull();
+    expect(race.view(0).x).toBeLessThan(146);
+    expect(race.record).toBeNull();
+  });
+
+  it('끝 시각 안에 도착하면 따라잡기 루프로 돌아도 완주', () => {
+    const { race, go } = open(22);
+    clock.now = go + 500;
+    race.update();
+    race.press('jump');
+    clock.now = go + 600;
+    race.update();
+    // 끝 시각 바로 앞까지 가렸다가 돌아오면: 누르지 않아도 넘어지며 달려 끝 시각 안에 도착했을 수 있다 → 그때는 도착 기록 그대로
+    clock.now = go + ms! + 14_900;
+    race.update();
+    const fin = race.view(0).finishMs;
+    if (fin !== null) expect(fin).toBeLessThanOrEqual(ms! + 15_000);
+    clock.now = go + 90_000;
+    race.update();
+    expect(race.results).not.toBeNull();
+    const mine = race.results!.find((e) => e.slot === 0)!;
+    expect(mine.status).toBe(fin !== null ? 'finish' : 'dnf');
   });
 });

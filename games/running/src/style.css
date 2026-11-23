@@ -98,6 +98,7 @@ button, input { font: inherit; color: inherit; }
 .today-mine { display: flex; align-items: center; gap: 8px; margin-top: 7px; font-size: 16px; }
 .today-mine:empty { display: none; }
 .today-mine img { width: 30px; height: 30px; flex: none; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
+.today-mine .face-none { font-style: normal; width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--panel-strong); font-size: 15px; }
 .today-mine > span:first-of-type { flex: 1; min-width: 0; }
 .today-mine b { font-weight: normal; color: var(--accent); }
 .today-mine .pl { flex: none; white-space: nowrap; }
@@ -140,7 +141,6 @@ button, input { font: inherit; color: inherit; }
 .unlock-btn:disabled { opacity: 0.6; cursor: default; }
 /* 구매 조건을 아직 못 넘었을 때: 남은 조건과 지금 값 */
 .unlock-cond { margin: 0; font-size: 13px; color: var(--ink-soft); }
-/* flex: none — 대기실은 flex 열이라 화면이 낮으면 알약이 줄어 글자가 밖으로 넘쳤다 */
 
 /* ---------- 게임: 위에서부터 HUD 15% · 트랙 55% · 버튼 30% ---------- */
 .race { padding: 0; gap: 0; overflow: hidden; }
@@ -165,7 +165,7 @@ button, input { font: inherit; color: inherit; }
 .cutin.go { color: var(--primary); }
 .cutin.bad { color: var(--pink); }
 @keyframes cut-pop { from { transform: scale(0.3); opacity: 0; } }
-/* 짧은 말 버튼: 트랙 위쪽(하늘) 오른쪽 구석. 아래쪽 점프·슬라이딩 버튼 영역(.pad)과 겹치지 않는다 */
+/* 버튼 영역: 처음에는 '출발' 하나(.solo), 출발하면 왼쪽 슬라이딩 · 오른쪽 점프 */
 .pad { position: relative; flex: 1 1 30%; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); border-top: var(--line) solid var(--outline); cursor: pointer; padding-bottom: env(safe-area-inset-bottom); touch-action: none; }
 .pad-btns { display: flex; align-items: stretch; justify-content: center; gap: 12px; width: 100%; height: min(62%, 150px); padding: 0 14px; pointer-events: none; }
 .go-btn {
@@ -182,8 +182,8 @@ button, input { font: inherit; color: inherit; }
 .pad .hint { margin: 0; font-size: 13px; color: var(--ink-soft); }
 
 /* ---------- 결과 ---------- */
-.result { justify-content: center; }
-.result-card { background: var(--panel); border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); box-shadow: 0 var(--depth-big) 0 var(--outline); padding: 16px 14px; }
+/* 가운데 정렬은 카드의 위아래 auto 여백으로: 카드가 화면보다 길면(낮은 화면에 줄이 모두 뜬 경우) 위부터 스크롤된다 */
+.result-card { flex: none; margin: auto 0; background: var(--panel); border: var(--line-big) solid var(--outline); border-radius: var(--radius-panel-big); box-shadow: 0 var(--depth-big) 0 var(--outline); padding: 16px 14px; }
 .result-card h2 { margin: 0 0 4px; text-align: center; font-weight: normal; font-size: var(--fs-title); }
 .result-card .mine { text-align: center; font-size: 17px; margin: 0 0 10px; min-height: 24px; }
 .result-card .mine b { font-weight: normal; color: var(--accent); font-size: 24px; }
@@ -199,7 +199,7 @@ button, input { font: inherit; color: inherit; }
 .rrow .pl { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--track); border: var(--line-thin) solid var(--outline); font-size: 18px; flex: none; }
 .rrow.p1 .pl { background: var(--primary); }
 .rrow img.av { width: 40px; height: 40px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; flex: none; }
-/* 가운데: 윗줄은 이름 + 기록, 아랫줄은 작은 글 (AI가 이어 달림 · 연속전 누적 점수) */
+/* 가운데: 윗줄은 이름 + 기록, 아랫줄은 작은 글 (고스트 줄의 '👻 오늘 1위 고스트') */
 .rrow .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .rrow .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
@@ -284,4 +284,14 @@ button, input { font: inherit; color: inherit; }
   .pick .card { padding: 8px; }
   .result-card .daily-line .dp-big { font-size: 18px; }
   .result-card .daily-line .dp-big b { font-size: 30px; }
+  /* 결과 카드의 줄 여백을 더 줄인다 (개인 최고·반응 신기록·고스트·배지·이번 주 ↑ 가 모두 떠도 한 화면에) */
+  .result-card h2 { margin-bottom: 2px; line-height: 1.15; }
+  .result-card .daily-line { margin-bottom: 4px; padding: 3px 8px; line-height: 1.2; }
+  .result-card .daily-line > div > .soft { margin-top: 1px; }
+  .result-card .daily-line .week-up { margin-top: 1px; }
+  .result-card .mine { margin-bottom: 4px; line-height: 1.25; }
+  .result-card .react-line, .result-card .ghost-diff { margin: -2px 0 3px; line-height: 1.25; }
+  .result-card .badges { margin: 0 0 4px; }
+  .rows { gap: 4px; }
+  .rrow { padding: 3px 8px 3px 5px; }
 }
