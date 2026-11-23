@@ -7,6 +7,7 @@
 //   시아서바이벌은 맵마다 따로: 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순. 등급은 그 맵 안의 순위 기준
 //   시아서바이벌 무한 모드는 4분 모드와 따로 (모드 전환 줄): 생존 시간 → 처치 수 → 먼저 달성한 순
 //   시아마을은 번영도 순 → 먼저 달성한 순. 줄마다 [구경]으로 그 마을에 가 볼 수 있다
+//   시아열두길은 레벨 랭킹(레벨 → 경험치 → 먼저 달성한 순)과 끝없는 탑 랭킹(최고 층 → 걸린 시간 → 먼저 달성한 순)이 따로다
 // 색은 DESIGN.md / shared/theme.css 값을 그대로 적는다 (시아탱크는 --panel 같은 변수 이름을 다른 뜻으로 써서 변수를 빌려 쓸 수 없다).
 import { getRanking, formatAmount, RANKINGS } from './wallet.js';
 import { withTiers, tierSvg, tierOfPlace } from './rank.js';
@@ -19,7 +20,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve'];
 
 /**
  * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
@@ -68,9 +69,21 @@ export const FINGER_MODES = [
   { id: 'stage', name: '스테이지' },
   { id: 'tower', name: '끝없는 탑' },
 ];
+/**
+ * 시아열두길: 레벨 랭킹과 끝없는 탑 랭킹은 따로다 (games/twelve/PRD.md '랭킹과 시아코인'). 고르기 줄은 디펜스·돌격대·핑거와 같이 쓴다.
+ * 레벨: 한 맵이라도 깬 사람. 끝없는 탑: 한 번이라도 들어가 본 사람 (1층을 못 깼으면 0층)
+ */
+const TWELVE_INFO = { label: '🗝️ 열두길', note: '레벨 순 (같으면 경험치, 그다음 먼저 달성한 사람이 위)' };
+const TWELVE_TOWER_NOTE = '끝없는 탑 · 최고 층 순 (같으면 그 층까지 걸린 시간이 짧은 사람, 그다음 먼저 달성한 사람이 위)';
+export const TWELVE_MODES = [
+  { id: 'level', name: '레벨' },
+  { id: 'tower', name: '끝없는 탑' },
+];
+/** 시아열두길 지형 이름 (games/twelve/src/data/regions.ts 의 REGION_TABLE 과 같은 순서) */
+export const TWELVE_REGIONS = ['쥐의 들판', '소의 논밭', '호랑이 고개', '토끼의 달동산', '용의 연못', '뱀의 늪', '말의 성문', '양의 뜰', '원숭이의 누각', '닭의 새벽길', '개의 삼도천', '돼지의 염라전'];
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : RANKINGS[g]);
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : RANKINGS[g]);
 
 /** 기록(ms) → 등급 */
 export function raceTier(ms) {
@@ -254,6 +267,40 @@ export async function getFingerRanking(mode = 'stage', meId = null) {
   }
   return { rows, mine, total };
 }
+/**
+ * 시아열두길 랭킹. mode 'level': twelve_level_ranking 뷰 (레벨 → 경험치 → 먼저 달성한 순. Lv99 는 먼저 도달한 사람이 위),
+ * 'tower': twelve_tower_ranking 뷰 (최고 층 → 그 층까지 걸린 시간 → 먼저 달성한 순).
+ * → { rows: 상위 100명 [{ key, nickname, level, exp, mode, hero, region, hardDone, floor, time, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getTwelveRanking(mode = 'level', meId = null) {
+  const tower = mode === 'tower';
+  const cols = tower ? 'user_id,nickname,best_floor,best_time,level,hero,achieved_at,place,total' : 'user_id,nickname,level,exp,mode,hero,region,hard_done,achieved_at,place,total';
+  const view = () => supabase.from(tower ? 'twelve_tower_ranking' : 'twelve_level_ranking');
+  const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(DEFENSE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({
+    key: r.user_id, nickname: r.nickname, level: Number(r.level ?? 1), exp: Number(r.exp ?? 0), mode: r.mode === 'hard' ? 'hard' : 'normal', hero: r.hero ?? 'rat',
+    region: Number(r.region ?? 1), hardDone: !!r.hard_done, floor: Number(r.best_floor ?? 0), time: Number(r.best_time ?? 0), at: r.achieved_at, place: Number(r.place),
+  });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= DEFENSE_TOP) {
+    const res = await view().select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
+/** 걸린 시간 표시 (초 → 3:05 · 1:02:03) */
+export const twelveTime = (sec) => {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(s % 60).padStart(2, '0')}`;
+};
 /** 시아마을 주소 (구경: ?visit=<사용자 id>) */
 const villageUrl = (userId) => `${new URL('../games/village/', import.meta.url).href}?visit=${encodeURIComponent(userId)}`;
 
@@ -354,7 +401,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
   // 닫힌 게임 안에서 연 창(관리자가 미리 해 보는 중)은 그 게임 탭만 보이게 둔다. 로비에서는 열린 게임만
@@ -397,7 +444,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     const sm = e.target.closest('[data-sm]');
     if (sm) void showSurvival(survivalMap, sm.dataset.sm);
     const dm = e.target.closest('[data-dm]');
-    if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : showDefense(dm.dataset.dm));
+    if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : showDefense(dm.dataset.dm));
   });
 
   let shown = '';
@@ -411,12 +458,13 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     // 모드·맵 고르기 줄은 시아서바이벌 탭에서만 보인다
     $('.subs').classList.toggle('on', game === 'survival');
     $('.modes').classList.toggle('on', game === 'survival');
-    // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스 탭에서만 보인다
-    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger');
+    // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스·돌격대·핑거·열두길 탭에서만 보인다 (버튼 글자는 탭마다 바꾼다)
+    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve');
     if (game === 'survival') return showSurvival(survivalMap);
     if (game === 'defense') return showDefense(defenseMode);
     if (game === 'charge') return showCharge(chargeMode);
     if (game === 'finger') return showFinger(fingerMode);
+    if (game === 'twelve') return showTwelve(twelveMode);
     if (game === 'race') return showRace();
     if (game === 'volley') return showVolley();
     if (game === 'village') return showVillage();
@@ -657,6 +705,53 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'finger' && fingerMode === mode) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /**
+   * 시아열두길: 레벨 랭킹(대표 대원 얼굴 · 레벨 · 모드 · 지금 지형 · 어려움 최종보스 처치 👑) /
+   * 끝없는 탑 랭킹(그때 대원 얼굴 · 층 · 걸린 시간 · 그때 레벨 · 달성 날짜). 상위 100명 + 내 순위
+   */
+  let twelveMode = TWELVE_MODES[0].id;
+  async function showTwelve(mode = twelveMode) {
+    // 고르기 줄 버튼의 data-dm 은 디펜스 모드 id (stage / endless) → 같은 자리의 열두길 모드로
+    const at = DEFENSE_MODES.findIndex((d) => d.id === mode);
+    if (at >= 0 && TWELVE_MODES[at]) mode = TWELVE_MODES[at].id;
+    if (!TWELVE_MODES.some((m) => m.id === mode)) mode = TWELVE_MODES[0].id;
+    twelveMode = mode;
+    const tower = mode === 'tower';
+    dim.querySelectorAll('.dmodes button').forEach((b) => {
+      const m = TWELVE_MODES[DEFENSE_MODES.findIndex((d) => d.id === b.dataset.dm)];
+      b.classList.toggle('sel', m?.id === mode);
+      if (m) b.textContent = m.name;
+    });
+    $('.note').textContent = `${tower ? TWELVE_TOWER_NOTE : TWELVE_INFO.note} · 상위 ${DEFENSE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getTwelveRanking(mode, meId);
+      if (shown !== 'twelve' || twelveMode !== mode) return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      const where = (r) => `${r.mode === 'hard' ? '어려움' : '보통'} · ${r.region}지형 ${TWELVE_REGIONS[r.region - 1] ?? ''}`;
+      const amount = (r) =>
+        tower
+          ? `${r.floor}층<small>${twelveTime(r.time)} · Lv ${r.level} · ${esc(dateText(r.at))}</small>`
+          : `Lv ${r.level}${r.hardDone ? ' 👑' : ''}<small>${esc(where(r))}</small>`;
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${tower ? `${mine.floor}층 · ${twelveTime(mine.time)}` : `Lv ${mine.level} · ${mine.mode === 'hard' ? '어려움' : '보통'} ${mine.region}지형`}`
+        : tower
+          ? '아직 끝없는 탑 기록이 없어요'
+          : '아직 깬 맵이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="nm">${esc(r.nickname)}</td><td class="sq"><img src="${faceUrl(r.hero)}" alt="" /></td>` +
+              `<td class="am">${amount(r)}</td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'twelve' && twelveMode === mode) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   /** 시아마을: 번영도 순 상위 100곳 + 내 순위. 줄마다 순위 · 등급 · 닉네임(마을 이름 · 마을 레벨) · 번영도 · [구경] */
