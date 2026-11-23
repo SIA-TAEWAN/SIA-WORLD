@@ -206,3 +206,68 @@ describe('들어오는 사이에 나간 방', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('AI 난이도: 방장이 고른 것이 시작 알림에 실린다', () => {
+  const go = (round: number) => ({ round, readyAt: clock.now + 3000, goAt: clock.now + 5000 });
+  async function levelRooms(ids: string[], levels: Record<string, 'easy' | 'normal' | 'hard'> = {}) {
+    const hub = new Hub();
+    const rooms: Room[] = [];
+    let round = 0;
+    for (const id of ids) {
+      const api = { channel: () => new FakeChannel(hub, id), syncClock: async () => undefined, go: async () => go(++round) };
+      const room = new RaceRoom(api as never, 'room1', { id, name: id }, id === 'a' ? 'tiger' : 'rat', levels[id]);
+      rooms.push(room);
+      await room.join();
+      clock.now += 10;
+    }
+    return { hub, rooms };
+  }
+  const starts = (hub: Hub) => hub.sent.filter((m) => m.t === 'start');
+
+  it('기본은 보통. 방장만 바꿀 수 있고 모든 기기가 같은 값을 본다', async () => {
+    const { rooms } = await levelRooms(['a', 'b']);
+    const [a, b] = rooms;
+    expect([a.level, b.level]).toEqual(['normal', 'normal']);
+    b.setLevel('hard'); // 방장이 아니다
+    expect([a.level, b.level]).toEqual(['normal', 'normal']);
+    a.setLevel('hard');
+    expect([a.level, b.level]).toEqual(['hard', 'hard']);
+  });
+
+  it('들어온 사람은 자기가 쓰던 난이도가 아니라 방장 것을 따르고, 방장이 나가도 그 난이도가 이어진다', async () => {
+    const { rooms } = await levelRooms(['a', 'b'], { a: 'easy', b: 'hard' });
+    const [a, b] = rooms;
+    expect([a.level, b.level]).toEqual(['easy', 'easy']);
+    await a.leave();
+    expect(b.isHost()).toBe(true);
+    expect(b.level).toBe('easy');
+    b.setLevel('normal');
+    expect(b.level).toBe('normal');
+  });
+
+  it('시작 알림(StartMsg)에 난이도가 실리고, 받은 기기의 판에도 같은 값이 남는다', async () => {
+    const { hub, rooms } = await levelRooms(['a', 'b'], { a: 'hard' });
+    const [a, b] = rooms;
+    a.setReady(true);
+    b.setReady(true);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(starts(hub).length).toBe(1);
+    expect(starts(hub)[0].level).toBe('hard');
+    expect(a.current?.level).toBe('hard');
+    expect(b.current?.level).toBe('hard');
+  });
+
+  it('오늘의 도전 방(시드 고정)은 고른 값과 상관없이 보통', async () => {
+    const hub = new Hub();
+    const api = { channel: () => new FakeChannel(hub, 'a'), syncClock: async () => undefined, go: async () => go(1) };
+    const room = new RaceRoom(api as never, 'daily1', { id: 'a', name: 'a' }, 'tiger', 'hard');
+    room.fixedSeed = 12345;
+    await room.join();
+    expect(room.level).toBe('normal');
+    room.setLevel('easy');
+    expect(room.level).toBe('normal');
+    room.setReady(true);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(starts(hub)[0]).toMatchObject({ seed: 12345, level: 'normal' });
+  });
+});

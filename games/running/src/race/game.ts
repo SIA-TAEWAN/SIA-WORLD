@@ -1,5 +1,6 @@
 import { makeAiPlan, aiPress, type AiPlan } from '../game/ai';
-import { BOOST_FACTOR, DT, END_AFTER_FIRST, END_AFTER_GO, LANES, MUD_FACTOR, NET_INTERVAL_MS, TOP_SPEED, TRACK_LEN, type ZodiacId } from '../game/constants';
+import { badgesOf, newTally, tallyEvent, type Badge } from '../game/badges';
+import { BOOST_FACTOR, DT, END_AFTER_FIRST, END_AFTER_GO, LANES, MUD_FACTOR, NET_INTERVAL_MS, TOP_SPEED, TRACK_LEN, aiLevelOf, type AiLevel, type ZodiacId } from '../game/constants';
 import { rankResults, type RaceEntry, type RankedEntry } from '../game/ranking';
 import { foul, newRunner, stepRunner, type Press, type RunState, type Runner, type SimEvent } from '../game/sim';
 import { makeTrack, type Obstacle } from '../game/track';
@@ -67,6 +68,10 @@ export class RaceGame {
   readonly seed: number;
   readonly readyAt: number;
   readonly goAt: number;
+  /** AI 난이도 (시작 알림에 실려 온다. 예전 기기가 연 판은 보통) */
+  readonly level: AiLevel;
+  /** 이번 판에 내가 한 일을 센 것 (결과 화면 배지용) */
+  private tally = newTally();
   /** 내 자리 (출전하지 않았으면 -1) */
   readonly mySlot: number;
   private control: Control[] = [];
@@ -112,6 +117,7 @@ export class RaceGame {
     this.readyAt = start.readyAt;
     this.goAt = start.goAt;
     this.roster = start.roster;
+    this.level = aiLevelOf(start.level);
     this.obs = makeTrack(start.seed);
     this.mySlot = start.roster.find((r) => r.id === room.me.id)?.slot ?? -1;
     for (let s = 0; s < LANES; s++) {
@@ -240,7 +246,7 @@ export class RaceGame {
       r.t = tuned ? 0 : t;
     }
     this.runners[slot] = r;
-    this.plans[slot] = makeAiPlan(this.seed, slot, this.obs, tuned);
+    this.plans[slot] = makeAiPlan(this.seed, slot, this.obs, tuned, this.level);
     this.control[slot] = 'ai';
   }
 
@@ -301,8 +307,13 @@ export class RaceGame {
         // 고정 간격으로 지금 시각까지 계산 (화면이 잠깐 멈췄다 와도 따라잡는다)
         while (r.t + DT <= t + 1e-9) {
           const press: Press = mine ? (first ? this.pendingPress : false) : plan ? aiPress(r, this.obs, plan) : false;
+          const seen = r.events.length;
           stepRunner(r, this.obs, press);
-          if (mine && first) this.pendingPress = false;
+          if (mine) {
+            // 배지용 집계: 생긴 걸음의 시각으로 센다 (출발 반응 시간)
+            for (let i = seen; i < r.events.length; i++) tallyEvent(this.tally, r.events[i], r.t);
+            if (first) this.pendingPress = false;
+          }
           first = false;
         }
         for (const ev of r.events) this.events.push({ slot: s, ev });
@@ -403,6 +414,12 @@ export class RaceGame {
   /** 내가 지금 달리는 중인가 (출전했고 AI로 넘어가지 않음) */
   amRacing(): boolean {
     return this.mySlot >= 0 && this.control[this.mySlot] === 'me';
+  }
+
+  /** 내가 이번 판에 받은 배지 (출전하지 않았거나 AI가 이어 달렸으면 없음) */
+  badges(): Badge[] {
+    if (this.mySlot < 0 || this.taken[this.mySlot]) return [];
+    return badgesOf(this.tally, this.obs.filter((o) => o.kind === 'boost').length);
   }
 
   myChar(): ZodiacId | null {

@@ -1,5 +1,5 @@
 import { LOBBY_MAX } from '../net/lobby';
-import { CHAR_IDS, LANES, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
+import { AI_LEVELS, AI_LEVEL_IDS, CHAR_IDS, LANES, ZODIAC_IDS, ZODIAC_NICK, aiLevelOf, type ZodiacId } from '../game/constants';
 import { formatTime, tierOf } from '../game/ranking';
 import { LOCAL_MODE } from '../net/api';
 import { RaceRoom, newRoomCode } from '../net/room';
@@ -9,7 +9,7 @@ import { loadRankIcons, openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, unlockButtonHtml } from './unlockBtn';
-import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, state, toast } from './app';
+import { esc, leaveRoom, loadAiLevel, loadEngine, nav, openSettings, roomLink, saveAiLevel, saveChar, screen, setRoomInUrl, state, toast } from './app';
 import { sfx } from './sfx';
 
 const ART = `${import.meta.env.BASE_URL}art/`;
@@ -167,7 +167,7 @@ export async function enterRoom(code: string) {
   setRoomInUrl(code);
   if (!state.room) {
     screen('<div class="connecting"><div class="spinner"></div><p>방에 들어가는 중…</p></div>', 'center', 'lobby');
-    const room = new RaceRoom(api, code, state.user, state.char);
+    const room = new RaceRoom(api, code, state.user, state.char, loadAiLevel());
     room.onNewerVersion = () => toast('새 버전이 있어요. 새로고침해 주세요', 4000);
     try {
       await room.join();
@@ -197,7 +197,8 @@ export function showWaiting() {
   const root = screen(
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>대기실</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 초대</button></div>
-    <div class="card"><h3>출전 선수 <span class="soft" id="seats-note">빈 자리는 AI가 달려요</span></h3><div class="seats" id="seats"></div></div>
+    <div class="card"><h3>출전 선수 <span class="soft" id="seats-note">빈 자리는 AI가 달려요</span></h3><div class="seats" id="seats"></div>
+      <div class="ai-level" id="ai-level"><span class="lb">🤖 AI 난이도</span><div class="seg" role="group" aria-label="AI 난이도">${AI_LEVEL_IDS.map((l) => `<button data-l="${l}">${AI_LEVELS[l].label}</button>`).join('')}</div><span class="soft who" id="ai-who"></span></div></div>
     <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
@@ -258,6 +259,17 @@ export function showWaiting() {
       return `<button class="char ${sel ? 'sel' : ''} ${taken ? 'taken' : ''} ${lock ? 'locked' : ''}" data-c="${c}" ${taken ? 'disabled' : ''} ${lock ? `title="${UNLOCK_LABEL}" aria-label="${ZODIAC_NICK[c]} (잠김 · ${UNLOCK_LABEL})"` : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span>${lock ? '<i class="lock" aria-hidden="true">🔒</i>' : ''}</button>`;
     }).join('');
     paintUnlock(locked);
+    // AI 난이도: 방장만 고른다 (다른 사람은 방장이 고른 것을 본다). AI 자리가 없으면 흐리게
+    const level = room.level;
+    const amHost = host === state.user.id;
+    $('#ai-level').classList.toggle('off', !seats.some((s) => s.id === null));
+    $('#ai-who').textContent = amHost ? '' : '방장이 골라요';
+    root.querySelectorAll<HTMLButtonElement>('#ai-level button').forEach((b) => {
+      const sel = b.dataset.l === level;
+      b.classList.toggle('sel', sel);
+      b.setAttribute('aria-pressed', String(sel));
+      b.disabled = !amHost;
+    });
     const busy = room.current !== null;
     const full = room.isFull();
     const humans = seats.filter((s) => s.id !== null).length;
@@ -297,6 +309,15 @@ export function showWaiting() {
     sfx('click');
     room.setChar(c);
     saveChar(room.char);
+  });
+  $('#ai-level').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('button[data-l]') as HTMLButtonElement | null;
+    if (!b || b.disabled || !room.isHost()) return;
+    const level = aiLevelOf(b.dataset.l);
+    if (level === room.level) return;
+    sfx('toggle');
+    room.setLevel(level);
+    saveAiLevel(level);
   });
   $('#ready').addEventListener('click', () => {
     sfx(room.ready ? 'click' : 'toggle');

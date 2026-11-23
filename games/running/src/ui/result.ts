@@ -22,6 +22,8 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   const room = daily ? null : state.room;
   let offRoom: (() => void) | null = null;
   let offEmote: (() => void) | null = null;
+  // 배지: 이번 판에 내가 한 일 (무결점 완주·칼출발·부스트 싹쓸이 …). 실격·AI가 이어 달린 판에는 없다
+  const badges = raced && mine.status !== 'foul' ? race.badges() : [];
   const root = screen(
     `<div class="result-card">
       <h2>🏁 경기 결과 <span class="tag hidden" id="gp-n"></span></h2>
@@ -36,6 +38,11 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
                 ? '실격! GO가 뜬 뒤에 눌러요'
                 : `미완주 (${Math.floor(mine.x)}m)`
       }</p>
+      ${
+        badges.length
+          ? `<ul class="badges" aria-label="이번 판 배지">${badges.map((b, i) => `<li class="badge" title="${esc(b.desc)}" style="animation-delay:${500 + i * 160}ms"><i aria-hidden="true">${b.icon}</i>${esc(b.label)}</li>`).join('')}</ul>`
+          : ''
+      }
       ${daily ? '<p class="daily-line" id="daily-line"><span class="tag">오늘의 도전</span> <span id="daily-place"></span></p>' : ''}
       <div class="rows">${results
         .map((r, i) => {
