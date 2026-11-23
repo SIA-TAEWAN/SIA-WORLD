@@ -277,3 +277,33 @@ img.ball.pierce { border-color: var(--accent); }
 /* 고양이 열기: 한 번 더 누르기 상태 */
 .leader.locked.extra.confirm em { color: var(--pink); font-weight: bold; }
 .btn.unlock.confirm { outline: 3px solid var(--pink); outline-offset: 1px; }
+
+/* ---------- 오늘의 도전 (086) ---------- */
+/* 메인 버튼 3칸 줄 (대원 · 강화 · 랭킹): 줄 수를 늘리지 않아 짧은 아이폰 화면에서도 그대로 들어온다 */
+.row2.row3 { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.row2 .btn { padding-left: 6px; padding-right: 6px; white-space: nowrap; min-width: 0; }
+@media (max-width: 360px) { .row2 .btn { font-size: 14px; gap: 3px; } }
+/* 제목 여섯 글자가 좁은 화면에서도 한 줄에 */
+.bar.daily-bar h2 { white-space: nowrap; }
+.bar.daily-bar h2 + .spacer { flex: 0 0 30px; }
+.daily-card { display: flex; flex-direction: column; gap: 8px; }
+.daily-card h3 { margin: 0; }
+.daily-card p { margin: 0; line-height: 1.5; word-break: keep-all; }
+.daily-card p b { font-weight: normal; color: var(--accent); }
+.daily-stage { display: flex; align-items: center; gap: 10px; background: var(--panel-strong); border-radius: var(--radius-item); padding: 8px 12px; }
+.daily-stage > b { font-weight: normal; font-size: 22px; min-width: 44px; }
+.daily-stage .st-mid > span:first-child { font-size: 16px; }
+.daily-rank-card h3 { margin-bottom: 6px; }
+/* 순위는 칸 안에서만 스크롤 (화면 높이의 1/4 까지) */
+.daily-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 24vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.daily-rank li { display: flex; align-items: center; gap: 8px; padding: 3px 8px; border-radius: var(--radius-item); font-size: 15px; }
+.daily-rank li.me { background: var(--panel-strong); }
+.daily-rank li i { font-style: normal; min-width: 24px; text-align: center; background: var(--outline); color: var(--white); border-radius: var(--radius-pill); font-size: 13px; }
+.daily-rank li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.daily-rank li b { font-weight: normal; color: var(--team-a); white-space: nowrap; }
+.daily-mine { margin: 6px 0 0; text-align: center; font-size: 15px; }
+.daily-mine b { font-weight: normal; color: var(--accent); }
+.daily-line { margin: 0; font-size: 16px; }
+.daily-line b { font-weight: normal; color: var(--accent); }
+.daily-line:empty { display: none; }
+.center { text-align: center; }

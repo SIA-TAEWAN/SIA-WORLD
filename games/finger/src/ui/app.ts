@@ -26,9 +26,10 @@ import {
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
+import { dailyChallenge, dailyDetailText, dailyLevels, dailySeed, dayLabel, localDay, type DailyChallenge, type DailyRanking } from '../game/daily';
 import { ApiError, type FingerApi, type StageBests } from '../net/api';
 import { DEV_ALL, LOCAL_MODE } from '../net/local';
-import { loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
+import { loadDaily, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
 import {
   BOSSES,
@@ -274,13 +275,14 @@ export function showMain() {
     </div>
     <div class="menu-btns">
       <button class="btn primary big" id="go">${menuIcon('ui-go', '⚔️')} 모험 떠나기</button>
-      <div class="row2">
+      <div class="row2 row3">
         <button class="btn" id="heroes">${menuIcon('ui-heroes', '🐭')} 대원</button>
         <button class="btn" id="up">${menuIcon('ui-up', '💪')} 강화</button>
+        <button class="btn" id="rank">${menuIcon('ui-rank', '🏆')} 랭킹</button>
       </div>
       <div class="row2">
         <button class="btn ${towerOpen(profile) ? '' : 'soon'}" id="tower">${menuIcon('ui-tower', '🏯')} 끝없는 탑 ${towerOpen(profile) ? (profile.tower ? `<small>${profile.tower.floor}층</small>` : '') : '🔒'}</button>
-        <button class="btn" id="rank">${menuIcon('ui-rank', '🏆')} 랭킹</button>
+        <button class="btn" id="daily">📅 오늘의 도전</button>
       </div>
     </div>
     <div class="grow"></div>
@@ -295,6 +297,7 @@ export function showMain() {
   on('#up', showUpgrades);
   on('#tower', () => (towerOpen(profile) ? showTower() : toast('끝없는 탑은 1-5 를 깨면 열려요')));
   on('#help', showHelp);
+  on('#daily', () => void showDaily());
   root.querySelector('#rank')!.addEventListener('click', async () => {
     play('click');
     if (LOCAL_MODE || !me) return toast('테스트 모드에서는 랭킹을 볼 수 없어요');
@@ -611,6 +614,134 @@ function showParty(st: StageDef | null) {
   });
 }
 
+// ---------- 오늘의 도전 (086_finger_daily.sql · game/daily.ts · shared/daily.js) ----------
+
+/** 그날 순위 (실패 · 테스트 모드면 null → 순위 칸을 숨긴다) */
+async function dailyRanking(day: string): Promise<DailyRanking | null> {
+  if (LOCAL_MODE) return null;
+  try {
+    const mod = await loadDaily();
+    const r = (await mod?.loadDailyRanking('finger', day)) as DailyRanking | null | undefined;
+    return r && Array.isArray(r.top) ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 순위 칸 안쪽: 위에서부터 + 내 기록 한 줄 */
+function dailyRankHtml(rk: DailyRanking): string {
+  if (!rk.top.length) return '<p class="soft center">아직 기록이 없어요. 첫 기록을 남겨 보세요!</p>';
+  const rows = rk.top
+    .map((t) => `<li class="${t.me ? 'me' : ''}"><i>${t.place}</i><span>${escHtml(String(t.nickname ?? ''))}</span><b>${dailyDetailText(t.score, t.detail)}</b></li>`)
+    .join('');
+  const mine = rk.mine ? `<p class="daily-mine">내 기록 <b>${dailyDetailText(rk.mine.score, rk.mine.detail)}</b> · ${rk.mine.place}위 <span class="soft">(${rk.total}명 중)</span></p>` : '<p class="soft center">아직 내 기록이 없어요</p>';
+  return `<ol class="daily-rank">${rows}</ol>${mine}`;
+}
+
+/** 오늘의 도전: 오늘 조건 설명 + 오늘 순위 + 도전하기 */
+async function showDaily() {
+  const head = `<div class="bar daily-bar"><button class="back" id="back">← 뒤로</button><h2>오늘의 도전</h2><div class="spacer"></div></div>`;
+  const wait = screen(`${head}<div class="connecting"><div class="spinner"></div><p>오늘의 판을 불러오는 중…</p></div>`);
+  const back = (root: HTMLElement) =>
+    root.querySelector('#back')!.addEventListener('click', () => {
+      play('click');
+      showMain();
+    });
+  back(wait);
+  // 날짜는 서버(한국 시간)에서, 조건은 날짜 글자에서 (모든 기기에서 같다). 테스트 모드는 기기 시계로
+  const mod = LOCAL_MODE ? null : await loadDaily();
+  if (!wait.isConnected) return;
+  if (!LOCAL_MODE && !mod) {
+    toast('오늘의 도전을 불러오지 못했어요');
+    return showMain();
+  }
+  const day = mod ? await mod.dailyToday() : localDay();
+  if (!wait.isConnected) return;
+  const c = dailyChallenge(day, mod?.dailySeed ?? dailySeed);
+  const st = stageOf(c.stage);
+  if (!st) return showMain();
+  const note = stageNote(st);
+  const root = screen(
+    `${head}
+    <div class="card daily-card">
+      <h3>📅 ${dayLabel(day)}의 판 <small>모두 같은 조건</small></h3>
+      <div class="daily-stage"><b>${st.id}</b><span class="st-mid"><span>${st.name}</span>${note ? `<small class="st-note">${note}</small>` : ''}
+        <span class="foes">${foeArts(st)
+          .slice(0, 4)
+          .map((a) => `<img src="${artUrl(a)}" alt="" />`)
+          .join('')}<em class="tag ${st.tip}">${st.tip === 'pierce' ? '관통형' : '반사형'} 유리</em></span></span></div>
+      <div class="party-mini">${c.party.map((id, i) => `<span><img src="${zodiacFaceUrl(id)}" alt="" /><b>${i + 1}</b>${HEROES[id].name}</span>`).join('')}</div>
+      <p class="soft center">정해진 대원 4명 · 모두 Lv ${c.level} · 강화 없음<br/>깬 판 가운데 <b>턴이 가장 적은 기록</b>으로 겨뤄요 (엽전·별은 없어요)</p>
+    </div>
+    <div class="card daily-rank-card hidden" id="rank-card"><h3>🏆 오늘 순위</h3><div id="rank-body"></div></div>
+    <div class="grow"></div>
+    ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 순위는 기록되지 않아요</p>' : ''}
+    <button class="btn primary big" id="start">⚔️ 도전하기!</button>`,
+    `bg-${groundOf(st.region)}`,
+  );
+  back(root);
+  root.querySelector('#start')!.addEventListener('click', () => {
+    play('click');
+    void startGame(c.stage, c.party, c);
+  });
+  void dailyRanking(day).then((rk) => {
+    if (!rk || !root.isConnected) return;
+    root.querySelector('#rank-body')!.innerHTML = dailyRankHtml(rk);
+    root.querySelector('#rank-card')!.classList.remove('hidden');
+  });
+}
+
+/** 오늘의 도전 결과: 쓴 턴 · 오늘 N위 */
+function showDailyResult(s: RunState, st: StageDef, c: DailyChallenge, out: Sent) {
+  const r = out.replay ?? resultOf(s);
+  const d = out.result?.daily;
+  play(r.cleared ? (d?.improved ? 'newRecord' : 'win') : 'lose');
+  const best = d?.best != null ? Math.abs(d.best) : 0;
+  const box = document.createElement('div');
+  box.className = 'overlay';
+  box.innerHTML = `<div class="card pop result ${r.cleared ? 'win' : 'lose'}">
+      <h2>${r.cleared ? '클리어!' : '실패'}</h2>
+      <p class="soft center">📅 오늘의 도전 · ${st.id} ${st.name}</p>
+      ${
+        r.cleared
+          ? `<p class="big-num">${r.turns}턴</p>`
+          : `<p class="soft center">웨이브 ${r.wave + 1}/${r.waves} 까지 갔어요${r.turns >= s.cfg.maxTurns ? ` (${s.cfg.maxTurns}턴을 다 썼어요)` : ''} · 깨야 기록돼요</p>`
+      }
+      <p class="center daily-line">${d?.recorded ? (d.improved ? (d.first ? '오늘 첫 기록!' : '오늘 내 기록을 줄였어요!') : `오늘 내 최고는 ${best}턴`) : ''}</p>
+      <div class="rows">
+        ${r.cleared ? '' : `<div><span>쓴 턴</span><b>${r.turns}</b></div>`}
+        <div><span>쓰러뜨린 요괴</span><b>${r.kills}</b></div>
+        <div><span>쓰러진 대원</span><b>${r.fallen}</b></div>
+        ${out.result?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
+      </div>
+      ${out.offline ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음 판을 시작할 때 다시 보내요</p>' : ''}
+      ${out.unrecorded ? '<p class="soft center">서버에 연결하지 못한 판이라 기록되지 않았어요</p>' : ''}
+      ${out.error ? `<p class="soft center">${out.error}</p>` : ''}
+      <div class="btns">
+        <button class="btn primary big" id="again">다시 도전</button>
+        <button class="btn" id="menu">오늘 순위 보기</button>
+      </div></div>`;
+  app().appendChild(box);
+  // "오늘 N위": 순위에 들어간 판이면 그날 순위를 받아 고친다 (실패하면 위 글 그대로)
+  if (d?.recorded)
+    void dailyRanking(d.day).then((rk) => {
+      const el = box.querySelector<HTMLElement>('.daily-line');
+      if (!rk?.mine || !el || !box.isConnected) return;
+      const mineTurns = Math.abs(rk.mine.score);
+      el.innerHTML = `<b>오늘 ${rk.mine.place}위</b> <span class="soft">(${rk.total}명 중)</span>${d.improved ? (d.first ? ' · 첫 기록!' : ' · 기록을 줄였어요!') : ` · 내 최고 ${mineTurns}턴`}`;
+    });
+  box.querySelector('#again')!.addEventListener('click', () => {
+    play('click');
+    closeGame();
+    void startGame(c.stage, c.party, c);
+  });
+  box.querySelector('#menu')!.addEventListener('click', () => {
+    play('click');
+    closeGame();
+    void showDaily();
+  });
+}
+
 // ---------- 끝없는 탑 ----------
 
 /** startGame 에 넘기는 끝없는 탑 id */
@@ -673,8 +804,8 @@ interface Sent {
   unrecorded: boolean;
 }
 
-/** 판 시작: 스테이지 id, 또는 TOWER(끝없는 탑) */
-export async function startGame(stageId: string, party: HeroId[] = partyOf(profile, lastParty)) {
+/** 판 시작: 스테이지 id, 또는 TOWER(끝없는 탑). daily 를 주면 오늘의 도전 (정해진 파티 · 레벨, 강화 없음) */
+export async function startGame(stageId: string, party: HeroId[] = partyOf(profile, lastParty), daily?: DailyChallenge) {
   const tower = stageId === TOWER;
   const st = tower ? null : (stageOf(stageId) ?? null);
   if ((!tower && !st) || busy) return;
@@ -691,7 +822,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       await Promise.race([api.resend().catch(() => 0), new Promise((ok) => setTimeout(ok, 8000))]);
       // 서버가 시작 때 남기는 레벨·강화 스냅숏과 같은 값으로 판을 만들려고 프로필을 다시 읽는다 (다른 기기에서 레벨을 올렸을 수 있다)
       setProfile(await api.loadProfile().catch(() => profile));
-      runId = await api.start(id, party, mode).finally(() => {
+      runId = await (daily ? api.startDaily(daily) : api.start(id, party, mode)).finally(() => {
         clearTimeout(slow);
         document.querySelector('.toast')?.remove();
       });
@@ -700,17 +831,20 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   } catch (e) {
     busy = false;
     toast(errText(e));
+    // 오늘의 도전: 그사이 날짜가 바뀌었으면 새 날짜의 판을 다시 보여 준다
+    if (daily && e instanceof ApiError && e.message === 'bad day') void showDaily();
     return;
   }
   busy = false;
   // 서버가 시작 때 남긴 스냅숏(레벨·강화)과 같은 값으로 판을 만든다
-  const run = createRun(buildConfig({ stage: id, mode, party, levels: profile.levels, upgrades: profile.upgrades }));
+  // (오늘의 도전은 내 레벨·강화 대신 정해진 레벨 · 강화 없음 — finger_daily_start 가 남기는 스냅숏과 같다)
+  const run = createRun(buildConfig({ stage: id, mode, party, levels: daily ? dailyLevels(daily) : profile.levels, upgrades: daily ? {} : profile.upgrades }));
   const root = app();
   root.innerHTML = `
     <div id="game"></div>
     <div class="hud">
       <button class="icon-btn" id="pause">⏸</button>
-      <div class="hud-mid"><b>${st ? `${st.id} ${st.name}` : '🏯 끝없는 탑'}</b><span id="wave"></span></div>
+      <div class="hud-mid"><b>${st ? `${daily ? '📅 ' : ''}${st.id} ${st.name}` : '🏯 끝없는 탑'}</b><span id="wave"></span></div>
       <span class="troop-pill" id="turns"></span>
     </div>
     <div class="hint" id="hint">화면을 누른 채 당겼다 놓으세요</div>`;
@@ -796,7 +930,8 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
         if (ended) return;
         ended = true;
         const out = await finishWithWait(s);
-        if (st) showResult(s, st, party, out);
+        if (st && daily) showDailyResult(s, st, daily, out);
+        else if (st) showResult(s, st, party, out);
         else showTowerResult(s, party, out);
       },
     },
@@ -811,7 +946,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       <button class="btn primary big" id="resume">계속하기</button>
       <button class="btn" id="mute"></button>
       <button class="btn" id="quit">그만하기</button>
-      <p class="soft center">${tower ? '그만하면 지금까지 올라간 층이 기록돼요' : '그만하면 이번 판은 실패로 기록돼요 (간 만큼 엽전은 받아요)'}</p></div>`;
+      <p class="soft center">${daily ? '그만하면 이번 도전은 기록되지 않아요' : tower ? '그만하면 지금까지 올라간 층이 기록돼요' : '그만하면 이번 판은 실패로 기록돼요 (간 만큼 엽전은 받아요)'}</p></div>`;
     root.appendChild(box);
     // 판 안에서는 여기서 소리를 켜고 끈다 (다른 화면의 오른쪽 아래 버튼과 같은 설정)
     const mute = box.querySelector<HTMLButtonElement>('#mute')!;
@@ -842,7 +977,8 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       if (out.error) toast(out.error);
       else if (out.result?.coins) toast(tower ? `${out.replay?.floors ?? run.wave}층까지 기록했어요 · 엽전 +${out.result.coins}` : `실패로 기록했어요 · 엽전 +${out.result.coins}`);
       else if (out.offline) toast('서버에 연결하지 못해 기록을 보관했어요');
-      if (st) showStages(st.region);
+      if (daily) void showDaily();
+      else if (st) showStages(st.region);
       else showTower();
     });
   });
