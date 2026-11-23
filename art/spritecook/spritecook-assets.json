@@ -58,6 +58,36 @@
       "asset_id": "c7546fbe-bb48-4650-9fb3-0a7ab1cade26",
       "sha12": "",
       "label": "로비 카드 시아맞고 2인 (호랑이·토끼) → shared/images/card-matgo.png (예전 3인 그림 대체)"
+    },
+    {
+      "asset_id": "a6ba0812-b27d-44dc-8929-40613cda4698",
+      "sha12": "ed3767efec4d",
+      "label": "고양이 후보 A 전신 원본(2차, 채택) = art/spritecook/cat/cand-a-src.png → cand-a-full.png · cand-a-face.png (늦잠 자다 달려온 귀족 고양이: 크림색 털, 금관, 보라 망토, 금 회중시계)"
+    },
+    {
+      "asset_id": "741a0820-c31b-488f-ad45-e795950f9205",
+      "sha12": "998f16b7b545",
+      "label": "고양이 후보 A 전신 원본(1차, 외곽선 얇아 2차의 edit 원본으로만 씀) = art/spritecook/cat/cand-a-src-v1.png"
+    },
+    {
+      "asset_id": "4682e8aa-f6f0-4f83-99c2-7c18a9793abf",
+      "sha12": "19247f5bfafc",
+      "label": "고양이 후보 B 전신 원본(2차, 채택) = art/spritecook/cat/cand-b-src.png → cand-b-full.png · cand-b-face.png (비단 한복 삼색 고양이: 옥색 저고리, 붉은 치마, 금방울, 노리개)"
+    },
+    {
+      "asset_id": "0073d822-bc01-40e5-9be1-dedc9ebb0172",
+      "sha12": "5ef061e06675",
+      "label": "고양이 후보 B 전신 원본(1차, 외곽선 얇아 2차의 edit 원본으로만 씀) = art/spritecook/cat/cand-b-src-v1.png"
+    },
+    {
+      "asset_id": "dc4a692e-df14-4e15-a897-7f398d4d7569",
+      "sha12": "64794bbfef66",
+      "label": "고양이 후보 C 전신 원본(2차, 채택) = art/spritecook/cat/cand-c-src.png → cand-c-full.png · cand-c-face.png (늦게 도착한 13번째 대원: 청회색 털, 금 흉갑, 13번 메달, 남색 스카프, 경례)"
+    },
+    {
+      "asset_id": "1e15208e-e887-4c5f-a5b1-c94453e8af2b",
+      "sha12": "d41cdb4b1f6d",
+      "label": "고양이 후보 C 전신 원본(1차, 외곽선 얇아 2차의 edit 원본으로만 씀) = art/spritecook/cat/cand-c-src-v1.png"
     }
   ]
 }
