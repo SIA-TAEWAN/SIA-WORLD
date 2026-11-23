@@ -153,6 +153,7 @@ function makeRace(ids: string[]) {
       },
       connected: () => !down.has(id),
       raceOver() {},
+      addResult() {},
     };
     docState.current = id;
     const game = new RaceGame(room as never, api as never, start);

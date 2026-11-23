@@ -572,6 +572,8 @@ export class RaceGame {
   private finish(results: RankedEntry[]) {
     if (this.results) return;
     this.results = results;
+    // 연속전 점수판에 이 판의 점수를 더한다 (기록 제출·순위 판정과는 따로)
+    this.room.addResult(this.round, this.roster, results, this.taken);
     this.room.raceOver(this.round);
     this.onOver?.(results);
   }

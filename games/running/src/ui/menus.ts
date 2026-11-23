@@ -4,6 +4,7 @@ import { formatTime, tierOf } from '../game/ranking';
 import { LOCAL_MODE } from '../net/api';
 import { RaceRoom, newRoomCode } from '../net/room';
 import { hostOf } from '../net/seats';
+import { seriesKey, standings } from '../game/series';
 import { loadRankIcons, openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
@@ -191,7 +192,7 @@ export function showWaiting() {
   const root = screen(
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>대기실</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 초대</button></div>
-    <div class="card"><h3>출전 선수 <span class="soft">빈 자리는 AI가 달려요</span></h3><div class="seats" id="seats"></div></div>
+    <div class="card"><h3>출전 선수 <span class="soft" id="seats-note">빈 자리는 AI가 달려요</span></h3><div class="seats" id="seats"></div></div>
     <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
@@ -228,11 +229,17 @@ export function showWaiting() {
     const seats = room.seats();
     const host = hostOf(room.members);
     $('#room-name').textContent = `${room.members.find((m) => m.id === host)?.name ?? state.user.name}의 방`;
+    // 연속전: 같은 방에서 이어 달리면 자리마다 누적 순위·점수를 보인다
+    const table = room.series.n > 0 ? standings(room.series) : [];
+    $('#seats-note').textContent = table.length ? `연속전 ${room.series.n}판 · 누적 점수` : '빈 자리는 AI가 달려요';
+    $('#seats').classList.toggle('has-gp', table.length > 0);
     $('#seats').innerHTML = seats
       .map((s) => {
         const me = s.id === state.user.id;
+        const gp = table.find((t) => t.k === seriesKey(s));
+        const gpHtml = gp ? `<span class="gp ${gp.rank === 1 && gp.pts > 0 ? 'top' : ''}">${gp.rank}위 ${gp.pts}점</span>` : '';
         const st = s.id === null ? '<div class="st">AI</div>' : s.ready ? '<div class="st on">레디!</div>' : '<div class="st">준비 중</div>';
-        return `<div class="seat ${me ? 'me' : ''} ${s.id === null ? 'ai' : ''}">${s.id && s.id === host ? '<span class="host" title="방장">👑</span>' : ''}
+        return `<div class="seat ${me ? 'me' : ''} ${s.id === null ? 'ai' : ''}">${s.id && s.id === host ? '<span class="host" title="방장">👑</span>' : ''}${gpHtml}
           <img class="av" src="${zodiacFaceUrl(s.char)}" alt="" /><div class="nm">${esc(s.name)}</div>${st}</div>`;
       })
       .join('');

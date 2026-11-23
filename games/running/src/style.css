@@ -118,6 +118,11 @@ button, input { font: inherit; color: inherit; }
 .seat .st { font-size: 12px; color: var(--ink-soft); }
 .seat .st.on { color: var(--win); }
 .seat .host { position: absolute; top: -8px; left: -4px; font-size: 16px; }
+/* 연속전 누적 순위·점수 (자리 오른쪽 위 모서리) */
+.seat .gp { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); z-index: 1; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 0 6px; font-size: 11px; line-height: 16px; white-space: nowrap; }
+.seat .gp.top { background: var(--primary); }
+.seats.has-gp { margin-top: 4px; }
+.seats.has-gp .seat { padding-top: 12px; }
 .chars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .char { position: relative; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 3px 0 2px; cursor: pointer; text-align: center; min-width: 0; }
 /* 캐릭터 얼굴은 모두 같은 크기의 원 안에 (그림마다 여백이 달라 크기가 들쭉날쭉해 보이지 않게) */
@@ -168,6 +173,17 @@ button, input { font: inherit; color: inherit; }
 .cutin.go { color: var(--primary); }
 .cutin.bad { color: var(--pink); }
 @keyframes cut-pop { from { transform: scale(0.3); opacity: 0; } }
+/* 짧은 말 버튼: 트랙 위쪽(하늘) 오른쪽 구석. 아래쪽 점프·슬라이딩 버튼 영역(.pad)과 겹치지 않는다 */
+.emo-bar { display: flex; align-items: flex-start; gap: 6px; }
+.emo-list { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.emo-chip { background: var(--white); color: var(--ink); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); box-shadow: 0 2px 0 var(--outline); padding: 0 10px; min-height: 34px; font-size: 14px; white-space: nowrap; cursor: pointer; transition: transform var(--press-ms), box-shadow var(--press-ms), opacity 120ms; }
+.emo-chip:active { transform: translateY(2px); box-shadow: 0 0 0 var(--outline); }
+.emo-bar.cool .emo-chip { opacity: 0.5; }
+.track .emo-bar { position: absolute; top: 6px; right: 6px; z-index: 6; flex-direction: row-reverse; max-width: calc(100% - 12px); }
+.track .emo-list { justify-content: flex-end; }
+.track .emo-bar.fold:not(.open) .emo-list { display: none; }
+.emo-toggle { width: 36px; height: 36px; font-size: 16px; }
+.emo-bar.open .emo-toggle { background: var(--primary); }
 .pad { position: relative; flex: 1 1 30%; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); border-top: var(--line) solid var(--outline); cursor: pointer; padding-bottom: env(safe-area-inset-bottom); touch-action: none; }
 .pad-btns { display: flex; align-items: stretch; justify-content: center; gap: 12px; width: 100%; height: min(62%, 150px); padding: 0 14px; pointer-events: none; }
 .go-btn {
@@ -195,12 +211,21 @@ button, input { font: inherit; color: inherit; }
 .rrow .pl { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--track); border: var(--line-thin) solid var(--outline); font-size: 18px; flex: none; }
 .rrow.p1 .pl { background: var(--primary); }
 .rrow img.av { width: 40px; height: 40px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; flex: none; }
+/* 가운데: 윗줄은 이름 + 기록, 아랫줄은 작은 글 (AI가 이어 달림 · 연속전 누적 점수) */
+.rrow .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rrow .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
-.rrow .nm small { display: block; font-size: 11px; color: var(--ink-soft); }
+.rrow .body small { display: block; font-size: 11px; line-height: 1.25; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rrow .tm { font-size: 19px; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rrow .tm.dnf { color: var(--ink-soft); font-size: 15px; }
 .rrow .tm.foul { color: var(--lose); font-size: 16px; }
 .rrow .tier { line-height: 0; flex: none; width: 26px; }
+/* 결과 화면의 짧은 말: 버튼 줄은 순위 아래, 말풍선은 보낸 사람 줄 오른쪽 위 */
+.result .emo-bar { margin-top: 10px; justify-content: center; }
+.result .emo-list { justify-content: center; }
+.rrow { position: relative; }
+.rrow .emo-pop { position: absolute; right: 8px; top: -9px; z-index: 2; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); box-shadow: 0 2px 0 var(--outline); padding: 1px 10px; font-size: 14px; white-space: nowrap; pointer-events: none; animation: emo-pop 180ms cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes emo-pop { from { transform: scale(0.4); opacity: 0; } }
 @keyframes row-in { from { opacity: 0; transform: translateX(-24px); } }
 .newrec { display: inline-block; background: var(--pink); color: var(--white); border-radius: var(--radius-pill); padding: 2px 12px; font-size: 15px; animation: rec-pop 500ms cubic-bezier(0.2, 1.8, 0.4, 1) 900ms backwards; }
 @keyframes rec-pop { from { transform: scale(0); } }
@@ -213,6 +238,15 @@ button, input { font: inherit; color: inherit; }
 
 @media (max-height: 680px) {
   .screen { gap: 6px; }
+  /* 결과 카드: 짧은 말 줄이 들어가도 한 화면에 */
+  .result-card { padding: 12px 12px; }
+  .result-card .mine { margin-bottom: 6px; }
+  .rows { gap: 5px; }
+  .rrow { padding: 4px 10px 4px 6px; }
+  .rrow img.av { width: 36px; height: 36px; }
+  .result .emo-bar { margin-top: 8px; }
+  .result .actions { margin-top: 10px; }
+  .result .sub { margin-top: 8px; }
   .hero { min-height: 90px; }
   .seat .av { max-width: 40px; }
   .char span { font-size: 10px; }
@@ -221,6 +255,13 @@ button, input { font: inherit; color: inherit; }
 }
 /* 아이폰 SE 사파리(375×553) 같은 더 낮은 화면: 대기실·로비가 한 화면에 들어가게 덜 중요한 글을 숨기고 그림을 줄인다 */
 @media (max-height: 600px) {
+  .result-card h2 { font-size: 22px; }
+  .result-card .mine { font-size: 15px; min-height: 0; }
+  .result-card .mine b { font-size: 20px; }
+  .rrow .pl { width: 30px; height: 30px; font-size: 16px; }
+  .rrow img.av { width: 32px; height: 32px; }
+  .emo-chip { min-height: 30px; padding: 0 8px; font-size: 13px; }
+  .emo-toggle { width: 32px; height: 32px; }
   .room .invite .soft { display: none; }
   .lobby .tagline { display: none; }
   .seat .av { max-width: 34px; }

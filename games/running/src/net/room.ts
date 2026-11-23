@@ -1,4 +1,7 @@
 import { END_AFTER_GO, type ZodiacId } from '../game/constants';
+import { EMOTE_RECV_GAP_MS, emoteReady, validEmote } from '../game/emote';
+import type { RankedEntry } from '../game/ranking';
+import { addRound, cleanSeries, newSeries, shouldAdopt, type Series } from '../game/series';
 import { GO_GAP_MS, GoTooSoonError, serverNow, type RaceApi } from './api';
 import type { Channel, Member, NetMsg } from './channel';
 import { CLIENT_VERSION, allReady, hostOf, makeSeats, players, resolveChar, sortMembers, type MemberInfo, type PlayerMeta, type Seat } from './seats';
@@ -35,7 +38,7 @@ export const validRoomCode = (c: string) => /^[a-z0-9]{4,24}$/.test(c);
 /**
  * 경주 방: 실시간 채널 하나 (방 코드마다).
  * - Presence: 누가 있는지, 캐릭터, 레디. 가장 먼저 들어온 사람이 방장.
- * - Broadcast: 시작 알림(start), 경기 중 위치(pos) 등.
+ * - Broadcast: 시작 알림(start), 경기 중 위치(pos), 연속전 점수판(gp), 짧은 말(emo) 등.
  */
 export class RaceRoom {
   private ch: Channel<PlayerMeta>;
@@ -59,6 +62,13 @@ export class RaceRoom {
   /** 같은 방에 더 새 판본의 기기가 있다 (한 번만 부른다) */
   onNewerVersion: (() => void) | null = null;
   private toldNewer = false;
+  /** 연속전 점수판 (이 방에 있는 동안만. 나가면 사라진다) */
+  series: Series = newSeries();
+  private emoteFns = new Set<(id: string, i: number) => void>();
+  /** 내가 마지막으로 짧은 말을 보낸 시각 (기기 시각 ms) */
+  private lastEmote = 0;
+  /** 사람마다 마지막으로 짧은 말을 받은 시각 */
+  private emoteSeen = new Map<string, number>();
 
   constructor(
     private api: RaceApi,
@@ -114,12 +124,25 @@ export class RaceRoom {
     if (m.t === 'start') this.applyStart(m as StartMsg, true);
     else if (m.t === 'hello') {
       // 가장 먼저 들어온 사람이 답한다 (경기 중이면 그 판 정보)
-      if (this.isHost() && m.from !== this.me.id) this.ch.send({ t: 'state', to: m.from, start: this.current });
+      if (this.isHost() && m.from !== this.me.id) this.ch.send({ t: 'state', to: m.from, f: this.me.id, start: this.current, gp: this.series });
     } else if (m.t === 'state') {
       // 늦게 들어왔으면 그 판에는 끼지 않고, 끝날 때까지 기다린다
-      if (m.to === this.me.id && m.start && !this.current) this.applyStart(m.start as StartMsg, false);
+      if (m.to === this.me.id) {
+        // 늦게 들어와도 지금까지의 연속전 점수판을 받는다
+        if (m.gp) this.adoptSeries(m.gp, m.f);
+        if (m.start && !this.current) this.applyStart(m.start as StartMsg, false);
+      }
     } else if (m.t === 'end') {
       if (this.current && m.round === this.current.round) this.raceOver(m.round);
+    } else if (m.t === 'gp') {
+      if (typeof m.f === 'string' && m.f !== this.me.id && this.present.has(m.f)) this.adoptSeries(m.gp, m.f);
+    } else if (m.t === 'emo') {
+      // 방에 있는 사람이 보낸, 정해진 번호만. 한 사람이 너무 자주 보내면 버린다
+      const now = Date.now();
+      if (typeof m.f === 'string' && m.f !== this.me.id && this.present.has(m.f) && validEmote(m.i) && emoteReady(this.emoteSeen.get(m.f) ?? 0, now, EMOTE_RECV_GAP_MS)) {
+        this.emoteSeen.set(m.f, now);
+        this.emoteFns.forEach((f) => f(m.f, m.i));
+      }
     }
     this.msgFns.forEach((f) => f(m));
   }
@@ -145,6 +168,50 @@ export class RaceRoom {
     if (this.current?.round !== round) return;
     this.current = null;
     this.emit();
+  }
+
+  // ───────────── 연속전 점수판 ─────────────
+
+  /** 받은 점수판: 더 많은 판을 센 것이면 받고, 같은 판 수면 방장 것을 따른다 */
+  private adoptSeries(raw: unknown, from: unknown) {
+    const s = cleanSeries(raw);
+    if (!s || !shouldAdopt(this.series, s, from === hostOf(this.members))) return;
+    this.series = s;
+    this.emit();
+  }
+
+  /**
+   * 한 판이 끝났다: 순위별 점수를 더하고 알린다 (같은 판은 한 번만).
+   * 달린 기기마다 자기 것에 더해 두고, 방장이 보낸 것이 기준이 된다 (방장이 그 판을 달리지 않았으면 달린 기기 것이 방장에게 간다)
+   */
+  addResult(round: number, roster: readonly RosterEntry[], results: readonly RankedEntry[], taken: readonly boolean[]) {
+    if (this.left) return;
+    const next = addRound(this.series, round, roster, results, taken);
+    if (next === this.series) return;
+    this.series = next;
+    const send = () => !this.left && this.series === next && this.ch.send({ t: 'gp', f: this.me.id, gp: next });
+    send();
+    // 놓친 기기를 위해 방장은 한 번 더 보낸다
+    if (this.isHost()) setTimeout(send, 800);
+    this.emit();
+  }
+
+  // ───────────── 짧은 말 (이모티콘) ─────────────
+
+  /** 짧은 말을 보낸다 (1.5초에 한 번). 보냈으면 true */
+  sendEmote(i: number): boolean {
+    const now = Date.now();
+    if (this.left || !validEmote(i) || !emoteReady(this.lastEmote, now)) return false;
+    this.lastEmote = now;
+    this.ch.send({ t: 'emo', f: this.me.id, i });
+    this.emoteFns.forEach((f) => f(this.me.id, i));
+    return true;
+  }
+
+  /** 누가 짧은 말을 보냈다 (내가 보낸 것도 온다) */
+  onEmote(fn: (id: string, i: number) => void) {
+    this.emoteFns.add(fn);
+    return () => this.emoteFns.delete(fn);
   }
 
   private tick() {
@@ -279,6 +346,7 @@ export class RaceRoom {
     this.changeFns.clear();
     this.msgFns.clear();
     this.startFns.clear();
+    this.emoteFns.clear();
     await this.ch.leave().catch(() => undefined);
   }
 }
