@@ -38,6 +38,7 @@ language sql immutable as $$
     when 'boss_gift_10' then 15
     when 'boss_gift_11' then 20
     when 'boss_gift_12' then 30
+    when 'boss_gift_final' then 50
     when 'tower_cp' then 10
     when 'tower_elite_every' then 5
     when 'tower_min_time' then 2
@@ -170,7 +171,8 @@ language sql immutable as $$
     ('12-5', 'normal', 12, 5, 63, 680, false, 154, 1, 665, 309, 0, 0, 309, '{"club":[21,111,51],"guard":[16,111,51],"skeleton":[72,89,41],"spirit":[23,100,41],"firecart":[21,133,51]}'::jsonb),
     ('12-6', 'normal', 12, 6, 64, 600, false, 141, 2, 406, 188, 0, 0, 314, '{"club":[17,113,52],"fox":[15,68,31],"guard":[17,113,52],"skeleton":[61,90,42],"spirit":[14,102,42],"firecart":[15,135,52]}'::jsonb),
     ('12-7', 'normal', 12, 7, 64, 720, false, 181, 2, 406, 188, 0, 0, 314, '{"club":[25,113,52],"fox":[22,68,31],"guard":[15,113,52],"skeleton":[81,90,42],"spirit":[19,102,42],"firecart":[17,135,52]}'::jsonb),
-    ('12-8', 'normal', 12, 8, 65, 630, true, 97, 1, 414, 191, 2298, 1060, 318, '{"club":[10,115,53],"fox":[11,69,32],"guard":[18,115,53],"skeleton":[38,92,42],"spirit":[14,103,42],"firecart":[5,138,53]}'::jsonb)
+    ('12-8', 'normal', 12, 8, 65, 630, true, 97, 1, 414, 191, 2298, 1060, 318, '{"club":[10,115,53],"fox":[11,69,32],"guard":[18,115,53],"skeleton":[38,92,42],"spirit":[14,103,42],"firecart":[5,138,53]}'::jsonb),
+    ('final', 'normal', 12, 9, 65, 720, true, 63, 2, 965, 382, 9192, 5300, 318, '{"imp":[4,46,21],"wisp":[3,57,21],"club":[3,115,53],"fox":[3,69,32],"guard":[6,115,53],"skeleton":[7,92,42],"spirit":[3,103,42],"mud":[2,80,32],"lynx":[3,92,42],"shade":[3,103,42],"catfish":[3,126,53],"toad":[3,115,53],"bomber":[3,103,42],"sleeper":[3,138,53],"acorn":[3,138,53],"yaksha":[4,161,64],"ferryman":[2,172,64],"firecart":[3,138,53]}'::jsonb)
 -- </gen:maps>
   ) as t(map_id, mode, region, no, level, par, boss, total, elites, elite_exp, elite_coin, boss_exp, boss_coin, chest_coin, kinds)
 $$;
@@ -767,9 +769,47 @@ language sql immutable as $$
 $$;
 revoke all on function public._twelve_acc() from public, anon, authenticated;
 
--- ---------- 2. 맵 끝내기 (078 의 twelve_finish 를 다시 정의) ----------
+-- ---------- 2. 판 시작 (078 의 twelve_start 를 다시 정의) ----------
+-- 바뀐 것: 최종보스맵 'final' (맵 표에 12지형의 9번째 줄로 들어 있다 — 12-8 을 깨야 열린다) 은
+-- 그 모드의 열쇠 12개를 모두 모아야 시작할 수 있다 ('need keys'). 그 밖에는 078 과 같다.
+-- 보통 모드의 'final' 을 깨면 보통 모드 클리어다: 078 의 _twelve_normal_done · _cat_progress_twelve(고양이 조건 1/1)가 그 기록을 본다.
+
+-- → { run, seed }. seed = 그 판의 드랍 씨앗 (화면이 무엇이 떨어질지 미리 그린다. 판정은 twelve_finish 가 다시 한다)
+create or replace function public.twelve_start(p_map text, p_mode text, p_hero text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  mp record;
+  pr public.twelve_profiles;
+  rid uuid;
+  v_seed int;
+  v_pct int;
+begin
+  if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
+  if p_mode is null or p_mode not in ('normal', 'hard') then raise exception 'bad mode'; end if;
+  select * into mp from public._twelve_maps() t where t.map_id = p_map and t.mode = p_mode;
+  if not found then raise exception 'bad map'; end if;
+  pr := public._twelve_profile_row(me);
+  -- 최종보스맵 (src/game/progress.ts 의 checkStart): 12지형 보스를 잡았어도 열쇠 12개가 없으면 못 들어간다
+  if mp.no > 8 and public._twelve_map_open(me, p_mode, mp.region, mp.no)
+    and (select count(*) from public.twelve_keys k where k.user_id = me and k.mode = p_mode) < 12 then raise exception 'need keys'; end if;
+  if not public._twelve_map_open(me, p_mode, mp.region, mp.no) then raise exception 'map locked'; end if;
+  perform public._twelve_check_hero(me, p_hero);
+  if pr.eq_weapon is null then raise exception 'no weapon'; end if;
+  select coalesce(max(t.coin_pct), 0) into v_pct from public.twelve_items i join public._twelve_items() t on t.base = i.base
+  where i.user_id = me and i.id = pr.eq_acc;
+  v_seed := floor(random() * 2147483647)::int;
+  insert into public.twelve_runs (user_id, map_id, mode, hero, seed, level, coin_pct)
+  values (me, p_map, p_mode, p_hero, v_seed, pr.level, v_pct) returning id into rid;
+  return jsonb_build_object('run', rid, 'seed', v_seed);
+end $$;
+revoke all on function public.twelve_start(text, text, text) from public, anon;
+grant execute on function public.twelve_start(text, text, text) to authenticated;
+
+-- ---------- 3. 맵 끝내기 (078 의 twelve_finish 를 다시 정의) ----------
 -- 바뀐 것: 보스의 선물 — 대원 12종이 9지형 보스까지에서 다 모이므로, 10~12지형 보스를 (모드마다) 처음 잡으면
--- 합류 대신 강화석 꾸러미를 준다 (_twelve_const('boss_gift_<지형>')). 결과에 'gift' 가 더해졌다. 그 밖에는 078 과 같다.
+-- 합류 대신 강화석 꾸러미를 준다 (_twelve_const('boss_gift_<지형>')). 결과에 'gift' 가 더해졌다.
+-- 최종보스(맵 표의 9번째 줄)를 처음 잡으면 _twelve_const('boss_gift_final'). 그 밖에는 078 과 같다.
 
 create or replace function public.twelve_finish(p_run uuid, p_report jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -889,9 +929,9 @@ begin
     if mp.boss and first and not public._twelve_joined(me, mp.region) then
       select h.id into joined from public._twelve_heroes() h where h.join_region = mp.region;
     end if;
-    -- 보스의 선물 (089): 대원이 합류하지 않는 지형(10~12)의 보스를 이 모드에서 처음 잡으면 강화석 꾸러미 (src/data/economy.ts 의 BOSS_GIFT)
+    -- 보스의 선물 (089): 대원이 합류하지 않는 지형(10~12)의 보스 · 최종보스를 이 모드에서 처음 잡으면 강화석 꾸러미 (src/data/economy.ts 의 BOSS_GIFT · FINAL_GIFT)
     if mp.boss and v_boss and first then
-      n_gift := coalesce(public._twelve_const('boss_gift_' || mp.region::text), 0)::int;
+      n_gift := coalesce(public._twelve_const('boss_gift_' || case when mp.no > 8 then 'final' else mp.region::text end), 0)::int;
       n_stones := n_stones + n_gift;
     end if;
     insert into public.twelve_maps (user_id, mode, map_id, stars, clears, best) values (me, rn.mode, rn.map_id, n_stars, 1, v_time)

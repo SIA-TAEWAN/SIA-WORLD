@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { blockIn, fillBlocks, itemRows, levelRows, mapRows, regionRows, sqlBlocks } from '../src/data/sqlrows';
-import { MAPS } from '../src/data/maps';
+import { ALL_MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
@@ -45,8 +45,8 @@ describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
     expect(sql089).not.toMatch(/create table|drop |alter table/);
   });
 
-  it('줄 수: 준비된 맵 · 레벨 1~98 · 장비 216 · 지형 24', () => {
-    expect(mapRows().length).toBe(MAPS.length);
+  it('줄 수: 준비된 맵(지형 맵 96 + 최종보스맵) · 레벨 1~98 · 장비 216 · 지형 24', () => {
+    expect(mapRows().length).toBe(ALL_MAPS.length);
     expect(levelRows().length).toBe(98);
     expect(itemRows().length).toBe(216);
     expect(regionRows().length).toBe(24);

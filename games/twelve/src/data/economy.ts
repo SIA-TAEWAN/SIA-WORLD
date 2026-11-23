@@ -87,6 +87,8 @@ export const bossStones = (tier: number) => 3 + Math.floor(tier / 2);
  */
 export const BOSS_GIFT: Readonly<Record<number, number>> = { 10: 15, 11: 20, 12: 30 };
 export const bossGift = (region: number) => BOSS_GIFT[region] ?? 0;
+/** 최종보스를 (모드마다) 처음 잡으면 받는 강화석 (서버 _twelve_const('boss_gift_final')) */
+export const FINAL_GIFT = 50;
 
 // ---------- 가방 ----------
 

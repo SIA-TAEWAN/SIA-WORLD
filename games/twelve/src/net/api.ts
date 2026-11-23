@@ -155,7 +155,13 @@ export function normalize(v: unknown): TwelveProfile {
   };
 }
 
+/** 테스트 모드(?local=1)의 고양이: 시아코인이 없으니 구매를 흉내만 낸다 (이 기기에 적어 둔다) */
+export const LOCAL_CAT_KEY = 'sia-twelve-local-cat';
+export const localCatOwned = (store: Store = safeStore()) => store.getItem(LOCAL_CAT_KEY) === '1';
+export const buyLocalCat = (store: Store = safeStore()) => store.setItem(LOCAL_CAT_KEY, '1');
+
 export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock: () => number = Date.now): TwelveApi {
+  const cat = () => localCatOwned(store);
   const load = () => {
     try {
       return normalize(JSON.parse(store.getItem(key) ?? 'null'));
@@ -180,7 +186,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
       return load();
     },
     async start(map, mode, hero) {
-      const why = checkStart(load(), map, mode, hero);
+      const why = checkStart(load(), map, mode, hero, cat());
       if (why) throw new ApiError(why);
       const run = `local-${Date.now()}-${n++}`;
       const seed = Math.floor(Math.random() * 0x7fffffff);
@@ -199,7 +205,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
     async resend() {
       return 0;
     },
-    setHero: (hero) => act((p) => setHero(p, hero)),
+    setHero: (hero) => act((p) => setHero(p, hero, cat())),
     equip: (id) => act((p) => equip(p, id)),
     unequip: (slot) => act((p) => unequip(p, slot)),
     lock: (id, on) => act((p) => setLock(p, id, on)),
@@ -210,7 +216,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
     buy: (what, cnt = 1) => act((p) => buy(p, what, cnt)),
     async towerStart(floor, hero) {
       const p = load();
-      const why = checkTowerStart(p, floor, hero);
+      const why = checkTowerStart(p, floor, hero, cat());
       if (why) throw new ApiError(why);
       // 한 번에 한 판: 끝내지 않은 앞 판은 여기서 끝난 것으로 한다
       for (const r of towers.values()) r.done = true;

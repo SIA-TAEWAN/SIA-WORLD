@@ -8,7 +8,7 @@ import { regionTier } from '../src/data/economy';
 import { mapKillMax, mapOf } from '../src/data/maps';
 import { REGIONS_READY } from '../src/data/regions';
 import { roll } from '../src/game/drops';
-import { applyReport, bagCount, emptyProfile, type FinishResult, type RunReport, type TwelveProfile } from '../src/game/progress';
+import { applyReport, bagCount, checkStart, emptyProfile, type FinishResult, type RunReport, type TwelveProfile } from '../src/game/progress';
 import { buy, claim, enhance, equip, scrap, sell, setLock, unequip } from '../src/game/rules';
 import { applyTowerFloor, beginTower, checkTowerFloor, checkTowerStart, endTower, type TowerFloorResult, type TowerRun } from '../src/game/tower';
 
@@ -175,6 +175,18 @@ for (let r = 2; r <= REGIONS_READY; r++) for (let n = 1; n <= 8; n++) play(`${r}
 // 보스의 선물(10~12지형 보스 첫 처치의 강화석 꾸러미)은 한 번만: 다시 잡으면 없다
 for (const r of [9, 10, 12]) if (r <= REGIONS_READY) play(`${r}-8`, 31000 + r, { time: 200 });
 rpc('twelve_buy', { p_what: `w-spear-${regionTier(REGIONS_READY, 'normal')}`, p_n: 1 }, buy(p, `w-spear-${regionTier(REGIONS_READY, 'normal')}`));
+
+// 10) 최종보스맵 (089 의 twelve_start · twelve_finish): 열쇠 12개가 모이기 전에는 'need keys' → 지형 보스를 다시 잡아 열쇠를 채운다(40% · 3번째 확정)
+//     → 열림 → 첫 처치(강화석 꾸러미 · 보통 모드 클리어) → 다시 잡으면 꾸러미 없음 → 쓰러진 판
+const tryStart = (map: string) => steps.push({ op: 'start', map, why: checkStart(p, map, 'normal', 'rat'), state: canon(p) });
+if (REGIONS_READY >= 12) {
+  tryStart('final');
+  for (let r = 2; r <= 12; r++) for (let k = 0; k < 3 && !p.keys.normal.includes(r); k++) play(`${r}-8`, 40000 + r * 100 + k, { time: 200 });
+  tryStart('final');
+  play('final', 77001, { time: 300 });
+  play('final', 77002, { time: 300, deaths: 1, chest: false });
+  play('final', 77003, { time: 120, cleared: false, kills: { imp: 2 }, elites: 0, boss: false, chest: false });
+}
 
 const rolls = [[1, 1, 1], [123456789, 12, 1], [2147483647, 7, 250], [0, 3, 2], [4242, 25, 10], [99, 27, 20]].map(([s, t, n]) => ({ seed: s, tag: t, n, value: roll(s, t, n) }));
 console.log(JSON.stringify({ first: canon(emptyProfile()), rolls, steps }));

@@ -5,7 +5,9 @@
 import type { EnemyKind } from './enemies';
 
 export const BOSS_IDS = ['bigDokkaebi', 'dueoksini', 'bulgasal', 'jangsanbeom', 'centipede', 'gumiho', 'guardCaptain', 'yagwanggwi', 'imugi', 'reaper', 'gangcheori', 'yeomra'] as const;
-export type BossId = (typeof BOSS_IDS)[number];
+/** 최종보스 (최종보스맵 'final' — 지형 보스 목록 BOSS_IDS 에는 넣지 않는다) */
+export const FINAL_BOSS = 'eoduksini';
+export type BossId = (typeof BOSS_IDS)[number] | typeof FINAL_BOSS;
 
 /** 보스 공격 한 가지. warn = 예고 시간, mul = 보스 공격력 배율 */
 export type BossMove =
@@ -38,7 +40,23 @@ export type BossMove =
   /** 불숨: 대원 쪽으로 직선 n 줄기(spread 만큼 벌려서), 지나간 자리에 불길이 남는다 */
   | { t: 'scorch'; len: number; w: number; warn: number; mul: number; n?: number; spread?: number; pool: { dur: number; mul: number } }
   /** 에워싸기: 대원 둘레(거리 d)에 원 n 개, gap 초 뒤 가운데 */
-  | { t: 'cage'; n: number; r: number; d: number; warn: number; mul: number; gap: number };
+  | { t: 'cage'; n: number; r: number; d: number; warn: number; mul: number; gap: number }
+  /** 열두 시 (최종보스): 둘레로 뻗는 직선 n 개가 대원 쪽부터 gap 초씩 늦게 차례로 친다 (dir = 도는 쪽 — 도는 쪽을 따라 돌거나 굴러서 넘는다) */
+  | { t: 'clock'; n: number; len: number; w: number; warn: number; mul: number; gap: number; dir?: 1 | -1 }
+  /** 무너지는 봉인 (최종보스): 대원 둘레 바둑판(span 칸씩, 칸 간격 cell)의 한 색 칸이 먼저, gap 초 뒤 나머지 칸이 터진다 (안 터지는 칸에 섰다가 옮겨 선다) */
+  | { t: 'checker'; span: number; cell: number; r: number; warn: number; mul: number; gap: number };
+
+/** 보스의 다음 단계 (최종보스): 체력이 at 아래로 내려가면 공격 목록이 바뀐다 */
+export interface BossPhase {
+  at: number;
+  moves: BossMove[];
+  gap: number;
+  speed: number;
+  /** 화면에 그리는 높이 (어둑시니는 단계마다 커진다) */
+  size: number;
+  /** 단계가 바뀔 때 화면에 뜨는 글 */
+  say: string;
+}
 
 export interface BossDef {
   id: BossId;
@@ -56,6 +74,8 @@ export interface BossDef {
   moves: BossMove[];
   /** 어려움 모드에서 더해지는 공격 (PRD: 패턴이 하나씩 더 생긴다) */
   hardMoves: BossMove[];
+  /** 다음 단계들 (최종보스만. 없으면 moves 를 끝까지 쓴다) */
+  phases?: BossPhase[];
   /** 체력이 이 비율 아래로 내려갈 때마다 부하를 부른다 */
   summonAt: number[];
   summon: { kind: EnemyKind; n: number };
@@ -235,5 +255,51 @@ export const BOSSES: Record<BossId, BossDef> = {
       { t: 'nova', n: 12, r: 160, speed: 300, warn: 0.9, mul: 1.1 },
     ],
     hardMoves: [{ t: 'wave', n: 6, len: 840, w: 84, step: 160, warn: 0.9, mul: 1.2, gap: 0.2 }],
+  }),
+  // 최종보스: 열두 길의 봉인 뒤에 갇혀 있던 어둠. 세 단계 — 앞 지형 보스들의 공격을 네 지형씩 섞어 쓰고, 그 사이에 저만의 공격(열두 시 · 무너지는 봉인)을 넣는다.
+  // 볼수록 커진다 (단계마다 몸이 커지고 빨라진다). 예고는 모두 0.75초 이상
+  eoduksini: B(FINAL_BOSS, '어둑시니', 230, 'spirit', ['열두 열쇠를 다 모아 왔구나. 고맙다.', '그 열쇠가 나를 가둔 문도 여는 줄은 몰랐겠지.', '볼수록 커지는 어둠을 본 적이 있느냐?'], {
+    last: '나는… 그림자일 뿐이다. 봉인 아래에는 아직…',
+    // 그림은 야광귀(어두운 덩어리에 빛나는 눈)를 크게 쓴다 — 전용 그림은 ASSETS.md
+    art: 'b-yagwanggwi',
+    r: 68, hp: 9000, atk: 22, speed: 90, gap: 1.4, exp: 800, coin: 500,
+    summonAt: [0.85, 0.5, 0.2], summon: { kind: 'spirit', n: 4 },
+    // 1단계: 1~5지형 보스의 공격 + 열두 시
+    moves: [
+      { t: 'clock', n: 12, len: 600, w: 70, warn: 1.0, mul: 1.2, gap: 0.14 },
+      { t: 'barrage', n: 6, r: 100, spread: 290, warn: 1.0, mul: 1.1, gap: 0.13 },
+      { t: 'cross', n: 6, len: 560, w: 84, warn: 0.9, mul: 1.2 },
+      { t: 'leap', r: 130, warn: 0.8, mul: 1.2, count: 3, gap: 0.55 },
+      { t: 'rake', n: 5, len: 640, w: 78, space: 185, warn: 0.95, mul: 1.2 },
+      { t: 'cone', r: 350, half: 0.85, warn: 0.85, mul: 1.1 },
+    ],
+    phases: [
+      // 2단계: 6~9지형 보스의 공격 + 열두 시(거꾸로)
+      {
+        at: 0.66, gap: 1.3, speed: 100, size: 262, say: '어둑시니가 더 커졌어요!',
+        moves: [
+          { t: 'nova', n: 14, r: 160, speed: 310, warn: 0.9, mul: 1.1 },
+          { t: 'march', n: 8, r: 96, step: 112, warn: 0.9, mul: 1.2, gap: 0.13 },
+          { t: 'clock', n: 12, len: 620, w: 72, warn: 0.95, mul: 1.2, gap: 0.12, dir: -1 },
+          { t: 'spiral', n: 16, arms: 2, r: 150, speed: 280, warn: 0.9, mul: 1.0, gap: 0.12, turn: 0.4 },
+          { t: 'wave', n: 6, len: 840, w: 84, step: 160, warn: 0.95, mul: 1.2, gap: 0.2 },
+          { t: 'slam', r: 140, warn: 0.8, mul: 1.2, count: 3, gap: 0.5 },
+        ],
+      },
+      // 3단계: 10~12지형 보스의 공격 + 무너지는 봉인 + 열두 시(촘촘하게)
+      {
+        at: 0.33, gap: 1.15, speed: 110, size: 296, say: '봉인이 무너져요! 어둑시니가 날뛰어요!',
+        moves: [
+          { t: 'checker', span: 2, cell: 170, r: 84, warn: 1.1, mul: 1.3, gap: 0.9 },
+          { t: 'sweep', n: 6, r: 330, warn: 0.9, mul: 1.2, gap: 0.26 },
+          { t: 'scorch', len: 640, w: 100, warn: 1.0, mul: 1.2, n: 3, spread: 0.6, pool: { dur: 3.5, mul: 0.4 } },
+          { t: 'cage', n: 10, r: 80, d: 235, warn: 0.95, mul: 1.2, gap: 0.5 },
+          { t: 'clock', n: 16, len: 640, w: 64, warn: 0.9, mul: 1.2, gap: 0.09 },
+          { t: 'checker', span: 2, cell: 170, r: 84, warn: 1.0, mul: 1.3, gap: 0.8 },
+          { t: 'nova', n: 16, r: 160, speed: 330, warn: 0.9, mul: 1.1, turn: 0.2 },
+        ],
+      },
+    ],
+    hardMoves: [{ t: 'checker', span: 3, cell: 160, r: 82, warn: 1.0, mul: 1.3, gap: 0.75 }],
   }),
 };

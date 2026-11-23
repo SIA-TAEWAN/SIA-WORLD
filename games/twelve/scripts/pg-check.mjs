@@ -5,7 +5,7 @@
 //      npx vite-node scripts/pg-expect.ts > <pg 폴더>/expect.json
 //      node scripts/pg-check.mjs <pg 폴더> [마이그레이션 폴더 = ../../supabase/migrations]
 //
-// 하는 일: 마이그레이션 전체(001~087 + 089)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고,
+// 하는 일: 마이그레이션 전체(001~087 + 089)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고 (최종보스맵 · 고양이 구매 포함),
 // expect.json(기기 규칙으로 계산한 기대값)과 같은 순서로 RPC 를 돌려 단계마다 서버 기록이 기기 규칙과 같은지 맞춰 본다.
 // 끝없는 탑(시작 · 층 보고 · 끝)도 같은 방식으로 맞춰 보고, 권한 · 시아코인(10층마다) · 랭킹 뷰를 따로 본다.
 import { readFileSync, readdirSync } from 'node:fs';
@@ -145,7 +145,8 @@ eq((await as(u1, `select public.character_progress('twelve') as j`))[0].j, { hav
 // ---------- 시작 검사 ----------
 await rejects(start(u1, '1-2'), 'map locked', '잠긴 맵');
 await rejects(start(u1, '9-9'), 'bad map', '없는 맵');
-await rejects(start(u1, 'final'), 'bad map', '최종보스 맵은 아직 준비 안 됨 (7단계)');
+await rejects(start(u1, 'final'), 'map locked', '최종보스맵: 12지형 보스를 잡기 전에는 잠김');
+await rejects(start(u1, 'final', 'rat', 'hard'), 'bad map', '어려움 모드의 최종보스맵은 준비 중');
 await rejects(start(u1, '13-1'), 'bad map', '없는 지형');
 await rejects(start(u1, '12-1'), 'map locked', '12지형은 준비됐지만 11지형 보스를 잡아야 열린다');
 await rejects(start(u1, '4-1'), 'map locked', '4지형은 준비됐지만 3지형 보스를 잡아야 열린다');
@@ -276,6 +277,19 @@ for (const st of expect.steps) {
   }
   let got;
   let why = null;
+  if (st.op === 'start') {
+    // 시작만 해 본다 (끝내지 않은 판은 다음 판에 걸리지 않는다)
+    try {
+      await start(u1, st.map);
+    } catch (e) {
+      why = e.message;
+    }
+    if ((why === null) !== (st.why === null) || (st.why && !why.includes(st.why))) {
+      diff++;
+      ok(false, `${name}: 서버 ${why ?? '됨'} / 기기 ${st.why ?? '됨'}`);
+    }
+    continue;
+  }
   if (st.op === 'play') {
     const a = await start(u1, st.map);
     await su(`update public.twelve_runs set seed = $2, started_at = now() - make_interval(secs => $3) where id = $1`, [a.run, st.seed, st.report.time + 30]);
@@ -316,7 +330,41 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
 {
   const s = await state(u1);
   console.log(`     끝 기록: Lv ${s.level} · 엽전 ${s.coins} · 강화석 ${s.stones} · 장비 ${s.items.length}개(보관함 ${s.items.filter((i) => i.box).length}) · 열쇠 ${JSON.stringify(s.keys.normal)} · 얻어 본 것 ${JSON.stringify(s.codex)}`);
-  ok(s.keys.normal.includes(1) && s.codex.includes('s-n1') && s.codex.includes('s-n12') && s.level > 40, '1지형 열쇠 · 별 24개 보상(1 · 12지형)을 받았고, 12지형까지 깨서 레벨이 올랐다');
+  ok(s.keys.normal.length === 12 && s.codex.includes('s-n1') && s.codex.includes('s-n12') && s.level > 40 && s.maps.normal.final?.clears === 2, '열쇠 12개 · 별 24개 보상(1 · 12지형)을 받았고, 12지형과 최종보스맵까지 깨서 레벨이 올랐다');
+}
+
+// ---------- 최종보스 · 보통 모드 클리어 · 고양이 (u1 — 위 순서에서 최종보스맵을 실제로 깼다) ----------
+{
+  const tries = expect.steps.filter((x) => x.op === 'start' && x.map === 'final');
+  ok(tries.length === 2 && tries[0].why === 'need keys' && tries[1].why === null, `최종보스맵: 열쇠가 모자라면 need keys, 12개를 모으면 열린다 (기기 ${tries.map((x) => x.why ?? '됨').join(' → ')})`);
+  const plays = expect.steps.filter((x) => x.op === 'play' && x.map === 'final');
+  ok(plays.length === 3 && plays[0].result.first && plays[0].result.gift === 50 && plays[1].result.gift === 0 && !plays[0].result.key, `최종보스 첫 처치: 강화석 꾸러미 ${plays[0].result.gift}개 한 번만, 열쇠는 없다`);
+  const s = await state(u1);
+  eq(s.maps.normal.final, { stars: 7, clears: 2, best: 300 }, "맵 기록 ('normal', 'final'): 두 번 깸 · 별 3개(따로 모아서)");
+  eq(s.keys.normal, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], '열쇠 12개');
+  eq((await su('select public._twelve_normal_done($1) as v', [u1]))[0].v, true, '_twelve_normal_done');
+  eq((await su('select public._cat_progress_twelve($1) as j', [u1]))[0].j, { have: 1, need: 1 }, '최종보스를 실제로 깨면 고양이 조건 1/1');
+  eq((await as(u1, `select public.character_progress('twelve') as j`))[0].j, { have: 1, need: 1, owned: [] }, 'character_progress(twelve) 1/1');
+  const coins = Number((await su('select sia_coins from public.wallets where user_id = $1', [u1]))[0]?.sia_coins ?? 0);
+  ok(coins >= 1, `최종보스맵도 시아코인 규칙이 같다 (지갑 ${coins}개 · 판마다 1, 하루 한도 안에서)`);
+  ok((await su(`select count(*)::int as n from public.sia_coin_logs l join public.twelve_runs r on r.id::text = l.ref where l.user_id = $1 and l.game = 'twelve' and r.map_id = 'final'`, [u1]))[0].n <= 2, '쓰러진 최종보스 판에는 시아코인이 없다');
+  await su(`update public.wallets set sia_coins = 99 where user_id = $1`, [u1]);
+  const poor = (await as(u1, `select public.buy_character('twelve', 'cat') as j`))[0].j;
+  ok(poor.ok === false && poor.reason === 'coin', `시아코인이 모자라면 못 산다 (${JSON.stringify(poor)})`);
+  await su(`update public.wallets set sia_coins = 130 where user_id = $1`, [u1]);
+  const yes = (await as(u1, `select public.buy_character('twelve', 'cat') as j`))[0].j;
+  ok(yes.ok === true && yes.siaCoins === 30 && yes.price === 100, `시아코인 100개로 산다 (${JSON.stringify(yes)})`);
+  const twice = (await as(u1, `select public.buy_character('twelve', 'cat') as j`))[0].j;
+  ok(twice.ok === false && twice.reason === 'owned', '두 번은 안 산다 (owned)');
+  eq((await as(u1, `select public.my_characters('twelve') as j`))[0].j, ['cat'], "my_characters('twelve') = [cat]");
+  eq((await as(u1, `select public.my_characters('survival') as j`))[0].j, [], '다른 게임에서는 따로 사야 한다');
+  eq((await as(u1, `select public.twelve_set_hero('cat') as j`))[0].j.hero, 'cat', '고양이를 대표 대원으로');
+  const a = await start(u1, 'final', 'cat');
+  ok(!!a.run, '고양이로 최종보스맵 시작 (_check_character 통과)');
+  ok(!!(await tStart(u1, 1, 'cat')).run, '고양이로 끝없는 탑 시작');
+  await as(u1, `select public.twelve_set_hero('rat')`);
+  const rank = (await as(null, 'select level, mode, region, hard_done from public.twelve_level_ranking where user_id = $1', [u1], 'anon'))[0];
+  ok(rank.region === 12 && rank.hard_done === false && rank.mode === 'normal', `레벨 랭킹 줄: 지금 지형 ${rank.region} · 어려움 최종보스 처치 표시 ${rank.hard_done} (자리만)`);
 }
 
 // ---------- 고양이: 조건(보통 모드 최종보스) 뒤에 사서 고른다 (u3) ----------
@@ -332,7 +380,7 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
   eq((await as(u3, `select public.twelve_set_hero('cat') as j`))[0].j.hero, 'cat', '고양이를 대표 대원으로');
   const a = await start(u3, '1-1', 'cat');
   ok(!!a.run, '고양이로 판 시작');
-  await rejects(start(u1, '1-1', 'cat'), 'locked character', '다른 사람은 여전히 못 고른다');
+  await rejects(start(u2, '1-1', 'cat'), 'locked character', '다른 사람은 여전히 못 고른다');
 }
 
 // ---------- 끝없는 탑: 처음부터 누구나 · 들어가면 기록 · 10층마다 시아코인 · 랭킹 (u4) ----------

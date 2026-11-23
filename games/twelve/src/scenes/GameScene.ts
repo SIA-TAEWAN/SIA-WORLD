@@ -3,7 +3,7 @@ import { artUrl, heroFullUrl } from '../assets';
 import type { Shape } from '../data/acts';
 import { MAP_W, PLAYER_R, TILE } from '../data/balance';
 import { itemDef } from '../data/items';
-import { regionOf } from '../data/regions';
+import { envOf } from '../data/maps';
 import type { Drop } from '../game/drops';
 import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
@@ -289,6 +289,12 @@ export class GameScene extends Phaser.Scene {
           this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
           break;
         }
+        case 'phase':
+          // 최종보스가 다음 단계로: 화면이 흔들리고 알림이 뜬다
+          this.cameras.main.shake(380, 0.012);
+          this.sfx('survBossWarn', 0, { rate: 0.7 });
+          this.hooks.note(`👹 ${ev.text}`);
+          break;
         case 'env':
           if (ev.id === 'arrow') {
             // 성벽 화살 (7지형)
@@ -599,7 +605,7 @@ export class GameScene extends Phaser.Scene {
         this.views.set(e.id, v);
       }
       // 정예는 크게, 갈라져 나온 것은 작게 (몸 반지름 비율대로)
-      const size = e.bossDef ? e.bossDef.size : e.def.size * (e.r / e.def.r);
+      const size = e.bossDef ? (e.bossDef.phases?.[e.phase - 1]?.size ?? e.bossDef.size) : e.def.size * (e.r / e.def.r);
       const tint = e.bossDef ? undefined : ENEMY_TINT[e.kind];
       const wob = e.awake && e.busy <= 0 && e.stun <= 0 ? Math.sin(now * 9 + e.id) * 2.5 : 0;
       // 공격을 예고하는 동안 몸을 부풀린다
@@ -690,7 +696,7 @@ export class GameScene extends Phaser.Scene {
   private makeChunk(idx: number): Phaser.GameObjects.Image {
     const s = this.run;
     const look = groundOf(s.map.region);
-    const envId = regionOf(s.map.region).env;
+    const envId = envOf(s.map);
     const mud = envId === 'mud' || envId === 'poison';
     const y0 = idx * CHUNK_ROWS;
     const rows = Math.min(CHUNK_ROWS, s.rows - y0);

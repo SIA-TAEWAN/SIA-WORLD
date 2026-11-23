@@ -83,7 +83,8 @@ describe('맵 데이터', () => {
     expect(nextMap('1-3')!.id).toBe('1-4');
     expect(nextMap('1-8')!.id).toBe('2-1');
     expect(nextMap('3-8')!.id).toBe('4-1');
-    expect(nextMap(`${REGIONS_READY}-8`)).toBeNull(); // 그다음 지형은 준비 중
+    // 12지형의 마지막 맵 다음은 최종보스맵 (그 앞 지형이 마지막이면 그다음 지형은 준비 중)
+    expect(nextMap(`${REGIONS_READY}-8`)?.id ?? null).toBe(REGIONS_READY === REGIONS ? 'final' : null);
   });
 
   it.each(MAPS.map((m) => [m.id, m] as const))('%s: 타일·자리가 올바르고 시작에서 모두 닿는다', (_id, m) => {

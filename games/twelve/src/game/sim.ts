@@ -30,7 +30,7 @@ import { FX, POTION, POTION_SIZES } from '../data/economy';
 import { ELITE, ENEMIES, type EnemyDef, type EnemyKind } from '../data/enemies';
 import { playerStats, type Loadout, type PlayerStats } from '../data/growth';
 import { heroOf, type HeroDef } from '../data/heroes';
-import { T_SLOW, T_WALL, groupList, type MapDef } from '../data/maps';
+import { T_SLOW, T_WALL, bossIdOf, envOf, groupList, homeRegionOf, type MapDef } from '../data/maps';
 import { mapScale, regionOf, type EnvId, type Mode } from '../data/regions';
 import { towerScale } from '../data/tower';
 import { WEAPONS, type SkillDef, type WeaponDef } from '../data/weapons';
@@ -128,6 +128,8 @@ export interface Enemy {
   /** 보스: 다음 공격 번호 · 부른 횟수. 정예: 휩쓸기 대기 */
   move: number;
   calls: number;
+  /** 보스: 지금 단계 (0 = 처음. 최종보스만 올라간다 — BossDef.phases) */
+  phase: number;
   ringCd: number;
   /** 숨는 요괴(lurk): 지금 숨어 있는지 · 드러나 있는 남은 시간 */
   hidden: boolean;
@@ -219,6 +221,8 @@ export type SimEvent =
   | { e: 'exit' }
   /** 지형 환경: 골바람이 곧 분다 (dir -1 왼쪽 · 1 오른쪽) */
   | { e: 'env'; id: EnvId; dir: number }
+  /** 보스가 다음 단계로 넘어갔다 (n = 몇 번째 단계인지 2 · 3) */
+  | { e: 'phase'; n: number; text: string }
   | { e: 'nope'; why: 'mp' | 'target' };
 
 export interface RunOpts {
@@ -522,6 +526,7 @@ function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: numbe
     tag: 0,
     move: 0,
     calls: 0,
+    phase: 0,
     ringCd: ELITE.ringEvery * 0.6,
     hidden: !b && def.ai === 'lurk',
     show: 0,
@@ -547,7 +552,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
   const grid = new Uint8Array(cols * rows);
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) grid[y * cols + x] = map.rows[y][x] === T_WALL ? 1 : map.rows[y][x] === T_SLOW ? 2 : 0;
   const sc = scaleOf(map, mode);
-  const stats = playerStats(loadout, map.region);
+  const stats = playerStats(loadout, homeRegionOf(map));
   const region = regionOf(map.region);
   const s: RunState = {
     map,
@@ -616,7 +621,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     loot: [],
     picks: [],
     god: !!opts.god,
-    env: { id: region.env, f: loadout.hero === region.counter ? 0 : loadout.fx?.includes('ward') ? FX.ward.env : 1, gust: 0, warn: 0, acc: 0, k: 0, still: 0, vx: 0, vy: 0, blind: false },
+    env: { id: envOf(map), f: loadout.hero === region.counter ? 0 : loadout.fx?.includes('ward') ? FX.ward.env : 1, gust: 0, warn: 0, acc: 0, k: 0, still: 0, vx: 0, vy: 0, blind: false },
     foeAtk: sc.atk,
     tag: 1,
     nextId: 1,
@@ -648,7 +653,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
   });
   s.total = s.enemies.length;
   if (map.boss) {
-    const def = BOSSES[region.boss];
+    const def = BOSSES[bossIdOf(map)];
     s.boss = newEnemy(s, ENEMIES[def.summon.kind], center(map.boss[0]), center(map.boss[1]), -1, { boss: def });
     s.boss.cd = 1.5;
   }
@@ -1083,11 +1088,26 @@ function bossAct(s: RunState, e: Enemy, def: BossDef, dist: number, ang: number)
     }
     push(s, { e: 'sound', name: 'survBossWarn' });
   }
+  // 다음 단계 (최종보스): 공격 목록이 바뀌고 빨라진다. 넘어갈 때 제 둘레를 한 번 치고 숨을 고른다
+  const next = def.phases?.[e.phase];
+  if (next && e.hp / e.maxHp <= next.at) {
+    e.phase++;
+    e.move = 0;
+    e.speed = next.speed;
+    addWarn(s, { shape: 'circle', x: e.x, y: e.y, r: 250, t: 1.2, dmg: e.atk, src: e.id, big: true });
+    push(s, { e: 'phase', n: e.phase + 1, text: next.say });
+    push(s, { e: 'sound', name: 'survBossWarn' });
+    e.busy = 1.45;
+    e.cd = 0.6;
+    return;
+  }
   if (e.cd > 0) {
     if (dist > 150) approach(s, e, Math.cos(ang), Math.sin(ang));
     return;
   }
-  const moves: BossMove[] = s.mode === 'hard' ? [...def.moves, ...def.hardMoves] : def.moves;
+  const ph = e.phase > 0 ? def.phases?.[e.phase - 1] : undefined;
+  const base = ph ? ph.moves : def.moves;
+  const moves: BossMove[] = s.mode === 'hard' ? [...base, ...def.hardMoves] : base;
   const m = moves[e.move++ % moves.length];
   const dmg = e.atk * m.mul;
   let busy = m.warn;
@@ -1161,6 +1181,21 @@ function bossAct(s: RunState, e: Enemy, def: BossDef, dist: number, ang: number)
     }
     addWarn(s, { shape: 'circle', x: p.x, y: p.y, r: m.d - m.r * 0.5, t: m.warn + m.gap, dmg, src: e.id, big: true });
     busy += m.gap;
+  } else if (m.t === 'clock') {
+    // 열두 시: 둘레의 직선이 대원 쪽부터 차례로 친다 (도는 쪽을 따라 돌거나 굴러서 넘는다)
+    for (let i = 0; i < m.n; i++) {
+      addWarn(s, { shape: 'line', x: e.x, y: e.y, ang: ang + (m.dir ?? 1) * i * ((Math.PI * 2) / m.n), len: m.len, w: m.w, t: m.warn + i * m.gap, dmg, src: e.id, big: true });
+    }
+    busy += (m.n - 1) * m.gap;
+  } else if (m.t === 'checker') {
+    // 무너지는 봉인: 대원 둘레 바둑판의 한 색 칸이 먼저, 조금 뒤 나머지 칸이 터진다 (대원이 선 칸은 나중 색이다)
+    for (let j = -m.span; j <= m.span; j++) {
+      for (let i = -m.span; i <= m.span; i++) {
+        const late = (i + j) % 2 === 0;
+        addWarn(s, { shape: 'circle', x: p.x + i * m.cell, y: p.y + j * m.cell, r: m.r, t: m.warn + (late ? m.gap : 0), dmg, src: e.id, big: true });
+      }
+    }
+    busy += m.gap;
   } else if (m.t === 'cross') {
     for (let i = 0; i < m.n; i++) addWarn(s, { shape: 'line', x: e.x, y: e.y, ang: ang + (m.turn ?? 0) + (i / m.n) * Math.PI * 2, len: m.len, w: m.w, t: m.warn, dmg, src: e.id, big: true });
   } else if (m.t === 'cone') {
@@ -1170,7 +1205,7 @@ function bossAct(s: RunState, e: Enemy, def: BossDef, dist: number, ang: number)
   }
   push(s, { e: 'sound', name: 'survBossWarn' });
   e.busy = busy + 0.25;
-  e.cd = def.gap;
+  e.cd = ph ? ph.gap : def.gap;
 }
 
 /** 대원 쪽으로 (길을 찾아서) 간다 */

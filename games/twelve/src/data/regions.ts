@@ -10,17 +10,25 @@ export const REGIONS = 12;
 export const MAPS_PER_REGION = 8;
 /** 지금 열려 있는 지형 수 (나머지는 지도에 '준비 중') */
 export const REGIONS_READY = 12;
-/** 어려움 모드 · 최종보스가 준비됐는지 */
+/** 어려움 모드가 준비됐는지 */
 export const HARD_READY = false;
 
 export type Mode = 'normal' | 'hard';
 export const MODES: readonly Mode[] = ['normal', 'hard'];
 export const MODE_NAME: Record<Mode, string> = { normal: '보통', hard: '어려움' };
 
-export type MapId = `${number}-${number}`;
+/**
+ * 최종보스맵 (PRD '전체 구조' 3): 그 모드의 열쇠 12개를 모으면 지도 가운데에서 열린다. 잡으면 그 모드 클리어.
+ * 서버 표(_twelve_maps)에는 12지형의 9번째 줄로 들어간다 — 12-8 을 깨야 열리고, 드랍·확정 보정은 12지형 것을 쓴다.
+ */
+export const FINAL_MAP = 'final';
+export const FINAL_NO = MAPS_PER_REGION + 1;
+
+export type MapId = `${number}-${number}` | typeof FINAL_MAP;
 export const mapId = (region: number, no: number): MapId => `${region}-${no}`;
-/** '3-7' → { region: 3, no: 7 } (모양이 틀리면 null) */
+/** '3-7' → { region: 3, no: 7 } · 'final' → { region: 12, no: 9 } (모양이 틀리면 null) */
 export function parseMapId(id: string): { region: number; no: number } | null {
+  if (id === FINAL_MAP) return { region: REGIONS, no: FINAL_NO };
   const m = /^(\d{1,2})-(\d)$/.exec(id);
   if (!m) return null;
   const region = Number(m[1]);
@@ -29,6 +37,7 @@ export function parseMapId(id: string): { region: number; no: number } | null {
 }
 /** 맵 순서 (0~95) */
 export const mapIndex = (region: number, no: number) => (region - 1) * MAPS_PER_REGION + (no - 1);
+/** 지형 맵 96개의 id (최종보스맵은 들어 있지 않다) */
 export const ALL_MAP_IDS: MapId[] = Array.from({ length: REGIONS * MAPS_PER_REGION }, (_, i) => mapId(Math.floor(i / MAPS_PER_REGION) + 1, (i % MAPS_PER_REGION) + 1));
 
 /** 바닥 그림 (시아디펜스 바닥 4종을 3지형씩. 지형 전용 타일셋이 생기면 art.ts 가 바꿔 쓴다) */
@@ -83,7 +92,8 @@ export const regionOf = (region: number): RegionDef => REGION_TABLE[Math.max(1, 
  * 요괴 능력치·경험치·시아코인 조건(권장 레벨 +15)이 모두 이 값을 쓴다.
  */
 export function mapLevel(region: number, no: number, mode: Mode): number {
-  const f = mapIndex(region, no) / (REGIONS * MAPS_PER_REGION - 1);
+  // 최종보스맵(12지형의 9번째)은 마지막 맵과 같은 레벨이다 (보통 65 · 어려움 99)
+  const f = Math.min(1, mapIndex(region, no) / (REGIONS * MAPS_PER_REGION - 1));
   return mode === 'hard' ? Math.round(66 + f * 33) : Math.round(1 + f * 64);
 }
 

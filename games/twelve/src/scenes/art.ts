@@ -6,7 +6,7 @@
 import { BOSSES } from '../data/bosses';
 import { ENEMIES, type EnemyKind } from '../data/enemies';
 import type { HeroId } from '../data/heroes';
-import type { MapDef } from '../data/maps';
+import { bossIdOf, type MapDef } from '../data/maps';
 import { regionOf, type Ground } from '../data/regions';
 import { COLOR, MATGO, ROULETTE, TABLE } from '../theme';
 
@@ -17,7 +17,9 @@ export type OptionalArt =
   | 'exit' // 출구 (봉인 문)
   | 'fx-slash' // 베기 효과
   | 'main' // 메인 화면 그림
-  | `story-${1 | 2 | 3 | 4}`; // 시작 장면 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
+  | `story-${1 | 2 | 3 | 4}` // 시작 장면 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
+  | `ending-${1 | 2 | 3 | 4}` // 보통 모드 엔딩 그림 4장 (지금은 기존 그림을 모아 놓은 장면)
+  | 'cat-scene'; // 고양이(13번째 대원) 등장 장면
 
 export const ART_FILES: readonly OptionalArt[] = [];
 export const hasArt = (name: OptionalArt) => ART_FILES.includes(name);
@@ -51,7 +53,7 @@ export function artFor(map: MapDef): string[] {
   }
   const names = [GROUND[region.ground].tile, 'fx-pop'];
   if (map.boss) {
-    const b = BOSSES[region.boss];
+    const b = BOSSES[bossIdOf(map)];
     names.push(b.art);
     kinds.add(b.summon.kind);
   }

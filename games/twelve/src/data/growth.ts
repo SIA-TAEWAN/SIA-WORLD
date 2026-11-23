@@ -82,7 +82,7 @@ export interface PlayerStats extends Record<StatKey, number> {
 export function playerStats(lo: Loadout, region: number): PlayerStats {
   const hero = heroOf(lo.hero);
   const b = baseStats(lo.level);
-  const home = hero.home === region;
+  const home = hero.home > 0 && hero.home === region;
   const affinity = hero.weapon === lo.weapon;
   return {
     hp: Math.round((b.hp + (lo.armorHp ?? 0)) * hero.stats.hp),

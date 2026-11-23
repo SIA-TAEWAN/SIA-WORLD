@@ -6,11 +6,11 @@
 import { EXIT_KILL_RATIO } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ELITE, ENEMIES, ENEMY_IDS, type EnemyKind } from '../data/enemies';
-import { BAG, POTION, POTION_SIZES, bossGift } from '../data/economy';
+import { BAG, FINAL_GIFT, POTION, POTION_SIZES, bossGift } from '../data/economy';
 import { addExp, expPenaltyPct, type Loadout } from '../data/growth';
 import { HEROES, STARTERS, heroOf, isHero, joinsAt, type HeroId } from '../data/heroes';
-import { mapKillMax, mapOf, mapsOf, type MapDef } from '../data/maps';
-import { HARD_READY, MAPS_PER_REGION, REGIONS_READY, mapScale, parseMapId, regionOf, type Mode } from '../data/regions';
+import { bossIdOf, mapKillMax, mapOf, mapsOf, type MapDef } from '../data/maps';
+import { FINAL_MAP, HARD_READY, MAPS_PER_REGION, REGIONS, REGIONS_READY, mapScale, parseMapId, regionOf, type Mode } from '../data/regions';
 import { SLOTS, itemDef, itemStats, normalArmor, normalWeapon, starReward, type Item, type Slot } from '../data/items';
 import { WEAPON_KINDS, type WeaponKind } from '../data/weapons';
 import { noPity, rollRun, type Drop, type DropCtx, type Pity } from './drops';
@@ -141,10 +141,16 @@ export function mapOpen(p: TwelveProfile, id: string, mode: Mode = p.mode): bool
   const m = parseMapId(id);
   if (!m || !mapOf(id) || !regionReady(m.region)) return false;
   if (mode === 'hard' && !HARD_READY) return false;
+  // 최종보스맵: 12지형 보스를 잡았고 그 모드의 열쇠 12개를 다 모았다
+  if (id === FINAL_MAP) return finalOpen(p, mode);
   return m.no === 1 ? regionOpen(p, m.region, mode) : cleared(p, `${m.region}-${m.no - 1}`, mode);
 }
 
-/** 이어하기: 열린 맵 중 아직 못 깬 첫 맵 (다 깼으면 마지막 맵) */
+/** 최종보스맵이 열렸는지: 12지형 보스를 잡았고 그 모드의 열쇠 12개를 모았다 (서버 twelve_start 의 'need keys') */
+export const keyCount = (p: TwelveProfile, mode: Mode = p.mode) => p.keys[mode].length;
+export const finalOpen = (p: TwelveProfile, mode: Mode = p.mode) => cleared(p, `${REGIONS}-${MAPS_PER_REGION}`, mode) && keyCount(p, mode) >= REGIONS;
+
+/** 이어하기: 열린 맵 중 아직 못 깬 첫 맵 (다 깼으면 마지막 맵. 열쇠를 다 모았고 최종보스를 아직 못 잡았으면 최종보스맵) */
 export function continueMap(p: TwelveProfile): string | null {
   let last: string | null = null;
   for (let r = 1; r <= REGIONS_READY; r++) {
@@ -154,11 +160,11 @@ export function continueMap(p: TwelveProfile): string | null {
       last = m.id;
     }
   }
-  return last;
+  return finalOpen(p) && !cleared(p, FINAL_MAP) ? FINAL_MAP : last;
 }
 
-/** 보통 모드를 끝냈는지 (최종보스맵 'final' 클리어 — 7단계에서 맵이 생긴다). 어려움 모드 · 고양이가 여기에 걸려 있다 */
-export const FINAL_MAP = 'final';
+/** 보통 모드를 끝냈는지 (최종보스맵 'final' 클리어). 어려움 모드 · 고양이가 여기에 걸려 있다 */
+export { FINAL_MAP };
 export const normalDone = (p: TwelveProfile) => (p.maps.normal[FINAL_MAP]?.clears ?? 0) > 0;
 
 /**
@@ -199,6 +205,8 @@ export const coinBonus = (p: TwelveProfile) => loadoutOf(p).bonus?.coin ?? 0;
 /** 판을 시작할 수 없는 까닭 (없으면 null) */
 export function checkStart(p: TwelveProfile, id: string, mode: Mode, hero: string, cat = false): string | null {
   if (!mapOf(id)) return 'bad map';
+  // 최종보스맵: 12지형 보스를 잡았어도 열쇠가 모자라면 못 들어간다
+  if (id === FINAL_MAP && (mode === 'normal' || HARD_READY) && cleared(p, `${REGIONS}-${MAPS_PER_REGION}`, mode) && keyCount(p, mode) < REGIONS) return 'need keys';
   if (!mapOpen(p, id, mode)) return 'map locked';
   if (!isHero(hero)) return 'bad hero';
   if (!heroesOf(p, cat).includes(hero)) return 'hero locked';
@@ -299,7 +307,7 @@ export function mapReward(map: MapDef, mode: Mode): MapReward {
   }
   // 정예는 맵마다 한 종류다 (그 맵 무리의 elite)
   const eliteKind = map.groups.find((g) => g.elite)?.elite;
-  const boss = map.boss ? BOSSES[regionOf(map.region).boss] : null;
+  const boss = map.boss ? BOSSES[bossIdOf(map)] : null;
   return {
     level: sc.level,
     total: max.total,
@@ -396,9 +404,9 @@ export function applyReport(p: TwelveProfile, r: RunReport, seed = 0): FinishRes
   rec.stars |= out.stars;
   rec.clears++;
   rec.best = rec.best ? Math.min(rec.best, r.time) : r.time;
-  // 보스의 선물: 대원이 합류하지 않는 지형의 보스를 이 모드에서 처음 잡았다
+  // 보스의 선물: 대원이 합류하지 않는 지형의 보스 · 최종보스를 이 모드에서 처음 잡았다
   if (out.first && map.boss && r.boss) {
-    out.gift = bossGift(map.region);
+    out.gift = map.final ? FINAL_GIFT : bossGift(map.region);
     p.stones += out.gift;
     out.stones += out.gift;
   }
@@ -416,7 +424,8 @@ export function applyReport(p: TwelveProfile, r: RunReport, seed = 0): FinishRes
       p.stones += d.n;
       out.stones += d.n;
     } else if (d.t === 'key') {
-      if (!p.keys[r.mode].includes(map.region)) p.keys[r.mode].push(map.region);
+      // 지형 번호 순서로 둔다 (서버가 주는 모양과 같게)
+      if (!p.keys[r.mode].includes(map.region)) p.keys[r.mode] = [...p.keys[r.mode], map.region].sort((x, y) => x - y);
       out.key = true;
     } else out.items.push({ ...addItem(p, d.base) });
   }
@@ -454,6 +463,7 @@ export const joinText = (region: number) => {
 export function whyText(why: string): string {
   switch (why) {
     case 'map locked': return '아직 열리지 않은 맵이에요';
+    case 'need keys': return '열쇠 12개를 모두 모아야 열려요';
     case 'hero locked': return '아직 합류하지 않은 대원이에요';
     case 'locked character': return '아직 열지 않은 대원이에요';
     case 'too early': return '너무 빨리 끝난 판이라 기록되지 않았어요';

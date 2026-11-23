@@ -3,6 +3,9 @@
  *   npm run pace                 → 준비된 지형 전부(1~12지형, 4분쯤), 씨앗 3개 평균
  *   npm run pace -- 3 5          → 지형 수, 씨앗 수
  *   npm run pace -- weapons      → 무기 4종 비교 (같은 맵·같은 레벨·같은 등급)
+ *   npm run pace -- final        → 최종보스 몫만 다시 (먼저 PACE_CACHE=<폴더> npm run pace -- 12 로 12지형까지의 기록을 적어 둔다. 같은 PACE_CACHE 로 부른다)
+ *
+ * 12지형을 다 돌면(-- 12) 끝에 최종보스 몫이 붙는다: '채비'(12지형 6·7번 맵 한 바퀴 — 비취 장비 값) + 'final'(최종보스맵, 쓰러지면 다시).
  *
  * 방식: 새 기록에서 시작해 맵을 차례로 깬다. 전투는 자동 조종(tests/bot.ts)이 실제 전투 규칙(src/game/sim.ts)으로 하고,
  * 보상·드랍·레벨·상점·대장간은 게임과 같은 함수(progress.ts · rules.ts)를 그대로 쓴다. 화면·서버는 쓰지 않는다.
@@ -18,12 +21,14 @@
  *    표에는 'N사냥' 줄로 따로 보인다.
  *  - 사람의 시간 = 자동 조종 시간 × HUMAN + 판마다 BETWEEN 초 (결과 화면·쉼터). 자동 조종은 망설이지 않고 길을 알고 있어서 사람보다 빠르다.
  */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { BAG, POTION, regionTier } from '../src/data/economy';
 import { GROWTH_TARGETS, defaultLoadout, expNeed } from '../src/data/growth';
 import { heroOf, type HeroId } from '../src/data/heroes';
 import { itemDef, itemLevel, itemStats, normalArmor, normalWeapon, type Item } from '../src/data/items';
-import { MAPS, mapOf, mapKillMax, type MapDef } from '../src/data/maps';
-import { MAPS_PER_REGION, REGIONS_READY, mapLevel, regionOf } from '../src/data/regions';
+import { FINAL, MAPS, mapOf, mapKillMax, type MapDef } from '../src/data/maps';
+import { MAPS_PER_REGION, REGIONS, REGIONS_READY, mapLevel, regionOf } from '../src/data/regions';
 import { TIER_LEVELS, WEAPON_KINDS, tierAtk, tierForLevel, type WeaponKind } from '../src/data/weapons';
 import { roll } from '../src/game/drops';
 import { applyReport, bagCount, dropCtx, emptyProfile, equipped, hasKey, heroesOf, isEquipped, loadoutOf, type RunReport, type TwelveProfile } from '../src/game/progress';
@@ -42,6 +47,8 @@ const MAX_RUN = 1500;
 /** 지형을 끝낸 뒤 더 도는 맵 (정예가 둘씩 나온다). 5지형부터는 두 바퀴 — 장비 값·강화 비용·레어 목록이 늘어 사냥이 길어진다 */
 const FARM_MAPS = [6, 7];
 const farmRounds = (region: number) => (region >= 5 ? 2 : 1);
+/** 최종보스 앞의 채비: 12지형 6·7번 맵을 이만큼 더 돈다 (비취 장비를 사서 강화할 엽전 · 권장 레벨 65) */
+const FINAL_PREP = 1;
 
 const args = process.argv.slice(2);
 const pad = (v: string | number, n: number) => String(v).padStart(n);
@@ -155,12 +162,73 @@ interface Row {
   sim: number;
 }
 
-function journey(seed: number, regions: number): Row[] {
-  const p = emptyProfile();
-  const rows: Row[] = [];
-  let clock = 0;
-  let n = 0;
+/** 12지형까지 끝낸 상태 (PACE_CACHE=<폴더> 로 적어 두면 `npm run pace -- final` 이 최종보스 몫만 다시 돈다) */
+interface Saved {
+  p: TwelveProfile;
+  rows: Row[];
+  clock: number;
+  n: number;
+}
+const CACHE = process.env.PACE_CACHE ?? '';
+const cacheFile = (seed: number) => join(CACHE, `pace-${seed}.json`);
+
+function journey(seed: number, regions: number, from: Saved | null = null): Row[] {
+  const p = from?.p ?? emptyProfile();
+  const rows: Row[] = from?.rows ?? [];
+  let clock = from?.clock ?? 0;
+  let n = from?.n ?? 0;
   const human = (o: RunOut) => o.sim * HUMAN + BETWEEN;
+  const stamp = (row: Row) => {
+    row.clock = clock;
+    row.lv = p.level + (expNeed(p.level) ? p.exp / expNeed(p.level) : 0);
+    row.coins = p.coins;
+    row.bag = bagCount(p);
+    const w = equipped(p, 'weapon');
+    row.weapon = w ? `${TIER_LEVELS[defOf(w).tier]}${defOf(w).rare ? '★' : ''}+${w.plus}` : '-';
+  };
+  /** 최종보스 몫: 12지형 6·7번 맵을 한 바퀴 더 돌아 채비(비취 장비를 사고 강화할 엽전)를 하고, 최종보스맵을 깰 때까지 */
+  const finale = () => {
+    const prep: Row = { id: '채비', name: '사냥', level: 0, enemies: 0, par: 0, runs: 0, deaths: 0, clear: 0, total: 0, clock: 0, lv: 0, coins: 0, gear: 0, bag: 0, weapon: '', potions: 0, sim: 0 };
+    for (const no of Array.from({ length: FINAL_PREP }, () => FARM_MAPS).flat()) {
+      const o = playRun(p, mapOf(`${REGIONS}-${no}`)!, roll(seed, 7, ++n), 0);
+      prep.runs++;
+      prep.total += human(o);
+      prep.gear += o.gear;
+      if (!o.cleared) prep.deaths++;
+    }
+    prepare(p, FINAL);
+    clock += prep.total;
+    stamp(prep);
+    rows.push(prep);
+    const row: Row = { id: FINAL.id, name: FINAL.name, level: mapLevel(FINAL.region, FINAL.no, 'normal'), enemies: mapKillMax(FINAL, 'normal').total, par: FINAL.par, runs: 0, deaths: 0, clear: 0, total: 0, clock: 0, lv: 0, coins: 0, gear: 0, bag: 0, weapon: '', potions: 0, sim: 0 };
+    for (;;) {
+      const o = playRun(p, FINAL, roll(seed, 7, ++n), row.deaths);
+      row.runs++;
+      row.total += human(o);
+      row.gear += o.gear;
+      if (o.cleared) {
+        row.clear = human(o);
+        row.potions = o.potions;
+        row.sim = o.sim;
+        break;
+      }
+      row.deaths++;
+      if (row.deaths >= 12) break;
+      // 두 번 쓰러질 때마다 12지형 7번 맵에서 사냥
+      if (row.deaths % 2 === 0) {
+        const h = playRun(p, mapOf(`${REGIONS}-7`)!, roll(seed, 7, ++n), 0);
+        row.runs++;
+        row.total += human(h);
+      }
+    }
+    clock += row.total;
+    stamp(row);
+    rows.push(row);
+  };
+  if (from) {
+    finale();
+    return rows;
+  }
   for (const map of MAPS.filter((m) => m.region <= regions)) {
     const row: Row = { id: map.id, name: map.name, level: mapLevel(map.region, map.no, 'normal'), enemies: mapKillMax(map, 'normal').total, par: map.par, runs: 0, deaths: 0, clear: 0, total: 0, clock: 0, lv: 0, coins: 0, gear: 0, bag: 0, weapon: '', potions: 0, sim: 0 };
     const go = (m: MapDef, deaths: number) => {
@@ -215,13 +283,21 @@ function journey(seed: number, regions: number): Row[] {
     farm.weapon = fw ? `${TIER_LEVELS[defOf(fw).tier]}${defOf(fw).rare ? '★' : ''}+${fw.plus}` : '-';
     rows.push(farm);
   }
+  // 12지형까지 다 깼으면 최종보스까지 (보통 모드 끝)
+  if (regions >= REGIONS && rows.length && rows[rows.length - 1].id === `${REGIONS}사냥`) {
+    if (CACHE) writeFileSync(cacheFile(seed), JSON.stringify({ p, rows, clock, n } satisfies Saved));
+    finale();
+  }
   return rows;
 }
 
 // ---------- 표 ----------
 
-function paceTable(regions: number, seeds: number) {
-  const all = Array.from({ length: seeds }, (_, i) => journey(1000 + i * 77, regions));
+function paceTable(regions: number, seeds: number, finalOnly = false) {
+  const all = Array.from({ length: seeds }, (_, i) => {
+    const seed = 1000 + i * 77;
+    return finalOnly ? journey(seed, regions, JSON.parse(readFileSync(cacheFile(seed), 'utf8')) as Saved) : journey(seed, regions);
+  });
   const count = Math.min(...all.map((r) => r.length));
   const avg = (i: number, f: (r: Row) => number) => all.reduce((a, r) => a + f(r[i]), 0) / all.length;
   console.log(`시아열두길 pace — 보통 모드 1~${regions}지형, 씨앗 ${seeds}개 평균 (사람 시간 = 자동 조종 × ${HUMAN} + 판마다 ${BETWEEN}초)`);
@@ -232,15 +308,32 @@ function paceTable(regions: number, seeds: number) {
   let firstSum = 0;
   let mapCount = 0;
   let regionNo = 0;
+  let fin: { hours: number; lv: number; clear: number; share: number; deaths: number; stuck: boolean } | null = null;
   for (let i = 0; i < count; i++) {
     const r = all[0][i];
     const farm = r.name === '사냥';
+    if (finalOnly && i < count - 2) {
+      if (farm) ends.push({ region: ++regionNo, hours: avg(i, (x) => x.clock) / 3600, lv: avg(i, (x) => x.lv), first: 0, maps: 0 });
+      continue;
+    }
     if (farm) {
       console.log(
         `| ${cell(r.id, 5)} |    |     |      |      | ${pad(avg(i, (x) => x.runs).toFixed(1), 4)} | ${pad(avg(i, (x) => x.deaths).toFixed(1), 3)} | ${pad(min(avg(i, (x) => x.total)), 5)} | ${pad((avg(i, (x) => x.clock) / 3600).toFixed(2), 5)} | ${pad(avg(i, (x) => x.lv).toFixed(1), 5)} | ${cell(r.weapon, 6)} |      | ${pad(Math.round(avg(i, (x) => x.coins)), 5)} | ${pad(avg(i, (x) => x.gear).toFixed(1), 4)} | ${pad(Math.round(avg(i, (x) => x.bag)), 2)} |`,
       );
-      ends.push({ region: ++regionNo, hours: avg(i, (x) => x.clock) / 3600, lv: avg(i, (x) => x.lv), first: firstSum, maps: ++mapCount && mapCount - 1 });
-      mapCount--;
+      if (r.id !== '채비') {
+        ends.push({ region: ++regionNo, hours: avg(i, (x) => x.clock) / 3600, lv: avg(i, (x) => x.lv), first: firstSum, maps: ++mapCount && mapCount - 1 });
+        mapCount--;
+      }
+      continue;
+    }
+    if (r.id === FINAL.id) {
+      // 최종보스맵은 '맵 한 판 평균'에 넣지 않는다 (96맵 기준)
+      const stuck = all.some((a) => !a[i].clear);
+      fin = { hours: avg(i, (x) => x.clock) / 3600, lv: avg(i, (x) => x.lv), clear: avg(i, (x) => x.clear), share: (avg(i, (x) => x.clock) - avg(i - 2, (x) => x.clock)) / 60, deaths: avg(i, (x) => x.deaths), stuck };
+      console.log(
+        `| ${padEnd(r.id, 5)} | ${pad(r.level, 2)} | ${pad(r.enemies, 3)} | ${pad(min(r.par), 4)} | ${pad(stuck ? '✗' : min(fin.clear), 4)} | ${pad(avg(i, (x) => x.runs).toFixed(1), 4)} | ${pad(fin.deaths.toFixed(1), 3)} | ${pad(min(avg(i, (x) => x.total)), 5)} | ${pad(fin.hours.toFixed(2), 5)} | ${pad(fin.lv.toFixed(1), 5)} | ${cell(r.weapon, 6)} | ${pad(avg(i, (x) => x.potions).toFixed(1), 4)} | ${pad(Math.round(avg(i, (x) => x.coins)), 5)} | ${pad(avg(i, (x) => x.gear).toFixed(1), 4)} | ${pad(Math.round(avg(i, (x) => x.bag)), 2)} |`,
+      );
+      if (process.env.PACE_PAR) console.log(`   별 시간 ÷ 사람이 깬 시간 = ${(r.par / (avg(i, (x) => x.sim) * HUMAN)).toFixed(2)}`);
       continue;
     }
     mapCount++;
@@ -257,11 +350,13 @@ function paceTable(regions: number, seeds: number) {
     }
   }
   console.log('');
-  console.log('| 구간 | 누적 시간 | 도착 Lv | 맵 한 판 평균(분) | 마지막 맵 권장 Lv |');
-  console.log('|---|---|---|---|---|');
+  if (!finalOnly) {
+    console.log('| 구간 | 누적 시간 | 도착 Lv | 맵 한 판 평균(분) | 마지막 맵 권장 Lv |');
+    console.log('|---|---|---|---|---|');
+  }
   let prev = 0;
   let prevMaps = 0;
-  for (const e of ends) {
+  for (const e of finalOnly ? [] : ends) {
     console.log(`| 1~${e.region}지형 | ${e.hours.toFixed(2)}시간 | Lv ${e.lv.toFixed(1)} | ${min((e.first - prev) / (e.maps - prevMaps))} | ${mapLevel(e.region, MAPS_PER_REGION, 'normal')} |`);
     prev = e.first;
     prevMaps = e.maps;
@@ -275,7 +370,13 @@ function paceTable(regions: number, seeds: number) {
     const lo = marks[marks.indexOf(hi) - 1] ?? marks[0];
     const f = hi.region === lo.region ? 1 : (last.region - lo.region) / (hi.region - lo.region);
     console.log(`목표 (PRD 성장 표: 보통 1~${hi.region}지형 약 ${hi.hours}시간에 Lv${hi.level}, 맵 한 판 5~6분) → 1~${last.region}지형: 약 ${(lo.hours + (hi.hours - lo.hours) * f).toFixed(1)}시간, Lv ${(lo.level + (hi.level - lo.level) * f).toFixed(0)} 안팎`);
-    console.log(`결과: ${last.hours.toFixed(2)}시간, Lv ${last.lv.toFixed(1)}, 맵 한 판 평균 ${min(last.first / last.maps)}분 (첫 클리어 판 기준)`);
+    console.log(`결과: ${last.hours.toFixed(2)}시간, Lv ${last.lv.toFixed(1)}${finalOnly ? '' : `, 맵 한 판 평균 ${min(last.first / last.maps)}분 (첫 클리어 판 기준)`}`);
+  }
+  if (fin) {
+    const f = fin as { hours: number; lv: number; clear: number; share: number; deaths: number; stuck: boolean };
+    console.log('');
+    console.log(`최종보스 몫 (채비 사냥 ${FINAL_PREP}바퀴 + 최종보스맵): ${f.share.toFixed(1)}분 — 깬 판 ${min(f.clear)}분, 쓰러짐 ${f.deaths.toFixed(1)}번${f.stuck ? ' (✗ 못 깬 씨앗이 있다)' : ''}`);
+    console.log(`보통 모드 전체 (1~12지형 + 최종보스): ${f.hours.toFixed(2)}시간, Lv ${f.lv.toFixed(1)}   (PRD 성장 표: 약 15시간 · Lv65)`);
   }
   if (ends.length < regions) console.log(`\n✗ ${all[0][count - 1].id} 에서 막혔어요 (12번 쓰러짐) — 요괴가 너무 세거나 경험치가 모자라요`);
   console.log(`\n가방: ${BAG.size}칸에서 시작. '일반 장비' = 그 맵에 쓴 판들에서 떨어진 일반 무기·방어구 수, '가방' = 쉼터에서 정리한 뒤 다음 맵에 들고 간 칸 수`);
@@ -311,4 +412,5 @@ function weaponTable() {
 }
 
 if (args[0] === 'weapons') weaponTable();
+else if (args[0] === 'final') paceTable(REGIONS, Math.max(1, Number(args[1]) || 3), true);
 else paceTable(Math.max(1, Math.min(REGIONS_READY, Number(args[0]) || REGIONS_READY)), Math.max(1, Number(args[1]) || 3));
