@@ -16,6 +16,7 @@ import {
   addFx, collect, edgePoint, emit, endlessMul, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
   spawnBoss, spawnEnemy, sweep,
 } from './core';
+import { runBuild, type RunBuild } from './build';
 import { updateEnemies } from './enemies';
 import { Grid } from './grid';
 import { addWeapon, applyCard, checkLevelUp, drawCards, openChest, pickCard } from './levelup';
@@ -607,6 +608,8 @@ export interface RunSummary {
   cakes: number;
   /** 도감: 이번 판에 만난 요괴·보스, 얻은 무기·패시브의 id */
   codex: Codex;
+  /** 든 무기·패시브와 무기별 피해 (결과 화면의 빌드 요약용. 서버에는 보내지 않는다) */
+  build?: RunBuild;
 }
 
 export interface Codex {
@@ -636,5 +639,6 @@ export function summarize(s: State): RunSummary {
       weapons: marked(s.gotWeapon, WEAPONS),
       passives: marked(s.gotPassive, PASSIVES),
     },
+    build: runBuild(s),
   };
 }

@@ -416,6 +416,21 @@ em > .ico { margin: 0 auto; }
 .unlocks b { font-weight: normal; color: var(--accent); }
 .unlocks img { width: 34px; height: 34px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
 .result .actions .btn { flex: 1; }
+/* 결과 화면: 내 위 한 명과의 차이 · 빌드 요약 */
+.rank-gap { margin: 8px 0 0; text-align: center; font-size: var(--fs-body); background: var(--panel-strong); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 5px 8px; overflow-wrap: anywhere; }
+.rank-gap b { font-weight: normal; color: var(--accent); }
+.build { --u: 1px; margin-top: 10px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 8px 10px 10px; }
+.build h3 { margin: 0 0 8px; font-weight: normal; font-size: var(--fs-body); color: var(--ink-soft); text-align: center; }
+.build-own { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 8px; padding-bottom: 6px; }
+.build-own .sep { width: var(--line-thin); height: 28px; border-radius: var(--radius-pill); background: var(--empty-line); }
+.dmg-bars { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.dmg-bars li { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.dmg-bars em { flex: none; font-style: normal; font-size: 20px; line-height: 1; }
+.dmg-bars .nm { flex: none; width: 6.6em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dmg-bars .bar { flex: 1; min-width: 0; height: 12px; border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); background: var(--panel); overflow: hidden; }
+.dmg-bars .bar i { display: block; height: 100%; min-width: 2px; background: var(--team-a); border-radius: var(--radius-pill); }
+.dmg-bars li.evo .bar i { background: var(--primary); }
+.dmg-bars b { flex: none; width: 2.9em; text-align: right; font-weight: normal; font-variant-numeric: tabular-nums; }
 .cheer { position: absolute; left: 0; right: 0; top: 0; height: 100%; pointer-events: none; overflow: hidden; }
 .cheer i { position: absolute; top: -12px; width: 10px; height: 10px; animation: fall 2.4s linear forwards; }
 @keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
@@ -431,4 +446,17 @@ em > .ico { margin: 0 auto; }
 .select > .maps > .map { flex: none; }
 .upgrade > .up-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 .upgrade > .up-list > .up-row { flex: none; }
-.result > .result-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.result > .result-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+/* 아이폰처럼 세로가 짧은 화면: 그림·글자를 줄여 빌드 요약까지 덜 스크롤하게 */
+@media (max-height: 720px) {
+  .result-card { padding: 12px 12px; }
+  .result-card .verdict { font-size: 40px; }
+  .result-char { height: 76px; margin-bottom: 6px; }
+  .stats li { padding: 4px 10px; font-size: 15px; }
+  .stats b { font-size: 19px; }
+  .result .actions { margin-top: 6px; }
+}
+@media (max-height: 560px) {
+  .result-char { height: 52px; }
+  .result-card .verdict { font-size: 32px; }
+}

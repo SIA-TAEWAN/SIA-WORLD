@@ -2,9 +2,51 @@ import { HELL, RUN_SEC } from '../data/balance';
 import { endlessCoinCap, endlessOpen, isEndless, isHell } from '../game/progress';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
+import { PASSIVES, PASSIVE_INDEX } from '../data/passives';
+import { damageShares, type RunBuild } from '../game/build';
+import { LOCAL_MODE } from '../net/api';
+import { loadRankGap, type RankGap } from '../net/rank';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
+import { icon } from './icons';
 import { esc, mmss, nav, screen, state, type GameResult } from './app';
 import { sfx } from './sfx';
+
+/** 빌드 요약: 든 무기(레벨·진화)·패시브 아이콘 + 무기별 피해 비율 막대 (많이 준 순) */
+function buildHtml(b: RunBuild | undefined): string {
+  if (!b || (b.weapons.length === 0 && b.passives.length === 0)) return '';
+  const chip = (ic: string, lv: number, name: string, evo = false) =>
+    `<span class="own ${evo ? 'evo' : ''}" title="${esc(name)}"><em>${ic}</em><i>${evo ? '★' : lv}</i></span>`;
+  const shares = damageShares(b);
+  const weapons = shares.length ? [...b.weapons].map((w) => shares.find((s) => s.id === w.id)!).filter(Boolean) : [];
+  const passives = b.passives.filter((p) => PASSIVE_INDEX[p.id] !== undefined);
+  const bars = shares.some((s) => s.dmg > 0)
+    ? `<ul class="dmg-bars">${shares
+        .map(
+          (s) =>
+            `<li class="${s.evolved ? 'evo' : ''}"><em>${icon('w', s.id)}</em><span class="nm">${esc(s.name)}</span>` +
+            `<span class="bar"><i style="width:${s.bar}%"></i></span><b>${s.pct}%</b></li>`,
+        )
+        .join('')}</ul>`
+    : '';
+  return `<section class="build" aria-label="이번 판 빌드">
+       <h3>이번 판 빌드</h3>
+       <div class="build-own">
+         ${weapons.map((w) => chip(icon('w', w.id), w.lv, w.evolved ? `${w.name} (진화)` : `${w.name} Lv ${w.lv}`, w.evolved)).join('')}
+         ${passives.length ? '<span class="sep"></span>' : ''}
+         ${passives.map((p) => chip(icon('p', p.id), p.lv, `${PASSIVES[PASSIVE_INDEX[p.id]].name} Lv ${p.lv}`)).join('')}
+       </div>
+       ${bars}
+     </section>`;
+}
+
+/** 내 위 한 명과의 차이 한 줄 */
+function gapHtml(g: RankGap): string {
+  if (g.kind === 'first') return '🏆 이 맵 내 최고 기록이 <b>1등</b>이에요!';
+  const head = `🏆 내 최고 기록 ${g.place.toLocaleString()}등 · <b>${esc(g.name)}</b>님`;
+  if (g.kind === 'time') return `${head}까지 <b>${g.amount >= 60 ? mmss(g.amount) : `${g.amount}초`}</b>`;
+  if (g.kind === 'kills') return `${head}까지 처치 <b>${g.amount.toLocaleString()}</b>`;
+  return `${head}과 같은 기록이에요`;
+}
 
 /** 결과 화면: 생존 시간 · 처치 수 · 도달 레벨 · 얻은 엽전 · 새 기록 · 새로 해금된 것 → [다시하기] [강화하러 가기] [메인으로] */
 export function showResult(r: GameResult) {
@@ -28,7 +70,9 @@ export function showResult(r: GameResult) {
          <li><span>⭐ 도달 레벨</span><b>Lv ${r.level}</b></li>
          <li><span>🪙 얻은 엽전${capped ? ' <i class="tag cap">최대</i>' : ''}${hell ? ` <i class="tag x2">×${HELL.coin}</i>` : ''}</span><b class="coin" id="coins">${r.coins.toLocaleString()}닢</b></li>
        </ul>
+       <p class="rank-gap hidden" id="gap"></p>
        <div class="unlocks" id="unlocks"></div>
+       ${buildHtml(r.build)}
        <p class="soft note" id="note">결과를 저장하는 중…</p>
      </div>
      <div class="actions">
@@ -67,6 +111,15 @@ export function showResult(r: GameResult) {
   const note = root.querySelector('#note') as HTMLElement;
   void r.saved.then((s) => {
     if (!root.isConnected) return;
+    // 같은 맵·모드 랭킹에서 내 바로 위 사람과의 차이 (저장이 끝난 뒤의 랭킹으로. 못 읽으면 조용히 숨긴다. 테스트 모드에는 랭킹이 없다)
+    if (!LOCAL_MODE && s !== 'rejected') {
+      void loadRankGap(r.map, state.user.id, r.mode ?? 'normal').then((g) => {
+        const el = root.querySelector('#gap');
+        if (!g || !el || !root.isConnected) return;
+        el.innerHTML = gapHtml(g);
+        el.classList.remove('hidden');
+      });
+    }
     if (s === 'unrecorded') note.textContent = '서버에 연결하지 못한 판이라 기록되지 않았어요';
     else if (s === 'pending') note.textContent = '결과를 올리지 못했어요. 다음에 들어올 때 다시 보낼게요';
     else if (s === 'rejected') note.textContent = '이 판의 결과는 받아들여지지 않았어요';

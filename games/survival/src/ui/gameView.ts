@@ -110,7 +110,7 @@ export function showGame(setup: GameSetup) {
   let unhold = () => {};
   // 판 도중에 창이 닫히면(새로고침·탭 닫기·강제 로그아웃 이동) 그때까지의 결과를 기기에 보관한다 → 다음 접속 때 올라간다
   const onLeave = () => {
-    if (!ended && runId && api) api.stash({ ...run.summary(), run: runId });
+    if (!ended && runId && api) api.stash({ ...run.summary(), build: undefined, run: runId });
   };
   if (LOCAL_MODE) window.__surv = { run, game: null, bench: (e, p) => fillBench(run.state, e, p) };
 
@@ -558,7 +558,8 @@ export function showGame(setup: GameSetup) {
     const saved: GameResult['saved'] = started.then(async (id) => {
       if (!id || !api) return 'unrecorded';
       try {
-        const out = await api.finish({ ...summary, run: id });
+        // 빌드 요약은 결과 화면에서만 쓴다 (서버에 보내거나 기기에 보관하지 않는다)
+        const out = await api.finish({ ...summary, build: undefined, run: id });
         if (!out) return 'pending';
         setProfile(out.profile);
         return out.result;

@@ -45,8 +45,18 @@ export async function worldSupabase(): Promise<SupabaseClient> {
   return (await supaMod).supabase;
 }
 
+/** getSurvivalRanking 이 주는 랭킹 한 줄 */
+export interface WorldSurvivalRow {
+  key: string;
+  nickname: string;
+  time: number;
+  kills: number;
+  cleared: boolean;
+  place: number;
+}
 interface RankingDialogModule {
   openRanking(opts: { meId?: string | null; first?: 'tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' }): () => void;
+  getSurvivalRanking(mapId: string, meId?: string | null, mode?: string): Promise<{ rows: WorldSurvivalRow[]; mine: WorldSurvivalRow | null; total: number }>;
 }
 let rankMod: Promise<RankingDialogModule> | null = null;
 
@@ -59,6 +69,16 @@ export async function openWorldRanking(meId: string, first: 'tank' | 'target' | 
   } catch {
     rankMod = null;
     return false;
+  }
+}
+
+/** 맵·모드별 생존 시간 랭킹 (상위 100명 + 내 줄). 못 불러오면 null */
+export async function worldSurvivalRanking(mapId: string, meId: string, mode = 'normal'): Promise<{ rows: WorldSurvivalRow[]; mine: WorldSurvivalRow | null } | null> {
+  try {
+    rankMod ??= import(/* @vite-ignore */ new URL('shared/ranking-dialog.js', root()).href) as Promise<RankingDialogModule>;
+    return await (await rankMod).getSurvivalRanking(mapId, meId, mode);
+  } catch {
+    return null;
   }
 }
 
