@@ -219,7 +219,7 @@ function benchOnce(weaponId: string, lv: number, sec: number, seed: number): num
   return s.dmgByWeapon[def] / sec;
 }
 
-/** 무기 6종(진화 포함)의 레벨별 초당 피해 표 */
+/** 준비된 무기 전부(진화 포함)의 레벨별 초당 피해 표 */
 export function dpsTable(): { id: string; name: string; dps: number[] }[] {
   return WEAPONS.filter((w) => w.ready).map((w) => ({ id: w.id, name: w.name, dps: w.levels.map((_, i) => weaponDps(w.id, i + 1)) }));
 }

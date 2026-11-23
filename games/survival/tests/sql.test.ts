@@ -8,7 +8,7 @@ import { ENEMIES } from '../src/data/enemies';
 import { MAPS } from '../src/data/maps';
 import { PASSIVES } from '../src/data/passives';
 import { UPGRADES, upgradeCost } from '../src/data/upgrades';
-import { WEAPONS } from '../src/data/weapons';
+import { DEVICE_CODEX, SERVER_CODEX_WEAPONS, WEAPONS } from '../src/data/weapons';
 import { ENDLESS, HELL, RUN_SEC } from '../src/data/balance';
 import { LIMITS, characterPrice, coinCap, endlessCoinCap } from '../src/game/progress';
 
@@ -105,7 +105,10 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const list = (kind: string) => new RegExp(`when '${kind}' then array\\[([^\\]]*)\\]`).exec(b)![1].split(',').map((s) => s.trim().slice(1, -1));
     expect(list('enemies')).toEqual(ENEMIES.map((e) => e.id));
     expect(list('bosses')).toEqual(BOSSES.map((e) => e.id));
-    expect(list('weapons')).toEqual(WEAPONS.map((e) => e.id));
+    // 서버 목록에 아직 없는 진화 무기(DEVICE_CODEX)는 기기 기록으로 보여 준다. 서버 목록에 넣는 마이그레이션이 나가면 DEVICE_CODEX 에서 뺀다
+    expect(list('weapons')).toEqual(SERVER_CODEX_WEAPONS);
+    expect([...SERVER_CODEX_WEAPONS, ...DEVICE_CODEX].sort()).toEqual(WEAPONS.map((e) => e.id).sort());
+    for (const id of DEVICE_CODEX) expect(WEAPONS.find((w) => w.id === id)?.evolved, id).toBe(true);
     expect(list('passives')).toEqual(PASSIVES.map((e) => e.id));
   });
 

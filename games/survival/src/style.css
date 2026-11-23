@@ -152,8 +152,9 @@ em > .ico { margin: 0 auto; }
 .cx.unknown { border-style: dashed; border-color: var(--empty-line); background: var(--panel); }
 .cx.unknown .cx-art { filter: brightness(0); opacity: 0.55; }
 .cx.unknown .cx-tx b { color: var(--ink-soft); }
-.evo { display: flex; align-items: center; gap: 6px; background: var(--panel-strong); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 6px 8px; flex: none; }
-.evo > b { font-weight: normal; color: var(--ink-soft); }
+/* 도감의 진화 조합 줄. HUD 의 .own.evo · 결과 화면의 li.evo 에 번지지 않게 도감 안으로만 */
+.cx-body .evo { display: flex; align-items: center; gap: 6px; background: var(--panel-strong); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 6px 8px; flex: none; }
+.cx-body .evo > b { font-weight: normal; color: var(--ink-soft); }
 .evo-part { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; font-size: 12px; text-align: center; }
 .evo-part em { font-style: normal; font-size: 24px; line-height: 1.1; }
 .evo-part.unknown { color: var(--ink-soft); }

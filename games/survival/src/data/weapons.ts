@@ -10,7 +10,7 @@ export interface WeaponLevel {
   dmg: number;
   /** 재사용 대기시간 (장판은 피해 간격) */
   cd: number;
-  /** 한 번에 나가는 수 (표창·달떡·구슬·독 지대) */
+  /** 한 번에 나가는 수 (표창·달떡·구슬·독 지대·황금 복돼지) */
   count?: number;
   /** 뚫고 지나가는 적 수 (0이면 처음 맞은 적에서 사라짐) */
   pierce?: number;
@@ -191,8 +191,34 @@ export const WEAPONS: WeaponDef[] = [
       { dmg: 32.8, cd: 1.1, speed: 700, size: 46, life: 0.66, text: '더 크고 더 아프게' },
     ],
   },
+
+  // ───── 진화 무기 2차 (data/evolutions.ts). 서버 도감 목록에는 아직 없다 → 아래 DEVICE_CODEX ─────
+  {
+    id: 'bellEvo', name: '수호의 범종', icon: '🛎️', desc: '넓고 묵직한 종소리가 쉬지 않고 울린다', kind: 'aura', dot: true, evolved: true, ready: true,
+    levels: [{ dmg: 8.6, cd: 0.4, radius: 200, text: '넓고 묵직한 종소리가 쉬지 않고 울린다' }],
+  },
+  {
+    id: 'mooncakeEvo', name: '한가위 달떡', icon: '🌝', desc: '보름달떡 다섯 개가 크게 터진다', kind: 'lob', evolved: true, ready: true,
+    levels: [{ dmg: 16.5, cd: 1.4, count: 5, radius: 120, range: 340, text: '보름달떡 5개가 크게 터진다' }],
+  },
+  {
+    id: 'hoofEvo', name: '천리마의 발굽', icon: '🏇', desc: '지나간 자리마다 큰 충격파가 잇달아 터진다', kind: 'trail', evolved: true, ready: true,
+    levels: [{ dmg: 14, cd: 0.42, radius: 165, text: '지나간 자리마다 큰 충격파가 잇달아 터진다' }],
+  },
+  {
+    id: 'piggyEvo', name: '황금 복돼지', icon: '🐖', desc: '황금 복돼지 세 마리가 한꺼번에 돌진한다', kind: 'dash', evolved: true, ready: true,
+    levels: [{ dmg: 26, cd: 1.0, count: 3, speed: 720, size: 50, life: 0.7, text: '황금 복돼지 3마리가 한꺼번에 돌진한다' }],
+  },
 ];
 
 export const WEAPON_INDEX: Record<string, number> = Object.fromEntries(WEAPONS.map((w, i) => [w.id, i]));
 /** 준비되지 않은 무기를 가진 캐릭터가 대신 들고 시작하는 무기 (지금은 12종 모두 준비돼 있어 쓰이지 않는다) */
 export const FALLBACK_WEAPON = 'shuriken';
+
+/**
+ * 서버 도감 목록(038 의 _survival_codex_ids)에 아직 없는 진화 무기. 서버는 모르는 id 를 버리므로 서버 도감에는 적히지 않고,
+ * 도감 화면은 이 기기에서 만들어 본 기록(net/made.ts)으로 보여 준다. 서버 목록에 넣는 마이그레이션이 나가면 여기서 뺀다 (tests/sql.test.ts 가 맞춰 본다).
+ */
+export const DEVICE_CODEX: readonly string[] = ['bellEvo', 'mooncakeEvo', 'hoofEvo', 'piggyEvo'];
+/** 서버 도감에 적히는 무기 id (서버 목록과 같은 순서) */
+export const SERVER_CODEX_WEAPONS: string[] = WEAPONS.map((w) => w.id).filter((id) => !DEVICE_CODEX.includes(id));

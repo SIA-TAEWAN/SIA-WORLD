@@ -4,8 +4,8 @@ import { PASSIVE_INDEX } from '../src/data/passives';
 import { WEAPONS, WEAPON_INDEX } from '../src/data/weapons';
 import { addPassive, addWeapon } from '../src/game/levelup';
 import { startWeapon } from '../src/game/sim';
-import { MODE } from '../src/game/state';
-import { BEHAVIORS, weaponReady } from '../src/game/weapons';
+import { MODE, PROJ, ZONE } from '../src/game/state';
+import { BEHAVIORS, DASH_SPREAD, weaponReady } from '../src/game/weapons';
 import { advance, disarm, emptyRun, live, put } from './helpers';
 
 /** 캐릭터 12종의 시작 무기 */
@@ -22,8 +22,8 @@ function armed(id: string, lv = 1) {
 
 // 무기의 세기를 재는 시험(수백 판을 돌린다)은 tests/weaponDps.test.ts 에 따로 있다
 describe('무기 12종', () => {
-  it('무기 12종 + 진화 3종이 모두 준비됐다', () => {
-    expect(WEAPONS.filter(weaponReady).map((w) => w.id).sort()).toEqual([...SIX, 'shurikenEvo', 'pearlEvo', 'clawEvo'].sort());
+  it('무기 12종 + 진화 7종이 모두 준비됐다', () => {
+    expect(WEAPONS.filter(weaponReady).map((w) => w.id).sort()).toEqual([...SIX, 'shurikenEvo', 'pearlEvo', 'clawEvo', 'bellEvo', 'mooncakeEvo', 'hoofEvo', 'piggyEvo'].sort());
     expect(CHARACTERS.map((c) => c.weapon)).toEqual(START);
     for (const c of CHARACTERS) {
       const def = WEAPONS[WEAPON_INDEX[c.weapon]];
@@ -139,6 +139,53 @@ describe('무기 동작', () => {
   it('뱀의 특성(지속 피해 +10%)은 장판·독 지대에만 붙는다', () => {
     const snake = disarm(emptyRun({ char: 'snake' }));
     expect(snake.stats.dot).toBeCloseTo(1.1, 6);
-    expect(WEAPONS.filter((w) => w.dot && w.ready).map((w) => w.id)).toEqual(['bell', 'mist', 'wool']);
+    expect(WEAPONS.filter((w) => w.dot && w.ready).map((w) => w.id)).toEqual(['bell', 'mist', 'wool', 'bellEvo']);
+  });
+});
+
+describe('진화 무기 2차 (방울·달떡·말발굽·복돼지)', () => {
+  it('황금 복돼지: 세 마리가 겨눈 쪽을 가운데로 부채꼴로 벌어져 달리고, 닿는 적을 모두 친다', () => {
+    const s = armed('piggyEvo');
+    const front = put(s, 'club', 160, 0);
+    const up = put(s, 'club', 170 * Math.cos(DASH_SPREAD), -170 * Math.sin(DASH_SPREAD));
+    const down = put(s, 'club', 170 * Math.cos(DASH_SPREAD), 170 * Math.sin(DASH_SPREAD));
+    const back = put(s, 'club', -300, 0);
+    for (const e of [front, up, down, back]) e.speed = 0;
+    advance(s, 0.35);
+    const pigs = live(s.projectiles).filter((p) => p.kind === PROJ.pigEvo);
+    expect(pigs.length).toBe(3);
+    expect(pigs.map((p) => Math.round(Math.atan2(p.vy, p.vx) * 100) / 100).sort((a, b) => a - b)).toEqual([-DASH_SPREAD, 0, DASH_SPREAD]);
+    advance(s, 0.6);
+    for (const e of [front, up, down]) expect(e.hp).toBeLessThan(e.maxHp);
+    expect(back.hp).toBe(back.maxHp);
+    // 원래 복돼지는 한 마리 그대로
+    const one = armed('piggy', 5);
+    put(one, 'club', 160, 0).speed = 0;
+    advance(one, 0.35);
+    expect(live(one.projectiles).filter((p) => p.kind === PROJ.pig).length).toBe(1);
+  });
+
+  it('천리마의 발굽·한가위 보름달떡: 원래 무기와 같은 동작에 그림만 다르다', () => {
+    const hoof = armed('hoofEvo');
+    put(hoof, 'club', 120, 0).speed = 0;
+    advance(hoof, 0.35);
+    expect(live(hoof.zones).map((z) => z.kind)).toEqual([ZONE.hoofEvo]);
+    const cake = armed('mooncakeEvo');
+    put(cake, 'club', 200, 0).speed = 0;
+    advance(cake, 0.35);
+    const cakes = live(cake.projectiles);
+    expect(cakes.length).toBe(5);
+    expect(cakes.every((p) => p.kind === PROJ.cakeEvo && p.mode === MODE.lob)).toBe(true);
+  });
+
+  it('수호의 범종: 방울보다 넓은 장판', () => {
+    const s = armed('bellEvo');
+    const near = put(s, 'club', 180, 0);
+    const far = put(s, 'club', 280, 0);
+    near.speed = far.speed = 0;
+    advance(s, 0.5);
+    expect(near.hp).toBeLessThan(near.maxHp);
+    expect(far.hp).toBe(far.maxHp);
+    expect(WEAPONS[WEAPON_INDEX.bellEvo].levels[0].radius).toBeGreaterThan(WEAPONS[WEAPON_INDEX.bell].levels[4].radius!);
   });
 });

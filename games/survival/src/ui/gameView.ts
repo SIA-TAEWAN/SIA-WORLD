@@ -10,6 +10,7 @@ import { LIMITS, endlessOpen, enoughKills } from '../game/progress';
 import { activeBoss } from '../game/sim';
 import { CARD, EV, type Card, type Ev, type State } from '../game/state';
 import { ApiError, LOCAL_MODE } from '../net/api';
+import { rememberMade } from '../net/made';
 import { fillBench } from '../run/devtools';
 import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
@@ -646,6 +647,7 @@ export function showGame(setup: GameSetup) {
         scene()?.burst('evolve');
         flashEdge('good');
         setCut(`진화!<small>${esc(WEAPONS[e.a].name)}</small>`, 'go', 2200);
+        rememberMade(WEAPONS[e.a].id);
         paintOwned();
         break;
       case EV.chestGain: {
