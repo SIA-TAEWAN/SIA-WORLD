@@ -1,8 +1,8 @@
 # 시아열두길 — 진행 상황 (다음 단계를 맡는 사람이 먼저 읽을 것)
 
-마지막 갱신: 2026-11-23 · **2차 작업 1부 끝: 4~7지형(6단계)** — 맵 32개 · 새 요괴 넷 · 보스 넷 · 환경 효과 넷 · `079_twelve_full.sql` · pace 다시 맞춤. 첫 공개분(1~5단계 + 2~3지형 + 끝없는 탑 + 랭킹 + 로비 등록, PR #11)은 main 에 머지되어 운영에 있다.
+마지막 갱신: 2026-11-23 · **2차 작업 1부 끝: 4~7지형(6단계)** — 맵 32개 · 새 요괴 넷 · 보스 넷 · 환경 효과 넷 · `089_twelve_full.sql` · pace 다시 맞춤. 첫 공개분(1~5단계 + 2~3지형 + 끝없는 탑 + 랭킹 + 로비 등록, PR #11)은 main 에 머지되어 운영에 있다.
 남은 것: **8~12지형(6단계 나머지)** · 최종보스(7단계) · 어려움 모드(8단계 나머지) · 그림/소리(9단계) · 밸런스·실제 폰 확인(10단계). 지도에는 8~12지형과 최종보스가 아직 '준비 중'으로 보인다.
-브랜치 `feature/twelve-2` (푸시하지 않음 — 메인 세션이 한다). **`078_twelve.sql` 은 운영에 있으니 고치지 않는다.** 새 SQL 은 `079_twelve_full.sql` 하나에(아직 푸시 전이라 이어서 고쳐도 된다, 080 이상 금지).
+브랜치 `feature/twelve-2` (푸시하지 않음 — 메인 세션이 한다). **`078_twelve.sql` 은 운영에 있으니 고치지 않는다.** 새 SQL 은 `089_twelve_full.sql` 하나에(아직 푸시 전이라 이어서 고쳐도 된다, 080 이상 금지).
 
 ## 해 보기
 
@@ -12,7 +12,7 @@ npm run dev      # http://localhost:5297/games/twelve/?local=1
 npm test         # 397개
 npm run build
 npm run gen      # src/data/maps/r01~r07.ts 다시 만들기 (맵 생성).  -- 5 6 = 그 지형만
-npm run sqlgen   # src/data 의 숫자로 supabase/migrations/079_twelve_full.sql 의 표(gen 블록)를 다시 쓴다 (078 은 건드리지 않는다)
+npm run sqlgen   # src/data 의 숫자로 supabase/migrations/089_twelve_full.sql 의 표(gen 블록)를 다시 쓴다 (078 은 건드리지 않는다)
 npm run pace     # 플레이 시간·레벨 곡선 표 (1~7지형, 2분쯤).  -- 4 = 4지형까지,  -- 7 1 = 지형 수·씨앗 수,  -- weapons = 무기 4종 비교
 npm run tower    # 끝없는 탑을 자동 조종이 몇 층까지 오르는지 (레벨별, 30초쯤).  -- 5 = 씨앗 수
 ```
@@ -25,7 +25,7 @@ PC 키: WASD/방향키 이동, J 공격, K·L 스킬, U 고유 스킬, 스페이
 ## 만든 것
 
 - **6단계 — 4~7지형 (2차 작업 1부, 2026-11-23):** 토끼의 달동산 · 용의 연못 · 뱀의 늪 · 말의 성문. 지형마다 맵 8개(지형 조각 4개씩: `MOON` · `POND` · `SWAMP` · `GATE`), 새 행동의 요괴 하나(그슨대 = 숨기 · 메기 요괴 = 끌어당기기 · 독두꺼비 = 독 웅덩이 · 화약 도깨비 = 자폭), 보스 고유 공격(장산범 = 뛰어들기 · 왕지네 = 나란한 줄 훑기 · 구미호 = 여우구슬·독불 · 수문장 대장 = 화살 비), 환경 효과와 막는 대원(달그림자 = 쥐 · 물길 = 뱀 · 독안개 = 말 · 성벽 화살 = 원숭이), 보스 대사 3줄·한마디, 합류 한마디(말 · 양 · 원숭이 · 닭). 세부 규칙·숫자는 PRD '구현 메모 — 6단계 — 4~7지형'.
-  - **서버:** `079_twelve_full.sql` (078 의 표 함수 15개를 다시 정의 — 맵 56줄). `scripts/sqlgen.ts` 는 079 를 쓰고, `tests/sql.test.ts` 는 078 + 079 를 합쳐 마지막 정의를 대조한다. PGlite 로 001~079 를 적용해 **291단계(2~7지형을 차례로 깨는 48판 포함)가 기기 규칙과 같다**는 것을 확인했다.
+  - **서버:** `089_twelve_full.sql` (078 의 표 함수 15개를 다시 정의 — 맵 56줄). `scripts/sqlgen.ts` 는 089 를 쓰고, `tests/sql.test.ts` 는 078 + 089 를 합쳐 마지막 정의를 대조한다. PGlite 로 001~087 + 089 를 적용해 **291단계(2~7지형을 차례로 깨는 48판 포함)가 기기 규칙과 같다**는 것을 확인했다.
   - **밸런스:** 경험치 곡선 130n^1.4 · 5지형부터 요괴 체력 오름(`HP_RAMP`) · 강철부터 강화 값 · pace 가정(5지형부터 사냥 두 바퀴). 1~4지형 3.75시간 Lv24.5, 1~7지형 7.41시간 Lv39.8 (아래 'pace 결과').
   - **화면:** 달그림자의 어둠(보이는 둘레 밖) · 숨은 요괴(희미하게) · 독 웅덩이 · 늪 색 · 성벽 화살 알림 · 환경 알약(모든 환경). 머리 없는 WebKit(아이폰 15 크기)으로 4-2 · 4-8 · 5-3 · 5-8 · 6-3 · 6-8 · 7-3 · 7-8 과 십이지 지도를 열어 오류 없이 그려지는 것만 봤다.
 
@@ -65,7 +65,7 @@ PC 키: WASD/방향키 이동, J 공격, K·L 스킬, U 고유 스킬, 스페이
 | `src/net/world.ts` | 공용 모듈 연결 + 고양이(`loadOwnedCharacters` · `buyCharacter`) |
 | `src/ui/app.ts` | 화면 전부. 전투 화면은 `playRun(run, opts)` 하나를 맵(`startMap`)과 탑의 층(`playFloor`)이 같이 쓴다. 탑: `showTower` · `startTower` · `floorCleared` · `endTowerPlay`. 끝부분: 가방 `showBag` · 상점 `showShop` · 대장간 `showSmith` · 장비 팝업 `itemPopup` |
 | `supabase/migrations/078_twelve.sql` | **운영에 있다 — 고치지 않는다.** 표 9개 + RPC 15개 + 랭킹 뷰 2개 + `_cat_progress_twelve` + `game_open:twelve`(닫힘) |
-| `supabase/migrations/079_twelve_full.sql` | 2차 작업의 SQL 전부(푸시 전). 지금은 078 의 표 함수 15개(`_twelve_const` · `_twelve_maps` · `_twelve_levels` · `_twelve_items` · `_twelve_regions` · `_twelve_enhance` …)를 다시 정의한 것뿐이다 — gen 블록은 `npm run sqlgen` 이 채운다 |
+| `supabase/migrations/089_twelve_full.sql` | 2차 작업의 SQL 전부(푸시 전). 지금은 078 의 표 함수 15개(`_twelve_const` · `_twelve_maps` · `_twelve_levels` · `_twelve_items` · `_twelve_regions` · `_twelve_enhance` …)를 다시 정의한 것뿐이다 — gen 블록은 `npm run sqlgen` 이 채운다 |
 | `scripts/tower.ts` | 탑 오르기 계산 (`npm run tower`) |
 | `scripts/make-card.py` | 로비 카드 임시 그림 만들기 (Pillow) |
 | `scripts/pg-expect.ts` · `scripts/pg-check.mjs` | SQL 을 실제로 돌려 기기 규칙과 맞춰 보는 도구 (아래) |
@@ -74,17 +74,17 @@ PC 키: WASD/방향키 이동, J 공격, K·L 스킬, U 고유 스킬, 스페이
 | `src/data/mapgen.ts` | 맵 생성: 공용 조각 + 지형 조각(`PADDY` · `PASS` · `MOON` · `POND` · `SWAMP` · `GATE`), 지형별 방 수(`REGION_GEN[n].rooms`), 무리 크기, **별 시간 `PAR` · `parOf`** |
 | `src/data/balance.ts` | 전투 기준 값 + **환경 효과 `ENV`**(진흙 · 골바람 · 달그림자 · 물길 · 독안개 · 성벽 화살) |
 | `src/data/regions.ts` | 지형 표(환경 · 막는 대원 · 보스 · 요괴 목록), `REGIONS_READY = 7`, `mapLevel` · `mapScale` · `levelScale`(**`HP_RAMP`**: 5지형부터 체력 오름) |
-| `tests/` | sim · skills · heroes · enemies(요괴 행동 · 보스 · 환경 효과) · maps · progress · **items**(장비·드랍·가방·상점·대장간) · **api**(서버 연결·성장) · **sql**(078 + 079 대조) · **regions2**(4~7지형: 요괴 행동 · 보스 공격 · 환경 효과 · 합류 · 고향) · **balance**(성장 곡선 · 맵 크기 · 드랍 · 값) · **tower**(방 · 보상 식 · 기록 규칙 · 기기 저장 · SQL 대조) |
+| `tests/` | sim · skills · heroes · enemies(요괴 행동 · 보스 · 환경 효과) · maps · progress · **items**(장비·드랍·가방·상점·대장간) · **api**(서버 연결·성장) · **sql**(078 + 089 대조) · **regions2**(4~7지형: 요괴 행동 · 보스 공격 · 환경 효과 · 합류 · 고향) · **balance**(성장 곡선 · 맵 크기 · 드랍 · 값) · **tower**(방 · 보상 식 · 기록 규칙 · 기기 저장 · SQL 대조) |
 
-## 서버 (078_twelve.sql + 079_twelve_full.sql)
+## 서버 (078_twelve.sql + 089_twelve_full.sql)
 
-- **078 은 운영에 있다. 고치지 않는다.** 2차 작업에서 바꾸는 함수·표는 079 에 `create or replace` 로 다시 정의한다(뒤 정의가 이긴다). 새 RPC(예: `twelve_set_mode`)나 최종보스 맵을 다루게 고친 `twelve_start` · `twelve_finish` 도 079 에 넣는다 — `tests/sql.test.ts` 의 `fn()` 은 두 파일을 합친 것에서 마지막 정의를 본다. 새 표·열이 필요하면 `create table if not exists` · `alter table … add column if not exists` 를 079 에 넣고, sql.test 의 '079 는 … create table 이 없다' 검사를 그에 맞게 고친다.
+- **078 은 운영에 있다. 고치지 않는다.** 2차 작업에서 바꾸는 함수·표는 089 에 `create or replace` 로 다시 정의한다(뒤 정의가 이긴다). 새 RPC(예: `twelve_set_mode`)나 최종보스 맵을 다루게 고친 `twelve_start` · `twelve_finish` 도 089 에 넣는다 — `tests/sql.test.ts` 의 `fn()` 은 두 파일을 합친 것에서 마지막 정의를 본다. 새 표·열이 필요하면 `create table if not exists` · `alter table … add column if not exists` 를 089 에 넣고, sql.test 의 '089 는 … create table 이 없다' 검사를 그에 맞게 고친다.
 
 - **RPC:** `twelve_state()` · `twelve_start(map, mode, hero)` → `{run, seed}` · `twelve_finish(run, report)` → `{state, result}` · `twelve_set_hero` · `twelve_equip` · `twelve_unequip` · `twelve_lock` · `twelve_claim` · `twelve_sell` · `twelve_scrap` · `twelve_enhance` · `twelve_buy(what, n)`. 모두 `{…state}`(= `TwelveProfile` 모양)를 돌려준다.
 - **끝없는 탑 RPC:** `twelve_tower_start(floor, hero)` → `{run, seed, base}` · `twelve_tower_floor(run, floor, time, potions)` → `{state, result: {floor, coins, stones, items, siaCoin, time, best}}` · `twelve_tower_end(run, potions)` → `{…state}`. 기록은 `twelve_tower`(최고 층 · 시간 · 레벨 · 대원 · 날짜 · 체크포인트 `cps`), 진행 중인 판은 `twelve_tower_runs`. 상태(`state.tower`)에 내 탑 기록이 들어 있다(없으면 null).
 - **랭킹 뷰:** `twelve_level_ranking`(한 맵이라도 깬 사람) · `twelve_tower_ranking`(탑에 한 번이라도 들어간 사람). 누구나 읽는다 — 랭킹 창이 다른 게임처럼 뷰를 바로 읽는다.
 - **화면이 보내는 것:** 종류별 잡은 수 · 정예 수 · 보스 · 시간 · 상자 · 쓰러진 횟수 · 쓴 물약. 경험치·엽전·드랍·확정 보정·열쇠·별·시아코인은 서버가 계산한다.
-- **표는 손으로 고치지 않는다:** 079 의 `-- <gen:이름>` 블록은 `npm run sqlgen` 이 만든다 (078 의 블록은 옛 값 그대로 남는다 — 보지 않는다). `tests/sql.test.ts` 가 블록마다 대조하므로, `src/data` 숫자를 바꾸고 sqlgen 을 안 돌리면 테스트가 깨진다.
+- **표는 손으로 고치지 않는다:** 089 의 `-- <gen:이름>` 블록은 `npm run sqlgen` 이 만든다 (078 의 블록은 옛 값 그대로 남는다 — 보지 않는다). `tests/sql.test.ts` 가 블록마다 대조하므로, `src/data` 숫자를 바꾸고 sqlgen 을 안 돌리면 테스트가 깨진다.
 - **규칙이 두 곳에 있다:** `progress.ts`(checkReport · applyReport) · `drops.ts` · `rules.ts` · `tower.ts` ↔ `twelve_finish` 와 상점·대장간 · 탑 RPC. 한쪽을 바꾸면 다른 쪽도 바꾸고 아래 확인 도구를 돌릴 것.
 - **맵 표에 줄이 있는 맵만 시작할 수 있다** (`_twelve_maps` — 지금 56줄). 지형을 더 열면 sqlgen 이 줄을 더한다. 상점 등급·탑의 레어 목록도 이 표에 맵이 있는 지형까지만 본다(`_twelve_shop_tier`).
 
@@ -96,14 +96,14 @@ PGlite 는 저장소에 넣지 않았다 (`npm test` 에는 없다). 아무 폴�
 mkdir ~/pg && cd ~/pg && npm init -y && npm i @electric-sql/pglite     # 한 번만
 cd games/twelve
 npx vite-node scripts/pg-expect.ts > ~/pg/expect.json                  # 기기 규칙으로 계산한 기대값
-node scripts/pg-check.mjs ~/pg                                         # 001~079 적용 → 확인
+node scripts/pg-check.mjs ~/pg                                         # 001~087 + 089 적용 → 확인
 ```
 
 마이그레이션 전체를 적용한 뒤 ① `_twelve_roll` = `roll` ② 권한(직접 쓰기·내부 함수 거절) ③ 시작·끝 검사(잠긴 맵, 최대치 초과, 너무 빠름, 겹침, 너무 늦음, 시아코인 조건) ④ **정해 둔 57단계(1지형 전부 → 보스 반복 → 쓰러짐 → 확정 보정 → 상점 → 대장간 → 가방 꽉 참 → 보관함)를 기기 규칙과 서버가 단계마다 같은 기록을 내는지** ⑤ 고양이(조건 → 구매 → 선택)를 본다. 2026-11-23 에 모두 통과했다.
 순서를 더하려면 `scripts/pg-expect.ts` 에 `play(…)` · `rpc(…)` 줄을 더하면 된다.
 6단계에서 맵·숫자를 바꾼 뒤(2026-11-23) 다시 돌려 63단계가 모두 맞는 것을 확인했다 (PGlite 는 임시 폴더에 설치해서 썼다).
 끝없는 탑을 더한 뒤(2026-11-23): ⑥ **탑 시나리오 179단계**(시작 거절 → 층 보고의 거절(순서 · 최소 시간 · 서버 시간 · 물약 모양) → 10층 체크포인트 → 11층에서 시작(시간 더하기) → 더 빠른 체크포인트 → 끝내지 않고 새 판 → 20층 × 6판의 보상 판정)를 기기 규칙과 단계마다 맞춰 보고, ⑦ 새 계정으로 권한 · '들어가기만 해도 0층 기록' · 10층 시아코인(`sia_coin_logs` 의 `판:층`) · 탑 랭킹 뷰 · '탑만 한 사람은 레벨 랭킹에 없다'를 본다. 모두 242단계 · 확인 108개 통과.
-4~7지형을 더한 뒤(2026-11-23, 079): 맨 끝에 ⑧ **2지형부터 준비된 마지막 지형까지 차례로 깨는 48판 + 그 지형 등급 무기 사기**를 더했다. 001~079 적용 → 모두 291단계 · 확인 109개 통과 (PGlite 는 스크래치패드의 `pg` 폴더). 준비 안 된 지형 검사는 `'8-1'` 로 바꿨다 — 8지형을 열면 `pg-check.mjs` 의 그 줄과 끝 기록 검사(`s-n7`)를 고친다.
+4~7지형을 더한 뒤(2026-11-23, 089): 맨 끝에 ⑧ **2지형부터 준비된 마지막 지형까지 차례로 깨는 48판 + 그 지형 등급 무기 사기**를 더했다. 001~087 + 089 적용 → 모두 291단계 · 확인 109개 통과 (PGlite 는 스크래치패드의 `pg` 폴더). 준비 안 된 지형 검사는 `'8-1'` 로 바꿨다 — 8지형을 열면 `pg-check.mjs` 의 그 줄과 끝 기록 검사(`s-n7`)를 고친다.
 탑 순서를 더하려면 `scripts/pg-expect.ts` 의 `towerStart(층, 씨앗)` · `towerClimb(층 수, 초)` · `towerFloor(…)` · `towerEnd()` 줄을 더한다.
 
 ## 다음 단계가 알아야 할 것

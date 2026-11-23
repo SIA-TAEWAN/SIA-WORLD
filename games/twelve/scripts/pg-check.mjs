@@ -1,11 +1,11 @@
-// 078_twelve.sql + 079_twelve_full.sql 을 실제 Postgres(PGlite)에서 돌려 보는 확인 도구. npm test 에는 들어가지 않는다 (PGlite 를 저장소에 넣지 않는다).
+// 078_twelve.sql + 089_twelve_full.sql 을 실제 Postgres(PGlite)에서 돌려 보는 확인 도구. npm test 에는 들어가지 않는다 (PGlite 를 저장소에 넣지 않는다).
 //
 //   1) PGlite 가 있는 폴더를 하나 마련한다:  mkdir pg && cd pg && npm init -y && npm i @electric-sql/pglite
 //   2) cd games/twelve
 //      npx vite-node scripts/pg-expect.ts > <pg 폴더>/expect.json
 //      node scripts/pg-check.mjs <pg 폴더> [마이그레이션 폴더 = ../../supabase/migrations]
 //
-// 하는 일: 마이그레이션 전체(001~079)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고,
+// 하는 일: 마이그레이션 전체(001~087 + 089)를 차례로 적용 → 권한 · 거절 · 시간 검사를 보고,
 // expect.json(기기 규칙으로 계산한 기대값)과 같은 순서로 RPC 를 돌려 단계마다 서버 기록이 기기 규칙과 같은지 맞춰 본다.
 // 끝없는 탑(시작 · 층 보고 · 끝)도 같은 방식으로 맞춰 보고, 권한 · 시아코인(10층마다) · 랭킹 뷰를 따로 본다.
 import { readFileSync, readdirSync } from 'node:fs';

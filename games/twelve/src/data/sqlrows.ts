@@ -1,5 +1,5 @@
 /**
- * 서버 표 줄 만들기: 게임 데이터(src/data) → supabase/migrations/079_twelve_full.sql 의 `-- <gen:이름>` ~ `-- </gen:이름>` 사이.
+ * 서버 표 줄 만들기: 게임 데이터(src/data) → supabase/migrations/089_twelve_full.sql 의 `-- <gen:이름>` ~ `-- </gen:이름>` 사이.
  * `npm run sqlgen` 이 그 사이를 다시 쓰고, tests/sql.test.ts 가 파일과 여기 결과가 같은지 본다.
  * 숫자(경험치 곡선·요괴 보상·드랍 확률·값)를 바꾸면 sqlgen 만 다시 돌리면 된다 — SQL 의 계산 순서는 그대로다.
  */
@@ -175,7 +175,7 @@ export function fillBlocks(sql: string): string {
   for (const [name, body] of Object.entries(sqlBlocks())) {
     const a = out.indexOf(open(name));
     const b = out.indexOf(close(name));
-    if (a < 0 || b < a) throw new Error(`079_twelve_full.sql 에 ${open(name)} 블록이 없어요`);
+    if (a < 0 || b < a) throw new Error(`089_twelve_full.sql 에 ${open(name)} 블록이 없어요`);
     out = `${out.slice(0, out.indexOf('\n', a) + 1)}${body}\n${out.slice(out.lastIndexOf('\n', b) + 1)}`;
   }
   return out;

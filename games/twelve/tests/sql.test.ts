@@ -5,15 +5,15 @@ import { MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
- * 서버(078_twelve.sql + 079_twelve_full.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
- * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 079 가 create or replace 로 다시 정의하므로 079 의 블록을 대조하고,
- * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 079 의 gen 블록을 다시 만든다.
+ * 서버(078_twelve.sql + 089_twelve_full.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 089 가 create or replace 로 다시 정의하므로 089 의 블록을 대조하고,
+ * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 089 의 gen 블록을 다시 만든다.
  * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
  */
 const read = (name: string) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const sql078 = read('078_twelve.sql');
-const sql079 = read('079_twelve_full.sql');
-const sql = `${sql078}\n${sql079}`;
+const sql089 = read('089_twelve_full.sql');
+const sql = `${sql078}\n${sql089}`;
 const fn = (name: string) => {
   const i = sql.lastIndexOf(`create or replace function public.${name}(`);
   return i < 0 ? '' : sql.slice(i, sql.indexOf('$$;', i));
@@ -22,22 +22,22 @@ const fn = (name: string) => {
 describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
   const blocks = sqlBlocks();
   for (const name of Object.keys(blocks)) {
-    it(`${name} 블록이 src/data 와 같다`, () => expect(blockIn(sql079, name)).toBe(blocks[name]));
+    it(`${name} 블록이 src/data 와 같다`, () => expect(blockIn(sql089, name)).toBe(blocks[name]));
   }
-  it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql079)).toBe(sql079));
+  it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql089)).toBe(sql089));
 
-  it('079 는 078 의 표 함수를 같은 모양으로 다시 정의한다 (create or replace · 권한 빼기)', () => {
+  it('089 는 078 의 표 함수를 같은 모양으로 다시 정의한다 (create or replace · 권한 빼기)', () => {
     const head = (s: string, name: string) => {
       const i = s.indexOf(`create or replace function public.${name}(`);
       return i < 0 ? '' : s.slice(i, s.indexOf('$$', i));
     };
-    const names = [...new Set(sql079.match(/create or replace function public\.\w+/g)!.map((s) => s.split('public.')[1]))];
+    const names = [...new Set(sql089.match(/create or replace function public\.\w+/g)!.map((s) => s.split('public.')[1]))];
     expect(names.length).toBeGreaterThanOrEqual(Object.keys(blocks).length);
     for (const name of names) {
-      expect(head(sql079, name), name).toBe(head(sql078, name));
-      expect(sql079).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
+      expect(head(sql089, name), name).toBe(head(sql078, name));
+      expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
     }
-    expect(sql079).not.toMatch(/create table|drop |alter table/);
+    expect(sql089).not.toMatch(/create table|drop |alter table/);
   });
 
   it('줄 수: 준비된 맵 · 레벨 1~98 · 장비 216 · 지형 24', () => {
