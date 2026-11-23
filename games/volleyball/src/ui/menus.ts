@@ -8,6 +8,7 @@ import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
 import { sfx } from './sfx';
+import { clearH2h, fillH2h } from './h2h';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, unlockButtonHtml, type UnlockHooks } from './unlockBtn';
 
@@ -321,7 +322,7 @@ export function showWaiting() {
   const root = screen(
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>게임방</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 링크 복사</button></div>
-    <div class="card"><div class="duo" id="duo"></div></div>
+    <div class="card"><div class="duo" id="duo"></div><p class="h2h" id="h2h"></p></div>
     <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요 · 같은 캐릭터도 돼요</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
@@ -334,6 +335,8 @@ export function showWaiting() {
     },
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
+  /** 맞대결 전적을 읽어 둔 상대 */
+  let h2hFor = '';
 
   const paint = () => {
     if (state.room !== room) return;
@@ -355,6 +358,14 @@ export function showWaiting() {
         <img class="av" src="${zodiacFaceUrl(isCharId(p.char) ? p.char : 'tiger')}" alt="" /><div class="nm">${esc(p.name)}</div>${st}</div>`;
     };
     $('#duo').innerHTML = `${seat(0)}<div class="vs-mark">VS</div>${seat(1)}`;
+    // 맞대결 전적: 상대가 바뀔 때만 다시 읽는다 (못 읽으면 줄이 보이지 않는다)
+    const opp = ps.find((p) => p.id !== state.user.id);
+    if ((opp?.id ?? '') !== h2hFor) {
+      h2hFor = opp?.id ?? '';
+      const line = $('#h2h');
+      clearH2h(line);
+      if (opp) void fillH2h(line, opp, true, () => state.room === room && h2hFor === opp.id);
+    }
     $('#chars').innerHTML = charButtons(room.char);
     $('#lock-note').innerHTML = lockNote();
     const busy = room.current !== null;
