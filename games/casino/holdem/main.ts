@@ -1,6 +1,6 @@
 /** 텍사스 홀덤 화면: 가운데 공용 카드 5장 · 나는 아래 · 다른 사람은 왼쪽·위·오른쪽 (세로 화면은 위 한 줄) */
 import { HOLDEM_MANUAL } from '../../lib/manuals.ts';
-import { holdemAdvice, holdemAdviceText, potOddsNeed } from '../../lib/extras.ts';
+import { holdemAdvice, holdemAdviceText, holdemBookAction, holdemBookKeep, holdemToCall, potOddsNeed, type HoldemBook } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { HoldemPrivate, HoldemPublic } from '../../../supabase/functions/_shared/holdem.ts';
@@ -20,6 +20,13 @@ let deckPos = { x: 0, y: 0 };
 let lastPub: HoldemPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
+
+// ── 미리 고르기: 남의 차례에 [체크/폴드]·[콜] 을 예약해 두면 내 차례가 오자마자 실행한다 (베팅 금액이 바뀌면 콜 예약은 취소) ──
+let book: HoldemBook | null = null;
+/** 예약을 건 판·단계 (판이나 단계가 바뀌면 예약을 지운다) */
+let bookKey = '';
+/** 예약을 방금 실행해 서버 답을 기다리는 중 (그동안은 버튼 대신 안내) */
+let bookRan = '';
 
 // ── 승률 · 팟 오즈 도우미 (켜고 끄기는 이 기기에 기억) ──
 const HELP_KEY = 'sia-holdem-helper';
@@ -217,9 +224,47 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     const p = t.pub;
     if (!p || t.mySeat === null) return;
     const o = p.options;
+    // 예약은 그 판 · 그 단계에서만, 콜 예약은 베팅 금액이 그대로일 때만 남긴다
+    const bk = `${t.room.id}:${t.room.round_no}:${p.phase}`;
+    if (bk !== bookKey) {
+      bookKey = bk;
+      book = null;
+    }
+    book = holdemBookKeep(book, p.curBet);
     if (!(t.myTurn && p.turn === t.mySeat && o)) {
       // 내 차례여도 앞선 연출(말풍선·카드 나누기)이 끝나기 전에는 버튼 대신 안내
-      el.innerHTML = `<p class="msg">${p.turn === null ? (p.phase === 'done' ? '' : '카드를 나누는 중…') : p.turn === t.mySeat ? '진행 중이에요…' : `${esc(t.seatName(p.turn))} 차례…`}</p>`;
+      const msg = `<p class="msg">${p.turn === null ? (p.phase === 'done' ? '' : '카드를 나누는 중…') : p.turn === t.mySeat ? '진행 중이에요…' : `${esc(t.seatName(p.turn))} 차례…`}</p>`;
+      const mine = p.seats.find((s) => s.seat === t.mySeat);
+      // 미리 고르기: 아직 판에 남아 있고 누군가의 차례일 때 (올인했으면 고를 것이 없다)
+      bookRan = '';
+      if (!mine || mine.folded || mine.excluded || mine.allIn || p.turn === null || p.phase === 'done' || p.runout) {
+        book = null;
+        el.innerHTML = msg;
+        return;
+      }
+      const toCall = holdemToCall(p.curBet, mine.betRound, mine.stackLeft);
+      const on = (k: HoldemBook['kind']) => (book?.kind === k ? 'sel' : '');
+      el.innerHTML = `<div class="row hd-book"><span>미리 고르기</span>
+        <button type="button" class="btn small ${on('checkfold')}" data-b="checkfold" aria-pressed="${book?.kind === 'checkfold'}">${toCall > 0 ? '폴드' : '체크/폴드'}</button>
+        ${toCall > 0 ? `<button type="button" class="btn small ${on('call')}" data-b="call" aria-pressed="${book?.kind === 'call'}">콜 ${t.fmt(toCall)}${toCall >= mine.stackLeft ? ' (올인)' : ''}</button>` : ''}</div>${msg}`;
+      el.querySelectorAll<HTMLButtonElement>('[data-b]').forEach((b) =>
+        b.addEventListener('click', () => {
+          const k = b.dataset.b as HoldemBook['kind'];
+          book = book?.kind === k ? null : k === 'call' ? { kind: 'call', curBet: p.curBet } : { kind: 'checkfold' };
+          t.redraw();
+        }),
+      );
+      return;
+    }
+    // 내 차례가 왔다: 예약해 둔 것이 있으면 바로 실행 (한 번 쓰면 지운다)
+    const booked = t.busy ? null : holdemBookAction(book, o, p.curBet);
+    book = null;
+    if (booked) bookRan = booked === 'check' ? '체크' : booked === 'call' ? '콜' : '폴드';
+    else if (!t.busy) bookRan = '';
+    if (bookRan) {
+      el.innerHTML = `<p class="msg">예약한 대로 ${bookRan}했어요…</p>`;
+      // 서버가 받지 않았으면 (act 가 알림을 띄우고 조작부를 다시 그린다) 버튼이 다시 나온다
+      if (booked) void t.act({ type: booked });
       return;
     }
     const dis = t.busy ? 'disabled' : '';

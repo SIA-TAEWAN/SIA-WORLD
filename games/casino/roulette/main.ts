@@ -4,7 +4,7 @@
  * 모든 화면이 같은 칸에 멈추도록, 회전은 서버 결과로 정해진 각도까지 같은 시간(6초) 동안 돈다.
  */
 import { ROULETTE_MANUAL } from '../../lib/manuals.ts';
-import { rouletteNotes, rouletteStats, share } from '../../lib/extras.ts';
+import { rlDouble, rlFollow, rlFromPreset, rlPresetsLoad, rlPush, rlToPreset, rlUndo, rouletteNotes, rouletteStats, share, type RlPreset } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, sfxMany, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { clamp, drawTable, label, tc, theme, viewSize } from '../../lib/cards.ts';
 import { BET_MS, MULT, SEASONS, WHEEL, hits, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
@@ -21,6 +21,8 @@ const SEASON_KEY = ['spring', 'summer', 'autumn', 'winter'] as const;
 const seasonOf = (cell: number) => [0, 1, 2, 3].find((t) => seasonCells(t).includes(cell))!;
 const faceUrl = (id: string) => new URL(`shared/images/zodiac/face/${id}.png`, worldRoot()).href;
 const SPIN_ANIM = 6000;
+/** 버튼용 짧은 이름 ('AI 어흥이' → '어흥이') */
+const short = (n: string) => n.replace(/^AI /, '');
 
 // ── 브라우저에서만 놓는 칩 (확정 전) ──
 let unit = 1;
@@ -28,6 +30,41 @@ let local: RBet[] = [];
 let localKey = '';
 /** 지난 라운드에 확정한 베팅 ('지난 라운드와 같게') */
 let lastBets: RBet[] = [];
+/** 되돌리기 기록: 놓은 칩을 바꾸기 직전의 배치들 (스핀이 바뀌면 비운다) */
+let undoLog: RBet[][] = [];
+/** 놓은 칩을 통째로 바꾼다 (되돌릴 수 있게 지금 배치를 적어 두고) */
+function setLocal(next: RBet[]) {
+  undoLog = rlPush(undoLog, local);
+  local = next;
+}
+
+// ── 자주 쓰는 배치 (이 기기에 기억: 금액은 기본 단위의 몇 배인지로) ──
+const PRESET_KEY = 'sia-rl-presets';
+let presets: (RlPreset | null)[] | null = null;
+/** '저장'을 누른 뒤 칸을 고르는 중 */
+let saving = false;
+function myPresets(): (RlPreset | null)[] {
+  if (!presets) {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(PRESET_KEY);
+    } catch {
+      /* 저장소를 못 쓰는 환경: 이번에 연 화면 동안만 기억한다 */
+    }
+    presets = rlPresetsLoad(raw);
+  }
+  return presets;
+}
+function savePreset(i: number, p: RlPreset) {
+  const next = myPresets().slice();
+  next[i] = p;
+  presets = next;
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(next));
+  } catch {
+    /* 저장하지 못해도 이번 화면에서는 쓴다 */
+  }
+}
 let autoTimer: ReturnType<typeof setTimeout> | null = null;
 let sentFor = '';
 /** 스핀별 회전 시작 시각 (다시 그려도 이어서 돈다) */
@@ -50,6 +87,8 @@ function enterRoom(id: string, base: number) {
   roomId = id;
   lastBase = base;
   local = [];
+  undoLog = [];
+  saving = false;
   localKey = '';
   lastBets = [];
   sentFor = '';
@@ -87,6 +126,7 @@ const sumOf = (bs: RBet[]) => bs.reduce((a, b) => a + b.amount, 0);
 
 function addBet(kind: BetKind, target: number, amount: number, max: number) {
   if (sumOf(local) + amount > max) return false;
+  undoLog = rlPush(undoLog, local);
   const cur = local.find((b) => b.kind === kind && b.target === target);
   if (cur) cur.amount += amount;
   else local.push({ kind, target, amount });
@@ -311,6 +351,8 @@ function betControls(t: Ctx, el: HTMLElement) {
     if (k !== localKey) {
       localKey = k;
       local = [];
+      undoLog = [];
+      saving = false;
     }
     const inSpin = p.players.some((x) => String(x.seat) === me);
     const confirmed = p.confirmed.includes(t.mySeat);
@@ -343,15 +385,33 @@ function betControls(t: Ctx, el: HTMLElement) {
     }
     const dis = t.busy ? 'disabled' : '';
     const total = sumOf(local);
+    const slots = myPresets();
+    // 따라 걸기: 이미 확정한 다른 사람 (아바타를 누르면 그 사람 배치를 내 놓기로 복사)
+    const leaders = Object.entries(p.bets).filter(([seat, bs]) => seat !== me && bs.length > 0);
     el.innerHTML = `<div class="row rl-top">
         <span class="rl-units">${[1, 5, 10].map((n) => `<button class="btn small ${unit === n ? 'sel' : ''}" data-u="${n}">${t.fmt(base * n)}</button>`).join('')}</span>
         <span class="rl-left" id="rl-left">${p.endsAt ? Math.max(0, Math.ceil((p.endsAt - serverNow()) / 1000)) : 20}초</span>
         <span class="amount">${t.fmt(total)} / ${t.fmt(p.maxTotal)}</span>
       </div>
       ${board(p, t, true)}
-      <div class="row">
+      <div class="row rl-tools">
+        <button type="button" class="btn small" id="rl-repeat" ${dis || (lastBets.length ? '' : 'disabled')} title="지난 라운드와 같게">지난 판</button>
+        <button type="button" class="btn small" id="rl-x2" ${dis || (local.length ? '' : 'disabled')} title="놓은 칩을 모두 2배로">2배</button>
+        <span class="rl-slots ${saving ? 'saving' : ''}">${slots
+          .map((s, i) => `<button type="button" class="btn small ${s ? 'has' : ''}" data-ps="${i}" ${dis} title="${s ? `자주 쓰는 배치 ${i + 1} (${s.length}칸 · ${t.fmt(s.reduce((a, b) => a + b.units, 0) * base)}칩)` : `빈 칸 ${i + 1}`}">★${i + 1}</button>`)
+          .join('')}<button type="button" class="btn small ${saving ? 'sel' : ''}" id="rl-save" aria-pressed="${saving}" ${dis || (local.length ? '' : 'disabled')} title="지금 배치를 ★ 칸에 저장">저장</button></span>
+      </div>
+      ${saving ? '<p class="rl-tip">저장할 ★ 칸을 누르세요</p>' : ''}
+      ${
+        leaders.length
+          ? `<div class="row rl-follow"><span>따라 걸기</span>${leaders
+              .map(([seat, bs]) => `<button type="button" class="rl-fav" data-follow="${seat}" ${dis} title="${esc(t.seatName(Number(seat)))} 따라 걸기 (${t.fmt(sumOf(bs))}칩)"><img src="${faceUrl(t.seatAvatar(Number(seat)))}" alt=""/><i>${esc(short(t.seatName(Number(seat))))}</i></button>`)
+              .join('')}</div>`
+          : ''
+      }
+      <div class="row rl-end">
+        <button class="btn" id="rl-undo" ${dis || (undoLog.length ? '' : 'disabled')} title="방금 한 것 하나 되돌리기" aria-label="되돌리기">↩<span> 되돌리기</span></button>
         <button class="btn" id="rl-clear" ${dis || (local.length ? '' : 'disabled')}>취소</button>
-        <button class="btn" id="rl-repeat" ${dis || (lastBets.length ? '' : 'disabled')}>지난 라운드와 같게</button>
         <button class="btn big primary" id="rl-go" ${dis}>${local.length ? '베팅 확정' : '이번엔 안 걸기'}</button>
       </div>`;
     el.querySelectorAll<HTMLButtonElement>('[data-u]').forEach((b) =>
@@ -367,12 +427,63 @@ function betControls(t: Ctx, el: HTMLElement) {
         t.redraw();
       }),
     );
-    el.querySelector('#rl-clear')?.addEventListener('click', () => ((local = []), t.redraw()));
+    const over = `한 번에 ${t.fmt(p.maxTotal)}칩까지 걸 수 있어요`;
+    el.querySelector('#rl-clear')?.addEventListener('click', () => (setLocal([]), t.redraw()));
     el.querySelector('#rl-repeat')?.addEventListener('click', () => {
-      local = lastBets.map((b) => ({ ...b }));
-      if (sumOf(local) > p.maxTotal) local = [];
+      const next = rlFollow(lastBets, p.maxTotal);
+      if (!next) return void flash(el, over);
+      setLocal(next);
       t.redraw();
     });
+    // 한 번 되돌리기: 방금 놓은 칩 · 2배 · 불러오기 · 따라 걸기 · 취소를 하나씩 거슬러 간다
+    el.querySelector('#rl-undo')?.addEventListener('click', () => {
+      const u = rlUndo(undoLog);
+      if (!u) return;
+      undoLog = u.log;
+      local = u.bets;
+      t.redraw();
+    });
+    el.querySelector('#rl-x2')?.addEventListener('click', () => {
+      const next = rlDouble(local, p.maxTotal);
+      if (!next) return void flash(el, over);
+      setLocal(next);
+      sfx('chip');
+      t.redraw();
+    });
+    el.querySelector('#rl-save')?.addEventListener('click', () => {
+      saving = !saving;
+      t.redraw();
+    });
+    // ★ 칸: 저장 중이면 지금 배치를 그 칸에 적고, 아니면 그 칸의 배치를 불러온다 (빈 칸은 놓은 칩이 있으면 바로 저장)
+    el.querySelectorAll<HTMLButtonElement>('[data-ps]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const i = Number(b.dataset.ps);
+        const slot = myPresets()[i] ?? null;
+        if (saving || !slot) {
+          const made = rlToPreset(local, base);
+          if (!made) return void flash(el, '먼저 칩을 놓고 저장하세요');
+          savePreset(i, made);
+          saving = false;
+          t.redraw();
+          return void flash(el, `★${i + 1}에 저장했어요`, true);
+        }
+        const next = rlFromPreset(slot, base, p.maxTotal);
+        if (!next) return void flash(el, over);
+        setLocal(next);
+        sfx('chip');
+        t.redraw();
+      }),
+    );
+    el.querySelectorAll<HTMLButtonElement>('[data-follow]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const next = rlFollow(p.bets[b.dataset.follow!], p.maxTotal);
+        if (!next) return;
+        setLocal(next);
+        sfx('chip');
+        t.redraw();
+        flash(el, `${short(t.seatName(Number(b.dataset.follow)))} 따라 놓았어요`, true);
+      }),
+    );
     const room = t.room.id;
     const send = () => {
       // 이미 보냈거나, 방을 나갔거나 다른 방이면 보내지 않는다
@@ -503,11 +614,12 @@ function wheelStopped(key: string) {
   return t0 === undefined || performance.now() - t0 >= SPIN_ANIM;
 }
 
-function flash(el: HTMLElement, msg: string) {
+/** 금액 칸에 잠깐 알림 (ok: 경고가 아닌 안내). 다음에 조작부를 그리면 금액으로 돌아간다 */
+function flash(el: HTMLElement, msg: string, ok = false) {
   const m = el.querySelector('.rl-top .amount');
   if (m) {
     m.textContent = msg;
-    m.classList.add('warn');
+    m.classList.toggle('warn', !ok);
   }
 }
 

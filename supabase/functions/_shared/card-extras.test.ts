@@ -258,3 +258,277 @@ describe('전체검사 고침', () => {
     expect(a.x).not.toBe(b.x);
   });
 });
+
+// ---- 기능 묶음 3: 맞고 고/스톱 도우미 · 족보 칸 · 포커 한 줄 · 홀덤 예약 · 블랙잭 베팅/힌트 · 룰렛 배치 ----
+import {
+  bjAddBet,
+  bjClampBet,
+  bjDoubleBet,
+  bjHint,
+  holdemBookAction,
+  holdemBookKeep,
+  holdemToCall,
+  matgoChips,
+  matgoMulText,
+  matgoRiskText,
+  matgoStopPreview,
+  pokerStory,
+  rlDouble,
+  rlFollow,
+  rlFromPreset,
+  rlPresetsLoad,
+  rlPush,
+  rlToPreset,
+  rlUndo,
+  RL_UNDO_MAX,
+} from '../../../games/lib/extras.ts';
+import { seededRng } from './engine.ts';
+import { makeTestState, matgo, type MatgoPlayerPublic, type MatgoSummary } from './matgo.ts';
+import { basicStrategy } from './blackjack.ts';
+import type { RBet } from './roulette.ts';
+
+describe('맞고 고/스톱 도우미', () => {
+  const seats = [
+    { seat: 0, kind: 'ai' as const, name: 'AI 쥐', stack: null },
+    { seat: 1, kind: 'ai' as const, name: 'AI 소', stack: null },
+  ];
+  it('미리 보기 금액은 실제로 스톱한 결과(summarize)와 같다 — 여러 판', () => {
+    let checked = 0;
+    const withMul = new Set<string>();
+    for (let seed = 1; seed <= 400; seed++) {
+      const rng = seededRng(seed);
+      let s = matgo.newRound({ seats, baseUnit: 100, carry: seed % 5 === 0 ? { first: 0, nagari: 2 } : null, rng });
+      for (let step = 0; step < 400 && !matgo.done(s); step++) {
+        const seat = matgo.pending(s)[0];
+        const v = matgo.view(s);
+        if (v.public.choice?.kind === 'goStop') {
+          const pre = matgoStopPreview(v.public, seat, 100)!;
+          const r = matgo.view(matgo.apply(s, seat, { type: 'stop' }, rng)).public.result as MatgoSummary;
+          expect(r.winner).toBe(seat);
+          expect(pre.score).toBe(r.score);
+          expect(pre.multiplier).toBe(r.multiplier);
+          expect(pre.amount).toBe(r.amount);
+          expect(pre.multipliers).toEqual(r.multipliers.filter((m) => !/^\d+고 ×/.test(m)));
+          // 가진 돈 제한이 없는 자리(AI)끼리라 실제 증감 = 미리 보기 합계
+          expect(pre.total).toBe(r.net[seat]);
+          pre.multipliers.forEach((m) => withMul.add(m));
+          checked++;
+        }
+        s = matgo.apply(s, seat, matgo.ai(v.public, v.private[seat], seat, rng), rng);
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+    // 배수가 붙은 경우도 실제로 지나갔다
+    expect(withMul.has('피박')).toBe(true);
+    expect(withMul.has('고박')).toBe(true);
+  });
+  it('뻑 보너스는 합계에만 들어간다', () => {
+    const s = makeTestState({
+      hands: [['m10-pi1'], ['m05-pi1']],
+      floor: ['m10-pi2'],
+      pile: ['m07-pi1'],
+      captured: [['m01-gwang', 'm03-gwang', 'm08-gwang', 'm01-tti', 'm02-tti', 'm03-tti', 'm04-tti', 'm05-tti'], ['m11-gwang']],
+      ppeokCount: [0, 1],
+      ppeokUnits: [0, 2],
+    });
+    const pre = matgoStopPreview(matgo.view(s).public, 0, 100)!;
+    // 3광 3 + 홍단 3 + 띠 5장 1 = 7점
+    expect(pre.score).toBe(7);
+    expect(pre.amount).toBe(700);
+    expect(pre.total).toBe(500);
+    expect(matgoStopPreview(matgo.view(s).public, 5, 100)).toBeNull();
+  });
+  it('배수 글 · 상대 위험 한 줄', () => {
+    expect(matgoMulText([])).toBe('');
+    expect(matgoMulText(['피박', '흔들기', '흔들기', '나가리 ×2'])).toBe('피박 ×2 · 흔들기 ×4 · 나가리 ×2');
+    expect(matgoRiskText({ score: 2, handCount: 4, bombFill: 0, go: 0 })).toBe('상대 2점 · 손패 4장');
+    expect(matgoRiskText({ score: 6, handCount: 2, bombFill: 1, go: 1 })).toBe('상대 6점 (1고) · 손패 3장 · 위험!');
+    expect(matgoRiskText({ score: 6, handCount: 0, bombFill: 0, go: 0 })).toBe('상대 6점 · 손패 0장 · 더 못 내요');
+  });
+});
+
+describe('맞고 족보 진행 · 박 경고 칸', () => {
+  const pl = (cap: Partial<MatgoPlayerPublic['captured']>, piCount = 0): MatgoPlayerPublic =>
+    ({ captured: { gwang: [], yeol: [], tti: [], pi: [], ...cap }, piCount }) as MatgoPlayerPublic;
+  const texts = (a: MatgoPlayerPublic, b: MatgoPlayerPublic) => matgoChips(a, b).map((c) => c.text);
+  it('두 장 모은 세 장 족보 · 광 2장', () => {
+    const me = pl({ yeol: ['m02-yeol', 'm04-yeol'], tti: ['m06-tti', 'm09-tti'], gwang: ['m01-gwang', 'm03-gwang'] });
+    expect(texts(me, pl({}))).toEqual(['고도리 2/3', '청단 2/3', '광 2장']);
+  });
+  it('남은 한 장을 상대가 먹었으면 말하지 않는다 · 다 모은 족보도', () => {
+    const me = pl({ yeol: ['m02-yeol', 'm04-yeol'], tti: ['m01-tti', 'm02-tti', 'm03-tti'] });
+    expect(texts(me, pl({ yeol: ['m08-yeol'] }))).toEqual([]);
+  });
+  it('박 경고가 먼저', () => {
+    const me = pl({ tti: ['m04-tti', 'm05-tti'] }, 6);
+    const opp = pl({ gwang: ['m01-gwang', 'm03-gwang'], yeol: ['m02-yeol', 'm04-yeol', 'm05-yeol', 'm06-yeol', 'm07-yeol', 'm10-yeol'] }, 9);
+    const chips = matgoChips(me, opp);
+    expect(chips.map((c) => c.text)).toEqual(['피 6장 · 피박 위험', '광박 위험', '멍박 위험', '초단 2/3']);
+    expect(chips.map((c) => !!c.warn)).toEqual([true, true, true, false]);
+    // 피가 한 장도 없으면 피박이 아니다 · 상대 피가 아직 적으면 경고하지 않는다
+    expect(texts(pl({}, 0), pl({}, 12))).toEqual([]);
+    expect(texts(pl({}, 3), pl({}, 7))).toEqual([]);
+  });
+});
+
+describe('세븐포커 판 요약 한 줄', () => {
+  const nameOf = (s: number) => ['나', '어흥이', '깡총이', '여의룡'][s];
+  const sum = (o: Partial<{ cancelled: boolean; uncontested: boolean; winners: number[]; hands: Record<number, { name: string }> }>) => ({ cancelled: false, uncontested: false, winners: [], hands: {}, ...o });
+  it('무혈 승리: 마지막 올림 뒤에 다이한 사람 수', () => {
+    const events = [
+      { t: 'die', seat: 3 },
+      { t: 'half', seat: 1, amount: 400 },
+      { t: 'die', seat: 0 },
+      { t: 'die', seat: 2 },
+      { t: 'win', seat: 1, amount: 900 },
+    ];
+    expect(pokerStory({ events, summary: sum({ uncontested: true, winners: [1] }), nameOf })).toBe('어흥이의 하프에 2명 다이');
+    expect(pokerStory({ events, summary: sum({ uncontested: true, winners: [1] }), nameOf, bluff: true })).toBe('어흥이의 뻥카에 2명 다이');
+    expect(pokerStory({ events: [{ t: 'die', seat: 0 }], summary: sum({ uncontested: true, winners: [1] }), nameOf })).toBe('모두 다이! 어흥이의 무혈 승리');
+    expect(pokerStory({ events: [], summary: sum({ uncontested: true, winners: [1] }), nameOf })).toBe('어흥이의 무혈 승리');
+  });
+  it('7구 역전: 6구까지 지던 사람이 히든으로 이겼다', () => {
+    // 카드 순서 = 비공개 2장 · 7구 히든 · 공개 4장
+    const showdown = [
+      { seat: 0, cards: ['2S', '5S', 'KS', '9S', 'JS', '3D', '4C'] }, // 6구까지 플러시 4장 → 7구 KS 로 플러시
+      { seat: 1, cards: ['AS', 'AD', '2C', '7H', '7C', '9D', 'QC'] }, // 투페어
+    ];
+    const summary = sum({ winners: [0], hands: { 0: { name: 'K 플러시' }, 1: { name: 'A 투페어' } } });
+    expect(pokerStory({ events: [], summary, showdown, nameOf })).toBe('7구 역전! 나의 K 플러시');
+    // 처음부터 앞서 있었으면 역전이 아니다
+    const summary2 = sum({ winners: [1], hands: { 0: { name: 'K 하이' }, 1: { name: 'A 투페어' } } });
+    const sd2 = [{ seat: 0, cards: ['2S', '5S', 'KD', '9S', 'JS', '3D', '4C'] }, showdown[1]];
+    expect(pokerStory({ events: [], summary: summary2, showdown: sd2, nameOf })).toBe('2명 쇼다운 · 어흥이의 A 투페어 승리');
+    expect(pokerStory({ events: [{ t: 'allin', seat: 0 }], summary: summary2, showdown: sd2, nameOf })).toBe('올인 승부! 어흥이의 A 투페어 승리');
+  });
+  it('동점 · 취소 · 결과 없음', () => {
+    expect(pokerStory({ events: [], summary: sum({ winners: [1, 2] }), nameOf })).toBe('동점! 어흥이 · 깡총이 판돈 나눔');
+    expect(pokerStory({ events: [], summary: sum({ cancelled: true, winners: [1] }), nameOf })).toBeNull();
+    expect(pokerStory({ events: [], summary: null, nameOf })).toBeNull();
+  });
+});
+
+describe('홀덤 미리 고르기', () => {
+  it('체크/폴드: 체크할 수 있으면 체크, 아니면 폴드', () => {
+    expect(holdemBookAction({ kind: 'checkfold' }, { canCheck: true, call: 0 }, 0)).toBe('check');
+    expect(holdemBookAction({ kind: 'checkfold' }, { canCheck: false, call: 200 }, 400)).toBe('fold');
+  });
+  it('콜: 베팅 금액이 그대로면 콜, 바뀌면 취소', () => {
+    expect(holdemBookAction({ kind: 'call', curBet: 400 }, { canCheck: false, call: 200 }, 400)).toBe('call');
+    expect(holdemBookAction({ kind: 'call', curBet: 400 }, { canCheck: false, call: 600 }, 800)).toBeNull();
+    expect(holdemBookKeep({ kind: 'call', curBet: 400 }, 800)).toBeNull();
+    expect(holdemBookKeep({ kind: 'call', curBet: 400 }, 400)).toEqual({ kind: 'call', curBet: 400 });
+    expect(holdemBookKeep({ kind: 'checkfold' }, 800)).toEqual({ kind: 'checkfold' });
+    expect(holdemBookAction(null, { canCheck: true, call: 0 }, 0)).toBeNull();
+    // 낼 돈이 없으면 체크
+    expect(holdemBookAction({ kind: 'call', curBet: 200 }, { canCheck: true, call: 0 }, 200)).toBe('check');
+  });
+  it('낼 칩은 남은 칩까지만', () => {
+    expect(holdemToCall(400, 100, 5000)).toBe(300);
+    expect(holdemToCall(400, 100, 120)).toBe(120);
+    expect(holdemToCall(400, 400, 5000)).toBe(0);
+  });
+});
+
+describe('블랙잭 베팅 금액 · 기본 전략 힌트', () => {
+  it('금액은 기본 단위의 배수로 상한·잔액 안', () => {
+    expect(bjClampBet(250, 100, 10_000)).toBe(200);
+    expect(bjClampBet(0, 100, 10_000)).toBe(100);
+    expect(bjClampBet(99_999, 100, 10_000)).toBe(10_000);
+    // 잔액이 350 이면 300 까지
+    expect(bjAddBet(200, 500, 100, 350)).toBe(300);
+    expect(bjAddBet(200, 500, 100, 10_000)).toBe(700);
+    expect(bjDoubleBet(600, 100, 1_000)).toBe(1_000);
+    expect(bjDoubleBet(300, 100, 10_000)).toBe(600);
+    expect(bjDoubleBet(0, 100, 10_000)).toBe(100);
+  });
+  it('힌트는 엔진의 기본 전략표를 그대로 쓴다', () => {
+    const all = ['hit', 'stand', 'double', 'split'] as const;
+    expect(basicStrategy(['8S', '8D'], 10, true)).toBe('P');
+    expect(bjHint(['8S', '8D'], 'KS', all)).toBe('split');
+    expect(bjHint(['8S', '8D'], 'KS', ['hit', 'stand'])).toBe('hit');
+    expect(bjHint(['5S', '6D'], '6H', all)).toBe('double');
+    // 더블을 못 하면: 11 은 히트, 소프트 18(딜러 5)은 스탠드
+    expect(bjHint(['5S', '4D', '2C'], '6H', ['hit', 'stand'])).toBe('hit');
+    expect(bjHint(['AS', '7D'], '5H', ['hit', 'stand'])).toBe('stand');
+    expect(bjHint(['AS', '7D'], '5H', ['hit', 'stand', 'double'])).toBe('double');
+    expect(bjHint(['10S', '6D'], 'AH', ['hit', 'stand'])).toBe('hit');
+    expect(bjHint(['10S', '7D'], 'AH', ['hit', 'stand'])).toBe('stand');
+    expect(bjHint(['10S', '7D'], null, ['hit', 'stand'])).toBeNull();
+    expect(bjHint(['10S', '7D'], 'AH', [])).toBeNull();
+  });
+});
+
+describe('룰렛 되돌리기 · 2배 · 자주 쓰는 배치 · 따라 걸기', () => {
+  const a: RBet[] = [
+    { kind: 'zodiac', target: 3, amount: 200 },
+    { kind: 'season', target: 1, amount: 500 },
+  ];
+  it('2배는 한도 안에서만', () => {
+    expect(rlDouble(a, 10_000)).toEqual([
+      { kind: 'zodiac', target: 3, amount: 400 },
+      { kind: 'season', target: 1, amount: 1000 },
+    ]);
+    expect(rlDouble(a, 1_300)).toBeNull();
+    expect(rlDouble([], 10_000)).toBeNull();
+    // 원래 목록은 그대로
+    expect(a[0].amount).toBe(200);
+  });
+  it('되돌리기: 바꾸기 직전 배치로 한 번씩', () => {
+    let log = rlPush([], []);
+    log = rlPush(log, [a[0]]);
+    const u1 = rlUndo(log)!;
+    expect(u1.bets).toEqual([a[0]]);
+    const u2 = rlUndo(u1.log)!;
+    expect(u2.bets).toEqual([]);
+    expect(rlUndo(u2.log)).toBeNull();
+    // 기록은 복사본이다 (뒤에 금액을 고쳐도 기록은 그대로)
+    const live: RBet[] = [{ kind: 'pair', target: 0, amount: 100 }];
+    const l2 = rlPush([], live);
+    live[0].amount = 900;
+    expect(rlUndo(l2)!.bets[0].amount).toBe(100);
+    let big: RBet[][] = [];
+    for (let i = 0; i < RL_UNDO_MAX + 5; i++) big = rlPush(big, a);
+    expect(big.length).toBe(RL_UNDO_MAX);
+  });
+  it('따라 걸기: 확정 배치를 복사 (한도 넘으면 안 함)', () => {
+    const copy = rlFollow(a, 10_000)!;
+    expect(copy).toEqual(a);
+    expect(copy[0]).not.toBe(a[0]);
+    expect(rlFollow(a, 600)).toBeNull();
+    expect(rlFollow([], 600)).toBeNull();
+    expect(rlFollow(undefined, 600)).toBeNull();
+  });
+  it('자주 쓰는 배치: 기본 단위의 배수로 저장해 다른 방에서도 쓴다', () => {
+    const p = rlToPreset(a, 100)!;
+    expect(p).toEqual([
+      { kind: 'zodiac', target: 3, units: 2 },
+      { kind: 'season', target: 1, units: 5 },
+    ]);
+    expect(rlFromPreset(p, 500, 50_000)).toEqual([
+      { kind: 'zodiac', target: 3, amount: 1000 },
+      { kind: 'season', target: 1, amount: 2500 },
+    ]);
+    expect(rlFromPreset(p, 500, 3_000)).toBeNull();
+    expect(rlFromPreset(null, 100, 10_000)).toBeNull();
+    expect(rlToPreset([], 100)).toBeNull();
+    expect(rlToPreset([{ kind: 'zodiac', target: 0, amount: 150 }], 100)).toBeNull();
+    const raw = JSON.stringify([p, null, [{ kind: 'zodiac', target: 12, units: 1 }]]);
+    expect(rlPresetsLoad(raw)).toEqual([p, null, null]);
+    expect(rlPresetsLoad('깨진 글')).toEqual([null, null, null]);
+    expect(rlPresetsLoad(null)).toEqual([null, null, null]);
+    expect(rlPresetsLoad(JSON.stringify([[{ kind: '__proto__', target: 0, units: 1 }], [{ kind: 'pair', target: 1, units: 0.5 }], 'x']))).toEqual([null, null, null]);
+  });
+});
+
+import { pokerWeak } from '../../../games/lib/extras.ts';
+
+describe('세븐포커 뻥카 판정', () => {
+  it('원페어 이하면 약한 패', () => {
+    expect(pokerWeak(['2S', '7D', '9H', 'KC'])).toBe(true);
+    expect(pokerWeak(['2S', '2D', '9H', 'KC', '5D', '8C'])).toBe(true);
+    expect(pokerWeak(['2S', '2D', '9H', '9C', '5D'])).toBe(false);
+    expect(pokerWeak(['2S', '5S', '9S', 'KS', '3S', '4D'])).toBe(false);
+    expect(pokerWeak([])).toBe(false);
+  });
+});
