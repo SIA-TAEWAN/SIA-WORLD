@@ -43,6 +43,11 @@ export interface RaceApi {
   /** 내 최고 기록 (없으면 null) */
   myBest(): Promise<number | null>;
   /**
+   * 역대 최고 기록 순위 (서버 race_ranking 뷰의 place, 읽기만): 사용자 id → 순위.
+   * 기록이 없는 사람은 빠진다. 못 읽으면(통신 오류·테스트 모드) 빈 표 — 화면은 구름으로 그린다
+   */
+  places(ids: readonly string[]): Promise<Record<string, number>>;
+  /**
    * 오늘의 도전: 방금 올린 완주 기록(race_runs)을 그날 기록으로 넣는다 (083_race_daily.sql).
    * 들어갔으면 기록된 날짜 'YYYY-MM-DD', 못 넣었으면 null. 통신이 실패하면 두 번까지 다시 해 본다
    */
@@ -113,6 +118,9 @@ function createLocalApi(uid: string): RaceApi {
     async myBest() {
       return readLocalBest(uid);
     },
+    async places() {
+      return {}; // 테스트 모드: 서버 순위 없음
+    },
     async dailySubmit() {
       return null; // 테스트 모드: 서버 기록 없음
     },
@@ -167,6 +175,19 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       const { data, error } = await sb.from('race_records').select('best_ms').eq('user_id', uid).maybeSingle();
       if (error) return readLocalBest(uid);
       return (data as { best_ms: number } | null)?.best_ms ?? null;
+    },
+    async places(ids) {
+      const list = [...new Set(ids.filter((id) => typeof id === 'string' && id))];
+      if (!list.length) return {};
+      try {
+        const { data, error } = await sb.from('race_ranking').select('user_id,place').in('user_id', list);
+        if (error || !Array.isArray(data)) return {};
+        const out: Record<string, number> = {};
+        for (const r of data as { user_id: string; place: number }[]) if (Number(r.place) > 0) out[r.user_id] = Number(r.place);
+        return out;
+      } catch {
+        return {};
+      }
     },
     dailySubmit(room, round, day) {
       return retryDaily(async () => {

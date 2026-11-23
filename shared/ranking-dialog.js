@@ -2,7 +2,7 @@
 //   탭: 💣 시아탱크(승패) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(최고 기록) · 🏐 시아배구(승수) · 👹 시아서바이벌(맵별 생존 시간)
 //   탭은 관리자가 로비에서 연 게임만 보인다 (shared/games.js 의 game_open). 닫힌 게임 안에서 연 창은 그 게임 탭만 예외
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
-//   시아레이스만 기록 기준: 해 30.75초 이내 · 달 33초 이내 · 별 37.5초 이내 · 그 외 구름 (RACE_TIERS)
+//   시아레이스 최고 기록은 순위 기준, 한 명씩: 1위 해 · 2위 달 · 3위 별 · 4위부터 구름 (RACE_TIERS, raceTierOfPlace). 오늘의 도전은 다른 게임과 같은 비율
 //   시아배구는 승수 순위 기준 (시아탱크와 같은 비율). 1승도 없으면 구름
 //   시아서바이벌은 맵마다 따로: 생존 시간 → 클리어 → 처치 수 → 먼저 달성한 순. 등급은 그 맵 안의 순위 기준
 //   시아서바이벌 무한 모드는 4분 모드와 따로 (모드 전환 줄): 생존 시간 → 처치 수 → 먼저 달성한 순
@@ -25,11 +25,12 @@ const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve'];
 
 /**
- * 시아레이스 등급 기준 (ms 이내). 임시 값 — games/running/src/game/constants.ts 의 TIER_*_MS 와 같이 고친다.
+ * 시아레이스 등급 기준: 역대 최고 기록 순위(race_ranking 의 place). 등급마다 한 명뿐이다.
+ * games/running/src/game/ranking.ts 의 tierOfPlace 와 같이 고친다.
  */
-export const RACE_TIERS = { gold: 30750, silver: 33000, bronze: 37500 };
+export const RACE_TIERS = { gold: 1, silver: 2, bronze: 3 };
 export const RACE_TOP = 100;
-const RACE_INFO = { label: '🏁 레이스', note: '150m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
+const RACE_INFO = { label: '🏁 레이스', note: '146m 최고 기록 순 (같은 기록은 먼저 세운 사람이 위)' };
 const VOLLEY_INFO = { label: '🏐 배구', note: '경기 승수 순 · AI 대전 포함 (같으면 승률, 그다음 먼저 달성한 사람이 위)' };
 export const VOLLEY_TOP = 100;
 const SURVIVAL_INFO = { label: '👹 서바이벌', note: '맵별 생존 시간 순 (같으면 클리어한 기록, 그다음 처치 수, 먼저 달성한 사람이 위)' };
@@ -113,11 +114,12 @@ const shiftDay = (day, n) => {
 const num = (v) => Math.max(0, Math.floor(Number(v) || 0));
 const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : RANKINGS[g]);
 
-/** 기록(ms) → 등급 */
-export function raceTier(ms) {
-  if (ms <= RACE_TIERS.gold) return 'gold';
-  if (ms <= RACE_TIERS.silver) return 'silver';
-  if (ms <= RACE_TIERS.bronze) return 'bronze';
+/** 역대 최고 기록 순위 → 등급 (1위 해 · 2위 달 · 3위 별 · 4위부터와 순위 없음은 구름) */
+export function raceTierOfPlace(place) {
+  const p = Number(place);
+  if (p === RACE_TIERS.gold) return 'gold';
+  if (p === RACE_TIERS.silver) return 'silver';
+  if (p === RACE_TIERS.bronze) return 'bronze';
   return 'white';
 }
 /** 기록 표시: 0.01초 단위 (버림) */
@@ -539,7 +541,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       if (shown === game) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
-  /** 시아레이스: 최고 기록 빠른 순 상위 100명 + 내 순위, 등급은 기록 기준 */
+  /** 시아레이스: 최고 기록 빠른 순 상위 100명 + 내 순위, 등급은 순위 기준 (1·2·3위 해·달·별, 나머지 구름) */
   let raceMode = 'best';
   async function showRace(mode = raceMode) {
     raceMode = mode === DAILY_MODE ? DAILY_MODE : 'best';
@@ -549,21 +551,20 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     });
     $('.dday').classList.toggle('on', raceMode === DAILY_MODE);
     if (raceMode === DAILY_MODE) return showDaily('race');
-    const sec = (ms) => (ms / 1000).toString();
-    $('.note').textContent = `${RACE_INFO.note} · 상위 ${RACE_TOP}명 · 해 ${sec(RACE_TIERS.gold)}초 · 달 ${sec(RACE_TIERS.silver)}초 · 별 ${sec(RACE_TIERS.bronze)}초 이내 · 그 외 구름`;
+    $('.note').textContent = `${RACE_INFO.note} · 상위 ${RACE_TOP}명 · ${RACE_TIERS.gold}위 해 · ${RACE_TIERS.silver}위 달 · ${RACE_TIERS.bronze}위 별 · 그 외 구름`;
     $('.me-line').textContent = '불러오는 중…';
     $('table').innerHTML = '';
     try {
       const { rows, mine, total } = await getRaceRanking(meId);
       if (shown !== 'race' || raceMode !== 'best') return;
       $('.me-line').innerHTML = mine
-        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(raceTier(mine.ms), 20)} · ${raceTime(mine.ms)}`
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(raceTierOfPlace(mine.place), 20)} · ${raceTime(mine.ms)}`
         : '아직 완주 기록이 없어요';
       $('table').innerHTML =
         rows
           .map(
             (r) =>
-              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(raceTier(r.ms), 26)}</td>` +
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(raceTierOfPlace(r.place), 26)}</td>` +
               `<td class="nm">${esc(r.nickname)}</td><td class="am">${raceTime(r.ms)}</td></tr>`,
           )
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';

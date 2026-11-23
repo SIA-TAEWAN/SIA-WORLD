@@ -3,8 +3,8 @@
 /** 계산 한 걸음 (고정 시간 간격) */
 export const DT = 1 / 120;
 
-/** 트랙 길이: 그냥 달리면 약 30초 (150m ÷ 5 m/s) */
-export const TRACK_LEN = 150;
+/** 트랙 길이: 그냥 달리면 약 29초 (146m ÷ 5 m/s) */
+export const TRACK_LEN = 146;
 export const LANES = 4;
 
 /** 최고 속도와 가속 (정지 → 최고 속도 0.4초) */
@@ -51,13 +51,13 @@ export const BANANA_LEN = 0.4;
 export const LOG_LEN = 0.6;
 export const BAR_LEN = 0.3;
 
-/** 배치 규칙: 출발 10m·도착 전 5m에는 없음, 방해물 사이 최소 6m */
+/** 배치 규칙: 출발 10m·도착 전 5m에는 없음, 방해물 사이 최소 5m */
 export const SAFE_START = 10;
 export const SAFE_END = 5;
-export const MIN_GAP = 6;
+export const MIN_GAP = 5;
 
-/** 판마다 놓는 개수 (합 18: 150m 트랙). 통나무는 화면·동기화가 하나만 다루므로 1개 */
-export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 5, banana: 3, log: 1, boost: 3, bar: 3 } as const;
+/** 판마다 놓는 개수 (합 21: 146m 트랙). 통나무는 화면·동기화가 하나만 다루므로 1개 */
+export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 6, banana: 4, log: 1, boost: 3, bar: 4 } as const;
 
 /** 경기 끝: 1등 도착 뒤 15초 또는 출발(GO) 뒤 90초 */
 export const END_AFTER_FIRST = 15;
@@ -88,11 +88,6 @@ export const AI_LEVELS: Record<AiLevel, AiLevelSpec> = {
 };
 /** 네트워크·저장소에서 온 값을 난이도로 (모르는 값·없는 값은 보통: 예전 기기는 난이도를 보내지 않는다) */
 export const aiLevelOf = (v: unknown): AiLevel => (typeof v === 'string' && (AI_LEVEL_IDS as readonly string[]).includes(v) ? (v as AiLevel) : 'normal');
-
-/** 등급 기준 (ms 이내). 임시 값 — shared/ranking-dialog.js 의 RACE_TIERS 와 같이 고친다 */
-export const TIER_SUN_MS = 30750;
-export const TIER_MOON_MS = 33000;
-export const TIER_STAR_MS = 37500;
 
 /** 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/031_race_150m.sql 의 min_ms) */
 export const MIN_VALID_MS = 28000;

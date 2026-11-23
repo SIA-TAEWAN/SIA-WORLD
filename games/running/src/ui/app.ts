@@ -22,6 +22,8 @@ export const state = {
   char: 'tiger' as ZodiacId,
   /** 내 최고 기록 (ms) */
   best: null as number | null,
+  /** 내 역대 최고 기록 순위 (race_ranking 의 place). 기록이 없거나 못 읽었으면 null → 등급은 구름 */
+  place: null as number | null,
   /** 오늘의 도전을 달리는 중이면 그 날짜와 트랙 시드 (보통 방이면 null) */
   daily: null as { day: string; seed: number } | null,
 };

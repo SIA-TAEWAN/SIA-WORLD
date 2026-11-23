@@ -1,6 +1,6 @@
 import { LOBBY_MAX } from '../net/lobby';
 import { AI_LEVELS, AI_LEVEL_IDS, CHAR_IDS, LANES, ZODIAC_IDS, ZODIAC_NICK, aiLevelOf, type ZodiacId } from '../game/constants';
-import { formatTime, tierOf } from '../game/ranking';
+import { formatTime, tierOfPlace } from '../game/ranking';
 import { LOCAL_MODE } from '../net/api';
 import { RaceRoom, newRoomCode } from '../net/room';
 import { hostOf } from '../net/seats';
@@ -21,12 +21,12 @@ export async function showRanking() {
   if (!(await openWorldRanking(state.user.id, 'race'))) toast('랭킹을 불러오지 못했어요');
 }
 
-/** 최고 기록 한 줄: "20.34초 (해)" */
-async function bestHtml(ms: number | null): Promise<string> {
+/** 최고 기록 한 줄: "29.34초 (해)". 아이콘은 내 역대 순위의 등급 (1위 해 · 2위 달 · 3위 별 · 그 밖과 순위 없음은 구름) */
+async function bestHtml(ms: number | null, place: number | null): Promise<string> {
   if (ms === null) return '<span class="soft">아직 기록이 없어요</span>';
   let icon = '';
   try {
-    icon = (await loadRankIcons()).tierSvg(tierOf(ms), 26);
+    icon = (await loadRankIcons()).tierSvg(tierOfPlace(place), 26);
   } catch {
     /* 아이콘 없이 */
   }
@@ -46,7 +46,7 @@ export function showLobby() {
     `<div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><span class="spacer"></span><span class="me">${esc(state.user.name)}</span>
       <button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <h1 class="logo">시아레이스</h1>
-    <p class="tagline">십이지신 150m 달리기 · 최대 4명</p>
+    <p class="tagline">십이지신 146m 달리기 · 최대 4명</p>
     <div class="hero"><div class="hero-bg" style="background-image:url('${ART}stands.png')"></div><div class="ground" style="background-image:url('${ART}track.png')"></div>
       ${cast.map((c, i) => `<img class="runner" src="${zodiacFullUrl(c)}" alt="" style="left:${48.3 + (i - 1.5) * 21}%;" />`).join('')}
     </div>
@@ -122,13 +122,21 @@ export function showLobby() {
 
   const paintBest = async () => {
     const el = root.querySelector('#best');
-    if (el) el.innerHTML = await bestHtml(state.best);
+    if (!el) return;
+    const html = await bestHtml(state.best, state.place);
+    // 기다리는 사이 더 새 값이 왔으면 그쪽이 그린다
+    if (el.isConnected) el.innerHTML = html;
   };
   if (state.best !== null) void paintBest();
-  void state.api?.myBest().then((ms) => {
-    state.best = ms;
-    void paintBest();
-  });
+  const api = state.api;
+  const uid = state.user.id;
+  // 최고 기록과 역대 순위를 같이 읽는다 (순위를 못 읽으면 구름)
+  if (api)
+    void Promise.all([api.myBest(), api.places([uid]).catch(() => ({}) as Record<string, number>)]).then(([ms, places]) => {
+      state.best = ms;
+      state.place = ms === null ? null : (places[uid] ?? null);
+      void paintBest();
+    });
   void loadEngine();
 }
 
@@ -144,6 +152,7 @@ function showHowTo() {
     <div class="row"><span>🚧 허들·바나나·통나무는 뛰어넘기</span></div>
     <div class="row"><span>🚩 높이 걸린 막대는 슬라이딩으로만 지나가요 (점프하면 부딪혀요)</span></div>
     <div class="row"><span>🟤 진흙은 느려져요 · ⚡ 발판은 밟으면 빨라져요</span></div>
+    <div class="row"><span>🏅 최고 기록 1위 해 · 2위 달 · 3위 별</span></div>
     <div class="actions"><button class="btn primary" data-close>알겠어요</button></div></div>`;
   dim.addEventListener('click', (e) => {
     const el = e.target as HTMLElement;

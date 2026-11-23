@@ -1,5 +1,5 @@
 import { EMOTE_SHOW_MS } from '../game/emote';
-import { formatTime, tierOf, type RankedEntry } from '../game/ranking';
+import { formatTime, tierOfPlace, type RankedEntry } from '../game/ranking';
 import { seriesKey, standings } from '../game/series';
 import { LOCAL_MODE } from '../net/api';
 import { LOCKED_MSG } from '../game/unlock';
@@ -58,7 +58,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
           const sub = `<small data-k="${esc(seriesKey(p))}" data-pre="${p.id && race.taken[r.slot] ? 'AI가 이어 달림' : ''}"></small>`;
           return `<div class="rrow p${r.place} ${isMe ? 'me' : ''}" data-id="${esc(p.id ?? '')}" style="animation-delay:${200 + i * 260}ms"><span class="pl">${r.place}</span>
             <img class="av" src="${zodiacFaceUrl(p.char)}" alt="" /><span class="body"><span class="top"><span class="nm">${esc(p.name)}</span>${tm}</span>${sub}</span>${
-              r.status === 'finish' ? `<span class="tier" data-ms="${r.timeMs}"></span>` : ''
+              p.id ? `<span class="tier" data-uid="${esc(p.id)}"></span>` : ''
             }</div>`;
         })
         .join('')}</div>
@@ -124,11 +124,19 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   // 순위 발표 소리 (한 줄씩)
   results.forEach((_, i) => sfx('rankShow', { delay: 200 + i * 260, rate: 1.3 - i * 0.1 }));
 
-  // 등급 아이콘 (해·달·별·구름)
-  void loadRankIcons().then(
-    (m) => root.querySelectorAll<HTMLElement>('.tier').forEach((el) => (el.innerHTML = m.tierSvg(tierOf(Number(el.dataset.ms)), 26))),
-    () => undefined,
-  );
+  // 등급 아이콘 (해·달·별·구름): 사람 줄에만, 그 사람의 역대 최고 기록 순위로 (1위 해 · 2위 달 · 3위 별 · 그 밖과 순위 없음은 구름).
+  // AI 줄에는 없다. 이번 판으로 순위가 바뀌었을 수 있으니 내 기록이 서버에 올라간 뒤(race_submit) 다시 읽는다. 못 읽으면 구름
+  const paintTiers = async () => {
+    const els = [...root.querySelectorAll<HTMLElement>('.tier[data-uid]')];
+    if (!els.length) return;
+    const icons = await loadRankIcons();
+    await race.record?.catch(() => null);
+    const places = (await state.api?.places(els.map((el) => el.dataset.uid ?? '')).catch(() => null)) ?? {};
+    const myId = state.user.id;
+    if (me >= 0 && race.roster[me]?.id === myId) state.place = places[myId] ?? null;
+    els.forEach((el) => (el.innerHTML = icons.tierSvg(tierOfPlace(places[el.dataset.uid ?? '']), 26)));
+  };
+  void paintTiers().catch(() => undefined);
 
   // 개인 최고 기록 갱신 여부 (서버에 올린 결과)
   if (raced && mine.status === 'finish' && race.record) {

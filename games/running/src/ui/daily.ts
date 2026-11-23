@@ -51,7 +51,7 @@ export async function showDaily() {
       dailyTrack(day)
         .map((o) => `<i title="${OBSTACLE_NAME[o.kind]} ${Math.round(o.x)}m">${OBSTACLE_ICON[o.kind]}</i>`)
         .join('') +
-      '<i title="결승선 150m">🏁</i>';
+      '<i title="결승선 146m">🏁</i>';
     $<HTMLButtonElement>('#start').disabled = !ready || checking;
   };
   const NO_DAY = '오늘 날짜를 받지 못했어요';
