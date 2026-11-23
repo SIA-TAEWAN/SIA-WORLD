@@ -356,4 +356,27 @@ describe('서버 저장: 못 보낸 결과 보관 · 다시 보내기', () => {
     expect(rejectOf('bad party')).toBe('bad party');
     expect(rejectOf('Failed to fetch')).toBeNull();
   });
+  it('서버: finger_stage_bests 줄을 스테이지 표로 바꾼다 (모양이 다른 줄은 버림) · 테스트 모드는 빈 표 · 실패하면 던진다', async () => {
+    const rows = [
+      { stage_id: '1-1', my_turns: 12, top_turns: 10, top_nickname: '시아', top_is_me: false },
+      { stage_id: '1-2', my_turns: null, top_turns: 7, top_nickname: '토끼', top_is_me: false },
+      { stage_id: '1-3', my_turns: 5, top_turns: 5, top_nickname: '나', top_is_me: true },
+      { stage_id: 3, top_turns: 5 },
+      { stage_id: '1-4', top_turns: 'x' },
+    ];
+    let fail = false;
+    const c: ServerClient = {
+      rpc: (fn) => Promise.resolve(fn === 'finger_stage_bests' && !fail ? { data: rows, error: null } : { data: null, error: { message: 'no' } }),
+      functions: { invoke: () => Promise.resolve({ data: null, error: { message: 'no' } }) },
+    };
+    const api = createSupabaseApi(c, 'u1', memStore());
+    expect(await api.stageBests()).toEqual({
+      '1-1': { mine: 12, top: 10, name: '시아', me: false },
+      '1-2': { mine: null, top: 7, name: '토끼', me: false },
+      '1-3': { mine: 5, top: 5, name: '나', me: true },
+    });
+    fail = true;
+    await expect(api.stageBests()).rejects.toThrow();
+    expect(await createLocalApi(memStore()).stageBests()).toEqual({});
+  });
 });

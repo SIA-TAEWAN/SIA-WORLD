@@ -26,7 +26,7 @@ import {
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
-import { ApiError, type FingerApi } from '../net/api';
+import { ApiError, type FingerApi, type StageBests } from '../net/api';
 import { DEV_ALL, LOCAL_MODE } from '../net/local';
 import { loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
@@ -120,6 +120,38 @@ const starsHtml = (n: number) => `<span class="stars">${[1, 2, 3].map((i) => `<i
 const starPill = () => `<span class="coins-pill star-pill">★ ${totalStars(profile)}</span>`;
 const coinsPill = () => `<span class="coins-pill">🪙 ${profile.coins.toLocaleString()}</span>`;
 /** 아직 합류하지 않은 십이지 대원의 안내 (추가 대원 고양이는 지역이 아니라 '시아코인으로 열기' 버튼) */
+
+// ---------- 스테이지 최소 턴 · 1등 (080 finger_stage_bests) ----------
+
+/** 마지막으로 받은 표 (스테이지 목록 · 결과 화면이 같이 쓴다). 테스트 모드 · 받지 못한 때는 비어 있어 아무것도 안 보인다 */
+let bests: StageBests = {};
+const escHtml = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/** "내 최소 12턴 · 1등 ○○ 10턴" (기록이 없으면 빈 글) */
+function bestText(id: string): string {
+  const b = LOCAL_MODE ? undefined : bests[id];
+  if (!b) return '';
+  const top = b.me ? '내가 1등' : `1등 ${escHtml(b.name)} ${b.top}턴`;
+  return b.mine != null ? `내 최소 ${b.mine}턴 · ${top}` : top;
+}
+/** 서버에서 다시 받는다 → 받았으면 true (실패하면 조용히 그대로) */
+async function refreshBests(): Promise<boolean> {
+  if (LOCAL_MODE) return false;
+  try {
+    bests = await api.stageBests();
+    return true;
+  } catch {
+    return false;
+  }
+}
+/** 방금 기록된 클리어를 서버 답을 기다리지 않고 표에 먼저 넣는다 (동점이면 먼저 달성한 사람이 1등이라 그대로) */
+function noteBest(id: string, turns: number) {
+  if (LOCAL_MODE || !(turns > 0)) return;
+  const b = bests[id];
+  const mine = b?.mine != null ? Math.min(b.mine, turns) : turns;
+  if (!b || turns < b.top) bests[id] = { mine, top: turns, name: me?.nickname ?? '', me: true };
+  else bests[id] = { ...b, mine };
+}
+
 const lockHint = (id: HeroId, long: boolean) => (long ? `${HEROES[id].unlockRegion}지역 보스를 깨면 합류` : `${HEROES[id].unlockRegion}지역`);
 
 let unlocking = false;
@@ -456,7 +488,7 @@ function showStages(region: number) {
         const open = stageOpen(profile, st.id);
         return `<button class="btn stage-row ${open ? '' : 'locked'} ${st.no === 5 ? 'boss' : ''}" data-id="${st.id}">
             <b>${st.id}</b>
-            <span class="st-mid"><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>${open && stageNote(st) ? `<small class="st-note">${stageNote(st)}</small>` : ''}
+            <span class="st-mid"><span>${open ? st.name : '🔒 앞 스테이지를 깨면 열려요'}</span>${open && stageNote(st) ? `<small class="st-note">${stageNote(st)}</small>` : ''}${open ? `<small class="st-best" data-best="${st.id}">${bestText(st.id)}</small>` : ''}
               <span class="foes">${foeArts(st)
                 .slice(0, 4)
                 .map((a) => `<img src="${artUrl(a)}" alt="" />`)
@@ -472,6 +504,11 @@ function showStages(region: number) {
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
     showRegions();
+  });
+  // 최소 턴 · 1등: 먼저 가진 표로 그리고, 새로 받으면 고친다 (다른 화면으로 넘어갔으면 그만둔다)
+  void refreshBests().then((ok) => {
+    if (!ok || !root.isConnected) return;
+    root.querySelectorAll<HTMLElement>('.st-best').forEach((el) => (el.innerHTML = bestText(el.dataset.best!)));
   });
   root.querySelectorAll<HTMLButtonElement>('.stage-row').forEach((b) =>
     b.addEventListener('click', () => {
@@ -864,6 +901,8 @@ function showResult(s: RunState, st: StageDef, party: HeroId[], out: Sent) {
   const next = r.cleared ? nextStageOf(st) : null;
   const nextOk = !!next && stageOpen(profile, next.id);
   const [, inPar, noFall] = r.starFlags;
+  // 서버에 기록된 클리어면 내 최소 턴 · 1등에 먼저 반영하고, 아래에서 서버 값으로 다시 맞춘다
+  if (r.cleared && res) noteBest(st.id, r.turns);
   const box = document.createElement('div');
   box.className = 'overlay';
   box.innerHTML = `<div class="card pop result ${r.cleared ? 'win' : 'lose'}">
@@ -880,6 +919,7 @@ function showResult(s: RunState, st: StageDef, party: HeroId[], out: Sent) {
         ${res ? `<div><span>엽전</span><b class="coin">🪙 +${res.coins}${res.first ? ' (첫 클리어)' : ''}</b></div>` : `<div><span>주운 엽전</span><b class="coin">🪙 ${r.coins}</b></div>`}
         ${res?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
+      <p class="soft center best-line">${bestText(st.id)}</p>
       ${res && res.newHeroes.length ? `<div class="new-leaders">${res.newHeroes.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${HEROES[id].name}이(가) 합류했어요!</span>`).join('')}</div>` : ''}
       ${out.offline ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음 판을 시작할 때 다시 보내요</p>' : ''}
       ${out.unrecorded ? '<p class="soft center">서버에 연결하지 못한 판이라 기록되지 않았어요</p>' : ''}
@@ -891,6 +931,10 @@ function showResult(s: RunState, st: StageDef, party: HeroId[], out: Sent) {
         <button class="btn" id="menu">메뉴로</button>
       </div></div>`;
   app().appendChild(box);
+  void refreshBests().then((ok) => {
+    const el = box.querySelector<HTMLElement>('.best-line');
+    if (ok && el && box.isConnected) el.innerHTML = bestText(st.id);
+  });
   if (res?.newHeroes.length) play('newRecord');
   box.querySelector('#next')?.addEventListener('click', () => {
     play('click');

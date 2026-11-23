@@ -214,6 +214,10 @@ img.ball.pierce { border-color: var(--accent); }
 .st-mid { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
 .btn.stage-row .st-mid > span:first-child { font-size: 15px; }
 .st-note { font-size: 11px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* 내 최소 턴 · 1등 (080): 한 줄, 넘치면 말줄임. 기록이 없으면 자리도 없다 */
+.st-best { font-size: 11px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.best-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-best:empty, .best-line:empty { display: none; }
 .foes { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .foes img { width: 26px; height: 26px; object-fit: contain; }
 .foes .tag { margin-left: 4px; }
