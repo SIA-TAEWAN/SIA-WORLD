@@ -56,22 +56,23 @@ begin
   if p_score is null then raise exception 'bad result'; end if;
   if d < public._daily_day() - 1 or d > public._daily_day() then raise exception 'bad day'; end if;
 
-  select score into old_score from public.daily_scores
-    where game = p_game and day = d and user_id = p_user for update;
-  if not found then
-    insert into public.daily_scores (game, day, user_id, score, detail, run_ref)
-      values (p_game, d, p_user, p_score, coalesce(p_detail, '{}'::jsonb), p_ref);
-    improved := true;
-  else
-    improved := p_score > old_score;
-    update public.daily_scores set
-      plays = plays + 1,
-      score = case when improved then p_score else score end,
-      detail = case when improved then coalesce(p_detail, '{}'::jsonb) else detail end,
-      run_ref = case when improved then p_ref else run_ref end,
-      best_at = case when improved then now() else best_at end
-    where game = p_game and day = d and user_id = p_user;
+  -- 60일 넘은 기록은 가끔 지운다 (순위는 30일까지만 읽음)
+  if random() < 0.01 then
+    delete from public.daily_scores where day < public._daily_day() - 60;
   end if;
+
+  select score into old_score from public.daily_scores
+    where game = p_game and day = d and user_id = p_user;
+  -- 한 문장으로 넣거나 고친다 (같은 사람 첫 기록이 동시에 두 번 와도 겹치지 않게)
+  insert into public.daily_scores as t (game, day, user_id, score, detail, run_ref)
+    values (p_game, d, p_user, p_score, coalesce(p_detail, '{}'::jsonb), p_ref)
+  on conflict (game, day, user_id) do update set
+    plays = t.plays + 1,
+    score = greatest(t.score, excluded.score),
+    detail = case when excluded.score > t.score then excluded.detail else t.detail end,
+    run_ref = case when excluded.score > t.score then excluded.run_ref else t.run_ref end,
+    best_at = case when excluded.score > t.score then now() else t.best_at end;
+  improved := old_score is null or p_score > old_score;
   return jsonb_build_object('day', to_char(d, 'YYYY-MM-DD'), 'improved', improved,
     'best', greatest(p_score, coalesce(old_score, p_score)), 'first', old_score is null);
 end;
@@ -91,7 +92,11 @@ declare
 begin
   if me is null then raise exception 'need login'; end if;
   if not (p_game = any (public._daily_games())) then raise exception 'bad game'; end if;
-  d := coalesce(nullif(p_day, '')::date, public._daily_day());
+  begin
+    d := coalesce(nullif(p_day, '')::date, public._daily_day());
+  exception when others then
+    raise exception 'bad day';
+  end;
   if d > public._daily_day() or d < public._daily_day() - 30 then raise exception 'bad day'; end if;
 
   with ranked as (

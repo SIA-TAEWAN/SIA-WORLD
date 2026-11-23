@@ -11,15 +11,22 @@ export function localDailyDay(now = Date.now()) {
   return d.toISOString().slice(0, 10);
 }
 
-/** 서버 기준 오늘 'YYYY-MM-DD'. 실패하면 기기 시계로. */
-export async function dailyToday() {
+const TODAY_TIMEOUT_MS = 5000;
+
+/** 서버 기준 오늘 'YYYY-MM-DD'. 5초 안에 못 받거나 실패하면 null. */
+export async function dailyTodayStrict() {
   try {
-    const { data, error } = await supabase.rpc('daily_today');
-    if (error || typeof data !== 'string') throw error ?? new Error('bad');
-    return data;
+    const call = supabase.rpc('daily_today').then(({ data, error }) => (error || typeof data !== 'string' ? null : data));
+    const late = new Promise((done) => setTimeout(() => done(null), TODAY_TIMEOUT_MS));
+    return await Promise.race([call, late]);
   } catch {
-    return localDailyDay();
+    return null;
   }
+}
+
+/** 서버 기준 오늘 'YYYY-MM-DD'. 실패하면 기기 시계로 (기록이 서버로 가는 판에는 dailyTodayStrict 를 쓸 것). */
+export async function dailyToday() {
+  return (await dailyTodayStrict()) ?? localDailyDay();
 }
 
 /** 32비트 시드 (FNV-1a). 같은 게임·날짜·소금이면 어느 기기에서나 같은 값. */
