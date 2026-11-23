@@ -81,6 +81,13 @@ export const PITY = { elite: 100, boss: 8, key: 3 } as const;
 export const eliteStones = (_tier: number) => 1;
 export const bossStones = (tier: number) => 3 + Math.floor(tier / 2);
 
+/**
+ * 보스의 선물: 대원이 합류하지 않는 10~12지형 보스를 (모드마다) 처음 잡으면 강화석 꾸러미를 받는다.
+ * 대원 12종은 9지형 보스까지에서 다 모이므로 (PRD '캐릭터'), 그 뒤 보스의 첫 처치 보상은 이것으로 한다.
+ */
+export const BOSS_GIFT: Readonly<Record<number, number>> = { 10: 15, 11: 20, 12: 30 };
+export const bossGift = (region: number) => BOSS_GIFT[region] ?? 0;
+
 // ---------- 가방 ----------
 
 export const BAG = { size: 40, step: 8, max: 80 } as const;
@@ -92,18 +99,22 @@ export const bagPrice = (size: number) => {
 
 // ---------- 상점 · 대장간 ----------
 
-/** 일반 무기·방어구 값 */
-export const buyPrice = (tier: number) => 300 * (tier + 1) * (tier + 1);
+/** 장비의 기준 값 (파는 값은 이 값의 비율) */
+export const baseValue = (tier: number) => 300 * (tier + 1) * (tier + 1);
+/** 엽전이 남지 않게 강철(등급 3)부터 상점 값과 강화 값을 더 가파르게 올린다 (npm run pace: 고치기 전에는 7지형 끝에 6만, 12지형 끝에 19만이 남았다) */
+export const LATE_TIER = 3;
+/** 일반 무기·방어구 값: 기준 값, 강철부터는 × (등급+1)÷3 */
+export const buyPrice = (tier: number) => Math.round(baseValue(tier) * (tier >= LATE_TIER ? (tier + 1) / 3 : 1));
 /** 파는 값 = 그 등급 일반 장비 값의 비율 (%) */
 export const SELL_PCT = { normal: 10, rare: 40, acc: 15 } as const;
-export const sellPrice = (tier: number, kind: keyof typeof SELL_PCT) => Math.floor((buyPrice(tier) * SELL_PCT[kind]) / 100);
+export const sellPrice = (tier: number, kind: keyof typeof SELL_PCT) => Math.floor((baseValue(tier) * SELL_PCT[kind]) / 100);
 /** 분해해서 받는 강화석: 1 + 등급÷2 (레어 +3 + 등급÷2), 강화한 단계마다 +1 */
 export const scrapStones = (tier: number, rare: boolean) => 1 + Math.floor(tier / 2) + (rare ? 3 + Math.floor(tier / 2) : 0);
 /**
- * 강화: +(n-1) → +n 의 값 (항상 성공). 엽전 = 60 × (등급+1) × 단계, 강철(등급 3)부터는 × (등급+1)÷3 —
+ * 강화: +(n-1) → +n 의 값 (항상 성공). 엽전 = 60 × (등급+1) × 단계, 강철(등급 3)부터는 × (등급+1)÷2 —
  * 요괴가 주는 엽전은 레벨에 따라 빨리 늘어서, 등급에 곧게 오르는 값으로는 5지형부터 엽전이 수만 개씩 남았다 (npm run pace)
  */
-export const enhanceCost = (tier: number, n: number) => ({ coins: Math.round(60 * (tier + 1) * n * (tier >= 3 ? (tier + 1) / 3 : 1)), stones: Math.ceil(n / 2) + Math.floor(tier / 3) });
+export const enhanceCost = (tier: number, n: number) => ({ coins: Math.round(60 * (tier + 1) * n * (tier >= LATE_TIER ? (tier + 1) / 2 : 1)), stones: Math.ceil(n / 2) + Math.floor(tier / 3) });
 
 /** 물약 소·중·대: 회복량(최대치의 비율) · 값 */
 export const POTION_SIZES = 3;

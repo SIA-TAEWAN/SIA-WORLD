@@ -79,6 +79,9 @@ export interface Player {
   hurt: number;
   swing: number;
   buff: { atk: number; atkT: number; speed: number; speedT: number; crit: number; critT: number; guard: number; guardT: number };
+  /** 요괴의 꽃가루에 맞아 느려진 남은 시간 · 이동 배율 (8지형 가위 귀신) */
+  slowT: number;
+  slowMul: number;
 }
 
 export interface Enemy {
@@ -129,6 +132,8 @@ export interface Enemy {
   /** 숨는 요괴(lurk): 지금 숨어 있는지 · 드러나 있는 남은 시간 */
   hidden: boolean;
   show: number;
+  /** 불러낸 요괴(call)의 번호 (0 = 없음). 그 요괴가 쓰러지면 같이 사라진다 */
+  owner: number;
 }
 
 export interface Shot {
@@ -149,6 +154,10 @@ export interface Shot {
   pierce: number;
   /** 이미 맞힌 요괴 */
   seen: number[];
+  /** 요괴 것: 맞으면 느려진다 (이동 배율 · 시간) · 벽에 튕길 수 있는 남은 횟수 */
+  slowMul: number;
+  slowDur: number;
+  bounce: number;
 }
 
 export interface Zone {
@@ -184,9 +193,10 @@ export interface Warn {
   src: number;
   /**
    * 터진 뒤: 요괴가 그 자리로 돌진 / 불을 쏜다 / 범위 가운데로 뛰어든다 / 맞은 대원을 끌어당긴다(aux = 거리) /
-   * 독 웅덩이가 남는다(aux = 시간, aux2 = 피해) / 낸 요괴가 터져 사라진다 / 구슬을 사방으로 쏜다(aux = 수, aux2 = 속도)
+   * 독 웅덩이가 남는다(aux = 시간, aux2 = 피해) / 낸 요괴가 터져 사라진다 / 구슬을 사방으로 쏜다(aux = 수, aux2 = 속도) /
+   * 줄을 따라 불길이 남는다(aux = 시간, aux2 = 피해, r = 불 반지름 — 'dash' 도 aux > 0 이면 불길을 남긴다) / 작은 요괴를 불러낸다
    */
-  after: 'none' | 'dash' | 'shoot' | 'jump' | 'pull' | 'pool' | 'boom' | 'nova';
+  after: 'none' | 'dash' | 'shoot' | 'jump' | 'pull' | 'pool' | 'boom' | 'nova' | 'trail' | 'call';
   aux: number;
   aux2: number;
   /** 큰 공격 (진하게 그리고 소리로 알린다) */
@@ -242,6 +252,8 @@ export interface Pool {
   total: number;
   dmg: number;
   acc: number;
+  /** 불길 (화면 색만 다르다) */
+  fire?: boolean;
 }
 /** 독 웅덩이가 피해를 주는 간격 */
 export const POOL_TICK = 0.5;
@@ -301,9 +313,10 @@ export interface RunState {
   /**
    * 지형 환경 효과 (balance.ts 의 ENV). f = 받는 정도: 1 그대로 · 수호 방어구 0.5 · 막는 대원 0.
    * gust = 지금 부는 골바람 방향 (-1 왼쪽 · 1 오른쪽 · 0 없음), warn = 곧 불 방향 (예고 중일 때만),
-   * acc = 늪에 서 있던 시간(독), k = 마지막으로 쏟아진 화살 차례
+   * acc = 늪에 서 있던 시간(독) · 불에 탄 시간(불길) · 졸음(0~1, 졸음 꽃가루), k = 마지막으로 쏟아진 화살 차례 · 남은 화상 횟수(불길),
+   * still = 가만히 서 있던 시간(졸음 꽃가루), vx·vy = 미끄러지는 속도(미끄러운 마루, 한 간격에 가는 거리), blind = 지금 눈부신지(새벽빛)
    */
-  env: { id: EnvId; f: number; gust: number; warn: number; acc: number; k: number };
+  env: { id: EnvId; f: number; gust: number; warn: number; acc: number; k: number; still: number; vx: number; vy: number; blind: boolean };
   /** 요괴 공격 배율 (환경 피해에 쓴다) */
   foeAtk: number;
   tag: number;
@@ -470,7 +483,7 @@ function inShape(shape: Shape, x: number, y: number, ang: number, px: number, py
 /** 이 판의 요괴 배율: 맵은 권장 레벨, 끝없는 탑은 층 */
 export const scaleOf = (map: MapDef, mode: Mode) => (map.tower ? towerScale(map.tower) : mapScale(map.region, map.no, mode));
 
-function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: number, o: { elite?: boolean; summoned?: boolean; boss?: BossDef; mini?: { hp: number; size: number } } = {}): Enemy {
+function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: number, o: { elite?: boolean; summoned?: boolean; boss?: BossDef; mini?: { hp: number; size: number; atk?: number }; owner?: number } = {}): Enemy {
   const sc = scaleOf(s.map, s.mode);
   const b = o.boss;
   const hp = Math.max(1, Math.round((b ? b.hp : def.hp * (o.elite ? ELITE.hp : 1) * (o.mini?.hp ?? 1)) * sc.hp));
@@ -487,10 +500,10 @@ function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: numbe
     r: b ? b.r : def.r * (o.elite ? ELITE.size : 1) * (o.mini?.size ?? 1),
     hp,
     maxHp: hp,
-    atk: (b ? b.atk : def.atk * (o.elite ? ELITE.atk : 1)) * sc.atk,
+    atk: (b ? b.atk : def.atk * (o.elite ? ELITE.atk : 1) * (o.mini?.atk ?? 1)) * sc.atk,
     armor: sc.def * (b ? 1 : 0.5),
     speed: b ? b.speed : def.speed,
-    exp: o.summoned ? 0 : Math.round((b ? b.exp : def.exp * (o.elite ? ELITE.reward : 1)) * sc.reward),
+    exp: o.summoned ? 0 : Math.round((b ? b.exp : def.exp * (o.elite ? ELITE.reward : 1)) * sc.exp),
     coin: o.summoned ? 0 : Math.round((b ? b.coin : def.coin * (o.elite ? ELITE.reward : 1)) * sc.reward),
     awake: !!o.summoned,
     dead: false,
@@ -512,6 +525,7 @@ function newEnemy(s: RunState, def: EnemyDef, x: number, y: number, group: numbe
     ringCd: ELITE.ringEvery * 0.6,
     hidden: !b && def.ai === 'lurk',
     show: 0,
+    owner: o.owner ?? 0,
   };
   s.enemies.push(e);
   return e;
@@ -573,6 +587,8 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
       hurt: 0,
       swing: 0,
       buff: { atk: 1, atkT: 0, speed: 1, speedT: 0, crit: 0, critT: 0, guard: 1, guardT: 0 },
+      slowT: 0,
+      slowMul: 1,
     },
     enemies: [],
     shots: [],
@@ -600,7 +616,7 @@ export function createRun(map: MapDef, mode: Mode, loadout: Loadout, opts: RunOp
     loot: [],
     picks: [],
     god: !!opts.god,
-    env: { id: region.env, f: loadout.hero === region.counter ? 0 : loadout.fx?.includes('ward') ? FX.ward.env : 1, gust: 0, warn: 0, acc: 0, k: 0 },
+    env: { id: region.env, f: loadout.hero === region.counter ? 0 : loadout.fx?.includes('ward') ? FX.ward.env : 1, gust: 0, warn: 0, acc: 0, k: 0, still: 0, vx: 0, vy: 0, blind: false },
     foeAtk: sc.atk,
     tag: 1,
     nextId: 1,
@@ -677,6 +693,8 @@ function killEnemy(s: RunState, e: Enemy) {
   e.hp = 0;
   push(s, { e: 'kill', x: e.x, y: e.y, size: e.r, elite: e.elite, boss: !!e.bossDef });
   if (e.summoned) return;
+  // 불러내는 요괴가 쓰러지면 불러낸 것도 사라진다
+  if (e.def.call && !e.bossDef) for (const o of s.enemies) if (o.owner === e.id && !o.dead) killEnemy(s, o);
   // 분열: 작은 것 여럿으로 갈라진다 (작은 것은 다시 갈라지지 않고, 처치 수·보상에 넣지 않는다)
   const split = e.bossDef ? undefined : e.def.split;
   if (split) {
@@ -810,7 +828,7 @@ function nearest(s: RunState, x: number, y: number, range: number, skipTag = 0):
 function shoot(s: RunState, foe: boolean, look: Shot['look'], x: number, y: number, ang: number, speed: number, range: number, r: number, mul: number, pierce: number, hit: OnHit | null) {
   let sh = s.shots.find((o) => !o.on);
   if (!sh) {
-    sh = { on: false, foe, look, x, y, vx: 0, vy: 0, r, left: 0, mul, hit, pierce, seen: [] };
+    sh = { on: false, foe, look, x, y, vx: 0, vy: 0, r, left: 0, mul, hit, pierce, seen: [], slowMul: 1, slowDur: 0, bounce: 0 };
     s.shots.push(sh);
   }
   sh.on = true;
@@ -826,6 +844,10 @@ function shoot(s: RunState, foe: boolean, look: Shot['look'], x: number, y: numb
   sh.hit = hit;
   sh.pierce = pierce;
   sh.seen.length = 0;
+  sh.slowMul = 1;
+  sh.slowDur = 0;
+  sh.bounce = 0;
+  return sh;
 }
 
 /** 동작 조각 하나를 지금 실행한다. power = 스킬 레벨 배율 */
@@ -997,7 +1019,7 @@ function stepWarns(s: RunState) {
       // 대원에게 너그럽게: 몸 가운데가 범위 안에 있어야 맞는다
       const hit = inShape(shape, w.x, w.y, w.ang, p.x, p.y, 0);
       const open = p.invuln <= 0;
-      if (hit) hurtPlayer(s, w.dmg);
+      if (hit && w.dmg > 0) hurtPlayer(s, w.dmg);
       // 끌어당기기: 맞았으면(구르는 중이 아니면) 낸 요괴 앞으로 끌려간다
       if (hit && open && w.after === 'pull' && src && s.phase === 'play') {
         const dx = src.x - p.x;
@@ -1009,6 +1031,15 @@ function stepWarns(s: RunState) {
       if (w.big) push(s, { e: 'boom', x: w.shape === 'line' ? w.x + (Math.cos(w.ang) * w.len) / 2 : w.x, y: w.shape === 'line' ? w.y + (Math.sin(w.ang) * w.len) / 2 : w.y, r: w.shape === 'line' ? w.w : w.r });
     }
     if (w.after === 'pool') s.pools.push({ x: w.x, y: w.y, r: w.r, left: w.aux, total: w.aux, dmg: w.aux2, acc: 0 });
+    // 불길: 줄을 따라 불이 남는다 (화차의 돌진 · 강철이의 불숨)
+    if (w.shape === 'line' && w.aux > 0 && (w.after === 'trail' || w.after === 'dash')) {
+      const gap = w.r * 1.5;
+      for (let d = w.r; d <= w.len - w.r * 0.5; d += gap) {
+        const x = w.x + Math.cos(w.ang) * d;
+        const y = w.y + Math.sin(w.ang) * d;
+        if (tileAt(s, x, y) !== 1) s.pools.push({ x, y, r: w.r, left: w.aux, total: w.aux, dmg: w.aux2, acc: 0, fire: true });
+      }
+    }
     if (!src) continue;
     if (w.after === 'boom') {
       // 자폭: 터지면 사라진다 (정예는 남는다)
@@ -1017,7 +1048,23 @@ function stepWarns(s: RunState) {
       for (let k = 0; k < w.aux; k++) shoot(s, true, 'fire', src.x, src.y, w.ang + (k / w.aux) * Math.PI * 2, w.aux2, 560, 14, w.dmg * 0.8, 0, null);
     } else if (w.after === 'dash') move(s, src, Math.cos(w.ang) * (w.len - src.r), Math.sin(w.ang) * (w.len - src.r), src.r);
     else if (w.after === 'jump') move(s, src, w.x - src.x, w.y - src.y, Math.min(src.r, TILE * 0.45));
-    else if (w.after === 'shoot') shoot(s, true, 'fire', src.x, src.y, Math.atan2(p.y - src.y, p.x - src.x), src.def.area, 620, 13, w.dmg, 0, null);
+    else if (w.after === 'shoot') {
+      const d = src.def;
+      const sh = shoot(s, true, 'fire', src.x, src.y, Math.atan2(p.y - src.y, p.x - src.x), d.area || 300, d.bounce ? 1300 : 620, 13, w.dmg, 0, null);
+      if (d.slow) (sh.slowMul = d.slow.mul), (sh.slowDur = d.slow.dur);
+      sh.bounce = d.bounce ?? 0;
+    } else if (w.after === 'call' && src.def.call) {
+      // 불러내기: 제 둘레에 작은 요괴 (처치 수·보상에 넣지 않는다)
+      const c = src.def.call;
+      const kind = ENEMIES[c.kind];
+      for (let k = 0; k < c.n; k++) {
+        const a = src.id + k * 2.4 + s.t;
+        const m = newEnemy(s, kind, src.x, src.y, -1, { summoned: true, mini: { hp: c.hp, size: c.size, atk: c.atk }, owner: src.id });
+        move(s, m, Math.cos(a) * 50, Math.sin(a) * 50, Math.min(m.r, TILE * 0.45));
+        m.cd = 0.8;
+      }
+      push(s, { e: 'sound', name: 'survBossWarn' });
+    }
   }
 }
 
@@ -1079,6 +1126,41 @@ function bossAct(s: RunState, e: Enemy, def: BossDef, dist: number, ang: number)
       addWarn(s, { shape: 'circle', x: e.x + Math.cos(ang) * d, y: e.y + Math.sin(ang) * d, r: m.r, t: m.warn + i * m.gap, dmg, src: e.id, big: true });
     }
     busy += (m.n - 1) * m.gap;
+  } else if (m.t === 'spiral') {
+    // 제 둘레를 친 뒤 구슬을 돌려 가며 쏜다 (arms 갈래, gap 초마다 turn 만큼 돈다)
+    addWarn(s, { shape: 'circle', x: e.x, y: e.y, r: m.r, t: m.warn, dmg, src: e.id, big: true });
+    for (let i = 0; i < m.n; i++) addWarn(s, { shape: 'none', t: m.warn + i * m.gap, ang: ang + i * m.turn, dmg, src: e.id, after: 'nova', aux: m.arms, aux2: m.speed });
+    busy += (m.n - 1) * m.gap;
+  } else if (m.t === 'wave') {
+    // 물결: 대원 쪽으로 가로지르는 줄이 차례로 밀려 나간다 (줄 사이에 서거나 굴러서 넘는다)
+    const px = -Math.sin(ang);
+    const py = Math.cos(ang);
+    for (let i = 0; i < m.n; i++) {
+      const d = e.r + 50 + i * m.step;
+      addWarn(s, { shape: 'line', x: e.x + Math.cos(ang) * d - (px * m.len) / 2, y: e.y + Math.sin(ang) * d - (py * m.len) / 2, ang: ang + Math.PI / 2, len: m.len, w: m.w, t: m.warn + i * m.gap, dmg, src: e.id, big: true });
+    }
+    busy += (m.n - 1) * m.gap;
+  } else if (m.t === 'sweep') {
+    // 낫 돌려 베기: 둘레를 n 조각으로 나눠 대원 쪽부터 차례로 벤다
+    for (let i = 0; i < m.n; i++) {
+      addWarn(s, { shape: 'arc', x: e.x, y: e.y, ang: ang + (m.dir ?? 1) * i * ((Math.PI * 2) / m.n), r: m.r, half: Math.PI / m.n, t: m.warn + i * m.gap, dmg, src: e.id, big: true });
+    }
+    busy += (m.n - 1) * m.gap;
+  } else if (m.t === 'scorch') {
+    // 불숨: 대원 쪽으로 n 줄기 (spread 만큼 벌려서), 지나간 자리에 불길이 남는다
+    const n = m.n ?? 1;
+    for (let i = 0; i < n; i++) {
+      const a = ang + (i - (n - 1) / 2) * (m.spread ?? 0);
+      addWarn(s, { shape: 'line', x: e.x, y: e.y, ang: a, len: m.len, w: m.w, r: m.w / 2, t: m.warn, dmg, src: e.id, after: 'trail', aux: m.pool.dur, aux2: e.atk * m.pool.mul, big: true });
+    }
+  } else if (m.t === 'cage') {
+    // 심판: 대원 둘레를 원으로 에워싸고, 조금 뒤 가운데를 친다 (가운데서 기다렸다가 밖으로 구른다)
+    for (let i = 0; i < m.n; i++) {
+      const a = ang + (i / m.n) * Math.PI * 2;
+      addWarn(s, { shape: 'circle', x: p.x + Math.cos(a) * m.d, y: p.y + Math.sin(a) * m.d, r: m.r, t: m.warn, dmg, src: e.id, big: true });
+    }
+    addWarn(s, { shape: 'circle', x: p.x, y: p.y, r: m.d - m.r * 0.5, t: m.warn + m.gap, dmg, src: e.id, big: true });
+    busy += m.gap;
   } else if (m.t === 'cross') {
     for (let i = 0; i < m.n; i++) addWarn(s, { shape: 'line', x: e.x, y: e.y, ang: ang + (m.turn ?? 0) + (i / m.n) * Math.PI * 2, len: m.len, w: m.w, t: m.warn, dmg, src: e.id, big: true });
   } else if (m.t === 'cone') {
@@ -1258,6 +1340,52 @@ function stepEnemies(s: RunState) {
           }
         } else approach(s, e, ux, uy);
         break;
+      case 'rage': {
+        // 체력이 내려가면 날뛴다: 빨라지고, 자주 치고, 세게 친다
+        const g = d.rage;
+        const mad = !!g && e.hp <= e.maxHp * g.at;
+        if (dist <= reach) {
+          if (e.cd <= 0) {
+            addWarn(s, { shape: 'circle', x: e.x + ux * d.area * 0.5, y: e.y + uy * d.area * 0.5, r: d.area + (e.r - d.r), t: d.windup, dmg: e.atk * (mad ? g.atk : 1), src: e.id });
+            e.busy = d.windup + 0.1;
+            e.cd = d.cd * (mad ? g.cd : 1);
+          }
+        } else {
+          chaseDir(s, e, ux, uy);
+          moveEnemy(s, e, chase.x, chase.y, mad ? g.speed : 1);
+        }
+        break;
+      }
+      case 'call': {
+        // 거리를 두고 작은 요괴를 불러낸다 (한꺼번에 max 마리까지, 모두 times 번). 더 못 부르면 한기를 쏜다
+        const c = d.call;
+        if (dist <= reach && e.cd <= 0) {
+          let mine = 0;
+          for (const o of list) if (o.owner === e.id && !o.dead) mine++;
+          if (c && mine + c.n <= c.max && e.calls < c.times) {
+            e.calls++;
+            addWarn(s, { shape: 'circle', x: e.x, y: e.y, r: 70, t: d.windup, dmg: 0, src: e.id, after: 'call' });
+            e.busy = d.windup + 0.2;
+            e.cd = d.cd;
+          } else {
+            addWarn(s, { shape: 'none', t: 0.5, dmg: e.atk, src: e.id, after: 'shoot' });
+            e.busy = 0.65;
+            e.cd = d.cd * 0.45;
+          }
+        } else if (dist < reach * 0.5) moveEnemy(s, e, -ux, -uy, 0.8);
+        else if (dist > reach * 0.85) approach(s, e, ux, uy);
+        break;
+      }
+      case 'blaze':
+        if (dist <= reach && e.cd <= 0) {
+          addWarn(s, { shape: 'line', x: e.x, y: e.y, ang, len: d.area, w: e.r * 2 + 12, r: d.trail?.r ?? 0, t: d.windup, dmg: e.atk, src: e.id, after: 'dash', aux: d.trail?.dur ?? 0, aux2: e.atk * (d.trail?.mul ?? 0), big: true });
+          e.busy = d.windup + 0.25;
+          e.cd = d.cd;
+        } else if (dist > reach * 0.85) approach(s, e, ux, uy);
+        else moveEnemy(s, e, -uy * (e.id % 2 ? 1 : -1), ux * (e.id % 2 ? 1 : -1), 0.6);
+        break;
+      case 'hex':
+      case 'bounce':
       case 'ranged':
         if (dist <= reach && e.cd <= 0) {
           addWarn(s, { shape: 'none', t: d.windup, dmg: e.atk, src: e.id, after: 'shoot' });
@@ -1304,6 +1432,16 @@ function stepShots(s: RunState) {
     sh.x += dx;
     sh.y += dy;
     sh.left -= Math.hypot(dx, dy);
+    if (sh.left > 0 && sh.bounce > 0 && tileAt(s, sh.x, sh.y) === 1) {
+      // 튕기는 탄: 부딪힌 벽의 방향에 따라 되튄다
+      const fx = tileAt(s, sh.x - dx, sh.y) !== 1;
+      const fy = tileAt(s, sh.x, sh.y - dy) !== 1;
+      if (fx || !fy) sh.vx = -sh.vx;
+      if (fy || !fx) sh.vy = -sh.vy;
+      sh.x -= dx;
+      sh.y -= dy;
+      sh.bounce--;
+    }
     if (sh.left <= 0 || tileAt(s, sh.x, sh.y) === 1) {
       sh.on = false;
       continue;
@@ -1314,6 +1452,8 @@ function stepShots(s: RunState) {
         // 구르는 중(무적)에는 그냥 지나간다
         if (p.invuln <= 0) {
           hurtPlayer(s, sh.mul);
+          // 꽃가루: 맞으면 한동안 느려진다
+          if (sh.slowDur > 0) (p.slowT = sh.slowDur), (p.slowMul = sh.slowMul);
           sh.on = false;
         }
       }
@@ -1362,7 +1502,10 @@ function stepZones(s: RunState) {
 export const slowTileMul = (s: RunState) => (s.env.id === 'mud' ? SLOW_TILE_MUL - (SLOW_TILE_MUL - ENV.mud.slow) * s.env.f : SLOW_TILE_MUL);
 
 /** 달그림자(4지형)에서 요괴가 보이는 거리 (다른 지형 · 막는 대원은 끝없이) */
-export const sightOf = (s: RunState) => (s.env.id === 'dark' && s.env.f > 0 ? ENV.dark.see / s.env.f : Infinity);
+export const sightOf = (s: RunState) =>
+  s.env.f <= 0 ? Infinity : s.env.id === 'dark' ? ENV.dark.see / s.env.f : s.env.id === 'glare' && s.env.blind ? ENV.glare.see / s.env.f : Infinity;
+/** 대원의 이동 배율: 꽃가루에 맞아 느려짐 · 졸음 (8지형) */
+export const playerSlow = (s: RunState) => (s.p.slowT > 0 ? s.p.slowMul : 1) * (s.env.id === 'sleep' ? 1 - (1 - ENV.sleep.slow) * s.env.acc * s.env.f : 1);
 
 /** 환경이 주는 피해: 방어·무적과 상관없이 그대로 받는다 (독) */
 function envHurt(s: RunState, n: number) {
@@ -1443,6 +1586,65 @@ function stepEnv(s: RunState) {
     }
     return;
   }
+  if (env.id === 'sleep') {
+    // 졸음 꽃가루 (8지형): 가만히 서 있으면 졸음이 쌓여 발이 느려진다. 걸으면 깨고, 구르면 바로 깬다
+    const z = ENV.sleep;
+    if (p.rollT > 0 || p.dashT > 0) {
+      env.still = 0;
+      env.acc = 0;
+    } else if (p.moving) {
+      env.still = 0;
+      env.acc = Math.max(0, env.acc - STEP / z.wake);
+    } else {
+      env.still += STEP;
+      if (env.still >= z.after && env.f > 0) {
+        if (env.acc === 0) push(s, { e: 'env', id: 'sleep', dir: 0 });
+        env.acc = Math.min(1, env.acc + STEP / z.full);
+      }
+    }
+    return;
+  }
+  if (env.id === 'slip') {
+    // 미끄러운 마루 (9지형): 멈추면 가던 쪽으로 미끄러진다 (stepPlayer 가 걷는 속도를 적어 둔다)
+    if (env.f <= 0 || p.moving || p.rollT > 0 || p.dashT > 0) return;
+    if (Math.abs(env.vx) + Math.abs(env.vy) < 0.15) {
+      env.vx = env.vy = 0;
+      return;
+    }
+    move(s, p, env.vx, env.vy, PLAYER_R);
+    env.vx *= ENV.slip.keep;
+    env.vy *= ENV.slip.keep;
+    return;
+  }
+  if (env.id === 'glare') {
+    // 새벽빛 (10지형): every 초마다 dur 초 동안 눈이 부셔 먼 요괴가 안 보이고 조준이 안 된다. warn 초 전에 알린다
+    const g = ENV.glare;
+    const k = Math.floor(s.t / g.every);
+    const ph = s.t - k * g.every;
+    const warn = ph >= g.every - g.warn ? 1 : 0;
+    if (warn && !env.warn) push(s, { e: 'env', id: 'glare', dir: 0 });
+    env.warn = warn;
+    env.blind = k >= 1 && ph < g.dur;
+    return;
+  }
+  if (env.id === 'fire') {
+    // 불길 (12지형): 불바닥을 밟으면 바로 데고, 벗어난 뒤에도 linger 번 더 덴다
+    const f = ENV.fire;
+    const on = env.f > 0 && tileAt(s, p.x, p.y) === 2;
+    if (on) {
+      if (env.k === 0) env.acc = f.tick - f.first;
+      env.k = f.linger;
+    }
+    if (on || env.k > 0) {
+      env.acc += STEP;
+      if (env.acc >= f.tick) {
+        env.acc -= f.tick;
+        if (!on) env.k--;
+        envHurt(s, Math.max(1, Math.round(s.stats.hp * f.pct * env.f)));
+      }
+    }
+    return;
+  }
   if (env.id !== 'wind') return;
   const w = ENV.wind;
   const k = Math.floor(s.t / w.every);
@@ -1474,7 +1676,10 @@ function stepPlayer(s: RunState, inp: Input) {
   if (p.invuln > 0) p.invuln -= STEP;
   if (p.hurt > 0) p.hurt -= STEP;
   if (p.swing > 0) p.swing -= STEP;
-  p.mp = Math.min(s.stats.mp, p.mp + s.stats.mp * MP_REGEN * STEP);
+  if (p.slowT > 0) p.slowT -= STEP;
+  // 찬 강바람 (11지형): 마력이 느리게 찬다
+  const regen = s.env.id === 'cold' ? 1 - (1 - ENV.cold.regen) * s.env.f : 1;
+  p.mp = Math.min(s.stats.mp, p.mp + s.stats.mp * MP_REGEN * regen * STEP);
 
   let mx = inp.mx;
   let my = inp.my;
@@ -1542,8 +1747,10 @@ function stepPlayer(s: RunState, inp: Input) {
     const d = Math.hypot(mx, my);
     p.fx = mx / d;
     p.fy = my / d;
-    const v = s.stats.speed * (b.speedT > 0 ? b.speed : 1) * (tileAt(s, p.x, p.y) === 2 ? slowTileMul(s) : 1) * STEP;
+    const v = s.stats.speed * (b.speedT > 0 ? b.speed : 1) * (tileAt(s, p.x, p.y) === 2 ? slowTileMul(s) : 1) * playerSlow(s) * STEP;
     move(s, p, mx * v, my * v, PLAYER_R);
+    // 미끄러운 마루 (9지형): 멈추면 이 속도로 미끄러진다
+    if (s.env.id === 'slip') (s.env.vx = mx * v * s.env.f), (s.env.vy = my * v * s.env.f);
   }
 
   if (inp.unique && p.uniqueCd <= 0 && cast(s, s.hero.unique, false)) p.uniqueCd = s.hero.unique.cd;

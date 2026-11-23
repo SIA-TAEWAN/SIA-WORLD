@@ -145,7 +145,9 @@ eq((await as(u1, `select public.character_progress('twelve') as j`))[0].j, { hav
 // ---------- 시작 검사 ----------
 await rejects(start(u1, '1-2'), 'map locked', '잠긴 맵');
 await rejects(start(u1, '9-9'), 'bad map', '없는 맵');
-await rejects(start(u1, '8-1'), 'bad map', '준비 안 된 지형');
+await rejects(start(u1, 'final'), 'bad map', '최종보스 맵은 아직 준비 안 됨 (7단계)');
+await rejects(start(u1, '13-1'), 'bad map', '없는 지형');
+await rejects(start(u1, '12-1'), 'map locked', '12지형은 준비됐지만 11지형 보스를 잡아야 열린다');
 await rejects(start(u1, '4-1'), 'map locked', '4지형은 준비됐지만 3지형 보스를 잡아야 열린다');
 await rejects(start(u1, '1-1', 'rat', 'hard'), 'bad map', '어려움 모드는 준비 중');
 await rejects(start(u1, '1-1', 'rat', 'easy'), 'bad mode', '없는 모드');
@@ -314,7 +316,7 @@ ok(diff === 0, `기기 규칙과 서버가 ${expect.steps.length}단계 모두 �
 {
   const s = await state(u1);
   console.log(`     끝 기록: Lv ${s.level} · 엽전 ${s.coins} · 강화석 ${s.stones} · 장비 ${s.items.length}개(보관함 ${s.items.filter((i) => i.box).length}) · 열쇠 ${JSON.stringify(s.keys.normal)} · 얻어 본 것 ${JSON.stringify(s.codex)}`);
-  ok(s.keys.normal.includes(1) && s.codex.includes('s-n1') && s.codex.includes('s-n7') && s.level > 25, '1지형 열쇠 · 별 24개 보상(1 · 7지형)을 받았고, 7지형까지 깨서 레벨이 올랐다');
+  ok(s.keys.normal.includes(1) && s.codex.includes('s-n1') && s.codex.includes('s-n12') && s.level > 40, '1지형 열쇠 · 별 24개 보상(1 · 12지형)을 받았고, 12지형까지 깨서 레벨이 올랐다');
 }
 
 // ---------- 고양이: 조건(보통 모드 최종보스) 뒤에 사서 고른다 (u3) ----------

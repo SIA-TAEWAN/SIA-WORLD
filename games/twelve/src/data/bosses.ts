@@ -1,6 +1,6 @@
 /**
  * 지형 보스 12종 (시아디펜스 보스 그림). 큰 공격은 모두 땅에 빨간 범위가 먼저 보인다 (PRD '요괴 공격 예고').
- * 능력치는 Lv1 맵 기준 — 맵 배율을 곱한다. 1~7지형 보스는 저마다의 공격 패턴이 있고, 8지형부터는 아직 기본 패턴을 쓴다.
+ * 능력치는 Lv1 맵 기준 — 맵 배율을 곱한다. 보스마다 그 보스만의 공격이 하나씩 있다.
  */
 import type { EnemyKind } from './enemies';
 
@@ -28,7 +28,17 @@ export type BossMove =
   /** 내 둘레를 친 뒤 구슬 n 개를 사방으로 쏜다 (speed = 구슬 속도, turn = 돌려 놓는 각도) */
   | { t: 'nova'; n: number; r: number; speed: number; warn: number; mul: number; turn?: number }
   /** 대원 쪽으로 줄지어 떨어지는 원 n 개 (step 간격, gap 초씩 늦게 — 옆으로 비키면 안 맞는다) */
-  | { t: 'march'; n: number; r: number; step: number; warn: number; mul: number; gap: number };
+  | { t: 'march'; n: number; r: number; step: number; warn: number; mul: number; gap: number }
+  /** 내 둘레를 친 뒤 구슬을 돌려 가며 쏜다: n 번, gap 초마다 turn 만큼 돌면서 arms 갈래씩 */
+  | { t: 'spiral'; n: number; arms: number; r: number; speed: number; warn: number; mul: number; gap: number; turn: number }
+  /** 물결: 대원 쪽으로 가로지르는 줄 n 개가 step 간격으로, gap 초씩 늦게 (줄 사이에 서거나 굴러서 넘는다) */
+  | { t: 'wave'; n: number; len: number; w: number; step: number; warn: number; mul: number; gap: number }
+  /** 돌려 베기: 둘레를 n 조각으로 나눠 대원 쪽부터 gap 초씩 늦게 벤다 (dir = 도는 쪽) */
+  | { t: 'sweep'; n: number; r: number; warn: number; mul: number; gap: number; dir?: 1 | -1 }
+  /** 불숨: 대원 쪽으로 직선 n 줄기(spread 만큼 벌려서), 지나간 자리에 불길이 남는다 */
+  | { t: 'scorch'; len: number; w: number; warn: number; mul: number; n?: number; spread?: number; pool: { dur: number; mul: number } }
+  /** 에워싸기: 대원 둘레(거리 d)에 원 n 개, gap 초 뒤 가운데 */
+  | { t: 'cage'; n: number; r: number; d: number; warn: number; mul: number; gap: number };
 
 export interface BossDef {
   id: BossId;
@@ -155,9 +165,75 @@ export const BOSSES: Record<BossId, BossDef> = {
     ],
     hardMoves: [{ t: 'cross', n: 6, len: 560, w: 80, warn: 0.9, mul: 1.2 }],
   }),
-  yagwanggwi: B('yagwanggwi', '야광귀', 185, 'spirit', ['신발을 두고 가거라.']),
-  imugi: B('imugi', '이무기', 205, 'guard', ['여의주만 있으면 용이 될 텐데.']),
-  reaper: B('reaper', '저승사자', 190, 'skeleton', ['명부에 네 이름이 있구나.']),
-  gangcheori: B('gangcheori', '강철이', 200, 'skeleton', ['내가 지나간 자리엔 풀도 안 난다.']),
-  yeomra: B('yeomra', '염라대왕', 215, 'skeleton', ['열두 길의 끝에 온 것을 환영한다.']),
+  // 8지형: 도깨비불을 소용돌이처럼 돌려 쏜다 — 불 사이로 돌아 들어간다
+  yagwanggwi: B('yagwanggwi', '야광귀', 185, 'sleeper', ['신발을 두고 가거라.', '체 구멍을 세다 날이 샌 게 아직도 분하구나.', '졸리지? 자고 가렴. 영영.'], {
+    last: '벌써… 날이 밝았느냐…',
+    hp: 3700, atk: 18, speed: 110, gap: 1.4, exp: 200, coin: 100,
+    moves: [
+      { t: 'spiral', n: 14, arms: 2, r: 140, speed: 270, warn: 0.9, mul: 1.0, gap: 0.13, turn: 0.42 },
+      { t: 'leap', r: 130, warn: 0.8, mul: 1.2, count: 2, gap: 0.55 },
+      { t: 'cone', r: 340, half: 0.85, warn: 0.85, mul: 1.1 },
+      { t: 'spiral', n: 18, arms: 2, r: 140, speed: 270, warn: 0.9, mul: 1.0, gap: 0.11, turn: -0.38 },
+      { t: 'barrage', n: 5, r: 100, spread: 270, warn: 1.0, mul: 1.1, gap: 0.14 },
+      { t: 'ring', r: 260, warn: 1.0, mul: 1.2 },
+    ],
+    hardMoves: [{ t: 'spiral', n: 16, arms: 3, r: 150, speed: 300, warn: 0.85, mul: 1.0, gap: 0.12, turn: 0.33 }],
+  }),
+  // 9지형: 물결이 줄지어 밀려온다 — 줄 사이에 서거나 굴러서 넘는다
+  imugi: B('imugi', '이무기', 205, 'guard', ['여의주만 있으면 용이 될 텐데.', '천 년을 기다렸다. 너희 열쇠가 내 여의주다.', '물결에 쓸려 가거라!'], {
+    last: '하늘이… 저리 가까웠는데…',
+    hp: 3900, atk: 19, speed: 80, gap: 1.6, exp: 200, coin: 100,
+    moves: [
+      { t: 'wave', n: 5, len: 840, w: 84, step: 170, warn: 1.0, mul: 1.2, gap: 0.24 },
+      { t: 'charge', len: 700, w: 140, warn: 0.9, mul: 1.4 },
+      { t: 'rake', n: 4, len: 620, w: 78, space: 185, warn: 0.9, mul: 1.2 },
+      { t: 'wave', n: 6, len: 840, w: 84, step: 155, warn: 0.9, mul: 1.2, gap: 0.2 },
+      { t: 'slam', r: 150, warn: 0.9, mul: 1.2, count: 2, gap: 0.6 },
+      { t: 'ring', r: 270, warn: 1.1, mul: 1.2 },
+    ],
+    hardMoves: [{ t: 'wave', n: 8, len: 840, w: 90, step: 150, warn: 0.9, mul: 1.2, gap: 0.15 }],
+  }),
+  // 10지형: 낫을 돌려 둘레를 차례로 벤다 — 도는 쪽을 따라 돌거나 굴러서 지난다
+  reaper: B('reaper', '저승사자', 190, 'skeleton', ['명부에 네 이름이 있구나.', '새벽닭이 울기 전에 데려가야겠다.', '낫 그림자를 피할 수 있겠느냐?'], {
+    last: '명부를… 다시 봐야겠구나…',
+    hp: 4000, atk: 19, speed: 115, gap: 1.3, exp: 200, coin: 100,
+    moves: [
+      { t: 'sweep', n: 4, r: 300, warn: 0.9, mul: 1.2, gap: 0.34 },
+      { t: 'leap', r: 130, warn: 0.8, mul: 1.2, count: 2, gap: 0.5 },
+      { t: 'cross', n: 4, len: 540, w: 86, warn: 0.85, mul: 1.2 },
+      { t: 'sweep', n: 6, r: 320, warn: 0.85, mul: 1.2, gap: 0.26, dir: -1 },
+      { t: 'charge', len: 660, w: 120, warn: 0.75, mul: 1.3 },
+      { t: 'slam', r: 135, warn: 0.8, mul: 1.1, count: 3, gap: 0.45 },
+    ],
+    hardMoves: [{ t: 'sweep', n: 8, r: 340, warn: 0.85, mul: 1.2, gap: 0.2 }],
+  }),
+  // 11지형: 불숨을 뿜어 지나간 자리를 태운다 — 불길이 꺼질 때까지 그 자리를 못 쓴다
+  gangcheori: B('gangcheori', '강철이', 200, 'skeleton', ['내가 지나간 자리엔 풀도 안 난다.', '강물도 내 불 앞에서는 끓는다.', '재가 되어 삼도천에 뿌려지거라!'], {
+    last: '비가… 오는구나…',
+    hp: 4300, atk: 20, speed: 90, gap: 1.5, exp: 200, coin: 100,
+    moves: [
+      { t: 'scorch', len: 640, w: 120, warn: 0.9, mul: 1.2, pool: { dur: 4, mul: 0.4 } },
+      { t: 'barrage', n: 5, r: 95, spread: 280, warn: 1.0, mul: 1.0, gap: 0.15 },
+      { t: 'charge', len: 680, w: 140, warn: 0.9, mul: 1.4 },
+      { t: 'scorch', len: 600, w: 96, warn: 1.0, mul: 1.2, n: 3, spread: 0.55, pool: { dur: 4, mul: 0.4 } },
+      { t: 'cone', r: 340, half: 0.9, warn: 0.85, mul: 1.2 },
+      { t: 'ring', r: 270, warn: 1.0, mul: 1.2 },
+    ],
+    hardMoves: [{ t: 'scorch', len: 620, w: 86, warn: 0.95, mul: 1.2, n: 5, spread: 0.5, pool: { dur: 5, mul: 0.4 } }],
+  }),
+  // 12지형: 대원을 에워싸고 가운데를 친다 — 앞 보스들의 공격도 섞어 쓴다
+  yeomra: B('yeomra', '염라대왕', 215, 'skeleton', ['열두 길의 끝에 온 것을 환영한다.', '업경에 네 지난 길이 다 비치는구나.', '판결을 내리겠다!'], {
+    last: '열쇠를… 가져가거라. 허나 봉인은 아직…',
+    hp: 4800, atk: 21, speed: 85, gap: 1.4, exp: 200, coin: 100,
+    moves: [
+      { t: 'cage', n: 8, r: 85, d: 215, warn: 1.0, mul: 1.2, gap: 0.55 },
+      { t: 'cross', n: 6, len: 560, w: 80, warn: 0.9, mul: 1.2 },
+      { t: 'scorch', len: 620, w: 100, warn: 1.0, mul: 1.2, n: 3, spread: 0.6, pool: { dur: 3.5, mul: 0.4 } },
+      { t: 'cage', n: 10, r: 80, d: 235, warn: 0.95, mul: 1.2, gap: 0.5 },
+      { t: 'sweep', n: 4, r: 310, warn: 0.9, mul: 1.2, gap: 0.32 },
+      { t: 'slam', r: 140, warn: 0.8, mul: 1.2, count: 3, gap: 0.5 },
+      { t: 'nova', n: 12, r: 160, speed: 300, warn: 0.9, mul: 1.1 },
+    ],
+    hardMoves: [{ t: 'wave', n: 6, len: 840, w: 84, step: 160, warn: 0.9, mul: 1.2, gap: 0.2 }],
+  }),
 };

@@ -30,14 +30,16 @@ export const GROUND: Record<Ground, { tile: string; floor: number; wall: number;
   underworld: { tile: 'tile-underworld', floor: ROULETTE.winter, wall: COLOR.inkSoft, wallDark: COLOR.outline, slow: COLOR.emptyLine },
 };
 
-/** 2지형은 물웅덩이 대신 진흙탕(흙색), 6지형은 독이 낀 늪(잿빛)이다 */
+/** 2지형은 물웅덩이 대신 진흙탕(흙색), 6지형은 독이 낀 늪(잿빛), 12지형은 불바닥(붉은빛)이다 */
 export const groundOf = (region: number) => {
   const r = regionOf(region);
-  return r.env === 'mud' ? { ...GROUND[r.ground], slow: COLOR.inkSoft } : r.env === 'poison' ? { ...GROUND[r.ground], slow: COLOR.draw } : GROUND[r.ground];
+  return r.env === 'mud' ? { ...GROUND[r.ground], slow: COLOR.inkSoft } : r.env === 'poison' ? { ...GROUND[r.ground], slow: COLOR.draw } : r.env === 'fire' ? { ...GROUND[r.ground], slow: COLOR.lose } : GROUND[r.ground];
 };
 
 /** 기존 그림을 돌려 쓰는 요괴의 색 (전용 그림이 생기면 지운다 — ASSETS.md) */
-export const ENEMY_TINT: Partial<Record<EnemyKind, number>> = { mud: COLOR.emptyLine, lynx: COLOR.primaryLight, shade: COLOR.skyDeep, catfish: COLOR.teamA, toad: COLOR.win, bomber: COLOR.lose };
+export const ENEMY_TINT: Partial<Record<EnemyKind, number>> = { mud: COLOR.emptyLine, lynx: COLOR.primaryLight, shade: COLOR.skyDeep, catfish: COLOR.teamA, toad: COLOR.win, bomber: COLOR.lose,
+  sleeper: COLOR.pink, acorn: COLOR.primaryDeep, yaksha: COLOR.cardRed, ferryman: COLOR.teamA, firecart: COLOR.lose,
+};
 
 /** 이 맵에서 받을 기본 그림 이름 (요괴·보스·바닥·효과) */
 export function artFor(map: MapDef): string[] {
@@ -53,6 +55,8 @@ export function artFor(map: MapDef): string[] {
     names.push(b.art);
     kinds.add(b.summon.kind);
   }
+  // 불러내는 요괴(뱃사공 망령)가 부르는 것의 그림도 받는다
+  for (const k of [...kinds]) if (ENEMIES[k].call) kinds.add(ENEMIES[k].call!.kind);
   for (const k of kinds) names.push(ENEMIES[k].art);
   // 같은 그림을 돌려 쓰는 요괴가 있다
   return [...new Set(names)];

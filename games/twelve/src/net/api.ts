@@ -316,6 +316,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       newStars: Number(res.newStars) || 0,
       first: !!res.first,
       joined: typeof res.joined === 'string' && isHero(res.joined) ? res.joined : null,
+      gift: Number(res.gift) || 0,
       siaCoin: !!res.siaCoin,
       items: (Array.isArray(res.items) ? res.items : []).map((it) => ({ id: String(it.id), base: String(it.base), plus: 0, lock: false, box: !!it.box })),
       stones: Number(res.stones) || 0,

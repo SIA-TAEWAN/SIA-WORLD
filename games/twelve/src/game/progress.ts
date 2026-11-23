@@ -6,7 +6,7 @@
 import { EXIT_KILL_RATIO } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ELITE, ENEMIES, ENEMY_IDS, type EnemyKind } from '../data/enemies';
-import { BAG, POTION, POTION_SIZES } from '../data/economy';
+import { BAG, POTION, POTION_SIZES, bossGift } from '../data/economy';
 import { addExp, expPenaltyPct, type Loadout } from '../data/growth';
 import { HEROES, STARTERS, heroOf, isHero, joinsAt, type HeroId } from '../data/heroes';
 import { mapKillMax, mapOf, mapsOf, type MapDef } from '../data/maps';
@@ -239,6 +239,8 @@ export interface FinishResult {
   first: boolean;
   /** 새로 합류한 대원 */
   joined: HeroId | null;
+  /** 보스의 선물로 받은 강화석 (10~12지형 보스를 처음 잡았을 때. stones 에도 들어 있다) */
+  gift: number;
   /** 시아코인을 받았는지 (서버만) */
   siaCoin: boolean;
   /** 얻은 것 (클리어한 판만): 장비 · 강화석 · 물약 [체력 소·중·대, 마력 소·중·대] · 열쇠 */
@@ -293,7 +295,7 @@ export function mapReward(map: MapDef, mode: Mode): MapReward {
   const max = mapKillMax(map, mode);
   const kinds: MapReward['kinds'] = {};
   for (const k of ENEMY_IDS) {
-    if (max.kinds[k]) kinds[k] = { max: max.kinds[k]!, exp: Math.round(ENEMIES[k].exp * sc.reward), coin: Math.round(ENEMIES[k].coin * sc.reward) };
+    if (max.kinds[k]) kinds[k] = { max: max.kinds[k]!, exp: Math.round(ENEMIES[k].exp * sc.exp), coin: Math.round(ENEMIES[k].coin * sc.reward) };
   }
   // 정예는 맵마다 한 종류다 (그 맵 무리의 elite)
   const eliteKind = map.groups.find((g) => g.elite)?.elite;
@@ -303,9 +305,9 @@ export function mapReward(map: MapDef, mode: Mode): MapReward {
     total: max.total,
     kinds,
     elites: max.elites,
-    eliteExp: eliteKind ? Math.round(ENEMIES[eliteKind].exp * ELITE.reward * sc.reward) : 0,
+    eliteExp: eliteKind ? Math.round(ENEMIES[eliteKind].exp * ELITE.reward * sc.exp) : 0,
     eliteCoin: eliteKind ? Math.round(ENEMIES[eliteKind].coin * ELITE.reward * sc.reward) : 0,
-    bossExp: boss ? Math.round(boss.exp * sc.reward) : 0,
+    bossExp: boss ? Math.round(boss.exp * sc.exp) : 0,
     bossCoin: boss ? Math.round(boss.coin * sc.reward) : 0,
     chestCoin: chestCoins(sc.reward),
   };
@@ -378,6 +380,7 @@ export function applyReport(p: TwelveProfile, r: RunReport, seed = 0): FinishRes
     newStars: 0,
     first: false,
     joined: null,
+    gift: 0,
     siaCoin: false,
     items: [],
     stones: 0,
@@ -393,6 +396,12 @@ export function applyReport(p: TwelveProfile, r: RunReport, seed = 0): FinishRes
   rec.stars |= out.stars;
   rec.clears++;
   rec.best = rec.best ? Math.min(rec.best, r.time) : r.time;
+  // 보스의 선물: 대원이 합류하지 않는 지형의 보스를 이 모드에서 처음 잡았다
+  if (out.first && map.boss && r.boss) {
+    out.gift = bossGift(map.region);
+    p.stones += out.gift;
+    out.stones += out.gift;
+  }
 
   // 드랍: 일반 요괴 → 정예 → 보스
   const ctx = dropCtx(p, r.map, r.mode, seed);
@@ -437,7 +446,8 @@ export function setHero(p: TwelveProfile, hero: string, cat = false): string | n
 /** 지형 보스를 잡으면 합류하는 대원 이름 (지형 화면 안내) */
 export const joinText = (region: number) => {
   const h = joinsAt(region);
-  return h ? `보스를 처음 잡으면 ${h.name}(${h.animal})가 합류해요` : '';
+  const gift = bossGift(region);
+  return h ? `보스를 처음 잡으면 ${h.name}(${h.animal})가 합류해요` : gift ? `보스를 처음 잡으면 강화석 꾸러미(${gift}개)를 받아요` : '';
 };
 
 /** 서버·기기가 거절한 까닭 → 화면 글 */

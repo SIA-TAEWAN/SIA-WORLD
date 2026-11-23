@@ -35,6 +35,9 @@ language sql immutable as $$
     when 'bag_max' then 80
     when 'potion_max' then 20
     when 'max_plus' then 9
+    when 'boss_gift_10' then 15
+    when 'boss_gift_11' then 20
+    when 'boss_gift_12' then 30
     when 'tower_cp' then 10
     when 'tower_elite_every' then 5
     when 'tower_min_time' then 2
@@ -127,7 +130,15 @@ language sql immutable as $$
     ('7-5', 'normal', 7, 5, 36, 700, false, 165, 1, 375, 188, 0, 0, 188, '{"club":[22,63,31],"fox":[21,38,19],"guard":[77,63,31],"skeleton":[19,50,25],"bomber":[25,56,25]}'::jsonb),
     ('7-6', 'normal', 7, 6, 37, 650, false, 143, 2, 384, 192, 0, 0, 192, '{"club":[20,64,32],"fox":[17,38,19],"guard":[64,64,32],"skeleton":[19,51,26],"bomber":[21,58,26]}'::jsonb),
     ('7-7', 'normal', 7, 7, 37, 690, false, 153, 2, 384, 192, 0, 0, 192, '{"club":[17,64,32],"fox":[18,38,19],"guard":[72,64,32],"skeleton":[23,51,26],"bomber":[21,58,26]}'::jsonb),
-    ('7-8', 'normal', 7, 8, 38, 600, true, 99, 1, 393, 197, 983, 524, 197, '{"club":[15,66,33],"fox":[12,39,20],"guard":[48,66,33],"skeleton":[11,52,26],"bomber":[12,59,26]}'::jsonb)
+    ('7-8', 'normal', 7, 8, 38, 600, true, 99, 1, 393, 197, 983, 524, 197, '{"club":[15,66,33],"fox":[12,39,20],"guard":[48,66,33],"skeleton":[11,52,26],"bomber":[12,59,26]}'::jsonb),
+    ('8-1', 'normal', 8, 1, 39, 540, false, 99, 0, 0, 0, 0, 0, 201, '{"guard":[99,67,34]}'::jsonb),
+    ('8-2', 'normal', 8, 2, 39, 410, false, 83, 0, 0, 0, 0, 0, 201, '{"guard":[43,67,34],"sleeper":[40,80,34]}'::jsonb),
+    ('8-3', 'normal', 8, 3, 40, 450, false, 112, 1, 206, 82, 0, 0, 206, '{"wisp":[34,34,14],"guard":[51,69,34],"sleeper":[26,82,34]}'::jsonb),
+    ('8-4', 'normal', 8, 4, 41, 660, false, 151, 1, 336, 168, 0, 0, 210, '{"wisp":[25,35,14],"guard":[81,70,35],"skeleton":[24,56,28],"sleeper":[20,84,35]}'::jsonb),
+    ('8-5', 'normal', 8, 5, 41, 610, false, 156, 1, 252, 126, 0, 0, 210, '{"wisp":[22,35,14],"fox":[27,42,21],"guard":[73,70,35],"skeleton":[20,56,28],"sleeper":[13,84,35]}'::jsonb),
+    ('8-6', 'normal', 8, 6, 42, 600, false, 142, 2, 257, 129, 0, 0, 214, '{"wisp":[23,36,14],"fox":[16,43,21],"guard":[64,72,36],"skeleton":[18,57,29],"sleeper":[19,86,36]}'::jsonb),
+    ('8-7', 'normal', 8, 7, 43, 700, false, 169, 2, 263, 131, 0, 0, 219, '{"wisp":[21,37,15],"fox":[20,44,22],"guard":[79,73,37],"skeleton":[24,58,29],"sleeper":[23,88,37]}'::jsonb),
+    ('8-8', 'normal', 8, 8, 43, 600, true, 91, 1, 263, 131, 1460, 730, 219, '{"wisp":[14,37,15],"fox":[11,44,22],"guard":[44,73,37],"skeleton":[8,58,29],"sleeper":[13,88,37]}'::jsonb)
 -- </gen:maps>
   ) as t(map_id, mode, region, no, level, par, boss, total, elites, elite_exp, elite_coin, boss_exp, boss_coin, chest_coin, kinds)
 $$;
@@ -288,91 +299,91 @@ language sql immutable as $$
     ('c-crit-2', 'acc', 2, false, false, 0, 405, 2, 0),
     ('c-potion-2', 'acc', 2, false, false, 0, 405, 2, 0),
     ('c-coin-2', 'acc', 2, false, false, 0, 405, 2, 8),
-    ('w-sword-3', 'weapon', 3, false, true, 4800, 480, 2, 0),
-    ('w-spear-3', 'weapon', 3, false, true, 4800, 480, 2, 0),
-    ('w-bow-3', 'weapon', 3, false, true, 4800, 480, 2, 0),
-    ('w-fan-3', 'weapon', 3, false, true, 4800, 480, 2, 0),
-    ('a-3', 'armor', 3, false, true, 4800, 480, 2, 0),
+    ('w-sword-3', 'weapon', 3, false, true, 6400, 480, 2, 0),
+    ('w-spear-3', 'weapon', 3, false, true, 6400, 480, 2, 0),
+    ('w-bow-3', 'weapon', 3, false, true, 6400, 480, 2, 0),
+    ('w-fan-3', 'weapon', 3, false, true, 6400, 480, 2, 0),
+    ('a-3', 'armor', 3, false, true, 6400, 480, 2, 0),
     ('c-mp-3', 'acc', 3, false, false, 0, 720, 2, 0),
     ('c-speed-3', 'acc', 3, false, false, 0, 720, 2, 0),
     ('c-crit-3', 'acc', 3, false, false, 0, 720, 2, 0),
     ('c-potion-3', 'acc', 3, false, false, 0, 720, 2, 0),
     ('c-coin-3', 'acc', 3, false, false, 0, 720, 2, 9),
-    ('w-sword-4', 'weapon', 4, false, true, 7500, 750, 3, 0),
-    ('w-spear-4', 'weapon', 4, false, true, 7500, 750, 3, 0),
-    ('w-bow-4', 'weapon', 4, false, true, 7500, 750, 3, 0),
-    ('w-fan-4', 'weapon', 4, false, true, 7500, 750, 3, 0),
-    ('a-4', 'armor', 4, false, true, 7500, 750, 3, 0),
+    ('w-sword-4', 'weapon', 4, false, true, 12500, 750, 3, 0),
+    ('w-spear-4', 'weapon', 4, false, true, 12500, 750, 3, 0),
+    ('w-bow-4', 'weapon', 4, false, true, 12500, 750, 3, 0),
+    ('w-fan-4', 'weapon', 4, false, true, 12500, 750, 3, 0),
+    ('a-4', 'armor', 4, false, true, 12500, 750, 3, 0),
     ('c-mp-4', 'acc', 4, false, false, 0, 1125, 3, 0),
     ('c-speed-4', 'acc', 4, false, false, 0, 1125, 3, 0),
     ('c-crit-4', 'acc', 4, false, false, 0, 1125, 3, 0),
     ('c-potion-4', 'acc', 4, false, false, 0, 1125, 3, 0),
     ('c-coin-4', 'acc', 4, false, false, 0, 1125, 3, 11),
-    ('w-sword-5', 'weapon', 5, false, true, 10800, 1080, 3, 0),
-    ('w-spear-5', 'weapon', 5, false, true, 10800, 1080, 3, 0),
-    ('w-bow-5', 'weapon', 5, false, true, 10800, 1080, 3, 0),
-    ('w-fan-5', 'weapon', 5, false, true, 10800, 1080, 3, 0),
-    ('a-5', 'armor', 5, false, true, 10800, 1080, 3, 0),
+    ('w-sword-5', 'weapon', 5, false, true, 21600, 1080, 3, 0),
+    ('w-spear-5', 'weapon', 5, false, true, 21600, 1080, 3, 0),
+    ('w-bow-5', 'weapon', 5, false, true, 21600, 1080, 3, 0),
+    ('w-fan-5', 'weapon', 5, false, true, 21600, 1080, 3, 0),
+    ('a-5', 'armor', 5, false, true, 21600, 1080, 3, 0),
     ('c-mp-5', 'acc', 5, false, false, 0, 1620, 3, 0),
     ('c-speed-5', 'acc', 5, false, false, 0, 1620, 3, 0),
     ('c-crit-5', 'acc', 5, false, false, 0, 1620, 3, 0),
     ('c-potion-5', 'acc', 5, false, false, 0, 1620, 3, 0),
     ('c-coin-5', 'acc', 5, false, false, 0, 1620, 3, 12),
-    ('w-sword-6', 'weapon', 6, false, true, 14700, 1470, 4, 0),
-    ('w-spear-6', 'weapon', 6, false, true, 14700, 1470, 4, 0),
-    ('w-bow-6', 'weapon', 6, false, true, 14700, 1470, 4, 0),
-    ('w-fan-6', 'weapon', 6, false, true, 14700, 1470, 4, 0),
-    ('a-6', 'armor', 6, false, true, 14700, 1470, 4, 0),
+    ('w-sword-6', 'weapon', 6, false, true, 34300, 1470, 4, 0),
+    ('w-spear-6', 'weapon', 6, false, true, 34300, 1470, 4, 0),
+    ('w-bow-6', 'weapon', 6, false, true, 34300, 1470, 4, 0),
+    ('w-fan-6', 'weapon', 6, false, true, 34300, 1470, 4, 0),
+    ('a-6', 'armor', 6, false, true, 34300, 1470, 4, 0),
     ('c-mp-6', 'acc', 6, false, false, 0, 2205, 4, 0),
     ('c-speed-6', 'acc', 6, false, false, 0, 2205, 4, 0),
     ('c-crit-6', 'acc', 6, false, false, 0, 2205, 4, 0),
     ('c-potion-6', 'acc', 6, false, false, 0, 2205, 4, 0),
     ('c-coin-6', 'acc', 6, false, false, 0, 2205, 4, 14),
-    ('w-sword-7', 'weapon', 7, false, true, 19200, 1920, 4, 0),
-    ('w-spear-7', 'weapon', 7, false, true, 19200, 1920, 4, 0),
-    ('w-bow-7', 'weapon', 7, false, true, 19200, 1920, 4, 0),
-    ('w-fan-7', 'weapon', 7, false, true, 19200, 1920, 4, 0),
-    ('a-7', 'armor', 7, false, true, 19200, 1920, 4, 0),
+    ('w-sword-7', 'weapon', 7, false, true, 51200, 1920, 4, 0),
+    ('w-spear-7', 'weapon', 7, false, true, 51200, 1920, 4, 0),
+    ('w-bow-7', 'weapon', 7, false, true, 51200, 1920, 4, 0),
+    ('w-fan-7', 'weapon', 7, false, true, 51200, 1920, 4, 0),
+    ('a-7', 'armor', 7, false, true, 51200, 1920, 4, 0),
     ('c-mp-7', 'acc', 7, false, false, 0, 2880, 4, 0),
     ('c-speed-7', 'acc', 7, false, false, 0, 2880, 4, 0),
     ('c-crit-7', 'acc', 7, false, false, 0, 2880, 4, 0),
     ('c-potion-7', 'acc', 7, false, false, 0, 2880, 4, 0),
     ('c-coin-7', 'acc', 7, false, false, 0, 2880, 4, 15),
-    ('w-sword-8', 'weapon', 8, false, true, 24300, 2430, 5, 0),
-    ('w-spear-8', 'weapon', 8, false, true, 24300, 2430, 5, 0),
-    ('w-bow-8', 'weapon', 8, false, true, 24300, 2430, 5, 0),
-    ('w-fan-8', 'weapon', 8, false, true, 24300, 2430, 5, 0),
-    ('a-8', 'armor', 8, false, true, 24300, 2430, 5, 0),
+    ('w-sword-8', 'weapon', 8, false, true, 72900, 2430, 5, 0),
+    ('w-spear-8', 'weapon', 8, false, true, 72900, 2430, 5, 0),
+    ('w-bow-8', 'weapon', 8, false, true, 72900, 2430, 5, 0),
+    ('w-fan-8', 'weapon', 8, false, true, 72900, 2430, 5, 0),
+    ('a-8', 'armor', 8, false, true, 72900, 2430, 5, 0),
     ('c-mp-8', 'acc', 8, false, false, 0, 3645, 5, 0),
     ('c-speed-8', 'acc', 8, false, false, 0, 3645, 5, 0),
     ('c-crit-8', 'acc', 8, false, false, 0, 3645, 5, 0),
     ('c-potion-8', 'acc', 8, false, false, 0, 3645, 5, 0),
     ('c-coin-8', 'acc', 8, false, false, 0, 3645, 5, 17),
-    ('w-sword-9', 'weapon', 9, false, true, 30000, 3000, 5, 0),
-    ('w-spear-9', 'weapon', 9, false, true, 30000, 3000, 5, 0),
-    ('w-bow-9', 'weapon', 9, false, true, 30000, 3000, 5, 0),
-    ('w-fan-9', 'weapon', 9, false, true, 30000, 3000, 5, 0),
-    ('a-9', 'armor', 9, false, true, 30000, 3000, 5, 0),
+    ('w-sword-9', 'weapon', 9, false, true, 100000, 3000, 5, 0),
+    ('w-spear-9', 'weapon', 9, false, true, 100000, 3000, 5, 0),
+    ('w-bow-9', 'weapon', 9, false, true, 100000, 3000, 5, 0),
+    ('w-fan-9', 'weapon', 9, false, true, 100000, 3000, 5, 0),
+    ('a-9', 'armor', 9, false, true, 100000, 3000, 5, 0),
     ('c-mp-9', 'acc', 9, false, false, 0, 4500, 5, 0),
     ('c-speed-9', 'acc', 9, false, false, 0, 4500, 5, 0),
     ('c-crit-9', 'acc', 9, false, false, 0, 4500, 5, 0),
     ('c-potion-9', 'acc', 9, false, false, 0, 4500, 5, 0),
     ('c-coin-9', 'acc', 9, false, false, 0, 4500, 5, 18),
-    ('w-sword-10', 'weapon', 10, false, true, 36300, 3630, 6, 0),
-    ('w-spear-10', 'weapon', 10, false, true, 36300, 3630, 6, 0),
-    ('w-bow-10', 'weapon', 10, false, true, 36300, 3630, 6, 0),
-    ('w-fan-10', 'weapon', 10, false, true, 36300, 3630, 6, 0),
-    ('a-10', 'armor', 10, false, true, 36300, 3630, 6, 0),
+    ('w-sword-10', 'weapon', 10, false, true, 133100, 3630, 6, 0),
+    ('w-spear-10', 'weapon', 10, false, true, 133100, 3630, 6, 0),
+    ('w-bow-10', 'weapon', 10, false, true, 133100, 3630, 6, 0),
+    ('w-fan-10', 'weapon', 10, false, true, 133100, 3630, 6, 0),
+    ('a-10', 'armor', 10, false, true, 133100, 3630, 6, 0),
     ('c-mp-10', 'acc', 10, false, false, 0, 5445, 6, 0),
     ('c-speed-10', 'acc', 10, false, false, 0, 5445, 6, 0),
     ('c-crit-10', 'acc', 10, false, false, 0, 5445, 6, 0),
     ('c-potion-10', 'acc', 10, false, false, 0, 5445, 6, 0),
     ('c-coin-10', 'acc', 10, false, false, 0, 5445, 6, 20),
-    ('w-sword-11', 'weapon', 11, false, true, 43200, 4320, 6, 0),
-    ('w-spear-11', 'weapon', 11, false, true, 43200, 4320, 6, 0),
-    ('w-bow-11', 'weapon', 11, false, true, 43200, 4320, 6, 0),
-    ('w-fan-11', 'weapon', 11, false, true, 43200, 4320, 6, 0),
-    ('a-11', 'armor', 11, false, true, 43200, 4320, 6, 0),
+    ('w-sword-11', 'weapon', 11, false, true, 172800, 4320, 6, 0),
+    ('w-spear-11', 'weapon', 11, false, true, 172800, 4320, 6, 0),
+    ('w-bow-11', 'weapon', 11, false, true, 172800, 4320, 6, 0),
+    ('w-fan-11', 'weapon', 11, false, true, 172800, 4320, 6, 0),
+    ('a-11', 'armor', 11, false, true, 172800, 4320, 6, 0),
     ('c-mp-11', 'acc', 11, false, false, 0, 6480, 6, 0),
     ('c-speed-11', 'acc', 11, false, false, 0, 6480, 6, 0),
     ('c-crit-11', 'acc', 11, false, false, 0, 6480, 6, 0),
@@ -550,87 +561,87 @@ language sql immutable as $$
     (2, 7, 1260, 4),
     (2, 8, 1440, 4),
     (2, 9, 1620, 5),
-    (3, 1, 320, 2),
-    (3, 2, 640, 2),
-    (3, 3, 960, 3),
-    (3, 4, 1280, 3),
-    (3, 5, 1600, 4),
-    (3, 6, 1920, 4),
-    (3, 7, 2240, 5),
-    (3, 8, 2560, 5),
-    (3, 9, 2880, 6),
-    (4, 1, 500, 2),
-    (4, 2, 1000, 2),
-    (4, 3, 1500, 3),
-    (4, 4, 2000, 3),
-    (4, 5, 2500, 4),
-    (4, 6, 3000, 4),
-    (4, 7, 3500, 5),
-    (4, 8, 4000, 5),
-    (4, 9, 4500, 6),
-    (5, 1, 720, 2),
-    (5, 2, 1440, 2),
-    (5, 3, 2160, 3),
-    (5, 4, 2880, 3),
-    (5, 5, 3600, 4),
-    (5, 6, 4320, 4),
-    (5, 7, 5040, 5),
-    (5, 8, 5760, 5),
-    (5, 9, 6480, 6),
-    (6, 1, 980, 3),
-    (6, 2, 1960, 3),
-    (6, 3, 2940, 4),
-    (6, 4, 3920, 4),
-    (6, 5, 4900, 5),
-    (6, 6, 5880, 5),
-    (6, 7, 6860, 6),
-    (6, 8, 7840, 6),
-    (6, 9, 8820, 7),
-    (7, 1, 1280, 3),
-    (7, 2, 2560, 3),
-    (7, 3, 3840, 4),
-    (7, 4, 5120, 4),
-    (7, 5, 6400, 5),
-    (7, 6, 7680, 5),
-    (7, 7, 8960, 6),
-    (7, 8, 10240, 6),
-    (7, 9, 11520, 7),
-    (8, 1, 1620, 3),
-    (8, 2, 3240, 3),
-    (8, 3, 4860, 4),
-    (8, 4, 6480, 4),
-    (8, 5, 8100, 5),
-    (8, 6, 9720, 5),
-    (8, 7, 11340, 6),
-    (8, 8, 12960, 6),
-    (8, 9, 14580, 7),
-    (9, 1, 2000, 4),
-    (9, 2, 4000, 4),
-    (9, 3, 6000, 5),
-    (9, 4, 8000, 5),
-    (9, 5, 10000, 6),
-    (9, 6, 12000, 6),
-    (9, 7, 14000, 7),
-    (9, 8, 16000, 7),
-    (9, 9, 18000, 8),
-    (10, 1, 2420, 4),
-    (10, 2, 4840, 4),
-    (10, 3, 7260, 5),
-    (10, 4, 9680, 5),
-    (10, 5, 12100, 6),
-    (10, 6, 14520, 6),
-    (10, 7, 16940, 7),
-    (10, 8, 19360, 7),
-    (10, 9, 21780, 8),
-    (11, 1, 2880, 4),
-    (11, 2, 5760, 4),
-    (11, 3, 8640, 5),
-    (11, 4, 11520, 5),
-    (11, 5, 14400, 6),
-    (11, 6, 17280, 6),
-    (11, 7, 20160, 7),
-    (11, 8, 23040, 7),
-    (11, 9, 25920, 8)
+    (3, 1, 480, 2),
+    (3, 2, 960, 2),
+    (3, 3, 1440, 3),
+    (3, 4, 1920, 3),
+    (3, 5, 2400, 4),
+    (3, 6, 2880, 4),
+    (3, 7, 3360, 5),
+    (3, 8, 3840, 5),
+    (3, 9, 4320, 6),
+    (4, 1, 750, 2),
+    (4, 2, 1500, 2),
+    (4, 3, 2250, 3),
+    (4, 4, 3000, 3),
+    (4, 5, 3750, 4),
+    (4, 6, 4500, 4),
+    (4, 7, 5250, 5),
+    (4, 8, 6000, 5),
+    (4, 9, 6750, 6),
+    (5, 1, 1080, 2),
+    (5, 2, 2160, 2),
+    (5, 3, 3240, 3),
+    (5, 4, 4320, 3),
+    (5, 5, 5400, 4),
+    (5, 6, 6480, 4),
+    (5, 7, 7560, 5),
+    (5, 8, 8640, 5),
+    (5, 9, 9720, 6),
+    (6, 1, 1470, 3),
+    (6, 2, 2940, 3),
+    (6, 3, 4410, 4),
+    (6, 4, 5880, 4),
+    (6, 5, 7350, 5),
+    (6, 6, 8820, 5),
+    (6, 7, 10290, 6),
+    (6, 8, 11760, 6),
+    (6, 9, 13230, 7),
+    (7, 1, 1920, 3),
+    (7, 2, 3840, 3),
+    (7, 3, 5760, 4),
+    (7, 4, 7680, 4),
+    (7, 5, 9600, 5),
+    (7, 6, 11520, 5),
+    (7, 7, 13440, 6),
+    (7, 8, 15360, 6),
+    (7, 9, 17280, 7),
+    (8, 1, 2430, 3),
+    (8, 2, 4860, 3),
+    (8, 3, 7290, 4),
+    (8, 4, 9720, 4),
+    (8, 5, 12150, 5),
+    (8, 6, 14580, 5),
+    (8, 7, 17010, 6),
+    (8, 8, 19440, 6),
+    (8, 9, 21870, 7),
+    (9, 1, 3000, 4),
+    (9, 2, 6000, 4),
+    (9, 3, 9000, 5),
+    (9, 4, 12000, 5),
+    (9, 5, 15000, 6),
+    (9, 6, 18000, 6),
+    (9, 7, 21000, 7),
+    (9, 8, 24000, 7),
+    (9, 9, 27000, 8),
+    (10, 1, 3630, 4),
+    (10, 2, 7260, 4),
+    (10, 3, 10890, 5),
+    (10, 4, 14520, 5),
+    (10, 5, 18150, 6),
+    (10, 6, 21780, 6),
+    (10, 7, 25410, 7),
+    (10, 8, 29040, 7),
+    (10, 9, 32670, 8),
+    (11, 1, 4320, 4),
+    (11, 2, 8640, 4),
+    (11, 3, 12960, 5),
+    (11, 4, 17280, 5),
+    (11, 5, 21600, 6),
+    (11, 6, 25920, 6),
+    (11, 7, 30240, 7),
+    (11, 8, 34560, 7),
+    (11, 9, 38880, 8)
 -- </gen:enhance>
   ) as t(tier, plus, coins, stones)
 $$;
@@ -723,3 +734,253 @@ language sql immutable as $$
 -- </gen:acc>
 $$;
 revoke all on function public._twelve_acc() from public, anon, authenticated;
+
+-- ---------- 2. 맵 끝내기 (078 의 twelve_finish 를 다시 정의) ----------
+-- 바뀐 것: 보스의 선물 — 대원 12종이 9지형 보스까지에서 다 모이므로, 10~12지형 보스를 (모드마다) 처음 잡으면
+-- 합류 대신 강화석 꾸러미를 준다 (_twelve_const('boss_gift_<지형>')). 결과에 'gift' 가 더해졌다. 그 밖에는 078 과 같다.
+
+create or replace function public.twelve_finish(p_run uuid, p_report jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  rn public.twelve_runs;
+  pr public.twelve_profiles;
+  mp record;
+  rg record;
+  v_time int; v_cleared boolean; v_elites int; v_boss boolean; v_chest boolean; v_deaths int;
+  v_kills jsonb; v_used jsonb;
+  k text; v jsonb; n numeric;
+  normals int := 0;
+  raw_exp bigint := 0; raw_coin bigint := 0;
+  pct int; n_exp bigint; n_coins bigint;
+  lv int; ex bigint; nd bigint; ups int := 0;
+  elapsed numeric;
+  pots int[]; used int[]; got_pots int[] := array[0, 0, 0, 0, 0, 0];
+  n_stars int := 0; old_stars int := 0; new_stars int := 0; first boolean := false;
+  pe int := 0; pb int := 0; pk int := 0; has_key boolean := false; got_key boolean := false;
+  codex text[]; rare_list text[]; gear text[]; accs text[];
+  base text; items jsonb := '[]'::jsonb; n_stones int := 0;
+  star_item text; joined text; got_coin boolean := false; n_gift int := 0;
+  seed bigint; r bigint; i int; idx int; cap int; pity boolean;
+begin
+  if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
+  select * into rn from public.twelve_runs where id = p_run for update;
+  if not found or rn.user_id <> me then raise exception 'no run'; end if;
+  if rn.finished_at is not null then raise exception 'already finished'; end if;
+  select * into mp from public._twelve_maps() t where t.map_id = rn.map_id and t.mode = rn.mode;
+  if not found then raise exception 'bad map'; end if;
+
+  -- 1) 보고 읽기 · 검사 (src/game/progress.ts 의 checkReport)
+  begin
+    v_time := (p_report ->> 'time')::int;
+    v_cleared := (p_report ->> 'cleared')::boolean;
+    v_elites := (p_report ->> 'elites')::int;
+    v_boss := (p_report ->> 'boss')::boolean;
+    v_chest := (p_report ->> 'chest')::boolean;
+    v_deaths := (p_report ->> 'deaths')::int;
+  exception when others then raise exception 'bad result';
+  end;
+  if v_time is null or v_cleared is null or v_elites is null or v_boss is null or v_chest is null or v_deaths is null then raise exception 'bad result'; end if;
+  if v_time < 0 or v_time > public._twelve_const('max_time') then raise exception 'bad time'; end if;
+  v_kills := coalesce(p_report -> 'kills', '{}'::jsonb);
+  if jsonb_typeof(v_kills) <> 'object' then raise exception 'bad kills'; end if;
+  for k, v in select key, value from jsonb_each(v_kills) loop
+    if not (mp.kinds ? k) or jsonb_typeof(v) <> 'number' then raise exception 'bad kills'; end if;
+    n := v::text::numeric;
+    if n <> floor(n) or n < 0 or n > (mp.kinds -> k ->> 0)::int then raise exception 'bad kills'; end if;
+    normals := normals + n::int;
+    raw_exp := raw_exp + n::int * (mp.kinds -> k ->> 1)::int;
+    raw_coin := raw_coin + n::int * (mp.kinds -> k ->> 2)::int;
+  end loop;
+  if v_elites < 0 or v_elites > mp.elites then raise exception 'bad kills'; end if;
+  if v_boss and not mp.boss then raise exception 'bad kills'; end if;
+  if v_deaths < 0 then raise exception 'bad result'; end if;
+  cap := public._twelve_const('potion_max')::int;
+  v_used := p_report -> 'potions';
+  if v_used is null or jsonb_typeof(v_used) = 'null' then
+    used := array[0, 0, 0, 0, 0, 0];
+  else
+    if jsonb_typeof(v_used) <> 'array' or jsonb_array_length(v_used) <> 2
+      or jsonb_typeof(v_used -> 0) <> 'array' or jsonb_array_length(v_used -> 0) <> 3
+      or jsonb_typeof(v_used -> 1) <> 'array' or jsonb_array_length(v_used -> 1) <> 3 then raise exception 'bad potions'; end if;
+    if exists (
+      select 1 from jsonb_array_elements(v_used) a, jsonb_array_elements(a) e
+      where jsonb_typeof(e) <> 'number' or e::text::numeric <> floor(e::text::numeric) or e::text::numeric < 0 or e::text::numeric > cap
+    ) then raise exception 'bad potions'; end if;
+    select array_agg((e.value)::text::int order by a.ord, e.ord) into used
+    from jsonb_array_elements(v_used) with ordinality a(value, ord), jsonb_array_elements(a.value) with ordinality e(value, ord);
+  end if;
+  if v_cleared then
+    if v_time < public._twelve_const('clear_min_time') then raise exception 'too early'; end if;
+    -- 출구가 열리는 조건: 보스 맵은 보스, 그 밖에는 요괴의 exit_pct%
+    if (mp.boss and not v_boss) or (not mp.boss and normals + v_elites < ceil(mp.total * public._twelve_const('exit_pct') / 100.0)) then raise exception 'bad result'; end if;
+  end if;
+  elapsed := extract(epoch from (now() - rn.started_at));
+  if elapsed < v_time - public._twelve_const('time_slack') then raise exception 'too early'; end if;
+  if elapsed > public._twelve_const('max_age') then raise exception 'too late'; end if;
+  if exists (
+    select 1 from public.twelve_runs o
+    where o.user_id = me and o.id <> rn.id and o.finished_at is not null
+      and o.finished_at > rn.started_at + interval '2 seconds' and o.started_at < now() - interval '2 seconds'
+  ) then raise exception 'overlap'; end if;
+
+  -- 2) 경험치 · 엽전 (맵 표로 계산. src/game/progress.ts 의 rewardOf · applyReport)
+  raw_exp := raw_exp + v_elites * mp.elite_exp + (case when v_boss then mp.boss_exp else 0 end);
+  raw_coin := raw_coin + v_elites * mp.elite_coin + (case when v_boss then mp.boss_coin else 0 end) + (case when v_chest then mp.chest_coin else 0 end);
+  pr := public._twelve_profile_row(me);
+  select e.pct into pct from public._twelve_exp_penalty() e where pr.level - mp.level >= e.gap order by e.gap desc limit 1;
+  n_exp := floor(raw_exp * coalesce(pct, 100) / 100.0);
+  n_coins := case when v_cleared then floor(raw_coin * (100 + rn.coin_pct) / 100.0) else 0 end;
+  lv := pr.level;
+  ex := pr.exp + n_exp;
+  while lv < public._twelve_const('max_level') loop
+    select t.need into nd from public._twelve_levels() t where t.level = lv;
+    exit when nd is null or ex < nd;
+    ex := ex - nd;
+    lv := lv + 1;
+    ups := ups + 1;
+  end loop;
+  if lv >= public._twelve_const('max_level') then ex := 0; end if;
+  -- 쓴 물약은 깨든 쓰러지든 빠진다
+  select array_agg((e.value)::text::int order by a.ord, e.ord) into pots
+  from jsonb_array_elements(pr.potions) with ordinality a(value, ord), jsonb_array_elements(a.value) with ordinality e(value, ord);
+  for i in 1..6 loop pots[i] := greatest(0, pots[i] - used[i]); end loop;
+
+  -- 3) 깬 판만: 맵 기록 · 드랍 · 확정 보정 · 열쇠 · 별 보상 · 대원 합류 (쓰러지면 그 맵의 엽전·아이템을 잃는다)
+  if v_cleared then
+    n_stars := (case when v_time <= mp.par then 1 else 0 end) | (case when v_deaths = 0 then 2 else 0 end) | (case when v_chest then 4 else 0 end);
+    select m.stars into old_stars from public.twelve_maps m where m.user_id = me and m.mode = rn.mode and m.map_id = rn.map_id;
+    first := old_stars is null;
+    old_stars := coalesce(old_stars, 0);
+    new_stars := n_stars & ~old_stars;
+    -- 대원 합류: 이 지형 보스를 어느 모드에서든 처음 잡았다
+    if mp.boss and first and not public._twelve_joined(me, mp.region) then
+      select h.id into joined from public._twelve_heroes() h where h.join_region = mp.region;
+    end if;
+    -- 보스의 선물 (089): 대원이 합류하지 않는 지형(10~12)의 보스를 이 모드에서 처음 잡으면 강화석 꾸러미 (src/data/economy.ts 의 BOSS_GIFT)
+    if mp.boss and v_boss and first then
+      n_gift := coalesce(public._twelve_const('boss_gift_' || mp.region::text), 0)::int;
+      n_stones := n_stones + n_gift;
+    end if;
+    insert into public.twelve_maps (user_id, mode, map_id, stars, clears, best) values (me, rn.mode, rn.map_id, n_stars, 1, v_time)
+    on conflict (user_id, mode, map_id) do update set stars = public.twelve_maps.stars | excluded.stars, clears = public.twelve_maps.clears + 1,
+      best = case when public.twelve_maps.best > 0 then least(public.twelve_maps.best, excluded.best) else excluded.best end;
+
+    -- 드랍 (src/game/drops.ts 의 rollRun): 일반 요괴 → 정예 → 보스. 판정 종류 번호는 drops.ts 의 TAG 와 같다
+    select * into rg from public._twelve_regions() t where t.mode = rn.mode and t.region = mp.region;
+    seed := rn.seed;
+    gear := public._twelve_gear();
+    accs := public._twelve_acc();
+    rare_list := rg.rares;
+    select t.elite, t.boss, t.key into pe, pb, pk from public.twelve_pity t where t.user_id = me and t.mode = rn.mode and t.region = mp.region;
+    pe := coalesce(pe, 0); pb := coalesce(pb, 0); pk := coalesce(pk, 0);
+    select coalesce(array_agg(c.base), array[]::text[]) into codex from public.twelve_codex c where c.user_id = me;
+    has_key := exists (select 1 from public.twelve_keys t where t.user_id = me and t.mode = rn.mode and t.region = mp.region);
+
+    for i in 1..normals loop
+      r := public._twelve_roll(seed, 1, i) % 10000;
+      if r < public._twelve_const('drop_potion') then
+        idx := (public._twelve_roll(seed, 2, i) % 2)::int * 3 + rg.potion_size + 1;
+        if pots[idx] < cap then
+          pots[idx] := pots[idx] + 1;
+          got_pots[idx] := got_pots[idx] + 1;
+        end if;
+      elsif r < public._twelve_const('drop_potion') + public._twelve_const('drop_gear') then
+        base := gear[(public._twelve_roll(seed, 2, i) % array_length(gear, 1))::int + 1] || rg.tier::text;
+        items := items || public._twelve_grant(me, base);
+      end if;
+    end loop;
+
+    for i in 1..v_elites loop
+      if public._twelve_roll(seed, 3, i) % 10000 < public._twelve_const('drop_elite_stone') then n_stones := n_stones + rg.elite_stones; end if;
+      if public._twelve_roll(seed, 4, i) % 10000 < public._twelve_const('drop_elite_acc') then
+        base := 'c-' || accs[(public._twelve_roll(seed, 5, i) % array_length(accs, 1))::int + 1] || '-' || rg.tier::text;
+        items := items || public._twelve_grant(me, base);
+      end if;
+      pe := pe + 1;
+      base := null;
+      if public._twelve_roll(seed, 6, i) % 10000 < public._twelve_const('drop_elite_rare') then pity := false;
+      elsif pe >= public._twelve_const('pity_elite') then pity := true;
+      else pity := null;
+      end if;
+      if pity is not null then
+        -- 확정 보정은 아직 없는 것부터, 확률로 나온 것(또는 다 가졌으면)은 목록에서 아무거나
+        if pity then select x into base from unnest(rare_list) with ordinality u(x, ord) where not (x = any(codex)) order by ord limit 1; end if;
+        base := coalesce(base, rare_list[(public._twelve_roll(seed, 7, i) % array_length(rare_list, 1))::int + 1]);
+        if not (base = any(codex)) then codex := codex || base; end if;
+        pe := 0; pb := 0;
+        items := items || public._twelve_grant(me, base);
+      end if;
+    end loop;
+
+    if v_boss then
+      n_stones := n_stones + rg.boss_stones;
+      if public._twelve_roll(seed, 8, 1) % 10000 < public._twelve_const('drop_boss_acc') then
+        base := 'c-' || accs[(public._twelve_roll(seed, 9, 1) % array_length(accs, 1))::int + 1] || '-' || rg.tier::text;
+        items := items || public._twelve_grant(me, base);
+      end if;
+      pb := pb + 1;
+      base := null;
+      if public._twelve_roll(seed, 10, 1) % 10000 < public._twelve_const('drop_boss_rare') then pity := false;
+      elsif pb >= public._twelve_const('pity_boss') then pity := true;
+      else pity := null;
+      end if;
+      if pity is not null then
+        if pity then select x into base from unnest(rare_list) with ordinality u(x, ord) where not (x = any(codex)) order by ord limit 1; end if;
+        base := coalesce(base, rare_list[(public._twelve_roll(seed, 11, 1) % array_length(rare_list, 1))::int + 1]);
+        if not (base = any(codex)) then codex := codex || base; end if;
+        pe := 0; pb := 0;
+        items := items || public._twelve_grant(me, base);
+      end if;
+      -- 열쇠: 확률, 같은 보스 pity_key 번째에는 확정. 이미 있으면 떨어지지 않는다
+      if not has_key then
+        pk := pk + 1;
+        if public._twelve_roll(seed, 12, 1) % 10000 < public._twelve_const('drop_key') or pk >= public._twelve_const('pity_key') then
+          got_key := true;
+          pk := 0;
+          insert into public.twelve_keys (user_id, mode, region) values (me, rn.mode, mp.region) on conflict do nothing;
+        end if;
+      end if;
+    end if;
+
+    insert into public.twelve_pity (user_id, mode, region, elite, boss, key) values (me, rn.mode, mp.region, pe, pb, pk)
+    on conflict (user_id, mode, region) do update set elite = excluded.elite, boss = excluded.boss, key = excluded.key;
+
+    -- 지형의 별 24개를 모두 모으면 그 지형 장신구 (모드마다 한 번)
+    if not (rg.star_item = any(codex)) and (
+      select coalesce(sum((m.stars & 1) + ((m.stars >> 1) & 1) + ((m.stars >> 2) & 1)), 0) from public.twelve_maps m
+      where m.user_id = me and m.mode = rn.mode and m.map_id like mp.region::text || '-%'
+    ) >= 24 then
+      star_item := rg.star_item;
+      codex := codex || star_item;
+      items := items || public._twelve_grant(me, star_item);
+    end if;
+    insert into public.twelve_codex (user_id, base) select me, x from unnest(codex) x on conflict do nothing;
+
+    -- 시아코인: 깬 맵마다 1. 너무 짧은 판, 내 레벨이 권장 레벨보다 coin_level_gap 이상 높은 맵은 없음 (중복·15초·하루 한도는 _grant_sia_coin 안에서)
+    if v_time >= public._twelve_const('coin_min_time') and pr.level - mp.level < public._twelve_const('coin_level_gap') then
+      got_coin := public._grant_sia_coin(me, 'twelve', p_run::text);
+    end if;
+  end if;
+
+  update public.twelve_profiles set
+    level = lv, exp = ex, coins = coins + n_coins, stones = stones + n_stones,
+    potions = jsonb_build_array(jsonb_build_array(pots[1], pots[2], pots[3]), jsonb_build_array(pots[4], pots[5], pots[6])),
+    cleared_maps = (select count(*) from public.twelve_maps m where m.user_id = me),
+    level_at = case when lv <> pr.level then now() else level_at end,
+    updated_at = now()
+  where user_id = me;
+  update public.twelve_runs set finished_at = now(), time = v_time, cleared = v_cleared, exp = n_exp, coins = n_coins, report = p_report where id = rn.id;
+
+  return jsonb_build_object(
+    'state', public._twelve_state_json(me),
+    'result', jsonb_build_object(
+      'exp', n_exp, 'coins', n_coins, 'ups', ups, 'level', lv, 'stars', n_stars, 'newStars', new_stars, 'first', first,
+      'joined', joined, 'gift', n_gift, 'siaCoin', got_coin, 'items', items, 'stones', n_stones,
+      'potions', jsonb_build_array(jsonb_build_array(got_pots[1], got_pots[2], got_pots[3]), jsonb_build_array(got_pots[4], got_pots[5], got_pots[6])),
+      'key', got_key, 'starItem', star_item
+    )
+  );
+end $$;
+revoke all on function public.twelve_finish(uuid, jsonb) from public, anon;
+grant execute on function public.twelve_finish(uuid, jsonb) to authenticated;

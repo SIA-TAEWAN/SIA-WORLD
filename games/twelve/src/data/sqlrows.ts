@@ -4,7 +4,7 @@
  * 숫자(경험치 곡선·요괴 보상·드랍 확률·값)를 바꾸면 sqlgen 만 다시 돌리면 된다 — SQL 의 계산 순서는 그대로다.
  */
 import { EXIT_KILL_RATIO } from './balance';
-import { ACC_STATS, BAG, DROP, MAX_PLUS, PITY, POTION, POTION_SIZES, TIERS, bagPrice, bossStones, eliteStones, enhanceCost, potionSizeForTier, regionTier } from './economy';
+import { ACC_STATS, BAG, BOSS_GIFT, DROP, MAX_PLUS, PITY, POTION, POTION_SIZES, TIERS, bagPrice, bossStones, eliteStones, enhanceCost, potionSizeForTier, regionTier } from './economy';
 import { EXP_PENALTY, MAX_LEVEL, expNeed } from './growth';
 import { HEROES } from './heroes';
 import { ITEMS, canEnhance, regionRares, starReward } from './items';
@@ -104,6 +104,8 @@ export function constRows(): string[] {
     bag_max: BAG.max,
     potion_max: POTION.max,
     max_plus: MAX_PLUS,
+    // 보스의 선물 (economy.ts 의 BOSS_GIFT): 그 지형 보스를 처음 잡으면 받는 강화석
+    ...Object.fromEntries(Object.entries(BOSS_GIFT).map(([r, n]) => [`boss_gift_${r}`, n])),
     // 끝없는 탑 (data/tower.ts 의 TOWER)
     tower_cp: TOWER.cp,
     tower_elite_every: TOWER.eliteEvery,

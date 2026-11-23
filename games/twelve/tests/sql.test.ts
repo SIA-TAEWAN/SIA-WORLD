@@ -26,7 +26,7 @@ describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
   }
   it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql089)).toBe(sql089));
 
-  it('089 는 078 의 표 함수를 같은 모양으로 다시 정의한다 (create or replace · 권한 빼기)', () => {
+  it('089 는 078 의 함수를 같은 모양으로 다시 정의한다 (create or replace · 표 함수는 권한 빼기, RPC 는 로그인한 사람만)', () => {
     const head = (s: string, name: string) => {
       const i = s.indexOf(`create or replace function public.${name}(`);
       return i < 0 ? '' : s.slice(i, s.indexOf('$$', i));
@@ -35,7 +35,12 @@ describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
     expect(names.length).toBeGreaterThanOrEqual(Object.keys(blocks).length);
     for (const name of names) {
       expect(head(sql089, name), name).toBe(head(sql078, name));
-      expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
+      if (name.startsWith('_')) expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated;`));
+      else {
+        expect(sql089).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon;`));
+        expect(sql089).toMatch(new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to authenticated;`));
+        expect(head(sql089, name)).toContain('security definer set search_path = public');
+      }
     }
     expect(sql089).not.toMatch(/create table|drop |alter table/);
   });

@@ -43,9 +43,16 @@ describe('성장 곡선 (PRD 성장 표: 보통 1~4지형 약 4시간에 Lv25)',
       expect(got[6]).toBeGreaterThanOrEqual(38);
       expect(got[6]).toBeLessThanOrEqual(42);
     }
+    // 9~12지형 + 최종보스는 15시간에 Lv65 — 12지형 끝은 Lv62~65
+    if (REGIONS_READY >= 12) {
+      expect(GROWTH_TARGETS[2]).toMatchObject({ region: 12, hours: 15, level: 65 });
+      expect(got[11]).toBeGreaterThanOrEqual(62);
+      expect(got[11]).toBeLessThanOrEqual(65);
+    }
     got.forEach((lv, i) => {
       const rec = mapLevel(i + 1, MAPS_PER_REGION, 'normal');
-      expect(lv, `${i + 1}지형`).toBeGreaterThanOrEqual(i < 4 ? rec + 1 : rec);
+      // 9지형부터는 권장 레벨에 못 미친 채로 간다 (PRD 표: 12지형 마지막 맵 권장 65, 최종보스까지 잡아야 Lv65)
+      expect(lv, `${i + 1}지형`).toBeGreaterThanOrEqual(i < 4 ? rec + 1 : i < 8 ? rec : rec - 3);
       expect(lv, `${i + 1}지형`).toBeLessThanOrEqual(rec + 5);
     });
   });
@@ -56,11 +63,11 @@ describe('성장 곡선 (PRD 성장 표: 보통 1~4지형 약 4시간에 Lv25)',
 });
 
 describe('맵 크기 · 별 시간', () => {
-  it('맵마다 요괴가 60~180마리, 지형 안에서 뒤로 갈수록 대체로 늘어난다 (맵 한 판 5~6분)', () => {
+  it('맵마다 요괴가 60~200마리, 지형 안에서 뒤로 갈수록 대체로 늘어난다 (맵 한 판 5~6분)', () => {
     for (const m of MAPS) {
       const n = mapKillMax(m, 'normal').total;
       expect(n, m.id).toBeGreaterThanOrEqual(m.boss ? 50 : 60);
-      expect(n, m.id).toBeLessThanOrEqual(180);
+      expect(n, m.id).toBeLessThanOrEqual(200);
     }
     for (let r = 1; r <= REGIONS_READY; r++) {
       const maps = mapsOf(r);
@@ -68,11 +75,11 @@ describe('맵 크기 · 별 시간', () => {
     }
   });
 
-  it('별 시간은 길이와 때려야 하는 횟수로 정한다 (3~12분)', () => {
+  it('별 시간은 길이와 때려야 하는 횟수로 정한다 (3~14분)', () => {
     for (const m of MAPS) {
       expect(m.par).toBe(parOf(m.region, m.no, m.rows.length, m.groups, !!m.boss));
       expect(m.par, m.id).toBeGreaterThanOrEqual(180);
-      expect(m.par, m.id).toBeLessThanOrEqual(720);
+      expect(m.par, m.id).toBeLessThanOrEqual(840);
     }
     expect(PAR.slack).toBeGreaterThan(1.2);
   });

@@ -172,6 +172,8 @@ towerEnd();
 
 // 9) 2지형부터 준비된 마지막 지형까지 차례로 (089 의 맵 표 · 지형 등급이 오른 드랍 · 레벨 차이 보정 · 지형이 열리며 오르는 상점 등급)
 for (let r = 2; r <= REGIONS_READY; r++) for (let n = 1; n <= 8; n++) play(`${r}-${n}`, 20000 + r * 1000 + n * 37, { time: 200 });
+// 보스의 선물(10~12지형 보스 첫 처치의 강화석 꾸러미)은 한 번만: 다시 잡으면 없다
+for (const r of [9, 10, 12]) if (r <= REGIONS_READY) play(`${r}-8`, 31000 + r, { time: 200 });
 rpc('twelve_buy', { p_what: `w-spear-${regionTier(REGIONS_READY, 'normal')}`, p_n: 1 }, buy(p, `w-spear-${regionTier(REGIONS_READY, 'normal')}`));
 
 const rolls = [[1, 1, 1], [123456789, 12, 1], [2147483647, 7, 250], [0, 3, 2], [4242, 25, 10], [99, 27, 20]].map(([s, t, n]) => ({ seed: s, tag: t, n, value: roll(s, t, n) }));

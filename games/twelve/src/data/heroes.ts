@@ -94,10 +94,12 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: 'dog', animal: '개', name: '멍뭉이', stats: S({ def: 1.04, atk: 1.03, mp: 0.96 }), weapon: 'sword', home: 11, join: 8,
+    hello: '멍! 뜰을 지키다 깜빡 졸았지 뭐야. 이제부터는 내가 불침번을 설게.',
     unique: U('물어뜯기', '가까운 요괴 다섯을 차례로 문다', '🐶', 20, 'slap', [{ t: 'chain', range: 320, jumps: 5, jumpRange: 260, mul: 2.4, falloff: 1, slow: { mul: 0.6, dur: 2 } }]),
   },
   {
     id: 'pig', animal: '돼지', name: '꿀꿀이', stats: S({ hp: 1.05, mp: 1.03, speed: 0.96 }), weapon: 'spear', home: 12, join: 9,
+    hello: '꿀꿀… 누각 꼭대기는 무서웠어. 이제 열두 대원이 다 모였네! 끝까지 같이 가자.',
     unique: U('복주머니', '마력을 60% 회복한다', '🐷', 30, 'coin', [{ t: 'heal', mp: 0.6 }], 0),
   },
   {

@@ -296,6 +296,17 @@ export class GameScene extends Phaser.Scene {
             this.hooks.note(this.run.env.f > 0 ? '🏹 성벽에서 화살이 쏟아져요!' : `🏹 화살! ${this.run.hero.name}가 다 잡아냈어요`);
             break;
           }
+          if (ev.id === 'sleep') {
+            // 졸음 꽃가루 (8지형): 졸기 시작할 때
+            this.hooks.note('🌼 꾸벅… 졸려요. 움직이거나 구르면 깨요');
+            break;
+          }
+          if (ev.id === 'glare') {
+            // 새벽빛 (10지형) 예고
+            this.sfx('boost', 0, { volume: 0.4, rate: 1.4 });
+            this.hooks.note(this.run.env.f > 0 ? '🌅 곧 새벽빛이 비쳐요. 눈이 부셔요!' : `🌅 새벽빛! ${this.run.hero.name}는 눈이 부시지 않아요`);
+            break;
+          }
           // 골바람 예고
           this.sfx('boost', 0, { volume: 0.5, rate: 0.7 });
           this.hooks.note(this.run.env.f > 0 ? `🌬️ 골바람이 불어와요 ${ev.dir > 0 ? '→' : '←'}` : `🌬️ 골바람! ${this.run.hero.name}는 밀리지 않아요`);
@@ -393,9 +404,9 @@ export class GameScene extends Phaser.Scene {
     for (const z of s.pools) {
       if (!this.onScreen(z.x, z.y, z.r)) continue;
       const f = Math.min(1, z.left / 0.6);
-      g.fillStyle(COLOR.win, 0.42 * f).fillCircle(z.x, z.y, z.r);
+      g.fillStyle(z.fire ? COLOR.lose : COLOR.win, (z.fire ? 0.5 : 0.42) * f).fillCircle(z.x, z.y, z.r);
       g.lineStyle(4, COLOR.outline, 0.7 * f).strokeCircle(z.x, z.y, z.r);
-      for (let i = 0; i < 4; i++) g.fillStyle(COLOR.white, 0.5 * f).fillCircle(z.x + Math.cos(i * 1.7 + now * 1.3) * z.r * 0.55, z.y + Math.sin(i * 2.3 + now * 1.1) * z.r * 0.5, 5 + 2 * Math.sin(now * 4 + i));
+      for (let i = 0; i < 4; i++) g.fillStyle(z.fire ? COLOR.primary : COLOR.white, (z.fire ? 0.8 : 0.5) * f).fillCircle(z.x + Math.cos(i * 1.7 + now * 1.3) * z.r * 0.55, z.y + Math.sin(i * 2.3 + now * 1.1) * z.r * 0.5, 5 + 2 * Math.sin(now * 4 + i));
     }
     // 땅에 남는 범위 (화살 비 · 회오리 · 독안개)
     for (const z of s.zones) {
@@ -499,14 +510,30 @@ export class GameScene extends Phaser.Scene {
     // 달그림자 (4지형): 보이는 거리 밖을 어둡게 덮는다
     const see = sightOf(s);
     if (see !== Infinity) {
+      // 새벽빛 (10지형)은 어둠 대신 흰빛으로 덮는다
+      const glare = s.env.id === 'glare';
       const thick = 1500;
-      o.lineStyle(thick, COLOR.outline, 0.42).strokeCircle(p.x, p.y, see + 50 + thick / 2);
-      o.lineStyle(50, COLOR.outline, 0.2).strokeCircle(p.x, p.y, see + 25);
+      o.lineStyle(thick, glare ? COLOR.panelStrong : COLOR.outline, glare ? 0.8 : 0.42).strokeCircle(p.x, p.y, see + 50 + thick / 2);
+      o.lineStyle(50, glare ? COLOR.panelStrong : COLOR.outline, glare ? 0.4 : 0.2).strokeCircle(p.x, p.y, see + 25);
     }
+    // 졸음 (8지형): 졸음이 쌓이면 머리 위에 Z 가 떠오른다 · 꽃가루에 맞아 느려진 동안에는 발밑에 고리
+    if (s.env.id === 'sleep' && s.env.acc > 0) {
+      for (let i = 0; i < 3; i++) {
+        const f = (now * 0.8 + i / 3) % 1;
+        const zx = p.x + 16 + f * 22;
+        const zy = p.y - 64 - f * 34;
+        const k = (5 + i * 2) * (0.5 + s.env.acc * 0.5);
+        o.lineStyle(4, COLOR.outline, (1 - f) * s.env.acc).beginPath().moveTo(zx - k, zy - k).lineTo(zx + k, zy - k).lineTo(zx - k, zy + k).lineTo(zx + k, zy + k).strokePath();
+        o.lineStyle(2, COLOR.white, (1 - f) * s.env.acc).beginPath().moveTo(zx - k, zy - k).lineTo(zx + k, zy - k).lineTo(zx - k, zy + k).lineTo(zx + k, zy + k).strokePath();
+      }
+    }
+    if (p.slowT > 0) o.lineStyle(4, COLOR.pink, 0.8).strokeEllipse(p.x, p.y + 14, 58 + 6 * Math.sin(now * 8), 22);
+    // 새벽빛 예고: 화면 가장자리가 깜박인다
+    if (s.env.id === 'glare' && s.env.warn && s.env.f > 0 && Math.floor(now * 6) % 2) o.lineStyle(26, COLOR.panelStrong, 0.7).strokeRect(this.camX, this.camY, W, this.vh);
 
     // 골바람 (3지형): 예고 = 대원 옆 화살표, 부는 동안 = 바람 줄기가 화면을 가로지른다
     const env = s.env;
-    if (env.warn && Math.floor(now * 6) % 2) {
+    if (env.id === 'wind' && env.warn && Math.floor(now * 6) % 2) {
       for (let i = 0; i < 3; i++) {
         const ax = p.x + env.warn * (58 + i * 22);
         o.lineStyle(7, COLOR.outline, 1).beginPath().moveTo(ax - env.warn * 10, p.y - 34).lineTo(ax + env.warn * 4, p.y - 20).lineTo(ax - env.warn * 10, p.y - 6).strokePath();
@@ -585,6 +612,8 @@ export class GameScene extends Phaser.Scene {
       else if (e.stun > 0) v.setTint(COLOR.primaryLight);
       else if (e.slowT > 0) v.setTint(COLOR.skyMid);
       else if (e.dotT > 0) v.setTint(COLOR.lose);
+      // 날뛰는 야차 (10지형): 붉게 깜박인다
+      else if (e.def.rage && !e.bossDef && e.hp <= e.maxHp * e.def.rage.at && Math.floor(now * 8) % 2) v.setTint(COLOR.primary);
       else if (tint !== undefined) v.setTint(tint);
       else v.clearTint();
       g.fillStyle(COLOR.outline, 0.22).fillEllipse(e.x, e.y + e.r * 0.7, e.r * 2.2, e.r * 0.9);
@@ -693,7 +722,7 @@ export class GameScene extends Phaser.Scene {
           c.globalAlpha = 0.85;
           c.fillRect(px, py, TILE, TILE);
           c.globalAlpha = 1;
-          c.strokeStyle = css(envId === 'poison' ? COLOR.win : mud ? COLOR.emptyLine : COLOR.white);
+          c.strokeStyle = css(envId === 'poison' ? COLOR.win : envId === 'fire' ? COLOR.primary : mud ? COLOR.emptyLine : COLOR.white);
           c.lineWidth = 3;
           c.beginPath();
           const wx = px + 10 + hash(x, y, 1) * 20;

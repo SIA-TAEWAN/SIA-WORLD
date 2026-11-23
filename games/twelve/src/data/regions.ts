@@ -9,7 +9,7 @@ import type { HeroId } from './heroes';
 export const REGIONS = 12;
 export const MAPS_PER_REGION = 8;
 /** 지금 열려 있는 지형 수 (나머지는 지도에 '준비 중') */
-export const REGIONS_READY = 7;
+export const REGIONS_READY = 8;
 /** 어려움 모드 · 최종보스가 준비됐는지 */
 export const HARD_READY = false;
 
@@ -33,7 +33,7 @@ export const ALL_MAP_IDS: MapId[] = Array.from({ length: REGIONS * MAPS_PER_REGI
 
 /** 바닥 그림 (시아디펜스 바닥 4종을 3지형씩. 지형 전용 타일셋이 생기면 art.ts 가 바꿔 쓴다) */
 export type Ground = 'field' | 'bamboo' | 'palace' | 'underworld';
-/** 지형 환경 효과 (숫자는 balance.ts 의 ENV). 7지형까지 만들었고, 8지형부터는 이름·설명만 있다 */
+/** 지형 환경 효과 (숫자는 balance.ts 의 ENV) */
 export type EnvId = 'none' | 'mud' | 'wind' | 'dark' | 'water' | 'poison' | 'arrow' | 'sleep' | 'slip' | 'glare' | 'cold' | 'fire';
 
 /** 환경 효과의 짧은 이름 · 그림 글자 (화면용) */
@@ -70,11 +70,11 @@ export const REGION_TABLE: RegionDef[] = [
   R(5, '용의 연못', 'dragon', 'bamboo', 'water', '물길: 물에 들어가면 물살에 아래로 떠밀려요', 'snake', 'centipede', ['water', 'catfish', 'guard', 'wisp', 'bamboo']),
   R(6, '뱀의 늪', 'snake', 'bamboo', 'poison', '독안개: 늪에 서 있으면 독 피해를 입어요', 'horse', 'gumiho', ['mud', 'toad', 'spirit', 'fox', 'club']),
   R(7, '말의 성문', 'horse', 'palace', 'arrow', '성벽 화살: 가끔 성벽에서 화살이 쏟아져요', 'monkey', 'guardCaptain', ['guard', 'bomber', 'skeleton', 'fox', 'club']),
-  R(8, '양의 뜰', 'sheep', 'palace', 'sleep', '졸음 꽃가루: 가만히 있으면 느려져요', 'tiger', 'yagwanggwi', ['guard', 'spirit', 'wisp', 'skeleton', 'fox']),
-  R(9, '원숭이의 누각', 'monkey', 'palace', 'slip', '미끄러운 마루: 멈출 때 미끄러져요', 'rabbit', 'imugi', ['guard', 'skeleton', 'wisp', 'fox', 'club']),
-  R(10, '닭의 새벽길', 'rooster', 'underworld', 'glare', '새벽빛: 주기적으로 화면이 눈부셔요', 'sheep', 'reaper', ['skeleton', 'spirit', 'wisp', 'guard', 'fox']),
-  R(11, '개의 삼도천', 'dog', 'underworld', 'cold', '찬 강바람: 마력이 느리게 차요', 'dragon', 'gangcheori', ['skeleton', 'spirit', 'water', 'guard', 'club']),
-  R(12, '돼지의 염라전', 'pig', 'underworld', 'fire', '불길: 불바닥에 서 있으면 화상', 'dog', 'yeomra', ['skeleton', 'spirit', 'guard', 'club', 'fox', 'wisp']),
+  R(8, '양의 뜰', 'sheep', 'palace', 'sleep', '졸음 꽃가루: 가만히 서 있으면 졸려서 느려져요', 'tiger', 'yagwanggwi', ['guard', 'sleeper', 'wisp', 'skeleton', 'fox']),
+  R(9, '원숭이의 누각', 'monkey', 'palace', 'slip', '미끄러운 마루: 멈출 때 미끄러져요', 'rabbit', 'imugi', ['guard', 'acorn', 'skeleton', 'fox', 'club']),
+  R(10, '닭의 새벽길', 'rooster', 'underworld', 'glare', '새벽빛: 가끔 눈이 부셔 먼 요괴가 안 보여요', 'sheep', 'reaper', ['skeleton', 'yaksha', 'spirit', 'guard', 'fox']),
+  R(11, '개의 삼도천', 'dog', 'underworld', 'cold', '찬 강바람: 마력이 느리게 차요', 'dragon', 'gangcheori', ['skeleton', 'ferryman', 'water', 'guard', 'club']),
+  R(12, '돼지의 염라전', 'pig', 'underworld', 'fire', '불길: 불바닥을 밟으면 화상을 입어요', 'dog', 'yeomra', ['skeleton', 'firecart', 'spirit', 'guard', 'club', 'fox']),
 ];
 export const regionOf = (region: number): RegionDef => REGION_TABLE[Math.max(1, Math.min(REGIONS, region)) - 1];
 
@@ -92,14 +92,24 @@ export function mapLevel(region: number, no: number, mode: Mode): number {
  * 4지형까지의 식 그대로면 5~7지형 맵 한 판이 4.5분쯤으로 짧았다 (PRD: 5~6분 — npm run pace).
  */
 export const HP_RAMP = { from: 22, span: 12, step: 0.2 };
+/** 8지형부터 한 번 더: 권장 레벨 from 을 넘는 레벨마다 +step (span 레벨까지만). 9~12지형은 지형마다 1시간 20분쯤 (PRD 성장 표) */
+export const HP_RAMP2 = { from: 38, span: 6, step: 0.6 };
+/**
+ * 9지형부터 경험치를 조금 더: 권장 레벨 from 을 넘는 레벨마다 경험치 +step (엽전은 그대로).
+ * 없으면 12지형에 권장 레벨보다 3 낮게 들어가 자동 조종이 12-4 에서 막혔다 (npm run pace -- 12)
+ */
+export const EXP_LATE = { from: 44, step: 0.004 };
+const ramp = (r: { from: number; span: number; step: number }, lv: number) => r.step * Math.max(0, Math.min(r.span, lv - r.from));
 
 /** 권장 레벨 → 요괴 배율 (체력·공격·방어·경험치·엽전). count = 무리마다 요괴 수 배율. 끝없는 탑(data/tower.ts)도 이 식을 쓴다 */
 export const levelScale = (lv: number, count = 1) => ({
   level: lv,
-  hp: 1 + 0.22 * (lv - 1) + HP_RAMP.step * Math.max(0, Math.min(HP_RAMP.span, lv - HP_RAMP.from)),
+  hp: 1 + 0.22 * (lv - 1) + ramp(HP_RAMP, lv) + ramp(HP_RAMP2, lv),
   atk: 1 + 0.2 * (lv - 1),
   def: 0.8 * (lv - 1),
   reward: 1 + 0.15 * (lv - 1),
+  /** 경험치 배율 (엽전은 reward 그대로) */
+  exp: (1 + 0.15 * (lv - 1)) * (1 + EXP_LATE.step * Math.max(0, lv - EXP_LATE.from)),
   /** 무리마다 요괴 수 배율 */
   count,
 });

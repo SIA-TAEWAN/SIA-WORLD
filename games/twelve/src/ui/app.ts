@@ -773,6 +773,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
       </div>
       ${r && win ? lootHtml(r) : ''}
       ${r?.joined ? `<div class="new-hero">${face(r.joined)}<span>${heroOf(r.joined).name}(${heroOf(r.joined).animal})가 합류했어요!${heroOf(r.joined).hello ? `<small>“${heroOf(r.joined).hello}”</small>` : ''}</span></div>` : ''}
+      ${r?.gift ? `<div class="new-hero"><span class="ic">🎁</span><span>보스의 선물! 강화석 꾸러미 ${r.gift}개를 받았어요<small>열두 대원이 모두 모여서, 이제 보스는 선물을 남겨요</small></span></div>` : ''}
       ${DEV_PLAY ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : r ? '' : '<p class="soft center">기록을 저장하지 못했어요</p>'}
       <div class="btns">
         ${nextOk ? `<button class="btn primary big" id="next">다음 맵 ▶</button>` : ''}
@@ -953,7 +954,7 @@ async function floorCleared(t: TowerPlay, s: RunState) {
 }
 
 const lootOf = (items: Item[], stones: number): FinishResult =>
-  ({ exp: 0, coins: 0, ups: 0, level: profile.level, stars: 0, newStars: 0, first: false, joined: null, siaCoin: false, items, stones, potions: [[0, 0, 0], [0, 0, 0]], key: false, starItem: null });
+  ({ exp: 0, coins: 0, ups: 0, level: profile.level, stars: 0, newStars: 0, first: false, joined: null, gift: 0, siaCoin: false, items, stones, potions: [[0, 0, 0], [0, 0, 0]], key: false, starItem: null });
 
 /**
  * 탑 판 끝 (쓰러졌거나 · 그만뒀거나 · 기록하지 못했다). used = 마지막 층에서 쓴 물약, note = 덧붙일 말.

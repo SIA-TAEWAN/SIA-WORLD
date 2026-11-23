@@ -97,7 +97,7 @@ export function towerFloor(floor: number): MapDef {
   // 보스 층은 기둥 없이 넓게
   if (kind !== 'boss') for (const [px, py] of PILLARS[f % PILLARS.length]) for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) grid[py + dy][px + dx] = '#';
   // 진흙 · 물길 · 독안개 지형의 층에는 진흙탕 · 물 · 늪 (환경 효과가 걸리는 땅)
-  if (['mud', 'water', 'poison'].includes(regionOf(region).env)) for (let y = 16; y <= 17; y++) for (let x = 4; x <= 11; x++) grid[y][x] = '~';
+  if (['mud', 'water', 'poison', 'fire'].includes(regionOf(region).env)) for (let y = 16; y <= 17; y++) for (let x = 4; x <= 11; x++) grid[y][x] = '~';
 
   const groups: GroupDef[] = [];
   if (kind !== 'boss') {
