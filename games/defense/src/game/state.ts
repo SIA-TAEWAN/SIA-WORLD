@@ -22,6 +22,11 @@ export interface GameConfig {
   upgrades?: Upgrades;
   /** 시작 생명: 판 시작 때 서버가 적어 둔 값 (별의 기준. 없으면 스테이지 값 + 공통 강화) */
   startLives?: number;
+  /**
+   * 오늘의 고개(game/daily.ts)의 조건: 요괴 체력 · 시작 기운 배율. 없으면 1 (보통 판은 적지 않는다 — 결과가 예전과 같다).
+   * 체력 배율은 웨이브 요괴와 스테이지 보스에 곱한다 (보스가 불러내는 졸개는 그대로)
+   */
+  mods?: { hp?: number; energy?: number };
 }
 
 /** prep 시작 전(시간이 흐르지 않는다) · play 진행 중 · clear 클리어 · fail 실패 */

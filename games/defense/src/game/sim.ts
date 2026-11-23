@@ -63,14 +63,17 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
   }
   // 웨이브를 등장 시각 순서로 펴 둔다 (끝없는 모드는 웨이브가 시작될 때마다 그 웨이브만 편다 — step)
   const spawns: Spawn[] = [];
-  stage.waves.slice(0, WAVES).forEach((w, wi) => addWave(spawns, stage.id, w, wi, stage.hp * (w.hp ?? WAVE_HP[wi] ?? 1), ground, sky));
+  // 오늘의 고개의 조건 (없으면 1: × 1 은 값을 바꾸지 않는다)
+  const hpMod = cfg.mods?.hp ?? 1;
+  const energyMod = cfg.mods?.energy ?? 1;
+  stage.waves.slice(0, WAVES).forEach((w, wi) => addWave(spawns, stage.id, w, wi, stage.hp * (w.hp ?? WAVE_HP[wi] ?? 1) * hpMod, ground, sky));
   let bossId = -1;
   let bossAt = -1;
   if (stage.boss) {
     bossId = BOSS_INDEX[stage.boss.id];
     if (bossId === undefined) throw new Error(`unknown boss: ${stage.boss.id}`);
     bossAt = stage.boss.at ?? BOSS_AT;
-    spawns.push({ t: bossAt, kind: -1, boss: bossId, route: stage.boss.route ?? 0, hpMul: stage.boss.hp ?? 1 });
+    spawns.push({ t: bossAt, kind: -1, boss: bossId, route: stage.boss.route ?? 0, hpMul: (stage.boss.hp ?? 1) * hpMod });
   }
   // 같은 시각이면 적어 둔 순서 그대로 (sort 는 순서를 지킨다)
   spawns.sort((a, b) => a.t - b.t);
@@ -108,7 +111,7 @@ export function createGame(cfg: GameConfig, given?: StageDef): State {
     time: 0,
     lives,
     startLives: lives,
-    energy: Math.floor(stage.energy * um.energy + 1e-6),
+    energy: Math.floor(stage.energy * um.energy * energyMod + 1e-6),
     kills: 0,
     bonus: 0,
     endless: stage.id === ENDLESS_ID,

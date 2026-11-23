@@ -13,6 +13,7 @@ import { openWorldRanking, worldHome } from '../net/world';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { bindUnlock, catCondition, esc, josa, loadEngine, lockHint, unlockLabel, nav, saveSquad, screen, soundButton, starsHtml, state, toast, watchProfile } from './app';
 import { sfx } from './sfx';
+import { dailySquad, type DailyChallenge } from '../game/daily';
 
 const zodiacNick = (id: CharId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
 
@@ -46,6 +47,7 @@ export function showMain() {
      </div>
      <div class="main-actions">
        <button class="btn primary big" id="go">출전 ▶</button>
+       <button class="btn daily-btn" id="daily">📅 오늘의 고개 <small>하루 한 고개, 같은 조건으로 겨뤄요</small></button>
        <div class="sub-actions">
          <button class="btn" id="chars">🐭 캐릭터</button>
          <button class="btn" id="codex">📖 도감</button>
@@ -67,6 +69,10 @@ export function showMain() {
   root.querySelector('#go')!.addEventListener('click', () => {
     sfx('click');
     nav.regions();
+  });
+  root.querySelector('#daily')!.addEventListener('click', () => {
+    sfx('click');
+    nav.daily();
   });
   root.querySelector('#chars')!.addEventListener('click', () => {
     sfx('click');
@@ -217,7 +223,7 @@ export function showStages(regionNo: number, keepScroll = 0) {
 // ───────────────────────── 출전 준비: 캐릭터 5종 고르기 + 이 스테이지의 요괴 미리 보기 ─────────────────────────
 
 /** 스테이지의 길과 배치 칸을 작게 그린 그림 */
-function stageThumb(st: StageDef): string {
+export function stageThumb(st: StageDef): string {
   const routes = st.routes.map(buildRoute);
   const pts = (r: (typeof routes)[number]) => r.xs.map((x, i) => `${x},${r.ys[i]}`).join(' ');
   const half = SLOT_SIZE / 2;
@@ -229,15 +235,19 @@ function stageThumb(st: StageDef): string {
   </svg>`;
 }
 
-export function showPrepare(stageId: string) {
+/** daily: 오늘의 고개로 들어왔으면 그날의 조건 (출전 수 제한 · 금지 캐릭터 · 시작 기운을 반영하고, 돌아가기는 오늘의 고개 화면으로) */
+export function showPrepare(stageId: string, daily?: DailyChallenge) {
   const st = stageOf(stageId);
   if (!st) return nav.regions();
   const isEndless = st.id === ENDLESS_ID;
+  const squadMax = daily?.squadMax ?? SQUAD_SIZE;
+  /** 오늘 데려갈 수 없는 캐릭터인가 */
+  const banned = (id: CharId) => !!daily && daily.ban === id;
   const bg = regionOf(st.region)?.bg ?? 'field';
   // 쓸 수 있는 캐릭터: 해금했고 계산까지 만들어진 것
   const unlocked = (id: CharId) => !!towerOf(id) && state.profile.unlocked.includes(id);
   // 지난번에 고른 캐릭터부터 (지금 쓸 수 있는 것만)
-  let picked = new Set<CharId>(state.squad.filter(unlocked));
+  let picked = new Set<CharId>(daily ? dailySquad(daily, state.squad.filter(unlocked)) : state.squad.filter(unlocked));
   let focus: CharId = [...picked][0] ?? 'rat';
   // 끝없는 모드에는 모든 요괴가 차례로 나온다
   const foes = isEndless ? ENEMIES : stageEnemies(st).map((id) => ENEMIES[ENEMY_INDEX[id]]).filter(Boolean);
@@ -249,17 +259,17 @@ export function showPrepare(stageId: string) {
   /** 출전 캐릭터 칸 (잠긴 캐릭터는 자물쇠. 고양이는 눌러 보면 아래 설명 칸에 [시아코인 100개로 열기]) */
   const charsHtml = () =>
     ROSTER.map(
-      (c) => `<button class="char" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span>${unlocked(c.id) ? `<b class="lvb">Lv ${charLevel(state.profile, c.id)}</b>` : '<b class="lock">🔒</b>'}</button>`,
+      (c) => `<button class="char" data-c="${c.id}"><img src="${zodiacFaceUrl(c.id)}" alt="" /><span>${c.nick}</span>${banned(c.id) ? '<b class="lock">🚫</b>' : unlocked(c.id) ? `<b class="lvb">Lv ${charLevel(state.profile, c.id)}</b>` : '<b class="lock">🔒</b>'}</button>`,
     ).join('');
   const root = screen(
-    `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>출전 준비</h2><span class="spacer"></span></div>
+    `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>${daily ? '오늘의 고개' : '출전 준비'}</h2><span class="spacer"></span></div>
      <div class="scroll">
      <div class="card prep-stage bg-${bg}">
        ${stageThumb(st)}
        <div class="prep-tx">
          <h3>${isEndless ? '♾️' : esc(st.id)} ${esc(st.name)}</h3>
-         <p>${isEndless ? `<span class="tag role">${state.profile.endless ? `최고 웨이브 ${state.profile.endless.wave}` : '첫 도전'}</span>` : starsHtml(best)}</p>
-         <p class="chips"><span>❤️ ${startLivesOf(st, state.profile.upgrades)}</span><span>✨ ${Math.floor(st.energy * upgradeMods(state.profile.upgrades).energy + 1e-6)}</span><span>배치 칸 ${st.slots.length}</span></p>
+         <p>${daily ? `<span class="tag">📅 ${esc(daily.title)}</span> <small>${esc(daily.desc)}</small>` : isEndless ? `<span class="tag role">${state.profile.endless ? `최고 웨이브 ${state.profile.endless.wave}` : '첫 도전'}</span>` : starsHtml(best)}</p>
+         <p class="chips"><span>❤️ ${startLivesOf(st, state.profile.upgrades)}</span><span>✨ ${Math.floor(st.energy * upgradeMods(state.profile.upgrades).energy * (daily?.energyMul ?? 1) + 1e-6)}</span><span>배치 칸 ${st.slots.length}</span></p>
          <p class="soft">${isEndless ? `30초 웨이브가 끝없이 · ${ENDLESS_BOSS_EVERY}웨이브마다 보스` : `30초 웨이브 6개 · 3분${boss ? ' · 2분에 보스' : ''}`}</p>
        </div>
      </div>
@@ -278,7 +288,7 @@ export function showPrepare(stageId: string) {
      </div>
      </div>
      <button class="btn primary big" id="start">출전 ▶</button>`,
-    'select prepare',
+    daily ? 'select prepare daily' : 'select prepare',
     () => off(),
   );
   const startBtn = root.querySelector('#start') as HTMLButtonElement;
@@ -304,10 +314,10 @@ export function showPrepare(stageId: string) {
     root.querySelectorAll<HTMLElement>('.char').forEach((b) => {
       const id = b.dataset.c as CharId;
       b.classList.toggle('sel', picked.has(id));
-      b.classList.toggle('locked', !unlocked(id));
+      b.classList.toggle('locked', !unlocked(id) || banned(id));
       b.classList.toggle('focus', id === focus);
     });
-    root.querySelector('#count')!.textContent = `${picked.size}/${SQUAD_SIZE}`;
+    root.querySelector('#count')!.textContent = `${picked.size}/${squadMax}`;
     const r = ROSTER.find((x) => x.id === focus)!;
     const def = towerOf(focus);
     root.querySelector('#info')!.innerHTML = def
@@ -319,7 +329,7 @@ export function showPrepare(stageId: string) {
     if (unlock) {
       const id = focus;
       bindUnlock(unlock, id, () => {
-        if (unlocked(id) && !picked.has(id) && picked.size < SQUAD_SIZE) picked = new Set(ROSTER.map((r) => r.id).filter((x) => picked.has(x) || x === id));
+        if (unlocked(id) && !banned(id) && !picked.has(id) && picked.size < squadMax) picked = new Set(ROSTER.map((r) => r.id).filter((x) => picked.has(x) || x === id));
         paint();
       });
     }
@@ -331,9 +341,10 @@ export function showPrepare(stageId: string) {
     const id = b.dataset.c as CharId;
     focus = id;
     sfx('toggle');
-    if (unlocked(id)) {
+    if (banned(id)) toast(`오늘의 조건: ${daily!.desc}`);
+    else if (unlocked(id)) {
       if (picked.has(id)) picked.delete(id);
-      else if (picked.size >= SQUAD_SIZE) toast(`한 판에 ${SQUAD_SIZE}종까지 데려갈 수 있어요`);
+      else if (picked.size >= squadMax) toast(daily && squadMax < SQUAD_SIZE ? `오늘은 ${squadMax}종까지만 데려갈 수 있어요` : `한 판에 ${SQUAD_SIZE}종까지 데려갈 수 있어요`);
       else picked.add(id);
       // 고른 순서가 아니라 명단 순서로 (띠 순서, 고양이는 맨 뒤 — 카드와 숫자키 1~5 의 순서)
       picked = new Set(ROSTER.map((r) => r.id).filter((x) => picked.has(x)));
@@ -342,18 +353,21 @@ export function showPrepare(stageId: string) {
   });
   // 고양이를 열면(여기서 샀거나, 다른 기기에서 사고 화면이 다시 보일 때 main.ts 가 다시 물었을 때) 바로 반영한다
   const off = watchProfile(() => {
-    picked = new Set([...picked].filter(unlocked));
+    picked = new Set([...picked].filter((id) => unlocked(id) && !banned(id)));
     root.querySelector('#chars')!.innerHTML = charsHtml();
     paint();
   });
   root.querySelector('#back')!.addEventListener('click', () => {
     sfx('click');
-    if (isEndless) nav.regions();
+    if (daily) nav.daily();
+    else if (isEndless) nav.regions();
     else nav.stages(st.region);
   });
   startBtn.addEventListener('click', () => {
     if (!picked.size) return;
     sfx('click');
+    // 오늘의 고개에서 고른 명단(조건에 맞춘 것)은 평소 명단을 덮어쓰지 않는다
+    if (daily) return nav.game({ stage: st.id, squad: [...picked], daily });
     saveSquad([...picked]);
     nav.game({ stage: st.id, squad: [...picked], endless: isEndless });
   });

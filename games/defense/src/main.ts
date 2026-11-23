@@ -12,6 +12,7 @@ import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
 import { ENDLESS_ID } from './data/endless';
 import { showCodex } from './ui/codex';
 import { showResult } from './ui/result';
+import { showDaily } from './ui/daily';
 import { showChars } from './ui/roster';
 
 nav.main = showMain;
@@ -26,6 +27,7 @@ nav.stages = (no) => {
   resendPending();
 };
 nav.prepare = showPrepare;
+nav.daily = showDaily;
 nav.chars = showChars;
 nav.codex = showCodex;
 const dev = devSetup();
@@ -74,12 +76,14 @@ async function openGame(setup: GameSetup) {
     if (online) await Promise.race([api!.resend().catch(() => 0), wait(RESEND_WAIT_MS)]);
     const [m, begun] = await Promise.all([
       loadEngine().catch(() => null),
-      online ? api!.start(setup.stage, setup.squad, setup.endless ? 'endless' : 'normal').catch((e: unknown) => e) : Promise.resolve(null),
+      online ? api!.start(setup.stage, setup.squad, setup.endless ? 'endless' : 'normal', setup.daily?.day).catch((e: unknown) => e) : Promise.resolve(null),
     ]);
     if (begun instanceof ApiError) {
       // 잠긴 스테이지·캐릭터: 스테이지 고르기로 돌아간다
-      toast(whyText(begun));
-      if (setup.endless) nav.regions();
+      toast(whyText(begun), setup.daily ? 3200 : undefined);
+      // 오늘의 고개: 날짜가 바뀌었으면 새 날짜로 다시 그린다
+      if (setup.daily) nav.daily();
+      else if (setup.endless) nav.regions();
       else nav.stages(stageOf(setup.stage)?.region ?? 1);
       return;
     }

@@ -1,3 +1,4 @@
+import { dailyMods } from '../game/daily';
 import Phaser from 'phaser';
 import { BOARD_H, MAX_LV, RUN_SEC, SLOT_SIZE, SQUAD_SIZE, VIEW_W, WAVES, WAVE_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
@@ -83,7 +84,8 @@ const OFF_TEXT: Record<string, string> = {
  */
 export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   const run = new Run({
-    seed: setup.seed ?? Math.floor(Math.random() * 0xffffffff),
+    // 오늘의 고개는 모두가 같은 시드로 한다
+    seed: setup.daily?.seed ?? setup.seed ?? Math.floor(Math.random() * 0xffffffff),
     stage: setup.stage,
     squad: setup.squad,
     // 판 밖 성장: 서버가 판 시작 때 알려 준 레벨·강화 (없으면 저장된 값. 개발용 설정 ?lv=N · ?upg=N 이 있으면 그 값)
@@ -91,6 +93,8 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : (begun?.upgrades ?? state.profile.upgrades),
     // 시작 생명은 서버가 적어 둔 값 그대로 (서버는 이 값으로 별을 센다)
     startLives: begun?.startLives,
+    // 오늘의 고개의 조건 (요괴 체력 · 시작 기운). 보통 판에는 없다
+    ...(setup.daily && dailyMods(setup.daily) ? { mods: dailyMods(setup.daily) } : {}),
   });
   run.speed = loadSpeed();
   const s = run.state;
@@ -103,7 +107,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   const api = state.api;
   const started: Promise<string | null> = Promise.resolve(setup.offline ? null : (begun?.run ?? null));
   /** 판에서 나갈 때 돌아갈 화면: 스테이지 판은 그 지역의 스테이지 고르기, 끝없는 모드는 지역 지도 */
-  const leave = () => (s.endless ? nav.regions() : nav.stages(s.stage.region));
+  const leave = () => (setup.daily ? nav.daily() : s.endless ? nav.regions() : nav.stages(s.stage.region));
   /** 판 시작을 서버에 알리지 못했다: 이 판은 기록되지 않는다 */
   let unrecorded = !!setup.offline;
 
@@ -490,7 +494,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
             ? `<div class="dialog"><h3>처음부터 다시 할까요?</h3><p class="soft center">이 판의 기록은 남지 않아요</p>
               <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-again>다시하기</button></div></div>`
             : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
-              <p class="soft center">${s.endless ? '♾️' : esc(s.stage.id)} ${esc(s.stage.name)} · 웨이브 ${Math.max(1, s.wave + 1)}${s.endless ? '' : `/${WAVES}`} · ❤️ ${s.lives}</p>
+              <p class="soft center">${setup.daily ? '📅 오늘의 고개 · ' : ''}${s.endless ? '♾️' : esc(s.stage.id)} ${esc(s.stage.name)} · 웨이브 ${Math.max(1, s.wave + 1)}${s.endless ? '' : `/${WAVES}`} · ❤️ ${s.lives}</p>
               <div class="row"><span>🔊 소리</span><div class="seg" data-k="sfx"><button data-v="1" class="${sound.on ? 'sel' : ''}">켜기</button><button data-v="0" class="${sound.on ? '' : 'sel'}">끄기</button></div></div>
               <div class="actions"><button class="btn primary" data-resume>계속하기</button></div>
               <div class="actions"><button class="btn small" data-retry>🔄 다시하기</button><button class="btn small" data-giveup>🏳️ 포기</button></div></div>`;

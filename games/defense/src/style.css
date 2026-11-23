@@ -463,3 +463,23 @@ button, input { font: inherit; color: inherit; }
 .screen.danger::after { content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none; border: calc(var(--u) * 12) solid var(--pink); animation: warn-blink 0.6s ease-in-out infinite alternate; }
 .screen.danger .stat.low { animation: start-bob 0.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .screen.danger::after, .screen.danger .stat.low { animation: none; } }
+
+/* ---------- 오늘의 고개 (오늘의 도전) ---------- */
+.daily-btn { flex-wrap: wrap; column-gap: 8px; row-gap: 0; background: var(--panel-strong); }
+.daily-btn small { font-size: 13px; color: var(--ink-soft); }
+.daily .prep-tx p { word-break: keep-all; }
+.daily .bar h2 { white-space: nowrap; }
+.daily .bar h2 + .spacer { flex-basis: 24px; }
+.unlocks p.daily-line { font-size: 15px; flex-wrap: wrap; row-gap: 0; }
+.unlocks p.daily-line small { color: var(--ink-soft); font-size: 12px; }
+.drank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.drank li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 4px 10px; font-size: 15px; }
+.drank li.me { background: var(--panel-strong); }
+.drank li i { font-style: normal; text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; }
+.drank li b { font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drank li span { font-size: 13px; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.result-card .daily-rule { margin: 6px 0; }
+@media (max-height: 640px) {
+  .daily-btn { padding-top: 6px; padding-bottom: 6px; }
+  .daily-btn small { display: none; }
+}
