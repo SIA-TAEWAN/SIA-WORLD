@@ -64,6 +64,8 @@ export class RaceRoom {
   private toldNewer = false;
   /** 연속전 점수판 (이 방에 있는 동안만. 나가면 사라진다) */
   series: Series = newSeries();
+  /** 오늘의 도전: 이 방의 판은 이 시드(날짜로 만든 트랙)로 연다. 보통 방은 null (판마다 무작위) */
+  fixedSeed: number | null = null;
   private emoteFns = new Set<(id: string, i: number) => void>();
   /** 내가 마지막으로 짧은 말을 보낸 시각 (기기 시각 ms) */
   private lastEmote = 0;
@@ -236,7 +238,7 @@ export class RaceRoom {
       this.lastGoAt = serverNow();
       if (this.left || this.current || !this.isHost() || !allReady(this.members)) return;
       const roster: RosterEntry[] = makeSeats(this.key, this.members).map((s) => ({ slot: s.slot, id: s.id, name: s.name, char: s.char }));
-      const msg: StartMsg = { t: 'start', round: go.round, seed: Math.floor(Math.random() * 0x7fffffff), readyAt: go.readyAt, goAt: go.goAt, roster };
+      const msg: StartMsg = { t: 'start', round: go.round, seed: this.fixedSeed ?? Math.floor(Math.random() * 0x7fffffff), readyAt: go.readyAt, goAt: go.goAt, roster };
       this.ch.send(msg);
       this.applyStart(msg, true);
     } catch (e) {

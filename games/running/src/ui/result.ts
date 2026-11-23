@@ -3,7 +3,8 @@ import { formatTime, tierOf, type RankedEntry } from '../game/ranking';
 import { seriesKey, standings } from '../game/series';
 import { LOCAL_MODE } from '../net/api';
 import { LOCKED_MSG } from '../game/unlock';
-import { loadRankIcons } from '../net/world';
+import { loadRankIcons, worldDailyRanking } from '../net/world';
+import { DAILY_GAME, dailyMs } from '../game/daily';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, screen, state } from './app';
@@ -16,7 +17,9 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   const me = race.mySlot;
   const mine = results.find((r) => r.slot === me);
   const raced = mine && !race.taken[me];
-  const room = state.room;
+  // 오늘의 도전: 혼자 달리는 전용 방이라 연속전 점수·짧은 말은 보이지 않는다
+  const daily = state.daily;
+  const room = daily ? null : state.room;
   let offRoom: (() => void) | null = null;
   let offEmote: (() => void) | null = null;
   const root = screen(
@@ -33,6 +36,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
                 ? '실격! GO가 뜬 뒤에 눌러요'
                 : `미완주 (${Math.floor(mine.x)}m)`
       }</p>
+      ${daily ? '<p class="daily-line" id="daily-line"><span class="tag">오늘의 도전</span> <span id="daily-place"></span></p>' : ''}
       <div class="rows">${results
         .map((r, i) => {
           const p = race.roster[r.slot];
@@ -52,7 +56,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
         })
         .join('')}</div>
       ${room ? emoteBarHtml(false) : ''}
-      <div class="actions"><button class="btn" id="exit">나가기</button><button class="btn primary" id="again">한 판 더 ▶</button></div>
+      <div class="actions"><button class="btn" id="exit">나가기</button><button class="btn primary" id="again">${daily ? '다시 도전 ▶' : '한 판 더 ▶'}</button></div>
       <div class="sub"><button class="btn small" id="rank">🏆 랭킹</button></div>
     </div><div class="cheer" id="cheer"></div>`,
     'result',
@@ -121,9 +125,32 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
     });
   }
 
+  // 오늘의 도전: 그날 기록에 넣은 뒤 오늘 순위를 보인다 (못 넣었거나 못 읽으면 줄을 숨긴다)
+  if (daily) {
+    const line = $('#daily-line');
+    const place = $('#daily-place');
+    const hide = () => line.classList.add('hidden');
+    if (!raced || mine.status !== 'finish') place.innerHTML = '<span class="soft">완주해야 오늘 기록이 남아요</span>';
+    else if (LOCAL_MODE) place.innerHTML = '<span class="soft">테스트 모드에서는 순위가 남지 않아요</span>';
+    else if (!race.dailySaved) hide();
+    else {
+      place.innerHTML = '<span class="soft">순위를 확인하는 중…</span>';
+      void race.dailySaved
+        .then((ok) => (ok ? worldDailyRanking(DAILY_GAME, daily.day) : null))
+        .then((r) => {
+          const ms = dailyMs(r?.mine);
+          if (!r || !r.mine || ms === null) return hide();
+          place.innerHTML = `오늘 <b>${Number(r.mine.place) || '-'}위</b> <span class="soft">· 오늘 최고 ${formatTime(ms)}초 · ${Number(r.total) || 1}명 중</span>`;
+        }, hide);
+    }
+  }
+
   $('#again').addEventListener('click', () => {
     sfx('click');
-    if (state.room) nav.waiting();
+    if (daily) {
+      leaveRoom();
+      nav.daily();
+    } else if (state.room) nav.waiting();
     else nav.lobby();
   });
   $('#exit').addEventListener('click', () => {

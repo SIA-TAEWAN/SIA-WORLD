@@ -94,6 +94,10 @@ export class RaceGame {
   results: RankedEntry[] | null = null;
   /** 내 기록을 올린 결과 (도착했을 때) */
   record: Promise<SubmitResult> | null = null;
+  /** 오늘의 도전으로 달리는 판이면 그 날짜 ('YYYY-MM-DD'). 완주 기록이 서버에 올라가면 그날 기록으로도 넣는다 */
+  dailyDay: string | null = null;
+  /** 오늘의 도전 기록을 넣은 결과 (들어갔으면 true) */
+  dailySaved: Promise<boolean> | null = null;
   onOver: ((r: RankedEntry[]) => void) | null = null;
   /** 내 자리가 AI로 넘어갔다 (접속이 끊겼다가 돌아옴) */
   onLostSeat: (() => void) | null = null;
@@ -582,6 +586,9 @@ export class RaceGame {
     const char = this.myChar();
     if (!char) return;
     this.record = this.api.submit(this.room.key, this.round, ms, char);
+    const day = this.dailyDay;
+    // 서버가 받은 완주 기록만 오늘의 도전에 넣는다 (083_race_daily.sql 이 race_runs 를 읽는다)
+    if (day) this.dailySaved = this.record.then((rec) => (rec.saved ? this.api.dailySubmit(this.room.key, this.round, day) : false)).catch(() => false);
     this.sendPos(serverNow(), true);
   }
 

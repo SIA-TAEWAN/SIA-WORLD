@@ -7,8 +7,10 @@ import { initUnlock } from './game/unlock';
 import { loadChar, loadEngine, nav, screen, state } from './ui/app';
 import { enterRoom, showLobby, showWaiting } from './ui/menus';
 import { showResult } from './ui/result';
+import { showDaily } from './ui/daily';
 
 nav.lobby = showLobby;
+nav.daily = () => void showDaily();
 nav.room = (code) => void enterRoom(code);
 nav.waiting = showWaiting;
 nav.race = (start) => void loadEngine().then((m) => m.showRace(start));

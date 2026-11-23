@@ -51,7 +51,7 @@ export function showLobby() {
       ${cast.map((c, i) => `<img class="runner" src="${zodiacFullUrl(c)}" alt="" style="left:${48.3 + (i - 1.5) * 21}%;" />`).join('')}
     </div>
     <div class="card best"><span>🏅 내 최고 기록</span><span id="best"><span class="soft">불러오는 중…</span></span></div>
-    <div class="main-actions"><button class="btn primary big" id="create">방 만들기 ▶</button></div>
+    <div class="main-actions"><button class="btn primary big" id="create">방 만들기 ▶</button><button class="btn big daily-btn" id="daily">📅 오늘의 도전</button></div>
     <div class="card rooms-card"><h3>방 목록 <span class="soft" id="rooms-n"></span></h3><div class="rooms" id="rooms"><p class="empty">불러오는 중…</p></div></div>
     <div class="sub-actions"><button class="btn" id="rank">🏆 랭킹</button><button class="btn" id="howto">❓ 방법</button></div>`,
     'lobby',
@@ -65,6 +65,10 @@ export function showLobby() {
   $('#create').addEventListener('click', () => {
     sfx('click');
     nav.room(newRoomCode());
+  });
+  $('#daily').addEventListener('click', () => {
+    sfx('click');
+    nav.daily();
   });
 
   // 방 목록: 열려 있는 방을 눌러 들어간다 (대기실 채널에서 실시간으로 받는다)
@@ -157,6 +161,7 @@ export async function enterRoom(code: string) {
   if (state.room && state.room.key !== code) {
     await state.room.leave();
     state.room = null;
+    state.daily = null;
     state.lobby?.setRoom(null);
   }
   setRoomInUrl(code);

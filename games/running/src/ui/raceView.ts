@@ -24,6 +24,8 @@ export function showRace(start: StartMsg) {
   const api = state.api;
   if (!room || !api) return nav.lobby();
   const race = new RaceGame(room, api, start);
+  // 오늘의 도전 방에서 연 판이면 그 날짜를 알려 둔다 (도착하면 그날 기록으로 넣는다)
+  if (state.daily && start.seed === state.daily.seed) race.dailyDay = state.daily.day;
   window.__race = race;
   const me = race.mySlot;
 

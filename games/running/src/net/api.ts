@@ -41,6 +41,8 @@ export interface RaceApi {
   submit(room: string, round: number, ms: number, character: ZodiacId): Promise<SubmitResult>;
   /** 내 최고 기록 (없으면 null) */
   myBest(): Promise<number | null>;
+  /** 오늘의 도전: 방금 올린 완주 기록(race_runs)을 그날 기록으로 넣는다 (083_race_daily.sql). 들어갔으면 true */
+  dailySubmit(room: string, round: number, day: string): Promise<boolean>;
 }
 
 /** GO 요청부터 '준비' 표시까지 (서버 029_race.sql 의 lead_ms 와 같은 값) */
@@ -107,6 +109,9 @@ function createLocalApi(uid: string): RaceApi {
     async myBest() {
       return readLocalBest(uid);
     },
+    async dailySubmit() {
+      return false; // 테스트 모드: 서버 기록 없음
+    },
   };
 }
 
@@ -158,6 +163,14 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       const { data, error } = await sb.from('race_records').select('best_ms').eq('user_id', uid).maybeSingle();
       if (error) return readLocalBest(uid);
       return (data as { best_ms: number } | null)?.best_ms ?? null;
+    },
+    async dailySubmit(room, round, day) {
+      try {
+        const { data, error } = await sb.rpc('race_daily_submit', { p_room_key: room, p_round: round, p_day: day });
+        return !error && !!data;
+      } catch {
+        return false;
+      }
     },
   };
 }

@@ -22,11 +22,15 @@ export const state = {
   char: 'tiger' as ZodiacId,
   /** 내 최고 기록 (ms) */
   best: null as number | null,
+  /** 오늘의 도전을 달리는 중이면 그 날짜와 트랙 시드 (보통 방이면 null) */
+  daily: null as { day: string; seed: number } | null,
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */
 export const nav = {
   lobby: () => {},
+  /** 오늘의 도전 화면 */
+  daily: () => {},
   room: (_code: string) => {},
   /** 방에 있는 채로 대기실 화면으로 */
   waiting: () => {},
@@ -114,6 +118,7 @@ export function openSettings() {
 export function leaveRoom() {
   void state.room?.leave();
   state.room = null;
+  state.daily = null;
   state.lobby?.setRoom(null);
 }
 
