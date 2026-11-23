@@ -1,0 +1,448 @@
+/**
+ * 맵 생성 (PRD: 지형별 타일 조각을 이어 붙여 만드는 생성 스크립트 + 손으로 다듬기).
+ * 조각은 모두 너비 16칸이고, 위·아래 줄의 가운데 4칸(6~9)이 뚫려 있어 어느 조각끼리도 이어진다.
+ * 조각 글자: # 벽 · . 바닥 · ~ 물(느려짐) · E 요괴 무리 자리 · C 숨은 상자 자리(여럿 중 하나만 쓴다) · S 시작 · X 출구 · B 보스
+ *
+ * 같은 (지형, 맵 번호)는 늘 같은 맵이 나온다. `npm run gen` 이 src/data/maps/rNN.ts 를 다시 쓴다.
+ */
+import { MAP_W } from './balance';
+import { BOSSES } from './bosses';
+import { regionTier } from './economy';
+import { ELITE, ENEMIES, type EnemyKind } from './enemies';
+import { baseStats } from './growth';
+import type { Cell, GroupDef, MapDef } from './maps';
+import { MAPS_PER_REGION, mapId, mapScale, regionOf } from './regions';
+import { tierAtk } from './weapons';
+
+type Piece = string[];
+
+const START: Piece = [
+  '######....######',
+  '#####......#####',
+  '#####......#####',
+  '#####..S...#####',
+  '#####......#####',
+  '################',
+];
+const EXIT: Piece = [
+  '################',
+  '#####......#####',
+  '#####..X...#####',
+  '#####......#####',
+  '######....######',
+];
+const BOSS: Piece = [
+  '################',
+  '####........####',
+  '##............##',
+  '#......X.......#',
+  '#..............#',
+  '#..............#',
+  '#......B.......#',
+  '#..............#',
+  '#..............#',
+  '#..............#',
+  '#..............#',
+  '##............##',
+  '####........####',
+  '######....######',
+];
+const HALL: Piece = ['######....######', '######....######', '######....######'];
+
+/** 방 조각 (좌우로 뒤집어 쓰기도 한다) */
+const ROOMS: Piece[] = [
+  // 0 넓은 풀밭
+  [
+    '######....######',
+    '###..........###',
+    '##............##',
+    '#..............#',
+    '#......E.......#',
+    '#..............#',
+    '##............##',
+    '###..........###',
+    '######....######',
+  ],
+  // 1 가운데 물웅덩이
+  [
+    '######....######',
+    '##............##',
+    '#..............#',
+    '#....~~~~~~....#',
+    '#.E..~~~~~~..E.#',
+    '#....~~~~~~....#',
+    '#..............#',
+    '##............##',
+    '######....######',
+  ],
+  // 2 기둥 넷
+  [
+    '######....######',
+    '##............##',
+    '#...##....##...#',
+    '#...##....##...#',
+    '#......E.......#',
+    '#...##....##...#',
+    '#...##....##...#',
+    '##............##',
+    '######....######',
+  ],
+  // 3 꺾인 길
+  [
+    '######....######',
+    '######....######',
+    '#.........######',
+    '#.E.......######',
+    '#....###########',
+    '#....###########',
+    '#..............#',
+    '#..........E...#',
+    '###########....#',
+    '###########....#',
+    '######.........#',
+    '######....######',
+  ],
+  // 4 물길 사이 넓은 터
+  [
+    '######....######',
+    '#..............#',
+    '#.E..........E.#',
+    '#..~~......~~..#',
+    '#..~~......~~..#',
+    '#..............#',
+    '#......E.......#',
+    '#..............#',
+    '######....######',
+  ],
+  // 5 좁은 목 뒤의 방
+  [
+    '######....######',
+    '###..........###',
+    '#..............#',
+    '#....E....E....#',
+    '#..............#',
+    '###..........###',
+    '######....######',
+    '######....######',
+  ],
+];
+
+/** 2지형 '소의 논밭' 조각: 진흙탕(~)이 많다 — 진흙에서는 더 느려지고 구르기가 짧아진다 */
+const PADDY: Piece[] = [
+  // 논 네 배미와 논두렁
+  [
+    '######....######',
+    '#..............#',
+    '#.~~~~.E..~~~~.#',
+    '#.~~~~....~~~~.#',
+    '#..............#',
+    '#.~~~~....~~~~.#',
+    '#.~~~~..E.~~~~.#',
+    '#..............#',
+    '######....######',
+  ],
+  // 진흙 벌판 (가운데만 마른 땅)
+  [
+    '######....######',
+    '##~~~~....~~~~##',
+    '#~~~~~~~~~~~~~~#',
+    '#~~~~..E...~~~~#',
+    '#~~~~......~~~~#',
+    '#~~~~~~~~~~~~~~#',
+    '##~~~~....~~~~##',
+    '######....######',
+  ],
+  // 허수아비 밭 (말뚝 사이 물꼬)
+  [
+    '######....######',
+    '#..............#',
+    '#..#....E...#..#',
+    '#......~~......#',
+    '#.E..#.~~.#....#',
+    '#......~~......#',
+    '#..#........#..#',
+    '#..............#',
+    '######....######',
+  ],
+  // 물꼬 건너기 (진흙 띠를 건너야 한다)
+  [
+    '######....######',
+    '#..............#',
+    '#....E.....E...#',
+    '#~~~~~~~~~~~~~~#',
+    '#~~~~~~~~~~~~~~#',
+    '#..............#',
+    '#......E.......#',
+    '######....######',
+  ],
+];
+
+/** 3지형 '호랑이 고개' 조각: 바위와 벼랑 사이의 좁은 길 (골바람에 밀리면 벽에 붙는다) */
+const PASS: Piece[] = [
+  // 굽잇길
+  [
+    '######....######',
+    '######.....#####',
+    '#######.....####',
+    '########..E..###',
+    '########......##',
+    '#######.......##',
+    '#####........###',
+    '###.....E..#####',
+    '##......########',
+    '##.....#########',
+    '###......#######',
+    '######....######',
+  ],
+  // 바위 고개
+  [
+    '######....######',
+    '###..........###',
+    '#....##........#',
+    '#....##...E..#.#',
+    '#.E.......##.#.#',
+    '#.........##...#',
+    '#..##..........#',
+    '###..........###',
+    '######....######',
+  ],
+  // 벼랑 사잇길 (두 갈래)
+  [
+    '######....######',
+    '#..............#',
+    '#.E..######..E.#',
+    '#....######....#',
+    '#....######....#',
+    '#....######....#',
+    '#......E.......#',
+    '#..............#',
+    '######....######',
+  ],
+  // 고갯마루 (넓은 터에 바위 셋)
+  [
+    '######....######',
+    '##............##',
+    '#...#......#...#',
+    '#.......E......#',
+    '#..............#',
+    '#..E...##...E..#',
+    '#......##......#',
+    '##............##',
+    '######....######',
+  ],
+];
+
+/** 숨은 상자 자리가 있는 방 조각 (맵마다 한두 개 섞는다) */
+const NOOKS: Piece[] = [
+  // 왼쪽 곁방
+  [
+    '######....######',
+    '#####......#####',
+    '#....#.....#####',
+    '#.C..#......####',
+    '#....#..E....###',
+    '#...........####',
+    '#....#......####',
+    '######.....#####',
+    '######....######',
+  ],
+  // 벽 뒤 샛길
+  [
+    '######....######',
+    '###..........###',
+    '#.#..........###',
+    '#C#....E.....###',
+    '#.#..........###',
+    '#.#.........####',
+    '#...........####',
+    '####.......#####',
+    '######....######',
+  ],
+  // 물 건너 구석
+  [
+    '######....######',
+    '##.........#####',
+    '#..........#####',
+    '#.E.......~~~~.#',
+    '#.........~~~C.#',
+    '#.........~~~~.#',
+    '#..........#####',
+    '##.........#####',
+    '######....######',
+  ],
+];
+
+/** 씨앗 → 0~1 난수 (mulberry32) */
+export function rng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const mirror = (p: Piece): Piece => p.map((row) => [...row].reverse().join(''));
+
+/** 지형마다 다른 생성 값. 없는 지형은 기본값을 쓴다 */
+export interface RegionGen {
+  /** 맵 이름 8개 */
+  names: string[];
+  /** 맵 번호(1~8)별 방 수 */
+  rooms: number[];
+  /** 그 지형에만 나오는 방 조각 (공용 조각과 절반씩 섞는다) */
+  extra?: Piece[];
+}
+
+const DEFAULT_ROOMS = [12, 12, 12, 13, 13, 13, 13, 6];
+export const REGION_GEN: Partial<Record<number, RegionGen>> = {
+  1: { names: ['들머리', '풀숲 길', '물웅덩이 길', '여우불 언덕', '방망이 고개', '갈대밭', '도깨비 터 앞', '큰 도깨비의 놀이터'], rooms: DEFAULT_ROOMS },
+  2: { names: ['논두렁 길', '물꼬 옆', '허수아비 밭', '진흙 벌판', '죽순 둑', '모내기 논', '두억시니 굴 앞', '두억시니의 논'], rooms: DEFAULT_ROOMS, extra: PADDY },
+  3: { names: ['고개 들머리', '바위 비탈', '살쾡이 굴', '벼랑 사잇길', '바람골', '대숲 고개', '쇠가시 길', '불가살의 고갯마루'], rooms: DEFAULT_ROOMS, extra: PASS },
+};
+
+/** 맵 번호에서 나오는 요괴: 지형 요괴 목록의 앞에서부터 하나씩 늘어난다 */
+export const kindsAt = (region: number, no: number): EnemyKind[] => {
+  const all = regionOf(region).enemies;
+  return all.slice(0, Math.max(1, Math.min(all.length, no)));
+};
+/** 맵 번호별 정예 수 */
+export const elitesAt = (no: number) => (no < 3 ? 0 : no <= 5 ? 1 : no <= 7 ? 2 : 1);
+
+function makeGroup(at: Cell, kinds: EnemyKind[], no: number, rand: () => number): GroupDef {
+  const size = 4 + Math.floor((no - 1) / 3) + (rand() < 0.4 ? 1 : 0) - (rand() < 0.25 ? 1 : 0);
+  const counts = new Map<EnemyKind, number>();
+  for (let i = 0; i < Math.max(2, size); i++) {
+    // 첫 요괴(그 지형의 기본 요괴)가 가장 흔하다. 내려찍기·원거리 요괴는 한 무리에 둘까지
+    let k = kinds[0];
+    if (kinds.length > 1 && rand() < 0.55) k = kinds[1 + Math.floor(rand() * (kinds.length - 1))];
+    if (ENEMIES[k].ai !== 'melee' && (counts.get(k) ?? 0) >= 2) k = kinds[0];
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return { at, list: kinds.filter((k) => counts.has(k)).map((k) => [k, counts.get(k)!]) };
+}
+
+/**
+ * 별 기준 시간 (PRD '맵 별 3개' — 시간 안에 깨기). 권장 레벨 +2 · 그 지형 등급 무기로 싸울 때 걸리는 시간을
+ * 길이(줄 수)와 '때려야 하는 횟수'(요괴 체력 ÷ 내 공격력)로 어림하고 여유를 둔다. 계수는 npm run pace 의 자동 조종 시간에 맞췄다
+ * (PACE_PAR=1 npm run pace 가 맵마다 별 시간 ÷ 사람이 깬 시간을 보여 준다 — 1.2~1.5 가 되게).
+ */
+export const PAR = { base: 0, row: 0.9, hit: 0.18, bossHit: 0.48, slack: 1.5 };
+export function parHits(region: number, no: number, groups: GroupDef[], boss: boolean): { hits: number; bossHits: number } {
+  const sc = mapScale(region, no, 'normal');
+  const atk = baseStats(sc.level + 2).atk + tierAtk(regionTier(region, 'normal'));
+  let hp = 0;
+  for (const g of groups) {
+    for (const [k, n] of g.list) hp += ENEMIES[k].hp * n * (1 + (ENEMIES[k].split ? ENEMIES[k].split!.n * ENEMIES[k].split!.hp : 0));
+    if (g.elite) hp += ENEMIES[g.elite].hp * ELITE.hp;
+  }
+  return { hits: (hp * sc.hp) / atk, bossHits: boss ? (BOSSES[regionOf(region).boss].hp * sc.hp) / atk : 0 };
+}
+export function parOf(region: number, no: number, rows: number, groups: GroupDef[], boss: boolean): number {
+  const h = parHits(region, no, groups, boss);
+  return Math.round(((PAR.base + PAR.row * rows + PAR.hit * h.hits + PAR.bossHit * h.bossHits) * PAR.slack) / 10) * 10;
+}
+
+export function generateMap(region: number, no: number): MapDef {
+  const rand = rng(region * 1000 + no * 37 + 11);
+  const gen = REGION_GEN[region];
+  const boss = no === MAPS_PER_REGION;
+  const roomCount = (gen?.rooms ?? DEFAULT_ROOMS)[no - 1];
+
+  // 아래(시작)에서 위(출구)로 조각을 고른다
+  const pieces: Piece[] = [START];
+  const nookAt = boss ? -1 : 1 + Math.floor(rand() * (roomCount - 1));
+  let last = -1;
+  for (let i = 0; i < roomCount; i++) {
+    let p: Piece;
+    if (i === nookAt || (boss && i === 1)) {
+      p = NOOKS[Math.floor(rand() * NOOKS.length)];
+    } else {
+      // 지형 조각이 있으면 절반은 그 조각에서
+      const pool = gen?.extra && rand() < 0.5 ? gen.extra : ROOMS;
+      const base = pool === ROOMS ? 0 : 100;
+      let k = Math.floor(rand() * pool.length);
+      if (base + k === last) k = (k + 1) % pool.length;
+      last = base + k;
+      p = pool[k];
+    }
+    pieces.push(rand() < 0.5 ? mirror(p) : p);
+    if (rand() < 0.35) pieces.push(HALL);
+  }
+  pieces.push(boss ? BOSS : EXIT);
+
+  // 위에서부터 줄을 쌓는다
+  const raw = pieces.reverse().flat();
+  let start: Cell = [0, 0];
+  let exit: Cell = [0, 0];
+  let bossAt: Cell | undefined;
+  const spots: Cell[] = [];
+  const chests: Cell[] = [];
+  const rows = raw.map((row, y) => {
+    if (row.length !== MAP_W) throw new Error(`조각 너비가 ${MAP_W} 이 아니다: "${row}"`);
+    return [...row]
+      .map((c, x) => {
+        if (c === 'S') start = [x, y];
+        else if (c === 'X') exit = [x, y];
+        else if (c === 'B') bossAt = [x, y];
+        else if (c === 'E') spots.push([x, y]);
+        else if (c === 'C') chests.push([x, y]);
+        else return c;
+        return '.';
+      })
+      .join('');
+  });
+  if (!chests.length) throw new Error('숨은 상자 자리가 없다');
+  const chest = chests[Math.floor(rand() * chests.length)];
+
+  // 시작에 가까운 무리부터 (아래 → 위)
+  spots.sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  const kinds = kindsAt(region, no);
+  const groups = spots.map((at) => makeGroup(at, kinds, no, rand));
+  // 정예: 첫 두 무리를 뺀 나머지에서 고르게
+  const elites = Math.min(elitesAt(no), Math.max(0, groups.length - 2));
+  for (let i = 0; i < elites; i++) {
+    const idx = 2 + Math.floor(((i + 0.5) / elites) * (groups.length - 2));
+    groups[Math.min(groups.length - 1, idx)].elite = kinds[kinds.length - 1];
+  }
+
+  const par = parOf(region, no, rows.length, groups, boss);
+  return { id: mapId(region, no), region, no, name: gen?.names[no - 1] ?? `${regionOf(region).name} ${no}`, rows, start, exit, chest, groups, ...(bossAt ? { boss: bossAt } : {}), par };
+}
+
+export const generateRegion = (region: number): MapDef[] => Array.from({ length: MAPS_PER_REGION }, (_, i) => generateMap(region, i + 1));
+
+/** 지형 파일(src/data/maps/rNN.ts) 내용 */
+export function regionFile(region: number, maps: MapDef[]): string {
+  const nn = String(region).padStart(2, '0');
+  const cell = (c: Cell) => `[${c[0]}, ${c[1]}]`;
+  const body = maps
+    .map((m) => {
+      const groups = m.groups
+        .map((g) => `      { at: ${cell(g.at)}, list: [${g.list.map(([k, n]) => `['${k}', ${n}]`).join(', ')}]${g.elite ? `, elite: '${g.elite}'` : ''} },`)
+        .join('\n');
+      return `  {
+    id: '${m.id}', region: ${m.region}, no: ${m.no}, name: '${m.name}', par: ${m.par},
+    start: ${cell(m.start)}, exit: ${cell(m.exit)}, chest: ${cell(m.chest)},${m.boss ? ` boss: ${cell(m.boss)},` : ''}
+    groups: [
+${groups}
+    ],
+    rows: [
+${m.rows.map((r) => `      '${r}',`).join('\n')}
+    ],
+  },`;
+    })
+    .join('\n');
+  return `/**
+ * ${region}지형 '${regionOf(region).name}' 맵 8개. \`npm run gen\` (scripts/gen-maps.ts → src/data/mapgen.ts) 이 만든 파일이다.
+ * 손으로 다듬은 곳은 다시 만들면 사라지니, 다듬은 뒤에는 tests/maps.test.ts 의 '생성 결과와 같다' 검사를 그 맵에서 빼 둔다.
+ */
+import type { MapDef } from '../maps';
+
+export const R${nn}: MapDef[] = [
+${body}
+];
+`;
+}
