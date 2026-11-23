@@ -9,15 +9,21 @@ import { STEP, step, type Enemy, type Input, type RunState, type SimEvent, type 
 import { COLOR, css } from '../theme';
 import { ENEMY_TINT, artFor, groundOf } from './art';
 
-/** 기준 화면 크기 (세로 9:16) */
+/** 기준 화면 크기 (세로 9:16). 더 긴 화면(아이폰 19.5:9 등)은 위아래로 더 보여 준다 — 띠를 남기지 않게 */
 export const W = 720;
 export const H = 1280;
+export const H_MAX = 1600;
+/** 화면 비율에 맞는 그림판 높이 (9:16 보다 넓은 화면은 기준 높이 그대로 두고 가운데에 맞춘다) */
+export const viewHeight = (w: number, h: number) => (w > 0 && h > 0 ? Math.round(Math.min(H_MAX, Math.max(H, (W * h) / w))) : H);
 const WORLD_W = MAP_W * TILE;
 /** 바닥을 미리 그려 두는 조각의 높이 (칸). 화면 가까이의 조각만 만들어 두고 멀어지면 지운다 (아이폰 메모리) */
 const CHUNK_ROWS = 16;
 const CHUNK_H = CHUNK_ROWS * TILE;
 /** 화면 밖 이만큼까지 그린다 */
 const MARGIN = 120;
+/** 카메라가 맵 위·아래 끝을 넘어가도 되는 만큼 (화면 높이 비율): HUD 와 아래 조작 버튼이 덮는 자리 */
+const CAM_OVER_TOP = 0.1;
+const CAM_OVER_BOTTOM = 0.3;
 const DIGITS = '0123456789';
 const DIGIT_W = 22;
 const DIGIT_H = 40;
@@ -94,6 +100,8 @@ export class GameScene extends Phaser.Scene {
   private camX = 0;
   private camY = 0;
   private shake = 0;
+  /** 이 판의 그림판 높이 (viewHeight) */
+  private vh = H;
 
   constructor() {
     super('game');
@@ -123,6 +131,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const s = this.run;
+    this.vh = this.scale.height;
     this.makeFallbacks();
     this.makeDigits();
     this.under = this.add.graphics().setDepth(2);
@@ -138,7 +147,7 @@ export class GameScene extends Phaser.Scene {
     }
     for (let i = 0; i < POP_POOL; i++) this.pops.push({ o: this.add.image(0, 0, this.textures.exists('fx-pop') ? 'fx-pop' : 'fx-pop-fallback').setDepth(55).setVisible(false), t: 0, size: 0 });
     this.camX = Phaser.Math.Clamp(s.p.x - W / 2, 0, WORLD_W - W);
-    this.camY = Phaser.Math.Clamp(s.p.y - H * 0.56, 0, Math.max(0, s.rows * TILE - H));
+    this.camY = this.camTargetY();
     this.draw(0);
   }
 
@@ -319,8 +328,18 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- 그리기 ----------
 
+  /**
+   * 카메라 세로 목표: 대원을 가운데보다 조금 아래에. 맵 끝에서는 맵 밖(벽 색)을 조금 보여 준다 —
+   * 위는 HUD, 아래는 조이스틱·버튼이 덮어서, 맵 끝에 딱 맞추면 시작 자리의 대원이 버튼 밑에 깔린다.
+   */
+  private camTargetY() {
+    const lo = -this.vh * CAM_OVER_TOP;
+    const hi = this.run.rows * TILE - this.vh * (1 - CAM_OVER_BOTTOM);
+    return hi < lo ? (lo + hi) / 2 : Phaser.Math.Clamp(this.run.p.y - this.vh * 0.56, lo, hi);
+  }
+
   private onScreen(x: number, y: number, pad: number) {
-    return x > this.camX - pad && x < this.camX + W + pad && y > this.camY - pad && y < this.camY + H + pad;
+    return x > this.camX - pad && x < this.camX + W + pad && y > this.camY - pad && y < this.camY + this.vh + pad;
   }
 
   private draw(dt: number) {
@@ -330,7 +349,7 @@ export class GameScene extends Phaser.Scene {
 
     // 카메라: 대원을 화면 가운데보다 조금 아래에 둔다 (위쪽 = 가는 방향이 더 보이게)
     const tx = Phaser.Math.Clamp(p.x - W / 2, 0, WORLD_W - W);
-    const ty = Phaser.Math.Clamp(p.y - H * 0.56, 0, Math.max(0, s.rows * TILE - H));
+    const ty = this.camTargetY();
     const k = dt ? Math.min(1, dt * 9) : 1;
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
@@ -478,7 +497,7 @@ export class GameScene extends Phaser.Scene {
         const span = W + 260;
         const off = (((now * 760 + i * 197) % span) + span) % span;
         const wx = this.camX + (env.gust > 0 ? off - 130 : W + 130 - off);
-        const wy = this.camY + ((i * 109 + 60) % H) + Math.sin(now * 3 + i) * 12;
+        const wy = this.camY + ((i * 109 + 60) % this.vh) + Math.sin(now * 3 + i) * 12;
         o.lineBetween(wx, wy, wx - env.gust * (70 + (i % 3) * 30), wy);
       }
     }
@@ -600,7 +619,7 @@ export class GameScene extends Phaser.Scene {
 
   private ensureChunks() {
     const first = Math.max(0, Math.floor(this.camY / CHUNK_H));
-    const last = Math.min(Math.ceil((this.run.rows * TILE) / CHUNK_H) - 1, Math.floor((this.camY + H) / CHUNK_H));
+    const last = Math.min(Math.ceil((this.run.rows * TILE) / CHUNK_H) - 1, Math.floor((this.camY + this.vh) / CHUNK_H));
     for (let i = first; i <= last; i++) if (!this.chunks.has(i)) this.chunks.set(i, this.makeChunk(i));
     for (const [i, img] of this.chunks) {
       if (i >= first - 1 && i <= last + 1) continue;

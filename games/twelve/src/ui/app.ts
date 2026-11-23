@@ -44,7 +44,7 @@ import { applyTowerFloor, beginTower, startFloors, type TowerFloorResult, type T
 import { ApiError, type TwelveApi } from '../net/api';
 import { DEV_ALL, DEV_GOD, DEV_HERO, DEV_LEVEL, DEV_MAP, DEV_WEAPON, LOCAL_MODE } from '../net/local';
 import { buyCharacter, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
-import { GameScene, H, W, dropIcon, dropName } from '../scenes/GameScene';
+import { GameScene, W, dropIcon, dropName, viewHeight } from '../scenes/GameScene';
 import { groundOf, hasArt } from '../scenes/art';
 import { COLOR, css } from '../theme';
 import { createControls, type Controls } from './controls';
@@ -460,8 +460,12 @@ function showRegion(region: number) {
 let game: Phaser.Game | null = null;
 let controls: Controls | null = null;
 let busy = false;
+/** 전투 화면 자리의 크기가 바뀌면 그림판을 다시 맞춘다 (Phaser 는 창 크기 변화만 믿을 만하게 따라온다) */
+let gameWatch: ResizeObserver | null = null;
 
 function closeGame() {
+  gameWatch?.disconnect();
+  gameWatch = null;
   controls?.destroy();
   controls = null;
   game?.destroy(true);
@@ -660,13 +664,20 @@ function playRun(run: RunState, o: PlayOpts) {
     type: Phaser.AUTO,
     parent: $('game'),
     width: W,
-    height: H,
+    // #stage 와 같은 계산 (높이 = 창 높이, 폭 = 9:16 까지). 창 크기로 재야 화면이 아직 자리 잡기 전에도 맞다
+    height: viewHeight(Math.min(window.innerWidth, (window.innerHeight * 9) / 16), window.innerHeight),
     backgroundColor: look.wall,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { keyboard: false, mouse: false, touch: false },
     scene: [],
     banner: false,
   });
+  if (typeof ResizeObserver !== 'undefined') {
+    gameWatch = new ResizeObserver(() => game?.scale.refresh());
+    gameWatch.observe($('game'));
+  }
+  // 개발용: 콘솔·확인 도구가 그림 메모리(game.textures)를 잴 수 있게 (테스트 모드에서만)
+  if (LOCAL_MODE) (window as unknown as { __twelveGame?: Phaser.Game }).__twelveGame = game;
   game.scene.add('game', scene, true, {
     run,
     hooks: {
@@ -805,7 +816,7 @@ function showTower() {
   const paint = () => {
     const r = regionOf(towerRegion(pick));
     const root = screen(
-      `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>🗼 끝없는 탑</h2><div class="pills">${levelPill()}${coinsPill()}</div></div>
+      `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>끝없는 탑</h2><div class="pills">${levelPill()}${coinsPill()}</div></div>
       <div class="card">
         <h3>내 기록 <small>${rec ? '가장 높이 오른 층' : '아직 올라 본 적이 없어요'}</small></h3>
         ${rec ? `<div class="rows"><div><span>최고 층</span><b>${rec.floor}층</b></div><div><span>걸린 시간</span><b>${time(rec.time)}</b></div><div><span>그때</span><b>Lv ${rec.level} · ${heroOf(rec.hero).name}</b></div></div>` : ''}
@@ -931,6 +942,7 @@ async function floorCleared(t: TowerPlay, s: RunState) {
   on(box, '#stop', () => {
     if (gone) return;
     gone = true;
+    box.remove();
     t.floor++;
     void endTowerPlay(t, [], '', true);
   });
