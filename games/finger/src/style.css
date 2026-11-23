@@ -309,3 +309,20 @@ img.ball.pierce { border-color: var(--accent); }
 .daily-line b { font-weight: normal; color: var(--accent); }
 .daily-line:empty { display: none; }
 .center { text-align: center; }
+
+/* 메인을 짧은 화면에서 스크롤 없이: 세로 660px 아래(예: 375×553)에서는 여백·제목·그림·파티 칸을 줄인다.
+   (세로 667px 부터는 그대로 들어간다. 320×480 처럼 더 작은 화면은 줄인 채로 스크롤한다) */
+@media (max-height: 660px) {
+  .screen.home { gap: 7px; padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .screen.home .title h1 { font-size: 38px; line-height: 1.15; }
+  .screen.home .title p { margin-top: 0; font-size: 13px; }
+  .screen.home .hero.thumb { aspect-ratio: 16 / 6; }
+  .screen.home .card { padding: 8px 10px; }
+  .screen.home .card h3 { margin-bottom: 4px; }
+  .screen.home .party-mini { gap: 2px; }
+  .screen.home .party-mini span { font-size: 12px; line-height: 1.25; text-align: center; }
+  .screen.home .party-mini img { width: 42px; height: 42px; }
+  .screen.home .menu-btns { gap: 7px; }
+  .screen.home .menu-btns .row2 { gap: 7px; }
+  .screen.home .menu-btns .btn.big { padding-top: 9px; padding-bottom: 9px; }
+}

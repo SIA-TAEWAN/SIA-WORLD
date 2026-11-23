@@ -221,6 +221,7 @@ export function whyText(why: string): string {
     'not enough coins': '엽전이 모자라요',
     'max level': '이미 최대 강화예요',
     'need login': '다시 로그인해 주세요',
+    'bad day': '날짜가 바뀌었어요. 새 길을 준비했어요',
   };
   return m[why] ?? '서버가 받아 주지 않았어요';
 }

@@ -23,8 +23,11 @@ export class ApiError extends Error {}
 
 export interface ChargeApi {
   loadProfile(): Promise<ChargeProfile>;
-  /** 판 시작 → 판 번호 (서버가 거절하면 ApiError, 통신 실패면 '' = 기록되지 않는 판) */
-  start(stage: string, leader: string, mode: RunMode): Promise<string>;
+  /**
+   * 판 시작 → 판 번호 (서버가 거절하면 ApiError, 통신 실패면 '' = 기록되지 않는 판).
+   * day = 오늘의 길에서 코스를 만든 날짜: 서버가 그 날짜로 기록한다 (서버의 오늘과 다르면 'bad day', 088)
+   */
+  start(stage: string, leader: string, mode: RunMode, day?: string): Promise<string>;
   /** 판 결과 → 새 프로필과 결과 (통신 실패면 null: 보관했다가 다시 보낸다) */
   finish(report: RunReport): Promise<{ profile: ChargeProfile; result: FinishResult } | null>;
   /** 보관해 둔 결과 다시 보내기 → 올라간 판 수 */
@@ -199,9 +202,9 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     async loadProfile() {
       return normalize(await call('charge_profile'));
     },
-    async start(stage, leader, mode) {
+    async start(stage, leader, mode, day) {
       try {
-        return String(await call('charge_start', { p_stage: stage, p_leader: leader, p_mode: mode }));
+        return String(await call('charge_start', { p_stage: stage, p_leader: leader, p_mode: mode, ...(mode === 'daily' && day ? { p_day: day } : {}) }));
       } catch (e) {
         if (e instanceof ApiError) throw e;
         return '';

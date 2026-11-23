@@ -290,6 +290,8 @@ export function showMain() {
     </div>
     <div class="grow"></div>
     ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 기록은 이 기기에만 저장돼요</p>' : ''}`);
+  // 짧은 화면(아이폰 SE 가로 375 × 세로 553 등)에서 한 화면에 들어오게 줄이는 규칙을 메인에만 건다 (style.css .screen.home)
+  root.classList.add('home');
   const on = (sel: string, fn: () => void) =>
     root.querySelector(sel)!.addEventListener('click', () => {
       play('click');

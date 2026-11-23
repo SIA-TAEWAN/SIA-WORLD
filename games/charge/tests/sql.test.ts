@@ -12,7 +12,7 @@ import { CAT_STAGE, LIMITS } from '../src/game/progress';
 const mig = (f: string) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8');
 const sql = mig('061_charge.sql');
 /** 함수를 다시 정의한 뒤 마이그레이션 (뒤 파일이 이긴다). 함수를 다시 정의하는 파일을 더하면 여기에 넣는다 */
-const LATER = ['075_cat_charge.sql', '085_charge_daily.sql'].map(mig);
+const LATER = ['075_cat_charge.sql', '085_charge_daily.sql', '088_charge_daily_day.sql'].map(mig);
 const block = (fn: string) => {
   const src = [...LATER].reverse().find((t) => t.includes(`function public.${fn}(`)) ?? sql;
   const i = src.indexOf(`function public.${fn}(`);
