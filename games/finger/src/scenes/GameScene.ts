@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { artUrl, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { choose } from '../game/autopilot';
-import { hintPath, hintSearch, type HintSearch } from '../game/hint';
+import { hintJoined, hintPath, hintSearch, type HintSearch } from '../game/hint';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
 import {
   DEBUFF_NAMES,
@@ -1667,8 +1667,8 @@ export class GameScene extends Phaser.Scene {
         if ((i + flow) % 2) continue;
         const [ax, ay] = pts[i - 1];
         const [bx, by] = pts[i];
-        // 순간이동 구멍을 지난 자리는 잇지 않는다
-        if (Math.abs(bx - ax) + Math.abs(by - ay) > 90) continue;
+        // 순간이동 구멍을 지난 자리는 잇지 않는다 (직선 거리 기준: 빠른 대각선 발사가 구멍으로 잘못 걸리지 않게)
+        if (!hintJoined(pts[i - 1], pts[i])) continue;
         g.lineBetween(RX + ax, RY + ay, RX + bx, RY + by);
       }
     }

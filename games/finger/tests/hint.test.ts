@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { choose } from '../src/game/autopilot';
-import { HINT_PATH_STEPS, HINT_SLICE_MS, HINT_USES, hintMode, hintPath, hintSearch } from '../src/game/hint';
+import { HINT_JOIN_MAX, HINT_PATH_STEPS, HINT_SLICE_MS, HINT_USES, hintJoined, hintMode, hintPath, hintSearch } from '../src/game/hint';
 import { FINGER_RULES, beginShot, buildConfig, checkInputs, createRun, playShot, stepShot, verifyRun } from '../src/sim';
 import { cfgOf, foe, hero } from './helpers';
 
@@ -75,6 +75,31 @@ describe('힌트 한 수', () => {
       stepShot(s);
       expect(pts[i]).toEqual([s.movers[0].x, s.movers[0].y]);
     }
+  });
+
+  it('가장 빠른 발사(쥐 필살기 · 힘 100)의 길도 끊기지 않는다 — 어느 각도든 이웃한 점을 잇는다', () => {
+    const s = room();
+    const h = s.heroes[s.cur];
+    expect(h.id).toBe('rat');
+    h.charge = h.chargeMax;
+    let longest = 0;
+    let old = 0;
+    for (let a = 0; a < 3600; a += 50) {
+      const pts = hintPath(s, { a, p: 100, s: 1 });
+      for (let i = 1; i < pts.length; i++) {
+        const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        longest = Math.max(longest, d);
+        // 예전 기준(가로 + 세로 > 90)이면 끊기던 토막
+        if (Math.abs(pts[i][0] - pts[i - 1][0]) + Math.abs(pts[i][1] - pts[i - 1][1]) > 90) old++;
+        expect(hintJoined(pts[i - 1], pts[i]), `각도 ${a} · ${i}번째`).toBe(true);
+      }
+    }
+    // 필살기가 실제로 걸린 빠른 발사다 (예전 기준으로는 끊기는 토막이 있었다)
+    expect(old).toBeGreaterThan(0);
+    expect(longest).toBeLessThan(HINT_JOIN_MAX - 20);
+    // 순간이동처럼 먼 두 점은 잇지 않는다
+    expect(hintJoined([0, 0], [HINT_JOIN_MAX + 1, 0])).toBe(false);
+    expect(hintJoined([0, 0], [90, 90])).toBe(false);
   });
 
   it('힌트대로 쏜 판도 서버 다시 돌리기에서 같은 결과 (조작 값만 간다)', () => {

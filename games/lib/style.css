@@ -832,15 +832,16 @@ input:focus { outline: var(--line) solid var(--primary); }
 .controls .rec-tag { position: absolute; top: -10px; right: -6px; padding: 0 7px; font-style: normal; font-size: 12px; line-height: 1.5; color: var(--white); background: var(--pink); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); pointer-events: none; }
 
 /* ---------- 룰렛: 지난 판 · 2배 · 자주 쓰는 배치 · 따라 걸기 ---------- */
-.rl-tools { gap: 6px; margin-top: 4px; }
-.rl-tools .btn { min-height: 40px; padding: 4px 9px; }
+/* 선택자는 .controls .row(간격·줄바꿈) 보다 뒤에 오도록 .controls 를 붙인다 */
+.controls .rl-tools { gap: 6px; margin-top: 4px; }
+.controls .rl-tools .btn { min-height: 40px; padding: 4px 9px; }
 .rl-slots { display: inline-flex; gap: 4px; align-items: center; }
 .rl-slots .btn[data-ps] { color: var(--ink-soft); border-style: dashed; }
 .rl-slots .btn[data-ps].has { color: var(--ink); border-style: solid; background: var(--panel-strong); }
 .rl-slots.saving .btn[data-ps] { background: var(--primary); color: var(--ink); }
 .rl-slots .btn.sel { background: var(--primary); }
 .rl-tip { margin: 2px 0 0; text-align: center; font-size: 12px; color: var(--ink-soft); }
-.rl-follow { gap: 6px; margin-top: 4px; font-size: 13px; color: var(--ink-soft); }
+.controls .rl-follow { gap: 6px; margin-top: 4px; font-size: 13px; color: var(--ink-soft); }
 .rl-fav { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 2px 10px 2px 3px; border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 3px 0 var(--outline); touch-action: manipulation; }
 .rl-fav:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--outline); }
 .rl-fav:disabled { opacity: 0.5; cursor: default; }
@@ -849,13 +850,33 @@ input:focus { outline: var(--line) solid var(--primary); }
 /* 고/스톱: 말풍선이 두 줄이 되어도 조작부 처음 높이(104px) 안에 들어가게 */
 .mg-ctl.gs { gap: 4px; }
 .mg-ctl.gs .mg-say { padding-top: 2px; padding-bottom: 2px; }
+/* 아랫줄(상대 위험 · 배수)은 늘 한 줄: 길면 말줄임 (말풍선이 세 줄이 되어 담요가 줄지 않게). 낮은 화면은 윗줄에 이어 붙이므로 그대로 */
+@media (min-height: 521px) {
+  .mg-ctl.gs .mg-say > span { min-width: 0; }
+  .mg-ctl.gs .mg-say small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+/* 좁은 화면: 고 · 스톱(+금액) 버튼이 두 줄로 접히지 않게 */
+@media (max-width: 400px) {
+  .mg-ctl.gs .mg-btns { flex-wrap: nowrap; gap: 6px; max-width: 100%; }
+  .mg-ctl.gs .mg-btns .btn.big { min-width: 0; padding: 6px 12px; font-size: 17px; white-space: nowrap; }
+  .mg-ctl.gs .mg-stop small { margin-left: 4px; font-size: 12px; }
+}
 
 /* 좁은 화면: 아래 버튼 줄(되돌리기 · 취소 · 확정)을 한 줄로 */
-.rl-end { flex-wrap: nowrap; }
-.rl-end .btn { white-space: nowrap; }
+.controls .rl-end { flex-wrap: nowrap; }
+.controls .rl-end .btn { white-space: nowrap; }
 @media (max-width: 480px) {
   #rl-undo span { display: none; }
   #rl-undo { min-width: 44px; }
+}
+/* 좁은 화면: 블랙잭 베팅 줄은 늘 두 줄(칩 4 · 지우기/같은 금액/2배/최대) — 단위가 큰 방에서도 세 줄이 되지 않게 */
+@media (max-width: 480px) {
+  .controls .bj-bet { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+  .controls .bj-bet .btn { padding: 5px 2px; font-size: 14px; white-space: nowrap; }
+}
+@media (max-width: 340px) {
+  .controls .bj-bet { gap: 4px; }
+  .controls .bj-bet .btn { padding: 5px 0; font-size: 13px; }
 }
 /* 블랙잭 전략 힌트 스위치: 손가락 크기 */
 .controls .bj-help .auto-sw { min-height: 40px; }
@@ -866,8 +887,14 @@ input:focus { outline: var(--line) solid var(--primary); }
 }
 /* 좁은 화면: 지난 판 · 2배 · ★ 칸 · 저장이 한 줄에 들어가게 */
 @media (max-width: 480px) {
-  .rl-tools { gap: 4px; }
-  .rl-tools .btn { padding: 4px 6px; font-size: 14px; }
+  .controls .rl-tools { gap: 4px; }
+  .controls .rl-tools .btn { padding: 4px 6px; font-size: 14px; }
   .rl-slots { gap: 3px; }
   .rl-slots .btn[data-ps] { min-width: 40px; }
+}
+/* 아주 좁은 화면(320px): 그래도 한 줄에 */
+@media (max-width: 340px) {
+  .controls .rl-tools { gap: 3px; }
+  .controls .rl-tools .btn { padding: 4px 4px; font-size: 13px; }
+  .rl-slots .btn[data-ps] { min-width: 34px; }
 }

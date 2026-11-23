@@ -384,6 +384,8 @@ function betControls(t: Ctx, el: HTMLElement) {
       return;
     }
     const dis = t.busy ? 'disabled' : '';
+    // 놓은 칩이 없으면 저장할 것도 없다: 저장 모드를 끈다 (취소·되돌리기로 비운 뒤 ★ 칸 불러오기가 막히지 않게)
+    if (!local.length) saving = false;
     const total = sumOf(local);
     const slots = myPresets();
     // 따라 걸기: 이미 확정한 다른 사람 (아바타를 누르면 그 사람 배치를 내 놓기로 복사)

@@ -243,36 +243,37 @@ describe('도감', () => {
     expect(some.slice(3).map((h) => `${h.weapon.id}+${h.passive.id}=${h.result.id}`)).toEqual(['bell+shell=bellEvo', 'mooncake+ginseng=mooncakeEvo', 'hoof+wind=hoofEvo', 'piggy+knot=piggyEvo']);
   });
 
-  it('서버 도감 목록에 아직 없는 진화 4종: 서버 도감에는 적히지 않고, 이 기기에서 만들어 본 기록으로 보인다', () => {
-    expect(DEVICE_CODEX).toEqual(['bellEvo', 'mooncakeEvo', 'hoofEvo', 'piggyEvo']);
-    // 판 결과에 담겨 와도 프로필 도감에는 넣지 않는다 (서버와 같은 규칙)
-    const s = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: [], bosses: [], weapons: ['hoof', 'hoofEvo', 'clawEvo'], passives: ['wind'] } }), 1);
-    expect(s.profile.codex.weapons).toEqual(['clawEvo', 'hoof']);
-    // 기기 기록이 없으면 진화 무기는 가려져 있다
-    const hint = (made: string[]) => evolutionHints(s.profile.codex, made).find((h) => h.result.id === 'hoofEvo')!;
-    expect([hint([]).weaponKnown, hint([]).passiveKnown, hint([]).resultKnown]).toEqual([true, true, false]);
-    expect(hint(['hoofEvo']).resultKnown).toBe(true);
-    expect(knownWeapons(s.profile.codex, ['hoofEvo', 'nope'])).toEqual(['clawEvo', 'hoof', 'hoofEvo']);
-    expect(codexCount(s.profile, [], ['hoofEvo']).have).toBe(codexCount(s.profile).have + 1);
-    // 서버 도감에 이미 있는 것은 두 번 세지 않는다
+  it('진화 2차 4종도 서버 도감에 적힌다 (093): 기기에만 남는 무기는 없다', () => {
+    expect(DEVICE_CODEX).toEqual([]);
+    // 판 결과에 담겨 오면 프로필 도감에 넣는다 (서버와 같은 규칙 · 같은 순서)
+    const s = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: [], bosses: [], weapons: ['hoofEvo', 'hoof', 'clawEvo', 'piggyEvo', 'nope'], passives: ['wind'] } }), 1);
+    expect(s.profile.codex.weapons).toEqual(['clawEvo', 'hoof', 'hoofEvo', 'piggyEvo']);
+    const hint = (id: string) => evolutionHints(s.profile.codex).find((h) => h.result.id === id)!;
+    expect([hint('hoofEvo').weaponKnown, hint('hoofEvo').passiveKnown, hint('hoofEvo').resultKnown]).toEqual([true, true, true]);
+    // 아직 만들어 보지 않은 진화 무기는 가려져 있다
+    expect(hint('bellEvo').resultKnown).toBe(false);
+    // 기기 기록(made)을 넘기면 서버 도감에 더해 본다. 이미 있는 것은 두 번 세지 않는다
+    expect(knownWeapons(s.profile.codex, ['bellEvo', 'nope'])).toEqual(['clawEvo', 'hoof', 'bellEvo', 'hoofEvo', 'piggyEvo']);
+    expect(codexCount(s.profile, [], ['bellEvo']).have).toBe(codexCount(s.profile).have + 1);
     expect(codexCount(s.profile, [], ['clawEvo']).have).toBe(codexCount(s.profile).have);
   });
 
-  it('기기 기록 (net/made.ts): 서버 목록에 없는 진화 무기만 기억하고, 깨진 값·막힌 저장소는 빈 목록', () => {
+  it('기기 기록 (net/made.ts): 서버 목록에 없는 무기만 기억한다 — 지금은 그런 무기가 없어 아무것도 적지 않는다', () => {
     const m = new Map<string, string>();
     const store = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
     expect(readMade(store)).toEqual([]);
     expect(rememberMade('clawEvo', store)).toEqual([]);
-    expect(rememberMade('piggyEvo', store)).toEqual(['piggyEvo']);
-    expect(rememberMade('bellEvo', store)).toEqual(['bellEvo', 'piggyEvo']);
-    expect(rememberMade('piggyEvo', store)).toEqual(['bellEvo', 'piggyEvo']);
-    expect(readMade(store)).toEqual(['bellEvo', 'piggyEvo']);
+    // 서버 도감에 들어간 진화 4종은 기기에 적지 않는다 (예전에 적힌 값이 있어도 읽지 않는다)
+    expect(rememberMade('piggyEvo', store)).toEqual([]);
+    expect(m.size).toBe(0);
+    store.setItem('siasurvival:made', '["bellEvo","piggyEvo"]');
+    expect(readMade(store)).toEqual([]);
     store.setItem('siasurvival:made', '{"x":1}');
     expect(readMade(store)).toEqual([]);
     store.setItem('siasurvival:made', 'oops');
     expect(readMade(store)).toEqual([]);
     expect(readMade(null)).toEqual([]);
-    expect(rememberMade('hoofEvo', null)).toEqual(['hoofEvo']);
+    expect(rememberMade('hoofEvo', null)).toEqual([]);
   });
 
   it('모은 수: 처음에는 캐릭터 셋뿐', () => {

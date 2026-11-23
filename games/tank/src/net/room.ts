@@ -132,6 +132,11 @@ export class RoomSession {
     return allAtLeast(ids, this.vers, this.me.id, need);
   }
 
+  /** 이 사람들 가운데 접속 정보가 아직 안 보이는 사람이 있는가 (막 들어왔거나 연결이 끊긴 사람 — 예전 판본과는 다르다) */
+  anyUnseen(ids: readonly string[]): boolean {
+    return ids.some((id) => id !== this.me.id && !this.vers.has(id));
+  }
+
   on(fn: (m: NetMsg) => void) {
     this.msgFns.add(fn);
     return () => this.msgFns.delete(fn);

@@ -415,16 +415,22 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     return praiseJob;
   }
   /** 다 봤음: 알림을 내리고 서버에 적는다 (목록의 "새 칭찬" 표시는 다음에 읽을 때까지 남는다) */
-  function markSeen() {
-    const box = inbox;
-    const had = !noteOff && !!box && box.fresh > 0;
-    noteOff = true;
-    paintPraise();
-    if (had) praiseJob = praiseJob.then(() => api.praiseSeen(box.now)).catch(() => undefined);
+  function markSeen(box: PraiseInbox | null = inbox) {
+    // 그사이 목록을 새로 읽었으면(더 새 칭찬이 있을 수 있다) 알림은 그대로 두고, 그때 본 것까지만 서버에 적는다
+    const cur = box === inbox;
+    const had = (!cur || !noteOff) && !!box && box.fresh > 0;
+    if (cur) {
+      noteOff = true;
+      paintPraise();
+    }
+    // 본 시각 = 실제로 받은 목록의 가장 최근 칭찬 시각 (서버가 +1ms 해서 그 칭찬까지 본 것으로 친다).
+    // 서버의 '지금'(box.now)을 보내면, 읽는 순간 아직 커밋되지 않은 칭찬(created_at 이 그보다 앞)이 본 것으로 묻힌다
+    const at = box?.rows.length ? Math.max(...box.rows.map((r) => r.at)) : null;
+    if (had && at !== null) praiseJob = praiseJob.then(() => api.praiseSeen(at)).catch(() => undefined);
   }
   function openPraises() {
     openSheet({ kind: 'ranking', praise: true });
-    void loadInbox().then(markSeen);
+    void loadInbox().then(() => markSeen());
   }
   function praiseBody(): string {
     if (!inbox) return `<p class="soft empty">${inboxFailed ? '받은 칭찬을 불러오지 못했어요' : '불러오는 중…'}</p>`;
@@ -442,8 +448,9 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (!n || visiting || scene?.placing) return;
     sfx('click');
     if (!n.visit) return openPraises();
-    markSeen();
-    startVisit(n.visit);
+    // 구경이 성공한 뒤에 본 것으로 적는다 (통신 오류로 못 갔는데 알림만 사라지지 않게)
+    const box = inbox;
+    startVisit(n.visit, () => markSeen(box));
   });
   $('#praisex').addEventListener('click', () => {
     sfx('click');
@@ -485,8 +492,11 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     scene?.refresh();
     scene?.fit();
   }
-  function startVisit(id: string) {
-    void act(() => api.visit(id), showVisit);
+  function startVisit(id: string, then?: () => void) {
+    void act(() => api.visit(id), (v) => {
+      showVisit(v);
+      then?.();
+    });
   }
   function endVisit() {
     visiting = null;
@@ -1149,7 +1159,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (b.dataset.m === 'build') openSheet({ kind: 'build', tab: 'main' });
     else if (b.dataset.m === 'residents') openSheet({ kind: 'residents' });
     else if (b.dataset.m === 'requests') openSheet({ kind: 'requests' });
-    else if (b.dataset.m === 'ranking') openRanking();
+    // 랭킹 버튼에 새 칭찬 배지가 떠 있으면 받은 칭찬 탭을 연다 (배지를 보고 눌렀는데 순위만 보이지 않게)
+    else if (b.dataset.m === 'ranking') (!noteOff && praiseNotice(inbox) ? openPraises : openRanking)();
     else if (b.dataset.m === 'monuments') openMonuments();
     else toast('준비 중이에요');
   });

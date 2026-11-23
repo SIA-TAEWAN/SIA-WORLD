@@ -65,6 +65,14 @@ export const HINT_PATH_STEPS = 50;
 export const HINT_PATH_BOUNCES = 2;
 
 /**
+ * 힌트 길에서 이웃한 두 점을 선으로 잇는 최대 거리 (방 좌표 px, 직선 거리).
+ * 가장 빠른 한 스텝(쥐 필살기 = 발사 속도 2배, 힘 100)이 70px 쯤이라 그보다 넉넉히 잡는다. 이보다 멀면 순간이동 구멍을 지난 것으로 보고 잇지 않는다
+ */
+export const HINT_JOIN_MAX = 120;
+/** 힌트 길의 두 점을 이을지 (순간이동 구멍을 지난 자리는 잇지 않는다) */
+export const hintJoined = (a: readonly [number, number], b: readonly [number, number]): boolean => Math.hypot(b[0] - a[0], b[1] - a[1]) <= HINT_JOIN_MAX;
+
+/**
  * 힌트로 보여 줄 길: 그 조작으로 쏘면 대원이 지나가는 자리 (방 좌표, 스텝마다 한 점 · 첫 점은 지금 자리).
  * 보통 조준선은 첫 벽까지만 보여 주지만, 힌트는 벽에 두 번 튕길 때까지(길어야 HINT_PATH_STEPS) 보여 준다. 판 상태는 건드리지 않는다.
  */

@@ -351,7 +351,7 @@
         <h2>🔧 관리자 설정</h2>
         <h3><label for="notice-input">📢 공지 한 줄</label></h3>
         <form class="admin-notice" id="notice-form" novalidate>
-          <input id="notice-input" maxlength="100" autocomplete="off" enterkeyhint="done" placeholder="비워 두면 공지를 숨겨요" />
+          <input id="notice-input" maxlength="200" autocomplete="off" enterkeyhint="done" placeholder="비워 두면 공지를 숨겨요" />
           <button class="btn small" id="notice-save">저장</button>
         </form>
         <p class="hint" id="notice-hint"></p>
@@ -706,8 +706,11 @@
     const NOTICE_MAX = 100;
     /** 공지를 바꾼 횟수 (늦게 온 예전 응답으로 화면을 덮지 않게) */
     let noticeSeq = 0;
+    /** 지금 화면에 보이는 공지 (입력칸이 이 값 그대로면 아직 고치지 않은 것) */
+    let noticeNow = '';
     function paintNotice(text) {
       const t = typeof text === 'string' ? text.trim() : '';
+      noticeNow = t;
       $('#board-text').textContent = t;
       $('#board').classList.toggle('hidden', !t);
       return t;
@@ -716,20 +719,29 @@
       $('#notice-hint').textContent = text;
       $('#notice-hint').classList.toggle('bad', bad);
     };
-    const noticeCount = () => noticeHint(`${[...$('#notice-input').value].length}/${NOTICE_MAX}자`);
+    const noticeCount = () => {
+      const n = [...$('#notice-input').value].length;
+      noticeHint(`${n}/${NOTICE_MAX}자`, n > NOTICE_MAX);
+    };
     async function loadNotice() {
       const seq = noticeSeq;
       try {
         const { data, error } = await supabase.from('app_settings').select('value').eq('key', 'notice').maybeSingle();
         if (error || seq !== noticeSeq) return;
+        // 관리자 입력칸: 쓰고 있는 중(초점이 있거나, 고쳐 두고 아직 저장하지 않음)이 아니면 지금 공지로 채운다
+        const input = $('#notice-input');
+        const idle = document.activeElement !== input && input.value === noticeNow;
         const t = paintNotice(data?.value);
-        // 관리자 입력칸: 쓰고 있는 중이 아니면 지금 공지로 채운다
-        if (document.activeElement !== $('#notice-input')) { $('#notice-input').value = t; noticeCount(); }
+        if (idle) { input.value = t; noticeCount(); }
       } catch {
         /* 못 읽으면 공지 없이 */
       }
     }
     $('#notice-input').addEventListener('input', noticeCount);
+    // 로비를 열어 둔 채 다른 탭·앱에 다녀오면 공지를 다시 읽는다 (관리자가 바꾼 공지가 새로고침 없이 보이게)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && lobbyUser) void loadNotice();
+    });
     $('#notice-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = $('#notice-save');

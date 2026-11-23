@@ -1476,7 +1476,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       const oppSeat = p.seats.find((s) => s !== t.mySeat);
       const oppNow = oppSeat === undefined ? undefined : p.players[oppSeat];
       const mulText = pre ? matgoMulText(pre.multipliers) : '';
-      const risk = [mulText, oppNow ? matgoRiskText(oppNow) : ''].filter(Boolean).join(' · ');
+      // 상대 위험을 앞에: 아랫줄은 한 줄로 자르므로(말줄임) 배수가 많아도 위험 문구는 늘 보인다
+      const risk = [oppNow ? matgoRiskText(oppNow) : '', mulText].filter(Boolean).join(' · ');
       const gain = pre ? `<small>${pre.total < 0 ? '-' : '+'}${t.fmt(Math.abs(pre.total))}냥</small>` : '';
       el.innerHTML = `<div class="mg-ctl gs">${say(t.mySeat, `${c.score}점! 고 할까요, 스톱 할까요?${c.go ? ` (지금 ${c.go}고)` : ''}`, esc(risk), true)}<div class="mg-btns">
         <button class="btn big primary mg-go" id="go" ${dis}>고! ▶</button><button class="btn big mg-stop" id="stop" ${dis} ${pre ? `title="지금 스톱하면 ${t.fmt(pre.score)}점${mulText ? ` · ${esc(mulText)}` : ''}"` : ''}>스톱 ✋${gain}</button></div></div>`;

@@ -59,14 +59,17 @@ export function tallyEvent(tally: Tally, ev: SimEvent, t: number): void {
 /**
  * 받은 배지 (보이는 순서대로).
  * boostTotal: 이 판의 트랙에 놓인 부스트 발판 수 (0이면 '부스트 싹쓸이'는 없다)
+ * finished: 결과에 적힌 완주 여부 (결과 화면이 넘긴다. 안 넘기면 내 기기 집계만 본다)
  * - 무결점 완주·오뚝이는 완주해야 받는다. 칼출발·부스트 싹쓸이는 완주하지 못해도 받는다.
  */
-export function badgesOf(tally: Tally, boostTotal: number): Badge[] {
+export function badgesOf(tally: Tally, boostTotal: number, finished = true): Badge[] {
   const got = new Set<BadgeId>();
-  if (tally.finished && tally.falls === 0) got.add('clean');
+  // 완주 여부는 내 기기 집계와 결과(기준 기기가 정한 것)가 둘 다 완주일 때만: 끝이 정해진 직후에 결승선을 넘으면 결과는 미완주다
+  const done = tally.finished && finished;
+  if (done && tally.falls === 0) got.add('clean');
   // 계산이 고정 간격(1/120초)이라 딱 0.15초에 누른 것이 부동소수 오차로 빠지지 않게 아주 조금 여유를 둔다
   if (tally.startT !== null && tally.startT <= QUICK_START_SEC + 1e-6) got.add('quick');
   if (boostTotal > 0 && tally.boosts >= boostTotal) got.add('boostAll');
-  if (tally.finished && tally.falls >= TUMBLER_FALLS) got.add('tumbler');
+  if (done && tally.falls >= TUMBLER_FALLS) got.add('tumbler');
   return BADGE_ORDER.filter((id) => got.has(id)).map((id) => BADGES[id]);
 }

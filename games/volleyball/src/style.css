@@ -349,8 +349,8 @@ button, input { font: inherit; color: inherit; }
   /* 맞대결 전적 줄이 생긴 만큼 좌석 얼굴을 줄여 한 화면에 들어가게 */
   .room .h2h { margin-top: 3px; font-size: 13px; line-height: 1.2; }
   .room .h2h b { font-size: 14px; }
-  .duo:has(+ .h2h:not(:empty)) .seat .av { width: 34px; height: 34px; }
-  .duo:has(+ .h2h:not(:empty)) .seat .av.blank { font-size: 18px; }
+  .has-h2h > .duo .seat .av { width: 34px; height: 34px; }
+  .has-h2h > .duo .seat .av.blank { font-size: 18px; }
   .result .h2h { margin-top: 4px; font-size: 13px; }
   .result .h2h b { font-size: 15px; }
 }

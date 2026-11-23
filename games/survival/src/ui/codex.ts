@@ -24,7 +24,7 @@ export function showCodex() {
   const p = state.profile;
   const cx = p.codex;
   let tab: Tab = 'enemy';
-  // 서버 도감 목록에 아직 없는 진화 무기는 이 기기의 기록으로 본다 (net/made.ts)
+  // 서버 도감 목록에 아직 없는 무기가 있으면 이 기기의 기록으로 본다 (net/made.ts — 지금은 없다)
   const made = readMade();
   const known = knownWeapons(cx, made);
   const count = codexCount(p, state.owned, made);

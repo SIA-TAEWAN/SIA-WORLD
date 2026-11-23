@@ -237,8 +237,13 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       const mine = p.seats.find((s) => s.seat === t.mySeat);
       // 미리 고르기: 아직 판에 남아 있고 누군가의 차례일 때 (올인했으면 고를 것이 없다)
       bookRan = '';
-      if (!mine || mine.folded || mine.excluded || mine.allIn || p.turn === null || p.phase === 'done' || p.runout) {
+      if (!mine || mine.folded || mine.excluded || mine.allIn || p.phase === 'done' || p.runout) {
         book = null;
+        el.innerHTML = msg;
+        return;
+      }
+      // 차례가 잠깐 비는 화면(올인 연출 등 한 동작씩 보여 주는 중간 화면)에서는 버튼만 숨기고 예약은 그대로 둔다
+      if (p.turn === null) {
         el.innerHTML = msg;
         return;
       }

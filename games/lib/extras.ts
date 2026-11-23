@@ -342,7 +342,14 @@ interface StoryEvent {
 export interface PokerStoryInput {
   /** 이번 판의 사건 (오래된 것부터. 앞부분이 잘려 있어도 된다) */
   events: readonly StoryEvent[];
-  summary: { cancelled: boolean; uncontested: boolean; winners: number[]; hands: Record<number, { name: string }> } | null;
+  /** winners = 모든 팟 승자의 합집합(자리 번호순)이라 동점 목록이 아니다. pots 가 있으면 그것으로 주인공·동점을 정한다 */
+  summary: {
+    cancelled: boolean;
+    uncontested: boolean;
+    winners: number[];
+    hands: Record<number, { name: string }>;
+    pots?: readonly { eligible: readonly number[]; winners: readonly number[] }[];
+  } | null;
   /** 쇼다운한 자리의 7장 (엔진 순서: 비공개 2장 · 7구 히든 · 공개 4장) */
   showdown?: readonly { seat: number; cards: readonly string[] }[] | null;
   nameOf(seat: number): string;
@@ -372,7 +379,10 @@ function leadersBefore7(showdown: readonly { seat: number; cards: readonly strin
 export function pokerStory(i: PokerStoryInput): string | null {
   const r = i.summary;
   if (!r || r.cancelled || !r.winners.length) return null;
-  const w = r.winners[0];
+  // 주인공 = 메인팟(겨룬 사람이 둘 이상인 첫 팟)의 승자. 혼자만 자격인 남는 팟·사이드팟 승자는 주인공도 동점도 아니다
+  const main = r.pots?.find((p) => p.eligible.length >= 2 && p.winners.length > 0) ?? r.pots?.find((p) => p.winners.length > 0);
+  const top = main ? [...main.winners].sort((a, b) => a - b) : r.winners;
+  const w = top[0];
   const who = i.nameOf(w);
   if (r.uncontested) {
     // 이긴 사람의 마지막 올림(삥·따당·하프) 뒤에 다이한 사람 수
@@ -390,7 +400,7 @@ export function pokerStory(i: PokerStoryInput): string | null {
     if (!dies) return `${who}의 무혈 승리`;
     return `${who}의 ${i.bluff ? '뻥카' : how}에 ${dies}명 다이`;
   }
-  if (r.winners.length > 1) return `동점! ${r.winners.map(i.nameOf).join(' · ')} 판돈 나눔`;
+  if (top.length > 1) return `동점! ${top.map(i.nameOf).join(' · ')} 판돈 나눔`;
   const hand = r.hands[w]?.name ?? '';
   const of = hand ? `${who}의 ${hand}` : who;
   const lead = i.showdown ? leadersBefore7(i.showdown) : null;

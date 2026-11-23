@@ -285,6 +285,7 @@ import {
 import { seededRng } from './engine.ts';
 import { makeTestState, matgo, type MatgoPlayerPublic, type MatgoSummary } from './matgo.ts';
 import { basicStrategy } from './blackjack.ts';
+import { poker, type PokerAction, type PokerState, type PokerSummary } from './poker.ts';
 import type { RBet } from './roulette.ts';
 
 describe('맞고 고/스톱 도우미', () => {
@@ -371,9 +372,40 @@ describe('맞고 족보 진행 · 박 경고 칸', () => {
   });
 });
 
+/** 실제 엔진으로 2명 판: 칩이 적은 0번은 콜만, 1번은 가장 크게 올린다 → 0번이 모자란 올인 콜로 이긴 판을 찾아 돌려준다 */
+function shortAllInRound(): PokerSummary {
+  for (let seed = 1; seed <= 300; seed++) {
+    const rng = seededRng(seed);
+    let s: PokerState = poker.newRound({
+      seats: [
+        { seat: 0, kind: 'human', name: 'P0', stack: 3000 },
+        { seat: 1, kind: 'human', name: 'P1', stack: 100000 },
+      ],
+      baseUnit: 1000,
+      carry: null,
+      rng,
+    });
+    for (let step = 0; step < 200 && !poker.done(s); step++) {
+      const st = poker.pending(s)[0];
+      if (s.phase === 'choose') {
+        s = poker.apply(s, st, poker.timeout(s, st, rng), rng);
+        continue;
+      }
+      const acts = poker.view(s).public.actions.filter((a) => a.type !== 'die');
+      const pick = st === 0 ? (acts.find((a) => a.type === 'call') ?? acts.find((a) => a.type === 'check') ?? acts[0]) : acts.slice().sort((a, b) => b.amount - a.amount)[0];
+      s = poker.apply(s, st, { type: pick.type } as PokerAction, rng);
+    }
+    const r = s.result;
+    if (r && !r.cancelled && !r.uncontested && r.winners.length === 2 && r.pots.some((p) => p.eligible.length === 1) && r.pots.some((p) => p.eligible.length === 2 && p.winners.length === 1 && p.winners[0] === 0)) return r;
+  }
+  throw new Error('모자란 올인 콜로 이긴 판을 찾지 못했다');
+}
+
 describe('세븐포커 판 요약 한 줄', () => {
   const nameOf = (s: number) => ['나', '어흥이', '깡총이', '여의룡'][s];
-  const sum = (o: Partial<{ cancelled: boolean; uncontested: boolean; winners: number[]; hands: Record<number, { name: string }> }>) => ({ cancelled: false, uncontested: false, winners: [], hands: {}, ...o });
+  const sum = (
+    o: Partial<{ cancelled: boolean; uncontested: boolean; winners: number[]; hands: Record<number, { name: string }>; pots: { amount: number; eligible: number[]; winners: number[] }[] }>,
+  ) => ({ cancelled: false, uncontested: false, winners: [] as number[], hands: {}, ...o });
   it('무혈 승리: 마지막 올림 뒤에 다이한 사람 수', () => {
     const events = [
       { t: 'die', seat: 3 },
@@ -400,6 +432,49 @@ describe('세븐포커 판 요약 한 줄', () => {
     const sd2 = [{ seat: 0, cards: ['2S', '5S', 'KD', '9S', 'JS', '3D', '4C'] }, showdown[1]];
     expect(pokerStory({ events: [], summary: summary2, showdown: sd2, nameOf })).toBe('2명 쇼다운 · 어흥이의 A 투페어 승리');
     expect(pokerStory({ events: [{ t: 'allin', seat: 0 }], summary: summary2, showdown: sd2, nameOf })).toBe('올인 승부! 어흥이의 A 투페어 승리');
+  });
+  it('사이드팟·남는 팟 승자는 동점이 아니다 — 주인공은 메인팟 승자', () => {
+    const hands = { 0: { name: 'K 하이' }, 1: { name: 'A 투페어' }, 2: { name: '9 원페어' } };
+    const events = [{ t: 'allin', seat: 1 }];
+    // 칩이 적은 어흥이(1)가 올인으로 메인팟을, 깡총이(2)가 사이드팟을 가져갔다 → winners 는 합집합 [1, 2]
+    const side = sum({
+      winners: [1, 2],
+      hands,
+      pots: [
+        { amount: 900, eligible: [0, 1, 2], winners: [1] },
+        { amount: 400, eligible: [0, 2], winners: [2] },
+      ],
+    });
+    expect(pokerStory({ events, summary: side, nameOf })).toBe('올인 승부! 어흥이의 A 투페어 승리');
+    // 2명 판: 더 많이 건 나(0)만 자격인 남는 팟이 돌아온다 → winners [0, 1] 이어도 이긴 사람은 어흥이
+    const rest = sum({
+      winners: [0, 1],
+      hands,
+      pots: [
+        { amount: 600, eligible: [0, 1], winners: [1] },
+        { amount: 200, eligible: [0], winners: [0] },
+      ],
+    });
+    expect(pokerStory({ events, summary: rest, nameOf })).toBe('올인 승부! 어흥이의 A 투페어 승리');
+    // 메인팟을 실제로 나눠 가졌을 때만 동점 (사이드팟 승자는 이름에 넣지 않는다)
+    const tie = sum({
+      winners: [0, 1, 2],
+      hands,
+      pots: [
+        { amount: 900, eligible: [0, 1, 2], winners: [2, 1] },
+        { amount: 200, eligible: [0], winners: [0] },
+      ],
+    });
+    expect(pokerStory({ events, summary: tie, nameOf })).toBe('동점! 어흥이 · 깡총이 판돈 나눔');
+  });
+  it('실제 엔진: 모자란 올인 콜로 이긴 2명 판을 동점이라 하지 않는다', () => {
+    const r = shortAllInRound();
+    expect(r.winners.length).toBe(2);
+    const main = r.pots.find((p) => p.eligible.length >= 2)!;
+    expect(main.winners.length).toBe(1);
+    const story = pokerStory({ events: [{ t: 'allin', seat: main.winners[0] }], summary: r, nameOf });
+    expect(story).not.toContain('동점');
+    expect(story).toContain(nameOf(main.winners[0]));
   });
   it('동점 · 취소 · 결과 없음', () => {
     expect(pokerStory({ events: [], summary: sum({ winners: [1, 2] }), nameOf })).toBe('동점! 어흥이 · 깡총이 판돈 나눔');

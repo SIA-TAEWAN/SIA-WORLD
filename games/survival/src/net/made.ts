@@ -5,6 +5,7 @@ import type { Store } from './pending';
  * 이 기기에서 만들어 본 진화 무기 (data/weapons.ts 의 DEVICE_CODEX: 서버 도감 목록에 아직 없는 진화 무기).
  * 서버 도감에는 적히지 않으므로 도감의 진화 힌트·모은 수는 이 기록으로 보여 준다 (기기마다 따로, 계정을 가리지 않는다).
  * 서버 목록에 들어가면 DEVICE_CODEX 에서 빼기만 하면 된다 (그때부터는 서버 도감이 기억한다).
+ * 지금은 DEVICE_CODEX 가 비어 있어(진화 2차 4종은 093 에서 서버 도감으로) 아무것도 적지 않고 읽지도 않는다.
  */
 const KEY = 'siasurvival:made';
 

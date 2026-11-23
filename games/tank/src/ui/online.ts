@@ -492,7 +492,11 @@ function renderRoom(id: string) {
       .map((v) => `<button data-v="${v}" class="${wind === v ? 'sel' : ''}" ${iAmHost ? '' : 'disabled'}>${WIND_LABEL[v]}</button>`)
       .join('');
     $(root, '#sudden-note').textContent =
-      room.map === 'target' ? '' : suddenFor(room) ? `🌊 서든데스: ${SUDDEN_TURN}턴 뒤부터 물이 차올라요` : '🌊 서든데스 꺼짐 — 새로고침하지 않은 기기가 있어요';
+      room.map === 'target' ? '' : suddenFor(room)
+        ? `🌊 서든데스: ${SUDDEN_TURN}턴 뒤부터 물이 차올라요`
+        : roomSess?.anyUnseen(room.players.map((p) => p.id))
+          ? '🌊 서든데스: 접속을 확인하는 중이에요'
+          : '🌊 서든데스 꺼짐 — 새로고침하지 않은 기기가 있어요';
     const setOpt = async (sp: number, wd: WindMode) => {
       sfx.click();
       await backend!.setOptions(id, clientId(), sp, wd).catch((e) => toast(friendly(e)));

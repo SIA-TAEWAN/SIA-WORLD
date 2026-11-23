@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Match, type CrateDrop, type Flood, type MatchSnapshot, type WindMode, type GameMode } from '../game/match';
+import { Match, SUDDEN_RISE, type CrateDrop, type Flood, type MatchSnapshot, type WindMode, type GameMode } from '../game/match';
 import { Rng } from '../game/rng';
 import { TURN_SECONDS, ITEMS } from '../game/data';
 import type { PlayerSetup, ShotResult, SimEvent, TankState, TurnInput, Zone } from '../game/types';
@@ -867,7 +867,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** HUD 수위 표시: 물이 오기 전에는 남은 턴, 온 뒤에는 내 탱크 발밑까지 남은 높이 */
+  /** HUD 수위 표시: 물이 오기 전에는 남은 턴, 온 뒤에는 내 탱크 발밑까지 남은 턴 수(지금 속도 기준) */
   private waterText(v: TankState): string | null {
     const m = this.match;
     if (m.water === null) {
@@ -875,9 +875,13 @@ export class GameScene extends Phaser.Scene {
       if (left === null || left > 5) return null;
       return left > 0 ? `🌊 ${left}턴 뒤` : '🌊 곧 차올라요';
     }
-    if (!v.alive) return `🌊 수위 ${m.terrain.h - m.water}`;
+    if (!v.alive) return '🌊 물이 차올라요';
     const gap = m.water - v.y;
-    return gap < 0 ? '🌊 잠겼어요!' : `🌊 물까지 ${gap}`;
+    if (gap < 0) return '🌊 잠겼어요!';
+    // 숫자는 턴으로 (앞 단계의 'N턴 뒤'와 같은 단위): 물은 한 턴에 max(4, SUDDEN_RISE / 살아 있는 탱크 수) 만큼 오른다
+    const step = Math.max(4, Math.round(SUDDEN_RISE / Math.max(1, m.tanks.filter((t) => t.alive).length)));
+    const turns = Math.ceil(gap / step);
+    return turns > 0 ? `🌊 발밑까지 ${turns}턴` : '🌊 발밑까지 왔어요';
   }
 
   private nextTurn() {

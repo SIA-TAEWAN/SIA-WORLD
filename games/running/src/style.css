@@ -126,13 +126,14 @@ button, input { font: inherit; color: inherit; }
 .seat .gp.top { background: var(--primary); }
 .seats.has-gp { margin-top: 4px; }
 /* AI 난이도: 방장만 고른다 (다른 사람에게는 고른 것만 진하게 보인다) */
-.ai-level { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 15px; }
+.ai-level { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 8px; font-size: 15px; }
 .ai-level .lb { flex: none; }
 .ai-level .seg { flex: 1; min-width: 0; }
-.ai-level .seg button { flex: 1; min-height: 38px; padding: 5px 4px; font-family: inherit; color: var(--ink); }
+.ai-level .seg button { flex: 1; min-height: 40px; padding: 5px 4px; font-family: inherit; color: var(--ink); white-space: nowrap; }
 .ai-level .seg button:disabled { cursor: default; opacity: 0.45; }
 .ai-level .seg button.sel:disabled { opacity: 1; }
-.ai-level .who { flex: none; font-size: 12px; }
+/* '방장이 골라요' 안내는 아랫줄로: 옆에 두면 좁은 화면에서 버튼 글자가 한 글자씩 접힌다 */
+.ai-level .who { flex: 0 0 100%; text-align: right; font-size: 12px; line-height: 1.2; }
 .ai-level .who:empty { display: none; }
 .ai-level.off { opacity: 0.5; }
 .seats.has-gp .seat { padding-top: 12px; }
@@ -221,6 +222,7 @@ button, input { font: inherit; color: inherit; }
 .result-card .badges { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin: -4px 0 10px; padding: 0; }
 .result-card .badge { display: inline-flex; align-items: center; gap: 3px; background: var(--primary); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); box-shadow: 0 2px 0 var(--outline); padding: 2px 9px; font-size: 13px; animation: badge-pop 0.35s both; }
 .result-card .badge i { font-style: normal; }
+.result-card .badge { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 @keyframes badge-pop { from { opacity: 0; transform: scale(0.5); } 60% { transform: scale(1.12); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .result-card .badge { animation: none; } }
 .rows { display: flex; flex-direction: column; gap: 7px; }
@@ -328,7 +330,8 @@ button, input { font: inherit; color: inherit; }
   .room .card h3 { margin-bottom: 5px; }
   .room.screen { gap: 5px; }
   .ai-level { margin-top: 6px; font-size: 14px; }
-  .ai-level .seg button { min-height: 36px; }
+  .ai-level .seg { gap: 4px; }
+  .ai-level .seg button { min-height: 40px; padding: 3px 2px; font-size: 14px; }
   .result-card { padding-top: 8px; padding-bottom: 8px; }
   .result .emo-bar { margin-top: 6px; }
   .result .actions { margin-top: 8px; }

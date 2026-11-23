@@ -57,6 +57,15 @@ describe('배지 (badgesOf)', () => {
     const t = feed([['start', 0.05], ['boost', 2], ['boost', 3], ['boost', 4], ['finish', 29]]);
     expect(badgesOf(t, 3)).toEqual([BADGES.clean, BADGES.quick, BADGES.boostAll]);
   });
+  it('결과가 미완주면 완주 배지는 없다 (내 기기에서는 결승선을 넘었어도)', () => {
+    const clean = feed([['start', 0.05], ['boost', 2], ['boost', 3], ['boost', 4], ['finish', 29]]);
+    expect(badgesOf(clean, 3, false)).toEqual([BADGES.quick, BADGES.boostAll]);
+    const evs: Ev[] = [['start', 1]];
+    for (let i = 0; i < TUMBLER_FALLS; i++) evs.push(['hurdle', 5 + i]);
+    evs.push(['finish', 40]);
+    expect(badgesOf(feed(evs), 3, false)).toEqual([]);
+    expect(badgesOf(feed(evs), 3, true)).toEqual([BADGES.tumbler]);
+  });
 });
 
 describe('실제 달리기에서 센 배지', () => {

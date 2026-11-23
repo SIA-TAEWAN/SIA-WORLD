@@ -192,13 +192,13 @@ export const WEAPONS: WeaponDef[] = [
     ],
   },
 
-  // ───── 진화 무기 2차 (data/evolutions.ts). 서버 도감 목록에는 아직 없다 → 아래 DEVICE_CODEX ─────
+  // ───── 진화 무기 2차 (data/evolutions.ts). 서버 도감 목록에는 093_survival_codex_evo.sql 에서 들어갔다 ─────
   {
     id: 'bellEvo', name: '수호의 범종', icon: '🛎️', desc: '넓고 묵직한 종소리가 쉬지 않고 울린다', kind: 'aura', dot: true, evolved: true, ready: true,
     levels: [{ dmg: 8.6, cd: 0.4, radius: 200, text: '넓고 묵직한 종소리가 쉬지 않고 울린다' }],
   },
   {
-    id: 'mooncakeEvo', name: '한가위 달떡', icon: '🌝', desc: '보름달떡 다섯 개가 크게 터진다', kind: 'lob', evolved: true, ready: true,
+    id: 'mooncakeEvo', name: '한가위 보름달떡', icon: '🌝', desc: '보름달떡 다섯 개가 크게 터진다', kind: 'lob', evolved: true, ready: true,
     levels: [{ dmg: 16.5, cd: 1.4, count: 5, radius: 120, range: 340, text: '보름달떡 5개가 크게 터진다' }],
   },
   {
@@ -216,9 +216,10 @@ export const WEAPON_INDEX: Record<string, number> = Object.fromEntries(WEAPONS.m
 export const FALLBACK_WEAPON = 'shuriken';
 
 /**
- * 서버 도감 목록(038 의 _survival_codex_ids)에 아직 없는 진화 무기. 서버는 모르는 id 를 버리므로 서버 도감에는 적히지 않고,
- * 도감 화면은 이 기기에서 만들어 본 기록(net/made.ts)으로 보여 준다. 서버 목록에 넣는 마이그레이션이 나가면 여기서 뺀다 (tests/sql.test.ts 가 맞춰 본다).
+ * 서버 도감 목록(_survival_codex_ids — 최신 정의는 093)에 아직 없는 무기. 서버는 모르는 id 를 버리므로 서버 도감에는 적히지 않고,
+ * 도감 화면은 이 기기에서 만들어 본 기록(net/made.ts)으로 보여 준다. 지금은 없다: 진화 2차 4종은 093 에서 서버 목록에 들어갔다.
+ * 새 무기를 서버 목록보다 먼저 내야 할 때만 여기에 적고, 목록에 넣는 마이그레이션이 나가면 뺀다 (tests/sql.test.ts 가 맞춰 본다).
  */
-export const DEVICE_CODEX: readonly string[] = ['bellEvo', 'mooncakeEvo', 'hoofEvo', 'piggyEvo'];
+export const DEVICE_CODEX: readonly string[] = [];
 /** 서버 도감에 적히는 무기 id (서버 목록과 같은 순서) */
 export const SERVER_CODEX_WEAPONS: string[] = WEAPONS.map((w) => w.id).filter((id) => !DEVICE_CODEX.includes(id));

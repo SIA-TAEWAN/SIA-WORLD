@@ -416,10 +416,10 @@ export class RaceGame {
     return this.mySlot >= 0 && this.control[this.mySlot] === 'me';
   }
 
-  /** 내가 이번 판에 받은 배지 (출전하지 않았거나 AI가 이어 달렸으면 없음) */
-  badges(): Badge[] {
+  /** 내가 이번 판에 받은 배지 (출전하지 않았거나 AI가 이어 달렸으면 없음). finished: 결과에 적힌 내 완주 여부 */
+  badges(finished = true): Badge[] {
     if (this.mySlot < 0 || this.taken[this.mySlot]) return [];
-    return badgesOf(this.tally, this.obs.filter((o) => o.kind === 'boost').length);
+    return badgesOf(this.tally, this.obs.filter((o) => o.kind === 'boost').length, finished);
   }
 
   myChar(): ZodiacId | null {

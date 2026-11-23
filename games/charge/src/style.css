@@ -237,6 +237,11 @@ button, input { font: inherit; color: inherit; }
 /* ---------- 요괴 도감 ---------- */
 .row2.row3 { grid-template-columns: repeat(3, 1fr); }
 .row3 .btn { padding-left: 6px; padding-right: 6px; white-space: nowrap; }
+/* 좁은 화면(360px 이하): 3칸 줄의 글자를 줄여 '❓ 하는 법'이 테두리에 닿지 않게 */
+@media (max-width: 360px) {
+  .row2.row3 { gap: 6px; }
+  .row3 .btn { font-size: 15px; gap: 3px; padding-left: 3px; padding-right: 3px; }
+}
 /* 안 만난 요괴: 외곽선 색 실루엣 */
 img.unseen { filter: brightness(0); opacity: 0.4; }
 .foe-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }

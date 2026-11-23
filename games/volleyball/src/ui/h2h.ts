@@ -14,6 +14,7 @@ export function h2hHtml(name: string, h: H2h): string {
 export function clearH2h(el: HTMLElement) {
   el.innerHTML = '';
   el.removeAttribute('aria-label');
+  el.parentElement?.classList.remove('has-h2h');
 }
 
 /**
@@ -31,4 +32,6 @@ export async function fillH2h(el: HTMLElement, opp: { id: string; name: string }
   if (!h || (!showZero && h.wins + h.losses === 0)) return clearH2h(el);
   el.innerHTML = h2hHtml(opp.name, h);
   el.setAttribute('aria-label', `맞대결 전적: ${h2hText(opp.name, h)}`);
+  // 줄이 생겼다는 표시 (낮은 화면에서 좌석 얼굴을 줄이는 CSS 용. :has() 가 없는 예전 사파리에서도 되게 클래스로)
+  el.parentElement?.classList.add('has-h2h');
 }

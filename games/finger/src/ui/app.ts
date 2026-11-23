@@ -893,10 +893,20 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
   const scene = new GameScene();
   const hintEl = root.querySelector<HTMLButtonElement>('#hint-btn');
   let hintKey = '';
+  /** 힌트를 청했고 아직 길이 보이지 않았다 (계산 중) */
+  let hintAsked = false;
   /** 힌트 버튼 모습: 남은 횟수 · 계산 중 · 지금 못 누름 (바뀔 때만 고친다) */
   const paintHint = () => {
     if (!hintEl) return;
     const st8 = scene.hintState;
+    // 횟수는 힌트가 실제로 보였을 때 줄인다: 계산이 끝나기 전에 쏴 버리면(길이 안 보였다) 쓰지 않은 것으로 친다
+    if (hintAsked && st8 !== 'thinking') {
+      hintAsked = false;
+      if (st8 === 'shown') {
+        hintsLeft--;
+        toast(hintsLeft ? `파란 선에 맞춰 당겨 보세요 · 힌트 ${hintsLeft}번 남음` : '파란 선에 맞춰 당겨 보세요 · 마지막 힌트');
+      }
+    }
     const key = `${hintsLeft}:${st8}`;
     if (key === hintKey) return;
     hintKey = key;
@@ -909,9 +919,8 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     if (scene.hintState !== 'ready') return;
     if (hintsLeft <= 0) return void toast('이번 판의 힌트를 다 썼어요');
     if (!scene.requestHint()) return;
-    hintsLeft--;
+    hintAsked = true;
     play('click');
-    toast(hintsLeft ? `파란 선에 맞춰 당겨 보세요 · 힌트 ${hintsLeft}번 남음` : '파란 선에 맞춰 당겨 보세요 · 마지막 힌트');
     paintHint();
   });
   closeGame();
