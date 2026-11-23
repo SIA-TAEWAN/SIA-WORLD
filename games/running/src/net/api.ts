@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ZodiacId } from '../game/constants';
-import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { worldSupabase } from './world';
 import { isLockedError } from '../game/unlock';
 import { retryDaily } from '../game/daily';
@@ -33,10 +32,9 @@ export interface RankRow {
 
 export interface RaceApi {
   kind: 'supabase' | 'local';
-  channel<M>(name: string, key: string): Channel<M>;
   /** 기기 시계를 서버 시각에 맞춘다 */
   syncClock(): Promise<void>;
-  /** 방장: 이번 판의 준비·GO 시각을 서버에서 받는다 */
+  /** 이번 판의 준비·GO 시각을 서버에서 받는다 (room: 오늘의 도전 방 키) */
   go(room: string): Promise<GoInfo>;
   /** 완주 기록 올리기 (사람만) */
   submit(room: string, round: number, ms: number, character: ZodiacId): Promise<SubmitResult>;
@@ -78,7 +76,7 @@ export const serverNow = () => Date.now() + offset;
 function localGo(): GoInfo {
   const now = serverNow();
   const readyAt = now + LEAD_MS;
-  // 판 번호는 시각으로: 방장이 바뀌어도 겹치지 않고 늘어난다
+  // 판 번호는 시각으로: 다시 도전해도 겹치지 않고 늘어난다
   return { round: Math.floor(now / 1000) % 100000000, readyAt, goAt: readyAt + 1000 + Math.random() * 2000 };
 }
 
@@ -107,7 +105,6 @@ function saveLocalBest(uid: string, ms: number): SubmitResult {
 function createLocalApi(uid: string): RaceApi {
   return {
     kind: 'local',
-    channel: <M>(name: string, key: string) => new LocalChannel<M>(name, key),
     async syncClock() {},
     async go() {
       return localGo();
@@ -130,7 +127,6 @@ function createLocalApi(uid: string): RaceApi {
 function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
   return {
     kind: 'supabase',
-    channel: <M>(name: string, key: string) => new SupaChannel<M>(sb, name, key),
     async syncClock() {
       // 세 번 물어 가장 빨리 돌아온 답으로 맞춘다
       let best = Infinity;
@@ -150,10 +146,10 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       const { data, error } = await sb.rpc('race_go', { p_room_key: room });
       const t1 = Date.now();
       const d = data as { round: number; ready_at: number; go_at: number; now: number } | null;
-      // 너무 빨리 다시 불렀다: 기기 시계로 대신 열지 않는다 (방에서 남은 시간 뒤에 다시 묻는다)
+      // 너무 빨리 다시 불렀다: 기기 시계로 대신 열지 않는다 (solo.ts 가 남은 시간 뒤에 다시 묻는다)
       if (error && /too soon/.test(error.message ?? '')) throw new GoTooSoonError();
       if (error || !d) {
-        // 서버 함수를 못 쓰면(배포 전·통신 오류) 방장 시계로 정한다. 이 판의 기록은 랭킹에 못 올린다
+        // 서버 함수를 못 쓰면(배포 전·통신 오류) 이 기기 시계로 정한다. 이 판의 기록은 랭킹에 못 올린다
         console.warn('[시아레이스] 서버에서 GO 시각을 받지 못해 이 기기 시계로 정합니다', error?.message);
         return localGo();
       }
@@ -208,7 +204,7 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
 }
 
 const params = new URLSearchParams(location.search);
-/** 주소의 ?local=1 이면 탭끼리 통신하는 테스트 모드 (로그인 없이). 개발 서버나 내 컴퓨터(localhost)에서만 켜진다 */
+/** 주소의 ?local=1 이면 서버 없이 도는 테스트 모드 (로그인 없이). 개발 서버나 내 컴퓨터(localhost)에서만 켜진다 */
 export const LOCAL_MODE =
   params.get('local') === '1' && (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(location.hostname));
 

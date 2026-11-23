@@ -1,9 +1,8 @@
-import { aiLevelOf, isCharId, type AiLevel, type ZodiacId } from '../game/constants';
+import { isCharId, type ZodiacId } from '../game/constants';
 import { isCharOpen } from '../game/unlock';
 import type { RankedEntry } from '../game/ranking';
 import type { RaceApi } from '../net/api';
-import type { RaceLobby } from '../net/lobby';
-import type { RaceRoom, StartMsg } from '../net/room';
+import type { SoloSession, SoloStart } from '../net/solo';
 import type { RaceGame } from '../race/game';
 import { music, type TrackName } from './music';
 import { sfx, sound } from './sfx';
@@ -15,28 +14,27 @@ export const state = {
   /** 로그인한 사용자 (테스트 모드는 탭마다 다른 임시 사용자) */
   user: { id: '', name: '' },
   api: null as RaceApi | null,
-  room: null as RaceRoom | null,
-  /** 대기실 채널 (방 목록) */
-  lobby: null as RaceLobby | null,
+  /** 오늘의 도전 판을 여는 곳 (방 키 · GO 요청). 처음 달릴 때 만든다 */
+  solo: null as SoloSession | null,
   /** 마지막으로 고른 캐릭터 */
   char: 'tiger' as ZodiacId,
   /** 내 최고 기록 (ms) */
   best: null as number | null,
   /** 내 역대 최고 기록 순위 (race_ranking 의 place). 기록이 없거나 못 읽었으면 null → 등급은 구름 */
   place: null as number | null,
-  /** 오늘의 도전을 달리는 중이면 그 날짜와 트랙 시드 (보통 방이면 null) */
-  daily: null as { day: string; seed: number } | null,
+  /** 서버에서 받은 오늘 날짜 ('YYYY-MM-DD'). 못 받았으면 null (테스트 모드는 기기 시계) */
+  today: null as string | null,
 };
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */
 export const nav = {
+  /** 첫 화면 (오늘의 도전) */
   lobby: () => {},
-  /** 오늘의 도전 화면 */
-  daily: () => {},
-  room: (_code: string) => {},
-  /** 방에 있는 채로 대기실 화면으로 */
-  waiting: () => {},
-  race: (_start: StartMsg) => {},
+  /** 캐릭터 고르기 → 출발 */
+  pick: () => {},
+  /** 지금 고른 캐릭터로 바로 한 판 (결과 화면의 '다시 도전') */
+  run: () => {},
+  race: (_start: SoloStart) => {},
   result: (_race: RaceGame, _results: RankedEntry[]) => {},
 };
 
@@ -83,23 +81,6 @@ export function saveChar(c: ZodiacId) {
   }
 }
 
-// ---------- 마지막으로 고른 AI 난이도 (내가 방장인 방에 쓴다) ----------
-const LEVEL_KEY = 'sia-race:ai-level';
-export function loadAiLevel(): AiLevel {
-  try {
-    return aiLevelOf(localStorage.getItem(LEVEL_KEY));
-  } catch {
-    return 'normal';
-  }
-}
-export function saveAiLevel(level: AiLevel) {
-  try {
-    localStorage.setItem(LEVEL_KEY, level);
-  } catch {
-    /* 무시 */
-  }
-}
-
 // ---------- 설정: 배경음·효과음을 따로 켜고 끈다 ----------
 export function openSettings() {
   sfx('click');
@@ -131,30 +112,6 @@ export function openSettings() {
     paint();
   });
   stage.append(dim);
-}
-
-/** 지금 방에서 나온다 (대기실 방 목록에서도 빠진다) */
-export function leaveRoom() {
-  void state.room?.leave();
-  state.room = null;
-  state.daily = null;
-  state.lobby?.setRoom(null);
-}
-
-/** 주소의 ?room=코드 를 바꾼다 (새로 고침·공유해도 같은 방) */
-export function setRoomInUrl(code: string | null) {
-  const u = new URL(location.href);
-  if (code) u.searchParams.set('room', code);
-  else u.searchParams.delete('room');
-  history.replaceState(null, '', u);
-}
-
-/** 친구에게 보낼 방 주소 */
-export function roomLink(code: string): string {
-  const u = new URL(location.href);
-  u.hash = '';
-  u.searchParams.set('room', code);
-  return u.toString();
 }
 
 /** 게임 엔진(Phaser)과 경주 화면을 미리 받아 둔다 */

@@ -1,8 +1,9 @@
 // SIA WORLD 접속 인원 (게임마다 "지금 몇 명"과 정원 30명).
 //   게임마다 실시간 채널(Presence)이 있고, 들어온 사람은 그 채널에 자기 정보를 올린다 (같은 계정은 탭이 여러 개여도 한 명).
-//   - 시아탱크 lobby:main · 시아레이스 race-lobby · 시아배구 volley-lobby · 시아서바이벌 survival-lobby 는 각 게임의 대기실 채널을 그대로 센다.
+//   - 시아탱크 lobby:main · 시아배구 volley-lobby · 시아서바이벌 survival-lobby 는 각 게임의 대기실 채널을 그대로 센다.
 //   - 맞고·카지노는 이 파일의 enterGame()으로 card-lobby:<게임> 채널에 들어간다.
-//   - 시아돌격대·시아핑거도 enterGame()으로 charge-lobby · finger-lobby 에 들어간다.
+//   - 시아돌격대·시아핑거·시아레이스도 enterGame()으로 charge-lobby · finger-lobby · race-lobby 에 들어간다
+//     (시아레이스는 2026-11-23 방 경기를 없애며 예전 대기실 채널 이름 race-lobby 를 그대로 접속 인원 채널로 쓴다).
 //   - SIA WORLD 로비는 watchWorld()로 게임 채널을 구독만 해서(게임 채널에는 자기 정보를 올리지 않는다 → 게임 정원과 무관)
 //     게임 카드에 인원과 닉네임 목록을 보여 주고, 로비 전용 채널 world-lobby 에만 자기 정보를 올려 로비 사람끼리 보이게 한다.
 //   - 모든 채널이 같은 모양으로 올린다: key = 사용자 ID, 내용 = { meta: { name: 닉네임, ... } }
@@ -16,7 +17,7 @@ export const GAME_CHANNELS = {
   tank: ['lobby:main'],
   matgo: ['card-lobby:matgo'],
   casino: ['card-lobby:poker', 'card-lobby:holdem', 'card-lobby:blackjack', 'card-lobby:roulette'],
-  race: ['race-lobby'],
+  race: ['race-lobby'], // enterGame (예전 대기실 채널과 같은 이름)
   volleyball: ['volley-lobby'],
   survival: ['survival-lobby'],
   defense: ['defense-lobby'],
@@ -119,7 +120,7 @@ function membersOf(ch) {
   for (const [key, metas] of Object.entries(ch.presenceState())) {
     const last = metas[metas.length - 1];
     const m = last?.meta ?? {};
-    // 들어온 시각: 이 파일·레이스·배구는 seen, 시아탱크는 at
+    // 들어온 시각: 이 파일·배구는 seen, 시아탱크는 at
     const seen = Number(m.seen ?? m.at) || 0;
     list.push({ key, seen });
   }
@@ -135,7 +136,7 @@ export function watchGameCounts(cb) {
 }
 
 /**
- * 게임에 들어간다 (맞고·카지노): 채널에 내 정보를 올리고, 정원(30명)을 넘으면 full: true.
+ * 게임에 들어간다 (맞고·카지노·돌격대·핑거·레이스): 채널에 내 정보를 올리고, 정원(30명)을 넘으면 full: true.
  * → { full, count(), onChange(fn) → 해제 함수, leave() }
  * 실시간 연결을 못 하면 막지 않는다 (full: false, count 0).
  */

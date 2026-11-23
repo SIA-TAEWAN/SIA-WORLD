@@ -56,44 +56,22 @@ export const SAFE_START = 10;
 export const SAFE_END = 5;
 export const MIN_GAP = 5;
 
-/** 판마다 놓는 개수 (합 21: 146m 트랙). 통나무는 화면·동기화가 하나만 다루므로 1개 */
+/** 판마다 놓는 개수 (합 21: 146m 트랙). 통나무는 화면이 하나만 다루므로 1개 */
 export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 6, banana: 4, log: 1, boost: 3, bar: 4 } as const;
 
 /** 경기 끝: 1등 도착 뒤 15초 또는 출발(GO) 뒤 90초 */
 export const END_AFTER_FIRST = 15;
 export const END_AFTER_GO = 90;
 
-/** AI: 방해물마다 점프(낮은 막대는 슬라이딩) 성공 확률, 출발 반응, 도착 시간 범위 */
+/** AI: 방해물마다 점프(낮은 막대는 슬라이딩) 성공 확률, 출발 반응, 도착 시간 범위 (난이도 없음: 늘 이 값) */
 export const AI_SUCCESS = 0.75;
 export const AI_REACT_MIN = 0.2;
 export const AI_REACT_MAX = 0.5;
 export const AI_FINISH_MIN = 33;
 export const AI_FINISH_MAX = 37.5;
 
-/** AI 난이도: 방장이 대기실에서 고른다 (보통 = 위의 값 그대로). 오늘의 도전은 보통 고정 */
-export const AI_LEVEL_IDS = ['easy', 'normal', 'hard'] as const;
-export type AiLevel = (typeof AI_LEVEL_IDS)[number];
-export interface AiLevelSpec {
-  label: string;
-  /** 방해물마다 잘 넘을 확률 */
-  success: number;
-  /** 도착 시간 범위 (초) */
-  finishMin: number;
-  finishMax: number;
-}
-export const AI_LEVELS: Record<AiLevel, AiLevelSpec> = {
-  easy: { label: '쉬움', success: 0.55, finishMin: 37, finishMax: 42 },
-  normal: { label: '보통', success: AI_SUCCESS, finishMin: AI_FINISH_MIN, finishMax: AI_FINISH_MAX },
-  hard: { label: '어려움', success: 0.92, finishMin: 30.5, finishMax: 33 },
-};
-/** 네트워크·저장소에서 온 값을 난이도로 (모르는 값·없는 값은 보통: 예전 기기는 난이도를 보내지 않는다) */
-export const aiLevelOf = (v: unknown): AiLevel => (typeof v === 'string' && (AI_LEVEL_IDS as readonly string[]).includes(v) ? (v as AiLevel) : 'normal');
-
 /** 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/031_race_150m.sql 의 min_ms) */
 export const MIN_VALID_MS = 28000;
-
-/** 위치 전송 간격 (초당 10회) */
-export const NET_INTERVAL_MS = 100;
 
 /** 십이지 12 (띠 순서). AI·겹칠 때 다시 고르기·로비 그림은 이 12개에서만 (추가 캐릭터는 계정마다 열어야 쓴다) */
 export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;

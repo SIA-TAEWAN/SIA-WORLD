@@ -16,8 +16,6 @@ export interface SceneData {
   dpr: number;
   /** 효과음 (내 캐릭터에게 생긴 일) */
   sfx: (name: string, opts?: { volume?: number; rate?: number }) => void;
-  /** 그 자리 머리 위에 띄울 짧은 말 (없으면 null) */
-  emote?: (slot: number) => string | null;
   /** 매 프레임 (HUD 갱신용) */
   onFrame: () => void;
 }
@@ -55,13 +53,6 @@ interface Actor {
   lastArrow: string;
   logSpr: Phaser.GameObjects.Image | null;
   logLastX: number;
-  /** 머리 위 말풍선 (짧은 말) */
-  bubble: Phaser.GameObjects.Container;
-  bubbleText: Phaser.GameObjects.Text;
-  bubbleBg: Phaser.GameObjects.Graphics;
-  bubbleW: number;
-  bubbleH: number;
-  lastSay: string;
 }
 
 interface ObSprite {
@@ -80,7 +71,6 @@ export class RaceScene extends Phaser.Scene {
   private dpr = 1;
   private sfx!: SceneData['sfx'];
   private onFrame!: () => void;
-  private emote: (slot: number) => string | null = () => null;
   private ppm = 40;
   private bgH = 0;
   private laneH = 0;
@@ -104,7 +94,6 @@ export class RaceScene extends Phaser.Scene {
     this.dpr = d.dpr;
     this.sfx = d.sfx;
     this.onFrame = d.onFrame;
-    this.emote = d.emote ?? (() => null);
     this.lanes = [];
     this.actors = [];
     this.obSprites = [];
@@ -282,11 +271,6 @@ export class RaceScene extends Phaser.Scene {
       const arrow = this.add.container(0, this.laneTop(row) + this.laneH * 0.52, [arrowBg, face, arrowText]).setDepth(120).setVisible(false);
       arrow.setData('face', face);
 
-      // 말풍선 (짧은 말): 이름표 위에 뜬다
-      const bubbleText = this.text(0, 0, '', fs + 2);
-      const bubbleBg = this.add.graphics();
-      const bubble = this.add.container(0, 0, [bubbleBg, bubbleText]).setDepth(130 + row).setVisible(false);
-
       const logO = this.race.obs.find((o) => o.kind === 'log');
       let logSpr: Phaser.GameObjects.Image | null = null;
       if (logO) {
@@ -298,7 +282,6 @@ export class RaceScene extends Phaser.Scene {
       this.actors.push({
         slot: r.slot, row, char: r.char, spr, shadow, label, labelText, labelBg, rankText, arrow, arrowText, arrowBg,
         stride: r.slot * 1.7, lastX: 0, state: 'wait', since: 0, dustT: 0, ghostT: 0, mudT: 0, lastRank: 0, lastArrow: '', logSpr, logLastX: logO?.x ?? 0,
-        bubble, bubbleText, bubbleBg, bubbleW: 0, bubbleH: 0, lastSay: '',
       });
     }
     this.draw(0);
@@ -400,37 +383,7 @@ export class RaceScene extends Phaser.Scene {
         }
         a.arrow.setVisible(true);
       } else if (a.arrow.visible) a.arrow.setVisible(false);
-
-      // 짧은 말: 머리 위(이름표 위)에. 화면 밖 주자는 그 레인 가장자리에
-      const say = this.emote(a.slot) ?? '';
-      if (say !== a.lastSay) {
-        a.lastSay = say;
-        if (say) this.paintBubble(a, say);
-        a.bubble.setVisible(!!say);
-      }
-      if (say) {
-        const half = a.bubbleW / 2 + 4;
-        const top = a.bubbleH / 2 + 2;
-        const by = a.label.visible ? a.label.y - a.bubbleH - 3 : this.laneTop(a.row) + top;
-        a.bubble.setPosition(Phaser.Math.Clamp(x, half, Math.max(half, W - half)), Math.max(top, by));
-      }
     }
-  }
-
-  private paintBubble(a: Actor, s: string) {
-    a.bubbleText.setText(s);
-    const w = a.bubbleText.width + 16;
-    const h = a.bubbleText.height + 6;
-    a.bubbleW = w;
-    a.bubbleH = h;
-    a.bubbleBg.clear();
-    // 꼬리 (아래로)
-    a.bubbleBg.fillStyle(COLOR.outline, 1).fillTriangle(-5, h / 2, 5, h / 2, 0, h / 2 + 6);
-    a.bubbleBg.fillStyle(COLOR.white, 1).lineStyle(2, COLOR.outline, 1);
-    a.bubbleBg.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
-    // 톡 튀어나오게
-    a.bubble.setScale(0.4);
-    this.tweens.add({ targets: a.bubble, scale: 1, duration: 180, ease: 'Back.easeOut' });
   }
 
   private paintArrow(a: Actor, side: number, s: string) {
