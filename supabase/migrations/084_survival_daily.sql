@@ -3,7 +3,7 @@
 --   조건은 기기가 날짜에서 만든다 (games/survival/src/game/daily.ts). 서버는 오늘 조건으로 했는지까지 다시 계산하지 않는다 (친목용).
 --   · 판의 모드에 'daily' 를 더한다 (survival_runs.mode). survival_start 의 인자 모양은 그대로다 (p_mode = 'daily').
 --   · survival_start (이전 최신 정의: 073_cat_survival.sql): daily 는 맵 잠금을 보지 않는다. 고양이는 받지 않는다. 나머지는 073 그대로.
---   · survival_finish (이전 최신 정의: 055_survival_hell.sql): daily 는 4분 모드와 같은 검증·엽전·누적·도감·시아코인.
+--   · survival_finish (이전 최신 정의: 055_survival_hell.sql): daily 는 4분 모드와 같은 검증·누적·도감·시아코인. 엽전 배수만 맵과 상관없이 1(들판 기준).
 --     맵별 기록(랭킹)·다음 맵 해금·시간/클리어 조건 캐릭터 해금·최고 생존 시간에는 넣지 않고, 정상 판이면 _daily_record 로 그날 순위에 넣는다.
 --     답에 'daily' 칸이 생긴다 (오늘의 도전이 아니거나 순위에 넣지 않은 판은 null): { day, improved, best, first }
 --     같은 판을 두 번 넣는 것은 지금처럼 'already finished' 가 막고, 남의 판은 'no run'.
@@ -76,7 +76,7 @@ begin
   endless := rn.mode = 'endless';
   -- 헬 모드는 4분 판이다 (가장 긴 판·클리어·보스 수는 4분 모드와 같다). 다른 것은 엽전 상한(2배)과 기록·해금뿐
   hell := rn.mode = 'hell';
-  -- 084: 오늘의 도전도 4분 판이다 (검증·엽전은 4분 모드와 같다). 다른 것은 기록·해금에 넣지 않고 오늘 순위(daily_scores)에 넣는 것
+  -- 084: 오늘의 도전도 4분 판이다 (검증은 4분 모드와 같다. 엽전 배수는 아래에서 1로). 다른 것은 기록·해금에 넣지 않고 오늘 순위(daily_scores)에 넣는 것
   daily := rn.mode = 'daily';
   max_t := case when endless then public._survival_const('endless_max_time') else public._survival_const('max_time') end;
   if p_time is null or p_kills is null or p_level is null or p_coins is null or p_cleared is null or p_boss_kills is null or p_cakes is null then raise exception 'bad result'; end if;
@@ -106,6 +106,8 @@ begin
   mul := coalesce(mul, 1);
   -- 헬 모드: 엽전이 2배라 상한도 2배
   if hell then mul := mul * public._survival_const('hell_coin_mul'); end if;
+  -- 084: 오늘의 도전은 맵 잠금 없이 누구나 하는 판이라 엽전 배수를 맵과 상관없이 1(들판 기준)로 본다 (기기도 1배로 줍는다: game/sim.ts 의 createRun)
+  if daily then mul := 1; end if;
   -- 보스 수: 4분까지 셋. 무한 모드는 그 뒤로 endless_boss_every 초마다 하나씩 더 나온다
   boss_cap := public._survival_const('boss_max');
   if endless then

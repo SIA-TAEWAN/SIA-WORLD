@@ -82,3 +82,17 @@ export function dailyMs(row: { score?: unknown; detail?: unknown } | null | unde
   const ms = Number.isFinite(Number(d.ms)) && Number(d.ms) > 0 ? Number(d.ms) : -Number(row.score);
   return Number.isFinite(ms) && ms > 0 ? ms : null;
 }
+
+/** 오늘의 도전 기록 넣기: 통신 실패(done=false)면 잠깐 쉬고 다시 (모두 tries 번). 끝내 실패하면 null */
+export async function retryDaily(
+  call: () => Promise<{ done: true; day: string | null } | { done: false }>,
+  tries = 3,
+  waitMs = 1200,
+): Promise<string | null> {
+  for (let i = 0; i < tries; i++) {
+    if (i > 0 && waitMs > 0) await new Promise((r) => setTimeout(r, waitMs * i));
+    const r = await call();
+    if (r.done) return r.day;
+  }
+  return null;
+}

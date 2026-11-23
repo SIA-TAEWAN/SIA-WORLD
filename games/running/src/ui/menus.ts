@@ -235,7 +235,8 @@ export function showWaiting() {
     const host = hostOf(room.members);
     $('#room-name').textContent = `${room.members.find((m) => m.id === host)?.name ?? state.user.name}의 방`;
     // 연속전: 같은 방에서 이어 달리면 자리마다 누적 순위·점수를 보인다
-    const table = room.series.n > 0 ? standings(room.series) : [];
+    // 지금 자리에 있는 사람·AI 만 골라 그 안에서 순위를 매긴다 (나간 사람 줄은 세지 않는다)
+    const table = room.series.n > 0 ? standings(room.series, seats.map(seriesKey)) : [];
     $('#seats-note').textContent = table.length ? `연속전 ${room.series.n}판 · 누적 점수` : '빈 자리는 AI가 달려요';
     $('#seats').classList.toggle('has-gp', table.length > 0);
     $('#seats').innerHTML = seats

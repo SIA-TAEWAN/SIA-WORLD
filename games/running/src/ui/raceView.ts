@@ -58,7 +58,7 @@ export function showRace(start: StartMsg) {
         ${race.roster.map((r) => `<img data-slot="${r.slot}" class="${r.slot === me ? 'me' : ''}" src="${zodiacFaceUrl(r.char)}" alt="" />`).join('')}
       </div>
     </div>
-    <div class="track" id="track"><div class="cutin" id="cutin"></div>${emoteBarHtml(true)}</div>
+    <div class="track" id="track"><div class="cutin" id="cutin"></div>${me >= 0 ? emoteBarHtml(true) : ''}</div>
     <div class="pad solo" id="pad"><div class="pad-btns"><div class="go-btn slide" id="slide">슬라이딩</div><div class="go-btn" id="go">출발</div></div>
       <p class="hint" id="hint">스페이스 키 · 이 아래 아무 곳이나 눌러도 돼요</p></div>`,
     'race',

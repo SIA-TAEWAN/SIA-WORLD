@@ -10,6 +10,7 @@ import { sfx } from './sfx';
 import { DAILY_GAME, dailyScore } from '../game/daily';
 import { LOCAL_MODE } from '../net/api';
 import { loadDaily } from '../net/world';
+import { dayLabel } from './daily';
 
 /**
  * 활약상: 캐릭터별 피해 막대(가장 큰 값이 꽉 찬다)와 처치 수, 오늘의 일꾼, 지원 기여 한 줄.
@@ -141,8 +142,17 @@ export function showResult(r: GameResult) {
       // 서버가 오늘 순위에 기록했으면 내 순위를 읽어 온다. 기록되지 않았으면(너무 짧은 판 · 테스트 모드) 점수만
       const rec = s.daily ?? null;
       const score = rec?.score ?? dailyScore(r.cleared, r.lives, r.kills);
-      if (!rec) paintRank(LOCAL_MODE ? `${score.toLocaleString()}<small>점 (기록 안 함)</small>` : '<small>기록되지 않았어요</small>');
+      if (!rec) paintRank(LOCAL_MODE ? `${score.toLocaleString()}<small>점 (기록 안 함)</small>` : '<small>기록 없음</small>');
       else {
+        /** 기록 한 줄과 순위 칸 이름: when = '오늘' 또는 기록된 날짜('11월 22일') */
+        const paintDay = (when: string) => {
+          root.querySelector('#unlocks')!.innerHTML = rec.improved
+            ? `<p class="daily-line">📅 ${esc(when)} ${rec.first ? '첫 기록' : '최고 기록'} <b>${rec.score.toLocaleString()}점</b></p>`
+            : `<p class="daily-line">📅 ${esc(when)} 내 최고 <b>${rec.best.toLocaleString()}점</b> <small>(이번 ${rec.score.toLocaleString()}점)</small></p>`;
+          const label = root.querySelector('#dailyRow span');
+          if (label) label.textContent = `📅 ${when} 순위`;
+        };
+        paintDay('오늘');
         paintRank('…');
         void (async () => {
           const mod = await loadDaily();
@@ -150,11 +160,12 @@ export function showResult(r: GameResult) {
           if (!root.isConnected) return;
           const place = Number(rank?.mine?.place);
           paintRank(place >= 1 ? `${place}위<small> / ${Number(rank!.total) || place}명</small>` : null);
+          // 자정을 넘겨 끝낸 판: 기록된 날이 서버의 오늘이 아니면 "오늘" 대신 그 날짜로 적는다
+          const today = typeof rank?.today === 'string' ? rank.today : mod ? await mod.dailyTodayStrict().catch(() => null) : null;
+          if (!root.isConnected) return;
+          if (today && today !== rec.day) paintDay(dayLabel(rec.day));
           if (place >= 1 && rec.improved) sfx('rankShow', { delay: 300 });
         })();
-        root.querySelector('#unlocks')!.innerHTML = rec.improved
-          ? `<p class="daily-line">📅 ${rec.first ? '오늘 첫 기록' : '오늘 최고 기록'} <b>${rec.score.toLocaleString()}점</b></p>`
-          : `<p class="daily-line">📅 오늘 내 최고 <b>${rec.best.toLocaleString()}점</b> <small>(이번 ${rec.score.toLocaleString()}점)</small></p>`;
       }
       note.textContent = s.baseCoins > 0 ? `${r.cleared ? '클리어' : '버틴 만큼'} ${s.baseCoins}` : r.cleared ? '' : '웨이브를 하나라도 넘기면 엽전을 조금 받아요';
       return;

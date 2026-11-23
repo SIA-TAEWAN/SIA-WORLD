@@ -6,25 +6,18 @@
 import { DAILY_GAME, cleanDailyRanking, dailyChallenge, dailySeed, isDay, localDay, type DailyChallenge, type DailyRanking } from '../game/daily';
 import { LOCAL_MODE } from './api';
 
-interface DailyModule {
-  dailyToday(): Promise<string>;
-  dailySeed(game: string, day: string, salt?: string): number;
-  loadDailyRanking(game: string, day?: string | null): Promise<unknown>;
-}
+import { loadDaily as shared } from './world';
 
-let mod: Promise<DailyModule> | null = null;
-function shared(): Promise<DailyModule> {
-  mod ??= import(/* @vite-ignore */ new URL('shared/daily.js', new URL('../../', document.baseURI)).href) as Promise<DailyModule>;
-  mod.catch(() => (mod = null));
-  return mod;
-}
-
-/** 오늘의 조건 (날짜는 서버의 한국 날짜). 공통 모듈을 못 불러오면 null → 화면은 안내하고 돌아간다 */
+/**
+ * 오늘의 조건. 날짜는 서버의 한국 날짜만 쓴다 (dailyTodayStrict): 기록이 서버로 가는 판이라 기기 시계로 대신하지 않는다.
+ * 날짜를 못 받았으면(통신 실패·5초 초과·공통 모듈 실패) null → 화면은 안내하고 시작을 막는다. 테스트 모드만 기기 시계
+ */
 export async function loadDailyChallenge(): Promise<DailyChallenge | null> {
   if (LOCAL_MODE) return dailyChallenge(localDay());
   try {
     const m = await shared();
-    const day = await m.dailyToday();
+    if (typeof m.dailyTodayStrict !== 'function') return null;
+    const day = await m.dailyTodayStrict();
     if (!isDay(day)) return null;
     return dailyChallenge(day, typeof m.dailySeed === 'function' ? m.dailySeed : dailySeed);
   } catch {

@@ -15,7 +15,7 @@ SIA WORLD: a set of browser games behind one login, served as a static site on G
   - `games/` — 맞고 and 카지노 (poker, holdem, blackjack, roulette). Shared shell in `games/lib/`.
   - `games/tank`, `games/running` (dev port 5290), `games/volleyball` (5291), `games/survival` (5292), `games/defense` (5293), `games/village` (5294), `games/charge` (5295, 시아돌격대).
   - `games/finger` (5296) — 시아핑거, 1인 턴제 튕기기 RPG. Simulation in `supabase/functions/_shared/finger/` (shared with the `finger-finish` Edge Function, which re-plays the submitted inputs), SQL in `067_finger.sql`.
-- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 076; check `ls supabase/migrations` before adding one).
+- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 087, 078 is reserved for 시아열두길; check `ls supabase/migrations` before adding one).
 - `supabase/functions/_shared/` — card-game rule engines and round runner; `game-action` and `game-timeout` are the card-game Edge Functions; `finger-finish` (시아핑거) re-plays a run with `_shared/finger/`.
 - Each newer game keeps its spec in `games/<name>/PRD.md` and art notes in `ASSETS.md`.
 
@@ -61,6 +61,10 @@ Consequences:
 
 - 탱크, 레이스, 배구 use Supabase Realtime Presence/Broadcast rooms with a host-authoritative, fixed-timestep simulation kept in pure modules with vitest tests.
 - 서바이벌 is single-player: the simulation runs on the device and the server validates results in SQL (`survival_start` / `survival_finish`: elapsed-time check, per-second caps, kill floor, overlap check). The validation constants exist twice — `_survival_const` in SQL and `LIMITS` in `games/survival/src/game/progress.ts` — and `tests/sql.test.ts` reads the migration files to assert they match. A new migration that redefines these functions must be added to the list that test reads.
+
+### 오늘의 도전 (daily)
+
+- 레이스·서바이벌·돌격대·핑거·디펜스: `082_daily.sql` (`daily_scores`, internal `_daily_record` — score is always "higher is better", `daily_today()`, `daily_ranking(game, day)`) + `shared/daily.js` (`dailyTodayStrict` for runs that record to the server, `dailySeed`/`dailyPick` build the day's conditions from the date string on every device). Each game records only from its own server-validated result (083 race, 084 survival, 085 charge, 086 finger, 087 defense); daily runs give no stars/unlocks/stage records. New games join by adding to `_daily_games()` / `DAILY_GAMES`.
 
 ### SQL conventions
 

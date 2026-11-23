@@ -78,6 +78,7 @@ export function showGame(setup: GameSetup) {
     mode: setup.mode,
     // 영구 강화: 저장된 값 (개발용 설정 ?upg=N 이 있으면 그 값)
     upgrades: setup.upg !== undefined ? presetUpgrades(setup.upg) : state.profile.upgrades,
+    daily: !!setup.daily,
     startAt: setup.startAt,
   });
   run.speed = loadSpeed();

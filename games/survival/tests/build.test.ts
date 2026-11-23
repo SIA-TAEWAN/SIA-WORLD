@@ -79,7 +79,7 @@ describe('무기별 피해 비율 (damageShares)', () => {
 });
 
 describe('내 위 한 명과의 차이 (rankGap)', () => {
-  const row = (place: number, time: number, kills = 100, key = `u${place}`): RankRow => ({ key, nickname: `닉${place}`, time, kills, place });
+  const row = (place: number, time: number, kills = 100, key = `u${place}`, cleared = false): RankRow => ({ key, nickname: `닉${place}`, time, kills, cleared, place });
 
   it('1등이면 first', () => {
     const me = row(1, 240);
@@ -88,18 +88,26 @@ describe('내 위 한 명과의 차이 (rankGap)', () => {
 
   it('바로 위 사람과의 생존 시간 차이', () => {
     const me = row(3, 188);
-    expect(rankGap([row(1, 240), row(2, 200), me, row(4, 100)], me)).toEqual({ kind: 'time', place: 3, name: '닉2', amount: 12 });
+    expect(rankGap([row(1, 240), row(2, 200), me, row(4, 100)], me)).toEqual({ kind: 'time', place: 3, name: '닉2', amount: 12, above: 2, out: false });
   });
 
   it('생존 시간이 같으면 처치 수 차이, 그것도 같으면 tie', () => {
     const me = row(2, 240, 500);
-    expect(rankGap([row(1, 240, 534), me], me)).toEqual({ kind: 'kills', place: 2, name: '닉1', amount: 34 });
-    expect(rankGap([row(1, 240, 500), me], me)).toEqual({ kind: 'tie', place: 2, name: '닉1' });
+    expect(rankGap([row(1, 240, 534), me], me)).toEqual({ kind: 'kills', place: 2, name: '닉1', amount: 34, above: 1, out: false });
+    expect(rankGap([row(1, 240, 500), me], me)).toEqual({ kind: 'tie', place: 2, name: '닉1', above: 1, out: false });
+  });
+
+  it('생존 시간이 같고 위 사람만 클리어했으면 clear (처치 수로는 못 넘는다). 둘 다 클리어면 처치 수 차이', () => {
+    const me = row(2, 240, 900);
+    expect(rankGap([row(1, 240, 534, 'u1', true), me], me)).toEqual({ kind: 'clear', place: 2, name: '닉1', above: 1, out: false });
+    expect(rankGap([row(1, 240, 950, 'u1', true), me], me)).toEqual({ kind: 'clear', place: 2, name: '닉1', above: 1, out: false });
+    const done = row(2, 240, 500, 'u2', true);
+    expect(rankGap([row(1, 240, 534, 'u1', true), done], done)).toEqual({ kind: 'kills', place: 2, name: '닉1', amount: 34, above: 1, out: false });
   });
 
   it('내가 목록 밖이면 목록의 마지막 사람까지', () => {
     const rows = Array.from({ length: 100 }, (_, i) => row(i + 1, 240 - i));
-    expect(rankGap(rows, row(150, 100, 10, 'me'))).toEqual({ kind: 'time', place: 150, name: '닉100', amount: 41 });
+    expect(rankGap(rows, row(150, 100, 10, 'me'))).toEqual({ kind: 'time', place: 150, name: '닉100', amount: 41, above: 100, out: true });
   });
 
   it('내 기록이 없거나 위 사람을 알 수 없으면 null', () => {

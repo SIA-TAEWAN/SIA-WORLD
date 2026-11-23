@@ -107,6 +107,63 @@ describe('연속전 점수', () => {
     expect(shouldAdopt(one, one, true)).toBe(true);
     expect(shouldAdopt(newSeries(), newSeries(), true)).toBe(false);
   });
+
+  it('내 것이 확정이 아니면(스스로 끝낸 판) 그 판을 센 같은 판 수의 다른 사람 것도 받는다', () => {
+    const one = addRound(newSeries(), 3, roster, rankResults([fin(0, 20000), fin(1, 21000), fin(2, 22000), fin(3, 23000)]));
+    const other = addRound(newSeries(), 3, roster, rankResults([fin(1, 20000), fin(0, 21000), fin(2, 22000), fin(3, 23000)]));
+    const elseRound = addRound(newSeries(), 2, roster, rankResults([fin(1, 20000), fin(0, 21000), fin(2, 22000), fin(3, 23000)]));
+    expect(shouldAdopt(one, other, false, null)).toBe(false);
+    expect(shouldAdopt(one, other, false, 3)).toBe(true);
+    expect(shouldAdopt(one, elseRound, false, 3)).toBe(false);
+    expect(shouldAdopt(one, newSeries(), false, 3)).toBe(false);
+  });
+
+  it('누적 순위는 지금 자리에 있는 열쇠만 골라 다시 매긴다', () => {
+    let s = addRound(newSeries(), 1, roster, rankResults([fin(1, 20000), fin(0, 21000), fin(2, 22000), fin(3, 23000)]));
+    const next = [roster[0], { slot: 1, id: 'c', name: '다', char: 'pig' as const }, roster[2], roster[3]];
+    s = addRound(s, 2, next, rankResults([fin(2, 20000), fin(0, 21000), fin(1, 22000), fin(3, 23000)]));
+    // 전체: b(4점) 가 나갔어도 줄은 남는다
+    expect(standings(s).map((r) => [r.k, r.pts, r.rank])).toEqual([
+      ['ai:ox', 6, 1],
+      ['u:a', 6, 1],
+      ['u:b', 4, 3],
+      ['ai:dragon', 2, 4],
+      ['u:c', 2, 4],
+    ]);
+    // 지금 자리: a, c, AI 둘 → b 가 빠지고 그 아래가 한 칸씩 올라온다
+    expect(standings(s, next.map(seriesKey)).map((r) => [r.k, r.rank])).toEqual([
+      ['ai:ox', 1],
+      ['u:a', 1],
+      ['ai:dragon', 3],
+      ['u:c', 3],
+    ]);
+    expect(standings(s, [])).toEqual([]);
+  });
+
+  it('24줄이 차면 방에 없는(이번 판에 달리지 않은) 줄부터 버리고 새 줄을 넣는다', () => {
+    let s = newSeries();
+    const res = rankResults([fin(0, 20000), fin(1, 21000), fin(2, 22000), fin(3, 23000)]);
+    // 사람 4명씩 6판 = 24줄
+    for (let i = 0; i < 6; i++) s = addRound(s, i + 1, [0, 1, 2, 3].map((slot) => ({ slot, id: `p${i * 4 + slot}`, name: '이름', char: 'rat' as const })), res);
+    expect(s.rows.length).toBe(24);
+    // 마지막 판에 있던 둘 + 새 사람 둘
+    const mixed = [
+      { slot: 0, id: 'p22', name: '이름', char: 'rat' as const },
+      { slot: 1, id: 'p23', name: '이름', char: 'rat' as const },
+      { slot: 2, id: 'new1', name: '새', char: 'ox' as const },
+      { slot: 3, id: 'new2', name: '새', char: 'pig' as const },
+    ];
+    s = addRound(s, 7, mixed, res);
+    expect(s.rows.length).toBe(24);
+    const keys = s.rows.map((r) => r.k);
+    expect(keys).toContain('u:new1');
+    expect(keys).toContain('u:new2');
+    expect(keys).toContain('u:p22');
+    // 가장 오래된, 방에 없는 줄 둘이 빠졌다
+    expect(keys).not.toContain('u:p0');
+    expect(keys).not.toContain('u:p1');
+    expect(keys).toContain('u:p2');
+  });
 });
 
 describe('짧은 말', () => {

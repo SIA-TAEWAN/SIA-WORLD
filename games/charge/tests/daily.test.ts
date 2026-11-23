@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { METER } from '../src/data/balance';
 import { NO_MODS, endlessCoins } from '../src/data/growth';
 import { DAILY_ID, ENDLESS_SEG, dailyBossShift, dailyStage, endlessSegment, endlessStage } from '../src/data/stages';
-import { DAILY_GAME, dailyCourse, dailySeed, dayLabel, isDay, localDay, normalizeDaily, placeText } from '../src/game/daily';
+import { DAILY_GAME, dailyCourse, dailySeed, dayLabel, isDay, isPastDay, localDay, normalizeDaily, placeText } from '../src/game/daily';
 import { applyReport, checkReport, checkStart, emptyProfile, type RunReport } from '../src/game/progress';
 import { STEP, createRun, metersOf, setTarget, step } from '../src/game/sim';
 import { createLocalApi } from '../src/net/api';
@@ -178,12 +178,25 @@ describe('오늘의 길: 순위 읽기', () => {
     expect(placeText(r)).toBe('오늘 2위 · 12명 중');
   });
 
+  it('기록된 날이 서버의 오늘이 아니면 "오늘" 대신 날짜로', () => {
+    const ans = { day: DAY, total: 5, top: [{ place: 3, nickname: '나', score: 500, me: true }], mine: { place: 3, score: 500, plays: 1 } };
+    const past = normalizeDaily({ ...ans, today: NEXT })!;
+    expect(isPastDay(past)).toBe(true);
+    expect(placeText(past)).toBe('11월 23일 3위 · 5명 중');
+    // 서버의 오늘과 같거나, 답에 오늘이 없으면(모르면) 오늘로
+    expect(placeText(normalizeDaily({ ...ans, today: DAY })!)).toBe('오늘 3위 · 5명 중');
+    const unknown = normalizeDaily({ ...ans, today: 'x' })!;
+    expect(unknown.today).toBeNull();
+    expect(isPastDay(unknown)).toBe(false);
+    expect(placeText(unknown)).toBe('오늘 3위 · 5명 중');
+  });
+
   it('기록이 없거나 모양이 이상하면 조용히', () => {
     expect(normalizeDaily(null)).toBeNull();
     expect(normalizeDaily({ day: 'x', top: [] })).toBeNull();
     expect(normalizeDaily({ day: DAY })).toBeNull();
     const empty = normalizeDaily({ day: DAY, top: [], mine: null, total: 0 })!;
-    expect(empty).toEqual({ day: DAY, top: [], total: 0, mine: null });
+    expect(empty).toEqual({ day: DAY, today: null, top: [], total: 0, mine: null });
     expect(placeText(empty)).toBe('');
   });
 

@@ -126,6 +126,8 @@ const coinsPill = () => `<span class="coins-pill">🪙 ${profile.coins.toLocaleS
 
 /** 마지막으로 받은 표 (스테이지 목록 · 결과 화면이 같이 쓴다). 테스트 모드 · 받지 못한 때는 비어 있어 아무것도 안 보인다 */
 let bests: StageBests = {};
+/** 표를 한 번이라도 받았는가 (받은 적이 없으면 방금 기록을 미리 넣지 않는다 — 내 기록 하나만으로 '내가 1등' 이라 그리지 않게) */
+let bestsLoaded = false;
 const escHtml = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 /** "내 최소 12턴 · 1등 ○○ 10턴" (기록이 없으면 빈 글) */
 function bestText(id: string): string {
@@ -139,6 +141,7 @@ async function refreshBests(): Promise<boolean> {
   if (LOCAL_MODE) return false;
   try {
     bests = await api.stageBests();
+    bestsLoaded = true;
     return true;
   } catch {
     return false;
@@ -146,7 +149,7 @@ async function refreshBests(): Promise<boolean> {
 }
 /** 방금 기록된 클리어를 서버 답을 기다리지 않고 표에 먼저 넣는다 (동점이면 먼저 달성한 사람이 1등이라 그대로) */
 function noteBest(id: string, turns: number) {
-  if (LOCAL_MODE || !(turns > 0)) return;
+  if (LOCAL_MODE || !bestsLoaded || !(turns > 0)) return;
   const b = bests[id];
   const mine = b?.mine != null ? Math.min(b.mine, turns) : turns;
   if (!b || turns < b.top) bests[id] = { mine, top: turns, name: me?.nickname ?? '', me: true };
@@ -638,6 +641,30 @@ function dailyRankHtml(rk: DailyRanking): string {
   return `<ol class="daily-rank">${rows}</ol>${mine}`;
 }
 
+const NO_DAY = '오늘 날짜를 받지 못했어요. 잠시 뒤 다시 해 주세요';
+let dailyChecking = false;
+/**
+ * 도전하기 · 다시 도전: 누를 때 날짜를 다시 받아, 화면에 그린 날짜와 다르면 새 날짜의 판을 다시 보여 준다 (그 판은 시작하지 않는다).
+ * 날짜를 못 받으면 시작하지 않는다. 테스트 모드는 기기 시계. before 는 시작 · 다시 그리기 직전에 할 일 (결과 창 닫기)
+ */
+async function startDaily(c: DailyChallenge, before?: () => void) {
+  if (dailyChecking || busy) return;
+  dailyChecking = true;
+  let day: string | null;
+  try {
+    day = LOCAL_MODE ? localDay() : ((await (await loadDaily())?.dailyTodayStrict()) ?? null);
+  } finally {
+    dailyChecking = false;
+  }
+  if (!day) return toast(NO_DAY);
+  before?.();
+  if (day !== c.day) {
+    toast('날짜가 바뀌었어요. 새 오늘의 판을 보여 드려요');
+    return void showDaily();
+  }
+  void startGame(c.stage, c.party, c);
+}
+
 /** 오늘의 도전: 오늘 조건 설명 + 오늘 순위 + 도전하기 */
 async function showDaily() {
   const head = `<div class="bar daily-bar"><button class="back" id="back">← 뒤로</button><h2>오늘의 도전</h2><div class="spacer"></div></div>`;
@@ -655,8 +682,13 @@ async function showDaily() {
     toast('오늘의 도전을 불러오지 못했어요');
     return showMain();
   }
-  const day = mod ? await mod.dailyToday() : localDay();
+  // 기록이 서버로 가는 판이라 기기 시계로 돌아가지 않는다 (못 받으면 시작을 막는다)
+  const day = mod ? await mod.dailyTodayStrict() : localDay();
   if (!wait.isConnected) return;
+  if (!day) {
+    toast(NO_DAY);
+    return showMain();
+  }
   const c = dailyChallenge(day, mod?.dailySeed ?? dailySeed);
   const st = stageOf(c.stage);
   if (!st) return showMain();
@@ -682,7 +714,7 @@ async function showDaily() {
   back(root);
   root.querySelector('#start')!.addEventListener('click', () => {
     play('click');
-    void startGame(c.stage, c.party, c);
+    void startDaily(c);
   });
   void dailyRanking(day).then((rk) => {
     if (!rk || !root.isConnected) return;
@@ -728,12 +760,13 @@ function showDailyResult(s: RunState, st: StageDef, c: DailyChallenge, out: Sent
       const el = box.querySelector<HTMLElement>('.daily-line');
       if (!rk?.mine || !el || !box.isConnected) return;
       const mineTurns = Math.abs(rk.mine.score);
-      el.innerHTML = `<b>오늘 ${rk.mine.place}위</b> <span class="soft">(${rk.total}명 중)</span>${d.improved ? (d.first ? ' · 첫 기록!' : ' · 기록을 줄였어요!') : ` · 내 최고 ${mineTurns}턴`}`;
+      // 자정을 넘겨 끝난 판은 '오늘' 이 아니라 기록된 날짜로 적는다
+      const when = rk.today && rk.today !== d.day ? dayLabel(d.day) : '오늘';
+      el.innerHTML = `<b>${when} ${rk.mine.place}위</b> <span class="soft">(${rk.total}명 중)</span>${d.improved ? (d.first ? ' · 첫 기록!' : ' · 기록을 줄였어요!') : ` · 내 최고 ${mineTurns}턴`}`;
     });
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
-    closeGame();
-    void startGame(c.stage, c.party, c);
+    void startDaily(c, closeGame);
   });
   box.querySelector('#menu')!.addEventListener('click', () => {
     play('click');

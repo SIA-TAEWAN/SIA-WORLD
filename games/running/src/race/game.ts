@@ -96,8 +96,8 @@ export class RaceGame {
   record: Promise<SubmitResult> | null = null;
   /** 오늘의 도전으로 달리는 판이면 그 날짜 ('YYYY-MM-DD'). 완주 기록이 서버에 올라가면 그날 기록으로도 넣는다 */
   dailyDay: string | null = null;
-  /** 오늘의 도전 기록을 넣은 결과 (들어갔으면 true) */
-  dailySaved: Promise<boolean> | null = null;
+  /** 오늘의 도전 기록을 넣은 결과 (들어갔으면 기록된 날짜, 아니면 null) */
+  dailySaved: Promise<string | null> | null = null;
   onOver: ((r: RankedEntry[]) => void) | null = null;
   /** 내 자리가 AI로 넘어갔다 (접속이 끊겼다가 돌아옴) */
   onLostSeat: (() => void) | null = null;
@@ -330,7 +330,7 @@ export class RaceGame {
         // 기준 기기가 없어지거나 멈춰 끝 알림이 오지 않으면 여기서 정한다
         const entries = this.entries();
         const first = Math.min(...entries.map((e) => e.timeMs ?? Infinity));
-        if (fallbackEndDue(t, Number.isFinite(first) ? first : null)) this.finish(rankResults(entries));
+        if (fallbackEndDue(t, Number.isFinite(first) ? first : null)) this.finish(rankResults(entries), false);
       }
     }
   }
@@ -573,11 +573,12 @@ export class RaceGame {
     this.finish(results);
   }
 
-  private finish(results: RankedEntry[]) {
+  /** sure: 기준 기기가 정한 결과인가 (끝 알림 없이 스스로 끝냈으면 false — 점수판을 퍼뜨리지 않는다) */
+  private finish(results: RankedEntry[], sure = true) {
     if (this.results) return;
     this.results = results;
     // 연속전 점수판에 이 판의 점수를 더한다 (기록 제출·순위 판정과는 따로)
-    this.room.addResult(this.round, this.roster, results, this.taken);
+    this.room.addResult(this.round, this.roster, results, this.taken, sure);
     this.room.raceOver(this.round);
     this.onOver?.(results);
   }
@@ -588,7 +589,7 @@ export class RaceGame {
     this.record = this.api.submit(this.room.key, this.round, ms, char);
     const day = this.dailyDay;
     // 서버가 받은 완주 기록만 오늘의 도전에 넣는다 (083_race_daily.sql 이 race_runs 를 읽는다)
-    if (day) this.dailySaved = this.record.then((rec) => (rec.saved ? this.api.dailySubmit(this.room.key, this.round, day) : false)).catch(() => false);
+    if (day) this.dailySaved = this.record.then((rec) => (rec.saved ? this.api.dailySubmit(this.room.key, this.round, day) : null)).catch(() => null);
     this.sendPos(serverNow(), true);
   }
 

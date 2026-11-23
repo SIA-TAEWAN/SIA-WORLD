@@ -137,3 +137,6 @@ export const DEV_LEVEL_PER_SEC = 1 / 9;
 
 /** 능력치 하한·상한 */
 export const CLAMP = { cooldownMin: 0.4, takenMin: 0.3 };
+
+/** 오늘의 도전 판의 엽전 배수: 맵과 상관없이 들판과 같은 1 (084 의 survival_finish: if daily then mul := 1) */
+export const DAILY_COIN_MUL = 1;

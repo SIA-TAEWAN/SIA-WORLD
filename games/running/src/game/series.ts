@@ -42,6 +42,7 @@ export function pointsFor(e: Pick<RankedEntry, 'place' | 'status'>): number {
 /**
  * 한 판의 결과를 더한 새 점수판. 이미 센 판이면 받은 것을 그대로 돌려준다.
  * taken: AI가 이어 달린 사람 자리 (그 사람은 0점)
+ * 줄이 가득 차면(24줄) 이번 판에 달리지 않은(방에 없는) 줄 가운데 오래된 것부터 버리고 새 줄을 넣는다.
  */
 export function addRound(
   s: Series,
@@ -52,6 +53,7 @@ export function addRound(
 ): Series {
   if (s.done.includes(round) || !results.length) return s;
   const rows = s.rows.map((r) => ({ ...r, add: 0 }));
+  const here = new Set(roster.map(seriesKey));
   for (const p of roster) {
     const res = results.find((r) => r.slot === p.slot);
     if (!res) continue;
@@ -63,7 +65,14 @@ export function addRound(
       row.char = p.char;
       row.pts += add;
       row.add = add;
-    } else if (rows.length < MAX_ROWS) rows.push({ k, name: p.name, char: p.char, pts: add, add });
+    } else {
+      if (rows.length >= MAX_ROWS) {
+        const old = rows.findIndex((r) => !here.has(r.k));
+        if (old < 0) continue;
+        rows.splice(old, 1);
+      }
+      rows.push({ k, name: p.name, char: p.char, pts: add, add });
+    }
   }
   return { n: s.n + 1, done: [...s.done, round].slice(-MAX_DONE), rows };
 }
@@ -73,9 +82,13 @@ export interface Standing extends SeriesRow {
   rank: number;
 }
 
-/** 누적 순위표: 점수 높은 순, 같은 점수는 같은 순위 */
-export function standings(s: Series): Standing[] {
-  const sorted = [...s.rows].sort((a, b) => b.pts - a.pts || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+/**
+ * 누적 순위표: 점수 높은 순, 같은 점수는 같은 순위.
+ * keys 를 주면 그 열쇠(지금 자리에 있는 사람·AI)의 줄만 골라 그 안에서 순위를 매긴다 (나간 사람 줄이 순위를 밀지 않게)
+ */
+export function standings(s: Series, keys?: Iterable<string>): Standing[] {
+  const only = keys ? new Set(keys) : null;
+  const sorted = (only ? s.rows.filter((r) => only.has(r.k)) : [...s.rows]).sort((a, b) => b.pts - a.pts || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
   return sorted.map((r) => ({ ...r, rank: 1 + sorted.filter((o) => o.pts > r.pts).length }));
 }
 
@@ -103,8 +116,10 @@ export function cleanSeries(raw: unknown): Series | null {
 /**
  * 받은 점수판으로 바꿀 것인가: 더 많은 판을 센 것이면 받고, 같은 판 수면 방장 것을 따른다.
  * (모두 자기 기기에서 더하지만, 어긋나면 방장 것으로 모인다)
+ * unsure: 내가 끝 알림 없이 스스로 끝내 더한 판 번호 (확정이 아님). 그동안은 같은 판 수라도 그 판을 센 다른 사람 것을 받는다
  */
-export function shouldAdopt(mine: Series, incoming: Series, fromHost: boolean): boolean {
+export function shouldAdopt(mine: Series, incoming: Series, fromHost: boolean, unsure: number | null = null): boolean {
   if (incoming.n > mine.n) return true;
-  return fromHost && incoming.n === mine.n && incoming.n > 0;
+  if (incoming.n !== mine.n || incoming.n <= 0) return false;
+  return fromHost || (unsure !== null && incoming.done.includes(unsure));
 }

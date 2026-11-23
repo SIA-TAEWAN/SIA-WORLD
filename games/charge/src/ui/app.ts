@@ -4,7 +4,7 @@ import { hasArt } from '../scenes/art';
 import { LEADERS, ZODIAC_IDS, leaderOf, type LeaderId } from '../data/balance';
 import { REGIONS, REGION_NAMES, UPGRADES, groundOf, modsOf, regionStars, upgradeCost, type UpgradeKey } from '../data/growth';
 import { DAILY_ID, STAGES, dailyStage, endlessStage, nextStage, stageOf, stagesOf, type StageDef } from '../data/stages';
-import { DAILY_GAME, dailyCourse, dayLabel, isDay, localDay, normalizeDaily, placeText, type DailyCourse, type DailyRanking } from '../game/daily';
+import { DAILY_GAME, dailyCourse, dayLabel, isDay, isPastDay, localDay, normalizeDaily, placeText, type DailyCourse, type DailyRanking } from '../game/daily';
 import {
   emptyProfile,
   endlessOpen,
@@ -346,11 +346,19 @@ function showHelp() {
 
 // ---------- 오늘의 도전: 오늘의 길 ----------
 
-/** 오늘(한국 시간)의 코스. 날짜는 서버에서 받고, 못 받거나 테스트 모드면 기기 시계로 */
-async function todayCourse(): Promise<DailyCourse> {
-  const mod = LOCAL_MODE ? null : await loadDaily();
-  const day = mod ? await mod.dailyToday().catch(() => '') : '';
-  return dailyCourse(isDay(day) ? day : localDay(), mod?.dailySeed);
+const NO_DAY_TEXT = '오늘 날짜를 받지 못했어요. 잠시 후 다시 시도해 주세요';
+
+/**
+ * 오늘(한국 시간)의 코스. 기록이 서버로 가는 판이라 날짜는 서버에서만 받는다 (dailyTodayStrict):
+ * 못 받으면 null → 시작하지 않는다 (기기 시계로 만든 길은 서버의 오늘과 다를 수 있다).
+ * 기록이 남지 않는 테스트 모드(?local=1 · ?all=1)만 기기 시계로.
+ */
+async function todayCourse(): Promise<DailyCourse | null> {
+  if (LOCAL_MODE || DEV_ALL) return dailyCourse(localDay());
+  const mod = await loadDaily();
+  if (!mod) return null;
+  const day = await mod.dailyTodayStrict().catch(() => null);
+  return isDay(day) ? dailyCourse(day, mod.dailySeed) : null;
 }
 
 /** 그날 순위 (테스트 모드·실패는 null → 화면은 숨긴다) */
@@ -378,8 +386,14 @@ function dailyRankHtml(r: DailyRanking): string {
 }
 
 let dailyBusy = false;
-/** 오늘의 길 시작: 판마다 날짜를 다시 받는다 (자정을 넘겼으면 새 코스) */
-async function startDaily() {
+/** 방금 시작한 오늘의 길의 날짜 (결과 창의 "다시하기" 가 날짜가 바뀌었는지 볼 때 쓴다) */
+let runDay = '';
+/**
+ * 오늘의 길 시작: 판마다 날짜를 다시 받는다.
+ * shownDay = 화면에 그려 둔 날짜. 그 사이 자정을 넘겨 날짜가 달라졌으면 그 판은 시작하지 않고
+ * 새 날짜로 오늘의 도전 화면을 다시 그린다. 날짜를 못 받으면 시작하지 않는다.
+ */
+async function startDaily(shownDay: string) {
   if (dailyBusy || busy) return;
   dailyBusy = true;
   const wait = waitBox('오늘의 길을 불러오는 중…');
@@ -388,6 +402,14 @@ async function startDaily() {
     // 기다리는 사이 다른 화면으로 갔으면 시작하지 않는다
     if (!wait.isConnected) return;
     wait.remove();
+    if (!c) return toast(NO_DAY_TEXT, 3200);
+    if (shownDay && c.day !== shownDay) {
+      closeGame();
+      showDaily(c);
+      return toast('날짜가 바뀌었어요. 새 길을 준비했어요', 3200);
+    }
+    closeGame();
+    runDay = c.day;
     await startGame(dailyStage(c.seed), true);
   } finally {
     wait.remove();
@@ -395,7 +417,8 @@ async function startDaily() {
   }
 }
 
-function showDaily() {
+/** known = 이미 받아 둔 오늘의 코스 (없으면 받아서 그린다) */
+function showDaily(known?: DailyCourse) {
   const root = screen(`
     <div class="bar"><button class="back" id="back">← 뒤로</button><h2>오늘의 도전</h2><div class="spacer"></div></div>
     <div class="card daily-card">
@@ -414,12 +437,22 @@ function showDaily() {
     showMain();
   });
   const go = root.querySelector<HTMLButtonElement>('#d-go')!;
+  /** 화면에 그린 날짜 ('' = 아직 못 받음 → 버튼은 다시 불러오기) */
+  let shown = '';
   go.addEventListener('click', () => {
     play('click');
-    void startDaily();
+    if (shown) void startDaily(shown);
+    else showDaily();
   });
-  void todayCourse().then((c) => {
+  void (known ? Promise.resolve(known) : todayCourse()).then((c) => {
     if (!root.isConnected) return;
+    if (!c) {
+      root.querySelector('#d-day')!.textContent = '오늘 날짜를 받지 못했어요';
+      go.textContent = '🔄 다시 불러오기';
+      go.disabled = false;
+      return;
+    }
+    shown = c.day;
     root.querySelector('#d-day')!.textContent = dayLabel(c.day);
     const boss = root.querySelector<HTMLElement>('#d-boss')!;
     boss.innerHTML = `<span>오늘의 보스</span>${c.bosses.map((b) => `<em><var>${b.meters.toLocaleString()}m</var> ${b.name}</em>`).join('')}`;
@@ -719,6 +752,9 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
   const next = win ? nextStage(st.id) : null;
   const nextOk = !!next && stageOpen(profile, next.id);
   const title = daily ? (r?.best ? '오늘 새 기록!' : '오늘의 길 끝') : endless ? (r?.best ? '새 기록!' : '끝없는 길 끝') : win ? '클리어!' : '전멸했어요';
+  // 친구 기록 상자: 받아 오는 동안 버튼이 밀리지 않게 자리를 미리 잡아 둔다 (.wait = 보이지 않음).
+  // 끝없는 길·테스트 모드, 그리고 서버에 닿지 않아 보관한 판('kept': 받아 올 수도 없다)에는 넣지 않는다
+  const wantTops = !endless && !LOCAL_MODE && !DEV_ALL && note !== 'kept';
   const box = document.createElement('div');
   box.className = 'overlay';
   box.innerHTML = `<div class="card pop result ${win || endless ? 'win' : 'lose'}">
@@ -733,7 +769,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
       </div>
       ${r && r.newLeaders.length ? `<div class="new-leaders">${r.newLeaders.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${leaderOf(id).name} 대장이 합류했어요!</span>`).join('')}</div>` : ''}
       ${daily ? '<p class="daily-place" hidden></p>' : ''}
-      ${endless ? '' : '<div class="tops-box" hidden></div>'}
+      ${wantTops ? '<div class="tops-box wait"><span class="soft">🏅 최다 생존 대원</span><small class="tops"><em><u>&nbsp;</u></em></small></div>' : ''}
       ${note === 'kept' ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요</p>' : ''}
       ${note === 'unrecorded' ? '<p class="soft center">이번 판은 기록되지 않았어요</p>' : ''}
       ${win && stars < 3 ? `<p class="soft center">별 ${stars + 1}개: 대원 ${st.stars[stars - 1]}명 이상 남기기</p>` : ''}
@@ -745,14 +781,16 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
       </div></div>`;
   app().appendChild(box);
   if (r?.newLeaders.length) play('newRecord');
-  // 이 스테이지 친구 기록: 방금 판이 반영되게 새로 받는다 (실패·테스트 모드는 숨긴 채로)
+  // 이 스테이지 친구 기록: 방금 판이 반영되게 새로 받는다 (불러오기 실패는 자리만 둔 채 보이지 않게)
   const topsBox = box.querySelector<HTMLElement>('.tops-box');
   if (topsBox) {
     void loadTops(st.region).then((tops) => {
-      const t = tops?.[st.id];
-      if (!t || !box.isConnected) return;
-      topsBox.innerHTML = `<span class="soft">🏅 최다 생존 대원 · ${t.total.toLocaleString()}명 기록</span><small class="tops">${topsHtml(t)}</small>`;
-      topsBox.hidden = false;
+      if (!tops || !box.isConnected) return;
+      const t = tops[st.id];
+      topsBox.innerHTML = t
+        ? `<span class="soft">🏅 최다 생존 대원 · ${t.total.toLocaleString()}명 기록</span><small class="tops">${topsHtml(t)}</small>`
+        : '<span class="soft">🏅 최다 생존 대원</span><small class="tops"><em><u>아직 클리어한 친구가 없어요</u></em></small>';
+      topsBox.classList.remove('wait');
     });
   }
   // 오늘의 도전: 방금 판이 반영된 오늘 순위에서 내 자리 (기록되지 않았거나 실패하면 숨긴 채로)
@@ -760,7 +798,8 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
   if (placeEl && r?.daily && isDay(r.daily.day)) {
     void loadDailyRank(r.daily.day).then((rank) => {
       if (!rank?.mine || !box.isConnected) return;
-      const below = rank.mine.meters > metersOf(s) ? ` · 오늘 최고 ${rank.mine.meters.toLocaleString()}m` : '';
+      // 기록된 날이 서버의 오늘이 아니면(자정을 넘겨 끝난 판) "오늘" 대신 날짜로 (placeText)
+      const below = rank.mine.meters > metersOf(s) ? ` · ${isPastDay(rank) ? '그날' : '오늘'} 최고 ${rank.mine.meters.toLocaleString()}m` : '';
       placeEl.textContent = `🏅 ${placeText(rank)}${below}`;
       placeEl.hidden = false;
     });
@@ -772,9 +811,10 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
   });
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
+    // 오늘의 길: 날짜를 다시 받아 보고 나서 판을 닫는다 (못 받으면 결과 창에 그대로 머문다)
+    if (daily) return void startDaily(runDay);
     closeGame();
-    if (daily) void startDaily();
-    else void startGame(endless ? endlessStage() : st, endless);
+    void startGame(endless ? endlessStage() : st, endless);
   });
   box.querySelector('#menu')!.addEventListener('click', () => {
     play('click');

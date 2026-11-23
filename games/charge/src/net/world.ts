@@ -98,11 +98,13 @@ export async function openWorldRanking(meId: string): Promise<boolean> {
 
 interface DailyModule {
   dailyToday(): Promise<string>;
+  /** 서버 기준 오늘. 5초 안에 못 받거나 실패하면 null (기록이 서버로 가는 판은 이것만 쓴다) */
+  dailyTodayStrict(): Promise<string | null>;
   dailySeed(game: string, day: string, salt?: string): number;
   loadDailyRanking(game: string, day?: string | null): Promise<unknown>;
 }
 let dailyMod: Promise<DailyModule> | null = null;
-/** 오늘의 도전 공통 모듈 (shared/daily.js). 못 불러오면 null → 화면은 기기 시계·같은 식으로 코스만 만들고 순위는 숨긴다 */
+/** 오늘의 도전 공통 모듈 (shared/daily.js). 못 불러오면 null → 오늘의 길은 시작하지 않는다 (날짜를 서버에서 받아야 기록된다) */
 export async function loadDaily(): Promise<DailyModule | null> {
   try {
     dailyMod ??= import(/* @vite-ignore */ new URL('shared/daily.js', root()).href) as Promise<DailyModule>;

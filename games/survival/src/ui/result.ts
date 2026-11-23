@@ -7,7 +7,7 @@ import { damageShares, type RunBuild } from '../game/build';
 import { LOCAL_MODE } from '../net/api';
 import { loadRankGap, type RankGap } from '../net/rank';
 import { loadDailyRank } from '../net/daily';
-import { dailyScore } from '../game/daily';
+import { dailyScore, dailyWhen } from '../game/daily';
 import { startDaily } from './daily';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { icon } from './icons';
@@ -44,10 +44,12 @@ function buildHtml(b: RunBuild | undefined): string {
 
 /** 내 위 한 명과의 차이 한 줄 */
 function gapHtml(g: RankGap): string {
-  if (g.kind === 'first') return '🏆 이 맵 내 최고 기록이 <b>1등</b>이에요!';
-  const head = `🏆 내 최고 기록 ${g.place.toLocaleString()}등 · <b>${esc(g.name)}</b>님`;
-  if (g.kind === 'time') return `${head}까지 <b>${g.amount >= 60 ? mmss(g.amount) : `${g.amount}초`}</b>`;
-  if (g.kind === 'kills') return `${head}까지 처치 <b>${g.amount.toLocaleString()}</b>`;
+  if (g.kind === 'first') return '🏆 이 맵에서 내 최고 기록이 <b>1등</b>이에요!';
+  // 내가 상위 목록(100명) 밖이면 바로 위 사람을 모른다: 목록의 마지막 사람(100등)까지의 차이로 적는다
+  const head = `🏆 내 최고 기록 ${g.place.toLocaleString()}등 · ${g.out ? `${g.above.toLocaleString()}등 ` : ''}<b>${esc(g.name)}</b>님`;
+  if (g.kind === 'time') return `${head}까지 <b>${g.amount >= 60 ? mmss(g.amount) : `${g.amount}초`}</b> 차이`;
+  if (g.kind === 'kills') return `${head}까지 처치 <b>${g.amount.toLocaleString()}</b> 차이`;
+  if (g.kind === 'clear') return `${head}과 시간이 같아요 · 클리어하면 넘어서요`;
   return `${head}과 같은 기록이에요`;
 }
 
@@ -129,7 +131,10 @@ export function showResult(r: GameResult) {
         void loadDailyRank(day).then((rk) => {
           if (!rk?.mine || !root.isConnected) return;
           const place = `<b>${rk.mine.place.toLocaleString()}위</b> <small>(${rk.total.toLocaleString()}명 도전)</small>`;
-          el.innerHTML = improved ? `📅 오늘 ${place}${s.daily?.first ? '' : ' · 오늘 내 최고 기록!'}` : `📅 오늘 내 최고 기록은 ${place}`;
+          // 기록된 날이 서버의 오늘이 아니면 (자정을 넘겨 끝낸 판) '오늘' 대신 그 날짜로 적는다
+          const when = esc(dailyWhen(rk.day, rk.today));
+          const best = rk.day === rk.today ? '오늘' : '그날';
+          el.innerHTML = improved ? `📅 ${when} ${place}${s.daily?.first ? '' : ` · ${best} 내 최고 기록!`}` : `📅 ${when} 내 최고 기록은 ${place}`;
           el.classList.remove('hidden');
         });
       }

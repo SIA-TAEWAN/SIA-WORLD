@@ -59,6 +59,8 @@ export interface DailyRow {
 }
 export interface DailyRanking {
   day: string;
+  /** 서버의 오늘 (답에 없으면 null) */
+  today: string | null;
   top: DailyRow[];
   total: number;
   mine: { place: number; meters: number; kills: number; plays: number } | null;
@@ -69,15 +71,18 @@ const num = (v: unknown) => Math.max(0, Math.floor(Number(v) || 0));
 /** daily_ranking 답 → 화면용 (모양이 이상하면 null: 화면은 조용히 숨긴다) */
 export function normalizeDaily(v: unknown): DailyRanking | null {
   if (!v || typeof v !== 'object') return null;
-  const o = v as { day?: unknown; top?: unknown; mine?: unknown; total?: unknown };
+  const o = v as { day?: unknown; today?: unknown; top?: unknown; mine?: unknown; total?: unknown };
   if (!isDay(o.day) || !Array.isArray(o.top)) return null;
   const top = (o.top as { place?: unknown; nickname?: unknown; score?: unknown; detail?: { kills?: unknown } | null; me?: unknown }[])
     .map((t) => ({ place: num(t?.place), nickname: String(t?.nickname ?? ''), meters: num(t?.score), kills: num(t?.detail?.kills), me: t?.me === true }))
     .filter((t) => t.place >= 1);
   const m = o.mine as { place?: unknown; score?: unknown; detail?: { kills?: unknown } | null; plays?: unknown } | null | undefined;
   const mine = m && num(m.place) >= 1 ? { place: num(m.place), meters: num(m.score), kills: num(m.detail?.kills), plays: num(m.plays) } : null;
-  return { day: o.day, top, total: Math.max(top.length, num(o.total)), mine };
+  return { day: o.day, today: isDay(o.today) ? o.today : null, top, total: Math.max(top.length, num(o.total)), mine };
 }
 
-/** 결과 창 한 줄: "오늘 3위 · 12명 중" */
-export const placeText = (r: DailyRanking) => (r.mine ? `오늘 ${r.mine.place}위 · ${r.total.toLocaleString()}명 중` : '');
+/** 순위의 날이 서버의 오늘이 아닌가 (자정을 넘겨 끝난 판 등). 서버의 오늘을 모르면 오늘로 본다 */
+export const isPastDay = (r: DailyRanking) => r.today !== null && r.today !== r.day;
+
+/** 결과 창 한 줄: "오늘 3위 · 12명 중". 기록된 날이 서버의 오늘이 아니면 날짜로: "11월 22일 3위 · 12명 중" */
+export const placeText = (r: DailyRanking) => (r.mine ? `${isPastDay(r) ? dayLabel(r.day) : '오늘'} ${r.mine.place}위 · ${r.total.toLocaleString()}명 중` : '');

@@ -4,33 +4,46 @@ import { stageOf } from '../data/stages';
 import { DAILY_GAME, dailyChallenge, dailyDetailText, localDailyDay, type DailyChallenge } from '../game/daily';
 import { LOCAL_MODE } from '../net/api';
 import { loadDaily, type DailyRanking } from '../net/world';
-import { esc, loadEngine, nav, screen } from './app';
+import { esc, loadEngine, nav, screen, toast } from './app';
 import { stageThumb } from './menus';
 import { sfx } from './sfx';
 
 /**
  * 오늘의 고개 (오늘의 도전): 날짜로 정해진 스테이지 하나와 조건 하나를 모두가 똑같이 하고, 그날 기록만 따로 순위를 매긴다.
  * 날짜는 서버(한국 시간)에서 받고, 스테이지·조건·시드는 날짜 문자열에서 만든다 (game/daily.ts).
- * 공용 모듈(shared/daily.js)을 못 받으면 기기 시계와 같은 계산으로 조건만 보여 준다 (순위 칸은 조용히 숨긴다).
+ * 기록이 서버로 가는 판이므로 날짜는 서버에서 받은 것만 쓴다 (dailyTodayStrict). 못 받으면 "오늘 날짜를 받지 못했어요" 로 시작을 막는다.
  * 테스트 모드(?local=1)는 서버 없이 조건만으로 플레이한다 (&day=2026-11-23 으로 다른 날을 볼 수 있다)
  */
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** 오늘의 날짜와 조건 (+ 순위를 읽을 공용 모듈. 없으면 null) */
-export async function todayChallenge(): Promise<{ ch: DailyChallenge; mod: Awaited<ReturnType<typeof loadDaily>> }> {
+export const NO_DAY_TEXT = '오늘 날짜를 받지 못했어요';
+export const DAY_CHANGED_TEXT = '날짜가 바뀌었어요. 오늘의 고개를 다시 불러올게요';
+
+/** 'YYYY-MM-DD' → '11월 22일' (모양이 틀리면 그대로) */
+export function dayLabel(day: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(day);
+  return m ? `${Number(m[1])}월 ${Number(m[2])}일` : day;
+}
+
+/**
+ * 오늘의 날짜와 조건 (+ 순위를 읽을 공용 모듈).
+ * 서버에서 날짜를 받지 못하면 ch 가 null 이다 (기기 시계로 대신하지 않는다: 틀린 날짜로 기록이 올라가지 않게).
+ * 테스트 모드(?local=1)만 기기 시계를 쓴다
+ */
+export async function todayChallenge(): Promise<{ ch: DailyChallenge | null; mod: Awaited<ReturnType<typeof loadDaily>> }> {
   if (LOCAL_MODE) {
     const want = new URLSearchParams(location.search).get('day') ?? '';
     return { ch: dailyChallenge(DAY_RE.test(want) ? want : localDailyDay()), mod: null };
   }
   const mod = await loadDaily();
-  let day = '';
+  let day: string | null = null;
   try {
-    day = mod ? await mod.dailyToday() : '';
+    day = mod ? await mod.dailyTodayStrict() : null;
   } catch {
-    /* 기기 시계로 */
+    day = null;
   }
-  if (!DAY_RE.test(day)) day = localDailyDay();
+  if (!day || !DAY_RE.test(day)) return { ch: null, mod };
   return { ch: dailyChallenge(day, mod?.dailySeed), mod };
 }
 
@@ -63,6 +76,17 @@ export function showDaily() {
   void (async () => {
     const { ch, mod } = await todayChallenge();
     if (!root.isConnected) return;
+    if (!ch) {
+      // 날짜를 받지 못했다: 시작을 막고, 같은 버튼으로 다시 받아 본다
+      root.querySelector('#dcard')!.innerHTML = `<p class="soft center">${NO_DAY_TEXT}<br/>연결을 확인하고 다시 시도해 주세요</p>`;
+      startBtn.textContent = '다시 시도';
+      startBtn.disabled = false;
+      startBtn.addEventListener('click', () => {
+        sfx('click');
+        nav.daily();
+      });
+      return;
+    }
     const st = stageOf(ch.stage);
     if (!st) {
       root.querySelector('#dcard')!.innerHTML = '<p class="soft center">오늘의 고개를 불러오지 못했어요</p>';
@@ -81,9 +105,21 @@ export function showDaily() {
         <p class="soft">30초 웨이브 6개 · 3분${boss ? ` · 2분에 보스 ${esc(boss.name)}` : ''}<br/>몇 번이든 도전할 수 있고, 가장 좋은 기록이 남아요</p>
       </div>`;
     startBtn.disabled = false;
+    let checking = false;
     startBtn.addEventListener('click', () => {
       sfx('click');
-      nav.prepare(st.id, ch);
+      if (checking) return;
+      checking = true;
+      // 누를 때 날짜를 다시 받는다: 화면에 그린 날짜와 다르면(자정을 넘긴 화면) 새 날짜로 다시 그린다
+      void todayChallenge().then(({ ch: now }) => {
+        checking = false;
+        if (!root.isConnected) return;
+        if (!now) toast(NO_DAY_TEXT, 3200);
+        else if (now.day !== ch.day) {
+          toast(DAY_CHANGED_TEXT, 3200);
+          nav.daily();
+        } else nav.prepare(st.id, ch);
+      });
     });
     void loadEngine();
     // 오늘 순위: 못 읽으면 칸을 그대로 숨겨 둔다

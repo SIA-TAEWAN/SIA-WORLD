@@ -273,7 +273,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     const cost = upgradeCost(s, sel);
     const nextText = cost === null ? '가장 높은 단계예요' : tw.lv + 1 === MAX_LV ? `▲ 3단계: ${def.special}` : `▲ ${tw.lv + 1}단계: ${statLine(s.lv[tw.char][tw.lv])}`;
     el.panel.innerHTML = `<img src="${zodiacFaceUrl(def.id)}" alt="" />
-      <div class="tp-tx"><b>${esc(def.nick)} <span class="tag">${tw.lv}단계</span></b><small>${statLine(s.lv[tw.char][tw.lv - 1])}</small><small class="up">${esc(nextText)}</small></div>
+      <div class="tp-tx"><b${airFirst(tw.char) ? ' class="air"' : ''}>${esc(def.nick)} <span class="tag">${tw.lv}단계</span>${airFirst(tw.char) ? ' <span class="tag air">공중 요괴 먼저</span>' : ''}</b><small>${statLine(s.lv[tw.char][tw.lv - 1])}</small><small class="up">${esc(nextText)}</small></div>
       <div class="tp-btns">
         <button class="btn primary small" data-up ${cost === null ? 'disabled' : ''}>${cost === null ? '강화 완료' : `강화 ✨${cost}`}</button>
         <button class="btn small" data-sell>되팔기 +${sellValue(s, sel)}</button>

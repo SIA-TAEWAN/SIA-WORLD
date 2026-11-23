@@ -177,15 +177,15 @@ button, input { font: inherit; color: inherit; }
 .cutin.bad { color: var(--pink); }
 @keyframes cut-pop { from { transform: scale(0.3); opacity: 0; } }
 /* 짧은 말 버튼: 트랙 위쪽(하늘) 오른쪽 구석. 아래쪽 점프·슬라이딩 버튼 영역(.pad)과 겹치지 않는다 */
-.emo-bar { display: flex; align-items: flex-start; gap: 6px; }
-.emo-list { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
-.emo-chip { background: var(--white); color: var(--ink); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); box-shadow: 0 2px 0 var(--outline); padding: 0 10px; min-height: 34px; font-size: 14px; white-space: nowrap; cursor: pointer; transition: transform var(--press-ms), box-shadow var(--press-ms), opacity 120ms; }
+.emo-bar { display: flex; align-items: flex-start; gap: 8px; }
+.emo-list { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.emo-chip { background: var(--white); color: var(--ink); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); box-shadow: 0 2px 0 var(--outline); padding: 0 10px; min-height: 36px; font-size: 14px; white-space: nowrap; cursor: pointer; transition: transform var(--press-ms), box-shadow var(--press-ms), opacity 120ms; }
 .emo-chip:active { transform: translateY(2px); box-shadow: 0 0 0 var(--outline); }
 .emo-bar.cool .emo-chip { opacity: 0.5; }
 .track .emo-bar { position: absolute; top: 6px; right: 6px; z-index: 6; flex-direction: row-reverse; max-width: calc(100% - 12px); }
 .track .emo-list { justify-content: flex-end; }
 .track .emo-bar.fold:not(.open) .emo-list { display: none; }
-.emo-toggle { width: 36px; height: 36px; font-size: 16px; }
+.emo-toggle { width: 40px; height: 40px; font-size: 16px; }
 .emo-bar.open .emo-toggle { background: var(--primary); }
 .pad { position: relative; flex: 1 1 30%; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); border-top: var(--line) solid var(--outline); cursor: pointer; padding-bottom: env(safe-area-inset-bottom); touch-action: none; }
 .pad-btns { display: flex; align-items: stretch; justify-content: center; gap: 12px; width: 100%; height: min(62%, 150px); padding: 0 14px; pointer-events: none; }
@@ -296,8 +296,7 @@ button, input { font: inherit; color: inherit; }
   .result-card .mine b { font-size: 20px; }
   .rrow .pl { width: 30px; height: 30px; font-size: 16px; }
   .rrow img.av { width: 32px; height: 32px; }
-  .emo-chip { min-height: 30px; padding: 0 8px; font-size: 13px; }
-  .emo-toggle { width: 32px; height: 32px; }
+  .emo-chip { padding: 0 8px; font-size: 13px; }
   .room .invite .soft { display: none; }
   .lobby .tagline { display: none; }
   .lobby .main-actions .btn.big { padding-top: 10px; padding-bottom: 10px; }

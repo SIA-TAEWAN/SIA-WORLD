@@ -17,13 +17,14 @@ function play(c: DailyChallenge) {
 
 /**
  * 오늘의 도전을 바로 시작한다 (결과 화면의 [다시하기]). 날짜를 다시 물어, 자정이 지났으면 새 날의 조건으로 간다.
- * prev: 방금 한 판의 날짜. 날짜가 바뀌었으면 조건이 달라졌으니 오늘의 도전 화면으로 보낸다
+ * prev: 방금 한 판의 날짜. 날짜가 바뀌었으면 조건이 달라졌으니 오늘의 도전 화면으로 보낸다 (그 판은 시작하지 않는다).
+ * 날짜는 서버에서만 받는다 (net/daily.ts): 못 받았으면 시작하지 않는다
  */
 export async function startDaily(prev?: string) {
   const c = await loadDailyChallenge();
-  if (!c) return toast('오늘의 도전을 불러오지 못했어요. 잠시 뒤에 다시 해 주세요', 3000);
+  if (!c) return toast('오늘 날짜를 받지 못했어요. 잠시 뒤에 다시 해 주세요', 3000);
   if (prev && prev !== c.day) {
-    toast('날짜가 바뀌어 새 도전이 열렸어요');
+    toast('날짜가 바뀌었어요. 새 도전을 확인해 주세요', 3000);
     return showDaily();
   }
   play(c);
@@ -69,9 +70,9 @@ export function showDaily() {
     const c = await loadDailyChallenge();
     busy = false;
     if (!root.isConnected) return;
-    if (!c) return toast('오늘의 도전을 불러오지 못했어요. 잠시 뒤에 다시 해 주세요', 3000);
+    if (!c) return toast('오늘 날짜를 받지 못했어요. 잠시 뒤에 다시 해 주세요', 3000);
     if (c.day !== now.day) {
-      toast('날짜가 바뀌어 새 도전이 열렸어요');
+      toast('날짜가 바뀌었어요. 새 도전을 확인해 주세요', 3000);
       return paint(c);
     }
     play(c);
@@ -109,7 +110,7 @@ export function showDaily() {
   void loadDailyChallenge().then((c) => {
     if (!root.isConnected) return;
     if (!c) {
-      root.querySelector('#cond')!.innerHTML = '<p class="soft">오늘의 도전을 불러오지 못했어요.<br/>잠시 뒤에 다시 들어와 주세요</p>';
+      root.querySelector('#cond')!.innerHTML = '<p class="soft">오늘 날짜를 받지 못했어요.<br/>잠시 뒤에 다시 들어와 주세요</p>';
       return;
     }
     paint(c);

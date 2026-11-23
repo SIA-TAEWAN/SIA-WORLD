@@ -80,6 +80,8 @@ export interface DailyRow {
 }
 export interface DailyRanking {
   day: string;
+  /** 서버의 오늘 (day 와 다르면 지난 날의 순위다. 옛 답에 없으면 day 와 같게 둔다) */
+  today: string;
   top: DailyRow[];
   /** 내 기록 (아직 없으면 null) */
   mine: { place: number; time: number; kills: number; cleared: boolean; plays: number } | null;
@@ -91,7 +93,7 @@ const num = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.
 /** 서버가 준 순위를 믿을 수 있는 모양으로 (모양이 다르면 null → 화면은 조용히 숨긴다) */
 export function cleanDailyRanking(raw: unknown): DailyRanking | null {
   if (!raw || typeof raw !== 'object') return null;
-  const d = raw as { day?: unknown; top?: unknown; mine?: unknown; total?: unknown };
+  const d = raw as { day?: unknown; today?: unknown; top?: unknown; mine?: unknown; total?: unknown };
   if (!isDay(d.day) || !Array.isArray(d.top)) return null;
   const detail = (x: unknown) => {
     const o = (x && typeof x === 'object' ? x : {}) as { time?: unknown; kills?: unknown; cleared?: unknown };
@@ -104,11 +106,17 @@ export function cleanDailyRanking(raw: unknown): DailyRanking | null {
   }
   const m = d.mine as { place?: unknown; detail?: unknown; plays?: unknown } | null | undefined;
   const mine = m && typeof m === 'object' && num(m.place) >= 1 ? { place: num(m.place), ...detail(m.detail), plays: num(m.plays) } : null;
-  return { day: d.day, top, mine, total: Math.max(num(d.total), top.length) };
+  return { day: d.day, today: isDay(d.today) ? d.today : d.day, top, mine, total: Math.max(num(d.total), top.length) };
 }
 
 /** 화면에 적는 날짜: '11월 23일' */
 export const dayText = (day: string) => (isDay(day) ? `${Number(day.slice(5, 7))}월 ${Number(day.slice(8, 10))}일` : '');
+
+/**
+ * 결과 화면의 순위 한 줄 앞머리: 기록된 날이 서버의 오늘이면 '오늘', 아니면 그 날짜 ('11월 22일').
+ * (자정을 넘겨 끝낸 판·나중에 다시 올라간 판은 시작한 날의 순위에 들어간다)
+ */
+export const dailyWhen = (day: string, today: string) => (day === today ? '오늘' : dayText(day) || '그날');
 
 /** 맵 이름 (조건 설명용) */
 export const dailyMapName = (c: DailyChallenge) => MAPS[MAP_INDEX[c.map] ?? 0].name;

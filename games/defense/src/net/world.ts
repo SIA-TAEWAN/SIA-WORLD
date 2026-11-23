@@ -68,6 +68,8 @@ export interface DailyRanking {
 }
 export interface DailyModule {
   dailyToday(): Promise<string>;
+  /** 서버 기준 오늘. 5초 안에 못 받거나 실패하면 null (기록이 서버로 가는 판은 이것을 쓴다) */
+  dailyTodayStrict(): Promise<string | null>;
   dailySeed(game: string, day: string, salt?: string): number;
   loadDailyRanking(game: string, day?: string | null): Promise<DailyRanking | null>;
 }

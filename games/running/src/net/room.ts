@@ -64,6 +64,8 @@ export class RaceRoom {
   private toldNewer = false;
   /** 연속전 점수판 (이 방에 있는 동안만. 나가면 사라진다) */
   series: Series = newSeries();
+  /** 끝 알림을 못 받아 스스로 끝내고 더한 판 번호 (확정이 아니라 알리지 않았다). 확정된 점수판을 받으면 null */
+  unsureRound: number | null = null;
   /** 오늘의 도전: 이 방의 판은 이 시드(날짜로 만든 트랙)로 연다. 보통 방은 null (판마다 무작위) */
   fixedSeed: number | null = null;
   private emoteFns = new Set<(id: string, i: number) => void>();
@@ -88,11 +90,17 @@ export class RaceRoom {
     if (this.joined) return;
     this.joined = true;
     await this.api.syncClock().catch(() => undefined);
+    if (this.left) return;
     const now = serverNow();
     this.meta = { ...this.meta, at: now, pickAt: now };
     this.members = [{ id: this.me.id, ...this.meta }];
     this.present.add(this.me.id);
     await this.ch.join(this.meta);
+    // 들어오는 사이에 나갔으면 (취소·화면 이동) 채널을 다시 떠나고 타이머를 걸지 않는다
+    if (this.left) {
+      await this.ch.leave().catch(() => undefined);
+      return;
+    }
     // 먼저 있던 사람에게 지금 경기 중인지 묻는다
     this.ch.send({ t: 'hello', from: this.me.id });
     this.timer = setInterval(() => this.tick(), 500);
@@ -174,23 +182,37 @@ export class RaceRoom {
 
   // ───────────── 연속전 점수판 ─────────────
 
-  /** 받은 점수판: 더 많은 판을 센 것이면 받고, 같은 판 수면 방장 것을 따른다 */
+  /** 받은 점수판: 더 많은 판을 센 것이면 받고, 같은 판 수면 방장 것을 따른다 (내 것이 확정이 아니면 그 판을 센 다른 사람 것도) */
   private adoptSeries(raw: unknown, from: unknown) {
     const s = cleanSeries(raw);
-    if (!s || !shouldAdopt(this.series, s, from === hostOf(this.members))) return;
+    if (!s || !shouldAdopt(this.series, s, from === hostOf(this.members), this.unsureRound)) return;
     this.series = s;
+    this.unsureRound = null;
     this.emit();
   }
 
   /**
    * 한 판이 끝났다: 순위별 점수를 더하고 알린다 (같은 판은 한 번만).
    * 달린 기기마다 자기 것에 더해 두고, 방장이 보낸 것이 기준이 된다 (방장이 그 판을 달리지 않았으면 달린 기기 것이 방장에게 간다)
+   * sure: 기준 기기의 끝 알림(또는 내가 기준 기기)으로 정해진 결과인가.
+   *   false(끝 알림을 못 받아 스스로 끝냄)면 순위가 틀릴 수 있으므로 내 기기에만 더하고 알리지 않으며,
+   *   그 판을 센 다른 사람의 점수판이 오면 같은 판 수라도 그것으로 바꾼다.
    */
-  addResult(round: number, roster: readonly RosterEntry[], results: readonly RankedEntry[], taken: readonly boolean[]) {
+  addResult(round: number, roster: readonly RosterEntry[], results: readonly RankedEntry[], taken: readonly boolean[], sure = true) {
     if (this.left) return;
     const next = addRound(this.series, round, roster, results, taken);
-    if (next === this.series) return;
+    if (next === this.series) {
+      // 다른 기기의 점수판을 먼저 받아 이미 센 판: 방장이면 기준이 되는 지금 점수판을 한 번 알린다
+      if (sure && results.length && this.series.done.includes(round) && this.isHost()) this.ch.send({ t: 'gp', f: this.me.id, gp: this.series });
+      return;
+    }
     this.series = next;
+    if (!sure) {
+      this.unsureRound = round;
+      this.emit();
+      return;
+    }
+    this.unsureRound = null;
     const send = () => !this.left && this.series === next && this.ch.send({ t: 'gp', f: this.me.id, gp: next });
     send();
     // 놓친 기기를 위해 방장은 한 번 더 보낸다

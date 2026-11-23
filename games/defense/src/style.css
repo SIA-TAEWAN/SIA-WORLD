@@ -283,7 +283,13 @@ button, input { font: inherit; color: inherit; }
 /* 조준 고르기: 캐릭터를 골랐을 때 안내 글 자리에 뜬다 (앞쪽 · 강한 놈 · 약한 놈 · 뒤쪽) */
 .tray-top.aiming .hint, .tray-top.aiming .norec { display: none; }
 .seg.aim { flex: 1; min-width: 0; gap: calc(var(--u) * 6); }
-.seg.aim button { flex: 1 1 auto; min-width: 0; padding: calc(var(--u) * 7) calc(var(--u) * 2); font-size: calc(var(--u) * 21); white-space: nowrap; line-height: 1.2; }
+/* 누르는 높이는 30px 아래로 내려가지 않게 (.tray-top 높이 62u: 폭 375px 에서 ≈ 32px. 판이 더 좁게 잡히는 짧은 화면에서는 위아래로 1~2px 나오지만 줄 간격 안이다) */
+.seg.aim button { flex: 1 1 auto; min-width: 0; min-height: 30px; padding: 0 calc(var(--u) * 2); font-size: calc(var(--u) * 21); white-space: nowrap; line-height: 1.2; overflow: hidden; }
+@media (max-width: 420px) { .seg.aim button { font-size: calc(var(--u) * 19); } }
+/* 원숭이처럼 공중 요괴를 먼저 노리는 캐릭터: 이름 줄에 한 줄로 (패널 높이가 정해져 있어 줄이 늘면 넘친다) */
+.tp-tx b.air { white-space: nowrap; overflow: hidden; }
+.tp-tx b.air .tag { padding: 1px calc(var(--u) * 10); }
+.tp-tx b.air .tag.air { background: var(--pink); font-size: calc(var(--u) * 18); }
 .seg.aim button.sel { box-shadow: 0 calc(var(--u) * 4) 0 var(--outline); }
 .tpanel .icon-btn { align-self: flex-start; width: calc(var(--u) * 52); height: calc(var(--u) * 52); min-width: 28px; min-height: 28px; font-size: calc(var(--u) * 24); }
 
@@ -369,8 +375,10 @@ button, input { font: inherit; color: inherit; }
 /* 아주 짧은 화면: 그림을 빼고, 숫자 세 줄을 한 줄 세 칸으로 */
 @media (max-height: 640px) {
   .result-char { display: none; }
-  .stats { flex-direction: row; }
+  .stats { flex-direction: row; flex-wrap: wrap; }
   .stats li { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 0; padding: 2px 4px; font-size: 11px; white-space: nowrap; }
+  /* 오늘의 고개: 오늘 순위는 세 칸 아래 한 줄로 */
+  .stats li#dailyRow { flex: 1 1 100%; flex-direction: row; gap: 8px; padding: 1px 10px; font-size: 13px; }
   .stats b { font-size: 16px; }
   .stats b small { font-size: 10px; }
 }
@@ -482,4 +490,6 @@ button, input { font: inherit; color: inherit; }
 @media (max-height: 640px) {
   .daily-btn { padding-top: 6px; padding-bottom: 6px; }
   .daily-btn small { display: none; }
+  /* 짧은 화면은 판이 좁게 잡힌다(9:16): 세 버튼의 글이 두 줄로 꺾여 그림 자리를 먹지 않게 */
+  .sub-actions .btn { font-size: 16px; padding-left: 2px; padding-right: 2px; white-space: nowrap; }
 }

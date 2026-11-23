@@ -4,7 +4,7 @@ import { seriesKey, standings } from '../game/series';
 import { LOCAL_MODE } from '../net/api';
 import { LOCKED_MSG } from '../game/unlock';
 import { loadRankIcons, worldDailyRanking } from '../net/world';
-import { DAILY_GAME, dailyMs } from '../game/daily';
+import { DAILY_GAME, dailyLabel, dailyMs } from '../game/daily';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, screen, state } from './app';
@@ -55,7 +55,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
             }</div>`;
         })
         .join('')}</div>
-      ${room ? emoteBarHtml(false) : ''}
+      ${room && me >= 0 ? emoteBarHtml(false) : ''}
       <div class="actions"><button class="btn" id="exit">나가기</button><button class="btn primary" id="again">${daily ? '다시 도전 ▶' : '한 판 더 ▶'}</button></div>
       <div class="sub"><button class="btn small" id="rank">🏆 랭킹</button></div>
     </div><div class="cheer" id="cheer"></div>`,
@@ -71,7 +71,8 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   // 연속전 점수: 이번 판에 얻은 점수와 누적 점수·순위 (방장이 보낸 점수판이 늦게 오면 다시 그린다)
   const paintGp = () => {
     const series = room?.series;
-    const table = series ? standings(series) : [];
+    // 지금 자리에 있는 사람·AI 와 이번 판을 달린 줄만 골라 그 안에서 순위를 매긴다 (예전에 나간 사람 줄은 세지 않는다)
+    const table = series && room ? standings(series, [...room.seats().map(seriesKey), ...race.roster.map(seriesKey)]) : [];
     // 이번 판이 점수판에 들어가 있을 때만 '+점수'를 보인다
     const fresh = !!series && series.done[series.done.length - 1] === race.round;
     root.querySelectorAll<HTMLElement>('.rrow small[data-k]').forEach((el) => {
@@ -136,12 +137,21 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
     else {
       place.innerHTML = '<span class="soft">순위를 확인하는 중…</span>';
       void race.dailySaved
-        .then((ok) => (ok ? worldDailyRanking(DAILY_GAME, daily.day) : null))
-        .then((r) => {
+        .then(async (day) => {
+          if (!day) {
+            // 통신 실패(다시 해 봐도 안 됨)거나 서버가 받지 않았다
+            place.innerHTML = '<span class="soft">오늘 기록을 올리지 못했어요</span>';
+            return;
+          }
+          const r = await worldDailyRanking(DAILY_GAME, day);
           const ms = dailyMs(r?.mine);
           if (!r || !r.mine || ms === null) return hide();
-          place.innerHTML = `오늘 <b>${Number(r.mine.place) || '-'}위</b> <span class="soft">· 오늘 최고 ${formatTime(ms)}초 · ${Number(r.total) || 1}명 중</span>`;
-        }, hide);
+          // 기록된 날이 서버의 오늘이 아니면(자정을 넘겨 도착) '오늘' 대신 날짜로
+          const past = r.today !== day;
+          const when = past ? dailyLabel(day) : '오늘';
+          place.innerHTML = `${when} <b>${Number(r.mine.place) || '-'}위</b> <span class="soft">· ${past ? '그날' : '오늘'} 최고 ${formatTime(ms)}초 · ${Number(r.total) || 1}명 중</span>`;
+        })
+        .catch(hide);
     }
   }
 

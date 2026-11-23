@@ -6,7 +6,7 @@
  *   · tests/sql.test.ts 가 SQL의 표·상수와 같은지 비교한다.
  * 시간 단위는 모두 초.
  */
-import { ENDLESS, HELL, RUN_SEC, type CharId } from '../data/balance';
+import { DAILY_COIN_MUL, ENDLESS, HELL, RUN_SEC, type CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES } from '../data/enemies';
@@ -192,7 +192,8 @@ export const endlessCoinCap = (map: string) => MAPS[MAP_INDEX[map] ?? 0].endless
 
 /** 이 판에서 받을 수 있는 엽전의 상한: 시간에 비례하고, 무한 모드는 고정 상한도 넘지 못한다. 헬 모드는 엽전이 2배라 상한도 2배 */
 export function coinCap(map: string, time: number, mode?: string): number {
-  const mul = MAPS[MAP_INDEX[map] ?? 0].coinMul * (mode === 'hell' ? LIMITS.hell_coin_mul : 1);
+  // 오늘의 도전('daily'): 맵과 상관없이 1배 (잠긴 맵의 높은 배수로 엽전을 모으지 못하게. 084 의 survival_finish)
+  const mul = mode === 'daily' ? DAILY_COIN_MUL : MAPS[MAP_INDEX[map] ?? 0].coinMul * (mode === 'hell' ? LIMITS.hell_coin_mul : 1);
   const byTime = Math.floor((LIMITS.coins_base + time * LIMITS.coins_per_sec) * mul);
   return mode === 'endless' ? Math.min(byTime, endlessCoinCap(map)) : byTime;
 }
@@ -202,14 +203,14 @@ export const bossCap = (time: number, mode?: string) =>
   LIMITS.boss_max + (mode === 'endless' ? Math.max(0, Math.floor((time - LIMITS.max_time) / LIMITS.endless_boss_every)) : 0);
 
 /** 비정상 기록인가: 상한을 넘는 값이 하나라도 있으면 false (서버의 valid 와 같은 판단) */
-export function validRun(r: RunSummary): boolean {
+export function validRun(r: RunSummary, daily = false): boolean {
   if (r.kills > LIMITS.kills_base + r.time * LIMITS.kills_per_sec) return false;
   if (r.level > LIMITS.level_base + r.time * LIMITS.level_per_sec) return false;
   if (r.cakes > LIMITS.cakes_base + r.time * LIMITS.cakes_per_sec) return false;
   if (r.bossKills > bossCap(r.time, r.mode)) return false;
   if (r.bossKills > 0 && r.time < LIMITS.boss1_time) return false;
   if (r.cleared && r.bossKills < 1) return false;
-  if (r.coins > coinCap(r.map, r.time, r.mode)) return false;
+  if (r.coins > coinCap(r.map, r.time, daily ? 'daily' : r.mode)) return false;
   return true;
 }
 
@@ -308,16 +309,16 @@ export function applyRun(
   now: number,
   endless: Record<string, EndlessRecord> = {},
   hell: Record<string, HellRecord> = {},
-  /** 오늘의 도전 판인가 (084): 맵별 기록·다음 맵 해금·시간/클리어 조건 해금·최고 생존 시간에 넣지 않는다. 엽전·누적·도감은 4분 모드와 같다 */
+  /** 오늘의 도전 판인가 (084): 맵별 기록·다음 맵 해금·시간/클리어 조건 해금·최고 생존 시간에 넣지 않는다. 누적·도감은 4분 모드와 같고, 엽전 배수는 맵과 상관없이 1 */
   daily = false,
 ): { profile: SurvivalProfile; records: Record<string, SurvivalRecord>; endless: Record<string, EndlessRecord>; hell: Record<string, HellRecord>; result: FinishResult } {
   const inf = isEndless(run);
   const hel = isHell(run);
-  const valid = validRun(run);
+  const valid = validRun(run, daily);
   // 너무 짧은 판과 요괴를 너무 적게 잡은 판은 엽전·누적·기록·도감에 들어가지 않는다 (서버와 같다)
   const enough = enoughKills(run);
   const counted = run.time >= LIMITS.count_min_time && enough;
-  const coins = counted ? Math.min(run.coins, coinCap(run.map, run.time, run.mode)) : 0;
+  const coins = counted ? Math.min(run.coins, coinCap(run.map, run.time, daily ? 'daily' : run.mode)) : 0;
   const p: SurvivalProfile = {
     ...profile,
     coins: profile.coins + coins,

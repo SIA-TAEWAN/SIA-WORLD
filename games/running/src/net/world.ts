@@ -171,6 +171,8 @@ export interface DailyRanking {
 }
 interface DailyModule {
   dailyToday(): Promise<string>;
+  /** 5초 안에 서버 날짜를 못 받으면 null (기기 시계로 돌아가지 않는다) */
+  dailyTodayStrict(): Promise<string | null>;
   loadDailyRanking(game: string, day?: string | null): Promise<DailyRanking | null>;
 }
 let dailyMod: Promise<DailyModule> | null = null;
@@ -180,10 +182,13 @@ const loadDailyMod = () => {
   return dailyMod;
 };
 
-/** 서버 기준 오늘 'YYYY-MM-DD' (shared/daily.js). 못 불러오면 null */
-export async function worldDailyToday(): Promise<string | null> {
+/**
+ * 서버 기준 오늘 'YYYY-MM-DD' (shared/daily.js 의 dailyTodayStrict). 못 받으면 null — 기기 시계로 돌아가지 않는다
+ * (기록이 서버로 가는 판은 날짜가 틀리면 다른 트랙이 되므로 시작을 막는다)
+ */
+export async function worldDailyTodayStrict(): Promise<string | null> {
   try {
-    const day = await (await loadDailyMod()).dailyToday();
+    const day = await (await loadDailyMod()).dailyTodayStrict();
     return typeof day === 'string' ? day : null;
   } catch {
     return null;

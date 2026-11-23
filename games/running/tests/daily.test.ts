@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DAILY_GAME, dailyLabel, dailyMs, dailyRoomKey, dailyTrack, dailyTrackSeed, isDailyDay, isDailyRoomKey, localDailyDay } from '../src/game/daily';
+import { DAILY_GAME, dailyLabel, dailyMs, dailyRoomKey, dailyTrack, dailyTrackSeed, isDailyDay, isDailyRoomKey, localDailyDay, retryDaily } from '../src/game/daily';
 import { makeRng } from '../src/game/rng';
 import { trackProblems } from '../src/game/track';
 
@@ -80,5 +80,23 @@ describe('오늘의 도전: 날짜 → 트랙', () => {
     expect(dailyMs({ score: -31000 })).toBe(31000);
     expect(dailyMs({ score: 5, detail: { ms: 'x' } })).toBeNull();
     expect(dailyMs(null)).toBeNull();
+  });
+});
+
+describe('오늘의 도전: 기록 넣기 다시 시도', () => {
+  it('통신이 실패하면 두 번까지 다시 하고, 되면 기록된 날짜를 돌려준다', async () => {
+    let n = 0;
+    const day = await retryDaily(async () => (++n < 3 ? { done: false } : { done: true, day: '2026-11-23' }), 3, 0);
+    expect(day).toBe('2026-11-23');
+    expect(n).toBe(3);
+  });
+
+  it('끝내 실패하면 null, 서버가 거절했으면 다시 하지 않는다', async () => {
+    let n = 0;
+    expect(await retryDaily(async () => (n++, { done: false }), 3, 0)).toBeNull();
+    expect(n).toBe(3);
+    n = 0;
+    expect(await retryDaily(async () => (n++, { done: true, day: null }), 3, 0)).toBeNull();
+    expect(n).toBe(1);
   });
 });

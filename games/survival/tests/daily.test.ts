@@ -1,15 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { RUN_SEC } from '../src/data/balance';
+import { DAILY_COIN_MUL, RUN_SEC } from '../src/data/balance';
 import { CHARACTER_BY_ID } from '../src/data/characters';
 import { MAPS, MAP_INDEX } from '../src/data/maps';
 import { UPGRADE_TOTAL, presetUpgrades } from '../src/data/upgrades';
 import {
   DAILY_CHARS, DAILY_CLEAR_BONUS, DAILY_GAME, DAILY_MAPS, DAILY_TIME_UNIT, DAILY_UPGRADES,
-  cleanDailyRanking, dailyChallenge, dailyScore, dailySeed, dayText, isDay, localDay,
+  cleanDailyRanking, dailyChallenge, dailyWhen, dailyScore, dailySeed, dayText, isDay, localDay,
 } from '../src/game/daily';
-import { LIMITS, applyRun, defaultProfile, validRun } from '../src/game/progress';
+import { LIMITS, applyRun, coinCap, defaultProfile, validRun } from '../src/game/progress';
+import { gainCoins } from '../src/game/core';
 import { createLocalApi } from '../src/net/api';
 import { createRun, step, makeInput, summarize, type RunSummary } from '../src/game/sim';
 
@@ -152,7 +153,15 @@ describe('오늘의 도전: 점수', () => {
     ]);
     expect(r.mine).toEqual({ place: 2, time: 150, kills: 300, cleared: false, plays: 4 });
     expect(r.total).toBe(3);
-    expect(cleanDailyRanking({ day: '2026-11-23', top: [], mine: null, total: 0 })).toEqual({ day: '2026-11-23', top: [], mine: null, total: 0 });
+    expect(r.today).toBe('2026-11-23');
+    // 서버의 오늘이 없거나 이상한 답이면 그날을 오늘로 본다
+    expect(cleanDailyRanking({ day: '2026-11-23', top: [], mine: null, total: 0 })).toEqual({ day: '2026-11-23', today: '2026-11-23', top: [], mine: null, total: 0 });
+    expect(cleanDailyRanking({ day: '2026-11-22', today: '2026-11-23', top: [], mine: null, total: 0 })!.today).toBe('2026-11-23');
+  });
+
+  it('결과 화면의 순위 앞머리: 기록된 날이 서버의 오늘이면 오늘, 아니면 그 날짜', () => {
+    expect(dailyWhen('2026-11-23', '2026-11-23')).toBe('오늘');
+    expect(dailyWhen('2026-11-22', '2026-11-23')).toBe('11월 22일');
   });
 });
 
@@ -180,6 +189,35 @@ describe('오늘의 도전: 판 결과 (기기 쪽 규칙 = 서버 084)', () => 
     expect(normal.result.newRecord).toBe(true);
     expect(normal.result.unlockedMaps).toEqual(['bamboo']);
     expect(normal.result.unlockedCharacters).toContain('pig');
+  });
+
+  it('엽전 배수는 맵과 상관없이 1 (들판 기준): 상한 · 기기에서 줍는 값 · 서버 084 가 같다', () => {
+    expect(DAILY_COIN_MUL).toBe(1);
+    for (const m of MAPS) expect(coinCap(m.id, 240, 'daily')).toBe(coinCap('field', 240));
+    // 황천길(×2.5)의 4분 모드 상한까지 주운 것처럼 보낸 판: 오늘의 도전이면 비정상이다
+    const big = coinCap('underworld', 240);
+    expect(big).toBeGreaterThan(coinCap('underworld', 240, 'daily'));
+    expect(validRun(run({ coins: big }))).toBe(true);
+    expect(validRun(run({ coins: big }), true)).toBe(false);
+    expect(validRun(run({ coins: coinCap('underworld', 240, 'daily') }), true)).toBe(true);
+    const out = applyRun(defaultProfile(), {}, run({ coins: big }), 1, {}, {}, true);
+    expect(out.result.valid).toBe(false);
+    expect(out.profile.coins).toBe(coinCap('field', 240));
+    // 기기: 같은 엽전을 주워도 오늘의 도전 판은 1배, 4분 모드는 맵 배수
+    const cfg = { seed: 7, char: 'tiger' as const, map: 'underworld', numbers: false };
+    const a = createRun({ ...cfg, daily: true });
+    const b = createRun(cfg);
+    gainCoins(a, 10);
+    gainCoins(b, 10);
+    expect(a.map.coinMul).toBe(1);
+    expect(b.coins).toBeCloseTo(a.coins * 2.5);
+    // 맵의 다른 값(요괴·지형)은 그대로다
+    expect({ ...a.map, coinMul: b.map.coinMul }).toEqual(b.map);
+    // 서버: 헬 배수 다음, 상한 계산 앞에서 1로 맞춘다
+    const f = file('supabase/migrations/084_survival_daily.sql');
+    const at = f.indexOf('if daily then mul := 1; end if;');
+    expect(at).toBeGreaterThan(f.indexOf("if hell then mul := mul * public._survival_const('hell_coin_mul'); end if;", f.indexOf('function public.survival_finish(')));
+    expect(at).toBeLessThan(f.indexOf("coins := floor((public._survival_const('coins_base') + p_time * public._survival_const('coins_per_sec')) * mul);"));
   });
 
   it('테스트 모드: 잠긴 맵에서도 시작되고 (고양이는 안 된다) 기록에 남지 않는다', async () => {

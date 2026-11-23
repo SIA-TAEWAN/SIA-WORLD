@@ -12,7 +12,7 @@ import { showMain, showPrepare, showRegions, showStages } from './ui/menus';
 import { ENDLESS_ID } from './data/endless';
 import { showCodex } from './ui/codex';
 import { showResult } from './ui/result';
-import { showDaily } from './ui/daily';
+import { DAY_CHANGED_TEXT, NO_DAY_TEXT, showDaily, todayChallenge } from './ui/daily';
 import { showChars } from './ui/roster';
 
 nav.main = showMain;
@@ -73,6 +73,19 @@ async function openGame(setup: GameSetup) {
   // 조금 오래 걸리면 기다리는 중이라고 알려 준다
   const slow = setTimeout(() => toast('출전 준비 중…', 4000), 600);
   try {
+    // 오늘의 고개: 시작할 때 날짜를 다시 받는다. 못 받으면 시작하지 않고, 화면의 날짜와 다르면 새 날짜로 다시 그린다 (그 판은 시작하지 않는다)
+    if (setup.daily && online) {
+      const { ch } = await todayChallenge();
+      if (!ch) {
+        toast(NO_DAY_TEXT, 3200);
+        return;
+      }
+      if (ch.day !== setup.daily.day) {
+        toast(DAY_CHANGED_TEXT, 3200);
+        nav.daily();
+        return;
+      }
+    }
     if (online) await Promise.race([api!.resend().catch(() => 0), wait(RESEND_WAIT_MS)]);
     const [m, begun] = await Promise.all([
       loadEngine().catch(() => null),

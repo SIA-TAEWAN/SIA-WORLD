@@ -11,7 +11,7 @@
 alter table public.race_runs add column if not exists daily_day date;
 
 -- p_day: 기기가 트랙을 만든 날짜 'YYYY-MM-DD' (없으면 그 판이 GO 한 날).
---        자정을 넘겨 달린 판을 위해 GO 한 날 또는 그 전날만 받는다.
+--        GO 한 날만 받는다. 자정을 넘겨 출발한 판을 위해, GO 가 한국 시간 자정 뒤 10분 안이면 그 전날도 받는다.
 -- → { day, improved, best, first, ms }   (best 는 점수 = -ms)
 create or replace function public.race_daily_submit(p_room_key text, p_round int, p_day text default null)
 returns jsonb
@@ -37,6 +37,8 @@ begin
   exception when others then raise exception 'bad day';
   end;
   if d > go_day or d < go_day - 1 then raise exception 'bad day'; end if;
+  -- 전날 트랙은 자정 직전에 준비한 판만 (GO 가 자정 뒤 10분 안)
+  if d = go_day - 1 and (rd.go_at at time zone 'Asia/Seoul')::time >= time '00:10' then raise exception 'bad day'; end if;
 
   -- 혼자 달린 판만
   if exists (select 1 from public.race_runs where room_key = p_room_key and round = p_round and user_id <> me) then
