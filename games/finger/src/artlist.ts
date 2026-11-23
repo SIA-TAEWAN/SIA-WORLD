@@ -14,8 +14,8 @@ import type { HeroId } from './sim';
 export type GroundName = 'field' | 'bamboo' | 'palace' | 'underworld';
 
 export type OptionalArt =
-  | `h-${HeroId}` // 구슬형 대원 12종 (아래 파티 줄. 판 위는 십이지 전신 그림 — 못 읽을 때만 판에도)
-  | `cut-${HeroId}` // 필살기 컷인 12종 (판을 열 때 받지 않고 필살기가 가까워지면 그 대원 것만 — GameScene.fetchArt)
+  | `h-${HeroId}` // 구슬형 대원 13종 — 십이지 + 고양이 (아래 파티 줄. 판 위는 십이지 전신 그림 — 못 읽을 때만 판에도)
+  | `cut-${HeroId}` // 필살기 컷인 13종 (판을 열 때 받지 않고 필살기가 가까워지면 그 대원 것만 — GameScene.fetchArt)
   | `floor-r${string}` // 지역 12곳의 방 바닥 (floor-r01 … floor-r12, 이어 붙는 무늬 320px)
   | `${string}-hit` // 요괴·보스 맞을 때 표정 (요괴 그림 이름 + -hit, 예: e-imp-hit · b-yeomra-hit)
   | `wall-${GroundName}` // 방 테두리·벽 (지역 바닥마다 1장, 늘여 씀)
@@ -36,7 +36,7 @@ export type OptionalArt =
   | `bg-${GroundName | 'tower'}` // 판 밖 화면 배경·지역 카드 그림 (지역 바닥 4종 + 끝없는 탑)
   | `ui-${'go' | 'heroes' | 'tower' | 'rank' | 'up'}`; // 메인 메뉴 버튼 아이콘
 
-const HERO_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const satisfies readonly HeroId[];
+const HERO_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig', 'cat'] as const satisfies readonly HeroId[];
 const GROUNDS = ['field', 'bamboo', 'palace', 'underworld'] as const satisfies readonly GroundName[];
 const HIT_FOES = [
   ...['e-imp', 'e-wisp', 'e-club', 'e-water', 'e-fox', 'e-bamboo', 'e-guard', 'e-skeleton', 'e-spirit'],

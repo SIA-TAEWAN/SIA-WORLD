@@ -1,4 +1,4 @@
-import { WIN_SCORE, ZODIAC_IDS, ZODIAC_NICK, type ZodiacId } from '../game/constants';
+import { CHAR_IDS, WIN_SCORE, ZODIAC_IDS, ZODIAC_NICK, isCharId, type ZodiacId } from '../game/constants';
 import type { MatchSetup } from '../match/game';
 import { VolleyRoom, newRoomCode, type StartMsg } from '../net/room';
 import { SEATS, cleanTitle } from '../net/seats';
@@ -8,12 +8,53 @@ import { openWorldRanking, worldHome } from '../net/world';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, leaveRoom, loadEngine, nav, openSettings, roomLink, saveChar, screen, setRoomInUrl, stage, state, toast } from './app';
 import { sfx } from './sfx';
+import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
+import { pressUnlock, unlockButtonHtml, type UnlockHooks } from './unlockBtn';
+
+/**
+ * 캐릭터 고르기 칸 (AI 대전 고르기·게임방 같이 씀). 안 연 고양이는 그림을 보여 주되 자물쇠 (누르면 아래 '시아코인 100개로 열기' 를 누른 것처럼).
+ * 남이 고른 캐릭터(상대 자리)는 잠금과 상관없이 그대로 보인다 — 여기는 내가 고르는 칸만.
+ */
+function charButtons(selected: ZodiacId): string {
+  return CHAR_IDS.map((c) => {
+    const lock = c !== selected && !isCharOpen(c);
+    return `<button class="char ${c === selected ? 'sel' : ''} ${lock ? 'locked' : ''}" data-c="${c}" ${lock ? `title="${UNLOCK_LABEL}" aria-label="${ZODIAC_NICK[c]} (잠김 · ${UNLOCK_LABEL})"` : ''}><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span>${lock ? '<i class="lock" aria-hidden="true">🔒</i>' : ''}</button>`;
+  }).join('');
+}
+/** 잠긴 고양이 아래 '시아코인 100개로 열기' 버튼 (모두 열렸으면 빈 글) */
+function lockNote(): string {
+  return unlockButtonHtml(CHAR_IDS.filter((c) => !isCharOpen(c)).map((c) => ZODIAC_NICK[c]));
+}
+/** #lock-note 의 열기 버튼을 잇는다. opened: 열렸을 때 고양이를 골라 둔다 */
+function wireUnlock(root: HTMLElement, opened: () => void): UnlockHooks {
+  const note = root.querySelector('#lock-note') as HTMLElement;
+  const hooks: UnlockHooks = {
+    repaint: () => {
+      if (note.isConnected) note.innerHTML = lockNote();
+    },
+    toast: (m) => toast(m, 2600),
+    opened,
+  };
+  note.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-unlock]')) return;
+    sfx('click');
+    void pressUnlock(hooks);
+  });
+  return hooks;
+}
+/** 고를 수 있으면 true. 잠겼으면 열기 버튼을 누른 것처럼 (확인 글로 바뀐다) 하고 false */
+function pickable(c: ZodiacId, hooks: UnlockHooks): boolean {
+  if (isCharOpen(c)) return true;
+  sfx('click');
+  void pressUnlock(hooks);
+  return false;
+}
 
 /** 테스트 모드에서 배경을 고른다 (?local=1&bg=0~2). 평소에는 경기마다 무작위 */
 const bgParam = new URLSearchParams(location.search).get('bg');
 const testBg = LOCAL_MODE && bgParam !== null && /^[0-2]$/.test(bgParam) ? Number(bgParam) : null;
 
-/** AI 대전 설정: 내가 왼쪽, AI는 내 캐릭터를 뺀 것 중 무작위 */
+/** AI 대전 설정: 내가 왼쪽, AI는 내 캐릭터를 뺀 십이지 중 무작위 (추가 캐릭터는 고르지 않는다) */
 export function aiSetup(myChar: ZodiacId): MatchSetup {
   const others = ZODIAC_IDS.filter((c) => c !== myChar);
   const aiChar = others[Math.floor(Math.random() * others.length)];
@@ -31,7 +72,7 @@ export function aiSetup(myChar: ZodiacId): MatchSetup {
 
 /** 온라인 대전 설정: 시작 알림에 담긴 값 그대로 (두 기기가 같은 시드·배경·시작 시각을 쓴다) */
 export function onlineSetup(s: StartMsg, myId: string): MatchSetup {
-  const f = (i: 0 | 1) => ({ id: s.players[i].id, name: s.players[i].name, char: ZODIAC_IDS.includes(s.players[i].char) ? s.players[i].char : 'tiger', ai: false });
+  const f = (i: 0 | 1) => ({ id: s.players[i].id, name: s.players[i].name, char: isCharId(s.players[i].char) ? s.players[i].char : 'tiger', ai: false });
   return {
     mode: 'online',
     fighters: [f(0), f(1)],
@@ -192,27 +233,37 @@ export function showCharSelect() {
     `<div class="bar"><button class="back" id="back">← 뒤로</button><h2>캐릭터 선택</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card pick"><div class="pick-stage"><img id="pick-img" src="" alt="" /></div>
       <div class="pick-name" id="pick-name"></div><div class="soft">겉모습만 달라요. 능력은 모두 같아요</div></div>
-    <div class="card"><h3>십이지신 <span class="soft">누구로 할까요?</span></h3><div class="chars" id="chars"></div></div>
+    <div class="card"><h3>캐릭터 <span class="soft">누구로 할까요?</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status">내가 왼쪽 · AI가 오른쪽 · 전적과 시아코인에 반영돼요 (하루 30판) · 도중에 나가면 패배로 기록돼요</p>
     <button class="btn primary big" id="start">경기 시작 ▶</button>`,
     'room',
     'lobby',
+    () => offUnlock(),
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
   const paint = () => {
     $<HTMLImageElement>('#pick-img').src = zodiacFullUrl(char);
     $('#pick-name').textContent = ZODIAC_NICK[char];
-    $('#chars').innerHTML = ZODIAC_IDS.map(
-      (c) => `<button class="char ${c === char ? 'sel' : ''}" data-c="${c}"><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`,
-    ).join('');
+    $('#chars').innerHTML = charButtons(char);
+    $('#lock-note').innerHTML = lockNote();
   };
+  // 열면 고양이를 골라 둔다. 다른 기기에서 열고 돌아와도(화면이 다시 보일 때 다시 불러온다) 자물쇠를 푼다
+  const unlockHooks = wireUnlock(root, () => {
+    char = 'cat';
+    paint();
+  });
+  const offUnlock = onUnlockChange(paint);
   paint();
+  // 잠긴 동안 구매 조건 진행을 다시 읽는다 (판을 하고 돌아오면 숫자가 늘어 있다)
+  void refreshProgress();
   $('#chars').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
+    const c = b.dataset.c as ZodiacId;
+    if (!pickable(c, unlockHooks)) return;
     sfx('click');
-    char = b.dataset.c as ZodiacId;
+    char = c;
     paint();
   });
   $('#back').addEventListener('click', () => {
@@ -271,13 +322,16 @@ export function showWaiting() {
     `<div class="bar"><button class="back" id="leave">← 나가기</button><h2>게임방</h2><button class="icon-btn" id="settings" aria-label="설정">⚙️</button></div>
     <div class="card invite"><div class="code"><b id="room-name"></b><div class="soft">방 목록에서 들어오거나, 링크를 보내면 바로 들어와요</div></div><button class="btn small" id="invite">🔗 링크 복사</button></div>
     <div class="card"><div class="duo" id="duo"></div></div>
-    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요 · 같은 캐릭터도 돼요</span></h3><div class="chars" id="chars"></div></div>
+    <div class="card"><h3>캐릭터 <span class="soft">능력은 모두 같아요 · 같은 캐릭터도 돼요</span></h3><div class="chars" id="chars"></div><div class="lock-note" id="lock-note"></div></div>
     <div class="grow"></div>
     <p class="status" id="status"></p>
     <button class="btn primary big" id="ready">레디 ▶</button>`,
     'room',
     'lobby',
-    () => off?.(),
+    () => {
+      off?.();
+      offUnlock();
+    },
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
 
@@ -298,12 +352,11 @@ export function showWaiting() {
       if (!p) return `<div class="${cls}"><div class="av blank">?</div><div class="nm">비어있음</div><div class="st">${i === 0 ? '왼쪽' : '오른쪽'}</div></div>`;
       const st = p.ready ? '<div class="st on">레디!</div>' : '<div class="st">준비 중</div>';
       return `<div class="${cls}">${p.id === host ? '<span class="host" title="방장">👑</span>' : ''}
-        <img class="av" src="${zodiacFaceUrl(ZODIAC_IDS.includes(p.char) ? p.char : 'tiger')}" alt="" /><div class="nm">${esc(p.name)}</div>${st}</div>`;
+        <img class="av" src="${zodiacFaceUrl(isCharId(p.char) ? p.char : 'tiger')}" alt="" /><div class="nm">${esc(p.name)}</div>${st}</div>`;
     };
     $('#duo').innerHTML = `${seat(0)}<div class="vs-mark">VS</div>${seat(1)}`;
-    $('#chars').innerHTML = ZODIAC_IDS.map(
-      (c) => `<button class="char ${c === room.char ? 'sel' : ''}" data-c="${c}"><img src="${zodiacFaceUrl(c)}" alt="" /><span>${ZODIAC_NICK[c]}</span></button>`,
-    ).join('');
+    $('#chars').innerHTML = charButtons(room.char);
+    $('#lock-note').innerHTML = lockNote();
     const busy = room.current !== null;
     const alone = ps.length < SEATS;
     const btn = $<HTMLButtonElement>('#ready');
@@ -321,15 +374,25 @@ export function showWaiting() {
           : '둘 다 레디하면 3초 뒤에 시작해요';
   };
   off = room.onChange(paint);
+  const unlockHooks = wireUnlock(root, () => {
+    if (state.room !== room || room.ready) return;
+    room.setChar('cat');
+    saveChar(room.char);
+  });
+  const offUnlock = onUnlockChange(paint);
   paint();
+  // 잠긴 동안 구매 조건 진행을 다시 읽는다 (판을 하고 돌아오면 숫자가 늘어 있다)
+  void refreshProgress();
   if (state.room !== room) return;
 
   $('#chars').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.char') as HTMLElement | null;
     if (!b) return;
     if (room.ready) return toast('레디를 풀고 바꿔 주세요');
+    const c = b.dataset.c as ZodiacId;
+    if (!pickable(c, unlockHooks)) return;
     sfx('click');
-    room.setChar(b.dataset.c as ZodiacId);
+    room.setChar(c);
     saveChar(room.char);
   });
   $('#ready').addEventListener('click', () => {

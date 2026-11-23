@@ -2,7 +2,7 @@ import './style.css';
 import { LOCAL_MODE, devSetup, getApi } from './net/api';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { LOBBY_MAX, LobbyFullError, SurvivalLobby } from './net/lobby';
-import { loadChar, loadEngine, nav, screen, setProfile, state, toast } from './ui/app';
+import { loadChar, loadEngine, nav, refreshOwned, screen, setProfile, state, toast } from './ui/app';
 import { showCodex } from './ui/codex';
 import { showCharSelect, showMain, showMapSelect } from './ui/menus';
 import { showResult } from './ui/result';
@@ -109,6 +109,13 @@ async function start() {
   } catch {
     toast('서버에 연결하지 못했어요. 지금은 기록되지 않아요', 3600);
   }
+
+  // 이 게임에서 연 추가 캐릭터(고양이). 마지막으로 고른 캐릭터가 잠긴 고양이면 기본 캐릭터로
+  await refreshOwned(false);
+  // 다른 기기·탭에서 고양이를 열고 이 탭으로 돌아오면 새로고침 없이 쓸 수 있게 다시 묻는다
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void refreshOwned(true);
+  });
 
   // 개발용 테스트 설정: ?local=1&map=field&char=tiger&upg=10&t=120 → 메뉴를 건너뛰고 그 상태로 바로 시작
   if (dev?.char) state.char = dev.char;

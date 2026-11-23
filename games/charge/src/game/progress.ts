@@ -1,4 +1,4 @@
-import { LEADERS, METER, RUN_SPEED, leaderOf, type ZodiacId } from '../data/balance';
+import { LEADERS, METER, RUN_SPEED, leaderOf, type LeaderId } from '../data/balance';
 import {
   UPGRADES,
   clearCoins,
@@ -37,7 +37,7 @@ export interface RunReport {
   /** 서버가 charge_start 로 준 판 번호 (기록되지 않는 판은 '') */
   run: string;
   stage: string;
-  leader: ZodiacId;
+  leader: LeaderId;
   mode: 'normal' | 'endless';
   /** 판 시간 (초, 내림) */
   time: number;
@@ -61,7 +61,7 @@ export interface FinishResult {
   /** 시아코인을 받았다 */
   siaCoin: boolean;
   /** 이번에 새로 열린 대장 */
-  newLeaders: ZodiacId[];
+  newLeaders: LeaderId[];
 }
 
 /** 서버 검증 값 (SQL _charge_const 와 같다) */
@@ -80,7 +80,36 @@ export const LIMITS = {
 
 export const totalStars = (p: ChargeProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);
 export const cleared = (p: ChargeProfile, id: string) => (p.stages[id] ?? 0) > 0;
-export const leadersOf = (p: ChargeProfile) => unlockedLeaders((id) => cleared(p, id));
+/** 고양이를 여는 값 (시아코인). shared/characters.js 의 CHARACTER_PRICE.cat · SQL _character_price 와 같다 (tests/progress.test.ts 가 대조) */
+export const CAT_PRICE = 100;
+/** 잠긴 고양이 칸의 버튼 글 (shared/characters.js 의 unlockLabel('cat') 과 같은 글) */
+export const UNLOCK_LABEL = `시아코인 ${CAT_PRICE}개로 열기`;
+/** 이 게임(charge)에서 시아코인으로 연 추가 캐릭터 (shared/characters.js 의 loadOwnedCharacters('charge') 결과. 테스트 모드는 net/local.ts 가 정한다) */
+let ownedExtras: string[] = [];
+export const setOwnedExtras = (ids: readonly string[]) => {
+  ownedExtras = [...ids];
+};
+/**
+ * 추가 캐릭터(고양이)를 고를 수 있는가: 진행으로는 열리지 않고, 이 게임의 대장 고르기 화면에서 시아코인으로 연 사람만
+ * (게임마다 따로 연다. 서버 _check_character(user, id, 'charge') 의 'locked character').
+ * 선택 화면·시작 검사·저장된 대장 복원이 모두 leadersOf 를 거쳐 여기를 본다.
+ */
+export const extraOpen = (_p: ChargeProfile, id: LeaderId) => ownedExtras.includes(id);
+
+/** 고양이 구매 조건: 이 스테이지를 클리어 (서버 075 의 _cat_progress_charge 와 같다, tests/sql.test.ts 가 대조) */
+export const CAT_STAGE = '3-5';
+/** 고양이를 살 수 있는가 (조건만. 서버 buy_character 가 같은 기록으로 다시 확인한다) */
+export const catReady = (p: ChargeProfile) => cleared(p, CAT_STAGE);
+/** 잠긴 동안 보여 줄 남은 조건 글: "3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-4까지" */
+export function catConditionText(p: ChargeProfile): string {
+  const far = [...STAGES].reverse().find((s) => cleared(p, s.id));
+  return `${CAT_STAGE} 스테이지를 클리어하면 열 수 있어요 · ${far ? `지금 ${far.id}까지` : '아직 클리어한 스테이지가 없어요'}`;
+}
+/** 고를 수 있는 대장: 진행으로 열린 십이지 + 열린 추가 캐릭터 (LEADERS 순서) */
+export const leadersOf = (p: ChargeProfile): LeaderId[] => [
+  ...unlockedLeaders((id) => cleared(p, id)),
+  ...LEADERS.filter((l) => l.extra && extraOpen(p, l.id)).map((l) => l.id),
+];
 
 export function regionOpen(p: ChargeProfile, region: number): boolean {
   if (region <= 1) return true;
@@ -164,8 +193,10 @@ export function buyUpgrade(p: ChargeProfile, key: UpgradeKey): string | null {
 
 /** 시작할 수 있는가 (잠긴 스테이지·대장이면 까닭) */
 export function checkStart(p: ChargeProfile, stage: string, leader: string, mode: 'normal' | 'endless'): string | null {
-  if (!LEADERS.some((l) => l.id === leader)) return 'bad leader';
-  if (!leadersOf(p).includes(leader as ZodiacId)) return 'leader locked';
+  const def = LEADERS.find((l) => l.id === leader);
+  if (!def) return 'bad leader';
+  if (def.extra && !extraOpen(p, def.id)) return 'locked character';
+  if (!leadersOf(p).includes(leader as LeaderId)) return 'leader locked';
   if (mode === 'endless') return stage === ENDLESS_ID ? (endlessOpen(p) ? null : 'endless locked') : 'bad stage';
   if (!stageOf(stage)) return 'bad stage';
   return stageOpen(p, stage) ? null : 'stage locked';
@@ -176,6 +207,7 @@ export function whyText(why: string): string {
   const m: Record<string, string> = {
     'stage locked': '아직 열리지 않은 스테이지예요',
     'leader locked': '아직 열리지 않은 대장이에요',
+    'locked character': `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`,
     'endless locked': '끝없는 모드는 1-5를 깨면 열려요',
     'not enough coins': '엽전이 모자라요',
     'max level': '이미 최대 강화예요',

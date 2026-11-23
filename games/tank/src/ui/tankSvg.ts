@@ -1,4 +1,4 @@
-import { TANKS, type TankId } from '../game/data';
+import { TANKS, tankOr, type TankId } from '../game/data';
 import tankArtJson from '../data/tankArt.json';
 
 /** SpriteCook으로 만든 탱크 그림 (public/tanks/*.png). w·h는 px, cx는 무한궤도 가운데(0~1). 무한궤도 폭 108px = 게임 36px */
@@ -116,6 +116,18 @@ function look(id: TankId): Look {
           <ellipse cx="35.4" cy="22.2" rx="2.1" ry="1.7" fill="${O}"/><path d="M32.5 25 q1 2.6 2.4 0" fill="#ff7a9a" ${s(0.8)}/>`,
         face: `<ellipse cx="31.5" cy="19" rx="3.4" ry="3.6" fill="${a}" fill-opacity=".35"/>`,
       };
+    case 'cat':
+      // 고양이(야옹이): 크림색 몸, 뾰족한 귀, 비뚤어진 금관, 보라 망토 띠, 수염
+      return {
+        back: `<path d="M15.5 15 L15 4.5 L22 11 Z" fill="${c}" ${s(1.5)}/><path d="M16.6 12.6 L16.3 7.4 L19.8 10.7 Z" fill="#ffb3c7"/>
+          <path d="M25.5 11 L31 3.5 L32.5 14 Z" fill="${c}" ${s(1.5)}/><path d="M27.4 10.8 L30.4 6.8 L31.2 12.2 Z" fill="#ffb3c7"/>
+          <g transform="rotate(-14 22 9)"><path d="M17.5 11.5 L18 5.5 L20.5 8.5 L22.5 4.5 L24.5 8.5 L27 5.5 L27 11.5 Z" fill="#ffd23a" ${s(1.2)}/><circle cx="22.5" cy="9" r="1" fill="${a}"/></g>
+          <path d="M9 29 Q2 27 3.5 20 Q5 15.5 8.5 17.5" fill="none" stroke="${O}" stroke-width="4.4" stroke-linecap="round"/>
+          <path d="M9 29 Q2 27 3.5 20 Q5 15.5 8.5 17.5" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`,
+        plate: `<path d="M9.5 22.5 L38.5 22.5 L37.5 25.6 L10.5 25.6 Z" fill="${a}" fill-opacity=".85"/><circle cx="24" cy="24" r="1.5" fill="#ffd23a" ${s(0.6)}/>`,
+        front: `<path d="M34.3 21.6 L36.3 21.6 L35.3 22.9 Z" fill="#ff8fab" ${s(0.6)}/><path d="M33.6 24 q1.2 1.1 2.4 0 q1.2 1.1 2.4 0" fill="none" stroke="${O}" stroke-width=".9"/>
+          <path d="M35 22.8 L41.5 21.2 M35 23.6 L41.5 24.4" stroke="${O}" stroke-width=".7" stroke-linecap="round"/>`,
+      };
     case 'zodiac': {
       // 십이지신: 금빛 몸, 왕관, 열두 띠 색 구슬
       const cols = ['#a9b2c3', '#8a5a3c', '#ff9a2e', '#f4f1f6', '#3fbf8f', '#7bc04a', '#b8763e', '#fff7e6', '#a8693c', '#ff3b3b', '#e0a85a', '#ffb3c7'];
@@ -140,6 +152,7 @@ function look(id: TankId): Look {
 
 /** 얼굴(눈 주변) 색: 눈 깜빡임 눈꺼풀 색으로 쓴다 */
 export function faceColor(id: TankId): string {
+  id = tankOr(id);
   if (id === 'sheep') return '#ecd3b3';
   if (id === 'monkey') return '#f6d1a8';
   return TANKS[id].color;
@@ -198,6 +211,8 @@ function bodyParts(id: TankId): string {
 
 /** 메뉴 화면용 탱크 그림 ('random'은 물음표 탱크) */
 export function tankSvg(id: TankId | 'random', size = 96, flip = false): string {
+  // 모르는 탱크(더 새 판본의 기기가 고른 캐릭터)는 어흥이로
+  if (id !== 'random') id = tankOr(id);
   const art = id !== 'random' ? TANK_ART[id] : undefined;
   if (art) {
     // 그림 탱크: 포신(뒤) + PNG. 무한궤도 바닥 y=38, 가운데 x=24
@@ -232,6 +247,7 @@ export const TEX_BOX = { x: 0, y: -8, w: 48, h: 48 };
 /** 게임 안 텍스처 해상도 배율 (선명하게) */
 export const TEX_SCALE = 3;
 export function tankTextureSvg(id: TankId): string {
+  id = tankOr(id);
   const b = TEX_BOX;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" width="${b.w * TEX_SCALE}" height="${b.h * TEX_SCALE}">
     <ellipse cx="24" cy="39" rx="18" ry="2.4" fill="#000" fill-opacity=".18"/>

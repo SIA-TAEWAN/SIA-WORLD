@@ -1,5 +1,5 @@
 import { ConfigError, buildConfig } from './config.ts';
-import { HERO_IDS, isHeroId, type HeroId, type UpgradeKey, type Upgrades } from './heroes.ts';
+import { ALL_HERO_IDS, isHeroId, type HeroId, type UpgradeKey, type Upgrades } from './heroes.ts';
 import { MAX_TURNS, POWER_MAX, TOWER_TURNS, replayRun, type RunResult, type ShotInput } from './sim.ts';
 
 /**
@@ -58,7 +58,7 @@ const UP_KEYS: UpgradeKey[] = ['hp', 'charge', 'heal', 'coin'];
 /** 스냅숏 → buildConfig 입력 (모르는 값은 버린다) */
 function snapLevels(snap: RunSnapshot): Partial<Record<HeroId, number>> {
   const out: Partial<Record<HeroId, number>> = {};
-  for (const id of HERO_IDS) {
+  for (const id of ALL_HERO_IDS) {
     const v = Number(snap.levels?.[id]);
     if (Number.isFinite(v)) out[id] = v;
   }

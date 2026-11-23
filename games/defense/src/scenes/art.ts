@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { COLOR, MATGO, ROULETTE, TABLE } from '../theme';
-import { SLOT_SIZE, type ZodiacId } from '../data/balance';
+import { SLOT_SIZE, type CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import type { BgId } from '../data/regions';
@@ -27,7 +27,7 @@ export const COMMON_ART: readonly string[] = ['slot', 'slotOn', 'p-shuriken', 'p
 /** 바닥 무늬 한 장이 판에서 차지하는 너비 (px): 받은 그림은 4칸, 코드 그림은 2칸(160) */
 export const TILE_SPAN = 320;
 
-export const zKey = (id: ZodiacId) => `z-${id}`;
+export const zKey = (id: CharId) => `z-${id}`;
 export const enemyKey = (kind: number) => `e-${ENEMIES[kind].id}`;
 export const bossKey = (boss: number) => `b-${BOSSES[boss].id}`;
 export const tileKey = (bg: BgId) => `tile-${bg}`;
@@ -45,7 +45,7 @@ export const BG: Record<BgId, { ground: number; light: number; road: number; dot
 };
 
 /** 이 판에 필요한 그림만 받는다: 나오는 요괴·보스와 데려간 캐릭터 */
-export function preloadArt(scene: Phaser.Scene, keys: readonly string[], squad: readonly ZodiacId[]) {
+export function preloadArt(scene: Phaser.Scene, keys: readonly string[], squad: readonly CharId[]) {
   const base = import.meta.env.BASE_URL;
   for (const k of keys) if (ART_FILES.includes(k) && !scene.textures.exists(k)) scene.load.image(k, `${base}art/${k}.png`);
   for (const id of squad) if (!scene.textures.exists(zKey(id))) scene.load.image(zKey(id), zodiacFullUrl(id));
@@ -87,7 +87,7 @@ function blob(g: G, size: number, color: number, horns: boolean) {
 }
 
 /** 코드 그림을 만든다. 받은 그림이 있으면 그대로 두고, 없는 것만 채운다 */
-export function ensureArt(scene: Phaser.Scene, bg: BgId, squad: readonly ZodiacId[]) {
+export function ensureArt(scene: Phaser.Scene, bg: BgId, squad: readonly CharId[]) {
   // ───── 바닥 타일: 바탕색 + 밝은 체크 무늬 (들판은 풀포기·꽃) ─────
   const c = BG[bg];
   make(scene, tileKey(bg), 160, 160, (g) => {

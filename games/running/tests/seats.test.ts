@@ -52,6 +52,17 @@ describe('방과 자리', () => {
     expect(resolveChar(m('d', 4, 'pig'), all)).toBe('pig');
   });
 
+  it('고양이(추가 캐릭터): AI 는 고르지 않고, 겹쳐서 밀려나면 십이지에서 다시 고른다', () => {
+    for (const key of ['abc123', 'zz9', 'q1w2e3', 'room42']) expect(aiChars(key, [], 3)).not.toContain('cat');
+    const seats = makeSeats('abc123', [m('a', 1, 'cat')]);
+    expect(seats[0].char).toBe('cat');
+    expect(seats.slice(1).map((s) => s.char)).not.toContain('cat');
+    const all = [m('a', 1, 'cat'), m('b', 2, 'cat')];
+    expect(resolveChar(all[0], all)).toBe('cat');
+    expect(resolveChar(all[1], all)).toBe('rat');
+    expect(resolveChar(all[1], [...all, m('c', 3, 'rat')])).toBe('ox');
+  });
+
   it('사람 전원이 레디해야 시작', () => {
     expect(allReady([])).toBe(false);
     expect(allReady([m('a', 1, 'rat', true)])).toBe(true);

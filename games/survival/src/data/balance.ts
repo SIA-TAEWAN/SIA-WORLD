@@ -55,10 +55,15 @@ export const ENDLESS = {
 export const VIEW_W = 720;
 export const VIEW_H = 1280;
 
-export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;
-export type ZodiacId = (typeof ZODIAC_IDS)[number];
+/**
+ * 고를 수 있는 캐릭터: 십이지 12 + 고양이(cat, "13번째 대원").
+ * 서버의 _character_ids()(071) · shared/characters.js 의 ALL_CHARACTER_IDS 와 같은 순서다.
+ * 고양이는 판 결과·엽전으로 풀지 않는다 (캐릭터 고르기 화면에서 시아코인으로 연다. 게임마다 따로)
+ */
+export const CHAR_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig', 'cat'] as const;
+export type CharId = (typeof CHAR_IDS)[number];
 
-/** 내 캐릭터 기본값 (캐릭터 12종 모두 같다. PRD 4장) */
+/** 내 캐릭터 기본값 (캐릭터 13종 모두 같다. PRD 4장) */
 export const PLAYER = {
   hp: 100,
   /** 이동 속도 (px/초) */

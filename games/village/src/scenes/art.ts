@@ -30,8 +30,10 @@ export const texKey = (type: BuildingType, look: number) => `b-${type}-${upgrada
 export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + RISE * w });
 
 /** 그림 파일로 먼저 채우는 텍스처 이름 (public/art/<이름>.png) */
+/** 그림 파일이 아직 없는 것 (코드 그림만 쓴다. 고양이 선물은 SpriteCook 그림을 만들면 public/art/b-gift_cat-1.png 를 넣고 여기서 뺀다) */
+const NO_FILE: readonly string[] = ['gift_cat'];
 export const ART_FILES: string[] = [
-  ...BUILDINGS.flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
+  ...BUILDINGS.filter((d) => !NO_FILE.includes(d.id)).flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
   'site-1', 'site-2', 'tile-yard', 'tile-meadow',
   'w-wall-1', 'w-wall-2', 'w-post', 'g-tuft', 'g-flowers', 'g-pebbles',
   ...['rice', 'wood', 'stone', 'cake', 'special'].map((r) => `bubble-${r}`),
@@ -385,7 +387,7 @@ const DECO: Partial<Record<BuildingType, (g: G) => void>> = {
 };
 
 /** 주민 선물: 받침 위의 선물 꾸러미 (주민마다 리본 색이 다르다) */
-const GIFT_COLORS = [ROULETTE.winter, COLOR.inkSoft, RACE.track, COLOR.pink, COLOR.win, TABLE.poker, RACE.trackDark, COLOR.white, COLOR.primaryDeep, COLOR.cardRed, COLOR.emptyLine, ROULETTE.summer];
+const GIFT_COLORS = [ROULETTE.winter, COLOR.inkSoft, RACE.track, COLOR.pink, COLOR.win, TABLE.poker, RACE.trackDark, COLOR.white, COLOR.primaryDeep, COLOR.cardRed, COLOR.emptyLine, ROULETTE.summer, COLOR.teamA];
 function drawGift(g: G, i: number) {
   box(g, 14, BASE - 12, 68, 12, 5, COLOR.lineSoft);
   box(g, 24, BASE - 56, 48, 44, 8, COLOR.primaryLight);

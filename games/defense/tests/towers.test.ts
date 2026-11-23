@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { BOSS_STUN_MUL, STUN_GUARD_SEC, TICK } from '../src/data/balance';
 import { BOSS_INDEX, BOSSES } from '../src/data/bosses';
-import { TOWERS } from '../src/data/characters';
+import { TOWERS, TOWER_INDEX } from '../src/data/characters';
 import { ENEMY_INDEX } from '../src/data/enemies';
 import { DASH } from '../src/game/bosses';
 import { placeOnRoute, spawnEnemy } from '../src/game/core';
-import { command, step } from '../src/game/sim';
+import { command, createGame, step } from '../src/game/sim';
 import type { Enemy, State } from '../src/game/state';
 import { T, game, rich, start } from './helpers';
 
@@ -202,5 +202,49 @@ describe('큰 도깨비: 돌진', () => {
     // 돌진으로 걸을 때보다 훨씬 멀리 갔다
     expect(boss.d - d0).toBeGreaterThan(def.speed * def.p.dur * (def.p.mul - 0.3));
     expect(boss.mul).toBe(1);
+  });
+});
+
+describe('고양이: 마무리 사냥 (십이지 밖, 13번째 대원)', () => {
+  const C = TOWER_INDEX.cat;
+  function catArena(): State {
+    const s = rich(createGame({ seed: 1, stage: '1-1', squad: ['rat', 'cat'] }));
+    s.spawns = [{ t: 1e9, kind: 0, boss: -1, route: 0, hpMul: 1 }];
+    start(s);
+    return s;
+  }
+  it('사거리 안에서 남은 체력이 가장 적은 요괴부터 바로 할퀸다 (투사체 없이, 출구에 가까운 요괴보다 먼저)', () => {
+    const s = catArena();
+    command(s, 'place', 0, C);
+    const L = TOWERS[C].levels[0];
+    const ahead = foe(s, 40, 1000);
+    const weak = foe(s, -40, 300);
+    tick(s, 0.3); // 첫 공격 (배치 뒤 0.25초)
+    expect(s.projectiles.n).toBe(0);
+    expect(1000 - ahead.hp).toBe(0);
+    expect(300 - weak.hp).toBe(L.dmg);
+  });
+  it('3단계: 할퀸 뒤 체력이 1/5 이하로 남은 요괴는 바로 쓰러진다. 보스는 아니다', () => {
+    const s = catArena();
+    command(s, 'place', 0, C);
+    command(s, 'upgrade', 0);
+    command(s, 'upgrade', 0);
+    const L = TOWERS[C].levels[2];
+    expect(L.execute).toBe(0.2);
+    const e = foe(s, 0, 1000);
+    e.hp = 200 + L.dmg - 1; // 한 번 할퀴면 1/5 아래
+    const kills = s.kills;
+    tick(s, 0.3);
+    expect(e.alive).toBe(false);
+    expect(s.kills).toBe(kills + 1);
+    // 보스는 마무리되지 않는다
+    const b = spawnEnemy(s, -1, BOSS_INDEX[BOSSES[0].id], 0, 1, s.slotX[0] + 80)!;
+    b.speed = 0;
+    placeOnRoute(s, b);
+    b.hp = b.maxHp * 0.1;
+    const hp = b.hp;
+    tick(s, 0.8);
+    expect(b.alive).toBe(true);
+    expect(b.hp).toBeLessThan(hp);
   });
 });

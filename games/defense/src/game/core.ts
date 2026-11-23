@@ -97,8 +97,8 @@ export function canTarget(e: Enemy, air: boolean): boolean {
   return e.alive && e.down <= 0 && e.gone <= 0 && e.armor < 1 && (air || !e.air) && !(e.stealth && e.on && e.seen <= 0);
 }
 
-/** 과녁 고르는 방식: 출구에 가장 가까운 요괴 · 체력이 가장 많은 요괴 · 공중 요괴 먼저 */
-export const AIM = { first: 0, strong: 1, air: 2 } as const;
+/** 과녁 고르는 방식: 출구에 가장 가까운 요괴 · 체력이 가장 많은 요괴 · 공중 요괴 먼저 · 남은 체력이 가장 적은 요괴 */
+export const AIM = { first: 0, strong: 1, air: 2, weak: 3 } as const;
 
 /**
  * (x, y) 에서 사거리 안에 있는, 노릴 수 있는 요괴 가운데 하나 → 요괴 칸 번호 (없으면 -1).
@@ -117,6 +117,8 @@ export function findTarget(s: State, x: number, y: number, range: number, air = 
     // 값이 작을수록 먼저: 남은 거리 / (체력이 많을수록 작게) / (공중이면 크게 당긴다)
     let v = s.routes[e.route].len - e.d;
     if (aim === AIM.strong) v = -e.hp;
+    // (체력이 같으면 앞선 요괴: 남은 거리를 아주 조금 더한다)
+    else if (aim === AIM.weak) v = e.hp + v * 1e-6;
     else if (aim === AIM.air && e.air) v -= 1e6;
     if (v < bestV) {
       bestV = v;

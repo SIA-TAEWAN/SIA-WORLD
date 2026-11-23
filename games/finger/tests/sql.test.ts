@@ -2,15 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PICK_CAP, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, towerCoins } from '../src/data/growth';
 import { heroRows, levelRows, stageRows, upgradeRows } from '../src/data/sqlrows';
-import { LIMITS } from '../src/game/progress';
-import { MAX_SHOT_STEPS, STAGES } from '../src/sim';
+import { CAT_NEED, CAT_PRICE, CAT_STAGE, LIMITS, UNLOCK_LABEL } from '../src/game/progress';
+import { EXTRA_HERO_IDS, HEROES, MAX_SHOT_STEPS, STAGES } from '../src/sim';
 
 /**
- * 서버(067_finger.sql · 070_finger_limits.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 서버(067_finger.sql · 070_finger_limits.sql · 076_cat_finger.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
  * 다르면 npm run sqlrows 로 줄을 만들어 넣는다 (이미 올라간 마이그레이션은 고치지 않고 새 파일에 넣는다).
  */
 // 시아핑거 함수를 정의하는 마이그레이션 (순서대로). 함수를 다시 정의하는 새 파일을 만들면 여기에 넣는다 — 마지막 정의를 본다
-const FILES = ['067_finger.sql', '070_finger_limits.sql'];
+const FILES = ['067_finger.sql', '070_finger_limits.sql', '076_cat_finger.sql'];
 const SQL = FILES.map((f) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8')).join('\n');
 /** fn 의 최신 정의 (뒤 파일의 create or replace 가 이긴다) */
 const block = (fn: string) => {
@@ -43,6 +43,41 @@ describe('SQL 표', () => {
     expect(levelRows().length).toBe(29);
   });
   it('대원 합류 지역이 같다', () => expect(rowsIn('_finger_heroes')).toEqual(heroRows()));
+  it('추가 대원(고양이)은 지역 합류 표 밖, 같은 목록 · 공용 캐릭터 검사를 거친다 (076)', () => {
+    const ids = block('_finger_extra_heroes').match(/array\[([^\]]*)\]/)?.[1].split(',').map((x) => x.trim().replace(/'/g, ''));
+    expect(ids).toEqual([...EXTRA_HERO_IDS]);
+    for (const id of EXTRA_HERO_IDS) {
+      expect(HEROES[id].unlockRegion).toBe(-1);
+      expect(rowsIn('_finger_heroes').some((l) => l.startsWith(`('${id}'`))).toBe(false);
+    }
+    // 추가 대원은 시아코인으로 연 사람만 (owned_characters, 071) · 프로필에 owned 로 준다
+    expect(block('_finger_unlocked')).toContain('|| public._finger_owned(p_user)');
+    expect(block('_finger_owned')).toContain("from public.owned_characters o where o.user_id = p_user and o.game = 'finger' and o.character_id = e.id");
+    expect(block('finger_start')).toContain("perform public._check_character(me, x, 'finger');");
+    expect(block('finger_level_up')).toContain("perform public._check_character(me, p_hero, 'finger');");
+    expect(block('_finger_profile_json')).toContain("'owned', to_jsonb(public._finger_owned(p_user))");
+    expect(SQL).toContain('revoke all on function public._finger_owned(uuid) from public, anon, authenticated;');
+    expect(block('finger_start')).toContain('not public._finger_is_hero(y)');
+  });
+
+  it('고양이 구매 조건: _cat_progress_finger = 3-5 클리어 (게임 안 CAT_STAGE · CAT_NEED)', () => {
+    const fn = block('_cat_progress_finger');
+    expect(fn).toContain(`'have', case when public._finger_cleared(p_user, '${CAT_STAGE}') then 1 else 0 end, 'need', ${CAT_NEED})`);
+    expect(fn).toContain('security definer set search_path = public');
+    expect(SQL).toContain('revoke all on function public._cat_progress_finger(uuid) from public, anon, authenticated;');
+  });
+
+  it('고양이 값: 게임 안 CAT_PRICE = 071 _character_price = shared/characters.js CHARACTER_PRICE · 버튼 글', () => {
+    const c071 = readFileSync(new URL('../../../supabase/migrations/071_characters.sql', import.meta.url), 'utf8');
+    const i = c071.lastIndexOf('create or replace function public._character_price(');
+    expect(Number(c071.slice(i).match(/when 'cat' then (\d+)/)?.[1])).toBe(CAT_PRICE);
+    const shared = readFileSync(new URL('../../../shared/characters.js', import.meta.url), 'utf8');
+    expect(Number(shared.match(/CHARACTER_PRICE = \{ cat: (\d+) \}/)?.[1])).toBe(CAT_PRICE);
+    expect(shared).toContain("unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`");
+    expect(UNLOCK_LABEL).toBe(`시아코인 ${CAT_PRICE}개로 열기`);
+    // 시아핑거 게임 id 가 공용 목록에 있다
+    expect(c071).toMatch(/_character_games\(\)[\s\S]*'finger'/);
+  });
 
   it('검증 기준 값이 같다', () => {
     const c = (name: string) => Number(block('_finger_const').match(new RegExp(`when '${name}' then ([0-9.]+)`))?.[1]);

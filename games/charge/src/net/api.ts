@@ -115,7 +115,7 @@ export interface RpcClient {
 }
 
 /** 서버가 일부러 거절한 까닭 (raise exception 글자) — 다시 보내도 소용없다 */
-const REJECTS = ['stage locked', 'leader locked', 'endless locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'bad '];
+const REJECTS = ['stage locked', 'leader locked', 'locked character', 'endless locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'bad '];
 /** 거절이면 까닭, 아니면(통신 문제) null */
 const rejectOf = (msg: string) => {
   const w = REJECTS.find((x) => msg.includes(x));

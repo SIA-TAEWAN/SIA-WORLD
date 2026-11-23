@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { COLOR, FONT, MATGO, ROULETTE, TABLE, css } from '../theme';
-import { ZODIAC_IDS, type ZodiacId } from '../data/balance';
+import { CHAR_IDS, type CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import { zodiacFullUrl } from '../assets';
@@ -18,7 +18,7 @@ export const ART_FILES: readonly string[] = [
   'b-guardCaptain', 'b-yagwanggwi', 'b-imugi', 'b-reaper', 'b-gangcheori', 'b-yeomra',
 ];
 
-export const zKey = (id: ZodiacId) => `z-${id}`;
+export const zKey = (id: CharId) => `z-${id}`;
 export const enemyKey = (kind: number) => `e-${ENEMIES[kind].id}`;
 export const bossKey = (boss: number) => `b-${BOSSES[boss].id}`;
 /** 투사체 그림 (state.ts 의 PROJ 순서) */
@@ -33,10 +33,10 @@ export const tileKey = (map: string) => `tile-${map}`;
 /** 피해 숫자 글꼴 (create 에서 숫자 그림으로 만든다) */
 export const NUM_FONT = 'nums';
 
-export function preloadArt(scene: Phaser.Scene, char: ZodiacId) {
+export function preloadArt(scene: Phaser.Scene, char: CharId) {
   const base = import.meta.env.BASE_URL;
   for (const k of ART_FILES) if (!scene.textures.exists(k)) scene.load.image(k, `${base}art/${k}.png`);
-  if (ZODIAC_IDS.includes(char) && !scene.textures.exists(zKey(char))) scene.load.image(zKey(char), zodiacFullUrl(char));
+  if (CHAR_IDS.includes(char) && !scene.textures.exists(zKey(char))) scene.load.image(zKey(char), zodiacFullUrl(char));
 }
 
 type G = Phaser.GameObjects.Graphics;
@@ -80,7 +80,7 @@ export const ENEMY_DRAW = 2.1;
 export const BOSS_DRAW = 2.4;
 
 /** 못 불러온 그림을 코드로 그려 채운다 (외곽선 + 단색, DESIGN.md 임시 그림 규칙) */
-export function ensureArt(scene: Phaser.Scene, char: ZodiacId, map: string) {
+export function ensureArt(scene: Phaser.Scene, char: CharId, map: string) {
   // ───── 바닥 타일: 들판 (풀밭 체크 무늬 + 풀포기·꽃) ─────
   make(scene, tileKey('field'), 256, 256, (g) => {
     g.fillStyle(TABLE.matgo, 1).fillRect(0, 0, 256, 256);

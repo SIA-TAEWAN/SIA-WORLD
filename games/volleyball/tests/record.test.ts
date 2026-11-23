@@ -150,6 +150,16 @@ describe('결과 저장 순서', () => {
     expect(await new MatchRecorder(b.api, 'room01', setup(0)).finish(result(0, [3, 0], 0))).toEqual({ state: 'failed' });
   });
 
+  it('잠긴 캐릭터라서 begin이 거절되면(locked character) 보고하지 않고 그렇게 알린다', async () => {
+    const { api, calls } = fakeApi({
+      async begin() {
+        return { error: 'locked character' };
+      },
+    });
+    expect(await new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 0], 0))).toEqual({ state: 'locked' });
+    expect(calls.some((c) => c.startsWith('report'))).toBe(false);
+  });
+
   it('두 기기의 결과가 다르면(void) 기록되지 않았다고 알리고 내 전적만 읽는다', async () => {
     const { api } = fakeApi({
       async report() {

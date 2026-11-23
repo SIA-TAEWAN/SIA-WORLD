@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  BALL_R, CEIL, COURT_H, COURT_W, FLOOR_Y, LEFT, NET_R, NET_TOP, NET_W, NET_X, PLAYER_R, RIGHT, WALL, ZODIAC_IDS,
+  BALL_R, CEIL, COURT_H, COURT_W, FLOOR_Y, LEFT, NET_R, NET_TOP, NET_W, NET_X, PLAYER_R, RIGHT, WALL, isCharId,
 } from '../game/constants';
 import type { Side } from '../game/sim';
 import type { Match, MatchEvent } from '../match/game';
@@ -78,7 +78,7 @@ export class CourtScene extends Phaser.Scene {
   }
 
   preload() {
-    preloadArt(this, this.match.setup.fighters.map((f) => f.char).filter((c) => ZODIAC_IDS.includes(c)));
+    preloadArt(this, this.match.setup.fighters.map((f) => f.char).filter((c) => isCharId(c)));
     // 배경의 응원 깃발: 이 배경의 십이지 네 마리 얼굴
     for (const id of BG_ZODIAC[((this.bg % BG_COUNT) + BG_COUNT) % BG_COUNT]) if (!this.textures.exists(flagKey(id))) this.load.image(flagKey(id), zodiacFaceUrl(id));
     // 그림을 못 불러와도 게임은 진행한다 (create에서 코드 그림으로 채운다)

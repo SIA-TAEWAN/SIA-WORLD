@@ -1,6 +1,6 @@
-import { COINS, STAR2_LIVES, START_LIVES, SQUAD_SIZE, WAVES, WAVE_SEC, ZODIAC_IDS, type ZodiacId } from '../data/balance';
+import { COINS, STAR2_LIVES, START_LIVES, SQUAD_SIZE, WAVES, WAVE_SEC, CHAR_IDS, type CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
-import { ROSTER, STARTERS } from '../data/characters';
+import { CAT_STAGE, EXTRAS, ROSTER, STARTERS } from '../data/characters';
 import { ENDLESS_ID } from '../data/endless';
 import { ENEMIES } from '../data/enemies';
 import { CHAR_MAX_LV, UPGRADES, levelCost, upgradeCost, upgradeMods, upgradeOf, type Upgrades } from '../data/growth';
@@ -70,17 +70,30 @@ export interface DefenseProfile {
   /** 스테이지 id → 별 (클리어한 스테이지만) */
   stages: Record<string, number>;
   /** 캐릭터 영구 레벨 (없으면 1) */
-  levels: Partial<Record<ZodiacId, number>>;
+  levels: Partial<Record<CharId, number>>;
   upgrades: Upgrades;
   /** 쓸 수 있는 캐릭터 */
-  unlocked: ZodiacId[];
+  unlocked: CharId[];
   /** 도감: 만난 요괴·보스 */
   codex: Codex;
   /** 끝없는 모드의 최고 기록 (없으면 null): 도달 웨이브와 그때 데려간 캐릭터 */
-  endless: { wave: number; squad: ZodiacId[] } | null;
+  endless: { wave: number; squad: CharId[] } | null;
 }
 
-export const defaultProfile = (): DefenseProfile => ({ coins: 0, stages: {}, levels: {}, upgrades: {}, unlocked: [...STARTERS], codex: { enemies: [], bosses: [] }, endless: null });
+/**
+ * 스테이지로 열리지 않는 캐릭터(고양이)를 이 계정이 쓸 수 있나 — 출전·레벨업·선택 화면이 모두 p.unlocked 를 보므로 여기 한 곳에서 정한다.
+ * 시아디펜스의 출전 준비 화면에서 시아코인으로 연 계정만 쓴다 (게임마다 따로. shared/characters.js 의 loadOwnedCharacters('defense') → setOwnedExtras. 서버는 071 의 _check_character 가 막는다).
+ * 연 목록을 바꾼 뒤에는 cleanProfile 을 다시 거쳐야 p.unlocked 에 반영된다 (main.ts).
+ */
+let ownedExtras: CharId[] = [];
+/** 이 계정이 연 추가 캐릭터 (모르는 id 는 버린다). 처음에는 아무것도 열지 않은 것으로 본다 */
+export function setOwnedExtras(list: readonly string[]) {
+  ownedExtras = EXTRAS.filter((id) => list.includes(id));
+}
+export const extraOpen = (id: CharId): boolean => ownedExtras.includes(id);
+const openExtras = () => EXTRAS.filter(extraOpen);
+
+export const defaultProfile = (): DefenseProfile => ({ coins: 0, stages: {}, levels: {}, upgrades: {}, unlocked: [...STARTERS, ...openExtras()], codex: { enemies: [], bosses: [] }, endless: null });
 
 /** 도감 합치기: 알려진 id 만, 데이터의 순서대로 (서버의 _defense_codex_merge 와 같다) */
 export function mergeCodex(old: Codex | undefined, add: Partial<Codex> | undefined): Codex {
@@ -91,7 +104,7 @@ export function mergeCodex(old: Codex | undefined, add: Partial<Codex> | undefin
   return { enemies: pick(ENEMIES.map((e) => e.id), old?.enemies, add?.enemies), bosses: pick(BOSSES.map((b) => b.id), old?.bosses, add?.bosses) };
 }
 
-const isZodiac = (c: unknown): c is ZodiacId => typeof c === 'string' && (ZODIAC_IDS as readonly string[]).includes(c);
+const isChar = (c: unknown): c is CharId => typeof c === 'string' && (CHAR_IDS as readonly string[]).includes(c);
 
 /** 저장된 값(또는 서버 답)을 믿을 수 있는 모양으로 고친다 */
 export function cleanProfile(raw: unknown): DefenseProfile {
@@ -107,7 +120,7 @@ export function cleanProfile(raw: unknown): DefenseProfile {
   if (d.levels && typeof d.levels === 'object') {
     for (const [id, v] of Object.entries(d.levels)) {
       const n = Math.floor(Number(v));
-      if (isZodiac(id) && n > 1) levels[id] = Math.min(CHAR_MAX_LV, n);
+      if (isChar(id) && n > 1) levels[id] = Math.min(CHAR_MAX_LV, n);
     }
   }
   const upgrades: Upgrades = {};
@@ -117,19 +130,30 @@ export function cleanProfile(raw: unknown): DefenseProfile {
       if (n >= 1) upgrades[u.id] = Math.min(u.max, n);
     }
   }
-  const got = Array.isArray(d.unlocked) ? d.unlocked.filter(isZodiac) : [];
-  // 띠 순서로, 처음 4종은 늘 들어 있다
-  const unlocked = ROSTER.map((r) => r.id).filter((id) => STARTERS.includes(id) || got.includes(id));
+  const got = Array.isArray(d.unlocked) ? d.unlocked.filter(isChar) : [];
+  // 띠 순서로 (고양이는 맨 뒤), 처음 4종은 늘 들어 있다. 고양이는 서버의 해금 목록(unlocked_characters)에 없고 extraOpen 으로 정한다
+  const extras = openExtras();
+  const unlocked = ROSTER.map((r) => r.id).filter((id) => STARTERS.includes(id) || extras.includes(id) || (got.includes(id) && !EXTRAS.includes(id)));
   const e = d.endless as { wave?: unknown; squad?: unknown } | null | undefined;
   const wave = Math.floor(Number(e?.wave)) || 0;
-  const endless = wave >= 1 ? { wave, squad: (Array.isArray(e?.squad) ? e.squad : []).filter(isZodiac) } : null;
+  const endless = wave >= 1 ? { wave, squad: (Array.isArray(e?.squad) ? e.squad : []).filter(isChar) } : null;
   return { coins: Math.max(0, Math.floor(Number(d.coins)) || 0), stages, levels, upgrades, unlocked, codex: mergeCodex(d.codex, undefined), endless };
+}
+
+/**
+ * 고양이를 살 수 있나 (CAT_STAGE = 3-5 클리어): 서버가 본 진행(071 character_progress)이 통과했거나, 프로필에 그 스테이지 기록이 있으면 통과.
+ * progress 를 못 읽었으면(null) 프로필로만 본다. text: 아직이면 "3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-3까지"
+ */
+export function catCondition(p: DefenseProfile, progress: { have: number; need: number } | null): { done: boolean; text: string } {
+  const done = p.stages[CAT_STAGE] !== undefined || (!!progress && progress.have >= progress.need);
+  const far = [...STAGES].reverse().find((s) => p.stages[s.id] !== undefined)?.id ?? null;
+  return { done, text: `${CAT_STAGE} 스테이지를 클리어하면 열 수 있어요 · ${far ? `지금 ${far}까지` : '아직 클리어한 스테이지가 없어요'}` };
 }
 
 export const totalStars = (p: DefenseProfile) => Object.values(p.stages).reduce((a, b) => a + b, 0);
 export const clearedCount = (p: DefenseProfile) => Object.keys(p.stages).length;
 export const regionStars = (p: DefenseProfile, region: number) => stagesOf(region).reduce((a, s) => a + (p.stages[s.id] ?? 0), 0);
-export const charLevel = (p: DefenseProfile, id: ZodiacId) => p.levels[id] ?? 1;
+export const charLevel = (p: DefenseProfile, id: CharId) => p.levels[id] ?? 1;
 export const upgradeLevel = (p: DefenseProfile, id: string) => (p.upgrades as Record<string, number | undefined>)[id] ?? 0;
 /** 그 지역의 스테이지를 모두 클리어했나 (스테이지 데이터가 없는 지역은 false) */
 export function regionCleared(p: DefenseProfile, region: number): boolean {
@@ -158,7 +182,7 @@ export const startLivesOf = (stage: StageDef, up: Upgrades | undefined) => (stag
 
 /** 출전 명단이 올바른가: 1~5종, 겹치지 않고, 모두 해금된 캐릭터 */
 export function squadOk(p: DefenseProfile, squad: readonly string[]): boolean {
-  return squad.length >= 1 && squad.length <= SQUAD_SIZE && new Set(squad).size === squad.length && squad.every((c) => isZodiac(c) && p.unlocked.includes(c));
+  return squad.length >= 1 && squad.length <= SQUAD_SIZE && new Set(squad).size === squad.length && squad.every((c) => isChar(c) && p.unlocked.includes(c));
 }
 
 /** 판이 끝났을 때 저장하러 보내는 것 */
@@ -196,7 +220,7 @@ export interface FinishResult {
   starCoins: number;
   /** 이 판으로 새로 열린 스테이지 id (없으면 null) · 새로 해금된 캐릭터 */
   opened: string | null;
-  unlocked: ZodiacId[];
+  unlocked: CharId[];
   /** 정상 범위의 판인가 (아니면 아무것도 받지 못한다) */
   valid: boolean;
   /** 끝없는 모드: 이번 판의 도달 웨이브(스테이지 판은 0) · 최고 기록 · 새 기록인가 */
@@ -256,7 +280,7 @@ export const minRealTime = (time: number) => Math.max(0, time / LIMITS.max_speed
 
 /** 판 결과를 진행 상황에 반영한다 → 새 진행 상황과 결과. 모르는 스테이지·잠긴 스테이지면 오류 */
 export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string[] = [], mode: RunMode = 'normal'): { profile: DefenseProfile; result: FinishResult } {
-  const none = { stars: 0, bestStars: 0, newStars: 0, firstClear: false, coins: 0, baseCoins: 0, firstCoins: 0, starCoins: 0, opened: null, unlocked: [] as ZodiacId[], wave: 0, bestWave: p.endless?.wave ?? 0, newRecord: false };
+  const none = { stars: 0, bestStars: 0, newStars: 0, firstClear: false, coins: 0, baseCoins: 0, firstCoins: 0, starCoins: 0, opened: null, unlocked: [] as CharId[], wave: 0, bestWave: p.endless?.wave ?? 0, newRecord: false };
   const pigBonus = squad.includes('pig') ? Math.min(LIMITS.bonus_max, r.bonus) : 0;
   const coinMul = 100 + upgradeMods(p.upgrades).coinPct;
   if (mode === 'endless') {
@@ -269,7 +293,7 @@ export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string
     const baseCoins = endlessCoins(r.time);
     const coins = Math.floor(((baseCoins + pigBonus) * coinMul) / 100);
     const newRecord = wave > (p.endless?.wave ?? 0);
-    const profile: DefenseProfile = { ...p, coins: p.coins + coins, codex: mergeCodex(p.codex, r.codex), endless: newRecord ? { wave, squad: squad.filter(isZodiac) } : p.endless };
+    const profile: DefenseProfile = { ...p, coins: p.coins + coins, codex: mergeCodex(p.codex, r.codex), endless: newRecord ? { wave, squad: squad.filter(isChar) } : p.endless };
     return { profile, result: { ...none, coins, baseCoins, valid, wave, bestWave: Math.max(wave, p.endless?.wave ?? 0), newRecord } };
   }
   const stage = stageOf(r.stage);
@@ -289,7 +313,7 @@ export function applyRun(p: DefenseProfile, r: RunReport, squad: readonly string
   const coins = Math.floor(((baseCoins + firstCoins + starCoins + pigBonus) * coinMul) / 100);
   const stages = stars > before ? { ...p.stages, [stage.id]: stars } : p.stages;
   // 캐릭터 해금: 그 지역의 보스 스테이지를 처음 클리어했을 때 (PRD 4장)
-  const unlocked: ZodiacId[] = [];
+  const unlocked: CharId[] = [];
   if (firstClear && stage.no === 5) {
     for (const c of ROSTER) if (c.unlockRegion === stage.region && !p.unlocked.includes(c.id)) unlocked.push(c.id);
   }
@@ -305,7 +329,9 @@ export const openedBy = (before: DefenseProfile, after: DefenseProfile): string 
 
 /** 캐릭터 레벨업 → 새 진행 상황. 안 되면 오류(까닭) */
 export function levelUp(p: DefenseProfile, id: string): DefenseProfile {
-  if (!isZodiac(id)) throw new Error('bad character');
+  if (!isChar(id)) throw new Error('bad character');
+  // 서버와 같다: 시아코인으로 여는 캐릭터는 071 _check_character 의 'locked character'
+  if (EXTRAS.includes(id) && !extraOpen(id)) throw new Error('locked character');
   if (!p.unlocked.includes(id)) throw new Error('character locked');
   const cost = levelCost(charLevel(p, id));
   if (cost === null) throw new Error('max level');

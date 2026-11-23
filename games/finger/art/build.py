@@ -23,7 +23,7 @@ CARD_OUT = os.path.join(HERE, '..', '..', '..', 'shared', 'images', 'card-finger
 FIT = 0.97
 GAP = 4
 
-HEROES = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig']
+HEROES = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig', 'cat']
 FOES = ['e-imp', 'e-wisp', 'e-club', 'e-water', 'e-fox', 'e-bamboo', 'e-guard', 'e-skeleton', 'e-spirit']
 # 보스: 맞는 표정을 원래 그림(public/art/b-*.png, 512 / 640)과 같은 크기·같은 자리에
 BOSSES = ['b-bigDokkaebi', 'b-dueoksini', 'b-bulgasal', 'b-jangsanbeom', 'b-centipede', 'b-gumiho',

@@ -154,6 +154,44 @@ describe('서버 (SupabaseApi)', () => {
     expect(args).toEqual([{ p_entry: true }, { p_entry: false }, { p_entry: false }]);
   });
 
+  it('고양이 사기 (077): buy_character(village, cat) → 샀으면 마을을 다시 읽는다 · 조건 미달은 그대로', async () => {
+    const calls: [string, unknown][] = [];
+    let reply: Record<string, unknown> = { ok: false, reason: 'condition', have: 1, need: 3, siaCoins: 50, price: 100 };
+    const sb: RpcClient = {
+      rpc: (fn, a) => (calls.push([fn, a]), Promise.resolve({ data: fn === 'buy_character' ? reply : { ...answer(1000), catOwned: true, sia: 0 }, error: null })),
+    };
+    const api = createSupabaseApi(sb);
+    let r = await api.buyCat();
+    expect(r).toEqual({ result: { ok: false, reason: 'condition', have: 1, need: 3, siaCoins: 50, price: 100 }, state: null });
+    expect(calls).toEqual([['buy_character', { p_game: 'village', p_id: 'cat' }]]);
+    reply = { ok: true, siaCoins: 0, price: 100 };
+    r = await api.buyCat();
+    expect(r.result.ok).toBe(true);
+    expect(r.state?.catOwned).toBe(true);
+    expect(calls.map((c) => c[0])).toEqual(['buy_character', 'buy_character', 'village_state']);
+    const bad: RpcClient = { rpc: () => Promise.resolve({ data: null, error: { code: 'P0001', message: 'need login' } }) };
+    expect((await createSupabaseApi(bad).buyCat()).result.reason).toBe('login');
+  });
+
+  it('고양이 사기 (테스트 모드): 땅 3단계 · 시아코인 100', async () => {
+    const t = 1_700_000_000_000;
+    const api = createLocalApi(memory(), () => t);
+    await api.load();
+    expect((await api.buyCat()).result).toMatchObject({ ok: false, reason: 'condition', have: 0, need: 3 });
+    const st = createLocalApi(memory(), () => t);
+    const store = memory();
+    const s0 = newVillage(t);
+    s0.profile.landStage = 3;
+    s0.sia = 150;
+    store.setItem('siavillage:local', JSON.stringify({ state: s0, seq: 0, skew: 0 }));
+    const a2 = createLocalApi(store, () => t);
+    const r = await a2.buyCat();
+    expect(r.result).toEqual({ ok: true, siaCoins: 50, price: 100 });
+    expect(r.state).toMatchObject({ catOwned: true, sia: 50 });
+    expect((await a2.buyCat()).result.reason).toBe('owned');
+    expect((await st.load()).catOwned).toBe(false);
+  });
+
   it('시아코인 잔액은 상태에 실려 온다 (서버가 공통 지갑에서 읽는다)', async () => {
     const ok: RpcClient = { rpc: () => Promise.resolve({ data: { ...answer(1000), sia: 12 }, error: null }) };
     expect((await createSupabaseApi(ok).load()).sia).toBe(12);

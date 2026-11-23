@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { COINS, MAX_LV, SQUAD_SIZE, STAR2_LIVES, START_LIVES, WAVES, WAVE_SEC, ZODIAC_IDS } from '../src/data/balance';
+import { COINS, MAX_LV, SQUAD_SIZE, STAR2_LIVES, START_LIVES, WAVES, WAVE_SEC } from '../src/data/balance';
 import { BOSSES } from '../src/data/bosses';
-import { ROSTER, STARTERS } from '../src/data/characters';
+import { CAT_STAGE, EXTRAS, EXTRA_PRICE, ROSTER, STARTERS } from '../src/data/characters';
 import { ENDLESS_COINS, ENDLESS_ID, ENDLESS_MAX_SEC } from '../src/data/endless';
 import { ENEMIES } from '../src/data/enemies';
 import { CHAR_MAX_LV, LEVEL_COSTS, UPGRADES, upgradeCost } from '../src/data/growth';
@@ -12,12 +12,12 @@ import { STAGES } from '../src/data/stages';
 import { LIMITS } from '../src/game/progress';
 
 /**
- * 서버 SQL(supabase/migrations/048_defense.sql · 060_defense_review.sql)의 표·상수가 게임 데이터와 같은지 본다.
+ * 서버 SQL(supabase/migrations/048_defense.sql · 060_defense_review.sql · 074_cat_defense.sql)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·레벨업·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤에 이 함수들을 다시 정의하는 마이그레이션이 생기면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
-const FILES = ['048_defense.sql', '060_defense_review.sql'];
+const FILES = ['048_defense.sql', '060_defense_review.sql', '074_cat_defense.sql'];
 const sql = FILES.map(read).join('\n');
 
 /** 함수 하나의 본문 */
@@ -78,8 +78,35 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(ENDLESS_ID).toBe('endless');
   });
 
-  it('캐릭터 목록 · 처음부터 쓸 수 있는 캐릭터', () => {
-    expect(body('defense_level_up')).toContain(`(${ZODIAC_IDS.map((c) => `'${c}'`).join(',')})`);
+  it('캐릭터 목록 · 처음부터 쓸 수 있는 캐릭터 · 스테이지로 열리지 않는 캐릭터(고양이)', () => {
+    // 캐릭터 id 는 071 의 _check_character 가 본다 (모르는 id · 시아디펜스에서 열지 않은 고양이. 게임마다 따로 연다)
+    expect(body('defense_level_up')).toContain("perform public._check_character(me, p_character, 'defense');");
+    expect(body('defense_start')).toContain("perform public._check_character(me, c, 'defense');");
+    expect(read('071_characters.sql')).toMatch(/_character_games\(\)[\s\S]*'defense'/);
+    // 고양이는 해금 표(unlocked_characters)가 아니라 _defense_extra_ids 로 'character locked' 를 피한다
+    expect(EXTRAS).toEqual(['cat']);
+    expect(body('_defense_extra_ids')).toContain(`array[${EXTRAS.map((c) => `'${c}'`).join(',')}]::text[]`);
+    for (const f of ['defense_start', 'defense_level_up']) expect(body(f)).toContain('public._defense_extra_ids()');
+    // 071 의 _character_ids 에 명단 전체가 있다
+    const ids = read('071_characters.sql').match(/select array\[([^\]]+)\]::text\[\]/)![1].split(',').map((c) => c.trim().slice(1, -1));
+    expect(ROSTER.map((r) => r.id)).toEqual(ids);
+    // 여는 값: 071 의 _character_price = shared/characters.js 의 CHARACTER_PRICE = 게임의 EXTRA_PRICE (화면 글 "시아코인 100개로 열기" 가 이 값을 쓴다)
+    const sqlPrice = Number(read('071_characters.sql').match(/when 'cat' then (\d+)/)![1]);
+    const shared = readFileSync(fileURLToPath(new URL('../../../shared/characters.js', import.meta.url)), 'utf8');
+    const sharedPrice = Number(shared.match(/CHARACTER_PRICE = \{ cat: (\d+) \}/)![1]);
+    expect([EXTRA_PRICE.cat, sharedPrice]).toEqual([sqlPrice, sqlPrice]);
+    // 열기 버튼 글은 shared 의 unlockLabel 과 같은 모양
+    expect(shared).toContain('`시아코인 ${CHARACTER_PRICE[id] ?? \'\'}개로 열기`');
+    const appTs = readFileSync(fileURLToPath(new URL('../src/ui/app.ts', import.meta.url)), 'utf8');
+    expect(appTs).toContain('`시아코인 ${EXTRA_PRICE[id] ?? 0}개로 열기`');
+    expect(appTs).not.toContain('로비에서');
+    // 구매 조건: 3-5 클리어 (have 1|0, need 1). 071 의 _character_progress 가 이 이름으로 찾아 부른다
+    const cond = body('_cat_progress_defense');
+    expect(CAT_STAGE).toBe('3-5');
+    expect(cond).toContain(`d.stage_id = '${CAT_STAGE}'`);
+    expect(cond).toContain("'need', 1)");
+    expect(cond).toContain('security definer set search_path = public');
+    expect(read('071_characters.sql')).toContain("format('public._cat_progress_%s(uuid)', p_game)");
     expect(sql).toContain(`unlocked_characters text[] not null default array[${STARTERS.map((c) => `'${c}'`).join(', ')}]`);
   });
 
@@ -100,8 +127,8 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const st = body('defense_start');
     expect(st).toContain(') returns jsonb');
     expect(st).toContain("jsonb_build_object('run', rid, 'startLives', lives, 'upgrades', pr.upgrades, 'levels', pr.character_levels)");
-    const last = read(FILES[FILES.length - 1]);
-    expect(last.match(/create or replace function public\.defense_now\(/g)).toHaveLength(1);
+    expect(read('060_defense_review.sql').match(/create or replace function public\.defense_now\(/g)).toHaveLength(1);
+    expect(read('074_cat_defense.sql')).not.toContain('function public.defense_now(');
     expect(body('defense_now')).toContain('volatile');
   });
 
@@ -110,7 +137,7 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
       expect(sql, fn).toContain(`revoke all on function public.${fn} from public, anon;`);
       expect(sql, fn).toContain(`grant execute on function public.${fn} to authenticated;`);
     }
-    for (const fn of ['_defense_codex_ids', '_defense_codex_merge', '_defense_const', '_defense_stages', '_defense_regions', '_defense_level_costs', '_defense_upgrades', '_defense_profile_row', '_defense_profile_json', '_defense_region_open', '_defense_stage_open']) {
+    for (const fn of ['_defense_codex_ids', '_defense_codex_merge', '_defense_const', '_defense_stages', '_defense_regions', '_defense_level_costs', '_defense_upgrades', '_defense_profile_row', '_defense_profile_json', '_defense_region_open', '_defense_stage_open', '_defense_extra_ids', '_cat_progress_defense']) {
       expect(sql, fn).toMatch(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon, authenticated;`));
     }
     // 랭킹 뷰 2개는 누구나 읽는다

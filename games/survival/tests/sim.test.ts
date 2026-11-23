@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LIMIT, PLAYER, TICKS_PER_SEC } from '../src/data/balance';
-import { CHARACTERS } from '../src/data/characters';
+import { CHARACTERS, DODGE_SEC } from '../src/data/characters';
+import { hurtPlayer } from '../src/game/core';
 import { presetUpgrades } from '../src/data/upgrades';
 import { normalPolicy, simulate } from '../src/game/policy';
 import { createRun, makeInput, step, summarize } from '../src/game/sim';
@@ -116,13 +117,38 @@ describe('요괴 추적과 피격', () => {
 });
 
 describe('캐릭터', () => {
+  it('고양이 몸놀림: 준비돼 있으면 피해 한 번을 통째로 피하고, DODGE_SEC 초 뒤에 다시 피한다', () => {
+    const s = disarm(emptyRun({ char: 'cat' }));
+    expect(s.stats.dodge).toBe(DODGE_SEC);
+    const hp = s.player.hp;
+    // 첫 피해는 피한다 (맞은 것처럼 잠시 무적)
+    expect(hurtPlayer(s, 30)).toBe(false);
+    expect(s.player.hp).toBe(hp);
+    expect(s.player.inv).toBe(Math.round(PLAYER.invSec * TICKS_PER_SEC));
+    expect(s.events.slice(0, s.evN).some((e) => e.t === EV.dodge)).toBe(true);
+    advance(s, PLAYER.invSec + 0.1);
+    // 다음 피해는 그대로 맞는다
+    expect(hurtPlayer(s, 30)).toBe(true);
+    expect(s.player.hp).toBe(hp - 30);
+    // 간격이 지나면 다시 피한다
+    advance(s, DODGE_SEC);
+    expect(hurtPlayer(s, 30)).toBe(false);
+    expect(s.player.hp).toBe(hp - 30);
+    // 다른 캐릭터에는 없다
+    const r = disarm(emptyRun({ char: 'tiger' }));
+    expect(r.stats.dodge).toBe(0);
+    expect(hurtPlayer(r, 30)).toBe(true);
+  });
+
   it('기본 체력·이동 속도는 모두 같고, 특성으로만 조금 다르다', () => {
     for (const c of CHARACTERS) {
       const s = createRun({ seed: 1, char: c.id, map: 'field' });
       expect(s.stats.maxHp).toBe(c.id === 'ox' ? 110 : 100);
       expect(s.stats.speed).toBeCloseTo(PLAYER.speed * (c.id === 'rabbit' ? 1.08 : 1), 6);
       expect(s.weapons.length).toBe(1);
-      expect(Math.abs(c.trait.value)).toBeLessThanOrEqual(0.25);
+      // 고양이의 몸놀림(dodge)은 비율이 아니라 간격(초)이다
+      if (c.trait.stat === 'dodge') expect(c.trait.value).toBeGreaterThanOrEqual(15);
+      else expect(Math.abs(c.trait.value)).toBeLessThanOrEqual(0.25);
     }
   });
 

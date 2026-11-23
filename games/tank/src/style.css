@@ -1636,9 +1636,10 @@ body.in-game .sound-fab {
 }
 
 /* 12지신 선택 */
+/* 탱크 13대(12지신 + 고양이) + 랜덤 = 14칸: 넓은 화면 7칸 × 2줄 */
 .zodiac-pick {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 6px;
 }
 .zodiac-pick button {
@@ -1658,6 +1659,56 @@ body.in-game .sound-fab {
   border-color: var(--ink);
   background: #fff1c2;
   box-shadow: 0 2px 0 var(--ink);
+}
+.zodiac-pick button {
+  position: relative;
+}
+/* 잠긴 탱크(안 연 고양이): 그림은 보이게 흐리게, 오른쪽 위 자물쇠 */
+.zodiac-pick button.locked .tank-svg {
+  filter: grayscale(0.85);
+  opacity: 0.55;
+}
+.zodiac-pick button.locked span {
+  color: #8a6a4a;
+}
+.zodiac-pick .lock {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1;
+}
+/* '시아코인 100개로 열기': 한 번 누르면 확인 글(armed), 한 번 더 누르면 산다 */
+.unlock-btn {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  max-width: 100%;
+}
+.unlock-btn.armed {
+  background: var(--sun);
+}
+.unlock-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+/* 구매 조건(30판)을 아직 못 넘었을 때: 남은 조건과 지금 값 */
+.unlock-cond {
+  margin: 0;
+  font-size: 13px;
+  color: #8a6a4a;
+}
+.lock-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  text-align: center;
+  color: #8a6a4a;
 }
 .zodiac-pick button:disabled {
   opacity: 0.45;

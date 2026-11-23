@@ -5,6 +5,8 @@
 
 export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;
 export type ZodiacId = (typeof ZODIAC_IDS)[number];
+/** 대장으로 고를 수 있는 캐릭터: 십이지 12 + 고양이 (shared/characters.js 의 ALL_CHARACTER_IDS 와 같다) */
+export type LeaderId = ZodiacId | 'cat';
 
 /** 길 폭 (가운데가 x=0, 왼쪽 끝 -ROAD_W/2) */
 export const ROAD_W = 560;
@@ -136,12 +138,15 @@ export const CRATE_HP = 220;
 export const POWER_MUL = 2;
 
 export interface LeaderDef {
-  id: ZodiacId;
+  id: LeaderId;
   name: string;
   trait: string;
   /** 처음 열려 있는 대장인가 (아니면 unlockRegion 지역을 클리어하면 열린다) */
   starter: boolean;
+  /** 이 지역 5번째 스테이지를 클리어하면 열린다. -1 = 지역으로 열리지 않는 추가 캐릭터 (고양이: 대장 고르기 화면에서 시아코인으로 연다, 게임마다 따로) */
   unlockRegion: number;
+  /** 십이지 밖의 추가 캐릭터 (진행으로 열리지 않는다, progress.ts 의 extraOpen) */
+  extra?: boolean;
   /** 시작 대원 배율 */
   startMul: number;
   /** 요괴·보스·장애물에 잃는 대원 배율 */
@@ -168,13 +173,18 @@ export interface LeaderDef {
   bossLossMul: number;
   /** 엽전 배율 (서버도 같은 값으로 계산한다) */
   coinMul: number;
+  /** 대원이 모두 쓰러졌을 때 다시 일어나는 횟수 (고양이 "아홉 목숨") */
+  lives: number;
+  /** 다시 일어날 때 대원 = max(livesMin, 이번 판 최대 대원 × livesFrac) */
+  livesFrac: number;
+  livesMin: number;
 }
 
 const base = {
-  startMul: 1, lossMul: 1, clashMul: 1, bossMul: 1, moveMul: 1, gateMul: 1, hordeMul: 1, rangeMul: 1, crateMul: 1, timesMul: 1, warnAdd: 0, bossLossMul: 1, coinMul: 1,
+  startMul: 1, lossMul: 1, clashMul: 1, bossMul: 1, moveMul: 1, gateMul: 1, hordeMul: 1, rangeMul: 1, crateMul: 1, timesMul: 1, warnAdd: 0, bossLossMul: 1, coinMul: 1, lives: 0, livesFrac: 0, livesMin: 0,
 };
 
-/** 대장 12종 (PRD 6장). 차이는 10% 안팎으로 작게. 해금 지역은 SQL(_charge_regions)과 같다 */
+/** 대장 12종 + 고양이 (PRD 6장). 차이는 10% 안팎으로 작게. 해금 지역은 SQL(_charge_regions)과 같다 */
 export const LEADERS: LeaderDef[] = [
   { ...base, id: 'rat', name: '쥐', trait: '시작 대원 +10%', starter: true, unlockRegion: 0, startMul: 1.1 },
   { ...base, id: 'ox', name: '소', trait: '요괴·보스·장애물에 잃는 대원 -10%', starter: true, unlockRegion: 0, lossMul: 0.9 },
@@ -188,7 +198,9 @@ export const LEADERS: LeaderDef[] = [
   { ...base, id: 'rooster', name: '닭', trait: '× 문 결과 +5%', starter: false, unlockRegion: 7, timesMul: 1.05 },
   { ...base, id: 'dog', name: '개', trait: '보스 공격 예고 0.3초 빨리, 보스에게 잃는 대원 -10%', starter: false, unlockRegion: 8, warnAdd: 0.3, bossLossMul: 0.9 },
   { ...base, id: 'pig', name: '돼지', trait: '엽전 획득 +10%', starter: false, unlockRegion: 9, coinMul: 1.1 },
+  // 13번째 대원: 수치 대신 한 번 쓰는 특성. 지역으로 열리지 않는다 (대장 고르기 화면에서 시아코인으로 연다, 게임마다 따로)
+  { ...base, id: 'cat', name: '고양이', trait: '아홉 목숨: 모두 쓰러져도 한 번, 이번 판 최대 대원의 15%(최소 9명)로 다시 일어나요', starter: false, unlockRegion: -1, extra: true, lives: 1, livesFrac: 0.15, livesMin: 9 },
 ];
 
 export const leaderOf = (id: string): LeaderDef => LEADERS.find((l) => l.id === id) ?? LEADERS[0];
-export const STARTERS: ZodiacId[] = LEADERS.filter((l) => l.starter).map((l) => l.id);
+export const STARTERS: LeaderId[] = LEADERS.filter((l) => l.starter).map((l) => l.id);

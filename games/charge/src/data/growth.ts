@@ -1,4 +1,4 @@
-import { ZODIAC_IDS, LEADERS, type ZodiacId } from './balance';
+import { ZODIAC_IDS, LEADERS, type LeaderId, type ZodiacId } from './balance';
 
 /**
  * 판 밖 성장 (PRD 9장): 엽전 · 영구 강화 · 지역 열기 · 대장 해금.
@@ -80,9 +80,9 @@ export const endlessCoins = (meters: number, bosses: number) => Math.floor(Math.
 /** 엽전 최종: (판 엽전 + 상자 엽전) × 강화 배율 × 대장 배율 (내림) */
 export const totalCoins = (raw: number, crate: number, coinMul: number, leaderMul: number) => Math.floor((raw + crate) * coinMul * leaderMul);
 
-/** 클리어한 스테이지로 열리는 대장 */
-export function unlockedLeaders(cleared: (stageId: string) => boolean): ZodiacId[] {
-  return LEADERS.filter((l) => l.starter || cleared(`${l.unlockRegion}-5`)).map((l) => l.id);
+/** 클리어한 스테이지로 열리는 대장 (십이지만. 고양이 같은 추가 캐릭터는 진행으로 열리지 않는다) */
+export function unlockedLeaders(cleared: (stageId: string) => boolean): LeaderId[] {
+  return LEADERS.filter((l) => !l.extra && (l.starter || cleared(`${l.unlockRegion}-5`))).map((l) => l.id);
 }
 
 export const isZodiac = (id: string): id is ZodiacId => (ZODIAC_IDS as readonly string[]).includes(id);

@@ -1,4 +1,4 @@
-import { HERO_IDS, HEROES, MAX_LEVEL, MAX_TURNS, STAGES, TOWER_TURNS, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
+import { EXTRA_HERO_IDS, HERO_IDS, HEROES, isExtraHero, MAX_LEVEL, MAX_TURNS, STAGES, TOWER_TURNS, isHeroId, stageOf, type HeroId, type RunResult, type RunSnapshot, type UpgradeKey, type Upgrades } from '../sim';
 import { REGIONS } from '../data/regions';
 import { clearCoins, failCoins, levelCost, levelOf, rewardFor, totalCoins, towerCoins, upgradeCost, upgradeLv, upgradeOf } from '../data/growth';
 
@@ -19,9 +19,13 @@ export interface FingerProfile {
   levels: Partial<Record<HeroId, number>>;
   /** 끝없는 탑 최고 기록 (올라간 층 · 그때 쓴 턴). 없으면 null */
   tower: { floor: number; turns: number } | null;
+  /** 시아핑거에서 시아코인으로 연 추가 대원 (고양이 — 게임마다 따로). 서버 _finger_profile_json 의 owned (076) */
+  owned: HeroId[];
+  /** 테스트 모드(?local=1)만: 고양이 구매 조건을 넘은 것으로/못 넘은 것으로 본다 (?cat=0 · ?cat=cond). 서버 프로필에는 없다 */
+  catReady?: boolean;
 }
 
-export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {}, tower: null });
+export const emptyProfile = (): FingerProfile => ({ coins: 0, stages: {}, upgrades: {}, levels: {}, tower: null, owned: [] });
 
 /** 서버·기기에서 읽은 값을 프로필 모양으로 (모르는 값은 버린다) */
 export function normalize(p: unknown): FingerProfile {
@@ -41,7 +45,8 @@ export function normalize(p: unknown): FingerProfile {
   const t = o.tower as { floor?: unknown; turns?: unknown } | null | undefined;
   const floor = Math.max(0, Math.floor(Number(t?.floor) || 0));
   const tower = floor > 0 ? { floor, turns: Math.max(0, Math.floor(Number(t?.turns) || 0)) } : null;
-  return { coins: Math.max(0, Math.floor(Number(o.coins) || 0)), stages, upgrades, levels, tower };
+  const owned = EXTRA_HERO_IDS.filter((id) => Array.isArray(o.owned) && o.owned.includes(id));
+  return { coins: Math.max(0, Math.floor(Number(o.coins) || 0)), stages, upgrades, levels, tower, owned };
 }
 
 /** 서버 검증 값 (SQL _finger_const 와 같다) */
@@ -90,9 +95,16 @@ export function stageOpen(p: FingerProfile, id: string): boolean {
   return st.no === 1 || cleared(p, `${st.region}-${st.no - 1}`);
 }
 
-/** 합류한 대원: 처음 3종 + 합류 지역의 5번째 스테이지를 깬 대원 */
+/**
+ * 추가 대원(고양이)을 쓸 수 있나 — 잠금 판단은 이 한 곳. 지역 합류와 상관없이 시아코인으로 계정마다 연다
+ * (서버 _check_character 가 'locked character' 로 막는다). heroesOf · 파티 고르기 · 시작 검사 · 레벨 올리기가 이걸 따른다.
+ */
+export const extraOpen = (p: FingerProfile, id: HeroId): boolean => (p.owned ?? []).includes(id);
+
+/** 합류한 대원: 처음 3종 + 합류 지역의 5번째 스테이지를 깬 대원 (십이지 순서) + 연 추가 대원 */
 export function heroesOf(p: FingerProfile): HeroId[] {
-  return HERO_IDS.filter((id) => HEROES[id].unlockRegion === 0 || cleared(p, `${HEROES[id].unlockRegion}-5`));
+  const zodiac: HeroId[] = HERO_IDS.filter((id) => HEROES[id].unlockRegion === 0 || cleared(p, `${HEROES[id].unlockRegion}-5`));
+  return [...zodiac, ...EXTRA_HERO_IDS.filter((id) => extraOpen(p, id))];
 }
 
 /** 판에 들고 갈 파티: 마지막 파티 중 합류한 대원만, 비었으면 합류한 대원 앞에서 4명 */
@@ -135,6 +147,8 @@ export function checkStart(p: FingerProfile, stage: string, party: string[], mod
     if (!stageOpen(p, stage)) return 'stage locked';
   }
   if (!Array.isArray(party) || party.length < 1 || party.length > 4 || new Set(party).size !== party.length || !party.every(isHeroId)) return 'bad party';
+  // 서버와 같은 순서: 공용 캐릭터 검사(안 연 고양이)가 먼저
+  if (party.some((id) => isExtraHero(id as HeroId) && !extraOpen(p, id as HeroId))) return 'locked character';
   const open = heroesOf(p);
   if (!party.every((id) => open.includes(id as HeroId))) return 'hero locked';
   return null;
@@ -219,6 +233,7 @@ export function buyUpgrade(p: FingerProfile, key: UpgradeKey): string | null {
 /** 대원 레벨 올리기 (프로필을 고친다) */
 export function levelUp(p: FingerProfile, id: string): string | null {
   if (!isHeroId(id)) return 'bad hero';
+  if (isExtraHero(id) && !extraOpen(p, id)) return 'locked character';
   if (!heroesOf(p).includes(id)) return 'hero locked';
   const lv = levelOf(p.levels, id);
   if (lv >= MAX_LEVEL) return 'max level';
@@ -229,11 +244,72 @@ export function levelUp(p: FingerProfile, id: string): string | null {
   return null;
 }
 
+/** 고양이를 여는 값 (시아코인, 게임마다 따로). SQL 071 _character_price · shared/characters.js CHARACTER_PRICE 와 같다 (tests/sql.test.ts) */
+export const CAT_PRICE = 100;
+/** 잠긴 고양이 칸의 버튼 글 (shared/characters.js 의 unlockLabel('cat') 과 같은 글) */
+export const UNLOCK_LABEL = `시아코인 ${CAT_PRICE}개로 열기`;
+/** 한 번 더 눌러야 산다 (두 번 누르기 확인) */
+export const UNLOCK_CONFIRM = `${CAT_PRICE}코인을 쓸까요? 한 번 더 누르기`;
+/** 서버 거절 'locked character' */
+export const CAT_LOCKED_TEXT = `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`;
+
+/** 고양이 구매 조건: 시아핑거 3-5 클리어 (SQL 076 _cat_progress_finger 와 같다 — tests/sql.test.ts) */
+export const CAT_STAGE = '3-5';
+export const CAT_NEED = 1;
+
+/** 고양이 구매 조건 진행 {have, need} (서버 _cat_progress_finger 와 같은 규칙. 프로필의 스테이지 기록으로 센다) */
+export const catProgress = (p: FingerProfile) => ({ have: (p.catReady ?? cleared(p, CAT_STAGE)) ? 1 : 0, need: CAT_NEED });
+export const catReady = (p: FingerProfile) => {
+  const c = catProgress(p);
+  return c.have >= c.need;
+};
+
+/** 가장 멀리 깬 스테이지 (없으면 null) */
+export function farthestStage(p: FingerProfile): string | null {
+  let best: { id: string; r: number; n: number } | null = null;
+  for (const id of Object.keys(p.stages)) {
+    const st = stageOf(id);
+    if (st && (!best || st.region > best.r || (st.region === best.r && st.no > best.n))) best = { id, r: st.region, n: st.no };
+  }
+  return best?.id ?? null;
+}
+
+/** 조건을 못 넘었을 때 안내 (대원 화면 · 칸을 눌렀을 때) */
+export function catConditionText(p: FingerProfile): string {
+  const far = farthestStage(p);
+  return `${CAT_STAGE} 스테이지를 클리어하면 열 수 있어요 · ${far ? `지금 ${far}까지` : '아직 클리어한 스테이지가 없어요'}`;
+}
+/** 칸 안의 짧은 안내 */
+export const CAT_CONDITION_SHORT = `${CAT_STAGE}를 깨면 열려요`;
+
+/** 고양이 열기 결과 → 화면 한 줄 (shared/characters.js 의 buyMessage 와 같은 글) */
+export function unlockText(r: UnlockAnswer): string {
+  const n = (v: number | undefined) => Number(v ?? 0).toLocaleString('ko-KR');
+  if (r.ok) return r.siaCoins === undefined ? '열었어요!' : `열었어요! 남은 시아코인 ${n(r.siaCoins)}개`;
+  if (r.reason === 'owned') return '이미 열었어요';
+  if (r.reason === 'condition') return `아직 열 수 없어요 · ${CAT_STAGE} 스테이지를 클리어해 주세요`;
+  if (r.reason === 'coin') return `시아코인이 모자라요 (${n(r.siaCoins)} / ${CAT_PRICE})`;
+  if (r.reason === 'login') return '로그인이 필요해요';
+  return '열지 못했어요. 잠시 후 다시 시도해 주세요';
+}
+
+/** 서버 buy_character 결과 모양 (071) */
+export interface UnlockAnswer {
+  ok: boolean;
+  reason?: 'owned' | 'coin' | 'condition' | 'login' | 'error';
+  have?: number;
+  need?: number;
+  siaCoins?: number;
+  price?: number;
+}
+
 /** 서버가 거절한 까닭 → 화면 글 */
 export function whyText(why: string): string {
   const m: Record<string, string> = {
     'stage locked': '아직 열리지 않은 스테이지예요',
     'hero locked': '아직 합류하지 않은 대원이 있어요',
+    'locked character': CAT_LOCKED_TEXT,
+    'bad character': '파티를 다시 골라 주세요',
     'bad party': '파티를 다시 골라 주세요 (1~4명, 같은 대원 없이)',
     'bad stage': '아직 준비 중인 스테이지예요',
     'not enough coins': '엽전이 모자라요',

@@ -10,9 +10,20 @@ import {
   levelUp,
   minRunTime,
   normalize,
+  partyOf,
   regionOpen,
   snapshotOf,
   stageOpen,
+  whyText,
+  CAT_LOCKED_TEXT,
+  CAT_PRICE,
+  CAT_STAGE,
+  catConditionText,
+  catProgress,
+  catReady,
+  farthestStage,
+  UNLOCK_LABEL,
+  unlockText,
   type FingerProfile,
 } from '../src/game/progress';
 import { ApiError, createLocalApi, createSupabaseApi, rejectOf, type ServerClient, type Store } from '../src/net/api';
@@ -88,7 +99,7 @@ describe('열기 · 강화 · 레벨', () => {
     const p = emptyProfile();
     expect(stageOpen(p, '1-1')).toBe(true);
     expect(stageOpen(p, '1-2')).toBe(false);
-    expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger']);
+    expect(heroesOf(p)).toEqual(['rat', 'ox', 'tiger']); // 고양이는 지역 합류 밖 · 시아코인으로 연 사람만 (extraOpen)
     for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5']) p.stages[id] = 1;
     expect(regionOpen(p, 2)).toBe(false); // 별 5개 < 9
     for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5']) p.stages[id] = 2;
@@ -130,8 +141,8 @@ describe('열기 · 강화 · 레벨', () => {
   });
 
   it('스냅숏은 파티 대원 레벨과 강화만, 서버 프로필 모양을 읽는다', () => {
-    const p = normalize({ coins: '120', stages: { '1-1': 3, '9-9': 2, '1-2': 0 }, upgrades: { hp: 2, coin: 99, x: 1 }, levels: { rat: 4, cat: 3 }, heroes: ['rat'] });
-    expect(p).toEqual({ coins: 120, stages: { '1-1': 3 }, upgrades: { hp: 2, coin: 5 }, levels: { rat: 4 }, tower: null });
+    const p = normalize({ coins: '120', stages: { '1-1': 3, '9-9': 2, '1-2': 0 }, upgrades: { hp: 2, coin: 99, x: 1 }, levels: { rat: 4, wolf: 3 }, heroes: ['rat'] });
+    expect(p).toEqual({ coins: 120, stages: { '1-1': 3 }, upgrades: { hp: 2, coin: 5 }, levels: { rat: 4 }, tower: null, owned: [] });
     expect(normalize({ tower: { floor: '12', turns: 40 } }).tower).toEqual({ floor: 12, turns: 40 });
     expect(normalize({ tower: { floor: 0, turns: 3 } }).tower).toBeNull();
     expect(snapshotOf(p, '1-1', ['ox', 'rat'])).toEqual({ stage: '1-1', mode: 'normal', party: ['ox', 'rat'], levels: { ox: 1, rat: 4 }, upgrades: { hp: 2, coin: 5 } });
@@ -146,6 +157,115 @@ const memStore = (): Store & { map: Map<string, string> } => {
   const map = new Map<string, string>();
   return { map, getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v), removeItem: (k) => void map.delete(k) };
 };
+
+describe('고양이 구매 조건 (3-5 클리어)', () => {
+  it('3-5 를 깨야 조건 통과 · 안내 글에 지금 가장 멀리 깬 스테이지', () => {
+    const p = emptyProfile();
+    expect(CAT_STAGE).toBe('3-5');
+    expect(catProgress(p)).toEqual({ have: 0, need: 1 });
+    expect(catReady(p)).toBe(false);
+    expect(catConditionText(p)).toBe('3-5 스테이지를 클리어하면 열 수 있어요 · 아직 클리어한 스테이지가 없어요');
+    p.stages = { '1-1': 3, '2-5': 1, '2-3': 2, '1-5': 3 };
+    expect(farthestStage(p)).toBe('2-5');
+    expect(catConditionText(p)).toBe('3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-5까지');
+    p.stages['3-5'] = 1;
+    expect(catProgress(p)).toEqual({ have: 1, need: 1 });
+    expect(catReady(p)).toBe(true);
+    // 서버 프로필에는 catReady 가 없다 (테스트 모드 전용)
+    expect(normalize({ catReady: true }).catReady).toBeUndefined();
+  });
+});
+
+describe('고양이 잠금 (시아코인으로 연 사람만)', () => {
+  it('안 열었으면 파티 · 시작 · 레벨 올리기에서 빠지고, owned 에 있으면 쓴다', () => {
+    const p = emptyProfile();
+    expect(heroesOf(p)).not.toContain('cat');
+    expect(checkStart(p, '1-1', ['cat', 'rat'])).toBe('locked character');
+    p.coins = 99999;
+    expect(levelUp(p, 'cat')).toBe('locked character');
+    // 마지막 파티에 고양이가 남아 있어도 잠겨 있으면 뺀다
+    expect(partyOf(p, ['cat', 'ox'])).toEqual(['ox']);
+    expect(partyOf(p, ['cat'])).toEqual(['rat', 'ox', 'tiger']);
+    const q: FingerProfile = { ...emptyProfile(), owned: ['cat'], coins: 99999 };
+    expect(heroesOf(q)).toEqual(['rat', 'ox', 'tiger', 'cat']);
+    expect(checkStart(q, '1-1', ['cat', 'rat'])).toBeNull();
+    expect(levelUp(q, 'cat')).toBeNull();
+    expect(partyOf(q, ['cat', 'ox'])).toEqual(['cat', 'ox']);
+  });
+  it('서버 프로필의 owned 를 읽는다 (모르는 id 는 버린다)', () => {
+    expect(normalize({ owned: ['cat', 'lion', 'rat'] }).owned).toEqual(['cat']);
+    expect(normalize({}).owned).toEqual([]);
+  });
+  it('서버 거절 locked character → 안내 글 · 다시 보내지 않는 거절', () => {
+    expect(rejectOf('P0001: locked character')).toBe('locked character');
+    expect(whyText('locked character')).toBe(CAT_LOCKED_TEXT);
+    expect(CAT_LOCKED_TEXT).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
+    expect(CAT_PRICE).toBe(100);
+    expect(UNLOCK_LABEL).toBe('시아코인 100개로 열기');
+    expect(unlockText({ ok: true, siaCoins: 1234 })).toBe('열었어요! 남은 시아코인 1,234개');
+    expect(unlockText({ ok: false, reason: 'owned' })).toBe('이미 열었어요');
+    expect(unlockText({ ok: false, reason: 'condition', have: 0, need: 1 })).toBe('아직 열 수 없어요 · 3-5 스테이지를 클리어해 주세요');
+    expect(unlockText({ ok: false, reason: 'coin', siaCoins: 40 })).toBe('시아코인이 모자라요 (40 / 100)');
+  });
+  it('테스트 모드: 고양이는 기본으로 열림, owned 를 비우면(?cat=0) 잠김', async () => {
+    const open = createLocalApi(memStore());
+    expect((await open.loadProfile()).owned).toEqual(['cat']);
+    expect(await open.start('1-1', ['cat'])).toMatch(/^local-/);
+    // ?cat=cond: 잠김 + 구매 조건 미달 → 열기는 'condition'
+    const cond = createLocalApi(memStore(), undefined, [], false);
+    const rc = await cond.unlock('cat');
+    expect(rc.answer).toMatchObject({ ok: false, reason: 'condition', have: 0, need: 1 });
+    expect(rc.profile?.owned).toEqual([]);
+    // ?cat=0: 잠김 + 조건 통과
+    const locked = createLocalApi(memStore(), undefined, [], true);
+    expect((await locked.loadProfile()).owned).toEqual([]);
+    await expect(locked.start('1-1', ['cat'])).rejects.toThrow('locked character');
+    // 테스트 모드의 열기 버튼: 서버 없이 바로 열린다 · 두 번째는 '이미 열었어요'
+    const r = await locked.unlock('cat');
+    expect(r.answer.ok).toBe(true);
+    expect(r.profile?.owned).toEqual(['cat']);
+    expect(await locked.start('1-1', ['cat'])).toMatch(/^local-/);
+    expect((await locked.unlock('cat')).answer.reason).toBe('owned');
+  });
+
+  it("서버: buy_character('finger', id) 로 열고 새 프로필(owned)을 받는다 · 모자라면 프로필 없음", async () => {
+    const calls: { fn: string; args?: Record<string, unknown> }[] = [];
+    let coins = 150;
+    let cond = false;
+    const owned: string[] = [];
+    const c: ServerClient = {
+      rpc(fn, args) {
+        calls.push({ fn, args });
+        if (fn === 'buy_character') {
+          if (owned.includes(String(args?.p_id))) return Promise.resolve({ data: { ok: false, reason: 'owned', siaCoins: coins, price: 100 }, error: null });
+          if (cond) return Promise.resolve({ data: { ok: false, reason: 'condition', have: 0, need: 1, siaCoins: coins, price: 100 }, error: null });
+          if (coins < 100) return Promise.resolve({ data: { ok: false, reason: 'coin', siaCoins: coins, price: 100 }, error: null });
+          coins -= 100;
+          owned.push(String(args?.p_id));
+          return Promise.resolve({ data: { ok: true, siaCoins: coins, price: 100 }, error: null });
+        }
+        if (fn === 'finger_profile') return Promise.resolve({ data: { coins: 0, owned: [...owned] }, error: null });
+        return Promise.resolve({ data: null, error: { message: 'no' } });
+      },
+      functions: { invoke: () => Promise.resolve({ data: null, error: { message: 'no' } }) },
+    };
+    const api = createSupabaseApi(c, 'u1', memStore());
+    const a = await api.unlock('cat');
+    expect(calls[0]).toEqual({ fn: 'buy_character', args: { p_game: 'finger', p_id: 'cat' } });
+    expect(a.answer).toMatchObject({ ok: true, siaCoins: 50 });
+    expect(a.profile?.owned).toEqual(['cat']);
+    expect((await api.unlock('cat')).answer.reason).toBe('owned');
+    owned.length = 0;
+    cond = true;
+    const d = await api.unlock('cat');
+    expect(d.answer).toMatchObject({ ok: false, reason: 'condition' });
+    expect(d.profile).not.toBeNull(); // 조건 미달이면 진행을 다시 받아 안내를 고친다
+    cond = false;
+    const b = await api.unlock('cat');
+    expect(b.answer.reason).toBe('coin');
+    expect(b.profile).toBeNull();
+  });
+});
 
 describe('테스트 모드 저장 (?local=1)', () => {
   it('시작 → 실제 판의 조작 → 기기에서 다시 돌려 엽전 · 별, 레벨 올리기', async () => {

@@ -874,6 +874,14 @@ export class GameScene extends Phaser.Scene {
           if (m) fx.ring(m.x, m.y, m.r + 40, COLOR.primary, 300);
           break;
         }
+        case 'pounce': {
+          // 고양이 덮치기: 노린 요괴까지 가는 길을 잠깐 긋고, 멈췄던 자리에 고리
+          this.hooks.sound('jump', { rate: 1.5 });
+          fx.ring(e.x, e.y, 70, COLOR.primary, 300);
+          fx.beam(e.x, e.y, e.tx, e.ty, 6, COLOR.white, 220);
+          fx.text(e.x, e.y - 56, '덮치기!', HEX.primary, 26);
+          break;
+        }
         case 'revive': {
           const h = this.run.heroes[e.hero];
           this.shownHp[e.hero] = h.hp;
@@ -980,6 +988,7 @@ export class GameScene extends Phaser.Scene {
       case 'swift':
       case 'roll':
       case 'dash':
+      case 'pounce':
         this.hooks.sound('boost', { rate: 1.2 });
         fx.ring(x, y, h.r + 60, COLOR.primary, 320);
         fx.burst(x, y, G.dot, COLOR.primary, 6, 70, 14, 320);
@@ -1157,6 +1166,16 @@ export class GameScene extends Phaser.Scene {
             img.setScale(40 / img.width).setFlipY(dir > 0);
             this.tweens.add({ targets: img, y: RY + y1 + dir * 10, duration: 100, delay: 80, yoyo: true, repeat: 1, onComplete: () => img.destroy() });
           }
+        }
+        break;
+      }
+      case 'scratch': {
+        // 냥냥 펀치: 노린 요괴에 할퀸 자국 세 줄
+        this.hooks.sound('survSlash', { rate: 1.6 });
+        for (const [x0, y0, x1, y1] of e.lines) {
+          fx.beam(x0, y0, x1, y1, 4, COLOR.white, 200);
+          for (let i = 0; i < 3; i++) fx.beam(x1 - 30 + i * 20, y1 - 34, x1 - 10 + i * 20, y1 + 34, 6, COLOR.white, 220 + i * 60);
+          fx.burst(x1, y1, G.star, COLOR.primary, 4, 60, 22, 320);
         }
         break;
       }

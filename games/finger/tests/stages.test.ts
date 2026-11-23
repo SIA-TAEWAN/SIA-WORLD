@@ -51,7 +51,7 @@ describe('스테이지 데이터 (1지역)', () => {
     expect(() => buildConfig({ stage: '1-1', party: [] })).toThrow(ConfigError);
     expect(() => buildConfig({ stage: '1-1', party: ['rat', 'rat'] })).toThrow(ConfigError);
     expect(() => buildConfig({ stage: '1-1', party: ['rat', 'ox', 'tiger', 'rabbit', 'dog'] })).toThrow(ConfigError);
-    expect(() => buildConfig({ stage: '1-1', party: ['cat'] })).toThrow(ConfigError);
+    expect(() => buildConfig({ stage: '1-1', party: ['wolf'] })).toThrow(ConfigError);
     expect(() => buildConfig({ stage: '9-9', party: ['rat'] })).toThrow(ConfigError);
   });
 

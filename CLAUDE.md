@@ -9,12 +9,13 @@ SIA WORLD: a set of browser games behind one login, served as a static site on G
 ## Layout
 
 - `index.html` — login + lobby (no build step). Game list, per-game open/closed flags and online counts.
-- `shared/*.js` — plain ES modules (auth, supabase client, games list, wallet, room, presence, ranking dialog, sound, zodiac art). **Loaded at runtime by every game, not bundled**, so all games share one login session. A change here affects every game.
+- `shared/*.js` — plain ES modules (auth, supabase client, games list, wallet, room, presence, ranking dialog, sound, zodiac art).
+  `shared/characters.js` holds characters outside the 12 zodiac (고양이 `cat`). It is unlocked **per game** for 100 시아코인 from that game's character-select screen (마을: 13번째 주민), only after that game's progress condition (each game migration defines `_cat_progress_<game>(uuid)` → `{have, need}`; play counts for games without records go to `character_play_counts` via `_count_play`) (`buyCharacter(game, id)` → `buy_character`, `071_characters.sql`); the lobby only introduces it. Card games keep using the 12 in `shared/zodiac.js` (화투 12달). Game start RPCs check characters with `_check_character(user, id, game)` ('bad character' / 'locked character'); a new character-select game must do the same, add its id to `_character_games` / `CHARACTER_GAMES`, define `_cat_progress_<game>`, and show the lock + buy button via `loadOwnedCharacters(game)`. **Loaded at runtime by every game, not bundled**, so all games share one login session. A change here affects every game.
 - Separate Vite + TypeScript packages, each with its own `package.json`, `node_modules` and tests:
   - `games/` — 맞고 and 카지노 (poker, holdem, blackjack, roulette). Shared shell in `games/lib/`.
   - `games/tank`, `games/running` (dev port 5290), `games/volleyball` (5291), `games/survival` (5292), `games/defense` (5293), `games/village` (5294), `games/charge` (5295, 시아돌격대).
   - `games/finger` (5296) — 시아핑거, 1인 턴제 튕기기 RPG. Simulation in `supabase/functions/_shared/finger/` (shared with the `finger-finish` Edge Function, which re-plays the submitted inputs), SQL in `067_finger.sql`.
-- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 070; check `ls supabase/migrations` before adding one).
+- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 076; check `ls supabase/migrations` before adding one).
 - `supabase/functions/_shared/` — card-game rule engines and round runner; `game-action` and `game-timeout` are the card-game Edge Functions; `finger-finish` (시아핑거) re-plays a run with `_shared/finger/`.
 - Each newer game keeps its spec in `games/<name>/PRD.md` and art notes in `ASSETS.md`.
 

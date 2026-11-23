@@ -108,13 +108,25 @@ button, input { font: inherit; color: inherit; }
 .lobby .sub-actions .btn { flex: 1; }
 
 /* ---------- 대기실 ---------- */
-.chars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.chars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .char { position: relative; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 3px 0 2px; cursor: pointer; text-align: center; min-width: 0; }
 /* 캐릭터 얼굴은 모두 같은 크기의 원 안에 (그림마다 여백이 달라 크기가 들쭉날쭉해 보이지 않게) */
 .char img { width: 78%; aspect-ratio: 1; object-fit: cover; display: block; margin: 0 auto; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); }
 .char span { display: block; font-size: 11px; white-space: nowrap; overflow: hidden; }
 .char.sel { border-color: var(--outline); background: var(--panel-strong); box-shadow: inset 0 0 0 3px var(--primary); }
 .char.taken { opacity: 0.4; cursor: default; }
+/* 잠긴 캐릭터(안 연 고양이): 그림은 보이게 흐리게, 오른쪽 위 자물쇠 */
+.char.locked img { filter: grayscale(0.85); opacity: 0.55; }
+.char.locked span { color: var(--ink-soft); }
+.char .lock { position: absolute; top: 1px; right: 2px; font-size: 13px; font-style: normal; line-height: 1; }
+.lock-note { margin: 8px 0 0; text-align: center; }
+.lock-note:empty { display: none; }
+/* '시아코인 100개로 열기': 한 번 누르면 확인 글(armed), 한 번 더 누르면 산다 */
+.unlock-btn { font: inherit; font-size: 14px; color: var(--ink); background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 6px 14px; cursor: pointer; max-width: 100%; }
+.unlock-btn.armed { background: var(--primary); }
+.unlock-btn:disabled { opacity: 0.6; cursor: default; }
+/* 구매 조건을 아직 못 넘었을 때: 남은 조건과 지금 값 */
+.unlock-cond { margin: 0; font-size: 13px; color: var(--ink-soft); }
 /* flex: none — 대기실은 flex 열이라 화면이 낮으면 알약이 줄어 글자가 밖으로 넘쳤다 */
 .room .status { flex: none; align-self: center; text-align: center; color: var(--ink); font-size: 15px; min-height: 22px; margin: 0; background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 4px 14px; }
 .room .grow { flex: 1; min-height: 4px; }

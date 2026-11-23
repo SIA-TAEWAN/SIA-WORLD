@@ -647,6 +647,12 @@ export class GameScene extends Phaser.Scene {
           this.burnShown = s.t;
         }
         break;
+      case 'lives':
+        // 고양이 "아홉 목숨": 쓰러진 자리에서 다시 일어난다
+        for (let i = 0; i < 4; i++) this.pop(CX + s.x + (Math.random() * 2 - 1) * 60, CROWD_Y + Math.random() * 30, 140);
+        this.float(`아홉 목숨! +${e.troops}`, CX + s.x, CROWD_Y - 130, '#ffe066');
+        this.hooks.sound('boost');
+        break;
       case 'summon':
         this.float('부하를 불렀다!', CX, this.sy(e.horde.z) - 60, '#ff4d6d', 34);
         break;

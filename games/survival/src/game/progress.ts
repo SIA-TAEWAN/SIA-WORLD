@@ -6,7 +6,7 @@
  *   · tests/sql.test.ts 가 SQL의 표·상수와 같은지 비교한다.
  * 시간 단위는 모두 초.
  */
-import { ENDLESS, HELL, RUN_SEC, ZODIAC_IDS, type ZodiacId } from '../data/balance';
+import { ENDLESS, HELL, RUN_SEC, type CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { CHARACTERS, CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES } from '../data/enemies';
@@ -22,7 +22,7 @@ export interface SurvivalProfile {
   coins: number;
   /** 영구 강화: 항목 id → 레벨 */
   upgrades: UpgradeLevels;
-  unlockedCharacters: ZodiacId[];
+  unlockedCharacters: CharId[];
   unlockedMaps: string[];
   codex: Codex;
   /** 해금 조건용 누적 값 */
@@ -73,7 +73,7 @@ export interface FinishResult {
   /** 요괴를 너무 적게 잡은 판인가 (true면 정상 기록이어도 엽전·기록·해금·누적·도감·시아코인에 넣지 않는다. 옛 서버 답에는 없다) */
   lowKills?: boolean;
   newRecord: boolean;
-  unlockedCharacters: ZodiacId[];
+  unlockedCharacters: CharId[];
   unlockedMaps: string[];
 }
 
@@ -140,7 +140,8 @@ export function cleanProfile(raw: unknown): SurvivalProfile {
     const lv = Math.min(u.max, count(ru[u.id]));
     if (lv > 0) up[u.id] = lv;
   }
-  const chars = strings(r.unlockedCharacters, ZODIAC_IDS) as ZodiacId[];
+  // 시아코인으로 여는 캐릭터(고양이)는 시아서바이벌의 해금 목록에 들어가지 않는다 (characterOpen)
+  const chars = strings(r.unlockedCharacters, CHARACTERS.filter((c) => c.unlock.kind !== 'sia').map((c) => c.id)) as CharId[];
   const maps = strings(r.unlockedMaps, MAPS.map((m) => m.id));
   const cx = (r.codex && typeof r.codex === 'object' ? r.codex : {}) as Record<string, unknown>;
   const tt = (r.totals && typeof r.totals === 'object' ? r.totals : {}) as Record<string, unknown>;
@@ -265,7 +266,7 @@ export function withRecords(
 }
 
 /** 캐릭터 해금 조건을 채웠나 (엽전으로 푸는 캐릭터는 언제나 false). 시간 조건(토끼·말)과 클리어(돼지)는 4분 모드에서만 (무한·헬 모드는 아니다) */
-export function characterEarned(id: ZodiacId, run: RunSummary, totals: SurvivalProfile['totals']): boolean {
+export function characterEarned(id: CharId, run: RunSummary, totals: SurvivalProfile['totals']): boolean {
   const u = CHARACTER_BY_ID[id].unlock;
   switch (u.kind) {
     case 'base':
@@ -389,10 +390,21 @@ export function resetUpgrades(profile: SurvivalProfile): SurvivalProfile {
   return { ...profile, coins: profile.coins + upgradeSpent(profile.upgrades), upgrades: {} };
 }
 
-/** 엽전으로 푸는 캐릭터의 값 (그런 캐릭터가 아니면 null) */
-export const characterPrice = (id: ZodiacId): number | null => (CHARACTER_BY_ID[id].unlock.kind === 'coins' ? (CHARACTER_BY_ID[id].unlock.value ?? 0) : null);
+/**
+ * 이 캐릭터를 고를 수 있나 (잠금 판단은 모두 여기서). 십이지는 프로필의 해금 목록으로 본다.
+ * 시아코인으로 여는 캐릭터(unlock.kind 'sia': 고양이)는 시아서바이벌의 해금 목록에 들어가지 않고,
+ * 이 게임에서 연 캐릭터 목록(owned: shared/characters.js 의 loadOwnedCharacters('survival'))에 있어야 열린다. 게임마다 따로 연다.
+ * 서버도 판 시작 때 071 의 _check_character 로 다시 거른다 ('locked character')
+ */
+export function characterOpen(profile: SurvivalProfile, id: CharId, owned: readonly string[]): boolean {
+  if (CHARACTER_BY_ID[id].unlock.kind === 'sia') return owned.includes(id);
+  return profile.unlockedCharacters.includes(id);
+}
 
-export function unlockCharacter(profile: SurvivalProfile, id: ZodiacId): SurvivalProfile {
+/** 엽전으로 푸는 캐릭터의 값 (그런 캐릭터가 아니면 null) */
+export const characterPrice = (id: CharId): number | null => (CHARACTER_BY_ID[id].unlock.kind === 'coins' ? (CHARACTER_BY_ID[id].unlock.value ?? 0) : null);
+
+export function unlockCharacter(profile: SurvivalProfile, id: CharId): SurvivalProfile {
   const price = characterPrice(id);
   if (price === null) throw new Error('bad character');
   if (profile.unlockedCharacters.includes(id)) throw new Error('already unlocked');
@@ -428,9 +440,9 @@ export function evolutionHints(codex: Codex): EvolutionHint[] {
 }
 
 /** 도감을 얼마나 모았나: 요괴·보스·무기(진화 포함)·패시브·캐릭터 */
-export function codexCount(p: SurvivalProfile): { have: number; all: number } {
+export function codexCount(p: SurvivalProfile, owned: readonly string[] = []): { have: number; all: number } {
   return {
-    have: p.codex.enemies.length + p.codex.bosses.length + p.codex.weapons.length + p.codex.passives.length + p.unlockedCharacters.length,
+    have: p.codex.enemies.length + p.codex.bosses.length + p.codex.weapons.length + p.codex.passives.length + CHARACTERS.filter((c) => characterOpen(p, c.id, owned)).length,
     all: ENEMIES.length + BOSSES.length + WEAPONS.length + PASSIVES.length + CHARACTERS.length,
   };
 }

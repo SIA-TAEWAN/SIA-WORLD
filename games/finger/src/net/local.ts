@@ -8,3 +8,6 @@ export const DEV_SPEED = LOCAL_MODE ? Math.max(1, Math.min(8, Number(params.get(
 export const DEV_AUTO = LOCAL_MODE && params.get('auto') === '1';
 /** 개발용: 처음부터 모든 것이 열린 프로필 (?local=1&all=1) */
 export const DEV_ALL = LOCAL_MODE && params.get('all') === '1';
+/** 테스트 모드에서 고양이는 연 것으로 본다. ?local=1&cat=0 이면 잠김 + 구매 조건 통과(열기 버튼), &cat=cond 면 잠김 + 조건 미달 */
+export const DEV_CAT_LOCKED = LOCAL_MODE && (params.get('cat') === '0' || params.get('cat') === 'cond');
+export const DEV_CAT_COND = LOCAL_MODE && params.get('cat') === 'cond';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_H, BOARD_W, BOSS_AT, COLS, ROAD_W, ROWS, SLOT_SIZE, WAVES, WAVE_HP, WAVE_SEC, ZODIAC_IDS } from '../src/data/balance';
+import { BOARD_H, BOARD_W, BOSS_AT, CHAR_IDS, COLS, ROAD_W, ROWS, SLOT_SIZE, WAVES, WAVE_HP, WAVE_SEC, ZODIAC_IDS } from '../src/data/balance';
 import { BOSSES, BOSS_INDEX } from '../src/data/bosses';
-import { ROSTER, STARTERS, TOWERS, spentAt } from '../src/data/characters';
+import { BOUGHT, EXTRAS, ROSTER, STARTERS, TOWERS, spentAt } from '../src/data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../src/data/enemies';
 import { REGIONS } from '../src/data/regions';
 import { STAGES, nextStage, stageEnemies, stagesOf } from '../src/data/stages';
@@ -102,10 +102,15 @@ describe('스테이지 데이터', () => {
 });
 
 describe('캐릭터·요괴·보스 데이터', () => {
-  it('십이지 12종 명단: 처음 4종(쥐·소·호랑이·토끼)은 바로 쓰고, 나머지는 1~8지역 클리어로 하나씩 열린다', () => {
-    expect(ROSTER.map((r) => r.id)).toEqual([...ZODIAC_IDS]);
+  it('명단: 십이지 12종 + 고양이. 처음 4종(쥐·소·호랑이·토끼)은 바로 쓰고, 다음 8종은 1~8지역 클리어로 하나씩, 고양이는 스테이지로 열리지 않는다', () => {
+    expect(ROSTER.map((r) => r.id)).toEqual([...CHAR_IDS]);
+    expect(ROSTER.slice(0, 12).map((r) => r.id)).toEqual([...ZODIAC_IDS]);
     expect(STARTERS).toEqual(['rat', 'ox', 'tiger', 'rabbit']);
-    expect(ROSTER.slice(4).map((r) => r.unlockRegion)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(ROSTER.slice(4, 12).map((r) => r.unlockRegion)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(ROSTER.slice(12).map((r) => [r.id, r.unlockRegion])).toEqual([['cat', BOUGHT]]);
+    expect(EXTRAS).toEqual(['cat']);
+    // 고양이 이름은 shared/characters.js 의 CAT 과 같다
+    expect(ROSTER[12]).toMatchObject({ name: '고양이', nick: '야옹이' });
     // 계산까지 만들어진 캐릭터는 띠 순서대로 (처음 4종이 맨 앞)
     expect(TOWERS.map((t) => t.id)).toEqual(ROSTER.slice(0, TOWERS.length).map((r) => r.id));
     expect(TOWERS.length).toBeGreaterThanOrEqual(10);

@@ -2,7 +2,7 @@
  * 밸런스 시뮬레이션 일꾼 (scripts/sweep.mjs 가 여러 개를 한꺼번에 띄운다).
  * 인자: 일감 목록(JSON) [{ key, map, char, upg, from, to }] → 일감마다 한 줄씩 결과(JSON)를 찍는다.
  */
-import { ENDLESS, type RunMode, type ZodiacId } from '../src/data/balance';
+import { ENDLESS, type RunMode, type CharId } from '../src/data/balance';
 import { MAPS, MAP_INDEX } from '../src/data/maps';
 import { presetUpgrades } from '../src/data/upgrades';
 import { WEAPONS } from '../src/data/weapons';
@@ -11,7 +11,7 @@ import { dpsTable, normalPolicy, simulate } from '../src/game/policy';
 interface Job {
   key: string;
   map: string;
-  char: ZodiacId;
+  char: CharId;
   upg: number;
   /** 모드 (없으면 4분 모드. endless 무한 모드 · hell 헬 모드) */
   mode?: RunMode;

@@ -1,4 +1,4 @@
-import { LIMIT, type ZodiacId } from '../data/balance';
+import { LIMIT, type CharId } from '../data/balance';
 import type { TowerLevel } from '../data/characters';
 import type { Upgrades } from '../data/growth';
 import type { StageDef } from '../data/stages';
@@ -16,9 +16,9 @@ export interface GameConfig {
   /** 스테이지 id (예: '1-3') */
   stage: string;
   /** 데려간 캐릭터 (최대 5종). 배치 메뉴·숫자키 1~5 의 순서 */
-  squad: ZodiacId[];
+  squad: CharId[];
   /** 판 밖 성장: 캐릭터 영구 레벨(없으면 1) · 공통 강화 (PRD 7장) */
-  levels?: Partial<Record<ZodiacId, number>>;
+  levels?: Partial<Record<CharId, number>>;
   upgrades?: Upgrades;
   /** 시작 생명: 판 시작 때 서버가 적어 둔 값 (별의 기준. 없으면 스테이지 값 + 공통 강화) */
   startLives?: number;

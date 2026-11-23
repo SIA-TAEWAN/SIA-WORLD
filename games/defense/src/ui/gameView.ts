@@ -570,7 +570,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   /** 캐릭터별 공격음: [공용 소리 이름, 높낮이]. 양(쉬지 않고 구름을 깐다)·돼지(공격하지 않는다)는 없다 */
   const ATTACK_SFX: Record<string, [string, number] | undefined> = {
     rat: ['survShot', 1.3], ox: ['tankTurn', 0.8], tiger: ['survSlash', 1], rabbit: ['survPop', 0.85], dragon: ['tankLaser', 1.4], snake: ['survPop', 1.4],
-    horse: ['survShot', 0.7], monkey: ['survShot', 1.6], rooster: ['survSlash', 1.7], dog: ['survPop', 1.1],
+    horse: ['survShot', 0.7], monkey: ['survShot', 1.6], rooster: ['survSlash', 1.7], dog: ['survPop', 1.1], cat: ['survSlash', 1.45],
   };
   run.onEvent = (e: Ev, st: State) => {
     switch (e.t) {

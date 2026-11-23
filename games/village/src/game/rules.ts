@@ -6,7 +6,7 @@ import { MONUMENTS, type GameStats } from '../data/monuments';
 import { BUILDING, isBuildingType, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { COUNTED, GOALS, type GoalDef } from '../data/goals';
 import {
-  AFF_BONUS, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENT, RESIDENTS, TASKS, affLevel, isResidentId, mix, type ResidentId, type TaskKind,
+  AFF_BONUS, ASKS, CAT_BONUS, CAT_LAND_STAGE, CAT_PRICE, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENT, RESIDENTS, TASKS, affLevel, isResidentId, mix, type ResidentId, type TaskKind,
 } from '../data/residents';
 
 /**
@@ -116,6 +116,8 @@ export interface VillageState {
   buildings: Building[];
   /** 시아코인 잔액 (SIA WORLD 공통 지갑) */
   sia: number;
+  /** 이 마을에서 고양이(13번째 주민)를 샀나 (071 owned_characters 의 village · cat). 사면 빈 집이 있을 때 이사 오고 주민 집을 한 채 더 지을 수 있다 */
+  catOwned: boolean;
   /** 이사 온 순서대로 */
   residents: Resident[];
   requests: Ask[];
@@ -165,7 +167,7 @@ export const payOf = (s: VillageState, c: Cost): Cost => (s.admin ? FREE : c);
 export const siaOf = (s: VillageState, n: number): number => (s.admin ? 0 : n);
 /** 하나 더 가질 수 있나 (관리자는 마을 회관 말고는 제한이 없다) */
 export const canHaveMore = (s: VillageState, type: BuildingType): boolean =>
-  (s.admin && type !== 'hall') || countOf(s, type) < maxCount(type, s.profile.level);
+  (s.admin && type !== 'hall') || countOf(s, type) < countCap(s, type);
 export const upgradeExp = (type: BuildingType, level: number) => UPGRADE_EXP[level - 1] * (type === 'hall' ? CONST.hall_exp_mul : 1);
 /** 시간당 생산량 (보너스 없이) */
 export const ratePerHour = (type: BuildingType, level: number) => Math.floor((BUILDING[type].rate * RATE_MUL[level - 1]) / 10);
@@ -175,6 +177,8 @@ export function maxCount(type: BuildingType, villageLevel: number): number {
   if (d.cap > 0) return villageLevel >= d.unlock[0] ? d.cap : 0;
   return d.unlock.filter((l) => l <= villageLevel).length;
 }
+/** 이 마을이 가질 수 있는 개수: 마을 레벨의 개수 + 고양이를 샀으면 주민 집 한 채 더 (레벨 해금과 따로) */
+export const countCap = (s: VillageState, type: BuildingType): number => maxCount(type, s.profile.level) + (type === 'house' && s.catOwned ? 1 : 0);
 /** 가진 개수 (보관함에 든 것도 센다) */
 export const countOf = (s: VillageState, type: BuildingType) => s.buildings.filter((b) => b.type === type).length;
 /** 다음 하나가 열리는 마을 레벨 (더 없으면 null) */
@@ -191,6 +195,11 @@ export const standing = (b: Building) => b.state !== 'building' && b.state !== '
 // ───────────────────────── 주민 ─────────────────────────
 
 export const residentOf = (s: VillageState, id: ResidentId) => s.residents.find((r) => r.id === id) ?? null;
+/** 다음에 이사 올 주민: 조건(마을 레벨 · 고양이는 산 것)을 넘은 주민 가운데 순서대로 첫째, 없으면 아직 안 온 십이지 첫째 */
+export function nextResident(s: VillageState) {
+  const wait = RESIDENTS.filter((d) => !residentOf(s, d.id) && (!d.buy || s.catOwned));
+  return wait.find((d) => d.buy || s.profile.level >= d.level) ?? wait[0] ?? null;
+}
 /** 그 주민이 일하고 있는 건물 (제 일터에 배치되어 있고, 그 건물이 서 있을 때) */
 export function workplace(s: VillageState, id: ResidentId): Building | null {
   const r = residentOf(s, id);
@@ -198,12 +207,12 @@ export function workplace(s: VillageState, id: ResidentId): Building | null {
   const b = s.buildings.find((v) => v.id === r.building);
   return b && b.type === RESIDENT[id].work && standing(b) ? b : null;
 }
-/** 그 주민의 보너스 (%): 일터가 있는 주민은 일하고 있을 때, 닭 · 개는 이사 와 있을 때. 아니면 0 */
+/** 그 주민의 보너스 (%): 일터가 있는 주민은 일하고 있을 때, 닭 · 개 · 고양이는 이사 와 있을 때. 아니면 0 */
 export function residentPct(s: VillageState, id: ResidentId): number {
   const r = residentOf(s, id);
   if (!r) return 0;
   if (RESIDENT[id].work !== '' && !workplace(s, id)) return 0;
-  return (id === 'dragon' ? DRAGON_BONUS : AFF_BONUS)[affLevel(r.affinity) - 1];
+  return (id === 'dragon' ? DRAGON_BONUS : id === 'cat' ? CAT_BONUS : AFF_BONUS)[affLevel(r.affinity) - 1];
 }
 /** 그 건물에서 일하는 주민들 */
 export const workersAt = (s: VillageState, b: Building) => s.residents.filter((r) => r.building === b.id && workplace(s, r.id)?.id === b.id).map((r) => r.id);
@@ -393,15 +402,17 @@ export function goalStatus(s: VillageState): { def: GoalDef; have: number; done:
   return { def, have: Math.min(have, def.n), done: have >= def.n };
 }
 
-/** 주민 부탁 하나를 정한다 (번호 · 마을 레벨 · 이사 온 주민으로 정해진다) */
-export function makeAsk(seq: number, level: number, residents: ResidentId[]): Omit<Ask, 'slot' | 'state' | 'readyAt'> {
+/** 주민 부탁 하나를 정한다 (번호 · 마을 레벨 · 이사 온 주민으로 정해진다). bonus: 고양이의 보너스 % (엽전 · 경험치에 더한다) */
+export function makeAsk(seq: number, level: number, residents: ResidentId[], bonus = 0): Omit<Ask, 'slot' | 'state' | 'readyAt'> {
   const pool = ASKS.filter((a) => a.from <= level);
   const a = pool[mix(seq, 2) % pool.length];
   const n = Math.max(1, Math.floor((a.base * (2 + (mix(seq, 3) % 4)) * (20 + level * a.grow)) / 20));
   const v = Math.floor((n * a.worth) / 100);
   return {
     resident: residents[mix(seq, 1) % residents.length], res: a.res, n,
-    coin: Math.floor((v * 3) / 2) + 10, exp: Math.floor((v * CONST.req_exp_pct) / 100) + 5 + level * 2, aff: 2 + (mix(seq, 4) % 3),
+    coin: Math.floor(((Math.floor((v * 3) / 2) + 10) * (100 + bonus)) / 100),
+    exp: Math.floor(((Math.floor((v * CONST.req_exp_pct) / 100) + 5 + level * 2) * (100 + bonus)) / 100),
+    aff: 2 + (mix(seq, 4) % 3),
   };
 }
 
@@ -431,6 +442,7 @@ export function newVillage(now: number, hallId = 'hall'): VillageState {
     },
     buildings: [{ id: hallId, type: 'hall', level: 1, x: HALL_AT.x, y: HALL_AT.y, state: 'done', finishAt: null, startAt: null, collectedAt: now, jobN: 0, banked: 0, accFrom: 0 }],
     sia: 0,
+    catOwned: false,
     residents: [],
     requests: [],
     daily: [],
@@ -485,20 +497,24 @@ export function settle(s: VillageState, now: number): void {
     b.finishAt = null;
     b.startAt = null;
   }
-  // 이사: 순서대로, 마을 레벨이 되고 빈 집이 있을 때
+  // 이사: 순서대로, 마을 레벨이 되고(고양이는 샀고) 빈 집이 있을 때
   const houses = s.buildings.filter((b) => b.type === 'house' && standing(b)).length;
   for (const d of RESIDENTS) {
     if (residentOf(s, d.id)) continue;
-    if (s.profile.level < d.level || houses <= s.residents.length) break;
+    if (d.buy ? !s.catOwned : s.profile.level < d.level) continue;
+    if (houses <= s.residents.length) break;
     s.residents.push({ id: d.id, affinity: 0, building: null, gifted: false });
   }
+  // 서버처럼 순서대로 (고양이가 먼저 이사 와도 끝에)
+  s.residents.sort((a, b) => RESIDENTS.findIndex((d) => d.id === a.id) - RESIDENTS.findIndex((d) => d.id === b.id));
   // 부탁: 주민이 있으면 칸 셋. 기다림이 끝난 칸에 새 부탁
   if (s.residents.length > 0) {
     for (let i = s.requests.length; i < REQ.slots; i++) s.requests.push({ slot: i, state: 'wait', readyAt: now, resident: '', res: '', n: 0, coin: 0, exp: 0, aff: 0 });
     const ids = s.residents.map((r) => r.id);
+    const bonus = residentPct(s, 'cat');
     for (const q of s.requests) {
       if (q.state !== 'wait' || q.readyAt > now) continue;
-      Object.assign(q, makeAsk(++s.profile.reqSeq, s.profile.level, ids), { state: 'open', readyAt: 0 });
+      Object.assign(q, makeAsk(++s.profile.reqSeq, s.profile.level, ids, bonus), { state: 'open', readyAt: 0 });
     }
   }
   // 오늘의 할 일
@@ -740,6 +756,33 @@ export function expand(s: VillageState, now: number): void {
   s.profile.landStage = stage + 1;
 }
 
+/** 고양이 사기 결과 (071 buy_character 의 답과 같은 모양. login · error 는 서버 연결에서만) */
+export interface CatBuy {
+  ok: boolean;
+  reason?: 'owned' | 'coin' | 'condition' | 'login' | 'error';
+  have?: number;
+  need?: number;
+  siaCoins?: number;
+  price?: number;
+}
+/** 고양이를 살 수 있는 조건을 넘었나: 땅 CAT_LAND_STAGE 단계 (SQL _cat_progress_village) */
+export const catProgress = (s: VillageState) => ({ have: s.profile.landStage, need: CAT_LAND_STAGE });
+/**
+ * 고양이 사기 (테스트 모드용. 서버는 071 buy_character('village', 'cat')): 이미 샀으면 owned · 조건 미달 condition (코인 그대로) · 코인 부족 coin.
+ * 산 뒤 빈 집이 있으면 바로 이사 온다 (settle)
+ */
+export function buyCat(s: VillageState, now: number): CatBuy {
+  settle(s, now);
+  const pr = catProgress(s);
+  if (s.catOwned) return { ok: false, reason: 'owned', siaCoins: s.sia, price: CAT_PRICE };
+  if (pr.have < pr.need) return { ok: false, reason: 'condition', ...pr, siaCoins: s.sia, price: CAT_PRICE };
+  if (s.sia < CAT_PRICE) return { ok: false, reason: 'coin', siaCoins: s.sia, price: CAT_PRICE };
+  s.sia -= CAT_PRICE;
+  s.catOwned = true;
+  settle(s, now);
+  return { ok: true, siaCoins: s.sia, price: CAT_PRICE };
+}
+
 /** 관리자의 마을: 마을 레벨은 최고(경험치 0), 땅은 끝까지 (SQL village_state). 바뀌었으면 true */
 export function adminBoost(s: VillageState): boolean {
   if (!s.admin) return false;
@@ -972,7 +1015,7 @@ const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.ma
 
 /** 서버(또는 기기 저장소)가 준 상태를 믿을 수 있는 모양으로 */
 export function cleanState(raw: unknown): VillageState {
-  const r = (raw ?? {}) as { profile?: Record<string, unknown>; buildings?: unknown; residents?: unknown; requests?: unknown; daily?: unknown; sia?: unknown; now?: unknown; monuments?: unknown; admin?: unknown };
+  const r = (raw ?? {}) as { profile?: Record<string, unknown>; buildings?: unknown; residents?: unknown; requests?: unknown; daily?: unknown; sia?: unknown; catOwned?: unknown; now?: unknown; monuments?: unknown; admin?: unknown };
   const p = r.profile ?? {};
   const res = (p.resources ?? {}) as Record<string, unknown>;
   const resources = Object.fromEntries(RES_IDS.map((k) => [k, int(res[k], 0, 1e12, 0)])) as Resources;
@@ -996,7 +1039,7 @@ export function cleanState(raw: unknown): VillageState {
     if (!isResidentId(v.id) || residents.some((x) => x.id === v.id)) continue;
     residents.push({ id: v.id, affinity: int(v.affinity, 0, 1e6, 0), building: typeof v.building === 'string' ? v.building : null, gifted: v.gifted === true });
   }
-  // 이사 온 순서 = 십이지 순서
+  // 이사 온 순서 = 십이지 순서 (고양이는 끝)
   residents.sort((a, b) => RESIDENTS.findIndex((d) => d.id === a.id) - RESIDENTS.findIndex((d) => d.id === b.id));
   const requests: Ask[] = [];
   for (const v of list(r.requests)) {
@@ -1028,6 +1071,7 @@ export function cleanState(raw: unknown): VillageState {
     },
     buildings,
     sia: int(r.sia, 0, 1e12, 0),
+    catOwned: r.catOwned === true,
     residents,
     requests,
     daily,

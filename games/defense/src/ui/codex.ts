@@ -1,11 +1,11 @@
-import type { ZodiacId } from '../data/balance';
+import type { CharId } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ROSTER, towerOf, type TowerLevel } from '../data/characters';
 import { ENEMIES } from '../data/enemies';
 import { REGIONS } from '../data/regions';
 import { charLevel } from '../game/progress';
 import { artUrl, zodiacFaceUrl } from '../assets';
-import { esc, josa, nav, screen, state } from './app';
+import { esc, lockHint, nav, screen, state } from './app';
 import { sfx } from './sfx';
 
 /** 강화 단계 한 줄의 효과 (도감·게임 패널이 함께 쓴다) */
@@ -37,8 +37,8 @@ export function showCodex() {
     'select prepare codex',
   );
   const body = root.querySelector('#body') as HTMLElement;
-  const nick = (id: ZodiacId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
-  const faces = (ids: ZodiacId[]) => ids.map((z) => `<img src="${zodiacFaceUrl(z)}" alt="${esc(nick(z))}" title="${esc(nick(z))}" />`).join('');
+  const nick = (id: CharId) => ROSTER.find((r) => r.id === id)?.nick ?? '';
+  const faces = (ids: CharId[]) => ids.map((z) => `<img src="${zodiacFaceUrl(z)}" alt="${esc(nick(z))}" title="${esc(nick(z))}" />`).join('');
   const paint = () => {
     root.querySelectorAll<HTMLElement>('#tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.t === tab));
     const p = state.profile;
@@ -70,7 +70,7 @@ export function showCodex() {
           const def = towerOf(r.id);
           if (!p.unlocked.includes(r.id) || !def) {
             return `<div class="cx unknown"><span class="cx-art"><img src="${zodiacFaceUrl(r.id)}" alt="" /></span>
-              <span class="cx-tx"><b>???</b><small>🔒 ${r.unlockRegion}지역 ${esc(josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를'))} 클리어하면 만나요</small></span></div>`;
+              <span class="cx-tx"><b>???</b><small>🔒 ${esc(lockHint(r, '만나요'))}</small></span></div>`;
           }
           return `<div class="cx char"><span class="cx-art"><img src="${zodiacFaceUrl(r.id)}" alt="" /></span>
             <span class="cx-tx"><b>${esc(r.nick)} <i>${esc(r.name)} · ${esc(r.role)} · Lv ${charLevel(p, r.id)} · ✨${def.cost}</i></b><small>${esc(def.desc)}</small>

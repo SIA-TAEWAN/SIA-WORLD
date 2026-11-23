@@ -4,7 +4,7 @@ import { UPGRADES, presetUpgrades, upgradeCost, upgradeSpent } from '../src/data
 import { TICKS_PER_SEC } from '../src/data/balance';
 import { idlePolicy, normalPolicy, simulate, type Policy } from '../src/game/policy';
 import {
-  LIMITS, applyRun, betterRecord, buyUpgrade, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, rejectReason, resetUpgrades,
+  LIMITS, applyRun, betterRecord, buyUpgrade, characterOpen, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, rejectReason, resetUpgrades,
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
 import { createRun, makeInput, step, summarize, type RunSummary } from '../src/game/sim';
@@ -241,9 +241,24 @@ describe('도감', () => {
   });
 
   it('모은 수: 처음에는 캐릭터 셋뿐', () => {
-    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 15 + 8 + 12 });
+    // 캐릭터: 쥐·소·호랑이 (고양이는 이 게임에서 시아코인으로 열었을 때만 센다)
+    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 15 + 8 + 13 });
+    expect(codexCount(defaultProfile(), ['cat']).have).toBe(4);
     const run2 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
     expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);
+  });
+
+  it('고양이 잠금: 이 게임에서 연 목록(owned)으로만 열린다. 시아서바이벌의 해금 목록·엽전으로는 열리지 않는다', () => {
+    const p = defaultProfile();
+    expect(characterOpen(p, 'cat', [])).toBe(false);
+    expect(characterOpen(p, 'cat', ['cat'])).toBe(true);
+    // 해금 목록에 cat 이 들어 있어도 (옛 기록·조작) 열린 것으로 보지 않는다
+    expect(characterOpen({ ...p, unlockedCharacters: [...p.unlockedCharacters, 'cat'] }, 'cat', [])).toBe(false);
+    // 십이지는 owned 와 상관없다
+    expect(characterOpen(p, 'tiger', [])).toBe(true);
+    expect(characterOpen(p, 'rabbit', ['cat', 'rabbit'])).toBe(false);
+    expect(characterPrice('cat')).toBeNull();
+    expect(() => unlockCharacter(p, 'cat')).toThrow('bad character');
   });
 
   it('판에서 만난 요괴·보스, 얻은 무기·패시브·진화가 판 결과에 담긴다', () => {

@@ -1,14 +1,19 @@
 import Phaser from 'phaser';
 import { artUrl, zodiacFaceUrl } from '../assets';
 import { hasArt } from '../scenes/art';
-import { LEADERS, ZODIAC_IDS, leaderOf, type ZodiacId } from '../data/balance';
+import { LEADERS, ZODIAC_IDS, leaderOf, type LeaderId } from '../data/balance';
 import { REGIONS, REGION_NAMES, UPGRADES, groundOf, modsOf, regionStars, upgradeCost, type UpgradeKey } from '../data/growth';
 import { ENDLESS_ID, STAGES, endlessStage, nextStage, stageOf, stagesOf, type StageDef } from '../data/stages';
 import {
   emptyProfile,
   endlessOpen,
+  CAT_PRICE,
+  UNLOCK_LABEL,
+  catConditionText,
+  catReady,
   leadersOf,
   regionOpen,
+  setOwnedExtras,
   regionStarsOf,
   stageOpen,
   totalStars,
@@ -19,8 +24,8 @@ import {
 } from '../game/progress';
 import { createRun, metersOf, progressOf, starsFor, type RunState } from '../game/sim';
 import { ApiError, type ChargeApi } from '../net/api';
-import { DEV_ALL, LOCAL_MODE } from '../net/local';
-import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
+import { DEV_ALL, DEV_CAT_READY, DEV_OWNED, LOCAL_MODE } from '../net/local';
+import { buyCharacter, loadOwnedCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, H, W } from '../scenes/GameScene';
 import { TABLE } from '../theme';
 
@@ -33,7 +38,7 @@ let api!: ChargeApi;
 let me: WorldUser | null = null;
 let profile: ChargeProfile = emptyProfile();
 const LEADER_KEY = 'siacharge:leader';
-let leader: ZodiacId = 'rat';
+let leader: LeaderId = 'rat';
 
 let sound: SoundModule | null = null;
 void loadSound()
@@ -106,8 +111,22 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
     // 개발용 ?local=1&all=1: 모든 스테이지·대장을 연 상태로 본다 (저장하지 않음)
     profile = { ...profile, coins: Math.max(profile.coins, 99999), stages: Object.fromEntries(STAGES.map((s) => [s.id, 3])) };
   }
+  // 고양이(이 게임에서 시아코인으로 여는 대장): 들어올 때 한 번 (못 읽으면 잠긴 것으로 시작),
+  // 다른 기기에서 열었을 수 있으니 화면이 다시 보이면 또 묻는다 (못 읽으면 가진 목록을 그대로 둔다)
+  applyOwned(LOCAL_MODE ? DEV_OWNED : ((await loadOwnedCharacters()) ?? []));
+  if (!LOCAL_MODE) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadOwnedCharacters(true).then((ids) => {
+        const was = leadersOf(profile).join();
+        applyOwned(ids);
+        // 메인(대장 고르기)을 보고 있으면 바로 다시 그린다
+        if (leadersOf(profile).join() !== was && document.querySelector('.leaders')) showMain();
+      });
+    });
+  }
   try {
-    const saved = localStorage.getItem(LEADER_KEY) as ZodiacId | null;
+    const saved = localStorage.getItem(LEADER_KEY) as LeaderId | null;
     if (saved && leadersOf(profile).includes(saved)) leader = saved;
   } catch {
     /* 저장 공간 없음 */
@@ -118,7 +137,46 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
     .catch(() => null);
 }
 
-function setLeader(id: ZodiacId) {
+/** 이 게임에서 연 추가 캐릭터 */
+let owned: string[] = [];
+/** 연 캐릭터 목록 반영 (null = 못 읽음 → 그대로). 고른 대장이 잠기면 첫 대장으로 */
+function applyOwned(ids: string[] | null) {
+  if (!ids) return;
+  owned = [...ids];
+  setOwnedExtras(owned);
+  const open = leadersOf(profile);
+  if (!open.includes(leader)) setLeader(open[0] ?? 'rat');
+}
+
+let buying = false;
+/** 고양이 열기 (시아코인). 테스트 모드는 서버 없이 바로 연다 */
+async function unlockCat(btn: HTMLButtonElement) {
+  if (buying) return;
+  buying = true;
+  btn.disabled = true;
+  btn.textContent = '여는 중…';
+  try {
+    if (LOCAL_MODE) {
+      applyOwned([...owned, 'cat']);
+      toast('열었어요! (테스트 모드)');
+    } else {
+      const { r, text } = await buyCharacter('cat');
+      if (r.ok || r.reason === 'owned') applyOwned((await loadOwnedCharacters(true)) ?? [...owned, 'cat']);
+      // 조건 미달로 거절되면 기록을 다시 읽어 조건 글을 고친다
+      if (r.reason === 'condition') profile = await api.loadProfile().catch(() => profile);
+      toast(text);
+    }
+    if (leadersOf(profile).includes('cat')) {
+      setLeader('cat');
+      play('boost');
+    }
+  } finally {
+    buying = false;
+  }
+  showMain();
+}
+
+function setLeader(id: LeaderId) {
   leader = id;
   try {
     localStorage.setItem(LEADER_KEY, id);
@@ -138,12 +196,20 @@ export function showMain() {
     ${hasArt('main') ? `<img class="hero" src="${artUrl('main')}" alt="" />` : ''}
     <div class="title"><h1>시아돌격대</h1><p>숫자 문을 골라 대원을 불리고 요괴를 뚫어라!</p></div>
     <div class="card">
-      <h3>대장 <small>대장과 같은 띠 대원들이 함께 달려요</small></h3>
+      <h3>대장 <small>대장과 같은 동물 대원들이 함께 달려요</small></h3>
       <div class="leaders">${LEADERS.map((l) => {
         const ok = open.includes(l.id);
-        return `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'}" data-id="${l.id}" ${ok ? '' : 'disabled'}>
-            <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒 ${l.unlockRegion}지역</em>`}
+        // 고를 수 있는지는 leadersOf(profile) 한 곳에서 정한다 (고양이 잠금은 progress.ts 의 extraOpen)
+        // 잠긴 고양이는 눌러서 특성을 볼 수 있게 disabled 로 두지 않고, 옆에 "시아코인으로 열기" 버튼을 둔다 (게임마다 따로 연다)
+        const tile = `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok || l.extra ? '' : 'disabled'}>
+            <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒${l.extra ? '' : ` ${l.unlockRegion}지역`}</em>`}
           </button>`;
+        if (ok || !l.extra) return tile;
+        // 구매 조건(3-5 클리어)을 넘었으면 열기 버튼, 아니면 남은 조건 글
+        const ready = DEV_CAT_READY ?? catReady(profile);
+        return ready
+          ? `${tile}<button class="btn primary unlock" data-unlock="${l.id}">🔒 ${UNLOCK_LABEL}</button>`
+          : `${tile}<p class="unlock cond">🔒 ${catConditionText(profile)}</p>`;
       }).join('')}</div>
       <p class="soft center" id="trait">${leaderOf(leader).trait}</p>
     </div>
@@ -166,11 +232,37 @@ export function showMain() {
   if (sb) { sb.classList.add('on-hero'); root.appendChild(sb); }
   root.querySelectorAll<HTMLButtonElement>('.leader').forEach((b) =>
     b.addEventListener('click', () => {
-      setLeader(b.dataset.id as ZodiacId);
+      const id = b.dataset.id as LeaderId;
+      if (!open.includes(id)) {
+        play('click');
+        return toast(`🔒 ${leaderOf(id).name} — ${leaderOf(id).trait}`, 3200);
+      }
+      setLeader(id);
       play('click');
       showMain();
     }),
   );
+  // 열기 버튼: 한 번 누르면 확인 글로 바뀌고, 4초 안에 한 번 더 누르면 연다
+  root.querySelectorAll<HTMLButtonElement>('[data-unlock]').forEach((b) => {
+    let armed = 0;
+    b.addEventListener('click', () => {
+      play('click');
+      if (buying) return;
+      if (!armed) {
+        b.textContent = `${CAT_PRICE}코인을 쓸까요? 한 번 더 누르기`;
+        b.classList.add('armed');
+        armed = window.setTimeout(() => {
+          armed = 0;
+          b.textContent = `🔒 ${UNLOCK_LABEL}`;
+          b.classList.remove('armed');
+        }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      armed = 0;
+      void unlockCat(b);
+    });
+  });
   root.querySelector('#go')!.addEventListener('click', () => {
     play('click');
     showRegions();

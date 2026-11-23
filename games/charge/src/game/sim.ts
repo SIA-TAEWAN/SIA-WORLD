@@ -124,6 +124,8 @@ export type SimEvent =
   | { type: 'burn'; lost: number }
   | { type: 'summon'; horde: Horde }
   | { type: 'bossDown'; boss: Boss }
+  /** 고양이 "아홉 목숨": 모두 쓰러졌다가 troops 명으로 다시 일어났다 */
+  | { type: 'lives'; troops: number }
   | { type: 'clear' }
   | { type: 'fail' };
 
@@ -162,6 +164,8 @@ export interface RunState {
   stunUntil: number;
   /** 남아 있는 불길 (강철이) */
   burns: { band: [number, number]; until: number }[];
+  /** 남은 "다시 일어나기" 횟수 (고양이) */
+  lives: number;
   shot: ShotTarget;
   /** 지난 step 이후 생긴 일. 화면이 읽고 비운다 */
   events: SimEvent[];
@@ -243,6 +247,7 @@ export function createRun(stage: StageDef, leaderId: string, mods: RunMods = NO_
     powerUntil: -1,
     stunUntil: -1,
     burns: [],
+    lives: leader.lives,
     shot: null,
     events: [],
     nextId: 0,
@@ -615,6 +620,12 @@ export function step(s: RunState, dt = STEP): void {
     }
   }
 
+  if (s.troops <= 0 && s.lives > 0) {
+    // 고양이 "아홉 목숨": 한 번, 이번 판 최대 대원의 일부로 다시 일어난다
+    s.lives--;
+    setTroops(s, Math.max(s.leader.livesMin, Math.round(s.peak * s.leader.livesFrac)));
+    s.events.push({ type: 'lives', troops: s.troops });
+  }
   if (s.troops <= 0) {
     s.phase = 'fail';
     s.events.push({ type: 'fail' });

@@ -90,9 +90,17 @@ export const AI_REACT_MAX = 0.25;
 /** 공이 떨어질 곳 예측 오차 ±20px */
 export const AI_ERROR = 20;
 
+/** 십이지 12 (띠 순서). AI 상대·로비 그림·배경 깃발은 이 12개에서만 (추가 캐릭터는 계정마다 열어야 쓴다) */
 export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;
-export type ZodiacId = (typeof ZODIAC_IDS)[number];
+/** 십이지 밖의 추가 캐릭터 (shared/characters.js 의 EXTRA_IDS 와 같게) */
+export const EXTRA_IDS = ['cat'] as const;
+/** 고를 수 있는 전체 캐릭터 = 십이지 12 + 추가 캐릭터 (shared/characters.js 의 ALL_CHARACTER_IDS, 서버 _character_ids() 와 같게) */
+export const CHAR_IDS = [...ZODIAC_IDS, ...EXTRA_IDS] as const;
+/** 캐릭터 id (십이지 + 추가 캐릭터). 능력치는 캐릭터마다 같고 겉모습만 다르다 */
+export type ZodiacId = (typeof CHAR_IDS)[number];
+export const isCharId = (v: unknown): v is ZodiacId => typeof v === 'string' && (CHAR_IDS as readonly string[]).includes(v);
 export const ZODIAC_NICK: Record<ZodiacId, string> = {
   rat: '찍찍이', ox: '우직이', tiger: '어흥이', rabbit: '깡총이', dragon: '여의룡', snake: '스르르',
   horse: '따각이', sheep: '몽실이', monkey: '재롱이', rooster: '꼬꼬댁', dog: '멍뭉이', pig: '꿀꿀이',
+  cat: '야옹이',
 };

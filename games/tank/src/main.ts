@@ -3,7 +3,8 @@ import { nav, prefetchEngine, screen, state } from './ui/app';
 import { showEntry, showSetup } from './ui/offline';
 import { showLobby } from './ui/online';
 import { LOCAL_MODE, clientId, setPlayer } from './net';
-import { loadAuth, worldHome, type WorldUser } from './net/world';
+import { loadAuth, loadCharacterProgress, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
+import { initUnlock, openTankOr } from './game/unlock';
 
 nav.entry = showEntry;
 nav.setup = showSetup;
@@ -39,6 +40,9 @@ async function start() {
   setPlayer(user.userId, user.nickname);
   state.name = user.nickname;
   state.isAdmin = !!user.isAdmin;
+  // 연 추가 캐릭터(고양이)를 불러온다: 저장된 탱크가 잠긴 고양이면 기본 탱크로
+  await initUnlock(loadOwnedCharacters, LOCAL_MODE, new URLSearchParams(location.search).get('cat'), loadCharacterProgress);
+  state.tank = openTankOr(state.tank);
   nav.lobby();
 }
 

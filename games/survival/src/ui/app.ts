@@ -1,7 +1,9 @@
-import { VIEW_W, ZODIAC_IDS, type RunMode, type ZodiacId } from '../data/balance';
+import { VIEW_W, CHAR_IDS, type RunMode, type CharId } from '../data/balance';
 import type { RunSummary } from '../game/sim';
-import { defaultProfile, type FinishResult, type SurvivalProfile } from '../game/progress';
+import { characterOpen, defaultProfile, type FinishResult, type SurvivalProfile } from '../game/progress';
 import type { SurvivalApi } from '../net/api';
+import { loadOwned, loadProgress, type CatProgress } from '../net/characters';
+import { CHARACTER_BY_ID } from '../data/characters';
 import type { SurvivalLobby } from '../net/lobby';
 import { music, type TrackName } from './music';
 import { sfx, sound } from './sfx';
@@ -11,7 +13,7 @@ export const stage = document.getElementById('stage')!;
 
 /** 판을 시작할 때 넘기는 것 */
 export interface GameSetup {
-  char: ZodiacId;
+  char: CharId;
   map: string;
   /** 모드 (없으면 4분 모드) */
   mode?: RunMode;
@@ -44,9 +46,13 @@ export const state = {
   /** 접속 인원 채널 */
   lobby: null as SurvivalLobby | null,
   /** 마지막으로 고른 캐릭터·맵·모드 */
-  char: 'tiger' as ZodiacId,
+  char: 'tiger' as CharId,
   map: 'field',
   mode: 'normal' as RunMode,
+  /** 이 게임에서 연 추가 캐릭터 (시아코인으로 연 고양이 등. refreshOwned 가 채운다) */
+  owned: [] as string[],
+  /** 고양이 구매 조건 진행 (서버 character_progress. 못 읽었으면 null: 화면은 프로필의 clearedMaps 로 대신 센다) */
+  catProgress: null as CatProgress | null,
 };
 
 /** 프로필이 바뀌면 부를 함수들 (지금 떠 있는 화면이 엽전·해금 표시를 다시 그린다) */
@@ -60,6 +66,30 @@ export function setProfile(p: SurvivalProfile) {
 export function watchProfile(fn: () => void): () => void {
   profileWatchers.add(fn);
   return () => void profileWatchers.delete(fn);
+}
+
+/**
+ * 이 게임에서 연 추가 캐릭터를 다시 읽고, 떠 있는 화면(선택 화면·도감)을 다시 그린다.
+ * 서버를 못 읽으면(null) 가진 목록을 그대로 둔다 (처음이면 빈 목록 = 잠긴 것으로 시작. 서버도 판 시작 때 다시 검사한다).
+ * 마지막으로 고른 캐릭터가 잠긴 고양이면 기본 캐릭터로
+ */
+export async function refreshOwned(force: boolean) {
+  const owned = await loadOwned(force);
+  if (owned) {
+    const changed = owned.join() !== state.owned.join();
+    state.owned = owned;
+    if (changed) setProfile(state.profile);
+  }
+  if (CHARACTER_BY_ID[state.char].unlock.kind === 'sia' && !characterOpen(state.profile, state.char, state.owned)) state.char = 'tiger';
+}
+
+/** 고양이 구매 조건 진행을 다시 읽고 떠 있는 화면을 다시 그린다 (못 읽으면 가진 값 그대로) */
+export async function refreshProgress() {
+  const p = await loadProgress();
+  if (!p) return;
+  const changed = !state.catProgress || p.have !== state.catProgress.have || p.need !== state.catProgress.need;
+  state.catProgress = p;
+  if (changed) setProfile(state.profile);
 }
 
 /** 화면 이동 (모듈끼리 서로 import하지 않도록 여기에 등록) */
@@ -113,16 +143,16 @@ new ResizeObserver(fitUnit).observe(stage);
 
 // ---------- 마지막으로 고른 캐릭터 (SIA WORLD 공용 저장 위치: shared/zodiac.js 와 같은 열쇠) ----------
 const charKey = () => `sia-world:avatar:${state.user.id}`;
-export function loadChar(): ZodiacId {
+export function loadChar(): CharId {
   try {
-    const v = localStorage.getItem(charKey()) as ZodiacId | null;
-    if (v && ZODIAC_IDS.includes(v)) return v;
+    const v = localStorage.getItem(charKey()) as CharId | null;
+    if (v && CHAR_IDS.includes(v)) return v;
   } catch {
     /* 기본값 */
   }
   return 'tiger';
 }
-export function saveChar(c: ZodiacId) {
+export function saveChar(c: CharId) {
   state.char = c;
   try {
     localStorage.setItem(charKey(), c);

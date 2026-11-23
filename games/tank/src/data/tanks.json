@@ -227,6 +227,25 @@
       "pig_boom"
     ]
   },
+  "cat": {
+    "name": "야옹이",
+    "zodiac": "묘",
+    "animal": "고양이",
+    "role": "강력한 한 방",
+    "color": "#fff1dc",
+    "accent": "#7a4fc9",
+    "hp": 865,
+    "defense": 0.14,
+    "move": 120,
+    "angleMin": 15,
+    "angleMax": 55,
+    "delay": 620,
+    "weapons": [
+      "cat_claw",
+      "cat_twin",
+      "cat_roar"
+    ]
+  },
   "zodiac": {
     "name": "열두빛",
     "zodiac": "십이지신",

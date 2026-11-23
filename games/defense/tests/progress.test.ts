@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { COINS, STAR2_LIVES } from '../src/data/balance';
 import { CHAR_MAX_LV, LEVEL_COSTS, UPGRADES, levelMods, upgradeCost, upgradeMods } from '../src/data/growth';
 import { ENDLESS_ID } from '../src/data/endless';
 import { stageOf } from '../src/data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, charLevel, cleanProfile, defaultProfile, endlessOpen, isValid, levelUp, partialCoins, regionCleared, regionOpen, regionStars,
-  endlessCoins, mergeCodex, rejectReason, squadOk, stageOpen, starsOf, totalStars, waveOf, type DefenseProfile, type RunReport,
+  catCondition, endlessCoins, extraOpen, mergeCodex, rejectReason, setOwnedExtras, squadOk, stageOpen, starsOf, totalStars, waveOf, type DefenseProfile, type RunReport,
 } from '../src/game/progress';
 import { createGame, command, sellValue } from '../src/game/sim';
 import { ApiError, createLocalApi, createSupabaseApi, type RpcClient, type Store } from '../src/net/api';
@@ -19,6 +19,44 @@ const store = (): Store & { data: Map<string, string> } => {
   const data = new Map<string, string>();
   return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v), removeItem: (k) => void data.delete(k) };
 };
+
+// 따로 적지 않은 테스트는 고양이를 연 계정으로 본다 (잠긴 경우는 '고양이 잠금')
+beforeEach(() => setOwnedExtras(['cat']));
+
+describe('고양이 잠금 (시아디펜스에서 시아코인으로 연 계정만, 게임마다 따로)', () => {
+  it('열지 않았으면 명단에 없고 출전·레벨업이 거절된다. 연 뒤 cleanProfile 을 다시 거치면 쓸 수 있다', async () => {
+    setOwnedExtras([]);
+    expect(extraOpen('cat')).toBe(false);
+    const p = { ...defaultProfile(), coins: 1e6 };
+    expect(p.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit']);
+    // 저장된 목록에 cat 이 있어도 (서버 목록·기기 저장) 연 기록이 없으면 넣지 않는다
+    expect(cleanProfile({ unlocked: ['cat', 'dragon'] }).unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon']);
+    expect(squadOk(p, ['rat', 'cat'])).toBe(false);
+    expect(() => levelUp(p, 'cat')).toThrow('locked character');
+    const api = createLocalApi(store(), 'k');
+    await expect(api.start('1-1', ['rat', 'cat'])).rejects.toThrow('locked character');
+    // 출전 준비 화면에서 열었다
+    setOwnedExtras(['cat', 'lion']);
+    const q = cleanProfile(p);
+    expect(q.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'cat']);
+    expect(squadOk(q, ['rat', 'cat'])).toBe(true);
+    expect(charLevel(levelUp(q, 'cat'), 'cat')).toBe(2);
+    expect(await api.start('1-1', ['rat', 'cat'])).toMatchObject({ startLives: 20 });
+  });
+});
+
+describe('고양이 구매 조건 (3-5 클리어)', () => {
+  it('3-5 기록이 있거나 서버 진행이 통과하면 살 수 있다. 아니면 지금 가장 멀리 간 스테이지를 함께 보여 준다', () => {
+    const p = defaultProfile();
+    expect(catCondition(p, null)).toEqual({ done: false, text: '3-5 스테이지를 클리어하면 열 수 있어요 · 아직 클리어한 스테이지가 없어요' });
+    p.stages = { '1-1': 3, '1-2': 1, '2-3': 2 };
+    expect(catCondition(p, { have: 0, need: 1 })).toEqual({ done: false, text: '3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-3까지' });
+    expect(catCondition(p, { have: 1, need: 1 }).done).toBe(true);
+    p.stages['3-5'] = 1;
+    expect(catCondition(p, null).done).toBe(true);
+    expect(catCondition(p, { have: 0, need: 1 }).done).toBe(true);
+  });
+});
 
 describe('별 평가', () => {
   it('★ 클리어 · ★★ 생명 10 이상 · ★★★ 생명을 하나도 잃지 않음', () => {
@@ -72,18 +110,20 @@ describe('잠금과 해금', () => {
 
   it('지역의 보스 스테이지를 처음 클리어하면 그 지역의 캐릭터가 해금된다 (1지역 → 용)', () => {
     let p = defaultProfile();
-    expect(p.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit']);
+    // 고양이는 스테이지와 상관없이 (연 계정이면) 함께한다
+    expect(p.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'cat']);
     for (const id of ['1-1', '1-2', '1-3', '1-4']) p = applyRun(p, report(id, 15)).profile;
     expect(p.unlocked).not.toContain('dragon');
     // 실패한 판으로는 해금되지 않는다
     expect(applyRun(p, report('1-5', 0)).result.unlocked).toEqual([]);
     const out = applyRun(p, report('1-5', 11));
     expect(out.result.unlocked).toEqual(['dragon']);
-    expect(out.profile.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon']);
+    expect(out.profile.unlocked).toEqual(['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'cat']);
     // 다시 클리어해도 또 해금되지는 않는다
     expect(applyRun(out.profile, report('1-5', 20)).result.unlocked).toEqual([]);
     expect(squadOk(out.profile, ['rat', 'dragon'])).toBe(true);
     expect(squadOk(p, ['rat', 'dragon'])).toBe(false);
+    expect(squadOk(p, ['rat', 'cat'])).toBe(true);
     expect(squadOk(p, ['rat', 'rat'])).toBe(false);
     expect(squadOk(p, [])).toBe(false);
   });
@@ -172,7 +212,8 @@ describe('캐릭터 레벨업 · 공통 강화', () => {
     expect(p.coins).toBe(0);
     expect(() => levelUp(p, 'rat')).toThrow('not enough coins');
     expect(() => levelUp(p, 'dragon')).toThrow('character locked');
-    expect(() => levelUp(p, 'cat')).toThrow('bad character');
+    expect(() => levelUp(p, 'lion')).toThrow('bad character');
+    expect(charLevel(levelUp({ ...p, coins: 1e6 }, 'cat'), 'cat')).toBe(2);
     p = { ...p, coins: 1e6 };
     for (let i = 3; i < CHAR_MAX_LV; i++) p = levelUp(p, 'rat');
     expect(charLevel(p, 'rat')).toBe(12);
@@ -288,13 +329,13 @@ describe('기기 저장 (서버와 같은 규칙)', () => {
   });
   it('망가진 저장 값은 믿을 수 있는 모양으로 고친다', async () => {
     expect(cleanProfile(null)).toEqual(defaultProfile());
-    expect(cleanProfile({ coins: -5, stages: { '1-1': 9, 'x-y': 3, '1-2': 0 }, levels: { rat: 99, cat: 3, ox: 1 }, upgrades: { sell: 7, luck: 2 }, unlocked: ['dragon', 'cat'] })).toEqual({
-      coins: 0, stages: { '1-1': 3 }, levels: { rat: 12 }, upgrades: { sell: 3 }, unlocked: ['rat', 'ox', 'tiger', 'rabbit', 'dragon'],
+    expect(cleanProfile({ coins: -5, stages: { '1-1': 9, 'x-y': 3, '1-2': 0 }, levels: { rat: 99, lion: 3, ox: 1, cat: 4 }, upgrades: { sell: 7, luck: 2 }, unlocked: ['dragon', 'lion'] })).toEqual({
+      coins: 0, stages: { '1-1': 3 }, levels: { rat: 12, cat: 4 }, upgrades: { sell: 3 }, unlocked: ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'cat'],
       codex: { enemies: [], bosses: [] }, endless: null,
     });
     // 도감은 알려진 id 만, 끝없는 모드 기록은 웨이브 1 이상만
-    expect(cleanProfile({ codex: { enemies: ['wisp', 'imp', 'cat'], bosses: 'x' }, endless: { wave: 7, squad: ['rat', 'cat'] } })).toMatchObject({
-      codex: { enemies: ['imp', 'wisp'], bosses: [] }, endless: { wave: 7, squad: ['rat'] },
+    expect(cleanProfile({ codex: { enemies: ['wisp', 'imp', 'cat'], bosses: 'x' }, endless: { wave: 7, squad: ['rat', 'cat', 'lion'] } })).toMatchObject({
+      codex: { enemies: ['imp', 'wisp'], bosses: [] }, endless: { wave: 7, squad: ['rat', 'cat'] },
     });
     const st = store();
     st.setItem('k', '{broken');
@@ -361,8 +402,8 @@ describe('서버 저장: 보관 후 재전송', () => {
     expect(calls.filter((c) => c.fn === 'defense_start')).toHaveLength(2);
   });
   it('판 시작의 답(jsonb)에서 판 id 와 판 설정을 읽는다. 060 앞의 답(판 id 글자)도 받는다', async () => {
-    const { client } = fake({ defense_start: () => ({ data: { run: 'r-9', startLives: 23, upgrades: { lives: 3, luck: 9 }, levels: { rat: 4, cat: 2 } }, error: null }) });
-    expect(await createSupabaseApi(client, 'u1', store()).start('1-1', ['rat'])).toEqual({ run: 'r-9', startLives: 23, upgrades: { lives: 3 }, levels: { rat: 4 } });
+    const { client } = fake({ defense_start: () => ({ data: { run: 'r-9', startLives: 23, upgrades: { lives: 3, luck: 9 }, levels: { rat: 4, cat: 2, lion: 5 } }, error: null }) });
+    expect(await createSupabaseApi(client, 'u1', store()).start('1-1', ['rat'])).toEqual({ run: 'r-9', startLives: 23, upgrades: { lives: 3 }, levels: { rat: 4, cat: 2 } });
     const old = fake({ defense_start: () => ({ data: 'r-1', error: null }) });
     expect(await createSupabaseApi(old.client, 'u1', store()).start('1-1', ['rat'])).toEqual({ run: 'r-1' });
     const bad = fake({ defense_start: () => ({ data: { startLives: 20 }, error: null }) });

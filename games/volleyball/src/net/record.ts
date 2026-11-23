@@ -1,5 +1,6 @@
 import type { MatchResult, MatchSetup, RecordOutcome } from '../match/game';
 import type { SaveResult, VolleyApi } from './api';
+import { isLockedError } from '../game/unlock';
 
 /**
  * 내 보고가 먼저라 '기다리는 중'이면, 이 간격으로 확정됐는지 물어본다 (합 12초).
@@ -135,6 +136,8 @@ export class MatchRecorder {
   private store: PendingStore | null;
   /** 서버가 '같은 상대와 하루 30판'을 채웠다고 거절했는가 */
   private limit = false;
+  /** 잠긴 캐릭터(안 연 고양이)라서 서버가 시작을 거절했다 */
+  private locked = false;
   /** 서버가 경기를 시작(live)으로 본 시각 (대략: begin 답을 받은 때) */
   private liveAt = 0;
 
@@ -164,6 +167,7 @@ export class MatchRecorder {
             this.liveAt = now();
             if (r && 'error' in r) {
               if (/daily limit/.test(r.error)) this.limit = true;
+              if (isLockedError(r.error)) this.locked = true;
               return null;
             }
             return r?.match ?? null;
@@ -177,6 +181,7 @@ export class MatchRecorder {
       const rep = reportFor(result, this.setup.mySide);
       const id = await this.matchId;
       if (this.limit) return { state: 'limit' };
+      if (this.locked) return { state: 'locked' };
       if (!id) return { state: rep ? 'failed' : 'left' };
       // 내가 나간(끊긴) 경기: 보고하지 않는다. 남은 사람의 보고로 나는 패배로 기록된다
       if (!rep) return { state: 'left' };

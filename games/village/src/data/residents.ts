@@ -2,12 +2,14 @@ import type { ResId } from './balance';
 import type { BuildingType } from './buildings';
 
 /**
- * 주민 (십이지 12명, PRD 7장). id · 순서는 shared/zodiac.js 와 같다. SQL 의 _village_residents 와 같아야 한다 (tests/sql.test.ts).
+ * 주민 (십이지 12명 + 13번째 고양이, PRD 7장). 십이지 id · 순서는 shared/zodiac.js 와 같다. SQL 의 _village_residents 와 같아야 한다 (tests/sql.test.ts).
  * 마을 레벨이 되고 빈 주민 집이 있으면 순서대로 한 명씩 이사 온다.
  *   work 가 있는 주민: 그 건물에 배치하면 보너스 (친밀도 단계마다 커진다)
- *   work 가 '' 인 주민(닭 · 개): 이사 오기만 하면 된다
+ *   work 가 '' 인 주민(닭 · 개 · 고양이): 이사 오기만 하면 된다
+ * 고양이(buy)는 마을 레벨이 아니라 시아코인으로 산 것이 조건이다 (071 buy_character('village', 'cat'), 살 수 있는 조건은 땅 CAT_LAND_STAGE 단계).
+ *   산 뒤 빈 집이 있으면 이사 오고, 주민 집을 하나 더(13채째) 지을 수 있다.
  */
-export const RESIDENT_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;
+export const RESIDENT_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig', 'cat'] as const;
 export type ResidentId = (typeof RESIDENT_IDS)[number];
 
 export interface ResidentDef {
@@ -15,8 +17,10 @@ export interface ResidentDef {
   /** 띠 · 캐릭터 이름 (DESIGN.md 6장) */
   name: string;
   nick: string;
-  /** 이사 오는 마을 레벨 */
+  /** 이사 오는 마을 레벨 (buy 인 주민은 0: 산 것이 조건) */
   level: number;
+  /** 시아코인으로 사야 이사 오는 주민 (고양이) */
+  buy?: boolean;
   /** 일터 ('' = 배치하지 않는다) */
   work: BuildingType | '';
   /** 잘하는 일 (화면 문구. {n} 자리에 보너스 값) */
@@ -38,7 +42,14 @@ export const RESIDENTS: ResidentDef[] = [
   { id: 'rooster', name: '닭', nick: '꼬꼬댁', level: 18, work: '', skill: '날마다 첫 수확이 {n}% 더 많이 (배치하지 않아도 돼요)', lines: ['꼬끼오! 아침이 밝았어요', '일찍 일어난 새가 쌀을 거둬요'] },
   { id: 'dog', name: '개', nick: '멍뭉이', level: 21, work: '', skill: '건물이 15시간 분량까지 쌓아 둬요 (배치하지 않아도 돼요)', lines: ['제가 밤새 지킬게요, 멍!', '주인님 오실 때까지 기다려요'] },
   { id: 'pig', name: '돼지', nick: '꿀꿀이', level: 24, work: 'market', skill: '장터에 배치하면 파는 값 +{n}%', lines: ['복을 가득 담아 왔어요, 꿀꿀', '좋은 값에 팔아 드릴게요'] },
+  { id: 'cat', name: '고양이', nick: '야옹이', level: 0, buy: true, work: '', skill: '은혜 갚는 고양이: 주민 부탁의 엽전 · 경험치 +{n}% (배치하지 않아도 돼요)', lines: ['늦잠 자다 경주는 놓쳤지만, 은혜는 꼭 갚아요', '야옹~ 부탁을 들어주면 제가 더 얹어 드릴게요'] },
 ];
+/** 시아코인으로 사는 주민 (고양이) */
+export const CAT_ID = 'cat' satisfies ResidentId;
+/** 고양이를 살 수 있는 조건: 땅 넓히기 이 단계 (3 = 14×14). SQL 의 _cat_progress_village 와 같아야 한다 (tests/sql.test.ts) */
+export const CAT_LAND_STAGE = 3;
+/** 고양이 값 (시아코인). shared/characters.js 의 CHARACTER_PRICE.cat · SQL _character_price 와 같다 */
+export const CAT_PRICE = 100;
 export const RESIDENT: Record<ResidentId, ResidentDef> = Object.fromEntries(RESIDENTS.map((r) => [r.id, r])) as Record<ResidentId, ResidentDef>;
 export const isResidentId = (v: unknown): v is ResidentId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(RESIDENT, v);
 
@@ -47,6 +58,8 @@ export const AFF_NEED = [0, 10, 30, 60, 100];
 /** 친밀도 단계별 보너스 (%). 용(짓는 시간)은 따로 */
 export const AFF_BONUS = [10, 15, 20, 25, 30];
 export const DRAGON_BONUS = [5, 8, 11, 14, 17];
+/** 고양이(부탁의 엽전 · 경험치) 친밀도 단계별 보너스 (%). 가장 힘센 주민(말 · 닭)보다 조금 약하게: npm run pace 로 견줌 */
+export const CAT_BONUS = [4, 6, 8, 10, 12];
 export const affLevel = (points: number) => AFF_NEED.filter((n) => points >= n).length;
 /** 생산량을 올리는 주민 (배치 · 친밀도가 바뀌면 그때까지 쌓인 양을 적어 둔다) */
 export const RATE_WORKERS: readonly ResidentId[] = ['ox', 'tiger', 'monkey'];

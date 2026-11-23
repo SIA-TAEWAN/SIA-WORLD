@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ZODIAC_IDS, xpNeed } from '../src/data/balance';
+import { CHAR_IDS, xpNeed } from '../src/data/balance';
 import { BOSSES } from '../src/data/bosses';
 import { CHARACTERS } from '../src/data/characters';
 import { ENEMIES } from '../src/data/enemies';
@@ -12,7 +12,7 @@ import { average, normalPolicy, simulate } from '../src/game/policy';
 
 describe('데이터 표 (PRD 4~7장)', () => {
   it('캐릭터 12종: 시작 무기가 서로 다르고, 처음에는 쥐·소·호랑이만 열려 있다', () => {
-    expect(CHARACTERS.map((c) => c.id)).toEqual([...ZODIAC_IDS]);
+    expect(CHARACTERS.map((c) => c.id)).toEqual([...CHAR_IDS]);
     expect(new Set(CHARACTERS.map((c) => c.weapon)).size).toBe(12);
     for (const c of CHARACTERS) expect(WEAPON_INDEX[c.weapon]).toBeGreaterThanOrEqual(0);
     expect(CHARACTERS.filter((c) => c.unlock.kind === 'base').map((c) => c.id)).toEqual(['rat', 'ox', 'tiger']);

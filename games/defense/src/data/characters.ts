@@ -1,4 +1,4 @@
-import type { ZodiacId } from './balance';
+import type { CharId } from './balance';
 
 /**
  * 캐릭터(타워) 수치 (PRD 4장). 공격 방식(kind)마다 계산 함수가 하나씩 있다 (src/game/towers.ts 의 ATTACKS).
@@ -6,9 +6,10 @@ import type { ZodiacId } from './balance';
  *
  * 밸런스 원칙: 같은 기운을 썼을 때의 효율은 비슷하게, 요괴 종류에 따라 유리한 캐릭터가 달라지게.
  *   쥐 빠른 요괴 · 호랑이 단단한 요괴(짧은 사거리) · 토끼 무리 · 소/양 붙잡아 두기 · 용 한 줄로 오는 무리와 방패 ·
- *   뱀 단단하고 회복하는 요괴 · 말 보스와 큰 요괴 · 원숭이 공중과 은신 · 닭 다른 캐릭터를 빠르게 · 개 은신 · 돼지 기운
+ *   뱀 단단하고 회복하는 요괴 · 말 보스와 큰 요괴 · 원숭이 공중과 은신 · 닭 다른 캐릭터를 빠르게 · 개 은신 · 돼지 기운 ·
+ *   고양이(십이지 밖, 시아코인으로 연다) 다 잡은 요괴 마무리 — 체력이 가장 적은 요괴에게 달려들고, 3단계는 빈사 요괴를 단번에
  */
-export type AttackKind = 'shot' | 'stun' | 'melee' | 'lob' | 'beam' | 'poison' | 'slow' | 'bank';
+export type AttackKind = 'shot' | 'stun' | 'melee' | 'lob' | 'beam' | 'poison' | 'slow' | 'bank' | 'pounce';
 
 export interface TowerLevel {
   /** 한 번의 피해 */
@@ -44,10 +45,12 @@ export interface TowerLevel {
   /** bank: 웨이브가 시작될 때마다 버는 기운 · 엽전 */
   income?: number;
   coin?: number;
+  /** pounce: 할퀸 뒤 체력이 최대 체력의 이 비율 이하로 남은 요괴(보스·보스의 분신 제외)는 바로 쓰러진다 */
+  execute?: number;
 }
 
 export interface TowerDef {
-  id: ZodiacId;
+  id: CharId;
   /** 띠 이름 · 캐릭터 이름 (DESIGN.md 6장) */
   name: string;
   nick: string;
@@ -58,8 +61,8 @@ export interface TowerDef {
   proj?: number;
   /** 공중 요괴를 맞힐 수 있나 */
   air: boolean;
-  /** 누구부터 노리나: first 출구에 가장 가까운 요괴(기본) · strong 체력이 가장 많은 요괴 · air 공중 요괴 먼저 */
-  target?: 'first' | 'strong' | 'air';
+  /** 누구부터 노리나: first 출구에 가장 가까운 요괴(기본) · strong 체력이 가장 많은 요괴 · air 공중 요괴 먼저 · weak 남은 체력이 가장 적은 요괴 */
+  target?: 'first' | 'strong' | 'air' | 'weak';
   /** 배치 비용 (기운) */
   cost: number;
   /** 2단계·3단계로 올리는 비용 */
@@ -190,17 +193,32 @@ export const TOWERS: TowerDef[] = [
     ],
     special: '엽전도 조금 벌어요',
   },
+  {
+    // 십이지 밖의 13번째 대원. 다른 캐릭터에 없는 것: 남은 체력이 가장 적은 요괴부터 노린다 (다 잡은 요괴를 놓치지 않는다).
+    // 날쌔게 달려들어 바로 할퀸다 (날아가는 투사체가 없다). 새도 잡는다.
+    id: 'cat', name: '고양이', nick: '야옹이', role: '마무리 사냥', desc: '남은 체력이 가장 적은 요괴에게 날쌔게 달려들어 할퀴어요. 다 잡은 요괴를 놓치지 않아요', kind: 'pounce', air: true, target: 'weak',
+    cost: 90, up: [75, 125],
+    levels: [
+      { dmg: 24, range: 165, every: 0.9 },
+      { dmg: 33, range: 175, every: 0.82 },
+      { dmg: 43, range: 185, every: 0.75, execute: 0.2 },
+    ],
+    special: '체력이 1/5 아래로 남은 요괴는 단번에 쓰러뜨려요 (보스 제외)',
+  },
 ];
 
 export const TOWER_INDEX: Record<string, number> = Object.fromEntries(TOWERS.map((t, i) => [t.id, i]));
 export const towerOf = (id: string): TowerDef | undefined => TOWERS[TOWER_INDEX[id]];
 
+/** RosterEntry.unlockRegion: 스테이지 진행으로 열리지 않는 캐릭터 (고양이 — 이 게임의 캐릭터 선택 화면에서 시아코인으로 연다 (게임마다 따로)) */
+export const BOUGHT = -1;
+
 /**
- * 십이지 12종의 출전 명단 (PRD 4장). 계산까지 만들어진 캐릭터는 TOWERS 에 있고, 나머지는 해금 조건만 보여 준다.
- * unlockRegion: 이 지역을 클리어하면 열린다 (0 = 처음부터)
+ * 출전 명단 (PRD 4장): 십이지 12종 + 고양이. 계산까지 만들어진 캐릭터는 TOWERS 에 있고, 나머지는 해금 조건만 보여 준다.
+ * unlockRegion: 이 지역을 클리어하면 열린다 (0 = 처음부터, BOUGHT = 스테이지로 열리지 않는다)
  */
 export interface RosterEntry {
-  id: ZodiacId;
+  id: CharId;
   name: string;
   nick: string;
   role: string;
@@ -220,10 +238,18 @@ export const ROSTER: RosterEntry[] = [
   { id: 'rooster', name: '닭', nick: '꼬꼬댁', role: '지원', unlockRegion: 6 },
   { id: 'dog', name: '개', nick: '멍뭉이', role: '감지·추격', unlockRegion: 7 },
   { id: 'pig', name: '돼지', nick: '꿀꿀이', role: '재화', unlockRegion: 8 },
+  { id: 'cat', name: '고양이', nick: '야옹이', role: '마무리 사냥', unlockRegion: BOUGHT },
 ];
 
+/** 스테이지로 열리지 않는 캐릭터 (이 게임의 캐릭터 선택 화면에서 시아코인으로 연다 (게임마다 따로)) */
+export const EXTRAS: CharId[] = ROSTER.filter((r) => r.unlockRegion === BOUGHT).map((r) => r.id);
+/** 여는 값 (시아코인). 071 의 _character_price · shared/characters.js 의 CHARACTER_PRICE 와 같다 (tests/sql.test.ts 가 대조) */
+export const EXTRA_PRICE: Partial<Record<CharId, number>> = { cat: 100 };
+/** 고양이를 살 수 있는 진행 조건: 이 스테이지(3지역 보스)를 클리어. 074 의 _cat_progress_defense 와 같다 (tests/sql.test.ts 가 대조) */
+export const CAT_STAGE = '3-5';
+
 /** 처음부터 쓸 수 있는 캐릭터 */
-export const STARTERS: ZodiacId[] = ROSTER.filter((r) => r.unlockRegion === 0).map((r) => r.id);
+export const STARTERS: CharId[] = ROSTER.filter((r) => r.unlockRegion === 0).map((r) => r.id);
 
 /** 그 단계까지 쓴 기운 (배치 + 강화) */
 export function spentAt(def: TowerDef, lv: number): number {

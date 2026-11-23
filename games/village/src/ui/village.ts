@@ -3,10 +3,10 @@ import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP,
 import { BUILDING, BUILDINGS, isReward, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { GAMES, MONUMENTS, type GameStats } from '../data/monuments';
 import { goalText, josa } from '../data/goals';
-import { RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
+import { CAT_LAND_STAGE, CAT_PRICE, RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
-  batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, pavilionRange, payOf, ratePct, residentOf, residentPct, sellCoins, isFull, normalMax,
-  newVillage, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, storedMax, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
+  batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countCap, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, pavilionRange, payOf, ratePct, residentOf, residentPct, sellCoins, isFull, normalMax,
+  newVillage, nextResident, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, storedMax, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
 } from '../game/rules';
 import { makeShowcase } from '../data/showcase';
 import { ApiError, LOCAL_MODE, type RankRow, type Ranking, type VillageApi, type Visit } from '../net/api';
@@ -592,6 +592,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     : d.skip ? `req:${d.skip}`
     : d.daily ? `daily:${d.daily}`
     : d.expand !== undefined ? 'expand'
+    : d.buycat !== undefined ? 'buycat'
     : d.feast !== undefined ? 'feast'
     : null;
   function markBusy() {
@@ -636,7 +637,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       rows = (tab === 'special' ? landRow() : '') + list
         .map((d) => {
           const have = countOf(state, d.id);
-          const max = maxCount(d.id, p.level);
+          // 고양이를 산 마을은 주민 집 한 채 더 (countCap)
+          const max = countCap(state, d.id);
           const next = nextUnlock(state, d.id);
           const more = canHaveMore(state, d.id);
           let side: string;
@@ -765,7 +767,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     if (b.type === 'storage') lines.push(`<p>창고 용량 <b>+${num(STORAGE_CAP[b.level - 1])}</b></p>`);
     if (b.type === 'hall') lines.push(`<p>창고 용량 <b>${num(storageCap(state))}</b> · 동시에 짓기 <b>${slots(state)}</b>개 · 다른 건물은 레벨 <b>${b.level}</b>까지</p>`);
     if (b.type === 'house') {
-      const next = RESIDENTS.find((d) => !residentOf(state, d.id));
+      const next = nextResident(state);
       const houses = state.buildings.filter((v) => v.type === 'house' && standing(v)).length;
       lines.push(`<p>주민 <b>${state.residents.length}</b>명이 살고 있어요 (집 ${houses}채)</p>`);
       if (next) lines.push(`<p class="soft">다음 주민 ${next.nick}: ${p.level < next.level ? `마을 레벨 ${next.level}에 이사 와요` : houses <= state.residents.length ? '빈 집을 한 채 더 지으면 이사 와요' : '곧 이사 와요'}</p>`);
@@ -944,6 +946,28 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         openSheet(null);
         apply(s);
       });
+    } else if (d.buycat !== undefined) {
+      // 고양이 열기 (071 buy_character): 한 번 더 묻고 산다. 조건 · 시아코인은 서버가 다시 본다
+      void ask('야옹이 데려오기', `시아코인 <b>${CAT_PRICE}개</b>로 <b>야옹이</b>(13번째 주민)를 마을에 데려와요.<br/>빈 주민 집이 있으면 바로 이사 오고, 주민 집을 한 채 더 지을 수 있어요`, `시아코인 ${CAT_PRICE}개 쓰기`).then(
+        (yes) => yes && sheetAct(bt, () => api.buyCat(), (r) => {
+          const res = r.result;
+          if (res.ok || res.reason === 'owned') {
+            sfx('win');
+            toast(res.ok ? `야옹이를 데려왔어요! 남은 시아코인 ${num(res.siaCoins ?? 0)}개` : '이미 데려왔어요', 3000);
+          } else {
+            sfx('click');
+            toast(
+              res.reason === 'condition' ? `땅을 ${CAT_LAND_STAGE}단계까지 넓히면 열 수 있어요 · 지금 ${res.have ?? 0}단계`
+              : res.reason === 'coin' ? `시아코인이 모자라요 (${num(res.siaCoins ?? 0)} / ${CAT_PRICE})`
+              : res.reason === 'login' ? '로그인이 필요해요'
+              : '열지 못했어요. 잠시 후 다시 시도해 주세요',
+              2800,
+            );
+          }
+          if (r.state) apply(r.state);
+          else void api.load().then(apply).catch(() => undefined);
+        }),
+      );
     } else if (d.showcase !== undefined) {
       // 관리자만 (서버도 관리자가 아니면 'not admin' 으로 거절한다)
       void ask('전시 마을로 꾸미기', '마을을 <b>최종 모습</b>(모든 땅 · 모든 건물 최고 레벨 · 장식물 · 선물 · 기념물)으로 바꿔요.<br/>지금 마을의 건물 · 주민 · 부탁은 모두 사라지고 되돌릴 수 없어요', '꾸미기').then(

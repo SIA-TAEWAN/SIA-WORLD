@@ -1,4 +1,4 @@
-import { BOARD_H, BOARD_W, MAX_LV, SQUAD_SIZE, type ZodiacId } from '../data/balance';
+import { BOARD_H, BOARD_W, MAX_LV, SQUAD_SIZE, type CharId } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { ROSTER, TOWERS, towerOf, type TowerDef } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
@@ -42,11 +42,11 @@ export const SKILLS: Record<'novice' | 'normal' | 'expert', Skill> = {
 };
 
 /** 캐릭터를 고르는 비중 (공격 방식별) */
-const WEIGHT: Record<TowerDef['kind'], number> = { shot: 2.6, lob: 2.5, melee: 2.5, beam: 2.4, poison: 2.2, stun: 1.2, slow: 1.3, bank: 0 };
+const WEIGHT: Record<TowerDef['kind'], number> = { shot: 2.6, lob: 2.5, melee: 2.5, beam: 2.4, poison: 2.2, stun: 1.2, slow: 1.3, bank: 0, pounce: 2.5 };
 /** 돕는 캐릭터인가: 직접 잡지 못하므로 다른 캐릭터를 몇 놓은 뒤에 그 곁에 둔다 (소·양·닭) */
 const helper = (c: number) => TOWERS[c].kind === 'stun' || TOWERS[c].kind === 'slow' || !!TOWERS[c].levels[0].haste;
 /** 한 마리씩 확실히 잡는 캐릭터인가 */
-const single = (c: number) => (TOWERS[c].kind === 'shot' && !TOWERS[c].levels[0].haste) || TOWERS[c].kind === 'melee' || TOWERS[c].kind === 'poison';
+const single = (c: number) => (TOWERS[c].kind === 'shot' && !TOWERS[c].levels[0].haste) || TOWERS[c].kind === 'melee' || TOWERS[c].kind === 'poison' || TOWERS[c].kind === 'pounce';
 
 type Goal = { op: 'place'; slot: number; char: number } | { op: 'upgrade'; slot: number } | null;
 
@@ -249,13 +249,13 @@ export function skillPolicy(seed: number, skill: Skill): Policy {
 export const normalPolicy = (seed: number): Policy => skillPolicy(seed, SKILLS.normal);
 
 /** 캐릭터의 기본 쓸모 (명단을 고를 때의 바탕 점수) */
-const BASE: Record<string, number> = { rat: 2.4, ox: 1.4, tiger: 3, rabbit: 3, dragon: 2.8, snake: 2.6, horse: 2.4, sheep: 1.8, monkey: 1.4, rooster: 2, dog: 1.6, pig: 2.2 };
+const BASE: Record<string, number> = { rat: 2.4, ox: 1.4, tiger: 3, rabbit: 3, dragon: 2.8, snake: 2.6, horse: 2.4, sheep: 1.8, monkey: 1.4, rooster: 2, dog: 1.6, pig: 2.2, cat: 2.4 };
 
 /**
  * 그 스테이지에 데려갈 5종을 고른다 (보통 실력의 선택): 바탕 점수 + 그 스테이지에 나오는 요괴에 잘 듣는 캐릭터에 가산점.
  * unlocked: 쓸 수 있는 캐릭터
  */
-export function pickSquad(stage: StageDef, unlocked: readonly ZodiacId[], must?: ZodiacId, size = SQUAD_SIZE): ZodiacId[] {
+export function pickSquad(stage: StageDef, unlocked: readonly CharId[], must?: CharId, size = SQUAD_SIZE): CharId[] {
   const foes = stageEnemies(stage).map((id) => ENEMIES[ENEMY_INDEX[id]]);
   const bossHere = stage.boss ? BOSSES[BOSS_INDEX[stage.boss.id]] : null;
   // 요괴마다 이 스테이지에서 차지하는 몫 (마릿수 × 체력)
@@ -272,7 +272,7 @@ export function pickSquad(stage: StageDef, unlocked: readonly ZodiacId[], must?:
   const stealth = share((f) => f.stealth);
   const air = share((f) => f.air);
   const ghost = share((f) => f.ghost);
-  const score = (id: ZodiacId) => {
+  const score = (id: CharId) => {
     let v = BASE[id] ?? 1;
     // 잘 듣는 요괴가 많이 나올수록 가산점
     for (const f of foes) if (f.weak.includes(id)) v += 0.5 + (3 * (weight.get(f.id) ?? 0)) / Math.max(1, all);

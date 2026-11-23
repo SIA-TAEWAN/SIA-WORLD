@@ -130,6 +130,16 @@
     .pill .left { display: block; color: var(--ink-soft); font-size: 12px; }
     .pill .small:disabled { opacity: .45; }
     #rank-btn { flex: 0 0 auto; align-self: center; }
+    /* 13번째 대원: 고양이 소개 (여는 곳은 각 게임 캐릭터 고르기 화면, shared/characters.js) */
+    .cat-card { display: flex; align-items: center; gap: 14px; background: var(--panel); border: var(--line) solid var(--outline);
+      border-radius: var(--radius-panel); padding: 12px 14px; margin: 0 0 22px; box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+    .cat-card img { flex: 0 0 auto; width: 92px; height: auto; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .12)); }
+    .cat-card .txt { flex: 1; min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+    .cat-card .tag { display: inline-block; padding: 1px 10px; border-radius: var(--radius-pill); border: var(--line-thin) solid var(--outline);
+      background: var(--pink); color: var(--white); font-size: 13px; margin-bottom: 4px; }
+    .cat-card h3 { margin: 0; font-size: 20px; font-weight: normal; }
+    .cat-card p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; line-height: 1.45; }
+    @media (max-width: 420px) { .cat-card { align-items: flex-start; } .cat-card img { width: 72px; } }
     .note { color: var(--pink); font-size: 14px; margin: -14px 0 16px; }
     .games-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .games-head { margin-bottom: 12px; }
@@ -274,6 +284,15 @@
           <span class="amt"><small>시아코인</small><b id="w-coins">-</b><span class="left">게임 한 판을 끝낼 때마다 1코인</span></span></div>
       </section>
       <p class="note" id="w-note"></p>
+      <section class="cat-card hidden" id="cat-card" aria-labelledby="cat-title">
+        <img src="./shared/images/zodiac/full/cat.png" alt="고양이 야옹이" width="92" height="113" />
+        <div class="txt">
+          <span class="tag">13번째 대원</span>
+          <h3 id="cat-title">고양이 야옹이</h3>
+          <p id="cat-intro"></p>
+          <p id="cat-how"></p>
+        </div>
+      </section>
       <div class="games-head"><h2>게임</h2><button class="btn small hidden" id="install-btn">📲 앱으로 설치</button><button class="btn small" id="rank-btn">🏆 랭킹</button></div>
       <div class="games" id="games"></div>
       <section class="admin-box hidden" id="admin-box">
@@ -297,6 +316,7 @@
     import { openRanking } from './shared/ranking-dialog.js';
     import { watchGameCounts, GAME_MAX } from './shared/presence.js';
     import { onInstallChange, promptInstall, dismissIosHint, openInBrowser } from './shared/pwa.js';
+    import { CAT, CAT_PRICE } from './shared/characters.js';
 
     const $ = (s) => document.querySelector(s);
 
@@ -472,6 +492,7 @@
       // 게임별 접속 인원 (한 번만 구독)
       stopCounts ??= watchGameCounts((c) => { gameCounts = c; paintCounts(); });
       void loadWallet(user);
+      renderCat();
       // 서버의 오픈 여부로 다시 그린다 (못 읽으면 기본값 그대로)
       const seq = openSeq;
       loadGameOpen().then((m) => { if (seq !== openSeq) return; gameOpen = m; renderGames(user); }).catch(() => {});
@@ -490,6 +511,7 @@
         $('#l-' + c).textContent = wallet ? `무료 충전 오늘 ${left}/${REFILLS_PER_DAY}번 남음` : '';
         $(`.refill[data-c="${c}"]`).disabled = !canRefill(wallet, c, LOBBY_BASE_UNIT);
       }
+      renderCat();
     }
     async function loadWallet(user) {
       me = user;
@@ -519,6 +541,15 @@
         renderWallet();
       }),
     );
+
+    // ---------- 13번째 대원: 고양이 소개 (여는 곳은 각 게임의 캐릭터 선택 화면, 게임마다 따로) ----------
+    function renderCat() {
+      const card = $('#cat-card');
+      if (!me) { card.classList.add('hidden'); return; }
+      card.classList.remove('hidden');
+      $('#cat-intro').textContent = CAT.intro;
+      $('#cat-how').textContent = `게임마다 조건(예: 시아탱크 30판, 서바이벌 맵 2개 클리어, 마을 땅 3단계)을 넘으면 그 게임에서 시아코인 ${formatAmount(CAT_PRICE)}개로 열 수 있어요. 게임마다 따로 열어요.`;
+    }
 
     // ---------- 랭킹 (시아탱크와 같은 창: shared/ranking-dialog.js) ----------
     $('#rank-btn').addEventListener('click', () => openRanking({ meId: me?.userId ?? null, first: 'tank' }));

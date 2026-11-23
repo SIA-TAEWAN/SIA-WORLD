@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { clearCoins, endlessCoins, failCoins, firstCoins } from '../src/data/growth';
 import { createLocalApi } from '../src/net/api';
-import { applyReport, checkStart, emptyProfile, leadersOf, regionOpen, stageOpen, type RunReport } from '../src/game/progress';
+import { readFileSync } from 'node:fs';
+import { CAT_PRICE, CAT_STAGE, UNLOCK_LABEL, applyReport, catConditionText, catReady, checkStart, emptyProfile, leadersOf, regionOpen, setOwnedExtras, stageOpen, whyText, type RunReport } from '../src/game/progress';
+import { STAGES } from '../src/data/stages';
 
 const report = (o: Partial<RunReport>): RunReport => ({
   run: 'r', stage: '1-1', leader: 'rat', mode: 'normal', time: 58, cleared: true, troops: 120, kills: 50, progress: 1, meters: 0, bosses: 0, crate: 0, ...o,
@@ -44,6 +46,21 @@ describe('판 밖 기록', () => {
     expect(checkStart(p, '2-1', 'rabbit', 'normal')).toBeNull();
     expect(checkStart(p, '2-2', 'rat', 'normal')).toBe('stage locked');
     expect(checkStart(p, '1-1', 'dragon', 'normal')).toBe('leader locked');
+    expect(checkStart(p, '1-1', 'lion', 'normal')).toBe('bad leader');
+  });
+
+  it('고양이: 진행과 무관하게, 시아코인으로 연 사람만 고를 수 있다', () => {
+    const p = emptyProfile();
+    setOwnedExtras([]);
+    expect(leadersOf(p)).toEqual(['rat', 'ox', 'tiger']);
+    expect(checkStart(p, '1-1', 'cat', 'normal')).toBe('locked character');
+    expect(whyText('locked character')).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
+    for (const st of STAGES) p.stages[st.id] = 3;
+    expect(leadersOf(p)).not.toContain('cat');
+    setOwnedExtras(['cat']);
+    expect(leadersOf(emptyProfile())).toEqual(['rat', 'ox', 'tiger', 'cat']);
+    expect(checkStart(emptyProfile(), '1-1', 'cat', 'normal')).toBeNull();
+    setOwnedExtras([]);
   });
 
   it('테스트 모드 저장: 강화를 사면 엽전이 줄고, 모자라면 거절', async () => {
@@ -55,5 +72,25 @@ describe('판 밖 기록', () => {
     const p = await api.buyUpgrade('troops');
     expect(p.upgrades.troops).toBe(1);
     expect(p.coins).toBe(65 - 60);
+  });
+
+  it('고양이 값·버튼 글이 shared/characters.js · 071 과 같다', () => {
+    const js = readFileSync(new URL('../../../shared/characters.js', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../../../supabase/migrations/071_characters.sql', import.meta.url), 'utf8');
+    expect(Number(js.match(/CHARACTER_PRICE = \{ cat: (\d+) \}/)?.[1])).toBe(CAT_PRICE);
+    expect(Number(sql.match(/when 'cat' then (\d+)/)?.[1])).toBe(CAT_PRICE);
+    expect(js).toContain("unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`");
+    expect(UNLOCK_LABEL).toBe(`시아코인 ${CAT_PRICE}개로 열기`);
+  });
+
+  it('고양이 구매 조건: 3-5 클리어, 남은 조건 글', () => {
+    const p = emptyProfile();
+    expect(CAT_STAGE).toBe('3-5');
+    expect(catReady(p)).toBe(false);
+    expect(catConditionText(p)).toBe('3-5 스테이지를 클리어하면 열 수 있어요 · 아직 클리어한 스테이지가 없어요');
+    for (const id of ['1-1', '1-2', '1-3', '1-4', '1-5', '2-1', '2-2', '2-3', '2-4']) p.stages[id] = 2;
+    expect(catConditionText(p)).toBe('3-5 스테이지를 클리어하면 열 수 있어요 · 지금 2-4까지');
+    p.stages['3-5'] = 1;
+    expect(catReady(p)).toBe(true);
   });
 });

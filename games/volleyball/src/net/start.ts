@@ -1,4 +1,4 @@
-import { ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { isCharId, type ZodiacId } from '../game/constants';
 
 /** 방 채널로 주고받는 '경기 시작' 알림과 그 검사 (순수 모듈) */
 
@@ -50,7 +50,7 @@ export function cleanStart(raw: unknown, now: number): StartMsg | null {
   for (const p of s.players as unknown[]) {
     const v = p as Partial<StartPlayer> | null;
     if (!v || typeof v !== 'object' || typeof v.id !== 'string' || !v.id || v.id.length > 64) return null;
-    ps.push({ id: v.id, name: String(v.name ?? '').slice(0, 12) || '이름 없음', char: ZODIAC_IDS.includes(v.char as ZodiacId) ? (v.char as ZodiacId) : 'tiger' });
+    ps.push({ id: v.id, name: String(v.name ?? '').slice(0, 12) || '이름 없음', char: isCharId(v.char) ? v.char : 'tiger' });
   }
   if (ps[0].id === ps[1].id) return null;
   const bg = fin(s.bg) ? ((Math.floor(s.bg) % 3) + 3) % 3 : 0;

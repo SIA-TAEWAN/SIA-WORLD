@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   HEROES,
   HERO_IDS,
+  ALL_HERO_IDS,
+  EXTRA_HERO_IDS,
+  isHeroId,
   beginShot,
   canSpecial,
   createRun,
@@ -48,6 +51,19 @@ describe('대원 12종 데이터', () => {
     expect(Math.max(...atk) / Math.min(...atk)).toBeLessThanOrEqual(1.2);
   });
 
+  it('고양이(13번째 대원): 지역 합류 밖 · 능력치는 십이지 범위 안 · 콤보/필살기는 다른 대원과 겹치지 않는다', () => {
+    expect([...EXTRA_HERO_IDS]).toEqual(['cat']);
+    expect(ALL_HERO_IDS).toEqual([...HERO_IDS, 'cat']);
+    const c = HEROES.cat;
+    expect(c.unlockRegion).toBe(-1);
+    expect(isHeroId('cat')).toBe(true);
+    const hp = HERO_IDS.map((id) => HEROES[id].hp);
+    const atk = HERO_IDS.map((id) => HEROES[id].atk);
+    expect(c.hp).toBeLessThanOrEqual(Math.max(...hp));
+    expect(c.atk).toBeLessThanOrEqual(Math.max(...atk));
+    expect(HERO_IDS.some((id) => HEROES[id].combo === c.combo || HEROES[id].special === c.special)).toBe(false);
+  });
+
   it('레벨·강화 → 능력치', () => {
     expect(heroStats('rat', 1)).toEqual({ hp: 100, atk: 30, comboTier: 1, charge0: 0, healMul: 1 });
     expect(heroStats('rat', 30).comboTier).toBe(4);
@@ -87,6 +103,7 @@ describe('우정 콤보', () => {
     ['monkey', 'balls'],
     ['rooster', 'cleanse'],
     ['dog', 'fang'],
+    ['cat', 'scratch'],
   ];
   it.each(damaging)('%s 콤보(%s)가 요괴에게 피해를 준다', (id) => {
     const foes = [foe(330, 300, { hp: 9999 }), foe(500, 650, { hp: 9999 }), foe(180, 650, { hp: 9999 }), foe(480, 500, { hp: 9999 }), foe(180, 800, { hp: 9999 })];
@@ -129,6 +146,16 @@ describe('우정 콤보', () => {
     const ev = playShot(s, { a: 2700, p: 100, s: 0 });
     const att = ev.find((e) => e.t === 'attack');
     expect(att?.t === 'attack' && att.hits.map((h) => h.dmg)).toEqual([6, 6]); // 전체 공격 12 → 반
+  });
+
+  it('냥냥 펀치(고양이): 가장 가까운 요괴를 세 번 할퀸다', () => {
+    const s = comboRun('cat', [foe(330, 520, { hp: 9999 }), foe(100, 100, { hp: 9999 })]);
+    s.heroes[0].x = 400;
+    const ev = fly(s, { a: 2600, p: 40, s: 0 });
+    const ci = ev.findIndex((e) => e.t === 'combo');
+    expect(ci).toBeGreaterThanOrEqual(0);
+    const hits = ev.slice(ci + 1, ci + 4);
+    expect(hits.every((e) => e.t === 'hit' && e.id === s.foes[0].id)).toBe(true);
   });
 
   it('엽전(돼지): 판 엽전이 는다', () => {
@@ -241,6 +268,29 @@ describe('필살기', () => {
     const s = ready('dog', [foe(100, 100, { hp: 500 }), foe(200, 100, { hp: 100 }), foe(300, 100, { hp: 200 }), foe(400, 100, { hp: 300 })]);
     beginShot(s, { a: 900, p: 1, s: 1 });
     expect(s.foes.map((f) => f.hp < f.maxHp)).toEqual([false, true, true, true]);
+  });
+
+  it('고양이: 멈추면 가장 가까운 요괴에게 한 번 더 덮친다', () => {
+    // 오른쪽 아래로 살짝 쏘면 요괴(왼쪽 위)에 닿지 않고 멈춘다 → 덮치기로 그 요괴를 때린다
+    const a = ready('cat', [foe(120, 200, { hp: 99999, cd: 9 }), foe(600, 40, { hp: 99999, cd: 9 })]);
+    const b = ready('cat', [foe(120, 200, { hp: 99999, cd: 9 }), foe(600, 40, { hp: 99999, cd: 9 })]);
+    const ea = fly(a, { a: 0, p: 5, s: 1 });
+    const eb = fly(b, { a: 0, p: 5, s: 0 });
+    const pounce = ea.find((e) => e.t === 'pounce');
+    expect(pounce && pounce.t === 'pounce' && [pounce.tx, pounce.ty]).toEqual([120, 200]);
+    expect(ea.some((e) => e.t === 'hit' && e.id === a.foes[0].id)).toBe(true);
+    expect(eb.some((e) => e.t === 'pounce' || e.t === 'hit')).toBe(false);
+    // 덮치기는 한 번만
+    expect(ea.filter((e) => e.t === 'pounce').length).toBe(1);
+  });
+
+  it('고양이: 요괴가 없으면 덮치지 않고 그대로 멈춘다', () => {
+    const s = ready('cat', [foe(-500, -500, { hp: 1 })]);
+    s.foes[0].alive = false;
+    s.foes[0].down = true; // 판이 끝나지 않게 (되살아날 요괴)
+    const ev = fly(s, { a: 2700, p: 20, s: 1 });
+    expect(ev.some((e) => e.t === 'pounce')).toBe(false);
+    expect(s.phase).toBe('settle');
   });
 
   it('돼지: 벽에 튕길수록 피해가 커진다', () => {

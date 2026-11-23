@@ -1,11 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { SQUAD_SIZE, ZODIAC_IDS, type ZodiacId } from '../data/balance';
-import { ROSTER } from '../data/characters';
+import { SQUAD_SIZE, CHAR_IDS, type CharId } from '../data/balance';
+import { EXTRAS, ROSTER } from '../data/characters';
 import { CHAR_MAX_LV, UPGRADES } from '../data/growth';
 import { STAGES, stageOf } from '../data/stages';
 import {
   LIMITS, applyRun, buyUpgrade, cleanProfile, defaultProfile, levelUp, minRealTime, openedBy, rejectReason, squadOk, stageOpen, startLivesOf,
-  endlessOpen, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
+  endlessOpen, extraOpen, type DefenseProfile, type FinishResult, type RunMode, type RunReport,
 } from '../game/progress';
 import type { Upgrades } from '../data/growth';
 import { ENDLESS_ID } from '../data/endless';
@@ -53,7 +53,7 @@ export interface DefenseApi {
   kind: 'supabase' | 'local';
   loadProfile(): Promise<DefenseProfile>;
   /** 판 시작: 판 id 와 판 설정. 못 받으면 null (그 판은 기록되지 않는다). 잠긴 스테이지·캐릭터면 ApiError */
-  start(stage: string, squad: ZodiacId[], mode?: RunMode): Promise<StartInfo | null>;
+  start(stage: string, squad: CharId[], mode?: RunMode): Promise<StartInfo | null>;
   /** 판 끝: 새 프로필과 결과. 통신 실패면 임시 보관하고 null, 서버가 거절했으면 ApiError */
   finish(report: RunReport): Promise<{ profile: DefenseProfile; result: FinishResult } | null>;
   /** 임시 보관해 둔 결과를 다시 보낸다 → 올라간 판 수 */
@@ -61,7 +61,7 @@ export interface DefenseApi {
   /** 다시 보내기(resend)로 새 프로필을 받았을 때 부른다 */
   onProfile: ((p: DefenseProfile) => void) | null;
   /** 아래 둘은 새 프로필을 돌려준다. 안 되면 ApiError(까닭) */
-  levelUp(id: ZodiacId): Promise<DefenseProfile>;
+  levelUp(id: CharId): Promise<DefenseProfile>;
   buyUpgrade(key: string): Promise<DefenseProfile>;
 }
 
@@ -83,7 +83,7 @@ export const LOCAL_KEY = 'siadefense:local';
 interface LocalRun {
   mode?: RunMode;
   stage: string;
-  squad: ZodiacId[];
+  squad: CharId[];
   started: number;
   startLives: number;
 }
@@ -136,6 +136,8 @@ export function createLocalApi(store: Store, key = LOCAL_KEY, now: () => number 
       const stage = stageOf(stageId);
       if (!stage || (mode === 'endless') !== (stageId === ENDLESS_ID)) throw new ApiError('bad stage');
       if (new Set(squad).size !== squad.length || squad.length < 1 || squad.length > SQUAD_SIZE) throw new ApiError('bad squad');
+      // 서버(074 → 071 _check_character)와 같다: 열지 않은 고양이
+      if (squad.some((c) => EXTRAS.includes(c) && !extraOpen(c))) throw new ApiError('locked character');
       if (mode === 'endless') {
         if (!endlessOpen(d.profile)) throw new ApiError('endless locked');
       } else if (!stageOpen(d.profile, stage)) throw new ApiError('stage locked');
@@ -274,7 +276,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
             stars: num(res.stars), bestStars: num(res.bestStars), newStars: num(res.newStars), firstClear: res.firstClear === true,
             coins: num(res.coins), baseCoins: num(res.baseCoins), firstCoins: num(res.firstCoins), starCoins: num(res.starCoins),
             opened: res.firstClear === true && before ? openedBy(before, profile) : null,
-            unlocked: (Array.isArray(res.unlocked) ? res.unlocked : []).filter((c): c is ZodiacId => (ZODIAC_IDS as readonly string[]).includes(c)),
+            unlocked: (Array.isArray(res.unlocked) ? res.unlocked : []).filter((c): c is CharId => (CHAR_IDS as readonly string[]).includes(c)),
             valid: res.valid !== false,
             wave: num(res.wave), bestWave: num(res.bestWave), newRecord: res.newRecord === true,
           },
@@ -417,7 +419,7 @@ function seedLocal(store: Store) {
  */
 export interface DevSetup {
   stage: string | null;
-  squad: ZodiacId[] | null;
+  squad: CharId[] | null;
   seed: number | null;
   /** 모든 캐릭터의 레벨 (적지 않았으면 null: 저장된 레벨) */
   lv: number | null;
@@ -429,7 +431,7 @@ export function devSetup(): DevSetup | null {
   if (!LOCAL_MODE) return null;
   const region = params.get('region');
   const stage = params.get('stage') ?? (region ? `${region}-1` : null);
-  const squad = (params.get('squad') ?? '').split(',').filter((c): c is ZodiacId => (ZODIAC_IDS as readonly string[]).includes(c)).slice(0, SQUAD_SIZE);
+  const squad = (params.get('squad') ?? '').split(',').filter((c): c is CharId => (CHAR_IDS as readonly string[]).includes(c)).slice(0, SQUAD_SIZE);
   const seed = params.get('seed');
   const num = (k: string, min: number, max: number) => (params.get(k) === null ? null : Math.max(min, Math.min(max, Math.floor(Number(params.get(k))) || min)));
   return {

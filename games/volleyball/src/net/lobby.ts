@@ -1,4 +1,4 @@
-import { ZODIAC_IDS, type ZodiacId } from '../game/constants';
+import { isCharId, type ZodiacId } from '../game/constants';
 import type { VolleyApi } from './api';
 import type { Channel, Member } from './channel';
 import { LOBBY_MAX, lobbyCount, lobbyPlace } from './capacity';
@@ -75,7 +75,7 @@ export function roomsFrom(members: readonly Member<LobbyMeta>[]): RoomInfo[] {
       code,
       title: cleanTitle(host.title) || `${name}의 방`,
       host: name,
-      hostChar: ZODIAC_IDS.includes(host.char) ? host.char : 'tiger',
+      hostChar: isCharId(host.char) ? host.char : 'tiger',
       count,
       busy,
       open: !busy && count < SEATS,

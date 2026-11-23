@@ -25,7 +25,7 @@ const WORKERS = Math.max(1, Math.min(12, cpus().length - 1));
 const CHUNK = 6;
 
 const MAPS = [['field', '들판'], ['bamboo', '대나무 숲'], ['palace', '달빛 궁궐'], ['underworld', '황천길']];
-const CHARS = [['rat', '쥐'], ['ox', '소'], ['tiger', '호랑이'], ['rabbit', '토끼'], ['dragon', '용'], ['snake', '뱀'], ['horse', '말'], ['sheep', '양'], ['monkey', '원숭이'], ['rooster', '닭'], ['dog', '개'], ['pig', '돼지']];
+const CHARS = [['rat', '쥐'], ['ox', '소'], ['tiger', '호랑이'], ['rabbit', '토끼'], ['dragon', '용'], ['snake', '뱀'], ['horse', '말'], ['sheep', '양'], ['monkey', '원숭이'], ['rooster', '닭'], ['dog', '개'], ['pig', '돼지'], ['cat', '고양이']];
 /** PRD 7장: 들판 10 · 대나무 숲 22 · 달빛 궁궐 34 · 황천길 44 레벨쯤에서 클리어 */
 const LEVELS = [0, 10, 22, 34, 44, 49];
 const TARGET = { field: 10, bamboo: 22, palace: 34, underworld: 44 };

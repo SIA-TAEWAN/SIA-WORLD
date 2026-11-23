@@ -49,6 +49,14 @@ describe('서버 다시 돌리기 = 브라우저 결과', () => {
     expect(verifyRun(r.snap, r.inputs)).toEqual(resultOf(r.s));
   });
 
+  it('고양이(추가 대원)가 있는 파티: 고양이 레벨이 스냅숏에 들어가고 덮치기까지 같은 결과', () => {
+    const p: FingerProfile = { ...emptyProfile(), levels: { cat: 8 }, upgrades: { charge: 5 } };
+    const r = browserRun(p, '1-3', ['cat', 'rat', 'ox'], { pilot: quick, fast: fastOdd });
+    expect(r.snap.levels).toEqual({ cat: 8, rat: 1, ox: 1 });
+    expect(verifyRun(r.snap, r.inputs)).toEqual(resultOf(r.s));
+    expect(r.inputs.some((i) => i.s === 1)).toBe(true);
+  });
+
   it('그만하기로 끝난 판(조작이 모자람)도 같은 상태까지 돌리고 ended = false', () => {
     const s = createRun(buildConfig({ stage: '1-2', party: ['rat', 'ox'] }));
     playLikeBrowser(s, { pilot: quick, maxTurns: 4, fast: fastOdd });
@@ -134,7 +142,7 @@ describe('다시 돌리기 거절', () => {
 
   it('스냅숏이 틀림', () => {
     expect(err(() => verifyRun({ ...snap, stage: '9-9' }, []))).toBe('bad stage');
-    expect(err(() => verifyRun({ ...snap, party: ['cat'] }, []))).toBe('bad party');
+    expect(err(() => verifyRun({ ...snap, party: ['wolf'] }, []))).toBe('bad party');
     expect(err(() => verifyRun({ ...snap, party: ['rat', 'rat'] }, []))).toBe('bad party');
     expect(err(() => verifyRun({ ...snap, party: [] }, []))).toBe('bad party');
     expect(err(() => verifyRun({ ...snap, mode: 'hell' }, []))).toBe('bad mode');

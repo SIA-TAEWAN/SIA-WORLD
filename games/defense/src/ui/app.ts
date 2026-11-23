@@ -1,7 +1,8 @@
-import { SQUAD_SIZE, VIEW_W, type ZodiacId } from '../data/balance';
-import { STARTERS, towerOf } from '../data/characters';
+import { SQUAD_SIZE, VIEW_W, type CharId } from '../data/balance';
+import { BOUGHT, CAT_STAGE, EXTRA_PRICE, STARTERS, towerOf, type RosterEntry } from '../data/characters';
+import { REGIONS } from '../data/regions';
 import type { RunSummary } from '../game/sim';
-import { defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
+import { catCondition as catConditionOf, defaultProfile, type DefenseProfile, type FinishResult } from '../game/progress';
 import type { DefenseApi } from '../net/api';
 import { music } from './music';
 import { sfx, sound } from './sfx';
@@ -12,7 +13,7 @@ export const stage = document.getElementById('stage')!;
 /** 판을 시작할 때 넘기는 것 */
 export interface GameSetup {
   stage: string;
-  squad: ZodiacId[];
+  squad: CharId[];
   /** 끝없는 모드인가 (stage 는 'endless') */
   endless?: boolean;
   /** 개발용: 같은 판 다시 보기 · 모든 캐릭터 레벨 · 모든 공통 강화 레벨 · 저장하지 않는 판 (잠금을 건너뛰고 시작한 판) */
@@ -42,7 +43,7 @@ export const state = {
   profile: defaultProfile() as DefenseProfile,
   /** 마지막으로 본 지역 · 고른 출전 캐릭터 */
   region: 1,
-  squad: [...STARTERS] as ZodiacId[],
+  squad: [...STARTERS] as CharId[],
 };
 
 /** 진행 상황이 바뀌면 부를 함수들 (지금 떠 있는 화면이 엽전·별 표시를 다시 그린다) */
@@ -77,6 +78,68 @@ export const nav = {
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
+/** 시아코인으로 여는 캐릭터(고양이)의 열기 버튼 글 (shared/characters.js 의 unlockLabel 과 같은 글. 값은 EXTRA_PRICE) */
+export const unlockLabel = (id: CharId) => `시아코인 ${EXTRA_PRICE[id] ?? 0}개로 열기`;
+/** 서버가 'locked character' 로 거절했을 때 */
+export const CAT_LOCKED = `고양이는 캐릭터 고르기 화면에서 시아코인 ${EXTRA_PRICE.cat ?? 0}개로 열 수 있어요`;
+
+/** 잠긴 캐릭터를 여는 방법 (고양이는 스테이지가 아니라 출전 준비 화면에서 시아코인으로 연다). then: 지역을 클리어한 뒤의 말 */
+export function lockHint(r: RosterEntry, then = '함께할 수 있어요'): string {
+  if (r.unlockRegion === BOUGHT) return `${CAT_STAGE} 스테이지를 클리어한 뒤 출전 준비 화면에서 시아코인 ${EXTRA_PRICE[r.id] ?? 0}개로 열 수 있어요`;
+  return `${r.unlockRegion}지역 ${josa(REGIONS[r.unlockRegion - 1]?.name ?? '', '을', '를')} 클리어하면 ${then}`;
+}
+
+/**
+ * 시아코인으로 캐릭터 열기 (main.ts 가 서버 또는 테스트 모드 흉내를 연결한다).
+ * buy: 열렸으면(이미 열었어도) true, 결과 글은 스스로 토스트한다.
+ * progress: 서버가 본 구매 조건 진행 { have, need } (071 character_progress. 못 읽었으면 null — 그때는 기기의 프로필로 본다)
+ */
+export const extraShop = {
+  buy: async (_id: CharId): Promise<boolean> => false,
+  progress: null as { have: number; need: number } | null,
+};
+
+/** 고양이를 살 수 있나 (3-5 클리어) · 아직이면 남은 조건 글 (progress.ts 의 catCondition, 서버 진행은 extraShop.progress) */
+export const catCondition = (p: DefenseProfile) => catConditionOf(p, extraShop.progress);
+
+/**
+ * 잠긴 고양이의 [시아코인 100개로 열기] 버튼: 한 번 누르면 4초 동안 확인 글로 바뀌고, 그 사이 다시 누르면 산다.
+ * 사는 동안에는 버튼을 막아 두 번 사지 않는다. 열렸으면 onOpen
+ */
+let buying = false;
+export function bindUnlock(btn: HTMLButtonElement, id: CharId, onOpen: () => void) {
+  let armed = 0;
+  let timer = 0;
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    // (화면이 다시 그려져 버튼이 새로 생겨도 사는 중이면 막는다)
+    if (btn.disabled || buying) return;
+    sfx('click');
+    if (!armed) {
+      armed = 1;
+      btn.textContent = `${EXTRA_PRICE[id] ?? 0}코인을 쓸까요? 한 번 더 누르기`;
+      btn.classList.add('armed');
+      timer = window.setTimeout(() => {
+        armed = 0;
+        btn.textContent = unlockLabel(id);
+        btn.classList.remove('armed');
+      }, 4000);
+      return;
+    }
+    clearTimeout(timer);
+    btn.disabled = true;
+    btn.textContent = '여는 중…';
+    buying = true;
+    const ok = await extraShop.buy(id).catch(() => false);
+    buying = false;
+    if (ok) return onOpen();
+    armed = 0;
+    btn.disabled = false;
+    btn.textContent = unlockLabel(id);
+    btn.classList.remove('armed');
+  });
+}
+
 /** 받침에 맞는 조사를 붙인다: josa('들판', '을', '를') → '들판을' */
 export function josa(word: string, withFinal: string, withoutFinal: string): string {
   const code = word.charCodeAt(word.length - 1) - 0xac00;
@@ -90,6 +153,8 @@ export function whyText(e: unknown): string {
   if (/not enough coins/.test(m)) return '엽전이 모자라요';
   if (/max level/.test(m)) return '이미 가장 높은 레벨이에요';
   if (/character locked/.test(m)) return '아직 함께할 수 없는 캐릭터예요';
+  // 071 _check_character: 시아코인으로 열어야 하는 캐릭터를 안 열었다
+  if (/locked character/.test(m)) return CAT_LOCKED;
   if (/stage locked/.test(m)) return '아직 열리지 않은 스테이지예요';
   if (/endless locked/.test(m)) return '끝없는 고개는 1지역을 모두 클리어하면 열려요';
   if (/bad squad/.test(m)) return '출전 캐릭터를 다시 골라 주세요 (1~5종, 겹치지 않게)';
@@ -135,11 +200,11 @@ new ResizeObserver(fitUnit).observe(stage);
 
 // ---------- 마지막으로 고른 출전 캐릭터 (기기에 기억) ----------
 const squadKey = () => `siadefense:squad:${state.user.id}`;
-export function loadSquad(): ZodiacId[] {
+export function loadSquad(): CharId[] {
   try {
     const v = JSON.parse(localStorage.getItem(squadKey()) ?? 'null') as unknown;
     if (Array.isArray(v)) {
-      const list = v.filter((c): c is ZodiacId => typeof c === 'string' && !!towerOf(c) && state.profile.unlocked.includes(c as ZodiacId)).slice(0, SQUAD_SIZE);
+      const list = v.filter((c): c is CharId => typeof c === 'string' && !!towerOf(c) && state.profile.unlocked.includes(c as CharId)).slice(0, SQUAD_SIZE);
       if (list.length) return [...new Set(list)];
     }
   } catch {
@@ -147,7 +212,7 @@ export function loadSquad(): ZodiacId[] {
   }
   return [...STARTERS];
 }
-export function saveSquad(list: ZodiacId[]) {
+export function saveSquad(list: CharId[]) {
   state.squad = list;
   try {
     localStorage.setItem(squadKey(), JSON.stringify(list));

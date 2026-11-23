@@ -123,6 +123,46 @@
     "delay": 200,
     "look": "claw"
   },
+  "cat_claw": {
+    "name": "냥발톱탄",
+    "desc": "폭발은 좁지만 아주 아프다 (직격을 노려라)",
+    "behavior": "normal",
+    "damage": 330,
+    "radius": 37,
+    "crater": 38,
+    "wind": 1,
+    "count": 1,
+    "speed": 720,
+    "delay": 0,
+    "look": "claw"
+  },
+  "cat_twin": {
+    "name": "냥냥펀치",
+    "desc": "할퀴는 발톱 두 발",
+    "behavior": "normal",
+    "damage": 190,
+    "radius": 46,
+    "crater": 30,
+    "wind": 1,
+    "count": 2,
+    "speed": 720,
+    "delay": 150,
+    "look": "claw",
+    "fx": "claw"
+  },
+  "cat_roar": {
+    "name": "캣타워탄",
+    "desc": "필살기 · 거대한 폭발",
+    "behavior": "normal",
+    "damage": 480,
+    "radius": 110,
+    "crater": 78,
+    "wind": 1,
+    "count": 1,
+    "speed": 720,
+    "delay": 200,
+    "look": "claw"
+  },
   "rabbit_hop": {
     "name": "깡총탄",
     "desc": "땅에서 두 번 튄다",

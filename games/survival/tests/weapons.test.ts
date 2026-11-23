@@ -10,6 +10,8 @@ import { advance, disarm, emptyRun, live, put } from './helpers';
 
 /** 캐릭터 12종의 시작 무기 */
 const SIX = ['shuriken', 'bell', 'claw', 'mooncake', 'pearl', 'mist', 'hoof', 'wool', 'staff', 'feather', 'puppy', 'piggy'];
+/** 캐릭터 13종의 시작 무기 (고양이는 호랑이와 같은 발톱) */
+const START = [...SIX, 'claw'];
 
 /** 무기 하나만 든 판 */
 function armed(id: string, lv = 1) {
@@ -22,7 +24,7 @@ function armed(id: string, lv = 1) {
 describe('무기 12종', () => {
   it('무기 12종 + 진화 3종이 모두 준비됐다', () => {
     expect(WEAPONS.filter(weaponReady).map((w) => w.id).sort()).toEqual([...SIX, 'shurikenEvo', 'pearlEvo', 'clawEvo'].sort());
-    expect(CHARACTERS.map((c) => c.weapon)).toEqual(SIX);
+    expect(CHARACTERS.map((c) => c.weapon)).toEqual(START);
     for (const c of CHARACTERS) {
       const def = WEAPONS[WEAPON_INDEX[c.weapon]];
       expect(def).toBeTruthy();

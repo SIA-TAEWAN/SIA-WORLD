@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { verifyRun, VerifyError, type HeroId, type RunResult, type RunSnapshot, type ShotInput, type UpgradeKey } from '../sim';
+import { EXTRA_HERO_IDS, isExtraHero, verifyRun, VerifyError, type HeroId, type RunResult, type RunSnapshot, type ShotInput, type UpgradeKey } from '../sim';
 import {
   applyResult,
   buyUpgrade,
@@ -8,10 +8,13 @@ import {
   levelUp,
   normalize,
   snapshotOf,
+  CAT_PRICE,
+  catProgress,
+  type UnlockAnswer,
   type FingerProfile,
   type FinishResult,
 } from '../game/progress';
-import { LOCAL_MODE } from './local';
+import { DEV_CAT_COND, DEV_CAT_LOCKED, LOCAL_MODE } from './local';
 import { worldSupabase } from './world';
 
 /**
@@ -50,6 +53,8 @@ export interface FingerApi {
   resend(): Promise<number>;
   buyUpgrade(key: UpgradeKey): Promise<FingerProfile>;
   levelUp(hero: HeroId): Promise<FingerProfile>;
+  /** 추가 대원(고양이)을 시아코인으로 열기 — 시아핑거에서만 열린다 (071 buy_character(game, id)). 성공·이미 연 경우면 새 프로필도 */
+  unlock(hero: HeroId): Promise<{ answer: UnlockAnswer; profile: FingerProfile | null }>;
 }
 
 export interface Store {
@@ -72,13 +77,21 @@ const safeStore = (): Store => {
 
 // ---------- 테스트 모드: 이 기기에만 ----------
 
-export function createLocalApi(store: Store, key = 'siafinger:profile:local'): FingerApi {
+/** owned = 테스트 모드에서 연 것으로 볼 추가 대원 (기본: 모두. ?local=1&cat=0 이면 없음) */
+export function createLocalApi(store: Store, key = 'siafinger:profile:local', ownedAtStart: readonly HeroId[] = EXTRA_HERO_IDS, catReadyAs?: boolean): FingerApi {
+  // 테스트 모드의 '연 대원' (서버 없이 흉내: 열기 버튼을 누르면 바로 열린다. 새로고침하면 ?cat= 대로 처음부터)
+  const owned: HeroId[] = [...ownedAtStart];
   const load = () => {
+    let p: FingerProfile;
     try {
-      return normalize(JSON.parse(store.getItem(key) ?? 'null'));
+      p = normalize(JSON.parse(store.getItem(key) ?? 'null'));
     } catch {
-      return emptyProfile();
+      p = emptyProfile();
     }
+    p.owned = [...owned];
+    // 구매 조건: 지정하지 않으면 실제 기록(3-5 클리어)으로 본다
+    if (catReadyAs !== undefined) p.catReady = catReadyAs;
+    return p;
   };
   const save = (p: FingerProfile) => store.setItem(key, JSON.stringify(p));
   /** 판 번호 → 시작 때 스냅숏 (서버의 finger_runs 대신) */
@@ -129,6 +142,14 @@ export function createLocalApi(store: Store, key = 'siafinger:profile:local'): F
       save(p);
       return p;
     },
+    async unlock(id) {
+      if (!isExtraHero(id)) return { answer: { ok: false, reason: 'error' }, profile: null };
+      if (owned.includes(id)) return { answer: { ok: false, reason: 'owned', price: CAT_PRICE }, profile: load() };
+      const prog = catProgress(load());
+      if (prog.have < prog.need) return { answer: { ok: false, reason: 'condition', price: CAT_PRICE, ...prog }, profile: load() };
+      owned.push(id);
+      return { answer: { ok: true, price: CAT_PRICE }, profile: load() };
+    },
   };
 }
 
@@ -151,7 +172,7 @@ export interface ServerClient {
 
 /** 서버가 일부러 거절한 까닭 (raise exception · Edge Function error 글자) — 다시 보내도 소용없다 */
 const REJECTS = [
-  'stage locked', 'tower locked', 'hero locked', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'old rules',
+  'stage locked', 'tower locked', 'hero locked', 'locked character', 'not enough coins', 'max level', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'old rules',
   'extra inputs', 'too many turns', 'bad ',
 ];
 /** 거절이면 까닭, 아니면(통신 문제) null */
@@ -211,6 +232,20 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
   const drop = (run: string) => writePending(readPending().filter((x) => x.run !== run));
   let sending: Promise<number> | null = null;
   return {
+    async unlock(id) {
+      let answer: UnlockAnswer;
+      try {
+        const res = await withTimeout(c.rpc('buy_character', { p_game: 'finger', p_id: id }), RPC_TIMEOUT_MS);
+        if (res.error) answer = { ok: false, reason: /need login|permission denied|JWT/i.test(res.error.message) ? 'login' : 'error' };
+        else answer = (res.data as UnlockAnswer) ?? { ok: false, reason: 'error' };
+      } catch {
+        answer = { ok: false, reason: 'error' };
+      }
+      // 조건 미달이면 진행(스테이지 기록)을 다시 받아 안내를 고친다
+      if (!answer.ok && answer.reason !== 'owned' && answer.reason !== 'condition') return { answer, profile: null };
+      const profile = await call('finger_profile').then(normalize).catch(() => null);
+      return { answer, profile };
+    },
     async loadProfile() {
       return normalize(await call('finger_profile'));
     },
@@ -266,6 +301,6 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
 let api: FingerApi | null = null;
 export async function getApi(uid: string): Promise<FingerApi> {
   if (api) return api;
-  if (LOCAL_MODE) return (api = createLocalApi(safeStore()));
+  if (LOCAL_MODE) return (api = createLocalApi(safeStore(), undefined, DEV_CAT_LOCKED ? [] : EXTRA_HERO_IDS, DEV_CAT_LOCKED ? !DEV_CAT_COND : undefined));
   return (api = createSupabaseApi(await worldSupabase(), uid, safeStore()));
 }

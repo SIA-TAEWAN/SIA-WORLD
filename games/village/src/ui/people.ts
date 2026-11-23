@@ -1,22 +1,23 @@
 import { RES_NAME } from '../data/balance';
 import { BUILDING } from '../data/buildings';
 import { josa } from '../data/goals';
-import { AFF_BONUS, AFF_NEED, DRAGON_BONUS, RESIDENT, RESIDENTS, TASKS, affLevel, type ResidentDef, type ResidentId } from '../data/residents';
-import { dailyBonus, residentOf, standing, workplace, type Building, type DailyTask, type VillageState } from '../game/rules';
+import { LAND_SIZES } from '../data/balance';
+import { AFF_BONUS, AFF_NEED, CAT_BONUS, CAT_PRICE, DRAGON_BONUS, RESIDENT, RESIDENTS, TASKS, affLevel, type ResidentDef, type ResidentId } from '../data/residents';
+import { catProgress, dailyBonus, nextResident, residentOf, standing, workplace, type Building, type DailyTask, type VillageState } from '../game/rules';
 import { zodiacFace } from '../net/world';
 import { num } from './app';
 import { icon, menuIcon } from './icons';
 
 /**
  * 주민 · 부탁 · 오늘의 할 일 화면 (글과 모양만 만든다. 누르는 일은 ui/village.ts 가 받는다:
- *   data-assign="주민:건물" · data-rest="주민" · data-done="칸" · data-skip="칸" · data-daily="칸")
+ *   data-assign="주민:건물" · data-rest="주민" · data-done="칸" · data-skip="칸" · data-daily="칸" · data-buycat (고양이 열기))
  */
 
 const face = (id: string, cls = '') => `<img class="face ${cls}" src="${zodiacFace(id)}" alt="" />`;
 /** 친밀도 하트 다섯 */
 const hearts = (level: number) => `<span class="hearts">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= level ? 'on' : ''}">♥</i>`).join('')}</span>`;
 /** 그 친밀도 단계의 보너스 값 */
-export const bonusOf = (id: ResidentId, level: number) => (id === 'dragon' ? DRAGON_BONUS : AFF_BONUS)[level - 1];
+export const bonusOf = (id: ResidentId, level: number) => (id === 'dragon' ? DRAGON_BONUS : id === 'cat' ? CAT_BONUS : AFF_BONUS)[level - 1];
 const skill = (d: ResidentDef, level: number) => d.skill.replace('{n}', String(bonusOf(d.id, level)));
 
 /** 그 주민이 일할 수 있는 건물 가운데 가장 좋은 것 (레벨이 높은 것) */
@@ -26,14 +27,33 @@ export function bestWorkplace(s: VillageState, id: ResidentId): Building | null 
   return s.buildings.filter((b) => b.type === work && standing(b)).sort((a, b) => b.level - a.level)[0] ?? null;
 }
 
-/** [주민]: 십이지 열두 명 */
+/**
+ * 고양이를 아직 안 산 칸 (사는 곳은 여기 하나: 조건 · 시아코인을 보고 [열기] 버튼을 낸다. 서버 buy_character 가 다시 본다)
+ *   조건 미달: "땅을 3단계(14×14)까지 넓히면 열 수 있어요 · 지금 1단계"  ·  조건 통과: [시아코인 100개로 열기] (누르면 한 번 더 묻는다)
+ */
+export function catLock(s: VillageState): string {
+  const pr = catProgress(s);
+  if (pr.have < pr.need) {
+    const size = LAND_SIZES[pr.need];
+    return `<span class="lock wide">🔒 땅을 ${pr.need}단계(${size}×${size})까지 넓히면 열 수 있어요 · 지금 ${pr.have}단계</span>`;
+  }
+  const lack = !s.admin && s.sia < CAT_PRICE;
+  return `<span class="p-buy"><button class="btn small primary" data-buycat ${lack ? 'disabled' : ''}>🔒 시아코인 ${CAT_PRICE}개로 열기</button>${lack ? `<small class="lack">시아코인 ${s.sia}/${CAT_PRICE}</small>` : ''}</span>`;
+}
+
+/** [주민]: 십이지 열두 명 + 고양이 */
 export function residentsPanel(s: VillageState): string {
   const houses = s.buildings.filter((b) => b.type === 'house' && standing(b)).length;
+  const coming = nextResident(s);
   const rows = RESIDENTS.map((d) => {
     const r = residentOf(s, d.id);
+    if (!r && d.buy && !s.catOwned) {
+      return `<div class="p-row off">${face(d.id)}<div class="p-tx"><b>${d.nick} <small>${d.name} · 13번째 주민</small></b><span class="soft">${skill(d, 1)}</span></div>${catLock(s)}</div>`;
+    }
     if (!r) {
-      const next = s.residents.length === RESIDENTS.findIndex((x) => x.id === d.id);
-      const why = s.profile.level < d.level ? `마을 레벨 ${d.level}에 이사 와요` : houses <= s.residents.length ? '빈 주민 집이 있으면 이사 와요' : '곧 이사 와요';
+      const next = coming?.id === d.id;
+      const why = s.profile.level < d.level ? `마을 레벨 ${d.level}에 이사 와요`
+        : houses <= s.residents.length ? (d.buy ? '빈 주민 집이 있으면 이사 와요 (집을 한 채 더 지을 수 있어요)' : '빈 주민 집이 있으면 이사 와요') : '곧 이사 와요';
       return `<div class="p-row off">${face(d.id)}<div class="p-tx"><b>${d.nick} <small>${d.name}</small></b><span class="soft">${skill(d, 1)}</span></div><span class="lock">${next ? '다음 주민 · ' : '🔒 '}${why}</span></div>`;
     }
     const lv = affLevel(r.affinity);
@@ -48,7 +68,7 @@ export function residentsPanel(s: VillageState): string {
         <span class="soft">${skill(d, lv)}</span>
         <span class="p-st">${at ? `<i class="tag work">${BUILDING[at.type].name}에서 일하는 중</i>` : d.work ? '<i class="soft">쉬는 중</i>' : ''}<small class="soft">${need === null ? '친밀도 가득 🎁' : `친밀도 ${r.affinity}/${need}`}</small></span></div>${side}</div>`;
   }).join('');
-  return `<div class="sheet-head"><h3>${menuIcon('residents', '🐭')} 주민</h3><span class="soft">${s.residents.length}/12명 · 집 ${houses}채</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
+  return `<div class="sheet-head"><h3>${menuIcon('residents', '🐭')} 주민</h3><span class="soft">${s.residents.length}/${RESIDENTS.length}명 · 집 ${houses}채</span><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
     <p class="soft note">주민 집을 지으면 마을 레벨에 맞춰 한 명씩 이사 와요. 부탁을 들어주면 친해지고, 다섯 단계가 되면 선물을 줘요</p><div class="b-list">${rows}</div>`;
 }
 

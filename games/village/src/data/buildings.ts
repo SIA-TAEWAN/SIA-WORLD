@@ -16,7 +16,7 @@ export const BUILDING_IDS = [
   'tree', 'haystack', 'flower', 'scarecrow', 'stonewall', 'bench', 'lantern', 'well', 'jangseung', 'sotdae', 'pond', 'stonetower',
   'road',
   // 주민이 친밀도 선물로 주는 전용 장식물 (지을 수 없다: 보관함으로 들어온다)
-  'gift_rat', 'gift_ox', 'gift_tiger', 'gift_rabbit', 'gift_dragon', 'gift_snake', 'gift_horse', 'gift_sheep', 'gift_monkey', 'gift_rooster', 'gift_dog', 'gift_pig',
+  'gift_rat', 'gift_ox', 'gift_tiger', 'gift_rabbit', 'gift_dragon', 'gift_snake', 'gift_horse', 'gift_sheep', 'gift_monkey', 'gift_rooster', 'gift_dog', 'gift_pig', 'gift_cat',
   // 기념물: 다른 게임의 성과로 열린다 (지을 수 없다: 보관함으로 들어온다. 조건은 monuments.ts)
   'mon_tank1', 'mon_tank10', 'mon_volley1', 'mon_volley10', 'mon_race1', 'mon_race2', 
   'mon_surv_field', 'mon_surv_bamboo', 'mon_surv_palace', 'mon_surv_underworld', 'mon_def3', 'mon_def6', 'mon_def9', 'mon_def12', 'mon_matgo', 'mon_casino',
@@ -95,6 +95,7 @@ const ROWS: Row[] = [
   ['gift_rooster', 'deco', '꼬꼬댁의 횃대', '꼬꼬댁이 준 선물', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 12, [99]],
   ['gift_dog', 'deco', '멍뭉이의 집', '멍뭉이가 준 선물', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 12, [99]],
   ['gift_pig', 'deco', '꿀꿀이의 복주머니', '꿀꿀이가 준 선물', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 12, [99]],
+  ['gift_cat', 'deco', '야옹이의 금관 방석', '야옹이가 준 선물', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 12, [99]],
   ['mon_tank1', 'deco', '낡은 대포', '시아탱크 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],
   ['mon_tank10', 'deco', '황금 대포', '시아탱크 10승 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 40, [99]],
   ['mon_volley1', 'deco', '배구 네트', '시아배구 첫 승리 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 20, [99]],

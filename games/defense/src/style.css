@@ -186,7 +186,7 @@ button, input { font: inherit; color: inherit; }
 .weak { flex: none; display: flex; align-items: center; gap: 3px; }
 .weak img { width: 28px; height: 28px; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); object-fit: cover; }
 .weak img.dimmed { filter: grayscale(1); opacity: 0.5; }
-.chars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.chars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .char { position: relative; background: var(--white); border: var(--line) solid var(--line-soft); border-radius: var(--radius-item); padding: 3px 0 2px; cursor: pointer; text-align: center; min-width: 0; }
 /* 캐릭터 얼굴은 모두 같은 크기의 원 안에 (그림마다 여백이 달라 크기가 들쭉날쭉해 보이지 않게) */
 .char img { width: 78%; aspect-ratio: 1; object-fit: cover; display: block; margin: 0 auto; border-radius: 50%; border: var(--line-thin) solid var(--outline); background: var(--white); }
@@ -194,6 +194,9 @@ button, input { font: inherit; color: inherit; }
 .char.sel { border-color: var(--outline); background: var(--panel-strong); box-shadow: inset 0 0 0 3px var(--primary); }
 .char.locked img { filter: grayscale(1); opacity: 0.55; }
 .char.focus::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 10px; margin-left: -5px; background: var(--outline); border-radius: 50%; }
+.char-info .unlock { margin-top: 6px; }
+.char-info .unlock.armed { background: var(--pink); }
+.char-info .cond { display: inline-block; margin-top: 4px; font-weight: bold; }
 .char .lock { position: absolute; right: 1px; top: -3px; font-size: 13px; font-weight: normal; }
 .char-info { margin: 12px 0 0; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 6px 10px; font-size: 16px; min-height: 52px; }
 .char-info b { font-weight: normal; }

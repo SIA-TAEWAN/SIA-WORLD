@@ -1,4 +1,4 @@
-import { TANKS, TANK_IDS, WEAPONS, randomTank, type TankChoice, type TankId } from '../game/data';
+import { TANKS, TANK_IDS, RANDOM_TANK_IDS, WEAPONS, randomTank, tankOr, type TankChoice, type TankId } from '../game/data';
 import { MAPS, MAP_IDS, RANDOM_MAP_IDS, type MapId } from '../data/maps';
 import type { Difficulty, PlayerSetup } from '../game/types';
 import { Rng, randomSeed } from '../game/rng';
@@ -18,6 +18,9 @@ import { showManualModal } from './manual';
 import { setRanking, setTargetRanking, showRankingModal } from './rank';
 import { friendly } from '../net/backend';
 import { mapBgUrl } from './icons';
+import { isTankOpen, onUnlockChange, refreshProgress } from '../game/unlock';
+import { pressUnlock, type UnlockHooks } from './unlockBtn';
+import { lockBadge, lockNote, lockTitle } from './lock';
 
 // ---------- 1. 처음 화면 ----------
 // 로그인하면 바로 대기실로 간다. 이 화면은 대기실에 못 들어갔을 때(서버 문제 등) 보인다.
@@ -102,9 +105,11 @@ export function showSetup() {
   const renderTanks = () => {
     const rnd = state.tank === 'random';
     const d = TANKS[rnd ? 'zodiac' : (state.tank as TankId)];
-    $('#tanks').innerHTML = `<div class="zodiac-pick">${TANK_IDS.map(
-      (id) => `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''}" title="${TANKS[id].name} (${TANKS[id].animal}) · ${TANKS[id].role}">${tankSvg(id, 46)}<span>${TANKS[id].name}</span></button>`,
-    ).join('')}<button data-id="random" class="rand ${rnd ? 'sel' : ''}" title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button></div>
+    $('#tanks').innerHTML = `<div class="zodiac-pick">${TANK_IDS.map((id) => {
+      // 안 연 고양이는 그림을 보여 주되 자물쇠 (누르면 안내만)
+      const lock = state.tank !== id && !isTankOpen(id);
+      return `<button data-id="${id}" class="${state.tank === id ? 'sel' : ''} ${lock ? 'locked' : ''}" title="${lock ? lockTitle(id) : `${TANKS[id].name} (${TANKS[id].animal}) · ${TANKS[id].role}`}">${tankSvg(id, 46)}<span>${TANKS[id].name}</span>${lock ? lockBadge : ''}</button>`;
+    }).join('')}<button data-id="random" class="rand ${rnd ? 'sel' : ''}" title="게임 시작 때 정해져요 · 20% 확률로 십이지신 '열두빛'"><span class="dice">🎲</span><span>랜덤</span></button></div>${lockNote()}
       ${rnd ? `<div class="tank-card sel"><div class="pic">${tankSvg('random', 92)}</div><div class="info"><div class="tn">랜덤 <small>게임을 시작할 때 정해져요</small></div><p>12지신 중 하나가 무작위로 나오고, <b>20% 확률</b>로 전설의 <b>십이지신 '열두빛'</b>(다른 탱크보다 20% 강함)이 나와요.</p></div></div>` : ''}
       <div class="tank-card sel" style="${rnd ? 'display:none' : ''}">
         <div class="pic">${tankSvg(state.tank, 92)}</div>
@@ -120,6 +125,7 @@ export function showSetup() {
       </div>`;
     root.querySelectorAll<HTMLElement>('.zodiac-pick button').forEach((b) =>
       b.addEventListener('click', () => {
+        if (!isTankOpen(b.dataset.id!)) return; // 잠긴 칸은 아래 #tanks 클릭에서 (열기 버튼을 누른 것처럼)
         state.tank = b.dataset.id as TankChoice;
         save({ tank: state.tank });
         sfx.click();
@@ -159,7 +165,7 @@ export function showSetup() {
     );
     $('#name2-row').style.display = state.opponent === 'local' ? '' : 'none';
     renderRankNote();
-    const ot: (TankId | 'random')[] = ['random', ...TANK_IDS];
+    const ot: (TankId | 'random')[] = ['random', ...RANDOM_TANK_IDS];
     $('#opp-tank').innerHTML = ot.map((v) => `<button data-v="${v}" class="${state.oppTank === v ? 'sel' : ''}">${v === 'random' ? '랜덤' : TANKS[v].name}</button>`).join('');
     $('#opp-tank').querySelectorAll<HTMLElement>('button').forEach((b) =>
       b.addEventListener('click', () => {
@@ -240,6 +246,25 @@ export function showSetup() {
   };
 
   renderTanks();
+  // 잠긴 고양이: 칸이나 아래 '시아코인 100개로 열기' 를 누르면 확인 글 → 한 번 더 누르면 산다. 열리면 골라 둔다
+  const unlockHooks: UnlockHooks = {
+    repaint: () => root.isConnected && renderTanks(),
+    toast,
+    opened: () => {
+      state.tank = 'cat';
+      save({ tank: state.tank });
+    },
+  };
+  $('#tanks').addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (!t.closest('[data-unlock], .zodiac-pick button.locked')) return;
+    sfx.click();
+    void pressUnlock(unlockHooks);
+  });
+  // 다른 기기에서 열고 돌아와도 (화면이 다시 보일 때 다시 불러온다) 자물쇠를 바로 푼다
+  const offUnlock = onUnlockChange(() => (root.isConnected ? renderTanks() : offUnlock()));
+  // 잠긴 동안 구매 조건 진행을 다시 읽는다 (판을 하고 돌아오면 숫자가 늘어 있다)
+  void refreshProgress();
   renderOpp();
   renderMaps();
   renderOpts();
@@ -403,7 +428,7 @@ export function showResult(s: MatchSummary, actions?: ResultActions, record: Pro
           .map(
             (p) => `<tr class="${p.team === s.winner ? 'win' : ''}"><td>${escapeHtml(p.name)}${p.alive ? '' : ' <small>💀</small>'}</td>
           <td><span class="team-dot" style="--c:${TEAM_COLORS[p.team]}"></span>${TEAM_NAMES[p.team]}</td>
-          <td>${TANKS[p.tank as TankId].name}</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`,
+          <td>${TANKS[tankOr(p.tank)].name}</td><td><b>${p.damage.toLocaleString()}</b></td></tr>`,
           )
           .join('')}</tbody>
       </table>

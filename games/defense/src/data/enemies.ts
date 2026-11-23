@@ -1,4 +1,4 @@
-import type { ZodiacId } from './balance';
+import type { CharId } from './balance';
 
 /**
  * 일반 요괴 (PRD 5장). 수치는 1지역 첫 웨이브 기준이고, 스테이지의 체력 배율(stage.hp)과 웨이브 배율(WAVE_HP)이 곱해진다.
@@ -34,7 +34,7 @@ export interface EnemyDef {
   /** 쓰러져도 이 횟수만큼 되살아난다 */
   revive?: number;
   /** 잘 듣는 캐릭터 (출전 준비·도감에 보여 준다) */
-  weak: ZodiacId[];
+  weak: CharId[];
 }
 
 export const ENEMIES: EnemyDef[] = [

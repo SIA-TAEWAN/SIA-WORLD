@@ -8,13 +8,16 @@
  *   → 주민을 일터에 배치 → 들어줄 수 있는 부탁은 들어주고 오늘의 할 일 보상을 받는다
  *   → 남는 쌀로 떡, 떡으로 특산품 → 창고가 차면 장터에 판다 → 엽전이 남으면 장식물.
  * 규칙은 게임과 같은 함수(src/game/rules.ts)를 그대로 쓴다.
+ * 주민 비교: PACE_CAT=1 이면 땅 3단계를 열 수 있는 마을 레벨(LAND_NEED[2])이 되는 순간 땅을 3단계로 넓히고 고양이를 산 것으로 한다 (시아코인은 따로 셈하지 않는다).
+ *   PACE_CAT=land 는 땅만 넓힌다 (고양이가 없는 같은 조건).
+ *   PACE_SKIP=ox 처럼 주면 그 주민은 이사 오되 힘을 내지 않는다 (그 주민이 얼마나 도움이 되는지 견주어 볼 때).
  */
-import { CAPPED, CONST, HALL_NEED, LEVEL_EXP, UPGRADE_EXP, MARKET_LIMIT } from '../src/data/balance';
+import { CAPPED, CONST, HALL_NEED, LAND_NEED, LEVEL_EXP, UPGRADE_EXP, MARKET_LIMIT } from '../src/data/balance';
 import { BUILDING, BUILDINGS, recipeOf, upgradable, type BuildingType } from '../src/data/buildings';
 import { GOALS } from '../src/data/goals';
-import { RESIDENT } from '../src/data/residents';
+import { CAT_LAND_STAGE, RESIDENT, isResidentId } from '../src/data/residents';
 import {
-  RuleError, assign, batchMax, build, buildCost, busyCount, canPay, claimGoal, countOf, craft, dailyClaim, goalStatus, harvest, hallLevel, market, maxCount, newVillage, placeError, requestDone, sell,
+  RuleError, assign, batchMax, build, buildCost, busyCount, canPay, claimGoal, countCap, countOf, craft, dailyClaim, goalStatus, harvest, hallLevel, market, maxCount, newVillage, placeError, requestDone, sell,
   sellCoins, sellLeft, standing, workplace,
   settle, slots, storageCap, store, stored, upgrade, upgradeCost, type VillageState,
 } from '../src/game/rules';
@@ -25,6 +28,9 @@ if (process.env.PACE_UP) UPGRADE_EXP.splice(0, UPGRADE_EXP.length, ...process.en
 if (process.env.PACE_COIN) (CONST as { up_coin_pct: number }).up_coin_pct = Number(process.env.PACE_COIN);
 if (process.env.PACE_MKT) MARKET_LIMIT.splice(0, MARKET_LIMIT.length, ...process.env.PACE_MKT.split(',').map(Number));
 if (process.env.PACE_DIV) (CONST as { harvest_exp_div: number }).harvest_exp_div = Number(process.env.PACE_DIV);
+const PACE_CAT = process.env.PACE_CAT === '1' || process.env.PACE_CAT === 'land';
+// PACE_SKIP: 그 주민은 이사 오지만 힘을 내지 않는다 (일터를 이 흉내에서 짓지 않는 사당으로 바꾼다. 개의 15시간은 이사 오기만 해도 되므로 견줄 수 없다)
+for (const id of (process.env.PACE_SKIP ?? '').split(',')) if (isResidentId(id)) Object.assign(RESIDENT[id], { work: 'shrine' });
 const DAYS = Number(process.argv[2]) || 60;
 const VISITS = Number(process.argv[3]) || 4;
 const MINUTES = Number(process.argv[4]) || 4;
@@ -71,9 +77,10 @@ const spot = (type: BuildingType) => {
 };
 
 let now = 0;
+let catAt = -1;
 function tryBuild(type: BuildingType): boolean {
   const d = BUILDING[type];
-  if (d.sia > 0 || countOf(s, type) >= maxCount(type, s.profile.level) || !canPay(s.profile, buildCost(type)) || (d.buildSec > 0 && busyCount(s) >= slots(s))) return false;
+  if (d.sia > 0 || countOf(s, type) >= countCap(s, type) || !canPay(s.profile, buildCost(type)) || (d.buildSec > 0 && busyCount(s) >= slots(s))) return false;
   const at = spot(type);
   return !!at && coinOf('build', () => tryDo(() => void build(s, type, at.x, at.y, now, `b${++seq}`)));
 }
@@ -86,6 +93,12 @@ function tryUpgrade(id: string): boolean {
 
 /** 한 번 손을 댄다 (5초마다 부른다) → 무언가 했으면 true */
 function act(): boolean {
+  // 고양이를 사려면 땅이 3단계여야 하므로 그때 땅도 넓힌다 (PACE_CAT=land 는 땅만: 고양이의 몫만 견주어 볼 때)
+  if (PACE_CAT && catAt < 0 && s.profile.level >= LAND_NEED[CAT_LAND_STAGE - 1]) {
+    s.profile.landStage = Math.max(s.profile.landStage, CAT_LAND_STAGE);
+    s.catOwned = process.env.PACE_CAT !== 'land';
+    catAt = now;
+  }
   tally('build', () => settle(s, now));
   const g = goalStatus(s);
   if (g?.done) {
@@ -224,4 +237,5 @@ const decoStored = s.buildings.filter((b) => b.state === 'stored').length;
 console.log(`쓴 칸 ${cells}/64 (처음 땅 8×8): 일반 건물 ${cellsOf('main')}칸 (다 지으면 ${MAIN_CELLS}칸) · 장식물 ${cellsOf('deco')}칸 · 길 ${cellsOf('road')}칸 · 보관함 ${decoStored}개`);
 const got = coins.goal + coins.request + coins.daily + coins.sell;
 console.log(`엽전 수지 (${DAYS}일): 번 것 ${got} = 목표 ${coins.goal} + 부탁 ${coins.request} + 오늘의 할 일 ${coins.daily} + 장터 ${coins.sell}  ·  쓴 것 ${-(coins.upgrade + coins.build)} = 업그레이드 ${-coins.upgrade} + 건설·장식물 ${-coins.build}  ·  남은 것 ${s.profile.resources.coin}`);
+if (PACE_CAT) console.log(`${s.catOwned ? '고양이' : '땅 3단계(고양이 없음)'}: ${catAt < 0 ? '못 함' : `${((catAt - 9 * HOUR) / (24 * HOUR)).toFixed(1)}일째부터`}`);
 console.log('목표 속도 (PRD): 첫날 레벨 5 · 일주일에 12 안팎 · 두 달에 30\n');

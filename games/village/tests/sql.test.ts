@@ -6,14 +6,14 @@ import { describe, expect, it } from 'vitest';
 import { CONST, COST_MUL, GRID_MAX, HALL_AT, HALL_CAP, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, NAME_RE, LEVEL_EXP, MARKET_LIMIT, PRICES, RATE_MUL, START_RES, STORAGE_CAP, UPGRADE_EXP, UPGRADE_SEC, kstDay, pricePct } from '../src/data/balance';
 import { BUILDINGS, RECIPES } from '../src/data/buildings';
 import { COUNTED, GOALS } from '../src/data/goals';
-import { AFF_BONUS, AFF_NEED, ASKS, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, TASKS, mix } from '../src/data/residents';
+import { AFF_BONUS, AFF_NEED, ASKS, CAT_BONUS, CAT_LAND_STAGE, CAT_PRICE, DRAGON_BONUS, RATE_WORKERS, REQ, RESIDENTS, TASKS, mix } from '../src/data/residents';
 
 /**
  * 서버 SQL(supabase/migrations/047_village.sql + 뒤 마이그레이션)의 표·상수가 게임 데이터와 같은지 본다.
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql', '077_cat_village.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -45,7 +45,7 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(found).toEqual({
       land_sizes: LAND_SIZES, level_exp: LEVEL_EXP, cost_mul: COST_MUL, upgrade_sec: UPGRADE_SEC, upgrade_exp: UPGRADE_EXP,
       rate_mul: RATE_MUL, hall_cap: HALL_CAP, storage_cap: STORAGE_CAP, hall_need: HALL_NEED, market_limit: MARKET_LIMIT,
-      land_price: LAND_PRICE, land_need: LAND_NEED, aff_need: AFF_NEED, aff_bonus: AFF_BONUS, dragon_bonus: DRAGON_BONUS,
+      land_price: LAND_PRICE, land_need: LAND_NEED, aff_need: AFF_NEED, aff_bonus: AFF_BONUS, dragon_bonus: DRAGON_BONUS, cat_bonus: CAT_BONUS,
     });
     // 땅 값은 PRD 6장의 표 그대로
     expect(LAND_PRICE).toEqual([10, 20, 30, 50, 70, 100]);
@@ -88,7 +88,9 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const st = body('_village_settle').replace(/\s+/g, ' ');
     expect(st).toContain('n := greatest(1, a.base::bigint * (2 + public._village_mix(seq, 3) % 4) * (20 + lv * a.grow) / 20);');
     expect(st).toContain('v := n * a.worth / 100;');
-    expect(st).toContain("'coin', v * 3 / 2 + 10, 'exp', v * public._village_const('req_exp_pct')::int / 100 + 5 + lv * 2, 'aff', 2 + public._village_mix(seq, 4) % 3)");
+    // 077: 고양이가 있으면 엽전 · 경험치 + cp % (makeAsk 의 bonus)
+    expect(st).toContain("cp := public._village_res_pct(p_user, 'cat');");
+    expect(st).toContain("'coin', (v * 3 / 2 + 10) * (100 + cp) / 100, 'exp', (v * public._village_const('req_exp_pct')::int / 100 + 5 + lv * 2) * (100 + cp) / 100, 'aff', 2 + public._village_mix(seq, 4) % 3)");
     expect(st).toContain("'resident', ids[public._village_mix(seq, 1) % cardinality(ids) + 1]");
     expect(st).toContain('where z.pos = public._village_mix(seq, 2) % pool;');
     // 오늘의 할 일 (makeDaily)
@@ -98,8 +100,10 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const dc = body('village_daily_claim').replace(/\s+/g, ' ');
     expect(dc).toContain("perform public._village_add(me, 'coin', 50 + p.level * 10);");
     expect(dc).toContain("perform public._village_add_exp(me, need * public._village_const('daily_exp_pct')::int * 2 / 100 + 20);");
-    // 이사: 순서대로, 마을 레벨과 빈 집
-    expect(st).toContain('exit when lv < d.level or houses <= cnt;');
+    // 이사: 순서대로, 마을 레벨(고양이는 산 것)과 빈 집
+    expect(st).toContain("continue when case when d.id = 'cat' then not cat else lv < d.level end;");
+    expect(st).toContain('exit when houses <= cnt;');
+    expect(st).toContain('cat := public._village_cat_owned(p_user);');
     // 생산량을 올리는 주민
     const rp = body('_village_rate_pct');
     expect(/unnest\(array\[([^\]]+)\]\) w/.exec(rp)![1].split(',').map((x) => x.trim().slice(1, -1))).toEqual([...RATE_WORKERS]);
@@ -116,6 +120,28 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(body('_village_market_limit')).toContain("(public._village_table('market_limit'))[m.level]::bigint * (100 + public._village_res_pct(p_user, 'horse')) / 100");
     expect(body('_village_cap').replace(/\s+/g, ' ')).toContain("(public._village_table('storage_cap'))[b.level] * (100 + public._village_res_pct(p_user, 'rat')) / 100");
     expect(body('_village_collect')).toContain('have := u.units + u.units * coalesce(p_bonus, 0) / 100;');
+  });
+
+  it('고양이 (077): 13번째 주민 · 살 수 있는 조건 · 주민 집 한 채 더', () => {
+    const cat = RESIDENTS[RESIDENTS.length - 1];
+    expect([cat.id, cat.level, cat.work, cat.buy]).toEqual(['cat', 0, '', true]);
+    expect(RESIDENTS.filter((r) => r.buy).map((r) => r.id)).toEqual(['cat']);
+    // 조건: 땅 3단계 (071 의 _character_progress 가 부른다)
+    const pg = body('_cat_progress_village').replace(/\s+/g, ' ');
+    expect(pg).toContain(`'need', ${CAT_LAND_STAGE})`);
+    expect(pg).toContain('select p.land_stage from public.village_profiles p where p.user_id = p_user');
+    expect(LAND_SIZES[CAT_LAND_STAGE]).toBe(14);
+    // 값 · 게임 id 는 071 과 같다
+    const c71 = read('071_characters.sql');
+    expect(c71).toContain(`when 'cat' then ${CAT_PRICE}`);
+    expect(/function public\._character_games\(\)[\s\S]*?array\[([^\]]+)\]/.exec(c71)![1]).toContain("'village'");
+    expect(body('_village_cat_owned')).toContain("game = 'village' and character_id = 'cat'");
+    // 산 마을은 주민 집 한 채 더 · 화면에 산 것을 알린다 · 보너스 표
+    expect(body('village_build').replace(/\s+/g, ' ')).toContain("+ case when p_type = 'house' and public._village_cat_owned(me) then 1 else 0 end;");
+    expect(body('_village_state_json')).toContain("'catOwned', public._village_cat_owned(p_user),");
+    expect(body('_village_res_pct')).toContain("case r.resident when 'dragon' then 'dragon_bonus' when 'cat' then 'cat_bonus' else 'aff_bonus' end");
+    // 선물 장식물
+    expect(BUILDING.gift_cat.points).toBe(BUILDING.gift_pig.points);
   });
 
   it('마을 목표', () => {
