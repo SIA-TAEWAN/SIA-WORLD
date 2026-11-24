@@ -45,6 +45,13 @@
   --roulette-winter: #c9d1dd;
   --race-track: #f9a873;     /* 시아레이스 트랙 */
   --race-track-dark: #e08a4f;
+  --charge-log: #9a6a3a;     /* 시아돌격대: 코드로 그리는 장애물·상자 (그림 못 읽을 때) */
+  --charge-log-end: #c89a5a;
+  --charge-blade: #cfd6de;
+  --charge-pit: #3a2a1c;
+  --charge-pit-inner: #5a4030;
+  --charge-crate: #d9a05b;
+  --charge-stun-tint: #9fb6ff; /* 기절한 대원 색조 */
 
   /* ---------- 글꼴 ---------- */
   --font: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
