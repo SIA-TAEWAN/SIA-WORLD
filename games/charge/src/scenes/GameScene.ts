@@ -5,7 +5,7 @@ import { groundOf } from '../data/growth';
 import { autopilot } from '../game/autopilot';
 import { CRATE_HALF, STEP, isGood, obstacleX, setTarget, step, type Gate, type Horde, type RunState, type SimEvent } from '../game/sim';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
-import { CHARGE, COLOR, css } from '../theme';
+import { CHARGE, COLOR, FONT, css } from '../theme';
 
 /** Phaser 글자 색 ('#rrggbb') — 공통 테마 값 */
 const TXT = {
@@ -27,7 +27,6 @@ const CROWD_Y = 980;
 const CX = W / 2;
 /** 한 요괴 무리에 그리는 최대 마리 수 */
 const HORDE_DRAW = 70;
-const FONT = "'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif";
 /** 지역 바닥 그림과 길 색 (DESIGN.md 의 기존 값) */
 const GROUND: Record<GroundName, { name: GroundName; tile: string; road: number }> = {
   field: { name: 'field', tile: 'tile-field', road: COLOR.track },

@@ -146,7 +146,23 @@ export function showGame(setup: GameSetup) {
       ro?.disconnect();
       if (endTimer) clearTimeout(endTimer);
       if (cutTimer) clearTimeout(cutTimer);
-      game?.destroy(true);
+      if (game) {
+        // 판마다 WebGL 컨텍스트가 남지 않게: Phaser 가 렌더러를 치운 뒤(다음 틱) 컨텍스트를 놓는다 (WebGL 일 때만)
+        const r = game.renderer;
+        const gl = r instanceof Phaser.Renderer.WebGL.WebGLRenderer ? r.gl : null;
+        if (gl) {
+          game.events.once(Phaser.Core.Events.DESTROY, () =>
+            setTimeout(() => {
+              try {
+                gl.getExtension('WEBGL_lose_context')?.loseContext();
+              } catch {
+                /* 이미 잃었거나 지원하지 않음 */
+              }
+            }, 0),
+          );
+        }
+        game.destroy(true);
+      }
       game = null;
       if (window.__surv?.run === run) delete window.__surv;
     },

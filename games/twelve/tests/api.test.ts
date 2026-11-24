@@ -136,6 +136,45 @@ describe('서버 저장 (createSupabaseApi)', () => {
     expect((await api.start('1-2', 'normal', 'rat')).profile).toBeUndefined();
   });
 
+  it('다시 보낸 판을 서버가 이미 받아 두었으면(already finished) 시작할 때 기록을 새로 읽어 돌려준다', async () => {
+    const store = memStore();
+    let down = true;
+    const { sb, calls } = fake({
+      twelve_finish: () => {
+        // 지난번에 서버에는 들어갔지만 답만 못 받았다
+        throw new Error(down ? 'fetch failed' : 'already finished');
+      },
+      twelve_state: () => serverState({ level: 11 }),
+      twelve_start: () => ({ run: 'run-9', seed: 1 }),
+    });
+    const api = createSupabaseApi(sb, 'u1', store);
+    expect(await api.finish(report())).toBeNull();
+    expect(api.pending()).toBe(1);
+    down = false;
+    const st = await api.start('1-2', 'normal', 'rat');
+    expect(api.pending()).toBe(0);
+    expect(calls.filter((c) => c[0] === 'twelve_state').length).toBe(1);
+    expect(st.profile?.level).toBe(11);
+    // 한 번 읽었으면 다음 시작에는 다시 읽지 않는다
+    expect((await api.start('1-2', 'normal', 'rat')).profile).toBeUndefined();
+    expect(calls.filter((c) => c[0] === 'twelve_state').length).toBe(1);
+  });
+
+  it('resend 는 이미 받은 판도 센다 (화면이 기록을 다시 읽게)', async () => {
+    const store = memStore();
+    let down = true;
+    const { sb } = fake({
+      twelve_finish: () => {
+        throw new Error(down ? 'fetch failed' : 'already finished');
+      },
+    });
+    const api = createSupabaseApi(sb, 'u1', store);
+    expect(await api.finish(report())).toBeNull();
+    down = false;
+    expect(await api.resend()).toBe(1);
+    expect(api.pending()).toBe(0);
+  });
+
   it('최종보스맵 열쇠가 모자라면 need keys 로 거절한다', async () => {
     const { sb } = fake({
       twelve_start: () => {

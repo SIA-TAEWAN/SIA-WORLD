@@ -5,7 +5,7 @@ import { DT, END_AFTER_FIRST, END_AFTER_GO, TRACK_LEN, type ZodiacId } from '../
 import { rankResults, type RaceEntry, type RankedEntry } from '../game/ranking';
 import { foul, newRunner, stepRunner, type Press, type RunState, type Runner, type SimEvent } from '../game/sim';
 import { makeTrack, type Obstacle } from '../game/track';
-import { GhostPlayer, GhostRecorder, pressKindOf, replayGhost, type Ghost } from '../game/ghost';
+import { GhostPlayer, GhostRecorder, pressKindOf, replayGhost, type DayRow, type Ghost } from '../game/ghost';
 import { serverNow, type RaceApi, type SubmitResult } from '../net/api';
 import { submitGhost, submitRun, type GhostRun, type RosterEntry, type SoloStart } from '../net/solo';
 
@@ -81,6 +81,8 @@ export class RaceGame {
   onOver: ((r: RankedEntry[]) => void) | null = null;
   /** 판 전에 읽은 내 이번 주 순위 (경기 화면이 연다. 순위 없음 null, 못 읽음 undefined) — 결과 화면이 판 뒤 순위와 비교한다 */
   weekBefore: Promise<number | null | undefined> | null = null;
+  /** 판 전에 읽은 그날 순위 (경기 화면이 연다, 못 읽으면 null) — 결과 화면이 고스트 기록이 그 자리의 실제 기록인지 본다 (ghostWho) */
+  dayBefore: Promise<{ top: DayRow[]; mine: DayRow | null } | null> | null = null;
 
   constructor(
     private api: RaceApi,

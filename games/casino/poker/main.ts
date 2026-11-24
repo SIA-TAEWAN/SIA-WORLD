@@ -1,6 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { POKER_MANUAL } from '../../lib/manuals.ts';
-import { pokerHint, pokerStory, pokerWeak, potRealWinners, potRefundOnly } from '../../lib/extras.ts';
+import { pokerHint, pokerStory, pokerWeak, potRealWinners, potRefundOf, potRefundOnly } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
@@ -26,7 +26,7 @@ let lastPub: PokerPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
 
-/** 이 자리가 받은 것이 혼자만 받는 남는 팟뿐인가 (재생 중이면 재생해 가는 판 결과로 가른다: 중간 화면의 pub 은 결과가 비어 있다) */
+/** 이 자리가 받은 것이 아무도 못 받은 베팅을 돌려받은 것(refund 팟)뿐인가 (재생 중이면 재생해 가는 판 결과로 가른다: 중간 화면의 pub 은 결과가 비어 있다) */
 const refunded = (t: Ctx, seat: number) => potRefundOnly(seat, (t.pubNext ?? t.pub)?.summary);
 
 // ── 판 요약 한 줄용 사건 기록: 공개 상태에는 최근 사건만 실리므로 판 동안 모아 둔다 ──
@@ -197,7 +197,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       const fs = clamp(w * (me ? 0.2 : 0.28), 12, 22);
       if (s.total) label(scene, x + ((cards.length - 1) / 2) * gap + w * 0.62, y - w * 0.55, `${t.fmt(s.total)}`, fs * 0.85, tc('primary'));
       if (hint && !hintInTag) label(scene, x, hintY, `💡 ${hint}`, hintFs, tc('primary'));
-      // 🏆 는 진짜 승자만 (혼자만 받는 남는 팟을 돌려받은 사람은 빼고)
+      // 🏆 는 진짜 승자만 (돌려받기만 한 사람은 빼고)
       const won = p.winners.includes(s.seat) && !refunded(t, s.seat);
       if (sd) label(scene, x, y - w * 0.92, `${sd.hand}${won ? ' 🏆' : ''}`, fs, won ? tc('primary') : tc('white'));
     });
@@ -309,9 +309,14 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       case 'allin':
         return { at: ev.seat, text: `${who} 올인!`, gap: 500 };
       case 'win':
-        // 혼자만 받는 남는 팟(못 받은 콜 차액)은 이긴 것이 아니다: '돌려받음' 으로, 코인 소리 없이
+        // 아무도 못 받은 베팅(혼자 낸 몫, refund 팟)만 받았으면 이긴 것이 아니다: '돌려받음' 으로, 코인 소리 없이
         if (refunded(t, ev.seat)) return { at: ev.seat, text: `${who} 돌려받음 ${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, gap: 900, after: true };
-        return { at: ev.seat, text: `${who} +${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, sound: 'coin', gap: 900, after: true };
+        {
+          // 이기고 아무도 못 받은 베팅도 돌려받았으면 둘을 나눠 적는다
+          const back = Math.min(amount, potRefundOf(ev.seat, (t.pubNext ?? t.pub)?.summary));
+          const text = back > 0 ? `${who} +${t.fmt(amount - back)} · 돌려받음 ${t.fmt(back)}` : `${who} +${t.fmt(amount)}`;
+          return { at: ev.seat, text, chips: { from: 'pot', to: ev.seat, amount }, sound: 'coin', gap: 900, after: true };
+        }
       default:
         return null;
     }

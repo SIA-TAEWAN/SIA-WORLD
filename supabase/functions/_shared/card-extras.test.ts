@@ -516,6 +516,115 @@ describe('포커·홀덤 진짜 승자 (혼자만 받는 남는 팟은 돌려받
   });
 });
 
+import { holdem, type HoldemAction, type HoldemState } from './holdem.ts';
+import { computeSidePots } from './pots.ts';
+import { potRefundOf } from '../../../games/lib/extras.ts';
+
+describe('포커·홀덤 돌려받음은 혼자 낸 몫(refund 팟)만 — 다이한 사람 돈은 딴 것', () => {
+  it('홀덤 재현: A 100 올인 · B·C 콜, 플롭 B 200 · C 콜, 턴 B 500 · C 폴드, A 가 메인 승리', () => {
+    // 시드 8: A(0) 가 메인 팟을 이긴다
+    const seed = 8;
+    let s: HoldemState = holdem.newRound({
+      seats: [
+        { seat: 0, kind: 'human', name: 'A', stack: 100 },
+        { seat: 1, kind: 'human', name: 'B', stack: 10000 },
+        { seat: 2, kind: 'human', name: 'C', stack: 10000 },
+      ],
+      baseUnit: 10,
+      carry: null,
+      rng: seededRng(seed),
+    });
+    const rng = seededRng(seed + 100);
+    for (let k = 0; k < 40 && s.phase !== 'done'; k++) {
+      const seat = s.turn!;
+      const owe = s.curBet > s.players.find((q) => q.seat === seat)!.betRound;
+      let a: HoldemAction;
+      if (seat === 0) a = { type: 'allin' };
+      else if (s.phase === 'flop' && seat === 1 && s.curBet === 0) a = { type: 'raise', to: 200 };
+      else if (s.phase === 'turn' && seat === 1 && s.curBet === 0) a = { type: 'raise', to: 500 };
+      else if (s.phase === 'turn' && seat === 2 && owe) a = { type: 'fold' };
+      else a = { type: owe ? 'call' : 'check' };
+      s = holdem.apply(s, seat, a, rng);
+    }
+    const r = s.result!;
+    expect(s.players.map((p) => p.total)).toEqual([100, 800, 300]);
+    expect(r.pots).toEqual([
+      { amount: 300, eligible: [0, 1], winners: [0] },
+      { amount: 400, eligible: [1], winners: [1] },
+      { amount: 500, eligible: [1], winners: [1], refund: true },
+    ]);
+    // 정산은 그대로: B 는 C 의 300 중 200 을 따서 +100
+    expect(r.deltas).toEqual({ 0: 200, 1: 100, 2: -300 });
+    expect(potRealWinners(r)).toEqual([0, 1]);
+    expect(potRefundOnly(1, r)).toBe(false);
+    expect(potRefundOf(1, r)).toBe(500);
+    expect(potRefundOf(0, r)).toBe(0);
+  });
+  it('세븐포커 꼴: 자리0 300 올인, 1·2 가 800까지, 2 다이 → 1 은 2 의 돈을 딴 것', () => {
+    const pots = computeSidePots(
+      [
+        { seat: 0, total: 300, folded: false, allIn: true },
+        { seat: 1, total: 800, folded: false, allIn: false },
+        { seat: 2, total: 800, folded: true, allIn: false },
+      ],
+      { refund: true },
+    );
+    expect(pots).toEqual([
+      { amount: 900, eligible: [0, 1] },
+      { amount: 1000, eligible: [1] },
+    ]);
+    const r = { uncontested: false, winners: [0, 1], pots: [{ ...pots[0], winners: [0] }, { ...pots[1], winners: [1] }] };
+    expect(potRealWinners(r)).toEqual([0, 1]);
+    expect(potRefundOnly(1, r)).toBe(false);
+    expect(potRefundOf(1, r)).toBe(0);
+  });
+  it('실제 세븐포커 엔진: 다이한 사람이 올인한 사람보다 많이 냈으면 남는 팟을 받은 사람도 승자', () => {
+    let found = false;
+    for (let seed = 1; seed <= 400 && !found; seed++) {
+      const rng = seededRng(seed);
+      let s: PokerState = poker.newRound({
+        seats: [
+          { seat: 0, kind: 'human', name: 'P0', stack: 3000 },
+          { seat: 1, kind: 'human', name: 'P1', stack: 100000 },
+          { seat: 2, kind: 'human', name: 'P2', stack: 100000 },
+        ],
+        baseUnit: 1000,
+        carry: null,
+        rng,
+      });
+      for (let step = 0; step < 300 && !poker.done(s); step++) {
+        const st = poker.pending(s)[0];
+        if (s.phase === 'choose') {
+          s = poker.apply(s, st, poker.timeout(s, st, rng), rng);
+          continue;
+        }
+        const acts = poker.view(s).public.actions;
+        const me = s.players.find((p) => p.seat === st)!;
+        const zero = s.players.find((p) => p.seat === 0)!;
+        const noDie = acts.filter((a) => a.type !== 'die');
+        let pick;
+        if (st === 0) pick = noDie.find((a) => a.type === 'call') ?? noDie.find((a) => a.type === 'check') ?? noDie[0];
+        else if (st === 2 && zero.allIn && me.total > zero.total) pick = acts.find((a) => a.type === 'die') ?? noDie[0];
+        else pick = noDie.slice().sort((a, b) => b.amount - a.amount)[0];
+        s = poker.apply(s, st, { type: pick.type } as PokerAction, rng);
+      }
+      const r = s.result;
+      if (!r || r.cancelled || r.uncontested) continue;
+      const p2 = s.players.find((p) => p.seat === 2)!;
+      const main = r.pots.find((p) => p.eligible.length >= 2);
+      if (!p2.folded || !main || main.winners.join() !== '0') continue;
+      found = true;
+      // 1 은 다이한 2 의 돈이 든 팟을 받았다 → 돌려받음만이 아니다. 정산 합계는 0
+      expect(Object.values(r.deltas).reduce((a, b) => a + b, 0)).toBe(0);
+      expect(potRefundOnly(1, r)).toBe(false);
+      expect(potRealWinners(r)).toEqual([0, 1]);
+      const p1 = s.players.find((p) => p.seat === 1)!;
+      expect(potRefundOf(1, r)).toBe(p1.total - p2.total);
+    }
+    expect(found).toBe(true);
+  });
+});
+
 describe('홀덤 미리 고르기', () => {
   it('체크/폴드: 체크할 수 있으면 체크, 아니면 폴드', () => {
     expect(holdemBookAction({ kind: 'checkfold' }, { canCheck: true, call: 0 }, 0)).toBe('check');

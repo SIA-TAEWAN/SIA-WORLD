@@ -75,7 +75,7 @@ describe('스핀 진행', () => {
     let s = start([human(0)]);
     s = roulette.apply(s, 0, { type: 'bet', bets: [] }, fixed(3));
     expect(s.phase).toBe('spin');
-    expect(() => roulette.apply(s, 0, { type: 'bet', bets: [{ kind: 'zodiac', target: 3, amount: 100 }] }, fixed(3))).toThrow();
+    expect(() => roulette.apply(s, 0, { type: 'bet', bets: [{ kind: 'zodiac', target: 3, amount: 100 }] }, fixed(3))).toThrow('베팅 시간이 끝났어요');
   });
   it('한 스핀 총액은 기본 단위 ×100까지', () => {
     const s = start([human(0)]);
@@ -134,7 +134,9 @@ describe('스핀 진행', () => {
     // 결과 단계: 두 사람 모두 확인할 차례
     expect(roulette.pending(s)).toEqual([0, 1]);
     expect(roulette.tickNow(s)).toBe(false);
-    expect(() => roulette.apply(s, 0, { type: 'bet', bets: [] }, fixed(0))).toThrow(/확인/);
+    // 마감 뒤에 늦게 온 베팅 확정은 '베팅 시간이 끝났어요'
+    expect(() => roulette.apply(s, 0, { type: 'bet', bets: [] }, fixed(0))).toThrow(/베팅 시간이 끝났어요/);
+    expect(() => roulette.apply(s, 0, { type: 'nope' } as never, fixed(0))).toThrow(/확인/);
     s = roulette.apply(s, 0, { type: 'next' }, fixed(0));
     expect(roulette.pending(s)).toEqual([1]);
     expect(() => roulette.apply(s, 0, { type: 'next' }, fixed(0))).toThrow(/이미/);

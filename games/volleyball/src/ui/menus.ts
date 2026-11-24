@@ -420,11 +420,16 @@ export function showWaiting() {
   $('#invite').addEventListener('click', async () => {
     sfx('click');
     const url = roomLink(room.key);
-    try {
-      if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try {
         await navigator.share({ title: '시아배구', text: '같이 배구해요! 🏐', url });
         return;
+      } catch (e) {
+        // 공유 창을 닫았으면(AbortError) 아무것도 안 한다. 다른 오류(권한·지원 안 함)면 아래 복사로
+        if ((e as { name?: unknown } | null)?.name === 'AbortError') return;
       }
+    }
+    try {
       await navigator.clipboard.writeText(url);
       toast('방 링크를 복사했어요');
     } catch {

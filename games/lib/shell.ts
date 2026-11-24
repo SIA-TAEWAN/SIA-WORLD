@@ -1594,6 +1594,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (!r) return gone();
     queue.length = 0;
     epoch++;
+    playingNext = null;
     pendingPriv = undefined;
     room = r;
     seats = s;
@@ -1804,9 +1805,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     try {
       while (queue.length && !closed) {
         const item = queue.shift()!;
-        playingNext = item.s.public_state ?? null;
         const myEpoch = epoch;
         const stale = () => closed || myEpoch !== epoch;
+        // ctx.pubNext 는 이 항목을 그리기 시작할 때부터 (앞 항목 연출을 기다리는 동안은 앞 상태 그대로)
+        const playing = () => {
+          if (!stale()) playingNext = item.s.public_state ?? null;
+        };
         const mine = seats.find((x) => x.user_id === me.userId);
         const myNext = !!mine && (item.s.pending_seats ?? []).includes(mine.seat_no);
         const wasMine = !!mine && room?.status === 'playing' && (st?.pending_seats ?? []).includes(mine.seat_no);
@@ -1847,10 +1851,12 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         if (ending) holdResult = true;
         /** 중간 화면 그리기: 내 버튼은 (고르던 중이 아니면) 숨긴 채로 */
         const showFrame = (pub: unknown) => {
+          playing();
           st = { ...item.s, public_state: { ...(pub as object), result: null, deltas: null }, pending_seats: keep && mine ? [mine.seat_no] : [] } as StateRow;
           repaint();
         };
         const apply = () => {
+          playing();
           try {
             applyState(item.s);
           } catch (e) {
@@ -1931,6 +1937,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         if (closed) return;
         // 재생하는 동안 다시 불러왔으면 (탭 복귀·재연결) 이 항목은 이미 지난 상태 → 새 상태로 다시 그린다
         if (myEpoch !== epoch) {
+          playingNext = null;
           holdResult = false;
           ctlHold = false;
           repaint();
@@ -2236,6 +2243,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         if (closed) return;
         queue.length = 0;
         epoch++;
+        playingNext = null;
         pendingPriv = undefined;
         unbusy();
         st = s;

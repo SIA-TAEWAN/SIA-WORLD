@@ -87,6 +87,21 @@ describe('베팅', () => {
     expect(o.canRaise).toBe(false); // 이미 행동했으므로 콜·폴드만
     expect(() => act(s, { type: 'raise', to: 3000 })).toThrow();
   });
+  it('모자란 올인이 쌓여 마지막 행동 뒤로 최소 레이즈 폭 이상 오르면 다시 연다 (TDA)', () => {
+    const play = (sbStack: number) => {
+      let s = round([human(0), human(1, 1500), human(2, sbStack), human(3)], 0); // 버튼 1, SB 2, BB 3, 첫 행동 0
+      expect([s.button, s.sbSeat, s.bbSeat, s.turn]).toEqual([1, 2, 3, 0]);
+      s = act(s, { type: 'raise', to: 1000 }); // 0: 1000 (폭 800)
+      s = act(s, { type: 'allin' }); // 1: 1500 (폭 500)
+      s = act(s, { type: 'allin' }); // 2: sbStack 까지
+      s = act(s, { type: 'call' }); // 3 (BB)
+      expect(s.turn).toBe(0);
+      return opts(s);
+    };
+    expect(play(1900).canRaise).toBe(true); // 1000 → 1900: 900 ≥ 800 → 다시 열림
+    expect(play(1900).minTo).toBe(2700);
+    expect(play(1700).canRaise).toBe(false); // 1000 → 1700: 700 < 800 → 콜·폴드만
+  });
   it('완전한 레이즈는 다시 연다', () => {
     let s = round([human(0), human(1), human(2)], 0);
     s = act(s, { type: 'raise', to: 1000 }); // 1
@@ -204,4 +219,38 @@ describe('무작위 판 (AI끼리 · 사람 섞어서)', () => {
       }
     });
   }
+});
+
+describe('AI 는 카드 5장(플롭)까지 폴드하지 않는다', () => {
+  it('프리플롭·플롭에서는 어떤 패든 폴드 안 함 (체크 아니면 콜), 턴·리버는 폴드할 수 있다', () => {
+    let early = 0;
+    let lateFolds = 0;
+    for (let g = 0; g < 60; g++) {
+      const r = seededRng(7000 + g);
+      const n = 2 + r.int(3);
+      const seats: SeatInfo[] = Array.from({ length: n }, (_, i) => (i === 0 ? human(0, 1_000_000) : { seat: i, kind: 'ai', name: `AI${i}`, stack: null }));
+      let s = holdem.newRound({ seats, baseUnit: 100, carry: { button: r.int(n) }, rng: r });
+      for (let k = 0; k < 300 && !holdem.done(s); k++) {
+        const seat = holdem.pending(s)[0];
+        const v = holdem.view(s);
+        const o = v.public.options!;
+        let a: HoldemAction;
+        if (seat === 0) {
+          // 사람은 크게 걸어 AI 가 폴드를 고민하게 만든다
+          a = o.canRaise ? { type: 'raise', to: Math.min(o.maxTo, Math.max(o.minTo, v.public.pot)) } : o.canCheck ? { type: 'check' } : { type: 'call' };
+        } else {
+          a = holdem.ai(v.public, v.private[seat], seat, r);
+          if (s.board.length <= 3) {
+            early++;
+            expect(a.type).not.toBe('fold');
+            if (o.canCheck) expect(a.type === 'call').toBe(false);
+          } else if (a.type === 'fold') lateFolds++;
+        }
+        s = holdem.apply(s, seat, a, r);
+      }
+      expect(holdem.done(s)).toBe(true);
+    }
+    expect(early).toBeGreaterThan(100);
+    expect(lateFolds).toBeGreaterThan(0);
+  });
 });

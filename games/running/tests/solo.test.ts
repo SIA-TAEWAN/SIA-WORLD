@@ -101,6 +101,26 @@ describe('오늘의 도전 판 열기 (SoloSession)', () => {
     expect(st.goAt).toBeGreaterThan(st.readyAt);
     expect(st.roster[0]).toMatchObject({ id: 'u1', char: 'horse', role: 'me' });
   });
+  it('race_go 는 고스트를 받은 뒤에 부른다 (함께 기다리면 느린 통신에서 화면이 뜰 때 GO 가 지나 있다)', async () => {
+    const api = fakeApi();
+    const s = new SoloSession(api, me);
+    let release!: () => void;
+    const ghost = new Promise<null>((r) => (release = () => r(null)));
+    const p = s.start('horse', '2026-11-23', () => false, Math.random, ghost);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(api.calls.some((c) => c.startsWith('go:'))).toBe(false);
+    release();
+    expect(await p).not.toBeNull();
+    expect(api.calls.some((c) => c.startsWith('go:'))).toBe(true);
+    // 고스트를 기다리는 사이 취소하면 race_go 를 부르지 않는다
+    const api2 = fakeApi();
+    let cancel = false;
+    const s2 = new SoloSession(api2, me);
+    const p2 = s2.start('horse', '2026-11-23', () => cancel, Math.random, new Promise((r) => setTimeout(() => r(null), 5)));
+    cancel = true;
+    expect(await p2).toBeNull();
+    expect(api2.calls.some((c) => c.startsWith('go:'))).toBe(false);
+  });
   it("'too soon' 이면 남은 시간만큼 기다렸다 다시 묻는다", async () => {
     let n = 0;
     const waits: number[] = [];

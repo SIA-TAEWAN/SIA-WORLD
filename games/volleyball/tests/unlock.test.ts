@@ -104,8 +104,8 @@ describe('고양이 구매 조건 (이 게임 {CAT_NEED}판)', () => {
     expect(CAT_NEED).toBe(30);
   });
   it('남은 조건 글: 지금 값을 알면 함께, 모르면 조건만', () => {
-    expect(condText(12)).toBe('시아배구 30판(AI전은 하루 30판까지 셈)을 하면 열 수 있어요 · 지금 12판');
-    expect(condText(null)).toBe('시아배구 30판(AI전은 하루 30판까지 셈)을 하면 열 수 있어요');
+    expect(condText(12)).toBe('시아배구 30판(AI전·같은 상대와의 대전은 하루 30판까지 셈)을 하면 열 수 있어요 · 지금 12판');
+    expect(condText(null)).toBe('시아배구 30판(AI전·같은 상대와의 대전은 하루 30판까지 셈)을 하면 열 수 있어요');
   });
   it('테스트 모드 &cat=cond: 잠김 + 조건 미달(지금 12판), 열기는 조건 미달로 거절', async () => {
     await initUnlock(async () => [], true, 'cond');

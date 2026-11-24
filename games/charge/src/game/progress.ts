@@ -216,8 +216,8 @@ export function whyText(why: string): string {
   const m: Record<string, string> = {
     'stage locked': '아직 열리지 않은 스테이지예요',
     'leader locked': '아직 열리지 않은 대장이에요',
-    'locked character': `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`,
-    'endless locked': '끝없는 모드는 1-5를 깨면 열려요',
+    'locked character': `야옹이는 대장 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`,
+    'endless locked': '끝없는 길은 1-5를 깨면 열려요',
     'not enough coins': '엽전이 모자라요',
     'max level': '이미 최대 강화예요',
     'need login': '다시 로그인해 주세요',

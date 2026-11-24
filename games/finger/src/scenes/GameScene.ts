@@ -93,7 +93,14 @@ const HEX = {
   accent: css(COLOR.accent),
   sky: css(COLOR.skyMid),
   soft: css(COLOR.lineSoft),
+  ink: css(COLOR.outline),
+  inkSoft: css(COLOR.inkSoft),
 };
+
+/** 글자 색이 바뀔 때만 setColor (setColor 는 같은 색이어도 글자 캔버스를 다시 그린다 — 매 프레임 부르면 아이폰이 뜨거워진다) */
+function colorOf(t: Phaser.GameObjects.Text, c: string) {
+  if (t.style.color !== c) t.setColor(c);
+}
 
 interface SlotView {
   img: Phaser.GameObjects.Image;
@@ -407,13 +414,13 @@ export class GameScene extends Phaser.Scene {
       this.heroIcons[i] = HERO_ICONS.map(([key, tint]) => this.add.image(0, 0, key).setTint(tint).setDisplaySize(26, 26).setDepth(520).setVisible(false));
       const slotImg = this.add.image(i * SLOT_W + 44, BAR_Y + 58, this.ballKeys[i]).setDisplaySize(64, 64).setDepth(1001);
       const name = this.add
-        .text(i * SLOT_W + 82, BAR_Y + 22, HEROES[hero.id].name, { fontFamily: FONT, fontSize: '24px', color: '#2a1a10' })
+        .text(i * SLOT_W + 82, BAR_Y + 22, HEROES[hero.id].name, { fontFamily: FONT, fontSize: '24px', color: css(COLOR.outline) })
         .setOrigin(0, 0.5)
         .setDepth(1001);
       this.slots.push({ img: slotImg, name });
     });
     this.spText = this.add
-      .text(SP_X + SP_W / 2, BAR_Y + 70, '필살기', { fontFamily: FONT, fontSize: '24px', color: '#2a1a10', align: 'center' })
+      .text(SP_X + SP_W / 2, BAR_Y + 70, '필살기', { fontFamily: FONT, fontSize: '24px', color: css(COLOR.outline), align: 'center' })
       .setOrigin(0.5)
       .setDepth(1002);
     this.hintText = this.add
@@ -618,6 +625,8 @@ export class GameScene extends Phaser.Scene {
     const d = this.drag;
     if (!d || p.id !== d.id) return;
     this.drag = null;
+    // touchcancel 도 pointerup 으로 온다 (전화·알림 등): 쏘지 않고 조준만 취소
+    if (p.wasCanceled) return;
     if (this.paused || this.mode !== 'aim') return;
     const pull = this.pullOf(d.x0, d.y0, p.x, p.y);
     if (!pull) return; // 시작 자리 근처로 돌아와 뗐다: 취소
@@ -1343,7 +1352,7 @@ export class GameScene extends Phaser.Scene {
           img,
           bar: this.add.graphics().setDepth(420),
           num: this.add
-            .text(0, 0, '', { fontFamily: FONT, fontSize: f.rank === 2 ? '40px' : '30px', color: '#ffffff', stroke: '#2a1a10', strokeThickness: 7 })
+            .text(0, 0, '', { fontFamily: FONT, fontSize: f.rank === 2 ? '40px' : '30px', color: '#ffffff', stroke: css(COLOR.outline), strokeThickness: 7 })
             .setOrigin(0.5)
             .setDepth(430),
           icons: [],
@@ -1380,7 +1389,7 @@ export class GameScene extends Phaser.Scene {
         v.bar.lineStyle(3, COLOR.white, 0.7).strokeEllipse(x, y + f.r * 0.5, f.r * 2.6, f.r * 1.1);
       }
       if (f.down) {
-        v.num.setText('부활').setPosition(x, y - f.r * 0.9).setColor(HEX.lose);
+        colorOf(v.num.setText('부활').setPosition(x, y - f.r * 0.9), HEX.lose);
         for (const ic of v.icons) ic.setVisible(false);
         continue;
       }
@@ -1437,7 +1446,7 @@ export class GameScene extends Phaser.Scene {
       // 머리 위 남은 턴 (다음 행동이 공격이 아니면 이름도)
       const act = f.left === 1 ? next.get(f.id) : undefined;
       v.num.setText(f.frozen > 0 ? '멈춤' : act ? `${f.left} ${act}` : String(f.left)).setPosition(x - f.r * 0.7, y - f.r * 0.8);
-      v.num.setColor(f.left <= 1 ? HEX.pink : HEX.white);
+      colorOf(v.num, f.left <= 1 ? HEX.pink : HEX.white);
     }
     // 필살기 컷인이 지나가는 동안은 쓰러진 요괴도 그대로 둔다 (컷인 뒤에 한꺼번에 터진다)
     if (this.heldSpecial) return;
@@ -1715,9 +1724,9 @@ export class GameScene extends Phaser.Scene {
         g.fillStyle(COLOR.primary, 1).fillRoundedRect(x + 2, BAR_Y + 6, SLOT_W - 8, H - BAR_Y - 18, 14);
       }
       sl.img.setAlpha(h.fallen ? 0.35 : 1);
-      if (h.fallen) sl.img.setTint(0x888888);
+      if (h.fallen) sl.img.setTint(COLOR.draw);
       else sl.img.clearTint();
-      sl.name.setColor(h.fallen ? '#8a6a4a' : '#2a1a10');
+      colorOf(sl.name, h.fallen ? HEX.inkSoft : HEX.ink);
       // 체력 바
       const bx = x + 74;
       const bw = SLOT_W - 86;
@@ -1744,7 +1753,7 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(4, COLOR.outline, 1).strokeRoundedRect(SP_X, by, SP_W, bh, 14);
     const h = s.heroes[s.cur];
     this.spText.setText(this.armed ? '필살기\n켜짐' : ready ? '필살기' : `필살기\n${Math.max(0, h.chargeMax - h.charge)}턴`);
-    this.spText.setColor(ready || this.armed ? '#2a1a10' : '#8a6a4a');
+    colorOf(this.spText, ready || this.armed ? HEX.ink : HEX.inkSoft);
   }
 }
 

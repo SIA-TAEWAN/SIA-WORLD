@@ -12,7 +12,7 @@ import { EXTRA_HERO_IDS, HEROES, MAX_SHOT_STEPS, STAGES } from '../src/sim';
  * 다르면 npm run sqlrows 로 줄을 만들어 넣는다 (이미 올라간 마이그레이션은 고치지 않고 새 파일에 넣는다).
  */
 // 시아핑거 함수를 정의하는 마이그레이션 (순서대로). 함수를 다시 정의하는 새 파일을 만들면 여기에 넣는다 — 마지막 정의를 본다
-const FILES = ['067_finger.sql', '070_finger_limits.sql', '076_cat_finger.sql', '086_finger_daily.sql'];
+const FILES = ['067_finger.sql', '070_finger_limits.sql', '076_cat_finger.sql', '086_finger_daily.sql', '100_finger_overlap.sql'];
 const SQL = FILES.map((f) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8')).join('\n');
 /** fn 의 최신 정의 (뒤 파일의 create or replace 가 이긴다) */
 const block = (fn: string) => {
@@ -97,10 +97,13 @@ describe('SQL 표', () => {
     expect(c('tower_boss_coins')).toBe(TOWER_BOSS_COINS);
   });
 
-  it('판 끝 검사: 탑은 따로 큰 상한 · 겹침은 늦게 시작한 판 또는 먼저 시작한 판의 최소 판 시간으로만 (070)', () => {
+  it('판 끝 검사: 탑은 따로 큰 상한 · 겹침은 두 판의 최소 판 시간이 실제로 겹칠 때만 (070 · 100)', () => {
     const fn = block('finger_finish_verified');
     expect(fn).toContain("public._finger_const(case when tower then 'tower_max_age' else 'max_age' end) then raise exception 'too late'");
     expect(fn).toContain('(o.started_at > rn.started_at');
+    // (가) 늦게 시작한 판: 이 판의 최소 판 시간이 그 판 시작을 넘길 때만 (100 — 보관했다 늦게 보낸 판을 거절하지 않는다)
+    expect(fn).toContain("and rn.started_at + make_interval(secs => v_turns * public._finger_const('turn_min_time')");
+    expect(fn).not.toContain("o.finished_at > rn.started_at + interval '2 seconds'");
     expect(fn).toContain('(o.started_at <= rn.started_at');
     expect(fn).toContain("make_interval(secs => coalesce(o.turns, 0) * public._finger_const('turn_min_time')");
     expect(LIMITS.towerMaxAge).toBeGreaterThan(LIMITS.maxAge);
@@ -157,6 +160,22 @@ describe('SQL 표', () => {
     expect(a).toBeGreaterThan(0);
     expect(b).toBeGreaterThan(a);
     expect((now.slice(0, a) + now.slice(b)).replace('  v_daily jsonb;\n', '')).toBe(fnOf('070_finger_limits.sql'));
+  });
+
+  it('판 끝 함수 100 은 086 을 그대로 옮기고 겹침 (가)와 그 주석만 다르다 (권한 줄까지 같다)', () => {
+    const fnOf = (file: string) => {
+      const t = readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+      const i = t.lastIndexOf('create or replace function public.finger_finish_verified(');
+      const fn = t.slice(i);
+      const a = fn.indexOf('  -- 겹침:');
+      const b = fn.indexOf('        or (o.started_at <= rn.started_at');
+      expect(a).toBeGreaterThan(0);
+      expect(b).toBeGreaterThan(a);
+      return fn.slice(0, a) + fn.slice(b);
+    };
+    expect(fnOf('100_finger_overlap.sql')).toBe(fnOf('086_finger_daily.sql'));
+    expect(fnOf('100_finger_overlap.sql')).toContain('language plpgsql security definer set search_path = public as $$');
+    expect(fnOf('100_finger_overlap.sql')).toContain('grant execute on function public.finger_finish_verified(uuid, uuid, jsonb) to service_role;');
   });
 
   it('랭킹 뷰 2개: 정렬 · 권한 (돌격대 061 과 같은 모양)', () => {

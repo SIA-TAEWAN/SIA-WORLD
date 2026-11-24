@@ -122,6 +122,12 @@ export function openSettings() {
 
 /** 게임 엔진(Phaser)과 경주 화면을 미리 받아 둔다 */
 let enginePromise: Promise<typeof import('./raceView')> | null = null;
+/** 이름표 글꼴(Jua): 받을 때까지, 길어도 1.2초 (경기 화면을 그리기 전에. 출발 전에 미리 받아 둔다) */
+export function fontsReady(): Promise<unknown> {
+  if (typeof document === 'undefined' || !document.fonts?.load) return Promise.resolve();
+  return Promise.race([document.fonts.load('16px Jua'), new Promise((r) => setTimeout(r, 1200))]).catch(() => undefined);
+}
+
 export function loadEngine() {
   enginePromise ??= import('./raceView');
   enginePromise.catch(() => (enginePromise = null));

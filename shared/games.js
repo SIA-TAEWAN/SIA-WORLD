@@ -13,7 +13,7 @@ export const GAMES = [
     path: 'games/casino/', image: 'shared/images/card-casino.png', open: true },
   { id: 'race', name: '시아레이스', desc: '십이지신 146m 달리기 · 1위 고스트와 대결',
     path: 'games/running/', image: 'shared/images/card-race.png', open: true },
-  { id: 'volleyball', name: '시아배구', desc: '십이지신 1:1 배구 · AI 연습',
+  { id: 'volleyball', name: '시아배구', desc: '십이지신 1:1 배구 · AI 대전',
     path: 'games/volleyball/', image: 'shared/images/card-volleyball.png', open: false },
   { id: 'survival', name: '시아서바이벌', desc: '몰려오는 요괴를 4분 버텨라 · 1인용',
     path: 'games/survival/', image: 'shared/images/card-survival.png', open: false },

@@ -58,8 +58,13 @@ export interface HoldemPlayer {
   betRound: number;
   total: number;
   acted: boolean;
-  /** 이번 라운드에 레이즈할 수 있는가 (모자란 올인 레이즈는 이미 행동한 사람에게 다시 열어 주지 않는다) */
+  /**
+   * 이번 라운드에 레이즈할 수 있는가. 모자란 올인 레이즈 하나로는 이미 행동한 사람에게 다시 열어 주지 않지만,
+   * 모자란 올인이 쌓여 그 사람의 마지막 행동 뒤로 curBet 이 최소 레이즈 폭 이상 올랐으면 다시 연다 (TDA)
+   */
   mayRaise: boolean;
+  /** 이번 라운드에 마지막으로 행동한 직후의 curBet (행동 전이면 없음) */
+  actedBet?: number;
   last: string | null;
 }
 
@@ -242,6 +247,7 @@ function startStreet(s: HoldemState, first: number | null): boolean {
     p.betRound = 0;
     p.acted = false;
     p.mayRaise = true;
+    delete p.actedBet;
   }
   s.curBet = 0;
   s.minRaise = s.bb;
@@ -331,6 +337,13 @@ function finish(s: HoldemState, pots: HoldemPotResult[], uncontested: boolean, h
   };
 }
 
+/** 판이 끝났을 때 이 자리가 받은 돈 (deltas = 받은 돈 − 낸 돈) */
+function wonOf(s: HoldemState, p: HoldemPlayer): number {
+  if (s.phase !== 'done' || !s.result) return 0;
+  const d = s.result.deltas[p.seat];
+  return typeof d === 'number' ? Math.max(0, d + p.total) : 0;
+}
+
 function finishUncontested(s: HoldemState): void {
   const w = live(s)[0];
   finish(s, [{ amount: potTotal(s), eligible: [w.seat], winners: [w.seat] }], true, {});
@@ -352,7 +365,7 @@ function showdown(s: HoldemState): void {
     else if (v.cat === HandCat.STRAIGHT_FLUSH) emit(s, 'straight_flush', { seat: p.seat });
     else if (v.cat === HandCat.QUADS) emit(s, 'four_kind', { seat: p.seat });
   }
-  const pots: HoldemPotResult[] = computeSidePots(participants(s)).map((pot) => {
+  const pots: HoldemPotResult[] = computeSidePots(participants(s), { refund: true }).map((pot) => {
     let best: HandValue | null = null;
     let winners: number[] = [];
     for (const seat of pot.eligible) {
@@ -421,7 +434,22 @@ export function estimateEquity(hole: string[], board: string[], opponents: numbe
 /** AI 실수 확률: 이만큼은 사람에게 유리한 쪽으로 잘못 고른다 (난이도 10% 낮춤. AI 는 돈을 잃어도 된다) */
 export const AI_MISTAKE = 0.1;
 
+/** 카드가 5장(개인 2장 + 바닥 3장) 이하인 동안 — 프리플롭 · 플롭 — AI 는 폴드하지 않는다 */
+export const AI_NO_FOLD_BOARD = 3;
+
 function aiAct(pub: HoldemPublic, priv: HoldemPrivate | undefined, seat: number, rng: Rng): HoldemAction {
+  const a = aiActPlan(pub, priv, seat, rng);
+  // 프리플롭·플롭에서는 AI 가 죽지 않는다: 체크할 수 있으면 체크, 아니면 콜 (칩이 모자라면 엔진이 올인 콜로). 턴·리버는 판단 그대로
+  // (진짜 AI 자리만 — 시간 초과·판 도중 나간 자리는 timeout 으로 따로 둔다)
+  const o = pub.options!;
+  if (a.type === 'fold' && pub.board.length <= AI_NO_FOLD_BOARD && pub.seats.find((x) => x.seat === seat)?.kind === 'ai') {
+    if (o.canCheck) return { type: 'check' };
+    if (o.call > 0) return { type: 'call' };
+  }
+  return a;
+}
+
+function aiActPlan(pub: HoldemPublic, priv: HoldemPrivate | undefined, seat: number, rng: Rng): HoldemAction {
   const a = aiPlan(pub, priv, seat, rng);
   const o = pub.options!;
   // 실수는 진짜 AI 자리에만: 판 도중 나간 사람 자리는 AI 가 대신 두지만 그 사람의 실제 칩이다 (난수는 똑같이 하나 쓴다)
@@ -603,6 +631,7 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
           emit(s, 'allin', { seat, amount: p.total });
           p.acted = true;
           p.mayRaise = false;
+          p.actedBet = s.curBet;
           progress(s);
           return s;
         }
@@ -626,8 +655,13 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
           x.mayRaise = true;
         }
       } else {
-        // 모자란 올인 레이즈: 다시 맞춰야 하지만 레이즈 권한은 그대로
-        for (const x of s.players) if (x !== p && inHand(x) && !x.allIn) x.acted = false;
+        // 모자란 올인 레이즈: 다시 맞춰야 하지만 레이즈 권한은 그대로.
+        // 단 모자란 올인이 쌓여 마지막 행동 뒤로 최소 레이즈 폭 이상 올랐으면 다시 연다 (국제 표준 TDA)
+        const newBet = Math.max(s.curBet, p.betRound);
+        for (const x of s.players) if (x !== p && inHand(x) && !x.allIn) {
+          x.acted = false;
+          if (typeof x.actedBet === 'number' && newBet - x.actedBet >= Math.max(s.minRaise, s.bb)) x.mayRaise = true;
+        }
       }
       s.curBet = Math.max(s.curBet, p.betRound);
       p.last = p.allIn ? LABEL.allin : isBet ? LABEL.bet : LABEL.raise;
@@ -638,6 +672,7 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
     }
     p.acted = true;
     p.mayRaise = false;
+    p.actedBet = s.curBet;
     progress(s);
     return s;
   },
@@ -688,7 +723,8 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
         allIn: p.allIn,
         betRound: p.betRound,
         total: p.total,
-        stackLeft: remaining(p),
+        // 판이 끝났으면 받은 돈까지 (이름패 칩 = 다음 판에 가지고 갈 칩)
+        stackLeft: remaining(p) + wonOf(s, p),
         holeCount: p.hole.length,
         last: p.last,
       })),

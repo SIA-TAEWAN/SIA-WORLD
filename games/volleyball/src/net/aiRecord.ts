@@ -8,7 +8,7 @@
  * 다시 올리기가 통신 실패면 맡겨 둔 채 새 판은 서버에 알리지 않는다 (기록되지 않는 판).
  * 화면·브라우저를 모르는 순수 모듈 (서버 호출은 AiRpc 로, 기기 저장은 PendingStore 로 받는다).
  */
-import { LOCKED_MSG, isLockedError } from '../game/unlock';
+import { LOCKED_MSG, isLockedError, limitCatTail } from '../game/unlock';
 /** ai_match_finish 의 답 */
 export interface AiFinish {
   /** 전적에 반영했는가 (false: 하루 한도를 넘긴 판) */
@@ -269,10 +269,10 @@ export function parseDraw(data: unknown): void {
   if ((data as { status?: unknown } | null)?.status !== 'draw') throw new Error('bad answer');
 }
 
-/** 결과 화면에 보일 한 줄 */
-export function outcomeText(o: AiOutcome): string {
+/** 결과 화면에 보일 한 줄. catLocked: 고양이가 아직 잠겨 있는가 (하루 한도 줄의 '고양이 판 수' 꼬리는 그때만) */
+export function outcomeText(o: AiOutcome, catLocked?: boolean): string {
   if (o.state === 'saved') return `🏅 전적 +1${o.coin ? ' · 시아코인 +1' : ' · 시아코인은 이번엔 없어요'} · 내 전적 ${o.wins}승 ${o.losses}패`;
-  if (o.state === 'limit') return `오늘은 AI 대전 ${o.perDay}판을 채워서 전적·시아코인에 반영되지 않았어요 · 고양이 판 수에도 들어가지 않아요`;
+  if (o.state === 'limit') return `오늘은 AI 대전 ${o.perDay}판을 채워서 전적·시아코인에 반영되지 않았어요${limitCatTail(catLocked)}`;
   if (o.state === 'draw') return '무승부는 전적에 기록되지 않아요';
   if (o.state === 'failed') return '전적을 기록하지 못했어요';
   if (o.state === 'locked') return LOCKED_MSG;

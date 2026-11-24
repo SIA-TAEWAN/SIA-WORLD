@@ -9,7 +9,7 @@ import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, unlockButtonHtml } from './unlockBtn';
 import { loadBestReaction, reactionText } from '../game/reaction';
-import { esc, loadEngine, nav, openSettings, saveChar, screen, state, toast } from './app';
+import { esc, fontsReady, loadEngine, nav, openSettings, saveChar, screen, state, toast } from './app';
 import { sfx } from './sfx';
 
 const ART = `${import.meta.env.BASE_URL}art/`;
@@ -295,7 +295,7 @@ export function showPick() {
 // ───────────────────────── 출발 ─────────────────────────
 
 /**
- * 지금 고른 캐릭터로 오늘의 도전 한 판을 연다: 서버 날짜 → race_go(GO 시각) → 경기 화면.
+ * 지금 고른 캐릭터로 오늘의 도전 한 판을 연다: 서버 날짜 → 고스트·경기 화면 코드·글꼴 → race_go(GO 시각) → 경기 화면.
  * 날짜는 서버(한국 시간)에서만 받는다: 못 받으면 막는다 (날짜가 틀리면 다른 트랙을 달려 기록이 어긋난다).
  */
 export async function startRun() {
@@ -326,11 +326,14 @@ export async function startRun() {
   state.today = day;
   state.solo ??= new SoloSession(api, state.user);
   try {
-    // 1위 고스트: 로비에서 읽어 둔 것(같은 날) 또는 새로. 2초 안에 못 받으면 AI 3명으로 바로
-    const start = await state.solo.start(state.char, day, () => cancelled, Math.random, ghostFor(api, day));
+    // 1위 고스트(로비에서 읽어 둔 것(같은 날) 또는 새로, 앞 판 고스트 올리기 대기 포함 — 2초 안에 못 받으면 AI 3명)와
+    // 경기 화면 코드·글꼴을 **먼저** 받는다. race_go 는 그 뒤에: GO 가 race_go 부터 잰 시각이라 느린 통신에서도 화면이 GO 전에 뜬다
+    const ghost = ghostFor(api, day).catch(() => null);
+    const [m] = await Promise.all([loadEngine(), ghost, fontsReady()]);
+    if (cancelled) return;
+    const start = await state.solo.start(state.char, day, () => cancelled, Math.random, ghost);
     if (!start || cancelled) return;
-    const m = await loadEngine();
-    if (!cancelled) m.showRace(start);
+    m.showRace(start);
   } catch (e) {
     console.warn('[시아레이스] 판을 열지 못했어요', e);
     if (!cancelled) {

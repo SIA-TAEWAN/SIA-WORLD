@@ -235,7 +235,11 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
             n++;
             writePending(readPending().filter((x) => x.run !== r.run));
           } catch (e) {
-            if (e instanceof ApiError) writePending(readPending().filter((x) => x.run !== r.run));
+            if (e instanceof ApiError) {
+              writePending(readPending().filter((x) => x.run !== r.run));
+              // 앞서 보낸 답만 못 받았던 판: 서버에는 이미 올라가 있으니 올린 것으로 센다 (프로필을 다시 읽게)
+              if (e.message === 'already finished') n++;
+            }
           }
         }
         return n;

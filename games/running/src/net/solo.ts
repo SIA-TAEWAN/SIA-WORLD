@@ -133,7 +133,8 @@ export class SoloSession {
 
   /**
    * 한 판을 연다: GO 시각 + 그날 트랙 + 명단. 취소되면 null.
-   * ghost: 같이 달릴 고스트 (GO 를 받는 동안 함께 기다린다. 부르는 쪽이 시간 제한을 건다)
+   * ghost: 같이 달릴 고스트 (부르는 쪽이 시간 제한을 건다). race_go 는 고스트를 받은 **뒤에** 부른다 —
+   * 함께 기다리면 느린 통신에서 화면이 뜰 때 이미 GO 가 지나 있었다 (GO 는 race_go 를 부른 때부터 lead_ms 뒤).
    */
   async start(
     char: ZodiacId,
@@ -142,7 +143,9 @@ export class SoloSession {
     rand: () => number = Math.random,
     ghost: Promise<GhostRun | null> = Promise.resolve(null),
   ): Promise<SoloStart | null> {
-    const [g, gr] = await Promise.all([this.go(cancelled), ghost.catch(() => null)]);
+    const gr = await ghost.catch(() => null);
+    if (cancelled()) return null;
+    const g = await this.go(cancelled);
     if (!g) return null;
     const run = gr && gr.ghost.day === day ? gr : null;
     return {

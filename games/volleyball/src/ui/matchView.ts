@@ -11,6 +11,7 @@ import { CourtScene, type SceneData } from '../scenes/CourtScene';
 import { zodiacFaceUrl } from '../assets';
 import { esc, leaveRoom, nav, openSettings, screen, stage, state, toast } from './app';
 import { DPR } from './dpr';
+import { COLOR, css } from '../theme';
 import { bubble, emoteChips, emoteHub, primaryPress, wireChips } from './emote';
 import { sfx } from './sfx';
 
@@ -81,8 +82,18 @@ export function showMatch(setup: MatchSetup) {
       hub.dispose();
       says.forEach((b) => b.clear());
       match.dispose();
+      // 경기마다 새 캔버스를 만든다: 지우기 전에 WebGL 문맥을 잡아 두었다가 직접 놓아 준다
+      // (그냥 두면 브라우저가 문맥을 늦게 거둬, 여러 판 뒤 '문맥이 너무 많다' 경고·옛 문맥 끊김이 날 수 있다)
+      const gl = glOf(game);
       game?.destroy(true);
       game = null;
+      if (gl) {
+        try {
+          gl.getExtension('WEBGL_lose_context')?.loseContext();
+        } catch {
+          /* 이미 잃었거나 지원하지 않음 */
+        }
+      }
       if (window.__match === match) delete window.__match;
     },
   );
@@ -398,7 +409,7 @@ export function showMatch(setup: MatchSetup) {
       parent: courtEl,
       width: Math.round(w * DPR),
       height: Math.round(h * DPR),
-      backgroundColor: '#9fd6ff',
+      backgroundColor: css(COLOR.skyMid),
       banner: false,
       audio: { noAudio: true },
       input: { keyboard: false, mouse: false, touch: false, gamepad: false },
@@ -430,4 +441,14 @@ export function showMatch(setup: MatchSetup) {
     () => root.isConnected && boot(),
   );
   paintScore();
+}
+
+/** WebGL 렌더러일 때만 그 문맥 (캔버스 렌더러·아직 안 만들었으면 null) */
+function glOf(game: Phaser.Game | null): WebGLRenderingContext | null {
+  try {
+    const r = game?.renderer;
+    return r && r.type === Phaser.WEBGL ? ((r as Phaser.Renderer.WebGL.WebGLRenderer).gl ?? null) : null;
+  } catch {
+    return null;
+  }
 }

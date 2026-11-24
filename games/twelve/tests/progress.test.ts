@@ -13,6 +13,8 @@ import {
   continueMap,
   emptyProfile,
   heroesOf,
+  iGa,
+  joinText,
   loadoutOf,
   mapOpen,
   recommended,
@@ -246,5 +248,20 @@ describe('기기 저장 (?local=1)', () => {
       level: 99,
       maps: { normal: { '1-1': { stars: 3, clears: 2, best: 30 } }, hard: {} },
     });
+  });
+});
+
+describe('이름 뒤 조사 (이/가)', () => {
+  it('받침이 있으면 이, 없으면 가', () => {
+    expect(iGa('찍찍이')).toBe('가');
+    expect(iGa('여의룡')).toBe('이');
+    expect(iGa('꼬꼬댁')).toBe('이');
+    expect(iGa('스르르')).toBe('가');
+    expect(iGa('ABC')).toBe('가');
+  });
+  it('합류 안내는 대원 이름의 받침을 따른다', () => {
+    expect(joinText(2)).toBe('보스를 처음 잡으면 여의룡(용)이 합류해요');
+    expect(joinText(7)).toBe('보스를 처음 잡으면 꼬꼬댁(닭)이 합류해요');
+    expect(joinText(1)).toBe('보스를 처음 잡으면 깡총이(토끼)가 합류해요');
   });
 });

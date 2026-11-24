@@ -152,9 +152,17 @@ export function towerLevel(s: State, slot: number): TowerLevel | null {
   return tw && tw.char >= 0 ? s.lv[tw.char][tw.lv - 1] : null;
 }
 
+/**
+ * 명령 자리가 남았나: 명령 수(cmds_max)를 넘긴 판은 서버가 받지 않으므로(bad result) 그 앞에서 더 받지 않는다.
+ * 조준 바꾸기는 그보다 일찍(AIM_CMDS_MAX) 막힌다
+ */
+export const cmdRoom = (s: State) => s.log.length < LIMITS.cmds_max;
+/** 배치 자리가 남았나: 배치 횟수 상한(placed_max)도 서버와 같다 */
+export const placeRoom = (s: State) => cmdRoom(s) && placedCount(s) < LIMITS.placed_max;
+
 export function canPlace(s: State, slot: number, char: number): boolean {
   const tw = s.towers[slot];
-  return open(s) && !!tw && tw.char < 0 && tw.off <= 0 && s.squad.includes(char) && s.energy >= s.cost[char];
+  return open(s) && !!tw && tw.char < 0 && tw.off <= 0 && s.squad.includes(char) && s.energy >= s.cost[char] && placeRoom(s);
 }
 
 /** 다음 단계로 올리는 비용 (빈 칸이거나 이미 3단계면 null) */
@@ -231,7 +239,7 @@ export function command(s: State, op: Cmd['op'], slot = -1, char = -1): boolean 
     }
     case 'upgrade': {
       const cost = upgradeCost(s, slot);
-      if (cost === null || s.energy < cost) return false;
+      if (cost === null || s.energy < cost || !cmdRoom(s)) return false;
       s.energy -= cost;
       tw.lv++;
       tw.spent += cost;
@@ -239,7 +247,7 @@ export function command(s: State, op: Cmd['op'], slot = -1, char = -1): boolean 
       break;
     }
     case 'sell': {
-      if (!tw || tw.char < 0) return false;
+      if (!tw || tw.char < 0 || !cmdRoom(s)) return false;
       s.energy += sellValue(s, slot);
       emit(s, EV.sell, slot, tw.char, s.slotX[slot], s.slotY[slot]);
       tw.char = -1;

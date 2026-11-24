@@ -54,7 +54,7 @@ describe('판 밖 기록', () => {
     setOwnedExtras([]);
     expect(leadersOf(p)).toEqual(['rat', 'ox', 'tiger']);
     expect(checkStart(p, '1-1', 'cat', 'normal')).toBe('locked character');
-    expect(whyText('locked character')).toBe('고양이는 캐릭터 고르기 화면에서 시아코인 100개로 열 수 있어요');
+    expect(whyText('locked character')).toBe('야옹이는 대장 고르기 화면에서 시아코인 100개로 열 수 있어요');
     for (const st of STAGES) p.stages[st.id] = 3;
     expect(leadersOf(p)).not.toContain('cat');
     setOwnedExtras(['cat']);

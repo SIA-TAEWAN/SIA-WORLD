@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { artUrl, cardUrl, zodiacFaceUrl } from '../assets';
 import { hasArt, type OptionalArt } from '../artlist';
+import { TABLE, css } from '../theme';
 import { COMBO_LEVELS, TOWER_BOSS_COINS, TOWER_FLOOR_COINS, UPGRADES, levelCost, levelOf, upgradeCost, upgradeLv } from '../data/growth';
 import { REGIONS, REGION_NAMES, groundOf } from '../data/regions';
 import {
@@ -929,7 +930,7 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     parent: root.querySelector<HTMLElement>('#game')!,
     width: W,
     height: H,
-    backgroundColor: '#7cc08a',
+    backgroundColor: css(TABLE.matgo),
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3 },
     // 소리는 공용 shared/sound.js 로만 낸다: Phaser 가 판마다 AudioContext 를 또 만들지 않게 (아이폰은 개수 제한이 있다)

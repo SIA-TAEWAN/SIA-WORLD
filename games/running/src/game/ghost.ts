@@ -141,6 +141,25 @@ function withJosa(word: string): '와' | '과' {
   return c >= 0 && c < 11172 && c % 28 !== 0 ? '과' : '와';
 }
 
+/** 그날 순위의 한 줄 (판 전에 읽은 daily_ranking, ms 는 dailyMs 로 푼 기록) */
+export interface DayRow {
+  place: number;
+  nickname?: string;
+  ms: number | null;
+}
+
+/**
+ * 결과 문구의 고스트 이름(who). 고스트는 그 사람이 그날 올린 고스트 가운데 가장 빠른 판이지만,
+ * 그날 순위의 기록(daily)은 고스트를 못 올린 더 빠른 판일 수 있다 → 그날 그 자리의 기록과 고스트 기록(ms)이 같을 때만
+ * '1위'·'3위'·'내 1위 기록', 아니면(또는 순위를 못 읽었으면) '1위 고스트'·'내 고스트'.
+ * gh: 고스트 정보, rank: 판 전에 읽은 그날 순위 (top 줄들 + 내 줄, 모르면 null)
+ */
+export function ghostWho(gh: { me: boolean; dayPlace: number; nickname: string; ms: number }, rank: { top: readonly DayRow[]; mine: DayRow | null } | null): string {
+  if (gh.me) return rank?.mine && rank.mine.ms === gh.ms && gh.dayPlace === 1 ? '내 1위 기록' : '내 고스트';
+  const row = rank?.top.find((r) => Number(r.place) === gh.dayPlace && (r.nickname ?? '') === gh.nickname);
+  return row && row.ms === gh.ms ? `${gh.dayPlace}위` : `${gh.dayPlace}위 고스트`;
+}
+
 /**
  * 결과 문구: 고스트와 내 기록의 차이. who: '1위' · '3위' · '내 1위 기록'.
  * 차이는 화면에 보이는 0.01초 단위 기록끼리 센다 (30.57 과 30.58 이면 0.01초. 보이는 기록이 같으면 '…와 똑같아요')

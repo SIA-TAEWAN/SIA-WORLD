@@ -5,7 +5,10 @@ import type { SoloStart } from '../net/solo';
 import { RaceGame } from '../race/game';
 import { RaceScene, type SceneData } from '../scenes/RaceScene';
 import { zodiacFaceUrl } from '../assets';
-import { nav, screen, stage, state } from './app';
+import { DAILY_GAME, dailyMs } from '../game/daily';
+import { LOCAL_MODE } from '../net/api';
+import { worldDailyRanking, type DailyRow } from '../net/world';
+import { fontsReady, nav, screen, stage, state } from './app';
 import { DPR } from './dpr';
 import { sfx } from './sfx';
 
@@ -26,10 +29,20 @@ export function showRace(start: SoloStart) {
   // 앞 판 기록이 아직 올라가는 중이면(결과 화면에서 바로 '다시 도전') 그것이 끝난 뒤에 읽는다
   const prevDaily = state.dailyAfter;
   state.dailyAfter = null;
+  const afterPrev = prevDaily ? prevDaily.catch(() => undefined) : Promise.resolve();
   if (start.day)
-    race.weekBefore = (prevDaily ? prevDaily.catch(() => undefined) : Promise.resolve())
+    race.weekBefore = afterPrev
       .then(() => api.weeklyPlace())
       .catch(() => undefined);
+  // 판 전 그날 순위 (고스트가 있을 때만): 결과 화면이 '1위보다'와 '1위 고스트보다'를 가른다 (고스트가 그 사람의 더 느린 판일 수 있다)
+  if (start.day && race.ghost && !LOCAL_MODE) {
+    const row = (r: DailyRow) => ({ place: Number(r.place), nickname: r.nickname, ms: dailyMs(r) });
+    const day = start.day;
+    race.dayBefore = afterPrev
+      .then(() => worldDailyRanking(DAILY_GAME, day))
+      .then((r) => (r ? { top: r.top.map(row), mine: r.mine ? row(r.mine) : null } : null))
+      .catch(() => null);
+  }
   const me = race.mySlot;
 
   let game: Phaser.Game | null = null;
@@ -42,7 +55,8 @@ export function showRace(start: SoloStart) {
     code === 'Space' || code === 'Enter' || code === 'ArrowUp' || code === 'KeyW' ? 'jump' : code === 'ArrowDown' || code === 'KeyS' ? 'slide' : null;
   const onKey = (e: KeyboardEvent) => {
     const kind = keyKind(e.code);
-    if (!kind) return;
+    // 나가기 창이 열려 있으면 달리기 키로 보지 않는다 (엔터·스페이스는 창의 버튼이 받는다)
+    if (!kind || quitDim?.isConnected) return;
     e.preventDefault();
     if (!e.repeat) press(kind);
   };
@@ -75,6 +89,8 @@ export function showRace(start: SoloStart) {
       quitDim = null;
       // 이 판의 기록 올리기가 아직 끝나지 않았을 수 있다: 다음 판의 판 전 주간 순위는 이것을 기다린다
       if (race.dailySaved) state.dailyAfter = race.dailySaved;
+      // 도착 뒤 바로 나가도 다음 판 고스트 읽기는 이 판 고스트 올리기를 기다린다 (결과 화면을 거치면 거기서 다시 넣는다)
+      if (race.ghostSaved) state.ghostAfter = race.ghostSaved;
       race.dispose();
       game?.destroy(true);
       game = null;
@@ -120,7 +136,9 @@ export function showRace(start: SoloStart) {
     const dim = document.createElement('div');
     quitDim = dim;
     dim.className = 'dim';
-    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">나가면 이번 판 기록은 남지 않아요</p>
+    // 이미 도착했으면(기록을 올렸음) 나가도 기록은 남는다
+    const note = race.record ? '도착 기록은 이미 저장됐어요 · 결과 화면만 건너뛰어요' : '나가면 이번 판 기록은 남지 않아요';
+    dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${note}</p>
       <div class="actions"><button class="btn" data-no>계속 달리기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -183,7 +201,7 @@ export function showRace(start: SoloStart) {
     const place = me >= 0 ? livePlace(entries, me) : 0;
     if (place !== lastPlace) {
       lastPlace = place;
-      placeEl.innerHTML = place ? `<b>${place}</b>등` : '구경';
+      placeEl.innerHTML = place ? `<b>${place}</b>등` : '-';
     }
     for (const img of icons) {
       const v = race.view(Number(img.dataset.slot));
@@ -194,7 +212,7 @@ export function showRace(start: SoloStart) {
     // 버튼: 출발 전 '출발' 하나, 달리는 중에는 '슬라이딩'(왼쪽)과 '점프'(오른쪽)
     let label = '출발';
     let off = false;
-    if (!mine || !race.amRacing()) [label, off] = ['구경 중', true];
+    if (!mine) [label, off] = ['-', true];
     else if (mine.state === 'foul') [label, off] = ['실격', true];
     else if (mine.state === 'done') [label, off] = ['도착!', true];
     else if (mine.state !== 'wait') label = '점프';
@@ -248,10 +266,7 @@ export function showRace(start: SoloStart) {
     ro.observe(trackEl);
   };
   // 글꼴을 먼저 받아야 이름표가 제 글꼴로 그려진다
-  const fonts = document.fonts?.load ? Promise.race([document.fonts.load('16px Jua'), new Promise((r) => setTimeout(r, 1200))]) : Promise.resolve();
-  void fonts.then(
-    () => root.isConnected && boot(),
-    () => root.isConnected && boot(),
-  );
+  // (출발 화면이 race_go 전에 받아 두므로 보통 바로 끝난다)
+  void fontsReady().then(() => root.isConnected && boot());
   frame();
 }

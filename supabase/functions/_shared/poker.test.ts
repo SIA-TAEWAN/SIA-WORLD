@@ -323,7 +323,7 @@ describe('흐름', () => {
     for (const p of s.players) expect(p.down.length + p.up.length).toBe(7);
     expect(s.result!.pots).toEqual([
       { amount: 6000, eligible: [0, 2], winners: [2] },
-      { amount: 1000, eligible: [2], winners: [2] },
+      { amount: 1000, eligible: [2], winners: [2], refund: true }, // 2 혼자 낸 몫 (아무도 못 받은 베팅)
     ]);
     expect(poker.settle(s).deltas).toEqual({ 0: -3000, 2: 3000 });
     expect(s.events.some((e) => e.t === 'allin' && e.seat === 0)).toBe(true);
@@ -532,8 +532,8 @@ describe('무작위 500판', () => {
           showdowns++;
           expectConserved(s);
         }
-        // 이벤트 id 증가, 30개 이하
-        expect(pub.events.length).toBeLessThanOrEqual(30);
+        // 이벤트 id 증가, 120개 이하 (한 판 안의 사건은 잘리지 않는다)
+        expect(pub.events.length).toBeLessThanOrEqual(120);
         for (let i = 1; i < pub.events.length; i++) expect(pub.events[i].id).toBe(pub.events[i - 1].id + 1);
         played++;
       }
@@ -543,5 +543,45 @@ describe('무작위 500판', () => {
     expect(played).toBe(CHUNKS * PER_CHUNK);
     expect(showdowns).toBeGreaterThan(20);
     expect(uncontested).toBeGreaterThan(20);
+  });
+});
+
+describe('AI 는 5장까지 다이하지 않는다', () => {
+  it('4구·5구 베팅에서는 어떤 패든 다이 안 함 (체크 아니면 콜), 6구·7구는 다이할 수 있다', () => {
+    let early = 0;
+    let lateDies = 0;
+    for (let g = 0; g < 300; g++) {
+      const r = seededRng(5000 + g);
+      const n = 2 + r.int(3);
+      // 사람 한 자리는 늘 크게 걸어 AI 가 다이를 고민하게 만든다
+      const seats: SeatInfo[] = Array.from({ length: n }, (_, i) =>
+        i === 0 ? { seat: 0, kind: 'human', name: 'P0', stack: 1_000_000 } : { seat: i, kind: 'ai', name: `AI${i}`, stack: null },
+      );
+      let s = poker.newRound({ seats, baseUnit: 100, carry: null, rng: r });
+      for (let k = 0; k < 500 && !poker.done(s); k++) {
+        const st = poker.pending(s)[0];
+        const v = poker.view(s);
+        let action: PokerAction;
+        if (s.phase === 'choose') action = st === 0 ? poker.timeout(s, st, r) : poker.ai(v.public, v.private[st], st, r);
+        else if (st === 0) {
+          const acts = v.public.actions.filter((a) => a.type !== 'die').sort((a, b) => b.amount - a.amount);
+          action = { type: acts[0].type } as PokerAction;
+        } else {
+          action = poker.ai(v.public, v.private[st], st, r);
+          const me = v.public.seats.find((x) => x.seat === st)!;
+          const held = me.hiddenCount + me.open.length;
+          expect(held).toBe(s.round);
+          if (held <= 5) {
+            early++;
+            expect(action.type).not.toBe('die');
+            if (v.public.actions.some((a) => a.type === 'check') && action.type === 'call') throw new Error('체크할 수 있으면 콜하지 않는다');
+          } else if (action.type === 'die') lateDies++;
+        }
+        s = poker.apply(s, st, action, r);
+      }
+      expect(poker.done(s)).toBe(true);
+    }
+    expect(early).toBeGreaterThan(100);
+    expect(lateDies).toBeGreaterThan(0);
   });
 });

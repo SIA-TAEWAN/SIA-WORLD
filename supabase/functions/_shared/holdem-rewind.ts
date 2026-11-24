@@ -109,10 +109,15 @@ function undo(p: HoldemPublic, events: readonly GameEvent[], i: number, paid: nu
     return;
   }
   switch (e.t) {
-    case 'win':
+    case 'win': {
       p.winners = p.winners.filter((x) => x !== e.seat);
+      // 판이 끝난 화면의 이름패 칩에는 받은 돈이 들어 있다 → 받기 전으로
+      const s = need();
+      const amt = Number(e.amount);
+      if (Number.isFinite(amt) && amt > 0) s.stackLeft -= amt;
       p.turn = null;
       return;
+    }
     case 'royal':
     case 'straight_flush':
     case 'four_kind':

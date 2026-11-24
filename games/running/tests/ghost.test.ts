@@ -407,3 +407,21 @@ describe('끝 시각 (탭을 오래 가렸다 돌아와도)', () => {
     expect(mine.status).toBe(fin !== null ? 'finish' : 'dnf');
   });
 });
+
+describe('고스트 이름 (ghostWho)', async () => {
+  const { ghostWho } = await import('../src/game/ghost');
+  const gh = { me: false, dayPlace: 1, nickname: '하나', ms: 30120 };
+  it('그날 그 자리의 실제 기록과 같을 때만 "1위", 아니면 "1위 고스트"', () => {
+    expect(ghostWho(gh, { top: [{ place: 1, nickname: '하나', ms: 30120 }], mine: null })).toBe('1위');
+    expect(ghostWho(gh, { top: [{ place: 1, nickname: '하나', ms: 29800 }], mine: null })).toBe('1위 고스트');
+    expect(ghostWho(gh, { top: [{ place: 1, nickname: '둘', ms: 30120 }], mine: null })).toBe('1위 고스트');
+    expect(ghostWho(gh, null)).toBe('1위 고스트');
+    expect(ghostWho({ ...gh, dayPlace: 3 }, { top: [{ place: 3, nickname: '하나', ms: 30120 }], mine: null })).toBe('3위');
+  });
+  it('내 고스트: 내 그날 기록과 같고 1위면 "내 1위 기록", 아니면 "내 고스트"', () => {
+    const mine = { ...gh, me: true };
+    expect(ghostWho(mine, { top: [], mine: { place: 1, ms: 30120 } })).toBe('내 1위 기록');
+    expect(ghostWho(mine, { top: [], mine: { place: 1, ms: 29900 } })).toBe('내 고스트');
+    expect(ghostWho(mine, null)).toBe('내 고스트');
+  });
+});
