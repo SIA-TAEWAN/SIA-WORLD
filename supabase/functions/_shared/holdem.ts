@@ -81,6 +81,8 @@ export interface HoldemSummary {
   deltas: Record<number, number>;
   excluded: number[];
   board: string[];
+  /** 판 끝 팟에서 refund 팟을 가르는 엔진이 만든 결과 (예전 공개 상태엔 없다 — 화면은 예전 규칙으로 승자를 가른다) */
+  refundPots?: true;
 }
 
 export interface HoldemState {
@@ -334,6 +336,7 @@ function finish(s: HoldemState, pots: HoldemPotResult[], uncontested: boolean, h
     deltas,
     excluded: s.players.filter((p) => p.excluded).map((p) => p.seat),
     board: s.board.slice(),
+    refundPots: true,
   };
 }
 

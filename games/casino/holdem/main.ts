@@ -1,8 +1,8 @@
 /** 텍사스 홀덤 화면: 가운데 공용 카드 5장 · 나는 아래 · 다른 사람은 왼쪽·위·오른쪽 (세로 화면은 위 한 줄) */
 import { HOLDEM_MANUAL } from '../../lib/manuals.ts';
-import { holdemAdvice, holdemAdviceText, holdemBookAction, holdemBookKeep, holdemToCall, potOddsNeed, potRealWinners, potRefundOf, potRefundOnly, type HoldemBook } from '../../lib/extras.ts';
+import { holdemAdvice, holdemAdviceText, holdemBookAction, holdemBookKeep, holdemToCall, potOddsNeed, potRealWinners, potRefundOf, potRefundOnly, sidePotCount, type HoldemBook } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
-import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
+import { cardRadius, chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { HoldemPrivate, HoldemPublic } from '../../../supabase/functions/_shared/holdem.ts';
 import { holdemRoundStart, rewindHoldem } from '../../../supabase/functions/_shared/holdem-rewind.ts';
 import type PhaserNS from 'phaser';
@@ -144,6 +144,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     // 공용 카드 5칸 (빈칸은 점선)
     const T = theme();
     const slots = scene.add.graphics();
+    // 빈칸 모서리도 카드와 같게
+    const slotR = cardRadius(bc);
     for (let i = 0; i < 5; i++) {
       const x = center.x + (i - 2) * bc * 1.08;
       const card = p.board[i];
@@ -151,7 +153,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
         const c = playingCard(scene, x, center.y, card, bc);
         t.deal(c, `b:${i}`, card, deck);
       } else {
-        slots.lineStyle(T.SHAPE.lineThin, T.COLOR.white, 0.55).strokeRoundedRect(x - bc / 2, center.y - bc * 0.71, bc, bc * 1.42, 8);
+        slots.lineStyle(T.SHAPE.lineThin, T.COLOR.white, 0.55).strokeRoundedRect(x - bc / 2, center.y - bc * 0.71, bc, bc * 1.42, slotR);
       }
     }
     // 판돈 · 단계
@@ -162,7 +164,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       scene,
       center.x + bc * 1.3,
       center.y + bc * 1.05,
-      `${STREET[p.phase]}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}${p.runout ? ' · 올인!' : ''}`,
+      `${STREET[p.phase]}${sidePotCount(p.seats) ? ` · 사이드 팟 ${sidePotCount(p.seats)}` : ''}${p.runout ? ' · 올인!' : ''}`,
       clamp(bc * 0.18, 12, 18),
       p.runout ? tc('primary') : undefined,
     );
@@ -412,7 +414,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     // 돌려받은 남는 팟은 승리가 아니다 → 컷인 없음
     if (ev.t === 'win' && typeof ev.seat === 'number' && refunded(t, ev.seat)) return null;
     if (ev.t === 'win' && ev.allIn) return '올인 승리!';
-    if (ev.t === 'win' && typeof ev.amount === 'number' && t.pub && ev.amount >= t.pub.bb * 50) return '대박 판돈!';
+    // 돌려받은 몫(refund 팟)은 뺀 딴 돈으로만 (돌려받기만 했으면 0)
+    if (ev.t === 'win' && typeof ev.amount === 'number' && t.pub && ev.amount - (typeof ev.seat === 'number' ? potRefundOf(ev.seat, (t.pubNext ?? t.pub)?.summary) : 0) >= t.pub.bb * 50) return '대박 판돈!';
     if (ev.t === 'allin' && ev.seat === t.mySeat) return '올인!';
     return null;
   },

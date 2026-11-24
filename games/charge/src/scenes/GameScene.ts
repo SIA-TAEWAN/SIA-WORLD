@@ -125,7 +125,7 @@ export class GameScene extends Phaser.Scene {
     this.hooks = data.hooks;
     this.acc = 0;
     this.ended = false;
-    this.paused = false;
+    // paused 는 여기서 되돌리지 않는다: 판마다 새 장면이라 기본값이 false 이고, 장면이 뜨기 전에 숨기기로 멈춘 것을 지우면 안 된다
     this.gateViews.clear();
     this.hordeViews.clear();
     this.crateLabels.clear();

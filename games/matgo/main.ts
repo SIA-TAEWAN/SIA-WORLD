@@ -968,6 +968,14 @@ const CHONG_CUTIN_AT = 3 * CHONG_GAP + 800;
 const DEAL_MS = 4300;
 /** 방금 누른 내 패 (서버 답을 기다리지 않고 바로 바닥에 내려놓는다) */
 let picked: string | null = null;
+/** 이 화면의 '내가 패를 낼 차례' (방·판·마지막 사건 id). 내 차례가 아니면 '' — 흔들기 체크를 되살릴 때 같은 차례인지 본다 */
+let playTurnKey = '';
+const turnKeyOf = (t: Ctx) => {
+  const p = t.pub;
+  if (!p) return '';
+  const round = (p as unknown as { round?: number }).round ?? t.room.round_no;
+  return `${t.room.id}:${round}:${p.events[p.events.length - 1]?.id ?? 0}`;
+};
 /** 지금 바닥에 임시로 놓여 있는 패 (방금 누른 내 패 · 고르기 대기 중인 낸 패·뒤집은 패). 먹을 때 그 자리에서 이어 간다 */
 const onFloorNow = new Set<string>();
 
@@ -980,8 +988,10 @@ function playCard(t: Ctx, id: string) {
   t.redraw();
   // 흔들기 체크는 이번에 낸 패에만: 다음 차례에 남아 있지 않게 (받지 않았으면 다시 켜 둔다)
   shake = false;
+  const key = turnKeyOf(t);
   void t.act({ type: 'play', card: id, shake: withShake }).then((ok) => {
-    if (!ok && withShake) shake = true;
+    // 받지 않았으면 체크를 되살린다 — 아직 같은 판·같은 차례(내가 낼 차례)이고 이 패를 고른 채일 때만
+    if (!ok && withShake && picked === id && key && playTurnKey === key) shake = true;
     // 서버가 받지 않았으면 다시 고를 수 있게
     if (!ok && picked === id) {
       picked = null;
@@ -1428,6 +1438,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const p = t.pub;
     if (!p || t.mySeat === null) return;
     const c = p.choice;
+    playTurnKey = t.myTurn && c?.kind === 'play' ? turnKeyOf(t) : '';
     /** 말풍선 알약: 얼굴 + 한마디 (+ 작은 설명) */
     const say = (seat: number, text: string, small = '', mine = false) =>
       `<div class="mg-say ${mine ? 'mine' : ''}"><img src="${t.avatarUrl(t.seatAvatar(seat))}" alt=""/><span>${text}${small ? `<small>${small}</small>` : ''}</span></div>`;
@@ -1455,8 +1466,14 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         ${c.canFlip ? `<button class="btn" id="flip" ${dis}>더미 뒤집기 (폭탄 피)</button>` : ''}`;
       el.innerHTML = `<div class="mg-ctl">${say(t.mySeat, '낼 패를 누르세요', '20초가 지나면 자동으로 내요', true)}${extra.trim() ? `<div class="mg-btns">${extra}</div>` : ''}</div>`;
       el.querySelector<HTMLInputElement>('#shake')?.addEventListener('change', (e) => (shake = (e.target as HTMLInputElement).checked));
-      el.querySelectorAll<HTMLButtonElement>('[data-bomb]').forEach((b) => b.addEventListener('click', () => send({ type: 'bomb', month: Number(b.dataset.bomb) })));
-      el.querySelector('#flip')?.addEventListener('click', () => send({ type: 'flip' }));
+      // 폭탄·더미 뒤집기를 보내면 흔들기 체크는 지운다 (다음 차례에 남아 있지 않게)
+      const sendNoShake = (payload: Record<string, unknown>) => {
+        if (holdLeft(t) > 0) return;
+        shake = false;
+        send(payload);
+      };
+      el.querySelectorAll<HTMLButtonElement>('[data-bomb]').forEach((b) => b.addEventListener('click', () => sendNoShake({ type: 'bomb', month: Number(b.dataset.bomb) })));
+      el.querySelector('#flip')?.addEventListener('click', () => sendNoShake({ type: 'flip' }));
       return;
     }
     shake = false;

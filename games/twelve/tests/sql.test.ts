@@ -5,7 +5,7 @@ import { ALL_MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
- * 서버(078_twelve.sql + 094_twelve_full.sql)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 서버(078_twelve.sql + 094_twelve_full.sql + 101 의 twelve_finish)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
  * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하므로 094 의 블록을 대조하고,
  * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 094 의 gen 블록을 다시 만든다.
  * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
@@ -13,7 +13,10 @@ import { TIER_LEVELS } from '../src/data/weapons';
 const read = (name: string) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const sql078 = read('078_twelve.sql');
 const sql094 = read('094_twelve_full.sql');
-const sql = `${sql078}\n${sql094}`;
+/** 101 은 돌격대 · 열두길 · 마을 함수를 함께 다시 정의한다 — 열두길 부분(twelve_finish 의 겹침)만 본다 */
+const file101 = read('101_overlap_village_fix.sql');
+const sql101 = file101.slice(file101.indexOf('-- ---------- 2. 시아열두길'), file101.indexOf('-- ---------- 3. '));
+const sql = `${sql078}\n${sql094}\n${sql101}`;
 const fn = (name: string) => {
   const i = sql.lastIndexOf(`create or replace function public.${name}(`);
   return i < 0 ? '' : sql.slice(i, sql.indexOf('$$;', i));
@@ -80,6 +83,31 @@ describe('SQL 규칙', () => {
       expect(body).toContain(`public._twelve_const('${what}')`);
     }
     for (const [tag, n] of [[2, 'i'], [5, 'i'], [7, 'i'], [9, '1'], [11, '1']] as const) expect(body).toContain(`public._twelve_roll(seed, ${tag}, ${n}) %`);
+  });
+
+  it('판 끝 겹침은 두 판의 최소 판 시간이 실제로 겹칠 때만 (101 — 보관했다 늦게 보낸 판을 거절하지 않는다)', () => {
+    const body = fn('twelve_finish');
+    expect(sql101).toContain('create or replace function public.twelve_finish(');
+    expect(body).toContain("if elapsed < v_time - public._twelve_const('time_slack') then raise exception 'too early'; end if;");
+    expect(body).not.toContain("o.finished_at > rn.started_at + interval '2 seconds'");
+    expect(body).toContain("(o.started_at > rn.started_at\n          and rn.started_at + make_interval(secs => v_time - public._twelve_const('time_slack')) > o.started_at)");
+    expect(body).toContain("or (o.started_at <= rn.started_at\n          and o.started_at + make_interval(secs => coalesce(o.time, 0) - public._twelve_const('time_slack')) > rn.started_at)");
+  });
+
+  it('twelve_finish 101 은 094 를 그대로 옮기고 겹침 조건과 그 주석만 다르다 (권한 줄까지 같다)', () => {
+    const fnOf = (t: string) => {
+      const i = t.indexOf('create or replace function public.twelve_finish(');
+      const end = 'grant execute on function public.twelve_finish(uuid, jsonb) to authenticated;';
+      const f = t.slice(i, t.indexOf(end, i) + end.length);
+      const a = f.indexOf("  if elapsed > public._twelve_const('max_age')");
+      const b = f.indexOf("  ) then raise exception 'overlap'; end if;");
+      expect(a).toBeGreaterThan(0);
+      expect(b).toBeGreaterThan(a);
+      return f.slice(0, a) + f.slice(b);
+    };
+    expect(fnOf(sql101)).toBe(fnOf(sql094));
+    expect(fnOf(sql101)).toContain('language plpgsql security definer set search_path = public as $$');
+    expect(fnOf(sql101)).toContain('revoke all on function public.twelve_finish(uuid, jsonb) from public, anon;');
   });
 
   it('경험치·엽전·시아코인 식', () => {

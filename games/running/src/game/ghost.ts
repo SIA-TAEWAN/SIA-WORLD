@@ -135,6 +135,12 @@ export function ghostName(dayPlace: number, nickname: string): string {
   return `👻 ${dayPlace > 0 ? dayPlace : 1}위 ${nickname}`;
 }
 
+/** 고스트 안내 꼬리표 (결과 줄·캐릭터 고르기 안내): '내 1위 기록 고스트' · '내 고스트' · '오늘 3위 고스트' (ghostWho 와 같은 기준) */
+export function ghostTag(gh: { me: boolean; dayPlace: number }): string {
+  if (gh.me) return gh.dayPlace === 1 ? '내 1위 기록 고스트' : '내 고스트';
+  return `오늘 ${gh.dayPlace}위 고스트`;
+}
+
 /** '와' / '과': 마지막 글자에 받침이 있으면 '과' ('1위와', '내 1위 기록과') */
 function withJosa(word: string): '와' | '과' {
   const c = word.charCodeAt(word.length - 1) - 0xac00;
@@ -155,7 +161,8 @@ export interface DayRow {
  * gh: 고스트 정보, rank: 판 전에 읽은 그날 순위 (top 줄들 + 내 줄, 모르면 null)
  */
 export function ghostWho(gh: { me: boolean; dayPlace: number; nickname: string; ms: number }, rank: { top: readonly DayRow[]; mine: DayRow | null } | null): string {
-  if (gh.me) return rank?.mine && rank.mine.ms === gh.ms && gh.dayPlace === 1 ? '내 1위 기록' : '내 고스트';
+  // 내 것: 판 전 순위의 내 줄이 실제로 1위이고 그 기록이 고스트와 같을 때만 (gh.dayPlace 는 고스트 쪽 자리라 함께 본다)
+  if (gh.me) return rank?.mine && Number(rank.mine.place) === 1 && rank.mine.ms === gh.ms && gh.dayPlace === 1 ? '내 1위 기록' : '내 고스트';
   const row = rank?.top.find((r) => Number(r.place) === gh.dayPlace && (r.nickname ?? '') === gh.nickname);
   return row && row.ms === gh.ms ? `${gh.dayPlace}위` : `${gh.dayPlace}위 고스트`;
 }

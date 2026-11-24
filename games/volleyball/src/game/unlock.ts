@@ -33,7 +33,7 @@ export const UNLOCK_CONFIRM_MS = 4000;
 export const CAT_NEED = 30;
 /** AI 대전이 전적·판 수에 들어가는 하루 한도 (서버 ai_match 의 하루 판 수와 같게) */
 export const AI_PER_DAY = 30;
-/** 사람끼리 대전도 같은 상대와는 하루 이만큼까지만 기록된다 (서버 036 의 per_day 와 같게) */
+/** 사람끼리 대전도 같은 상대와는 하루 이만큼까지만 기록된다 (서버 036 의 pair_per_day 와 같게) */
 export const PVP_PER_DAY = 30;
 /** 잠긴 동안 보이는 남은 조건 글. have 를 모르면(아직 못 읽음) 지금 값 없이. AI전·같은 상대와의 대전은 하루 30판까지만 센다 */
 export const condText = (have?: number | null, need = CAT_NEED): string =>

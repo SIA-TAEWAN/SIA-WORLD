@@ -519,9 +519,24 @@
       paintOnline();
       paintWho();
     }
-    function stopWorld() {
-      stopCounts?.();
+    /** 끄는 중인 실시간 구독 (다 빠질 때까지 같은 채널을 다시 만들지 않는다) */
+    let worldStopping = null;
+    function stopWatchingWorld() {
+      if (!stopCounts) return;
+      const p = Promise.resolve(stopCounts()).catch(() => undefined);
       stopCounts = null;
+      worldStopping = p;
+      void p.then(() => { if (worldStopping === p) worldStopping = null; });
+    }
+    /** 실시간 구독 시작 (한 번만. 로비 채널에는 내 닉네임을 올린다). 앞 구독이 빠지는 중이면 끝난 뒤에 */
+    function startWatchingWorld(user) {
+      if (stopCounts) return;
+      const go = () => { if (lobbyUser === user && !stopCounts) stopCounts = watchWorld((w) => { world = w; paintWorld(); }, { user }); };
+      if (worldStopping) void worldStopping.then(go);
+      else go();
+    }
+    function stopWorld() {
+      stopWatchingWorld();
       lobbyUser = null;
       // 앞 사람 기준으로 보낸 오픈 여부 요청이 늦게 와도 버린다
       openSeq++;
@@ -531,6 +546,9 @@
       // 로그아웃: 공지도 지운다 (다음 사람이 들어오면 다시 읽는다)
       noticeSeq++;
       paintNotice('');
+      // 관리자 공지 입력칸도 비운다 (다음 사람에게 앞 사람이 쓰던 글이 남지 않게)
+      $('#notice-input').value = '';
+      noticeCount();
       clearWallet();
     }
     // ---------- 게임 순서: 내가 많이 들어간 게임부터 ----------
@@ -652,12 +670,11 @@
       renderGames(user);
       show('lobby-view');
       // 지금 누가 어디에 있나 (한 번만 구독. 로비 채널에는 내 닉네임을 올린다)
-      stopCounts ??= watchWorld((w) => { world = w; paintWorld(); }, { user });
+      startWatchingWorld(user);
       void loadWallet(user);
       void loadNotice();
       renderCat();
       // 서버의 오픈 여부로 다시 그린다 (못 읽으면 기본값 그대로)
-      const seq = openSeq;
       refreshGameOpen(user);
     }
     /** 서버의 오픈 여부로 다시 그린다 (못 읽으면 지금 값 그대로. 기다리는 사이 로그아웃·다른 사람이면 버린다) */
@@ -669,17 +686,29 @@
         renderGames(user);
       }).catch(() => {});
     }
-    // 뒤로 가기로 메모리에 남아 있던 로비가 다시 보이면(bfcache) 지갑·공지·오픈 여부를 다시 읽는다.
+    // 뒤로 가기로 메모리에 남아 있던 로비가 다시 보이면(bfcache) 지갑·오픈 여부를 다시 읽고 실시간 구독을 다시 잇는다 (공지는 visibilitychange 가 읽는다).
     // 그 사이 다른 탭에서 로그아웃했거나 다른 계정으로 들어왔으면 그에 맞춰 바꾼다
     window.addEventListener('pageshow', async (e) => {
       if (!e.persisted || !lobbyUser) return;
       const was = lobbyUser;
-      const user = await getCurrentUser().catch(() => was);
+      let user;
+      try {
+        user = await getCurrentUser();
+      } catch {
+        // 회원 정보를 못 읽었다: 적어도 세션의 사람이 같은지는 본다 (다르면 새로 불러온다)
+        const uid = await supabase.auth.getSession().then(({ data }) => data.session?.user?.id ?? null, () => was.userId);
+        if (lobbyUser !== was) return;
+        if (uid !== was.userId) { stopWorld(); location.reload(); return; }
+        user = was;
+      }
       if (lobbyUser !== was) return;
       if (!user) { stopWorld(); showLogin(); return; }
       if (user.userId !== was.userId) { stopWorld(); showLobby(user); return; }
+      // 메모리에 머무는 동안 끊긴 실시간 구독을 다시 잇는다 (같은 사람이라도)
+      stopWatchingWorld();
+      startWatchingWorld(was);
       void loadWallet(was);
-      void loadNotice();
+      // 공지는 다시 보일 때 visibilitychange 가 읽는다
       refreshGameOpen(was);
     });
 
@@ -961,7 +990,13 @@
         if (claimed > 0) alert('예전 시아탱크 랭킹 기록을 이어받았어요!');
         afterLogin(user);
       } catch (err) {
-        if (err instanceof AuthError && err.field) {
+        if (err instanceof AuthError && err.toLogin) {
+          // 가입은 됐지만 회원 정보를 못 읽었다: 로그인 화면에서 다시 들어오게 한다
+          showLogin();
+          $('#li-id').value = err.loginId ?? loginId;
+          $('#li-err').textContent = err.message;
+          $('#li-pw').focus();
+        } else if (err instanceof AuthError && err.field) {
           setMsg(err.field, err.message);
           field(err.field).querySelector('input').focus();
         } else {

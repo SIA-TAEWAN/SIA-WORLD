@@ -471,6 +471,11 @@ export function iGa(word: string): '이' | '가' {
   return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '이' : '가';
 }
 
+/** 이름 뒤 보조사: 받침이 있으면 '은', 없으면(또는 한글이 아니면) '는' (여의룡은 · 찍찍이는) */
+export function eunNeun(word: string): '은' | '는' {
+  return iGa(word) === '이' ? '은' : '는';
+}
+
 /** 지형 보스를 잡으면 합류하는 대원 이름 (지형 화면 안내) */
 export const joinText = (region: number) => {
   const h = joinsAt(region);

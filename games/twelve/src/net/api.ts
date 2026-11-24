@@ -375,16 +375,19 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     async start(map, mode, hero) {
       // 못 보낸 결과가 있으면 새 판을 시작하기 전에 먼저 보낸다 (새 판과 시간이 겹치면 서버가 받지 않는다)
       const sent = readPending().length ? await resend().catch(() => 0) : 0;
+      // 기록을 새로 읽었다 (앞서 resend 가 stale 을 남기고 화면의 loadProfile 이 실패했던 때도 — 이때 sent 는 0 이다)
+      let reloaded = false;
       if (stale) {
         // 서버가 이미 받아 둔 판이 있었다: 그 판의 결과가 들어간 기록을 새로 읽는다 (못 읽으면 다음에 다시)
         try {
           await loadProfile();
+          reloaded = true;
         } catch {
           /* 통신 실패: 판은 그대로 시작한다 */
         }
       }
-      // 보낸 결과가 있으면 서버가 준 새 프로필을 함께 돌려준다 (화면의 프로필이 옛것으로 남지 않게)
-      const fresh = sent > 0 && known ? { profile: known } : {};
+      // 보낸 결과가 있거나 기록을 새로 읽었으면 새 프로필을 함께 돌려준다 (화면의 프로필이 옛것으로 남지 않게)
+      const fresh = (sent > 0 || reloaded) && known ? { profile: known } : {};
       try {
         const d = (await call('twelve_start', { p_map: map, p_mode: mode, p_hero: hero })) as { run?: string; seed?: number };
         return { run: String(d.run ?? ''), seed: Number(d.seed) || 0, ...fresh };

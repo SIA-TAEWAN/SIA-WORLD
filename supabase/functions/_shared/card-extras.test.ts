@@ -518,7 +518,7 @@ describe('포커·홀덤 진짜 승자 (혼자만 받는 남는 팟은 돌려받
 
 import { holdem, type HoldemAction, type HoldemState } from './holdem.ts';
 import { computeSidePots } from './pots.ts';
-import { potRefundOf } from '../../../games/lib/extras.ts';
+import { potRefundOf, sidePotCount } from '../../../games/lib/extras.ts';
 
 describe('포커·홀덤 돌려받음은 혼자 낸 몫(refund 팟)만 — 다이한 사람 돈은 딴 것', () => {
   it('홀덤 재현: A 100 올인 · B·C 콜, 플롭 B 200 · C 콜, 턴 B 500 · C 폴드, A 가 메인 승리', () => {
@@ -573,10 +573,32 @@ describe('포커·홀덤 돌려받음은 혼자 낸 몫(refund 팟)만 — 다�
       { amount: 900, eligible: [0, 1] },
       { amount: 1000, eligible: [1] },
     ]);
-    const r = { uncontested: false, winners: [0, 1], pots: [{ ...pots[0], winners: [0] }, { ...pots[1], winners: [1] }] };
+    const r = { refundPots: true, uncontested: false, winners: [0, 1], pots: [{ ...pots[0], winners: [0] }, { ...pots[1], winners: [1] }] };
     expect(potRealWinners(r)).toEqual([0, 1]);
     expect(potRefundOnly(1, r)).toBe(false);
     expect(potRefundOf(1, r)).toBe(0);
+  });
+  it('예전 공개 상태 (refundPots 표시·refund 팟 없음, 대상 1명 팟 있음): 예전 규칙 — 대상 2명 이상 팟의 승자만', () => {
+    const pots = [
+      { amount: 300, eligible: [0, 1], winners: [0] },
+      { amount: 900, eligible: [1], winners: [1] },
+    ];
+    const old = { uncontested: false, winners: [0, 1], pots };
+    expect(potRealWinners(old)).toEqual([0]);
+    expect(potRefundOnly(1, old)).toBe(true);
+    expect(potRefundOf(1, old)).toBe(900);
+    expect(potRefundOf(0, old)).toBe(0);
+    // 같은 팟이라도 새 엔진 결과(refundPots)면 대상 1명 팟은 딴 것
+    const now = { ...old, refundPots: true };
+    expect(potRealWinners(now)).toEqual([0, 1]);
+    expect(potRefundOf(1, now)).toBe(0);
+    // refund 팟이 하나라도 있으면 새 규칙
+    const withRefund = { uncontested: false, winners: [0, 1], pots: [...pots, { amount: 100, eligible: [1], winners: [1], refund: true }] };
+    expect(potRealWinners(withRefund)).toEqual([0, 1]);
+    expect(potRefundOf(1, withRefund)).toBe(100);
+  });
+  it('실제 엔진 결과에는 refundPots 표시가 있다', () => {
+    expect(shortAllInRound().refundPots).toBe(true);
   });
   it('실제 세븐포커 엔진: 다이한 사람이 올인한 사람보다 많이 냈으면 남는 팟을 받은 사람도 승자', () => {
     let found = false;
@@ -622,6 +644,23 @@ describe('포커·홀덤 돌려받음은 혼자 낸 몫(refund 팟)만 — 다�
       expect(potRefundOf(1, r)).toBe(p1.total - p2.total);
     }
     expect(found).toBe(true);
+  });
+});
+
+describe("'사이드 팟 N' 수 (아무도 받지 못한 차액은 빼고)", () => {
+  const P = (seat: number, total: number, o: { folded?: boolean; allIn?: boolean; excluded?: boolean } = {}) => ({ seat, total, folded: !!o.folded, allIn: !!o.allIn, excluded: o.excluded });
+  it('1위 혼자 낸 마지막 팟(차액뿐)은 세지 않는다', () => {
+    // A 100 올인, B 500, C 100 → 팟 [300 (A·B·C), 400 (B 혼자)] 인데 400 은 B 가 돌려받을 몫
+    expect(sidePotCount([P(0, 100, { allIn: true }), P(1, 500), P(2, 100)])).toBe(0);
+  });
+  it('다이한 사람 돈이 든 대상 1명 팟은 센다', () => {
+    expect(sidePotCount([P(0, 300, { allIn: true }), P(1, 800), P(2, 800, { folded: true })])).toBe(1);
+    // 차액(500)을 빼도 다이한 사람 돈(200)이 남는다
+    expect(sidePotCount([P(0, 100, { allIn: true }), P(1, 800), P(2, 300, { folded: true })])).toBe(1);
+  });
+  it('두 사람 이상이 겨루는 사이드 팟 · 빠진 자리', () => {
+    expect(sidePotCount([P(0, 100, { allIn: true }), P(1, 500), P(2, 500)])).toBe(1);
+    expect(sidePotCount([P(0, 100), P(1, 100), P(2, 0, { excluded: true })])).toBe(0);
   });
 });
 

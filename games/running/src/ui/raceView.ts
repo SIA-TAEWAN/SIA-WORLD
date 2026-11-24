@@ -55,7 +55,7 @@ export function showRace(start: SoloStart) {
     code === 'Space' || code === 'Enter' || code === 'ArrowUp' || code === 'KeyW' ? 'jump' : code === 'ArrowDown' || code === 'KeyS' ? 'slide' : null;
   const onKey = (e: KeyboardEvent) => {
     const kind = keyKind(e.code);
-    // 나가기 창이 열려 있으면 달리기 키로 보지 않는다 (엔터·스페이스는 창의 버튼이 받는다)
+    // 나가기 창이 열려 있으면 달리기 키로 보지 않는다 (엔터·스페이스는 창을 열 때 초점을 준 버튼이 받는다)
     if (!kind || quitDim?.isConnected) return;
     e.preventDefault();
     if (!e.repeat) press(kind);
@@ -136,8 +136,8 @@ export function showRace(start: SoloStart) {
     const dim = document.createElement('div');
     quitDim = dim;
     dim.className = 'dim';
-    // 이미 도착했으면(기록을 올렸음) 나가도 기록은 남는다
-    const note = race.record ? '도착 기록은 이미 저장됐어요 · 결과 화면만 건너뛰어요' : '나가면 이번 판 기록은 남지 않아요';
+    // 이미 도착했으면(기록을 보냈음) 나가도 기록은 서버로 간다 (저장 결과는 아직 모를 수 있다)
+    const note = race.record ? '도착 기록은 이미 보냈어요 · 결과 화면만 건너뛰어요' : '나가면 이번 판 기록은 남지 않아요';
     dim.innerHTML = `<div class="dialog"><h3>경기를 그만둘까요?</h3><p class="soft" style="text-align:center;margin:0">${note}</p>
       <div class="actions"><button class="btn" data-no>계속 달리기</button><button class="btn primary" data-yes>나가기</button></div></div>`;
     dim.addEventListener('click', (e) => {
@@ -148,6 +148,8 @@ export function showRace(start: SoloStart) {
       } else if (el === dim || el.closest('[data-no]')) dim.remove();
     });
     stage.append(dim);
+    // 엔터·스페이스가 창의 버튼으로 가게 '계속 달리기'에 초점을 준다 (실수로 눌러도 나가지 않는 쪽)
+    dim.querySelector<HTMLButtonElement>('[data-no]')?.focus();
   });
 
   race.onOver = (results) => {

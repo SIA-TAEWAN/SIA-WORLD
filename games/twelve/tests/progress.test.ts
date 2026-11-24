@@ -13,6 +13,7 @@ import {
   continueMap,
   emptyProfile,
   heroesOf,
+  eunNeun,
   iGa,
   joinText,
   loadoutOf,
@@ -255,6 +256,8 @@ describe('이름 뒤 조사 (이/가)', () => {
   it('받침이 있으면 이, 없으면 가', () => {
     expect(iGa('찍찍이')).toBe('가');
     expect(iGa('여의룡')).toBe('이');
+    expect(eunNeun('찍찍이')).toBe('는');
+    expect(eunNeun('여의룡')).toBe('은');
     expect(iGa('꼬꼬댁')).toBe('이');
     expect(iGa('스르르')).toBe('가');
     expect(iGa('ABC')).toBe('가');

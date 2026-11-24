@@ -23,6 +23,8 @@ const ZODIAC_ORDER = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse'
 
 /** 모양 값을 카드 크기에 맞춰 늘이고 줄인다 (기준 가로 w0에서 v px) */
 const scaled = (v: number, w: number, w0: number) => Math.max(v * 0.6, (v * w) / w0);
+/** 트럼프 모서리 (가로 w 기준 — playingCard 와 빈칸 테두리가 같게) */
+export const cardRadius = (w: number) => scaled(T.SHAPE.radiusCard, w, 90);
 
 // ---------- 테이블 ----------
 
@@ -115,7 +117,7 @@ export const cardLabel = (code: string) => {
 export function playingCard(scene: Scene, x: number, y: number, code: string | null, w = 56, opts: { dim?: boolean; lift?: boolean } = {}) {
   const C = T.COLOR;
   const h = Math.round(w * 1.42);
-  const r = scaled(T.SHAPE.radiusCard, w, 90);
+  const r = cardRadius(w);
   const line = Math.max(T.SHAPE.lineThin, w * 0.025);
   const depth = Math.max(2, w * 0.04);
   const c = scene.add.container(x, y - (opts.lift ? w * 0.16 : 0));

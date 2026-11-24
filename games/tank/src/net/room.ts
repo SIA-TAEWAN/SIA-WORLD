@@ -151,8 +151,10 @@ export class RoomSession {
     if (this.joined) await this.ch.track(this.meta());
   }
 
-  /** 대기방에서 접속이 끊긴 사람을 빼는 일을 내가 맡는가 (roomSweeper) */
+  /** 대기방에서 접속이 끊긴 사람을 빼는 일을 내가 맡는가 (roomSweeper).
+   *  첫 접속 목록을 받기 전에는 맡지 않는다 (방 채널에 못 붙었을 때 혼자라고 착각해 남을 빼지 않게) */
   isSweeper(players: readonly string[]): boolean {
+    if (!this.seen) return false;
     return roomSweeper(players, { me: this.me.id, meWatching: this.watchMe, present: this.present, watching: this.watching }) === this.me.id;
   }
 

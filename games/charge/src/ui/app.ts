@@ -661,6 +661,11 @@ function showStages(region: number) {
 
 // ---------- 강화 ----------
 
+/** 강화 요청이 서버에 가 있는 동안 true */
+let upgrading = false;
+/** 가장 최근에 그린 강화 화면 */
+let upRoot: HTMLElement | null = null;
+
 function showUpgrades() {
   const root = screen(`
     <div class="bar"><button class="back" id="back">← 뒤로</button><h2>강화</h2><div class="pills">${coinsPill()}</div></div>
@@ -679,17 +684,29 @@ function showUpgrades() {
     play('click');
     showMain();
   });
-  root.querySelectorAll<HTMLButtonElement>('[data-k]').forEach((b) =>
+  upRoot = root;
+  const buttons = root.querySelectorAll<HTMLButtonElement>('[data-k]');
+  // 앞선 강화 요청을 기다리는 중에 다시 들어왔으면 답이 올 때까지 단추를 꺼 둔다
+  if (upgrading) buttons.forEach((x) => (x.disabled = true));
+  buttons.forEach((b) =>
     b.addEventListener('click', async () => {
-      b.disabled = true;
+      // 한 번에 하나만: 답이 올 때까지 다른 강화는 받지 않는다 (연달아 눌러 답이 엇갈리지 않게)
+      if (upgrading) return;
+      upgrading = true;
+      buttons.forEach((x) => (x.disabled = true));
+      const before = profile;
       try {
-        profile = await api.buyUpgrade(b.dataset.k as UpgradeKey);
+        const next = await api.buyUpgrade(b.dataset.k as UpgradeKey);
+        // 기다리는 사이 다른 곳에서 profile 을 새로 받았으면(판 끝 등) 그 값을 옛 답으로 덮지 않고 다시 읽는다
+        profile = profile === before ? next : await api.loadProfile().catch(() => profile);
         play('coin');
       } catch (e) {
         toast(errText(e));
+      } finally {
+        upgrading = false;
       }
-      // 답을 기다리는 사이 다른 화면으로 갔으면 강화 화면을 다시 그리지 않는다
-      if (b.isConnected) showUpgrades();
+      // 답을 기다리는 사이 다른 화면으로 갔으면 다시 그리지 않는다 (나갔다가 강화 화면으로 돌아왔으면 지금 화면을 새 값으로)
+      if (upRoot?.isConnected) showUpgrades();
     }),
   );
 }

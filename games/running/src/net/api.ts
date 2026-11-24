@@ -92,7 +92,7 @@ export function ghostTopOf(d: unknown): GhostTop | null {
   return { ghost: o.ghost, nickname: String(o.nickname ?? ''), char: ch, ms, place: place >= 1 ? place : null, dayPlace, me: o.me === true };
 }
 
-/** GO 요청부터 '준비' 표시까지 (서버 029_race.sql 의 lead_ms 와 같은 값) */
+/** GO 요청부터 '준비' 표시까지 (서버 race_go 의 lead_ms 와 같은 값 — 최신 정의 095_race_ghost.sql) */
 const LEAD_MS = 1200;
 /** 같은 사람이 race_go 를 다시 부를 수 있는 최소 간격 (서버 031_race_150m.sql 의 gap_ms 와 같은 값) */
 export const GO_GAP_MS = 4000;

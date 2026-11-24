@@ -108,9 +108,11 @@ export function watchWorld(cb, opt = {}) {
       watch(WORLD_LOBBY_CHANNEL);
     }
   }
+  // 끄기: 채널을 모두 뺀다. 다 빠지면 끝나는 Promise 를 돌려준다 (같은 이름의 채널을 곧바로 다시 만들면
+  // 아직 빠지는 중인 옛 채널이 돌아와 구독되지 않으므로, 다시 구독하려면 이것을 기다린다)
   return () => {
     stopped = true;
-    channels.forEach((ch) => void supabase.removeChannel(ch));
+    return Promise.all(channels.map((ch) => supabase.removeChannel(ch).catch(() => undefined))).then(() => undefined);
   };
 }
 

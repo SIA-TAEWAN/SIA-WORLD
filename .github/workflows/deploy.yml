@@ -242,11 +242,22 @@ jobs:
       - uses: supabase/setup-cli@v3
         with:
           version: 3.2.0
-      - run: supabase functions deploy game-action --project-ref "$PROJECT_REF" --use-api --yes
-      # cron(pg_net)이 사용자 JWT 없이 부르므로 JWT 확인을 끄고, 함수 안에서 DB 비밀값으로 확인한다
-      - run: supabase functions deploy game-timeout --project-ref "$PROJECT_REF" --use-api --no-verify-jwt --yes
-      # 시아핑거 판 결과: 화면이 사용자 JWT 로 부른다 (JWT 확인은 켠 채로)
-      - run: supabase functions deploy finger-finish --project-ref "$PROJECT_REF" --use-api --yes
+      # 함수 배포는 잠깐의 API 오류로 실패할 때가 있어 60초 뒤 다시 시도한다 (모두 3번까지. db push 는 다시 시도하지 않는다)
+      - name: Edge Function 배포
+        run: |
+          deploy_fn() {
+            for try in 1 2 3; do
+              if supabase functions deploy "$@"; then return 0; fi
+              if [ "$try" -lt 3 ]; then echo "::warning::$1 배포 실패 ($try/3) — 60초 뒤 다시 시도"; sleep 60; fi
+            done
+            echo "::error::$1 배포 3번 모두 실패"
+            return 1
+          }
+          deploy_fn game-action --project-ref "$PROJECT_REF" --use-api --yes
+          # cron(pg_net)이 사용자 JWT 없이 부르므로 JWT 확인을 끄고, 함수 안에서 DB 비밀값으로 확인한다
+          deploy_fn game-timeout --project-ref "$PROJECT_REF" --use-api --no-verify-jwt --yes
+          # 시아핑거 판 결과: 화면이 사용자 JWT 로 부른다 (JWT 확인은 켠 채로)
+          deploy_fn finger-finish --project-ref "$PROJECT_REF" --use-api --yes
 
   deploy:
     needs: [build, migrate, functions]

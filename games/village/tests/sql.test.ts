@@ -13,9 +13,12 @@ import { AFF_BONUS, AFF_NEED, ASKS, CAT_BONUS, CAT_LAND_STAGE, CAT_PRICE, DRAGON
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql', '077_cat_village.sql', '081_village_monuments2.sql', '091_village_praise_inbox.sql', '099_village_new_games.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql', '077_cat_village.sql', '081_village_monuments2.sql', '091_village_praise_inbox.sql', '099_village_new_games.sql', '101_overlap_village_fix.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
-const sql = FILES.map(read).join('\n');
+/** 101 은 돌격대 · 열두길 함수도 함께 다시 정의한다 — 마을 부분(3.)만 읽는다 */
+const MARK_101 = '-- ---------- 3. 시아마을';
+const readVillage = (f: string) => (f === '101_overlap_village_fix.sql' ? read(f).slice(read(f).indexOf(MARK_101)) : read(f));
+const sql = FILES.map(readVillage).join('\n');
 
 /** 함수 하나의 (마지막) 본문 */
 function body(name: string): string {
@@ -411,6 +414,25 @@ describe('SQL의 권한 규칙', () => {
     expect(sy).toContain("insert into public.village_buildings (user_id, type, state, last_collected_at) values (p_user, d.monument, 'stored', p_now);");
     expect(sy).toContain('coalesce((st ->> x.stat)::int, 0) >= x.need');
     expect(body('_village_state_json')).toContain("'monuments', coalesce((");
+  });
+
+  it('101: 장원 깃발 · 주간 시상대는 아직 바뀔 수 있는 어제 · 지난주를 세지 않는다 (나머지는 099 그대로, 권한도 같다)', () => {
+    const st = body('_village_game_stats');
+    expect(read('101_overlap_village_fix.sql').indexOf(MARK_101)).toBeGreaterThan(0);
+    expect(st).toContain('where d.user_id = p_user and d.day < public._daily_day() - 1');
+    expect(st).toContain('where w.week < public._race_week(public._daily_day() - 1)) r');
+    const fnOf = (f: string) => {
+      const t = read(f);
+      const i = t.indexOf('create or replace function public._village_game_stats(');
+      const end = 'revoke all on function public._village_game_stats(uuid) from public, anon, authenticated;';
+      return t.slice(i, t.indexOf(end, i) + end.length)
+        .replace(/\n  -- 099 오늘의 도전[^\n]*(\n  --[^\n]*)*/, '\n  -- (오늘의 도전 주석)')
+        .replace(/\n  -- 099 시아레이스 주간[^\n]*(\n  --[^\n]*)*/, '\n  -- (주간 주석)')
+        .replace("d.day < public._daily_day() - 1", "d.day < (now() at time zone 'Asia/Seoul')::date")
+        .replace('w.week < public._race_week(public._daily_day() - 1)', "w.week < date_trunc('week', ((now() at time zone 'Asia/Seoul')::date)::timestamp)::date");
+    };
+    expect(fnOf('101_overlap_village_fix.sql')).toBe(fnOf('099_village_new_games.sql'));
+    expect(fnOf('101_overlap_village_fix.sql')).toContain('language plpgsql stable security definer set search_path = public as $$');
   });
 
   it('닫힌 상태로 시작한다', () => {

@@ -197,7 +197,9 @@ await as(u1, `select public.twelve_set_hero('rat')`);
   await ago(c.run, 150);
   const jc = await finish(u2, c.run, R({ time: 30 }));
   ok(jc.result.siaCoin === false && jc.result.first === false, '30초 판은 시아코인 없음 (60초 미만)');
-  await rejects(finish(u2, b.run, R()), 'overlap', '먼저 끝난 다른 판과 시간이 겹침');
+  // 101: 겹침은 두 판의 최소 판 시간이 실제로 겹칠 때만 — b(300초 전 시작)가 200초 판이면 c 시작(150초 전)을 넘긴다.
+  //      (b 가 100초 판이었다면 보관했다 늦게 보낸 정상 판이라 받는다)
+  await rejects(finish(u2, b.run, R({ time: 200 })), 'overlap', '먼저 끝난 다른 판과 시간이 겹침 (200초 판이 늦게 시작한 판의 시작을 넘김)');
   await old(c.run);
   await su(`update public.twelve_runs set started_at = now() - interval '3 hours' where id = $1`, [b.run]);
   await rejects(finish(u2, b.run, R()), 'too late', '3시간 지난 판');

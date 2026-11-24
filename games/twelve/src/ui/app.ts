@@ -209,6 +209,8 @@ function view(p: TwelveProfile): TwelveProfile {
 /**
  * 쉼터·지도에 들어올 때: 못 보낸 판 결과가 남아 있으면 다시 보내고 기록을 새로 읽는다.
  * 서버에 들어간 판이 있으면(이미 받아 둔 판 포함) 그 화면이 아직 떠 있을 때만 새 기록으로 다시 그린다.
+ * - 읽는 사이 다른 곳(상점·판 시작 결과 등)이 프로필을 바꿨으면 늦게 온 답은 버린다 (더 새 기록을 덮지 않게)
+ * - 창(고양이 등장·구매 확인 등)이 떠 있으면 닫힐 때까지 미루고, 다시 그려도 스크롤 자리는 지킨다
  */
 function syncPending(root: HTMLElement, redraw: () => void) {
   if (LOCAL_MODE || !api.pending()) return;
@@ -216,12 +218,34 @@ function syncPending(root: HTMLElement, redraw: () => void) {
     .resend()
     .then(async (n) => {
       if (n <= 0) return;
-      profile = view(await api.loadProfile());
-      if (root.isConnected) redraw();
+      const before = profile;
+      const p = view(await api.loadProfile());
+      if (profile !== before) return;
+      profile = p;
+      if (root.isConnected) redrawKeep(root, redraw);
     })
     .catch(() => {
       /* 통신 실패: 보관한 채로 다음에 다시 */
     });
+}
+
+/** 열린 창이 없을 때 다시 그리고, 화면의 스크롤 자리를 되돌린다 */
+function redrawKeep(root: HTMLElement, redraw: () => void) {
+  const box = app();
+  if (box.querySelector('.overlay')) {
+    const watch = new MutationObserver(() => {
+      if (!root.isConnected) return watch.disconnect();
+      if (box.querySelector('.overlay')) return;
+      watch.disconnect();
+      redrawKeep(root, redraw);
+    });
+    watch.observe(box, { childList: true });
+    return;
+  }
+  const top = root.scrollTop;
+  redraw();
+  const next = box.querySelector<HTMLElement>('.screen');
+  if (next && top) next.scrollTop = top;
 }
 
 /** 처음 한 번: 기록을 불러온다 */

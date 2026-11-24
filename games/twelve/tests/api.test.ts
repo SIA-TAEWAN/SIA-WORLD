@@ -160,6 +160,38 @@ describe('서버 저장 (createSupabaseApi)', () => {
     expect(calls.filter((c) => c[0] === 'twelve_state').length).toBe(1);
   });
 
+  it('resend 가 이미 받은 판을 만나고 화면의 기록 읽기가 실패했으면, 다음 시작에서 다시 읽어 돌려준다', async () => {
+    const store = memStore();
+    let down = true;
+    let stateDown = true;
+    const { sb, calls } = fake({
+      twelve_finish: () => {
+        throw new Error(down ? 'fetch failed' : 'already finished');
+      },
+      twelve_state: () => {
+        if (stateDown) throw new Error('fetch failed');
+        return serverState({ level: 13 });
+      },
+      twelve_start: () => ({ run: 'run-9', seed: 1 }),
+    });
+    const api = createSupabaseApi(sb, 'u1', store);
+    expect(await api.finish(report())).toBeNull();
+    down = false;
+    // 화면이 먼저 다시 보낸다 → 이미 받은 판 (기록을 새로 읽어야 한다)
+    expect(await api.resend()).toBe(1);
+    expect(api.pending()).toBe(0);
+    // 그런데 기록 읽기가 실패했다
+    await expect(api.loadProfile()).rejects.toThrow();
+    stateDown = false;
+    // 시작할 때는 보낼 것이 없지만(sent 0) 기록을 다시 읽어 돌려준다
+    const st = await api.start('1-2', 'normal', 'rat');
+    expect(st.run).toBe('run-9');
+    expect(st.profile?.level).toBe(13);
+    expect(calls.filter((c) => c[0] === 'twelve_state').length).toBe(2);
+    // 한 번 읽었으면 다음 시작에는 다시 읽지 않는다
+    expect((await api.start('1-2', 'normal', 'rat')).profile).toBeUndefined();
+  });
+
   it('resend 는 이미 받은 판도 센다 (화면이 기록을 다시 읽게)', async () => {
     const store = memStore();
     let down = true;
