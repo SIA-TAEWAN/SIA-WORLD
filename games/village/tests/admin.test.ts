@@ -4,7 +4,7 @@ import { makeShowcase } from '../src/data/showcase';
 import { MONUMENTS } from '../src/data/monuments';
 import { RESIDENT_IDS } from '../src/data/residents';
 import {
-  RuleError, adminBoost, adminSetState, build, cleanState, craft, expand, feast, marketLimit, newVillage, requestDone, sell, sellCoins, settle, upgrade, type VillageState,
+  RuleError, adminBoost, adminMonuments, adminSetState, grantMonuments, build, cleanState, craft, expand, feast, marketLimit, newVillage, requestDone, sell, sellCoins, settle, upgrade, type VillageState,
 } from '../src/game/rules';
 import { ApiError, createLocalApi, type Store } from '../src/net/api';
 
@@ -32,6 +32,35 @@ describe('관리자 규칙', () => {
     expect(adminBoost(s)).toBe(true);
     expect([s.profile.level, s.profile.exp, s.profile.landStage]).toEqual([CONST.max_level, 0, LAND_SIZES.length - 1]);
     expect(adminBoost(s)).toBe(false);
+  });
+
+  it('기념물 (099): 관리자는 아직 없는 기념물을 모두 열고 보관함에 넣는다. 이미 있는 것은 그대로, 두 번 불러도 같은 것이 또 생기지 않는다', () => {
+    const u = newVillage(T);
+    expect(adminMonuments(u, T, (t) => t)).toEqual([]);
+    expect(u.monuments).toEqual([]);
+    const s = newVillage(T);
+    s.admin = true;
+    // 하나는 이미 열려 있고 마을에 놓여 있다
+    grantMonuments(s, { tank_wins: 1 }, T, () => 'old-tank');
+    Object.assign(s.buildings.find((b) => b.id === 'old-tank')!, { state: 'done', x: 6, y: 6 });
+    let n = 0;
+    const got = adminMonuments(s, T + 1, () => `adm-${++n}`);
+    expect(got.map((b) => b.type)).toEqual(MONUMENTS.slice(1).map((m) => m.id));
+    expect(got.every((b) => b.state === 'stored')).toBe(true);
+    expect(s.monuments).toEqual(MONUMENTS.map((m) => m.id));
+    expect(s.buildings.find((b) => b.id === 'old-tank')).toMatchObject({ state: 'done', x: 6, y: 6 });
+    expect(adminMonuments(s, T + 2, () => 'again')).toEqual([]);
+    for (const m of MONUMENTS) expect([m.id, s.buildings.filter((b) => b.type === m.id).length]).toEqual([m.id, 1]);
+  });
+
+  it('기념물 (099): 기기 모드에서도 관리자가 들어오면 모든 기념물이 보관함에 (두 번 들어와도 한 번만)', async () => {
+    const store = memStore();
+    const api = createLocalApi(store, () => T, 1, { id: 'me', name: '나' }, undefined, true);
+    const a = await api.load();
+    expect(a.monuments).toEqual(MONUMENTS.map((m) => m.id));
+    expect(a.buildings.filter((b) => b.state === 'stored' && b.type.startsWith('mon_'))).toHaveLength(MONUMENTS.length);
+    const b = await api.load();
+    expect(b.buildings.filter((v) => v.type.startsWith('mon_'))).toHaveLength(MONUMENTS.length);
   });
 
   it('짓기: 개수 · 해금 · 건설 슬롯 · 값 · 시아코인을 보지 않는다. 마을 회관은 하나, 자리는 그대로', () => {

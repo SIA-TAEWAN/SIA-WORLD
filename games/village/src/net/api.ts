@@ -6,7 +6,7 @@ import { CAT_LAND_STAGE, isResidentId, type ResidentId } from '../data/residents
 import { GOALS } from '../data/goals';
 import {
   RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, praiseGive, praiseLeft, prosperityOf, refresh, rename,
-  adminBoost, adminSetState, buyCat, grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
+  adminBoost, adminMonuments, adminSetState, buyCat, grantMonuments, requestDone, requestSkip, sell, settle, store as storeRule, upgrade,
   type CatBuy, type HarvestResult, type VillageState,
 } from '../game/rules';
 import { cleanInbox, localInbox, seenAfter, type LocalPraises, type PraiseInbox } from '../game/praise';
@@ -237,6 +237,8 @@ export function createLocalApi(store: Store, realNow: () => number = () => Date.
         settle(s, now());
         // 관리자: 마을 레벨 최고 · 땅 끝까지 (서버의 village_state 와 같이, 바뀌었으면 한 번 더 마무리)
         if (adminBoost(s)) settle(s, now());
+        // 관리자: 아직 없는 기념물을 모두 보관함으로 (서버의 village_state 와 같이)
+        adminMonuments(s, now(), () => `local-${++d.seq}`);
         grantMonuments(s, stats, now(), () => `local-${++d.seq}`);
       }).state;
     },
@@ -511,9 +513,9 @@ export async function getApi(user: { id: string; name: string }): Promise<Villag
     const store = browserStore();
     seedLocal(store);
     const fast = Math.max(1, Math.min(100000, Number(params.get('fast')) || 1));
-    // 다른 게임의 기록은 주소로 정한다:  ?mon=tank_wins:10,surv_field:1  (없으면 조금씩 해 본 것으로)
+    // 다른 게임의 기록은 주소로 정한다:  ?mon=tank_wins:10,surv_field:1,twelve_floor:30  (없으면 조금씩 해 본 것으로 — 열두길 · 오늘의 도전 · 레이스 주간은 몇 개만 열리고 나머지는 몇 / 몇)
     const stats = noStats();
-    for (const part of (params.get('mon') ?? 'tank_wins:3,volley_wins:12,race_plays:1,surv_field:1,matgo_wins:1').split(',')) {
+    for (const part of (params.get('mon') ?? 'tank_wins:3,volley_wins:12,race_plays:1,surv_field:1,matgo_wins:1,twelve_keys:7,twelve_final:1,twelve_hard:0,twelve_floor:18,daily_days:4,daily_first:0,race_week_top:1').split(',')) {
       const [k, v] = part.split(':');
       if ((STAT_IDS as readonly string[]).includes(k)) stats[k as StatId] = Math.max(0, Math.floor(Number(v) || 0));
     }

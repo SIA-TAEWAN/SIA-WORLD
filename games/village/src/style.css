@@ -8,6 +8,8 @@ body {
   user-select: none; -webkit-user-select: none; touch-action: manipulation;
 }
 button, input { font: inherit; color: inherit; }
+/* 글을 넣는 칸은 고르고 붙여 넣을 수 있게 (body 의 user-select: none 이 물려지지 않게) */
+input, textarea { -webkit-user-select: text; user-select: text; }
 .hidden { display: none !important; }
 
 /* 세로 화면 기준: PC에서는 세로 비율(9:16) 그대로 가운데 */

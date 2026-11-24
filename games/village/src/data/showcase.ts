@@ -34,7 +34,8 @@ import { newVillage, refresh, type Building, type VillageState } from '../game/r
  *   동쪽      쉼터: 정자 · 연못 · 꽃밭 · 평상, 그 아래 놀이 마당 (그네 · 배구 네트 · 깃발)
  *   남서      들녘: 논 여덟 마지기 · 허수아비 · 볏가리 · 솟대, 그 아래 방앗간
  *   남동      장터와 창고, 잔치 마당
- *   어귀      장승 · 솟대 · 망루 · 성문 · 등불. 큰길 양쪽에 돌격대(서) · 핑거(동) 기념물 세 개씩
+ *   어귀      장승 · 솟대 · 망루 · 성문 · 등불. 큰길 양쪽에 돌격대(서) · 핑거(동) 기념물 세 개씩,
+ *             그 바깥으로 오늘의 도전 · 레이스 주간(서) · 열두길(동) 기념물. 남동 끝에 열두 지신 문
  *
  * 한 줄이 땅의 한 줄(y), 두 글자가 한 칸(x). '..' 빈 칸 · '==' 길 · '##' 2×2 건물의 나머지 칸.
  */
@@ -56,15 +57,15 @@ const MAP = [
   'sc PD PD PD PD sc hy hy .. == == .. g6 MK gb == ST ST ST ..', // 13
   'sc PD PD PD PD sc hy g1 ln == == ln .. .. .. == .. g0 .. sw', // 14
   '.. .. .. == == == == == == == == == == == == == ST ST ST sw', // 15
-  'hy hy .. .. .. .. mg mh mi == == mj mk ml .. .. .. .. .. ..', // 16
+  'hy hy .. mq mr ms mg mh mi == == mj mk ml mm mn mo mp .. ..', // 16
   'hy .. .. ML ML ML ML g3 ma == == mb ln FE ## ln bn me .. tr', // 17
-  'tr .. .. .. .. .. .. .. sd == == sd bn ## ## .. mf .. .. ..', // 18
-  '.. .. .. .. .. .. .. jg jg == == jg jg .. .. .. .. .. .. ..', // 19
+  'tr .. .. .. .. .. .. .. sd == == sd bn ## ## .. mf JS ## ..', // 18
+  '.. .. .. .. .. .. .. jg jg == == jg jg .. .. .. .. ## ## ..', // 19
 ];
 
 const CODES: Record<string, BuildingType> = {
   HL: 'hall', PD: 'paddy', HS: 'house', LB: 'lumber', ST: 'storage', MK: 'market', QR: 'quarry', ML: 'mill', JR: 'jar',
-  PV: 'pavilion', FE: 'feast', SH: 'shrine',
+  PV: 'pavilion', FE: 'feast', JS: 'jisin', SH: 'shrine',
   tr: 'tree', hy: 'haystack', fl: 'flower', sc: 'scarecrow', sw: 'stonewall', bn: 'bench', ln: 'lantern', wl: 'well', jg: 'jangseung', sd: 'sotdae', pn: 'pond', tw: 'stonetower',
   '==': 'road',
   // 주민 선물: g0 … gb = 십이지 순서 (쥐 … 돼지), gc = 고양이
