@@ -3,7 +3,7 @@ import { BUILDING, BUILDINGS, isGift, isMonument, upgradable, type BuildingType 
 import { COLOR, MATGO, RACE, ROULETTE, TABLE } from '../theme';
 
 /**
- * 그림 파일 (SpriteCook, public/art/<이름>.png): 장면이 먼저 불러오고, 못 불러온 이름만 아래 코드 그림으로 채운다.
+ * 그림 파일 (SpriteCook · 일부는 Fable 손그림, public/art/<이름>.png): 장면이 먼저 불러오고, 못 불러온 이름만 아래 코드 그림으로 채운다.
  * 원본 시트와 만드는 법은 games/village/art/build.py · spritecook-assets.json.
  */
 
@@ -32,9 +32,6 @@ export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + R
 /** 아직 그림 파일이 없는 것 (ASSETS.md "그릴 것"): 불러오지 않고 코드 그림을 쓴다. 그림을 넣으면 여기서 뺀다 */
 const NO_FILE: ReadonlySet<BuildingType> = new Set<BuildingType>([
   'mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger100', 'mon_finger_tower',
-  // 099: 열두길 · 오늘의 도전 · 레이스 주간 기념물 7종 (monE · monF), 특별 건물 열두 지신 문 3단계 (jisin)
-  'mon_twelve_keys', 'mon_twelve_final', 'mon_twelve_hard', 'mon_twelve_tower', 'mon_daily7', 'mon_daily_first', 'mon_race_week',
-  'jisin',
 ]);
 /** 그림 파일로 먼저 채우는 텍스처 이름 (public/art/<이름>.png) */
 export const ART_FILES: string[] = [
