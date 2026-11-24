@@ -1,9 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ZodiacId } from '../game/constants';
-import { LocalChannel, SupaChannel, type Channel } from './channel';
 import { worldSupabase } from './world';
 import { isLockedError } from '../game/unlock';
 import { retryDaily } from '../game/daily';
+import { isCharId } from '../game/constants';
+import { parseGhost, type Ghost } from '../game/ghost';
 
 /** 한 판의 시각 (모두 서버 시각 ms): '준비' 표시와 GO */
 export interface GoInfo {
@@ -31,22 +32,64 @@ export interface RankRow {
   character: string;
 }
 
+/** 그날 1위 고스트 (095_race_ghost.sql 의 race_ghost_top). ghost 는 아직 확인 전 (받는 기기가 다시 달려 본다) */
+export interface GhostTop {
+  ghost: unknown;
+  nickname: string;
+  char: ZodiacId;
+  ms: number;
+  /** 그 사람의 역대 최고 기록 순위 (없으면 null) */
+  place: number | null;
+  /** 그날 순위 (1위의 고스트가 없으면 고스트가 있는 사람 중 가장 높은 순위) */
+  dayPlace: number;
+  /** 내 고스트인가 */
+  me: boolean;
+}
+
+/** 고스트 올리기 결과: 받음(빠를 때만 바뀐다) · 서버가 거절(다시 해도 같다) · 통신 실패(다시 해 볼 것) */
+export type GhostSubmitResult = 'ok' | 'rejected' | 'retry';
+
 export interface RaceApi {
   kind: 'supabase' | 'local';
-  channel<M>(name: string, key: string): Channel<M>;
   /** 기기 시계를 서버 시각에 맞춘다 */
   syncClock(): Promise<void>;
-  /** 방장: 이번 판의 준비·GO 시각을 서버에서 받는다 */
+  /** 이번 판의 준비·GO 시각을 서버에서 받는다 (room: 오늘의 도전 방 키) */
   go(room: string): Promise<GoInfo>;
   /** 완주 기록 올리기 (사람만) */
   submit(room: string, round: number, ms: number, character: ZodiacId): Promise<SubmitResult>;
   /** 내 최고 기록 (없으면 null) */
   myBest(): Promise<number | null>;
   /**
+   * 역대 최고 기록 순위 (서버 race_ranking 뷰의 place, 읽기만): 사용자 id → 순위.
+   * 기록이 없는 사람은 빠진다. 못 읽으면(통신 오류·테스트 모드) 빈 표 — 화면은 구름으로 그린다
+   */
+  places(ids: readonly string[]): Promise<Record<string, number>>;
+  /**
    * 오늘의 도전: 방금 올린 완주 기록(race_runs)을 그날 기록으로 넣는다 (083_race_daily.sql).
    * 들어갔으면 기록된 날짜 'YYYY-MM-DD', 못 넣었으면 null. 통신이 실패하면 두 번까지 다시 해 본다
    */
   dailySubmit(room: string, round: number, day: string): Promise<string | null>;
+  /** 그날 1위 고스트 (없거나 못 읽으면 null) */
+  ghostTop(day: string): Promise<GhostTop | null>;
+  /** 오늘의 도전 기록이 들어간 판의 고스트 올리기 (race_ghost_submit) */
+  ghostSubmit(room: string, round: number, ghost: Ghost): Promise<GhostSubmitResult>;
+  /**
+   * 내 이번 주 순위 (096_race_weekly.sql 의 race_weekly_ranking 뷰 place, 읽기만).
+   * 이번 주 기록이 없으면 null, 못 읽으면(통신 오류·테스트 모드) undefined
+   */
+  weeklyPlace(): Promise<number | null | undefined>;
+}
+
+/** race_ghost_top 의 답 → GhostTop (모양이 이상하면 null) */
+export function ghostTopOf(d: unknown): GhostTop | null {
+  if (!d || typeof d !== 'object') return null;
+  const o = d as Record<string, unknown>;
+  const ch = o.character;
+  const dayPlace = Number(o.day_place);
+  const ms = Number(o.ms);
+  if (!isCharId(ch) || !(dayPlace >= 1) || !(ms > 0) || !o.ghost) return null;
+  const place = Number(o.place);
+  return { ghost: o.ghost, nickname: String(o.nickname ?? ''), char: ch, ms, place: place >= 1 ? place : null, dayPlace, me: o.me === true };
 }
 
 /** GO 요청부터 '준비' 표시까지 (서버 029_race.sql 의 lead_ms 와 같은 값) */
@@ -73,7 +116,7 @@ export const serverNow = () => Date.now() + offset;
 function localGo(): GoInfo {
   const now = serverNow();
   const readyAt = now + LEAD_MS;
-  // 판 번호는 시각으로: 방장이 바뀌어도 겹치지 않고 늘어난다
+  // 판 번호는 시각으로: 다시 도전해도 겹치지 않고 늘어난다
   return { round: Math.floor(now / 1000) % 100000000, readyAt, goAt: readyAt + 1000 + Math.random() * 2000 };
 }
 
@@ -99,10 +142,19 @@ function saveLocalBest(uid: string, ms: number): SubmitResult {
   return { saved: false, bestMs: improved ? ms : old!, improved };
 }
 
+/** 테스트 모드: 기기에 그날 내 최고 고스트 (다음 판에 같이 달린다) */
+const ghostKey = (uid: string, day: string) => `siarace:ghost:${uid}:${day}`;
+function readLocalGhost(uid: string, day: string): Ghost | null {
+  try {
+    return parseGhost(JSON.parse(localStorage.getItem(ghostKey(uid, day)) ?? 'null'));
+  } catch {
+    return null;
+  }
+}
+
 function createLocalApi(uid: string): RaceApi {
   return {
     kind: 'local',
-    channel: <M>(name: string, key: string) => new LocalChannel<M>(name, key),
     async syncClock() {},
     async go() {
       return localGo();
@@ -113,8 +165,28 @@ function createLocalApi(uid: string): RaceApi {
     async myBest() {
       return readLocalBest(uid);
     },
+    async places() {
+      return {}; // 테스트 모드: 서버 순위 없음
+    },
     async dailySubmit() {
       return null; // 테스트 모드: 서버 기록 없음
+    },
+    async ghostTop(day) {
+      const g = readLocalGhost(uid, day);
+      return g ? { ghost: g, nickname: '나', char: g.char, ms: g.ms, place: null, dayPlace: 1, me: true } : null;
+    },
+    async ghostSubmit(_room, _round, ghost) {
+      const old = readLocalGhost(uid, ghost.day);
+      if (old && old.ms <= ghost.ms) return 'ok';
+      try {
+        localStorage.setItem(ghostKey(uid, ghost.day), JSON.stringify(ghost));
+      } catch {
+        return 'rejected';
+      }
+      return 'ok';
+    },
+    async weeklyPlace() {
+      return undefined; // 테스트 모드: 서버 순위 없음
     },
   };
 }
@@ -122,7 +194,6 @@ function createLocalApi(uid: string): RaceApi {
 function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
   return {
     kind: 'supabase',
-    channel: <M>(name: string, key: string) => new SupaChannel<M>(sb, name, key),
     async syncClock() {
       // 세 번 물어 가장 빨리 돌아온 답으로 맞춘다
       let best = Infinity;
@@ -142,10 +213,10 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       const { data, error } = await sb.rpc('race_go', { p_room_key: room });
       const t1 = Date.now();
       const d = data as { round: number; ready_at: number; go_at: number; now: number } | null;
-      // 너무 빨리 다시 불렀다: 기기 시계로 대신 열지 않는다 (방에서 남은 시간 뒤에 다시 묻는다)
+      // 너무 빨리 다시 불렀다: 기기 시계로 대신 열지 않는다 (solo.ts 가 남은 시간 뒤에 다시 묻는다)
       if (error && /too soon/.test(error.message ?? '')) throw new GoTooSoonError();
       if (error || !d) {
-        // 서버 함수를 못 쓰면(배포 전·통신 오류) 방장 시계로 정한다. 이 판의 기록은 랭킹에 못 올린다
+        // 서버 함수를 못 쓰면(배포 전·통신 오류) 이 기기 시계로 정한다. 이 판의 기록은 랭킹에 못 올린다
         console.warn('[시아레이스] 서버에서 GO 시각을 받지 못해 이 기기 시계로 정합니다', error?.message);
         return localGo();
       }
@@ -168,6 +239,19 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       if (error) return readLocalBest(uid);
       return (data as { best_ms: number } | null)?.best_ms ?? null;
     },
+    async places(ids) {
+      const list = [...new Set(ids.filter((id) => typeof id === 'string' && id))];
+      if (!list.length) return {};
+      try {
+        const { data, error } = await sb.from('race_ranking').select('user_id,place').in('user_id', list);
+        if (error || !Array.isArray(data)) return {};
+        const out: Record<string, number> = {};
+        for (const r of data as { user_id: string; place: number }[]) if (Number(r.place) > 0) out[r.user_id] = Number(r.place);
+        return out;
+      } catch {
+        return {};
+      }
+    },
     dailySubmit(room, round, day) {
       return retryDaily(async () => {
         try {
@@ -183,11 +267,39 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
         }
       });
     },
+    async ghostTop(day) {
+      try {
+        const { data, error } = await sb.rpc('race_ghost_top', { p_day: day });
+        return error ? null : ghostTopOf(data);
+      } catch {
+        return null;
+      }
+    },
+    async ghostSubmit(room, round, ghost) {
+      try {
+        const { error } = await sb.rpc('race_ghost_submit', { p_room_key: room, p_round: round, p_ghost: ghost });
+        if (!error) return 'ok';
+        // 서버가 검사해서 거절한 것(raise exception)은 다시 해도 같다
+        return error.code === 'P0001' ? 'rejected' : 'retry';
+      } catch {
+        return 'retry';
+      }
+    },
+    async weeklyPlace() {
+      try {
+        const { data, error } = await sb.from('race_weekly_ranking').select('place').eq('user_id', uid).maybeSingle();
+        if (error) return undefined;
+        const p = Number((data as { place?: unknown } | null)?.place);
+        return data ? (p >= 1 ? p : undefined) : null;
+      } catch {
+        return undefined;
+      }
+    },
   };
 }
 
 const params = new URLSearchParams(location.search);
-/** 주소의 ?local=1 이면 탭끼리 통신하는 테스트 모드 (로그인 없이). 개발 서버나 내 컴퓨터(localhost)에서만 켜진다 */
+/** 주소의 ?local=1 이면 서버 없이 도는 테스트 모드 (로그인 없이). 개발 서버나 내 컴퓨터(localhost)에서만 켜진다 */
 export const LOCAL_MODE =
   params.get('local') === '1' && (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(location.hostname));
 

@@ -204,3 +204,28 @@ export async function worldDailyRanking(game: string, day: string | null = null)
     return null;
   }
 }
+
+export interface PresenceHandle {
+  full: boolean;
+  leave(): Promise<void>;
+}
+interface PresenceModule {
+  enterGame(topic: string, user: WorldUser): Promise<PresenceHandle>;
+  GAME_MAX: number;
+}
+/** 접속 인원 채널 이름 (shared/presence.js 의 GAME_CHANNELS.race 와 같게. 예전 대기실 채널 이름을 그대로 쓴다) */
+export const PRESENCE_TOPIC = 'race-lobby';
+/** 동시에 들어올 수 있는 사람 수 (shared/presence.js 의 GAME_MAX) */
+export const LOBBY_MAX = 30;
+/**
+ * SIA WORLD 접속 인원 채널에 들어간다 (shared/presence.js 의 enterGame: 로비에 인원·이름이 보이고, 정원 30명을 넘으면 full).
+ * 시아돌격대·시아핑거와 같은 방식. 못 하면 null (막지 않는다)
+ */
+export async function enterLobby(user: WorldUser): Promise<PresenceHandle | null> {
+  try {
+    const m = (await import(/* @vite-ignore */ new URL('shared/presence.js', root()).href)) as PresenceModule;
+    return await m.enterGame(PRESENCE_TOPIC, user);
+  } catch {
+    return null;
+  }
+}

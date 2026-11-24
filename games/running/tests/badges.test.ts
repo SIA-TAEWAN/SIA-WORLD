@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BADGES, QUICK_START_SEC, TUMBLER_FALLS, badgesOf, newTally, tallyEvent, type Tally } from '../src/game/badges';
+import { BADGES, TUMBLER_FALLS, badgesOf, newTally, tallyEvent, type Tally } from '../src/game/badges';
 import { DT, OBSTACLE_COUNTS } from '../src/game/constants';
 import { newRunner, stepRunner, type Press, type SimEvent } from '../src/game/sim';
 import { aiPress, type AiPlan } from '../src/game/ai';
@@ -30,12 +30,9 @@ describe('배지 (badgesOf)', () => {
     // 완주하지 못하면 없다
     expect(ids(feed([['start', 0.4]]))).toEqual([]);
   });
-  it('칼출발: 반응 0.15초 이내 (완주하지 못해도)', () => {
-    expect(QUICK_START_SEC).toBe(0.15);
-    expect(ids(feed([['start', 0.15]]))).toEqual(['quick']);
-    expect(ids(feed([['start', 18 * DT]]))).toEqual(['quick']); // 고정 간격으로 딱 0.15초
-    expect(ids(feed([['start', 19 * DT]]))).toEqual([]);
-    expect(ids(newTally())).toEqual([]); // 출발하지 않음 (실격)
+  it('칼출발 배지는 없다 (아주 빨리 출발해도. 4단계에서 출발 반응 표시로 대신)', () => {
+    expect(ids(feed([['start', 0.05]]))).toEqual([]);
+    expect(Object.keys(BADGES)).toEqual(['clean', 'boostAll', 'tumbler']);
   });
   it('부스트 싹쓸이: 트랙의 부스트 발판을 모두', () => {
     expect(ids(feed([['start', 1], ['boost', 2], ['boost', 3], ['boost', 4]]), 3)).toEqual(['boostAll']);
@@ -55,11 +52,11 @@ describe('배지 (badgesOf)', () => {
   });
   it('여러 개를 한꺼번에, 정해진 순서로', () => {
     const t = feed([['start', 0.05], ['boost', 2], ['boost', 3], ['boost', 4], ['finish', 29]]);
-    expect(badgesOf(t, 3)).toEqual([BADGES.clean, BADGES.quick, BADGES.boostAll]);
+    expect(badgesOf(t, 3)).toEqual([BADGES.clean, BADGES.boostAll]);
   });
   it('결과가 미완주면 완주 배지는 없다 (내 기기에서는 결승선을 넘었어도)', () => {
     const clean = feed([['start', 0.05], ['boost', 2], ['boost', 3], ['boost', 4], ['finish', 29]]);
-    expect(badgesOf(clean, 3, false)).toEqual([BADGES.quick, BADGES.boostAll]);
+    expect(badgesOf(clean, 3, false)).toEqual([BADGES.boostAll]);
     const evs: Ev[] = [['start', 1]];
     for (let i = 0; i < TUMBLER_FALLS; i++) evs.push(['hurdle', 5 + i]);
     evs.push(['finish', 40]);
@@ -88,13 +85,13 @@ describe('실제 달리기에서 센 배지', () => {
     for (const o of makeTrack(seed)) jump[o.id] = good ? o.kind !== 'boost' : false;
     return { react, jump };
   };
-  it('방해물을 모두 잘 넘고 발판을 모두 밟으면 무결점 완주 + 부스트 싹쓸이, 0.1초에 출발하면 칼출발', () => {
+  it('방해물을 모두 잘 넘고 발판을 모두 밟으면 무결점 완주 + 부스트 싹쓸이', () => {
     for (const seed of [11, 222, 3333]) {
       const t = run(seed, planOf(seed, 0.1, true));
       expect(t.finished).toBe(true);
       expect(t.startT).toBeCloseTo(0.1, 1);
       expect(t.boosts).toBe(OBSTACLE_COUNTS.boost);
-      expect(ids(t), `seed ${seed}`).toEqual(['clean', 'quick', 'boostAll']);
+      expect(ids(t), `seed ${seed}`).toEqual(['clean', 'boostAll']);
     }
   });
   it('아무것도 안 넘으면 계속 넘어져 오뚝이만 받는다 (발판은 모두 밟는다)', () => {

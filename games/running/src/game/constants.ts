@@ -3,8 +3,8 @@
 /** 계산 한 걸음 (고정 시간 간격) */
 export const DT = 1 / 120;
 
-/** 트랙 길이: 그냥 달리면 약 30초 (150m ÷ 5 m/s) */
-export const TRACK_LEN = 150;
+/** 트랙 길이: 그냥 달리면 약 29초 (146m ÷ 5 m/s) */
+export const TRACK_LEN = 146;
 export const LANES = 4;
 
 /** 최고 속도와 가속 (정지 → 최고 속도 0.4초) */
@@ -51,54 +51,38 @@ export const BANANA_LEN = 0.4;
 export const LOG_LEN = 0.6;
 export const BAR_LEN = 0.3;
 
-/** 배치 규칙: 출발 10m·도착 전 5m에는 없음, 방해물 사이 최소 6m */
+/** 배치 규칙: 출발 10m·도착 전 5m에는 없음, 방해물 사이 최소 5m */
 export const SAFE_START = 10;
 export const SAFE_END = 5;
-export const MIN_GAP = 6;
+export const MIN_GAP = 5;
 
-/** 판마다 놓는 개수 (합 18: 150m 트랙). 통나무는 화면·동기화가 하나만 다루므로 1개 */
-export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 5, banana: 3, log: 1, boost: 3, bar: 3 } as const;
+/** 판마다 놓는 개수 (합 21: 146m 트랙). 통나무는 화면이 하나만 다루므로 1개 */
+export const OBSTACLE_COUNTS = { mudShort: 2, mudLong: 1, hurdle: 6, banana: 4, log: 1, boost: 3, bar: 4 } as const;
 
 /** 경기 끝: 1등 도착 뒤 15초 또는 출발(GO) 뒤 90초 */
 export const END_AFTER_FIRST = 15;
 export const END_AFTER_GO = 90;
 
-/** AI: 방해물마다 점프(낮은 막대는 슬라이딩) 성공 확률, 출발 반응, 도착 시간 범위 */
+/** AI: 방해물마다 점프(낮은 막대는 슬라이딩) 성공 확률, 출발 반응, 도착 시간 범위 (난이도 없음: 늘 이 값) */
 export const AI_SUCCESS = 0.75;
 export const AI_REACT_MIN = 0.2;
 export const AI_REACT_MAX = 0.5;
 export const AI_FINISH_MIN = 33;
 export const AI_FINISH_MAX = 37.5;
 
-/** AI 난이도: 방장이 대기실에서 고른다 (보통 = 위의 값 그대로). 오늘의 도전은 보통 고정 */
-export const AI_LEVEL_IDS = ['easy', 'normal', 'hard'] as const;
-export type AiLevel = (typeof AI_LEVEL_IDS)[number];
-export interface AiLevelSpec {
-  label: string;
-  /** 방해물마다 잘 넘을 확률 */
-  success: number;
-  /** 도착 시간 범위 (초) */
-  finishMin: number;
-  finishMax: number;
-}
-export const AI_LEVELS: Record<AiLevel, AiLevelSpec> = {
-  easy: { label: '쉬움', success: 0.55, finishMin: 37, finishMax: 42 },
-  normal: { label: '보통', success: AI_SUCCESS, finishMin: AI_FINISH_MIN, finishMax: AI_FINISH_MAX },
-  hard: { label: '어려움', success: 0.92, finishMin: 30.5, finishMax: 33 },
-};
-/** 네트워크·저장소에서 온 값을 난이도로 (모르는 값·없는 값은 보통: 예전 기기는 난이도를 보내지 않는다) */
-export const aiLevelOf = (v: unknown): AiLevel => (typeof v === 'string' && (AI_LEVEL_IDS as readonly string[]).includes(v) ? (v as AiLevel) : 'normal');
+/**
+ * 출발 반응 시간 판정 (GO 부터 내가 출발한 걸음까지, 초. src/game/reaction.ts).
+ * PERFECT 0.25초 이하 · GOOD 0.40초 이하 · LATE 그보다 늦음. 0.10초 미만은 운으로 보고 표시는 하되 최고 반응 기록에는 넣지 않는다
+ */
+export const REACT_PERFECT = 0.25;
+export const REACT_GOOD = 0.4;
+export const REACT_LUCKY = 0.1;
 
-/** 등급 기준 (ms 이내). 임시 값 — shared/ranking-dialog.js 의 RACE_TIERS 와 같이 고친다 */
-export const TIER_SUN_MS = 30750;
-export const TIER_MOON_MS = 33000;
-export const TIER_STAR_MS = 37500;
-
-/** 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/031_race_150m.sql 의 min_ms) */
-export const MIN_VALID_MS = 28000;
-
-/** 위치 전송 간격 (초당 10회) */
-export const NET_INTERVAL_MS = 100;
+/**
+ * 서버가 받아 주는 가장 빠른 기록 (supabase/migrations/095_race_ghost.sql 의 min_ms, 031 의 28000 에서 낮춤).
+ * 146m 트랙에서 부스트가 끝날 때 점프하면 27.8초대가 나오므로 27초 (2026-11-23 사용자 결정)
+ */
+export const MIN_VALID_MS = 27000;
 
 /** 십이지 12 (띠 순서). AI·겹칠 때 다시 고르기·로비 그림은 이 12개에서만 (추가 캐릭터는 계정마다 열어야 쓴다) */
 export const ZODIAC_IDS = ['rat', 'ox', 'tiger', 'rabbit', 'dragon', 'snake', 'horse', 'sheep', 'monkey', 'rooster', 'dog', 'pig'] as const;

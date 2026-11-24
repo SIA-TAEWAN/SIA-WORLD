@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { JUMP_TIME, LANES, SLIDE_TIME, TRACK_LEN, isCharId, type ZodiacId } from '../game/constants';
 import { livePlace } from '../game/ranking';
+import { reactionPop, type ReactionGrade } from '../game/reaction';
 import type { RunState } from '../game/sim';
 import type { Obstacle } from '../game/track';
 import type { RaceEvent, RaceGame, RunnerView } from '../race/game';
@@ -16,8 +17,6 @@ export interface SceneData {
   dpr: number;
   /** 효과음 (내 캐릭터에게 생긴 일) */
   sfx: (name: string, opts?: { volume?: number; rate?: number }) => void;
-  /** 그 자리 머리 위에 띄울 짧은 말 (없으면 null) */
-  emote?: (slot: number) => string | null;
   /** 매 프레임 (HUD 갱신용) */
   onFrame: () => void;
 }
@@ -55,13 +54,6 @@ interface Actor {
   lastArrow: string;
   logSpr: Phaser.GameObjects.Image | null;
   logLastX: number;
-  /** 머리 위 말풍선 (짧은 말) */
-  bubble: Phaser.GameObjects.Container;
-  bubbleText: Phaser.GameObjects.Text;
-  bubbleBg: Phaser.GameObjects.Graphics;
-  bubbleW: number;
-  bubbleH: number;
-  lastSay: string;
 }
 
 interface ObSprite {
@@ -80,7 +72,6 @@ export class RaceScene extends Phaser.Scene {
   private dpr = 1;
   private sfx!: SceneData['sfx'];
   private onFrame!: () => void;
-  private emote: (slot: number) => string | null = () => null;
   private ppm = 40;
   private bgH = 0;
   private laneH = 0;
@@ -104,7 +95,6 @@ export class RaceScene extends Phaser.Scene {
     this.dpr = d.dpr;
     this.sfx = d.sfx;
     this.onFrame = d.onFrame;
-    this.emote = d.emote ?? (() => null);
     this.lanes = [];
     this.actors = [];
     this.obSprites = [];
@@ -119,12 +109,20 @@ export class RaceScene extends Phaser.Scene {
     this.load.on('loaderror', () => undefined);
   }
 
-  /** 내 자리가 맨 아래(3), 나머지는 자리 순서대로 위에서부터 */
+  /** 내 자리가 맨 아래(3), 고스트는 내 바로 위(2), 나머지(AI)는 자리 순서대로 위에서부터 */
   private rowOf(slot: number): number {
     const me = this.race.mySlot;
     if (me < 0) return slot;
     if (slot === me) return LANES - 1;
-    return slot < me ? slot : slot - 1;
+    const roster = this.race.roster;
+    const ghost = roster.find((r) => r.role === 'ghost')?.slot ?? -1;
+    if (slot === ghost) return LANES - 2;
+    return roster.filter((r) => r.slot !== me && r.slot !== ghost && r.slot < slot).length;
+  }
+
+  /** 고스트 자리인가 (반투명으로 그린다) */
+  private isGhost(slot: number): boolean {
+    return this.race.roster[slot]?.role === 'ghost';
   }
 
   private laneTop(row: number) {
@@ -256,6 +254,11 @@ export class RaceScene extends Phaser.Scene {
       const h = this.laneH * 0.74;
       spr.setScale(h / tex.height);
       shadow.setDisplaySize(spr.displayWidth * 0.8, this.laneH * 0.14);
+      // 고스트: 반투명 (이름표는 읽히게 그대로)
+      if (this.isGhost(r.slot)) {
+        spr.setAlpha(0.5);
+        shadow.setAlpha(0.11);
+      }
 
       // 머리 위 이름표: 순위 + ID. 내 것은 노란 바탕
       const fs = Math.max(10, Math.min(13, Math.round(this.laneH * 0.14)));
@@ -281,11 +284,7 @@ export class RaceScene extends Phaser.Scene {
       const arrowBg = this.add.graphics();
       const arrow = this.add.container(0, this.laneTop(row) + this.laneH * 0.52, [arrowBg, face, arrowText]).setDepth(120).setVisible(false);
       arrow.setData('face', face);
-
-      // 말풍선 (짧은 말): 이름표 위에 뜬다
-      const bubbleText = this.text(0, 0, '', fs + 2);
-      const bubbleBg = this.add.graphics();
-      const bubble = this.add.container(0, 0, [bubbleBg, bubbleText]).setDepth(130 + row).setVisible(false);
+      if (this.isGhost(r.slot)) face.setAlpha(0.6);
 
       const logO = this.race.obs.find((o) => o.kind === 'log');
       let logSpr: Phaser.GameObjects.Image | null = null;
@@ -298,7 +297,6 @@ export class RaceScene extends Phaser.Scene {
       this.actors.push({
         slot: r.slot, row, char: r.char, spr, shadow, label, labelText, labelBg, rankText, arrow, arrowText, arrowBg,
         stride: r.slot * 1.7, lastX: 0, state: 'wait', since: 0, dustT: 0, ghostT: 0, mudT: 0, lastRank: 0, lastArrow: '', logSpr, logLastX: logO?.x ?? 0,
-        bubble, bubbleText, bubbleBg, bubbleW: 0, bubbleH: 0, lastSay: '',
       });
     }
     this.draw(0);
@@ -400,37 +398,7 @@ export class RaceScene extends Phaser.Scene {
         }
         a.arrow.setVisible(true);
       } else if (a.arrow.visible) a.arrow.setVisible(false);
-
-      // 짧은 말: 머리 위(이름표 위)에. 화면 밖 주자는 그 레인 가장자리에
-      const say = this.emote(a.slot) ?? '';
-      if (say !== a.lastSay) {
-        a.lastSay = say;
-        if (say) this.paintBubble(a, say);
-        a.bubble.setVisible(!!say);
-      }
-      if (say) {
-        const half = a.bubbleW / 2 + 4;
-        const top = a.bubbleH / 2 + 2;
-        const by = a.label.visible ? a.label.y - a.bubbleH - 3 : this.laneTop(a.row) + top;
-        a.bubble.setPosition(Phaser.Math.Clamp(x, half, Math.max(half, W - half)), Math.max(top, by));
-      }
     }
-  }
-
-  private paintBubble(a: Actor, s: string) {
-    a.bubbleText.setText(s);
-    const w = a.bubbleText.width + 16;
-    const h = a.bubbleText.height + 6;
-    a.bubbleW = w;
-    a.bubbleH = h;
-    a.bubbleBg.clear();
-    // 꼬리 (아래로)
-    a.bubbleBg.fillStyle(COLOR.outline, 1).fillTriangle(-5, h / 2, 5, h / 2, 0, h / 2 + 6);
-    a.bubbleBg.fillStyle(COLOR.white, 1).lineStyle(2, COLOR.outline, 1);
-    a.bubbleBg.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
-    // 톡 튀어나오게
-    a.bubble.setScale(0.4);
-    this.tweens.add({ targets: a.bubble, scale: 1, duration: 180, ease: 'Back.easeOut' });
   }
 
   private paintArrow(a: Actor, side: number, s: string) {
@@ -588,7 +556,7 @@ export class RaceScene extends Phaser.Scene {
       if (a.ghostT <= 0) {
         a.ghostT = 0.06;
         const gimg = this.add.image(a.spr.x, a.spr.y, a.spr.texture.key).setOrigin(0.5, 1).setDepth(a.spr.depth - 1);
-        gimg.setScale(a.spr.scaleX, a.spr.scaleY).setRotation(a.spr.rotation).setTintFill(COLOR.primary).setAlpha(0.45);
+        gimg.setScale(a.spr.scaleX, a.spr.scaleY).setRotation(a.spr.rotation).setTintFill(COLOR.primary).setAlpha(0.45 * a.spr.alpha);
         this.tweens.add({ targets: gimg, alpha: 0, x: gimg.x - 26, duration: 260, onComplete: () => gimg.destroy() });
         if (Math.random() < 0.5) this.puff('spark', x - h * 0.4, gy - h * (0.2 + Math.random() * 0.6), a.row, 0.5, -90, 0, 220);
       }
@@ -642,6 +610,7 @@ export class RaceScene extends Phaser.Scene {
     switch (e.ev) {
       case 'start':
         if (vis) this.puff('dust', a.spr.x - 10, gy - 4, a.row, 0.5, -70, -20, 380);
+        if (mine) this.reactionPop(a);
         break;
       case 'jump':
         say('jump');
@@ -696,6 +665,30 @@ export class RaceScene extends Phaser.Scene {
       case 'getup':
         break;
     }
+  }
+
+  /** 출발 직후 내 머리 위에 반응 시간 'PERFECT 0.21' (0.8초) */
+  private reactionPop(a: Actor) {
+    const r = this.race.reaction();
+    if (!r) return;
+    const look: Record<ReactionGrade, { bg: number; fg: number }> = {
+      PERFECT: { bg: COLOR.primary, fg: COLOR.ink },
+      GOOD: { bg: COLOR.win, fg: COLOR.white },
+      LATE: { bg: COLOR.white, fg: COLOR.inkSoft },
+    };
+    const { bg, fg } = look[r.grade];
+    const fs = Math.max(12, Math.min(16, Math.round(this.laneH * 0.17)));
+    const t = this.text(0, 0, reactionPop(r), fs, fg);
+    const w = t.width + 16;
+    const h = fs + 8;
+    const g = this.add.graphics();
+    g.fillStyle(bg, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    g.lineStyle(2, COLOR.outline, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    const x = Phaser.Math.Clamp(a.label.x, w / 2 + 4, this.W - w / 2 - 4);
+    const y = Math.max(h / 2 + 2, a.label.y - h - 4);
+    const pop = this.add.container(x, y, [g, t]).setDepth(130).setScale(0.6);
+    this.tweens.add({ targets: pop, scale: 1, duration: 160, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: pop, y: y - 8, alpha: 0, delay: 620, duration: 180, onComplete: () => pop.destroy() });
   }
 
   /** 발소리 (내 캐릭터가 달리는 동안) — update 뒤에 부른다 */

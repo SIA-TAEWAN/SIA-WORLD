@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AI_FINISH_MAX, AI_FINISH_MIN, AI_LEVELS, AI_LEVEL_IDS, aiLevelOf, BANANA_STUN, BAR_STUN, BOOST_FACTOR, BOOST_TIME, DT, HURDLE_STUN, IMMUNE_TIME, JUMP_TIME, LOG_STUN, MIN_VALID_MS,
+  AI_FINISH_MAX, AI_FINISH_MIN, AI_SUCCESS, BANANA_STUN, BAR_STUN, BOOST_FACTOR, BOOST_TIME, DT, HURDLE_STUN, IMMUNE_TIME, JUMP_TIME, LOG_STUN, MIN_GAP, MIN_VALID_MS,
   OBSTACLE_COUNTS, SLIDE_TIME, TOP_SPEED, TRACK_LEN,
 } from '../src/game/constants';
 import { makeTrack, trackProblems, type Obstacle } from '../src/game/track';
 import { advance, foul, newRunner, stepRunner, type Press, type Runner } from '../src/game/sim';
 import { aiPress, makeAiPlan, simulatePlan } from '../src/game/ai';
-import { formatTime, livePlace, rankResults, tierOf } from '../src/game/ranking';
+import { formatTime, livePlace, rankResults, tierOfPlace } from '../src/game/ranking';
 
 /** presses: 버튼을 누르는 시각(초) 목록 */
 function run(obs: Obstacle[], presses: number[], until = 60): Runner {
@@ -38,12 +38,13 @@ const timeAt = (x: number) => 0.4 + (x - 1) / 5;
 const BASE = timeAt(TRACK_LEN);
 
 describe('달리기', () => {
-  it('방해물 없이 GO 직후 출발하면 150m를 30.0~30.5초에 달린다', () => {
+  it('방해물 없이 GO 직후 출발하면 146m를 29.2~29.7초에 달린다', () => {
+    expect(TRACK_LEN).toBe(146);
     const r = run([], [0]);
     expect(r.state).toBe('done');
-    expect(r.finishMs).toBeGreaterThanOrEqual(30000);
-    expect(r.finishMs).toBeLessThanOrEqual(30500);
-    // 가속 0.4초(1m) + 149m ÷ 5 m/s = 30.2초
+    expect(r.finishMs).toBeGreaterThanOrEqual(29200);
+    expect(r.finishMs).toBeLessThanOrEqual(29700);
+    // 가속 0.4초(1m) + 145m ÷ 5 m/s = 29.4초
     expect(r.finishMs! / 1000).toBeCloseTo(BASE, 1);
   });
 
@@ -341,10 +342,10 @@ describe('속도 꼼수 점검 (점프·슬라이딩을 이어 눌러도 정상 
     return { ms: r.finishMs ?? Infinity, vmax };
   }
 
-  it('빈 트랙: 어떻게 눌러도 30.2초보다 빠르지 않다 (빈 트랙 30.0~30.5초 유지)', () => {
+  it('빈 트랙: 어떻게 눌러도 29.4초보다 빠르지 않다 (빈 트랙 29.2~29.7초 유지)', () => {
     const plain = run([], [0]).finishMs!;
-    expect(plain).toBeGreaterThanOrEqual(30000);
-    expect(plain).toBeLessThanOrEqual(30500);
+    expect(plain).toBeGreaterThanOrEqual(29200);
+    expect(plain).toBeLessThanOrEqual(29700);
     for (let seed = 1; seed <= 60; seed++) {
       const { ms, vmax } = mash([], seed, [0.01, 0.05, 0.5][seed % 3]);
       expect(ms, `seed ${seed}`).toBeGreaterThanOrEqual(plain);
@@ -377,7 +378,7 @@ describe('속도 꼼수 점검 (점프·슬라이딩을 이어 눌러도 정상 
     }
   });
 
-  it('실제 배치에서 마구 눌러도 서버 기준(28초)보다 빠른 기록은 나오지 않는다', () => {
+  it('실제 배치에서 마구 눌러도 서버 기준(27초)보다 빠른 기록은 나오지 않는다', () => {
     let best = Infinity;
     for (let seed = 1; seed <= 40; seed++) {
       const obs = makeTrack(seed * 6151);
@@ -388,26 +389,28 @@ describe('속도 꼼수 점검 (점프·슬라이딩을 이어 눌러도 정상 
 });
 
 describe('방해물 배치', () => {
-  it('어느 시드든 규칙을 지킨다 (개수 18, 출발 10m·도착 전 5m 비움, 사이 6m 이상, 허들 뒤 부스트 없음)', () => {
+  it('어느 시드든 규칙을 지킨다 (개수 21, 출발 10m·도착 전 5m 비움, 사이 5m 이상, 허들 뒤 부스트 없음)', () => {
+    expect(OBSTACLE_COUNTS).toEqual({ mudShort: 2, mudLong: 1, hurdle: 6, banana: 4, log: 1, boost: 3, bar: 4 });
+    expect(MIN_GAP).toBe(5);
     for (let seed = 1; seed <= 500; seed++) {
       const obs = makeTrack(seed * 7919);
-      expect(obs).toHaveLength(18);
+      expect(obs).toHaveLength(21);
       expect(trackProblems(obs), `seed ${seed}`).toEqual([]);
     }
   });
 
-  it('낮은 막대는 판마다 3개, 다른 방해물과 같은 규칙으로 놓인다 (출발 10m·도착 전 5m 밖, 앞뒤 6m 이상)', () => {
-    expect(OBSTACLE_COUNTS.bar).toBe(3);
+  it('낮은 막대는 판마다 4개, 다른 방해물과 같은 규칙으로 놓인다 (출발 10m·도착 전 5m 밖, 앞뒤 5m 이상)', () => {
+    expect(OBSTACLE_COUNTS.bar).toBe(4);
     for (let seed = 1; seed <= 300; seed++) {
       const obs = makeTrack(seed * 4099);
       const bars = obs.filter((o) => o.kind === 'bar');
-      expect(bars).toHaveLength(3);
+      expect(bars).toHaveLength(4);
       for (const b of bars) {
         expect(b.x).toBeGreaterThanOrEqual(10);
         expect(b.x + b.len).toBeLessThanOrEqual(TRACK_LEN - 5);
         const i = obs.indexOf(b);
-        if (i > 0) expect(b.x - (obs[i - 1].x + obs[i - 1].len)).toBeGreaterThanOrEqual(6 - 0.011);
-        if (i < obs.length - 1) expect(obs[i + 1].x - (b.x + b.len)).toBeGreaterThanOrEqual(6 - 0.011);
+        if (i > 0) expect(b.x - (obs[i - 1].x + obs[i - 1].len)).toBeGreaterThanOrEqual(MIN_GAP - 0.011);
+        if (i < obs.length - 1) expect(obs[i + 1].x - (b.x + b.len)).toBeGreaterThanOrEqual(MIN_GAP - 0.011);
       }
     }
   });
@@ -437,38 +440,9 @@ describe('AI', () => {
     expect(new Set(times.map((t) => t.toFixed(2))).size).toBeGreaterThan(100);
   }, 30000);
 
-  it('난이도: 쉬움·보통·어려움마다 정해진 도착 시간 범위에 들고, 어려울수록 빠르다', () => {
-    const avg: Record<string, number> = {};
-    for (const level of AI_LEVEL_IDS) {
-      const spec = AI_LEVELS[level];
-      let sum = 0;
-      let n = 0;
-      for (let seed = 1; seed <= 80; seed++) {
-        const obs = makeTrack(seed * 104729);
-        for (let slot = 0; slot <= 3; slot++) {
-          const t = simulatePlan(obs, makeAiPlan(seed, slot, obs, true, level));
-          expect(t, `${level} seed ${seed} slot ${slot}`).toBeGreaterThanOrEqual(spec.finishMin);
-          expect(t, `${level} seed ${seed} slot ${slot}`).toBeLessThanOrEqual(spec.finishMax);
-          sum += t;
-          n++;
-        }
-      }
-      avg[level] = sum / n;
-    }
-    console.log('AI 평균 도착', avg);
-    expect(avg.hard).toBeLessThan(avg.normal);
-    expect(avg.normal).toBeLessThan(avg.easy);
-  }, 60000);
-
-  it('난이도: 보통은 지금까지의 값 그대로이고(난이도를 안 주면 보통), 모르는 값은 보통으로 읽는다', () => {
-    expect(AI_LEVELS.normal).toMatchObject({ success: 0.75, finishMin: AI_FINISH_MIN, finishMax: AI_FINISH_MAX });
-    const obs = makeTrack(4242);
-    expect(makeAiPlan(4242, 2, obs)).toEqual(makeAiPlan(4242, 2, obs, true, 'normal'));
-    expect(makeAiPlan(4242, 2, obs, true, 'hard')).not.toEqual(makeAiPlan(4242, 2, obs, true, 'easy'));
-    expect(aiLevelOf('hard')).toBe('hard');
-    expect(aiLevelOf(undefined)).toBe('normal');
-    expect(aiLevelOf('insane')).toBe('normal');
-    expect(aiLevelOf(2)).toBe('normal');
+  it('AI 는 늘 보통 하나 (난이도 고르기 없음): 75% 성공 · 33~37.5초', () => {
+    expect(AI_SUCCESS).toBe(0.75);
+    expect([AI_FINISH_MIN, AI_FINISH_MAX]).toEqual([33, 37.5]);
   });
 
   it('방해물마다 대략 75% 성공한다', () => {
@@ -504,7 +478,7 @@ describe('AI', () => {
     }
   });
 
-  it('같은 시드·자리는 어느 기기에서나 같은 계획 (방장이 바뀌어도 이어 달린다)', () => {
+  it('같은 시드·자리는 늘 같은 계획 (오늘의 도전은 그날 같은 AI)', () => {
     const obs = makeTrack(77);
     expect(makeAiPlan(77, 2, obs)).toEqual(makeAiPlan(77, 2, obs));
     expect(makeAiPlan(77, 2, obs)).not.toEqual(makeAiPlan(77, 3, obs));
@@ -572,13 +546,15 @@ describe('순위', () => {
     expect([0, 1, 2, 3].map((s) => livePlace(now, s))).toEqual([3, 2, 1, 4]);
   });
 
-  it('등급: 해 30.75초 · 달 33초 · 별 37.5초 · 구름', () => {
-    expect(tierOf(30750)).toBe('gold');
-    expect(tierOf(30751)).toBe('silver');
-    expect(tierOf(33000)).toBe('silver');
-    expect(tierOf(33001)).toBe('bronze');
-    expect(tierOf(37500)).toBe('bronze');
-    expect(tierOf(37501)).toBe('white');
+  it('등급: 역대 순위 1위 해 · 2위 달 · 3위 별 (한 명씩), 4위부터와 순위 없음은 구름', () => {
+    expect(tierOfPlace(1)).toBe('gold');
+    expect(tierOfPlace(2)).toBe('silver');
+    expect(tierOfPlace(3)).toBe('bronze');
+    expect(tierOfPlace(4)).toBe('white');
+    expect(tierOfPlace(100)).toBe('white');
+    expect(tierOfPlace(null)).toBe('white');
+    expect(tierOfPlace(undefined)).toBe('white');
+    expect(tierOfPlace(0)).toBe('white');
   });
 
   it('기록은 0.01초 단위로 표시', () => {

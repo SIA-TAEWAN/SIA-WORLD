@@ -6,7 +6,7 @@ import { trackProblems } from '../src/game/track';
 // shared/daily.js 는 실행 중에 불러오는 공통 모듈: Supabase 클라이언트(CDN) 없이 순수 함수만 확인한다
 vi.mock('../../../shared/supabase.js', () => ({ supabase: {} }));
 const sharedPath = '../../../shared/daily.js';
-/** 방 코드 규칙 (서버 race_go · src/net/room.ts 의 validRoomCode 와 같은 식) */
+/** 방 코드 규칙 (서버 race_go 의 방 키 규칙과 같은 식) */
 const validRoomCode = (c: string) => /^[a-z0-9]{4,24}$/.test(c);
 
 describe('오늘의 도전: 날짜 → 트랙', () => {
