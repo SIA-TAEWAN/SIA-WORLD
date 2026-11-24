@@ -135,9 +135,15 @@ export function ghostName(dayPlace: number, nickname: string): string {
   return `👻 ${dayPlace > 0 ? dayPlace : 1}위 ${nickname}`;
 }
 
-/** 고스트 안내 꼬리표 (결과 줄·캐릭터 고르기 안내): '내 1위 기록 고스트' · '내 고스트' · '오늘 3위 고스트' (ghostWho 와 같은 기준) */
-export function ghostTag(gh: { me: boolean; dayPlace: number }): string {
-  if (gh.me) return gh.dayPlace === 1 ? '내 1위 기록 고스트' : '내 고스트';
+/**
+ * 고스트 안내 꼬리표 (결과 줄·캐릭터 고르기 안내): '내 1위 기록 고스트' · '내 고스트' · '오늘 3위 고스트'.
+ * 내 것은 ghostWho 와 같은 기준 (판 전 순위의 내 줄이 1위이고 기록이 고스트와 같을 때만 '내 1위 기록') — 순위를 모르면(rank null) '내 고스트'
+ */
+export function ghostTag(
+  gh: { me: boolean; dayPlace: number; nickname: string; ms: number },
+  rank: { top: readonly DayRow[]; mine: DayRow | null } | null = null,
+): string {
+  if (gh.me) return ghostWho(gh, rank) === '내 1위 기록' ? '내 1위 기록 고스트' : '내 고스트';
   return `오늘 ${gh.dayPlace}위 고스트`;
 }
 

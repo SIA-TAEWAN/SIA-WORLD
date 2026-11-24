@@ -69,7 +69,6 @@ let autoTimer: ReturnType<typeof setTimeout> | null = null;
 let sentFor = '';
 /** 스핀별 회전 시작 시각 (다시 그려도 이어서 돈다) */
 const spinStart = new Map<string, number>();
-const shownWin = new Set<string>(); // (예전: 한 번만 보이기, 지금은 시각 기준)
 let countdown: ReturnType<typeof setTimeout> | null = null;
 /** 지금 화면의 방 (바뀌면 위 상태를 모두 비운다) */
 let roomId = '';
@@ -102,7 +101,6 @@ function enterRoom(id: string, base: number) {
   if (countdown) clearTimeout(countdown);
   countdown = null;
   spinStart.clear();
-  shownWin.clear();
 }
 const serverNow = () => Date.now() + skew;
 /** 베팅이 막 열린 순간(앞에 본 것이 회전·결과)이면 서버 시계와의 차이를 잰다 (처음 그리기·중간에 들어왔을 때는 앞선 만큼만 잠정으로) */

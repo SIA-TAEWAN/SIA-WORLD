@@ -1043,6 +1043,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     if (chongTimer) clearTimeout(chongTimer);
     chongTimer = null;
     picked = null;
+    shake = false;
+    playTurnKey = '';
     onFloorNow.clear();
     planQuiet.clear();
   },
@@ -1438,7 +1440,11 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
     const p = t.pub;
     if (!p || t.mySeat === null) return;
     const c = p.choice;
-    playTurnKey = t.myTurn && c?.kind === 'play' ? turnKeyOf(t) : '';
+    const turnKey = t.myTurn && c?.kind === 'play' ? turnKeyOf(t) : '';
+    // 새 차례(다른 방·판·사건)가 되면 흔들기 체크를 지운다 — 시간 초과 자동 내기·상대 차례처럼 playCard 를 거치지 않고 차례가 넘어가도 남지 않게.
+    // 같은 차례 안에서 다시 그릴 때는 그대로 둔다 (보내기 실패 뒤 되살린 체크 포함)
+    if (turnKey && turnKey !== playTurnKey) shake = false;
+    playTurnKey = turnKey;
     /** 말풍선 알약: 얼굴 + 한마디 (+ 작은 설명) */
     const say = (seat: number, text: string, small = '', mine = false) =>
       `<div class="mg-say ${mine ? 'mine' : ''}"><img src="${t.avatarUrl(t.seatAvatar(seat))}" alt=""/><span>${text}${small ? `<small>${small}</small>` : ''}</span></div>`;

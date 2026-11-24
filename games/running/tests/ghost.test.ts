@@ -429,8 +429,15 @@ describe('고스트 이름 (ghostWho)', async () => {
   });
   it('안내 꼬리표 (ghostTag)', async () => {
     const { ghostTag } = await import('../src/game/ghost');
-    expect(ghostTag({ me: true, dayPlace: 1 })).toBe('내 1위 기록 고스트');
-    expect(ghostTag({ me: true, dayPlace: 3 })).toBe('내 고스트');
-    expect(ghostTag({ me: false, dayPlace: 3 })).toBe('오늘 3위 고스트');
+    const mine = { ...gh, me: true };
+    // 판 전 순위를 모르면 1위라고 하지 않는다
+    expect(ghostTag(mine)).toBe('내 고스트');
+    expect(ghostTag(mine, null)).toBe('내 고스트');
+    // ghostWho 와 같은 기준: 판 전 내 줄이 1위이고 기록이 같을 때만
+    expect(ghostTag(mine, { top: [], mine: { place: 1, ms: 30120 } })).toBe('내 1위 기록 고스트');
+    expect(ghostTag(mine, { top: [], mine: { place: 1, ms: 29900 } })).toBe('내 고스트');
+    expect(ghostTag(mine, { top: [], mine: { place: 2, ms: 30120 } })).toBe('내 고스트');
+    expect(ghostTag({ ...mine, dayPlace: 3 }, { top: [], mine: { place: 1, ms: 30120 } })).toBe('내 고스트');
+    expect(ghostTag({ ...gh, dayPlace: 3 })).toBe('오늘 3위 고스트');
   });
 });

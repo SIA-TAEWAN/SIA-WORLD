@@ -142,7 +142,10 @@ function waitBox(text: string): HTMLElement {
 /** 못 보낸 기록이 올라갔으면 프로필을 다시 읽고 알린다 (다시 읽기 실패는 무시) */
 async function noteResent(n: number) {
   if (n <= 0) return;
-  profile = await api.loadProfile().catch(() => profile);
+  // 읽는 사이 다른 답(강화·판 끝)으로 profile 이 바뀌었으면 늦게 온 이 값으로 덮지 않는다 (강화 쪽과 같은 객체 비교)
+  const before = profile;
+  const next = await api.loadProfile().catch(() => null);
+  if (next && profile === before) profile = next;
   toast(`못 보낸 기록 ${n}판을 올렸어요`);
 }
 
@@ -702,6 +705,8 @@ function showUpgrades() {
         play('coin');
       } catch (e) {
         toast(errText(e));
+        // 시간 초과·통신 실패(ApiError 아님)는 서버에서 강화가 됐을 수 있다 → 다시 읽은 뒤 그린다
+        if (!(e instanceof ApiError)) profile = await api.loadProfile().catch(() => profile);
       } finally {
         upgrading = false;
       }
