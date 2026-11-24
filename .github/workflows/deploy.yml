@@ -11,6 +11,7 @@ name: Deploy to GitHub Pages
 #   /games/charge/ 시아돌격대 빌드 결과 (games/charge/dist)
 #   /games/finger/ 시아핑거 빌드 결과 (games/finger/dist)
 #   /games/twelve/ 시아열두길 빌드 결과 (games/twelve/dist)
+#   /games/tower/  시아의탑 빌드 결과 (games/tower/dist)
 on:
   push:
     branches: [main]
@@ -46,6 +47,7 @@ jobs:
             games/charge/package-lock.json
             games/finger/package-lock.json
             games/twelve/package-lock.json
+            games/tower/package-lock.json
       # shared/*.js 와 index.html 은 빌드를 거치지 않고 그대로 올라간다 → 문법 오류만이라도 배포 전에 잡는다
       - name: 로비·공용 코드 문법 검사
         run: |
@@ -183,9 +185,15 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: 시아의탑 테스트·빌드
+        working-directory: games/tower
+        run: |
+          npm ci
+          npm test
+          npm run build
       - name: 사이트 파일 모으기
         run: |
-          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense _site/games/village _site/games/charge _site/games/finger _site/games/twelve
+          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense _site/games/village _site/games/charge _site/games/finger _site/games/twelve _site/games/tower
           cp index.html _site/
           cp -r shared _site/
           # 앱(PWA): manifest·오프라인 화면·서비스 워커 (아이콘은 shared/images/app/ 에 있어 위에서 같이 복사된다)
@@ -204,6 +212,7 @@ jobs:
           cp -r games/charge/dist/. _site/games/charge/
           cp -r games/finger/dist/. _site/games/finger/
           cp -r games/twelve/dist/. _site/games/twelve/
+          cp -r games/tower/dist/. _site/games/tower/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

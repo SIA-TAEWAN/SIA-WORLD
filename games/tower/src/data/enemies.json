@@ -1,0 +1,26 @@
+{
+  "_note": "hp = hp × 그 레벨 캐릭터 공격력, atk = atk × 적 기준 공격력(growth.enemyRef), exp = 그 레벨 필요 경험치의 %, coins = 1구역 엽전(구역마다 ×1.5)",
+  "enemies": [
+    { "id": "slime", "name": "진흙 슬라임", "ai": "chase", "size": 16, "r": 6, "hp": 4.0, "atk": 0.9, "def": 0, "speed": 24,
+      "exp": 10, "coins": [3, 5], "minFloor": 1, "weight": 3, "contact": true, "cd": 1.0,
+      "status": { "kind": "slow", "dur": 2.5, "power": 0.5 } },
+    { "id": "bat", "name": "동굴 박쥐", "ai": "bat", "size": 16, "r": 5, "hp": 3.2, "atk": 0.8, "def": 0, "speed": 46,
+      "exp": 9, "coins": [2, 5], "minFloor": 1, "weight": 2, "contact": true, "cd": 1.0, "fly": true },
+    { "id": "spitter", "name": "독버섯", "ai": "ranged", "size": 16, "r": 6, "hp": 3.6, "atk": 0.9, "def": 0, "speed": 0,
+      "exp": 11, "coins": [3, 6], "minFloor": 2, "weight": 2, "range": 110, "windup": 0.5, "cd": 2.2,
+      "proj": { "speed": 70, "r": 3, "life": 2.2, "kind": "spore" },
+      "status": { "kind": "poison", "dur": 4, "power": 0.02 } },
+    { "id": "goblin", "name": "돌 도깨비", "ai": "melee", "size": 16, "r": 6, "hp": 4.8, "atk": 1.2, "def": 1, "speed": 32,
+      "exp": 13, "coins": [4, 7], "minFloor": 3, "weight": 2, "range": 16, "windup": 0.45, "cd": 1.1, "reach": 18 },
+    { "id": "knight", "name": "돌갑옷 무사", "ai": "elite", "size": 24, "r": 9, "hp": 20, "atk": 1.4, "def": 3, "speed": 30,
+      "exp": 45, "coins": [30, 40], "minFloor": 9, "weight": 0, "range": 20, "windup": 0.55, "cd": 1.2, "reach": 24, "elite": true,
+      "dash": { "every": 4, "windup": 0.7, "speed": 130, "time": 0.55 } },
+    { "id": "golem", "name": "문지기 골렘", "ai": "golem", "size": 32, "r": 13, "hp": 420, "atk": 1.1, "def": 4, "speed": 22,
+      "exp": 160, "coins": [150, 150], "minFloor": 10, "weight": 0, "range": 22, "windup": 0.6, "cd": 1.4, "reach": 26, "boss": true, "level": 10,
+      "proj": { "speed": 80, "r": 4, "life": 2.5, "kind": "rock" },
+      "slam": { "windup": 1.0, "radius": 44, "mul": 1.6 },
+      "rocks": { "windup": 0.7, "count": 3, "countRage": 5, "spread": 0.35, "mul": 1.0 },
+      "charge": { "windup": 0.8, "speed": 120, "time": 1.3, "stun": 1.4, "mul": 1.4 },
+      "rage": 0.5, "firstShard": 1 }
+  ]
+}

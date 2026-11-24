@@ -1,0 +1,4 @@
+{
+  "_note": "public/art/ 에 넣은 그림 파일 목록 (여기 적힌 것만 불러온다 — 없는 파일을 불러 콘솔 오류가 나지 않게). 예: \"char/body_m.png\", \"tiles.png\", \"enemy/slime.png\", \"orb/rat.png\". ASSETS.md 참고",
+  "files": []
+}

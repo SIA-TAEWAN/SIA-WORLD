@@ -1,0 +1,17 @@
+{
+  "zonePriceRate": 1.5,
+  "items": [
+    { "id": "potionS", "name": "회복약(소)", "icon": "🧪", "desc": "체력 30% 회복", "price": 20, "heal": 0.3 },
+    { "id": "potionL", "name": "회복약(대)", "icon": "❤️", "desc": "체력 70% 회복", "price": 60, "heal": 0.7 },
+    { "id": "mana", "name": "혼력 물약", "icon": "💧", "desc": "혼력 50% 회복", "price": 40, "mana": 0.5 },
+    { "id": "cleanse", "name": "정화 부적", "icon": "🧿", "desc": "독·화상·둔화 해제", "price": 30, "cleanse": true },
+    { "id": "map", "name": "지도 두루마리", "icon": "🗺️", "desc": "다음 층 방 배치·보물방 표시", "price": 50, "map": true },
+    { "id": "shard", "name": "구슬 조각", "icon": "🔹", "desc": "각성 재료 (휴식층마다 1개)", "price": 300, "perRest": 1 },
+    { "id": "revive", "name": "부활 부적", "icon": "🪶", "desc": "쓰러지면 체력 50%로 자동 부활 (1개만, 최종보스전 제외)", "price": 500, "max": 1 }
+  ],
+  "chests": {
+    "treasure": { "coins": [22, 40], "drops": [ { "item": "potionS", "chance": 0.5 }, { "item": "potionL", "chance": 0.2 }, { "item": "mana", "chance": 0.15 }, { "item": "cleanse", "chance": 0.1 } ] },
+    "puzzle": { "coins": [35, 55], "firstShard": 1, "drops": [ { "item": "potionL", "chance": 0.6 }, { "item": "mana", "chance": 0.3 } ] }
+  },
+  "startItems": { "potionS": 3 }
+}
