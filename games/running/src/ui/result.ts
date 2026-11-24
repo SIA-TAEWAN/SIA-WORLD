@@ -3,7 +3,7 @@ import { LOCAL_MODE } from '../net/api';
 import { LOCKED_MSG } from '../game/unlock';
 import { loadRankIcons, worldDailyRanking } from '../net/world';
 import { DAILY_GAME, dailyLabel, dailyMs } from '../game/daily';
-import { ghostDiffText } from '../game/ghost';
+import { ghostDiffText, ghostWho } from '../game/ghost';
 import { reactionLine, saveBestReaction } from '../game/reaction';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
@@ -18,14 +18,15 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   const raced = mine !== undefined;
   // 배지: 이번 판에 내가 한 일 (무결점 완주·부스트 싹쓸이·오뚝이). 실격한 판에는 없다
   const badges = raced && mine.status !== 'foul' ? race.badges(mine.status === 'finish') : [];
-  // 고스트와 비교: "1위보다 0.42초 빨랐어요! 🎉" / "1위까지 0.42초" (내 1위 기록의 고스트면 '내 1위 기록')
+  // 고스트와 비교: "1위보다 0.42초 빨랐어요! 🎉" / "1위까지 0.42초" (내 1위 기록의 고스트면 '내 1위 기록').
+  // 고스트가 그날 그 자리의 실제 기록과 같은지는 판 전 순위(race.dayBefore)로 본다 — 모르는 동안은 '1위 고스트'·'내 고스트'
   const gh = race.ghost;
-  const ghostWho = gh ? (gh.me ? '내 1위 기록' : `${gh.dayPlace}위`) : '';
+  const ghostInfo = gh ? { me: gh.me, dayPlace: gh.dayPlace, nickname: gh.nickname, ms: gh.ghost.ms } : null;
   // 이겼는지도 화면에 보이는 0.01초 기록끼리 (문구가 '똑같아요'인데 이긴 색이 되지 않게)
   const beatGhost = !!gh && mine?.status === 'finish' && Math.floor(mine.timeMs! / 10) < Math.floor(gh.ghost.ms / 10);
   const ghostLine =
     gh && mine?.status === 'finish'
-      ? `<p class="ghost-diff ${beatGhost ? 'win' : ''}">👻 ${esc(ghostDiffText(mine.timeMs!, gh.ghost.ms, ghostWho, formatTime))}</p>`
+      ? `<p class="ghost-diff ${beatGhost ? 'win' : ''}" id="ghost-diff">👻 ${esc(ghostDiffText(mine.timeMs!, gh.ghost.ms, ghostWho(ghostInfo!, null), formatTime))}</p>`
       : '';
   // 출발 반응: 실격한 판에는 없다. 최고 반응(기기 저장, 운으로 본 0.10초 미만은 빼고)을 갱신했으면 '⚡ 반응 신기록'
   const react = raced && mine.status !== 'foul' ? race.reaction() : null;
@@ -92,6 +93,15 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
     });
   });
 
+  // 고스트 문구: 판 전 그날 순위를 받으면 '1위 고스트' → '1위' (고스트 기록이 그 자리의 실제 기록일 때만)
+  if (ghostLine && race.dayBefore) {
+    const t = mine!.timeMs!;
+    void race.dayBefore.then((rank) => {
+      const el = root.querySelector('#ghost-diff');
+      if (el && rank) el.textContent = `👻 ${ghostDiffText(t, gh!.ghost.ms, ghostWho(ghostInfo!, rank), formatTime)}`;
+    });
+  }
+
   // 순위 발표 소리 (한 줄씩)
   results.forEach((_, i) => sfx('rankShow', { delay: 200 + i * 260, rate: 1.3 - i * 0.1 }));
 
@@ -151,7 +161,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
           const when = past ? dailyLabel(day) : '오늘';
           place.innerHTML = `<div class="dp-big">${when} <b>${Number(r.mine.place) || '-'}</b>위</div><div class="soft">${past ? '그날' : '오늘'} 내 최고 ${formatTime(ms)}초 · ${Number(r.total) || 1}명 중</div>`;
           // 고스트(다른 사람)를 이기고 서버 그날 순위가 1위가 됐으면: 👑 오늘의 1위!
-          if (beatGhost && !gh!.me && !past && Number(r.mine.place) === 1) crownCut(root);
+          if (beatGhost && !gh!.me && !past && Number(r.mine.place) === 1) crownCut(root, race.ghostSaved);
         })
         .catch(hide);
     }
@@ -190,7 +200,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
 }
 
 /** 👑 오늘의 1위! (고스트를 이기고 서버 그날 순위 1위를 확인한 뒤) */
-function crownCut(root: HTMLElement) {
+function crownCut(root: HTMLElement, ghostSaved: Promise<boolean> | null) {
   // 제목 자리를 바꾼다 (낮은 화면에서도 카드 높이가 늘지 않게)
   const h2 = root.querySelector('.result-card h2');
   if (!h2 || h2.classList.contains('crown-cut')) return;
@@ -198,7 +208,10 @@ function crownCut(root: HTMLElement) {
   h2.innerHTML = '<span aria-hidden="true">👑</span> 오늘의 1위!';
   sfx('newRecord');
   confetti(root.querySelector('#cheer') as HTMLElement);
-  toast('👑 오늘의 1위가 되었어요! 다음 판부터 내 고스트가 달려요', 3200);
+  // '내 고스트가 달려요' 는 이번 판 고스트가 실제로 올라갔을 때만 (못 올렸으면 다음 판에도 예전 고스트·AI)
+  void (ghostSaved ?? Promise.resolve(false))
+    .catch(() => false)
+    .then((saved) => toast(saved ? '👑 오늘의 1위가 되었어요! 다음 판부터 내 고스트가 달려요' : '👑 오늘의 1위가 되었어요!', 3200));
 }
 
 /** 색종이 (DESIGN.md: 승리 = 별·색종이) */

@@ -1,5 +1,5 @@
 import { HELL, RUN_SEC } from '../data/balance';
-import { endlessCoinCap, endlessOpen, isEndless, isHell } from '../game/progress';
+import { LIMITS, endlessCoinCap, endlessOpen, isEndless, isHell } from '../game/progress';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { MAPS, MAP_INDEX } from '../data/maps';
 import { PASSIVES, PASSIVE_INDEX } from '../data/passives';
@@ -153,7 +153,9 @@ export function showResult(r: GameResult) {
       root.querySelector('#coins')!.textContent = `+${s.coins.toLocaleString()}닢`;
       note.textContent = !s.valid
         ? '기록이 정상 범위를 벗어나 랭킹에는 오르지 않아요'
-        : s.lowKills
+        : r.time < LIMITS.count_min_time
+          ? `${LIMITS.count_min_time}초를 버티지 못한 판이라 엽전과 기록에 들어가지 않았어요`
+          : s.lowKills
           ? '요괴를 너무 적게 잡은 판이라 기록과 엽전에 들어가지 않았어요'
           : daily
           ? s.daily || LOCAL_MODE

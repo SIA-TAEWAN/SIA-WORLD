@@ -241,6 +241,8 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
   apply(s0: RouletteState, seat: number, action: RouletteAction, rng: Rng): RouletteState {
     if (s0.phase === 'spin') {
       // 결과 확인: 모두 확인하면 tickNow가 참이 되어 러너가 바로 다음 스핀을 연다
+      // (마감 직후에 늦게 도착한 베팅 확정은 '확인'이 아니다)
+      if (action && action.type === 'bet') throw new EngineError('베팅 시간이 끝났어요');
       if (!action || action.type !== 'next') throw new EngineError('지금은 결과를 확인할 차례입니다');
       if (!s0.players.some((p) => p.seat === seat)) throw new EngineError('이번 스핀에 참가하지 않은 자리입니다');
       if ((s0.acked ?? []).includes(seat)) throw new EngineError('이미 확인했습니다');

@@ -415,25 +415,32 @@ export function pokerStory(i: PokerStoryInput): string | null {
 /** 판 결과 중 승자를 가르는 데 쓰는 부분 (세븐포커 · 홀덤 요약 공용) */
 export interface PotWinSummary {
   uncontested: boolean;
-  /** 모든 팟 승자의 합집합 — 혼자만 받을 수 있는 남는 팟(못 받은 콜 차액)을 돌려받은 사람도 들어 있다 */
+  /** 모든 팟 승자의 합집합 — 아무도 못 받은 베팅을 돌려받은 사람(refund 팟)도 들어 있다 */
   winners: readonly number[];
-  pots?: readonly { eligible: readonly number[]; winners: readonly number[] }[];
+  /** refund: 가장 많이 낸 사람 혼자 낸 몫을 돌려주는 팟 (엔진 pots.ts 가 판 끝에 가른다) */
+  pots?: readonly { amount?: number; eligible: readonly number[]; winners: readonly number[]; refund?: boolean }[];
 }
 
 /**
- * 진짜 승자 (자리 번호순): 무혈 승리면 winners, 아니면 받을 사람이 2명 이상인 팟의 승자만.
- * 혼자만 받을 수 있는 팟은 겨뤄서 딴 돈이 아니라 더 건 칩을 돌려받은 것이다
+ * 진짜 승자 (자리 번호순): 무혈 승리면 winners, 아니면 돌려받는 팟(refund)이 아닌 팟의 승자.
+ * 혼자만 대상인 팟이라도 다이한 사람의 돈이 들어 있으면 딴 것이다 — 돌려받음은 refund 팟뿐
  */
 export function potRealWinners(r: PotWinSummary | null | undefined): number[] {
   if (!r) return [];
   if (r.uncontested || !r.pots?.length) return [...r.winners].sort((a, b) => a - b);
   const out = new Set<number>();
-  for (const p of r.pots) if (p.eligible.length >= 2) for (const w of p.winners) out.add(w);
+  for (const p of r.pots) if (!p.refund) for (const w of p.winners) out.add(w);
   return out.size ? [...out].sort((a, b) => a - b) : [...r.winners].sort((a, b) => a - b);
 }
 
 /** 이 자리의 'win' 사건이 돌려받은 것뿐인가 (진짜 승자가 아닌데 받았다). 결과를 모르면 false */
 export const potRefundOnly = (seat: number, r: PotWinSummary | null | undefined): boolean => !!r && r.winners.includes(seat) && !potRealWinners(r).includes(seat);
+
+/** 이 자리가 돌려받은 금액 (refund 팟 합계, 무혈 승리면 0) */
+export function potRefundOf(seat: number, r: PotWinSummary | null | undefined): number {
+  if (!r || r.uncontested || !r.pots) return 0;
+  return r.pots.reduce((a, p) => a + (p.refund && p.winners.includes(seat) ? (p.amount ?? 0) : 0), 0);
+}
 
 // ───────────────────────── 홀덤: 미리 고르기 (남의 차례에 예약) ─────────────────────────
 

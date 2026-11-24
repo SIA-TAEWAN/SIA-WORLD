@@ -7,7 +7,7 @@ import { WEAPONS } from '../data/weapons';
 import { characterOpen, codexCount, evolutionHints, knownWeapons } from '../game/progress';
 import { readMade } from '../net/made';
 import { artUrl, zodiacFaceUrl } from '../assets';
-import { esc, mmss, nav, screen, state } from './app';
+import { esc, mmss, nav, screen, state, watchProfile } from './app';
 import { icon } from './icons';
 import { sfx } from './sfx';
 
@@ -21,22 +21,22 @@ type Tab = 'enemy' | 'gear' | 'char';
  * 못 만난 항목은 그림자로만 보이고 이름·설명은 가려진다. 진화 조합은 아는 만큼만 보여 준다.
  */
 export function showCodex() {
-  const p = state.profile;
-  const cx = p.codex;
   let tab: Tab = 'enemy';
   // 서버 도감 목록에 아직 없는 무기가 있으면 이 기기의 기록으로 본다 (net/made.ts — 지금은 없다)
   const made = readMade();
-  const known = knownWeapons(cx, made);
-  const count = codexCount(p, state.owned, made);
+  const count = codexCount(state.profile, state.owned, made);
+  // 판 저장 답이 늦게 오면(setProfile) 새 프로필로 다시 그린다. 화면을 떠나면 그만 듣는다
+  const off = watchProfile(() => paint(false));
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 돌아가기</button><h2>도감</h2><span class="spacer"></span></div>
-     <p class="tagline small">모은 것 ${count.have} / ${count.all}</p>
+     <p class="tagline small" id="count">모은 것 ${count.have} / ${count.all}</p>
      <div class="seg wide" id="tabs">
        <button data-t="enemy">👹 요괴·보스</button><button data-t="gear">⚔️ 무기·패시브</button><button data-t="char">🐾 캐릭터</button>
      </div>
      <div class="card cx-body" id="body"></div>`,
     'codex',
     'main',
+    () => off(),
   );
   const body = root.querySelector('#body') as HTMLElement;
   // 요괴·보스 그림을 받지 못하면 깨진 그림 표시 대신 물음표 아이콘을 둔다 (error 는 위로 올라오지 않아 capture 로 듣는다)
@@ -56,7 +56,13 @@ export function showCodex() {
     `<div class="cx ${known ? '' : 'unknown'}"><span class="cx-art">${art}</span>
       <span class="cx-tx"><b>${known ? esc(name) : '???'}${known && tag ? ` <i class="tag">${esc(tag)}</i>` : ''}</b><small>${known ? esc(desc) : '아직 만나지 못했어요'}</small></span></div>`;
 
-  const paint = () => {
+  /** top: 맨 위로 올린다 (탭을 바꿀 때. 늦게 온 저장 답으로 다시 그릴 때는 보던 자리 그대로) */
+  const paint = (top = true) => {
+    const p = state.profile;
+    const cx = p.codex;
+    const known = knownWeapons(cx, made);
+    const now = codexCount(p, state.owned, made);
+    root.querySelector('#count')!.textContent = `모은 것 ${now.have} / ${now.all}`;
     root.querySelectorAll<HTMLElement>('#tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.t === tab));
     if (tab === 'enemy') {
       const enemies = ENEMIES.map((e) => cell(cx.enemies.includes(e.id), foe(`e-${e.id}`), e.name, e.desc));
@@ -91,7 +97,7 @@ export function showCodex() {
       const maps = MAPS.map((m) => cell(p.unlockedMaps.includes(m.id), `<i class="blob m-${m.id}"></i>`, m.name, `${m.desc} · ${m.level} · 엽전 ×${m.coinMul}`));
       body.innerHTML = `<h3>캐릭터 ${CHARACTERS.filter((c) => characterOpen(p, c.id, state.owned)).length}/${CHARACTERS.length}</h3>${chars.join('')}<h3>맵 ${p.unlockedMaps.filter((m) => MAP_INDEX[m] !== undefined).length}/${MAPS.length}</h3>${maps.join('')}`;
     }
-    body.scrollTop = 0;
+    if (top) body.scrollTop = 0;
   };
   paint();
   root.querySelector('#tabs')!.addEventListener('click', (e) => {

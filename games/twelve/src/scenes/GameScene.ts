@@ -111,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     this.run = data.run;
     this.hooks = data.hooks;
     this.acc = 0;
-    this.paused = false;
+    // paused 는 여기서 되돌리지 않는다: 가려진 탭에서 시작한 판은 화면(playRun)이 init 보다 먼저 멈춰 둔다 (판마다 새 장면이라 처음 값은 false)
     this.endT = -1;
     this.ended = false;
     this.chunks.clear();

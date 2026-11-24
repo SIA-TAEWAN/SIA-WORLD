@@ -978,7 +978,10 @@ function playCard(t: Ctx, id: string) {
   picked = id;
   const withShake = shake && !!t.priv?.shakeable.includes(cardById(id).month);
   t.redraw();
+  // 흔들기 체크는 이번에 낸 패에만: 다음 차례에 남아 있지 않게 (받지 않았으면 다시 켜 둔다)
+  shake = false;
   void t.act({ type: 'play', card: id, shake: withShake }).then((ok) => {
+    if (!ok && withShake) shake = true;
     // 서버가 받지 않았으면 다시 고를 수 있게
     if (!ok && picked === id) {
       picked = null;
@@ -1002,8 +1005,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   // 조작부는 말풍선 한 줄 + 버튼 한 줄이면 충분하다 (기본 210px이면 휴대폰에서 빈 띠가 크게 남는다)
   controlsMin: (w) => (w < 700 ? 104 : 112),
 
-  // 혼자 하는 판(사람 1명 + AI)은 기기에서 진행한다: 서버 응답을 기다리지 않고 바로 두고, AI 는 내 차례의 연출이 다 끝난 뒤에 둔다.
-  // 사람이 둘인 방은 서버가 그렇게 시작하지 않으므로 예전 그대로 서버 진행
+  // 판은 기기에서 먼저 진행한다 (lib/solo-play.ts): 혼자 하는 판(사람 1명 + AI)은 서버 응답을 기다리지 않고 바로 두고 AI 는 내 차례의 연출이 다 끝난 뒤에 두며,
+  // 사람 둘인 판은 내 행동을 바로 적용해 방 채널로 알리고 서버(심판)에는 뒤에서 차례로 보낸다
   local: soloPlay(matgo, {
     // 낸 패 → 뒤집은 패 → 먹기까지의 연출 계획이 끝날 때까지
     busyLeft: () => animLeft(),
@@ -1499,8 +1502,10 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
       .join('');
     if (r.result === 'nagari') {
       // 나가리여도 뻑 보너스는 오간다
+      // 어느 자리든 고를 한 번이라도 불렀으면 '아무도 점수를 못 냈다' 가 아니다
+      const goNagari = Object.values(t.pub?.players ?? {}).some((x) => (x?.go ?? 0) >= 1);
       const mine = t.resultSeat !== null ? (r.net?.[t.resultSeat] ?? 0) : 0;
-      return `<div class="mg-res draw"><div class="mg-res-head"><div><b>나가리!</b><span>아무도 점수를 못 냈어요</span></div></div>
+      return `<div class="mg-res draw"><div class="mg-res-head"><div><b>나가리!</b><span>${goNagari ? '고 한 뒤 점수를 더 못 냈어요' : '아무도 점수를 못 냈어요'}</span></div></div>
         <p class="mg-res-money">다음 판 ×${r.nextNagari}</p>
         ${ppeokLines ? `<ul class="mg-res-lines">${ppeokLines}${mine ? `<li class="sum"><span>내 뻑 정산</span><b>${mine > 0 ? '+' : '-'}${t.fmt(Math.abs(mine))}냥</b></li>` : ''}</ul>` : ''}</div>`;
     }

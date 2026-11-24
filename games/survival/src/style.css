@@ -305,7 +305,7 @@ em > .ico { margin: 0 auto; }
 .game.hell .mood { opacity: 0.3; }
 /* 불씨: 아래에서 위로 흔들리며 올라가다 꺼진다 · 재: 위에서 천천히 내려온다 */
 .embers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.embers i { position: absolute; bottom: -3%; width: calc(var(--u) * 9); height: calc(var(--u) * 9); border-radius: 50%; background: var(--primary); box-shadow: 0 0 calc(var(--u) * 10) calc(var(--u) * 3) var(--pink); opacity: 0; animation: ember-rise 4s linear infinite; }
+.embers i { position: absolute; bottom: -3%; width: calc(var(--u) * 9); height: calc(var(--u) * 9); border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 calc(var(--u) * 3) var(--pink); opacity: 0; animation: ember-rise 4s linear infinite; }
 .embers i:nth-child(2n) { width: calc(var(--u) * 6); height: calc(var(--u) * 6); background: var(--pink); }
 .embers i.ash { bottom: auto; top: -3%; width: calc(var(--u) * 8); height: calc(var(--u) * 5); border-radius: 40%; background: color-mix(in srgb, var(--outline) 70%, var(--white)); box-shadow: none; animation-name: ash-fall; }
 @keyframes ember-rise {

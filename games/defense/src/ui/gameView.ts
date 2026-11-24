@@ -9,7 +9,7 @@ import { ACT, DASH } from '../game/bosses';
 import { endlessBoss, endlessWave } from '../data/endless';
 import { quitCoins } from '../game/progress';
 import { AIM } from '../game/core';
-import { AIM_CMDS_MAX, activeBoss, canPlace, canSetAim, sellValue, towerLevel, upgradeCost } from '../game/sim';
+import { AIM_CMDS_MAX, activeBoss, canPlace, canSetAim, cmdRoom, placeRoom, sellValue, towerLevel, upgradeCost } from '../game/sim';
 import { aimMode, airFirst, canAim } from '../game/towers';
 import { EV, type Ev, type State } from '../game/state';
 import { presetUpgrades } from '../data/growth';
@@ -17,6 +17,8 @@ import { LOCAL_MODE, type StartInfo } from '../net/api';
 import { fillBench } from '../run/devtools';
 import { Run, SPEEDS, type Speed } from '../run/run';
 import { GameScene, type SceneData } from '../scenes/GameScene';
+import { BG } from '../scenes/art';
+import { css } from '../theme';
 import { artUrl, zodiacFaceUrl } from '../assets';
 import { esc, mmss, nav, screen, setProfile, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { levelText } from './codex';
@@ -142,7 +144,8 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
       <div class="cards" id="cards">${Array.from({ length: SQUAD_SIZE }, (_, i) => cardHtml(i)).join('')}</div>
       <div class="tpanel hidden" id="panel"></div>
     </div>`,
-    `game bg-${s.stage.region}`,
+    // 지역 배경(들판·대나무 숲·궁궐·황천길) 클래스: style.css 의 .bg-* 가 .field 바탕색을 정한다
+    `game bg-${stageBg(s.stage)}`,
     () => {
       window.removeEventListener('keydown', onKey);
       document.removeEventListener('visibilitychange', onHide);
@@ -282,12 +285,15 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     shown.panelPoor = null;
   }
 
+  /** 명령·배치 수 상한(서버의 cmds_max · placed_max)에 닿았을 때 */
+  const NO_ROOM = '이 판에서는 더 놓거나 바꿀 수 없어요';
   function tryPlace(slot: number, char: number) {
     if (!canPlace(s, slot, char)) {
       sfx('toggle');
       const tw = s.towers[slot];
       // 보스가 태우거나 멈춘 칸: 잠시 뒤에 다시 쓸 수 있다
-      if (tw && tw.char < 0 && tw.off > 0) toast(OFF_TEXT[BOSSES[s.bossId]?.act ?? ''] ?? '잠시 못 쓰는 칸이에요', 1400);
+      if (tw && tw.char < 0 && !placeRoom(s)) toast(NO_ROOM, 1400);
+      else if (tw && tw.char < 0 && tw.off > 0) toast(OFF_TEXT[BOSSES[s.bossId]?.act ?? ''] ?? '잠시 못 쓰는 칸이에요', 1400);
       else if (tw && tw.char < 0 && s.energy < s.cost[char]) toast(`기운이 모자라요 (✨${s.cost[char]} 필요)`, 1400);
       return false;
     }
@@ -330,7 +336,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     if (cost === null) return;
     if (!run.cmd('upgrade', sel)) {
       sfx('toggle');
-      toast(`기운이 모자라요 (✨${cost} 필요)`, 1400);
+      toast(cmdRoom(s) ? `기운이 모자라요 (✨${cost} 필요)` : NO_ROOM, 1400);
     }
     refresh();
   }
@@ -348,6 +354,10 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
   function doSell() {
     if (sel < 0 || blocked()) return;
     if (run.cmd('sell', sel)) sel = -1;
+    else if (!cmdRoom(s)) {
+      sfx('toggle');
+      toast(NO_ROOM, 1400);
+    }
     refresh();
   }
   function doStart() {
@@ -809,7 +819,8 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
       parent: fieldEl,
       width: Math.round(w * DPR),
       height: Math.round(h * DPR),
-      backgroundColor: '#7cc08a',
+      // 그림을 그리기 전 바탕: 그 지역의 바닥색 (GameScene 의 카메라 바탕과 같은 값)
+      backgroundColor: css(BG[stageBg(s.stage)].ground),
       banner: false,
       audio: { noAudio: true },
       input: { keyboard: false, mouse: false, touch: false, gamepad: false },

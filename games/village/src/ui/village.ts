@@ -3,7 +3,7 @@ import { CAPPED, CONST, HALL_NEED, LAND_NEED, LAND_PRICE, LAND_SIZES, LEVEL_EXP,
 import { BUILDING, BUILDINGS, isReward, recipeOf, upgradable, type BuildingType } from '../data/buildings';
 import { GAMES, visibleMonuments, type GameStats } from '../data/monuments';
 import { goalText, josa } from '../data/goals';
-import { CAT_LAND_STAGE, CAT_PRICE, RATE_WORKERS, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
+import { CAT_LAND_STAGE, CAT_PRICE, RATE_WORKERS, REQ, RESIDENT, RESIDENTS, affLevel, type ResidentId } from '../data/residents';
 import {
   batchMax, buildCost, buildSec, busyCount, canHaveMore, canPay, capSec, countCap, countOf, effRate, feasting, goalStatus, landOpen, market, marketLimit, maxCount, nextUnlock, pavilionRange, payOf, ratePct, residentOf, residentPct, sellCoins, isFull, normalMax,
   newVillage, nextResident, praiseLeft, sellLeft, siaOf, slotFree, slots, standing, storageCap, stored, storedMax, unitSec, upgradeCost, upgradeGate, upgradeSec, workersAt, workplace, type Building, type Cost, type VillageState,
@@ -871,7 +871,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     }
     if (b.type === 'pavilion') lines.push(`<p>둘레 ${pavilionRange(state)}칸 안의 생산 건물이 <b>${CONST.pavilion_pct + CONST.pavilion_pct_per * (b.level - 1)}%</b> 더 만들어요${b.state === 'building' ? ' (다 지은 뒤부터)' : ''}</p>`);
     if (b.type === 'feast') lines.push(feastBox(b));
-    if (b.type === 'shrine') lines.push('<p class="soft">마을의 상징이에요. 주민과 더 빨리 친해지고 번영도가 크게 올라요 (주민 · 랭킹이 열리면 힘을 내요)</p>');
+    if (b.type === 'shrine') lines.push(`<p>주민 부탁을 들어주면 오르는 친밀도가 <b>+${REQ.shrine_pct}%</b>${b.state === 'building' ? ' (다 지은 뒤부터)' : ''}</p><p class="soft">마을의 상징이에요 · 번영도 +${d.points}</p>`);
+    if (b.type === 'jisin') lines.push(`<p class="soft">${d.desc} · 번영도 +${d.points}</p>`);
     if (b.type === 'storage') lines.push(`<p>창고 용량 <b>+${num(STORAGE_CAP[b.level - 1])}</b></p>`);
     if (b.type === 'hall') lines.push(`<p>창고 용량 <b>${num(storageCap(state))}</b> · 동시에 짓기 <b>${slots(state)}</b>개 · 다른 건물은 레벨 <b>${b.level}</b>까지</p>`);
     if (b.type === 'house') {

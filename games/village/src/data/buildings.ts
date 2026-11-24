@@ -12,7 +12,7 @@ export type BuildingKind = 'main' | 'special' | 'deco' | 'road';
 
 export const BUILDING_IDS = [
   'hall', 'paddy', 'house', 'lumber', 'storage', 'market', 'quarry', 'mill', 'jar',
-  'pavilion', 'feast', 'shrine',
+  'pavilion', 'feast', 'jisin', 'shrine',
   'tree', 'haystack', 'flower', 'scarecrow', 'stonewall', 'bench', 'lantern', 'well', 'jangseung', 'sotdae', 'pond', 'stonetower',
   'road',
   // 주민이 친밀도 선물로 주는 전용 장식물 (지을 수 없다: 보관함으로 들어온다)
@@ -21,6 +21,7 @@ export const BUILDING_IDS = [
   'mon_tank1', 'mon_tank10', 'mon_volley1', 'mon_volley10', 'mon_race1', 'mon_race2', 
   'mon_surv_field', 'mon_surv_bamboo', 'mon_surv_palace', 'mon_surv_underworld', 'mon_def3', 'mon_def6', 'mon_def9', 'mon_def12', 'mon_matgo', 'mon_casino',
   'mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger100', 'mon_finger_tower',
+  'mon_twelve_keys', 'mon_twelve_final', 'mon_twelve_hard', 'mon_twelve_tower', 'mon_daily7', 'mon_daily_first', 'mon_race_week',
 ] as const;
 export type BuildingType = (typeof BUILDING_IDS)[number];
 
@@ -70,6 +71,7 @@ const ROWS: Row[] = [
   ['jar', 'main', '장독대', '떡과 쌀을 오래 묵혀 비싼 특산품을 만들어요', 1, 1, 0, 100, 60, 50, 0, 15, 300, null, 0, 60, 0, 0, [8, 12, 17]],
   ['pavilion', 'special', '정자', '둘레의 생산 건물이 더 많이 만들어요', 2, 2, 100, 100, 0, 0, 20, 20, 600, null, 0, 150, 0, 20, [6]],
   ['feast', 'special', '잔치 마당', '떡을 모아 잔치를 열면 하루 동안 마을 전체의 생산이 늘어요', 2, 2, 150, 150, 50, 0, 40, 20, 1800, null, 0, 300, 0, 40, [10]],
+  ['jisin', 'special', '열두 지신 문', '열두 지신이 지키는 문. 시아열두길의 열두 지형을 새긴 원판이 달려 있고 번영도가 크게 올라요', 2, 2, 180, 180, 80, 0, 50, 25, 2400, null, 0, 450, 0, 60, [12]],
   ['shrine', 'special', '십이지 사당', '마을의 상징. 주민 친밀도가 더 빨리 오르고 번영도가 크게 올라요', 2, 2, 200, 200, 100, 0, 60, 30, 3600, null, 0, 600, 0, 80, [14]],
   ['tree', 'deco', '나무', '마을에 그늘을 드리워요', 1, 1, 0, 0, 0, 20, 0, 0, 0, null, 0, 2, 12, 1, [1]],
   ['haystack', 'deco', '볏가리', '가을걷이의 흔적', 1, 1, 0, 0, 0, 50, 0, 0, 0, null, 0, 4, 6, 2, [2]],
@@ -119,6 +121,13 @@ const ROWS: Row[] = [
   ['mon_finger30', 'deco', '튕김 구슬', '시아핑거 별 30개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
   ['mon_finger100', 'deco', '황금 구슬', '시아핑거 별 100개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 45, [99]],
   ['mon_finger_tower', 'deco', '요괴 탑', '시아핑거 끝없는 탑 20층 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
+  ['mon_twelve_keys', 'deco', '열쇠 돌기둥', '시아열두길 보통 모드 열쇠 6개 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 30, [99]],
+  ['mon_twelve_final', 'deco', '열두길 비석', '시아열두길 보통 모드 최종보스를 물리친 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 50, [99]],
+  ['mon_twelve_hard', 'deco', '금빛 열두길 문', '시아열두길 어려움 모드 최종보스(진짜 엔딩) 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 70, [99]],
+  ['mon_twelve_tower', 'deco', '구름 탑 등불', '시아열두길 끝없는 탑 30층 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
+  ['mon_daily7', 'deco', '도전 달력', '오늘의 도전 7일 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 25, [99]],
+  ['mon_daily_first', 'deco', '장원 깃발', '오늘의 도전 하루 1위 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 40, [99]],
+  ['mon_race_week', 'deco', '주간 시상대', '시아레이스 주간 랭킹 3위 안 기념', 1, 1, 0, 0, 0, 0, 0, 0, 0, null, 0, 0, 1, 35, [99]],
 ];
 
 export const BUILDINGS: BuildingDef[] = ROWS.map(([id, kind, name, desc, w, h, rice, wood, stone, coin, sia, upStone, buildSec, product, rate, buildExp, cap, points, unlock]) => ({

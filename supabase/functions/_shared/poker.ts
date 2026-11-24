@@ -104,6 +104,8 @@ export interface PokerPlayer {
 export interface PokerPot {
   amount: number;
   eligible: number[];
+  /** 한 사람만 낸 돈을 돌려주는 팟 (판이 끝날 때만, pots.ts) */
+  refund?: boolean;
 }
 
 export interface PokerPotResult extends PokerPot {
@@ -205,7 +207,8 @@ export interface PokerPrivate {
 }
 
 export const MAX_RAISES = 3;
-const EVENT_KEEP = 30;
+/** 한 판 안의 사건이 잘리지 않을 만큼 (4인 AI 판 최대 60개쯤, 레이즈 3번씩 다 해도 100개 안팎 · 공개 상태에 약 5KB) */
+const EVENT_KEEP = 120;
 
 // ───────────────────────── 카드·족보 (hand-eval.ts, 세븐포커 규칙 = KOREAN) ─────────────────────────
 
@@ -270,8 +273,8 @@ function put(p: PokerPlayer, amount: number): number {
 }
 
 /** 사이드 팟 (설명은 파일 머리말, 계산은 pots.ts) */
-export function computePots(s: PokerState): PokerPot[] {
-  return computeSidePots(participants(s));
+export function computePots(s: PokerState, opts: { refund?: boolean } = {}): PokerPot[] {
+  return computeSidePots(participants(s), opts);
 }
 
 /** 지금 turn 자리가 할 수 있는 행동 */
@@ -414,7 +417,7 @@ function showdown(s: PokerState): void {
     else if (v.cat === HandCat.STRAIGHT_FLUSH) emit(s, 'straight_flush', { seat: p.seat });
     else if (v.cat === HandCat.QUADS) emit(s, 'four_kind', { seat: p.seat });
   }
-  const pots: PokerPotResult[] = computePots(s).map((pot) => {
+  const pots: PokerPotResult[] = computePots(s, { refund: true }).map((pot) => {
     let best: HandValue | null = null;
     let winners: number[] = [];
     for (const seat of pot.eligible) {
@@ -491,7 +494,23 @@ export function draws(cards: string[]): { flush4: boolean; straight4: boolean } 
 /** AI 실수 확률: 이만큼은 사람에게 유리한 쪽으로 잘못 고른다 (난이도 10% 낮춤. AI 는 돈을 잃어도 된다) */
 export const AI_MISTAKE = 0.1;
 
+/** 들고 있는 카드가 이 장수 이하인 베팅(4구 · 5구)에서는 AI 가 다이하지 않는다 */
+export const AI_NO_DIE_CARDS = 5;
+
 function aiBet(pub: PokerPublic, priv: PokerPrivate | undefined, seat: number, rng: Rng): PokerAction {
+  const a = aiBetMistake(pub, priv, seat, rng);
+  // 4구·5구에서는 AI 가 죽지 않는다: 체크할 수 있으면 체크, 아니면 콜 (칩이 모자라면 엔진이 올인 콜로). 6구·7구는 판단 그대로
+  // (진짜 AI 자리만 — 시간 초과·판 도중 나간 자리는 timeout 으로 따로 둔다)
+  const me = pub.seats.find((x) => x.seat === seat);
+  if (a.type !== 'die' || me?.kind !== 'ai') return a;
+  const held = (me.hiddenCount ?? priv?.hidden.length ?? 0) + (me.open?.length ?? 0) || pub.round;
+  if (held > AI_NO_DIE_CARDS) return a;
+  if (pub.actions.some((x) => x.type === 'check')) return { type: 'check' };
+  if (pub.actions.some((x) => x.type === 'call')) return { type: 'call' };
+  return a;
+}
+
+function aiBetMistake(pub: PokerPublic, priv: PokerPrivate | undefined, seat: number, rng: Rng): PokerAction {
   const a = aiBetPlan(pub, priv, seat, rng);
   // 실수는 진짜 AI 자리에만: 판 도중 나간 사람 자리는 AI 가 대신 두지만 그 사람의 실제 칩이다 (난수는 똑같이 하나 쓴다)
   const roll = rng.next();

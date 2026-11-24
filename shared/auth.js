@@ -36,13 +36,18 @@ export function passwordProblem(v) {
   return null;
 }
 
-async function exists(column, value) {
-  const { count, error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq(column, value);
-  if (error) throw new AuthError('서버와 통신하지 못했어요. 잠시 후 다시 시도해 주세요');
+const NET_ERROR = '서버와 통신하지 못했어요. 잠시 후 다시 시도해 주세요';
+/** 아이디는 남에게 보이지 않는 열이라(098) 서버 함수로만 확인한다 */
+export async function isLoginIdTaken(loginId) {
+  const { data, error } = await supabase.rpc('login_id_taken', { p_login: loginId });
+  if (error) throw new AuthError(NET_ERROR);
+  return data === true;
+}
+export async function isNicknameTaken(nickname) {
+  const { count, error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('nickname', nickname);
+  if (error) throw new AuthError(NET_ERROR);
   return (count ?? 0) > 0;
 }
-export const isLoginIdTaken = (loginId) => exists('login_id', loginId);
-export const isNicknameTaken = (nickname) => exists('nickname', nickname);
 
 /**
  * 예전 시아탱크 랭킹 기록 확인.
@@ -124,11 +129,19 @@ export async function signIn(loginId, password) {
   // 이 브라우저를 '지금 접속한 곳'으로 올린다 → 다른 기기에 로그인돼 있던 같은 계정은 곧 로그아웃된다
   // (getCurrentUser보다 먼저: 거기서 시작하는 확인이 예전 표식을 다시 올리지 않게)
   await claimSession(true);
-  const user = await getCurrentUser();
+  // 회원 정보를 못 읽으면 한 번 더 읽고, 그래도 안 되면 로그인을 되돌린다 (로그인된 채 로그인 화면에 남지 않게)
+  let user = null;
+  let failed = false;
+  for (let attempt = 0; attempt < 2 && !user && (attempt === 0 || failed); attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 800));
+    failed = false;
+    user = await getCurrentUser().catch(() => ((failed = true), null));
+  }
   if (!user) {
+    stopWatch();
     dropToken();
-    await supabase.auth.signOut({ scope: 'local' });
-    throw new AuthError('회원 정보를 찾지 못했어요. 관리자에게 알려 주세요');
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    throw new AuthError(failed ? NET_ERROR : '회원 정보를 찾지 못했어요. 관리자에게 알려 주세요');
   }
   return user;
 }
@@ -305,8 +318,9 @@ export async function getCurrentUser() {
   const uid = data.session?.user?.id;
   if (!uid) return null;
   if (profileCache?.userId === uid) return profileCache;
-  const { data: p, error } = await supabase.from('profiles').select('login_id,nickname,is_admin').eq('id', uid).maybeSingle();
-  if (error) throw new AuthError('서버와 통신하지 못했어요. 잠시 후 다시 시도해 주세요');
+  // login_id · is_admin 은 남에게 보이지 않는 열이라(098) 내 것만 서버 함수로 읽는다
+  const { data: p, error } = await supabase.rpc('my_profile');
+  if (error) throw new AuthError(NET_ERROR);
   if (!p) return null;
   profileCache = { userId: uid, loginId: p.login_id, nickname: p.nickname, isAdmin: !!p.is_admin };
   // 동시 접속 확인을 시작한다 (다른 기기에서 로그인하면 여기는 로그아웃)

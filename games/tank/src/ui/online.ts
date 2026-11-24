@@ -341,7 +341,7 @@ function renderRoom(id: string) {
       unsubA();
       unsubB();
       unsubC();
-      clearInterval(iv);
+      stopIv();
       window.removeEventListener('pagehide', onHide);
     },
   );
@@ -388,7 +388,7 @@ function renderRoom(id: string) {
       unsubA();
       unsubB();
       unsubC();
-      clearInterval(iv);
+      stopIv();
       window.removeEventListener('pagehide', onHide);
       void rs.leave();
       roomSess = null;
@@ -400,7 +400,7 @@ function renderRoom(id: string) {
       unsubA();
       unsubB();
       unsubC();
-      clearInterval(iv);
+      stopIv();
       window.removeEventListener('pagehide', onHide);
       setScreenCleanup(null);
       void rs.leave();
@@ -412,7 +412,7 @@ function renderRoom(id: string) {
       unsubA();
       unsubB();
       unsubC();
-      clearInterval(iv);
+      stopIv();
       window.removeEventListener('pagehide', onHide);
       setScreenCleanup(null);
       return startOnline(room, null);
@@ -580,27 +580,41 @@ function renderRoom(id: string) {
   // 다른 기기에서 열고 돌아와도 자물쇠를 바로 푼다 (이 화면을 떠났으면 스스로 끈다)
   const offUnlock = onUnlockChange(() => (root.isConnected ? draw() : offUnlock()));
   void refreshProgress();
-  // 대기방에서 접속이 끊긴 사람은 잠시(ABSENT_GRACE_MS) 기다린 뒤 방에서 뺀다 (방에 있는 사람 중 첫 번째가 처리)
+  // 대기방에서 접속이 끊긴 사람은 잠시(ABSENT_GRACE_MS) 기다린 뒤 방에서 뺀다.
+  // 맡는 기기는 방 화면을 보고 있는(숨은 탭·결과 화면이 아닌) 사람 중 명단 첫 번째 (RoomSession.isSweeper)
   const iv = setInterval(() => {
     const room = sess.room(id);
     if (!room || room.status !== 'waiting') return;
     const now = Date.now();
-    const here = room.players.filter((p) => rs.present.has(p.id));
-    // 대기 중에도 방에 사람이 있다는 신호 (30초마다, 첫 번째 사람이)
-    if (here[0]?.id === clientId() && now - lastBeat > 30_000) {
+    // 방 화면을 보고 있다는 표시 (탭을 가리면 끈다 — 아래 onVis 가 바로, 타이머가 멈추지 않는 기기는 여기서도)
+    const watch = !document.hidden;
+    if (rs.meWatching !== watch) void rs.setWatching(watch).catch(() => undefined);
+    // 대기 중에도 방에 사람이 있다는 신호 (30초마다, 방 화면에 있는 기기 모두 — 한 사람만 하면 그 사람이 결과 화면에 머물 때 방이 지워졌다)
+    if (now - lastBeat > 30_000) {
       lastBeat = now;
       void backend!.touchRoom(id, clientId()).catch(() => undefined);
     }
+    const sweeper = rs.isSweeper(room.players.map((p) => p.id));
     for (const p of room.players) {
       if (!seenSince.has(p.id)) seenSince.set(p.id, now);
       if (rs.present.has(p.id) || now - seenSince.get(p.id)! < JOIN_GRACE_MS) absentSince.delete(p.id);
       else if (!absentSince.has(p.id)) absentSince.set(p.id, now);
-      else if (now - absentSince.get(p.id)! > ABSENT_GRACE_MS && here[0]?.id === clientId()) {
+      else if (now - absentSince.get(p.id)! > ABSENT_GRACE_MS && sweeper) {
         absentSince.delete(p.id);
         void backend!.leaveRoom(id, p.id).then(() => sess.refetch());
       }
     }
   }, 1000);
+  // 탭을 가리면 바로 '방 화면을 보는 중' 표시를 끈다 (아이폰은 가린 뒤 타이머가 멈춘다)
+  const onVis = () => {
+    if (document.hidden) void rs.setWatching(false).catch(() => undefined);
+  };
+  document.addEventListener('visibilitychange', onVis);
+  function stopIv() {
+    clearInterval(iv);
+    document.removeEventListener('visibilitychange', onVis);
+    void rs.setWatching(false).catch(() => undefined);
+  }
   // 창을 닫거나 다른 곳으로 가면 스스로 대기방에서 나간다
   const onHide = () => {
     if (sess.room(id)?.status === 'waiting') void backend!.leaveRoom(id, clientId()).catch(() => undefined);
@@ -614,7 +628,7 @@ function renderRoom(id: string) {
     unsubA();
     unsubB();
     unsubC();
-    clearInterval(iv);
+    stopIv();
     window.removeEventListener('pagehide', onHide);
     setScreenCleanup(null);
     void leaveRoom();
@@ -779,6 +793,13 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
         primary: '게임방으로',
         onPrimary: () => backToRoom(room.id),
       });
+      // 결과 화면에 머무는 동안에도 방에 사람이 있다는 신호 (30초마다). 안 보내면 2분 뒤 sweep_rooms 가 방을 지운다
+      const rsNow = roomSess;
+      const resultBeat = setInterval(() => {
+        if (!rsNow || roomSess !== rsNow) return clearInterval(resultBeat);
+        void backend!.touchRoom(room.id, clientId()).catch(() => undefined);
+      }, 30_000);
+      setScreenCleanup(() => clearInterval(resultBeat));
     },
     onQuit: quit,
   });

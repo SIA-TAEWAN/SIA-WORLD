@@ -105,7 +105,7 @@ function enterRoom(id: string, base: number) {
   shownWin.clear();
 }
 const serverNow = () => Date.now() + skew;
-/** 베팅이 막 열린 순간이면 서버 시계와의 차이를 잰다 (중간에 들어왔을 때는 재지 않는다) */
+/** 베팅이 막 열린 순간이면 서버 시계와의 차이를 잰다 (중간에 들어왔을 때는 앞선 만큼만 잠정으로) */
 function syncClock(p: RoulettePublic) {
   const key = `${p.phase}:${p.spin}`;
   if (key === lastPhase) return;
@@ -117,10 +117,17 @@ function syncClock(p: RoulettePublic) {
       skew = skewSeen ? Math.max(skew, est) : est;
       skewSeen = true;
     }
+  } else if (p.phase === 'bet' && p.endsAt && !skewSeen) {
+    // 베팅 도중에 처음 봤다: 열린 뒤 지난 시간만큼 작게 나오지만, 양수면 서버 시계가 그만큼은 앞서 있다 → 잠정 값으로
+    // (다음에 베팅이 열리는 순간을 보면 그 값으로 바꾼다 — skewSeen 은 그대로 false)
+    const est = p.endsAt - BET_MS - Date.now();
+    if (est > 0 && est < 5 * 60_000) skew = Math.max(skew, est);
   }
   lastPhase = key;
 }
 
+/** 베팅한 사람 이름: 이번 스핀 참가자 목록(p.players)에 적힌 이름 (확정하고 나가도 '자리 N' 이 되지 않게) */
+const betName = (t: Ctx, p: RoulettePublic, seat: number) => p.players.find((x) => x.seat === seat)?.name ?? t.seatName(seat);
 const keyOf = (b: { kind: BetKind; target: number }) => `${b.kind}:${b.target}`;
 const sumOf = (bs: RBet[]) => bs.reduce((a, b) => a + b.amount, 0);
 
@@ -389,7 +396,9 @@ function betControls(t: Ctx, el: HTMLElement) {
     const total = sumOf(local);
     const slots = myPresets();
     // 따라 걸기: 이미 확정한 다른 사람 (아바타를 누르면 그 사람 배치를 내 놓기로 복사)
-    const leaders = Object.entries(p.bets).filter(([seat, bs]) => seat !== me && bs.length > 0);
+    // 따라 걸기는 지금 앉아 있는 사람만 (확정하고 나간 사람의 베팅은 판에 남아 있지만 얼굴을 띄우지 않는다)
+    const seated = (n: number) => t.seats.some((x) => x.seat_no === n && !!x.user_id && !x.left_game);
+    const leaders = Object.entries(p.bets).filter(([seat, bs]) => seat !== me && bs.length > 0 && seated(Number(seat)));
     el.innerHTML = `<div class="row rl-top">
         <span class="rl-units">${[1, 5, 10].map((n) => `<button class="btn small ${unit === n ? 'sel' : ''}" data-u="${n}">${t.fmt(base * n)}</button>`).join('')}</span>
         <span class="rl-left" id="rl-left">${p.endsAt ? Math.max(0, Math.ceil((p.endsAt - serverNow()) / 1000)) : 20}초</span>
@@ -407,7 +416,7 @@ function betControls(t: Ctx, el: HTMLElement) {
       ${
         leaders.length
           ? `<div class="row rl-follow"><span>따라 걸기</span>${leaders
-              .map(([seat, bs]) => `<button type="button" class="rl-fav" data-follow="${seat}" ${dis} title="${esc(t.seatName(Number(seat)))} 따라 걸기 (${t.fmt(sumOf(bs))}칩)"><img src="${faceUrl(t.seatAvatar(Number(seat)))}" alt=""/><i>${esc(short(t.seatName(Number(seat))))}</i></button>`)
+              .map(([seat, bs]) => `<button type="button" class="rl-fav" data-follow="${seat}" ${dis} title="${esc(betName(t, p, Number(seat)))} 따라 걸기 (${t.fmt(sumOf(bs))}칩)"><img src="${faceUrl(t.seatAvatar(Number(seat)))}" alt=""/><i>${esc(short(betName(t, p, Number(seat))))}</i></button>`)
               .join('')}</div>`
           : ''
       }
@@ -483,7 +492,7 @@ function betControls(t: Ctx, el: HTMLElement) {
         setLocal(next);
         sfx('chip');
         t.redraw();
-        flash(el, `${short(t.seatName(Number(b.dataset.follow)))} 따라 놓았어요`, true);
+        flash(el, `${short(betName(t, p, Number(b.dataset.follow)))} 따라 놓았어요`, true);
       }),
     );
     const room = t.room.id;

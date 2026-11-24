@@ -688,7 +688,8 @@ function showUpgrades() {
       } catch (e) {
         toast(errText(e));
       }
-      showUpgrades();
+      // 답을 기다리는 사이 다른 화면으로 갔으면 강화 화면을 다시 그리지 않는다
+      if (b.isConnected) showUpgrades();
     }),
   );
 }
@@ -700,7 +701,11 @@ let busy = false;
 /** 판을 시작하기 전 못 보낸 기록을 기다리는 최대 시간: 넘으면 보내기는 뒤에서 계속하고 판을 시작한다 */
 const RESEND_WAIT_MS = 4000;
 
+/** 지금 판의 visibilitychange(저절로 멈춤) 듣기를 푼다 */
+let stopHideWatch = () => {};
+
 function closeGame() {
+  stopHideWatch();
   game?.destroy(true);
   game = null;
 }
@@ -773,6 +778,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
   const finish = async (s: RunState) => {
     if (sent) return null;
     sent = true;
+    stopHideWatch();
     if (DEV_ALL) return { result: null, note: null };
     const report: RunReport = {
       run: runId,
@@ -823,10 +829,11 @@ export async function startGame(stage: StageDef, endless: boolean) {
       },
     },
   });
-  root.querySelector('#pause')!.addEventListener('click', () => {
+  const pauseBtn = root.querySelector<HTMLButtonElement>('#pause')!;
+  /** 일시정지 창을 연다 (⏸ 단추 · 다른 앱으로 넘어갈 때) */
+  const openPause = () => {
     // 판이 끝난 뒤(클리어·전멸 연출 1~1.4초 동안)에는 멈추지 않는다: 그만하기가 클리어를 실패로 덮어쓰지 않게
     if (scene.paused || sent || run.phase === 'clear' || run.phase === 'fail') return;
-    play('click');
     scene.paused = true;
     const box = document.createElement('div');
     box.className = 'overlay';
@@ -856,7 +863,22 @@ export async function startGame(stage: StageDef, endless: boolean) {
       closeGame();
       showMain();
     });
+  };
+  pauseBtn.addEventListener('click', () => {
+    if (scene.paused || sent || run.phase === 'clear' || run.phase === 'fail') return;
+    play('click');
+    openPause();
   });
+  // 다른 앱으로 넘어가면(아이폰 홈 등) 저절로 멈춘다. 판이 끝났거나 이 화면을 떠났으면 듣기를 그만둔다
+  const onHide = () => {
+    if (sent || !pauseBtn.isConnected) {
+      document.removeEventListener('visibilitychange', onHide);
+      return;
+    }
+    if (document.hidden && (run.phase === 'run' || run.phase === 'boss') && !scene.paused) openPause();
+  };
+  stopHideWatch = () => document.removeEventListener('visibilitychange', onHide);
+  document.addEventListener('visibilitychange', onHide);
 }
 
 /** note: 'kept' = 서버에 못 보내 기기에 보관, 'unrecorded' = 시작을 알리지 못해 기록되지 않는 판 */

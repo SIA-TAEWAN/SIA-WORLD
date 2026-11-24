@@ -723,7 +723,7 @@ describe('5단계: 특별 건물', () => {
     expect(s.profile.resources).toMatchObject({ rice: 200, wood: 200 });
     expect(pv).toMatchObject({ state: 'building', finishAt: T0 + 600 * SEC });
     expect(why(() => build(s, 'pavilion', 12, 12, T0, id()))).toBe('limit');
-    expect(BUILDINGS.filter((d) => d.kind === 'special').map((d) => [d.id, d.sia, d.unlock[0]])).toEqual([['pavilion', 20, 6], ['feast', 40, 10], ['shrine', 60, 14]]);
+    expect(BUILDINGS.filter((d) => d.kind === 'special').map((d) => [d.id, d.sia, d.unlock[0]])).toEqual([['pavilion', 20, 6], ['feast', 40, 10], ['jisin', 50, 12], ['shrine', 60, 14]]);
     // 업그레이드는 일반 자원으로
     s.buildings[0].level = 5;
     settle(s, T0 + HOUR);
@@ -756,10 +756,14 @@ describe('5단계: 정자 (둘레의 생산 건물 +10%)', () => {
   it('다 지은 뒤부터, 둘레 한 칸 안에만', () => {
     const { s, near, far, pv } = setup();
     expect(ratePct(s, near)).toBe(0); // 아직 짓는 중
-    // 30분 뒤에 들어와 보니 정자가 다 지어져 있다: 그때까지 쌓인 30 은 보너스 없이 적어 둔다
+    expect(pv.finishAt).toBe(T0 + 10 * 60 * SEC);
+    // 30분 뒤에 들어와 보니 정자가 다 지어져 있다: 다 된 시각(10분)까지 쌓인 10 만 보너스 없이 적어 두고,
+    // 그 뒤 20분은 보너스로 쌓인다 (099: 예전에는 30분 모두를 보너스 없이 적었다)
     settle(s, T0 + 30 * 60 * SEC);
     expect(pv.state).toBe('done');
-    expect(near.banked).toBe(30);
+    expect(near.banked).toBe(10);
+    expect(far.banked).toBe(10);
+    expect(near.collectedAt).toBe(T0 + 10 * 60 * SEC);
     expect(ratePct(s, near)).toBe(10);
     expect(ratePct(s, far)).toBe(0);
     expect(effRate(s, near)).toBe(66);
@@ -767,12 +771,15 @@ describe('5단계: 정자 (둘레의 생산 건물 +10%)', () => {
     expect(nearPavilion(s, 4, 5, 1, 1)).toBe(false);
     expect(nearPavilion(s, 8, 8, 1, 1)).toBe(true);
     expect(nearPavilion(s, 9, 8, 1, 1)).toBe(false);
-    // 한 시간 더: 30 + 66
-    expect(stored(s, near, T0 + 90 * 60 * SEC)).toBe(96);
+    // 30분: 10 + 20분 × 66 = 32 · 먼 논은 30
+    expect(stored(s, near, T0 + 30 * 60 * SEC)).toBe(32);
+    expect(stored(s, far, T0 + 30 * 60 * SEC)).toBe(30);
+    // 한 시간 더: 10 + 80분 × 66 = 98
+    expect(stored(s, near, T0 + 90 * 60 * SEC)).toBe(98);
     expect(stored(s, far, T0 + 90 * 60 * SEC)).toBe(90);
     s.profile.resources.rice = 0;
     const r = harvest(s, [near.id, far.id], T0 + 90 * 60 * SEC);
-    expect(r.per).toEqual({ [near.id]: 96, [far.id]: 90 });
+    expect(r.per).toEqual({ [near.id]: 98, [far.id]: 90 });
     expect(near.banked).toBe(0);
   });
 
@@ -1513,13 +1520,53 @@ describe('8단계: 기념물', () => {
     expect(s.monuments).toEqual(['mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger_tower']);
   });
 
+  it('열두길 · 오늘의 도전 · 레이스 주간 기념물 (099)', () => {
+    const s = newVillage(T0);
+    let n = 0;
+    const id = () => `mon-${++n}`;
+    const got = (st: Partial<ReturnType<typeof noStats>>) => grantMonuments(s, { ...noStats(), ...st }, T0, id).map((b) => b.type);
+    // 하나씩 모자라면 열리지 않는다
+    expect(got({ twelve_keys: 5, twelve_final: 0, twelve_hard: 0, twelve_floor: 29, daily_days: 6, daily_first: 0, race_week_top: 0 })).toEqual([]);
+    expect(got({ twelve_keys: 6 })).toEqual(['mon_twelve_keys']);
+    expect(got({ twelve_final: 1, twelve_floor: 30 })).toEqual(['mon_twelve_final', 'mon_twelve_tower']);
+    expect(got({ twelve_hard: 1 })).toEqual(['mon_twelve_hard']);
+    expect(got({ daily_days: 7 })).toEqual(['mon_daily7']);
+    expect(got({ daily_first: 1 })).toEqual(['mon_daily_first']);
+    expect(got({ race_week_top: 1 })).toEqual(['mon_race_week']);
+    // 한 번 열린 것은 기록이 사라져도(60일 · 4주 지나 지워짐) 그대로, 또 생기지 않는다
+    expect(got({ twelve_keys: 12, daily_days: 30, race_week_top: 1 })).toEqual([]);
+    expect(s.monuments).toEqual(['mon_twelve_keys', 'mon_twelve_final', 'mon_twelve_hard', 'mon_twelve_tower', 'mon_daily7', 'mon_daily_first', 'mon_race_week']);
+    expect(s.buildings.filter((b) => b.state === 'stored')).toHaveLength(7);
+    // 번영도: 장식물보다 높고, 기존 표와 같은 범위 (20 ~ 70)
+    expect(MONUMENTS.slice(22).map((m) => BUILDING[m.id].points)).toEqual([30, 50, 70, 35, 25, 40, 35]);
+    expect(MONUMENTS.slice(22).map((m) => m.game)).toEqual(['twelve', 'twelve', 'twelve', 'twelve', 'daily', 'daily', 'race']);
+  });
+
+  it('열두 지신 문 (099): 시아코인 50 · 마을 레벨 12 · 하나만 · 번영도 60', () => {
+    const s = fill(newVillage(T0), 1000);
+    s.profile.level = 11;
+    s.sia = 100;
+    expect(why(() => build(s, 'jisin', 6, 6, T0, id()))).toBe('locked');
+    s.profile.level = 12;
+    s.sia = 49;
+    expect(why(() => build(s, 'jisin', 6, 6, T0, id()))).toBe('not enough coin');
+    s.sia = 60;
+    const g = build(s, 'jisin', 6, 6, T0, id());
+    expect(s.sia).toBe(10);
+    expect([BUILDING.jisin.w, BUILDING.jisin.h, BUILDING.jisin.kind]).toEqual([2, 2, 'special']);
+    expect(why(() => build(s, 'jisin', 12, 12, T0, id()))).toBe('limit');
+    const before = prosperityOf(s);
+    settle(s, g.finishAt!);
+    expect(prosperityOf(s) - before).toBe(1 + 60);
+  });
+
   it('서버 답의 기념물 목록', () => {
     const s = cleanState({ monuments: ['mon_def3', 'nope', 'mon_tank1', 5] });
     expect(s.monuments).toEqual(['mon_tank1', 'mon_def3']);
     const c = cloneState(s);
     c.monuments.push('mon_def6');
     expect(s.monuments).toHaveLength(2);
-    expect(MONUMENTS).toHaveLength(22);
+    expect(MONUMENTS).toHaveLength(29);
     expect(new Set(MONUMENTS.map((m) => m.game)).size).toBe(GAMES.length);
   });
 });

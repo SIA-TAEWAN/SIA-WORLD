@@ -33,9 +33,13 @@ export const UNLOCK_CONFIRM_MS = 4000;
 export const CAT_NEED = 30;
 /** AI 대전이 전적·판 수에 들어가는 하루 한도 (서버 ai_match 의 하루 판 수와 같게) */
 export const AI_PER_DAY = 30;
-/** 잠긴 동안 보이는 남은 조건 글. have 를 모르면(아직 못 읽음) 지금 값 없이. AI전은 하루 AI_PER_DAY판까지만 센다 */
+/** 사람끼리 대전도 같은 상대와는 하루 이만큼까지만 기록된다 (서버 036 의 per_day 와 같게) */
+export const PVP_PER_DAY = 30;
+/** 잠긴 동안 보이는 남은 조건 글. have 를 모르면(아직 못 읽음) 지금 값 없이. AI전·같은 상대와의 대전은 하루 30판까지만 센다 */
 export const condText = (have?: number | null, need = CAT_NEED): string =>
-  `시아배구 ${need}판(AI전은 하루 ${AI_PER_DAY}판까지 셈)을 하면 열 수 있어요${have == null ? '' : ` · 지금 ${have}판`}`;
+  `시아배구 ${need}판(${AI_PER_DAY === PVP_PER_DAY ? `AI전·같은 상대와의 대전은 하루 ${AI_PER_DAY}판까지 셈` : `AI전은 하루 ${AI_PER_DAY}판, 같은 상대와의 대전은 하루 ${PVP_PER_DAY}판까지 셈`})을 하면 열 수 있어요${have == null ? '' : ` · 지금 ${have}판`}`;
+/** 하루 한도로 기록되지 않은 판의 꼬리 글: 고양이가 잠겨 있을 때만 (열었으면 판 수는 상관없다) */
+export const limitCatTail = (catLocked = !isCharOpen('cat')): string => (catLocked ? ' · 고양이 판 수에도 들어가지 않아요' : '');
 /** 서버가 'locked character' 로 거절했을 때 */
 export const LOCKED_MSG = `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`;
 

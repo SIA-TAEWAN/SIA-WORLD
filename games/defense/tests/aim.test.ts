@@ -6,7 +6,7 @@ import { ENEMY_INDEX } from '../src/data/enemies';
 import { AIM, AIM_AIR, AIM_CHOICES, findTarget, placeOnRoute, spawnEnemy } from '../src/game/core';
 import { SKILLS, simulate, skillPolicy } from '../src/game/policy';
 import { LIMITS } from '../src/game/progress';
-import { AIM_CMDS_MAX, canSetAim, command, createGame, replay, step, summarize } from '../src/game/sim';
+import { AIM_CMDS_MAX, canPlace, canSetAim, command, createGame, replay, step, summarize } from '../src/game/sim';
 import type { Enemy, State } from '../src/game/state';
 import { aimMode, canAim, defaultAim } from '../src/game/towers';
 
@@ -161,6 +161,26 @@ describe("'aim' 명령", () => {
     expect(canSetAim(s, 0, AIM.last)).toBe(false);
     expect(command(s, 'place', 1, TOWER_INDEX.ox)).toBe(true);
     expect(summarize(s).cmds).toBeLessThanOrEqual(LIMITS.cmds_max);
+  });
+
+  it('배치 횟수(placed_max)·명령 수(cmds_max) 상한에 닿으면 더 받지 않는다 (서버가 버리는 판이 되지 않게)', () => {
+    const s = arena();
+    let placed = 0;
+    while (command(s, 'place', 0, TOWER_INDEX.rat)) {
+      placed++;
+      expect(command(s, 'sell', 0)).toBe(true);
+    }
+    expect(placed).toBe(LIMITS.placed_max);
+    expect(canPlace(s, 0, TOWER_INDEX.rat)).toBe(false);
+    expect(summarize(s).placed).toBe(LIMITS.placed_max);
+    // 명령 수: 상한까지 채우면 강화·되팔기도 막힌다
+    const t = arena();
+    command(t, 'place', 0, TOWER_INDEX.rat);
+    while (t.log.length < LIMITS.cmds_max) t.log.push({ tick: t.tick, op: 'aim', slot: 0, char: AIM.first });
+    expect(command(t, 'upgrade', 0)).toBe(false);
+    expect(command(t, 'sell', 0)).toBe(false);
+    expect(canPlace(t, 1, TOWER_INDEX.ox)).toBe(false);
+    expect(summarize(t).cmds).toBe(LIMITS.cmds_max);
   });
 
   it('조준 명령이 섞인 판도 명령 기록으로 똑같이 다시 만들어진다', () => {

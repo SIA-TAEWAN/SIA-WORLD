@@ -206,7 +206,7 @@ button, input { font: inherit; color: inherit; }
 
 /* ---------- 게임: 판(캔버스)이 화면을 가득 채우고 그 위에 HUD·카드 (가로 720 기준, --u = 기준 1px의 실제 크기) ---------- */
 .game { padding: 0; gap: 0; overflow: hidden; }
-.field { position: absolute; inset: 0; background: var(--table-matgo); touch-action: none; }
+.field { position: absolute; inset: 0; background: var(--bg, var(--table-matgo)); touch-action: none; }
 .field canvas { display: block; width: 100% !important; height: 100% !important; }
 /* 위: 생명 · 웨이브 · 남은 시간 · 배속 · 일시정지 (PRD 9장) */
 .hud { position: absolute; left: 0; right: 0; top: 0; z-index: 5; padding: calc(var(--u) * 10 + env(safe-area-inset-top)) calc(var(--u) * 14) 0; pointer-events: none; display: flex; flex-direction: column; gap: calc(var(--u) * 8); }

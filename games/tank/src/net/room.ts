@@ -26,6 +26,17 @@ export interface RoomMeta {
   away?: boolean;
   /** 기기 판본 (CLIENT_VERSION). 예전 기기에는 없다 */
   ver?: number;
+  /** 게임방 화면(대기 중)을 보고 있음 — 숨은 탭·결과 화면·게임 중에는 없다. 예전 기기에는 없다 */
+  watch?: boolean;
+}
+
+/**
+ * 대기방에서 접속이 끊긴 사람을 빼는 일을 맡을 기기: 방 명단 순서로, 접속해 있고 방 화면을 보고 있는 첫 사람.
+ * (예전에는 접속한 첫 사람이 맡아서, 결과 화면에 머물거나 숨은 아이폰 탭이 첫 자리면 아무도 빼지 않았다.)
+ * 그런 사람이 없으면 null — 예전 판본 기기(watch 를 모른다)는 따로 자기 규칙대로 맡는다.
+ */
+export function roomSweeper(players: readonly string[], v: { me: string; meWatching: boolean; present: ReadonlySet<string>; watching: ReadonlySet<string> }): string | null {
+  return players.find((id) => (id === v.me ? v.meWatching : v.present.has(id) && v.watching.has(id))) ?? null;
 }
 
 /** 다른 기기들 중 나보다 새 판본이 있는가 */
@@ -39,6 +50,9 @@ export class RoomSession {
   /** 게임 중 화면을 가린 다른 사람 */
   readonly away = new Set<string>();
   private awayMe = false;
+  /** 게임방 화면을 보고 있는 다른 사람 (meta.watch) */
+  readonly watching = new Set<string>();
+  private watchMe = false;
   /** 접속해 있는 다른 기기의 판본 (모르면 0) */
   readonly vers = new Map<string, number>();
   private msgFns = new Set<(m: NetMsg) => void>();
@@ -85,11 +99,13 @@ export class RoomSession {
       const before = new Set(this.present);
       this.present.clear();
       this.away.clear();
+      this.watching.clear();
       this.vers.clear();
       list.forEach((m) => {
         this.present.add(m.key);
         this.vers.set(m.key, typeof m.meta?.ver === 'number' ? m.meta.ver : 0);
         if (m.meta?.away && m.key !== me.id) this.away.add(m.key);
+        if (m.meta?.watch && m.key !== me.id) this.watching.add(m.key);
         this.names.set(m.key, m.meta.name);
       });
       this.present.add(me.id);
@@ -117,7 +133,27 @@ export class RoomSession {
   }
 
   private meta(): RoomMeta {
-    return this.awayMe ? { name: this.me.name, away: true, ver: CLIENT_VERSION } : { name: this.me.name, ver: CLIENT_VERSION };
+    const m: RoomMeta = { name: this.me.name, ver: CLIENT_VERSION };
+    if (this.awayMe) m.away = true;
+    if (this.watchMe) m.watch = true;
+    return m;
+  }
+
+  /** 내가 게임방 화면을 보고 있는가 */
+  get meWatching() {
+    return this.watchMe;
+  }
+
+  /** 게임방 화면을 보고 있다/아니다 (숨은 탭·결과 화면·게임 중이면 false). 접속 정보에 올린다 */
+  async setWatching(watch: boolean) {
+    if (this.watchMe === watch) return;
+    this.watchMe = watch;
+    if (this.joined) await this.ch.track(this.meta());
+  }
+
+  /** 대기방에서 접속이 끊긴 사람을 빼는 일을 내가 맡는가 (roomSweeper) */
+  isSweeper(players: readonly string[]): boolean {
+    return roomSweeper(players, { me: this.me.id, meWatching: this.watchMe, present: this.present, watching: this.watching }) === this.me.id;
   }
 
   /** 게임 중 화면을 가렸다/다시 본다 (접속 정보에 올린다) */

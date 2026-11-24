@@ -4,7 +4,7 @@ import { esc, leaveRoom, nav, screen, state } from './app';
 import { aiSetup } from './menus';
 import { sfx } from './sfx';
 import { outcomeText } from '../net/aiRecord';
-import { LOCKED_MSG } from '../game/unlock';
+import { LOCKED_MSG, PVP_PER_DAY, limitCatTail } from '../game/unlock';
 import { highlightView } from '../game/highlight';
 import { bubble, emoteChips, emoteHub, wireChips } from './emote';
 import { fillH2h } from './h2h';
@@ -108,7 +108,7 @@ export function showResult(result: MatchResult) {
     else if (o.state === 'void') rec.innerHTML = `두 기기의 결과가 달라 기록되지 않았어요${total(o.wins, o.losses) ? ` · ${total(o.wins, o.losses)}` : ''}`;
     else if (o.state === 'failed') rec.textContent = '기록을 올리지 못했어요';
     else if (o.state === 'left') rec.textContent = '';
-    else if (o.state === 'limit') rec.textContent = '오늘 이 상대와는 30판을 채워서 기록되지 않아요';
+    else if (o.state === 'limit') rec.textContent = `오늘 이 상대와는 ${PVP_PER_DAY}판을 채워서 기록되지 않아요${limitCatTail()}`;
     else if (o.state === 'locked') rec.textContent = LOCKED_MSG;
     else rec.textContent = '테스트 모드라 기록되지 않아요';
     // 맞대결 전적: 이 경기가 기록된 뒤에만 읽는다 (방금 경기까지 센 숫자). 기록되지 않은 경기(실패·무효·하루 한도·잠김)에는

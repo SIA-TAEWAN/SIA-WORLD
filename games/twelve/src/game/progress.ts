@@ -465,11 +465,17 @@ export function setHero(p: TwelveProfile, hero: string, cat = false): string | n
   return null;
 }
 
+/** 이름 뒤 주격 조사: 마지막 글자에 받침이 있으면 '이', 없으면(또는 한글이 아니면) '가' (여의룡이 · 찍찍이가) */
+export function iGa(word: string): '이' | '가' {
+  const c = word.charCodeAt(word.length - 1);
+  return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '이' : '가';
+}
+
 /** 지형 보스를 잡으면 합류하는 대원 이름 (지형 화면 안내) */
 export const joinText = (region: number) => {
   const h = joinsAt(region);
   const gift = bossGift(region);
-  return h ? `보스를 처음 잡으면 ${h.name}(${h.animal})가 합류해요` : gift ? `보스를 처음 잡으면 강화석 꾸러미(${gift}개)를 받아요` : '';
+  return h ? `보스를 처음 잡으면 ${h.name}(${h.animal})${iGa(h.name)} 합류해요` : gift ? `보스를 처음 잡으면 강화석 꾸러미(${gift}개)를 받아요` : '';
 };
 
 /** 서버·기기가 거절한 까닭 → 화면 글 */

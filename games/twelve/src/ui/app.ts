@@ -24,6 +24,7 @@ import {
   hasKey,
   cleared,
   heroesOf,
+  iGa,
   isEquipped,
   itemOf,
   joinText,
@@ -203,6 +204,24 @@ function view(p: TwelveProfile): TwelveProfile {
     if (it) v.eq.weapon = it.id;
   }
   return v;
+}
+
+/**
+ * 쉼터·지도에 들어올 때: 못 보낸 판 결과가 남아 있으면 다시 보내고 기록을 새로 읽는다.
+ * 서버에 들어간 판이 있으면(이미 받아 둔 판 포함) 그 화면이 아직 떠 있을 때만 새 기록으로 다시 그린다.
+ */
+function syncPending(root: HTMLElement, redraw: () => void) {
+  if (LOCAL_MODE || !api.pending()) return;
+  void api
+    .resend()
+    .then(async (n) => {
+      if (n <= 0) return;
+      profile = view(await api.loadProfile());
+      if (root.isConnected) redraw();
+    })
+    .catch(() => {
+      /* 통신 실패: 보관한 채로 다음에 다시 */
+    });
 }
 
 /** 처음 한 번: 기록을 불러온다 */
@@ -533,6 +552,7 @@ function showWorld() {
     if (!regionOpen(profile, r)) return toast(`${r - 1}지형 보스를 잡아야 열려요`);
     showRegion(r);
   });
+  syncPending(root, showWorld);
 }
 
 /** 쉼터의 고양이 줄 (보통 모드를 끝냈고 아직 열지 않았을 때) */
@@ -572,7 +592,7 @@ async function buyCat(after: () => void) {
   const joined = () => {
     play('survLevel');
     const box = overlay(`<div class="card pop"><h3>🎉 13번째 대원</h3>
-      <div class="new-hero">${face('cat')}<span>${h.name}(${h.animal})가 합류했어요!${h.hello ? `<small>“${h.hello}”</small>` : ''}</span></div>
+      <div class="new-hero">${face('cat')}<span>${h.name}(${h.animal})${iGa(h.name)} 합류했어요!${h.hello ? `<small>“${h.hello}”</small>` : ''}</span></div>
       <button class="btn primary" id="ok">좋아요</button></div>`);
     on(box, '#ok', () => {
       box.remove();
@@ -649,6 +669,7 @@ function showFinal() {
   on(root, '#bag', () => showBag(showFinal));
   on(root, '#start', () => void startMap(m, 0));
   restCat(root, showFinal);
+  syncPending(root, showFinal);
 }
 
 function showRegion(region: number) {
@@ -698,6 +719,7 @@ function showRegion(region: number) {
     void startMap(m, 0);
   });
   restCat(root, () => showRegion(region));
+  syncPending(root, () => showRegion(region));
 }
 
 // ---------- 맵 (전투) ----------
@@ -1004,6 +1026,8 @@ function playRun(run: RunState, o: PlayOpts) {
   hideWatch = unwatch;
   document.addEventListener('visibilitychange', onHide);
   window.addEventListener('pagehide', pause);
+  // 가려진 탭에서 시작한 판 (탑 다음 층은 1.8초 뒤에 저절로 시작한다): 가려지는 순간은 이미 지나갔으니 처음부터 멈춰 둔다
+  if (document.hidden) pause();
 }
 
 /** 결과 화면의 얻은 것: 레어·열쇠는 크게 (PRD '화면 구성' 5) */
@@ -1049,7 +1073,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
       ${r && win ? lootHtml(r) : ''}
-      ${r?.joined ? `<div class="new-hero">${face(r.joined)}<span>${heroOf(r.joined).name}(${heroOf(r.joined).animal})가 합류했어요!${heroOf(r.joined).hello ? `<small>“${heroOf(r.joined).hello}”</small>` : ''}</span></div>` : ''}
+      ${r?.joined ? `<div class="new-hero">${face(r.joined)}<span>${heroOf(r.joined).name}(${heroOf(r.joined).animal})${iGa(heroOf(r.joined).name)} 합류했어요!${heroOf(r.joined).hello ? `<small>“${heroOf(r.joined).hello}”</small>` : ''}</span></div>` : ''}
       ${r?.gift ? `<div class="new-hero"><span class="ic">🎁</span><span>보스의 선물! 강화석 꾸러미 ${r.gift}개를 받았어요<small>${map.final ? `${MODE_NAME[s.mode]} 모드의 열두 길을 끝까지 걸었어요` : '열두 대원이 모두 모여서, 이제 보스는 선물을 남겨요'}</small></span></div>` : ''}
       ${DEV_PLAY ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : r ? '' : '<p class="soft center">기록을 저장하지 못했어요</p>'}
       <div class="btns">

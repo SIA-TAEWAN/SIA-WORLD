@@ -448,7 +448,8 @@ function playControls(t: Ctx, el: HTMLElement) {
     // 베팅은 기본 단위의 배수만, 상한(테이블 최대 · 내 잔액) 안에서
     const min = p.minBet;
     const max = Math.max(min, Math.floor((mine?.maxBet ?? p.maxBet) / min) * min);
-    if (betAmount < min || betAmount > max) betAmount = min;
+    // 방을 옮기면 기본 단위가 달라 배수가 아닌 금액이 남을 수 있다 → 배수로 맞춰 상한·하한 안으로
+    if (betAmount < min || betAmount > max || betAmount % min !== 0) betAmount = bjClampBet(betAmount, min, max);
     if (lastBetUnit !== min) lastBet = 0;
     const noLast = lastBet > 0 ? '' : 'disabled';
     // 칩: 누를 때마다 그만큼 더한다 (기본 단위의 1 · 5 · 10 · 50배. 상한을 넘는 칩은 끈다)

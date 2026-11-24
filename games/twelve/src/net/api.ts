@@ -34,8 +34,10 @@ export interface TwelveApi {
   start(map: string, mode: Mode, hero: string): Promise<StartInfo>;
   /** 판 결과 → 새 프로필과 결과 (통신 실패면 null: 보관해 두었다가 resend 로 다시 보낸다) */
   finish(report: RunReport): Promise<{ profile: TwelveProfile; result: FinishResult } | null>;
-  /** 못 보낸 결과 다시 보내기 → 보낸 수 */
+  /** 못 보낸 결과 다시 보내기 → 서버에 들어간 수 (서버가 이미 받아 둔 판 'already finished' 도 센다: 기록을 다시 읽어야 한다) */
   resend(): Promise<number>;
+  /** 보관해 둔 (못 보낸) 결과 수 */
+  pending(): number;
   /** 모드 바꾸기 (보통 ↔ 어려움. 어려움은 보통 모드를 끝낸 뒤에) */
   setMode(mode: Mode): Promise<TwelveProfile>;
   /** 대표 대원 바꾸기 */
@@ -209,6 +211,7 @@ export function createLocalApi(store: Store, key = 'sia-twelve-local-v2', clock:
     async resend() {
       return 0;
     },
+    pending: () => 0,
     setMode: (mode) => act((p) => setMode(p, mode)),
     setHero: (hero) => act((p) => setHero(p, hero, cat())),
     equip: (id) => act((p) => equip(p, id)),
@@ -338,6 +341,8 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     return { profile: keep(normalize(data.state)), result };
   };
   let sending: Promise<number> | null = null;
+  /** 다시 보낸 판을 서버가 이미 받아 두었다 ('already finished' — 지난번 답만 못 받았다): known 이 옛것이라 twelve_state 로 다시 읽어야 한다 */
+  let stale = false;
   const resend = () => {
     sending ??= (async () => {
       let n = 0;
@@ -347,18 +352,37 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
           n++;
           forget(r.run);
         } catch (e) {
-          if (e instanceof ApiError) forget(r.run);
+          if (e instanceof ApiError) {
+            forget(r.run);
+            if (e.message === 'already finished') {
+              stale = true;
+              n++;
+            }
+          }
         }
       }
       return n;
     })().finally(() => (sending = null));
     return sending;
   };
+  const loadProfile = async () => {
+    const p = await state('twelve_state');
+    stale = false;
+    return p;
+  };
   return {
-    loadProfile: () => state('twelve_state'),
+    loadProfile,
     async start(map, mode, hero) {
       // 못 보낸 결과가 있으면 새 판을 시작하기 전에 먼저 보낸다 (새 판과 시간이 겹치면 서버가 받지 않는다)
       const sent = readPending().length ? await resend().catch(() => 0) : 0;
+      if (stale) {
+        // 서버가 이미 받아 둔 판이 있었다: 그 판의 결과가 들어간 기록을 새로 읽는다 (못 읽으면 다음에 다시)
+        try {
+          await loadProfile();
+        } catch {
+          /* 통신 실패: 판은 그대로 시작한다 */
+        }
+      }
       // 보낸 결과가 있으면 서버가 준 새 프로필을 함께 돌려준다 (화면의 프로필이 옛것으로 남지 않게)
       const fresh = sent > 0 && known ? { profile: known } : {};
       try {
@@ -386,6 +410,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       }
     },
     resend,
+    pending: () => readPending().length,
     setMode: (mode) => state('twelve_set_mode', { p_mode: mode }),
     setHero: (hero) => state('twelve_set_hero', { p_hero: hero }),
     equip: (id) => state('twelve_equip', { p_item: Number(id) }),
