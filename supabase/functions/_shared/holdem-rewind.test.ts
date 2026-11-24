@@ -81,6 +81,41 @@ describe('홀덤 되돌리기 (한 동작씩 보여 주기)', () => {
     expect(streets).toBeGreaterThan(100);
   });
 
+  it('올인 runout: runout 부터 남은 사람 패를 펼치고 (족보 없이), 쇼다운에서 족보를 붙인다. 접은 사람 패는 끝까지 비공개', () => {
+    const seats: SeatInfo[] = [
+      { seat: 0, kind: 'human', name: 'P0', stack: 100_000 },
+      { seat: 1, kind: 'human', name: 'P1', stack: 1000 },
+      { seat: 2, kind: 'human', name: 'P2', stack: 100_000 },
+    ];
+    const rng = seededRng(5);
+    let s: HoldemState = holdem.newRound({ seats, baseUnit: 100, carry: { button: 2 }, rng }); // 버튼 0 · SB 1 · BB 2 → 0 부터
+    s = holdem.apply(s, 0, { type: 'fold' }, rng);
+    s = holdem.apply(s, 1, { type: 'allin' }, rng);
+    const prev = holdem.view(s).public;
+    s = holdem.apply(s, 2, { type: 'call' }, rng);
+    const next = holdem.view(s).public;
+    const ev = fresh(next, maxId(prev));
+    const frames = rewindHoldem(next, ev, prev);
+    const ro = ev.findIndex((e) => e.t === 'runout');
+    const sd = ev.findIndex((e) => e.t === 'showdown');
+    expect(ro).toBeGreaterThan(0);
+    expect(sd).toBeGreaterThan(ro);
+    const holes = next.showdown!.map((h) => ({ seat: h.seat, cards: h.cards }));
+    expect(holes.map((h) => h.seat)).toEqual([1, 2]);
+    frames.forEach((f, i) => {
+      // frames[i] = ev[i] 직전 화면
+      if (i <= ro) expect(f.showdown, `@${i} ${ev[i].t}`).toBeNull();
+      else if (i <= sd) expect(f.showdown, `@${i} ${ev[i].t}`).toEqual(holes.map((h) => ({ ...h, hand: '', best: [] })));
+      else expect(f.showdown, `@${i} ${ev[i].t}`).toEqual(next.showdown);
+      if (i > ro) expect(f.runout).toBe(true);
+      for (const c of s.players[0].hole) expect(JSON.stringify(f).includes(`"${c}"`)).toBe(false);
+    });
+    // runout 중 깐 카드 직전 화면: 카드는 아직 없고 패는 펼쳐져 있다
+    const riv = ev.findIndex((e) => e.t === 'river');
+    expect(riv).toBeGreaterThan(ro);
+    expect(frames[riv].board).toHaveLength(4);
+  });
+
   it('판 시작(블라인드·첫 카드)은 되돌리지 않는다', () => {
     const rng = seededRng(2);
     const seats: SeatInfo[] = [0, 1, 2].map((i) => ({ seat: i, kind: 'ai', name: `P${i}`, stack: null }));

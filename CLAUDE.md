@@ -16,7 +16,7 @@ SIA WORLD: a set of browser games behind one login, served as a static site on G
   - `games/tank`, `games/running` (dev port 5290), `games/volleyball` (5291), `games/survival` (5292), `games/defense` (5293), `games/village` (5294), `games/charge` (5295, 시아돌격대).
   - `games/finger` (5296) — 시아핑거, 1인 턴제 튕기기 RPG. Simulation in `supabase/functions/_shared/finger/` (shared with the `finger-finish` Edge Function, which re-plays the submitted inputs), SQL in `067_finger.sql`.
   - `games/twelve` (5297) — 시아열두길, 1인 실시간 액션 RPG (12지형 × 8맵 · 장비 · 끝없는 탑; 12지형 + 최종보스맵 `final`(열쇠 12개)까지 열림 — 보통 모드 엔딩·고양이 구매, 그 뒤 어려움 모드(같은 96맵 + `final`, Lv66~99 · `twelve_set_mode`)와 진짜 엔딩까지). Fixed-timestep simulation in `src/game/sim.ts`; maps finish through `twelve_start` / `twelve_finish` and the tower through `twelve_tower_start` / `_floor` / `_end`, all in `078_twelve.sql` (the server recomputes exp · 엽전 · drops from kill counts and the run seed). 078 is live: the data tables (map rows, levels, items, …), `twelve_start` (final map needs 12 keys, hard mode needs the normal final cleared), `twelve_finish` and `_twelve_region_open` are redefined by `094_twelve_full.sql` with `create or replace`, which also adds `twelve_set_mode`.
-- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 102; check `ls supabase/migrations` before adding one).
+- `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 103; check `ls supabase/migrations` before adding one).
 - `supabase/functions/_shared/` — card-game rule engines and round runner; `game-action` and `game-timeout` are the card-game Edge Functions; `finger-finish` (시아핑거) re-plays a run with `_shared/finger/`.
 - Each newer game keeps its spec in `games/<name>/PRD.md` and art notes in `ASSETS.md`.
 

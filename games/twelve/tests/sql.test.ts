@@ -5,7 +5,7 @@ import { ALL_MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
- * 서버(078_twelve.sql + 094_twelve_full.sql + 101 의 twelve_finish + 102 의 twelve_state)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 서버(078_twelve.sql + 094_twelve_full.sql + 101 의 twelve_finish + 102 · 103 의 twelve_state)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
  * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하므로 094 의 블록을 대조하고,
  * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 094 의 gen 블록을 다시 만든다.
  * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
@@ -19,7 +19,9 @@ const sql101 = file101.slice(file101.indexOf('-- ---------- 2. 시아열두길')
 /** 102 는 돌격대 · 핑거 · 열두길의 들어올 때 함수를 함께 다시 정의한다 — 열두길 부분(twelve_state 의 관리자 갈래)만 본다 */
 const file102 = read('102_admin_coins.sql');
 const sql102 = file102.slice(file102.indexOf('-- ---------- 3. 시아열두길'));
-const sql = `${sql078}\n${sql094}\n${sql101}\n${sql102}`;
+/** 103 은 열두길 twelve_state 하나만 다시 정의한다 (관리자 갈래에 강화석을 더함) */
+const sql103 = read('103_twelve_admin_stones.sql');
+const sql = `${sql078}\n${sql094}\n${sql101}\n${sql102}\n${sql103}`;
 const fn = (name: string) => {
   const i = sql.lastIndexOf(`create or replace function public.${name}(`);
   return i < 0 ? '' : sql.slice(i, sql.indexOf('$$;', i));
@@ -161,25 +163,32 @@ describe('SQL 규칙', () => {
     }
   });
 
-  it('twelve_state 102 는 078 을 그대로 옮기고 관리자 갈래(엽전 · 시아코인 1만)만 더한다 (권한 줄까지 같다)', () => {
+  it('twelve_state 103 은 078 을 그대로 옮기고 관리자 갈래(엽전 · 강화석 · 시아코인 1만)만 더한다 (권한 줄까지 같다)', () => {
     const fnOf = (f: string) => {
       const t = readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
       const i = t.lastIndexOf('create or replace function public.twelve_state()');
       const end = 'grant execute on function public.twelve_state() to authenticated;';
       return t.slice(i, t.indexOf(end, i) + end.length);
     };
-    const now = fnOf('102_admin_coins.sql');
+    const now = fnOf('103_twelve_admin_stones.sql');
+    // 운영에 남는 정의는 103 이다
+    expect(fn('twelve_state')).toBe(now.slice(0, now.indexOf('$$;')));
     const a = now.indexOf('  -- 관리자 계정(시험용)');
     const b = now.indexOf('  end if;\n', a) + '  end if;\n'.length;
     expect(a).toBeGreaterThan(0);
     const admin = now.slice(a, b);
     expect(now.slice(0, a) + now.slice(b)).toBe(fnOf('078_twelve.sql'));
     expect(admin).toContain('if exists (select 1 from public.profiles where id = me and is_admin) then');
-    expect(admin).toContain('update public.twelve_profiles set coins = 10000 where user_id = me;');
+    expect(admin).toContain('update public.twelve_profiles set coins = 10000, stones = 10000 where user_id = me;');
     expect(admin).toContain('perform public._ensure_wallet(me);');
     expect(admin).toContain('update public.wallets set sia_coins = 10000 where user_id = me;');
-    // 바꾸는 것은 엽전 열과 시아코인뿐
-    expect(admin.match(/update public\.\w+ set \w+ = /g)).toEqual(['update public.twelve_profiles set coins = ', 'update public.wallets set sia_coins = ']);
+    // 바꾸는 것은 엽전 · 강화석 열과 시아코인뿐
+    expect(admin.match(/update public\.\w+ set [^;]*? where/g)).toEqual(['update public.twelve_profiles set coins = 10000, stones = 10000 where', 'update public.wallets set sia_coins = 10000 where']);
+    // 102 와는 관리자 갈래(주석 · 강화석)만 다르다
+    const old = fnOf('102_admin_coins.sql');
+    const oa = old.indexOf('  -- 관리자 계정(시험용)');
+    const ob = old.indexOf('  end if;\n', oa) + '  end if;\n'.length;
+    expect(old.slice(0, oa) + old.slice(ob)).toBe(now.slice(0, a) + now.slice(b));
     expect(now).toContain('language plpgsql security definer set search_path = public as $$');
     expect(now).toContain('revoke all on function public.twelve_state() from public, anon;');
   });

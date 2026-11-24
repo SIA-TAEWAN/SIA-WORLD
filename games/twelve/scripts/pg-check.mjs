@@ -200,11 +200,24 @@ await as(u1, `select public.twelve_set_hero('rat')`);
   // 101: 겹침은 두 판의 최소 판 시간이 실제로 겹칠 때만 — b(300초 전 시작)가 200초 판이면 c 시작(150초 전)을 넘긴다.
   //      (b 가 100초 판이었다면 보관했다 늦게 보낸 정상 판이라 받는다)
   await rejects(finish(u2, b.run, R({ time: 200 })), 'overlap', '먼저 끝난 다른 판과 시간이 겹침 (200초 판이 늦게 시작한 판의 시작을 넘김)');
+  // 같은 c 옆에서: 300초 전에 시작한 100초 판은 c 시작(150초 전) 전에 끝났으니, 늦게 보내도 받는다
+  const b2 = await start(u2, '1-1');
+  await ago(b2.run, 300);
+  ok((await finish(u2, b2.run, R({ time: 100 }))).result.exp > 0, '늦게 보낸 정상 판 (300초 전 시작 · 100초 판, 그 뒤 시작한 판이 먼저 끝남) → 받음');
   await old(c.run);
+  await old(b2.run);
+  // (나) 먼저 시작한 판(400초 전 시작 · 200초 판)을 저장한 뒤, 그 판 안(300초 전)에 시작한 판을 끝내면 겹침
+  const f = await start(u2, '1-1');
+  const g = await start(u2, '1-1');
+  await ago(f.run, 400);
+  await ago(g.run, 300);
+  ok((await finish(u2, f.run, R({ time: 200 }))).result.exp > 0, '400초 전 시작 · 200초 판 저장');
+  await rejects(finish(u2, g.run, R({ time: 30 })), 'overlap', '먼저 시작해 저장된 판의 시간 안에 시작한 판 (나)');
+  await old(f.run);
   await su(`update public.twelve_runs set started_at = now() - interval '3 hours' where id = $1`, [b.run]);
   await rejects(finish(u2, b.run, R()), 'too late', '3시간 지난 판');
   // 도중에 닫은 판(끝내지 않은 판)은 아무것도 주지 않는다
-  eq((await state(u2)).maps.normal['1-1'].clears, 2, '끝내지 않은 판은 기록되지 않음');
+  eq((await state(u2)).maps.normal['1-1'].clears, 4, '끝내지 않은 판은 기록되지 않음 (a · c · b2 · f 만)');
   eq((await as(null, 'select level, region, hero, hard_done, place, total from public.twelve_level_ranking', [], 'anon'))[0], { level: (await state(u2)).level, region: 1, hero: 'rat', hard_done: false, place: 1, total: 1 }, '레벨 랭킹에 한 줄');
   // 시아코인: 내 레벨이 권장 레벨보다 15 이상 높으면 없음
   await su(`update public.twelve_profiles set level = 16, exp = 0 where user_id = $1`, [u2]);

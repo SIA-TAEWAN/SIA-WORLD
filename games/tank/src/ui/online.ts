@@ -608,6 +608,8 @@ function renderRoom(id: string) {
   // 탭을 가리면 바로 '방 화면을 보는 중' 표시를 끈다 (아이폰은 가린 뒤 타이머가 멈춘다)
   const onVis = () => {
     if (document.hidden) void rs.setWatching(false).catch(() => undefined);
+    // 오래 가렸다 돌아오면 가린 사이의 '안 보인 때'를 버린다 — 첫 타이머가 그사이 다시 들어온 사람을 빼지 않게
+    else absentSince.clear();
   };
   document.addEventListener('visibilitychange', onVis);
   // 첫 타이머(1초)를 기다리지 않고 바로 '방 화면을 보는 중' 표시를 올린다

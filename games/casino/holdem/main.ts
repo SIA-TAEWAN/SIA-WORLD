@@ -202,7 +202,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
         t.deal(card, `${s.seat}:${ci}`, c, deck);
       });
       const tags = [s.seat === p.sbSeat ? 'SB' : '', s.seat === p.bbSeat ? 'BB' : ''].filter(Boolean).join('·');
-      const mineHand = me && !sd && t.priv?.hand ? t.priv.hand : '';
+      // 올인 runout 중(패는 펼쳤지만 족보는 아직)에는 내 족보를 계속 보여 준다
+      const mineHand = me && !sd?.hand && t.priv?.hand ? t.priv.hand : '';
       const sub = s.excluded
         ? '이번 판 쉼'
         : s.folded
@@ -223,7 +224,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
       }
       // 🏆 는 진짜 승자만 (돌려받기만 한 사람은 빼고)
       const won = p.winners.includes(s.seat) && !refunded(t, s.seat);
-      if (sd) label(scene, x, y - w * 0.95, `${sd.hand}${won ? ' 🏆' : ''}`, clamp(w * (me ? 0.2 : 0.26), 12, 22), won ? tc('primary') : tc('white'));
+      if (sd && (sd.hand || won)) label(scene, x, y - w * 0.95, `${sd.hand}${won ? ' 🏆' : ''}`, clamp(w * (me ? 0.2 : 0.26), 12, 22), won ? tc('primary') : tc('white'));
     });
   },
 

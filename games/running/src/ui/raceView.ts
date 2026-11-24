@@ -54,6 +54,12 @@ export function showRace(start: SoloStart) {
   const keyKind = (code: string): 'jump' | 'slide' | null =>
     code === 'Space' || code === 'Enter' || code === 'ArrowUp' || code === 'KeyW' ? 'jump' : code === 'ArrowDown' || code === 'KeyS' ? 'slide' : null;
   const onKey = (e: KeyboardEvent) => {
+    // 나가기 창에서 Esc = '계속 달리기'
+    if (e.key === 'Escape' && quitDim?.isConnected) {
+      e.preventDefault();
+      quitDim.remove();
+      return;
+    }
     const kind = keyKind(e.code);
     // 나가기 창이 열려 있으면 달리기 키로 보지 않는다 (엔터·스페이스는 창을 열 때 초점을 준 버튼이 받는다)
     if (!kind || quitDim?.isConnected) return;

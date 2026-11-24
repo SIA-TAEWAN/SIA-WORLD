@@ -912,7 +912,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       priv: priv && st && priv.round_no === st.round_no ? priv.hand : null,
       privWait,
       privNext: pendingPriv && st && pendingPriv.round_no === st.round_no ? pendingPriv.hand : null,
-      pubNext: pub ? (playingNext ?? pub) : null,
+      pubNext: playingNext ?? pub,
       pending,
       // (기기에서 진행할 판의 전체 상태를 받아 오는 중이면 잠깐 막는다: 지금 보이는 것은 서버에 저장된 옛 상태다)
       myTurn: !!mine && room.status === 'playing' && pending.includes(mine.seat_no) && !ctlHold && !local?.waiting(),

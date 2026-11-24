@@ -127,6 +127,34 @@ describe('베팅', () => {
     expect(s.result!.deltas).toEqual({ 0: -200, 1: 300, 2: -100 });
     expect(holdem.view(s).public.showdown).toBeNull();
   });
+  it('올인 runout 중에는 남은 사람 패를 공개 (족보는 쇼다운에서), 접은 사람 패는 비공개', () => {
+    // 3인 · 버튼 0 (지난 판 버튼 2): 0 폴드, 1(SB) 올인, 2(BB) 콜 → 남은 공용 카드를 모두 깔고 쇼다운
+    let s = round([human(0), human(1, 1000), human(2)], 2);
+    s = act(s, { type: 'fold' });
+    s = act(s, { type: 'allin' });
+    const before = s;
+    s = act(s, { type: 'call' });
+    expect(s.phase).toBe('done');
+    expect(s.runout).toBe(true);
+    const ev = holdem.view(s).public.events;
+    expect(ev.findIndex((e) => e.t === 'runout')).toBeLessThan(ev.findIndex((e) => e.t === 'showdown'));
+    // 엔진은 runout 을 한 번에 끝내지만, 그 사이 상태(플롭까지 깔고 runout)를 보여 주면 남은 두 사람 패만 펼친다
+    const mid = JSON.parse(JSON.stringify(before)) as HoldemState;
+    mid.runout = true;
+    mid.phase = 'flop';
+    mid.turn = null;
+    mid.board = s.board.slice(0, 3);
+    const pub = holdem.view(mid).public;
+    const hole = (seat: number) => s.players.find((p) => p.seat === seat)!.hole;
+    expect(pub.showdown).toEqual([
+      { seat: 1, cards: hole(1), hand: '', best: [] },
+      { seat: 2, cards: hole(2), hand: '', best: [] },
+    ]);
+    const text = JSON.stringify(pub);
+    for (const c of hole(0)) expect(text.includes(`"${c}"`)).toBe(false);
+    // runout 이 아니면 그대로 비공개
+    expect(holdem.view(before).public.showdown).toBeNull();
+  });
 });
 
 describe('쇼다운', () => {
@@ -209,6 +237,8 @@ describe('무작위 판 (AI끼리 · 사람 섞어서)', () => {
           s = holdem.apply(s, seat, a, rng);
           if (++guard > 200) throw new Error('끝나지 않음');
         }
+        // 한 판의 사건이 잘리지 않는다 (화면이 처음부터 한 동작씩 되돌려 보여 줄 수 있게)
+        expect(s.events.length).toBe(s.nextEventId - 1);
         const st = holdem.settle(s);
         const sum = Object.values(st.deltas).reduce((a, b) => a + b, 0);
         expect(sum).toBe(0);

@@ -67,7 +67,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
                 : `<span class="tm dnf">미완주 ${Math.floor(r.x)}m</span>`;
           return `<div class="rrow p${r.place} ${isMe ? 'me' : ''} ${isGhost ? 'ghost' : ''}" data-id="${esc(p.id ?? '')}" style="animation-delay:${200 + i * 260}ms"><span class="pl">${r.place}</span>
             <img class="av" src="${zodiacFaceUrl(p.char)}" alt="" /><span class="body"><span class="top"><span class="nm">${esc(isGhost ? gh!.nickname : p.name)}</span>${tm}</span>${
-              isGhost ? `<small>👻 ${ghostTag(gh!)}</small>` : ''
+              isGhost ? `<small class="ghost-tag">👻 ${esc(ghostTag(ghostInfo!))}</small>` : ''
             }</span>${
               isMe ? `<span class="tier" data-uid="${esc(p.id ?? '')}"></span>` : isGhost ? `<span class="tier" data-place="${gh!.place ?? 0}"></span>` : ''
             }</div>`;
@@ -94,11 +94,15 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   });
 
   // 고스트 문구: 판 전 그날 순위를 받으면 '1위 고스트' → '1위' (고스트 기록이 그 자리의 실제 기록일 때만)
-  if (ghostLine && race.dayBefore) {
-    const t = mine!.timeMs!;
+  // 고스트 줄의 꼬리표도 같은 순위로 ('내 고스트' → '내 1위 기록 고스트')
+  if (ghostInfo && race.dayBefore) {
+    const t = mine?.status === 'finish' ? mine.timeMs! : null;
     void race.dayBefore.then((rank) => {
+      if (!rank) return;
       const el = root.querySelector('#ghost-diff');
-      if (el && rank) el.textContent = `👻 ${ghostDiffText(t, gh!.ghost.ms, ghostWho(ghostInfo!, rank), formatTime)}`;
+      if (el && t !== null) el.textContent = `👻 ${ghostDiffText(t, gh!.ghost.ms, ghostWho(ghostInfo, rank), formatTime)}`;
+      const tag = root.querySelector('.rrow.ghost .ghost-tag');
+      if (tag) tag.textContent = `👻 ${ghostTag(ghostInfo, rank)}`;
     });
   }
 

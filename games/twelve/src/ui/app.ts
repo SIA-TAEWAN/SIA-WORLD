@@ -1476,7 +1476,7 @@ function bulk(kind: 'sell' | 'scrap', after: () => void) {
   if (!list.length) return;
   const gain = list.reduce((n, it) => n + (kind === 'sell' ? itemDef(it.base)!.sell : scrapOf(itemDef(it.base)!, it.plus)), 0);
   const box = overlay(`<div class="card pop"><h3>일반 장비 ${list.length}개를 모두 ${kind === 'sell' ? '팔까요' : '분해할까요'}?</h3>
-    <p class="soft center">${kind === 'sell' ? `🪙 엽전 ${gain.toLocaleString()}` : `💎 강화석 ${gain}`}을(를) 받아요.<br/>착용 중인 것, 🔒 잠근 것, 레어, 장신구, 강화한 장비와<br/>종류마다 가장 좋은 무기 하나씩은 그대로 둬요</p>
+    <p class="soft center">${kind === 'sell' ? `🪙 엽전 ${gain.toLocaleString()}` : `💎 강화석 ${gain}`} 받아요.<br/>착용 중인 것, 🔒 잠근 것, 레어, 장신구, 강화한 장비와<br/>종류마다 가장 좋은 무기 하나씩은 그대로 둬요</p>
     <button class="btn primary" id="yes">모두 ${kind === 'sell' ? '팔기' : '분해'}</button><button class="btn" id="no">그만두기</button></div>`);
   on(box, '#no', () => box.remove());
   on(box, '#yes', () => {

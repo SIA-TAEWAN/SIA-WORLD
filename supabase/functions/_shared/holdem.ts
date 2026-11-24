@@ -153,7 +153,7 @@ export interface HoldemPublic {
   options: HoldemOptions | null;
   seats: HoldemSeatPublic[];
   runout: boolean;
-  /** 쇼다운한 사람의 개인 카드 (그 전/무혈 승리면 null) */
+  /** 쇼다운한 사람의 개인 카드 (그 전/무혈 승리면 null). 올인 runout 중에는 남은 사람 패만 (hand '' · best []) */
   showdown: { seat: number; cards: string[]; hand: string; best: string[] }[] | null;
   winners: number[];
   events: GameEvent[];
@@ -167,7 +167,11 @@ export interface HoldemPrivate {
   hand: string | null;
 }
 
-const EVENT_KEEP = 40;
+/**
+ * 한 판 안의 사건이 잘리지 않을 만큼 (포커와 같게). 보통 4인 판은 수십 개 · 공개 상태에 약 5KB.
+ * 레이즈 횟수 제한이 없어 사람끼리 최소 레이즈를 계속 주고받으면 넘을 수 있다 — 그때는 화면이 되돌리기 없이 새 상태를 그린다
+ */
+const EVENT_KEEP = 120;
 const LABEL = { fold: '폴드', check: '체크', call: '콜', bet: '베트', raise: '레이즈', allin: '올인' } as const;
 
 // ───────────────────────── 도우미 ─────────────────────────
@@ -702,6 +706,8 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
 
   view(s: HoldemState): View<HoldemPublic, HoldemPrivate> {
     const atShowdown = s.phase === 'done' && !!s.result && !s.result.uncontested && !s.result.cancelled;
+    // 올인 runout: 베팅이 끝나 남은 공용 카드를 까는 동안은 표준처럼 남은 사람(2명 이상) 패를 공개한다 (족보는 쇼다운에서). 접은 사람 패는 그대로 비공개
+    const runoutShow = !atShowdown && s.runout && s.phase !== 'done' && live(s).length >= 2;
     const turnPlayer = s.turn === null ? null : (s.players.find((p) => p.seat === s.turn) ?? null);
     const pub: HoldemPublic = {
       phase: s.phase,
@@ -734,7 +740,9 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
       runout: s.runout,
       showdown: atShowdown
         ? live(s).map((p) => ({ seat: p.seat, cards: p.hole.slice(), hand: s.result!.hands[p.seat]?.name ?? '', best: s.result!.hands[p.seat]?.best ?? [] }))
-        : null,
+        : runoutShow
+          ? live(s).map((p) => ({ seat: p.seat, cards: p.hole.slice(), hand: '', best: [] }))
+          : null,
       winners: s.result?.winners.slice() ?? [],
       events: clone(s.events),
       summary: s.result ? clone(s.result) : null,

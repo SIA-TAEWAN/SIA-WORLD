@@ -55,6 +55,9 @@ export function rewindHoldem(next: HoldemPublic, events: readonly GameEvent[], p
   return out;
 }
 
+/** runout 중 화면: 공개한 패만 (족보·최고 5장은 쇼다운에서) */
+const runoutHands = (p: HoldemPublic): HoldemPublic['showdown'] => p.showdown?.map((h) => ({ seat: h.seat, cards: h.cards.slice(), hand: '', best: [] })) ?? null;
+
 function undo(p: HoldemPublic, events: readonly GameEvent[], i: number, paid: number, streetEnd: Map<number, number> | null, prev: HoldemPublic | null) {
   const e = events[i];
   const fail = (): never => {
@@ -104,7 +107,8 @@ function undo(p: HoldemPublic, events: readonly GameEvent[], i: number, paid: nu
     for (const s of p.seats) s.betRound = streetEnd!.get(s.seat) ?? 0;
     p.curBet = curBet();
     p.turn = null;
-    p.showdown = null;
+    // 올인 runout 중에 깐 카드: 남은 사람 패는 runout 부터 이미 공개돼 있다 (족보는 아직)
+    p.showdown = p.runout ? runoutHands(p) : null;
     p.winners = [];
     return;
   }
@@ -123,13 +127,15 @@ function undo(p: HoldemPublic, events: readonly GameEvent[], i: number, paid: nu
     case 'four_kind':
       return;
     case 'showdown':
-      p.showdown = null;
+      // runout 뒤의 쇼다운이면 패는 펼친 채로 두고 족보·최고 5장만 지운다
+      p.showdown = p.runout ? runoutHands(p) : null;
       p.winners = [];
       p.phase = streetOf(p.board.length);
       p.turn = null;
       return;
     case 'runout':
       p.runout = false;
+      p.showdown = null;
       return;
     case 'allin': {
       // 블라인드 올인(판 시작)은 되돌리지 않는다

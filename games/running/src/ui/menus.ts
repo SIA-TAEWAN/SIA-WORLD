@@ -287,7 +287,7 @@ export function showPick() {
   const day = state.today;
   const ghostP = gl && (!day || gl.day === day) ? gl.p : state.api && day ? reloadGhost(state.api, day) : null;
   void ghostP?.then((g) => {
-    if (g && root.isConnected) $('#pick-sub').textContent = `능력은 모두 같아요 · 👻 ${ghostTag(g)} · AI 2명과 달려요`;
+    if (g && root.isConnected) $('#pick-sub').textContent = `능력은 모두 같아요 · 👻 ${ghostTag({ me: g.me, dayPlace: g.dayPlace, nickname: g.nickname, ms: g.ghost.ms })} · AI 2명과 달려요`;
   });
   void refreshProgress();
   void loadEngine();
@@ -334,8 +334,12 @@ export async function startRun() {
     const ghost = ghostFor(api, day).catch(() => null);
     const r0 = Math.random();
     const char = state.char;
-    const art = ghost.then((g) =>
-      warmRaceArt(soloRoster(state.user, char, Math.floor(r0 * 0x7fffffff), g && g.ghost.day === day ? { char: g.ghost.char, name: '' } : null).map((r) => r.char)),
+    // 트랙 그림과 내 캐릭터는 바로, AI·고스트 캐릭터는 고스트를 받은 뒤 더한다 (전체 대기 상한은 처음부터 2.5초)
+    const art = warmRaceArt(
+      [char],
+      ghost.then((g) =>
+        soloRoster(state.user, char, Math.floor(r0 * 0x7fffffff), g && g.ghost.day === day ? { char: g.ghost.char, name: '' } : null).map((r) => r.char),
+      ),
     );
     const [m] = await Promise.all([loadEngine(), ghost, fontsReady(), art]);
     if (cancelled) return;

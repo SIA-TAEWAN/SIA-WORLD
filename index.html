@@ -686,7 +686,7 @@
         renderGames(user);
       }).catch(() => {});
     }
-    // 뒤로 가기로 메모리에 남아 있던 로비가 다시 보이면(bfcache) 지갑·오픈 여부를 다시 읽고 실시간 구독을 다시 잇는다 (공지는 visibilitychange 가 읽는다).
+    // 뒤로 가기로 메모리에 남아 있던 로비가 다시 보이면(bfcache) 지갑·오픈 여부·공지를 다시 읽고 실시간 구독을 다시 잇는다.
     // 그 사이 다른 탭에서 로그아웃했거나 다른 계정으로 들어왔으면 그에 맞춰 바꾼다
     window.addEventListener('pageshow', async (e) => {
       if (!e.persisted || !lobbyUser) return;
@@ -708,7 +708,8 @@
       stopWatchingWorld();
       startWatchingWorld(was);
       void loadWallet(was);
-      // 공지는 다시 보일 때 visibilitychange 가 읽는다
+      // 공지도 여기서 다시 읽는다 (bfcache 복귀 때는 visibilitychange 가 안 올 수 있다)
+      void loadNotice();
       refreshGameOpen(was);
     });
 
@@ -993,6 +994,9 @@
         if (err instanceof AuthError && err.toLogin) {
           // 가입은 됐지만 회원 정보를 못 읽었다: 로그인 화면에서 다시 들어오게 한다
           showLogin();
+          // 가입 화면에 남은 비밀번호는 지운다 (로그인 화면에서 다시 넣는다)
+          $('#su-pw').value = '';
+          $('#su-pw2').value = '';
           $('#li-id').value = err.loginId ?? loginId;
           $('#li-err').textContent = err.message;
           $('#li-pw').focus();
