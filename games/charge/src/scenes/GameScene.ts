@@ -5,7 +5,18 @@ import { groundOf } from '../data/growth';
 import { autopilot } from '../game/autopilot';
 import { CRATE_HALF, STEP, isGood, obstacleX, setTarget, step, type Gate, type Horde, type RunState, type SimEvent } from '../game/sim';
 import { DEV_AUTO, DEV_SPEED } from '../net/local';
-import { COLOR } from '../theme';
+import { CHARGE, COLOR, css } from '../theme';
+
+/** Phaser 글자 색 ('#rrggbb') — 공통 테마 값 */
+const TXT = {
+  white: css(COLOR.white),
+  outline: css(COLOR.outline),
+  cardRed: css(COLOR.cardRed),
+  skyMid: css(COLOR.skyMid),
+  pink: css(COLOR.pink),
+  primaryLight: css(COLOR.primaryLight),
+  primaryDeep: css(COLOR.primaryDeep),
+} as const;
 import { ART_SIZE, GATE_SLICE, artFor, hasArt, type GroundName, type OptionalArt } from './art';
 
 /** 기준 화면 크기 (세로 9:16) */
@@ -153,7 +164,7 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < DRAW_MAX; i++) this.crowd.push(this.add.image(CX, CROWD_Y, 'troop').setScale(this.troopScale).setVisible(false));
     this.leaderImg = this.add.image(CX, CROWD_Y, 'troop').setScale(58 / src.height);
     this.count = this.add
-      .text(CX, CROWD_Y - 60, '', { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#2a1a10', strokeThickness: 8 })
+      .text(CX, CROWD_Y - 60, '', { fontFamily: FONT, fontSize: '40px', color: TXT.white, stroke: TXT.outline, strokeThickness: 8 })
       .setOrigin(0.5)
       .setDepth(5000);
 
@@ -161,7 +172,7 @@ export class GameScene extends Phaser.Scene {
     this.setBossArt();
     this.bossBar = this.add.graphics().setDepth(4000);
     this.bossName = this.add
-      .text(CX, -999, '', { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#2a1a10', strokeThickness: 6 })
+      .text(CX, -999, '', { fontFamily: FONT, fontSize: '26px', color: TXT.white, stroke: TXT.outline, strokeThickness: 6 })
       .setOrigin(0.5)
       .setDepth(4001);
     this.band = this.add.graphics().setDepth(3000);
@@ -311,12 +322,12 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
       if (o.kind === 'log') {
-        g.fillStyle(0x9a6a3a, 1).fillRoundedRect(x - half, y - 26, half * 2, 52, 24);
+        g.fillStyle(CHARGE.log, 1).fillRoundedRect(x - half, y - 26, half * 2, 52, 24);
         g.lineStyle(5, COLOR.outline, 1).strokeRoundedRect(x - half, y - 26, half * 2, 52, 24);
-        g.fillStyle(0xc89a5a, 1).fillCircle(x + half - 22, y, 16);
+        g.fillStyle(CHARGE.logEnd, 1).fillCircle(x + half - 22, y, 16);
         g.lineStyle(3, COLOR.outline, 1).strokeCircle(x + half - 22, y, 16);
       } else if (o.kind === 'blade') {
-        g.fillStyle(0xcfd6de, 1);
+        g.fillStyle(CHARGE.blade, 1);
         const a = now * 9;
         for (let i = 0; i < 4; i++) {
           const t = a + (i * Math.PI) / 2;
@@ -325,9 +336,9 @@ export class GameScene extends Phaser.Scene {
         g.lineStyle(4, COLOR.outline, 1).strokeEllipse(x, y, half * 2, half * 1.2);
         g.fillStyle(COLOR.outline, 1).fillCircle(x, y, 10);
       } else {
-        g.fillStyle(0x3a2a1c, 1).fillEllipse(x, y, half * 2, 70);
+        g.fillStyle(CHARGE.pit, 1).fillEllipse(x, y, half * 2, 70);
         g.lineStyle(5, COLOR.outline, 1).strokeEllipse(x, y, half * 2, 70);
-        g.fillStyle(0x5a4030, 1).fillEllipse(x, y - 8, half * 1.5, 34);
+        g.fillStyle(CHARGE.pitInner, 1).fillEllipse(x, y - 8, half * 1.5, 34);
       }
     }
   }
@@ -345,7 +356,7 @@ export class GameScene extends Phaser.Scene {
       const x = CX + c.x;
       const h = CRATE_HALF;
       if (!this.art('crate', String(c.id), x, y - h * 0.8, 950, h * 2, h * 1.6)) {
-      g.fillStyle(0xd9a05b, 1).fillRect(x - h, y - h * 1.6, h * 2, h * 1.6);
+      g.fillStyle(CHARGE.crate, 1).fillRect(x - h, y - h * 1.6, h * 2, h * 1.6);
       g.lineStyle(5, COLOR.outline, 1).strokeRect(x - h, y - h * 1.6, h * 2, h * 1.6);
       g.lineStyle(4, COLOR.outline, 0.7).lineBetween(x - h, y - h * 0.8, x + h, y - h * 0.8);
       }
@@ -353,7 +364,7 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(COLOR.primary, 1).fillRect(x - h + 2, y + 8, Math.max(0, (h * 2 - 4) * (c.hp / CRATE_HP)), 6);
       const icon = c.reward.kind === 'troops' ? `+${c.reward.v}` : c.reward.kind === 'coins' ? '엽전' : '⚡';
       if (!label) {
-        label = this.add.text(0, 0, icon, { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#2a1a10', strokeThickness: 6 }).setOrigin(0.5).setDepth(1001);
+        label = this.add.text(0, 0, icon, { fontFamily: FONT, fontSize: '28px', color: TXT.white, stroke: TXT.outline, strokeThickness: 6 }).setOrigin(0.5).setDepth(1001);
         this.crateLabels.set(c.id, label);
       }
       label.setPosition(x, y - h * 0.8);
@@ -380,7 +391,7 @@ export class GameScene extends Phaser.Scene {
           box: this.add.graphics().setDepth(1000),
           frame: hasArt('gate') && this.textures.exists('gate') ? this.add.nineslice(0, 0, 'gate', undefined, 256, 140, GATE_SLICE, GATE_SLICE, GATE_SLICE, GATE_SLICE).setScale(0.5).setDepth(1000) : null,
           label: this.add
-            .text(0, 0, text, { fontFamily: FONT, fontSize: gate.rail ? '30px' : '44px', color: '#ffffff', stroke: '#2a1a10', strokeThickness: 7 })
+            .text(0, 0, text, { fontFamily: FONT, fontSize: gate.rail ? '30px' : '44px', color: TXT.white, stroke: TXT.outline, strokeThickness: 7 })
             .setOrigin(0.5)
             .setDepth(1001),
           text,
@@ -434,7 +445,7 @@ export class GameScene extends Phaser.Scene {
         v = {
           imgs: Array.from({ length: Math.min(HORDE_DRAW, Math.max(h.start, h.count)) }, () => this.add.image(0, 0, def.art).setScale(sc)),
           label: this.add
-            .text(0, 0, '', { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#e8564a', strokeThickness: 7 })
+            .text(0, 0, '', { fontFamily: FONT, fontSize: '32px', color: TXT.white, stroke: TXT.cardRed, strokeThickness: 7 })
             .setOrigin(0.5)
             .setDepth(4500),
           hide: this.add.graphics().setDepth(1800),
@@ -455,7 +466,7 @@ export class GameScene extends Phaser.Scene {
         } else {
           for (let i = 0; i < 6; i++) {
             const bx = CX + h.x0 + 30 + ((w - 40) * i) / 5;
-            v.hide.fillStyle(0x8a6a4a, 1).fillEllipse(bx, y - 10, 46, 22);
+            v.hide.fillStyle(COLOR.inkSoft, 1).fillEllipse(bx, y - 10, 46, 22);
             v.hide.fillStyle(COLOR.win, 1).fillTriangle(bx - 6, y - 16, bx + 6, y - 16, bx, y - 34);
           }
         }
@@ -483,13 +494,13 @@ export class GameScene extends Phaser.Scene {
       const [dx, dy] = seed(i + 1);
       const bob = stunned ? 0 : Math.sin(now * 14 + i * 1.7) * 3;
       const y = CROWD_Y + 34 + dy * k * 0.62 + bob;
-      img.setVisible(true).setPosition(cx + dx * k, y).setDepth(2000 + y).setTint(stunned ? 0x9fb6ff : 0xffffff);
+      img.setVisible(true).setPosition(cx + dx * k, y).setDepth(2000 + y).setTint(stunned ? CHARGE.stunTint : COLOR.white);
     }
     this.leaderImg
       .setVisible(s.troops > 0)
       .setPosition(cx, CROWD_Y + 20 + (stunned ? 0 : Math.sin(now * 12) * 3))
       .setDepth(2000 + CROWD_Y + 400)
-      .setTint(stunned ? 0x9fb6ff : 0xffffff);
+      .setTint(stunned ? CHARGE.stunTint : COLOR.white);
     this.count.setText(s.troops > 0 ? String(s.troops) : '').setPosition(cx, CROWD_Y - 40);
   }
 
@@ -562,7 +573,7 @@ export class GameScene extends Phaser.Scene {
 
   private float(text: string, x: number, y: number, color: string, size = 46) {
     const t = this.add
-      .text(x, y, text, { fontFamily: FONT, fontSize: `${size}px`, color, stroke: '#2a1a10', strokeThickness: 8 })
+      .text(x, y, text, { fontFamily: FONT, fontSize: `${size}px`, color, stroke: TXT.outline, strokeThickness: 8 })
       .setOrigin(0.5)
       .setDepth(6000);
     this.tweens.add({ targets: t, y: y - 90, alpha: 0, duration: 900, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });
@@ -582,7 +593,7 @@ export class GameScene extends Phaser.Scene {
     switch (e.type) {
       case 'gate': {
         const d = e.after - e.before;
-        this.float(`${d >= 0 ? '+' : ''}${d}`, CX + s.x, CROWD_Y - 110, d >= 0 ? '#9fd6ff' : '#ff4d6d');
+        this.float(`${d >= 0 ? '+' : ''}${d}`, CX + s.x, CROWD_Y - 110, d >= 0 ? TXT.skyMid : TXT.pink);
         this.hooks.sound(d >= 0 ? 'boost' : 'logHit');
         break;
       }
@@ -590,7 +601,7 @@ export class GameScene extends Phaser.Scene {
         if (Math.random() < 0.4) this.hooks.sound('tick', { volume: 0.4 });
         break;
       case 'gateDown':
-        this.float('−1', CX + (e.gate.x0 + e.gate.x1) / 2, this.sy(e.gate.z) - 90, '#ff4d6d', 34);
+        this.float('−1', CX + (e.gate.x0 + e.gate.x1) / 2, this.sy(e.gate.z) - 90, TXT.pink, 34);
         break;
       case 'kill':
         if (this.popBudget >= 1) {
@@ -604,23 +615,23 @@ export class GameScene extends Phaser.Scene {
         this.hooks.sound('slide', { volume: 0.6 });
         break;
       case 'revive':
-        this.float('되살아났다!', CX + (e.horde.x0 + e.horde.x1) / 2, this.sy(e.horde.z) - 80, '#ffe066', 34);
+        this.float('되살아났다!', CX + (e.horde.x0 + e.horde.x1) / 2, this.sy(e.horde.z) - 80, TXT.primaryLight, 34);
         break;
       case 'fire':
         if (e.lost > 0) {
-          this.float(`-${e.lost}`, CX + s.x + 40, CROWD_Y - 90, '#ff4d6d', 34);
+          this.float(`-${e.lost}`, CX + s.x + 40, CROWD_Y - 90, TXT.pink, 34);
           this.hooks.sound('survHurt', { volume: 0.5 });
         }
         break;
       case 'clash':
         for (let i = 0; i < 5; i++) this.pop(CX + s.x + (Math.random() * 2 - 1) * 80, CROWD_Y - 20 + Math.random() * 40, 110);
-        if (e.lost > 0) this.float(`-${e.lost}`, CX + s.x, CROWD_Y - 110, '#ff4d6d');
+        if (e.lost > 0) this.float(`-${e.lost}`, CX + s.x, CROWD_Y - 110, TXT.pink);
         this.cameras.main.shake(160, 0.006);
         this.hooks.sound('survHurt');
         break;
       case 'obstacle':
         if (e.lost > 0) {
-          this.float(`-${e.lost}`, CX + s.x, CROWD_Y - 110, '#ff4d6d');
+          this.float(`-${e.lost}`, CX + s.x, CROWD_Y - 110, TXT.pink);
           this.cameras.main.shake(140, 0.008);
           this.hooks.sound('logHit');
         }
@@ -628,7 +639,7 @@ export class GameScene extends Phaser.Scene {
       case 'crate': {
         const rw = e.crate.reward;
         this.pop(CX + e.crate.x, this.sy(e.crate.z) - 40, 150);
-        this.float(rw.kind === 'troops' ? `+${rw.v}` : rw.kind === 'coins' ? `엽전 +${rw.v}` : '화력 강화!', CX + e.crate.x, this.sy(e.crate.z) - 100, '#ffe066');
+        this.float(rw.kind === 'troops' ? `+${rw.v}` : rw.kind === 'coins' ? `엽전 +${rw.v}` : '화력 강화!', CX + e.crate.x, this.sy(e.crate.z) - 100, TXT.primaryLight);
         this.hooks.sound(rw.kind === 'coins' ? 'coin' : 'survChest');
         break;
       }
@@ -639,7 +650,7 @@ export class GameScene extends Phaser.Scene {
         this.cameras.main.shake(220, 0.012);
         for (const bd of e.bands) this.pop(CX + (bd[0] + bd[1]) / 2, CROWD_Y + 20, 220);
         if (e.lost > 0) {
-          this.float(`-${e.lost}`, CX + s.x, CROWD_Y - 110, '#ff4d6d');
+          this.float(`-${e.lost}`, CX + s.x, CROWD_Y - 110, TXT.pink);
           this.hooks.sound('survHurt');
         } else this.hooks.sound('slap', { volume: 0.5 });
         break;
@@ -647,7 +658,7 @@ export class GameScene extends Phaser.Scene {
         // 불길 피해는 조금씩 자주 나므로 모아서 0.5초마다 보여 준다
         this.burnLost += e.lost;
         if (this.burnLost > 0 && s.t - this.burnShown >= 0.5) {
-          this.float(`-${this.burnLost}`, CX + s.x + 40, CROWD_Y - 90, '#f0a500', 30);
+          this.float(`-${this.burnLost}`, CX + s.x + 40, CROWD_Y - 90, TXT.primaryDeep, 30);
           this.burnLost = 0;
           this.burnShown = s.t;
         }
@@ -655,16 +666,16 @@ export class GameScene extends Phaser.Scene {
       case 'lives':
         // 고양이 "아홉 목숨": 쓰러진 자리에서 다시 일어난다
         for (let i = 0; i < 4; i++) this.pop(CX + s.x + (Math.random() * 2 - 1) * 60, CROWD_Y + Math.random() * 30, 140);
-        this.float(`아홉 목숨! +${e.troops}`, CX + s.x, CROWD_Y - 130, '#ffe066');
+        this.float(`아홉 목숨! +${e.troops}`, CX + s.x, CROWD_Y - 130, TXT.primaryLight);
         this.hooks.sound('boost');
         break;
       case 'summon':
-        this.float('부하를 불렀다!', CX, this.sy(e.horde.z) - 60, '#ff4d6d', 34);
+        this.float('부하를 불렀다!', CX, this.sy(e.horde.z) - 60, TXT.pink, 34);
         break;
       case 'bossDown':
         this.pop(CX, this.sy(e.boss.z) - bossArt(e.boss.kind, s.stage.region).size / 2, 320);
         this.hooks.sound('survBossDown');
-        if (s.endless) this.float('보스 처치!', CX, CROWD_Y - 200, '#ffe066');
+        if (s.endless) this.float('보스 처치!', CX, CROWD_Y - 200, TXT.primaryLight);
         break;
       case 'fail':
         this.hooks.sound('lose');
