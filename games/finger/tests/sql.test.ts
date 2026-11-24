@@ -12,7 +12,7 @@ import { EXTRA_HERO_IDS, HEROES, MAX_SHOT_STEPS, STAGES } from '../src/sim';
  * 다르면 npm run sqlrows 로 줄을 만들어 넣는다 (이미 올라간 마이그레이션은 고치지 않고 새 파일에 넣는다).
  */
 // 시아핑거 함수를 정의하는 마이그레이션 (순서대로). 함수를 다시 정의하는 새 파일을 만들면 여기에 넣는다 — 마지막 정의를 본다
-const FILES = ['067_finger.sql', '070_finger_limits.sql', '076_cat_finger.sql', '086_finger_daily.sql', '100_finger_overlap.sql'];
+const FILES = ['067_finger.sql', '070_finger_limits.sql', '076_cat_finger.sql', '086_finger_daily.sql', '100_finger_overlap.sql', '102_admin_coins.sql'];
 const SQL = FILES.map((f) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8')).join('\n');
 /** fn 의 최신 정의 (뒤 파일의 create or replace 가 이긴다) */
 const block = (fn: string) => {
@@ -209,6 +209,29 @@ describe('SQL 표', () => {
       expect(SQL).toContain(`alter table public.${t} enable row level security;`);
       expect(SQL).toContain(`revoke all on public.${t} from anon, authenticated;`);
     }
+  });
+
+  it('finger_profile 102 는 067 을 그대로 옮기고 관리자 갈래(엽전 · 시아코인 1만)만 더한다 (권한 줄까지 같다)', () => {
+    const fnOf = (f: string) => {
+      const t = readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+      const i = t.lastIndexOf('create or replace function public.finger_profile()');
+      const end = 'grant execute on function public.finger_profile() to authenticated;';
+      return t.slice(i, t.indexOf(end, i) + end.length);
+    };
+    const now = fnOf('102_admin_coins.sql');
+    const a = now.indexOf('  -- 관리자 계정(시험용)');
+    const b = now.indexOf('  end if;\n', a) + '  end if;\n'.length;
+    expect(a).toBeGreaterThan(0);
+    const admin = now.slice(a, b);
+    expect(now.slice(0, a) + now.slice(b)).toBe(fnOf('067_finger.sql'));
+    expect(admin).toContain('if exists (select 1 from public.profiles where id = me and is_admin) then');
+    expect(admin).toContain('update public.finger_profiles set coins = 10000 where user_id = me;');
+    expect(admin).toContain('perform public._ensure_wallet(me);');
+    expect(admin).toContain('update public.wallets set sia_coins = 10000 where user_id = me;');
+    // 바꾸는 것은 엽전 열과 시아코인뿐
+    expect(admin.match(/update public\.\w+ set \w+ = /g)).toEqual(['update public.finger_profiles set coins = ', 'update public.wallets set sia_coins = ']);
+    expect(now).toContain('language plpgsql security definer set search_path = public as $$');
+    expect(now).toContain('revoke all on function public.finger_profile() from public, anon;');
   });
 
   it('게임 오픈 여부는 닫힌 채로 추가', () => expect(SQL).toContain("('game_open:finger', 'false'::jsonb)"));
