@@ -13,7 +13,7 @@ import { AFF_BONUS, AFF_NEED, ASKS, CAT_BONUS, CAT_LAND_STAGE, CAT_PRICE, DRAGON
  * 자원·시간·경험치는 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  * 뒤 마이그레이션이 같은 함수를 다시 정의하면 아래 목록에 그 파일을 더한다 (뒤 파일의 정의가 실제 값이다).
  */
-export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql', '077_cat_village.sql', '081_village_monuments2.sql'];
+export const FILES = ['047_village.sql', '049_village_buildings.sql', '050_village_coin.sql', '051_village_residents.sql', '052_village_ranking.sql', '053_village_monuments.sql', '054_village_tune.sql', '059_village_review.sql', '062_village_admin.sql', '063_village_admin_free.sql', '064_village_admin_visit.sql', '077_cat_village.sql', '081_village_monuments2.sql', '091_village_praise_inbox.sql', '099_village_new_games.sql'];
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const sql = FILES.map(read).join('\n');
 
@@ -204,11 +204,13 @@ describe('SQL의 권한 규칙', () => {
   /** 화면이 부르는 함수 (전부) */
   const OPEN = [
     'village_admin_set_state', 'village_assign', 'village_build', 'village_claim_goal', 'village_craft', 'village_daily_claim', 'village_expand', 'village_feast', 'village_harvest', 'village_monuments', 'village_move', 'village_place',
-    'village_praise', 'village_rename', 'village_request_done', 'village_request_skip', 'village_sell', 'village_state', 'village_store', 'village_upgrade', 'village_visit',
+    'village_praise', 'village_praise_inbox', 'village_praise_seen', 'village_rename', 'village_request_done', 'village_request_skip', 'village_sell', 'village_state', 'village_store', 'village_upgrade', 'village_visit',
   ];
 
   /** 읽기만 하는 함수 (구경 · 기념물 조건 보기) */
-  const READ_ONLY = ['village_visit'];
+  const READ_ONLY = ['village_visit', 'village_praise_inbox'];
+  /** 마을의 자원 · 건물을 건드리지 않고 내 칸 하나만 고치는 함수 (091: 칭찬을 본 시각) — 마을 줄 잠금 · 마무리가 필요 없다 */
+  const OWN_FIELD = { village_praise_seen: 'update public.village_profiles set praise_seen_at = greatest(praise_seen_at, want) where user_id = me' } as Record<string, string>;
 
   it('안에서만 쓰는 함수(_로 시작)는 아무에게도 실행 권한을 주지 않는다', () => {
     const inner = fns.filter((f) => f.startsWith('_'));
@@ -233,6 +235,11 @@ describe('SQL의 권한 규칙', () => {
       // 읽기만 하는 함수는 잠그지 않는다
       if (READ_ONLY.includes(f)) {
         expect(b, f).not.toMatch(/\b(insert|update|delete)\b/);
+        continue;
+      }
+      if (OWN_FIELD[f]) {
+        expect(b.replace(/\s+/g, ' '), f).toContain(OWN_FIELD[f]);
+        expect(b.match(/\b(insert|update|delete)\b/g), f).toEqual(['update']);
         continue;
       }
       // 잠근 뒤의 시각으로, 끝난 짓기부터 마무리하고 계산한다
@@ -387,14 +394,16 @@ describe('SQL의 권한 규칙', () => {
     expect(st).toContain("if to_regclass('public.defense_stages') is not null then");
     // 059: 다른 게임의 표 · 함수가 하나 없어도 나머지는 읽는다 (그 기록만 0)
     // 081: 돌격대 · 핑거의 표도 같은 식으로 감싼다
-    for (const t of ['player_points', 'volleyball_rankings', 'race_records', 'survival_profiles', 'wallet_logs', 'roulette_bets', 'charge_profiles', 'charge_endless', 'finger_profiles', 'finger_tower']) {
+    // 099: 열두길 · 오늘의 도전 · 레이스 주간 랭킹의 표도
+    for (const t of ['player_points', 'volleyball_rankings', 'race_records', 'survival_profiles', 'wallet_logs', 'roulette_bets', 'charge_profiles', 'charge_endless', 'finger_profiles', 'finger_tower',
+      'twelve_keys', 'twelve_maps', 'twelve_tower', 'daily_scores', 'race_weekly']) {
       const at = st.indexOf(`public.${t}`);
       expect(at, t).toBeGreaterThan(0);
       expect(st.slice(at, st.indexOf('end;', at)), t).toContain('exception when undefined_table');
       expect(st.lastIndexOf('begin', at), t).toBeGreaterThan(st.lastIndexOf('end;', at));
     }
     expect(st).toContain("if to_regprocedure('public._survival_map_cleared(uuid, text, text[])') is not null then");
-    for (const f of fns) if (f !== '_village_game_stats') expect(body(f), f).not.toMatch(/player_points|volleyball_rankings|race_records|survival_|wallet_logs|roulette_bets|defense_|public\.charge_|public\.finger_/);
+    for (const f of fns) if (f !== '_village_game_stats') expect(body(f), f).not.toMatch(/player_points|volleyball_rankings|race_records|survival_|wallet_logs|roulette_bets|defense_|public\.charge_|public\.finger_|public\.twelve_|daily_scores|race_weekly/);
     // 여는 곳: 들어올 때와 [기념물] 화면
     const sync = 'perform public._village_monument_sync(me, t);';
     expect(fns.filter((f) => body(f).includes(sync)).sort()).toEqual(['village_monuments', 'village_state']);

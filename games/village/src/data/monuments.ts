@@ -12,6 +12,8 @@ export const STAT_IDS = [
   'def_3', 'def_6', 'def_9', 'def_12', 'matgo_wins', 'casino_wins',
   // 081: 시아돌격대(모은 별 · 끝없는 길 최고 거리 m) · 시아핑거(모은 별 · 끝없는 탑 최고 층)
   'charge_stars', 'charge_meters', 'finger_stars', 'finger_floor',
+  // 099: 시아열두길(보통 모드 열쇠 수 · 보통/어려움 최종보스 클리어 · 끝없는 탑 최고 층) · 오늘의 도전(기록한 날 수 · 지난 날 1위) · 레이스 주간 랭킹(끝난 주 3위 안)
+  'twelve_keys', 'twelve_final', 'twelve_hard', 'twelve_floor', 'daily_days', 'daily_first', 'race_week_top',
 ] as const;
 export type StatId = (typeof STAT_IDS)[number];
 export type GameStats = Record<StatId, number>;
@@ -38,6 +40,9 @@ export const GAMES: { id: string; name: string; icon: string; world: string }[] 
   { id: 'casino', name: '시아카지노', icon: '🎰', world: 'casino' },
   { id: 'charge', name: '시아돌격대', icon: '🚩', world: 'charge' },
   { id: 'finger', name: '시아핑거', icon: '👆', world: 'finger' },
+  { id: 'twelve', name: '시아열두길', icon: '🗝️', world: 'twelve' },
+  // 오늘의 도전: 게임 하나가 아니라 레이스 · 서바이벌 · 돌격대 · 핑거 · 디펜스의 하루 도전 묶음 (world 'daily' 는 게임 목록에 없어 늘 보인다)
+  { id: 'daily', name: '오늘의 도전', icon: '📅', world: 'daily' },
 ];
 
 export const MONUMENTS: MonumentDef[] = [
@@ -63,6 +68,14 @@ export const MONUMENTS: MonumentDef[] = [
   { id: 'mon_finger30', game: 'finger', cond: '별 30개 모으기', stat: 'finger_stars', need: 30 },
   { id: 'mon_finger100', game: 'finger', cond: '별 100개 모으기', stat: 'finger_stars', need: 100 },
   { id: 'mon_finger_tower', game: 'finger', cond: '끝없는 탑 20층 오르기', stat: 'finger_floor', need: 20 },
+  // 099
+  { id: 'mon_twelve_keys', game: 'twelve', cond: '보통 모드 열쇠 6개 모으기', stat: 'twelve_keys', need: 6 },
+  { id: 'mon_twelve_final', game: 'twelve', cond: '보통 모드 최종보스 물리치기', stat: 'twelve_final', need: 1 },
+  { id: 'mon_twelve_hard', game: 'twelve', cond: '어려움 모드 최종보스 물리치기 (진짜 엔딩)', stat: 'twelve_hard', need: 1 },
+  { id: 'mon_twelve_tower', game: 'twelve', cond: '끝없는 탑 30층 오르기', stat: 'twelve_floor', need: 30 },
+  { id: 'mon_daily7', game: 'daily', cond: '서로 다른 7일 동안 기록 남기기 (어느 게임이든, 최근 60일)', stat: 'daily_days', need: 7 },
+  { id: 'mon_daily_first', game: 'daily', cond: '지난 날의 오늘의 도전에서 1위 하기 (어느 게임이든)', stat: 'daily_first', need: 1 },
+  { id: 'mon_race_week', game: 'race', cond: '주간 랭킹 3위 안에 들기 (끝난 주)', stat: 'race_week_top', need: 1 },
 ];
 export const MONUMENT = Object.fromEntries(MONUMENTS.map((m) => [m.id, m])) as Partial<Record<BuildingType, MonumentDef>>;
 

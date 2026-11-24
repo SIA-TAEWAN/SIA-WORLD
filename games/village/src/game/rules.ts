@@ -484,8 +484,8 @@ export function settle(s: VillageState, now: number): void {
     .filter((b) => (b.state === 'building' || b.state === 'upgrading') && b.finishAt !== null && b.finishAt <= now)
     .sort((a, b) => a.finishAt! - b.finishAt!);
   for (const b of due) {
-    // 정자가 다 지어지거나 레벨이 오르면 그 전까지 쌓인 양을 먼저 적어 둔다
-    if (b.type === 'pavilion') bankAll(s, now);
+    // 정자가 다 지어지거나 레벨이 오르면 다 된 시각까지 쌓인 양을 먼저 적어 둔다 (그 뒤로는 새 보너스로 쌓인다. SQL 099 _village_settle)
+    if (b.type === 'pavilion') bankAll(s, b.finishAt!);
     if (b.state === 'building') addExp(s.profile, BUILDING[b.type].buildExp);
     else {
       addExp(s.profile, upgradeExp(b.type, b.level));
@@ -793,6 +793,16 @@ export function adminBoost(s: VillageState): boolean {
   p.exp = 0;
   p.landStage = top;
   return true;
+}
+
+/**
+ * 관리자의 기념물 (SQL 099 village_state): 아직 열지 않은 기념물을 모두 열고 보관함에 넣는다. 이미 열린 것은 그대로 (두 번 불러도 같은 것이 또 생기지 않는다).
+ * → 이번에 열린 기념물. 일반 사용자는 아무것도 바뀌지 않는다
+ */
+export function adminMonuments(s: VillageState, now: number, idFor: (type: BuildingType) => string): Building[] {
+  if (!s.admin) return [];
+  const all = Object.fromEntries(MONUMENTS.map((m) => [m.stat, Number.MAX_SAFE_INTEGER])) as Partial<GameStats>;
+  return grantMonuments(s, all, now, idFor);
 }
 
 /**

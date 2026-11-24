@@ -30,7 +30,12 @@ export const texKey = (type: BuildingType, look: number) => `b-${type}-${upgrada
 export const texSize = (w: number, h: number) => ({ w: w * CELL, h: h * CELL + RISE * w });
 
 /** 아직 그림 파일이 없는 것 (ASSETS.md "그릴 것"): 불러오지 않고 코드 그림을 쓴다. 그림을 넣으면 여기서 뺀다 */
-const NO_FILE: ReadonlySet<BuildingType> = new Set<BuildingType>(['mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger100', 'mon_finger_tower']);
+const NO_FILE: ReadonlySet<BuildingType> = new Set<BuildingType>([
+  'mon_charge30', 'mon_charge100', 'mon_charge_road', 'mon_finger30', 'mon_finger100', 'mon_finger_tower',
+  // 099: 열두길 · 오늘의 도전 · 레이스 주간 기념물 7종 (monE · monF), 특별 건물 열두 지신 문 3단계 (jisin)
+  'mon_twelve_keys', 'mon_twelve_final', 'mon_twelve_hard', 'mon_twelve_tower', 'mon_daily7', 'mon_daily_first', 'mon_race_week',
+  'jisin',
+]);
 /** 그림 파일로 먼저 채우는 텍스처 이름 (public/art/<이름>.png) */
 export const ART_FILES: string[] = [
   ...BUILDINGS.filter((d) => !NO_FILE.has(d.id)).flatMap((d) => (upgradable(d.id) ? [1, 2, 3] : [1]).map((look) => texKey(d.id, look))),
@@ -60,7 +65,7 @@ export function pickNature(h: number, files: Set<string>): { key: string; size: 
   return null;
 }
 /** 밤에 빛나는 것: 종류 → 모습 몇부터 (등불 · 사당의 돌 등 · 잔치 마당의 초롱 · 정자의 등 · 기와집의 등) */
-export const GLOWS: Partial<Record<BuildingType, number>> = { lantern: 1, shrine: 1, feast: 1, pavilion: 2, house: 3, hall: 3 };
+export const GLOWS: Partial<Record<BuildingType, number>> = { lantern: 1, shrine: 1, feast: 1, pavilion: 2, jisin: 2, house: 3, hall: 3, mon_twelve_tower: 1 };
 
 function box(g: G, x: number, y: number, w: number, h: number, r: number, fill: number, line = LINE) {
   g.fillStyle(fill, 1).fillRoundedRect(x, y, w, h, r);
@@ -297,6 +302,25 @@ function drawShrine(g: G, look: number) {
   if (look === 3) for (const x of [58, W - 58]) dot(g, x, base - 120, 6, COLOR.primary, 2);
 }
 
+/** 열두 지신 문 (2×2): 붉은 기둥 둘 · 문짝 · 기와지붕, 지붕 위로 열두 지신 원판이 반달 모양으로 늘어선다 (모습 1 → 4개 · 2 → 8개 · 3 → 12개와 금빛 현판) */
+function drawJisin(g: G, look: number) {
+  const W = CELL * 2;
+  const base = RISE * 2 + CELL * 2 - 10;
+  box(g, 16, base - 16, W - 32, 16, 6, COLOR.lineSoft);
+  for (const x of [38, W - 50]) box(g, x, base - 118, 12, 104, 3, COLOR.cardRed, 2);
+  box(g, 50, base - 88, W - 100, 74, 4, look === 1 ? COLOR.inkSoft : COLOR.primaryDeep);
+  seg(g, W / 2, base - 88, W / 2, base - 14, 3);
+  for (const x of [W / 2 - 10, W / 2 + 10]) dot(g, x, base - 50, 4, COLOR.primary, 2);
+  roof(g, W / 2, base - 118 - 46, W - 44, 52, look === 1 ? 2 : 3);
+  const n = look === 1 ? 4 : look === 2 ? 8 : 12;
+  for (let i = 0; i < n; i++) {
+    const a = Math.PI * (0.08 + (0.84 * (i + 0.5)) / n);
+    dot(g, W / 2 - Math.cos(a) * 74, base - 168 - Math.sin(a) * 48, 8, GIFT_COLORS[i % GIFT_COLORS.length], 2);
+  }
+  if (look === 3) box(g, W / 2 - 24, base - 112, 48, 16, 3, COLOR.primary, 2);
+  else box(g, W / 2 - 20, base - 110, 40, 12, 3, COLOR.panel, 2);
+}
+
 // ───────────────────────── 장식물 · 길 ─────────────────────────
 
 const DECO: Partial<Record<BuildingType, (g: G) => void>> = {
@@ -425,6 +449,16 @@ const MON: Partial<Record<BuildingType, (g: G) => void>> = {
   mon_finger30(g) { plinth(g); for (const [x, y] of [[14, 70], [22, 60], [30, 50]]) dot(g, x, BASE - y, 3, COLOR.white, 1.5); dot(g, 52, BASE - 40, 26, COLOR.teamA); dot(g, 43, BASE - 50, 7, COLOR.white, 0); seg(g, 34, BASE - 22, 70, BASE - 22, 3); },
   mon_finger100(g) { plinth(g, true); dot(g, 48, BASE - 42, 28, COLOR.primary); dot(g, 38, BASE - 54, 8, COLOR.primaryLight, 0); dot(g, 48, BASE - 42, 10, COLOR.cardRed, 2); poly(g, [76, BASE - 86, 80, BASE - 76, 90, BASE - 72, 80, BASE - 68, 76, BASE - 58, 72, BASE - 68, 62, BASE - 72, 72, BASE - 76], COLOR.white, 2); },
   mon_finger_tower(g) { box(g, 12, BASE - 12, 72, 12, 4, ROULETTE.winter); [0, 1, 2, 3].forEach((i) => { const w = 60 - i * 11; box(g, 48 - w / 2, BASE - 32 - i * 20, w, 20, 3, i % 2 ? COLOR.lineSoft : ROULETTE.winter, 2.5); }); box(g, 41, BASE - 30, 14, 18, 6, COLOR.outline, 0); poly(g, [34, BASE - 92, 36, BASE - 108, 44, BASE - 92], COLOR.cardRed, 2); poly(g, [52, BASE - 92, 60, BASE - 108, 62, BASE - 92], COLOR.cardRed, 2); for (const x of [42, 54]) dot(g, x, BASE - 82, 2.5, COLOR.primary, 0); },
+  // 시아열두길: 열쇠를 건 돌기둥 · 비석 · 금빛 문 · 구름 위 탑의 등불
+  mon_twelve_keys(g) { plinth(g); box(g, 36, BASE - 84, 24, 72, 8, ROULETTE.winter); for (const [x, y] of [[26, 70], [70, 62], [26, 46], [70, 38], [26, 22], [70, 22]]) { seg(g, x < 48 ? 36 : 60, BASE - y - 4, x, BASE - y, 2); dot(g, x, BASE - y + 4, 5, COLOR.primary, 2); } dot(g, 48, BASE - 90, 7, COLOR.primaryLight, 2); },
+  mon_twelve_final(g) { plinth(g); box(g, 26, BASE - 92, 44, 80, 14, COLOR.lineSoft); box(g, 34, BASE - 80, 28, 50, 6, COLOR.panel, 2); for (let i = 0; i < 3; i++) seg(g, 40, BASE - 70 + i * 14, 56, BASE - 70 + i * 14, 3); dot(g, 48, BASE - 96, 6, COLOR.cardRed, 2); },
+  mon_twelve_hard(g) { plinth(g, true); box(g, 18, BASE - 80, 10, 66, 3, COLOR.primaryDeep); box(g, 68, BASE - 80, 10, 66, 3, COLOR.primaryDeep); box(g, 28, BASE - 66, 40, 52, 4, COLOR.primary); seg(g, 48, BASE - 66, 48, BASE - 14, 3); roof(g, 48, BASE - 104, 80, 26, 3); dot(g, 48, BASE - 40, 6, COLOR.cardRed, 2); poly(g, [82, BASE - 96, 85, BASE - 88, 92, BASE - 85, 85, BASE - 82, 82, BASE - 74, 79, BASE - 82, 72, BASE - 85, 79, BASE - 88], COLOR.white, 2); },
+  mon_twelve_tower(g) { box(g, 12, BASE - 12, 72, 12, 4, ROULETTE.winter); [0, 1, 2].forEach((i) => { const w = 44 - i * 8; box(g, 48 - w / 2, BASE - 34 - i * 22, w, 22, 3, i % 2 ? COLOR.panel : COLOR.lineSoft, 2.5); roof(g, 48, BASE - 42 - i * 22, w + 12, 10, 3); }); for (const [x, y, r] of [[18, 30, 9], [28, 26, 11], [74, 36, 9], [84, 32, 7]]) dot(g, x, BASE - y, r, COLOR.white, 2); box(g, 41, BASE - 112, 14, 16, 5, COLOR.primaryLight); box(g, 38, BASE - 116, 20, 6, 3, COLOR.cardRed, 2); },
+  // 오늘의 도전: 돌 받침 위의 달력 판 · 장원 깃발
+  mon_daily7(g) { plinth(g); seg(g, 30, BASE - 14, 30, BASE - 30, 4); seg(g, 66, BASE - 14, 66, BASE - 30, 4); box(g, 16, BASE - 88, 64, 60, 6, COLOR.panel); box(g, 16, BASE - 88, 64, 14, 6, COLOR.cardRed, 3); for (let i = 0; i < 7; i++) { const x = 24 + (i % 4) * 13; const y = BASE - 68 + Math.floor(i / 4) * 16; box(g, x, y, 10, 10, 3, i === 6 ? COLOR.primary : COLOR.lineSoft, 1.5); } },
+  mon_daily_first(g) { plinth(g, true); seg(g, 34, BASE - 14, 34, BASE - 100, 5); poly(g, [36, BASE - 98, 80, BASE - 92, 74, BASE - 78, 80, BASE - 64, 36, BASE - 60], COLOR.cardRed); dot(g, 56, BASE - 79, 9, COLOR.primary, 2); dot(g, 34, BASE - 102, 5, COLOR.primary, 2); for (const x of [56, 70]) seg(g, x, BASE - 14, x, BASE - 30, 3); dot(g, 63, BASE - 36, 8, COLOR.primaryLight, 2); },
+  // 시아레이스 주간 랭킹: 1 · 2 · 3 시상대와 트로피
+  mon_race_week(g) { box(g, 36, BASE - 46, 24, 46, 3, COLOR.primary); box(g, 12, BASE - 30, 24, 30, 3, ROULETTE.winter); box(g, 60, BASE - 22, 24, 22, 3, RACE.trackDark); box(g, 41, BASE - 72, 14, 16, 6, COLOR.primary); seg(g, 48, BASE - 56, 48, BASE - 48, 4); box(g, 40, BASE - 52, 16, 6, 3, COLOR.primaryDeep, 2); for (const x of [36, 60]) dot(g, x, BASE - 68, 5, COLOR.primary, 2); dot(g, 24, BASE - 36, 4, COLOR.white, 1.5); dot(g, 72, BASE - 28, 4, COLOR.white, 1.5); },
 };
 /** 석상의 몸 (서바이벌 보스 석상의 바탕) */
 function statue(g: G, fill: number) {
@@ -437,7 +471,7 @@ function statue(g: G, fill: number) {
 
 const MAIN: Partial<Record<BuildingType, (g: G, look: number) => void>> = {
   hall: drawHall, paddy: drawPaddy, house: drawHouse, lumber: drawLumber, storage: drawStorage, market: drawMarket, quarry: drawQuarry, mill: drawMill, jar: drawJar,
-  pavilion: drawPavilion, feast: drawFeast, shrine: drawShrine,
+  pavilion: drawPavilion, feast: drawFeast, jisin: drawJisin, shrine: drawShrine,
 };
 
 /** 짓는 중인 터: 다진 흙바닥 + 말뚝과 줄 + 쌓아 둔 널빤지와 삽 */
