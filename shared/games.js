@@ -27,6 +27,8 @@ export const GAMES = [
     path: 'games/finger/', image: 'shared/images/card-finger.png', open: false },
   { id: 'twelve', name: '시아열두길', desc: '열두 지형의 요괴를 베고 열쇠를 모아라 · 십이지 액션 RPG · 1인용',
     path: 'games/twelve/', image: 'shared/images/card-twelve.png', open: false },
+  { id: 'tower', name: '시아의탑', desc: '소원을 들어주는 구슬을 찾아 100층 탑을 올라라 · 도트 액션 RPG · 1인용',
+    path: 'games/tower/', image: 'shared/images/card-tower.png', open: false },
 ];
 
 const KEY = 'game_open:';
