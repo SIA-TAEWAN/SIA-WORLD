@@ -275,7 +275,7 @@ img.ball.pierce { border-color: var(--accent); }
 .scene-art { display: block; width: 100%; aspect-ratio: 16 / 5; object-fit: cover; object-position: center 60%; flex: none; background: var(--bg);
   border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }
 /* 고양이 열기: 한 번 더 누르기 상태 */
-.leader.locked.extra.confirm em { color: var(--pink); font-weight: bold; }
+.leader.locked.extra.confirm em { color: var(--pink); }
 .btn.unlock.confirm { outline: 3px solid var(--pink); outline-offset: 1px; }
 
 /* ---------- 오늘의 도전 (086) ---------- */

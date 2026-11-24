@@ -389,7 +389,8 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       case 'stand':
         return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스탠드` } : null;
       case 'double':
-        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 더블다운!`, chips: { from: `tag:${ev.seat}`, to: `bet:${ev.seat}`, amount: Number(ev.bet) || 0 } } : null;
+        // ev.bet 은 두 배가 된 뒤 금액 → 더 건 금액(절반)만 칩으로 옮긴다
+        return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 더블다운!`, chips: { from: `tag:${ev.seat}`, to: `bet:${ev.seat}`, amount: Math.floor((Number(ev.bet) || 0) / 2) } } : null;
       case 'split':
         // 두 장이 두 핸드로 갈라지는 것을 다 본 뒤에 다음 카드
         return typeof ev.seat === 'number' ? { at: ev.seat, text: `${who} 스플릿!`, chips: { from: `tag:${ev.seat}`, to: `bet:${ev.seat}`, amount: Number(ev.bet) || 0 }, gap: 1000 } : null;

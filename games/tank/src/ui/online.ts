@@ -504,14 +504,6 @@ function renderRoom(id: string) {
     };
     root.querySelectorAll<HTMLElement>('#speed button').forEach((b) => b.addEventListener('click', () => void setOpt(Number(b.dataset.v), wind)));
     root.querySelectorAll<HTMLElement>('#wind button').forEach((b) => b.addEventListener('click', () => void setOpt(speed, b.dataset.v as WindMode)));
-    root.querySelectorAll<HTMLElement>('#tank button').forEach((b) =>
-      b.addEventListener('click', () => {
-        if (!isTankOpen(b.dataset.v!)) return; // 잠긴 칸은 아래 한 번만 붙인 클릭에서 (그리기마다 붙는 이 클릭이 겹쳐도 두 번 사지 않게)
-        state.tank = b.dataset.v as TankChoice;
-        sfx.click();
-        void update({ tank: state.tank });
-      }),
-    );
     root.querySelectorAll<HTMLElement>('#team button').forEach((b) => b.addEventListener('click', () => void update({ team: Number(b.dataset.v) as 0 | 1 })));
     root.querySelectorAll<HTMLElement>('#map button').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -576,6 +568,14 @@ function renderRoom(id: string) {
     void pressUnlock(unlockHooks);
   };
   $(root, '#tank').addEventListener('click', onUnlockClick);
+  // 탱크 고르기: 칸은 그릴 때마다 바뀌므로 #tank 에 한 번만 붙인다 (잠긴 칸은 위 onUnlockClick 이 맡는다)
+  $(root, '#tank').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-v]');
+    if (!b || b.disabled || !isTankOpen(b.dataset.v!)) return;
+    state.tank = b.dataset.v as TankChoice;
+    sfx.click();
+    void update({ tank: state.tank });
+  });
   $(root, '#tank-lock').addEventListener('click', onUnlockClick);
   // 다른 기기에서 열고 돌아와도 자물쇠를 바로 푼다 (이 화면을 떠났으면 스스로 끈다)
   const offUnlock = onUnlockChange(() => (root.isConnected ? draw() : offUnlock()));
@@ -669,7 +669,7 @@ function setupsOf(room: Room): PlayerSetup[] {
   return list;
 }
 
-/** 이 판에 서든데스를 켤지: 방 사람들의 기기가 모두 서든데스를 알 때만 */
+/** 이 판에 서든데스를 켤지: 방 사람들의 기기가 모두 서든데스를 알 때만. 기기마다 다르게 보았으면 판 중 첫 sync 에서 기준 기기 값으로 맞춘다 (net/online.ts) */
 function suddenFor(room: Room): number {
   return roomSess?.allAtLeast(room.players.map((p) => p.id), SUDDEN_VERSION) ? SUDDEN_TURN : 0;
 }

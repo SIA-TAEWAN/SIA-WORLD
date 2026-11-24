@@ -272,7 +272,7 @@ export function parseDraw(data: unknown): void {
 /** 결과 화면에 보일 한 줄 */
 export function outcomeText(o: AiOutcome): string {
   if (o.state === 'saved') return `🏅 전적 +1${o.coin ? ' · 시아코인 +1' : ' · 시아코인은 이번엔 없어요'} · 내 전적 ${o.wins}승 ${o.losses}패`;
-  if (o.state === 'limit') return `오늘은 AI 대전 ${o.perDay}판을 채워서 전적·시아코인에 반영되지 않았어요`;
+  if (o.state === 'limit') return `오늘은 AI 대전 ${o.perDay}판을 채워서 전적·시아코인에 반영되지 않았어요 · 고양이 판 수에도 들어가지 않아요`;
   if (o.state === 'draw') return '무승부는 전적에 기록되지 않아요';
   if (o.state === 'failed') return '전적을 기록하지 못했어요';
   if (o.state === 'locked') return LOCKED_MSG;

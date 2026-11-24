@@ -445,6 +445,8 @@ export function basicStrategy(cards: readonly Card[], up: number, canSplit: bool
     if (t === 18) return up >= 3 && up <= 6 ? 'Ds' : up <= 8 ? 'S' : 'H';
     if (t === 17) return up >= 3 && up <= 6 ? 'D' : 'H';
     if (t >= 15) return up >= 4 && up <= 6 ? 'D' : 'H';
+    // 소프트 12 (A,A 인데 스플릿 못 할 때): 늘 히트
+    if (t <= 12) return 'H';
     return up >= 5 && up <= 6 ? 'D' : 'H';
   }
   if (t >= 17) return 'S';

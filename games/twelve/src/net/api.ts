@@ -24,6 +24,8 @@ export interface StartInfo {
   run: string;
   /** 드랍 씨앗 (전투 화면이 무엇이 떨어질지 미리 안다. 판정은 서버가 다시 한다) */
   seed: number;
+  /** 시작 전에 못 보낸 결과를 먼저 보냈으면 그 뒤의 새 프로필 (화면이 이것으로 바꾼다) */
+  profile?: TwelveProfile;
 }
 
 export interface TwelveApi {
@@ -267,7 +269,7 @@ export interface RpcClient {
 /** 서버가 일부러 거절한 까닭 (raise exception 글자) — 다시 보내도 소용없다 */
 const REJECTS = [
   'map locked', 'hero locked', 'locked character', 'mode locked', 'not enough coins', 'not enough stones', 'low level', 'locked item', 'equipped', 'bag full',
-  'max plus', 'max bag', 'max potions', 'not for sale', 'no weapon', 'no item', 'floor locked', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'bad ',
+  'max plus', 'max bag', 'max potions', 'not for sale', 'no weapon', 'no item', 'floor locked', 'need keys', 'already finished', 'too early', 'too late', 'overlap', 'no run', 'need login', 'bad ',
 ];
 /** 거절이면 까닭, 아니면(통신 문제) null */
 const rejectOf = (msg: string) => {
@@ -356,13 +358,15 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     loadProfile: () => state('twelve_state'),
     async start(map, mode, hero) {
       // 못 보낸 결과가 있으면 새 판을 시작하기 전에 먼저 보낸다 (새 판과 시간이 겹치면 서버가 받지 않는다)
-      if (readPending().length) await resend().catch(() => 0);
+      const sent = readPending().length ? await resend().catch(() => 0) : 0;
+      // 보낸 결과가 있으면 서버가 준 새 프로필을 함께 돌려준다 (화면의 프로필이 옛것으로 남지 않게)
+      const fresh = sent > 0 && known ? { profile: known } : {};
       try {
         const d = (await call('twelve_start', { p_map: map, p_mode: mode, p_hero: hero })) as { run?: string; seed?: number };
-        return { run: String(d.run ?? ''), seed: Number(d.seed) || 0 };
+        return { run: String(d.run ?? ''), seed: Number(d.seed) || 0, ...fresh };
       } catch (e) {
         if (e instanceof ApiError) throw e;
-        return { run: '', seed: Math.floor(Math.random() * 0x7fffffff) };
+        return { run: '', seed: Math.floor(Math.random() * 0x7fffffff), ...fresh };
       }
     },
     async finish(report) {

@@ -174,33 +174,42 @@ export async function boot(a: ChargeApi, user: WorldUser | null) {
       if (document.visibilityState !== 'visible') return;
       void loadOwnedCharacters(true).then((ids) => {
         const was = leadersOf(profile).join();
+        const wasLeader = leader;
         applyOwned(ids);
+        // 기기에 저장한 대장(예: 다른 기기에서 연 고양이)을 이제 고를 수 있으면 되돌린다
+        restoreSavedLeader();
         // 메인(대장 고르기)을 보고 있으면 바로 다시 그린다
-        if (leadersOf(profile).join() !== was && document.querySelector('.leaders')) showMain();
+        if ((leadersOf(profile).join() !== was || leader !== wasLeader) && document.querySelector('.leaders')) showMain();
       });
     });
   }
-  try {
-    const saved = localStorage.getItem(LEADER_KEY) as LeaderId | null;
-    if (saved && leadersOf(profile).includes(saved)) leader = saved;
-  } catch {
-    /* 저장 공간 없음 */
-  }
+  restoreSavedLeader();
   void api
     .resend()
     .then(noteResent)
     .catch(() => null);
 }
 
+/** 기기에 저장한 대장을 고를 수 있으면 그 대장으로 */
+function restoreSavedLeader() {
+  try {
+    const saved = localStorage.getItem(LEADER_KEY) as LeaderId | null;
+    if (saved && leadersOf(profile).includes(saved)) leader = saved;
+  } catch {
+    /* 저장 공간 없음 */
+  }
+}
+
 /** 이 게임에서 연 추가 캐릭터 */
 let owned: string[] = [];
-/** 연 캐릭터 목록 반영 (null = 못 읽음 → 그대로). 고른 대장이 잠기면 첫 대장으로 */
+/** 연 캐릭터 목록 반영 (null = 못 읽음 → 그대로). 고른 대장이 잠기면 이번에는 첫 대장으로
+ *  (기기에 저장한 대장은 지우지 않는다: 다시 열리면 restoreSavedLeader 가 되돌린다) */
 function applyOwned(ids: string[] | null) {
   if (!ids) return;
   owned = [...ids];
   setOwnedExtras(owned);
   const open = leadersOf(profile);
-  if (!open.includes(leader)) setLeader(open[0] ?? 'rat');
+  if (!open.includes(leader)) leader = open[0] ?? 'rat';
 }
 
 let buying = false;
@@ -228,7 +237,8 @@ async function unlockCat(btn: HTMLButtonElement) {
   } finally {
     buying = false;
   }
-  showMain();
+  // 사는 동안 다른 화면으로 갔으면 그 화면을 그대로 둔다
+  if (btn.isConnected) showMain();
 }
 
 function setLeader(id: LeaderId) {
@@ -257,7 +267,7 @@ export function showMain() {
         // 고를 수 있는지는 leadersOf(profile) 한 곳에서 정한다 (고양이 잠금은 progress.ts 의 extraOpen)
         // 잠긴 고양이는 눌러서 특성을 볼 수 있게 disabled 로 두지 않고, 옆에 "시아코인으로 열기" 버튼을 둔다 (게임마다 따로 연다)
         const tile = `<button class="leader ${l.id === leader ? 'on' : ''} ${ok ? '' : 'locked'} ${l.extra ? 'extra' : ''}" data-id="${l.id}" ${ok || l.extra ? '' : 'disabled'}>
-            <img src="${zodiacFaceUrl(l.id)}" alt="${l.name}" /><b>${l.name}</b>${ok ? '' : `<em>🔒${l.extra ? '' : ` ${l.unlockRegion}지역`}</em>`}
+            <img src="${zodiacFaceUrl(l.id)}" alt="${l.nick}" /><b>${l.nick}</b>${ok ? '' : `<em>🔒${l.extra ? '' : ` ${l.unlockRegion}지역`}</em>`}
           </button>`;
         if (ok || !l.extra) return tile;
         // 구매 조건(3-5 클리어)을 넘었으면 열기 버튼, 아니면 남은 조건 글
@@ -292,7 +302,7 @@ export function showMain() {
       const id = b.dataset.id as LeaderId;
       if (!open.includes(id)) {
         play('click');
-        return toast(`🔒 ${leaderOf(id).name} — ${leaderOf(id).trait}`, 3200);
+        return toast(`🔒 ${leaderOf(id).nick} — ${leaderOf(id).trait}`, 3200);
       }
       setLeader(id);
       play('click');
@@ -529,7 +539,7 @@ function showDaily(known?: DailyCourse) {
     </div>
     <div class="card daily-rank" id="d-rank" hidden></div>
     <div class="grow"></div>
-    <p class="soft center light">대장: ${leaderOf(leader).name} · ${leaderOf(leader).trait}</p>
+    <p class="soft center light">대장: ${leaderOf(leader).nick} · ${leaderOf(leader).trait}</p>
     ${LOCAL_MODE ? '<p class="soft center light">테스트 모드: 오늘의 도전 기록은 남지 않아요</p>' : ''}`);
   root.querySelector('#back')!.addEventListener('click', () => {
     play('click');
@@ -614,7 +624,7 @@ function showStages(region: number) {
       .join('')}</div>
     <p class="soft center light" id="tops-note" hidden>🏅 스테이지마다 대원을 가장 많이 남긴 친구들</p>
     <div class="grow"></div>
-    <p class="soft center light">대장: ${leaderOf(leader).name} · ${leaderOf(leader).trait}</p>`,
+    <p class="soft center light">대장: ${leaderOf(leader).nick} · ${leaderOf(leader).trait}</p>`,
     `bg-${groundOf(region)}`,
   );
   // 친구 기록: 받아 둔 것이 있으면 바로, 없거나 오래됐으면 받아서 그린다 (실패·테스트 모드는 그대로 숨김)
@@ -876,7 +886,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
         ${r ? `<div><span>엽전</span><b class="coin">+${r.coins}${r.first ? ' (첫 클리어)' : ''}</b></div>` : ''}
         ${r?.siaCoin ? `<div><span>시아코인</span><b class="coin">+1</b></div>` : ''}
       </div>
-      ${r && r.newLeaders.length ? `<div class="new-leaders">${r.newLeaders.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${leaderOf(id).name} 대장이 합류했어요!</span>`).join('')}</div>` : ''}
+      ${r && r.newLeaders.length ? `<div class="new-leaders">${r.newLeaders.map((id) => `<span><img src="${zodiacFaceUrl(id)}" alt="" />${leaderOf(id).nick} 대장이 합류했어요!</span>`).join('')}</div>` : ''}
       ${newFoes.length ? `<p class="new-foes"><span>📖 도감에 새로 적었어요</span>${newFoes.map((id) => `<i>${foeImg(codexEntry(id), true)}</i>`).join('')}</p>` : ''}
       ${daily ? '<p class="daily-place" hidden></p>' : ''}
       ${wantTops ? '<div class="tops-box wait"><span class="soft">🏅 최다 생존 대원</span><small class="tops"><em><u>&nbsp;</u></em></small></div>' : ''}

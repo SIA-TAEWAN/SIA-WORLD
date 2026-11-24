@@ -12,7 +12,7 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * 잠긴 캐릭터 이름들 → 버튼 HTML (모두 열렸으면 '').
- * 구매 조건(이 게임 30판)을 아직 못 넘었으면 버튼 대신 남은 조건과 지금 값 ("시아탱크 30판을 하면 열 수 있어요 · 지금 12판").
+ * 구매 조건(시아레이스 30번 완주)을 아직 못 넘었으면 버튼 대신 남은 조건과 지금 값 ("시아레이스를 30번 완주하면 열 수 있어요 · 지금 12번").
  */
 export function unlockButtonHtml(lockedNames: readonly string[]): string {
   if (!lockedNames.length) return '';

@@ -170,6 +170,18 @@ describe('OnlineGame', () => {
     expect(f.sent.some((m) => m.t === 'snapreq')).toBe(true);
   });
 
+  it('sync 에 서든데스 설정을 싣고, 내 설정과 다르면 지문이 같아도 기준 기기 판 상태를 받는다', () => {
+    const host = make('a');
+    host.g.turnDone(1, 'h');
+    expect(host.f.sent.at(-1)).toMatchObject({ t: 'sync', sudden: 0 });
+    const { g, f } = make('b');
+    g.turnDone(1, 'h');
+    f.recv({ t: 'sync', turn: 1, hash: 'h', from: 'a', sudden: 0 });
+    expect(f.sent.some((m) => m.t === 'snapreq')).toBe(false);
+    f.recv({ t: 'sync', turn: 1, hash: 'h', from: 'a', sudden: 30 });
+    expect(f.sent.some((m) => m.t === 'snapreq')).toBe(true);
+  });
+
   it('takeover 는 기준 기기(또는 다음 후보)가 보낸 것만 받는다', () => {
     const { f, sc } = make('c', ['a', 'b', 'c', 'd']);
     f.recv({ t: 'takeover', id: 'b', from: 'd' });

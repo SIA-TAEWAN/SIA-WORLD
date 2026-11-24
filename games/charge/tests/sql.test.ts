@@ -38,13 +38,14 @@ describe('SQL 표', () => {
     expect(c('endless_seg')).toBe(ENDLESS_SEG);
   });
 
-  it('엽전 식이 growth.ts 와 같다', () => {
-    expect(sql).toContain('raw := 15 + 5 * st.region + 5 * n_stars + (case when first then 20 + 10 * st.region else 0 end);');
-    expect(sql).toContain('raw := floor((15 + 5 * st.region) * 0.3 * least(1, greatest(0, p_progress)));');
-    expect(sql).toContain('raw := floor(p_meters / 20.0) + 5 * p_bosses;');
-    expect(sql).toContain('crate := least(p_crate, round(st.crate_coins * 1.2));');
-    expect(sql).toContain("coin_mul := 1 + 0.05 * least(5, greatest(0, coalesce((pr.upgrades ->> 'coin')::int, 0)));");
-    expect(sql).toContain('(p_region - 1) * 9');
+  it('엽전 식이 growth.ts 와 같다 (최신 charge_finish · _charge_region_open)', () => {
+    const fin = block('charge_finish');
+    expect(fin).toContain('raw := 15 + 5 * st.region + 5 * n_stars + (case when first then 20 + 10 * st.region else 0 end);');
+    expect(fin).toContain('raw := floor((15 + 5 * st.region) * 0.3 * least(1, greatest(0, p_progress)));');
+    expect(fin).toContain('raw := floor(p_meters / 20.0) + 5 * p_bosses;');
+    expect(fin).toContain('crate := least(p_crate, round(st.crate_coins * 1.2));');
+    expect(fin).toContain("coin_mul := 1 + 0.05 * least(5, greatest(0, coalesce((pr.upgrades ->> 'coin')::int, 0)));");
+    expect(block('_charge_region_open')).toContain('(p_region - 1) * 9');
   });
 
   it('대장 검사는 공용 _check_character 를 쓴다 (075)', () => {

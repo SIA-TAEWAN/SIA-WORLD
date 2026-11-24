@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BOSS_IDS, LEADERS } from '../src/data/balance';
 import { CALIB } from '../src/data/calib';
@@ -57,5 +58,13 @@ describe('스테이지 데이터', () => {
     expect(new Set(LEADERS.map((l) => l.id)).size).toBe(13);
     expect(LEADERS.filter((l) => l.extra).map((l) => l.id)).toEqual(['cat']);
     expect(unlockedLeaders(() => true)).not.toContain('cat');
+  });
+
+  it('대장 별명이 shared/zodiac.js · shared/characters.js 의 nick 과 같다 (DESIGN.md 6장)', () => {
+    const shared = (f: string) => readFileSync(new URL(`../../../shared/${f}`, import.meta.url), 'utf8');
+    const nicks = Object.fromEntries(
+      [...(shared('zodiac.js') + shared('characters.js')).matchAll(/id: '(\w+)',\s*name: '[^']+',\s*nick: '([^']+)'/g)].map((m) => [m[1], m[2]]),
+    );
+    for (const l of LEADERS) expect(l.nick, l.id).toBe(nicks[l.id]);
   });
 });

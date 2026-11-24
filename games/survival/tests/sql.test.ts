@@ -36,8 +36,8 @@ describe('SQL 파일 목록', () => {
     const dir = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url));
     const redefine = readdirSync(dir)
       .filter((f) => f.endsWith('.sql'))
-      // create function · create or replace function, public. 생략·따옴표("public"."_survival_…")·대소문자 모두
-      .filter((f) => /create\s+(or\s+replace\s+)?function\s+("?public"?\s*\.\s*)?"?_?survival_/i.test(readFileSync(dir + f, 'utf8')));
+      // create function · create or replace function, public. 생략·따옴표("public"."_survival_…")·대소문자 모두, 고양이 조건 _cat_progress_survival 도
+      .filter((f) => /create\s+(or\s+replace\s+)?function\s+("?public"?\s*\.\s*)?"?(_?survival_|_cat_progress_survival\b)/i.test(readFileSync(dir + f, 'utf8')));
     expect(redefine.filter((f) => !FILES.includes(f))).toEqual([]);
   });
 });

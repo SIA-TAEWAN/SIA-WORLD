@@ -181,11 +181,14 @@ async function start() {
     // 처음에 못 읽으면 잠긴 것으로 시작한다 (서버도 판 시작 때 다시 본다)
     owned = (await loadOwnedCharacters()) ?? [];
     setOwnedExtras(owned);
-    // 구매 조건 진행 (잠겨 있을 때만 묻는다. 못 읽으면 기기의 프로필로 본다)
+    // 구매 조건 진행 (잠겨 있을 때만 묻는다. 못 읽으면 기기의 프로필로 본다). 값이 바뀌면 떠 있는 화면(출전 준비의 조건 글·열기 버튼)을 다시 그린다
     const loadProgress = async () => {
       if (!EXTRAS.some((id) => !owned.includes(id))) return;
       const p = await loadCharacterProgress();
-      if (p) extraShop.progress = { have: p.have, need: p.need };
+      if (!p) return;
+      const before = extraShop.progress;
+      extraShop.progress = { have: p.have, need: p.need };
+      if (before?.have !== p.have || before?.need !== p.need) setProfile(state.profile);
     };
     await loadProgress();
     extraShop.buy = async (id: CharId) => {

@@ -821,7 +821,7 @@ input:focus { outline: var(--line) solid var(--primary); }
 /* ---------- 홀덤: 미리 고르기 (남의 차례에 예약) ---------- */
 .controls .hd-book { gap: 8px; font-size: 13px; color: var(--ink-soft); }
 .controls .hd-book .btn { min-height: 40px; }
-.controls .hd-book .btn.sel { background: var(--primary-gradient); }
+.controls .hd-book .btn.sel { background: var(--primary); }
 
 /* ---------- 블랙잭: 칩 눌러 더하기 · 같은 금액 · 2배 · 전략 힌트 ---------- */
 .controls .bj-bet { gap: 6px; }
@@ -836,14 +836,16 @@ input:focus { outline: var(--line) solid var(--primary); }
 .controls .rl-tools { gap: 6px; margin-top: 4px; }
 .controls .rl-tools .btn { min-height: 40px; padding: 4px 9px; }
 .rl-slots { display: inline-flex; gap: 4px; align-items: center; }
-.rl-slots .btn[data-ps] { color: var(--ink-soft); border-style: dashed; }
-.rl-slots .btn[data-ps].has { color: var(--ink); border-style: solid; background: var(--panel-strong); }
+.rl-slots .btn[data-ps] { color: var(--ink-soft); border: 2px dashed var(--empty-line); }
+.rl-slots .btn[data-ps].has { color: var(--ink); border: var(--line-thin) solid var(--outline); background: var(--panel-strong); }
 .rl-slots.saving .btn[data-ps] { background: var(--primary); color: var(--ink); }
 .rl-slots .btn.sel { background: var(--primary); }
 .rl-tip { margin: 2px 0 0; text-align: center; font-size: 12px; color: var(--ink-soft); }
 .controls .rl-follow { gap: 6px; margin-top: 4px; font-size: 13px; color: var(--ink-soft); }
-.rl-fav { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 2px 10px 2px 3px; border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 3px 0 var(--outline); touch-action: manipulation; }
-.rl-fav:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--outline); }
+.rl-fav { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 2px 10px 2px 3px; border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 3px 0 var(--outline); touch-action: manipulation; transition: transform var(--press-ms), box-shadow var(--press-ms); }
+.rl-fav:active:not(:disabled) { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
+/* 움직임 줄이기: .btn 과 같게 눌러도 내려가지 않는다 (위 .btn 규칙보다 뒤에 와야 이긴다) */
+@media (prefers-reduced-motion: reduce) { .rl-fav:active:not(:disabled) { transform: none; } }
 .rl-fav:disabled { opacity: 0.5; cursor: default; }
 .rl-fav img { width: 32px; height: 32px; border-radius: 50%; background: var(--panel); }
 .rl-fav i { font-style: normal; max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

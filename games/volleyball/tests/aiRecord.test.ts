@@ -132,6 +132,7 @@ describe('AI 판 기록 순서', () => {
     const o = await rec.finish(true);
     expect(o).toEqual({ state: 'limit', perDay: 30, wins: 3, losses: 1 });
     expect(outcomeText(o)).toContain('30판');
+    expect(outcomeText(o)).toContain('고양이 판 수에도 들어가지 않아요');
   });
 
   it('시작을 알리지 못했으면 결과도 올리지 않고 실패로 알린다. 예외를 던지지 않는다', async () => {

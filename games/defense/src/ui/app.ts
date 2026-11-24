@@ -86,7 +86,7 @@ export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ES
 /** 시아코인으로 여는 캐릭터(고양이)의 열기 버튼 글 (shared/characters.js 의 unlockLabel 과 같은 글. 값은 EXTRA_PRICE) */
 export const unlockLabel = (id: CharId) => `시아코인 ${EXTRA_PRICE[id] ?? 0}개로 열기`;
 /** 서버가 'locked character' 로 거절했을 때 */
-export const CAT_LOCKED = `고양이는 캐릭터 고르기 화면에서 시아코인 ${EXTRA_PRICE.cat ?? 0}개로 열 수 있어요`;
+export const CAT_LOCKED = `고양이는 출전 준비 화면에서 시아코인 ${EXTRA_PRICE.cat ?? 0}개로 열 수 있어요`;
 
 /** 잠긴 캐릭터를 여는 방법 (고양이는 스테이지가 아니라 출전 준비 화면에서 시아코인으로 연다). then: 지역을 클리어한 뒤의 말 */
 export function lockHint(r: RosterEntry, then = '함께할 수 있어요'): string {

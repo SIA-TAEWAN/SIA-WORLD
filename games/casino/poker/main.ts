@@ -1,6 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { POKER_MANUAL } from '../../lib/manuals.ts';
-import { pokerHint, pokerStory, pokerWeak } from '../../lib/extras.ts';
+import { pokerHint, pokerStory, pokerWeak, potRealWinners, potRefundOnly } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
@@ -25,6 +25,9 @@ let deckPos = { x: 0, y: 0 };
 let lastPub: PokerPublic | null = null;
 /** 말풍선용 짧은 이름 ('AI 어흥이' → '어흥이') */
 const short = (n: string) => n.replace(/^AI /, '');
+
+/** 이 자리가 받은 것이 혼자만 받는 남는 팟뿐인가 (재생 중이면 재생해 가는 판 결과로 가른다: 중간 화면의 pub 은 결과가 비어 있다) */
+const refunded = (t: Ctx, seat: number) => potRefundOnly(seat, (t.pubNext ?? t.pub)?.summary);
 
 // ── 판 요약 한 줄용 사건 기록: 공개 상태에는 최근 사건만 실리므로 판 동안 모아 둔다 ──
 type Ev = PokerPublic['events'][number];
@@ -194,7 +197,9 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       const fs = clamp(w * (me ? 0.2 : 0.28), 12, 22);
       if (s.total) label(scene, x + ((cards.length - 1) / 2) * gap + w * 0.62, y - w * 0.55, `${t.fmt(s.total)}`, fs * 0.85, tc('primary'));
       if (hint && !hintInTag) label(scene, x, hintY, `💡 ${hint}`, hintFs, tc('primary'));
-      if (sd) label(scene, x, y - w * 0.92, `${sd.hand}${p.winners.includes(s.seat) ? ' 🏆' : ''}`, fs, p.winners.includes(s.seat) ? tc('primary') : tc('white'));
+      // 🏆 는 진짜 승자만 (혼자만 받는 남는 팟을 돌려받은 사람은 빼고)
+      const won = p.winners.includes(s.seat) && !refunded(t, s.seat);
+      if (sd) label(scene, x, y - w * 0.92, `${sd.hand}${won ? ' 🏆' : ''}`, fs, won ? tc('primary') : tc('white'));
     });
   },
 
@@ -244,11 +249,12 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     if (!r) return '<p>판이 끝났어요</p>';
     if (r.cancelled) return '<h3>판이 취소됐어요</h3><p>참가할 수 있는 사람이 2명보다 적었어요</p>';
     const names = new Map((t.pub?.seats ?? []).map((s) => [s.seat, s.name]));
+    const real = potRealWinners(r);
     const rows = Object.entries(r.deltas)
       .map(([seat, d]) => {
         const n = Number(seat);
         const hand = r.hands[n]?.name ?? (r.winners.includes(n) && r.uncontested ? '무혈 승리' : '');
-        return `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}${r.winners.includes(n) ? ' 🏆' : ''}</td><td>${esc(hand)}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
+        return `<tr><td>${esc(names.get(n) ?? t.seatName(n))}${n === t.resultSeat ? ' (나)' : ''}${real.includes(n) ? ' 🏆' : ''}</td><td>${esc(hand)}</td><td class="${d > 0 ? 'plus' : d < 0 ? 'minus' : ''}">${d > 0 ? '+' : ''}${t.fmt(d)}</td></tr>`;
       })
       .join('');
     // 칩이 모자라 이번 판에서 빠진 자리는 deltas 에 없다 → 따로 보여 준다 (내 자리면 안내 한 줄)
@@ -303,6 +309,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       case 'allin':
         return { at: ev.seat, text: `${who} 올인!`, gap: 500 };
       case 'win':
+        // 혼자만 받는 남는 팟(못 받은 콜 차액)은 이긴 것이 아니다: '돌려받음' 으로, 코인 소리 없이
+        if (refunded(t, ev.seat)) return { at: ev.seat, text: `${who} 돌려받음 ${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, gap: 900, after: true };
         return { at: ev.seat, text: `${who} +${t.fmt(amount)}`, chips: { from: 'pot', to: ev.seat, amount }, sound: 'coin', gap: 900, after: true };
       default:
         return null;
@@ -313,7 +321,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     if (ev.t === 'royal') return '로열 스트레이트 플러시!';
     if (ev.t === 'straight_flush') return '스트레이트 플러시!';
     if (ev.t === 'four_kind') return '포카드!';
-    if (ev.t === 'win' && typeof ev.amount === 'number' && t.pub && ev.amount >= t.pub.baseUnit * 100) return '대박 판돈!';
+    if (ev.t === 'win' && typeof ev.amount === 'number' && t.pub && ev.amount >= t.pub.baseUnit * 100 && !(typeof ev.seat === 'number' && refunded(t, ev.seat))) return '대박 판돈!';
     return null;
   },
 };

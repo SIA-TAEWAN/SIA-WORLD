@@ -31,9 +31,11 @@ export const UNLOCK_CONFIRM = `${CAT_PRICE}코인을 쓸까요? 한 번 더 누�
 export const UNLOCK_CONFIRM_MS = 4000;
 /** 구매 조건: 이 게임을 이만큼 한 뒤에 열 수 있다. 072 의 _cat_progress_<게임> 의 need 와 같게 (tests/unlock.test.ts 가 대조) */
 export const CAT_NEED = 30;
-/** 잠긴 동안 보이는 남은 조건 글. have 를 모르면(아직 못 읽음) 지금 값 없이 */
+/** AI 대전이 전적·판 수에 들어가는 하루 한도 (서버 ai_match 의 하루 판 수와 같게) */
+export const AI_PER_DAY = 30;
+/** 잠긴 동안 보이는 남은 조건 글. have 를 모르면(아직 못 읽음) 지금 값 없이. AI전은 하루 AI_PER_DAY판까지만 센다 */
 export const condText = (have?: number | null, need = CAT_NEED): string =>
-  `시아배구 ${need}판(AI전 포함)을 하면 열 수 있어요${have == null ? '' : ` · 지금 ${have}판`}`;
+  `시아배구 ${need}판(AI전은 하루 ${AI_PER_DAY}판까지 셈)을 하면 열 수 있어요${have == null ? '' : ` · 지금 ${have}판`}`;
 /** 서버가 'locked character' 로 거절했을 때 */
 export const LOCKED_MSG = `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`;
 

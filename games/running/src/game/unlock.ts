@@ -31,9 +31,9 @@ export const UNLOCK_CONFIRM = `${CAT_PRICE}코인을 쓸까요? 한 번 더 누�
 export const UNLOCK_CONFIRM_MS = 4000;
 /** 구매 조건: 이 게임을 이만큼 한 뒤에 열 수 있다. 072 의 _cat_progress_<게임> 의 need 와 같게 (tests/unlock.test.ts 가 대조) */
 export const CAT_NEED = 30;
-/** 잠긴 동안 보이는 남은 조건 글. have 를 모르면(아직 못 읽음) 지금 값 없이 */
+/** 잠긴 동안 보이는 남은 조건 글. have 를 모르면(아직 못 읽음) 지금 값 없이. 서버는 완주 기록이 받아들여진 판만 센다 */
 export const condText = (have?: number | null, need = CAT_NEED): string =>
-  `시아레이스 ${need}판을 하면 열 수 있어요${have == null ? '' : ` · 지금 ${have}판`}`;
+  `시아레이스를 ${need}번 완주하면 열 수 있어요${have == null ? '' : ` · 지금 ${have}번`}`;
 /** 서버가 'locked character' 로 거절했을 때 */
 export const LOCKED_MSG = `고양이는 캐릭터 고르기 화면에서 시아코인 ${CAT_PRICE}개로 열 수 있어요`;
 
@@ -111,7 +111,7 @@ let loader: OwnedLoader | null = null;
 /**
  * 게임에 들어올 때 한 번 불러온다 (처음에 못 읽으면 잠긴 것으로 시작). 잠겨 있으면 구매 조건 진행도 읽는다.
  * 화면이 다시 보일 때(다른 기기·탭에서 연 경우) 다시 불러온다.
- * isLocal: 테스트 모드면 서버를 부르지 않는다. catParam: 없음 = 열림, '0' = 잠김 + 조건 통과(열기 버튼), 'cond' = 잠김 + 조건 미달(지금 12판)
+ * isLocal: 테스트 모드면 서버를 부르지 않는다. catParam: 없음 = 열림, '0' = 잠김 + 조건 통과(열기 버튼), 'cond' = 잠김 + 조건 미달(지금 12번)
  */
 export async function initUnlock(load: OwnedLoader, isLocal: boolean, catParam: string | null, loadProgress?: ProgressLoader): Promise<void> {
   local = isLocal;

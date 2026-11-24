@@ -196,7 +196,7 @@ button, input { font: inherit; color: inherit; }
 .char.focus::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 10px; margin-left: -5px; background: var(--outline); border-radius: 50%; }
 .char-info .unlock { margin-top: 6px; }
 .char-info .unlock.armed { background: var(--pink); }
-.char-info .cond { display: inline-block; margin-top: 4px; font-weight: bold; }
+.char-info .cond { display: inline-block; margin-top: 4px; font-weight: normal; color: var(--ink); }
 .char .lock { position: absolute; right: 1px; top: -3px; font-size: 13px; font-weight: normal; }
 .char-info { margin: 12px 0 0; background: var(--white); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-item); padding: 6px 10px; font-size: 16px; min-height: 52px; }
 .char-info b { font-weight: normal; }
