@@ -121,6 +121,8 @@ export interface PokerSummary {
   hands: Record<number, { name: string; best: string[] }>;
   deltas: Record<number, number>;
   excluded: number[];
+  /** 판 끝 팟에서 refund 팟을 가르는 엔진이 만든 결과 (예전 공개 상태엔 없다 — 화면은 예전 규칙으로 승자를 가른다) */
+  refundPots?: true;
 }
 
 export interface PokerState {
@@ -391,6 +393,7 @@ function finish(s: PokerState, pots: PokerPotResult[], uncontested: boolean, han
     hands,
     deltas,
     excluded: s.players.filter((p) => p.excluded).map((p) => p.seat),
+    refundPots: true,
   };
 }
 

@@ -183,6 +183,21 @@ describe("'aim' 명령", () => {
     expect(summarize(t).cmds).toBe(LIMITS.cmds_max);
   });
 
+  it('prep 에서 상한 직전이어도 start 는 들어간다', () => {
+    const s = createGame({ seed: 1, stage: '1-1', squad: ['rat', 'ox', 'tiger', 'rabbit'] });
+    s.energy = 100000;
+    expect(s.phase).toBe('prep');
+    expect(command(s, 'place', 0, TOWER_INDEX.rat)).toBe(true);
+    // 준비 동안 다른 명령은 상한보다 한 자리 앞에서 막힌다
+    while (s.log.length < LIMITS.cmds_max - 1) s.log.push({ tick: s.tick, op: 'aim', slot: 0, char: AIM.first });
+    expect(command(s, 'upgrade', 0)).toBe(false);
+    expect(command(s, 'sell', 0)).toBe(false);
+    expect(canPlace(s, 1, TOWER_INDEX.ox)).toBe(false);
+    expect(command(s, 'start')).toBe(true);
+    expect(s.phase).toBe('play');
+    expect(summarize(s).cmds).toBe(LIMITS.cmds_max);
+  });
+
   it('조준 명령이 섞인 판도 명령 기록으로 똑같이 다시 만들어진다', () => {
     const cfg = { seed: 9, stage: '1-2', squad: ['rat', 'ox', 'tiger', 'rabbit'] as CharId[] };
     const s = createGame(cfg);

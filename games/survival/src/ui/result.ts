@@ -154,7 +154,9 @@ export function showResult(r: GameResult) {
       note.textContent = !s.valid
         ? '기록이 정상 범위를 벗어나 랭킹에는 오르지 않아요'
         : r.time < LIMITS.count_min_time
-          ? `${LIMITS.count_min_time}초를 버티지 못한 판이라 엽전과 기록에 들어가지 않았어요`
+          ? daily
+            ? `${LIMITS.count_min_time}초를 버티지 못해 엽전은 받지 못했어요 (오늘 순위에는 들어가요)`
+            : `${LIMITS.count_min_time}초를 버티지 못한 판이라 기록과 엽전에 들어가지 않았어요`
           : s.lowKills
           ? '요괴를 너무 적게 잡은 판이라 기록과 엽전에 들어가지 않았어요'
           : daily

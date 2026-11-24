@@ -6,6 +6,7 @@
 import { seededRng } from '../../supabase/functions/_shared/engine.ts';
 import { HandCat, compareHands, draws, evaluate7, evaluateOpen } from '../../supabase/functions/_shared/poker.ts';
 import { estimateEquity } from '../../supabase/functions/_shared/holdem.ts';
+import { computeSidePots } from '../../supabase/functions/_shared/pots.ts';
 import { MULT, seasonCells, type BetKind, type RBet } from '../../supabase/functions/_shared/roulette.ts';
 import { applyGo, cardById, scoreCards, type MatgoPlayerPublic, type MatgoPublic } from '../../supabase/functions/_shared/matgo.ts';
 import { basicStrategy, cardPoint, type BjPlayAction } from '../../supabase/functions/_shared/blackjack.ts';
@@ -419,7 +420,15 @@ export interface PotWinSummary {
   winners: readonly number[];
   /** refund: 가장 많이 낸 사람 혼자 낸 몫을 돌려주는 팟 (엔진 pots.ts 가 판 끝에 가른다) */
   pots?: readonly { amount?: number; eligible: readonly number[]; winners: readonly number[]; refund?: boolean }[];
+  /** refund 팟을 가르는 엔진이 만든 결과 표시 (없으면 예전 공개 상태일 수 있다) */
+  refundPots?: boolean;
 }
+
+/**
+ * 예전 공개 상태인가: refund 팟을 가르기 전의 엔진이 만든 결과(refundPots 표시도, refund 팟도 없음)인데 대상 1명 팟이 있다.
+ * 그때는 예전 규칙으로 — 대상 1명 팟은 돌려받은 것, 대상이 2명 이상인 팟의 승자만 진짜 승자 (배포 전 결과 화면 호환)
+ */
+const legacyPots = (r: PotWinSummary): boolean => !r.refundPots && !!r.pots && !r.pots.some((p) => p.refund) && r.pots.some((p) => p.eligible.length === 1);
 
 /**
  * 진짜 승자 (자리 번호순): 무혈 승리면 winners, 아니면 돌려받는 팟(refund)이 아닌 팟의 승자.
@@ -428,18 +437,30 @@ export interface PotWinSummary {
 export function potRealWinners(r: PotWinSummary | null | undefined): number[] {
   if (!r) return [];
   if (r.uncontested || !r.pots?.length) return [...r.winners].sort((a, b) => a - b);
+  const legacy = legacyPots(r);
   const out = new Set<number>();
-  for (const p of r.pots) if (!p.refund) for (const w of p.winners) out.add(w);
+  for (const p of r.pots) if (legacy ? p.eligible.length >= 2 : !p.refund) for (const w of p.winners) out.add(w);
   return out.size ? [...out].sort((a, b) => a - b) : [...r.winners].sort((a, b) => a - b);
 }
 
 /** 이 자리의 'win' 사건이 돌려받은 것뿐인가 (진짜 승자가 아닌데 받았다). 결과를 모르면 false */
 export const potRefundOnly = (seat: number, r: PotWinSummary | null | undefined): boolean => !!r && r.winners.includes(seat) && !potRealWinners(r).includes(seat);
 
-/** 이 자리가 돌려받은 금액 (refund 팟 합계, 무혈 승리면 0) */
+/** 이 자리가 돌려받은 금액 (refund 팟 합계 — 예전 공개 상태면 대상 1명 팟 합계, 무혈 승리면 0) */
 export function potRefundOf(seat: number, r: PotWinSummary | null | undefined): number {
   if (!r || r.uncontested || !r.pots) return 0;
-  return r.pots.reduce((a, p) => a + (p.refund && p.winners.includes(seat) ? (p.amount ?? 0) : 0), 0);
+  const legacy = legacyPots(r);
+  return r.pots.reduce((a, p) => a + ((legacy ? p.eligible.length === 1 : p.refund) && p.winners.includes(seat) ? (p.amount ?? 0) : 0), 0);
+}
+
+/**
+ * 판 화면의 '사이드 팟 N' 수: 공개 팟 수 − 1 에서 아무도 받지 못한 차액(대상 1명 · 가장 많이 낸 사람 혼자 낸 마지막 팟)은 뺀다.
+ * 화면 표시만 — 팟·정산은 엔진 그대로 (pots.ts 의 refund 가르기를 같은 자리 정보로 다시 해 본다)
+ */
+export function sidePotCount(seats: readonly { seat: number; total: number; folded: boolean; allIn: boolean; excluded?: boolean }[]): number {
+  const ps = seats.filter((p) => !p.excluded).map((p) => ({ seat: p.seat, total: p.total, folded: p.folded, allIn: p.allIn }));
+  const pots = computeSidePots(ps, { refund: true });
+  return Math.max(0, pots.filter((p) => !p.refund).length - 1);
 }
 
 // ───────────────────────── 홀덤: 미리 고르기 (남의 차례에 예약) ─────────────────────────

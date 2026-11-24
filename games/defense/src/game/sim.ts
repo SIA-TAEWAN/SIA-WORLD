@@ -154,9 +154,9 @@ export function towerLevel(s: State, slot: number): TowerLevel | null {
 
 /**
  * 명령 자리가 남았나: 명령 수(cmds_max)를 넘긴 판은 서버가 받지 않으므로(bad result) 그 앞에서 더 받지 않는다.
- * 조준 바꾸기는 그보다 일찍(AIM_CMDS_MAX) 막힌다
+ * 조준 바꾸기는 그보다 일찍(AIM_CMDS_MAX) 막힌다. 준비(prep) 동안에는 시작 명령이 들어갈 한 자리를 남긴다
  */
-export const cmdRoom = (s: State) => s.log.length < LIMITS.cmds_max;
+export const cmdRoom = (s: State) => s.log.length < LIMITS.cmds_max - (s.phase === 'prep' ? 1 : 0);
 /** 배치 자리가 남았나: 배치 횟수 상한(placed_max)도 서버와 같다 */
 export const placeRoom = (s: State) => cmdRoom(s) && placedCount(s) < LIMITS.placed_max;
 

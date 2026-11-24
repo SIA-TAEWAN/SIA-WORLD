@@ -105,11 +105,11 @@ function enterRoom(id: string, base: number) {
   shownWin.clear();
 }
 const serverNow = () => Date.now() + skew;
-/** 베팅이 막 열린 순간이면 서버 시계와의 차이를 잰다 (중간에 들어왔을 때는 앞선 만큼만 잠정으로) */
+/** 베팅이 막 열린 순간(앞에 본 것이 회전·결과)이면 서버 시계와의 차이를 잰다 (처음 그리기·중간에 들어왔을 때는 앞선 만큼만 잠정으로) */
 function syncClock(p: RoulettePublic) {
   const key = `${p.phase}:${p.spin}`;
   if (key === lastPhase) return;
-  if (p.phase === 'bet' && p.endsAt && lastPhase.startsWith('spin:')) {
+  if (p.phase === 'bet' && p.endsAt && (lastPhase.startsWith('spin:') || lastPhase.startsWith('done:'))) {
     const est = p.endsAt - BET_MS - Date.now();
     // 터무니없는 값은 버린다 (네트워크 지연이 매우 큰 경우 등)
     // 늦게 본 경우(백그라운드·재연결) 값이 작게 나오므로, 지금까지 잰 것 중 가장 큰 값을 쓴다

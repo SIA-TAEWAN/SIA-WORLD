@@ -610,6 +610,8 @@ function renderRoom(id: string) {
     if (document.hidden) void rs.setWatching(false).catch(() => undefined);
   };
   document.addEventListener('visibilitychange', onVis);
+  // 첫 타이머(1초)를 기다리지 않고 바로 '방 화면을 보는 중' 표시를 올린다
+  void rs.setWatching(!document.hidden).catch(() => undefined);
   function stopIv() {
     clearInterval(iv);
     document.removeEventListener('visibilitychange', onVis);

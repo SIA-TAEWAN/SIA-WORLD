@@ -111,8 +111,35 @@ export async function signUp({ loginId, password, password2, nickname, legacyPas
   }
   profileCache = null;
   await claimSession(true);
-  const user = await getCurrentUser();
+  // 회원 정보를 못 읽으면(통신 실패·아직 없음) 가입은 된 것이므로 로그인을 되돌리고 로그인 화면으로 보낸다
+  const { user } = await readUserAfterLogin();
+  if (!user) {
+    await undoLogin();
+    const e = new AuthError('가입은 됐어요. 로그인해 주세요');
+    e.toLogin = true;
+    e.loginId = loginId;
+    throw e;
+  }
   return { user, claimed };
+}
+
+/** 방금 로그인한 뒤 회원 정보 읽기: 통신 실패면 잠깐 뒤 한 번 더. → { user (없으면 null), failed (마지막이 통신 실패) } */
+async function readUserAfterLogin() {
+  let user = null;
+  let failed = false;
+  for (let attempt = 0; attempt < 2 && !user && (attempt === 0 || failed); attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 800));
+    failed = false;
+    user = await getCurrentUser().catch(() => ((failed = true), null));
+  }
+  return { user, failed };
+}
+
+/** 로그인을 이 브라우저에서만 되돌린다 (로그인된 채 로그인 화면에 남지 않게) */
+async function undoLogin() {
+  stopWatch();
+  dropToken();
+  await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
 }
 
 /** 로그인. 실패 이유는 하나로만 알려 준다 */
@@ -130,17 +157,9 @@ export async function signIn(loginId, password) {
   // (getCurrentUser보다 먼저: 거기서 시작하는 확인이 예전 표식을 다시 올리지 않게)
   await claimSession(true);
   // 회원 정보를 못 읽으면 한 번 더 읽고, 그래도 안 되면 로그인을 되돌린다 (로그인된 채 로그인 화면에 남지 않게)
-  let user = null;
-  let failed = false;
-  for (let attempt = 0; attempt < 2 && !user && (attempt === 0 || failed); attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 800));
-    failed = false;
-    user = await getCurrentUser().catch(() => ((failed = true), null));
-  }
+  const { user, failed } = await readUserAfterLogin();
   if (!user) {
-    stopWatch();
-    dropToken();
-    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    await undoLogin();
     throw new AuthError(failed ? NET_ERROR : '회원 정보를 찾지 못했어요. 관리자에게 알려 주세요');
   }
   return user;

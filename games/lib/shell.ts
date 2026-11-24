@@ -1901,6 +1901,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
             }
           }
         } else if (!stale()) {
+          // 걸음(ui.replay)은 apply 전에 계산하므로 여기서 먼저 ctx.pubNext 를 이 항목의 새 상태로 (돌려받음·결과 판정이 새 상태를 본다)
+          playing();
           const steps = item.events.map(stepOf).filter((x): x is ReplayStep => !!x);
           const pre = steps.filter((x) => !x.after);
           const post = steps.filter((x) => x.after);

@@ -3,7 +3,7 @@ import { LOCAL_MODE } from '../net/api';
 import { LOCKED_MSG } from '../game/unlock';
 import { loadRankIcons, worldDailyRanking } from '../net/world';
 import { DAILY_GAME, dailyLabel, dailyMs } from '../game/daily';
-import { ghostDiffText, ghostWho } from '../game/ghost';
+import { ghostDiffText, ghostTag, ghostWho } from '../game/ghost';
 import { reactionLine, saveBestReaction } from '../game/reaction';
 import type { RaceGame } from '../race/game';
 import { zodiacFaceUrl } from '../assets';
@@ -67,7 +67,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
                 : `<span class="tm dnf">미완주 ${Math.floor(r.x)}m</span>`;
           return `<div class="rrow p${r.place} ${isMe ? 'me' : ''} ${isGhost ? 'ghost' : ''}" data-id="${esc(p.id ?? '')}" style="animation-delay:${200 + i * 260}ms"><span class="pl">${r.place}</span>
             <img class="av" src="${zodiacFaceUrl(p.char)}" alt="" /><span class="body"><span class="top"><span class="nm">${esc(isGhost ? gh!.nickname : p.name)}</span>${tm}</span>${
-              isGhost ? `<small>👻 ${gh!.me ? '내 1위 기록' : `오늘 ${gh!.dayPlace}위`} 고스트</small>` : ''
+              isGhost ? `<small>👻 ${ghostTag(gh!)}</small>` : ''
             }</span>${
               isMe ? `<span class="tier" data-uid="${esc(p.id ?? '')}"></span>` : isGhost ? `<span class="tier" data-place="${gh!.place ?? 0}"></span>` : ''
             }</div>`;

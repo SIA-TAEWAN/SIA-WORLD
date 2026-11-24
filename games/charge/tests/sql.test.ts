@@ -12,7 +12,7 @@ import { CAT_STAGE, LIMITS } from '../src/game/progress';
 const mig = (f: string) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8');
 const sql = mig('061_charge.sql');
 /** 함수를 다시 정의한 뒤 마이그레이션 (뒤 파일이 이긴다). 함수를 다시 정의하는 파일을 더하면 여기에 넣는다 */
-const LATER = ['075_cat_charge.sql', '085_charge_daily.sql', '088_charge_daily_day.sql'].map(mig);
+const LATER = ['075_cat_charge.sql', '085_charge_daily.sql', '088_charge_daily_day.sql', '101_overlap_village_fix.sql'].map(mig);
 const block = (fn: string) => {
   const src = [...LATER].reverse().find((t) => t.includes(`function public.${fn}(`)) ?? sql;
   const i = src.indexOf(`function public.${fn}(`);
@@ -46,6 +46,32 @@ describe('SQL 표', () => {
     expect(fin).toContain('crate := least(p_crate, round(st.crate_coins * 1.2));');
     expect(fin).toContain("coin_mul := 1 + 0.05 * least(5, greatest(0, coalesce((pr.upgrades ->> 'coin')::int, 0)));");
     expect(block('_charge_region_open')).toContain('(p_region - 1) * 9');
+  });
+
+  it('판 끝 겹침은 두 판의 최소 판 시간이 실제로 겹칠 때만 (101 — 보관했다 늦게 보낸 판을 거절하지 않는다)', () => {
+    const fin = block('charge_finish').replace(/\r\n/g, '\n');
+    expect(LATER[LATER.length - 1]).toContain('create or replace function public.charge_finish(');
+    expect(fin).toContain("if elapsed < p_time - public._charge_const('time_slack') then raise exception 'too early'; end if;");
+    expect(fin).not.toContain("o.finished_at > rn.started_at + interval '2 seconds'");
+    expect(fin).toContain("(o.started_at > rn.started_at\n          and rn.started_at + make_interval(secs => p_time - public._charge_const('time_slack')) > o.started_at)");
+    expect(fin).toContain("or (o.started_at <= rn.started_at\n          and o.started_at + make_interval(secs => coalesce(o.time, 0) - public._charge_const('time_slack')) > rn.started_at)");
+  });
+
+  it('charge_finish 101 은 088 을 그대로 옮기고 겹침 조건과 그 주석만 다르다 (권한 줄까지 같다)', () => {
+    const fnOf = (f: string) => {
+      const t = mig(f).replace(/\r\n/g, '\n');
+      const i = t.indexOf('create or replace function public.charge_finish(');
+      const end = 'grant execute on function public.charge_finish(uuid, int, boolean, int, int, numeric, int, int, int) to authenticated;';
+      const fn = t.slice(i, t.indexOf(end, i) + end.length);
+      const a = fn.indexOf("  if elapsed > public._charge_const('max_age')");
+      const b = fn.indexOf("  ) then raise exception 'overlap'; end if;");
+      expect(a).toBeGreaterThan(0);
+      expect(b).toBeGreaterThan(a);
+      return fn.slice(0, a) + fn.slice(b);
+    };
+    expect(fnOf('101_overlap_village_fix.sql')).toBe(fnOf('088_charge_daily_day.sql'));
+    expect(fnOf('101_overlap_village_fix.sql')).toContain('language plpgsql security definer set search_path = public as $$');
+    expect(fnOf('101_overlap_village_fix.sql')).toContain('revoke all on function public.charge_finish(uuid, int, boolean, int, int, numeric, int, int, int) from public, anon;');
   });
 
   it('대장 검사는 공용 _check_character 를 쓴다 (075)', () => {

@@ -68,4 +68,14 @@ describe('RoomSession 방 화면 표시', () => {
     expect(f.tracked.at(-1)?.watch).toBeUndefined();
     expect(rs.isSweeper(['a', 'b', 'c'])).toBe(false);
   });
+
+  it('첫 접속 목록을 받기 전에는 빼는 일을 맡지 않는다', async () => {
+    const f = fake();
+    const rs = new RoomSession(f.backend, 'r1', { id: 'a', name: '가' });
+    await rs.join();
+    await rs.setWatching(true);
+    expect(rs.isSweeper(['a', 'b'])).toBe(false);
+    f.emit([{ key: 'a', meta: { name: '가', watch: true } }]);
+    expect(rs.isSweeper(['a', 'b'])).toBe(true);
+  });
 });

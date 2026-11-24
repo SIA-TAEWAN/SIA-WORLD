@@ -532,8 +532,9 @@ describe('무작위 500판', () => {
           showdowns++;
           expectConserved(s);
         }
-        // 이벤트 id 증가, 120개 이하 (한 판 안의 사건은 잘리지 않는다)
-        expect(pub.events.length).toBeLessThanOrEqual(120);
+        // 이벤트 id 증가, 한 판 안의 사건은 잘리지 않는다 (첫 사건 id 1 부터 지금까지 낸 사건이 다 남아 있다 — 사건 없는 판은 0개)
+        expect(pub.events.length).toBe(s.nextEventId - 1);
+        if (pub.events.length) expect(pub.events[0].id).toBe(1);
         for (let i = 1; i < pub.events.length; i++) expect(pub.events[i].id).toBe(pub.events[i - 1].id + 1);
         played++;
       }

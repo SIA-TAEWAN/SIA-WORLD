@@ -83,17 +83,22 @@ export function showMatch(setup: MatchSetup) {
       says.forEach((b) => b.clear());
       match.dispose();
       // 경기마다 새 캔버스를 만든다: 지우기 전에 WebGL 문맥을 잡아 두었다가 직접 놓아 준다
-      // (그냥 두면 브라우저가 문맥을 늦게 거둬, 여러 판 뒤 '문맥이 너무 많다' 경고·옛 문맥 끊김이 날 수 있다)
+      // (그냥 두면 브라우저가 문맥을 늦게 거둬, 여러 판 뒤 '문맥이 너무 많다' 경고·옛 문맥 끊김이 날 수 있다).
+      // destroy(true) 는 다음 틱에 실제로 치우므로, Phaser 가 렌더러를 다 치운(DESTROY) 다음 틱에 놓는다 (서바이벌 gameView 와 같은 방식)
       const gl = glOf(game);
+      if (game && gl) {
+        game.events.once(Phaser.Core.Events.DESTROY, () =>
+          setTimeout(() => {
+            try {
+              gl.getExtension('WEBGL_lose_context')?.loseContext();
+            } catch {
+              /* 이미 잃었거나 지원하지 않음 */
+            }
+          }, 0),
+        );
+      }
       game?.destroy(true);
       game = null;
-      if (gl) {
-        try {
-          gl.getExtension('WEBGL_lose_context')?.loseContext();
-        } catch {
-          /* 이미 잃었거나 지원하지 않음 */
-        }
-      }
       if (window.__match === match) delete window.__match;
     },
   );

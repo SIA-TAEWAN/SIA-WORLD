@@ -5,6 +5,7 @@ import { MAP_W, PLAYER_R, TILE } from '../data/balance';
 import { itemDef } from '../data/items';
 import { envOf } from '../data/maps';
 import type { Drop } from '../game/drops';
+import { eunNeun, iGa } from '../game/progress';
 import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
 import { ENEMY_TINT, HARD_BOSS_TINT, artFor, floorOf, groundOf } from './art';
@@ -299,7 +300,7 @@ export class GameScene extends Phaser.Scene {
           if (ev.id === 'arrow') {
             // 성벽 화살 (7지형)
             this.sfx('survBossWarn', 0, { volume: 0.4, rate: 1.3 });
-            this.hooks.note(this.run.env.f > 0 ? '🏹 성벽에서 화살이 쏟아져요!' : `🏹 화살! ${this.run.hero.name}가 다 잡아냈어요`);
+            this.hooks.note(this.run.env.f > 0 ? '🏹 성벽에서 화살이 쏟아져요!' : `🏹 화살! ${this.run.hero.name}${iGa(this.run.hero.name)} 다 잡아냈어요`);
             break;
           }
           if (ev.id === 'sleep') {
@@ -310,12 +311,12 @@ export class GameScene extends Phaser.Scene {
           if (ev.id === 'glare') {
             // 새벽빛 (10지형) 예고
             this.sfx('boost', 0, { volume: 0.4, rate: 1.4 });
-            this.hooks.note(this.run.env.f > 0 ? '🌅 곧 새벽빛이 비쳐요. 눈이 부셔요!' : `🌅 새벽빛! ${this.run.hero.name}는 눈이 부시지 않아요`);
+            this.hooks.note(this.run.env.f > 0 ? '🌅 곧 새벽빛이 비쳐요. 눈이 부셔요!' : `🌅 새벽빛! ${this.run.hero.name}${eunNeun(this.run.hero.name)} 눈이 부시지 않아요`);
             break;
           }
           // 골바람 예고
           this.sfx('boost', 0, { volume: 0.5, rate: 0.7 });
-          this.hooks.note(this.run.env.f > 0 ? `🌬️ 골바람이 불어와요 ${ev.dir > 0 ? '→' : '←'}` : `🌬️ 골바람! ${this.run.hero.name}는 밀리지 않아요`);
+          this.hooks.note(this.run.env.f > 0 ? `🌬️ 골바람이 불어와요 ${ev.dir > 0 ? '→' : '←'}` : `🌬️ 골바람! ${this.run.hero.name}${eunNeun(this.run.hero.name)} 밀리지 않아요`);
           break;
         case 'exit':
           this.sfx('newRecord', 0);

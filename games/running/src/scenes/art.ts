@@ -1,13 +1,14 @@
 import Phaser from 'phaser';
 import { COLOR, RACE } from '../theme';
 import { isCharId, type ZodiacId } from '../game/constants';
-import { zodiacFullUrl } from '../assets';
+import { ART_FILES, zodiacFullUrl } from '../assets';
+
+export { ART_FILES };
 
 /**
  * 그림 목록. public/art/<이름>.png (SpriteCook, 원본 asset id: spritecook-assets.json) 를 쓰고,
  * 파일을 못 불러오면 아래 코드 그림(임시 그림)으로 대신한다.
  */
-export const ART_FILES = ['track', 'sky', 'stands', 'hurdle', 'banana', 'log', 'mudShort', 'mudLong', 'boost', 'bar', 'marker', 'flag', 'dust', 'splash', 'star', 'spark'] as const;
 export type ArtKey = (typeof ART_FILES)[number];
 
 export const zKey = (id: ZodiacId) => `z-${id}`;

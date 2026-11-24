@@ -1,11 +1,12 @@
 import { CHAR_IDS, ZODIAC_IDS, ZODIAC_NICK, isCharId, type ZodiacId } from '../game/constants';
 import { formatTime, tierOfPlace } from '../game/ranking';
 import { DAILY_GAME, dailyLabel, dailyMs, isDailyDay, localDailyDay } from '../game/daily';
+import { ghostTag } from '../game/ghost';
 import { LOCAL_MODE } from '../net/api';
-import { SoloSession, loadGhostRun, type GhostRun } from '../net/solo';
+import { SoloSession, loadGhostRun, soloRoster, type GhostRun } from '../net/solo';
 import type { RaceApi } from '../net/api';
 import { loadRankIcons, openWorldRanking, worldDailyRanking, worldDailyTodayStrict, worldHome, type DailyRanking } from '../net/world';
-import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
+import { warmRaceArt, zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { UNLOCK_LABEL, isCharOpen, onUnlockChange, refreshProgress } from '../game/unlock';
 import { pressUnlock, unlockButtonHtml } from './unlockBtn';
 import { loadBestReaction, reactionText } from '../game/reaction';
@@ -286,7 +287,7 @@ export function showPick() {
   const day = state.today;
   const ghostP = gl && (!day || gl.day === day) ? gl.p : state.api && day ? reloadGhost(state.api, day) : null;
   void ghostP?.then((g) => {
-    if (g && root.isConnected) $('#pick-sub').textContent = `능력은 모두 같아요 · 👻 ${g.me ? '내 1위 기록' : `오늘 ${g.dayPlace}위`} 고스트 · AI 2명과 달려요`;
+    if (g && root.isConnected) $('#pick-sub').textContent = `능력은 모두 같아요 · 👻 ${ghostTag(g)} · AI 2명과 달려요`;
   });
   void refreshProgress();
   void loadEngine();
@@ -328,10 +329,17 @@ export async function startRun() {
   try {
     // 1위 고스트(로비에서 읽어 둔 것(같은 날) 또는 새로, 앞 판 고스트 올리기 대기 포함 — 2초 안에 못 받으면 AI 3명)와
     // 경기 화면 코드·글꼴을 **먼저** 받는다. race_go 는 그 뒤에: GO 가 race_go 부터 잰 시각이라 느린 통신에서도 화면이 GO 전에 뜬다
+    // 경주 장면이 받을 그림(트랙·나·AI·고스트 캐릭터)도 함께 미리 받는다 (최대 2.5초). AI 구성을 미리 알려고
+    // 구성 난수(r0)를 여기서 뽑아 solo.start 에 그대로 넘긴다 (start 는 그 값을 한 번만 쓴다 — soloRoster)
     const ghost = ghostFor(api, day).catch(() => null);
-    const [m] = await Promise.all([loadEngine(), ghost, fontsReady()]);
+    const r0 = Math.random();
+    const char = state.char;
+    const art = ghost.then((g) =>
+      warmRaceArt(soloRoster(state.user, char, Math.floor(r0 * 0x7fffffff), g && g.ghost.day === day ? { char: g.ghost.char, name: '' } : null).map((r) => r.char)),
+    );
+    const [m] = await Promise.all([loadEngine(), ghost, fontsReady(), art]);
     if (cancelled) return;
-    const start = await state.solo.start(state.char, day, () => cancelled, Math.random, ghost);
+    const start = await state.solo.start(char, day, () => cancelled, () => r0, ghost);
     if (!start || cancelled) return;
     m.showRace(start);
   } catch (e) {

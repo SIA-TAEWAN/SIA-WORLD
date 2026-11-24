@@ -1,6 +1,6 @@
 /** 세븐포커 화면: 나는 아래, 다른 사람은 왼쪽·위·오른쪽. 4장 받고 1장 버리고 1장 공개 → 4~6구 공개, 7구 히든 */
 import { POKER_MANUAL } from '../../lib/manuals.ts';
-import { pokerHint, pokerStory, pokerWeak, potRealWinners, potRefundOf, potRefundOnly } from '../../lib/extras.ts';
+import { pokerHint, pokerStory, pokerWeak, potRealWinners, potRefundOf, potRefundOnly, sidePotCount } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { chipStack, clamp, drawTable, label, nameTag, playingCard, sweepTable, tc, theme, viewSize } from '../../lib/cards.ts';
 import type { PokerPrivate, PokerPublic } from '../../../supabase/functions/_shared/poker.ts';
@@ -84,7 +84,7 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       scene,
       center.x,
       midY,
-      `${ROUND(p.phase)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${p.pots.length > 1 ? ` · 사이드 팟 ${p.pots.length - 1}` : ''}`,
+      `${ROUND(p.phase)}${p.curBet ? ` · 베팅 ${t.fmt(p.curBet)}` : ''}${sidePotCount(p.seats) ? ` · 사이드 팟 ${sidePotCount(p.seats)}` : ''}`,
       midFs,
     );
 
@@ -326,7 +326,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
     if (ev.t === 'royal') return '로열 스트레이트 플러시!';
     if (ev.t === 'straight_flush') return '스트레이트 플러시!';
     if (ev.t === 'four_kind') return '포카드!';
-    if (ev.t === 'win' && typeof ev.amount === 'number' && t.pub && ev.amount >= t.pub.baseUnit * 100 && !(typeof ev.seat === 'number' && refunded(t, ev.seat))) return '대박 판돈!';
+    // 돌려받은 몫(refund 팟)은 뺀 딴 돈으로만 (돌려받기만 했으면 0)
+    if (ev.t === 'win' && typeof ev.amount === 'number' && t.pub && ev.amount - (typeof ev.seat === 'number' ? potRefundOf(ev.seat, (t.pubNext ?? t.pub)?.summary) : 0) >= t.pub.baseUnit * 100) return '대박 판돈!';
     return null;
   },
 };
