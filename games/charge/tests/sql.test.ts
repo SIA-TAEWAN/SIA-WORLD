@@ -12,7 +12,7 @@ import { CAT_STAGE, LIMITS } from '../src/game/progress';
 const mig = (f: string) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8');
 const sql = mig('061_charge.sql');
 /** 함수를 다시 정의한 뒤 마이그레이션 (뒤 파일이 이긴다). 함수를 다시 정의하는 파일을 더하면 여기에 넣는다 */
-const LATER = ['075_cat_charge.sql', '085_charge_daily.sql', '088_charge_daily_day.sql', '101_overlap_village_fix.sql', '102_admin_coins.sql'].map(mig);
+const LATER = ['075_cat_charge.sql', '085_charge_daily.sql', '088_charge_daily_day.sql', '101_overlap_village_fix.sql', '102_admin_coins.sql', '107_review_1125.sql'].map(mig);
 const block = (fn: string) => {
   const src = [...LATER].reverse().find((t) => t.includes(`function public.${fn}(`)) ?? sql;
   const i = src.indexOf(`function public.${fn}(`);
@@ -72,6 +72,23 @@ describe('SQL 표', () => {
     expect(fnOf('101_overlap_village_fix.sql')).toBe(fnOf('088_charge_daily_day.sql'));
     expect(fnOf('101_overlap_village_fix.sql')).toContain('language plpgsql security definer set search_path = public as $$');
     expect(fnOf('101_overlap_village_fix.sql')).toContain('revoke all on function public.charge_finish(uuid, int, boolean, int, int, numeric, int, int, int) from public, anon;');
+  });
+
+  it('charge_finish 107 은 101 을 그대로 옮기고 프로필 잠금만 겹침 검사 앞으로 옮긴다 (운영에 남는 정의)', () => {
+    const whole = (f: string) => {
+      const t = mig(f).replace(/\r\n/g, '\n');
+      const i = t.indexOf('create or replace function public.charge_finish(');
+      const end = 'grant execute on function public.charge_finish(uuid, int, boolean, int, int, numeric, int, int, int) to authenticated;';
+      return t.slice(i, t.indexOf(end, i) + end.length);
+    };
+    const now = whole('107_review_1125.sql');
+    const lock = '  pr := public._charge_profile_row(me);\n';
+    expect(now.split(lock)).toHaveLength(2);
+    expect(now.indexOf(lock)).toBeLessThan(now.indexOf("raise exception 'overlap'"));
+    expect(now.indexOf(lock)).toBeLessThan(now.indexOf('before_leaders := public._charge_unlocked(me);'));
+    const strip = (t: string) => t.replace(/  -- 107: [^\n]*\n/, '').replace(lock, '');
+    expect(strip(now)).toBe(strip(whole('101_overlap_village_fix.sql')));
+    expect(block('charge_finish').replace(/\r\n/g, '\n')).toBe(now.slice(now.indexOf('function public.charge_finish('), now.indexOf('$$;')));
   });
 
   it('대장 검사는 공용 _check_character 를 쓴다 (075)', () => {

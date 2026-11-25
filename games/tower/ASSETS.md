@@ -49,14 +49,14 @@ asset id 는 `games/tower/spritecook-assets.json`. 만드는 방법은 이 문�
   `stairs` 계단 · `chest` 상자 · `chestOpen` 연 상자 · `pedestal` 구슬 받침대(구슬 있음) · `pedestalEmpty` 빈 받침대 · `shop` 상인 · `fountain` 샘 · `rubble` 잔돌 · `fountainDry` 마신 샘
 - 1~10층 테마 "탑의 입구(돌 복도)": 바닥 `--roulette-winter`, 벽 `--ink-soft`/`--empty-line`, 테두리 `--outline` (DESIGN.md 의 기존 색만).
 - 손그림: `switch`·`switchOn`·`vine` 은 물 위에 놓이는 칸이라 바탕이 물이고, 나머지 물건 칸은 바탕이 돌바닥이다 (칸은 모두 불투명).
-- 뒤에 붙은 5칸 (모두 27칸 = **432×16**): `plate` 발판 · `plateOn` 눌린 발판(노랗게 빛남) · `brazier` 꺼진 화로 · `brazierLit` 불붙은 화로 · `post` 물가 말뚝(쇠고리). 바탕은 그 테마의 바닥.
+- 뒤에 붙은 5칸 (그때 27칸 = 432×16 — 지금 시트는 아래 칸까지 모두 **43칸 = 688×16**): `plate` 발판 · `plateOn` 눌린 발판(노랗게 빛남) · `brazier` 꺼진 화로 · `brazierLit` 불붙은 화로 · `post` 물가 말뚝(쇠고리). 바탕은 그 테마의 바닥.
 - 테마마다 한 장: 1구역 `stone` = `tiles.png`, 다른 구역은 `tiles-<theme>.png` (floors.json 의 `theme`, `src/art/load.ts` 의 `tileFile`). 칸 순서는 같다.
 
 - 3~5구역에서 붙은 8칸 (모두 35칸 = **560×16**, 다섯 시트 모두 같은 순서): `coldWater` 찬물(밝은 물 + 살얼음 금) · `ice` 얼음판(흰 판 + 빗금, 걸을 수 있다) · `bell` 풍경(나무 틀에 매달린 종 + 종이 물고기) · `bellOn` 울리는 풍경(노랗게 빛나고 옆으로 흔들림) · `gong` 징(나무 틀의 둥근 놋쇠판) · `gongOn` 울리는 징(밝아지고 둘레에 물결) · `boulder` 둥근 바위(둥글고 줄무늬 — 금 간 바위와 다르다) · `pit` 구덩이. 찬물·얼음은 테마와 상관없이 같은 그림, 나머지는 바탕이 그 테마의 바닥.
 
 ### 2구역 "이끼 낀 회랑" (`public/art/tiles-moss.png`, 11~20층)
 
-- 432×16, 같은 27칸. 바닥 `--roulette-autumn` + 줄눈 `--matgo-mat-light`, 금 간 바닥 자리는 이끼 덩어리, 벽 윗면은 이끼(`--table-matgo`)가 덮고 돌이 조금 드러남,
+- 688×16, 같은 43칸. 바닥 `--roulette-autumn` + 줄눈 `--matgo-mat-light`, 금 간 바닥 자리는 이끼 덩어리, 벽 윗면은 이끼(`--table-matgo`)가 덮고 돌이 조금 드러남,
   벽 앞면은 `--ink-soft` 벽돌에 이끼(`--matgo-mat-dark`)가 흘러내림, 물 `--team-a`. 기둥·바위·받침대·샘·화로 같은 물건 칸은 1구역 그림에 이끼 점을 얹었다 (`draw.py` 의 `MOSS_ON`).
 
 ### 3구역 "서리 누각" (`public/art/tiles-frost.png`, 21~30층)
@@ -97,10 +97,10 @@ asset id 는 `games/tower/spritecook-assets.json`. 만드는 방법은 이 문�
 - 9구역: `stormimp` 바람 도깨비(준비 칸은 바람 자루를 엶) · `hailjar` 우박 항아리(준비 칸은 우박이 튐) · `starshard` 별조각(준비 칸은 하얗게 커짐) · `hawk` 폭풍 매 16, `jangseung` 천하대장군 장승(준비 칸은 기울임) 24, `heukryong` 흑룡(검은 비늘·금빛 뿔, 준비 칸은 입을 벌림 — 이무기 뼈대에 색만 바꾼 것) 32.
 - 10구역: `skysoldier` 하늘 병사(준비 칸은 창을 겨눔) · `crane` 흰 학 · `lantern` 소원 등롱(준비 칸은 하얗게 빛남) · `jadelion` 옥 사자(준비 칸은 웅크림) · `wishlight` 소원 등불(연꽃 등, 맞은 칸 = 환하게 켜짐) 16, `skygeneral` 천상 장군(금 갑옷·흰 깃·번개 칼) 24, `eodugsini` 어둑시니(**48** — 192×48, 아래로 퍼지는 먹빛 그림자·하얀 눈 셋, 준비 칸은 손을 뻗음).
 
-## 투사체 · 엔딩 그림 (그려 두었지만 아직 코드가 읽지 않는다)
+## 투사체 · 엔딩 그림
 
-- `public/art/proj/<이름>.png`: `web` 8×8 · `crowfeather` 10×6(오른쪽을 본다) · `pollen` 6×6 · `petal` 8×6 · `storm` 12×12 · `shade` 10×10 — `GameScene` 이 `mk()` 로 그리는 코드 그림과 같은 이름·크기. 쓰려면 `load.ts` 에 `projSheet(name)` 같은 읽기 함수를 두고 `mk()` 자리에서 파일이 있으면 그 캔버스로 텍스처를 만든다 (manifest 에는 이미 적혀 있다).
-- `public/art/ending.png` 120×90 (별 하늘 · 초승달 · 옥빛 궁궐 꼭대기 · 소원 구슬을 든 기본 대원), `ending-bg.png` 는 대원 없이 구슬만 떠 있는 배경. 엔딩 화면(`app.ts` `endingScreen`)은 지금 CSS 별 + `.wish-orb` + 내 캐릭터 캔버스로 그린다. 쓰려면 `.ending` 배경에 `ending-bg.png` 를 `image-rendering: pixelated` 로 깔고 그 위에 지금처럼 내 캐릭터를 올리면 된다.
+- `public/art/proj/<이름>.png`: `web` 8×8 · `crowfeather` 10×6(오른쪽을 본다) · `pollen` 6×6 · `petal` 8×6 · `storm` 12×12 · `shade` 10×10 — `GameScene` 이 `mk()` 로 그리는 코드 그림과 같은 이름·크기. `load.ts` 의 `projImage` 로 읽어 코드 그림 텍스처 위에 덮는다 (크기가 다르면 코드 그림 그대로).
+- `public/art/ending.png` 120×90 (별 하늘 · 초승달 · 옥빛 궁궐 꼭대기 · 소원 구슬을 든 기본 대원), `ending-bg.png` 는 대원 없이 구슬만 떠 있는 배경. 엔딩 화면(`app.ts` `endingScreen`)은 `ending-bg.png` 를 `.ending-bg` 배경으로 깔고(`load.ts` 의 `endingBgUrl`, 없으면 CSS 별 하늘) 그 위에 내 캐릭터 캔버스를 올린다. `ending.png` 는 아직 쓰지 않는다.
 
 ## 구슬 아이콘 (`public/art/orb/<id>.png`)
 

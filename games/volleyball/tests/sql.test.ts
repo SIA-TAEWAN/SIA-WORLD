@@ -31,6 +31,20 @@ describe('SQL 상수와 기기 상수', () => {
     expect(vals.per_day).toBe(AI_PER_DAY);
     expect(vals.volleyball_min_sec * 1000).toBe(MIN_MATCH_MS);
   });
+  it('volleyball_begin (마지막 정의 107): 새 경기를 열 때 무효로 하는 내 다른 경기는 pending 뿐 (live 는 남은 사람의 보고로 확정)', () => {
+    const files = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
+    let body = '';
+    let from = '';
+    for (const f of files) {
+      const t = readFileSync(new URL(f, MIG), 'utf8').replace(/\r\n/g, '\n');
+      const m = [...t.matchAll(/create (or replace )?function public\.volleyball_begin\(/g)].pop();
+      if (m) [body, from] = [t.slice(m.index, t.indexOf('$$;', m.index)), f];
+    }
+    expect(from).toBe('107_review_1125.sql');
+    expect(body).toContain("update public.volleyball_matches set status = 'void', done_at = clock_timestamp()\n  where status = 'pending' and");
+    expect(body).not.toContain("status in ('pending', 'live')");
+    expect(body).toContain('security definer set search_path = public');
+  });
   it("036 _volleyball_const: 'min_sec' = MIN_MATCH_MS, 'pair_per_day' = PVP_PER_DAY", () => {
     const { vals, from } = consts('_volleyball_const');
     expect(from).toBe('036_hardening.sql');

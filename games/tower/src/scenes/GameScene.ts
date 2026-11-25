@@ -5,6 +5,9 @@ import { T, TILE } from '../game/floorgen';
 import { BODY_UP, STEP, beamAng, prm, step, tileOf, type Enemy, type Fx, type Input, type RunState, type SimEvent } from '../game/sim';
 import { COLOR } from '../theme';
 
+/** 캐릭터 머리 위 (p.y 기준): 그림 아래 끝이 p.y + 3 이고 화면 높이는 FRAME_H × CHAR_SCALE (64×80 칸 → 40) */
+const HEAD_TOP = 3 - FRAME_H * CHAR_SCALE;
+
 /**
  * 탑 한 층 그리기 (Phaser). 시뮬레이션은 sim.ts 의 step() 이 하고, 여기는 그림만.
  * 픽셀 선명: pixelArt + 정수 배율 카메라 (화면 크기에 맞는 가장 큰 정수 배율) + roundPixels.
@@ -466,7 +469,7 @@ export class GameScene extends Phaser.Scene {
           this.number(ev.x, ev.y, ev.dmg, ev.big);
           break;
         case 'hurt':
-          if (ev.dmg > 0) this.number(this.run.p.x, this.run.p.y - 22, ev.dmg, false, true);
+          if (ev.dmg > 0) this.number(this.run.p.x, this.run.p.y + HEAD_TOP - 2, ev.dmg, false, true);
           this.shake = 0.15;
           break;
         case 'kill': {
@@ -883,7 +886,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (p.storm > 0 && p.stacks > 0) {
       g.fillStyle(COLOR.skyTop, 0.9);
-      for (let i = 0; i < Math.min(20, p.stacks); i++) g.fillRect(Math.round(x - 10 + (i % 10) * 2), Math.round(y - 20 - Math.floor(i / 10) * 2), 1, 1);
+      for (let i = 0; i < Math.min(20, p.stacks); i++) g.fillRect(Math.round(x - 10 + (i % 10) * 2), Math.round(p.y + HEAD_TOP - 3 - Math.floor(i / 10) * 2), 1, 1);
     }
   }
 

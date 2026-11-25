@@ -46,8 +46,12 @@ function siaWorldDev(): Plugin {
 }
 
 // 배포: https://<owner>.github.io/SIA-WORLD/games/tower/ (상대 경로로 빌드해서 어느 주소에 올려도 동작)
+// 그림 주소 뒤에 붙이는 빌드 판본 (src/art/load.ts): 배포(GitHub Actions)에서는 커밋 해시, 그 밖에는 빌드 시각
+const BUILD = (process.env.GITHUB_SHA ?? '').slice(0, 12) || Date.now().toString(36);
+
 export default defineConfig(({ command }) => ({
   base: command === 'serve' ? '/games/tower/' : './',
   plugins: [siaWorldDev()],
+  define: { __TOWER_BUILD__: JSON.stringify(BUILD) },
   build: { chunkSizeWarningLimit: 2000 },
 }));

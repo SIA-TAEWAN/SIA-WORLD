@@ -5,7 +5,7 @@ import { ALL_MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
- * 서버(078_twelve.sql + 094_twelve_full.sql + 101 의 twelve_finish + 102 · 103 의 twelve_state)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 서버(078_twelve.sql + 094_twelve_full.sql + 101 · 107 의 twelve_finish + 102 · 103 의 twelve_state)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
  * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하므로 094 의 블록을 대조하고,
  * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 094 의 gen 블록을 다시 만든다.
  * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
@@ -21,7 +21,10 @@ const file102 = read('102_admin_coins.sql');
 const sql102 = file102.slice(file102.indexOf('-- ---------- 3. 시아열두길'));
 /** 103 은 열두길 twelve_state 하나만 다시 정의한다 (관리자 갈래에 강화석을 더함) */
 const sql103 = read('103_twelve_admin_stones.sql');
-const sql = `${sql078}\n${sql094}\n${sql101}\n${sql102}\n${sql103}`;
+/** 107 은 배구 · 시아의탑 · 돌격대 · 열두길 함수를 함께 다시 정의한다 — 열두길 부분(twelve_finish 의 잠금 순서)만 본다 */
+const file107 = read('107_review_1125.sql');
+const sql107 = file107.slice(file107.indexOf('-- ---------- 4. 시아열두길'));
+const sql = `${sql078}\n${sql094}\n${sql101}\n${sql102}\n${sql103}\n${sql107}`;
 const fn = (name: string) => {
   const i = sql.lastIndexOf(`create or replace function public.${name}(`);
   return i < 0 ? '' : sql.slice(i, sql.indexOf('$$;', i));
@@ -113,6 +116,23 @@ describe('SQL 규칙', () => {
     expect(fnOf(sql101)).toBe(fnOf(sql094));
     expect(fnOf(sql101)).toContain('language plpgsql security definer set search_path = public as $$');
     expect(fnOf(sql101)).toContain('revoke all on function public.twelve_finish(uuid, jsonb) from public, anon;');
+  });
+
+  it('twelve_finish 107 은 101 을 그대로 옮기고 프로필 잠금만 겹침 검사 앞으로 옮긴다 (운영에 남는 정의)', () => {
+    const whole = (t: string) => {
+      const i = t.indexOf('create or replace function public.twelve_finish(');
+      const end = 'grant execute on function public.twelve_finish(uuid, jsonb) to authenticated;';
+      return t.slice(i, t.indexOf(end, i) + end.length);
+    };
+    const now = whole(sql107);
+    const lock = '  pr := public._twelve_profile_row(me);\n';
+    expect(now.split(lock)).toHaveLength(2);
+    // 잠금은 겹침 검사 앞, 경험치 계산 앞
+    expect(now.indexOf(lock)).toBeLessThan(now.indexOf("raise exception 'overlap'"));
+    expect(now.indexOf(lock)).toBeLessThan(now.indexOf('select e.pct into pct'));
+    const strip = (t: string) => t.replace(/  -- 107: [^\n]*\n/, '').replace(lock, '');
+    expect(strip(now)).toBe(strip(whole(sql101)));
+    expect(fn('twelve_finish')).toBe(now.slice(0, now.indexOf('$$;')));
   });
 
   it('경험치·엽전·시아코인 식', () => {

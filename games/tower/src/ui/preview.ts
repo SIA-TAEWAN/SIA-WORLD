@@ -2,12 +2,13 @@
  * 캐릭터 미리보기 (DOM 캔버스): 레이어 4장(몸 → 얼굴 → 옷 → 머리)을 같은 칸에서 잘라 겹친다.
  * 캐릭터 만들기 화면과 처음 화면이 쓴다 (게임 화면은 Phaser 가 같은 시트를 쓴다).
  */
-import { layerSheet } from '../art/load';
+import { layerSheets } from '../art/load';
 import { FRAME_H, FRAME_W, frameIndex, layerNames, walkCol, COLS } from '../art/sheets';
 import type { Look } from '../game/progress';
 
 export async function lookLayers(look: Look): Promise<HTMLCanvasElement[]> {
-  return Promise.all(layerNames(look).map(layerSheet));
+  // 4장 중 하나라도 파일을 못 쓰면 4장 모두 코드 그림 (art/load.ts)
+  return layerSheets(layerNames(look));
 }
 
 /** 한 칸 그리기 (scale 배 정수 확대, 캔버스의 아래 가운데에 맞춘다 — 칸 64×80) */

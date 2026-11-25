@@ -44,6 +44,10 @@ describe('서버 저장', () => {
     const c = {
       down: false,
       savedAt: 0,
+      /** 107 서버: tower_save 가 savedAt 을 돌려주고 서버의 savedAt 을 바꾼다. false = 106 서버 */
+      stamps: true,
+      /** 이만큼 저장을 받은 뒤 통신이 끊긴다 (null = 끊기지 않는다) */
+      downAfter: null as number | null,
       calls,
       rpc(fn: string, args?: Record<string, unknown>) {
         if (c.down) return Promise.reject(new Error('Failed to fetch'));
@@ -53,7 +57,10 @@ describe('서버 저장', () => {
           if (cl != null && cl > best + 1) return Promise.resolve({ data: null, error: { message: 'bad save' } });
           const got = cl != null && cl > best;
           if (cl != null) best = Math.max(best, cl);
-          return Promise.resolve({ data: { bestFloor: best, gotCoin: got, siaCoins: 5 }, error: null });
+          // 서버 시각: 기기 시각보다 앞서 있어도 (기기마다 시계가 다르다) 이 기기의 저장으로 알아본다
+          c.savedAt = Math.max(c.savedAt + 1, Date.now() + 5000);
+          if (c.downAfter != null && --c.downAfter <= 0) c.down = true;
+          return Promise.resolve({ data: { bestFloor: best, gotCoin: got, siaCoins: 5, ...(c.stamps ? { savedAt: c.savedAt } : {}) }, error: null });
         }
         if (fn === 'tower_state') return Promise.resolve({ data: { look: null, data: {}, bestFloor: best, siaCoins: 5, lookPrice: 30, savedAt: c.savedAt }, error: null });
         return Promise.resolve({ data: null, error: null });
@@ -113,6 +120,62 @@ describe('서버 저장', () => {
     c.savedAt = Date.now() + 1000;
     await createSupabaseApi(c as RpcClient, 'u1', store).state();
     expect(c.calls.filter((x) => x.fn === 'tower_save')).toHaveLength(0);
+    expect(api.pending()).toBe(0);
+  });
+
+  it('못 보낸 A · B 중 A 만 들어가고 끊겨도 B 는 버리지 않고 다음에 보낸다 (107 tower_save 의 savedAt)', async () => {
+    const c = fake();
+    const store = memStore();
+    const api = createSupabaseApi(c as RpcClient, 'u1', store);
+    const d = newData(1);
+    c.down = true;
+    clearFloor(d, 1);
+    await api.save(d, 1);
+    clearFloor(d, 2);
+    await api.save(d, 2);
+    expect(api.pending()).toBe(2);
+    // 다시 보낸다: A(1층)만 들어가고 끊긴다 → 서버 savedAt(A 를 받은 시각)이 B 를 만든 시각보다 늦다
+    c.down = false;
+    c.downAfter = 1;
+    expect(await api.resend()).toBe(1);
+    c.down = false;
+    c.downAfter = null;
+    const st = await createSupabaseApi(c as RpcClient, 'u1', store).state();
+    expect(c.calls.filter((x) => x.fn === 'tower_save').map((x) => x.args?.p_cleared)).toEqual([1, 2]);
+    expect(st.bestFloor).toBe(2);
+    expect(api.pending()).toBe(0);
+  });
+
+  it('그 뒤 다른 기기가 저장했으면 (서버 savedAt 이 이 기기가 받은 것보다 크다) 남은 저장은 버린다', async () => {
+    const c = fake();
+    const store = memStore();
+    const api = createSupabaseApi(c as RpcClient, 'u1', store);
+    const d = newData(1);
+    await api.save(d);
+    c.down = true;
+    d.coins = 77;
+    await api.save(d);
+    expect(api.pending()).toBe(1);
+    c.down = false;
+    c.savedAt += 60_000; // 다른 기기의 저장
+    await createSupabaseApi(c as RpcClient, 'u1', store).state();
+    expect(c.calls.filter((x) => x.fn === 'tower_save')).toHaveLength(1);
+    expect(api.pending()).toBe(0);
+  });
+
+  it('106 서버(tower_save 에 savedAt 이 없다)와도 예전처럼 동작한다', async () => {
+    const c = fake();
+    c.stamps = false;
+    const store = memStore();
+    const api = createSupabaseApi(c as RpcClient, 'u1', store);
+    const d = newData(1);
+    c.down = true;
+    clearFloor(d, 1);
+    await api.save(d, 1);
+    expect(api.pending()).toBe(1);
+    c.down = false;
+    const st = await createSupabaseApi(c as RpcClient, 'u1', store).state();
+    expect(st.bestFloor).toBe(1);
     expect(api.pending()).toBe(0);
   });
 
