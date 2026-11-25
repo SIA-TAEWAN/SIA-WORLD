@@ -1,11 +1,32 @@
 {
   "maxLevel": 99,
-  "base": { "hp": 100, "atk": 10, "def": 5, "mp": 50 },
-  "perLevel": { "hp": 25, "atk": 3, "def": 2, "mp": 2 },
-  "expCurve": { "a": 40, "p": 1.3 },
+  "base": {
+    "hp": 100,
+    "atk": 10,
+    "def": 5,
+    "mp": 50
+  },
+  "perLevel": {
+    "hp": 25,
+    "atk": 3,
+    "def": 2,
+    "mp": 2
+  },
+  "expCurve": {
+    "a": 40,
+    "p": 1.3
+  },
   "clearBonus": 0.22,
   "replayRate": 0.5,
   "mpPerHit": 3,
   "levelUpHeal": 0.3,
-  "enemyRef": { "atk": 12, "atkPerLevel": 4 }
+  "enemyRef": {
+    "atk": 12,
+    "atkPerLevel": 4
+  },
+  "restRegen": {
+    "hp": 0.025,
+    "mp": 0.02,
+    "_note": "잠긴 방(싸움) 밖에서 1초마다 최대 체력·혼력의 이만큼 회복"
+  }
 }

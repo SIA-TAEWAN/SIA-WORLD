@@ -10,8 +10,8 @@
     { "id": "revive", "name": "부활 부적", "icon": "🪶", "desc": "쓰러지면 체력 50%로 자동 부활 (1개만, 최종보스전 제외)", "price": 500, "max": 1 }
   ],
   "chests": {
-    "treasure": { "coins": [22, 40], "drops": [ { "item": "potionS", "chance": 0.5 }, { "item": "potionL", "chance": 0.2 }, { "item": "mana", "chance": 0.15 }, { "item": "cleanse", "chance": 0.1 } ] },
-    "puzzle": { "coins": [35, 55], "firstShard": 1, "drops": [ { "item": "potionL", "chance": 0.6 }, { "item": "mana", "chance": 0.3 } ] }
+    "treasure": { "coins": [10,20], "drops": [{ "item": "potionS", "chance": 0.45 },{ "item": "potionL", "chance": 0.2 },{ "item": "mana", "chance": 0.1 },{ "item": "cleanse", "chance": 0.06 }] },
+    "puzzle": { "coins": [18,30], "firstShard": 1, "drops": [{ "item": "potionL", "chance": 0.5 },{ "item": "mana", "chance": 0.2 }] }
   },
   "startItems": { "potionS": 3 }
 }

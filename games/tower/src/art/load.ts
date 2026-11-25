@@ -1,7 +1,7 @@
 /**
  * 그림 불러오기: public/art/manifest.json 에 적힌 파일은 그 파일, 없거나 못 읽으면 코드로 그린 플레이스홀더 (sheets.ts, 같은 규격).
  */
-import { SHEET_H, SHEET_W, TILE_ORDER, TS, enemySize, placeholderEnemy, placeholderLayer, placeholderTiles } from './sheets';
+import { SHEET_H, SHEET_W, TS, enemySize, placeholderEnemy, placeholderLayer, placeholderTiles } from './sheets';
 
 const base = () => `${import.meta.env.BASE_URL}art/`;
 let manifest: Promise<Set<string>> | null = null;
@@ -45,8 +45,26 @@ const once = (key: string, make: () => Promise<HTMLCanvasElement>) => {
 
 /** 캐릭터 레이어 시트 (256×128) */
 export const layerSheet = (name: string) => once(`char/${name}`, async () => (await fromFile(`char/${name}.png`, SHEET_W, SHEET_H)) ?? placeholderLayer(name));
-/** 타일 시트 (16 × TILE_ORDER.length) */
-export const tileSheet = () => once('tiles', async () => (await fromFile('tiles.png', TS * TILE_ORDER.length, TS)) ?? placeholderTiles());
+/** 타일 시트 파일 이름: 1구역(stone)은 tiles.png, 다른 테마는 tiles-<테마>.png (floors.json 의 theme) */
+export const tileFile = (theme: string) => (theme === 'stone' ? 'tiles.png' : `tiles-${theme}.png`);
+/**
+ * 타일 시트 (16 × TILE_ORDER.length). 코드 그림 위에 파일을 덮는다:
+ * 파일이 TILE_ORDER 보다 좁으면(새 칸이 붙기 전에 그린 시트) 모자란 칸은 코드 그림 그대로.
+ */
+export const tileSheet = (theme = 'stone') =>
+  once(`tiles:${theme}`, async () => {
+    const cv = placeholderTiles(theme);
+    const path = tileFile(theme);
+    if (!(await files()).has(path)) return cv;
+    const img = await loadImage(base() + path);
+    if (!img) return cv;
+    const g = cv.getContext('2d')!;
+    g.imageSmoothingEnabled = false;
+    const w = Math.min(cv.width, Math.floor(img.width / TS) * TS);
+    g.clearRect(0, 0, w, TS);
+    g.drawImage(img, 0, 0, w, TS, 0, 0, w, TS);
+    return cv;
+  });
 /** 적 시트 (size × 4칸) */
 export const enemySheet = (id: string) => once(`enemy/${id}`, async () => (await fromFile(`enemy/${id}.png`, enemySize(id) * 4, enemySize(id))) ?? placeholderEnemy(id));
 /** 구슬 아이콘 (파일이 있으면 그 주소, 없으면 null → 글자 그림) */

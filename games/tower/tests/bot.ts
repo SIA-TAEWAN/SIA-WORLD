@@ -1,13 +1,21 @@
 /**
  * 자동 조종 봇: 시뮬레이션(src/game/sim.ts)을 사람처럼 눌러서 층을 끝까지 오른다 (밸런스·막힘 확인용).
  * - 잠긴 방: 가장 가까운 적에게 붙어 3타 콤보, 예고(분홍 범위)가 보이면 피한다, 혼력이 차면 스킬
- * - 열린 방: 상자 → 퍼즐(쥐: 스위치를 맞힐 자리에서 참격, 소: 바위 옆에서 영체 팔) → 구슬 → 샘 → 상점 → 적이 남은 방 → 계단
+ * - 열린 방: 상자 → 퍼즐(쥐: 스위치를 맞힐 자리에서 참격, 소: 바위 옆에서 영체 팔, 발판: 가까운 것부터 밟기, 용: 화로 옆에서 화염 강타,
+ *   뱀: 말뚝과 한 줄인 자리에서 채찍 — 건너편에 아직 못 간 상자·계단이 있을 때만) → 구슬 → 샘 → 상점 → 적이 남은 방 → 계단
+ * - 구슬은 전투용으로 BOT_ORBS 앞쪽 것을 끼고, 퍼즐 앞에서만 그 퍼즐 구슬로 바꿔 낀다 (메뉴에서 바꾸는 것과 같다)
  */
-import { T, TILE, type FloorMap } from '../src/game/floorgen';
+import { ROOM_H, ROOM_W, T, TILE, flyable, type FloorMap } from '../src/game/floorgen';
 import { generateFloor } from '../src/game/floorgen';
 import { buy, clearFloor, die, type TowerData } from '../src/game/progress';
-import { BODY_UP, FACE_VEC, blockedFor, createRun, maxHp, maxMp, noInput, step, tileOf, type Enemy, type Input, type RunState } from '../src/game/sim';
-import type { ItemId } from '../src/data';
+import { BODY_UP, FACE_VEC, blockedFor, createRun, maxHp, maxMp, noInput, step, tileOf, useItem, type Enemy, type Input, type RunState } from '../src/game/sim';
+import { orbDef, type ItemId } from '../src/data';
+
+/** 봇이 싸울 때 끼는 구슬 순서 (가진 것 중 앞쪽) */
+export const BOT_ORBS = ['blueDragon', 'phoenix', 'whiteTiger', 'turtle', 'horse', 'tiger', 'dog', 'sheep', 'rooster', 'monkey', 'rabbit', 'dragon', 'snake', 'rat', 'ox', 'pig'];
+/** 칼처럼 앞을 치는 구슬 (가까이서) · 줄이 맞으면 멀리서 쏘는 구슬 */
+const MELEE_ORBS = new Set(['ox', 'dragon', 'sheep', 'tiger', 'whiteTiger']);
+const LINE_ORBS = new Set(['rat', 'rabbit', 'dog', 'phoenix', 'pig', 'blueDragon', 'rooster', 'snake']);
 
 interface Goal {
   /** 목표 칸 */
@@ -24,6 +32,8 @@ export interface BotOptions {
   maxTime?: number;
   /** 휴식층에서 살 것 */
   shopping?: boolean;
+  /** 이 구슬만 낀다 (구슬 시험) */
+  orb?: string;
 }
 
 const center = (t: number) => t * TILE + TILE / 2;
@@ -70,8 +80,15 @@ export class Bot {
     const inp = noInput();
     const p = s.p;
     if (p.hp < maxHp(s) * 0.4 && (s.data.items.potionL > 0 || s.data.items.potionS > 0)) inp.potion = true;
-    if ((p.poison > 0 || p.slow > 0) && s.data.items.cleanse > 0 && s.locked.size) inp.potion = false;
+    // 독이 길게 남았으면 정화 부적 (메뉴에서 쓰는 것과 같다)
+    if (p.poison > 2 && s.data.items.cleanse > 0 && !inp.potion) useItem(s, 'cleanse');
+    if (p.pull || p.dashChain) return inp;
 
+    // 0) 원숭이: 날아오는 투사체·내리치기 직전에 막기
+    if (s.data.equipped === 'monkey' && p.skillCd <= 0 && p.mp >= 6 && !p.swing && this.threat(s)) {
+      inp.skill = true;
+      return inp;
+    }
     // 1) 예고 피하기
     const dodge = this.dodge(s);
     if (dodge) {
@@ -81,7 +98,7 @@ export class Bot {
     }
     // 2) 싸움
     const room = s.room;
-    const foes = s.enemies.filter((e) => e.alive && e.active && (e.room === room || s.locked.has(e.room)));
+    const foes = s.enemies.filter((e) => e.alive && e.active && !e.hidden && !e.pending && (e.room === room || s.locked.has(e.room)));
     if (foes.length) return this.fight(s, foes, inp);
 
     // 3) 할 일
@@ -114,8 +131,33 @@ export class Bot {
     this.done.add('shop');
     if (this.opts.shopping === false) return;
     const f = s.map.floor;
-    const want: ItemId[] = ['shard', 'revive', 'potionL', 'potionL', 'potionL', 'mana', 'cleanse', 'map', 'potionL', 'potionL', 'potionL', 'potionS', 'potionS'];
+    const want: ItemId[] = ['potionL', 'potionL', 'potionL', 'potionL', 'revive', 'shard', 'potionL', 'potionL', 'mana', 'cleanse', 'map', 'potionL', 'potionS', 'potionS'];
     for (const id of want) buy(s.data, id, f);
+  }
+
+  /** 곧 맞을 것 (원숭이 막기) */
+  private threat(s: RunState): boolean {
+    const p = s.p;
+    const px = p.x;
+    const py = p.y - BODY_UP;
+    for (const pr of s.projs) {
+      if (pr.from !== 'e') continue;
+      const d = Math.hypot(px - pr.x, py - pr.y);
+      const v = Math.hypot(pr.vx, pr.vy) || 1;
+      if (d < 26 && ((px - pr.x) * pr.vx + (py - pr.y) * pr.vy) / v > 0) return true;
+    }
+    for (const e of s.enemies) {
+      const t = e.tele;
+      if (!e.alive || !t || t.kind !== 'circle' || t.total - t.t > 0.25) continue;
+      if (Math.hypot(px - t.x, py - t.y) < t.r + 6) return true;
+    }
+    return false;
+  }
+
+  /** 싸울 구슬 */
+  private fightOrb(s: RunState): string | null {
+    if (this.opts.orb && s.data.orbs[this.opts.orb]) return this.opts.orb;
+    return BOT_ORBS.find((id) => s.data.orbs[id]) ?? null;
   }
 
   private walkTo(s: RunState, tx: number, ty: number, key: string, inp: Input) {
@@ -212,15 +254,29 @@ export class Bot {
     const dx = e.x - px;
     const dy = e.y - py;
     const reach = 14 + e.def.r;
-    // 혼력이 넉넉하면 스킬 (쥐: 줄이 맞으면 멀리서도 / 소: 가까이서)
+    // 혼력이 넉넉하면 스킬 (멀리 쏘는 구슬: 줄이 맞으면 / 칼 구슬: 가까이서)
+    const want = this.fightOrb(s);
+    if (want && s.data.equipped !== want && !p.swing) s.data.equipped = want;
     const orb = s.data.equipped;
+    const def = orbDef(orb);
     const aligned = Math.abs(dx) < 8 || Math.abs(dy) < 8;
-    if (orb && s.data.awakened.includes(orb) && p.awakenCd <= 0 && p.mp >= 30 && (e.def.boss || e.def.elite || foes.length >= 3)) inp.awaken = true;
-    if (orb && p.skillCd <= 0 && !p.swing && p.mp >= maxMp(s) * 0.35) {
-      if (orb === 'rat' && aligned && Math.hypot(dx, dy) < 120) {
-        const f = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 2 : 1) : dy > 0 ? 0 : 3;
-        if (p.face === f) inp.skill = true;
-      } else if (orb === 'ox' && Math.hypot(dx, dy) < reach + 8) inp.skill = true;
+    const dist = Math.hypot(dx, dy);
+    const near = foes.filter((f) => Math.hypot(f.x - px, f.y - py) < 70).length;
+    if (orb && def && s.data.awakened.includes(orb) && p.awakenCd <= 0 && p.mp >= def.awaken.mp) {
+      const big = !!(e.def.boss || e.def.elite) || foes.length >= 3;
+      let go = big;
+      if (orb === 'turtle') go = p.hp < maxHp(s) * 0.5;
+      else if (orb === 'tiger') go = big && p.hp > maxHp(s) * 0.6;
+      else if (['rabbit', 'dragon', 'sheep', 'dog', 'phoenix', 'snake'].includes(orb)) go = (near >= 2 || !!e.def.boss) && dist < 60;
+      else if (orb === 'whiteTiger') go = big && dist < 120;
+      if (go) inp.awaken = true;
+    }
+    if (orb && def && p.skillCd <= 0 && !p.swing && p.mp >= Math.max(def.basic.mp, maxMp(s) * 0.3)) {
+      const f = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 2 : 1) : dy > 0 ? 0 : 3;
+      if (LINE_ORBS.has(orb) && aligned && dist < (orb === 'snake' ? 56 : 120) && p.face === f) inp.skill = true;
+      else if (MELEE_ORBS.has(orb) && dist < reach + 8 && p.face === f) inp.skill = true;
+      else if (orb === 'horse' && dist < 85) inp.skill = true;
+      else if (orb === 'turtle' && !p.shield) inp.skill = true;
     }
     if (Math.abs(dx) <= reach && Math.abs(dy) <= 10) {
       inp.mx = Math.sign(dx) * 0.5;
@@ -237,7 +293,7 @@ export class Bot {
     }
     // 가까운 줄로 맞춘다 (가로가 더 멀면 세로부터 맞춘다)
     const tx = Math.floor(e.x / TILE);
-    const ty = Math.floor((e.y + BODY_UP) / TILE);
+    const ty = Math.floor(e.y / TILE);
     const spots: [number, number][] = [
       [tx - 1, ty],
       [tx + 1, ty],
@@ -246,12 +302,16 @@ export class Bot {
     ];
     const ptx = Math.floor(p.x / TILE);
     const pty = Math.floor((p.y - 2) / TILE);
-    const good = spots.filter(([x, y]) => !blockedFor(s, x, y, 'p')).sort((a, b) => Math.hypot(a[0] - ptx, a[1] - pty) - Math.hypot(b[0] - ptx, b[1] - pty));
-    if (good.length && Math.hypot(dx, dy) > 30) {
-      this.walkTo(s, good[0][0], good[0][1], `foe:${e.id}:${good[0][0]},${good[0][1]}`, inp);
+    // 맞출 자리: 적 칸의 네 이웃 중 걸어서 가장 가까운 곳 (물·기둥 너머는 길로 돌아간다)
+    const path = bfs(s, ptx, pty, (x, y) => spots.some(([sx, sy]) => sx === x && sy === y) && !blockedFor(s, x, y, 'p'));
+    const spot = path ? path[path.length - 1] : null;
+    if (spot && (spot[0] !== ptx || spot[1] !== pty)) {
+      this.walkTo(s, spot[0], spot[1], `foe:${e.id}:${spot[0]},${spot[1]}`, inp);
       if (inp.mx || inp.my) return inp;
     }
-    if (Math.abs(dx) > Math.abs(dy)) {
+    // 그 자리에 왔다: 적과 줄을 맞춘다 (옆이면 세로를, 위아래면 가로를)
+    const side = spot ? spot[1] === ty : Math.abs(dx) > Math.abs(dy);
+    if (side) {
       inp.my = Math.abs(dy) > 2 ? Math.sign(dy) : 0;
       if (!inp.my) inp.mx = Math.sign(dx);
     } else {
@@ -298,14 +358,26 @@ export class Bot {
     if (s.data.orbs.ox) {
       for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (objT(x, y) === T.ROCK) for (const g of nearSpots(x, y)) goals.push({ ...g, act: 'skill', key: `rock:${x},${y}:${g.face}` });
     }
+    // 용 퍼즐: 꺼진 화로 옆
+    if (s.data.orbs.dragon) {
+      for (const o of m.objs) if (o.kind === 'brazier' && objT(o.x, o.y) === T.BRAZIER) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'skill', key: `br:${o.id}:${g.face}:${Math.floor(s.t / 3)}` });
+    }
+    // 발판: 가까운 것부터 (시간 안에)
+    const plates = m.objs.filter((o) => o.kind === 'plate' && objT(o.x, o.y) === T.PLATE && !s.solved.has(o.room));
+    plates.sort((a, b) => Math.hypot(a.x * TILE - p.x, a.y * TILE - p.y) - Math.hypot(b.x * TILE - p.x, b.y * TILE - p.y));
+    for (const o of plates) goals.push({ tx: o.x, ty: o.y, act: 'walk', key: `plate:${o.id}:${s.plateAt.get(o.room) ?? 'n'}:${Math.floor(s.t / 20)}` });
+    // 뱀 퍼즐: 말뚝을 감아 건너편으로 (건너편에 아직 못 간 상자·계단이 있을 때만)
+    if (s.data.orbs.snake) goals.push(...this.grapples(s));
     for (const o of m.objs) {
       if (o.kind === 'pedestal' && objT(o.x, o.y) === T.PEDESTAL) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'interact', key: `orb:${o.id}:${g.face}` });
       if (o.kind === 'fountain' && objT(o.x, o.y) === T.FOUNTAIN && p.hp < maxHp(s) * 0.9) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'interact', key: `ft:${o.id}:${g.face}` });
       if (o.kind === 'shop' && !this.shopped) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'shop', key: 'shop' });
     }
-    // 적이 남은 방
+    // 적이 남은 방 (가운데에서 가까운 걸을 수 있는 칸)
     for (const r of m.rooms) {
-      if (s.enemies.some((e) => e.room === r.id && e.alive)) goals.push({ tx: r.x0 + 8, ty: r.y0 + 6, act: 'walk', key: `room:${r.id}` });
+      if (!s.enemies.some((e) => e.room === r.id && e.alive)) continue;
+      const c = this.roomSpot(s, r.x0, r.y0);
+      if (c) goals.push({ tx: c[0], ty: c[1], act: 'walk', key: `room:${r.id}:${Math.floor(s.t / 8)}` });
     }
     // 계단 (상자·퍼즐 다 끝낸 뒤)
     for (const o of m.objs) if (o.kind === 'stairs' && objT(o.x, o.y) === T.STAIRS) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'interact', key: `stairs:${g.face}` });
@@ -314,11 +386,75 @@ export class Bot {
     // 퍼즐을 풀 구슬 바꿔 끼기 (메뉴에서 바꾸는 것과 같다)
     const first = goals.find((g) => !this.done.has(g.key) && this.reachable(s, g));
     if (first) {
-      if (first.key.startsWith('rock:') && s.data.equipped !== 'ox') s.data.equipped = 'ox';
-      else if (first.key.startsWith('sw:') && s.data.equipped !== 'rat') s.data.equipped = 'rat';
-      else if (!first.key.startsWith('rock:') && !first.key.startsWith('sw:') && s.data.orbs.rat && s.data.equipped !== 'rat') s.data.equipped = 'rat';
+      const need = first.key.startsWith('rock:') ? 'ox' : first.key.startsWith('sw:') ? 'rat' : first.key.startsWith('br:') ? 'dragon' : first.key.startsWith('gr:') ? 'snake' : this.fightOrb(s);
+      if (need && s.data.equipped !== need && !p.swing) s.data.equipped = need;
     }
     return first ?? null;
+  }
+
+  private roomSpot(s: RunState, x0: number, y0: number): [number, number] | null {
+    const cx = x0 + Math.floor(ROOM_W / 2);
+    const cy = y0 + Math.floor(ROOM_H / 2);
+    for (let r = 0; r < 6; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!blockedFor(s, cx + dx, cy + dy, 'p')) return [cx + dx, cy + dy];
+    return null;
+  }
+
+  /** 말뚝 감기 자리: 말뚝과 한 줄 · 사이는 물·바닥 · 너머에 내릴 칸 · 그 너머 땅에 아직 못 간 볼일 */
+  private grapples(s: RunState): Goal[] {
+    const m = s.map;
+    const out: Goal[] = [];
+    const p = s.p;
+    const here = this.region(s, Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE));
+    for (const o of m.objs) {
+      if (o.kind !== 'post') continue;
+      for (let f = 0; f < 4; f++) {
+        const [fx, fy] = FACE_VEC[f];
+        const lx = o.x + fx;
+        const ly = o.y + fy;
+        if (blockedFor(s, lx, ly, 'p') || here.has(ly * m.w + lx)) continue;
+        for (let d = 2; d <= 7; d++) {
+          const tx = o.x - fx * d;
+          const ty = o.y - fy * d;
+          if (blockedFor(s, tx, ty, 'p') || !here.has(ty * m.w + tx)) continue;
+          let clear = true;
+          for (let k = 1; k < d; k++) if (!flyable(tileOf(s, o.x - fx * k, o.y - fy * k))) clear = false;
+          if (!clear) continue;
+          if (!this.useful(s, lx, ly, here)) continue;
+          out.push({ tx, ty, face: f, act: 'skill', key: `gr:${o.id}:${f}:${d}:${Math.floor(s.t / 4)}` });
+        }
+      }
+    }
+    return out;
+  }
+  private region(s: RunState, sx: number, sy: number): Set<number> {
+    const w = s.map.w;
+    const seen = new Set<number>([sy * w + sx]);
+    const q = [sy * w + sx];
+    while (q.length) {
+      const c = q.pop()!;
+      const x = c % w;
+      const y = (c - x) / w;
+      for (const [dx, dy] of FACE_VEC) {
+        const n = (y + dy) * w + x + dx;
+        if (seen.has(n) || blockedFor(s, x + dx, y + dy, 'p')) continue;
+        seen.add(n);
+        q.push(n);
+      }
+    }
+    return seen;
+  }
+  /** 내릴 칸에서 닿는 땅에 아직 못 간 볼일(닫힌 상자 · 계단)이 있다 */
+  private useful(s: RunState, lx: number, ly: number, here: Set<number>): boolean {
+    const there = this.region(s, lx, ly);
+    const w = s.map.w;
+    for (const o of s.map.objs) {
+      const t = tileOf(s, o.x, o.y);
+      const want = (o.kind === 'chest' && t === T.CHEST) || (o.kind === 'stairs' && t === T.STAIRS);
+      if (!want) continue;
+      const adj = [[0, 0], ...FACE_VEC].map(([dx, dy]) => (o.y + dy) * w + o.x + dx);
+      if (adj.some((i) => there.has(i)) && !adj.some((i) => here.has(i))) return true;
+    }
+    return false;
   }
 
   private reach = new Map<string, boolean>();
@@ -359,7 +495,7 @@ export function botFloor(data: TowerData, floor: number, opts: BotOptions & { go
 }
 
 export interface TowerLog {
-  floors: { floor: number; level: number; coins: number; time: number; result: string; kills: number; bossTime: number; killHits: number[]; shards: number; orbs: string }[];
+  floors: { floor: number; level: number; coins: number; time: number; result: string; kills: number; bossTime: number; killHits: number[]; shards: number; orbs: string; skills: Record<string, number>; potions: number }[];
   data: TowerData;
   deaths: number;
 }
@@ -373,7 +509,7 @@ export function botTower(data: TowerData, lastFloor: number, tries = 3, opts: Bo
     const floor = d.floor;
     const r = botFloor(d, floor, opts);
     const nd = r.s.data;
-    log.floors.push({ floor, level: nd.level, coins: nd.coins, time: r.time, result: r.result, kills: r.s.stats.kills, bossTime: r.s.stats.bossTime, killHits: r.s.stats.killHits, shards: nd.shards, orbs: Object.keys(nd.orbs).join(',') });
+    log.floors.push({ floor, level: nd.level, coins: nd.coins, time: r.time, result: r.result, kills: r.s.stats.kills, bossTime: r.s.stats.bossTime, killHits: r.s.stats.killHits, shards: nd.shards, orbs: Object.keys(nd.orbs).join(','), skills: r.s.stats.skills, potions: r.s.stats.potions });
     if (r.result === 'clear') {
       clearFloor(nd, floor);
       d = nd;

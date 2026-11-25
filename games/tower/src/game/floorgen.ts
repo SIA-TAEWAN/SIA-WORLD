@@ -1,7 +1,8 @@
 /**
  * 층 만들기: 방 템플릿(rooms.json)을 칸 격자 위에 이어 붙인다. 같은 씨앗·같은 층이면 언제나 같은 층.
- * - 큰 길: 시작 → 전투(1~2) → (구슬 받침대) → 계단. 휴식층은 시작 → 상점 → 계단, 정예층은 전투 → 정예 → 계단, 보스층은 시작 → 보스.
- * - 곁방 하나: 보물방 또는 퍼즐방(구슬이 있어야 풀리는 보물 길 — 진행을 막지 않는다).
+ * - 큰 길: 시작 → 전투(floors.json combat) → (구슬 받침대) → 계단. 휴식층은 시작 → 상점 → 계단, 정예층은 전투 → 정예 → 계단, 보스층은 시작 → 보스.
+ * - 전투방은 무리(waves)가 여럿: 한 무리를 다 잡으면 템플릿의 적 자리에 다음 무리가 나온다.
+ * - 곁방(floors.json side, 모두): 보물방 · 퍼즐방(발판·스위치·바위·화로·말뚝 — 보물 길이라 진행을 막지 않는다).
  * 방 하나 = 벽을 두른 (INNER_W+2)×(INNER_H+2) 칸. 이웃한 방은 벽을 맞대고, 맞댄 벽 가운데 3칸이 문이다.
  */
 import { INNER_H, INNER_W, ROOMS, enemyDef, floorRule, orbAtFloor, orbDef, zoneData, zoneOf, type RoomKind, type RoomTemplate, type SideKind } from '../data';
@@ -33,11 +34,19 @@ export const T = {
   FOUNTAIN: 17,
   RUBBLE: 18,
   FOUNTAIN_DRY: 19,
+  /** 발판 (밟으면 눌린다) */
+  PLATE: 20,
+  PLATE_ON: 21,
+  /** 화로 (용 구슬의 불로 붙인다) */
+  BRAZIER: 22,
+  BRAZIER_LIT: 23,
+  /** 말뚝 (뱀 구슬 채찍으로 감는다) */
+  POST: 24,
 } as const;
 export type Tile = (typeof T)[keyof typeof T];
 
 /** 걸어서 지나갈 수 있는 칸 (문은 잠기지 않았을 때 — 잠김은 sim 이 따로 본다) */
-export const walkable = (t: number) => t === T.FLOOR || t === T.DOOR || t === T.STAIRS || t === T.RUBBLE;
+export const walkable = (t: number) => t === T.FLOOR || t === T.DOOR || t === T.STAIRS || t === T.RUBBLE || t === T.PLATE || t === T.PLATE_ON;
 /** 투사체가 지나가는 칸 (물 위로는 날아간다) */
 export const flyable = (t: number) => walkable(t) || t === T.WATER;
 
@@ -45,6 +54,8 @@ export interface Spawn {
   def: string;
   x: number;
   y: number;
+  /** 몇 번째 무리 (0 = 들어가자마자) */
+  wave: number;
 }
 export interface Room {
   id: number;
@@ -59,7 +70,7 @@ export interface Room {
   doors: { x: number; y: number }[];
   spawns: Spawn[];
 }
-export type ObjKind = 'chest' | 'stairs' | 'pedestal' | 'shop' | 'fountain' | 'switch';
+export type ObjKind = 'chest' | 'stairs' | 'pedestal' | 'shop' | 'fountain' | 'switch' | 'plate' | 'brazier' | 'post';
 export interface Obj {
   id: number;
   kind: ObjKind;
@@ -68,7 +79,7 @@ export interface Obj {
   room: number;
   table?: 'treasure' | 'puzzle';
   orb?: string;
-  /** 스위치·덩굴: 맞히면 열리는 문 칸 */
+  /** 스위치·덩굴·발판·화로: 열리는 문 칸 (발판·화로는 그 방의 것을 모두 켜야 열린다) */
   gates?: { x: number; y: number }[];
 }
 export interface FloorMap {
@@ -109,7 +120,7 @@ export function doorTiles(dir: number): { x: number; y: number }[] {
 }
 
 function templatesFor(kind: RoomKind, floor: number): RoomTemplate[] {
-  return ROOMS.rooms.filter((r) => r.kind === kind && r.minFloor <= floor && (!r.needs || puzzleOrbReady(r.needs, floor)));
+  return ROOMS.rooms.filter((r) => r.kind === kind && r.minFloor <= floor && (r.maxFloor ?? 999) >= floor && (!r.needs || puzzleOrbReady(r.needs, floor)));
 }
 /** 퍼즐 구슬을 이 층보다 아래에서 받았다 (구현된 구슬만) */
 const puzzleOrbReady = (id: string, floor: number) => {
@@ -122,8 +133,7 @@ function mainKinds(floor: number, rng: Rng): RoomKind[] {
   if (rule.kind === 'rest') return ['start', 'shop', 'stairs'];
   if (rule.kind === 'boss') return ['start', 'boss'];
   const orb = orbAtFloor(floor);
-  let k = rng.int(rule.combat[0], rule.combat[1]);
-  if (orb && k > 1) k = 1;
+  const k = rng.int(rule.combat[0], rule.combat[1]);
   const list: RoomKind[] = ['start'];
   for (let i = 0; i < k; i++) list.push('combat');
   if (rule.kind === 'elite') list.push('elite');
@@ -132,12 +142,9 @@ function mainKinds(floor: number, rng: Rng): RoomKind[] {
   return list;
 }
 
-function sideKind(floor: number, rng: Rng): RoomKind | null {
-  const rule = floorRule(floor);
-  const opts: SideKind[] = rule.side.filter((s) => s !== 'puzzle' || templatesFor('puzzle', floor).length > 0);
-  if (!opts.length) return null;
-  // 첫 번째가 그 층에서 먼저 나오는 쪽 (3:1)
-  return rng.next() < 0.75 || opts.length === 1 ? opts[0] : opts[1];
+/** 곁방 목록 (퍼즐 템플릿이 없는 층은 보물방) */
+function sideKinds(floor: number): RoomKind[] {
+  return floorRule(floor).side.map((s: SideKind) => (s === 'puzzle' && !templatesFor('puzzle', floor).length ? 'treasure' : s));
 }
 
 function layout(n: number, rng: Rng): [number, number][] | null {
@@ -162,33 +169,38 @@ export function generateFloor(seed: number, floor: number): FloorMap {
   const rng = makeRng(hashSeed(seed, floor, 0x70e));
   const zone = zoneData(floor);
   const kinds = mainKinds(floor, rng);
-  const side = floorRule(floor).kind === 'rest' || floorRule(floor).kind === 'boss' ? null : sideKind(floor, rng);
+  const rule = floorRule(floor);
+  const sides = rule.kind === 'boss' ? [] : sideKinds(floor);
 
-  // 칸 격자: 큰 길 + 곁방
+  // 칸 격자: 큰 길 + 곁방 (곁방은 시작~계단 앞 방에 하나씩 붙인다. 계단·보스 방에는 붙이지 않는다)
   let cells: [number, number][] | null = null;
-  let sideAt = -1;
-  let sideCell: [number, number] | null = null;
-  for (let tries = 0; tries < 50 && !sideCell; tries++) {
+  let placed: { host: number; cell: [number, number] }[] = [];
+  for (let tries = 0; tries < 80; tries++) {
     cells = layout(kinds.length, rng);
     if (!cells) continue;
-    if (!side) break;
     const used = new Set(cells.map(([x, y]) => `${x},${y}`));
-    // 곁방은 시작~계단 앞 방에 붙인다 (계단·보스 방에는 붙이지 않는다)
     const hosts = cells.map((_, i) => i).filter((i) => i < kinds.length - 1);
-    for (const h of [...hosts].sort(() => rng.next() - 0.5)) {
-      const [x, y] = cells[h];
-      const free = [0, 1, 2, 3].filter((d) => !used.has(`${x + DIRS[d][0]},${y + DIRS[d][1]}`));
-      if (free.length) {
+    placed = [];
+    for (let si = 0; si < sides.length; si++) {
+      // 아직 곁방이 없는 방부터
+      const taken = new Set(placed.map((p) => p.host));
+      const order = [...hosts].sort(() => rng.next() - 0.5).sort((a, b) => Number(taken.has(a)) - Number(taken.has(b)));
+      for (const h of order) {
+        const [x, y] = cells[h];
+        const free = [0, 1, 2, 3].filter((d) => !used.has(`${x + DIRS[d][0]},${y + DIRS[d][1]}`));
+        if (!free.length) continue;
         const d = rng.pick(free);
-        sideAt = h;
-        sideCell = [x + DIRS[d][0], y + DIRS[d][1]];
+        const cell: [number, number] = [x + DIRS[d][0], y + DIRS[d][1]];
+        used.add(`${cell[0]},${cell[1]}`);
+        placed.push({ host: h, cell });
         break;
       }
     }
+    if (placed.length === sides.length) break;
   }
   if (!cells) throw new Error('floor layout failed');
   const all: { kind: RoomKind; cell: [number, number]; side: boolean }[] = kinds.map((k, i) => ({ kind: k, cell: cells![i], side: false }));
-  if (side && sideCell) all.push({ kind: side, cell: sideCell, side: true });
+  placed.forEach((p, i) => all.push({ kind: sides[i], cell: p.cell, side: true }));
   const minX = Math.min(...all.map((r) => r.cell[0]));
   const minY = Math.min(...all.map((r) => r.cell[1]));
   const cw = Math.max(...all.map((r) => r.cell[0])) - minX + 1;
@@ -226,6 +238,7 @@ export function generateFloor(seed: number, floor: number): FloorMap {
     for (let y = 0; y < ROOM_H; y++) for (let x = 0; x < ROOM_W; x++) set(x0 + x, y0 + y, T.WALL);
     const gates: { x: number; y: number }[] = [];
     const switches: Obj[] = [];
+    const foeSpots: { x: number; y: number }[] = [];
     for (let iy = 0; iy < INNER_H; iy++) {
       for (let ix = 0; ix < INNER_W; ix++) {
         const c = tpl.grid[iy][ix];
@@ -253,15 +266,31 @@ export function generateFloor(seed: number, floor: number): FloorMap {
           case 'O': t = T.PEDESTAL; objs.push({ id: 0, kind: 'pedestal', x: tx, y: ty, room: id, orb: orbAtFloor(floor)?.id }); break;
           case 'K': t = T.SHOP; objs.push({ id: 0, kind: 'shop', x: tx, y: ty, room: id }); break;
           case 'F': t = T.FOUNTAIN; objs.push({ id: 0, kind: 'fountain', x: tx, y: ty, room: id }); break;
+          case 'q': t = T.PLATE; switches.push({ id: 0, kind: 'plate', x: tx, y: ty, room: id }); break;
+          case 'h': t = T.BRAZIER; switches.push({ id: 0, kind: 'brazier', x: tx, y: ty, room: id }); break;
+          case 'p': t = T.POST; objs.push({ id: 0, kind: 'post', x: tx, y: ty, room: id }); break;
           case 'P': start = px; break;
-          case 'e': { const d = pickEnemy(); if (d) room.spawns.push({ def: d, ...px }); break; }
-          case 'E': if (zone?.elite) room.spawns.push({ def: zone.elite, ...px }); break;
-          case 'B': if (zone?.boss) room.spawns.push({ def: zone.boss, ...px }); break;
+          case 'e': foeSpots.push(px); break;
+          case 'E': if (zone?.elite) room.spawns.push({ def: zone.elite, ...px, wave: 0 }); break;
+          case 'B': if (zone?.boss) room.spawns.push({ def: zone.boss, ...px, wave: 0 }); break;
         }
         set(tx, ty, t);
       }
     }
     for (const s of switches) objs.push({ ...s, gates });
+    // 무리: 템플릿의 적 자리 중 pack 개를 골라 새로 뽑은 적. 한 무리를 다 잡으면 다음 무리 (전투방·정예방)
+    if (foeSpots.length) {
+      const fight = r.kind === 'combat' || r.kind === 'elite';
+      const n = fight && rule.waves?.[1] ? rng.int(rule.waves[0], rule.waves[1]) : 1;
+      for (let w = 0; w < n; w++) {
+        const k = fight && rule.pack?.[1] ? Math.min(foeSpots.length, rng.int(rule.pack[0], rule.pack[1])) : foeSpots.length;
+        const spots = [...foeSpots].sort(() => rng.next() - 0.5).slice(0, k);
+        for (const sp of spots) {
+          const d = pickEnemy();
+          if (d) room.spawns.push({ def: d, ...sp, wave: w });
+        }
+      }
+    }
     rooms.push(room);
   });
 
@@ -279,7 +308,27 @@ export function generateFloor(seed: number, floor: number): FloorMap {
     }
   };
   for (let i = 1; i < kinds.length; i++) link(rooms[i - 1], rooms[i]);
-  if (side && sideCell) link(rooms[sideAt], rooms[rooms.length - 1]);
+  placed.forEach((p, i) => link(rooms[p.host], rooms[kinds.length + i]));
+  // 둘레를 기둥으로 채운 방(예전 크기 퍼즐·보스방): 문이 없는 쪽의 틔운 칸은 다시 막는다
+  for (const room of rooms) {
+    const tpl = ROOMS.rooms.find((t) => t.id === room.tpl);
+    if (!tpl?.pad || tpl.pad === '.' || !tpl.src) continue;
+    const ox = Math.floor((INNER_W - tpl.src.w) / 2);
+    const oy = Math.floor((INNER_H - tpl.src.h) / 2);
+    const door = (d: number) => room.doors.some((dd) => {
+      const lx = dd.x - room.x0;
+      const ly = dd.y - room.y0;
+      return d === 0 ? ly === 0 : d === 1 ? lx === ROOM_W - 1 : d === 2 ? ly === ROOM_H - 1 : lx === 0;
+    });
+    for (let iy = 0; iy < INNER_H; iy++) {
+      for (let ix = 0; ix < INNER_W; ix++) {
+        const inside = ix >= ox && iy >= oy && ix < ox + tpl.src.w && iy < oy + tpl.src.h;
+        if (inside) continue;
+        const d = iy < oy ? 0 : iy >= oy + tpl.src.h ? 2 : ix < ox ? 3 : 1;
+        if (!door(d)) set(room.x0 + 1 + ix, room.y0 + 1 + iy, T.PILLAR);
+      }
+    }
+  }
   objs.forEach((o, i) => (o.id = i));
   return { floor, zone: zoneOf(floor), kind: floorRule(floor).kind, seed, w, h, tiles, rooms, objs, start, stairsHidden };
 }

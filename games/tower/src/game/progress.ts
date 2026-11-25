@@ -70,7 +70,12 @@ export function newData(seed = Math.floor(Math.random() * 0x7fffffff)): TowerDat
 /** 저장된 값(서버·기기) → 진행 상태. 처음({})이면 새 상태. 어긋난 값은 가까운 바른 값으로 */
 export function normalize(v: unknown): TowerData {
   const o = (v ?? {}) as Partial<TowerData>;
-  if (typeof o !== 'object' || !Number.isFinite(Number(o.level))) return newData(Number.isFinite(Number(o?.seed)) ? Number(o.seed) : undefined);
+  if (typeof o !== 'object' || !Number.isFinite(Number(o.level))) {
+    // 처음 상태: 새 진행. 서버가 먼저 넣어 둔 엽전(관리자 1만 — 105_tower_admin.sql)은 이어받는다
+    const d = newData(Number.isFinite(Number(o?.seed)) ? Number(o.seed) : undefined);
+    if (o && typeof o === 'object') d.coins = int(o.coins, 0, 1e9, 0);
+    return d;
+  }
   const best = int(o.best, 0, TOTAL_FLOORS);
   let checkpoint = int(o.checkpoint, 1, TOTAL_FLOORS, 1);
   if (!isCheckpoint(checkpoint) || checkpoint > best + 1) checkpoint = Math.min(best + 1, Math.floor(best / ZONE_SIZE) * ZONE_SIZE + 1);
@@ -184,5 +189,5 @@ export function die(d: TowerData) {
 }
 /** 이미 깬 층(다시 오르는 층): 경험치 절반 */
 export const isReplay = (d: TowerData, floor: number) => floor <= d.best;
-/** 준비된 층까지만 (11층 이후는 준비 중) */
+/** 준비된 층까지만 (floors.json 의 ready 구역 — 지금은 20층까지) */
 export const canEnter = (floor: number) => floor <= LAST_READY;

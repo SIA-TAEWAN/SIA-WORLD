@@ -17,7 +17,13 @@ export type SideKind = 'treasure' | 'puzzle';
 export interface FloorRule {
   at: number;
   kind: FloorKind;
+  /** 큰 길 전투방 수 [최소, 최대] */
   combat: [number, number];
+  /** 전투방마다 무리 수 [최소, 최대] (한 무리를 다 잡으면 다음 무리가 나온다) */
+  waves: [number, number];
+  /** 한 무리의 적 수 [최소, 최대] */
+  pack?: [number, number];
+  /** 곁방 (모두 붙인다) */
   side: SideKind[];
 }
 export interface Zone {
@@ -53,17 +59,50 @@ export interface RoomTemplate {
   id: string;
   kind: RoomKind;
   minFloor: number;
+  /** 이 층까지만 (보스방처럼 구역마다 다른 방) */
+  maxFloor?: number;
   /** 퍼즐방: 풀 수 있는 구슬 */
   needs?: string;
+  /** 작은 템플릿의 둘레를 채울 글자 (기본 바닥) */
+  pad?: string;
   grid: string[];
+  /** 원래 템플릿 크기 (읽을 때 채운다) */
+  src?: { w: number; h: number };
 }
-export const ROOMS = roomsJson as unknown as { size: { w: number; h: number }; rooms: RoomTemplate[] };
+const ROOM_DATA = roomsJson as unknown as { size: { w: number; h: number }; rooms: RoomTemplate[] };
 /** 방 안쪽 크기 (칸). 벽 한 줄을 둘러 방 하나는 (w+2)×(h+2) */
-export const INNER_W = ROOMS.size.w;
-export const INNER_H = ROOMS.size.h;
+export const INNER_W = ROOM_DATA.size.w;
+export const INNER_H = ROOM_DATA.size.h;
+/**
+ * 작은(예전 15×11) 템플릿을 방 크기에 맞춘다: 가운데에 놓고 둘레를 pad 글자로 채운다.
+ * pad 가 바닥이 아니면(퍼즐방·보스방은 기둥으로 예전 크기를 지킨다) 네 문 앞 가운데 3칸은 바닥으로 틔운다.
+ */
+export function fitGrid(grid: string[], pad = '.'): string[] {
+  const h = grid.length;
+  const w = grid[0]?.length ?? 0;
+  if (w === INNER_W && h === INNER_H) return grid;
+  const ox = Math.floor((INNER_W - w) / 2);
+  const oy = Math.floor((INNER_H - h) / 2);
+  const mx = Math.floor(INNER_W / 2);
+  const my = Math.floor(INNER_H / 2);
+  const out: string[] = [];
+  for (let y = 0; y < INNER_H; y++) {
+    let row = '';
+    for (let x = 0; x < INNER_W; x++) {
+      const gx = x - ox;
+      const gy = y - oy;
+      if (gx >= 0 && gy >= 0 && gx < w && gy < h) row += grid[gy][gx];
+      else row += Math.abs(x - mx) <= 1 || Math.abs(y - my) <= 1 ? '.' : pad;
+    }
+    out.push(row);
+  }
+  return out;
+}
+/** 읽은 방 템플릿 (모두 방 크기). src = 원래 템플릿 크기 (둘레를 채운 방은 문이 없는 쪽의 틔운 칸을 다시 막는다 — floorgen) */
+export const ROOMS = { size: ROOM_DATA.size, rooms: ROOM_DATA.rooms.map((r) => ({ ...r, grid: fitGrid(r.grid, r.pad), src: { w: r.grid[0].length, h: r.grid.length } })) };
 
 // ---------- 적 ----------
-export type EnemyAi = 'chase' | 'bat' | 'ranged' | 'melee' | 'elite' | 'golem';
+export type EnemyAi = 'chase' | 'bat' | 'ranged' | 'melee' | 'elite' | 'golem' | 'hop' | 'imugi';
 export interface EnemyDef {
   id: string;
   name: string;
@@ -95,8 +134,26 @@ export interface EnemyDef {
   charge?: { windup: number; speed: number; time: number; stun: number; mul: number };
   rage?: number;
   firstShard?: number;
+  /** 원거리: 한 번에 여러 발 (부채꼴) */
+  spread?: { count: number; angle: number };
+  /** 두꺼비: 뛰어올라 내려찍기 */
+  hop?: { time: number; radius: number };
+  /** 정예: 둘레로 가시를 쏜다 */
+  ring?: { every: number; windup: number; count: number; mul: number };
+  /** 이무기 */
+  sweep?: { windup: number; radius: number; mul: number };
+  spit?: { windup: number; count: number; countRage: number; spread: number; mul: number };
+  bite?: { windup: number; speed: number; time: number; mul: number };
+  burrow?: { hide: number; windup: number; radius: number; mul: number };
+  summon?: { id: string; count: number };
 }
-export const ENEMIES = (enemiesJson as unknown as { enemies: EnemyDef[] }).enemies;
+const ENEMY_DATA = enemiesJson as unknown as { killExp: number; killCoins: number; packAtk?: number; enemies: EnemyDef[] };
+export const ENEMIES = ENEMY_DATA.enemies;
+/** 일반 적 한 마리 몫 (한 층 적 수가 늘어 경험치·엽전을 나눈다) */
+export const KILL_EXP = ENEMY_DATA.killExp ?? 1;
+export const KILL_COINS = ENEMY_DATA.killCoins ?? 1;
+/** 일반 적 공격력 배수 (여럿이 한꺼번에 덤빈다) */
+export const PACK_ATK = ENEMY_DATA.packAtk ?? 1;
 export const enemyDef = (id: string): EnemyDef => {
   const d = ENEMIES.find((e) => e.id === id);
   if (!d) throw new Error(`no enemy ${id}`);
@@ -123,6 +180,8 @@ export interface OrbDef {
   basic: OrbSkill;
   awaken: OrbSkill;
   limit: string;
+  /** 스킬마다 세부 값 */
+  params?: Record<string, number>;
 }
 const ORB_DATA = orbsJson as unknown as { shardsToAwaken: number; orbs: OrbDef[] };
 export const ORBS = ORB_DATA.orbs;
@@ -174,6 +233,8 @@ export const GROWTH = growthJson as {
   mpPerHit: number;
   levelUpHeal: number;
   enemyRef: { atk: number; atkPerLevel: number };
+  /** 싸움 밖 회복 (1초에 최대치의 몇 할) */
+  restRegen?: { hp: number; mp: number };
 };
 export const MAX_LEVEL = GROWTH.maxLevel;
 export interface Stats {
