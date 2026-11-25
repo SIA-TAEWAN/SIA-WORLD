@@ -199,7 +199,6 @@ function title() {
   $('#sound').addEventListener('click', () => {
     if (!ctx.sound) return;
     ctx.sound.setMuted(!ctx.sound.isMuted());
-    ctx.sound.setBgmOn?.(!ctx.sound.isMuted());
     sfx('toggle');
     title();
   });
@@ -310,7 +309,7 @@ function openCreator(opts: { first: boolean; onDone(): void; onCancel?(): void; 
     next.innerHTML = !last ? '다음 ▶' : opts.first ? '이대로 시작 ▶' : same ? '그대로 두기' : `바꾸기 <small>시아코인 ${ctx.lookPrice}</small>`;
     next.disabled = busy || (last && pay && ctx.siaCoins < ctx.lookPrice);
     $('.price-line', root).innerHTML = opts.first
-      ? '처음 만들기는 무료예요. 나중에 메뉴에서 시아코인 30개로 바꿀 수 있어요'
+      ? `처음 만들기는 무료예요. 나중에 메뉴에서 시아코인 ${ctx.lookPrice}개로 바꿀 수 있어요`
       : pay
         ? ctx.siaCoins < ctx.lookPrice
           ? `<span class="warn">시아코인이 모자라요 (필요 ${ctx.lookPrice}개 · 가진 것 ${ctx.siaCoins}개)</span>`
@@ -398,6 +397,8 @@ function floorTrack(floor: number): TrackName {
 }
 
 async function play() {
+  // HUD 는 새로 그리니 '바뀔 때만 쓰기' 기억도 지운다 (안 그러면 같은 값인 칸이 빈 채로 남는다)
+  hudCache.clear();
   titlePreview?.destroy();
   titlePreview = null;
   if (!ctx.look) return showFirst();
@@ -487,6 +488,8 @@ function startFloor() {
   sc?.scene.restart({ run, hooks: hooks(), art: cur.art });
   setPaused(false);
   floorBanner(run.map.floor);
+  // 층을 넘어가는 사이에 탭을 가렸으면 멈춘 채로 (onHidden 은 층을 넘어가는 동안 건너뛴다)
+  if (document.hidden) openMenu();
 }
 
 function leavePlay(to: () => void) {
@@ -518,7 +521,7 @@ function setPaused(p: boolean) {
   cur.paused = p;
   const sc = sceneOf();
   if (sc) sc.paused = p;
-  if (p) cur.controls.release();
+  cur.controls.release();
 }
 
 function floorBanner(floor: number) {
@@ -682,7 +685,7 @@ function onEvent(ev: SimEvent, s: RunState) {
       break;
     case 'wind':
       sfxGap('boost', 300, { volume: 0.5, rate: 0.6 });
-      hudNote(`바람이 ${ev.dx > 0 ? '오른쪽 →' : ev.dx < 0 ? '← 왼쪽' : ev.dy > 0 ? '아래 ↓' : '↑ 위'}으로 불어요!`, 2000);
+      hudNote(`바람이 ${ev.dx > 0 ? '오른쪽 →' : ev.dx < 0 ? '← 왼쪽' : ev.dy > 0 ? '아래 ↓' : '↑ 위'}${ev.dx > 0 ? '으' : ''}로 불어요!`, 2000);
       break;
     case 'eat':
       sfx('tankHeal', { rate: 0.6 });
@@ -882,7 +885,7 @@ async function saveNow(data: TowerData, cleared: number | null = null) {
       toast('저장하지 못했어요. 연결되면 다시 보낼게요', 2400);
       return null;
     }
-    ctx.siaCoins = r.siaCoins || ctx.siaCoins;
+    ctx.siaCoins = Number.isFinite(r.siaCoins) ? r.siaCoins : ctx.siaCoins;
     if (r.gotCoin) toast('🪙 시아코인 +1 (처음 오른 층)', 2200);
     return r;
   } catch (e) {
@@ -1014,6 +1017,9 @@ function openMenu() {
   };
   const onKey = (ev: KeyboardEvent) => {
     if (ev.code === 'Escape' || ev.code === 'KeyI') {
+      // 메뉴 위에 다른 창(외형 바꾸기·조작법·랭킹)이 떠 있으면 메뉴를 닫지 않는다 (뒤에서 게임이 다시 돌지 않게)
+      const tops = document.querySelectorAll('.overlay, .sia-rank-dim');
+      if (tops.length && tops[tops.length - 1] !== ov) return;
       ev.preventDefault();
       // 같은 키가 조작(controls 의 메뉴 키)까지 가서 닫자마자 다시 열리지 않게
       ev.stopImmediatePropagation();
