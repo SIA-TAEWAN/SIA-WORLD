@@ -2,7 +2,8 @@
  * 층 만들기: 방 템플릿(rooms.json)을 칸 격자 위에 이어 붙인다. 같은 씨앗·같은 층이면 언제나 같은 층.
  * - 큰 길: 시작 → 전투(floors.json combat) → (구슬 받침대) → 계단. 휴식층은 시작 → 상점 → 계단, 정예층은 전투 → 정예 → 계단, 보스층은 시작 → 보스.
  * - 전투방은 무리(waves)가 여럿: 한 무리를 다 잡으면 템플릿의 적 자리에 다음 무리가 나온다.
- * - 곁방(floors.json side, 모두): 보물방 · 퍼즐방(발판·스위치·바위·화로·말뚝·찬물·풍경·징·둥근 바위 — 보물 길이라 진행을 막지 않는다).
+ * - 곁방(floors.json side, 모두): 보물방 · 퍼즐방(발판·스위치·바위·화로·말뚝·찬물·풍경·징·둥근 바위·뇌석·구름 덩이·쇠창살·거울·짙은 구름
+ *   — 보물 길이라 진행을 막지 않는다).
  * 방 하나 = 벽을 두른 (INNER_W+2)×(INNER_H+2) 칸. 이웃한 방은 벽을 맞대고, 맞댄 벽 가운데 3칸이 문이다.
  */
 import { INNER_H, INNER_W, ROOMS, enemyDef, floorRule, orbAtFloor, orbDef, zoneData, zoneOf, type RoomKind, type RoomTemplate, type SideKind } from '../data';
@@ -54,15 +55,29 @@ export const T = {
   /** 둥근 바위 (호랑이 구슬 맹호 강타로 민다) · 구덩이 (둥근 바위로 메운다) */
   BOULDER: 31,
   PIT: 32,
+  /** 뇌석 (말 구슬 연쇄 번개 · 청룡 회오리로 빛낸다) · 빛나는 뇌석 */
+  ROD: 33,
+  ROD_ON: 34,
+  /** 구름 덩이 (돼지 구슬 바람 칼날로 멀리서 민다 — 구덩이를 메운다) */
+  PUFF: 35,
+  /** 쇠창살 (백호 구슬 금강 베기로 자른다) */
+  BARS: 36,
+  /** 거울 / · \ (내 투사체가 직각으로 꺾인다) */
+  MIRROR_A: 37,
+  MIRROR_B: 38,
+  /** 짙은 구름 (못 걷고 투사체는 넘어간다. 청룡 회오리가 지나가면 걷힌다) */
+  FOG: 39,
+  /** 소원 구슬 (100층, 어둑시니를 쓰러뜨리면 솟아오른다) */
+  WISH: 40,
 } as const;
 export type Tile = (typeof T)[keyof typeof T];
 
 /** 걸어서 지나갈 수 있는 칸 (문은 잠기지 않았을 때 — 잠김은 sim 이 따로 본다) */
 export const walkable = (t: number) => t === T.FLOOR || t === T.DOOR || t === T.STAIRS || t === T.RUBBLE || t === T.PLATE || t === T.PLATE_ON || t === T.ICE;
 /** 투사체가 지나가는 칸 (물·찬물·구덩이 위로는 날아간다) */
-export const flyable = (t: number) => walkable(t) || t === T.WATER || t === T.COLD_WATER || t === T.PIT;
-/** 날짐승이 지나가는 칸 (물·찬물·구덩이 위) */
-export const overWater = (t: number) => t === T.WATER || t === T.COLD_WATER || t === T.PIT;
+export const flyable = (t: number) => walkable(t) || t === T.WATER || t === T.COLD_WATER || t === T.PIT || t === T.FOG;
+/** 날짐승이 지나가는 칸 (물·찬물·구덩이·짙은 구름 위) */
+export const overWater = (t: number) => t === T.WATER || t === T.COLD_WATER || t === T.PIT || t === T.FOG;
 
 export interface Spawn {
   def: string;
@@ -84,7 +99,7 @@ export interface Room {
   doors: { x: number; y: number }[];
   spawns: Spawn[];
 }
-export type ObjKind = 'chest' | 'stairs' | 'pedestal' | 'shop' | 'fountain' | 'switch' | 'plate' | 'brazier' | 'post' | 'bell' | 'gong';
+export type ObjKind = 'chest' | 'stairs' | 'pedestal' | 'shop' | 'fountain' | 'switch' | 'plate' | 'brazier' | 'post' | 'bell' | 'gong' | 'rod' | 'wish';
 export interface Obj {
   id: number;
   kind: ObjKind;
@@ -93,9 +108,9 @@ export interface Obj {
   room: number;
   table?: 'treasure' | 'puzzle';
   orb?: string;
-  /** 스위치·덩굴·발판·화로·풍경·징: 열리는 문 칸 (발판·화로·풍경·징은 그 방의 것을 모두 켜야 열린다) */
+  /** 스위치·덩굴·발판·화로·풍경·징·뇌석: 열리는 문 칸 (발판·화로·풍경·징·뇌석은 그 방의 것을 모두 켜야 열린다) */
   gates?: { x: number; y: number }[];
-  /** 보스방 구슬 받침대: 보스를 쓰러뜨리면 나타난다 (전설 구슬) */
+  /** 보스방 구슬 받침대 · 소원 구슬: 보스를 쓰러뜨리면 나타난다 (전설 구슬 · 100층 소원) */
   hidden?: boolean;
 }
 export interface FloorMap {
@@ -300,6 +315,14 @@ export function generateFloor(seed: number, floor: number): FloorMap {
           case 'j': t = T.GONG; switches.push({ id: 0, kind: 'gong', x: tx, y: ty, room: id }); break;
           case 'u': t = T.BOULDER; break;
           case 'x': t = T.PIT; break;
+          case 'l': t = T.ROD; switches.push({ id: 0, kind: 'rod', x: tx, y: ty, room: id }); break;
+          case 'o': t = T.PUFF; break;
+          case 'z': t = T.BARS; break;
+          case '/': t = T.MIRROR_A; break;
+          case '\\': t = T.MIRROR_B; break;
+          case 'm': t = T.FOG; break;
+          // 소원 구슬: 100층 보스방, 어둑시니를 쓰러뜨리면 솟아오른다 (sim killEnemy)
+          case 'W': objs.push({ id: 0, kind: 'wish', x: tx, y: ty, room: id, hidden: true }); break;
           case 'P': start = px; break;
           case 'e': foeSpots.push(px); break;
           case 'E': if (zone?.elite) room.spawns.push({ def: zone.elite, ...px, wave: 0 }); break;

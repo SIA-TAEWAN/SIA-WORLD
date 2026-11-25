@@ -189,5 +189,15 @@ export function die(d: TowerData) {
 }
 /** 이미 깬 층(다시 오르는 층): 경험치 절반 */
 export const isReplay = (d: TowerData, floor: number) => floor <= d.best;
-/** 준비된 층까지만 (floors.json 의 ready 구역 — 지금은 50층까지) */
+/** 탑을 다 올랐다 (100층 소원 — 엔딩을 본 뒤). 저장은 그대로 best 100 · floor 100 · checkpoint 91 (104 의 확인: 층 ≤ 100, 체크포인트 ≤ 91) */
+export const towerDone = (d: TowerData) => d.best >= TOTAL_FLOORS;
+/** 다 오른 뒤: 고른 체크포인트(1·11·…·91)부터 다시 오른다 (이미 깬 층이라 경험치 절반) → 못 하면 까닭 */
+export function climbAgain(d: TowerData, cp: number): string | null {
+  if (!towerDone(d)) return '탑을 다 오른 뒤에 고를 수 있어요';
+  if (!isCheckpoint(cp) || cp > TOTAL_FLOORS - ZONE_SIZE + 1) return '체크포인트가 아니에요';
+  d.floor = cp;
+  d.checkpoint = cp;
+  return null;
+}
+/** 준비된 층까지만 (floors.json 의 ready 구역 — 4차부터 100층 모두) */
 export const canEnter = (floor: number) => floor <= LAST_READY;

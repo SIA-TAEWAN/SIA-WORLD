@@ -4,7 +4,7 @@
   python games/tower/art/draw.py            # public/art/** · manifest.json · shared/images/card-tower.png 를 다시 만든다
   python games/tower/art/draw.py <폴더>      # 확인용 확대 그림(contact-*.png)도 그 폴더에 만든다
 
-1구역(tiles.png) · 2구역 이끼(tiles-moss.png) · 3구역 서리(tiles-frost.png) · 4구역 구름(tiles-cloud.png) · 5구역 잿불(tiles-ember.png), 적 32종. 규격은 games/tower/ASSETS.md, 칸 순서·자세는 src/art/sheets.ts 와 같다. 무작위가 없어 몇 번을 돌려도 같은 파일이 나온다.
+1구역(tiles.png) · 2구역 이끼(tiles-moss.png) · 3구역 서리(tiles-frost.png) · 4구역 구름(tiles-cloud.png) · 5구역 잿불(tiles-ember.png) · 6~10구역(tiles-thunder/galaxy/flower/storm/wish.png), 적 66종, 투사체 6종(proj/), 엔딩 그림. 규격은 games/tower/ASSETS.md, 칸 순서·자세는 src/art/sheets.ts 와 같다. 무작위가 없어 몇 번을 돌려도 같은 파일이 나온다.
 색은 shared/theme.css 의 값만 쓴다 (살색 한 가지만 sheets.ts 의 임시 그림과 같은 값).
 """
 import json
@@ -556,7 +556,8 @@ def draw_chars():
 TILE_ORDER = ['floor', 'floor2', 'wallTop', 'wallFace', 'doorOpen', 'doorLocked', 'water', 'pillar', 'gate', 'rock', 'switch', 'switchOn',
               'vine', 'stairs', 'chest', 'chestOpen', 'pedestal', 'pedestalEmpty', 'shop', 'fountain', 'rubble', 'fountainDry',
               'plate', 'plateOn', 'brazier', 'brazierLit', 'post',
-              'coldWater', 'ice', 'bell', 'bellOn', 'gong', 'gongOn', 'boulder', 'pit']
+              'coldWater', 'ice', 'bell', 'bellOn', 'gong', 'gongOn', 'boulder', 'pit',
+              'rod', 'rodOn', 'puff', 'bars', 'mirrorA', 'mirrorB', 'fog', 'wish']
 
 # 테마: stone = 1구역 "탑의 입구" (tiles.png) · moss = 2구역 "이끼 낀 회랑" (tiles-moss.png)
 THEMES = {
@@ -745,6 +746,252 @@ THEMES.update({
               'wallTop': ember_wall_top, 'wallFace': ember_wall_face, 'doorOpen': ember_door, 'water': ember_water, 'overlay': (PIT_I, DRAW)},
 })
 THEME_FILES = {'stone': 'tiles.png', 'moss': 'tiles-moss.png', 'frost': 'tiles-frost.png', 'cloud': 'tiles-cloud.png', 'ember': 'tiles-ember.png'}
+
+
+# ---- 6~10구역 테마: 같은 틀에 색만 바꾼다 ----
+def mk_wall_top(base, seam, hi, dots=(), dot_col=None, dots2=(), col2=None):
+    def fn(c):
+        c.r(0, 0, 16, 16, base)
+        c.row(7, 0, 15, seam); c.row(15, 0, 15, seam); c.col(5, 0, 6, seam); c.col(12, 8, 14, seam)
+        c.row(0, 0, 4, hi); c.row(0, 6, 15, hi); c.row(8, 0, 11, hi); c.row(8, 13, 15, hi)
+        if dot_col:
+            c.pts(dots, dot_col)
+        if col2:
+            c.pts(dots2, col2)
+    return fn
+
+
+def mk_wall_face(brick, mortar, bhi, lip, lip_hi, extra=None):
+    def fn(c):
+        c.r(0, 0, 16, 16, brick)
+        c.r(0, 0, 16, 3, lip); c.row(0, 0, 15, lip_hi); c.row(3, 0, 15, OUT)
+        c.row(9, 0, 15, mortar); c.col(7, 4, 8, mortar); c.col(3, 10, 14, mortar); c.col(12, 10, 14, mortar)
+        c.row(4, 0, 6, bhi); c.row(4, 8, 15, bhi); c.row(10, 4, 11, bhi); c.row(10, 0, 2, bhi); c.row(10, 13, 15, bhi)
+        c.row(14, 0, 15, mortar); c.row(15, 0, 15, OUT)
+        if extra:
+            extra(c)
+    return fn
+
+
+def mk_water(base, dark, light, glint, extra=None):
+    def fn(c):
+        c.r(0, 0, 16, 16, base)
+        c.row(3, 1, 5, light); c.row(4, 4, 7, light); c.row(10, 8, 13, light); c.row(11, 11, 15, light); c.row(11, 0, 0, light)
+        c.row(7, 11, 14, dark); c.row(13, 2, 5, dark); c.row(1, 9, 12, dark)
+        c.pts([(2, 3), (9, 10)], glint)
+        if extra:
+            extra(c)
+    return fn
+
+
+def mk_door(base, edge, hi, stud):
+    def fn(c):
+        c.r(0, 0, 16, 16, base)
+        c.row(15, 0, 15, edge); c.col(15, 0, 15, edge)
+        c.row(0, 0, 14, hi); c.col(0, 0, 14, hi)
+        c.pts([(2, 2), (12, 2), (2, 12), (12, 12)], stud)
+    return fn
+
+
+# 6구역 "천둥 마루" — 먹구름 위 기와
+def thunder_deco(c, cracked):
+    if cracked:                                                        # 번개 무늬
+        c.pts([(12, 10), (11, 11), (10, 12), (11, 12), (12, 12), (11, 13)], PRIM); c.p(11, 12, PRIM_L)
+
+
+def thunder_wall_top(c):                                               # 푸른 기와
+    c.r(0, 0, 16, 16, TEAM_A)
+    for y in (3, 7, 11, 15):
+        c.row(y, 0, 15, SKY_D)
+    for y0 in (0, 4, 8, 12):
+        off = 0 if (y0 // 4) % 2 == 0 else 2
+        for x in range(off, 16, 4):
+            c.col(x, y0, y0 + 2, SKY_D); c.p((x + 1) % 16, y0, SKY_T); c.p((x + 2) % 16, y0, SKY_T)
+
+
+def thunder_face_extra(c):
+    for x in (1, 5, 9, 13):                                            # 막새
+        c.r(x, 1, 2, 2, SKY_D); c.p(x, 1, PRIM)
+    c.pts([(8, 6), (9, 7), (8, 7), (9, 8)], PRIM)
+
+
+def thunder_water_extra(c):
+    c.r(1, 5, 5, 2, DRAW); c.r(9, 12, 5, 2, DRAW); c.pts([(2, 4), (3, 4), (10, 11), (11, 11)], DRAW)
+    c.pts([(13, 3), (12, 4), (13, 4), (12, 5)], PRIM_L)
+
+
+# 7구역 "은하 나루" — 오작교 은하수
+def galaxy_deco(c, cracked):
+    c.row(3, 1, 8, LOG_E); c.row(11, 5, 13, LOG_E)                     # 다리 널 결
+    if cracked:
+        c.pts([(4, 2), (3, 3), (4, 3), (5, 3), (4, 4)], PRIM_L); c.pts([(11, 11), (12, 12), (10, 12), (11, 13), (11, 12)], PRIM_L)
+        c.pts([(4, 3), (11, 12)], WHITE)
+
+
+def galaxy_water(c):                                                   # 은하수
+    c.r(0, 0, 16, 16, OUT)
+    c.pts([(1, 6), (2, 5), (3, 5), (4, 4), (5, 4), (6, 3), (10, 12), (11, 11), (12, 11), (13, 10), (14, 10), (15, 9), (0, 9)], SKY_D)
+    c.pts([(2, 2), (9, 1), (13, 5), (5, 9), (8, 14), (14, 13), (1, 12), (7, 6)], WHITE)
+    c.pts([(11, 3), (3, 14)], PRIM_L); c.pts([(6, 11), (12, 7), (4, 7)], STUN)
+    c.pts([(10, 3), (12, 3), (11, 2), (11, 4)], SKY_T)
+
+
+def galaxy_face_extra(c):
+    c.pts([(2, 6), (10, 7), (14, 12), (5, 12)], PRIM_L); c.pts([(9, 1), (3, 1), (13, 2)], WHITE)
+
+
+# 8구역 "서천 꽃밭"
+def flower_deco(c, cracked):
+    c.pts([(13, 4), (6, 12)], MATGO)
+    if cracked:
+        for fx, fy in ((4, 3), (11, 11)):
+            c.pts([(fx, fy - 1), (fx - 1, fy), (fx + 1, fy), (fx, fy + 1)], PINK); c.p(fx, fy, PRIM)
+        c.pts([(6, 5), (9, 12)], WIN)
+
+
+def flower_wall_top(c):                                                # 꽃 울타리 윗면
+    c.r(0, 0, 16, 16, WIN)
+    c.pts([(0, 3), (5, 7), (9, 2), (14, 9), (3, 12), (11, 14), (7, 10)], MAT_D)
+    for fx, fy, col in ((3, 3, PINK), (11, 6, SUMMER), (7, 12, PINK)):
+        c.pts([(fx, fy - 1), (fx - 1, fy), (fx + 1, fy), (fx, fy + 1)], col); c.p(fx, fy, PRIM)
+    c.pts([(6, 1), (15, 6), (5, 13)], MAT_L)
+
+
+def flower_wall_face(c):                                               # 나무 울타리
+    c.r(0, 0, 16, 16, INK)
+    for x in (0, 4, 8, 12):
+        c.col(x, 4, 14, LOG); c.col(x + 3, 4, 14, PIT_I)
+    c.r(0, 7, 16, 1, PIT_I); c.r(0, 12, 16, 1, PIT_I)
+    c.r(0, 0, 16, 4, WIN); c.row(3, 0, 15, MAT_D)
+    for fx, col in ((2, PINK), (7, SUMMER), (12, PINK)):
+        c.pts([(fx, 0), (fx - 1, 1), (fx + 1, 1), (fx, 2)], col); c.p(fx, 1, PRIM)
+    c.pts([(5, 4), (10, 5), (10, 4), (14, 4)], WIN)
+    c.row(15, 0, 15, OUT)
+
+
+def flower_water_extra(c):
+    c.r(9, 3, 4, 3, WIN); c.p(12, 3, SKY_M); c.pts([(10, 4), (11, 4)], PINK); c.p(10, 3, SUMMER)   # 연잎 · 연꽃
+    c.r(2, 11, 3, 2, MAT_D)
+
+
+# 9구역 "칠성 폭풍단"
+def storm_deco(c, cracked):
+    if cracked:                                                        # 북두칠성
+        pts = [(2, 3), (4, 2), (6, 3), (8, 5), (9, 8), (12, 9), (13, 12)]
+        c.pts([(3, 2), (5, 2), (7, 4), (9, 6), (9, 7), (10, 8), (11, 9), (13, 10), (13, 11)], DRAW)
+        c.pts(pts, PRIM_D); c.pts([(2, 3), (8, 5), (13, 12)], PRIM_L)
+
+
+def storm_face_extra(c):
+    c.pts([(2, 6), (5, 7), (9, 6), (13, 11), (6, 12)], PRIM_L); c.pts([(1, 1), (8, 1), (12, 1)], SKY_T)
+
+
+def storm_water_extra(c):
+    c.pts([(6, 6), (7, 5), (8, 5), (9, 6), (9, 7), (8, 8), (7, 8), (6, 7)], WHITE); c.pts([(3, 9), (4, 8), (12, 14), (13, 13)], WHITE)
+
+
+# 10구역 "소원의 정상" — 옥빛 궁궐
+def wish_deco(c, cracked):
+    if cracked:                                                        # 연꽃 무늬
+        c.pts([(11, 10), (10, 11), (12, 11), (11, 12), (9, 12), (13, 12)], PINK); c.p(11, 11, SUMMER)
+
+
+def wish_face_extra(c):
+    c.pts([(1, 1), (5, 1), (9, 1), (13, 1)], PRIM); c.row(2, 0, 15, PRIM_L)
+    c.pts([(5, 6), (4, 7), (6, 7), (5, 7), (13, 12), (12, 12)], PINK)
+
+
+def wish_water_extra(c):
+    c.r(1, 5, 5, 2, WHITE); c.pts([(2, 4), (3, 4)], WHITE); c.r(9, 12, 5, 2, WHITE); c.pts([(10, 11), (11, 11)], WHITE)
+
+
+THEMES.update({
+    'thunder': {'floor': DRAW, 'seam': INK, 'hi': WINTER, 'shadow': INK, 'moss': False, 'deco': thunder_deco,
+                'wallTop': thunder_wall_top, 'wallFace': mk_wall_face(SKY_D, OUT, TEAM_A, TEAM_A, SKY_T, thunder_face_extra),
+                'doorOpen': mk_door(WINTER, INK, WHITE, PRIM), 'water': mk_water(INK, PIT_I, DRAW, PRIM_L, thunder_water_extra)},
+    'galaxy': {'floor': EMPTY, 'seam': INK, 'hi': LINE, 'shadow': INK, 'moss': False, 'deco': galaxy_deco,
+               'wallTop': mk_wall_top(SKY_T, SKY_D, SKY_M, [(9, 3), (2, 11), (14, 12)], WHITE, [(3, 4), (10, 12)], PRIM_L),
+               'wallFace': mk_wall_face(SKY_D, OUT, TEAM_A, SKY_T, SKY_M, galaxy_face_extra),
+               'doorOpen': mk_door(LINE, INK, PANEL, PRIM_L), 'water': galaxy_water},
+    'flower': {'floor': MAT_L, 'seam': MAT_D, 'hi': AUTUMN, 'shadow': MAT_D, 'moss': False, 'deco': flower_deco,
+               'wallTop': flower_wall_top, 'wallFace': flower_wall_face,
+               'doorOpen': mk_door(AUTUMN, MAT_D, PANEL, PINK), 'water': mk_water(SKY_M, BJ, WHITE, WHITE, flower_water_extra)},
+    'storm': {'floor': LINE, 'seam': DRAW, 'hi': WHITE, 'shadow': DRAW, 'moss': False, 'deco': storm_deco,
+              'wallTop': mk_wall_top(SKY_D, OUT, TEAM_A, [(9, 3), (2, 11), (14, 12)], PRIM_L),
+              'wallFace': mk_wall_face(PIT, OUT, PIT_I, SKY_D, TEAM_A, storm_face_extra),
+              'doorOpen': mk_door(PANEL, DRAW, WHITE, PRIM_L), 'water': mk_water(DRAW, INK, WINTER, WHITE, storm_water_extra)},
+    'wish': {'floor': PANEL_S, 'seam': PRIM, 'hi': WHITE, 'shadow': PRIM, 'moss': False, 'deco': wish_deco,
+             'wallTop': mk_wall_top(PANEL, LINE, WHITE, [(9, 3), (10, 2), (11, 3), (10, 4), (2, 11), (3, 10), (4, 11), (3, 12)], POKER),
+             'wallFace': mk_wall_face(POKER, MAT_D, AUTUMN, PANEL, WHITE, wish_face_extra),
+             'doorOpen': mk_door(PANEL, PRIM, WHITE, PINK), 'water': mk_water(PRIM_L, PRIM, PANEL, WHITE, wish_water_extra)},
+})
+THEME_FILES.update({'thunder': 'tiles-thunder.png', 'galaxy': 'tiles-galaxy.png', 'flower': 'tiles-flower.png', 'storm': 'tiles-storm.png', 'wish': 'tiles-wish.png'})
+
+
+def t_new8(c, k):
+    """6~10구역에서 붙은 8칸. 그렸으면 True"""
+    if k in ('rod', 'rodOn'):                                          # 뇌석 (빛나면 번개가 감긴다)
+        t_floor(c)
+        b = Cv(16)
+        b.r(4, 12, 8, 2, INK); b.row(12, 4, 11, DRAW)
+        b.r(5, 4, 6, 8, DRAW); b.col(5, 4, 11, WINTER); b.col(6, 4, 11, WINTER); b.col(10, 4, 11, INK); b.pts([(8, 6), (8, 7), (7, 9)], INK)
+        b.r(4, 1, 8, 3, INK); b.row(1, 4, 11, BLADE); b.row(3, 4, 11, PIT_I)
+        b.r(7, 0, 2, 1, LINE)
+        if k == 'rodOn':
+            b.pts([(5, 5), (6, 5), (7, 6), (8, 6), (9, 7), (10, 7), (10, 8), (9, 9), (8, 9), (7, 10), (6, 10), (5, 11)], PRIM_L)
+            b.pts([(7, 6), (9, 9), (6, 10)], WHITE); b.r(7, 0, 2, 1, WHITE)
+        b.outline()
+        c.row(14, 4, 12, TP['shadow'])
+        c.paste(b, 0, 0)
+        if k == 'rodOn':
+            c.pts([(2, 2), (3, 3), (2, 4), (13, 1), (12, 2), (13, 3), (2, 9), (13, 8)], PRIM_L); c.pts([(3, 2), (12, 1), (7, 0), (8, 0)], WHITE)
+    elif k == 'puff':                                                  # 구름 덩이
+        t_floor(c)
+        b = Cv(16)
+        b.ell(5, 8, 3.6, 3.2, WHITE); b.ell(10, 8.5, 4, 3, WHITE); b.ell(7.5, 5.5, 3.6, 3, WHITE); b.r(3, 8, 10, 3, WHITE)
+        b.row(11, 3, 12, SKY_M); b.pts([(2, 10), (13, 10), (5, 10), (9, 10)], SKY_M); b.pts([(6, 4), (7, 4), (4, 7)], PANEL)
+        b.outline()
+        c.row(14, 3, 12, TP['shadow']); c.row(15, 4, 11, TP['shadow'])
+        c.paste(b, 0, 0)
+    elif k == 'bars':                                                  # 쇠창살
+        t_floor(c)
+        for x in (0, 4, 8, 12):
+            c.r(x, 0, 4, 16, OUT); c.col(x + 1, 0, 15, WINTER); c.col(x + 2, 0, 15, DRAW)
+        c.r(0, 3, 16, 3, OUT); c.row(4, 0, 15, INK); c.r(0, 10, 16, 3, OUT); c.row(11, 0, 15, INK)
+        for x in (1, 5, 9, 13):
+            c.p(x, 4, BLADE); c.p(x, 11, BLADE)
+    elif k in ('mirrorA', 'mirrorB'):                                  # 하늘 거울 (/ 또는 \)
+        t_floor(c)
+        b = Cv(16)
+        for i in range(11):
+            x = 12 - i if k == 'mirrorA' else 3 + i
+            b.r(x - 1, 2 + i, 3, 2, SKY_M); b.p(x, 2 + i, WHITE)
+        ends = [(13, 1), (1, 13)] if k == 'mirrorA' else [(2, 1), (14, 13)]
+        for ex, ey in ends:
+            b.r(ex - 1, ey, 2, 2, PRIM_D); b.p(ex - 1, ey, PRIM)
+        b.outline()
+        c.row(15, 2, 13, TP['shadow'])
+        c.paste(b, 0, 0)
+    elif k == 'fog':                                                   # 짙은 구름 (걸을 수 있다)
+        c.r(0, 0, 16, 16, DRAW)
+        c.ell(4, 4, 3.6, 2.6, LINE); c.ell(11, 9, 4, 2.8, LINE); c.ell(4, 13, 3.4, 2.2, LINE); c.ell(13, 1, 2.6, 1.6, LINE)
+        c.pts([(3, 3), (4, 3), (10, 8), (11, 8), (3, 12)], WHITE)
+        c.pts([(8, 3), (9, 4), (1, 9), (2, 9), (8, 14), (9, 14), (15, 12)], INK)
+    elif k == 'wish':                                                  # 소원 구슬 (100층)
+        t_floor(c)
+        b = Cv(16)
+        b.r(4, 12, 8, 2, EMPTY); b.row(13, 4, 11, INK); b.r(5, 10, 6, 2, LINE); b.row(11, 5, 10, EMPTY)
+        b.ell(7.5, 5.5, 4.6, 4.6, PRIM_L)
+        b.pts([(10, 8), (11, 7), (11, 6), (9, 9), (8, 9)], PRIM); b.r(5, 3, 2, 2, WHITE); b.p(7, 3, WHITE); b.p(9, 7, PINK)
+        b.outline(PRIM_D)
+        b2 = Cv(16)
+        b2.paste(b, 0, 0)
+        c.row(15, 4, 12, TP['shadow'])
+        c.paste(b2, 0, 0)
+        c.pts([(1, 3), (14, 2), (2, 8), (14, 9)], WHITE); c.pts([(1, 2), (1, 4), (0, 3), (2, 3), (14, 1), (14, 3), (13, 2), (15, 2)], PRIM_L)
+    else:
+        return False
+    return True
 
 
 def frame_posts(b):
@@ -1101,6 +1348,8 @@ def draw_tiles(theme='stone'):
             c.ell(7.5, 8.8, 5.4, 4.6, PIT)
             c.row(3, 5, 10, INK); c.row(4, 3, 12, INK); c.pts([(2, 5), (13, 5), (2, 6), (13, 6)], INK); c.row(5, 4, 11, PIT_I)
             c.pts([(4, 3), (11, 3)], TP['seam'])
+        elif t_new8(c, k):
+            pass
         if moss and k in MOSS_ON:
             dark, light = MOSS_ON[k]
             c.pts(dark, MAT_D); c.pts(light, MATGO)
@@ -1931,16 +2180,799 @@ def e_iron(c, f):
         c.pts([(1, 3), (14, 2), (8, 0), (0, 9), (15, 8)], BLADE)
 
 
+# =====================================================================
+# 6~10구역 적 — 같은 뼈대를 여러 적이 나눠 쓴다
+# =====================================================================
+def imp_base(c, f, body, hi, shade, horns=PRIM, cloth=PRIM_D, x0=3, hit_eye=WHITE):
+    """도깨비 몸 (큰 머리 한 덩어리). (x, b, lean) 을 돌려준다"""
+    b = 1 if f == 1 else 0
+    lean = -1 if f == 3 else 0
+    x = x0 + lean
+    c.r(x + 1, 13, 2, 2, body); c.r(x + 5, 13, 2, 2 - b, body)
+    c.r(x, 4 + b, 9, 9 - b, body); c.row(3 + b, x + 1, x + 7, body)
+    c.row(4 + b, x + 1, x + 6, hi); c.col(x, 5 + b, 8, hi)
+    c.col(x + 8, 6 + b, 12, shade)
+    for hx_ in (x + 2, x + 6):
+        c.col(hx_, 1 + b, 2 + b, horns)
+    eye = hit_eye if f == 3 else PRIM if f == 2 else OUT
+    c.r(x + 4, 6 + b, 1, 2, eye); c.r(x + 7, 6 + b, 1, 2, eye)
+    if f == 2:
+        c.pts([(x + 3, 5 + b), (x + 4, 5 + b), (x + 7, 5 + b), (x + 8, 5 + b)], OUT)
+    c.row(9 + b, x + 3, x + 7, OUT); c.p(x + 4, 9 + b, WHITE); c.p(x + 7, 9 + b, WHITE)
+    if cloth:
+        c.r(x, 11, 9, 2, cloth)
+    return x, b, lean
+
+
+def bird_base(c, f, body, belly, cap, wing, tip1, tip2, beak, tail, eye=OUT, cheek=None):
+    pal = {'w': wing, 'p': tip1, 'y': tip2}
+    c.r(2, 9, 3, 2, tail); c.p(1, 9, tail)
+    c.ell(8, 9, 4, 3.4, body); c.ell(8.5, 10.5, 2.8, 1.8, belly)
+    c.ell(11, 7, 2.6, 2.6, body); c.row(5, 10, 12, cap)
+    if cheek:
+        c.p(11, 8, cheek)
+    c.r(14, 7, 2, 1, beak)
+    c.p(12, 6, WHITE if f == 3 else eye)
+    if f == 2:
+        c.grid(0, 5, ['yppwww..', '.ypwwww.'], pal)
+    elif f in (0, 3):
+        c.grid(4, 2, ['y.....', 'py....', 'ppw...', '.www..', '..www.'], pal)
+    else:
+        c.grid(4, 9, ['..www.', '.www..', 'ppw...', 'py....', 'y.....'], pal)
+
+
+def blob_base(c, f, body, hi, sh, eye=OUT):
+    sq = 1 if f in (1, 3) else -1 if f == 2 else 0
+    top = 5 + sq
+    c.ell(7.5, (top + 14) / 2, 5.4 + (0.7 if sq > 0 else 0), (14 - top) / 2 + 0.4, body)
+    c.row(14, 3, 12, sh); c.pts([(2, 13), (13, 13)], sh)
+    c.r(5, top + 2, 2, 1, hi); c.p(4, top + 3, hi)
+    ey = top + 4
+    c.r(8, ey, 1, 2, eye); c.r(11, ey, 1, 2, eye)
+    c.row(ey + 3, 9, 10, OUT)
+    return top
+
+
+def general24(c, f, armor, a_hi, a_sh, helm, helm_hi, eye_col, boot, weapon, plume=None, shield=None, extra=None):
+    """정예 무사 뼈대 (갑옷 · 투구 · 무기)"""
+    b = 1 if f == 1 else 0
+    x = 6 + (-1 if f == 3 else 0)
+    if extra:
+        extra(c, x, b, f, True)
+    c.r(x + 1, 18, 4, 4, a_sh); c.r(x + 6, 18, 4, 4 - b, a_sh)
+    c.r(x + 1, 21, 5, 2, boot); c.r(x + 6, 21 - b, 5, 2, boot)
+    c.r(x, 10 + b, 11, 9 - b, armor); c.col(x, 10 + b, 18, a_hi); c.col(x + 10, 11 + b, 18, a_sh); c.row(18, x, x + 10, a_sh)
+    c.row(13 + b, x + 1, x + 9, a_sh); c.row(16, x + 1, x + 9, a_sh)
+    c.r(x + 4, 17, 3, 2, PRIM_D)
+    c.r(x - 1, 9 + b, 4, 3, a_sh); c.row(9 + b, x - 1, x + 2, a_hi); c.r(x + 8, 9 + b, 4, 3, a_sh); c.row(9 + b, x + 8, x + 11, a_hi)
+    c.r(x + 1, 2 + b, 9, 8, helm); c.row(1 + b, x + 2, x + 8, helm); c.row(2 + b, x + 2, x + 7, helm_hi); c.col(x + 1, 3 + b, 6 + b, helm_hi)
+    c.r(x + 3, 5 + b, 7, 2, OUT)
+    eye = WHITE if f == 3 else PINK if f == 2 else eye_col
+    c.p(x + 5, 5 + b, eye); c.p(x + 8, 5 + b, eye)
+    if plume:
+        plume(c, x, b, f)
+    if shield:
+        c.r(x - 3, 11 + b, 4, 7, shield[0]); c.col(x - 3, 11 + b, 16 + b, shield[1]); c.p(x - 1, 14 + b, shield[2])
+    weapon(c, x, b, f)
+    if extra:
+        extra(c, x, b, f, False)
+
+
+def shear_paste(c, t, k):
+    """t 를 줄마다 옆으로 밀어 c 에 그린다 (기울이기)"""
+    for y in range(t.h):
+        dx = k(y)
+        for xx in range(t.w):
+            if t.solid(xx, y):
+                c.p(xx + dx, y, t.px[xx, y])
+
+
+# ---- 6구역 "천둥 마루" ----
+def e_drumimp(c, f):
+    x, b, lean = imp_base(c, f, TEAM_A, SKY_M, SKY_D, horns=PRIM_L, cloth=None)
+    c.ell(x + 4, 11.3, 3.4, 2.4, LOSE); c.ell(x + 4, 11.3, 2.2, 1.4, PANEL); c.p(x + 4, 11, PRIM)       # 배의 북
+    if f == 2:                                                                                          # 북채를 치켜든다
+        c.r(12, 2, 1, 6, INK); c.r(11, 0, 3, 2, PANEL_S); c.r(11, 8, 2, 2, TEAM_A); c.pts([(14, 3), (15, 1)], PRIM_L)
+    else:
+        c.r(13 + lean, 7 + b, 1, 5, INK); c.r(12 + lean, 5 + b, 3, 2, PANEL_S); c.r(12 + lean, 11, 2, 2, TEAM_A)
+
+
+def e_thunderbird(c, f):
+    bird_base(c, f, PRIM, PANEL_S, PRIM_D, PRIM_D, PRIM_L, WHITE, TRACK_D, PRIM_D)
+    c.pts([(10, 4), (11, 3), (10, 2), (11, 1)], PRIM_L)                                                 # 번개 볏
+    c.pts([(1, 10), (0, 11), (1, 12)], PRIM_L)
+    if f == 2:
+        c.pts([(0, 8), (1, 12), (3, 13), (15, 4)], WHITE)
+
+
+def e_raincloud(c, f):
+    b = 1 if f == 1 else 0
+    flash = f == 2
+    base, sh, hi = (WHITE, WINTER, WHITE) if flash else (DRAW, INK, WINTER)
+    c.ell(5, 6 + b, 3.6, 3, base); c.ell(10, 6 + b, 4.2, 3.4, base); c.ell(7.5, 4 + b, 3.4, 2.8, base); c.r(3, 6 + b, 10, 3, base)
+    c.row(9 + b, 3, 12, sh); c.pts([(2, 8 + b), (13, 8 + b)], sh); c.pts([(6, 3 + b), (7, 2 + b), (5, 4 + b)], hi)
+    pupil = PINK if f == 3 else WHITE if flash else PRIM
+    c.r(5, 6 + b, 2, 2, OUT); c.r(10, 6 + b, 2, 2, OUT); c.p(6, 6 + b, pupil); c.p(11, 6 + b, pupil)
+    c.pts([(4, 4 + b), (5, 5 + b), (12, 4 + b), (11, 5 + b)], OUT); c.row(8 + b, 7, 9, OUT)
+    if flash:
+        c.pts([(8, 10), (7, 11), (8, 12), (9, 12), (8, 13), (7, 14)], PRIM_L); c.pts([(3, 12), (12, 13)], SKY_M)
+    elif f == 1:
+        c.pts([(5, 12), (5, 13), (9, 11), (9, 12), (13, 12), (13, 13)], SKY_M)
+    else:
+        c.pts([(4, 11), (4, 12), (8, 12), (8, 13), (12, 11), (12, 12)], SKY_M)
+
+
+def e_flagspirit(c, f):
+    b = 1 if f == 1 else 0
+    glow = f == 2
+    cloth, edge, bolt = (PRIM_L, WHITE, WHITE) if glow else (SKY_D, TEAM_A, PRIM_L)
+    c.r(3, 1, 1, 14, INK); c.p(3, 0, PRIM); c.r(2, 14, 3, 1, PIT_I)
+    for xx in range(4, 14):
+        dy = 1 if (xx // 3 + b) % 2 else 0
+        c.col(xx, 2 + dy, 9 + dy, cloth); c.p(xx, 2 + dy, edge); c.p(xx, 9 + dy, edge)
+    c.pts([(8, 3), (7, 4), (6, 5), (7, 5), (8, 5), (7, 6), (6, 7)], bolt)
+    eye = PINK if f == 3 else WHITE
+    c.r(10, 5, 2, 2, eye); c.p(11, 6, OUT)
+    c.pts([(13, 11), (13, 12)], PINK)
+    if glow:
+        c.pts([(15, 2), (14, 0), (1, 5), (15, 8), (9, 12)], PRIM_L)
+
+
+def flail(c, x, b, f):
+    if f == 2:                                                                                          # 쇠도리깨를 높이 든다
+        c.r(x + 11, 4, 2, 9, INK); c.pts([(x + 12, 3), (x + 13, 2)], DRAW)
+        c.r(x + 13, 0, 3, 3, BLADE); c.p(x + 14, 1, DRAW); c.pts([(x + 12, 0), (x + 16, 1), (x + 14, 3)], WHITE)
+        c.pts([(x + 16, 4), (x + 17, 3)], PRIM_L)
+    else:
+        c.r(x + 11, 12 + b, 2, 4, INK); c.r(x + 12, 9 + b, 1, 3, INK); c.pts([(x + 13, 9 + b), (x + 14, 10 + b)], DRAW)
+        c.r(x + 14, 11 + b, 3, 3, BLADE); c.p(x + 15, 12 + b, DRAW); c.pts([(x + 17, 12 + b), (x + 15, 14 + b), (x + 13, 12 + b)], WHITE)
+
+
+def cloud_helm(c, x, b, f):
+    c.ell(x + 3, 2 + b, 2.6, 2, DRAW); c.ell(x + 7.5, 1.5 + b, 3, 2, DRAW); c.pts([(x + 2, 1 + b), (x + 7, 0 + b)], WINTER)
+    c.pts([(x + 5, 3 + b), (x + 9, 3 + b)], INK)
+
+
+def e_thunder_general(c, f):
+    general24(c, f, SKY_D, TEAM_A, PIT, INK, DRAW, PRIM_L, PIT, flail, plume=cloud_helm, shield=(PRIM_D, PRIM, WHITE))
+
+
+def e_noegong(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    up = f == 2
+    ring = Cv(32)
+    ring.ell(15.5, 13, 13.4, 11.8, INK); ring.ell(15.5, 13, 12.2, 10.6, (0, 0, 0, 0)); ring.clear(0, 15, 32, 17)
+    c.paste(ring, 0, 0)
+    for dx_, dy_ in ((2, 12), (4, 5), (10, 1), (18, 1), (24, 5), (26, 12)):                              # 등에 두른 북
+        c.ell(dx_ + 2, dy_ + 2, 2.7, 2.7, LOSE); c.ell(dx_ + 2, dy_ + 2, 1.5, 1.5, PANEL); c.p(dx_ + 2, dy_ + 2, PRIM)
+    c.r(10 + x, 25, 5, 5, SKY_D); c.r(17 + x, 25, 5, 5 - b, SKY_D); c.r(9 + x, 28, 7, 3, PIT); c.r(16 + x, 28 - b, 7, 3, PIT)
+    c.r(9 + x, 20 + b, 14, 6 - b, PRIM_D); c.pts([(11 + x, 22), (14 + x, 24), (17 + x, 22), (20 + x, 24), (12 + x, 25), (19 + x, 21 + b)], OUT)   # 호피
+    c.r(10 + x, 13 + b, 12, 7, TEAM_A); c.col(10 + x, 13 + b, 19, SKY_T); c.col(21 + x, 14 + b, 19, SKY_D)
+    c.pts([(14 + x, 16 + b), (15 + x, 17 + b), (16 + x, 17 + b), (17 + x, 16 + b), (15 + x, 19 + b), (16 + x, 19 + b)], SKY_D)
+    c.r(9 + x, 19 + b, 14, 2, PINK); c.r(15 + x, 19 + b, 2, 3, PRIM)
+    c.r(11 + x, 4 + b, 10, 9, TEAM_A); c.col(11 + x, 5 + b, 10 + b, SKY_T)
+    c.r(10 + x, 1 + b, 12, 4, PINK); c.pts([(10 + x, b), (12 + x, b), (15 + x, b), (16 + x, b), (19 + x, b), (21 + x, b), (9 + x, 3 + b), (22 + x, 3 + b)], PINK)
+    c.pts([(12 + x, 2 + b), (17 + x, 1 + b)], LOSE)
+    c.r(12 + x, b, 2, 2, PRIM); c.r(18 + x, b, 2, 2, PRIM)                                                # 뿔
+    eye = PINK if f == 3 else PRIM_L if up else WHITE
+    c.r(13 + x, 7 + b, 2, 2, eye); c.r(17 + x, 7 + b, 2, 2, eye); c.p(14 + x, 8 + b, OUT); c.p(17 + x, 8 + b, OUT)
+    c.row(6 + b, 12 + x, 14 + x, OUT); c.row(6 + b, 17 + x, 19 + x, OUT); c.p(15 + x, 7 + b, OUT); c.p(16 + x, 7 + b, OUT)
+    c.r(12 + x, 11 + b, 8, 3, PINK); c.r(13 + x, 14 + b, 6, 2, PINK); c.r(14 + x, 16 + b, 4, 1, LOSE)     # 붉은 수염
+    c.row(11 + b, 14 + x, 17 + x, OUT); c.pts([(14 + x, 11 + b), (17 + x, 11 + b)], WHITE)
+    c.pts([(13 + x, 13 + b), (18 + x, 14 + b)], LOSE)
+    if up:                                                                                               # 두 팔로 북채를 번쩍
+        for ax in (5, 23):
+            c.r(ax + x, 7, 4, 8, TEAM_A); c.col(ax + x, 7, 14, SKY_T); c.r(ax + 1 + x, 0, 1, 7, INK); c.r(ax + x, 0, 3, 2, PANEL_S)
+        c.pts([(3, 1), (2, 3), (29, 1), (30, 3), (15, 0), (16, 0)], PRIM_L)
+    else:
+        for ax, sx in ((5, 4), (23, 27)):
+            c.r(ax + x, 14 + b, 4, 6, TEAM_A); c.col(ax + x, 14 + b, 19 + b, SKY_T)
+            c.r(sx + x, 17 + b, 1, 7, INK); c.r(sx - 1 + x, 23 + b, 3, 2, PANEL_S)
+
+
+def e_drum(c, f):
+    ring = f == 3
+    glow = f == 2
+    c.r(3, 12, 2, 3, INK); c.r(11, 12, 2, 3, INK); c.r(3, 13, 10, 1, PIT_I)
+    c.ell(8, 7.5, 5.6, 5.2, PINK if glow else LOSE)
+    c.ell(8, 7.5, 3.8, 3.6, WHITE if glow or ring else PANEL)
+    c.pts([(4, 4), (12, 4), (3, 8), (13, 8), (4, 11), (12, 11), (8, 2)], PRIM)
+    c.pts([(7, 6), (8, 6), (9, 7), (8, 7)], PINK); c.pts([(7, 8), (8, 8), (8, 9), (9, 9), (7, 7)], TEAM_A)
+    if f == 1:
+        c.p(6, 5, WHITE)
+    if ring:                                                                                             # 울림
+        c.pts([(1, 3), (0, 7), (1, 11), (14, 3), (15, 7), (14, 11), (5, 0), (10, 0)], WHITE)
+    if glow:
+        c.pts([(1, 2), (14, 1), (0, 9)], PRIM_L)
+
+
+# ---- 7구역 "은하 나루" ----
+def e_magpie(c, f):
+    bird_base(c, f, PIT, WHITE, OUT, SKY_D, WHITE, WHITE, PIT_I, PIT, eye=WHITE)
+    c.r(0, 10, 3, 1, PIT); c.p(9, 9, WHITE)
+
+
+def e_starslime(c, f):
+    top = blob_base(c, f, PRIM, WHITE, PRIM_D, eye=WHITE if f == 3 else OUT)
+    c.pts([(4, 10), (11, 6 + (top - 5)), (6, 12)], PRIM_L)
+    if f == 2:                                                                                           # 부푼다
+        c.pts([(1, 5), (14, 4), (2, 12), (13, 12), (8, 1)], WHITE); c.pts([(0, 8), (15, 9)], PRIM_L)
+
+
+STAR_S = ['....s....', '....s....', '...sss...', 'sssssssss', '.sssssss.', '..sssss..', '..sssss..', '.sss.sss.', '.s.....s.']
+STAR_L = ['......s......', '.....sss.....', '.....sss.....', 'sssssssssssss', '.sssssssssss.', '..sssssssss..', '...sssssss...', '..sssssssss..', '..ssss.ssss..', '.sss.....sss.',
+          '.s.........s.']
+
+
+def e_starlet(c, f):
+    b = 1 if f == 1 else 0
+    c.grid(3, 3 + b, STAR_S, {'s': WHITE if f == 2 else PRIM_L})
+    c.pts([(7, 6 + b), (7, 5 + b)], WHITE)
+    eye = PINK if f == 3 else OUT
+    c.p(6, 7 + b, eye); c.p(8, 7 + b, eye)
+    if f == 2:
+        c.pts([(1, 2), (13, 3), (2, 12), (12, 12)], PRIM_L)
+
+
+def e_weaver(c, f):
+    b = 1 if f == 1 else 0
+    up = f == 2
+    left = [[(4, 8), (3, 7), (2, 8), (1, 9)], [(4, 10), (3, 10), (2, 11), (1, 12)], [(5, 12), (4, 13), (3, 14)]]
+    right = [[(12, 11), (13, 12), (14, 13)], [(12, 12), (12, 13), (12, 14)]]
+    for i, leg in enumerate(left + right):
+        c.pts([(px_, py_ + (b if i % 2 else 0)) for px_, py_ in leg], SKY_D)
+    if up:                                                                                               # 앞발을 든다
+        c.pts([(12, 8), (13, 6), (14, 5), (15, 3), (12, 7), (13, 5), (13, 4), (14, 2)], SKY_D)
+    else:
+        c.pts([(12, 9), (13, 9), (14, 10), (15, 11 + b), (12, 8), (13, 7), (14, 7), (15, 8 - b)], SKY_D)
+    c.ell(6.5, 9, 3.8, 3.3, STUN); c.pts([(4, 11), (6, 12), (8, 12), (9, 11)], TEAM_A)
+    c.r(5, 4, 4, 3, PANEL); c.row(5, 5, 8, PINK); c.col(4, 4, 6, LOG); c.col(9, 4, 6, LOG)                # 실꾸리
+    c.ell(10.5, 10, 2.4, 2.2, STUN); c.row(12, 10, 11, TEAM_A)
+    eye = WHITE if f == 3 else PINK
+    c.p(10, 9, eye); c.p(12, 9, eye); c.p(12, 11, WHITE)
+
+
+def e_comet(c, f):
+    x, b, lean = imp_base(c, f, SKY_M, WHITE, BJ, horns=PRIM_L, cloth=TEAM_A, x0=6, hit_eye=PINK)
+    pal = {'p': PINK, 'y': PRIM}
+    if f == 2:                                                                                           # 웅크리고 꼬리가 커진다
+        c.grid(0, 3, ['...pp.', '..pyp.', '.pyyp.', 'pyyyyp', '.pyyp.', '..pyp.', '...pp.'], pal)
+    else:
+        c.grid(1 + lean, 5 + b, ['..pp.', '.pyp.', 'pyyyp', '.pyp.', '..pp.'], pal)
+
+
+def crow_weapon(c, x, b, f):
+    if f == 2:
+        c.r(x + 11, 9, 2, 3, PIT_I); c.row(8, x + 10, x + 13, PRIM_D); c.r(x + 11, 0, 2, 8, BLADE); c.col(x + 11, 0, 7, WHITE)
+    else:
+        c.r(x + 11, 13 + b, 2, 3, PIT_I); c.col(x + 13, 12 + b, 16 + b, PRIM_D); c.r(x + 14, 13 + b, 4, 2, BLADE); c.row(13 + b, x + 14, x + 17, WHITE)
+
+
+def crow_helm(c, x, b, f):
+    c.r(x + 10, 5 + b, 3, 2, PRIM_D); c.p(x + 13, 6 + b, PRIM_D); c.p(x + 10, 5 + b, PRIM)                # 부리
+    c.pts([(x + 2, b), (x + 4, b), (x + 6, b), (x + 3, 1 + b), (x + 5, 1 + b)], PIT)
+
+
+def crow_wings(c, x, b, f, behind):
+    if f == 2 and behind:                                                                                # 날개를 펼친다
+        c.grid(0, 3, ['pp......', 'wwpp....', '.wwwpp..', '..wwwww.', '...wwwww', '....wwww'], {'w': PIT, 'p': SKY_D})
+        c.grid(16, 3, ['......pp', '....ppww', '..ppwww.', '.wwwww..', 'wwwww...', 'wwww....'], {'w': PIT, 'p': SKY_D})
+
+
+def e_crow_knight(c, f):
+    general24(c, f, PIT, SKY_D, OUT, PIT, SKY_D, PRIM, OUT, crow_weapon, plume=crow_helm, extra=crow_wings)
+
+
+def e_crow_king(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    sp = f == 2
+    for lx_ in (11, 15, 19):                                                                             # 세 발
+        c.r(lx_ + x, 25, 2, 5, PRIM_D); c.r(lx_ - 1 + x, 30, 4, 1, PRIM_D)
+    c.r(4 + x, 20 + b, 6, 3, PIT); c.pts([(3 + x, 22 + b), (2 + x, 23 + b), (4 + x, 23 + b)], PIT)
+    if sp:                                                                                               # 날개 활짝
+        for sgn in (-1, 1):
+            def X(v):
+                return v if sgn < 0 else 31 - v
+            for (x0, x1, y0) in ((0, 10, 6), (0, 9, 9), (1, 9, 12), (3, 9, 15), (5, 9, 18)):
+                for xx in range(x0, x1 + 1):
+                    c.r(X(xx), y0, 1, 3, PIT if y0 % 2 == 0 else PIT_I)
+                c.p(X(x0), y0, PRIM_L); c.p(X(x0), y0 + 1, WHITE)
+            c.pts([(X(2), 4), (X(5), 4)], SKY_D)
+    c.ell(15.5 + x, 18 + b, 7.6, 7.8, PIT)
+    c.pts([(10 + x, 14 + b), (9 + x, 16 + b), (9 + x, 18 + b), (11 + x, 12 + b)], SKY_D)
+    c.pts([(14 + x, 19 + b), (15 + x, 20 + b), (16 + x, 19 + b), (13 + x, 22 + b), (14 + x, 23 + b), (15 + x, 22 + b), (17 + x, 22 + b), (18 + x, 23 + b), (19 + x, 22 + b)], PIT_I)
+    if not sp:
+        c.ell(8 + x, 18 + b, 2.6, 6.4, PIT_I); c.ell(23 + x, 18 + b, 2.6, 6.4, PIT_I)
+        c.pts([(7 + x, 24 + b), (8 + x, 25 + b), (23 + x, 25 + b), (24 + x, 24 + b)], PRIM_L); c.pts([(8 + x, 24 + b), (23 + x, 24 + b)], WHITE)
+    c.ell(15.5 + x, 8 + b, 4.8, 4.5, PIT); c.pts([(12 + x, 6 + b), (13 + x, 5 + b)], SKY_D)
+    c.r(13 + x, 2 + b, 6, 2, PRIM); c.pts([(13 + x, 1 + b), (15 + x, b), (16 + x, b), (18 + x, 1 + b)], PRIM); c.p(15 + x, 2 + b, PINK); c.row(3 + b, 13 + x, 18 + x, PRIM_D)   # 금관
+    c.r(20 + x, 8 + b, 3, 2, PRIM_D); c.p(23 + x, 9 + b, PRIM_D); c.p(20 + x, 8 + b, PRIM)
+    eye = WHITE if f == 3 else PRIM_L if sp else PINK
+    c.r(14 + x, 7 + b, 2, 2, eye); c.r(18 + x, 7 + b, 2, 2, eye)
+
+
+# ---- 8구역 "서천 꽃밭" ----
+def e_thornhand(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    c.r(4, 13, 8, 2, INK); c.row(13, 5, 10, LOG)
+    c.r(6 + x, 8, 4, 6, WIN); c.col(6 + x, 8, 13, MAT_L); c.col(9 + x, 8, 13, MAT_D); c.pts([(5 + x, 10), (10 + x, 11), (5 + x, 12)], PANEL)
+    c.r(5 + x, 5, 6, 4, WIN)
+    if f == 2:                                                                                           # 손가락을 벌린다
+        c.pts([(4, 4), (3, 3), (2, 2), (11, 4), (12, 3), (13, 2), (11, 7), (12, 7), (13, 6), (4, 7), (3, 7), (2, 6)], WIN); c.r(7, 1, 2, 4, WIN)
+        c.pts([(2, 1), (13, 1), (7, 0), (14, 5), (1, 5)], PANEL)
+    else:
+        c.r(5 + x, 3 + b, 1, 2, WIN); c.r(7 + x, 2 + b, 2, 3, WIN); c.r(10 + x, 3 + b, 1, 2, WIN); c.r(11 + x, 6, 2, 1, WIN)
+        c.pts([(5 + x, 2 + b), (10 + x, 2 + b), (13 + x, 6)], PANEL)
+    c.r(7 + x, 6, 2, 2, OUT); c.p(8 + x, 6, WHITE if f == 3 else PRIM)
+
+
+def e_butterfly(c, f):
+    op = f in (0, 2)
+    if op:
+        c.ell(4, 6, 3, 3, PINK); c.ell(11.5, 6, 3, 3, PINK); c.ell(4.5, 10.5, 2.4, 2.2, PRIM); c.ell(11, 10.5, 2.4, 2.2, PRIM)
+        c.pts([(3, 5), (12, 5)], WHITE); c.pts([(4, 7), (11, 7)], SUMMER); c.pts([(4, 11), (11, 11)], PRIM_L)
+    else:
+        c.ell(5, 6.5, 2, 3, PINK); c.ell(10.5, 6.5, 2, 3, PINK); c.ell(5.5, 10.5, 1.6, 2, PRIM); c.ell(10, 10.5, 1.6, 2, PRIM)
+        c.pts([(5, 5), (10, 5)], WHITE)
+    c.r(7, 5, 2, 7, PIT_I); c.r(7, 4, 2, 1, PIT_I); c.pts([(6, 3), (5, 2), (9, 3), (10, 2)], PIT_I)
+    c.p(7, 5, WHITE if f != 3 else PINK); c.p(8, 5, WHITE if f != 3 else PINK)
+    if f == 2:
+        c.pts([(1, 2), (14, 2), (0, 10), (15, 12), (8, 14)], PRIM_L)
+
+
+def e_beetle(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    low = f == 2
+    dy = 1 if low else 0
+    c.r(3 + x, 13, 2, 2, PIT); c.r(7 + x, 13, 2, 2, PIT); c.r(10 + x, 13, 2, 2 - b, PIT)
+    c.ell(7 + x, 9 + dy, 5.4, 4 - dy * 0.6, WIN)
+    c.pts([(4 + x, 7 + dy), (5 + x, 6 + dy), (6 + x, 6 + dy)], MAT_L); c.col(7 + x, 6 + dy, 12, MAT_D); c.row(12, 4 + x, 10 + x, MAT_D)
+    c.r(11 + x, 8 + dy, 3, 4, PIT_I); c.p(12 + x, 9 + dy, WHITE if f == 3 else PRIM)
+    if low:
+        c.pts([(14, 10), (15, 10), (15, 9), (15, 11), (14, 9)], PIT_I)
+    else:
+        c.pts([(13 + x, 7), (14 + x, 6), (14 + x, 5), (15 + x, 4), (13 + x, 4), (14 + x, 4)], PIT_I)
+
+
+def e_fairy(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    c.ell(4 + x, 7 + b, 2.6, 3, SKY_M); c.ell(12 + x, 7 + b, 2.6, 3, SKY_M); c.pts([(3 + x, 6 + b), (12 + x, 6 + b)], WHITE)
+    c.grid(4 + x, 9 + b, ['..pppp..', '.pPppPp.', 'pPppppPp', 'pp.pp.pp'], {'p': PINK, 'P': SUMMER})
+    c.pts([(7 + x, 13 + b), (9 + x, 13 + b)], SKIN)
+    c.r(7 + x, 7 + b, 3, 2, WIN)
+    c.r(6 + x, 2 + b, 5, 5, SKIN); c.r(6 + x, 1 + b, 5, 2, PRIM_D); c.p(5 + x, 3 + b, PRIM_D); c.p(11 + x, 3 + b, PRIM_D); c.p(8 + x, b, PINK)
+    eye = PINK if f == 3 else OUT
+    c.p(7 + x, 4 + b, eye); c.p(9 + x, 4 + b, eye)
+    if f == 2:                                                                                           # 팔을 벌린다
+        c.pts([(5, 7), (4, 6), (11, 7), (12, 6)], SKIN); c.pts([(2, 2), (14, 2), (14, 11), (1, 11), (8, 15)], PRIM_L)
+    else:
+        c.p(6 + x, 8 + b, SKIN); c.p(10 + x, 8 + b, SKIN)
+
+
+def e_peacock(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    fan = f == 2
+    if fan:                                                                                              # 꼬리를 편다
+        c.ell(11, 10, 10.5, 9.5, PRIM)
+        for px_, py_ in ((2, 9), (4, 4), (8, 2), (13, 2), (17, 4), (19, 9)):
+            c.r(px_ - 1, py_ - 1, 4, 4, WIN); c.r(px_, py_, 2, 2, TEAM_A); c.p(px_, py_, WHITE)
+        c.pts([(6, 8), (7, 10), (9, 6), (10, 9), (13, 6), (13, 9), (16, 8), (15, 10), (5, 13), (17, 13)], PRIM_D)
+    else:
+        c.grid(x, 12 + b, ['dddddd....', '.dTdTddd..', '..dddTdddd', '....dddd..'], {'d': PRIM_D, 'T': TEAM_A})
+    c.r(11 + x, 19, 1, 4, TRACK_D); c.r(14 + x, 19, 1, 4 - b, TRACK_D); c.r(11 + x, 22, 3, 1, TRACK_D); c.r(14 + x, 22 - b, 3, 1, TRACK_D)
+    c.ell(12 + x, 15 + b, 4.6, 4.2, PRIM); c.ell(11 + x, 15.5 + b, 2.6, 2.2, PRIM_D); c.pts([(14 + x, 17 + b), (15 + x, 16 + b)], PRIM_L)
+    c.r(14 + x, 7 + b, 3, 7, PRIM); c.col(14 + x, 8 + b, 12 + b, PRIM_L)
+    c.ell(16 + x, 6 + b, 2.6, 2.4, PRIM_L)
+    c.pts([(15 + x, 2 + b), (16 + x, 1 + b), (17 + x, 2 + b), (16 + x, 3 + b), (15 + x, 1 + b), (17 + x, 1 + b)], TEAM_A); c.p(16 + x, 1 + b, WIN)
+    c.r(19 + x, 6 + b, 2, 1, TRACK_D)
+    c.p(17 + x, 5 + b, PINK if f == 3 else OUT)
+
+
+def e_ggotgamgwan(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    sw = f == 2
+    c.r(10 + x, 28, 5, 3, PIT); c.r(17 + x, 28 - b, 5, 3, PIT)
+    c.r(9 + x, 13 + b, 14, 15 - b, WIN); c.r(8 + x, 22, 16, 6, WIN)                                       # 녹색 도포
+    c.col(12 + x, 21, 27, MAT_D); c.col(19 + x, 21, 27, MAT_D); c.row(27, 8 + x, 23 + x, MAT_D); c.col(9 + x, 14 + b, 21, MAT_L)
+    c.pts([(14 + x, 13 + b), (15 + x, 14 + b), (16 + x, 15 + b), (18 + x, 13 + b), (17 + x, 14 + b)], PANEL)
+    c.r(9 + x, 19 + b, 14, 1, PINK); c.r(15 + x, 19 + b, 2, 4, PRIM)
+    c.r(11 + x, 5 + b, 10, 8, SKIN); c.col(11 + x, 5 + b, 8 + b, PIT); c.col(20 + x, 5 + b, 8 + b, PIT)
+    eye = PINK if f == 3 else OUT
+    c.r(13 + x, 8 + b, 2, 2, eye); c.r(17 + x, 8 + b, 2, 2, eye); c.pts([(12 + x, 10 + b), (20 + x, 10 + b)], PINK)
+    c.row(11 + b, 14 + x, 17 + x, PIT_I); c.pts([(15 + x, 12 + b), (16 + x, 12 + b)], PIT_I)
+    c.r(6 + x, 4 + b, 20, 2, PIT); c.r(11 + x, b, 10, 4, PIT); c.row(3 + b, 11 + x, 20 + x, PINK); c.row(4 + b, 7 + x, 24 + x, PIT_I)   # 갓
+    for fx, fy in ((8, 3), (23, 3), (15, 0)):                                                            # 갓의 꽃
+        c.pts([(fx + x, fy - 1 + b), (fx - 1 + x, fy + b), (fx + 1 + x, fy + b), (fx + x, fy + 1 + b)], PINK); c.p(fx + x, fy + b, PRIM)
+    c.r(5 + x, 14 + b, 5, 8, WIN); c.r(5 + x, 21 + b, 4, 1, PANEL); c.r(6 + x, 22 + b, 2, 2, SKIN)
+    blossoms = lambda pts: [(c.pts([(px_, py_ - 1), (px_ - 1, py_), (px_ + 1, py_), (px_, py_ + 1)], PINK), c.p(px_, py_, PRIM)) for px_, py_ in pts]
+    if sw:                                                                                               # 꽃가지를 휘두른다
+        c.r(22 + x, 6, 5, 8, WIN); c.r(23 + x, 4, 3, 3, SKIN)
+        c.r(3 + x, 2, 23, 1, INK); c.pts([(4 + x, 1), (8 + x, 3), (12 + x, 1)], INK)
+        blossoms([(3, 2), (8, 1), (13, 3), (28, 2)]); c.pts([(29, 6), (30, 9), (1, 6), (27, 0), (31, 4)], PINK); c.pts([(6, 3), (10, 1)], WIN)
+    else:
+        c.r(22 + x, 14 + b, 5, 6, WIN); c.r(24 + x, 19 + b, 3, 2, SKIN)
+        c.r(27 + x, 7, 1, 24, INK); c.pts([(26 + x, 9), (28 + x, 12), (26 + x, 6)], INK)
+        blossoms([(27 + x, 5), (25 + x, 8), (29 + x, 11), (28 + x, 2)]); c.pts([(26 + x, 12), (28 + x, 8)], WIN)
+
+
+# ---- 9구역 "칠성 폭풍단" ----
+def e_stormimp(c, f):
+    x, b, lean = imp_base(c, f, DRAW, WINTER, INK, horns=LINE, cloth=SKY_D)
+    if f == 2:                                                                                           # 바람 자루를 연다
+        c.ell(12, 10, 2.4, 2.8, PANEL_S); c.r(12, 6, 3, 2, LINE); c.p(13, 6, PIT)
+        c.pts([(13, 4), (14, 3), (15, 3), (12, 2), (13, 1), (14, 0), (15, 5), (11, 4)], WHITE); c.pts([(12, 3), (14, 1)], SKY_M)
+    else:
+        c.ell(13 + lean, 9 + b, 2.4, 3, PANEL_S); c.p(13 + lean, 5 + b, LINE); c.r(12 + lean, 6 + b, 2, 1, PINK); c.p(14 + lean, 10 + b, LINE)
+
+
+def e_hailjar(c, f):
+    b = 1 if f == 1 else 0
+    c.ell(7.5, 9.5, 5.6, 4.8, PIT)
+    c.col(3, 8, 11, PIT_I); c.pts([(4, 7), (4, 12)], PIT_I)
+    c.r(6, 5, 4, 1, OUT)
+    c.r(5, 3 + b, 6, 2, PIT_I); c.row(3 + b, 5, 10, INK); c.row(3 + b, 6, 9, OUT)
+    c.pts([(9, 6), (10, 7), (10, 8), (11, 9), (10, 10), (5, 11), (6, 12), (6, 13)], DRAW)                  # 금
+    eye = WHITE if f == 3 else SKY_M if f == 2 else PRIM
+    c.r(6, 8, 2, 2, eye); c.r(9, 8, 2, 2, eye); c.p(7, 9, OUT); c.p(10, 9, OUT)
+    c.row(12, 8, 9, DRAW)
+    if f == 2:                                                                                           # 우박이 튄다
+        for hx_, hy_ in ((5, 0), (9, 1), (12, 2), (2, 3), (14, 6)):
+            c.r(hx_, hy_, 2, 2, WHITE); c.p(hx_ + 1, hy_ + 1, SKY_M)
+
+
+def e_starshard(c, f):
+    b = 1 if f == 1 else 0
+    big = f == 2
+    c.grid(1, 2 + b, STAR_L, {'s': WHITE if big else PRIM})
+    if big:                                                                                              # 하얗게 커진다
+        c.pts([(7, 1), (0, 5), (14, 5), (1, 13), (13, 13), (4, 4), (10, 4), (7, 12)], WHITE); c.pts([(0, 1), (14, 1), (15, 9), (0, 9)], PRIM_L)
+    else:
+        c.pts([(6, 4 + b), (7, 3 + b), (5, 6 + b), (4, 6 + b)], PRIM_L); c.pts([(9, 10 + b), (10, 9 + b)], PRIM_D)
+    eye = PINK if f == 3 else OUT
+    c.r(5, 7 + b, 1, 2, eye); c.r(9, 7 + b, 1, 2, eye); c.row(10 + b, 6, 8, OUT if not big else PRIM_D)
+
+
+def e_hawk(c, f):
+    bird_base(c, f, DRAW, WINTER, INK, INK, PIT_I, PIT, PRIM, INK, eye=PRIM)
+    c.p(15, 8, PRIM_D); c.pts([(7, 11), (9, 11)], INK)
+
+
+def e_jangseung(c, f):
+    t = Cv(24)
+    t.r(8, 2, 8, 20, LOG); t.col(8, 3, 21, LOG_E); t.col(15, 3, 21, PIT_I); t.pts([(10, 18), (13, 20), (11, 21)], PIT_I)
+    t.r(7, 1, 10, 3, INK); t.row(0, 9, 14, INK); t.row(1, 8, 15, LOG_E); t.r(7, 21, 10, 2, PIT_I)
+    t.r(9, 6, 3, 3, WHITE); t.r(13, 6, 3, 3, WHITE)
+    pupil = PINK if f >= 2 else OUT
+    t.p(10, 7, pupil); t.p(14, 7, pupil); t.p(11, 7, pupil if f == 2 else WHITE); t.p(15, 7, pupil if f == 2 else WHITE)
+    t.row(5, 9, 11, OUT); t.row(5, 13, 15, OUT); t.p(12, 6, OUT); t.p(8, 4, OUT); t.p(16, 4, OUT)
+    t.r(11, 8, 2, 3, LOG_E); t.p(12, 10, PIT_I)
+    t.r(8, 10, 2, 2, PINK); t.r(14, 10, 2, 2, PINK)
+    t.r(9, 13, 6, 3, OUT); t.pts([(10, 13), (12, 13), (14, 13), (11, 15), (13, 15)], WHITE)
+    t.pts([(11, 17), (12, 17), (12, 18), (11, 19), (12, 19)], OUT)
+    if f == 2:                                                                                           # 앞으로 기울인다
+        shear_paste(c, t, lambda y: (11 - y) // 4)
+    else:
+        shear_paste(c, t, lambda y: -1 if f == 3 else (1 if f == 1 and y < 8 else 0))
+
+
+# ---- 10구역 "소원의 정상" ----
+def e_skysoldier(c, f):
+    b = 1 if f == 1 else 0
+    lean = -1 if f == 3 else 0
+    x = 3 + lean
+    c.r(x + 1, 13, 2, 2, DRAW); c.r(x + 5, 13, 2, 2 - b, DRAW)
+    c.r(x, 8 + b, 9, 5 - b, WHITE); c.col(x + 8, 8 + b, 12, BLADE); c.row(10 + b, x + 1, x + 7, BLADE); c.row(12, x, x + 8, PINK)
+    c.r(x + 1, 4 + b, 7, 4, SKIN)
+    eye = PINK if f == 3 else OUT
+    c.p(x + 4, 5 + b, eye); c.p(x + 6, 5 + b, eye); c.p(x + 5, 7 + b, LOSE)
+    c.r(x, 2 + b, 9, 2, WINTER); c.row(1 + b, x + 1, x + 7, WINTER); c.row(3 + b, x, x + 8, DRAW); c.row(1 + b, x + 2, x + 5, WHITE)
+    c.r(x + 3, b, 2, 1, PINK); c.p(x + 2, b, PINK); c.p(x + 1, 1 + b, PINK)                                # 붉은 술
+    if f == 2:                                                                                           # 창을 겨눈다
+        c.r(5, 9, 9, 1, INK); c.pts([(15, 9), (14, 8), (14, 9), (14, 10)], BLADE); c.p(13, 10, PINK); c.r(10, 9, 2, 2, SKIN)
+    else:
+        c.r(13 + lean, 3, 1, 12, INK); c.r(13 + lean, 0, 1, 3, BLADE); c.p(12 + lean, 2, BLADE); c.p(14 + lean, 2, BLADE); c.p(14 + lean, 4, PINK)
+        c.r(12 + lean, 9 + b, 2, 2, SKIN)
+
+
+def e_crane(c, f):
+    pal = {'w': WHITE, 'o': OUT, 's': BLADE}
+    c.r(1, 10, 3, 1, PIT); c.p(0, 11, PIT)
+    c.pts([(3, 8), (2, 8), (3, 9)], OUT)
+    c.ell(7, 9, 4.2, 2.6, WHITE); c.row(11, 5, 9, BLADE)
+    c.r(10, 7, 2, 2, WHITE); c.r(11, 5, 2, 3, WHITE); c.r(12, 3, 2, 3, WHITE); c.p(11, 6, OUT)
+    c.r(12, 2, 2, 1, PINK)
+    c.r(14, 4, 2, 1, PRIM_D)
+    c.p(13, 4, PINK if f == 3 else OUT)
+    if f == 2:
+        c.grid(0, 5, ['oowwww..', '.oswwww.'], pal)
+    elif f in (0, 3):
+        c.grid(3, 2, ['.o....', 'ow....', '.ww...', '.sww..', '..www.'], pal)
+    else:
+        c.grid(3, 10, ['..www.', '.sww..', '.ww...', 'ow....', '.o....'], pal)
+
+
+def e_lantern(c, f):
+    b = 1 if f == 1 else 0
+    glow = f == 2
+    c.p(8, 1 + b, INK)
+    c.ell(8, 8 + b, 4.6, 4.6, WHITE if glow else PINK)
+    c.col(6, 5 + b, 11 + b, PANEL if glow else LOSE); c.col(10, 5 + b, 11 + b, PANEL if glow else LOSE)
+    c.pts([(5, 6 + b), (5, 7 + b)], PANEL_S if glow else SUMMER)
+    c.r(6, 3 + b, 5, 1, PRIM); c.r(7, 2 + b, 3, 1, PRIM_D); c.r(6, 13 + b, 5, 1, PRIM)
+    if not b:
+        c.p(8, 14, PINK)
+    eye = WHITE if f == 3 else OUT
+    c.r(7, 7 + b, 1, 2, eye); c.r(9, 7 + b, 1, 2, eye)
+    if glow:                                                                                             # 하얗게 빛난다
+        c.pts([(1, 8), (14, 8), (2, 3), (13, 3), (2, 13), (13, 13), (8, 0)], PRIM_L); c.pts([(0, 8), (15, 8)], WHITE)
+
+
+def e_jadelion(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    low = f == 2
+    dy = 1 if low else 0
+    h = 2 if low else 3
+    c.r(6 + x, 15 - h, 1, h, MAT_D); c.r(11 + x, 15 - h, 1, h, MAT_D)
+    c.r(4 + x, 15 - h, 2, h, POKER); c.r(9 + x, 15 - h, 2, h - b, POKER)
+    c.r(3 + x, 8 + dy, 9, 4, POKER); c.row(11 + dy, 4 + x, 10 + x, MAT_D); c.row(8 + dy, 4 + x, 9 + x, AUTUMN)
+    c.ell(2 + x, 6 + dy, 1.8, 1.8, AUTUMN); c.p(3 + x, 8 + dy, POKER)
+    hy = 7 + dy * 2 + b
+    c.ell(11 + x, hy, 3.9, 3.9, AUTUMN); c.pts([(8 + x, hy - 2), (9 + x, hy + 3), (12 + x, hy - 4), (14 + x, hy + 3), (8 + x, hy + 1)], MAT_D)
+    c.r(10 + x, hy - 1, 4, 4, POKER); c.r(13 + x, hy + 1, 2, 2, POKER); c.p(15 + x, hy + 1, OUT)
+    c.p(12 + x, hy, WHITE if f == 3 else PRIM); c.row(hy + 3, 12 + x, 14 + x, OUT)
+    if low:
+        c.p(13 + x, hy + 3, WHITE)
+
+
+def sky_sword(c, x, b, f):
+    if f == 2:                                                                                           # 번개 칼을 치켜든다
+        c.r(x + 11, 9, 2, 3, TRACK_D); c.row(8, x + 10, x + 13, PINK)
+        c.pts([(x + 11, 7), (x + 12, 7), (x + 12, 6), (x + 13, 6), (x + 13, 5), (x + 12, 5), (x + 12, 4), (x + 11, 4), (x + 11, 3), (x + 12, 3), (x + 12, 2), (x + 13, 2), (x + 13, 1), (x + 12, 0)], PRIM_L)
+        c.pts([(x + 12, 6), (x + 12, 4), (x + 12, 2)], WHITE); c.pts([(x + 15, 3), (x + 16, 1), (x + 9, 1)], PRIM_L)
+    else:
+        c.r(x + 11, 13 + b, 2, 3, TRACK_D); c.col(x + 13, 12 + b, 16 + b, PINK)
+        c.pts([(x + 14, 14 + b), (x + 15, 14 + b), (x + 15, 13 + b), (x + 16, 13 + b), (x + 16, 14 + b), (x + 17, 14 + b), (x + 14, 13 + b)], PRIM_L); c.p(x + 15, 14 + b, WHITE)
+
+
+def white_plume(c, x, b, f):
+    c.r(x + 3, b, 4, 1, WHITE); c.r(x + 1, b, 3, 1, WHITE); c.p(x, 1 + b, WHITE); c.p(x + 4, 1 + b, BLADE); c.pts([(x - 1, 2 + b)], WHITE)
+
+
+def e_skygeneral(c, f):
+    general24(c, f, PRIM, PRIM_L, PRIM_D, PRIM, PRIM_L, SKY_D, TRACK_D, sky_sword, plume=white_plume, shield=(PINK, SUMMER, PRIM))
+
+
+def e_eodugsini(c, f):
+    b = 1 if f == 1 else 0
+    x = -1 if f == 3 else 0
+    reach = f == 2
+
+    def half(y):
+        if y < 6:
+            return 4 + (y - 3) * 2
+        w = 8 + (y - 6) * 0.42 if y <= 30 else 18.1 + (y - 30) * 0.36
+        return w + (1 if (y // 3 + b) % 2 else 0)
+    for y in range(3, 46):
+        w = half(y)
+        c.row(y, int(24 - w) + x, int(23 + w) + x, PIT)
+        if y > 8:
+            c.row(y, int(24 - w) + 3 + x, int(23 + w) - 3 + x, OUT)
+        c.p(int(24 - w) + x, y, PIT_I)
+    c.row(3, 22 + x, 25 + x, PIT_I); c.row(4, 19 + x, 21 + x, PIT_I); c.row(5, 17 + x, 18 + x, PIT_I)
+    for i, tx in enumerate(range(1, 46, 4)):                                                             # 아래로 흘러내리는 그림자
+        ln = 1 + (i + b) % 2
+        c.r(tx + x, 45, 2, ln, PIT)
+    c.pts([(7, 30), (5, 34), (40, 31), (43, 36), (12, 24), (36, 22), (3, 40), (44, 41)], PIT_I)
+    c.pts([(9, 12), (38, 10), (6, 20), (41, 18)], INK if not reach else SKY_D)                            # 흩날리는 먹빛
+    # 팔
+    if reach:                                                                                            # 손을 뻗는다
+        for sgn in (-1, 1):
+            def X(v):
+                return v if sgn < 0 else 47 - v
+            for i in range(9):
+                c.r(min(X(12 - i), X(12 - i + 3)), 23 - i, 4, 3, PIT)
+            c.pts([(X(1), 12), (X(0), 10), (X(2), 10), (X(4), 11), (X(3), 13)], PIT); c.pts([(X(0), 9), (X(2), 9), (X(4), 10)], WHITE)
+    else:
+        for sgn in (-1, 1):
+            def X(v):
+                return v if sgn < 0 else 47 - v
+            c.r(min(X(8), X(11)) + x, 22 + b, 4, 10, PIT); c.r(min(X(6), X(11)) + x, 31 + b, 6, 3, PIT)
+            c.pts([(X(6) + x, 34 + b), (X(8) + x, 34 + b), (X(10) + x, 34 + b)], INK)
+    # 하얀 눈 셋
+    if f == 3:
+        c.r(17 + x, 15, 4, 1, WHITE); c.r(27 + x, 15, 4, 1, WHITE); c.r(22 + x, 9, 4, 1, WHITE)
+    else:
+        c.r(17 + x, 14, 4, 3, WHITE); c.r(27 + x, 14, 4, 3, WHITE); c.r(22 + x, 8, 4, 3, WHITE)
+        c.pts([(16 + x, 15), (21 + x, 15), (26 + x, 15), (31 + x, 15), (21 + x, 9), (26 + x, 9)], SKY_M)
+        if reach:
+            c.pts([(18 + x, 15), (19 + x, 15), (28 + x, 15), (29 + x, 15), (23 + x, 9), (24 + x, 9)], PINK)
+            c.pts([(20, 21), (22, 22), (24, 21), (26, 22), (28, 21)], WHITE)
+
+
+def e_wishlight(c, f):
+    lit = f == 3
+    pal = {'p': PINK, 'P': PANEL_S if lit else SUMMER}
+    c.row(14, 3, 12, WIN); c.pts([(2, 13), (13, 13)], WIN)
+    c.grid(1, 7, ['..p...pp...p..', '.pPp.pPPp.pPp.', '.pPPppPPppPPp.', 'ppPPPpPPpPPPpp', 'pPPPPPPPPPPPPp', '.ppPPPPPPPPpp.', '...pppppppp...'], pal)
+    if lit:                                                                                              # 환하게 켜진다
+        c.grid(5, 1, ['..y..', '.yWy.', 'yWWWy', 'yWWWy', '.yWy.', '..y..'], {'y': PRIM_L, 'W': WHITE})
+        c.pts([(1, 2), (14, 2), (2, 5), (13, 5), (8, 0), (0, 8), (15, 8)], WHITE)
+    else:
+        c.r(7, 4, 2, 4, INK); c.p(7, 3, DRAW)
+        if f == 2:
+            c.r(7, 2, 2, 2, PRIM); c.p(7, 1, PRIM_L); c.pts([(4, 2), (11, 3)], PRIM_L)
+        elif f == 1:
+            c.p(8, 3, PRIM_D)
+
+
+# ---- 6~10구역 투사체 (지금은 GameScene 이 코드로 그린다 — 파일을 읽게 되면 proj/<이름>.png) ----
+def draw_projectiles():
+    out = {}
+    c = Cv(8, 8)                                                        # 거미줄
+    c.pts([(1, 1), (6, 1), (1, 6), (6, 6), (2, 2), (5, 2), (2, 5), (5, 5)], LINE)
+    c.row(3, 0, 7, WHITE); c.row(4, 0, 7, WHITE); c.col(3, 0, 7, WHITE); c.col(4, 0, 7, WHITE)
+    c.pts([(2, 1), (5, 1), (1, 2), (6, 2), (1, 5), (6, 5), (2, 6), (5, 6)], WHITE); c.r(3, 3, 2, 2, LINE)
+    out['web'] = c
+    c = Cv(10, 6)                                                       # 까마귀 깃
+    c.grid(0, 0, ['..........', '.pppppp...', 'wsssssppy.', '.pppppp...', '..........', '..........'], {'p': PIT, 's': SKY_D, 'w': WHITE, 'y': PRIM_L})
+    c.outline()
+    out['crowfeather'] = c
+    c = Cv(6, 6)                                                        # 꽃가루
+    c.r(1, 1, 4, 4, PRIM_L); c.r(2, 2, 2, 2, PRIM); c.p(2, 2, WHITE)
+    c.outline(PRIM_D)
+    out['pollen'] = c
+    c = Cv(8, 6)                                                        # 꽃잎
+    c.grid(0, 0, ['........', '..ppp...', '.pPPppp.', '..ppp...', '........', '........'], {'p': PINK, 'P': SUMMER})
+    c.outline()
+    out['petal'] = c
+    c = Cv(12, 12)                                                      # 폭풍
+    c.ell(5.5, 5.5, 4.6, 4.6, SKY_D)
+    c.pts([(3, 3), (4, 2), (5, 2), (6, 2), (7, 3), (8, 4), (8, 5), (7, 7), (6, 8), (5, 8), (3, 6), (3, 5)], TEAM_A)
+    c.pts([(5, 4), (6, 4), (5, 5), (4, 6), (5, 6), (6, 6), (5, 7)], PRIM_L); c.p(5, 5, WHITE)
+    c.outline()
+    out['storm'] = c
+    c = Cv(10, 10)                                                      # 그림자
+    c.ell(4.5, 4.5, 3.7, 3.7, PIT); c.ell(4.5, 5, 2.4, 2.4, OUT)
+    c.pts([(3, 4), (6, 4)], WHITE); c.pts([(2, 2), (7, 2), (1, 5), (8, 6)], PIT_I)
+    c.outline(INK)
+    out['shade'] = c
+    return out
+
+
+# ---- 엔딩 그림 120×90 (별 하늘 · 탑 꼭대기 · 소원 구슬) ----
+def draw_ending(chars, tile_sheets, with_hero=True):
+    c = Cv(120, 90, OUT)
+    seed = 20261125
+    for y in range(34, 62):                                             # 지평선 쪽 푸른 빛
+        for xx in range(120):
+            if (xx + y) % 2 == 0 and (xx * 7 + y * 13) % 7 < (y - 34) // 4:
+                c.p(xx, y, SKY_D)
+    for i in range(70):                                                 # 별 (정해진 수열)
+        seed = (seed * 1103515245 + 12345) % (1 << 31)
+        sx, sy = (seed >> 8) % 120, (seed >> 16) % 70
+        col = [WHITE, WHITE, PRIM_L, STUN, SKY_M][i % 5]
+        c.p(sx, sy, col)
+        if i % 9 == 0:
+            c.pts([(sx - 1, sy), (sx + 1, sy), (sx, sy - 1), (sx, sy + 1)], col)
+    c.ell(98, 14, 6, 6, PANEL_S); c.ell(100.5, 12.5, 5, 5, OUT)         # 초승달
+    wish = tile_sheets['wish'].im
+    tile = lambda k: wish.crop((TILE_ORDER.index(k) * 16, 0, TILE_ORDER.index(k) * 16 + 16, 16))
+    for i in range(8):                                                  # 옥빛 궁궐 꼭대기
+        c.im.paste(tile('floor' if i % 3 else 'floor2'), (i * 16 - 4, 62))
+        c.im.paste(tile('wallFace'), (i * 16 - 4, 78))
+    c.px = c.im.load()
+    c.row(61, 0, 119, PRIM_D)
+    ox, oy = (66, 50) if with_hero else (60, 36)
+    for rr, col in ((15, SKY_D), (11, PRIM_D), (8, PRIM)):              # 구슬 빛
+        for y in range(-rr, rr + 1):
+            for xx in range(-rr, rr + 1):
+                if xx * xx + y * y <= rr * rr and (xx + y) % 2 == 0:
+                    c.p(ox + xx, oy + y, col)
+    for dx_, dy_ in ((0, -19), (0, 19), (-19, 0), (19, 0), (-14, -14), (14, -14), (-14, 14), (14, 14)):
+        c.p(ox + dx_, oy + dy_, PRIM_L); c.p(ox + dx_ * 21 // 19, oy + dy_ * 21 // 19, WHITE)
+    orb = Cv(14)
+    orb.ell(6.5, 6.5, 5, 5, PRIM_L); orb.pts([(9, 9), (10, 8), (10, 7), (8, 10), (7, 10)], PRIM); orb.r(4, 3, 2, 2, WHITE); orb.p(6, 3, WHITE); orb.p(8, 8, PINK)
+    orb.outline(PRIM_D)
+    c.paste(orb, ox - 6, oy - 6)
+    if with_hero:
+        c.ell(58, 76, 8, 2, PRIM_D)
+        for n in ('body_m', 'face_2', 'outfit_0', 'hair_m0'):           # 구슬을 들어 올린 대원 (아래 보기 · 공격 첫 칸)
+            fr = Cv(F)
+            fr.im = chars[n].im.crop((5 * F, 0, 6 * F, F)); fr.px = fr.im.load()
+            c.paste(fr, 42, 46)
+    return c
+
+
+def heuk_base(c, f):
+    b = 1 if f == 1 else 0
+    lx = -1 if f == 3 else 0
+    op = f == 2
+    hy = b - (1 if op else 0)
+    # 꼬리 끝
+    c.pts([(3, 11 + b), (3, 12 + b), (2, 13 + b), (3, 13 + b), (2, 14 + b), (3, 14 + b), (4, 14 + b)], PIT)
+    c.r(2, 15 + b, 4, 5, PIT); c.col(2, 15 + b, 19, INK)
+    # 뒤 똬리
+    c.ell(15.5, 19 + b, 12.5, 5, PIT_I)
+    c.pts([(7, 17 + b), (11, 16 + b), (15, 16 + b), (20, 16 + b), (24, 17 + b)], PIT)
+    # 목
+    nx = 18 + lx
+    c.r(nx, 8 + hy, 8, 13 - hy, PIT); c.col(nx, 9 + hy, 19, PIT_I); c.r(nx + 5, 11 + hy, 3, 9 - hy, DRAW)
+    for yy in range(12 + hy, 20, 2):
+        c.row(yy, nx + 5, nx + 7, INK)
+    c.pts([(nx + 2, 12 + hy), (nx + 3, 15), (nx + 2, 18)], PIT_I)
+    # 앞 똬리
+    c.ell(15.5, 24.5, 14.2, 5.6, PIT)
+    for y in range(27, 31):
+        for x in range(1, 31):
+            if ((x - 15.5) / 14.2) ** 2 + ((y - 24.5) / 5.6) ** 2 <= 1.0:
+                c.p(x, y, DRAW if (x + 1) % 4 else INK)
+    c.row(26, 3, 28, PIT_I)
+    c.pts([(6, 20), (7, 20), (8, 19), (9, 19), (10, 19), (11, 19)], INK); c.pts([(3, 22), (4, 21)], INK)
+    for x, y in ((6, 23), (10, 22), (14, 23), (18, 22), (22, 23), (26, 23), (8, 25), (12, 24), (16, 25), (20, 24), (24, 25)):   # 이끼 비늘
+        c.p(x, y, PIT_I); c.p(x + 1, y, PIT_I); c.p(x, y - 1, SKY_D)
+    # 머리
+    h0 = 15 + lx
+    c.ell(h0 + 7, 7 + hy, 7.4, 4.8, PIT)
+    c.r(h0 + 9, 5 + hy, 7, 5, PIT); c.r(h0 + 15, 6 + hy, 1, 3, PIT)
+    c.row(3 + hy, h0 + 4, h0 + 9, INK); c.pts([(h0 + 2, 5 + hy), (h0 + 3, 4 + hy)], INK)
+    c.pts([(h0 + 3, 2 + hy), (h0 + 4, 1 + hy), (h0 + 7, 1 + hy), (h0 + 8, 2 + hy)], PRIM)           # 돋기 시작한 뿔
+    c.pts([(h0 + 1, 7 + hy), (h0 + 2, 8 + hy), (h0 + 4, 9 + hy), (h0 + 5, 6 + hy), (h0 + 3, 6 + hy)], PIT_I)
+    c.pts([(h0 + 2, 7 + hy), (h0 + 4, 5 + hy)], SKY_D)
+    eye = WHITE if f == 3 else PINK if op else PRIM
+    c.r(h0 + 8, 4 + hy, 4, 4, OUT); c.r(h0 + 9, 5 + hy, 3, 2, eye); c.p(h0 + 11, 5 + hy, WHITE if f == 3 else OUT); c.p(h0 + 9, 5 + hy, WHITE)
+    c.p(h0 + 15, 6 + hy, PIT_I)
+    if op:
+        c.r(h0 + 8, 10 + hy, 8, 1, OUT); c.r(h0 + 9, 11 + hy, 7, 2, PINK); c.r(h0 + 8, 13 + hy, 7, 2, PIT); c.row(14 + hy, h0 + 8, h0 + 13, PIT_I)
+        c.pts([(h0 + 10, 10 + hy), (h0 + 14, 10 + hy), (h0 + 13, 12 + hy)], WHITE); c.pts([(h0 + 11, 12 + hy), (h0 + 12, 12 + hy)], LOSE)
+    else:
+        c.row(10 + hy, h0 + 6, h0 + 14, DRAW)
+        c.row(9 + hy, h0 + 9, h0 + 15, OUT); c.p(h0 + 8, 8 + hy, OUT); c.p(h0 + 12, 10 + hy, WHITE)
+
+
+def e_heukryong(c, f):
+    heuk_base(c, f)
+    b = 1 if f == 1 else 0
+    h0 = 15 + (-1 if f == 3 else 0)
+    hy = b - (1 if f == 2 else 0)
+    c.pts([(h0 + 3, 1 + hy), (h0 + 2, hy), (h0 + 1, hy), (h0 + 7, hy), (h0 + 8, hy), (h0 + 9, 1 + hy), (h0 + 4, 2 + hy), (h0 + 8, 2 + hy)], PRIM)   # 금빛 뿔
+    c.pts([(h0 + 2, hy), (h0 + 8, hy)], PRIM_L)
+    c.pts([(h0 + 14, 11 + hy), (h0 + 15, 12 + hy), (h0 + 16, 12 + hy), (h0 + 13, 12 + hy)], PRIM_L)                                               # 수염
+    c.pts([(h0 + 1, 4 + hy), (h0, 6 + hy), (h0 + 1, 8 + hy), (19, 13), (18, 16)], SKY_D)                                                           # 갈기
+
+
 ENEMIES = {'slime': (16, e_slime), 'bat': (16, e_bat), 'spitter': (16, e_spitter), 'goblin': (16, e_goblin), 'knight': (24, e_knight), 'golem': (32, e_golem),
            'sprout': (16, e_sprout), 'moth': (16, e_moth), 'lizard': (16, e_lizard), 'toad': (16, e_toad), 'treant': (24, e_treant), 'imugi': (32, e_imugi),
            'snowimp': (16, e_snowimp), 'icebat': (16, e_icebat), 'frostjar': (16, e_frostjar), 'wisp': (16, e_wisp), 'haetae': (24, e_haetae),
            'winterGeneral': (32, e_winter_general), 'icecrystal': (16, e_icecrystal),
            'ram': (16, e_ram), 'kite': (16, e_kite), 'chick': (16, e_chick), 'scarecrow': (16, e_scarecrow), 'geumgye': (24, e_geumgye), 'yeongdeung': (32, e_yeongdeung),
            'bulgae': (16, e_bulgae), 'torchimp': (16, e_torchimp), 'wildcat': (16, e_wildcat), 'sparrow': (16, e_sparrow), 'hwacha': (24, e_hwacha),
-           'bulgasari': (32, e_bulgasari), 'iron': (16, e_iron)}
+           'bulgasari': (32, e_bulgasari), 'iron': (16, e_iron),
+           'drumimp': (16, e_drumimp), 'thunderbird': (16, e_thunderbird), 'raincloud': (16, e_raincloud), 'flagspirit': (16, e_flagspirit),
+           'thunderGeneral': (24, e_thunder_general), 'noegong': (32, e_noegong), 'drum': (16, e_drum),
+           'magpie': (16, e_magpie), 'starslime': (16, e_starslime), 'starlet': (16, e_starlet), 'weaver': (16, e_weaver), 'comet': (16, e_comet),
+           'crowKnight': (24, e_crow_knight), 'crowKing': (32, e_crow_king),
+           'thornhand': (16, e_thornhand), 'butterfly': (16, e_butterfly), 'beetle': (16, e_beetle), 'fairy': (16, e_fairy), 'peacock': (24, e_peacock),
+           'ggotgamgwan': (32, e_ggotgamgwan),
+           'stormimp': (16, e_stormimp), 'hailjar': (16, e_hailjar), 'starshard': (16, e_starshard), 'hawk': (16, e_hawk), 'jangseung': (24, e_jangseung),
+           'heukryong': (32, e_heukryong),
+           'skysoldier': (16, e_skysoldier), 'crane': (16, e_crane), 'lantern': (16, e_lantern), 'jadelion': (16, e_jadelion), 'skygeneral': (24, e_skygeneral),
+           'eodugsini': (48, e_eodugsini), 'wishlight': (16, e_wishlight)}
 ZONE3 = ['snowimp', 'icebat', 'frostjar', 'wisp', 'icecrystal', 'haetae', 'winterGeneral']
 ZONE4 = ['ram', 'kite', 'chick', 'scarecrow', 'geumgye', 'yeongdeung']
 ZONE5 = ['bulgae', 'torchimp', 'wildcat', 'sparrow', 'iron', 'hwacha', 'bulgasari']
+ZONE6 = ['drumimp', 'thunderbird', 'raincloud', 'flagspirit', 'drum', 'thunderGeneral', 'noegong']
+ZONE7 = ['magpie', 'starslime', 'starlet', 'weaver', 'comet', 'crowKnight', 'crowKing']
+ZONE8 = ['thornhand', 'butterfly', 'beetle', 'fairy', 'peacock', 'ggotgamgwan']
+ZONE9 = ['stormimp', 'hailjar', 'starshard', 'hawk', 'jangseung', 'heukryong']
+ZONE10 = ['skysoldier', 'crane', 'lantern', 'jadelion', 'wishlight', 'skygeneral', 'eodugsini']
 
 
 def draw_enemy(eid):
@@ -2157,6 +3189,12 @@ def main():
     orbs = {o: draw_orb(o) for o in ORBS}
     for o in ORBS:
         save(orbs[o], f'orb/{o}.png')
+    projs = draw_projectiles()
+    for n, cv in projs.items():
+        save(cv, f'proj/{n}.png')
+    ending = draw_ending(chars, tile_sheets, True)
+    save(ending, 'ending.png')
+    save(draw_ending(chars, tile_sheets, False), 'ending-bg.png')
     card = draw_card(chars, enemies, orbs)
     manifest = {
         '_note': 'public/art/ 에 넣은 그림 파일 목록 (여기 적힌 것만 불러온다). games/tower/art/draw.py 가 다시 쓴다. ASSETS.md 참고',
@@ -2176,28 +3214,36 @@ def main():
                 sh.paste(chars[n], 0, i * 128)
         for i in range(0, len(looks), 2):
             sh.im.crop((0, i * 128, 256, i * 128 + 256)).resize((1024, 1024), Image.NEAREST).save(out / f'contact-chars-{i // 2}.png')
-        lay = ['TTTTTTTTTTTTTTTTTT', 'FFFFDFFFFFFFFFFFFF', '.,.p....wwv.qQ.WWI', '.c.C.o.O.ws.hH.WII', '..r.g.S.f.d.P.bBnN', 'TTTTTLTTTTTTTT.RU.']
+        lay = ['TTTTTTTTTTTTTTTTTTTTTT', 'FFFFDFFFFFFFFFFFFFFFFF', '.,.p....wwv.qQ.WWI.12.', '.c.C.o.O.ws.hH.WII.3.4', '..r.g.S.f.d.P.bBnN.56.', 'TTTTTLTTTTTTTT.RU..778']
         key = {'T': 'wallTop', 'F': 'wallFace', '.': 'floor', ',': 'floor2', 'p': 'pillar', 'w': 'water', 'v': 'vine', 's': 'switch', 'c': 'chest', 'C': 'chestOpen',
                'o': 'pedestal', 'O': 'pedestalEmpty', 'r': 'rock', 'g': 'gate', 'S': 'shop', 'f': 'fountain', 'd': 'fountainDry', 'D': 'doorOpen', 'L': 'doorLocked',
                'q': 'plate', 'Q': 'plateOn', 'h': 'brazier', 'H': 'brazierLit', 'P': 'post',
-               'W': 'coldWater', 'I': 'ice', 'b': 'bell', 'B': 'bellOn', 'n': 'gong', 'N': 'gongOn', 'R': 'boulder', 'U': 'pit'}
+               'W': 'coldWater', 'I': 'ice', 'b': 'bell', 'B': 'bellOn', 'n': 'gong', 'N': 'gongOn', 'R': 'boulder', 'U': 'pit',
+               '1': 'rod', '2': 'rodOn', '3': 'puff', '4': 'bars', '5': 'mirrorA', '6': 'mirrorB', '7': 'fog', '8': 'wish'}
         for name, sheet in tile_sheets.items():
             sheet.im.resize((sheet.w * 3, 48), Image.NEAREST).save(out / f'contact-tiles-{name}.png')
-            room = Cv(16 * 18, 16 * 6)
+            room = Cv(16 * 22, 16 * 6)
             ti = lambda k: sheet.im.crop((TILE_ORDER.index(k) * 16, 0, TILE_ORDER.index(k) * 16 + 16, 16))
             for y, line in enumerate(lay):
                 for x, ch in enumerate(line):
                     room.im.paste(ti(key[ch]), (x * 16, y * 16))
             room.im.paste(ti('stairs'), (11 * 16, 4 * 16)); room.im.paste(ti('rubble'), (0, 4 * 16)); room.im.paste(ti('switchOn'), (11 * 16, 3 * 16))
             room.im.resize((room.w * 5, room.h * 5), Image.NEAREST).save(out / f'contact-room-{name}.png')
-        zones = [list(ENEMIES)[0:6], list(ENEMIES)[6:12], ZONE3, ZONE4, ZONE5]
+        zones = [list(ENEMIES)[0:6], list(ENEMIES)[6:12], ZONE3, ZONE4, ZONE5, ZONE6, ZONE7, ZONE8, ZONE9, ZONE10]
         for zi, ids in enumerate(zones):
-            en = Cv(128, sum(ENEMIES[e][0] for e in ids), bg)
+            en = Cv(max(ENEMIES[e][0] for e in ids) * 4, sum(ENEMIES[e][0] for e in ids), bg)
             y = 0
             for e in ids:
                 en.paste(enemies[e], 0, y)
                 y += ENEMIES[e][0]
             en.im.resize((en.w * 5, en.h * 5), Image.NEAREST).save(out / f'contact-enemies-{zi + 1}.png')
+        pj = Cv(70, 14, bg)
+        xx = 1
+        for n, cv in projs.items():
+            pj.paste(cv, xx, 1)
+            xx += cv.w + 2
+        pj.im.resize((pj.w * 8, pj.h * 8), Image.NEAREST).save(out / 'contact-proj.png')
+        ending.im.resize((480, 360), Image.NEAREST).save(out / 'contact-ending.png')
         ob = Cv(16 * 8 + 9, 16 * 2 + 3, hx('#fff8e8'))
         for i, o in enumerate(ORBS):
             ob.paste(orbs[o], 1 + (i % 8) * 17, 1 + (i // 8) * 17)

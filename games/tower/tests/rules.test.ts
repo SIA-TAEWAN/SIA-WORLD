@@ -14,9 +14,9 @@ const steps = (s: RunState, n: number, inp = noInput()) => {
 };
 
 describe('규칙', () => {
-  it('일반 적은 그 층 레벨 캐릭터의 기본 공격 3~5번에 쓰러진다 (1~50층)', () => {
-    for (let f = 1; f <= 50; f++) for (const id of zoneData(f)!.enemies) {
-      const n = hitsToKill(id, f);
+  it('일반 적은 그 층 레벨 캐릭터의 기본 공격 3~5번에 쓰러진다 (1~100층 — 51층부터 캐릭터는 층보다 몇 레벨 낮다)', () => {
+    for (let f = 1; f <= 100; f++) for (const id of zoneData(f)!.enemies) {
+      const n = hitsToKill(id, f <= 50 ? f : Math.min(99, f - 4), f);
       expect(n, `${id} ${f}층`).toBeGreaterThanOrEqual(3);
       expect(n, `${id} ${f}층`).toBeLessThanOrEqual(5);
     }

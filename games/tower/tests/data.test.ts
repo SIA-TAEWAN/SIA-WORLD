@@ -25,7 +25,7 @@ describe('데이터 (JSON)', () => {
     expect(floorRule(100).kind).toBe('boss');
     expect(FLOORS.zones).toHaveLength(10);
     expect(zoneData(95)?.zone).toBe(10);
-    expect(LAST_READY).toBe(50);
+    expect(LAST_READY).toBe(100);
     for (const r of FLOORS.pattern) if (r.kind === 'normal' || r.kind === 'elite') expect(r.combat[0] * r.waves[0]).toBeGreaterThanOrEqual(6);
   });
 
@@ -45,7 +45,7 @@ describe('데이터 (JSON)', () => {
     expect(enemyDef('golem').level).toBe(10);
     // 3~5구역: 일반 4 · 정예 1 · 보스 1 (보스 기준 레벨 30·40·50), 테마는 구역마다 다르다
     const themes = new Set<string>();
-    for (const [zone, theme] of [[3, 'frost'], [4, 'cloud'], [5, 'ember']] as const) {
+    for (const [zone, theme] of [[3, 'frost'], [4, 'cloud'], [5, 'ember'], [6, 'thunder'], [7, 'galaxy'], [8, 'flower'], [9, 'storm'], [10, 'wish']] as const) {
       const z = zoneData(zone * 10)!;
       expect(z.ready).toBe(true);
       expect(z.theme).toBe(theme);
@@ -56,17 +56,28 @@ describe('데이터 (JSON)', () => {
         expect(enemyDef(id).weight, id).toBeGreaterThan(0);
       }
       expect(enemyDef(z.elite)).toMatchObject({ elite: true, minFloor: zone * 10 - 1 });
-      expect(enemyDef(z.boss)).toMatchObject({ boss: true, level: zone * 10, size: 32, minFloor: zone * 10 });
+      // 마지막 보스(어둑시니)만 48 — 시트 규격은 같다 (size × 4칸)
+      expect(enemyDef(z.boss)).toMatchObject({ boss: true, level: zone * 10, size: zone === 10 ? 48 : 32, minFloor: zone * 10 });
       // 보스가 부르는 것(얼음 수정 · 쇠붙이)도 데이터에 있다
       const sum = enemyDef(z.boss).summon;
       if (sum) expect(enemyDef(sum.id).weight).toBe(0);
     }
-    expect(themes.size).toBe(3);
-    // 1~5구역 적 이름은 겹치지 않는다
+    expect(themes.size).toBe(8);
+    // 1~10구역 적 이름은 겹치지 않는다
     expect(new Set(ENEMIES.map((e) => e.id)).size).toBe(ENEMIES.length);
     expect(ENEMIES.some((e) => e.status?.kind === 'burn')).toBe(true);
-    // 그림 규격: 일반 16 · 정예 24 · 보스 32
-    for (const e of ENEMIES) expect(e.size).toBe(e.boss ? 32 : e.elite ? 24 : 16);
+    // 그림 규격: 일반 16 · 정예 24 · 보스 32 (마지막 보스 48, 까마귀 그림자는 대왕 그림을 빌린다)
+    for (const e of ENEMIES) expect(e.size, e.id).toBe(e.id === 'eodugsini' ? 48 : e.art ? enemyDef(e.art).size : e.boss ? 32 : e.elite ? 24 : 16);
+    // 6구역부터: 경험치 배수(레벨이 층을 너무 앞서지 않게) · 엽전 배수 · 전투방 최대 3 (한 층 3분 안쪽)
+    for (let zone = 6; zone <= 10; zone++) {
+      const z = zoneData(zone * 10)!;
+      expect(z.expMul).toBeGreaterThan(0.5);
+      expect(z.expMul).toBeLessThan(1);
+      expect(z.coinMul).toBeGreaterThan(0.5);
+      expect(floorRule(zone * 10 - 6).combat[1]).toBe(3);
+      expect(floorRule(zone * 10 - 2).combat[1]).toBe(3);
+    }
+    expect(floorRule(44).combat[1]).toBe(4);
   });
 
   it('방 템플릿: 19×13 (예전 15×11 은 가운데에 채운다), 네 문 앞이 비어 있고 문·시작·계단이 걸어서 이어진다', () => {
@@ -110,23 +121,35 @@ describe('데이터 (JSON)', () => {
     // 3~5구역 새 퍼즐: 찬물(토끼) · 풍경(닭) · 징(개) · 둥근 바위(호랑이)
     const needs = (id: string, ch: string) => p.some((r) => r.needs === id && r.grid.join('').includes(ch));
     expect(needs('rabbit', 'i') && needs('rooster', 'b') && needs('dog', 'j') && needs('tiger', 'u') && needs('tiger', 'x')).toBe(true);
+    // 6~10구역 새 퍼즐: 뇌석(말) · 구름 덩이(돼지) · 쇠창살(백호) · 거울(쥐 참격) · 짙은 구름(청룡)
+    expect(needs('horse', 'l') && needs('pig', 'o') && needs('pig', 'x') && needs('whiteTiger', 'z') && needs('rat', '/') && needs('blueDragon', 'm')).toBe(true);
+    // 구역마다 그 구역에서 처음 나오는 퍼즐이 있다
+    for (const [zone, kinds] of [[6, ['-rod']], [7, ['-gust']], [8, ['-bars']], [9, ['-mirror']], [10, ['-fog']]] as const) {
+      for (const k of kinds) expect(p.some((r) => r.id.includes(k) && Math.ceil(r.minFloor / 10) === zone), `${zone}구역 ${k}`).toBe(true);
+    }
   });
 
   it('보스방: 구역마다 하나 (그 보스 층에만), 전설 구슬 층(30·50)의 보스방에는 받침대', () => {
     const boss = ROOMS.rooms.filter((r) => r.kind === 'boss');
-    for (let f = 10; f <= 50; f += 10) {
+    for (let f = 10; f <= 100; f += 10) {
       const list = boss.filter((r) => r.minFloor <= f && (r.maxFloor ?? 999) >= f);
       expect(list, `${f}층`).toHaveLength(1);
       expect(list[0].grid.join('').includes('O'), `${f}층`).toBe(!!orbAtFloor(f)?.legend);
+      // 100층 보스방에만 소원 구슬
+      expect(list[0].grid.join('').includes('W'), `${f}층`).toBe(f === 100);
     }
     expect(orbAtFloor(30)?.id).toBe('turtle');
     expect(orbAtFloor(50)?.id).toBe('phoenix');
+    expect(orbAtFloor(70)?.id).toBe('whiteTiger');
+    expect(orbAtFloor(90)?.id).toBe('blueDragon');
+    expect(orbAtFloor(100)).toBeUndefined();
   });
 
   it('타일 순서: 처음 22칸은 1구역 시트 그대로, 새 칸은 뒤에만', () => {
     expect(TILE_ORDER.slice(0, 22)).toEqual(['floor', 'floor2', 'wallTop', 'wallFace', 'doorOpen', 'doorLocked', 'water', 'pillar', 'gate', 'rock', 'switch', 'switchOn', 'vine', 'stairs', 'chest', 'chestOpen', 'pedestal', 'pedestalEmpty', 'shop', 'fountain', 'rubble', 'fountainDry']);
     expect(TILE_ORDER.slice(22, 27)).toEqual(['plate', 'plateOn', 'brazier', 'brazierLit', 'post']);
-    expect(TILE_ORDER.slice(27)).toEqual(['coldWater', 'ice', 'bell', 'bellOn', 'gong', 'gongOn', 'boulder', 'pit']);
+    expect(TILE_ORDER.slice(27, 35)).toEqual(['coldWater', 'ice', 'bell', 'bellOn', 'gong', 'gongOn', 'boulder', 'pit']);
+    expect(TILE_ORDER.slice(35)).toEqual(['rod', 'rodOn', 'puff', 'bars', 'mirrorA', 'mirrorB', 'fog', 'wish']);
   });
 
   it('능력치: 1레벨 100/10/5/50, 레벨당 +25/+3/+2/+2, 최대 99', () => {
@@ -143,5 +166,6 @@ describe('데이터 (JSON)', () => {
     expect(priceOf('shard', 15)).toBe(450);
     expect(priceOf('shard', 25)).toBe(675);
     expect([25, 35, 45].map((f) => priceOf('potionL', f))).toEqual([135, 203, 304]);
+    expect([55, 65, 75, 85, 95].map((f) => priceOf('potionL', f))).toEqual([456, 683, 1025, 1538, 2307]);
   });
 });

@@ -15,5 +15,7 @@ export const DEV_AWAKEN = LOCAL_MODE ? (params.get('awaken') ?? '').split(',').f
 /** 개발용: 엽전·조각 (?local=1&coins=1000&shards=5) */
 export const DEV_COINS = num('coins', 0, 1e7);
 export const DEV_SHARDS = num('shards', 0, 999);
+/** 개발용: 엔딩 화면 (탑을 다 오른 상태로 — ?local=1&ending=1) */
+export const DEV_ENDING = LOCAL_MODE && params.get('ending') === '1';
 /** 개발용: 기기에 저장한 테스트 기록을 지우고 처음부터 (?local=1&reset=1 — 캐릭터 만들기부터) */
 export const DEV_RESET = LOCAL_MODE && params.get('reset') === '1';

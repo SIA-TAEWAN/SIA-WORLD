@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
+import { projImage } from '../art/load';
 import { FRAME, TS, attackCol, enemySize, frameIndex, tileArtIndex, walkCol, type TileArt } from '../art/sheets';
 import { T, TILE } from '../game/floorgen';
-import { BODY_UP, STEP, prm, step, tileOf, type Enemy, type Fx, type Input, type RunState, type SimEvent } from '../game/sim';
+import { BODY_UP, STEP, beamAng, prm, step, tileOf, type Enemy, type Fx, type Input, type RunState, type SimEvent } from '../game/sim';
 import { COLOR } from '../theme';
 
 /**
@@ -58,6 +59,8 @@ export class GameScene extends Phaser.Scene {
   private slash: { t: number; face: number; big: boolean } | null = null;
   private shake = 0;
   private zoom = 1;
+  /** 어둑시니 3단계: 캐릭터 둘레만 밝은 어둠 */
+  private dark!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super('tower');
@@ -99,6 +102,7 @@ export class GameScene extends Phaser.Scene {
     art.layers.forEach((cv, i) => this.sheetTexture(`L${i}`, cv, FRAME, FRAME, true));
     this.sheetTexture('tiles', art.tiles, TS, TS, true);
     for (const [id, cv] of Object.entries(art.enemies)) this.sheetTexture(`E:${id}`, cv, enemySize(id), enemySize(id), true);
+    this.dark = this.add.graphics().setDepth(5500);
     this.makeFx();
 
     // 바닥 (타일맵)
@@ -236,6 +240,44 @@ export class GameScene extends Phaser.Scene {
       px(g, COLOR.outline, 9, 0, 3, 5);
       px(g, COLOR.primary, 10, 1, 2, 3);
     });
+    // 6~10구역 적 투사체
+    mk('web', 8, 8, (g) => {
+      px(g, COLOR.outline, 1, 1, 6, 6);
+      px(g, COLOR.white, 2, 2, 4, 4);
+      px(g, COLOR.lineSoft, 3, 3, 2, 2);
+      px(g, COLOR.white, 0, 3, 8, 1);
+      px(g, COLOR.white, 3, 0, 1, 8);
+    });
+    mk('crowfeather', 10, 6, (g) => {
+      px(g, COLOR.outline, 0, 1, 10, 4);
+      px(g, COLOR.skyDeep, 1, 2, 8, 2);
+      px(g, COLOR.primaryLight, 8, 2, 1, 1);
+    });
+    mk('pollen', 6, 6, (g) => {
+      px(g, COLOR.outline, 1, 0, 4, 6);
+      px(g, COLOR.outline, 0, 1, 6, 4);
+      px(g, COLOR.primaryLight, 1, 1, 4, 4);
+      px(g, COLOR.win, 2, 2, 2, 2);
+    });
+    mk('petal', 8, 6, (g) => {
+      px(g, COLOR.outline, 1, 0, 6, 6);
+      px(g, COLOR.outline, 0, 1, 8, 4);
+      px(g, COLOR.pink, 1, 1, 6, 4);
+      px(g, COLOR.white, 2, 2, 2, 1);
+    });
+    mk('storm', 12, 12, (g) => {
+      px(g, COLOR.outline, 2, 1, 8, 10);
+      px(g, COLOR.outline, 1, 2, 10, 8);
+      px(g, COLOR.skyDeep, 2, 2, 8, 8);
+      px(g, COLOR.primaryLight, 5, 3, 2, 3);
+      px(g, COLOR.primaryLight, 4, 6, 2, 3);
+    });
+    mk('shade', 10, 10, (g) => {
+      px(g, COLOR.inkSoft, 1, 1, 8, 8);
+      px(g, COLOR.outline, 2, 2, 6, 6);
+      px(g, COLOR.white, 3, 4, 1, 1);
+      px(g, COLOR.white, 6, 4, 1, 1);
+    });
     mk('spike', 10, 6, (g) => {
       px(g, COLOR.outline, 0, 1, 8, 4);
       px(g, COLOR.draw, 1, 2, 6, 2);
@@ -281,6 +323,17 @@ export class GameScene extends Phaser.Scene {
       px(g, COLOR.outline, 8, 14, 3, 3);
       px(g, COLOR.primaryLight, 9, 15, 1, 1);
     });
+    // 손그림 투사체가 있으면 코드 그림 위에 덮는다 (늦게 읽혀도 같은 텍스처라 바로 바뀐다)
+    for (const [key, w, h] of [['web', 8, 8], ['crowfeather', 10, 6], ['pollen', 6, 6], ['petal', 8, 6], ['storm', 12, 12], ['shade', 10, 10]] as const) {
+      void projImage(key, w, h).then((cv) => {
+        if (!cv || !this.textures.exists(key)) return;
+        const t = this.textures.get(key) as Phaser.Textures.CanvasTexture;
+        const g = t.getContext();
+        g.clearRect(0, 0, w, h);
+        g.drawImage(cv, 0, 0);
+        t.refresh();
+      });
+    }
     if (!this.cache.bitmapFont.exists('pdigits')) {
       mk('pdigits-img', DW * DIGITS.length, DH, (g) => {
         // 3×5 흰 숫자 + 둘레 1칸 테두리 (칸 5×7)
@@ -342,6 +395,14 @@ export class GameScene extends Phaser.Scene {
       case T.GONG_ON: return k('gongOn');
       case T.BOULDER: return k('boulder');
       case T.PIT: return k('pit');
+      case T.ROD: return k('rod');
+      case T.ROD_ON: return k('rodOn');
+      case T.PUFF: return k('puff');
+      case T.BARS: return k('bars');
+      case T.MIRROR_A: return k('mirrorA');
+      case T.MIRROR_B: return k('mirrorB');
+      case T.FOG: return k('fog');
+      case T.WISH: return k('wish');
     }
     return k('floor');
   }
@@ -421,6 +482,10 @@ export class GameScene extends Phaser.Scene {
         case 'ring':
         case 'ringReset':
         case 'boulder':
+        case 'bars':
+        case 'fog':
+        case 'wishRise':
+        case 'wish':
           tiles = true;
           break;
       }
@@ -463,8 +528,8 @@ export class GameScene extends Phaser.Scene {
       sp.setVisible(!e.pending && !e.hidden);
       if (e.pending || e.hidden) continue;
       // 하늘에 오른 영등할미·뛰어오른 정예: 높이 띄우고 그림자 쪽으로 옮긴다
-      const air = e.guard === 'air' ? 26 : 0;
-      const S = enemySize(e.def.id);
+      const air = e.guard === 'air' ? 26 : e.guard === 'cloud' ? 14 : 0;
+      const S = enemySize(e.def.art ?? e.def.id);
       const frozen = e.freeze > 0 || e.stun > 0;
       const bob = e.active && e.def.ai !== 'ranged' && !frozen ? Math.floor(s.t * 6 + e.id) % 2 : 0;
       const wind = e.state === 'windup' || e.state.endsWith('Wind');
@@ -476,8 +541,16 @@ export class GameScene extends Phaser.Scene {
       sp.setPosition(Math.round(e.x), Math.round(e.y - (e.def.fly ? 4 : 0) - (S > 16 ? S / 2 - e.def.r : 0) - lift));
       sp.setFlipX(e.faceX < 0);
       sp.setDepth(e.y + e.def.r + (lift ? 200 : 0));
-      sp.setAlpha(e.wake > 0 ? 0.5 + 0.5 * (Math.floor(s.t * 12) % 2) : 1);
+      // 까마귀 그림자는 살짝 흐리다 (진짜 대왕은 또렷하다)
+      sp.setAlpha(e.wake > 0 ? 0.5 + 0.5 * (Math.floor(s.t * 12) % 2) : e.def.ai === 'decoy' ? 0.82 : 1);
+      // 커진 어둑시니
+      sp.setScale(e.guard === 'dark' ? 1.5 : 1);
       if (e.guard === 'ice') sp.setTint(Math.floor(s.t * 3) % 2 === 0 ? COLOR.white : COLOR.skyMid);
+      else if (e.guard === 'cloud') sp.setTint(Math.floor(s.t * 3) % 2 === 0 ? COLOR.lineSoft : COLOR.draw);
+      else if (e.def.ai === 'drum') {
+        if (e.lit > 0) sp.setTint(Math.floor(s.t * 8) % 2 === 0 ? COLOR.primaryLight : COLOR.white);
+        else sp.clearTint();
+      }
       else if (e.state === 'stun' || e.stun > 0) sp.setTint(COLOR.skyMid);
       else if (e.freeze > 0) sp.setTintFill(COLOR.skyMid);
       else if (e.burn > 0 && Math.floor(s.t * 8) % 2 === 0) sp.setTint(COLOR.primaryDeep);
@@ -497,11 +570,11 @@ export class GameScene extends Phaser.Scene {
         this.projs.set(pr.id, o);
       }
       o.setPosition(Math.round(pr.x), Math.round(pr.y));
-      if (['crescent', 'thorn', 'ice', 'feather', 'fireFeather', 'sonic', 'wind', 'shard', 'dart', 'straw', 'quill', 'arrow', 'spike'].includes(pr.kind)) o.setRotation(Math.atan2(pr.vy, pr.vx));
-      else if (pr.kind === 'tornado' || pr.kind === 'whirl') o.setFlipX(Math.floor(s.t * 10) % 2 === 0);
-      else if (pr.kind === 'leaf') o.setRotation(s.t * 6);
+      if (['crescent', 'thorn', 'ice', 'feather', 'fireFeather', 'sonic', 'wind', 'shard', 'dart', 'straw', 'quill', 'arrow', 'spike', 'crowfeather'].includes(pr.kind)) o.setRotation(Math.atan2(pr.vy, pr.vx));
+      else if (pr.kind === 'tornado' || pr.kind === 'whirl' || pr.kind === 'storm') o.setFlipX(Math.floor(s.t * 10) % 2 === 0);
+      else if (pr.kind === 'leaf' || pr.kind === 'petal' || pr.kind === 'web') o.setRotation(s.t * 6);
       // 되받아친 투사체는 흰빛
-      if (pr.from === 'p' && ['spore', 'rock', 'thorn', 'venom', 'shard', 'dart', 'straw', 'quill', 'leaf', 'whirl', 'arrow', 'spike'].includes(pr.kind)) o.setTint(COLOR.white);
+      if (pr.from === 'p' && ['spore', 'rock', 'thorn', 'venom', 'shard', 'dart', 'straw', 'quill', 'leaf', 'whirl', 'arrow', 'spike', 'web', 'crowfeather', 'pollen', 'petal', 'storm', 'shade'].includes(pr.kind)) o.setTint(COLOR.white);
     }
     for (const [id, o] of this.projs) {
       if (!live.has(id)) {
@@ -521,6 +594,14 @@ export class GameScene extends Phaser.Scene {
       g.lineStyle(1, h.status.kind === 'slow' ? COLOR.white : COLOR.pink, 0.6 * fade);
       g.strokeCircle(h.x, h.y, h.r);
     }
+    // 네모로 떨어지는 공격 (꽃밭 한 켠 · 무너지는 다리)
+    for (const r of s.rects) {
+      const t = Math.min(1, r.t / r.total);
+      g.fillStyle(COLOR.pink, 0.12 + t * 0.22);
+      g.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+      g.lineStyle(1, COLOR.pink, 0.9);
+      g.strokeRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+    }
     for (const k of s.strikes) {
       const t = Math.min(1, k.t / k.total);
       g.fillStyle(COLOR.pink, 0.15 + t * 0.25);
@@ -537,6 +618,13 @@ export class GameScene extends Phaser.Scene {
       if (t.kind === 'circle') {
         g.fillCircle(t.x, t.y, t.r * (0.35 + 0.65 * k));
         g.strokeCircle(t.x, t.y, t.r);
+      } else if (t.kind === 'fan') {
+        // 번개 줄기: 부채꼴 n 갈래 (굵기 = 맞는 폭)
+        g.lineStyle(t.r * 2 * (0.3 + 0.7 * k), COLOR.pink, 0.2 + k * 0.25);
+        for (let i = 0; i < (t.n ?? 1); i++) {
+          const a = beamAng(t, i);
+          g.lineBetween(t.x, t.y, t.x + Math.cos(a) * t.len, t.y + Math.sin(a) * t.len);
+        }
       } else if (t.kind === 'cross') {
         // 여러 갈래 선 (불가사리 쇠가시)
         g.lineStyle(t.r * 2 * (0.4 + 0.6 * k), COLOR.pink, 0.22 + k * 0.2);
@@ -587,6 +675,14 @@ export class GameScene extends Phaser.Scene {
     for (const f of s.fx) this.drawFx(o, f, true);
     this.drawAura(o);
     if (s.wind) this.drawWind(o, s.wind.dx, s.wind.dy);
+    if (s.vortex) this.drawVortex(o, s.vortex.x, s.vortex.y);
+    // 어둑시니 3단계: 방이 어두워진다 (캐릭터 둘레만 밝다)
+    this.dark.clear();
+    const dk = s.boss && s.boss.alive && s.boss.def.ai === 'eodugsini' && s.boss.phase >= 3;
+    if (dk) {
+      this.dark.lineStyle(520, COLOR.outline, s.boss!.guard === 'dark' ? 0.55 : 0.3);
+      this.dark.strokeCircle(p.x, p.y - BODY_UP, 76 + 260);
+    }
 
     // 숫자
     for (const n of this.nums) {
@@ -604,7 +700,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private foeSprite(e: Enemy) {
-    const sp = this.add.sprite(e.x, e.y, `E:${e.def.id}`, 0).setOrigin(0.5, 0.5);
+    const sp = this.add.sprite(e.x, e.y, `E:${e.def.art ?? e.def.id}`, 0).setOrigin(0.5, 0.5);
     if (e.pending) sp.setVisible(false);
     this.foes.set(e.id, sp);
     return sp;
@@ -638,6 +734,25 @@ export class GameScene extends Phaser.Scene {
       case 'wispBurst': if (!top) ring(COLOR.skyTop, 0.45); break;
       case 'icicle': if (!top) ring(COLOR.white, 0.5); break;
       case 'ember': if (!top) ring(COLOR.primaryDeep, 0.45); break;
+      case 'zap':
+        // 낙뢰: 하늘에서 내리꽂는 번개 + 땅의 원
+        if (top) {
+          g.lineStyle(2, COLOR.primaryLight, k);
+          g.lineBetween(f.x - 2, f.y - 50, f.x + 3, f.y - 24);
+          g.lineBetween(f.x + 3, f.y - 24, f.x, f.y);
+        } else ring(COLOR.primaryLight, 0.45);
+        break;
+      case 'hail': if (!top) ring(COLOR.white, 0.5); break;
+      case 'thornCage': if (!top) ring(COLOR.win, 0.5); break;
+      case 'heal': if (!top) ring(COLOR.win, 0.25); break;
+      case 'drumHit': if (top) ring(COLOR.primaryLight, 0.5); break;
+      case 'beam': if (top) { g.lineStyle(Math.max(2, f.r * 1.4) * k, COLOR.primaryLight, 0.9 * k); g.lineBetween(f.x, f.y, f.x2 ?? f.x, f.y2 ?? f.y); g.lineStyle(1, COLOR.white, k); g.lineBetween(f.x, f.y, f.x2 ?? f.x, f.y2 ?? f.y); } break;
+      case 'rectHit':
+        if (!top) {
+          g.fillStyle(COLOR.pink, 0.35 * k);
+          g.fillRect(f.x, f.y, (f.x2 ?? f.x) - f.x, (f.y2 ?? f.y) - f.y);
+        }
+        break;
       case 'gust': if (top) { g.lineStyle(f.r * 2 * k, COLOR.white, 0.35 * k); g.lineBetween(f.x, f.y, f.x2 ?? f.x, f.y2 ?? f.y); } break;
       case 'orbRise':
         // 전설 구슬이 솟아오른다: 빛기둥 + 퍼지는 원
@@ -691,6 +806,17 @@ export class GameScene extends Phaser.Scene {
         const x = v.x + b * v.width;
         g.lineBetween(x, y, x, y - dy * 14);
       }
+    }
+  }
+
+  /** 흑룡·어둑시니 소용돌이: 한 점으로 빨려드는 줄 */
+  private drawVortex(g: Phaser.GameObjects.Graphics, x: number, y: number) {
+    const t = this.run.t;
+    g.lineStyle(1, COLOR.skyMid, 0.5);
+    for (let i = 0; i < 10; i++) {
+      const a = i * 0.628 + t * 1.5;
+      const r = 40 + ((i * 37 + t * 50) % 90);
+      g.lineBetween(x + Math.cos(a) * r, y + Math.sin(a) * r, x + Math.cos(a + 0.35) * (r - 14), y + Math.sin(a + 0.35) * (r - 14));
     }
   }
 
