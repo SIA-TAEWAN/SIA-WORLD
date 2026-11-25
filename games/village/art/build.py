@@ -1,7 +1,7 @@
 """SpriteCook 원본 시트(art/sheets/*.png) → 게임이 쓰는 그림(public/art/*.png, shared/images/card-village.png).
 
 쓰는 법 (games/village 에서):  python art/build.py
-- 시트를 칸(가로 3칸 한 줄 · 3×2 · 2×2)으로 나눠 칸마다 투명 여백을 잘라 낸다.
+- 시트를 칸(가로 3칸 한 줄 · 3×2 · 2×2 · 한 장)으로 나눠 칸마다 투명 여백을 잘라 낸다.
 - 건물 그림의 크기(ASSETS.md): 1×1 = 192×272, 2×2 = 384×544. 그림은 아래쪽 가운데에 붙여 놓는다 (칸의 아래 변 = 건물 바닥).
 - 줄일 때는 알파를 미리 곱해서 가장자리에 배경색이 번지지 않게 한다. 256색 팔레트 PNG 로 저장해 용량을 줄인다.
 - 수확 방울(bubble-*)은 흰 말풍선(코드 그림과 같은 모양)에 자원 아이콘을 얹어 만든다.
@@ -16,7 +16,7 @@ OUT = os.path.join(HERE, '..', 'public', 'art')
 CARD_OUT = os.path.join(HERE, '..', '..', '..', 'shared', 'images', 'card-village.png')
 OUTLINE = (42, 26, 16, 255)
 
-# 시트 → 칸마다 이름 (None = 쓰지 않는 칸). row3: 가로 3칸, g32: 3×2, g22: 2×2
+# 시트 → 칸마다 이름 (None = 쓰지 않는 칸). row3: 가로 3칸, g32: 3×2, g22: 2×2, one: 한 장
 B = lambda t: [f'b-{t}-1', f'b-{t}-2', f'b-{t}-3']
 SHEET = {
     'hall2': ('row3', B('hall')), 'house2': ('row3', B('house')), 'paddy': ('row3', B('paddy')), 'lumber': ('row3', B('lumber')),
@@ -29,6 +29,16 @@ SHEET = {
     'monA': ('g32', ['b-mon_tank1-1', 'b-mon_tank10-1', 'b-mon_volley1-1', 'b-mon_volley10-1', 'b-mon_race1-1', 'b-mon_race2-1']),
     'monB': ('g32', ['b-mon_surv_field-1', 'b-mon_surv_bamboo-1', 'b-mon_surv_palace-1', 'b-mon_surv_underworld-1', 'b-mon_def3-1', 'b-mon_def6-1']),
     'monC': ('g22', ['b-mon_def9-1', 'b-mon_def12-1', 'b-mon_matgo-1', 'b-mon_casino-1']),
+    # 돌격대 · 핑거 기념물
+    'monD': ('g32', ['b-mon_charge30-1', 'b-mon_charge100-1', 'b-mon_charge_road-1', 'b-mon_finger30-1', 'b-mon_finger100-1', 'b-mon_finger_tower-1']),
+    # 열두길 · 오늘의 도전 기념물 (도전 달력 칸은 일곱 칸이 아니라서 monF 의 것을 쓴다)
+    'monE': ('g32', ['b-mon_twelve_keys-1', 'b-mon_twelve_final-1', 'b-mon_twelve_hard-1', 'b-mon_twelve_tower-1', None, 'b-mon_daily_first-1']),
+    # 레이스 주간 시상대 · 도전 달력 (나머지 네 칸은 쓰지 않는 다른 시안)
+    'monF': ('g32', ['b-mon_race_week-1', 'b-mon_daily7-1', None, None, None, None]),
+    # 고양이 선물 (한 장짜리)
+    'giftC': ('one', ['b-gift_cat-1']),
+    # 특별 건물 열두 지신 문
+    'jisin': ('row3', B('jisin')),
     'icons': ('g32', ['icon-rice', 'icon-wood', 'icon-stone', 'icon-cake', 'icon-coin', 'icon-special']),
     'misc': ('row3', ['site-1', 'site-2', 'b-road-1']),
     # 땅 밖 자연물 (숲 무늬 · 땅 둘레에 섞어 찍는다)
@@ -40,11 +50,11 @@ SHEET = {
     # 돌담 발치에 찍는 풀포기 · 들꽃 · 조약돌 (윗줄의 비스듬한 돌담 시안은 쓰지 않는다)
     'yardbits': ('g32', [None, None, None, 'g-tuft', 'g-flowers', 'g-pebbles']),
 }
-BIG = {'hall', 'pavilion', 'feast', 'shrine'}
+BIG = {'hall', 'pavilion', 'feast', 'shrine', 'jisin'}
 
 
 def cells(kind, im):
-    cols, rows = {'row3': (3, 1), 'g32': (3, 2), 'g22': (2, 2)}[kind]
+    cols, rows = {'row3': (3, 1), 'g32': (3, 2), 'g22': (2, 2), 'one': (1, 1)}[kind]
     w, h = im.width / cols, im.height / rows
     for r in range(rows):
         for c in range(cols):

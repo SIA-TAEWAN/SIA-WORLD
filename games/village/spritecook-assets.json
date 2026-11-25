@@ -159,6 +159,43 @@
       "label": "art/sheets/yardbits.png — 돌담 발치 · 마당의 풀포기 · 들꽃 · 조약돌 (+ 안 쓰는 비스듬한 돌담 3) → g-tuft · g-flowers · g-pebbles"
     },
     {
+      "asset_id": "f91aebb3-9c12-4a99-aec9-34b4fa93d641",
+      "sha12": "b12d1dea85e5",
+      "label": "art/sheets/monD.png — 기념물 돌격대 3(돌격 북·황금 돌격 깃발·끝없는 길 이정표)·핑거 3(튕김 구슬·황금 구슬·요괴 탑)"
+    },
+    {
+      "asset_id": "dc52c0e6-e9ac-4ef2-b28b-8a8488ccbbb2",
+      "sha12": "8489f094f47e",
+      "label": "art/sheets/monE.png — 기념물 열두길 4(열쇠 돌기둥·비석·금빛 문·구름 탑 등불)·(안 쓰는 달력: 칸이 여덟)·장원 깃발"
+    },
+    {
+      "asset_id": "093d6fac-4430-42a2-af22-8fa90927e47d",
+      "sha12": "78fb829d492e",
+      "label": "art/sheets/monF.png — 기념물 주간 시상대·도전 달력(일곱 칸) (+ 안 쓰는 다른 시안 4) → b-mon_race_week-1 · b-mon_daily7-1"
+    },
+    {
+      "asset_id": "8789899d-7415-4500-9fa5-fa43022abedd",
+      "sha12": "69b8dcc43d46",
+      "label": "art/sheets/jisin.png — 열두 지신 문 모습 1·2·3 → b-jisin-1~3 (첫 시안의 가운데 문에 문짝을 단 것, edit)"
+    },
+    {
+      "asset_id": "5bbada7d-86fb-430b-a62a-45db032af1ed",
+      "sha12": "90b7654ef4b0",
+      "label": "art/sheets/giftC.png — 고양이 선물 야옹이의 금관 방석 (한 장) → b-gift_cat-1"
+    },
+    {
+      "asset_id": "a6ba0812-b27d-44dc-8929-40613cda4698",
+      "label": "(참고) 고양이 전신 shared/images/zodiac/full/cat.png — 금관 모양 참고"
+    },
+    {
+      "asset_id": "0bbbd6a4-ccb8-427c-9e02-ae4757f1946e",
+      "label": "(쓰지 않음) 열두 지신 문 첫 시안: 모습 2 의 문이 뚫려 있어 문짝을 단 것으로 바꿈"
+    },
+    {
+      "asset_id": "64816774-0d4f-48f1-9859-b78018b63280",
+      "label": "(쓰지 않음) 고양이 선물 첫 시안: 받침이 둥근 회색 돌이라 다른 선물과 맞지 않아 버림"
+    },
+    {
       "asset_id": "b56d55b6-1f34-40e2-b695-3d3536f85c15",
       "label": "(쓰지 않음) 마당 흙 무늬 다른 시안: 얼룩이 크고 이음새가 보여서 버림"
     },
