@@ -1,30 +1,29 @@
 {
-  "_note": "구역(10층) 하나는 pattern 을 그대로 되풀이한다. 층 n 의 기준 레벨 = n. ready 가 false 인 구역은 구조만 있고 아직 들어갈 수 없다",
+  "_note": "구역(10층) 하나는 pattern 을 그대로 되풀이한다. 층 n 의 기준 레벨 = n. ready 가 false 인 구역은 구조만 있고 아직 들어갈 수 없다. combat = 큰 길 전투방 수 [최소, 최대], waves = 전투방마다 몰려오는 무리 수 [최소, 최대], pack = 한 무리의 적 수 [최소, 최대] (템플릿의 적 자리 중에서 고른다), side = 곁방 (모두 붙인다. 퍼즐 템플릿이 없으면 보물방)",
   "totalFloors": 100,
   "zoneSize": 10,
   "pattern": [
-    { "at": 1, "kind": "normal", "combat": [1, 2], "side": ["treasure"] },
-    { "at": 2, "kind": "normal", "combat": [1, 2], "side": ["treasure", "puzzle"] },
-    { "at": 3, "kind": "normal", "combat": [1, 2], "side": ["puzzle", "treasure"] },
-    { "at": 4, "kind": "normal", "combat": [2, 2], "side": ["treasure", "puzzle"] },
-    { "at": 5, "kind": "rest", "combat": [0, 0], "side": [] },
-    { "at": 6, "kind": "normal", "combat": [1, 2], "side": ["puzzle", "treasure"] },
-    { "at": 7, "kind": "normal", "combat": [1, 2], "side": ["treasure", "puzzle"] },
-    { "at": 8, "kind": "normal", "combat": [2, 2], "side": ["puzzle", "treasure"] },
-    { "at": 9, "kind": "elite", "combat": [1, 1], "side": ["treasure"] },
-    { "at": 10, "kind": "boss", "combat": [0, 0], "side": [] }
+    {"at": 1, "kind": "normal", "combat": [3,3], "waves": [3,3], "pack": [3,3], "side": ["treasure", "puzzle"]},
+    {"at": 2, "kind": "normal", "combat": [3,3], "waves": [3,3], "pack": [3,3], "side": ["puzzle", "treasure"]},
+    {"at": 3, "kind": "normal", "combat": [3,4], "waves": [3,3], "pack": [3,4], "side": ["puzzle", "treasure"]},
+    {"at": 4, "kind": "normal", "combat": [3,4], "waves": [3,3], "pack": [4,4], "side": ["puzzle", "treasure", "puzzle"]},
+    {"at": 5, "kind": "rest", "combat": [0,0], "waves": [0,0], "pack": [0,0], "side": ["treasure"]},
+    {"at": 6, "kind": "normal", "combat": [3,3], "waves": [3,3], "pack": [4,4], "side": ["puzzle", "treasure", "puzzle"]},
+    {"at": 7, "kind": "normal", "combat": [3,3], "waves": [3,3], "pack": [4,5], "side": ["puzzle", "treasure"]},
+    {"at": 8, "kind": "normal", "combat": [3,4], "waves": [3,3], "pack": [4,5], "side": ["puzzle", "treasure", "puzzle"]},
+    {"at": 9, "kind": "elite", "combat": [3,3], "waves": [3,3], "pack": [3,4], "side": ["treasure", "puzzle"]},
+    {"at": 10, "kind": "boss", "combat": [0,0], "waves": [0,0], "pack": [0,0], "side": []}
   ],
   "zones": [
-    { "zone": 1, "name": "탑의 입구", "desc": "돌 복도", "theme": "stone", "ready": true,
-      "enemies": ["slime", "bat", "spitter", "goblin"], "elite": "knight", "boss": "golem" },
-    { "zone": 2, "name": "이끼 낀 회랑", "theme": "moss", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 3, "name": "불꽃 화로", "theme": "fire", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 4, "name": "물의 정원", "theme": "water", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 5, "name": "깃털 다락", "theme": "feather", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 6, "name": "바람의 계단", "theme": "wind", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 7, "name": "금속 공방", "theme": "metal", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 8, "name": "그림자 서고", "theme": "shadow", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 9, "name": "폭풍 첨탑", "theme": "storm", "ready": false, "enemies": [], "elite": "", "boss": "" },
-    { "zone": 10, "name": "소원의 정상", "theme": "wish", "ready": false, "enemies": [], "elite": "", "boss": "" }
+    {"zone": 1, "name": "탑의 입구", "desc": "돌 복도", "theme": "stone", "ready": true, "enemies": ["slime", "bat", "spitter", "goblin"], "elite": "knight", "boss": "golem"},
+    {"zone": 2, "name": "이끼 낀 회랑", "theme": "moss", "ready": true, "enemies": ["sprout", "moth", "lizard", "toad"], "elite": "treant", "boss": "imugi", "desc": "덩굴이 뒤덮은 옛 화로의 회랑"},
+    {"zone": 3, "name": "불꽃 화로", "theme": "fire", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 4, "name": "물의 정원", "theme": "water", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 5, "name": "깃털 다락", "theme": "feather", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 6, "name": "바람의 계단", "theme": "wind", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 7, "name": "금속 공방", "theme": "metal", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 8, "name": "그림자 서고", "theme": "shadow", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 9, "name": "폭풍 첨탑", "theme": "storm", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 10, "name": "소원의 정상", "theme": "wish", "ready": false, "enemies": [], "elite": "", "boss": ""}
   ]
 }

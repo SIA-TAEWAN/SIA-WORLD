@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FRAME, TS, attackCol, enemySize, frameIndex, tileArtIndex, walkCol, type TileArt } from '../art/sheets';
 import { T, TILE } from '../game/floorgen';
-import { BODY_UP, STEP, step, tileOf, type Enemy, type Input, type RunState, type SimEvent } from '../game/sim';
+import { BODY_UP, STEP, prm, step, tileOf, type Enemy, type Fx, type Input, type RunState, type SimEvent } from '../game/sim';
 import { COLOR } from '../theme';
 
 /**
@@ -117,10 +117,7 @@ export class GameScene extends Phaser.Scene {
       this.heroParts.push(sp);
       this.hero.add(sp);
     }
-    for (const e of s.enemies) {
-      const sp = this.add.sprite(e.x, e.y, `E:${e.def.id}`, 0).setOrigin(0.5, 0.5);
-      this.foes.set(e.id, sp);
-    }
+    for (const e of s.enemies) this.foeSprite(e);
     for (let i = 0; i < 24; i++) {
       const o = this.add.bitmapText(0, 0, 'pdigits', '0').setOrigin(0.5).setDepth(6000).setVisible(false);
       this.nums.push({ o, t: 0, vy: 0 });
@@ -184,6 +181,59 @@ export class GameScene extends Phaser.Scene {
       px(g, COLOR.draw, 1, 1, 6, 6);
       px(g, COLOR.lineSoft, 2, 2, 2, 2);
     });
+    // 2구역 적 투사체
+    mk('thorn', 8, 6, (g) => {
+      // 오른쪽으로 나는 가시 (돌려서 쓴다)
+      px(g, COLOR.outline, 0, 2, 7, 2);
+      px(g, COLOR.win, 1, 2, 5, 1);
+      px(g, COLOR.outline, 6, 1, 2, 4);
+      px(g, COLOR.white, 7, 2, 1, 1);
+    });
+    mk('venom', 8, 8, (g) => {
+      px(g, COLOR.outline, 1, 0, 6, 8);
+      px(g, COLOR.outline, 0, 1, 8, 6);
+      px(g, COLOR.win, 1, 1, 6, 6);
+      px(g, COLOR.pink, 2, 2, 2, 2);
+    });
+    // 구슬 스킬 투사체 (코드 그림)
+    mk('ice', 10, 8, (g) => {
+      px(g, COLOR.outline, 0, 2, 10, 4);
+      px(g, COLOR.skyMid, 1, 3, 8, 2);
+      px(g, COLOR.white, 6, 3, 3, 1);
+    });
+    mk('feather', 10, 6, (g) => {
+      px(g, COLOR.outline, 0, 1, 10, 4);
+      px(g, COLOR.white, 1, 2, 8, 2);
+      px(g, COLOR.lineSoft, 1, 3, 4, 1);
+    });
+    mk('fireFeather', 10, 6, (g) => {
+      px(g, COLOR.outline, 0, 1, 10, 4);
+      px(g, COLOR.pink, 1, 2, 8, 2);
+      px(g, COLOR.primary, 5, 2, 4, 1);
+    });
+    mk('sonic', 8, 14, (g) => {
+      px(g, COLOR.outline, 2, 0, 3, 14);
+      px(g, COLOR.primaryLight, 3, 1, 1, 12);
+      px(g, COLOR.outline, 5, 3, 2, 8);
+      px(g, COLOR.white, 6, 4, 1, 6);
+    });
+    mk('wind', 12, 12, (g) => {
+      for (let y = 0; y < 12; y++) {
+        const off = Math.round(Math.abs(y - 5.5) * 0.5);
+        px(g, COLOR.skyMid, 6 - off, y, 2, 1);
+        px(g, COLOR.white, 8 - off, y, 1, 1);
+      }
+    });
+    mk('tornado', 18, 18, (g) => {
+      px(g, COLOR.outline, 3, 2, 12, 3);
+      px(g, COLOR.skyMid, 4, 3, 10, 1);
+      px(g, COLOR.outline, 5, 6, 9, 3);
+      px(g, COLOR.teamA, 6, 7, 7, 1);
+      px(g, COLOR.outline, 7, 10, 6, 3);
+      px(g, COLOR.skyMid, 8, 11, 4, 1);
+      px(g, COLOR.outline, 8, 14, 3, 3);
+      px(g, COLOR.primaryLight, 9, 15, 1, 1);
+    });
     if (!this.cache.bitmapFont.exists('pdigits')) {
       mk('pdigits-img', DW * DIGITS.length, DH, (g) => {
         // 3×5 흰 숫자 + 둘레 1칸 테두리 (칸 5×7)
@@ -232,6 +282,11 @@ export class GameScene extends Phaser.Scene {
       case T.FOUNTAIN: return k('fountain');
       case T.FOUNTAIN_DRY: return k('fountainDry');
       case T.RUBBLE: return k('rubble');
+      case T.PLATE: return k('plate');
+      case T.PLATE_ON: return k('plateOn');
+      case T.BRAZIER: return k('brazier');
+      case T.BRAZIER_LIT: return k('brazierLit');
+      case T.POST: return k('post');
     }
     return k('floor');
   }
@@ -277,7 +332,7 @@ export class GameScene extends Phaser.Scene {
     for (const ev of evs) {
       switch (ev.t) {
         case 'swing':
-          this.slash = { t: 0.14, face: this.run.p.face, big: ev.combo === 3 || ev.kind === 'ox' };
+          if (ev.kind !== 'snake') this.slash = { t: 0.14, face: this.run.p.face, big: ev.combo === 3 || ev.kind !== 'basic' };
           break;
         case 'hit':
           this.number(ev.x, ev.y, ev.dmg, ev.big);
@@ -296,6 +351,9 @@ export class GameScene extends Phaser.Scene {
           this.cameras.main.flash(300, 255, 255, 255);
           break;
         case 'gate':
+        case 'plate':
+        case 'plateReset':
+        case 'fire':
         case 'rock':
         case 'chest':
         case 'lock':
@@ -337,18 +395,28 @@ export class GameScene extends Phaser.Scene {
     }
     this.hero.setAlpha(blink ? 0.55 : 1);
 
-    // 적
+    // 적 (보스가 부른 졸개처럼 나중에 생긴 적도)
     for (const e of s.enemies) {
-      const sp = this.foes.get(e.id);
-      if (!sp || !e.alive) continue;
+      const sp = this.foes.get(e.id) ?? this.foeSprite(e);
+      if (!e.alive) continue;
+      // 아직 나오지 않은 무리 · 땅속의 이무기는 보이지 않는다
+      sp.setVisible(!e.pending && !e.hidden);
+      if (e.pending || e.hidden) continue;
       const S = enemySize(e.def.id);
-      const bob = e.active && e.def.ai !== 'ranged' ? Math.floor(s.t * 6 + e.id) % 2 : 0;
+      const frozen = e.freeze > 0 || e.stun > 0;
+      const bob = e.active && e.def.ai !== 'ranged' && !frozen ? Math.floor(s.t * 6 + e.id) % 2 : 0;
       const wind = e.state === 'windup' || e.state.endsWith('Wind');
       sp.setFrame(e.hitFlash > 0 ? 3 : wind ? 2 : bob);
-      sp.setPosition(Math.round(e.x), Math.round(e.y - (e.def.fly ? 4 : 0) - (S > 16 ? S / 2 - e.def.r : 0)));
+      // 두꺼비가 뛰어오르는 중: 포물선으로 들어 올린다
+      const lift = e.state === 'hop' && e.def.hop ? Math.sin(Math.PI * (1 - Math.max(0, e.t) / e.def.hop.time)) * 14 : 0;
+      sp.setPosition(Math.round(e.x), Math.round(e.y - (e.def.fly ? 4 : 0) - (S > 16 ? S / 2 - e.def.r : 0) - lift));
       sp.setFlipX(e.faceX < 0);
-      sp.setDepth(e.y + e.def.r);
-      if (e.state === 'stun') sp.setTint(COLOR.skyMid);
+      sp.setDepth(e.y + e.def.r + (lift ? 200 : 0));
+      sp.setAlpha(e.wake > 0 ? 0.5 + 0.5 * (Math.floor(s.t * 12) % 2) : 1);
+      if (e.state === 'stun' || e.stun > 0) sp.setTint(COLOR.skyMid);
+      else if (e.freeze > 0) sp.setTintFill(COLOR.skyMid);
+      else if (e.burn > 0 && Math.floor(s.t * 8) % 2 === 0) sp.setTint(COLOR.primaryDeep);
+      else if (e.slowT > 0) sp.setTint(COLOR.skyTop);
       else if (e.rage && Math.floor(s.t * 4) % 2 === 0) sp.setTint(COLOR.pink);
       else sp.clearTint();
     }
@@ -359,11 +427,15 @@ export class GameScene extends Phaser.Scene {
       live.add(pr.id);
       let o = this.projs.get(pr.id);
       if (!o) {
-        o = this.add.image(pr.x, pr.y, pr.kind === 'crescent' ? 'crescent' : pr.kind === 'rock' ? 'rock' : 'spore').setDepth(4000);
+        const key = this.textures.exists(pr.kind) ? pr.kind : 'spore';
+        o = this.add.image(pr.x, pr.y, key).setDepth(4000);
         this.projs.set(pr.id, o);
       }
       o.setPosition(Math.round(pr.x), Math.round(pr.y));
-      if (pr.kind === 'crescent') o.setRotation(Math.atan2(pr.vy, pr.vx));
+      if (['crescent', 'thorn', 'ice', 'feather', 'fireFeather', 'sonic', 'wind'].includes(pr.kind)) o.setRotation(Math.atan2(pr.vy, pr.vx));
+      else if (pr.kind === 'tornado') o.setFlipX(Math.floor(s.t * 10) % 2 === 0);
+      // 되받아친 투사체는 흰빛
+      if (pr.from === 'p' && ['spore', 'rock', 'thorn', 'venom'].includes(pr.kind)) o.setTint(COLOR.white);
     }
     for (const [id, o] of this.projs) {
       if (!live.has(id)) {
@@ -391,6 +463,7 @@ export class GameScene extends Phaser.Scene {
         g.lineBetween(t.x, t.y, ex, ey);
       }
     }
+    for (const f of s.fx) this.drawFx(g, f, false);
     if (p.giant) {
       // 거대 무사 (반투명, 캐릭터 뒤)
       const gx = Math.round(p.x);
@@ -421,7 +494,9 @@ export class GameScene extends Phaser.Scene {
       o.lineStyle(1, COLOR.white, 0.9);
       o.strokeCircle(cx, cy, 10);
     }
-    for (const e of s.enemies) if (e.alive && e.active && e.hp < e.max && !e.def.boss) this.hpBar(o, e);
+    for (const e of s.enemies) if (e.alive && e.active && !e.pending && e.hp < e.max && !e.def.boss) this.hpBar(o, e);
+    for (const f of s.fx) this.drawFx(o, f, true);
+    this.drawAura(o);
 
     // 숫자
     for (const n of this.nums) {
@@ -436,6 +511,118 @@ export class GameScene extends Phaser.Scene {
       this.shake -= dt;
       this.cameras.main.setFollowOffset(Math.round((Math.random() - 0.5) * 3), 8 + Math.round((Math.random() - 0.5) * 3));
     } else this.cameras.main.setFollowOffset(0, 8);
+  }
+
+  private foeSprite(e: Enemy) {
+    const sp = this.add.sprite(e.x, e.y, `E:${e.def.id}`, 0).setOrigin(0.5, 0.5);
+    if (e.pending) sp.setVisible(false);
+    this.foes.set(e.id, sp);
+    return sp;
+  }
+
+  /** 구슬 스킬·장치 효과 (코드 그림). top = 캐릭터 위에 그리는 것 */
+  private drawFx(g: Phaser.GameObjects.Graphics, f: Fx, top: boolean) {
+    const k = Math.max(0, f.t / f.dur);
+    const grow = 1 - k;
+    const ring = (color: number, fill: number) => {
+      g.fillStyle(color, fill * k);
+      g.fillCircle(f.x, f.y, f.r * (0.4 + 0.6 * grow));
+      g.lineStyle(2, color, 0.9 * k);
+      g.strokeCircle(f.x, f.y, f.r * (0.4 + 0.6 * grow));
+    };
+    const line = (color: number, w: number) => {
+      g.lineStyle(w, color, 0.9 * k);
+      g.lineBetween(f.x, f.y, f.x2 ?? f.x, f.y2 ?? f.y);
+    };
+    switch (f.kind) {
+      case 'fireWave': if (!top) ring(COLOR.primaryDeep, 0.35); break;
+      case 'fireHit': if (top) ring(COLOR.pink, 0.5); break;
+      case 'freeze': if (!top) ring(COLOR.skyMid, 0.4); break;
+      case 'wool': if (!top) ring(COLOR.white, 0.45); break;
+      case 'chord': if (!top) { ring(COLOR.primaryLight, 0.2); g.strokeCircle(f.x, f.y, f.r * 0.6 * (0.4 + 0.6 * grow)); } break;
+      case 'explode': if (!top) ring(COLOR.pink, 0.4); break;
+      case 'burst': if (!top) ring(COLOR.skyTop, 0.35); break;
+      case 'storm': if (!top) ring(COLOR.teamA, 0.25); break;
+      case 'dust': if (!top) ring(COLOR.draw, 0.4); break;
+      case 'spawn': if (!top) ring(COLOR.pink, 0.25); break;
+      case 'spark': if (top) ring(COLOR.white, 0.8); break;
+      case 'parry': if (top) { g.lineStyle(2, COLOR.primary, 0.9 * k); g.strokeCircle(f.x, f.y, f.r); } break;
+      case 'bolt':
+        if (top) {
+          // 하늘에서 떨어지는 번개 + 땅의 원
+          g.lineStyle(3, COLOR.primaryLight, k);
+          g.lineBetween(f.x - 3, f.y - 60, f.x + 4, f.y - 30);
+          g.lineBetween(f.x + 4, f.y - 30, f.x - 2, f.y - 14);
+          g.lineBetween(f.x - 2, f.y - 14, f.x, f.y);
+        } else ring(COLOR.primaryLight, 0.3);
+        break;
+      case 'chain': if (top) { line(COLOR.primaryLight, 3); line(COLOR.white, 1); } break;
+      case 'whip': if (top) { line(COLOR.win, 3); line(COLOR.outline, 1); } break;
+      case 'slash': if (top) { line(COLOR.white, 3); line(COLOR.lineSoft, 1); } break;
+      case 'sweep':
+        if (top) {
+          g.lineStyle(4, COLOR.win, 0.8 * k);
+          g.beginPath();
+          g.arc(f.x, f.y, f.r * (0.6 + 0.4 * grow), (f.ang ?? 0) - (f.arc ?? 2) / 2, (f.ang ?? 0) + (f.arc ?? 2) / 2);
+          g.strokePath();
+        }
+        break;
+    }
+  }
+
+  /** 캐릭터 둘레: 물 보호막 · 결계 · 막기 · 깃털 방벽 · 혈기 · 시전 · 쌓은 연타 */
+  private drawAura(g: Phaser.GameObjects.Graphics) {
+    const s = this.run;
+    const p = s.p;
+    const x = p.x;
+    const y = p.y - BODY_UP;
+    if (p.shield) {
+      g.fillStyle(COLOR.teamA, 0.18);
+      g.fillCircle(x, y, 14);
+      g.lineStyle(1, COLOR.skyMid, 0.9);
+      g.strokeCircle(x, y, 14);
+    }
+    if (p.barrier > 0) {
+      g.fillStyle(COLOR.win, 0.22);
+      g.fillCircle(x, y, 17);
+      g.lineStyle(2, COLOR.win, 0.9);
+      g.strokeCircle(x, y, 17);
+    }
+    if (p.parry > 0) {
+      g.lineStyle(2, COLOR.primary, 0.9);
+      g.strokeCircle(x, y, 13);
+    }
+    if (p.gap > 0) {
+      g.lineStyle(1, COLOR.pink, 0.7);
+      g.strokeCircle(x, y, 12);
+    }
+    if (p.reflect > 0 && Math.floor(s.t * 8) % 2 === 0) {
+      g.lineStyle(1, COLOR.pink, 0.9);
+      g.strokeCircle(x, y, 15);
+    }
+    if (p.blades > 0) {
+      const R = prm('rooster', 'bladeR', 20);
+      for (let i = 0; i < 4; i++) {
+        const a = s.t * 6 + (i * Math.PI) / 2;
+        g.fillStyle(COLOR.white, 1);
+        g.fillRect(Math.round(x + Math.cos(a) * R) - 2, Math.round(y + Math.sin(a) * R) - 1, 4, 3);
+        g.lineStyle(1, COLOR.outline, 1);
+        g.strokeRect(Math.round(x + Math.cos(a) * R) - 2, Math.round(y + Math.sin(a) * R) - 1, 4, 3);
+      }
+    }
+    if (p.blood > 0) {
+      g.lineStyle(1, COLOR.pink, 0.5 + 0.4 * (Math.floor(s.t * 6) % 2));
+      g.strokeCircle(x, y, 11);
+    }
+    if (p.cast) {
+      const k = p.cast.t / p.cast.total;
+      g.fillStyle(COLOR.primaryDeep, 0.25 + 0.3 * k);
+      g.fillCircle(x, y + 6, 8 + 10 * k);
+    }
+    if (p.storm > 0 && p.stacks > 0) {
+      g.fillStyle(COLOR.skyTop, 0.9);
+      for (let i = 0; i < Math.min(20, p.stacks); i++) g.fillRect(Math.round(x - 10 + (i % 10) * 2), Math.round(y - 20 - Math.floor(i / 10) * 2), 1, 1);
+    }
   }
 
   private drawSlash(o: Phaser.GameObjects.Graphics, face: number, big: boolean, k: number) {

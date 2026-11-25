@@ -7,8 +7,9 @@
  * 타일 시트: 16×16 칸을 가로 한 줄로 (TILE_ORDER 순서).
  * 적 시트: 한 칸 size×size, 가로 4칸 (0·1 걷기, 2 공격 준비, 3 맞음).
  */
-import { COLOR, ROULETTE, css } from '../theme';
+import { COLOR, MATGO, ROULETTE, TABLE, css } from '../theme';
 import type { Look } from '../game/progress';
+import { ENEMIES } from '../data';
 
 export const FRAME = 32;
 export const COLS = 8;
@@ -279,22 +280,42 @@ export function placeholderLayer(name: string): HTMLCanvasElement {
 }
 
 // ---------- 타일 ----------
-/** tiles.png 의 칸 순서 (ASSETS.md) */
+/**
+ * tiles.png · tiles-<테마>.png 의 칸 순서 (ASSETS.md). 처음 22칸은 1구역 그대로, 새 칸은 뒤에만 붙인다
+ * (시트가 이보다 좁으면 모자란 칸은 코드 그림 — art/load.ts).
+ */
 export const TILE_ORDER = [
   'floor', 'floor2', 'wallTop', 'wallFace', 'doorOpen', 'doorLocked', 'water', 'pillar', 'gate', 'rock', 'switch', 'switchOn',
   'vine', 'stairs', 'chest', 'chestOpen', 'pedestal', 'pedestalEmpty', 'shop', 'fountain', 'rubble', 'fountainDry',
+  'plate', 'plateOn', 'brazier', 'brazierLit', 'post',
 ] as const;
 export type TileArt = (typeof TILE_ORDER)[number];
 export const tileArtIndex = (k: TileArt) => TILE_ORDER.indexOf(k);
 
-const STONE = css(ROULETTE.winter);
-const STONE_LINE = css(COLOR.lineSoft);
-const WALL = css(COLOR.inkSoft);
-const WALL_TOP = css(COLOR.emptyLine);
-const WATER = css(COLOR.teamA);
-const WATER_LIGHT = css(COLOR.skyMid);
+/** 테마마다 코드 그림 색 (DESIGN.md 의 기존 색만). stone = 1~10층 돌 복도, moss = 11~20층 이끼 낀 회랑 */
+interface Palette {
+  floor: string;
+  line: string;
+  wall: string;
+  wallTop: string;
+  water: string;
+  waterLight: string;
+  moss?: string;
+}
+const PALETTES: Record<string, Palette> = {
+  stone: { floor: css(ROULETTE.winter), line: css(COLOR.lineSoft), wall: css(COLOR.inkSoft), wallTop: css(COLOR.emptyLine), water: css(COLOR.teamA), waterLight: css(COLOR.skyMid) },
+  moss: { floor: css(ROULETTE.autumn), line: css(MATGO.matLight), wall: css(COLOR.inkSoft), wallTop: css(TABLE.matgo), water: css(COLOR.teamA), waterLight: css(ROULETTE.autumn), moss: css(MATGO.matDark) },
+};
+export const tileThemes = Object.keys(PALETTES);
 
-export function placeholderTiles(): HTMLCanvasElement {
+export function placeholderTiles(theme = 'stone'): HTMLCanvasElement {
+  const P = PALETTES[theme] ?? PALETTES.stone;
+  const STONE = P.floor;
+  const STONE_LINE = P.line;
+  const WALL = P.wall;
+  const WALL_TOP = P.wallTop;
+  const WATER = P.water;
+  const WATER_LIGHT = P.waterLight;
   const cv = document.createElement('canvas');
   cv.width = TS * TILE_ORDER.length;
   cv.height = TS;
@@ -313,6 +334,10 @@ export function placeholderTiles(): HTMLCanvasElement {
       px(alt ? 4 : 10, 0, 1, 8, STONE_LINE);
       px(alt ? 12 : 3, 8, 1, 8, STONE_LINE);
       if (alt) px(6, 11, 3, 1, C.shoe);
+      if (alt && P.moss) {
+        px(2, 2, 3, 2, P.moss);
+        px(11, 12, 2, 2, P.moss);
+      }
     };
     switch (k) {
       case 'floor': floor(); break;
@@ -320,8 +345,8 @@ export function placeholderTiles(): HTMLCanvasElement {
       case 'wallTop':
         px(0, 0, 16, 16, WALL_TOP);
         px(0, 15, 16, 1, C.outline);
-        px(3, 4, 4, 2, WALL);
-        px(10, 10, 3, 2, WALL);
+        px(3, 4, 4, 2, P.moss ?? WALL);
+        px(10, 10, 3, 2, P.moss ?? WALL);
         break;
       case 'wallFace':
         px(0, 0, 16, 16, WALL);
@@ -332,6 +357,11 @@ export function placeholderTiles(): HTMLCanvasElement {
         px(3, 10, 1, 6, C.outline);
         px(12, 10, 1, 6, C.outline);
         px(0, 15, 16, 1, C.outline);
+        if (P.moss) {
+          // 벽을 타고 내려온 이끼
+          px(1, 3, 3, 4, P.moss);
+          px(11, 3, 2, 7, P.moss);
+        }
         break;
       case 'doorOpen':
         floor();
@@ -430,6 +460,36 @@ export function placeholderTiles(): HTMLCanvasElement {
         px(9, 5, 2, 2, css(COLOR.draw));
         px(11, 11, 3, 2, css(COLOR.draw));
         break;
+      case 'plate':
+      case 'plateOn':
+        // 발판: 눌리면 낮아지고 노랗게 빛난다
+        floor();
+        px(2, 3, 12, 11, C.outline);
+        px(3, 4, 10, 9, k === 'plate' ? WALL_TOP : css(COLOR.primary));
+        if (k === 'plate') px(3, 11, 10, 2, WALL);
+        else px(5, 6, 6, 5, css(COLOR.primaryLight));
+        break;
+      case 'brazier':
+      case 'brazierLit':
+        // 화로: 돌 그릇 + 불꽃 (꺼지면 재)
+        floor();
+        px(3, 8, 10, 7, WALL);
+        px(2, 7, 12, 2, WALL_TOP);
+        px(2, 14, 12, 1, C.outline);
+        if (k === 'brazierLit') {
+          px(5, 1, 6, 7, css(COLOR.pink));
+          px(6, 3, 4, 5, css(COLOR.primaryDeep));
+          px(7, 4, 2, 3, css(COLOR.primary));
+        } else px(5, 6, 6, 1, css(COLOR.draw));
+        break;
+      case 'post':
+        // 말뚝: 물가에 박힌 나무 기둥 + 감을 고리
+        floor();
+        px(5, 1, 6, 14, css(COLOR.primaryDeep));
+        px(5, 1, 6, 2, css(COLOR.primary));
+        px(4, 6, 8, 2, C.outline);
+        px(5, 14, 6, 1, C.outline);
+        break;
     }
     g.restore();
   });
@@ -437,7 +497,8 @@ export function placeholderTiles(): HTMLCanvasElement {
 }
 
 // ---------- 적 ----------
-export const enemySize = (id: string) => (id === 'golem' ? 32 : id === 'knight' ? 24 : 16);
+/** 적 시트 한 칸 크기 (enemies.json 의 size: 일반 16 · 정예 24 · 보스 32) */
+export const enemySize = (id: string) => ENEMIES.find((e) => e.id === id)?.size ?? 16;
 export function placeholderEnemy(id: string): HTMLCanvasElement {
   const S = enemySize(id);
   const cv = document.createElement('canvas');
@@ -510,6 +571,75 @@ export function placeholderEnemy(id: string): HTMLCanvasElement {
         px(15, 12, 2, 10, css(COLOR.inkSoft));
         px(6, 27, 8, 4, css(COLOR.inkSoft));
         px(18, 27, 8, 4, css(COLOR.inkSoft));
+        break;
+      // ---- 2구역 (이끼 낀 회랑) ----
+      case 'sprout':
+        // 가시 덩굴싹: 땅에 뿌리박은 싹, 입을 벌려 가시를 뱉는다
+        px(5, 11, 6, 4, css(COLOR.inkSoft));
+        px(3, 4 - (wind ? 1 : 0), 10, 8, css(COLOR.win));
+        px(2, 6, 2, 3, css(MATGO.matDark));
+        px(12, 6, 2, 3, css(MATGO.matDark));
+        px(6, 1 - (wind ? 1 : 0), 4, 3, css(MATGO.matLight));
+        px(5, 7, 2, 2, eye);
+        px(9, 7, 2, 2, eye);
+        if (wind) px(6, 10, 4, 2, css(COLOR.pink));
+        break;
+      case 'moth':
+        // 이끼 나방: 초록 날개, 독 가루
+        px(6, 5, 4, 7, css(COLOR.inkSoft));
+        px(1, 3 + bob * 2, 5, 6, css(MATGO.matLight));
+        px(10, 3 + bob * 2, 5, 6, css(MATGO.matLight));
+        px(2, 4 + bob * 2, 2, 2, css(COLOR.pink));
+        px(12, 4 + bob * 2, 2, 2, css(COLOR.pink));
+        px(6, 6, 1, 1, eye);
+        px(9, 6, 1, 1, eye);
+        break;
+      case 'lizard':
+        // 이끼 도마뱀: 낮게 엎드린 몸, 등에 이끼
+        px(2, 8 + bob, 11, 5, css(COLOR.win));
+        px(10, 6 + bob, 5, 5, css(COLOR.win));
+        px(3, 7 + bob, 7, 2, css(MATGO.matDark));
+        px(0, 10 + bob, 3, 2, css(COLOR.win));
+        px(12, 7 + bob, 2, 2, eye);
+        px(3, 13, 2, 2, css(COLOR.inkSoft));
+        px(9, 13, 2, 2, css(COLOR.inkSoft));
+        if (wind) px(14, 9, 2, 2, css(COLOR.pink));
+        break;
+      case 'toad':
+        // 바위 두꺼비: 등이 바위인 두꺼비 (뛰기 전에 웅크린다)
+        px(2, 6 + (wind ? 2 : bob), 12, 8 - (wind ? 2 : bob), css(COLOR.draw));
+        px(3, 4 + (wind ? 2 : bob), 4, 3, css(COLOR.draw));
+        px(9, 4 + (wind ? 2 : bob), 4, 3, css(COLOR.draw));
+        px(4, 5 + (wind ? 2 : bob), 2, 2, eye);
+        px(10, 5 + (wind ? 2 : bob), 2, 2, eye);
+        px(5, 9 + (wind ? 2 : 0), 6, 2, css(MATGO.matDark));
+        px(4, 12, 8, 2, css(COLOR.lineSoft));
+        break;
+      case 'treant':
+        // 고목 수호자: 나무 줄기 몸, 이끼 머리, 뿌리 팔
+        px(7, 6 + bob, 10, 16 - bob, css(COLOR.inkSoft));
+        px(4, 1 + bob, 16, 8, css(COLOR.win));
+        px(6, 0 + bob, 4, 2, css(MATGO.matLight));
+        px(14, 0 + bob, 4, 2, css(MATGO.matLight));
+        px(9, 9 + bob, 2, 2, hurt ? C.white : css(COLOR.primary));
+        px(13, 9 + bob, 2, 2, hurt ? C.white : css(COLOR.primary));
+        px(2, wind ? 4 : 11, 5, 9, css(COLOR.inkSoft));
+        px(17, wind ? 4 : 11, 5, 9, css(COLOR.inkSoft));
+        px(9, 15, 6, 2, css(MATGO.matDark));
+        break;
+      case 'imugi':
+        // 이끼 이무기: 똬리 튼 큰 뱀, 이끼 비늘, 여의주를 바라는 눈
+        px(2, 18 + bob, 28, 12 - bob, css(COLOR.win));
+        px(6, 14 + bob, 20, 6, css(MATGO.matDark));
+        px(16, 4 + bob, 13, 12, css(COLOR.win));
+        px(17, 2 + bob, 3, 3, css(MATGO.matLight));
+        px(25, 2 + bob, 3, 3, css(MATGO.matLight));
+        px(19, 8 + bob, 3, 3, hurt ? C.white : css(COLOR.primary));
+        px(25, 8 + bob, 3, 3, hurt ? C.white : css(COLOR.primary));
+        px(22, 13 + bob, 7, 2, wind ? css(COLOR.pink) : css(COLOR.outline));
+        px(4, 22, 22, 2, css(ROULETTE.autumn));
+        px(4, 26, 3, 3, css(MATGO.matDark));
+        px(12, 26, 3, 3, css(MATGO.matDark));
         break;
       default:
         px(3, 3, S - 6, S - 6, css(COLOR.pink));

@@ -4,10 +4,10 @@
  */
 import Phaser from 'phaser';
 import { enemySheet, orbIcons, preloadOrbIcons, tileSheet } from '../art/load';
-import { ITEMS, LAST_READY, ORBS, SHARDS_TO_AWAKEN, expNeed, floorReady, floorRule, itemDef, orbDef, priceOf, statsAt, zoneData, type ItemId } from '../data';
+import { FLOORS, ITEMS, LAST_READY, ORBS, SHARDS_TO_AWAKEN, ZONE_SIZE, enemyDef, expNeed, floorReady, floorRule, itemDef, orbDef, priceOf, statsAt, zoneData, type ItemId } from '../data';
 import { generateFloor } from '../game/floorgen';
 import { awakenWithShards, buy, clearFloor, clone, die, equipOrb, isLook, sameLook, type Look, type TowerData } from '../game/progress';
-import { canAwaken, createRun, equippedOrb, interactLabel, interactTarget, maxHp, maxMp, useItem, type RunState, type SimEvent } from '../game/sim';
+import { canAwaken, createRun, equippedOrb, interactLabel, interactTarget, maxHp, maxMp, plateLeft, useItem, type RunState, type SimEvent } from '../game/sim';
 import { ApiError, type TowerApi } from '../net/api';
 import { DEV_AWAKEN, DEV_COINS, DEV_FLOOR, DEV_GOD, DEV_LEVEL, DEV_ORBS, DEV_RESET, DEV_SHARDS, LOCAL_MODE } from '../net/local';
 import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
@@ -15,6 +15,7 @@ import { GameScene, type SceneArt, type SceneHooks } from '../scenes/GameScene';
 import { COLOR } from '../theme';
 import { createControls, type Controls } from './controls';
 import { lookLayers, makePreview, stillImage } from './preview';
+import { music, type TrackName } from './music';
 
 interface Ctx {
   api: TowerApi;
@@ -61,7 +62,10 @@ export async function boot(api: TowerApi, user: WorldUser | null) {
   ctx = { api, user, look: st.look, data: st.data, siaCoins: st.siaCoins, lookPrice: st.lookPrice, sound: null };
   if (LOCAL_MODE) applyDev(ctx.data);
   void loadSound()
-    .then((m) => (ctx.sound = m))
+    .then((m) => {
+      ctx.sound = m;
+      music.attach(m);
+    })
     .catch(() => null);
   void preloadOrbIcons(ORBS.map((o) => o.id));
 }
@@ -74,18 +78,21 @@ function applyDev(d: TowerData) {
     d.checkpoint = Math.floor((DEV_FLOOR - 1) / 10) * 10 + 1;
     if (!DEV_LEVEL) d.level = Math.max(d.level, DEV_FLOOR);
     if (!DEV_ORBS.length) {
-      if (DEV_FLOOR > 2) d.orbs.rat ||= 1;
-      if (DEV_FLOOR > 7) d.orbs.ox ||= 1;
+      // 그 층 아래에서 받는 구슬 (2층 쥐 · 7층 소 · 12층 용 · 17층 뱀 …)
+      for (const o of ORBS) if (o.floor < DEV_FLOOR) d.orbs[o.id] ||= 1;
       d.equipped ??= d.orbs.rat ? 'rat' : null;
     }
   }
   if (DEV_LEVEL) d.level = DEV_LEVEL;
-  for (const id of DEV_ORBS) if (orbDef(id)) d.orbs[id] ||= 1;
-  for (const id of DEV_AWAKEN) if (orbDef(id)) {
+  // &orbs=all · &awaken=all: 구슬 16개 모두 (아직 오를 수 없는 층의 구슬도 시험할 수 있게)
+  const all = (list: string[]) => (list.includes('all') ? ORBS.map((o) => o.id) : list);
+  for (const id of all(DEV_ORBS)) if (orbDef(id)) d.orbs[id] ||= 1;
+  for (const id of all(DEV_AWAKEN)) if (orbDef(id)) {
     d.orbs[id] ||= 1;
     if (!d.awakened.includes(id)) d.awakened.push(id);
   }
-  if (DEV_ORBS.length || DEV_AWAKEN.length) d.equipped ??= DEV_ORBS[0] ?? DEV_AWAKEN[0];
+  const firstDev = all(DEV_ORBS)[0] ?? all(DEV_AWAKEN)[0];
+  if (firstDev && orbDef(firstDev)) d.equipped = firstDev;
   if (DEV_COINS) d.coins = DEV_COINS;
   if (DEV_SHARDS) d.shards = DEV_SHARDS;
   // 테스트 모드 기기 기록의 '깬 최고 층' 도 맞춘다 (서버처럼 층 건너뛰기를 막으므로)
@@ -106,6 +113,7 @@ export function showFirst() {
 // ---------- 처음 화면 ----------
 let titlePreview: { destroy(): void } | null = null;
 function title() {
+  music.play('title');
   titlePreview?.destroy();
   const d = ctx.data;
   const ready = floorReady(d.floor);
@@ -184,7 +192,8 @@ function helpBox() {
         <div><span>회복약</span><b><span class="key">Q</span> · 🧪</b></div>
         <div><span>메뉴</span><b><span class="key">I</span> · <span class="key">Esc</span> · ☰</b></div>
       </div>
-      <p class="soft">전투방에 들어가면 문이 잠겨요. 적을 모두 물리치면 열려요. 기본 공격을 맞히면 혼력이 차올라요.</p>
+      <p class="soft">전투방에 들어가면 문이 잠기고 적이 몇 무리씩 몰려와요. 모두 물리치면 열려요. 기본 공격을 맞히면 혼력이 차오르고, 싸움 밖에서는 체력·혼력이 천천히 회복돼요.</p>
+      <p class="soft">퍼즐방: 발판은 시간 안에 모두 밟기, 스위치·덩굴은 쥐 구슬, 금 간 바위는 소 구슬, 화로는 용 구슬, 말뚝은 뱀 구슬.</p>
       <button class="btn primary" data-close>알겠어요</button>
     </div>`);
   ov.querySelector('[data-close]')!.addEventListener('click', () => ov.remove());
@@ -338,11 +347,22 @@ interface Play {
 let cur: Play | null = null;
 let gameWatch: ResizeObserver | null = null;
 
-async function loadArt(look: Look): Promise<SceneArt> {
-  const zone = zoneData(1)!;
-  const ids = [...zone.enemies, zone.elite, zone.boss].filter(Boolean);
-  const [layers, tiles, ...enemies] = await Promise.all([lookLayers(look), tileSheet(), ...ids.map(enemySheet)]);
-  return { layers, tiles, enemies: Object.fromEntries(ids.map((id, i) => [id, enemies[i]])) };
+/** 들어갈 수 있는 구역의 적·테마 (그 구역 보스가 부르는 졸개도) */
+const readyZones = () => FLOORS.zones.filter((z) => z.ready);
+const themeOf = (floor: number) => zoneData(floor)?.theme ?? 'stone';
+async function loadArt(look: Look): Promise<SceneArt & { themes: Record<string, HTMLCanvasElement> }> {
+  const ids = [...new Set(readyZones().flatMap((z) => [...z.enemies, z.elite, z.boss, ...(z.boss ? [enemyDef(z.boss).summon?.id ?? ''] : [])]).filter(Boolean))];
+  const themes = [...new Set(readyZones().map((z) => z.theme))];
+  const [layers, sheets, enemies] = await Promise.all([lookLayers(look), Promise.all(themes.map((t) => tileSheet(t))), Promise.all(ids.map(enemySheet))]);
+  const byTheme = Object.fromEntries(themes.map((t, i) => [t, sheets[i]]));
+  return { layers, tiles: byTheme[themeOf(ctx.data.floor)] ?? sheets[0], themes: byTheme, enemies: Object.fromEntries(ids.map((id, i) => [id, enemies[i]])) };
+}
+/** 층에 맞는 배경음 */
+function floorTrack(floor: number): TrackName {
+  const kind = floorRule(floor).kind;
+  if (kind === 'boss') return 'boss';
+  if (kind === 'rest') return 'rest';
+  return themeOf(floor) === 'moss' ? 'moss' : 'stone';
 }
 
 async function play() {
@@ -401,6 +421,7 @@ async function play() {
   }
   const run = newRun();
   cur = { game, scene: null, run, controls, art, paused: false, dirty: false, miniKey: '', ended: false };
+  music.play(floorTrack(run.map.floor));
   game.scene.add('tower', GameScene, true, { run, hooks: hooks(), art });
   cur.scene = game.scene.getScene('tower') as GameScene;
   floorBanner(run.map.floor);
@@ -425,12 +446,18 @@ function startFloor() {
   cur.ended = false;
   cur.miniKey = '';
   cur.controls.release();
+  // 구역이 바뀌면 그 테마 타일
+  const themes = (cur.art as SceneArt & { themes?: Record<string, HTMLCanvasElement> }).themes;
+  const t = themes?.[themeOf(run.map.floor)];
+  if (t) cur.art.tiles = t;
+  music.play(floorTrack(run.map.floor));
   cur.scene!.scene.restart({ run, hooks: hooks(), art: cur.art });
   setPaused(false);
   floorBanner(run.map.floor);
 }
 
 function leavePlay(to: () => void) {
+  music.play('title');
   document.removeEventListener('visibilitychange', onHidden);
   gameWatch?.disconnect();
   gameWatch = null;
@@ -453,7 +480,8 @@ function setPaused(p: boolean) {
 function floorBanner(floor: number) {
   const z = zoneData(floor);
   const kind = floorRule(floor).kind;
-  const sub = kind === 'rest' ? '휴식층 · 상점과 샘' : kind === 'elite' ? '정예가 기다린다' : kind === 'boss' ? `보스 · ${floor === 10 ? '문지기 골렘' : '???'}` : (z?.name ?? '');
+  const boss = z?.boss ? enemyDef(z.boss).name : '???';
+  const sub = kind === 'rest' ? '휴식층 · 상점과 샘' : kind === 'elite' ? '정예가 기다린다' : kind === 'boss' ? `보스 · ${boss}` : (z?.name ?? '');
   const el = document.createElement('div');
   el.className = 'floor-banner';
   el.innerHTML = `<b>${floor}층</b><small>${esc(sub)}</small>`;
@@ -537,6 +565,31 @@ function onEvent(ev: SimEvent, s: RunState) {
       sfxGap('tankBuild', 300);
       hudNote('철문이 열렸어요!');
       break;
+    case 'wave':
+      sfx('survBossWarn', { volume: 0.4, rate: 1.4 });
+      hudNote(`다음 무리가 몰려온다! (${ev.n}/${ev.total})`);
+      break;
+    case 'plate':
+      sfxGap('tick', 80);
+      if (ev.on < ev.all) hudNote(`발판 ${ev.on}/${ev.all} — 서둘러요!`, 1400);
+      break;
+    case 'plateReset':
+      sfx('lose', { volume: 0.4, rate: 1.4 });
+      break;
+    case 'fire':
+      sfxGap('survPop', 100, { rate: 0.6 });
+      hudNote('화로에 불이 붙었어요');
+      break;
+    case 'grapple':
+      sfx('boost', { volume: 0.5, rate: 0.8 });
+      break;
+    case 'parry':
+      sfxGap('coin', 100, { rate: 1.3 });
+      break;
+    case 'rebirth':
+      sfx('newRecord');
+      toast('불사조의 힘으로 되살아났어요!', 2400);
+      break;
     case 'rock':
       sfxGap('tankBoom', 200);
       break;
@@ -551,16 +604,18 @@ function onEvent(ev: SimEvent, s: RunState) {
       toast('샘물을 마셨어요. 체력·혼력이 가득 찼어요');
       break;
     case 'skill':
-      sfx(ev.kind === 'rat' ? 'boost' : 'tankBoom', { volume: 0.6 });
+      sfx(SKILL_SFX[ev.kind] ?? 'boost', { volume: 0.6 });
       break;
-    case 'awaken':
+    case 'awaken': {
       sfx('cutin');
-      hudNote(ev.kind === 'rat' ? '질풍! 이동·공격이 빨라졌어요' : '수호 거인이 나타났어요!');
+      const o = orbDef(ev.kind);
+      if (o) hudNote(`${o.awaken.name}! ${o.awaken.desc}`);
       break;
+    }
     case 'boss':
       sfx('survBossWarn');
       if (ev.phase === 1) bossCutin(s);
-      else hudNote('골렘이 화났다! 더 빨라졌어요');
+      else hudNote(`${josa(s.boss?.def.name ?? '보스', '이', '가')} 화났다! 더 빨라졌어요`);
       break;
     case 'bossDown':
       sfx('survBossDown');
@@ -584,6 +639,12 @@ function onEvent(ev: SimEvent, s: RunState) {
       break;
   }
 }
+
+/** 구슬 스킬 소리 (공용 효과음에서 빌린다 — ASSETS.md '소리') */
+const SKILL_SFX: Record<string, string> = {
+  rat: 'boost', ox: 'tankBoom', dragon: 'tankBoom', snake: 'twelveSlash', rabbit: 'boost', monkey: 'toggle', turtle: 'tankHeal', rooster: 'boost',
+  sheep: 'tankHeal', dog: 'boost', tiger: 'tankBoom', phoenix: 'boost', horse: 'survSlash', pig: 'boost', whiteTiger: 'twelveSlash', blueDragon: 'tankBoom',
+};
 
 function orbCutin(id: string, gain: 'new' | 'awaken' | 'shard') {
   const o = orbDef(id);
@@ -647,7 +708,15 @@ function drawHud(s: RunState) {
   });
   const cd = orb ? Math.min(1, p.skillCd / orb.basic.cd) : 0;
   hudSet('orbcd', cd.toFixed(2), (v) => ($('.orb-slot .cd').style.height = `${Number(v) * 100}%`));
-  const st = [p.poison > 0 ? '☠️ 독' : '', p.slow > 0 ? '🐌 둔화' : '', p.gale > 0 ? `💨 질풍 ${Math.ceil(p.gale)}` : '', p.giant ? `🛡️ 거인 ${Math.ceil(p.giant.t)}` : ''].filter(Boolean).join(' ');
+  const sec = (n: number) => Math.ceil(n);
+  const plate = plateLeft(s);
+  const st = [
+    p.poison > 0 ? '☠️ 독' : '', p.slow > 0 ? '🐌 둔화' : '', p.gale > 0 ? `💨 질풍 ${sec(p.gale)}` : '', p.giant ? `🛡️ 거인 ${sec(p.giant.t)}` : '',
+    p.shield ? `💧 보호막 ${Math.ceil(p.shield.hp)}` : '', p.barrier > 0 ? `🐢 결계 ${sec(p.barrier)}` : '', p.reflect > 0 ? `🔁 역류 ${sec(p.reflect)}` : '',
+    p.blades > 0 ? `🪶 방벽 ${sec(p.blades)}` : '', p.blood > 0 ? `🩸 혈기 ${sec(p.blood)}` : '', p.tired > 0 ? `😮‍💨 탈진 ${sec(p.tired)}` : '',
+    p.bolts > 0 ? `⚡ 낙뢰 ${sec(p.bolts)}` : '', p.storm > 0 ? `🌪️ 연타 ${p.stacks}` : '', p.rebirth > 0 ? '🔥 불사조' : '', p.root > 0 ? `❄️ 못 움직임 ${sec(p.root)}` : '',
+    plate > 0 ? `⏱️ 발판 ${sec(plate)}` : '',
+  ].filter(Boolean).join(' ');
   hudSet('status', st, (v) => ($('.hud-status').textContent = v));
   // 보스 체력
   const b = s.boss && s.boss.alive && s.boss.active ? s.boss : null;
@@ -746,7 +815,8 @@ function onClear(s: RunState) {
   ctx.data = data;
   sfx('goal');
   const saving = saveNow(data, floor);
-  if (floor >= LAST_READY) return void mvpEnd(floor, saving);
+  // 보스층(10·20…): 체크포인트 저장 카드. 마지막 준비된 층이면 '준비 중' 안내
+  if (floor >= LAST_READY || floor % ZONE_SIZE === 0) return void mvpEnd(floor, saving, s);
   const el = document.createElement('div');
   el.className = 'floor-clear';
   el.innerHTML = `<b>${floor}층 돌파!</b><small>계단을 올라요…</small>`;
@@ -758,12 +828,15 @@ function onClear(s: RunState) {
   }, 1300);
 }
 
-async function mvpEnd(floor: number, saving: Promise<unknown>) {
+async function mvpEnd(floor: number, saving: Promise<unknown>, s: RunState) {
   setPaused(true);
+  music.play('rest');
+  const last = floor >= LAST_READY;
+  const next = zoneData(floor + 1);
   const ov = overlay(`
     <div class="card pop result win">
       <h2>${floor}층 돌파!</h2>
-      <p class="center">${floor === 10 ? '문지기 골렘을 쓰러뜨렸어요!' : '보스를 쓰러뜨렸어요!'}</p>
+      <p class="center">${s.boss ? `${esc(josa(s.boss.def.name, '을', '를'))} 쓰러뜨렸어요!` : '보스를 쓰러뜨렸어요!'}</p>
       <div class="rows">
         <div><span>체크포인트 저장</span><b>${ctx.data.checkpoint}층</b></div>
         <div><span>레벨</span><b>Lv ${ctx.data.level}</b></div>
@@ -771,12 +844,19 @@ async function mvpEnd(floor: number, saving: Promise<unknown>) {
         <div><span>구슬 조각</span><b>${ctx.data.shards}</b></div>
       </div>
       <p class="soft center save-line">저장하는 중…</p>
-      <div class="loot-big"><b>🏯 ${ctx.data.checkpoint}층부터는 아직 준비 중이에요</b><small>다음 구역이 열리면 체크포인트에서 이어서 올라요</small></div>
-      <button class="btn primary big" data-close>처음 화면으로</button>
+      ${last
+        ? `<div class="loot-big"><b>🏯 ${ctx.data.checkpoint}층부터는 아직 준비 중이에요</b><small>다음 구역이 열리면 체크포인트에서 이어서 올라요</small></div>
+      <button class="btn primary big" data-close>처음 화면으로</button>`
+        : `<div class="loot-big"><b>🏯 다음 구역 · ${esc(next?.name ?? '')}</b><small>${esc(next?.desc ?? '')} — 쓰러져도 ${ctx.data.checkpoint}층부터 다시 올라요</small></div>
+      <div class="btns"><button class="btn primary big" id="go-on">${floor + 1}층으로 ▶</button><button class="btn" data-close>처음 화면</button></div>`}
     </div>`);
   ov.querySelector('[data-close]')!.addEventListener('click', () => {
     ov.remove();
     leavePlay(title);
+  });
+  ov.querySelector('#go-on')?.addEventListener('click', () => {
+    ov.remove();
+    startFloor();
   });
   const r = await saving;
   const line = ov.querySelector('.save-line');
@@ -873,7 +953,7 @@ function openMenu() {
           <h4>${have ? orbIcon(sel.id) : '❔'} ${have ? sel.name : '아직 모르는 구슬'} <small>${sel.element}${sel.legend ? ' · 전설' : ''}</small></h4>
           ${have || sel.implemented ? `<p><b>${sel.basic.name}</b> <small>혼력 ${sel.basic.mp}</small><br><span class="soft">${esc(sel.basic.desc)}</span></p>
           <p><b>각성 · ${sel.awaken.name}</b> <small>혼력 ${sel.awaken.mp} · 재사용 ${sel.awaken.cd}초</small><br><span class="soft">${esc(sel.awaken.desc)} · 제약: ${esc(sel.limit)}</span></p>` : `<p class="soft">${sel.floor}층 근처에서 얻을 수 있어요</p>`}
-          ${have && !sel.implemented ? '<p class="warn">이 구슬의 힘은 아직 준비 중이에요</p>' : ''}
+
           <div class="row2">
             ${have ? (d.equipped === sel.id ? '<button class="btn small" id="unequip">빼기</button>' : '<button class="btn small primary" id="equip">장착하기</button>') : '<span></span>'}
             ${have && !awake ? `<button class="btn small" id="awaken" ${d.shards < SHARDS_TO_AWAKEN ? 'disabled' : ''}>각성 <small>조각 ${d.shards}/${SHARDS_TO_AWAKEN}</small></button>` : have ? '<span class="tag">각성함</span>' : ''}
@@ -1037,3 +1117,10 @@ function openShop() {
   render();
 }
 
+
+/** 받침에 맞는 조사를 붙인다 (골렘을 · 이무기를) */
+function josa(word: string, withFinal: string, without: string): string {
+  const c = word.charCodeAt(word.length - 1);
+  const has = c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0;
+  return word + (has ? withFinal : without);
+}
