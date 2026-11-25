@@ -5,6 +5,7 @@
  * 아이폰 함정 (시아서바이벌에서 겪은 것): 손가락 번호(Touch.identifier)가 음수일 수 있다 → "없음"은 null 로.
  * 조이스틱·버튼은 touch 이벤트 + preventDefault 로 받는다 (길게 누름 제스처가 조작을 끊지 않게). 마우스는 PC 확인용.
  */
+import { IC, icon } from './icons';
 import { mpCost, noInput, type Input, type RunState } from '../game/sim';
 
 export interface Controls {
@@ -26,13 +27,13 @@ export function createControls(root: HTMLElement, run: RunState, opts: { lefty: 
   pad.className = `pad ${opts.lefty ? 'lefty' : ''}`;
   pad.innerHTML = `
     <div class="stick-zone"><div class="stick"><i></i></div></div>
-    <button class="act potion p0" data-k="p0"><span>❤️</span><b></b><i class="cd"></i><kbd>1</kbd></button>
-    <button class="act potion p1" data-k="p1"><span>💧</span><b></b><i class="cd"></i><kbd>2</kbd></button>
+    <button class="act potion p0" data-k="p0"><span>${IC.hp}</span><b></b><i class="cd"></i><kbd>1</kbd></button>
+    <button class="act potion p1" data-k="p1"><span>${IC.mp}</span><b></b><i class="cd"></i><kbd>2</kbd></button>
     <button class="act skill uq" data-k="uq"><span>${run.hero.unique.icon}</span><i class="cd"></i><em></em><kbd>U</kbd></button>
-    <button class="act skill s1" data-k="s1"><span>${w.skills[1].icon}</span><i class="cd"></i><em></em><kbd>L</kbd></button>
-    <button class="act skill s0" data-k="s0"><span>${w.skills[0].icon}</span><i class="cd"></i><em></em><kbd>K</kbd></button>
+    <button class="act skill s1" data-k="s1"><span>${icon(w.skills[1].icon)}</span><i class="cd"></i><em></em><kbd>L</kbd></button>
+    <button class="act skill s0" data-k="s0"><span>${icon(w.skills[0].icon)}</span><i class="cd"></i><em></em><kbd>K</kbd></button>
     <button class="act roll" data-k="roll"><span>🌀</span><i class="cd"></i><small>구르기</small></button>
-    <button class="act attack" data-k="atk"><span>${w.icon}</span><kbd>J</kbd></button>`;
+    <button class="act attack" data-k="atk"><span>${icon(w.icon)}</span><kbd>J</kbd></button>`;
   root.appendChild(pad);
 
   // ----- 조이스틱: 누른 자리가 가운데가 된다 -----

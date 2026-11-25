@@ -339,3 +339,10 @@ button, input { font: inherit; color: inherit; }
 
 /* 가방 정리: 일반 장비 한꺼번에 팔기·분해 */
 .btn.bulk { margin-top: 10px; width: 100%; }
+
+/* 아이콘 그림 (ui/icons.ts): 글자 그림 자리에 같은 크기로 들어간다 */
+.ic-img { width: 1.2em; height: 1.2em; object-fit: contain; vertical-align: -0.26em; flex: none; -webkit-user-drag: none; user-select: none; pointer-events: none; }
+.act .ic-img { width: 1.5em; height: 1.5em; vertical-align: middle; }
+.ic .ic-img { width: 1.3em; height: 1.3em; vertical-align: middle; }
+/* 메인 화면 그림 */
+.main-art { display: block; width: 100%; aspect-ratio: 9 / 4; object-fit: cover; object-position: 50% 30%; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }
