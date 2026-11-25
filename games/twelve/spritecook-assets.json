@@ -1,5 +1,5 @@
 {
-  "note": "시아열두길 전용 SpriteCook 그림 목록 (art/build.py 가 적는다). b-final · 대원 시트(hero-*) · 지형 전용 요괴 11종 · 상자 · 출구 · 아이콘(ic-*) · 날아가는 것(p-*) · 장면(story · ending · finale · cat-scene · main) · 로비 카드는 열두길에서 만든 그림이고, floor-r01~r12 는 시아핑거의 지형 바닥을 복사한 것이다. public/art 의 나머지 요괴 9종(e-imp 등)·보스(b-* 12종)·tile-*·fx-pop 은 시아디펜스(games/defense/public/art)에서 복사한 것이고 asset id 는 games/defense/spritecook-assets.json 에 있다.",
+  "note": "시아열두길 전용 SpriteCook 그림 목록 (art/build.py 가 적는다). b-final · 대원 시트(hero-*) · 지형 전용 요괴 11종 · 정예 9종 · 보스 공격 동작(b-*-atk) · 벽/느린 바닥 무늬 · 효과(fx-*) · 상자 · 출구 · 아이콘(ic-*) · 날아가는 것(p-*) · 장면(story · ending · finale · cat-scene · main) · 로비 카드는 열두길에서 만든 그림이고, floor-r01~r12 는 시아핑거의 지형 바닥을 복사한 것이다. public/art 의 나머지 요괴 9종(e-imp 등)·보스(b-* 12종)·tile-*·fx-pop 은 시아디펜스(games/defense/public/art)에서 복사한 것이고 asset id 는 games/defense/spritecook-assets.json 에 있다.",
   "assets": [
     {
       "asset_id": "b95d130f-e387-476f-a179-24857b250a97",
@@ -7,69 +7,284 @@
       "label": "b-final → public/art/b-final.png (512x512) · 최종보스 어둑시니 (gpt-image-2 low · 화풍 참고 야광귀·염라대왕·저승사자 · 둘레의 열쇠는 build.py 가 뺀다)"
     },
     {
-      "asset_id": "bda7a9f5-557d-48fe-a6c0-cfeb92e57a47",
-      "sha12": "ae634dfe933b",
-      "label": "hero-rat → public/art/hero-rat.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "30980fd8-2548-429b-852c-27af978932dd",
+      "sha12": "2d795c94335f",
+      "label": "hero-rat → public/art/hero-rat.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroA 시트 bda7a9f5-557d-48fe-a6c0-cfeb92e57a47 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "bda7a9f5-557d-48fe-a6c0-cfeb92e57a47",
-      "sha12": "edc0f7447dc3",
-      "label": "hero-ox → public/art/hero-ox.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "a5bc2269-63b8-45ff-82f9-98791a78b2f2",
+      "sha12": "2d71e73e0d87",
+      "label": "hero-ox → public/art/hero-ox.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroA 시트 bda7a9f5-557d-48fe-a6c0-cfeb92e57a47 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "bda7a9f5-557d-48fe-a6c0-cfeb92e57a47",
-      "sha12": "8906a2b337d4",
-      "label": "hero-tiger → public/art/hero-tiger.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "9dc334d3-ed1d-4986-bfdd-f91c5ff7fd63",
+      "sha12": "5bf9d52747c7",
+      "label": "hero-tiger → public/art/hero-tiger.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroA 시트 bda7a9f5-557d-48fe-a6c0-cfeb92e57a47 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "bda7a9f5-557d-48fe-a6c0-cfeb92e57a47",
-      "sha12": "f0ed5cc6a683",
-      "label": "hero-rabbit → public/art/hero-rabbit.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "4be311ae-5120-442e-b84c-ca8f5419e190",
+      "sha12": "5e8188a4297a",
+      "label": "hero-rabbit → public/art/hero-rabbit.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroA 시트 bda7a9f5-557d-48fe-a6c0-cfeb92e57a47 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5f03d313-0e6e-4aa3-8370-c842388a90dd",
-      "sha12": "3a190b39e680",
-      "label": "hero-dragon → public/art/hero-dragon.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "53e27989-372e-4b93-b5ed-3b466b377cc5",
+      "sha12": "5ef81dd6daf0",
+      "label": "hero-dragon → public/art/hero-dragon.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroB 시트 5f03d313-0e6e-4aa3-8370-c842388a90dd · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5f03d313-0e6e-4aa3-8370-c842388a90dd",
-      "sha12": "130c6f5cafb2",
-      "label": "hero-snake → public/art/hero-snake.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "4c87d45c-b359-4c5f-85e6-aff10834fb05",
+      "sha12": "d5c47e927056",
+      "label": "hero-snake → public/art/hero-snake.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroB 시트 5f03d313-0e6e-4aa3-8370-c842388a90dd · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5f03d313-0e6e-4aa3-8370-c842388a90dd",
-      "sha12": "a665b53601a6",
-      "label": "hero-horse → public/art/hero-horse.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "8a477761-0df7-4cee-8f27-e7da229e1693",
+      "sha12": "28e4f7aa895f",
+      "label": "hero-horse → public/art/hero-horse.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroB 시트 5f03d313-0e6e-4aa3-8370-c842388a90dd · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5f03d313-0e6e-4aa3-8370-c842388a90dd",
-      "sha12": "20de3cd82d70",
-      "label": "hero-sheep → public/art/hero-sheep.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "3697c679-a7d8-4406-9733-a41b3a663944",
+      "sha12": "45489109593f",
+      "label": "hero-sheep → public/art/hero-sheep.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroB 시트 5f03d313-0e6e-4aa3-8370-c842388a90dd · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5d074e60-d0b8-4adb-840b-4d9155c5f785",
-      "sha12": "0fe761beb4ae",
-      "label": "hero-monkey → public/art/hero-monkey.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "394de4bf-22da-4aa2-bea8-6a39f3acbd4e",
+      "sha12": "fe4b46f890a0",
+      "label": "hero-monkey → public/art/hero-monkey.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroC 시트 5d074e60-d0b8-4adb-840b-4d9155c5f785 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5d074e60-d0b8-4adb-840b-4d9155c5f785",
-      "sha12": "2c4c1faf69b0",
-      "label": "hero-rooster → public/art/hero-rooster.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "2a79a650-6cd9-45d0-98d2-b3561473f6e7",
+      "sha12": "4d1a64f99788",
+      "label": "hero-rooster → public/art/hero-rooster.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroC 시트 5d074e60-d0b8-4adb-840b-4d9155c5f785 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5d074e60-d0b8-4adb-840b-4d9155c5f785",
-      "sha12": "3a40ce912600",
-      "label": "hero-dog → public/art/hero-dog.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "55162a3a-2908-4e1d-9a72-0527612cdcfe",
+      "sha12": "4b15aabdbbb7",
+      "label": "hero-dog → public/art/hero-dog.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroC 시트 5d074e60-d0b8-4adb-840b-4d9155c5f785 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "5d074e60-d0b8-4adb-840b-4d9155c5f785",
-      "sha12": "fab164d348a1",
-      "label": "hero-pig → public/art/hero-pig.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "12718e23-77b6-4069-87fc-918685d6f305",
+      "sha12": "29bd3bda1561",
+      "label": "hero-pig → public/art/hero-pig.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroC 시트 5d074e60-d0b8-4adb-840b-4d9155c5f785 · 디자인 참고 shared/images/zodiac)"
     },
     {
-      "asset_id": "10110a49-7430-49a9-9390-574ecebf497e",
-      "sha12": "3778691c36e1",
-      "label": "hero-cat → public/art/hero-cat.png (576x192) · 대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 디자인 참고 shared/images/zodiac)"
+      "asset_id": "ca929c47-3f23-4da6-8ca1-76fe5397e376",
+      "sha12": "f01b19d9c9ff",
+      "label": "hero-cat → public/art/hero-cat.png (960x576) · 대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · gemini-nano-banana-2.1 · 서기 칸은 heroCat 시트 10110a49-7430-49a9-9390-574ecebf497e · 디자인 참고 shared/images/zodiac)"
+    },
+    {
+      "asset_id": "81b54b4f-ad13-4477-869d-23ea05429eaa",
+      "sha12": "bd105c8e0efd",
+      "label": "b-bigDokkaebi-atk → public/art/b-bigDokkaebi-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "cacd713b-d265-4eda-94bd-cfce4e226627",
+      "sha12": "594508d52215",
+      "label": "b-dueoksini-atk → public/art/b-dueoksini-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "40165d01-6a64-41e2-ba8b-1b1ffddde91c",
+      "sha12": "7cee9411ad3d",
+      "label": "b-bulgasal-atk → public/art/b-bulgasal-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "39902e26-6f8a-4db2-be68-8ea5192cd141",
+      "sha12": "a4f014a025af",
+      "label": "b-jangsanbeom-atk → public/art/b-jangsanbeom-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "7d683636-c7e3-42f3-a32b-38080cb625be",
+      "sha12": "e37ad5c5234b",
+      "label": "b-centipede-atk → public/art/b-centipede-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "d86888b5-c29b-485a-ba72-5043e4d62222",
+      "sha12": "baf133528c62",
+      "label": "b-gumiho-atk → public/art/b-gumiho-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "c126d325-22ab-41be-99b6-dcca9c049d77",
+      "sha12": "483761a75ae7",
+      "label": "b-guardCaptain-atk → public/art/b-guardCaptain-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "4ad446ec-36a0-48f4-8741-a9ad3f57acd0",
+      "sha12": "72ac650d16d0",
+      "label": "b-yagwanggwi-atk → public/art/b-yagwanggwi-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "0db1f889-6376-4e15-bf87-ee47a66dd6a7",
+      "sha12": "0cdd507b5889",
+      "label": "b-imugi-atk → public/art/b-imugi-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "f37ae72f-6957-4eec-82bd-c59c1da353d7",
+      "sha12": "b37def3dc92f",
+      "label": "b-reaper-atk → public/art/b-reaper-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "fc2a461c-0da4-43f9-8745-bb59590085cc",
+      "sha12": "54b4a1377ee4",
+      "label": "b-gangcheori-atk → public/art/b-gangcheori-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "b57a072c-649f-4ad3-b360-0ed4faf46be4",
+      "sha12": "66be14146afe",
+      "label": "b-yeomra-atk → public/art/b-yeomra-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "a236ca0d-8573-460a-b0ca-b132ea70904a",
+      "sha12": "14b6121dac2d",
+      "label": "b-final-atk → public/art/b-final-atk.png (896x448) · 보스 공격 동작 (가로 2칸: 예고 · 내려치기 · gemini-nano-banana-2.1 · 보스 그림을 reference 로)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "77322f0e6ad7",
+      "label": "wall-r01 → public/art/wall-r01.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "866616b20ac8",
+      "label": "wall-r02 → public/art/wall-r02.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "f26ebe5553b5",
+      "label": "wall-r03 → public/art/wall-r03.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "adbd77c29f5b",
+      "label": "wall-r04 → public/art/wall-r04.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "4cbdf50a7e1a",
+      "label": "wall-r05 → public/art/wall-r05.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "d3b94c0879ef",
+      "label": "wall-r06 → public/art/wall-r06.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "8cfd42f8df99",
+      "label": "wall-r07 → public/art/wall-r07.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "14b93ac55293",
+      "label": "wall-r08 → public/art/wall-r08.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "a15e01eb6b83",
+      "label": "wall-r09 → public/art/wall-r09.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "78b8119c1a7e",
+      "label": "wall-r10 → public/art/wall-r10.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "51cba786a041",
+      "label": "wall-r11 → public/art/wall-r11.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "bafa24fadfc1",
+      "label": "wall-r12 → public/art/wall-r12.png (240x240) · 이어 붙는 벽 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "f941b6ba5f9f",
+      "label": "slow-water → public/art/slow-water.png (240x240) · 이어 붙는 느린 바닥 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "16c3a94ddbb6",
+      "label": "slow-mud → public/art/slow-mud.png (240x240) · 이어 붙는 느린 바닥 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "ccdba901a092",
+      "label": "slow-poison → public/art/slow-poison.png (240x240) · 이어 붙는 느린 바닥 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9fc3f567-cf05-4d0a-ac35-7d0487b61f7a",
+      "sha12": "610d850ec7db",
+      "label": "slow-fire → public/art/slow-fire.png (240x240) · 이어 붙는 느린 바닥 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "773cdffbde49",
+      "label": "ic-u-rat → public/art/ic-u-rat.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "6890b4e77d0e",
+      "label": "ic-u-ox → public/art/ic-u-ox.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "6ffd792c3f3f",
+      "label": "ic-u-tiger → public/art/ic-u-tiger.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "54e4c076dd9b",
+      "label": "ic-u-rabbit → public/art/ic-u-rabbit.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "4d06c41a8d3c",
+      "label": "ic-u-dragon → public/art/ic-u-dragon.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "604c949fb44e",
+      "label": "ic-u-snake → public/art/ic-u-snake.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "bd8578b7b74e",
+      "label": "ic-u-horse → public/art/ic-u-horse.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "a4f6ef211bd3",
+      "label": "ic-u-sheep → public/art/ic-u-sheep.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "c0a1cdf2b370",
+      "label": "ic-u-monkey → public/art/ic-u-monkey.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "7019e203e676",
+      "label": "ic-u-rooster → public/art/ic-u-rooster.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "5d16bca6919d",
+      "label": "ic-u-dog → public/art/ic-u-dog.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "295922435ed2",
+      "label": "ic-u-pig → public/art/ic-u-pig.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "d782fb29000e",
+      "label": "ic-u-cat → public/art/ic-u-cat.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
+      "sha12": "988eeb915af6",
+      "label": "ic-roll → public/art/ic-roll.png (96x96) · 구르기 버튼 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
     },
     {
       "asset_id": "a48b878b-4ac6-4c47-b841-c3be9c2a185e",
@@ -80,11 +295,6 @@
       "asset_id": "a48b878b-4ac6-4c47-b841-c3be9c2a185e",
       "sha12": "0402109dfda8",
       "label": "e-lynx → public/art/e-lynx.png (192x192) · 3지형 살쾡이 요괴 (enemyA 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
-    },
-    {
-      "asset_id": "a48b878b-4ac6-4c47-b841-c3be9c2a185e",
-      "sha12": "2dbfc84e0671",
-      "label": "e-shade → public/art/e-shade.png (192x192) · 4지형 그슨대 (enemyA 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
     },
     {
       "asset_id": "a48b878b-4ac6-4c47-b841-c3be9c2a185e",
@@ -263,11 +473,6 @@
     },
     {
       "asset_id": "52f2b05f-c5a1-4c65-b265-6c24c969a127",
-      "sha12": "6dc3265b2a10",
-      "label": "p-spear → public/art/p-spear.png (144x40) · 던진 창 (icons2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
-    },
-    {
-      "asset_id": "52f2b05f-c5a1-4c65-b265-6c24c969a127",
       "sha12": "d03e4edf7c52",
       "label": "p-orb → public/art/p-orb.png (72x72) · 마법 구슬 (icons2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
     },
@@ -282,8 +487,378 @@
       "label": "fx-slash → public/art/fx-slash.png (192x192) · 베기 자국 (icons2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
     },
     {
+      "asset_id": "d2fd563a-4da5-4d8b-a392-e5841ed5e274",
+      "sha12": "574267f2cd02",
+      "label": "e-club-elite → public/art/e-club-elite.png (192x192) · 정예 방망이 도깨비 (eliteA 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "d2fd563a-4da5-4d8b-a392-e5841ed5e274",
+      "sha12": "58e252e6ad05",
+      "label": "e-fox-elite → public/art/e-fox-elite.png (192x192) · 정예 여우불 (eliteA 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "d2fd563a-4da5-4d8b-a392-e5841ed5e274",
+      "sha12": "bfa2f69e390a",
+      "label": "e-water-elite → public/art/e-water-elite.png (192x192) · 정예 물귀신 (eliteA 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "d2fd563a-4da5-4d8b-a392-e5841ed5e274",
+      "sha12": "ba26ca6cdc9b",
+      "label": "e-bamboo-elite → public/art/e-bamboo-elite.png (192x192) · 정예 죽순 요괴 (eliteA 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "b72a5b14-9f2a-48c6-be41-10d79d20896f",
+      "sha12": "47085ef431da",
+      "label": "e-lynx-elite → public/art/e-lynx-elite.png (192x192) · 정예 살쾡이 요괴 (eliteB 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "b72a5b14-9f2a-48c6-be41-10d79d20896f",
+      "sha12": "42964bfce3de",
+      "label": "e-spirit-elite → public/art/e-spirit-elite.png (192x192) · 정예 원혼 (eliteB 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "b72a5b14-9f2a-48c6-be41-10d79d20896f",
+      "sha12": "ccbb86bc994b",
+      "label": "e-wisp-elite → public/art/e-wisp-elite.png (192x192) · 정예 도깨비불 (eliteB 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "b72a5b14-9f2a-48c6-be41-10d79d20896f",
+      "sha12": "c2a2299f6791",
+      "label": "e-guard-elite → public/art/e-guard-elite.png (192x192) · 정예 수문장 요괴 (eliteB 시트 2x2 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "91db11eb-cc81-44ec-becb-3f23c9586cad",
+      "sha12": "02e84e6690b1",
+      "label": "e-skeleton-elite → public/art/e-skeleton-elite.png (192x192) · 정예 해골 병사 (eliteC 시트 2x1 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "91db11eb-cc81-44ec-becb-3f23c9586cad",
+      "sha12": "aab4d9ea0a0b",
+      "label": "e-shade → public/art/e-shade.png (192x192) · 4지형 그슨대 (eliteC 시트 2x1 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "e9937e37060e",
+      "label": "fx-thrust → public/art/fx-thrust.png (192x64) · 찌르기 자국 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "2a3db2659fed",
+      "label": "fx-spin → public/art/fx-spin.png (256x256) · 회전 자국 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "c1ae44d6429c",
+      "label": "fx-rain → public/art/fx-rain.png (160x160) · 화살 비 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "c572a27912b4",
+      "label": "fx-wind → public/art/fx-wind.png (192x192) · 회오리 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "89b690a71287",
+      "label": "fx-poison → public/art/fx-poison.png (192x192) · 독안개 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "302675dbbc63",
+      "label": "fx-bolt → public/art/fx-bolt.png (128x64) · 번개 한 마디 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "ba24027abeda",
+      "label": "p-spear → public/art/p-spear.png (144x40) · 던진 창 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "44b57a3c3004",
+      "label": "fx-pool → public/art/fx-pool.png (160x128) · 독 웅덩이 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "eb01230fdd65",
+      "label": "fx-flame → public/art/fx-flame.png (128x128) · 불길 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "0e6637b65d7e",
+      "label": "fx-gust → public/art/fx-gust.png (160x96) · 골바람 줄기 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "8d1ba924e23f",
+      "label": "p-pollen → public/art/p-pollen.png (72x72) · 졸음 꽃가루 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "1ef99e8e520c",
+      "label": "p-burr → public/art/p-burr.png (72x72) · 밤송이 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "038f6aba1692",
+      "label": "fx-arrowfall → public/art/fx-arrowfall.png (40x128) · 떨어지는 화살 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "5c102f98893c",
+      "label": "fx-claw → public/art/fx-claw.png (128x128) · 할퀸 자국 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "a1e1e1fba4a1",
+      "label": "p-foxorb → public/art/p-foxorb.png (112x96) · 여우구슬 (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c7a76e6d-13df-405c-9a47-178faf735dcb",
+      "sha12": "556c89ebd100",
+      "label": "fx-shock → public/art/fx-shock.png (256x256) · 충격 고리 (고유 스킬 · 보스 내려치기) (fx2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "474d271c21db",
+      "label": "ic-w-sword-0 → public/art/ic-w-sword-0.png (96x96) · 칼 1등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "54e2878093fb",
+      "label": "ic-w-sword-1 → public/art/ic-w-sword-1.png (96x96) · 칼 2등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "646cb75f452f",
+      "label": "ic-w-sword-2 → public/art/ic-w-sword-2.png (96x96) · 칼 3등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "7088b15dc33f",
+      "label": "ic-w-sword-3 → public/art/ic-w-sword-3.png (96x96) · 칼 4등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "6aad1345f57c",
+      "label": "ic-w-spear-0 → public/art/ic-w-spear-0.png (96x96) · 창 1등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "d21627990a65",
+      "label": "ic-w-spear-1 → public/art/ic-w-spear-1.png (96x96) · 창 2등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "6d2ce2fb28b4",
+      "label": "ic-w-spear-2 → public/art/ic-w-spear-2.png (96x96) · 창 3등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "fcbdd748036a",
+      "label": "ic-w-spear-3 → public/art/ic-w-spear-3.png (96x96) · 창 4등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "2c32dc6e8800",
+      "label": "ic-w-bow-0 → public/art/ic-w-bow-0.png (96x96) · 활 1등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "0576435855c6",
+      "label": "ic-w-bow-1 → public/art/ic-w-bow-1.png (96x96) · 활 2등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "3b387bf9da3d",
+      "label": "ic-w-bow-2 → public/art/ic-w-bow-2.png (96x96) · 활 3등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "d35fb0418d63",
+      "label": "ic-w-bow-3 → public/art/ic-w-bow-3.png (96x96) · 활 4등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "da0dd313b523",
+      "label": "ic-w-fan-0 → public/art/ic-w-fan-0.png (96x96) · 부채 1등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "6c7626457692",
+      "label": "ic-w-fan-1 → public/art/ic-w-fan-1.png (96x96) · 부채 2등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "59f793ca9fe0",
+      "label": "ic-w-fan-2 → public/art/ic-w-fan-2.png (96x96) · 부채 3등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9e865c9c-8a41-45b4-a66b-707bfe8dca32",
+      "sha12": "3401b71f79a2",
+      "label": "ic-w-fan-3 → public/art/ic-w-fan-3.png (96x96) · 부채 4등급 (wtier1 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "a6f356327603",
+      "label": "ic-w-sword-4 → public/art/ic-w-sword-4.png (96x96) · 칼 5등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "8d41b337360c",
+      "label": "ic-w-sword-5 → public/art/ic-w-sword-5.png (96x96) · 칼 6등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "dc2b90d06ab8",
+      "label": "ic-w-sword-6 → public/art/ic-w-sword-6.png (96x96) · 칼 7등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "67bfea5e3f45",
+      "label": "ic-w-sword-7 → public/art/ic-w-sword-7.png (96x96) · 칼 8등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "b4e5cdc0099d",
+      "label": "ic-w-spear-4 → public/art/ic-w-spear-4.png (96x96) · 창 5등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "fd24145cade7",
+      "label": "ic-w-spear-5 → public/art/ic-w-spear-5.png (96x96) · 창 6등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "48cf71459eda",
+      "label": "ic-w-spear-6 → public/art/ic-w-spear-6.png (96x96) · 창 7등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "dfdfa2d498c1",
+      "label": "ic-w-spear-7 → public/art/ic-w-spear-7.png (96x96) · 창 8등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "531bf3db2cd7",
+      "label": "ic-w-bow-4 → public/art/ic-w-bow-4.png (96x96) · 활 5등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "8b99ca19e407",
+      "label": "ic-w-bow-5 → public/art/ic-w-bow-5.png (96x96) · 활 6등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "5f9901f8acbd",
+      "label": "ic-w-bow-6 → public/art/ic-w-bow-6.png (96x96) · 활 7등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "8c964ee54ad9",
+      "label": "ic-w-bow-7 → public/art/ic-w-bow-7.png (96x96) · 활 8등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "e3403e963b84",
+      "label": "ic-w-fan-4 → public/art/ic-w-fan-4.png (96x96) · 부채 5등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "f29e6b46e612",
+      "label": "ic-w-fan-5 → public/art/ic-w-fan-5.png (96x96) · 부채 6등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "789411dcf09a",
+      "label": "ic-w-fan-6 → public/art/ic-w-fan-6.png (96x96) · 부채 7등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c5e8a9a7-b1c6-4192-b3ba-ca681045e686",
+      "sha12": "5b5c99e57615",
+      "label": "ic-w-fan-7 → public/art/ic-w-fan-7.png (96x96) · 부채 8등급 (wtier2 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "4f4d870a356d",
+      "label": "ic-w-sword-8 → public/art/ic-w-sword-8.png (96x96) · 칼 9등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "3484b610db37",
+      "label": "ic-w-sword-9 → public/art/ic-w-sword-9.png (96x96) · 칼 10등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "d735f733b89b",
+      "label": "ic-w-sword-10 → public/art/ic-w-sword-10.png (96x96) · 칼 11등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "e5b5737e9110",
+      "label": "ic-w-sword-11 → public/art/ic-w-sword-11.png (96x96) · 칼 12등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "1fcff92c7921",
+      "label": "ic-w-spear-8 → public/art/ic-w-spear-8.png (96x96) · 창 9등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "78ded91182a5",
+      "label": "ic-w-spear-9 → public/art/ic-w-spear-9.png (96x96) · 창 10등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "b3c02c29f4cb",
+      "label": "ic-w-spear-10 → public/art/ic-w-spear-10.png (96x96) · 창 11등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "a69828ae8e96",
+      "label": "ic-w-spear-11 → public/art/ic-w-spear-11.png (96x96) · 창 12등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "fb305dae2d6c",
+      "label": "ic-w-bow-8 → public/art/ic-w-bow-8.png (96x96) · 활 9등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "6b64f9f98c2b",
+      "label": "ic-w-bow-9 → public/art/ic-w-bow-9.png (96x96) · 활 10등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "006ccb2c6100",
+      "label": "ic-w-bow-10 → public/art/ic-w-bow-10.png (96x96) · 활 11등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "6ba5e90c5cb3",
+      "label": "ic-w-bow-11 → public/art/ic-w-bow-11.png (96x96) · 활 12등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "b45cf0948036",
+      "label": "ic-w-fan-8 → public/art/ic-w-fan-8.png (96x96) · 부채 9등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "9a9f9d13ce19",
+      "label": "ic-w-fan-9 → public/art/ic-w-fan-9.png (96x96) · 부채 10등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "c310d814255b",
+      "label": "ic-w-fan-10 → public/art/ic-w-fan-10.png (96x96) · 부채 11등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "190c9487-37a3-4f26-b03c-3b81bd74e215",
+      "sha12": "a435b69b4d18",
+      "label": "ic-w-fan-11 → public/art/ic-w-fan-11.png (96x96) · 부채 12등급 (wtier3 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
+    },
+    {
       "asset_id": "b29ab7aa-7cbb-4c88-a055-bd42949050cb",
-      "sha12": "092d13e42ce0",
+      "sha12": "d7d238bb4112",
       "label": "story-1 → public/art/story-1.png (720x400) · 십이지가 요괴를 봉인 (gemini-nano-banana-2.1 16:9 를 자름)"
     },
     {
@@ -347,9 +922,19 @@
       "label": "cat-scene → public/art/cat-scene.png (720x320) · 쉼터에 헐레벌떡 달려온 고양이 (gemini-nano-banana-2.1 16:9 를 자름)"
     },
     {
-      "asset_id": "5565d6c2-41e7-4760-bde6-7ebe13c8420a",
-      "sha12": "b33f76aa2e48",
-      "label": "main → public/art/main.png (720x400) · 메인 화면 그림 (로비 카드와 같은 그림을 9:5 로 자름) (gemini-nano-banana-2.1 16:9 를 자름)"
+      "asset_id": "acecf0d8-5f11-4dbe-b72b-ec2ef3e17336",
+      "sha12": "3018c2f415db",
+      "label": "main → public/art/main.png (720x400) · 메인 화면 그림: 열두 길 앞에 선 대원 셋 (gemini-nano-banana-2.1 16:9 를 자름)"
+    },
+    {
+      "asset_id": "09c0ebed-24ee-45a3-9e08-0b8ad6329317",
+      "sha12": "704965e70c13",
+      "label": "shop → public/art/shop.png (720x320) · 상점 화면 그림 (너구리 상인의 좌판) (gemini-nano-banana-2.1 16:9 를 자름)"
+    },
+    {
+      "asset_id": "bd6cc827-d3a0-4f7e-b023-87af3063c7ac",
+      "sha12": "6cdba4db1ee8",
+      "label": "forge → public/art/forge.png (720x320) · 대장간 화면 그림 (곰 대장장이의 화덕) (gemini-nano-banana-2.1 16:9 를 자름)"
     },
     {
       "asset_id": "5565d6c2-41e7-4760-bde6-7ebe13c8420a",

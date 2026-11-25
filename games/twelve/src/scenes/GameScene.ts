@@ -3,12 +3,13 @@ import { artUrl, heroFullUrl } from '../assets';
 import type { Shape } from '../data/acts';
 import { MAP_W, PLAYER_R, TILE } from '../data/balance';
 import { itemDef } from '../data/items';
-import { envOf } from '../data/maps';
+import { BOSSES } from '../data/bosses';
+import { bossIdOf, envOf } from '../data/maps';
 import type { Drop } from '../game/drops';
 import { eunNeun, iGa } from '../game/progress';
 import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
-import { ENEMY_TINT, EXIT_FRAME, HARD_BOSS_TINT, HERO_FRAME, HERO_FRAMES, artFor, floorOf, groundOf, hasArt } from './art';
+import { BOSS_ATK_FRAME, ENEMY_TINT, EXIT_FRAME, HARD_BOSS_TINT, HERO_COLS, HERO_FRAME, HERO_FRAMES, HERO_ROLL_ORIGIN, HERO_ROWS, artFor, bossAtkArt, eliteArt, floorOf, groundOf, hasArt, slowArt, wallArt } from './art';
 
 /** 기준 화면 크기 (세로 9:16). 더 긴 화면(아이폰 19.5:9 등)은 위아래로 더 보여 준다 — 띠를 남기지 않게 */
 export const W = 720;
@@ -57,6 +58,15 @@ export const dropIcon = (d: Drop) => (d.t === 'potion' ? (d.slot ? '💧' : '❤
 export const dropName = (d: Drop) =>
   d.t === 'potion' ? `${d.slot ? '마력' : '체력'} 물약(${'소중대'[d.size]})` : d.t === 'stone' ? `강화석 ${d.n}개` : d.t === 'key' ? '지형 열쇠' : (itemDef(d.base)?.name ?? '장비');
 const isRare = (d: Drop) => d.t === 'key' || (d.t === 'item' && d.rare);
+/** 떨어진 것의 아이콘 그림 이름 (판이 받아 둔 ic-* — 없으면 글자 그림으로 그린다) */
+const dropArt = (d: Drop): string => {
+  if (d.t === 'potion') return d.slot ? 'ic-mp' : 'ic-hp';
+  if (d.t === 'stone') return 'ic-stone';
+  if (d.t === 'key') return 'ic-key';
+  const def = itemDef(d.base);
+  if (!def) return '';
+  return def.slot === 'weapon' ? `ic-${def.kind}` : def.slot === 'armor' ? 'ic-armor' : def.id.startsWith('s-') ? 'ic-star' : `ic-acc-${def.stat}`;
+};
 
 interface Num {
   o: Phaser.GameObjects.BitmapText;
@@ -90,9 +100,18 @@ export class GameScene extends Phaser.Scene {
   /** 출구 그림 (잠김 · 열림 두 칸). 없으면 동그라미 + 글자 그림 */
   private exitImg: Phaser.GameObjects.Image | null = null;
   private chestMark!: Phaser.GameObjects.Text | Phaser.GameObjects.Image;
-  /** 날아가는 것 · 베기 자국 그림: 프레임마다 앞에서부터 다시 나눠 쓴다 */
-  private shotViews: Phaser.GameObjects.Image[] = [];
-  private slashViews: Phaser.GameObjects.Image[] = [];
+  /** 효과 그림(날아가는 것 · 자국 · 범위 …): 프레임마다 앞에서부터 다시 나눠 쓴다 */
+  private sprites: Phaser.GameObjects.Image[] = [];
+  private spriteN = 0;
+  /** 충격 고리 (터짐 · 고유 스킬): 잠깐 커지며 사라진다 */
+  private shocks: { x: number; y: number; r: number; t: number }[] = [];
+  /** 고유 스킬을 쓴 순간 머리 위에 뜨는 그림 */
+  private uniquePop: Phaser.GameObjects.Image | null = null;
+  private uniqueT = 0;
+  private lastUniqueCd = 0;
+  /** 보스 공격 동작: 예고가 끝난 뒤 내려치기 칸을 보여 줄 시각 · 지난 프레임의 예고 여부 */
+  private bossStrikeUntil = 0;
+  private bossWasBusy = false;
   private chunks = new Map<number, Phaser.GameObjects.Image>();
   private views = new Map<number, Phaser.GameObjects.Image>();
   private free: Phaser.GameObjects.Image[] = [];
@@ -103,7 +122,7 @@ export class GameScene extends Phaser.Scene {
   private fx: Fx[] = [];
   private chains: { pts: number[]; t: number }[] = [];
   /** 땅에 떨어진 것 (번호 → 그림 글자). 떨어질 때 한 번 만들고 주우면 지운다 */
-  private dropMarks = new Map<number, { o: Phaser.GameObjects.Text; x: number; y: number; rare: boolean; born: number }>();
+  private dropMarks = new Map<number, { o: Phaser.GameObjects.Text | Phaser.GameObjects.Image; x: number; y: number; rare: boolean; born: number }>();
   private lastSound = new Map<string, number>();
   private camX = 0;
   private camY = 0;
@@ -129,8 +148,14 @@ export class GameScene extends Phaser.Scene {
     this.pops = [];
     this.fx = [];
     this.chains = [];
-    this.shotViews = [];
-    this.slashViews = [];
+    this.sprites = [];
+    this.spriteN = 0;
+    this.shocks = [];
+    this.uniquePop = null;
+    this.uniqueT = 0;
+    this.lastUniqueCd = 0;
+    this.bossStrikeUntil = 0;
+    this.bossWasBusy = false;
     this.exitImg = null;
     this.lastSound.clear();
   }
@@ -143,6 +168,10 @@ export class GameScene extends Phaser.Scene {
       this.load.once('loaderror', (f: Phaser.Loader.File) => f.key === 'hero' && this.load.image('hero', heroFullUrl(id)));
     } else this.load.image('hero', heroFullUrl(id));
     if (hasArt('exit')) this.load.spritesheet('exit', artUrl('exit'), { frameWidth: EXIT_FRAME, frameHeight: EXIT_FRAME });
+    if (hasArt(`ic-u-${id}`)) this.load.image(`ic-u-${id}`, artUrl(`ic-u-${id}`));
+    // 보스 공격 동작 (예고 · 내려치기 두 칸)
+    const atk = this.run.map.boss ? bossAtkArt(BOSSES[bossIdOf(this.run.map)].art) : null;
+    if (atk) this.load.spritesheet(atk, artUrl(atk), { frameWidth: BOSS_ATK_FRAME, frameHeight: BOSS_ATK_FRAME });
     for (const n of artFor(this.run.map)) this.load.image(n, artUrl(n));
   }
 
@@ -161,8 +190,9 @@ export class GameScene extends Phaser.Scene {
     this.chestMark = this.textures.exists('chest')
       ? this.add.image(s.chestX, s.chestY, 'chest').setDisplaySize(64, 64).setDepth(3)
       : this.add.text(s.chestX, s.chestY, '🎁', { fontFamily: FONT, fontSize: '40px' }).setOrigin(0.5).setDepth(3);
-    this.heroSheet = this.textures.exists('hero') && this.textures.get('hero').has(String(HERO_FRAMES.back));
-    this.hero = this.add.image(s.p.x, s.p.y, this.textures.exists('hero') ? 'hero' : 'hero-fallback', this.heroSheet ? HERO_FRAMES.front : undefined).setOrigin(0.5, 0.86);
+    this.heroSheet = this.textures.exists('hero') && this.textures.get('hero').has(String(HERO_COLS * 3 - 1));
+    this.hero = this.add.image(s.p.x, s.p.y, this.textures.exists('hero') ? 'hero' : 'hero-fallback', this.heroSheet ? 0 : undefined).setOrigin(0.5, 0.86);
+    if (this.textures.exists(`ic-u-${s.hero.id}`)) this.uniquePop = this.add.image(0, 0, `ic-u-${s.hero.id}`).setDepth(64).setVisible(false);
     this.heroScale = (this.heroSheet ? 98 : 92) / this.hero.height;
     this.hero.setScale(this.heroScale);
     for (let i = 0; i < NUM_POOL; i++) {
@@ -281,6 +311,7 @@ export class GameScene extends Phaser.Scene {
           this.chains.push({ pts: ev.pts, t: 0.22 });
           break;
         case 'boom':
+          this.shocks.push({ x: ev.x, y: ev.y, r: ev.r, t: 0.3 });
           this.shake = Math.max(this.shake, 0.12);
           this.sfx('tankBoom', 120, { volume: 0.5 });
           break;
@@ -294,7 +325,10 @@ export class GameScene extends Phaser.Scene {
         case 'drop': {
           const rare = isRare(ev.drop);
           if (ev.pick >= 0) {
-            const o = this.add.text(ev.x, ev.y, dropIcon(ev.drop), { fontFamily: FONT, fontSize: rare ? '42px' : '32px' }).setOrigin(0.5).setDepth(3);
+            const art = dropArt(ev.drop);
+            const o = this.textures.exists(art)
+              ? this.add.image(ev.x, ev.y, art).setDisplaySize(rare ? 56 : 44, rare ? 56 : 44).setDepth(3)
+              : this.add.text(ev.x, ev.y, dropIcon(ev.drop), { fontFamily: FONT, fontSize: rare ? '42px' : '32px' }).setOrigin(0.5).setDepth(3);
             this.dropMarks.set(ev.pick, { o, x: ev.x, y: ev.y, rare, born: this.time.now / 1000 });
           } else this.hooks.note(`${dropIcon(ev.drop)} ${dropName(ev.drop)}`);
           if (rare) {
@@ -365,6 +399,13 @@ export class GameScene extends Phaser.Scene {
     u.o.setText(String(n)).setPosition(x + (Math.random() - 0.5) * 26, y - 6).setTint(tint).setScale(scale).setAlpha(1).setVisible(true);
   }
 
+  /** 효과 그림 하나를 꺼낸다 (이번 프레임에 쓰는 만큼만 보인다). 꺼낼 때마다 기본 모습으로 되돌린다 */
+  private sprite(key: string, depth: number): Phaser.GameObjects.Image {
+    const v = this.sprites[this.spriteN] ?? (this.sprites[this.spriteN] = this.add.image(0, 0, key));
+    this.spriteN++;
+    return v.setTexture(key).setDepth(depth).setVisible(true).setAlpha(1).setRotation(0).setOrigin(0.5).setFlip(false, false).setScale(1);
+  }
+
   private pop(x: number, y: number, size: number) {
     const u = this.pops[this.popNext];
     this.popNext = (this.popNext + 1) % this.pops.length;
@@ -390,6 +431,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private draw(dt: number) {
+    this.spriteN = 0;
     const s = this.run;
     const p = s.p;
     const now = this.time.now / 1000;
@@ -441,6 +483,17 @@ export class GameScene extends Phaser.Scene {
     for (const z of s.pools) {
       if (!this.onScreen(z.x, z.y, z.r)) continue;
       const f = Math.min(1, z.left / 0.6);
+      const poolKey = z.fire ? 'fx-flame' : 'fx-pool';
+      if (this.textures.exists(poolKey)) {
+        // 그림: 불길은 일렁이고, 독 웅덩이는 천천히 숨 쉰다 (범위는 옅은 테로 남긴다)
+        g.lineStyle(3, z.fire ? COLOR.lose : COLOR.win, 0.45 * f).strokeCircle(z.x, z.y, z.r);
+        const k = z.fire ? 1 + 0.08 * Math.sin(now * 14 + z.x) : 1 + 0.04 * Math.sin(now * 3 + z.x);
+        this.sprite(poolKey, 3)
+          .setPosition(z.x, z.y)
+          .setDisplaySize(z.r * (z.fire ? 2 : 2.3), z.r * (z.fire ? 2 * k : 1.8 * k))
+          .setAlpha((z.fire ? 0.92 : 0.85) * f);
+        continue;
+      }
       g.fillStyle(z.fire ? COLOR.lose : COLOR.win, (z.fire ? 0.5 : 0.42) * f).fillCircle(z.x, z.y, z.r);
       g.lineStyle(4, COLOR.outline, 0.7 * f).strokeCircle(z.x, z.y, z.r);
       for (let i = 0; i < 4; i++) g.fillStyle(z.fire ? COLOR.primary : COLOR.white, (z.fire ? 0.8 : 0.5) * f).fillCircle(z.x + Math.cos(i * 1.7 + now * 1.3) * z.r * 0.55, z.y + Math.sin(i * 2.3 + now * 1.1) * z.r * 0.5, 5 + 2 * Math.sin(now * 4 + i));
@@ -450,6 +503,18 @@ export class GameScene extends Phaser.Scene {
       if (!this.onScreen(z.x, z.y, z.r)) continue;
       const col = z.look === 'rain' ? COLOR.teamA : z.look === 'wind' ? COLOR.white : COLOR.win;
       const a = Math.min(1, z.left / 0.3);
+      if (this.textures.exists(`fx-${z.look}`)) {
+        // 그림: 화살 비는 위에서 거듭 떨어지고, 회오리는 돌고, 독안개는 숨 쉰다 (범위는 옅은 테로 남긴다)
+        g.fillStyle(col, 0.12 * a).fillCircle(z.x, z.y, z.r);
+        g.lineStyle(3, col, 0.6 * a).strokeCircle(z.x, z.y, z.r);
+        const v = this.sprite(`fx-${z.look}`, 57).setPosition(z.x, z.y);
+        if (z.look === 'rain') {
+          const fall = (now * 3.2 + z.x * 0.01) % 1;
+          v.setPosition(z.x, z.y - (1 - fall) * z.r * 0.9).setDisplaySize(z.r * 1.5, z.r * 1.5).setAlpha(a * Math.min(1, fall * 4) * (fall > 0.85 ? (1 - fall) / 0.15 : 1));
+        } else if (z.look === 'wind') v.setDisplaySize(z.r * 1.7, z.r * 1.7).setRotation(Math.sin(now * 9) * 0.2).setFlipX(Math.floor(now * 8) % 2 === 0).setAlpha(0.9 * a);
+        else v.setDisplaySize(z.r * 2.1 * (1 + 0.04 * Math.sin(now * 4)), z.r * 2.1).setAlpha(0.62 * a);
+        continue;
+      }
       g.fillStyle(col, 0.22 * a).fillCircle(z.x, z.y, z.r);
       g.lineStyle(4, col, 0.8 * a).strokeCircle(z.x, z.y, z.r);
       if (z.look === 'wind') {
@@ -466,7 +531,14 @@ export class GameScene extends Phaser.Scene {
       }
     }
     // 공격 예고 (빨간 범위: 옅은 전체 + 차오르는 안쪽)
-    for (const w of s.warns) this.drawWarn(g, w);
+    for (const w of s.warns) {
+      this.drawWarn(g, w);
+      // 성벽 화살 (7지형): 예고 자리로 화살이 떨어진다
+      if (s.env.id === 'arrow' && w.src < 0 && w.shape === 'circle' && w.delay <= 0 && this.textures.exists('fx-arrowfall')) {
+        const left = Math.max(0, w.t) / w.total;
+        this.sprite('fx-arrowfall', 57).setOrigin(0.5, 1).setPosition(w.x, w.y - left * 420).setScale(0.8).setAlpha(Math.min(1, (1 - left) * 3));
+      }
+    }
     // 대원 발밑: 바라보는 방향
     g.fillStyle(COLOR.outline, 0.25).fillEllipse(p.x, p.y + 4, 46, 20);
     const fa = Math.atan2(p.fy, p.fx);
@@ -485,22 +557,56 @@ export class GameScene extends Phaser.Scene {
     else if (p.fx > 0.2) this.faceLeft = false;
     const dead = s.phase === 'dead';
     const rolling = p.rollT > 0;
-    const bob = p.moving && !rolling ? Math.abs(Math.sin(now * 12)) * 5 : 0;
-    // 시트가 있으면 바라보는 쪽의 칸: 위아래가 뚜렷하면 뒤 · 앞, 아니면 옆 (왼쪽은 뒤집는다)
-    if (this.heroSheet) this.hero.setFrame(Math.abs(p.fy) > Math.abs(p.fx) * 1.3 ? (p.fy > 0 ? HERO_FRAMES.front : HERO_FRAMES.back) : HERO_FRAMES.side);
+    const bob = p.moving && !rolling ? Math.abs(Math.sin(now * 12)) * (this.heroSheet ? 3 : 5) : 0;
+    // 시트가 있으면 바라보는 쪽의 줄(위아래가 뚜렷하면 뒤 · 앞, 아니면 옆 — 왼쪽은 뒤집는다)에서 동작에 맞는 칸을 쓴다
+    let rollLift = 0;
+    if (this.heroSheet) {
+      const row = Math.abs(p.fy) > Math.abs(p.fx) * 1.3 ? (p.fy > 0 ? HERO_ROWS.front : HERO_ROWS.back) : HERO_ROWS.side;
+      const walk = [HERO_FRAMES.walkA, HERO_FRAMES.stand, HERO_FRAMES.walkB, HERO_FRAMES.stand][Math.floor(now * 9) % 4];
+      const col = dead ? HERO_FRAMES.stand : rolling ? HERO_FRAMES.roll : p.swing > 0 ? HERO_FRAMES.attack : p.moving ? walk : HERO_FRAMES.stand;
+      // 구르기 칸은 공의 가운데를 축으로 돌린다
+      this.hero.setFrame(row * HERO_COLS + col).setOrigin(0.5, rolling ? HERO_ROLL_ORIGIN : 0.86);
+      if (rolling) rollLift = (0.86 - HERO_ROLL_ORIGIN) * HERO_FRAME * this.heroScale;
+    }
     this.hero
-      .setPosition(p.x, p.y + PLAYER_R - bob)
+      .setPosition(p.x, p.y + PLAYER_R - bob - rollLift)
       .setFlipX(this.faceLeft)
       .setDepth(10 + p.y / 100000)
-      .setRotation(dead ? Math.PI / 2 : rolling ? (1 - p.rollT / 0.28) * Math.PI * 2 * (this.faceLeft ? -1 : 1) : p.swing > 0 ? (this.faceLeft ? -0.18 : 0.18) : 0)
+      .setRotation(dead ? Math.PI / 2 : rolling ? (1 - p.rollT / 0.28) * Math.PI * 2 * (this.faceLeft ? -1 : 1) : p.swing > 0 && !this.heroSheet ? (this.faceLeft ? -0.18 : 0.18) : 0)
       .setScale(this.heroScale * (p.dashT > 0 ? 1.1 : 1))
       .setAlpha(p.invuln > 0 && !rolling && Math.floor(now * 20) % 2 ? 0.45 : 1);
     if (p.hurt > 0) this.hero.setTint(COLOR.pink);
     else if (p.buff.atkT > 0 || p.buff.speedT > 0 || p.buff.guardT > 0 || p.buff.critT > 0) this.hero.setTint(COLOR.primaryLight);
     else this.hero.clearTint();
 
+    // 고유 스킬을 쓴 순간: 머리 위에 스킬 그림이 떠오르고, 발밑에 충격 고리
+    if (p.uniqueCd > this.lastUniqueCd + 0.5) {
+      this.uniqueT = 0.8;
+      this.shocks.push({ x: p.x, y: p.y, r: 110, t: 0.3 });
+    }
+    this.lastUniqueCd = p.uniqueCd;
+    if (this.uniquePop) {
+      this.uniqueT -= dt;
+      const f = Math.max(0, this.uniqueT) / 0.8;
+      this.uniquePop
+        .setVisible(this.uniqueT > 0)
+        .setPosition(p.x, p.y - 96 - (1 - f) * 36)
+        .setDisplaySize(64 * (1 + 0.25 * Math.sin(Math.min(1, (1 - f) * 4) * Math.PI)), 64 * (1 + 0.25 * Math.sin(Math.min(1, (1 - f) * 4) * Math.PI)))
+        .setAlpha(Math.min(1, f * 3));
+    }
+    // 충격 고리 (터짐 · 고유 스킬)
+    for (let i = this.shocks.length - 1; i >= 0; i--) {
+      const k = this.shocks[i];
+      k.t -= dt;
+      if (k.t <= 0) {
+        this.shocks.splice(i, 1);
+        continue;
+      }
+      if (!this.textures.exists('fx-shock')) continue;
+      const f = 1 - k.t / 0.3;
+      this.sprite('fx-shock', 9).setPosition(k.x, k.y).setDisplaySize(k.r * 2.3 * (0.4 + 0.6 * f), k.r * 2.3 * (0.4 + 0.6 * f)).setAlpha(1 - f * f);
+    }
     // 휘두른 자국
-    let slashN = 0;
     for (let i = this.fx.length - 1; i >= 0; i--) {
       const f = this.fx[i];
       f.t -= dt;
@@ -508,13 +614,32 @@ export class GameScene extends Phaser.Scene {
         this.fx.splice(i, 1);
         continue;
       }
+      if (f.shape.k === 'line' && this.textures.exists('fx-thrust')) {
+        // 찌르기 자국: 오른쪽이 뾰족한 줄기를 찌른 쪽으로 뻗는다
+        const k = 1 - f.t / 0.16;
+        this.sprite('fx-thrust', 59)
+          .setOrigin(0, 0.5)
+          .setPosition(f.x + Math.cos(f.ang) * f.shape.len * 0.15, f.y + Math.sin(f.ang) * f.shape.len * 0.15)
+          .setRotation(f.ang)
+          .setDisplaySize(f.shape.len * (0.6 + 0.35 * k), Math.max(34, f.shape.w * 0.9))
+          .setAlpha(Math.min(1, (f.t / 0.16) * 1.6));
+        continue;
+      }
+      if (f.shape.k === 'circle' && this.textures.exists('fx-spin')) {
+        // 회전 자국: 고리가 돌면서 퍼진다
+        const k = 1 - f.t / 0.16;
+        this.sprite('fx-spin', 59)
+          .setPosition(f.x, f.y)
+          .setRotation(k * 2.4)
+          .setDisplaySize(f.shape.r * 2 * (0.7 + 0.3 * k), f.shape.r * 2 * (0.7 + 0.3 * k))
+          .setAlpha(Math.min(1, (f.t / 0.16) * 1.4));
+        continue;
+      }
       if (f.shape.k === 'arc' && this.textures.exists('fx-slash')) {
         // 베기 자국 그림: 오른쪽으로 볼록한 초승달을 휘두른 쪽으로 돌려 놓는다
-        const v = this.slashViews[slashN] ?? (this.slashViews[slashN] = this.add.image(0, 0, 'fx-slash').setDepth(59));
-        slashN++;
+        const v = this.sprite('fx-slash', 59);
         const size = f.shape.r * 1.3 * Math.min(1, f.shape.half / 1.2);
-        v.setVisible(true)
-          .setPosition(f.x + Math.cos(f.ang) * f.shape.r * 0.78, f.y + Math.sin(f.ang) * f.shape.r * 0.78)
+        v.setPosition(f.x + Math.cos(f.ang) * f.shape.r * 0.78, f.y + Math.sin(f.ang) * f.shape.r * 0.78)
           .setRotation(f.ang)
           .setDisplaySize(size * (1.05 - 0.3 * (f.t / 0.16)), size * 1.3)
           .setAlpha(Math.min(1, (f.t / 0.16) * 1.6));
@@ -522,13 +647,31 @@ export class GameScene extends Phaser.Scene {
       }
       this.drawShape(o, f.shape, f.x, f.y, f.ang, COLOR.white, 0.75 * (f.t / 0.16), COLOR.white, 0);
     }
-    for (; slashN < this.slashViews.length; slashN++) this.slashViews[slashN].setVisible(false);
     // 번개
     for (let i = this.chains.length - 1; i >= 0; i--) {
       const c = this.chains[i];
       c.t -= dt;
       if (c.t <= 0) {
         this.chains.splice(i, 1);
+        continue;
+      }
+      // 그림: 부채의 번개는 마디마다 번개 그림, 그 밖(물어뜯기 · 발톱 춤)은 맞은 자리마다 할퀸 자국
+      const claw = s.weapon.kind !== 'fan' && this.textures.exists('fx-claw');
+      if (claw || this.textures.exists('fx-bolt')) {
+        for (let j = 2; j < c.pts.length; j += 2) {
+          if (claw) {
+            this.sprite('fx-claw', 59).setPosition(c.pts[j], c.pts[j + 1] - 14).setDisplaySize(84, 84).setFlipX(j % 4 === 0).setAlpha(Math.min(1, (c.t / 0.22) * 1.5));
+            continue;
+          }
+          const dx = c.pts[j] - c.pts[j - 2];
+          const dy = c.pts[j + 1] - c.pts[j - 1];
+          this.sprite('fx-bolt', 59)
+            .setPosition((c.pts[j] + c.pts[j - 2]) / 2, (c.pts[j + 1] + c.pts[j - 1]) / 2 - 16)
+            .setRotation(Math.atan2(dy, dx))
+            .setDisplaySize(Math.hypot(dx, dy) * 1.08, 46)
+            .setFlipY(Math.floor(now * 30 + j) % 2 === 0)
+            .setAlpha(Math.min(1, (c.t / 0.22) * 1.5));
+        }
         continue;
       }
       for (const [w, col] of [[9, COLOR.outline], [4, COLOR.primaryLight]] as const) {
@@ -542,21 +685,25 @@ export class GameScene extends Phaser.Scene {
       }
     }
     // 날아가는 것
-    let shotN = 0;
+    const foxBoss = s.map.boss && bossIdOf(s.map) === 'gumiho';
     for (const sh of s.shots) {
       if (!sh.on || !this.onScreen(sh.x, sh.y, 40)) continue;
+      // 요괴가 쏜 것: 졸음 꽃가루(느려진다) · 밤송이(튕긴다) · 구미호의 여우구슬은 저마다의 그림
+      const special = !sh.foe ? '' : sh.slowDur > 0 ? 'p-pollen' : sh.bounce > 0 ? 'p-burr' : foxBoss ? 'p-foxorb' : '';
+      if (special && this.textures.exists(special)) {
+        const v = this.sprite(special, 58).setPosition(sh.x, sh.y);
+        if (special === 'p-foxorb') v.setOrigin(0.3, 0.6).setRotation(Math.atan2(sh.vy, sh.vx)).setScale((sh.r * 2 + 12) / 60);
+        else v.setRotation(special === 'p-burr' ? now * 9 : Math.sin(now * 6) * 0.3).setScale((sh.r * 2 + 16) / 72);
+        continue;
+      }
       const key = `p-${sh.look}`;
       if (this.textures.exists(key)) {
         // 그림이 있으면 그림으로: 오른쪽을 보는 그림을 날아가는 쪽으로 돌린다 (화살 · 창은 촉이 맞는 자리)
-        const v = this.shotViews[shotN] ?? (this.shotViews[shotN] = this.add.image(0, 0, key).setDepth(58));
-        shotN++;
-        const round = sh.look === 'orb' || sh.look === 'fire';
-        const scale = sh.look === 'orb' ? (sh.r * 2 + 14) / 72 : sh.look === 'fire' ? (sh.r * 2 + 12) / 72 : sh.look === 'spear' ? 0.72 : 0.56;
-        v.setTexture(key)
+        const scale = sh.look === 'orb' ? (sh.r * 2 + 14) / 72 : sh.look === 'fire' ? (sh.r * 2 + 12) / 72 : sh.look === 'spear' ? 0.78 : 0.56;
+        this.sprite(key, 58)
           .setOrigin(sh.look === 'orb' ? 0.5 : sh.look === 'fire' ? 0.68 : 0.94, 0.5)
-          .setVisible(true)
           .setPosition(sh.x, sh.y)
-          .setRotation(round && sh.look === 'orb' ? 0 : Math.atan2(sh.vy, sh.vx))
+          .setRotation(sh.look === 'orb' ? 0 : Math.atan2(sh.vy, sh.vx))
           .setScale(scale);
         continue;
       }
@@ -575,7 +722,6 @@ export class GameScene extends Phaser.Scene {
         o.fillStyle(COLOR.primary, 1).fillCircle(sh.x, sh.y, sh.look === 'spear' ? 6 : 4);
       }
     }
-    for (; shotN < this.shotViews.length; shotN++) this.shotViews[shotN].setVisible(false);
 
     // 달그림자 (4지형): 보이는 거리 밖을 어둡게 덮는다
     const see = sightOf(s);
@@ -617,7 +763,8 @@ export class GameScene extends Phaser.Scene {
         const off = (((now * 760 + i * 197) % span) + span) % span;
         const wx = this.camX + (env.gust > 0 ? off - 130 : W + 130 - off);
         const wy = this.camY + ((i * 109 + 60) % this.vh) + Math.sin(now * 3 + i) * 12;
-        o.lineBetween(wx, wy, wx - env.gust * (70 + (i % 3) * 30), wy);
+        if (this.textures.exists('fx-gust')) this.sprite('fx-gust', 61).setPosition(wx, wy).setFlipX(env.gust < 0).setScale(0.55 + (i % 3) * 0.15).setAlpha(0.75);
+        else o.lineBetween(wx, wy, wx - env.gust * (70 + (i % 3) * 30), wy);
       }
     }
 
@@ -643,6 +790,8 @@ export class GameScene extends Phaser.Scene {
       const f = 1 - u.t / 0.26;
       u.o.setDisplaySize(u.size * (0.5 + f * 0.7), u.size * (0.5 + f * 0.7)).setAlpha(1 - f * f);
     }
+    // 이번 프레임에 쓰지 않은 효과 그림은 숨긴다
+    for (let i = this.spriteN; i < this.sprites.length; i++) this.sprites[i].setVisible(false);
   }
 
   private drawEnemies(g: Phaser.GameObjects.Graphics, o: Phaser.GameObjects.Graphics, now: number) {
@@ -676,6 +825,17 @@ export class GameScene extends Phaser.Scene {
       const puff = e.busy > 0 ? 1.08 : 1;
       // 숨은 요괴(그슨대)는 아지랑이처럼 희미하게만 보인다
       const alpha = (e.hidden ? 0.16 + 0.06 * Math.sin(now * 5 + e.id) : 1) * (far > 0 ? 1 - far / 60 : 1);
+      if (e.bossDef) {
+        // 보스 공격 동작: 예고하는 동안은 치켜든 모습, 예고가 끝난 바로 뒤에는 내려친 모습 (그림이 없으면 한 장 그대로)
+        const atk = `${e.bossDef.art}-atk`;
+        if (this.textures.exists(atk)) {
+          if (this.bossWasBusy && e.busy <= 0) this.bossStrikeUntil = now + 0.32;
+          this.bossWasBusy = e.busy > 0;
+          if (e.busy > 0) v.setTexture(atk, 0);
+          else if (now < this.bossStrikeUntil) v.setTexture(atk, 1);
+          else v.setTexture(key);
+        }
+      }
       v.setPosition(e.x, e.y + e.r * 0.8 + wob).setDisplaySize(size * puff, size * puff).setFlipX(!e.left).setDepth(10 + e.y / 100000).setAlpha(alpha);
       if (e.hidden) continue;
       if (e.flash > 0) v.setTintFill(COLOR.white);
@@ -703,7 +863,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private enemyKey(e: Enemy): string {
-    const key = e.bossDef ? e.bossDef.art : e.def.art;
+    // 정예는 전용 모습이 있으면 그것 (없으면 같은 그림을 크게)
+    const elite = !e.bossDef && e.elite ? eliteArt(e.kind) : null;
+    const key = e.bossDef ? e.bossDef.art : elite && this.textures.exists(elite) ? elite : e.def.art;
     return this.textures.exists(key) ? key : 'enemy-fallback';
   }
 
@@ -778,6 +940,15 @@ export class GameScene extends Phaser.Scene {
       for (let y = -off; y < rows * TILE; y += floor.size) for (let x = 0; x < WORLD_W; x += floor.size) c.drawImage(img, x, y, floor.size, floor.size);
       c.globalAlpha = 1;
     }
+    // 벽 · 느린 바닥 무늬 (이어 붙는 그림을 칸 자리에 맞춰 잘라 깐다 — 없으면 바닥색과 코드 그림)
+    const patternOf = (name: string | null) => (name && this.textures.exists(name) ? (this.textures.get(name).getSourceImage() as HTMLImageElement) : null);
+    const wallImg = patternOf(wallArt(s.map.region));
+    const slowImg = patternOf(slowArt(s.map.region));
+    const stamp = (img: HTMLImageElement, x: number, y: number, px: number, py: number) => {
+      const n = Math.max(1, Math.round(img.width / TILE));
+      const cell = img.width / n;
+      c.drawImage(img, (x % n) * cell, (y % n) * cell, cell, cell, px, py, TILE, TILE);
+    };
     const hash = (x: number, y: number, k: number) => {
       const n = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453;
       return n - Math.floor(n);
@@ -788,7 +959,9 @@ export class GameScene extends Phaser.Scene {
         const t = tile(x, y);
         const px = x * TILE;
         const py = ry * TILE;
-        if (t === 2) {
+        if (t === 2 && slowImg) stamp(slowImg, x, y, px, py);
+        else if (t === 1 && wallImg) stamp(wallImg, x, y, px, py);
+        else if (t === 2) {
           c.fillStyle = css(look.slow);
           c.globalAlpha = 0.85;
           c.fillRect(px, py, TILE, TILE);
