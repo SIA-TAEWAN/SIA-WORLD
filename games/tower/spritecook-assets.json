@@ -190,6 +190,58 @@
     {
       "asset_id": "5f6af218-3818-4142-9b83-7d9362632285",
       "label": "(쓰지 않음) 서리 타일 첫 시도 — 화로·발판·풍경의 켜짐/꺼짐이 구별되지 않음"
+    },
+    {
+      "asset_id": "6b48e1df-c819-4f91-b894-1847bf3be6e4",
+      "sha12": "45fbcf6933ff",
+      "file": "art/spritecook/char-hair2.png",
+      "label": "머리 모양 고쳐 그리기 (양갈래 옆모습이 얼굴을 가리지 않게 · 장식을 낮게) → char/hair_m2 · hair_f1 · hair_f2 만 여기서"
+    },
+    {
+      "asset_id": "e5daf411-cbd4-488d-9999-5865a4c7e8c1",
+      "sha12": "846d8c3ac3d6",
+      "file": "art/spritecook/char-faces2.png",
+      "label": "얼굴 고쳐 그리기 (옆모습 눈을 작고 연하게) → char/face_0~3 의 옆모습 줄만 여기서"
+    },
+    {
+      "asset_id": "ff2a2c55-6257-4c0e-a549-ffa8919b1c82",
+      "sha12": "f6357b015022",
+      "file": "art/spritecook/enemy-knight.png",
+      "label": "돌갑옷 무사를 24px 칸에 맞게 다시 → enemy/knight"
+    },
+    {
+      "asset_id": "d75838c2-c08a-4cc3-b62a-d6b210c7c2d8",
+      "sha12": "aca250b6fe3c",
+      "file": "art/spritecook/tiles-stone-fix.png",
+      "label": "1구역 타일 몇 칸 고쳐 그리기 → tiles.png 의 floor2 · wallTop"
+    },
+    {
+      "asset_id": "f12b3ef0-ffe4-4514-a0e5-c24c95b98fbe",
+      "sha12": "ef0c612abc16",
+      "file": "art/spritecook/tiles-frost-fix.png",
+      "label": "3구역 타일 몇 칸 고쳐 그리기 → tiles-frost.png 의 floor2 · wallTop"
+    },
+    {
+      "asset_id": "5b4308af-f6d1-442f-af86-44a01ecc7558",
+      "sha12": "79826c427ec0",
+      "file": "art/spritecook/tiles-ember-fix.png",
+      "label": "5구역 타일 몇 칸 고쳐 그리기 → tiles-ember.png 의 floor2 · brazier · pit (둥근 바위 칸은 구멍으로 바뀌어 나와 쓰지 않는다)"
+    },
+    {
+      "asset_id": "1c6e88fc-fad8-4220-8502-0518a5d76dfe",
+      "label": "(틀, 올린 것) 지금의 1구역 타일 시트 — tiles-stone-fix 를 만들 때 고쳐 그린 그림"
+    },
+    {
+      "asset_id": "a00ce05b-a26f-4934-a5e2-c12dff289801",
+      "label": "(틀, 올린 것) 지금의 3구역 타일 시트"
+    },
+    {
+      "asset_id": "29098584-0096-42f0-ad33-a9ada2adc2e1",
+      "label": "(틀, 올린 것) 지금의 5구역 타일 시트"
+    },
+    {
+      "asset_id": "9be0330c-6f61-490b-9011-7618a90e3a5a",
+      "label": "(틀, 올린 것) 지금의 돌갑옷 무사 4칸"
     }
   ]
 }

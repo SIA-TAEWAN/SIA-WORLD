@@ -173,6 +173,7 @@ def col_in(im, cols):
 #   char-outfit1~3    기준 시트의 옷만 바꾼 것 → 옷 1~3
 #   char-hair.png     초록 옷을 입은 대기 칸에 머리 모양 8가지(남 4 · 여 4) × 3방향
 #   char-faces.png    같은 틀에 얼굴 8가지 × 3방향 (앞의 4개를 쓴다)
+#   char-hair2.png · char-faces2.png   고쳐 그린 것 — 상투 · 양갈래 · 올림 머리(HAIR2)와 얼굴의 옆모습 줄만 여기서 가져온다
 # 머리는 방향마다 한 가지 모양이고 칸마다 0~1px 내려갈 뿐이라, 얼굴·머리카락은 대기 칸 것을 그대로 따라 내린다.
 # =====================================================================
 F = 32
@@ -332,8 +333,9 @@ def green_rows(frames, heads):
     return rows
 
 
-def align_ref(path, ref):
-    """8칸 × 3줄 시트의 칸마다 기준 칸 ref[줄] 과 가장 많이 겹치는 자리에 놓는다"""
+def align_ref(path, ref, fit_top=False):
+    """8칸 × 3줄 시트의 칸마다 기준 칸 ref[줄] 과 가장 많이 겹치는 자리에 놓는다.
+    fit_top: 칸 위로 넘치는 장식(상투 · 올림 머리)은 머리 위쪽 줄을 넘친 만큼 솎아 칸 안에 넣는다"""
     im = clean(path)
     cells = grid_cells(im, 8, 3)
     out = [[None] * 8 for _ in range(3)]
@@ -348,8 +350,18 @@ def align_ref(path, ref):
                 put(fr, g, x, y)
                 s = ((fr[..., :3] == ref[r][..., :3]).all(-1) & ro & (fr[..., 3] > 0)).sum()
                 if best is None or s > best[0]:
-                    best = (s, fr)
+                    best = (s, fr, x, y)
         out[r][c] = best[1]
+        over = -best[3]
+        if fit_top and over > 0:
+            above = HY + over                               # 머리 위로 올라온 줄 수 (잘린 줄 포함)
+            drop = set(np.round(np.linspace(1, above - 1, over + 2)[1:-1]).astype(int).tolist())
+            while len(drop) < over:
+                drop.add(max(set(range(1, above)) - drop))
+            g2 = g[[j for j in range(h) if j not in drop]]
+            fr = np.zeros((F, F, 4), np.int32)
+            put(fr, g2, best[2], 0)
+            out[r][c] = fr
     return out
 
 
@@ -411,6 +423,9 @@ def char_sheet(rows3):
     return sh
 
 
+HAIR2 = {'m2', 'f1', 'f2'}      # 고쳐 그린 머리 시트(char-hair2.png)에서 가져오는 것: 상투 · 양갈래 · 올림 머리
+
+
 def build_chars():
     frames, dys, heads = char_frames(SRC / 'char-base.png')
     body, outfit0, info = split_base(frames, dys, heads)
@@ -428,11 +443,14 @@ def build_chars():
         out[f'outfit_{n}'] = char_sheet(split_outfit(fr, heads, body, info))
     ref = [snap(f) for f in green_rows(frames, heads)]
     al = align_ref(SRC / 'char-hair.png', ref)
+    al2 = align_ref(SRC / 'char-hair2.png', ref, fit_top=True)
     for c, name in enumerate(['m0', 'm1', 'm2', 'm3', 'f0', 'f1', 'f2', 'f3']):
-        out[f'hair_{name}'] = char_sheet(spread([hair_of(outline(al[r][c]), ref[r], r) for r in range(3)], dys))
+        src = al2 if name in HAIR2 else al
+        out[f'hair_{name}'] = char_sheet(spread([hair_of(outline(src[r][c]), ref[r], r) for r in range(3)], dys))
     al = align_ref(SRC / 'char-faces.png', ref)
+    al2 = align_ref(SRC / 'char-faces2.png', ref)                # 옆모습(둘째 줄)만 여기서: 눈이 작고 연하다
     for c in range(4):
-        out[f'face_{c}'] = char_sheet(spread([face_of(al[r][c], heads[r], r) for r in range(3)], dys))
+        out[f'face_{c}'] = char_sheet(spread([face_of((al2 if r == 1 else al)[r][c], heads[r], r) for r in range(3)], dys))
     return out
 
 
@@ -442,7 +460,7 @@ def build_chars():
 #   (id, 칸 크기, 왼쪽 0 / 오른쪽 1, y0, y1)
 # =====================================================================
 ENEMY_SHEETS = {
-    'enemy1': [('slime', 16, 0, 26, 37), ('spitter', 16, 0, 54, 69), ('knight', 24, 0, 111, 138), ('golem', 32, 1, 107, 138)],
+    'enemy1': [('slime', 16, 0, 26, 37), ('spitter', 16, 0, 54, 69), ('golem', 32, 1, 107, 138)],
     'enemy2': [('sprout', 16, 0, 24, 39), ('moth', 16, 1, 23, 40), ('lizard', 16, 0, 59, 70), ('toad', 16, 1, 57, 70),
                ('treant', 24, 0, 78, 102), ('imugi', 32, 1, 109, 140)],
     'enemy3': [('snowimp', 16, 0, 22, 38), ('icebat', 16, 1, 23, 38), ('frostjar', 16, 0, 53, 68), ('wisp', 16, 1, 52, 68),
@@ -452,6 +470,8 @@ ENEMY_SHEETS = {
     # 16px 칸에 넘치던 것들을 작게 다시 그린 시트
     'enemy-fix': [('goblin', 16, 0, 24, 41), ('torchimp', 16, 1, 25, 41), ('wildcat', 16, 0, 69, 82), ('scarecrow', 16, 1, 66, 83),
                   ('icecrystal', 16, 0, 108, 122), ('bat', 16, 1, 108, 120)],
+    # 돌갑옷 무사만 24px 칸에 맞게 다시 그린 시트 (가로 4칸) — 여섯째 값 = 시트의 가로 칸 수
+    'enemy-knight': [('knight', 24, 0, 55, 78, 4)],
 }
 # 구역마다의 적 (확인 그림의 순서)
 ZONES = [['slime', 'bat', 'spitter', 'goblin', 'knight', 'golem'], ['sprout', 'moth', 'lizard', 'toad', 'treant', 'imugi'],
@@ -459,9 +479,9 @@ ZONES = [['slime', 'bat', 'spitter', 'goblin', 'knight', 'golem'], ['sprout', 'm
          ['bulgae', 'torchimp', 'wildcat', 'sparrow', 'iron', 'hwacha', 'bulgasari']]
 
 
-def enemy_strip(im, size, half, y0, y1):
+def enemy_strip(im, size, half, y0, y1, cols=8):
     W = im.shape[1]
-    cw = W / 8
+    cw = W / cols
     out = np.zeros((size, size * 4, 4), np.int32)
     reg = im[y0:y1 + 1]
     lab, comps = components(reg[..., 3] > 0)
@@ -513,14 +533,15 @@ def build_enemies():
     res = {}
     for sheet, lst in ENEMY_SHEETS.items():
         im = key(load(SRC / f'{sheet}.png'))
-        for eid, size, half, y0, y1 in lst:
-            res[eid] = enemy_strip(im, size, half, y0, y1)
+        for eid, size, *rest in lst:
+            res[eid] = enemy_strip(im, size, *rest)
     return res
 
 
 # =====================================================================
 # 타일 (16×16, TILE_ORDER 순서로 가로 한 줄)
 # 시트는 12칸씩 4줄 = 43칸. skip = 앞에 덧그려진 칸 수, take = {칸: 가져올 곳} ('stone' = 1구역 시트의 같은 칸, 'hand' = 손그림 draw.py)
+# fix = (그 테마 그림을 다시 올려 몇 칸만 고쳐 그린 시트, [거기서 가져올 칸]), calm = 흰 점(돌 부스러기)을 바탕색으로 지울 칸
 # =====================================================================
 TILE_ORDER = ['floor', 'floor2', 'wallTop', 'wallFace', 'doorOpen', 'doorLocked', 'water', 'pillar', 'gate', 'rock', 'switch', 'switchOn',
               'vine', 'stairs', 'chest', 'chestOpen', 'pedestal', 'pedestalEmpty', 'shop', 'fountain', 'rubble', 'fountainDry',
@@ -529,11 +550,11 @@ TILE_ORDER = ['floor', 'floor2', 'wallTop', 'wallFace', 'doorOpen', 'doorLocked'
               'rod', 'rodOn', 'puff', 'bars', 'mirrorA', 'mirrorB', 'fog', 'wish']
 COLD = {'coldWater': 'stone', 'ice': 'stone'}      # 찬물 · 얼음은 테마와 상관없이 같은 그림
 TILE_THEMES = {
-    'stone': {'file': 'tiles.png', 'src': 'tiles-stone.png', 'take': {'wallTop': 'hand'}},
+    'stone': {'file': 'tiles.png', 'src': 'tiles-stone.png', 'fix': ('tiles-stone-fix.png', ['floor2', 'wallTop']), 'calm': ['floor']},
     'moss': {'file': 'tiles-moss.png', 'src': 'tiles-moss.png', 'skip': 12, 'take': {**COLD}},
-    'frost': {'file': 'tiles-frost.png', 'src': 'tiles-frost.png', 'take': {**COLD, 'wallTop': 'hand', 'floor2': 'hand'}},
+    'frost': {'file': 'tiles-frost.png', 'src': 'tiles-frost.png', 'take': {**COLD}, 'fix': ('tiles-frost-fix.png', ['floor2', 'wallTop'])},
     'cloud': {'file': 'tiles-cloud.png', 'src': 'tiles-cloud.png', 'skip': 8, 'take': {**COLD}},
-    'ember': {'file': 'tiles-ember.png', 'src': 'tiles-ember.png', 'skip': 12, 'take': {**COLD, 'floor2': 'hand', 'brazier': 'hand', 'pit': 'hand'},
+    'ember': {'file': 'tiles-ember.png', 'src': 'tiles-ember.png', 'skip': 12, 'take': {**COLD}, 'fix': ('tiles-ember-fix.png', ['floor2', 'brazier', 'pit']),
               # 바닥이 너무 붉어 붉은 적이 묻힌다 → 살구빛 바닥(--roulette-summer) · 주황 줄눈과 벽 윗면(--race-track)
               'recolor': [((232, 106, 90), hx('#f7c1a8'), 4), ((188, 32, 14), hx('#e08a4f'), 16), ((244, 82, 54), hx('#f9a873'), 16)]},
 }
@@ -578,6 +599,14 @@ def build_tiles():
     hand = None
     for theme, cfg in TILE_THEMES.items():
         cells = tile_cells(SRC / cfg['src'], cfg.get('skip', 0))
+        if 'fix' in cfg:
+            fixed = tile_cells(SRC / cfg['fix'][0], -len(TILE_ORDER))      # 위에 덧그려진 조각이 있으면 뒤의 43칸만
+            for k in cfg['fix'][1]:
+                cells[TILE_ORDER.index(k)] = fixed[TILE_ORDER.index(k)]
+        for k in cfg.get('calm', []):
+            t = cells[TILE_ORDER.index(k)]
+            cols, cnt = np.unique(t[..., :3].reshape(-1, 3), axis=0, return_counts=True)
+            t[lum(t[..., :3].astype(np.float64)) > lum(cols[cnt.argmax()].astype(np.float64)) + 12, :3] = cols[cnt.argmax()]
         for k, frm in cfg.get('take', {}).items():
             i = TILE_ORDER.index(k)
             if frm == 'hand':
