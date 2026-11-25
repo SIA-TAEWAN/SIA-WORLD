@@ -345,4 +345,5 @@ button, input { font: inherit; color: inherit; }
 .act .ic-img { width: 1.5em; height: 1.5em; vertical-align: middle; }
 .ic .ic-img { width: 1.3em; height: 1.3em; vertical-align: middle; }
 /* 메인 화면 그림 */
-.main-art { display: block; width: 100%; aspect-ratio: 9 / 4; object-fit: cover; object-position: 50% 30%; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+.rest-art { display: block; flex: none; width: 100%; aspect-ratio: 9 / 4; object-fit: cover; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+.main-art { display: block; width: 100%; aspect-ratio: 9 / 5; object-fit: cover; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); }

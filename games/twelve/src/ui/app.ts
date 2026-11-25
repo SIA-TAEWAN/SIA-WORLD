@@ -53,7 +53,7 @@ import { GameScene, W, dropIcon, dropName, viewHeight } from '../scenes/GameScen
 import { groundOf, hasArt } from '../scenes/art';
 import { COLOR, css } from '../theme';
 import { createControls, type Controls } from './controls';
-import { IC, icon } from './icons';
+import { IC, icon, itemIcon } from './icons';
 
 /**
  * 메인 → 십이지 지도 → 지형(쉼터 + 맵 8개) → 맵(전투) → 결과 (PRD '화면 구성').
@@ -523,7 +523,7 @@ function showHeroes(back: () => void, region = 0) {
       <h3>${h.name} <small>${h.animal} · 고향 ${h.home ? `${h.home}지형 ${regionOf(h.home).name}` : '없음'} · 잘 다루는 무기 ${icon(WEAPONS[h.weapon].icon)}${WEAPONS[h.weapon].name}</small></h3>
       <div class="stat-grid">${STAT_KEYS.map((k) => `<div class="stat"><span>${STAT_NAME[k]}</span><div class="lv"><i style="width:${Math.round(((h.stats[k] - 0.9) / 0.2) * 100)}%"></i></div><b>${k === 'crit' ? `${Math.round(st.crit * 100)}%` : Math.round(st[k])}</b></div>`).join('')}</div>
       ${profile.level >= 10 ? `<p class="soft">⭐ 스킬 강화 ${Math.floor(profile.level / 10)}단계: 스킬 피해 +${Math.round((skillLevelMul(profile.level) - 1) * 100)}% (10레벨마다 한 단계)</p>` : '<p class="soft">⭐ 10레벨마다 스킬이 한 단계 강해져요</p>'}
-      <p class="skill-line"><span class="key">U</span> <b>${h.unique.icon} ${h.unique.name}</b> ${h.unique.desc} <small>마력 ${h.unique.mp} · ${h.unique.cd}초</small></p>
+      <p class="skill-line"><span class="key">U</span> <b>${icon(h.unique.icon)} ${h.unique.name}</b> ${h.unique.desc} <small>마력 ${h.unique.mp} · ${h.unique.cd}초</small></p>
       ${st.home ? '<p class="soft">🏠 고향 지형: 공격·방어 +10%</p>' : ''}${region && regionOf(region).env !== 'none' && regionOf(region).counter === pick ? `<p class="soft">${ENV_ICON[regionOf(region).env]} 이 지형의 ${ENV_NAME[regionOf(region).env]}에 걸리지 않아요</p>` : ''}${st.affinity ? '<p class="soft">✨ 잘 다루는 무기: 공격 +5%</p>' : ''}
       ${ok ? '' : h.hidden ? `<p class="soft">🐱 경주에 늦어 빠진 13번째 대원이에요. 이 게임에서 따로 열어요</p><button class="btn primary" id="buycat">시아코인 ${h.price}개로 열기</button>` : `<p class="soft">🔒 ${h.join}지형 보스를 처음 잡으면 합류해요</p>`}`;
     root.querySelector('#buycat')?.addEventListener('click', () => {
@@ -727,7 +727,7 @@ function showRegion(region: number) {
       .join('')}</div>
     <div class="card">
       <h3>이 지형의 레어 <small>정예·보스가 떨어뜨려요 · ${hasKey(profile, region) ? `${IC.key} 열쇠를 얻었어요` : `${IC.key} 열쇠는 보스가 가끔 떨어뜨려요`}</small></h3>
-      <div class="rare-list">${regionRares(region, profile.mode).map((b) => `<span class="${profile.codex.includes(b) ? 'on' : ''}">${icon(itemDef(b)!.icon)} ${itemDef(b)!.name}</span>`).join('')}</div>
+      <div class="rare-list">${regionRares(region, profile.mode).map((b) => `<span class="${profile.codex.includes(b) ? 'on' : ''}">${itemIcon(itemDef(b)!)} ${itemDef(b)!.name}</span>`).join('')}</div>
       <p class="soft">★ ${regionStarCount(profile, region)} / ${MAPS_PER_REGION * 3} — 별을 모두 모으면 장신구를 하나 받아요</p>
     </div>
     <p class="soft center light">★ 시간 안에 · 안 쓰러지고 · 숨은 상자 — 따로따로 모아도 돼요<br/>${profile.mode === 'hard' ? `🔥 어려움: 요괴가 더 많고, ${boss.name}의 공격이 하나 늘어요` : joinText(region)}</p>`,
@@ -1064,8 +1064,8 @@ function lootHtml(r: FinishResult): string {
     const d = itemDef(it.base);
     if (!d) continue;
     const where = it.box ? ' <small>(가방이 꽉 차서 보관함으로)</small>' : '';
-    if (d.rare) big.push(`<div class="loot-big"><span class="ic">${icon(d.icon)}</span> <b>${d.name}</b>${it.base === r.starItem ? ' <small>별 24개 보상</small>' : ' <em class="tag">레어</em>'}${where}<small>${itemNote(d)}</small></div>`);
-    else small.push(`<span>${icon(d.icon)} ${d.name}${where}</span>`);
+    if (d.rare) big.push(`<div class="loot-big"><span class="ic">${itemIcon(d)}</span> <b>${d.name}</b>${it.base === r.starItem ? ' <small>별 24개 보상</small>' : ' <em class="tag">레어</em>'}${where}<small>${itemNote(d)}</small></div>`);
+    else small.push(`<span>${itemIcon(d)} ${d.name}${where}</span>`);
   }
   if (r.stones) small.push(`<span>${IC.stone} 강화석 ${r.stones}</span>`);
   r.potions.forEach((row, s) => row.forEach((n, z) => n && small.push(`<span>${dropIcon({ t: 'potion', slot: s, size: z })} ${dropName({ t: 'potion', slot: s, size: z })} ${n}</span>`)));
@@ -1344,7 +1344,7 @@ function cell(it: Item): string {
   const d = itemDef(it.base)!;
   const low = profile.level < itemLevel(d);
   return `<button class="item-cell ${d.rare ? 'rare' : ''} ${isEquipped(profile, it.id) ? 'on' : ''} ${low ? 'low' : ''}" data-id="${it.id}">
-    <span class="ic">${icon(d.icon)}</span><small>Lv ${itemLevel(d)}</small>${it.plus ? `<b>+${it.plus}</b>` : ''}${it.lock ? '<i>🔒</i>' : ''}${isEquipped(profile, it.id) ? '<em>착용</em>' : ''}
+    <span class="ic">${itemIcon(d)}</span><small>Lv ${itemLevel(d)}</small>${it.plus ? `<b>+${it.plus}</b>` : ''}${it.lock ? '<i>🔒</i>' : ''}${isEquipped(profile, it.id) ? '<em>착용</em>' : ''}
   </button>`;
 }
 const SLOT_ORDER: Record<Slot, number> = { weapon: 0, armor: 1, acc: 2 };
@@ -1376,7 +1376,7 @@ function statRows(it: Item): string {
     rows.push(`<div><span>${ACC_TEXT[d.stat]}</span><b>+${d.value}${d.stat === 'crit' ? '%p' : '%'}${same ? ` <em class="${same > 0 ? 'up' : 'down'}">${same > 0 ? '▲' : '▼'}${Math.abs(same)}</em>` : ''}</b></div>`);
   }
   if (d.fx) rows.push(`<div class="fx"><span>✨ ${FX_NAME[d.fx]}</span><b>${FX_DESC[d.fx]}</b></div>`);
-  if (cd) rows.push(`<div class="cmp"><span>지금 착용</span><b>${icon(cd.icon)} ${cd.name}${plusText(cur!)}${cd.stat || cd.fx ? ` · ${itemNote(cd)}` : ''}</b></div>`);
+  if (cd) rows.push(`<div class="cmp"><span>지금 착용</span><b>${itemIcon(cd)} ${cd.name}${plusText(cur!)}${cd.stat || cd.fx ? ` · ${itemNote(cd)}` : ''}</b></div>`);
   return rows.join('');
 }
 
@@ -1403,7 +1403,7 @@ function itemPopup(id: string, ctx: ItemCtx, redraw: () => void) {
   }
   btns.push(`<button class="btn" data-a="lock">${it.lock ? '🔓 잠금 풀기' : '🔒 잠그기'}</button>`);
   const box = overlay(`<div class="card pop item-pop ${d.rare ? 'rare' : ''}">
-    <h3><span class="ic">${icon(d.icon)}</span> ${d.name}${plusText(it)} ${d.rare ? '<em class="tag">레어</em>' : ''}</h3>
+    <h3><span class="ic">${itemIcon(d)}</span> ${d.name}${plusText(it)} ${d.rare ? '<em class="tag">레어</em>' : ''}</h3>
     <p class="soft">${SLOT_NAME[d.slot]} · 착용 Lv ${itemLevel(d)}${low ? ' <b class="warn">(레벨이 모자라요)</b>' : ''}${worn ? ' · 착용 중' : ''}${it.lock ? ' · 🔒 잠금' : ''}${it.box ? ' · 보관함' : ''}</p>
     <div class="rows">${statRows(it)}</div>
     ${cost && ctx === 'smith' ? `<p class="soft">강화하면 ${d.slot === 'weapon' ? `공격 ${itemStats(d, it.plus).atk} → ${itemStats(d, it.plus + 1).atk}` : `체력 ${itemStats(d, it.plus).hp} → ${itemStats(d, it.plus + 1).hp} · 방어 ${itemStats(d, it.plus).def} → ${itemStats(d, it.plus + 1).def}`} (항상 성공)</p>` : ''}
@@ -1440,7 +1440,7 @@ function showBag(back: () => void) {
   const slot = (s: Slot) => {
     const it = equipped(profile, s);
     const d = it && itemDef(it.base);
-    return `<button class="eq-slot ${d?.rare ? 'rare' : ''}" ${it ? `data-id="${it.id}"` : 'disabled'}><span class="ic">${d ? icon(d.icon) : '➕'}</span><b>${d ? `${d.name}${plusText(it!)}` : `${SLOT_NAME[s]} 없음`}</b><small>${d ? (d.slot === 'acc' || d.fx ? itemNote(d) : `Lv ${itemLevel(d)}`) : ''}</small></button>`;
+    return `<button class="eq-slot ${d?.rare ? 'rare' : ''}" ${it ? `data-id="${it.id}"` : 'disabled'}><span class="ic">${d ? itemIcon(d) : '➕'}</span><b>${d ? `${d.name}${plusText(it!)}` : `${SLOT_NAME[s]} 없음`}</b><small>${d ? (d.slot === 'acc' || d.fx ? itemNote(d) : `Lv ${itemLevel(d)}`) : ''}</small></button>`;
   };
   const root = screen(`
     <div class="bar"><button class="back" id="back">← 뒤로</button><h2>가방</h2><div class="pills">${stonesPill()}${coinsPill()}</div></div>
@@ -1509,7 +1509,7 @@ function showShop(region: number, tab: 'buy' | 'sell' = 'buy') {
       .sort((a, b) => b.tier - a.tier)
       .map((d) => {
         const stt = itemStats(d, 0);
-        return `<div class="shop-row ${profile.level < itemLevel(d) ? 'low' : ''}"><span class="ic">${icon(d.icon)}</span><span>${d.name} <small>Lv ${itemLevel(d)} · ${d.slot === 'weapon' ? `공격 ${stt.atk}` : `체력 ${stt.hp} · 방어 ${stt.def}`}</small></span>
+        return `<div class="shop-row ${profile.level < itemLevel(d) ? 'low' : ''}"><span class="ic">${itemIcon(d)}</span><span>${d.name} <small>Lv ${itemLevel(d)} · ${d.slot === 'weapon' ? `공격 ${stt.atk}` : `체력 ${stt.hp} · 방어 ${stt.def}`}</small></span>
           <button class="btn small" data-buy="${d.id}" data-n="1" ${profile.coins < d.buy ? 'disabled' : ''}>${IC.coin} ${d.buy.toLocaleString()}</button></div>`;
       })
       .join('');
@@ -1529,6 +1529,7 @@ function showShop(region: number, tab: 'buy' | 'sell' = 'buy') {
   }
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 쉼터</button><h2>🛒 상점</h2><div class="pills">${coinsPill()}</div></div>
+    ${hasArt('shop') ? `<img class="rest-art" src="${artUrl('shop')}" alt="" />` : ''}
     <div class="tabs"><button class="btn small ${tab === 'buy' ? 'on' : ''}" data-tab="buy">사기</button><button class="btn small ${tab === 'sell' ? 'on' : ''}" data-tab="sell">팔기</button></div>
     ${body}`,
     `bg-${regionOf(region || REGIONS).ground}`,
@@ -1545,6 +1546,7 @@ function showSmith(region: number) {
   const redraw = () => showSmith(region);
   const root = screen(
     `<div class="bar"><button class="back" id="back">← 쉼터</button><h2>⚒️ 대장간</h2><div class="pills">${stonesPill()}${coinsPill()}</div></div>
+    ${hasArt('forge') ? `<img class="rest-art" src="${artUrl('forge')}" alt="" />` : ''}
     <div class="card"><h3>장비 고르기 <small>강화는 엽전 + 강화석, 항상 성공해요</small></h3>${grid(profile.items, '장비가 없어요')}
       <p class="soft">+${MAX_PLUS}까지 올리면 다음 등급 일반 장비와 비슷해져요. 안 쓰는 장비는 분해해서 강화석으로 바꿔요 (강화한 단계마다 +1)</p>
       <button class="btn small bulk" id="bulk" ${spareItems().length ? '' : 'disabled'}>🧹 일반 장비 모두 분해${spareItems().length ? ` (${spareItems().length}개 · ${IC.stone} ${spareItems().reduce((n, it) => n + scrapOf(itemDef(it.base)!, it.plus), 0)})` : ''}</button></div>`,

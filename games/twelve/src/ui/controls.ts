@@ -29,10 +29,10 @@ export function createControls(root: HTMLElement, run: RunState, opts: { lefty: 
     <div class="stick-zone"><div class="stick"><i></i></div></div>
     <button class="act potion p0" data-k="p0"><span>${IC.hp}</span><b></b><i class="cd"></i><kbd>1</kbd></button>
     <button class="act potion p1" data-k="p1"><span>${IC.mp}</span><b></b><i class="cd"></i><kbd>2</kbd></button>
-    <button class="act skill uq" data-k="uq"><span>${run.hero.unique.icon}</span><i class="cd"></i><em></em><kbd>U</kbd></button>
+    <button class="act skill uq" data-k="uq"><span>${icon(run.hero.unique.icon)}</span><i class="cd"></i><em></em><kbd>U</kbd></button>
     <button class="act skill s1" data-k="s1"><span>${icon(w.skills[1].icon)}</span><i class="cd"></i><em></em><kbd>L</kbd></button>
     <button class="act skill s0" data-k="s0"><span>${icon(w.skills[0].icon)}</span><i class="cd"></i><em></em><kbd>K</kbd></button>
-    <button class="act roll" data-k="roll"><span>🌀</span><i class="cd"></i><small>구르기</small></button>
+    <button class="act roll" data-k="roll"><span>${IC.roll}</span><i class="cd"></i><small>구르기</small></button>
     <button class="act attack" data-k="atk"><span>${icon(w.icon)}</span><kbd>J</kbd></button>`;
   root.appendChild(pad);
 

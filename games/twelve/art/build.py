@@ -5,7 +5,9 @@
   원본이 없는 그림은 건너뛰고(이미 만든 public/art 파일을 그대로 둔다) 목록만 다시 적는다.
 - 낱개 그림(SIZES): 투명 여백을 잘라 칸 가운데에 맞춘다. BODY 에 적은 그림은 가장 큰 덩어리만 남긴다(둘레에 떠 있는 것을 뺀다).
 - 시트(SHEETS): 한 장에 여러 칸을 그린 것. 빈 줄을 찾아 칸으로 나눈 뒤 낱개 그림처럼 맞춘다. 이름이 '<이름>@<n>' 이면 같은 이름끼리 가로로 이어 붙인 시트가 된다(exit = 잠김 · 열림).
-- 대원(HEROES): 한 줄에 앞 · 옆(오른쪽) · 뒤 세 칸. 세 칸을 같은 배율로 줄여 발끝을 맞춘 가로 시트 hero-<id>.png (칸 HERO×HERO) 를 만든다.
+- 대원(HEROES + move-<id>): 서기 시트(한 줄에 앞 · 옆 · 뒤)와 대원마다의 동작 시트(걷기 A · B · 공격 · 구르기 × 앞 · 옆 · 뒤)를 모아
+  hero-<id>.png (가로 5칸 × 세로 3줄, 칸 HERO×HERO) 를 만든다. 발끝을 맞추고, 구르기 칸은 공의 가운데를 ROLL_CY 에 둔다.
+- 보스 공격 동작(atk-<id>) · 벽/느린 바닥 무늬(tiles — 이어 붙게 다듬는다) · 글자가 붙어 나온 아이콘 시트(LABELED)도 여기서 자른다.
 - 장면(SCENES): 배경이 있는 그림. 비율에 맞게 잘라 줄인다. 로비 카드(shared/images/card-twelve.png)도 여기서 만든다.
 - 지형 바닥(floor-r01~r12)은 시아핑거가 만든 것(games/finger/public/art)을 그대로 복사한다 — 같은 열두 지형이다. asset id 는 핑거의 목록에서 옮겨 적는다.
 - 256색 팔레트 PNG 로 저장하고 spritecook-assets.json 을 새로 적는다.
@@ -15,7 +17,7 @@ import hashlib
 import json
 import os
 import shutil
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, 'raw')
@@ -40,6 +42,29 @@ HEROES = {
     'heroCat': ['cat'],
 }
 
+# 대원 동작 시트 move-<id> (가로 4칸: 걷기 A · 걷기 B · 공격 · 구르기, 세로: 앞 · 옆 · 뒤). 줄 수가 4인 그림은 쓸 줄 번호를 적는다
+HERO_COLS = 5  # hero-<id>.png 의 가로 칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기
+MOVE_ROWS = {'dragon': (4, [0, 1, 3]), 'snake': (4, [0, 1, 3]), 'horse': (4, [0, 1, 3]), 'pig': (4, [0, 1, 3]), 'rooster': (4, [0, 1, 3])}
+# 뒷모습 걷기 · 공격 칸이 옆모습으로 나온 대원: 뒷모습은 서기 칸을 그대로 쓴다
+MOVE_CUTS = {'rooster': [0, 288, 545, 777, 1024]}
+BACK_STAND_ONLY = {'dragon'}
+# 동작 시트의 첫 칸이 '서기'인 대원 (예전 서기 그림을 이것으로 바꾼다 — 닭: 뒷모습 외곽선): 칸 = 서기 · 걷기 · 공격 · 구르기
+STAND_FROM_MOVE = {'rooster'}
+ROLL_CY = 130  # 구르기 칸에서 공의 가운데 높이 (art.ts 의 HERO_ROLL_ORIGIN = 130 / 192)
+
+# 보스 공격 동작 atk-<id> (가로 2칸: 예고 · 내려치기) → b-<id>-atk.png (칸 BOSS_ATK)
+BOSS_ATK = 448
+BOSSES = ['bigDokkaebi', 'dueoksini', 'bulgasal', 'jangsanbeom', 'centipede', 'gumiho', 'guardCaptain', 'yagwanggwi', 'imugi', 'reaper', 'gangcheori', 'yeomra', 'final']
+
+# 벽 · 느린 바닥 무늬 (tiles 시트 4x4, 흰 틈 — 칸 가운데를 잘라 이어 붙는 무늬로 만든다)
+TILE_OUT = 240
+TILES = [f'wall-r{n:02d}' for n in range(1, 13)] + ['slow-water', 'slow-mud', 'slow-poison', 'slow-fire']
+
+# 글자가 붙어 나온 아이콘 시트 (칸 아래의 글자를 잘라 낸다): 이름 → (열, 행, 칸 이름)
+LABELED = {'uicons': (4, 4, ['ic-u-rat', 'ic-u-ox', 'ic-u-tiger', 'ic-u-rabbit', 'ic-u-dragon', 'ic-u-snake', 'ic-u-horse', 'ic-u-sheep',
+                             'ic-u-monkey', 'ic-u-rooster', 'ic-u-dog', 'ic-u-pig', 'ic-u-cat', 'ic-roll', None, None])}
+WEAPON_KINDS = ['sword', 'spear', 'bow', 'fan']
+
 # 시트: 이름 → (열, 행, 칸 이름 — 왼쪽 위부터 가로로. None 은 쓰지 않는 칸)
 SHEETS = {
     'enemyA': (2, 2, ['e-mud', 'e-lynx', 'e-shade', 'e-catfish']),
@@ -48,10 +73,19 @@ SHEETS = {
     'icons1': (4, 4, ['ic-sword', 'ic-spear', 'ic-bow', 'ic-fan', 'ic-armor', 'ic-acc-mp', 'ic-acc-speed', 'ic-acc-crit',
                       'ic-acc-potion', 'ic-acc-coin', 'ic-star', 'ic-hp', 'ic-mp', 'ic-stone', 'ic-key', 'ic-coin']),
     'icons2': (4, 4, ['ic-sk-triple', 'ic-sk-dash', 'ic-sk-spin', 'ic-sk-throw', 'ic-sk-rain', 'ic-sk-fork', 'ic-sk-tornado', 'ic-sk-bolt',
-                      None, 'exit@0', 'exit@1', 'p-arrow', 'p-spear', 'p-orb', 'p-fire', 'fx-slash']),
+                      None, 'exit@0', 'exit@1', 'p-arrow', None, 'p-orb', 'p-fire', 'fx-slash']),
+    'eliteA': (2, 2, ['e-club-elite', 'e-fox-elite', 'e-water-elite', 'e-bamboo-elite']),
+    'eliteB': (2, 2, ['e-lynx-elite', 'e-spirit-elite', 'e-wisp-elite', 'e-guard-elite']),
+    'eliteC': (2, 1, ['e-skeleton-elite', 'e-shade']),
+    'fx2': (4, 4, ['fx-thrust', 'fx-spin', 'fx-rain', 'fx-wind', 'fx-poison', 'fx-bolt', 'p-spear', 'fx-pool',
+                   'fx-flame', 'fx-gust', 'p-pollen', 'p-burr', 'fx-arrowfall', 'fx-claw', 'p-foxorb', 'fx-shock']),
+    # 무기 등급 아이콘: 줄 = 칼 · 창 · 활 · 부채, 칸 = 등급 (시트마다 4등급)
+    **{f'wtier{n + 1}': (4, 4, [f'ic-w-{k}-{n * 4 + t}' for k in WEAPON_KINDS for t in range(4)]) for n in range(3)},
 }
 # 칸 크기 (이름의 앞머리로 찾는다 — 위에서부터 먼저 맞는 것)
-CELL = [('e-', (192, 192)), ('chest', (128, 128)), ('ic-', (96, 96)), ('exit', (180, 180)), ('p-arrow', (128, 40)), ('p-spear', (144, 40)),
+CELL = [('e-', (192, 192)), ('fx-thrust', (192, 64)), ('fx-spin', (256, 256)), ('fx-rain', (160, 160)), ('fx-wind', (192, 192)),
+        ('fx-poison', (192, 192)), ('fx-bolt', (128, 64)), ('fx-pool', (160, 128)), ('fx-flame', (128, 128)), ('fx-gust', (160, 96)), ('p-pollen', (72, 72)),
+        ('p-burr', (72, 72)), ('fx-arrowfall', (40, 128)), ('fx-claw', (128, 128)), ('p-foxorb', (112, 96)), ('fx-shock', (256, 256)), ('chest', (128, 128)), ('ic-', (96, 96)), ('exit', (180, 180)), ('p-arrow', (128, 40)), ('p-spear', (144, 40)),
         ('p-orb', (72, 72)), ('p-fire', (112, 72)), ('fx-slash', (192, 192))]
 # 오른쪽(0도)을 보도록 돌려 놓는 그림: 시계 반대 방향 각도
 TURN = {'p-fire': 135}
@@ -64,6 +98,12 @@ NOTE = {
     'ic-acc-crit': '매의 눈', 'ic-acc-potion': '약초 주머니', 'ic-acc-coin': '복주머니', 'ic-star': '지형의 별', 'ic-hp': '체력 물약', 'ic-mp': '마력 물약',
     'ic-stone': '강화석', 'ic-key': '지형 열쇠', 'ic-coin': '엽전', 'ic-sk-triple': '연속 베기', 'ic-sk-dash': '돌진 베기', 'ic-sk-spin': '회전 베기',
     'ic-sk-throw': '창 던지기', 'ic-sk-rain': '화살 비', 'ic-sk-fork': '세 갈래 화살', 'ic-sk-tornado': '회오리바람', 'ic-sk-bolt': '번개',
+    'e-club-elite': '정예 방망이 도깨비', 'e-fox-elite': '정예 여우불', 'e-water-elite': '정예 물귀신', 'e-bamboo-elite': '정예 죽순 요괴', 'e-lynx-elite': '정예 살쾡이 요괴',
+    'e-spirit-elite': '정예 원혼', 'e-wisp-elite': '정예 도깨비불', 'e-guard-elite': '정예 수문장 요괴', 'e-skeleton-elite': '정예 해골 병사',
+    'fx-thrust': '찌르기 자국', 'fx-spin': '회전 자국', 'fx-rain': '화살 비', 'fx-wind': '회오리', 'fx-poison': '독안개', 'fx-bolt': '번개 한 마디', 'fx-pool': '독 웅덩이',
+    'fx-flame': '불길', 'fx-gust': '골바람 줄기', 'p-pollen': '졸음 꽃가루', 'p-burr': '밤송이', 'fx-arrowfall': '떨어지는 화살', 'fx-claw': '할퀸 자국', 'p-foxorb': '여우구슬',
+    'fx-shock': '충격 고리 (고유 스킬 · 보스 내려치기)',
+    **{f'ic-w-{k}-{t}': f'{w} {t + 1}등급' for k, w in zip(WEAPON_KINDS, ['칼', '창', '활', '부채']) for t in range(12)},
 }
 
 # 장면: 이름 → (원본, 너비, 높이, 가로 맞춤 0~1, 세로 맞춤 0~1, 설명). 원본을 이 비율로 잘라 줄인다
@@ -73,7 +113,9 @@ SCENES = {
     **{f'ending-{i}': (f'ending-{i}', SCENE_W, SCENE_H, 0.5, 0.5, t) for i, t in enumerate(['흩어지는 어둑시니와 열두 열쇠', '아침을 맞은 열두 대원', '다시 흔들리는 봉인', '봉인 아래의 더 깊은 어둠'], 1)},
     **{f'finale-{i}': (f'finale-{i}', SCENE_W, SCENE_H, 0.5, 0.5, t) for i, t in enumerate(['무릎 꿇은 어둑시니', '열두 열쇠로 다시 잠긴 봉인', '제자리로 돌아간 요괴들과 달', '손을 흔드는 열두 대원'], 1)},
     'cat-scene': ('cat-scene', 720, 320, 0.5, 0.42, '쉼터에 헐레벌떡 달려온 고양이'),
-    'main': ('card', SCENE_W, SCENE_H, 0.5, 0.75, '메인 화면 그림 (로비 카드와 같은 그림을 9:5 로 자름)'),
+    'main': ('main', SCENE_W, SCENE_H, 0.5, 0.5, '메인 화면 그림: 열두 길 앞에 선 대원 셋'),
+    'shop': ('shop', 720, 320, 0.5, 0.55, '상점 화면 그림 (너구리 상인의 좌판)'),
+    'forge': ('forge', 720, 320, 0.5, 0.6, '대장간 화면 그림 (곰 대장장이의 화덕)'),
 }
 CARD_BOX = (640, 400, 0.3, 0.5)
 
@@ -134,7 +176,9 @@ def bands(src, n, vertical):
         i = min(range(len(runs) - 1), key=lambda k: runs[k + 1][0] - runs[k][1])
         runs[i:i + 2] = [[runs[i][0], runs[i + 1][1]]]
     if len(runs) < n:
-        raise SystemExit(f'칸을 {n} 개로 나누지 못했다 ({len(runs)} 개)')
+        # 그림끼리 닿아 빈 틈이 모자라면 같은 너비로 나눈다
+        print(f'  빈 틈이 모자라 같은 크기 {n} 칸으로 나눈다 ({len(runs)} 덩어리)')
+        return [[round(h * i / n), round(h * (i + 1) / n)] for i in range(n)]
     return runs
 
 
@@ -146,6 +190,80 @@ def cells(src, cols, rows):
         for x0, x1 in bands(row, cols, False):
             out.append(trim(row.crop((x0, 0, x1, row.height))))
     return out
+
+
+def grid_cells(src, cols, rows, keep=0.86):
+    """틈이 흰 시트(배경 있음)를 같은 크기 칸으로 나눠 칸 가운데(keep 비율)만 잘라 낸다"""
+    cw, ch = src.width / cols, src.height / rows
+    out = []
+    for r in range(rows):
+        for c in range(cols):
+            mx, my = cw * (1 - keep) / 2, ch * (1 - keep) / 2
+            out.append(src.crop((round(c * cw + mx), round(r * ch + my), round((c + 1) * cw - mx), round((r + 1) * ch - my))))
+    return out
+
+
+def seamless(img, size):
+    """이어 붙는 무늬로: 절반 밀어 놓은 그림과 섞는다 (가운데는 원래 그림, 가장자리는 밀어 놓은 그림의 가운데)"""
+    img = img.convert('RGB').resize((size, size), Image.LANCZOS)
+    moved = ImageChops.offset(img, size // 2, size // 2)
+    edge = size * 0.22
+    ramp = [min(1.0, min(i, size - 1 - i) / edge) for i in range(size)]
+    mask = Image.new('L', (size, size))
+    mask.putdata([round(255 * min(ramp[x], ramp[y])) for y in range(size) for x in range(size)])
+    return Image.composite(img, moved, mask)
+
+
+def labeled_cells(src, cols, rows):
+    """칸 아래에 글자가 붙은 시트: 줄마다 그림 띠와 글자 띠가 번갈아 나온다 → 그림 띠만 쓴다"""
+    out = []
+    ys = bands(src, rows * 2, True)
+    for y0, y1 in ys[0::2]:
+        row = src.crop((0, y0, src.width, y1))
+        for x0, x1 in bands(row, cols, False):
+            out.append(trim(row.crop((x0, 0, x1, row.height))))
+    return out
+
+
+def hero_sheet(stand, move, hero):
+    """대원 시트 (가로 5칸 × 세로 3줄): 서기(예전 그림) + 걷기 A · B · 공격 · 구르기(동작 시트). 줄 = 앞 · 옆 · 뒤"""
+    nrows, use = MOVE_ROWS.get(hero, (3, [0, 1, 2]))
+    if hero in MOVE_CUTS:
+        # 줄끼리 닿아 있는 그림: 적어 둔 높이에서 줄을 나눈다
+        cuts = MOVE_CUTS[hero]
+        cells4 = []
+        for y0, y1 in zip(cuts, cuts[1:]):
+            row = move.crop((0, y0, move.width, y1))
+            cells4 += [trim(row.crop((x0, 0, x1, row.height))) for x0, x1 in bands(row, 4, False)]
+    else:
+        cells4 = cells(move, 4, nrows)
+    rows = [cells4[r * 4:r * 4 + 4] for r in use]
+    if hero in STAND_FROM_MOVE:
+        stand = [r[0] for r in rows]
+        rows = [[r[1], r[0], r[2], r[3]] for r in rows]
+        s1 = s2 = min(HERO * FIT / max(p.width for p in stand), HERO * FIT * 0.94 / max(p.height for p in stand))
+    else:
+        s1 = min(HERO * FIT / max(p.width for p in stand), HERO * FIT / max(p.height for p in stand))
+        # 걷는 모습의 키가 서 있는 모습의 키와 같아지게
+        s2 = stand[0].height * s1 / max(rows[0][0].height, rows[0][1].height)
+    sheet = Image.new('RGBA', (HERO * HERO_COLS, HERO * 3), (0, 0, 0, 0))
+
+    def put(img, s, col, row, roll=False):
+        s = min(s, HERO * FIT / img.width, HERO * FIT / img.height)
+        small = shrink(img, s)
+        y = row * HERO + (ROLL_CY - small.height // 2 if roll else HERO - 3 - small.height)
+        sheet.paste(small, (col * HERO + (HERO - small.width) // 2, max(row * HERO, y)))
+
+    for r in range(3):
+        put(stand[r], s1, 0, r)
+        back_only = r == 2 and hero in BACK_STAND_ONLY
+        for c in range(3):
+            if back_only:
+                put(stand[r], s1, c + 1, r)
+            else:
+                put(rows[r][c], s2, c + 1, r)
+        put(rows[r][3], s2, 4, r, roll=True)
+    return sheet
 
 
 def cell_size(name):
@@ -186,22 +304,52 @@ def main():
     # 대원: 앞 · 옆 · 뒤 세 칸을 같은 배율로, 발끝을 칸 아래에 맞춘다
     for sheet, heroes in HEROES.items():
         raw = os.path.join(RAW, sheet + '.png')
+        parts = cells(Image.open(raw).convert('RGBA'), 3, len(heroes)) if os.path.exists(raw) else None
+        for i, hero in enumerate(heroes):
+            move = os.path.join(RAW, f'move-{hero}.png')
+            if parts and os.path.exists(move):
+                print(hero)
+                save(hero_sheet(parts[i * 3:i * 3 + 3], Image.open(move).convert('RGBA'), hero), os.path.join(OUT, f'hero-{hero}.png'))
+            add(f'move-{hero}', f'hero-{hero}', (HERO * HERO_COLS, HERO * 3),
+                f'대원 시트 (가로 5칸: 서기 · 걷기 A · 걷기 B · 공격 · 구르기 × 세로 3줄: 앞 · 옆(오른쪽) · 뒤 · {MODEL} · 서기 칸은 {sheet} 시트 {ids[sheet]} · 디자인 참고 shared/images/zodiac)')
+
+    # 보스 공격 동작: 예고 · 내려치기 두 칸 (같은 배율)
+    for boss in BOSSES:
+        raw = os.path.join(RAW, f'atk-{boss}.png')
+        name = f'b-{boss}-atk'
         if os.path.exists(raw):
-            parts = cells(Image.open(raw).convert('RGBA'), 3, len(heroes))
-            for i, hero in enumerate(heroes):
-                three = parts[i * 3:i * 3 + 3]
-                s = min(HERO * FIT / max(p.width for p in three), HERO * FIT / max(p.height for p in three))
-                strip = Image.new('RGBA', (HERO * 3, HERO), (0, 0, 0, 0))
-                for k, p in enumerate(three):
-                    small = shrink(p, s)
-                    strip.paste(small, (k * HERO + (HERO - small.width) // 2, HERO - 3 - small.height))
-                save(strip, os.path.join(OUT, f'hero-{hero}.png'))
-        for hero in heroes:
-            add(sheet, f'hero-{hero}', (HERO * 3, HERO), f'대원 시트 (가로 3칸: 앞 · 옆(오른쪽) · 뒤 · {MODEL} · 디자인 참고 shared/images/zodiac)')
+            two = cells(Image.open(raw).convert('RGBA'), 2, 1)
+            s = min(BOSS_ATK * FIT / max(p.width for p in two), BOSS_ATK * FIT / max(p.height for p in two))
+            strip = Image.new('RGBA', (BOSS_ATK * 2, BOSS_ATK), (0, 0, 0, 0))
+            for k, part in enumerate(two):
+                small = shrink(part, s)
+                strip.paste(small, (k * BOSS_ATK + (BOSS_ATK - small.width) // 2, BOSS_ATK - 6 - small.height))
+            save(strip, os.path.join(OUT, name + '.png'))
+        add(f'atk-{boss}', name, (BOSS_ATK * 2, BOSS_ATK), f'보스 공격 동작 (가로 2칸: 예고 · 내려치기 · {MODEL} · 보스 그림을 reference 로)')
+
+    # 벽 · 느린 바닥 무늬
+    raw = os.path.join(RAW, 'tiles.png')
+    if os.path.exists(raw):
+        for name, part in zip(TILES, grid_cells(Image.open(raw), 4, 4)):
+            seamless(part, TILE_OUT).quantize(64, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(os.path.join(OUT, name + '.png'), optimize=True)
+    for name in TILES:
+        add('tiles', name, (TILE_OUT, TILE_OUT), f'이어 붙는 {"벽" if name.startswith("wall") else "느린 바닥"} 무늬 (tiles 시트 4x4 의 한 칸 · {MODEL})')
+
+    # 글자가 붙어 나온 아이콘 시트
+    for sheet, (cols, rows, names) in LABELED.items():
+        raw = os.path.join(RAW, sheet + '.png')
+        if os.path.exists(raw):
+            for name, part in zip(names, labeled_cells(Image.open(raw).convert('RGBA'), cols, rows)):
+                if name:
+                    save(fit(part, 96, 96), os.path.join(OUT, name + '.png'))
+        for name in names:
+            if name:
+                add(sheet, name, (96, 96), f'{"구르기 버튼" if name == "ic-roll" else "고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림"} ({sheet} 시트 {cols}x{rows} 의 한 칸 · {MODEL})')
 
     # 시트: 요괴 · 상자 · 출구 · 날아가는 것 · 아이콘
     for sheet, (cols, rows, names) in SHEETS.items():
         raw = os.path.join(RAW, sheet + '.png')
+        print(sheet)
         made = {}
         if os.path.exists(raw):
             for name, part in zip(names, cells(Image.open(raw).convert('RGBA'), cols, rows)):
@@ -238,9 +386,12 @@ def main():
         out = os.path.join(OUT, name + '.png')
         shutil.copyfile(os.path.join(FINGER, 'public', 'art', name + '.png'), out)
         assets.append({'asset_id': finger[name], 'sha12': sha12(out), 'label': f'{name} → public/art/{name}.png (320x320, 이어 붙는 바닥 무늬 · 시아핑거 그림을 복사)'})
-    note = ('시아열두길 전용 SpriteCook 그림 목록 (art/build.py 가 적는다). b-final · 대원 시트(hero-*) · 지형 전용 요괴 11종 · 상자 · 출구 · 아이콘(ic-*) · 날아가는 것(p-*) · '
+    note = ('시아열두길 전용 SpriteCook 그림 목록 (art/build.py 가 적는다). b-final · 대원 시트(hero-*) · 지형 전용 요괴 11종 · 정예 9종 · 보스 공격 동작(b-*-atk) · 벽/느린 바닥 무늬 · 효과(fx-*) · 상자 · 출구 · 아이콘(ic-*) · 날아가는 것(p-*) · '
             '장면(story · ending · finale · cat-scene · main) · 로비 카드는 열두길에서 만든 그림이고, floor-r01~r12 는 시아핑거의 지형 바닥을 복사한 것이다. '
             'public/art 의 나머지 요괴 9종(e-imp 등)·보스(b-* 12종)·tile-*·fx-pop 은 시아디펜스(games/defense/public/art)에서 복사한 것이고 asset id 는 games/defense/spritecook-assets.json 에 있다.')
+    # 같은 이름이 두 번 나오면(다시 그린 것) 뒤의 것만 남긴다
+    last = {a['label'].split(' ')[0]: i for i, a in enumerate(assets)}
+    assets[:] = [a for i, a in enumerate(assets) if last[a['label'].split(' ')[0]] == i]
     with open(MANIFEST, 'w', encoding='utf-8') as f:
         json.dump({'note': note, 'assets': assets}, f, ensure_ascii=False, indent=2)
         f.write('\n')
