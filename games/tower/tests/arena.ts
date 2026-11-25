@@ -28,6 +28,11 @@ export function arena(opts: { floor?: number; level?: number; orb?: string; awak
       if (c === 'q') (t = T.PLATE), pending.push({ id: 0, kind: 'plate', x, y, room: 0 });
       if (c === 'h') (t = T.BRAZIER), pending.push({ id: 0, kind: 'brazier', x, y, room: 0 });
       if (c === 'p') (t = T.POST), objs.push({ id: 0, kind: 'post', x, y, room: 0 });
+      if (c === 'i') t = T.COLD_WATER;
+      if (c === 'u') t = T.BOULDER;
+      if (c === 'x') t = T.PIT;
+      if (c === 'b') (t = T.BELL), pending.push({ id: 0, kind: 'bell', x, y, room: 0 });
+      if (c === 'j') (t = T.GONG), pending.push({ id: 0, kind: 'gong', x, y, room: 0 });
       tiles[y * w + x] = t;
     }
   }

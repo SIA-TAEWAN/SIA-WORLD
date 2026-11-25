@@ -1,7 +1,7 @@
 /**
  * 시아의탑 데이터 (JSON) 에 타입을 붙여 읽는 곳. 100층까지 늘릴 때는 JSON 만 더한다:
  * - floors.json: 구역(10층) 구성 규칙과 구역마다의 적·정예·보스 (ready=false 인 구역은 구조만)
- * - rooms.json: 방 템플릿 (15×11 안쪽 칸 글자 그리드)
+ * - rooms.json: 방 템플릿 (19×13 안쪽 칸 글자 그리드, 예전 15×11 은 읽을 때 채운다)
  * - enemies.json · orbs.json · items.json · growth.json
  */
 import floorsJson from './floors.json';
@@ -102,7 +102,7 @@ export function fitGrid(grid: string[], pad = '.'): string[] {
 export const ROOMS = { size: ROOM_DATA.size, rooms: ROOM_DATA.rooms.map((r) => ({ ...r, grid: fitGrid(r.grid, r.pad), src: { w: r.grid[0].length, h: r.grid.length } })) };
 
 // ---------- 적 ----------
-export type EnemyAi = 'chase' | 'bat' | 'ranged' | 'melee' | 'elite' | 'golem' | 'hop' | 'imugi';
+export type EnemyAi = 'chase' | 'bat' | 'ranged' | 'melee' | 'elite' | 'golem' | 'hop' | 'imugi' | 'blink' | 'orbit' | 'lob' | 'totem' | 'winter' | 'wind' | 'bulgasari';
 export interface EnemyDef {
   id: string;
   name: string;
@@ -126,7 +126,7 @@ export interface EnemyDef {
   elite?: boolean;
   boss?: boolean;
   level?: number;
-  status?: { kind: 'slow' | 'poison'; dur: number; power: number };
+  status?: { kind: 'slow' | 'poison' | 'burn'; dur: number; power: number };
   proj?: { speed: number; r: number; life: number; kind: string };
   dash?: { every: number; windup: number; speed: number; time: number };
   slam?: { windup: number; radius: number; mul: number };
@@ -146,6 +146,31 @@ export interface EnemyDef {
   bite?: { windup: number; speed: number; time: number; mul: number };
   burrow?: { hide: number; windup: number; radius: number; mul: number };
   summon?: { id: string; count: number };
+  // ---- 3~5구역 ----
+  /** 도깨비불: 캐릭터 둘레로 순간이동해 터진다 (도착 자리를 원으로 예고) */
+  blink?: { radius: number; jitter: number };
+  /** 방패연: 캐릭터 둘레를 돌며 쏜다 */
+  orbit?: { radius: number };
+  /** 횃불 도깨비: 캐릭터 자리에 불씨를 던진다 (떨어질 자리 예고 → 불바닥) */
+  lob?: { flight: number; radius: number; patch: number; patchR: number };
+  /** 정예·보스: 부채꼴로 여러 발 (every 0 = 보스 기술 순서대로) */
+  fan?: { every: number; windup: number; count: number; countRage?: number; angle: number; mul: number };
+  /** 정예: 캐릭터 자리로 뛰어올라 내려찍기 */
+  leap?: { every: number; windup: number; radius: number; time: number; mul: number };
+  /** 동장군 */
+  thrust?: { windup: number; speed: number; time: number; mul: number };
+  icicles?: { windup: number; count: number; countRage: number; radius: number; spread: number; mul: number };
+  frost?: { windup: number; radius: number; dur: number; mul: number };
+  shield?: { every: number; stun: number; dist: number };
+  /** 영등할미 */
+  gust?: { windup: number; width: number; len: number; push: number; mul: number };
+  whirl?: { windup: number; count: number; countRage: number; speed: number; life: number; turn: number; mul: number };
+  dive?: { windup: number; rise: number; radius: number; mul: number };
+  wind?: { every: number; speed: number };
+  /** 불가사리 */
+  spikes?: { windup: number; count: number; countRage: number; mul: number };
+  eat?: { time: number; heal: number; healRage: number; max: number; drop: number; dropRage: number };
+  trail?: { every: number; r: number; dur: number };
 }
 const ENEMY_DATA = enemiesJson as unknown as { killExp: number; killCoins: number; packAtk?: number; enemies: EnemyDef[] };
 export const ENEMIES = ENEMY_DATA.enemies;
