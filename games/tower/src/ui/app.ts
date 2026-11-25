@@ -455,7 +455,7 @@ async function play() {
   cur = { game, scene: null, run, controls, art, paused: false, dirty: false, miniKey: '', ended: false };
   music.play(floorTrack(run.map.floor));
   game.scene.add('tower', GameScene, true, { run, hooks: hooks(), art });
-  cur.scene = game.scene.getScene('tower') as GameScene;
+  cur.scene = sceneOf();
   floorBanner(run.map.floor);
   // 가려진 탭에서는 멈춘다
   document.addEventListener('visibilitychange', onHidden);
@@ -483,7 +483,8 @@ function startFloor() {
   const t = themes?.[themeOf(run.map.floor)];
   if (t) cur.art.tiles = t;
   music.play(floorTrack(run.map.floor));
-  cur.scene!.scene.restart({ run, hooks: hooks(), art: cur.art });
+  const sc = sceneOf();
+  sc?.scene.restart({ run, hooks: hooks(), art: cur.art });
   setPaused(false);
   floorBanner(run.map.floor);
 }
@@ -502,10 +503,21 @@ function leavePlay(to: () => void) {
   to();
 }
 
+/**
+ * 게임 장면. Phaser 는 그림판이 준비된 뒤에야 장면을 만든다 (scene.add 바로 뒤 getScene 은 null 일 수 있다 —
+ * 그래서 쓸 때마다 다시 찾는다. 예전에는 null 로 남아 쓰러진 뒤·층을 깬 뒤 '다시' 가 멈췄다)
+ */
+function sceneOf(): GameScene | null {
+  if (!cur) return null;
+  cur.scene ??= (cur.game.scene.getScene('tower') as GameScene | null) ?? null;
+  return cur.scene;
+}
+
 function setPaused(p: boolean) {
   if (!cur) return;
   cur.paused = p;
-  if (cur.scene) cur.scene.paused = p;
+  const sc = sceneOf();
+  if (sc) sc.paused = p;
   if (p) cur.controls.release();
 }
 
@@ -1133,7 +1145,7 @@ function openMenu() {
           if (cur && ctx.look) {
             const layers = await lookLayers(ctx.look);
             cur.art.layers = layers;
-            cur.scene?.setLayers(layers);
+            sceneOf()?.setLayers(layers);
           }
           render();
         },
