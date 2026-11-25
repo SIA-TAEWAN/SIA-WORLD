@@ -1,6 +1,7 @@
 /**
  * 시아의탑 배경음: 새 소리 파일 없이, 다른 게임이 이미 쓰는 코드 반복곡을 빌려 쓴다
  * (시아서바이벌 games/survival/src/ui/music.ts 의 메인 · 달빛 궁궐 · 대나무 숲 · 보스 곡, 시아마을 games/village/src/ui/music.ts 의 낮 곡 — 같은 악보).
+ * 3~5구역 곡과 그 보스 곡은 같은 틀(8분음 펼침화음 + 4분음 멜로디 + 베이스)로 새로 쓴 악보다 (역시 파일 없음).
  * 소리 파일은 찾지 않는다 (새 파일 없음 — 없는 파일을 찾으면 콘솔에 404 가 남는다). 곡의 file 이름은 나중에 파일로 바꿀 때 쓸 이름.
  * 켜기/끄기: 공용 효과음(shared/sound.js 'sia:sound')과 공용 배경음 설정('sia:bgm')이 모두 켜져 있을 때만. 가려진 탭에서는 멈춘다.
  */
@@ -86,8 +87,87 @@ const BOSS: Track = {
   ],
 };
 
-const TRACKS = { title: TITLE, stone: STONE, moss: MOSS, rest: REST, boss: BOSS };
+/** 3구역 서리 누각: 마단조, 느리고 높은 펼침화음 (얼음 풍경 소리) */
+const FROST: Track = {
+  bpm: 96, arpVol: 0.024, leadVol: 0.042, drums: false, file: 'bgmTowerFrost',
+  bars: [
+    { arp: [64, 67, 71, 76, 71, 67, 71, 76], lead: [83, 0, 0, 81], bass: 40 },
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [79, 0, 76, 0], bass: 36 },
+    { arp: [57, 60, 64, 69, 64, 60, 64, 69], lead: [76, 0, 74, 72], bass: 33 },
+    { arp: [59, 63, 66, 71, 66, 63, 66, 71], lead: [75, 0, 0, -1], bass: 35 },
+    { arp: [64, 67, 71, 76, 71, 67, 71, 76], lead: [76, 79, 83, 0], bass: 40 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [86, 0, 83, 0], bass: 31 },
+    { arp: [57, 60, 64, 69, 64, 60, 64, 69], lead: [84, 0, 81, 79], bass: 33 },
+    { arp: [59, 63, 66, 71, 75, 71, 66, 63], lead: [78, 0, 0, -1], bass: 35 },
+  ],
+};
+/** 4구역 새벽 구름 뜰: 라장조 5음, 가볍게 */
+const CLOUD: Track = {
+  bpm: 118, arpVol: 0.026, leadVol: 0.044, drums: false, file: 'bgmTowerCloud',
+  bars: [
+    { arp: [62, 66, 69, 74, 69, 66, 69, 74], lead: [78, 0, 81, 78], bass: 38 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [76, 0, 74, 0], bass: 43 },
+    { arp: [59, 62, 66, 71, 66, 62, 66, 71], lead: [74, 76, 78, 81], bass: 47 },
+    { arp: [57, 61, 64, 69, 64, 61, 64, 69], lead: [76, 0, 0, -1], bass: 45 },
+    { arp: [62, 66, 69, 74, 69, 66, 69, 74], lead: [81, 0, 78, 76], bass: 38 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [74, 0, 76, 78], bass: 43 },
+    { arp: [52, 55, 59, 64, 59, 55, 59, 64], lead: [79, 0, 76, 74], bass: 40 },
+    { arp: [57, 61, 64, 69, 73, 69, 64, 61], lead: [74, 0, 0, -1], bass: 45 },
+  ],
+};
+/** 5구역 잿불 성채: 가단조에 반음 위 B♭ (프리지아), 빠르게 */
+const EMBER: Track = {
+  bpm: 138, arpVol: 0.028, leadVol: 0.044, drums: false, file: 'bgmTowerEmber',
+  bars: [
+    { arp: [57, 60, 64, 69, 64, 60, 64, 69], lead: [81, 0, 82, 81], bass: 33 },
+    { arp: [58, 62, 65, 70, 65, 62, 65, 70], lead: [77, 0, 74, 0], bass: 34 },
+    { arp: [57, 60, 64, 69, 64, 60, 64, 69], lead: [76, 77, 81, 0], bass: 33 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [79, 0, 77, -1], bass: 31 },
+    { arp: [57, 60, 64, 69, 64, 60, 64, 69], lead: [84, 0, 82, 81], bass: 33 },
+    { arp: [53, 57, 60, 65, 60, 57, 60, 65], lead: [77, 0, 81, 0], bass: 29 },
+    { arp: [52, 56, 59, 64, 59, 56, 59, 64], lead: [80, 0, 76, 0], bass: 28 },
+    { arp: [57, 60, 64, 69, 72, 69, 64, 60], lead: [81, 0, 0, -1], bass: 33 },
+  ],
+};
+/** 동장군: 마단조 보스 곡 */
+const BOSS_FROST: Track = {
+  bpm: 144, arpVol: 0.03, leadVol: 0.045, drums: true, file: 'bgmTowerBossFrost',
+  bars: [
+    { arp: [52, 59, 64, 59, 52, 59, 64, 59], lead: [76, 0, 79, 76], bass: 40 },
+    { arp: [48, 55, 60, 55, 48, 55, 60, 55], lead: [72, 0, 71, 72], bass: 36 },
+    { arp: [50, 57, 62, 57, 50, 57, 62, 57], lead: [74, 0, 79, 0], bass: 38 },
+    { arp: [47, 54, 59, 54, 47, 54, 59, 63], lead: [78, 0, 75, -1], bass: 35 },
+  ],
+};
+/** 영등할미: 라도리아 보스 곡 */
+const BOSS_WIND: Track = {
+  bpm: 156, arpVol: 0.03, leadVol: 0.045, drums: true, file: 'bgmTowerBossWind',
+  bars: [
+    { arp: [50, 57, 62, 57, 50, 57, 62, 65], lead: [74, 0, 77, 74], bass: 38 },
+    { arp: [48, 55, 60, 55, 48, 55, 60, 64], lead: [72, 0, 74, 0], bass: 36 },
+    { arp: [46, 53, 58, 53, 46, 53, 58, 62], lead: [70, 72, 74, 77], bass: 34 },
+    { arp: [45, 52, 57, 52, 45, 52, 57, 61], lead: [76, 0, 73, -1], bass: 33 },
+  ],
+};
+/** 불가사리: 가프리지아 보스 곡 */
+const BOSS_EMBER: Track = {
+  bpm: 160, arpVol: 0.03, leadVol: 0.045, drums: true, file: 'bgmTowerBossEmber',
+  bars: [
+    { arp: [45, 52, 57, 52, 45, 52, 57, 58], lead: [81, 0, 82, 81], bass: 33 },
+    { arp: [46, 53, 58, 53, 46, 53, 58, 57], lead: [82, 0, 77, 0], bass: 34 },
+    { arp: [45, 52, 57, 52, 45, 52, 57, 60], lead: [76, 77, 76, 72], bass: 33 },
+    { arp: [44, 52, 56, 52, 44, 52, 56, 59], lead: [80, 0, 76, -1], bass: 32 },
+  ],
+};
+
+const TRACKS = { title: TITLE, stone: STONE, moss: MOSS, frost: FROST, cloud: CLOUD, ember: EMBER, rest: REST, boss: BOSS, bossFrost: BOSS_FROST, bossWind: BOSS_WIND, bossEmber: BOSS_EMBER };
 export type TrackName = keyof typeof TRACKS;
+/** 테마(floors.json 의 theme) → 그 구역 곡 · 보스 곡 (없으면 1구역 곡 · 공용 보스 곡) */
+export function zoneTrack(theme: string, boss: boolean): TrackName {
+  const zone: Record<string, TrackName> = { stone: 'stone', moss: 'moss', frost: 'frost', cloud: 'cloud', ember: 'ember' };
+  const bossOf: Record<string, TrackName> = { frost: 'bossFrost', cloud: 'bossWind', ember: 'bossEmber' };
+  return boss ? (bossOf[theme] ?? 'boss') : (zone[theme] ?? 'stone');
+}
 
 const freq = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 

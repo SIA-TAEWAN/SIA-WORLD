@@ -9,7 +9,7 @@ import {
   CHESTS, GROWTH, KILL_COINS, KILL_EXP, MAX_LEVEL, PACK_ATK, enemyDef, enemyRefAtk, expNeed, itemDef, orbDef, statsAt, zoneMul,
   type EnemyDef, type ItemId, type OrbDef, type Stats,
 } from '../data';
-import { T, TILE, flyable, insideRoom, roomAt, walkable, type FloorMap, type Obj } from './floorgen';
+import { ROOM_H, ROOM_W, T, TILE, flyable, insideRoom, overWater, roomAt, walkable, type FloorMap, type Obj } from './floorgen';
 import { addExp, clone, gainOrb, isReplay, type OrbGain, type TowerData } from './progress';
 import { hashSeed, makeRng, type Rng } from './rng';
 
@@ -89,6 +89,9 @@ export interface Player {
   slow: number;
   poison: number;
   poisonPow: number;
+  /** 화상 (5구역 불 — 독처럼 천천히 준다) */
+  burn: number;
+  burnPow: number;
   inv: number;
   hurtT: number;
   /** 움직이지 못함 (토끼 각성 뒤 · 현무 결계 · 시전) */
@@ -126,9 +129,12 @@ export interface Player {
 }
 export type EnemyState =
   | 'idle' | 'move' | 'windup' | 'strike' | 'flee' | 'dashWind' | 'dash' | 'stun' | 'slamWind' | 'rockWind' | 'chargeWind' | 'charge'
-  | 'hopWind' | 'hop' | 'ringWind' | 'biteWind' | 'bite' | 'sweepWind' | 'spitWind' | 'burrow' | 'burrowWind' | 'dead';
+  | 'hopWind' | 'hop' | 'ringWind' | 'biteWind' | 'bite' | 'sweepWind' | 'spitWind' | 'burrow' | 'burrowWind'
+  | 'blinkWind' | 'fanWind' | 'leapWind' | 'leap' | 'thrustWind' | 'thrust' | 'icicleWind' | 'frostWind' | 'guard'
+  | 'gustWind' | 'whirlWind' | 'diveUp' | 'diveWind' | 'spikeWind' | 'eat' | 'dead';
 export interface Telegraph {
-  kind: 'circle' | 'line';
+  /** cross = 가운데에서 n 갈래 선 (ang 부터 고르게) */
+  kind: 'circle' | 'line' | 'cross';
   x: number;
   y: number;
   r: number;
@@ -137,6 +143,31 @@ export interface Telegraph {
   len: number;
   t: number;
   total: number;
+  n?: number;
+  ang?: number;
+}
+/** 땅에 떨어지는 공격 (고드름 · 불씨): 원으로 예고하고 total 초 뒤 떨어진다. hazard 가 있으면 그 자리에 바닥이 남는다 */
+export interface Strike {
+  kind: string;
+  x: number;
+  y: number;
+  r: number;
+  t: number;
+  total: number;
+  dmg: number;
+  status?: EnemyDef['status'];
+  src?: number;
+  hazard?: { r: number; dur: number; status: NonNullable<EnemyDef['status']> };
+}
+/** 바닥에 남는 것 (서리 · 불바닥): 안에 있으면 상태가 걸린다 (피해는 상태로만 — 맞은 뒤 무적이 생기지 않게) */
+export interface Hazard {
+  kind: string;
+  x: number;
+  y: number;
+  r: number;
+  t: number;
+  dur: number;
+  status: NonNullable<EnemyDef['status']>;
 }
 export interface Enemy {
   id: number;
@@ -181,6 +212,16 @@ export interface Enemy {
   to: { x: number; y: number } | null;
   ringCd: number;
   summoned: boolean;
+  /** 정예: 부채꼴 · 뛰어오르기 대기 */
+  fanCd: number;
+  leapCd: number;
+  /** 맞지 않는 때: 얼음 갑옷(동장군) · 하늘(영등할미 내리꽂기). 보이기는 한다 */
+  guard: null | 'ice' | 'air';
+  /** 보스 단계 (1 → 2) */
+  phase: number;
+  /** 불가사리: 달아오른 발자국 · 먹으러 가는 쇠붙이 */
+  trailCd: number;
+  eatId: number;
 }
 export interface Proj {
   id: number;
@@ -206,6 +247,8 @@ export interface Proj {
   tickT?: number;
   /** 쏜 적 (원숭이 역류·되받아치기) */
   src?: number;
+  /** 캐릭터 쪽으로 휘어 간다 (초당 라디안 — 영등할미 회오리) */
+  home?: number;
 }
 /** 화면 효과 (그림만 — 시뮬레이션에는 영향 없음) */
 export interface Fx {
@@ -243,13 +286,20 @@ export type SimEvent =
   | { t: 'fountain' }
   | { t: 'skill'; kind: string }
   | { t: 'awaken'; kind: string }
-  | { t: 'boss'; phase: number }
+  | { t: 'boss'; phase: number; text?: string }
+  | { t: 'legend'; id: string }
+  | { t: 'ice'; x: number; y: number }
+  | { t: 'ring'; on: number; all: number }
+  | { t: 'ringReset' }
+  | { t: 'boulder'; fill: boolean }
+  | { t: 'wind'; dx: number; dy: number }
+  | { t: 'eat' }
   | { t: 'bossDown' }
   | { t: 'stairsShown' }
   | { t: 'item'; id: ItemId }
   | { t: 'revive' }
   | { t: 'rebirth' }
-  | { t: 'status'; kind: 'slow' | 'poison' }
+  | { t: 'status'; kind: 'slow' | 'poison' | 'burn' }
   | { t: 'clear' }
   | { t: 'dead' };
 
@@ -298,6 +348,15 @@ export interface RunState {
   god: boolean;
   noteCd: number;
   stairsShown: boolean;
+  /** 떨어지는 공격 · 바닥 */
+  strikes: Strike[];
+  hazards: Hazard[];
+  /** 영등할미 2단계: 방에 부는 바람 (캐릭터를 민다) */
+  wind: { dx: number; dy: number; next: number; speed: number; every: number } | null;
+  /** 풍경·징: 울린 때 (물건 id → 시각) */
+  ring: Map<number, number>;
+  /** 보스방 전설 구슬: 받침대에서 받아야 층을 깬다 */
+  legendWait: boolean;
 }
 
 // ---------- 시작 ----------
@@ -309,7 +368,8 @@ function makeEnemy(s: RunState, defId: string, room: number, x: number, y: numbe
     id: s.nextId++, def, room, level: lv, x, y, hp, max: hp, atk: def.atk * enemyRefAtk(lv) * (def.boss || def.elite ? 1 : PACK_ATK), alive: true, active: false, state: 'idle',
     t: 0, cd: 0.6 + s.rng.next() * 0.8, faceX: 1, dirX: 0, dirY: 1, hitFlash: 0, dashCd: def.dash?.every ?? 0, pattern: 0, rage: false, tele: null, touched: false,
     basicHits: 0, onlyBasic: true, wave, pending: wave > 0, wake: 0, burn: 0, burnDps: 0, slowT: 0, freeze: 0, stun: 0, hidden: false, from: null, to: null,
-    ringCd: def.ring?.every ?? 0, summoned: false,
+    ringCd: def.ring?.every ?? 0, summoned: false, fanCd: (def.fan?.every ?? 0) * 0.6, leapCd: (def.leap?.every ?? 0) * 0.5, guard: null, phase: 1,
+    trailCd: 0, eatId: -1,
   };
 }
 
@@ -337,7 +397,7 @@ export function createRun(map: FloorMap, data: TowerData, opts: { god?: boolean;
     p: {
       x: map.start.x, y: map.start.y + 4, face: 0, moving: false, walkT: 0, axis: 'y', hp: stats.hp, mp: stats.mp, stats,
       swing: null, lastCombo: 0, comboWindow: 0, recover: 0, arm: -1, armFx: 0, skillCd: 0, awakenCd: 0, gale: 0, giant: null,
-      slow: 0, poison: 0, poisonPow: 0, inv: 0, hurtT: 0, root: 0, cast: null, shield: null, barrier: 0, parry: 0, parried: false, gap: 0, reflect: 0,
+      slow: 0, poison: 0, poisonPow: 0, burn: 0, burnPow: 0, inv: 0, hurtT: 0, root: 0, cast: null, shield: null, barrier: 0, parry: 0, parried: false, gap: 0, reflect: 0,
       blood: 0, tired: 0, storm: 0, stacks: 0, bolts: 0, boltNext: 0, blades: 0, bladeHit: new Map(), rebirth: 0, rebirthUsed: '', dashChain: null, pull: null,
     },
     enemies: [],
@@ -362,10 +422,16 @@ export function createRun(map: FloorMap, data: TowerData, opts: { god?: boolean;
     god: !!opts.god,
     noteCd: 0,
     stairsShown: !map.stairsHidden,
+    strikes: [],
+    hazards: [],
+    wind: null,
+    ring: new Map(),
+    legendWait: false,
   };
   for (const r of map.rooms) for (const sp of r.spawns) s.enemies.push(makeEnemy(s, sp.def, r.id, sp.x, sp.y, sp.wave ?? 0, map.floor));
   // 구슬 받침대: 아직 없는 구슬일 때만 구슬이 있다 (그 층에서 줍고 쓰러져도 다시 놓이지 않는다 — 두 번째 구슬로 공짜 각성이 되지 않게)
-  for (const o of map.objs) if (o.kind === 'pedestal' && !(o.orb && !d.orbs[o.orb])) tiles[o.y * map.w + o.x] = T.PEDESTAL_EMPTY;
+  // 보스방 받침대(hidden)는 보스를 쓰러뜨린 뒤에 나타난다
+  for (const o of map.objs) if (o.kind === 'pedestal' && !o.hidden && !(o.orb && !d.orbs[o.orb])) tiles[o.y * map.w + o.x] = T.PEDESTAL_EMPTY;
   return s;
 }
 
@@ -381,7 +447,7 @@ export function blockedFor(s: RunState, tx: number, ty: number, who: 'p' | 'e' |
     const owner = s.doorOwner.get(tIdx(s, tx, ty));
     return owner !== undefined && s.locked.has(owner);
   }
-  if (who === 'fly' && t === T.WATER) return false;
+  if (who === 'fly' && overWater(t)) return false;
   return !walkable(t);
 }
 function boxFree(s: RunState, x: number, y: number, hw: number, hh: number, who: 'p' | 'e' | 'fly'): boolean {
@@ -484,6 +550,10 @@ export function step(s: RunState, input: Input) {
     p.poison = Math.max(0, p.poison - STEP);
     p.hp = Math.max(1, p.hp - maxHp(s) * p.poisonPow * STEP);
   }
+  if (p.burn > 0) {
+    p.burn = Math.max(0, p.burn - STEP);
+    p.hp = Math.max(1, p.hp - maxHp(s) * p.burnPow * STEP);
+  }
   // 혈기: 지속 중 체력이 준다 (1 아래로는 내려가지 않는다)
   if (p.blood > 0) p.hp = Math.max(1, p.hp - maxHp(s) * prm('tiger', 'bloodDrain', 0.015) * STEP);
   // 싸움 밖(잠긴 방이 없을 때)에서는 천천히 회복한다 — 방을 돌며 퍼즐·보물을 찾는 동안
@@ -501,6 +571,7 @@ export function step(s: RunState, input: Input) {
   updateRooms(s);
   for (const e of s.enemies) if (e.alive && e.active) updateEnemy(s, e);
   updateProjs(s);
+  updateField(s);
   if (s.boss && s.boss.alive && s.boss.active) s.stats.bossTime += STEP;
 }
 
@@ -618,7 +689,7 @@ const circleBox = (x: number, y: number, r: number, b: Box) => {
   return (x - nx) ** 2 + (y - ny) ** 2 <= r * r;
 };
 /** 맞힐 수 있는 적 (나와 있고 땅속이 아닌) */
-const hittable = (e: Enemy) => e.alive && e.active && !e.hidden;
+const hittable = (e: Enemy) => e.alive && e.active && !e.hidden && !e.guard;
 const bodyY = (s: RunState) => s.p.y - BODY_UP;
 const distP = (s: RunState, e: { x: number; y: number }) => Math.hypot(e.x - s.p.x, e.y - bodyY(s));
 /** 반지름 안의 적 */
@@ -663,6 +734,8 @@ function swingHit(s: RunState, w: Swing) {
     const [fx, fy] = FACE_VEC[p.face];
     fx2(s, 'fireHit', p.x + fx * 14, bodyY(s) + fy * 14, 0, 0, 0.3, 12);
   }
+  // 호랑이 맹호 강타: 바로 앞의 둥근 바위를 민다
+  if (w.kind === 'tiger') pushBoulder(s);
   if (w.kind === 'rat') {
     const orb = orbDef('rat')!;
     const [fx, fy] = FACE_VEC[p.face];
@@ -676,6 +749,10 @@ function swingHit(s: RunState, w: Swing) {
       else if (k === T.GATE) note(s, '어딘가의 장치를 풀어야 열리는 문이에요');
       else if (k === T.BRAZIER && w.kind !== 'dragon') note(s, '꺼진 화로예요. 불을 붙일 힘이 있으면 좋겠어요');
       else if (k === T.POST) note(s, '단단한 말뚝이에요. 무언가로 감아 당길 수 있을 것 같아요');
+      else if (k === T.BOULDER && w.kind !== 'tiger') note(s, '무거운 둥근 바위예요. 아주 세게 내리치면 밀릴 것 같아요');
+      else if (k === T.BELL) note(s, '풍경이에요. 여러 개를 한꺼번에 울려야 할 것 같아요');
+      else if (k === T.GONG) note(s, '징이에요. 소리가 꿰뚫고 지나가야 다 울릴 것 같아요');
+      else if (k === T.COLD_WATER) note(s, '얼음장처럼 차가운 물이에요. 얼릴 수 있다면 건널 수 있겠어요');
     }
   }
   if (any) s.stats.hits++;
@@ -876,6 +953,7 @@ export function useAwaken(s: RunState) {
       spend(s, orb, 'awaken');
       const R = P(orb, 'freezeR', 72);
       fx(s, { kind: 'freeze', x: p.x, y: bodyY(s), r: R, dur: 0.5 });
+      freezeWaterCircle(s, p.x, bodyY(s), R);
       for (const e of foesNear(s, R)) {
         damageEnemy(s, e, atk * P(orb, 'freezeMul', 1.5), true, false);
         if (!e.alive) continue;
@@ -1189,6 +1267,102 @@ function lightBraziersCircle(s: RunState, x: number, y: number, r: number) {
   for (const o of s.map.objs) if (o.kind === 'brazier' && Math.hypot(o.x * TILE + 8 - x, o.y * TILE + 8 - y) <= r) lightBrazier(s, o.x, o.y);
 }
 
+/** 찬물 한 칸을 얼린다 (토끼 구슬) */
+function freezeWater(s: RunState, tx: number, ty: number) {
+  if (tileOf(s, tx, ty) !== T.COLD_WATER) return;
+  setTile(s, tx, ty, T.ICE);
+  s.events.push({ t: 'ice', x: tx, y: ty });
+}
+function freezeWaterCircle(s: RunState, x: number, y: number, r: number) {
+  for (let ty = Math.floor((y - r) / TILE); ty <= Math.floor((y + r) / TILE); ty++) {
+    for (let tx = Math.floor((x - r) / TILE); tx <= Math.floor((x + r) / TILE); tx++) {
+      if (Math.hypot(tx * TILE + 8 - x, ty * TILE + 8 - y) <= r) freezeWater(s, tx, ty);
+    }
+  }
+}
+/** 둥근 바위: 바라보는 쪽 바로 앞 칸의 바위를 막힐 때까지 굴린다. 구덩이에 닿으면 빠져서 메워진다 (잔돌) */
+function pushBoulder(s: RunState) {
+  const p = s.p;
+  const [fx, fy] = FACE_VEC[p.face];
+  const bx = Math.floor(p.x / TILE) + fx;
+  const by = Math.floor((p.y - 2) / TILE) + fy;
+  if (tileOf(s, bx, by) !== T.BOULDER) return;
+  const end = boulderSlide(s, bx, by, fx, fy);
+  if (end.x === bx && end.y === by && !end.pit) return note(s, '반대쪽이 막혀서 굴러가지 않아요');
+  setTile(s, bx, by, T.FLOOR);
+  setTile(s, end.x, end.y, end.pit ? T.RUBBLE : T.BOULDER);
+  s.events.push({ t: 'boulder', fill: end.pit });
+  fx2(s, 'dust', end.x * TILE + 8, end.y * TILE + 8, 0, 0, 0.4, 12);
+  if (end.pit) note(s, '바위가 구덩이를 메웠어요!');
+}
+/** 둥근 바위 방에 다시 들어오면, 구덩이가 아직 남았을 때 바위를 처음 자리로 되돌린다 (벽 줄에 붙어 다시 못 미는 일이 없게) */
+function resetBoulders(s: RunState, rid: number) {
+  const r = s.map.rooms[rid];
+  const w = s.map.w;
+  let pit = false;
+  let moved = false;
+  for (let y = r.y0; y < r.y0 + ROOM_H; y++) {
+    for (let x = r.x0; x < r.x0 + ROOM_W; x++) {
+      const now = s.tiles[y * w + x];
+      if (now === T.PIT) pit = true;
+      if ((s.map.tiles[y * w + x] === T.BOULDER) !== (now === T.BOULDER)) moved = true;
+    }
+  }
+  if (!pit || !moved) return;
+  for (let y = r.y0; y < r.y0 + ROOM_H; y++) {
+    for (let x = r.x0; x < r.x0 + ROOM_W; x++) {
+      const orig = s.map.tiles[y * w + x] === T.BOULDER;
+      const now = s.tiles[y * w + x] === T.BOULDER;
+      if (now && !orig) setTile(s, x, y, T.FLOOR);
+      else if (orig && !now) setTile(s, x, y, T.BOULDER);
+    }
+  }
+  s.events.push({ t: 'boulder', fill: false });
+  note(s, '둥근 바위가 처음 자리로 돌아왔어요');
+}
+/** 굴러간 끝 칸 (pit = 구덩이에 빠졌다). 바닥·잔돌·얼음 위로만 구르고, 문·발판·물건·캐릭터 앞에서 멈춘다 */
+export function boulderSlide(s: RunState, bx: number, by: number, fx: number, fy: number): { x: number; y: number; pit: boolean } {
+  let x = bx;
+  let y = by;
+  for (let i = 0; i < 40; i++) {
+    const k = tileOf(s, x + fx, y + fy);
+    if (k === T.PIT) return { x: x + fx, y: y + fy, pit: true };
+    if (k !== T.FLOOR && k !== T.RUBBLE && k !== T.ICE) break;
+    const cx = (x + fx) * TILE + 8;
+    const cy = (y + fy) * TILE + 8;
+    if (Math.abs(s.p.x - cx) < 12 && Math.abs(s.p.y - 3 - cy) < 12) break;
+    x += fx;
+    y += fy;
+  }
+  return { x, y, pit: false };
+}
+/** 풍경·징: 울린다. 그 방의 것을 RING_TIME 안에 모두 울리면 철문이 열린다 */
+export const RING_TIME = { bell: 0.8, gong: 0.6 };
+function ringObj(s: RunState, tx: number, ty: number) {
+  const o = s.map.objs.find((x) => (x.kind === 'bell' || x.kind === 'gong') && x.x === tx && x.y === ty);
+  if (!o || s.solved.has(o.room)) return;
+  setTile(s, tx, ty, o.kind === 'bell' ? T.BELL_ON : T.GONG_ON);
+  s.ring.set(o.id, s.t);
+  const all = s.map.objs.filter((x) => x.kind === o.kind && x.room === o.room);
+  const on = all.filter((x) => s.ring.has(x.id)).length;
+  s.events.push({ t: 'ring', on, all: all.length });
+  if (on === all.length) {
+    s.solved.add(o.room);
+    for (const x of all) s.ring.delete(x.id);
+    openGates(s, o);
+  }
+}
+function updateRings(s: RunState) {
+  for (const [id, at] of s.ring) {
+    const o = s.map.objs[id];
+    if (s.t - at < RING_TIME[o.kind as 'bell' | 'gong']) continue;
+    s.ring.delete(id);
+    setTile(s, o.x, o.y, o.kind === 'bell' ? T.BELL : T.GONG);
+    s.events.push({ t: 'ringReset' });
+    note(s, o.kind === 'bell' ? '풍경 소리가 잦아들었어요. 한꺼번에 모두 울려야 해요' : '징 소리가 잦아들었어요. 한 번에 모두 꿰뚫어 울려야 해요');
+  }
+}
+
 // ---------- 물건 ----------
 /** 소지품 쓰기 (메뉴 · 빠른 물약) → 못 쓰면 까닭 */
 export function useItem(s: RunState, id: ItemId): string | null {
@@ -1198,7 +1372,7 @@ export function useItem(s: RunState, id: ItemId): string | null {
   if (!(s.data.items[id] > 0)) return '가진 것이 없어요';
   if (def.heal && p.hp >= maxHp(s)) return '체력이 가득해요';
   if (def.mana && p.mp >= maxMp(s)) return '혼력이 가득해요';
-  if (def.cleanse && !(p.poison > 0 || p.slow > 0)) return '풀어야 할 나쁜 상태가 없어요';
+  if (def.cleanse && !(p.poison > 0 || p.slow > 0 || p.burn > 0)) return '풀어야 할 나쁜 상태가 없어요';
   if (def.map) {
     const next = s.map.floor + 1;
     if (s.data.mapped.includes(next)) return '다음 층은 이미 밝혀 두었어요';
@@ -1207,7 +1381,7 @@ export function useItem(s: RunState, id: ItemId): string | null {
   s.data.items[id]--;
   if (def.heal) p.hp = Math.min(maxHp(s), p.hp + maxHp(s) * def.heal);
   if (def.mana) p.mp = Math.min(maxMp(s), p.mp + maxMp(s) * def.mana);
-  if (def.cleanse) p.poison = p.slow = 0;
+  if (def.cleanse) p.poison = p.slow = p.burn = 0;
   if (def.heal) s.stats.potions++;
   s.events.push({ t: 'item', id });
   return null;
@@ -1258,6 +1432,12 @@ function interact(s: RunState) {
     setTile(s, o.x, o.y, T.PEDESTAL_EMPTY);
     const gain = gainOrb(s.data, o.orb);
     s.events.push({ t: 'orb', id: o.orb, gain });
+    // 보스방 전설 구슬: 받으면 계단이 나타나고 층을 깬다
+    if (s.legendWait) {
+      s.legendWait = false;
+      revealStairs(s);
+      s.clearAt = s.t + 2.5;
+    }
     return;
   }
   if (o.kind === 'shop') return void s.events.push({ t: 'shop' });
@@ -1265,7 +1445,7 @@ function interact(s: RunState) {
     setTile(s, o.x, o.y, T.FOUNTAIN_DRY);
     s.p.hp = maxHp(s);
     s.p.mp = maxMp(s);
-    s.p.poison = s.p.slow = 0;
+    s.p.poison = s.p.slow = s.p.burn = 0;
     s.events.push({ t: 'fountain' });
   }
 }
@@ -1295,6 +1475,7 @@ function updateRooms(s: RunState) {
     if (s.room !== rid) {
       s.room = rid;
       s.visited.add(rid);
+      resetBoulders(s, rid);
       const tpl = room.tpl;
       const need = (id: string, have: string, none: string) => {
         if (s.data.equipped !== id) note(s, s.data.orbs[id] ? have : none);
@@ -1305,6 +1486,10 @@ function updateRooms(s: RunState) {
         else if (tpl.includes('fire')) need('dragon', '용 구슬을 장착하면 화로에 불을 붙일 수 있을 것 같아요', '화로에 불을 붙일 힘이 있으면 좋겠어요');
         else if (tpl.includes('whip')) need('snake', '뱀 구슬을 장착하면 말뚝을 감아 건널 수 있을 것 같아요', '말뚝을 감아 당길 힘이 있으면 좋겠어요');
         else if (tpl.includes('plates') && !s.solved.has(rid)) note(s, '발판이 있어요. 시간 안에 모두 밟아 보자');
+        else if (tpl.includes('-ice')) need('rabbit', '토끼 구슬을 장착하면 찬물을 얼려 건널 수 있을 것 같아요', '찬물을 얼릴 힘이 있으면 좋겠어요');
+        else if (tpl.includes('-bell')) need('rooster', '닭 구슬을 장착하면 풍경을 한꺼번에 울릴 수 있을 것 같아요', '여러 개를 한꺼번에 맞힐 힘이 있으면 좋겠어요');
+        else if (tpl.includes('-gong')) need('dog', '개 구슬을 장착하면 징을 꿰뚫어 울릴 수 있을 것 같아요', '징을 모두 꿰뚫을 소리가 있으면 좋겠어요');
+        else if (tpl.includes('-boulder')) need('tiger', '호랑이 구슬을 장착하면 둥근 바위를 밀 수 있을 것 같아요', '바위를 밀어낼 큰 힘이 있으면 좋겠어요');
       }
     }
     const alive = s.enemies.filter((e) => e.room === rid && e.alive && !e.pending);
@@ -1404,14 +1589,7 @@ export function hurtPlayer(s: RunState, raw: number, status?: EnemyDef['status']
   if (s.god) return void s.events.push({ t: 'hurt', dmg: 0, giant: false });
   p.hp -= dmg;
   s.events.push({ t: 'hurt', dmg, giant: false });
-  if (status) {
-    if (status.kind === 'slow') p.slow = Math.max(p.slow, status.dur);
-    else {
-      p.poison = Math.max(p.poison, status.dur);
-      p.poisonPow = status.power;
-    }
-    s.events.push({ t: 'status', kind: status.kind });
-  }
+  if (status) applyStatus(s, status, status.dur);
   if (p.hp <= 0) {
     // 주작 불사조: 그 전투에서 한 번 되살아난다
     const fight = `${s.room}:${s.locked.size ? 'f' : 'n'}`;
@@ -1436,6 +1614,21 @@ export function hurtPlayer(s: RunState, raw: number, status?: EnemyDef['status']
     s.over = 'dead';
     s.events.push({ t: 'dead' });
   }
+}
+
+/** 상태 걸기 (dur 초 이상으로). 처음 걸리면 알린다 */
+function applyStatus(s: RunState, st: NonNullable<EnemyDef['status']>, dur: number) {
+  const p = s.p;
+  const fresh = st.kind === 'slow' ? p.slow <= 0 : st.kind === 'burn' ? p.burn <= 0 : p.poison <= 0;
+  if (st.kind === 'slow') p.slow = Math.max(p.slow, dur);
+  else if (st.kind === 'burn') {
+    p.burn = Math.max(p.burn, dur);
+    p.burnPow = st.power;
+  } else {
+    p.poison = Math.max(p.poison, dur);
+    p.poisonPow = st.power;
+  }
+  if (fresh) s.events.push({ t: 'status', kind: st.kind });
 }
 
 /** 적에게 피해 → 실제로 준 피해 */
@@ -1483,18 +1676,51 @@ function killEnemy(s: RunState, e: Enemy) {
       s.data.shards += e.def.firstShard;
       s.data.got.push(key);
     }
-    // 쓰러뜨린 뒤 연출 동안 날아오던 공격에 맞아 쓰러지지 않게: 적 투사체를 지우고 잠깐 무적
+    // 쓰러뜨린 뒤 연출 동안 날아오던 공격에 맞아 쓰러지지 않게: 적 투사체·떨어지는 공격·바닥·바람을 지우고 잠깐 무적
     s.projs = s.projs.filter((q) => q.from === 'p');
+    s.strikes = [];
+    s.hazards = [];
+    s.wind = null;
     s.p.inv = Math.max(s.p.inv, 3);
     s.events.push({ t: 'bossDown' });
-    if (s.map.stairsHidden) {
-      for (const o of s.map.objs) if (o.kind === 'stairs') setTile(s, o.x, o.y, T.STAIRS);
-      s.stairsShown = true;
-      s.events.push({ t: 'stairsShown' });
+    for (const o of s.enemies) if (o.alive && o.room === e.room) killEnemy(s, o);
+    // 전설 구슬(30·50층): 보스가 쓰러진 방에 받침대가 솟아오른다. 받으면 계단이 나타나 층을 깬다
+    const ped = s.map.objs.find((o) => o.kind === 'pedestal' && o.hidden && o.room === e.room);
+    if (ped) {
+      clearSpot(s, ped.x, ped.y);
+      const fresh = !!ped.orb && !s.data.orbs[ped.orb];
+      setTile(s, ped.x, ped.y, fresh ? T.PEDESTAL : T.PEDESTAL_EMPTY);
+      if (fresh) {
+        s.legendWait = true;
+        fx(s, { kind: 'orbRise', x: ped.x * TILE + 8, y: ped.y * TILE + 8, r: 34, dur: 1.4 });
+        s.events.push({ t: 'legend', id: ped.orb! });
+        return;
+      }
     }
+    revealStairs(s);
     // 보스층은 보스를 쓰러뜨리면 층을 깬 것 (잠깐 뒤 — 연출)
     s.clearAt = s.t + 2.5;
-    for (const o of s.enemies) if (o.alive && o.room === e.room) killEnemy(s, o);
+  }
+}
+
+function revealStairs(s: RunState) {
+  if (!s.map.stairsHidden || s.stairsShown) return;
+  for (const o of s.map.objs) if (o.kind === 'stairs') setTile(s, o.x, o.y, T.STAIRS);
+  s.stairsShown = true;
+  s.events.push({ t: 'stairsShown' });
+}
+/** 막는 칸이 생길 자리에 캐릭터가 서 있으면 옆으로 비켜 준다 */
+function clearSpot(s: RunState, tx: number, ty: number) {
+  const p = s.p;
+  if (Math.abs(p.x - (tx * TILE + 8)) >= 8 + HALF_W || Math.abs(p.y - (ty * TILE + 8)) >= 8 + HALF_H) return;
+  for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0], [0, 2]]) {
+    const nx = (tx + dx) * TILE + 8;
+    const ny = (ty + dy) * TILE + 11;
+    if (boxFree(s, nx, ny, HALF_W, HALF_H, 'p')) {
+      p.x = nx;
+      p.y = ny;
+      return;
+    }
   }
 }
 
@@ -1515,7 +1741,7 @@ function updateEnemy(s: RunState, e: Enemy) {
   const def = e.def;
   if (e.hitFlash > 0) e.hitFlash -= STEP;
   // 상태: 화상 (계속 피해) · 둔화 · 빙결 · 기절
-  if (e.burn > 0) {
+  if (e.burn > 0 && !e.guard) {
     e.burn = Math.max(0, e.burn - STEP);
     e.hp -= e.burnDps * STEP;
     if (e.hp <= 0) return killEnemy(s, e);
@@ -1598,6 +1824,26 @@ function updateEnemy(s: RunState, e: Enemy) {
     case 'imugi':
       imugiAi(s, e, dx, dy, dist, rage);
       break;
+    case 'blink':
+      blinkAi(s, e, dx, dy, dist);
+      break;
+    case 'orbit':
+      orbitAi(s, e, dx, dy, dist);
+      break;
+    case 'lob':
+      lobAi(s, e, dx, dy, dist);
+      break;
+    case 'totem':
+      break;
+    case 'winter':
+      winterAi(s, e, dx, dy, dist, rage);
+      break;
+    case 'wind':
+      windAi(s, e, dx, dy, dist, rage);
+      break;
+    case 'bulgasari':
+      bulgasariAi(s, e, dx, dy, dist, rage);
+      break;
   }
 }
 
@@ -1660,7 +1906,43 @@ function meleeAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number) {
   const reach = def.reach ?? 18;
   if (e.dashCd > 0) e.dashCd -= STEP;
   if (e.ringCd > 0) e.ringCd -= STEP;
+  if (e.fanCd > 0) e.fanCd -= STEP;
+  if (e.leapCd > 0) e.leapCd -= STEP;
   switch (e.state) {
+    case 'fanWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        fanShot(s, e, Math.atan2(dy, dx), def.fan!);
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.4;
+        e.fanCd = def.fan!.every;
+      }
+      return;
+    case 'leapWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        e.state = 'leap';
+        e.t = def.leap!.time;
+        e.from = { x: e.x, y: e.y };
+      }
+      return;
+    case 'leap': {
+      // 뛰어올라 예고한 자리로 (공중이라 물·기둥 위로도)
+      const lp = def.leap!;
+      e.t -= STEP;
+      const k = 1 - Math.max(0, e.t) / lp.time;
+      if (e.from && e.to) moveBox(s, e, e.from.x + (e.to.x - e.from.x) * k - e.x, e.from.y + (e.to.y - e.from.y) * k - e.y, def.r * 0.8, def.r * 0.8, 'fly');
+      if (e.t <= 0) {
+        if (e.tele && Math.hypot(s.p.x - e.tele.x, bodyY(s) - e.tele.y) < lp.radius + 5) hurtPlayer(s, e.atk * lp.mul, def.status, e);
+        fx(s, { kind: 'dust', x: e.x, y: e.y, r: lp.radius, dur: 0.4 });
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.5;
+        e.leapCd = lp.every;
+      }
+      return;
+    }
     case 'windup': {
       if (e.tele) e.tele.t += STEP;
       if ((e.t -= STEP) <= 0) {
@@ -1712,6 +1994,24 @@ function meleeAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number) {
       }
       return;
     }
+  }
+  // 정예: 부채꼴 (가시 · 얼음 · 불화살)
+  if (def.fan && def.fan.every > 0 && e.fanCd <= 0 && dist < 150) {
+    e.state = 'fanWind';
+    e.t = def.fan.windup;
+    const d = dist || 1;
+    e.faceX = Math.sign(dx) || e.faceX;
+    e.tele = { kind: 'line', x: e.x, y: e.y, r: 4, dx: dx / d, dy: dy / d, len: 60, t: 0, total: e.t };
+    return;
+  }
+  // 정예: 캐릭터 자리로 뛰어오른다
+  if (def.leap && e.leapCd <= 0 && dist > 30 && dist < 130) {
+    e.state = 'leapWind';
+    e.t = def.leap.windup;
+    e.to = { x: s.p.x, y: bodyY(s) };
+    e.faceX = Math.sign(dx) || e.faceX;
+    e.tele = { kind: 'circle', x: e.to.x, y: e.to.y, r: def.leap.radius, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+    return;
   }
   // 정예: 둘레로 가시 (거리를 두면 자주)
   if (def.ring && e.ringCd <= 0 && dist < 140) {
@@ -1986,19 +2286,620 @@ function imugiAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, ra
   }
 }
 
+/** 부채꼴로 여러 발 (성나면 countRage) */
+function fanShot(s: RunState, e: Enemy, base: number, f: NonNullable<EnemyDef['fan']>) {
+  const n = e.rage && f.countRage ? f.countRage : f.count;
+  for (let i = 0; i < n; i++) shoot(s, e, base + (i - (n - 1) / 2) * f.angle, f.mul);
+}
+/** 땅에 떨어지는 공격 하나 (원으로 예고) */
+function addStrike(s: RunState, e: Enemy, kind: string, x: number, y: number, r: number, total: number, dmg: number, hazard?: Strike['hazard']) {
+  s.strikes.push({ kind, x, y, r, t: 0, total, dmg, status: e.def.status, src: e.id, hazard });
+}
+/** 방 안쪽 네모 (픽셀) */
+function roomBox(s: RunState, room: number) {
+  const r = s.map.rooms[room];
+  return { x0: (r.x0 + 1) * TILE, y0: (r.y0 + 1) * TILE, x1: (r.x0 + ROOM_W - 1) * TILE, y1: (r.y0 + ROOM_H - 1) * TILE, cx: (r.x0 + ROOM_W / 2) * TILE, cy: (r.y0 + ROOM_H / 2) * TILE };
+}
+/** 보스가 부르는 것 (졸개 · 얼음 수정 · 쇠붙이): 경험치·엽전 없음 */
+function summonAt(s: RunState, e: Enemy, id: string, x: number, y: number): Enemy {
+  const m = makeEnemy(s, id, e.room, x, y, 0, e.level);
+  m.active = true;
+  m.summoned = true;
+  m.wake = WAKE_TIME;
+  s.enemies.push(m);
+  fx(s, { kind: 'spawn', x: m.x, y: m.y, r: 9, dur: WAKE_TIME });
+  return m;
+}
+
+/** 떨어지는 공격 · 바닥 · 방의 바람 · 풍경과 징 */
+function updateField(s: RunState) {
+  const p = s.p;
+  const by = bodyY(s);
+  if (s.strikes.length) {
+    for (const k of s.strikes) {
+      k.t += STEP;
+      if (k.t < k.total) continue;
+      const src = s.enemies.find((e) => e.id === k.src);
+      if (Math.hypot(p.x - k.x, by - k.y) < k.r + 4) hurtPlayer(s, k.dmg, k.status, src);
+      fx(s, { kind: k.kind, x: k.x, y: k.y, r: k.r, dur: 0.35 });
+      if (k.hazard) s.hazards.push({ kind: k.kind, x: k.x, y: k.y, r: k.hazard.r, t: k.hazard.dur, dur: k.hazard.dur, status: k.hazard.status });
+    }
+    s.strikes = s.strikes.filter((k) => k.t < k.total);
+  }
+  if (s.hazards.length) {
+    for (const h of s.hazards) {
+      h.t -= STEP;
+      if (!s.over && !s.god && Math.hypot(p.x - h.x, by - h.y) < h.r + 3) applyStatus(s, h.status, Math.min(h.status.dur, 0.8));
+    }
+    s.hazards = s.hazards.filter((h) => h.t > 0);
+  }
+  // 영등할미 2단계: 방에 바람이 불어 캐릭터를 민다 (몇 초마다 방향이 바뀐다)
+  const w = s.wind;
+  if (w) {
+    if (s.t >= w.next) {
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => dx !== w.dx || dy !== w.dy);
+      const [dx, dy] = dirs[Math.floor(s.rng.next() * dirs.length)];
+      w.dx = dx;
+      w.dy = dy;
+      w.next = s.t + w.every;
+      s.events.push({ t: 'wind', dx, dy });
+    }
+    if (!p.pull && !p.dashChain && p.barrier <= 0) moveBox(s, p, w.dx * w.speed * STEP, w.dy * w.speed * STEP, HALF_W, HALF_H, 'p');
+  }
+  if (s.ring.size) updateRings(s);
+}
+
+/** 푸른 도깨비불: 캐릭터 발밑 둘레를 원으로 예고하고, 그 자리로 순간이동해 터진다 */
+function blinkAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number) {
+  const def = e.def;
+  const b = def.blink!;
+  switch (e.state) {
+    case 'blinkWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        if (e.to && boxFree(s, e.to.x, e.to.y, def.r * 0.8, def.r * 0.8, 'fly')) {
+          e.x = e.to.x;
+          e.y = e.to.y;
+        }
+        if (e.tele && Math.hypot(s.p.x - e.tele.x, bodyY(s) - e.tele.y) < b.radius + 4) hurtPlayer(s, e.atk, def.status, e);
+        fx(s, { kind: 'wispBurst', x: e.tele?.x ?? e.x, y: e.tele?.y ?? e.y, r: b.radius, dur: 0.35 });
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.7;
+        e.cd = def.cd;
+      }
+      return;
+    case 'strike':
+      if ((e.t -= STEP) <= 0) e.state = 'move';
+      return;
+  }
+  // 흔들리며 다가온다
+  const ang = Math.atan2(dy, dx) + Math.sin(s.t * 2 + e.id) * 0.7;
+  if (dist > 36) enemyMove(s, e, Math.cos(ang), Math.sin(ang), def.speed);
+  if (e.cd <= 0 && dist < (def.range ?? 140)) {
+    const a = s.rng.next() * Math.PI * 2;
+    const j = s.rng.next() * b.jitter;
+    e.to = { x: s.p.x + Math.cos(a) * j, y: bodyY(s) + Math.sin(a) * j };
+    e.state = 'blinkWind';
+    e.t = def.windup ?? 0.85;
+    e.faceX = Math.sign(dx) || e.faceX;
+    e.tele = { kind: 'circle', x: e.to.x, y: e.to.y, r: b.radius, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+  }
+}
+
+/** 방패연 요괴: 캐릭터 둘레를 돌며 거리를 두고, 예고(선) 뒤 한 발 */
+function orbitAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number) {
+  const def = e.def;
+  if (e.state === 'windup') {
+    if (e.tele) e.tele.t += STEP;
+    if ((e.t -= STEP) <= 0) {
+      shoot(s, e, Math.atan2(dy, dx), 1);
+      e.state = 'idle';
+      e.tele = null;
+      e.cd = def.cd;
+    }
+    return;
+  }
+  const R = def.orbit!.radius;
+  const d = dist || 1;
+  const ux = dx / d;
+  const uy = dy / d;
+  const side = e.id % 2 ? 1 : -1;
+  // 멀면 다가오고, 가까워도 물러나지는 않는다 (칼이 닿게) — 둘레를 돈다
+  const radial = dist > R + 8 ? 1 : 0;
+  enemyMove(s, e, ux * radial - uy * side * 0.7, uy * radial + ux * side * 0.7, def.speed * (radial ? 1 : 0.7));
+  e.faceX = Math.sign(dx) || e.faceX;
+  if (e.cd <= 0 && dist < (def.range ?? 130)) {
+    e.state = 'windup';
+    e.t = def.windup ?? 0.5;
+    e.tele = { kind: 'line', x: e.x, y: e.y, r: 3, dx: ux, dy: uy, len: 50, t: 0, total: e.t };
+  }
+}
+
+/** 횃불 도깨비: 캐릭터 자리에 불씨를 던진다 (떨어질 자리를 원으로 예고 → 잠깐 불바닥) */
+function lobAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number) {
+  const def = e.def;
+  const L = def.lob!;
+  if (e.state === 'windup') {
+    if ((e.t -= STEP) <= 0) {
+      addStrike(s, e, 'ember', s.p.x, bodyY(s), L.radius, L.flight, e.atk, def.status ? { r: L.patchR, dur: L.patch, status: def.status } : undefined);
+      e.state = 'strike';
+      e.t = 0.35;
+      e.cd = def.cd;
+    }
+    return;
+  }
+  if (e.state === 'strike') {
+    if ((e.t -= STEP) <= 0) e.state = 'move';
+    return;
+  }
+  const range = def.range ?? 110;
+  if (dist > range * 0.7) enemyMove(s, e, dx, dy, def.speed);
+  else if (dist < 40) enemyMove(s, e, -dx, -dy, def.speed * 0.8);
+  else e.faceX = Math.sign(dx) || e.faceX;
+  // 바짝 붙으면 던지지 않고 횃불로 친다
+  if (e.cd <= 0 && dist < range && dist >= 36) {
+    e.state = 'windup';
+    e.t = def.windup ?? 0.45;
+    e.faceX = Math.sign(dx) || e.faceX;
+  }
+  if (dist < def.r + 6 && e.cd <= 0) {
+    hurtPlayer(s, e.atk * 0.5, undefined, e);
+    e.cd = 1;
+  }
+}
+
+/** 보스 공통: 다가가 가까우면 한 대, 기술 사이 쉼 (골렘·이무기와 같은 틀) */
+function bossWalk(s: RunState, e: Enemy, dx: number, dy: number, dist: number, rageMul: number, speed = e.def.speed): boolean {
+  const def = e.def;
+  const reach = def.reach ?? 28;
+  if (dist > reach) enemyMove(s, e, dx, dy, speed * (e.rage ? 1.25 : 1));
+  else e.faceX = Math.sign(dx) || e.faceX;
+  if (e.cd > 0) {
+    if (dist < reach + 2 && e.cd < 1.2 && e.cd > 0.2) {
+      e.state = 'windup';
+      e.t = (def.windup ?? 0.6) * rageMul;
+      e.tele = { kind: 'circle', x: e.x, y: e.y, r: reach + 6, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+      e.cd = 1.4;
+    }
+    return false;
+  }
+  const d = dist || 1;
+  e.dirX = dx / d;
+  e.dirY = dy / d;
+  e.faceX = Math.sign(dx) || e.faceX;
+  return true;
+}
+/** 보스 공통 상태: 쉼 · 가까이 한 대. 처리했으면 true */
+function bossCommon(s: RunState, e: Enemy, dist: number): boolean {
+  const def = e.def;
+  switch (e.state) {
+    case 'stun':
+    case 'strike':
+      if ((e.t -= STEP) <= 0) {
+        e.state = 'move';
+        e.cd = (e.rage ? 1.2 : 1.8) + s.rng.next() * 0.6;
+      }
+      return true;
+    case 'windup':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        if (dist < (def.reach ?? 28) + 6) hurtPlayer(s, e.atk, def.status, e);
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.35;
+      }
+      return true;
+  }
+  return false;
+}
+
+/**
+ * 동장군 (30층 보스): 얼음 창 찌르기(선 예고 뒤 돌진) · 고드름 비(캐릭터 둘레 원 여럿) · 언 창 휩쓸기(둘레) · 발밑 서리(원 → 서리 바닥, 둔화).
+ * 체력 절반: 얼음 갑옷 — 맞지 않고 고드름 비만 내린다. 방에 나타난 얼음 수정 셋을 모두 깨면 갑옷이 깨져 잠깐 멍해지고, 그 뒤 성나서 빨라진다.
+ */
+const WINTER_CYCLE = ['thrust', 'icicles', 'sweep', 'frost', 'thrust', 'icicles', 'frost', 'sweep'] as const;
+function castIcicles(s: RunState, e: Enemy, rageMul: number) {
+  const ic = e.def.icicles!;
+  const n = e.rage || e.guard ? ic.countRage : ic.count;
+  for (let i = 0; i < n; i++) {
+    const a = s.rng.next() * Math.PI * 2;
+    const d = i === 0 ? 0 : 18 + s.rng.next() * (ic.spread - 18);
+    addStrike(s, e, 'icicle', s.p.x + Math.cos(a) * d, bodyY(s) + Math.sin(a) * d, ic.radius, ic.windup * rageMul, e.atk * ic.mul);
+  }
+}
+function winterAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, rageMul: number) {
+  const def = e.def;
+  // 체력 절반: 얼음 갑옷 + 얼음 수정 셋
+  if (e.phase === 1 && e.hp <= e.max * (def.rage ?? 0.5)) {
+    e.phase = 2;
+    e.guard = 'ice';
+    e.tele = null;
+    e.state = 'guard';
+    e.t = 0.8;
+    s.events.push({ t: 'boss', phase: 2, text: `${def.name}이 얼음 갑옷을 둘렀다! 얼음 수정을 모두 깨요` });
+    const box = roomBox(s, e.room);
+    const n = def.summon?.count ?? 3;
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      for (let r = def.shield?.dist ?? 70; r >= 20; r -= 10) {
+        const x = box.cx + Math.cos(a) * r;
+        const y = box.cy + Math.sin(a) * r;
+        if (boxFree(s, x, y, 6, 6, 'e')) {
+          summonAt(s, e, def.summon?.id ?? 'icecrystal', x, y);
+          break;
+        }
+      }
+    }
+  }
+  if (e.guard === 'ice') {
+    const left = s.enemies.some((m) => m.alive && m.summoned && m.room === e.room && m.def.ai === 'totem');
+    if (!left) {
+      e.guard = null;
+      e.rage = true;
+      e.state = 'stun';
+      e.t = def.shield?.stun ?? 2.5;
+      e.tele = null;
+      fx(s, { kind: 'icicle', x: e.x, y: e.y, r: 30, dur: 0.5 });
+      note(s, '얼음 갑옷이 깨졌다! 지금이에요');
+      return;
+    }
+    if ((e.t -= STEP) <= 0) {
+      castIcicles(s, e, 1);
+      e.t = def.shield?.every ?? 2.4;
+    }
+    return;
+  }
+  if (bossCommon(s, e, dist)) return;
+  switch (e.state) {
+    case 'thrustWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        e.state = 'thrust';
+        e.t = def.thrust!.time;
+        e.touched = false;
+        e.tele = null;
+      }
+      return;
+    case 'thrust': {
+      const moved = enemyMove(s, e, e.dirX, e.dirY, def.thrust!.speed * (e.rage ? 1.15 : 1)) ?? 0;
+      if (!e.touched && Math.hypot(s.p.x - e.x, bodyY(s) - e.y) < def.r + 8) {
+        e.touched = true;
+        hurtPlayer(s, e.atk * def.thrust!.mul, def.status, e);
+      }
+      if ((e.t -= STEP) <= 0 || moved < 0.3) {
+        e.state = 'stun';
+        e.t = moved < 0.3 ? 1.0 : 0.45;
+      }
+      return;
+    }
+    case 'icicleWind':
+      if ((e.t -= STEP) <= 0) {
+        e.state = 'strike';
+        e.t = 0.3;
+      }
+      return;
+    case 'sweepWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        if (dist < def.sweep!.radius + 4) hurtPlayer(s, e.atk * def.sweep!.mul, def.status, e);
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.5;
+      }
+      return;
+    case 'frostWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        const f = def.frost!;
+        if (e.tele && Math.hypot(s.p.x - e.tele.x, bodyY(s) - e.tele.y) < f.radius + 4) hurtPlayer(s, e.atk * f.mul, def.status, e);
+        if (e.tele && def.status) s.hazards.push({ kind: 'frost', x: e.tele.x, y: e.tele.y, r: f.radius, t: f.dur, dur: f.dur, status: def.status });
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.4;
+      }
+      return;
+  }
+  if (!bossWalk(s, e, dx, dy, dist, rageMul)) return;
+  const move = WINTER_CYCLE[e.pattern++ % WINTER_CYCLE.length];
+  if (move === 'thrust') {
+    e.state = 'thrustWind';
+    e.t = def.thrust!.windup * rageMul;
+    e.tele = { kind: 'line', x: e.x, y: e.y, r: def.r * 0.6, dx: e.dirX, dy: e.dirY, len: def.thrust!.speed * def.thrust!.time, t: 0, total: e.t };
+  } else if (move === 'icicles') {
+    castIcicles(s, e, rageMul);
+    e.state = 'icicleWind';
+    e.t = def.icicles!.windup * rageMul;
+  } else if (move === 'sweep') {
+    e.state = 'sweepWind';
+    e.t = def.sweep!.windup * rageMul;
+    e.tele = { kind: 'circle', x: e.x, y: e.y, r: def.sweep!.radius, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+  } else {
+    e.state = 'frostWind';
+    e.t = def.frost!.windup * rageMul;
+    e.tele = { kind: 'circle', x: s.p.x, y: bodyY(s), r: def.frost!.radius, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+  }
+}
+
+/** 캐릭터를 민다 (바람) */
+function pushPlayer(s: RunState, dirX: number, dirY: number, amount: number) {
+  const n = Math.ceil(amount / 3);
+  for (let i = 0; i < n; i++) moveBox(s, s.p, dirX * 3, dirY * 3, HALF_W, HALF_H, 'p');
+}
+
+/**
+ * 영등할미 (40층 보스, 날아다닌다): 바람 부채질(넓은 선 예고 → 맞으면 멀리 밀림) · 회오리(캐릭터를 따라 휘어 오는 투사체) ·
+ * 꽃잎 부채(부채꼴) · 내리꽂기(하늘로 올라 맞지 않다가 원 예고 자리로 내려찍음).
+ * 체력 절반: 방에 샛바람이 분다 — 몇 초마다 방향이 바뀌며 캐릭터를 민다.
+ */
+const WIND_CYCLE = ['gust', 'whirl', 'fan', 'dive', 'gust', 'fan', 'whirl', 'dive'] as const;
+function windAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, rageMul: number) {
+  const def = e.def;
+  if (!e.rage && e.hp <= e.max * (def.rage ?? 0.5)) {
+    e.rage = true;
+    e.phase = 2;
+    const w = def.wind!;
+    s.wind = { dx: 1, dy: 0, next: s.t, speed: w.speed, every: w.every };
+    s.events.push({ t: 'boss', phase: 2, text: `${def.name}가 샛바람을 불러왔다! 바람에 밀려요` });
+  }
+  if (bossCommon(s, e, dist)) return;
+  switch (e.state) {
+    case 'gustWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        const g = def.gust!;
+        const t = e.tele!;
+        const rx = s.p.x - t.x;
+        const ry = bodyY(s) - t.y;
+        const along = rx * t.dx + ry * t.dy;
+        const side = rx * -t.dy + ry * t.dx;
+        if (along > -8 && along < t.len && Math.abs(side) < g.width + 5) {
+          hurtPlayer(s, e.atk * g.mul, undefined, e);
+          if (s.p.barrier <= 0) pushPlayer(s, t.dx, t.dy, g.push);
+        }
+        fx(s, { kind: 'gust', x: t.x, y: t.y, x2: t.x + t.dx * t.len, y2: t.y + t.dy * t.len, r: g.width, dur: 0.35 });
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.5;
+      }
+      return;
+    case 'whirlWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        const w = def.whirl!;
+        const n = e.rage ? w.countRage : w.count;
+        const base = Math.atan2(dy, dx);
+        for (let i = 0; i < n; i++) {
+          const a = base + (i - (n - 1) / 2) * 0.9;
+          s.projs.push({ id: s.nextId++, from: 'e', kind: 'whirl', x: e.x, y: e.y, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, r: 6, life: w.life, dmg: e.atk * w.mul, hit: [], src: e.id, home: w.turn });
+        }
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.4;
+      }
+      return;
+    case 'fanWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        fanShot(s, e, Math.atan2(dy, dx), def.fan!);
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.45;
+      }
+      return;
+    case 'diveUp':
+      // 하늘로 오른다 (맞지 않는다)
+      if ((e.t -= STEP) <= 0) {
+        e.state = 'diveWind';
+        e.t = def.dive!.windup * rageMul;
+        e.from = { x: e.x, y: e.y };
+        e.to = { x: s.p.x, y: bodyY(s) };
+        e.tele = { kind: 'circle', x: e.to.x, y: e.to.y, r: def.dive!.radius, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+      }
+      return;
+    case 'diveWind': {
+      const t = e.tele!;
+      t.t += STEP;
+      // 하늘에서 예고한 자리 위로 옮겨 간다
+      const k = Math.min(1, t.t / t.total);
+      if (e.from && e.to) moveBox(s, e, e.from.x + (e.to.x - e.from.x) * k - e.x, e.from.y + (e.to.y - e.from.y) * k - e.y, def.r * 0.8, def.r * 0.8, 'fly');
+      if ((e.t -= STEP) <= 0) {
+        if (Math.hypot(s.p.x - t.x, bodyY(s) - t.y) < def.dive!.radius + 4) hurtPlayer(s, e.atk * def.dive!.mul, undefined, e);
+        fx(s, { kind: 'dust', x: e.x, y: e.y, r: def.dive!.radius, dur: 0.4 });
+        e.guard = null;
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 1.0;
+      }
+      return;
+    }
+  }
+  if (!bossWalk(s, e, dx, dy, dist, rageMul)) return;
+  const move = WIND_CYCLE[e.pattern++ % WIND_CYCLE.length];
+  if (move === 'gust') {
+    const g = def.gust!;
+    e.state = 'gustWind';
+    e.t = g.windup * rageMul;
+    e.tele = { kind: 'line', x: e.x, y: e.y, r: g.width, dx: e.dirX, dy: e.dirY, len: g.len, t: 0, total: e.t };
+  } else if (move === 'whirl') {
+    e.state = 'whirlWind';
+    e.t = def.whirl!.windup * rageMul;
+    e.tele = { kind: 'circle', x: e.x, y: e.y, r: 20, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+  } else if (move === 'fan') {
+    e.state = 'fanWind';
+    e.t = def.fan!.windup * rageMul;
+    e.tele = { kind: 'line', x: e.x, y: e.y, r: 4, dx: e.dirX, dy: e.dirY, len: 60, t: 0, total: e.t };
+  } else {
+    e.state = 'diveUp';
+    e.t = def.dive!.rise;
+    e.guard = 'air';
+    e.tele = null;
+  }
+}
+
+/**
+ * 불가사리 (50층 보스): 쇠가시(여러 갈래 선 예고 → 사방으로) · 땅울림(둘레 원 → 쇠붙이가 떨어진다) · 돌진(벽에 부딪히면 멍) ·
+ * 쇠 먹기(쇠붙이로 다가가 삼키면 체력 회복 — 먼저 부수면 못 먹는다).
+ * 체력 절반: 시뻘겋게 달아올라 지나간 자리에 불바닥이 남고, 가시가 늘고 더 많이 먹는다.
+ */
+const BULGA_CYCLE = ['spikes', 'stomp', 'charge', 'eat', 'spikes', 'charge', 'stomp', 'eat'] as const;
+const irons = (s: RunState, e: Enemy) => s.enemies.filter((m) => m.alive && m.summoned && m.room === e.room && m.def.ai === 'totem');
+function dropIrons(s: RunState, e: Enemy) {
+  const ea = e.def.eat!;
+  const want = Math.min(e.rage ? ea.dropRage : ea.drop, ea.max - irons(s, e).length);
+  const box = roomBox(s, e.room);
+  for (let i = 0, tries = 0; i < want && tries < 40; tries++) {
+    const x = box.x0 + 20 + s.rng.next() * (box.x1 - box.x0 - 40);
+    const y = box.y0 + 20 + s.rng.next() * (box.y1 - box.y0 - 40);
+    if (Math.hypot(x - s.p.x, y - bodyY(s)) < 28 || Math.hypot(x - e.x, y - e.y) < 40 || !boxFree(s, x, y, 6, 6, 'e')) continue;
+    summonAt(s, e, e.def.summon?.id ?? 'iron', x, y);
+    i++;
+  }
+}
+function bulgasariAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, rageMul: number) {
+  const def = e.def;
+  if (!e.rage && e.hp <= e.max * (def.rage ?? 0.5)) {
+    e.rage = true;
+    e.phase = 2;
+    s.events.push({ t: 'boss', phase: 2, text: `${def.name}가 시뻘겋게 달아올랐다! 지나간 자리가 불타요` });
+  }
+  // 달아오르면 발자국마다 불바닥
+  if (e.rage && def.trail && def.status && (e.state === 'move' || e.state === 'charge' || e.state === 'eat')) {
+    if ((e.trailCd -= STEP) <= 0) {
+      e.trailCd = def.trail.every;
+      s.hazards.push({ kind: 'ember', x: e.x, y: e.y + def.r * 0.4, r: def.trail.r, t: def.trail.dur, dur: def.trail.dur, status: def.status });
+    }
+  }
+  if (bossCommon(s, e, dist)) return;
+  switch (e.state) {
+    case 'spikeWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        const t = e.tele!;
+        for (let i = 0; i < (t.n ?? 8); i++) shoot(s, e, (t.ang ?? 0) + (i / (t.n ?? 8)) * Math.PI * 2, def.spikes!.mul);
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.5;
+      }
+      return;
+    case 'slamWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        if (dist < def.slam!.radius + 4) hurtPlayer(s, e.atk * def.slam!.mul, undefined, e);
+        fx(s, { kind: 'dust', x: e.x, y: e.y, r: def.slam!.radius, dur: 0.45 });
+        dropIrons(s, e);
+        e.tele = null;
+        e.state = 'strike';
+        e.t = 0.5;
+      }
+      return;
+    case 'chargeWind':
+      if (e.tele) e.tele.t += STEP;
+      if ((e.t -= STEP) <= 0) {
+        e.state = 'charge';
+        e.t = def.charge!.time;
+        e.touched = false;
+        e.tele = null;
+      }
+      return;
+    case 'charge': {
+      const moved = enemyMove(s, e, e.dirX, e.dirY, def.charge!.speed * (e.rage ? 1.2 : 1)) ?? 0;
+      if (!e.touched && Math.hypot(s.p.x - e.x, bodyY(s) - e.y) < def.r + 6) {
+        e.touched = true;
+        hurtPlayer(s, e.atk * def.charge!.mul, def.status, e);
+      }
+      if (moved < 0.3) {
+        e.state = 'stun';
+        e.t = def.charge!.stun;
+      } else if ((e.t -= STEP) <= 0) {
+        e.state = 'strike';
+        e.t = 0.4;
+      }
+      return;
+    }
+    case 'eat': {
+      const target = s.enemies.find((m) => m.id === e.eatId && m.alive);
+      if (!target || (e.t -= STEP) <= 0) {
+        e.state = 'strike';
+        e.t = 0.3;
+        return;
+      }
+      enemyMove(s, e, target.x - e.x, target.y - e.y, def.speed * 1.8);
+      if (Math.hypot(target.x - e.x, target.y - e.y) < def.r + target.def.r + 3) {
+        // 삼킨다: 쇠붙이는 사라지고 (보상 없음) 불가사리 체력이 찬다
+        target.alive = false;
+        target.state = 'dead';
+        s.events.push({ t: 'kill', id: target.id, x: target.x, y: target.y, def: target.def.id, coins: 0, exp: 0 });
+        e.hp = Math.min(e.max, e.hp + e.max * (e.rage ? def.eat!.healRage : def.eat!.heal));
+        fx(s, { kind: 'spawn', x: e.x, y: e.y, r: def.r + 6, dur: 0.5 });
+        s.events.push({ t: 'eat' });
+        e.state = 'strike';
+        e.t = 0.6;
+      }
+      return;
+    }
+  }
+  if (!bossWalk(s, e, dx, dy, dist, rageMul)) return;
+  let move: (typeof BULGA_CYCLE)[number] = BULGA_CYCLE[e.pattern++ % BULGA_CYCLE.length];
+  // 먹을 쇠붙이가 없으면 다음 기술
+  if (move === 'eat' && !irons(s, e).length) move = BULGA_CYCLE[e.pattern++ % BULGA_CYCLE.length];
+  if (move === 'spikes') {
+    const n = e.rage ? def.spikes!.countRage : def.spikes!.count;
+    e.state = 'spikeWind';
+    e.t = def.spikes!.windup * rageMul;
+    e.tele = { kind: 'cross', x: e.x, y: e.y, r: 4, dx: 0, dy: 0, len: 70, t: 0, total: e.t, n, ang: Math.atan2(dy, dx) + Math.PI / n };
+  } else if (move === 'stomp') {
+    e.state = 'slamWind';
+    e.t = def.slam!.windup * rageMul;
+    e.tele = { kind: 'circle', x: e.x, y: e.y, r: def.slam!.radius, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
+  } else if (move === 'charge') {
+    e.state = 'chargeWind';
+    e.t = def.charge!.windup * rageMul;
+    e.tele = { kind: 'line', x: e.x, y: e.y, r: def.r, dx: e.dirX, dy: e.dirY, len: 200, t: 0, total: e.t };
+  } else {
+    const list = irons(s, e).sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y));
+    if (!list.length) return;
+    e.state = 'eat';
+    e.eatId = list[0].id;
+    e.t = def.eat!.time;
+  }
+}
+
 // ---------- 투사체 ----------
 function updateProjs(s: RunState) {
   const p = s.p;
   const blades = p.blades > 0 ? prm('rooster', 'bladeR', 20) + 6 : 0;
   for (const pr of s.projs) {
     pr.life -= STEP;
+    // 회오리: 캐릭터 쪽으로 조금씩 휜다
+    if (pr.home && pr.from === 'e') {
+      const want = Math.atan2(bodyY(s) - pr.y, p.x - pr.x);
+      const cur = Math.atan2(pr.vy, pr.vx);
+      let d = want - cur;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const a = cur + Math.max(-pr.home * STEP, Math.min(pr.home * STEP, d));
+      const v = Math.hypot(pr.vx, pr.vy);
+      pr.vx = Math.cos(a) * v;
+      pr.vy = Math.sin(a) * v;
+    }
     pr.x += pr.vx * STEP;
     pr.y += pr.vy * STEP;
     const tx = Math.floor(pr.x / TILE);
     const ty = Math.floor(pr.y / TILE);
     const t = tileOf(s, tx, ty);
-    if (t === T.DOOR ? blockedFor(s, tx, ty, 'p') : !flyable(t)) {
-      if (pr.from === 'p' && (t === T.SWITCH || t === T.VINE)) hitSwitch(s, tx, ty);
+    // 토끼 얼음 칼날이 찬물 위를 지나가면 언다
+    if (pr.from === 'p' && pr.kind === 'ice' && t === T.COLD_WATER) freezeWater(s, tx, ty);
+    // 개 음파는 징을 꿰뚫고 지나가며 울린다
+    if ((t === T.GONG || t === T.GONG_ON) && pr.from === 'p' && pr.kind === 'sonic') {
+      const key = -1 - (ty * s.map.w + tx);
+      if (!pr.hit.includes(key)) {
+        pr.hit.push(key);
+        ringObj(s, tx, ty);
+      }
+    } else if (t === T.DOOR ? blockedFor(s, tx, ty, 'p') : !flyable(t)) {
+      if (pr.from === 'p' && (t === T.BELL || t === T.GONG)) ringObj(s, tx, ty);
+      else if (pr.from === 'p' && (t === T.SWITCH || t === T.VINE)) hitSwitch(s, tx, ty);
       else if (pr.from === 'p' && t === T.BRAZIER && pr.burn) lightBrazier(s, tx, ty);
       else if (pr.from === 'p' && t === T.GATE) note(s, '이 문은 장치를 풀어야 열려요');
       pr.life = 0;

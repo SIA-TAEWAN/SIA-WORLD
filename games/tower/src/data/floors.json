@@ -17,9 +17,9 @@
   "zones": [
     {"zone": 1, "name": "탑의 입구", "desc": "돌 복도", "theme": "stone", "ready": true, "enemies": ["slime", "bat", "spitter", "goblin"], "elite": "knight", "boss": "golem"},
     {"zone": 2, "name": "이끼 낀 회랑", "theme": "moss", "ready": true, "enemies": ["sprout", "moth", "lizard", "toad"], "elite": "treant", "boss": "imugi", "desc": "덩굴이 뒤덮은 옛 화로의 회랑"},
-    {"zone": 3, "name": "불꽃 화로", "theme": "fire", "ready": false, "enemies": [], "elite": "", "boss": ""},
-    {"zone": 4, "name": "물의 정원", "theme": "water", "ready": false, "enemies": [], "elite": "", "boss": ""},
-    {"zone": 5, "name": "깃털 다락", "theme": "feather", "ready": false, "enemies": [], "elite": "", "boss": ""},
+    {"zone": 3, "name": "서리 누각", "theme": "frost", "ready": true, "enemies": ["snowimp", "icebat", "frostjar", "wisp"], "elite": "haetae", "boss": "winterGeneral", "desc": "현무가 잠든 얼어붙은 북쪽 누각"},
+    {"zone": 4, "name": "새벽 구름 뜰", "theme": "cloud", "ready": true, "enemies": ["ram", "kite", "chick", "scarecrow"], "elite": "geumgye", "boss": "yeongdeung", "desc": "새벽닭이 우는 구름 위 바람의 뜰"},
+    {"zone": 5, "name": "잿불 성채", "theme": "ember", "ready": true, "enemies": ["bulgae", "torchimp", "wildcat", "sparrow"], "elite": "hwacha", "boss": "bulgasari", "desc": "쇠를 먹는 불가사리가 달군 붉은 성채"},
     {"zone": 6, "name": "바람의 계단", "theme": "wind", "ready": false, "enemies": [], "elite": "", "boss": ""},
     {"zone": 7, "name": "금속 공방", "theme": "metal", "ready": false, "enemies": [], "elite": "", "boss": ""},
     {"zone": 8, "name": "그림자 서고", "theme": "shadow", "ready": false, "enemies": [], "elite": "", "boss": ""},

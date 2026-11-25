@@ -2,7 +2,7 @@
  * 층 만들기: 방 템플릿(rooms.json)을 칸 격자 위에 이어 붙인다. 같은 씨앗·같은 층이면 언제나 같은 층.
  * - 큰 길: 시작 → 전투(floors.json combat) → (구슬 받침대) → 계단. 휴식층은 시작 → 상점 → 계단, 정예층은 전투 → 정예 → 계단, 보스층은 시작 → 보스.
  * - 전투방은 무리(waves)가 여럿: 한 무리를 다 잡으면 템플릿의 적 자리에 다음 무리가 나온다.
- * - 곁방(floors.json side, 모두): 보물방 · 퍼즐방(발판·스위치·바위·화로·말뚝 — 보물 길이라 진행을 막지 않는다).
+ * - 곁방(floors.json side, 모두): 보물방 · 퍼즐방(발판·스위치·바위·화로·말뚝·찬물·풍경·징·둥근 바위 — 보물 길이라 진행을 막지 않는다).
  * 방 하나 = 벽을 두른 (INNER_W+2)×(INNER_H+2) 칸. 이웃한 방은 벽을 맞대고, 맞댄 벽 가운데 3칸이 문이다.
  */
 import { INNER_H, INNER_W, ROOMS, enemyDef, floorRule, orbAtFloor, orbDef, zoneData, zoneOf, type RoomKind, type RoomTemplate, type SideKind } from '../data';
@@ -42,13 +42,27 @@ export const T = {
   BRAZIER_LIT: 23,
   /** 말뚝 (뱀 구슬 채찍으로 감는다) */
   POST: 24,
+  /** 찬물 (토끼 구슬 얼음 칼날이 지나가면 얼음) · 얼음 (걸을 수 있다) */
+  COLD_WATER: 25,
+  ICE: 26,
+  /** 풍경 (닭 구슬 깃털로 한꺼번에 울린다) · 울리는 풍경 */
+  BELL: 27,
+  BELL_ON: 28,
+  /** 징 (개 구슬 음파가 꿰뚫으며 한꺼번에 울린다) · 울리는 징 */
+  GONG: 29,
+  GONG_ON: 30,
+  /** 둥근 바위 (호랑이 구슬 맹호 강타로 민다) · 구덩이 (둥근 바위로 메운다) */
+  BOULDER: 31,
+  PIT: 32,
 } as const;
 export type Tile = (typeof T)[keyof typeof T];
 
 /** 걸어서 지나갈 수 있는 칸 (문은 잠기지 않았을 때 — 잠김은 sim 이 따로 본다) */
-export const walkable = (t: number) => t === T.FLOOR || t === T.DOOR || t === T.STAIRS || t === T.RUBBLE || t === T.PLATE || t === T.PLATE_ON;
-/** 투사체가 지나가는 칸 (물 위로는 날아간다) */
-export const flyable = (t: number) => walkable(t) || t === T.WATER;
+export const walkable = (t: number) => t === T.FLOOR || t === T.DOOR || t === T.STAIRS || t === T.RUBBLE || t === T.PLATE || t === T.PLATE_ON || t === T.ICE;
+/** 투사체가 지나가는 칸 (물·찬물·구덩이 위로는 날아간다) */
+export const flyable = (t: number) => walkable(t) || t === T.WATER || t === T.COLD_WATER || t === T.PIT;
+/** 날짐승이 지나가는 칸 (물·찬물·구덩이 위) */
+export const overWater = (t: number) => t === T.WATER || t === T.COLD_WATER || t === T.PIT;
 
 export interface Spawn {
   def: string;
@@ -70,7 +84,7 @@ export interface Room {
   doors: { x: number; y: number }[];
   spawns: Spawn[];
 }
-export type ObjKind = 'chest' | 'stairs' | 'pedestal' | 'shop' | 'fountain' | 'switch' | 'plate' | 'brazier' | 'post';
+export type ObjKind = 'chest' | 'stairs' | 'pedestal' | 'shop' | 'fountain' | 'switch' | 'plate' | 'brazier' | 'post' | 'bell' | 'gong';
 export interface Obj {
   id: number;
   kind: ObjKind;
@@ -79,8 +93,10 @@ export interface Obj {
   room: number;
   table?: 'treasure' | 'puzzle';
   orb?: string;
-  /** 스위치·덩굴·발판·화로: 열리는 문 칸 (발판·화로는 그 방의 것을 모두 켜야 열린다) */
+  /** 스위치·덩굴·발판·화로·풍경·징: 열리는 문 칸 (발판·화로·풍경·징은 그 방의 것을 모두 켜야 열린다) */
   gates?: { x: number; y: number }[];
+  /** 보스방 구슬 받침대: 보스를 쓰러뜨리면 나타난다 (전설 구슬) */
+  hidden?: boolean;
 }
 export interface FloorMap {
   floor: number;
@@ -120,7 +136,13 @@ export function doorTiles(dir: number): { x: number; y: number }[] {
 }
 
 function templatesFor(kind: RoomKind, floor: number): RoomTemplate[] {
-  return ROOMS.rooms.filter((r) => r.kind === kind && r.minFloor <= floor && (r.maxFloor ?? 999) >= floor && (!r.needs || puzzleOrbReady(r.needs, floor)));
+  const list = ROOMS.rooms.filter((r) => r.kind === kind && r.minFloor <= floor && (r.maxFloor ?? 999) >= floor && (!r.needs || puzzleOrbReady(r.needs, floor)));
+  // 아직 내용이 없는 구역(준비 중): 그 종류의 마지막 템플릿을 빌린다 (보스방처럼 구역마다 다른 방)
+  if (!list.length && kind !== 'puzzle') {
+    const last = ROOMS.rooms.filter((r) => r.kind === kind && r.minFloor <= floor).pop();
+    if (last) return [last];
+  }
+  return list;
 }
 /** 퍼즐 구슬을 이 층보다 아래에서 받았다 (구현된 구슬만) */
 const puzzleOrbReady = (id: string, floor: number) => {
@@ -263,12 +285,21 @@ export function generateFloor(seed: number, floor: number): FloorMap {
             if (r.kind === 'boss') stairsHidden = true;
             objs.push({ id: 0, kind: 'stairs', x: tx, y: ty, room: id });
             break;
-          case 'O': t = T.PEDESTAL; objs.push({ id: 0, kind: 'pedestal', x: tx, y: ty, room: id, orb: orbAtFloor(floor)?.id }); break;
+          case 'O':
+            // 보스방의 받침대는 보스를 쓰러뜨린 뒤에 솟아오른다 (전설 구슬 — sim killEnemy)
+            t = r.kind === 'boss' ? T.FLOOR : T.PEDESTAL;
+            objs.push({ id: 0, kind: 'pedestal', x: tx, y: ty, room: id, orb: orbAtFloor(floor)?.id, ...(r.kind === 'boss' ? { hidden: true } : {}) });
+            break;
           case 'K': t = T.SHOP; objs.push({ id: 0, kind: 'shop', x: tx, y: ty, room: id }); break;
           case 'F': t = T.FOUNTAIN; objs.push({ id: 0, kind: 'fountain', x: tx, y: ty, room: id }); break;
           case 'q': t = T.PLATE; switches.push({ id: 0, kind: 'plate', x: tx, y: ty, room: id }); break;
           case 'h': t = T.BRAZIER; switches.push({ id: 0, kind: 'brazier', x: tx, y: ty, room: id }); break;
           case 'p': t = T.POST; objs.push({ id: 0, kind: 'post', x: tx, y: ty, room: id }); break;
+          case 'i': t = T.COLD_WATER; break;
+          case 'b': t = T.BELL; switches.push({ id: 0, kind: 'bell', x: tx, y: ty, room: id }); break;
+          case 'j': t = T.GONG; switches.push({ id: 0, kind: 'gong', x: tx, y: ty, room: id }); break;
+          case 'u': t = T.BOULDER; break;
+          case 'x': t = T.PIT; break;
           case 'P': start = px; break;
           case 'e': foeSpots.push(px); break;
           case 'E': if (zone?.elite) room.spawns.push({ def: zone.elite, ...px, wave: 0 }); break;

@@ -189,5 +189,5 @@ export function die(d: TowerData) {
 }
 /** 이미 깬 층(다시 오르는 층): 경험치 절반 */
 export const isReplay = (d: TowerData, floor: number) => floor <= d.best;
-/** 준비된 층까지만 (floors.json 의 ready 구역 — 지금은 20층까지) */
+/** 준비된 층까지만 (floors.json 의 ready 구역 — 지금은 50층까지) */
 export const canEnter = (floor: number) => floor <= LAST_READY;

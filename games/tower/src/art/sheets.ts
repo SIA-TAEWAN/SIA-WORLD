@@ -7,7 +7,7 @@
  * 타일 시트: 16×16 칸을 가로 한 줄로 (TILE_ORDER 순서).
  * 적 시트: 한 칸 size×size, 가로 4칸 (0·1 걷기, 2 공격 준비, 3 맞음).
  */
-import { COLOR, MATGO, ROULETTE, TABLE, css } from '../theme';
+import { COLOR, MATGO, RACE, ROULETTE, TABLE, css } from '../theme';
 import type { Look } from '../game/progress';
 import { ENEMIES } from '../data';
 
@@ -288,11 +288,17 @@ export const TILE_ORDER = [
   'floor', 'floor2', 'wallTop', 'wallFace', 'doorOpen', 'doorLocked', 'water', 'pillar', 'gate', 'rock', 'switch', 'switchOn',
   'vine', 'stairs', 'chest', 'chestOpen', 'pedestal', 'pedestalEmpty', 'shop', 'fountain', 'rubble', 'fountainDry',
   'plate', 'plateOn', 'brazier', 'brazierLit', 'post',
+  // 3~5구역 (뒤에만 붙인다): 찬물 · 얼음 · 풍경 · 울리는 풍경 · 징 · 울리는 징 · 둥근 바위 · 구덩이
+  'coldWater', 'ice', 'bell', 'bellOn', 'gong', 'gongOn', 'boulder', 'pit',
 ] as const;
 export type TileArt = (typeof TILE_ORDER)[number];
 export const tileArtIndex = (k: TileArt) => TILE_ORDER.indexOf(k);
 
-/** 테마마다 코드 그림 색 (DESIGN.md 의 기존 색만). stone = 1~10층 돌 복도, moss = 11~20층 이끼 낀 회랑 */
+/**
+ * 테마마다 코드 그림 색 (DESIGN.md 의 기존 색만). stone = 1~10층 돌 복도, moss = 11~20층 이끼 낀 회랑,
+ * frost = 21~30층 서리 누각, cloud = 31~40층 새벽 구름 뜰(물 = 구름 바다), ember = 41~50층 잿불 성채(물 = 용암).
+ * moss = 금 간 바닥·벽에 얹는 무늬 색 (이끼 · 눈 · 금빛 · 재)
+ */
 interface Palette {
   floor: string;
   line: string;
@@ -305,6 +311,9 @@ interface Palette {
 const PALETTES: Record<string, Palette> = {
   stone: { floor: css(ROULETTE.winter), line: css(COLOR.lineSoft), wall: css(COLOR.inkSoft), wallTop: css(COLOR.emptyLine), water: css(COLOR.teamA), waterLight: css(COLOR.skyMid) },
   moss: { floor: css(ROULETTE.autumn), line: css(MATGO.matLight), wall: css(COLOR.inkSoft), wallTop: css(TABLE.matgo), water: css(COLOR.teamA), waterLight: css(ROULETTE.autumn), moss: css(MATGO.matDark) },
+  frost: { floor: css(ROULETTE.spring), line: css(COLOR.skyMid), wall: css(COLOR.skyDeep), wallTop: css(TABLE.blackjack), water: css(COLOR.teamA), waterLight: css(COLOR.skyMid), moss: css(COLOR.white) },
+  cloud: { floor: css(COLOR.skyBottom), line: css(ROULETTE.summer), wall: css(COLOR.lose), wallTop: css(COLOR.panel), water: css(COLOR.skyMid), waterLight: css(COLOR.white), moss: css(COLOR.primary) },
+  ember: { floor: css(ROULETTE.summer), line: css(RACE.trackDark), wall: css(COLOR.inkSoft), wallTop: css(RACE.track), water: css(COLOR.pink), waterLight: css(COLOR.primary), moss: css(COLOR.draw) },
 };
 export const tileThemes = Object.keys(PALETTES);
 
@@ -490,6 +499,69 @@ export function placeholderTiles(theme = 'stone'): HTMLCanvasElement {
         px(4, 6, 8, 2, C.outline);
         px(5, 14, 6, 1, C.outline);
         break;
+      case 'coldWater':
+        // 찬물: 옅은 물빛 + 살얼음 금 (얼릴 수 있는 물 — 보통 물보다 밝다)
+        px(0, 0, 16, 16, css(COLOR.skyMid));
+        px(1, 3, 6, 1, C.white);
+        px(9, 7, 6, 1, C.white);
+        px(3, 12, 5, 1, C.white);
+        px(6, 3, 1, 4, css(COLOR.teamA));
+        px(11, 8, 1, 4, css(COLOR.teamA));
+        break;
+      case 'ice':
+        // 얼음: 하얀 얼음판 + 빗금 (걸을 수 있다)
+        px(0, 0, 16, 16, C.white);
+        px(0, 0, 16, 1, css(COLOR.skyMid));
+        px(2, 9, 5, 1, css(COLOR.skyMid));
+        px(8, 4, 6, 1, css(COLOR.skyMid));
+        px(10, 12, 4, 1, css(COLOR.skyMid));
+        break;
+      case 'bell':
+      case 'bellOn':
+        // 풍경: 나무 걸이 + 매달린 종 (울리면 노랗게 빛나고 흔들린다)
+        floor();
+        px(2, 1, 12, 2, css(COLOR.inkSoft));
+        px(7, 3, 2, 2, C.outline);
+        px(k === 'bell' ? 4 : 5, 5, 8, 7, k === 'bell' ? css(COLOR.primaryDeep) : css(COLOR.primary));
+        px(k === 'bell' ? 4 : 5, 11, 8, 1, C.outline);
+        px(7, 12, 2, 2, C.outline);
+        if (k === 'bellOn') {
+          px(1, 6, 2, 1, C.white);
+          px(13, 6, 2, 1, C.white);
+          px(1, 9, 2, 1, C.white);
+          px(13, 9, 2, 1, C.white);
+        }
+        break;
+      case 'gong':
+      case 'gongOn':
+        // 징: 나무 틀에 걸린 둥근 놋쇠판 (울리면 둘레에 물결)
+        floor();
+        px(1, 2, 2, 13, css(COLOR.inkSoft));
+        px(13, 2, 2, 13, css(COLOR.inkSoft));
+        px(1, 2, 14, 2, css(COLOR.inkSoft));
+        px(4, 5, 8, 8, C.outline);
+        px(5, 6, 6, 6, k === 'gong' ? css(COLOR.primaryDeep) : css(COLOR.primaryLight));
+        px(7, 8, 2, 2, k === 'gong' ? css(COLOR.primary) : C.white);
+        if (k === 'gongOn') {
+          px(3, 4, 1, 10, css(COLOR.primary));
+          px(12, 4, 1, 10, css(COLOR.primary));
+        }
+        break;
+      case 'boulder':
+        // 둥근 바위: 동그란 큰 돌 (금 간 바위와 달리 둥글고 줄무늬 — 밀어 굴린다)
+        floor();
+        px(3, 2, 10, 12, css(COLOR.draw));
+        px(2, 4, 12, 8, css(COLOR.draw));
+        px(4, 3, 4, 2, css(COLOR.lineSoft));
+        px(3, 8, 10, 1, css(COLOR.inkSoft));
+        px(2, 13, 12, 2, C.outline);
+        break;
+      case 'pit':
+        // 구덩이: 어두운 구멍 (못 걷고, 둥근 바위로 메운다)
+        floor();
+        px(1, 2, 14, 13, C.outline);
+        px(2, 2, 12, 2, css(COLOR.inkSoft));
+        break;
     }
     g.restore();
   });
@@ -640,6 +712,220 @@ export function placeholderEnemy(id: string): HTMLCanvasElement {
         px(4, 22, 22, 2, css(ROULETTE.autumn));
         px(4, 26, 3, 3, css(MATGO.matDark));
         px(12, 26, 3, 3, css(MATGO.matDark));
+        break;
+      // ---- 3구역 (서리 누각) ----
+      case 'snowimp':
+        // 눈 도깨비: 하얀 털뭉치 몸, 파란 뿔 하나, 얼음 방망이 (준비 칸은 방망이를 치켜듦)
+        px(3, 5 + bob, 10, 9 - bob, C.white);
+        px(7, 1 + bob, 2, 4, css(COLOR.skyDeep));
+        px(5, 7 + bob, 2, 2, eye);
+        px(9, 7 + bob, 2, 2, eye);
+        px(6, 11 + bob, 4, 1, css(COLOR.skyMid));
+        px(wind ? 12 : 12, wind ? 1 : 8, 3, wind ? 8 : 6, css(COLOR.skyMid));
+        break;
+      case 'icebat':
+        // 고드름 박쥐: 하늘색 날개, 몸 아래 고드름
+        px(5, 4, 6, 6, css(COLOR.skyDeep));
+        px(1, 3 + bob * 2, 4, 4, css(COLOR.skyMid));
+        px(11, 3 + bob * 2, 4, 4, css(COLOR.skyMid));
+        px(6, 10, 1, 3, C.white);
+        px(9, 10, 1, 2, C.white);
+        px(6, 6, 1, 1, hurt ? C.white : css(COLOR.primaryLight));
+        px(9, 6, 1, 1, hurt ? C.white : css(COLOR.primaryLight));
+        break;
+      case 'frostjar':
+        // 서리 항아리: 서리 낀 옹기, 아가리에서 찬 기운 (준비 칸은 기운이 솟음)
+        px(4, 6, 8, 9, css(COLOR.inkSoft));
+        px(5, 4, 6, 2, css(COLOR.inkSoft));
+        px(4, 8, 8, 2, C.white);
+        px(6, 10, 1, 1, eye);
+        px(9, 10, 1, 1, eye);
+        px(6, wind ? 0 : 2, 4, wind ? 4 : 2, css(COLOR.skyMid));
+        break;
+      case 'wisp':
+        // 푸른 도깨비불: 흔들리는 파란 불꽃 (준비 칸은 커지며 하얘진다)
+        px(4, 5 - bob, 8, 9, wind ? C.white : css(COLOR.skyTop));
+        px(6, 2 - bob, 4, 4, wind ? css(COLOR.skyMid) : css(COLOR.teamA));
+        px(5, 9 - bob, 6, 4, css(COLOR.skyMid));
+        px(6, 8 - bob, 1, 2, eye);
+        px(9, 8 - bob, 1, 2, eye);
+        break;
+      case 'haetae':
+        // 서리 해태: 하얀 갈기 사자 (뿔 하나, 파란 비늘), 준비 칸은 입을 벌려 찬 숨
+        px(4, 9 + bob, 16, 11 - bob, css(COLOR.skyMid));
+        px(12, 3 + bob, 10, 10, css(COLOR.skyMid));
+        px(10, 2 + bob, 6, 12, C.white);
+        px(16, 0 + bob, 2, 3, css(COLOR.primary));
+        px(17, 6 + bob, 2, 2, hurt ? C.white : css(COLOR.outline));
+        px(18, 11 + bob, 4, 2, wind ? css(COLOR.pink) : css(COLOR.outline));
+        px(5, 20, 3, 3, css(COLOR.skyDeep));
+        px(15, 20, 3, 3, css(COLOR.skyDeep));
+        px(1, 10 + bob, 4, 3, C.white);
+        break;
+      case 'winterGeneral':
+        // 동장군: 서리 갑옷 장수, 흰 수염, 얼음 창 (준비 칸은 창을 높이 듦)
+        px(8, 12 + bob, 16, 16 - bob, css(COLOR.skyDeep));
+        px(10, 3 + bob, 12, 11, css(ROULETTE.spring));
+        px(9, 1 + bob, 14, 4, css(COLOR.teamA));
+        px(15, -1 + bob, 2, 3, css(COLOR.white));
+        px(12, 7 + bob, 2, 2, hurt ? C.white : css(COLOR.outline));
+        px(18, 7 + bob, 2, 2, hurt ? C.white : css(COLOR.outline));
+        px(11, 10 + bob, 10, 6, C.white);
+        px(8, 18, 16, 2, css(COLOR.primary));
+        px(wind ? 26 : 25, wind ? 0 : 6, 2, wind ? 30 : 24, css(COLOR.inkSoft));
+        px(wind ? 25 : 24, wind ? 0 : 4, 4, 4, css(COLOR.skyMid));
+        px(9, 28, 6, 3, css(COLOR.outline));
+        px(17, 28, 6, 3, css(COLOR.outline));
+        break;
+      case 'icecrystal':
+        // 얼음 수정: 바닥에서 솟은 뾰족 수정 (맞음 칸은 금이 간다)
+        px(6, 2, 4, 12, css(COLOR.skyMid));
+        px(3, 6, 3, 8, css(TABLE.blackjack));
+        px(10, 5, 3, 9, css(TABLE.blackjack));
+        px(7, 3, 1, 8, C.white);
+        if (hurt) px(8, 6, 1, 5, css(COLOR.outline));
+        px(2, 14, 12, 1, css(COLOR.skyDeep));
+        break;
+      // ---- 4구역 (새벽 구름 뜰) ----
+      case 'ram':
+        // 솜털 숫양: 동글동글 흰 털, 말린 뿔 (준비 칸은 머리를 숙여 박치기 자세)
+        px(2, 6 + bob, 11, 8 - bob, css(COLOR.panel));
+        px(10, wind ? 7 : 4 + bob, 5, 5, css(COLOR.inkSoft));
+        px(9, wind ? 6 : 3 + bob, 3, 3, css(COLOR.primaryDeep));
+        px(12, (wind ? 9 : 6) + bob, 1, 1, eye);
+        px(3, 13, 2, 2, css(COLOR.outline));
+        px(9, 13, 2, 2, css(COLOR.outline));
+        break;
+      case 'kite':
+        // 방패연 요괴: 네모난 방패연(가운데 구멍), 꼬리, 큰 눈 (준비 칸은 기울어짐)
+        px(3, 2 + bob, 10, 10, css(COLOR.panel));
+        px(3, 2 + bob, 10, 2, css(COLOR.teamA));
+        px(3, 10 + bob, 10, 2, css(COLOR.lose));
+        px(7, 6 + bob, 2, 2, css(COLOR.skyMid));
+        px(5, 5 + bob, 1, 1, eye);
+        px(10, 5 + bob, 1, 1, eye);
+        px(7, 12 + bob, 1, 3, css(COLOR.inkSoft));
+        if (wind) px(12, 6, 3, 2, css(COLOR.pink));
+        break;
+      case 'chick':
+        // 솜털 병아리: 노란 동그라미, 주황 부리
+        px(4, 5 + bob, 9, 8, css(COLOR.primaryLight));
+        px(6, 3 + bob, 5, 3, css(COLOR.primaryLight));
+        px(12, 7 + bob, 3, 2, css(COLOR.primaryDeep));
+        px(10, 6 + bob, 1, 1, eye);
+        px(6, 13, 1, 2, css(COLOR.primaryDeep));
+        px(9, 13, 1, 2, css(COLOR.primaryDeep));
+        break;
+      case 'scarecrow':
+        // 허수아비: 밀짚모자, 십자 막대, 누더기 옷 (준비 칸은 팔을 벌려 짚을 날림)
+        px(7, 6, 2, 9, css(COLOR.inkSoft));
+        px(wind ? 0 : 2, 7, wind ? 16 : 12, 2, css(COLOR.inkSoft));
+        px(4, 2, 8, 2, css(COLOR.primary));
+        px(5, 0, 6, 2, css(COLOR.primary));
+        px(5, 4, 6, 4, css(COLOR.panel));
+        px(6, 5, 1, 1, eye);
+        px(9, 5, 1, 1, eye);
+        px(5, 9, 6, 4, css(COLOR.lose));
+        break;
+      case 'geumgye':
+        // 금계 장수: 금빛 깃 장닭 무사, 붉은 볏, 깃 창 (준비 칸은 날개를 펴고 웅크림)
+        px(6, 8 + bob, 12, 12 - bob, css(COLOR.primary));
+        px(10, 2 + bob, 8, 8, css(COLOR.primary));
+        px(11, 0 + bob, 5, 3, css(COLOR.lose));
+        px(18, 5 + bob, 3, 2, css(COLOR.primaryDeep));
+        px(15, 4 + bob, 2, 2, hurt ? C.white : css(COLOR.outline));
+        px(wind ? 1 : 3, wind ? 6 : 10, 5, 8, css(COLOR.primaryDeep));
+        px(3, 14, 4, 6, css(COLOR.lose));
+        px(8, 20, 2, 3, css(COLOR.primaryDeep));
+        px(14, 20, 2, 3, css(COLOR.primaryDeep));
+        break;
+      case 'yeongdeung':
+        // 영등할미: 구름 위 바람 할머니 — 흰 쪽머리, 푸른 치마가 바람에 날리고 큰 부채 (준비 칸은 부채를 크게 젖힘)
+        px(6, 22, 22, 8, C.white);
+        px(9, 12 + bob, 14, 12 - bob, css(COLOR.teamA));
+        px(11, 3 + bob, 10, 10, C.skin);
+        px(10, 1 + bob, 12, 4, C.white);
+        px(20, 0 + bob, 4, 3, C.white);
+        px(13, 7 + bob, 2, 1, hurt ? C.white : css(COLOR.outline));
+        px(18, 7 + bob, 2, 1, hurt ? C.white : css(COLOR.outline));
+        px(14, 10 + bob, 4, 1, css(COLOR.pink));
+        px(wind ? 22 : 23, wind ? 2 : 12, 8, 8, css(COLOR.primary));
+        px(wind ? 22 : 23, wind ? 2 : 12, 8, 2, css(COLOR.lose));
+        break;
+      // ---- 5구역 (잿불 성채) ----
+      case 'bulgae':
+        // 불개: 검붉은 개, 꼬리와 갈기가 불꽃 (준비 칸은 낮게 웅크림)
+        px(2, 7 + (wind ? 1 : bob), 11, 6, css(COLOR.lose));
+        px(10, 4 + (wind ? 2 : bob), 5, 5, css(COLOR.lose));
+        px(0, 4 + bob, 3, 4, css(COLOR.primary));
+        px(6, 5 + bob, 4, 2, css(COLOR.primary));
+        px(13, 6 + (wind ? 2 : bob), 1, 1, eye);
+        px(3, 13, 2, 2, css(COLOR.outline));
+        px(10, 13, 2, 2, css(COLOR.outline));
+        break;
+      case 'torchimp':
+        // 횃불 도깨비: 붉은 도깨비, 뿔 둘, 손에 횃불 (준비 칸은 횃불을 뒤로 젖혀 던질 자세)
+        px(4, 5 + bob, 8, 9 - bob, css(COLOR.lose));
+        px(5, 2 + bob, 2, 3, css(COLOR.panel));
+        px(9, 2 + bob, 2, 3, css(COLOR.panel));
+        px(5, 7 + bob, 2, 2, eye);
+        px(9, 7 + bob, 2, 2, eye);
+        px(wind ? 0 : 12, wind ? 2 : 6, 2, 6, css(COLOR.inkSoft));
+        px(wind ? 0 : 12, wind ? 0 : 3, 3, 3, css(COLOR.primary));
+        break;
+      case 'wildcat':
+        // 얼룩 살쾡이: 주황 바탕 검은 얼룩, 뾰족 귀 (준비 칸은 웅크려 덮칠 자세)
+        px(2, 7 + (wind ? 2 : bob), 11, 6 - (wind ? 1 : 0), css(COLOR.primaryDeep));
+        px(10, 4 + (wind ? 3 : bob), 5, 5, css(COLOR.primaryDeep));
+        px(10, 2 + (wind ? 3 : bob), 2, 2, css(COLOR.primaryDeep));
+        px(13, 2 + (wind ? 3 : bob), 2, 2, css(COLOR.primaryDeep));
+        px(4, 8 + bob, 2, 2, css(COLOR.outline));
+        px(8, 9 + bob, 2, 2, css(COLOR.outline));
+        px(13, 6 + (wind ? 3 : bob), 1, 1, eye);
+        px(0, 6 + bob, 3, 2, css(COLOR.primaryDeep));
+        break;
+      case 'sparrow':
+        // 불씨 참새: 작은 참새, 날개 끝이 불씨
+        px(5, 5, 7, 6, css(COLOR.inkSoft));
+        px(1, 4 + bob * 2, 4, 4, css(RACE.track));
+        px(12, 4 + bob * 2, 4, 4, css(RACE.track));
+        px(1, 4 + bob * 2, 2, 2, css(COLOR.primary));
+        px(14, 4 + bob * 2, 2, 2, css(COLOR.primary));
+        px(11, 7, 2, 1, css(COLOR.primaryDeep));
+        px(9, 6, 1, 1, eye);
+        break;
+      case 'hwacha':
+        // 불화살 화차: 바퀴 달린 나무 수레 + 화살 구멍 판 (준비 칸은 판에 불이 붙음)
+        px(2, 6, 20, 10, css(COLOR.inkSoft));
+        px(4, 2, 16, 6, css(RACE.trackDark));
+        for (let i = 0; i < 4; i++) px(6 + i * 3, 3, 2, 2, wind ? css(COLOR.primary) : css(COLOR.outline));
+        px(3, 16 + bob, 6, 6, css(COLOR.outline));
+        px(15, 16 + bob, 6, 6, css(COLOR.outline));
+        px(5, 18 + bob, 2, 2, css(COLOR.draw));
+        px(17, 18 + bob, 2, 2, css(COLOR.draw));
+        px(9, 9, 2, 2, hurt ? C.white : css(COLOR.primary));
+        px(13, 9, 2, 2, hurt ? C.white : css(COLOR.primary));
+        break;
+      case 'bulgasari':
+        // 불가사리: 쇠를 먹는 곰 같은 괴물 — 코끼리 코, 쇠 비늘, 바늘 털, 눈은 불빛 (준비 칸은 앞발을 들어 올림)
+        px(3, 12 + bob, 26, 16 - bob, css(COLOR.draw));
+        px(5, 14 + bob, 22, 2, css(COLOR.inkSoft));
+        px(5, 20 + bob, 22, 2, css(COLOR.inkSoft));
+        px(16, 4 + bob, 13, 12, css(COLOR.draw));
+        px(27, 10 + bob, 4, 8, css(COLOR.draw));
+        px(19, 7 + bob, 3, 2, hurt ? C.white : css(COLOR.primary));
+        px(24, 7 + bob, 3, 2, hurt ? C.white : css(COLOR.primary));
+        for (let i = 0; i < 5; i++) px(5 + i * 5, 9 + bob, 2, 4, css(COLOR.lineSoft));
+        px(4, wind ? 16 : 26, 6, wind ? 8 : 5, css(COLOR.inkSoft));
+        px(20, wind ? 16 : 26, 6, wind ? 8 : 5, css(COLOR.inkSoft));
+        break;
+      case 'iron':
+        // 쇠붙이: 바닥에 떨어진 쇳조각 무더기 (맞음 칸은 튄다)
+        px(3, 9, 10, 5, css(COLOR.draw));
+        px(5, 6, 3, 4, css(COLOR.lineSoft));
+        px(9, 7, 3, 3, css(COLOR.inkSoft));
+        px(4, 13, 8, 1, css(COLOR.outline));
+        if (hurt) px(6, 3, 4, 2, C.white);
         break;
       default:
         px(3, 3, S - 6, S - 6, css(COLOR.pink));

@@ -15,7 +15,7 @@ import { GameScene, type SceneArt, type SceneHooks } from '../scenes/GameScene';
 import { COLOR } from '../theme';
 import { createControls, type Controls } from './controls';
 import { lookLayers, makePreview, stillImage } from './preview';
-import { music, type TrackName } from './music';
+import { music, zoneTrack, type TrackName } from './music';
 
 interface Ctx {
   api: TowerApi;
@@ -360,9 +360,8 @@ async function loadArt(look: Look): Promise<SceneArt & { themes: Record<string, 
 /** 층에 맞는 배경음 */
 function floorTrack(floor: number): TrackName {
   const kind = floorRule(floor).kind;
-  if (kind === 'boss') return 'boss';
   if (kind === 'rest') return 'rest';
-  return themeOf(floor) === 'moss' ? 'moss' : 'stone';
+  return zoneTrack(themeOf(floor), kind === 'boss');
 }
 
 async function play() {
@@ -615,11 +614,38 @@ function onEvent(ev: SimEvent, s: RunState) {
     case 'boss':
       sfx('survBossWarn');
       if (ev.phase === 1) bossCutin(s);
-      else hudNote(`${josa(s.boss?.def.name ?? '보스', '이', '가')} 화났다! 더 빨라졌어요`);
+      else hudNote(ev.text ?? `${josa(s.boss?.def.name ?? '보스', '이', '가')} 화났다! 더 빨라졌어요`, 3000);
+      break;
+    case 'legend': {
+      sfx('twelveRare');
+      const o = orbDef(ev.id);
+      hudNote(`${o?.name ?? '전설 구슬'}이 떠올랐어요! 받침대에서 받으세요`, 4000);
+      break;
+    }
+    case 'ice':
+      sfxGap('toggle', 120, { rate: 1.5, volume: 0.5 });
+      break;
+    case 'ring':
+      sfxGap('coin', 60, { rate: 0.8 + ev.on * 0.2 });
+      if (ev.on < ev.all) hudNote(`${ev.on}/${ev.all} 울렸어요 — 한꺼번에!`, 1200);
+      break;
+    case 'ringReset':
+      sfxGap('lose', 400, { volume: 0.35, rate: 1.4 });
+      break;
+    case 'boulder':
+      sfx('tankBoom', { volume: ev.fill ? 0.8 : 0.5, rate: 0.7 });
+      break;
+    case 'wind':
+      sfxGap('boost', 300, { volume: 0.5, rate: 0.6 });
+      hudNote(`바람이 ${ev.dx > 0 ? '오른쪽 →' : ev.dx < 0 ? '← 왼쪽' : ev.dy > 0 ? '아래 ↓' : '↑ 위'}으로 불어요!`, 2000);
+      break;
+    case 'eat':
+      sfx('tankHeal', { rate: 0.6 });
+      hudNote(`${s.boss?.def.name ?? '보스'}가 쇠붙이를 삼켜 체력이 찼어요! 쇠붙이를 먼저 부숴요`, 2500);
       break;
     case 'bossDown':
       sfx('survBossDown');
-      hudNote(`${s.boss?.def.name ?? '보스'}를 쓰러뜨렸다!`, 2500);
+      hudNote(`${josa(s.boss?.def.name ?? '보스', '을', '를')} 쓰러뜨렸다!`, 2500);
       break;
     case 'item':
       sfx('tankHeal', { volume: 0.7 });
@@ -629,7 +655,7 @@ function onEvent(ev: SimEvent, s: RunState) {
       toast('부활 부적이 타올랐어요! 다시 일어섰어요', 2400);
       break;
     case 'status':
-      hudNote(ev.kind === 'poison' ? '독에 걸렸어요 (정화 부적으로 풀 수 있어요)' : '몸이 느려졌어요 (정화 부적으로 풀 수 있어요)');
+      hudNote(ev.kind === 'poison' ? '독에 걸렸어요 (정화 부적으로 풀 수 있어요)' : ev.kind === 'burn' ? '불에 데었어요 (정화 부적으로 풀 수 있어요)' : '몸이 느려졌어요 (정화 부적으로 풀 수 있어요)');
       break;
     case 'clear':
       onClear(s);
@@ -653,7 +679,7 @@ function orbCutin(id: string, gain: 'new' | 'awaken' | 'shard') {
   const ov = overlay(`
     <div class="card pop orb-pop">
       <div class="orb-big">${orbIcon(id)}</div>
-      <h3>${gain === 'new' ? `${o.name}을 얻었어요!` : gain === 'awaken' ? `${o.name}이 각성했어요!` : '구슬 조각 +1'}</h3>
+      <h3>${gain === 'new' ? `${o.legend ? '전설의 ' : ''}${o.name}을 얻었어요!` : gain === 'awaken' ? `${o.name}이 각성했어요!` : '구슬 조각 +1'}</h3>
       ${gain === 'new' ? `<p><b>${o.basic.name}</b> <span class="key">K</span> 🔮<br><span class="soft">${esc(o.basic.desc)}</span></p>` : ''}
       ${gain === 'awaken' ? `<p><b>${o.awaken.name}</b> <span class="key">L</span> ✨<br><span class="soft">${esc(o.awaken.desc)} · ${esc(o.limit)}</span></p>` : ''}
       ${gain === 'shard' ? '<p class="soft">이미 각성한 구슬이라 조각으로 바뀌었어요</p>' : ''}
@@ -711,7 +737,7 @@ function drawHud(s: RunState) {
   const sec = (n: number) => Math.ceil(n);
   const plate = plateLeft(s);
   const st = [
-    p.poison > 0 ? '☠️ 독' : '', p.slow > 0 ? '🐌 둔화' : '', p.gale > 0 ? `💨 질풍 ${sec(p.gale)}` : '', p.giant ? `🛡️ 거인 ${sec(p.giant.t)}` : '',
+    p.poison > 0 ? '☠️ 독' : '', p.burn > 0 ? '🔥 화상' : '', p.slow > 0 ? '🐌 둔화' : '', p.gale > 0 ? `💨 질풍 ${sec(p.gale)}` : '', p.giant ? `🛡️ 거인 ${sec(p.giant.t)}` : '',
     p.shield ? `💧 보호막 ${Math.ceil(p.shield.hp)}` : '', p.barrier > 0 ? `🐢 결계 ${sec(p.barrier)}` : '', p.reflect > 0 ? `🔁 역류 ${sec(p.reflect)}` : '',
     p.blades > 0 ? `🪶 방벽 ${sec(p.blades)}` : '', p.blood > 0 ? `🩸 혈기 ${sec(p.blood)}` : '', p.tired > 0 ? `😮‍💨 탈진 ${sec(p.tired)}` : '',
     p.bolts > 0 ? `⚡ 낙뢰 ${sec(p.bolts)}` : '', p.storm > 0 ? `🌪️ 연타 ${p.stacks}` : '', p.rebirth > 0 ? '🔥 불사조' : '', p.root > 0 ? `❄️ 못 움직임 ${sec(p.root)}` : '',
