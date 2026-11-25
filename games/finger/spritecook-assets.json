@@ -192,13 +192,13 @@
       "label": "cut-pig → public/art/cut-pig.png (400x400)"
     },
     {
-      "asset_id": "ca480251-651f-4e0f-8ed1-c4b56a60ae19",
-      "sha12": "4a06c003f0ed",
+      "asset_id": "cd568d1e-cda3-4d31-8fb2-21260ea630e4",
+      "sha12": "20ddfe52e5f8",
       "label": "h-cat → public/art/h-cat.png (192x192)"
     },
     {
-      "asset_id": "14e5994b-a975-4205-a0bb-be4e195eeee4",
-      "sha12": "a61936c49e8e",
+      "asset_id": "22f459d3-627c-47b7-a97f-943125774330",
+      "sha12": "09082f2c8863",
       "label": "cut-cat → public/art/cut-cat.png (400x400)"
     },
     {
@@ -490,7 +490,7 @@
       "label": "참고(올린 그림): 십이지 전신 pig = shared/images/zodiac/full/pig.png — h-pig · cut-pig 의 reference"
     },
     {
-      "asset_id": "a6ba0812-b27d-44dc-8929-40613cda4698",
+      "asset_id": "4b3ae64a-9a50-48a2-9451-e0fc5d5f42ef",
       "label": "참고(올린 그림): 십이지 전신 cat = shared/images/zodiac/full/cat.png — h-cat · cut-cat 의 reference"
     }
   ]
