@@ -60,9 +60,14 @@
       "label": "로비 카드 시아맞고 2인 (호랑이·토끼) → shared/images/card-matgo.png (예전 3인 그림 대체)"
     },
     {
+      "asset_id": "4b3ae64a-9a50-48a2-9451-e0fc5d5f42ef",
+      "sha12": "86b88e05ce4d",
+      "label": "고양이 전신 원본(3차, 지금 쓰는 그림) = art/spritecook/cat/full-src.png → shared/images/zodiac/full/cat.png (200x240) · face/cat.png (192x192). 후보 A 와 같은 디자인에서 외곽선을 굵게, 머리 비율을 약 60% 로 (머리를 키운 배치 그림 f0990fca-8667-401d-a6c1-79a5af1b1bfb 를 edit, 화풍 참고 쥐·호랑이 전신)"
+    },
+    {
       "asset_id": "a6ba0812-b27d-44dc-8929-40613cda4698",
       "sha12": "ed3767efec4d",
-      "label": "고양이 후보 A 전신 원본(2차, 채택) = art/spritecook/cat/cand-a-src.png → cand-a-full.png · cand-a-face.png (늦잠 자다 달려온 귀족 고양이: 크림색 털, 금관, 보라 망토, 금 회중시계)"
+      "label": "고양이 후보 A 전신 원본(2차, 채택 — 2026-11-25 에 full-src.png 로 다시 그림. 그 edit 원본) = art/spritecook/cat/cand-a-src.png → cand-a-full.png · cand-a-face.png (늦잠 자다 달려온 귀족 고양이: 크림색 털, 금관, 보라 망토, 금 회중시계)"
     },
     {
       "asset_id": "741a0820-c31b-488f-ad45-e795950f9205",

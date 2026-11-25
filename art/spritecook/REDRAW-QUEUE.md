@@ -6,19 +6,6 @@ SpriteCook 크레딧이 없을 때 Fable 5.2 로 손수 그리거나 임시로 �
 
 ## 남은 항목
 
-### 2. 시아핑거 고양이 그림 `h-cat` · `cut-cat` (권장)
-- 지금: SpriteCook `gpt-image-2` 로 그림 (기존 대원은 `gemini-3.1-flash-image` — 그때 크레딧이 모자라 모델이 다름)
-- 문제: `cut-cat` 은 속도선·망토가 칸을 차지해 몸이 다른 컷인보다 작게 보인다
-- 다시 그릴 때: 기존 대원과 같은 모델, `games/finger/art/build.py` 방식(HEROES·FLIP), 400×400 컷인은 몸을 더 크게
-
-### 3. 시아탱크 고양이 탱크 `tanks/cat.png` (선택)
-- 지금: 귀가 하나만 보인다 (금관이 두 번째 귀 자리를 차지). 다른 동물은 귀가 둘
-- 다시 그릴 때: edit 로 귀 둘 + 금관, 무한궤도 폭 108px 기준 유지 (`tankArt.json` 의 cx 값을 다시 잴 것)
-
-### 4. 고양이 얼굴·전신 `shared/images/zodiac/face|full/cat.png` (선택)
-- 지금: 외곽선이 쥐·호랑이보다 조금 얇고 머리 비율이 약 50% (다른 십이지는 약 60%)
-- 다시 그릴 때: 같은 디자인(후보 A)에서 외곽선 굵게·머리 크게. 바꾸면 핑거·탱크 그림과도 맞는지 볼 것
-
 ### 6. 시아의탑 1~5구역 그림 전부 — 캐릭터 레이어 18장 · 타일 35칸 × 5테마 · 적 32종 · 구슬 아이콘 16개 · 로비 카드 (필수)
 - 지금: Fable 5.2 손그림 (2026-11-25, `python games/tower/art/draw.py` — `public/art/**` · `manifest.json` · 로비 카드를 한 번에 다시 만든다. `python games/tower/art/draw.py <폴더>` 는 확대한 확인용 그림 `contact-*.png` 도 만든다)
 - 규격은 `games/tower/ASSETS.md` 그대로 (1배 크기 도트, 투명 배경, 진한 갈색 1px 테두리, 색은 `shared/theme.css` 값)
@@ -61,4 +48,6 @@ SpriteCook 크레딧이 없을 때 Fable 5.2 로 손수 그리거나 임시로 �
 
 - 시아마을 선물 장식물 `gift_cat` — SpriteCook `gemini-nano-banana-2.1` 로 다시 그림 (2026-11-25, asset `5bbada7d-86fb-430b-a62a-45db032af1ed`)
 - 시아마을 새 기념물 7종 · 열두 지신 문 3단계 — SpriteCook (2026-11-25, `monE` · `monF` · `jisin` 시트, `games/village/spritecook-assets.json`). 함께 돌격대·핑거 기념물 6종 `monD` 도 그림
-
+- 고양이 얼굴·전신 — SpriteCook 으로 외곽선 굵게·머리 약 62% (2026-11-25, asset `4b3ae64a-9a50-48a2-9451-e0fc5d5f42ef`)
+- 시아핑거 고양이 `h-cat` · `cut-cat` — `gemini-3.1-flash-image` 로 다시 그림 (2026-11-25, `games/finger/spritecook-assets.json`)
+- 시아탱크 고양이 탱크 — 귀 둘 + 금관, `tankArt.json` cx 다시 잼 (2026-11-25, asset `fa2aad45-0196-457d-a9b9-86ade525ac03`)
