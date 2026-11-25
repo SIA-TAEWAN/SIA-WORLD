@@ -290,6 +290,59 @@ def save_scene(img, out):
     img.convert('RGB').quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG).save(out, optimize=True)
 
 
+# 오토타일셋 손보기 (2026-11-25 전체검사). 마스크 비트 = 왼쪽 위 1 · 오른쪽 위 2 · 왼쪽 아래 4 · 오른쪽 아래 8 → 칸 번호 (art.ts 의 DUAL_FRAME 과 같다)
+DUAL_FRAME = [-1, 15, 8, 9, 0, 11, 14, 7, 13, 4, 1, 10, 3, 2, 5, 6]
+OUTLINE = (42, 26, 16, 255)
+# drop-face: 3/4 시점이라 벽 앞면이 바닥 쪽 사분면을 채운 타일셋 — 위가 벽 · 아래가 바닥인 사분면의 FACE_CUT 줄 아래를
+#            '위 벽이 없는 조각'(같은 아래 비트)의 같은 자리로 바꾸고, 잘린 자리에 외곽선을 긋는다 (7지형 성벽)
+# fill-full: 꽉 찬 조각(마스크 15)의 구멍을 뒤집은 같은 조각으로 메운다 (10지형)
+# mirror-diag: 대각 조각(마스크 6)을 다른 대각 조각(마스크 9)을 좌우로 뒤집은 것으로 바꾼다 (3지형 — 바닥 쪽으로 번진 칸)
+TS_FIX = {'wt-r07': ['drop-face'], 'wt-r10': ['fill-full'], 'wt-r03': ['mirror-diag']}
+FACE_CUT = 62
+
+
+def ts_cell(sheet, mask):
+    f = DUAL_FRAME[mask]
+    return ((f % 4) * TS_CELL, (f // 4) * TS_CELL, (f % 4) * TS_CELL + TS_CELL, (f // 4) * TS_CELL + TS_CELL)
+
+
+def fix_tileset(name, sheet):
+    out = sheet.copy()
+    half = TS_CELL // 2
+    for fix in TS_FIX.get(name, []):
+        if fix == 'drop-face':
+            for m in range(1, 16):
+                # 바닥인 아래 사분면 위의 벽 비트를 지운 조각 = 앞면이 늘어지지 않은 모양
+                src = m & ~(1 if not m & 4 else 0) & ~(2 if not m & 8 else 0)
+                if src == m:
+                    continue
+                cell = sheet.crop(ts_cell(sheet, m))
+                ref = sheet.crop(ts_cell(sheet, src)) if src else Image.new('RGBA', (TS_CELL, TS_CELL), (0, 0, 0, 0))
+                px, rp = cell.load(), ref.load()
+                for qx, bit in ((0, 4), (half, 8)):
+                    if m & bit:
+                        continue
+                    for x in range(qx, qx + half):
+                        top = px[x, FACE_CUT - 4][3] > 128
+                        for y in range(FACE_CUT, TS_CELL):
+                            px[x, y] = rp[x, y]
+                        if top and px[x, FACE_CUT][3] < 128:
+                            for y in range(FACE_CUT - 3, FACE_CUT):
+                                px[x, y] = OUTLINE
+                out.paste(cell, ts_cell(sheet, m)[:2])
+        elif fix == 'fill-full':
+            box = ts_cell(sheet, 15)
+            cell = sheet.crop(box)
+            under = Image.new('RGBA', cell.size, (0, 0, 0, 0))
+            for alt in (cell.transpose(Image.ROTATE_180), cell.transpose(Image.FLIP_TOP_BOTTOM), cell.transpose(Image.FLIP_LEFT_RIGHT)):
+                under.alpha_composite(alt)
+            under.alpha_composite(cell)
+            out.paste(under, box[:2])
+        elif fix == 'mirror-diag':
+            out.paste(sheet.crop(ts_cell(sheet, 9)).transpose(Image.FLIP_LEFT_RIGHT), ts_cell(sheet, 6)[:2])
+    return out
+
+
 def main():
     ids = dict(line.strip().split('\t') for line in open(os.path.join(HERE, 'ids.tsv'), encoding='utf-8') if '\t' in line)
     assets = []
@@ -348,7 +401,8 @@ def main():
         raw = os.path.join(RAW, src_name + '.png')
         if os.path.exists(raw):
             src = Image.open(raw).convert('RGBA')
-            save(src.convert('RGBa').resize((TS_CELL * 4, TS_CELL * 4), Image.LANCZOS).convert('RGBA'), os.path.join(OUT, name + '.png'))
+            sheet = src.convert('RGBa').resize((TS_CELL * 4, TS_CELL * 4), Image.LANCZOS).convert('RGBA')
+            save(fix_tileset(name, sheet), os.path.join(OUT, name + '.png'))
         add(src_name, name, (TS_CELL * 4, TS_CELL * 4), f'{"벽" if name.startswith("wt") else "느린 바닥"} 오토타일셋 (15-piece dual-grid, 4x4 칸 {TS_CELL}px · generate_tileset detailed topdown 128px · {MODEL})')
 
     # 장식 시트: 칸마다 잘라 아래 가운데에 맞춘다

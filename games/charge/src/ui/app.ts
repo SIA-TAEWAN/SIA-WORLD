@@ -884,6 +884,9 @@ export async function startGame(stage: StageDef, endless: boolean) {
       if (endless) return showResult(run, true, out?.result ?? null, out?.note ?? null, newFoes);
       closeGame();
       showMain();
+      // 결과 창을 건너뛰므로 기록이 남지 않은 사정은 결과 창과 같은 글로 알려 준다
+      if (out?.note === 'kept') toast('서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요', 3200);
+      else if (out?.note === 'unrecorded') toast('이번 판은 기록되지 않았어요', 3200);
     });
   };
   pauseBtn.addEventListener('click', () => {

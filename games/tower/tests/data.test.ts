@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ENEMIES, FLOORS, INNER_H, INNER_W, ITEMS, LAST_READY, ORBS, ROOMS, enemyDef, expNeed, fitGrid, floorRule, orbAtFloor, orbDef, priceOf, statsAt, zoneData } from '../src/data';
-import { TILE_ORDER } from '../src/art/sheets';
+import { readFileSync } from 'node:fs';
+import { SHEET_H, SHEET_W, TILE_ORDER, TS, enemySize } from '../src/art/sheets';
 
 describe('데이터 (JSON)', () => {
   it('구슬 16개 모두 구현, 획득 층은 PRD 대로, 스킬 값(혼력·재사용)이 있다', () => {
@@ -167,5 +168,26 @@ describe('데이터 (JSON)', () => {
     expect(priceOf('shard', 25)).toBe(675);
     expect([25, 35, 45].map((f) => priceOf('potionL', f))).toEqual([135, 203, 304]);
     expect([55, 65, 75, 85, 95].map((f) => priceOf('potionL', f))).toEqual([456, 683, 1025, 1538, 2307]);
+  });
+});
+
+describe('그림 파일 크기 (art/load.ts 는 크기가 기대와 다르면 코드 그림을 쓴다)', () => {
+  const art = (f: string) => new URL(`../public/art/${f}`, import.meta.url);
+  const files: string[] = JSON.parse(readFileSync(art('manifest.json'), 'utf8')).files;
+  const size = (f: string) => {
+    const b = readFileSync(art(f));
+    return [b.readUInt32BE(16), b.readUInt32BE(20)];
+  };
+  const PROJ: Record<string, [number, number]> = { web: [8, 8], crowfeather: [10, 6], pollen: [6, 6], petal: [8, 6], storm: [12, 12], shade: [10, 10] };
+  it('manifest 에 적힌 캐릭터 · 적 · 투사체 · 타일 그림이 읽는 크기와 같다', () => {
+    for (const f of files) {
+      const [w, h] = size(f);
+      if (f.startsWith('char/')) expect([w, h], f).toEqual([SHEET_W, SHEET_H]);
+      else if (f.startsWith('enemy/')) {
+        const s = enemySize(f.slice(6, -4));
+        expect([w, h], f).toEqual([s * 4, s]);
+      } else if (f.startsWith('proj/')) expect([w, h], f).toEqual(PROJ[f.slice(5, -4)]);
+      else if (f.startsWith('tiles')) expect([w, h], f).toEqual([TS * TILE_ORDER.length, TS]);
+    }
   });
 });

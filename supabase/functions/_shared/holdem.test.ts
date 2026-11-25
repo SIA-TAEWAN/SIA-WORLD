@@ -40,6 +40,25 @@ describe('블라인드·버튼', () => {
     expect(s.turn).toBe(1);
     expect(holdem.settle({ ...s, phase: 'done', result: { cancelled: false, uncontested: true, winners: [], pots: [], hands: {}, deltas: {}, excluded: [], board: [] } }).carry.button).toBe(2);
   });
+  it('취소된 판(참가자 2명 미만)은 넘어온 버튼을 다음 판에 그대로 넘긴다', () => {
+    const s = round([human(0), human(2, 50)], 2);
+    expect(s.phase).toBe('done');
+    expect(s.result?.cancelled).toBe(true);
+    expect(holdem.settle(s).carry.button).toBe(2);
+    // 다음 판: 버튼을 다시 뽑지 않고 넘어온 버튼 다음 자리
+    expect(round([human(0), human(1), human(2)], holdem.settle(s).carry.button).button).toBe(0);
+    // 첫 판부터 취소면 넘길 버튼이 없다
+    expect(holdem.settle(round([human(0), human(2, 50)])).carry.button).toBeNull();
+  });
+  it('레이즈 사건의 amount 는 이번에 실제로 더 낸 칩 (to 는 이번 라운드 합계)', () => {
+    let s = round([human(0), human(1), human(2)], 2);
+    // 지난 버튼 2 → 버튼 0 → SB 1(100) · BB 2(200), 먼저 0
+    s = act(s, { type: 'raise', to: 600 });
+    s = act(s, { type: 'raise', to: 1400 }); // SB: 100 낸 상태 → 1300 더
+    const ev = s.events.filter((e) => e.t === 'raise');
+    expect(ev[0]).toMatchObject({ seat: 0, to: 600, amount: 600 });
+    expect(ev[1]).toMatchObject({ seat: 1, to: 1400, amount: 1300 });
+  });
   it('헤즈업: 버튼이 SB이고 프리플롭 먼저, 플롭부터는 BB가 먼저', () => {
     let s = round([human(0), human(2)], 0);
     expect(s.button).toBe(2);

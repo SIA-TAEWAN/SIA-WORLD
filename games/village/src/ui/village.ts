@@ -18,6 +18,7 @@ import { kstHour, skyAt } from '../scenes/sky';
 import { music } from './music';
 import { duration, esc, num, screen, sfx, sound, stage, toast } from './app';
 import { DPR } from './dpr';
+import { MATGO, css } from '../theme';
 import { icon, menuIcon } from './icons';
 import { bonusOf, claimable, requestsPanel, residentsPanel, workersBox } from './people';
 
@@ -1310,7 +1311,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       parent: fieldEl,
       width: Math.round(w * DPR),
       height: Math.ceil(h * DPR), // 내림이면 아래에 1px 미만 틈이 남는다
-      backgroundColor: '#5fa772',
+      backgroundColor: css(MATGO.matDark),
       banner: false,
       audio: { noAudio: true },
       input: { keyboard: false, gamepad: false, activePointers: 3 },

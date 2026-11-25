@@ -73,6 +73,7 @@ export function showMatch(setup: MatchSetup) {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', releaseAll);
+      document.removeEventListener('visibilitychange', onHidden);
       if (pump) clearInterval(pump);
       ro?.disconnect();
       if (resultTimer) clearTimeout(resultTimer);
@@ -186,6 +187,9 @@ export function showMatch(setup: MatchSetup) {
     keys.delete(b);
     apply();
   };
+  function onHidden() {
+    if (document.visibilityState === 'hidden') releaseAll();
+  }
   function releaseAll() {
     keys.clear();
     touches.clear();
@@ -232,6 +236,8 @@ export function showMatch(setup: MatchSetup) {
   window.addEventListener('keydown', onKey);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', releaseAll);
+  // 다른 앱으로 넘어가면(아이폰 홈 등) blur 가 오지 않을 수 있다: 누르고 있던 버튼을 놓는다
+  document.addEventListener('visibilitychange', onHidden);
 
   // ---------- 나가기·설정 (창이 떠 있는 동안 AI 경기는 멈춘다) ----------
   $('#quit').addEventListener('click', () => {

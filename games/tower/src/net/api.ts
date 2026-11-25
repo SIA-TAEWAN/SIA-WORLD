@@ -8,7 +8,7 @@ import { worldSupabase } from './world';
  * 서버 약속 (PRD '서버 약속', 104_tower.sql) — 이 셋만 부른다:
  *   tower_state() → { look, data, bestFloor, siaCoins, lookPrice, savedAt }   (savedAt: 106)
  *   tower_set_look(p_look) → { look, siaCoins, paid }          ('bad look' · 'not enough sia coins')
- *   tower_save(p_data, p_cleared) → { bestFloor, gotCoin, siaCoins }   ('bad save')
+ *   tower_save(p_data, p_cleared) → { bestFloor, gotCoin, siaCoins, savedAt }   ('bad save'. savedAt: 107 — 옛 서버는 없다)
  * 테스트 모드(?local=1)는 같은 규칙으로 이 기기에만 (createLocalApi).
  * 저장이 통신 문제로 실패하면 기기에 보관했다가 다음 저장·시작 때 차례대로 다시 보낸다.
  */
@@ -162,6 +162,26 @@ interface Pending {
 
 export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, store: Store): TowerApi {
   const pKey = `siatower:pending:${uid}`;
+  /** 이 기기가 마지막으로 서버에 넣은(또는 받아들인) 저장의 savedAt (107). 없으면 null → 106 방식(만든 시각 비교)으로 */
+  const sKey = `siatower:savedAt:${uid}`;
+  const readSeen = (): number | null => {
+    try {
+      const v = Number(store.getItem(sKey));
+      return Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+      return null;
+    }
+  };
+  const writeSeen = (v: unknown) => {
+    const n = Number(v);
+    // 줄어들지 않게 (서버 시각은 늘기만 한다. 실패해서 옛 state 로 돌아간 경우에도 앞으로 받은 값을 지킨다)
+    if (!Number.isFinite(n) || n <= 0 || n <= (readSeen() ?? 0)) return;
+    try {
+      store.setItem(sKey, String(n));
+    } catch {
+      /* 적지 못해도 게임은 계속 */
+    }
+  };
   const readPending = (): Pending[] => {
     try {
       const v = JSON.parse(store.getItem(pKey) ?? '[]');
@@ -215,7 +235,10 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
         if (!list.length) break;
         const e = list[0];
         try {
-          done.set(e.id, toSave(await call('tower_save', { p_data: e.data, p_cleared: e.cleared })));
+          const res = await call('tower_save', { p_data: e.data, p_cleared: e.cleared });
+          // 107 서버는 이 저장의 시각을 돌려준다 → 다음 state() 에서 '내 저장' 과 '다른 기기의 저장' 을 가른다
+          writeSeen((res as { savedAt?: unknown } | null)?.savedAt);
+          done.set(e.id, toSave(res));
         } catch (err) {
           if (!(err instanceof ApiError)) break;
           // 서버가 거절한 저장은 버린다 (다음 것은 계속)
@@ -234,8 +257,11 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       let d = (await call('tower_state')) as St;
       if (readPending().length) {
         // 다른 기기가 그 뒤에 저장했으면 이 기기의 못 보낸 저장은 옛것이다 → 보내지 않고 버린다 (최고 층이 같아도 레벨·엽전을 덮어쓰지 않게)
+        // 107: 서버의 마지막 저장이 이 기기가 넣은 마지막 저장(seen)이면 다른 기기의 저장이 아니다 → 하나도 버리지 않는다
+        //      (못 보낸 A·B 중 A 만 들어가고 끊긴 경우, 서버 savedAt = A 를 보낸 시각 > B 를 만든 시각이어도 B 는 남긴다)
         const savedAt = Number(d?.savedAt) || 0;
-        if (savedAt) writePending(readPending().filter((p) => !(typeof p.at === 'number' && p.at < savedAt)));
+        const seen = readSeen();
+        if (savedAt && (seen == null || savedAt > seen)) writePending(readPending().filter((p) => !(typeof p.at === 'number' && p.at < savedAt)));
         if (readPending().length) {
           await flush().catch(() => null);
           d = ((await call('tower_state').catch(() => null)) as St | null) ?? d;
@@ -248,6 +274,8 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
         writePending([]);
         left = [];
       }
+      // 보낼 것이 없으면 이 기기는 서버의 지금 상태를 받아들였다 → 그 시각을 기준으로 삼는다
+      if (!left.length) writeSeen(d?.savedAt);
       // 못 보낸 저장이 남았으면 (아직 통신이 안 된다) 기기에 있는 것이 더 새것이다
       const data = normalize(left.length ? left[left.length - 1].data : (d?.data ?? {}));
       if (data.best < serverBest) data.best = serverBest;

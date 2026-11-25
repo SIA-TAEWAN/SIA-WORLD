@@ -98,7 +98,7 @@ canvas.hero-cv, canvas.big-cv, .opt canvas, .shop-keeper canvas { image-renderin
 .opts.n4 { grid-template-columns: repeat(4, 1fr); }
 .opt { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px 6px; cursor: pointer; min-width: 0;
   background: var(--white); border: var(--line) solid var(--line-soft); border-radius: 16px; font-size: 13px; }
-.opt canvas { width: 64px; height: 80px; max-width: 100%; }
+.opt canvas { width: 64px; height: auto; aspect-ratio: 64 / 80; max-width: 100%; }
 .opt b { font-weight: normal; white-space: nowrap; }
 .opt.on { background: var(--panel-strong); border-color: var(--outline); box-shadow: inset 0 0 0 3px var(--primary); }
 .price-line { min-height: 18px; word-break: keep-all; }

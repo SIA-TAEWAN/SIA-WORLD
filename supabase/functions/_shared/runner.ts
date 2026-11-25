@@ -113,10 +113,22 @@ export class Runner {
     return { room, seats, deck, engine };
   }
 
-  /** 사람이 직접 두지 않는 자리 (AI, 또는 판 도중 나간 사람) */
-  private auto(seats: SeatRow[], seat: number) {
+  /**
+   * 사람이 직접 두지 않는 자리 (AI, 또는 판 도중 나간 사람).
+   * engine·state 를 주면: 이 단계를 맡은 사람(engine.seatOwner)이 있고 지금 앉은 사람과 다르면(룰렛: 스핀 도중 나간 자리에 다른 사람이 앉았다)
+   * 그 자리도 나간 자리처럼 자동으로 둔다 (새로 앉은 사람은 다음 단계부터)
+   */
+  private auto(seats: SeatRow[], seat: number, engine?: AnyEngine, state?: unknown) {
     const s = seats.find((x) => x.seat_no === seat);
-    return !s || s.user_id === null || s.left_game;
+    if (!s || s.user_id === null || s.left_game) return true;
+    return this.otherOwner(engine, state, seat, s.user_id);
+  }
+
+  /** 이 단계의 그 자리 주인이 알려져 있고 userId 와 다른가 (예전 상태처럼 모르면 false) */
+  private otherOwner(engine: AnyEngine | undefined, state: unknown, seat: number, userId: string) {
+    if (!engine?.seatOwner || !state) return false;
+    const owner = engine.seatOwner(state, seat);
+    return typeof owner === 'string' && owner !== userId;
   }
 
   /**
@@ -149,7 +161,8 @@ export class Runner {
     const rows = await this.store.spinBets(roomId, room.round_no, spin);
     if (!rows.length) return state;
     const seatOf = new Map(seats.filter((s) => s.user_id).map((s) => [s.user_id!, s.seat_no]));
-    const mapped = rows.flatMap((r) => (seatOf.has(r.userId) ? [{ seat: seatOf.get(r.userId)!, bets: r.bets }] : []));
+    // 이 스핀의 그 자리 주인이 아닌 사람의 기록은 그 자리에 채우지 않는다 (스핀 도중 자리 주인이 바뀐 경우)
+    const mapped = rows.flatMap((r) => (seatOf.has(r.userId) && !this.otherOwner(engine, state, seatOf.get(r.userId)!, r.userId) ? [{ seat: seatOf.get(r.userId)!, bets: r.bets }] : []));
     return mapped.length ? engine.adoptBets(state, mapped, this.rng) : state;
   }
 
@@ -312,6 +325,7 @@ export class Runner {
         kind: s.user_id && !s.left_game ? 'human' : 'ai',
         name: s.nickname,
         stack: s.user_id ? (bal[s.user_id] ?? 0) : null,
+        userId: s.user_id && !s.left_game ? s.user_id : null,
       }));
   }
 
@@ -342,6 +356,11 @@ export class Runner {
       if (seat && engine.redundant?.(live ? deck.state : null, seat.seat_no, action)) return { ok: true };
       if (!live) throw new GameError('not playing', 409);
       if (!seat) throw new GameError('not in room', 403);
+      // (룰렛) 이번 단계가 시작된 뒤에 이 자리에 앉았다: 이 자리의 이번 차례는 앞사람 것이다 → 확인은 조용히 받고, 베팅은 다음 스핀부터
+      if (this.otherOwner(engine, deck.state, seat.seat_no, userId)) {
+        if ((action as { type?: unknown }).type === 'next') return { ok: true };
+        throw new GameError('이번 스핀에 참가하지 않은 자리입니다 (다음 베팅부터)', 409);
+      }
       // 진행 수(n)를 붙여 보낸 행동 = 기기에서 먼저 진행한 화면의 것 → 규칙 판이 같아야 한다 (안 실었으면 기준 판으로 본다)
       if (n !== undefined || rules !== undefined) this.checkRules(engine, rules);
       if (n !== undefined && soloOf(deck.state)?.n !== n) throw new GameError('out of sync', 409);
@@ -424,7 +443,7 @@ export class Runner {
     } else if (!engine.done(state)) {
       for (const seat of engine.pending(state)) {
         if (!engine.pending(state).includes(seat)) continue;
-        const auto = this.auto(seats, seat);
+        const auto = this.auto(seats, seat, engine, state);
         if (autoOnly && !auto) continue;
         // 나간 사람은 AI가 (포커·홀덤은 공짜면 체크, 아니면 다이/폴드), 자리에 있는데 시간을 넘긴 사람은 정해진 자동 행동
         const a = auto ? this.autoAction(engine, seats, state, seat) : engine.timeout(state, seat, this.rng);
@@ -450,7 +469,7 @@ export class Runner {
     else if (this.recordsBets(engine, state)) state = await this.withRecordedBets(roomId, room, seats, engine, state);
     // 이번 호출에서 새로 나온 결과(저장 전)로는 여기서 지급·다음 단계로 넘기지 않는다 (savedSpin과 다르면 저장 전)
     while (!engine.done(state)) {
-      const autos = engine.pending(state).filter((s: number) => this.auto(seats, s));
+      const autos = engine.pending(state).filter((s: number) => this.auto(seats, s, engine, state));
       if (autos.length === 0) {
         // 모두 결과를 확인했으면 (룰렛) 마감을 기다리지 않고 다음 단계로 → 새 단계의 자동 자리를 이어서 처리
         if (engine.tick && engine.tickNow && engine.tickNow(state)) {
@@ -480,7 +499,7 @@ export class Runner {
 
     const view = engine.view(state);
     const pending: number[] = done ? [] : engine.pending(state);
-    const humanPending = pending.some((s) => !this.auto(seats, s));
+    const humanPending = pending.some((s) => !this.auto(seats, s, engine, state));
     const fixed = engine.deadlineAt ? engine.deadlineAt(state) : undefined;
     const solo = soloOf(state);
     // 혼자 하는 판만 길게 (화면이 기기에서 시간을 잰다). 사람이 둘인 판은 행동을 하나씩 받으므로 차례 시간 그대로

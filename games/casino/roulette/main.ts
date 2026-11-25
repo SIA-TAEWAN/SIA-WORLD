@@ -7,7 +7,7 @@ import { ROULETTE_MANUAL } from '../../lib/manuals.ts';
 import { rlDouble, rlFollow, rlFromPreset, rlPresetsLoad, rlPush, rlToPreset, rlUndo, rouletteNotes, rouletteStats, share, type RlPreset } from '../../lib/extras.ts';
 import { bootGame, esc, sfx, sfxMany, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { clamp, drawTable, label, tc, theme, viewSize } from '../../lib/cards.ts';
-import { BET_MS, MULT, SEASONS, WHEEL, hits, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
+import { BET_MS, MULT, SEASONS, WHEEL, hits, inThisSpin, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
 import { worldRoot } from '../../lib/world.ts';
 import type PhaserNS from 'phaser';
 
@@ -128,6 +128,27 @@ function syncClock(p: RoulettePublic) {
 const betName = (t: Ctx, p: RoulettePublic, seat: number) => p.players.find((x) => x.seat === seat)?.name ?? t.seatName(seat);
 const keyOf = (b: { kind: BetKind; target: number }) => `${b.kind}:${b.target}`;
 const sumOf = (bs: RBet[]) => bs.reduce((a, b) => a + b.amount, 0);
+/**
+ * 이번 스핀에서 내 자리 (참가하지 않았으면 null). 자리 번호만이 아니라 그 자리를 맡은 사람이 나인지까지 본다:
+ * 스핀 도중 앞사람이 나간 자리에 앉으면 그 스핀의 베팅·결과·확인은 앞사람 것이다
+ */
+const spinSeat = (t: Ctx, p: RoulettePublic | null) => (inThisSpin(p, t.mySeat, t.me.userId) ? t.mySeat : null);
+/** 이번 스핀에 걸 수 있는 최대 (한 번 한도와 내 잔액 중 작은 쪽) */
+const capOf = (t: Ctx, p: RoulettePublic) => {
+  const money = t.money();
+  return money === null ? p.maxTotal : Math.max(0, Math.min(p.maxTotal, money));
+};
+const overMsg = (t: Ctx, p: RoulettePublic) => (capOf(t, p) < p.maxTotal ? `가진 칩(${t.fmt(capOf(t, p))})까지만 걸 수 있어요` : `한 번에 ${t.fmt(p.maxTotal)}칩까지 걸 수 있어요`);
+/** 결과 한 줄: 받은 돈이 아니라 순이익(받은 돈 − 건 금액)으로 */
+function outcome(t: Ctx, bet: number, win: number) {
+  const net = win - bet;
+  if (bet === 0) return { net, good: false, short: '', long: '이번 판은 걸지 않았어요' };
+  const detail = `건 금액 ${t.fmt(bet)}${win > 0 ? ` · 받은 돈 ${t.fmt(win)}` : ''}`;
+  if (net > 0) return { net, good: true, short: `+${t.fmt(net)}칩!`, long: `<b class="win">+${t.fmt(net)}칩 땄어요!</b> (${detail})` };
+  if (net === 0) return { net, good: false, short: '본전', long: `본전이에요 (${detail})` };
+  if (win > 0) return { net, good: false, short: `일부 당첨 · −${t.fmt(-net)}칩`, long: `−${t.fmt(-net)}칩 (${detail})` };
+  return { net, good: false, short: `꽝 · −${t.fmt(bet)}칩`, long: `꽝… (${detail})` };
+}
 
 function addBet(kind: BetKind, target: number, amount: number, max: number) {
   if (sumOf(local) + amount > max) return false;
@@ -191,7 +212,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
   pageClass(t: Ctx) {
     const p = t.pub;
     if (!p || t.mySeat === null) return '';
-    const betting = p.phase === 'bet' && p.players.some((x) => x.seat === t.mySeat) && !p.confirmed.includes(t.mySeat);
+    const betting = p.phase === 'bet' && spinSeat(t, p) !== null && !p.confirmed.includes(t.mySeat);
     return betting ? 'rl-betting' : 'rl-watch';
   },
   // 당첨금은 휠이 멈춘 뒤에 보이게
@@ -265,7 +286,8 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
           },
           onComplete: () => {
             sfx('spinStop');
-            const mine = t.mySeat !== null ? (p.wins[String(t.mySeat)] ?? 0) : 0;
+            const ms = spinSeat(t, p);
+            const mine = ms !== null ? (p.wins[String(ms)] ?? 0) : 0;
             if (mine > 0) sfxMany('coin', 3, 120, { delay: 250 });
             t.redraw();
           },
@@ -301,10 +323,12 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
       if (!stopped) label(scene, cx, msgY, '돌아가는 중…', clamp(r * 0.11, 15, 24));
       else {
         const animal = WHEEL[result];
-        const mine = t.mySeat !== null ? (p.wins[String(t.mySeat)] ?? 0) : 0;
-        const bet = t.mySeat !== null ? sumOf(p.bets[String(t.mySeat)] ?? []) : 0;
+        const ms = spinSeat(t, p);
+        const mine = ms !== null ? (p.wins[String(ms)] ?? 0) : 0;
+        const bet = ms !== null ? sumOf(p.bets[String(ms)] ?? []) : 0;
         label(scene, cx, msgY, `${NAME[animal]}! ${SEASONS[seasonOf(result)]} · ${result % 2 === 0 ? '양' : '음'}`, clamp(r * 0.13, 16, 28), tc('primary'));
-        if (bet > 0) label(scene, cx, msgY + clamp(r * 0.15, 20, 32), mine > 0 ? `+${t.fmt(mine)}칩 당첨!` : '꽝', clamp(r * 0.11, 14, 22), mine > 0 ? tc('win') : tc('white'));
+        const oc = outcome(t, bet, mine);
+        if (bet > 0) label(scene, cx, msgY + clamp(r * 0.15, 20, 32), oc.short, clamp(r * 0.11, 14, 22), oc.good ? tc('win') : tc('white'));
         // 멈춘 뒤 2.1초 동안 당첨 띠를 크게 (시각 기준이라 중간에 다시 그려도 이어진다)
         const since = performance.now() - ((spinStart.get(spinKey) ?? 0) + SPIN_ANIM);
         if (since >= 0 && since < 2100 && scene.textures.exists(`full-${animal}`)) {
@@ -359,13 +383,14 @@ function betControls(t: Ctx, el: HTMLElement) {
       undoLog = [];
       saving = false;
     }
-    const inSpin = p.players.some((x) => String(x.seat) === me);
-    const confirmed = p.confirmed.includes(t.mySeat);
+    // 이번 스핀을 맡은 사람이 나인가 (스핀 도중 같은 자리에 새로 앉았으면 구경)
+    const inSpin = spinSeat(t, p) !== null;
+    const confirmed = inSpin && p.confirmed.includes(t.mySeat);
     if (p.phase !== 'spin') closeResult();
     if (p.phase === 'spin' || p.phase === 'done') {
-      const mine = p.bets[me] ?? [];
+      const mine = inSpin ? (p.bets[me] ?? []) : [];
       if (mine.length) lastBets = mine.map((b) => ({ ...b }));
-      const acked = (p.acked ?? []).includes(t.mySeat);
+      const acked = inSpin && (p.acked ?? []).includes(t.mySeat);
       const stopped = wheelStopped(`${p.spin}:${t.room.round_no}`);
       let msg = '';
       if (p.phase === 'spin') {
@@ -392,6 +417,7 @@ function betControls(t: Ctx, el: HTMLElement) {
     // 놓은 칩이 없으면 저장할 것도 없다: 저장 모드를 끈다 (취소·되돌리기로 비운 뒤 ★ 칸 불러오기가 막히지 않게)
     if (!local.length) saving = false;
     const total = sumOf(local);
+    const cap = capOf(t, p);
     const slots = myPresets();
     // 따라 걸기: 이미 확정한 다른 사람 (아바타를 누르면 그 사람 배치를 내 놓기로 복사)
     // 따라 걸기는 지금 앉아 있는 사람만 (확정하고 나간 사람의 베팅은 판에 남아 있지만 얼굴을 띄우지 않는다)
@@ -400,7 +426,7 @@ function betControls(t: Ctx, el: HTMLElement) {
     el.innerHTML = `<div class="row rl-top">
         <span class="rl-units">${[1, 5, 10].map((n) => `<button class="btn small ${unit === n ? 'sel' : ''}" data-u="${n}">${t.fmt(base * n)}</button>`).join('')}</span>
         <span class="rl-left" id="rl-left">${p.endsAt ? Math.max(0, Math.ceil((p.endsAt - serverNow()) / 1000)) : 20}초</span>
-        <span class="amount">${t.fmt(total)} / ${t.fmt(p.maxTotal)}</span>
+        <span class="amount">${t.fmt(total)} / ${t.fmt(cap)}</span>
       </div>
       ${board(p, t, true)}
       <div class="row rl-tools">
@@ -431,15 +457,15 @@ function betControls(t: Ctx, el: HTMLElement) {
     );
     el.querySelectorAll<HTMLButtonElement>('[data-bk]').forEach((b) =>
       b.addEventListener('click', () => {
-        if (!addBet(b.dataset.bk as BetKind, Number(b.dataset.bt), base * unit, p.maxTotal)) return void flash(el, `한 번에 ${t.fmt(p.maxTotal)}칩까지 걸 수 있어요`);
+        if (!addBet(b.dataset.bk as BetKind, Number(b.dataset.bt), base * unit, capOf(t, p))) return void flash(el, overMsg(t, p));
         sfx('chip');
         t.redraw();
       }),
     );
-    const over = `한 번에 ${t.fmt(p.maxTotal)}칩까지 걸 수 있어요`;
+    const over = overMsg(t, p);
     el.querySelector('#rl-clear')?.addEventListener('click', () => (setLocal([]), t.redraw()));
     el.querySelector('#rl-repeat')?.addEventListener('click', () => {
-      const next = rlFollow(lastBets, p.maxTotal);
+      const next = rlFollow(lastBets, capOf(t, p));
       if (!next) return void flash(el, over);
       setLocal(next);
       t.redraw();
@@ -453,7 +479,7 @@ function betControls(t: Ctx, el: HTMLElement) {
       t.redraw();
     });
     el.querySelector('#rl-x2')?.addEventListener('click', () => {
-      const next = rlDouble(local, p.maxTotal);
+      const next = rlDouble(local, capOf(t, p));
       if (!next) return void flash(el, over);
       setLocal(next);
       sfx('chip');
@@ -476,7 +502,7 @@ function betControls(t: Ctx, el: HTMLElement) {
           t.redraw();
           return void flash(el, `★${i + 1}에 저장했어요`, true);
         }
-        const next = rlFromPreset(slot, base, p.maxTotal);
+        const next = rlFromPreset(slot, base, capOf(t, p));
         if (!next) return void flash(el, over);
         setLocal(next);
         sfx('chip');
@@ -485,8 +511,8 @@ function betControls(t: Ctx, el: HTMLElement) {
     );
     el.querySelectorAll<HTMLButtonElement>('[data-follow]').forEach((b) =>
       b.addEventListener('click', () => {
-        const next = rlFollow(p.bets[b.dataset.follow!], p.maxTotal);
-        if (!next) return;
+        const next = rlFollow(p.bets[b.dataset.follow!], capOf(t, p));
+        if (!next) return void flash(el, overMsg(t, p));
         setLocal(next);
         sfx('chip');
         t.redraw();
@@ -532,14 +558,16 @@ function showResult(t: Ctx, p: RoulettePublic, key: string) {
   const room = t.room.id;
   const open = () => {
     resultTimer = null;
-    if (room !== roomId || p.landed === null || t.mySeat === null) return;
+    const ms = spinSeat(t, p);
+    if (room !== roomId || p.landed === null || ms === null) return;
     const animal = WHEEL[p.landed];
-    const win = p.wins[String(t.mySeat)] ?? 0;
-    const bet = sumOf(p.bets[String(t.mySeat)] ?? []);
-    const line = bet === 0 ? '이번 판은 걸지 않았어요' : win > 0 ? `<b class="win">+${t.fmt(win)}칩 당첨!</b> (건 금액 ${t.fmt(bet)})` : `꽝… (건 금액 ${t.fmt(bet)})`;
+    const win = p.wins[String(ms)] ?? 0;
+    const bet = sumOf(p.bets[String(ms)] ?? []);
+    const oc = outcome(t, bet, win);
+    const line = oc.long;
     const d = document.createElement('div');
     d.className = 'modal';
-    d.innerHTML = `<div class="box result ${win > 0 ? 'win' : ''}"><h3>🎡 결과: ${esc(NAME[animal])}</h3>
+    d.innerHTML = `<div class="box result ${oc.good ? 'win' : ''}"><h3>🎡 결과: ${esc(NAME[animal])}</h3>
       <p>${SEASONS[seasonOf(p.landed)]} · ${p.landed % 2 === 0 ? '양' : '음'}</p><p>${line}</p>
       <div class="row"><button class="btn primary big" data-x>확인 ▶ 다음 판</button></div></div>`;
     if (!document.querySelector('#stage')) return; // 그 사이 방을 나갔다
@@ -554,7 +582,7 @@ function showResult(t: Ctx, p: RoulettePublic, key: string) {
         closeResult();
       }
     }, 400);
-    sfx(win > 0 ? 'win' : bet > 0 ? 'lose' : 'toggle');
+    sfx(oc.net > 0 ? 'win' : oc.net < 0 ? 'lose' : 'toggle');
     d.querySelector<HTMLButtonElement>('[data-x]')!.addEventListener('click', async (ev) => {
       (ev.currentTarget as HTMLButtonElement).disabled = true;
       // 판 정리: 결과 창을 접고 베팅판의 칩·표시를 걷은 뒤에 다음 판으로
@@ -634,7 +662,9 @@ function flash(el: HTMLElement, msg: string, ok = false) {
 
 /** 베팅판 HTML: 계절마다 한 줄 [계절][띠][이웃][띠][이웃][띠][다음 줄로 이웃] + 음양 줄 */
 function board(p: RoulettePublic, t: Ctx, active: boolean) {
-  const me = String(t.mySeat);
+  // 이번 스핀의 내 자리 (같은 자리라도 앞사람이 맡은 스핀이면 그 베팅은 '다른 사람' 것으로 보인다)
+  const ms = spinSeat(t, p);
+  const me = ms === null ? '' : String(ms);
   // 당첨 칸 표시는 휠이 멈춘 뒤에
   const result = p.phase === 'spin' && wheelStopped(`${p.spin}:${t.room.round_no}`) ? p.landed : null;
   // 다른 사람 베팅 (확정한 것): 칸마다 아바타

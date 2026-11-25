@@ -10,6 +10,7 @@ import { LOCAL_MODE } from '../net/api';
 import { worldDailyRanking, type DailyRow } from '../net/world';
 import { fontsReady, nav, screen, stage, state } from './app';
 import { DPR } from './dpr';
+import { COLOR, css } from '../theme';
 import { sfx } from './sfx';
 
 declare global {
@@ -248,7 +249,7 @@ export function showRace(start: SoloStart) {
       parent: trackEl,
       width: Math.round(w * DPR),
       height: Math.round(h * DPR),
-      backgroundColor: '#9fd6ff',
+      backgroundColor: css(COLOR.skyMid),
       banner: false,
       audio: { noAudio: true },
       input: { keyboard: false, mouse: false, touch: false, gamepad: false },

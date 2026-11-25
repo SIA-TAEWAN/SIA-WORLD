@@ -14,7 +14,7 @@
 - 고르는 동안 가운데 미리보기 캐릭터가 바로 바뀐다.
 - 이름은 따로 입력받지 않고 SIA-WORLD 계정 이름(닉네임)을 쓴다.
 - 만든 뒤 외형 변경은 시아코인 30개.
-- 아트는 임시 도트(코드로 만든 플레이스홀더). 나중에 스프라이트 시트 파일만 바꾸면 되게. 타일 16px, 캐릭터 레이어 32×32px, 화면은 정수 배율 확대(픽셀 선명).
+- 아트는 임시 도트(코드로 만든 플레이스홀더). 나중에 스프라이트 시트 파일만 바꾸면 되게. 타일 16px, 캐릭터 레이어 한 칸 64×80px(화면에는 0.5배 = 32×40), 화면은 정수 배율 확대(픽셀 선명).
 
 ## 전투·성장 규칙
 - 무기는 칼 하나 고정. 강화 없음. 레벨과 구슬로만 강해진다.
@@ -93,13 +93,14 @@
 
 표 `tower_profiles(user_id, look jsonb|null, data jsonb, level, best_floor, best_at, look_changes, …)`. 클라이언트는 표를 직접 읽거나 쓰지 않는다.
 
-- `tower_state() → { look, data, bestFloor, siaCoins, lookPrice }`
+- `tower_state() → { look, data, bestFloor, siaCoins, lookPrice, savedAt }` (savedAt: 마지막 진행 저장 시각 ms, 106)
   - 처음이면 행을 만든다(look = null → 캐릭터 만들기 화면).
   - `data` 는 클라이언트 진행 상태 JSON (처음은 `{}`). 모양은 클라이언트가 정한다(아래).
 - `tower_set_look(p_look jsonb) → { look, siaCoins, paid }`
   - `p_look = { sex: 'm'|'f', hair: 0~3, face: 0~3, outfit: 0~3 }` 아니면 예외 `'bad look'`.
   - 처음(look 이 null)은 무료. 같은 외형이면 그대로(paid false). 다른 외형이면 시아코인 30 차감, 모자라면 예외 `'not enough sia coins'`.
-- `tower_save(p_data jsonb, p_cleared int default null) → { bestFloor, gotCoin, siaCoins }`
+- `tower_save(p_data jsonb, p_cleared int default null) → { bestFloor, gotCoin, siaCoins, savedAt }` (savedAt: 이 저장의 시각, 107)
+  - 기기는 받은 savedAt 을 적어 두고, 못 보낸 저장이 있을 때 `tower_state` 의 savedAt 이 그보다 크면(다른 기기의 저장) 그 뒤에 만든 것만 남기고 버린다. 외형 바꾸기는 savedAt 을 바꾸지 않는다(107).
   - 진행 저장. `p_cleared` = 방금 깬 층(계단을 오름 / 10층은 보스 처치). 없으면 그냥 저장(상점·메뉴·죽음).
   - 서버 확인: `p_data` 는 객체이고 32KB 이하, `level` 1~99, `exp`·`coins` 0 이상, `floor` 1~100, `checkpoint` 는 1·11·21…91 이면서 `best_floor + 1` 이하, `p_cleared` 는 1~100 이면서 `best_floor + 1` 이하(건너뛰기 금지). 어기면 예외 `'bad save'`.
   - `p_cleared > best_floor` 면 best_floor 갱신. `p_cleared` 가 있으면 시아코인 시도(층마다 평생 한 번).

@@ -373,17 +373,25 @@ describe('차례·시간 초과·오류', () => {
     expect(() => act(s, 0, { type: 'bet', amount: B })).toThrow(EngineError);
     expect(() => blackjack.settle(s)).toThrow(EngineError);
   });
-  it('시간 초과: 베팅은 최소, 플레이는 스탠드', () => {
-    let s = newRoundWithShoe({ seats: [human(0, 500), ai(1)], baseUnit: B, rng }, stackDeal([['10S', '8S'], ['10D', '8D']], ['10C', '7C'], FILLER));
-    expect(blackjack.timeout(s, 0, rng)).toEqual({ type: 'bet', amount: B });
-    expect(blackjack.timeout(s, 1, rng)).toEqual({ type: 'bet', amount: B });
+  it('시간 초과: 베팅 단계는 이번 판 쉬기(자동 베팅 없음), 플레이는 스탠드', () => {
+    let s = newRoundWithShoe({ seats: [human(0, 500), human(1, 500)], baseUnit: B, rng }, stackDeal([['10S', '8S']], ['10C', '7C'], FILLER));
+    // 자리를 비운 사람(0)은 쉬고, 건 사람(1)만 받는다
+    expect(blackjack.timeout(s, 0, rng)).toEqual({ type: 'sitout' });
     s = act(s, 0, blackjack.timeout(s, 0, rng));
+    s = act(s, 1, { type: 'bet', amount: B });
+    expect(s.phase).toBe('play');
+    expect(blackjack.timeout(s, 1, rng)).toEqual({ type: 'stand' });
     s = act(s, 1, blackjack.timeout(s, 1, rng));
-    expect(blackjack.timeout(s, 0, rng)).toEqual({ type: 'stand' });
-    // stack이 최소보다 작으면 sitout (보통은 이미 빠져 있음)
-    const fake = JSON.parse(JSON.stringify(newRoundWithShoe({ seats: [human(0)], baseUnit: B, rng }, FILLER))) as BjState;
-    fake.seats[0].stack = 50;
-    expect(blackjack.timeout(fake, 0, rng)).toEqual({ type: 'sitout' });
+    expect(s.phase).toBe('done');
+    // 쉰 자리는 정산(deltas)에 없다 → 칩도 시아코인도 오가지 않는다
+    const st = blackjack.settle(s);
+    expect(0 in st.deltas).toBe(false);
+    expect(1 in st.deltas).toBe(true);
+    // 모두 시간을 넘기면 아무도 안 걸고 판이 끝난다 (칩이 새지 않는다)
+    let e = newRoundWithShoe({ seats: [human(0, 500)], baseUnit: B, rng }, FILLER);
+    e = act(e, 0, blackjack.timeout(e, 0, rng));
+    expect(e.phase).toBe('done');
+    expect(blackjack.settle(e).deltas).toEqual({});
   });
 });
 

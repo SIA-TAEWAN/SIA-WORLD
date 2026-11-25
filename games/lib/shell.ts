@@ -65,6 +65,8 @@ export interface TableCtx<P = any, Q = any> {
   act(payload: unknown): Promise<boolean>;
   busy: boolean;
   fmt(n: number): string;
+  /** 지금 아는 내 지갑 잔액 (이 방 화폐, 아직 못 읽었으면 null). 결과 직후에는 잠깐 낡았을 수 있다 */
+  money(): number | null;
   avatarUrl(id: string): string;
   seatName(seat: number): string;
   seatAvatar(seat: number): string;
@@ -977,6 +979,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       },
       busy,
       fmt: (n) => m.wallet.formatAmount(n),
+      money: () => (wallet ? wallet[cur] : null),
       avatarUrl: m.z.avatarUrl,
       seatName: (n) => seats.find((s) => s.seat_no === n)?.nickname ?? `자리 ${n + 1}`,
       seatAvatar: (n) => seats.find((s) => s.seat_no === n)?.avatar ?? 'tiger',
@@ -1564,7 +1567,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     paintControls();
   }
 
-  // 차례 타이머
+  // 차례 타이머: 막대는 이 마감이 걸린 단계의 처음 길이를 100% 로 (게임·단계마다 길이가 다르다: 룰렛 베팅 20초·회전 30초 등)
+  let barDeadline = '';
+  let barSpan = 0;
   const timer = setInterval(() => {
     const bar = $(root, '#timer');
     if (!st?.turn_deadline || room?.status !== 'playing') {
@@ -1577,8 +1582,16 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       bar.style.width = '0';
       return;
     }
-    const left = Math.max(0, new Date(st.turn_deadline).getTime() - Date.now());
-    bar.style.width = `${Math.min(100, (left / 20000) * 100)}%`;
+    const end = new Date(st.turn_deadline).getTime();
+    const left = Math.max(0, end - Date.now());
+    if (st.turn_deadline !== barDeadline) {
+      // 새 마감: 서버가 이 마감을 찍은 시각(updated_at, 서버 시계라 마감과 같은 기준)부터의 길이. 중간에 들어왔어도 맞게 줄어 있다.
+      // 같은 마감으로 여러 번 공개되는 게임(룰렛: 확정할 때마다)도 처음 본 마감 그대로 둔다. 기기에서 만든 상태는 updated_at 이 순번이라 쓰지 않는다
+      barDeadline = st.turn_deadline;
+      const from = st.local ? NaN : Date.parse(st.updated_at);
+      barSpan = Math.max(left, Number.isFinite(from) && from < end ? end - from : 0, 1);
+    }
+    bar.style.width = `${Math.min(100, (left / barSpan) * 100)}%`;
     bar.classList.toggle('mine', !!mySeatRow() && st.pending_seats.includes(mySeatRow()!.seat_no));
   }, 200);
 

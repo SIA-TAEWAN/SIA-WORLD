@@ -228,7 +228,7 @@
     },
     {
       "asset_id": "a44265de-d2e8-4aab-a978-a7d85c50992d",
-      "sha12": "97e015ff9d89",
+      "sha12": "4c96cd0bba1c",
       "label": "wt-r03 → public/art/wt-r03.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
     },
     {
@@ -248,7 +248,7 @@
     },
     {
       "asset_id": "a4755ae9-3495-4aab-b754-cdfb8a5263a9",
-      "sha12": "86f4f78206dc",
+      "sha12": "6069ce6564d3",
       "label": "wt-r07 → public/art/wt-r07.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
     },
     {
@@ -263,7 +263,7 @@
     },
     {
       "asset_id": "fde46f94-0961-4289-9a57-eac0411b71b2",
-      "sha12": "20809b804394",
+      "sha12": "f776efd74245",
       "label": "wt-r10 → public/art/wt-r10.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
     },
     {

@@ -225,14 +225,31 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       return { round: d.round, readyAt: d.ready_at, goAt: d.go_at };
     },
     async submit(room, round, ms, character) {
-      const { data, error } = await sb.rpc('race_submit', { p_room_key: room, p_round: round, p_time_ms: ms, p_character: character });
-      const d = data as { best_ms: number; improved: boolean } | null;
-      if (error || !d) {
-        console.warn('[시아레이스] 기록을 서버에 올리지 못했어요', error?.message);
-        return { ...saveLocalBest(uid, ms), locked: isLockedError(error?.message) };
+      // 통신 실패(서버가 검사해서 거절한 P0001 이 아닌 오류)면 잠깐 쉬고 다시 (모두 3번, dailySubmit 과 같은 방식)
+      let error: { message?: string; code?: string } | null = null;
+      for (let i = 0; i < 3; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 1200 * i));
+        let data: unknown = null;
+        try {
+          ({ data, error } = await sb.rpc('race_submit', { p_room_key: room, p_round: round, p_time_ms: ms, p_character: character }));
+        } catch (e) {
+          error = { message: e instanceof Error ? e.message : String(e) };
+        }
+        const d = data as { best_ms: number; improved: boolean } | null;
+        if (!error && d) {
+          saveLocalBest(uid, d.best_ms);
+          return { saved: true, bestMs: d.best_ms, improved: d.improved };
+        }
+        // 앞선 요청이 서버에는 닿았다 (응답만 못 받음): 받은 것으로 본다 (최고 기록은 기기 값과 이번 기록 중 작은 값)
+        if (i > 0 && error && /already submitted/.test(error.message ?? '')) {
+          const local = saveLocalBest(uid, ms);
+          return { saved: true, bestMs: Math.min(local.bestMs, ms), improved: local.improved };
+        }
+        // 서버가 검사해서 거절한 것(raise exception)은 다시 해도 같다
+        if (!error || error.code === 'P0001') break;
       }
-      saveLocalBest(uid, d.best_ms);
-      return { saved: true, bestMs: d.best_ms, improved: d.improved };
+      console.warn('[시아레이스] 기록을 서버에 올리지 못했어요', error?.message);
+      return { ...saveLocalBest(uid, ms), locked: isLockedError(error?.message) };
     },
     async myBest() {
       const { data, error } = await sb.from('race_records').select('best_ms').eq('user_id', uid).maybeSingle();

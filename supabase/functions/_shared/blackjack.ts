@@ -583,7 +583,7 @@ export const blackjack: Engine<BjState, BjAction, BjCarry, BjPublic, BjPrivate> 
         double: '더블다운할 수 없습니다 (첫 두 장일 때만, 금액이 충분해야 함)',
         split: '스플릿할 수 없습니다 (같은 점수의 첫 두 장, 한 번만, 금액이 충분해야 함)',
       };
-      throw new EngineError(msg[action.type]);
+      throw new EngineError(msg[action.type] ?? '알 수 없는 행동이에요');
     }
     const hi = turn.hand;
     const h = st.hands[hi];
@@ -660,13 +660,10 @@ export const blackjack: Engine<BjState, BjAction, BjCarry, BjPublic, BjPrivate> 
     return s.phase === 'bet' ? { type: 'sitout' } : { type: 'stand' };
   },
 
-  timeout(s, seat) {
-    if (s.phase === 'bet') {
-      const st = seatOf(s, seat);
-      if (st.stack === null || st.stack >= s.baseUnit) return { type: 'bet', amount: s.baseUnit };
-      return { type: 'sitout' };
-    }
-    return { type: 'stand' };
+  // 시간 초과: 베팅 단계면 이번 판은 쉰다 (자동 시작을 켜 두고 자리를 비우면 판마다 기본 단위가 자동으로 걸려 칩이 새던 것을 막는다),
+  // 이미 걸었으면 스탠드. 쉰 자리는 settle 의 deltas 에서 빠진다 (나간 자리 leftAction 과 같다)
+  timeout(s) {
+    return s.phase === 'bet' ? { type: 'sitout' } : { type: 'stand' };
   },
 
   done(s) {
