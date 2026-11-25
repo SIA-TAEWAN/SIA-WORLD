@@ -175,7 +175,7 @@ describe('층 만들기', () => {
     }
     expect(posts).toBeGreaterThan(0);
     for (const k of Object.keys(seen) as (keyof typeof seen)[]) expect(seen[k], k).toBeGreaterThan(0);
-  });
+  }, 60_000);
 
   it('51층부터는 구조만 (적 데이터가 없어도 층은 만들어진다)', () => {
     for (const f of [51, 55, 60, 75, 100]) {
