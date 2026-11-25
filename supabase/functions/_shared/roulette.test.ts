@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng, type Rng, type SeatInfo } from './engine.ts';
-import { hits, MULT, normalizeBets, payoutOf, roulette, seasonCells, WHEEL, type RBet, type RouletteState } from './roulette.ts';
+import { hits, inThisSpin, MULT, normalizeBets, payoutOf, roulette, seasonCells, WHEEL, type RBet, type RouletteState } from './roulette.ts';
 import { Runner, type DeckRow, type RoomRow, type SeatRow, type Store } from './runner.ts';
 import { ENGINES } from './engines.ts';
 
@@ -312,5 +312,37 @@ describe('기록에 남은 확정 채우기 (adoptBets) · 늦게 온 결과 확
     expect(roulette.redundant(s, 1, { type: 'next' })).toBe(false);
     expect(roulette.redundant(null, 1, { type: 'next' })).toBe(true);
     expect(roulette.redundant(s, 1, { type: 'bet', bets: [] })).toBe(false);
+  });
+});
+
+describe('스핀 도중 같은 자리에 다른 사람이 앉으면', () => {
+  const who = (seat: number, userId: string): SeatInfo => ({ ...human(seat), userId });
+  it('참가자에 그 자리 사람(userId)을 기억하고, 화면은 그 사람이 나인지로 가른다', () => {
+    const s = roulette.newRound({ seats: [who(0, 'uA'), who(1, 'uC')], baseUnit: 100, carry: null, rng: seededRng(1) });
+    expect(s.players).toEqual([{ seat: 0, name: 'P0', uid: 'uA' }, { seat: 1, name: 'P1', uid: 'uC' }]);
+    expect(roulette.seatOwner(s, 0)).toBe('uA');
+    expect(roulette.seatOwner(s, 5)).toBeUndefined();
+    const pub = roulette.view(s).public;
+    expect(inThisSpin(pub, 0, 'uA')).toBe(true);
+    // A 가 나간 자리 0 에 B 가 앉았다: 이번 스핀은 B 것이 아니다
+    expect(inThisSpin(pub, 0, 'uB')).toBe(false);
+    expect(inThisSpin(pub, 2, 'uA')).toBe(false);
+    expect(inThisSpin(pub, null, 'uA')).toBe(false);
+    // 다음 스핀은 그때 앉은 사람으로 다시 꾸린다
+    let t = roulette.apply(s, 0, { type: 'bet', bets: [] }, fixed(0));
+    t = roulette.apply(t, 1, { type: 'bet', bets: [] }, fixed(0));
+    t = roulette.tick(t, fixed(0), [who(0, 'uB'), who(1, 'uC')]);
+    expect(t.phase).toBe('bet');
+    expect(roulette.seatOwner(t, 0)).toBe('uB');
+    expect(inThisSpin(roulette.view(t).public, 0, 'uB')).toBe(true);
+  });
+  it('예전 상태(사람 기록이 없는 참가자)는 자리 번호로만 본다', () => {
+    const s = roulette.newRound({ seats: [human(0)], baseUnit: 100, carry: null, rng: seededRng(1) });
+    expect(s.players).toEqual([{ seat: 0, name: 'P0' }]);
+    expect(roulette.seatOwner(s, 0)).toBeUndefined();
+    expect(inThisSpin(roulette.view(s).public, 0, 'anyone')).toBe(true);
+    // 공개 상태에 참가자 목록이 없는 아주 낡은 상태도 오류 없이
+    expect(inThisSpin({ players: undefined } as never, 0, 'x')).toBe(false);
+    expect(roulette.seatOwner({} as RouletteState, 0)).toBeUndefined();
   });
 });

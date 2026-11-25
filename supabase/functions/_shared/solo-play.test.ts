@@ -741,7 +741,9 @@ describe('기기에서 먼저 진행하는 2인 맞고 (화면 쪽 진행기)', 
   }, 30_000);
 
   it('상대가 내 차례에 나가면: 자리 변화를 보고 바로 sync 해 혼자 하는 판으로 넘어간다. 화면은 그대로이고 내 차례 시간은 기기에서 잰다 (서버 마감은 30분)', async () => {
-    const { sv, a, b } = await begin(18, { turnMs: 150 });
+    // 기기 차례 시간: 너무 짧으면(예전 150ms) 부하가 걸렸을 때 준비 단계에서 내 차례가 먼저 지나가 흔들린다
+    const TURN = 2000;
+    const { sv, a, b } = await begin(18, { turnMs: TURN });
     await finishDuoSome(sv, [a, b], 3);
     // u1 차례가 될 때까지 u2 가 둔다
     const rng = seededRng(4);
@@ -773,17 +775,26 @@ describe('기기에서 먼저 진행하는 2인 맞고 (화면 쪽 진행기)', 
     expect(a.jumps).toHaveLength(0);
     expect(a.shown.length).toBe(shown0);
     expect(nOf(a)).toBe(n0);
+    // 기기 마감 = 차례 시간 + 3초 (서버 30분 마감이 아니다)
     const dl = Date.parse(a.state()!.turn_deadline!);
-    expect(dl - Date.now()).toBeLessThan(4000);
+    expect(dl - Date.now()).toBeLessThanOrEqual(TURN + 3000);
     expect(dl - Date.now()).toBeGreaterThan(0);
-    // 그 시간이 지나면 기기가 내 자동 행동을 두고 (서버가 아니다), 나간 자리는 기기 AI 가 이어 둔다 → 끝까지 가서 서버가 정산한다
-    await until(() => nOf(a) > n0, 3000);
+    // 그 시간이 지나면 기기가 내 자동 행동을 두고 (서버가 아니다), 나간 자리는 기기 AI 가 이어 둔다
+    await until(() => nOf(a) > n0, TURN + 3000 + 5000);
+    expect(sv.room.status).toBe('playing');
+    // 나머지는 내가 직접 둔다 (차례마다 마감을 기다리면 판 끝까지 시간이 너무 걸린다) → 끝까지 가서 서버가 정산한다
+    const rng2 = seededRng(5);
+    for (let i = 0; i < 4000 && sv.room.status !== 'waiting'; i++) {
+      await a.host.settled();
+      if (a.myTurn()) a.play.act(a.pick(rng2));
+      await sleep(5);
+    }
     await until(() => sv.room.status === 'waiting', 20_000);
     expect(a.calls.replay.length).toBeGreaterThan(0);
     expect(sv.results.size).toBe(1);
     await until(() => !!a.state()?.public_state?.result, 3000);
     a.off();
-  }, 40_000);
+  }, 60_000);
 
   /** 몇 수만 둔다 */
   async function finishDuoSome(sv: ReturnType<typeof server>, screens: ReturnType<typeof screen>[], count: number) {

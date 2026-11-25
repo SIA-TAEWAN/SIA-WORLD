@@ -94,6 +94,8 @@ export interface HoldemState {
   board: string[];
   players: HoldemPlayer[];
   button: number;
+  /** (취소된 판만) 지난 판에서 넘어온 버튼 — 다음 판에 그대로 넘겨 버튼을 다시 뽑지 않는다 */
+  keptButton?: number | null;
   sbSeat: number;
   bbSeat: number;
   turn: number | null;
@@ -561,6 +563,8 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
       const deltas: Record<number, number> = {};
       for (const p of s.players) if (!p.excluded) deltas[p.seat] = 0;
       s.result = { cancelled: true, uncontested: false, winners: [], pots: [], hands: {}, deltas, excluded: s.players.filter((p) => p.excluded).map((p) => p.seat), board: [] };
+      // 판이 열리지 않았다: 넘어온 버튼을 다음 판으로 그대로 (취소될 때마다 버튼을 무작위로 다시 뽑지 않게)
+      s.keptButton = typeof input.carry?.button === 'number' ? input.carry.button : null;
       return s;
     }
     // 버튼: 지난 판 버튼 다음 참가자 (첫 판은 무작위)
@@ -652,7 +656,7 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
       }
       const isBet = s.curBet === 0;
       const raiseBy = to - s.curBet;
-      put(p, to - p.betRound);
+      const paid = put(p, to - p.betRound);
       const full = raiseBy >= Math.max(s.minRaise, s.bb);
       if (full) {
         s.minRaise = raiseBy;
@@ -672,7 +676,8 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
       }
       s.curBet = Math.max(s.curBet, p.betRound);
       p.last = p.allIn ? LABEL.allin : isBet ? LABEL.bet : LABEL.raise;
-      emit(s, isBet ? 'bet' : 'raise', { seat, to: p.betRound });
+      // amount: 이번에 실제로 더 낸 칩 (to 는 이번 베팅 라운드에 낸 합계 — 칩 이동 연출은 amount 로)
+      emit(s, isBet ? 'bet' : 'raise', { seat, to: p.betRound, amount: paid });
       if (p.allIn) emit(s, 'allin', { seat, amount: p.total });
     } else {
       throw new EngineError('잘못된 행동입니다');
@@ -701,7 +706,7 @@ export const holdem: Engine<HoldemState, HoldemAction, HoldemCarry, HoldemPublic
 
   settle(s: HoldemState): Settlement<HoldemCarry> {
     if (s.phase !== 'done' || !s.result) throw new EngineError('아직 끝나지 않았습니다');
-    return { deltas: { ...s.result.deltas }, summary: clone(s.result), carry: { button: s.button >= 0 ? s.button : null } };
+    return { deltas: { ...s.result.deltas }, summary: clone(s.result), carry: { button: s.button >= 0 ? s.button : (s.keptButton ?? null) } };
   },
 
   view(s: HoldemState): View<HoldemPublic, HoldemPrivate> {

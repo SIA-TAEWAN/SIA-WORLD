@@ -90,6 +90,12 @@ export interface RouletteCarry {
 export interface RPlayer {
   seat: number;
   name: string;
+  /**
+   * 이 스핀을 시작할 때 그 자리에 앉아 있던 사람 (userId). 스핀 도중 나가고 다른 사람이 같은 자리에 앉아도
+   * 이번 스핀의 베팅·결과·확인은 이 사람 것이다 → 화면은 이 값이 나인지 보고, 러너는 새로 앉은 사람의 행동을 다음 스핀부터 받는다.
+   * 이 값이 생기기 전에 저장된 상태(배포 사이)에는 없다 → 자리 번호로만 본다
+   */
+  uid?: string;
 }
 
 export interface RouletteState {
@@ -152,7 +158,8 @@ function emit(s: RouletteState, t: string, extra: Record<string, unknown> = {}):
   if (s.events.length > EVENT_KEEP) s.events.splice(0, s.events.length - EVENT_KEEP);
 }
 
-const humans = (seats: SeatInfo[]) => seats.filter((x) => x.kind === 'human').map((x) => ({ seat: x.seat, name: x.name }));
+const humans = (seats: SeatInfo[]): RPlayer[] =>
+  seats.filter((x) => x.kind === 'human').map((x) => (x.userId ? { seat: x.seat, name: x.name, uid: x.userId } : { seat: x.seat, name: x.name }));
 
 function startBet(s: RouletteState, players: RPlayer[]): void {
   s.phase = 'bet';
@@ -198,6 +205,7 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
   betSpin(s: RouletteState): number | null;
   adoptBets(s: RouletteState, rows: { seat: number; bets: unknown }[], rng: Rng): RouletteState;
   redundant(s: RouletteState | null, seat: number, action: RouletteAction): boolean;
+  seatOwner(s: RouletteState, seat: number): string | undefined;
 } = {
   game: 'roulette',
 
@@ -398,4 +406,17 @@ export const roulette: Engine<RouletteState, RouletteAction, RouletteCarry, Roul
     if (!s || s.phase !== 'spin') return true;
     return !s.players.some((p) => p.seat === seat) || (s.acked ?? []).includes(seat);
   },
+
+  /** 이번 스핀에서 그 자리를 맡은 사람 (스핀 시작 때 앉아 있던 사람). 예전 상태·참가하지 않은 자리는 undefined */
+  seatOwner(s: RouletteState, seat: number) {
+    const p = (s?.players ?? []).find((x) => x.seat === seat);
+    return typeof p?.uid === 'string' ? p.uid : undefined;
+  },
 };
+
+/** 화면용: 이번 스핀에 내가(이 자리 + 이 사람) 참가하는가. 스핀 도중 같은 자리에 새로 앉았으면 아니다 (예전 상태는 자리 번호로만) */
+export function inThisSpin(p: Pick<RoulettePublic, 'players'> | null | undefined, seat: number | null, userId: string | null | undefined): boolean {
+  if (!p || seat === null) return false;
+  const x = (p.players ?? []).find((y) => y.seat === seat);
+  return !!x && (typeof x.uid !== 'string' || x.uid === userId);
+}

@@ -466,7 +466,7 @@ function playControls(t: Ctx, el: HTMLElement) {
       <span class="amount">${t.fmt(betAmount)}</span>
       <button class="btn big primary" id="bet" ${t.busy ? 'disabled' : ''}>베팅</button>
       <button class="btn" id="sit" ${t.busy ? 'disabled' : ''}>이번 판 쉬기</button></div>
-      <p class="msg bj-range">베팅 ${t.fmt(min)} ~ ${t.fmt(max)}${lastBet > 0 ? ` · 지난번 ${t.fmt(lastBet)}` : ''}</p>`;
+      <p class="msg bj-range">베팅 ${t.fmt(min)} ~ ${t.fmt(max)}${lastBet > 0 ? ` · 지난번 ${t.fmt(lastBet)}` : ''} · 20초 안에 안 걸면 이번 판은 쉬어요</p>`;
     el.querySelectorAll<HTMLButtonElement>('[data-add]').forEach((b) =>
       b.addEventListener('click', () => {
         betAmount = bjAddBet(betAmount, Number(b.dataset.add), min, max);
