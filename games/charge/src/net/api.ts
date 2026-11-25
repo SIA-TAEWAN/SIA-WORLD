@@ -181,8 +181,14 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     }
   };
   const call = async (fn: string, args?: Record<string, unknown>) => {
-    const timeout = new Promise<RpcAnswer>((_, rej) => setTimeout(() => rej(new Error('timeout')), RPC_TIMEOUT_MS));
-    const res = await Promise.race([Promise.resolve((sb as RpcClient).rpc(fn, args)), timeout]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<RpcAnswer>((_, rej) => (timer = setTimeout(() => rej(new Error('timeout')), RPC_TIMEOUT_MS)));
+    let res: RpcAnswer;
+    try {
+      res = await Promise.race([Promise.resolve((sb as RpcClient).rpc(fn, args)), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
     if (res.error) {
       const why = rejectOf(res.error.message);
       throw why ? new ApiError(why) : new Error(res.error.message);

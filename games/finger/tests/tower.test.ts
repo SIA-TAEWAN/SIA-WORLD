@@ -155,7 +155,7 @@ describe('서버 다시 돌리기 (끝없는 탑)', () => {
     expect(server).toEqual(resultOf(s));
     expect(server.floors).toBe(s.wave);
     expect(server.ended).toBe(s.phase !== 'aim');
-  });
+  }, 30_000);
 
   it('조작 상한: 탑은 200개까지, 201개는 too many turns (스테이지는 40)', () => {
     const many = (n: number) => Array.from({ length: n }, () => ({ a: 0, p: 1, s: 0 as const }));

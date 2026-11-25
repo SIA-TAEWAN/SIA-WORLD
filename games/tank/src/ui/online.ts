@@ -726,10 +726,17 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     if (online !== g) return clearInterval(beat);
     if (g.isHost()) void backend!.touchRoom(room.id, clientId()).catch(() => undefined);
   }, 30_000);
+  // 다른 앱으로 갔다 돌아오면 곧바로 한 번 신호를 보낸다 (가려진 사이 타이머가 멈춰 신호가 끊겼을 수 있다)
+  const onShow = () => {
+    if (online !== g) return document.removeEventListener('visibilitychange', onShow);
+    if (!document.hidden) void backend!.touchRoom(room.id, clientId()).catch(() => undefined);
+  };
+  document.addEventListener('visibilitychange', onShow);
   // 게임 중 나가기 (나가기 버튼, 또는 자리를 오래 비워 AI가 내 탱크를 넘겨받았을 때)
   const quit = () => {
     if (online !== g) return;
     clearInterval(beat);
+    document.removeEventListener('visibilitychange', onShow);
     // 모두 나가면 서버가 방을 지운다
     void backend!.quitGame(room.id, clientId()).then(() => sess.refetch());
     g.dispose();
@@ -754,6 +761,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     resume,
     onEnd: (s: MatchSummary) => {
       clearInterval(beat);
+      document.removeEventListener('visibilitychange', onShow);
       // 판 결과 정리 (실패하면 몇 번 더 시도)
       const present = g.presentIds();
       // 결과는 기준 기기만 올린다. 다른 기기는 잠깐 기다렸다가 방이 아직 진행 중일 때만 (화면이 어긋난 기기가 먼저 정산하지 않게)
