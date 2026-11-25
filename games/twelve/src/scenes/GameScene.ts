@@ -8,7 +8,7 @@ import type { Drop } from '../game/drops';
 import { eunNeun, iGa } from '../game/progress';
 import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
-import { ENEMY_TINT, HARD_BOSS_TINT, artFor, floorOf, groundOf } from './art';
+import { ENEMY_TINT, EXIT_FRAME, HARD_BOSS_TINT, HERO_FRAME, HERO_FRAMES, artFor, floorOf, groundOf, hasArt } from './art';
 
 /** 기준 화면 크기 (세로 9:16). 더 긴 화면(아이폰 19.5:9 등)은 위아래로 더 보여 준다 — 띠를 남기지 않게 */
 export const W = 720;
@@ -84,8 +84,15 @@ export class GameScene extends Phaser.Scene {
   private hero!: Phaser.GameObjects.Image;
   private heroScale = 1;
   private faceLeft = false;
+  /** 대원 시트(앞 · 옆 · 뒤)를 받았는지. 못 받았으면 공용 전신 그림 한 장을 쓴다 */
+  private heroSheet = false;
   private exitMark!: Phaser.GameObjects.Text;
-  private chestMark!: Phaser.GameObjects.Text;
+  /** 출구 그림 (잠김 · 열림 두 칸). 없으면 동그라미 + 글자 그림 */
+  private exitImg: Phaser.GameObjects.Image | null = null;
+  private chestMark!: Phaser.GameObjects.Text | Phaser.GameObjects.Image;
+  /** 날아가는 것 · 베기 자국 그림: 프레임마다 앞에서부터 다시 나눠 쓴다 */
+  private shotViews: Phaser.GameObjects.Image[] = [];
+  private slashViews: Phaser.GameObjects.Image[] = [];
   private chunks = new Map<number, Phaser.GameObjects.Image>();
   private views = new Map<number, Phaser.GameObjects.Image>();
   private free: Phaser.GameObjects.Image[] = [];
@@ -122,11 +129,20 @@ export class GameScene extends Phaser.Scene {
     this.pops = [];
     this.fx = [];
     this.chains = [];
+    this.shotViews = [];
+    this.slashViews = [];
+    this.exitImg = null;
     this.lastSound.clear();
   }
 
   preload() {
-    this.load.image('hero', heroFullUrl(this.run.hero.id));
+    // 대원: 전용 시트(앞 · 옆 · 뒤)가 있으면 그것, 없거나 못 읽으면 공용 전신 그림 한 장
+    const id = this.run.hero.id;
+    if (hasArt(`hero-${id}`)) {
+      this.load.spritesheet('hero', artUrl(`hero-${id}`), { frameWidth: HERO_FRAME, frameHeight: HERO_FRAME });
+      this.load.once('loaderror', (f: Phaser.Loader.File) => f.key === 'hero' && this.load.image('hero', heroFullUrl(id)));
+    } else this.load.image('hero', heroFullUrl(id));
+    if (hasArt('exit')) this.load.spritesheet('exit', artUrl('exit'), { frameWidth: EXIT_FRAME, frameHeight: EXIT_FRAME });
     for (const n of artFor(this.run.map)) this.load.image(n, artUrl(n));
   }
 
@@ -138,9 +154,16 @@ export class GameScene extends Phaser.Scene {
     this.under = this.add.graphics().setDepth(2);
     this.over = this.add.graphics().setDepth(60);
     this.exitMark = this.add.text(s.exitX, s.exitY, '🔒', { fontFamily: FONT, fontSize: '44px' }).setOrigin(0.5).setDepth(3);
-    this.chestMark = this.add.text(s.chestX, s.chestY, '🎁', { fontFamily: FONT, fontSize: '40px' }).setOrigin(0.5).setDepth(3);
-    this.hero = this.add.image(s.p.x, s.p.y, this.textures.exists('hero') ? 'hero' : 'hero-fallback').setOrigin(0.5, 0.86);
-    this.heroScale = 92 / this.hero.height;
+    if (this.textures.exists('exit')) {
+      this.exitImg = this.add.image(s.exitX, s.exitY, 'exit', 0).setDepth(3);
+      this.exitMark.setVisible(false);
+    }
+    this.chestMark = this.textures.exists('chest')
+      ? this.add.image(s.chestX, s.chestY, 'chest').setDisplaySize(64, 64).setDepth(3)
+      : this.add.text(s.chestX, s.chestY, '🎁', { fontFamily: FONT, fontSize: '40px' }).setOrigin(0.5).setDepth(3);
+    this.heroSheet = this.textures.exists('hero') && this.textures.get('hero').has(String(HERO_FRAMES.back));
+    this.hero = this.add.image(s.p.x, s.p.y, this.textures.exists('hero') ? 'hero' : 'hero-fallback', this.heroSheet ? HERO_FRAMES.front : undefined).setOrigin(0.5, 0.86);
+    this.heroScale = (this.heroSheet ? 98 : 92) / this.hero.height;
     this.hero.setScale(this.heroScale);
     for (let i = 0; i < NUM_POOL; i++) {
       const o = this.add.bitmapText(0, 0, 'digits', '0', DIGIT_H).setOrigin(0.5).setDepth(70).setVisible(false);
@@ -391,9 +414,16 @@ export class GameScene extends Phaser.Scene {
     g.clear();
     // 출구 · 상자
     const open = s.exitOpen;
-    g.fillStyle(open ? COLOR.primary : COLOR.track, open ? 0.75 + 0.2 * Math.sin(now * 6) : 0.8).fillCircle(s.exitX, s.exitY, 40);
-    g.lineStyle(5, COLOR.outline, 1).strokeCircle(s.exitX, s.exitY, 40);
-    this.exitMark.setText(open ? '🚪' : '🔒');
+    if (this.exitImg) {
+      // 열리면 빛이 숨 쉬듯 커졌다 작아진다
+      const size = open ? 104 + 6 * Math.sin(now * 6) : 100;
+      if (open) g.fillStyle(COLOR.primary, 0.3 + 0.15 * Math.sin(now * 6)).fillCircle(s.exitX, s.exitY, 62);
+      this.exitImg.setFrame(open ? 1 : 0).setDisplaySize(size, size);
+    } else {
+      g.fillStyle(open ? COLOR.primary : COLOR.track, open ? 0.75 + 0.2 * Math.sin(now * 6) : 0.8).fillCircle(s.exitX, s.exitY, 40);
+      g.lineStyle(5, COLOR.outline, 1).strokeCircle(s.exitX, s.exitY, 40);
+      this.exitMark.setText(open ? '🚪' : '🔒');
+    }
     this.chestMark.setVisible(!s.chest);
     // 떨어진 것: 통통 튀고, 레어·열쇠는 빛기둥이 선다
     for (const m of this.dropMarks.values()) {
@@ -456,6 +486,8 @@ export class GameScene extends Phaser.Scene {
     const dead = s.phase === 'dead';
     const rolling = p.rollT > 0;
     const bob = p.moving && !rolling ? Math.abs(Math.sin(now * 12)) * 5 : 0;
+    // 시트가 있으면 바라보는 쪽의 칸: 위아래가 뚜렷하면 뒤 · 앞, 아니면 옆 (왼쪽은 뒤집는다)
+    if (this.heroSheet) this.hero.setFrame(Math.abs(p.fy) > Math.abs(p.fx) * 1.3 ? (p.fy > 0 ? HERO_FRAMES.front : HERO_FRAMES.back) : HERO_FRAMES.side);
     this.hero
       .setPosition(p.x, p.y + PLAYER_R - bob)
       .setFlipX(this.faceLeft)
@@ -468,6 +500,7 @@ export class GameScene extends Phaser.Scene {
     else this.hero.clearTint();
 
     // 휘두른 자국
+    let slashN = 0;
     for (let i = this.fx.length - 1; i >= 0; i--) {
       const f = this.fx[i];
       f.t -= dt;
@@ -475,8 +508,21 @@ export class GameScene extends Phaser.Scene {
         this.fx.splice(i, 1);
         continue;
       }
+      if (f.shape.k === 'arc' && this.textures.exists('fx-slash')) {
+        // 베기 자국 그림: 오른쪽으로 볼록한 초승달을 휘두른 쪽으로 돌려 놓는다
+        const v = this.slashViews[slashN] ?? (this.slashViews[slashN] = this.add.image(0, 0, 'fx-slash').setDepth(59));
+        slashN++;
+        const size = f.shape.r * 1.3 * Math.min(1, f.shape.half / 1.2);
+        v.setVisible(true)
+          .setPosition(f.x + Math.cos(f.ang) * f.shape.r * 0.78, f.y + Math.sin(f.ang) * f.shape.r * 0.78)
+          .setRotation(f.ang)
+          .setDisplaySize(size * (1.05 - 0.3 * (f.t / 0.16)), size * 1.3)
+          .setAlpha(Math.min(1, (f.t / 0.16) * 1.6));
+        continue;
+      }
       this.drawShape(o, f.shape, f.x, f.y, f.ang, COLOR.white, 0.75 * (f.t / 0.16), COLOR.white, 0);
     }
+    for (; slashN < this.slashViews.length; slashN++) this.slashViews[slashN].setVisible(false);
     // 번개
     for (let i = this.chains.length - 1; i >= 0; i--) {
       const c = this.chains[i];
@@ -496,8 +542,24 @@ export class GameScene extends Phaser.Scene {
       }
     }
     // 날아가는 것
+    let shotN = 0;
     for (const sh of s.shots) {
       if (!sh.on || !this.onScreen(sh.x, sh.y, 40)) continue;
+      const key = `p-${sh.look}`;
+      if (this.textures.exists(key)) {
+        // 그림이 있으면 그림으로: 오른쪽을 보는 그림을 날아가는 쪽으로 돌린다 (화살 · 창은 촉이 맞는 자리)
+        const v = this.shotViews[shotN] ?? (this.shotViews[shotN] = this.add.image(0, 0, key).setDepth(58));
+        shotN++;
+        const round = sh.look === 'orb' || sh.look === 'fire';
+        const scale = sh.look === 'orb' ? (sh.r * 2 + 14) / 72 : sh.look === 'fire' ? (sh.r * 2 + 12) / 72 : sh.look === 'spear' ? 0.72 : 0.56;
+        v.setTexture(key)
+          .setOrigin(sh.look === 'orb' ? 0.5 : sh.look === 'fire' ? 0.68 : 0.94, 0.5)
+          .setVisible(true)
+          .setPosition(sh.x, sh.y)
+          .setRotation(round && sh.look === 'orb' ? 0 : Math.atan2(sh.vy, sh.vx))
+          .setScale(scale);
+        continue;
+      }
       if (sh.look === 'orb' || sh.look === 'fire') {
         const col = sh.look === 'fire' ? COLOR.pink : COLOR.primaryLight;
         o.fillStyle(COLOR.outline, 1).fillCircle(sh.x, sh.y, sh.r + 3);
@@ -513,6 +575,7 @@ export class GameScene extends Phaser.Scene {
         o.fillStyle(COLOR.primary, 1).fillCircle(sh.x, sh.y, sh.look === 'spear' ? 6 : 4);
       }
     }
+    for (; shotN < this.shotViews.length; shotN++) this.shotViews[shotN].setVisible(false);
 
     // 달그림자 (4지형): 보이는 거리 밖을 어둡게 덮는다
     const see = sightOf(s);
