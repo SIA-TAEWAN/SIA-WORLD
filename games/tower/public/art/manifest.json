@@ -1,5 +1,5 @@
 {
-  "_note": "public/art/ 에 넣은 그림 파일 목록 (여기 적힌 것만 불러온다). games/tower/art/draw.py 가 다시 쓴다. ASSETS.md 참고",
+  "_note": "public/art/ 에 넣은 그림 파일 목록 (여기 적힌 것만 불러온다). 1~5구역은 games/tower/art/build.py(SpriteCook), 6~10구역은 art/draw.py(손그림)가 만든다. ASSETS.md 참고",
   "files": [
     "char/body_m.png",
     "char/body_f.png",

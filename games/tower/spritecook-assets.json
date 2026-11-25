@@ -1,0 +1,195 @@
+{
+  "_note": "시아의탑 1~5구역 SpriteCook 그림 (2026-11-25). 받은 시트는 art/spritecook/ 에 있고 python games/tower/art/build.py 가 public/art/** 와 로비 카드를 만든다. 모델: gemini-nano-banana-2.1 (2K, 자홍 바탕, 틀 그림을 고쳐 그리기) — 로비 카드만 1K · 도트 아님",
+  "assets": [
+    {
+      "asset_id": "61ac3c54-ee78-48de-9bfb-fb7058cb1a16",
+      "sha12": "36221cccfb47",
+      "file": "art/spritecook/char-base.png",
+      "label": "캐릭터 기준 시트: 파랑 도포 민머리 대원 8칸 × 3줄(아래·오른쪽·위) → char/body_m · body_f · outfit_0"
+    },
+    {
+      "asset_id": "29ef0336-9ede-4313-97a1-3311a57db480",
+      "sha12": "c4a469d05e5e",
+      "file": "art/spritecook/char-outfit1.png",
+      "label": "옷 1 분홍 저고리·흰 치마 (기준 시트의 옷만 바꿈) → char/outfit_1"
+    },
+    {
+      "asset_id": "e4e67109-6fdf-4485-8e44-33bb744f6077",
+      "sha12": "531ca50b48dc",
+      "file": "art/spritecook/char-outfit2.png",
+      "label": "옷 2 노랑 조끼·흰 적삼·갈색 바지 → char/outfit_2"
+    },
+    {
+      "asset_id": "62f49935-23a1-4539-aabe-c5a6c329112f",
+      "sha12": "292188c11553",
+      "file": "art/spritecook/char-outfit3.png",
+      "label": "옷 3 초록 무복·금띠 → char/outfit_3"
+    },
+    {
+      "asset_id": "13bad256-95d1-4bf8-860e-6f444cfbad6c",
+      "sha12": "e4b4f5c849f8",
+      "file": "art/spritecook/char-hair.png",
+      "label": "머리 모양 8가지 × 3방향 (남 4 · 여 4) → char/hair_m0~3 · hair_f0~3"
+    },
+    {
+      "asset_id": "fde16c1e-ae7a-410c-ba47-eb6dfe0efdb9",
+      "sha12": "15de2cc9b519",
+      "file": "art/spritecook/char-faces.png",
+      "label": "얼굴 8가지 × 3방향 (앞의 4개: 동글·방긋·초롱·다부진) → char/face_0~3. 받은 그림(696×388)의 원본을 1배(256×144)로 줄여 둔 것"
+    },
+    {
+      "asset_id": "994e90ea-2812-4f9b-88ed-be42e7c3caec",
+      "sha12": "91f5518f5854",
+      "file": "art/spritecook/enemy1.png",
+      "label": "1구역 적 → enemy/slime · spitter · knight · golem"
+    },
+    {
+      "asset_id": "709c5839-1cca-4445-b3f3-786e73cf7d6c",
+      "sha12": "cab7909f050c",
+      "file": "art/spritecook/enemy2.png",
+      "label": "2구역 적 → enemy/sprout · moth · lizard · toad · treant · imugi"
+    },
+    {
+      "asset_id": "a066471c-e980-442d-89ed-92f518006528",
+      "sha12": "7f846f8e6c8b",
+      "file": "art/spritecook/enemy3.png",
+      "label": "3구역 적 → enemy/snowimp · icebat · frostjar · wisp · haetae · winterGeneral"
+    },
+    {
+      "asset_id": "3ff3fce2-890f-4597-9dc0-4b6b99abf89e",
+      "sha12": "86c15b231dc3",
+      "file": "art/spritecook/enemy4.png",
+      "label": "4구역 적 → enemy/ram · kite · chick · geumgye · yeongdeung"
+    },
+    {
+      "asset_id": "99cc908e-0d53-4abd-b72e-33793e859484",
+      "sha12": "d398ecfd6474",
+      "file": "art/spritecook/enemy5.png",
+      "label": "5구역 적 → enemy/bulgae · sparrow · iron · hwacha · bulgasari"
+    },
+    {
+      "asset_id": "683b5f68-b4a8-4048-8710-b3773b7eb7cf",
+      "sha12": "dcb92cf52a97",
+      "file": "art/spritecook/enemy-fix.png",
+      "label": "16px 칸에 넘치던 적을 작게 다시 → enemy/goblin · torchimp · wildcat · scarecrow · icecrystal · bat"
+    },
+    {
+      "asset_id": "13d0efdf-6593-433f-b04f-0e8b658a6623",
+      "sha12": "cc40682ec754",
+      "file": "art/spritecook/tiles-stone.png",
+      "label": "1구역 돌 복도 타일 43칸 → tiles.png"
+    },
+    {
+      "asset_id": "498f46a9-ee72-49c0-a60c-04bea9330b9c",
+      "sha12": "d498267f5b86",
+      "file": "art/spritecook/tiles-moss.png",
+      "label": "2구역 이끼 낀 회랑 타일 (앞 12칸은 덧그려진 것) → tiles-moss.png"
+    },
+    {
+      "asset_id": "733c62c0-4f0e-4706-b343-02c97b762084",
+      "sha12": "568a24fd00a9",
+      "file": "art/spritecook/tiles-frost.png",
+      "label": "3구역 서리 누각 타일 → tiles-frost.png"
+    },
+    {
+      "asset_id": "c4ff424a-e0ef-4564-bca1-35db5aee50ad",
+      "sha12": "a190b5acab0d",
+      "file": "art/spritecook/tiles-cloud.png",
+      "label": "4구역 새벽 구름 뜰 타일 (앞 8칸은 덧그려진 것) → tiles-cloud.png"
+    },
+    {
+      "asset_id": "dae65054-4300-4993-9b44-ea68aac3e06f",
+      "sha12": "a28472c80b6e",
+      "file": "art/spritecook/tiles-ember.png",
+      "label": "5구역 잿불 성채 타일 (앞 12칸은 덧그려진 것) → tiles-ember.png"
+    },
+    {
+      "asset_id": "b16f205d-1870-49de-b178-9868620cfbee",
+      "sha12": "7a5fe1584b4d",
+      "file": "art/spritecook/orbs.png",
+      "label": "구슬 아이콘 16개 → orb/<id>.png"
+    },
+    {
+      "asset_id": "6deb405a-c41b-4f39-bd2c-f1cad2ee8aa1",
+      "sha12": "6572ae6b520a",
+      "file": "art/spritecook/card.png",
+      "label": "로비 카드 (16:9, 만화풍, 화풍 참고 = 레이스·서바이벌·탱크 카드) → shared/images/card-tower.png (가운데 16:10 자르기, 640×400)"
+    },
+    {
+      "asset_id": "eae9a610-69cb-4501-a046-9b18fc03f995",
+      "label": "(틀, 올린 것) 손그림 캐릭터 자세 틀 — char-base 를 만들 때 고쳐 그린 그림"
+    },
+    {
+      "asset_id": "11828e29-e4c2-41a6-a48a-dce950e34f5f",
+      "label": "(틀, 올린 것) 정리한 기준 시트 8배 — 옷 1~3 을 만들 때 고쳐 그린 그림"
+    },
+    {
+      "asset_id": "10e2add8-5994-498d-8614-cda810bfce2d",
+      "label": "(틀, 올린 것) 초록 옷 대기 칸 8 × 3 — 머리 모양 · 얼굴을 만들 때 고쳐 그린 그림"
+    },
+    {
+      "asset_id": "fd2b7555-4822-409f-a989-2de34a432f2d",
+      "label": "(틀, 올린 것) 손그림 1구역 적"
+    },
+    {
+      "asset_id": "a36e1ca9-b286-4b74-b1f6-4d0392dfb047",
+      "label": "(틀, 올린 것) 손그림 2구역 적"
+    },
+    {
+      "asset_id": "c88c71e9-4f30-4f31-8da9-cb5fa0dd08ba",
+      "label": "(틀, 올린 것) 손그림 3구역 적"
+    },
+    {
+      "asset_id": "28f20ed5-8b38-4b38-b61c-6823b2147835",
+      "label": "(틀, 올린 것) 손그림 4구역 적"
+    },
+    {
+      "asset_id": "05f706ef-2ac9-418f-b017-673569428b9b",
+      "label": "(틀, 올린 것) 손그림 5구역 적"
+    },
+    {
+      "asset_id": "206354c5-acc7-4c52-a5ca-f906ea928fa9",
+      "label": "(틀, 올린 것) 손그림 적 6종 (다시 그리기용)"
+    },
+    {
+      "asset_id": "35f34cb5-13cb-40bf-861f-c9691df600f2",
+      "label": "(틀, 올린 것) 손그림 타일 stone"
+    },
+    {
+      "asset_id": "b652e23a-f99c-476a-bb6c-a27c1b343b57",
+      "label": "(틀, 올린 것) 손그림 타일 moss"
+    },
+    {
+      "asset_id": "f6a10095-f5e3-4479-b418-866b32dfd1bb",
+      "label": "(틀, 올린 것) 손그림 타일 frost"
+    },
+    {
+      "asset_id": "9ffafed5-de7e-4fd7-a306-8108515cc17a",
+      "label": "(틀, 올린 것) 손그림 타일 cloud"
+    },
+    {
+      "asset_id": "92392a93-470b-4327-919f-af84d1a33db5",
+      "label": "(틀, 올린 것) 손그림 타일 ember"
+    },
+    {
+      "asset_id": "1b0a70e9-aa4d-4474-8683-72de231e80dd",
+      "label": "(틀, 올린 것) 손그림 구슬 아이콘 16개"
+    },
+    {
+      "asset_id": "ede4ee68-ae2f-4825-8414-bc62b7b2aaf8",
+      "label": "(쓰지 않음) 머리 모양 첫 시도 — 첫 칸이 왼쪽에서 잘림"
+    },
+    {
+      "asset_id": "426413d3-7708-4787-affa-5729948df819",
+      "label": "(쓰지 않음) 돌 복도 타일 첫 시도 — 도트가 아닌 세밀한 그림으로 나옴"
+    },
+    {
+      "asset_id": "4165c231-eb88-4465-8d4a-95cbaec80bb4",
+      "label": "(쓰지 않음) 돌 복도 타일 둘째 시도 — 손그림과 거의 같게 나옴"
+    },
+    {
+      "asset_id": "5f6af218-3818-4142-9b83-7d9362632285",
+      "label": "(쓰지 않음) 서리 타일 첫 시도 — 화로·발판·풍경의 켜짐/꺼짐이 구별되지 않음"
+    }
+  ]
+}

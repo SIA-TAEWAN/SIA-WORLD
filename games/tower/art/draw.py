@@ -1,10 +1,13 @@
 """
-시아의탑 도트 그림 전부 (Fable 5.2 손그림, 2026-11-25). SpriteCook 크레딧이 생기면 다시 그린다 (art/spritecook/REDRAW-QUEUE.md).
+시아의탑 6~10구역 도트 그림 (Fable 5.2 손그림, 2026-11-25): 타일 시트 5장(tiles-thunder/galaxy/flower/storm/wish.png) · 적 34종 · 투사체 6종(proj/) · 엔딩 그림.
+SpriteCook 크레딧이 생기면 다시 그린다 (art/spritecook/REDRAW-QUEUE.md 7번).
 
-  python games/tower/art/draw.py            # public/art/** · manifest.json · shared/images/card-tower.png 를 다시 만든다
+  python games/tower/art/draw.py            # 위 그림들과 manifest.json 을 다시 만든다
   python games/tower/art/draw.py <폴더>      # 확인용 확대 그림(contact-*.png)도 그 폴더에 만든다
 
-1구역(tiles.png) · 2구역 이끼(tiles-moss.png) · 3구역 서리(tiles-frost.png) · 4구역 구름(tiles-cloud.png) · 5구역 잿불(tiles-ember.png) · 6~10구역(tiles-thunder/galaxy/flower/storm/wish.png), 적 66종, 투사체 6종(proj/), 엔딩 그림. 규격은 games/tower/ASSETS.md, 칸 순서·자세는 src/art/sheets.ts 와 같다. 무작위가 없어 몇 번을 돌려도 같은 파일이 나온다.
+1~5구역(캐릭터 레이어 · 타일 5장 · 적 32종 · 구슬 아이콘)과 로비 카드는 SpriteCook 그림으로 바뀌었다 — art/build.py 가 만들고, 이 파일은 그 파일들을 쓰지 않는다
+(그리는 코드는 남아 있다: build.py 가 몇몇 타일 칸을 여기서 빌리고, 엔딩 그림과 확인용 그림이 예전 캐릭터 · 타일을 쓴다).
+규격은 games/tower/ASSETS.md, 칸 순서·자세는 src/art/sheets.ts 와 같다. 무작위가 없어 몇 번을 돌려도 같은 파일이 나온다.
 색은 shared/theme.css 의 값만 쓴다 (살색 한 가지만 sheets.ts 의 임시 그림과 같은 값).
 """
 import json
@@ -3170,12 +3173,18 @@ def main():
     files = []
 
     def save(cv, rel):
+        if rel in SPRITECOOK:          # SpriteCook 그림(art/build.py)은 덮어쓰지 않는다 — 목록에만 올린다
+            files.append(rel)
+            return
         path = ART / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         cv.im.save(path)
         files.append(rel)
 
+    spritecook_enemies = list(ENEMIES)[0:12] + ZONE3 + ZONE4 + ZONE5
+    SPRITECOOK = {f'enemy/{e}.png' for e in spritecook_enemies} | {f'orb/{o}.png' for o in ORBS} | {THEME_FILES[t] for t in ('stone', 'moss', 'frost', 'cloud', 'ember')}
     chars = draw_chars()
+    SPRITECOOK |= {f'char/{n}.png' for n in chars}
     order = ['body_m', 'body_f'] + [f'face_{i}' for i in range(4)] + [f'outfit_{i}' for i in range(4)] + [f'hair_m{i}' for i in range(4)] + [f'hair_f{i}' for i in range(4)]
     for n in order:
         save(chars[n], f'char/{n}.png')
@@ -3195,13 +3204,13 @@ def main():
     ending = draw_ending(chars, tile_sheets, True)
     save(ending, 'ending.png')
     save(draw_ending(chars, tile_sheets, False), 'ending-bg.png')
-    card = draw_card(chars, enemies, orbs)
+    # 로비 카드(shared/images/card-tower.png)는 SpriteCook 그림이다 — draw_card 는 부르지 않는다
     manifest = {
-        '_note': 'public/art/ 에 넣은 그림 파일 목록 (여기 적힌 것만 불러온다). games/tower/art/draw.py 가 다시 쓴다. ASSETS.md 참고',
+        '_note': 'public/art/ 에 넣은 그림 파일 목록 (여기 적힌 것만 불러온다). 1~5구역은 games/tower/art/build.py(SpriteCook), 6~10구역은 art/draw.py(손그림)가 만든다. ASSETS.md 참고',
         'files': files,
     }
     (ART / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    print(f'{len(files)} files + manifest.json + {CARD.name}')
+    print(f'{len(files)} files (SpriteCook {len(SPRITECOOK)} 은 그대로 둠) + manifest.json')
 
     if len(sys.argv) > 1:      # 확인용 확대 그림
         out = Path(sys.argv[1])
