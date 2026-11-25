@@ -46,8 +46,13 @@ function siaWorldDev(): Plugin {
 }
 
 // 배포: https://<owner>.github.io/SIA-WORLD/games/twelve/ (상대 경로로 빌드해서 어느 주소에 올려도 동작)
+// 그림 판본: public/art/** 주소 뒤에 붙인다 (?v=…). 배포마다 바뀌어서 서비스 워커가 칸 배치가 바뀐 옛 그림을 내주지 않는다.
+// GitHub Actions 에서는 커밋 해시(GITHUB_SHA), 그 밖의 빌드는 빌드 시각, 개발 서버는 'dev'
+const artVersion = (command: string) => (command === 'serve' ? 'dev' : (process.env.GITHUB_SHA?.slice(0, 12) ?? Date.now().toString(36)));
+
 export default defineConfig(({ command }) => ({
   base: command === 'serve' ? '/games/twelve/' : './',
+  define: { 'import.meta.env.VITE_ART_VER': JSON.stringify(artVersion(command)) },
   plugins: [siaWorldDev()],
   build: { chunkSizeWarningLimit: 2000 },
 }));

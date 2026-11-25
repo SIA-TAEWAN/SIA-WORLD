@@ -163,10 +163,23 @@ export class GameScene extends Phaser.Scene {
   preload() {
     // 대원: 전용 시트(앞 · 옆 · 뒤)가 있으면 그것, 없거나 못 읽으면 공용 전신 그림 한 장
     const id = this.run.hero.id;
+    // 못 읽은 그림의 예비 (다른 파일이 먼저 실패해도 놓치지 않게 on 으로 걸고, 다 받으면 뗀다):
+    // 대원 시트 → 공용 전신 그림 · 벽/느린 바닥 오토타일셋 → 이어 붙는 무늬 (art.ts 의 wallArt · slowArt)
+    const backup = new Map<string, [string, string]>();
     if (hasArt(`hero-${id}`)) {
       this.load.spritesheet('hero', artUrl(`hero-${id}`), { frameWidth: HERO_FRAME, frameHeight: HERO_FRAME });
-      this.load.once('loaderror', (f: Phaser.Loader.File) => f.key === 'hero' && this.load.image('hero', heroFullUrl(id)));
+      backup.set('hero', ['hero', heroFullUrl(id)]);
     } else this.load.image('hero', heroFullUrl(id));
+    const region = this.run.map.region;
+    for (const [set, pattern] of [[wallTiles(region), wallArt(region)], [slowTiles(region), slowArt(region)]] as const) if (set && pattern) backup.set(set, [pattern, artUrl(pattern)]);
+    const onError = (f: Phaser.Loader.File) => {
+      const b = backup.get(f.key);
+      if (!b) return;
+      backup.delete(f.key);
+      this.load.image(b[0], b[1]);
+    };
+    this.load.on('loaderror', onError);
+    this.load.once('complete', () => this.load.off('loaderror', onError));
     if (hasArt('exit')) this.load.spritesheet('exit', artUrl('exit'), { frameWidth: EXIT_FRAME, frameHeight: EXIT_FRAME });
     if (hasArt(`ic-u-${id}`)) this.load.image(`ic-u-${id}`, artUrl(`ic-u-${id}`));
     // 보스 공격 동작 (예고 · 내려치기 두 칸)
@@ -420,10 +433,16 @@ export class GameScene extends Phaser.Scene {
    * 카메라 세로 목표: 대원을 가운데보다 조금 아래에. 맵 끝에서는 맵 밖(벽 색)을 조금 보여 준다 —
    * 위는 HUD, 아래는 조이스틱·버튼이 덮어서, 맵 끝에 딱 맞추면 시작 자리의 대원이 버튼 밑에 깔린다.
    */
-  private camTargetY() {
+  /** 카메라 위쪽 끝이 갈 수 있는 범위 (맵이 화면보다 짧으면 가운데 한 곳) */
+  private camRange(): [number, number] {
     const lo = -this.vh * CAM_OVER_TOP;
     const hi = this.run.rows * TILE - this.vh * (1 - CAM_OVER_BOTTOM);
-    return hi < lo ? (lo + hi) / 2 : Phaser.Math.Clamp(this.run.p.y - this.vh * 0.56, lo, hi);
+    return hi < lo ? [(lo + hi) / 2, (lo + hi) / 2] : [lo, hi];
+  }
+
+  private camTargetY() {
+    const [lo, hi] = this.camRange();
+    return Phaser.Math.Clamp(this.run.p.y - this.vh * 0.56, lo, hi);
   }
 
   private onScreen(x: number, y: number, pad: number) {
@@ -926,18 +945,23 @@ export class GameScene extends Phaser.Scene {
     const mud = envId === 'mud' || envId === 'poison';
     const y0 = idx * CHUNK_ROWS;
     const rows = Math.min(CHUNK_ROWS, s.rows - y0);
-    const tex = this.textures.createCanvas(`chunk${idx}`, WORLD_W, rows * TILE)!;
+    // 맵 위 · 아래 끝 조각은 바깥 몇 줄(벽으로 본다)까지 그린다 — 카메라가 맵 끝을 넘어 보여 주는 자리가 단색과 직선으로 갈리지 않게
+    const [camMin, camMax] = this.camRange();
+    const padTop = idx === 0 ? Math.max(0, Math.ceil(-camMin / TILE)) : 0;
+    const padBottom = y0 + rows >= s.rows ? Math.max(0, Math.ceil((camMax + this.vh - s.rows * TILE) / TILE)) : 0;
+    const tex = this.textures.createCanvas(`chunk${idx}`, WORLD_W, (padTop + rows + padBottom) * TILE)!;
     const c = tex.getContext();
+    c.translate(0, padTop * TILE);
     const tile = (x: number, y: number) => (x < 0 || y < 0 || x >= s.cols || y >= s.rows ? 1 : s.grid[y * s.cols + x]);
     c.fillStyle = css(look.floor);
-    c.fillRect(0, 0, WORLD_W, rows * TILE);
+    c.fillRect(0, -padTop * TILE, WORLD_W, (padTop + rows + padBottom) * TILE);
     const floor = floorOf(s.map.region);
     if (this.textures.exists(floor.key)) {
       // 받은 바닥 무늬를 이어 깐다 (지형 전용 무늬는 그대로, 시아디펜스 바닥은 바닥색과 절반쯤 섞는다 — DESIGN.md)
       const img = this.textures.get(floor.key).getSourceImage() as HTMLImageElement;
       c.globalAlpha = floor.alpha;
       const off = (idx * CHUNK_H) % floor.size;
-      for (let y = -off; y < rows * TILE; y += floor.size) for (let x = 0; x < WORLD_W; x += floor.size) c.drawImage(img, x, y, floor.size, floor.size);
+      for (let y = -off - Math.ceil((padTop * TILE) / floor.size) * floor.size; y < (rows + padBottom) * TILE; y += floor.size) for (let x = 0; x < WORLD_W; x += floor.size) c.drawImage(img, x, y, floor.size, floor.size);
       c.globalAlpha = 1;
     }
     // 벽 · 느린 바닥 무늬 (이어 붙는 그림을 칸 자리에 맞춰 잘라 깐다 — 없으면 바닥색과 코드 그림)
@@ -957,7 +981,7 @@ export class GameScene extends Phaser.Scene {
     const wallSet = patternOf(wallTiles(s.map.region));
     const slowSet = patternOf(slowTiles(s.map.region));
     const dual = (img: HTMLImageElement, filled: (x: number, y: number) => boolean) => {
-      for (let vy = y0; vy <= y0 + rows; vy++) {
+      for (let vy = y0 - padTop; vy <= y0 + rows + padBottom; vy++) {
         for (let vx = 0; vx <= s.cols; vx++) {
           const mask = (filled(vx - 1, vy - 1) ? 1 : 0) | (filled(vx, vy - 1) ? 2 : 0) | (filled(vx - 1, vy) ? 4 : 0) | (filled(vx, vy) ? 8 : 0);
           const f = DUAL_FRAME[mask];
@@ -982,7 +1006,7 @@ export class GameScene extends Phaser.Scene {
       c.globalAlpha = 1;
     };
     const groundFrames = [0, 1, 2, 3, 4, 5, 6, 7].filter((f) => !(DECO_SKIP[s.map.region] ?? []).includes(f));
-    for (let ry = 0; ry < rows; ry++) {
+    for (let ry = -padTop; ry < rows + padBottom; ry++) {
       for (let x = 0; x < s.cols; x++) {
         const y = y0 + ry;
         const t = tile(x, y);
@@ -1031,11 +1055,30 @@ export class GameScene extends Phaser.Scene {
       }
     }
     // 느린 바닥 → 벽 차례로 오토타일을 놓는다 (느린 바닥은 벽 밑까지 이어진 것으로 본다 — 벽 옆에 틈이 생기지 않게)
-    if (slowSet) dual(slowSet, (x, y) => tile(x, y) !== 0 && (tile(x, y) === 2 || [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]].some(([dx, dy]) => tile(x + dx, y + dy) === 2)));
-    if (wallSet) dual(wallSet, (x, y) => tile(x, y) === 1);
+    // 벽 타일셋을 못 읽었으면 느린 바닥은 제 칸만 (벽 칸은 이미 이어 붙는 무늬 · 코드 그림으로 그렸다 — 물이 벽을 덮지 않게)
+    if (slowSet) dual(slowSet, (x, y) => tile(x, y) === 2 || (!!wallSet && tile(x, y) === 1 && [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]].some(([dx, dy]) => tile(x + dx, y + dy) === 2)));
+    if (wallSet) {
+      // 벽 칸을 먼저 꽉 찬 조각(마스크 15)으로 깐다: 가장자리 조각에 구멍이 있어도(10지형) 바닥 무늬가 비쳐 보이지 않게.
+      // 바닥과 맞닿은 변은 안으로 들여 깐다 — 조각의 둥근 모서리 밖으로 네모가 삐져나오지 않게
+      const IN = 16;
+      const full = DUAL_FRAME[15];
+      const k = TILESET_CELL / TILE;
+      for (let y = y0 - padTop; y < y0 + rows + padBottom; y++) {
+        for (let x = 0; x < s.cols; x++) {
+          if (tile(x, y) !== 1) continue;
+          const l = tile(x - 1, y) === 1 ? 0 : IN;
+          const r = tile(x + 1, y) === 1 ? 0 : IN;
+          const t = tile(x, y - 1) === 1 ? 0 : IN;
+          const b = tile(x, y + 1) === 1 ? 0 : IN;
+          c.drawImage(wallSet, (full % 4) * TILESET_CELL + l * k, Math.floor(full / 4) * TILESET_CELL + t * k, (TILE - l - r) * k, (TILE - t - b) * k, x * TILE + l, (y - y0) * TILE + t, TILE - l - r, TILE - t - b);
+        }
+      }
+      dual(wallSet, (x, y) => tile(x, y) === 1);
+    }
     // 큰 장식: 벽 안쪽(둘레와 위 두 칸이 모두 벽)에만 얹는다 — 길을 가리지 않는다
     if (decoImg) {
-      for (let y = y0 - 1; y <= y0 + rows + 2; y++) {
+      // 맵 아래 바깥은 조작 버튼 밑이라 한 줄까지만 (버튼이 잘 보이게)
+      for (let y = y0 - 1 - padTop; y <= Math.min(y0 + rows + 2, s.rows); y++) {
         for (let x = 0; x < s.cols; x++) {
           if (tile(x, y) !== 1 || hash(x, y, salt + 5) > 0.3 || !all8(x, y, 1) || !all8(x, y - 1, 1)) continue;
           decoAt(x, y, 8 + Math.floor(hash(x, y, salt + 6) * 8), 88 + hash(x, y, salt + 7) * 26, 1);
@@ -1044,7 +1087,7 @@ export class GameScene extends Phaser.Scene {
     }
     // 테두리: 벽과 바닥이 만나는 변에 굵은 갈색 선, 물과 바닥이 만나는 변에 옅은 선 (오토타일셋이 있으면 그 그림의 테두리를 쓴다)
     c.lineCap = 'round';
-    for (let ry = 0; ry < rows; ry++) {
+    for (let ry = -padTop; ry < rows + padBottom; ry++) {
       for (let x = 0; x < s.cols; x++) {
         const y = y0 + ry;
         const t = tile(x, y);
@@ -1070,6 +1113,6 @@ export class GameScene extends Phaser.Scene {
       }
     }
     tex.refresh();
-    return this.add.image(0, idx * CHUNK_H, `chunk${idx}`).setOrigin(0, 0).setDepth(0);
+    return this.add.image(0, idx * CHUNK_H - padTop * TILE, `chunk${idx}`).setOrigin(0, 0).setDepth(0);
   }
 }

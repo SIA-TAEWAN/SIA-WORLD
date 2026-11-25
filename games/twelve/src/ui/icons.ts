@@ -32,7 +32,8 @@ for (const h of HEROES) BY_EMOJI.set(h.unique.icon, `u-${h.id}`);
 
 const img = (name: IconName, fallback: string) => {
   const art: OptionalArt = `ic-${name}`;
-  return hasArt(art) ? `<img class="ic-img" src="${artUrl(art)}" alt="${fallback}" draggable="false" />` : fallback;
+  // 그림을 못 읽으면(오프라인 · 404) 그 자리를 글자 그림(alt)으로 바꾼다
+  return hasArt(art) ? `<img class="ic-img" src="${artUrl(art)}" alt="${fallback}" draggable="false" onerror="this.replaceWith(this.alt)" />` : fallback;
 };
 
 /** 자료의 글자 그림(장비 · 무기 · 무기 스킬)을 아이콘 그림으로 */
