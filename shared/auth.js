@@ -447,8 +447,9 @@ function showClosed() {
   const box = document.createElement('div');
   box.style.cssText =
     'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;' +
-    'padding:24px;text-align:center;background:linear-gradient(#4aa8ff,#9fd6ff 300px,#ffe9b8);color:#2a1a10;' +
-    "font:20px 'Jua','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif";
+    'padding:24px;text-align:center;' +
+    'background:linear-gradient(var(--sky-top, #4aa8ff),var(--sky-mid, #9fd6ff) 300px,var(--sky-bottom, #ffe9b8));color:var(--ink, #2a1a10);' +
+    "font:20px var(--font, 'Jua','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif)";
   const msg = document.createElement('p');
   msg.textContent = '지금은 준비 중인 게임이에요';
   msg.style.cssText = 'margin:0;font-size:26px';
@@ -456,8 +457,9 @@ function showClosed() {
   a.href = new URL('index.html', ROOT).href;
   a.textContent = '🌏 SIA WORLD로';
   a.style.cssText =
-    'padding:12px 22px;border:3px solid #2a1a10;border-radius:16px;background:linear-gradient(#ffe066,#f0a500);color:#2a1a10;' +
-    'text-decoration:none;box-shadow:0 4px 0 #2a1a10';
+    'padding:12px 22px;border:3px solid var(--outline, #2a1a10);border-radius:var(--radius-button, 16px);' +
+    'background:linear-gradient(var(--primary-light, #ffe066),var(--primary-deep, #f0a500));color:var(--ink, #2a1a10);' +
+    'text-decoration:none;box-shadow:0 4px 0 var(--outline, #2a1a10)';
   box.append(msg, a);
   document.body.append(box);
 }

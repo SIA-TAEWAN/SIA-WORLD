@@ -100,7 +100,7 @@ export class SupaChannel<M> implements Channel<M> {
             this.up = status === 'SUBSCRIBED';
             if (status === 'SUBSCRIBED') {
               // 다시 연결됐을 때도 내 정보를 다시 올린다
-              await ch.track({ meta: this.lastMeta ?? meta });
+              await ch.track({ meta: this.lastMeta ?? meta }).catch(() => undefined);
               if (!done) {
                 done = true;
                 clearTimeout(timer);

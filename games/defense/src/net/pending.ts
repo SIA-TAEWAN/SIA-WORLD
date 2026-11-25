@@ -12,8 +12,11 @@ export interface Store {
   removeItem(key: string): void;
 }
 
-/** 한 번 보낸 결과: ok 받았다 · rejected 서버가 거절했다(다시 보내도 소용없다) · failed 통신 실패(나중에 다시) */
-export type SendOutcome = 'ok' | 'rejected' | 'failed';
+/**
+ * 한 번 보낸 결과: ok 받았다 · done 서버가 이미 받아 둔 판이다('already finished': 앞서 보낸 것이 저장됐는데 답이 늦었다) ·
+ * rejected 서버가 거절했다(다시 보내도 소용없다) · failed 통신 실패(나중에 다시)
+ */
+export type SendOutcome = 'ok' | 'done' | 'rejected' | 'failed';
 
 /** 보관해 두는 최대 판 수 (넘으면 오래된 것부터 버린다) */
 export const PENDING_MAX = 5;
@@ -55,9 +58,9 @@ export function dropPending(store: Store, uid: string, run: string) {
 }
 
 /**
- * 보관해 둔 결과를 다시 보낸다. 받았거나 서버가 거절한 것은 지우고, 통신 실패만 남긴다.
+ * 보관해 둔 결과를 다시 보낸다. 받았거나(이미 받아 둔 판 포함) 서버가 거절한 것은 지우고, 통신 실패만 남긴다.
  * skip: 지금 다른 곳에서 보내는 중인 판은 건너뛴다 (같은 판을 두 번 보내지 않게).
- * → 이번에 올라간 판 수
+ * → 이번에 올라간 판 수 (이미 받아 둔 판 포함)
  */
 export async function flushPending(
   store: Store,
@@ -70,7 +73,8 @@ export async function flushPending(
     if (skip(r.run)) continue;
     const out = await send(r).catch((): SendOutcome => 'failed');
     if (out === 'failed') continue;
-    if (out === 'ok') sent++;
+    // 'done' 도 서버에 올라간 판이다: 세어서 부른 쪽이 프로필을 다시 읽게 한다
+    if (out === 'ok' || out === 'done') sent++;
     dropPending(store, uid, r.run);
   }
   return sent;

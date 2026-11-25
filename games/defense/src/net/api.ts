@@ -272,7 +272,12 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
         p_codex: r.codex ?? { enemies: [], bosses: [] },
       });
       // 'too early': 판 시작 알림이 늦게 닿았을 때. 조금 뒤에 다시 보내면 통과하므로 버리지 않는다
-      if (error) return rejected(error) && !/too early/.test(error.message ?? '') ? { outcome: 'rejected', why: error.message } : { outcome: 'failed' };
+      if (error) {
+        if (!rejected(error) || /too early/.test(error.message ?? '')) return { outcome: 'failed' };
+        // 'already finished': 앞서 보낸 것이 이미 저장됐다 (답만 늦었다). 지우되 받은 판으로 센다
+        if (/already finished/.test(error.message ?? '')) return { outcome: 'done', why: error.message };
+        return { outcome: 'rejected', why: error.message };
+      }
       const d = data as { profile?: unknown; result?: Partial<FinishResult> } | null;
       if (!d?.result) return { outcome: 'failed' };
       const res = d.result;
@@ -338,7 +343,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
         void self.resend().catch(() => 0);
         return out.data!;
       }
-      if (out.outcome === 'rejected') {
+      if (out.outcome === 'rejected' || out.outcome === 'done') {
         dropPending(store, uid, report.run);
         throw new ApiError(out.why ?? 'error');
       }
@@ -387,9 +392,16 @@ export async function lobbyNet(): Promise<LobbyNet> {
     channel: <M>(name: string, key: string) => new SupaChannel<M>(sb, name, key),
     async now() {
       const t0 = Date.now();
-      const { data, error } = await sb.rpc('defense_now');
-      const t1 = Date.now();
-      return error || typeof data !== 'number' ? t1 : data + (t1 - t0) / 2;
+      // 답이 4초 안에 오지 않으면 기기 시각을 쓴다
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), 4000)));
+      try {
+        const res = await Promise.race([Promise.resolve(sb.rpc('defense_now')).catch(() => null), late]);
+        const t1 = Date.now();
+        return !res || res.error || typeof res.data !== 'number' ? t1 : res.data + (t1 - t0) / 2;
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }
