@@ -3,39 +3,27 @@
   "assets": [
     {
       "asset_id": "61ac3c54-ee78-48de-9bfb-fb7058cb1a16",
-      "sha12": "36221cccfb47",
-      "file": "art/spritecook/char-base.png",
-      "label": "캐릭터 기준 시트: 파랑 도포 민머리 대원 8칸 × 3줄(아래·오른쪽·위) → char/body_m · body_f · outfit_0"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 캐릭터 기준 시트: 파랑 도포 민머리 대원 8칸 × 3줄(아래·오른쪽·위) → char/body_m · body_f · outfit_0"
     },
     {
       "asset_id": "29ef0336-9ede-4313-97a1-3311a57db480",
-      "sha12": "c4a469d05e5e",
-      "file": "art/spritecook/char-outfit1.png",
-      "label": "옷 1 분홍 저고리·흰 치마 (기준 시트의 옷만 바꿈) → char/outfit_1"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 옷 1 분홍 저고리·흰 치마 (기준 시트의 옷만 바꿈) → char/outfit_1"
     },
     {
       "asset_id": "e4e67109-6fdf-4485-8e44-33bb744f6077",
-      "sha12": "531ca50b48dc",
-      "file": "art/spritecook/char-outfit2.png",
-      "label": "옷 2 노랑 조끼·흰 적삼·갈색 바지 → char/outfit_2"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 옷 2 노랑 조끼·흰 적삼·갈색 바지 → char/outfit_2"
     },
     {
       "asset_id": "62f49935-23a1-4539-aabe-c5a6c329112f",
-      "sha12": "292188c11553",
-      "file": "art/spritecook/char-outfit3.png",
-      "label": "옷 3 초록 무복·금띠 → char/outfit_3"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 옷 3 초록 무복·금띠 → char/outfit_3"
     },
     {
       "asset_id": "13bad256-95d1-4bf8-860e-6f444cfbad6c",
-      "sha12": "e4b4f5c849f8",
-      "file": "art/spritecook/char-hair.png",
-      "label": "머리 모양 8가지 × 3방향 (남 4 · 여 4) → char/hair_m0~3 · hair_f0~3"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 머리 모양 8가지 × 3방향 (남 4 · 여 4) → char/hair_m0~3 · hair_f0~3"
     },
     {
       "asset_id": "fde16c1e-ae7a-410c-ba47-eb6dfe0efdb9",
-      "sha12": "15de2cc9b519",
-      "file": "art/spritecook/char-faces.png",
-      "label": "얼굴 8가지 × 3방향 (앞의 4개: 동글·방긋·초롱·다부진) → char/face_0~3. 받은 그림(696×388)의 원본을 1배(256×144)로 줄여 둔 것"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 얼굴 8가지 × 3방향 (앞의 4개: 동글·방긋·초롱·다부진) → char/face_0~3. 받은 그림(696×388)의 원본을 1배(256×144)로 줄여 둔 것"
     },
     {
       "asset_id": "994e90ea-2812-4f9b-88ed-be42e7c3caec",
@@ -193,15 +181,11 @@
     },
     {
       "asset_id": "6b48e1df-c819-4f91-b894-1847bf3be6e4",
-      "sha12": "45fbcf6933ff",
-      "file": "art/spritecook/char-hair2.png",
-      "label": "머리 모양 고쳐 그리기 (양갈래 옆모습이 얼굴을 가리지 않게 · 장식을 낮게) → char/hair_m2 · hair_f1 · hair_f2 만 여기서"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 머리 모양 고쳐 그리기 (양갈래 옆모습이 얼굴을 가리지 않게 · 장식을 낮게) → char/hair_m2 · hair_f1 · hair_f2 만 여기서"
     },
     {
       "asset_id": "e5daf411-cbd4-488d-9999-5865a4c7e8c1",
-      "sha12": "846d8c3ac3d6",
-      "file": "art/spritecook/char-faces2.png",
-      "label": "얼굴 고쳐 그리기 (옆모습 눈을 작고 연하게) → char/face_0~3 의 옆모습 줄만 여기서"
+      "label": "(예전 32×32 캐릭터 — 2026-11-25 에 64×80 캐릭터로 바뀌어 쓰지 않는다) 얼굴 고쳐 그리기 (옆모습 눈을 작고 연하게) → char/face_0~3 의 옆모습 줄만 여기서"
     },
     {
       "asset_id": "ff2a2c55-6257-4c0e-a549-ffa8919b1c82",
@@ -242,6 +226,62 @@
     {
       "asset_id": "9be0330c-6f61-490b-9011-7618a90e3a5a",
       "label": "(틀, 올린 것) 지금의 돌갑옷 무사 4칸"
+    },
+    {
+      "asset_id": "68a5f9c7-2ee5-4325-a856-30a9ec8647ac",
+      "sha12": "f842f839a525",
+      "file": "art/spritecook/char2-base.png",
+      "label": "64×80 캐릭터 기준 시트: 파랑 도포 민머리 대원 8칸 × 3줄 (고전 한국풍 도트 RPG) → char/body_m · body_f · outfit_0"
+    },
+    {
+      "asset_id": "ec53b256-35a8-47b6-b019-444576e1c54a",
+      "sha12": "43c5f054e0cb",
+      "file": "art/spritecook/char2-outfit1.png",
+      "label": "옷 1 분홍 저고리 · 흰 치마 → char/outfit_1"
+    },
+    {
+      "asset_id": "79537c57-3ca0-43dd-a6be-d473f778c047",
+      "sha12": "a9117f59b3e8",
+      "file": "art/spritecook/char2-outfit2.png",
+      "label": "옷 2 노랑 조끼 · 흰 저고리 · 갈색 바지 → char/outfit_2"
+    },
+    {
+      "asset_id": "b8391136-5aec-429d-87ab-57ba581f3891",
+      "sha12": "0e1ff65c86c3",
+      "file": "art/spritecook/char2-outfit3.png",
+      "label": "옷 3 초록 무복 · 금띠 → char/outfit_3"
+    },
+    {
+      "asset_id": "9238f9f8-0915-4fbb-8208-1a7ea4559cb0",
+      "sha12": "007de1f7294a",
+      "file": "art/spritecook/char2-hair.png",
+      "label": "머리 모양 8가지 × 3방향 → char/hair_m0~3 · hair_f0~3"
+    },
+    {
+      "asset_id": "b19f989a-f86f-4e31-a1e4-6e526ae832b7",
+      "sha12": "5aee106084d9",
+      "file": "art/spritecook/char2-faces.png",
+      "label": "얼굴 8가지 × 3방향 (앞의 4개: 동글 · 방긋 · 초롱 · 다부진) → char/face_0~3"
+    },
+    {
+      "asset_id": "7b7595d3-bb13-4e23-99b6-485490f326f5",
+      "label": "(원본) 틀 없이 처음부터 그린 큰 캐릭터 시트 (9칸 × 3줄, 한 사람 약 36×73) — 여기서 칸을 골라 64×80 틀을 만들었다"
+    },
+    {
+      "asset_id": "4d60ef8a-e8eb-42d5-9020-4cd03ad5b756",
+      "label": "(틀, 올린 것) 큰 원본에서 고른 8칸 × 3줄 — char2-base 를 만들 때 고쳐 그린 그림 (뒷모습 걷기 · 공격을 다시)"
+    },
+    {
+      "asset_id": "190eaeb0-c3fe-4019-b344-7c42ac9e4455",
+      "label": "(틀, 올린 것) 정리한 64×80 기준 시트 — 옷 1~3 을 만들 때 고쳐 그린 그림"
+    },
+    {
+      "asset_id": "2623c144-3cf3-42c7-8ff5-6da3efe4e7bd",
+      "label": "(틀, 올린 것) 초록 옷 대기 칸 8 × 3 (64×80) — 머리 모양 · 얼굴을 만들 때 고쳐 그린 그림"
+    },
+    {
+      "asset_id": "fc8c9ed6-7650-4afc-81e5-8191df1864d8",
+      "label": "(쓰지 않음) 32×32 칸으로 줄여 본 것 — 지금 캐릭터보다 못해 칸을 키우기로 함"
     }
   ]
 }

@@ -5,7 +5,7 @@
   python games/tower/art/build.py <폴더>      # 확인용 확대 그림(contact-*.png)도 그 폴더에 만든다
 
 받은 시트는 모두 자홍(#ff00ff) 바탕이다. 여기서 하는 일: 배경 지우기 → 칸 나누기 → 칸 크기에 맞추기 → 색 다듬기(shared/theme.css 값에 가까운 색은 그 값으로)
-→ 진한 갈색 1px 테두리. 무작위가 없어 몇 번을 돌려도 같은 파일이 나온다. Pillow · numpy 필요.
+→ 진한 갈색 1px 테두리. 캐릭터 레이어만 64×80 칸(화면에는 0.5배)이고 나머지는 1배 도트다. 무작위가 없어 몇 번을 돌려도 같은 파일이 나온다. Pillow · numpy 필요.
 6~10구역은 아직 손그림(draw.py)이다 — 같은 방식으로 넣으려면 시트를 art/spritecook/ 에 두고 ENEMY_SHEETS · TILE_THEMES 에 줄을 더하면 된다.
 asset id 는 games/tower/spritecook-assets.json.
 """
@@ -37,9 +37,11 @@ THEME = [hx(c) for c in (
     '#3d8bff #1f6fd1 #4aa8ff #9fd6ff #ffe9b8 #7fb8e8 #9cc7f2 #4cb86a #e86a5a #9a8c7e #8fcc9b #5fa772 '
     '#7cc08a #6cc6b5 #f7c1a8 #a9ddc6 #c9d1dd #f9a873 #e08a4f #9a6a3a #c89a5a #cfd6de #3a2a1c #5a4030 '
     '#d9a05b #9fb6ff #ffd9b8').split()]
-SKINS = {SKIN, hx('#f7c1a8'), hx('#ffe9b8'), hx('#f9a873'), hx('#fff4c2'), hx('#fff8e8')}
+# 캐릭터(64×80)의 음영에만 쓰는 몇 가지 (테마 색의 한 단계 어두운 값): 살 그늘 · 짙은 파랑 · 황금 · 짙은 분홍 · 짙은 초록 · 머리 갈색
+EXTRA = [hx(c) for c in '#f2b48c #e39a72 #1553a8 #d9a520 #c93a58 #3f8a52 #6b4226 #b9772e #a85a34'.split()]
+SKINS = {SKIN, hx('#f7c1a8'), hx('#ffe9b8'), hx('#f9a873'), hx('#fff4c2'), hx('#fff8e8'), hx('#f2b48c'), hx('#e39a72')}
 GREENS = {hx(c) for c in ('#4cb86a', '#5fa772', '#7cc08a', '#8fcc9b', '#6cc6b5', '#a9ddc6')}
-BLUES = {hx('#3d8bff'), hx('#1f6fd1'), hx('#4aa8ff')}
+BLUES = {hx('#3d8bff'), hx('#1f6fd1'), hx('#4aa8ff'), hx('#1553a8')}
 
 
 # =====================================================================
@@ -106,10 +108,10 @@ def lum(c):
     return 0.299 * c[..., 0] + 0.587 * c[..., 1] + 0.114 * c[..., 2]
 
 
-def snap(im, tol=None, dark=38, edge_dark=62):
+def snap(im, tol=None, dark=38, edge_dark=62, extra=()):
     """색을 theme.css 의 가장 가까운 값으로. tol 을 주면 그보다 먼 색(보라 · 짙은 빨강 …)은 8 단계로만 다듬어 둔다.
     아주 어두운 색과 가장자리의 어두운 색은 테두리색"""
-    pal = np.array(THEME, np.float64)
+    pal = np.array(THEME + list(extra), np.float64)
     out = im.copy()
     px = im[..., :3].astype(np.float64)
     w = np.array([0.30, 0.59, 0.11]) ** 0.5 * 1.7
@@ -168,130 +170,164 @@ def col_in(im, cols):
 
 
 # =====================================================================
-# 캐릭터 레이어 (32×32 칸, 가로 8 × 세로 4)
-#   char-base.png     파랑 도포를 입은 민머리 대원 8칸 × 3줄(아래 · 오른쪽 · 위) — 자세의 기준. 여기서 몸과 옷 0 을 나눈다
-#   char-outfit1~3    기준 시트의 옷만 바꾼 것 → 옷 1~3
-#   char-hair.png     초록 옷을 입은 대기 칸에 머리 모양 8가지(남 4 · 여 4) × 3방향
-#   char-faces.png    같은 틀에 얼굴 8가지 × 3방향 (앞의 4개를 쓴다)
-#   char-hair2.png · char-faces2.png   고쳐 그린 것 — 상투 · 양갈래 · 올림 머리(HAIR2)와 얼굴의 옆모습 줄만 여기서 가져온다
-# 머리는 방향마다 한 가지 모양이고 칸마다 0~1px 내려갈 뿐이라, 얼굴·머리카락은 대기 칸 것을 그대로 따라 내린다.
+# 캐릭터 레이어 (64×80 칸, 가로 8 × 세로 4 = 512×320 — 화면에는 0.5배로 그린다)
+#   char2-base.png      파랑 도포를 입은 민머리 대원 8칸 × 3줄(아래 · 오른쪽 · 위) — 자세의 기준. 여기서 몸과 옷 0 을 나눈다
+#   char2-outfit1~3     기준 시트의 옷만 바꾼 것 → 옷 1~3
+#   char2-hair.png      초록 옷을 입은 대기 칸에 머리 모양 8가지(남 4 · 여 4) × 3방향
+#   char2-faces.png     같은 틀에 얼굴 8가지 × 3방향 (앞의 4개를 쓴다)
+# 시트는 SpriteCook 원본(2752×1536)을 512 너비로 줄여 배경을 지운 것이다 (도트 한 점 = 그림 한 점).
+# 머리는 방향마다 한 가지 모양이고 칸마다 조금 오르내릴 뿐이라, 얼굴·머리카락은 대기 칸 것을 그대로 따라 옮긴다.
 # =====================================================================
-F = 32
-HX, HY = 9, 4            # 머리 상자(테두리 포함) 왼쪽 위 — 머리 안쪽이 x 10~21
-HW, HH = 16, 12          # 머리 상자 크기 (옆모습 코까지)
+FW, FH = 64, 80
+HW, HH = 34, 27          # 머리 상자 크기 (테두리 · 귀 · 코 포함)
+HX, HY = 15, 14          # 머리 상자 왼쪽 위 — 머리 위로 14줄이 머리 장식 자리
+FOOT = 78                # 발끝(테두리)이 오는 줄
 GREEN = (0, 210, 90)
 SHOE_F = {hx('#9a6a3a'): hx('#e86a5a'), hx('#8a6a4a'): hx('#e86a5a'), hx('#c89a5a'): hx('#f7c1a8'), hx('#d9a05b'): hx('#f7c1a8'),
           hx('#5a4030'): (168, 64, 64), hx('#3a2a1c'): (168, 64, 64)}   # 여자 몸: 갈색 신 → 꽃신
+# 얼굴이 놓이는 자리 (머리 상자 안, 방향마다): (x0, x1, y0, y1)
+FACE_ZONE = {0: (9, 25, 7, 20), 1: (13, 28, 7, 20)}
 
 
 def clean(path):
-    return snap(key(load(path)))
+    im = load(path)
+    im[im[..., 3] < 128] = 0
+    return snap(im, edge_dark=120, extra=EXTRA)
+
+
+def blank():
+    return np.zeros((FH, FW, 4), np.int32)
 
 
 def char_frames(path, head_ref=None):
-    """시트 → frames[줄][칸] (32×32, 머리가 (HX, HY), 발끝 y=31) · dys[줄][칸] (머리가 내려간 px) · heads[줄]"""
+    """시트 → frames[줄][칸] (64×80, 머리가 (HX, HY), 발끝 y=FOOT) · offs[줄][칸] (머리가 옮겨 간 (dx, dy)) · heads[줄]"""
     im = clean(path)
-    cells = grid_cells(im, 8, 3)
-    frames, dys, heads = [], [], []
+    cells = grid_cells(im, 8, 3, min_area=200)
+    frames, offs, heads = [], [], []
     for r in range(3):
         base = sorted(cells[(r, c)][3] for c in range(8))[4]
         row = []
         for c in range(8):
             x0, y0, x1, y1 = cells[(r, c)]
             g = im[y0:y1 + 1, x0:x1 + 1]
-            xs = np.where((g[:8, :, 3] > 0).any(0))[0]
-            fr = np.zeros((F, F, 4), np.int32)
-            put(fr, g, HX - xs.min(), 31 - (base - y1) - (g.shape[0] - 1))
-            row.append(fr)
+            feet = np.where((g[-6:, :, 3] > 0).any(0))[0]
+            fr = blank()
+            put(fr, g, FW // 2 - int(round(feet.mean())), FOOT - (base - y1) - (g.shape[0] - 1))
+            row.append(outline(fr))
         if head_ref is None:
-            top = np.where((row[0][..., 3] > 0).any(1))[0].min()
-            row = [np.roll(f, HY - top, 0) for f in row]
-            row = [outline(f) for f in row]
+            f0 = row[0]
+            top = np.where((f0[..., 3] > 0).any(1))[0].min()
+            xs = np.where((f0[top:top + 14, :, 3] > 0).any(0))[0]
+            sx, sy = HX + (HW - (xs.max() - xs.min() + 1)) // 2 - xs.min(), HY - top
+            row = [np.roll(np.roll(f, sy, 0), sx, 1) for f in row]
             head = row[0][HY:HY + HH, HX:HX + HW].copy()
+            head = head_only(head, r)
         else:
-            row = [outline(f) for f in row]
             head = head_ref[r]
         hm = head[..., 3] > 0
-        dy_row = []
+        off_row = []
         for c in range(8):
             best = (-1, 0, 0)
-            for dy in range(-5, 6):
-                for dx in range(-6, 7):
+            for dy in range(-10, 11):
+                for dx in range(-14, 15):
                     x, y = HX + dx, HY + dy
-                    if x < 0 or y < 0 or x + HW > F or y + HH > F:
+                    if x < 0 or y < 0 or x + HW > FW or y + HH > FH:
                         continue
                     reg = row[c][y:y + HH, x:x + HW]
-                    s = ((reg[..., :3] == head[..., :3]).all(-1) & hm & (reg[..., 3] > 0)).sum() - 0.3 * (abs(dx) + abs(dy))
+                    s = ((reg[..., :3] == head[..., :3]).all(-1) & hm & (reg[..., 3] > 0)).sum() - 0.5 * (abs(dx) + abs(dy))
                     if s > best[0]:
                         best = (s, dx, dy)
-            row[c] = np.roll(row[c], -best[1], 1)
-            dy_row.append(best[2])
+            off_row.append((best[1], best[2]))
+        if head_ref is not None:          # 옷만 바꾼 시트: 기준 시트의 머리 자리에 맞춘다
+            row = [np.roll(np.roll(row[c], head_ref['offs'][r][c][1] - off_row[c][1], 0), head_ref['offs'][r][c][0] - off_row[c][0], 1) for c in range(8)]
+            off_row = list(head_ref['offs'][r])
         frames.append(row)
-        dys.append(dy_row)
+        offs.append(off_row)
         heads.append(head)
-    return frames, dys, heads
+    return frames, offs, heads
 
 
-def head_region(head, dy):
-    """그 칸에서 머리가 차지하는 자리 (목 언저리의 옷깃은 뺀다)"""
-    m = np.zeros((F, F), bool)
-    a = head[..., 3] > 0
-    cloth = np.zeros_like(a)
-    for y in (HH - 2, HH - 1):
-        for x in range(HW):
-            c = tuple(head[y, x, :3])
-            if a[y, x] and c not in SKINS and c != OUT:
-                cloth[y, x] = True
-    m[HY + dy:HY + dy + HH, HX:HX + HW] = a & ~cloth
+def head_only(head, r):
+    """머리 상자에서 머리(살색 덩어리 + 그 테두리)만 남긴다 — 옷깃 · 어깨는 뺀다"""
+    skin = col_in(head, SKINS)
+    lab, comps = components(skin)
+    big_ = max(comps, key=lambda c: c['area'])
+    keep = lab == big_['id']
+    # 살색에 둘러싸인 눈 · 볼 · 입: 덩어리의 줄마다 왼쪽 끝~오른쪽 끝 사이
+    fill = np.zeros_like(keep)
+    for y in range(HH):
+        xs = np.where(keep[y])[0]
+        if len(xs):
+            fill[y, xs.min():xs.max() + 1] = True
+    dark = (lum(head[..., :3].astype(np.float64)) < 120) & (head[..., 3] > 0) & ~skin
+    own = fill.copy()
+    for _ in range(2):                                   # 머리 둘레의 어두운 테두리 (두 겹까지)
+        p = np.pad(own, 1)
+        near = p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:]
+        own |= near & dark
+    out = head.copy()
+    out[~own] = 0
+    return out
+
+
+def head_region(head, off):
+    m = np.zeros((FH, FW), bool)
+    put_mask(m, head[..., 3] > 0, HX + off[0], HY + off[1])
     return m
+
+
+def put_mask(dst, src, x, y):
+    h, w = src.shape
+    x0, y0 = max(0, x), max(0, y)
+    x1, y1 = min(dst.shape[1], x + w), min(dst.shape[0], y + h)
+    if x1 > x0 and y1 > y0:
+        dst[y0:y1, x0:x1] |= src[y0 - y:y1 - y, x0 - x:x1 - x]
 
 
 def bald(head, r):
     """얼굴(눈 · 볼 · 입)을 지운 머리. r = 0 앞 · 1 옆 · 2 뒤"""
     h = head.copy()
-    a = h[..., 3] > 0
-    for y in (HH - 2, HH - 1):                        # 옷깃은 옷 레이어 몫
-        for x in range(HW):
-            c = tuple(h[y, x, :3])
-            if a[y, x] and c not in SKINS and c != OUT:
-                h[y, x] = 0
     if r == 2:
         return h
-    for y in range(2, HH - 1):
+    x0, x1, y0, y1 = FACE_ZONE[r]
+    a = h[..., 3] > 0
+    for y in range(y0, y1):
         xs = np.where(a[y])[0]
-        for x in (xs[2:-1] if r == 1 else xs[2:-2]):
-            if tuple(h[y, x, :3]) not in SKINS:
+        if len(xs) < 5:
+            continue
+        for x in range(max(x0, xs[2]), min(x1, xs[-3] + 1)):
+            if a[y, x] and tuple(h[y, x, :3]) not in SKINS:
                 h[y, x, :3] = SKIN
     return h
 
 
-def split_base(frames, dys, heads):
-    """기준 시트 → 몸 칸 · 옷 0 칸 · 칸마다 {dy, legs(다리 자리), shoe_top}"""
+def split_base(frames, offs, heads):
+    """기준 시트 → 몸 칸 · 옷 0 칸 · 칸마다 {off, legs(다리 자리), shoe_top}"""
     body, outfit, info = [], [], []
     for r in range(3):
         bh = bald(heads[r], r)
         brow, orow, irow = [], [], []
         for c in range(8):
-            fr, dy = frames[r][c], dys[r][c]
-            hm = head_region(heads[r], dy)
+            fr, off = frames[r][c], offs[r][c]
+            hm = head_region(heads[r], off)
             op = fr[..., 3] > 0
             yb = np.where(col_in(fr, BLUES).any(1))[0].max()      # 도포 자락의 맨 아래 줄
             y1 = np.where(op.any(1))[0].max()
-            legs = np.zeros((F, F), bool)
+            legs = np.zeros((FH, FW), bool)
             legs[yb + 1:] = op[yb + 1:]
-            b = np.zeros((F, F, 4), np.int32)
-            core = op & ~hm & ~legs                               # 숨은 몸통: 옷 사이로 비치지 않게 실루엣을 2px 줄여 살색으로
-            for _ in range(2):
+            b = blank()
+            core = op & ~hm & ~legs                               # 숨은 몸통: 옷 사이로 비치지 않게 실루엣을 4px 줄여 살색으로
+            for _ in range(4):
                 p = np.pad(core, 1)
                 core = core & p[:-2, 1:-1] & p[2:, 1:-1] & p[1:-1, :-2] & p[1:-1, 2:]
             b[core] = (*SKIN, 255)
             b[legs] = fr[legs]
-            put(b, bh, HX, HY + dy)
+            put(b, bh, HX + off[0], HY + off[1])
             o = fr.copy()
             o[hm | legs] = 0
             brow.append(b)
             orow.append(o)
-            irow.append({'dy': dy, 'legs': legs, 'shoe_top': y1 - 2})
+            irow.append({'off': off, 'legs': legs, 'shoe_top': y1 - 5})
         body.append(brow)
         outfit.append(orow)
         info.append(irow)
@@ -306,17 +342,19 @@ def split_outfit(frames, heads, body, info):
         for c in range(8):
             inf = info[r][c]
             o = frames[r][c].copy()
-            o[head_region(heads[r], inf['dy'])] = 0
+            hm = head_region(heads[r], inf['off'])
+            p = np.pad(hm, 1)                                   # 머리 둘레 1px 까지 비운다 (머리가 1px 어긋나도 살색이 겹쳐 보이지 않게)
+            near = p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:]
+            o[hm | (near & col_in(o, SKINS))] = 0
             b = body[r][c]
             o[(o[..., :3] == b[..., :3]).all(-1) & (b[..., 3] > 0) & inf['legs']] = 0
-            low = np.zeros((F, F), bool)
+            low = np.zeros((FH, FW), bool)
             low[inf['shoe_top']:] = True
             o[low & inf['legs']] = 0
-            # 기준 시트의 파랑 도포가 조금 남은 점은 둘레에서 가장 많은 옷 색으로 덮는다 (옷 1~3 에는 파랑이 없다)
-            for y, x in zip(*np.where(col_in(o, BLUES))):
-                near = [tuple(o[yy, xx, :3]) for yy in range(max(0, y - 1), min(F, y + 2)) for xx in range(max(0, x - 1), min(F, x + 2))
-                        if o[yy, xx, 3] and tuple(o[yy, xx, :3]) not in BLUES and tuple(o[yy, xx, :3]) != OUT and tuple(o[yy, xx, :3]) not in SKINS]
-                o[y, x, :3] = max(set(near), key=near.count) if near else OUT
+            for y, x in zip(*np.where(col_in(o, BLUES))):       # 기준 시트의 파랑이 남은 점은 둘레 옷 색으로
+                near_c = [tuple(o[yy, xx, :3]) for yy in range(max(0, y - 1), min(FH, y + 2)) for xx in range(max(0, x - 1), min(FW, x + 2))
+                          if o[yy, xx, 3] and tuple(o[yy, xx, :3]) not in BLUES and tuple(o[yy, xx, :3]) != OUT and tuple(o[yy, xx, :3]) not in SKINS]
+                o[y, x, :3] = max(set(near_c), key=near_c.count) if near_c else OUT
             row.append(o)
         out.append(row)
     return out
@@ -327,7 +365,7 @@ def green_rows(frames, heads):
     rows = []
     for r in range(3):
         fr = frames[r][0].copy()
-        m = (fr[..., 3] > 0) & ~head_region(heads[r], 0) & ~(fr[..., :3] == OUTC).all(-1)
+        m = (fr[..., 3] > 0) & ~head_region(heads[r], (0, 0)) & ~(fr[..., :3] == OUTC).all(-1)
         fr[m, :3] = GREEN
         rows.append(fr)
     return rows
@@ -335,34 +373,42 @@ def green_rows(frames, heads):
 
 def align_ref(path, ref, fit_top=False):
     """8칸 × 3줄 시트의 칸마다 기준 칸 ref[줄] 과 가장 많이 겹치는 자리에 놓는다.
-    fit_top: 칸 위로 넘치는 장식(상투 · 올림 머리)은 머리 위쪽 줄을 넘친 만큼 솎아 칸 안에 넣는다"""
+    fit_top: 칸 위로 넘치는 머리 장식은 머리 위쪽 줄을 넘친 만큼 솎아 칸 안에 넣는다"""
     im = clean(path)
-    cells = grid_cells(im, 8, 3)
+    cells = grid_cells(im, 8, 3, min_area=200)
     out = [[None] * 8 for _ in range(3)]
     for (r, c), (x0, y0, x1, y1) in cells.items():
         g = im[y0:y1 + 1, x0:x1 + 1]
         h, w = g.shape[:2]
         ro = ref[r][..., 3] > 0
+        rc = ref[r][..., :3]
         best = None
-        for y in range(-6, F - h + 7):
-            for x in range(-6, F - w + 7):
-                fr = np.zeros((F, F, 4), np.int32)
+        for y in range(FOOT - h - 6, FOOT - h + 8):
+            for x in range((FW - w) // 2 - 12, (FW - w) // 2 + 13):
+                fr = blank()
                 put(fr, g, x, y)
-                s = ((fr[..., :3] == ref[r][..., :3]).all(-1) & ro & (fr[..., 3] > 0)).sum()
+                s = ((fr[..., :3] == rc).all(-1) & ro & (fr[..., 3] > 0)).sum()
                 if best is None or s > best[0]:
                     best = (s, fr, x, y)
         out[r][c] = best[1]
         over = -best[3]
         if fit_top and over > 0:
-            above = HY + over                               # 머리 위로 올라온 줄 수 (잘린 줄 포함)
+            above = HY + over
             drop = set(np.round(np.linspace(1, above - 1, over + 2)[1:-1]).astype(int).tolist())
             while len(drop) < over:
                 drop.add(max(set(range(1, above)) - drop))
-            g2 = g[[j for j in range(h) if j not in drop]]
-            fr = np.zeros((F, F, 4), np.int32)
-            put(fr, g2, best[2], 0)
+            fr = blank()
+            put(fr, g[[j for j in range(h) if j not in drop]], best[2], 0)
             out[r][c] = fr
     return out
+
+
+def face_mask(r):
+    m = np.zeros((FH, FW), bool)
+    if r < 2:
+        x0, x1, y0, y1 = FACE_ZONE[r]
+        m[HY + y0:HY + y1, HX + x0:HX + x1] = True
+    return m
 
 
 def hair_of(fr, rf, r):
@@ -370,23 +416,33 @@ def hair_of(fr, rf, r):
     op = fr[..., 3] > 0
     is_out = (fr[..., :3] == OUTC).all(-1) & op
     same = (fr[..., :3] == rf[..., :3]).all(-1) & (rf[..., 3] > 0)
-    fill = op & ~col_in(fr, SKINS) & ~col_in(fr, GREENS) & ~col_in(fr, BLUES) & ~is_out & ~same      # 파랑은 머리카락 색이 아니다 (시트에 섞여 나온 점)
-    face = np.zeros((F, F), bool)
+    c3 = fr[..., :3]
+    greenish = op & (c3[..., 1] > c3[..., 0] + 25) & (c3[..., 1] > c3[..., 2] + 25)      # 초록 옷(과 그 그늘)
+    fill = op & ~col_in(fr, SKINS) & ~greenish & ~col_in(fr, BLUES) & ~is_out & ~same
+    face = face_mask(r)
     if r < 2:                                          # 얼굴 안의 볼 · 입 · 눈 흰자는 머리카락이 아니다
-        face[HY + 5:HY + 11, HX + 2:HX + 13] = True
-        fill &= ~(col_in(fr, {hx('#ff4d6d'), hx('#e86a5a'), hx('#ffffff')}) & face)
+        fill &= ~(col_in(fr, {hx('#ff4d6d'), hx('#e86a5a'), hx('#ffffff'), hx('#f7c1a8')}) & face)
     lab, comps = components(fill)
     keep = np.zeros_like(fill)
     for c in comps:
-        if c['area'] >= 5:
+        if c['area'] >= 14:
             keep |= lab == c['id']
-    p = np.pad(keep, 1)
-    near = p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:]
-    dark = is_out & near & ~(face & same)
+    # 어두운 점: 머리카락 옆의 테두리 + 짙은 머리카락 속의 어두운 덩어리 (머리카락에서 이어진 것만)
+    body_line = same.copy()
+    body_line[:HY + HH - 2] = False                    # 목 아래의 몸 테두리는 머리카락이 아니다
+    grow = is_out & ~(face & same) & ~body_line
+    dark = np.zeros_like(keep)
+    for _ in range(12):
+        p = np.pad(keep | dark, 1)
+        near = p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:]
+        new = grow & near & ~dark
+        if not new.any():
+            break
+        dark |= new
     o = np.zeros_like(fr)
     m = keep | dark
     o[m] = fr[m]
-    top = (o[0, :, 3] > 0)                              # 칸 위로 잘린 장식은 맨 윗줄을 테두리로 닫는다
+    top = (o[0, :, 3] > 0)
     o[0, top, :3] = OUT
     return o
 
@@ -396,61 +452,70 @@ def face_of(fr, head, r):
     o = np.zeros_like(fr)
     if r == 2:
         return o
+    x0, x1, y0, y1 = FACE_ZONE[r]
     a = head[..., 3] > 0
-    for y in range(3, HH - 1):
+    for y in range(y0, y1):
         xs = np.where(a[y])[0]
-        for x in (xs[2:-1] if r == 1 else xs[2:-2]):
+        if len(xs) < 5:
+            continue
+        for x in range(max(x0, xs[2]), min(x1, xs[-3] + 1)):
             px = fr[HY + y, HX + x]
             if px[3] and tuple(px[:3]) not in SKINS and tuple(px[:3]) not in GREENS:
                 o[HY + y, HX + x] = px
-                if r == 1 and tuple(px[:3]) in (hx('#ff4d6d'), hx('#e86a5a')):     # 옆모습의 볼은 연하게 (작은 얼굴에서 너무 크게 보인다)
-                    o[HY + y, HX + x, :3] = hx('#f7c1a8')
     return o
 
 
-def spread(layer3, dys):
-    """대기 칸의 레이어 3줄 → 8칸 × 3줄 (머리가 내려간 만큼 같이 내린다)"""
-    return [[np.roll(layer3[r], dys[r][c], 0) for c in range(8)] for r in range(3)]
+def spread(layer3, offs):
+    """대기 칸의 레이어 3줄 → 8칸 × 3줄 (머리가 옮겨 간 만큼 같이 옮긴다)"""
+    out = []
+    for r in range(3):
+        row = []
+        for c in range(8):
+            fr = blank()
+            put(fr, layer3[r], offs[r][c][0], offs[r][c][1])
+            row.append(fr)
+        out.append(row)
+    return out
 
 
 def char_sheet(rows3):
-    """[아래 8칸, 오른쪽 8칸, 위 8칸] → 256×128 (왼쪽 줄은 오른쪽 줄을 뒤집는다)"""
-    sh = np.zeros((F * 4, F * 8, 4), np.int32)
+    """[아래 8칸, 오른쪽 8칸, 위 8칸] → 512×320 (왼쪽 줄은 오른쪽 줄을 뒤집는다)"""
+    sh = np.zeros((FH * 4, FW * 8, 4), np.int32)
     for row, r, flip in ((0, 0, False), (1, 1, True), (2, 1, False), (3, 2, False)):
         for c in range(8):
             fr = rows3[r][c]
-            sh[row * F:(row + 1) * F, c * F:(c + 1) * F] = fr[:, ::-1] if flip else fr
+            sh[row * FH:(row + 1) * FH, c * FW:(c + 1) * FW] = fr[:, ::-1] if flip else fr
     return sh
 
 
-HAIR2 = {'m2', 'f1', 'f2'}      # 고쳐 그린 머리 시트(char-hair2.png)에서 가져오는 것: 상투 · 양갈래 · 올림 머리
+HAIR_NAMES = ['m0', 'm1', 'm2', 'm3', 'f0', 'f1', 'f2', 'f3']
 
 
-def build_chars():
-    frames, dys, heads = char_frames(SRC / 'char-base.png')
-    body, outfit0, info = split_base(frames, dys, heads)
+def build_chars(only_base=False):
+    frames, offs, heads = char_frames(SRC / 'char2-base.png')
+    body, outfit0, info = split_base(frames, offs, heads)
     out = {'body_m': char_sheet(body)}
     bf = char_sheet(body)
+    low = np.zeros(bf.shape[:2], bool)
+    for row in range(4):
+        low[row * FH + FH - 14:(row + 1) * FH] = True
     for src, dst in SHOE_F.items():
-        m = np.zeros(bf.shape[:2], bool)
-        for row in range(4):
-            m[row * F + 24:row * F + F] = True
-        bf[col_in(bf, {src}) & m, :3] = dst
+        bf[col_in(bf, {src}) & low, :3] = dst
     out['body_f'] = bf
     out['outfit_0'] = char_sheet(outfit0)
+    if only_base:
+        return out, frames, offs, heads
+    href = {0: heads[0], 1: heads[1], 2: heads[2], 'offs': offs}
     for n in (1, 2, 3):
-        fr, _, _ = char_frames(SRC / f'char-outfit{n}.png', head_ref=heads)
+        fr, _, _ = char_frames(SRC / f'char2-outfit{n}.png', head_ref=href)
         out[f'outfit_{n}'] = char_sheet(split_outfit(fr, heads, body, info))
-    ref = [snap(f) for f in green_rows(frames, heads)]
-    al = align_ref(SRC / 'char-hair.png', ref)
-    al2 = align_ref(SRC / 'char-hair2.png', ref, fit_top=True)
-    for c, name in enumerate(['m0', 'm1', 'm2', 'm3', 'f0', 'f1', 'f2', 'f3']):
-        src = al2 if name in HAIR2 else al
-        out[f'hair_{name}'] = char_sheet(spread([hair_of(outline(src[r][c]), ref[r], r) for r in range(3)], dys))
-    al = align_ref(SRC / 'char-faces.png', ref)
-    al2 = align_ref(SRC / 'char-faces2.png', ref)                # 옆모습(둘째 줄)만 여기서: 눈이 작고 연하다
+    ref = [snap(f, extra=EXTRA) for f in green_rows(frames, heads)]
+    al = align_ref(SRC / 'char2-hair.png', ref, fit_top=True)
+    for c, name in enumerate(HAIR_NAMES):
+        out[f'hair_{name}'] = char_sheet(spread([hair_of(outline(al[r][c]), ref[r], r) for r in range(3)], offs))
+    al = align_ref(SRC / 'char2-faces.png', ref)
     for c in range(4):
-        out[f'face_{c}'] = char_sheet(spread([face_of((al2 if r == 1 else al)[r][c], heads[r], r) for r in range(3)], dys))
+        out[f'face_{c}'] = char_sheet(spread([face_of(al[r][c], heads[r], r) for r in range(3)], offs))
     return out
 
 
@@ -691,20 +756,30 @@ def main():
 
         looks = [('m', 0, 0, 0), ('m', 1, 1, 2), ('m', 2, 3, 3), ('m', 3, 2, 0), ('f', 0, 2, 1), ('f', 1, 1, 1), ('f', 2, 0, 3), ('f', 3, 3, 2)]
         for i in range(0, len(looks), 2):
-            sh = np.zeros((256, 256, 4), np.int32)
+            sh = np.zeros((FH * 8, FW * 8, 4), np.int32)
             for j, (sex, hair, face, outfit) in enumerate(looks[i:i + 2]):
                 for n in (f'body_{sex}', f'face_{face}', f'outfit_{outfit}', f'hair_{sex}{hair}'):
-                    put(sh, chars[n], 0, j * 128)
-            view(sh, f'contact-chars-{i // 2}.png', 4)
+                    put(sh, chars[n], 0, j * FH * 4)
+            view(sh, f'contact-chars-{i // 2}.png', 2)
+        # 머리 8 · 얼굴 4 · 옷 4 를 한눈에 (대기 칸: 아래 · 오른쪽 · 위)
+        kinds = [(f'hair_{n}', ('m' if n[0] == 'm' else 'f', 0, 0, n)) for n in HAIR_NAMES] + [(f'face_{i}', ('m', i, 0, None)) for i in range(4)] + [(f'outfit_{i}', ('f', 0, i, 'f3')) for i in range(4)]
+        sh = np.zeros((FH * 3, FW * len(kinds), 4), np.int32)
+        for k, (_, (sex, face, outfit, hair)) in enumerate(kinds):
+            names = [f'body_{sex}', f'face_{face}', f'outfit_{outfit}'] + ([f'hair_{hair}'] if hair else [])
+            for j, row in enumerate((0, 2, 3)):
+                for n in names:
+                    put(sh, chars[n][row * FH:(row + 1) * FH, :FW], k * FW, j * FH)
+        view(sh, 'contact-kinds.png', 2)
         lay = ['TTTTTTTTTTTTTTTTTTTTTT', 'FFFFDFFFFFFFFFFFFFFFFF', '.,.p....wwv.qQ.WWI.12.', '.c.C.o.O.ws.hH.WII.3.4', '..r.g.S.f.d.P.bBnN.56.', 'TTTTTLTTTTTTTT.RU..778']
         kk = {'T': 'wallTop', 'F': 'wallFace', '.': 'floor', ',': 'floor2', 'p': 'pillar', 'w': 'water', 'v': 'vine', 's': 'switch', 'c': 'chest', 'C': 'chestOpen',
               'o': 'pedestal', 'O': 'pedestalEmpty', 'r': 'rock', 'g': 'gate', 'S': 'shop', 'f': 'fountain', 'd': 'fountainDry', 'D': 'doorOpen', 'L': 'doorLocked',
               'q': 'plate', 'Q': 'plateOn', 'h': 'brazier', 'H': 'brazierLit', 'P': 'post',
               'W': 'coldWater', 'I': 'ice', 'b': 'bell', 'B': 'bellOn', 'n': 'gong', 'N': 'gongOn', 'R': 'boulder', 'U': 'pit',
               '1': 'rod', '2': 'rodOn', '3': 'puff', '4': 'bars', '5': 'mirrorA', '6': 'mirrorB', '7': 'fog', '8': 'wish'}
-        hero = np.zeros((F, F, 4), np.int32)
+        hero = blank()
         for n in ('body_m', 'face_0', 'outfit_0', 'hair_m0'):
-            put(hero, chars[n][:F, :F], 0, 0)
+            put(hero, chars[n][:FH, :FW], 0, 0)
+        hero = hero[::2, ::2]                      # 방 그림은 타일 1배 → 캐릭터는 0.5배 (게임과 같은 크기)
         for theme, sh in tiles.items():
             view(sh, f'contact-tiles-{theme}.png', 3)
             room = np.zeros((16 * 6, 16 * 22, 4), np.int32)
@@ -715,7 +790,7 @@ def main():
             room[64:80, 176:192] = ti('stairs')
             room[64:80, 0:16] = ti('rubble')
             room[48:64, 176:192] = ti('switchOn')
-            put(room, hero, 96, 24)
+            put(room, hero, 96, 16)
             x = 8
             for eid in ZONES[list(TILE_THEMES).index(theme)]:
                 size = enemies[eid].shape[0]

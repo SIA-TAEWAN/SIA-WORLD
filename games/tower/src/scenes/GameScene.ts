@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { projImage } from '../art/load';
-import { FRAME, TS, attackCol, enemySize, frameIndex, tileArtIndex, walkCol, type TileArt } from '../art/sheets';
+import { CHAR_SCALE, FRAME_H, FRAME_W, TS, attackCol, enemySize, frameIndex, tileArtIndex, walkCol, type TileArt } from '../art/sheets';
 import { T, TILE } from '../game/floorgen';
 import { BODY_UP, STEP, beamAng, prm, step, tileOf, type Enemy, type Fx, type Input, type RunState, type SimEvent } from '../game/sim';
 import { COLOR } from '../theme';
@@ -81,8 +81,19 @@ export class GameScene extends Phaser.Scene {
   /** 캐릭터 외형이 바뀌었다 (메뉴의 외형 바꾸기) */
   setLayers(layers: HTMLCanvasElement[]) {
     this.art.layers = layers;
-    layers.forEach((cv, i) => this.sheetTexture(`L${i}`, cv, FRAME, FRAME, true));
+    layers.forEach((cv, i) => this.sheetTexture(`L${i}`, cv, FRAME_W, FRAME_H, true));
     this.heroParts.forEach((p, i) => p.setTexture(`L${i}`, 0));
+    this.heroFilter();
+  }
+
+  /**
+   * 캐릭터 그림은 타일보다 두 배 촘촘해 0.5배로 그린다. 카메라 배율이 짝수면 화면 픽셀과 딱 맞아 또렷하게(NEAREST),
+   * 홀수면 그림 한 점이 화면 1.5 · 2.5 픽셀이 되어 들쭉날쭉하므로 부드럽게(LINEAR) 그린다.
+   */
+  private heroFilter() {
+    const even = Math.round(this.zoom * CHAR_SCALE * 2) % 2 === 0;
+    const mode = even ? Phaser.Textures.FilterMode.NEAREST : Phaser.Textures.FilterMode.LINEAR;
+    for (let i = 0; i < 4; i++) if (this.textures.exists(`L${i}`)) this.textures.get(`L${i}`).setFilter(mode);
   }
 
   private sheetTexture(key: string, cv: HTMLCanvasElement, fw: number, fh: number, replace = false) {
@@ -99,7 +110,7 @@ export class GameScene extends Phaser.Scene {
   create() {
     const s = this.run;
     const art = this.art;
-    art.layers.forEach((cv, i) => this.sheetTexture(`L${i}`, cv, FRAME, FRAME, true));
+    art.layers.forEach((cv, i) => this.sheetTexture(`L${i}`, cv, FRAME_W, FRAME_H, true));
     this.sheetTexture('tiles', art.tiles, TS, TS, true);
     for (const [id, cv] of Object.entries(art.enemies)) this.sheetTexture(`E:${id}`, cv, enemySize(id), enemySize(id), true);
     this.dark = this.add.graphics().setDepth(5500);
@@ -117,7 +128,7 @@ export class GameScene extends Phaser.Scene {
     this.shadow = this.add.ellipse(0, 0, 12, 5, COLOR.outline, 0.25).setDepth(2);
     this.hero = this.add.container(s.p.x, s.p.y);
     for (let i = 0; i < 4; i++) {
-      const sp = this.add.sprite(0, 0, `L${i}`, 0).setOrigin(0.5, 1);
+      const sp = this.add.sprite(0, 0, `L${i}`, 0).setOrigin(0.5, 1).setScale(CHAR_SCALE);
       this.heroParts.push(sp);
       this.hero.add(sp);
     }
@@ -144,6 +155,7 @@ export class GameScene extends Phaser.Scene {
     cam.setSize(this.scale.width, this.scale.height);
     this.zoom = zoomFor(this.scale.width, this.scale.height);
     cam.setZoom(this.zoom);
+    this.heroFilter();
     // 층이 화면보다 작으면 가운데 (경계를 화면 크기만큼 넓힌다)
     const vw = this.scale.width / this.zoom;
     const vh = this.scale.height / this.zoom;
