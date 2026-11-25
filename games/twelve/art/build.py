@@ -8,6 +8,7 @@
 - 대원(HEROES + move-<id>): 서기 시트(한 줄에 앞 · 옆 · 뒤)와 대원마다의 동작 시트(걷기 A · B · 공격 · 구르기 × 앞 · 옆 · 뒤)를 모아
   hero-<id>.png (가로 5칸 × 세로 3줄, 칸 HERO×HERO) 를 만든다. 발끝을 맞추고, 구르기 칸은 공의 가운데를 ROLL_CY 에 둔다.
 - 보스 공격 동작(atk-<id>) · 벽/느린 바닥 무늬(tiles — 이어 붙게 다듬는다) · 글자가 붙어 나온 아이콘 시트(LABELED)도 여기서 자른다.
+- 오토타일셋(ts-* → wt-rNN · st-*: 칸 크기만 줄인다) · 장식 시트(deco-rNN: 칸마다 잘라 아래 가운데에 맞춘다)도 여기서 만든다.
 - 장면(SCENES): 배경이 있는 그림. 비율에 맞게 잘라 줄인다. 로비 카드(shared/images/card-twelve.png)도 여기서 만든다.
 - 지형 바닥(floor-r01~r12)은 시아핑거가 만든 것(games/finger/public/art)을 그대로 복사한다 — 같은 열두 지형이다. asset id 는 핑거의 목록에서 옮겨 적는다.
 - 256색 팔레트 PNG 로 저장하고 spritecook-assets.json 을 새로 적는다.
@@ -59,6 +60,13 @@ BOSSES = ['bigDokkaebi', 'dueoksini', 'bulgasal', 'jangsanbeom', 'centipede', 'g
 # 벽 · 느린 바닥 무늬 (tiles 시트 4x4, 흰 틈 — 칸 가운데를 잘라 이어 붙는 무늬로 만든다)
 TILE_OUT = 240
 TILES = [f'wall-r{n:02d}' for n in range(1, 13)] + ['slow-water', 'slow-mud', 'slow-poison', 'slow-fire']
+
+# 오토타일셋 (SpriteCook generate_tileset — detailed · topdown · 15-piece · 128px, 4x4 한 장): 벽 12 + 느린 바닥 4
+# 게임 칸(60px)의 두 배인 120px 칸으로 줄인다 → wt-rNN.png · st-<종류>.png (480x480). 칸 배치는 그대로 (art.ts 의 DUAL_FRAME)
+TS_CELL = 120
+TILESETS = {**{f'ts-r{n:02d}': f'wt-r{n:02d}' for n in range(1, 13)}, **{f'ts-{k}': f'st-{k}' for k in ('water', 'mud', 'poison', 'fire')}}
+# 장식 시트 deco-rNN (4x4: 위 두 줄 = 바닥 장식 8, 아래 두 줄 = 큰 장식 8) → deco-rNN.png (칸 DECO_CELL, 칸 아래 가운데에 맞춘다)
+DECO_CELL = 128
 
 # 글자가 붙어 나온 아이콘 시트 (칸 아래의 글자를 잘라 낸다): 이름 → (열, 행, 칸 이름)
 LABELED = {'uicons': (4, 4, ['ic-u-rat', 'ic-u-ox', 'ic-u-tiger', 'ic-u-rabbit', 'ic-u-dragon', 'ic-u-snake', 'ic-u-horse', 'ic-u-sheep',
@@ -334,6 +342,27 @@ def main():
             seamless(part, TILE_OUT).quantize(64, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(os.path.join(OUT, name + '.png'), optimize=True)
     for name in TILES:
         add('tiles', name, (TILE_OUT, TILE_OUT), f'이어 붙는 {"벽" if name.startswith("wall") else "느린 바닥"} 무늬 (tiles 시트 4x4 의 한 칸 · {MODEL})')
+
+    # 오토타일셋: 칸 크기만 줄인다 (칸 배치 그대로)
+    for src_name, name in TILESETS.items():
+        raw = os.path.join(RAW, src_name + '.png')
+        if os.path.exists(raw):
+            src = Image.open(raw).convert('RGBA')
+            save(src.convert('RGBa').resize((TS_CELL * 4, TS_CELL * 4), Image.LANCZOS).convert('RGBA'), os.path.join(OUT, name + '.png'))
+        add(src_name, name, (TS_CELL * 4, TS_CELL * 4), f'{"벽" if name.startswith("wt") else "느린 바닥"} 오토타일셋 (15-piece dual-grid, 4x4 칸 {TS_CELL}px · generate_tileset detailed topdown 128px · {MODEL})')
+
+    # 장식 시트: 칸마다 잘라 아래 가운데에 맞춘다
+    for n in range(1, 13):
+        name = f'deco-r{n:02d}'
+        raw = os.path.join(RAW, name + '.png')
+        if os.path.exists(raw):
+            print(name)
+            atlas = Image.new('RGBA', (DECO_CELL * 4, DECO_CELL * 4), (0, 0, 0, 0))
+            for i, part in enumerate(cells(Image.open(raw).convert('RGBA'), 4, 4)):
+                small = shrink(part, min(DECO_CELL * FIT / part.width, DECO_CELL * FIT / part.height))
+                atlas.paste(small, ((i % 4) * DECO_CELL + (DECO_CELL - small.width) // 2, (i // 4) * DECO_CELL + DECO_CELL - 2 - small.height))
+            save(atlas, os.path.join(OUT, name + '.png'))
+        add(name, name, (DECO_CELL * 4, DECO_CELL * 4), f'{n}지형 장식 시트 (4x4 칸 {DECO_CELL}px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · {MODEL})')
 
     # 글자가 붙어 나온 아이콘 시트
     for sheet, (cols, rows, names) in LABELED.items():
