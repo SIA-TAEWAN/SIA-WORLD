@@ -427,7 +427,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.paused && !s.over) {
       this.acc += dt;
       let n = 0;
-      while (this.acc >= STEP && n++ < 6 && !s.over) {
+      while (this.acc >= STEP && n++ < 6 && !s.over && !this.paused) {
         this.acc -= STEP;
         step(s, this.hooks.input());
         this.hooks.consume();

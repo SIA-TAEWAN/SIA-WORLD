@@ -174,6 +174,8 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
     held.clear();
     for (const k of Object.keys(btn) as Key[]) btn[k].classList.remove('down');
     input.attack = false;
+    // 멈춘 동안 눌린 한 번짜리 입력(스킬·조사·물약·각성)도 버린다 — 상점을 닫자마자 다시 열리는 일 없게
+    input.skill = input.awaken = input.interact = input.potion = false;
     if (stickId !== null) stickEnd();
   };
   window.addEventListener('keydown', onKeyDown);

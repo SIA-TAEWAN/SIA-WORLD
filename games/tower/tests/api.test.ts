@@ -43,6 +43,7 @@ describe('서버 저장', () => {
     let best = 0;
     const c = {
       down: false,
+      savedAt: 0,
       calls,
       rpc(fn: string, args?: Record<string, unknown>) {
         if (c.down) return Promise.reject(new Error('Failed to fetch'));
@@ -54,7 +55,7 @@ describe('서버 저장', () => {
           if (cl != null) best = Math.max(best, cl);
           return Promise.resolve({ data: { bestFloor: best, gotCoin: got, siaCoins: 5 }, error: null });
         }
-        if (fn === 'tower_state') return Promise.resolve({ data: { look: null, data: {}, bestFloor: best, siaCoins: 5, lookPrice: 30 }, error: null });
+        if (fn === 'tower_state') return Promise.resolve({ data: { look: null, data: {}, bestFloor: best, siaCoins: 5, lookPrice: 30, savedAt: c.savedAt }, error: null });
         return Promise.resolve({ data: null, error: null });
       },
     };
@@ -98,5 +99,39 @@ describe('서버 저장', () => {
     const api = createSupabaseApi(c as RpcClient, 'u1', memStore());
     await expect(api.save(newData(1), 5)).rejects.toBeInstanceOf(ApiError);
     expect(api.pending()).toBe(0);
+  });
+
+  it('다른 기기가 그 뒤에 저장했으면 이 기기의 못 보낸 저장은 보내지 않고 버린다 (106 savedAt)', async () => {
+    const c = fake();
+    const store = memStore();
+    const api = createSupabaseApi(c as RpcClient, 'u1', store);
+    const d = newData(1);
+    c.down = true;
+    await api.save(d);
+    expect(api.pending()).toBe(1);
+    c.down = false;
+    c.savedAt = Date.now() + 1000;
+    await createSupabaseApi(c as RpcClient, 'u1', store).state();
+    expect(c.calls.filter((x) => x.fn === 'tower_save')).toHaveLength(0);
+    expect(api.pending()).toBe(0);
+  });
+
+  it('보관이 너무 많으면 그냥 저장부터 줄이고, 층을 깬 저장은 100층 모두 남긴다', async () => {
+    const c = fake();
+    const store = memStore();
+    const api = createSupabaseApi(c as RpcClient, 'u1', store);
+    const d = newData(1);
+    c.down = true;
+    for (let f = 1; f <= 100; f++) {
+      clearFloor(d, f);
+      await api.save(d, f);
+      d.coins++;
+      await api.save(d);
+    }
+    expect(api.pending()).toBeLessThanOrEqual(120);
+    c.down = false;
+    await api.resend();
+    const cl = c.calls.filter((x) => x.fn === 'tower_save').map((x) => x.args?.p_cleared).filter((x) => x != null);
+    expect(cl).toEqual(Array.from({ length: 100 }, (_, i) => i + 1));
   });
 });

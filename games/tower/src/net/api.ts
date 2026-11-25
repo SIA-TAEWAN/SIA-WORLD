@@ -6,7 +6,7 @@ import { worldSupabase } from './world';
 
 /**
  * 서버 약속 (PRD '서버 약속', 104_tower.sql) — 이 셋만 부른다:
- *   tower_state() → { look, data, bestFloor, siaCoins, lookPrice }
+ *   tower_state() → { look, data, bestFloor, siaCoins, lookPrice, savedAt }   (savedAt: 106)
  *   tower_set_look(p_look) → { look, siaCoins, paid }          ('bad look' · 'not enough sia coins')
  *   tower_save(p_data, p_cleared) → { bestFloor, gotCoin, siaCoins }   ('bad save')
  * 테스트 모드(?local=1)는 같은 규칙으로 이 기기에만 (createLocalApi).
@@ -140,7 +140,7 @@ export function createLocalApi(store: Store, key = 'siatower:local'): TowerApi {
 
 // ---------- 서버 ----------
 const RPC_TIMEOUT_MS = 10_000;
-const PENDING_MAX = 40;
+const PENDING_MAX = 120; // 100층을 모두 못 보내도 층 깬 저장이 하나도 빠지지 않게
 interface RpcAnswer {
   data: unknown;
   error: { message: string } | null;
@@ -156,6 +156,8 @@ interface Pending {
   id: string;
   data: TowerData;
   cleared: number | null;
+  /** 만든 시각 (ms). 서버의 마지막 저장(savedAt)보다 먼저 만든 것은 다른 기기에 밀린 옛 저장이다 */
+  at?: number;
 }
 
 export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, store: Store): TowerApi {
@@ -171,7 +173,15 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
   const writePending = (list: Pending[]) => {
     try {
       if (!list.length) store.removeItem(pKey);
-      else store.setItem(pKey, JSON.stringify(list.slice(-PENDING_MAX)));
+      else {
+        // 너무 많으면 '그냥 저장'부터 줄인다 (층을 깬 저장을 버리면 그 뒤 층 깬 저장이 모두 건너뛰기로 거절된다)
+        let keep = list;
+        while (keep.length > PENDING_MAX) {
+          const i = keep.findIndex((p, k) => p.cleared == null && k < keep.length - 1);
+          keep = i >= 0 ? keep.filter((_, k) => k !== i) : keep.slice(-PENDING_MAX);
+        }
+        store.setItem(pKey, JSON.stringify(keep));
+      }
     } catch {
       /* 보관하지 못해도 게임은 계속 */
     }
@@ -220,8 +230,17 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
 
   return {
     async state() {
-      if (readPending().length) await flush().catch(() => null);
-      const d = (await call('tower_state')) as Partial<{ look: unknown; data: unknown; bestFloor: number; siaCoins: number; lookPrice: number }>;
+      type St = Partial<{ look: unknown; data: unknown; bestFloor: number; siaCoins: number; lookPrice: number; savedAt: number }>;
+      let d = (await call('tower_state')) as St;
+      if (readPending().length) {
+        // 다른 기기가 그 뒤에 저장했으면 이 기기의 못 보낸 저장은 옛것이다 → 보내지 않고 버린다 (최고 층이 같아도 레벨·엽전을 덮어쓰지 않게)
+        const savedAt = Number(d?.savedAt) || 0;
+        if (savedAt) writePending(readPending().filter((p) => !(typeof p.at === 'number' && p.at < savedAt)));
+        if (readPending().length) {
+          await flush().catch(() => null);
+          d = ((await call('tower_state').catch(() => null)) as St | null) ?? d;
+        }
+      }
       let left = readPending();
       const serverBest = Math.max(0, Number(d?.bestFloor) || 0);
       // 다른 기기에서 더 높이 올랐으면 이 기기의 못 보낸 저장은 옛것이다 (서버가 'old save' 로 거절한다) → 버린다
@@ -249,7 +268,7 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
       // 층을 깬 저장이 아니면 바로 앞의 '그냥 저장' 을 덮어쓴다 (보낼 것을 줄인다. 보내는 중일 수 있는 맨 앞 것은 두고)
       if (list.length > 1 && list[list.length - 1].cleared == null && cleared == null) list.pop();
       const id = `${Date.now().toString(36)}-${seq++}`;
-      list.push({ id, data: JSON.parse(JSON.stringify(data)), cleared: cleared ?? null });
+      list.push({ id, data: JSON.parse(JSON.stringify(data)), cleared: cleared ?? null, at: Date.now() });
       writePending(list);
       // 다른 저장을 보내는 중이면 그것이 끝난 뒤 한 번 더 (내 것까지 보내지게)
       if (flushing) await flushing.catch(() => null);
@@ -262,7 +281,6 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     pending: () => readPending().length,
     async resend() {
       await flush().catch(() => null);
-      done.clear();
       return readPending().length;
     },
   };

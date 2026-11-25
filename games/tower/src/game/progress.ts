@@ -78,7 +78,7 @@ export function normalize(v: unknown): TowerData {
   }
   const best = int(o.best, 0, TOTAL_FLOORS);
   let checkpoint = int(o.checkpoint, 1, TOTAL_FLOORS, 1);
-  if (!isCheckpoint(checkpoint) || checkpoint > best + 1) checkpoint = Math.min(best + 1, Math.floor(best / ZONE_SIZE) * ZONE_SIZE + 1);
+  if (!isCheckpoint(checkpoint) || checkpoint > best + 1) checkpoint = Math.min(best + 1, Math.floor(best / ZONE_SIZE) * ZONE_SIZE + 1, TOTAL_FLOORS - ZONE_SIZE + 1);
   const floor = Math.max(1, Math.min(int(o.floor, 1, TOTAL_FLOORS, checkpoint), best + 1));
   const orbs: Record<string, number> = {};
   if (o.orbs && typeof o.orbs === 'object') for (const [id, n] of Object.entries(o.orbs)) if (orbDef(id) && Number(n) > 0) orbs[id] = int(n, 1, 99);

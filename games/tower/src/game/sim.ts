@@ -248,6 +248,10 @@ export interface Enemy {
   spin: number;
   shots: number;
   mt: number;
+  /** 가까이 주먹 중 (끝나도 큰 기술 대기를 다시 정하지 않는다) */
+  jab: boolean;
+  /** 단계 기믹 타이머 (까마귀 대왕 가르기 · 꽃감관 꽃밭) — 기술 타이머 mt 와 따로 */
+  pt: number;
   /** 정예 번개 줄기 대기 */
   beamCd: number;
 }
@@ -408,7 +412,7 @@ function makeEnemy(s: RunState, defId: string, room: number, x: number, y: numbe
     t: 0, cd: 0.6 + s.rng.next() * 0.8, faceX: 1, dirX: 0, dirY: 1, hitFlash: 0, dashCd: def.dash?.every ?? 0, pattern: 0, rage: false, tele: null, touched: false,
     basicHits: 0, onlyBasic: true, wave, pending: wave > 0, wake: 0, burn: 0, burnDps: 0, slowT: 0, freeze: 0, stun: 0, hidden: false, from: null, to: null,
     ringCd: def.ring?.every ?? 0, summoned: false, fanCd: (def.fan?.every ?? 0) * 0.6, leapCd: (def.leap?.every ?? 0) * 0.5, guard: null, phase: 1,
-    trailCd: 0, eatId: -1, lit: 0, move: '', spin: 0, shots: 0, mt: 0, beamCd: (def.beam?.every ?? 0) * 0.5,
+    trailCd: 0, eatId: -1, lit: 0, move: '', spin: 0, shots: 0, mt: 0, pt: 0, jab: false, beamCd: (def.beam?.every ?? 0) * 0.5,
   };
 }
 
@@ -2239,7 +2243,8 @@ function golemAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, ra
     case 'strike':
       if ((e.t -= STEP) <= 0) {
         e.state = 'move';
-        e.cd = (e.rage ? 1.3 : 1.9) + s.rng.next() * 0.6;
+        if (e.jab) e.jab = false;
+        else e.cd = (e.rage ? 1.3 : 1.9) + s.rng.next() * 0.6;
       }
       return;
     case 'windup':
@@ -2260,7 +2265,8 @@ function golemAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, ra
       e.state = 'windup';
       e.t = (def.windup ?? 0.6) * rageMul;
       e.tele = { kind: 'circle', x: e.x, y: e.y, r: (def.reach ?? 26) + 6, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
-      e.cd = 1.4;
+      // 주먹은 큰 기술 대기(cd)를 건드리지 않는다 (붙어 싸워도 큰 기술이 나오게)
+      e.jab = true;
     }
     return;
   }
@@ -2295,12 +2301,19 @@ function imugiAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, ra
     if (def.summon) {
       for (let i = 0; i < def.summon.count; i++) {
         const a = (i / def.summon.count) * Math.PI * 2 + 0.5;
-        const m = makeEnemy(s, def.summon.id, e.room, e.x + Math.cos(a) * 30, e.y + Math.sin(a) * 30, 0, e.level);
-        m.active = true;
-        m.summoned = true;
-        m.wake = WAKE_TIME;
-        s.enemies.push(m);
-        fx(s, { kind: 'spawn', x: m.x, y: m.y, r: 9, dur: WAKE_TIME });
+        // 벽 속에 생기지 않게: 빈 자리까지 보스 쪽으로 당긴다 (없으면 보스 자리)
+        let x = e.x;
+        let y = e.y;
+        for (let r = 30; r >= 8; r -= 6) {
+          const tx = e.x + Math.cos(a) * r;
+          const ty = e.y + Math.sin(a) * r;
+          if (boxFree(s, tx, ty, 7, 7, 'e')) {
+            x = tx;
+            y = ty;
+            break;
+          }
+        }
+        summonAt(s, e, def.summon.id, x, y);
       }
     }
   }
@@ -2377,7 +2390,8 @@ function imugiAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, ra
     case 'strike':
       if ((e.t -= STEP) <= 0) {
         e.state = 'move';
-        e.cd = (e.rage ? 1.2 : 1.8) + s.rng.next() * 0.6;
+        if (e.jab) e.jab = false;
+        else e.cd = (e.rage ? 1.2 : 1.8) + s.rng.next() * 0.6;
       }
       return;
     case 'windup':
@@ -2397,7 +2411,8 @@ function imugiAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, ra
       e.state = 'windup';
       e.t = (def.windup ?? 0.6) * rageMul;
       e.tele = { kind: 'circle', x: e.x, y: e.y, r: (def.reach ?? 28) + 6, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
-      e.cd = 1.4;
+      // 주먹은 큰 기술 대기(cd)를 건드리지 않는다 (붙어 싸워도 큰 기술이 나오게)
+      e.jab = true;
     }
     return;
   }
@@ -2460,8 +2475,10 @@ function updateField(s: RunState) {
       if (k.t < k.total) continue;
       const src = s.enemies.find((e) => e.id === k.src);
       if (Math.hypot(p.x - k.x, by - k.y) < k.r + 4) {
+        const hp0 = p.hp;
         hurtPlayer(s, k.dmg, k.status, src);
-        if (k.root && !s.god && p.barrier <= 0) p.root = Math.max(p.root, k.root);
+        // 가시 감옥은 실제로 맞았을 때만 (무적·막기·거인·결계로 막으면 묶이지 않는다)
+        if (k.root && p.hp < hp0) p.root = Math.max(p.root, k.root);
       }
       fx(s, { kind: k.kind, x: k.x, y: k.y, r: k.r, dur: 0.35 });
       if (k.hazard) s.hazards.push({ kind: k.kind, x: k.x, y: k.y, r: k.hazard.r, t: k.hazard.dur, dur: k.hazard.dur, status: k.hazard.status });
@@ -2471,7 +2488,7 @@ function updateField(s: RunState) {
   if (s.hazards.length) {
     for (const h of s.hazards) {
       h.t -= STEP;
-      if (!s.over && !s.god && Math.hypot(p.x - h.x, by - h.y) < h.r + 3) applyStatus(s, h.status, Math.min(h.status.dur, 0.8));
+      if (!s.over && !s.god && p.barrier <= 0 && !p.giant && Math.hypot(p.x - h.x, by - h.y) < h.r + 3) applyStatus(s, h.status, Math.min(h.status.dur, 0.8));
     }
     s.hazards = s.hazards.filter((h) => h.t > 0);
   }
@@ -2582,7 +2599,7 @@ function lobAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number) {
   const L = def.lob!;
   if (e.state === 'windup') {
     if ((e.t -= STEP) <= 0) {
-      addStrike(s, e, 'ember', s.p.x, bodyY(s), L.radius, L.flight, e.atk, def.status ? { r: L.patchR, dur: L.patch, status: def.status } : undefined);
+      addStrike(s, e, L.kind ?? 'ember', s.p.x, bodyY(s), L.radius, L.flight, e.atk, def.status ? { r: L.patchR, dur: L.patch, status: def.status } : undefined);
       e.state = 'strike';
       e.t = 0.35;
       e.cd = def.cd;
@@ -2620,7 +2637,8 @@ function bossWalk(s: RunState, e: Enemy, dx: number, dy: number, dist: number, r
       e.state = 'windup';
       e.t = (def.windup ?? 0.6) * rageMul;
       e.tele = { kind: 'circle', x: e.x, y: e.y, r: reach + 6, dx: 0, dy: 0, len: 0, t: 0, total: e.t };
-      e.cd = 1.4;
+      // 주먹은 큰 기술 대기(cd)를 건드리지 않는다 (붙어 싸워도 큰 기술이 나오게)
+      e.jab = true;
     }
     return false;
   }
@@ -2638,7 +2656,8 @@ function bossCommon(s: RunState, e: Enemy, dist: number): boolean {
     case 'strike':
       if ((e.t -= STEP) <= 0) {
         e.state = 'move';
-        e.cd = (e.rage ? 1.2 : 1.8) + s.rng.next() * 0.6;
+        if (e.jab) e.jab = false;
+        else e.cd = (e.rage ? 1.2 : 1.8) + s.rng.next() * 0.6;
       }
       return true;
     case 'windup':
@@ -3036,7 +3055,8 @@ interface ChainTarget {
 }
 function chainTargets(s: RunState): ChainTarget[] {
   const out: ChainTarget[] = s.enemies.filter(hittable).map((e) => ({ x: e.x, y: e.y, r: e.def.r, e }));
-  for (const o of s.map.objs) if (o.kind === 'rod' && !s.solved.has(o.room)) out.push({ x: o.x * TILE + 8, y: o.y * TILE + 8, r: 6, rod: o });
+  // 뇌석은 지금 방 것만 (벽 너머 옆방 뇌석으로 튀지 않게)
+  for (const o of s.map.objs) if (o.kind === 'rod' && o.room === s.room && !s.solved.has(o.room)) out.push({ x: o.x * TILE + 8, y: o.y * TILE + 8, r: 6, rod: o });
   return out;
 }
 function zapTarget(s: RunState, t: ChainTarget, dmg: number) {
@@ -3526,6 +3546,7 @@ const drumsOf = (s: RunState, e: Enemy) => s.enemies.filter((m) => m.alive && m.
 /** 보스 단계가 바뀔 때: 하던 기술을 거둔다 */
 function resetBoss(e: Enemy) {
   e.tele = null;
+  e.jab = false;
   e.hidden = false;
   e.state = 'move';
   e.move = '';
@@ -3604,18 +3625,18 @@ function crowAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, rag
   if (!e.rage && e.hp <= e.max * (def.rage ?? 0.5)) {
     e.rage = true;
     e.phase = 2;
-    e.mt = 0.6;
+    e.pt = 0.6;
     s.events.push({ t: 'boss', phase: 2, text: `${def.name}이 그림자로 갈라졌다! 진짜를 찾아 베어요` });
   }
   if (e.phase === 2 && e.state !== 'skillRun') {
-    e.mt -= STEP;
+    e.pt -= STEP;
     const left = s.enemies.some((m) => m.alive && m.def.ai === 'decoy' && m.room === e.room);
-    if (e.mt <= 0 && !left) {
+    if (e.pt <= 0 && !left) {
       // 처음엔 그림자 둘, 그다음부터 셋
       // (갈라진 횟수는 ringCd 에 센다 — 까마귀 대왕은 가시 고리가 없다)
       splitCrow(s, e, e.ringCd > 0 ? kv(dk, 'countRage', 3) : kv(dk, 'count', 2));
       e.ringCd++;
-      e.mt = kv(dk, 'every', 12);
+      e.pt = kv(dk, 'every', 12);
     }
   }
   if (bossCommon(s, e, dist)) return;
@@ -3666,13 +3687,13 @@ function flowerAi(s: RunState, e: Enemy, dx: number, dy: number, dist: number, r
   if (!e.rage && e.hp <= e.max * (def.rage ?? 0.5)) {
     e.rage = true;
     e.phase = 2;
-    e.mt = 1.5;
+    e.pt = 1.5;
     s.events.push({ t: 'boss', phase: 2, text: `${def.name}이 꽃밭을 깨웠다! 꽃이 피는 쪽을 피해요` });
   }
-  if (e.phase === 2 && (e.mt -= STEP) <= 0) {
+  if (e.phase === 2 && (e.pt -= STEP) <= 0) {
     // 하던 기술과 따로 (꽃밭이 스스로 핀다)
     bloomQuads(s, e, hv, kv(hv, 'windup', 1.6));
-    e.mt = kv(hv, 'every', 5);
+    e.pt = kv(hv, 'every', 5);
   }
   if (bossCommon(s, e, dist)) return;
   if (e.state === 'skillWind' || e.state === 'skillRun') return bossMoveUpdate(s, e, dx, dy, dist, rageMul);
