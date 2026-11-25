@@ -1,7 +1,8 @@
 /**
  * 임시 도트 그림 (코드로 그린 플레이스홀더). 같은 이름의 PNG 가 public/art/ 에 있고 manifest.json 에 적혀 있으면 그 파일을 쓴다 (ASSETS.md).
  *
- * 캐릭터 레이어 시트: 한 칸 32×32, 가로 8칸 × 세로 4줄 = 256×128.
+ * 캐릭터 레이어 시트: 한 칸 64×80 (화면에는 CHAR_SCALE = 0.5 배로 그린다 → 32×40), 가로 8칸 × 세로 4줄 = 512×320.
+ *   발끝이 칸의 맨 아래, 가로 가운데. 코드로 그린 임시 그림은 32×32 로 그려 2배로 키워 칸 아래에 맞춘다.
  *   가로: 0 대기 · 1~4 걷기 · 5~7 공격 /  세로: 0 아래 · 1 왼쪽 · 2 오른쪽 · 3 위.
  *   모든 레이어(몸·얼굴·옷·머리)가 같은 칸에 같은 자세로 그려져 겹치면 한 사람이 된다. 그리는 순서 몸 → 얼굴 → 옷 → 머리.
  * 타일 시트: 16×16 칸을 가로 한 줄로 (TILE_ORDER 순서).
@@ -11,11 +12,17 @@ import { COLOR, MATGO, RACE, ROULETTE, TABLE, css } from '../theme';
 import type { Look } from '../game/progress';
 import { ENEMIES } from '../data';
 
-export const FRAME = 32;
+/** 캐릭터 레이어 한 칸 (그림 파일의 픽셀) */
+export const FRAME_W = 64;
+export const FRAME_H = 80;
+/** 캐릭터를 화면(월드)에 그리는 배율: 그림은 타일보다 두 배 촘촘하다 */
+export const CHAR_SCALE = 0.5;
+/** 코드로 그리는 임시 그림의 한 칸 */
+const FRAME = 32;
 export const COLS = 8;
 export const ROWS = 4;
-export const SHEET_W = FRAME * COLS;
-export const SHEET_H = FRAME * ROWS;
+export const SHEET_W = FRAME_W * COLS;
+export const SHEET_H = FRAME_H * ROWS;
 export const TS = 16;
 export const frameIndex = (dir: number, col: number) => dir * COLS + col;
 /** 걷기 칸 (시간 → 1~4) */
@@ -85,12 +92,16 @@ function sheet(paint: Painter, outline = true): HTMLCanvasElement {
       };
       paint(px, poseOf(dir === 1 ? 2 : dir, col));
       if (outline) addOutline(o);
+      // 32×32 임시 그림을 2배로 키워 64×80 칸의 아래 가운데에
+      const k = FRAME_W / FRAME;
+      const top = dir * FRAME_H + (FRAME_H - FRAME * k);
       g.save();
+      g.imageSmoothingEnabled = false;
       if (dir === 1) {
-        g.translate(col * FRAME + FRAME, dir * FRAME);
+        g.translate(col * FRAME_W + FRAME_W, top);
         g.scale(-1, 1);
-        g.drawImage(one, 0, 0);
-      } else g.drawImage(one, col * FRAME, dir * FRAME);
+        g.drawImage(one, 0, 0, FRAME * k, FRAME * k);
+      } else g.drawImage(one, col * FRAME_W, top, FRAME * k, FRAME * k);
       g.restore();
     }
   }

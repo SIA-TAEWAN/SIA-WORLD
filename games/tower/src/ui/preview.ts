@@ -3,24 +3,24 @@
  * 캐릭터 만들기 화면과 처음 화면이 쓴다 (게임 화면은 Phaser 가 같은 시트를 쓴다).
  */
 import { layerSheet } from '../art/load';
-import { FRAME, frameIndex, layerNames, walkCol, COLS } from '../art/sheets';
+import { FRAME_H, FRAME_W, frameIndex, layerNames, walkCol, COLS } from '../art/sheets';
 import type { Look } from '../game/progress';
 
 export async function lookLayers(look: Look): Promise<HTMLCanvasElement[]> {
   return Promise.all(layerNames(look).map(layerSheet));
 }
 
-/** 한 칸 그리기 (scale 배 정수 확대) */
+/** 한 칸 그리기 (scale 배 정수 확대, 캔버스의 아래 가운데에 맞춘다 — 칸 64×80) */
 export function drawFrame(cv: HTMLCanvasElement, layers: HTMLCanvasElement[], dir: number, col: number, scale: number) {
   const g = cv.getContext('2d')!;
   g.imageSmoothingEnabled = false;
   g.clearRect(0, 0, cv.width, cv.height);
   const f = frameIndex(dir, col);
-  const sx = (f % COLS) * FRAME;
-  const sy = Math.floor(f / COLS) * FRAME;
-  const ox = Math.round((cv.width - FRAME * scale) / 2);
-  const oy = Math.round((cv.height - FRAME * scale) / 2);
-  for (const l of layers) g.drawImage(l, sx, sy, FRAME, FRAME, ox, oy, FRAME * scale, FRAME * scale);
+  const sx = (f % COLS) * FRAME_W;
+  const sy = Math.floor(f / COLS) * FRAME_H;
+  const ox = Math.round((cv.width - FRAME_W * scale) / 2);
+  const oy = cv.height - FRAME_H * scale;
+  for (const l of layers) g.drawImage(l, sx, sy, FRAME_W, FRAME_H, ox, oy, FRAME_W * scale, FRAME_H * scale);
 }
 
 /** 정지 그림 (아래를 보고 서 있는 모습) */

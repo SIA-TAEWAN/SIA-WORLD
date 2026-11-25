@@ -137,7 +137,7 @@ function title() {
       </div>
       <div class="title"><h1>시아의탑</h1><p>꼭대기 100층, 소원을 들어주는 구슬을 찾아서</p></div>
       <div class="tower-hero card">
-        <canvas class="hero-cv" width="128" height="128"></canvas>
+        <canvas class="hero-cv" width="128" height="160"></canvas>
         <div class="me-info">
           <b>${nick()}</b>
           <small>Lv ${d.level} · 엽전 ${coinFmt(d.coins)}냥 · 구슬 조각 ${d.shards}</small>
@@ -163,7 +163,7 @@ function title() {
         ${pending ? `<p class="light center">보내지 못한 저장 ${pending}개 — 연결되면 다시 보내요</p>` : ''}
       </div>
     </div>`;
-  if (ctx.look) titlePreview = makePreview($<HTMLCanvasElement>('.hero-cv'), ctx.look, 4);
+  if (ctx.look) titlePreview = makePreview($<HTMLCanvasElement>('.hero-cv'), ctx.look, 2);
   $('#go', app())?.addEventListener('click', () => {
     sfx('click');
     play();
@@ -262,7 +262,7 @@ function openCreator(opts: { first: boolean; onDone(): void; onCancel?(): void; 
       </div>
       <div class="steps">${STEPS.map((s, i) => `<button class="step" data-step="${i}"><i>${i + 1}</i>${s}</button>`).join('')}</div>
       <div class="stage-card card">
-        <canvas class="big-cv" width="160" height="160"></canvas>
+        <canvas class="big-cv" width="192" height="240"></canvas>
         <b class="who">${nick()}</b>
       </div>
       <div class="card opts-card"><h3 class="opt-title"></h3><div class="opts"></div></div>
@@ -273,7 +273,7 @@ function openCreator(opts: { first: boolean; onDone(): void; onCancel?(): void; 
         <button class="btn primary" id="next">다음 ▶</button>
       </div>
     </div>`;
-  const preview = makePreview($<HTMLCanvasElement>('.big-cv', root), look, 5);
+  const preview = makePreview($<HTMLCanvasElement>('.big-cv', root), look, 3);
   const optBox = $('.opts', root);
 
   const render = () => {
@@ -291,9 +291,9 @@ function openCreator(opts: { first: boolean; onDone(): void; onCancel?(): void; 
         items.push({ label, look: l, on: sameLook(l, look) });
       }
     optBox.className = `opts n${items.length}`;
-    optBox.innerHTML = items.map((it, i) => `<button class="opt ${it.on ? 'on' : ''}" data-i="${i}"><canvas width="64" height="64"></canvas><b>${it.label}</b></button>`).join('');
+    optBox.innerHTML = items.map((it, i) => `<button class="opt ${it.on ? 'on' : ''}" data-i="${i}"><canvas width="64" height="80"></canvas><b>${it.label}</b></button>`).join('');
     optBox.querySelectorAll<HTMLButtonElement>('.opt').forEach((b, i) => {
-      void stillImage(b.querySelector('canvas')!, items[i].look, 2, stepNo === 1 ? 0 : 0);
+      void stillImage(b.querySelector('canvas')!, items[i].look, 1, stepNo === 1 ? 0 : 0);
       b.addEventListener('click', () => {
         sfx('click');
         look = items[i].look;
@@ -1197,7 +1197,7 @@ function openShop() {
     const f = s.map.floor;
     box.innerHTML = `
       <div class="menu-head"><h3>🏮 휴식층 상점</h3><span class="coins-pill"><b>${coinFmt(d.coins)}</b>냥</span></div>
-      <div class="shop-keeper"><canvas width="64" height="64"></canvas><p>어서 오시게. 탑을 오르려면 준비가 필요하지.</p></div>
+      <div class="shop-keeper"><canvas width="64" height="80"></canvas><p>어서 오시게. 탑을 오르려면 준비가 필요하지.</p></div>
       ${ITEMS.map((it) => {
         const price = priceOf(it.id, f);
         const owned = it.id === 'shard' ? d.shards : d.items[it.id as keyof typeof d.items];
@@ -1206,7 +1206,7 @@ function openShop() {
       }).join('')}
       <button class="btn primary" id="bye">나가기</button>`;
     const kc = box.querySelector('canvas')!;
-    void stillImage(kc, { sex: 'm', hair: 2, face: 1, outfit: 2 }, 2);
+    void stillImage(kc, { sex: 'm', hair: 2, face: 1, outfit: 2 }, 1);
     box.querySelectorAll<HTMLButtonElement>('[data-buy]').forEach((b) => b.addEventListener('click', () => {
       const why = buy(d, b.dataset.buy as ItemId, f);
       if (why) return toast(why);
@@ -1244,7 +1244,7 @@ function endingScreen(onDone: () => void, saving?: Promise<unknown>) {
     <div class="screen ending">
       <div class="stars">${Array.from({ length: 36 }, (_, i) => `<i style="left:${(i * 37) % 100}%;top:${(i * 53) % 100}%;animation-delay:${(i % 7) * 0.4}s"></i>`).join('')}</div>
       <div class="ending-bg"></div>
-      <div class="ending-hero"><div class="wish-orb"></div><canvas class="hero-cv" width="128" height="128"></canvas></div>
+      <div class="ending-hero"><div class="wish-orb"></div><canvas class="hero-cv" width="128" height="160"></canvas></div>
       <div class="ending-lines">${lines.map((l, i) => `<p style="animation-delay:${0.6 + i * 1.6}s">${l}</p>`).join('')}</div>
       <div class="card ending-card" style="animation-delay:${0.6 + lines.length * 1.6}s">
         <h3>🏆 시아의탑을 다 올랐어요</h3>
@@ -1262,7 +1262,7 @@ function endingScreen(onDone: () => void, saving?: Promise<unknown>) {
         <button class="btn primary big" id="end-done">처음 화면으로</button>
       </div>
     </div>`;
-  if (ctx.look) titlePreview = makePreview($<HTMLCanvasElement>('.ending .hero-cv'), ctx.look, 4);
+  if (ctx.look) titlePreview = makePreview($<HTMLCanvasElement>('.ending .hero-cv'), ctx.look, 2);
   void endingBgUrl().then((u) => {
     const bg = document.querySelector<HTMLElement>('.ending .ending-bg');
     if (u && bg) bg.style.backgroundImage = `url("${u}")`;
