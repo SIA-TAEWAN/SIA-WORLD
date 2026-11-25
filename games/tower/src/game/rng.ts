@@ -39,3 +39,13 @@ export function hashSeed(...parts: number[]): number {
   }
   return h >>> 0;
 }
+
+/** 씨앗 난수로 섞은 새 배열 (Fisher–Yates). sort(() => rng.next() - 0.5) 는 JS 엔진마다 결과가 달라 쓰지 않는다 */
+export function shuffled<T>(rng: Rng, list: readonly T[]): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}

@@ -424,24 +424,46 @@ describe('구슬 스킬 (기본 · 각성 · 제약)', () => {
 });
 
 describe('뱀 말뚝 감기 — 잠긴 문', () => {
-  it('잠긴 전투방에서 문 너머 곁방 말뚝으로 빠져나가지 않는다 (seed 163, 19층)', async () => {
+  it('잠긴 이웃 방에서 문 너머 곁방 말뚝으로 감아 빠져나가지 않는다 (18·19층 × 씨앗 400개)', async () => {
     const { generateFloor, TILE, ROOM_W, ROOM_H, T } = await import('../src/game/floorgen');
     const { createRun, useSkill } = await import('../src/game/sim');
-    const { newData } = await import('../src/game/progress');
-    const m = generateFloor(163, 19);
-    const w = m.rooms.find((r) => r.tpl.startsWith('puzzle-whip'))!;
-    const h = m.rooms.find((r) => r.cx === w.cx && r.cy === w.cy + 1)!;
-    expect(w && h).toBeTruthy();
-    const d = newData(163);
-    Object.assign(d, { level: 19, best: 18, floor: 19, equipped: 'snake' });
-    d.orbs.snake = 1;
-    const s = createRun(m, d);
-    const tx = h.x0 + 1 + 10, ty = h.y0 + 1;
-    expect(s.tiles[ty * m.w + tx]).toBe(T.FLOOR);
-    s.p.x = tx * TILE + 8; s.p.y = ty * TILE + 12; s.p.face = 3; s.p.mp = 99;
-    s.locked.add(h.id); s.room = h.id;
-    useSkill(s);
-    expect(s.p.pull ?? null).toBeNull();
-    void ROOM_W; void ROOM_H;
+    let tried = 0;
+    let pulled = 0;
+    const dirs: [number, number, number][] = [[0, 1, 3], [0, -1, 0], [1, 0, 1], [-1, 0, 2]];
+    for (let seed = 1; seed <= 400; seed++) {
+      for (const f of [18, 19]) {
+        const m = generateFloor(seed, f);
+        for (const w of m.rooms.filter((r) => r.tpl.startsWith('puzzle-whip'))) {
+          for (const h of m.rooms) {
+            if (h.id === w.id || !['combat', 'elite', 'start', 'orb'].includes(h.kind)) continue;
+            for (const [dx, dy, face] of dirs) {
+              if (h.cx !== w.cx + dx || h.cy !== w.cy + dy) continue;
+              const d = newData(seed);
+              Object.assign(d, { level: f, best: f - 1, floor: f, equipped: 'snake' });
+              d.orbs.snake = 1;
+              for (let iy = 0; iy < ROOM_H - 2; iy++) {
+                for (let ix = 0; ix < ROOM_W - 2; ix++) {
+                  const tx = h.x0 + 1 + ix;
+                  const ty = h.y0 + 1 + iy;
+                  if (m.tiles[ty * m.w + tx] !== T.FLOOR) continue;
+                  const s = createRun(m, d);
+                  s.p.x = tx * TILE + 8;
+                  s.p.y = ty * TILE + 12;
+                  s.p.face = face;
+                  s.p.mp = 99;
+                  s.locked.add(h.id);
+                  s.room = h.id;
+                  useSkill(s);
+                  tried++;
+                  if (s.p.pull) pulled++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(tried).toBeGreaterThan(0);
+    expect(pulled).toBe(0);
   });
 });
