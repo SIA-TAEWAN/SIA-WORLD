@@ -57,4 +57,6 @@ export default defineConfig(({ command }) => ({
   // 판 시뮬레이션은 supabase/functions/_shared/finger 에 있다 (서버와 같이 쓴다) → 저장소 최상위까지 읽게 한다
   server: { fs: { allow: [worldOf(fileURLToPath(new URL('.', import.meta.url))), worldOf(process.cwd())] } },
   build: { chunkSizeWarningLimit: 2000 },
+  // 자동 플레이 시험은 기계가 바쁠 때(CI · 여러 패키지 동시 실행) 기본 5초를 넘기는 일이 있다 → 넉넉히
+  test: { testTimeout: 30_000 },
 }));
