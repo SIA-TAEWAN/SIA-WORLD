@@ -217,6 +217,146 @@
       "label": "slow-fire → public/art/slow-fire.png (240x240) · 이어 붙는 느린 바닥 무늬 (tiles 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"
     },
     {
+      "asset_id": "6ad17002-ae44-4967-a182-c5c274f428a1",
+      "sha12": "e6ef628c544a",
+      "label": "wt-r01 → public/art/wt-r01.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "ce30f3b7-19df-4e3b-bdab-1e2d2284f7be",
+      "sha12": "e11b47667e6d",
+      "label": "wt-r02 → public/art/wt-r02.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "a44265de-d2e8-4aab-a978-a7d85c50992d",
+      "sha12": "97e015ff9d89",
+      "label": "wt-r03 → public/art/wt-r03.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "b8b740ce-ee8c-407c-8129-f554e2e160d6",
+      "sha12": "beb1f418c666",
+      "label": "wt-r04 → public/art/wt-r04.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "74d84006-51f6-4045-b650-7d89700d98ee",
+      "sha12": "38140b1b8836",
+      "label": "wt-r05 → public/art/wt-r05.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "e548cf8e-7032-4dfa-84b4-5430d4a161cc",
+      "sha12": "67f4e540a7af",
+      "label": "wt-r06 → public/art/wt-r06.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "a4755ae9-3495-4aab-b754-cdfb8a5263a9",
+      "sha12": "86f4f78206dc",
+      "label": "wt-r07 → public/art/wt-r07.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "f56cdaf7-7aea-42d5-9405-69c25c60530d",
+      "sha12": "896c3824cccc",
+      "label": "wt-r08 → public/art/wt-r08.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "089d146a-5dce-4f4e-a7ff-53f8d5451354",
+      "sha12": "74559c51b02f",
+      "label": "wt-r09 → public/art/wt-r09.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "fde46f94-0961-4289-9a57-eac0411b71b2",
+      "sha12": "20809b804394",
+      "label": "wt-r10 → public/art/wt-r10.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "702dc35c-39f0-46c9-a31a-6df7ae5be967",
+      "sha12": "7d81b1421f7e",
+      "label": "wt-r11 → public/art/wt-r11.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c4d15c3e-f5f7-4e81-90a2-36751a815591",
+      "sha12": "cf0157a1b3b9",
+      "label": "wt-r12 → public/art/wt-r12.png (480x480) · 벽 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "d9effd1b-d182-40a8-bf9b-ad609f13f568",
+      "sha12": "3b6ac0335111",
+      "label": "st-water → public/art/st-water.png (480x480) · 느린 바닥 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "d6c2d9ac-829a-41a2-a879-e76f8a9ffc4f",
+      "sha12": "b8223769af43",
+      "label": "st-mud → public/art/st-mud.png (480x480) · 느린 바닥 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "2bfbb15d-370d-427c-a4d1-ec6cb55cc904",
+      "sha12": "132cd55dcec3",
+      "label": "st-poison → public/art/st-poison.png (480x480) · 느린 바닥 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "b7e13507-98e3-43c1-a7ae-6a842185b738",
+      "sha12": "b01c0f92f437",
+      "label": "st-fire → public/art/st-fire.png (480x480) · 느린 바닥 오토타일셋 (15-piece dual-grid, 4x4 칸 120px · generate_tileset detailed topdown 128px · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "78e46651-dfab-4135-836a-d6cf5e4e8a75",
+      "sha12": "723a6e1c8bcd",
+      "label": "deco-r01 → public/art/deco-r01.png (512x512) · 1지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "c98d06c9-2ec3-444b-9935-79edbd298e6e",
+      "sha12": "89fe9cffae49",
+      "label": "deco-r02 → public/art/deco-r02.png (512x512) · 2지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "01b274ee-2852-4e71-b8d6-90bfc918252a",
+      "sha12": "d8522e6d42ae",
+      "label": "deco-r03 → public/art/deco-r03.png (512x512) · 3지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "9c7a0e66-bc68-463c-9e21-967d387f6da5",
+      "sha12": "038b3053635d",
+      "label": "deco-r04 → public/art/deco-r04.png (512x512) · 4지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "1486edd3-295d-4b5a-af47-bd60be639581",
+      "sha12": "0a5db809f0f1",
+      "label": "deco-r05 → public/art/deco-r05.png (512x512) · 5지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "e0c8f23f-7b21-4445-9365-50b5ef5eb845",
+      "sha12": "6d6d0dce6014",
+      "label": "deco-r06 → public/art/deco-r06.png (512x512) · 6지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "4042ffbd-c08a-40e0-a6bc-4c60c80b5191",
+      "sha12": "02eecc39dcbc",
+      "label": "deco-r07 → public/art/deco-r07.png (512x512) · 7지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "e93552d9-a9de-473b-83a1-62836b313b30",
+      "sha12": "d39108adb0e2",
+      "label": "deco-r08 → public/art/deco-r08.png (512x512) · 8지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "a7dbf5b1-1fc8-4da7-859d-246ef5e75ba5",
+      "sha12": "0891872f5953",
+      "label": "deco-r09 → public/art/deco-r09.png (512x512) · 9지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "899ff658-e77f-40cf-b970-18ab1c0a8fb8",
+      "sha12": "65823a692464",
+      "label": "deco-r10 → public/art/deco-r10.png (512x512) · 10지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "d0f1bdd5-79cc-49f4-813b-ade3b03b76e6",
+      "sha12": "cce2433d47a9",
+      "label": "deco-r11 → public/art/deco-r11.png (512x512) · 11지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
+      "asset_id": "4abe20c8-5f9c-46ca-912e-f4faf0126891",
+      "sha12": "4858e2c5df2a",
+      "label": "deco-r12 → public/art/deco-r12.png (512x512) · 12지형 장식 시트 (4x4 칸 128px: 위 두 줄 바닥 장식 8 · 아래 두 줄 큰 장식 8 · gemini-nano-banana-2.1)"
+    },
+    {
       "asset_id": "52e095ff-e701-421d-877f-f526f16e5299",
       "sha12": "773cdffbde49",
       "label": "ic-u-rat → public/art/ic-u-rat.png (96x96) · 고유 스킬 아이콘 · 쓸 때 머리 위에 뜨는 그림 (uicons 시트 4x4 의 한 칸 · gemini-nano-banana-2.1)"

@@ -9,7 +9,7 @@ import type { Drop } from '../game/drops';
 import { eunNeun, iGa } from '../game/progress';
 import { STEP, sightOf, step, type Enemy, type Input, type RunState, type SimEvent, type Warn } from '../game/sim';
 import { COLOR, css } from '../theme';
-import { BOSS_ATK_FRAME, ENEMY_TINT, EXIT_FRAME, HARD_BOSS_TINT, HERO_COLS, HERO_FRAME, HERO_FRAMES, HERO_ROLL_ORIGIN, HERO_ROWS, artFor, bossAtkArt, eliteArt, floorOf, groundOf, hasArt, slowArt, wallArt } from './art';
+import { BOSS_ATK_FRAME, ENEMY_TINT, EXIT_FRAME, HARD_BOSS_TINT, HERO_COLS, HERO_FRAME, HERO_FRAMES, HERO_ROLL_ORIGIN, HERO_ROWS, DECO_CELL, DECO_SKIP, DUAL_FRAME, TILESET_CELL, artFor, bossAtkArt, decoArt, eliteArt, floorOf, groundOf, hasArt, slowArt, slowTiles, wallArt, wallTiles } from './art';
 
 /** 기준 화면 크기 (세로 9:16). 더 긴 화면(아이폰 19.5:9 등)은 위아래로 더 보여 준다 — 띠를 남기지 않게 */
 export const W = 720;
@@ -953,12 +953,43 @@ export class GameScene extends Phaser.Scene {
       const n = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453;
       return n - Math.floor(n);
     };
+    // 오토타일셋 (dual-grid): 칸 네 개가 만나는 꼭짓점마다 둘레 네 칸을 보고 한 조각을 놓는다 → 가장자리가 모서리 · 곡선으로 이어진다
+    const wallSet = patternOf(wallTiles(s.map.region));
+    const slowSet = patternOf(slowTiles(s.map.region));
+    const dual = (img: HTMLImageElement, filled: (x: number, y: number) => boolean) => {
+      for (let vy = y0; vy <= y0 + rows; vy++) {
+        for (let vx = 0; vx <= s.cols; vx++) {
+          const mask = (filled(vx - 1, vy - 1) ? 1 : 0) | (filled(vx, vy - 1) ? 2 : 0) | (filled(vx - 1, vy) ? 4 : 0) | (filled(vx, vy) ? 8 : 0);
+          const f = DUAL_FRAME[mask];
+          if (f < 0) continue;
+          c.drawImage(img, (f % 4) * TILESET_CELL, Math.floor(f / 4) * TILESET_CELL, TILESET_CELL, TILESET_CELL, (vx - 0.5) * TILE, (vy - y0 - 0.5) * TILE, TILE, TILE);
+        }
+      }
+    };
+    // 장식 (그림일 뿐 — 충돌 없음): 자리와 종류는 맵과 칸 번호로 정해져 언제나 같다
+    const decoImg = patternOf(decoArt(s.map.region));
+    const salt = s.map.region * 31 + s.map.no * 7;
+    const near = (x: number, y: number, wx: number, wy: number, d: number) => Math.hypot((x + 0.5) * TILE - wx, (y + 0.5) * TILE - wy) < d;
+    const all8 = (x: number, y: number, t: number) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (tile(x + dx, y + dy) !== t) return false;
+      return true;
+    };
+    const decoAt = (x: number, y: number, frame: number, h: number, alpha: number) => {
+      if (!decoImg) return;
+      const w = h;
+      c.globalAlpha = alpha;
+      c.drawImage(decoImg, (frame % 4) * DECO_CELL, Math.floor(frame / 4) * DECO_CELL, DECO_CELL, DECO_CELL, (x + 0.5) * TILE - w / 2 + (hash(x, y, salt + 3) - 0.5) * 18, (y - y0 + 0.5) * TILE + 18 - h, w, h);
+      c.globalAlpha = 1;
+    };
+    const groundFrames = [0, 1, 2, 3, 4, 5, 6, 7].filter((f) => !(DECO_SKIP[s.map.region] ?? []).includes(f));
     for (let ry = 0; ry < rows; ry++) {
       for (let x = 0; x < s.cols; x++) {
         const y = y0 + ry;
         const t = tile(x, y);
         const px = x * TILE;
         const py = ry * TILE;
+        if (t === 2 && slowSet) continue;
+        if (t === 1 && wallSet) continue;
         if (t === 2 && slowImg) stamp(slowImg, x, y, px, py);
         else if (t === 1 && wallImg) stamp(wallImg, x, y, px, py);
         else if (t === 2) {
@@ -989,13 +1020,35 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
-    // 테두리: 벽과 바닥이 만나는 변에 굵은 갈색 선, 물과 바닥이 만나는 변에 옅은 선
+    // 바닥 장식: 둘레가 모두 바닥인 칸에 드문드문 (좁은 통로 · 출발 자리 · 출구 · 상자 둘레는 비운다)
+    if (decoImg) {
+      for (let y = y0 - 1; y <= y0 + rows; y++) {
+        for (let x = 0; x < s.cols; x++) {
+          if (tile(x, y) !== 0 || hash(x, y, salt) > 0.2 || !all8(x, y, 0)) continue;
+          if (near(x, y, s.exitX, s.exitY, 150) || near(x, y, s.chestX, s.chestY, 100) || near(x, y, (s.map.start[0] + 0.5) * TILE, (s.map.start[1] + 0.5) * TILE, 130)) continue;
+          decoAt(x, y, groundFrames[Math.floor(hash(x, y, salt + 1) * groundFrames.length)], 40 + hash(x, y, salt + 2) * 14, 0.92);
+        }
+      }
+    }
+    // 느린 바닥 → 벽 차례로 오토타일을 놓는다 (느린 바닥은 벽 밑까지 이어진 것으로 본다 — 벽 옆에 틈이 생기지 않게)
+    if (slowSet) dual(slowSet, (x, y) => tile(x, y) !== 0 && (tile(x, y) === 2 || [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]].some(([dx, dy]) => tile(x + dx, y + dy) === 2)));
+    if (wallSet) dual(wallSet, (x, y) => tile(x, y) === 1);
+    // 큰 장식: 벽 안쪽(둘레와 위 두 칸이 모두 벽)에만 얹는다 — 길을 가리지 않는다
+    if (decoImg) {
+      for (let y = y0 - 1; y <= y0 + rows + 2; y++) {
+        for (let x = 0; x < s.cols; x++) {
+          if (tile(x, y) !== 1 || hash(x, y, salt + 5) > 0.3 || !all8(x, y, 1) || !all8(x, y - 1, 1)) continue;
+          decoAt(x, y, 8 + Math.floor(hash(x, y, salt + 6) * 8), 88 + hash(x, y, salt + 7) * 26, 1);
+        }
+      }
+    }
+    // 테두리: 벽과 바닥이 만나는 변에 굵은 갈색 선, 물과 바닥이 만나는 변에 옅은 선 (오토타일셋이 있으면 그 그림의 테두리를 쓴다)
     c.lineCap = 'round';
     for (let ry = 0; ry < rows; ry++) {
       for (let x = 0; x < s.cols; x++) {
         const y = y0 + ry;
         const t = tile(x, y);
-        if (t === 0) continue;
+        if (t === 0 || (t === 1 && wallSet) || (t === 2 && slowSet)) continue;
         const px = x * TILE;
         const py = ry * TILE;
         c.strokeStyle = css(t === 1 || mud ? COLOR.outline : COLOR.skyDeep);
