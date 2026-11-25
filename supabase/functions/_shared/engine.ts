@@ -20,6 +20,8 @@ export interface SeatInfo {
   name: string;
   /** 이번 판에 쓸 수 있는 최대 금액(지갑 잔액). null이면 무한(AI) */
   stack: number | null;
+  /** 그 자리에 앉은 사람 (사람 자리만, 러너가 채운다. 없으면 모름) — 같은 자리에 다른 사람이 앉았는지 가를 때 쓴다 (룰렛) */
+  userId?: string | null;
 }
 
 export interface Rng {
@@ -104,6 +106,12 @@ export interface Engine<S, A, C = unknown, P = unknown, Q = unknown> {
   adoptBets?(s: S, rows: { seat: number; bets: unknown }[], rng: Rng): S;
   /** 이미 처리됐거나 지난 단계의 행동이라 조용히 받아 넘길 것인가 (예: 룰렛 결과 '확인'을 두 번) */
   redundant?(s: S | null, seat: number, action: A): boolean;
+  /**
+   * 이 단계에서 그 자리를 맡은 사람 (단계가 시작될 때 앉아 있던 사람의 userId). undefined 면 모름(예전 상태) → 자리 번호로만 본다.
+   * 러너는 지금 그 자리에 앉은 사람이 이 사람과 다르면(나간 뒤 다른 사람이 앉았다) 그 자리를 나간 자리처럼 자동으로 두고,
+   * 새로 앉은 사람의 행동은 다음 단계부터 받는다 (룰렛: 스핀 도중 자리 주인이 바뀐 경우)
+   */
+  seatOwner?(s: S, seat: number): string | null | undefined;
   /**
    * 참이면 판 도중 나간 사람 자리는 AI 대신 시간 초과 행동(engine.timeout)으로 둔다
    * (포커·홀덤: 그 사람 지갑 전부를 걸고 AI 가 계속 두지 않게 — 공짜면 체크, 아니면 다이/폴드)

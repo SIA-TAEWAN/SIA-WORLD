@@ -1083,6 +1083,48 @@ describe('Runner: 룰렛 확정·마감 엇갈림과 결과 확인', () => {
     expect(pub2.confirmed.sort()).toEqual([0, 1]);
   });
 
+  it('스핀 도중 A 가 나간 자리에 B 가 앉으면: 그 스핀의 확인·베팅은 B 것이 아니다 (그 자리는 자동으로, B 는 다음 스핀부터)', async () => {
+    const { m } = rouletteStore(['uA', 'uC']);
+    let clock = 1_000_000;
+    const runner = new Runner(m.store, ENGINES, { next: () => 0, int: () => 0 }, () => clock);
+    await runner.start('r1', 'uA');
+    // A 는 쥐에 걸고 C 는 안 건다 → 결과 쥐(0)
+    await runner.act('r1', 'uA', { type: 'bet', bets: [{ kind: 'zodiac', target: 0, amount: 100 }] });
+    await runner.act('r1', 'uC', { type: 'bet', bets: [] });
+    let pub = m.published[m.published.length - 1].pub;
+    expect(pub.phase).toBe('spin');
+    expect(pub.players.map((p: { uid?: string }) => p.uid)).toEqual(['uA', 'uC']);
+    expect(pub.wins).toEqual({ '0': 1200 });
+    // A 가 나가고(룰렛은 바로 빈자리) B 가 같은 자리 0 에 앉았다
+    m.seats[0].user_id = 'uB';
+    m.wallets.uB = 100000;
+    // B 의 '확인'은 조용히 받지만 그 자리 확인으로 치지 않는다
+    expect(await runner.act('r1', 'uB', { type: 'next' })).toEqual({ ok: true });
+    pub = m.published[m.published.length - 1].pub;
+    expect(pub.acked ?? []).not.toContain(0);
+    // C 가 확인하면 자리 0 은 앞사람 자리라 자동으로 확인 → 바로 다음 스핀, 이번에는 B 가 그 자리를 맡는다
+    await runner.act('r1', 'uC', { type: 'next' });
+    pub = m.published[m.published.length - 1].pub;
+    expect(pub.phase).toBe('bet');
+    expect(pub.spin).toBe(2);
+    expect(pub.players.find((p: { seat: number }) => p.seat === 0).uid).toBe('uB');
+    // 돈은 기록 기준: A 가 받고, B 는 그대로
+    expect(m.wallets.uA).toBe(100000 - 100 + 1200);
+    expect(m.wallets.uB).toBe(100000);
+    // 베팅 단계 도중에 바뀐 경우: 새로 앉은 사람의 베팅은 받지 않는다 (다음 스핀부터)
+    m.seats[0].user_id = 'uD';
+    m.wallets.uD = 100000;
+    await expect(runner.act('r1', 'uD', { type: 'bet', bets: [{ kind: 'zodiac', target: 0, amount: 100 }] })).rejects.toThrow(/다음 베팅부터/);
+    expect(m.wallets.uD).toBe(100000);
+    // 마감: 그 자리는 안 건 것으로
+    clock += 21_000;
+    await runner.act('r1', 'uC', { type: 'bet', bets: [] });
+    pub = m.published[m.published.length - 1].pub;
+    expect(pub.phase).toBe('spin');
+    expect(pub.confirmed.sort()).toEqual([0, 1]);
+    expect(pub.bets).toEqual({});
+  });
+
   it('결과 확인(next)은 여럿이 한꺼번에 눌러도, 두 번 눌러도, 단계가 넘어간 뒤에 와도 오류 없이 받는다', async () => {
     const users = Array.from({ length: 8 }, (_, i) => `u${i + 1}`);
     const { m } = rouletteStore(users);

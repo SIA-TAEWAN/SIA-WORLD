@@ -390,7 +390,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
         return {
           at: ev.seat,
           text: `${who} ${ev.t === 'bet' ? '베트' : '레이즈'} ${t.fmt(Number(ev.to) || 0)}!`,
-          chips: { from: ev.seat, to: 'pot', amount: Number(ev.to) || t.pub?.bb || 1 },
+          // 칩은 이번에 실제로 더 낸 만큼 (예전 사건에는 amount 가 없다 → 합계 to 로)
+          chips: { from: ev.seat, to: 'pot', amount: amount > 0 ? amount : Number(ev.to) || t.pub?.bb || 1 },
         };
       case 'allin':
         return { at: ev.seat, text: `${who} 올인!`, gap: 500 };
