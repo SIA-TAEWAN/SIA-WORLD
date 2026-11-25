@@ -6,7 +6,7 @@
  * 방 하나 = 벽을 두른 (INNER_W+2)×(INNER_H+2) 칸. 이웃한 방은 벽을 맞대고, 맞댄 벽 가운데 3칸이 문이다.
  */
 import { INNER_H, INNER_W, ROOMS, enemyDef, floorRule, orbAtFloor, orbDef, zoneData, zoneOf, type RoomKind, type RoomTemplate, type SideKind } from '../data';
-import { hashSeed, makeRng, type Rng } from './rng';
+import { hashSeed, makeRng, shuffled, type Rng } from './rng';
 
 export const TILE = 16;
 export const ROOM_W = INNER_W + 2;
@@ -184,7 +184,7 @@ export function generateFloor(seed: number, floor: number): FloorMap {
     for (let si = 0; si < sides.length; si++) {
       // 아직 곁방이 없는 방부터
       const taken = new Set(placed.map((p) => p.host));
-      const order = [...hosts].sort(() => rng.next() - 0.5).sort((a, b) => Number(taken.has(a)) - Number(taken.has(b)));
+      const order = shuffled(rng, [...hosts]).sort((a, b) => Number(taken.has(a)) - Number(taken.has(b)));
       for (const h of order) {
         const [x, y] = cells[h];
         const free = [0, 1, 2, 3].filter((d) => !used.has(`${x + DIRS[d][0]},${y + DIRS[d][1]}`));
@@ -284,7 +284,7 @@ export function generateFloor(seed: number, floor: number): FloorMap {
       const n = fight && rule.waves?.[1] ? rng.int(rule.waves[0], rule.waves[1]) : 1;
       for (let w = 0; w < n; w++) {
         const k = fight && rule.pack?.[1] ? Math.min(foeSpots.length, rng.int(rule.pack[0], rule.pack[1])) : foeSpots.length;
-        const spots = [...foeSpots].sort(() => rng.next() - 0.5).slice(0, k);
+        const spots = shuffled(rng, [...foeSpots]).slice(0, k);
         for (const sp of spots) {
           const d = pickEnemy();
           if (d) room.spawns.push({ def: d, ...sp, wave: w });
