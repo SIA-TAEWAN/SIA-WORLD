@@ -65,6 +65,12 @@ export const tileSheet = (theme = 'stone') =>
     g.drawImage(img, 0, 0, w, TS, 0, 0, w, TS);
     return cv;
   });
+/** 투사체 그림 (파일이 없으면 null → 코드 그림 그대로) */
+export const projImage = (name: string, w: number, h: number) => fromFile(`proj/${name}.png`, w, h);
+/** 엔딩 배경 주소 (파일이 없으면 null → CSS 별 하늘) */
+export async function endingBgUrl(): Promise<string | null> {
+  return (await files()).has('ending-bg.png') ? `${base()}ending-bg.png` : null;
+}
 /** 적 시트 (size × 4칸) */
 export const enemySheet = (id: string) => once(`enemy/${id}`, async () => (await fromFile(`enemy/${id}.png`, enemySize(id) * 4, enemySize(id))) ?? placeholderEnemy(id));
 /** 구슬 아이콘 (파일이 있으면 그 주소, 없으면 null → 글자 그림) */

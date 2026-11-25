@@ -1,5 +1,5 @@
 {
-  "_note": "구역(10층) 하나는 pattern 을 그대로 되풀이한다. 층 n 의 기준 레벨 = n. ready 가 false 인 구역은 구조만 있고 아직 들어갈 수 없다. combat = 큰 길 전투방 수 [최소, 최대], waves = 전투방마다 몰려오는 무리 수 [최소, 최대], pack = 한 무리의 적 수 [최소, 최대] (템플릿의 적 자리 중에서 고른다), side = 곁방 (모두 붙인다. 퍼즐 템플릿이 없으면 보물방)",
+  "_note": "구역(10층) 하나는 pattern 을 그대로 되풀이한다. 층 n 의 기준 레벨 = n. ready 가 false 인 구역은 구조만 있고 아직 들어갈 수 없다. combat = 큰 길 전투방 수 [최소, 최대], waves = 전투방마다 몰려오는 무리 수 [최소, 최대], pack = 한 무리의 적 수 [최소, 최대] (템플릿의 적 자리 중에서 고른다), side = 곁방 (모두 붙인다. 퍼즐 템플릿이 없으면 보물방). 구역 expMul = 경험치 배수(6구역~ 레벨이 층을 너무 앞서지 않게), coinMul = 엽전 배수(구역마다 회복약(대) 10개쯤), combatCap = 큰 길 전투방 수 최대 (한 층 3분 안쪽)",
   "totalFloors": 100,
   "zoneSize": 10,
   "pattern": [
@@ -20,10 +20,10 @@
     {"zone": 3, "name": "서리 누각", "theme": "frost", "ready": true, "enemies": ["snowimp", "icebat", "frostjar", "wisp"], "elite": "haetae", "boss": "winterGeneral", "desc": "현무가 잠든 얼어붙은 북쪽 누각"},
     {"zone": 4, "name": "새벽 구름 뜰", "theme": "cloud", "ready": true, "enemies": ["ram", "kite", "chick", "scarecrow"], "elite": "geumgye", "boss": "yeongdeung", "desc": "새벽닭이 우는 구름 위 바람의 뜰"},
     {"zone": 5, "name": "잿불 성채", "theme": "ember", "ready": true, "enemies": ["bulgae", "torchimp", "wildcat", "sparrow"], "elite": "hwacha", "boss": "bulgasari", "desc": "쇠를 먹는 불가사리가 달군 붉은 성채"},
-    {"zone": 6, "name": "바람의 계단", "theme": "wind", "ready": false, "enemies": [], "elite": "", "boss": ""},
-    {"zone": 7, "name": "금속 공방", "theme": "metal", "ready": false, "enemies": [], "elite": "", "boss": ""},
-    {"zone": 8, "name": "그림자 서고", "theme": "shadow", "ready": false, "enemies": [], "elite": "", "boss": ""},
-    {"zone": 9, "name": "폭풍 첨탑", "theme": "storm", "ready": false, "enemies": [], "elite": "", "boss": ""},
-    {"zone": 10, "name": "소원의 정상", "theme": "wish", "ready": false, "enemies": [], "elite": "", "boss": ""}
+    {"zone": 6, "name": "천둥 마루", "theme": "thunder", "ready": true, "enemies": ["drumimp", "thunderbird", "raincloud", "flagspirit"], "elite": "thunderGeneral", "boss": "noegong", "desc": "먹구름 위 기와 마루, 천둥 북을 치는 뇌공의 집", "expMul": 0.74, "coinMul": 0.78, "combatCap": 3},
+    {"zone": 7, "name": "은하 나루", "theme": "galaxy", "ready": true, "enemies": ["magpie", "starslime", "weaver", "comet"], "elite": "crowKnight", "boss": "crowKing", "desc": "오작교가 놓이는 별빛 은하수 나루", "expMul": 0.74, "coinMul": 0.78, "combatCap": 3},
+    {"zone": 8, "name": "서천 꽃밭", "theme": "flower", "ready": true, "enemies": ["thornhand", "butterfly", "beetle", "fairy"], "elite": "peacock", "boss": "ggotgamgwan", "desc": "되살리는 꽃이 피는 하늘 서쪽 꽃밭", "expMul": 0.74, "coinMul": 0.78, "combatCap": 3},
+    {"zone": 9, "name": "칠성 폭풍단", "theme": "storm", "ready": true, "enemies": ["stormimp", "hailjar", "starshard", "hawk"], "elite": "jangseung", "boss": "heukryong", "desc": "북두칠성 제단에 몰아치는 폭풍", "expMul": 0.74, "coinMul": 0.78, "combatCap": 3},
+    {"zone": 10, "name": "소원의 정상", "theme": "wish", "ready": true, "enemies": ["skysoldier", "crane", "lantern", "jadelion"], "elite": "skygeneral", "boss": "eodugsini", "desc": "탑 꼭대기 옥빛 궁궐, 소원을 들어주는 구슬", "expMul": 0.74, "coinMul": 0.78, "combatCap": 3}
   ]
 }

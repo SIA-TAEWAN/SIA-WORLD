@@ -1,7 +1,7 @@
 /**
  * 시아의탑 배경음: 새 소리 파일 없이, 다른 게임이 이미 쓰는 코드 반복곡을 빌려 쓴다
  * (시아서바이벌 games/survival/src/ui/music.ts 의 메인 · 달빛 궁궐 · 대나무 숲 · 보스 곡, 시아마을 games/village/src/ui/music.ts 의 낮 곡 — 같은 악보).
- * 3~5구역 곡과 그 보스 곡은 같은 틀(8분음 펼침화음 + 4분음 멜로디 + 베이스)로 새로 쓴 악보다 (역시 파일 없음).
+ * 3~10구역 곡과 그 보스 곡, 마지막 보스 · 엔딩 곡은 같은 틀(8분음 펼침화음 + 4분음 멜로디 + 베이스)로 새로 쓴 악보다 (역시 파일 없음).
  * 소리 파일은 찾지 않는다 (새 파일 없음 — 없는 파일을 찾으면 콘솔에 404 가 남는다). 곡의 file 이름은 나중에 파일로 바꿀 때 쓸 이름.
  * 켜기/끄기: 공용 효과음(shared/sound.js 'sia:sound')과 공용 배경음 설정('sia:bgm')이 모두 켜져 있을 때만. 가려진 탭에서는 멈춘다.
  */
@@ -160,12 +160,156 @@ const BOSS_EMBER: Track = {
   ],
 };
 
-const TRACKS = { title: TITLE, stone: STONE, moss: MOSS, frost: FROST, cloud: CLOUD, ember: EMBER, rest: REST, boss: BOSS, bossFrost: BOSS_FROST, bossWind: BOSS_WIND, bossEmber: BOSS_EMBER };
+/** 6구역 천둥 마루: 라단조, 낮은 베이스가 북처럼 */
+const THUNDER: Track = {
+  bpm: 124, arpVol: 0.028, leadVol: 0.044, drums: false, file: 'bgmTowerThunder',
+  bars: [
+    { arp: [57, 60, 64, 57, 60, 64, 57, 60], lead: [76, 0, 74, 72], bass: 33 },
+    { arp: [53, 57, 60, 53, 57, 60, 53, 57], lead: [69, 0, 72, 0], bass: 29 },
+    { arp: [55, 59, 62, 55, 59, 62, 55, 59], lead: [71, 72, 74, 0], bass: 31 },
+    { arp: [52, 56, 59, 52, 56, 59, 64, 59], lead: [76, 0, 0, -1], bass: 28 },
+    { arp: [57, 60, 64, 57, 60, 64, 57, 60], lead: [81, 0, 79, 76], bass: 33 },
+    { arp: [50, 53, 57, 50, 53, 57, 50, 53], lead: [74, 0, 77, 0], bass: 26 },
+    { arp: [52, 56, 59, 52, 56, 59, 52, 56], lead: [76, 74, 71, 68], bass: 28 },
+    { arp: [57, 60, 64, 69, 64, 60, 57, 52], lead: [69, 0, 0, -1], bass: 33 },
+  ],
+};
+/** 7구역 은하 나루: 바장조, 느리고 높은 별빛 펼침화음 */
+const GALAXY: Track = {
+  bpm: 88, arpVol: 0.024, leadVol: 0.042, drums: false, file: 'bgmTowerGalaxy',
+  bars: [
+    { arp: [65, 69, 72, 77, 72, 69, 72, 77], lead: [81, 0, 0, 79], bass: 41 },
+    { arp: [62, 65, 69, 74, 69, 65, 69, 74], lead: [77, 0, 74, 0], bass: 38 },
+    { arp: [58, 62, 65, 70, 65, 62, 65, 70], lead: [74, 0, 72, 70], bass: 34 },
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [72, 0, 0, -1], bass: 36 },
+    { arp: [65, 69, 72, 77, 72, 69, 72, 77], lead: [77, 79, 81, 0], bass: 41 },
+    { arp: [57, 60, 65, 69, 65, 60, 65, 69], lead: [84, 0, 81, 0], bass: 33 },
+    { arp: [58, 62, 65, 70, 65, 62, 65, 70], lead: [82, 0, 79, 77], bass: 34 },
+    { arp: [60, 64, 67, 72, 76, 72, 67, 64], lead: [77, 0, 0, -1], bass: 36 },
+  ],
+};
+/** 8구역 서천 꽃밭: 사장조 5음, 가볍고 따뜻하게 */
+const FLOWER: Track = {
+  bpm: 108, arpVol: 0.025, leadVol: 0.046, drums: false, file: 'bgmTowerFlower',
+  bars: [
+    { arp: [67, 71, 74, 79, 74, 71, 74, 79], lead: [79, 0, 81, 79], bass: 43 },
+    { arp: [64, 67, 71, 76, 71, 67, 71, 76], lead: [76, 0, 74, 0], bass: 40 },
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [74, 76, 79, 81], bass: 36 },
+    { arp: [62, 66, 69, 74, 69, 66, 69, 74], lead: [78, 0, 76, -1], bass: 38 },
+    { arp: [67, 71, 74, 79, 74, 71, 74, 79], lead: [83, 0, 81, 79], bass: 43 },
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [76, 0, 79, 0], bass: 36 },
+    { arp: [62, 66, 69, 74, 69, 66, 69, 74], lead: [81, 0, 78, 76], bass: 38 },
+    { arp: [67, 71, 74, 79, 83, 79, 74, 71], lead: [79, 0, 0, -1], bass: 43 },
+  ],
+};
+/** 9구역 칠성 폭풍단: 다단조, 빠르게 몰아친다 */
+const STORM: Track = {
+  bpm: 140, arpVol: 0.028, leadVol: 0.044, drums: false, file: 'bgmTowerStorm',
+  bars: [
+    { arp: [60, 63, 67, 72, 67, 63, 67, 72], lead: [75, 0, 74, 72], bass: 36 },
+    { arp: [56, 60, 63, 68, 63, 60, 63, 68], lead: [72, 0, 75, 0], bass: 32 },
+    { arp: [58, 62, 65, 70, 65, 62, 65, 70], lead: [77, 75, 74, 0], bass: 34 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [74, 0, 71, -1], bass: 31 },
+    { arp: [60, 63, 67, 72, 67, 63, 67, 72], lead: [79, 0, 80, 79], bass: 36 },
+    { arp: [53, 56, 60, 65, 60, 56, 60, 65], lead: [77, 0, 75, 0], bass: 29 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [74, 75, 74, 71], bass: 31 },
+    { arp: [60, 63, 67, 72, 75, 72, 67, 63], lead: [72, 0, 0, -1], bass: 36 },
+  ],
+};
+/** 10구역 소원의 정상: 다장조, 장엄하게 */
+const WISH: Track = {
+  bpm: 100, arpVol: 0.026, leadVol: 0.046, drums: false, file: 'bgmTowerWish',
+  bars: [
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [79, 0, 0, 76], bass: 36 },
+    { arp: [57, 60, 64, 69, 64, 60, 64, 69], lead: [77, 0, 76, 74], bass: 33 },
+    { arp: [53, 57, 60, 65, 60, 57, 60, 65], lead: [72, 74, 76, 77], bass: 29 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [79, 0, 0, -1], bass: 31 },
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [84, 0, 83, 81], bass: 36 },
+    { arp: [53, 57, 60, 65, 60, 57, 60, 65], lead: [81, 0, 77, 0], bass: 29 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [79, 77, 76, 74], bass: 31 },
+    { arp: [60, 64, 67, 72, 76, 72, 67, 64], lead: [72, 0, 0, -1], bass: 36 },
+  ],
+};
+/** 뇌공: 라단조 보스 곡 (북이 무겁게) */
+const BOSS_THUNDER: Track = {
+  bpm: 150, arpVol: 0.03, leadVol: 0.045, drums: true, file: 'bgmTowerBossThunder',
+  bars: [
+    { arp: [45, 52, 57, 52, 45, 52, 57, 60], lead: [81, 0, 79, 81], bass: 33 },
+    { arp: [41, 48, 53, 48, 41, 48, 53, 57], lead: [77, 0, 76, 0], bass: 29 },
+    { arp: [43, 50, 55, 50, 43, 50, 55, 59], lead: [79, 81, 83, 0], bass: 31 },
+    { arp: [40, 47, 52, 47, 40, 47, 52, 56], lead: [80, 0, 76, -1], bass: 28 },
+  ],
+};
+/** 까마귀 대왕: 바단조 보스 곡 */
+const BOSS_CROW: Track = {
+  bpm: 158, arpVol: 0.03, leadVol: 0.045, drums: true, file: 'bgmTowerBossCrow',
+  bars: [
+    { arp: [53, 60, 65, 60, 53, 60, 65, 68], lead: [77, 0, 80, 77], bass: 41 },
+    { arp: [49, 56, 61, 56, 49, 56, 61, 65], lead: [73, 0, 75, 0], bass: 37 },
+    { arp: [51, 58, 63, 58, 51, 58, 63, 67], lead: [75, 77, 80, 82], bass: 39 },
+    { arp: [48, 55, 60, 55, 48, 55, 60, 64], lead: [79, 0, 76, -1], bass: 36 },
+  ],
+};
+/** 꽃감관: 마단조 보스 곡 (가볍게 빠르게) */
+const BOSS_FLOWER: Track = {
+  bpm: 154, arpVol: 0.03, leadVol: 0.045, drums: true, file: 'bgmTowerBossFlower',
+  bars: [
+    { arp: [52, 59, 64, 67, 64, 59, 64, 67], lead: [79, 0, 78, 76], bass: 40 },
+    { arp: [48, 55, 60, 64, 60, 55, 60, 64], lead: [76, 0, 72, 0], bass: 36 },
+    { arp: [50, 57, 62, 66, 62, 57, 62, 66], lead: [74, 76, 78, 81], bass: 38 },
+    { arp: [47, 54, 59, 63, 59, 54, 59, 63], lead: [78, 0, 75, -1], bass: 35 },
+  ],
+};
+/** 흑룡: 다단조 보스 곡 */
+const BOSS_STORM: Track = {
+  bpm: 164, arpVol: 0.03, leadVol: 0.045, drums: true, file: 'bgmTowerBossStorm',
+  bars: [
+    { arp: [48, 55, 60, 55, 48, 55, 60, 63], lead: [84, 0, 82, 84], bass: 36 },
+    { arp: [44, 51, 56, 51, 44, 51, 56, 60], lead: [80, 0, 79, 0], bass: 32 },
+    { arp: [46, 53, 58, 53, 46, 53, 58, 62], lead: [82, 84, 86, 0], bass: 34 },
+    { arp: [43, 50, 55, 50, 43, 50, 55, 59], lead: [83, 0, 79, -1], bass: 31 },
+  ],
+};
+/** 어둑시니 (마지막 보스): 나단조 — 앞 보스 곡들의 꼴을 이어 붙여 가장 빠르게 */
+const BOSS_FINAL: Track = {
+  bpm: 170, arpVol: 0.032, leadVol: 0.046, drums: true, file: 'bgmTowerBossFinal',
+  bars: [
+    { arp: [47, 54, 59, 54, 47, 54, 59, 62], lead: [83, 0, 81, 83], bass: 35 },
+    { arp: [43, 50, 55, 50, 43, 50, 55, 59], lead: [79, 0, 78, 0], bass: 31 },
+    { arp: [45, 52, 57, 52, 45, 52, 57, 61], lead: [81, 83, 85, 86], bass: 33 },
+    { arp: [42, 49, 54, 49, 42, 49, 54, 58], lead: [85, 0, 82, -1], bass: 30 },
+    { arp: [47, 54, 59, 54, 47, 54, 59, 62], lead: [86, 0, 85, 83], bass: 35 },
+    { arp: [40, 47, 52, 47, 40, 47, 52, 55], lead: [83, 0, 79, 0], bass: 28 },
+    { arp: [42, 49, 54, 49, 42, 49, 54, 58], lead: [78, 81, 82, 85], bass: 30 },
+    { arp: [47, 54, 59, 62, 66, 62, 59, 54], lead: [83, 0, 0, -1], bass: 35 },
+  ],
+};
+/** 엔딩: 다장조, 천천히 (소원을 빌고 탑을 내려다보며) */
+const ENDING: Track = {
+  bpm: 80, arpVol: 0.024, leadVol: 0.05, drums: false, file: 'bgmTowerEnding',
+  bars: [
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [76, 0, 79, 0], bass: 36 },
+    { arp: [55, 59, 62, 67, 62, 59, 62, 67], lead: [74, 0, 71, 74], bass: 43 },
+    { arp: [57, 60, 64, 69, 64, 60, 64, 69], lead: [72, 0, 76, 0], bass: 45 },
+    { arp: [53, 57, 60, 65, 60, 57, 60, 65], lead: [77, 0, 0, -1], bass: 41 },
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [79, 0, 84, 0], bass: 36 },
+    { arp: [52, 55, 60, 64, 60, 55, 60, 64], lead: [83, 0, 79, 76], bass: 40 },
+    { arp: [53, 57, 60, 65, 60, 57, 60, 65], lead: [77, 76, 74, 72], bass: 41 },
+    { arp: [55, 59, 62, 67, 71, 67, 62, 59], lead: [74, 0, 0, -1], bass: 43 },
+    { arp: [60, 64, 67, 72, 67, 64, 67, 72], lead: [72, 0, 0, 0], bass: 36 },
+  ],
+};
+
+const TRACKS = {
+  title: TITLE, stone: STONE, moss: MOSS, frost: FROST, cloud: CLOUD, ember: EMBER, thunder: THUNDER, galaxy: GALAXY, flower: FLOWER, storm: STORM, wish: WISH,
+  rest: REST, boss: BOSS, bossFrost: BOSS_FROST, bossWind: BOSS_WIND, bossEmber: BOSS_EMBER,
+  bossThunder: BOSS_THUNDER, bossCrow: BOSS_CROW, bossFlower: BOSS_FLOWER, bossStorm: BOSS_STORM, bossFinal: BOSS_FINAL, ending: ENDING,
+};
 export type TrackName = keyof typeof TRACKS;
 /** 테마(floors.json 의 theme) → 그 구역 곡 · 보스 곡 (없으면 1구역 곡 · 공용 보스 곡) */
 export function zoneTrack(theme: string, boss: boolean): TrackName {
-  const zone: Record<string, TrackName> = { stone: 'stone', moss: 'moss', frost: 'frost', cloud: 'cloud', ember: 'ember' };
-  const bossOf: Record<string, TrackName> = { frost: 'bossFrost', cloud: 'bossWind', ember: 'bossEmber' };
+  const zone: Record<string, TrackName> = { stone: 'stone', moss: 'moss', frost: 'frost', cloud: 'cloud', ember: 'ember', thunder: 'thunder', galaxy: 'galaxy', flower: 'flower', storm: 'storm', wish: 'wish' };
+  const bossOf: Record<string, TrackName> = { frost: 'bossFrost', cloud: 'bossWind', ember: 'bossEmber', thunder: 'bossThunder', galaxy: 'bossCrow', flower: 'bossFlower', storm: 'bossStorm', wish: 'bossFinal' };
   return boss ? (bossOf[theme] ?? 'boss') : (zone[theme] ?? 'stone');
 }
 

@@ -33,6 +33,13 @@ export function arena(opts: { floor?: number; level?: number; orb?: string; awak
       if (c === 'x') t = T.PIT;
       if (c === 'b') (t = T.BELL), pending.push({ id: 0, kind: 'bell', x, y, room: 0 });
       if (c === 'j') (t = T.GONG), pending.push({ id: 0, kind: 'gong', x, y, room: 0 });
+      if (c === 'l') (t = T.ROD), pending.push({ id: 0, kind: 'rod', x, y, room: 0 });
+      if (c === 'w') (t = T.SWITCH), pending.push({ id: 0, kind: 'switch', x, y, room: 0 });
+      if (c === 'o') t = T.PUFF;
+      if (c === 'z') t = T.BARS;
+      if (c === '/') t = T.MIRROR_A;
+      if (c === '\\') t = T.MIRROR_B;
+      if (c === 'm') t = T.FOG;
       tiles[y * w + x] = t;
     }
   }

@@ -247,3 +247,26 @@ canvas.hero-cv, canvas.big-cv, .opt canvas, .shop-keeper canvas { image-renderin
 .shop-keeper { display: flex; align-items: center; gap: 8px; background: var(--panel-strong); border-radius: var(--radius-item); padding: 4px 10px; }
 .shop-keeper canvas { width: 56px; height: 56px; flex: none; }
 .shop-keeper p { font-size: 14px; }
+
+/* ---------- 탑을 다 오른 뒤 · 엔딩 ---------- */
+.done-card { text-align: center; }
+.done-card b { font-weight: normal; font-size: 18px; color: var(--accent); }
+.cp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+.cp-grid .btn { padding: 4px 0; min-width: 0; }
+.ending { position: relative; background: var(--ink); overflow-y: auto; align-items: center; gap: 14px; padding: 24px 16px 32px; }
+.ending .stars { position: fixed; inset: 0; pointer-events: none; }
+.ending .ending-bg { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(480px, 100%); aspect-ratio: 4 / 3; background: center / cover no-repeat; image-rendering: pixelated; pointer-events: none; opacity: 0.85; -webkit-mask-image: linear-gradient(#000 45%, transparent 80%); mask-image: linear-gradient(#000 45%, transparent 80%); }
+.ending .stars i { position: absolute; width: 3px; height: 3px; background: var(--white); animation: tw 2.8s infinite ease-in-out; }
+@keyframes tw { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+.ending-hero { position: relative; display: grid; place-items: center; margin-top: 40px; }
+.ending-hero .hero-cv { image-rendering: pixelated; width: 128px; height: 128px; position: relative; }
+.wish-orb { position: absolute; top: -40px; width: 44px; height: 44px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--white), var(--primary-light) 40%, var(--primary-deep)); border: var(--line) solid var(--outline); box-shadow: 0 0 24px var(--primary-light); animation: orbUp 3s ease-in-out infinite alternate; }
+@keyframes orbUp { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+.ending-lines { max-width: 420px; text-align: center; position: relative; }
+.ending-lines p { margin: 6px 0; font-size: 17px; color: var(--white); text-shadow: 0 1px 0 var(--ink), 0 0 6px var(--ink); opacity: 0; animation: lineIn 1.2s forwards; }
+@keyframes lineIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ending-card { width: 100%; max-width: 420px; opacity: 0; animation: lineIn 1.2s forwards; position: relative; }
+.ending-card h3 { margin: 0 0 8px; text-align: center; font-weight: normal; font-size: 22px; color: var(--accent); }
+.ending-card h4 { margin: 12px 0 4px; font-weight: normal; font-size: 16px; }
+.ending-card .rows.small { font-size: 13px; }
+.ending-card .btn { width: 100%; margin-top: 8px; }

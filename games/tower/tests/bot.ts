@@ -3,14 +3,17 @@
  * - 잠긴 방: 가장 가까운 적에게 붙어 3타 콤보, 예고(분홍 범위)가 보이면 피한다, 혼력이 차면 스킬
  * - 열린 방: 상자 → 퍼즐(쥐: 스위치를 맞힐 자리에서 참격, 소: 바위 옆에서 영체 팔, 발판: 가까운 것부터 밟기, 용: 화로 옆에서 화염 강타,
  *   뱀: 말뚝과 한 줄인 자리에서 채찍 — 건너편에 아직 못 간 상자·계단이 있을 때만, 토끼: 찬물 앞에서 얼음 칼날, 닭: 풍경 가운데에서 4~5칸 떨어져 깃털,
- *   개: 징 줄 끝에서 음파, 호랑이: 둥근 바위 뒤에서 맹호 강타 — 굴러가 구덩이를 메울 때만) → 구슬 → 샘 → 상점 → 적이 남은 방 → 계단
+ *   개: 징 줄 끝에서 음파, 호랑이: 둥근 바위 뒤에서 맹호 강타 — 굴러가 구덩이를 메울 때만,
+ *   말: 뇌석 셋이 한 사슬로 이어지는 자리에서 연쇄 번개, 돼지: 물 건너 구름 덩이와 한 줄에서 바람 칼날, 백호: 쇠창살 옆에서 금강 베기,
+ *   쥐: 거울로 꺾여 스위치에 닿는 자리에서 참격, 청룡: 짙은 구름 앞에서 번개 회오리) → 구슬 → 샘 → 상점 → 적이 남은 방 → 계단 (100층은 소원 구슬)
+ * - 천둥 북·소원 등불: 보스가 맞지 않을 때만, 아직 빛나지 않는 것부터 친다. 까마귀 그림자보다 진짜 보스를 먼저
  * - 떨어지는 공격(원)·여러 갈래 선은 피하고, 남는 바닥(서리·불)은 사람처럼 참고 싸운다
  * - 구슬은 전투용으로 BOT_ORBS 앞쪽 것을 끼고, 퍼즐 앞에서만 그 퍼즐 구슬로 바꿔 낀다 (메뉴에서 바꾸는 것과 같다)
  */
 import { ROOM_H, ROOM_W, T, TILE, flyable, type FloorMap } from '../src/game/floorgen';
 import { generateFloor } from '../src/game/floorgen';
 import { buy, clearFloor, die, type TowerData } from '../src/game/progress';
-import { BODY_UP, FACE_VEC, blockedFor, boulderSlide, createRun, maxHp, maxMp, noInput, step, tileOf, useItem, type Enemy, type Input, type RunState } from '../src/game/sim';
+import { BODY_UP, FACE_VEC, beamAng, blockedFor, boulderSlide, createRun, maxHp, maxMp, noInput, step, tileOf, useItem, type Enemy, type Input, type RunState } from '../src/game/sim';
 import { orbDef, type ItemId } from '../src/data';
 
 /** 봇이 싸울 때 끼는 구슬 순서 (가진 것 중 앞쪽) */
@@ -75,6 +78,8 @@ export class Bot {
   private stuck = 0;
   private lastPos = { x: 0, y: 0 };
   shopped = false;
+  /** 도착한 목표 (같은 칸 안에서는 도착한 채로 본다) */
+  private arrived = '';
 
   constructor(private opts: BotOptions = {}) {}
 
@@ -100,7 +105,7 @@ export class Bot {
     }
     // 2) 싸움
     const room = s.room;
-    const foes = s.enemies.filter((e) => e.alive && e.active && !e.hidden && !e.guard && !e.pending && (e.room === room || s.locked.has(e.room)));
+    const foes = this.targets(s, s.enemies.filter((e) => e.alive && e.active && !e.hidden && !e.guard && !e.pending && (e.room === room || s.locked.has(e.room))));
     if (foes.length) return this.fight(s, foes, inp);
 
     // 3) 할 일
@@ -108,7 +113,10 @@ export class Bot {
     if (!g) return inp;
     const ptx = Math.floor(p.x / TILE);
     const pty = Math.floor((p.y - 2) / TILE);
-    if (ptx === g.tx && pty === g.ty && Math.abs(p.x - center(g.tx)) < 3 && Math.abs(p.y - (center(g.ty) + 3)) < 4) {
+    // 도착: 처음엔 칸 가운데 좁게, 한 번 도착한 목표는 같은 칸 안에서 넉넉히 (돌아보는 한 걸음 1px 남짓에 도착했다 말았다 하지 않게)
+    const held = this.arrived === g.key;
+    if (ptx === g.tx && pty === g.ty && Math.abs(p.x - center(g.tx)) < (held ? 8 : 3) && Math.abs(p.y - (center(g.ty) + 3)) < (held ? 8 : 4)) {
+      this.arrived = g.key;
       if (g.face !== undefined && p.face !== g.face) {
         // 제자리에서 그쪽으로 한 걸음 (돌아보기)
         inp.mx = FACE_VEC[g.face][0];
@@ -124,8 +132,17 @@ export class Bot {
       if (g.act === 'walk') this.done.add(g.key);
       return inp;
     }
+    this.arrived = '';
     this.walkTo(s, g.tx, g.ty, g.key, inp);
     return inp;
+  }
+
+  /** 칠 상대: 천둥 북·소원 등불은 보스가 맞지 않을 때 아직 빛나지 않는 것만, 까마귀 그림자는 진짜가 보이면 빼고 */
+  private targets(s: RunState, foes: Enemy[]): Enemy[] {
+    const guarded = s.enemies.some((b) => b.alive && b.def.boss && b.guard && (b.guard === 'cloud' || b.guard === 'dark'));
+    let pool = foes.filter((f) => f.def.ai !== 'drum' || (guarded && f.lit <= 0.3));
+    if (pool.some((f) => f.def.ai !== 'decoy')) pool = pool.filter((f) => f.def.ai !== 'decoy');
+    return pool;
   }
 
   private shop(s: RunState) {
@@ -200,15 +217,47 @@ export class Bot {
     const px = p.x;
     const py = p.y - BODY_UP;
     // 떨어지는 공격: 원 밖으로 (남는 바닥은 상태만 걸려 사람처럼 참고 싸운다)
-    for (const c of s.strikes.map((k) => ({ x: k.x, y: k.y, r: k.r + 10 }))) {
+    // (곧 떨어질 것만 — 사람처럼 마지막에 비킨다. 여럿이 계속 던져도 싸울 틈이 있게)
+    for (const c of s.strikes.filter((k) => k.total - k.t < 0.6).map((k) => ({ x: k.x, y: k.y, r: k.r + 10 }))) {
       if (Math.hypot(px - c.x, py - c.y) >= c.r) continue;
       const dx = px - c.x || 0.1;
       const dy = py - c.y || 0.1;
       return this.free(s, Math.abs(dx) > Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)], [Math.sign(dx), Math.sign(dy)]);
     }
+    // 네모로 떨어지는 공격: 가장 가까운 변 밖으로
+    for (const r of s.rects) {
+      const m = 8;
+      if (px < r.x0 - m || px > r.x1 + m || py < r.y0 - m || py > r.y1 + m) continue;
+      const opts: [number, [number, number]][] = [
+        [px - (r.x0 - m), [-1, 0]],
+        [r.x1 + m - px, [1, 0]],
+        [py - (r.y0 - m), [0, -1]],
+        [r.y1 + m - py, [0, 1]],
+      ];
+      opts.sort((a, b) => a[0] - b[0]);
+      for (const [, d] of opts) if (!blockedFor(s, Math.floor((p.x + d[0] * 9) / TILE), Math.floor((p.y + d[1] * 9) / TILE), 'p')) return d;
+      return opts[0][1];
+    }
     for (const e of s.enemies) {
       const t = e.tele;
       if (!e.alive || !t) continue;
+      if (t.kind === 'fan') {
+        for (let i = 0; i < (t.n ?? 1); i++) {
+          const a = beamAng(t, i);
+          const lx = Math.cos(a);
+          const ly = Math.sin(a);
+          const rx = px - t.x;
+          const ry = py - t.y;
+          const along = rx * lx + ry * ly;
+          const side = rx * -ly + ry * lx;
+          if (along > -10 && along < t.len + 8 && Math.abs(side) < t.r + 10) {
+            const sg = side >= 0 ? 1 : -1;
+            const perp: [number, number] = [-ly * sg, lx * sg];
+            return this.free(s, Math.abs(perp[0]) > Math.abs(perp[1]) ? [Math.sign(perp[0]), 0] : [0, Math.sign(perp[1])], [Math.sign(perp[0]), Math.sign(perp[1])]);
+          }
+        }
+        continue;
+      }
       if (t.kind === 'cross') {
         const n = t.n ?? 8;
         for (let i = 0; i < n; i++) {
@@ -338,11 +387,14 @@ export class Bot {
     }
     // 그 자리에 왔다: 적과 줄을 맞춘다 (옆이면 세로를, 위아래면 가로를)
     const side = spot ? spot[1] === ty : Math.abs(dx) > Math.abs(dy);
+    // (그쪽이 막혀 더 맞출 수 없으면 — 기둥 구석의 적 — 그대로 다가간다. 칼은 10px 어긋나도 닿는다)
+    const stuckY = Math.abs(dy) <= 10 && blockedFor(s, ptx, Math.floor((p.y + Math.sign(dy) * 6) / TILE), 'p');
+    const stuckX = Math.abs(dx) <= 10 && blockedFor(s, Math.floor((p.x + Math.sign(dx) * 7) / TILE), pty, 'p');
     if (side) {
-      inp.my = Math.abs(dy) > 6 ? Math.sign(dy) : 0;
+      inp.my = Math.abs(dy) > 6 && !stuckY ? Math.sign(dy) : 0;
       if (!inp.my) inp.mx = Math.sign(dx);
     } else {
-      inp.mx = Math.abs(dx) > 6 ? Math.sign(dx) : 0;
+      inp.mx = Math.abs(dx) > 6 && !stuckX ? Math.sign(dx) : 0;
       if (!inp.mx) inp.my = Math.sign(dy);
     }
     return inp;
@@ -381,6 +433,10 @@ export class Bot {
         }
       }
     }
+    // 백호 퍼즐: 쇠창살 옆
+    if (s.data.orbs.whiteTiger) {
+      for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (objT(x, y) === T.BARS) for (const g of nearSpots(x, y)) goals.push({ ...g, act: 'skill', key: `bars:${x},${y}:${g.face}:${Math.floor(s.t / 3)}` });
+    }
     // 소 퍼즐: 바위 옆
     if (s.data.orbs.ox) {
       for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (objT(x, y) === T.ROCK) for (const g of nearSpots(x, y)) goals.push({ ...g, act: 'skill', key: `rock:${x},${y}:${g.face}` });
@@ -402,11 +458,16 @@ export class Bot {
       if (s.data.orbs.rooster) pz.push(...this.ringShots(s, 'bell'));
       if (s.data.orbs.dog) pz.push(...this.ringShots(s, 'gong'));
       if (s.data.orbs.tiger) pz.push(...this.boulderPushes(s));
+      if (s.data.orbs.horse) pz.push(...this.rodShots(s));
+      if (s.data.orbs.pig) pz.push(...this.puffShots(s));
+      if (s.data.orbs.rat) pz.push(...this.mirrorShots(s));
+      if (s.data.orbs.blueDragon) pz.push(...this.fogShots(s));
       this.pz = { t: s.t, goals: pz };
     }
     goals.push(...this.pz.goals);
     for (const o of m.objs) {
       if (o.kind === 'pedestal' && objT(o.x, o.y) === T.PEDESTAL) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'interact', key: `orb:${o.id}:${g.face}` });
+      if (o.kind === 'wish' && objT(o.x, o.y) === T.WISH) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'interact', key: `wish:${o.id}:${g.face}` });
       if (o.kind === 'fountain' && objT(o.x, o.y) === T.FOUNTAIN && p.hp < maxHp(s) * 0.9) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'interact', key: `ft:${o.id}:${g.face}` });
       if (o.kind === 'shop' && !this.shopped) for (const g of nearSpots(o.x, o.y)) goals.push({ ...g, act: 'shop', key: 'shop' });
     }
@@ -423,7 +484,7 @@ export class Bot {
     // 퍼즐을 풀 구슬 바꿔 끼기 (메뉴에서 바꾸는 것과 같다)
     const first = goals.find((g) => !this.done.has(g.key) && this.reachable(s, g));
     if (first) {
-      const PUZZLE_ORB: Record<string, string> = { 'rock:': 'ox', 'sw:': 'rat', 'br:': 'dragon', 'gr:': 'snake', 'ic:': 'rabbit', 'bell:': 'rooster', 'gong:': 'dog', 'bd:': 'tiger' };
+      const PUZZLE_ORB: Record<string, string> = { 'rock:': 'ox', 'sw:': 'rat', 'br:': 'dragon', 'gr:': 'snake', 'ic:': 'rabbit', 'bell:': 'rooster', 'gong:': 'dog', 'bd:': 'tiger', 'rod:': 'horse', 'puff:': 'pig', 'bars:': 'whiteTiger', 'mir:': 'rat', 'fog:': 'blueDragon' };
       const need = Object.entries(PUZZLE_ORB).find(([k]) => first.key.startsWith(k))?.[1] ?? this.fightOrb(s);
       if (need && s.data.equipped !== need && !p.swing) s.data.equipped = need;
     }
@@ -565,6 +626,132 @@ export class Bot {
     }
     return out;
   }
+  /** 뇌석: 그 자리에서 연쇄 번개를 쏘면 (가장 가까운 뇌석부터 56 안으로) 방의 뇌석이 모두 이어지는 자리 */
+  private rodShots(s: RunState): Goal[] {
+    const m = s.map;
+    const out: Goal[] = [];
+    const p = s.p;
+    const here = this.region(s, Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE));
+    for (const room of new Set(m.objs.filter((o) => o.kind === 'rod' && !s.solved.has(o.room)).map((o) => o.room))) {
+      if (!m.objs.some((o) => o.kind === 'chest' && o.room === room && tileOf(s, o.x, o.y) === T.CHEST)) continue;
+      const rods = m.objs.filter((o) => o.kind === 'rod' && o.room === room).map((o) => ({ x: o.x * TILE + 8, y: o.y * TILE + 8 }));
+      const r = m.rooms[room];
+      for (let ty = r.y0 + 1; ty < r.y0 + ROOM_H - 1; ty++) {
+        for (let tx = r.x0 + 1; tx < r.x0 + ROOM_W - 1; tx++) {
+          if (blockedFor(s, tx, ty, 'p') || !here.has(ty * m.w + tx)) continue;
+          const bx = tx * TILE + 8;
+          const by = ty * TILE + 4;
+          const near = rods.map((q) => ({ q, d: Math.hypot(q.x - bx, q.y - by) })).sort((a, b) => a.d - b.d);
+          if (!near.length || near[0].d > 80 || near[0].d < 20) continue;
+          // 사슬 (가장 가까운 것으로 56 안)
+          const hit = [near[0].q];
+          let cur = near[0].q;
+          for (let i = 0; i < 2; i++) {
+            const nx = rods.filter((q) => !hit.includes(q) && Math.hypot(q.x - cur.x, q.y - cur.y) <= 56).sort((a, b) => Math.hypot(a.x - cur.x, a.y - cur.y) - Math.hypot(b.x - cur.x, b.y - cur.y))[0];
+            if (!nx) break;
+            hit.push(nx);
+            cur = nx;
+          }
+          if (hit.length === rods.length) out.push({ tx, ty, act: 'skill', key: `rod:${room}:${tx},${ty}:${Math.floor(s.t / 3)}` });
+        }
+      }
+    }
+    return out;
+  }
+  /** 구름 덩이: 한 줄(사이는 물·바닥) 1~5칸 뒤에서 바람 칼날 — 미끄러진 끝이 구덩이이고 그 너머에 아직 못 간 상자가 있을 때 */
+  private puffShots(s: RunState): Goal[] {
+    const m = s.map;
+    const out: Goal[] = [];
+    const p = s.p;
+    const here = this.region(s, Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE));
+    for (let y = 0; y < m.h; y++) {
+      for (let x = 0; x < m.w; x++) {
+        if (tileOf(s, x, y) !== T.PUFF) continue;
+        for (let f = 0; f < 4; f++) {
+          const [fx, fy] = FACE_VEC[f];
+          const end = boulderSlide(s, x, y, fx, fy);
+          if (!end.pit) continue;
+          const ok = [[0, 0], ...FACE_VEC].some(([dx, dy]) => {
+            const nx = end.x + fx + dx;
+            const ny = end.y + fy + dy;
+            return !blockedFor(s, nx, ny, 'p') && !here.has(ny * m.w + nx) && this.useful(s, nx, ny, here);
+          });
+          if (!ok) continue;
+          for (let d = 1; d <= 5; d++) {
+            const ax = x - fx * d;
+            const ay = y - fy * d;
+            let clear = true;
+            for (let k = 1; k < d; k++) if (!flyable(tileOf(s, x - fx * k, y - fy * k))) clear = false;
+            if (!clear) break;
+            if (blockedFor(s, ax, ay, 'p') || !here.has(ay * m.w + ax)) continue;
+            out.push({ tx: ax, ty: ay, face: f, act: 'skill', key: `puff:${x},${y}:${f}:${d}:${Math.floor(s.t / 3)}` });
+          }
+        }
+      }
+    }
+    return out;
+  }
+  /** 거울: 스위치에서 거꾸로 빛을 따라가 (거울에서 꺾으며) 닿는 설 자리 — 거울을 한 번 이상 거칠 때만 (곧은 줄은 쥐 퍼즐과 같다) */
+  private mirrorShots(s: RunState): Goal[] {
+    const m = s.map;
+    const out: Goal[] = [];
+    const p = s.p;
+    const here = this.region(s, Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE));
+    for (const o of m.objs) {
+      if (o.kind !== 'switch' || tileOf(s, o.x, o.y) !== T.SWITCH) continue;
+      for (let f0 = 0; f0 < 4; f0++) {
+        let [dx, dy]: number[] = [...FACE_VEC[f0]];
+        let x = o.x;
+        let y = o.y;
+        let len = 0;
+        let mirrors = 0;
+        for (let i = 0; i < 14; i++) {
+          x += dx;
+          y += dy;
+          len += TILE;
+          const t = tileOf(s, x, y);
+          if (t === T.MIRROR_A) {
+            [dx, dy] = [-dy, -dx];
+            mirrors++;
+            continue;
+          }
+          if (t === T.MIRROR_B) {
+            [dx, dy] = [dy, dx];
+            mirrors++;
+            continue;
+          }
+          if (!flyable(t)) break;
+          if (mirrors && !blockedFor(s, x, y, 'p') && here.has(y * m.w + x) && len <= 120 + mirrors * 45) {
+            const face = FACE_VEC.findIndex(([a, b]) => a === -dx && b === -dy);
+            out.push({ tx: x, ty: y, face, act: 'skill', key: `mir:${o.id}:${f0}:${i}:${Math.floor(s.t / 3)}` });
+          }
+        }
+      }
+    }
+    return out;
+  }
+  /** 짙은 구름: 구름 바로 앞에서, 그 줄로 걷으면 (5칸 안) 건너편 땅(아직 못 간 상자)에 닿는다 */
+  private fogShots(s: RunState): Goal[] {
+    const m = s.map;
+    const out: Goal[] = [];
+    const p = s.p;
+    const here = this.region(s, Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE));
+    for (const c of [...here].sort((a, b) => a - b)) {
+      const x = c % m.w;
+      const y = (c - x) / m.w;
+      for (let f = 0; f < 4; f++) {
+        const [fx, fy] = FACE_VEC[f];
+        if (tileOf(s, x + fx, y + fy) !== T.FOG) continue;
+        let k = 1;
+        while (k <= 5 && tileOf(s, x + fx * k, y + fy * k) === T.FOG) k++;
+        const lx = x + fx * k;
+        const ly = y + fy * k;
+        if (k > 5 || blockedFor(s, lx, ly, 'p') || here.has(ly * m.w + lx) || !this.useful(s, lx, ly, here)) continue;
+        out.push({ tx: x, ty: y, face: f, act: 'skill', key: `fog:${x},${y}:${f}:${Math.floor(s.t / 3)}` });
+      }
+    }
+    return out;
+  }
   private region(s: RunState, sx: number, sy: number): Set<number> {
     const w = s.map.w;
     const seen = new Set<number>([sy * w + sx]);
@@ -652,6 +839,8 @@ export function botTower(data: TowerData, lastFloor: number, tries = 3, opts: Bo
     if (r.result === 'clear') {
       clearFloor(nd, floor);
       d = nd;
+      // 100층(마지막)을 깨면 다음 층이 없다 (floor 는 100 그대로)
+      if (floor >= lastFloor) break;
     } else {
       die(nd);
       d = nd;

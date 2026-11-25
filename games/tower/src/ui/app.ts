@@ -1,15 +1,15 @@
 /**
- * 시아의탑 화면: 처음 화면 · 캐릭터 만들기 · 탑(게임 화면 + HUD + 조작) · 메뉴 · 상점 · 쓰러짐 · 10층 돌파.
+ * 시아의탑 화면: 처음 화면 · 캐릭터 만들기 · 탑(게임 화면 + HUD + 조작) · 메뉴 · 상점 · 쓰러짐 · 10층 돌파 · 100층 엔딩.
  * 진행 상태(ctx.data)는 늘 '마지막으로 저장한 것'. 층 안의 변화는 run.data 에만 있다가 층을 깨거나 메뉴·상점·죽음에서 저장된다.
  */
 import Phaser from 'phaser';
-import { enemySheet, orbIcons, preloadOrbIcons, tileSheet } from '../art/load';
-import { FLOORS, ITEMS, LAST_READY, ORBS, SHARDS_TO_AWAKEN, ZONE_SIZE, enemyDef, expNeed, floorReady, floorRule, itemDef, orbDef, priceOf, statsAt, zoneData, type ItemId } from '../data';
+import { endingBgUrl, enemySheet, orbIcons, preloadOrbIcons, tileSheet } from '../art/load';
+import { FLOORS, ITEMS, LAST_READY, ORBS, SHARDS_TO_AWAKEN, TOTAL_FLOORS, ZONE_SIZE, enemyDef, expNeed, floorReady, floorRule, itemDef, orbDef, priceOf, statsAt, zoneData, type ItemId } from '../data';
 import { generateFloor } from '../game/floorgen';
-import { awakenWithShards, buy, clearFloor, clone, die, equipOrb, isLook, sameLook, type Look, type TowerData } from '../game/progress';
+import { awakenWithShards, buy, clearFloor, climbAgain, clone, die, equipOrb, isLook, sameLook, towerDone, type Look, type TowerData } from '../game/progress';
 import { canAwaken, createRun, equippedOrb, interactLabel, interactTarget, maxHp, maxMp, plateLeft, useItem, type RunState, type SimEvent } from '../game/sim';
 import { ApiError, type TowerApi } from '../net/api';
-import { DEV_AWAKEN, DEV_COINS, DEV_FLOOR, DEV_GOD, DEV_LEVEL, DEV_ORBS, DEV_RESET, DEV_SHARDS, LOCAL_MODE } from '../net/local';
+import { DEV_AWAKEN, DEV_COINS, DEV_ENDING, DEV_FLOOR, DEV_GOD, DEV_LEVEL, DEV_ORBS, DEV_RESET, DEV_SHARDS, LOCAL_MODE } from '../net/local';
 import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, type SceneArt, type SceneHooks } from '../scenes/GameScene';
 import { COLOR } from '../theme';
@@ -76,7 +76,7 @@ function applyDev(d: TowerData) {
     d.floor = DEV_FLOOR;
     d.best = Math.max(d.best, DEV_FLOOR - 1);
     d.checkpoint = Math.floor((DEV_FLOOR - 1) / 10) * 10 + 1;
-    if (!DEV_LEVEL) d.level = Math.max(d.level, DEV_FLOOR);
+    if (!DEV_LEVEL) d.level = Math.min(99, Math.max(d.level, DEV_FLOOR));
     if (!DEV_ORBS.length) {
       // 그 층 아래에서 받는 구슬 (2층 쥐 · 7층 소 · 12층 용 · 17층 뱀 …)
       for (const o of ORBS) if (o.floor < DEV_FLOOR) d.orbs[o.id] ||= 1;
@@ -93,6 +93,14 @@ function applyDev(d: TowerData) {
   }
   const firstDev = all(DEV_ORBS)[0] ?? all(DEV_AWAKEN)[0];
   if (firstDev && orbDef(firstDev)) d.equipped = firstDev;
+  // &ending=1: 엔딩 화면 (탑을 다 오른 상태로)
+  if (DEV_ENDING) {
+    d.best = TOTAL_FLOORS;
+    d.floor = TOTAL_FLOORS;
+    d.checkpoint = TOTAL_FLOORS - ZONE_SIZE + 1;
+    for (const o of ORBS) d.orbs[o.id] ||= 1;
+    if (!DEV_LEVEL) d.level = Math.max(d.level, 97);
+  }
   if (DEV_COINS) d.coins = DEV_COINS;
   if (DEV_SHARDS) d.shards = DEV_SHARDS;
   // 테스트 모드 기기 기록의 '깬 최고 층' 도 맞춘다 (서버처럼 층 건너뛰기를 막으므로)
@@ -105,7 +113,8 @@ function applyDev(d: TowerData) {
 }
 
 export function showFirst() {
-  if (!ctx.look) openCreator({ first: true, onDone: () => (LOCAL_MODE && DEV_FLOOR ? play() : title()) });
+  if (!ctx.look) openCreator({ first: true, onDone: () => (LOCAL_MODE && DEV_FLOOR ? play() : LOCAL_MODE && DEV_ENDING ? endingScreen(title) : title()) });
+  else if (LOCAL_MODE && DEV_ENDING) endingScreen(title);
   else if (LOCAL_MODE && DEV_FLOOR) play();
   else title();
 }
@@ -117,7 +126,9 @@ function title() {
   titlePreview?.destroy();
   const d = ctx.data;
   const ready = floorReady(d.floor);
+  const done = towerDone(d);
   const pending = ctx.api.pending();
+  const cps = Array.from({ length: TOTAL_FLOORS / ZONE_SIZE }, (_, i) => i * ZONE_SIZE + 1);
   app().innerHTML = `
     <div class="screen title-screen">
       <div class="bar">
@@ -135,7 +146,11 @@ function title() {
         </div>
       </div>
       <div class="menu-btns">
-        ${ready ? `<button class="btn primary big" id="go">${d.floor}층부터 오르기 ▶</button>` : `<div class="card soon-card"><b>${d.floor}층부터는 아직 준비 중이에요</b><p class="soft">${d.checkpoint}층 체크포인트가 저장되어 있어요. 곧 열려요!</p></div>
+        ${done
+          ? `${d.floor < TOTAL_FLOORS && !cps.includes(d.floor) ? `<button class="btn primary big" id="go">${d.floor}층부터 이어 오르기 ▶</button>` : ''}<div class="card done-card"><b>🏆 탑을 다 올랐어요!</b><p class="soft">소원 구슬에 소원을 빌었어요. 다시 오를 체크포인트를 골라요 (이미 깬 층은 경험치 절반)</p>
+          <div class="cp-grid">${cps.map((f) => `<button class="btn small ${f === d.checkpoint ? 'on' : ''}" data-cp="${f}">${f}층</button>`).join('')}</div></div>
+          <div class="row2"><button class="btn primary" id="last">100층 다시 ▶</button><button class="btn" id="ending">🌟 엔딩 다시 보기</button></div>`
+          : ready ? `<button class="btn primary big" id="go">${d.floor}층부터 오르기 ▶</button>` : `<div class="card soon-card"><b>${d.floor}층부터는 아직 준비 중이에요</b><p class="soft">${d.checkpoint}층 체크포인트가 저장되어 있어요. 곧 열려요!</p></div>
           <button class="btn big" id="replay">1층부터 다시 오르기 <small>경험치 절반</small></button>`}
         <div class="row2">
           <button class="btn" id="look">👕 외형 바꾸기</button>
@@ -157,6 +172,24 @@ function title() {
     sfx('click');
     ctx.data.floor = 1;
     play();
+  });
+  // 다 오른 뒤: 고른 체크포인트부터 (저장해 두고 오른다 — 다른 기기에서도 그 층부터)
+  const climb = (cp: number) => {
+    sfx('click');
+    const d2 = clone(ctx.data);
+    if (cp === TOTAL_FLOORS) {
+      d2.floor = TOTAL_FLOORS;
+      d2.checkpoint = TOTAL_FLOORS - ZONE_SIZE + 1;
+    } else if (climbAgain(d2, cp)) return;
+    ctx.data = d2;
+    void saveNow(d2);
+    play();
+  };
+  app().querySelectorAll<HTMLButtonElement>('[data-cp]').forEach((b) => b.addEventListener('click', () => climb(Number(b.dataset.cp))));
+  document.getElementById('last')?.addEventListener('click', () => climb(TOTAL_FLOORS));
+  document.getElementById('ending')?.addEventListener('click', () => {
+    sfx('click');
+    endingScreen(title);
   });
   $('#look').addEventListener('click', () => {
     sfx('click');
@@ -193,7 +226,7 @@ function helpBox() {
         <div><span>메뉴</span><b><span class="key">I</span> · <span class="key">Esc</span> · ☰</b></div>
       </div>
       <p class="soft">전투방에 들어가면 문이 잠기고 적이 몇 무리씩 몰려와요. 모두 물리치면 열려요. 기본 공격을 맞히면 혼력이 차오르고, 싸움 밖에서는 체력·혼력이 천천히 회복돼요.</p>
-      <p class="soft">퍼즐방: 발판은 시간 안에 모두 밟기, 스위치·덩굴은 쥐 구슬, 금 간 바위는 소 구슬, 화로는 용 구슬, 말뚝은 뱀 구슬.</p>
+      <p class="soft">퍼즐방: 발판은 시간 안에 모두 밟기, 스위치·덩굴은 쥐 구슬, 금 간 바위는 소 구슬, 화로는 용 구슬, 말뚝은 뱀 구슬. 더 높은 곳에서는 찬물·풍경·징·둥근 바위·뇌석·구름 덩이·쇠창살·거울·짙은 구름 — 그 층 아래에서 받은 구슬로 풀려요.</p>
       <button class="btn primary" data-close>알겠어요</button>
     </div>`);
   ov.querySelector('[data-close]')!.addEventListener('click', () => ov.remove());
@@ -351,7 +384,7 @@ let gameWatch: ResizeObserver | null = null;
 const readyZones = () => FLOORS.zones.filter((z) => z.ready);
 const themeOf = (floor: number) => zoneData(floor)?.theme ?? 'stone';
 async function loadArt(look: Look): Promise<SceneArt & { themes: Record<string, HTMLCanvasElement> }> {
-  const ids = [...new Set(readyZones().flatMap((z) => [...z.enemies, z.elite, z.boss, ...(z.boss ? [enemyDef(z.boss).summon?.id ?? ''] : [])]).filter(Boolean))];
+  const ids = [...new Set(readyZones().flatMap((z) => [...z.enemies, ...z.enemies.map((id) => enemyDef(id).split?.id ?? ''), z.elite, z.boss, ...(z.boss ? [enemyDef(z.boss).summon?.id ?? ''] : [])]).filter(Boolean))];
   const themes = [...new Set(readyZones().map((z) => z.theme))];
   const [layers, sheets, enemies] = await Promise.all([lookLayers(look), Promise.all(themes.map((t) => tileSheet(t))), Promise.all(ids.map(enemySheet))]);
   const byTheme = Object.fromEntries(themes.map((t, i) => [t, sheets[i]]));
@@ -480,7 +513,7 @@ function floorBanner(floor: number) {
   const z = zoneData(floor);
   const kind = floorRule(floor).kind;
   const boss = z?.boss ? enemyDef(z.boss).name : '???';
-  const sub = kind === 'rest' ? '휴식층 · 상점과 샘' : kind === 'elite' ? '정예가 기다린다' : kind === 'boss' ? `보스 · ${boss}` : (z?.name ?? '');
+  const sub = kind === 'rest' ? '휴식층 · 상점과 샘' : kind === 'elite' ? '정예가 기다린다' : floor === TOTAL_FLOORS ? `탑의 꼭대기 · 마지막 보스 ${boss}` : kind === 'boss' ? `보스 · ${boss}` : (z?.name ?? '');
   const el = document.createElement('div');
   el.className = 'floor-banner';
   el.innerHTML = `<b>${floor}층</b><small>${esc(sub)}</small>`;
@@ -646,6 +679,26 @@ function onEvent(ev: SimEvent, s: RunState) {
     case 'bossDown':
       sfx('survBossDown');
       hudNote(`${josa(s.boss?.def.name ?? '보스', '을', '를')} 쓰러뜨렸다!`, 2500);
+      break;
+    case 'drum':
+      sfxGap('tankBoom', 80, { volume: 0.5, rate: 0.7 + ev.on * 0.15 });
+      hudNote(ev.on < ev.all ? `${ev.on}/${ev.all} — 한꺼번에 모두!` : '모두 울렸다!', 1400);
+      break;
+    case 'bars':
+      sfxGap('twelveSlash', 200, { rate: 0.6 });
+      hudNote('쇠창살을 잘랐어요!');
+      break;
+    case 'fog':
+      sfxGap('boost', 300, { volume: 0.4, rate: 0.7 });
+      break;
+    case 'wishRise':
+      sfx('twelveRare');
+      music.play('ending');
+      hudNote('소원 구슬이 떠올랐어요! 다가가 소원을 빌어요', 5000);
+      break;
+    case 'wish':
+      sfx('newRecord');
+      hudNote('소원을 빌었어요…', 3000);
       break;
     case 'item':
       sfx('tankHeal', { volume: 0.7 });
@@ -841,6 +894,11 @@ function onClear(s: RunState) {
   ctx.data = data;
   sfx('goal');
   const saving = saveNow(data, floor);
+  // 100층: 소원을 빌었다 — 엔딩
+  if (floor >= TOTAL_FLOORS) {
+    setPaused(true);
+    return void setTimeout(() => leavePlay(() => endingScreen(title, saving)), 600);
+  }
   // 보스층(10·20…): 체크포인트 저장 카드. 마지막 준비된 층이면 '준비 중' 안내
   if (floor >= LAST_READY || floor % ZONE_SIZE === 0) return void mvpEnd(floor, saving, s);
   const el = document.createElement('div');
@@ -1143,6 +1201,65 @@ function openShop() {
   render();
 }
 
+
+// ---------- 엔딩 ----------
+/**
+ * 100층 소원 → 엔딩: 이야기 몇 줄이 차례로 떠오르고, 지나온 구역과 보스, 기록, 만든 이. 그림은 코드·글자로 (그림 담당 목록 — PRD '4차').
+ * 탑을 다 오른 상태(best 100)는 서버 저장 그대로 (체크포인트 91 · 층 100 — 104 의 확인을 지킨다).
+ */
+function endingScreen(onDone: () => void, saving?: Promise<unknown>) {
+  titlePreview?.destroy();
+  titlePreview = null;
+  music.play('ending');
+  const d = ctx.data;
+  const name = nick();
+  const orbCount = ORBS.filter((o) => d.orbs[o.id]).length;
+  const lines = [
+    '꼭대기 100층.',
+    '어둑시니가 흩어지자, 소원을 들어주는 구슬이 조용히 떠올랐다.',
+    `${esc(josa(ctx.user?.nickname ?? '테스트 대원', '은', '는'))} 구슬에 두 손을 얹고 소원을 빌었다.`,
+    '무엇을 빌었는지는 아무도 모른다.',
+    '다만 탑 아래로 구름이 걷히고, 지나온 백 개의 층이 별처럼 반짝였다.',
+  ];
+  const zones = FLOORS.zones.map((z) => `<div><span>${z.zone * ZONE_SIZE - ZONE_SIZE + 1}~${z.zone * ZONE_SIZE}층 · ${esc(z.name)}</span><b>${esc(z.boss ? enemyDef(z.boss).name : '')}</b></div>`).join('');
+  app().innerHTML = `
+    <div class="screen ending">
+      <div class="stars">${Array.from({ length: 36 }, (_, i) => `<i style="left:${(i * 37) % 100}%;top:${(i * 53) % 100}%;animation-delay:${(i % 7) * 0.4}s"></i>`).join('')}</div>
+      <div class="ending-bg"></div>
+      <div class="ending-hero"><div class="wish-orb"></div><canvas class="hero-cv" width="128" height="128"></canvas></div>
+      <div class="ending-lines">${lines.map((l, i) => `<p style="animation-delay:${0.6 + i * 1.6}s">${l}</p>`).join('')}</div>
+      <div class="card ending-card" style="animation-delay:${0.6 + lines.length * 1.6}s">
+        <h3>🏆 시아의탑을 다 올랐어요</h3>
+        <div class="rows">
+          <div><span>오른 사람</span><b>${name}</b></div>
+          <div><span>레벨</span><b>Lv ${d.level}</b></div>
+          <div><span>모은 구슬</span><b>${orbCount} / ${ORBS.length}</b></div>
+          <div><span>쓰러진 횟수</span><b>${d.deaths}</b></div>
+          <div><span>엽전</span><b class="coin">${coinFmt(d.coins)}냥</b></div>
+        </div>
+        <h4>지나온 탑</h4>
+        <div class="rows small">${zones}</div>
+        <p class="soft center save-line">${saving ? '저장하는 중…' : '탑을 다 오른 기록이 저장되어 있어요'}</p>
+        <p class="soft center">만든 곳 · SIA WORLD<br>고마워요, 끝까지 올라 줘서!</p>
+        <button class="btn primary big" id="end-done">처음 화면으로</button>
+      </div>
+    </div>`;
+  if (ctx.look) titlePreview = makePreview($<HTMLCanvasElement>('.ending .hero-cv'), ctx.look, 4);
+  void endingBgUrl().then((u) => {
+    const bg = document.querySelector<HTMLElement>('.ending .ending-bg');
+    if (u && bg) bg.style.backgroundImage = `url("${u}")`;
+  });
+  $('#end-done').addEventListener('click', () => {
+    sfx('click');
+    titlePreview?.destroy();
+    titlePreview = null;
+    onDone();
+  });
+  void saving?.then((r) => {
+    const line = document.querySelector('.ending .save-line');
+    if (line) line.textContent = r ? '탑을 다 오른 기록을 저장했어요. 랭킹 맨 위에 100층으로 올라요' : ctx.api.pending() > 0 ? '저장하지 못했어요. 연결되면 다시 보낼게요' : '저장이 거절됐어요';
+  });
+}
 
 /** 받침에 맞는 조사를 붙인다 (골렘을 · 이무기를) */
 function josa(word: string, withFinal: string, without: string): string {

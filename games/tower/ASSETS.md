@@ -1,6 +1,6 @@
 # 시아의탑 — 그림 규격과 교체 방법
 
-1~5구역(1~50층) 그림은 **Fable 5.2 손그림**(2026-11-25)이다: 캐릭터 레이어 18장 · 타일 시트 5장(`tiles.png` · `tiles-moss.png` · `tiles-frost.png` · `tiles-cloud.png` · `tiles-ember.png`) · 적 32종 · 구슬 아이콘 16개 · 로비 카드.
+1~10구역(1~100층) 그림은 **Fable 5.2 손그림**(2026-11-25)이다: 캐릭터 레이어 18장 · 타일 시트 10장(`tiles.png` · `tiles-moss/frost/cloud/ember/thunder/galaxy/flower/storm/wish.png`) · 적 66종 · 구슬 아이콘 16개 · 로비 카드 · 투사체 6종(`proj/`, 아직 코드가 읽지 않음) · 엔딩 그림(`ending.png`, 아직 코드가 읽지 않음).
 모두 `games/tower/art/draw.py` 한 파일이 그린다 — `python games/tower/art/draw.py` (저장소 어디서든, Pillow 필요) 를 돌리면
 `public/art/**` 와 `manifest.json`, `shared/images/card-tower.png` 를 똑같이 다시 만든다 (`python games/tower/art/draw.py <폴더>` 는 확대한 확인용 그림도 그 폴더에 만든다).
 SpriteCook 크레딧이 생기면 다시 그릴 목록에 올라 있다 (`art/spritecook/REDRAW-QUEUE.md` 6번).
@@ -65,6 +65,16 @@ SpriteCook 크레딧이 생기면 다시 그릴 목록에 올라 있다 (`art/sp
 
 - 바닥 `--roulette-summer` + 줄눈 `--race-track-dark`, 금 간 바닥 자리는 재(`--draw`)와 불씨, 벽 윗면 `--race-track`, 벽 앞면 `--ink-soft` 벽돌에 달아오른 금, 물 = 용암(`--pink` + `--primary` 빛), 물건 칸에는 재 점.
 
+### 6~10구역 (51~100층, Fable 손그림 2026-11-25)
+
+- 6~10구역에서 붙은 8칸 (모두 43칸 = **688×16**, 열 시트 모두 같은 순서): `rod` 뇌석(돌기둥 + 쇠 갓) · `rodOn` 번개 감긴 뇌석 · `puff` 구름 덩이 · `bars` 쇠창살(밝은 쇠 — 철문과 다르다) · `mirrorA` / 거울 · `mirrorB` \ 거울 · `fog` 짙은 구름(칸 전체, 걸을 수 있다) · `wish` 받침 위 소원 구슬. 바탕은 그 테마의 바닥.
+- `tiles-thunder.png` 천둥 마루: 잿빛 돌바닥(`--draw`/`--ink-soft`) + 번개 무늬, 푸른 기와 벽 윗면(`--team-a`), `--sky-deep` 벽돌에 막새, 물 = 먹구름(`--ink-soft` + `--primary-light` 번개).
+- `tiles-galaxy.png` 은하 나루: 다리 널 바닥(`--empty-line`/`--ink-soft`) + 별 무늬, 하늘색 벽 윗면(`--sky-top`), `--sky-deep` 벽돌에 별, 물 = 은하수(`--outline` + 흰 별).
+- `tiles-flower.png` 서천 꽃밭: 풀빛 바닥(`--matgo-mat-light`/`--matgo-mat-dark`) + 분홍 꽃, 꽃 핀 울타리 윗면, 나무 울타리 벽(`--ink-soft`), 물 = 연못(`--sky-mid` + 연잎).
+- `tiles-storm.png` 칠성 폭풍단: 제단 돌바닥(`--line-soft`/`--draw`) + 북두칠성 무늬, `--sky-deep` 벽 윗면, 검은 벽돌에 별빛, 물 = 폭풍 구름(`--draw` + 흰 소용돌이).
+- `tiles-wish.png` 소원의 정상: 금빛 바닥(`--panel-strong`/`--primary`) + 연꽃 무늬, 흰 벽 윗면에 옥 무늬, 옥빛 벽(`--table-poker`), 물 = 금빛 구름(`--primary-light`).
+- 새 테마들은 벽·물·문턱을 같은 틀(`draw.py` 의 `mk_wall_top` · `mk_wall_face` · `mk_water` · `mk_door`)에 색만 바꿔 그렸고, 물건 칸은 1구역 그림 그대로다.
+
 ## 적 (`public/art/enemy/<id>.png`)
 
 - 한 칸 size×size, 가로 4칸: `0·1` 걷기 · `2` 공격 준비(예고) · `3` 맞음. 오른쪽을 본다 (왼쪽은 뒤집는다).
@@ -74,6 +84,17 @@ SpriteCook 크레딧이 생기면 다시 그릴 목록에 올라 있다 (`art/sp
 - 3구역 (Fable 손그림 2026-11-25): 일반 16 — `snowimp` 눈 도깨비(흰 털 뭉치·파란 외뿔·얼음 방망이, 준비 칸은 방망이를 듦) · `icebat` 고드름 박쥐(하늘색 날개·몸 아래 고드름, 준비 칸은 날개를 젖힘) · `frostjar` 서리 항아리(서리 낀 옹기, 준비 칸은 아가리에서 냉기) · `wisp` 푸른 도깨비불(준비 칸은 커지고 하얘짐) · `icecrystal` 얼음 수정(맞은 칸은 금이 감), 정예 24 — `haetae` 서리 해태(흰 갈기·금 외뿔·파란 비늘, 준비 칸은 입을 벌리고 냉기), 보스 32 — `winterGeneral` 동장군(서리 갑옷·흰 수염·얼음 창, 준비 칸은 창을 머리 위로).
 - 4구역: 일반 16 — `ram` 솜털 숫양(준비 칸은 머리를 숙임) · `kite` 방패연 요괴(방구멍·꼬리·큰 눈, 준비 칸은 기울어짐) · `chick` 솜털 병아리(준비 칸은 납작하게 돌진) · `scarecrow` 허수아비(밀짚모자·십자 막대, 준비 칸은 팔을 벌리고 짚을 날림), 정예 24 — `geumgye` 금계 장수(금빛 수탉·붉은 볏·가슴 갑옷, 준비 칸은 날개를 펴고 웅크림), 보스 32 — `yeongdeung` 영등할미(흰 쪽머리·파란 치마·큰 부채·구름, 준비 칸은 부채를 뒤로 젖힘).
 - 5구역: 일반 16 — `bulgae` 불개(붉은 개·불꽃 갈기와 꼬리, 준비 칸은 낮게 웅크림) · `torchimp` 횃불 도깨비(붉은 도깨비·뿔 둘·횃불, 준비 칸은 횃불을 뒤로) · `wildcat` 얼룩 살쾡이(준비 칸은 웅크림) · `sparrow` 불씨 참새(날개 끝 불씨, 준비 칸은 돌진) · `iron` 쇠붙이(쇠 조각 더미, 맞은 칸은 튀어 오름), 정예 24 — `hwacha` 불화살 화차(바퀴 수레 + 화살 구멍 판, 준비 칸은 판에 불), 보스 32 — `bulgasari` 불가사리(곰 몸·코끼리 코·쇠 비늘·바늘 털·빛나는 눈, 준비 칸은 앞발을 듦).
+
+- 6구역 (Fable 손그림 2026-11-25): `drumimp` 북 도깨비(배에 북, 준비 칸은 북채를 듦) · `thunderbird` 뇌조 · `raincloud` 비구름 요괴(준비 칸은 하얗게 번쩍) · `flagspirit` 번개 깃발(준비 칸은 빛남) · `drum` 천둥 북(맞은 칸 = 울림) 16, `thunderGeneral` 뇌우 장수(먹구름 투구·쇠도리깨) 24, `noegong` 뇌공(푸른 얼굴·붉은 수염·등의 북 고리, 준비 칸은 두 팔로 북채) 32.
+- 7구역: `magpie` 까치 · `starslime` 별똥 슬라임(준비 칸은 부풂) · `starlet` 별 부스러기 · `weaver` 베틀 거미(등에 실꾸리, 준비 칸은 앞발을 듦) · `comet` 혜성 도깨비(불타는 꼬리) 16, `crowKnight` 까마귀 무사(부리 투구, 준비 칸은 날개를 폄) 24, `crowKing` 까마귀 대왕(세 발·금관·별빛 날개 끝, 준비 칸은 날개 활짝) 32 — `crowDecoy` 는 파일이 없고 `crowKing` 시트를 빌려 쓴다(`enemies.json` 의 `art`).
+- 8구역: `thornhand` 가시 넝쿨손(준비 칸은 손가락을 벌림) · `butterfly` 꽃나비 · `beetle` 풍뎅이 무사(준비 칸은 웅크림) · `fairy` 꽃 요정(준비 칸은 팔을 벌림) 16, `peacock` 금공작(준비 칸은 꼬리를 폄) 24, `ggotgamgwan` 꽃감관(꽃 갓·녹색 도포·꽃가지, 준비 칸은 휘두름) 32.
+- 9구역: `stormimp` 바람 도깨비(준비 칸은 바람 자루를 엶) · `hailjar` 우박 항아리(준비 칸은 우박이 튐) · `starshard` 별조각(준비 칸은 하얗게 커짐) · `hawk` 폭풍 매 16, `jangseung` 천하대장군 장승(준비 칸은 기울임) 24, `heukryong` 흑룡(검은 비늘·금빛 뿔, 준비 칸은 입을 벌림 — 이무기 뼈대에 색만 바꾼 것) 32.
+- 10구역: `skysoldier` 하늘 병사(준비 칸은 창을 겨눔) · `crane` 흰 학 · `lantern` 소원 등롱(준비 칸은 하얗게 빛남) · `jadelion` 옥 사자(준비 칸은 웅크림) · `wishlight` 소원 등불(연꽃 등, 맞은 칸 = 환하게 켜짐) 16, `skygeneral` 천상 장군(금 갑옷·흰 깃·번개 칼) 24, `eodugsini` 어둑시니(**48** — 192×48, 아래로 퍼지는 먹빛 그림자·하얀 눈 셋, 준비 칸은 손을 뻗음).
+
+## 투사체 · 엔딩 그림 (그려 두었지만 아직 코드가 읽지 않는다)
+
+- `public/art/proj/<이름>.png`: `web` 8×8 · `crowfeather` 10×6(오른쪽을 본다) · `pollen` 6×6 · `petal` 8×6 · `storm` 12×12 · `shade` 10×10 — `GameScene` 이 `mk()` 로 그리는 코드 그림과 같은 이름·크기. 쓰려면 `load.ts` 에 `projSheet(name)` 같은 읽기 함수를 두고 `mk()` 자리에서 파일이 있으면 그 캔버스로 텍스처를 만든다 (manifest 에는 이미 적혀 있다).
+- `public/art/ending.png` 120×90 (별 하늘 · 초승달 · 옥빛 궁궐 꼭대기 · 소원 구슬을 든 기본 대원), `ending-bg.png` 는 대원 없이 구슬만 떠 있는 배경. 엔딩 화면(`app.ts` `endingScreen`)은 지금 CSS 별 + `.wish-orb` + 내 캐릭터 캔버스로 그린다. 쓰려면 `.ending` 배경에 `ending-bg.png` 를 `image-rendering: pixelated` 로 깔고 그 위에 지금처럼 내 캐릭터를 올리면 된다.
 
 ## 구슬 아이콘 (`public/art/orb/<id>.png`)
 
@@ -98,7 +119,7 @@ SpriteCook 크레딧이 생기면 다시 그릴 목록에 올라 있다 (`art/sp
 
 ## SpriteCook 으로 만들 것 (크레딧이 생기면)
 
-지금은 아래 전부와 2~5구역(타일 시트 4장 · 적 26종)이 Fable 손그림이다. 자세한 규격과 넣는 방법은 `art/spritecook/REDRAW-QUEUE.md` 6번.
+지금은 아래 전부와 2~10구역(타일 시트 9장 · 적 60종 · 투사체 6종 · 엔딩 그림)이 Fable 손그림이다 (다시 그릴 목록 6·7번). 자세한 규격과 넣는 방법은 `art/spritecook/REDRAW-QUEUE.md` 6번.
 
 1. 캐릭터 레이어 18장 (위 규격, 몸 2 · 얼굴 4 · 옷 4 · 머리 8) — 레이어마다 같은 자세 틀이 필요하므로 몸 시트를 먼저 만들고 그 위에 그린다
 2. 돌 복도 타일 22칸 · 1구역 적 6종 · 구슬 아이콘 16개 · 로비 카드

@@ -35,13 +35,27 @@ export interface Zone {
   enemies: string[];
   elite: string;
   boss: string;
+  /** 경험치 배수 (6구역부터: 레벨이 층을 너무 앞서지 않게 — 100층 무렵 Lv 95~99) */
+  expMul?: number;
+  /** 엽전 배수 (적·상자·보스 — 구역마다 그 구역 값으로 회복약(대) 10개쯤) */
+  coinMul?: number;
+  /** 큰 길 전투방 수 최대 (한 층이 3분을 넘지 않게) */
+  combatCap?: number;
 }
 export const FLOORS = floorsJson as unknown as { totalFloors: number; zoneSize: number; pattern: FloorRule[]; zones: Zone[] };
 export const TOTAL_FLOORS = FLOORS.totalFloors;
 export const ZONE_SIZE = FLOORS.zoneSize;
 export const zoneOf = (floor: number) => Math.floor((floor - 1) / ZONE_SIZE) + 1;
 export const zoneData = (floor: number): Zone | undefined => FLOORS.zones.find((z) => z.zone === zoneOf(floor));
-export const floorRule = (floor: number): FloorRule => FLOORS.pattern[(floor - 1) % ZONE_SIZE];
+export const floorRule = (floor: number): FloorRule => {
+  const r = FLOORS.pattern[(floor - 1) % ZONE_SIZE];
+  const cap = zoneData(floor)?.combatCap;
+  return cap && r.combat[1] > cap ? { ...r, combat: [Math.min(r.combat[0], cap), cap] } : r;
+};
+/** 그 층의 경험치 배수 (구역 expMul) */
+export const zoneExpMul = (floor: number) => zoneData(floor)?.expMul ?? 1;
+/** 그 층의 엽전 배수 (구역 coinMul) */
+export const zoneCoinMul = (floor: number) => zoneData(floor)?.coinMul ?? 1;
 /** 들어갈 수 있는 층 (구역 데이터가 준비된 층) */
 export const floorReady = (floor: number) => floor >= 1 && floor <= TOTAL_FLOORS && !!zoneData(floor)?.ready;
 /** 준비된 마지막 층 */
@@ -102,7 +116,10 @@ export function fitGrid(grid: string[], pad = '.'): string[] {
 export const ROOMS = { size: ROOM_DATA.size, rooms: ROOM_DATA.rooms.map((r) => ({ ...r, grid: fitGrid(r.grid, r.pad), src: { w: r.grid[0].length, h: r.grid.length } })) };
 
 // ---------- 적 ----------
-export type EnemyAi = 'chase' | 'bat' | 'ranged' | 'melee' | 'elite' | 'golem' | 'hop' | 'imugi' | 'blink' | 'orbit' | 'lob' | 'totem' | 'winter' | 'wind' | 'bulgasari';
+export type EnemyAi =
+  | 'chase' | 'bat' | 'ranged' | 'melee' | 'elite' | 'golem' | 'hop' | 'imugi' | 'blink' | 'orbit' | 'lob' | 'totem' | 'winter' | 'wind' | 'bulgasari'
+  // 6~10구역
+  | 'beam' | 'healer' | 'drum' | 'decoy' | 'thunder' | 'crow' | 'flowerKeeper' | 'blackDragon' | 'eodugsini';
 export interface EnemyDef {
   id: string;
   name: string;
@@ -152,7 +169,7 @@ export interface EnemyDef {
   /** 방패연: 캐릭터 둘레를 돌며 쏜다 */
   orbit?: { radius: number };
   /** 횃불 도깨비: 캐릭터 자리에 불씨를 던진다 (떨어질 자리 예고 → 불바닥) */
-  lob?: { flight: number; radius: number; patch: number; patchR: number };
+  lob?: { flight: number; radius: number; patch: number; patchR: number; kind?: string };
   /** 정예·보스: 부채꼴로 여러 발 (every 0 = 보스 기술 순서대로) */
   fan?: { every: number; windup: number; count: number; countRage?: number; angle: number; mul: number };
   /** 정예: 캐릭터 자리로 뛰어올라 내려찍기 */
@@ -171,6 +188,17 @@ export interface EnemyDef {
   spikes?: { windup: number; count: number; countRage: number; mul: number };
   eat?: { time: number; heal: number; healRage: number; max: number; drop: number; dropRage: number };
   trail?: { every: number; r: number; dur: number };
+  // ---- 6~10구역 ----
+  /** 번개 줄기: 선으로 예고한 뒤 그 줄 전체에 한꺼번에 (beam AI · 정예 · 보스). count 갈래, angle 사이각, width 반폭, len 길이 */
+  beam?: { every: number; windup: number; count: number; countRage?: number; angle: number; width: number; len: number; mul: number };
+  /** 죽으면 둘로 나뉜다 (별똥 슬라임 → 별 부스러기, 보상 없음) */
+  split?: { id: string; count: number };
+  /** 꽃 요정: 둘레 동료를 고친다 (최대 체력의 몇 할) */
+  heal?: { every: number; radius: number; amount: number };
+  /** 그림을 다른 적 시트로 (까마귀 그림자 = 까마귀 대왕 그림) */
+  art?: string;
+  /** 보스 기술 값 (구역마다 자유 형식 — sim.ts 가 읽는다) */
+  skills?: Record<string, Record<string, number>>;
 }
 const ENEMY_DATA = enemiesJson as unknown as { killExp: number; killCoins: number; packAtk?: number; enemies: EnemyDef[] };
 export const ENEMIES = ENEMY_DATA.enemies;
@@ -245,6 +273,8 @@ export const BAG_ITEMS: ItemId[] = ['potionS', 'potionL', 'mana', 'cleanse', 'ma
 export const itemDef = (id: string) => ITEMS.find((i) => i.id === id);
 /** 구역 배율 (값·엽전): 1구역 1, 2구역 1.5, … */
 export const zoneMul = (floor: number) => Math.pow(ZONE_RATE, zoneOf(floor) - 1);
+/** 엽전 배수 (값 배수 × 구역 coinMul — 엽전은 이것, 상점 값은 zoneMul) */
+export const coinRate = (floor: number) => zoneMul(floor) * zoneCoinMul(floor);
 export const priceOf = (id: ItemId, floor: number) => Math.round((itemDef(id)?.price ?? 0) * zoneMul(floor));
 
 // ---------- 성장 ----------
