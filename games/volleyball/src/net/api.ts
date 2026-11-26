@@ -73,11 +73,13 @@ function createLocalApi(): VolleyApi {
 }
 
 function createSupabaseApi(sb: SupabaseClient, uid: string): VolleyApi {
-  const save = (data: unknown, error: { message?: string } | null): SaveResult => {
+  const save = (data: unknown, error: { message?: string; code?: string } | null): SaveResult => {
     const d = data as { status?: string; wins?: number; losses?: number } | null;
     if (error || !d || (d.status !== 'waiting' && d.status !== 'done' && d.status !== 'void')) {
       if (error) console.warn('[시아배구] 결과를 서버에 올리지 못했어요', error.message);
-      return { status: 'error', code: error?.message };
+      // 서버(Postgres)가 거절한 오류만 code 가 있다. 통신 실패(TypeError: Failed to fetch 등)는 code 가 비어 있으니
+      // code 를 비워 두어 확정 대기 목록에 남긴다 (다음에 다시 확정)
+      return { status: 'error', code: error?.code ? error.message : undefined };
     }
     return { status: d.status, wins: d.wins, losses: d.losses };
   };

@@ -241,6 +241,12 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
           done.set(e.id, toSave(res));
         } catch (err) {
           if (!(err instanceof ApiError)) break;
+          if (err.message === 'old save') {
+            // 다른 곳(탭·기기)에서 더 진행했다 → 이 기기의 못 보낸 저장은 모두 옛것이다. 다 버린다 (화면은 state() 로 다시 불러온다)
+            for (const p of readPending()) done.set(p.id, err);
+            writePending([]);
+            break;
+          }
           // 서버가 거절한 저장은 버린다 (다음 것은 계속)
           done.set(e.id, err);
         }

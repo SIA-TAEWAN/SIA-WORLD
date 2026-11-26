@@ -1001,7 +1001,7 @@ function playCard(t: Ctx, id: string) {
     if (ok) setTimeout(() => picked === id && ((picked = null), t.redraw()), 4000);
   });
 }
-/** 5광 컷인을 이미 보여 준 판:자리 */
+/** 5광 컷인을 이미 보여 준 방:판:자리 (방마다 판 번호가 1부터 다시 시작하니 방 id 도 넣는다) */
 const fiveGwang = new Set<string>();
 
 const ui: GameUI<MatgoPublic, MatgoPrivate> = {
@@ -1616,7 +1616,7 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
         // 5광: 광이 5장이 된 그 순간만 (자리마다 한 번)
         if (ev.t !== 'capture' || typeof ev.seat !== 'number' || !t.pub) return null;
         const n = t.pub.players[ev.seat]?.captured.gwang.length ?? 0;
-        const key = `${(t.pub as unknown as { round?: number }).round ?? 0}:${ev.seat}`;
+        const key = `${t.room.id}:${(t.pub as unknown as { round?: number }).round ?? 0}:${ev.seat}`;
         if (n === 5 && !fiveGwang.has(key)) {
           fiveGwang.add(key);
           return '5광!';
