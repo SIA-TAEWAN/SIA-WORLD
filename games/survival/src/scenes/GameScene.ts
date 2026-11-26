@@ -27,7 +27,7 @@ const CHAR_MAX_W = 96;
 /** 그림 깊이 */
 const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, fog: 7, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
 /** 황천길 안개: 흘러가는 두 겹(속도 · 방향 · 짙기)과 화면 가장자리의 짙은 안개 */
-const FOG = { layers: [{ alpha: 0.75, speed: [22, 3], par: 0.85, sx: 3.2, sy: 1.5 }, { alpha: 0.55, speed: [-14, 2], par: 0.7, sx: 2.2, sy: 1.1 }], edge: 0.9, breathe: 0.15 };
+const FOG = { layers: [{ alpha: 0.6, speed: [22, 3], par: 0.85, sx: 2.4, sy: 1.6 }, { alpha: 0.45, speed: [-14, 2], par: 0.7, sx: 1.5, sy: 1.1 }], edge: 0.9, breathe: 0.15 };
 /** 지대 색 (state.ts 의 ZONE 순서): 독안개 · 예고 · 독 · 불길 · 물기둥 · 양털 구름 · 말발굽 */
 const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft, COLOR.primary];
 /** 두 색을 섞는다 (t: b 쪽으로 얼마나) */
@@ -164,29 +164,45 @@ export class GameScene extends Phaser.Scene {
   private makeFog() {
     const fogRgb = (n: number) => `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
     if (!this.textures.exists('fog-tile')) {
-      const cv = document.createElement('canvas');
-      cv.width = cv.height = 256;
-      const g = cv.getContext('2d')!;
+      // 이어 붙는 구름 결: 주기가 맞는 값 노이즈를 여러 겹(fBm) 더해 몽글몽글한 안개 덩어리와 잔결을 만든다
+      const N = 256;
       let seed = 7;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      // 큰 덩어리 몇 개 + 작은 덩어리: 짙고 옅은 곳이 뚜렷해야 흘러갈 때 안개로 보인다
-      // 덩어리 사이를 비워 두어야(맑은 틈) 흘러갈 때 안개 줄기로 보인다 — 판에서는 가로로 길게 늘인다
-      for (let i = 0; i < 9; i++) {
-        const x = rnd() * 256;
-        const y = (i / 9) * 256 + rnd() * 20;
-        const big = i % 3 !== 2;
-        const r = big ? 45 + rnd() * 30 : 22 + rnd() * 18;
-        const a = big ? 0.6 + rnd() * 0.3 : 0.45 + rnd() * 0.25;
-        for (const ox of [-256, 0, 256]) {
-          for (const oy of [-256, 0, 256]) {
-            const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
-            gr.addColorStop(0, `rgba(${fogRgb(COLOR.white)},${a})`);
-            gr.addColorStop(1, `rgba(${fogRgb(COLOR.white)},0)`);
-            g.fillStyle = gr;
-            g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
-          }
+      const grid = (n: number) => Array.from({ length: n * n }, rnd);
+      const octaves = [4, 8, 16, 32, 64].map((n) => ({ n, g: grid(n) }));
+      const smooth = (t: number) => t * t * (3 - 2 * t);
+      const sample = (o: { n: number; g: number[] }, x: number, y: number) => {
+        const fx = (x / N) * o.n;
+        const fy = (y / N) * o.n;
+        const x0 = Math.floor(fx);
+        const y0 = Math.floor(fy);
+        const tx = smooth(fx - x0);
+        const ty = smooth(fy - y0);
+        const at = (a: number, b: number) => o.g[((b % o.n) * o.n + (a % o.n))];
+        const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+        const b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+        return a + (b - a) * ty;
+      };
+      const weights = [0.5, 0.25, 0.13, 0.07, 0.05];
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = N;
+      const g = cv.getContext('2d')!;
+      const img = g.createImageData(N, N);
+      const w = COLOR.white;
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          let v = 0;
+          octaves.forEach((o, k) => (v += sample(o, x, y) * weights[k]));
+          // 옅은 곳은 비우고(맑은 틈) 짙은 곳은 부드럽게 차오르게
+          const t = Math.min(1, Math.max(0, (v - 0.42) / 0.3));
+          const i4 = (y * N + x) * 4;
+          img.data[i4] = (w >> 16) & 255;
+          img.data[i4 + 1] = (w >> 8) & 255;
+          img.data[i4 + 2] = w & 255;
+          img.data[i4 + 3] = Math.round(smooth(t) * 235);
         }
       }
+      g.putImageData(img, 0, 0);
       this.textures.addCanvas('fog-tile', cv);
     }
     if (!this.textures.exists('fog-edge')) {
