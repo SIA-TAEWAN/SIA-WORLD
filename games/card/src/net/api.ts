@@ -21,6 +21,8 @@ export interface ServerRun {
   acts: number;
   floors: number;
   coins: number;
+  /** card_start: 앞 판들에서 못 받은 막 코인을 이번에 받은 수 */
+  paidCoins?: number;
 }
 export interface HeroProgress {
   mastery: number;
@@ -122,6 +124,7 @@ function normRun(x: unknown): ServerRun | null {
     acts: asNum(r.acts),
     floors: asNum(r.floors),
     coins: asNum(r.coins),
+    ...(r.paidCoins !== undefined ? { paidCoins: asNum(r.paidCoins) } : {}),
   };
 }
 export function normState(x: unknown): CardState {

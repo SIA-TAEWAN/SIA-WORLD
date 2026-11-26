@@ -84,8 +84,8 @@ describe('패시브', () => {
   it('토끼: 쉼터 회복 +10', () => {
     const r = newRun({ seed: 1, hero: 'rabbit' });
     const t = newRun({ seed: 1, hero: 'tiger' });
-    expect(restHeal(r)).toBe(Math.floor(66 * 0.3) + 10);
-    expect(restHeal(t)).toBe(Math.floor(72 * 0.3));
+    expect(restHeal(r)).toBe(Math.floor(r.maxHp * 0.3) + 10);
+    expect(restHeal(t)).toBe(Math.floor(t.maxHp * 0.3));
   });
 
   it('용: 전투 첫 턴 기력+1 (둘째 턴부터 3)', () => {

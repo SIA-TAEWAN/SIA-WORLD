@@ -8,6 +8,7 @@
 --   · card_state()  : 진행 중인 판들(서버가 확인한 입력 기록 포함 → 다른 기기는 마지막으로 깬 막 다음부터 이어 한다) · 영웅별 숙련·클리어 · 끝없는 최고
 --   · card_finish_verified(user, run, result, log) : Edge Function card-finish 가 _shared/card/verify.ts 로 다시 돌린 결과만 받는다 (service_role 만)
 --       시아코인: 막 하나 깰 때마다 1 (한 판 최대 3, 어둑시니까지 4 · 끝없는 모드도 3까지 · 오늘의 도전 없음). ref = '<판>:<막>' 이라 같은 막은 한 번만.
+--         15초 규칙에 걸려 못 준 막은 다음 업로드(이 판·다른 판)나 다음 판 시작 때 하나씩 준다 (_card_pay_owed).
 --       보통 판 클리어(엔딩): 그 영웅 클리어 +1, 다음 숙련 단계 열림. 끝없는 모드: 올라간 칸 최고 기록. 오늘의 도전: 판이 끝나면 점수 기록.
 --   · _cat_progress_card : 고양이 구매 조건 = 보통 판 클리어 1번 ({have: 클리어 수, need: 1})
 --   · card_endless_ranking 뷰 : 끝없는 모드 최고 칸 → 먼저 달성한 순. 오늘의 도전 순위는 082 의 daily_ranking('card')
@@ -18,7 +19,7 @@
 create or replace function public._card_const(p_name text) returns int
 language sql immutable as $$
   select case p_name
-    when 'rules' then 3            -- RULES_VERSION (run.ts)
+    when 'rules' then 4            -- RULES_VERSION (run.ts)
     when 'mastery_open' then 5     -- MASTERY_OPEN: 고를 수 있는 가장 높은 숙련 단계 (6~10 잠금)
     when 'coin_acts' then 3        -- COIN_ACTS: 한 판 시아코인 최대
     when 'coin_acts_true' then 4   -- COIN_ACTS_TRUE: 어둑시니까지 깬 판
@@ -119,6 +120,42 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public._cat_progress_card(uuid) from public, anon, authenticated;
 
+-- 받을 시아코인이 남은 막에 코인 주기. 판 하나에서 막 n 은 ref '<판>:<n>' 로 평생 한 번 (최대 coin_acts, 어둑시니까지 깬 판은 coin_acts_true · 오늘의 도전 없음).
+-- _grant_sia_coin 은 15초 안에 두 번 주지 않으므로 한 번에 대개 하나만 나간다 — 못 준 막은 이 판 · 다른 판의 다음 업로드나 다음 판 시작 때 다시
+-- (예전에는 한 업로드에 두 막이 새로 깨지면 판이 끝나는 업로드에서 밀린 막 코인이 사라졌다). p_first 판을 먼저 본다. 돌려줌: 준 개수
+create or replace function public._card_pay_owed(p_user uuid, p_first uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  rr record;
+  a int;
+  n int;
+  got int := 0;
+begin
+  for rr in
+    select id, acts, ending from public.card_runs
+    where user_id = p_user and mode <> 'daily'
+      and coins < least(acts, case when ending = 'true' then public._card_const('coin_acts_true') else public._card_const('coin_acts') end)
+    order by (id = p_first) desc, started_at
+  loop
+    n := 0;
+    for a in 1 .. least(rr.acts, case when rr.ending = 'true' then public._card_const('coin_acts_true') else public._card_const('coin_acts') end) loop
+      if not exists (select 1 from public.sia_coin_logs where user_id = p_user and game = 'card' and ref = rr.id::text || ':' || a) then
+        if public._grant_sia_coin(p_user, 'card', rr.id::text || ':' || a) then
+          n := n + 1;
+        else
+          -- 15초 규칙 · 하루 한도: 이번에는 더 줄 수 없다
+          if n > 0 then update public.card_runs set coins = coins + n where id = rr.id; end if;
+          return got + n;
+        end if;
+      end if;
+    end loop;
+    if n > 0 then update public.card_runs set coins = coins + n where id = rr.id; end if;
+    got := got + n;
+  end loop;
+  return got;
+end $$;
+revoke all on function public._card_pay_owed(uuid, uuid) from public, anon, authenticated;
+
 -- ---------- 4. 판 시작 ----------
 
 create or replace function public._card_run_json(r public.card_runs) returns jsonb
@@ -174,7 +211,8 @@ begin
   insert into public.card_runs (user_id, mode, hero, mastery, seed, rules, day, first_of_day)
     values (me, p_mode, p_hero, lv, s, public._card_const('rules'), d, first)
     returning * into r;
-  return public._card_run_json(r);
+  -- 앞 판들에서 15초 규칙으로 못 받은 막 코인이 있으면 하나 (끝난 판이어도)
+  return public._card_run_json(r) || jsonb_build_object('paidCoins', public._card_pay_owed(me, null));
 end $$;
 revoke all on function public.card_start(text, text, int, text, bigint) from public, anon;
 grant execute on function public.card_start(text, text, int, text, bigint) to authenticated;
@@ -210,9 +248,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   rn public.card_runs;
   v_rules int; v_len int; v_acts int; v_floors int; v_elites int; v_bosses int; v_hp int; v_over boolean; v_dead boolean; v_ending text;
-  cap int;
   new_coins int := 0;
-  a int;
   v_daily jsonb;
   v_score bigint;
   v_endless jsonb;
@@ -257,17 +293,9 @@ begin
   update public.card_runs set log = p_log, log_len = v_len, acts = v_acts, floors = v_floors, elites = v_elites, hp = v_hp,
     ending = v_ending, dead = v_dead, updated_at = now() where id = rn.id;
 
-  -- 시아코인: 깬 막마다 1 (오늘의 도전 없음). 같은 막은 ref 가 같아 한 번만 · 15초·하루 한도는 _grant_sia_coin 안에서
-  -- (15초 안에 다른 게임에서 받아 못 준 막은 다음 업로드 때 다시 준다)
-  if rn.mode <> 'daily' then
-    cap := case when v_ending = 'true' then public._card_const('coin_acts_true') else public._card_const('coin_acts') end;
-    for a in 1 .. least(v_acts, cap) loop
-      if not exists (select 1 from public.sia_coin_logs where user_id = p_user and game = 'card' and ref = rn.id::text || ':' || a) then
-        if public._grant_sia_coin(p_user, 'card', rn.id::text || ':' || a) then new_coins := new_coins + 1; end if;
-      end if;
-    end loop;
-    if new_coins > 0 then update public.card_runs set coins = coins + new_coins where id = rn.id; end if;
-  end if;
+  -- 시아코인: 깬 막마다 1 (오늘의 도전 없음). 같은 막은 ref 가 같아 한 번만 · 15초·하루 한도는 _grant_sia_coin 안에서.
+  -- 이 판을 먼저, 그다음 다른 판에서 못 받은 막 (판이 끝났어도 — 다음 업로드·다음 판 시작 때 받는다, _card_pay_owed)
+  new_coins := public._card_pay_owed(p_user, rn.id);
 
   -- 보통 판 클리어: 그 영웅 클리어 +1, 다음 숙련 단계 열림 (최대 mastery_open)
   if rn.mode = 'normal' and v_over and v_ending is not null then
@@ -309,7 +337,7 @@ begin
   if v_over then update public.card_runs set status = 'over', finished_at = now() where id = rn.id; end if;
   return jsonb_build_object('result', jsonb_build_object(
     'mode', rn.mode, 'acts', v_acts, 'floors', v_floors, 'over', v_over, 'cleared', cleared,
-    'newCoins', new_coins, 'coins', rn.coins + new_coins,
+    'newCoins', new_coins, 'coins', (select c.coins from public.card_runs c where c.id = rn.id),
     'mastery', coalesce(hero_lv, 0), 'daily', v_daily, 'endless', v_endless));
 end $$;
 revoke all on function public.card_finish_verified(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;

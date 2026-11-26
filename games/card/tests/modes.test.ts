@@ -150,9 +150,9 @@ describe('숙련 단계 1~5 (누적, 6~10 은 데이터만)', () => {
     expect(shopPrice(r0, 100)).toBe(100);
     expect(shopPrice(r3, 100)).toBe(115);
     expect(removePrice(r3)).toBe(Math.round(75 * 1.15));
-    expect(restHeal(r0)).toBe(Math.floor(66 * 0.3) + 10);
+    expect(restHeal(r0)).toBe(Math.floor(r0.maxHp * 0.3) + 10);
     expect(restHeal(r3)).toBe(restHeal(r0));
-    expect(restHeal(r4)).toBe(Math.floor(66 * 0.2) + 10);
+    expect(restHeal(r4)).toBe(Math.floor(r4.maxHp * 0.2) + 10);
   });
 
   it('숙련 판도 기록으로 다시 돌리면 같다', () => {

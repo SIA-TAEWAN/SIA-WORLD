@@ -71,7 +71,20 @@ export interface BattleHooks {
   /** 영웅 시트를 못 읽을 때 쓰는 공용 전신 그림 */
   heroUrl: string | null;
   sfx(name: string): void;
+  /** 연습 전투(처음 하는 사람): 화살표 안내 + 건너뛰기 */
+  tutorial?: { skip(): void };
+  /** 처음 만난 의도·상태이상 말풍선 (기기 저장 — 본 것은 다시 안 보임). 없으면 말풍선 없음 */
+  seen?: { has(key: string): boolean; add(key: string): void };
 }
+
+/** 처음 만나는 의도 아이콘 말풍선 */
+const INTENT_TIP: Record<string, string> = {
+  atk: '공격 의도: 숫자만큼 때려요 (×2 는 두 번)',
+  def: '방어 의도: 요괴가 방어를 얻어요',
+  buff: '강화 의도: 요괴가 힘을 키우거나 준비해요',
+  debuff: '방해 의도: 나에게 상태이상이나 내림카드를 걸어요',
+  unknown: '모름: 무엇을 할지 알 수 없어요 — 대비하세요',
+};
 
 type Body = Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
 
@@ -123,6 +136,12 @@ export class BattleScene extends Phaser.Scene {
   private disp = { hero: { hp: 0, block: 0 } as Disp, foes: new Map<number, Disp>() };
   /** 지금 보여 주는 카드 효과 (play 사건에서 정함) */
   private cur: { fx: string; atk: boolean; seen: Set<number> } | null = null;
+  /** 연습 전투 안내 (화살표·글) */
+  private coach!: Phaser.GameObjects.Container;
+  private coachIntro = false;
+  /** 처음 만난 의도·상태이상 말풍선 */
+  private bubble!: Phaser.GameObjects.Container;
+  private bubbleKey: string | null = null;
 
   constructor() {
     super('battle');
@@ -176,6 +195,8 @@ export class BattleScene extends Phaser.Scene {
     this.ui = this.add.container(0, 0).setDepth(5);
     this.hud = this.add.container(0, 0).setDepth(6);
     this.tip = this.add.container(0, 0).setDepth(50);
+    this.bubble = this.add.container(0, 0).setDepth(52);
+    this.coach = this.add.container(0, 0).setDepth(55);
     this.makeHero();
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.onMove(p));
     this.input.on('pointerup', (p: Phaser.Input.Pointer) => this.onUp(p));
@@ -858,6 +879,162 @@ export class BattleScene extends Phaser.Scene {
     this.syncFoes();
     this.layoutHand();
     this.drawUi();
+    if (this.hooks.tutorial) this.drawCoach();
+    else this.nextBubble();
+  }
+
+  // ---------- 연습 전투 안내 ----------
+  /** 지금 상태에 맞는 안내 하나: 의도 설명 → 공격 끌어 놓기 → 막기 → (남은 기력) → 턴 끝 → 2턴 마무리 */
+  private drawCoach() {
+    this.coach.removeAll(true);
+    const b = this.battle();
+    if (b.over || this.busy) return;
+    const run = this.run();
+    const foe = aliveFoes(b)[0];
+    const fv = foe ? this.foeViews.get(foe.uid) : undefined;
+    const playable = (kind?: string, id?: string) =>
+      this.handViews.find((h) => playCost(run, b, h.card) <= b.energy && (!kind || cardDef(h.card.id).kind === kind) && (!id || h.card.id === id));
+    let text: string;
+    let at: { x: number; y: number } | null = null;
+    let next = false;
+    const cardAt = (h: { x: number; y: number }) => ({ x: h.x, y: h.y - CARD_H / 2 - 8 });
+    if (!this.coachIntro && fv) {
+      text = '요괴 머리 위 그림은 다음 행동(의도)이에요.\n칼 그림 + 숫자 = 그만큼 공격해요.';
+      at = { x: fv.x, y: fv.y - fv.r - 52 };
+      next = true;
+    } else if (b.turn === 1 && b.t.attacks === 0 && playable('atk')) {
+      text = '공격 카드를 요괴 위로 끌어 놓으세요.\n(카드를 누르고 요괴를 눌러도 돼요)';
+      at = cardAt(playable('atk')!);
+    } else if (b.turn === 1 && b.block === 0 && playable('def')) {
+      text = '막기 카드는 위쪽으로 끌어 올려요.\n방어는 이번 턴 받는 피해를 먼저 막아요.';
+      at = cardAt(playable('def')!);
+    } else if (b.turn >= 2 && playable(undefined, 'tigerClaw')) {
+      text = '기력 2짜리 호랑이 발톱(4×3)으로 마무리해요!';
+      at = cardAt(playable(undefined, 'tigerClaw')!);
+    } else if (playable()) {
+      text = '남은 기력(왼쪽 아래 구슬)으로 카드를 더 써요.';
+      at = cardAt(playable('atk') ?? playable()!);
+    } else {
+      text = '기력을 다 썼어요. 턴 끝을 누르면 요괴가 행동해요.\n남은 손패는 버려지고, 다음 턴에 5장을 새로 뽑아요.';
+      at = { x: 362, y: ROW_Y - 34 };
+    }
+    // 글 상자 (요괴 아래 · 영웅 머리 위 — 요괴 의도와 손패를 가리지 않게)
+    const BY = 368;
+    const t = this.add.text(W / 2, BY + 8, text, { fontFamily: FONT, fontSize: '15px', color: css(COLOR.ink), align: 'center', wordWrap: { width: W - 70 }, lineSpacing: 4 }).setOrigin(0.5, 0);
+    const bh = t.height + (next ? 56 : 22);
+    const g = this.add.graphics();
+    g.fillStyle(COLOR.outline, 1);
+    g.fillRoundedRect(22, BY + 4, W - 44, bh, 16);
+    g.fillStyle(COLOR.white, 1);
+    g.fillRoundedRect(22, BY, W - 44, bh, 16);
+    g.lineStyle(3, COLOR.outline, 1);
+    g.strokeRoundedRect(22, BY, W - 44, bh, 16);
+    this.coach.add([g, t]);
+    if (next) {
+      const by = BY + bh - 26;
+      const btn = this.add.graphics();
+      btn.fillStyle(COLOR.primary, 1);
+      btn.lineStyle(3, COLOR.outline, 1);
+      btn.fillRoundedRect(W / 2 - 56, by - 16, 112, 32, 14);
+      btn.strokeRoundedRect(W / 2 - 56, by - 16, 112, 32, 14);
+      const z = this.add.zone(W / 2, by, 120, 40).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        this.hooks.sfx('click');
+        this.coachIntro = true;
+        this.drawCoach();
+      });
+      this.coach.add([btn, txt(this, W / 2, by, '알겠어요', 15, COLOR.ink), z]);
+    }
+    // 화살표 (아래를 가리키며 통통)
+    if (at) {
+      const a = this.add.container(at.x, at.y);
+      const ag = this.add.graphics();
+      ag.fillStyle(COLOR.outline, 1);
+      ag.fillTriangle(-17, -26, 17, -26, 0, 4);
+      ag.fillRect(-8, -50, 16, 26);
+      ag.fillStyle(COLOR.pink, 1);
+      ag.fillTriangle(-13, -24, 13, -24, 0, -1);
+      ag.fillRect(-5, -47, 10, 24);
+      a.add(ag);
+      this.coach.add(a);
+      this.tweens.add({ targets: a, y: at.y - 12, duration: 420, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
+    // 건너뛰기
+    const sk = this.add.container(W - 62, 76);
+    const sg = this.add.graphics();
+    sg.fillStyle(COLOR.outline, 0.7);
+    sg.fillRoundedRect(-50, -14, 100, 28, 14);
+    sk.add([sg, txt(this, 0, 0, '건너뛰기 ▶', 13, COLOR.white, 3)]);
+    const sz = this.add.zone(0, 0, 104, 34).setInteractive({ useHandCursor: true });
+    sz.on('pointerdown', () => {
+      this.hooks.sfx('click');
+      this.hooks.tutorial?.skip();
+    });
+    sk.add(sz);
+    this.coach.add(sk);
+  }
+
+  // ---------- 처음 만난 의도·상태이상 말풍선 ----------
+  /** 화면에 보이는 것 중 아직 안 본 의도·상태이상 하나에 말풍선 (본 것은 기기에 저장) */
+  private nextBubble() {
+    const seen = this.hooks.seen;
+    if (!seen || this.busy || this.bubbleKey) return;
+    const b = this.battle();
+    if (b.over) return;
+    const list: { key: string; text: string; x: number; y: number; below: boolean }[] = [];
+    for (const f of aliveFoes(b)) {
+      const v = this.foeViews.get(f.uid);
+      if (!v) continue;
+      if (f.intent && !f.stun) {
+        const m = moveDef(enemyDef(f.id), f.phase, f.intent);
+        list.push({ key: `intent:${m.intent}`, text: INTENT_TIP[m.intent] ?? '', x: v.x, y: v.y - v.r - 48, below: false });
+      }
+      for (const [id, n] of Object.entries(f.st) as [StatusId, number][])
+        if (n > 0) list.push({ key: `st:${id}`, text: `${STATUS_NAME[id]}: ${STATUS_HELP[id]}`, x: v.x, y: v.y + v.r + 72, below: true });
+      if (f.str) list.push({ key: 'st:str', text: `힘: 요괴의 ${STATUS_HELP.str}`, x: v.x, y: v.y + v.r + 72, below: true });
+    }
+    for (const [id, n] of Object.entries(b.st) as [StatusId, number][])
+      if (n > 0) list.push({ key: `st:${id}`, text: `${STATUS_NAME[id]}: ${STATUS_HELP[id]}`, x: W / 2, y: 552, below: false });
+    const it = list.find((x) => x.text && !seen.has(x.key));
+    if (!it) return;
+    seen.add(it.key);
+    this.bubbleKey = it.key;
+    this.showBubble(it.text, it.x, it.y, it.below);
+  }
+
+  private showBubble(text: string, x: number, y: number, below: boolean) {
+    this.bubble.removeAll(true);
+    const t = this.add.text(0, 0, text, { fontFamily: FONT, fontSize: '14px', color: css(COLOR.ink), align: 'center', wordWrap: { width: 230 }, lineSpacing: 3 }).setOrigin(0.5);
+    const w = t.width + 24;
+    const h = t.height + 18;
+    const cx = Math.max(w / 2 + 8, Math.min(W - w / 2 - 8, x));
+    const cy = below ? y + h / 2 + 10 : y - h / 2 - 10;
+    const c = this.add.container(cx, cy);
+    const g = this.add.graphics();
+    const tx = Math.max(-w / 2 + 16, Math.min(w / 2 - 16, x - cx));
+    g.fillStyle(COLOR.outline, 1);
+    g.fillRoundedRect(-w / 2, -h / 2 + 3, w, h, 12);
+    g.fillStyle(COLOR.primaryLight, 1);
+    g.lineStyle(3, COLOR.outline, 1);
+    // 꼬리 (가리키는 쪽)
+    if (below) g.fillTriangle(tx - 9, -h / 2 + 1, tx + 9, -h / 2 + 1, tx, -h / 2 - 10);
+    else g.fillTriangle(tx - 9, h / 2 - 1, tx + 9, h / 2 - 1, tx, h / 2 + 10);
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, 12);
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
+    c.add([g, t, txt(this, w / 2 - 10, -h / 2 + 2, '처음!', 10, COLOR.pink, 3)]);
+    this.bubble.add(c);
+    c.setScale(0.6);
+    this.tweens.add({ targets: c, scale: 1, duration: 160, ease: 'Back.easeOut' });
+    const close = () => {
+      if (!this.bubbleKey) return;
+      this.bubbleKey = null;
+      this.tweens.add({ targets: c, alpha: 0, duration: 180, onComplete: () => c.destroy() });
+      this.time.delayedCall(220, () => this.nextBubble());
+    };
+    const z = this.add.zone(0, 0, w, h).setInteractive();
+    z.on('pointerdown', close);
+    c.add(z);
+    this.time.delayedCall(3600, close);
   }
 
   // ---------- 입력 ----------
@@ -1021,6 +1198,7 @@ export class BattleScene extends Phaser.Scene {
 
   private async animate(ev: SimEvent[]) {
     this.busy = true;
+    this.coach.removeAll(true);
     this.drawUi();
     for (const e of ev) {
       switch (e.e) {

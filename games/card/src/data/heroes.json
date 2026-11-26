@@ -3,7 +3,7 @@
     "id": "rat",
     "name": "찍찍이",
     "animal": "쥐",
-    "hp": 64,
+    "hp": 68,
     "passive": "턴 시작 1장 더",
     "cards": [
       "ratHole",
@@ -15,7 +15,7 @@
     "id": "ox",
     "name": "우직이",
     "animal": "소",
-    "hp": 85,
+    "hp": 80,
     "passive": "턴 끝 남은 방어 절반 유지",
     "cards": [
       "headbutt",
@@ -27,7 +27,7 @@
     "id": "tiger",
     "name": "어흥이",
     "animal": "호랑이",
-    "hp": 72,
+    "hp": 80,
     "passive": "전투 시작 모든 적 약화1",
     "cards": [
       "tigerClaw",
@@ -39,7 +39,7 @@
     "id": "rabbit",
     "name": "깡총이",
     "animal": "토끼",
-    "hp": 66,
+    "hp": 74,
     "passive": "쉼터 회복 +10",
     "cards": [
       "hop",
@@ -63,7 +63,7 @@
     "id": "snake",
     "name": "스르르",
     "animal": "뱀",
-    "hp": 68,
+    "hp": 72,
     "passive": "턴마다 첫 공격카드에 독1",
     "cards": [
       "coil",
@@ -75,7 +75,7 @@
     "id": "horse",
     "name": "따각이",
     "animal": "말",
-    "hp": 70,
+    "hp": 62,
     "passive": "턴마다 첫 공격카드 +3",
     "cards": [
       "charge",
@@ -87,7 +87,7 @@
     "id": "sheep",
     "name": "몽실이",
     "animal": "양",
-    "hp": 74,
+    "hp": 64,
     "passive": "전투 시작 방어6",
     "cards": [
       "woolShield",
@@ -99,7 +99,7 @@
     "id": "monkey",
     "name": "재롱이",
     "animal": "원숭이",
-    "hp": 64,
+    "hp": 70,
     "passive": "카드 보상 선택지 4장",
     "cards": [
       "mimic",
@@ -111,7 +111,7 @@
     "id": "rooster",
     "name": "꼬꼬댁",
     "animal": "닭",
-    "hp": 66,
+    "hp": 70,
     "passive": "전투 첫 턴 2장 더",
     "cards": [
       "peck",
@@ -123,7 +123,7 @@
     "id": "dog",
     "name": "멍뭉이",
     "animal": "개",
-    "hp": 76,
+    "hp": 62,
     "passive": "체력 50% 이하면 피해 +25%",
     "cards": [
       "watchdog",

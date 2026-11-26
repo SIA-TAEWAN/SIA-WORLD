@@ -1,6 +1,6 @@
 /**
  * 요괴·보스 데이터 (games/card/src/data/enemies.json 과 같은 내용).
- * 보스 체력·행동 이름·수치는 PRD 사용자 스펙 그대로. 일반 요괴의 체력·행동 수치는 스펙에 없어 정한 값(PROGRESS.md '물어볼 것').
+ * 보스 체력·행동 이름·수치는 PRD 사용자 스펙 그대로 (6단계 밸런스로 바꾼 것: 큰도깨비 200→170 · 염라대왕 380→350, 강철이 2단계 불길 — games/card/PROGRESS.md). 일반 요괴의 체력·행동 수치는 스펙에 없어 정한 값(PROGRESS.md '물어볼 것').
  * 4지역 일반 요괴 4종씩(저승의 원귀는 궁궐 원혼과 같은 그림, 더 센 값) — 막이 오를수록 체력·피해가 크다.
  * 보스 12종 + 숨은 최종보스 어둑시니, 불려 나오는 요괴(여우 분신 · 병졸 · 저승사자), 갈림길의 여우 정예(천년 여우).
  */
@@ -207,7 +207,7 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'bigDokkaebi',
     name: '큰도깨비',
-    hp: [200, 200],
+    hp: [170, 170],
     art: 'b-bigDokkaebi',
     boss: true,
     phase1: {
@@ -268,11 +268,12 @@ export const ENEMIES: EnemyDef[] = [
       // 매 턴 화상2, 화상 피해 2배, 젖음을 걸면 화상 감소
       passive: 'scorch',
       turnOps: [{ op: 'status', id: 'fire', n: 2 }],
+      // 6단계 밸런스: 2단계 불길은 화상 없이 피해만 (매 턴 화상2 + 2배와 겹치면 1막에서 너무 셈 — 정한 값)
       moves: [
-        { id: 'flame', name: '불길', intent: 'atk', ops: [{ op: 'dmg', n: 7 }, { op: 'status', id: 'fire', n: 3 }] },
+        { id: 'flame2', name: '불길', intent: 'atk', ops: [{ op: 'dmg', n: 8 }] },
         { id: 'parch', name: '메마름', intent: 'debuff', ops: [{ op: 'halveBlock' }] },
       ],
-      ai: { type: 'cycle', order: ['flame', 'parch'] },
+      ai: { type: 'cycle', order: ['flame2', 'parch'] },
     },
   },
 
@@ -280,11 +281,11 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'guard',
     name: '궁궐 수문병',
-    hp: [56, 62],
+    hp: [62, 68],
     art: 'e-guard',
     phase1: {
       moves: [
-        { id: 'thrust', name: '창 찌르기', intent: 'atk', ops: [{ op: 'dmg', n: 12 }] },
+        { id: 'thrust', name: '창 찌르기', intent: 'atk', ops: [{ op: 'dmg', n: 14 }] },
         { id: 'shield', name: '방패 세우기', intent: 'def', ops: [{ op: 'block', n: 12 }] },
         { id: 'shout', name: '호령', intent: 'buff', ops: [{ op: 'str', n: 2 }] },
       ],
@@ -294,12 +295,12 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'spirit',
     name: '궁녀 원혼',
-    hp: [44, 48],
+    hp: [48, 53],
     art: 'e-spirit',
     phase1: {
       moves: [
-        { id: 'touch', name: '서늘한 손', intent: 'atk', ops: [{ op: 'dmg', n: 10 }] },
-        { id: 'grudge', name: '원한', intent: 'atk', ops: [{ op: 'dmg', n: 7 }, { op: 'status', id: 'weak', n: 2 }] },
+        { id: 'touch', name: '서늘한 손', intent: 'atk', ops: [{ op: 'dmg', n: 12 }] },
+        { id: 'grudge', name: '원한', intent: 'atk', ops: [{ op: 'dmg', n: 8 }, { op: 'status', id: 'weak', n: 2 }] },
         { id: 'wail', name: '울음', intent: 'debuff', ops: [{ op: 'status', id: 'mud', n: 2 }] },
       ],
       ai: { type: 'cycle', order: ['touch', 'grudge', 'wail'] },
@@ -308,12 +309,12 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'water',
     name: '물귀신',
-    hp: [50, 56],
+    hp: [55, 62],
     art: 'e-water',
     phase1: {
       moves: [
-        { id: 'drag', name: '끌어당기기', intent: 'atk', ops: [{ op: 'dmg', n: 8 }, { op: 'status', id: 'wet', n: 2 }] },
-        { id: 'splash', name: '물보라', intent: 'atk', ops: [{ op: 'dmg', n: 5, times: 2 }] },
+        { id: 'drag', name: '끌어당기기', intent: 'atk', ops: [{ op: 'dmg', n: 9 }, { op: 'status', id: 'wet', n: 2 }] },
+        { id: 'splash', name: '물보라', intent: 'atk', ops: [{ op: 'dmg', n: 6, times: 2 }] },
       ],
       ai: { type: 'cycle', order: ['drag', 'splash', 'splash'] },
     },
@@ -321,13 +322,13 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'catfish',
     name: '메기 장수',
-    hp: [72, 78],
+    hp: [79, 86],
     art: 'e-catfish',
     phase1: {
       moves: [
         { id: 'mire', name: '진흙탕', intent: 'debuff', ops: [{ op: 'status', id: 'mud', n: 2 }, { op: 'block', n: 10 }] },
-        { id: 'quake', name: '땅 울림', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
-        { id: 'whip', name: '수염 채찍', intent: 'atk', ops: [{ op: 'dmg', n: 5, times: 3 }] },
+        { id: 'quake', name: '땅 울림', intent: 'atk', ops: [{ op: 'dmg', n: 18 }] },
+        { id: 'whip', name: '수염 채찍', intent: 'atk', ops: [{ op: 'dmg', n: 6, times: 3 }] },
       ],
       ai: { type: 'cycle', order: ['mire', 'quake', 'whip'] },
     },
@@ -422,11 +423,11 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'skeleton',
     name: '해골 병사',
-    hp: [66, 72],
+    hp: [73, 79],
     art: 'e-skeleton',
     phase1: {
       moves: [
-        { id: 'bone', name: '뼈칼', intent: 'atk', ops: [{ op: 'dmg', n: 14 }] },
+        { id: 'bone', name: '뼈칼', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
         { id: 'boneShield', name: '뼈 방패', intent: 'def', ops: [{ op: 'block', n: 14 }] },
         { id: 'rattle', name: '덜그럭', intent: 'buff', ops: [{ op: 'str', n: 3 }] },
       ],
@@ -436,13 +437,13 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'ferryman',
     name: '저승 뱃사공',
-    hp: [84, 90],
+    hp: [92, 99],
     art: 'e-ferryman',
     phase1: {
       moves: [
         { id: 'river', name: '저승 물', intent: 'debuff', ops: [{ op: 'status', id: 'wet', n: 2 }, { op: 'status', id: 'poison', n: 3 }] },
-        { id: 'oar', name: '노 휘두르기', intent: 'atk', ops: [{ op: 'dmg', n: 9, times: 2 }] },
-        { id: 'fare', name: '뱃삯 받기', intent: 'atk', ops: [{ op: 'discardNext', n: 1 }, { op: 'dmg', n: 10 }] },
+        { id: 'oar', name: '노 휘두르기', intent: 'atk', ops: [{ op: 'dmg', n: 10, times: 2 }] },
+        { id: 'fare', name: '뱃삯 받기', intent: 'atk', ops: [{ op: 'discardNext', n: 1 }, { op: 'dmg', n: 12 }] },
       ],
       ai: { type: 'cycle', order: ['river', 'oar', 'fare'] },
     },
@@ -450,12 +451,12 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'spirit3',
     name: '저승 원귀',
-    hp: [56, 62],
+    hp: [62, 68],
     art: 'e-spirit',
     phase1: {
       moves: [
-        { id: 'touch', name: '서늘한 손', intent: 'atk', ops: [{ op: 'dmg', n: 15 }] },
-        { id: 'grudge', name: '원한', intent: 'atk', ops: [{ op: 'dmg', n: 11 }, { op: 'status', id: 'weak', n: 2 }] },
+        { id: 'touch', name: '서늘한 손', intent: 'atk', ops: [{ op: 'dmg', n: 17 }] },
+        { id: 'grudge', name: '원한', intent: 'atk', ops: [{ op: 'dmg', n: 13 }, { op: 'status', id: 'weak', n: 2 }] },
         { id: 'bind', name: '혼 묶기', intent: 'debuff', ops: [{ op: 'curse', id: 'chain', n: 1, pile: 'draw' }] },
       ],
       ai: { type: 'cycle', order: ['touch', 'grudge', 'bind'] },
@@ -464,13 +465,13 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'bomber',
     name: '불폭탄 귀신',
-    hp: [40, 46],
+    hp: [44, 51],
     art: 'e-bomber',
     phase1: {
       moves: [
-        { id: 'toss', name: '불씨 던지기', intent: 'atk', ops: [{ op: 'dmg', n: 6 }, { op: 'status', id: 'fire', n: 3 }] },
+        { id: 'toss', name: '불씨 던지기', intent: 'atk', ops: [{ op: 'dmg', n: 7 }, { op: 'status', id: 'fire', n: 3 }] },
         { id: 'fuse', name: '심지 태우기', intent: 'buff', ops: [{ op: 'str', n: 5 }] },
-        { id: 'boom', name: '펑', intent: 'atk', ops: [{ op: 'dmg', n: 20 }] },
+        { id: 'boom', name: '펑', intent: 'atk', ops: [{ op: 'dmg', n: 23 }] },
       ],
       ai: { type: 'cycle', order: ['toss', 'fuse', 'boom'] },
     },
@@ -525,7 +526,7 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'yeomra',
     name: '염라대왕',
-    hp: [380, 380],
+    hp: [350, 350],
     art: 'b-yeomra',
     boss: true,
     phase1: {

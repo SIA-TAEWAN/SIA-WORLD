@@ -25,9 +25,9 @@ describe('데이터', () => {
     expect(count('curse')).toBe(2);
   });
 
-  it('고를 수 있는 영웅의 카드는 다 있다, 체력은 스펙 값', () => {
+  it('고를 수 있는 영웅의 카드는 다 있다, 체력은 스펙 값 (6단계 밸런스로 바꾼 값 — PROGRESS.md 스펙에서 바꾼 값)', () => {
     const hp = Object.fromEntries(HEROES.map((h) => [h.id, h.hp]));
-    expect(hp).toEqual({ rat: 64, ox: 85, tiger: 72, rabbit: 66, dragon: 75, snake: 68, horse: 70, sheep: 74, monkey: 64, rooster: 66, dog: 76, pig: 90, cat: 70 });
+    expect(hp).toEqual({ rat: 68, ox: 80, tiger: 80, rabbit: 74, dragon: 75, snake: 72, horse: 62, sheep: 64, monkey: 70, rooster: 70, dog: 62, pig: 90, cat: 70 });
     for (const h of HEROES.filter((x) => x.ready)) for (const c of h.cards) expect(hasCard(c), c).toBe(true);
   });
 

@@ -35,10 +35,10 @@ const toPhase = (f: Foe, p: 2 | 3) => {
 };
 
 describe('보스 데이터', () => {
-  it('지역마다 보스 3마리, 체력은 스펙 값, 2단계가 있다', () => {
+  it('지역마다 보스 3마리, 체력은 스펙 값(6단계 밸런스로 큰도깨비 200→170 · 염라대왕 380→350), 2단계가 있다', () => {
     const hp: Record<string, number> = {
-      gumiho: 130, jangsanbeom: 140, centipede: 135, bigDokkaebi: 200, bulgasal: 210, gangcheori: 190,
-      guardCaptain: 270, dueoksini: 280, imugi: 260, reaper: 330, yagwanggwi: 340, yeomra: 380, final: 450,
+      gumiho: 130, jangsanbeom: 140, centipede: 135, bigDokkaebi: 170, bulgasal: 210, gangcheori: 190,
+      guardCaptain: 270, dueoksini: 280, imugi: 260, reaper: 330, yagwanggwi: 340, yeomra: 350, final: 450,
     };
     for (const r of REGIONS.filter((x) => !x.hidden)) {
       expect(r.bosses).toHaveLength(3);
@@ -375,7 +375,7 @@ describe('숨은 최종보스 어둑시니', () => {
 
   it('정예로 나온 보스는 체력 60%, 막 보스가 아니다', () => {
     const { f } = boss('yeomra', 'elite');
-    expect(f.maxHp).toBe(228);
+    expect(f.maxHp).toBe(210); // 350 × 0.6
     expect(f.elite).toBe(true);
     expect(f.boss).toBeFalsy();
   });

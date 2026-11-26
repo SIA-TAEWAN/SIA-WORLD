@@ -340,11 +340,11 @@ function showTitle() {
   });
   on(s, '#new', () => {
     if (cont && !confirm('진행 중인 판이 사라져요. 새로 시작할까요?')) return;
-    showHeroes('normal');
+    firstTime(() => showHeroes('normal'));
   });
-  on(s, '#daily', () => showDailyIntro());
+  on(s, '#daily', () => firstTime(() => void showDailyIntro()));
   on(s, '#endless', () => {
-    if (!endless) return showHeroes('endless');
+    if (!endless) return firstTime(() => showHeroes('endless'));
     modal(
       `<h3>끝없는 모드</h3><p class="soft center">진행 중인 판: ${esc(endless)}</p>
       <div class="btns"><button class="btn primary" id="go">이어하기 ▶</button><button class="btn" id="fresh">새로 시작 (진행 중인 판은 사라져요)</button><button class="btn" data-close>닫기</button></div>`,
@@ -428,8 +428,10 @@ function showCodex(tab: 'cards' | 'relics' | 'foes' = 'cards') {
       ${(['cards', 'relics', 'foes'] as const).map((t) => `<button class="btn small${t === tab ? ' on' : ''}" data-tab="${t}">${{ cards: '카드', relics: '부적', foes: '요괴' }[t]} <small>${count[t]}/${total[t]}</small></button>`).join('')}
     </div>
     <p class="soft center light">보통 판 · 끝없는 모드에서 얻은 카드 · 부적과 만난 요괴가 모여요 (이 기기에만)</p>
-    <div class="card">${body}</div>`);
+    <div class="card">${body}</div>
+    <button class="btn" id="tutorial">연습 전투 다시 보기</button>`);
   on(s, '#back', () => showTitle());
+  on(s, '#tutorial', () => startTutorial(() => showCodex(tab)));
   on(s, '[data-tab]', (el) => showCodex(el.dataset.tab as 'cards' | 'relics' | 'foes'));
 }
 
@@ -452,6 +454,100 @@ function showPracticeMenu() {
     const [, foes, kind] = sets[Number(el.dataset.set)];
     startPractice(foes, kind);
   });
+}
+
+// ---------- 연습 전투 (처음 하는 사람: 첫 판 전 1번, 도감에서 다시 보기) ----------
+
+const TUTORIAL_KEY = LOCAL_MODE ? 'siacard:local:tutorial' : 'siacard:tutorial';
+const SEEN_KEY = LOCAL_MODE ? 'siacard:local:seen' : 'siacard:seen';
+const tutorialDone = () => {
+  try {
+    return localStorage.getItem(TUTORIAL_KEY) === '1';
+  } catch {
+    return true;
+  }
+};
+const markTutorial = () => {
+  try {
+    localStorage.setItem(TUTORIAL_KEY, '1');
+  } catch {
+    /* 저장 못 하면 다음에 또 보인다 */
+  }
+};
+/** 처음 만난 의도·상태이상 (말풍선 한 번) — 기기 저장 */
+const seenTips = (() => {
+  let set: Set<string> | null = null;
+  const load = () => {
+    if (set) return set;
+    try {
+      const v = JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]');
+      set = new Set(Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+    } catch {
+      set = new Set();
+    }
+    return set;
+  };
+  return {
+    has: (k: string) => load().has(k),
+    add: (k: string) => {
+      load().add(k);
+      try {
+        localStorage.setItem(SEEN_KEY, JSON.stringify([...load()]));
+      } catch {
+        /* 무시 */
+      }
+    },
+  };
+})();
+
+/** 연습 전투가 끝나면 갈 곳 (null = 연습 전투 아님) */
+let tutorialNext: (() => void) | null = null;
+
+/** 첫 판 전에 연습 전투 1번 (이미 했거나 건너뛰었으면 바로) */
+function firstTime(next: () => void) {
+  if (tutorialDone() || (LOCAL_MODE && DEV_FOES.length)) return next();
+  startTutorial(next);
+}
+
+/**
+ * 연습 전투: 어흥이 vs 여우 1마리(체력 24), 정해진 손패 — 1턴 베기3·막기2, 2턴 베기2·막기2·호랑이 발톱.
+ * 기록·서버·도감과 상관없는 연습 판(run.practice). 화살표 안내는 BattleScene(hooks.tutorial).
+ */
+function startTutorial(next: () => void) {
+  const run = newRun({ seed: 7, hero: 'tiger' });
+  enterTestBattle(run, ['fox'], 'battle');
+  const b = run.battle!;
+  const all = [...b.hand, ...b.draw];
+  const take = (id: string) => all.splice(all.findIndex((c) => c.id === id), 1)[0];
+  b.hand = [take('slash'), take('guard'), take('slash'), take('guard'), take('slash')];
+  // 뽑을 더미는 뒤에서부터 뽑는다
+  b.draw = [take('guard'), take('slash'), take('guard'), take('slash'), take('tigerClaw')];
+  b.t.drawn = b.hand.length;
+  const f = b.foes[0];
+  f.hp = f.maxHp = 24;
+  ctx.run = run;
+  ctx.runId = null;
+  tutorialNext = next;
+  showRun();
+}
+
+function endTutorial(win: boolean | null) {
+  markTutorial();
+  const next = tutorialNext ?? (() => showTitle());
+  tutorialNext = null;
+  ctx.run = null;
+  if (win === null) return next();
+  const s = screen(`<div class="grow"></div>
+    <div class="card big-panel center">
+      <img class="result-hero${win ? '' : ' down'}" src="${heroImg('tiger')}" alt="" onerror="this.remove()">
+      <h2 class="${win ? 'win' : 'lose'}">${win ? '연습 끝!' : '아쉬워요!'}</h2>
+      <p>카드는 끌어 놓거나 두 번 눌러서 써요. 요괴 머리 위 의도를 보고 공격할지 막을지 정해요.</p>
+      <p class="soft">체력은 전투가 끝나도 이어져요. 쉼터 · 물약으로 아껴 가며 3막 보스까지 올라가요.<br>연습 전투는 도감에서 다시 볼 수 있어요.</p>
+      <button class="btn primary big" id="go">좋아요 ▶</button>
+    </div>
+    <div class="grow"></div>`);
+  sfx(win ? 'win' : 'click');
+  on(s, '#go', () => next());
 }
 
 function startPractice(foes: string[], kind: 'battle' | 'elite' | 'boss') {
@@ -582,6 +678,7 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
         const r = await ctx.api.start(mode, hero, mastery, daily?.day ?? null, daily?.seed ?? null);
         runId = r.runId;
         seed = r.seed;
+        if (r.paidCoins) toast(`지난 판에서 못 받은 시아코인 +${r.paidCoins}`, 2400);
       } catch (e) {
         if (e instanceof ApiError && e.message === 'bad day') void refreshState();
         return toast(friendly(e), 2600);
@@ -829,11 +926,13 @@ function showBattle() {
     run: () => ctx.run!,
     send: (i) => send(i),
     done: () => {
+      if (tutorialNext) return endTutorial(ctx.run?.phase === 'won');
       if (ctx.run?.practice) return showResult();
       showRun();
     },
     heroUrl: ctx.run ? heroImg(ctx.run.hero) : null,
     sfx,
+    ...(tutorialNext ? { tutorial: { skip: () => endTutorial(null) } } : { seen: seenTips }),
   };
   ctx.game = new Phaser.Game({
     type: Phaser.AUTO,
