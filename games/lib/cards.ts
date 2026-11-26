@@ -55,7 +55,7 @@ export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'holdem' | 'bl
 // ---------- 카드 뒷면 ----------
 
 /**
- * 카드 뒷면: --primary(노랑) 바탕에 12띠가 원형으로 둘러선 문양. 한 번만 그려 텍스처로 둔다.
+ * 카드 뒷면: 트럼프는 --card-back(짙은 먹색), 화투는 --primary(노랑) 바탕에 12띠가 원형으로 둘러선 문양. 한 번만 그려 텍스처로 둔다.
  * back-casino: 트럼프 / back-hwatu: 화투 (같은 무늬, 화투 비율)
  */
 export function cardBack(scene: Scene, key: 'back-casino' | 'back-hwatu') {
@@ -67,7 +67,7 @@ export function cardBack(scene: Scene, key: 'back-casino' | 'back-hwatu') {
   const g = scene.make.graphics({}, false);
   const r = key === 'back-hwatu' ? 18 : 16;
   g.fillStyle(C.outline, 1).fillRoundedRect(0, 0, W, H, r);
-  g.fillStyle(C.primary, 1).fillRoundedRect(4, 4, W - 8, H - 8, r - 3);
+  g.fillStyle(key === 'back-casino' ? C.cardBack : C.primary, 1).fillRoundedRect(4, 4, W - 8, H - 8, r - 3);
   g.lineStyle(3, C.white, 0.9).strokeRoundedRect(11, 11, W - 22, H - 22, r - 6);
   g.fillStyle(C.panel, 1).fillCircle(W / 2, H / 2, W * 0.43);
   g.lineStyle(3, C.outline, 1).strokeCircle(W / 2, H / 2, W * 0.43);

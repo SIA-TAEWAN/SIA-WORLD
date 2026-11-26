@@ -37,6 +37,7 @@
   --table-matgo: #7cc08a;
   --matgo-mat-light: #8fcc9b; /* 맞고 담요 체크 무늬 (밝은 칸) */
   --matgo-mat-dark: #5fa772;  /* 맞고 바닥 자리·먹은 패 칸 */
+  --card-back: #1f1c1a;       /* 카지노 트럼프 뒷면 바탕 (짙은 먹색) */
   --table-poker: #6cc6b5;
   --table-blackjack: #7fb8e8;
   --roulette-spring: #9cc7f2;
