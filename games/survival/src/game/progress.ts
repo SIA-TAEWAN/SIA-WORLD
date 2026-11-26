@@ -375,7 +375,7 @@ export function applyRun(
     bosses: merge(profile.codex.bosses, run.time < LIMITS.boss1_time ? [] : run.codex.bosses, BOSSES.map((e) => e.id)),
     // 서버 도감 목록에 없는 무기(DEVICE_CODEX)는 서버처럼 적지 않는다
     weapons: merge(profile.codex.weapons, run.codex.weapons, SERVER_CODEX_WEAPONS),
-    // 서버 도감 목록에 없는 패시브도 서버처럼 적지 않는다 (도감은 knownPassives 로 처음부터 보여 준다)
+    // 서버 도감 목록에 없는 패시브는 서버처럼 적지 않는다 (지금은 모두 목록에 있다. 없으면 도감은 knownPassives 로 처음부터 보여 준다)
     passives: merge(profile.codex.passives, run.codex.passives, [...SERVER_CODEX_PASSIVES]),
   };
   return { profile: withRecords(p, rec, end, hl), records: rec, endless: end, hell: hl, result };
