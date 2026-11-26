@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BONUS, ENDLESS, LIMIT, RUN_SEC, VIEW_W } from '../data/balance';
+import { BONUS, ENDLESS, LIMIT, RUN_SEC, STACKS, VIEW_W } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import { ITEM } from '../data/items';
@@ -86,6 +86,11 @@ function cardView(s: State, c: Card): { icon: string; name: string; tag: string;
       tag: c.isNew ? '새 패시브' : `패시브 Lv ${c.lv}`, text: d.text,
       set: partner ? (done ? `🔗 세트 완성! ${st!.text}` : `🔗 세트 짝: ${partner.name} → ${st!.text}`) : '',
     };
+  }
+  if (c.type === CARD.stack) {
+    const d = STACKS[c.def];
+    const total = Math.round(d.value * c.lv * 100);
+    return { icon: icon('u', d.id === 'might' ? 'might' : 'hp'), name: d.name, tag: `수련 ${c.lv}번째`, text: `${d.text} · 고르면 합계 +${total}%`, kind: 'stack', set: '', done: false, max: false };
   }
   if (c.type === CARD.heal) return { icon: icon('x', 'cake'), name: '떡', tag: '덤', text: `체력 ${BONUS.heal} 회복`, kind: 'bonus', set: '', done: false, max: false };
   return { icon: icon('x', 'coin'), name: '엽전', tag: '덤', text: `엽전 ${BONUS.coins}닢`, kind: 'bonus', set: '', done: false, max: false };
@@ -544,6 +549,11 @@ export function showGame(setup: GameSetup) {
         return row(icon('w', d.id), d.name, d.evolved ? '진화' : isMaxLevel(w) ? 'MAX' : `Lv ${w.lv}`, `${d.desc}${setText}`);
       });
       const passives = s.passives.map((p) => row(icon('p', PASSIVES[p.def].id), PASSIVES[p.def].name, `Lv ${p.lv}`, `${PASSIVES[p.def].text} (레벨마다)`));
+      // 무한 모드의 계속 쌓이는 카드: 고른 만큼 패시브 목록 끝에 붙인다
+      STACKS.forEach((d, i) => {
+        const n = s.stacks[i] ?? 0;
+        if (n > 0) passives.push(row(icon('u', d.id === 'might' ? 'might' : 'hp'), d.name, `×${n}`, `합계 +${Math.round(d.value * n * 100)}%`));
+      });
       // 그만두면 무엇을 받는지: 기록되지 않는 판 · 너무 짧은 판·요괴를 너무 적게 잡은 판(서버가 엽전을 주지 않는다) · 그 밖에는 주운 엽전
       const need = LIMITS.count_min_time;
       const quitNote = unrecorded

@@ -3,7 +3,7 @@
  * Phaser·DOM·Math.random 을 쓰지 않는다 (같은 시드·같은 조작이면 언제나 같은 결과).
  * 화면은 이 상태를 그리기만 하고, 화면 없이도 수천 판을 돌려 밸런스를 볼 수 있다 (game/policy.ts).
  */
-import { BOSS_WARN_SEC, DAILY_COIN_MUL, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
+import { BOSS_WARN_SEC, DAILY_COIN_MUL, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, STACKS, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
@@ -68,6 +68,7 @@ export function createRun(cfg: RunConfig): State {
     rerolls: 0,
     weapons: [],
     passives: [],
+    stacks: STACKS.map(() => 0),
     enemies: makePool<Enemy>(LIMIT.enemyPool, () => ({
       uid: 0, kind: 0, boss: -1, x: 0, y: 0, hp: 0, maxHp: 0, r: 0, speed: 0, dmg: 0, xp: 0, flash: 0, t: 0, dead: false, cd: 0,
       pat: 0, patT: 0, sub: 0, ax: 0, ay: 0, slow: 0, hidden: false, guard: 1, look: -1, side: 0, sideT: 0, hitAt: new Int32Array(8),

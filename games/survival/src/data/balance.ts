@@ -118,6 +118,16 @@ export const CARD_COUNT = 3;
 export const BONUS = { heal: 30, coins: 10 };
 
 /**
+ * 무한 모드에서 4분이 지난 뒤, 무기·패시브를 다 키워 고를 것이 모자랄 때 빈자리를 채우는 '계속 쌓이는' 카드.
+ * 몇 번이든 고를 수 있고 고를 때마다 더해진다 (엽전 덤 카드 대신. 떡 카드는 그대로 남는다).
+ * 4분 모드와 무한 모드의 처음 4분은 그대로다 (같은 시드면 4분까지 두 모드의 판이 똑같다).
+ */
+export const STACKS = [
+  { id: 'might', name: '무예 수련', icon: 'u-might', stat: 'might', value: 0.04, text: '모든 무기 피해 +4% (계속 쌓여요)' },
+  { id: 'hp', name: '몸 단련', icon: 'u-hp', stat: 'maxHpPct', value: 0.05, text: '최대 체력 +5% (계속 쌓여요)' },
+] as const;
+
+/**
  * 카드가 뽑힐 가중치 (나머지 카드는 1). 진화(무기 5레벨 + 짝 패시브)가 카드 운에만 달리지 않게, 키우던 것이 더 자주 나온다.
  *   ownedWeapon: 이미 가진 무기의 강화 카드
  *   evoWeapon: 가진 무기 가운데 진화가 있는 무기(data/evolutions.ts)의 강화 카드 (ownedWeapon 대신 이 값)

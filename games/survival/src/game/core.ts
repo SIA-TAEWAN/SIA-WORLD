@@ -2,7 +2,7 @@
  * 계산의 공통 도구: 난수, 풀, 범위 안의 적 찾기, 피해·처치·아이템 떨구기, 능력치 계산.
  * 무기(weapons.ts)·요괴(enemies.ts)·보스(bosses.ts)·걸음(sim.ts)이 모두 이것을 쓴다.
  */
-import { CLAMP, ENDLESS, PLAYER, RUN_SEC, SPAWN, TICKS_PER_SEC } from '../data/balance';
+import { CLAMP, ENDLESS, PLAYER, RUN_SEC, SPAWN, STACKS, TICKS_PER_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import { ITEM, ITEMS } from '../data/items';
@@ -84,6 +84,7 @@ export function recalcStats(s: State) {
   addMod(sum, s.char.trait.stat, s.char.trait.value);
   for (const p of s.passives) addMod(sum, PASSIVES[p.def].stat, PASSIVES[p.def].perLevel * p.lv);
   for (const u of UPGRADES) addMod(sum, u.stat, u.perLevel * (s.upgrades[u.id] ?? 0));
+  for (let i = 0; i < STACKS.length; i++) addMod(sum, STACKS[i].stat, STACKS[i].value * (s.stacks[i] ?? 0));
   const st = s.stats;
   const oldMax = st.maxHp;
   st.might = 1 + sum.might;
