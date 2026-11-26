@@ -288,11 +288,7 @@ em > .ico { margin: 0 auto; }
     calc(var(--u) * -60) calc(var(--u) * 120) 0 calc(var(--u) * -1) var(--panel-strong), calc(var(--u) * 40) calc(var(--u) * -14) 0 calc(var(--u) * -1) var(--panel-strong);
 }
 .m-underworld .mood { background: color-mix(in srgb, var(--team-a) 12%, transparent); }
-/* 안개: 옆으로 천천히 흐르는 옅은 띠 두 줄 */
-.m-underworld .mood i { display: block; left: -40%; width: 180%; height: 22%; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--white) 20%, transparent); animation: fog 16s ease-in-out infinite alternate; }
-.m-underworld .mood i:first-child { top: 24%; }
-.m-underworld .mood i:last-child { top: 66%; animation-delay: -8s; animation-direction: alternate-reverse; }
-@keyframes fog { from { transform: translateX(-12%); } to { transform: translateX(12%); } }
+/* 안개는 판(GameScene 의 흐르는 안개 · 가장자리 안개)이 그린다 — 예전 화면 위 띠 두 줄은 화면을 네 칸으로 나눠 보이게 해서 뺐다 */
 /*
  * 헬 모드의 분위기 (맵 분위기 위, HUD 아래): 화면 전체를 덮는 색조는 없다 — 바닥·장애물만 그림 쪽(GameScene 의 HELL_TINT)에서 검붉게 어둡게 한다.
  * 여기서는 가장자리만 어둡게 타들어 가는 테(가운데 절반은 비워 둔다) + 그 위의 불씨·재. 색은 --pink 와 어두운 갈색(--outline)만 쓴다
