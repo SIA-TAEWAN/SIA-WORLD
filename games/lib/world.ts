@@ -144,7 +144,7 @@ export interface RankModule {
 export interface ThemeModule {
   COLOR: Record<
     | 'skyTop' | 'skyMid' | 'skyBottom' | 'skyDeep' | 'panel' | 'panelStrong' | 'outline' | 'ink' | 'inkSoft' | 'lineSoft' | 'emptyLine'
-    | 'primary' | 'primaryLight' | 'primaryDeep' | 'accent' | 'pink' | 'track' | 'white' | 'teamA' | 'teamB' | 'win' | 'lose' | 'draw' | 'cardRed',
+    | 'primary' | 'primaryLight' | 'primaryDeep' | 'accent' | 'pink' | 'track' | 'white' | 'teamA' | 'teamB' | 'win' | 'lose' | 'draw' | 'cardRed' | 'cardBack',
     number
   >;
   TABLE: Record<'matgo' | 'poker' | 'holdem' | 'blackjack', number>;

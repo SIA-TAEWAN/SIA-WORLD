@@ -28,6 +28,8 @@ export const COLOR = {
   draw: 0x9a8c7e,
   /** 트럼프 빨간 무늬 (♥◆) */
   cardRed: 0xe8564a,
+  /** 카지노 트럼프 뒷면 바탕 (짙은 먹색) */
+  cardBack: 0x1f1c1a,
 };
 
 /** 게임별 테이블 색 (넓은 면) */
