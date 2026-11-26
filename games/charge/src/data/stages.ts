@@ -225,7 +225,11 @@ export const expectedDmg = (f: number) => (1 + 0.05 * 20 * f) * (1 + 0.03 * 10 *
  * 잘 고른 사람의 대원 수(T)를 따라가며 요괴 무리 크기와 문 숫자를 정한다 (그래서 어느 지역이든 손맛이 비슷하다).
  * 스테이지와 끝없는 모드가 같이 쓴다. → 물건 목록과 보스 앞에서의 예상 대원 수
  */
-export function buildSegment(r: () => number, f: number, pool: EnemyKind[], z0: number, len: number, t0: number): { items: Item[]; troops: number } {
+/**
+ * noCoins: 끝없는 길·오늘의 길 구간. 서버(charge_finish)가 이 판들의 상자 엽전을 쳐주지 않으므로
+ * 엽전 상자를 힘 상자로 바꾼다 (rng 호출 순서는 그대로라 다른 배치는 바뀌지 않는다)
+ */
+export function buildSegment(r: () => number, f: number, pool: EnemyKind[], z0: number, len: number, t0: number, noCoins = false): { items: Item[]; troops: number } {
   const pick = <T>(a: readonly T[]) => a[Math.floor(r() * a.length)];
   const cap = (n: number) => Math.max(1, Math.min(3000, Math.round(n)));
   const items: Item[] = [];
@@ -272,7 +276,8 @@ export function buildSegment(r: () => number, f: number, pool: EnemyKind[], z0: 
         T *= 0.92;
         z += 900;
       } else {
-        const reward: CrateReward = pick<CrateReward>([{ kind: 'troops', v: cap(T * 0.25 + 5) }, { kind: 'coins', v: 5 }, { kind: 'power', sec: 6 }]);
+        const picked = pick<CrateReward>([{ kind: 'troops', v: cap(T * 0.25 + 5) }, { kind: 'coins', v: 5 }, { kind: 'power', sec: 6 }]);
+        const reward: CrateReward = noCoins && picked.kind === 'coins' ? { kind: 'power', sec: 6 } : picked;
         items.push({ t: 'crate', z, x: pick([-140, 140]), reward });
         if (reward.kind === 'troops') T += reward.v;
         z += 900;
@@ -341,7 +346,7 @@ export function endlessSegment(k: number, seed?: number): { items: Item[]; bossZ
   const r = rng(daily ? (seed ^ Math.imul(k + 1, 0x9e3779b1)) >>> 0 : 777 + k * 31);
   const z0 = k * ENDLESS_SEG;
   // 앞 구간에서 얼마나 남았는지 모르므로, 구간마다 예상 대원이 늘어난다고 본다
-  const seg = buildSegment(r, f, REGION_ENEMIES[Math.min(11, k)], z0, ENDLESS_SEG, 20 * Math.pow(1.35, k));
+  const seg = buildSegment(r, f, REGION_ENEMIES[Math.min(11, k)], z0, ENDLESS_SEG, 20 * Math.pow(1.35, k), true);
   const big = k % 3 === 2;
   const id = BOSS_IDS[(Math.floor(k / 3) + (daily ? dailyBossShift(seed) : 0)) % BOSS_IDS.length];
   const boss: BossSpec = big ? { kind: id, hp: bossHp(seg.troops, 14, f), ...BOSS_TRAITS[id] } : chief(bossHp(seg.troops, 7, f));

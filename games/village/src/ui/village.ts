@@ -1081,7 +1081,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
             );
           }
           if (r.state) apply(r.state);
-          else void api.load().then(apply).catch(() => undefined);
+          else void reload();
         }),
       );
     } else if (d.showcase !== undefined) {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { METER } from '../src/data/balance';
 import { NO_MODS, endlessCoins } from '../src/data/growth';
-import { DAILY_ID, ENDLESS_SEG, dailyBossShift, dailyStage, endlessSegment, endlessStage } from '../src/data/stages';
+import { DAILY_ID, ENDLESS_SEG, REGION_ENEMIES, STAGES, buildSegment, crateCoinsOf, dailyBossShift, dailyStage, endlessSegment, endlessStage } from '../src/data/stages';
 import { DAILY_GAME, dailyCourse, dailySeed, dayLabel, isDay, isPastDay, localDay, normalizeDaily, placeText } from '../src/game/daily';
 import { applyReport, checkReport, checkStart, emptyProfile, type RunReport } from '../src/game/progress';
 import { STEP, createRun, metersOf, setTarget, step } from '../src/game/sim';
@@ -79,6 +79,27 @@ describe('오늘의 길: 씨앗과 코스', () => {
           expect(z).toBeLessThan(seg.bossZ);
         }
       }
+    }
+  });
+
+  it('끝없는 길·오늘의 길 구간에는 엽전 상자가 없다 (서버가 쳐주지 않는다), 일반 스테이지는 그대로', () => {
+    let crates = 0;
+    for (const seed of [undefined, dailyCourse(DAY).seed, dailyCourse(NEXT).seed]) {
+      for (let k = 0; k < 30; k++) {
+        const items = endlessSegment(k, seed).items;
+        expect(crateCoinsOf(items)).toBe(0);
+        crates += items.filter((it) => it.t === 'crate').length;
+      }
+    }
+    expect(crates).toBeGreaterThan(0);
+    expect(STAGES.some((s) => crateCoinsOf(s.items) > 0)).toBe(true);
+    // 엽전 상자만 힘 상자로 바뀌고 나머지 배치는 같다
+    const seeded = (n: number) => () => ((n = (Math.imul(n, 1103515245) + 12345) >>> 0) / 2 ** 32);
+    for (let n = 1; n <= 40; n++) {
+      const a = buildSegment(seeded(n), 0.5, REGION_ENEMIES[3], 0, 30000, 30);
+      const b = buildSegment(seeded(n), 0.5, REGION_ENEMIES[3], 0, 30000, 30, true);
+      expect(b.troops).toBe(a.troops);
+      expect(b.items).toEqual(a.items.map((it) => (it.t === 'crate' && it.reward.kind === 'coins' ? { ...it, reward: { kind: 'power', sec: 6 } } : it)));
     }
   });
 
