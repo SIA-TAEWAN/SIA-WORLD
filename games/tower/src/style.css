@@ -137,8 +137,11 @@ canvas.hero-cv, canvas.big-cv, .opt canvas, .shop-keeper canvas { image-renderin
 .gauge.mp em { font-size: 9px; color: var(--white); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
 .gauge.exp { height: 6px; }
 .gauge.exp i { background: var(--gauge-gradient); }
-.hud-status { font-size: 12px; min-height: 0; color: var(--ink-soft); }
+.hud-status { position: absolute; left: 0; bottom: calc(100% + 6px); width: max-content; max-width: min(320px, 70vw); display: flex; flex-wrap: wrap-reverse; gap: 4px; pointer-events: none; }
+.hud-status span { background: var(--panel); border: var(--line-thin) solid var(--outline); border-radius: var(--radius-pill); padding: 1px 8px; font-size: 12px; color: var(--ink); white-space: nowrap; }
 .hud-status:empty { display: none; }
+.plate-timer { position: absolute; left: 50%; transform: translateX(-50%); top: calc(96px + env(safe-area-inset-top)); background: var(--white); border: var(--line) solid var(--outline); border-radius: var(--radius-pill); box-shadow: 0 3px 0 var(--outline); padding: 4px 16px; font-size: 20px; color: var(--ink); white-space: nowrap; pointer-events: none; }
+.plate-timer.low { background: var(--pink); color: var(--white); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
 .boss-bar { position: absolute; left: 50%; transform: translateX(-50%); width: min(70%, 420px); top: calc(60px + env(safe-area-inset-top)); text-align: center; }
 .boss-bar b { font-weight: normal; color: var(--white); font-size: 15px; -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
 .boss-bar .gauge { height: 14px; }
@@ -179,6 +182,10 @@ canvas.hero-cv, canvas.big-cv, .opt canvas, .shop-keeper canvas { image-renderin
 .act.interact { --x: 24; --y: 118; --d: 62; background: var(--primary); }
 .act.interact span { font-size: 22px; margin-top: -8px; }
 .act.potion { --x: 160; --y: 96; --d: 44; }
+.act.mana { --x: 164; --y: 150; --d: 40; }
+.potion-svg { width: 1em; height: 1em; display: block; }
+.act .potion-svg { width: calc(var(--d) * 0.62px); height: calc(var(--d) * 0.62px); }
+.ic .potion-svg { width: 24px; height: 24px; margin: 0 auto; }
 /* 화면이 낮으면 (폰 가로) 버튼을 조금 작게 */
 @media (max-height: 430px) {
   .act.attack { --d: 72; --y: 14; }
@@ -186,6 +193,7 @@ canvas.hero-cv, canvas.big-cv, .opt canvas, .shop-keeper canvas { image-renderin
   .act.awaken { --x: 88; --y: 80; --d: 46; }
   .act.interact { --x: 18; --y: 96; --d: 56; }
   .act.potion { --x: 144; --y: 76; --d: 40; }
+  .act.mana { --x: 150; --y: 122; --d: 36; }
   .stick { left: calc(min(190px, 34vw) + 76px); bottom: calc(64px + env(safe-area-inset-bottom)); }
   .hud-bl { width: min(190px, 34vw); }
 }

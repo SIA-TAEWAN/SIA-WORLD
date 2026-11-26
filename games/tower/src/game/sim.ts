@@ -48,8 +48,10 @@ export interface Input {
   awaken: boolean;
   interact: boolean;
   potion: boolean;
+  /** 혼력 물약 (빠른 버튼) */
+  mana?: boolean;
 }
-export const noInput = (): Input => ({ mx: 0, my: 0, attack: false, skill: false, awaken: false, interact: false, potion: false });
+export const noInput = (): Input => ({ mx: 0, my: 0, attack: false, skill: false, awaken: false, interact: false, potion: false, mana: false });
 
 /** 칼을 휘두르는 동작 (기본 3타 + 칼로 쓰는 구슬 스킬) */
 export type SwingKind = 'basic' | 'rat' | 'ox' | 'dragon' | 'snake' | 'sheep' | 'tiger' | 'wt';
@@ -656,6 +658,7 @@ function updatePlayer(s: RunState, input: Input) {
 
   // 물약 · 상호작용
   if (input.potion) quickPotion(s);
+  if (input.mana) quickMana(s);
   if (input.interact) interact(s);
 
   // 스킬 · 각성
@@ -1460,6 +1463,12 @@ function quickPotion(s: RunState) {
   if (miss <= 0) return note(s, '체력이 가득해요');
   for (const id of order) if (s.data.items[id] > 0) return void useItem(s, id);
   note(s, '회복약이 없어요');
+}
+
+function quickMana(s: RunState) {
+  if (!(s.data.items.mana > 0)) return note(s, '혼력 물약이 없어요');
+  const why = useItem(s, 'mana');
+  if (why) note(s, why);
 }
 
 // ---------- 상호작용 ----------
