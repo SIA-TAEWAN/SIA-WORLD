@@ -4,10 +4,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { CARDS, cardText } from '../src/game/rules';
-import { DESC_BOX, DESC_LINE, DESC_SIZES, fitDesc, textEm, wrapLines } from '../src/ui/fit';
+import { DESC_BOX, DESC_LINE, DESC_MIN, DESC_SIZES, fitDesc, textEm, wrapLines } from '../src/ui/fit';
 
 /** 너무 작으면 휴대폰에서 못 읽는다 */
-const MIN_SIZE = 7.5;
+const MIN_SIZE = 9;
 
 describe('카드 설명 맞추기', () => {
   it('줄은 빈칸에서 나누고, 각 줄은 너비 안', () => {
@@ -35,6 +35,7 @@ describe('카드 설명 맞추기', () => {
     // 대부분은 큰 글자 그대로
     expect(sizes.filter((s) => s >= 10).length).toBeGreaterThan(sizes.length / 2);
     expect(DESC_SIZES[DESC_SIZES.length - 1]).toBeGreaterThanOrEqual(MIN_SIZE);
+    expect(DESC_MIN).toBeGreaterThanOrEqual(MIN_SIZE);
   });
 
   it('용의 숨결(모든 적 10, 화상2)은 줄여서 두 줄', () => {

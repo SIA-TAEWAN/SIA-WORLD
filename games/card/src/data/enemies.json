@@ -372,8 +372,8 @@
     "id": "jangsanbeom",
     "name": "장산범",
     "hp": [
-      140,
-      140
+      165,
+      165
     ],
     "art": "b-jangsanbeom",
     "boss": true,
@@ -390,7 +390,7 @@
             },
             {
               "op": "dmg",
-              "n": 8
+              "n": 12
             }
           ]
         },
@@ -398,7 +398,12 @@
           "id": "warn",
           "name": "덮치기 예고",
           "intent": "unknown",
-          "ops": []
+          "ops": [
+            {
+              "op": "str",
+              "n": 2
+            }
+          ]
         },
         {
           "id": "pounce",
@@ -407,7 +412,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 14
+              "n": 19
             }
           ]
         }
@@ -431,7 +436,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 14
+              "n": 19
             }
           ]
         },
@@ -521,7 +526,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 4,
+              "n": 3,
               "times": 4
             }
           ]
@@ -752,8 +757,8 @@
     "id": "bigDokkaebi",
     "name": "큰도깨비",
     "hp": [
-      170,
-      170
+      150,
+      150
     ],
     "art": "b-bigDokkaebi",
     "boss": true,
@@ -766,7 +771,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 13
+              "n": 11
             }
           ]
         },
@@ -781,7 +786,7 @@
             },
             {
               "op": "str",
-              "n": 2
+              "n": 1
             }
           ]
         }
@@ -861,7 +866,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 12
+              "n": 16
             }
           ]
         }
@@ -896,7 +901,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 12
+              "n": 16
             }
           ]
         }
@@ -1235,8 +1240,8 @@
     "id": "guardCaptain",
     "name": "수문장 대장",
     "hp": [
-      270,
-      270
+      255,
+      255
     ],
     "art": "b-guardCaptain",
     "boss": true,
@@ -1249,7 +1254,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 16
+              "n": 15
             }
           ]
         },
@@ -1289,7 +1294,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 5,
+              "n": 4,
               "times": 4
             }
           ]
@@ -1353,8 +1358,8 @@
     "id": "dueoksini",
     "name": "두억시니",
     "hp": [
-      280,
-      280
+      265,
+      265
     ],
     "art": "b-dueoksini",
     "boss": true,
@@ -1367,7 +1372,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 18
+              "n": 16
             }
           ]
         },
@@ -1401,7 +1406,7 @@
       "turnOps": [
         {
           "op": "str",
-          "n": 3
+          "n": 2
         }
       ],
       "moves": [
@@ -1412,7 +1417,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 18
+              "n": 16
             }
           ]
         },
@@ -1446,8 +1451,8 @@
     "id": "imugi",
     "name": "이무기",
     "hp": [
-      260,
-      260
+      300,
+      300
     ],
     "art": "b-imugi",
     "boss": true,
@@ -1460,12 +1465,23 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 6
+              "n": 9
             },
             {
               "op": "status",
               "id": "wet",
               "n": 2
+            }
+          ]
+        },
+        {
+          "id": "bite",
+          "name": "물어뜯기",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 18
             }
           ]
         },
@@ -1485,6 +1501,7 @@
         "type": "cycle",
         "order": [
           "spray",
+          "bite",
           "coil"
         ]
       }
@@ -1499,7 +1516,7 @@
           "ops": [
             {
               "op": "charge",
-              "n": 40
+              "n": 50
             }
           ]
         },
@@ -1510,7 +1527,7 @@
           "ops": [
             {
               "op": "charge",
-              "n": 40
+              "n": 50
             }
           ]
         },
@@ -1521,7 +1538,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 35
+              "n": 40
             }
           ]
         },
@@ -1532,7 +1549,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 6
+              "n": 9
             },
             {
               "op": "status",
@@ -1881,8 +1898,8 @@
     "id": "yagwanggwi",
     "name": "야광귀",
     "hp": [
-      340,
-      340
+      400,
+      400
     ],
     "art": "b-yagwanggwi",
     "boss": true,
@@ -1891,8 +1908,12 @@
         {
           "id": "shoes",
           "name": "신발 훔치기",
-          "intent": "debuff",
+          "intent": "atk",
           "ops": [
+            {
+              "op": "dmg",
+              "n": 6
+            },
             {
               "op": "drain",
               "n": 1
@@ -1906,7 +1927,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 12
+              "n": 20
             }
           ]
         }
@@ -1915,6 +1936,7 @@
         "type": "cycle",
         "order": [
           "shoes",
+          "claw",
           "claw"
         ]
       }
@@ -1939,15 +1961,19 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 12
+              "n": 20
             }
           ]
         },
         {
           "id": "shoes",
           "name": "신발 훔치기",
-          "intent": "debuff",
+          "intent": "atk",
           "ops": [
+            {
+              "op": "dmg",
+              "n": 6
+            },
             {
               "op": "drain",
               "n": 1
@@ -1970,8 +1996,8 @@
     "id": "yeomra",
     "name": "염라대왕",
     "hp": [
-      350,
-      350
+      330,
+      330
     ],
     "art": "b-yeomra",
     "boss": true,
@@ -1984,7 +2010,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 20
+              "n": 16
             }
           ]
         },
@@ -2027,7 +2053,7 @@
       "turnOps": [
         {
           "op": "karma",
-          "k": 2
+          "k": 1
         }
       ],
       "moves": [
@@ -2051,7 +2077,7 @@
           "ops": [
             {
               "op": "dmg",
-              "n": 20
+              "n": 16
             }
           ]
         },
@@ -2356,5 +2382,308 @@
         ]
       }
     }
+  },
+  {
+    "id": "guardStrong",
+    "name": "사나운 궁궐 수문병",
+    "hp": [
+      78,
+      85
+    ],
+    "art": "e-guard-elite",
+    "phase1": {
+      "moves": [
+        {
+          "id": "thrust",
+          "name": "창 찌르기",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 17
+            }
+          ]
+        },
+        {
+          "id": "shield",
+          "name": "방패 세우기",
+          "intent": "def",
+          "ops": [
+            {
+              "op": "block",
+              "n": 14
+            }
+          ]
+        },
+        {
+          "id": "shout",
+          "name": "호령",
+          "intent": "buff",
+          "ops": [
+            {
+              "op": "str",
+              "n": 2
+            }
+          ]
+        }
+      ],
+      "ai": {
+        "type": "random",
+        "weights": [
+          [
+            "thrust",
+            50
+          ],
+          [
+            "shield",
+            25
+          ],
+          [
+            "shout",
+            25
+          ]
+        ],
+        "noRepeat": true
+      }
+    },
+    "strong": "guard"
+  },
+  {
+    "id": "spiritStrong",
+    "name": "사나운 궁녀 원혼",
+    "hp": [
+      60,
+      66
+    ],
+    "art": "e-spirit-elite",
+    "phase1": {
+      "moves": [
+        {
+          "id": "touch",
+          "name": "서늘한 손",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 14
+            }
+          ]
+        },
+        {
+          "id": "grudge",
+          "name": "원한",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 10
+            },
+            {
+              "op": "status",
+              "id": "weak",
+              "n": 2
+            }
+          ]
+        },
+        {
+          "id": "wail",
+          "name": "울음",
+          "intent": "debuff",
+          "ops": [
+            {
+              "op": "status",
+              "id": "mud",
+              "n": 2
+            }
+          ]
+        }
+      ],
+      "ai": {
+        "type": "cycle",
+        "order": [
+          "touch",
+          "grudge",
+          "wail"
+        ]
+      }
+    },
+    "strong": "spirit"
+  },
+  {
+    "id": "waterStrong",
+    "name": "사나운 물귀신",
+    "hp": [
+      69,
+      78
+    ],
+    "art": "e-water-elite",
+    "phase1": {
+      "moves": [
+        {
+          "id": "drag",
+          "name": "끌어당기기",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 11
+            },
+            {
+              "op": "status",
+              "id": "wet",
+              "n": 2
+            }
+          ]
+        },
+        {
+          "id": "splash",
+          "name": "물보라",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 7,
+              "times": 2
+            }
+          ]
+        }
+      ],
+      "ai": {
+        "type": "cycle",
+        "order": [
+          "drag",
+          "splash",
+          "splash"
+        ]
+      }
+    },
+    "strong": "water"
+  },
+  {
+    "id": "skeletonStrong",
+    "name": "사나운 해골 병사",
+    "hp": [
+      91,
+      99
+    ],
+    "art": "e-skeleton-elite",
+    "phase1": {
+      "moves": [
+        {
+          "id": "bone",
+          "name": "뼈칼",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 19
+            }
+          ]
+        },
+        {
+          "id": "boneShield",
+          "name": "뼈 방패",
+          "intent": "def",
+          "ops": [
+            {
+              "op": "block",
+              "n": 17
+            }
+          ]
+        },
+        {
+          "id": "rattle",
+          "name": "덜그럭",
+          "intent": "buff",
+          "ops": [
+            {
+              "op": "str",
+              "n": 3
+            }
+          ]
+        }
+      ],
+      "ai": {
+        "type": "random",
+        "weights": [
+          [
+            "bone",
+            50
+          ],
+          [
+            "boneShield",
+            25
+          ],
+          [
+            "rattle",
+            25
+          ]
+        ],
+        "noRepeat": true
+      }
+    },
+    "strong": "skeleton"
+  },
+  {
+    "id": "spirit3Strong",
+    "name": "사나운 저승 원귀",
+    "hp": [
+      78,
+      85
+    ],
+    "art": "e-spirit-elite",
+    "phase1": {
+      "moves": [
+        {
+          "id": "touch",
+          "name": "서늘한 손",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 20
+            }
+          ]
+        },
+        {
+          "id": "grudge",
+          "name": "원한",
+          "intent": "atk",
+          "ops": [
+            {
+              "op": "dmg",
+              "n": 16
+            },
+            {
+              "op": "status",
+              "id": "weak",
+              "n": 2
+            }
+          ]
+        },
+        {
+          "id": "bind",
+          "name": "혼 묶기",
+          "intent": "debuff",
+          "ops": [
+            {
+              "op": "curse",
+              "id": "chain",
+              "n": 1,
+              "pile": "draw"
+            }
+          ]
+        }
+      ],
+      "ai": {
+        "type": "cycle",
+        "order": [
+          "touch",
+          "grudge",
+          "bind"
+        ]
+      }
+    },
+    "strong": "spirit3"
   }
 ]

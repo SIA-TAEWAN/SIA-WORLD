@@ -25,7 +25,7 @@ const POWER_TEXT: Record<PowerId, (n: number) => string> = {
   firstDraw: (n) => `매 턴 첫 카드 쓰면 ${n}장 뽑기`,
   poisonUp: (n) => `내가 거는 독+${n}`,
   drawBlock: (n) => `카드 뽑을 때마다 방어${n}`,
-  phoenix: (n) => `이 전투에서 쓰러지면 체력${n}%로 한 번 일어남`,
+  phoenix: (n) => `쓰러지면 한 번 체력${n}%로 일어남`,
 };
 
 /** allBefore: 바로 앞 연산도 '모든 적' 이면 상태이상의 '모든 적' 을 줄인다 (천둥 신장: 모든 적 20, 젖음2) */

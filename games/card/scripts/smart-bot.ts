@@ -481,7 +481,8 @@ export function smartRunInput(run: RunState, o: BotOpts = DEFAULT_OPTS): Input {
               best = k;
             }
           });
-          if (best < 0 || bv < takeBar(run)) continue;
+          // 넘어가면 무작위 1장을 받게 되어(11-26) 건너뛰기가 없다 → 늘 가장 좋은 카드
+          if (best < 0) continue;
           return { t: 'take', i, pick: best };
         }
         if (it.k === 'bossRelic') {

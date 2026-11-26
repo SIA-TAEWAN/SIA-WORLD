@@ -1,12 +1,14 @@
-/** 서버 SQL(supabase/migrations/112_card.sql)의 상수·목록이 규칙 코드·공통 모듈과 같은지 본다 (서버는 바꾸지 않고 읽기만) */
+/** 서버 SQL(supabase/migrations/112_card.sql + 114_card_tune.sql — 함수마다 마지막 정의)의 상수·목록이 규칙 코드·공통 모듈과 같은지 본다 (서버는 바꾸지 않고 읽기만) */
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { COIN_ACTS, COIN_ACTS_TRUE, DAILY_SCORE, MASTERY_OPEN, MAX_LOG, RULES_VERSION } from '../src/game/rules';
+import { ADMIN_START_GOLD, COIN_ACTS, COIN_ACTS_TRUE, DAILY_SCORE, MASTERY_OPEN, MAX_LOG, RULES_VERSION } from '../src/game/rules';
 
 const MIG = new URL('../../../supabase/migrations/', import.meta.url);
 const read = (f: string) => readFileSync(new URL(f, MIG), 'utf8').replace(/\r\n/g, '\n');
 const shared = (f: string) => readFileSync(new URL(`../../../shared/${f}`, import.meta.url), 'utf8');
 const files = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
+/** 카드배틀 마이그레이션 (뒤의 것이 앞의 정의를 create or replace 로 바꾼다) */
+const CARD_FILES = ['112_card.sql', '114_card_tune.sql'];
 
 /** 함수의 마지막 정의 (create or replace — 가장 늦은 마이그레이션이 이긴다) → 본문, 파일 */
 function lastDef(fn: string): { body: string; from: string } {
@@ -21,13 +23,14 @@ function lastDef(fn: string): { body: string; from: string } {
 }
 const arrayOf = (body: string) => [...(/array\[([^\]]+)\]/.exec(body)?.[1] ?? '').matchAll(/'(\w+)'/g)].map((m) => m[1]);
 
-describe('112_card.sql 과 규칙 코드', () => {
+describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
   const c = lastDef('_card_const');
   const vals: Record<string, number> = {};
   for (const m of c.body.matchAll(/when '(\w+)' then (\d+)/g)) vals[m[1]] = Number(m[2]);
 
   it('_card_const: 규칙 판본 · 숙련 · 시아코인 · 기록 길이 · 오늘의 도전 점수', () => {
-    expect(c.from).toBe('112_card.sql');
+    expect(c.from).toBe(CARD_FILES[CARD_FILES.length - 1]);
+    for (const f of CARD_FILES) expect(files).toContain(f);
     expect(vals.rules).toBe(RULES_VERSION);
     expect(vals.mastery_open).toBe(MASTERY_OPEN);
     expect(vals.coin_acts).toBe(COIN_ACTS);
@@ -35,6 +38,23 @@ describe('112_card.sql 과 규칙 코드', () => {
     expect(vals.max_log).toBe(MAX_LOG);
     expect([vals.score_floor, vals.score_elite, vals.score_boss]).toEqual([DAILY_SCORE.floor, DAILY_SCORE.elite, DAILY_SCORE.boss]);
     expect(vals.cat_need).toBe(1);
+    expect(vals.admin_gold).toBe(ADMIN_START_GOLD);
+  });
+
+  it('관리자 시험 판 시작 엽전: card_start 가 보통·끝없는 판에만 start_gold 를 정해 저장 · 판 JSON 에 startGold', () => {
+    const st = lastDef('card_start');
+    expect(st.from).toBe('114_card_tune.sql');
+    const body = st.body.replace(/\s+/g, ' ');
+    // 관리자 갈래는 오늘의 도전이 아닌 쪽(else) 안
+    const els = body.indexOf("perform public._check_character(me, p_hero, 'card')");
+    const adm = body.indexOf("if exists (select 1 from public.profiles where id = me and is_admin) then g := public._card_const('admin_gold'); end if;");
+    expect(els).toBeGreaterThan(0);
+    expect(adm).toBeGreaterThan(els);
+    expect(body).toContain("values (me, p_mode, p_hero, lv, s, public._card_const('rules'), d, first, g)");
+    expect(lastDef('_card_run_json').body).toContain("'startGold', r.start_gold");
+    expect(read('114_card_tune.sql')).toContain('alter table public.card_runs add column if not exists start_gold int;');
+    const fn = readFileSync(new URL('../../../supabase/functions/card-finish/index.ts', import.meta.url), 'utf8');
+    expect(fn).toContain('startGold: run.start_gold ?? null');
   });
 
   it('_character_games · _daily_games 마지막 정의에 card (shared/characters.js · daily.js 와 같은 목록)', () => {
@@ -56,6 +76,10 @@ describe('112_card.sql 과 규칙 코드', () => {
     for (const fn of ['card_start', 'card_state', 'card_finish_verified', '_cat_progress_card']) {
       expect(lastDef(fn).body, fn).toContain('security definer set search_path = public');
     }
+    const t114 = read('114_card_tune.sql');
+    for (const fn of ['card_start(text, text, int, text, bigint)', 'card_state()']) expect(t114, fn).toContain(`revoke all on function public.${fn} from public, anon;`);
+    expect(t114).toContain('revoke all on function public._card_const(text) from public, anon, authenticated;');
+    expect(t114).toContain('revoke all on function public._card_run_json(public.card_runs) from public, anon, authenticated;');
     const sql = read('112_card.sql');
     expect(sql).toContain('revoke all on function public.card_finish_verified(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;');
     expect(sql).toContain('grant execute on function public.card_finish_verified(uuid, uuid, jsonb, jsonb) to service_role;');

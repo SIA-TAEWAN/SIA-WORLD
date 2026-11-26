@@ -189,6 +189,8 @@ export interface EnemyDef {
   grow?: number[];
   /** rage: 내가 공격카드를 쓸 때마다 힘 +1 (어둑시니) */
   rage?: number;
+  /** 강해진 요괴: 바탕이 된 일반 요괴 id (2·3막 뒤쪽 일반 전투에 가끔 섞임) */
+  strong?: string;
 }
 
 export interface HeroDef {

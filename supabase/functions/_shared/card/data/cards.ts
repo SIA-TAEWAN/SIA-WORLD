@@ -67,7 +67,7 @@ export const CARDS: CardDef[] = [
   { id: 'diamond', name: '금강', kind: 'def', rarity: 'legend', cost: 2, target: 'none', ops: [{ op: 'block', n: 30 }], exhaust: true, up: { ops: [{ op: 'block', n: 42 }] }, art: 'ic-w-fan-11' },
   { id: 'twelveArray', name: '십이지 대진', kind: 'power', rarity: 'legend', cost: 3, target: 'none', ops: [{ op: 'power', id: 'energyUp', n: 1 }], up: { cost: 2 }, art: 'ic-key' },
   { id: 'thunderGeneral', name: '천둥 신장', kind: 'atk', rarity: 'legend', cost: 3, target: 'none', ops: [{ op: 'dmg', n: 20, to: 'all' }, { op: 'status', id: 'wet', n: 2, to: 'all' }], up: { ops: [{ op: 'dmg', n: 28, to: 'all' }, { op: 'status', id: 'wet', n: 3, to: 'all' }] }, art: 'ic-w-spear-11' },
-  { id: 'dragonRise', name: '용오름', kind: 'atk', rarity: 'legend', cost: 2, target: 'enemy', ops: [{ op: 'dmg', n: 6, per: 'battleAtk', k: 2 }], up: { ops: [{ op: 'dmg', n: 8, per: 'battleAtk', k: 3 }] }, art: 'ic-w-sword-11', text: '피해6, 이 전투에서 쓴 공격카드 1장당 +2', textUp: '피해8, 이 전투에서 쓴 공격카드 1장당 +3' },
+  { id: 'dragonRise', name: '용오름', kind: 'atk', rarity: 'legend', cost: 2, target: 'enemy', ops: [{ op: 'dmg', n: 6, per: 'battleAtk', k: 2 }], up: { ops: [{ op: 'dmg', n: 8, per: 'battleAtk', k: 3 }] }, art: 'ic-w-sword-11', text: '피해6, 이 전투 공격카드 1장당 +2', textUp: '피해8, 이 전투 공격카드 1장당 +3' },
   { id: 'meteor', name: '별똥별', kind: 'atk', rarity: 'legend', cost: 3, target: 'none', ops: [{ op: 'dmg', n: 8, times: 6, to: 'random' }], up: { ops: [{ op: 'dmg', n: 11, times: 6, to: 'random' }] }, art: 'ic-w-bow-9' },
   { id: 'infiniteFan', name: '무한 부채', kind: 'power', rarity: 'legend', cost: 2, target: 'none', ops: [{ op: 'power', id: 'drawBlock', n: 1 }], up: { cost: 1 }, art: 'ic-w-fan-10' },
   { id: 'myriadPoison', name: '만독', kind: 'skill', rarity: 'legend', cost: 2, target: 'enemy', ops: [{ op: 'mulSt', id: 'poison', k: 3 }], exhaust: true, up: { cost: 1 }, art: 'ic-w-spear-10' },
@@ -78,7 +78,7 @@ export const CARDS: CardDef[] = [
   // ---------- 영웅 전용 (전용1 = 시작 덱 · 전용2 = 고급, 그 영웅 보상에서만) · 그림은 열두길 고유 스킬 아이콘 ic-u-<영웅> ----------
   // 찍찍이 (쥐)
   { id: 'ratHole', name: '쥐구멍', kind: 'skill', rarity: 'hero', cost: 0, target: 'none', ops: [{ op: 'draw', n: 2 }, { op: 'pick', kind: 'discard', n: 1 }], up: { ops: [{ op: 'draw', n: 3 }, { op: 'pick', kind: 'discard', n: 1 }] }, art: 'ic-u-rat', hero: 'rat', text: '2장 뽑고 1장 버림', textUp: '3장 뽑고 1장 버림' },
-  { id: 'ratFire', name: '쥐불놀이', kind: 'atk', rarity: 'hero2', cost: 1, target: 'none', ops: [{ op: 'dmg', n: 0, to: 'all', per: 'drawn', k: 2 }], up: { ops: [{ op: 'dmg', n: 0, to: 'all', per: 'drawn', k: 3 }] }, art: 'ic-u-rat', hero: 'rat', text: '이번 턴 뽑은 카드 1장당 모든 적 피해 2', textUp: '이번 턴 뽑은 카드 1장당 모든 적 피해 3' },
+  { id: 'ratFire', name: '쥐불놀이', kind: 'atk', rarity: 'hero2', cost: 1, target: 'none', ops: [{ op: 'dmg', n: 0, to: 'all', per: 'drawn', k: 2 }], up: { ops: [{ op: 'dmg', n: 0, to: 'all', per: 'drawn', k: 3 }] }, art: 'ic-u-rat', hero: 'rat', text: '이번 턴 뽑은 카드당 모든 적 피해 2', textUp: '이번 턴 뽑은 카드당 모든 적 피해 3' },
   // 우직이 (소)
   { id: 'headbutt', name: '들이받기', kind: 'atk', rarity: 'hero', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 0, per: 'block', k: 1 }], up: { cost: 0 }, art: 'ic-u-ox', hero: 'ox', text: '내 방어만큼 피해' },
   { id: 'steadfast', name: '우직함', kind: 'power', rarity: 'hero2', cost: 1, target: 'none', ops: [{ op: 'power', id: 'blockUp', n: 2 }], up: { ops: [{ op: 'power', id: 'blockUp', n: 3 }] }, art: 'ic-u-ox', hero: 'ox' },
@@ -99,7 +99,7 @@ export const CARDS: CardDef[] = [
   { id: 'galloper', name: '천리마', kind: 'power', rarity: 'hero2', cost: 2, target: 'none', ops: [{ op: 'power', id: 'echoAtk', n: 1 }], up: { cost: 1 }, art: 'ic-u-horse', hero: 'horse' },
   // 몽실이 (양)
   { id: 'woolShield', name: '양털 방패', kind: 'def', rarity: 'hero', cost: 2, target: 'none', ops: [{ op: 'block', n: 12 }, { op: 'thorns', n: 3 }], up: { ops: [{ op: 'block', n: 16 }, { op: 'thorns', n: 4 }] }, art: 'ic-u-sheep', hero: 'sheep' },
-  { id: 'shear', name: '털깎기', kind: 'atk', rarity: 'hero2', cost: 0, target: 'none', ops: [{ op: 'dmg', n: 0, to: 'all', per: 'block', k: 1 }, { op: 'clearBlock' }], up: { ops: [{ op: 'dmg', n: 0, to: 'all', per: 'block', k: 1.5 }, { op: 'clearBlock' }] }, art: 'ic-u-sheep', hero: 'sheep', text: '내 방어 전부 없애고 그만큼 모든 적 피해', textUp: '내 방어 전부 없애고 그 1.5배만큼 모든 적 피해' },
+  { id: 'shear', name: '털깎기', kind: 'atk', rarity: 'hero2', cost: 0, target: 'none', ops: [{ op: 'dmg', n: 0, to: 'all', per: 'block', k: 1 }, { op: 'clearBlock' }], up: { ops: [{ op: 'dmg', n: 0, to: 'all', per: 'block', k: 1.5 }, { op: 'clearBlock' }] }, art: 'ic-u-sheep', hero: 'sheep', text: '방어를 모두 없애고 그만큼 모든 적 피해', textUp: '방어를 모두 없애고 1.5배만큼 모든 적 피해' },
   // 재롱이 (원숭이)
   { id: 'mimic', name: '흉내', kind: 'skill', rarity: 'hero', cost: 1, target: 'none', ops: [{ op: 'mimic' }], up: { cost: 0 }, art: 'ic-u-monkey', hero: 'monkey' },
   { id: 'cloneArt', name: '분신술', kind: 'skill', rarity: 'hero2', cost: 2, target: 'none', ops: [{ op: 'pick', kind: 'clone', n: 2 }], exhaust: true, up: { cost: 1 }, art: 'ic-u-monkey', hero: 'monkey' },

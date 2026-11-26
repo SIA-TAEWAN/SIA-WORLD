@@ -1,7 +1,7 @@
 /**
  * card-finish: 시아카드배틀 막 끝 · 판 끝 기록 (PRD [기술] · [진행·재화]).
  * 입력 { rules, runId, log: Input[] } (사용자 JWT로 호출). 화면은 판 처음부터의 입력 목록 전부를 보낸다.
- * card_runs 에서 판(주인 · 진행 중)과 시작 때 정한 씨앗·영웅·모드·숙련을 읽고 → 같은 규칙 코드로 다시 돌려
+ * card_runs 에서 판(주인 · 진행 중)과 시작 때 정한 씨앗·영웅·모드·숙련·시작 엽전(관리자 시험 판)을 읽고 → 같은 규칙 코드로 다시 돌려
  * (_shared/card/verify.ts) → card_finish_verified(service_role 만)로 깬 막·시아코인·숙련·끝없는 기록·오늘의 도전 점수를 저장한다.
  * 진행 중인 판은 마지막으로 시작한 막의 처음까지만 기록한다 (다른 기기는 거기서 이어 한다).
  * 출력 { result: { mode, acts, floors, over, cleared, newCoins, coins, mastery, daily, endless } }
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { data: run, error: readErr } = await sb
       .from('card_runs')
-      .select('id, user_id, mode, hero, mastery, seed, day, status')
+      .select('id, user_id, mode, hero, mastery, seed, day, status, start_gold')
       .eq('id', runId)
       .maybeSingle();
     if (readErr) throw new Error(readErr.message);
@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
     let v;
     try {
-      v = verifyRun({ mode: run.mode, hero: run.hero, mastery: run.mastery ?? 0, seed: Number(run.seed), day: run.day ?? null }, body?.log);
+      v = verifyRun({ mode: run.mode, hero: run.hero, mastery: run.mastery ?? 0, seed: Number(run.seed), day: run.day ?? null, startGold: run.start_gold ?? null }, body?.log);
     } catch (e) {
       if (e instanceof VerifyError) return json({ error: e.message }, 400);
       throw e;

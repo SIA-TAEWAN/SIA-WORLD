@@ -28,7 +28,7 @@ describe('요괴 차례 중 단계가 바뀌면 새 단계 첫 행동이 남는�
   it('수문장 대장: 행동 뒤 화상으로 2단계 → 다음 의도 = 병졸 부르기', () => {
     const { run, b, f } = fight('guardCaptain');
     f.st = { fire: 10 };
-    f.hp = 140; // 135 이하가 2단계
+    f.hp = 132; // 127.5 이하가 2단계 (체력 255)
     const r = endEmpty(run, b, f, 'spear');
     expect(r.ok).toBe(true);
     expect(f.phase).toBe(2);
@@ -37,7 +37,7 @@ describe('요괴 차례 중 단계가 바뀌면 새 단계 첫 행동이 남는�
 
   it('염라대왕: 반격(지킴이)으로 행동 중 2단계 → 다음 의도 = 저승사자 부르기', () => {
     const { run, b, f } = fight('yeomra');
-    f.hp = 180; // 175 이하가 2단계
+    f.hp = 170; // 165 이하가 2단계 (체력 330)
     hand(b, ['watchdog']);
     apply(run, { t: 'play', uid: 800 });
     endEmpty(run, b, f, 'judge');
@@ -108,12 +108,13 @@ describe('영웅의 젖음', () => {
 });
 
 describe('끝없는 모드 배수', () => {
-  it('되풀이 곱셈 + 1e-6 반올림 (엔진마다 같은 값)', () => {
+  it('더하기: 1 + 0.15×(막-1), 백분율 정수 ÷ 100 (엔진마다 같은 값)', () => {
     expect(endlessScale(1)).toBe(1);
     expect(endlessScale(2)).toBe(1.15);
-    expect(endlessScale(3)).toBe(1.3225);
-    expect(endlessScale(5)).toBe(1.749006);
-    for (let a = 1; a <= 40; a++) expect(Math.round(endlessScale(a) * 1e6) / 1e6).toBe(endlessScale(a));
+    expect(endlessScale(3)).toBe(1.3);
+    expect(endlessScale(5)).toBe(1.6);
+    expect(endlessScale(8)).toBe(2.05);
+    for (let a = 1; a <= 40; a++) expect(endlessScale(a)).toBe((100 + 15 * (a - 1)) / 100);
   });
 });
 

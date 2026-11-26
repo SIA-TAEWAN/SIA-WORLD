@@ -75,21 +75,21 @@ describe('끝없는 모드', () => {
     expect(e.actStart.length).toBe(6); // [0] + 막을 넘길 때마다 하나 (위에서 3막으로 바로 옮겼다)
   });
 
-  it('막마다 요괴 체력·피해 ×1.15 누적 (1막은 그대로)', () => {
+  it('막마다 요괴 체력·피해 +15% 더하기 (1막은 그대로)', () => {
     const run = newRun({ seed: 3, hero: 'dog', mode: 'endless' });
     expect(foeMods(run)).toBeUndefined();
     for (const act of [2, 3, 5, 9]) {
       run.act = act;
-      expect(foeMods(run)!.hp).toBeCloseTo(1.15 ** (act - 1), 5);
-      expect(foeMods(run)!.dmg).toBeCloseTo(1.15 ** (act - 1), 5);
+      expect(foeMods(run)!.hp).toBeCloseTo(1 + 0.15 * (act - 1), 9);
+      expect(foeMods(run)!.dmg).toBeCloseTo(1 + 0.15 * (act - 1), 9);
     }
-    // 같은 씨앗 전투: 끝없는 5막 요괴 체력 = 보통 체력 × 1.15^4 (반올림)
+    // 같은 씨앗 전투: 끝없는 5막 요괴 체력 = 보통 체력 × 1.6 (반올림)
     run.act = 5;
     const plain = newRun({ seed: 3, hero: 'dog' });
     const a = startBattle(plain, { kind: 'battle', foes: ['lynx'], seed: 11 }, []);
     const b = startBattle(run, { kind: 'battle', foes: ['lynx'], seed: 11, mods: foeMods(run) }, []);
-    expect(b.foes[0].maxHp).toBe(Math.round(a.foes[0].maxHp * 1.15 ** 4));
-    expect(foeDamage(b, b.foes[0], 10)).toBe(Math.floor(10 * 1.15 ** 4));
+    expect(b.foes[0].maxHp).toBe(Math.round(a.foes[0].maxHp * 1.6));
+    expect(foeDamage(b, b.foes[0], 10)).toBe(Math.floor(10 * 1.6));
     expect(foeDamage(a, a.foes[0], 10)).toBe(10);
   });
 

@@ -50,6 +50,22 @@ export const FINAL_ELITES = 3;
 /** 막마다 앞쪽 몇 번의 일반 전투는 쉬운 조합 (1막 3번, 그 뒤 2번) */
 export const EASY_BATTLES = [3, 2, 2];
 
+/**
+ * 강해진 요괴 (11-26 사용자 확정 A5): 2·3막(끝없는 모드는 궁궐·저승)의 뒤쪽 일반 전투 — 쉬운 조합 뒤 STRONG_FROM 번째부터 —
+ * 에 STRONG_CHANCE 확률로 조합 중 1마리가 정예판(그림 e-*-elite)으로 바뀐다. 이기면 엽전 +STRONG_GOLD.
+ */
+export const STRONG_FOES: Record<string, string> = {
+  guard: 'guardStrong',
+  spirit: 'spiritStrong',
+  water: 'waterStrong',
+  skeleton: 'skeletonStrong',
+  spirit3: 'spirit3Strong',
+};
+/** 그 막의 몇 번째 일반 전투부터 (0부터 센 actBattles 값, 쉬운 조합 2번 뒤 한 번 더 지나서) */
+export const STRONG_FROM = 3;
+export const STRONG_CHANCE = 0.35;
+export const STRONG_GOLD = 6;
+
 /** 칸 비율 (%) — 스펙: 전투 45 · 정예 10 · 상점 10 · 쉼터 12 · 보물 8 · 이야기 15 */
 export const NODE_RATIO: [NodeType, number][] = [
   ['battle', 45],
