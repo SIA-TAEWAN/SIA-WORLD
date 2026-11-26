@@ -41,11 +41,18 @@ function draw(x, k, T, sp, look) {
     x.closePath(); x.fillStyle = rg(x, 22, [[0, 'rgba(170,220,255,0.95)'], [0.5, 'rgba(100,180,255,0.75)'], [1, 'rgba(80,160,255,0)']]); x.fill();
     x.fillStyle = 'rgba(255,255,255,0.45)'; x.beginPath(); x.ellipse(-6, -8, 4.5, 2.5, -0.5, 0, PI2); x.fill();
   } else if (k === 'wind') {
-    for (const j of [0, Math.PI]) {
-      const a = T * 4 + j;
-      x.strokeStyle = 'rgba(170,255,230,0.65)'; x.lineCap = 'round';
-      x.lineWidth = 2.5; x.beginPath(); x.arc(0, 0, 18, a, a + 1.8); x.stroke();
-      x.lineWidth = 1.5; x.beginPath(); x.arc(0, 0, 12, a + 1, a + 2.2); x.stroke();
+    // 살랑이는 바람: 물결 모양 바람결 세 줄이 왼쪽에서 오른쪽으로 흘러가며 나타났다 사라지고, 몸은 좌우로 살짝 기울어진다 (도는 모양 없음 — 강화 정령의 도는 고리와 헷갈리지 않게)
+    x.rotate(Math.sin(T * 1.8) * 0.09);
+    x.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const ph = (T * 0.55 + i * 0.33) % 1, y0 = -11 + i * 11 + (i === 1 ? 0 : Math.sin(T * 1.3 + i) * 1.2);
+      const x0 = -28 + ph * 14, len = 28 + (i === 1 ? 6 : 0);
+      x.strokeStyle = 'rgba(190,255,235,' + (Math.sin(ph * Math.PI) * 0.75).toFixed(3) + ')';
+      x.lineWidth = i === 1 ? 2.4 : 1.7;
+      x.beginPath();
+      for (let s = 0; s <= 14; s++) { const u = s / 14, X = x0 + u * len, Y = y0 + Math.sin(u * 5.5 - T * 4 + i * 1.7) * 2.4 * Math.sin(u * Math.PI); s ? x.lineTo(X, Y) : x.moveTo(X, Y); }
+      if (i === 1) { const ex = x0 + len; x.quadraticCurveTo(ex + 6, y0 - 1, ex + 4, y0 - 5); x.quadraticCurveTo(ex + 1, y0 - 7, ex - 1, y0 - 4); }
+      x.stroke();
     }
     disc(x, 19, [[0, 'rgba(240,255,250,1)'], [0.4, 'rgba(160,255,225,0.6)'], [1, 'rgba(100,220,200,0)']]);
   } else if (k === 'bolt') {

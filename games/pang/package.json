@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run --testTimeout=60000",
     "levels": "node scripts/calibrate.mjs",
-    "sqlrows": "node scripts/sqlrows.mjs"
+    "sqlrows": "node scripts/sqlrows.mjs",
+    "stars": "node scripts/easystars.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0"
