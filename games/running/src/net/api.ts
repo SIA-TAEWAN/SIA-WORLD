@@ -216,9 +216,10 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
       // 너무 빨리 다시 불렀다: 기기 시계로 대신 열지 않는다 (solo.ts 가 남은 시간 뒤에 다시 묻는다)
       if (error && /too soon/.test(error.message ?? '')) throw new GoTooSoonError();
       if (error || !d) {
-        // 서버 함수를 못 쓰면(배포 전·통신 오류) 이 기기 시계로 정한다. 이 판의 기록은 랭킹에 못 올린다
-        console.warn('[시아레이스] 서버에서 GO 시각을 받지 못해 이 기기 시계로 정합니다', error?.message);
-        return localGo();
+        // 통신 오류 등: 기기 시계로 대신 열면 30초 달린 뒤 기록이 거절되므로 던진다
+        // (solo.ts SoloSession.go 가 다시 묻고, 끝내 안 되면 '준비하지 못했어요')
+        console.warn('[시아레이스] 서버에서 GO 시각을 받지 못했어요', error?.message);
+        throw new Error(error?.message || 'go failed');
       }
       // 답이 빨리 왔으면 시계도 다시 맞춘다
       if (t1 - t0 < 400) offset = d.now - (t0 + t1) / 2;
