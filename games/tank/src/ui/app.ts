@@ -122,7 +122,7 @@ export function launchGame(cfg: Omit<GameConfig, 'touch' | 'hudParent'>) {
       music.play('battle');
       gameEl.classList.remove('hidden');
       hudEl.classList.remove('hidden');
-      game?.destroy(true);
+      if (game) destroyGame(game);
       const g = new Phaser.Game({
         type: Phaser.AUTO,
         parent: gameEl,
@@ -149,11 +149,18 @@ export function launchGame(cfg: Omit<GameConfig, 'touch' | 'hudParent'>) {
   );
 }
 
+/** Phaser 게임을 치우면서 WebGL 컨텍스트도 놓는다 (Phaser destroy 는 loseContext 를 부르지 않는다 — 아이폰은 컨텍스트 수 · GPU 메모리가 빠듯하다) */
+function destroyGame(g: { renderer: unknown; events: { once(ev: string, fn: () => void): unknown }; destroy(removeCanvas: boolean): void }) {
+  const gl = (g.renderer as { gl?: WebGLRenderingContext } | null)?.gl;
+  if (gl) g.events.once('destroy', () => setTimeout(() => { try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* 이미 잃음 */ } }, 0));
+  g.destroy(true);
+}
+
 export function closeGame() {
   launchToken++;
   if (onResize) window.removeEventListener('resize', onResize);
   onResize = null;
-  game?.destroy(true);
+  if (game) destroyGame(game);
   game = null;
   hudEl.innerHTML = '';
   gameEl.classList.add('hidden');

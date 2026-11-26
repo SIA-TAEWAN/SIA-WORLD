@@ -99,7 +99,7 @@ export function showRace(start: SoloStart) {
       // 도착 뒤 바로 나가도 다음 판 고스트 읽기는 이 판 고스트 올리기를 기다린다 (결과 화면을 거치면 거기서 다시 넣는다)
       if (race.ghostSaved) state.ghostAfter = race.ghostSaved;
       race.dispose();
-      game?.destroy(true);
+      if (game) destroyGame(game);
       game = null;
       if (window.__race === race) delete window.__race;
     },
@@ -278,4 +278,11 @@ export function showRace(start: SoloStart) {
   // (출발 화면이 race_go 전에 받아 두므로 보통 바로 끝난다)
   void fontsReady().then(() => root.isConnected && boot());
   frame();
+}
+
+/** Phaser 게임을 치우면서 WebGL 컨텍스트도 놓는다 (Phaser destroy 는 loseContext 를 부르지 않는다 — 아이폰은 컨텍스트 수 · GPU 메모리가 빠듯하다) */
+function destroyGame(g: { renderer: unknown; events: { once(ev: string, fn: () => void): unknown }; destroy(removeCanvas: boolean): void }) {
+  const gl = (g.renderer as { gl?: WebGLRenderingContext } | null)?.gl;
+  if (gl) g.events.once('destroy', () => setTimeout(() => { try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* 이미 잃음 */ } }, 0));
+  g.destroy(true);
 }

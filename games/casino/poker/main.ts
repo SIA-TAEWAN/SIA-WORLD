@@ -126,7 +126,13 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
       // 고른 뒤 모두 고르기를 기다리는 중: 남긴 3장 (공개할 카드는 올려서)
       // (앞선 내 패에는 4구 카드까지 들어 있을 수 있다 → 고른 공개 카드 한 장만)
       const waitingOpen = me && !sd && !choosing && p.phase === 'choose' && pv ? pv.open.slice(0, 1) : [];
-      if (sd) cards = sd.cards;
+      if (sd) {
+        // 쇼다운 카드는 [비공개 2 · 히든 · 공개 …] 순서로 온다 → 진행 중과 같은 자리(비공개 2 · 공개 · 히든)로 다시 세운다
+        // (자리 번호 키로 그리므로 순서가 다르면 이미 보이던 공개 카드가 다른 카드로 뒤집힌다)
+        const nHid = sd.cards.length - s.open.length;
+        const tailIsOpen = nHid >= 0 && s.open.every((c, i) => sd.cards[nHid + i] === c);
+        cards = tailIsOpen ? [...sd.cards.slice(0, Math.min(2, nHid)), ...s.open, ...sd.cards.slice(Math.min(2, nHid), nHid)] : sd.cards;
+      }
       else if (me && pv) {
         if (choosing) cards = pv.choices.filter((c) => c !== gone);
         else if (p.phase === 'choose') cards = [...pv.hidden.slice(0, 2), ...pv.open.slice(0, 1)];

@@ -63,19 +63,23 @@ const layerFile = (name: string) => {
 export async function layerSheets(names: string[]): Promise<HTMLCanvasElement[]> {
   const got = await Promise.all(names.map(layerFile));
   const files = got.every((cv): cv is HTMLCanvasElement => !!cv);
-  // 2등신 결과는 외형마다 한 번만 만든다 (캐릭터 만들기에서 옵션을 누를 때마다 캔버스가 쌓이지 않게 — 아이폰 캔버스 메모리)
-  const key = `${files ? 'f' : 'c'}:${names.join('|')}`;
-  let p = chibiCache.get(key);
-  if (!p) {
-    p = (async () => {
-      const raw = files ? got : await Promise.all(names.map((name) => once(`char-code/${name}`, async () => placeholderLayer(name))));
-      return chibify(raw, names.findIndex((n) => n.startsWith('face_')));
-    })();
-    chibiCache.set(key, p);
-  }
-  return p;
+  const raw = files ? got : await Promise.all(names.map((name) => once(`char-code/${name}`, async () => placeholderLayer(name))));
+  const fi = names.findIndex((n) => n.startsWith('face_'));
+  if (fi < 0) return raw;
+  // 2등신 결과는 (레이어, 얼굴) 쌍마다 한 번만 만든다 — 결과는 그 레이어와 얼굴의 턱 높이에만 달려 있다.
+  // 외형 조합마다 만들면 캐릭터 만들기에서 옵션을 누를 때마다 캔버스가 쌓인다 (아이폰 캔버스 메모리). 쌍은 많아야 18 × 4 = 72장.
+  const kind = files ? 'f' : 'c';
+  const chins = chinCache.get(`${kind}:${names[fi]}`) ?? chinsOf(raw[fi]);
+  chinCache.set(`${kind}:${names[fi]}`, chins);
+  return raw.map((cv, i) => {
+    const key = `${kind}:${names[i]}|${names[fi]}`;
+    let out = chibiCache.get(key);
+    if (!out) chibiCache.set(key, (out = chibifyOne(cv, chins)));
+    return out;
+  });
 }
-const chibiCache = new Map<string, Promise<HTMLCanvasElement[]>>();
+const chibiCache = new Map<string, HTMLCanvasElement>();
+const chinCache = new Map<string, number[]>();
 
 /**
  * 2등신으로 보이게: 칸마다 턱(얼굴 레이어의 아래 끝)에서 머리와 몸을 나눠 머리는 키우고 몸은 줄여 다시 붙인다.
@@ -83,9 +87,8 @@ const chibiCache = new Map<string, Promise<HTMLCanvasElement[]>>();
  * 위를 보는 줄(3)은 얼굴이 비어 있어 아래를 보는 줄(0)의 같은 칸 턱을 쓴다. 원본 캔버스(여러 모습이 같이 쓴다)는 건드리지 않는다.
  */
 export const CHIBI = { headX: 1.22, headY: 1.36, body: 0.72 };
-export function chibify(layers: HTMLCanvasElement[], faceIdx: number): HTMLCanvasElement[] {
-  const face = layers[faceIdx];
-  if (!face) return layers;
+/** 칸마다 턱 높이 (얼굴 레이어의 아래 끝) */
+function chinsOf(face: HTMLCanvasElement): number[] {
   const fg = face.getContext('2d', { willReadFrequently: true })!;
   const chinAt = (col: number, row: number) => {
     const d = fg.getImageData(col * FRAME_W, row * FRAME_H, FRAME_W, FRAME_H).data;
@@ -94,34 +97,41 @@ export function chibify(layers: HTMLCanvasElement[], faceIdx: number): HTMLCanva
   };
   const chins: number[] = [];
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) chins.push(chinAt(c, r) || chinAt(c, 0) || Math.round(FRAME_H * 0.42));
-  return layers.map((src) => {
-    const cv = document.createElement('canvas');
-    cv.width = src.width;
-    cv.height = src.height;
-    const g = cv.getContext('2d')!;
-    g.imageSmoothingEnabled = false;
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const neck = chins[r * COLS + c];
-        const x0 = c * FRAME_W;
-        const y0 = r * FRAME_H;
-        const bodyH = Math.round((FRAME_H - neck) * CHIBI.body);
-        const headW = Math.round(FRAME_W * CHIBI.headX);
-        const headH = Math.round(neck * CHIBI.headY);
-        const by = y0 + FRAME_H - bodyH;
-        g.save();
-        g.beginPath();
-        g.rect(x0, y0, FRAME_W, FRAME_H);
-        g.clip();
-        // 몸: 칸 너비 그대로, 높이만 줄여 발을 칸 아래에
-        g.drawImage(src, x0, y0 + neck, FRAME_W, FRAME_H - neck, x0, by, FRAME_W, bodyH);
-        // 머리: 칸 가운데를 축으로 키워 턱이 몸 위에 닿게 (조금 겹쳐 목 틈이 안 보이게)
-        g.drawImage(src, x0, y0, FRAME_W, neck, x0 + (FRAME_W - headW) / 2, by - headH + 2, headW, headH);
-        g.restore();
-      }
+  return chins;
+}
+export function chibify(layers: HTMLCanvasElement[], faceIdx: number): HTMLCanvasElement[] {
+  const face = layers[faceIdx];
+  if (!face) return layers;
+  const chins = chinsOf(face);
+  return layers.map((src) => chibifyOne(src, chins));
+}
+function chibifyOne(src: HTMLCanvasElement, chins: number[]): HTMLCanvasElement {
+  const cv = document.createElement('canvas');
+  cv.width = src.width;
+  cv.height = src.height;
+  const g = cv.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const neck = chins[r * COLS + c];
+      const x0 = c * FRAME_W;
+      const y0 = r * FRAME_H;
+      const bodyH = Math.round((FRAME_H - neck) * CHIBI.body);
+      const headW = Math.round(FRAME_W * CHIBI.headX);
+      const headH = Math.round(neck * CHIBI.headY);
+      const by = y0 + FRAME_H - bodyH;
+      g.save();
+      g.beginPath();
+      g.rect(x0, y0, FRAME_W, FRAME_H);
+      g.clip();
+      // 몸: 칸 너비 그대로, 높이만 줄여 발을 칸 아래에
+      g.drawImage(src, x0, y0 + neck, FRAME_W, FRAME_H - neck, x0, by, FRAME_W, bodyH);
+      // 머리: 칸 가운데를 축으로 키워 턱이 몸 위에 닿게 (조금 겹쳐 목 틈이 안 보이게)
+      g.drawImage(src, x0, y0, FRAME_W, neck, x0 + (FRAME_W - headW) / 2, by - headH + 2, headW, headH);
+      g.restore();
     }
-    return cv;
-  });
+  }
+  return cv;
 }
 /** 타일 시트 파일 이름: 1구역(stone)은 tiles.png, 다른 테마는 tiles-<테마>.png (floors.json 의 theme) */
 export const tileFile = (theme: string) => (theme === 'stone' ? 'tiles.png' : `tiles-${theme}.png`);
