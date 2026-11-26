@@ -40,6 +40,8 @@
   --card-back: #1f1c1a;       /* 카지노 트럼프 뒷면 바탕 (짙은 먹색) */
   --table-poker: #6cc6b5;
   --table-blackjack: #7fb8e8;
+  --felt-poker: #468c59;      /* 세븐포커·홀덤 테이블 바닥 (짙은 녹색) */
+  --felt-blackjack: #4b7fb4;  /* 블랙잭 테이블 바닥 (짙은 파란색) */
   --roulette-spring: #9cc7f2;
   --roulette-summer: #f7c1a8;
   --roulette-autumn: #a9ddc6;

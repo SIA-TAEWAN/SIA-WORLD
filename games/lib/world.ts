@@ -150,6 +150,8 @@ export interface ThemeModule {
     number
   >;
   TABLE: Record<'matgo' | 'poker' | 'holdem' | 'blackjack', number>;
+  /** 카지노 테이블 바닥 (옛 theme.js 에는 없을 수 있다) */
+  FELT?: Record<'poker' | 'holdem' | 'blackjack', number>;
   ROULETTE: Record<'spring' | 'summer' | 'autumn' | 'winter', number>;
   HWATU: Record<'hong' | 'cheong' | 'cho' | 'plain', number>;
   MATGO: Record<'matLight' | 'matDark', number>;
