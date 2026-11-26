@@ -3,7 +3,8 @@
 다시 만들 때:  python scripts/make-app-icons.py   (저장소 최상위에서, Pillow 필요)
 
 그림: 하늘 그라데이션(--sky-top → --sky-mid) 위 노란 해(--primary, 갈색 외곽선) 앞에
-십이지 어흥이(호랑이) 상반신. 원본은 SpriteCook 전신 시트 A(art/spritecook/chars-a.png)의 호랑이 칸.
+고양이(야옹이, 왕관·망토) 상반신 (2026-11-26 호랑이 → 고양이).
+원본은 SpriteCook 고양이 전신 고해상도 그림 art/spritecook/cat/full-src.png (shared/images/zodiac/full/cat.png 의 원본).
 색은 shared/theme.css 값 그대로 쓴다 (DESIGN.md: 굵은 갈색 외곽선 + 밝은 단색).
 
 만드는 파일 (shared/images/app/):
@@ -18,7 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "art" / "spritecook" / "chars-a.png"
+SRC = ROOT / "art" / "spritecook" / "cat" / "full-src.png"
 OUT = ROOT / "shared" / "images" / "app"
 
 # shared/theme.css
@@ -27,15 +28,14 @@ SKY_MID = (0x9F, 0xD6, 0xFF)
 PRIMARY = (0xFF, 0xD3, 0x4D)
 OUTLINE = (0x2A, 0x1A, 0x10)
 
-# 시트(1024x1024, 4열 3줄)에서 호랑이 칸(3번째 열 첫 줄)의 머리~가슴 부분
-TIGER_BOX = (512 + 14, 78, 512 + 242, 306)
+# 원본(1912x1912)에서 왕관 끝~가슴(망토 매듭) 부분: 정사각형
+CAT_BOX = (190, 0, 1720, 1530)
 
 WORK = 1024  # 크게 그린 뒤 줄인다 (가장자리를 매끄럽게)
 
 
-def tiger() -> Image.Image:
-    sheet = Image.open(SRC).convert("RGBA")
-    return sheet.crop(TIGER_BOX)
+def cat() -> Image.Image:
+    return Image.open(SRC).convert("RGBA").crop(CAT_BOX)
 
 
 def gradient(size: int) -> Image.Image:
@@ -49,7 +49,7 @@ def gradient(size: int) -> Image.Image:
 
 
 def scene(size: int, head: float, sun: float, inset: float) -> Image.Image:
-    """꽉 찬 정사각형 그림. head: 호랑이 폭(전체 대비), sun: 해 지름(전체 대비), inset: 바깥 테두리 몫"""
+    """꽉 찬 정사각형 그림. head: 고양이 폭(전체 대비), sun: 해 지름(전체 대비), inset: 바깥 테두리 몫"""
     img = gradient(size)
     d = ImageDraw.Draw(img)
     cx = size / 2
@@ -58,8 +58,8 @@ def scene(size: int, head: float, sun: float, inset: float) -> Image.Image:
     cy = size * 0.47
     line = round(size * 0.022)
     d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=PRIMARY + (255,), outline=OUTLINE + (255,), width=line)
-    # 호랑이: 가운데, 아래쪽이 테두리에 걸쳐 잘리게 (얼굴 위주 아바타처럼)
-    t = tiger()
+    # 고양이: 가운데, 아래쪽이 테두리에 걸쳐 잘리게 (얼굴 위주 아바타처럼)
+    t = cat()
     w = round(size * head)
     h = round(t.height * w / t.width)
     t = t.resize((w, h), Image.LANCZOS)
