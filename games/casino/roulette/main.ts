@@ -124,6 +124,18 @@ function syncClock(p: RoulettePublic) {
   lastPhase = key;
 }
 
+/**
+ * 그 베팅 주인의 얼굴: 이번 스핀 참가자(p.players 의 uid)가 지금 그 자리에 앉은 사람과 같을 때만 그 아바타.
+ * 확정하고 나간 자리에 다른 사람이 앉았으면 앞사람 베팅에 새 사람 얼굴을 붙이지 않는다 (null).
+ * uid 가 없는 예전 상태는 자리 번호로만 본다
+ */
+function betAvatar(t: Ctx, p: RoulettePublic, seat: number): string | null {
+  const row = t.seats.find((x) => x.seat_no === seat);
+  if (!row?.user_id) return null;
+  const uid = p.players.find((x) => x.seat === seat)?.uid;
+  if (uid && uid !== row.user_id) return null;
+  return t.seatAvatar(seat);
+}
 /** 베팅한 사람 이름: 이번 스핀 참가자 목록(p.players)에 적힌 이름 (확정하고 나가도 '자리 N' 이 되지 않게) */
 const betName = (t: Ctx, p: RoulettePublic, seat: number) => p.players.find((x) => x.seat === seat)?.name ?? t.seatName(seat);
 const keyOf = (b: { kind: BetKind; target: number }) => `${b.kind}:${b.target}`;
@@ -233,8 +245,15 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     const isStopped = () => !p || p.phase !== 'spin' || wheelStopped(spinKey);
     // 최근 결과 (최대 20, 최신이 오른쪽)
     const hist = p?.history ?? [];
-    const hs = clamp(Math.min(30, (W - 40) / 20), 12, 30);
-    const shownHist = !isStopped() ? hist.slice(0, -1) : hist;
+    // 점 크기는 오른쪽 여백(20)·왼쪽 '최근' 라벨 자리(22 + 글자 폭 + 틈)·점 사이 간격(2)을 뺀 폭으로 잰다
+    const HIST_MAX = 20;
+    const GAP = 2;
+    const LABEL_W = 22 + 36 + 6;
+    const avail = Math.max(0, W - 20 - LABEL_W);
+    const hs = clamp(Math.min(30, (avail - GAP * (HIST_MAX - 1)) / HIST_MAX), 12, 30);
+    // 가장 작은 점으로도 다 못 넣으면 오래된 쪽을 덜어 낸다 (최신이 오른쪽)
+    const fit = Math.max(1, Math.floor((avail + GAP) / (hs + GAP)));
+    const shownHist = (!isStopped() ? hist.slice(0, -1) : hist).slice(-fit);
     shownHist.forEach((cell, i) => {
       const x = W - 20 - (shownHist.length - 1 - i) * (hs + 2) - hs / 2;
       const key = `avc-${WHEEL[cell]}`;
@@ -421,7 +440,8 @@ function betControls(t: Ctx, el: HTMLElement) {
     const slots = myPresets();
     // 따라 걸기: 이미 확정한 다른 사람 (아바타를 누르면 그 사람 배치를 내 놓기로 복사)
     // 따라 걸기는 지금 앉아 있는 사람만 (확정하고 나간 사람의 베팅은 판에 남아 있지만 얼굴을 띄우지 않는다)
-    const seated = (n: number) => t.seats.some((x) => x.seat_no === n && !!x.user_id && !x.left_game);
+    // (자리 번호만이 아니라 그 베팅 주인 uid 가 지금 앉은 사람과 같아야 한다)
+    const seated = (n: number) => betAvatar(t, p, n) !== null && !t.seats.find((x) => x.seat_no === n)?.left_game;
     const leaders = Object.entries(p.bets).filter(([seat, bs]) => seat !== me && bs.length > 0 && seated(Number(seat)));
     el.innerHTML = `<div class="row rl-top">
         <span class="rl-units">${[1, 5, 10].map((n) => `<button class="btn small ${unit === n ? 'sel' : ''}" data-u="${n}">${t.fmt(base * n)}</button>`).join('')}</span>
@@ -440,7 +460,7 @@ function betControls(t: Ctx, el: HTMLElement) {
       ${
         leaders.length
           ? `<div class="row rl-follow"><span>따라 걸기</span>${leaders
-              .map(([seat, bs]) => `<button type="button" class="rl-fav" data-follow="${seat}" ${dis} title="${esc(betName(t, p, Number(seat)))} 따라 걸기 (${t.fmt(sumOf(bs))}칩)"><img src="${faceUrl(t.seatAvatar(Number(seat)))}" alt=""/><i>${esc(short(betName(t, p, Number(seat))))}</i></button>`)
+              .map(([seat, bs]) => `<button type="button" class="rl-fav" data-follow="${seat}" ${dis} title="${esc(betName(t, p, Number(seat)))} 따라 걸기 (${t.fmt(sumOf(bs))}칩)"><img src="${faceUrl(betAvatar(t, p, Number(seat)) ?? 'tiger')}" alt=""/><i>${esc(short(betName(t, p, Number(seat))))}</i></button>`)
               .join('')}</div>`
           : ''
       }
@@ -671,7 +691,9 @@ function board(p: RoulettePublic, t: Ctx, active: boolean) {
   const others = new Map<string, string[]>();
   for (const [seat, bets] of Object.entries(p.bets)) {
     if (seat === me) continue;
-    const av = t.seatAvatar(Number(seat));
+    // 얼굴은 그 자리에 지금 앉은 사람이 베팅 주인일 때만 (나간 자리에 다른 사람이 앉았으면 그 베팅의 얼굴은 뺀다)
+    const av = betAvatar(t, p, Number(seat));
+    if (!av) continue;
     for (const b of bets) others.set(keyOf(b), [...(others.get(keyOf(b)) ?? []), av]);
   }
   const mineConfirmed = new Map((p.bets[me] ?? []).map((b) => [keyOf(b), b.amount]));

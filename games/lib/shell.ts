@@ -2309,6 +2309,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   document.addEventListener('visibilitychange', onHidden);
 
   function cleanup() {
+    // 이미 정리했으면 다시 하지 않는다 (나가기를 두 번 눌러도 로비 채널·리스너가 겹치지 않게)
+    if (closed) return;
     closed = true;
     unwatch();
     clearInterval(touch);
@@ -2340,11 +2342,23 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     if (phaserFocus && window.onfocus === phaserFocus) window.onfocus = null;
   }
 
-  $(root, '#leave').addEventListener('click', async () => {
-    if (room?.status === 'playing' && mySeatRow() && !confirm(`게임 중이에요. ${LEAVE_NOTE[ui.game] ?? '나가면 이번 판은 AI가 대신하고 결과는 내 지갑에 반영돼요.'} 나갈까요?`)) return;
+  let leaving = false;
+  $(root, '#leave').addEventListener('click', async (e) => {
+    // 두 번 눌러도 한 번만 나간다 (leaveRoom·cleanup·showLobby 가 겹치면 첫 로비의 채널·리스너가 남는다)
+    if (closed || leaving) return;
+    leaving = true;
+    const btn = e.currentTarget as HTMLButtonElement;
+    btn.disabled = true;
+    if (room?.status === 'playing' && mySeatRow() && !confirm(`게임 중이에요. ${LEAVE_NOTE[ui.game] ?? '나가면 이번 판은 AI가 대신하고 결과는 내 지갑에 반영돼요.'} 나갈까요?`)) {
+      leaving = false;
+      btn.disabled = false;
+      return;
+    }
     // 기기에서 둔 데까지를 먼저 서버에 보낸다 (그 뒤는 서버 AI 가 이어 둔다)
     await local?.flush('leave').catch(() => undefined);
     await m.room.leaveRoom(roomId).catch(() => undefined);
+    // 기다리는 사이 다른 경로(방이 사라짐·자리 정리)가 이미 정리하고 로비를 띄웠으면 또 띄우지 않는다
+    if (closed) return;
     cleanup();
     void showLobby(ui, m, me);
   });

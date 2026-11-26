@@ -534,6 +534,9 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
  * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
+  // 이미 열린 창이 있으면 하나 더 띄우지 않는다 (버튼을 빠르게 두 번 눌렀을 때). 돌려주는 닫기는 그 창을 닫는다
+  const opened = document.querySelector('.sia-rank-dim');
+  if (opened) return () => opened.querySelector('[data-close]')?.click();
   // 닫힌 게임 안에서 연 창(관리자가 미리 해 보는 중)은 그 게임 탭만 보이게 둔다. 로비에서는 열린 게임만
   const here = GAMES.find((g) => location.pathname.includes('/' + g.path));
   const inside = here && gameOfTab(first) === here.id ? first : null;
