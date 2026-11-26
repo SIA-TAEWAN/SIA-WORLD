@@ -646,6 +646,7 @@ function dailyRankHtml(rk: DailyRanking): string {
 }
 
 const NO_DAY = '오늘 날짜를 받지 못했어요. 잠시 뒤 다시 해 주세요';
+const NO_PROFILE = '내 기록을 받지 못했어요. 잠시 뒤 다시 해 주세요';
 let dailyChecking = false;
 /**
  * 도전하기 · 다시 도전: 누를 때 날짜를 다시 받아, 화면에 그린 날짜와 다르면 새 날짜의 판을 다시 보여 준다 (그 판은 시작하지 않는다).
@@ -858,7 +859,16 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       const slow = setTimeout(() => toast('출발 준비 중…', 9000), 600);
       await Promise.race([api.resend().catch(() => 0), new Promise((ok) => setTimeout(ok, 8000))]);
       // 서버가 시작 때 남기는 레벨·강화 스냅숏과 같은 값으로 판을 만들려고 프로필을 다시 읽는다 (다른 기기에서 레벨을 올렸을 수 있다)
-      setProfile(await api.loadProfile().catch(() => profile));
+      // 못 읽으면 옛 레벨·강화로 판을 만들게 되어 서버 스냅숏과 어긋난다 → 시작하지 않는다 (오늘의 도전은 정해진 레벨이라 그대로 간다)
+      const fresh = await api.loadProfile().catch(() => null);
+      if (fresh) setProfile(fresh);
+      else if (!daily) {
+        clearTimeout(slow);
+        document.querySelector('.toast')?.remove();
+        busy = false;
+        toast(NO_PROFILE);
+        return;
+      }
       runId = await (daily ? api.startDaily(daily) : api.start(id, party, mode)).finally(() => {
         clearTimeout(slow);
         document.querySelector('.toast')?.remove();

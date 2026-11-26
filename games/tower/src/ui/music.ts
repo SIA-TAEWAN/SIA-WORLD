@@ -328,7 +328,9 @@ let unlocked = false;
 function audio(): AudioContext | null {
   try {
     ac ??= new AudioContext();
-    if (ac.state === 'suspended') void ac.resume().catch(() => undefined);
+    // 'suspended' 뿐 아니라 아이폰의 'interrupted'(전화·다른 앱 소리 뒤)도 깨운다. 입력 때 깨우는 리스너(wake)는 떼지 않으므로
+    // 멈춘 뒤에도 다음 입력마다 여기로 다시 와서 resume 한다
+    if (ac.state !== 'running' && ac.state !== 'closed') void ac.resume().catch(() => undefined);
     return ac;
   } catch {
     return null;

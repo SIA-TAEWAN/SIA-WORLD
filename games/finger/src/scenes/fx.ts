@@ -245,7 +245,7 @@ export class Fx {
     let t = this.texts.find((o) => !o.visible);
     if (!t) {
       if (this.texts.length < TEXT_POOL) {
-        t = this.scene.add.text(0, 0, '', { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: INK, strokeThickness: 6 }).setOrigin(0.5).setDepth(950);
+        t = this.scene.add.text(0, 0, '', { fontFamily: FONT, fontSize: '30px', color: css(COLOR.white), stroke: INK, strokeThickness: 6 }).setOrigin(0.5).setDepth(950);
         this.texts.push(t);
       } else {
         t = this.texts[this.textAt++ % TEXT_POOL];
@@ -307,10 +307,10 @@ export class Fx {
     const tx = 300;
     const name = sc.add.text(tx, desc ? -70 : -52, hero, { fontFamily: FONT, fontSize: '30px', color: css(COLOR.primary), stroke: INK, strokeThickness: 7 }).setOrigin(0, 0.5);
     const big = sc.add
-      .text(tx, desc ? -14 : 12, title, { fontFamily: FONT, fontSize: title.length > 7 ? '44px' : '64px', color: '#ffffff', stroke: INK, strokeThickness: 9, wordWrap: { width: W - tx - 20, useAdvancedWrap: true } })
+      .text(tx, desc ? -14 : 12, title, { fontFamily: FONT, fontSize: title.length > 7 ? '44px' : '64px', color: css(COLOR.white), stroke: INK, strokeThickness: 9, wordWrap: { width: W - tx - 20, useAdvancedWrap: true } })
       .setOrigin(0, 0.5);
     box.add([name, big]);
-    if (desc) box.add(sc.add.text(tx, 54, desc, { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: INK, strokeThickness: 6, wordWrap: { width: W - tx - 20, useAdvancedWrap: true } }).setOrigin(0, 0.5));
+    if (desc) box.add(sc.add.text(tx, 54, desc, { fontFamily: FONT, fontSize: '28px', color: css(COLOR.white), stroke: INK, strokeThickness: 6, wordWrap: { width: W - tx - 20, useAdvancedWrap: true } }).setOrigin(0, 0.5));
     box.setAngle(-4);
     sc.tweens.add({ targets: rays, angle: 60, duration: IN + HOLD + OUT });
     sc.tweens.add({ targets: box, x: 0, duration: IN, ease: 'Back.easeOut' });

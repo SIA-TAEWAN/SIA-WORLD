@@ -499,7 +499,22 @@ function leavePlay(to: () => void) {
   gameWatch = null;
   if (cur) {
     cur.controls.destroy();
-    cur.game.destroy(true);
+    // 판마다 WebGL 컨텍스트가 남지 않게: Phaser 가 렌더러를 치운 뒤(다음 틱) 컨텍스트를 놓는다 (WebGL 일 때만)
+    const game = cur.game;
+    const r = game.renderer;
+    const gl = r instanceof Phaser.Renderer.WebGL.WebGLRenderer ? r.gl : null;
+    if (gl) {
+      game.events.once(Phaser.Core.Events.DESTROY, () =>
+        setTimeout(() => {
+          try {
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
+          } catch {
+            /* 이미 잃었거나 지원하지 않음 */
+          }
+        }, 0),
+      );
+    }
+    game.destroy(true);
     cur = null;
   }
   document.querySelectorAll('#stage > .overlay').forEach((o) => o.remove());
@@ -889,9 +904,37 @@ async function saveNow(data: TowerData, cleared: number | null = null) {
     if (r.gotCoin) toast('🪙 시아코인 +1 (처음 오른 층)', 2200);
     return r;
   } catch (e) {
+    if (e instanceof ApiError && e.message === 'old save') {
+      void reloadNewer();
+      return null;
+    }
     toast(e instanceof ApiError ? '저장이 거절됐어요' : '저장하지 못했어요', 2400);
     return null;
   }
+}
+
+/** 다른 탭·기기에서 더 진행해 저장이 'old save' 로 거절됐다 → 서버 상태를 다시 불러 처음 화면으로 (못 보낸 저장은 api 가 버렸다) */
+let reloading = false;
+async function reloadNewer() {
+  if (reloading) return;
+  reloading = true;
+  try {
+    const st = await ctx.api.state();
+    ctx.data = st.data;
+    ctx.look = st.look ?? ctx.look;
+    ctx.siaCoins = st.siaCoins;
+    ctx.lookPrice = st.lookPrice;
+  } catch {
+    /* 못 불러와도 처음 화면으로 — 다음에 들어올 때 다시 불러온다 */
+  } finally {
+    reloading = false;
+  }
+  if (cur) leavePlay(title);
+  else {
+    document.querySelectorAll('#stage > .overlay').forEach((o) => o.remove());
+    title();
+  }
+  toast('다른 곳에서 더 진행했어요. 저장된 상태를 다시 불러왔어요', 3200);
 }
 /** 메뉴·상점에서 바꾼 것 저장 (층 안의 진행도 함께 — 층 번호는 그대로) */
 function saveRunData() {
