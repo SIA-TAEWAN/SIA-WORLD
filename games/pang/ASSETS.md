@@ -1,6 +1,6 @@
 # 시아팡팡 그림
 
-그림 파일 없이 모두 코드로 그린다. SpriteCook 그림은 아직 쓰지 않는다 (`spritecook-assets.json` 없음).
+정령·보드·효과는 그림 파일 없이 모두 코드로 그린다. 지도 챕터 카드 배경 10장(`public/art/maps/ch01~10.webp`, 912×560)만 SpriteCook 그림이다 — asset id 는 `spritecook-assets.json`, 원본은 `art/spritecook/`, 자르기·WebP 만들기는 `python art/build_maps.py`. 그림을 못 읽으면 크림 판 그대로 보인다.
 
 | 무엇 | 파일 |
 | --- | --- |

@@ -50,6 +50,8 @@ function takeState(st) {
 takeState(opts.state);
 const ALL = admin || (local && /[?&]all=1\b/.test(location.search));
 function unlockedUpTo() { if (ALL) return 100; let n = 1; while (n <= 100 && save.stars[n]) n++; return Math.min(100, n); }
+/** 실제 진행의 다음 판 (관리자도 깜빡임은 여기에) */
+function nextStage() { let n = 1; while (n <= 100 && save.stars[n]) n++; return n; }
 /** 지도에 보이는 챕터 수: 앞 챕터 10판을 모두 깨야 다음 챕터가 보인다 (관리자는 모두) */
 function shownChapters() {
   if (ALL) return 10;
@@ -72,9 +74,9 @@ function renderMap() {
   for (let ch = shown - 1; ch >= 0; ch--) {
     const list = LEVELS.filter(l => l.chapter === ch);
     const got = list.reduce((s, l) => s + (save.stars[l.id] || 0), 0);
-    html += '<div class="panel chapter" style="--bg:url(art/maps/ch' + String(ch + 1).padStart(2, '0') + '.png)"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
+    html += '<div class="panel chapter" style="--bg:url(art/maps/ch' + String(ch + 1).padStart(2, '0') + '.webp)"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
     for (const l of list) {
-      const st = save.stars[l.id] || 0, lock = l.id > open, next = l.id === open && !st;
+      const st = save.stars[l.id] || 0, lock = l.id > open, next = l.id === nextStage() && !st;
       const cls = ['stage', l.boss ? 'boss' : '', st ? 'done' : '', lock ? 'lock' : '', next ? 'next' : ''].join(' ');
       const stars = lock ? '' : [1, 2, 3].map(n => n <= st ? STAR : STAR_OFF).join('');
       html += '<button class="' + cls + '" data-id="' + l.id + '" aria-label="스테이지 ' + l.id + (lock ? ' 잠김' : '') + '"' + (lock ? ' disabled' : '') + '><b>' + (lock ? '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="5" y="10" width="14" height="10" rx="2" fill="#B8A584"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="#B8A584" stroke-width="2.5"/></svg>' : l.id) + '</b><i>' + stars + '</i></button>';
