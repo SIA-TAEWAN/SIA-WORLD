@@ -12,6 +12,7 @@ import {
   CARDS,
   POTIONS,
   aliveFoes,
+  canPlay,
   cardDef,
   cardName,
   cardOps,
@@ -39,7 +40,7 @@ import {
 } from '../game/rules';
 import { BOSS_ATK_FRAME, FRAME, FX_ARTS, HERO_ATTACK, HERO_FRAME, HERO_STAND, INTENT_FRAME, STATUS_ART, ST_CELL, ST_FULL, artUrl, fxForCard, hasArt } from '../art';
 import { COLOR, FONT, css } from '../theme';
-import { DESC_BOX, DESC_LINE, fitDesc } from '../ui/fit';
+import { DESC_BOX, DESC_LINE, DESC_MIN, fitDesc } from '../ui/fit';
 
 /** 글자 외곽선 (art.ts txt 와 같은 색) */
 const INK = '#2a1a10';
@@ -58,6 +59,8 @@ export const H = 860;
 const CARD_W = 100;
 const CARD_H = 139;
 const HAND_Y = 772;
+/** 기력이 다했을 때 자동 턴 끝까지 기다리는 시간 (ms) */
+const AUTO_END_MS = 600;
 const HERO_Y = 470;
 const FOE_Y = 250;
 const ROW_Y = 612;
@@ -644,7 +647,7 @@ export class BattleScene extends Phaser.Scene {
       t.setText(f.lines.join('\n'));
     };
     set();
-    for (let k = 0; k < 8 && (t.height > box.h + 2 || t.width > box.w + 2) && f.size > 6.5; k++) {
+    for (let k = 0; k < 8 && (t.height > box.h + 2 || t.width > box.w + 2) && f.size > DESC_MIN - 1; k++) {
       const size = f.size - 0.5;
       f = { ...fitDesc(text, box.w, box.h, [size]), size };
       set();
@@ -1545,6 +1548,31 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     this.render();
+    this.scheduleAutoEnd();
+  }
+
+  /**
+   * 기력이 다하면 자동으로 턴 끝 (11-26 사용자 요청, 화면만): 기력 0 이고 손패에 지금 쓸 수 있는 카드(canPlay — 할인 포함)가
+   * 없으면 연출 뒤 약 0.6초에 턴 끝. 손패 고르기·달빛 구슬 고르기·연습 전투 안내 중에는 안 함. 달빛 구슬이 있으면 endTurn 이
+   * 남길 카드 고르기를 띄운다. 물약은 막지 않는다.
+   */
+  private autoEndTimer: Phaser.Time.TimerEvent | null = null;
+  private shouldAutoEnd(): boolean {
+    const run = this.run();
+    const b = run.battle;
+    if (!b || b.over || this.busy || b.pending || this.keepPick || this.hooks.tutorial) return false;
+    if (b.energy > 0) return false;
+    return !b.hand.some((c) => canPlay(run, c));
+  }
+  private scheduleAutoEnd() {
+    this.autoEndTimer?.remove();
+    this.autoEndTimer = null;
+    if (!this.shouldAutoEnd()) return;
+    const turn = this.battle().turn;
+    this.autoEndTimer = this.time.delayedCall(AUTO_END_MS, () => {
+      this.autoEndTimer = null;
+      if (this.battle().turn === turn && this.shouldAutoEnd()) this.endTurn();
+    });
   }
 
   /** 영웅이 앞으로(대상 쪽으로) 튀어 나갔다 돌아온다 — 시트가 있으면 공격 칸 */

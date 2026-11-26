@@ -11,6 +11,7 @@ import {
   HEROES,
   MASTERY,
   MASTERY_OPEN,
+  MAX_POTIONS,
   MIN_DECK,
   RELICS,
   RULES_VERSION,
@@ -154,7 +155,7 @@ function resume(mode: RunMode): boolean {
   }
   if (r?.server) {
     const s = r.server;
-    const again = replay(s.seed, s.hero, s.log, { mode: s.mode, mastery: s.mastery });
+    const again = replay(s.seed, s.hero, s.log, { mode: s.mode, mastery: s.mastery, gold: s.startGold ?? null });
     if (again.bad >= 0) {
       toast('이 판은 이어 할 수 없어요');
       return false;
@@ -681,6 +682,8 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
     let runId: string | null = null;
     let started: ServerRun | null = null;
     let seed: number;
+    // 시작 엽전: 서버가 정한 값 (관리자 시험 판 1만, 보통·끝없는 모드만 — card_start). 없으면 기본
+    let gold: number | null = null;
     if (LOCAL_MODE) {
       seed = daily?.seed ?? DEV_SEED ?? Math.floor(Math.random() * 2 ** 32) >>> 0;
     } else {
@@ -691,6 +694,8 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
         started = r;
         runId = r.runId;
         seed = r.seed;
+        gold = r.startGold ?? null;
+        if (r.startGold != null) toast(`관리자 시험 판: 엽전 ${r.startGold.toLocaleString()} 으로 시작해요`, 2400);
         if (r.paidCoins) toast(`지난 판에서 못 받은 시아코인 +${r.paidCoins}`, 2400);
       } catch (e) {
         if (e instanceof ApiError && e.message === 'bad day') void refreshState();
@@ -698,7 +703,7 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
       }
     }
     clearRun(mode);
-    ctx.run = newRun({ seed, hero, mode, mastery });
+    ctx.run = newRun({ seed, hero, mode, mastery, gold });
     ctx.runId = runId;
     ctx.lastResult = null;
     if (LOCAL_MODE && mode !== 'daily') {
@@ -991,10 +996,14 @@ function showReward() {
       }
     })
     .join('');
+  // 넘어가면 남은 보상을 받는다 (카드·보스 부적은 무작위 1개, 물약은 자리가 있으면 — run.ts autoTake)
+  const choiceLeft = rw.items.some((it) => !it.taken && (it.k === 'card' || it.k === 'bossRelic'));
+  const anyLeft = rw.items.some((it) => !it.taken && (it.k !== 'potion' || run.potions.length < MAX_POTIONS));
   const s = screen(`${runBar(rw.boss ? '막 보스 승리!' : '승리!')}
     ${rw.boss ? `<div class="card center"><b>체력을 절반 회복했어요</b></div>` : ''}
     <div class="card"><h3>보상</h3><div class="btns">${rows || '<p class="soft center">다 받았어요</p>'}</div></div>
     <div class="grow"></div>
+    ${anyLeft ? `<p class="soft center" id="autoHint">${choiceLeft ? '안 고르면 무작위로 받아요' : '넘어가면 남은 보상을 받아요'}</p>` : ''}
     <button class="btn primary big" id="leave">${rw.boss ? (run.act >= 3 && run.mode !== 'endless' ? (finalOpen(run) ? '봉인이 흔들린다… ▶' : '엔딩 보기 ▶') : `${run.act + 1}막으로 ▶`) : '지도로 ▶'}</button>`);
   bindBar(s, showReward);
   on(s, '[data-take]', (el) => {
@@ -1009,7 +1018,7 @@ function showReward() {
     if (it.k !== 'card') return;
     modal(
       `<h3>카드 한 장 고르기</h3><div class="card-grid choose">${it.options.map((c, k) => `<div class="pick" data-pick="${k}">${cardHtml(c.id, c.up)}</div>`).join('')}</div>
-      <button class="btn" data-close>건너뛰기</button>`,
+      <button class="btn" data-close>나중에 (안 고르면 무작위로 받아요)</button>`,
       (m, close) =>
         on(m, '[data-pick]', (p) => {
           send({ t: 'take', i, pick: Number(p.dataset.pick) });
@@ -1033,9 +1042,18 @@ function showReward() {
     );
   });
   on(s, '#leave', () => {
-    const left = rw.items.some((it) => !it.taken && it.k !== 'potion');
-    if (left && !confirm('아직 받지 않은 보상이 있어요. 그냥 갈까요?')) return;
-    send({ t: 'leave' });
+    // 남은 보상은 규칙 쪽(leave)이 받는다 — 무엇을 받았는지 알림
+    const before = { deck: run.deck.length, relics: run.relics.length, potions: run.potions.length };
+    const r = send({ t: 'leave' });
+    const got: string[] = [];
+    const after = ctx.run!;
+    if (r?.ok) {
+      for (const c of after.deck.slice(before.deck)) got.push(cardDef(c.id).name);
+      for (const id of after.relics.slice(before.relics)) got.push(relicDef(id).name);
+      for (const id of after.potions.slice(before.potions)) got.push(potionDef(id).name);
+      if (got.length) toast(`받았어요: ${got.join(' · ')}`);
+      if (anyLeft) sfx('coin');
+    }
     showRun();
   });
 }

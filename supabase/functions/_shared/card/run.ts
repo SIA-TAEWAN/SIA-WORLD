@@ -6,16 +6,16 @@
  * 다른 칸의 지도·보상·상점 내용을 바꾸지 않는다 (오늘의 도전: 모두 같은 지도·보상).
  */
 import { MAX_POTIONS, endTurn, heal, pickHand, playCard, startBattle, usePotion } from './battle.ts';
-import { CARD_ODDS, CARD_ODDS_MAGPIE, EASY_BATTLES, FINAL_ELITES, GOLD, PRICES } from './data/acts.ts';
-import { ACTS, CARDS, EVENTS, POTIONS, RELICS, RELIC_READY, canUpgrade, cardDef, eventDef, heroDef, regionDef } from './data.ts';
-import { ENDLESS_STEP, MASTERY_BOSS_HP, MASTERY_ELITE_HP, MASTERY_NORMAL_ATK, MASTERY_OPEN, MASTERY_REST_HEAL, MASTERY_SHOP, REST_HEAL, type RunMode } from './data/modes.ts';
+import { CARD_ODDS, CARD_ODDS_MAGPIE, EASY_BATTLES, FINAL_ELITES, GOLD, PRICES, STRONG_CHANCE, STRONG_FOES, STRONG_FROM, STRONG_GOLD } from './data/acts.ts';
+import { ACTS, CARDS, EVENTS, POTIONS, RELICS, RELIC_READY, canUpgrade, cardDef, enemyDef, eventDef, heroDef, regionDef } from './data.ts';
+import { ENDLESS_STEP_PCT, MASTERY_BOSS_HP, MASTERY_ELITE_HP, MASTERY_NORMAL_ATK, MASTERY_OPEN, MASTERY_REST_HEAL, MASTERY_SHOP, REST_HEAL, type RunMode } from './data/modes.ts';
 import { genMap, reachable } from './map.ts';
 import { Rng, hashSeed } from './rng.ts';
 import type { DeckCard, FoeMods, Input, RewardItem, RunState, Shop, SimEvent } from './state.ts';
 import type { EvOp, NodeType } from './types.ts';
 
 /** 규칙 판본 — 같은 입력이 다른 결과를 내게 규칙을 바꾸면 올린다 (저장한 판·서버 검증이 같은 판본끼리만 맞는다) */
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 /** 덱 최소 장수 (그 아래로 없애기 불가) */
 export const MIN_DECK = 5;
 export { EASY_BATTLES, FINAL_ELITES };
@@ -29,9 +29,15 @@ export interface NewRunOpts {
   mode?: RunMode;
   /** 숙련 단계 (보통 모드만, 0~MASTERY_OPEN) */
   mastery?: number;
+  /** 시작 엽전 (기본 START_GOLD) — 서버가 판 시작 때 정한 값(관리자 시험 판 ADMIN_START_GOLD, card_runs.start_gold). 오늘의 도전은 늘 기본 */
+  gold?: number | null;
 }
 /** 판 설정 (재실행에 필요한 것: 씨앗·영웅 밖의 것) */
-export type RunOpts = Pick<NewRunOpts, 'mode' | 'mastery'>;
+export type RunOpts = Pick<NewRunOpts, 'mode' | 'mastery' | 'gold'>;
+/** 시작 엽전 (스펙 99) */
+export const START_GOLD = 99;
+/** 관리자 계정(시험용) 판의 시작 엽전 — SQL card_start 의 관리자 갈래와 같다 (보통·끝없는 모드만) */
+export const ADMIN_START_GOLD = 10000;
 
 export function newRun(o: NewRunOpts): RunState {
   const h = heroDef(o.hero);
@@ -53,7 +59,7 @@ export function newRun(o: NewRunOpts): RunState {
     hero: h.id,
     hp: h.hp,
     maxHp: h.hp,
-    gold: 99,
+    gold: mode !== 'daily' && o.gold != null ? Math.max(0, Math.floor(o.gold)) : START_GOLD,
     deck,
     relics: [],
     potions: [],
@@ -147,18 +153,17 @@ export function storyAct(run: RunState): number {
 }
 
 /**
- * 끝없는 모드 배수 (1.15^(막-1)). Math.pow 는 엔진마다 마지막 자리가 다를 수 있어
- * 곱셈(IEEE 기본 연산이라 어디서나 같음)을 되풀이하고 1e-6 자리에서 반올림한다.
+ * 끝없는 모드 배수 = 1 + 0.15×(막-1) (11-26 사용자 확정 A6: 곱하기 누적 → 더하기). 5막 1.6 · 8막 2.05.
+ * 백분율 정수로 더한 뒤 한 번만 나눈다 — 정수 ÷ 100 은 IEEE 기본 연산이라 어느 엔진에서나 같은 값.
  */
 export function endlessScale(act: number): number {
-  let k = 1;
-  for (let i = 1; i < act; i++) k = Math.round(k * (1 + ENDLESS_STEP) * 1e6) / 1e6;
-  return k;
+  const k = Math.max(0, Math.floor(act) - 1);
+  return (100 + ENDLESS_STEP_PCT * k) / 100;
 }
 
 /**
  * 이 전투의 요괴가 강해지는 정도.
- * 끝없는 모드: 2막부터 막마다 체력·피해 ×1.15 누적. 숙련: 1 정예 체력+10% · 2 일반 요괴 공격+1 · 5 막 보스 체력+10% (3·4 는 상점·쉼터)
+ * 끝없는 모드: 2막부터 막마다 체력·피해 +15% (1 + 0.15×(막-1)). 숙련: 1 정예 체력+10% · 2 일반 요괴 공격+1 · 5 막 보스 체력+10% (3·4 는 상점·쉼터)
  */
 export function foeMods(run: RunState): FoeMods | undefined {
   const k = run.mode === 'endless' ? endlessScale(run.act) : 1;
@@ -205,7 +210,7 @@ function enterNode(run: RunState, type: NodeType, ev: SimEvent[]) {
       const reg = regionDef(run.map.region);
       const easy = EASY_BATTLES[Math.min(storyAct(run), EASY_BATTLES.length) - 1];
       const pool = (run.actBattles ?? 0) < easy || !reg.normal.length ? reg.easy : reg.normal;
-      fight(run, 'battle', r.pick(pool), ev);
+      fight(run, 'battle', strongen(run, r.pick(pool)), ev);
       break;
     }
     case 'elite':
@@ -240,6 +245,20 @@ function enterNode(run: RunState, type: NodeType, ev: SimEvent[]) {
       break;
     }
   }
+}
+
+/**
+ * 강해진 요괴: 2·3막(끝없는 모드는 궁궐·저승) 그 막의 STRONG_FROM 번째 일반 전투부터, STRONG_CHANCE 로
+ * 조합 중 정예판이 있는 요괴 1마리를 바꾼다. 난수는 칸마다 따로('strong') — 다른 뽑기 순서는 그대로.
+ */
+function strongen(run: RunState, combo: string[]): string[] {
+  if (storyAct(run) < 2 || (run.actBattles ?? 0) < STRONG_FROM) return combo;
+  const r = nodeRng(run, 'strong');
+  if (!r.chance(STRONG_CHANCE)) return combo;
+  const can = combo.map((id, i) => (STRONG_FOES[id] ? i : -1)).filter((i) => i >= 0);
+  if (!can.length) return combo;
+  const i = r.pick(can);
+  return combo.map((id, k) => (k === i ? STRONG_FOES[id] : id));
 }
 
 function fight(run: RunState, kind: 'battle' | 'elite' | 'boss', foes: string[], ev: SimEvent[], double = false) {
@@ -299,7 +318,9 @@ function afterBattle(run: RunState, ev: SimEvent[]) {
     run.stats.battles++;
     if (b.kind === 'elite') run.stats.elites++;
     else run.actBattles = (run.actBattles ?? 0) + 1;
-    items.push({ k: 'gold', n: goldOf(b.kind === 'elite' ? GOLD.elite : GOLD.battle) * mult + extra });
+    // 강해진 요괴가 섞인 일반 전투: 엽전 조금 더
+    const strong = b.kind === 'battle' && b.foes.some((f) => !!enemyDef(f.id).strong) ? STRONG_GOLD : 0;
+    items.push({ k: 'gold', n: goldOf(b.kind === 'elite' ? GOLD.elite : GOLD.battle) * mult + extra + strong });
     for (let k = 0; k < mult; k++) items.push({ k: 'card', options: rewardCards(run, r, false) });
     if (b.kind === 'elite') {
       for (let k = 0; k < mult; k++) {
@@ -393,6 +414,7 @@ function rewardStep(run: RunState, i: Input): boolean {
   const rw = run.reward;
   if (!rw) return false;
   if (i.t === 'leave') {
+    autoTake(run, rw.items);
     run.reward = null;
     run.battle = null;
     if (rw.boss) nextAct(run);
@@ -402,12 +424,17 @@ function rewardStep(run: RunState, i: Input): boolean {
   if (i.t !== 'take') return false;
   const it = rw.items[i.i];
   if (!it || it.taken) return false;
+  return takeItem(run, it, i.pick);
+}
+
+/** 보상 항목 하나 받기 (카드·보스 부적은 pick 번째) */
+function takeItem(run: RunState, it: RewardItem, pick?: number): boolean {
   switch (it.k) {
     case 'gold':
       run.gold += it.n;
       break;
     case 'card': {
-      const c = it.options[i.pick ?? -1];
+      const c = it.options[pick ?? -1];
       if (!c) return false;
       addCard(run, c.id, c.up);
       break;
@@ -420,7 +447,7 @@ function rewardStep(run: RunState, i: Input): boolean {
       run.potions.push(it.id);
       break;
     case 'bossRelic': {
-      const id = it.options[i.pick ?? -1];
+      const id = it.options[pick ?? -1];
       if (!id) return false;
       gainRelic(run, id);
       break;
@@ -428,6 +455,19 @@ function rewardStep(run: RunState, i: Input): boolean {
   }
   it.taken = true;
   return true;
+}
+
+/**
+ * 보상을 다 받지 않고 넘어가면 남은 것을 받는다 (11-26 사용자 요청): 엽전·부적 그대로, 물약은 자리가 있으면,
+ * 카드·보스 부적은 제시된 것 중 무작위 1개 — 난수는 그 칸의 씨앗('autoTake')이라 서버 replay 와 같다.
+ */
+function autoTake(run: RunState, items: RewardItem[]) {
+  const r = nodeRng(run, 'autoTake');
+  for (const it of items) {
+    if (it.taken) continue;
+    const pick = it.k === 'card' || it.k === 'bossRelic' ? (it.options.length ? r.int(0, it.options.length - 1) : -1) : undefined;
+    takeItem(run, it, pick);
+  }
 }
 
 /** 숨은 4막(어둑시니)이 열렸나: 한 판에서 정예 3마리 이상 + 3막 클리어 */

@@ -21,6 +21,8 @@ export interface ServerRun {
   acts: number;
   floors: number;
   coins: number;
+  /** 시작 엽전 (null = 기본 99 · 관리자 계정의 보통·끝없는 판은 10000) — 다시 돌릴 때 newRun 에 넘긴다 */
+  startGold?: number | null;
   /** card_start: 앞 판들에서 못 받은 막 코인을 이번에 받은 수 */
   paidCoins?: number;
 }
@@ -124,6 +126,7 @@ function normRun(x: unknown): ServerRun | null {
     acts: asNum(r.acts),
     floors: asNum(r.floors),
     coins: asNum(r.coins),
+    ...(r.startGold != null && Number.isFinite(Number(r.startGold)) ? { startGold: asNum(r.startGold) } : {}),
     ...(r.paidCoins !== undefined ? { paidCoins: asNum(r.paidCoins) } : {}),
   };
 }

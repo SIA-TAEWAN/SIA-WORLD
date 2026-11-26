@@ -40,8 +40,8 @@ export const MASTERY_BOSS_HP = 1.1;
 
 /** 끝없는 모드: 3막 뒤 지역 순서 (되풀이) */
 export const ENDLESS_REGIONS = ['bamboo', 'field', 'palace', 'underworld'] as const;
-/** 끝없는 모드: 막마다 요괴 체력·피해 배수 (2막부터 1.15 씩 곱해 쌓임 — 정한 값) */
-export const ENDLESS_STEP = 0.15;
+/** 끝없는 모드: 막마다 요괴 체력·피해 +15%p (2막부터 더해 쌓임: 1 + 0.15×(막-1) — 11-26 사용자 확정). 백분율 정수 */
+export const ENDLESS_STEP_PCT = 15;
 
 /** 시아코인: 막 하나 깰 때마다 1, 한 판 최대 3 (어둑시니까지 4). 오늘의 도전은 없음 */
 export const COIN_ACTS = 3;

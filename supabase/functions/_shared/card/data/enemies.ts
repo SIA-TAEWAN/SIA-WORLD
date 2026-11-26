@@ -6,7 +6,7 @@
  */
 import type { EnemyDef } from '../types.ts';
 
-export const ENEMIES: EnemyDef[] = [
+const BASE: EnemyDef[] = [
   // ======================= 1막 · 대나무숲 =======================
   {
     id: 'bamboo',
@@ -105,21 +105,21 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'jangsanbeom',
     name: '장산범',
-    hp: [140, 140],
+    hp: [165, 165],
     art: 'b-jangsanbeom',
     boss: true,
     phase1: {
       moves: [
-        { id: 'mimicry', name: '흉내 소리', intent: 'atk', ops: [{ op: 'discardNext', n: 1 }, { op: 'dmg', n: 8 }] },
-        { id: 'warn', name: '덮치기 예고', intent: 'unknown', ops: [] },
-        { id: 'pounce', name: '덮치기', intent: 'atk', ops: [{ op: 'dmg', n: 14 }] },
+        { id: 'mimicry', name: '흉내 소리', intent: 'atk', ops: [{ op: 'discardNext', n: 1 }, { op: 'dmg', n: 12 }] },
+        { id: 'warn', name: '덮치기 예고', intent: 'unknown', ops: [{ op: 'str', n: 2 }] },
+        { id: 'pounce', name: '덮치기', intent: 'atk', ops: [{ op: 'dmg', n: 19 }] },
       ],
       ai: { type: 'cycle', order: ['mimicry', 'warn', 'pounce'] },
     },
     phase2: {
       shout: '하얀 털이 곤두선다!',
       moves: [
-        { id: 'pounce2', name: '덮치기', intent: 'atk', ops: [{ op: 'dmg', n: 14 }] },
+        { id: 'pounce2', name: '덮치기', intent: 'atk', ops: [{ op: 'dmg', n: 19 }] },
         { id: 'hide', name: '숨기', intent: 'buff', ops: [{ op: 'dodge', n: 1 }] },
       ],
       // 덮치기 2연속, 사이에 숨기
@@ -142,7 +142,7 @@ export const ENEMIES: EnemyDef[] = [
     phase2: {
       shout: '수백 개의 다리가 꿈틀댄다!',
       turnOps: [{ op: 'status', id: 'poison', n: 2 }],
-      moves: [{ id: 'legs', name: '다리 훑기', intent: 'atk', ops: [{ op: 'dmg', n: 4, times: 4 }] }],
+      moves: [{ id: 'legs', name: '다리 훑기', intent: 'atk', ops: [{ op: 'dmg', n: 3, times: 4 }] }],
       ai: { type: 'cycle', order: ['legs'] },
     },
   },
@@ -207,13 +207,13 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'bigDokkaebi',
     name: '큰도깨비',
-    hp: [170, 170],
+    hp: [150, 150],
     art: 'b-bigDokkaebi',
     boss: true,
     phase1: {
       moves: [
-        { id: 'club', name: '방망이', intent: 'atk', ops: [{ op: 'dmg', n: 13 }] },
-        { id: 'gold', name: '금 나와라', intent: 'buff', ops: [{ op: 'block', n: 15 }, { op: 'str', n: 2 }] },
+        { id: 'club', name: '방망이', intent: 'atk', ops: [{ op: 'dmg', n: 11 }] },
+        { id: 'gold', name: '금 나와라', intent: 'buff', ops: [{ op: 'block', n: 15 }, { op: 'str', n: 1 }] },
       ],
       ai: { type: 'cycle', order: ['club', 'gold'] },
     },
@@ -235,7 +235,7 @@ export const ENEMIES: EnemyDef[] = [
     phase1: {
       moves: [
         { id: 'eat', name: '쇠 먹기', intent: 'def', ops: [{ op: 'block', n: 20 }] },
-        { id: 'butt', name: '박치기', intent: 'atk', ops: [{ op: 'dmg', n: 12 }] },
+        { id: 'butt', name: '박치기', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
       ],
       ai: { type: 'cycle', order: ['eat', 'butt'] },
     },
@@ -245,7 +245,7 @@ export const ENEMIES: EnemyDef[] = [
       passive: 'revive',
       moves: [
         { id: 'eat', name: '쇠 먹기', intent: 'def', ops: [{ op: 'block', n: 20 }] },
-        { id: 'butt', name: '박치기', intent: 'atk', ops: [{ op: 'dmg', n: 12 }] },
+        { id: 'butt', name: '박치기', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
       ],
       ai: { type: 'cycle', order: ['butt', 'eat'] },
     },
@@ -338,12 +338,12 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'guardCaptain',
     name: '수문장 대장',
-    hp: [270, 270],
+    hp: [255, 255],
     art: 'b-guardCaptain',
     boss: true,
     phase1: {
       moves: [
-        { id: 'spear', name: '창 찌르기', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
+        { id: 'spear', name: '창 찌르기', intent: 'atk', ops: [{ op: 'dmg', n: 15 }] },
         { id: 'wall', name: '방패벽', intent: 'def', ops: [{ op: 'block', n: 20 }, { op: 'summon', id: 'soldier', n: 1, max: 3 }] },
       ],
       ai: { type: 'cycle', order: ['spear', 'wall'] },
@@ -351,7 +351,7 @@ export const ENEMIES: EnemyDef[] = [
     phase2: {
       shout: '궁궐을 지켜라! 병졸들, 나와라!',
       moves: [
-        { id: 'volley', name: '화살 비', intent: 'atk', ops: [{ op: 'dmg', n: 5, times: 4 }] },
+        { id: 'volley', name: '화살 비', intent: 'atk', ops: [{ op: 'dmg', n: 4, times: 4 }] },
         { id: 'muster', name: '병졸 부르기', intent: 'buff', ops: [{ op: 'summon', id: 'soldier', n: 2, max: 3 }] },
       ],
       ai: { type: 'cycle', order: ['muster', 'volley', 'volley'] },
@@ -371,12 +371,12 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'dueoksini',
     name: '두억시니',
-    hp: [280, 280],
+    hp: [265, 265],
     art: 'b-dueoksini',
     boss: true,
     phase1: {
       moves: [
-        { id: 'smash', name: '내려치기', intent: 'atk', ops: [{ op: 'dmg', n: 18 }] },
+        { id: 'smash', name: '내려치기', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
         { id: 'crush', name: '짓누르기', intent: 'atk', ops: [{ op: 'dmg', n: 10 }, { op: 'status', id: 'mud', n: 2 }] },
       ],
       ai: { type: 'cycle', order: ['smash', 'crush'] },
@@ -384,9 +384,9 @@ export const ENEMIES: EnemyDef[] = [
     phase2: {
       shout: '머리가 하늘에 닿는다!',
       // 매 턴 힘 +3
-      turnOps: [{ op: 'str', n: 3 }],
+      turnOps: [{ op: 'str', n: 2 }],
       moves: [
-        { id: 'smash', name: '내려치기', intent: 'atk', ops: [{ op: 'dmg', n: 18 }] },
+        { id: 'smash', name: '내려치기', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
         { id: 'crush', name: '짓누르기', intent: 'atk', ops: [{ op: 'dmg', n: 10 }, { op: 'status', id: 'mud', n: 2 }] },
       ],
       ai: { type: 'cycle', order: ['smash', 'crush'] },
@@ -395,24 +395,25 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'imugi',
     name: '이무기',
-    hp: [260, 260],
+    hp: [300, 300],
     art: 'b-imugi',
     boss: true,
     phase1: {
       moves: [
-        { id: 'spray', name: '물보라', intent: 'atk', ops: [{ op: 'dmg', n: 6 }, { op: 'status', id: 'wet', n: 2 }] },
+        { id: 'spray', name: '물보라', intent: 'atk', ops: [{ op: 'dmg', n: 9 }, { op: 'status', id: 'wet', n: 2 }] },
+        { id: 'bite', name: '물어뜯기', intent: 'atk', ops: [{ op: 'dmg', n: 18 }] },
         { id: 'coil', name: '똬리', intent: 'def', ops: [{ op: 'block', n: 15 }] },
       ],
-      ai: { type: 'cycle', order: ['spray', 'coil'] },
+      ai: { type: 'cycle', order: ['spray', 'bite', 'coil'] },
     },
     phase2: {
       shout: '하늘로 오르려 한다!',
       // 승천 예고 2턴 → 대해일 35. 예고 중 피해 40을 주면 취소 (떨어짐 → 다시 물보라부터)
       moves: [
-        { id: 'omen', name: '승천 예고', intent: 'unknown', ops: [{ op: 'charge', n: 40 }] },
-        { id: 'omen2', name: '승천 예고', intent: 'unknown', ops: [{ op: 'charge', n: 40 }] },
-        { id: 'wave', name: '대해일', intent: 'atk', ops: [{ op: 'dmg', n: 35 }] },
-        { id: 'spray', name: '물보라', intent: 'atk', ops: [{ op: 'dmg', n: 6 }, { op: 'status', id: 'wet', n: 2 }] },
+        { id: 'omen', name: '승천 예고', intent: 'unknown', ops: [{ op: 'charge', n: 50 }] },
+        { id: 'omen2', name: '승천 예고', intent: 'unknown', ops: [{ op: 'charge', n: 50 }] },
+        { id: 'wave', name: '대해일', intent: 'atk', ops: [{ op: 'dmg', n: 40 }] },
+        { id: 'spray', name: '물보라', intent: 'atk', ops: [{ op: 'dmg', n: 9 }, { op: 'status', id: 'wet', n: 2 }] },
         { id: 'fall', name: '떨어짐', intent: 'unknown', ops: [] },
       ],
       ai: { type: 'cycle', order: ['omen', 'omen2', 'wave', 'spray'] },
@@ -502,23 +503,23 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'yagwanggwi',
     name: '야광귀',
-    hp: [340, 340],
+    hp: [400, 400],
     art: 'b-yagwanggwi',
     boss: true,
     phase1: {
       moves: [
-        { id: 'shoes', name: '신발 훔치기', intent: 'debuff', ops: [{ op: 'drain', n: 1 }] },
-        { id: 'claw', name: '할퀴기', intent: 'atk', ops: [{ op: 'dmg', n: 12 }] },
+        { id: 'shoes', name: '신발 훔치기', intent: 'atk', ops: [{ op: 'dmg', n: 6 }, { op: 'drain', n: 1 }] },
+        { id: 'claw', name: '할퀴기', intent: 'atk', ops: [{ op: 'dmg', n: 20 }] },
       ],
-      ai: { type: 'cycle', order: ['shoes', 'claw'] },
+      ai: { type: 'cycle', order: ['shoes', 'claw', 'claw'] },
     },
     phase2: {
       shout: '불을 꺼라… 어둠 속으로!',
       // 2턴마다 어둠 속 (받는 피해 -75%), 화상을 걸면 풀림
       moves: [
         { id: 'dark', name: '어둠 속', intent: 'buff', ops: [{ op: 'dark' }] },
-        { id: 'claw', name: '할퀴기', intent: 'atk', ops: [{ op: 'dmg', n: 12 }] },
-        { id: 'shoes', name: '신발 훔치기', intent: 'debuff', ops: [{ op: 'drain', n: 1 }] },
+        { id: 'claw', name: '할퀴기', intent: 'atk', ops: [{ op: 'dmg', n: 20 }] },
+        { id: 'shoes', name: '신발 훔치기', intent: 'atk', ops: [{ op: 'dmg', n: 6 }, { op: 'drain', n: 1 }] },
       ],
       ai: { type: 'cycle', order: ['dark', 'claw', 'dark', 'shoes'] },
     },
@@ -526,12 +527,12 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: 'yeomra',
     name: '염라대왕',
-    hp: [350, 350],
+    hp: [330, 330],
     art: 'b-yeomra',
     boss: true,
     phase1: {
       moves: [
-        { id: 'judge', name: '심판', intent: 'atk', ops: [{ op: 'dmg', n: 20 }] },
+        { id: 'judge', name: '심판', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
         { id: 'karma', name: '업보', intent: 'atk', ops: [{ op: 'karma', k: 2 }] },
         { id: 'chains', name: '저승 사슬', intent: 'debuff', ops: [{ op: 'curse', id: 'chain', n: 2, pile: 'draw' }] },
       ],
@@ -540,10 +541,10 @@ export const ENEMIES: EnemyDef[] = [
     phase2: {
       shout: '저승사자는 나와 죄를 물어라!',
       // 저승사자(체력 60) 소환, 업보 매 턴
-      turnOps: [{ op: 'karma', k: 2 }],
+      turnOps: [{ op: 'karma', k: 1 }],
       moves: [
         { id: 'summon', name: '저승사자 부르기', intent: 'buff', ops: [{ op: 'summon', id: 'reaperMinion', n: 1, max: 1 }] },
-        { id: 'judge', name: '심판', intent: 'atk', ops: [{ op: 'dmg', n: 20 }] },
+        { id: 'judge', name: '심판', intent: 'atk', ops: [{ op: 'dmg', n: 16 }] },
         { id: 'chains', name: '저승 사슬', intent: 'debuff', ops: [{ op: 'curse', id: 'chain', n: 2, pile: 'draw' }] },
       ],
       ai: { type: 'cycle', order: ['summon', 'judge', 'chains'] },
@@ -624,3 +625,32 @@ export const ENEMIES: EnemyDef[] = [
     },
   },
 ];
+
+// ======================= 강해진 요괴 (2·3막 뒤쪽 일반 전투에 가끔 1마리, 정예 그림 e-*-elite) =======================
+/** 강해진 요괴 체력·공격·방어 배수 (정한 값, 11-26 사용자 확정 A5) */
+export const STRONG_HP = 1.25;
+export const STRONG_DMG = 1.2;
+
+/** 일반 요괴의 정예판: 이름 앞에 '사나운', 체력 ×STRONG_HP, 공격 피해·방어 ×STRONG_DMG (반올림) */
+function strongOf(baseId: string, art: string): EnemyDef {
+  const b = BASE.find((e) => e.id === baseId)!;
+  const d: EnemyDef = JSON.parse(JSON.stringify(b));
+  d.id = `${baseId}Strong`;
+  d.name = `사나운 ${b.name}`;
+  d.art = art;
+  d.strong = baseId;
+  d.hp = [Math.round(b.hp[0] * STRONG_HP), Math.round(b.hp[1] * STRONG_HP)];
+  for (const m of d.phase1.moves)
+    for (const op of m.ops as { op: string; n?: number }[]) if ((op.op === 'dmg' || op.op === 'block') && typeof op.n === 'number') op.n = Math.round(op.n * STRONG_DMG);
+  return d;
+}
+
+const STRONG: EnemyDef[] = [
+  strongOf('guard', 'e-guard-elite'),
+  strongOf('spirit', 'e-spirit-elite'),
+  strongOf('water', 'e-water-elite'),
+  strongOf('skeleton', 'e-skeleton-elite'),
+  strongOf('spirit3', 'e-spirit-elite'),
+];
+
+export const ENEMIES: EnemyDef[] = [...BASE, ...STRONG];

@@ -11,7 +11,9 @@ export const DESC_BOX = {
   html: { w: 78, h: 31 },
 } as const;
 /** 큰 것부터 써 보는 글자 크기 */
-export const DESC_SIZES = [11, 10.5, 10, 9.5, 9, 8.5, 8, 7.5] as const;
+/** 가장 작은 글자 9px (11-26 사용자 확정: 긴 설명은 짧게 고쳐 9px 안에 들어가게 — tests/fit.test.ts) */
+export const DESC_MIN = 9;
+export const DESC_SIZES = [11, 10.5, 10, 9.5, 9] as const;
 /** 줄 높이 (글자 크기 배) */
 export const DESC_LINE = 1.12;
 
@@ -78,7 +80,7 @@ export function fitDesc(text: string, w: number, h: number, sizes: readonly numb
 }
 
 /** HTML 안의 설명 글자가 칸을 넘치면 글자를 줄인다 (어림값이 실제 글꼴과 다를 때를 위한 마지막 안전장치) */
-export function shrinkOverflow(root: ParentNode, sel = '.gc-text', min = 6.5) {
+export function shrinkOverflow(root: ParentNode, sel = '.gc-text', min = DESC_MIN - 1) {
   root.querySelectorAll<HTMLElement>(sel).forEach((el) => {
     let size = parseFloat(getComputedStyle(el).fontSize) || 10;
     for (let k = 0; k < 10 && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) && size > min; k++) {

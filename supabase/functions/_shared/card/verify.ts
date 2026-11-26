@@ -1,6 +1,6 @@
 /**
  * card-finish 의 다시 돌리기 (PRD [기술] '막이 끝날 때마다 씨앗 + 입력 기록을 보내면 서버가 다시 돌려 …').
- * 서버가 판 시작 때 정한 것(씨앗·영웅·모드·숙련)과 화면이 보낸 입력 목록(판 처음부터 전부)으로 replay 한다.
+ * 서버가 판 시작 때 정한 것(씨앗·영웅·모드·숙련·시작 엽전)과 화면이 보낸 입력 목록(판 처음부터 전부)으로 replay 한다.
  *  - 입력 하나라도 받아들여지지 않으면 'bad log'
  *  - 판이 끝났으면(쓰러짐·엔딩) 그 끝 상태를, 아니면 마지막으로 시작한 막의 처음(actStart 의 마지막)까지만 기록한다
  *    → 다른 기기는 그 기록으로 '마지막으로 깬 막 다음부터' 이어 한다
@@ -23,6 +23,8 @@ export interface RunSnap {
   seed: number;
   /** 오늘의 도전 날짜 'YYYY-MM-DD' (그 밖에는 null) */
   day: string | null;
+  /** 시작 엽전 (card_runs.start_gold, null = 기본 99 · 관리자 시험 판 10000). 오늘의 도전은 늘 기본 */
+  startGold?: number | null;
 }
 
 /** SQL card_finish_verified 에 넘기는 결과 */
@@ -95,7 +97,9 @@ export function verifyRun(snap: RunSnap, rawLog: unknown): { result: VerifiedRes
     if (d.seed !== seed || d.hero !== snap.hero) throw new VerifyError('bad daily');
   }
   const log = cleanLog(rawLog);
-  const opts = { mode: snap.mode, mastery: snap.mastery };
+  const g = snap.startGold;
+  if (g != null && (!Number.isInteger(g) || g < 0 || g > 100000)) throw new VerifyError('bad run');
+  const opts = { mode: snap.mode, mastery: snap.mastery, gold: snap.mode === 'daily' ? null : (g ?? null) };
   let full;
   try {
     full = replay(seed, snap.hero, log, opts);

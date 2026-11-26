@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ELITE_FROM_ROW, NODE_RATIO, allocate, apply, cardDef, choices, genMap, newRun, removePrice, replay, restHeal, type RunState } from '../src/game/rules';
+import { ELITE_FROM_ROW, NODE_RATIO, allocate, apply, cardDef, choices, enterTestBattle, genMap, newRun, removePrice, replay, restHeal, type RunState } from '../src/game/rules';
 import { playRun, runInput } from './bot';
 
 /** 보스 전까지 battle 이 아닌 칸을 찾아 들어간다 (없으면 null) */
@@ -78,7 +78,7 @@ describe('지도', () => {
 });
 
 describe('칸', () => {
-  it('전투 승리 → 엽전 + 카드 3장 중 1장(건너뛰기 가능)', () => {
+  it('전투 승리 → 엽전 + 카드 3장 중 1장 (안 고르고 넘어가면 남은 보상을 받고 카드는 무작위 1장)', () => {
     const run = newRun({ seed: 11, hero: 'tiger' });
     apply(run, { t: 'go', col: 0 });
     while (run.phase === 'battle') apply(run, runInput(run));
@@ -88,9 +88,59 @@ describe('칸', () => {
     const card = run.reward!.items.find((x) => x.k === 'card')!;
     expect(card.k === 'card' && card.options.length).toBe(3);
     const deck = run.deck.length;
-    expect(apply(run, { t: 'leave' }).ok).toBe(true); // 건너뛰기
-    expect(run.deck.length).toBe(deck);
+    const g0 = run.gold;
+    const potion = run.reward!.items.find((x) => x.k === 'potion');
+    expect(apply(run, { t: 'leave' }).ok).toBe(true);
+    expect(run.deck.length).toBe(deck + 1);
+    expect(card.k === 'card' && card.options.map((c) => c.id)).toContain(run.deck[run.deck.length - 1].id);
+    expect(run.gold).toBe(g0 + (gold.k === 'gold' ? gold.n : 0));
+    expect(run.potions.length).toBe(potion ? 1 : 0);
     expect(run.phase).toBe('map');
+  });
+
+  it('남은 보상 자동으로 받기: 같은 씨앗이면 같은 카드 · 받은 것은 다시 받지 않음 · 물약은 자리가 있을 때만', () => {
+    const play = (pre?: (run: ReturnType<typeof newRun>) => void) => {
+      const run = newRun({ seed: 11, hero: 'tiger' });
+      apply(run, { t: 'go', col: 0 });
+      while (run.phase === 'battle') apply(run, runInput(run));
+      pre?.(run);
+      apply(run, { t: 'leave' });
+      return run;
+    };
+    const a = play();
+    const b = play();
+    expect(b.deck.map((c) => c.id)).toEqual(a.deck.map((c) => c.id));
+    // 엽전을 먼저 받았으면 넘어갈 때 한 번 더 주지 않는다
+    const c = play((run) => {
+      const i = run.reward!.items.findIndex((x) => x.k === 'gold');
+      apply(run, { t: 'take', i });
+    });
+    expect(c.gold).toBe(a.gold);
+    // 물약 자리가 차 있으면 물약은 건너뛴다 (나머지는 받음)
+    const d = play((run) => (run.potions = ['heal', 'heal', 'heal']));
+    expect(d.potions).toEqual(['heal', 'heal', 'heal']);
+    expect(d.deck.length).toBe(a.deck.length);
+  });
+
+  it('막 보스 보상도 넘어가면 전설 카드 · 보스 부적을 무작위로 1개씩', () => {
+    const run = newRun({ seed: 5, hero: 'dog' });
+    enterTestBattle(run, ['gumiho'], 'boss');
+    run.practice = false;
+    const b = run.battle!;
+    for (const f of b.foes) f.hp = 1;
+    // 체력 1 로 낮춰 바로 이긴다 → 보상
+    let guard = 0;
+    while (run.phase === 'battle' && guard++ < 400) apply(run, runInput(run));
+    expect(run.phase).toBe('reward');
+    const rw = run.reward!;
+    expect(rw.boss).toBe(true);
+    const leg = rw.items.find((x) => x.k === 'card')!;
+    const br = rw.items.find((x) => x.k === 'bossRelic');
+    const deck = run.deck.length;
+    apply(run, { t: 'leave' });
+    expect(run.deck.length).toBe(deck + 1);
+    expect(leg.k === 'card' && leg.options.map((c) => c.id)).toContain(run.deck[run.deck.length - 1].id);
+    if (br && br.k === 'bossRelic') expect(br.options.some((id) => run.relics.includes(id))).toBe(true);
   });
 
   it('쉼터: 체력 30% 회복 또는 카드 1장 강화 (둘 중 하나)', () => {

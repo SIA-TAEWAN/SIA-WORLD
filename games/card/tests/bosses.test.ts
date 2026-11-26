@@ -35,10 +35,10 @@ const toPhase = (f: Foe, p: 2 | 3) => {
 };
 
 describe('보스 데이터', () => {
-  it('지역마다 보스 3마리, 체력은 스펙 값(6단계 밸런스로 큰도깨비 200→170 · 염라대왕 380→350), 2단계가 있다', () => {
+  it('지역마다 보스 3마리, 체력은 스펙 값에서 밸런스로 바꾼 값(PROGRESS 바꾼 값 표, 11-26 확정), 2단계가 있다', () => {
     const hp: Record<string, number> = {
-      gumiho: 130, jangsanbeom: 140, centipede: 135, bigDokkaebi: 170, bulgasal: 210, gangcheori: 190,
-      guardCaptain: 270, dueoksini: 280, imugi: 260, reaper: 330, yagwanggwi: 340, yeomra: 350, final: 450,
+      gumiho: 130, jangsanbeom: 165, centipede: 135, bigDokkaebi: 150, bulgasal: 210, gangcheori: 190,
+      guardCaptain: 255, dueoksini: 265, imugi: 300, reaper: 330, yagwanggwi: 400, yeomra: 330, final: 450,
     };
     for (const r of REGIONS.filter((x) => !x.hidden)) {
       expect(r.bosses).toHaveLength(3);
@@ -94,22 +94,24 @@ describe('1막 보스', () => {
     expect(f.hp).toBe(60 - 3);
   });
 
-  it('장산범: 흉내 소리(다음 턴 손패 1장 버림)+8 → 덮치기 예고 → 덮치기14 / 2단계 덮치기 2연속, 사이에 숨기', () => {
+  it('장산범: 흉내 소리(다음 턴 손패 1장 버림)+12 → 덮치기 예고(힘+2) → 덮치기19 / 2단계 덮치기 2연속, 사이에 숨기', () => {
     const { run, b, f } = boss('jangsanbeom');
     const ev = foeDoes(run, b, f, 'mimicry');
-    expect(hurt(ev)).toBe(8);
+    expect(hurt(ev)).toBe(12);
     expect(b.hand).toHaveLength(4); // 5장 뽑고 1장 버림
     expect(f.intent).toBe('warn');
     expect(foeHits(run, b, f)).toHaveLength(0);
     foeDoes(run, b, f);
+    expect(f.str).toBe(2); // 예고하며 힘 +2 (11-26)
     expect(f.intent).toBe('pounce');
-    expect(hurt(foeDoes(run, b, f))).toBe(14);
+    expect(hurt(foeDoes(run, b, f))).toBe(21);
+    f.str = 0;
     f.hp = 60;
     toPhase(f, 2);
     f.intent = 'pounce2';
-    expect(hurt(foeDoes(run, b, f))).toBe(14);
+    expect(hurt(foeDoes(run, b, f))).toBe(19);
     expect(f.intent).toBe('pounce2');
-    expect(hurt(foeDoes(run, b, f))).toBe(14);
+    expect(hurt(foeDoes(run, b, f))).toBe(19);
     expect(f.intent).toBe('hide');
     foeDoes(run, b, f);
     expect(f.dodge).toBe(1);
@@ -121,7 +123,7 @@ describe('1막 보스', () => {
     expect(f.hp).toBe(hp - 6);
   });
 
-  it('왕지네: 독침5+독3 → 몸 감기(방어12) / 2단계 다리 훑기 4×4, 매 턴 내 독+2', () => {
+  it('왕지네: 독침5+독3 → 몸 감기(방어12) / 2단계 다리 훑기 3×4, 매 턴 내 독+2', () => {
     const { run, b, f } = boss('centipede');
     const ev = foeDoes(run, b, f, 'sting');
     expect(hurt(ev.slice(0, ev.findIndex((e) => e.e === 'turn' && e.who === 'hero')))).toBe(5);
@@ -131,17 +133,17 @@ describe('1막 보스', () => {
     f.intent = 'legs';
     b.st = {};
     const ev2 = foeDoes(run, b, f);
-    expect(ev2.filter((e) => e.e === 'hit' && e.to === 'hero' && e.from === f.uid).map((e) => (e as { n: number }).n)).toEqual([4, 4, 4, 4]);
+    expect(ev2.filter((e) => e.e === 'hit' && e.to === 'hero' && e.from === f.uid).map((e) => (e as { n: number }).n)).toEqual([3, 3, 3, 3]);
     // 독 2 → 내 턴 시작에 2 피해 후 1
     expect(b.st.poison).toBe(1);
   });
 
-  it('큰도깨비: 방망이13 → 금 나와라(방어15, 힘+2) / 2단계 방망이 9×2, 내 덱에 도깨비 장난2', () => {
+  it('큰도깨비: 방망이11 → 금 나와라(방어15, 힘+1) / 2단계 방망이 9×2, 내 덱에 도깨비 장난2', () => {
     const { run, b, f } = boss('bigDokkaebi');
-    expect(hurt(foeDoes(run, b, f, 'club'))).toBe(13);
+    expect(hurt(foeDoes(run, b, f, 'club'))).toBe(11);
     foeDoes(run, b, f, 'gold');
     expect(f.block).toBe(15);
-    expect(f.str).toBe(2);
+    expect(f.str).toBe(1);
     f.str = 0;
     toPhase(f, 2);
     expect(foeHits(run, b, { ...f, intent: 'club2' })).toEqual([{ n: 9, times: 2 }]);
@@ -150,11 +152,11 @@ describe('1막 보스', () => {
     expect(pranks).toHaveLength(2);
   });
 
-  it('불가살: 쇠 먹기(방어20) → 박치기12 / 2단계 쓰러지면 한 번 30%로 부활, 화상이면 부활 못 함', () => {
+  it('불가살: 쇠 먹기(방어20) → 박치기16 / 2단계 쓰러지면 한 번 30%로 부활, 화상이면 부활 못 함', () => {
     const { run, b, f } = boss('bulgasal');
     foeDoes(run, b, f, 'eat');
     expect(f.block).toBe(20);
-    expect(hurt(foeDoes(run, b, f, 'butt'))).toBe(12);
+    expect(hurt(foeDoes(run, b, f, 'butt'))).toBe(16);
     f.block = 0;
     f.hp = 5;
     toPhase(f, 2);
@@ -208,16 +210,16 @@ describe('1막 보스', () => {
 });
 
 describe('2막 보스', () => {
-  it('수문장 대장: 창 찌르기16 → 방패벽(방어20)+병졸1 / 2단계 화살 비5×4, 병졸2', () => {
+  it('수문장 대장: 창 찌르기15 → 방패벽(방어20)+병졸1 / 2단계 화살 비4×4, 병졸2', () => {
     const { run, b, f } = boss('guardCaptain');
-    expect(hurt(foeDoes(run, b, f, 'spear'))).toBe(16);
+    expect(hurt(foeDoes(run, b, f, 'spear'))).toBe(15);
     foeDoes(run, b, f, 'wall');
     expect(f.block).toBe(20);
     expect(b.foes.filter((x) => x.id === 'soldier' && !x.dead)).toHaveLength(1);
     toPhase(f, 2);
     foeDoes(run, b, f, 'muster');
     expect(b.foes.filter((x) => x.id === 'soldier' && !x.dead)).toHaveLength(3);
-    expect(foeHits(run, b, { ...f, intent: 'volley' })).toEqual([{ n: 5, times: 4 }]);
+    expect(foeHits(run, b, { ...f, intent: 'volley' })).toEqual([{ n: 4, times: 4 }]);
     // 병졸만 남아도 대장이 쓰러지면 승리
     f.hp = 1;
     f.block = 0;
@@ -226,55 +228,59 @@ describe('2막 보스', () => {
     expect(b.over).toBe('win');
   });
 
-  it('두억시니: 내려치기18 → 짓누르기10+진흙2 / 2단계 매 턴 힘+3', () => {
+  it('두억시니: 내려치기16 → 짓누르기10+진흙2 / 2단계 매 턴 힘+2', () => {
     const { run, b, f } = boss('dueoksini');
-    expect(hurt(foeDoes(run, b, f, 'smash'))).toBe(18);
+    expect(hurt(foeDoes(run, b, f, 'smash'))).toBe(16);
     foeDoes(run, b, f, 'crush');
     expect(b.hand).toHaveLength(4); // 진흙 2 → 이번 턴 뽑기 -1
     toPhase(f, 2);
     f.intent = 'smash';
-    expect(foeHits(run, b, f)).toEqual([{ n: 18, times: 1 }]);
+    expect(foeHits(run, b, f)).toEqual([{ n: 16, times: 1 }]);
     const ev = foeDoes(run, b, f);
-    expect(f.str).toBe(3);
-    expect(hurt(ev)).toBe(21);
+    expect(f.str).toBe(2);
+    expect(hurt(ev)).toBe(18);
     foeDoes(run, b, f);
-    expect(f.str).toBe(6);
+    expect(f.str).toBe(4);
   });
 
-  it('이무기: 물보라6+젖음2 → 똬리(방어15) / 2단계 승천 예고 2턴 → 대해일35, 예고 중 피해 40 주면 취소', () => {
+  it('이무기: 물보라9+젖음2 → 물어뜯기18 → 똬리(방어15) / 2단계 승천 예고 2턴 → 대해일40, 예고 중 피해 50 주면 취소', () => {
     const { run, b, f } = boss('imugi');
-    foeDoes(run, b, f, 'spray');
+    expect(hurt(foeDoes(run, b, f, 'spray'))).toBe(9);
     expect(b.st.wet).toBe(2); // 젖음은 내 턴 끝에 1 줄어든다
+    expect(f.intent).toBe('bite');
+    b.st = {};
+    expect(hurt(foeDoes(run, b, f))).toBe(18);
     foeDoes(run, b, f, 'coil');
     expect(f.block).toBe(15);
     // 2단계: 체력 50% 아래로 → 승천 예고부터
     const x = boss('imugi');
-    x.f.hp = 131;
+    x.f.hp = 151;
     hand(x.b, ['slash']);
     play(x.run, 800, x.f.uid);
     expect(x.f.phase).toBe(2);
     expect(x.f.intent).toBe('omen');
     foeDoes(x.run, x.b, x.f);
-    expect(x.f.charge).toBe(40);
+    expect(x.f.charge).toBe(50);
     expect(x.f.intent).toBe('omen2');
     foeDoes(x.run, x.b, x.f);
     expect(x.f.intent).toBe('wave');
     x.b.st = {};
-    expect(hurt(foeDoes(x.run, x.b, x.f))).toBe(35);
+    expect(hurt(foeDoes(x.run, x.b, x.f))).toBe(40);
     expect(x.f.charge).toBe(null);
-    // 예고 중 피해 40 → 취소 (떨어짐) → 다음은 물보라
+    // 예고 중 피해 50 → 취소 (떨어짐) → 다음은 물보라
     const y = boss('imugi');
     toPhase(y.f, 2);
     y.f.hp = 120;
     y.f.intent = 'omen';
     foeDoes(y.run, y.b, y.f);
-    expect(y.f.charge).toBe(40);
+    expect(y.f.charge).toBe(50);
     y.f.block = 0;
-    hand(y.b, ['smash', 'smash', 'smash'], 6);
+    hand(y.b, ['smash', 'smash', 'smash', 'smash'], 8);
     play(y.run, 800, y.f.uid);
     play(y.run, 801, y.f.uid);
-    expect(y.f.charge).toBe(12);
-    const ev = play(y.run, 802, y.f.uid).ev;
+    play(y.run, 802, y.f.uid);
+    expect(y.f.charge).toBe(8);
+    const ev = play(y.run, 803, y.f.uid).ev;
     expect(ev.some((e) => e.e === 'cancel')).toBe(true);
     expect(y.f.intent).toBe('fall');
     expect(hurt(foeDoes(y.run, y.b, y.f))).toBe(0);
@@ -295,11 +301,12 @@ describe('3막 보스', () => {
     expect(foeHits(run, b, f)).toEqual([{ n: 20, times: 2 }]);
   });
 
-  it('야광귀: 신발 훔치기(다음 턴 기력-1) → 할퀴기12 / 2단계 2턴마다 어둠 속(받는 피해 -75%), 화상 걸면 해제', () => {
+  it('야광귀: 신발 훔치기6(다음 턴 기력-1) → 할퀴기20 ×2 / 2단계 2턴마다 어둠 속(받는 피해 -75%), 화상 걸면 해제', () => {
     const { run, b, f } = boss('yagwanggwi');
-    foeDoes(run, b, f, 'shoes');
+    expect(hurt(foeDoes(run, b, f, 'shoes'))).toBe(6);
     expect(b.energy).toBe(2);
-    expect(hurt(foeDoes(run, b, f, 'claw'))).toBe(12);
+    expect(hurt(foeDoes(run, b, f, 'claw'))).toBe(20);
+    expect(f.intent).toBe('claw');
     toPhase(f, 2);
     f.intent = 'dark';
     foeDoes(run, b, f);
@@ -318,9 +325,9 @@ describe('3막 보스', () => {
     expect(f.dark).toBe(false);
   });
 
-  it('염라대왕: 심판20 → 업보(쓴 공격카드 수×2) → 저승 사슬2 / 2단계 저승사자(체력60) 소환, 업보 매 턴', () => {
+  it('염라대왕: 심판16 → 업보(쓴 공격카드 수×2) → 저승 사슬2 / 2단계 저승사자(체력60) 소환, 매 턴 업보(×1)', () => {
     const { run, b, f } = boss('yeomra');
-    expect(hurt(foeDoes(run, b, f, 'judge'))).toBe(20);
+    expect(hurt(foeDoes(run, b, f, 'judge'))).toBe(16);
     hand(b, ['slash', 'slash', 'slash']);
     play(run, 800, f.uid);
     play(run, 801, f.uid);
@@ -338,8 +345,8 @@ describe('3막 보스', () => {
     // 업보 매 턴 (+ 심판)
     f.intent = 'judge';
     expect(foeHits(run, b, f)).toEqual([
-      { n: 6, times: 1 },
-      { n: 20, times: 1 },
+      { n: 3, times: 1 },
+      { n: 16, times: 1 },
     ]);
   });
 });
@@ -375,7 +382,7 @@ describe('숨은 최종보스 어둑시니', () => {
 
   it('정예로 나온 보스는 체력 60%, 막 보스가 아니다', () => {
     const { f } = boss('yeomra', 'elite');
-    expect(f.maxHp).toBe(210); // 350 × 0.6
+    expect(f.maxHp).toBe(198); // 330 × 0.6
     expect(f.elite).toBe(true);
     expect(f.boss).toBeFalsy();
   });
