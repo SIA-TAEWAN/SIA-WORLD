@@ -25,7 +25,9 @@ type Img = Phaser.GameObjects.Image;
 const CHAR_H = 92;
 const CHAR_MAX_W = 96;
 /** 그림 깊이 */
-const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
+const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, fog: 7, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
+/** 황천길 안개: 흘러가는 두 겹(속도 · 방향 · 짙기)과 화면 가장자리의 짙은 안개 */
+const FOG = { layers: [{ alpha: 0.75, speed: [22, 3], par: 0.85, sx: 3.2, sy: 1.5 }, { alpha: 0.55, speed: [-14, 2], par: 0.7, sx: 2.2, sy: 1.1 }], edge: 0.9, breathe: 0.15 };
 /** 지대 색 (state.ts 의 ZONE 순서): 독안개 · 예고 · 독 · 불길 · 물기둥 · 양털 구름 · 말발굽 */
 const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft, COLOR.primary];
 /** 두 색을 섞는다 (t: b 쪽으로 얼마나) */
@@ -72,6 +74,9 @@ export class GameScene extends Phaser.Scene {
   private showNumbers!: () => boolean;
   private onFrame!: () => void;
   private ground!: Phaser.GameObjects.TileSprite;
+  /** 황천길 안개 (다른 맵에서는 비어 있다) */
+  private fog: Phaser.GameObjects.TileSprite[] = [];
+  private fogEdge: Phaser.GameObjects.Image | null = null;
   private player!: Img;
   private outline: Img[] = [];
   private ring!: Img;
@@ -151,6 +156,68 @@ export class GameScene extends Phaser.Scene {
 
   private fitGround() {
     if (this.ground) this.ground.setSize(this.viewW() + 8, this.viewH() + 8);
+    for (const f of this.fog) f.setSize((this.viewW() + 8) / f.scaleX, (this.viewH() + 8) / f.scaleY);
+    this.fogEdge?.setDisplaySize(this.viewW() + 8, this.viewH() + 8);
+  }
+
+  /** 안개 무늬 (256 이어 붙는 무늬: 부드러운 덩어리를 가장자리 너머까지 겹쳐 그린다) · 가장자리 안개 (가운데가 맑은 둥근 무늬) */
+  private makeFog() {
+    const fogRgb = (n: number) => `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+    if (!this.textures.exists('fog-tile')) {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 256;
+      const g = cv.getContext('2d')!;
+      let seed = 7;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      // 큰 덩어리 몇 개 + 작은 덩어리: 짙고 옅은 곳이 뚜렷해야 흘러갈 때 안개로 보인다
+      // 덩어리 사이를 비워 두어야(맑은 틈) 흘러갈 때 안개 줄기로 보인다 — 판에서는 가로로 길게 늘인다
+      for (let i = 0; i < 9; i++) {
+        const x = rnd() * 256;
+        const y = (i / 9) * 256 + rnd() * 20;
+        const big = i % 3 !== 2;
+        const r = big ? 45 + rnd() * 30 : 22 + rnd() * 18;
+        const a = big ? 0.6 + rnd() * 0.3 : 0.45 + rnd() * 0.25;
+        for (const ox of [-256, 0, 256]) {
+          for (const oy of [-256, 0, 256]) {
+            const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+            gr.addColorStop(0, `rgba(${fogRgb(COLOR.white)},${a})`);
+            gr.addColorStop(1, `rgba(${fogRgb(COLOR.white)},0)`);
+            g.fillStyle = gr;
+            g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+          }
+        }
+      }
+      this.textures.addCanvas('fog-tile', cv);
+    }
+    if (!this.textures.exists('fog-edge')) {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 256;
+      const g = cv.getContext('2d')!;
+      // 가운데(내 둘레)는 맑고, 멀수록 짙어져 화면 끝은 거의 하얗게 묻힌다
+      const gr = g.createRadialGradient(128, 128, 50, 128, 128, 182);
+      gr.addColorStop(0, `rgba(${fogRgb(COLOR.white)},0)`);
+      gr.addColorStop(0.45, `rgba(${fogRgb(COLOR.white)},0.18)`);
+      gr.addColorStop(0.8, `rgba(${fogRgb(COLOR.white)},0.7)`);
+      gr.addColorStop(1, `rgba(${fogRgb(COLOR.white)},0.97)`);
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 256, 256);
+      this.textures.addCanvas('fog-edge', cv);
+    }
+    this.fog = FOG.layers.map((l) => this.add.tileSprite(0, 0, 16, 16, 'fog-tile').setScale(l.sx, l.sy).setAlpha(l.alpha).setDepth(D.fog));
+    this.fogEdge = this.add.image(0, 0, 'fog-edge').setAlpha(FOG.edge).setDepth(D.fog);
+    this.fitGround();
+  }
+
+  /** 안개를 화면에 맞추고 흘려보낸다 (바닥보다 느리게 따라와 떠 있는 것처럼) */
+  private moveFog(x: number, y: number, sec: number) {
+    this.fog.forEach((f, i) => {
+      const l = FOG.layers[i];
+      f.setPosition(x, y);
+      f.tilePositionX = (x * l.par + sec * l.speed[0]) / l.sx;
+      f.tilePositionY = (y * l.par + sec * l.speed[1]) / l.sy;
+      f.setAlpha(l.alpha * (1 + FOG.breathe * Math.sin(sec * 0.6 + i * 2)));
+    });
+    this.fogEdge?.setPosition(x, y);
   }
 
   private w(key: string) {
@@ -174,6 +241,7 @@ export class GameScene extends Phaser.Scene {
     this.ground = this.add.tileSprite(0, 0, 16, 16, tileKey(s.map.id)).setDepth(D.ground);
     if (s.hell) this.ground.setTint(HELL_TINT.ground);
     this.fitGround();
+    if (s.map.id === 'underworld') this.makeFog();
 
     this.zones = new SpritePool(this, 'disc', D.zone);
     this.zoneCores = new SpritePool(this, 'disc', D.zone);
@@ -210,6 +278,7 @@ export class GameScene extends Phaser.Scene {
     this.ground.setPosition(p.x, p.y);
     this.ground.tilePositionX = p.x;
     this.ground.tilePositionY = p.y;
+    if (this.fog.length) this.moveFog(p.x, p.y, time / 1000);
     const halfW = this.viewW() / 2 + 70;
     const halfH = this.viewH() / 2 + 70;
     const sec = time / 1000;
