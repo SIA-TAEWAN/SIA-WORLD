@@ -68,7 +68,7 @@ button{font:inherit;color:inherit}
 .track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(90deg,var(--primary),var(--primary-deep));width:0}
 .track .mk{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:18px;display:flex;white-space:nowrap;line-height:1}
 .boardwrap{padding:7px;border-radius:20px;background:var(--panel);border:3px solid var(--ink);box-shadow:0 6px 0 var(--ink)}
-#scene{display:block;width:100%;border-radius:12px}
+#scene{display:block;width:100%;border-radius:12px;cursor:pointer;touch-action:manipulation}
 .scenewrap{margin-top:12px;padding:6px;border-radius:20px;background:var(--panel);border:3px solid var(--ink);box-shadow:0 6px 0 var(--ink)}
 #board{display:block;width:100%;border-radius:12px;background:var(--board);touch-action:none;cursor:pointer}
 .tip{text-align:center;font-size:13px;color:var(--ink-soft);margin-top:10px}

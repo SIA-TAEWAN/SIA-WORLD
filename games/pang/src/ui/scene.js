@@ -159,6 +159,18 @@ function create(canvas, PS) {
       case 'heart': hop(a, 3 * s); for (const b of st.actors) { if (b === a) continue; const [bx, by] = actorPos(b); P({ vx: (bx - X) / 45, vy: (by - Y) / 45 - 2.2 * s, g: 0.1 * s, d: 0.022, z: 5 * s, c: '255,140,185', kind: 'heart', target: b }); } for (let i = 0; i < n * 0.5; i++) P({ vx: (R() - 0.5) * 2 * s, vy: -(1 + R() * 2) * s, d: 0.015, z: (3 + R() * 3) * s, c: '255,160,200', kind: 'heart' }); break;
     }
   }
+  /** 정령 마당을 누르면 (W·H 안의 좌표) 가장 가까운 정령이 고유 스킬을 쓴다. 너무 자주는 안 되게 정령마다 0.5초 쉼. 쓴 정령 kind 또는 null */
+  function tap(px, py) {
+    const s = size(), reach = 44 * s;
+    let best = null, bd = Infinity;
+    for (const a of st.actors) { const [X, Y] = actorPos(a), d = Math.hypot(px - X, py - Y); if (d < bd) { bd = d; best = a; } }
+    if (!best || bd > reach) return null;
+    const now = st.t;
+    if (best.tapAt && now - best.tapAt < 0.5) return null;
+    best.tapAt = now;
+    ability(best.k, 6);
+    return best.k;
+  }
   function cheer() { for (const a of st.actors) hop(a, (3 + R() * 2) * size()); }
 
   function update(dt) {
@@ -298,7 +310,7 @@ function create(canvas, PS) {
   }
   function star4(X, Y, z) { x.beginPath(); x.moveTo(X, Y - z); x.lineTo(X + z * 0.25, Y - z * 0.25); x.lineTo(X + z, Y); x.lineTo(X + z * 0.25, Y + z * 0.25); x.lineTo(X, Y + z); x.lineTo(X - z * 0.25, Y + z * 0.25); x.lineTo(X - z, Y); x.lineTo(X - z * 0.25, Y - z * 0.25); x.closePath(); x.fill(); }
 
-  return { st, setup, resize, update, draw, ability, cheer };
+  return { st, setup, resize, update, draw, ability, cheer, tap };
 }
 export { create };
 export default { create };
