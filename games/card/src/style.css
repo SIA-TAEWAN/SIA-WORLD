@@ -119,6 +119,34 @@ h2.lose { color: var(--lose); }
 .gc-art { font-size: 22px; line-height: 1; background: var(--panel); border: 2px solid var(--outline); border-radius: 50%; width: 40px; height: 40px; display: grid; place-items: center; margin: 2px 0; }
 .gc-kind { font-size: 10px; color: var(--white); text-shadow: 0 1px 0 var(--outline); }
 .gc-text { flex: 1; width: 100%; margin-top: 2px; background: var(--panel); border: 2px solid var(--outline); border-radius: 8px; font-size: 12px; line-height: 1.25; padding: 3px; display: grid; place-items: center; word-break: keep-all; }
+.gc-art .art-box img { width: 34px; height: 34px; }
+
+/* 그림 한 장 (못 읽으면 글자) */
+.art-box { display: grid; place-items: center; width: 100%; height: 100%; }
+.art-box img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; -webkit-user-drag: none; }
+.art-box .fb { display: none; font-style: normal; }
+.art-box.noimg img { display: none; }
+.art-box.noimg .fb { display: grid; place-items: center; }
+
+/* 카드 틀 그림 (512×712 의 자리를 % 로 — art.ts 의 FRAME) */
+.gcard.framed { width: 104px; height: 145px; padding: 0; background: none; border: 0; border-radius: 9px; box-shadow: 0 4px 0 var(--outline), 0 0 0 3px var(--ring); display: block; }
+.gcard.framed > * { position: absolute; }
+.gcard.framed .gc-pic { left: 11.1%; top: 8%; width: 77.5%; height: 44.8%; background: color-mix(in srgb, var(--kind) 22%, var(--panel)); border-radius: 6px; padding: 6%; }
+.gcard.framed .gc-pic .fb { font-size: 26px; }
+.gcard.framed .gc-frame { inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.gcard.framed .gc-tint { inset: 0; background: var(--kind); mix-blend-mode: multiply; pointer-events: none;
+  -webkit-mask-image: var(--frame); mask-image: var(--frame); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+.gcard.framed .gc-desc { left: 9%; top: 70.4%; width: 82%; height: 23%; background: var(--white); border-radius: 7px; }
+.gcard.framed .gc-cost { left: 2.6%; top: 1.6%; width: 22.4%; height: 16.2%; background: none; border: 0; border-radius: 50%; display: grid; place-items: center; }
+.gcard.framed .gc-cost img { position: absolute; inset: 6%; width: 88%; height: 88%; }
+.gcard.framed .gc-cost b { position: relative; font-weight: normal; font-size: 16px; color: var(--white); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; }
+.gcard.framed .gc-cost.down b { color: var(--win); }
+.gcard.framed .gc-name { left: 14%; width: 72%; top: 54.5%; height: 10%; display: grid; place-items: center; font-size: 14px; }
+.gcard.framed .gc-name.long { font-size: 12px; }
+.gcard.framed .gc-kind { left: 0; width: 100%; top: 64.9%; font-size: 8.5px; line-height: 1; text-align: center; }
+.gcard.framed .gc-text { left: 9%; top: 70.4%; width: 82%; height: 23%; margin: 0; background: none; border: 0; padding: 1px 3px; font-size: 10.5px; line-height: 1.18; }
+.gcard.framed.legend { box-shadow: 0 4px 0 var(--outline), 0 0 0 3px var(--ring), 0 0 12px 2px var(--primary); }
+
 .card-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; padding: 10px 4px; max-height: 62vh; overflow-y: auto; }
 .card-grid.choose { max-height: none; }
 .pick { cursor: pointer; border-radius: var(--radius-item); padding: 6px; border: 3px solid transparent; }
@@ -148,13 +176,25 @@ h2.lose { color: var(--lose); }
 .pot { width: 34px; height: 34px; border-radius: 50%; background: var(--white); border: 2px solid var(--outline); cursor: pointer; padding: 0; font-size: 16px; }
 .pot.empty { background: var(--track); border-style: dashed; border-color: var(--empty-line); cursor: default; }
 .relic-row { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
-.relic-row .relic-dot { width: 30px; height: 30px; font-size: 13px; cursor: pointer; padding: 0; font-family: inherit; }
+.relic-btn { background: none; border: 0; padding: 0; cursor: pointer; }
+.relic-row .relic-dot { width: 32px; height: 32px; font-size: 13px; }
+.has-art { background: var(--white); padding: 3px; overflow: hidden; }
+.has-art .fb { font-size: 14px; }
+.coin-dot.has-art .fb { color: var(--white); }
+.pot .pot-ic { display: grid; width: 100%; height: 100%; padding: 4px; }
+.pot { display: grid; place-items: center; }
 
 /* ---------- 지도 ---------- */
 .screen.map-screen { overflow: hidden; }
 .map-wrap { flex: 1; min-height: 0; overflow-y: auto; border: var(--line) solid var(--outline); border-radius: var(--radius-panel); box-shadow: 0 var(--depth-panel) 0 var(--outline); background: var(--panel); }
 .map { position: relative; width: 100%; }
 .map.t-bamboo { background: repeating-linear-gradient(90deg, transparent 0 40px, rgba(76, 184, 106, 0.12) 40px 52px), var(--panel); }
+/* 지역 바닥 그림 (tile-*) 을 옅게 깐다 — 못 읽으면 위의 색 무늬 */
+.map[style*='--tile'] { background: linear-gradient(color-mix(in srgb, var(--panel) 45%, transparent), color-mix(in srgb, var(--panel) 45%, transparent)), var(--tile) 0 0 / 160px 160px repeat, var(--panel); }
+.node-ic { display: block; width: 40px; height: 40px; background-size: 600% 100%; background-repeat: no-repeat; }
+.node-ic.small { display: inline-block; width: 20px; height: 20px; vertical-align: -5px; }
+.node.boss-node .boss-face { width: 64px; height: 64px; }
+.node.boss-node .boss-face .fb { font-size: 30px; }
 .map-lines { position: absolute; left: 0; top: 0; width: 100%; }
 .map-lines line { stroke: var(--empty-line); stroke-width: 3; stroke-dasharray: 6 6; vector-effect: non-scaling-stroke; }
 .map-lines line.walked { stroke: var(--outline); stroke-dasharray: none; }
@@ -169,6 +209,7 @@ h2.lose { color: var(--lose); }
 .boss-node { width: auto; height: auto; border-radius: var(--radius-item); padding: 4px 12px; display: flex; flex-direction: column; align-items: center; background: var(--pink); color: var(--white); }
 .boss-node b { font-weight: normal; font-size: 15px; -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; }
 .boss-face { font-size: 30px; }
+.map-legend span { white-space: nowrap; margin: 0 4px; }
 .map-legend { margin: 0; text-align: center; color: var(--white); font-size: 13px; text-shadow: 0 2px 0 var(--outline); flex: none; }
 
 /* ---------- 창 ---------- */
@@ -189,4 +230,21 @@ h2.lose { color: var(--lose); }
 .choice { justify-content: flex-start; text-align: left; white-space: normal; }
 .story { display: flex; gap: 10px; align-items: center; }
 .story p { margin: 0; line-height: 1.5; word-break: keep-all; }
+/* 장면 그림 (shop · forge · story-*) 위에 말 */
+.scene-card { position: relative; padding: 0; overflow: hidden; }
+.scene-card .scene-art { height: auto; aspect-ratio: 9 / 4; background: var(--sky-mid); }
+.scene-card .scene-art img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; }
+.scene-card .scene-art.noimg { aspect-ratio: auto; min-height: 60px; }
+.scene-card .scene-art .fb { font-size: 48px; }
+.scene-card .scene-hero { position: absolute; right: 8px; top: 8px; height: 84px; filter: drop-shadow(0 3px 0 var(--outline)); }
+.scene-card .scene-say { margin: 0; padding: 10px 12px; border-top: var(--line) solid var(--outline); line-height: 1.5; word-break: keep-all; }
+.treasure .chest-art { width: 110px; height: 110px; display: grid; margin: 0 auto; }
+.treasure .chest-art .fb { font-size: 56px; }
+.result-scene { height: auto; aspect-ratio: 9 / 5; margin-bottom: 8px; border: var(--line) solid var(--outline); border-radius: var(--radius-item); overflow: hidden; }
+.result-scene img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; }
+.hero-info .hero-cut { width: 84px; height: 84px; flex: none; background: var(--sky-mid); border: var(--line) solid var(--outline); border-radius: var(--radius-item); overflow: hidden; }
+.hero-info .hero-cut .fb img { width: 84px; height: 84px; object-fit: contain; border: 0; background: none; }
+.passive em { font-style: normal; background: var(--outline); color: var(--white); border-radius: var(--radius-pill); padding: 0 6px; font-size: 12px; margin-right: 4px; }
+.hero-cards .hc { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.hero-cards .hc small { font-size: 12px; color: var(--ink-soft); }
 .story-art img { width: 80px; height: 80px; object-fit: contain; background: var(--sky-mid); border: var(--line) solid var(--outline); border-radius: var(--radius-item); }

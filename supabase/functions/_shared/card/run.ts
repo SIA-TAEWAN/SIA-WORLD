@@ -5,7 +5,7 @@
  * 칸마다 쓰는 난수는 hashSeed(판 씨앗, 종류, 막, 줄, 칸) 로 따로 만든다 — 그래서 한 칸에서 무엇을 골랐는지가
  * 다른 칸의 지도·보상·상점 내용을 바꾸지 않는다 (오늘의 도전: 모두 같은 지도·보상).
  */
-import { MAX_POTIONS, endTurn, heal, playCard, startBattle, usePotion } from './battle.ts';
+import { MAX_POTIONS, endTurn, heal, pickHand, playCard, startBattle, usePotion } from './battle.ts';
 import { CARD_ODDS, CARD_ODDS_MAGPIE, GOLD, PRICES } from './data/acts.ts';
 import { ACTS, CARDS, EVENTS, POTIONS, RELICS, RELIC_READY, canUpgrade, cardDef, eventDef, heroDef, regionDef } from './data.ts';
 import { genMap, reachable } from './map.ts';
@@ -204,6 +204,7 @@ function battleStep(run: RunState, i: Input, ev: SimEvent[]): boolean {
   if (i.t === 'play') ok = playCard(run, i.uid, i.target, ev);
   else if (i.t === 'potion') ok = usePotion(run, i.slot, i.target, ev);
   else if (i.t === 'end') ok = endTurn(run, i.keep, ev);
+  else if (i.t === 'pick') ok = pickHand(run, i.uid, ev);
   if (ok && b.over) afterBattle(run, ev);
   return ok;
 }
@@ -219,6 +220,8 @@ function afterBattle(run: RunState, ev: SimEvent[]) {
     return;
   }
   if (has(run, 'gourd')) heal(run, 6, ev);
+  // 돼지(꿀꿀이): 전투 승리 시 체력3 회복
+  if (run.hero === 'pig') heal(run, 3, ev);
   const r = nodeRng(run, 'reward');
   const items: RewardItem[] = [];
   const goldOf = (range: readonly number[]) => Math.floor(r.int(range[0], range[1]) * (has(run, 'luckyPouch') ? 1.3 : 1));

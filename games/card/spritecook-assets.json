@@ -1,25 +1,25 @@
 {
-  "note": "시아카드배틀 전용 SpriteCook 그림 목록 (새 그림 5장, 2026-11-26). 나머지 그림(영웅·요괴·보스·아이콘·효과·배경)은 시아열두길·시아핑거·시아디펜스에서 복사한 것이고 asset id 는 games/twelve · games/finger · games/defense 의 spritecook-assets.json 에 있다. 크기·칸 규격은 art-new/NOTES.md.",
+  "note": "시아카드배틀 전용 SpriteCook 그림 목록 (새 그림 5장, 2026-11-26). 나머지 그림(영웅·요괴·보스·아이콘·효과·배경)은 시아열두길·시아핑거·시아디펜스에서 복사한 것이고 asset id 는 games/twelve · games/finger · games/defense 의 spritecook-assets.json 에 있다. 크기·칸 규격과 복사한 그림의 원본 asset id 는 ASSETS.md.",
   "assets": [
     {
       "asset_id": "b7fb98dd-6d74-46e6-b358-352c1afd7f49",
       "sha12": "c56ef13998c9",
-      "label": "card-frame → art-new/card-frame.png (512x712) · 카드 틀 (중립 밝은 회색, 그림 칸은 투명하게 뚫음 · gemini-nano-banana-2.1 · 자홍 배경을 PIL 로 뺌 · 화풍 참고 열두길 icons1 시트 edf52e75-9ecb-4132-80d2-354dadd9d7ec)"
+      "label": "card-frame → public/art/card-frame.png (512x712) · 카드 틀 (중립 밝은 회색, 그림 칸은 투명하게 뚫음 · gemini-nano-banana-2.1 · 자홍 배경을 PIL 로 뺌 · 화풍 참고 열두길 icons1 시트 edf52e75-9ecb-4132-80d2-354dadd9d7ec)"
     },
     {
       "asset_id": "5a1317c1-02b7-40f7-b993-a6df9d3fb81a",
       "sha12": "7c13376881b2",
-      "label": "intent → art-new/intent.png (640x128) · 의도 아이콘 시트 (가로 5칸 128x128: 공격 · 방어 · 강화 · 방해 · 모름 · gemini-nano-banana-2.1 · 화풍 참고 열두길 icons1 edf52e75-9ecb-4132-80d2-354dadd9d7ec · icons2 52f2b05f-c5a1-4c65-b265-6c24c969a127)"
+      "label": "intent → public/art/intent.png (640x128) · 의도 아이콘 시트 (가로 5칸 128x128: 공격 · 방어 · 강화 · 방해 · 모름 · gemini-nano-banana-2.1 · 화풍 참고 열두길 icons1 edf52e75-9ecb-4132-80d2-354dadd9d7ec · icons2 52f2b05f-c5a1-4c65-b265-6c24c969a127)"
     },
     {
       "asset_id": "d7bd6070-3134-402a-9ebc-367951d1ff11",
       "sha12": "8c3a9ecce783",
-      "label": "energy → art-new/energy.png (128x128) · 기력 구슬 (금빛, 숫자는 코드로 · gemini-nano-banana-2.1 · 화풍 참고 열두길 icons1 edf52e75-9ecb-4132-80d2-354dadd9d7ec)"
+      "label": "energy → public/art/energy.png (128x128) · 기력 구슬 (금빛, 숫자는 코드로 · gemini-nano-banana-2.1 · 화풍 참고 열두길 icons1 edf52e75-9ecb-4132-80d2-354dadd9d7ec)"
     },
     {
       "asset_id": "a9388425-7c2f-4757-8bc8-baa01b38a2ad",
       "sha12": "6b394be1c780",
-      "label": "map-nodes → art-new/map-nodes.png (768x128) · 지도 칸 아이콘 시트 (가로 6칸 128x128: 전투 · 정예 · 상점 · 쉼터 · 보물 · 이야기 · gemini-nano-banana-2.1 · 화풍 참고 열두길 icons1 edf52e75-9ecb-4132-80d2-354dadd9d7ec · 상자 d8716a84-295b-4696-b6d8-9e7dc8a64401)"
+      "label": "map-nodes → public/art/map-nodes.png (768x128) · 지도 칸 아이콘 시트 (가로 6칸 128x128: 전투 · 정예 · 상점 · 쉼터 · 보물 · 이야기 · gemini-nano-banana-2.1 · 화풍 참고 열두길 icons1 edf52e75-9ecb-4132-80d2-354dadd9d7ec · 상자 d8716a84-295b-4696-b6d8-9e7dc8a64401)"
     },
     {
       "asset_id": "c4be16a0-5b20-417c-beb6-4ca19e5fefc7",

@@ -538,6 +538,122 @@
     "art": "ic-hp"
   },
   {
+    "id": "ratHole",
+    "name": "쥐구멍",
+    "kind": "skill",
+    "rarity": "hero",
+    "cost": 0,
+    "target": "none",
+    "ops": [
+      {
+        "op": "draw",
+        "n": 2
+      },
+      {
+        "op": "pick",
+        "kind": "discard",
+        "n": 1
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "draw",
+          "n": 3
+        },
+        {
+          "op": "pick",
+          "kind": "discard",
+          "n": 1
+        }
+      ]
+    },
+    "art": "ic-u-rat",
+    "hero": "rat",
+    "text": "2장 뽑고 1장 버림",
+    "textUp": "3장 뽑고 1장 버림"
+  },
+  {
+    "id": "ratFire",
+    "name": "쥐불놀이",
+    "kind": "atk",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 0,
+        "to": "all",
+        "per": "drawn",
+        "k": 2
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 0,
+          "to": "all",
+          "per": "drawn",
+          "k": 3
+        }
+      ]
+    },
+    "art": "ic-u-rat",
+    "hero": "rat",
+    "text": "이번 턴 뽑은 카드 1장당 모든 적 피해 2",
+    "textUp": "이번 턴 뽑은 카드 1장당 모든 적 피해 3"
+  },
+  {
+    "id": "headbutt",
+    "name": "들이받기",
+    "kind": "atk",
+    "rarity": "hero",
+    "cost": 1,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 0,
+        "per": "block",
+        "k": 1
+      }
+    ],
+    "up": {
+      "cost": 0
+    },
+    "art": "ic-u-ox",
+    "hero": "ox",
+    "text": "내 방어만큼 피해"
+  },
+  {
+    "id": "steadfast",
+    "name": "우직함",
+    "kind": "power",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "power",
+        "id": "blockUp",
+        "n": 2
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "power",
+          "id": "blockUp",
+          "n": 3
+        }
+      ]
+    },
+    "art": "ic-u-ox",
+    "hero": "ox"
+  },
+  {
     "id": "tigerClaw",
     "name": "호랑이 발톱",
     "kind": "atk",
@@ -582,6 +698,592 @@
     },
     "art": "ic-u-tiger",
     "hero": "tiger"
+  },
+  {
+    "id": "hop",
+    "name": "깡충",
+    "kind": "def",
+    "rarity": "hero",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "block",
+        "n": 8
+      },
+      {
+        "op": "nextEnergy",
+        "n": 1
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "block",
+          "n": 11
+        },
+        {
+          "op": "nextEnergy",
+          "n": 1
+        }
+      ]
+    },
+    "art": "ic-u-rabbit",
+    "hero": "rabbit"
+  },
+  {
+    "id": "mortar",
+    "name": "절구질",
+    "kind": "atk",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 4,
+        "per": "energy",
+        "k": 4
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 6,
+          "per": "energy",
+          "k": 6
+        }
+      ]
+    },
+    "art": "ic-u-rabbit",
+    "hero": "rabbit",
+    "text": "피해4, 남은 기력1당 +4",
+    "textUp": "피해6, 남은 기력1당 +6"
+  },
+  {
+    "id": "dragonBreath",
+    "name": "용의 숨결",
+    "kind": "atk",
+    "rarity": "hero",
+    "cost": 2,
+    "target": "none",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 10,
+        "to": "all"
+      },
+      {
+        "op": "status",
+        "id": "fire",
+        "n": 2,
+        "to": "all"
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 14,
+          "to": "all"
+        },
+        {
+          "op": "status",
+          "id": "fire",
+          "n": 3,
+          "to": "all"
+        }
+      ]
+    },
+    "art": "ic-u-dragon",
+    "hero": "dragon"
+  },
+  {
+    "id": "ascend",
+    "name": "승천",
+    "kind": "atk",
+    "rarity": "hero2",
+    "cost": 3,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 25,
+        "ifSt": "fire",
+        "ifN": 10
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 34,
+          "ifSt": "fire",
+          "ifN": 14
+        }
+      ]
+    },
+    "art": "ic-u-dragon",
+    "hero": "dragon",
+    "text": "피해25, 화상인 적 +10",
+    "textUp": "피해34, 화상인 적 +14"
+  },
+  {
+    "id": "coil",
+    "name": "똬리",
+    "kind": "skill",
+    "rarity": "hero",
+    "cost": 1,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "mulSt",
+        "id": "poison",
+        "k": 2
+      }
+    ],
+    "up": {
+      "cost": 0
+    },
+    "art": "ic-u-snake",
+    "hero": "snake"
+  },
+  {
+    "id": "shed",
+    "name": "허물벗기",
+    "kind": "def",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "cleanse"
+      },
+      {
+        "op": "block",
+        "n": 8
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "cleanse"
+        },
+        {
+          "op": "block",
+          "n": 11
+        }
+      ]
+    },
+    "art": "ic-u-snake",
+    "hero": "snake"
+  },
+  {
+    "id": "charge",
+    "name": "돌진",
+    "kind": "atk",
+    "rarity": "hero",
+    "cost": 2,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 12,
+        "per": "played",
+        "k": 2
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 16,
+          "per": "played",
+          "k": 3
+        }
+      ]
+    },
+    "art": "ic-u-horse",
+    "hero": "horse",
+    "text": "피해12, 이번 턴 쓴 카드 1장당 +2",
+    "textUp": "피해16, 이번 턴 쓴 카드 1장당 +3"
+  },
+  {
+    "id": "galloper",
+    "name": "천리마",
+    "kind": "power",
+    "rarity": "hero2",
+    "cost": 2,
+    "target": "none",
+    "ops": [
+      {
+        "op": "power",
+        "id": "echoAtk",
+        "n": 1
+      }
+    ],
+    "up": {
+      "cost": 1
+    },
+    "art": "ic-u-horse",
+    "hero": "horse"
+  },
+  {
+    "id": "woolShield",
+    "name": "양털 방패",
+    "kind": "def",
+    "rarity": "hero",
+    "cost": 2,
+    "target": "none",
+    "ops": [
+      {
+        "op": "block",
+        "n": 12
+      },
+      {
+        "op": "thorns",
+        "n": 3
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "block",
+          "n": 16
+        },
+        {
+          "op": "thorns",
+          "n": 4
+        }
+      ]
+    },
+    "art": "ic-u-sheep",
+    "hero": "sheep"
+  },
+  {
+    "id": "shear",
+    "name": "털깎기",
+    "kind": "atk",
+    "rarity": "hero2",
+    "cost": 0,
+    "target": "none",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 0,
+        "to": "all",
+        "per": "block",
+        "k": 1
+      },
+      {
+        "op": "clearBlock"
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 0,
+          "to": "all",
+          "per": "block",
+          "k": 1.5
+        },
+        {
+          "op": "clearBlock"
+        }
+      ]
+    },
+    "art": "ic-u-sheep",
+    "hero": "sheep",
+    "text": "내 방어 전부 없애고 그만큼 모든 적 피해",
+    "textUp": "내 방어 전부 없애고 그 1.5배만큼 모든 적 피해"
+  },
+  {
+    "id": "mimic",
+    "name": "흉내",
+    "kind": "skill",
+    "rarity": "hero",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "mimic"
+      }
+    ],
+    "up": {
+      "cost": 0
+    },
+    "art": "ic-u-monkey",
+    "hero": "monkey"
+  },
+  {
+    "id": "cloneArt",
+    "name": "분신술",
+    "kind": "skill",
+    "rarity": "hero2",
+    "cost": 2,
+    "target": "none",
+    "ops": [
+      {
+        "op": "pick",
+        "kind": "clone",
+        "n": 2
+      }
+    ],
+    "exhaust": true,
+    "up": {
+      "cost": 1
+    },
+    "art": "ic-u-monkey",
+    "hero": "monkey"
+  },
+  {
+    "id": "peck",
+    "name": "쪼기",
+    "kind": "atk",
+    "rarity": "hero",
+    "cost": 1,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 3,
+        "times": 3
+      },
+      {
+        "op": "status",
+        "id": "weak",
+        "n": 1
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 4,
+          "times": 3
+        },
+        {
+          "op": "status",
+          "id": "weak",
+          "n": 1
+        }
+      ]
+    },
+    "art": "ic-u-rooster",
+    "hero": "rooster"
+  },
+  {
+    "id": "crow",
+    "name": "홰치기",
+    "kind": "power",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "power",
+        "id": "firstDraw",
+        "n": 1
+      }
+    ],
+    "up": {
+      "cost": 0
+    },
+    "art": "ic-u-rooster",
+    "hero": "rooster"
+  },
+  {
+    "id": "watchdog",
+    "name": "지킴이",
+    "kind": "def",
+    "rarity": "hero",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "block",
+        "n": 10
+      },
+      {
+        "op": "thorns",
+        "n": 6
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "block",
+          "n": 13
+        },
+        {
+          "op": "thorns",
+          "n": 8
+        }
+      ]
+    },
+    "art": "ic-u-dog",
+    "hero": "dog"
+  },
+  {
+    "id": "track",
+    "name": "냄새 추적",
+    "kind": "skill",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "peek"
+      },
+      {
+        "op": "status",
+        "id": "wet",
+        "n": 2
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "peek"
+        },
+        {
+          "op": "status",
+          "id": "wet",
+          "n": 3
+        }
+      ]
+    },
+    "art": "ic-u-dog",
+    "hero": "dog"
+  },
+  {
+    "id": "bellyFlop",
+    "name": "배치기",
+    "kind": "atk",
+    "rarity": "hero",
+    "cost": 2,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 0,
+        "per": "maxHp",
+        "k": 0.1
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 0,
+          "per": "maxHp",
+          "k": 0.15
+        }
+      ]
+    },
+    "art": "ic-u-pig",
+    "hero": "pig",
+    "text": "최대 체력 10% 피해",
+    "textUp": "최대 체력 15% 피해"
+  },
+  {
+    "id": "gluttony",
+    "name": "먹성",
+    "kind": "skill",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "heal",
+        "n": 8
+      },
+      {
+        "op": "maxHp",
+        "n": 2
+      }
+    ],
+    "exhaust": true,
+    "up": {
+      "ops": [
+        {
+          "op": "heal",
+          "n": 11
+        },
+        {
+          "op": "maxHp",
+          "n": 3
+        }
+      ]
+    },
+    "art": "ic-u-pig",
+    "hero": "pig"
+  },
+  {
+    "id": "scratch",
+    "name": "할퀴기",
+    "kind": "atk",
+    "rarity": "hero",
+    "cost": 1,
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 5
+      },
+      {
+        "op": "discount",
+        "kind": "atk",
+        "n": 1
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "dmg",
+          "n": 7
+        },
+        {
+          "op": "discount",
+          "kind": "atk",
+          "n": 1
+        }
+      ]
+    },
+    "art": "ic-u-cat",
+    "hero": "cat"
+  },
+  {
+    "id": "sneak",
+    "name": "살금살금",
+    "kind": "def",
+    "rarity": "hero2",
+    "cost": 1,
+    "target": "none",
+    "ops": [
+      {
+        "op": "block",
+        "n": 6
+      },
+      {
+        "op": "nextFreeAtk"
+      }
+    ],
+    "up": {
+      "ops": [
+        {
+          "op": "block",
+          "n": 8
+        },
+        {
+          "op": "nextFreeAtk"
+        }
+      ]
+    },
+    "art": "ic-u-cat",
+    "hero": "cat"
   },
   {
     "id": "prank",

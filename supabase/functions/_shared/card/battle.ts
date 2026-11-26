@@ -61,11 +61,12 @@ export function startBattle(run: RunState, o: StartOpts, ev: SimEvent[]): Battle
   run.battle = b;
   rngOf(b, 'draw').shuffle(b.draw);
   for (const id of o.foes) addFoe(b, id, o.kind === 'elite');
-  // 첫 턴 추가 기력: 도깨비 방망이 · 탁발승
-  b.e1 = (has(run, 'goblinClub') ? 1 : 0) + run.flags.nextEnergy;
+  // 첫 턴 추가 기력: 도깨비 방망이 · 탁발승 · 용(여의룡) 패시브
+  b.e1 = (has(run, 'goblinClub') ? 1 : 0) + run.flags.nextEnergy + (run.hero === 'dragon' ? 1 : 0);
   run.flags.nextEnergy = 0;
   // 전투 시작 효과
   if (has(run, 'woodShield')) gainBlock(b, 8, ev);
+  if (run.hero === 'sheep') gainBlock(b, 6, ev);
   if (has(run, 'yeomraLedger')) addCurse(b, 'chain', 1, 'draw', ev);
   if (run.hero === 'tiger') for (const f of aliveFoes(b)) applyFoeStatus(run, b, f, 'weak', 1, ev);
   if (has(run, 'janggu')) for (const f of aliveFoes(b)) applyFoeStatus(run, b, f, 'weak', 1, ev);
@@ -91,11 +92,22 @@ function addFoe(b: Battle, id: string, elite: boolean): Foe {
 
 // ---------- 내 턴 ----------
 
+/** 내 턴 시작에 남는 방어: 보통 0 · 얼음 항아리 3까지 · 소(우직이) 패시브 절반 */
+export function keptBlock(run: RunState, block: number): number {
+  let keep = 0;
+  if (has(run, 'iceJar')) keep = Math.min(block, 3);
+  if (run.hero === 'ox') keep = Math.max(keep, Math.floor(block / 2));
+  return keep;
+}
+
 function startTurn(run: RunState, b: Battle, ev: SimEvent[]) {
   b.turn++;
   ev.push({ e: 'turn', who: 'hero', turn: b.turn });
-  b.block = has(run, 'iceJar') ? Math.min(b.block, 3) : 0;
+  // 첫 턴은 전투 시작에 얻은 방어(나무 방패 · 양 패시브)를 그대로 둔다
+  if (b.turn > 1) b.block = keptBlock(run, b.block);
   b.thorns = 0;
+  b.freeAtk = !!b.nextFreeAtk;
+  b.nextFreeAtk = false;
   if (b.nextBlock > 0) {
     gainBlock(b, b.nextBlock, ev);
     b.nextBlock = 0;
@@ -107,12 +119,16 @@ function startTurn(run: RunState, b: Battle, ev: SimEvent[]) {
     dec(b.st, 'poison');
     if (b.over) return;
   }
-  b.energy = BASE_ENERGY + (has(run, 'dragonPearl') ? 1 : 0) + (has(run, 'yeomraLedger') ? 1 : 0) + (b.turn === 1 ? b.e1 : 0);
+  b.energy = BASE_ENERGY + (has(run, 'dragonPearl') ? 1 : 0) + (has(run, 'yeomraLedger') ? 1 : 0) + (b.turn === 1 ? b.e1 : 0) + (b.nextEnergy ?? 0);
+  b.nextEnergy = 0;
   ev.push({ e: 'energy', n: b.energy });
   if (b.powers.regen) heal(run, b.powers.regen, ev);
   if (has(run, 'rope') && b.turn % 3 === 0) gainBlock(b, 6, ev);
-  b.t = { played: 0, attacks: 0 };
+  b.t = { played: 0, attacks: 0, drawn: 0 };
   let n = BASE_DRAW + (has(run, 'imugiScale') ? 1 : 0) + (b.turn === 1 && has(run, 'strawShoes') ? 2 : 0);
+  // 쥐(찍찍이): 턴 시작 1장 더 · 닭(꼬꼬댁): 전투 첫 턴 2장 더
+  if (run.hero === 'rat') n += 1;
+  if (run.hero === 'rooster' && b.turn === 1) n += 2;
   if ((b.st.mud ?? 0) > 0) {
     n -= 1;
     dec(b.st, 'mud');
@@ -143,6 +159,7 @@ export function drawCards(run: RunState, b: Battle, n: number, ev: SimEvent[]) {
       ev.push({ e: 'discard', uid: c.uid });
     } else {
       b.hand.push(c);
+      b.t.drawn = (b.t.drawn ?? 0) + 1;
       ev.push({ e: 'draw', uid: c.uid });
     }
   }
@@ -151,7 +168,8 @@ export function drawCards(run: RunState, b: Battle, n: number, ev: SimEvent[]) {
 /** 이 카드를 지금 쓰는 데 드는 기력 */
 export function playCost(run: RunState, b: Battle, c: BCard): number {
   if (c.free) return 0;
-  let cost = cardCost(c.id, c.up);
+  if (b.freeAtk && cardDef(c.id).kind === 'atk') return 0;
+  let cost = cardCost(c.id, c.up) - (c.cut ?? 0);
   if (has(run, 'beoseon') && !b.b.beoseon) cost -= 1;
   return Math.max(0, cost);
 }
@@ -165,7 +183,7 @@ export function canPlay(run: RunState, c: BCard): boolean {
 /** 카드 사용. 받아들여지지 않으면 false (상태는 그대로) */
 export function playCard(run: RunState, uid: number, target: number | undefined, ev: SimEvent[]): boolean {
   const b = run.battle;
-  if (!b || b.over) return false;
+  if (!b || b.over || b.pending) return false;
   const idx = b.hand.findIndex((c) => c.uid === uid);
   if (idx < 0) return false;
   const c = b.hand[idx];
@@ -182,18 +200,40 @@ export function playCard(run: RunState, uid: number, target: number | undefined,
   b.hand.splice(idx, 1);
   b.t.played++;
   ev.push({ e: 'play', uid, id: c.id, target: foe?.uid });
+  const firstDraw = b.t.played === 1 ? (b.powers.firstDraw ?? 0) : 0;
   let bonus = 0;
+  const firstAtk = d.kind === 'atk' && b.t.attacks === 0;
   if (d.kind === 'atk') {
+    if (b.freeAtk) b.freeAtk = false;
     b.t.attacks++;
     b.b.attacks++;
     if (has(run, 'whetstone') && !b.b.whet) {
       b.b.whet = true;
       bonus += 4;
     }
+    // 말(따각이): 턴마다 첫 공격카드 +3
+    if (firstAtk && run.hero === 'horse') bonus += 3;
   }
-  runOps(run, b, cardOps(c.id, c.up), foe, ev, { card: d.kind === 'atk', bonus });
+  const ops = cardOps(c.id, c.up);
+  const cx: OpCtx = { card: d.kind === 'atk', bonus, hits: [] };
+  runOps(run, b, ops, foe, ev, cx);
+  // 천리마: 매 턴 첫 공격카드 한 번 더 발동
+  if (firstAtk && b.powers.echoAtk && !b.over) {
+    for (let k = 0; k < b.powers.echoAtk && !b.over; k++) {
+      ev.push({ e: 'echo', id: c.id });
+      runOps(run, b, ops, foe, ev, cx);
+    }
+  }
+  // 뱀(스르르): 턴마다 첫 공격카드에 독1 (맞은 적)
+  if (firstAtk && run.hero === 'snake' && !b.over) {
+    for (const f of b.foes.filter((x) => cx.hits!.includes(x.uid) && !x.dead)) applyFoeStatus(run, b, f, 'poison', 1, ev);
+  }
+  // 홰치기: 매 턴 첫 카드를 쓰면 뽑기
+  if (firstDraw && !b.over) drawCards(run, b, firstDraw, ev);
+  if (!ops.some((o) => o.op === 'mimic')) b.lastCard = { id: c.id, up: c.up, target: foe?.uid };
   // 쓴 카드는 소멸 / 부적술(전투 내내 효과)은 덱에서 빠짐 / 나머지는 버린 더미
   c.free = undefined;
+  c.cut = undefined;
   if (cardExhaust(c.id, c.up) || d.kind === 'curse') {
     b.exhaust.push(c);
     ev.push({ e: 'exhaust', uid });
@@ -208,7 +248,7 @@ export function playCard(run: RunState, uid: number, target: number | undefined,
 
 export function usePotion(run: RunState, slot: number, target: number | undefined, ev: SimEvent[]): boolean {
   const b = run.battle;
-  if (!b || b.over) return false;
+  if (!b || b.over || b.pending) return false;
   const id = run.potions[slot];
   if (!id) return false;
   const d = potionDef(id);
@@ -222,10 +262,39 @@ export function usePotion(run: RunState, slot: number, target: number | undefine
   return true;
 }
 
+/** 손패에서 카드 고르기 (쥐구멍: 버리기 · 분신술: 복사본) */
+export function pickHand(run: RunState, uid: number, ev: SimEvent[]): boolean {
+  const b = run.battle;
+  const p = b?.pending;
+  if (!b || b.over || !p) return false;
+  const idx = b.hand.findIndex((c) => c.uid === uid);
+  if (idx < 0) return false;
+  const c = b.hand[idx];
+  if (p.kind === 'discard') {
+    b.hand.splice(idx, 1);
+    c.free = undefined;
+    c.cut = undefined;
+    b.discard.push(c);
+    ev.push({ e: 'discard', uid: c.uid });
+    p.n--;
+    if (p.n <= 0 || !b.hand.length) b.pending = null;
+  } else {
+    for (let k = 0; k < p.n; k++) {
+      const copy: BCard = { uid: nextTmpUid(b), id: c.id, tmp: true };
+      if (c.up) copy.up = true;
+      if (b.hand.length >= handMax(run)) b.discard.push(copy);
+      else b.hand.push(copy);
+    }
+    ev.push({ e: 'clone', uid: c.uid, n: p.n });
+    b.pending = null;
+  }
+  return true;
+}
+
 /** 턴 끝 (keep: 달빛 구슬로 손에 남길 카드) */
 export function endTurn(run: RunState, keep: number | undefined, ev: SimEvent[]): boolean {
   const b = run.battle;
-  if (!b || b.over) return false;
+  if (!b || b.over || b.pending) return false;
   if (keep !== undefined && (!has(run, 'moonOrb') || !b.hand.some((c) => c.uid === keep))) return false;
   for (const c of b.hand) {
     const hurt = cardDef(c.id).endTurnHurt;
@@ -235,6 +304,7 @@ export function endTurn(run: RunState, keep: number | undefined, ev: SimEvent[])
   const kept: BCard[] = [];
   for (const c of b.hand) {
     c.free = undefined;
+    c.cut = undefined;
     if (c.uid === keep) kept.push(c);
     else {
       b.discard.push(c);
@@ -339,15 +409,25 @@ function runFoeOps(run: RunState, b: Battle, f: Foe, ops: EOp[], ev: SimEvent[])
 
 /** 다음 의도 정하기 */
 export function rollIntent(b: Battle, f: Foe) {
-  const ph = phaseOf(enemyDef(f.id), f.phase);
-  const ai = ph.ai;
-  if (ai.type === 'cycle') {
-    f.intent = ai.order[f.cyc % ai.order.length];
-    f.cyc++;
-  } else {
-    const list = ai.noRepeat && ai.weights.length > 1 ? ai.weights.filter(([id]) => id !== f.last) : ai.weights;
-    f.intent = rngOf(b, 'ai').weighted(list);
+  if (f.next) {
+    // 냄새 추적으로 미리 정해 둔 행동
+    f.intent = f.next;
+    f.next = null;
+    return;
   }
+  f.intent = nextMove(b, f, f.last);
+}
+
+/** 다음 행동 하나 뽑기 (last = 바로 앞 행동, 되풀이 금지용) */
+function nextMove(b: Battle, f: Foe, last: string | null): string {
+  const ai = phaseOf(enemyDef(f.id), f.phase).ai;
+  if (ai.type === 'cycle') {
+    const m = ai.order[f.cyc % ai.order.length];
+    f.cyc++;
+    return m;
+  }
+  const list = ai.noRepeat && ai.weights.length > 1 ? ai.weights.filter(([id]) => id !== last) : ai.weights;
+  return rngOf(b, 'ai').weighted(list);
 }
 
 // ---------- 효과 ----------
@@ -356,6 +436,8 @@ interface OpCtx {
   /** 공격 카드 (담금질·숫돌·번개 부채·약화가 붙는 피해) */
   card: boolean;
   bonus: number;
+  /** 이 카드에 맞은 적 (뱀 패시브) */
+  hits?: number[];
 }
 
 function runOps(run: RunState, b: Battle, ops: Op[], foe: Foe | undefined, ev: SimEvent[], cx: OpCtx) {
@@ -365,13 +447,75 @@ function runOps(run: RunState, b: Battle, ops: Op[], foe: Foe | undefined, ev: S
       case 'dmg': {
         const to = o.to ?? 'target';
         const times = o.times ?? 1;
+        const base = o.n + (o.per ? Math.floor((o.k ?? 1) * perValue(run, b, o.per) + 1e-9) : 0);
         for (let i = 0; i < times && !b.over; i++) {
-          for (const f of targets(b, to, foe)) hitFoe(run, b, f, o.n, ev, cx, !!o.pierce);
+          for (const f of targets(b, to, foe)) {
+            const n = base + (o.ifSt && (f.st[o.ifSt] ?? 0) > 0 ? (o.ifN ?? 0) : 0);
+            cx.hits?.push(f.uid);
+            hitFoe(run, b, f, n, ev, cx, !!o.pierce);
+          }
         }
         break;
       }
       case 'block':
         gainBlock(b, o.n, ev);
+        break;
+      case 'clearBlock':
+        if (b.block > 0) {
+          ev.push({ e: 'block', to: 'hero', n: -b.block });
+          b.block = 0;
+        }
+        break;
+      case 'cleanse':
+        for (const id of Object.keys(b.st) as StatusId[]) {
+          ev.push({ e: 'status', to: 'hero', id, n: -(b.st[id] ?? 0) });
+          delete b.st[id];
+        }
+        break;
+      case 'mulSt': {
+        const f = foe && !foe.dead ? foe : null;
+        const v = f?.st[o.id] ?? 0;
+        if (f && v > 0) {
+          f.st[o.id] = v * o.k;
+          ev.push({ e: 'status', to: f.uid, id: o.id, n: v * (o.k - 1) });
+        }
+        break;
+      }
+      case 'maxHp':
+        run.maxHp += o.n;
+        run.hp += o.n;
+        ev.push({ e: 'heal', n: o.n });
+        break;
+      case 'nextEnergy':
+        b.nextEnergy = (b.nextEnergy ?? 0) + o.n;
+        break;
+      case 'discount':
+        for (const c of b.hand) if (cardDef(c.id).kind === o.kind) c.cut = (c.cut ?? 0) + o.n;
+        break;
+      case 'nextFreeAtk':
+        b.nextFreeAtk = true;
+        break;
+      case 'peek':
+        if (foe && !foe.dead && foe.intent && !foe.next) {
+          foe.next = nextMove(b, foe, foe.intent);
+          ev.push({ e: 'peek', uid: foe.uid });
+        }
+        break;
+      case 'mimic': {
+        const last = b.lastCard;
+        if (!last) break;
+        const ld = cardDef(last.id);
+        let t: Foe | undefined;
+        if (ld.target === 'enemy') {
+          t = b.foes.find((f) => f.uid === last.target && !f.dead) ?? aliveFoes(b)[0];
+          if (!t) break;
+        }
+        ev.push({ e: 'mimic', id: last.id });
+        runOps(run, b, cardOps(last.id, last.up), t, ev, { card: ld.kind === 'atk', bonus: 0, hits: cx.hits });
+        break;
+      }
+      case 'pick':
+        if (b.hand.length) b.pending = { kind: o.kind, n: o.n };
         break;
       case 'draw':
         drawCards(run, b, o.n, ev);
@@ -402,6 +546,27 @@ function runOps(run: RunState, b: Battle, ops: Op[], foe: Foe | undefined, ev: S
   }
 }
 
+/** 피해에 더하는 '무엇 1당' 값 */
+export function perValue(run: RunState, b: Battle, per: string): number {
+  switch (per) {
+    case 'drawn':
+      return b.t.drawn ?? 0;
+    case 'played':
+      // 이 카드 앞에 쓴 카드 (쓰는 중인 카드는 이미 셌다)
+      return Math.max(0, b.t.played - 1);
+    case 'block':
+      return b.block;
+    case 'energy':
+      return b.energy;
+    case 'maxHp':
+      return run.maxHp;
+    case 'battleAtk':
+      return b.b.attacks;
+    default:
+      return 0;
+  }
+}
+
 function targets(b: Battle, to: string, foe: Foe | undefined): Foe[] {
   const alive = aliveFoes(b);
   if (to === 'all') return alive;
@@ -419,6 +584,8 @@ export function heroDamage(run: RunState, b: Battle, f: Foe, base: number, cx: O
   }
   let mult = 1;
   if (cx.card && (b.st.weak ?? 0) > 0) mult *= 0.75;
+  // 개(멍뭉이): 체력 50% 이하면 피해 +25%
+  if (cx.card && run.hero === 'dog' && run.hp * 2 <= run.maxHp) mult *= 1.25;
   if ((f.st.wet ?? 0) > 0) mult *= 1.5;
   if (cx.card && b.powers.weakBonus && (f.st.weak ?? 0) > 0) mult *= 1 + b.powers.weakBonus / 100;
   if (has(run, 'tigerWhisker') && (f.boss || f.elite)) mult *= 1.2;
@@ -456,6 +623,7 @@ function foeLoseHp(run: RunState, b: Battle, f: Foe, n: number, ev: SimEvent[], 
     f.phase = 2;
     f.cyc = 0;
     f.last = null;
+    f.next = null;
     ev.push({ e: 'phase', uid: f.uid, text: d.phase2.shout ?? '' });
     rollIntent(b, f);
   }
@@ -518,6 +686,14 @@ function loseHp(run: RunState, b: Battle, n: number, ev: SimEvent[], from: 'stat
   const before = run.hp;
   run.hp -= n;
   if (run.hp <= 0) {
+    // 고양이(야옹이): 한 판에 한 번 체력1로 버티고 방어10
+    if (run.hero === 'cat' && !run.flags.catUsed) {
+      run.flags.catUsed = true;
+      run.hp = 1;
+      ev.push({ e: 'revive', who: 'cat' });
+      gainBlock(b, 10, ev);
+      return;
+    }
     if (has(run, 'bulgasalIron') && !run.flags.ironUsed) {
       run.flags.ironUsed = true;
       run.hp = Math.max(1, Math.floor(run.maxHp * 0.2));
@@ -544,6 +720,8 @@ export function heal(run: RunState, n: number, ev: SimEvent[]) {
 }
 
 function gainBlock(b: Battle, n: number, ev: SimEvent[]) {
+  // 우직함: 방어 얻을 때마다 +n
+  n += b.powers.blockUp ?? 0;
   b.block += n;
   ev.push({ e: 'block', to: 'hero', n });
 }

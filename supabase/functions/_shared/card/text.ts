@@ -18,6 +18,9 @@ const POWER_TEXT: Record<PowerId, (n: number) => string> = {
   guard: (n) => `매 턴 방어${n}`,
   energyUp: (n) => `매 턴 기력+${n}`,
   drawUp: (n) => `매 턴 ${n}장 더`,
+  blockUp: (n) => `방어 얻을 때마다 +${n}`,
+  echoAtk: () => '매 턴 첫 공격카드 한 번 더 발동',
+  firstDraw: (n) => `매 턴 첫 카드 쓰면 ${n}장 뽑기`,
 };
 
 function opText(o: Op): string {
@@ -25,7 +28,7 @@ function opText(o: Op): string {
     case 'dmg': {
       const n = o.times && o.times > 1 ? `${o.n}×${o.times}` : `${o.n}`;
       const pre = o.to === 'all' ? '모든 적 ' : o.to === 'random' ? '무작위 적 ' : o.to === 'others' ? '다른 적 모두 ' : '피해 ';
-      return `${pre}${n}${o.pierce ? ', 방어 무시' : ''}`;
+      return `${pre}${n}${o.ifSt ? `, ${STATUS_NAME[o.ifSt]}인 적 +${o.ifN ?? 0}` : ''}${o.pierce ? ', 방어 무시' : ''}`;
     }
     case 'block':
       return `방어${o.n}`;
@@ -43,6 +46,26 @@ function opText(o: Op): string {
       return `맞으면 반격${o.n}`;
     case 'power':
       return POWER_TEXT[o.id](o.n);
+    case 'clearBlock':
+      return '내 방어 전부 없앰';
+    case 'cleanse':
+      return '내 상태이상 모두 제거';
+    case 'mulSt':
+      return `대상 ${STATUS_NAME[o.id]} ${o.k}배`;
+    case 'maxHp':
+      return `최대 체력+${o.n}`;
+    case 'nextEnergy':
+      return `다음 턴 기력+${o.n}`;
+    case 'discount':
+      return `이번 턴 손패 ${KIND_NAME[o.kind]}카드 기력-${o.n}`;
+    case 'nextFreeAtk':
+      return '다음 턴 첫 공격카드 기력0';
+    case 'peek':
+      return '적 하나 2턴치 의도 보기';
+    case 'mimic':
+      return '직전 카드 한 번 더';
+    case 'pick':
+      return o.kind === 'discard' ? `손패 ${o.n}장 버림` : `손패 1장 복사본 ${o.n}장`;
   }
 }
 

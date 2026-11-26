@@ -2,15 +2,24 @@
  * 전투 화면 (세로 430×860). 배치는 PRD [화면]: 위 = 요괴·의도·체력·상태, 가운데 = 영웅, 아래 = 부채꼴 손패·기력 구슬·뽑을/버린 더미·턴 끝 버튼.
  * 화면은 규칙을 직접 바꾸지 않는다 — 입력(Input)을 hooks.send 로 넘기고, 돌아온 연출 사건(SimEvent)을 차례로 보여 준 뒤 상태대로 다시 그린다.
  * 카드는 끌어다 놓거나(대상 카드는 요괴 위에) 탭해서 고른 뒤 한 번 더 탭(대상 카드는 요괴를 탭)해서 쓴다.
+ *
+ * 그림 (3단계, art.ts 의 ART_FILES — 못 읽으면 코드 그림): 배경 bg-<지역> · 영웅 시트 hero-<id>(앞줄 서기·공격) · 요괴 e-* · b-* (+ 맞은 모습 -hit,
+ * 보스 공격 동작 -atk) · 카드 틀 card-frame + 카드 그림 · 의도 시트 intent · 기력 구슬 energy · 효과 fx-* · 상태이상 st-* · 카드 뒷면 back · 컷인 cut-<영웅>.
+ * 연출: 공격카드를 쓰면 영웅이 앞으로 튀어 나가고 fx 그림, 요괴는 -hit 그림으로 흔들림, 보스 등장·2단계는 핑거식 컷인 + -atk, 전설 카드는 영웅 컷인.
  */
 import Phaser from 'phaser';
 import {
+  CARDS,
+  POTIONS,
   aliveFoes,
   cardDef,
   cardName,
+  cardOps,
   cardText,
   enemyDef,
   foeDamage,
+  heroDef,
+  keptBlock,
   moveDef,
   playCost,
   potionDef,
@@ -26,30 +35,41 @@ import {
   type SimEvent,
   type StatusId,
 } from '../game/rules';
-import { COLOR, FONT } from '../theme';
+import { BOSS_ATK_FRAME, FRAME, FX_ARTS, HERO_ATTACK, HERO_FRAME, HERO_STAND, INTENT_FRAME, STATUS_ART, ST_CELL, ST_FULL, artUrl, fxForCard, hasArt } from '../art';
+import { COLOR, FONT, css } from '../theme';
+
+/** 글자 외곽선 (art.ts txt 와 같은 색) */
+const INK = '#2a1a10';
 import { KIND_COLOR, RARITY_RING, STATUS_COLOR, STATUS_SHORT, drawFoe, drawHero, drawIntent, drawKindGlyph, txt } from './art';
 
 export const W = 430;
 export const H = 860;
-const CARD_W = 92;
-const CARD_H = 128;
+const CARD_W = 100;
+const CARD_H = 139;
 const HAND_Y = 772;
 const HERO_Y = 470;
 const FOE_Y = 250;
 const ROW_Y = 612;
+const HERO_SIZE = 168;
 
 export interface BattleHooks {
   run(): RunState;
   send(i: Input): ApplyResult | null;
   /** 전투가 끝나고 연출까지 끝남 */
   done(): void;
+  /** 영웅 시트를 못 읽을 때 쓰는 공용 전신 그림 */
   heroUrl: string | null;
   sfx(name: string): void;
 }
 
+type Body = Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
+
 interface FoeView {
   c: Phaser.GameObjects.Container;
-  body: Phaser.GameObjects.Graphics;
+  body: Body;
+  /** 그림 이름 (없으면 코드 그림) */
+  art: string | null;
+  size: number;
   hpBar: Phaser.GameObjects.Graphics;
   hpText: Phaser.GameObjects.Text;
   name: Phaser.GameObjects.Text;
@@ -58,6 +78,8 @@ interface FoeView {
   r: number;
   x: number;
   y: number;
+  /** 맞은 모습·공격 동작을 되돌리는 타이머 */
+  back?: Phaser.Time.TimerEvent;
 }
 
 interface Disp {
@@ -65,11 +87,18 @@ interface Disp {
   block: number;
 }
 
+/** 그림을 정해진 크기 상자 안에 맞춤 */
+function fit(img: Phaser.GameObjects.Image, size: number) {
+  img.setScale(size / Math.max(img.frame.width, img.frame.height));
+}
+
 export class BattleScene extends Phaser.Scene {
   private hooks!: BattleHooks;
   private foeViews = new Map<number, FoeView>();
   private handViews: { card: BCard; c: Phaser.GameObjects.Container; x: number; y: number; rot: number }[] = [];
   private heroC!: Phaser.GameObjects.Container;
+  private heroSprite: Phaser.GameObjects.Image | null = null;
+  private heroSheet = false;
   private heroHp!: Phaser.GameObjects.Graphics;
   private heroHpText!: Phaser.GameObjects.Text;
   private heroSt!: Phaser.GameObjects.Container;
@@ -81,6 +110,8 @@ export class BattleScene extends Phaser.Scene {
   private potionSel: number | null = null;
   private drag: { uid: number; sx: number; sy: number; moved: boolean } | null = null;
   private disp = { hero: { hp: 0, block: 0 } as Disp, foes: new Map<number, Disp>() };
+  /** 지금 보여 주는 카드 효과 (play 사건에서 정함) */
+  private cur: { fx: string; atk: boolean; seen: Set<number> } | null = null;
 
   constructor() {
     super('battle');
@@ -90,12 +121,46 @@ export class BattleScene extends Phaser.Scene {
     this.hooks = data.hooks;
   }
 
+  // ---------- 그림 읽기 ----------
   preload() {
-    if (this.hooks.heroUrl) this.load.image('hero', this.hooks.heroUrl);
     this.load.on('loaderror', () => null);
+    const run = this.run();
+    const b = this.battle();
+    const img = (key: string) => {
+      if (hasArt(key) && !this.textures.exists(key)) this.load.image(key, artUrl(key));
+    };
+    const sheet = (key: string, fw: number) => {
+      if (hasArt(key) && !this.textures.exists(key)) this.load.spritesheet(key, artUrl(key), { frameWidth: fw, frameHeight: fw });
+    };
+    sheet(`hero-${run.hero}`, HERO_FRAME);
+    if (this.hooks.heroUrl) this.load.image('hero-full', this.hooks.heroUrl);
+    img(`cut-${run.hero}`);
+    img(`bg-${run.map.region}`);
+    // 요괴: 지금 있는 것 + 불러낼 수 있는 것 (분신·병졸)
+    const ids = new Set(b.foes.map((f) => f.id));
+    for (const id of [...ids]) {
+      const d = enemyDef(id);
+      for (const ph of [d.phase1, d.phase2]) for (const m of ph?.moves ?? []) for (const o of m.ops) if (o.op === 'summon') ids.add(o.id);
+    }
+    for (const id of ids) {
+      const d = enemyDef(id);
+      img(d.art);
+      img(`${d.art}-hit`);
+      if (d.boss) sheet(`${d.art}-atk`, BOSS_ATK_FRAME);
+    }
+    for (const c of CARDS) img(c.art);
+    for (const r of run.relics) img(relicDef(r).art);
+    for (const p of POTIONS) img(p.art);
+    for (const n of FX_ARTS) img(`fx-${n}`);
+    for (const k of Object.values(STATUS_ART)) img(k);
+    sheet('intent', 128);
+    img('energy');
+    img('card-frame');
+    img('back');
   }
 
   create() {
+    this.makeStatusIcons();
     this.drawBackdrop();
     this.ui = this.add.container(0, 0).setDepth(5);
     this.hud = this.add.container(0, 0).setDepth(6);
@@ -109,7 +174,23 @@ export class BattleScene extends Phaser.Scene {
     this.syncDisp();
     this.render();
     const b = this.battle();
-    if (b && b.turn === 1) this.banner('전투 시작!', COLOR.primary);
+    if (b && b.turn === 1 && b.t.played === 0) void this.intro();
+  }
+
+  /** 전투 시작: 보스는 컷인, 그 밖에는 띠 */
+  private async intro() {
+    const b = this.battle();
+    const boss = b.foes.find((f) => f.boss);
+    if (b.kind === 'boss' && boss) {
+      this.busy = true;
+      const d = enemyDef(boss.id);
+      this.hooks.sfx('turn');
+      await this.cutin(d.art, undefined, '막 보스', d.name, '', COLOR.pink);
+      this.busy = false;
+      this.drawUi();
+      return;
+    }
+    this.banner(b.kind === 'elite' ? '정예 등장!' : '전투 시작!', b.kind === 'elite' ? COLOR.pink : COLOR.primary);
   }
 
   private run() {
@@ -119,27 +200,53 @@ export class BattleScene extends Phaser.Scene {
     return this.run().battle!;
   }
 
+  /** 상태이상 그림: st-* 오토타일셋의 꽉 찬 칸을 동그랗게 잘라 작은 그림으로 */
+  private makeStatusIcons() {
+    for (const [id, key] of Object.entries(STATUS_ART)) {
+      const out = `sti-${id}`;
+      if (!this.textures.exists(key) || this.textures.exists(out)) continue;
+      const src = this.textures.get(key).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+      const t = this.textures.createCanvas(out, 48, 48);
+      if (!t) continue;
+      const ctx = t.getContext();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(24, 24, 24, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(src, (ST_FULL % 4) * ST_CELL, Math.floor(ST_FULL / 4) * ST_CELL, ST_CELL, ST_CELL, 0, 0, 48, 48);
+      ctx.restore();
+      t.refresh();
+    }
+  }
+
   // ---------- 배경 ----------
   private drawBackdrop() {
+    const bg = `bg-${this.run().map.region}`;
     const g = this.add.graphics();
-    // 하늘 → 땅 (DESIGN: 하늘 그라데이션)
-    g.fillGradientStyle(COLOR.skyTop, COLOR.skyTop, COLOR.skyMid, COLOR.skyMid, 1);
-    g.fillRect(0, 0, W, 330);
-    g.fillGradientStyle(COLOR.skyMid, COLOR.skyMid, COLOR.skyBottom, COLOR.skyBottom, 1);
-    g.fillRect(0, 330, W, 250);
-    // 대나무 (코드 그림)
-    for (let i = 0; i < 9; i++) {
-      const x = 10 + i * 52 + (i % 2) * 14;
-      g.fillStyle(COLOR.win, 0.35 + (i % 3) * 0.1);
-      g.fillRect(x, 70, 12, 420);
-      g.fillStyle(COLOR.outline, 0.15);
-      for (let k = 0; k < 6; k++) g.fillRect(x, 110 + k * 64, 12, 4);
+    if (this.textures.exists(bg)) {
+      // 지역 배경 (480×270) 을 위쪽 580 에 꽉 채움 — 가운데를 남기고 양옆을 자른다
+      const img = this.add.image(W / 2, 290, bg).setDepth(-1);
+      img.setScale(Math.max(W / img.width, 580 / img.height));
+      g.fillStyle(COLOR.outline, 0.12);
+      g.fillRect(0, 0, W, 580);
+    } else {
+      // 하늘 → 땅 (DESIGN: 하늘 그라데이션) + 대나무 (코드 그림)
+      g.fillGradientStyle(COLOR.skyTop, COLOR.skyTop, COLOR.skyMid, COLOR.skyMid, 1);
+      g.fillRect(0, 0, W, 330);
+      g.fillGradientStyle(COLOR.skyMid, COLOR.skyMid, COLOR.skyBottom, COLOR.skyBottom, 1);
+      g.fillRect(0, 330, W, 250);
+      for (let i = 0; i < 9; i++) {
+        const x = 10 + i * 52 + (i % 2) * 14;
+        g.fillStyle(COLOR.win, 0.35 + (i % 3) * 0.1);
+        g.fillRect(x, 70, 12, 420);
+        g.fillStyle(COLOR.outline, 0.15);
+        for (let k = 0; k < 6; k++) g.fillRect(x, 110 + k * 64, 12, 4);
+      }
+      g.fillStyle(COLOR.win, 1);
+      g.fillRect(0, 520, W, 60);
+      g.lineStyle(3, COLOR.outline, 1);
+      g.lineBetween(0, 520, W, 520);
     }
-    // 땅
-    g.fillStyle(COLOR.win, 1);
-    g.fillRect(0, 520, W, 60);
-    g.lineStyle(3, COLOR.outline, 1);
-    g.lineBetween(0, 520, W, 520);
     // 아래 손패 판
     g.fillStyle(COLOR.panel, 1);
     g.fillRoundedRect(-10, 578, W + 20, 300, 26);
@@ -149,11 +256,22 @@ export class BattleScene extends Phaser.Scene {
 
   // ---------- 영웅 ----------
   private makeHero() {
+    const run = this.run();
     this.heroC = this.add.container(W / 2, HERO_Y).setDepth(3);
-    if (this.textures.exists('hero')) {
-      const img = this.add.image(0, 10, 'hero');
-      const s = 150 / Math.max(img.width, img.height);
-      img.setScale(s).setOrigin(0.5, 0.62);
+    const sh = this.add.graphics();
+    sh.fillStyle(COLOR.outline, 0.25);
+    sh.fillEllipse(0, 62, 110, 22);
+    this.heroC.add(sh);
+    const key = `hero-${run.hero}`;
+    if (this.textures.exists(key)) {
+      this.heroSheet = true;
+      this.heroSprite = this.add.image(0, 0, key, HERO_STAND);
+      this.heroSprite.setScale(HERO_SIZE / HERO_FRAME).setOrigin(0.5, 0.58);
+      this.heroC.add(this.heroSprite);
+    } else if (this.textures.exists('hero-full')) {
+      const img = this.add.image(0, 10, 'hero-full');
+      img.setScale(150 / Math.max(img.width, img.height)).setOrigin(0.5, 0.62);
+      this.heroSprite = img;
       this.heroC.add(img);
     } else {
       const g = this.add.graphics();
@@ -216,8 +334,8 @@ export class BattleScene extends Phaser.Scene {
   private statusRow(c: Phaser.GameObjects.Container, x: number, y: number, st: Partial<Record<StatusId, number>>, str: number, dodge = 0) {
     const items: [StatusId | 'str', number][] = (Object.entries(st) as [StatusId, number][]).filter(([, n]) => n > 0);
     if (str) items.push(['str', str]);
-    const all = [...items.map(([id, n]) => ({ label: STATUS_SHORT[id], n, color: STATUS_COLOR[id] }))];
-    if (dodge) all.push({ label: '숨', n: dodge, color: COLOR.skyDeep });
+    const all: { id: string; label: string; n: number; color: number }[] = items.map(([id, n]) => ({ id, label: STATUS_SHORT[id], n, color: STATUS_COLOR[id] }));
+    if (dodge) all.push({ id: 'dodge', label: '숨', n: dodge, color: COLOR.skyDeep });
     const gap = 30;
     let sx = x - ((all.length - 1) * gap) / 2;
     for (const it of all) {
@@ -225,9 +343,14 @@ export class BattleScene extends Phaser.Scene {
       g.fillStyle(it.color, 1);
       g.lineStyle(2, COLOR.outline, 1);
       g.fillCircle(sx, y, 12);
-      g.strokeCircle(sx, y, 12);
       c.add(g);
-      c.add(txt(this, sx, y, it.label, 12, COLOR.white, 3));
+      const key = `sti-${it.id}`;
+      if (this.textures.exists(key)) c.add(this.add.image(sx, y, key).setDisplaySize(24, 24));
+      else c.add(txt(this, sx, y, it.label, 12, COLOR.white, 3));
+      const ring = this.add.graphics();
+      ring.lineStyle(2, COLOR.outline, 1);
+      ring.strokeCircle(sx, y, 12);
+      c.add(ring);
       c.add(txt(this, sx + 11, y + 9, `${it.n}`, 11, COLOR.white, 3));
       sx += gap;
     }
@@ -290,10 +413,27 @@ export class BattleScene extends Phaser.Scene {
 
   private makeFoe(f: Foe, x: number, y: number, r: number): FoeView {
     const c = this.add.container(x, y).setDepth(2);
-    const body = this.add.graphics();
-    drawFoe(body, f.id, r, !!(f.boss || f.elite));
+    const d = enemyDef(f.id);
+    const big = !!(f.boss || f.elite);
+    const size = r * (big ? 2.7 : 2.5);
+    let body: Body;
+    let art: string | null = null;
+    if (this.textures.exists(d.art)) {
+      art = d.art;
+      const sh = this.add.graphics();
+      sh.fillStyle(COLOR.outline, 0.25);
+      sh.fillEllipse(0, r * 0.95, r * 1.7, r * 0.4);
+      c.add(sh);
+      const img = this.add.image(0, 0, d.art);
+      fit(img, size);
+      body = img;
+    } else {
+      const g = this.add.graphics();
+      drawFoe(g, f.id, r, big);
+      body = g;
+    }
     c.add(body);
-    const name = txt(this, 0, r + 12, enemyDef(f.id).name + (f.elite ? ' (정예)' : ''), 13, COLOR.white, 3);
+    const name = txt(this, 0, r + 12, d.name + (f.elite ? ' (정예)' : ''), 13, COLOR.white, 3);
     c.add(name);
     const hpBar = this.add.graphics();
     c.add(hpBar);
@@ -306,7 +446,16 @@ export class BattleScene extends Phaser.Scene {
     const hit = this.add.zone(0, 0, r * 2 + 10, r * 2 + 40).setInteractive();
     hit.on('pointerdown', () => this.onFoeTap(f.uid));
     c.add(hit);
-    return { c, body, hpBar, hpText, name, intent, st, r, x, y };
+    return { c, body, art, size, hpBar, hpText, name, intent, st, r, x, y };
+  }
+
+  /** 의도 그림 하나 (새 그림 intent 시트 · 못 읽으면 코드 그림) */
+  private intentIcon(kind: string, x: number, size: number): Phaser.GameObjects.GameObject {
+    if (this.textures.exists('intent')) return this.add.image(x, 0, 'intent', INTENT_FRAME[kind] ?? 4).setDisplaySize(size, size);
+    const g = this.add.graphics();
+    g.setPosition(x, 0);
+    drawIntent(g, kind as 'atk', size);
+    return g;
   }
 
   private updateFoe(f: Foe, v: FoeView) {
@@ -324,21 +473,23 @@ export class BattleScene extends Phaser.Scene {
     v.intent.removeAll(true);
     if (f.intent && !f.dead) {
       const m = moveDef(enemyDef(f.id), f.phase, f.intent);
-      const g = this.add.graphics();
-      drawIntent(g, m.intent, 30);
-      v.intent.add(g);
+      v.intent.add(this.intentIcon(m.intent, 0, 34));
       if (m.intent === 'atk') {
         const dmg = m.ops.filter((o) => o.op === 'dmg');
         const s = dmg.map((o) => (o.op === 'dmg' ? `${foeDamage(this.battle(), f, o.n)}${o.times && o.times > 1 ? `×${o.times}` : ''}` : '')).join('+');
-        v.intent.add(txt(this, 22, 4, s, 18, COLOR.white, 4).setOrigin(0, 0.5));
-      } else if (m.intent === 'unknown') {
-        v.intent.add(txt(this, 0, 0, '?', 18, COLOR.white, 3));
+        v.intent.add(txt(this, 20, 6, s, 18, COLOR.white, 4).setOrigin(0, 0.5));
       }
       if (m.ops.some((o) => o.op === 'status' || o.op === 'curse' || o.op === 'discardNext') && m.intent === 'atk') {
-        const g2 = this.add.graphics();
-        g2.setPosition(-22, 0);
-        drawIntent(g2, 'debuff', 18);
-        v.intent.add(g2);
+        v.intent.add(this.intentIcon('debuff', -26, 20));
+      }
+      // 냄새 추적: 그다음 행동까지
+      if (f.next) {
+        const n2 = moveDef(enemyDef(f.id), f.phase, f.next);
+        const ox = m.intent === 'atk' ? 62 : 30;
+        v.intent.add(txt(this, ox, 2, '→', 14, COLOR.white, 3));
+        const ic = this.intentIcon(n2.intent, ox + 18, 24) as Phaser.GameObjects.Image;
+        ic.setAlpha(0.85);
+        v.intent.add(ic);
       }
     }
   }
@@ -347,38 +498,88 @@ export class BattleScene extends Phaser.Scene {
   private cardView(card: BCard | { uid: number; id: string; up?: boolean }, x: number, y: number, playable: boolean, cost: number) {
     const d = cardDef(card.id);
     const c = this.add.container(x, y);
-    const g = this.add.graphics();
     const w = CARD_W;
     const h = CARD_H;
-    g.fillStyle(COLOR.outline, 1);
-    g.fillRoundedRect(-w / 2, -h / 2 + 4, w, h, 12);
-    g.fillStyle(KIND_COLOR[d.kind], 1);
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, 12);
-    g.fillStyle(COLOR.panel, 1);
-    g.fillRoundedRect(-w / 2 + 6, -h / 2 + 26, w - 12, h - 32, 8);
-    g.lineStyle(3, COLOR.outline, 1);
-    g.strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
-    // 등급 테두리
-    g.lineStyle(2, RARITY_RING[d.rarity] ?? COLOR.white, 1);
-    g.strokeRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6, 10);
-    c.add(g);
-    const glyph = this.add.graphics();
-    glyph.setPosition(0, -h / 2 + 50);
-    glyph.fillStyle(KIND_COLOR[d.kind], 0.25);
-    glyph.fillCircle(0, 0, 20);
-    drawKindGlyph(glyph, d.kind, 30);
-    c.add(glyph);
-    c.add(txt(this, 4, -h / 2 + 13, cardName(card.id, card.up), cardName(card.id, card.up).length > 5 ? 12 : 14, COLOR.white, 3));
-    const desc = this.add.text(0, 18, cardText(card.id, card.up), { fontFamily: FONT, fontSize: '11px', color: '#2a1a10', align: 'center', wordWrap: { width: w - 16, useAdvancedWrap: true } }).setOrigin(0.5, 0);
-    c.add(desc);
-    // 기력
-    const cg = this.add.graphics();
-    cg.fillStyle(cost < cardDef(card.id).cost ? COLOR.win : COLOR.primary, 1);
-    cg.lineStyle(3, COLOR.outline, 1);
-    cg.fillCircle(-w / 2 + 6, -h / 2 + 6, 13);
-    cg.strokeCircle(-w / 2 + 6, -h / 2 + 6, 13);
-    c.add(cg);
-    c.add(txt(this, -w / 2 + 6, -h / 2 + 6, `${cost}`, 16, COLOR.ink));
+    const L = -w / 2;
+    const T = -h / 2;
+    const name = cardName(card.id, card.up);
+    if (this.textures.exists('card-frame')) {
+      const s = w / FRAME.w;
+      const P = FRAME.pic;
+      const g = this.add.graphics();
+      g.fillStyle(COLOR.outline, 1);
+      g.fillRoundedRect(L + 2, T + 4, w - 4, h - 2, 10);
+      g.fillStyle(COLOR.panel, 1);
+      g.fillRect(L + P.x * s, T + P.y * s, P.w * s, P.h * s);
+      g.fillStyle(KIND_COLOR[d.kind], 0.22);
+      g.fillRect(L + P.x * s, T + P.y * s, P.w * s, P.h * s);
+      c.add(g);
+      const px = L + (P.x + P.w / 2) * s;
+      const py = T + (P.y + P.h / 2) * s;
+      if (this.textures.exists(d.art)) {
+        const img = this.add.image(px, py, d.art);
+        img.setScale(Math.min((P.w * s * 0.82) / img.width, (P.h * s * 0.86) / img.height));
+        c.add(img);
+      } else {
+        const glyph = this.add.graphics();
+        glyph.setPosition(px, py);
+        drawKindGlyph(glyph, d.kind, 30);
+        c.add(glyph);
+      }
+      // 틀 (그림 칸은 투명) — 종류색을 곱해 입힌다
+      c.add(this.add.image(0, 0, 'card-frame').setScale(s).setTint(KIND_COLOR[d.kind]));
+      const g2 = this.add.graphics();
+      const D = FRAME.desc;
+      g2.fillStyle(COLOR.white, 1);
+      g2.fillRoundedRect(L + (D.x + 5) * s, T + (D.y + 5) * s, (D.w - 10) * s, (D.h - 10) * s, 6);
+      // 등급 테두리
+      g2.lineStyle(3, RARITY_RING[d.rarity] ?? COLOR.white, 1);
+      g2.strokeRoundedRect(L + 1, T + 1, w - 2, h - 2, 9);
+      c.add(g2);
+      const cx = L + FRAME.cost.x * s;
+      const cy = T + FRAME.cost.y * s;
+      if (this.textures.exists('energy')) c.add(this.add.image(cx, cy, 'energy').setDisplaySize(26, 26));
+      c.add(txt(this, cx, cy, `${cost}`, 15, cost < cardDef(card.id).cost ? COLOR.win : COLOR.white, 3));
+      c.add(txt(this, 0, T + FRAME.name.y * s - 1, name, name.length > 5 ? 11 : 13, card.up ? COLOR.primaryLight : COLOR.white, 3));
+      const desc = this.add
+        .text(0, T + (D.y + D.h / 2) * s, cardText(card.id, card.up), { fontFamily: FONT, fontSize: '10px', color: '#2a1a10', align: 'center', lineSpacing: -2, wordWrap: { width: (D.w - 18) * s, useAdvancedWrap: true } })
+        .setOrigin(0.5, 0.5);
+      c.add(desc);
+    } else {
+      const g = this.add.graphics();
+      g.fillStyle(COLOR.outline, 1);
+      g.fillRoundedRect(L, T + 4, w, h, 12);
+      g.fillStyle(KIND_COLOR[d.kind], 1);
+      g.fillRoundedRect(L, T, w, h, 12);
+      g.fillStyle(COLOR.panel, 1);
+      g.fillRoundedRect(L + 6, T + 26, w - 12, h - 32, 8);
+      g.lineStyle(3, COLOR.outline, 1);
+      g.strokeRoundedRect(L, T, w, h, 12);
+      g.lineStyle(2, RARITY_RING[d.rarity] ?? COLOR.white, 1);
+      g.strokeRoundedRect(L + 3, T + 3, w - 6, h - 6, 10);
+      c.add(g);
+      if (this.textures.exists(d.art)) {
+        const img = this.add.image(0, T + 50, d.art);
+        img.setScale(Math.min(40 / img.width, 40 / img.height));
+        c.add(img);
+      } else {
+        const glyph = this.add.graphics();
+        glyph.setPosition(0, T + 50);
+        glyph.fillStyle(KIND_COLOR[d.kind], 0.25);
+        glyph.fillCircle(0, 0, 20);
+        drawKindGlyph(glyph, d.kind, 30);
+        c.add(glyph);
+      }
+      c.add(txt(this, 4, T + 13, name, name.length > 5 ? 12 : 14, COLOR.white, 3));
+      c.add(this.add.text(0, 18, cardText(card.id, card.up), { fontFamily: FONT, fontSize: '11px', color: '#2a1a10', align: 'center', wordWrap: { width: w - 16, useAdvancedWrap: true } }).setOrigin(0.5, 0));
+      const cg = this.add.graphics();
+      cg.fillStyle(cost < cardDef(card.id).cost ? COLOR.win : COLOR.primary, 1);
+      cg.lineStyle(3, COLOR.outline, 1);
+      cg.fillCircle(L + 6, T + 6, 13);
+      cg.strokeCircle(L + 6, T + 6, 13);
+      c.add(cg);
+      c.add(txt(this, L + 6, T + 6, `${cost}`, 16, COLOR.ink));
+    }
     if (!playable) c.setAlpha(0.6);
     return c;
   }
@@ -389,14 +590,14 @@ export class BattleScene extends Phaser.Scene {
     const run = this.run();
     const b = this.battle();
     const n = b.hand.length;
-    const span = Math.min(76, n > 1 ? 330 / (n - 1) : 0);
+    const span = Math.min(78, n > 1 ? 320 / (n - 1) : 0);
     b.hand.forEach((card, i) => {
       const off = i - (n - 1) / 2;
       const x = W / 2 + off * span;
       const y = HAND_Y + Math.abs(off) * Math.abs(off) * 2.2;
       const rot = off * 0.05;
       const cost = playCost(run, b, card);
-      const playable = !b.over && cost <= b.energy;
+      const playable = !b.over && (b.pending ? true : cost <= b.energy);
       const c = this.cardView(card, x, y, playable, cost);
       c.setRotation(rot).setDepth(10 + i);
       const zone = this.add.zone(0, 0, CARD_W, CARD_H).setInteractive();
@@ -412,11 +613,9 @@ export class BattleScene extends Phaser.Scene {
       const sel = v.card.uid === this.selected;
       v.c.setPosition(v.x, sel ? v.y - 40 : v.y).setRotation(sel ? 0 : v.rot).setScale(sel ? 1.12 : 1).setDepth(sel ? 40 : 10 + this.handViews.indexOf(v));
     }
-    for (const [uid, v] of this.foeViews) {
+    for (const [, v] of this.foeViews) {
       const need = (this.selected !== null && this.selectedNeedsTarget()) || (this.potionSel !== null && this.potionNeedsTarget());
-      v.body.setAlpha(1);
       v.c.setScale(need ? 1.05 : 1);
-      void uid;
     }
   }
 
@@ -434,27 +633,31 @@ export class BattleScene extends Phaser.Scene {
     this.ui.removeAll(true);
     const run = this.run();
     const b = this.battle();
-    // 기력 구슬
-    const g = this.add.graphics();
-    g.fillStyle(COLOR.outline, 1);
-    g.fillCircle(50, ROW_Y + 4, 30);
-    g.fillStyle(COLOR.primary, 1);
-    g.fillCircle(50, ROW_Y, 30);
-    g.fillStyle(COLOR.primaryLight, 1);
-    g.fillCircle(42, ROW_Y - 9, 10);
-    g.lineStyle(3, COLOR.outline, 1);
-    g.strokeCircle(50, ROW_Y, 30);
-    this.ui.add(g);
-    this.ui.add(txt(this, 50, ROW_Y, `${b.energy}`, 26, COLOR.white, 4));
-    this.ui.add(txt(this, 50, ROW_Y + 40, '기력', 12, COLOR.inkSoft));
+    // 기력 구슬 (새 그림 energy · 못 읽으면 코드 그림)
+    if (this.textures.exists('energy')) {
+      this.ui.add(this.add.image(50, ROW_Y, 'energy').setDisplaySize(68, 68));
+    } else {
+      const g = this.add.graphics();
+      g.fillStyle(COLOR.outline, 1);
+      g.fillCircle(50, ROW_Y + 4, 30);
+      g.fillStyle(COLOR.primary, 1);
+      g.fillCircle(50, ROW_Y, 30);
+      g.fillStyle(COLOR.primaryLight, 1);
+      g.fillCircle(42, ROW_Y - 9, 10);
+      g.lineStyle(3, COLOR.outline, 1);
+      g.strokeCircle(50, ROW_Y, 30);
+      this.ui.add(g);
+    }
+    this.ui.add(txt(this, 50, ROW_Y, `${b.energy}`, 28, COLOR.white, 5));
+    this.ui.add(txt(this, 50, ROW_Y + 42, '기력', 12, COLOR.inkSoft));
     // 더미
-    this.pile(118, b.draw.length, '뽑을 더미', () => this.showPile('뽑을 더미 (순서는 비밀)', [...b.draw].sort((x, y) => x.id.localeCompare(y.id))));
-    this.pile(268, b.discard.length, '버린 더미', () => this.showPile('버린 더미', b.discard));
+    this.pile(124, b.draw.length, '뽑을 더미', true, () => this.showPile('뽑을 더미 (순서는 비밀)', [...b.draw].sort((x, y) => x.id.localeCompare(y.id))));
+    this.pile(262, b.discard.length, '버린 더미', false, () => this.showPile('버린 더미', b.discard));
     // 턴 끝
     const bx = 362;
     const bt = this.add.container(bx, ROW_Y);
     const bg = this.add.graphics();
-    const on = !b.over && !this.busy;
+    const on = !b.over && !this.busy && !b.pending;
     bg.fillStyle(COLOR.outline, 1);
     bg.fillRoundedRect(-56, -22 + 4, 112, 46, 16);
     bg.fillStyle(on ? COLOR.primary : COLOR.track, 1);
@@ -467,10 +670,21 @@ export class BattleScene extends Phaser.Scene {
     z.on('pointerdown', () => this.endTurn());
     bt.add(z);
     this.ui.add(bt);
+    // 손패에서 고르기 (쥐구멍·분신술)
+    if (b.pending && !b.over) {
+      const msg = b.pending.kind === 'discard' ? '버릴 카드를 눌러 고르세요' : '복사할 카드를 눌러 고르세요';
+      const t = txt(this, W / 2, 668, msg, 16, COLOR.white, 4);
+      const pg = this.add.graphics();
+      pg.fillStyle(COLOR.pink, 1);
+      pg.lineStyle(3, COLOR.outline, 1);
+      pg.fillRoundedRect(W / 2 - t.width / 2 - 14, 652, t.width + 28, 32, 16);
+      pg.strokeRoundedRect(W / 2 - t.width / 2 - 14, 652, t.width + 28, 32, 16);
+      this.ui.add([pg, t]);
+    }
     // 위 줄: 물약 · 부적 · 엽전
     this.hud.removeAll(true);
     const top = this.add.graphics();
-    top.fillStyle(COLOR.outline, 0.25);
+    top.fillStyle(COLOR.outline, 0.35);
     top.fillRoundedRect(8, 8, W - 16, 44, 14);
     this.hud.add(top);
     for (let i = 0; i < 3; i++) {
@@ -481,14 +695,16 @@ export class BattleScene extends Phaser.Scene {
       pg.lineStyle(3, this.potionSel === i ? COLOR.primary : COLOR.outline, 1);
       pg.fillCircle(x, 30, 16);
       pg.strokeCircle(x, 30, 16);
-      if (id) {
-        pg.fillStyle(id === 'heal' ? COLOR.lose : id === 'block' ? COLOR.teamA : id === 'energy' ? COLOR.primary : id === 'fire' ? COLOR.accent : COLOR.win, 1);
-        pg.fillCircle(x, 33, 9);
-        pg.fillStyle(COLOR.outline, 1);
-        pg.fillRect(x - 3, 17, 6, 7);
-      }
       this.hud.add(pg);
       if (id) {
+        const art = potionDef(id).art;
+        if (this.textures.exists(art)) this.hud.add(this.add.image(x, 30, art).setDisplaySize(24, 24));
+        else {
+          const pc = this.add.graphics();
+          pc.fillStyle(id === 'heal' ? COLOR.lose : id === 'block' ? COLOR.teamA : id === 'energy' ? COLOR.primary : id === 'fire' ? COLOR.accent : COLOR.win, 1);
+          pc.fillCircle(x, 33, 9);
+          this.hud.add(pc);
+        }
         const pz = this.add.zone(x, 30, 38, 40).setInteractive({ useHandCursor: true });
         pz.on('pointerdown', () => this.onPotion(i));
         this.hud.add(pz);
@@ -498,15 +714,17 @@ export class BattleScene extends Phaser.Scene {
     const rel = run.relics;
     rel.slice(0, 7).forEach((id, i) => {
       const x = 170 + i * 26;
+      const r = relicDef(id);
       const rg = this.add.graphics();
-      rg.fillStyle(COLOR.primary, 1);
+      rg.fillStyle(this.textures.exists(r.art) ? COLOR.white : COLOR.primary, 1);
       rg.lineStyle(2, COLOR.outline, 1);
       rg.fillCircle(x, 30, 11);
       rg.strokeCircle(x, 30, 11);
       this.hud.add(rg);
-      this.hud.add(txt(this, x, 30, relicDef(id).name.slice(0, 1), 11, COLOR.ink));
+      if (this.textures.exists(r.art)) this.hud.add(this.add.image(x, 30, r.art).setDisplaySize(18, 18));
+      else this.hud.add(txt(this, x, 30, r.name.slice(0, 1), 11, COLOR.ink));
       const rz = this.add.zone(x, 30, 24, 30).setInteractive();
-      rz.on('pointerdown', () => this.showTip(`${relicDef(id).name}: ${relicDef(id).text}`));
+      rz.on('pointerdown', () => this.showTip(`${r.name}: ${r.text}`));
       this.hud.add(rz);
     });
     if (rel.length > 7) this.hud.add(txt(this, 170 + 7 * 26, 30, `+${rel.length - 7}`, 12, COLOR.white, 3));
@@ -514,17 +732,21 @@ export class BattleScene extends Phaser.Scene {
     this.hud.add(txt(this, W / 2, 72, `${b.turn}턴`, 14, COLOR.white, 3));
   }
 
-  private pile(x: number, n: number, label: string, onTap: () => void) {
-    const g = this.add.graphics();
-    for (let k = 2; k >= 0; k--) {
-      g.fillStyle(k ? COLOR.lineSoft : COLOR.white, 1);
-      g.lineStyle(2, COLOR.outline, 1);
-      g.fillRoundedRect(x - 18 + k * 3, ROW_Y - 24 - k * 3, 36, 48, 6);
-      g.strokeRoundedRect(x - 18 + k * 3, ROW_Y - 24 - k * 3, 36, 48, 6);
+  private pile(x: number, n: number, label: string, back: boolean, onTap: () => void) {
+    if (back && this.textures.exists('back')) {
+      for (let k = 2; k >= 0; k--) this.ui.add(this.add.image(x + k * 3, ROW_Y - k * 3, 'back').setDisplaySize(36, 50));
+    } else {
+      const g = this.add.graphics();
+      for (let k = 2; k >= 0; k--) {
+        g.fillStyle(k ? COLOR.lineSoft : COLOR.white, 1);
+        g.lineStyle(2, COLOR.outline, 1);
+        g.fillRoundedRect(x - 18 + k * 3, ROW_Y - 24 - k * 3, 36, 48, 6);
+        g.strokeRoundedRect(x - 18 + k * 3, ROW_Y - 24 - k * 3, 36, 48, 6);
+      }
+      this.ui.add(g);
     }
-    this.ui.add(g);
-    this.ui.add(txt(this, x, ROW_Y, `${n}`, 18, COLOR.ink));
-    this.ui.add(txt(this, x, ROW_Y + 40, label, 12, COLOR.inkSoft));
+    this.ui.add(txt(this, x, ROW_Y, `${n}`, 18, back ? COLOR.white : COLOR.ink, back ? 4 : 0));
+    this.ui.add(txt(this, x, ROW_Y + 42, label, 12, COLOR.inkSoft));
     const z = this.add.zone(x, ROW_Y, 50, 60).setInteractive({ useHandCursor: true });
     z.on('pointerdown', () => !this.busy && onTap());
     this.ui.add(z);
@@ -542,7 +764,7 @@ export class BattleScene extends Phaser.Scene {
     const per = 4;
     cards.forEach((c, i) => {
       const x = 60 + (i % per) * 104;
-      const y = 150 + Math.floor(i / per) * 140;
+      const y = 150 + Math.floor(i / per) * 146;
       const v = this.cardView(c, x, y, true, cardDef(c.id).cost);
       v.setScale(0.95);
       this.tip.add(v);
@@ -588,7 +810,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onMove(p: Phaser.Input.Pointer) {
-    if (!this.drag || !p.isDown) return;
+    if (!this.drag || !p.isDown || this.battle().pending) return;
     const v = this.handViews.find((h) => h.card.uid === this.drag!.uid);
     if (!v) return;
     if (!this.drag.moved && Math.hypot(p.x - this.drag.sx, p.y - this.drag.sy) > 12) {
@@ -607,6 +829,11 @@ export class BattleScene extends Phaser.Scene {
     const d = this.drag;
     this.drag = null;
     if (!d || this.busy) return;
+    // 쥐구멍·분신술: 손패 카드 고르기
+    if (this.battle().pending) {
+      if (!d.moved) this.send({ t: 'pick', uid: d.uid });
+      return;
+    }
     if (!d.moved) {
       // 탭: 고르기 / 이미 고른 카드를 다시 탭하면 쓰기
       if (this.selected === d.uid) {
@@ -663,13 +890,15 @@ export class BattleScene extends Phaser.Scene {
     if (!f) return;
     const d = enemyDef(f.id);
     const m = f.intent ? moveDef(d, f.phase, f.intent) : null;
+    const nx = f.next ? moveDef(d, f.phase, f.next) : null;
     const st = (Object.entries(f.st) as [StatusId, number][]).map(([k, n]) => `${STATUS_NAME[k]}${n}: ${STATUS_HELP[k]}`);
     if (f.str) st.push(`힘${f.str}: ${STATUS_HELP.str}`);
-    this.showTip([`${d.name} — 다음 행동: ${m ? (m.intent === 'unknown' ? '알 수 없음' : m.name) : '-'}`, ...st].join('\n'));
+    const line = `${d.name} — 다음 행동: ${m ? (m.intent === 'unknown' ? '알 수 없음' : m.name) : '-'}${nx ? ` → 그다음: ${nx.name}` : ''}`;
+    this.showTip([line, ...st].join('\n'));
   }
 
   private onPotion(i: number) {
-    if (this.busy) return;
+    if (this.busy || this.battle().pending) return;
     this.selected = null;
     const id = this.run().potions[i];
     if (!id) return;
@@ -694,7 +923,9 @@ export class BattleScene extends Phaser.Scene {
     this.send({ t: 'potion', slot, target });
   }
   private endTurn() {
-    if (this.busy || this.battle().over) return;
+    const b = this.battle();
+    if (this.busy || b.over) return;
+    if (b.pending) return this.showTip('먼저 손패에서 카드를 고르세요');
     this.selected = null;
     this.potionSel = null;
     this.send({ t: 'end' });
@@ -726,18 +957,24 @@ export class BattleScene extends Phaser.Scene {
   private async animate(ev: SimEvent[]) {
     this.busy = true;
     this.drawUi();
-    let drew = false;
     for (const e of ev) {
       switch (e.e) {
         case 'play': {
           this.hooks.sfx('deal');
+          const d = cardDef(e.id);
           const v = this.handViews.find((h) => h.card.uid === e.uid);
-          if (v) {
-            const fv = e.target ? this.foeViews.get(e.target) : null;
-            this.tweens.add({ targets: v.c, x: fv ? fv.x : W / 2, y: fv ? fv.y + 40 : HERO_Y - 60, scale: 0.5, alpha: 0, duration: 220, ease: 'Quad.easeIn' });
+          const fv = e.target ? this.foeViews.get(e.target) : null;
+          if (v) this.tweens.add({ targets: v.c, x: fv ? fv.x : W / 2, y: fv ? fv.y + 40 : HERO_Y - 60, scale: 0.5, alpha: 0, duration: 220, ease: 'Quad.easeIn' });
+          this.cur = { fx: fxForCard(d.art, cardOps(e.id) as { op: string }[]), atk: d.kind === 'atk', seen: new Set() };
+          if (d.rarity === 'legend') {
+            await this.wait(160);
+            await this.legendCutin(e.id);
           }
-          if (cardDef(e.id).kind === 'atk') this.tweens.add({ targets: this.heroC, y: HERO_Y - 26, duration: 110, yoyo: true });
-          await this.wait(200);
+          if (d.kind === 'atk') await this.lunge(fv ?? null);
+          else {
+            if (d.kind === 'power') this.spawnFx('fx-pop', W / 2, HERO_Y - 20, 150);
+            await this.wait(200);
+          }
           break;
         }
         case 'hit': {
@@ -748,10 +985,15 @@ export class BattleScene extends Phaser.Scene {
             this.drawHeroBar();
             if (e.n > 0) {
               this.hooks.sfx('slap');
+              if (typeof e.from === 'number') this.spawnFx('fx-claw', W / 2, HERO_Y - 10, 130);
               this.shake(this.heroC, HERO_Y);
+              this.heroHurt();
               this.float(W / 2, HERO_Y - 70, `-${e.n}`, COLOR.lose);
               this.cameras.main.shake(120, 0.006);
-            } else if (e.blocked) this.float(W / 2, HERO_Y - 70, '막음', COLOR.teamA);
+            } else if (e.blocked) {
+              this.spawnFx('fx-shield', W / 2, HERO_Y - 10, 110);
+              this.float(W / 2, HERO_Y - 70, '막음', COLOR.teamA);
+            }
             await this.wait(e.from === 'status' ? 260 : 200);
           } else {
             const d = this.disp.foes.get(e.to);
@@ -763,10 +1005,11 @@ export class BattleScene extends Phaser.Scene {
             }
             if (v && f) {
               this.updateFoe(f, v);
+              if (e.from === 'hero' && this.cur?.atk) this.spawnFx(this.cur.fx, v.x, v.y, v.size * 0.9);
               if (e.n > 0) {
                 this.hooks.sfx('chip');
                 this.shake(v.c, v.y, true);
-                this.flash(v.body);
+                this.foeHurt(v);
               }
               this.float(v.x, v.y - v.r, e.n > 0 ? `-${e.n}` : '막음', e.n > 0 ? COLOR.white : COLOR.teamA);
             }
@@ -785,7 +1028,10 @@ export class BattleScene extends Phaser.Scene {
             this.disp.hero.block += e.n;
             this.clearBarLabels(this.heroHp);
             this.drawHeroBar();
-            this.float(W / 2 - 60, HERO_Y + 40, `방어 +${e.n}`, COLOR.teamA);
+            if (e.n > 0) {
+              this.spawnFx('fx-shield', W / 2, HERO_Y, 120);
+              this.float(W / 2 - 60, HERO_Y + 40, `방어 +${e.n}`, COLOR.teamA);
+            } else this.float(W / 2 - 60, HERO_Y + 40, '방어 0', COLOR.teamA);
           } else {
             const d = this.disp.foes.get(e.to);
             if (d) d.block += e.n;
@@ -797,10 +1043,17 @@ export class BattleScene extends Phaser.Scene {
         }
         case 'status': {
           const name = e.id === 'str' ? '힘' : STATUS_NAME[e.id];
-          if (e.to === 'hero') this.float(W / 2 + 60, HERO_Y + 20, `${name} ${e.n}`, STATUS_COLOR[e.id]);
+          const label = e.n < 0 ? `${name} 해제` : `${name} ${e.n}`;
+          if (e.to === 'hero') this.float(W / 2 + 60, HERO_Y + 20, label, STATUS_COLOR[e.id]);
           else {
             const v = this.foeViews.get(e.to);
-            if (v) this.float(v.x + 20, v.y, `${name} ${e.n}`, STATUS_COLOR[e.id]);
+            if (v) {
+              if (this.cur && !this.cur.atk && !this.cur.seen.has(e.to)) {
+                this.cur.seen.add(e.to);
+                this.spawnFx(this.cur.fx, v.x, v.y, v.size * 0.8);
+              }
+              this.float(v.x + 20, v.y, label, STATUS_COLOR[e.id]);
+            }
           }
           await this.wait(100);
           break;
@@ -809,23 +1062,32 @@ export class BattleScene extends Phaser.Scene {
           this.disp.hero.hp += e.n;
           this.clearBarLabels(this.heroHp);
           this.drawHeroBar();
+          this.spawnFx('fx-heal', W / 2, HERO_Y - 10, 120);
           this.float(W / 2, HERO_Y - 70, `+${e.n}`, COLOR.win);
           await this.wait(160);
           break;
         case 'foeMove': {
+          this.cur = null;
           const v = this.foeViews.get(e.uid);
           const d = this.disp.foes.get(e.uid);
+          const f = this.battle().foes.find((x) => x.uid === e.uid);
           if (d) d.block = 0;
-          if (v) {
+          if (v && f) {
             this.speech(v.x, v.y - v.r - 50, e.name);
-            this.tweens.add({ targets: v.c, y: v.y + 34, duration: 140, yoyo: true, ease: 'Quad.easeOut' });
-          }
-          await this.wait(380);
+            const m = moveDef(enemyDef(f.id), f.phase, e.move);
+            const atkKey = v.art ? `${v.art}-atk` : '';
+            if ((f.boss || f.elite) && m.intent === 'atk' && this.textures.exists(atkKey)) await this.bossStrike(v, atkKey);
+            else {
+              this.tweens.add({ targets: v.c, y: v.y + 34, duration: 140, yoyo: true, ease: 'Quad.easeOut' });
+              await this.wait(380);
+            }
+          } else await this.wait(380);
           break;
         }
         case 'die': {
           const v = this.foeViews.get(e.uid);
           if (v) {
+            this.spawnFx('fx-pop', v.x, v.y, v.size);
             this.tweens.add({ targets: v.c, alpha: 0, scale: 0.6, angle: 20, duration: 280 });
             this.foeViews.delete(e.uid);
             this.time.delayedCall(320, () => {
@@ -842,6 +1104,7 @@ export class BattleScene extends Phaser.Scene {
           const v = this.foeViews.get(e.uid);
           if (v) {
             v.c.setScale(0.2);
+            this.spawnFx('fx-pop', v.x, v.y, v.size);
             this.tweens.add({ targets: v.c, scale: 1, duration: 260, ease: 'Back.easeOut' });
           }
           await this.wait(240);
@@ -855,17 +1118,23 @@ export class BattleScene extends Phaser.Scene {
         }
         case 'phase': {
           const f = this.battle().foes.find((x) => x.uid === e.uid);
-          await this.cutin(f ? enemyDef(f.id).name : '', e.text);
+          if (f) {
+            const d = enemyDef(f.id);
+            const atkKey = `${d.art}-atk`;
+            const has = this.textures.exists(atkKey);
+            this.hooks.sfx('turn');
+            await this.cutin(has ? atkKey : d.art, has ? 1 : undefined, d.name, '2단계!', e.text, COLOR.pink);
+          }
           break;
         }
         case 'turn':
+          this.cur = null;
           if (e.who === 'foes') {
             await this.wait(200);
             this.banner('요괴 차례', COLOR.pink);
             await this.wait(500);
           } else if (e.turn > 1) {
-            this.disp.hero.block = this.run().relics.includes('iceJar') ? Math.min(3, this.disp.hero.block) : 0;
-            drew = true;
+            this.disp.hero.block = keptBlock(this.run(), this.disp.hero.block);
             this.render();
             this.banner('내 차례', COLOR.primary);
             this.hooks.sfx('turn');
@@ -881,21 +1150,46 @@ export class BattleScene extends Phaser.Scene {
           await this.wait(300);
           break;
         case 'revive':
-          await this.cutin('다시 일어섰다!', relicDef(e.who).name);
+          if (e.who === 'cat') await this.cutin(`cut-cat`, undefined, heroDef('cat').name, '버텼다!', '체력 1 · 방어 10', COLOR.pink);
+          else await this.burst('다시 일어섰다!', relicDef(e.who).name);
           break;
+        case 'echo':
+          this.float(W / 2, HERO_Y - 100, `${cardDef(e.id).name} 한 번 더!`, COLOR.primary);
+          if (cardDef(e.id).kind === 'atk') await this.lunge(null);
+          break;
+        case 'mimic':
+          this.float(W / 2, HERO_Y - 100, `흉내: ${cardDef(e.id).name}`, COLOR.primary);
+          {
+            const d = cardDef(e.id);
+            this.cur = { fx: fxForCard(d.art, cardOps(e.id) as { op: string }[]), atk: d.kind === 'atk', seen: new Set() };
+            if (d.kind === 'atk') await this.lunge(null);
+            else await this.wait(200);
+          }
+          break;
+        case 'clone':
+          this.float(W / 2, 660, '분신술!', COLOR.primary);
+          await this.wait(200);
+          break;
+        case 'peek': {
+          const v = this.foeViews.get(e.uid);
+          if (v) this.float(v.x, v.y - v.r - 20, '냄새 추적!', COLOR.primary);
+          await this.wait(200);
+          break;
+        }
         case 'win':
           this.hooks.sfx('win');
-          await this.cutin('승리!', '');
+          for (let k = 0; k < 6; k++) this.coinPop(k);
+          await this.burst('승리!', '');
           break;
         case 'lose':
           this.hooks.sfx('lose');
-          await this.cutin('쓰러졌다…', '');
+          await this.burst('쓰러졌다…', '');
           break;
         default:
           break;
       }
     }
-    void drew;
+    this.cur = null;
     this.busy = false;
     if (this.battle().over) {
       this.hooks.done();
@@ -904,12 +1198,91 @@ export class BattleScene extends Phaser.Scene {
     this.render();
   }
 
-  private shake(o: Phaser.GameObjects.Container, y: number, side = false) {
-    this.tweens.add({ targets: o, x: side ? o.x + 8 : o.x, y: side ? y : y + 6, duration: 50, yoyo: true, repeat: 2, onComplete: () => o.setY(y) });
+  /** 영웅이 앞으로(대상 쪽으로) 튀어 나갔다 돌아온다 — 시트가 있으면 공격 칸 */
+  private async lunge(target: FoeView | null) {
+    const dx = target ? (target.x - W / 2) * 0.35 : 0;
+    if (this.heroSheet && this.heroSprite) this.heroSprite.setFrame(HERO_ATTACK);
+    this.tweens.add({ targets: this.heroC, x: W / 2 + dx, y: HERO_Y - 70, duration: 120, ease: 'Quad.easeOut', yoyo: true, hold: 60 });
+    await this.wait(170);
+    this.time.delayedCall(160, () => {
+      if (this.heroSheet && this.heroSprite) this.heroSprite.setFrame(HERO_STAND);
+      this.heroC.setPosition(W / 2, HERO_Y);
+    });
   }
 
-  private flash(g: Phaser.GameObjects.Graphics) {
-    this.tweens.add({ targets: g, alpha: 0.4, duration: 60, yoyo: true, repeat: 1 });
+  private heroHurt() {
+    if (!this.heroSprite) return;
+    this.heroSprite.setTint(COLOR.pink);
+    this.time.delayedCall(180, () => this.heroSprite?.clearTint());
+  }
+
+  /** 요괴가 맞음: -hit 그림으로 잠깐 바꾸고(없으면 분홍으로 물들임) 흔들린다 */
+  private foeHurt(v: FoeView) {
+    if (!(v.body instanceof Phaser.GameObjects.Image) || !v.art) {
+      this.tweens.add({ targets: v.body, alpha: 0.4, duration: 60, yoyo: true, repeat: 1 });
+      return;
+    }
+    const img = v.body;
+    const hit = `${v.art}-hit`;
+    v.back?.remove(false);
+    if (this.textures.exists(hit)) {
+      img.setTexture(hit);
+      fit(img, v.size);
+    } else img.setTint(COLOR.pink);
+    v.back = this.time.delayedCall(260, () => {
+      if (!img.active) return;
+      img.clearTint();
+      img.setTexture(v.art!);
+      fit(img, v.size);
+    });
+  }
+
+  /** 보스 공격 동작: 예고(치켜듦) → 내려치기 → 원래 그림 */
+  private async bossStrike(v: FoeView, key: string) {
+    const img = v.body as Phaser.GameObjects.Image;
+    v.back?.remove(false);
+    img.clearTint();
+    img.setTexture(key, 0);
+    fit(img, v.size * 1.1);
+    await this.wait(240);
+    if (!img.active) return;
+    img.setTexture(key, 1);
+    fit(img, v.size * 1.1);
+    this.tweens.add({ targets: v.c, y: v.y + 30, duration: 120, yoyo: true, ease: 'Quad.easeOut' });
+    await this.wait(260);
+    v.back = this.time.delayedCall(120, () => {
+      if (!img.active) return;
+      img.setTexture(v.art!);
+      fit(img, v.size);
+    });
+  }
+
+  /** 효과 그림 하나 (fx-*) — 커지며 사라진다. 없으면 코드 그림 (터지는 동그라미) */
+  private spawnFx(key: string, x: number, y: number, size: number) {
+    if (this.textures.exists(key)) {
+      const img = this.add.image(x, y, key).setDepth(42);
+      fit(img, size * 0.7);
+      const s = img.scale;
+      if (key === 'fx-slash' || key === 'fx-claw') img.setAngle(Phaser.Math.Between(-30, 30));
+      this.tweens.add({ targets: img, scale: s * 1.45, alpha: 0, duration: 360, ease: 'Quad.easeOut', onComplete: () => img.destroy() });
+      return;
+    }
+    const g = this.add.graphics().setDepth(42).setPosition(x, y);
+    g.lineStyle(5, COLOR.white, 1);
+    g.strokeCircle(0, 0, size * 0.25);
+    this.tweens.add({ targets: g, scale: 2, alpha: 0, duration: 300, onComplete: () => g.destroy() });
+  }
+
+  private coinPop(k: number) {
+    const x = W / 2 + (k - 2.5) * 34;
+    if (this.textures.exists('fx-coin')) {
+      const img = this.add.image(x, HERO_Y - 40, 'fx-coin').setDepth(47).setDisplaySize(30, 30);
+      this.tweens.add({ targets: img, y: HERO_Y - 160 - (k % 2) * 30, alpha: 0, delay: k * 60, duration: 700, ease: 'Quad.easeOut', onComplete: () => img.destroy() });
+    }
+  }
+
+  private shake(o: Phaser.GameObjects.Container, y: number, side = false) {
+    this.tweens.add({ targets: o, x: side ? o.x + 8 : o.x, y: side ? y : y + 6, duration: 50, yoyo: true, repeat: 2, onComplete: () => o.setY(y) });
   }
 
   private float(x: number, y: number, s: string, color: number) {
@@ -942,8 +1315,8 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({ targets: c, alpha: 0, delay: 650, duration: 200, onComplete: () => c.destroy() });
   }
 
-  /** 컷인: 방사형 노란 빛 + 흰 글자 외곽선 (DESIGN 8장, 1.2초) */
-  private async cutin(title: string, sub: string) {
+  /** 승리·쓰러짐: 방사형 노란 빛 + 흰 글자 외곽선 (DESIGN 8장, 1.2초) */
+  private async burst(title: string, sub: string) {
     const c = this.add.container(W / 2, 380).setDepth(48);
     const g = this.add.graphics();
     g.fillStyle(COLOR.outline, 0.45);
@@ -962,5 +1335,61 @@ export class BattleScene extends Phaser.Scene {
     await this.wait(1000);
     this.tweens.add({ targets: c, alpha: 0, duration: 200, onComplete: () => c.destroy() });
     await this.wait(200);
+  }
+
+  /** 전설 카드: 영웅 컷인 (cut-<영웅> · 없으면 영웅 그림) */
+  private async legendCutin(cardId: string) {
+    const run = this.run();
+    const h = heroDef(run.hero);
+    const key = this.textures.exists(`cut-${h.id}`) ? `cut-${h.id}` : this.heroSheet ? `hero-${h.id}` : 'hero-full';
+    this.hooks.sfx('turn');
+    await this.cutin(key, key.startsWith('hero-') && this.heroSheet ? HERO_STAND : undefined, h.name, cardDef(cardId).name, '전설 카드!', COLOR.primary);
+  }
+
+  /**
+   * 컷인 (시아핑거 fx.cutin 과 같은 모양): 기울어진 색 띠가 왼쪽에서 들어와 머물렀다 오른쪽으로 빠진다.
+   * 왼쪽에 그림(보스 · 보스 공격 동작 · 영웅 컷인), 오른쪽에 이름·큰 글자·설명. DESIGN.md '컷인'(방사형 노란 빛, 흰 글자 + 외곽선).
+   */
+  private async cutin(key: string | null, frame: number | undefined, name: string, title: string, sub: string, color: number) {
+    const IN = 160;
+    const HOLD = 760;
+    const OUT = 160;
+    const box = this.add.container(-W, 360).setDepth(49);
+    const g = this.add.graphics();
+    g.fillStyle(COLOR.outline, 1);
+    g.fillRect(-40, -92, W + 80, 184);
+    g.fillStyle(color, 1);
+    g.fillRect(-40, -84, W + 80, 168);
+    g.fillStyle(COLOR.white, 0.5);
+    g.fillRect(-40, -66, W + 80, 6);
+    g.fillStyle(COLOR.outline, 0.25);
+    g.fillRect(-40, 60, W + 80, 6);
+    box.add(g);
+    const rays = this.add.graphics().setPosition(110, 0);
+    rays.fillStyle(COLOR.primary, 0.9);
+    for (let i = 0; i < 12; i++) {
+      const a = (i * Math.PI) / 6;
+      rays.fillTriangle(0, 0, Math.cos(a) * 130, Math.sin(a) * 130, Math.cos(a + 0.22) * 130, Math.sin(a + 0.22) * 130);
+    }
+    box.add(rays);
+    if (key && this.textures.exists(key)) {
+      const img = this.add.image(110, 0, key, frame);
+      fit(img, 190);
+      box.add(img);
+      this.tweens.add({ targets: img, scale: img.scale * 1.08, duration: IN + HOLD, ease: 'Sine.easeOut' });
+    }
+    const tx = 210;
+    box.add(this.add.text(tx, sub ? -48 : -34, name, { fontFamily: FONT, fontSize: '20px', color: css(COLOR.primary), stroke: INK, strokeThickness: 5 }).setOrigin(0, 0.5));
+    box.add(
+      this.add
+        .text(tx, sub ? -6 : 10, title, { fontFamily: FONT, fontSize: title.length > 5 ? '28px' : '38px', color: css(COLOR.white), stroke: INK, strokeThickness: 7, wordWrap: { width: W - tx - 14, useAdvancedWrap: true } })
+        .setOrigin(0, 0.5),
+    );
+    if (sub) box.add(this.add.text(tx, 38, sub, { fontFamily: FONT, fontSize: '15px', color: css(COLOR.white), stroke: INK, strokeThickness: 4, wordWrap: { width: W - tx - 14, useAdvancedWrap: true } }).setOrigin(0, 0.5));
+    box.setAngle(-4);
+    this.tweens.add({ targets: rays, angle: 60, duration: IN + HOLD + OUT });
+    this.tweens.add({ targets: box, x: 0, duration: IN, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: box, x: W, delay: IN + HOLD, duration: OUT, ease: 'Cubic.easeIn', onComplete: () => box.destroy() });
+    await this.wait(IN + HOLD + OUT);
   }
 }

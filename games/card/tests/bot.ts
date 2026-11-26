@@ -2,7 +2,7 @@
  * 간단한 봇: 화면과 같은 입력(apply)만 써서 전투·판을 끝까지 돌린다.
  * 규칙: 들어올 피해보다 방어가 적으면 방어 카드, 아니면 공격(체력 낮은 적부터), 쓸 게 없으면 턴 끝.
  */
-import { aliveFoes, apply, canChoose, canUpgrade, cardDef, cardOps, choices, enemyDef, eventDef, foeDamage, moveDef, playCost, removePrice, restHeal, restUpgrades, upgradable, type Battle, type Input, type RunState } from '../src/game/rules';
+import { aliveFoes, apply, canChoose, perValue, canUpgrade, cardDef, cardOps, choices, enemyDef, eventDef, foeDamage, moveDef, playCost, removePrice, restHeal, restUpgrades, upgradable, type Battle, type Input, type RunState } from '../src/game/rules';
 
 export function incoming(b: Battle): number {
   let n = 0;
@@ -16,6 +16,11 @@ export function incoming(b: Battle): number {
 /** 전투 한 걸음 입력 고르기 */
 export function battleInput(run: RunState): Input {
   const b = run.battle!;
+  // 쥐구멍(버리기)·분신술(복사): 버리기는 가장 약한 카드, 복사는 가장 센 카드
+  if (b.pending) {
+    const sorted = [...b.hand].sort((x, y) => RANK[cardDef(x.id).rarity] - RANK[cardDef(y.id).rarity]);
+    return { t: 'pick', uid: (b.pending.kind === 'discard' ? sorted[0] : sorted[sorted.length - 1]).uid };
+  }
   const playable = b.hand.filter((c) => playCost(run, b, c) <= b.energy);
   const need = incoming(b) - b.block;
   // 분신은 계속 나오므로 주인(보스)을 먼저 노린다
@@ -24,7 +29,9 @@ export function battleInput(run: RunState): Input {
     const d = cardDef(id);
     let s = 0;
     for (const o of cardOps(id, up)) {
-      if (o.op === 'dmg') s += o.n * (o.times ?? 1) * (o.to === 'all' ? aliveFoes(b).length : 1);
+      if (o.op === 'dmg') s += (o.n + (o.per ? Math.floor((o.k ?? 1) * perValue(run, b, o.per)) : 0)) * (o.times ?? 1) * (o.to === 'all' ? aliveFoes(b).length : 1);
+      if (o.op === 'mimic' || o.op === 'pick' || o.op === 'peek' || o.op === 'mulSt') s += 5;
+      if (o.op === 'nextEnergy' || o.op === 'nextFreeAtk' || o.op === 'thorns') s += 3;
       if (o.op === 'block') s += need > 0 ? o.n * 1.3 : o.n * 0.2;
       if (o.op === 'draw' || o.op === 'energy') s += 4 * o.n;
       if (o.op === 'status') s += 3 * o.n;

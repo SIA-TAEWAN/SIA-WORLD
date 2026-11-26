@@ -8,6 +8,8 @@ export const DEV_SEED = LOCAL_MODE && params.has('seed') ? Math.floor(Number(par
 /** 개발용: 바로 이 요괴들과 전투 (?local=1&foes=fox,acorn · &kind=boss) */
 export const DEV_FOES = str('foes').split(',').filter(Boolean);
 export const DEV_KIND = (['battle', 'elite', 'boss'].includes(str('kind')) ? str('kind') : 'battle') as 'battle' | 'elite' | 'boss';
+/** 개발용: 연습 전투 영웅 (?local=1&foes=fox&hero=dog) */
+export const DEV_HERO = str('hero') || null;
 /** 개발용: 엽전·부적 (?local=1&gold=500&relics=moonOrb,whetstone) */
 export const DEV_GOLD = LOCAL_MODE && params.has('gold') ? Math.max(0, Math.floor(Number(params.get('gold')) || 0)) : null;
 export const DEV_RELICS = str('relics').split(',').filter(Boolean);

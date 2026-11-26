@@ -29,10 +29,11 @@ import {
   type NodeType,
   type RunState,
 } from '../game/rules';
-import { DEV_FOES, DEV_GOLD, DEV_KIND, DEV_RELICS, DEV_RESET, DEV_SEED, LOCAL_MODE } from '../net/local';
+import { DEV_FOES, DEV_GOLD, DEV_HERO, DEV_KIND, DEV_RELICS, DEV_RESET, DEV_SEED, LOCAL_MODE } from '../net/local';
 import { loadSound, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { BattleScene, H, W, type BattleHooks } from '../scenes/BattleScene';
-import { cardHtml, potionHtml, relicHtml } from './cards';
+import { MAP_NODE_FRAME, artState, artUrl, hasArt } from '../art';
+import { artImg, cardHtml, potionHtml, potionIcon, relicHtml, relicIcon } from './cards';
 
 interface Ctx {
   user: WorldUser | null;
@@ -193,7 +194,7 @@ function showPracticeMenu() {
 
 function startPractice(foes: string[], kind: 'battle' | 'elite' | 'boss') {
   for (const f of foes) enemyDef(f);
-  const run = newRun({ seed: DEV_SEED ?? Date.now() >>> 0, hero: 'tiger' });
+  const run = newRun({ seed: DEV_SEED ?? Date.now() >>> 0, hero: DEV_HERO ?? 'tiger' });
   run.relics.push(...DEV_RELICS);
   enterTestBattle(run, foes, kind);
   ctx.run = run;
@@ -202,37 +203,47 @@ function startPractice(foes: string[], kind: 'battle' | 'elite' | 'boss') {
 
 // ---------- 영웅 고르기 ----------
 
+/** 이 기기에서 고를 수 있는 영웅 (고양이는 해금 — 5단계, 지금은 테스트 모드에서만) */
+const canPickHero = (id: string) => {
+  const h = heroDef(id);
+  return h.ready && (!h.locked || LOCAL_MODE);
+};
+
 function showHeroes() {
-  let pick = HEROES.find((h) => h.ready)!.id;
+  let pick = HEROES.find((h) => canPickHero(h.id))!.id;
   const draw = () => {
     const h = heroDef(pick);
     const c1 = cardDef(h.cards[0]);
+    const c2 = cardDef(h.cards[1]);
+    const ok = canPickHero(h.id);
     const s = screen(`
       <div class="bar"><button class="back" id="back">← 처음</button><h2>영웅 고르기</h2><span class="back-space"></span></div>
       <div class="hero-grid">
         ${HEROES.map(
-          (x) => `<button class="hero-cell${x.id === pick ? ' sel' : ''}${x.ready ? '' : ' off'}" data-h="${x.id}">
+          (x) => `<button class="hero-cell${x.id === pick ? ' sel' : ''}${canPickHero(x.id) ? '' : ' off'}" data-h="${x.id}">
             <img src="${heroFace(x.id)}" alt="" onerror="this.style.visibility='hidden'">
-            <span>${esc(x.name)}</span>${x.locked ? '<i class="lock">🔒</i>' : !x.ready ? '<i class="soon">준비 중</i>' : ''}
+            <span>${esc(x.name)}</span>${x.locked && !LOCAL_MODE ? '<i class="lock">🔒</i>' : !x.ready ? '<i class="soon">준비 중</i>' : ''}
           </button>`,
         ).join('')}
       </div>
       <div class="card hero-info">
-        <div class="hero-top"><img src="${heroImg(h.id)}" alt="" onerror="this.style.visibility='hidden'">
-          <div><b>${esc(h.name)}</b> <span class="soft">${h.animal} · 체력 ${h.hp}</span><p class="passive">${esc(h.passive)}</p></div></div>
-        <div class="hero-cards">${cardHtml(c1.id)}${cardDef(h.cards[1]) ? cardHtml(h.cards[1]) : ''}</div>
-        <p class="soft center">시작 덱: 베기 5 · 막기 4 · ${esc(c1.name)} 1 — 두 번째 전용 카드는 보상에서만 나와요</p>
+        <div class="hero-top">${artImg(`cut-${h.id}`, `<img src="${heroImg(h.id)}" alt="">`, 'hero-cut')}
+          <div><b>${esc(h.name)}</b> <span class="soft">${h.animal} · 체력 ${h.hp}</span><p class="passive"><em>패시브</em> ${esc(h.passive)}</p></div></div>
+        <div class="hero-cards">
+          <div class="hc"><small>전용 1 · 시작 덱</small>${cardHtml(c1.id)}</div>
+          <div class="hc"><small>전용 2 · 보상에서만</small>${cardHtml(c2.id)}</div>
+        </div>
+        <p class="soft center">시작 덱: 베기 5 · 막기 4 · ${esc(c1.name)} 1${h.locked ? ' · 고양이는 한 판을 깬 뒤 시아코인 100으로 열어요' : ''}</p>
       </div>
-      <button class="btn primary big" id="go" ${h.ready ? '' : 'disabled'}>이 영웅으로 출발 ▶</button>
+      ${
+        ok
+          ? '<button class="btn primary big" id="go">이 영웅으로 출발 ▶</button>'
+          : `<button class="btn big" disabled>${h.locked ? '🔒 시아코인 100으로 열기 (준비 중)' : '준비 중'}</button>`
+      }
     `);
     on(s, '#back', () => showTitle());
     on(s, '[data-h]', (el) => {
-      const id = el.dataset.h!;
-      if (!heroDef(id).ready) {
-        toast(heroDef(id).locked ? '고양이는 한 판을 깬 뒤 시아코인으로 열 수 있어요 (준비 중)' : '다음 단계에서 열려요');
-        return;
-      }
-      pick = id;
+      pick = el.dataset.h!;
       draw();
     });
     on(s, '#go', () => {
@@ -246,16 +257,7 @@ function showHeroes() {
       showRun();
     });
   };
-  // cardDef 는 없는 카드면 던진다 — 아직 데이터가 없는 영웅은 첫 카드만
-  const safe = () => {
-    try {
-      draw();
-    } catch {
-      pick = 'tiger';
-      draw();
-    }
-  };
-  safe();
+  draw();
 }
 
 // ---------- 판 화면 고르기 ----------
@@ -290,9 +292,9 @@ function runBar(title: string) {
       <span class="pill hp">❤ ${run.hp}/${run.maxHp}</span>
       <span class="pill gold">엽전 <b>${run.gold}</b></span>
       <span class="pill">덱 ${run.deck.length}</span>
-      ${[0, 1, 2].map((i) => `<button class="pot${run.potions[i] ? '' : ' empty'}" data-pot="${i}">${run.potions[i] ? '🧪' : ''}</button>`).join('')}
+      ${[0, 1, 2].map((i) => `<button class="pot${run.potions[i] ? '' : ' empty'}" data-pot="${i}">${run.potions[i] ? potionIcon(run.potions[i], 'pot-ic') : ''}</button>`).join('')}
     </div>
-    ${run.relics.length ? `<div class="relic-row">${run.relics.map((id) => `<button class="relic-dot" data-relic="${id}">${relicDef(id).name.slice(0, 1)}</button>`).join('')}</div>` : ''}`;
+    ${run.relics.length ? `<div class="relic-row">${run.relics.map((id) => `<button class="relic-btn" data-relic="${id}">${relicIcon(id)}</button>`).join('')}</div>` : ''}`;
 }
 
 function bindBar(s: HTMLElement, redraw: () => void) {
@@ -373,6 +375,11 @@ function pickCards(title: string, cards: DeckCard[], n: number, preview: 'up' | 
 // ---------- 지도 ----------
 
 const NODE_ICON: Record<NodeType, string> = { battle: '⚔️', elite: '👹', shop: '🏮', rest: '🔥', treasure: '🎁', event: '❓', boss: '' };
+/** 지도 칸 그림 (새 그림 map-nodes 시트의 그 칸 · 못 읽었으면 글자 그림) */
+function nodeIcon(t: NodeType, cls = 'node-ic'): string {
+  if (!artState.nodes || !(t in MAP_NODE_FRAME)) return NODE_ICON[t];
+  return `<span class="${cls}" style="background-image:url('${artUrl('map-nodes')}');background-position:${MAP_NODE_FRAME[t] * 20}% 0"></span>`;
+}
 const NODE_NAME: Record<NodeType, string> = { battle: '전투', elite: '정예', shop: '상점', rest: '쉼터', treasure: '보물', event: '이야기', boss: '보스' };
 const ROW_H = 76;
 
@@ -404,19 +411,19 @@ function showMap() {
           const next = y === run.row + 1 && can.has(n.col);
           const cls = ['node', `t-${n.type}`, here ? 'here' : '', passed ? 'passed' : '', next ? 'next' : '', y <= run.row && !passed ? 'gone' : ''].join(' ');
           if (n.type === 'boss')
-            return `<button class="${cls} boss-node" style="left:${xOf(n.x)}%;top:${yOf(y)}px" data-col="${n.col}" data-row="${y}"><span class="boss-face">👺</span><b>${esc(enemyDef(m.boss).name)}</b></button>`;
-          return `<button class="${cls}" style="left:${xOf(n.x)}%;top:${yOf(y)}px" data-col="${n.col}" data-row="${y}" title="${NODE_NAME[n.type]}">${NODE_ICON[n.type]}</button>`;
+            return `<button class="${cls} boss-node" style="left:${xOf(n.x)}%;top:${yOf(y)}px" data-col="${n.col}" data-row="${y}">${artImg(enemyDef(m.boss).art, '👺', 'boss-face')}<b>${esc(enemyDef(m.boss).name)}</b></button>`;
+          return `<button class="${cls}" style="left:${xOf(n.x)}%;top:${yOf(y)}px" data-col="${n.col}" data-row="${y}" title="${NODE_NAME[n.type]}">${nodeIcon(n.type)}</button>`;
         })
         .join(''),
     )
     .join('');
   const s = screen(
     `${runBar(`${run.act}막 · ${esc(reg.name)}`)}
-    <div class="map-wrap"><div class="map t-${reg.id}" style="height:${height}px">
+    <div class="map-wrap"><div class="map t-${reg.id}" style="height:${height}px${hasArt(reg.tile) ? `;--tile:url('${artUrl(reg.tile)}')` : ''}">
       <svg class="map-lines" viewBox="0 0 100 ${height}" preserveAspectRatio="none" style="height:${height}px">${lines.join('')}</svg>
       ${nodes}
     </div></div>
-    <p class="map-legend">${(['battle', 'elite', 'shop', 'rest', 'treasure', 'event'] as NodeType[]).map((t) => `${NODE_ICON[t]} ${NODE_NAME[t]}`).join(' · ')}</p>`,
+    <p class="map-legend">${(['battle', 'elite', 'shop', 'rest', 'treasure', 'event'] as NodeType[]).map((t) => `<span>${nodeIcon(t, 'node-ic small')} ${NODE_NAME[t]}</span>`).join('')}</p>`,
     'map-screen',
   );
   bindBar(s, showMap);
@@ -481,15 +488,15 @@ function showReward() {
       if (it.taken) return '';
       switch (it.k) {
         case 'gold':
-          return `<button class="item btn-item" data-take="${i}"><span class="coin-dot">엽</span><span class="item-main"><b>엽전 ${it.n}</b></span></button>`;
+          return `<button class="item btn-item" data-take="${i}"><span class="coin-dot has-art">${artImg('ic-coin', '엽')}</span><span class="item-main"><b>엽전 ${it.n}</b></span></button>`;
         case 'card':
-          return `<button class="item btn-item" data-card="${i}"><span class="relic-dot card-dot">🂠</span><span class="item-main"><b>${rw.boss ? '전설 카드' : '카드'} 고르기</b><small>${it.options.length}장 중 1장</small></span></button>`;
+          return `<button class="item btn-item" data-card="${i}"><span class="relic-dot card-dot has-art">${artImg('back', '🂠')}</span><span class="item-main"><b>${rw.boss ? '전설 카드' : '카드'} 고르기</b><small>${it.options.length}장 중 1장</small></span></button>`;
         case 'relic':
           return `<button class="btn-item" data-take="${i}">${relicHtml(it.id)}</button>`;
         case 'potion':
           return `<button class="btn-item" data-take="${i}">${potionHtml(it.id)}</button>`;
         case 'bossRelic':
-          return `<button class="item btn-item" data-boss="${i}"><span class="relic-dot">✦</span><span class="item-main"><b>보스 부적 고르기</b><small>3개 중 1개</small></span></button>`;
+          return `<button class="item btn-item" data-boss="${i}"><span class="relic-dot has-art">${artImg('ic-star', '✦')}</span><span class="item-main"><b>보스 부적 고르기</b><small>${it.options.length}개 중 1개</small></span></button>`;
       }
     })
     .join('');
@@ -549,7 +556,7 @@ function showShop() {
   const sh = run.shop!;
   const price = (p: number, sold?: boolean) => (sold ? '<em class="sold">팔림</em>' : `<b class="price${run.gold < p ? ' short' : ''}">${p}</b>`);
   const s = screen(`${runBar('상점')}
-    <div class="card keeper"><span class="keeper-face">🏮</span><p>어서 오시오! 좋은 물건 많소.</p></div>
+    <div class="card scene-card">${artImg('shop', '<span class="keeper-face">🏮</span>', 'scene-art')}<p class="scene-say">어서 오시오! 좋은 물건 많소.</p></div>
     <div class="card"><h3>카드</h3><div class="shop-cards">
       ${sh.cards.map((c, i) => `<button class="shop-card${c.sold ? ' sold' : ''}" data-buy="card" data-i="${i}" ${c.sold ? 'disabled' : ''}>${cardHtml(c.id, c.up)}${price(c.price, c.sold)}</button>`).join('')}
     </div></div>
@@ -588,8 +595,8 @@ function showRest() {
   const healN = restHeal(run);
   const can = upgradable(run);
   const s = screen(`${runBar('쉼터')}
-    <div class="card center rest-fire"><span class="fire">🔥</span><p>모닥불 앞에서 잠시 쉬어 가요.</p>
-      <img class="rest-hero" src="${heroImg(run.hero)}" alt="" onerror="this.remove()"></div>
+    <div class="card scene-card">${artImg('forge', '<span class="fire">🔥</span>', 'scene-art')}
+      <p class="scene-say">모닥불 앞에서 잠시 쉬어 가요. 쉬거나, 대장간에서 카드를 강화해요.</p></div>
     ${
       rs.done
         ? '<div class="card center"><b>푹 쉬었어요!</b></div>'
@@ -626,7 +633,7 @@ function showTreasure() {
   const run = ctx.run!;
   const t = run.treasure!;
   const s = screen(`${runBar('보물')}
-    <div class="card center treasure"><span class="chest${t.opened ? ' open' : ''}">${t.opened ? '✨' : '🎁'}</span>
+    <div class="card center treasure"><span class="chest${t.opened ? ' open' : ''}">${t.opened ? artImg('fx-pop', '✨', 'chest-art') : artImg('chest', '🎁', 'chest-art')}</span>
     ${t.opened ? (t.relic ? relicHtml(t.relic) : '<p>엽전 50이 들어 있었어요</p>') : '<p>낡은 상자가 있어요</p>'}</div>
     <div class="grow"></div>
     ${t.opened ? '<button class="btn primary big" id="leave">지도로 ▶</button>' : '<button class="btn primary big" id="open">상자 열기 ▶</button>'}`);
@@ -649,7 +656,7 @@ function showEvent() {
   const e = run.event!;
   const def = eventDef(e.id);
   const s = screen(`${runBar(esc(def.name))}
-    <div class="card story"><div class="story-art"><img src="${heroImg(run.hero)}" alt="" onerror="this.remove()"></div><p>${esc(def.text)}</p></div>
+    <div class="card scene-card">${artImg(def.art, '', 'scene-art')}<img class="scene-hero" src="${heroImg(run.hero)}" alt="" onerror="this.remove()"><p class="scene-say">${esc(def.text)}</p></div>
     ${
       e.chosen < 0
         ? `<div class="btns">${def.choices
@@ -694,6 +701,7 @@ function showResult() {
   const st = run.stats;
   const s = screen(`<div class="grow"></div>
     <div class="card big-panel center">
+      ${win && !run.practice ? artImg('ending-2', '', 'result-scene') : ''}
       <img class="result-hero${win ? '' : ' down'}" src="${heroImg(run.hero)}" alt="" onerror="this.remove()">
       <h2 class="${win ? 'win' : 'lose'}">${run.practice ? (win ? '승리!' : '쓰러졌어요…') : win ? `${run.act}막 클리어!` : '쓰러졌어요…'}</h2>
       ${run.practice ? `<p>남은 체력 ${run.hp} / ${run.maxHp}</p>` : `<p>${run.act}막 · ${st.floors}칸 · 정예 ${st.elites} · 보스 ${st.bosses}</p><p class="soft">${win ? '2막 궁궐은 다음 단계에서 열려요' : '처음부터 다시 도전해요'}</p>`}

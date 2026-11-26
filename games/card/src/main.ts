@@ -1,4 +1,5 @@
 import './style.css';
+import { preloadUi } from './art';
 import { LOCAL_MODE } from './net/local';
 import { loadAuth, worldHome, type WorldUser } from './net/world';
 import { boot, showFirst } from './ui/app';
@@ -25,6 +26,8 @@ async function start() {
     } catch {
       /* 글꼴 없이도 된다 */
     }
+    // 카드 틀·지도 칸 그림 (못 읽으면 코드 그림)
+    await preloadUi();
     boot(user);
   } catch {
     const app = message(`SIA WORLD에 연결하지 못했어요.<br/>인터넷 연결을 확인하고 다시 시도해 주세요.<br/><br/>

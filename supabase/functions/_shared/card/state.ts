@@ -18,6 +18,8 @@ export interface BCard extends DeckCard {
   tmp?: boolean;
   /** 이번 턴 기력 0 */
   free?: boolean;
+  /** 이번 턴 기력 -n (할퀴기) */
+  cut?: number;
 }
 
 export interface Foe {
@@ -42,6 +44,8 @@ export interface Foe {
   /** 정예로 나온 보스 (체력 60%) */
   elite?: boolean;
   boss?: boolean;
+  /** 냄새 추적으로 미리 정해 둔 그다음 행동 (move id) */
+  next?: string | null;
 }
 
 export interface Battle {
@@ -69,8 +73,17 @@ export interface Battle {
   /** 난수 줄기 3개 — 섞기·요괴 의도·카드 무작위 대상. 서로 따로라 한쪽을 더 써도 다른 쪽 순서는 그대로 */
   rng: { draw: number; ai: number; fx: number };
   nextFoe: number;
-  /** 이번 턴 기록 */
-  t: { played: number; attacks: number };
+  /** 이번 턴 기록 (drawn = 이번 턴 뽑은 장수) */
+  t: { played: number; attacks: number; drawn?: number };
+  /** 다음 턴 시작에 더 받는 기력 (깡충) */
+  nextEnergy?: number;
+  /** 이번 턴 첫 공격카드 기력 0 (살금살금 — 다음 턴에 켜짐) */
+  freeAtk?: boolean;
+  nextFreeAtk?: boolean;
+  /** 직전에 쓴 카드 (흉내) */
+  lastCard?: { id: string; up?: boolean; target?: number } | null;
+  /** 손패에서 카드를 골라야 함 (쥐구멍·분신술) — 고를 때까지 다른 입력은 받지 않는다 */
+  pending?: { kind: 'discard' | 'clone'; n: number } | null;
   /** 이 전투 기록·한 번만 쓰는 부적 */
   b: { attacks: number; whet: boolean; beoseon: boolean; sorghum: boolean };
   /** 첫 턴에 더 받는 기력 (도깨비 방망이 · 탁발승) */
@@ -181,6 +194,7 @@ export interface RunState {
  * - play: 손패 카드 사용 (uid = 카드 번호, target = 적 uid)
  * - potion: 물약 사용 (slot 0~2, target = 적 uid) · dropPotion: 버리기
  * - end: 턴 끝 (keep = 달빛 구슬로 남길 카드 uid)
+ * - pick: 전투 중 손패에서 카드 고르기 (쥐구멍 버리기 · 분신술 복사)
  * - take: 보상 항목 받기 (i = 항목, pick = 카드·보스 부적 중 몇 번째)
  * - buy: 상점 (kind, i) · remove: 상점 카드 없애기 (uid)
  * - heal / upgrade: 쉼터 (uids = 강화할 카드들)
@@ -193,6 +207,7 @@ export type Input =
   | { t: 'potion'; slot: number; target?: number }
   | { t: 'dropPotion'; slot: number }
   | { t: 'end'; keep?: number }
+  | { t: 'pick'; uid: number }
   | { t: 'take'; i: number; pick?: number }
   | { t: 'buy'; kind: 'card' | 'relic' | 'potion'; i: number }
   | { t: 'remove'; uid: number }
@@ -225,5 +240,9 @@ export type SimEvent =
   | { e: 'curse'; id: string; n: number }
   | { e: 'relic'; id: string }
   | { e: 'revive'; who: string }
+  | { e: 'clone'; uid: number; n: number }
+  | { e: 'peek'; uid: number }
+  | { e: 'mimic'; id: string }
+  | { e: 'echo'; id: string }
   | { e: 'win' }
   | { e: 'lose' };

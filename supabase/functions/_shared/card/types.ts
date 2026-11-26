@@ -9,11 +9,22 @@ export type CardKind = 'atk' | 'def' | 'skill' | 'power' | 'curse';
 export type Rarity = 'basic' | 'common' | 'uncommon' | 'legend' | 'hero' | 'hero2' | 'curse';
 /** 대상: target 고른 적 · all 모든 적 · random 무작위 적(타마다 다시) · others 고른 적을 뺀 모두 · self 나 */
 export type Tgt = 'target' | 'all' | 'random' | 'others' | 'self';
-export type PowerId = 'atkUp' | 'regen' | 'weakBonus' | 'guard' | 'energyUp' | 'drawUp';
+/**
+ * 부적술(전투 내내) 효과. blockUp 방어 얻을 때마다 +n (우직함) · echoAtk 매 턴 첫 공격카드 한 번 더 (천리마) ·
+ * firstDraw 매 턴 첫 카드 쓰면 n장 뽑기 (홰치기)
+ */
+export type PowerId = 'atkUp' | 'regen' | 'weakBonus' | 'guard' | 'energyUp' | 'drawUp' | 'blockUp' | 'echoAtk' | 'firstDraw';
+
+/**
+ * 피해에 더하는 '무엇 1당' (k 를 곱해 내림): drawn 이번 턴 뽑은 카드 · played 이번 턴 앞서 쓴 카드 ·
+ * block 내 방어 · energy 남은 기력 · maxHp 최대 체력 · battleAtk 이 전투에서 쓴 공격카드
+ */
+export type PerId = 'drawn' | 'played' | 'block' | 'energy' | 'maxHp' | 'battleAtk';
 
 /** 카드·물약 효과 연산 */
 export type Op =
-  | { op: 'dmg'; n: number; times?: number; to?: Tgt; pierce?: boolean }
+  /** per/k: 피해 = n + floor(k × per 값) · ifSt/ifN: 그 상태인 적이면 +ifN */
+  | { op: 'dmg'; n: number; times?: number; to?: Tgt; pierce?: boolean; per?: PerId; k?: number; ifSt?: StatusId; ifN?: number }
   | { op: 'block'; n: number }
   | { op: 'draw'; n: number }
   | { op: 'energy'; n: number }
@@ -21,7 +32,27 @@ export type Op =
   | { op: 'heal'; n: number }
   | { op: 'nextBlock'; n: number }
   | { op: 'thorns'; n: number }
-  | { op: 'power'; id: PowerId; n: number };
+  | { op: 'power'; id: PowerId; n: number }
+  /** 내 방어를 모두 없앰 (털깎기) */
+  | { op: 'clearBlock' }
+  /** 내 상태이상 모두 제거 (허물벗기) */
+  | { op: 'cleanse' }
+  /** 대상의 상태를 k배로 (똬리: 독 2배) */
+  | { op: 'mulSt'; id: StatusId; k: number }
+  /** 최대 체력 +n (판 전체, 먹성) */
+  | { op: 'maxHp'; n: number }
+  /** 다음 턴 기력 +n (깡충) */
+  | { op: 'nextEnergy'; n: number }
+  /** 이번 턴 손패의 그 종류 카드 기력 -n (할퀴기) */
+  | { op: 'discount'; kind: CardKind; n: number }
+  /** 다음 턴 첫 공격카드 기력 0 (살금살금) */
+  | { op: 'nextFreeAtk' }
+  /** 대상의 다음 행동 2개 보기 (냄새 추적) */
+  | { op: 'peek' }
+  /** 직전에 쓴 카드의 효과를 한 번 더 (흉내) */
+  | { op: 'mimic' }
+  /** 손패에서 카드 고르기: discard 버리기 (쥐구멍) · clone 그 카드 복사본 n장 (분신술) */
+  | { op: 'pick'; kind: 'discard' | 'clone'; n: number };
 
 export interface CardUp {
   cost?: number;
