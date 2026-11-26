@@ -1,6 +1,6 @@
 /**
  * 조작: 왼쪽 가상 조이스틱 + 오른쪽 버튼(공격·스킬·각성·상호작용·물약), PC 는 키보드
- * (WASD/방향키 이동 · J/Space 공격 · K 스킬 · L 각성 · E 상호작용 · Q 물약 · I/Esc 메뉴). 시아열두길 controls.ts 와 같은 방식.
+ * (WASD/방향키 이동 · J/Space 공격 · K 스킬 · L 각성 · E 상호작용 · Q 회복약 · R 혼력 물약 · I/Esc 메뉴). 시아열두길 controls.ts 와 같은 방식.
  *
  * 아이폰 함정: 손가락 번호(Touch.identifier)가 음수일 수 있다 → "없음"은 null. 터치는 preventDefault 로 받는다.
  */
@@ -16,6 +16,8 @@ export interface PadView {
   awakenMp: boolean;
   interact: string | null;
   potions: number;
+  /** 혼력 물약 개수 */
+  manas: number;
 }
 export interface Controls {
   input: Input;
@@ -27,7 +29,11 @@ export interface Controls {
   destroy(): void;
 }
 
-type Key = 'atk' | 'skill' | 'awaken' | 'act' | 'potion';
+type Key = 'atk' | 'skill' | 'awaken' | 'act' | 'potion' | 'mana';
+
+/** 물약 그림 (체력 게이지와 같은 --pink / 혼력 게이지와 같은 --team-a) */
+export const potionSvg = (color: string) =>
+  `<svg class="potion-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 2h6v2h-1v4.2a7 7 0 1 1-4 0V4H9z" fill="${color}" stroke="var(--outline)" stroke-width="1.6" stroke-linejoin="round"/><path d="M7.3 14h9.4" stroke="var(--white)" stroke-width="1.4" stroke-linecap="round" opacity=".7"/></svg>`;
 const STICK_R = 50;
 
 export function createControls(root: HTMLElement, opts: { onMenu(): void }): Controls {
@@ -36,7 +42,8 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
   pad.className = 'pad';
   pad.innerHTML = `
     <div class="stick-zone"><div class="stick"><i></i></div></div>
-    <button class="act potion" data-k="potion" aria-label="회복약"><span>🧪</span><b></b><kbd>Q</kbd></button>
+    <button class="act potion" data-k="potion" aria-label="회복약"><span>${potionSvg('var(--pink)')}</span><b></b><kbd>Q</kbd></button>
+    <button class="act mana" data-k="mana" aria-label="혼력 물약"><span>${potionSvg('var(--team-a)')}</span><b></b><kbd>R</kbd></button>
     <button class="act awaken" data-k="awaken" aria-label="각성"><span>✨</span><i class="cd"></i><em></em><kbd>L</kbd></button>
     <button class="act skill" data-k="skill" aria-label="스킬"><span>🔮</span><i class="cd"></i><em></em><kbd>K</kbd></button>
     <button class="act interact hidden" data-k="act" aria-label="상호작용"><span>✋</span><small></small><kbd>E</kbd></button>
@@ -122,6 +129,7 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
     else if (k === 'awaken') input.awaken = true;
     else if (k === 'act') input.interact = true;
     else if (k === 'potion') input.potion = true;
+    else if (k === 'mana') input.mana = true;
   };
   pad.querySelectorAll<HTMLButtonElement>('.act').forEach((b) => {
     const k = b.dataset.k as Key;
@@ -147,7 +155,7 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
 
   // ----- 키보드 -----
   const held = new Set<string>();
-  const KEYS: Record<string, Key> = { KeyJ: 'atk', Space: 'atk', KeyK: 'skill', KeyL: 'awaken', KeyE: 'act', KeyQ: 'potion' };
+  const KEYS: Record<string, Key> = { KeyJ: 'atk', Space: 'atk', KeyK: 'skill', KeyL: 'awaken', KeyE: 'act', KeyQ: 'potion', KeyR: 'mana' };
   const onKeyDown = (ev: KeyboardEvent) => {
     if ((ev.target as HTMLElement | null)?.closest?.('.overlay')) return;
     if (ev.code === 'Escape' || ev.code === 'KeyI') {
@@ -175,7 +183,7 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
     for (const k of Object.keys(btn) as Key[]) btn[k].classList.remove('down');
     input.attack = false;
     // 멈춘 동안 눌린 한 번짜리 입력(스킬·조사·물약·각성)도 버린다 — 상점을 닫자마자 다시 열리는 일 없게
-    input.skill = input.awaken = input.interact = input.potion = false;
+    input.skill = input.awaken = input.interact = input.potion = input.mana = false;
     if (stickId !== null) stickEnd();
   };
   window.addEventListener('keydown', onKeyDown);
@@ -202,7 +210,7 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
   return {
     input,
     consume() {
-      input.skill = input.awaken = input.interact = input.potion = false;
+      input.skill = input.awaken = input.interact = input.potion = input.mana = false;
     },
     update(v) {
       const kx = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0);
@@ -223,6 +231,10 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
       set('potion', String(v.potions), (x) => {
         btn.potion.querySelector('b')!.textContent = x;
         btn.potion.classList.toggle('off', x === '0');
+      });
+      set('mana', String(v.manas), (x) => {
+        btn.mana.querySelector('b')!.textContent = x;
+        btn.mana.classList.toggle('off', x === '0');
       });
     },
     release,

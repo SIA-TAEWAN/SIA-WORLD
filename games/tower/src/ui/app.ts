@@ -13,7 +13,7 @@ import { DEV_AWAKEN, DEV_COINS, DEV_ENDING, DEV_FLOOR, DEV_GOD, DEV_LEVEL, DEV_O
 import { loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { GameScene, type SceneArt, type SceneHooks } from '../scenes/GameScene';
 import { COLOR } from '../theme';
-import { createControls, type Controls } from './controls';
+import { createControls, potionSvg, type Controls } from './controls';
 import { lookLayers, makePreview, stillImage } from './preview';
 import { music, zoneTrack, type TrackName } from './music';
 
@@ -425,6 +425,7 @@ async function play() {
           </div>
           <div class="hud-status"></div>
         </div>
+        <div class="plate-timer hidden"></div>
         <div class="hud-note hidden"></div>
       </div>
     </div>`;
@@ -464,6 +465,13 @@ async function play() {
 const onHidden = () => {
   if (document.hidden && cur && !cur.paused && !cur.ended) openMenu();
 };
+
+/** 물건 아이콘: 회복약(소)는 체력 색 물약 그림, 혼력 물약은 혼력 색 (나머지는 이모지 그대로) */
+function itemIcon(it: { id: string; icon: string }): string {
+  if (it.id === 'potionS') return potionSvg('var(--pink)');
+  if (it.id === 'mana') return potionSvg('var(--team-a)');
+  return it.icon;
+}
 
 function newRun(): RunState {
   const floor = ctx.data.floor;
@@ -824,9 +832,16 @@ function drawHud(s: RunState) {
     p.shield ? `💧 보호막 ${Math.ceil(p.shield.hp)}` : '', p.barrier > 0 ? `🐢 결계 ${sec(p.barrier)}` : '', p.reflect > 0 ? `🔁 역류 ${sec(p.reflect)}` : '',
     p.blades > 0 ? `🪶 방벽 ${sec(p.blades)}` : '', p.blood > 0 ? `🩸 혈기 ${sec(p.blood)}` : '', p.tired > 0 ? `😮‍💨 탈진 ${sec(p.tired)}` : '',
     p.bolts > 0 ? `⚡ 낙뢰 ${sec(p.bolts)}` : '', p.storm > 0 ? `🌪️ 연타 ${p.stacks}` : '', p.rebirth > 0 ? '🔥 불사조' : '', p.root > 0 ? `❄️ 못 움직임 ${sec(p.root)}` : '',
-    plate > 0 ? `⏱️ 발판 ${sec(plate)}` : '',
-  ].filter(Boolean).join(' ');
-  hudSet('status', st, (v) => ($('.hud-status').textContent = v));
+  ].filter(Boolean);
+  // 상태는 HUD 판 위쪽에 알약으로 (판 크기가 바뀌지 않게 — 게이지가 움직이지 않는다)
+  hudSet('status', st.join('|'), () => ($('.hud-status').innerHTML = st.map((x) => `<span>${esc(x)}</span>`).join('')));
+  // 발판 남은 시간: 화면 위 가운데에 크게
+  hudSet('plate', plate > 0 ? String(sec(plate)) : '', (v) => {
+    const el = $('.plate-timer');
+    el.classList.toggle('hidden', !v);
+    el.classList.toggle('low', !!v && Number(v) <= 3);
+    if (v) el.textContent = `⏱️ 발판 ${v}초`;
+  });
   // 보스 체력
   const b = s.boss && s.boss.alive && s.boss.active ? s.boss : null;
   hudSet('boss', b ? `${b.def.name}:${Math.ceil(b.hp)}` : '', () => {
@@ -849,6 +864,7 @@ function drawHud(s: RunState) {
     awakenMp: !!orb && p.mp >= orb.awaken.mp,
     interact: it ? interactLabel(it) : null,
     potions: d.items.potionS + d.items.potionL,
+    manas: d.items.mana,
   });
   drawMini(s);
 }
@@ -1109,7 +1125,7 @@ function openMenu() {
       body = `
         ${use.map((id) => {
           const it = itemDef(id)!;
-          return `<div class="shop-row"><span class="ic">${it.icon}</span><span>${it.name} <b class="cnt">×${d.items[id as keyof typeof d.items]}</b><small>${esc(it.desc)}</small></span><button class="btn small" data-use="${id}" ${d.items[id as keyof typeof d.items] > 0 ? '' : 'disabled'}>쓰기</button></div>`;
+          return `<div class="shop-row"><span class="ic">${itemIcon(it)}</span><span>${it.name} <b class="cnt">×${d.items[id as keyof typeof d.items]}</b><small>${esc(it.desc)}</small></span><button class="btn small" data-use="${id}" ${d.items[id as keyof typeof d.items] > 0 ? '' : 'disabled'}>쓰기</button></div>`;
         }).join('')}
         <div class="shop-row"><span class="ic">${itemDef('revive')!.icon}</span><span>${itemDef('revive')!.name} <b class="cnt">×${d.items.revive}</b><small>쓰러지면 저절로 타올라요</small></span></div>
         <div class="shop-row"><span class="ic">🔹</span><span>구슬 조각 <b class="cnt">×${d.shards}</b><small>${SHARDS_TO_AWAKEN}개로 장착한 구슬을 각성 (구슬 탭)</small></span></div>`;
@@ -1245,7 +1261,7 @@ function openShop() {
         const price = priceOf(it.id, f);
         const owned = it.id === 'shard' ? d.shards : d.items[it.id as keyof typeof d.items];
         const limit = it.id === 'shard' && d.shopShard.includes(f) ? '이 층에서는 다 샀어요' : it.id === 'revive' && d.items.revive >= (it.max ?? 1) ? '1개만 지닐 수 있어요' : '';
-        return `<div class="shop-row ${limit ? 'low' : ''}"><span class="ic">${it.icon}</span><span>${it.name} <b class="cnt">×${owned}</b><small>${limit || esc(it.desc)}</small></span><button class="btn small" data-buy="${it.id}" ${limit || d.coins < price ? 'disabled' : ''}><b class="price">${price}</b>냥</button></div>`;
+        return `<div class="shop-row ${limit ? 'low' : ''}"><span class="ic">${itemIcon(it)}</span><span>${it.name} <b class="cnt">×${owned}</b><small>${limit || esc(it.desc)}</small></span><button class="btn small" data-buy="${it.id}" ${limit || d.coins < price ? 'disabled' : ''}><b class="price">${price}</b>냥</button></div>`;
       }).join('')}
       <button class="btn primary" id="bye">나가기</button>`;
     const kc = box.querySelector('canvas')!;
