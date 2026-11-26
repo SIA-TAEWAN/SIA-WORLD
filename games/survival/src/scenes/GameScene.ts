@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { PLAYER } from '../data/balance';
+import { ARENA, PLAYER } from '../data/balance';
 import { ENEMIES } from '../data/enemies';
 import { WEAPONS } from '../data/weapons';
 import { bossWinding } from '../game/bosses';
+import { isMaxLevel } from '../game/weapons';
 import { FX, MODE, PROJ, ZONE, type State } from '../game/state';
 import { eachObstacle } from '../game/terrain';
 import type { Run } from '../run/run';
@@ -25,7 +26,15 @@ type Img = Phaser.GameObjects.Image;
 const CHAR_H = 92;
 const CHAR_MAX_W = 96;
 /** 그림 깊이 */
-const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
+const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, edge: 3.8, enemy: 4, boss: 5, ring: 6, fog: 7, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
+/** 황천길 안개: 흘러가는 두 겹(속도 · 방향 · 짙기)과 화면 가장자리의 짙은 안개 */
+const FOG = { layers: [{ alpha: 0.6, speed: [22, 3], par: 0.85, sx: 2.4, sy: 1.6 }, { alpha: 0.45, speed: [-14, 2], par: 0.7, sx: 1.5, sy: 1.1 }], edge: 0.9, breathe: 0.15 };
+/**
+ * 맵 끝의 담 (ARENA): 담 너머를 덮는 어두운 판(DESIGN.md 의 --dim: --outline 55%) + 맵마다 다른 색의 담장 띠와 기둥.
+ * 들판 나무 울타리 · 대나무 숲 대울타리 · 달빛 궁궐 붉은 담 · 황천길 돌담. 한 번만 그리는 Graphics 하나 (큰 그림·캔버스를 새로 만들지 않는다)
+ */
+const EDGE = { dim: 0.55, band: 18, post: 26, gap: 84, line: 4, beyond: 2400 };
+const EDGE_TINT: Record<string, number> = { field: COLOR.inkSoft, bamboo: COLOR.win, palace: COLOR.lose, underworld: COLOR.draw };
 /** 지대 색 (state.ts 의 ZONE 순서): 독안개 · 예고 · 독 · 불길 · 물기둥 · 양털 구름 · 말발굽 */
 const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft, COLOR.primary];
 /** 두 색을 섞는다 (t: b 쪽으로 얼마나) */
@@ -72,6 +81,9 @@ export class GameScene extends Phaser.Scene {
   private showNumbers!: () => boolean;
   private onFrame!: () => void;
   private ground!: Phaser.GameObjects.TileSprite;
+  /** 황천길 안개 (다른 맵에서는 비어 있다) */
+  private fog: Phaser.GameObjects.TileSprite[] = [];
+  private fogEdge: Phaser.GameObjects.Image | null = null;
   private player!: Img;
   private outline: Img[] = [];
   private ring!: Img;
@@ -151,6 +163,84 @@ export class GameScene extends Phaser.Scene {
 
   private fitGround() {
     if (this.ground) this.ground.setSize(this.viewW() + 8, this.viewH() + 8);
+    for (const f of this.fog) f.setSize((this.viewW() + 8) / f.scaleX, (this.viewH() + 8) / f.scaleY);
+    this.fogEdge?.setDisplaySize(this.viewW() + 8, this.viewH() + 8);
+  }
+
+  /** 안개 무늬 (256 이어 붙는 무늬: 부드러운 덩어리를 가장자리 너머까지 겹쳐 그린다) · 가장자리 안개 (가운데가 맑은 둥근 무늬) */
+  private makeFog() {
+    const fogRgb = (n: number) => `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+    if (!this.textures.exists('fog-tile')) {
+      // 이어 붙는 구름 결: 주기가 맞는 값 노이즈를 여러 겹(fBm) 더해 몽글몽글한 안개 덩어리와 잔결을 만든다
+      const N = 256;
+      let seed = 7;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      const grid = (n: number) => Array.from({ length: n * n }, rnd);
+      const octaves = [4, 8, 16, 32, 64].map((n) => ({ n, g: grid(n) }));
+      const smooth = (t: number) => t * t * (3 - 2 * t);
+      const sample = (o: { n: number; g: number[] }, x: number, y: number) => {
+        const fx = (x / N) * o.n;
+        const fy = (y / N) * o.n;
+        const x0 = Math.floor(fx);
+        const y0 = Math.floor(fy);
+        const tx = smooth(fx - x0);
+        const ty = smooth(fy - y0);
+        const at = (a: number, b: number) => o.g[((b % o.n) * o.n + (a % o.n))];
+        const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+        const b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+        return a + (b - a) * ty;
+      };
+      const weights = [0.5, 0.25, 0.13, 0.07, 0.05];
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = N;
+      const g = cv.getContext('2d')!;
+      const img = g.createImageData(N, N);
+      const w = COLOR.white;
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          let v = 0;
+          octaves.forEach((o, k) => (v += sample(o, x, y) * weights[k]));
+          // 옅은 곳은 비우고(맑은 틈) 짙은 곳은 부드럽게 차오르게
+          const t = Math.min(1, Math.max(0, (v - 0.42) / 0.3));
+          const i4 = (y * N + x) * 4;
+          img.data[i4] = (w >> 16) & 255;
+          img.data[i4 + 1] = (w >> 8) & 255;
+          img.data[i4 + 2] = w & 255;
+          img.data[i4 + 3] = Math.round(smooth(t) * 235);
+        }
+      }
+      g.putImageData(img, 0, 0);
+      this.textures.addCanvas('fog-tile', cv);
+    }
+    if (!this.textures.exists('fog-edge')) {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 256;
+      const g = cv.getContext('2d')!;
+      // 가운데(내 둘레)는 맑고, 멀수록 짙어져 화면 끝은 거의 하얗게 묻힌다
+      const gr = g.createRadialGradient(128, 128, 50, 128, 128, 182);
+      gr.addColorStop(0, `rgba(${fogRgb(COLOR.white)},0)`);
+      gr.addColorStop(0.45, `rgba(${fogRgb(COLOR.white)},0.18)`);
+      gr.addColorStop(0.8, `rgba(${fogRgb(COLOR.white)},0.7)`);
+      gr.addColorStop(1, `rgba(${fogRgb(COLOR.white)},0.97)`);
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 256, 256);
+      this.textures.addCanvas('fog-edge', cv);
+    }
+    this.fog = FOG.layers.map((l) => this.add.tileSprite(0, 0, 16, 16, 'fog-tile').setScale(l.sx, l.sy).setAlpha(l.alpha).setDepth(D.fog));
+    this.fogEdge = this.add.image(0, 0, 'fog-edge').setAlpha(FOG.edge).setDepth(D.fog);
+    this.fitGround();
+  }
+
+  /** 안개를 화면에 맞추고 흘려보낸다 (바닥보다 느리게 따라와 떠 있는 것처럼) */
+  private moveFog(x: number, y: number, sec: number) {
+    this.fog.forEach((f, i) => {
+      const l = FOG.layers[i];
+      f.setPosition(x, y);
+      f.tilePositionX = (x * l.par + sec * l.speed[0]) / l.sx;
+      f.tilePositionY = (y * l.par + sec * l.speed[1]) / l.sy;
+      f.setAlpha(l.alpha * (1 + FOG.breathe * Math.sin(sec * 0.6 + i * 2)));
+    });
+    this.fogEdge?.setPosition(x, y);
   }
 
   private w(key: string) {
@@ -174,6 +264,8 @@ export class GameScene extends Phaser.Scene {
     this.ground = this.add.tileSprite(0, 0, 16, 16, tileKey(s.map.id)).setDepth(D.ground);
     if (s.hell) this.ground.setTint(HELL_TINT.ground);
     this.fitGround();
+    if (s.map.id === 'underworld') this.makeFog();
+    this.drawEdge(s);
 
     this.zones = new SpritePool(this, 'disc', D.zone);
     this.zoneCores = new SpritePool(this, 'disc', D.zone);
@@ -199,6 +291,56 @@ export class GameScene extends Phaser.Scene {
     this.hpFill = this.add.rectangle(0, 0, 54, 5, COLOR.win).setOrigin(0, 0.5).setDepth(D.bar);
   }
 
+  /**
+   * 맵 끝의 담을 한 번 그린다 (좌표는 계산과 같아서 카메라를 따라 움직일 필요가 없다).
+   * 카메라는 계속 내 캐릭터를 가운데 둔다: 담 가까이 가면 담 너머의 어두운 땅이 보이고, 요괴가 나오는 화면 밖 둘레가 언제나 같은 거리다
+   */
+  private drawEdge(s: State) {
+    const W = ARENA.halfW;
+    const H = ARENA.halfH;
+    const B = EDGE.beyond;
+    const T = EDGE.band;
+    const g = this.add.graphics().setDepth(D.edge);
+    // 담 너머: 어둡게 덮는다 (위 · 아래 · 왼쪽 · 오른쪽)
+    g.fillStyle(COLOR.outline, EDGE.dim);
+    g.fillRect(-W - B, -H - B, 2 * (W + B), B);
+    g.fillRect(-W - B, H, 2 * (W + B), B);
+    g.fillRect(-W - B, -H, B, 2 * H);
+    g.fillRect(W, -H, B, 2 * H);
+    // 담장 띠: 맵 바깥쪽에 붙어 두른다 (안쪽 가장자리가 곧 지나갈 수 없는 선)
+    let tint = EDGE_TINT[s.map.id] ?? COLOR.inkSoft;
+    if (s.hell) tint = mix(tint, COLOR.outline, 0.35);
+    g.fillStyle(tint, 1);
+    g.fillRect(-W - T, -H - T, 2 * (W + T), T);
+    g.fillRect(-W - T, H, 2 * (W + T), T);
+    g.fillRect(-W - T, -H, T, 2 * H);
+    g.fillRect(W, -H, T, 2 * H);
+    g.lineStyle(EDGE.line, COLOR.outline, 1);
+    g.strokeRect(-W, -H, 2 * W, 2 * H);
+    g.strokeRect(-W - T, -H - T, 2 * (W + T), 2 * (H + T));
+    // 기둥: 띠 위에 일정한 간격으로 (모서리에는 언제나 하나)
+    const P = EDGE.post;
+    const post = (x: number, y: number) => {
+      g.fillStyle(tint, 1).fillRect(x - P / 2, y - P / 2, P, P);
+      g.lineStyle(3, COLOR.outline, 1).strokeRect(x - P / 2, y - P / 2, P, P);
+      // 윗면의 밝은 줄 (DESIGN.md: 그림자 대신 외곽선과 두께로 입체감)
+      g.fillStyle(COLOR.white, 0.35).fillRect(x - P / 2 + 3, y - P / 2 + 3, P - 6, 4);
+    };
+    const c = T / 2;
+    const nx = Math.round((2 * W) / EDGE.gap);
+    const ny = Math.round((2 * H) / EDGE.gap);
+    for (let i = 0; i <= nx; i++) {
+      const x = -W - c + ((2 * (W + c)) * i) / nx;
+      post(x, -H - c);
+      post(x, H + c);
+    }
+    for (let i = 1; i < ny; i++) {
+      const y = -H - c + ((2 * (H + c)) * i) / ny;
+      post(-W - c, y);
+      post(W + c, y);
+    }
+  }
+
   update(time: number) {
     const run = this.run;
     run.update(time);
@@ -210,17 +352,20 @@ export class GameScene extends Phaser.Scene {
     this.ground.setPosition(p.x, p.y);
     this.ground.tilePositionX = p.x;
     this.ground.tilePositionY = p.y;
+    if (this.fog.length) this.moveFog(p.x, p.y, time / 1000);
     const halfW = this.viewW() / 2 + 70;
     const halfH = this.viewH() / 2 + 70;
     const sec = time / 1000;
 
     this.drawObstacles(s, halfW, halfH);
+    this.markMax(s);
     this.drawZones(s, sec);
     this.drawItems(s, halfW, halfH, sec);
     this.drawEnemies(s, halfW, halfH);
     this.drawPlayer(s, run.paused ? 0 : (this.game.loop.delta / 1000) * run.speed);
     this.drawProjectiles(s, sec);
     this.drawFx(s);
+    this.maxRings!.end(this.maxShown);
     // 레벨업·진화: 내 둘레로 고리가 퍼진다
     if (this.glowT > 0) {
       this.glowT -= this.game.loop.delta / 1000;
@@ -326,6 +471,32 @@ export class GameScene extends Phaser.Scene {
     this.hpFill.setPosition(p.x - 27, p.y + 42).setSize(54 * k, 5).setFillStyle(k < 0.3 ? COLOR.lose : COLOR.win);
   }
 
+  /** 최종 레벨(MAX) 무기의 공격에 두르는 금빛 고리 (그 무기 칸 번호별로 MAX 인가) */
+  private maxRings?: SpritePool;
+  private maxShown = 0;
+  private maxSlot = [false, false, false, false, false, false];
+  private markMax(s: State) {
+    for (let k = 0; k < this.maxSlot.length; k++) this.maxSlot[k] = k < s.weapons.length && isMaxLevel(s.weapons[k]);
+    this.maxRings ??= new SpritePool(this, 'ring', D.proj);
+    this.maxShown = 0;
+  }
+  /** 큰 것(장판·지대)은 금빛 테두리, 작은 것(투사체)은 뒤에 금빛 후광 (가는 테두리는 작으면 안 보인다) */
+  private maxRing(x: number, y: number, r: number, depth: number, alpha: number, halo = false) {
+    const spr = this.maxRings!.get(this.maxShown++);
+    const key = halo ? 'disc' : 'ring';
+    if (spr.texture.key !== key) spr.setTexture(key);
+    spr.setPosition(x, y).setScale((r * 2) / (halo ? 252 : 242)).setDepth(depth).setTint(halo ? COLOR.primaryLight : COLOR.primary).setAlpha(alpha).setVisible(true);
+  }
+  /** 이 칸의 무기가 MAX 인가 (적의 것은 칸이 7이라 false) */
+  private isMax(slot: number) {
+    return slot >= 0 && slot < this.maxSlot.length && this.maxSlot[slot];
+  }
+  /** 이 동작의 무기를 MAX 로 가졌나 (칸을 모르는 베기·여의봉 이펙트용) */
+  private maxKind(s: State, kind: string) {
+    for (let k = 0; k < s.weapons.length; k++) if (this.maxSlot[k] && WEAPONS[s.weapons[k].def].kind === kind) return true;
+    return false;
+  }
+
   private drawProjectiles(s: State, sec: number) {
     const list = s.projectiles.items;
     const n = s.projectiles.n;
@@ -351,6 +522,7 @@ export class GameScene extends Phaser.Scene {
         spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 18)) * 8);
       } else if (pr.kind === PROJ.puppy) spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 12 + i)) * 5);
       else spr.setRotation(0);
+      if (pr.mode !== MODE.enemy && this.isMax(pr.slot)) this.maxRing(pr.x, spr.y, pr.r * (pr.kind === PROJ.puppy ? 2.2 : 1.8), D.proj - 0.1, 0.5 + Math.sin(sec * 10 + i) * 0.15, true);
     }
     this.projs.end(n);
   }
@@ -369,6 +541,7 @@ export class GameScene extends Phaser.Scene {
         const fade = Math.min(1, z.life / 0.4) * Math.min(1, (z.maxLife - z.life) / 0.2);
         const a = z.kind === ZONE.hoof || z.kind === ZONE.hoofEvo ? 0.55 * (z.life / z.maxLife) : z.kind === ZONE.cloud ? 0.5 * fade : 0.38 * fade;
         spr.setPosition(z.x, z.y).setScale(sc * (1 + Math.sin(sec * 5 + i) * 0.04)).setTint(tint).setAlpha(a).setVisible(true);
+        if (this.isMax(z.slot)) this.maxRing(z.x, z.y, z.r, D.zone + 0.1, Math.min(0.9, a * 1.8));
       } else if (z.delay > 0) {
         // 보스의 범위 공격: 분홍 원이 미리 보이고, 안쪽 원이 다 차면 터진다
         spr.setPosition(z.x, z.y).setScale(sc).setTint(COLOR.pink).setAlpha(0.26).setVisible(true);
@@ -388,6 +561,7 @@ export class GameScene extends Phaser.Scene {
       if (w.view <= 0) continue;
       const evo = WEAPONS[w.def].evolved === true;
       this.auras.get(a++).setPosition(s.player.x, s.player.y).setScale((w.view * 2) / 252).setTint(evo ? COLOR.primaryDeep : COLOR.primary).setAlpha((evo ? 0.26 : 0.2) + Math.sin(sec * 6) * 0.04).setVisible(true);
+      if (isMaxLevel(w)) this.maxRing(s.player.x, s.player.y, w.view, D.aura + 0.1, 0.7 + Math.sin(sec * 6) * 0.15);
     }
     this.auras.end(a);
   }
@@ -418,6 +592,9 @@ export class GameScene extends Phaser.Scene {
   private drawFx(s: State) {
     const list = s.fx.items;
     const n = s.fx.n;
+    // MAX 발톱의 베기 · MAX 여의봉은 금빛
+    const maxCone = this.maxKind(s, 'cone');
+    const maxLance = this.maxKind(s, 'lance');
     for (let i = 0; i < n; i++) {
       const f = list[i];
       const spr = this.fxs.get(i);
@@ -431,6 +608,7 @@ export class GameScene extends Phaser.Scene {
         case FX.slash:
           // 발톱: 부채꼴이 휙 그어진다 (사방 베기는 둥근 원)
           key = f.b >= Math.PI ? 'disc' : 'slash';
+          if (maxCone) tint = COLOR.primary;
           sc = (f.r * 2) / 248;
           rot = f.b >= Math.PI ? 0 : f.a;
           alpha = 0.6 * (1 - k);
@@ -467,7 +645,9 @@ export class GameScene extends Phaser.Scene {
       if (spr.texture.key !== key) spr.setTexture(key);
       if (f.kind === FX.beam) {
         const grow = Math.min(1, k * 4 + 0.35);
-        spr.setOrigin(0, 0.5).setPosition(f.x, f.y).setScale((f.r * grow) / 256, f.b / 36).setRotation(rot).clearTint().setAlpha(alpha).setVisible(true);
+        spr.setOrigin(0, 0.5).setPosition(f.x, f.y).setScale((f.r * grow) / 256, f.b / 36).setRotation(rot).setAlpha(alpha).setVisible(true);
+        if (maxLance) spr.setTint(COLOR.primaryLight);
+        else spr.clearTint();
         continue;
       }
       spr.setOrigin(0.5, 0.5).setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(tint).setAlpha(alpha).setVisible(true);

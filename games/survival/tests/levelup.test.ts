@@ -206,17 +206,20 @@ describe('카드 뽑기 규칙', () => {
     }
   });
 
-  it('무기 6개·패시브 6개가 차면 새것은 나오지 않고, 5레벨은 더 오르지 않는다', () => {
+  it('무기 4개·패시브 6개가 차면 새것은 나오지 않고, 5레벨은 더 오르지 않는다', () => {
     const s = emptyRun();
     s.weapons.length = 0;
+    expect(LIMIT.weapons).toBe(4);
+    expect(LIMIT.passives).toBe(6);
     for (const id of ['shuriken', 'bell', 'claw', 'mooncake', 'pearl', 'mist']) addWeapon(s, WEAPON_INDEX[id], 5);
     for (let i = 0; i < 6; i++) addPassive(s, i, i < 5 ? 5 : 4);
     expect(s.weapons.length).toBe(LIMIT.weapons);
+    expect(s.weapons.map((w) => WEAPONS[w.def].id)).toEqual(['shuriken', 'bell', 'claw', 'mooncake']);
     expect(s.passives.length).toBe(LIMIT.passives);
     addPassive(s, 6, 1);
     addWeapon(s, WEAPON_INDEX.shurikenEvo, 1);
     expect(s.passives.length).toBe(6);
-    expect(s.weapons.length).toBe(6);
+    expect(s.weapons.length).toBe(4);
     drawCards(s);
     // 남은 것은 패시브 하나(4→5)뿐: 나머지 두 장은 덤(떡·엽전)
     expect(cards(s).map((c) => c.type)).toEqual([CARD.passive, CARD.heal, CARD.coins]);
@@ -245,7 +248,7 @@ describe('카드 뽑기 규칙', () => {
     expect(s.coins).toBeCloseTo(BONUS.coins, 6);
   });
 
-  it('패시브 8종의 효과 (레벨당)', () => {
+  it('패시브 12종의 효과 (레벨당)', () => {
     const s = disarm(emptyRun({ char: 'dog' }));
     const base = { ...s.stats };
     for (let i = 0; i < 6; i++) addPassive(s, i, 2);
@@ -263,7 +266,15 @@ describe('카드 뽑기 규칙', () => {
     expect(t.stats.maxHp).toBe(130);
     expect(t.player.hp).toBe(90); // 늘어난 만큼 지금 체력도 는다
     expect(t.stats.coin).toBeCloseTo(1.3, 6);
-    expect(PASSIVES.length).toBe(8);
+    // 세트용 4종: 지속 피해 · 회복 · 경험치 · 투사체 속도
+    const u = disarm(emptyRun({ char: 'rat' }));
+    const ub = { ...u.stats };
+    for (const id of ['venom', 'spring', 'scroll', 'string']) addPassive(u, PASSIVE_INDEX[id], 2);
+    expect(u.stats.dot).toBeCloseTo(ub.dot + 0.2, 6);
+    expect(u.stats.regen).toBeCloseTo(ub.regen + 0.3, 6);
+    expect(u.stats.xp).toBeCloseTo(ub.xp + 0.2, 6);
+    expect(u.stats.projSpeed).toBeCloseTo(ub.projSpeed + 0.2, 6);
+    expect(PASSIVES.length).toBe(12);
   });
 });
 

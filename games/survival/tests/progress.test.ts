@@ -6,7 +6,7 @@ import { readMade, rememberMade } from '../src/net/made';
 import { TICKS_PER_SEC } from '../src/data/balance';
 import { idlePolicy, normalPolicy, simulate, type Policy } from '../src/game/policy';
 import {
-  LIMITS, applyRun, betterRecord, buyUpgrade, characterOpen, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, knownWeapons, rejectReason, resetUpgrades,
+  LIMITS, applyRun, betterRecord, buyUpgrade, characterOpen, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, knownPassives, knownWeapons, rejectReason, resetUpgrades,
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
 import { createRun, makeInput, step, summarize, type RunSummary } from '../src/game/sim';
@@ -278,11 +278,18 @@ describe('도감', () => {
 
   it('모은 수: 처음에는 캐릭터 셋뿐', () => {
     // 캐릭터: 쥐·소·호랑이 (고양이는 이 게임에서 시아코인으로 열었을 때만 센다)
-    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 19 + 8 + 13 });
+    // 패시브 12종 모두 서버 도감 목록에 있어(110) 판에서 얻어야 채워진다
+    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 19 + 12 + 13 });
+    expect(knownPassives(defaultProfile().codex)).toEqual([]);
     expect(codexCount(defaultProfile(), ['cat']).have).toBe(4);
     const run2 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
     expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);
+    // 세트용 4종도 얻으면 서버처럼 적힌다
+    const run3 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: [], bosses: [], weapons: [], passives: ['fan', 'venom', 'nope'] } }), 1);
+    expect(run3.profile.codex.passives).toEqual(['fan', 'venom']);
+    expect(knownPassives(run3.profile.codex)).toEqual(['fan', 'venom']);
   });
+
 
   it('고양이 잠금: 이 게임에서 연 목록(owned)으로만 열린다. 시아서바이벌의 해금 목록·엽전으로는 열리지 않는다', () => {
     const p = defaultProfile();

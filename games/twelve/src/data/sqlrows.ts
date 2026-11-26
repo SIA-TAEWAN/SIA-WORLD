@@ -1,5 +1,6 @@
 /**
- * 서버 표 줄 만들기: 게임 데이터(src/data) → supabase/migrations/094_twelve_full.sql 의 `-- <gen:이름>` ~ `-- </gen:이름>` 사이.
+ * 서버 표 줄 만들기: 게임 데이터(src/data) → 마이그레이션의 `-- <gen:이름>` ~ `-- </gen:이름>` 사이.
+ * 블록마다 그 표 함수의 마지막 정의가 있는 파일(`blockFile`)에 쓴다 — 094 는 운영에 있으니, 094 뒤에 다시 정의한 표(109 의 maps)는 094 의 블록을 옛 값 그대로 둔다.
  * `npm run sqlgen` 이 그 사이를 다시 쓰고, tests/sql.test.ts 가 파일과 여기 결과가 같은지 본다.
  * 숫자(경험치 곡선·요괴 보상·드랍 확률·값)를 바꾸면 sqlgen 만 다시 돌리면 된다 — SQL 의 계산 순서는 그대로다.
  */
@@ -164,6 +165,14 @@ export function sqlBlocks(): Record<string, string> {
   };
 }
 
+/** gen 블록이 있는 마이그레이션 (sqlgen 이 쓰는 파일) */
+export const SQL_FILES = ['094_twelve_full.sql', '109_twelve_short_maps.sql'] as const;
+export type SqlFile = (typeof SQL_FILES)[number];
+/** 094 뒤에 다시 정의한 표: 블록 이름 → 마지막 정의가 있는 파일 (109: 맵 길이 20% 줄임) */
+const LATER: Record<string, SqlFile> = { maps: '109_twelve_short_maps.sql' };
+/** 이 블록의 마지막 정의(= 운영에 남는 정의)가 있는 파일 */
+export const blockFile = (name: string): SqlFile => LATER[name] ?? '094_twelve_full.sql';
+
 const open = (name: string) => `-- <gen:${name}>`;
 const close = (name: string) => `-- </gen:${name}>`;
 /** SQL 파일에서 블록 하나의 글 (없으면 null) */
@@ -173,13 +182,14 @@ export function blockIn(sql: string, name: string): string | null {
   if (a < 0 || b < a) return null;
   return sql.slice(sql.indexOf('\n', a) + 1, sql.lastIndexOf('\n', b));
 }
-/** SQL 파일의 블록을 모두 새 값으로 */
-export function fillBlocks(sql: string): string {
+/** SQL 파일(file)의 블록을 새 값으로 — 그 파일이 마지막 정의인 블록만 채운다 (다른 블록은 그대로) */
+export function fillBlocks(sql: string, file: SqlFile = '094_twelve_full.sql'): string {
   let out = sql.replace(/\r\n/g, '\n');
   for (const [name, body] of Object.entries(sqlBlocks())) {
+    if (blockFile(name) !== file) continue;
     const a = out.indexOf(open(name));
     const b = out.indexOf(close(name));
-    if (a < 0 || b < a) throw new Error(`094_twelve_full.sql 에 ${open(name)} 블록이 없어요`);
+    if (a < 0 || b < a) throw new Error(`${file} 에 ${open(name)} 블록이 없어요`);
     out = `${out.slice(0, out.indexOf('\n', a) + 1)}${body}\n${out.slice(out.lastIndexOf('\n', b) + 1)}`;
   }
   return out;

@@ -56,6 +56,12 @@ export const VIEW_W = 720;
 export const VIEW_H = 1280;
 
 /**
+ * 맵의 크기: 기준 화면 가로 3장 × 세로 3장 (2160 × 3840) 의 닫힌 땅. 출발 자리(0, 0)가 한가운데다.
+ * 4개 맵 · 4분/헬/무한 모드 · 오늘의 도전 모두 같다. 내 캐릭터·요괴·아이템은 이 밖으로 나가지 못한다 (투사체는 나가면 그냥 사라진다)
+ */
+export const ARENA = { halfW: VIEW_W * 1.5, halfH: VIEW_H * 1.5 };
+
+/**
  * 고를 수 있는 캐릭터: 십이지 12 + 고양이(cat, "13번째 대원").
  * 서버의 _character_ids()(071) · shared/characters.js 의 ALL_CHARACTER_IDS 와 같은 순서다.
  * 고양이는 판 결과·엽전으로 풀지 않는다 (캐릭터 고르기 화면에서 시아코인으로 연다. 게임마다 따로)
@@ -93,15 +99,20 @@ export const LIMIT = {
   fx: 96,
   nums: 64,
   /** 무기·패시브 최대 개수와 최대 레벨 (PRD 3장) */
-  weapons: 6,
+  weapons: 4,
   passives: 6,
   level: 5,
 };
 
-/** 요괴가 나타나는 자리: 내 캐릭터를 가운데 둔 사각형의 둘레 (세로로 긴 휴대폰 화면 밖) */
+/**
+ * 요괴가 나타나는 자리: 내 캐릭터를 가운데 둔 사각형의 둘레 (세로로 긴 휴대폰 화면 밖).
+ * 그 변이 맵(ARENA) 밖이면 반대쪽 변에서 나온다 (core.ts 의 edgePoint)
+ */
 export const SPAWN = {
   halfW: 440,
   halfH: 860,
+  /** 나타나는 자리는 맵 가장자리에서 이만큼 안쪽 */
+  inset: 40,
   /** 이보다 멀어진 요괴는 내 근처(위 사각형 둘레)로 다시 놓는다 */
   farW: 780,
   farH: 1260,
@@ -116,6 +127,16 @@ export const BOSS_WARN_SEC = 3;
 /** 레벨업 카드 수, 고를 것이 없을 때 대신 나오는 카드 */
 export const CARD_COUNT = 3;
 export const BONUS = { heal: 30, coins: 10 };
+
+/**
+ * 무한 모드에서 4분이 지난 뒤, 무기·패시브를 다 키워 고를 것이 모자랄 때 빈자리를 채우는 '계속 쌓이는' 카드.
+ * 몇 번이든 고를 수 있고 고를 때마다 더해진다 (엽전 덤 카드 대신. 떡 카드는 그대로 남는다).
+ * 4분 모드와 무한 모드의 처음 4분은 그대로다 (같은 시드면 4분까지 두 모드의 판이 똑같다).
+ */
+export const STACKS = [
+  { id: 'might', name: '무예 수련', icon: 'u-might', stat: 'might', value: 0.04, text: '모든 무기 피해 +4% (계속 쌓여요)' },
+  { id: 'hp', name: '몸 단련', icon: 'u-hp', stat: 'maxHpPct', value: 0.05, text: '최대 체력 +5% (계속 쌓여요)' },
+] as const;
 
 /**
  * 카드가 뽑힐 가중치 (나머지 카드는 1). 진화(무기 5레벨 + 짝 패시브)가 카드 운에만 달리지 않게, 키우던 것이 더 자주 나온다.

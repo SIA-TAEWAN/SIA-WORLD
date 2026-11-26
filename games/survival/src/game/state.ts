@@ -181,7 +181,8 @@ export interface PassiveInst {
 }
 
 /** 레벨업 카드 종류 */
-export const CARD = { weapon: 0, passive: 1, heal: 2, coins: 3 } as const;
+/** stack: 무한 모드 4분 뒤의 계속 쌓이는 카드 (def = data/balance.ts 의 STACKS 번호) */
+export const CARD = { weapon: 0, passive: 1, heal: 2, coins: 3, stack: 4 } as const;
 
 export interface Card {
   type: number;
@@ -341,6 +342,8 @@ export interface State {
   rerolls: number;
   weapons: WeaponInst[];
   passives: PassiveInst[];
+  /** 계속 쌓이는 카드를 고른 횟수 (data/balance.ts 의 STACKS 번호별) */
+  stacks: number[];
   enemies: Pool<Enemy>;
   projectiles: Pool<Projectile>;
   zones: Pool<Zone>;

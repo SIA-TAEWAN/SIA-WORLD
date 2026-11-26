@@ -2,9 +2,10 @@ import { BOSSES } from '../data/bosses';
 import { CHARACTERS } from '../data/characters';
 import { ENEMIES } from '../data/enemies';
 import { MAPS, MAP_INDEX } from '../data/maps';
-import { PASSIVES } from '../data/passives';
-import { WEAPONS } from '../data/weapons';
-import { characterOpen, codexCount, evolutionHints, knownWeapons } from '../game/progress';
+import { PASSIVES, PASSIVE_INDEX } from '../data/passives';
+import { MAX_BONUS_TEXT, SETS } from '../data/sets';
+import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
+import { characterOpen, codexCount, evolutionHints, knownPassives, knownWeapons } from '../game/progress';
 import { readMade } from '../net/made';
 import { artUrl, zodiacFaceUrl } from '../assets';
 import { esc, mmss, nav, screen, state, watchProfile } from './app';
@@ -75,7 +76,14 @@ export function showCodex() {
       body.innerHTML = `<h3>요괴 ${cx.enemies.length}/${ENEMIES.length}</h3>${enemies.join('')}<h3>보스 ${cx.bosses.length}/${BOSSES.length}</h3>${bosses.join('')}`;
     } else if (tab === 'gear') {
       const weapons = WEAPONS.filter((w) => !w.evolved).map((w) => cell(known.includes(w.id), `<em>${icon('w', w.id)}</em>`, w.name, w.desc));
-      const passives = PASSIVES.map((x) => cell(cx.passives.includes(x.id), `<em>${icon('p', x.id)}</em>`, x.name, `${x.text} (레벨마다)`));
+      const knownP = knownPassives(cx);
+      const passives = PASSIVES.map((x) => cell(knownP.includes(x.id), `<em>${icon('p', x.id)}</em>`, x.name, `${x.text} (레벨마다)`));
+      // 세트: 무기와 짝 패시브를 둘 다 가지면 (레벨과 상관없이) 붙는 효과. 공략이라 모두 보여 준다
+      const sets = SETS.map((x) => {
+        const w = WEAPONS[WEAPON_INDEX[x.weapon]];
+        const ps = PASSIVES[PASSIVE_INDEX[x.passive]];
+        return `<div class="evo set"><span class="evo-part"><em>${icon('w', w.id)}</em>${esc(w.name)}</span><b>+</b><span class="evo-part"><em>${icon('p', ps.id)}</em>${esc(ps.name)}</span><b>→</b><span class="evo-part set-fx">${esc(x.text)}</span></div>`;
+      });
       // 진화 조합 힌트: 아는 재료만 보이고 나머지는 ? 로 가린다
       const evo = evolutionHints(cx, made).map((h) => {
         const part = (known: boolean, ic: string, name: string) => `<span class="evo-part ${known ? '' : 'unknown'}"><em>${known ? ic : icon('x', 'unknown')}</em>${known ? esc(name) : '?'}</span>`;
@@ -83,7 +91,9 @@ export function showCodex() {
       });
       const have = (list: { id: string }[], known: string[]) => list.filter((x) => known.includes(x.id)).length;
       body.innerHTML = `<h3>무기 ${have(WEAPONS.filter((w) => !w.evolved), known)}/${WEAPONS.filter((w) => !w.evolved).length}</h3>${weapons.join('')}
-        <h3>패시브 ${cx.passives.length}/${PASSIVES.length}</h3>${passives.join('')}
+        <h3>패시브 ${knownP.length}/${PASSIVES.length}</h3>${passives.join('')}
+        <h3>세트</h3><p class="soft">무기 4개 · 패시브 6개까지 가질 수 있어요. 무기와 짝 패시브를 둘 다 가지면 세트 효과가 붙어요 (진화해도 그대로)</p>${sets.join('')}
+        <p class="soft">무기가 5레벨(MAX)이 되면 — ${esc(MAX_BONUS_TEXT.replace('최종 레벨! ', ''))}</p>
         <h3>진화 ${have(WEAPONS.filter((w) => w.evolved), known)}/${WEAPONS.filter((w) => w.evolved).length}</h3>
         <p class="soft">무기를 5레벨까지 올리고 짝 패시브를 가진 채로 보스의 보물상자를 열면 진화해요</p>${evo.join('')}`;
     } else {

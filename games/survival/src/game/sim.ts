@@ -3,7 +3,7 @@
  * Phaser·DOM·Math.random 을 쓰지 않는다 (같은 시드·같은 조작이면 언제나 같은 결과).
  * 화면은 이 상태를 그리기만 하고, 화면 없이도 수천 판을 돌려 밸런스를 볼 수 있다 (game/policy.ts).
  */
-import { BOSS_WARN_SEC, DAILY_COIN_MUL, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
+import { BOSS_WARN_SEC, DAILY_COIN_MUL, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, STACKS, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
@@ -13,7 +13,7 @@ import { PASSIVES } from '../data/passives';
 import { UPGRADES, type UpgradeLevels } from '../data/upgrades';
 import { FALLBACK_WEAPON, WEAPONS, WEAPON_INDEX } from '../data/weapons';
 import {
-  addFx, collect, edgePoint, emit, endlessMul, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
+  addFx, collect, edgePoint, emit, insideArena, keepIn, endlessMul, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
   spawnBoss, spawnEnemy, sweep,
 } from './core';
 import { runBuild, type RunBuild } from './build';
@@ -68,6 +68,7 @@ export function createRun(cfg: RunConfig): State {
     rerolls: 0,
     weapons: [],
     passives: [],
+    stacks: STACKS.map(() => 0),
     enemies: makePool<Enemy>(LIMIT.enemyPool, () => ({
       uid: 0, kind: 0, boss: -1, x: 0, y: 0, hp: 0, maxHp: 0, r: 0, speed: 0, dmg: 0, xp: 0, flash: 0, t: 0, dead: false, cd: 0,
       pat: 0, patT: 0, sub: 0, ax: 0, ay: 0, slow: 0, hidden: false, guard: 1, look: -1, side: 0, sideT: 0, hitAt: new Int32Array(8),
@@ -145,8 +146,13 @@ function spawnByKind(s: State, kind: number) {
     for (let tries = 0; tries < 4; tries++) {
       const a = rand(s) * Math.PI * 2;
       const d = 300 + rand(s) * 220;
-      const x = p.x + Math.cos(a) * d;
-      const y = p.y + Math.sin(a) * d;
+      let ox = Math.cos(a) * d;
+      let oy = Math.sin(a) * d;
+      // 맵 밖이면 내 자리를 사이에 두고 맞은편 (거리 520 이 맵의 절반보다 짧아서 맞은편은 맵 안이다)
+      if (!insideArena(p.x + ox, p.y, def.r + 20)) ox = -ox;
+      if (!insideArena(p.x, p.y + oy, def.r + 20)) oy = -oy;
+      const x = p.x + ox;
+      const y = p.y + oy;
       if (tries < 3 && blocked(s.map.terrain, s.terrainSeed, x, y, def.r)) continue;
       spawnEnemy(s, kind, x, y);
       return;
@@ -245,8 +251,9 @@ function updateSpawns(s: State) {
       emit(s, EV.bossWarn, kind);
     }
     if (t >= at) {
+      // 위쪽 화면 밖 (내가 맵 위쪽 벽에 붙어 있으면 아래쪽에서). 화면 쪽으로 200 들어와서 나온다
       edgePoint(s, PT, 0);
-      const e = spawnBoss(s, kind, PT.x, PT.y + 200);
+      const e = spawnBoss(s, kind, PT.x, PT.y + (PT.y < s.player.y ? 200 : -200));
       if (e) {
         if (s.bossNext === map.bosses.length - 1) s.finalUid = e.uid;
         s.bossNext++;
@@ -540,6 +547,8 @@ export function step(s: State, input: Input) {
       p.x = OUT.x;
       p.y = OUT.y;
     }
+    // 맵의 끝: 담 너머로는 갈 수 없다 (ARENA)
+    keepIn(p, PLAYER.r);
     p.fx = mx / Math.min(1, len);
     p.fy = my / Math.min(1, len);
   }
