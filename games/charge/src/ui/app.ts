@@ -728,9 +728,17 @@ let stopHideWatch = () => {};
 
 function closeGame() {
   stopHideWatch();
-  game?.destroy(true);
+  if (game) destroyGame(game);
   game = null;
 }
+
+/** Phaser 게임을 치우면서 WebGL 컨텍스트도 놓는다 (Phaser destroy 는 loseContext 를 부르지 않는다 — 아이폰은 컨텍스트 수 · GPU 메모리가 빠듯하다) */
+function destroyGame(g: { renderer: unknown; events: { once(ev: string, fn: () => void): unknown }; destroy(removeCanvas: boolean): void }) {
+  const gl = (g.renderer as { gl?: WebGLRenderingContext } | null)?.gl;
+  if (gl) g.events.once('destroy', () => setTimeout(() => { try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* 이미 잃음 */ } }, 0));
+  g.destroy(true);
+}
+
 
 export async function startGame(stage: StageDef, endless: boolean) {
   if (busy) return;
@@ -885,7 +893,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
       closeGame();
       showMain();
       // 결과 창을 건너뛰므로 기록이 남지 않은 사정은 결과 창과 같은 글로 알려 준다
-      if (out?.note === 'kept') toast('서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요', 3200);
+      if (out?.note === 'kept') toast('서버에 연결하지 못해 기록을 보관했어요. 2시간 안에 다시 들어오면 보내요', 3200);
       else if (out?.note === 'unrecorded') toast('이번 판은 기록되지 않았어요', 3200);
     });
   };
@@ -937,7 +945,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
       ${newFoes.length ? `<p class="new-foes"><span>📖 도감에 새로 적었어요</span>${newFoes.map((id) => `<i>${foeImg(codexEntry(id), true)}</i>`).join('')}</p>` : ''}
       ${daily ? '<p class="daily-place" hidden></p>' : ''}
       ${wantTops ? '<div class="tops-box wait"><span class="soft">🏅 최다 생존 대원</span><small class="tops"><em><u>&nbsp;</u></em></small></div>' : ''}
-      ${note === 'kept' ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 다음에 들어오면 다시 보내요</p>' : ''}
+      ${note === 'kept' ? '<p class="soft center">서버에 연결하지 못해 기록을 보관했어요. 2시간 안에 다시 들어오면 보내요</p>' : ''}
       ${note === 'unrecorded' ? '<p class="soft center">이번 판은 기록되지 않았어요</p>' : ''}
       ${win && stars < 3 ? `<p class="soft center">별 ${stars + 1}개: 대원 ${st.stars[stars - 1]}명 이상 남기기</p>` : ''}
       ${!endless && !win ? '<p class="soft center">💪 강화하거나 다른 길을 골라 보세요</p>' : ''}

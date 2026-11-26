@@ -8,7 +8,7 @@
 import { ENDLESS, LIMIT, TICK, TICKS_PER_SEC } from '../data/balance';
 import { BOSSES, BOSS_INDEX, HELL_PATTERNS, type BossPattern } from '../data/bosses';
 import { ENEMY_INDEX } from '../data/enemies';
-import { addFx, addProjectile, addZone, dmgGrowth, emit, endlessMul, rand, spawnEnemy } from './core';
+import { addFx, addProjectile, addZone, dmgGrowth, emit, endlessMul, insideArena, rand, spawnEnemy } from './core';
 import { EV, FX, MODE, PROJ, ZONE, ZONE_OF, type Enemy, type State } from './state';
 
 /** dx, dy, d: 보스에서 내 캐릭터까지 */
@@ -202,7 +202,10 @@ const sweep: BossPatternFn = (s, e, p) => {
     e.sub = 1;
     // 가로 또는 세로, 어느 쪽에서 올지
     const horizontal = rand(s) < 0.5;
-    const dir = rand(s) < 0.5 ? 1 : -1;
+    let dir = rand(s) < 0.5 ? 1 : -1;
+    // 닫힌 맵: 시작점이 담 밖이면 반대쪽에서 온다 (len/2 는 맵 반폭보다 짧아 반대쪽은 언제나 맵 안 — 담에 막혀 내 몸 위에서 시작하지 않게)
+    const startOut = (d: number) => !insideArena(s.player.x - (horizontal ? d : 0) * (len / 2), s.player.y - (horizontal ? 0 : d) * (len / 2), e.r);
+    if (startOut(dir)) dir = -dir;
     e.ax = horizontal ? dir : 0;
     e.ay = horizontal ? 0 : dir;
     e.x = s.player.x - e.ax * (len / 2);

@@ -31,6 +31,8 @@ export const GAMES = [
     path: 'games/tower/', image: 'shared/images/card-tower.png', open: false },
   { id: 'card', name: '시아카드배틀', desc: '십이지 영웅으로 카드 덱을 키우며 요괴를 물리쳐라 · 덱빌딩 로그라이크 · 1인용',
     path: 'games/card/', image: 'shared/images/card-card.png', open: false },
+  { id: 'pang', name: '시아팡팡', desc: '아홉 정령을 셋씩 맞춰 터뜨려라 · 3매치 퍼즐 100스테이지 · 1인용',
+    path: 'games/pang/', image: 'shared/images/card-pang.png', open: false },
 ];
 
 const KEY = 'game_open:';

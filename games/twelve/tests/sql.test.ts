@@ -9,7 +9,7 @@ import { TIER_LEVELS } from '../src/data/weapons';
  * 078 · 094 는 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하고, 맵 표는 109 가 한 번 더 정의한다 —
  * 블록마다 마지막 정의가 있는 파일(sqlrows.ts 의 blockFile: maps 는 109, 나머지는 094)의 블록을 대조한다 (094 의 maps 블록은 옛 값 그대로).
  * 함수는 파일들을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 gen 블록을 다시 만든다.
- * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
+ * 위 파일들만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
  */
 const read = (name: string) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const sql078 = read('078_twelve.sql');
