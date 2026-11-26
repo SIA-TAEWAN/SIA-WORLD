@@ -369,6 +369,7 @@ em > .ico { margin: 0 auto; }
 .lv-card .tx .tag { background: var(--team-a); vertical-align: 3px; }
 .lv-card .tx .tag.new { background: var(--pink); }
 .lv-card.bonus .tx .tag { background: var(--ink-soft); }
+.lv-card.stack .tx .tag { background: var(--accent); }
 .lv-card .tx small { display: block; font-size: 14px; color: var(--ink-soft); margin-top: 2px; }
 .lv-card .tx small.set { color: var(--pink); }
 .lv-card .tx small.set.done { color: var(--white); background: var(--pink); border-radius: var(--radius-item); padding: 1px 6px; display: inline-block; }

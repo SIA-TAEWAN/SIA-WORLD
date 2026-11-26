@@ -2,7 +2,7 @@
  * 판 안 성장 (PRD 3장): 레벨업 카드 3장 뽑기·적용, 보물상자와 진화.
  * 규칙: 무기 최대 4개 · 패시브 최대 6개 · 각각 최대 5레벨 (다 차면 새것 카드는 나오지 않는다). 진화 무기는 카드에 나오지 않는다.
  */
-import { BONUS, CARD_COUNT, CARD_WEIGHT, CHEST_COINS, LIMIT, xpNeed } from '../data/balance';
+import { BONUS, CARD_COUNT, CARD_WEIGHT, CHEST_COINS, LIMIT, RUN_SEC, STACKS, xpNeed } from '../data/balance';
 import { EVOLUTIONS } from '../data/evolutions';
 import { PASSIVES, PASSIVE_INDEX } from '../data/passives';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
@@ -103,10 +103,15 @@ export function drawCards(s: State) {
     candNew[i] = candNew[n];
     candW[i] = candW[n];
   }
+  // 무한 모드 4분 뒤: 빈자리를 계속 쌓이는 카드로 먼저 채운다 (그다음 떡. 엽전 카드는 내지 않는다)
+  if (stackTime(s)) for (let i = 0; i < STACKS.length && k < CARD_COUNT; i++) setCard(s.cards[k++], CARD.stack, i, (s.stacks[i] ?? 0) + 1, false);
   if (k < CARD_COUNT) setCard(s.cards[k++], CARD.heal, 0, 0, false);
   if (k < CARD_COUNT) setCard(s.cards[k++], CARD.coins, 0, 0, false);
   s.cardN = k;
 }
+
+/** 계속 쌓이는 카드를 내는 때인가: 무한 모드에서 4분이 지난 뒤 */
+export const stackTime = (s: State) => s.endless && s.time >= RUN_SEC;
 
 export function addWeapon(s: State, def: number, lv = 1) {
   const w = s.weapons.find((x) => x.def === def);
@@ -129,6 +134,11 @@ export function applyCard(s: State, type: number, def: number, lv: number) {
   if (type === CARD.weapon) addWeapon(s, def, lv);
   else if (type === CARD.passive) addPassive(s, def, lv);
   else if (type === CARD.heal) healPlayer(s, BONUS.heal);
+  else if (type === CARD.stack) {
+    if (def < 0 || def >= STACKS.length) return;
+    s.stacks[def] = (s.stacks[def] ?? 0) + 1;
+    recalcStats(s);
+  }
   else gainCoins(s, BONUS.coins);
 }
 
