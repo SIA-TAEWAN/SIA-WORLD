@@ -842,7 +842,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
           this.load.image(`full-${z}`, m.z.fullUrl(z));
         }
         // 트럼프 뒷면 그림 (못 불러오면 cards.ts가 코드로 그린다)
-        this.load.image('back-casino', new URL('shared/images/cards/back.png?v=ink3', worldRoot()).href);
+        this.load.image('back-casino', new URL('shared/images/cards/back.png?v=ink4', worldRoot()).href);
         ui.preload?.(this, m.z.avatarUrl);
       },
       create(this: PhaserNS.Scene) {
