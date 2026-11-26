@@ -12,7 +12,7 @@
 import { cardCost, cardDef, cardExhaust, cardOps, enemyDef, moveDef, phaseAt, phaseOf, potionDef } from './data.ts';
 import { Rng } from './rng.ts';
 import type { Battle, BCard, Foe, FoeMods, RunState, SimEvent, Statuses } from './state.ts';
-import type { EOp, MoveDef, Op, StatusId } from './types.ts';
+import type { EnemyDef, EOp, MoveDef, Op, StatusId } from './types.ts';
 
 export const BASE_ENERGY = 3;
 export const BASE_DRAW = 5;
@@ -355,7 +355,6 @@ export function endTurn(run: RunState, keep: number | undefined, ev: SimEvent[])
     dec(b.st, 'fire');
     if (b.over) return true;
   }
-  dec(b.st, 'wet');
   dec(b.st, 'weak');
   foesTurn(run, b, ev);
   if (b.over) return true;
@@ -367,7 +366,10 @@ export function endTurn(run: RunState, keep: number | undefined, ev: SimEvent[])
 
 function foesTurn(run: RunState, b: Battle, ev: SimEvent[]) {
   ev.push({ e: 'turn', who: 'foes', turn: b.turn });
-  const acted: Foe[] = [];
+  // 영웅의 젖음은 요괴 차례가 끝날 때 1 줄어든다 — 이 차례에 새로 걸린 젖음은 줄지 않아 '젖음 n = 받는 요괴 공격 차례 n 번'
+  const wetAtStart = (b.st.wet ?? 0) > 0;
+  // 행동한 요괴와 그 행동 때의 단계 — 행동 뒤(반격·화상)에 단계가 바뀌었으면 새 단계 첫 의도가 이미 정해져 있어 다시 뽑지 않는다
+  const acted: [Foe, number][] = [];
   for (const f of [...b.foes]) {
     if (f.dead) continue;
     f.block = 0;
@@ -384,6 +386,7 @@ function foesTurn(run: RunState, b: Battle, ev: SimEvent[]) {
       if (f.dead) continue;
     }
     const d = enemyDef(f.id);
+    const phaseBefore = f.phase;
     if (f.stun) {
       // 시간 멈춤: 이번 행동을 건너뜀
       f.stun = false;
@@ -402,7 +405,7 @@ function foesTurn(run: RunState, b: Battle, ev: SimEvent[]) {
         if (b.over) return;
       }
     }
-    acted.push(f);
+    acted.push([f, phaseBefore]);
     if (f.dead) continue;
     const fire = f.st.fire ?? 0;
     if (fire > 0) {
@@ -413,7 +416,8 @@ function foesTurn(run: RunState, b: Battle, ev: SimEvent[]) {
     dec(f.st, 'wet');
     dec(f.st, 'weak');
   }
-  for (const f of acted) if (!f.dead) rollIntent(b, f);
+  for (const [f, ph] of acted) if (!f.dead && f.phase === ph) rollIntent(b, f);
+  if (wetAtStart) dec(b.st, 'wet');
 }
 
 function runFoeOps(run: RunState, b: Battle, f: Foe, ops: EOp[], ev: SimEvent[]) {
@@ -732,22 +736,24 @@ function foeLoseHp(run: RunState, b: Battle, f: Foe, n: number, ev: SimEvent[], 
   if (n <= 0) return;
   f.hp -= n;
   const d = enemyDef(f.id);
+  let revived = false;
   if (f.hp <= 0) {
-    // 불가살 2단계: 한 번 체력 30% 로 부활 (화상이 걸려 있으면 못 함)
-    if (phaseOf(d, f.phase).passive === 'revive' && !f.revived && !((f.st.fire ?? 0) > 0)) {
+    // 불가살(2단계 특성): 한 번 체력 30% 로 부활 (화상이 걸려 있으면 못 함) — 1단계에서 한 번에 쓰러뜨려도 부활하고 2단계로 넘어간다
+    if (canRevive(d) && !f.revived && !((f.st.fire ?? 0) > 0)) {
       f.revived = true;
+      revived = true;
       f.hp = Math.round(f.maxHp * 0.3);
       ev.push({ e: 'foeRevive', uid: f.uid, hp: f.hp });
+    } else {
+      f.hp = 0;
+      f.dead = true;
+      ev.push({ e: 'die', uid: f.uid });
+      checkWin(run, b, ev);
       return;
     }
-    f.hp = 0;
-    f.dead = true;
-    ev.push({ e: 'die', uid: f.uid });
-    checkWin(run, b, ev);
-    return;
   }
   // 이무기 승천 예고 중: 피해가 쌓이면 취소 (떨어짐)
-  if (f.charge != null) {
+  if (!revived && f.charge != null) {
     f.charge -= n;
     if (f.charge <= 0) {
       f.charge = null;
@@ -775,6 +781,9 @@ function foeLoseHp(run: RunState, b: Battle, f: Foe, n: number, ev: SimEvent[], 
     rollIntent(b, f);
   }
 }
+
+/** 어느 단계든 부활 특성이 있는 요괴 (불가살) */
+const canRevive = (d: EnemyDef): boolean => [d.phase1, d.phase2, d.phase3].some((ph) => ph?.passive === 'revive');
 
 function checkWin(run: RunState, b: Battle, ev: SimEvent[]) {
   if (b.foes.some((f) => !f.dead && !f.minion)) return;
@@ -855,19 +864,20 @@ function loseHp(run: RunState, b: Battle, n: number, ev: SimEvent[], from: 'stat
   const before = run.hp;
   run.hp -= n;
   if (run.hp <= 0) {
-    // 불사조 깃: 이 전투에서 한 번 체력 n% 로 일어남
-    if (b.powers.phoenix && !b.b.phoenix) {
-      b.b.phoenix = true;
-      run.hp = Math.max(1, Math.floor((run.maxHp * b.powers.phoenix) / 100));
-      ev.push({ e: 'revive', who: 'phoenix' });
-      return;
-    }
+    // 부활 순서: 고양이 패시브 → 불사조 깃 → 불가살 쇠조각
     // 고양이(야옹이): 한 판에 한 번 체력1로 버티고 방어10
     if (run.hero === 'cat' && !run.flags.catUsed) {
       run.flags.catUsed = true;
       run.hp = 1;
       ev.push({ e: 'revive', who: 'cat' });
       gainBlock(b, 10, ev);
+      return;
+    }
+    // 불사조 깃: 이 전투에서 한 번 체력 n% 로 일어남
+    if (b.powers.phoenix && !b.b.phoenix) {
+      b.b.phoenix = true;
+      run.hp = Math.max(1, Math.floor((run.maxHp * b.powers.phoenix) / 100));
+      ev.push({ e: 'revive', who: 'phoenix' });
       return;
     }
     if (has(run, 'bulgasalIron') && !run.flags.ironUsed) {

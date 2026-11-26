@@ -15,7 +15,7 @@ import type { DeckCard, FoeMods, Input, RewardItem, RunState, Shop, SimEvent } f
 import type { EvOp, NodeType } from './types.ts';
 
 /** 규칙 판본 — 같은 입력이 다른 결과를 내게 규칙을 바꾸면 올린다 (저장한 판·서버 검증이 같은 판본끼리만 맞는다) */
-export const RULES_VERSION = 4;
+export const RULES_VERSION = 5;
 /** 덱 최소 장수 (그 아래로 없애기 불가) */
 export const MIN_DECK = 5;
 export { EASY_BATTLES, FINAL_ELITES };
@@ -147,11 +147,21 @@ export function storyAct(run: RunState): number {
 }
 
 /**
+ * 끝없는 모드 배수 (1.15^(막-1)). Math.pow 는 엔진마다 마지막 자리가 다를 수 있어
+ * 곱셈(IEEE 기본 연산이라 어디서나 같음)을 되풀이하고 1e-6 자리에서 반올림한다.
+ */
+export function endlessScale(act: number): number {
+  let k = 1;
+  for (let i = 1; i < act; i++) k = Math.round(k * (1 + ENDLESS_STEP) * 1e6) / 1e6;
+  return k;
+}
+
+/**
  * 이 전투의 요괴가 강해지는 정도.
  * 끝없는 모드: 2막부터 막마다 체력·피해 ×1.15 누적. 숙련: 1 정예 체력+10% · 2 일반 요괴 공격+1 · 5 막 보스 체력+10% (3·4 는 상점·쉼터)
  */
 export function foeMods(run: RunState): FoeMods | undefined {
-  const k = run.mode === 'endless' ? Math.pow(1 + ENDLESS_STEP, Math.max(0, run.act - 1)) : 1;
+  const k = run.mode === 'endless' ? endlessScale(run.act) : 1;
   const m = run.mastery ?? 0;
   const mods: FoeMods = {
     hp: k,
@@ -492,6 +502,7 @@ function shopStep(run: RunState, i: Input): boolean {
     return true;
   }
   if (i.t === 'buy') {
+    if (i.kind !== 'card' && i.kind !== 'relic' && i.kind !== 'potion') return false;
     const list = i.kind === 'card' ? s.cards : i.kind === 'relic' ? s.relics : s.potions;
     const it = list[i.i];
     if (!it || it.sold || run.gold < it.price) return false;

@@ -1,4 +1,4 @@
--- 111: 시아카드배틀 (games/card, PRD [진행·재화] · [기술])
+-- 112: 시아카드배틀 (games/card, PRD [진행·재화] · [기술])
 --   한 판 = 씨앗 + 영웅 + 모드(normal 보통 · endless 끝없는 모드 · daily 오늘의 도전) + 숙련 단계. 계정당 모드별 진행 중인 판 1개.
 --   · card_start(mode, hero, mastery, day, seed) : 판 시작 → { runId, seed, … }. 같은 모드의 진행 중인 판은 버린 판(abandoned)이 된다.
 --       보통·끝없는: 영웅은 _check_character(user, hero, 'card') (고양이는 이 게임에서 산 사람만), 씨앗은 서버가 정한다.
@@ -19,7 +19,7 @@
 create or replace function public._card_const(p_name text) returns int
 language sql immutable as $$
   select case p_name
-    when 'rules' then 4            -- RULES_VERSION (run.ts)
+    when 'rules' then 5            -- RULES_VERSION (run.ts)
     when 'mastery_open' then 5     -- MASTERY_OPEN: 고를 수 있는 가장 높은 숙련 단계 (6~10 잠금)
     when 'coin_acts' then 3        -- COIN_ACTS: 한 판 시아코인 최대
     when 'coin_acts_true' then 4   -- COIN_ACTS_TRUE: 어둑시니까지 깬 판
@@ -61,6 +61,7 @@ create table if not exists public.card_runs (
 );
 create unique index if not exists card_runs_active_idx on public.card_runs (user_id, mode) where status = 'active';
 create index if not exists card_runs_daily_idx on public.card_runs (user_id, day) where mode = 'daily';
+create index if not exists card_runs_user_idx on public.card_runs (user_id, started_at);
 alter table public.card_runs enable row level security;
 drop policy if exists card_runs_read_own on public.card_runs;
 create policy card_runs_read_own on public.card_runs for select using (auth.uid() = user_id);
@@ -181,6 +182,9 @@ declare
 begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   if p_mode is null or p_mode not in ('normal', 'endless', 'daily') then raise exception 'bad mode'; end if;
+  -- 잠금 순서는 언제나 지갑 → 판 (card_finish_verified 와 같게 — 시아코인 지급이 지갑을 잠근다)
+  perform public._ensure_wallet(me);
+  perform 1 from public.wallets where user_id = me for update;
   -- 같은 사람의 시작은 한 번에 하나씩 (진행 중인 판 1개)
   perform pg_advisory_xact_lock(hashtext('card-start:' || me::text));
   if p_mode = 'daily' then
@@ -278,6 +282,11 @@ begin
     or (v_ending is not null and v_ending not in ('normal', 'true')) or (v_ending is not null and (not v_over or v_dead))
   then raise exception 'bad result'; end if;
 
+  -- 잠금 순서는 언제나 지갑 → 판 (card_start 와 같게)
+  if exists (select 1 from public.profiles where id = p_user) then
+    perform public._ensure_wallet(p_user);
+    perform 1 from public.wallets where user_id = p_user for update;
+  end if;
   select * into rn from public.card_runs where id = p_run for update;
   if not found or rn.user_id <> p_user then raise exception 'no run'; end if;
   if rn.status <> 'active' then raise exception 'already finished'; end if;

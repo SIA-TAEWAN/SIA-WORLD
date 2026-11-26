@@ -5,9 +5,9 @@
 ## 메인이 정한 것 (스펙에 없는 작업 약속)
 
 - 작업 폴더 `.worktrees/card`, 브랜치 `feature/card` (origin/main 기준). 단계마다 커밋, 다 끝나면 PR → 머지 → 배포.
-- 개발 포트 5299. 패키지 구조는 `games/tower` 를 따른다(Vite + TS + Phaser 3, `tests/`, `npm test` = vitest run, `npm run build` = tsc --noEmit && vite build).
+- 개발 포트 5300. 패키지 구조는 `games/tower` 를 따른다(Vite + TS + Phaser 3, `tests/`, `npm test` = vitest run, `npm run build` = tsc --noEmit && vite build).
 - 순수 규칙 코드는 `supabase/functions/_shared/card/` 에 두고(Deno 규칙: `.ts` 확장자 상대 import, Node/Deno 전용 API 금지), `games/card/src/game/` 는 그걸 다시 내보내거나 import 한다. 데이터 JSON 도 `_shared/card/data/` 에 두고 `games/card/src/data/` 는 그걸 가리킨다(핑거의 `_shared/finger/` 방식 참고). JSON import 는 Deno 에서 `with { type: 'json' }` 가 필요하므로, 데이터는 `.ts` 로 감싼 모듈(`export default [...] as const` 또는 JSON 을 그대로 붙인 `.ts`) 로 두는 쪽을 권장 — 스펙의 `src/data/*.json` 파일명은 유지하되 같은 내용의 생성/검사로 맞춘다(테스트로 둘이 같은지 확인).
-- 마이그레이션 번호: `111_card.sql` (109 열두길·110 서바이벌이 먼저 씀. 쓰기 전 `git fetch` 후 `git ls-tree --name-only origin/main supabase/migrations/` 로 재확인). Edge Function `card-finish`.
+- 마이그레이션 번호: `112_card.sql` (109 열두길·110 서바이벌·111 시아팡팡이 먼저 씀. 쓰기 전 `git fetch` 후 `git ls-tree --name-only origin/main supabase/migrations/` 로 재확인). Edge Function `card-finish`.
 - 게임은 닫힌 상태(`game_open:card = false`)로 시작, 오픈은 관리자가 직접.
 - 친목용: 조작 방지는 가볍게(입력 재실행 검증은 스펙대로 하되 그 이상 과하게 막지 않는다), 권한·RLS 는 지킨다.
 - 디자인: `DESIGN.md` + `shared/theme.css`/`theme.js`. 다른 미감 금지.
@@ -123,7 +123,7 @@
 - 새 그림 5장: 카드 틀 1(종류색·등급 테두리는 코드로 색 입힘), 의도 아이콘 시트 1(5칸), 기력 구슬 1, 지도 칸 아이콘 시트 1(6칸), 로비 카드 shared/images/card-card.png(640×400). SpriteCook 크레딧이 있으면 만들고 spritecook-assets.json 에 기록, 없으면 코드 그림으로 두고 ASSETS.md 의 '남은 것'에 적는다.
 
 ### [기술]
-- games/card: Vite + TypeScript + Phaser 3, 개발 포트 5299.
+- games/card: Vite + TypeScript + Phaser 3, 개발 포트 5300.
 - src/game/sim.ts 는 순수 TypeScript. 상태 JSON 직렬화 가능, 무작위는 전부 씨앗 Rng. 같은 씨앗 + 같은 입력 = 같은 결과. supabase/functions/_shared/card/ 에서도 같은 코드를 쓴다(Deno 규칙: .ts 확장자 상대 import).
 - 데이터: src/data/cards.json·heroes.json·enemies.json·relics.json·events.json·acts.json (값은 위 스펙 그대로).
 - 서버: 새 마이그레이션(번호는 ls supabase/migrations 로 확인) + card-finish Edge Function. 막이 끝날 때마다 씨앗 + 입력 기록을 보내면 서버가 다시 돌려 시아코인·랭킹·오늘의 도전 점수를 정한다.

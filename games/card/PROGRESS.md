@@ -1,6 +1,6 @@
 # 시아카드배틀 진행 기록
 
-기준: `PRD.md` (사용자 스펙 + 메인이 정한 것). 개발 서버 `npm run dev` → `http://localhost:5299/games/card/?local=1`.
+기준: `PRD.md` (사용자 스펙 + 메인이 정한 것). 개발 서버 `npm run dev` → `http://localhost:5300/games/card/?local=1`.
 
 ## 1단계 — 전투 시뮬레이션 + 카드 20장 + 요괴 4종 (완료)
 
@@ -92,7 +92,7 @@
   - **숙련 1~5** (보통 모드만, 누적): 1 정예 체력 ×1.1 · 2 일반 전투 요괴 공격 +1(공격 한 번마다) · 3 상점 가격 ×1.15(카드·부적·물약·카드 없애기, 반올림) · 4 쉼터 회복 20% · 5 막 보스 체력 ×1.1. 전투 쪽은 `Battle.mods`(`foeMods(run)` → `startBattle`의 `mods`), 상점 `shopPrice`, 쉼터 `restHeal`. **6~10 은 데이터·서버 쪽만**(숙련 데이터 10줄, SQL `mastery` 0~10 허용) — 규칙은 없고 고를 수 없음(6단계 일).
   - **오늘의 도전** `daily.ts`: `dailyRun(day)` = 씨앗 `dailySeed('card', day, 'seed')` + 영웅 `dailyPick(십이지 12, 'card', day, 'hero')` — shared/daily.js 와 같은 FNV 식(테스트로 대조). 점수 `dailyScore` = 칸×10 + 정예×30 + 보스×100 + 남은 체력. 숙련 0, 시아코인·도감 없음. 판은 보통처럼 3막 + 숨은 4막.
   - `verify.ts` `verifyRun(snap, log)`: 입력 모양 검사(`bad log`) → 처음부터 replay → 판이 끝났으면 끝 상태, 아니면 **마지막으로 시작한 막의 처음(actStart 마지막)까지만** 잘라 결과·기록을 낸다. 오늘의 도전은 씨앗·영웅이 그날 것인지(`bad daily`).
-- **서버** `supabase/migrations/111_card.sql` (110 은 서바이벌이 씀)
+- **서버** `supabase/migrations/112_card.sql` (110 서바이벌 · 111 시아팡팡이 먼저 씀 — 처음엔 111 이었다가 7단계에서 112 로)
   - 표 `card_runs`(계정당 모드별 진행 중 판 1개 — 부분 unique index, 씨앗·영웅·모드·숙련·날짜·first_of_day·확인된 log·깬 막·코인·점수) · `card_heroes`(영웅별 연 숙련 단계·깬 단계·클리어 수) · `card_endless`(최고 칸). RLS 자기 것 읽기만, 쓰기는 함수로만.
   - `card_start(mode, hero, mastery, day, seed)`: 보통·끝없는 = `_check_character(me, hero, 'card')` + 서버가 씨앗을 정함, 보통 숙련은 0~연 단계(최대 5), 끝없는·오늘은 0. 오늘의 도전 = 서버의 오늘 날짜만, 고양이 불가, 씨앗은 화면 값(card-finish 가 다시 계산해 확인). 같은 모드의 진행 중 판은 `abandoned`.
   - `card_state()`: 진행 중 판들(log 포함) · 영웅별 숙련 · 클리어 수 · 끝없는 최고 · 오늘 날짜 · 오늘 도전했는지.
@@ -208,23 +208,43 @@
 - 새 그림 5장 모두 쓰임: `card-frame`(전투 카드·HTML 카드) · `intent`(의도 시트) · `energy`(기력 구슬·HTML 카드 기력) · `map-nodes`(지도 칸) · `shared/images/card-card.png`(640×400, `shared/games.js` 의 시아카드배틀 `image`). 로비 카드는 `renderGames` 와 같은 모양으로 확인 — 닫힌 게임이라 관리자에게만 '닫힘' 표시로 보인다.
 - 랭킹 탭: `ranking-dialog.js` `TAB_ORDER` 끝에 `card`(오늘의 도전 · 끝없는 모드 최고 칸). `game_open:card = false` 그대로(PGlite 확인) — 오픈은 관리자.
 
-### 시아코인 15초 규칙 고침 (`111_card.sql`, 아직 배포 전이라 그 파일 안에서)
+### 시아코인 15초 규칙 고침 (`112_card.sql`, 아직 배포 전이라 그 파일 안에서)
 
 - 새 내부 함수 `_card_pay_owed(user, first_run)`: 이 사람의 보통·끝없는 판 중 받을 코인이 남은 막(`coins < least(acts, 3 또는 어둑시니까지 4)`, ref `판:막` 이 없는 것)에 코인을 준다 — 그 판을 먼저, 그다음 오래된 판 순. `_grant_sia_coin` 이 15초 규칙·하루 한도로 거절하면 거기서 멈춘다(그래서 보통 한 번에 하나).
 - `card_finish_verified` 는 이것을 부른다(전에는 이 판만, 판이 끝나면 밀린 막은 사라짐). `card_start` 도 새 판을 만든 뒤 부르고 `paidCoins` 를 돌려준다 → 화면 알림 '지난 판에서 못 받은 시아코인 +n'. 끝난 판의 밀린 막 코인은 다음 업로드나 다음 판 시작 때 하나씩 받는다.
 - `_card_const('rules')` 3 → 4, `RULES_VERSION` 3 → 4 (보스·영웅·요괴 숫자가 바뀌어 같은 입력이 다른 결과).
 - **PGlite**: 001~111 전체 적용 후 80항목 통과 (fixture 는 `gen-fixture.ts` 로 새 규칙에서 다시 만듦). 새로: 15초 안 새 판 시작 → 0 · 15초 뒤 → 끝난 판의 밀린 3막 코인 1 · 그 뒤 0 · 끝난 판 coins 3 · ref 1,2,3 · 쓰러진 판 한 번 업로드(2막) → 1 + 다음 판 시작 때 1. 오늘의 도전 fixture 가 1막에서 쓰러진 판이면 '막 기록' 단계는 건너뜀.
 
+## 7단계 — 11-26 전체검사 반영 (완료)
+
+- **마이그레이션 번호**: origin/main 에 `111_pang.sql`(시아팡팡)이 들어와 `111_card.sql` → **`112_card.sql`** (`git mv`, 이름을 적은 곳 전부). 시아팡팡과 개발 포트가 겹쳐(5299) 카드배틀은 **5300**. 108~111 은 카드 SQL 이 쓰는 `_character_games`·`_daily_games`·`_grant_sia_coin`·`_check_character` 를 다시 정의하지 않는다(확인).
+- **규칙** (`RULES_VERSION` 4 → 5, `_card_const('rules')` 5)
+  1. 요괴가 행동한 뒤 같은 차례에 반격·화상으로 단계가 바뀌면 끝의 의도 뽑기를 건너뛴다(행동 때의 단계를 기억) — 전에는 두 번 뽑혀 새 단계 첫 행동(수문장 병졸 부르기 · 염라 저승사자 부르기)이 빠졌다.
+  3. 부활 순서 = 고양이 패시브 → 불사조 깃 → 불가살 쇠조각 (B13 대로; 전에는 불사조가 먼저).
+  4. 불가살: 2단계 특성 '부활'을 단계와 상관없이 판정 — 1단계에서 한 번에 쓰러뜨려도 체력 30% 로 일어나 2단계가 된다(화상이면 못 함은 그대로).
+  5. **영웅의 젖음**: 요괴 차례가 끝날 때 1 줄어든다(그 차례 시작에 젖음이 있었을 때만). 그래서 '젖음 n = 받는 요괴 공격 차례 n 번' — 물귀신 끌어당기기(젖음2) 뒤 두 차례 ×1.5. 전에는 내 턴 끝에 줄어 n-1 번이었다. 요괴에게 건 젖음(그 요괴 차례에 1 줄어 내 공격 차례 n 번)과 같은 셈.
+  6. 끝없는 모드 배수 `endlessScale(막)` = 1.15 를 되풀이 곱하며 1e-6 에서 반올림 (`Math.pow` 는 엔진마다 마지막 자리가 다를 수 있음). 5막 1.749006.
+  7. 입력 검사: `t`·`kind` 는 16자 이하 글자(`verifyRun`), 상점 `buy` 는 kind 가 card · relic · potion 일 때만(모르는 kind 가 물약 목록으로 가 3개 상한을 넘던 것).
+- **화면**
+  2. 달빛 구슬: 부적이 있고 손패가 있으면 '턴 끝' → 손패 카드를 눌러 남길 카드 1장 고르기(분홍 안내 '달빛 구슬: 손에 남길 카드를 누르세요', 버튼은 '안 남기고 끝'), 빈 곳·물약을 누르면 그만둠 → `{t:'end', keep}`.
+  8. 새 판 시작 때 `ctx.state.runs[mode]` 를 비우지 않고 card_start 가 돌려준 판(기록 없음, `startedRun`)으로 채운다 — 전에는 '← 처음' 을 누르면 기기 저장이 '서버에서 버린 판' 으로 보여 지워졌다(1막 진행 소실, 오늘의 도전도). 고르기는 `src/ui/resume.ts` `pickResume` 로 빼고 테스트. 진행 중 판이 있을 때 새 판은 확인 창(보통 '새 판' · 오늘의 도전 '새로 시작' · 끝없는 '새로 시작 (진행 중인 판은 사라져요)' 버튼) — 확인함.
+  9. 전투 화면을 닫을 때 Phaser DESTROY 뒤 `WEBGL_lose_context.loseContext()` (핑거와 같음).
+  10. 끌기는 손가락 번호를 기억해 다른 손가락의 move/up 은 무시, 다른 손가락이 끌고 있는 동안 새 카드 누르기도 무시. 놓기는 처음부터 `drag` 를 먼저 비우고, 연출 중(`busy`)에는 `send` 가 입력을 받지 않는다 — 연습 전투에서 한 번 끌기에 카드 3장이 쓰인 일(재현 못 함)의 가능한 길(두 손가락 · 연출 중 입력)을 막음.
+  11. 아이폰 노치·홈 표시줄: `#game` 을 `env(safe-area-inset-*)` 만큼 안쪽으로(메뉴 화면 `.screen` padding 과 같은 값), 캔버스는 그 안에서 FIT.
+- **SQL** (`112_card.sql` 안, 아직 배포 전): `card_start`·`card_finish_verified` 맨 앞에서 `_ensure_wallet` 후 지갑 줄 `for update` → 잠금 순서 지갑 → 판으로 통일(교착 방지). `card_runs_user_idx (user_id, started_at)`.
+- 시험: `npm test` 16파일 192개 · build. 머지로 shared 가 바뀌어 running·tank·village·survival·defense·charge·finger·volleyball 테스트 통과(pang·twelve·tower 는 이 작업 폴더에 node_modules 가 없어 안 돌림 — shared 를 읽는 테스트 없음). PGlite: 001~112 전체 적용 후 79항목 통과(하네스 `pg/t112.mjs`, fixture 는 새 규칙으로 다시 — 숙련 1 판은 진짜 엔딩 판을 고르게 `gen-fixture.ts` 를 고침; 오늘의 도전 fixture 가 1막에서 쓰러진 판이라 '막 기록' 단계는 건너뜀).
+- 봇 (`npm run bot -- 100`, 영웅마다 100판): 1막 80% · 2막 51% · **3막 클리어 36%** · 4막 열림 17% · 어둑시니 12% (대나무숲 판 35% · 들판 판 37%, 1막 대나무숲 82% · 들판 77%) — 6단계 34% 와 비슷.
+
 ## 테스트
 
-`npm test` — 14파일 180개, 약 3초: 데이터(json 사본·카드 86장 구성·참조) · 전투 규칙 · 보스 13종(`bosses.test.ts`) · 부적 30(`relics.test.ts`) · 새 카드(`cards.test.ts`) · 막·4막·엔딩·이야기 막 조건·갈림길의 여우(`acts.test.ts`) · 설명 칸 맞추기(`fit.test.ts`) · 지도 · 칸 · 결정성 · 영웅 13명 · 그림 목록 · 단순 봇(`tests/bot.ts`) · 사람 흉내 봇 두 판(`smartbot.test.ts`) · SQL 상수 · 서버 연결.
+`npm test` — 16파일 192개, 약 3초: 데이터(json 사본·카드 86장 구성·참조) · 전투 규칙 · 보스 13종(`bosses.test.ts`) · 부적 30(`relics.test.ts`) · 새 카드(`cards.test.ts`) · 막·4막·엔딩·이야기 막 조건·갈림길의 여우(`acts.test.ts`) · 설명 칸 맞추기(`fit.test.ts`) · 지도 · 칸 · 결정성 · 영웅 13명 · 그림 목록 · 단순 봇(`tests/bot.ts`) · 사람 흉내 봇 두 판(`smartbot.test.ts`) · SQL 상수 · 서버 연결 · 전체검사 고친 것(`review.test.ts`) · 이어하기 고르기(`resume.test.ts`).
 밸런스 측정은 `npm run bot` (위 6단계 참고 — CI 에서 돌리지 않음).
 
 ## 남은 일
 
-- 배포(메인): PR → 머지 → `111` 이 운영에 들어감. 로비 공개 = 관리자가 `game_open:card` 를 켠다.
+- 배포(메인): PR → 머지 → `112` 가 운영에 들어감. 로비 공개 = 관리자가 `game_open:card` 를 켠다.
 - 숙련 6~10 은 데이터·SQL 범위만(규칙 없음, 잠금). 열려면 규칙 + `MASTERY_OPEN` + `_card_const('mastery_open')` 를 같이.
-- 규칙을 바꾸면 `RULES_VERSION` **과** SQL `_card_const('rules')` 를 같이 올린다(111 이 배포된 뒤에는 새 마이그레이션에서 `_card_const` 를 다시 정의 — `tests/sql.test.ts` 는 마지막 정의를 읽는다). 서버 SQL 에는 카드·요괴 숫자가 없어 밸런스 조정은 판본만 올리면 된다.
+- 규칙을 바꾸면 `RULES_VERSION` **과** SQL `_card_const('rules')` 를 같이 올린다(112 가 배포된 뒤에는 새 마이그레이션에서 `_card_const` 를 다시 정의 — `tests/sql.test.ts` 는 마지막 정의를 읽는다). 서버 SQL 에는 카드·요괴 숫자가 없어 밸런스 조정은 판본만 올리면 된다.
 
 ## 물어볼 것
 

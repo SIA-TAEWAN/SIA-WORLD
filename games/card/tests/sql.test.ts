@@ -1,4 +1,4 @@
-/** 서버 SQL(supabase/migrations/111_card.sql)의 상수·목록이 규칙 코드·공통 모듈과 같은지 본다 (서버는 바꾸지 않고 읽기만) */
+/** 서버 SQL(supabase/migrations/112_card.sql)의 상수·목록이 규칙 코드·공통 모듈과 같은지 본다 (서버는 바꾸지 않고 읽기만) */
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { COIN_ACTS, COIN_ACTS_TRUE, DAILY_SCORE, MASTERY_OPEN, MAX_LOG, RULES_VERSION } from '../src/game/rules';
@@ -21,13 +21,13 @@ function lastDef(fn: string): { body: string; from: string } {
 }
 const arrayOf = (body: string) => [...(/array\[([^\]]+)\]/.exec(body)?.[1] ?? '').matchAll(/'(\w+)'/g)].map((m) => m[1]);
 
-describe('111_card.sql 과 규칙 코드', () => {
+describe('112_card.sql 과 규칙 코드', () => {
   const c = lastDef('_card_const');
   const vals: Record<string, number> = {};
   for (const m of c.body.matchAll(/when '(\w+)' then (\d+)/g)) vals[m[1]] = Number(m[2]);
 
   it('_card_const: 규칙 판본 · 숙련 · 시아코인 · 기록 길이 · 오늘의 도전 점수', () => {
-    expect(c.from).toBe('111_card.sql');
+    expect(c.from).toBe('112_card.sql');
     expect(vals.rules).toBe(RULES_VERSION);
     expect(vals.mastery_open).toBe(MASTERY_OPEN);
     expect(vals.coin_acts).toBe(COIN_ACTS);
@@ -56,7 +56,7 @@ describe('111_card.sql 과 규칙 코드', () => {
     for (const fn of ['card_start', 'card_state', 'card_finish_verified', '_cat_progress_card']) {
       expect(lastDef(fn).body, fn).toContain('security definer set search_path = public');
     }
-    const sql = read('111_card.sql');
+    const sql = read('112_card.sql');
     expect(sql).toContain('revoke all on function public.card_finish_verified(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;');
     expect(sql).toContain('grant execute on function public.card_finish_verified(uuid, uuid, jsonb, jsonb) to service_role;');
     expect(sql).toContain("('game_open:card', 'false'::jsonb)");

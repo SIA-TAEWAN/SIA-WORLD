@@ -1,6 +1,6 @@
 /**
  * 모드·숙련 단계·오늘의 도전 데이터 (PRD [진행·재화]). 값은 사용자 스펙 그대로, 스펙에 없는 것은 '정한 값'.
- * SQL 111_card.sql 의 _card_const 와 같은 값이 있다 (games/card/tests/sql.test.ts 가 대조).
+ * SQL 112_card.sql 의 _card_const 와 같은 값이 있다 (games/card/tests/sql.test.ts 가 대조).
  */
 
 /** 판 모드: 보통(3막 + 숨은 4막) · 끝없는 모드 · 오늘의 도전 */

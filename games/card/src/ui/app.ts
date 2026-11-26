@@ -50,6 +50,7 @@ import { MAP_NODE_FRAME, artState, artUrl, hasArt } from '../art';
 import { artImg, cardHtml, potionHtml, potionIcon, relicHtml, relicIcon } from './cards';
 import { addToCodex, loadCodex, saveCodex } from './codex';
 import { shrinkOverflow } from './fit';
+import { pickResume, startedRun, type Saved } from './resume';
 
 interface Ctx {
   user: WorldUser | null;
@@ -100,10 +101,6 @@ export function toast(text: string, ms = 1800) {
 /** 모드마다 따로 저장 (계정당 모드별 진행 중인 판 1개) — { runId, run } */
 const SAVE_PREFIX = LOCAL_MODE ? 'siacard:local:run:' : 'siacard:run:';
 const CODEX_KEY = LOCAL_MODE ? 'siacard:local:codex' : 'siacard:codex';
-interface Saved {
-  runId: string | null;
-  run: RunState;
-}
 function saveRun() {
   const r = ctx.run;
   if (!r || r.practice) return;
@@ -141,12 +138,12 @@ function clearRun(mode: RunMode) {
 function resumable(mode: RunMode): { saved?: Saved; server?: ServerRun } | null {
   const saved = loadSaved(mode);
   if (LOCAL_MODE || !ctx.state) return saved ? { saved } : null;
-  const srv = ctx.state.runs[mode];
-  if (saved && srv && saved.runId === srv.runId && saved.run.log.length >= srv.log.length) return { saved };
-  if (saved && saved.runId && ctx.api?.pending(saved.runId) && (!srv || srv.runId === saved.runId)) return { saved };
-  if (srv && srv.rules === RULES_VERSION) return { server: srv };
-  if (saved) clearRun(mode);
-  return null;
+  const pick = pickResume(saved, ctx.state.runs[mode], (id) => !!ctx.api?.pending(id));
+  if (pick && 'clear' in pick) {
+    clearRun(mode);
+    return null;
+  }
+  return pick;
 }
 function resume(mode: RunMode): boolean {
   const r = resumable(mode);
@@ -278,7 +275,21 @@ export function showFirst() {
 
 function stopGame() {
   if (ctx.game) {
-    ctx.game.destroy(true);
+    // WebGL 컨텍스트도 놓는다 (Phaser destroy 는 loseContext 를 부르지 않는다 — 아이폰은 컨텍스트 수 · GPU 메모리가 빠듯하다)
+    const g = ctx.game;
+    const r = g.renderer;
+    const gl = r instanceof Phaser.Renderer.WebGL.WebGLRenderer ? r.gl : null;
+    if (gl)
+      g.events.once(Phaser.Core.Events.DESTROY, () =>
+        setTimeout(() => {
+          try {
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
+          } catch {
+            /* 이미 잃음 */
+          }
+        }, 0),
+      );
+    g.destroy(true);
     ctx.game = null;
   }
   gameEl().classList.add('hidden');
@@ -668,6 +679,7 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
   starting = true;
   try {
     let runId: string | null = null;
+    let started: ServerRun | null = null;
     let seed: number;
     if (LOCAL_MODE) {
       seed = daily?.seed ?? DEV_SEED ?? Math.floor(Math.random() * 2 ** 32) >>> 0;
@@ -676,6 +688,7 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
       if (!ctx.api) return toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요');
       try {
         const r = await ctx.api.start(mode, hero, mastery, daily?.day ?? null, daily?.seed ?? null);
+        started = r;
         runId = r.runId;
         seed = r.seed;
         if (r.paidCoins) toast(`지난 판에서 못 받은 시아코인 +${r.paidCoins}`, 2400);
@@ -698,9 +711,10 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
         ctx.run.map = genMap(ctx.run.seed, DEV_ACT, 0, mode);
       }
     }
-    if (ctx.state && runId) {
-      // 처음 화면의 '이어하기'가 버린 판을 가리키지 않게
-      ctx.state.runs[mode] = undefined;
+    if (ctx.state && started) {
+      // 처음 화면의 '이어하기'가 버린 판 대신 이 판을 가리키게 (기록 없는 서버 판 → 같은 판 번호의 기기 저장이 이긴다).
+      // 비워 두면 '← 처음' 에서 기기 저장이 '서버에서 버린 판' 으로 보여 지워졌다
+      ctx.state.runs[mode] = startedRun(started);
       if (mode === 'daily') ctx.state.dailyPlayed = true;
     }
     saveRun();

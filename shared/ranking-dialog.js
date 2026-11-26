@@ -88,7 +88,7 @@ export const TWELVE_REGIONS = ['쥐의 들판', '소의 논밭', '호랑이 고�
 /** 시아의탑: 오른 최고 층 → 레벨 → 먼저 달성한 순 (104_tower.sql 의 tower_ranking). 1층이라도 깬 사람만 */
 const TOWER_INFO = { label: '🗼 시아의탑', note: '오른 최고 층 순 (같으면 레벨이 높은 사람, 그다음 먼저 달성한 사람이 위)' };
 /**
- * 시아카드배틀: 오늘의 도전 점수(daily_ranking 'card') · 끝없는 모드 최고 칸(111_card.sql 의 card_endless_ranking) 두 가지.
+ * 시아카드배틀: 오늘의 도전 점수(daily_ranking 'card') · 끝없는 모드 최고 칸(112_card.sql 의 card_endless_ranking) 두 가지.
  * 고르기 줄은 디펜스·돌격대·핑거와 같이 쓰고, 첫 단추를 '끝없는 모드'로 바꿔 쓴다 (두 번째 단추는 숨김). 처음 열리는 것은 오늘의 도전
  */
 const CARD_INFO = { label: '🃏 카드배틀', note: '끝없는 모드 · 올라간 최고 칸 순 (같으면 먼저 달성한 사람이 위)' };

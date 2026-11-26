@@ -80,8 +80,8 @@ describe('끝없는 모드', () => {
     expect(foeMods(run)).toBeUndefined();
     for (const act of [2, 3, 5, 9]) {
       run.act = act;
-      expect(foeMods(run)!.hp).toBeCloseTo(1.15 ** (act - 1), 9);
-      expect(foeMods(run)!.dmg).toBeCloseTo(1.15 ** (act - 1), 9);
+      expect(foeMods(run)!.hp).toBeCloseTo(1.15 ** (act - 1), 5);
+      expect(foeMods(run)!.dmg).toBeCloseTo(1.15 ** (act - 1), 5);
     }
     // 같은 씨앗 전투: 끝없는 5막 요괴 체력 = 보통 체력 × 1.15^4 (반올림)
     run.act = 5;

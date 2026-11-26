@@ -70,7 +70,8 @@ p.soft { margin: 4px 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- 전투 캔버스 (430x860 을 화면에 맞춰 늘림) ---------- */
-#game { position: absolute; inset: 0; z-index: 1; }
+/* 아이폰 노치·홈 표시줄: 캔버스는 안전 영역 안에서만 맞춘다 (메뉴 화면 .screen 의 padding 과 같은 env 값) */
+#game { position: absolute; inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); z-index: 1; }
 #game canvas { touch-action: none; }
 #app { z-index: 2; pointer-events: none; }
 #app > * { pointer-events: auto; }

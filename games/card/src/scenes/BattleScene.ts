@@ -130,9 +130,12 @@ export class BattleScene extends Phaser.Scene {
   private hud!: Phaser.GameObjects.Container;
   private tip!: Phaser.GameObjects.Container;
   private busy = false;
+  /** 달빛 구슬: 턴 끝에 손에 남길 카드를 고르는 중 */
+  private keepPick = false;
   private selected: number | null = null;
   private potionSel: number | null = null;
-  private drag: { uid: number; sx: number; sy: number; moved: boolean } | null = null;
+  /** 끌기: 손가락 번호(pid)를 기억해 다른 손가락의 move/up 은 무시한다 */
+  private drag: { uid: number; pid: number; sx: number; sy: number; moved: boolean } | null = null;
   private disp = { hero: { hp: 0, block: 0 } as Disp, foes: new Map<number, Disp>() };
   /** 지금 보여 주는 카드 효과 (play 사건에서 정함) */
   private cur: { fx: string; atk: boolean; seen: Set<number> } | null = null;
@@ -676,7 +679,7 @@ export class BattleScene extends Phaser.Scene {
       const y = HAND_Y + Math.abs(off) * Math.abs(off) * 2.2;
       const rot = off * 0.05;
       const cost = playCost(run, b, card);
-      const playable = !b.over && (b.pending ? true : cost <= b.energy);
+      const playable = !b.over && (b.pending || this.keepPick ? true : cost <= b.energy);
       const c = this.cardView(card, x, y, playable, cost);
       c.setRotation(rot).setDepth(10 + i);
       const zone = this.add.zone(0, 0, CARD_W, CARD_H).setInteractive();
@@ -744,14 +747,14 @@ export class BattleScene extends Phaser.Scene {
     bg.lineStyle(3, COLOR.outline, 1);
     bg.strokeRoundedRect(-56, -22, 112, 46, 16);
     bt.add(bg);
-    bt.add(txt(this, 0, 1, '턴 끝', 20, COLOR.ink));
+    bt.add(txt(this, 0, 1, this.keepPick ? '안 남기고 끝' : '턴 끝', this.keepPick ? 15 : 20, COLOR.ink));
     const z = this.add.zone(0, 0, 112, 50).setInteractive({ useHandCursor: true });
     z.on('pointerdown', () => this.endTurn());
     bt.add(z);
     this.ui.add(bt);
     // 손패에서 고르기 (쥐구멍·분신술)
-    if (b.pending && !b.over) {
-      const msg = b.pending.kind === 'discard' ? '버릴 카드를 눌러 고르세요' : '복사할 카드를 눌러 고르세요';
+    if ((b.pending || this.keepPick) && !b.over) {
+      const msg = this.keepPick ? '달빛 구슬: 손에 남길 카드를 누르세요' : b.pending!.kind === 'discard' ? '버릴 카드를 눌러 고르세요' : '복사할 카드를 눌러 고르세요';
       const t = txt(this, W / 2, 668, msg, 16, COLOR.white, 4);
       const pg = this.add.graphics();
       pg.fillStyle(COLOR.pink, 1);
@@ -1040,12 +1043,15 @@ export class BattleScene extends Phaser.Scene {
   // ---------- 입력 ----------
   private onCardDown(uid: number, p: Phaser.Input.Pointer) {
     if (this.busy) return;
+    // 다른 손가락이 아직 끌고 있으면 무시 (그 손가락이 이미 떨어졌으면 남은 끌기를 버리고 새로)
+    const held = this.drag;
+    if (held && held.pid !== p.id && this.input.manager.pointers.some((x) => x.id === held.pid && x.isDown)) return;
     this.potionSel = null;
-    this.drag = { uid, sx: p.x, sy: p.y, moved: false };
+    this.drag = { uid, pid: p.id, sx: p.x, sy: p.y, moved: false };
   }
 
   private onMove(p: Phaser.Input.Pointer) {
-    if (!this.drag || !p.isDown || this.battle().pending) return;
+    if (!this.drag || this.drag.pid !== p.id || !p.isDown || this.battle().pending || this.keepPick) return;
     const v = this.handViews.find((h) => h.card.uid === this.drag!.uid);
     if (!v) return;
     if (!this.drag.moved && Math.hypot(p.x - this.drag.sx, p.y - this.drag.sy) > 12) {
@@ -1062,8 +1068,15 @@ export class BattleScene extends Phaser.Scene {
 
   private onUp(p: Phaser.Input.Pointer) {
     const d = this.drag;
+    if (!d || d.pid !== p.id) return;
+    // 놓는 순간 먼저 비운다 — 같은 끌기로 카드가 두 번 쓰이지 않게
     this.drag = null;
-    if (!d || this.busy) return;
+    if (this.busy) return;
+    // 달빛 구슬: 남길 카드 고르기 (탭) → 그 카드를 남기고 턴 끝
+    if (this.keepPick) {
+      if (!d.moved) this.finishTurn(d.uid);
+      return;
+    }
     // 쥐구멍·분신술: 손패 카드 고르기
     if (this.battle().pending) {
       if (!d.moved) this.send({ t: 'pick', uid: d.uid });
@@ -1097,6 +1110,12 @@ export class BattleScene extends Phaser.Scene {
 
   private onEmptyTap(p: Phaser.Input.Pointer) {
     if (this.busy) return;
+    // 달빛 구슬 고르기를 그만둔다 (턴은 끝나지 않음)
+    if (this.keepPick && p.y < 560) {
+      this.keepPick = false;
+      this.render();
+      return;
+    }
     if (p.y < 560 && (this.selected !== null || this.potionSel !== null)) {
       this.selected = null;
       this.potionSel = null;
@@ -1142,6 +1161,7 @@ export class BattleScene extends Phaser.Scene {
   private onPotion(i: number) {
     if (this.busy || this.battle().pending) return;
     this.selected = null;
+    this.keepPick = false;
     const id = this.run().potions[i];
     if (!id) return;
     const d = potionDef(id);
@@ -1170,10 +1190,22 @@ export class BattleScene extends Phaser.Scene {
     if (b.pending) return this.showTip('먼저 손패에서 카드를 고르세요');
     this.selected = null;
     this.potionSel = null;
-    this.send({ t: 'end' });
+    // 달빛 구슬: 손패가 있으면 남길 카드 1장 고르기 (턴 끝을 한 번 더 누르면 안 남김)
+    if (!this.keepPick && b.hand.length && this.run().relics.includes('moonOrb')) {
+      this.keepPick = true;
+      this.render();
+      return;
+    }
+    this.finishTurn();
+  }
+  private finishTurn(keep?: number) {
+    this.keepPick = false;
+    this.send(keep === undefined ? { t: 'end' } : { t: 'end', keep });
   }
 
   private send(i: Input) {
+    // 연출 중에는 받지 않는다 (한 번의 손짓이 입력 여러 개가 되지 않게)
+    if (this.busy) return;
     // 연출은 바뀌기 전 숫자에서 시작한다
     const before = { hero: { ...this.disp.hero }, foes: new Map(this.disp.foes) };
     const r = this.hooks.send(i);

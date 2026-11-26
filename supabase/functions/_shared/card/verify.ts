@@ -45,6 +45,8 @@ export interface VerifiedResult {
   act: number;
 }
 
+/** 입력의 글자 칸(t · kind) 최대 길이 */
+const MAX_TEXT = 16;
 const INPUT_KEYS = new Set(['t', 'col', 'uid', 'target', 'slot', 'keep', 'i', 'pick', 'kind', 'uids']);
 
 /** 입력 모양만 본다 (값이 맞는지는 replay 가 본다) */
@@ -55,7 +57,10 @@ function cleanLog(raw: unknown): Input[] {
     if (!x || typeof x !== 'object' || Array.isArray(x) || typeof (x as { t?: unknown }).t !== 'string') throw new VerifyError('bad log');
     for (const [k, v] of Object.entries(x)) {
       if (!INPUT_KEYS.has(k)) throw new VerifyError('bad log');
-      if (k === 't' || k === 'kind') continue;
+      if (k === 't' || k === 'kind') {
+        if (typeof v !== 'string' || v.length > MAX_TEXT) throw new VerifyError('bad log');
+        continue;
+      }
       if (k === 'uids') {
         if (!Array.isArray(v) || v.length > 10 || !v.every((n) => Number.isInteger(n))) throw new VerifyError('bad log');
       } else if (!Number.isInteger(v)) throw new VerifyError('bad log');
