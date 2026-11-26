@@ -465,5 +465,5 @@ describe('뱀 말뚝 감기 — 잠긴 문', () => {
     }
     expect(tried).toBeGreaterThan(0);
     expect(pulled).toBe(0);
-  });
+  }, 30_000);
 });

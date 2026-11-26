@@ -825,7 +825,13 @@ let game: Phaser.Game | null = null;
 let busy = false;
 
 function closeGame() {
-  game?.destroy(true);
+  if (game) {
+    // WebGL 컨텍스트도 놓는다 (Phaser destroy 는 loseContext 를 부르지 않는다 — 아이폰은 컨텍스트 수 · GPU 메모리가 빠듯하다)
+    const r = game.renderer;
+    const gl = r instanceof Phaser.Renderer.WebGL.WebGLRenderer ? r.gl : null;
+    if (gl) game.events.once(Phaser.Core.Events.DESTROY, () => setTimeout(() => { try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* 이미 잃음 */ } }, 0));
+    game.destroy(true);
+  }
   game = null;
 }
 

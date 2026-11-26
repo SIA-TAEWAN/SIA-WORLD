@@ -235,7 +235,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     const { scene } = t;
     const { W, H } = viewSize(scene);
     const p = t.pub;
-    drawTable(scene, 'poker');
+    drawTable(scene, 'roulette');
     const T = theme();
     enterRoom(t.room.id, t.room.base_unit);
     if (p) syncClock(p);

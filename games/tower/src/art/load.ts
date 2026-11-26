@@ -62,11 +62,20 @@ const layerFile = (name: string) => {
  */
 export async function layerSheets(names: string[]): Promise<HTMLCanvasElement[]> {
   const got = await Promise.all(names.map(layerFile));
-  const raw = got.every((cv): cv is HTMLCanvasElement => !!cv)
-    ? got
-    : await Promise.all(names.map((name) => once(`char-code/${name}`, async () => placeholderLayer(name))));
-  return chibify(raw, names.findIndex((n) => n.startsWith('face_')));
+  const files = got.every((cv): cv is HTMLCanvasElement => !!cv);
+  // 2등신 결과는 외형마다 한 번만 만든다 (캐릭터 만들기에서 옵션을 누를 때마다 캔버스가 쌓이지 않게 — 아이폰 캔버스 메모리)
+  const key = `${files ? 'f' : 'c'}:${names.join('|')}`;
+  let p = chibiCache.get(key);
+  if (!p) {
+    p = (async () => {
+      const raw = files ? got : await Promise.all(names.map((name) => once(`char-code/${name}`, async () => placeholderLayer(name))));
+      return chibify(raw, names.findIndex((n) => n.startsWith('face_')));
+    })();
+    chibiCache.set(key, p);
+  }
+  return p;
 }
+const chibiCache = new Map<string, Promise<HTMLCanvasElement[]>>();
 
 /**
  * 2등신으로 보이게: 칸마다 턱(얼굴 레이어의 아래 끝)에서 머리와 몸을 나눠 머리는 키우고 몸은 줄여 다시 붙인다.
