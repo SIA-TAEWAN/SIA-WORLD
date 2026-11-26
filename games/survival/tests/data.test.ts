@@ -5,6 +5,7 @@ import { CHARACTERS } from '../src/data/characters';
 import { ENEMIES } from '../src/data/enemies';
 import { EVOLUTIONS } from '../src/data/evolutions';
 import { MAPS } from '../src/data/maps';
+import { SETS } from '../src/data/sets';
 import { PASSIVES, PASSIVE_INDEX } from '../src/data/passives';
 import { UPGRADES, UPGRADE_TOTAL, presetUpgrades, upgradeCost } from '../src/data/upgrades';
 import { WEAPONS, WEAPON_INDEX } from '../src/data/weapons';
@@ -18,8 +19,8 @@ describe('데이터 표 (PRD 4~7장)', () => {
     expect(CHARACTERS.filter((c) => c.unlock.kind === 'base').map((c) => c.id)).toEqual(['rat', 'ox', 'tiger']);
   });
 
-  it('패시브 8종 · 진화 7종 · 요괴 9종 · 보스 12종 · 맵 4종', () => {
-    expect(PASSIVES.length).toBe(8);
+  it('패시브 12종 · 진화 7종 · 요괴 9종 · 보스 12종 · 맵 4종', () => {
+    expect(PASSIVES.length).toBe(12);
     expect(EVOLUTIONS.length).toBe(7);
     // 무기·짝 패시브·진화 무기는 조합마다 다르다 (한 패시브가 두 진화의 짝이 되지 않는다)
     for (const k of ['weapon', 'passive', 'result'] as const) expect(new Set(EVOLUTIONS.map((e) => e[k])).size).toBe(EVOLUTIONS.length);
@@ -32,6 +33,12 @@ describe('데이터 표 (PRD 4~7장)', () => {
       expect(WEAPONS[WEAPON_INDEX[e.result]].evolved).toBe(true);
       expect(PASSIVE_INDEX[e.passive]).toBeGreaterThanOrEqual(0);
     }
+    // 세트: 진화 전 무기 12종과 패시브 12종이 하나씩 짝. 진화 짝이 있는 무기는 세트 짝 = 진화 짝
+    const base = WEAPONS.filter((w) => !w.evolved).map((w) => w.id);
+    expect(SETS.map((x) => x.weapon).sort()).toEqual([...base].sort());
+    expect(SETS.map((x) => x.passive).sort()).toEqual(PASSIVES.map((x) => x.id).sort());
+    for (const e of EVOLUTIONS) expect(SETS.find((x) => x.weapon === e.weapon)?.passive, e.weapon).toBe(e.passive);
+    for (const x of SETS) expect(Object.keys(x.bonus).length, x.weapon).toBeGreaterThan(0);
     expect(ENEMIES.length).toBe(9);
     expect(BOSSES.length).toBe(12);
     expect(MAPS.map((m) => [m.id, m.coinMul, m.power.hp])).toEqual([['field', 1, 1], ['bamboo', 1.5, 1.3], ['palace', 2, 1.6], ['underworld', 2.5, 2]]);

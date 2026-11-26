@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
-import { BONUS, ENDLESS, RUN_SEC, VIEW_W } from '../data/balance';
+import { BONUS, ENDLESS, LIMIT, RUN_SEC, VIEW_W } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import { ITEM } from '../data/items';
-import { PASSIVES } from '../data/passives';
+import { PASSIVES, PASSIVE_INDEX } from '../data/passives';
+import { MAX_BONUS_TEXT, SETS } from '../data/sets';
 import { presetUpgrades } from '../data/upgrades';
-import { WEAPONS } from '../data/weapons';
+import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
+import { isMaxLevel, passiveSetActive, setActive, setOf } from '../game/weapons';
 import { LIMITS, endlessOpen, enoughKills } from '../game/progress';
 import { activeBoss } from '../game/sim';
 import { CARD, EV, type Card, type Ev, type State } from '../game/state';
@@ -57,18 +59,36 @@ const KEY_DIR: Record<string, [number, number]> = {
   KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
 };
 
-/** 레벨업 카드에 적을 것 */
-function cardView(c: Card): { icon: string; name: string; tag: string; text: string; kind: string } {
+/** 레벨업 카드에 적을 것. set: 세트 안내 한 줄 (done: 이 카드로 세트가 완성된다), max: 이 카드로 최종 레벨(MAX)이 된다 */
+function cardView(s: State, c: Card): { icon: string; name: string; tag: string; text: string; kind: string; set: string; done: boolean; max: boolean } {
   if (c.type === CARD.weapon) {
     const d = WEAPONS[c.def];
-    return { icon: icon('w', d.id), name: d.name, tag: c.isNew ? '새 무기' : `무기 Lv ${c.lv}`, text: d.levels[c.lv - 1]?.text ?? d.desc, kind: 'weapon' };
+    const max = c.lv >= LIMIT.level;
+    const line = d.levels[c.lv - 1]?.text ?? d.desc;
+    const st = setOf(c.def);
+    // 새 무기일 때만 세트를 알린다 (이미 가진 무기는 세트가 이미 정해져 있다)
+    const partner = st && c.isNew ? PASSIVES[PASSIVE_INDEX[st.passive]] : null;
+    const done = !!partner && setActive(s, c.def);
+    return {
+      icon: icon('w', d.id), name: d.name, kind: 'weapon', max, done,
+      tag: c.isNew ? '새 무기' : max ? '무기 Lv 5 · MAX' : `무기 Lv ${c.lv}`,
+      text: max ? `${line} · ${MAX_BONUS_TEXT}` : line,
+      set: partner ? (done ? `🔗 세트 완성! ${st!.text}` : `🔗 세트 짝: ${partner.name} → ${st!.text}`) : '',
+    };
   }
   if (c.type === CARD.passive) {
     const d = PASSIVES[c.def];
-    return { icon: icon('p', d.id), name: d.name, tag: c.isNew ? '새 패시브' : `패시브 Lv ${c.lv}`, text: d.text, kind: 'passive' };
+    const st = c.isNew ? SETS.find((x) => x.passive === d.id) : undefined;
+    const partner = st ? WEAPONS[WEAPON_INDEX[st.weapon]] : null;
+    const done = !!partner && passiveSetActive(s, c.def);
+    return {
+      icon: icon('p', d.id), name: d.name, kind: 'passive', max: false, done,
+      tag: c.isNew ? '새 패시브' : `패시브 Lv ${c.lv}`, text: d.text,
+      set: partner ? (done ? `🔗 세트 완성! ${st!.text}` : `🔗 세트 짝: ${partner.name} → ${st!.text}`) : '',
+    };
   }
-  if (c.type === CARD.heal) return { icon: icon('x', 'cake'), name: '떡', tag: '덤', text: `체력 ${BONUS.heal} 회복`, kind: 'bonus' };
-  return { icon: icon('x', 'coin'), name: '엽전', tag: '덤', text: `엽전 ${BONUS.coins}닢`, kind: 'bonus' };
+  if (c.type === CARD.heal) return { icon: icon('x', 'cake'), name: '떡', tag: '덤', text: `체력 ${BONUS.heal} 회복`, kind: 'bonus', set: '', done: false, max: false };
+  return { icon: icon('x', 'coin'), name: '엽전', tag: '덤', text: `엽전 ${BONUS.coins}닢`, kind: 'bonus', set: '', done: false, max: false };
 }
 
 /** 게임 화면: 필드(캔버스)가 화면을 가득 채우고, 그 위에 HUD·레벨업 카드·일시정지 창을 올린다 */
@@ -412,11 +432,40 @@ export function showGame(setup: GameSetup) {
   }
 
   // ---------- 왼쪽 위: 가진 무기·패시브 아이콘 ----------
+  // MAX·세트 완성을 이미 알렸나 (무기 번호 · 세트 번호)
+  const toldMax = new Set<number>();
+  const toldSet = new Set<number>();
   function paintOwned() {
-    const chip = (icon: string, lv: number, evo = false) => `<span class="own ${evo ? 'evo' : ''}"><em>${icon}</em><i>${evo ? '★' : lv}</i></span>`;
+    // max: 금색 칸 + 'MAX' (진화 무기는 ★), set: 세트를 이룬 무기·패시브는 분홍 테두리
+    const chip = (icon: string, lv: number, o: { evo?: boolean; max?: boolean; set?: boolean }) =>
+      `<span class="own ${o.evo ? 'evo' : ''} ${o.max ? 'max' : ''} ${o.set ? 'set' : ''}"><em>${icon}</em><i>${o.evo ? '★' : o.max ? 'MAX' : lv}</i></span>`;
     el.owned.innerHTML =
-      `<div>${s.weapons.map((w) => chip(icon('w', WEAPONS[w.def].id), w.lv, WEAPONS[w.def].evolved)).join('')}</div>` +
-      `<div>${s.passives.map((p) => chip(icon('p', PASSIVES[p.def].id), p.lv)).join('')}</div>`;
+      `<div>${s.weapons.map((w) => chip(icon('w', WEAPONS[w.def].id), w.lv, { evo: WEAPONS[w.def].evolved, max: isMaxLevel(w), set: setActive(s, w.def) })).join('')}</div>` +
+      `<div>${s.passives.map((p) => chip(icon('p', PASSIVES[p.def].id), p.lv, { set: passiveSetActive(s, p.def) })).join('')}</div>`;
+    // 새로 MAX 가 된 무기 · 새로 이룬 세트를 큰 글자 한 줄로 알린다 (진화는 진화 알림이 따로 있어 MAX 로 알리지 않는다)
+    const maxNames: string[] = [];
+    const notes: string[] = [];
+    for (const w of s.weapons) {
+      const d = WEAPONS[w.def];
+      if (isMaxLevel(w) && !toldMax.has(w.def)) {
+        toldMax.add(w.def);
+        if (!d.evolved) {
+          maxNames.push(d.name);
+          notes.push(`${d.name} ${MAX_BONUS_TEXT.replace('최종 레벨! ', '')}`);
+        }
+      }
+      const st = setOf(w.def);
+      const si = st ? SETS.indexOf(st) : -1;
+      if (st && setActive(s, w.def) && !toldSet.has(si)) {
+        toldSet.add(si);
+        notes.push(`🔗 세트: ${st.text}`);
+      }
+    }
+    if (notes.length > 0 && s.time > 0.5) {
+      sfx('newRecord');
+      const title = maxNames.length > 0 ? `🌟 ${maxNames.join(' · ')} MAX!` : '🔗 세트 완성!';
+      setCutHeld(`${esc(title)}<small>${notes.map(esc).join('<br>')}</small>`, 'go', 2000);
+    }
   }
 
   // ---------- 레벨업: 게임이 멈추고 카드 3장 중 1장 (1·2·3 키 또는 클릭/터치) ----------
@@ -435,10 +484,10 @@ export function showGame(setup: GameSetup) {
     const dim = document.createElement('div');
     dim.className = 'dim levelup';
     const cards = s.cards.slice(0, s.cardN).map((c, i) => {
-      const v = cardView(c);
-      return `<button class="lv-card ${v.kind}" data-i="${i}">
+      const v = cardView(s, c);
+      return `<button class="lv-card ${v.kind} ${v.max ? 'max' : ''}" data-i="${i}">
         <span class="key">${i + 1}</span><span class="ic">${v.icon}</span>
-        <span class="tx"><b>${esc(v.name)}</b><span class="tag ${c.isNew ? 'new' : ''}">${esc(v.tag)}</span><small>${esc(v.text)}</small></span></button>`;
+        <span class="tx"><b>${esc(v.name)}</b><span class="tag ${c.isNew ? 'new' : ''} ${v.max ? 'max' : ''}">${esc(v.tag)}</span><small>${esc(v.text)}</small>${v.set ? `<small class="set ${v.done ? 'done' : ''}">${esc(v.set)}</small>` : ''}</span></button>`;
     });
     dim.innerHTML = `<div class="lv-box"><h3>레벨 업! <b>Lv ${s.level}</b></h3><p class="soft">하나를 골라요</p>${cards.join('')}
       ${s.rerolls > 0 ? `<button class="btn small" data-reroll>🔄 다시 뽑기 (${s.rerolls}번 남음) <span class="key">R</span></button>` : ''}</div>`;
@@ -490,7 +539,9 @@ export function showGame(setup: GameSetup) {
     const paint = (confirm: boolean) => {
       const weapons = s.weapons.map((w) => {
         const d = WEAPONS[w.def];
-        return row(icon('w', d.id), d.name, d.evolved ? '진화' : `Lv ${w.lv}`, d.desc);
+        const st = setOf(w.def);
+        const setText = st ? (setActive(s, w.def) ? ` · 🔗 세트: ${st.text}` : ` · 세트 짝: ${PASSIVES[PASSIVE_INDEX[st.passive]].name}`) : '';
+        return row(icon('w', d.id), d.name, d.evolved ? '진화' : isMaxLevel(w) ? 'MAX' : `Lv ${w.lv}`, `${d.desc}${setText}`);
       });
       const passives = s.passives.map((p) => row(icon('p', PASSIVES[p.def].id), PASSIVES[p.def].name, `Lv ${p.lv}`, `${PASSIVES[p.def].text} (레벨마다)`));
       // 그만두면 무엇을 받는지: 기록되지 않는 판 · 너무 짧은 판·요괴를 너무 적게 잡은 판(서버가 엽전을 주지 않는다) · 그 밖에는 주운 엽전
@@ -664,6 +715,8 @@ export function showGame(setup: GameSetup) {
         scene()?.burst('evolve');
         flashEdge('good');
         setCut(`진화!<small>${esc(WEAPONS[e.a].name)}</small>`, 'go', 2200);
+        // 진화 무기는 처음부터 최종 레벨이다: MAX 알림은 내지 않는다
+        toldMax.add(e.a);
         rememberMade(WEAPONS[e.a].id);
         paintOwned();
         break;

@@ -57,6 +57,11 @@ const ART: Record<string, string> = {
   'p-magnet': magnet,
   'p-ginseng': `<path d="M24 14 q8 4 6 12 l8 10 l-9 -5 l-2 11 l-3 -10 l-3 10 l-2 -11 l-9 5 l8 -10 q-2 -8 6 -12z" fill="${C.tan}" ${O}/><path d="M24 14 q-10 -2 -10 -9 q9 0 10 9 q1 -9 10 -9 q0 7 -10 9z" fill="${C.g}" ${O}/>`,
   'p-knot': `<path d="M24 22 q-16 -16 -16 -4 q0 10 16 4 q16 -16 16 -4 q0 10 -16 4z" fill="${C.p}" ${O}/><circle cx="24" cy="22" r="5" fill="${C.y}" ${O}/><path d="M21 27 l-5 15 M27 27 l5 15" fill="none" stroke="${C.k}" stroke-width="6" stroke-linecap="round"/><path d="M21 27 l-5 15 M27 27 l5 15" fill="none" stroke="${C.p}" stroke-width="2.5" stroke-linecap="round"/>`,
+  // 세트용 4종: 독주머니(초록 주머니 + 독 방울) · 약수(물방울) · 경전(두루마리) · 활시위(활)
+  'p-venom': `<path d="M16 16 q-8 10 -6 18 q2 9 14 9 q12 0 14 -9 q2 -8 -6 -18z" fill="${C.g}" ${O}/><path d="M16 16 h16 l-3 -7 h-10z" fill="${C.tan}" ${O}/><circle cx="20" cy="30" r="3" fill="${C.w}" ${O}/><circle cx="29" cy="34" r="2" fill="${C.w}" ${O}/>`,
+  'p-spring': `<path d="M24 5 q15 18 15 26 a15 15 0 0 1 -30 0 q0 -8 15 -26z" fill="${C.bl}" ${O}/><path d="M17 30 a7 7 0 0 0 6 7" fill="none" stroke="${C.w}" stroke-width="3" stroke-linecap="round"/>`,
+  'p-scroll': `<rect x="12" y="9" width="24" height="30" fill="${C.cream}" ${O}/><rect x="8" y="5" width="32" height="7" rx="3.5" fill="${C.r}" ${O}/><rect x="8" y="36" width="32" height="7" rx="3.5" fill="${C.r}" ${O}/><path d="M18 18 h12 M18 24 h12 M18 30 h8" fill="none" stroke="${C.br}" stroke-width="2.5" stroke-linecap="round"/>`,
+  'p-string': `<path d="M14 6 q24 18 0 36" fill="none" stroke="${C.k}" stroke-width="8" stroke-linecap="round"/><path d="M14 6 q24 18 0 36" fill="none" stroke="${C.br}" stroke-width="4" stroke-linecap="round"/><path d="M14 6 v36" fill="none" stroke="${C.k}" stroke-width="2"/><path d="M8 24 h32 l-6 -5 M40 24 l-6 5" fill="none" ${O}/>`,
   // ───── 영구 강화 ─────
   'u-might': `<path d="M34 6 l8 0 l0 8 l-20 20 l-8 -8z" fill="${C.w}" ${O}/><path d="M10 26 l12 12 M8 40 l8 -8" fill="none" stroke="${C.k}" stroke-width="8" stroke-linecap="round"/><path d="M10 26 l12 12 M8 40 l8 -8" fill="none" stroke="${C.yd}" stroke-width="3.5" stroke-linecap="round"/>`,
   'u-hp': `<path d="M24 42 l-16 -16 a9.5 9.5 0 0 1 16 -12 a9.5 9.5 0 0 1 16 12z" fill="${C.p}" ${O}/><circle cx="16" cy="18" r="3" fill="${C.w}"/>`,
