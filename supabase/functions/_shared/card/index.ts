@@ -4,5 +4,6 @@ export * from './state.ts';
 export * from './rng.ts';
 export * from './data.ts';
 export * from './battle.ts';
+export * from './map.ts';
 export * from './run.ts';
 export * from './text.ts';

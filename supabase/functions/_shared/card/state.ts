@@ -129,8 +129,11 @@ export interface EventState {
   text?: string;
   /** 카드를 골라야 하는 일 */
   need?: { kind: 'upgrade' | 'remove' | 'copy'; left: number };
-  /** 사건이 연 전투가 끝나고 보상까지 받았음 */
+  /** 사건이 전투를 열었음 */
   fought?: boolean;
+  /** 사건으로 얻은 부적·카드 (화면 표시용) */
+  gotRelic?: string;
+  gotCard?: string;
 }
 
 export interface RunState {
@@ -138,6 +141,8 @@ export interface RunState {
   seed: number;
   mode: 'normal';
   hero: string;
+  /** 연습·개발용 전투 하나짜리 판 */
+  practice?: boolean;
   hp: number;
   maxHp: number;
   gold: number;
@@ -148,6 +153,8 @@ export interface RunState {
   /** 지금 칸 (row -1 = 막 시작, 아직 아무 칸도 안 들어감) */
   row: number;
   col: number;
+  /** 이번 막에서 지나온 칸 (줄마다 col) */
+  path: number[];
   map: ActMap;
   phase: Phase;
   battle: Battle | null;

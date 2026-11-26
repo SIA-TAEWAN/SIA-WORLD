@@ -9,6 +9,7 @@ import { ACTS, REGIONS } from './data/acts.ts';
 import type { CardDef, EnemyDef, EventDef, HeroDef, MoveDef, Op, PhaseDef, PotionDef, RegionDef, RelicDef } from './types.ts';
 
 export { CARDS, ENEMIES, EVENTS, HEROES, POTIONS, RELICS, ACTS, REGIONS };
+export { CARD_ODDS, CARD_ODDS_MAGPIE, GOLD, NODE_RATIO, PRICES, ROWS_PER_ACT, ROW_WIDTH } from './data/acts.ts';
 
 const byId = <T extends { id: string }>(list: T[]) => {
   const m = new Map<string, T>();
