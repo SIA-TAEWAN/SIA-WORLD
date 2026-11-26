@@ -53,10 +53,13 @@ export function cardExhaust(id: string, up?: boolean): boolean {
 }
 export const canUpgrade = (id: string, up?: boolean) => !up && !!cardDef(id).up;
 
-export function phaseOf(def: EnemyDef, phase: 1 | 2): PhaseDef {
-  return phase === 2 && def.phase2 ? def.phase2 : def.phase1;
+export function phaseOf(def: EnemyDef, phase: 1 | 2 | 3): PhaseDef {
+  if (phase === 3 && def.phase3) return def.phase3;
+  return phase >= 2 && def.phase2 ? def.phase2 : def.phase1;
 }
-export function moveDef(def: EnemyDef, phase: 1 | 2, id: string): MoveDef {
+/** 단계가 바뀌는 체력 비율 (2단계, 3단계) */
+export const phaseAt = (def: EnemyDef): number[] => def.phaseAt ?? (def.phase2 ? [0.5] : []);
+export function moveDef(def: EnemyDef, phase: 1 | 2 | 3, id: string): MoveDef {
   const m = phaseOf(def, phase).moves.find((x) => x.id === id);
   if (!m) throw new Error(`unknown move ${def.id}.${id}`);
   return m;

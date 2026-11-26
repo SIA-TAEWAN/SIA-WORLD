@@ -18,6 +18,13 @@
       "regions": [
         "underworld"
       ]
+    },
+    {
+      "act": 4,
+      "regions": [
+        "abyss"
+      ],
+      "hidden": true
     }
   ],
   "regions": [
@@ -86,7 +93,7 @@
       "name": "들판",
       "tile": "tile-field",
       "bg": "bg-field",
-      "ready": false,
+      "ready": true,
       "bosses": [
         "bigDokkaebi",
         "bulgasal",
@@ -98,15 +105,55 @@
         "wisp",
         "firecart"
       ],
-      "easy": [],
-      "normal": []
+      "easy": [
+        [
+          "imp",
+          "imp"
+        ],
+        [
+          "wisp"
+        ],
+        [
+          "club"
+        ]
+      ],
+      "normal": [
+        [
+          "firecart"
+        ],
+        [
+          "club",
+          "imp"
+        ],
+        [
+          "wisp",
+          "wisp"
+        ],
+        [
+          "imp",
+          "imp",
+          "imp"
+        ],
+        [
+          "club",
+          "wisp"
+        ],
+        [
+          "firecart",
+          "imp"
+        ],
+        [
+          "wisp",
+          "imp"
+        ]
+      ]
     },
     {
       "id": "palace",
       "name": "궁궐",
       "tile": "tile-palace",
       "bg": "bg-palace",
-      "ready": false,
+      "ready": true,
       "bosses": [
         "guardCaptain",
         "dueoksini",
@@ -118,15 +165,53 @@
         "water",
         "catfish"
       ],
-      "easy": [],
-      "normal": []
+      "easy": [
+        [
+          "spirit"
+        ],
+        [
+          "water"
+        ],
+        [
+          "guard"
+        ]
+      ],
+      "normal": [
+        [
+          "catfish"
+        ],
+        [
+          "guard",
+          "spirit"
+        ],
+        [
+          "water",
+          "spirit"
+        ],
+        [
+          "guard",
+          "water"
+        ],
+        [
+          "spirit",
+          "spirit"
+        ],
+        [
+          "water",
+          "water"
+        ],
+        [
+          "catfish",
+          "spirit"
+        ]
+      ]
     },
     {
       "id": "underworld",
       "name": "저승",
       "tile": "tile-underworld",
       "bg": "bg-underworld",
-      "ready": false,
+      "ready": true,
       "bosses": [
         "reaper",
         "yagwanggwi",
@@ -135,9 +220,64 @@
       "enemies": [
         "skeleton",
         "ferryman",
-        "spirit",
+        "spirit3",
         "bomber"
       ],
+      "easy": [
+        [
+          "skeleton"
+        ],
+        [
+          "ferryman"
+        ],
+        [
+          "spirit3",
+          "bomber"
+        ]
+      ],
+      "normal": [
+        [
+          "skeleton",
+          "spirit3"
+        ],
+        [
+          "ferryman",
+          "bomber"
+        ],
+        [
+          "skeleton",
+          "bomber"
+        ],
+        [
+          "spirit3",
+          "spirit3"
+        ],
+        [
+          "ferryman",
+          "spirit3"
+        ],
+        [
+          "skeleton",
+          "skeleton"
+        ],
+        [
+          "bomber",
+          "bomber",
+          "spirit3"
+        ]
+      ]
+    },
+    {
+      "id": "abyss",
+      "name": "어둠의 끝",
+      "tile": "tile-underworld",
+      "bg": "bg-underworld",
+      "ready": true,
+      "hidden": true,
+      "bosses": [
+        "final"
+      ],
+      "enemies": [],
       "easy": [],
       "normal": []
     }

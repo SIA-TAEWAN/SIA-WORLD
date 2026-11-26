@@ -48,7 +48,7 @@ PRD [그림] 절대로 시아열두길(`games/twelve/public/art`)·시아핑거(
 | 보스 공격 동작 | `b-<boss>-atk` · `b-final-atk` (가로 2칸, 칸 448) | 열두길 | 보스·정예의 공격 행동(예고 → 내려치기) · 2단계 컷인 |
 | 보스 맞은 모습 | `b-<boss>-hit` | 핑거 | 맞으면 0.26초 이 그림 |
 | 요괴 15 | `e-<id>` | 열두길 | 전투 요괴 |
-| 정예 모습 9 | `e-<id>-elite` | 열두길 | 아직 안 씀 (PROGRESS '물어볼 것' 14) |
+| 정예 모습 9 | `e-<id>-elite` | 열두길 | `e-fox-elite` = 갈림길의 여우 정예 '천년 여우'(4단계). 나머지 8장은 아직 안 씀 (PROGRESS '물어볼 것' 14) |
 | 요괴 맞은 모습 9 | `e-<id>-hit` | 핑거 | 맞으면 잠깐 이 그림 (없으면 분홍으로 물들임) |
 | 아이콘 86 | `ic-*` (무기 `ic-w-<종류>-0~11` 포함) | 열두길 | 카드·부적·물약 그림 (데이터의 `art`) |
 | 효과 19 | `fx-*` | 열두길 14 · 핑거 5 (`boom` `coin` `fang` `heal` `shield`) | 카드 그림 · 카드를 쓸 때 효과 (`fxForCard`) · 맞음 `fx-claw` · 방어 `fx-shield` · 회복 `fx-heal` · 쓰러짐 `fx-pop` · 승리 `fx-coin` |
@@ -56,7 +56,7 @@ PRD [그림] 절대로 시아열두길(`games/twelve/public/art`)·시아핑거(
 | 상태이상 4 | `st-fire|mud|poison|water` (오토타일셋 4x4, 칸 120) | 열두길 | 꽉 찬 칸(6번)을 동그랗게 잘라 상태 아이콘 (`makeStatusIcons`) — 약화·힘은 코드 그림 |
 | 지역 배경 4 | `bg-<지역>` (480×270) | 핑거 | 전투 배경 (위 580 을 꽉 채움) |
 | 지도 바닥 4 | `tile-<지역>` (512) | 열두길 | 지도 바탕에 옅게 |
-| 장면 | `shop` · `forge` (720×320) · `story-1~4` · `ending-1~4` · `finale-1~4` (720×400) · `chest` · `exit` | 열두길 | 상점 · 쉼터 · 이야기 · 보물 · 결과(1막 클리어 `ending-2`) — `finale-*` · `exit` 는 4~5단계용 |
+| 장면 | `shop` · `forge` (720×320) · `story-1~4` · `ending-1~4` · `finale-1~4` (720×400) · `chest` · `exit` | 열두길 | 상점 · 쉼터 · 이야기 · 보물 · 3막 클리어 일반 엔딩 `ending-2` → `ending-3` · 숨은 4막 입구 `ending-4` · 진짜 엔딩 `finale-1` → `finale-2` → `finale-4` · 4막에서 쓰러짐 `finale-1` (4단계). `ending-1` · `finale-3` · `exit` 는 아직 안 씀 |
 | 카드 뒷면 | `back` (360×512) | `shared/images/cards/back.png` | 뽑을 더미 · 카드 보상 아이콘 |
 
 ### 스펙 목록에 있는데 원본에 없는 그림 (코드로 대신함)

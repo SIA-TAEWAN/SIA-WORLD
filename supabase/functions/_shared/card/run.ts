@@ -6,18 +6,18 @@
  * 다른 칸의 지도·보상·상점 내용을 바꾸지 않는다 (오늘의 도전: 모두 같은 지도·보상).
  */
 import { MAX_POTIONS, endTurn, heal, pickHand, playCard, startBattle, usePotion } from './battle.ts';
-import { CARD_ODDS, CARD_ODDS_MAGPIE, GOLD, PRICES } from './data/acts.ts';
+import { CARD_ODDS, CARD_ODDS_MAGPIE, EASY_BATTLES, FINAL_ELITES, GOLD, PRICES } from './data/acts.ts';
 import { ACTS, CARDS, EVENTS, POTIONS, RELICS, RELIC_READY, canUpgrade, cardDef, eventDef, heroDef, regionDef } from './data.ts';
 import { genMap, reachable } from './map.ts';
 import { Rng, hashSeed } from './rng.ts';
 import type { DeckCard, Input, RewardItem, RunState, Shop, SimEvent } from './state.ts';
 import type { EvOp, NodeType } from './types.ts';
 
-export const RULES_VERSION = 1;
+/** 규칙 판본 — 같은 입력이 다른 결과를 내게 규칙을 바꾸면 올린다 (저장한 판·서버 검증이 같은 판본끼리만 맞는다) */
+export const RULES_VERSION = 2;
 /** 덱 최소 장수 (그 아래로 없애기 불가) */
 export const MIN_DECK = 5;
-/** 일반 전투 중 앞쪽 몇 번은 쉬운 조합 */
-export const EASY_BATTLES = 3;
+export { EASY_BATTLES, FINAL_ELITES };
 /** 전투 보상에 물약이 나올 확률 (정한 값) */
 export const POTION_DROP = 0.4;
 
@@ -37,6 +37,7 @@ export function newRun(o: NewRunOpts): RunState {
   const seed = o.seed >>> 0;
   return {
     v: 1,
+    rules: RULES_VERSION,
     seed,
     mode: 'normal',
     hero: h.id,
@@ -63,6 +64,7 @@ export function newRun(o: NewRunOpts): RunState {
     seenEvents: [],
     flags: { nextEnergy: 0, ironUsed: false, catUsed: false },
     stats: { floors: 0, elites: 0, bosses: 0, battles: 0 },
+    actBattles: 0,
     log: [],
     actStart: [0],
   };
@@ -158,7 +160,8 @@ function enterNode(run: RunState, type: NodeType, ev: SimEvent[]) {
   switch (type) {
     case 'battle': {
       const reg = regionDef(run.map.region);
-      const pool = run.stats.battles < EASY_BATTLES || !reg.normal.length ? reg.easy : reg.normal;
+      const easy = EASY_BATTLES[Math.min(run.act, EASY_BATTLES.length) - 1];
+      const pool = (run.actBattles ?? 0) < easy || !reg.normal.length ? reg.easy : reg.normal;
       fight(run, 'battle', r.pick(pool), ev);
       break;
     }
@@ -181,8 +184,14 @@ function enterNode(run: RunState, type: NodeType, ev: SimEvent[]) {
       run.treasure = { relic: randomRelic(run, nodeRng(run, 'treasure')), opened: false };
       break;
     case 'event': {
-      run.phase = 'event';
       const id = pickEvent(run, nodeRng(run, 'event'));
+      if (!id) {
+        // 이 막에 나올 사건을 다 봤으면 (한 판에 같은 사건은 한 번) 보물 칸이 된다
+        run.phase = 'treasure';
+        run.treasure = { relic: randomRelic(run, nodeRng(run, 'treasure')), opened: false };
+        break;
+      }
+      run.phase = 'event';
       run.seenEvents.push(id);
       run.event = { id, chosen: -1 };
       break;
@@ -219,6 +228,13 @@ function afterBattle(run: RunState, ev: SimEvent[]) {
     run.phase = 'won';
     return;
   }
+  // 숨은 4막 어둑시니: 이기면 바로 진짜 엔딩
+  if (b.kind === 'boss' && run.map.region === 'abyss') {
+    run.stats.bosses++;
+    run.ending = 'true';
+    run.phase = 'won';
+    return;
+  }
   if (has(run, 'gourd')) heal(run, 6, ev);
   // 돼지(꿀꿀이): 전투 승리 시 체력3 회복
   if (run.hero === 'pig') heal(run, 3, ev);
@@ -226,10 +242,12 @@ function afterBattle(run: RunState, ev: SimEvent[]) {
   const items: RewardItem[] = [];
   const goldOf = (range: readonly number[]) => Math.floor(r.int(range[0], range[1]) * (has(run, 'luckyPouch') ? 1.3 : 1));
   const mult = b.double ? 2 : 1;
+  // 엽전 던지기: 이기면 더 받는 엽전
+  const extra = b.b.gold ?? 0;
   if (b.kind === 'boss') {
     run.stats.bosses++;
     heal(run, Math.floor(run.maxHp / 2), ev);
-    items.push({ k: 'gold', n: goldOf(GOLD.boss) });
+    items.push({ k: 'gold', n: goldOf(GOLD.boss) + extra });
     items.push({ k: 'card', options: rewardCards(run, r, true) });
     const boss = bossRelics(run, r);
     if (boss.length) items.push({ k: 'bossRelic', options: boss });
@@ -237,7 +255,8 @@ function afterBattle(run: RunState, ev: SimEvent[]) {
   } else {
     run.stats.battles++;
     if (b.kind === 'elite') run.stats.elites++;
-    items.push({ k: 'gold', n: goldOf(b.kind === 'elite' ? GOLD.elite : GOLD.battle) * mult });
+    else run.actBattles = (run.actBattles ?? 0) + 1;
+    items.push({ k: 'gold', n: goldOf(b.kind === 'elite' ? GOLD.elite : GOLD.battle) * mult + extra });
     for (let k = 0; k < mult; k++) items.push({ k: 'card', options: rewardCards(run, r, false) });
     if (b.kind === 'elite') {
       for (let k = 0; k < mult; k++) {
@@ -253,7 +272,8 @@ function afterBattle(run: RunState, ev: SimEvent[]) {
 
 // ---------- 보상 ----------
 
-function rarityOf(run: RunState, r: Rng): string {
+/** 카드 보상·상점 등급 뽑기 (까치 깃털이면 고급 이상이 더 자주) */
+export function rarityOf(run: RunState, r: Rng): string {
   return r.weighted(has(run, 'magpieFeather') ? CARD_ODDS_MAGPIE : CARD_ODDS);
 }
 
@@ -309,6 +329,14 @@ export function gainRelic(run: RunState, id: string) {
     run.hp += 8;
   }
   if (id === 'coinPurse') run.gold += 100;
+  // 보물 지도: 다음 막부터는 지도에 보물 +2, 지금 막은 아직 안 간 줄의 전투 2칸을 보물로
+  if (id === 'treasureMap') addTreasures(run, 2);
+}
+
+function addTreasures(run: RunState, n: number) {
+  const list = run.map.rows.flatMap((row, y) => (y > run.row && y > 0 ? row.filter((x) => x.type === 'battle') : []));
+  const r = new Rng({ s: hashSeed(run.seed, 'treasureMap', run.act, run.row, run.col) }, 's');
+  for (let k = 0; k < n && list.length; k++) list.splice(r.int(0, list.length - 1), 1)[0].type = 'treasure';
 }
 
 function addCard(run: RunState, id: string, up?: boolean): DeckCard {
@@ -359,10 +387,15 @@ function rewardStep(run: RunState, i: Input): boolean {
   return true;
 }
 
+/** 숨은 4막(어둑시니)이 열렸나: 한 판에서 정예 3마리 이상 + 3막 클리어 */
+export const finalOpen = (run: RunState) => run.stats.elites >= FINAL_ELITES;
+
 function nextAct(run: RunState) {
   const next = run.act + 1;
   const def = ACTS[next - 1];
-  if (!def || !def.regions.some((id) => regionDef(id).ready)) {
+  if (!def || !def.regions.some((id) => regionDef(id).ready) || (def.hidden && !finalOpen(run))) {
+    // 3막 클리어 = 일반 엔딩
+    run.ending = 'normal';
     run.phase = 'won';
     return;
   }
@@ -370,6 +403,7 @@ function nextAct(run: RunState) {
   run.row = -1;
   run.col = 0;
   run.path = [];
+  run.actBattles = 0;
   run.map = genMap(run.seed, next, has(run, 'treasureMap') ? 2 : 0);
   run.actStart.push(run.log.length + 1);
   run.phase = 'map';
@@ -504,10 +538,10 @@ function treasureStep(run: RunState, i: Input): boolean {
 
 // ---------- 이야기 ----------
 
-function pickEvent(run: RunState, r: Rng): string {
-  const ok = EVENTS.filter((e) => !e.acts.length || e.acts.includes(run.act));
-  const fresh = ok.filter((e) => !run.seenEvents.includes(e.id));
-  return r.pick(fresh.length ? fresh : ok).id;
+/** 이 막에 나올 수 있고 이 판에서 아직 안 본 사건 하나 (없으면 null) */
+function pickEvent(run: RunState, r: Rng): string | null {
+  const fresh = EVENTS.filter((e) => (!e.acts.length || e.acts.includes(run.act)) && !run.seenEvents.includes(e.id));
+  return fresh.length ? r.pick(fresh).id : null;
 }
 
 /** 이 선택지를 지금 고를 수 있나 */
@@ -610,7 +644,8 @@ function runEvOps(run: RunState, ops: EvOp[], r: Rng, ev: SimEvent[]) {
       }
       case 'elite': {
         e.fought = true;
-        const id = r.pick(run.map.elites);
+        // 갈림길의 여우: 막마다 정한 요괴 (천년 여우) · 그 밖에는 그 지역 정예
+        const id = o.foes?.length ? o.foes[Math.min(run.act, o.foes.length) - 1] : r.pick(run.map.elites);
         run.event = null;
         fight(run, 'elite', [id], ev, o.double);
         return;

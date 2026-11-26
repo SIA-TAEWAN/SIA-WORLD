@@ -18,9 +18,11 @@ describe('데이터', () => {
     }
   });
 
-  it('공용 카드 20장 (기본 2 · 일반 12 · 고급 4 · 전설 2)', () => {
+  it('카드 86장 = 기본 2 · 일반 28 · 고급 20 · 전설 10 · 영웅 전용 26 (+ 내림카드 2)', () => {
     const count = (r: string) => CARDS.filter((c) => c.rarity === r).length;
-    expect([count('basic'), count('common'), count('uncommon'), count('legend')]).toEqual([2, 12, 4, 2]);
+    expect([count('basic'), count('common'), count('uncommon'), count('legend'), count('hero') + count('hero2')]).toEqual([2, 28, 20, 10, 26]);
+    expect(CARDS.filter((c) => c.rarity !== 'curse')).toHaveLength(86);
+    expect(count('curse')).toBe(2);
   });
 
   it('고를 수 있는 영웅의 카드는 다 있다, 체력은 스펙 값', () => {

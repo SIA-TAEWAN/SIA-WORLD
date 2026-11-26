@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ELITE_FROM_ROW, NODE_RATIO, allocate, apply, choices, genMap, newRun, removePrice, replay, restHeal, type RunState } from '../src/game/rules';
+import { ELITE_FROM_ROW, NODE_RATIO, allocate, apply, cardDef, choices, genMap, newRun, removePrice, replay, restHeal, type RunState } from '../src/game/rules';
 import { playRun, runInput } from './bot';
 
 /** 보스 전까지 battle 이 아닌 칸을 찾아 들어간다 (없으면 null) */
@@ -41,7 +41,7 @@ describe('지도', () => {
       }
       expect(m.rows[0].every((n) => n.type === 'battle')).toBe(true);
       for (let y = 0; y < ELITE_FROM_ROW; y++) expect(m.rows[y].some((n) => n.type === 'elite')).toBe(false);
-      expect(m.region).toBe('bamboo');
+      expect(['bamboo', 'field']).toContain(m.region);
       expect(m.elites).toHaveLength(2);
       expect(m.elites).not.toContain(m.boss);
     }
@@ -193,31 +193,37 @@ describe('칸', () => {
   });
 });
 
-describe('한 판 (1막)', () => {
-  it('봇이 1막을 끝까지 간다 — 막 보스 승리면 체력 회복·전설 카드·보스 부적 3개 중 1개', () => {
-    let wins = 0;
+describe('한 판', () => {
+  it('봇이 판을 끝까지 간다 — 막 보스 승리면 체력 절반 회복·전설 카드·보스 부적 3개 중 1개 → 다음 막', () => {
     let bossRewards = 0;
-    const N = 60;
+    let act2 = 0;
+    const N = 30;
     for (let s = 0; s < N; s++) {
       const run = newRun({ seed: 9000 + s, hero: 'tiger' });
-      let sawBoss = false;
-      for (let n = 0; n < 20000 && run.phase !== 'dead' && run.phase !== 'won'; n++) {
-        if (run.phase === 'reward' && run.reward!.boss && !sawBoss) {
-          sawBoss = true;
+      for (let n = 0; n < 40000 && run.phase !== 'dead' && run.phase !== 'won'; n++) {
+        if (run.phase === 'reward' && run.reward!.boss && !run.reward!.items.some((x) => x.taken)) {
           bossRewards++;
           const card = run.reward!.items.find((x) => x.k === 'card')!;
-          expect(card.k === 'card' && card.options.every((c) => ['diamond', 'haetae'].includes(c.id))).toBe(true);
+          expect(card.k === 'card' && card.options.length === 3 && card.options.every((c) => cardDef(c.id).rarity === 'legend')).toBe(true);
           const br = run.reward!.items.find((x) => x.k === 'bossRelic')!;
           expect(br.k === 'bossRelic' && br.options.length).toBe(3);
+          const act = run.act;
+          // 받고 떠나면 다음 막 (3막이면 엔딩)
+          while (run.phase === 'reward') apply(run, runInput(run));
+          if (act < 3) {
+            expect(run.act).toBe(act + 1);
+            expect(run.map.region).toBe(act === 1 ? 'palace' : 'underworld');
+            expect(run.actStart).toHaveLength(act + 1);
+          }
+          continue;
         }
         expect(apply(run, runInput(run)).ok).toBe(true);
       }
-      if (run.phase === 'won') wins++;
+      if (run.act >= 2) act2++;
       expect(['dead', 'won']).toContain(run.phase);
     }
-    console.log(`봇 어흥이 1막 클리어 ${wins}/${N}`);
-    expect(bossRewards).toBe(wins);
-    expect(wins).toBeGreaterThan(0);
+    console.log(`봇 어흥이 2막 도달 ${act2}/${N}`);
+    expect(bossRewards).toBeGreaterThan(0);
   });
 
   it('씨앗 + 입력 기록으로 다시 돌리면 같은 판 (서버 검증)', () => {

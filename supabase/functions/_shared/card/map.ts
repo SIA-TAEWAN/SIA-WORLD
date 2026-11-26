@@ -1,7 +1,7 @@
 /**
  * 갈림길 지도 (PRD [핵심 루프]): 아래에서 위로 12줄, 한 줄 2~4칸, 이어진 칸 중 하나를 골라 오른다. 맨 위는 막 보스.
  * 칸 종류는 막 전체 칸 수에 스펙 비율(전투 45 · 정예 10 · 상점 10 · 쉼터 12 · 보물 8 · 이야기 15)을 곱해 개수를 정하고 섞어 놓는다.
- * 지킬 것(정한 값): 첫 줄은 모두 전투, 정예는 4번째 줄부터.
+ * 지킬 것(정한 값): 첫 줄은 모두 전투, 정예는 4번째 줄부터. 숨은 4막(어둑시니)은 보스 한 칸뿐.
  */
 import { NODE_RATIO, ROWS_PER_ACT, ROW_WIDTH } from './data/acts.ts';
 import { ACTS, regionDef } from './data.ts';
@@ -15,12 +15,16 @@ export const ELITE_FROM_ROW = 3;
 export function genMap(seed: number, act: number, extraTreasure = 0): ActMap {
   const box = { s: hashSeed(seed, 'map', act) };
   const r = new Rng(box, 's');
-  const actDef = ACTS[(act - 1) % ACTS.length];
+  // 숨은 막(4막)은 그 번호일 때만, 그 밖에는 보통 막 순서대로 (끝없는 모드는 되풀이)
+  const normal = ACTS.filter((a) => !a.hidden);
+  const actDef = ACTS[act - 1] ?? normal[(act - 1) % normal.length];
   const ready = actDef.regions.filter((id) => regionDef(id).ready);
   const region = r.pick(ready.length ? ready : ['bamboo']);
   const reg = regionDef(region);
   const boss = r.pick(reg.bosses);
   const elites = reg.bosses.filter((b) => b !== boss);
+  // 숨은 4막: 지도 없이 보스 한 칸
+  if (reg.hidden) return { region, boss, elites, rows: [[{ col: 0, type: 'boss', next: [], x: 0.5 }]] };
 
   // 줄과 이음
   const rows: MapNode[][] = [];

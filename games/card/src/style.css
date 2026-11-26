@@ -248,3 +248,13 @@ h2.lose { color: var(--lose); }
 .hero-cards .hc { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .hero-cards .hc small { font-size: 12px; color: var(--ink-soft); }
 .story-art img { width: 80px; height: 80px; object-fit: contain; background: var(--sky-mid); border: var(--line) solid var(--outline); border-radius: var(--radius-item); }
+
+/* 4단계: 숨은 4막 · 엔딩 */
+.abyss-boss .boss-face.big { display: block; width: 150px; height: 150px; margin: 0 auto 4px; }
+.abyss-boss .boss-face.big img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 4px 0 var(--outline)); }
+.abyss-boss p { margin: 4px 0; word-break: keep-all; }
+.ending p { word-break: keep-all; line-height: 1.5; }
+.ending .dots { display: flex; justify-content: center; gap: 6px; margin: 4px 0 12px; }
+.ending .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--track); border: 2px solid var(--outline); }
+.ending .dots i.on { background: var(--primary); }
+.ending.true-end { box-shadow: 0 var(--depth-big) 0 var(--outline), 0 0 18px 4px var(--primary); }

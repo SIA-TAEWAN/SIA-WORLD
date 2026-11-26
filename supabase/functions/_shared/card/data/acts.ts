@@ -1,6 +1,6 @@
 /**
  * 막·지역 데이터 (games/card/src/data/acts.json 과 같은 내용). 지역 이름·보스·요괴·그림은 PRD 사용자 스펙 그대로.
- * easy/normal 전투 조합은 스펙에 없어 정한 값. ready = 이번 단계에서 들어갈 수 있는 지역 (2단계: 대나무숲).
+ * easy/normal 전투 조합은 스펙에 없어 정한 값. 1막은 대나무숲·들판 중 무작위, 2막 궁궐, 3막 저승, 숨은 4막 어둠의 끝(어둑시니).
  */
 import type { ActDef, NodeType, RegionDef } from '../types.ts';
 
@@ -12,16 +12,43 @@ export const REGIONS: RegionDef[] = [
     easy: [['fox'], ['bamboo'], ['acorn', 'acorn']],
     normal: [['lynx'], ['fox', 'acorn'], ['bamboo', 'acorn'], ['acorn', 'acorn', 'acorn'], ['fox', 'fox'], ['bamboo', 'fox'], ['lynx', 'acorn']],
   },
-  { id: 'field', name: '들판', tile: 'tile-field', bg: 'bg-field', ready: false, bosses: ['bigDokkaebi', 'bulgasal', 'gangcheori'], enemies: ['club', 'imp', 'wisp', 'firecart'], easy: [], normal: [] },
-  { id: 'palace', name: '궁궐', tile: 'tile-palace', bg: 'bg-palace', ready: false, bosses: ['guardCaptain', 'dueoksini', 'imugi'], enemies: ['guard', 'spirit', 'water', 'catfish'], easy: [], normal: [] },
-  { id: 'underworld', name: '저승', tile: 'tile-underworld', bg: 'bg-underworld', ready: false, bosses: ['reaper', 'yagwanggwi', 'yeomra'], enemies: ['skeleton', 'ferryman', 'spirit', 'bomber'], easy: [], normal: [] },
+  {
+    id: 'field', name: '들판', tile: 'tile-field', bg: 'bg-field', ready: true,
+    bosses: ['bigDokkaebi', 'bulgasal', 'gangcheori'],
+    enemies: ['club', 'imp', 'wisp', 'firecart'],
+    easy: [['imp', 'imp'], ['wisp'], ['club']],
+    normal: [['firecart'], ['club', 'imp'], ['wisp', 'wisp'], ['imp', 'imp', 'imp'], ['club', 'wisp'], ['firecart', 'imp'], ['wisp', 'imp']],
+  },
+  {
+    id: 'palace', name: '궁궐', tile: 'tile-palace', bg: 'bg-palace', ready: true,
+    bosses: ['guardCaptain', 'dueoksini', 'imugi'],
+    enemies: ['guard', 'spirit', 'water', 'catfish'],
+    easy: [['spirit'], ['water'], ['guard']],
+    normal: [['catfish'], ['guard', 'spirit'], ['water', 'spirit'], ['guard', 'water'], ['spirit', 'spirit'], ['water', 'water'], ['catfish', 'spirit']],
+  },
+  {
+    id: 'underworld', name: '저승', tile: 'tile-underworld', bg: 'bg-underworld', ready: true,
+    bosses: ['reaper', 'yagwanggwi', 'yeomra'],
+    enemies: ['skeleton', 'ferryman', 'spirit3', 'bomber'],
+    easy: [['skeleton'], ['ferryman'], ['spirit3', 'bomber']],
+    normal: [['skeleton', 'spirit3'], ['ferryman', 'bomber'], ['skeleton', 'bomber'], ['spirit3', 'spirit3'], ['ferryman', 'spirit3'], ['skeleton', 'skeleton'], ['bomber', 'bomber', 'spirit3']],
+  },
+  /** 숨은 4막: 지도 없이 어둑시니 한 칸 (그림은 저승 것을 쓴다) */
+  { id: 'abyss', name: '어둠의 끝', tile: 'tile-underworld', bg: 'bg-underworld', ready: true, hidden: true, bosses: ['final'], enemies: [], easy: [], normal: [] },
 ];
 
 export const ACTS: ActDef[] = [
   { act: 1, regions: ['bamboo', 'field'] },
   { act: 2, regions: ['palace'] },
   { act: 3, regions: ['underworld'] },
+  /** 숨은 4막: 한 판에서 정예 3마리 이상 + 3막 클리어 → 어둑시니만 한 번 */
+  { act: 4, regions: ['abyss'], hidden: true },
 ];
+
+/** 4막(어둑시니)이 열리는 정예 수 */
+export const FINAL_ELITES = 3;
+/** 막마다 앞쪽 몇 번의 일반 전투는 쉬운 조합 (1막 3번, 그 뒤 2번) */
+export const EASY_BATTLES = [3, 2, 2];
 
 /** 칸 비율 (%) — 스펙: 전투 45 · 정예 10 · 상점 10 · 쉼터 12 · 보물 8 · 이야기 15 */
 export const NODE_RATIO: [NodeType, number][] = [

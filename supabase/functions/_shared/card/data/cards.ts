@@ -1,7 +1,7 @@
 /**
  * 카드 데이터 (games/card/src/data/cards.json 과 같은 내용 — `npm run json` 이 만들고 tests/data.test.ts 가 같은지 본다).
  * 값은 PRD 사용자 스펙 그대로. 강화(up) 값은 스펙의 '수치 30~50% 상승 또는 기력-1' 안에서 정한 것.
- * 1~2단계: 기본 2 + 일반 12 + 고급 4 + 전설 2 = 공용 20장 · 3단계: 영웅 전용 26장(13명 × 2) · 내림카드 2장.
+ * 카드 86장 = 기본 2 + 일반 28 + 고급 20 + 전설 10 + 영웅 전용 26장(13명 × 2), 그 밖에 내림카드 2장.
  * 영웅 전용 카드 중 연산으로 설명을 못 만드는 것('무엇 1당' 피해 등)은 text/textUp 으로 적는다.
  */
 import type { CardDef } from '../types.ts';
@@ -23,6 +23,22 @@ export const CARDS: CardDef[] = [
   { id: 'crouch', name: '몸 낮추기', kind: 'def', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'block', n: 6 }, { op: 'draw', n: 1 }], up: { ops: [{ op: 'block', n: 8 }, { op: 'draw', n: 1 }] }, art: 'ic-w-fan-0' },
   { id: 'counter', name: '반격 자세', kind: 'def', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'block', n: 5 }, { op: 'thorns', n: 3 }], up: { ops: [{ op: 'block', n: 7 }, { op: 'thorns', n: 4 }] }, art: 'ic-w-spear-1' },
   { id: 'poisonFog', name: '독안개', kind: 'skill', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'status', id: 'poison', n: 3, to: 'all' }], up: { ops: [{ op: 'status', id: 'poison', n: 4, to: 'all' }] }, art: 'fx-poison' },
+  { id: 'spearThrow', name: '창 던지기', kind: 'atk', rarity: 'common', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 9 }], up: { ops: [{ op: 'dmg', n: 12 }] }, art: 'ic-sk-throw' },
+  { id: 'bowShot', name: '활 쏘기', kind: 'atk', rarity: 'common', cost: 0, target: 'enemy', ops: [{ op: 'dmg', n: 4 }], up: { ops: [{ op: 'dmg', n: 6 }] }, art: 'ic-w-bow-0' },
+  { id: 'windCut', name: '바람 베기', kind: 'atk', rarity: 'common', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 7 }, { op: 'block', n: 3 }], up: { ops: [{ op: 'dmg', n: 10 }, { op: 'block', n: 4 }] }, art: 'fx-wind' },
+  { id: 'coinThrow', name: '엽전 던지기', kind: 'atk', rarity: 'common', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 5 }, { op: 'winGold', n: 5 }], up: { ops: [{ op: 'dmg', n: 7 }, { op: 'winGold', n: 7 }] }, art: 'ic-coin' },
+  { id: 'sling', name: '돌팔매', kind: 'atk', rarity: 'common', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 6, pierce: true }], up: { ops: [{ op: 'dmg', n: 9, pierce: true }] }, art: 'ic-stone' },
+  { id: 'tripleStab', name: '세 번 찌르기', kind: 'atk', rarity: 'common', cost: 2, target: 'enemy', ops: [{ op: 'dmg', n: 5, times: 3 }], up: { ops: [{ op: 'dmg', n: 7, times: 3 }] }, art: 'ic-sk-triple' },
+  { id: 'trident', name: '삼지창', kind: 'atk', rarity: 'common', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 5 }, { op: 'dmg', n: 3, to: 'others' }], up: { ops: [{ op: 'dmg', n: 7 }, { op: 'dmg', n: 4, to: 'others' }] }, art: 'ic-sk-fork' },
+  { id: 'endure', name: '버티기', kind: 'def', rarity: 'common', cost: 2, target: 'none', ops: [{ op: 'block', n: 13 }], up: { ops: [{ op: 'block', n: 18 }] }, art: 'ic-w-fan-1' },
+  { id: 'shadowStep', name: '그림자 걸음', kind: 'def', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'block', n: 4 }, { op: 'nextCut', n: 1 }], up: { ops: [{ op: 'block', n: 6 }, { op: 'nextCut', n: 1 }] }, art: 'ic-sk-dash' },
+  { id: 'stoneWall', name: '돌담', kind: 'def', rarity: 'common', cost: 2, target: 'none', ops: [{ op: 'block', n: 10 }, { op: 'nextBlock', n: 5 }], up: { ops: [{ op: 'block', n: 13 }, { op: 'nextBlock', n: 7 }] }, art: 'ic-w-fan-2' },
+  { id: 'fanWind', name: '부채 바람', kind: 'skill', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'block', n: 4 }, { op: 'draw', n: 2 }], up: { ops: [{ op: 'block', n: 6 }, { op: 'draw', n: 2 }] }, art: 'ic-fan' },
+  { id: 'rainDrop', name: '물벼락', kind: 'skill', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'status', id: 'wet', n: 1, to: 'all' }], up: { cost: 0 }, art: 'fx-rain' },
+  { id: 'herb', name: '약초', kind: 'skill', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'heal', n: 4 }], exhaust: true, up: { ops: [{ op: 'heal', n: 6 }] }, art: 'fx-heal' },
+  { id: 'aim', name: '겨누기', kind: 'skill', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'aim' }], up: { cost: 0 }, art: 'ic-acc-crit' },
+  { id: 'stickyBurr', name: '끈끈이 가시', kind: 'skill', rarity: 'common', cost: 1, target: 'enemy', ops: [{ op: 'status', id: 'weak', n: 2 }], up: { ops: [{ op: 'status', id: 'weak', n: 3 }] }, art: 'p-burr' },
+  { id: 'pollen', name: '꽃가루', kind: 'skill', rarity: 'common', cost: 1, target: 'none', ops: [{ op: 'status', id: 'weak', n: 1, to: 'all' }], up: { cost: 0 }, art: 'p-pollen' },
   { id: 'breathe', name: '숨 고르기', kind: 'skill', rarity: 'common', cost: 0, target: 'none', ops: [{ op: 'draw', n: 1 }, { op: 'energy', n: 1 }], exhaust: true, up: { ops: [{ op: 'draw', n: 2 }, { op: 'energy', n: 1 }] }, art: 'ic-mp' },
 
   // ---------- 고급 ----------
@@ -30,9 +46,33 @@ export const CARDS: CardDef[] = [
   { id: 'ironWall', name: '철벽', kind: 'def', rarity: 'uncommon', cost: 2, target: 'none', ops: [{ op: 'block', n: 18 }], up: { ops: [{ op: 'block', n: 25 }] }, art: 'ic-w-fan-5' },
   { id: 'temper', name: '담금질', kind: 'power', rarity: 'uncommon', cost: 1, target: 'none', ops: [{ op: 'power', id: 'atkUp', n: 2 }], up: { cost: 0 }, art: 'ic-w-sword-6' },
   { id: 'gather', name: '기 모으기', kind: 'skill', rarity: 'uncommon', cost: 1, target: 'none', ops: [{ op: 'energy', n: 2 }], exhaust: true, up: { cost: 0 }, art: 'ic-acc-mp' },
+  { id: 'boltTalisman', name: '번개부적', kind: 'atk', rarity: 'uncommon', cost: 2, target: 'none', ops: [{ op: 'dmg', n: 5, times: 4, to: 'random', ifSt: 'wet', ifK: 2 }], up: { ops: [{ op: 'dmg', n: 7, times: 4, to: 'random', ifSt: 'wet', ifK: 2 }] }, art: 'fx-bolt' },
+  { id: 'whirlwind', name: '회오리', kind: 'atk', rarity: 'uncommon', cost: 2, target: 'none', ops: [{ op: 'dmg', n: 5, times: 2, to: 'all' }], up: { ops: [{ op: 'dmg', n: 7, times: 2, to: 'all' }] }, art: 'ic-sk-tornado' },
+  { id: 'arrowStorm', name: '화살 소나기', kind: 'atk', rarity: 'uncommon', cost: 3, target: 'none', ops: [{ op: 'dmg', n: 4, times: 3, to: 'all' }], up: { cost: 2 }, art: 'ic-sk-rain' },
+  { id: 'shockwave', name: '충격파', kind: 'atk', rarity: 'uncommon', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 8 }, { op: 'status', id: 'weak', n: 2 }], up: { ops: [{ op: 'dmg', n: 11 }, { op: 'status', id: 'weak', n: 3 }] }, art: 'fx-shock' },
+  { id: 'poisonSpear', name: '독 묻힌 창', kind: 'atk', rarity: 'uncommon', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 6 }, { op: 'status', id: 'poison', n: 4 }], up: { ops: [{ op: 'dmg', n: 8 }, { op: 'status', id: 'poison', n: 6 }] }, art: 'ic-w-spear-5' },
+  { id: 'vampSlash', name: '흡혈 베기', kind: 'atk', rarity: 'uncommon', cost: 2, target: 'enemy', ops: [{ op: 'dmg', n: 10, steal: 0.5 }], exhaust: true, up: { ops: [{ op: 'dmg', n: 14, steal: 0.5 }] }, art: 'fx-fang' },
+  { id: 'foxBead', name: '여우구슬', kind: 'atk', rarity: 'uncommon', cost: 1, target: 'enemy', ops: [{ op: 'dmg', n: 4 }, { op: 'freeRandom', n: 1 }], up: { ops: [{ op: 'dmg', n: 6 }, { op: 'freeRandom', n: 1 }] }, art: 'p-foxorb' },
+  { id: 'boneBreak', name: '뼈 부수기', kind: 'atk', rarity: 'uncommon', cost: 2, target: 'enemy', ops: [{ op: 'dmg', n: 12 }, { op: 'status', id: 'wet', n: 2 }], up: { ops: [{ op: 'dmg', n: 16 }, { op: 'status', id: 'wet', n: 3 }] }, art: 'ic-w-sword-7' },
+  { id: 'roll', name: '구르기', kind: 'def', rarity: 'uncommon', cost: 0, target: 'none', ops: [{ op: 'block', n: 4 }, { op: 'nextDraw', n: 1 }], up: { ops: [{ op: 'block', n: 6 }, { op: 'nextDraw', n: 1 }] }, art: 'ic-roll' },
+  { id: 'mirrorFan', name: '거울 부채', kind: 'def', rarity: 'uncommon', cost: 1, target: 'none', ops: [{ op: 'block', n: 7 }, { op: 'ward', n: 1 }], up: { ops: [{ op: 'block', n: 10 }, { op: 'ward', n: 1 }] }, art: 'ic-w-fan-6' },
+  { id: 'wisdomOrb', name: '지혜구슬', kind: 'skill', rarity: 'uncommon', cost: 1, target: 'none', ops: [{ op: 'draw', n: 3 }], up: { cost: 0 }, art: 'p-orb' },
+  { id: 'spreadPoison', name: '독 퍼뜨리기', kind: 'skill', rarity: 'uncommon', cost: 1, target: 'enemy', ops: [{ op: 'spread', id: 'poison' }], up: { cost: 0 }, art: 'fx-pool' },
+  { id: 'wildfire', name: '불길 번지기', kind: 'skill', rarity: 'uncommon', cost: 1, target: 'none', ops: [{ op: 'status', id: 'fire', n: 2, to: 'all', plus: 2 }], up: { ops: [{ op: 'status', id: 'fire', n: 3, to: 'all', plus: 3 }] }, art: 'fx-boom' },
+  { id: 'viperPath', name: '독사의 길', kind: 'power', rarity: 'uncommon', cost: 1, target: 'none', ops: [{ op: 'power', id: 'poisonUp', n: 1 }], up: { cost: 0 }, art: 'ic-w-spear-6' },
+  { id: 'swiftBody', name: '날랜 몸', kind: 'power', rarity: 'uncommon', cost: 2, target: 'none', ops: [{ op: 'power', id: 'drawUp', n: 1 }], up: { cost: 1 }, art: 'ic-acc-speed' },
+  { id: 'guardian', name: '수호신', kind: 'power', rarity: 'uncommon', cost: 2, target: 'none', ops: [{ op: 'power', id: 'guard', n: 3 }], up: { ops: [{ op: 'power', id: 'guard', n: 4 }] }, art: 'ic-star' },
 
   // ---------- 전설 ----------
   { id: 'diamond', name: '금강', kind: 'def', rarity: 'legend', cost: 2, target: 'none', ops: [{ op: 'block', n: 30 }], exhaust: true, up: { ops: [{ op: 'block', n: 42 }] }, art: 'ic-w-fan-11' },
+  { id: 'twelveArray', name: '십이지 대진', kind: 'power', rarity: 'legend', cost: 3, target: 'none', ops: [{ op: 'power', id: 'energyUp', n: 1 }], up: { cost: 2 }, art: 'ic-key' },
+  { id: 'thunderGeneral', name: '천둥 신장', kind: 'atk', rarity: 'legend', cost: 3, target: 'none', ops: [{ op: 'dmg', n: 20, to: 'all' }, { op: 'status', id: 'wet', n: 2, to: 'all' }], up: { ops: [{ op: 'dmg', n: 28, to: 'all' }, { op: 'status', id: 'wet', n: 3, to: 'all' }] }, art: 'ic-w-spear-11' },
+  { id: 'dragonRise', name: '용오름', kind: 'atk', rarity: 'legend', cost: 2, target: 'enemy', ops: [{ op: 'dmg', n: 6, per: 'battleAtk', k: 2 }], up: { ops: [{ op: 'dmg', n: 8, per: 'battleAtk', k: 3 }] }, art: 'ic-w-sword-11', text: '피해6, 이 전투에서 쓴 공격카드 1장당 +2', textUp: '피해8, 이 전투에서 쓴 공격카드 1장당 +3' },
+  { id: 'meteor', name: '별똥별', kind: 'atk', rarity: 'legend', cost: 3, target: 'none', ops: [{ op: 'dmg', n: 8, times: 6, to: 'random' }], up: { ops: [{ op: 'dmg', n: 11, times: 6, to: 'random' }] }, art: 'ic-w-bow-9' },
+  { id: 'infiniteFan', name: '무한 부채', kind: 'power', rarity: 'legend', cost: 2, target: 'none', ops: [{ op: 'power', id: 'drawBlock', n: 1 }], up: { cost: 1 }, art: 'ic-w-fan-10' },
+  { id: 'myriadPoison', name: '만독', kind: 'skill', rarity: 'legend', cost: 2, target: 'enemy', ops: [{ op: 'mulSt', id: 'poison', k: 3 }], exhaust: true, up: { cost: 1 }, art: 'ic-w-spear-10' },
+  { id: 'timeStop', name: '시간 멈춤', kind: 'skill', rarity: 'legend', cost: 3, target: 'none', ops: [{ op: 'stun' }], exhaust: true, up: { cost: 2 }, art: 'ic-w-bow-10' },
+  { id: 'phoenixFeather', name: '불사조 깃', kind: 'power', rarity: 'legend', cost: 2, target: 'none', ops: [{ op: 'power', id: 'phoenix', n: 10 }], up: { cost: 1 }, art: 'ic-w-bow-11' },
   { id: 'haetae', name: '해태의 축복', kind: 'power', rarity: 'legend', cost: 1, target: 'none', ops: [{ op: 'power', id: 'regen', n: 2 }], up: { ops: [{ op: 'power', id: 'regen', n: 3 }] }, art: 'ic-hp' },
 
   // ---------- 영웅 전용 (전용1 = 시작 덱 · 전용2 = 고급, 그 영웅 보상에서만) · 그림은 열두길 고유 스킬 아이콘 ic-u-<영웅> ----------

@@ -5,8 +5,10 @@
  */
 import Phaser from 'phaser';
 import {
+  FINAL_ELITES,
   HEROES,
   MIN_DECK,
+  RULES_VERSION,
   apply,
   canChoose,
   canUpgrade,
@@ -15,6 +17,8 @@ import {
   enemyDef,
   enterTestBattle,
   eventDef,
+  finalOpen,
+  genMap,
   heroDef,
   newRun,
   potionDef,
@@ -29,11 +33,12 @@ import {
   type NodeType,
   type RunState,
 } from '../game/rules';
-import { DEV_FOES, DEV_GOLD, DEV_HERO, DEV_KIND, DEV_RELICS, DEV_RESET, DEV_SEED, LOCAL_MODE } from '../net/local';
+import { DEV_ACT, DEV_ELITES, DEV_ENDING, DEV_FOES, DEV_GOLD, DEV_HERO, DEV_KIND, DEV_RELICS, DEV_RESET, DEV_SEED, LOCAL_MODE } from '../net/local';
 import { loadSound, worldHome, type SoundModule, type WorldUser } from '../net/world';
 import { BattleScene, H, W, type BattleHooks } from '../scenes/BattleScene';
 import { MAP_NODE_FRAME, artState, artUrl, hasArt } from '../art';
 import { artImg, cardHtml, potionHtml, potionIcon, relicHtml, relicIcon } from './cards';
+import { shrinkOverflow } from './fit';
 
 interface Ctx {
   user: WorldUser | null;
@@ -82,7 +87,8 @@ function loadRun(): RunState | null {
     const s = localStorage.getItem(SAVE_KEY);
     if (!s) return null;
     const r = JSON.parse(s) as RunState;
-    return r && r.v === 1 && Array.isArray(r.log) ? r : null;
+    // 규칙이 바뀐 판(RULES_VERSION)은 이어 할 수 없다 — 같은 입력이 다른 결과가 된다
+    return r && r.v === 1 && r.rules === RULES_VERSION && Array.isArray(r.log) ? r : null;
   } catch {
     return null;
   }
@@ -116,6 +122,13 @@ export function boot(user: WorldUser | null) {
 
 export function showFirst() {
   if (LOCAL_MODE && DEV_FOES.length) return startPractice(DEV_FOES, DEV_KIND);
+  if (LOCAL_MODE && DEV_ENDING) {
+    ctx.run = newRun({ seed: DEV_SEED ?? 1, hero: DEV_HERO ?? 'tiger' });
+    Object.assign(ctx.run, { phase: 'won', ending: DEV_ENDING, act: DEV_ENDING === 'true' ? 4 : 3 });
+    ctx.run.stats = { floors: 37, elites: DEV_ENDING === 'true' ? 4 : 1, bosses: DEV_ENDING === 'true' ? 4 : 3, battles: 20 };
+    ctx.run.map = genMap(1, ctx.run.act);
+    return showResult();
+  }
   showTitle();
 }
 
@@ -131,6 +144,7 @@ function screen(html: string, cls = '') {
   stopGame();
   app().innerHTML = `<div class="screen ${cls}">${html}</div>`;
   app().querySelector('.screen')!.scrollTop = 0;
+  requestAnimationFrame(() => shrinkOverflow(app()));
   return app().querySelector<HTMLElement>('.screen')!;
 }
 
@@ -150,7 +164,7 @@ function showTitle() {
     <div class="title"><h1>시아카드배틀</h1><p>십이지 영웅으로 카드 덱을 키우며 요괴를 물리쳐요</p></div>
     <div class="title-art"><img src="${heroImg('tiger')}" alt="" onerror="this.remove()"></div>
     <div class="btns">
-      ${saved ? `<button class="btn primary big" id="cont">이어하기 <small>${saved.act}막 ${Math.max(0, saved.row + 1)}칸 · ${esc(heroDef(saved.hero).name)}</small></button>` : ''}
+      ${saved ? `<button class="btn primary big" id="cont">이어하기 <small>${saved.act === 4 ? '숨은 4막' : `${saved.act}막 ${Math.max(0, saved.row + 1)}칸`} · ${esc(heroDef(saved.hero).name)}</small></button>` : ''}
       <button class="btn ${saved ? '' : 'primary big'}" id="new">새 판 ▶</button>
       <div class="row2">
         <button class="btn" disabled>오늘의 도전 <small>준비 중</small></button>
@@ -175,16 +189,19 @@ function showTitle() {
 }
 
 function showPracticeMenu() {
-  const sets: [string, string[], 'battle' | 'boss'][] = [
-    ['여우 한 마리', ['fox'], 'battle'],
-    ['도토리 셋', ['acorn', 'acorn', 'acorn'], 'battle'],
-    ['스라소니 + 도토리', ['lynx', 'acorn'], 'battle'],
-    ['보스 구미호', ['gumiho'], 'boss'],
-    ['보스 장산범', ['jangsanbeom'], 'boss'],
-    ['보스 왕지네', ['centipede'], 'boss'],
+  const sets: [string, string[], 'battle' | 'elite' | 'boss'][] = [
+    ['대나무숲: 여우 한 마리', ['fox'], 'battle'],
+    ['대나무숲: 스라소니 + 도토리', ['lynx', 'acorn'], 'battle'],
+    ['들판: 불수레 + 꼬마 도깨비', ['firecart', 'imp'], 'battle'],
+    ['궁궐: 수문병 + 원혼', ['guard', 'spirit'], 'battle'],
+    ['저승: 해골 + 불폭탄', ['skeleton', 'bomber'], 'battle'],
+    ['정예: 천년 여우', ['foxElite'], 'elite'],
+    ...(['gumiho', 'jangsanbeom', 'centipede', 'bigDokkaebi', 'bulgasal', 'gangcheori', 'guardCaptain', 'dueoksini', 'imugi', 'reaper', 'yagwanggwi', 'yeomra', 'final'] as const).map(
+      (id) => [`보스 ${enemyDef(id).name}`, [id], 'boss'] as [string, string[], 'boss'],
+    ),
   ];
   const s = screen(`<div class="bar"><button class="back" id="back">← 처음</button><h2>연습 전투</h2><span class="back-space"></span></div>
-    <div class="btns">${sets.map(([label], i) => `<button class="btn" data-set="${i}">${label}</button>`).join('')}</div>`);
+    <div class="btns">${sets.map(([label], i) => `<button class="btn small" data-set="${i}">${label}</button>`).join('')}</div>`);
   on(s, '#back', () => showTitle());
   on(s, '[data-set]', (el) => {
     const [, foes, kind] = sets[Number(el.dataset.set)];
@@ -252,6 +269,12 @@ function showHeroes() {
       if (LOCAL_MODE) {
         for (const r of DEV_RELICS) if (relicDef(r)) ctx.run.relics.push(r);
         if (DEV_GOLD !== null) ctx.run.gold = DEV_GOLD;
+        if (DEV_ELITES !== null) ctx.run.stats.elites = DEV_ELITES;
+        if (DEV_ACT !== null && DEV_ACT > 1) {
+          // 그 막의 처음부터 (막 보스까지 가려면 &act=3&elites=3 → 3막 → 숨은 4막)
+          ctx.run.act = DEV_ACT;
+          ctx.run.map = genMap(ctx.run.seed, DEV_ACT);
+        }
       }
       saveRun();
       showRun();
@@ -326,6 +349,7 @@ function modal(html: string, bind?: (m: HTMLElement, close: () => void) => void)
   m.className = 'modal';
   m.innerHTML = `<div class="card modal-box">${html}</div>`;
   document.getElementById('stage')!.appendChild(m);
+  requestAnimationFrame(() => shrinkOverflow(m));
   const close = () => m.remove();
   m.addEventListener('click', (e) => {
     if (e.target === m) close();
@@ -386,6 +410,8 @@ const ROW_H = 76;
 function showMap() {
   const run = ctx.run!;
   const m = run.map;
+  if (regionDef(m.region).hidden) return showAbyss();
+  if (run.row < 0 && run.act > 1) toast(`${run.act}막 · ${regionDef(m.region).name}`, 2200);
   const reg = regionDef(m.region);
   const can = new Set(choices(run));
   const total = m.rows.length;
@@ -443,6 +469,26 @@ function showMap() {
   });
 }
 
+/** 숨은 4막: 지도 대신 어둑시니 앞 (보스 한 칸) */
+function showAbyss() {
+  const run = ctx.run!;
+  const s = screen(
+    `${runBar('숨은 4막 · 어둠의 끝')}
+    <div class="card scene-card">${artImg('ending-4', '', 'scene-art')}
+      <p class="scene-say">정예 ${run.stats.elites}마리를 물리친 기운에 봉인이 흔들렸다! 땅이 갈라지고, 모든 어둠의 뿌리 <b>어둑시니</b>가 깨어났다.</p></div>
+    <div class="card center abyss-boss">${artImg('b-final', '👺', 'boss-face big')}<p><b>어둑시니</b> · 체력 450</p>
+      <p class="soft">내가 공격카드를 쓸 때마다 힘이 세지고, 체력이 줄면 점점 커져요. 보스와 한 번만 싸워요.</p></div>
+    <div class="grow"></div>
+    <button class="btn primary big" id="fight">맞서 싸우기 ▶</button>`,
+    'abyss-screen',
+  );
+  bindBar(s, showAbyss);
+  on(s, '#fight', () => {
+    const r = send({ t: 'go', col: 0 });
+    if (r?.ok) showRun();
+  });
+}
+
 // ---------- 전투 ----------
 
 function showBattle() {
@@ -472,8 +518,10 @@ function showBattle() {
   });
   ctx.game.scene.add('battle', BattleScene, true, { hooks });
   if (LOCAL_MODE) {
-    const w = window as unknown as { __cardGame?: Phaser.Game; __cardRun?: () => RunState | null };
+    const w = window as unknown as { __cardGame?: Phaser.Game; __cardRun?: () => RunState | null; __cardFit?: () => string[] };
     w.__cardGame = ctx.game;
+    // 카드 설명이 칸을 넘치는 카드 목록 (비어 있으면 통과)
+    w.__cardFit = () => (ctx.game?.scene.getScene('battle') as BattleScene | null)?.fitReport() ?? ['전투 화면이 아님'];
     w.__cardRun = () => ctx.run;
   }
 }
@@ -504,7 +552,7 @@ function showReward() {
     ${rw.boss ? `<div class="card center"><b>체력을 절반 회복했어요</b></div>` : ''}
     <div class="card"><h3>보상</h3><div class="btns">${rows || '<p class="soft center">다 받았어요</p>'}</div></div>
     <div class="grow"></div>
-    <button class="btn primary big" id="leave">${rw.boss ? '다음으로 ▶' : '지도로 ▶'}</button>`);
+    <button class="btn primary big" id="leave">${rw.boss ? (run.act >= 3 ? (finalOpen(run) ? '봉인이 흔들린다… ▶' : '엔딩 보기 ▶') : `${run.act + 1}막으로 ▶`) : '지도로 ▶'}</button>`);
   bindBar(s, showReward);
   on(s, '[data-take]', (el) => {
     const r = send({ t: 'take', i: Number(el.dataset.take) });
@@ -694,17 +742,55 @@ function needCards() {
 
 // ---------- 결과 ----------
 
-function showResult() {
+/** 엔딩 장면 (그림 + 말) — 누르면 다음 장면, 마지막 장면 뒤에 결과 */
+const ENDINGS: Record<'normal' | 'true', { art: string; title: string; text: string }[]> = {
+  normal: [
+    { art: 'ending-2', title: '3막 클리어!', text: '염라대왕까지 물리치고 십이지 친구들이 들판으로 돌아왔어요. 요괴들의 소란이 멎었어요.' },
+    { art: 'ending-3', title: '그런데…', text: '봉인의 틈으로 아직 검은 연기가 새어 나와요. 더 많은 정예를 물리치면 숨은 무언가를 만날지도 몰라요.' },
+  ],
+  true: [
+    { art: 'finale-1', title: '어둑시니를 물리쳤다!', text: '모든 어둠의 뿌리, 어둑시니가 빛 속으로 흩어졌어요.' },
+    { art: 'finale-2', title: '다시 봉인!', text: '흔들리던 봉인에 마지막 열쇠가 채워지고, 문이 단단히 잠겼어요.' },
+    { art: 'finale-4', title: '진짜 엔딩', text: '십이지 영웅들이 세상을 지켰어요. 오늘은 모두 함께 잔치예요!' },
+  ],
+};
+
+function showResult(step = 0) {
   const run = ctx.run!;
   const win = run.phase === 'won';
   if (!run.practice) clearRun();
   const st = run.stats;
+  const scenes = win && !run.practice && run.ending ? ENDINGS[run.ending] : [];
+  if (step < scenes.length) {
+    const sc = scenes[step];
+    const last = step === scenes.length - 1;
+    const s = screen(`<div class="grow"></div>
+      <div class="card big-panel center ending ${run.ending === 'true' ? 'true-end' : ''}">
+        ${artImg(sc.art, '', 'result-scene')}
+        <h2 class="win">${sc.title}</h2>
+        <p>${sc.text}</p>
+        <p class="dots">${scenes.map((_, i) => `<i class="${i === step ? 'on' : ''}"></i>`).join('')}</p>
+        <button class="btn primary big" id="next">${last ? '결과 보기 ▶' : '다음 ▶'}</button>
+      </div>
+      <div class="grow"></div>`);
+    if (step === 0) sfx('win');
+    on(s, '#next', () => showResult(step + 1));
+    return;
+  }
+  const title = run.practice ? (win ? '승리!' : '쓰러졌어요…') : win ? (run.ending === 'true' ? '진짜 엔딩!' : '3막 클리어!') : '쓰러졌어요…';
+  const where = run.act === 4 ? '숨은 4막 어둑시니' : `${run.act}막 ${regionDef(run.map.region).name}`;
+  const hint =
+    win && run.ending === 'normal'
+      ? `정예를 ${FINAL_ELITES}마리 이상 물리치고 3막을 깨면 숨은 4막이 열려요 (이번 판 정예 ${st.elites})`
+      : win
+        ? '숨은 최종보스까지 물리쳤어요!'
+        : '처음부터 다시 도전해요';
   const s = screen(`<div class="grow"></div>
     <div class="card big-panel center">
-      ${win && !run.practice ? artImg('ending-2', '', 'result-scene') : ''}
+      ${!win && !run.practice && run.act === 4 ? artImg('finale-1', '', 'result-scene') : ''}
       <img class="result-hero${win ? '' : ' down'}" src="${heroImg(run.hero)}" alt="" onerror="this.remove()">
-      <h2 class="${win ? 'win' : 'lose'}">${run.practice ? (win ? '승리!' : '쓰러졌어요…') : win ? `${run.act}막 클리어!` : '쓰러졌어요…'}</h2>
-      ${run.practice ? `<p>남은 체력 ${run.hp} / ${run.maxHp}</p>` : `<p>${run.act}막 · ${st.floors}칸 · 정예 ${st.elites} · 보스 ${st.bosses}</p><p class="soft">${win ? '2막 궁궐은 다음 단계에서 열려요' : '처음부터 다시 도전해요'}</p>`}
+      <h2 class="${win ? 'win' : 'lose'}">${title}</h2>
+      ${run.practice ? `<p>남은 체력 ${run.hp} / ${run.maxHp}</p>` : `<p>${where} · ${st.floors}칸 · 정예 ${st.elites} · 보스 ${st.bosses}</p><p class="soft">${hint}</p>`}
       <button class="btn primary big" id="again">처음 화면 ▶</button>
     </div>
     <div class="grow"></div>`);

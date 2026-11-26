@@ -15,3 +15,8 @@ export const DEV_GOLD = LOCAL_MODE && params.has('gold') ? Math.max(0, Math.floo
 export const DEV_RELICS = str('relics').split(',').filter(Boolean);
 /** 개발용: 기기에 저장한 판을 지우고 시작 (?local=1&reset=1) */
 export const DEV_RESET = LOCAL_MODE && params.get('reset') === '1';
+/** 개발용: 새 판을 그 막에서 시작 (?local=1&act=3 · 4 = 숨은 4막) · 정예 수 (&elites=3) — 기록 재실행과는 맞지 않는다 */
+export const DEV_ACT = LOCAL_MODE && params.has('act') ? Math.max(1, Math.min(4, Math.floor(Number(params.get('act')) || 1))) : null;
+export const DEV_ELITES = LOCAL_MODE && params.has('elites') ? Math.max(0, Math.floor(Number(params.get('elites')) || 0)) : null;
+/** 개발용: 엔딩 화면 바로 보기 (?local=1&ending=normal|true) */
+export const DEV_ENDING = (['normal', 'true'].includes(str('ending')) ? str('ending') : null) as 'normal' | 'true' | null;

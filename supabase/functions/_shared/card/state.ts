@@ -31,7 +31,7 @@ export interface Foe {
   st: Statuses;
   /** 힘: 공격 피해에 더함 */
   str: number;
-  phase: 1 | 2;
+  phase: 1 | 2 | 3;
   /** 다음 행동 (move id) */
   intent: string | null;
   /** cycle 위치 */
@@ -46,6 +46,14 @@ export interface Foe {
   boss?: boolean;
   /** 냄새 추적으로 미리 정해 둔 그다음 행동 (move id) */
   next?: string | null;
+  /** 시간 멈춤: 다음 행동 건너뜀 */
+  stun?: boolean;
+  /** 어둠 속 (야광귀): 받는 피해 -75% */
+  dark?: boolean;
+  /** 큰 공격 예고 중 — 취소까지 남은 피해 (이무기) */
+  charge?: number | null;
+  /** 한 번 부활했음 (불가살) */
+  revived?: boolean;
 }
 
 export interface Battle {
@@ -84,8 +92,16 @@ export interface Battle {
   lastCard?: { id: string; up?: boolean; target?: number } | null;
   /** 손패에서 카드를 골라야 함 (쥐구멍·분신술) — 고를 때까지 다른 입력은 받지 않는다 */
   pending?: { kind: 'discard' | 'clone'; n: number } | null;
-  /** 이 전투 기록·한 번만 쓰는 부적 */
-  b: { attacks: number; whet: boolean; beoseon: boolean; sorghum: boolean };
+  /** 이 전투 기록·한 번만 쓰는 부적 (gold = 이기면 받는 엽전, phoenix = 불사조 깃 썼음) */
+  b: { attacks: number; whet: boolean; beoseon: boolean; sorghum: boolean; gold?: number; phoenix?: boolean };
+  /** 이번 턴 다음 카드 기력 -n (그림자 걸음) */
+  cutNext?: number;
+  /** 다음 공격카드 피해 ×2 남은 횟수 (겨누기) */
+  aim?: number;
+  /** 다음 턴 더 뽑을 장수 (구르기) */
+  nextDraw?: number;
+  /** 상태이상 막기 남은 횟수 (거울 부채, 내 턴 시작에 사라짐) */
+  ward?: number;
   /** 첫 턴에 더 받는 기력 (도깨비 방망이 · 탁발승) */
   e1: number;
   over: null | 'win' | 'lose';
@@ -151,6 +167,8 @@ export interface EventState {
 
 export interface RunState {
   v: 1;
+  /** 규칙 판본 (run.ts RULES_VERSION) — 다르면 저장한 판을 버린다 */
+  rules?: number;
   seed: number;
   mode: 'normal';
   hero: string;
@@ -182,6 +200,10 @@ export interface RunState {
   seenEvents: string[];
   flags: { nextEnergy: number; ironUsed: boolean; catUsed: boolean };
   stats: { floors: number; elites: number; bosses: number; battles: number };
+  /** 이번 막에서 싸운 일반 전투 수 (앞쪽은 쉬운 조합) */
+  actBattles?: number;
+  /** 판이 끝난 모양: normal = 3막 클리어 · true = 어둑시니까지 (진짜 엔딩) */
+  ending?: 'normal' | 'true';
   /** 받아들인 입력 전부 (순서대로) */
   log: Input[];
   /** 막마다 시작한 log 위치 */
@@ -233,7 +255,18 @@ export type SimEvent =
   | { e: 'energy'; n: number }
   | { e: 'foeMove'; uid: number; move: string; name: string }
   | { e: 'summon'; uid: number }
-  | { e: 'phase'; uid: number; text: string }
+  | { e: 'phase'; uid: number; text: string; n?: number }
+  | { e: 'foeRevive'; uid: number; hp: number }
+  | { e: 'cancel'; uid: number }
+  /** 시간 멈춤 (uid 0 = 모든 적에게 걸림 · 그 밖 = 그 요괴가 행동을 건너뜀) */
+  | { e: 'stunned'; uid: number }
+  | { e: 'dark'; uid: number; on: boolean }
+  /** 여우구슬: 이 카드 이번 턴 기력 0 */
+  | { e: 'free'; uid: number }
+  /** 거울 부채로 상태이상을 막음 */
+  | { e: 'ward' }
+  /** 다음 턴 기력 -n (신발 훔치기) */
+  | { e: 'drain'; n: number }
   | { e: 'die'; uid: number }
   | { e: 'discard'; uid: number }
   | { e: 'exhaust'; uid: number }

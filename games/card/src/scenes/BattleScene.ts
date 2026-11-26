@@ -17,12 +17,14 @@ import {
   cardOps,
   cardText,
   enemyDef,
-  foeDamage,
+  foeHits,
   heroDef,
   keptBlock,
   moveDef,
+  phaseOf,
   playCost,
   potionDef,
+  regionDef,
   relicDef,
   STATUS_HELP,
   STATUS_NAME,
@@ -37,10 +39,19 @@ import {
 } from '../game/rules';
 import { BOSS_ATK_FRAME, FRAME, FX_ARTS, HERO_ATTACK, HERO_FRAME, HERO_STAND, INTENT_FRAME, STATUS_ART, ST_CELL, ST_FULL, artUrl, fxForCard, hasArt } from '../art';
 import { COLOR, FONT, css } from '../theme';
+import { DESC_BOX, DESC_LINE, fitDesc } from '../ui/fit';
 
 /** 글자 외곽선 (art.ts txt 와 같은 색) */
 const INK = '#2a1a10';
 import { KIND_COLOR, RARITY_RING, STATUS_COLOR, STATUS_SHORT, drawFoe, drawHero, drawIntent, drawKindGlyph, txt } from './art';
+
+/** 보스 단계 특성 설명 (요괴를 누르면) */
+const PASSIVE_HELP: Record<string, string> = {
+  cloneShield: '분신이 있으면 받는 피해 -50%',
+  revive: '쓰러지면 한 번 체력 30%로 부활 (화상이면 못 함)',
+  scorch: '내 화상 피해 2배 · 젖음을 걸면 내 화상이 줄어듦',
+  execute: '내 체력 30% 이하면 주는 피해 2배',
+};
 
 export const W = 430;
 export const H = 860;
@@ -135,12 +146,12 @@ export class BattleScene extends Phaser.Scene {
     sheet(`hero-${run.hero}`, HERO_FRAME);
     if (this.hooks.heroUrl) this.load.image('hero-full', this.hooks.heroUrl);
     img(`cut-${run.hero}`);
-    img(`bg-${run.map.region}`);
+    img(regionDef(run.map.region).bg);
     // 요괴: 지금 있는 것 + 불러낼 수 있는 것 (분신·병졸)
     const ids = new Set(b.foes.map((f) => f.id));
     for (const id of [...ids]) {
       const d = enemyDef(id);
-      for (const ph of [d.phase1, d.phase2]) for (const m of ph?.moves ?? []) for (const o of m.ops) if (o.op === 'summon') ids.add(o.id);
+      for (const ph of [d.phase1, d.phase2, d.phase3]) for (const ops of [...(ph?.moves ?? []).map((m) => m.ops), ph?.turnOps ?? []]) for (const o of ops) if (o.op === 'summon') ids.add(o.id);
     }
     for (const id of ids) {
       const d = enemyDef(id);
@@ -185,7 +196,8 @@ export class BattleScene extends Phaser.Scene {
       this.busy = true;
       const d = enemyDef(boss.id);
       this.hooks.sfx('turn');
-      await this.cutin(d.art, undefined, '막 보스', d.name, '', COLOR.pink);
+      const hidden = !!d.grow;
+      await this.cutin(d.art, undefined, hidden ? '숨은 최종보스' : '막 보스', d.name, hidden ? '공격카드를 쓸 때마다 힘이 세져요' : '', COLOR.pink);
       this.busy = false;
       this.drawUi();
       return;
@@ -221,7 +233,7 @@ export class BattleScene extends Phaser.Scene {
 
   // ---------- 배경 ----------
   private drawBackdrop() {
-    const bg = `bg-${this.run().map.region}`;
+    const bg = regionDef(this.run().map.region).bg;
     const g = this.add.graphics();
     if (this.textures.exists(bg)) {
       // 지역 배경 (480×270) 을 위쪽 580 에 꽉 채움 — 가운데를 남기고 양옆을 자른다
@@ -331,11 +343,12 @@ export class BattleScene extends Phaser.Scene {
     if (l) for (const t of l.splice(0)) t.destroy();
   }
 
-  private statusRow(c: Phaser.GameObjects.Container, x: number, y: number, st: Partial<Record<StatusId, number>>, str: number, dodge = 0) {
+  private statusRow(c: Phaser.GameObjects.Container, x: number, y: number, st: Partial<Record<StatusId, number>>, str: number, dodge = 0, dark = false) {
     const items: [StatusId | 'str', number][] = (Object.entries(st) as [StatusId, number][]).filter(([, n]) => n > 0);
     if (str) items.push(['str', str]);
     const all: { id: string; label: string; n: number; color: number }[] = items.map(([id, n]) => ({ id, label: STATUS_SHORT[id], n, color: STATUS_COLOR[id] }));
     if (dodge) all.push({ id: 'dodge', label: '숨', n: dodge, color: COLOR.skyDeep });
+    if (dark) all.push({ id: 'dark', label: '흑', n: 0, color: COLOR.outline });
     const gap = 30;
     let sx = x - ((all.length - 1) * gap) / 2;
     for (const it of all) {
@@ -351,7 +364,7 @@ export class BattleScene extends Phaser.Scene {
       ring.lineStyle(2, COLOR.outline, 1);
       ring.strokeCircle(sx, y, 12);
       c.add(ring);
-      c.add(txt(this, sx + 11, y + 9, `${it.n}`, 11, COLOR.white, 3));
+      if (it.n) c.add(txt(this, sx + 11, y + 9, `${it.n}`, 11, COLOR.white, 3));
       sx += gap;
     }
   }
@@ -362,7 +375,7 @@ export class BattleScene extends Phaser.Scene {
     const big = foes.filter((f) => !f.minion);
     const out = new Map<number, { x: number; y: number; r: number }>();
     if (n === 0) return out;
-    const radius = (f: Foe) => (f.boss || f.elite ? (n > 2 ? 50 : 60) : f.minion ? 28 : n >= 3 ? 36 : 42);
+    const radius = (f: Foe) => (enemyDef(f.id).grow ? 80 : f.boss || f.elite ? (n > 2 ? 50 : 60) : f.minion ? 28 : n >= 3 ? 36 : 42);
     // 보스를 가운데, 분신은 양옆
     const order = [...foes];
     if (big.length === 1 && n > 1) {
@@ -376,7 +389,9 @@ export class BattleScene extends Phaser.Scene {
     order.forEach((f, i) => {
       const w = widths[i] * scale;
       const r = radius(f) * Math.min(1, scale + 0.15);
-      out.set(f.uid, { x: x + w / 2, y: FOE_Y + (f.minion ? 18 : 0) + (i % 2 && n > 3 ? 14 : 0), r });
+      // 어둑시니는 커지므로 조금 위에 (아래쪽 이름·체력이 영웅에 겹치지 않게)
+      const lift = enemyDef(f.id).grow ? -30 : 0;
+      out.set(f.uid, { x: x + w / 2, y: FOE_Y + lift + (f.minion ? 18 : 0) + (i % 2 && n > 3 ? 14 : 0), r });
       x += w;
     });
     return out;
@@ -415,7 +430,8 @@ export class BattleScene extends Phaser.Scene {
     const c = this.add.container(x, y).setDepth(2);
     const d = enemyDef(f.id);
     const big = !!(f.boss || f.elite);
-    const size = r * (big ? 2.7 : 2.5);
+    // 어둑시니: 단계마다 그림이 커진다 (230 → 262 → 296), 발밑을 맞춰 위로 자란다
+    const size = d.grow ? d.grow[f.phase - 1] : r * (big ? 2.7 : 2.5);
     let body: Body;
     let art: string | null = null;
     if (this.textures.exists(d.art)) {
@@ -424,8 +440,9 @@ export class BattleScene extends Phaser.Scene {
       sh.fillStyle(COLOR.outline, 0.25);
       sh.fillEllipse(0, r * 0.95, r * 1.7, r * 0.4);
       c.add(sh);
-      const img = this.add.image(0, 0, d.art);
+      const img = this.add.image(0, d.grow ? r - size * 0.45 : 0, d.art);
       fit(img, size);
+      if (f.dark) img.setTint(COLOR.outline);
       body = img;
     } else {
       const g = this.add.graphics();
@@ -469,16 +486,24 @@ export class BattleScene extends Phaser.Scene {
     }
     v.hpText.setText(`${Math.max(0, d.hp)}/${f.maxHp}`).setPosition(0, v.r + 32);
     v.st.removeAll(true);
-    this.statusRow(v.st, 0, v.r + 56, f.st, f.str, f.dodge);
+    this.statusRow(v.st, 0, v.r + 56, f.st, f.str, f.dodge, !!f.dark);
     v.intent.removeAll(true);
+    if (f.stun && !f.dead) {
+      // 시간 멈춤: 다음 행동을 건너뜀
+      v.intent.add(txt(this, 0, 0, '멈춤', 18, COLOR.skyDeep, 4));
+      return;
+    }
     if (f.intent && !f.dead) {
       const m = moveDef(enemyDef(f.id), f.phase, f.intent);
       v.intent.add(this.intentIcon(m.intent, 0, 34));
-      if (m.intent === 'atk') {
-        const dmg = m.ops.filter((o) => o.op === 'dmg');
-        const s = dmg.map((o) => (o.op === 'dmg' ? `${foeDamage(this.battle(), f, o.n)}${o.times && o.times > 1 ? `×${o.times}` : ''}` : '')).join('+');
+      // 공격 숫자: 매 턴 행동(업보 등) + 이번 행동, 힘·약화·젖음·저승사자 2배 반영
+      const hits = foeHits(this.run(), this.battle(), f);
+      if (hits.length) {
+        const s = hits.map((h) => `${h.n}${h.times > 1 ? `×${h.times}` : ''}`).join('+');
         v.intent.add(txt(this, 20, 6, s, 18, COLOR.white, 4).setOrigin(0, 0.5));
       }
+      // 이무기 승천 예고: 취소까지 남은 피해
+      if (f.charge != null) v.intent.add(txt(this, 0, -26, `${f.charge} 더 때리면 취소!`, 13, COLOR.primary, 3));
       if (m.ops.some((o) => o.op === 'status' || o.op === 'curse' || o.op === 'discardNext') && m.intent === 'atk') {
         v.intent.add(this.intentIcon('debuff', -26, 20));
       }
@@ -541,10 +566,7 @@ export class BattleScene extends Phaser.Scene {
       if (this.textures.exists('energy')) c.add(this.add.image(cx, cy, 'energy').setDisplaySize(26, 26));
       c.add(txt(this, cx, cy, `${cost}`, 15, cost < cardDef(card.id).cost ? COLOR.win : COLOR.white, 3));
       c.add(txt(this, 0, T + FRAME.name.y * s - 1, name, name.length > 5 ? 11 : 13, card.up ? COLOR.primaryLight : COLOR.white, 3));
-      const desc = this.add
-        .text(0, T + (D.y + D.h / 2) * s, cardText(card.id, card.up), { fontFamily: FONT, fontSize: '10px', color: '#2a1a10', align: 'center', lineSpacing: -2, wordWrap: { width: (D.w - 18) * s, useAdvancedWrap: true } })
-        .setOrigin(0.5, 0.5);
-      c.add(desc);
+      c.add(this.descText(cardText(card.id, card.up), T + (D.y + D.h / 2) * s));
     } else {
       const g = this.add.graphics();
       g.fillStyle(COLOR.outline, 1);
@@ -582,6 +604,42 @@ export class BattleScene extends Phaser.Scene {
     }
     if (!playable) c.setAlpha(0.6);
     return c;
+  }
+
+  /**
+   * 카드 설명: 칸(DESC_BOX.canvas)에 맞는 크기로 줄을 나눠 쓰고(ui/fit.ts), 실제로 그린 크기가 넘치면 더 줄인다.
+   * 개발 확인: ?local=1 전투에서 window.__cardFit() — 카드 86장(+강화) 중 넘치는 것 목록.
+   */
+  private descText(text: string, y: number): Phaser.GameObjects.Text {
+    const box = DESC_BOX.canvas;
+    let f = fitDesc(text, box.w, box.h);
+    const t = this.add.text(0, y, '', { fontFamily: FONT, fontSize: `${f.size}px`, color: '#2a1a10', align: 'center' }).setOrigin(0.5, 0.5);
+    const set = () => {
+      t.setFontSize(f.size);
+      t.setLineSpacing(Math.round(f.size * DESC_LINE) - Math.ceil(f.size * 1.25));
+      t.setText(f.lines.join('\n'));
+    };
+    set();
+    for (let k = 0; k < 8 && (t.height > box.h + 2 || t.width > box.w + 2) && f.size > 6.5; k++) {
+      const size = f.size - 0.5;
+      f = { ...fitDesc(text, box.w, box.h, [size]), size };
+      set();
+    }
+    return t;
+  }
+
+  /** 개발 확인용: 모든 카드(+강화)의 설명이 칸에 들어가는지 실제로 그려 본다 */
+  fitReport(): string[] {
+    const bad: string[] = [];
+    const box = DESC_BOX.canvas;
+    for (const d of CARDS) {
+      for (const up of [false, true]) {
+        const t = this.descText(cardText(d.id, up), -1000);
+        if (t.height > box.h + 2 || t.width > box.w + 2) bad.push(`${d.name}${up ? '+' : ''} ${Math.round(t.width)}×${Math.round(t.height)} @${t.style.fontSize}`);
+        t.destroy();
+      }
+    }
+    return bad;
   }
 
   private layoutHand() {
@@ -893,6 +951,13 @@ export class BattleScene extends Phaser.Scene {
     const nx = f.next ? moveDef(d, f.phase, f.next) : null;
     const st = (Object.entries(f.st) as [StatusId, number][]).map(([k, n]) => `${STATUS_NAME[k]}${n}: ${STATUS_HELP[k]}`);
     if (f.str) st.push(`힘${f.str}: ${STATUS_HELP.str}`);
+    if (f.dodge) st.push(`숨기${f.dodge}: 다음 공격을 피함`);
+    if (f.dark) st.push('어둠 속: 받는 피해 -75%, 화상을 걸면 풀림');
+    if (f.charge != null) st.push(`승천 예고: 피해 ${f.charge} 더 주면 취소`);
+    if (f.stun) st.push('시간 멈춤: 다음 행동을 건너뜀');
+    const pas = PASSIVE_HELP[phaseOf(d, f.phase).passive ?? ''];
+    if (pas) st.push(pas);
+    if (d.rage) st.push(`내가 공격카드를 쓸 때마다 힘 +${d.rage}`);
     const line = `${d.name} — 다음 행동: ${m ? (m.intent === 'unknown' ? '알 수 없음' : m.name) : '-'}${nx ? ` → 그다음: ${nx.name}` : ''}`;
     this.showTip([line, ...st].join('\n'));
   }
@@ -1122,11 +1187,85 @@ export class BattleScene extends Phaser.Scene {
             const d = enemyDef(f.id);
             const atkKey = `${d.art}-atk`;
             const has = this.textures.exists(atkKey);
+            const n = e.n ?? 2;
             this.hooks.sfx('turn');
-            await this.cutin(has ? atkKey : d.art, has ? 1 : undefined, d.name, '2단계!', e.text, COLOR.pink);
+            await this.cutin(has ? atkKey : d.art, has ? 1 : undefined, d.name, d.grow ? '커졌다!' : `${n}단계!`, e.text, COLOR.pink);
+            const v = this.foeViews.get(f.uid);
+            if (d.grow && v && v.body instanceof Phaser.GameObjects.Image) {
+              // 어둑시니가 커진다 (발밑 고정)
+              v.size = d.grow[n - 1];
+              const img = v.body;
+              const to = v.size / Math.max(img.frame.width, img.frame.height);
+              this.tweens.add({ targets: img, scale: to, y: v.r - v.size * 0.45, duration: 420, ease: 'Back.easeOut' });
+              this.cameras.main.shake(260, 0.01);
+              await this.wait(450);
+            }
           }
           break;
         }
+        case 'foeRevive': {
+          const v = this.foeViews.get(e.uid);
+          const d = this.disp.foes.get(e.uid);
+          if (d) d.hp = e.hp;
+          const f = this.battle().foes.find((x) => x.uid === e.uid);
+          if (v && f) {
+            this.updateFoe(f, v);
+            this.spawnFx('fx-heal', v.x, v.y, v.size);
+            this.float(v.x, v.y - v.r, '부활!', COLOR.pink);
+          }
+          this.hooks.sfx('turn');
+          await this.wait(500);
+          break;
+        }
+        case 'cancel': {
+          const v = this.foeViews.get(e.uid);
+          if (v) {
+            this.spawnFx('fx-boom', v.x, v.y, v.size);
+            this.float(v.x, v.y - v.r - 20, '승천 저지!', COLOR.primary);
+            this.cameras.main.shake(200, 0.008);
+          }
+          await this.wait(400);
+          break;
+        }
+        case 'stunned': {
+          if (e.uid === 0) {
+            this.float(W / 2, FOE_Y - 80, '시간 멈춤!', COLOR.skyDeep);
+            this.render();
+          } else {
+            const v = this.foeViews.get(e.uid);
+            if (v) this.speech(v.x, v.y - v.r - 50, '…멈춤');
+          }
+          await this.wait(300);
+          break;
+        }
+        case 'dark': {
+          const v = this.foeViews.get(e.uid);
+          const f = this.battle().foes.find((x) => x.uid === e.uid);
+          if (v && f) {
+            if (v.body instanceof Phaser.GameObjects.Image) {
+              if (e.on) v.body.setTint(COLOR.outline);
+              else v.body.clearTint();
+            }
+            this.float(v.x, v.y - v.r, e.on ? '어둠 속으로…' : '어둠이 걷혔다!', e.on ? COLOR.inkSoft : COLOR.primary);
+            this.updateFoe(f, v);
+          }
+          await this.wait(260);
+          break;
+        }
+        case 'free': {
+          this.float(W / 2, 680, '기력 0!', COLOR.win);
+          await this.wait(120);
+          break;
+        }
+        case 'ward':
+          this.spawnFx('fx-shield', W / 2, HERO_Y, 120);
+          this.float(W / 2, HERO_Y - 70, '막아냄!', COLOR.teamA);
+          await this.wait(220);
+          break;
+        case 'drain':
+          this.float(W / 2, HERO_Y - 70, `다음 턴 기력 -${e.n}`, COLOR.draw);
+          await this.wait(220);
+          break;
         case 'turn':
           this.cur = null;
           if (e.who === 'foes') {
@@ -1151,7 +1290,7 @@ export class BattleScene extends Phaser.Scene {
           break;
         case 'revive':
           if (e.who === 'cat') await this.cutin(`cut-cat`, undefined, heroDef('cat').name, '버텼다!', '체력 1 · 방어 10', COLOR.pink);
-          else await this.burst('다시 일어섰다!', relicDef(e.who).name);
+          else await this.burst('다시 일어섰다!', e.who === 'phoenix' ? cardDef('phoenixFeather').name : relicDef(e.who).name);
           break;
         case 'echo':
           this.float(W / 2, HERO_Y - 100, `${cardDef(e.id).name} 한 번 더!`, COLOR.primary);

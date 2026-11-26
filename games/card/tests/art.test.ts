@@ -28,7 +28,8 @@ describe('그림 목록 (art.ts ART_FILES)', () => {
     expect(HEROES.map((h) => h.id).sort()).toEqual([...HERO_IDS].sort());
     for (const h of HERO_IDS) for (const k of [`hero-${h}`, `cut-${h}`, `ic-u-${h}`]) expect(ART_FILES.has(k), k).toBe(true);
     for (const b of BOSS_ARTS) for (const k of [`b-${b}`, `b-${b}-atk`, `b-${b}-hit`]) expect(ART_FILES.has(k), k).toBe(true);
-    for (const e of ENEMIES.filter((x) => x.boss)) expect(BOSS_ARTS.map((b) => `b-${b}`)).toContain(e.art);
+    for (const e of ENEMIES.filter((x) => x.boss)) expect([...BOSS_ARTS.map((b) => `b-${b}`), 'b-final']).toContain(e.art);
+    for (const k of ['b-final', 'b-final-atk']) expect(ART_FILES.has(k), k).toBe(true);
   });
 
   it('카드를 쓸 때의 효과 그림도 다 있다', () => {

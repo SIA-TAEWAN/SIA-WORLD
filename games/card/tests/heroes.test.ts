@@ -387,15 +387,16 @@ describe('전용 카드', () => {
 });
 
 describe('영웅 봇 · 결정성', () => {
-  it('13명 모두 1막을 끝까지 돌고, 기록으로 다시 돌려도 같다', () => {
+  it('13명 모두 판을 끝까지 돌고, 기록으로 다시 돌려도 같다', () => {
     const lines: string[] = [];
     for (const h of HEROES) {
       let wins = 0;
-      const N = 12;
+      const N = 8;
       for (let s = 0; s < N; s++) {
         const run = newRun({ seed: 1000 + s, hero: h.id });
         playRun(run);
-        if (run.phase === 'won') wins++;
+        expect(['dead', 'won']).toContain(run.phase);
+        if (run.act >= 2 || run.phase === 'won') wins++;
         if (s === 0) {
           const again = replay(run.seed, h.id, run.log as Input[]);
           expect(again.bad).toBe(-1);
@@ -404,6 +405,6 @@ describe('영웅 봇 · 결정성', () => {
       }
       lines.push(`${h.name} ${wins}/${N}`);
     }
-    console.log('봇 1막 클리어 — ' + lines.join(' · '));
+    console.log('봇 1막 클리어 (npm run bot 이 자세히) — ' + lines.join(' · '));
   });
 });

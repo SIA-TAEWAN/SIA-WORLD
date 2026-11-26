@@ -74,7 +74,7 @@ export const EVENTS: EventDef[] = [
     id: 'foxFork', name: '갈림길의 여우', acts: [1, 2], art: 'story-2',
     text: '갈림길에서 꼬리 달린 여우가 길을 막는다. 자기를 이기면 큰 상을 준단다.',
     choices: [
-      { label: '정예와 싸우기 (보상 2배)', ops: [{ t: 'elite', double: true }] },
+      { label: '천년 여우와 싸우기 (정예 · 보상 2배)', ops: [{ t: 'elite', double: true, foes: ['foxElite', 'foxElite2'] }] },
       { label: '무시하기', ops: [] },
     ],
   },

@@ -6,6 +6,14 @@
 import { KIND_NAME, RARITY_NAME, cardCost, cardDef, cardName, cardText, potionDef, relicDef } from '../game/rules';
 import { artState, artUrl, hasArt } from '../art';
 import { COLOR, css } from '../theme';
+import { DESC_BOX, DESC_LINE, fitDesc } from './fit';
+
+/** 설명 글자: 칸에 맞는 크기 (넘치면 shrinkOverflow 가 더 줄인다) */
+function descHtml(id: string, up?: boolean): string {
+  const text = cardText(id, up);
+  const f = fitDesc(text, DESC_BOX.html.w, DESC_BOX.html.h);
+  return `<span class="gc-text" style="font-size:${f.size}px;line-height:${DESC_LINE}">${text}</span>`;
+}
 
 const KIND_CSS: Record<string, string> = {
   atk: css(COLOR.cardRed),
@@ -47,7 +55,7 @@ export function cardHtml(id: string, up?: boolean, extra = ''): string {
       <span class="gc-cost${costCls}">${hasArt('energy') ? `<img src="${artUrl('energy')}" alt="" draggable="false">` : ''}<b>${cost}</b></span>
       <span class="gc-name${name.length > 5 ? ' long' : ''}">${name}</span>
       <span class="gc-kind">${KIND_NAME[d.kind]} · ${RARITY_NAME[d.rarity]}</span>
-      <span class="gc-text">${cardText(id, up)}</span>
+      ${descHtml(id, up)}
     </div>`;
   }
   return `<div class="gcard${up ? ' up' : ''}" style="${style}" ${extra}>
@@ -55,7 +63,7 @@ export function cardHtml(id: string, up?: boolean, extra = ''): string {
     <span class="gc-name">${name}</span>
     <span class="gc-art">${artImg(d.art, KIND_GLYPH[d.kind])}</span>
     <span class="gc-kind">${KIND_NAME[d.kind]} · ${RARITY_NAME[d.rarity]}</span>
-    <span class="gc-text">${cardText(id, up)}</span>
+    ${descHtml(id, up)}
   </div>`;
 }
 
