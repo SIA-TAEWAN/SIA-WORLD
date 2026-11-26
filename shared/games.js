@@ -29,6 +29,8 @@ export const GAMES = [
     path: 'games/twelve/', image: 'shared/images/card-twelve.png', open: false },
   { id: 'tower', name: '시아의탑', desc: '소원을 들어주는 구슬을 찾아 100층 탑을 올라라 · 도트 액션 RPG · 1인용',
     path: 'games/tower/', image: 'shared/images/card-tower.png', open: false },
+  { id: 'pang', name: '시아팡팡', desc: '아홉 정령을 셋씩 맞춰 터뜨려라 · 3매치 퍼즐 100스테이지 · 1인용',
+    path: 'games/pang/', image: 'shared/images/card-pang.png', open: false },
 ];
 
 const KEY = 'game_open:';

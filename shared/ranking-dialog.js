@@ -23,7 +23,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang'];
 
 /**
  * 시아레이스 등급 기준: 역대 최고 기록 순위(race_ranking 의 place). 등급마다 한 명뿐이다.
@@ -87,6 +87,8 @@ export const TWELVE_MODES = [
 export const TWELVE_REGIONS = ['쥐의 들판', '소의 논밭', '호랑이 고개', '토끼의 달동산', '용의 연못', '뱀의 늪', '말의 성문', '양의 뜰', '원숭이의 누각', '닭의 새벽길', '개의 삼도천', '돼지의 염라전'];
 /** 시아의탑: 오른 최고 층 → 레벨 → 먼저 달성한 순 (104_tower.sql 의 tower_ranking). 1층이라도 깬 사람만 */
 const TOWER_INFO = { label: '🗼 시아의탑', note: '오른 최고 층 순 (같으면 레벨이 높은 사람, 그다음 먼저 달성한 사람이 위)' };
+/** 시아팡팡: 모은 별 → 깬 스테이지 수 → 먼저 달성한 순 (111_pang.sql 의 pang_ranking). 별을 하나라도 모은 사람만 */
+const PANG_INFO = { label: '💖 시아팡팡', note: '모은 별 순 (같으면 깬 스테이지 수, 그다음 먼저 달성한 사람이 위)' };
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
 /**
@@ -121,7 +123,7 @@ const shiftDay = (day, n) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 const num = (v) => Math.max(0, Math.floor(Number(v) || 0));
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : RANKINGS[g]);
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'pang' ? PANG_INFO : RANKINGS[g]);
 
 /** 역대 최고 기록 순위 → 등급 (1위 해 · 2위 달 · 3위 별 · 4위부터와 순위 없음은 구름) */
 export function raceTierOfPlace(place) {
@@ -409,6 +411,28 @@ export async function getTowerRanking(meId = null) {
   }
   return { rows, mine, total };
 }
+/**
+ * 시아팡팡 랭킹 (pang_ranking 뷰: 모은 별 → 깬 스테이지 수 → 먼저 달성한 순).
+ * → { rows: 상위 100명 [{ key, nickname, stars, cleared, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getPangRanking(meId = null) {
+  const cols = 'user_id,nickname,total_stars,cleared,achieved_at,place,total';
+  const view = () => supabase.from('pang_ranking');
+  const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(DEFENSE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, stars: Number(r.total_stars ?? 0), cleared: Number(r.cleared ?? 0), at: r.achieved_at, place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= DEFENSE_TOP) {
+    const res = await view().select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 /** 걸린 시간 표시 (초 → 3:05 · 1:02:03) */
 export const twelveTime = (sec) => {
   const s = Math.max(0, Math.floor(Number(sec) || 0));
@@ -531,7 +555,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang')
  */
 export function openRanking({ meId = null, first = 'tank' } = {}) {
   // 이미 열린 창이 있으면 하나 더 띄우지 않는다 (버튼을 빠르게 두 번 눌렀을 때). 돌려주는 닫기는 그 창을 닫는다
@@ -618,6 +642,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     if (game === 'volley') return showVolley();
     if (game === 'village') return showVillage();
     if (game === 'tower') return showTower();
+    if (game === 'pang') return showPang();
     const info = RANKINGS[game];
     $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${info.cloud ?? `${formatAmount(info.base)}${info.unit} 이하는 구름`})`;
     const amountText = (r) => r.text ?? `${formatAmount(r.amount)}${info.unit}`;
@@ -1017,6 +1042,29 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'tower') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }  /** 시아팡팡: 모은 별 · 깬 스테이지 수 · 달성 날짜. 상위 100명 + 내 순위 */
+  async function showPang() {
+    $('.note').textContent = `${PANG_INFO.note} · 상위 ${DEFENSE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getPangRanking(meId);
+      if (shown !== 'pang') return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ⭐ ${mine.stars} · ${mine.cleared}스테이지`
+        : '아직 모은 별이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="nm">${esc(r.nickname)}</td><td class="am">⭐ ${r.stars}<small>${r.cleared}스테이지 · ${esc(dateText(r.at))}</small></td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'pang') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   /**

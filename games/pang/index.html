@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport: 안드로이드는 viewport-fit=cover 없이 (games/tower/index.html 과 같은 이유) -->
+    <script>(function () { var c = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'; if (/Android/i.test(navigator.userAgent)) c = c.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, ''); document.write('<meta name="viewport" content="' + c + '" />'); })();</script>
+    <meta name="theme-color" content="#4aa8ff" />
+    <!-- SIA WORLD 앱(PWA): 로비와 같은 manifest·아이콘·서비스 워커. vite-ignore = Vite 가 건드리지 않고 그대로 둔다 -->
+    <link rel="manifest" href="../../manifest.webmanifest" vite-ignore />
+    <link rel="apple-touch-icon" href="../../shared/images/app/apple-touch-icon.png" vite-ignore />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SIA WORLD" />
+    <script type="module" src="../../shared/pwa.js" vite-ignore></script>
+    <meta name="description" content="아홉 정령을 맞춰 터뜨리는 3매치 퍼즐 · 100스테이지" />
+    <title>시아팡팡</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💖</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="boot" class="connecting">불러오는 중…</div>
+    <div id="main" class="hidden">
+<div id="app">
+  <section id="map">
+    <div class="topbar"><a class="back" id="worldLink" href="../../index.html">← SIA WORLD</a><span class="spacer"></span><span class="pill" id="coinPill" title="시아코인"></span><button class="btn rank" id="rankBtn">🏆 랭킹</button></div>
+    <div class="logo">시아팡팡</div>
+    <div class="sub">아홉 정령을 맞춰 터뜨려요</div>
+    <div class="topline"><span class="pill" id="totalStars"></span></div>
+    <div id="chapters"></div>
+  </section>
+  <section id="game" class="hidden">
+    <div class="hud">
+      <button class="btn iconbtn" id="pauseBtn" aria-label="멈춤">II</button>
+      <div class="stagename" id="stageName"></div>
+      <div class="panel moves" id="movesBox"><small>남은 이동</small><b id="movesNum">0</b></div>
+    </div>
+    <div class="panel goals" id="goals"></div>
+    <div class="panel scorebar"><div class="track"><div class="fill" id="scoreFill"></div><span class="mk" id="mk2"></span><span class="mk" id="mk3"></span></div><b id="scoreNum">0</b></div>
+    <div class="boardwrap"><canvas id="board"></canvas></div>
+    <div class="scenewrap" id="sceneWrap"><canvas id="scene" aria-label="정령들이 노는 모습"></canvas></div>
+    <div class="tip">정령을 옆 칸으로 밀거나, 두 칸을 차례로 눌러 바꾸세요</div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<div class="overlay hidden" id="overlay"><div class="panel pop" id="pop"></div></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
