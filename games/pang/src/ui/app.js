@@ -424,6 +424,8 @@ function applyEvent(ev) {
   if (ev.combo >= 2 && G.state === 'play') {
     // 연쇄 콤보 수 (크게) + 칭찬 (작게)
     const big = ev.combo >= 5, col = big ? '#FFB3C8' : '#FFE066';
+    // 진동: 콤보가 길수록 길고 강하게 (navigator.vibrate 가 없는 아이폰 사파리는 아무 일도 없음)
+    try { navigator.vibrate?.(big ? [40, 30, 60] : Math.min(50, 15 + ev.combo * 8)); } catch { /* 막힌 기기 */ }
     texts = texts.filter(t => !t.combo);   // 앞 콤보 글자는 지우고 새 수만
     floatText(ev.combo + ' 콤보!', BW / 2, BH * 0.38, 32 + Math.min(12, ev.combo * 2), col);
     texts[texts.length - 1].combo = true;
