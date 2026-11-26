@@ -85,7 +85,7 @@ const HERO_ICONS = [
 ] as const;
 
 const HEX = {
-  white: '#ffffff',
+  white: css(COLOR.white),
   primary: css(COLOR.primary),
   pink: css(COLOR.pink),
   win: css(COLOR.win),
@@ -1352,7 +1352,7 @@ export class GameScene extends Phaser.Scene {
           img,
           bar: this.add.graphics().setDepth(420),
           num: this.add
-            .text(0, 0, '', { fontFamily: FONT, fontSize: f.rank === 2 ? '40px' : '30px', color: '#ffffff', stroke: css(COLOR.outline), strokeThickness: 7 })
+            .text(0, 0, '', { fontFamily: FONT, fontSize: f.rank === 2 ? '40px' : '30px', color: css(COLOR.white), stroke: css(COLOR.outline), strokeThickness: 7 })
             .setOrigin(0.5)
             .setDepth(430),
           icons: [],
