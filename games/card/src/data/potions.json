@@ -1,0 +1,67 @@
+[
+  {
+    "id": "heal",
+    "name": "회복 물약",
+    "text": "체력 15 회복",
+    "target": "none",
+    "ops": [
+      {
+        "op": "heal",
+        "n": 15
+      }
+    ],
+    "art": "ic-acc-potion"
+  },
+  {
+    "id": "block",
+    "name": "방어 물약",
+    "text": "방어 12",
+    "target": "none",
+    "ops": [
+      {
+        "op": "block",
+        "n": 12
+      }
+    ],
+    "art": "ic-armor"
+  },
+  {
+    "id": "energy",
+    "name": "기력 물약",
+    "text": "기력 +2",
+    "target": "none",
+    "ops": [
+      {
+        "op": "energy",
+        "n": 2
+      }
+    ],
+    "art": "ic-mp"
+  },
+  {
+    "id": "fire",
+    "name": "불 물약",
+    "text": "적 하나에 피해 15",
+    "target": "enemy",
+    "ops": [
+      {
+        "op": "dmg",
+        "n": 15
+      }
+    ],
+    "art": "fx-flame"
+  },
+  {
+    "id": "swift",
+    "name": "날쌘 물약",
+    "text": "카드 3장 뽑기",
+    "target": "none",
+    "ops": [
+      {
+        "op": "draw",
+        "n": 3
+      }
+    ],
+    "art": "ic-acc-speed"
+  }
+]
