@@ -18,13 +18,47 @@ const COMBO = ['', '', '좋아요', '멋져요', '대단해요'];
 // save = 서버의 내 기록 (pang_state). 결과를 보낸 뒤 서버 답으로 다시 맞춘다
 const save = { stars: {}, best: {} };
 let siaCoins = 0;
+// 목숨 (113_pang_lives.sql): 판을 시작할 때마다 1개, 처음 깬 판이면 1개 돌려받음, 20분마다 1개 참. 관리자는 줄지 않는다
+const LIVES_MAX = 5, REGEN_SEC = 1200;
+let lives = LIVES_MAX, lifeAt = 0, admin = false;   // lifeAt = 다음 목숨이 차는 때 (performance.now 기준 ms, 0 = 다 참)
+function takeLives(n, next) {
+  if (Number.isFinite(n)) lives = n;
+  lifeAt = next > 0 && lives < LIVES_MAX ? performance.now() + next * 1000 : 0;
+  livesPill();
+}
+/** 화면에서만 시간이 지나 찬 목숨을 셈 (서버가 같은 규칙으로 다시 센다) */
+function tickLives() {
+  while (lifeAt && performance.now() >= lifeAt) {
+    lives = Math.min(LIVES_MAX, lives + 1);
+    lifeAt = lives >= LIVES_MAX ? 0 : lifeAt + REGEN_SEC * 1000;
+  }
+}
+function mmss(ms) { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }
+function livesText() {
+  if (admin) return '❤️ 관리자 · 목숨이 줄지 않아요';
+  tickLives();
+  return '❤️ ' + lives + ' / ' + LIVES_MAX + (lifeAt ? ' · ' + mmss(lifeAt - performance.now()) : '');
+}
+function livesPill() { const el = $('livesPill'); if (el) el.textContent = livesText(); }
+setInterval(() => { livesPill(); const w = $('pop').querySelector('.lifeline'); if (w) w.textContent = startLifeLine(); }, 1000);
 function takeState(st) {
   save.stars = { ...(st.stars || {}) }; save.best = { ...(st.best || {}) };
   if (Number.isFinite(st.siaCoins)) siaCoins = st.siaCoins;
+  admin = st.admin === true;
+  takeLives(st.lives, st.nextLife);
 }
 takeState(opts.state);
-const ALL = local && /[?&]all=1\b/.test(location.search);
+const ALL = admin || (local && /[?&]all=1\b/.test(location.search));
 function unlockedUpTo() { if (ALL) return 100; let n = 1; while (n <= 100 && save.stars[n]) n++; return Math.min(100, n); }
+/** 실제 진행의 다음 판 (관리자도 깜빡임은 여기에) */
+function nextStage() { let n = 1; while (n <= 100 && save.stars[n]) n++; return n; }
+/** 지도에 보이는 챕터 수: 앞 챕터 10판을 모두 깨야 다음 챕터가 보인다 (관리자는 모두) */
+function shownChapters() {
+  if (ALL) return 10;
+  let ch = 1;
+  while (ch < 10 && LEVELS.filter(l => l.chapter === ch - 1).every(l => save.stars[l.id])) ch++;
+  return ch;
+}
 
 // ---------- map ----------
 function renderMap() {
@@ -32,13 +66,17 @@ function renderMap() {
   let total = 0; for (const k in save.stars) total += save.stars[k];
   $('totalStars').innerHTML = STAR + ' ' + total + ' / 300';
   $('coinPill').textContent = '🪙 ' + siaCoins.toLocaleString();
+  livesPill();
   let html = '';
-  for (let ch = 0; ch < 10; ch++) {
+  const shown = shownChapters();
+  // 새 챕터가 맨 위 (10 - 9 - 8 …): 다음 지도를 하려고 아래로 내려가지 않아도 되게. 아직 안 보이는 챕터 카드도 맨 위에
+  if (shown < 10) html += '<div class="panel chapter hiddench"><h2>' + (shown + 1) + '. ???</h2><p>' + shown + '장의 10판을 모두 깨면 다음 지도가 보여요</p></div>';
+  for (let ch = shown - 1; ch >= 0; ch--) {
     const list = LEVELS.filter(l => l.chapter === ch);
     const got = list.reduce((s, l) => s + (save.stars[l.id] || 0), 0);
-    html += '<div class="panel chapter"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
+    html += '<div class="panel chapter" style="--bg:url(art/maps/ch' + String(ch + 1).padStart(2, '0') + '.webp)"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
     for (const l of list) {
-      const st = save.stars[l.id] || 0, lock = l.id > open, next = l.id === open && !st;
+      const st = save.stars[l.id] || 0, lock = l.id > open, next = l.id === nextStage() && !st;
       const cls = ['stage', l.boss ? 'boss' : '', st ? 'done' : '', lock ? 'lock' : '', next ? 'next' : ''].join(' ');
       const stars = lock ? '' : [1, 2, 3].map(n => n <= st ? STAR : STAR_OFF).join('');
       html += '<button class="' + cls + '" data-id="' + l.id + '" aria-label="스테이지 ' + l.id + (lock ? ' 잠김' : '') + '"' + (lock ? ' disabled' : '') + '><b>' + (lock ? '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="5" y="10" width="14" height="10" rx="2" fill="#B8A584"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="#B8A584" stroke-width="2.5"/></svg>' : l.id) + '</b><i>' + stars + '</i></button>';
@@ -129,23 +167,36 @@ function goalList(goals, live) {
   }
   return wrap;
 }
+function startLifeLine() {
+  if (admin) return '관리자 — 목숨이 줄지 않아요';
+  tickLives();
+  if (lives < 1) return '목숨이 없어요 · ' + mmss(lifeAt - performance.now()) + ' 뒤 1개 차요';
+  return '목숨 1개를 써요 (남은 목숨 ' + lives + '개)';
+}
+/** 목숨이 없으면 알려 주고 false */
+function needLife() {
+  tickLives();
+  if (admin || lives >= 1) return true;
+  popup('<h3>목숨이 없어요</h3><div class="chap">목숨은 20분마다 1개씩 차요</div><div class="info lifeline">' + startLifeLine() + '</div><div class="row"><button class="btn primary" data-a="ok">확인</button></div>', p => { p.querySelector('[data-a=ok]').onclick = () => { closePop(); if (G) toMap(); else renderMap(); }; });
+  return false;
+}
 function showStart(id) {
   const L = LEVELS[id - 1];
   iconCanvases.length = 0;
   const goals = E.createGame(L, 1).goals;
   const best = save.best[id], st = save.stars[id] || 0;
-  popup('<h3>스테이지 ' + id + '</h3><div class="chap">' + (L.chapter + 1) + '장 ' + L.name + (L.boss ? ' · 보스' : '') + '</div><div class="gl"></div><div class="info">이동 ' + L.moves + '번 · 정령 ' + L.kinds.length + '종</div>' + (L.intro ? '<div class="intro"></div>' : '') + (best ? '<div class="info">최고 ' + best.toLocaleString() + '점 ' + [1, 2, 3].map(n => n <= st ? STAR : STAR_OFF).join('') + '</div>' : '') + '<div class="row"><button class="btn" data-a="close">닫기</button><button class="btn primary" data-a="go">시작</button></div>', p => {
+  popup('<h3>스테이지 ' + id + '</h3><div class="chap">' + (L.chapter + 1) + '장 ' + L.name + (L.boss ? ' · 보스' : '') + '</div><div class="gl"></div><div class="info">이동 ' + L.moves + '번 · 정령 ' + L.kinds.length + '종</div>' + (L.intro ? '<div class="intro"></div>' : '') + (best ? '<div class="info">최고 ' + best.toLocaleString() + '점 ' + [1, 2, 3].map(n => n <= st ? STAR : STAR_OFF).join('') + '</div>' : '') + '<div class="info coin lifeline">' + startLifeLine() + '</div>' + (!st && !admin ? '<div class="info coin">처음 깨면 목숨 +1</div>' : '') + '<div class="row"><button class="btn" data-a="close">닫기</button><button class="btn primary" data-a="go">시작</button></div>', p => {
     p.querySelector('.gl').replaceWith(goalList(goals, false));
     if (L.intro) p.querySelector('.intro').textContent = L.intro;
     p.querySelector('[data-a=close]').onclick = () => { closePop(); };
-    p.querySelector('[data-a=go]').onclick = () => { closePop(); startStage(id); };
+    p.querySelector('[data-a=go]').onclick = () => { if (!needLife()) return; closePop(); startStage(id); };
   });
 }
 function showPause() {
   if (!G || phase === 'end') return;
-  popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기</button></div><div class="row"><button class="btn primary" data-a="go">계속하기</button></div>', p => {
+  popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기' + (admin ? '' : ' ❤️-1') + '</button></div><div class="row"><button class="btn primary" data-a="go">계속하기</button></div>', p => {
     p.querySelector('[data-a=go]').onclick = closePop;
-    p.querySelector('[data-a=retry]').onclick = () => { closePop(); startStage(L.id); };
+    p.querySelector('[data-a=retry]').onclick = () => { if (!needLife()) return; closePop(); startStage(L.id); };
     p.querySelector('[data-a=map]').onclick = () => { closePop(); toMap(); };
   });
 }
@@ -167,14 +218,15 @@ function showResult(win) {
   popup(html, p => {
     const gl = p.querySelector('.gl'); if (gl) gl.replaceWith(goalList(G.goals, true));
     p.querySelector('[data-a=map]').onclick = () => { closePop(); toMap(); };
-    p.querySelector('[data-a=retry]').onclick = () => { closePop(); startStage(id); };
+    p.querySelector('[data-a=retry]').onclick = () => { if (!needLife()) return; closePop(); startStage(id); };
     const n = p.querySelector('[data-a=next]'); if (n) n.onclick = () => { closePop(); showStart(id + 1); };
   });
   const line = $('pop').querySelector('.coin');
   api.finish(run, id, win, score, swaps).then(r => {
     save.stars[id] = Math.max(save.stars[id] || 0, r.stars); save.best[id] = Math.max(save.best[id] || 0, r.best);
     if (Number.isFinite(r.siaCoins)) siaCoins = r.siaCoins;
-    if (line && line.isConnected) line.textContent = r.gotCoin ? '🪙 시아코인 +1' : '기록을 저장했어요';
+    if (!admin) takeLives(r.lives, r.nextLife);
+    if (line && line.isConnected) line.textContent = (r.gotCoin ? '🪙 시아코인 +1' : '기록을 저장했어요') + (r.lifeBack && !admin ? ' · ❤️ 목숨 +1' : '');
   }).catch(err => {
     if (line && line.isConnected) line.textContent = err && err.message === 'too fast' ? '기록이 너무 빨라 저장하지 않았어요' : '기록을 저장하지 못했어요. 인터넷 연결을 확인해 주세요';
   });
@@ -217,10 +269,12 @@ let runId = null, swaps = 0, starting = false;
 async function startStage(id) {
   if (starting) return;
   starting = true;
-  try { runId = await api.start(id); }
+  try { const r = await api.start(id); runId = r.run; if (!admin) takeLives(r.lives, r.nextLife); }
   catch (err) {
     starting = false;
-    popup('<h3>시작하지 못했어요</h3><div class="chap">' + (err && err.message === 'locked stage' ? '아직 열리지 않은 스테이지예요' : '인터넷 연결을 확인하고 다시 시도해 주세요') + '</div><div class="row"><button class="btn primary" data-a="ok">확인</button></div>', p => { p.querySelector('[data-a=ok]').onclick = () => { closePop(); toMap(); }; });
+    const why = err && err.message;
+    if (why === 'no lives') { lives = 0; if (!lifeAt) lifeAt = performance.now() + REGEN_SEC * 1000; api.state().then(st => takeLives(st.lives, st.nextLife)).catch(() => {}); }
+    popup('<h3>시작하지 못했어요</h3><div class="chap">' + (why === 'locked stage' ? '아직 열리지 않은 스테이지예요' : why === 'no lives' ? '목숨이 없어요. 20분마다 1개씩 차요' : '인터넷 연결을 확인하고 다시 시도해 주세요') + '</div><div class="row"><button class="btn primary" data-a="ok">확인</button></div>', p => { p.querySelector('[data-a=ok]').onclick = () => { closePop(); toMap(); }; });
     return;
   }
   starting = false; swaps = 0;
@@ -370,7 +424,19 @@ function applyEvent(ev) {
     sx /= ev.cleared.length; sy /= ev.cleared.length;
     if (ev.gain) floatText('+' + ev.gain.toLocaleString(), sx, sy + S * 0.15, 18);
   }
-  if (ev.combo >= 2 && G.state === 'play') floatText(ev.combo >= 5 ? '정령 폭풍!' : COMBO[ev.combo] + '!', BW / 2, BH * 0.42, 30 + Math.min(10, ev.combo * 2), ev.combo >= 5 ? '#FFB3C8' : '#FFE066');
+  if (ev.combo >= 2 && G.state === 'play') {
+    // 연쇄 콤보 수 (크게) + 칭찬 (작게)
+    const big = ev.combo >= 5, col = big ? '#FFB3C8' : '#FFE066';
+    // 진동: 콤보가 길수록 길고 강하게 (navigator.vibrate 가 없는 아이폰 사파리는 아무 일도 없음)
+    try { navigator.vibrate?.(big ? [40, 30, 60] : Math.min(50, 15 + ev.combo * 8)); } catch { /* 막힌 기기 */ }
+    texts = texts.filter(t => !t.combo);   // 앞 콤보 글자는 지우고 새 수만
+    // 콤보가 늘수록 글자도 커진다 (2콤보 34px → 한 번에 8px씩, 판 너비를 넘지 않게)
+    const size = Math.min(BW * 0.24, 26 + (ev.combo - 1) * 8), sub = Math.min(32, 16 + ev.combo * 2);
+    floatText(ev.combo + ' 콤보!', BW / 2, BH * 0.38, size, col);
+    texts[texts.length - 1].combo = true;
+    floatText(big ? '정령 폭풍!' : COMBO[ev.combo] + '!', BW / 2, BH * 0.38 + size * 0.55 + sub * 0.7, sub, col);
+    texts[texts.length - 1].combo = true;
+  }
   if (ev.movesAdded) floatText('이동 +' + ev.movesAdded, BW / 2, BH * 0.25, 26, '#FF9EC4');
 }
 
@@ -601,5 +667,5 @@ function frame(now) {
 }
 renderMap();
 requestAnimationFrame(frame);
-if (local) window.__pang = { get G() { return G; }, get phase() { return phase; }, startStage, showStart, LEVELS, trySwap, hint: () => G && E.hint(G) };
+if (local) window.__pang = { get texts() { return texts; }, get lives() { return lives; }, get admin() { return admin; }, get G() { return G; }, get phase() { return phase; }, startStage, showStart, LEVELS, trySwap, hint: () => G && E.hint(G) };
 }

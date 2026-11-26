@@ -29,9 +29,14 @@ button{font:inherit;color:inherit}
 .star{width:1em;height:1em;display:inline-block;vertical-align:-0.12em}
 .star path{fill:var(--primary);stroke:var(--ink);stroke-width:2;stroke-linejoin:round}
 .star.off path{fill:#E2D3B5;stroke:#B8A584}
-.topline{display:flex;justify-content:center;margin-bottom:12px}
+.topline{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 /* map */
 .chapter{padding:12px 12px 14px;margin:0 0 18px}
+/* 챕터 배경 그림 (public/art/maps/chNN.webp — 없으면 크림 판 그대로). 제목·설명 뒤에만 크림 베일 */
+.chapter{background:var(--bg,none) center/cover no-repeat,var(--panel);overflow:hidden}
+.chapter h2{background:rgba(255,248,232,.88);border-radius:12px;padding:4px 10px}
+.chapter p{display:inline-block;background:rgba(255,248,232,.88);border-radius:10px;padding:2px 10px;margin-top:4px}
+.chapter .stages{padding-top:2px}
 .chapter h2{margin:0 0 2px;font-size:20px;font-weight:normal;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .chapter h2 small{font-size:13px;color:var(--ink-soft)}
 .chapter p{margin:0 0 10px;font-size:13px;color:var(--ink-soft)}
@@ -88,3 +93,5 @@ button{font:inherit;color:inherit}
 .pop .row{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
 .pop .row .btn{flex:1 1 0}
 @media (prefers-reduced-motion:reduce){.stage.next b,.pop,.pop .bigstars .star{animation:none}}
+.chapter.hiddench{opacity:.75;border-style:dashed}
+.chapter.hiddench p{margin:4px 0 0}
