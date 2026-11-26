@@ -23,7 +23,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 탭 순서 (시아탱크가 먼저) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'card'];
 
 /**
  * 시아레이스 등급 기준: 역대 최고 기록 순위(race_ranking 의 place). 등급마다 한 명뿐이다.
@@ -87,6 +87,12 @@ export const TWELVE_MODES = [
 export const TWELVE_REGIONS = ['쥐의 들판', '소의 논밭', '호랑이 고개', '토끼의 달동산', '용의 연못', '뱀의 늪', '말의 성문', '양의 뜰', '원숭이의 누각', '닭의 새벽길', '개의 삼도천', '돼지의 염라전'];
 /** 시아의탑: 오른 최고 층 → 레벨 → 먼저 달성한 순 (104_tower.sql 의 tower_ranking). 1층이라도 깬 사람만 */
 const TOWER_INFO = { label: '🗼 시아의탑', note: '오른 최고 층 순 (같으면 레벨이 높은 사람, 그다음 먼저 달성한 사람이 위)' };
+/**
+ * 시아카드배틀: 오늘의 도전 점수(daily_ranking 'card') · 끝없는 모드 최고 칸(111_card.sql 의 card_endless_ranking) 두 가지.
+ * 고르기 줄은 디펜스·돌격대·핑거와 같이 쓰고, 첫 단추를 '끝없는 모드'로 바꿔 쓴다 (두 번째 단추는 숨김). 처음 열리는 것은 오늘의 도전
+ */
+const CARD_INFO = { label: '🃏 카드배틀', note: '끝없는 모드 · 올라간 최고 칸 순 (같으면 먼저 달성한 사람이 위)' };
+export const CARD_MODES = [{ id: 'endless', name: '끝없는 모드' }];
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
 /**
@@ -103,6 +109,7 @@ const DAILY_TABS = {
   charge: { game: 'charge', note: '오늘의 길 · 달린 거리 순' },
   finger: { game: 'finger', note: '오늘의 스테이지 · 깬 판의 턴 수가 적은 순' },
   defense: { game: 'defense', note: '오늘의 고개 · 클리어한 판이 위, 그다음 남은 생명, 처치 수 순' },
+  card: { game: 'card', note: '모두 같은 영웅 · 지도 · 점수 = 올라간 칸×10 + 정예×30 + 보스×100 + 남은 체력 (하루 첫 판만)' },
 };
 /** 레이스 탭의 고르기 줄 첫 단추 (레이스는 원래 모드가 없다) */
 const RACE_BEST_NAME = '최고 기록';
@@ -121,7 +128,7 @@ const shiftDay = (day, n) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 const num = (v) => Math.max(0, Math.floor(Number(v) || 0));
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : RANKINGS[g]);
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'card' ? CARD_INFO : RANKINGS[g]);
 
 /** 역대 최고 기록 순위 → 등급 (1위 해 · 2위 달 · 3위 별 · 4위부터와 순위 없음은 구름) */
 export function raceTierOfPlace(place) {
@@ -409,6 +416,28 @@ export async function getTowerRanking(meId = null) {
   }
   return { rows, mine, total };
 }
+/**
+ * 시아카드배틀 끝없는 모드 랭킹 (card_endless_ranking 뷰: 최고 칸 → 먼저 달성한 순).
+ * → { rows: 상위 100명 [{ key, nickname, floors, acts, hero, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getCardEndlessRanking(meId = null) {
+  const cols = 'user_id,nickname,best_floors,acts,hero,achieved_at,place,total';
+  const view = () => supabase.from('card_endless_ranking');
+  const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(DEFENSE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, floors: Number(r.best_floors ?? 0), acts: Number(r.acts ?? 0), hero: r.hero ?? 'tiger', at: r.achieved_at, place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= DEFENSE_TOP) {
+    const res = await view().select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 /** 걸린 시간 표시 (초 → 3:05 · 1:02:03) */
 export const twelveTime = (sec) => {
   const s = Math.max(0, Math.floor(Number(sec) || 0));
@@ -580,7 +609,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     if (sm) void showSurvival(survivalMap, sm.dataset.sm);
     const dm = e.target.closest('[data-dm]');
     if (dm && shown === 'race') void showRace(dm.dataset.dm === DAILY_MODE || dm.dataset.dm === WEEKLY_MODE ? dm.dataset.dm : 'best');
-    else if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : showDefense(dm.dataset.dm));
+    else if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : shown === 'card' ? showCard(dm.dataset.dm) : showDefense(dm.dataset.dm));
     const dd = e.target.closest('[data-dd]');
     if (dd && !dd.disabled) moveDaily(Number(dd.dataset.dd));
   });
@@ -597,11 +626,12 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     $('.subs').classList.toggle('on', game === 'survival');
     $('.modes').classList.toggle('on', game === 'survival');
     // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스·돌격대·핑거·열두길 탭에서만 보인다 (버튼 글자는 탭마다 바꾼다)
-    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve' || game === 'race');
+    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve' || game === 'race' || game === 'card');
     // 레이스는 [오늘의 도전 · 주간 · 최고 기록] 셋 (보이는 순서는 CSS order), 주간 단추는 레이스에만. 열두길은 오늘의 도전이 없다
     dim.querySelectorAll('.dmodes button').forEach((b, i) => {
       const dm = b.dataset.dm;
-      b.toggleAttribute('hidden', dm === DAILY_MODE ? !DAILY_TABS[game] : dm === WEEKLY_MODE ? game !== 'race' : game === 'race' && i > 0);
+      // 카드배틀은 [끝없는 모드 · 오늘의 도전] 둘 (두 번째 디펜스 단추는 숨김)
+      b.toggleAttribute('hidden', dm === DAILY_MODE ? !DAILY_TABS[game] : dm === WEEKLY_MODE ? game !== 'race' : (game === 'race' || game === 'card') && i > 0);
       b.style.order = game === 'race' ? String(RACE_MODE_ORDER[dm === DAILY_MODE || dm === WEEKLY_MODE ? dm : 'best']) : '';
     });
     // 주간 줄(남은 날 · 지난주 1~3등)은 레이스 주간에서만 (showRace 가 켠다)
@@ -618,6 +648,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     if (game === 'volley') return showVolley();
     if (game === 'village') return showVillage();
     if (game === 'tower') return showTower();
+    if (game === 'card') return showCard(cardMode);
     const info = RANKINGS[game];
     $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${info.cloud ?? `${formatAmount(info.base)}${info.unit} 이하는 구름`})`;
     const amountText = (r) => r.text ?? `${formatAmount(r.amount)}${info.unit}`;
@@ -1020,6 +1051,43 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     }
   }
   /**
+   * 시아카드배틀: 오늘의 도전(처음) / 끝없는 모드 최고 칸(그때 영웅 얼굴 · 칸 · 깬 막 · 달성 날짜). 상위 100명 + 내 순위
+   */
+  let cardMode = DAILY_MODE;
+  async function showCard(mode = cardMode) {
+    // 고르기 줄 첫 단추(data-dm = 디펜스의 stage)가 끝없는 모드
+    mode = mode === DAILY_MODE ? DAILY_MODE : 'endless';
+    cardMode = mode;
+    $('.dday').classList.toggle('on', mode === DAILY_MODE);
+    dim.querySelectorAll('.dmodes button').forEach((b, i) => {
+      b.classList.toggle('sel', b.dataset.dm === DAILY_MODE ? mode === DAILY_MODE : i === 0 && mode === 'endless');
+      if (i === 0) b.textContent = CARD_MODES[0].name;
+    });
+    if (mode === DAILY_MODE) return showDaily('card');
+    $('.note').textContent = `${CARD_INFO.note} · 상위 ${DEFENSE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getCardEndlessRanking(meId);
+      if (shown !== 'card' || cardMode !== 'endless') return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${mine.floors}칸 · ${mine.acts}막 돌파`
+        : '아직 끝없는 모드 기록이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="ch"><img src="${faceUrl(r.hero)}" alt="" /></td><td class="nm">${esc(r.nickname)}</td>` +
+              `<td class="am">${r.floors}칸<small>${r.acts}막 돌파 · ${esc(dateText(r.at))}</small></td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'card' && cardMode === 'endless') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /**
    * 오늘의 도전: 그날 순위 상위 50명 + 내 순위 (daily_ranking). 표 모양은 그 탭의 다른 랭킹과 같다.
    * 점수는 게임마다 detail 로 읽는다 — 레이스 { ms } · 서바이벌 { time, kills, cleared, level, map, character } ·
    * 돌격대 { meters, kills, bosses, leader } · 핑거 { turns, fallen, stage } · 디펜스 { cleared, lives, kills, time, stage }
@@ -1027,7 +1095,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
   let dailyDay = null; // 보고 있는 날짜 (null = 오늘)
   let dailyToday = null; // 서버가 알려 준 오늘
   let dailySeq = 0;
-  const modeOfTab = (tab) => (tab === 'race' ? raceMode : tab === 'survival' ? survivalMode : tab === 'defense' ? defenseMode : tab === 'charge' ? chargeMode : tab === 'finger' ? fingerMode : '');
+  const modeOfTab = (tab) => (tab === 'race' ? raceMode : tab === 'survival' ? survivalMode : tab === 'defense' ? defenseMode : tab === 'charge' ? chargeMode : tab === 'finger' ? fingerMode : tab === 'card' ? cardMode : '');
   const DAILY_VIEW = {
     race: (d, score) => {
       const ms = Number(d.ms) > 0 ? Number(d.ms) : Math.abs(Number(score) || 0);
@@ -1053,6 +1121,12 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       const fallen = num(d.fallen);
       return { main: `${turns}턴`, sub: fallen > 0 ? `쓰러짐 ${fallen}` : '모두 무사', line: `${turns}턴${fallen > 0 ? ` · 쓰러짐 ${fallen}` : ''}` };
     },
+    card: (d, score) => ({
+      face: `<td class="ch"><img src="${faceUrl(d.hero)}" alt="" /></td>`,
+      main: `${num(score).toLocaleString()}점`,
+      sub: `${num(d.floors)}칸 · 정예 ${num(d.elites)} · 보스 ${num(d.bosses)}${d.ending === 'true' ? ' · 진짜 엔딩' : d.ending === 'normal' ? ' · 클리어' : ''}`,
+      line: `${num(score).toLocaleString()}점 · ${num(d.floors)}칸`,
+    }),
     defense: (d) => {
       const cleared = d.cleared === true;
       return {

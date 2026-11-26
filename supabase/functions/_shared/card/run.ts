@@ -8,13 +8,14 @@
 import { MAX_POTIONS, endTurn, heal, pickHand, playCard, startBattle, usePotion } from './battle.ts';
 import { CARD_ODDS, CARD_ODDS_MAGPIE, EASY_BATTLES, FINAL_ELITES, GOLD, PRICES } from './data/acts.ts';
 import { ACTS, CARDS, EVENTS, POTIONS, RELICS, RELIC_READY, canUpgrade, cardDef, eventDef, heroDef, regionDef } from './data.ts';
+import { ENDLESS_STEP, MASTERY_BOSS_HP, MASTERY_ELITE_HP, MASTERY_NORMAL_ATK, MASTERY_OPEN, MASTERY_REST_HEAL, MASTERY_SHOP, REST_HEAL, type RunMode } from './data/modes.ts';
 import { genMap, reachable } from './map.ts';
 import { Rng, hashSeed } from './rng.ts';
-import type { DeckCard, Input, RewardItem, RunState, Shop, SimEvent } from './state.ts';
+import type { DeckCard, FoeMods, Input, RewardItem, RunState, Shop, SimEvent } from './state.ts';
 import type { EvOp, NodeType } from './types.ts';
 
 /** 규칙 판본 — 같은 입력이 다른 결과를 내게 규칙을 바꾸면 올린다 (저장한 판·서버 검증이 같은 판본끼리만 맞는다) */
-export const RULES_VERSION = 2;
+export const RULES_VERSION = 3;
 /** 덱 최소 장수 (그 아래로 없애기 불가) */
 export const MIN_DECK = 5;
 export { EASY_BATTLES, FINAL_ELITES };
@@ -24,7 +25,13 @@ export const POTION_DROP = 0.4;
 export interface NewRunOpts {
   seed: number;
   hero: string;
+  /** 기본 normal */
+  mode?: RunMode;
+  /** 숙련 단계 (보통 모드만, 0~MASTERY_OPEN) */
+  mastery?: number;
 }
+/** 판 설정 (재실행에 필요한 것: 씨앗·영웅 밖의 것) */
+export type RunOpts = Pick<NewRunOpts, 'mode' | 'mastery'>;
 
 export function newRun(o: NewRunOpts): RunState {
   const h = heroDef(o.hero);
@@ -35,11 +42,14 @@ export function newRun(o: NewRunOpts): RunState {
   deck.push({ uid: uid++, id: h.cards[0] });
   for (const c of deck) cardDef(c.id);
   const seed = o.seed >>> 0;
+  const mode: RunMode = o.mode ?? 'normal';
+  const mastery = mode === 'normal' ? Math.max(0, Math.min(MASTERY_OPEN, Math.floor(o.mastery ?? 0))) : 0;
   return {
     v: 1,
     rules: RULES_VERSION,
     seed,
-    mode: 'normal',
+    mode,
+    mastery,
     hero: h.id,
     hp: h.hp,
     maxHp: h.hp,
@@ -51,7 +61,7 @@ export function newRun(o: NewRunOpts): RunState {
     row: -1,
     col: 0,
     path: [],
-    map: genMap(seed, 1),
+    map: genMap(seed, 1, 0, mode),
     phase: 'map',
     battle: null,
     reward: null,
@@ -71,8 +81,8 @@ export function newRun(o: NewRunOpts): RunState {
 }
 
 /** 씨앗·영웅·입력 기록으로 처음부터 다시 돌린다. 받아들여지지 않는 입력이 있으면 그 위치를 알려 준다 */
-export function replay(seed: number, hero: string, log: Input[]): { run: RunState; bad: number } {
-  const run = newRun({ seed, hero });
+export function replay(seed: number, hero: string, log: Input[], opts: RunOpts = {}): { run: RunState; bad: number } {
+  const run = newRun({ seed, hero, ...opts });
   for (let i = 0; i < log.length; i++) {
     if (!apply(run, log[i]).ok) return { run, bad: i };
   }
@@ -129,6 +139,29 @@ function step(run: RunState, i: Input, ev: SimEvent[]): boolean {
 }
 
 const has = (run: RunState, relic: string) => run.relics.includes(relic);
+/** 사건·막별 데이터가 보는 막 번호: 1~3막은 그대로, 끝없는 모드 4막부터는 그 지역의 막 (대나무숲·들판 1 · 궁궐 2 · 저승 3) */
+export function storyAct(run: RunState): number {
+  if (run.act <= 3) return run.act;
+  const i = ACTS.findIndex((a) => !a.hidden && a.regions.includes(run.map.region));
+  return i >= 0 ? i + 1 : 1;
+}
+
+/**
+ * 이 전투의 요괴가 강해지는 정도.
+ * 끝없는 모드: 2막부터 막마다 체력·피해 ×1.15 누적. 숙련: 1 정예 체력+10% · 2 일반 요괴 공격+1 · 5 막 보스 체력+10% (3·4 는 상점·쉼터)
+ */
+export function foeMods(run: RunState): FoeMods | undefined {
+  const k = run.mode === 'endless' ? Math.pow(1 + ENDLESS_STEP, Math.max(0, run.act - 1)) : 1;
+  const m = run.mastery ?? 0;
+  const mods: FoeMods = {
+    hp: k,
+    dmg: k,
+    eliteHp: m >= 1 ? MASTERY_ELITE_HP : 1,
+    add: m >= 2 ? MASTERY_NORMAL_ATK : 0,
+    bossHp: m >= 5 ? MASTERY_BOSS_HP : 1,
+  };
+  return mods.hp === 1 && mods.eliteHp === 1 && mods.add === 0 && mods.bossHp === 1 ? undefined : mods;
+}
 const nodeRng = (run: RunState, tag: string) => new Rng({ s: hashSeed(run.seed, tag, run.act, run.row, run.col) }, 's');
 
 // ---------- 지도 ----------
@@ -160,7 +193,7 @@ function enterNode(run: RunState, type: NodeType, ev: SimEvent[]) {
   switch (type) {
     case 'battle': {
       const reg = regionDef(run.map.region);
-      const easy = EASY_BATTLES[Math.min(run.act, EASY_BATTLES.length) - 1];
+      const easy = EASY_BATTLES[Math.min(storyAct(run), EASY_BATTLES.length) - 1];
       const pool = (run.actBattles ?? 0) < easy || !reg.normal.length ? reg.easy : reg.normal;
       fight(run, 'battle', r.pick(pool), ev);
       break;
@@ -201,7 +234,7 @@ function enterNode(run: RunState, type: NodeType, ev: SimEvent[]) {
 
 function fight(run: RunState, kind: 'battle' | 'elite' | 'boss', foes: string[], ev: SimEvent[], double = false) {
   run.phase = 'battle';
-  startBattle(run, { kind, foes, seed: hashSeed(run.seed, 'battle', run.act, run.row, run.col), double }, ev);
+  startBattle(run, { kind, foes, seed: hashSeed(run.seed, 'battle', run.act, run.row, run.col), double, mods: foeMods(run) }, ev);
 }
 
 // ---------- 전투 ----------
@@ -393,7 +426,8 @@ export const finalOpen = (run: RunState) => run.stats.elites >= FINAL_ELITES;
 function nextAct(run: RunState) {
   const next = run.act + 1;
   const def = ACTS[next - 1];
-  if (!def || !def.regions.some((id) => regionDef(id).ready) || (def.hidden && !finalOpen(run))) {
+  // 끝없는 모드: 쓰러질 때까지 다음 막 (숨은 4막 없이 대나무숲 → 들판 → 궁궐 → 저승 되풀이)
+  if (run.mode !== 'endless' && (!def || !def.regions.some((id) => regionDef(id).ready) || (def.hidden && !finalOpen(run)))) {
     // 3막 클리어 = 일반 엔딩
     run.ending = 'normal';
     run.phase = 'won';
@@ -404,7 +438,7 @@ function nextAct(run: RunState) {
   run.col = 0;
   run.path = [];
   run.actBattles = 0;
-  run.map = genMap(run.seed, next, has(run, 'treasureMap') ? 2 : 0);
+  run.map = genMap(run.seed, next, has(run, 'treasureMap') ? 2 : 0, run.mode);
   run.actStart.push(run.log.length + 1);
   run.phase = 'map';
 }
@@ -413,7 +447,7 @@ function nextAct(run: RunState) {
 
 function makeShop(run: RunState): Shop {
   const r = nodeRng(run, 'shop');
-  const price = (range: readonly number[]) => r.int(range[0], range[1]);
+  const price = (range: readonly number[]) => shopPrice(run, r.int(range[0], range[1]));
   const cards: Shop['cards'] = [];
   for (let k = 0; k < 20 && cards.length < 5; k++) {
     const rar = rarityOf(run, r);
@@ -435,7 +469,9 @@ function makeShop(run: RunState): Shop {
   return { cards, relics, potions, removed: false };
 }
 
-export const removePrice = (run: RunState) => PRICES.remove + PRICES.removeStep * run.removes;
+/** 숙련 3: 상점 가격 +15% (카드·부적·물약·카드 없애기) */
+export const shopPrice = (run: RunState, n: number) => ((run.mastery ?? 0) >= 3 ? Math.round(n * MASTERY_SHOP) : n);
+export const removePrice = (run: RunState) => shopPrice(run, PRICES.remove + PRICES.removeStep * run.removes);
 
 function spend(run: RunState, n: number): boolean {
   if (run.gold < n) return false;
@@ -485,7 +521,7 @@ function shopStep(run: RunState, i: Input): boolean {
 
 export function restHeal(run: RunState): number {
   if (has(run, 'dragonPearl')) return 0;
-  return Math.floor(run.maxHp * 0.3) + (run.hero === 'rabbit' ? 10 : 0) + (has(run, 'wildGinseng') ? 15 : 0);
+  return Math.floor(run.maxHp * ((run.mastery ?? 0) >= 4 ? MASTERY_REST_HEAL : REST_HEAL)) + (run.hero === 'rabbit' ? 10 : 0) + (has(run, 'wildGinseng') ? 15 : 0);
 }
 export const restUpgrades = (run: RunState) => (has(run, 'smithHammer') ? 2 : 1);
 export const upgradable = (run: RunState) => run.deck.filter((c) => canUpgrade(c.id, c.up));
@@ -540,7 +576,7 @@ function treasureStep(run: RunState, i: Input): boolean {
 
 /** 이 막에 나올 수 있고 이 판에서 아직 안 본 사건 하나 (없으면 null) */
 function pickEvent(run: RunState, r: Rng): string | null {
-  const fresh = EVENTS.filter((e) => (!e.acts.length || e.acts.includes(run.act)) && !run.seenEvents.includes(e.id));
+  const fresh = EVENTS.filter((e) => (!e.acts.length || e.acts.includes(storyAct(run))) && !run.seenEvents.includes(e.id));
   return fresh.length ? r.pick(fresh).id : null;
 }
 
@@ -645,7 +681,7 @@ function runEvOps(run: RunState, ops: EvOp[], r: Rng, ev: SimEvent[]) {
       case 'elite': {
         e.fought = true;
         // 갈림길의 여우: 막마다 정한 요괴 (천년 여우) · 그 밖에는 그 지역 정예
-        const id = o.foes?.length ? o.foes[Math.min(run.act, o.foes.length) - 1] : r.pick(run.map.elites);
+        const id = o.foes?.length ? o.foes[Math.min(storyAct(run), o.foes.length) - 1] : r.pick(run.map.elites);
         run.event = null;
         fight(run, 'elite', [id], ev, o.double);
         return;

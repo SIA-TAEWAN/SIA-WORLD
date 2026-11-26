@@ -1,9 +1,9 @@
-// 오늘의 도전 공통 (레이스·서바이벌·돌격대·핑거·디펜스) — SQL 082_daily.sql
+// 오늘의 도전 공통 (레이스·서바이벌·돌격대·핑거·디펜스·카드배틀) — SQL 082_daily.sql
 // 날짜는 서버(한국 시간)에서 받고, 그날의 조건은 날짜 문자열에서 모든 기기가 똑같이 만든다.
 // 게임 코드는 런타임 import 로 쓴다: import(new URL('shared/daily.js', root()).href)
 import { supabase } from './supabase.js';
 
-export const DAILY_GAMES = ['running', 'survival', 'charge', 'finger', 'defense'];
+export const DAILY_GAMES = ['running', 'survival', 'charge', 'finger', 'defense', 'card'];
 
 /** 기기 시계로 만든 한국 날짜 'YYYY-MM-DD' (서버를 못 부를 때만) */
 export function localDailyDay(now = Date.now()) {

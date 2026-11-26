@@ -2,6 +2,7 @@
  * 판(run) 상태와 입력 기록 형식. 상태는 전부 JSON 으로 저장할 수 있고, 같은 씨앗 + 같은 입력 목록이면 같은 상태가 된다.
  * 서버(5단계 card-finish)는 씨앗·영웅·입력 목록을 받아 같은 코드로 다시 돌린다.
  */
+import type { RunMode } from './data/modes.ts';
 import type { NodeType, PowerId, StatusId } from './types.ts';
 
 export type Statuses = Partial<Record<StatusId, number>>;
@@ -104,7 +105,22 @@ export interface Battle {
   ward?: number;
   /** 첫 턴에 더 받는 기력 (도깨비 방망이 · 탁발승) */
   e1: number;
+  /** 요괴 강해짐 (끝없는 모드 막마다 · 숙련 단계): 체력 배수 · 피해 배수 · 공격 더하기 */
+  mods?: FoeMods;
   over: null | 'win' | 'lose';
+}
+
+/** 이 전투 요괴가 강해진 정도 (run.ts foeMods) */
+export interface FoeMods {
+  /** 모든 요괴 체력 배수 (끝없는 모드) */
+  hp: number;
+  /** 모든 요괴 공격 피해 배수 (끝없는 모드) */
+  dmg: number;
+  /** 정예 체력 배수 (숙련 1) · 막 보스 체력 배수 (숙련 5) */
+  eliteHp: number;
+  bossHp: number;
+  /** 공격 피해 더하기 (숙련 2: 일반 전투) */
+  add: number;
 }
 
 export interface MapNode {
@@ -170,7 +186,10 @@ export interface RunState {
   /** 규칙 판본 (run.ts RULES_VERSION) — 다르면 저장한 판을 버린다 */
   rules?: number;
   seed: number;
-  mode: 'normal';
+  /** normal = 보통(3막 + 숨은 4막) · endless = 끝없는 모드 · daily = 오늘의 도전 */
+  mode: RunMode;
+  /** 숙련 단계 (0 = 기본, 보통 모드에서만) */
+  mastery: number;
   hero: string;
   /** 연습·개발용 전투 하나짜리 판 */
   practice?: boolean;

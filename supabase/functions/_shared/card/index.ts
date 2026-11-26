@@ -7,3 +7,6 @@ export * from './battle.ts';
 export * from './map.ts';
 export * from './run.ts';
 export * from './text.ts';
+export * from './daily.ts';
+export * from './data/modes.ts';
+export * from './verify.ts';

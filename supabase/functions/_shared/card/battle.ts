@@ -11,7 +11,7 @@
  */
 import { cardCost, cardDef, cardExhaust, cardOps, enemyDef, moveDef, phaseAt, phaseOf, potionDef } from './data.ts';
 import { Rng } from './rng.ts';
-import type { Battle, BCard, Foe, RunState, SimEvent, Statuses } from './state.ts';
+import type { Battle, BCard, Foe, FoeMods, RunState, SimEvent, Statuses } from './state.ts';
 import type { EOp, MoveDef, Op, StatusId } from './types.ts';
 
 export const BASE_ENERGY = 3;
@@ -31,6 +31,8 @@ export interface StartOpts {
   foes: string[];
   seed: number;
   double?: boolean;
+  /** 요괴 강해짐 (끝없는 모드 · 숙련 단계) — 없으면 그대로 */
+  mods?: FoeMods;
 }
 
 export function startBattle(run: RunState, o: StartOpts, ev: SimEvent[]): Battle {
@@ -59,6 +61,7 @@ export function startBattle(run: RunState, o: StartOpts, ev: SimEvent[]): Battle
     e1: 0,
     over: null,
   };
+  if (o.mods) b.mods = o.mods;
   run.battle = b;
   rngOf(b, 'draw').shuffle(b.draw);
   for (const id of o.foes) addFoe(b, id, o.kind === 'elite');
@@ -82,6 +85,14 @@ function addFoe(b: Battle, id: string, elite: boolean): Foe {
   const r = rngOf(b, 'ai');
   let hp = d.hp[0] === d.hp[1] ? d.hp[0] : r.int(d.hp[0], d.hp[1]);
   if (elite && d.boss) hp = Math.round(hp * 0.6);
+  // 끝없는 모드 막마다 · 숙련 1(정예) · 숙련 5(막 보스)
+  const m = b.mods;
+  if (m) {
+    let k = m.hp;
+    if (elite) k *= m.eliteHp;
+    else if (d.boss && !d.minion) k *= m.bossHp;
+    if (k !== 1) hp = Math.max(1, Math.round(hp * k));
+  }
   const f: Foe = { uid: b.nextFoe++, id, hp, maxHp: hp, block: 0, st: {}, str: 0, phase: 1, intent: null, cyc: 0, last: null, dodge: 0, minion: !!d.minion, dead: false };
   // 정예 전투의 요괴 (그 지역 다른 보스 · 갈림길의 여우의 천년 여우) / 막 보스
   if (elite) f.elite = true;
@@ -780,8 +791,10 @@ function checkWin(run: RunState, b: Battle, ev: SimEvent[]) {
 
 /** 요괴가 영웅에게 주는 피해 (의도 숫자에도 쓴다). run 이 있으면 저승사자 2단계(내 체력 30% 이하면 2배)까지 */
 export function foeDamage(b: Battle, f: Foe, base: number, run?: RunState): number {
-  let n = base + f.str;
-  let mult = 1;
+  const m = b.mods;
+  // 숙련 2: 일반 전투 요괴 공격 +1 (공격 한 번마다)
+  let n = base + f.str + (m && b.kind === 'battle' && base > 0 ? m.add : 0);
+  let mult = m ? m.dmg : 1;
   if ((f.st.weak ?? 0) > 0) mult *= 0.75;
   if ((b.st.wet ?? 0) > 0) mult *= 1.5;
   if (run && phaseOf(enemyDef(f.id), f.phase).passive === 'execute' && run.hp * 10 <= run.maxHp * 3) mult *= 2;

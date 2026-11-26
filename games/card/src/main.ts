@@ -1,7 +1,7 @@
 import './style.css';
 import { preloadUi } from './art';
 import { LOCAL_MODE } from './net/local';
-import { loadAuth, worldHome, type WorldUser } from './net/world';
+import { enterLobby, loadAuth, worldHome, type WorldUser } from './net/world';
 import { boot, showFirst } from './ui/app';
 
 function message(html: string) {
@@ -19,6 +19,13 @@ async function start() {
       // 로그인 안 했으면 SIA WORLD 로그인 화면으로 갔다가 이 주소로 돌아온다 (게스트 플레이 없음)
       user = await auth.requireLogin();
       auth.onSignedOut(() => location.replace(auth.loginUrl()));
+      // 접속 인원 (로비에 보인다). 정원이 차면 들어가지 않는다
+      const lobby = await enterLobby(user);
+      if (lobby?.full) {
+        void lobby.leave();
+        message(`지금은 시아카드배틀에 사람이 너무 많아요.<br/>잠시 뒤 다시 와 주세요.<br/><br/><a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a>`);
+        return;
+      }
     }
     // 글꼴이 준비된 뒤에 캔버스 글자를 그린다
     try {

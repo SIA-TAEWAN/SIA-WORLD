@@ -4,6 +4,7 @@
  * 지킬 것(정한 값): 첫 줄은 모두 전투, 정예는 4번째 줄부터. 숨은 4막(어둑시니)은 보스 한 칸뿐.
  */
 import { NODE_RATIO, ROWS_PER_ACT, ROW_WIDTH } from './data/acts.ts';
+import { ENDLESS_REGIONS, type RunMode } from './data/modes.ts';
 import { ACTS, regionDef } from './data.ts';
 import { Rng, hashSeed } from './rng.ts';
 import type { ActMap, MapNode } from './state.ts';
@@ -12,13 +13,17 @@ import type { NodeType } from './types.ts';
 /** 정예가 나올 수 있는 첫 줄 (0부터) */
 export const ELITE_FROM_ROW = 3;
 
-export function genMap(seed: number, act: number, extraTreasure = 0): ActMap {
+export function genMap(seed: number, act: number, extraTreasure = 0, mode: RunMode = 'normal'): ActMap {
   const box = { s: hashSeed(seed, 'map', act) };
   const r = new Rng(box, 's');
-  // 숨은 막(4막)은 그 번호일 때만, 그 밖에는 보통 막 순서대로 (끝없는 모드는 되풀이)
+  // 숨은 막(4막)은 그 번호일 때만, 그 밖에는 보통 막 순서대로.
+  // 끝없는 모드: 1~3막은 보통과 같고, 4막부터 대나무숲 → 들판 → 궁궐 → 저승 되풀이 (숨은 막 없음)
   const normal = ACTS.filter((a) => !a.hidden);
-  const actDef = ACTS[act - 1] ?? normal[(act - 1) % normal.length];
-  const ready = actDef.regions.filter((id) => regionDef(id).ready);
+  const regions: readonly string[] =
+    mode === 'endless' && act > normal.length
+      ? [ENDLESS_REGIONS[(act - normal.length - 1) % ENDLESS_REGIONS.length]]
+      : (ACTS[act - 1] ?? normal[(act - 1) % normal.length]).regions;
+  const ready = regions.filter((id) => regionDef(id).ready);
   const region = r.pick(ready.length ? ready : ['bamboo']);
   const reg = regionDef(region);
   const boss = r.pick(reg.bosses);

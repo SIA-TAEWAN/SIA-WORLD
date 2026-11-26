@@ -258,3 +258,19 @@ h2.lose { color: var(--lose); }
 .ending .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--track); border: 2px solid var(--outline); }
 .ending .dots i.on { background: var(--primary); }
 .ending.true-end { box-shadow: 0 var(--depth-big) 0 var(--outline), 0 0 18px 4px var(--primary); }
+
+/* ---------- 5단계: 숙련 단계 · 도감 ---------- */
+.mastery h3 small { font-size: 12px; margin-left: 4px; }
+.mastery-row { display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; margin-bottom: 6px; }
+.m-lv { min-height: 32px; padding: 0; font-family: inherit; font-size: 13px; background: var(--white); color: var(--ink); border: 2px solid var(--outline); border-radius: var(--radius-item); cursor: pointer; white-space: nowrap; }
+.m-lv.sel { background: var(--primary); }
+.m-lv.off, .m-lv:disabled { opacity: 0.45; cursor: default; }
+.codex-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; flex: none; }
+.codex-unknown { display: grid; place-items: center; width: 104px; height: 145px; background: var(--panel-strong); border: var(--line) dashed var(--line-soft); border-radius: 9px; color: var(--ink-soft); font-size: 28px; }
+.item.codex-unknown { width: 100%; height: auto; min-height: 44px; font-size: 16px; }
+.codex-foes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-height: 62vh; overflow-y: auto; }
+.codex-foe { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; text-align: center; word-break: keep-all; }
+.codex-foe .codex-foe-art { width: 64px; height: 64px; background: var(--sky-mid); border: 2px solid var(--outline); border-radius: var(--radius-item); }
+.codex-foe .codex-unknown { width: 64px; height: 64px; font-size: 22px; }
+.codex-foe.off span:last-child { color: var(--ink-soft); }
+.srv { margin: 4px 0 10px; }

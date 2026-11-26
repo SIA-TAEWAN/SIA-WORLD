@@ -17,13 +17,14 @@ SIA WORLD: a set of browser games behind one login, served as a static site on G
   - `games/finger` (5296) — 시아핑거, 1인 턴제 튕기기 RPG. Simulation in `supabase/functions/_shared/finger/` (shared with the `finger-finish` Edge Function, which re-plays the submitted inputs), SQL in `067_finger.sql`.
   - `games/twelve` (5297) — 시아열두길, 1인 실시간 액션 RPG (12지형 × 8맵 · 장비 · 끝없는 탑; 12지형 + 최종보스맵 `final`(열쇠 12개)까지 열림 — 보통 모드 엔딩·고양이 구매, 그 뒤 어려움 모드(같은 96맵 + `final`, Lv66~99 · `twelve_set_mode`)와 진짜 엔딩까지). Fixed-timestep simulation in `src/game/sim.ts`; maps finish through `twelve_start` / `twelve_finish` and the tower through `twelve_tower_start` / `_floor` / `_end`, all in `078_twelve.sql` (the server recomputes exp · 엽전 · drops from kill counts and the run seed). 078 is live: the data tables (map rows, levels, items, …), `twelve_start` (final map needs 12 keys, hard mode needs the normal final cleared), `twelve_finish` and `_twelve_region_open` are redefined by `094_twelve_full.sql` with `create or replace`, which also adds `twelve_set_mode`.
   - `games/tower` (5298) — 시아의탑, 1인 탑뷰 도트 액션 RPG (character creation → floors 1~100, wish-orb ending). Combat runs on the device; the server only keeps the progress JSON through `tower_state` / `tower_set_look` / `tower_save` (`104_tower.sql`, latest definitions in `106` / `107`). Floor · room · enemy · orb data in `src/data`.
+  - `games/card` (5299) — 시아카드배틀, 1인 덱빌딩 로그라이크 (십이지 영웅 13 · 3막 + 숨은 4막 · 끝없는 모드 · 오늘의 도전 · 숙련 단계). Rules in `supabase/functions/_shared/card/` (shared with the `card-finish` Edge Function, which re-plays the whole input log from the seed the server chose and records up to the start of the last act, or the whole run when it is over), SQL in `111_card.sql` (`card_start` / `card_state` / `card_finish_verified`, 시아코인 per cleared act, `card_endless_ranking`). Bump `RULES_VERSION` (and `_card_const('rules')`) when the same inputs give a different result.
 - `supabase/migrations/NNN_*.sql` — numbered migrations (currently up to 107; check `ls supabase/migrations` before adding one).
 - `supabase/functions/_shared/` — card-game rule engines and round runner; `game-action` and `game-timeout` are the card-game Edge Functions; `finger-finish` (시아핑거) re-plays a run with `_shared/finger/`.
 - Each newer game keeps its spec in `games/<name>/PRD.md` and art notes in `ASSETS.md`.
 
 ## Commands
 
-Run inside the package directory (`games`, `games/tank`, `games/running`, `games/volleyball`, `games/survival`, `games/defense`, `games/village`, `games/charge`, `games/finger`, `games/twelve`, `games/tower`):
+Run inside the package directory (`games`, `games/tank`, `games/running`, `games/volleyball`, `games/survival`, `games/defense`, `games/village`, `games/charge`, `games/finger`, `games/twelve`, `games/tower`, `games/card`):
 
 ```bash
 npm run dev            # Vite dev server
@@ -43,7 +44,7 @@ npx vitest run <file>  # one test file;  add  -t "<name>"  for one test
 
 ## Deploy
 
-Pushing to `main` runs `.github/workflows/deploy.yml`: test + build every package → `supabase db push` (**runs new migrations against production**) → deploy the Edge Functions (game-action, game-timeout, finger-finish) → publish Pages. A failing test in any package blocks the whole deploy. Check with `gh run watch`.
+Pushing to `main` runs `.github/workflows/deploy.yml`: test + build every package → `supabase db push` (**runs new migrations against production**) → deploy the Edge Functions (game-action, game-timeout, finger-finish, card-finish) → publish Pages. A failing test in any package blocks the whole deploy. Check with `gh run watch`.
 
 Consequences:
 - Never edit a migration that has already been pushed; add a new numbered file. Later files redefine functions with `create or replace` — the latest definition wins, so find it before changing a function.

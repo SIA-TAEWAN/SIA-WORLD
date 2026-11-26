@@ -95,3 +95,17 @@ export async function enterLobby(user: WorldUser): Promise<PresenceHandle | null
     return null;
   }
 }
+
+export interface CharactersModule {
+  loadOwnedCharacters(game: string, force?: boolean): Promise<string[] | null>;
+  buyCharacter(game: string, id: string): Promise<{ ok: boolean; reason?: string; siaCoins?: number; have?: number; need?: number }>;
+  buyMessage(r: unknown, id?: string): string;
+  CAT_PRICE: number;
+}
+let charMod: Promise<CharactersModule> | null = null;
+/** SIA WORLD 추가 캐릭터(고양이) 열기 (shared/characters.js: 게임마다 따로 시아코인 100) */
+export function loadCharacters(): Promise<CharactersModule> {
+  charMod ??= import(/* @vite-ignore */ new URL('shared/characters.js', root()).href) as Promise<CharactersModule>;
+  charMod.catch(() => (charMod = null));
+  return charMod;
+}

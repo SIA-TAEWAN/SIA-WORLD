@@ -26,6 +26,7 @@ export const GAME_CHANNELS = {
   finger: ['finger-lobby'],
   twelve: ['twelve-lobby'],
   tower: ['tower-lobby'],
+  card: ['card-lobby'],
 };
 
 /** 맞고·카지노 게임 하나의 접속 채널 이름 */
