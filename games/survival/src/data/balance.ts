@@ -93,7 +93,7 @@ export const LIMIT = {
   fx: 96,
   nums: 64,
   /** 무기·패시브 최대 개수와 최대 레벨 (PRD 3장) */
-  weapons: 6,
+  weapons: 4,
   passives: 6,
   level: 5,
 };

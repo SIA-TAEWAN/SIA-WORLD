@@ -6,7 +6,7 @@ import { readMade, rememberMade } from '../src/net/made';
 import { TICKS_PER_SEC } from '../src/data/balance';
 import { idlePolicy, normalPolicy, simulate, type Policy } from '../src/game/policy';
 import {
-  LIMITS, applyRun, betterRecord, buyUpgrade, characterOpen, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, knownWeapons, rejectReason, resetUpgrades,
+  LIMITS, applyRun, betterRecord, buyUpgrade, characterOpen, characterPrice, cleanProfile, codexCount, coinCap, defaultProfile, enoughKills, evolutionHints, killFloor, knownPassives, knownWeapons, rejectReason, resetUpgrades,
   unlockCharacter, upgradeCount, upgradeOffer, validRun, type RunReport, type SurvivalProfile, type SurvivalRecord,
 } from '../src/game/progress';
 import { createRun, makeInput, step, summarize, type RunSummary } from '../src/game/sim';
@@ -276,12 +276,17 @@ describe('도감', () => {
     expect(rememberMade('hoofEvo', null)).toEqual([]);
   });
 
-  it('모은 수: 처음에는 캐릭터 셋뿐', () => {
+  it('모은 수: 처음에는 캐릭터 셋 + 서버 목록 밖 패시브 넷뿐', () => {
     // 캐릭터: 쥐·소·호랑이 (고양이는 이 게임에서 시아코인으로 열었을 때만 센다)
-    expect(codexCount(defaultProfile())).toEqual({ have: 3, all: 9 + 12 + 19 + 8 + 13 });
-    expect(codexCount(defaultProfile(), ['cat']).have).toBe(4);
+    // 패시브: 세트용 4종(독주머니·약수·경전·활시위)은 서버 도감 목록에 없어 처음부터 보인다 (knownPassives)
+    expect(codexCount(defaultProfile())).toEqual({ have: 3 + 4, all: 9 + 12 + 19 + 12 + 13 });
+    expect(knownPassives(defaultProfile().codex)).toEqual(['venom', 'spring', 'scroll', 'string']);
+    expect(codexCount(defaultProfile(), ['cat']).have).toBe(8);
     const run2 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: ['imp', 'wisp'], bosses: ['bigDokkaebi'], weapons: ['shuriken'], passives: [] } }), 1);
-    expect(codexCount(run2.profile).have).toBe(3 + 1 + 2 + 1 + 1);
+    expect(codexCount(run2.profile).have).toBe(3 + 4 + 1 + 2 + 1 + 1);
+    // 서버가 기억하지 않는 패시브는 서버처럼 적지 않는다
+    const run3 = applyRun(defaultProfile(), {}, run({ time: 130, codex: { enemies: [], bosses: [], weapons: [], passives: ['fan', 'venom'] } }), 1);
+    expect(run3.profile.codex.passives).toEqual(['fan']);
   });
 
   it('고양이 잠금: 이 게임에서 연 목록(owned)으로만 열린다. 시아서바이벌의 해금 목록·엽전으로는 열리지 않는다', () => {

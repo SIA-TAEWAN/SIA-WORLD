@@ -3,12 +3,15 @@
  * 동작 종류마다 함수 하나를 BEHAVIORS 에 등록하고, 수치는 data/weapons.ts 의 레벨 줄에서 읽는다.
  * 새 무기 동작을 더하려면: 여기에 함수 하나 + data/weapons.ts 에 kind 를 적은 항목.
  */
-import { TICK, TICKS_PER_SEC } from '../data/balance';
+import { LIMIT, TICK, TICKS_PER_SEC } from '../data/balance';
+import { EVOLUTIONS } from '../data/evolutions';
+import { PASSIVE_INDEX } from '../data/passives';
+import { MAX_BONUS, SETS, type SetDef } from '../data/sets';
 import { WEAPONS, type WeaponDef, type WeaponLevel } from '../data/weapons';
 import { addFx, addProjectile, addZone, collect, emit, hurtEnemy, nearestEnemy, rand } from './core';
 import { EV, FX, MODE, PROJ, ZONE, type State, type WeaponInst } from './state';
 
-/** 무기 한 번 발동. slot: 무기 칸 번호(0~5), L: 지금 레벨의 수치 */
+/** 무기 한 번 발동. slot: 무기 칸 번호(0~3), L: 지금 레벨의 수치 */
 export type WeaponFire = (s: State, w: WeaponInst, slot: number, L: WeaponLevel, def: WeaponDef) => void;
 
 /** 방향이 있는 무기가 겨눌 쪽: 가까운 적이 있으면 그쪽, 없으면 마지막으로 움직인 쪽 (PRD 9장). 결과는 AIM 에 */
@@ -276,6 +279,57 @@ function interval(s: State, L: WeaponLevel, def: WeaponDef) {
   return def.kind === 'orbit' ? Math.max(cd, L.dur ?? 0) : cd;
 }
 
+// ───────────────────────── 세트·최종 레벨 ─────────────────────────
+/** 무기 번호 → 세트 (진화 무기는 원래 무기의 세트). 없으면 null */
+const SET_OF: (SetDef | null)[] = WEAPONS.map((w) => {
+  const base = EVOLUTIONS.find((e) => e.result === w.id)?.weapon ?? w.id;
+  return SETS.find((x) => x.weapon === base) ?? null;
+});
+/** 세트 짝 패시브 번호 (무기 번호별, 없으면 -1) */
+const SET_PASSIVE = Int32Array.from(SET_OF, (x) => (x ? PASSIVE_INDEX[x.passive] : -1));
+
+/** 이 무기의 세트 (진화 무기는 원래 무기의 세트) */
+export const setOf = (def: number): SetDef | null => SET_OF[def] ?? null;
+/** 이 무기의 세트 짝 패시브를 가졌나 */
+export function setActive(s: State, def: number): boolean {
+  const pi = SET_PASSIVE[def];
+  if (pi < 0) return false;
+  for (const p of s.passives) if (p.def === pi) return true;
+  return false;
+}
+/** 이 패시브와 세트를 이루는 무기를 가졌나 */
+export function passiveSetActive(s: State, passive: number): boolean {
+  for (const w of s.weapons) if (SET_PASSIVE[w.def] === passive) return true;
+  return false;
+}
+/** 최종 레벨인가 (5레벨, 또는 진화 무기) */
+export const isMaxLevel = (w: { def: number; lv: number }) => WEAPONS[w.def].evolved === true || w.lv >= LIMIT.level;
+
+/** 수가 정해지지 않은 레벨 줄의 기본 수 (동작마다 같은 기본값) */
+const COUNT_DEFAULT: Record<string, number> = { seek: 1, lob: 1, orbit: 2, pool: 1, slowCloud: 1, radial: 5, minion: 1, dash: 1 };
+
+/** 무기가 지금 쓰는 수치: 레벨 줄 + 최종 레벨 보너스 + 세트 효과 (원래 줄은 바꾸지 않는다) */
+export function weaponLine(s: State, w: { def: number; lv: number }): WeaponLevel {
+  const def = WEAPONS[w.def];
+  const base = def.levels[Math.min(w.lv, def.levels.length) - 1];
+  const max = isMaxLevel(w);
+  const set = setActive(s, w.def) ? SET_OF[w.def] : null;
+  if (!max && !set) return base;
+  const L: WeaponLevel = { ...base };
+  if (max) L.dmg *= MAX_BONUS.dmg;
+  if (set) {
+    const b = set.bonus;
+    if (b.count) L.count = (L.count ?? COUNT_DEFAULT[def.kind] ?? 1) + b.count;
+    if (b.dmg) L.dmg *= b.dmg;
+    if (b.radius && L.radius !== undefined) L.radius *= b.radius;
+    if (b.range && L.range !== undefined) L.range *= b.range;
+    if (b.size) L.size = (L.size ?? 30) * b.size;
+    if (b.dur) L.dur = (L.dur ?? 3) + b.dur;
+    if (b.pierce) L.pierce = (L.pierce ?? 0) + b.pierce;
+  }
+  return L;
+}
+
 /** 걸음마다: 가진 무기의 대기시간을 줄이고, 다 되면 발동한다 */
 export function updateWeapons(s: State) {
   for (let slot = 0; slot < s.weapons.length; slot++) {
@@ -285,7 +339,7 @@ export function updateWeapons(s: State) {
     if (!fire) continue;
     w.cd -= TICK;
     if (w.cd > 0) continue;
-    const L = def.levels[Math.min(w.lv, def.levels.length) - 1];
+    const L = weaponLine(s, w);
     fire(s, w, slot, L, def);
     if (def.kind !== 'minion') emit(s, EV.fire, w.def);
     w.cd += interval(s, L, def);

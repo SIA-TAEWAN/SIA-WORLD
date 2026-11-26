@@ -6,7 +6,7 @@ import { BOSSES } from '../src/data/bosses';
 import { CHARACTERS, CHARACTER_PRICE, SURVIVAL_CAT_MAPS, catConditionText, unlockLabel } from '../src/data/characters';
 import { ENEMIES } from '../src/data/enemies';
 import { MAPS } from '../src/data/maps';
-import { PASSIVES } from '../src/data/passives';
+import { PASSIVES, SERVER_CODEX_PASSIVES } from '../src/data/passives';
 import { UPGRADES, upgradeCost } from '../src/data/upgrades';
 import { DEVICE_CODEX, SERVER_CODEX_WEAPONS, WEAPONS } from '../src/data/weapons';
 import { ENDLESS, HELL, RUN_SEC } from '../src/data/balance';
@@ -114,7 +114,9 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(SERVER_CODEX_WEAPONS.length).toBeLessThanOrEqual(40);
     expect([...SERVER_CODEX_WEAPONS, ...DEVICE_CODEX].sort()).toEqual(WEAPONS.map((e) => e.id).sort());
     for (const id of DEVICE_CODEX) expect(WEAPONS.find((w) => w.id === id)?.evolved, id).toBe(true);
-    expect(list('passives')).toEqual(PASSIVES.map((e) => e.id));
+    // 세트용 패시브 4종은 아직 서버 목록에 없다 (SERVER_CODEX_PASSIVES 만 서버가 기억한다. 도감은 knownPassives 로 처음부터 보여 준다)
+    expect(list('passives')).toEqual([...SERVER_CODEX_PASSIVES]);
+    for (const id of SERVER_CODEX_PASSIVES) expect(PASSIVES.some((x) => x.id === id), id).toBe(true);
   });
 
   it('캐릭터 목록과 해금 조건', () => {

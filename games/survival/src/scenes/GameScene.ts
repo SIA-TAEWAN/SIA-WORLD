@@ -3,6 +3,7 @@ import { PLAYER } from '../data/balance';
 import { ENEMIES } from '../data/enemies';
 import { WEAPONS } from '../data/weapons';
 import { bossWinding } from '../game/bosses';
+import { isMaxLevel } from '../game/weapons';
 import { FX, MODE, PROJ, ZONE, type State } from '../game/state';
 import { eachObstacle } from '../game/terrain';
 import type { Run } from '../run/run';
@@ -300,12 +301,14 @@ export class GameScene extends Phaser.Scene {
     const sec = time / 1000;
 
     this.drawObstacles(s, halfW, halfH);
+    this.markMax(s);
     this.drawZones(s, sec);
     this.drawItems(s, halfW, halfH, sec);
     this.drawEnemies(s, halfW, halfH);
     this.drawPlayer(s, run.paused ? 0 : (this.game.loop.delta / 1000) * run.speed);
     this.drawProjectiles(s, sec);
     this.drawFx(s);
+    this.maxRings!.end(this.maxShown);
     // 레벨업·진화: 내 둘레로 고리가 퍼진다
     if (this.glowT > 0) {
       this.glowT -= this.game.loop.delta / 1000;
@@ -411,6 +414,32 @@ export class GameScene extends Phaser.Scene {
     this.hpFill.setPosition(p.x - 27, p.y + 42).setSize(54 * k, 5).setFillStyle(k < 0.3 ? COLOR.lose : COLOR.win);
   }
 
+  /** 최종 레벨(MAX) 무기의 공격에 두르는 금빛 고리 (그 무기 칸 번호별로 MAX 인가) */
+  private maxRings?: SpritePool;
+  private maxShown = 0;
+  private maxSlot = [false, false, false, false, false, false];
+  private markMax(s: State) {
+    for (let k = 0; k < this.maxSlot.length; k++) this.maxSlot[k] = k < s.weapons.length && isMaxLevel(s.weapons[k]);
+    this.maxRings ??= new SpritePool(this, 'ring', D.proj);
+    this.maxShown = 0;
+  }
+  /** 큰 것(장판·지대)은 금빛 테두리, 작은 것(투사체)은 뒤에 금빛 후광 (가는 테두리는 작으면 안 보인다) */
+  private maxRing(x: number, y: number, r: number, depth: number, alpha: number, halo = false) {
+    const spr = this.maxRings!.get(this.maxShown++);
+    const key = halo ? 'disc' : 'ring';
+    if (spr.texture.key !== key) spr.setTexture(key);
+    spr.setPosition(x, y).setScale((r * 2) / (halo ? 252 : 242)).setDepth(depth).setTint(halo ? COLOR.primaryLight : COLOR.primary).setAlpha(alpha).setVisible(true);
+  }
+  /** 이 칸의 무기가 MAX 인가 (적의 것은 칸이 7이라 false) */
+  private isMax(slot: number) {
+    return slot >= 0 && slot < this.maxSlot.length && this.maxSlot[slot];
+  }
+  /** 이 동작의 무기를 MAX 로 가졌나 (칸을 모르는 베기·여의봉 이펙트용) */
+  private maxKind(s: State, kind: string) {
+    for (let k = 0; k < s.weapons.length; k++) if (this.maxSlot[k] && WEAPONS[s.weapons[k].def].kind === kind) return true;
+    return false;
+  }
+
   private drawProjectiles(s: State, sec: number) {
     const list = s.projectiles.items;
     const n = s.projectiles.n;
@@ -436,6 +465,7 @@ export class GameScene extends Phaser.Scene {
         spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 18)) * 8);
       } else if (pr.kind === PROJ.puppy) spr.setRotation(0).setFlipX(pr.vx < 0).setY(y - Math.abs(Math.sin(sec * 12 + i)) * 5);
       else spr.setRotation(0);
+      if (pr.mode !== MODE.enemy && this.isMax(pr.slot)) this.maxRing(pr.x, spr.y, pr.r * (pr.kind === PROJ.puppy ? 2.2 : 1.8), D.proj - 0.1, 0.5 + Math.sin(sec * 10 + i) * 0.15, true);
     }
     this.projs.end(n);
   }
@@ -454,6 +484,7 @@ export class GameScene extends Phaser.Scene {
         const fade = Math.min(1, z.life / 0.4) * Math.min(1, (z.maxLife - z.life) / 0.2);
         const a = z.kind === ZONE.hoof || z.kind === ZONE.hoofEvo ? 0.55 * (z.life / z.maxLife) : z.kind === ZONE.cloud ? 0.5 * fade : 0.38 * fade;
         spr.setPosition(z.x, z.y).setScale(sc * (1 + Math.sin(sec * 5 + i) * 0.04)).setTint(tint).setAlpha(a).setVisible(true);
+        if (this.isMax(z.slot)) this.maxRing(z.x, z.y, z.r, D.zone + 0.1, Math.min(0.9, a * 1.8));
       } else if (z.delay > 0) {
         // 보스의 범위 공격: 분홍 원이 미리 보이고, 안쪽 원이 다 차면 터진다
         spr.setPosition(z.x, z.y).setScale(sc).setTint(COLOR.pink).setAlpha(0.26).setVisible(true);
@@ -473,6 +504,7 @@ export class GameScene extends Phaser.Scene {
       if (w.view <= 0) continue;
       const evo = WEAPONS[w.def].evolved === true;
       this.auras.get(a++).setPosition(s.player.x, s.player.y).setScale((w.view * 2) / 252).setTint(evo ? COLOR.primaryDeep : COLOR.primary).setAlpha((evo ? 0.26 : 0.2) + Math.sin(sec * 6) * 0.04).setVisible(true);
+      if (isMaxLevel(w)) this.maxRing(s.player.x, s.player.y, w.view, D.aura + 0.1, 0.7 + Math.sin(sec * 6) * 0.15);
     }
     this.auras.end(a);
   }
@@ -503,6 +535,9 @@ export class GameScene extends Phaser.Scene {
   private drawFx(s: State) {
     const list = s.fx.items;
     const n = s.fx.n;
+    // MAX 발톱의 베기 · MAX 여의봉은 금빛
+    const maxCone = this.maxKind(s, 'cone');
+    const maxLance = this.maxKind(s, 'lance');
     for (let i = 0; i < n; i++) {
       const f = list[i];
       const spr = this.fxs.get(i);
@@ -516,6 +551,7 @@ export class GameScene extends Phaser.Scene {
         case FX.slash:
           // 발톱: 부채꼴이 휙 그어진다 (사방 베기는 둥근 원)
           key = f.b >= Math.PI ? 'disc' : 'slash';
+          if (maxCone) tint = COLOR.primary;
           sc = (f.r * 2) / 248;
           rot = f.b >= Math.PI ? 0 : f.a;
           alpha = 0.6 * (1 - k);
@@ -552,7 +588,9 @@ export class GameScene extends Phaser.Scene {
       if (spr.texture.key !== key) spr.setTexture(key);
       if (f.kind === FX.beam) {
         const grow = Math.min(1, k * 4 + 0.35);
-        spr.setOrigin(0, 0.5).setPosition(f.x, f.y).setScale((f.r * grow) / 256, f.b / 36).setRotation(rot).clearTint().setAlpha(alpha).setVisible(true);
+        spr.setOrigin(0, 0.5).setPosition(f.x, f.y).setScale((f.r * grow) / 256, f.b / 36).setRotation(rot).setAlpha(alpha).setVisible(true);
+        if (maxLance) spr.setTint(COLOR.primaryLight);
+        else spr.clearTint();
         continue;
       }
       spr.setOrigin(0.5, 0.5).setPosition(f.x, f.y).setScale(sc).setRotation(rot).setTint(tint).setAlpha(alpha).setVisible(true);

@@ -1,6 +1,6 @@
 /**
  * 판 안 성장 (PRD 3장): 레벨업 카드 3장 뽑기·적용, 보물상자와 진화.
- * 규칙: 무기 최대 6개 · 패시브 최대 6개 · 각각 최대 5레벨. 진화 무기는 카드에 나오지 않는다.
+ * 규칙: 무기 최대 4개 · 패시브 최대 6개 · 각각 최대 5레벨 (다 차면 새것 카드는 나오지 않는다). 진화 무기는 카드에 나오지 않는다.
  */
 import { BONUS, CARD_COUNT, CARD_WEIGHT, CHEST_COINS, LIMIT, xpNeed } from '../data/balance';
 import { EVOLUTIONS } from '../data/evolutions';

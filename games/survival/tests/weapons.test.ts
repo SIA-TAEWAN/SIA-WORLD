@@ -5,7 +5,8 @@ import { WEAPONS, WEAPON_INDEX } from '../src/data/weapons';
 import { addPassive, addWeapon } from '../src/game/levelup';
 import { startWeapon } from '../src/game/sim';
 import { MODE, PROJ, ZONE } from '../src/game/state';
-import { BEHAVIORS, DASH_SPREAD, weaponReady } from '../src/game/weapons';
+import { MAX_BONUS, SETS } from '../src/data/sets';
+import { BEHAVIORS, DASH_SPREAD, isMaxLevel, setActive, weaponLine, weaponReady } from '../src/game/weapons';
 import { advance, disarm, emptyRun, live, put } from './helpers';
 
 /** 캐릭터 12종의 시작 무기 */
@@ -131,9 +132,10 @@ describe('무기 동작', () => {
       e.hp = e.maxHp = 1e9;
       advance(s, 10, { immortal: true });
     }
+    // 발톱 + 힘의 부적은 세트 (발톱 피해 ×1.3)
     const ratio = strong.dmgByWeapon[WEAPON_INDEX.claw] / base.dmgByWeapon[WEAPON_INDEX.claw];
-    expect(ratio).toBeGreaterThan(1.5 / 0.6 - 0.3);
-    expect(ratio).toBeLessThan(1.5 / 0.6 + 0.3);
+    expect(ratio).toBeGreaterThan((1.5 / 0.6) * 1.3 - 0.35);
+    expect(ratio).toBeLessThan((1.5 / 0.6) * 1.3 + 0.35);
   });
 
   it('뱀의 특성(지속 피해 +10%)은 장판·독 지대에만 붙는다', () => {
@@ -187,5 +189,58 @@ describe('진화 무기 2차 (방울·달떡·말발굽·복돼지)', () => {
     expect(near.hp).toBeLessThan(near.maxHp);
     expect(far.hp).toBe(far.maxHp);
     expect(WEAPONS[WEAPON_INDEX.bellEvo].levels[0].radius).toBeGreaterThan(WEAPONS[WEAPON_INDEX.bell].levels[4].radius!);
+  });
+});
+
+describe('세트와 최종 레벨', () => {
+  it('짝 패시브를 가지면 레벨과 상관없이 세트 효과가 붙고, 진화해도 남는다', () => {
+    const s = armed('shuriken');
+    const w = s.weapons[0];
+    expect(setActive(s, w.def)).toBe(false);
+    expect(weaponLine(s, w).count).toBe(1);
+    addPassive(s, PASSIVE_INDEX.fan, 1);
+    expect(setActive(s, w.def)).toBe(true);
+    expect(weaponLine(s, w).count).toBe(2);
+    // 레벨 줄 자체는 그대로다
+    expect(WEAPONS[w.def].levels[0].count).toBe(1);
+    // 진화 무기: 원래 무기의 세트 효과 + 최종 레벨 보너스
+    w.def = WEAPON_INDEX.shurikenEvo;
+    const evo = WEAPONS[w.def].levels[0];
+    expect(weaponLine(s, w).count).toBe((evo.count ?? 1) + 1);
+    expect(weaponLine(s, w).dmg).toBeCloseTo(evo.dmg * MAX_BONUS.dmg, 6);
+  });
+
+  it('세트 12종이 모두 그 무기의 수치를 바꾼다', () => {
+    for (const x of SETS) {
+      const s = armed(x.weapon, 3);
+      const w = s.weapons[0];
+      const before = JSON.stringify(weaponLine(s, w));
+      addPassive(s, PASSIVE_INDEX[x.passive], 1);
+      expect(JSON.stringify(weaponLine(s, w)), x.weapon).not.toBe(before);
+    }
+  });
+
+  it('5레벨(MAX)은 4레벨 줄보다 한 단계 더: 피해 ×1.25', () => {
+    const s = armed('claw', 4);
+    const w = s.weapons[0];
+    expect(isMaxLevel(w)).toBe(false);
+    expect(weaponLine(s, w)).toBe(WEAPONS[w.def].levels[3]);
+    w.lv = 5;
+    expect(isMaxLevel(w)).toBe(true);
+    expect(weaponLine(s, w).dmg).toBeCloseTo(WEAPONS[w.def].levels[4].dmg * MAX_BONUS.dmg, 6);
+  });
+
+  it('세트 효과가 실제 판에 들어간다: 깃털 + 활시위면 한 번에 2개 더 쏘고 1마리를 뚫는다', () => {
+    const count = (withSet: boolean) => {
+      const s = armed('feather');
+      if (withSet) addPassive(s, PASSIVE_INDEX.string, 1);
+      // 요괴 없이: 맞아서 사라지는 깃털이 없게
+      advance(s, 1.05, { immortal: true });
+      return live(s.projectiles).filter((p) => p.kind === PROJ.feather);
+    };
+    const plain = count(false);
+    const set = count(true);
+    expect(set.length).toBe(plain.length + 2);
+    expect(set.every((p) => p.pierce === 1)).toBe(true);
   });
 });

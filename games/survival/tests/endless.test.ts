@@ -222,6 +222,8 @@ describe('무한 모드: 4분 뒤', () => {
   it('부활은 그대로 한 번 동작하고, 시간 상한(20분)에 닿으면 판이 끝난다', () => {
     const s = createRun({ seed: 2, char: 'ox', map: 'field', mode: 'endless', numbers: false, upgrades: { revive: 1 }, startAt: 300 });
     expect(s.player.revives).toBe(1);
+    // 건너뛴 레벨에서 약수(체력 회복)를 얻었으면 체력 0 이 그 걸음에 다시 차오르므로 회복을 끈다
+    s.stats.regen = 0;
     s.player.hp = 0;
     step(s, makeInput());
     expect(s.phase).toBe('play');
