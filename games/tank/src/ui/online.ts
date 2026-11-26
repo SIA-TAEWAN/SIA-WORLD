@@ -32,6 +32,8 @@ let online: OnlineGame | null = null;
 const started = new Map<string, number>();
 
 const me = () => ({ id: clientId(), name: state.name });
+/** 내가 이 방 사람인가 (게임 중에 나간 사람(gone)은 판이 끝날 때까지 방 사람이 아니다) */
+const amIn = (r: Room) => r.players.some((p) => p.id === clientId()) && !(r.gone ?? []).includes(clientId());
 /** 이 화면이 마지막으로 다시 보인 때 (다른 앱으로 갔다 온 직후 방에서 빠졌으면 '연결이 끊겨서'로 안내) */
 let shownAt = 0;
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
@@ -184,7 +186,7 @@ function renderLobby(sess: LobbySession) {
     $(root, '#rooms').innerHTML = rooms.length
       ? rooms
           .map((r) => {
-            const inIt = r.players.some((p) => p.id === clientId());
+            const inIt = amIn(r);
             const full = r.players.length >= 4;
             const playing = r.status === 'playing';
             const label = inIt ? '돌아가기' : playing ? '게임 중' : full ? '가득 참' : '입장';
@@ -268,7 +270,11 @@ async function enterRoom(id: string) {
     toast('게임방이 사라졌어요');
     return renderLobby(sess);
   }
-  const inIt = room.players.some((p) => p.id === clientId());
+  const inIt = amIn(room);
+  if (!inIt && room.status === 'playing') {
+    toast('게임 중인 방이에요');
+    return renderLobby(sess);
+  }
   try {
     if (!inIt) room = await sess.joinRoom(id, myPlayer());
     else await sess.setMyRoom(id);
@@ -446,8 +452,11 @@ function renderRoom(id: string) {
         if (sess.room(id)?.status !== 'waiting') return toast('게임 중에는 강퇴할 수 없어요');
         if (!confirm(`${b.dataset.name}님을 게임방에서 강퇴할까요?`)) return;
         sfx.click();
-        await backend!.kickPlayer(id, clientId(), b.dataset.kick!).catch((e) => toast(friendly(e)));
-        rs.sendChat(`${b.dataset.name}님이 강퇴되었어요`);
+        const kicked = await backend!.kickPlayer(id, clientId(), b.dataset.kick!).then(
+          () => true,
+          (e) => (toast(friendly(e)), false),
+        );
+        if (kicked) rs.sendChat(`${b.dataset.name}님이 강퇴되었어요`);
         await sess.refetch();
       }),
     );
@@ -601,7 +610,7 @@ function renderRoom(id: string) {
       else if (!absentSince.has(p.id)) absentSince.set(p.id, now);
       else if (now - absentSince.get(p.id)! > ABSENT_GRACE_MS && sweeper) {
         absentSince.delete(p.id);
-        void backend!.leaveRoom(id, p.id).then(() => sess.refetch());
+        void backend!.leaveRoom(id, p.id).then(() => sess.refetch()).catch(() => undefined);
       }
     }
   }, 1000);
@@ -697,7 +706,7 @@ function mapOf(room: Room): MapId {
 }
 
 async function resumeGame(room: Room) {
-  if (!room.players.some((p) => p.id === clientId())) return renderLobby(lobby!);
+  if (!amIn(room)) return renderLobby(lobby!);
   screen(`<div class="connecting"><div class="spinner"></div><p>진행 중인 게임에 다시 들어가는 중…</p></div>`, 'center');
   const game = new OnlineGame(roomSess!, room, clientId());
   const r = await game.resume();
@@ -829,6 +838,9 @@ async function backToRoom(id: string) {
   const room = sess.room(id);
   if (!room || !room.players.some((p) => p.id === clientId())) {
     toast('게임방이 정리되었어요');
+    await roomSess?.leave();
+    roomSess = null;
+    await sess.setMyRoom(null);
     return renderLobby(sess);
   }
   if (room.status === 'playing') {
