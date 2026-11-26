@@ -763,16 +763,17 @@ export interface RegionGen {
   extra?: Piece[];
 }
 
-const DEFAULT_ROOMS = [12, 12, 12, 13, 13, 13, 13, 6];
-/** 5지형부터: 보스 맵 앞길을 방 하나 더 길게 */
-const BIG_BOSS_ROOMS = [12, 12, 12, 13, 13, 13, 13, 7];
-/** 8지형부터: 방을 하나씩 더 (PRD 성장 표: 9~12지형은 지형마다 1시간 30분) */
-const LATE_ROOMS = [13, 13, 13, 14, 14, 14, 14, 7];
+/** 맵 번호(1~8)별 방 수. 2026-11-26 맵 길이 20% 줄임: 예전 [12, 12, 12, 13, 13, 13, 13, 6] × 0.8 (요괴 수는 무리 크기 GROUP_MUL 로 그대로) */
+const DEFAULT_ROOMS = [10, 10, 10, 10, 10, 10, 10, 5];
+/** 5지형부터: 보스 맵 앞길을 방 하나 더 길게 (예전 7 × 0.8) */
+const BIG_BOSS_ROOMS = [10, 10, 10, 10, 10, 10, 10, 6];
+/** 8지형부터: 방을 하나씩 더 (PRD 성장 표: 9~12지형은 지형마다 1시간 30분) — 예전 [13, 13, 13, 14, 14, 14, 14, 7] × 0.8 */
+const LATE_ROOMS = [10, 10, 10, 11, 11, 11, 11, 6];
 export const REGION_GEN: Partial<Record<number, RegionGen>> = {
   1: { names: ['들머리', '풀숲 길', '물웅덩이 길', '여우불 언덕', '방망이 고개', '갈대밭', '도깨비 터 앞', '큰 도깨비의 놀이터'], rooms: DEFAULT_ROOMS },
   2: { names: ['논두렁 길', '물꼬 옆', '허수아비 밭', '진흙 벌판', '죽순 둑', '모내기 논', '두억시니 굴 앞', '두억시니의 논'], rooms: DEFAULT_ROOMS, extra: PADDY },
   3: { names: ['고개 들머리', '바위 비탈', '살쾡이 굴', '벼랑 사잇길', '바람골', '대숲 고개', '쇠가시 길', '불가살의 고갯마루'], rooms: DEFAULT_ROOMS, extra: PASS },
-  4: { names: ['달맞이 길', '대숲 들머리', '그슨대 숲', '달못가', '여우불 대숲', '죽순 언덕', '달동산 마루 앞', '장산범의 달동산'], rooms: [13, 13, 13, 14, 14, 14, 14, 7], extra: MOON },
+  4: { names: ['달맞이 길', '대숲 들머리', '그슨대 숲', '달못가', '여우불 대숲', '죽순 언덕', '달동산 마루 앞', '장산범의 달동산'], rooms: [10, 10, 10, 11, 11, 11, 11, 6], extra: MOON },
   5: { names: ['연못 들머리', '징검다리', '메기 웅덩이', '연잎 길', '물안개 둑', '깊은 못가', '지네 굴 앞', '왕지네의 연못'], rooms: BIG_BOSS_ROOMS, extra: POND },
   6: { names: ['늪 들머리', '두꺼비 못', '썩은 나무 숲', '독안개 길', '여우불 늪', '깊은 수렁', '구슬 굴 앞', '구미호의 늪'], rooms: BIG_BOSS_ROOMS, extra: SWAMP },
   7: { names: ['성 밖 길', '화약 창고', '해골 병영', '궁수 성벽', '옹성 마당', '안뜰', '성문 앞', '수문장 대장의 성문'], rooms: DEFAULT_ROOMS, extra: GATE },
@@ -791,8 +792,13 @@ export const kindsAt = (region: number, no: number): EnemyKind[] => {
 /** 맵 번호별 정예 수 */
 export const elitesAt = (no: number) => (no < 3 ? 0 : no <= 5 ? 1 : no <= 7 ? 2 : 1);
 
+/**
+ * 무리 크기 배율: 맵 길이(방 수)를 20% 줄인 만큼 무리를 키워 맵당 요괴 수(경험치 · 엽전)를 예전과 비슷하게 둔다.
+ * 평균 (4 + (맵 번호-1)/3 내림) × 1.3 — 소수 부분은 확률로 올림한다. 한 무리는 많아야 9마리(예전 7).
+ */
+const GROUP_MUL = 1.3;
 function makeGroup(at: Cell, kinds: EnemyKind[], no: number, rand: () => number): GroupDef {
-  const size = 4 + Math.floor((no - 1) / 3) + (rand() < 0.4 ? 1 : 0) - (rand() < 0.25 ? 1 : 0);
+  const size = Math.floor((4 + Math.floor((no - 1) / 3)) * GROUP_MUL + rand()) + (rand() < 0.4 ? 1 : 0) - (rand() < 0.25 ? 1 : 0);
   const counts = new Map<EnemyKind, number>();
   for (let i = 0; i < Math.max(2, size); i++) {
     // 첫 요괴(그 지형의 기본 요괴)가 가장 흔하다. 내려찍기·원거리 요괴는 한 무리에 둘까지
@@ -833,7 +839,8 @@ export function generateMap(region: number, no: number): MapDef {
 
   // 아래(시작)에서 위(출구)로 조각을 고른다
   const pieces: Piece[] = [START];
-  const nookAt = boss ? -1 : 1 + Math.floor(rand() * (roomCount - 1));
+  // 숨은 상자 방은 첫 방과 출구 바로 앞 방을 뺀 자리에 (출구 앞 방이면 무리에 밀려 상자 전에 출구를 밟기 쉽다)
+  const nookAt = boss ? -1 : 1 + Math.floor(rand() * (roomCount - 2));
   let last = -1;
   for (let i = 0; i < roomCount; i++) {
     let p: Piece;
