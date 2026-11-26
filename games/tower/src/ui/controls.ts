@@ -157,6 +157,8 @@ export function createControls(root: HTMLElement, opts: { onMenu(): void }): Con
   const held = new Set<string>();
   const KEYS: Record<string, Key> = { KeyJ: 'atk', Space: 'atk', KeyK: 'skill', KeyL: 'awaken', KeyE: 'act', KeyQ: 'potion', KeyR: 'mana' };
   const onKeyDown = (ev: KeyboardEvent) => {
+    // Ctrl/Cmd/Alt 조합(새로고침 Ctrl+R 등)은 브라우저에 맡긴다
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if ((ev.target as HTMLElement | null)?.closest?.('.overlay')) return;
     if (ev.code === 'Escape' || ev.code === 'KeyI') {
       ev.preventDefault();

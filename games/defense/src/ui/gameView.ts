@@ -152,7 +152,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
       ro?.disconnect();
       if (endTimer) clearTimeout(endTimer);
       if (cutTimer) clearTimeout(cutTimer);
-      game?.destroy(true);
+      if (game) destroyGame(game);
       game = null;
       if (window.__def?.run === run) delete window.__def;
     },
@@ -867,4 +867,11 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     $('#norec').classList.remove('hidden');
     if (!ended) toast('서버에 연결하지 못했어요. 이 판은 기록되지 않아요', 5000);
   });
+}
+
+/** Phaser 게임을 치우면서 WebGL 컨텍스트도 놓는다 (Phaser destroy 는 loseContext 를 부르지 않는다 — 아이폰은 컨텍스트 수 · GPU 메모리가 빠듯하다) */
+function destroyGame(g: { renderer: unknown; events: { once(ev: string, fn: () => void): unknown }; destroy(removeCanvas: boolean): void }) {
+  const gl = (g.renderer as { gl?: WebGLRenderingContext } | null)?.gl;
+  if (gl) g.events.once('destroy', () => setTimeout(() => { try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* 이미 잃음 */ } }, 0));
+  g.destroy(true);
 }

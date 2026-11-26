@@ -468,7 +468,9 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
     box.innerHTML = m.wallet.canRefill(wallet, cur, 100)
       ? `<button class="btn small" id="refill">무료 충전 (${wallet!.refillUnlimited ? '관리자 · 제한 없음' : `오늘 ${wallet![`${cur}RefillsLeft`]}번 남음`})</button>`
       : '';
-    box.querySelector('#refill')?.addEventListener('click', async () => {
+    box.querySelector('#refill')?.addEventListener('click', async (ev) => {
+      // 두 번 눌러 요청이 두 번 가지 않게 (다시 그릴 때 새 버튼이 생긴다)
+      (ev.currentTarget as HTMLButtonElement).disabled = true;
       try {
         const r = await m.wallet.refill(cur, 100);
         wallet = r;
@@ -1301,7 +1303,9 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       m.z.saveAvatar(me.userId, v);
       await m.room.setAvatar(roomId, v).catch((e) => toast(m.room.friendly(e)));
     });
-    el.querySelector('#refill')?.addEventListener('click', async () => {
+    el.querySelector('#refill')?.addEventListener('click', async (ev) => {
+      // 두 번 눌러 요청이 두 번 가지 않게 (다시 그릴 때 새 버튼이 생긴다)
+      (ev.currentTarget as HTMLButtonElement).disabled = true;
       try {
         const r = await m.wallet.refill(cur, room!.base_unit);
         wallet = r;
