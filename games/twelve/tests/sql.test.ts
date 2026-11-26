@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { blockIn, fillBlocks, itemRows, levelRows, mapRows, regionRows, sqlBlocks } from '../src/data/sqlrows';
+import { SQL_FILES, blockFile, blockIn, fillBlocks, itemRows, levelRows, mapRows, regionRows, sqlBlocks } from '../src/data/sqlrows';
 import { ALL_MAPS } from '../src/data/maps';
 import { TIER_LEVELS } from '../src/data/weapons';
 
 /**
- * 서버(078_twelve.sql + 094_twelve_full.sql + 101 · 107 의 twelve_finish + 102 · 103 의 twelve_state)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
- * 078 은 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하므로 094 의 블록을 대조하고,
- * 함수는 두 파일을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 094 의 gen 블록을 다시 만든다.
+ * 서버(078_twelve.sql + 094_twelve_full.sql + 101 · 107 의 twelve_finish + 102 · 103 의 twelve_state + 109 의 _twelve_maps)의 표와 기준 값이 게임 데이터와 같은지 확인한다.
+ * 078 · 094 는 운영에 있어 고치지 않는다. 표(gen 블록)는 094 가 create or replace 로 다시 정의하고, 맵 표는 109 가 한 번 더 정의한다 —
+ * 블록마다 마지막 정의가 있는 파일(sqlrows.ts 의 blockFile: maps 는 109, 나머지는 094)의 블록을 대조한다 (094 의 maps 블록은 옛 값 그대로).
+ * 함수는 파일들을 합친 것에서 마지막 정의(= 운영에 남는 정의)를 본다. 다르면 `npm run sqlgen` 으로 gen 블록을 다시 만든다.
  * 이 두 파일만 읽는다 (071~077 의 고양이 함수는 보지 않는다). SQL 을 실제로 돌려 보는 것은 scripts/pg-check.mjs.
  */
 const read = (name: string) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -24,7 +25,9 @@ const sql103 = read('103_twelve_admin_stones.sql');
 /** 107 은 배구 · 시아의탑 · 돌격대 · 열두길 함수를 함께 다시 정의한다 — 열두길 부분(twelve_finish 의 잠금 순서)만 본다 */
 const file107 = read('107_review_1125.sql');
 const sql107 = file107.slice(file107.indexOf('-- ---------- 4. 시아열두길'));
-const sql = `${sql078}\n${sql094}\n${sql101}\n${sql102}\n${sql103}\n${sql107}`;
+/** 109 는 맵 표 _twelve_maps 하나만 다시 정의한다 (맵 길이 20% 줄임 — 요괴 수 · 별 시간이 바뀐 맵 표) */
+const sql109 = read('109_twelve_short_maps.sql');
+const sql = `${sql078}\n${sql094}\n${sql101}\n${sql102}\n${sql103}\n${sql107}\n${sql109}`;
 const fn = (name: string) => {
   const i = sql.lastIndexOf(`create or replace function public.${name}(`);
   return i < 0 ? '' : sql.slice(i, sql.indexOf('$$;', i));
@@ -33,9 +36,30 @@ const fn = (name: string) => {
 describe('SQL 표 (npm run sqlgen 이 만든 블록)', () => {
   const blocks = sqlBlocks();
   for (const name of Object.keys(blocks)) {
-    it(`${name} 블록이 src/data 와 같다`, () => expect(blockIn(sql094, name)).toBe(blocks[name]));
+    it(`${name} 블록이 src/data 와 같다 (${blockFile(name)})`, () => expect(blockIn(read(blockFile(name)), name)).toBe(blocks[name]));
   }
-  it('파일 전체가 다시 만들어도 그대로다', () => expect(fillBlocks(sql094)).toBe(sql094));
+  for (const f of SQL_FILES) it(`${f} 전체가 다시 만들어도 그대로다`, () => expect(fillBlocks(read(f), f)).toBe(read(f)));
+
+  it('109 는 094 의 _twelve_maps 하나만 같은 모양으로 다시 정의한다 (권한 빼기 · 표 바꾸기 없음 · 094 의 maps 블록은 그대로)', () => {
+    const fnOf = (t: string) => {
+      const i = t.indexOf('create or replace function public._twelve_maps(');
+      const end = 'revoke all on function public._twelve_maps() from public, anon, authenticated;';
+      const f = t.slice(i, t.indexOf(end, i) + end.length);
+      const a = f.indexOf('-- <gen:maps>');
+      const b = f.indexOf('-- </gen:maps>');
+      expect(a).toBeGreaterThan(0);
+      expect(b).toBeGreaterThan(a);
+      return f.slice(0, a) + f.slice(b);
+    };
+    expect(fnOf(sql109)).toBe(fnOf(sql094));
+    expect(sql109.match(/create or replace function public\.\w+/g)).toEqual(['create or replace function public._twelve_maps']);
+    expect(sql109).not.toMatch(/create table|drop |alter table|grant /);
+    // 운영에 남는 맵 표는 109 의 것
+    expect(fn('_twelve_maps')).toBe(sql109.slice(sql109.indexOf('create or replace function public._twelve_maps('), sql109.indexOf('$$;')));
+    // 094 의 maps 블록은 운영에 나간 옛 값 그대로 (sqlgen 이 쓰지 않는다) — 줄 수(맵 수)는 같다
+    expect(blockIn(sql094, 'maps')).not.toBe(blocks.maps);
+    expect(blockIn(sql094, 'maps')!.split('\n')).toHaveLength(blocks.maps.split('\n').length);
+  });
 
   it('094 는 078 의 함수를 같은 모양으로 다시 정의한다 (create or replace · 표 함수는 권한 빼기, RPC 는 로그인한 사람만)', () => {
     const head = (s: string, name: string) => {
