@@ -12,7 +12,7 @@ npm run dev      # http://localhost:5297/games/twelve/?local=1
 npm test         # 590개, 20초쯤 (맵마다 끝까지 깨 보는 시험은 tests/play1~3 — 지형 넷씩, 최종보스맵은 tests/final, 어려움 모드는 tests/hard — 맵은 표본 6개)
 npm run build
 npm run gen      # src/data/maps/r01~r12.ts 다시 만들기 (맵 생성).  -- 5 6 = 그 지형만
-npm run sqlgen   # src/data 의 숫자로 supabase/migrations/094_twelve_full.sql 의 표(gen 블록)를 다시 쓴다 (078 은 건드리지 않는다)
+npm run sqlgen   # src/data 의 숫자로 표(gen 블록)를 다시 쓴다 — 맵 표는 109_twelve_short_maps.sql, 나머지는 094_twelve_full.sql (078 · 094 의 maps 블록은 건드리지 않는다)
 npm run pace     # 플레이 시간·레벨 곡선 표 (보통 + 어려움 전부, 씨앗 3개, 4분쯤).  -- 12 = 보통 모드만(2분),  -- 4 = 보통 4지형까지,  -- 12 1 = 지형 수·씨앗 수,  -- weapons = 무기 4종 비교
                  # 일부만 다시 재려면: PACE_CACHE=<폴더> npm run pace -- 12 (보통 12지형까지 · 보통 모드를 끝낸 뒤의 기록을 적어 둔다) 뒤에
                  #   PACE_CACHE=<폴더> npm run pace -- final (보통 최종보스 몫만, 6초) · PACE_CACHE=<폴더> npm run pace -- hard [씨앗 수] [지형 수] (어려움만, 씨앗 하나에 40초)
@@ -26,6 +26,10 @@ npm run tower    # 끝없는 탑을 자동 조종이 몇 층까지 오르는지 
 PC 키: WASD/방향키 이동, J 공격, K·L 스킬, U 고유 스킬, 스페이스 구르기, 1·2 물약, Esc 일시정지.
 
 ## 만든 것
+
+- **맵 길이 20% 줄임 (2026-11-26, 109):** 지형 맵 96개의 방 수를 0.8배로(`mapgen.ts` 의 `DEFAULT_ROOMS` · `BIG_BOSS_ROOMS` · `LATE_ROOMS` · 4지형 배열), 줄 수는 지형 평균 81%(79.8~83.1%). 요괴 수는 그대로 두려고 무리 크기를 `GROUP_MUL` 1.3 배(소수 부분은 확률로 올림 — 한 무리 많아야 9마리)로 키웠다: 맵당 요괴 수 지형 평균 95.5~104.4%(전체 99.9%). 숨은 상자 방은 출구 바로 앞 방에 두지 않는다(자동 조종이 무리에 밀려 상자 전에 출구를 밟던 5-5). 정예 수 · HALL 확률 · 최종보스맵(손으로 만든 맵)은 그대로. 별 시간은 `parOf` 가 다시 계산해 평균 93.5%.
+  - **pace (`-- 12 6`, 씨앗 6개):** 1~12지형 14.32시간 Lv64.0 → 12.71시간 Lv63.9 (맵 한 판 평균 5.7 → 5.0분, 레벨 곡선은 그대로). 별 시간 ÷ 사람이 깬 시간(`PACE_PAR=1`, 씨앗 3개)은 지형 평균 1.43~2.10 → 1.55~2.25, 가장 빡빡한 맵 1.18(1-5) → 1.31(12-3) — 조금 넉넉해졌다. 최종보스맵에서 씨앗 6개 중 2개가 12번 쓰러져 막혔는데(예전은 0개), 12지형을 끝낸 상태(레벨 · 장비 · 물약)가 예전과 거의 같고 그 상태로 최종보스맵만 8번씩 돌리면 예전 31/48 · 지금 29/48 로 비슷하다 — 레어 무기·큰 물약이 안 나온 씨앗의 운이다(맵 길이 탓이 아니다). 어려움 모드 pace 는 다시 재지 않았다(같은 맵 · 같은 요괴 수).
+  - **서버:** 094 는 운영에 있어 고치지 않고 `109_twelve_short_maps.sql` 이 `_twelve_maps()` 하나만 다시 정의한다(094 와 같은 모양 · gen 블록 · revoke). `sqlrows.ts` 의 `blockFile` 이 블록마다 쓸 파일을 정한다(maps → 109, 나머지 → 094 — 094 의 maps 블록은 옛 값 그대로). `tests/sql.test.ts` 는 078 + 094 + … + 109 의 마지막 정의를 본다. PGlite 001~109: 596단계 같음 · 확인 모두 통과.
 
 - **9단계 — 그림·소리 (2차 작업 5부, 2026-11-23):**
   - **크레딧:** 시작할 때 2개 → `b-final` 한 장(`gpt-image-2` low, 2 크레딧) → 0개. 나머지 그림은 만들지 못했다(목록·순서·어림 크레딧은 `ASSETS.md` 맨 위).
@@ -141,7 +145,7 @@ PC 키: WASD/방향키 이동, J 공격, K·L 스킬, U 고유 스킬, 스페이
 - **끝없는 탑 RPC:** `twelve_tower_start(floor, hero)` → `{run, seed, base}` · `twelve_tower_floor(run, floor, time, potions)` → `{state, result: {floor, coins, stones, items, siaCoin, time, best}}` · `twelve_tower_end(run, potions)` → `{…state}`. 기록은 `twelve_tower`(최고 층 · 시간 · 레벨 · 대원 · 날짜 · 체크포인트 `cps`), 진행 중인 판은 `twelve_tower_runs`. 상태(`state.tower`)에 내 탑 기록이 들어 있다(없으면 null).
 - **랭킹 뷰:** `twelve_level_ranking`(한 맵이라도 깬 사람) · `twelve_tower_ranking`(탑에 한 번이라도 들어간 사람). 누구나 읽는다 — 랭킹 창이 다른 게임처럼 뷰를 바로 읽는다.
 - **화면이 보내는 것:** 종류별 잡은 수 · 정예 수 · 보스 · 시간 · 상자 · 쓰러진 횟수 · 쓴 물약. 경험치·엽전·드랍·확정 보정·열쇠·별·시아코인은 서버가 계산한다.
-- **표는 손으로 고치지 않는다:** 094 의 `-- <gen:이름>` 블록은 `npm run sqlgen` 이 만든다 (078 의 블록은 옛 값 그대로 남는다 — 보지 않는다). `tests/sql.test.ts` 가 블록마다 대조하므로, `src/data` 숫자를 바꾸고 sqlgen 을 안 돌리면 테스트가 깨진다.
+- **표는 손으로 고치지 않는다:** 094 · 109 의 `-- <gen:이름>` 블록은 `npm run sqlgen` 이 만든다 (맵 표는 109, 나머지는 094 — `sqlrows.ts` 의 `blockFile`. 078 의 블록과 094 의 maps 블록은 옛 값 그대로 남는다 — 보지 않는다. 운영에 나간 표를 또 바꾸면 새 번호 파일에 그 함수를 다시 정의하고 `SQL_FILES` · `LATER` 에 더한다). `tests/sql.test.ts` 가 블록마다 대조하므로, `src/data` 숫자를 바꾸고 sqlgen 을 안 돌리면 테스트가 깨진다.
 - **규칙이 두 곳에 있다:** `progress.ts`(checkReport · applyReport) · `drops.ts` · `rules.ts` · `tower.ts` ↔ `twelve_finish` 와 상점·대장간 · 탑 RPC. 한쪽을 바꾸면 다른 쪽도 바꾸고 아래 확인 도구를 돌릴 것.
 - **맵 표에 줄이 있는 맵만 시작할 수 있다** (`_twelve_maps` — 194줄 = (지형 맵 96 + 최종보스맵 `'final'` = 12지형의 9번째 줄) × 보통·어려움. 권장 레벨 · 별 시간 · 요괴 수 · 보상이 모드마다 다르다). 상점 등급·탑의 레어 목록도 이 표에 맵이 있는 지형까지만 본다(`_twelve_shop_tier`).
 
