@@ -61,6 +61,8 @@ function shownChapters() {
 }
 
 // ---------- map ----------
+/** 챕터 배경 그림의 전체 주소. CSS 변수 안의 상대 주소는 배포 때 CSS 파일(assets/) 기준으로 풀려 404 가 나므로 페이지 주소로 미리 푼다 */
+function mapBg(ch) { return new URL('art/maps/ch' + String(ch + 1).padStart(2, '0') + '.webp', location.href).href; }
 function renderMap() {
   const open = unlockedUpTo();
   let total = 0; for (const k in save.stars) total += save.stars[k];
@@ -74,7 +76,7 @@ function renderMap() {
   for (let ch = shown - 1; ch >= 0; ch--) {
     const list = LEVELS.filter(l => l.chapter === ch);
     const got = list.reduce((s, l) => s + (save.stars[l.id] || 0), 0);
-    html += '<div class="panel chapter" style="--bg:url(art/maps/ch' + String(ch + 1).padStart(2, '0') + '.webp)"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
+    html += '<div class="panel chapter" style="--bg:url(' + mapBg(ch) + ')"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
     for (const l of list) {
       const st = save.stars[l.id] || 0, lock = l.id > open, next = l.id === nextStage() && !st;
       const cls = ['stage', l.boss ? 'boss' : '', st ? 'done' : '', lock ? 'lock' : '', next ? 'next' : ''].join(' ');
