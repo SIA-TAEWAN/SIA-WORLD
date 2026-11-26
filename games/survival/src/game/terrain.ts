@@ -1,15 +1,18 @@
 /**
  * 지형 (PRD 6장): 대나무가 길을 막는 숲 · 담으로 길이 좁은 궁궐 · 삼도천 물길이 흐르는 황천길.
- * 필드는 끝없이 넓으므로 장애물을 미리 만들어 두지 않고, 칸 좌표와 판의 시드로 "이 칸에 무엇이 있나" 를 그때그때 계산한다
+ * 장애물을 미리 만들어 두지 않고, 칸 좌표와 판의 시드로 "이 칸에 무엇이 있나" 를 그때그때 계산한다
  * (같은 시드면 언제나 같은 자리에 같은 장애물). 장애물은 모두 원이고, 한 칸의 장애물은 칸 가장자리에서 떨어져 있어
  * 일반 요괴·내 캐릭터는 자기가 있는 칸만 보면 된다.
  */
+import { ARENA } from '../data/balance';
 import type { TerrainDef } from '../data/maps';
 
 /** 장애물이 칸 가장자리에서 떨어져 있는 거리 (가장 큰 일반 요괴의 반지름보다 크게) */
 export const EDGE = 40;
 /** 시작 자리 둘레에는 장애물을 두지 않는다 */
 const CLEAR = 220;
+/** 맵 끝의 담(ARENA)과 장애물 사이는 이만큼 비운다 (담과 장애물 사이 좁은 틈에 끼지 않게. 담에 걸친 장애물은 두지 않는다) */
+const WALL_GAP = 60;
 /** 한 칸의 장애물 수 상한 */
 export const CELL_MAX = 4;
 
@@ -34,6 +37,10 @@ export function cellObstacles(t: TerrainDef, seed: number, cx: number, cy: numbe
   const put = (x: number, y: number, r: number) => {
     // 시작 자리 둘레는 비운다
     if (x * x + y * y < (CLEAR + r) * (CLEAR + r)) return;
+    // 맵 끝의 담에 걸치거나 너무 가까운 장애물은 두지 않는다 (담 너머의 것은 바깥 풍경으로 남긴다)
+    const ax = Math.abs(x);
+    const ay = Math.abs(y);
+    if ((ax + r > ARENA.halfW - WALL_GAP && ax - r < ARENA.halfW) || (ay + r > ARENA.halfH - WALL_GAP && ay - r < ARENA.halfH)) return;
     out[n * 3] = x;
     out[n * 3 + 1] = y;
     out[n * 3 + 2] = r;

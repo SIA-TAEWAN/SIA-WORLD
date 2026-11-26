@@ -13,7 +13,7 @@ import { PASSIVES } from '../data/passives';
 import { UPGRADES, type UpgradeLevels } from '../data/upgrades';
 import { FALLBACK_WEAPON, WEAPONS, WEAPON_INDEX } from '../data/weapons';
 import {
-  addFx, collect, edgePoint, emit, endlessMul, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
+  addFx, collect, edgePoint, emit, insideArena, keepIn, endlessMul, nearestEnemy, gainCoins, gainXp, healPlayer, hurtEnemy, hurtPlayer, killEnemy, makePool, makeStats, rand, recalcStats,
   spawnBoss, spawnEnemy, sweep,
 } from './core';
 import { runBuild, type RunBuild } from './build';
@@ -146,8 +146,13 @@ function spawnByKind(s: State, kind: number) {
     for (let tries = 0; tries < 4; tries++) {
       const a = rand(s) * Math.PI * 2;
       const d = 300 + rand(s) * 220;
-      const x = p.x + Math.cos(a) * d;
-      const y = p.y + Math.sin(a) * d;
+      let ox = Math.cos(a) * d;
+      let oy = Math.sin(a) * d;
+      // 맵 밖이면 내 자리를 사이에 두고 맞은편 (거리 520 이 맵의 절반보다 짧아서 맞은편은 맵 안이다)
+      if (!insideArena(p.x + ox, p.y, def.r + 20)) ox = -ox;
+      if (!insideArena(p.x, p.y + oy, def.r + 20)) oy = -oy;
+      const x = p.x + ox;
+      const y = p.y + oy;
       if (tries < 3 && blocked(s.map.terrain, s.terrainSeed, x, y, def.r)) continue;
       spawnEnemy(s, kind, x, y);
       return;
@@ -246,8 +251,9 @@ function updateSpawns(s: State) {
       emit(s, EV.bossWarn, kind);
     }
     if (t >= at) {
+      // 위쪽 화면 밖 (내가 맵 위쪽 벽에 붙어 있으면 아래쪽에서). 화면 쪽으로 200 들어와서 나온다
       edgePoint(s, PT, 0);
-      const e = spawnBoss(s, kind, PT.x, PT.y + 200);
+      const e = spawnBoss(s, kind, PT.x, PT.y + (PT.y < s.player.y ? 200 : -200));
       if (e) {
         if (s.bossNext === map.bosses.length - 1) s.finalUid = e.uid;
         s.bossNext++;
@@ -541,6 +547,8 @@ export function step(s: State, input: Input) {
       p.x = OUT.x;
       p.y = OUT.y;
     }
+    // 맵의 끝: 담 너머로는 갈 수 없다 (ARENA)
+    keepIn(p, PLAYER.r);
     p.fx = mx / Math.min(1, len);
     p.fy = my / Math.min(1, len);
   }

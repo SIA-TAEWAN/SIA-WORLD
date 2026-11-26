@@ -3,7 +3,7 @@
  * PRD 7장의 밸런스 목표(강화 수준별로 어느 맵을 깰 수 있나)는 8단계에서 이 틀로 수천 판을 돌려 맞춘다.
  *   npm run balance            → 무기 피해 표, 캐릭터별·강화 수준별 생존 시간
  */
-import { RUN_SEC, TICKS_PER_SEC } from '../data/balance';
+import { ARENA, RUN_SEC, TICKS_PER_SEC } from '../data/balance';
 import { ITEM } from '../data/items';
 import { MAPS } from '../data/maps';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
@@ -13,6 +13,9 @@ import { makeRng } from './rng';
 import { createRun, makeInput, step, summarize, type RunSummary } from './sim';
 import { MODE, type Input, type RunConfig, type State } from './state';
 import { eachObstacle } from './terrain';
+
+/** '보통 실력'이 맵 끝의 담에서 이만큼 안쪽부터 가운데로 돌아선다 */
+const WALL_KEEP = 280;
 
 /** 정책: 지금 상태를 보고 조작을 정한다 */
 export type Policy = (s: State, input: Input) => void;
@@ -94,6 +97,16 @@ export function normalPolicy(seed: number): Policy {
       ax += (dx / (d + r)) * (30 / d) * 1.5;
       ay += (dy / (d + r)) * (30 / d) * 1.5;
     });
+    // 맵 끝의 담에 몰리지 않는다 (담을 등지면 도망갈 곳이 없다: 사람도 가운데 쪽으로 돈다)
+    const W = WALL_KEEP;
+    const gl = p.x + ARENA.halfW;
+    const gr = ARENA.halfW - p.x;
+    const gt = p.y + ARENA.halfH;
+    const gb = ARENA.halfH - p.y;
+    if (gl < W) ax += ((W - gl) / W) * 3;
+    if (gr < W) ax -= ((W - gr) / W) * 3;
+    if (gt < W) ay += ((W - gt) / W) * 3;
+    if (gb < W) ay -= ((W - gb) / W) * 3;
     // 위험하지 않으면 가장 가까운 구슬·아이템을 주우러 간다
     if (nearest > 60) {
       let best = -1;
