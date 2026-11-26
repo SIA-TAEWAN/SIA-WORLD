@@ -31,7 +31,7 @@ export const PASSIVES: PassiveDef[] = [
 export const PASSIVE_INDEX: Record<string, number> = Object.fromEntries(PASSIVES.map((p, i) => [p.id, i]));
 
 /**
- * 서버 도감 목록(_survival_codex_ids, 093)에 들어 있는 패시브. 세트용 4종(독주머니·약수·경전·활시위)은 아직 서버 목록에 없어
- * 서버가 기억하지 않으므로, 도감에서는 처음부터 보여 준다 (progress.ts 의 knownPassives). 서버 목록에 넣으면 여기에 더한다.
+ * 서버 도감 목록(_survival_codex_ids, 최신 정의 110)에 들어 있는 패시브: 지금은 12종 모두.
+ * 서버 목록에 없는 패시브가 새로 생기면 서버가 기억하지 않으므로, 도감은 그 패시브를 처음부터 보여 준다 (progress.ts 의 knownPassives).
  */
-export const SERVER_CODEX_PASSIVES: readonly string[] = ['might', 'wind', 'shell', 'sleeve', 'fan', 'magnet', 'ginseng', 'knot'];
+export const SERVER_CODEX_PASSIVES: readonly string[] = PASSIVES.map((p) => p.id);

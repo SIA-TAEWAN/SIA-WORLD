@@ -13,12 +13,12 @@ import { ENDLESS, HELL, RUN_SEC } from '../src/data/balance';
 import { LIMITS, characterPrice, coinCap, endlessCoinCap } from '../src/game/progress';
 
 /**
- * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044 · 045 · 055 · 073 · 084 · 093)의 표·상수가 게임 데이터와 같은지 본다.
+ * 서버 SQL(supabase/migrations/038_survival.sql + 039 · 040 · 041 · 042 · 043 · 044 · 045 · 055 · 073 · 084 · 093 · 110)의 표·상수가 게임 데이터와 같은지 본다.
  * 엽전·강화·해금은 서버가 정하므로, 두 곳의 값이 어긋나면 화면에 보이는 값과 실제가 달라진다.
  */
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${f}`, import.meta.url)), 'utf8');
 // 뒤 파일이 같은 함수를 다시 정의하면 그쪽이 실제 값이다
-const FILES = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql', '055_survival_hell.sql', '073_cat_survival.sql', '084_survival_daily.sql', '093_survival_codex_evo.sql'];
+const FILES = ['038_survival.sql', '039_survival_hardening.sql', '040_survival_5min.sql', '041_survival_3min.sql', '042_survival_speed.sql', '043_survival_4min.sql', '044_survival_endless.sql', '045_survival_review.sql', '055_survival_hell.sql', '073_cat_survival.sql', '084_survival_daily.sql', '093_survival_codex_evo.sql', '110_survival_codex_passives.sql'];
 const sql = FILES.map(read).join('\n');
 
 /** 함수 하나의 본문 */
@@ -105,8 +105,8 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     const list = (kind: string) => new RegExp(`when '${kind}' then array\\[([^\\]]*)\\]`).exec(b)![1].split(',').map((s) => s.trim().slice(1, -1));
     expect(list('enemies')).toEqual(ENEMIES.map((e) => e.id));
     expect(list('bosses')).toEqual(BOSSES.map((e) => e.id));
-    // 최신 정의는 093 (진화 2차 4종이 들어갔다). 서버 목록에 아직 없는 무기가 생기면 DEVICE_CODEX 에 적어 기기 기록으로 보여 준다 — 지금은 없다
-    expect(read('093_survival_codex_evo.sql')).toContain(b);
+    // 최신 정의는 110 (093 의 진화 2차 4종 + 세트용 패시브 4종). 서버 목록에 아직 없는 무기가 생기면 DEVICE_CODEX 에 적어 기기 기록으로 보여 준다 — 지금은 없다
+    expect(read('110_survival_codex_passives.sql')).toContain(b);
     expect(DEVICE_CODEX).toEqual([]);
     expect(list('weapons')).toEqual(SERVER_CODEX_WEAPONS);
     for (const id of ['bellEvo', 'mooncakeEvo', 'hoofEvo', 'piggyEvo']) expect(list('weapons'), id).toContain(id);
@@ -114,7 +114,8 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(SERVER_CODEX_WEAPONS.length).toBeLessThanOrEqual(40);
     expect([...SERVER_CODEX_WEAPONS, ...DEVICE_CODEX].sort()).toEqual(WEAPONS.map((e) => e.id).sort());
     for (const id of DEVICE_CODEX) expect(WEAPONS.find((w) => w.id === id)?.evolved, id).toBe(true);
-    // 세트용 패시브 4종은 아직 서버 목록에 없다 (SERVER_CODEX_PASSIVES 만 서버가 기억한다. 도감은 knownPassives 로 처음부터 보여 준다)
+    // 패시브 12종 모두 서버 목록에 있다 (110 에서 세트용 4종이 들어갔다)
+    expect(list('passives')).toEqual(PASSIVES.map((e) => e.id));
     expect(list('passives')).toEqual([...SERVER_CODEX_PASSIVES]);
     for (const id of SERVER_CODEX_PASSIVES) expect(PASSIVES.some((x) => x.id === id), id).toBe(true);
   });
