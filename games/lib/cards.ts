@@ -56,8 +56,8 @@ export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'holdem' | 'bl
 // ---------- 카드 뒷면 ----------
 
 /**
- * 카드 뒷면: 트럼프는 흰 테두리 + --card-back(짙은 먹색), 화투는 --primary(노랑) 바탕에 12띠가 원형으로 둘러선 문양. 한 번만 그려 텍스처로 둔다.
- * back-casino: 트럼프 / back-hwatu: 화투 (같은 무늬, 화투 비율)
+ * 카드 뒷면: 트럼프는 흰 테두리 + --card-back(짙은 먹색) + 가운데 흰 원·발바닥, 화투는 --primary(노랑) 바탕에 12띠가 원형으로 둘러선 문양. 한 번만 그려 텍스처로 둔다.
+ * back-casino: 트럼프 / back-hwatu: 화투 (화투 비율)
  */
 export function cardBack(scene: Scene, key: 'back-casino' | 'back-hwatu') {
   if (scene.textures.exists(key)) return key;
@@ -69,10 +69,25 @@ export function cardBack(scene: Scene, key: 'back-casino' | 'back-hwatu') {
   const r = key === 'back-hwatu' ? 18 : 16;
   g.fillStyle(C.outline, 1).fillRoundedRect(0, 0, W, H, r);
   if (key === 'back-casino') {
-    // 트럼프: 흰 테두리 띠 안에 짙은 먹색 바탕
+    // 트럼프 (그림 shared/images/cards/back.png 와 같은 단순한 모양): 흰 테두리 띠 · 먹색 바탕 · 가운데 흰 원 + 발바닥
     g.fillStyle(C.white, 1).fillRoundedRect(4, 4, W - 8, H - 8, r - 3);
     g.fillStyle(C.cardBack, 1).fillRoundedRect(9, 9, W - 18, H - 18, r - 5);
-  } else g.fillStyle(C.primary, 1).fillRoundedRect(4, 4, W - 8, H - 8, r - 3);
+    const cx = W / 2;
+    const cy = H / 2;
+    g.fillStyle(C.white, 1).fillCircle(cx, cy, W * 0.29);
+    g.lineStyle(2.5, C.outline, 1).strokeCircle(cx, cy, W * 0.24);
+    // 발바닥: 큰 패드 하나 + 발가락 넷
+    g.fillStyle(C.primaryDeep, 1).fillEllipse(cx, cy + 8, 30, 24);
+    g.lineStyle(2.5, C.outline, 1).strokeEllipse(cx, cy + 8, 30, 24);
+    for (const [dx, dy] of [[-17, -4], [-7, -14], [7, -14], [17, -4]]) {
+      g.fillStyle(C.primaryDeep, 1).fillEllipse(cx + dx, cy + dy, 10, 13);
+      g.lineStyle(2, C.outline, 1).strokeEllipse(cx + dx, cy + dy, 10, 13);
+    }
+    rt.draw(g);
+    g.destroy();
+    return key;
+  }
+  g.fillStyle(C.primary, 1).fillRoundedRect(4, 4, W - 8, H - 8, r - 3);
   g.lineStyle(3, C.white, 0.9).strokeRoundedRect(11, 11, W - 22, H - 22, r - 6);
   g.fillStyle(C.panel, 1).fillCircle(W / 2, H / 2, W * 0.43);
   g.lineStyle(3, C.outline, 1).strokeCircle(W / 2, H / 2, W * 0.43);
