@@ -5,7 +5,7 @@
 import { PLAYER, SEPARATION, SPAWN, TICK } from '../data/balance';
 import { ENEMIES, type EnemyDef } from '../data/enemies';
 import { updateBoss } from './bosses';
-import { addFx, addProjectile, dmgGrowth, edgePoint, hurtPlayer } from './core';
+import { addFx, addProjectile, dmgGrowth, edgePoint, hurtPlayer, keepIn } from './core';
 import { FX, MODE, PROJ, type Enemy, type State } from './state';
 import { OUT, PUSH, pushOut } from './terrain';
 
@@ -248,6 +248,8 @@ export function updateEnemies(s: State) {
       // 지형: 장애물에 막힌다 (원혼은 통과한다. 보스는 장애물을 부수며 지나간다고 본다)
       if (terrain && !NOCLIP[e.kind]) avoid(s, e, dx, dy, d);
     }
+    // 맵의 끝: 요괴·보스도 담 너머로 나가지 못한다 (돌진·가로지르기도 담에서 멈춘다)
+    keepIn(e, e.r);
     if (e.hidden) continue;
     const ex = p.x - e.x;
     const ey = p.y - e.y;
@@ -255,4 +257,6 @@ export function updateEnemies(s: State) {
     if (ex * ex + ey * ey < rr * rr) hurtPlayer(s, e.dmg);
   }
   separate(s);
+  // 서로 밀어내다 담 너머로 밀려난 요괴를 들여놓는다 (이번 걸음에 새로 나온 부하까지)
+  for (let i = 0; i < s.enemies.n; i++) if (!list[i].dead) keepIn(list[i], list[i].r);
 }

@@ -17,7 +17,7 @@ const gemXp = (s: State) => live(s.pickups).filter((p) => !p.dead && p.kind <= I
 describe('바닥 아이템 풀이 가득 찼을 때', () => {
   /** 바닥을 작은 구슬로 가득 채운다 (내게서 멀리, 줍지 못하는 곳에) */
   const fill = (s: State) => {
-    for (let i = 0; i < LIMIT.pickups; i++) dropPickup(s, ITEM.gemS, 2000 + i * 10, 500, 1);
+    for (let i = 0; i < LIMIT.pickups; i++) dropPickup(s, ITEM.gemS, 200 + i * 2, 500, 1);
     expect(s.pickups.n).toBe(LIMIT.pickups);
   };
 
@@ -36,7 +36,7 @@ describe('바닥 아이템 풀이 가득 찼을 때', () => {
     expect(gemXp(s)).toBe(LIMIT.pickups + xp);
     // 자리를 내준 것은 가장 먼 구슬이고, 그 값은 바로 옆 구슬에 합쳐졌다
     const far = live(s.pickups).filter((p) => p.kind <= ITEM.gemL).sort((a, b) => b.x - a.x)[0];
-    expect(far.x).toBe(2000 + (LIMIT.pickups - 2) * 10);
+    expect(far.x).toBe(200 + (LIMIT.pickups - 2) * 2);
     expect(far.value).toBeGreaterThanOrEqual(2);
     // 상자를 주울 수 있다
     s.player.x = 300;

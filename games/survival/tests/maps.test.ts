@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLAYER, RUN_SEC, TICK } from '../src/data/balance';
+import { ARENA, PLAYER, RUN_SEC, TICK } from '../src/data/balance';
 import { BOSSES, BOSS_INDEX } from '../src/data/bosses';
 import { CHARACTERS } from '../src/data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../src/data/enemies';
@@ -21,8 +21,9 @@ const mapOf = (id: string) => MAPS[MAP_INDEX[id]];
 /** 가까운 장애물 하나 (없으면 오류) */
 function someObstacle(s: State, minR = 0) {
   let found: { x: number; y: number; r: number } | null = null;
+  // 맵(ARENA) 안쪽 깊숙이 있는 것만: 시험에서 그 둘레 수백 px 를 오가도 맵 끝의 담에 닿지 않게
   eachObstacle(s.map.terrain, s.terrainSeed, 0, 0, 1500, 1500, (x, y, r) => {
-    if (!found && r >= minR) found = { x, y, r };
+    if (!found && r >= minR && Math.abs(x) + r < ARENA.halfW - 400 && Math.abs(y) + r < ARENA.halfH - 400) found = { x, y, r };
   });
   if (!found) throw new Error('장애물이 없다');
   return found as { x: number; y: number; r: number };

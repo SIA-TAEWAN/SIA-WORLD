@@ -2,7 +2,7 @@
  * 계산의 공통 도구: 난수, 풀, 범위 안의 적 찾기, 피해·처치·아이템 떨구기, 능력치 계산.
  * 무기(weapons.ts)·요괴(enemies.ts)·보스(bosses.ts)·걸음(sim.ts)이 모두 이것을 쓴다.
  */
-import { CLAMP, ENDLESS, PLAYER, RUN_SEC, SPAWN, STACKS, TICKS_PER_SEC } from '../data/balance';
+import { ARENA, CLAMP, ENDLESS, PLAYER, RUN_SEC, SPAWN, STACKS, TICKS_PER_SEC } from '../data/balance';
 import { BOSSES } from '../data/bosses';
 import { ENEMIES } from '../data/enemies';
 import { ITEM, ITEMS } from '../data/items';
@@ -111,6 +111,22 @@ export function makeStats(): Stats {
   return { might: 1, area: 1, cooldown: 1, speed: PLAYER.speed, maxHp: 0, armor: 0, taken: 1, pickup: PLAYER.pickupR, coin: 1, xp: 1, dot: 1, projSpeed: 1, regen: 0, dodge: 0 };
 }
 
+// ───────────────────────── 맵 경계 ─────────────────────────
+/** 반지름 r 의 몸을 맵(ARENA) 안으로 들여놓는다. 밖에 있었으면 true */
+export function keepIn(o: { x: number; y: number }, r: number): boolean {
+  const w = ARENA.halfW - r;
+  const h = ARENA.halfH - r;
+  let out = false;
+  if (o.x > w) (o.x = w), (out = true);
+  else if (o.x < -w) (o.x = -w), (out = true);
+  if (o.y > h) (o.y = h), (out = true);
+  else if (o.y < -h) (o.y = -h), (out = true);
+  return out;
+}
+
+/** 그 자리가 맵 가장자리에서 m 이상 안쪽인가 */
+export const insideArena = (x: number, y: number, m: number) => x <= ARENA.halfW - m && x >= m - ARENA.halfW && y <= ARENA.halfH - m && y >= m - ARENA.halfH;
+
 // ───────────────────────── 이펙트·피해 숫자 ─────────────────────────
 export function addFx(s: State, kind: number, x: number, y: number, r: number, a = 0, b = 0, life = 0.25): Fx | null {
   const f = take(s.fx);
@@ -199,6 +215,8 @@ export function dropPickup(s: State, kind: number, x: number, y: number, value: 
   p.kind = kind;
   p.x = x;
   p.y = y;
+  // 맵 가장자리에서 쓰러진 보스의 엽전 따위가 벽 너머로 흩어지지 않게
+  keepIn(p, ITEMS.touch);
   p.value = value;
   p.magnet = false;
   p.dead = false;
@@ -404,6 +422,7 @@ export function spawnEnemy(s: State, kind: number, x: number, y: number): Enemy 
   e.boss = -1;
   e.maxHp = e.hp = def.hp * s.map.power.hp * hpGrowth(s);
   e.r = def.r;
+  keepIn(e, e.r);
   e.speed = def.speed * s.map.power.speed;
   e.dmg = def.dmg * s.map.power.dmg * dmgGrowth(s);
   e.xp = def.xp;
@@ -423,6 +442,7 @@ export function spawnBoss(s: State, boss: number, x: number, y: number): Enemy |
   // 무한 모드에서 4분 뒤에 다시 나오는 보스는 시간이 갈수록 체력이 많고 세게 때린다
   e.maxHp = e.hp = def.hp * s.map.power.boss * endlessMul(s, ENDLESS.bossHp);
   e.r = def.r;
+  keepIn(e, e.r);
   e.speed = def.speed * s.map.power.speed;
   e.dmg = def.dmg * endlessMul(s, ENDLESS.dmg) * s.bossDmg;
   e.xp = def.xp;
@@ -431,27 +451,36 @@ export function spawnBoss(s: State, boss: number, x: number, y: number): Enemy |
   return e;
 }
 
-/** 내 캐릭터를 둘러싼 사각형 둘레 위의 한 점 (화면 밖). out 에 담는다 */
+/**
+ * 내 캐릭터를 둘러싼 사각형 둘레 위의 한 점 (화면 밖). out 에 담는다.
+ * 맵은 닫혀 있어서(ARENA) 그 변이 맵 밖이면 반대쪽 변에서 나오고(내가 벽에 붙어 있으면 벽 반대쪽·옆에서 온다),
+ * 변을 따라가는 자리가 맵 밖이면 내 자리를 사이에 두고 맞은편으로 옮긴다(그래도 밖이면 맵 끝에 붙인다). 사각형이 맵의 절반보다 작아서 반대쪽 변은 언제나 맵 안이다.
+ */
 export function edgePoint(s: State, out: { x: number; y: number }, side = -1) {
   const p = s.player;
   const w = SPAWN.halfW;
   const h = SPAWN.halfH;
+  const lw = ARENA.halfW - SPAWN.inset;
+  const lh = ARENA.halfH - SPAWN.inset;
   // 둘레 길이에 맞춰 변을 고른다 (긴 변에서 더 자주)
   let k = side;
   if (k < 0) k = rand(s) * (w + h) < w ? (rand(s) < 0.5 ? 0 : 1) : rand(s) < 0.5 ? 2 : 3;
+  // 0 위 · 1 아래 · 2 왼쪽 · 3 오른쪽: 맵 밖의 변이면 반대쪽
+  if (k === 0 && p.y - h < -lh) k = 1;
+  else if (k === 1 && p.y + h > lh) k = 0;
+  else if (k === 2 && p.x - w < -lw) k = 3;
+  else if (k === 3 && p.x + w > lw) k = 2;
   const t = rand(s) * 2 - 1;
-  if (k === 0) {
-    out.x = p.x + t * w;
-    out.y = p.y - h;
-  } else if (k === 1) {
-    out.x = p.x + t * w;
-    out.y = p.y + h;
-  } else if (k === 2) {
-    out.x = p.x - w;
-    out.y = p.y + t * h;
+  if (k <= 1) {
+    let o = t * w;
+    if (p.x + o > lw || p.x + o < -lw) o = -o;
+    out.x = Math.max(-lw, Math.min(lw, p.x + o));
+    out.y = k === 0 ? p.y - h : p.y + h;
   } else {
-    out.x = p.x + w;
-    out.y = p.y + t * h;
+    let o = t * h;
+    if (p.y + o > lh || p.y + o < -lh) o = -o;
+    out.x = k === 2 ? p.x - w : p.x + w;
+    out.y = Math.max(-lh, Math.min(lh, p.y + o));
   }
 }
 

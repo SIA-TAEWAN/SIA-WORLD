@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PLAYER } from '../data/balance';
+import { ARENA, PLAYER } from '../data/balance';
 import { ENEMIES } from '../data/enemies';
 import { WEAPONS } from '../data/weapons';
 import { bossWinding } from '../game/bosses';
@@ -26,9 +26,15 @@ type Img = Phaser.GameObjects.Image;
 const CHAR_H = 92;
 const CHAR_MAX_W = 96;
 /** 그림 깊이 */
-const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, enemy: 4, boss: 5, ring: 6, fog: 7, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
+const D = { ground: 0, water: 0.5, zone: 1, aura: 2, item: 3, wall: 3.5, edge: 3.8, enemy: 4, boss: 5, ring: 6, fog: 7, player: 8, proj: 9, fx: 10, bar: 11, num: 12 };
 /** 황천길 안개: 흘러가는 두 겹(속도 · 방향 · 짙기)과 화면 가장자리의 짙은 안개 */
 const FOG = { layers: [{ alpha: 0.6, speed: [22, 3], par: 0.85, sx: 2.4, sy: 1.6 }, { alpha: 0.45, speed: [-14, 2], par: 0.7, sx: 1.5, sy: 1.1 }], edge: 0.9, breathe: 0.15 };
+/**
+ * 맵 끝의 담 (ARENA): 담 너머를 덮는 어두운 판(DESIGN.md 의 --dim: --outline 55%) + 맵마다 다른 색의 담장 띠와 기둥.
+ * 들판 나무 울타리 · 대나무 숲 대울타리 · 달빛 궁궐 붉은 담 · 황천길 돌담. 한 번만 그리는 Graphics 하나 (큰 그림·캔버스를 새로 만들지 않는다)
+ */
+const EDGE = { dim: 0.55, band: 18, post: 26, gap: 84, line: 4, beyond: 2400 };
+const EDGE_TINT: Record<string, number> = { field: COLOR.inkSoft, bamboo: COLOR.win, palace: COLOR.lose, underworld: COLOR.draw };
 /** 지대 색 (state.ts 의 ZONE 순서): 독안개 · 예고 · 독 · 불길 · 물기둥 · 양털 구름 · 말발굽 */
 const ZONE_TINT = [COLOR.win, COLOR.pink, COLOR.draw, COLOR.lose, COLOR.teamA, COLOR.white, COLOR.inkSoft, COLOR.primary];
 /** 두 색을 섞는다 (t: b 쪽으로 얼마나) */
@@ -259,6 +265,7 @@ export class GameScene extends Phaser.Scene {
     if (s.hell) this.ground.setTint(HELL_TINT.ground);
     this.fitGround();
     if (s.map.id === 'underworld') this.makeFog();
+    this.drawEdge(s);
 
     this.zones = new SpritePool(this, 'disc', D.zone);
     this.zoneCores = new SpritePool(this, 'disc', D.zone);
@@ -282,6 +289,56 @@ export class GameScene extends Phaser.Scene {
     // 캐릭터 아래 작은 체력 바
     this.hpBack = this.add.rectangle(0, 0, 60, 11, COLOR.outline).setDepth(D.bar);
     this.hpFill = this.add.rectangle(0, 0, 54, 5, COLOR.win).setOrigin(0, 0.5).setDepth(D.bar);
+  }
+
+  /**
+   * 맵 끝의 담을 한 번 그린다 (좌표는 계산과 같아서 카메라를 따라 움직일 필요가 없다).
+   * 카메라는 계속 내 캐릭터를 가운데 둔다: 담 가까이 가면 담 너머의 어두운 땅이 보이고, 요괴가 나오는 화면 밖 둘레가 언제나 같은 거리다
+   */
+  private drawEdge(s: State) {
+    const W = ARENA.halfW;
+    const H = ARENA.halfH;
+    const B = EDGE.beyond;
+    const T = EDGE.band;
+    const g = this.add.graphics().setDepth(D.edge);
+    // 담 너머: 어둡게 덮는다 (위 · 아래 · 왼쪽 · 오른쪽)
+    g.fillStyle(COLOR.outline, EDGE.dim);
+    g.fillRect(-W - B, -H - B, 2 * (W + B), B);
+    g.fillRect(-W - B, H, 2 * (W + B), B);
+    g.fillRect(-W - B, -H, B, 2 * H);
+    g.fillRect(W, -H, B, 2 * H);
+    // 담장 띠: 맵 바깥쪽에 붙어 두른다 (안쪽 가장자리가 곧 지나갈 수 없는 선)
+    let tint = EDGE_TINT[s.map.id] ?? COLOR.inkSoft;
+    if (s.hell) tint = mix(tint, COLOR.outline, 0.35);
+    g.fillStyle(tint, 1);
+    g.fillRect(-W - T, -H - T, 2 * (W + T), T);
+    g.fillRect(-W - T, H, 2 * (W + T), T);
+    g.fillRect(-W - T, -H, T, 2 * H);
+    g.fillRect(W, -H, T, 2 * H);
+    g.lineStyle(EDGE.line, COLOR.outline, 1);
+    g.strokeRect(-W, -H, 2 * W, 2 * H);
+    g.strokeRect(-W - T, -H - T, 2 * (W + T), 2 * (H + T));
+    // 기둥: 띠 위에 일정한 간격으로 (모서리에는 언제나 하나)
+    const P = EDGE.post;
+    const post = (x: number, y: number) => {
+      g.fillStyle(tint, 1).fillRect(x - P / 2, y - P / 2, P, P);
+      g.lineStyle(3, COLOR.outline, 1).strokeRect(x - P / 2, y - P / 2, P, P);
+      // 윗면의 밝은 줄 (DESIGN.md: 그림자 대신 외곽선과 두께로 입체감)
+      g.fillStyle(COLOR.white, 0.35).fillRect(x - P / 2 + 3, y - P / 2 + 3, P - 6, 4);
+    };
+    const c = T / 2;
+    const nx = Math.round((2 * W) / EDGE.gap);
+    const ny = Math.round((2 * H) / EDGE.gap);
+    for (let i = 0; i <= nx; i++) {
+      const x = -W - c + ((2 * (W + c)) * i) / nx;
+      post(x, -H - c);
+      post(x, H + c);
+    }
+    for (let i = 1; i < ny; i++) {
+      const y = -H - c + ((2 * (H + c)) * i) / ny;
+      post(-W - c, y);
+      post(W + c, y);
+    }
   }
 
   update(time: number) {
