@@ -723,7 +723,7 @@
       for (const c of ['chips', 'nyang']) {
         $('#w-' + c).textContent = wallet ? formatAmount(wallet[c]) : '-';
         const left = wallet?.[c + 'RefillsLeft'];
-        $('#l-' + c).textContent = wallet ? `무료 충전 오늘 ${left}/${REFILLS_PER_DAY}번 남음` : '';
+        $('#l-' + c).textContent = !wallet ? '' : wallet.refillUnlimited ? '무료 충전 횟수 제한 없음 (관리자)' : `무료 충전 오늘 ${left}/${REFILLS_PER_DAY}번 남음`;
         $(`.refill[data-c="${c}"]`).disabled = !canRefill(wallet, c, LOBBY_BASE_UNIT);
       }
       renderCat();

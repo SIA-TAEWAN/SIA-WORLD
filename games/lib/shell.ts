@@ -466,7 +466,7 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
     );
     const box = $(root, '#refill-box');
     box.innerHTML = m.wallet.canRefill(wallet, cur, 100)
-      ? `<button class="btn small" id="refill">무료 충전 (오늘 ${wallet![`${cur}RefillsLeft`]}번 남음)</button>`
+      ? `<button class="btn small" id="refill">무료 충전 (${wallet!.refillUnlimited ? '관리자 · 제한 없음' : `오늘 ${wallet![`${cur}RefillsLeft`]}번 남음`})</button>`
       : '';
     box.querySelector('#refill')?.addEventListener('click', async () => {
       try {
