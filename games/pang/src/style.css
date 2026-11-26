@@ -29,7 +29,7 @@ button{font:inherit;color:inherit}
 .star{width:1em;height:1em;display:inline-block;vertical-align:-0.12em}
 .star path{fill:var(--primary);stroke:var(--ink);stroke-width:2;stroke-linejoin:round}
 .star.off path{fill:#E2D3B5;stroke:#B8A584}
-.topline{display:flex;justify-content:center;margin-bottom:12px}
+.topline{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 /* map */
 .chapter{padding:12px 12px 14px;margin:0 0 18px}
 .chapter h2{margin:0 0 2px;font-size:20px;font-weight:normal;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
@@ -88,3 +88,5 @@ button{font:inherit;color:inherit}
 .pop .row{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
 .pop .row .btn{flex:1 1 0}
 @media (prefers-reduced-motion:reduce){.stage.next b,.pop,.pop .bigstars .star{animation:none}}
+.chapter.hiddench{opacity:.75;border-style:dashed}
+.chapter.hiddench p{margin:4px 0 0}
