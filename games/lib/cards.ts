@@ -31,7 +31,7 @@ export const cardRadius = (w: number) => scaled(T.SHAPE.radiusCard, w, 90);
 /**
  * 테이블: 게임별 보조색의 둥근 판 + 굵은 외곽선 + 가장자리 크림 테두리 (평평한 단색, 펠트 질감 없음)
  */
-export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'holdem' | 'blackjack') {
+export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'holdem' | 'blackjack' | 'roulette') {
   const { W, H } = viewSize(scene);
   const g = scene.add.graphics();
   const C = T.COLOR;
@@ -47,7 +47,8 @@ export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'holdem' | 'bl
   const y = m + rim;
   const w = W - (m + rim) * 2;
   const h = H - (m + rim) * 2 - T.SHAPE.depthPanel;
-  const felt = game === 'matgo' ? T.TABLE.matgo : (T.FELT?.[game] ?? T.TABLE[game]);
+  // 룰렛 휠 밑판은 예전 민트(TABLE.poker) 그대로 — 짙은 펠트는 세븐포커·홀덤·블랙잭만
+  const felt = game === 'matgo' ? T.TABLE.matgo : game === 'roulette' ? T.TABLE.poker : (T.FELT?.[game] ?? T.TABLE[game]);
   g.fillStyle(felt, 1).fillRoundedRect(x, y, w, h, r - 6);
   g.lineStyle(T.SHAPE.line, C.outline, 1).strokeRoundedRect(x, y, w, h, r - 6);
   return g;

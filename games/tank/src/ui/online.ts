@@ -747,7 +747,7 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
     clearInterval(beat);
     document.removeEventListener('visibilitychange', onShow);
     // 모두 나가면 서버가 방을 지운다
-    void backend!.quitGame(room.id, clientId()).then(() => sess.refetch());
+    void backend!.quitGame(room.id, clientId()).then(() => sess.refetch()).catch(() => undefined);
     g.dispose();
     online = null;
     closeGame();

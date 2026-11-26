@@ -469,7 +469,8 @@ export function showGame(setup: GameSetup) {
     if (notes.length > 0 && s.time > 0.5) {
       sfx('newRecord');
       const title = maxNames.length > 0 ? `🌟 ${maxNames.join(' · ')} MAX!` : '🔗 세트 완성!';
-      setCutHeld(`${esc(title)}<small>${notes.map(esc).join('<br>')}</small>`, 'go', 2000);
+      // 아직 못 보여 준 안내(예: 무한 모드 '끝이 아니에요')가 있으면 덮어쓰지 않는다 — MAX·세트 알림은 소리로 알린다
+      if (!held || heldUntil > 0) setCutHeld(`${esc(title)}<small>${notes.map(esc).join('<br>')}</small>`, 'go', 2000);
     }
   }
 
@@ -568,8 +569,8 @@ export function showGame(setup: GameSetup) {
             <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-quit>그만두기</button></div></div>`
         : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
             <p class="soft pause-info">${esc(s.char.nick)} · ${esc(s.map.name)}${s.endless ? ' · 무한 모드' : s.hell ? ' · 🔥 헬 모드' : ''} · ${mmss(clockSec())} · Lv ${s.level}</p>
-            <h4>무기 ${s.weapons.length}/6</h4><ul class="own-list">${weapons.join('')}</ul>
-            <h4>패시브 ${s.passives.length}/6</h4><ul class="own-list">${passives.join('') || '<li class="none">아직 없어요</li>'}</ul>
+            <h4>무기 ${s.weapons.length}/${LIMIT.weapons}</h4><ul class="own-list">${weapons.join('')}</ul>
+            <h4>패시브 ${s.passives.length}/${LIMIT.passives}</h4><ul class="own-list">${passives.join('') || '<li class="none">아직 없어요</li>'}</ul>
             <div class="actions"><button class="btn primary" data-resume>계속하기</button></div>
             <div class="actions"><button class="btn small" data-settings>⚙️ 설정</button><button class="btn small" data-giveup>🏳️ 포기</button></div></div>`;
     };
