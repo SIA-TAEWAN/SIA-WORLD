@@ -1,0 +1,15 @@
+{
+  "_note": "시아팡팡 스테이지 선택 지도의 챕터 카드 배경 10장 (2026-11-26). 모델: gemini-nano-banana-2.1 (1K · 16:9 · 도트 아님 · 배경 포함, 1376×768). ch01 을 먼저 그리고 나머지 9장은 ch01 을 style_asset_ids 로 넣어 같은 그림체로 맞췄다. 받은 원본은 art/spritecook/ch01~ch10.png, python games/pang/art/build_maps.py 가 가운데를 912×560 으로 잘라 public/art/maps/ 에 넣는다. 구도: 위쪽 두 모서리와 아래 가장자리에만 그림, 가운데 띠는 비워 둠 (둥근 스테이지 버튼 자리)",
+  "assets": [
+    { "asset_id": "ea3df83a-6998-4eec-80ab-53eed9ebdf61", "label": "ch01 정령의 숲 — 둥근 나무 · 꽃 · 버섯 (그림체 기준 그림) → public/art/maps/ch01" },
+    { "asset_id": "33df5a64-e3a8-4e27-b35b-7c9118fdf4ce", "label": "ch02 얼음 호수 — 눈 덮인 기슭 · 작은 얼음 조각 → ch02" },
+    { "asset_id": "1400df0a-1f25-4252-99d6-4c754bde2be3", "label": "ch03 바위 언덕 — 갈색·황토 바위 · 풀 몇 포기 → ch03" },
+    { "asset_id": "46e1d3a2-d183-4d2d-8039-4c45d9376729", "label": "ch04 구름 계곡 — 뭉게구름 · 떠 있는 섬 → ch04" },
+    { "asset_id": "662e521d-8b9a-4f01-9e41-dbafec5c9fd9", "label": "ch05 얼음 동굴 — 고드름 · 수정 → ch05" },
+    { "asset_id": "64385f87-e2f5-46b3-8bc5-639122476958", "label": "ch06 덩굴 숲 — 늘어진 덩굴 · 큰 잎 → ch06" },
+    { "asset_id": "4fc5e57b-c559-4fec-870b-2a2b7a8d01c5", "label": "ch07 번개 산 — 보랏빛 먹구름 · 노란 번개 · 봉우리 → ch07" },
+    { "asset_id": "a3076faa-16ef-4738-9d71-41cec0fb2ecf", "label": "ch08 빛의 신전 — 흰·금 기둥 · 빛줄기 · 계단 → ch08" },
+    { "asset_id": "e0ba42ce-1706-4c74-9ebb-2696d8340382", "label": "ch09 어둠 숲 — 보라 나무 · 빛 알갱이 → ch09" },
+    { "asset_id": "a0f5e9b2-e06d-4820-ab62-39632b6b6f58", "label": "ch10 정령왕의 성 — 분홍·연보라 탑 · 깃발 줄 · 분홍 구름 → ch10" }
+  ]
+}
