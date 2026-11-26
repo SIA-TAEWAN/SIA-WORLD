@@ -26,7 +26,8 @@ async function call(fn, args) {
 
 /**
  * 지갑 확인(없으면 10,000 / 10,000으로 생성)
- * → { chips, nyang, siaCoins, streak, chipsRefillsLeft, nyangRefillsLeft }
+ * → { chips, nyang, siaCoins, streak, chipsRefillsLeft, nyangRefillsLeft, refillUnlimited }
+ *   refillUnlimited: 관리자면 true (무료 충전 횟수 제한 없음, 108_admin_refill.sql)
  *   siaCoins: 시아코인 (게임 한 판을 정상적으로 끝낼 때마다 서버가 1개씩 준다. 033_sia_coin.sql)
  */
 export const ensureWallet = () => call('ensure_wallet');
@@ -70,11 +71,11 @@ export function attendanceStreakText(w) {
   return `🔥 연속 ${n}일째 · ${next.days === 1 ? '내일도' : `${next.days}일 더`} 오면 시아코인 +${next.coins}`;
 }
 
-/** 무료 충전 버튼을 켤지: 잔액이 최소 입장 금액보다 적고, 채우면 늘어나고, 오늘 횟수가 남았을 때 */
+/** 무료 충전 버튼을 켤지: 잔액이 최소 입장 금액보다 적고, 채우면 늘어나고, 오늘 횟수가 남았을 때 (관리자는 횟수 제한 없음, 108) */
 export function canRefill(wallet, currency, baseUnit) {
   const bal = wallet?.[currency] ?? 0;
   const left = wallet?.[`${currency}RefillsLeft`] ?? 0;
-  return bal < minEntry(baseUnit) && bal < REFILL_TO && left > 0;
+  return bal < minEntry(baseUnit) && bal < REFILL_TO && (left > 0 || wallet?.refillUnlimited === true);
 }
 
 /**

@@ -61,6 +61,8 @@ export interface Wallet {
   nyang: number;
   chipsRefillsLeft: number;
   nyangRefillsLeft: number;
+  /** 관리자: 무료 충전 횟수 제한 없음 (108) */
+  refillUnlimited?: boolean;
 }
 
 export interface AuthModule {
