@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { LIMITS, LIVES } from '../src/net/api';
 import { SQL_FILE, stageBlock } from '../scripts/sqlrows.mjs';
 
-const latest = readFileSync(SQL_FILE, 'utf8'); // 113_pang_lives.sql — 스테이지 표·목숨의 최신 정의
-const first = readFileSync(new URL('../../../supabase/migrations/111_pang.sql', import.meta.url), 'utf8');
+// 윈도우 체크아웃(CRLF)에서도 같게 비교하도록 줄바꿈을 맞춘다
+const lf = (s: string) => s.replace(/\r\n/g, '\n');
+const latest = lf(readFileSync(SQL_FILE, 'utf8')); // 113_pang_lives.sql — 스테이지 표·목숨의 최신 정의
+const first = lf(readFileSync(new URL('../../../supabase/migrations/111_pang.sql', import.meta.url), 'utf8'));
 
 describe('pang SQL (111 + 113) 이 클라이언트와 같다', () => {
   it('스테이지 표 (이동 수·별 기준) = src/data/levels.json  (다르면 npm run sqlrows)', () => {

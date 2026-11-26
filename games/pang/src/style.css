@@ -32,6 +32,11 @@ button{font:inherit;color:inherit}
 .topline{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 /* map */
 .chapter{padding:12px 12px 14px;margin:0 0 18px}
+/* 챕터 배경 그림 (public/art/maps/chNN.png — 없으면 크림 판 그대로). 제목·설명 뒤에만 크림 베일 */
+.chapter{background:var(--bg,none) center/cover no-repeat,var(--panel);overflow:hidden}
+.chapter h2{background:rgba(255,248,232,.88);border-radius:12px;padding:4px 10px}
+.chapter p{display:inline-block;background:rgba(255,248,232,.88);border-radius:10px;padding:2px 10px;margin-top:4px}
+.chapter .stages{padding-top:2px}
 .chapter h2{margin:0 0 2px;font-size:20px;font-weight:normal;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .chapter h2 small{font-size:13px;color:var(--ink-soft)}
 .chapter p{margin:0 0 10px;font-size:13px;color:var(--ink-soft)}

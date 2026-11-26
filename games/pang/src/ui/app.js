@@ -67,10 +67,12 @@ function renderMap() {
   livesPill();
   let html = '';
   const shown = shownChapters();
-  for (let ch = 0; ch < shown; ch++) {
+  // 새 챕터가 맨 위 (10 - 9 - 8 …): 다음 지도를 하려고 아래로 내려가지 않아도 되게. 아직 안 보이는 챕터 카드도 맨 위에
+  if (shown < 10) html += '<div class="panel chapter hiddench"><h2>' + (shown + 1) + '. ???</h2><p>' + shown + '장의 10판을 모두 깨면 다음 지도가 보여요</p></div>';
+  for (let ch = shown - 1; ch >= 0; ch--) {
     const list = LEVELS.filter(l => l.chapter === ch);
     const got = list.reduce((s, l) => s + (save.stars[l.id] || 0), 0);
-    html += '<div class="panel chapter"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
+    html += '<div class="panel chapter" style="--bg:url(art/maps/ch' + String(ch + 1).padStart(2, '0') + '.png)"><h2>' + (ch + 1) + '. ' + list[0].name + '<small>' + STAR + ' ' + got + '/30</small></h2><p>' + CH_DESC[ch] + '</p><div class="stages">';
     for (const l of list) {
       const st = save.stars[l.id] || 0, lock = l.id > open, next = l.id === open && !st;
       const cls = ['stage', l.boss ? 'boss' : '', st ? 'done' : '', lock ? 'lock' : '', next ? 'next' : ''].join(' ');
@@ -79,7 +81,6 @@ function renderMap() {
     }
     html += '</div></div>';
   }
-  if (shown < 10) html += '<div class="panel chapter hiddench"><h2>' + (shown + 1) + '. ???</h2><p>' + shown + '장의 10판을 모두 깨면 다음 지도가 보여요</p></div>';
   $('chapters').innerHTML = html;
 }
 $('chapters').addEventListener('click', e => { const b = e.target.closest('.stage'); if (b && !b.disabled) showStart(+b.dataset.id); });
@@ -427,9 +428,11 @@ function applyEvent(ev) {
     // 진동: 콤보가 길수록 길고 강하게 (navigator.vibrate 가 없는 아이폰 사파리는 아무 일도 없음)
     try { navigator.vibrate?.(big ? [40, 30, 60] : Math.min(50, 15 + ev.combo * 8)); } catch { /* 막힌 기기 */ }
     texts = texts.filter(t => !t.combo);   // 앞 콤보 글자는 지우고 새 수만
-    floatText(ev.combo + ' 콤보!', BW / 2, BH * 0.38, 32 + Math.min(12, ev.combo * 2), col);
+    // 콤보가 늘수록 글자도 커진다 (2콤보 34px → 한 번에 8px씩, 판 너비를 넘지 않게)
+    const size = Math.min(BW * 0.24, 26 + (ev.combo - 1) * 8), sub = Math.min(32, 16 + ev.combo * 2);
+    floatText(ev.combo + ' 콤보!', BW / 2, BH * 0.38, size, col);
     texts[texts.length - 1].combo = true;
-    floatText(big ? '정령 폭풍!' : COMBO[ev.combo] + '!', BW / 2, BH * 0.38 + 34 + Math.min(12, ev.combo * 2) * 0.6, 20, col);
+    floatText(big ? '정령 폭풍!' : COMBO[ev.combo] + '!', BW / 2, BH * 0.38 + size * 0.55 + sub * 0.7, sub, col);
     texts[texts.length - 1].combo = true;
   }
   if (ev.movesAdded) floatText('이동 +' + ev.movesAdded, BW / 2, BH * 0.25, 26, '#FF9EC4');
