@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BOSS_WARN_SEC, ENDLESS, LIMIT, RUN_SEC, TICKS_PER_SEC } from '../src/data/balance';
+import { BOSS_WARN_SEC, ENDLESS, LIMIT, RUN_SEC, STACKS, TICKS_PER_SEC } from '../src/data/balance';
+import { WEAPON_INDEX } from '../src/data/weapons';
+import { addPassive, addWeapon, drawCards, pickCard } from '../src/game/levelup';
+import { CARD } from '../src/game/state';
 import { BOSSES, BOSS_INDEX } from '../src/data/bosses';
 import { ENEMY_INDEX } from '../src/data/enemies';
 import { MAPS } from '../src/data/maps';
@@ -485,5 +488,47 @@ describe('무한 모드: 테스트 모드의 기기 저장과 서버 호출', ()
     // 잠긴 무한 모드는 서버가 거절한다 (다시 시도하지 않는다)
     const locked: RpcClient = { rpc: () => Promise.resolve({ data: null, error: { code: 'P0001', message: 'endless locked' } }) };
     await expect(createSupabaseApi(locked, 'u1', memStore()).start('field', 'rat', 0, 'endless')).rejects.toThrow('endless locked');
+  });
+});
+
+describe('무한 모드: 계속 쌓이는 카드', () => {
+  /** 무기 4개·패시브 6개를 다 키운 판 */
+  const full = (mode: 'normal' | 'endless', time: number) => {
+    const s = createRun({ seed: 3, char: 'tiger', map: 'field', mode, numbers: false });
+    s.weapons.length = 0;
+    for (const id of ['claw', 'shuriken', 'bell', 'pearl']) addWeapon(s, WEAPON_INDEX[id], LIMIT.level);
+    for (let i = 0; i < LIMIT.passives; i++) addPassive(s, i, LIMIT.level);
+    s.time = time;
+    return s;
+  };
+  const types = (s: State) => s.cards.slice(0, s.cardN).map((c) => c.type);
+
+  it('4분 뒤 무한 모드에서만 빈자리가 쌓이는 카드가 된다 (4분 모드·처음 4분은 떡·엽전 그대로)', () => {
+    const late = full('endless', RUN_SEC + 1);
+    drawCards(late);
+    expect(types(late)).toEqual([CARD.stack, CARD.stack, CARD.heal]);
+    for (const s of [full('endless', RUN_SEC - 1), full('normal', RUN_SEC + 1)]) {
+      drawCards(s);
+      expect(types(s)).toEqual([CARD.heal, CARD.coins]);
+    }
+  });
+
+  it('고를 때마다 더해진다: 피해 +4%씩 · 최대 체력 +5%씩, 몇 번이든', () => {
+    const s = full('endless', RUN_SEC + 1);
+    const might = s.stats.might;
+    const hp = s.stats.maxHp;
+    for (let n = 1; n <= 5; n++) {
+      drawCards(s);
+      expect(s.cards[0]).toMatchObject({ type: CARD.stack, def: 0, lv: n });
+      s.phase = 'levelup';
+      pickCard(s, 0);
+    }
+    expect(s.stacks[0]).toBe(5);
+    expect(s.stats.might).toBeCloseTo(might + STACKS[0].value * 5, 6);
+    drawCards(s);
+    s.phase = 'levelup';
+    pickCard(s, 1);
+    expect(s.stacks[1]).toBe(1);
+    expect(s.stats.maxHp).toBeGreaterThan(hp);
   });
 });
