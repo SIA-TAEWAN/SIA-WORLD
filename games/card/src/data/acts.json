@@ -1,0 +1,394 @@
+{
+  "acts": [
+    {
+      "act": 1,
+      "regions": [
+        "bamboo",
+        "field"
+      ]
+    },
+    {
+      "act": 2,
+      "regions": [
+        "palace"
+      ]
+    },
+    {
+      "act": 3,
+      "regions": [
+        "underworld"
+      ]
+    },
+    {
+      "act": 4,
+      "regions": [
+        "abyss"
+      ],
+      "hidden": true
+    }
+  ],
+  "regions": [
+    {
+      "id": "bamboo",
+      "name": "대나무숲",
+      "tile": "tile-bamboo",
+      "bg": "bg-bamboo",
+      "ready": true,
+      "bosses": [
+        "gumiho",
+        "jangsanbeom",
+        "centipede"
+      ],
+      "enemies": [
+        "bamboo",
+        "fox",
+        "acorn",
+        "lynx"
+      ],
+      "easy": [
+        [
+          "fox"
+        ],
+        [
+          "bamboo"
+        ],
+        [
+          "acorn",
+          "acorn"
+        ]
+      ],
+      "normal": [
+        [
+          "lynx"
+        ],
+        [
+          "fox",
+          "acorn"
+        ],
+        [
+          "bamboo",
+          "acorn"
+        ],
+        [
+          "acorn",
+          "acorn",
+          "acorn"
+        ],
+        [
+          "fox",
+          "fox"
+        ],
+        [
+          "bamboo",
+          "fox"
+        ],
+        [
+          "lynx",
+          "acorn"
+        ]
+      ]
+    },
+    {
+      "id": "field",
+      "name": "들판",
+      "tile": "tile-field",
+      "bg": "bg-field",
+      "ready": true,
+      "bosses": [
+        "bigDokkaebi",
+        "bulgasal",
+        "gangcheori"
+      ],
+      "enemies": [
+        "club",
+        "imp",
+        "wisp",
+        "firecart"
+      ],
+      "easy": [
+        [
+          "imp",
+          "imp"
+        ],
+        [
+          "wisp"
+        ],
+        [
+          "club"
+        ]
+      ],
+      "normal": [
+        [
+          "firecart"
+        ],
+        [
+          "club",
+          "imp"
+        ],
+        [
+          "wisp",
+          "wisp"
+        ],
+        [
+          "imp",
+          "imp",
+          "imp"
+        ],
+        [
+          "club",
+          "wisp"
+        ],
+        [
+          "firecart",
+          "imp"
+        ],
+        [
+          "wisp",
+          "imp"
+        ]
+      ]
+    },
+    {
+      "id": "palace",
+      "name": "궁궐",
+      "tile": "tile-palace",
+      "bg": "bg-palace",
+      "ready": true,
+      "bosses": [
+        "guardCaptain",
+        "dueoksini",
+        "imugi"
+      ],
+      "enemies": [
+        "guard",
+        "spirit",
+        "water",
+        "catfish"
+      ],
+      "easy": [
+        [
+          "spirit"
+        ],
+        [
+          "water"
+        ],
+        [
+          "guard"
+        ]
+      ],
+      "normal": [
+        [
+          "catfish"
+        ],
+        [
+          "guard",
+          "spirit"
+        ],
+        [
+          "water",
+          "spirit"
+        ],
+        [
+          "guard",
+          "water"
+        ],
+        [
+          "spirit",
+          "spirit"
+        ],
+        [
+          "water",
+          "water"
+        ],
+        [
+          "catfish",
+          "spirit"
+        ]
+      ]
+    },
+    {
+      "id": "underworld",
+      "name": "저승",
+      "tile": "tile-underworld",
+      "bg": "bg-underworld",
+      "ready": true,
+      "bosses": [
+        "reaper",
+        "yagwanggwi",
+        "yeomra"
+      ],
+      "enemies": [
+        "skeleton",
+        "ferryman",
+        "spirit3",
+        "bomber"
+      ],
+      "easy": [
+        [
+          "skeleton"
+        ],
+        [
+          "ferryman"
+        ],
+        [
+          "spirit3",
+          "bomber"
+        ]
+      ],
+      "normal": [
+        [
+          "skeleton",
+          "spirit3"
+        ],
+        [
+          "ferryman",
+          "bomber"
+        ],
+        [
+          "skeleton",
+          "bomber"
+        ],
+        [
+          "spirit3",
+          "spirit3"
+        ],
+        [
+          "ferryman",
+          "spirit3"
+        ],
+        [
+          "skeleton",
+          "skeleton"
+        ],
+        [
+          "bomber",
+          "bomber",
+          "spirit3"
+        ]
+      ]
+    },
+    {
+      "id": "abyss",
+      "name": "어둠의 끝",
+      "tile": "tile-underworld",
+      "bg": "bg-underworld",
+      "ready": true,
+      "hidden": true,
+      "bosses": [
+        "final"
+      ],
+      "enemies": [],
+      "easy": [],
+      "normal": []
+    }
+  ],
+  "nodeRatio": [
+    [
+      "battle",
+      45
+    ],
+    [
+      "elite",
+      10
+    ],
+    [
+      "shop",
+      10
+    ],
+    [
+      "rest",
+      12
+    ],
+    [
+      "treasure",
+      8
+    ],
+    [
+      "event",
+      15
+    ]
+  ],
+  "rowsPerAct": 12,
+  "rowWidth": [
+    2,
+    4
+  ],
+  "gold": {
+    "battle": [
+      12,
+      18
+    ],
+    "elite": [
+      25,
+      35
+    ],
+    "boss": [
+      60,
+      60
+    ]
+  },
+  "cardOdds": [
+    [
+      "common",
+      60
+    ],
+    [
+      "uncommon",
+      33
+    ],
+    [
+      "legend",
+      7
+    ]
+  ],
+  "cardOddsMagpie": [
+    [
+      "common",
+      45
+    ],
+    [
+      "uncommon",
+      43
+    ],
+    [
+      "legend",
+      12
+    ]
+  ],
+  "prices": {
+    "card": {
+      "common": [
+        50,
+        70
+      ],
+      "uncommon": [
+        80,
+        110
+      ],
+      "hero2": [
+        80,
+        110
+      ],
+      "legend": [
+        130,
+        150
+      ]
+    },
+    "relic": {
+      "common": [
+        150,
+        200
+      ],
+      "uncommon": [
+        220,
+        300
+      ]
+    },
+    "potion": [
+      40,
+      60
+    ],
+    "remove": 75,
+    "removeStep": 25
+  }
+}

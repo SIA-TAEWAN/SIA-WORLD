@@ -36,7 +36,7 @@ export const CHARACTER_PRICE = { cat: 100 };
 export const CAT_PRICE = CHARACTER_PRICE.cat;
 
 /** 추가 캐릭터를 고를 수 있는 게임 (shared/games.js 의 id). SQL _character_games 와 같게 */
-export const CHARACTER_GAMES = ['tank', 'race', 'volleyball', 'survival', 'defense', 'charge', 'finger', 'village', 'twelve'];
+export const CHARACTER_GAMES = ['tank', 'race', 'volleyball', 'survival', 'defense', 'charge', 'finger', 'village', 'twelve', 'card'];
 
 /** 잠긴 캐릭터 칸의 버튼 글 */
 export const unlockLabel = (id) => `시아코인 ${CHARACTER_PRICE[id] ?? ''}개로 열기`;

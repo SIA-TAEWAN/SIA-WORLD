@@ -26,6 +26,7 @@ export const GAME_CHANNELS = {
   finger: ['finger-lobby'],
   twelve: ['twelve-lobby'],
   tower: ['tower-lobby'],
+  card: ['card-lobby'],
   pang: ['pang-lobby'],
 };
 
