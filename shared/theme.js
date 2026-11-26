@@ -40,6 +40,9 @@ export const TABLE = {
   blackjack: 0x7fb8e8,
 };
 
+/** 카지노 테이블 바닥 (게임선택 그림과 같은 짙은 녹색·파란색). 다른 게임이 쓰는 TABLE 값은 그대로 */
+export const FELT = { poker: 0x468c59, holdem: 0x468c59, blackjack: 0x4b7fb4 };
+
 /** 시아맞고 담요: 체크 무늬(밝은 칸) · 바닥 자리·먹은 패 칸(어두운 면). 바탕은 TABLE.matgo */
 export const MATGO = { matLight: 0x8fcc9b, matDark: 0x5fa772 };
 

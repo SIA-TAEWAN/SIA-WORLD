@@ -47,7 +47,8 @@ export function drawTable(scene: Scene, game: 'matgo' | 'poker' | 'holdem' | 'bl
   const y = m + rim;
   const w = W - (m + rim) * 2;
   const h = H - (m + rim) * 2 - T.SHAPE.depthPanel;
-  g.fillStyle(T.TABLE[game], 1).fillRoundedRect(x, y, w, h, r - 6);
+  const felt = game === 'matgo' ? T.TABLE.matgo : (T.FELT?.[game] ?? T.TABLE[game]);
+  g.fillStyle(felt, 1).fillRoundedRect(x, y, w, h, r - 6);
   g.lineStyle(T.SHAPE.line, C.outline, 1).strokeRoundedRect(x, y, w, h, r - 6);
   return g;
 }
