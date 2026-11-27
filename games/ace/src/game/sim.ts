@@ -432,7 +432,9 @@ export class Sim {
   // ---------------- 무기: 기본샷 ----------------
   private fireShots() {
     const s = this.ship;
-    if (this.frame % s.every !== 0 || this.act.kind === 'dash' || this.act.kind === 'tigerDash' || this.act.kind === 'pierceDash') return;
+    // 돌진 중에는 기본샷을 쉬고 몸으로 부딪힌다 (돌진이 끝나면 다시 쏜다)
+    const dashing = this.act.t > 0 && (this.act.kind === 'dash' || this.act.kind === 'tigerDash' || this.act.kind === 'pierceDash');
+    if (this.frame % s.every !== 0 || dashing) return;
     for (const sp of s.fire[this.power - 1]) this.shotFrom(this.px, this.py - 40, sp);
     if (this.power < 3 || this.frame % (s.every * 2) !== 0) return;
     for (const o of this.opts) {
@@ -449,7 +451,7 @@ export class Sim {
   private shotFrom(x: number, y: number, sp: ShotSpec) {
     const kind = sp.kind === 'homing' ? 1 : sp.kind === 'wave' ? 2 : sp.kind === 'bounce' ? 3 : 0;
     const v = sp.v ?? (kind === 1 ? 17 : kind === 2 ? 22 : 30), a = sp.a ?? 0;
-    this.addShot(x + sp.x, y, Math.sin(a) * v, -Math.cos(a) * v, sp.dmg, kind, !!sp.pierce, sp.r ?? 8, sp.life ?? 0);
+    this.addShot(x + sp.x, y, Math.sin(a) * v, -Math.cos(a) * v, sp.dmg * this.ship.dmg, kind, !!sp.pierce, sp.r ?? 8, sp.life ?? 0);
   }
 
   addShot(x: number, y: number, vx: number, vy: number, dmg: number, kind = 0, pierce = false, r = 8, life = 0, big = false) {

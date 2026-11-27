@@ -99,3 +99,4 @@
 .menu .loading { margin: auto; text-align: center; color: var(--white); -webkit-text-stroke: calc(var(--px) * 1.5) var(--outline); paint-order: stroke fill; font-size: calc(var(--px) * 20); }
 .menu .loading .btn { -webkit-text-stroke: 0; color: var(--ink); text-decoration: none; margin: 6px; }
 .menu .coinpill { background: var(--white); color: var(--accent); border: 2px solid var(--outline); }
+.menu .soundpill { border: 0; font: inherit; cursor: pointer; min-width: calc(var(--px) * 40); }

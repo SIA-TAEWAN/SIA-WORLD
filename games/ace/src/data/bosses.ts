@@ -221,7 +221,7 @@ export const BOSSES: Record<string, BossDef> = {
   // 모래벌레 요새 (포탑 3)
   sandworm: {
     id: 'sandworm', name: '모래벌레 요새', kind: 'stage', image: 'boss-7', width: 440,
-    core: artCore('boss-7', 440, 90), hp: 2600, restY: 380, time: 90,
+    core: artCore('boss-7', 440, 90), hp: 2300, restY: 380, time: 90,
     parts: [0, 1, 2].map(i => ({ ...artPart('boss-7', 440, i), r: 40, hp: 230 })),
     phases: [
       { until: 0.66, move: 'sway', fire: [
@@ -243,7 +243,7 @@ export const BOSSES: Record<string, BossDef> = {
   // 회오리 거인 (팔 대포 2)
   tornado: {
     id: 'tornado', name: '회오리 거인', kind: 'stage', image: 'boss-8', width: 440,
-    core: artCore('boss-8', 440, 95), hp: 2900, restY: 370, time: 90,
+    core: artCore('boss-8', 440, 95), hp: 2500, restY: 370, time: 90,
     parts: [0, 1].map(i => ({ ...artPart('boss-8', 440, i), r: 44, hp: 320 })),
     phases: [
       { until: 0.66, move: 'sway', fire: [
@@ -265,7 +265,7 @@ export const BOSSES: Record<string, BossDef> = {
   // 설인 요새 (눈덩이 대포 + 얼음 포 2)
   yeti: {
     id: 'yeti', name: '설인 요새', kind: 'stage', image: 'boss-9', width: 440,
-    core: artCore('boss-9', 440, 95), hp: 3200, restY: 380, time: 90,
+    core: artCore('boss-9', 440, 95), hp: 2700, restY: 380, time: 90,
     parts: [0, 1, 2].map(i => ({ ...artPart('boss-9', 440, i), r: 42, hp: 280 })),
     phases: [
       { until: 0.66, move: 'sway', fire: [
@@ -287,7 +287,7 @@ export const BOSSES: Record<string, BossDef> = {
   // 해골 장군 비행탑 (위 대포 + 뼈 대포 2)
   skeleton: {
     id: 'skeleton', name: '해골 장군 비행탑', kind: 'stage', image: 'boss-10', width: 430,
-    core: artCore('boss-10', 430, 90), hp: 3500, restY: 380, time: 90,
+    core: artCore('boss-10', 430, 90), hp: 2900, restY: 380, time: 90,
     parts: [0, 1, 2].map(i => ({ ...artPart('boss-10', 430, i), r: 42, hp: 300 })),
     phases: [
       { until: 0.66, move: 'sway', fire: [
@@ -309,7 +309,7 @@ export const BOSSES: Record<string, BossDef> = {
   // 화산 거인 (분화구 + 용암 팔 2)
   volcano: {
     id: 'volcano', name: '화산 거인', kind: 'stage', image: 'boss-11', width: 460,
-    core: artCore('boss-11', 460, 95), hp: 3800, restY: 360, time: 90,
+    core: artCore('boss-11', 460, 95), hp: 3100, restY: 360, time: 90,
     parts: [0, 1, 2].map(i => ({ ...artPart('boss-11', 460, i), r: 44, hp: 320 })),
     phases: [
       { until: 0.66, move: 'sway', fire: [
@@ -331,7 +331,7 @@ export const BOSSES: Record<string, BossDef> = {
   // 요괴왕 모함: 4 페이즈, 페이즈마다 앞 스테이지 보스의 패턴을 섞는다
   king: {
     id: 'king', name: '요괴왕 모함', kind: 'stage', image: 'boss-12', width: 470,
-    core: artCore('boss-12', 470, 100), hp: 5600, restY: 370, time: 90,
+    core: artCore('boss-12', 470, 100), hp: 4200, restY: 370, time: 90,
     parts: [0, 1, 2, 3].map(i => ({ ...artPart('boss-12', 470, i), r: 40, hp: 300 })),
     phases: [
       // 1: 게 전함 · 해룡 항모

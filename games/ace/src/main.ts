@@ -15,7 +15,7 @@ import { LAST_STAGE, MODES, loadProgress, recordClear, saveProgress, shipOpen } 
 import { StageScene, shared, type HudState } from './scenes/StageScene';
 import { ApiError, LIMITS, getApi, type AceApi, type ServerMode } from './net/api';
 import { LOCAL_MODE } from './net/local';
-import { enterLobby, loadAuth, loadCharacters, openWorldRanking, worldHome, type WorldUser } from './net/world';
+import { enterLobby, loadAuth, loadCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from './net/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
@@ -83,6 +83,17 @@ const intro = `<div class="intro">
 
 let scene: StageScene;
 let inGame = false;
+
+// ---------------- 소리 (공용 shared/sound.js: 효과음 · 배경음 따로 켜고 끔. 못 불러오면 소리 없이) ----------------
+let snd: SoundModule | null = null;
+let bgmScene = 'main';
+function sfx(name: string, o?: { volume?: number; rate?: number }) { try { snd?.play(name, o); } catch { /* 소리는 실패해도 게임은 계속 */ } }
+/** 배경음: 타이틀·스테이지 main, 스테이지 보스 boss, 끝나면 win · lose (같은 곡이면 그대로) */
+function bgm(scene: string) { bgmScene = scene; try { snd?.playBgm('ace', scene); } catch { /* 배경음은 없어도 게임은 계속 */ } }
+function openSound() { try { snd?.openSoundSettings(); } catch { toast('소리 설정을 열지 못했어요'); } }
+void loadSound().then(m => { snd = m; bgm(bgmScene); }).catch(() => {});
+// 첫 터치 전에는 소리가 나지 않으니, 첫 터치 때 배경음을 다시 건다
+window.addEventListener('pointerdown', () => bgm(bgmScene), { once: true });
 let stress = params.get('stress') === '1';
 let showFps = params.get('fps') === '1';
 
@@ -181,8 +192,11 @@ function showTitle() {
       ${mode('👹', '보스 러시', `보스 ${RUSH.length}마리 연속 · 목숨 3`, progress.rushBest ? `최단<b>${mmss(progress.rushBest)}</b>` : '', ALL || MODES.bossRush(progress), 'rush', '아케이드를 한 번 끝까지 깨면 열려요')}
       ${mode('♾️', '끝없는 모드', '점점 빨라지는 적 · 목숨 1', progress.endlessBest ? `최장<b>${mmss(progress.endlessBest)}</b>` : '', ALL || MODES.endless(progress), 'endless', '스테이지 6을 깨면 열려요')}
     </div>
-    <div class="pills"><span class="pill">✈️ 기체 ${open} / 13</span></div>`;
+    <div class="pills"><span class="pill">✈️ 기체 ${open} / 13</span><button class="pill soundpill" id="soundBtn" type="button" aria-label="소리 설정">⚙️</button></div>`;
+  bgm('main');
+  $('soundBtn').addEventListener('click', openSound);
   $('menu').querySelectorAll<HTMLButtonElement>('.mode').forEach(b => b.addEventListener('click', () => {
+    sfx('click');
     if (b.dataset.need) { toast(b.dataset.need); return; }
     run.mode = b.dataset.mode as Mode;
     showSelect();
@@ -313,6 +327,8 @@ function enterGame(st: StageDef) {
   $('windChip').classList.toggle('hidden', !st.wind);
   $<HTMLImageElement>('lifeFace').src = face(progress.ship);
   inGame = true;
+  slowTicks = 0;
+  bgm('main');
 }
 
 /** 아케이드 · 연습 스테이지. fresh = 새 판, 아니면 앞 스테이지에서 이어 간다 */
@@ -349,6 +365,11 @@ function startScript(st: StageDef, lives: number) {
   };
 }
 let readyThen: (() => void) | null = null;
+let slowTicks = 0;
+function setLite(on: boolean) {
+  scene.lite = on;
+  try { localStorage.setItem('ace:lite', on ? '1' : '0'); } catch { /* 이번 판만 */ }
+}
 
 function pause() {
   if (!inGame || scene.paused || scene.sim.state !== 'play') return;
@@ -359,6 +380,7 @@ function pause() {
     <div class="tools">
       <div class="lbl">이동 감도</div>
       <div class="seg four" id="sens">${[0.8, 1, 1.25, 1.5].map(v => `<button type="button" data-v="${v}" class="${v === scene.sens ? 'on' : ''}">${v}×</button>`).join('')}</div>
+      <div class="seg two"><button type="button" id="soundSet">⚙️ 소리</button><button type="button" id="liteBtn" class="${scene.lite ? 'on' : ''}">가벼운 화면</button></div>
       <div class="seg two"><button type="button" id="fpsBtn" class="${showFps ? 'on' : ''}">성능 보기</button>${ALL ? `<button type="button" id="stressBtn" class="${stress ? 'on' : ''}">탄 400발 시험</button>` : ''}</div>
     </div>
     <div class="col">
@@ -374,6 +396,8 @@ function pause() {
       try { localStorage.setItem('ace:sens', b.dataset.v!); } catch { /* 저장 못 해도 이번 판은 그대로 */ }
       el.querySelectorAll('#sens button').forEach(o => o.classList.toggle('on', o === b));
     }));
+    el.querySelector('#soundSet')!.addEventListener('click', openSound);
+    el.querySelector('#liteBtn')!.addEventListener('click', e => { setLite(!scene.lite); (e.currentTarget as HTMLElement).classList.toggle('on', scene.lite); });
     el.querySelector('#fpsBtn')!.addEventListener('click', e => { showFps = !showFps; (e.currentTarget as HTMLElement).classList.toggle('on', showFps); $('fps').classList.toggle('hidden', !showFps); });
     el.querySelector('#stressBtn')?.addEventListener('click', e => {
       stress = !stress; (e.currentTarget as HTMLElement).classList.toggle('on', stress);
@@ -386,6 +410,8 @@ function resume() { closePop(); scene.setPaused(false); }
 
 function over(s: HudState) {
   const sim = scene.sim;
+  bgm('lose');
+  sfx('lose');
   if (run.mode === 'endless') {
     const sec = Math.floor(sim.frame / 60), best = sec > progress.endlessBest;
     void sendFinish(sim, false);
@@ -428,6 +454,7 @@ function over(s: HudState) {
       run.rankScore = s.score; run.continued = true;
       closePop();
       scene.continueRun();
+      bgm(scene.sim.boss && scene.sim.boss.def.kind === 'stage' ? 'boss' : 'main');
       toast('이어하기! 점수는 0부터');
     });
     el.querySelector('#giveUp')?.addEventListener('click', () => { void sendFinish(sim, false); showTitle(); });
@@ -442,6 +469,8 @@ function over(s: HudState) {
 /** 정산: 줄이 하나씩 찍히고 합계가 올라간다 */
 function clear(sim: Sim) {
   const t = sim.tally!;
+  bgm('win');
+  sfx('win');
   const rows: [string, string, boolean][] = [
     [`격추 <small>${t.kills}기</small>`, '', true],
     ['보스 격파', t.bossScore ? t.bossScore.toLocaleString() : '도망감', t.bossScore > 0],
@@ -530,13 +559,24 @@ function hud(s: HudState) {
 
 function onEvent(e: SimEvent) {
   switch (e.t) {
-    case 'extend': toast('목숨 +1!'); break;
+    case 'kill': sfx(e.kind === 'small' ? 'survPop' : 'tankBoom', e.kind === 'small' ? { volume: 0.6 } : undefined); break;
+    case 'hit': sfx('survHurt'); break;
+    case 'shield': sfx('tankHeal'); break;
+    case 'bomb': sfx('tankBigBoom'); break;
+    case 'boom': sfx('tankBoom', { volume: 0.6 }); break;
+    case 'charge': sfx(e.kind === 'laser' ? 'tankLaser' : 'tankBoom', { rate: 1 + e.cells * 0.1 }); break;
+    case 'pick': sfx(e.kind === 'C' ? 'coin' : 'survLevel'); break;
+    case 'partDown': sfx('tankBoom'); break;
+    case 'phase': sfx('survBossWarn', { volume: 0.6 }); break;
+    case 'extend': toast('목숨 +1!'); sfx('survLevel'); break;
     case 'bossIn':
+      sfx('survBossWarn');
+      if (!e.mid) bgm('boss');
       if (run.mode === 'rush') $('stageChip').textContent = runLabel();
       cutin(`<small>${e.mid ? '중간 보스' : run.mode === 'rush' ? `보스 ${scene.sim.rushIdx} / ${RUSH.length}` : '경고!'}</small><b>${e.name}</b>`, e.mid ? '' : 'warn', 2200);
       break;
-    case 'flee': cutin(`<b>${e.mid ? '도망갔어요' : '보스가 도망갔어요'}</b><small>제한 시간이 지났어요</small>`); break;
-    case 'bossDown': if (!e.mid) cutin('<b>격파!</b>', 'win', 1600); break;
+    case 'flee': if (!e.mid) bgm('main'); cutin(`<b>${e.mid ? '도망갔어요' : '보스가 도망갔어요'}</b><small>제한 시간이 지났어요</small>`); break;
+    case 'bossDown': sfx('survBossDown'); if (!e.mid) { cutin('<b>격파!</b>', 'win', 1600); if (run.mode !== 'rush' && run.mode !== 'endless') bgm('main'); } break;
     case 'bomb': if (e.kind === 'freeze') cutin('<b>정지!</b>', 'stage', 1200); break;
     case 'coinLost': $('coinChip').classList.remove('lost'); void $('coinChip').offsetWidth; $('coinChip').classList.add('lost'); break;
   }
@@ -600,9 +640,15 @@ async function boot() {
   // 앱이 뒤로 가면 자동으로 멈춤
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   window.addEventListener('blur', pause);
+  try { if (localStorage.getItem('ace:lite') === '1') scene.lite = true; } catch { /* 기본 */ }
   setInterval(() => {
     if (showFps) $('fps').textContent = `${Math.round(game.loop.actualFps)}fps · 탄 ${scene.sim?.ebCount ?? 0}`;
     if (!inGame || !scene.sim) return;
+    // 느린 폰: 판 중에 4초 넘게 45fps 아래면 가벼운 화면으로 (멈춤 화면에서 다시 끌 수 있다)
+    if (!scene.paused && !scene.lite) {
+      slowTicks = game.loop.actualFps < 45 ? slowTicks + 1 : 0;
+      if (slowTicks >= 8) { setLite(true); toast('화면이 느려서 가벼운 화면으로 바꿨어요'); }
+    }
     if (run.mode === 'endless') $('stageChip').textContent = runLabel();
     // 바람 고원: 지금 바람 방향
     const w = scene.sim.wind;

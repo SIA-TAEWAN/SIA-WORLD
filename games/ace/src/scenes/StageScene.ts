@@ -40,6 +40,8 @@ export class StageScene extends Phaser.Scene {
   paused = true;
   /** 드래그 감도 (손가락 1px = 기체 몇 px) */
   sens = 1;
+  /** 가벼운 화면: 느린 폰에서 흔들림·번쩍임·반짝임·작은 효과를 줄인다 (main 이 fps 를 보고 켠다) */
+  lite = false;
   private simOpts!: SimOptions;
   private acc = 0;
   private bg!: Phaser.GameObjects.TileSprite;
@@ -249,7 +251,9 @@ export class StageScene extends Phaser.Scene {
   }
 
   private onEvent(e: SimEvent) {
-    const cam = this.cameras.main;
+    const real = this.cameras.main;
+    // 가벼운 화면이면 흔들림 · 번쩍임 없이
+    const cam = this.lite ? { shake: () => {}, flash: () => {} } : real;
     switch (e.t) {
       case 'kill':
         this.spawnFx('boom', e.x, e.y, e.kind === 'medium' ? 0.5 : 0.3, e.kind === 'medium' ? 1.6 : 0.9, 18);
@@ -303,6 +307,7 @@ export class StageScene extends Phaser.Scene {
   }
 
   private spawnFx(frame: string, x: number, y: number, s0: number, s1: number, life: number) {
+    if (this.lite && frame === 'spark') return;
     const f = this.fx.find(v => v.life <= 0);
     if (!f) return;
     f.life = f.max = life; f.s0 = s0; f.s1 = s1;
@@ -401,7 +406,7 @@ export class StageScene extends Phaser.Scene {
       if (im.frame.name !== fr) im.setFrame(fr);
       im.setVisible(true).setPosition(it.x, it.y).setScale(it.kind === 'C' ? 0.85 + Math.abs(Math.sin(s.frame * 0.15 + i)) * 0.15 : 1, 1);
       // 반짝임은 P · B 만 (금화는 많이 떨어져서 가볍게)
-      if (it.kind === 'C') { if (tw.visible) tw.setVisible(false); }
+      if (it.kind === 'C' || this.lite) { if (tw.visible) tw.setVisible(false); }
       else tw.setVisible(true).setPosition(it.x, it.y).setRotation(s.frame * 0.05).setScale(0.9 + Math.sin(s.frame * 0.2) * 0.15);
     }
     for (let i = 0; i < CAP.zone; i++) {

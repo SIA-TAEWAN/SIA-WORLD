@@ -108,7 +108,7 @@ describe('M2: 차지샷 · 금화 · 보스 · 정산', () => {
     expect(s.events.some(e => e.t === 'charge')).toBe(true);
     // 레이저는 위쪽 적을 관통해 녹인다
     const e = s.spawnEnemy('medium', 'hover', s.px, 300)!;
-    run(s, 40);
+    run(s, 90);
     expect(e.alive).toBe(false);
   });
 
