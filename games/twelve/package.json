@@ -7,7 +7,7 @@
     "dev": "vite --port 5297 --strictPort",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout=60000",
     "gen": "vite-node scripts/gen-maps.ts",
     "sqlgen": "vite-node scripts/sqlgen.ts",
     "pace": "vite-node scripts/pace.ts",

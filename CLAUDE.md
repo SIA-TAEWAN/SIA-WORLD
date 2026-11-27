@@ -82,6 +82,7 @@ Consequences:
 ## Working conventions in this repo
 
 - Commit messages are Korean, conventional-prefix style (`feat(matgo): …`).
+- Production builds use `base: './'`: a relative `url(...)` put into a CSS custom property (`style="--bg:url(art/x.png)"`) resolves against the built CSS file in `assets/` and 404s, while `npm run dev` (absolute base) hides it. Pass a full address (`new URL(rel, location.href).href`, as pang `mapBg`, finger/card `artUrl` do).
 - Generated art comes from SpriteCook; asset ids are recorded in each game's `spritecook-assets.json`, and code-drawn fallbacks are kept for when an image fails to load.
 - 맞고 runs the same engine on the device and the server: when a rules change makes the same action list produce a different result, bump `MATGO_RULES` in `supabase/functions/_shared/matgo.ts` (older tabs then get a reload prompt).
 - Seats a player left mid-hand (`left_game`): the Runner plays them with `engine.leftAction` (blackjack: sit out / stand) or `engine.timeout` when `leftUsesTimeout` (poker, hold'em: check else fold), otherwise AI. Seats that sat out are left out of `settle().deltas`, because `apply_round_result` grants 시아코인 to every seat present in `deltas`.

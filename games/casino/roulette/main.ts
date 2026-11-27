@@ -307,7 +307,9 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
             sfx('spinStop');
             const ms = spinSeat(t, p);
             const mine = ms !== null ? (p.wins[String(ms)] ?? 0) : 0;
-            if (mine > 0) sfxMany('coin', 3, 120, { delay: 250 });
+            const bet = ms !== null ? sumOf(p.bets[String(ms)] ?? []) : 0;
+            // 결과 창과 같은 기준: 받은 돈이 건 돈보다 많을 때만 동전 소리
+            if (mine > 0 && outcome(t, bet, mine).net > 0) sfxMany('coin', 3, 120, { delay: 250 });
             t.redraw();
           },
         });

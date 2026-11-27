@@ -269,8 +269,11 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
         const seen = readSeen();
         if (savedAt && (seen == null || savedAt > seen)) writePending(readPending().filter((p) => !(typeof p.at === 'number' && p.at < savedAt)));
         if (readPending().length) {
+          const last = readPending()[readPending().length - 1];
           await flush().catch(() => null);
-          d = ((await call('tower_state').catch(() => null)) as St | null) ?? d;
+          const again = (await call('tower_state').catch(() => null)) as St | null;
+          // 보낸 뒤 다시 읽기에 실패하면 옛 서버 값(d) 대신 방금 보낸 마지막 저장을 쓴다 (옛 값으로 레벨·엽전을 덮어쓰지 않게)
+          d = again ?? (readPending().length ? d : { ...d, data: last.data });
         }
       }
       let left = readPending();

@@ -54,7 +54,11 @@ declare const __CARD_BUILD__: string;
 /** 배포마다 바뀌는 그림 판본 (서비스 워커가 옛 그림을 내주지 않게) */
 const VER = typeof __CARD_BUILD__ === 'string' ? __CARD_BUILD__ : 'dev';
 const BASE = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.BASE_URL : './';
-export const artUrl = (name: string) => `${BASE}art/${name}.png?v=${VER}`;
+/** 그림 주소 (페이지 기준 전체 주소 — 배포 빌드는 base './' 라 상대 주소를 CSS 변수(--tile·--frame)에 넣으면 assets/ 기준으로 풀려 404) */
+export const artUrl = (name: string) => {
+  const rel = `${BASE}art/${name}.png?v=${VER}`;
+  return typeof location !== 'undefined' ? new URL(rel, location.href).href : rel;
+};
 
 /** 영웅 시트 hero-<id>: 가로 5칸(서기 · 걷기 A · 걷기 B · 공격 · 구르기) × 세로 3줄(앞 · 옆 · 뒤), 칸 192 — 전투는 앞줄 서기(0)·공격(3) */
 export const HERO_FRAME = 192;
