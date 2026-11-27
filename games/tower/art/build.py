@@ -18,6 +18,9 @@ import numpy as np
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(HERE))
+import chest_open  # noqa: E402
 ROOT = HERE.parents[2]
 SRC = HERE / 'spritecook'
 ART = ROOT / 'games/tower/public/art'
@@ -691,6 +694,8 @@ def build_tiles():
             m = (np.abs(sh[..., :3] - np.array(src)).max(-1) <= tol)
             sh[m, :3] = dst
         made[theme] = sh
+    for theme, sh in made.items():                 # 연 상자 칸은 닫힌 상자 칸에서 다시 그린다 (받은 그림은 닫힌 상자처럼 보였다)
+        made[theme] = np.array(chest_open.apply(to_img(sh))).astype(np.int32)
     return made
 
 

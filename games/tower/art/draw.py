@@ -16,6 +16,10 @@ from pathlib import Path
 
 from PIL import Image
 
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import chest_open  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[3]
 ART = ROOT / 'games/tower/public/art'
 CARD = ROOT / 'shared/images/card-tower.png'
@@ -1156,21 +1160,15 @@ def draw_tiles(theme='stone'):
                 c.r(x0, y + 2, 16 - 2 * x0, 1, [INK, INK, INK, PIT_I, PIT_I][n])
             c.row(15, 2, 13, INK)
             c.pts([(7, 12), (8, 12), (6, 13), (9, 13), (7, 9), (8, 9)], PRIM_D)
-        elif k in ('chest', 'chestOpen'):
+        elif k in ('chest', 'chestOpen'):                              # 연 상자는 끝에서 chest_open.apply 가 닫힌 상자로부터 그린다
             t_floor(c)
             b = Cv(16)
-            if k == 'chest':
-                b.r(2, 5, 12, 9, CRATE)
-                b.r(2, 5, 12, 3, LOG_E); b.row(5, 3, 12, PANEL_S)
-                b.row(8, 2, 13, OUT)
-                b.col(4, 5, 13, LOG); b.col(11, 5, 13, LOG)
-                b.r(2, 12, 12, 2, LOG)
-                b.r(7, 7, 2, 4, PRIM); b.p(7, 9, OUT); b.p(8, 9, OUT); b.row(7, 7, 8, PRIM_L)
-            else:
-                b.r(2, 2, 12, 4, LOG); b.row(2, 3, 12, LOG_E); b.col(4, 2, 5, PIT_I); b.col(11, 2, 5, PIT_I)
-                b.r(2, 6, 12, 3, PIT); b.pts([(5, 7), (9, 6), (11, 7)], PRIM); b.p(7, 7, PRIM_L)
-                b.r(2, 9, 12, 5, CRATE); b.col(4, 9, 13, LOG); b.col(11, 9, 13, LOG); b.r(2, 12, 12, 2, LOG)
-                b.row(9, 2, 13, LOG_E)
+            b.r(2, 5, 12, 9, CRATE)
+            b.r(2, 5, 12, 3, LOG_E); b.row(5, 3, 12, PANEL_S)
+            b.row(8, 2, 13, OUT)
+            b.col(4, 5, 13, LOG); b.col(11, 5, 13, LOG)
+            b.r(2, 12, 12, 2, LOG)
+            b.r(7, 7, 2, 4, PRIM); b.p(7, 9, OUT); b.p(8, 9, OUT); b.row(7, 7, 8, PRIM_L)
             b.outline()
             c.row(15, 3, 13, TP['shadow'])
             c.paste(b, 0, 0)
@@ -1360,6 +1358,8 @@ def draw_tiles(theme='stone'):
             dark, light = MOSS_ON[k]
             c.pts(dark, TP['overlay'][0]); c.pts(light, TP['overlay'][1])
         sheet.paste(c, i * 16, 0)
+    chest_open.apply(sheet.im)                                         # 뚜껑을 젖힌 빈 상자 (닫힌 칸의 색 그대로)
+    sheet.px = sheet.im.load()
     return sheet
 
 
