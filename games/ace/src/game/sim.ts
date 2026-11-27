@@ -217,6 +217,8 @@ export class Sim {
   private nextEndlessBoss = 5 * 60 * 60;
   /** 이어하기를 썼는가 */
   continued = false;
+  /** 제한 시간이 지나 도망간 스테이지 보스 수 (보스 러시: 하나라도 있으면 완주 기록 없음) */
+  fled = 0;
   nextExtend = 0;
   private waveIdx = 0;
   private loop = 0;
@@ -830,6 +832,7 @@ export class Sim {
     b.left--;
     if (b.left <= 0) {
       b.state = 'flee';
+      if (def.kind === 'stage') this.fled++;
       this.clearBullets();
       this.events.push({ t: 'flee', mid: def.kind === 'mid' });
       return;

@@ -35,7 +35,7 @@ export interface AceApi {
 
 /** 서버가 확인하는 한계 (121_ace.sql 의 _ace_const 와 같이 고친다 — tests/sql.test.ts) */
 export const LIMITS = {
-  minSecPerStage: 100, scorePerStage: 300000, bossPerStage: 50000, killsPerSec: 6, killsExtra: 60,
+  minSecPerStage: 100, scorePerStage: 600000, bossPerStage: 50000, killsPerSec: 6, killsExtra: 60,
   rushMinSec: 90, rushMaxScore: 8000000, endlessScorePerSec: 4000, endlessScoreExtra: 100000, timeSlack: 15, catNeed: 5,
 };
 /** 아케이드 1 ~ n 스테이지 점수 상한 (SQL _ace_score_cap 과 같다) */
@@ -53,8 +53,9 @@ export function checkFinish(mode: ServerMode, run: { firstStage: number; stageAt
   if (a.seconds > elapsedSec + L.timeSlack) return 'too fast';
   if (a.kills > a.seconds * L.killsPerSec + L.killsExtra) return 'bad score';
   if (mode === 'arcade') {
-    if (a.stage < run.firstStage || a.stage > Math.min(12, run.stageAt)) return 'bad stage';
-    if (a.score > scoreCap(a.stage) || a.rankScore > scoreCap(a.stage)) return 'bad score';
+    if (a.stage < run.firstStage || a.stage > 12) return 'bad stage';
+    const st = Math.min(a.stage, run.stageAt, 12);
+    if (a.score > scoreCap(st) || a.rankScore > scoreCap(st)) return 'bad score';
   } else if (mode === 'rush') {
     if (a.score > L.rushMaxScore) return 'bad score';
     if (a.done && a.seconds < L.rushMinSec) return 'too fast';
@@ -106,7 +107,7 @@ export function createLocalApi(store: Store, key = 'ace:local', now: () => numbe
     async clear(run, stage) {
       const r = read(), ru = r.runs[run];
       if (!ru || ru.mode !== 'arcade') throw new ApiError('bad run');
-      if (stage !== ru.stageAt) throw new ApiError('bad stage');
+      if (stage < ru.stageAt || stage > 12) throw new ApiError('bad stage');
       if (!all && (now() - ru.at) / 1000 + LIMITS.timeSlack < (stage - ru.firstStage + 1) * LIMITS.minSecPerStage) throw new ApiError('too fast');
       ru.stageAt = stage + 1;
       let unlocked: ShipId | null = null;

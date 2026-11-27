@@ -64,7 +64,7 @@ revoke all on public.ace_runs from anon, authenticated;
 
 -- 한계 (games/ace/src/net/api.ts 의 LIMITS 와 같다 — games/ace/tests/sql.test.ts 가 비교한다)
 create or replace function public._ace_const() returns jsonb language sql immutable as $$
-  select '{"minSecPerStage": 100, "scorePerStage": 300000, "bossPerStage": 50000, "killsPerSec": 6, "killsExtra": 60, "rushMinSec": 90, "rushMaxScore": 8000000, "endlessScorePerSec": 4000, "endlessScoreExtra": 100000, "timeSlack": 15, "catNeed": 5}'::jsonb
+  select '{"minSecPerStage": 100, "scorePerStage": 600000, "bossPerStage": 50000, "killsPerSec": 6, "killsExtra": 60, "rushMinSec": 90, "rushMaxScore": 8000000, "endlessScorePerSec": 4000, "endlessScoreExtra": 100000, "timeSlack": 15, "catNeed": 5}'::jsonb
 $$;
 revoke all on function public._ace_const() from public, anon, authenticated;
 
@@ -158,7 +158,8 @@ begin
   if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
   select * into ru from public.ace_runs where id = p_run and user_id = me for update;
   if ru.id is null or ru.finished_at is not null or ru.mode <> 'arcade' or ru.started_at < now() - interval '6 hours' then raise exception 'bad run'; end if;
-  if p_stage is null or p_stage <> ru.stage_at or p_stage > 12 then raise exception 'bad stage'; end if;
+  -- 앞 스테이지 알림을 통신 오류로 놓쳤어도 받는다 (뒤로 가는 것만 거절). 시간 확인은 깬 스테이지 수로
+  if p_stage is null or p_stage < ru.stage_at or p_stage > 12 then raise exception 'bad stage'; end if;
   -- 이 판에서 깬 스테이지 수 × 최소 시간 (멈춘 시간은 실제 시간에 들어가므로 더 짧을 수는 없다)
   done := p_stage - ru.first_stage + 1;
   -- 관리자는 시험용으로 건너뛰기(?at=)를 쓸 수 있어 시간을 보지 않는다
@@ -195,8 +196,9 @@ begin
   if p_kills > p_seconds * (k->>'killsPerSec')::int + (k->>'killsExtra')::int then raise exception 'bad score'; end if;
 
   if ru.mode = 'arcade' then
-    -- 서버가 본 스테이지까지만 (ace_clear 로 넘어간 곳)
-    if p_stage is null or p_stage < ru.first_stage or p_stage > least(12, ru.stage_at) then raise exception 'bad stage'; end if;
+    -- 서버가 본 스테이지까지만 (클리어 알림을 놓쳤으면 그 앞 스테이지로 줄여서 기록한다)
+    if p_stage is null or p_stage < ru.first_stage or p_stage > 12 then raise exception 'bad stage'; end if;
+    p_stage := least(p_stage, ru.stage_at, 12);
     if p_score > public._ace_score_cap(p_stage) or p_rank_score > public._ace_score_cap(p_stage) then raise exception 'bad score'; end if;
     rmode := 'arcade_' || ru.difficulty;
     val := p_rank_score;

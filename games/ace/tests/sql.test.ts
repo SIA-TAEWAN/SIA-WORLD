@@ -40,9 +40,9 @@ describe('121_ace.sql 과 같은 규칙', () => {
     expect(list(js)).toEqual(list(sql));
   });
 
-  it('점수 상한: 스테이지 12까지 = 12 × 30만 + 5만 × 78', () => {
-    expect(scoreCap(12)).toBe(12 * 300000 + 50000 * 78);
-    expect(scoreCap(1)).toBe(350000);
+  it('점수 상한: 스테이지 12까지 = 12 × 60만 + 5만 × 78', () => {
+    expect(scoreCap(12)).toBe(12 * 600000 + 50000 * 78);
+    expect(scoreCap(1)).toBe(650000);
   });
 });
 
@@ -58,7 +58,7 @@ describe('테스트 모드 API (서버와 같은 흐름)', () => {
     await expect(api.clear(run, 1)).rejects.toThrow('too fast');
     t = 120_000;
     expect(await api.clear(run, 1)).toEqual({ cleared: 1, unlocked: 'tiger' });
-    await expect(api.clear(run, 3)).rejects.toThrow('bad stage');
+    await expect(api.clear(run, 1)).rejects.toThrow('bad stage');
     const r = await api.finish(run, { score: 200000, rankScore: 150000, kills: 300, seconds: 110, stage: 2, done: false });
     expect(r).toEqual({ gotCoin: true, siaCoins: 101, best: 150000 });
     const s = await api.state();

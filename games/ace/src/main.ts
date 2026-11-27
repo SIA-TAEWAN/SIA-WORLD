@@ -143,6 +143,22 @@ async function syncState() {
   saveProgress(progress);
 }
 
+/** 아케이드 스테이지 클리어를 서버에 (통신 오류면 두 번 더 · 서버는 놓친 앞 스테이지도 받는다) */
+async function sendClear(id: string, n: number) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await api.clear(id, n);
+      progress.cleared = Math.max(progress.cleared, r.cleared);
+      if (r.cleared >= LAST_STAGE) progress.allClear = true;
+      saveProgress(progress);
+      return;
+    } catch (e) {
+      if (e instanceof ApiError || i === 2) { toast('스테이지 기록을 보내지 못했어요 · ' + reasonText(e)); return; }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+}
+
 /** 이 판의 격추 · 시간을 모은다 (아케이드는 스테이지마다 Sim 을 새로 만들어서) */
 function addRunTotals(sim: Sim) { run.kills += sim.kills; run.frames += sim.frame; }
 
@@ -334,6 +350,7 @@ function enterGame(st: StageDef) {
 /** 아케이드 · 연습 스테이지. fresh = 새 판, 아니면 앞 스테이지에서 이어 간다 */
 function startStage(n: number, fresh: boolean, carry?: ReturnType<Sim['carry']>) {
   run.stage = n;
+  if (run.mode !== 'arcade') { run.continued = false; run.rankScore = 0; }
   const st = STAGES[n - 1];
   enterGame(st);
   $('stageChip').textContent = stageName(n);
@@ -354,6 +371,7 @@ function startStage(n: number, fresh: boolean, carry?: ReturnType<Sim['carry']>)
 
 /** 보스 러시 · 끝없는 모드 */
 function startScript(st: StageDef, lives: number) {
+  run.continued = false; run.rankScore = 0;
   enterGame(st);
   $('stageChip').textContent = runLabel();
   scene.restartWith({ ship: progress.ship, difficulty: progress.difficulty, waves: st, stage: 1, carry: undefined, lives, stress }, false);
@@ -491,12 +509,12 @@ function clear(sim: Sim) {
   };
 
   if (run.mode === 'rush') {
-    const sec = Math.round(t.frames / 60), best = !progress.rushBest || sec < progress.rushBest;
-    void sendFinish(sim, true);
-    popup(`<h3>보스 러시 완주!</h3>
+    const sec = Math.round(t.frames / 60), full = sim.fled === 0, best = full && (!progress.rushBest || sec < progress.rushBest);
+    void sendFinish(sim, full);
+    popup(`<h3>${full ? '보스 러시 완주!' : '보스 러시 끝'}</h3>
       <div class="chap">보스 ${RUSH.length}마리 · ${t.total.toLocaleString()}점</div>${tally}
       <div class="total" id="total">0:00</div>
-      <div class="note">${best ? '새 최단 기록!' : '최단 ' + mmss(progress.rushBest)}</div>
+      <div class="note">${!full ? `도망간 보스가 ${sim.fled}마리라 기록은 남지 않아요` : best ? '새 최단 기록!' : '최단 ' + mmss(progress.rushBest)}</div>
       <div class="col"><button class="btn primary" id="toTitle" type="button">타이틀로 ▶</button></div>`, el => {
       el.querySelector('#toTitle')!.addEventListener('click', showTitle);
       countUp(el, sec, mmss);
@@ -510,11 +528,10 @@ function clear(sim: Sim) {
   const unlocked = arcade && !ALL ? recordClear(progress, n) : null;
   if (!arcade) progress.practice[n] = Math.max(progress.practice[n] ?? 0, t.total);
   saveProgress(progress);
+  let clearSent: Promise<void> = Promise.resolve();
   if (arcade && run.id) {
     const id = run.id;
-    void api.clear(id, n).then(r => { progress.cleared = Math.max(progress.cleared, r.cleared); if (r.cleared >= LAST_STAGE) progress.allClear = true; saveProgress(progress); })
-      .catch(e => toast('스테이지 기록을 보내지 못했어요 · ' + reasonText(e)))
-      .then(() => { if (last) void sendFinish(sim, true); });
+    clearSent = sendClear(id, n).then(() => { if (last) void sendFinish(sim, true); });
     if (!last) addRunTotals(sim);
   }
   const u = unlocked ? SHIPS[unlocked] : null;
@@ -530,7 +547,8 @@ function clear(sim: Sim) {
     el.querySelector('#next')?.addEventListener('click', () => startStage(n + 1, false, sim.carry()));
     el.querySelector('#again')?.addEventListener('click', () => (arcade ? showTitle() : startStage(n, true)));
     // 스테이지를 깬 뒤 끝내면 그 점수로 판을 마친다 (이미 더한 이 스테이지 격추·시간은 빼고 보냄)
-    el.querySelector('#toTitle')?.addEventListener('click', () => { run.kills -= sim.kills; run.frames -= sim.frame; void sendFinish(sim, false); showTitle(); });
+    // 클리어 알림이 먼저 서버에 닿은 뒤에 끝을 보낸다 (그래야 방금 연 기체가 남는다)
+    el.querySelector('#toTitle')?.addEventListener('click', () => { run.kills -= sim.kills; run.frames -= sim.frame; void clearSent.then(() => sendFinish(sim, false)); showTitle(); });
     el.querySelector('#toMap')?.addEventListener('click', () => { showTitle(); run.mode = 'practice'; showPractice(); });
     countUp(el, t.total, v => v.toLocaleString());
   });
