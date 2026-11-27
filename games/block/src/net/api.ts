@@ -3,7 +3,7 @@ import { VerifyError, verifyRun, type Move } from '../rules.ts';
 import { worldSupabase } from './world.ts';
 
 /**
- * 서버 약속 (PRD 8, 121_block.sql · block-finish):
+ * 서버 약속 (PRD 8, 122_block.sql · block-finish):
  *   block_state() → { best, bestAt, weekBest, siaCoins, weekTop: { name, score } | null }
  *   block_start() → { run, seed }
  *   block-finish (Edge Function) { rules, runId, log, score } → FinishResult
@@ -49,7 +49,7 @@ export interface BlockApi {
 
 export interface Store { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void }
 
-/** 상식 검사: 놓은 횟수 × 0.3초보다 빨리 끝낼 수 없다 (서버 121_block.sql 의 _block_const 와 같이 고친다) */
+/** 상식 검사: 놓은 횟수 × 0.3초보다 빨리 끝낼 수 없다 (서버 122_block.sql 의 _block_const 와 같이 고친다 — tests/sql.test.ts) */
 export const LIMITS = { secPerMove: 0.3, maxHours: 24 } as const;
 
 /** 이번 주 (월요일 시작, 한국 시간) 첫날 'YYYY-MM-DD' */
@@ -123,7 +123,7 @@ export interface ServerClient {
 }
 
 /** 서버가 일부러 거절한 까닭 — 다시 보내도 소용없다 */
-const REJECTS = ['already finished', 'too fast', 'too late', 'no run', 'need login', 'old rules', 'not over', 'game closed', 'bad '];
+const REJECTS = ['already finished', 'too fast', 'too late', 'no run', 'old rules', 'not over', 'bad '];
 export const rejectOf = (msg: string): string | null => {
   const w = REJECTS.find(x => msg.includes(x));
   return w ? (w === 'bad ' ? (msg.match(/bad \w+/)?.[0] ?? 'bad log') : w) : null;
@@ -184,12 +184,15 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
         const j = (await res.error.context?.json?.()) as { error?: string } | undefined;
         if (j?.error) msg = j.error;
       } catch { /* 그대로 */ }
-      const why = status && status < 500 ? rejectOf(msg) ?? 'bad log' : null;
+      // 401(로그인 만료 · 'need login')은 다시 로그인한 뒤 보낼 수 있게 보관한다
+      const why = status && status < 500 && status !== 401 ? rejectOf(msg) ?? 'bad log' : null;
       throw why ? new ApiError(why) : new Error(msg);
     }
     return normalizeFinish(res.data);
   };
   let sending: Promise<number> | null = null;
+  /** 지금 finish 가 보내는 중인 판 (flush 가 같은 판을 또 보내지 않게) */
+  const inflight = new Set<string>();
   const api: BlockApi = {
     async state() { return normalizeInfo(await call('block_state')); },
     async start() {
@@ -200,6 +203,7 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
     },
     async finish(report) {
       writePending([...readPending().filter(r => r.run !== report.run), report]);
+      inflight.add(report.run);
       try {
         const out = await send(report);
         drop(report.run);
@@ -207,12 +211,15 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
       } catch (e) {
         if (e instanceof ApiError) { drop(report.run); throw e; }
         return null;
+      } finally {
+        inflight.delete(report.run);
       }
     },
     flush() {
       sending ??= (async () => {
         let n = 0;
         for (const r of readPending()) {
+          if (inflight.has(r.run)) continue;
           try { await send(r); drop(r.run); n++; } catch (e) { if (e instanceof ApiError) drop(r.run); else break; }
         }
         return n;

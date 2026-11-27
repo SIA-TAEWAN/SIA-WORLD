@@ -24,7 +24,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 기본 탭 순서 (내 기록을 받기 전, 그리고 판 수가 같을 때) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'ace', 'card', 'block'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'ace', 'block', 'card'];
 /** 시아코인 기록의 게임 id → 탭 (카지노 네 게임은 한 탭) */
 const PLAY_TAB = { volleyball: 'volley', poker: 'casino', holdem: 'casino', blackjack: 'casino', roulette: 'casino' };
 /**

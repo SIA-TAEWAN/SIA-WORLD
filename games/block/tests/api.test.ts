@@ -60,6 +60,12 @@ describe('서버 제출', () => {
     expect(await api.flush()).toBe(1);
     expect(store.m.has('siablock:pending:u')).toBe(false);
   });
+  it('로그인이 만료(401)되면 버리지 않고 보관한다', async () => {
+    const store = mem();
+    const api = createSupabaseApi(client(async () => ({ data: null, error: { message: 'Invalid JWT', context: { status: 401 } } })), 'u', store);
+    expect(await api.finish(report)).toBeNull();
+    expect(store.m.get('siablock:pending:u')).toContain(report.run);
+  });
   it('서버가 거절하면 버린다', async () => {
     const store = mem();
     const api = createSupabaseApi(client(async () => ({ data: null, error: { message: 'x', context: { status: 400, json: async () => ({ error: 'bad move' }) } } })), 'u', store);

@@ -147,9 +147,9 @@ export function startApp(opts: AppOpts) {
     try {
       const r = await api.start();
       runId = r.run; seed = r.seed;
-    } catch (e) {
+    } catch {
       starting = false;
-      toast(e instanceof ApiError && e.message === 'game closed' ? '지금은 시아블록이 닫혀 있어요' : 'SIA WORLD에 연결하지 못했어요. 다시 해 주세요');
+      toast('SIA WORLD에 연결하지 못했어요. 다시 해 주세요');
       return;
     }
     starting = false;
@@ -383,9 +383,12 @@ export function startApp(opts: AppOpts) {
   };
   tcv.addEventListener('pointerup', e => release(e, false));
   tcv.addEventListener('pointercancel', e => release(e, true));
+  // 캡처만 풀리는 기기 (시스템 제스처 등): 끌던 조각을 제자리로
+  tcv.addEventListener('lostpointercapture', e => release(e, true));
 
   // 키보드: 1·2·3 으로 조각 고르기 → 방향키로 옮기기 → Enter 놓기 (Esc 취소)
   addEventListener('keydown', e => {
+    if (phase === 'paused' && (e.key === 'Escape' || e.key === 'p' || e.key === 'P')) { closePop(); phase = 'play'; e.preventDefault(); return; }
     if (phase === 'home' || !$('overlay').classList.contains('hidden')) return;
     if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { if (kb) kb = null; else showPause(); e.preventDefault(); return; }
     if (phase !== 'play' || !G || drag) return;
@@ -499,8 +502,10 @@ export function startApp(opts: AppOpts) {
     fx.draw(x, k);
   }
 
-  function drawPiece(x: CanvasRenderingContext2D, sh: Shape, spirit: number, left: number, top: number, cell: number, grey = false) {
-    for (const [r, c] of sh.cells) x.drawImage(tile(spirit, cell, dpr, grey), left + c * cell, top + r * cell, cell, cell);
+  /** base = 칸 그림을 만들 크기 (판 S 또는 받침 TS 두 가지만 — 커지고 줄어드는 동안 그림을 새로 만들지 않고 늘려 그린다) */
+  function drawPiece(x: CanvasRenderingContext2D, sh: Shape, spirit: number, left: number, top: number, cell: number, grey = false, base = S) {
+    const img = tile(spirit, base, dpr, grey);
+    for (const [r, c] of sh.cells) x.drawImage(img, left + c * cell, top + r * cell, cell, cell);
   }
   function drawTray(k: number) {
     const x = tx;
@@ -519,7 +524,7 @@ export function startApp(opts: AppOpts) {
       const left = (i + 0.5) * sw - (w * cell) / 2, top = TH / 2 - (h * cell) / 2;
       // 놓을 수 없는 조각은 흐리게
       x.globalAlpha = fits ? 1 : 0.4;
-      drawPiece(x, sh, p.spirit, left, top, cell, !fits);
+      drawPiece(x, sh, p.spirit, left, top, cell, !fits, TS);
       x.globalAlpha = 1;
       if (kb && kb.slot === i) { x.strokeStyle = WHITE; x.lineWidth = 3; rr(x, i * sw + 6, 4, sw - 12, TH - 8, 14); x.stroke(); }
       if (FINE) { x.font = '13px Jua, sans-serif'; x.textAlign = 'center'; x.fillStyle = 'rgba(42,26,16,0.35)'; x.fillText(String(i + 1), i * sw + 12, 14); }
