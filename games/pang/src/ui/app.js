@@ -8,6 +8,13 @@ import LEVELS from '../data/levels.json';
 export function startApp(opts) {
 const { api, worldHome, openRanking, local } = opts;
 const $ = id => document.getElementById(id);
+// ---------- 소리 (공용 shared/sound.js: 켜기/끄기는 SIA WORLD 전체가 같이 쓴다. 못 불러오면 소리 없이) ----------
+let snd = null;
+function sfx(name, o) { try { snd?.play(name, o); } catch { /* 소리는 실패해도 게임은 계속 */ } }
+function soundLabel() { return snd && snd.isMuted() ? '🔇' : '🔊'; }
+function paintSound() { const b = $('soundBtn'); if (!b) return; b.textContent = soundLabel(); b.setAttribute('aria-label', snd && snd.isMuted() ? '소리 켜기' : '소리 끄기'); b.title = b.getAttribute('aria-label'); }
+function toggleSound() { if (!snd) return; snd.setMuted(!snd.isMuted()); paintSound(); }
+opts.loadSound?.().then(m => { snd = m; m.onMuteChange(paintSound); paintSound(); }).catch(() => {});
 const PI2 = Math.PI * 2;
 const STAR = '<svg class="star" viewBox="0 0 24 24"><path d="M12 2.5l2.8 6.2 6.7.6-5.1 4.5 1.5 6.6L12 17l-5.9 3.4 1.5-6.6-5.1-4.5 6.7-.6z"/></svg>';
 const STAR_OFF = STAR.replace('class="star"', 'class="star off"');
@@ -92,9 +99,10 @@ function renderMap() {
   }
   $('chapters').innerHTML = html;
 }
-$('chapters').addEventListener('click', e => { const b = e.target.closest('.stage'); if (b && !b.disabled) showStart(+b.dataset.id); });
+$('chapters').addEventListener('click', e => { const b = e.target.closest('.stage'); if (b && !b.disabled) { sfx('click'); showStart(+b.dataset.id); } });
 $('worldLink').href = worldHome();
-$('rankBtn').onclick = async () => { if (!(await openRanking())) toast('랭킹을 불러오지 못했어요'); };
+$('soundBtn').onclick = toggleSound;
+$('rankBtn').onclick = async () => { sfx('click'); if (!(await openRanking())) toast('랭킹을 불러오지 못했어요'); };
 function toast(msg, ms) {
   const t = $('toast'); t.textContent = msg; t.classList.add('on');
   clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), ms || 2000);
@@ -161,7 +169,7 @@ function iconCanvas(g) {
 }
 
 // ---------- popups ----------
-function popup(html, bind) { $('pop').innerHTML = html; $('overlay').classList.remove('hidden'); bind && bind($('pop')); const b = $('pop').querySelector('.btn.primary'); if (b) b.focus({ preventScroll: true }); }
+function popup(html, bind) { $('pop').innerHTML = html; $('overlay').classList.remove('hidden'); bind && bind($('pop')); for (const btn of $('pop').querySelectorAll('.btn')) btn.addEventListener('click', () => sfx('click'), true); const b = $('pop').querySelector('.btn.primary'); if (b) b.focus({ preventScroll: true }); }
 function closePop() { $('overlay').classList.add('hidden'); iconCanvases.length = 0; if (G) buildGoals(); }
 function goalList(goals, live) {
   const wrap = document.createElement('div'); wrap.className = 'goalist';
@@ -206,8 +214,9 @@ function showStart(id) {
 }
 function showPause() {
   if (!G || phase === 'end') return;
-  popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기' + (admin ? '' : ' ❤️-1') + '</button></div><div class="row"><button class="btn primary" data-a="go">계속하기</button></div>', p => {
+  popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기' + (admin ? '' : ' ❤️-1') + '</button></div><div class="row"><button class="btn" data-a="snd">' + (snd && snd.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐') + '</button><button class="btn primary" data-a="go">계속하기</button></div>', p => {
     p.querySelector('[data-a=go]').onclick = closePop;
+    p.querySelector('[data-a=snd]').onclick = e => { toggleSound(); e.currentTarget.textContent = snd && snd.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐'; };
     p.querySelector('[data-a=retry]').onclick = async () => { if (!(await needLife())) return; closePop(); startStage(L.id); };
     p.querySelector('[data-a=map]').onclick = () => { closePop(); toMap(); };
   });
@@ -226,6 +235,8 @@ function showResult(win) {
   } else {
     html = '<h3>아쉬워요</h3><div class="chap">스테이지 ' + id + ' · 이동을 모두 썼어요</div><div class="gl"></div><div class="info coin">기록을 보내는 중…</div><div class="row"><button class="btn" data-a="map">지도</button><button class="btn primary" data-a="retry">다시 하기</button></div>';
   }
+  if (win) { sfx('win'); if (score > prevBest && prevBest) sfx('newRecord', { delay: 600 }); }
+  else sfx('lose');
   iconCanvases.length = 0;
   popup(html, p => {
     const gl = p.querySelector('.gl'); if (gl) gl.replaceWith(goalList(G.goals, true));
@@ -241,6 +252,7 @@ function showResult(win) {
       save.stars[id] = Math.max(save.stars[id] || 0, r.stars); save.best[id] = Math.max(save.best[id] || 0, r.best);
       if (Number.isFinite(r.siaCoins)) siaCoins = r.siaCoins;
       if (!admin) takeLives(r.lives, r.nextLife);
+      if (r.gotCoin) sfx('coin');
       if (line && line.isConnected) line.textContent = (r.gotCoin ? '🪙 시아코인 +1' : '기록을 저장했어요') + (r.lifeBack && !admin ? ' · ❤️ 목숨 +1' : '');
     }).catch(async err => {
       const why = err && err.message;
@@ -284,7 +296,7 @@ const scene = PangScene.create($('scene'), SPR);
 $('scene').addEventListener('pointerdown', e => {
   if (!scene.st.on) return;
   const r = $('scene').getBoundingClientRect();
-  if (scene.tap(e.clientX - r.left, e.clientY - r.top)) { try { navigator.vibrate?.(12); } catch { /* 막힌 기기 */ } }
+  if (scene.tap(e.clientX - r.left, e.clientY - r.top)) { sfx('pangTap', { rate: 0.85 + Math.random() * 0.3 }); try { navigator.vibrate?.(12); } catch { /* 막힌 기기 */ } }
 });
 function layoutScene() {
   const wrap = $('sceneWrap');
@@ -346,7 +358,7 @@ function buildGoals() {
 let lastMoves = -1, lastScore = -1;
 function hud() {
   if (!G) return;
-  if (G.moves !== lastMoves) { lastMoves = G.moves; $('movesNum').textContent = G.moves; $('movesBox').classList.toggle('low', G.moves <= 5); }
+  if (G.moves !== lastMoves) { lastMoves = G.moves; $('movesNum').textContent = G.moves; $('movesBox').classList.toggle('low', G.moves <= 5); if (G.state === 'play' && G.moves > 0 && G.moves <= 3 && phase !== 'falling') sfx('tick', { rate: 0.8 }); }
   if (G.score !== lastScore) { lastScore = G.score; $('scoreNum').textContent = G.score.toLocaleString(); $('scoreFill').style.width = Math.min(100, G.score / (L.stars[1] * 1.15) * 100) + '%'; }
   for (const e of goalEls) {
     const v = e.g.t === 'score' ? Math.max(0, e.g.left) : e.g.left;
@@ -382,7 +394,7 @@ cv.addEventListener('pointerup', () => {
     const p = [down.r, down.c];
     if (sel && Math.abs(sel[0] - p[0]) + Math.abs(sel[1] - p[1]) === 1) trySwap(sel, p);
     else if (sel && sel[0] === p[0] && sel[1] === p[1]) sel = null;
-    else sel = E.movable(G.cells[p[0]][p[1]]) ? p : null;
+    else { sel = E.movable(G.cells[p[0]][p[1]]) ? p : null; if (sel) sfx('tick'); }
   }
   down = null;
 });
@@ -391,8 +403,9 @@ function trySwap(a, b) {
   if (b[0] < 0 || b[1] < 0 || b[0] >= G.rows || b[1] >= G.cols) return;
   if (!E.canSwap(G, a, b)) { nudge(a, b); return; }
   const res = E.swap(G, a, b);
-  if (!res.ok) { nudge(a, b); return; }
+  if (!res.ok) { nudge(a, b); sfx('pangNope'); return; }
   swaps++;
+  sfx('pangSwap');
   phase = res.kind === 'orb' ? 'resolve' : 'swapping';
   if (res.kind === 'orb') { wait = 0; }
 }
@@ -427,7 +440,21 @@ function chips(X, Y, col, n, kind) {
 }
 function floatText(s, X, Y, size, col) { texts.push({ s, x: X, y: Y, size, col: col || '#FFFFFF', l: 1 }); }
 
+function eventSounds(ev) {
+  const bonus = G.state === 'bonus';
+  // 터뜨림: 콤보가 이어질수록 한 음씩 높아진다 (최대 1.8배)
+  if (ev.cleared.length) sfx('pangPop', { rate: Math.min(1.8, 1 + Math.max(0, (ev.combo || 1) - 1) * 0.1), volume: bonus ? 0.6 : 1 });
+  if (ev.blasts.some(b => b.k === 'orb')) sfx('pangOrb');
+  else if (ev.blasts.length) sfx('pangBlast', { rate: ev.blasts.some(b => b.k === 'earth' || b.k === 'dark') ? 0.8 : 1, volume: bonus ? 0.6 : 1 });
+  if (ev.created.length) sfx('pangMake', { rate: ev.created.some(c => c.sp === 'orb') ? 1.25 : 1 });
+  if (ev.iceHits.length) sfx('pangIce');
+  if (ev.boxHits.length) sfx('pangBox', { rate: ev.boxHits.some(h => h[2]) ? 1.3 : 1 });
+  if (ev.vines.length) sfx('pangVine');
+  if (ev.combo >= 3 && !bonus) sfx('cutin', { volume: 0.6, rate: Math.min(1.5, 0.9 + ev.combo * 0.08) });
+  if (ev.movesAdded) sfx('boost');
+}
 function applyEvent(ev) {
+  eventSounds(ev);
   let sx = 0, sy = 0;
   for (const c of ev.cleared) {
     const sp = sprites.get(c.id);
@@ -525,8 +552,8 @@ let nextPhase = 'idle';
 function later(t, p) { wait = t; nextPhase = p; phase = 'wait'; }
 function afterSettle(r) {
   if (r === 'idle') { phase = 'idle'; idle = 0; }
-  else if (r === 'shuffle') { floatText('섞는 중', BW / 2, BH / 2, 28); for (const sp of sprites.values()) sp.pop = 1; later(0.8, 'idle'); }
-  else if (r === 'win') { floatText('목표 달성!', BW / 2, BH * 0.4, 34, '#FFE066'); if (G.moves > 0) floatText('보너스 타임', BW / 2, BH * 0.55, 24, '#FFF4C2'); later(1.1, 'bonus'); }
+  else if (r === 'shuffle') { sfx('deal'); floatText('섞는 중', BW / 2, BH / 2, 28); for (const sp of sprites.values()) sp.pop = 1; later(0.8, 'idle'); }
+  else if (r === 'win') { sfx('goal'); floatText('목표 달성!', BW / 2, BH * 0.4, 34, '#FFE066'); if (G.moves > 0) floatText('보너스 타임', BW / 2, BH * 0.55, 24, '#FFF4C2'); later(1.1, 'bonus'); }
   else if (r === 'bonus') phase = 'bonus';
   else if (r === 'done') later(0.6, 'resultWin');
   else if (r === 'lose') later(0.5, 'resultLose');
@@ -534,7 +561,7 @@ function afterSettle(r) {
 function bonusTick() {
   const n = G.moves > 8 ? 3 : G.moves > 3 ? 2 : 1;
   const bs = E.bonusStep(G, n);
-  if (bs) { for (const b of bs) { const [X, Y] = cxy(b.r, b.c); burst('light', X, Y, 10); floatText('+200', X, Y - S * 0.4, 14, '#FFF4C2'); } later(0.15, 'resolve'); }
+  if (bs) { sfx('pangBonus', { rate: 1 + Math.random() * 0.2 }); for (const b of bs) { const [X, Y] = cxy(b.r, b.c); burst('light', X, Y, 10); floatText('+200', X, Y - S * 0.4, 14, '#FFF4C2'); } later(0.15, 'resolve'); }
   else afterSettle(E.settle(G));
 }
 

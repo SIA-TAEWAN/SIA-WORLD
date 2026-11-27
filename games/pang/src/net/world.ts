@@ -58,6 +58,20 @@ export async function openWorldRanking(meId: string): Promise<boolean> {
   }
 }
 
+export interface SoundModule {
+  play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
+  isMuted(): boolean;
+  setMuted(m: boolean): void;
+  onMuteChange(cb: (m: boolean) => void): () => void;
+}
+let soundMod: Promise<SoundModule> | null = null;
+/** SIA WORLD 공용 효과음 (shared/sound.js) */
+export function loadSound(): Promise<SoundModule> {
+  soundMod ??= import(/* @vite-ignore */ new URL('shared/sound.js', root()).href) as Promise<SoundModule>;
+  soundMod.catch(() => (soundMod = null));
+  return soundMod;
+}
+
 export interface PresenceHandle {
   full: boolean;
   leave(): Promise<void>;

@@ -95,3 +95,5 @@ button{font:inherit;color:inherit}
 @media (prefers-reduced-motion:reduce){.stage.next b,.pop,.pop .bigstars .star{animation:none}}
 .chapter.hiddench{opacity:.75;border-style:dashed}
 .chapter.hiddench p{margin:4px 0 0}
+
+.soundpill{border:0;font:inherit;cursor:pointer;min-width:44px;min-height:32px;justify-content:center}
