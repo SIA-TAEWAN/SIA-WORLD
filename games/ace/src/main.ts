@@ -1,7 +1,8 @@
 // 시아에이스: 타이틀 → 기체·난이도 고르기 → 스테이지 → 정산 → (다음 스테이지 | 타이틀).
 // 모드 4개: 아케이드(1~12 · 이어하기 1회) · 스테이지 연습 · 보스 러시 · 끝없는 모드.
-// 진행은 이 기기에 저장 (M5 에서 서버 · 로그인 · 랭킹 · 시아코인).
-// 개발용: ?all=1 (모두 열림), ?stage=n (아케이드 n 스테이지부터), ?at=초, ?power=4, ?fps=1, ?stress=1, ?canvas=1, ?proto=1
+// SIA WORLD 연동 (121_ace.sql): 통합 로그인 · 진행(해금)과 최고 기록은 서버 · 판마다 시아코인 +1 · 고양이호는 시아코인 100개 · 랭킹은 공용 랭킹 창.
+// 개발용: ?local=1 (로그인 없이 이 기기에만), &all=1 (모두 열림), ?stage=n, ?at=초, ?power=4, ?fps=1, ?stress=1, ?canvas=1, ?proto=1
+// 시험 페이지(아티팩트)는 window.ACE_ALL = true: 로그인 없이 이 기기에만, 모두 열림.
 import './style.css';
 import './menu.css';
 import Phaser from 'phaser';
@@ -12,23 +13,36 @@ import { SHIPS, SHIP_ORDER, type ShipId } from './data/ships';
 import { RUSH } from './data/bosses';
 import { LAST_STAGE, MODES, loadProgress, recordClear, saveProgress, shipOpen } from './game/progress';
 import { StageScene, shared, type HudState } from './scenes/StageScene';
+import { ApiError, LIMITS, getApi, type AceApi, type ServerMode } from './net/api';
+import { LOCAL_MODE } from './net/local';
+import { enterLobby, loadAuth, loadCharacters, openWorldRanking, worldHome, type WorldUser } from './net/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
-// 시험 페이지(아티팩트)는 주소에 ?all=1 을 못 붙여서 window.ACE_ALL 로 모두 연다
-const ALL = params.get('all') === '1' || (window as unknown as { ACE_ALL?: boolean }).ACE_ALL === true;
+const TEST_PAGE = (window as unknown as { ACE_ALL?: boolean }).ACE_ALL === true;
+const OFFLINE = LOCAL_MODE || TEST_PAGE;
+let ALL = TEST_PAGE || (LOCAL_MODE && params.get('all') === '1');
 const PROTO_MODE = params.get('proto') === '1';
 const progress = loadProgress();
+let api: AceApi;
+let me: WorldUser | null = null;
+let siaCoins = 0;
 
 type Mode = 'arcade' | 'practice' | 'rush' | 'endless';
-/** 이번 판. rankScore = 랭킹에 올릴 점수 (아케이드 이어하기 전 점수) */
-const run = { mode: 'arcade' as Mode, stage: 1, rankScore: 0, continued: false };
+/** 이번 판. rankScore = 랭킹에 올릴 점수 (아케이드 이어하기 전 점수). id = 서버 판 번호 (연습은 없음) */
+const run = { mode: 'arcade' as Mode, stage: 1, rankScore: 0, continued: false, id: '' as string, kills: 0, frames: 0 };
 
 const LOCK = '<svg class="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';
 const face = (id: string) => shared(`images/zodiac/face/${id}.png`);
 const full = (id: string) => shared(`images/zodiac/full/${id}.png`);
 const shipArt = (id: string) => new URL(`art/ship-${id}.png`, location.href).href;
 const floorArt = (f: string) => new URL(`art/${f}.png`, location.href).href;
+const REASON: Record<string, string> = {
+  'locked mode': '아직 열리지 않은 모드예요', 'locked ship': '아직 열리지 않은 기체예요', 'locked character': '고양이호는 시아코인으로 먼저 열어야 해요',
+  'bad ship': '탈 수 없는 기체예요', 'bad stage': '그 스테이지는 할 수 없어요', 'too fast': '기록이 너무 빨라서 받지 않았어요',
+  'bad score': '기록이 이상해서 받지 않았어요', 'bad run': '이 판은 이미 끝났어요', 'need login': '로그인이 필요해요',
+};
+const reasonText = (e: unknown) => (e instanceof ApiError ? REASON[e.message] ?? e.message : '서버에 연결하지 못했어요');
 
 const app = $('app');
 app.innerHTML = `
@@ -55,7 +69,7 @@ app.innerHTML = `
     <button class="bombbtn" id="bombBtn" type="button" aria-label="폭탄">💣<em id="bombs">2</em></button>
   </div>
   <div class="weather hidden" id="weather"></div>
-  <div class="menu" id="menu"></div>
+  <div class="menu" id="menu"><div class="loading">불러오는 중…</div></div>
   <div class="overlay hidden" id="overlay"><div class="panel pop" id="pop"></div></div>
   <div class="toast" id="toast"></div>`;
 
@@ -83,7 +97,7 @@ function closePop() { $('overlay').classList.add('hidden'); }
 function toast(msg: string) {
   const t = $('toast'); t.textContent = msg; t.classList.add('on');
   clearTimeout((toast as unknown as { h: number }).h);
-  (toast as unknown as { h: number }).h = window.setTimeout(() => t.classList.remove('on'), 1800);
+  (toast as unknown as { h: number }).h = window.setTimeout(() => t.classList.remove('on'), 2200);
 }
 let cutinTimer = 0;
 function cutin(html: string, cls = '', ms = 1800) {
@@ -101,6 +115,45 @@ function runLabel() {
   return stageName(run.stage);
 }
 
+// ---------------- 서버 기록 ----------------
+/** 서버 상태를 화면 진행에 맞춘다 (해금 · 최고 기록은 서버가 기준) */
+async function syncState() {
+  const s = await api.state();
+  progress.cleared = s.cleared;
+  progress.allClear = s.allClear;
+  progress.best = { ...s.best };
+  progress.rushBest = s.rushBest;
+  progress.endlessBest = s.endlessBest;
+  siaCoins = s.siaCoins;
+  if (s.admin) ALL = true;
+  if (!OFFLINE) {
+    try { const owned = await (await loadCharacters()).loadOwnedCharacters('ace', true); if (owned) progress.catOwned = owned.includes('cat'); } catch { /* 못 읽으면 그대로 */ }
+  }
+  saveProgress(progress);
+}
+
+/** 이 판의 격추 · 시간을 모은다 (아케이드는 스테이지마다 Sim 을 새로 만들어서) */
+function addRunTotals(sim: Sim) { run.kills += sim.kills; run.frames += sim.frame; }
+
+/** 판 끝을 서버에 보낸다 (연습은 보내지 않음). 시아코인 +1 · 최고 기록 */
+async function sendFinish(sim: Sim, done: boolean) {
+  if (!run.id || run.mode === 'practice') return;
+  const id = run.id;
+  run.id = '';
+  addRunTotals(sim);
+  try {
+    const r = await api.finish(id, {
+      score: Math.floor(sim.score), rankScore: Math.floor(run.continued ? run.rankScore : sim.score), kills: run.kills,
+      seconds: Math.floor(run.frames / 60), stage: run.mode === 'arcade' ? run.stage : 0, done,
+    });
+    siaCoins = r.siaCoins;
+    if (r.gotCoin) toast(`시아코인 +1 (모두 ${r.siaCoins.toLocaleString()}개)`);
+    await syncState().catch(() => {});
+  } catch (e) {
+    toast('기록을 보내지 못했어요 · ' + reasonText(e));
+  }
+}
+
 // ---------------- 타이틀 ----------------
 function showTitle() {
   inGame = false;
@@ -114,7 +167,7 @@ function showTitle() {
     : `<button class="mode locked" type="button" data-need="${need}"><span class="ic">${LOCK}</span><span class="tx">${name}<small>${need}</small></span></button>`;
   $('menu').className = 'menu title';
   $('menu').innerHTML = `
-    <div class="topbar"><a class="back" href="../../index.html">← SIA WORLD</a><span class="sp"></span><button class="btn sm" id="rankBtn" type="button">🏆 랭킹</button></div>
+    <div class="topbar"><a class="back" href="${worldHome()}">← SIA WORLD</a><span class="sp"></span><span class="pill coinpill">🪙 ${siaCoins.toLocaleString()}</span><button class="btn sm" id="rankBtn" type="button">🏆 랭킹</button></div>
     <div class="logo">시아에이스</div>
     <div class="sub">요괴 비행단을 막아라!</div>
     <div class="hero">
@@ -134,7 +187,10 @@ function showTitle() {
     run.mode = b.dataset.mode as Mode;
     showSelect();
   }));
-  $('rankBtn').addEventListener('click', () => toast('랭킹은 M5 에서 열려요'));
+  $('rankBtn').addEventListener('click', async () => {
+    if (!me) { toast(OFFLINE ? '시험 판에서는 랭킹을 볼 수 없어요' : '로그인이 필요해요'); return; }
+    if (!(await openWorldRanking(me.userId))) toast('랭킹을 불러오지 못했어요');
+  });
 }
 
 // ---------------- 기체 · 난이도 고르기 ----------------
@@ -146,7 +202,7 @@ function showSelect() {
   const render = () => {
     const s = SHIPS[pick];
     $('menu').innerHTML = `
-      <div class="topbar"><button class="back" id="backBtn" type="button">← 뒤로</button><span class="sp"></span><span class="ttl">${title}</span><span class="sp"></span></div>
+      <div class="topbar"><button class="back" id="backBtn" type="button">← 뒤로</button><span class="sp"></span><span class="ttl">${title}</span><span class="sp"></span><span class="pill coinpill">🪙 ${siaCoins.toLocaleString()}</span></div>
       <div class="panel detail">
         <div class="top"><i class="cloud" style="left:5%;top:62%;width:22%;height:14%"></i><img class="d-ship" src="${shipArt(pick)}" alt=""><img class="d-pilot" src="${full(pick)}" alt=""></div>
         <div class="info">
@@ -165,7 +221,8 @@ function showSelect() {
     $('menu').querySelectorAll<HTMLButtonElement>('.cell').forEach(b => b.addEventListener('click', () => {
       const id = b.dataset.id as ShipId, u = SHIPS[id].unlock;
       if (!shipOpen(progress, id, ALL)) {
-        toast(u === 'buy' ? (progress.cleared >= 5 ? '시아코인 100개로 열어요 (M5 에서 구매)' : '스테이지 5를 깨면 시아코인 100개로 살 수 있어요') : `아케이드 스테이지 ${u}을(를) 처음 깨면 열려요`);
+        if (u === 'buy') askBuyCat(() => { pick = 'cat'; render(); });
+        else toast(`아케이드 스테이지 ${u}을(를) 처음 깨면 열려요`);
         return;
       }
       pick = id; render();
@@ -174,12 +231,41 @@ function showSelect() {
     $('goBtn').addEventListener('click', () => {
       progress.ship = pick; progress.difficulty = diff; saveProgress(progress);
       if (run.mode === 'practice') showPractice();
-      else if (run.mode === 'rush') startScript(RUSH_STAGE, 3);
-      else if (run.mode === 'endless') startScript(ENDLESS_STAGE, 1);
-      else { run.rankScore = 0; run.continued = false; startStage(Number(params.get('stage')) || 1, true); }
+      else if (run.mode === 'rush') void startServerRun('rush', () => startScript(RUSH_STAGE, 3));
+      else if (run.mode === 'endless') void startServerRun('endless', () => startScript(ENDLESS_STAGE, 1));
+      else {
+        const first = ALL ? Number(params.get('stage')) || 1 : 1;
+        run.rankScore = 0; run.continued = false;
+        void startServerRun('arcade', () => startStage(first, true), first);
+      }
     });
   };
   render();
+}
+
+/** 고양이호 구매 (071 의 buy_character: 스테이지 5 클리어 + 시아코인 100개) */
+function askBuyCat(done: () => void) {
+  const ready = progress.cleared >= LIMITS.catNeed;
+  popup(`<h3>고양이호</h3>
+    <div class="chap">조종사 야옹이 · 반사되는 발톱탄 · 탄 흡수 후 반격 · 화면 정지 폭탄</div>
+    <div class="unlock"><img src="${face('cat')}" alt=""><div>${ready ? '시아코인 100개로 열 수 있어요' : `아케이드 스테이지 ${LIMITS.catNeed}를 깨면 살 수 있어요`}<small>가진 시아코인 ${siaCoins.toLocaleString()}개 · 지금 깬 스테이지 ${progress.cleared}</small></div></div>
+    <div class="col">${ready ? '<button class="btn primary" id="buy" type="button">🪙 100개로 열기</button>' : ''}<button class="btn" id="close" type="button">닫기</button></div>`, el => {
+    el.querySelector('#close')!.addEventListener('click', closePop);
+    el.querySelector('#buy')?.addEventListener('click', async e => {
+      (e.currentTarget as HTMLButtonElement).disabled = true;
+      if (OFFLINE) {
+        if (siaCoins < 100) { toast('시아코인이 모자라요'); closePop(); return; }
+        siaCoins -= 100; progress.catOwned = true; saveProgress(progress); closePop(); toast('고양이호를 열었어요!'); done(); return;
+      }
+      try {
+        const m = await loadCharacters();
+        const r = await m.buyCharacter('ace', 'cat');
+        toast(m.buyMessage(r, 'cat'));
+        if (r.ok || r.reason === 'owned') { progress.catOwned = true; saveProgress(progress); if (typeof r.siaCoins === 'number') siaCoins = r.siaCoins; closePop(); done(); }
+        else closePop();
+      } catch { toast('열지 못했어요. 잠시 후 다시 시도해 주세요'); closePop(); }
+    });
+  });
 }
 
 // ---------------- 스테이지 연습 지도 ----------------
@@ -188,7 +274,7 @@ function showPractice() {
   const open = ALL ? LAST_STAGE : progress.cleared;
   $('menu').innerHTML = `
     <div class="topbar"><button class="back" id="backBtn" type="button">← 뒤로</button><span class="sp"></span><span class="ttl">스테이지 연습</span><span class="sp"></span></div>
-    <div class="pills"><span class="pill">파워 최대로 시작</span><span class="pill">기록만 남아요</span></div>
+    <div class="pills"><span class="pill">파워 최대로 시작</span><span class="pill">시아코인 · 랭킹 없음</span></div>
     <div class="stgrid">${STAGES.map((st, i) => {
       const n = i + 1, ok = n <= open, best = progress.practice[n];
       const bg = st.sea === 'full' || st.sky ? '' : `style="background-image:url(${floorArt(st.floor)})"`;
@@ -198,11 +284,26 @@ function showPractice() {
   $('menu').querySelectorAll<HTMLButtonElement>('.st').forEach(b => b.addEventListener('click', () => {
     const n = +b.dataset.n!;
     if (n > open) { toast('아케이드에서 이 스테이지를 깨면 열려요'); return; }
+    run.id = ''; run.kills = 0; run.frames = 0;
     startStage(n, true);
   }));
 }
 
 // ---------------- 게임 ----------------
+/** 서버에 판 시작을 알리고 (기체·모드 열림 확인) 시작 */
+async function startServerRun(mode: ServerMode, go: () => void, stage = 1) {
+  const btn = document.getElementById('goBtn') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  try {
+    run.id = await api.start(mode, progress.difficulty, progress.ship, stage);
+    run.kills = 0; run.frames = 0;
+    go();
+  } catch (e) {
+    toast(reasonText(e));
+    if (btn) btn.disabled = false;
+  }
+}
+
 function enterGame(st: StageDef) {
   closePop();
   $('menu').className = 'menu hidden';
@@ -228,8 +329,8 @@ function startStage(n: number, fresh: boolean, carry?: ReturnType<Sim['carry']>)
     if (run.mode === 'practice' && fresh) scene.sim.power = 4;
     if (run.continued) scene.sim.continued = true;
     const at = Number(params.get('at')), pw = Number(params.get('power'));
-    if (at > 0) scene.sim.skipTo(at);
-    if (pw >= 1 && pw <= 4) scene.sim.power = pw;
+    if (ALL && at > 0) scene.sim.skipTo(at);
+    if (ALL && pw >= 1 && pw <= 4) scene.sim.power = pw;
     scene.setPaused(false);
     cutin(`<b>스테이지 ${n}</b><small>${st.name}</small>`, 'stage', 2200);
   };
@@ -242,7 +343,7 @@ function startScript(st: StageDef, lives: number) {
   scene.restartWith({ ship: progress.ship, difficulty: progress.difficulty, waves: st, stage: 1, carry: undefined, lives, stress }, false);
   readyThen = () => {
     const pw = Number(params.get('power'));
-    if (pw >= 1 && pw <= 4) scene.sim.power = pw;
+    if (ALL && pw >= 1 && pw <= 4) scene.sim.power = pw;
     scene.setPaused(false);
     cutin(`<b>${st.name}</b><small>${run.mode === 'rush' ? `보스 ${RUSH.length}마리를 가장 빨리` : '얼마나 버틸 수 있을까?'}</small>`, 'stage', 2200);
   };
@@ -258,22 +359,23 @@ function pause() {
     <div class="tools">
       <div class="lbl">이동 감도</div>
       <div class="seg four" id="sens">${[0.8, 1, 1.25, 1.5].map(v => `<button type="button" data-v="${v}" class="${v === scene.sens ? 'on' : ''}">${v}×</button>`).join('')}</div>
-      <div class="seg two"><button type="button" id="fpsBtn" class="${showFps ? 'on' : ''}">성능 보기</button><button type="button" id="stressBtn" class="${stress ? 'on' : ''}">탄 400발 시험</button></div>
+      <div class="seg two"><button type="button" id="fpsBtn" class="${showFps ? 'on' : ''}">성능 보기</button>${ALL ? `<button type="button" id="stressBtn" class="${stress ? 'on' : ''}">탄 400발 시험</button>` : ''}</div>
     </div>
     <div class="col">
       <button class="btn primary" id="resume" type="button">계속하기 ▶</button>
-      <div class="row">${run.mode === 'arcade' || run.mode === 'practice' ? '<button class="btn" id="restart" type="button">이 스테이지 처음부터</button>' : ''}<button class="btn" id="quit" type="button">그만하기</button></div>
-    </div>`, el => {
+      <div class="row">${run.mode === 'practice' ? '<button class="btn" id="restart" type="button">처음부터</button>' : ''}<button class="btn" id="quit" type="button">그만하기</button></div>
+    </div>
+    ${run.mode !== 'practice' ? '<div class="note">그만두면 이 판은 기록·시아코인 없이 끝나요</div>' : ''}`, el => {
     el.querySelector('#resume')!.addEventListener('click', resume);
-    el.querySelector('#restart')?.addEventListener('click', () => { closePop(); scene.newRun({ stress }); if (run.mode === 'practice') scene.sim.power = 4; scene.setPaused(false); });
-    el.querySelector('#quit')!.addEventListener('click', showTitle);
+    el.querySelector('#restart')?.addEventListener('click', () => { closePop(); scene.newRun({ stress }); scene.sim.power = 4; scene.setPaused(false); });
+    el.querySelector('#quit')!.addEventListener('click', () => { run.id = ''; showTitle(); });
     el.querySelectorAll<HTMLButtonElement>('#sens button').forEach(b => b.addEventListener('click', () => {
       scene.sens = +b.dataset.v!;
       try { localStorage.setItem('ace:sens', b.dataset.v!); } catch { /* 저장 못 해도 이번 판은 그대로 */ }
       el.querySelectorAll('#sens button').forEach(o => o.classList.toggle('on', o === b));
     }));
     el.querySelector('#fpsBtn')!.addEventListener('click', e => { showFps = !showFps; (e.currentTarget as HTMLElement).classList.toggle('on', showFps); $('fps').classList.toggle('hidden', !showFps); });
-    el.querySelector('#stressBtn')!.addEventListener('click', e => {
+    el.querySelector('#stressBtn')?.addEventListener('click', e => {
       stress = !stress; (e.currentTarget as HTMLElement).classList.toggle('on', stress);
       scene.sim.opt.stress = stress;
       if (stress) scene.sim.lives = Math.max(scene.sim.lives, 99);
@@ -282,35 +384,29 @@ function pause() {
 }
 function resume() { closePop(); scene.setPaused(false); }
 
-/** 아케이드 최고 점수: 이어하기를 썼으면 이어하기 전 점수만 */
-function recordArcade(score: number) {
-  const s = run.continued ? run.rankScore : score;
-  progress.best[progress.difficulty] = Math.max(progress.best[progress.difficulty], s);
-  saveProgress(progress);
-}
-
 function over(s: HudState) {
   const sim = scene.sim;
   if (run.mode === 'endless') {
     const sec = Math.floor(sim.frame / 60), best = sec > progress.endlessBest;
-    if (best) { progress.endlessBest = sec; saveProgress(progress); }
+    void sendFinish(sim, false);
     popup(`<h3>${best ? '새 기록!' : '끝났어요'}</h3>
       <div class="chap">끝없는 모드 · 격추 ${s.kills} · ${s.score.toLocaleString()}점</div>
       <div class="total">${mmss(sec)}</div>
-      <div class="note">최장 ${mmss(progress.endlessBest)} 버팀</div>
+      <div class="note">최장 ${mmss(Math.max(sec, progress.endlessBest))} 버팀</div>
       <div class="col"><button class="btn primary" id="again" type="button">다시 하기 ▶</button><button class="btn" id="toTitle" type="button">타이틀로</button></div>`, el => {
-      el.querySelector('#again')!.addEventListener('click', () => startScript(ENDLESS_STAGE, 1));
+      el.querySelector('#again')!.addEventListener('click', () => void startServerRun('endless', () => startScript(ENDLESS_STAGE, 1)));
       el.querySelector('#toTitle')!.addEventListener('click', showTitle);
     });
     return;
   }
   if (run.mode === 'rush') {
+    void sendFinish(sim, false);
     popup(`<h3>격추당했어요</h3>
       <div class="chap">보스 러시 · ${Math.max(0, sim.rushIdx - 1)} / ${RUSH.length} 격파 · ${mmss(s.seconds)}</div>
       <div class="total">${s.score.toLocaleString()}</div>
       <div class="note">보스 러시 기록은 끝까지 깼을 때 시간으로 남아요</div>
       <div class="col"><button class="btn primary" id="again" type="button">다시 하기 ▶</button><button class="btn" id="toTitle" type="button">타이틀로</button></div>`, el => {
-      el.querySelector('#again')!.addEventListener('click', () => startScript(RUSH_STAGE, 3));
+      el.querySelector('#again')!.addEventListener('click', () => void startServerRun('rush', () => startScript(RUSH_STAGE, 3)));
       el.querySelector('#toTitle')!.addEventListener('click', showTitle);
     });
     return;
@@ -321,22 +417,24 @@ function over(s: HudState) {
   }
   // 아케이드: 이어하기 1회 (점수는 0부터, 랭킹에는 이어하기 전 점수만)
   const canContinue = run.mode === 'arcade' && !run.continued;
-  if (run.mode === 'arcade' && !canContinue) recordArcade(s.score);
+  if (run.mode === 'arcade' && !canContinue) void sendFinish(sim, false);
   popup(`<h3>격추당했어요</h3>
     <div class="chap">${stageName(run.stage)} · ${mmss(s.seconds)} · 격추 ${s.kills}</div>
     <div class="total">${s.score.toLocaleString()}</div>
-    <div class="note">${canContinue ? '이어하면 이 자리에서 다시 시작해요. 점수는 0부터, 랭킹에는 지금 점수가 남아요' : run.mode === 'arcade' ? `${DIFFICULTY[progress.difficulty].label} 최고 ${progress.best[progress.difficulty].toLocaleString()}` : '연습 기록이 남았어요'}</div>
+    <div class="note">${canContinue ? '이어하면 이 자리에서 다시 시작해요. 점수는 0부터, 랭킹에는 지금 점수가 남아요' : run.mode === 'arcade' ? `${DIFFICULTY[progress.difficulty].label} 최고 ${Math.max(progress.best[progress.difficulty], run.rankScore).toLocaleString()}` : '연습 기록이 남았어요'}</div>
     <div class="col">${canContinue ? '<button class="btn primary" id="cont" type="button">이어하기 (1회) ▶</button><button class="btn" id="giveUp" type="button">그만하기</button>'
       : `<button class="btn primary" id="again" type="button">${run.mode === 'arcade' ? '처음부터 다시 ▶' : '다시 하기 ▶'}</button><button class="btn" id="toTitle" type="button">타이틀로</button>`}</div>`, el => {
     el.querySelector('#cont')?.addEventListener('click', () => {
       run.rankScore = s.score; run.continued = true;
-      recordArcade(s.score);
       closePop();
       scene.continueRun();
       toast('이어하기! 점수는 0부터');
     });
-    el.querySelector('#giveUp')?.addEventListener('click', () => { recordArcade(s.score); showTitle(); });
-    el.querySelector('#again')?.addEventListener('click', () => { run.rankScore = 0; run.continued = false; startStage(run.mode === 'arcade' ? 1 : run.stage, true); });
+    el.querySelector('#giveUp')?.addEventListener('click', () => { void sendFinish(sim, false); showTitle(); });
+    el.querySelector('#again')?.addEventListener('click', () => {
+      if (run.mode === 'arcade') { run.rankScore = 0; run.continued = false; void startServerRun('arcade', () => startStage(1, true)); }
+      else startStage(run.stage, true);
+    });
     el.querySelector('#toTitle')?.addEventListener('click', showTitle);
   });
 }
@@ -365,7 +463,7 @@ function clear(sim: Sim) {
 
   if (run.mode === 'rush') {
     const sec = Math.round(t.frames / 60), best = !progress.rushBest || sec < progress.rushBest;
-    if (best) { progress.rushBest = sec; saveProgress(progress); }
+    void sendFinish(sim, true);
     popup(`<h3>보스 러시 완주!</h3>
       <div class="chap">보스 ${RUSH.length}마리 · ${t.total.toLocaleString()}점</div>${tally}
       <div class="total" id="total">0:00</div>
@@ -378,23 +476,32 @@ function clear(sim: Sim) {
   }
 
   const n = run.stage, arcade = run.mode === 'arcade';
-  const unlocked = arcade && !ALL ? recordClear(progress, n) : null;
   const last = n >= LAST_STAGE;
-  if (arcade && last) recordArcade(t.total);
-  else if (!arcade) progress.practice[n] = Math.max(progress.practice[n] ?? 0, t.total);
+  // 화면은 바로 (이 기기 진행으로 계산), 서버에는 스테이지 클리어를 알린다 (기체 해금은 서버 기준)
+  const unlocked = arcade && !ALL ? recordClear(progress, n) : null;
+  if (!arcade) progress.practice[n] = Math.max(progress.practice[n] ?? 0, t.total);
   saveProgress(progress);
+  if (arcade && run.id) {
+    const id = run.id;
+    void api.clear(id, n).then(r => { progress.cleared = Math.max(progress.cleared, r.cleared); if (r.cleared >= LAST_STAGE) progress.allClear = true; saveProgress(progress); })
+      .catch(e => toast('스테이지 기록을 보내지 못했어요 · ' + reasonText(e)))
+      .then(() => { if (last) void sendFinish(sim, true); });
+    if (!last) addRunTotals(sim);
+  }
   const u = unlocked ? SHIPS[unlocked] : null;
   popup(`<h3>${arcade && last ? '요괴왕을 물리쳤어요!' : '스테이지 클리어!'}</h3>
     <div class="chap">${stageName(n)} · ${mmss(t.frames / 60)}</div>${tally}
     <div class="total" id="total">0</div>
     ${u ? `<div class="unlock"><img src="${face(u.id)}" alt=""><div>${u.name}가 열렸어요!<small>조종사 ${u.pilot} · ${u.shotText}</small></div><span class="tag">NEW</span></div>` : ''}
+    ${arcade && n === LIMITS.catNeed && !progress.catOwned ? '<div class="note">고양이호를 시아코인 100개로 살 수 있어요 (기체 고르기에서)</div>' : ''}
     ${arcade && last ? `<div class="note">${run.continued ? `이어하기 전 점수 ${run.rankScore.toLocaleString()}점이 기록돼요` : '보스 러시가 열렸어요!'}</div>` : ''}
     <div class="col">${arcade && !last
-      ? `<button class="btn primary" id="next" type="button">다음 스테이지 ▶</button><button class="btn" id="toTitle" type="button">그만하기</button>`
+      ? `<button class="btn primary" id="next" type="button">다음 스테이지 ▶</button><button class="btn" id="toTitle" type="button">여기서 끝내기</button>`
       : `<button class="btn primary" id="again" type="button">${arcade ? '타이틀로 ▶' : '다시 하기 ▶'}</button>${arcade ? '' : '<button class="btn" id="toMap" type="button">연습 지도로</button>'}`}</div>`, el => {
     el.querySelector('#next')?.addEventListener('click', () => startStage(n + 1, false, sim.carry()));
     el.querySelector('#again')?.addEventListener('click', () => (arcade ? showTitle() : startStage(n, true)));
-    el.querySelector('#toTitle')?.addEventListener('click', () => { recordArcade(sim.score); showTitle(); });
+    // 스테이지를 깬 뒤 끝내면 그 점수로 판을 마친다 (이미 더한 이 스테이지 격추·시간은 빼고 보냄)
+    el.querySelector('#toTitle')?.addEventListener('click', () => { run.kills -= sim.kills; run.frames -= sim.frame; void sendFinish(sim, false); showTitle(); });
     el.querySelector('#toMap')?.addEventListener('click', () => { showTitle(); run.mode = 'practice'; showPractice(); });
     countUp(el, t.total, v => v.toLocaleString());
   });
@@ -435,7 +542,35 @@ function onEvent(e: SimEvent) {
   }
 }
 
+function fail(html: string) {
+  $('menu').className = 'menu title';
+  $('menu').innerHTML = `<div class="loading">${html}</div>`;
+}
+
 async function boot() {
+  // 로그인 (시험 판 · ?local=1 은 로그인 없이 이 기기에만)
+  try {
+    if (!OFFLINE) {
+      const auth = await loadAuth();
+      // 로그인 안 했으면 SIA WORLD 로그인 화면으로 갔다가 이 주소로 돌아온다 (게스트 플레이 없음)
+      me = await auth.requireLogin();
+      auth.onSignedOut(() => location.replace(auth.loginUrl()));
+      // 접속 인원 (로비에 보인다). 정원이 차면 들어가지 않는다
+      const lobby = await enterLobby(me);
+      if (lobby?.full) {
+        void lobby.leave();
+        fail(`지금은 시아에이스에 사람이 너무 많아요.<br/>잠시 뒤 다시 와 주세요.<br/><br/><a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a>`);
+        return;
+      }
+    }
+    api = await getApi(OFFLINE, ALL);
+    await syncState();
+  } catch {
+    fail(`SIA WORLD에 연결하지 못했어요.<br/>인터넷 연결을 확인하고 다시 시도해 주세요.<br/><br/>
+      <button class="btn primary" id="retry" type="button">다시 시도</button> <a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a>`);
+    document.getElementById('retry')?.addEventListener('click', () => location.reload());
+    return;
+  }
   // 캔버스 글자(P·B·떠오르는 점수)가 Jua 로 나오게 글꼴을 먼저 읽는다 (못 읽어도 시작)
   try { await Promise.race([document.fonts.load('28px Jua'), new Promise(r => setTimeout(r, 1500))]); } catch { /* 기본 글꼴 */ }
   scene = new StageScene({

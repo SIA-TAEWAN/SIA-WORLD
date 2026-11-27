@@ -96,3 +96,6 @@
 .hud { z-index: 2; }
 .cloud::before { content: ""; position: absolute; background: var(--white); border: calc(var(--px) * 3) solid var(--outline); border-bottom: 0; border-radius: 999px 999px 0 0; left: 22%; top: -58%; width: 46%; height: 110%; }
 .cloud::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 3px; top: 30%; background: var(--white); border-radius: 999px; }
+.menu .loading { margin: auto; text-align: center; color: var(--white); -webkit-text-stroke: calc(var(--px) * 1.5) var(--outline); paint-order: stroke fill; font-size: calc(var(--px) * 20); }
+.menu .loading .btn { -webkit-text-stroke: 0; color: var(--ink); text-decoration: none; margin: 6px; }
+.menu .coinpill { background: var(--white); color: var(--accent); border: 2px solid var(--outline); }
