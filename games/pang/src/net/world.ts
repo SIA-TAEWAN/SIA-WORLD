@@ -61,6 +61,8 @@ export async function openWorldRanking(meId: string): Promise<boolean> {
 export interface SoundModule {
   play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
   isMuted(): boolean;
+  /** ⚙️ 소리 설정 창 (🎵 배경음 · 🔊 효과음 따로, 시아레이스와 같은 모양). onClose: 닫을 때 */
+  openSoundSettings(onClose?: () => void): HTMLElement;
   setMuted(m: boolean): void;
   onMuteChange(cb: (m: boolean) => void): () => void;
   /** 배경음: shared/audio/bgm/pang/main|boss.mp3, 승리·패배는 common/win|lose.mp3 */

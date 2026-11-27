@@ -124,4 +124,4 @@
 배경음은 공용 배경음 파일 (`src/ui/music.ts` → shared/sound.js `playBgm('defense', 장면)`):
 메뉴·지도·판 = `shared/audio/bgm/defense/main.mp3`, 보스 경고(끝없는 모드는 보스 등장)부터 보스가 남아 있는 동안 = `boss.mp3`,
 클리어(끝없는 모드는 끝난 판) = `common/win.mp3`, 실패 = `common/lose.mp3` (결과 화면까지, 포기하면 메인 곡).
-소리 버튼(오른쪽 아래 🔊)은 효과음과 배경음을 함께 켜고 끈다 (공용 설정 `sia:sound` · `sia:bgm`).
+⚙️ 설정 버튼(오른쪽 아래)과 일시정지 창에서 배경음·효과음을 따로 켜고 끈다 (공용 설정 `sia:bgm` · `sia:sound`, 시아레이스와 같다).

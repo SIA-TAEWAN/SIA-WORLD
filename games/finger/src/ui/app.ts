@@ -220,13 +220,11 @@ const errText = (e: unknown) => (e instanceof ApiError ? whyText(e.message) : '�
 function soundButton(root: HTMLElement) {
   const b = document.createElement('button');
   b.className = 'icon-btn sound-btn';
-  const paint = () => (b.textContent = sound?.isMuted() ? '🔇' : '🔊');
-  paint();
-  b.addEventListener('click', () => {
-    sound?.setMuted(!sound.isMuted());
-    paint();
-    play('click');
-  });
+  // ⚙️ 소리 설정 창: 배경음·효과음을 따로 켜고 끈다 (시아레이스와 같은 공용 창)
+  b.textContent = '⚙️';
+  b.setAttribute('aria-label', '소리 설정');
+  b.title = '소리 설정';
+  b.addEventListener('click', () => sound?.openSoundSettings());
   // 위 줄(.bar)이 있으면 그 끝에 둔다: 떠 있는 버튼이 아래쪽 큰 버튼·목록 마지막 줄을 가리지 않게 (작은 아이폰 포함)
   const bar = root.querySelector('.bar');
   if (bar) {
@@ -1062,14 +1060,10 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       <button class="btn" id="quit">그만하기</button>
       <p class="soft center">${daily ? '그만하면 이번 도전은 기록되지 않아요' : tower ? '그만하면 지금까지 올라간 층이 기록돼요' : '그만하면 이번 판은 실패로 기록돼요 (간 만큼 엽전은 받아요)'}</p></div>`;
     root.appendChild(box);
-    // 판 안에서는 여기서 소리를 켜고 끈다 (다른 화면의 오른쪽 아래 버튼과 같은 설정)
+    // 판 안에서는 여기서 소리 설정 창을 연다 (다른 화면의 ⚙️ 버튼과 같은 창: 배경음·효과음 따로)
     const mute = box.querySelector<HTMLButtonElement>('#mute')!;
-    const paintMute = () => (mute.textContent = sound?.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐');
-    paintMute();
-    mute.addEventListener('click', () => {
-      sound?.setMuted(!sound.isMuted());
-      paintMute();
-    });
+    mute.textContent = '⚙️ 소리 설정';
+    mute.addEventListener('click', () => sound?.openSoundSettings());
     box.querySelector('#resume')!.addEventListener('click', () => {
       play('click');
       scene.paused = false;

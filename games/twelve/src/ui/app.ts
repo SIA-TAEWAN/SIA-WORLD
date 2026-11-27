@@ -484,7 +484,8 @@ function showSettings() {
   const row = (k: string, name: string, value: boolean) => `<label class="set-row"><span>${name}</span><button class="btn small toggle ${value ? 'on' : ''}" data-k="${k}">${value ? '켬' : '끔'}</button></label>`;
   const box = overlay(`<div class="card pop">
     <h3>설정</h3>
-    ${row('sound', '소리', !(sound?.isMuted() ?? false))}
+    ${row('bgm', '🎵 배경음', sound?.isBgmOn() ?? true)}
+    ${row('sfx', '🔊 효과음', !(sound?.isMuted() ?? false))}
     ${row('vibrate', '진동', settings.vibrate)}
     ${row('lefty', '왼손잡이 (조이스틱과 버튼 좌우 바꾸기)', settings.lefty)}
     ${row('numbers', '피해 숫자', settings.numbers)}
@@ -498,7 +499,11 @@ function showSettings() {
   on(box, '.toggle', (el) => {
     const k = el.dataset.k!;
     let v: boolean;
-    if (k === 'sound') {
+    // 배경음·효과음은 따로 (공용 설정 'sia:bgm' · 'sia:sound', 시아레이스와 같다)
+    if (k === 'bgm') {
+      v = !(sound?.isBgmOn() ?? true);
+      sound?.setBgmOn(v);
+    } else if (k === 'sfx') {
       v = sound?.isMuted() ?? false;
       sound?.setMuted(!v);
     } else {

@@ -51,16 +51,13 @@ export const nav = {
 
 let cleanupScreen: (() => void) | null = null;
 
-// 메뉴 화면용 소리 버튼 (게임 중에는 HUD의 버튼을 쓴다)
+// 메뉴 화면용 ⚙️ 소리 설정 버튼 (게임 중에는 HUD의 버튼을 쓴다): 배경음·효과음을 따로 켜고 끈다
 const soundBtn = document.createElement('button');
 soundBtn.className = 'sound-fab';
-const paintSound = () => {
-  soundBtn.textContent = sfx.muted ? '🔇' : '🔊';
-  soundBtn.title = sfx.muted ? '소리 켜기' : '소리 끄기';
-};
-paintSound();
-soundBtn.onclick = () => sfx.toggleMute();
-sfx.onMute(paintSound);
+soundBtn.textContent = '⚙️';
+soundBtn.title = '소리 설정';
+soundBtn.setAttribute('aria-label', '소리 설정');
+soundBtn.onclick = () => sfx.openSettings();
 document.body.append(soundBtn);
 
 export function screen(html: string, cls: string, cleanup?: () => void) {

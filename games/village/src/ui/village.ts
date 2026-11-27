@@ -117,7 +117,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       <p id="placetx"></p>
       <div class="actions"><button class="btn" id="placeno">취소</button><button class="btn primary" id="placeok">여기에 놓기 ✔</button></div>
     </div>
-    <button class="icon-btn sound" id="sound" aria-label="소리"></button>
+    <button class="icon-btn sound" id="sound" aria-label="소리 설정"></button>
     <nav class="menu" id="menu">
       <button data-m="build"><em>${menuIcon('build', '🔨')}</em>짓기</button>
       <button data-m="residents"><em>${menuIcon('residents', '🐭')}</em>주민</button>
@@ -203,14 +203,10 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
     input.focus();
   });
 
-  const paintSound = () => ($('#sound').textContent = sound.on ? '🔊' : '🔇');
-  $('#sound').addEventListener('click', () => {
-    sound.set(!sound.on);
-    paintSound();
-    sfx('toggle');
-  });
-  sound.whenReady(paintSound);
-  paintSound();
+  // ⚙️ 소리 설정: 배경음·효과음을 따로 켜고 끈다 (공용 창)
+  $('#sound').textContent = '⚙️';
+  $('#sound').title = '소리 설정';
+  $('#sound').addEventListener('click', () => sound.openSettings());
 
   // ───────────────────────── 서버와 주고받기 (한 번에 하나씩, 온 순서대로 화면에 반영) ─────────────────────────
 

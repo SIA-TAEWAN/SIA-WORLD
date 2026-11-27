@@ -4,9 +4,10 @@
 // - shared/sounds/<이름>.ogg 또는 .mp3 파일을 넣으면 그 소리를 처음 낼 때 확인해서 파일로 바꿔 쓴다.
 // - 켜기/끄기는 브라우저에 저장 (localStorage 'sia:sound'). 시아탱크의 예전 설정('siatank:mute')도 이어받는다.
 // - 배경음(BGM) 파일 재생: playBgm(game, scene) — shared/audio/bgm/<게임>/main|boss.mp3, common/main|win|lose.mp3
-//   (반복 재생, 볼륨 0.4, 장면이 바뀌면 페이드 아웃 → 페이드 인. 효과음 끄기('sia:sound')나 배경음 끄기('sia:bgm')를 따른다.)
+//   (반복 재생, 볼륨 0.4, 장면이 바뀌면 페이드 아웃 → 페이드 인. 배경음 끄기('sia:bgm')만 따른다 — 효과음 끄기와는 따로.)
 // - 배경음 켜기/끄기는 따로 저장 (localStorage 'sia:bgm'). 모든 게임이 playBgm 으로 위 폴더의 곡을 튼다
 //   (예전처럼 게임이 코드로 곡을 만들거나 shared/sounds/bgm*.mp3 를 찾지 않는다).
+// - 설정 창: openSoundSettings() — 시아레이스처럼 🎵 배경음 · 🔊 효과음을 따로 켜기/끄기. 모든 게임의 ⚙️ 버튼이 이 창을 연다.
 // - 브라우저 정책: 첫 클릭·터치·키 입력 전에는 소리를 내지 않는다 (그때 오디오를 깨운다).
 // - 같은 소리가 겹치지 않게 이름마다 최소 간격, 동시에 나는 소리 수 제한.
 
@@ -402,7 +403,7 @@ function bgmTries(game, scene) {
   return list;
 }
 function bgmAllowed() {
-  return !muted && bgmOn && unlocked && (typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  return bgmOn && unlocked && (typeof document === 'undefined' || document.visibilityState !== 'hidden');
 }
 function bgmElement() {
   if (bgmEl) return bgmEl;
@@ -459,7 +460,7 @@ function fadeTo(to, ms) {
 }
 /** 첫 입력 안에서: 요소를 만들고 바로 재생을 시작한다 (휴대폰 허락) */
 function bgmKick() {
-  if (!bgmWant || muted || !bgmOn) return;
+  if (!bgmWant || !bgmOn) return;
   const el = bgmElement();
   if (!el) return;
   const url = bgmWant.tries[bgmWant.i];
@@ -521,7 +522,7 @@ function bgmApply() {
  * 배경음 틀기. game = games/ 폴더 이름('pang', 'tank' …) 또는 'common'(로비).
  * scene = 'main'(기본) | 'boss'(보스·긴장) | 'win' | 'lose' (승리·패배는 common/ 의 곡을 한 번만).
  * 같은 곡이면 아무 일도 없다. 파일이 없으면 보스 → 그 게임 main → 로비 곡 차례로.
- * 효과음 끄기·배경음 끄기·첫 입력 전·가려진 탭에서는 조용히 기다렸다가 풀리면 튼다.
+ * 배경음 끄기·첫 입력 전·가려진 탭에서는 조용히 기다렸다가 풀리면 튼다.
  */
 export function playBgm(game, scene = 'main') {
   const g = game || 'common';
@@ -544,24 +545,94 @@ if (typeof document !== 'undefined') {
   if (typeof addEventListener === 'function') addEventListener('pagehide', () => bgmEl && bgmEl.pause());
 }
 
-/** 오른쪽 아래 사운드 버튼 (DESIGN.md: 원형 흰 버튼) */
+// ───────────────────────── 소리 설정 창 (시아레이스와 같은 모양) ─────────────────────────
+const SET_CSS = `
+.sia-snd-dim{position:fixed;inset:0;z-index:2000;background:var(--dim,rgba(42,26,16,.45));display:grid;place-items:center;padding:16px;font-family:var(--font,inherit)}
+.sia-snd-dlg{width:min(340px,100%);box-sizing:border-box;background:var(--panel,#fff8ea);color:var(--ink,#2a1a10);border:var(--line-big,4px) solid var(--outline,#2a1a10);border-radius:var(--radius-panel-big,22px);box-shadow:0 var(--depth-big,6px) 0 var(--outline,#2a1a10);padding:16px}
+.sia-snd-dlg h3{margin:0 0 12px;font-weight:normal;font-size:22px;text-align:center}
+.sia-snd-dlg .sia-snd-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;font-size:17px;border-bottom:2px dashed var(--line-soft,rgba(42,26,16,.2))}
+.sia-snd-seg{display:flex;gap:6px}
+.sia-snd-seg button{font:inherit;color:inherit;border:var(--line-thin,2px) solid var(--outline,#2a1a10);background:var(--white,#fff);border-radius:var(--radius-item,12px);padding:5px 14px;font-size:15px;cursor:pointer}
+.sia-snd-seg button.sel{background:var(--primary,#ffc93c);box-shadow:0 3px 0 var(--outline,#2a1a10)}
+.sia-snd-close{display:block;width:100%;margin-top:14px;font:inherit;font-size:var(--fs-button,18px);color:inherit;background:var(--primary,#ffc93c);border:var(--line,3px) solid var(--outline,#2a1a10);border-radius:var(--radius-button,16px);box-shadow:0 var(--depth-button,4px) 0 var(--outline,#2a1a10);padding:10px;cursor:pointer}
+.sia-snd-close:active{transform:translateY(3px);box-shadow:0 1px 0 var(--outline,#2a1a10)}`;
+function setCss() {
+  if (document.getElementById('sia-snd-css')) return;
+  const st = document.createElement('style');
+  st.id = 'sia-snd-css';
+  st.textContent = SET_CSS;
+  document.head.append(st);
+}
+/** 설정 창이 열려 있는지 (게임이 Esc 등으로 일시정지를 풀 때 확인) */
+export const isSoundSettingsOpen = () => typeof document !== 'undefined' && !!document.querySelector('.sia-snd-dim');
+/**
+ * ⚙️ 설정 창: 🎵 배경음 · 🔊 효과음을 따로 켜기/끄기 (시아레이스와 같은 모양, 모든 게임 공용).
+ * onClose: 창을 닫을 때 (일시정지 화면으로 돌아가기 등). 이미 열려 있으면 그 창을 돌려준다.
+ */
+export function openSoundSettings(onClose) {
+  const old = document.querySelector('.sia-snd-dim');
+  if (old) return old;
+  setCss();
+  play('click');
+  const dim = document.createElement('div');
+  dim.className = 'sia-snd-dim';
+  const seg = (k, on) =>
+    `<div class="sia-snd-seg" data-k="${k}"><button type="button" data-v="1" class="${on ? 'sel' : ''}" aria-pressed="${on}">켜기</button><button type="button" data-v="0" class="${on ? '' : 'sel'}" aria-pressed="${!on}">끄기</button></div>`;
+  const paint = () => {
+    dim.innerHTML = `<div class="sia-snd-dlg" role="dialog" aria-modal="true" aria-label="설정">
+      <h3>⚙️ 설정</h3>
+      <div class="sia-snd-row"><span>🎵 배경음</span>${seg('bgm', bgmOn)}</div>
+      <div class="sia-snd-row"><span>🔊 효과음</span>${seg('sfx', !muted)}</div>
+      <button type="button" class="sia-snd-close" data-close>닫기</button>
+    </div>`;
+  };
+  const close = () => {
+    play('click');
+    dim.remove();
+    removeEventListener('keydown', onKey, true);
+    onClose?.();
+  };
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    close();
+  };
+  paint();
+  // 게임 화면(캔버스·조이스틱)에 입력이 새지 않게 여기서 막는다
+  for (const t of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup']) dim.addEventListener(t, (e) => e.stopPropagation());
+  dim.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const el = e.target;
+    if (el === dim || el.closest('[data-close]')) return close();
+    const b = el.closest('.sia-snd-seg button');
+    if (!b) return;
+    const on = b.dataset.v === '1';
+    if (b.parentElement.dataset.k === 'bgm') {
+      if (on !== bgmOn) setBgmOn(on);
+    } else if (on === muted) setMuted(!on);
+    paint();
+  });
+  addEventListener('keydown', onKey, true);
+  document.body.append(dim);
+  dim.querySelector('[data-close]')?.focus({ preventScroll: true });
+  return dim;
+}
+
+/** 오른쪽 아래 ⚙️ 설정 버튼 (DESIGN.md: 원형 흰 버튼). 누르면 소리 설정 창 */
 export function mountSoundButton(parent = document.body) {
   let b = document.getElementById('sia-sound-btn');
   if (b) return b;
   b = document.createElement('button');
   b.id = 'sia-sound-btn';
   b.type = 'button';
-  const paint = () => {
-    b.textContent = muted ? '🔇' : '🔊';
-    b.setAttribute('aria-label', muted ? '소리 켜기' : '소리 끄기');
-    b.title = muted ? '소리 켜기' : '소리 끄기';
-  };
+  b.textContent = '⚙️';
+  b.setAttribute('aria-label', '소리 설정');
+  b.title = '소리 설정';
   b.style.cssText =
     'position:fixed;right:calc(12px + env(safe-area-inset-right));bottom:calc(12px + env(safe-area-inset-bottom));z-index:90;width:44px;height:44px;border-radius:50%;' +
     'background:var(--white,#fff);border:3px solid var(--outline,#2a1a10);box-shadow:0 3px 0 var(--outline,#2a1a10);font-size:20px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0';
-  b.addEventListener('click', () => toggleMuted());
-  onMuteChange(paint);
-  paint();
+  b.addEventListener('click', () => openSoundSettings());
   parent.append(b);
   return b;
 }

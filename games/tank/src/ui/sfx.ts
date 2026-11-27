@@ -126,6 +126,11 @@ export const sfx = {
     }),
   heal: () => say('tankHeal', () => tone(440, 0.3, 'sine', 0.1, 400)),
   win: () => say('tankWin', () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.12), i * 130))),
+  /** ⚙️ 소리 설정 창 (🎵 배경음 · 🔊 효과음 따로). 공용 모듈이 없으면(오프라인) 효과음만 켜고 끈다 */
+  openSettings: () => {
+    if (shared) shared.openSoundSettings();
+    else sfx.toggleMute();
+  },
   toggleMute: () => {
     if (shared) {
       shared.setMuted(!muted);

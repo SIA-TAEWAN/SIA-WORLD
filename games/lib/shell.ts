@@ -338,6 +338,7 @@ interface SoundModule {
   play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
   playMany(name: string, count: number, gapMs?: number, opts?: { delay?: number }): void;
   mountSoundButton(parent?: HTMLElement): HTMLElement;
+  openSoundSettings(onClose?: () => void): HTMLElement;
   playBgm(game: string, scene?: string): void;
   stopBgm(): void;
 }

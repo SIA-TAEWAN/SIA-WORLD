@@ -65,6 +65,8 @@ export async function openWorldRanking(meId: string, first: 'tank' | 'target' = 
 export interface SoundModule {
   play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
   isMuted(): boolean;
+  /** ⚙️ 소리 설정 창 (🎵 배경음 · 🔊 효과음 따로, 시아레이스와 같은 모양). onClose: 닫을 때 */
+  openSoundSettings(onClose?: () => void): HTMLElement;
   setMuted(m: boolean): void;
   onMuteChange(cb: (m: boolean) => void): () => void;
   playBgm(game: string, scene?: string): void;

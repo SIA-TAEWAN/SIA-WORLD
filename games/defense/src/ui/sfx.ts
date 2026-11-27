@@ -1,7 +1,7 @@
 /**
  * 시아디펜스 효과음: SIA WORLD 공용 효과음(shared/sound.js, ZzFX)을 쓴다. 켜기/끄기는 공용 설정('sia:sound').
  * 공용 모듈에 이미 있는 소리 이름만 쓴다 (공용 파일을 고치지 않는다). 배경음은 ui/music.ts (효과음과 따로 'sia:bgm').
- * 소리 버튼 하나가 효과음과 배경음을 함께 켜고 끈다.
+ * 배경음과 효과음은 따로 켜고 끈다 (⚙️ 공용 설정 창 · 일시정지 창, 시아레이스와 같다).
  */
 import { loadSound, type SoundModule } from '../net/world';
 
@@ -39,15 +39,23 @@ export function attackSfx(name: string, rate = 1) {
 }
 
 export const sound = {
-  get on() {
+  get sfxOn() {
     return shared ? !shared.isMuted() : true;
   },
-  /** 효과음과 배경음을 함께 켜고 끈다 */
-  set(on: boolean) {
+  setSfx(on: boolean) {
     shared?.setMuted(!on);
+  },
+  get bgmOn() {
+    return shared ? shared.isBgmOn() : true;
+  },
+  setBgm(on: boolean) {
     shared?.setBgmOn(on);
   },
-  /** 공용 배경음 파일 틀기 (shared/sound.js playBgm, 효과음을 껐으면 배경음도 나지 않는다). 공용 모듈이 없으면 아무 일도 없다 */
+  /** ⚙️ 공용 소리 설정 창 (배경음·효과음 따로) */
+  openSettings() {
+    shared?.openSoundSettings();
+  },
+  /** 공용 배경음 파일 틀기 (shared/sound.js playBgm, 배경음 끄기를 따른다). 공용 모듈이 없으면 아무 일도 없다 */
   playBgm(game: string, scene: string) {
     shared?.playBgm(game, scene);
   },

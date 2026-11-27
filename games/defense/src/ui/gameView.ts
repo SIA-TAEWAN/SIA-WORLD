@@ -505,7 +505,8 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
               <div class="actions"><button class="btn" data-back>계속하기</button><button class="btn primary" data-again>다시하기</button></div></div>`
             : `<div class="dialog"><h3>⏸ 잠깐 멈춤</h3>
               <p class="soft center">${setup.daily ? '📅 오늘의 고개 · ' : ''}${s.endless ? '♾️' : esc(s.stage.id)} ${esc(s.stage.name)} · 웨이브 ${Math.max(1, s.wave + 1)}${s.endless ? '' : `/${WAVES}`} · ❤️ ${s.lives}</p>
-              <div class="row"><span>🔊 소리</span><div class="seg" data-k="sfx"><button data-v="1" class="${sound.on ? 'sel' : ''}">켜기</button><button data-v="0" class="${sound.on ? '' : 'sel'}">끄기</button></div></div>
+              <div class="row"><span>🎵 배경음</span><div class="seg" data-k="bgm"><button data-v="1" class="${sound.bgmOn ? 'sel' : ''}">켜기</button><button data-v="0" class="${sound.bgmOn ? '' : 'sel'}">끄기</button></div></div>
+              <div class="row"><span>🔊 효과음</span><div class="seg" data-k="sfx"><button data-v="1" class="${sound.sfxOn ? 'sel' : ''}">켜기</button><button data-v="0" class="${sound.sfxOn ? '' : 'sel'}">끄기</button></div></div>
               <div class="actions"><button class="btn primary" data-resume>계속하기</button></div>
               <div class="actions"><button class="btn small" data-retry>🔄 다시하기</button><button class="btn small" data-giveup>🏳️ 포기</button></div></div>`;
     };
@@ -514,8 +515,11 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
       const t = e.target as HTMLElement;
       const seg = t.closest('.seg button') as HTMLElement | null;
       if (seg) {
-        sound.set(seg.dataset.v === '1');
-        sfx('toggle');
+        const on = seg.dataset.v === '1';
+        if ((seg.parentElement as HTMLElement).dataset.k === 'bgm') {
+          if (on !== sound.bgmOn) sound.setBgm(on);
+        } else if (on !== sound.sfxOn) sound.setSfx(on);
+        sfx('click');
         paint('');
       } else if (t.closest('[data-resume]')) closePause();
       else if (t.closest('[data-giveup]')) {
