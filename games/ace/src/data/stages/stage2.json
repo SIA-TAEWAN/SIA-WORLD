@@ -1,0 +1,81 @@
+{
+  "id": 2,
+  "name": "넓은 바다",
+  "animal": "ox",
+  "floor": "floor-r04",
+  "ground": "gunboat",
+  "sea": "full",
+  "bulletSpeed": 0.9099999999999999,
+  "length": 116,
+  "midboss": {
+    "at": 52,
+    "id": "diver"
+  },
+  "boss": "carrier",
+  "waves": [
+    { "at": 2, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96
+    },
+    { "at": 5.6, "kind": "medium", "path": "rise", "x": 0.2597567998338491, "dx": 170, "count": 2, "y": 0.1998927324381657, "fire": "rise8", "fireEvery": 70, "hp": 0.5
+    },
+    { "at": 9, "kind": "small", "path": "swoopL", "x": 0.4129284232854843, "count": 8, "gap": 10, "fire": "aim1", "fireEvery": 150
+    },
+    { "at": 11.7, "kind": "medium", "path": "hover", "x": 0.6023617632454261, "fire": "aim3", "fireEvery": 70
+    },
+    { "at": 15.2, "kind": "medium", "path": "hover", "x": 0.36885730014182627, "fire": "rise8", "fireEvery": 70
+    },
+    { "at": 18.4, "kind": "small", "path": "swoopR", "x": 0.682257290976122, "count": 5, "gap": 11, "fire": "aim1", "fireEvery": 150
+    },
+    { "at": 22.3, "kind": "medium", "path": "hover", "x": 0.5816002660430968, "fire": "rise8", "fireEvery": 70
+    },
+    { "at": 25.1, "kind": "small", "path": "swoopR", "x": 0.3930761826224625, "count": 5, "gap": 13, "fire": "aim1", "fireEvery": 150
+    },
+    { "at": 28.1, "kind": "small", "path": "swoopR", "x": 0.5900375304743648, "count": 8, "gap": 11, "fire": "aim1", "fireEvery": 150
+    },
+    { "at": 30.7, "kind": "medium", "path": "rise", "x": 0.3360614909324795, "dx": 170, "count": 3, "y": 0.33191788534866645, "fire": "rise8", "fireEvery": 70, "hp": 0.5
+    },
+    { "at": 34, "kind": "small", "path": "swoopR", "x": 0.5056735329795629, "count": 5, "gap": 10, "fire": "aim1", "fireEvery": 150
+    },
+    { "at": 37.4, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 150
+    },
+    { "at": 41.2, "kind": "medium", "path": "rise", "x": 0.21905258377082648, "dx": 170, "count": 3, "y": 0.2753751708148047, "fire": "rise8", "fireEvery": 70, "hp": 0.5
+    },
+    { "at": 44.5, "kind": "medium", "path": "rise", "x": 0.28117664894089106, "dx": 170, "count": 2, "y": 0.3379074658220634, "fire": "rise8", "fireEvery": 70, "hp": 0.5
+    },
+    { "at": 54, "kind": "small", "path": "dive", "x": 0.42261059070006013, "count": 8, "gap": 11, "fire": "aim1", "fireEvery": 117
+    },
+    { "at": 58, "kind": "small", "path": "swoopL", "x": 0.2176643103826791, "count": 7, "gap": 11, "fire": "aim1", "fireEvery": 117
+    },
+    { "at": 61.4, "kind": "medium", "path": "hover", "x": 0.44204011419788003, "fire": "rise8", "fireEvery": 55
+    },
+    { "at": 64.4, "kind": "medium", "path": "rise", "x": 0.26614059023559095, "dx": 170, "count": 2, "y": 0.23035543156554922, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 68, "kind": "small", "path": "dive", "x": 0.5242006453219801, "count": 8, "gap": 11, "fire": "aim1", "fireEvery": 117
+    },
+    { "at": 71, "kind": "carrier", "path": "cross", "x": 1, "drop": "P"
+    },
+    { "at": 74.4, "kind": "medium", "path": "rise", "x": 0.3310335131827742, "dx": 170, "count": 2, "y": 0.2347699219896458, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 78.1, "kind": "medium", "path": "rise", "x": 0.38390115001238884, "dx": 170, "count": 2, "y": 0.38774032146437093, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 80.7, "kind": "medium", "path": "rise", "x": 0.22616921304725113, "dx": 170, "count": 3, "y": 0.39507534832926466, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 84, "kind": "small", "path": "swoopR", "x": 0.29266775101423265, "count": 8, "gap": 12, "fire": "aim1", "fireEvery": 117
+    },
+    { "at": 88, "kind": "medium", "path": "rise", "x": 0.339490692038089, "dx": 170, "count": 3, "y": 0.3112997519853525, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 91.5, "kind": "medium", "path": "hover", "x": 0.3320707416860387, "fire": "ring16", "fireEvery": 55
+    },
+    { "at": 94.5, "kind": "medium", "path": "hover", "x": 0.6727252678247169, "fire": "ring16", "fireEvery": 55
+    },
+    { "at": 97.7, "kind": "medium", "path": "rise", "x": 0.34021195368841295, "dx": 170, "count": 3, "y": 0.24027277291286736, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 100.4, "kind": "medium", "path": "rise", "x": 0.3733362368308008, "dx": 170, "count": 2, "y": 0.3910062573920004, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 103.9, "kind": "medium", "path": "hover", "x": 0.3483809024328366, "fire": "ring16", "fireEvery": 55
+    },
+    { "at": 107.1, "kind": "medium", "path": "rise", "x": 0.3345120861195028, "dx": 170, "count": 2, "y": 0.38964928314788266, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    },
+    { "at": 111, "kind": "medium", "path": "rise", "x": 0.24090744270943107, "dx": 170, "count": 2, "y": 0.40627271112287416, "fire": "rise8", "fireEvery": 55, "hp": 0.5
+    }
+  ]
+}

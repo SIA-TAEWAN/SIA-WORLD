@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import { COLOR, css } from '../theme';
 import type { Ship } from '../data/ships';
+import { HULL_ASPECT, type HullKind } from '../data/bosses';
 
 const INK = css(COLOR.outline);
 const WHITE = css(COLOR.white);
@@ -103,19 +104,23 @@ export function artHeight(scene: Phaser.Scene, name: string, w: number) {
   return Math.round(im ? (w * im.height) / im.width : w * 0.8);
 }
 
-/** 게임에서 쓰는 모든 그림 이름 (public/art/<name>.png). 없는 그림은 조용히 코드 그림 */
-export const ART_FILES = [
-  'ship-dragon', 'enemy-small', 'enemy-medium', 'enemy-carrier', 'ground-harbor', 'ground-gunboat',
-  'item-p', 'item-b', 'item-coin', 'item-option', 'mid-rider', 'boss-1',
-];
+/** 이 판에 필요한 그림 이름 (public/art/<name>.png). 없는 그림은 조용히 코드 그림 */
+export function artFiles(ship: string, ground: string, bosses: BossArt[]) {
+  const files = new Set([
+    'ship-' + ship, 'enemy-small', 'enemy-medium', 'enemy-carrier', 'ground-' + ground, 'ground-gunboat',
+    'item-p', 'item-b', 'item-coin', 'item-option',
+  ]);
+  for (const b of bosses) files.add(b.hull ? 'rider-' + b.rider : b.name);
+  return [...files];
+}
 
-export interface BossArt { key: string; name: string; width: number }
+export interface BossArt { key: string; name: string; width: number; hull?: HullKind; rider?: string }
 
-export function makeArt(scene: Phaser.Scene, ship: Ship, bosses: BossArt[] = []) {
+export function makeArt(scene: Phaser.Scene, ship: Ship, bosses: BossArt[] = [], ground = 'harbor') {
   const faceKey = 'face-' + ship.id;
   const face = scene.textures.exists(faceKey) ? (scene.textures.get(faceKey).getSourceImage() as CanvasImageSource) : null;
   either(scene, 'ship', 'ship-' + ship.id, 128, 128, x => drawShip(x, ship, face));
-  makeStageArt(scene, bosses);
+  makeStageArt(scene, bosses, ground);
   // 엔진 불꽃 (따로 그려서 깜빡인다)
   tex(scene, 'flame', 28, 40, x => {
     x.lineWidth = 3; x.strokeStyle = INK;
@@ -205,7 +210,7 @@ export function makeArt(scene: Phaser.Scene, ship: Ship, bosses: BossArt[] = [])
 }
 
 /** M2: 금화 · 지상 목표 · 레이저 · 차지 칸 · 부서진 부위 · 보스 */
-function makeStageArt(scene: Phaser.Scene, bosses: BossArt[]) {
+function makeStageArt(scene: Phaser.Scene, bosses: BossArt[], groundName: string) {
   // 금화 (엽전: 가운데 네모 구멍)
   either(scene, 'itemC', 'item-coin', 44, 44, x => {
     circle(x, 22, 22, 18, GOLD, 3.5);
@@ -221,7 +226,7 @@ function makeStageArt(scene: Phaser.Scene, bosses: BossArt[]) {
     x.beginPath(); x.roundRect(c - 7, c, 14, w * 0.42, 6); x.fillStyle = INK; x.fill();
     circle(x, c, c, w * 0.1, GOLD, 3);
   };
-  either(scene, 'ground', 'ground-harbor', 100, 100, turret);
+  either(scene, 'ground', 'ground-' + groundName, 100, 100, turret);
   either(scene, 'groundSea', 'ground-gunboat', 100, 100, turret);
   // 관통 레이저 (세로로 늘려 쓴다): 흰 속 + 노란 테
   tex(scene, 'laser', 48, 64, x => {
@@ -240,30 +245,97 @@ function makeStageArt(scene: Phaser.Scene, bosses: BossArt[]) {
     x.strokeStyle = INK; x.lineWidth = 3;
     x.beginPath(); x.moveTo(24, 22); x.lineTo(36, 36); x.lineTo(30, 50); x.moveTo(36, 36); x.lineTo(50, 30); x.stroke();
   });
-  // 보스 (그림 한 장, 없으면 코드 그림)
+  // 내 탄 종류 (큰 탄 · 유도 깃털 · 파동 · 발톱)
+  tex(scene, 'psBig', 36, 36, x => { circle(x, 18, 18, 14, GOLD, 3); circle(x, 18, 18, 7, WHITE); });
+  tex(scene, 'psHoming', 20, 30, x => { x.beginPath(); x.ellipse(10, 15, 7, 13, 0, 0, Math.PI * 2); x.fillStyle = PINK; x.fill(); x.lineWidth = 2.5; x.strokeStyle = INK; x.stroke(); x.fillStyle = WHITE; x.fillRect(9, 6, 2, 18); });
+  tex(scene, 'psWave', 28, 28, x => { circle(x, 14, 14, 11, css(COLOR.win), 2.5); circle(x, 14, 14, 5, WHITE); });
+  tex(scene, 'psClaw', 22, 34, x => {
+    x.beginPath(); x.moveTo(11, 2); x.quadraticCurveTo(20, 18, 11, 32); x.quadraticCurveTo(4, 18, 11, 2); x.closePath();
+    x.fillStyle = WHITE; x.fill(); x.lineWidth = 2.5; x.strokeStyle = INK; x.stroke();
+  });
+  // 차지·폭탄 효과: 돌진 기운 · 방어막 · 독구름 · 번개 (예고 / 내리침)
+  tex(scene, 'aura', 128, 128, x => { circle(x, 64, 64, 58, 'rgba(255,255,255,0.35)'); x.lineWidth = 6; x.strokeStyle = GOLD; x.beginPath(); x.arc(64, 64, 58, 0, Math.PI * 2); x.stroke(); });
+  tex(scene, 'shieldRing', 128, 128, x => {
+    circle(x, 64, 64, 58, 'rgba(159,214,255,0.3)');
+    x.lineWidth = 5; x.strokeStyle = WHITE; x.beginPath(); x.arc(64, 64, 58, 0, Math.PI * 2); x.stroke();
+    x.lineWidth = 2.5; x.strokeStyle = INK; x.beginPath(); x.arc(64, 64, 62, 0, Math.PI * 2); x.stroke();
+  });
+  tex(scene, 'zone', 128, 128, x => {
+    for (const [cx, cy, r] of [[64, 64, 46], [40, 54, 30], [88, 56, 30], [58, 86, 28], [84, 84, 24]]) circle(x, cx, cy, r, 'rgba(76,184,106,0.42)');
+  });
+  tex(scene, 'boltWarn', 32, 64, x => { x.fillStyle = 'rgba(255,77,109,0.22)'; x.fillRect(0, 0, 32, 64); x.fillStyle = PINK; x.fillRect(0, 0, 3, 64); x.fillRect(29, 0, 3, 64); });
+  tex(scene, 'boltHit', 32, 64, x => {
+    const g = x.createLinearGradient(0, 0, 32, 0);
+    g.addColorStop(0, 'rgba(255,224,102,0)'); g.addColorStop(0.3, GOLD_LIGHT); g.addColorStop(0.5, WHITE); g.addColorStop(0.7, GOLD_LIGHT); g.addColorStop(1, 'rgba(255,224,102,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 32, 64);
+  });
+  // 보스 (받은 그림 한 장, 또는 코드 몸체 + 기존 요괴)
   for (const b of bosses) {
-    const h = artHeight(scene, b.name, b.width);
-    if (b.key === 'boss-transport') {
-      // 중간 보스: 크림 비행선 위에 큰 도깨비
-      const rider = loaded(scene, 'mid-rider');
-      tex(scene, b.key, b.width, h, (x, w, hh) => {
-        x.lineWidth = 6; x.strokeStyle = INK;
-        x.beginPath(); x.ellipse(w / 2, hh * 0.62, w * 0.47, hh * 0.3, 0, 0, Math.PI * 2); x.fillStyle = CREAM; x.fill(); x.stroke();
-        x.fillStyle = PINK; x.fillRect(w * 0.08, hh * 0.6, w * 0.84, 14);
-        for (const s of [-1, 1]) { circle(x, w / 2 + s * w * 0.37, hh * 0.74, 22, css(COLOR.lineSoft), 4); circle(x, w / 2 + s * w * 0.37, hh * 0.74, 9, INK); }
-        if (rider) x.drawImage(rider, w / 2 - hh * 0.36, 0, hh * 0.72, hh * 0.72);
-        else circle(x, w / 2, hh * 0.3, hh * 0.25, css(COLOR.lose), 5);
-      });
+    if (b.hull) {
+      const rider = loaded(scene, 'rider-' + b.rider);
+      const hull = b.hull;
+      tex(scene, b.key, b.width, Math.round(b.width * HULL_ASPECT), (x, w, hh) => drawHull(x, w, hh, hull, rider));
       continue;
     }
+    const h = artHeight(scene, b.name, b.width);
     either(scene, b.key, b.name, b.width, h, (x, w, hh) => {
-      // 코드 보스 (그림 대신): 빨간 게
+      // 코드 보스 (그림을 못 읽었을 때): 빨간 게
       x.lineWidth = 6; x.strokeStyle = INK;
       for (const s of [-1, 1]) { circle(x, w / 2 + s * w * 0.35, hh * 0.7, w * 0.11, css(COLOR.lose), 6); }
       x.beginPath(); x.ellipse(w / 2, hh * 0.45, w * 0.3, hh * 0.33, 0, 0, Math.PI * 2); x.fillStyle = css(COLOR.lose); x.fill(); x.stroke();
       eyes(x, w / 2, hh * 0.35, w * 0.08, w * 0.04);
     });
   }
+}
+
+/** 코드 몸체 5종 + 위에 탄 요괴. 양쪽 포문은 (w/2 ± 0.37w, 0.74h) — bosses.ts 의 hullParts 와 같은 자리 */
+function drawHull(x: CanvasRenderingContext2D, w: number, hh: number, kind: HullKind, rider: HTMLImageElement | null) {
+  x.lineWidth = 6; x.strokeStyle = INK; x.lineJoin = 'round';
+  const cy = hh * 0.62;
+  const puffs = [[0.2, 0.66, 0.2], [0.8, 0.66, 0.2], [0.38, 0.56, 0.24], [0.62, 0.56, 0.24], [0.5, 0.74, 0.24]];
+  switch (kind) {
+    case 'airship':
+      x.beginPath(); x.ellipse(w / 2, cy, w * 0.47, hh * 0.3, 0, 0, Math.PI * 2); x.fillStyle = CREAM; x.fill(); x.stroke();
+      x.fillStyle = PINK; x.fillRect(w * 0.08, cy - 7, w * 0.84, 14);
+      break;
+    case 'kite':
+      x.beginPath(); x.moveTo(w / 2, hh * 0.28); x.lineTo(w * 0.96, cy); x.lineTo(w / 2, hh * 0.98); x.lineTo(w * 0.04, cy); x.closePath();
+      x.fillStyle = GOLD; x.fill(); x.stroke();
+      x.lineWidth = 3; x.beginPath(); x.moveTo(w / 2, hh * 0.28); x.lineTo(w / 2, hh * 0.98); x.moveTo(w * 0.04, cy); x.lineTo(w * 0.96, cy); x.stroke();
+      break;
+    case 'cloud':
+      for (const [fx, fy, fr] of puffs) { x.beginPath(); x.arc(w * fx, hh * fy, w * fr * 0.82, 0, Math.PI * 2); x.fillStyle = WHITE; x.fill(); x.stroke(); }
+      for (const [fx, fy, fr] of puffs) circle(x, w * fx, hh * fy, w * fr * 0.82 - 4, WHITE);
+      break;
+    case 'flower':
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        x.beginPath(); x.ellipse(w / 2 + Math.cos(a) * w * 0.24, cy + Math.sin(a) * hh * 0.2, w * 0.16, hh * 0.14, a, 0, Math.PI * 2);
+        x.fillStyle = css(COLOR.panelStrong); x.fill(); x.stroke();
+      }
+      circle(x, w / 2, cy, w * 0.14, PINK, 5);
+      break;
+    case 'fort':
+      x.beginPath(); x.roundRect(w * 0.04, hh * 0.4, w * 0.92, hh * 0.52, 26); x.fillStyle = css(COLOR.lineSoft); x.fill(); x.stroke();
+      x.lineWidth = 3;
+      for (let i = 1; i < 4; i++) { x.beginPath(); x.moveTo(w * 0.04 + i * w * 0.23, hh * 0.42); x.lineTo(w * 0.04 + i * w * 0.23, hh * 0.9); x.stroke(); }
+      break;
+  }
+  for (const s of [-1, 1]) { circle(x, w / 2 + s * w * 0.37, hh * 0.74, 22, css(COLOR.lineSoft), 4); circle(x, w / 2 + s * w * 0.37, hh * 0.74, 9, INK); }
+  const rs = hh * 0.72;
+  if (rider) { const k = Math.min(rs / rider.width, rs / rider.height); x.drawImage(rider, w / 2 - (rider.width * k) / 2, 0, rider.width * k, rider.height * k); }
+  else circle(x, w / 2, hh * 0.3, hh * 0.25, css(COLOR.lose), 5);
+}
+
+/** 하늘 위 (5스테이지): 하늘색 + 구름 무늬 */
+export function makeSky(scene: Phaser.Scene) {
+  if (scene.textures.exists('skyTile')) return;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const x = c.getContext('2d')!;
+  x.fillStyle = css(COLOR.skyMid); x.fillRect(0, 0, 256, 256);
+  x.fillStyle = 'rgba(255,255,255,0.85)';
+  for (const [cx, cy, r] of [[50, 60, 26], [78, 52, 30], [104, 64, 22], [180, 170, 24], [206, 160, 32], [232, 176, 20], [30, 210, 18], [52, 206, 24]]) { x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill(); }
+  scene.textures.addCanvas('skyTile', c);
 }
 
 /** 바다 무늬 (TileSprite 용 작은 텍스처 하나) */

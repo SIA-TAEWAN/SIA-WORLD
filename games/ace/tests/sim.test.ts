@@ -100,11 +100,11 @@ describe('M2: 차지샷 · 금화 · 보스 · 정산', () => {
     const s = make();
     run(s, 20, { ...NO_INPUT, charge: true });
     s.step(NO_INPUT);
-    expect(s.laser.t).toBe(0);
+    expect(s.act.t).toBe(0);
     run(s, CHARGE_CELL * 2 + 1, { ...NO_INPUT, charge: true });
     expect(s.chargeCells).toBe(2);
     s.step(NO_INPUT);
-    expect(s.laser.cells).toBe(2);
+    expect(s.act.cells).toBe(2);
     expect(s.events.some(e => e.t === 'charge')).toBe(true);
     // 레이저는 위쪽 적을 관통해 녹인다
     const e = s.spawnEnemy('medium', 'hover', s.px, 300)!;

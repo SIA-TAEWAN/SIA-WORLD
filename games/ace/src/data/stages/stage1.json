@@ -3,6 +3,7 @@
   "name": "해안 마을",
   "animal": "rat",
   "floor": "floor-r01",
+  "ground": "harbor",
   "sea": "left",
   "bulletSpeed": 0.85,
   "length": 118,

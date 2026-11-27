@@ -1,0 +1,80 @@
+{
+  "id": 3,
+  "name": "대나무 숲",
+  "animal": "tiger",
+  "floor": "floor-r05",
+  "ground": "bamboo",
+  "bulletSpeed": 0.94,
+  "length": 118,
+  "midboss": {
+    "at": 52,
+    "id": "kites"
+  },
+  "boss": "tanuki",
+  "waves": [
+    { "at": 2, "kind": "small", "path": "dive", "x": 0.5378914227243513, "count": 8, "gap": 13
+    },
+    { "at": 5.8, "kind": "ground", "path": "ground", "x": 0.6529382457491011, "count": 1, "dx": 430, "fire": "aim3", "fireEvery": 105
+    },
+    { "at": 9, "kind": "small", "path": "swoopL", "x": 0.4523978363722563, "count": 7, "gap": 11, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 12.5, "kind": "small", "path": "swoopL", "x": 0.4192347019445151, "count": 8, "gap": 11, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 16.4, "kind": "small", "path": "swoopR", "x": 0.6677342204842716, "count": 7, "gap": 10, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 20.1, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 22.8, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim3", "fireEvery": 105
+    },
+    { "at": 26.7, "kind": "small", "path": "dive", "x": 0.3006911804433912, "count": 8, "gap": 10, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 29.8, "kind": "small", "path": "swoopR", "x": 0.6650620912667364, "count": 8, "gap": 11, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 32.8, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim3", "fireEvery": 105
+    },
+    { "at": 36.6, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim3", "fireEvery": 105
+    },
+    { "at": 39.9, "kind": "ground", "path": "ground", "x": 0.1706139716086909, "count": 1, "dx": 430, "fire": "aim3", "fireEvery": 105
+    },
+    { "at": 42.9, "kind": "small", "path": "swoopL", "x": 0.6496759279631078, "count": 7, "gap": 11, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 45.9, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 143
+    },
+    { "at": 56.1, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim3", "fireEvery": 82
+    },
+    { "at": 59.4, "kind": "carrier", "path": "cross", "x": 1, "drop": "B"
+    },
+    { "at": 62.1, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 111
+    },
+    { "at": 64.7, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 111
+    },
+    { "at": 68.3, "kind": "small", "path": "dive", "x": 0.6555431162938475, "count": 8, "gap": 10, "fire": "aim1", "fireEvery": 111
+    },
+    { "at": 72.2, "kind": "ground", "path": "ground", "x": 0.4531086360337212, "count": 1, "dx": 430, "fire": "aim3", "fireEvery": 82
+    },
+    { "at": 75.4, "kind": "ground", "path": "ground", "x": 0.597431740979664, "count": 1, "dx": 430, "fire": "aim3", "fireEvery": 82
+    },
+    { "at": 78.9, "kind": "medium", "path": "hover", "x": 0.6694555917056277, "fire": "fan9", "fireEvery": 52
+    },
+    { "at": 82.2, "kind": "small", "path": "swoopR", "x": 0.6785206969361752, "count": 5, "gap": 13, "fire": "aim1", "fireEvery": 111
+    },
+    { "at": 85.6, "kind": "small", "path": "swoopL", "x": 0.25203878656029705, "count": 6, "gap": 12, "fire": "aim1", "fireEvery": 111
+    },
+    { "at": 89.4, "kind": "small", "path": "dive", "x": 0.5626550075598061, "count": 5, "gap": 10, "fire": "aim1", "fireEvery": 111
+    },
+    { "at": 92.9, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 96.5, "kind": "ground", "path": "ground", "x": 0.21798783482518047, "count": 1, "dx": 430, "fire": "aim3", "fireEvery": 82
+    },
+    { "at": 99.8, "kind": "small", "path": "dive", "x": 0.6940378668718039, "count": 8, "gap": 11, "fire": "aim1", "fireEvery": 111
+    },
+    { "at": 103, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 106.4, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim3", "fireEvery": 82
+    },
+    { "at": 109.6, "kind": "ground", "path": "ground", "x": 0.35589132648892696, "count": 1, "dx": 430, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 113.4, "kind": "small", "path": "swoopR", "x": 0.31434117527678607, "count": 8, "gap": 13, "fire": "aim1", "fireEvery": 111
+    }
+  ]
+}

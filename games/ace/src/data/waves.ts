@@ -6,7 +6,8 @@ import type { EnemyKind, ItemKind, PathName } from '../game/sim';
 
 export interface Wave {
   at: number;
-  kind: EnemyKind;
+  /** bolt = 번개 예고 구역 (적이 아님, x 위치에 w 반폭) */
+  kind: EnemyKind | 'bolt';
   path: PathName;
   x: number;
   count?: number;
@@ -15,6 +16,12 @@ export interface Wave {
   drop?: ItemKind;
   fire?: PatternName;
   fireEvery?: number;
+  /** rise(물·안개에서 솟기): 나타나는 높이 (화면 높이 비율) */
+  y?: number;
+  /** 체력 배율 */
+  hp?: number;
+  /** bolt 반폭 */
+  w?: number;
 }
 export interface WaveScript {
   /** 등장표 길이 (초). 다 지나면 남은 적이 사라진 뒤 보스 */
@@ -33,7 +40,14 @@ export interface StageDef extends WaveScript {
   name: string;
   animal: string;
   floor: string;
-  sea?: 'left' | 'right';
+  /** 바다: 왼쪽·오른쪽 띠, 또는 화면 전체 */
+  sea?: 'left' | 'right' | 'full';
+  /** 구름 위 (바닥 대신 하늘 + 구름) */
+  sky?: boolean;
+  /** 독안개 (위쪽을 가리는 안개) */
+  fog?: boolean;
+  /** 지상 목표 그림 (public/art/ground-<이름>.png) */
+  ground?: string;
 }
 
 export const PROTO: WaveScript = {

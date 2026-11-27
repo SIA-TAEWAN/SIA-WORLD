@@ -3,19 +3,6 @@
 // 속도는 "보통" 기준이고, 실제 속도는 Sim.addBullet 이 난이도 배율(speedMul)을 곱한다.
 import type { Sim } from './sim';
 
-/** 기체 기본샷 (청룡호: 전방 집중 발칸). main[파워-1] = 한 번에 나가는 탄들 */
-export const FIRE = {
-  every: 4,
-  speed: 30,
-  optDmg: 1,
-  main: [
-    [{ x: -9, vx: 0, dmg: 1 }, { x: 9, vx: 0, dmg: 1 }],
-    [{ x: -16, vx: 0, dmg: 1 }, { x: 0, vx: 0, dmg: 1 }, { x: 16, vx: 0, dmg: 1 }],
-    [{ x: -24, vx: -0.6, dmg: 1 }, { x: -8, vx: 0, dmg: 1 }, { x: 8, vx: 0, dmg: 1 }, { x: 24, vx: 0.6, dmg: 1 }],
-    [{ x: -30, vx: -1.4, dmg: 1 }, { x: -15, vx: -0.4, dmg: 1 }, { x: 0, vx: 0, dmg: 1 }, { x: 15, vx: 0.4, dmg: 1 }, { x: 30, vx: 1.4, dmg: 1 }],
-  ],
-};
-
 // ---------------- 기본 함수 ----------------
 /** 조준탄: 기체를 향해 한 발 */
 export function aimed(sim: Sim, x: number, y: number, speed: number, big = false) {
@@ -33,10 +20,10 @@ export function nway(sim: Sim, x: number, y: number, speed: number, n: number, s
 }
 
 /** 원형: 360도로 n발 */
-export function ring(sim: Sim, x: number, y: number, speed: number, n: number, offset = 0, big = false) {
+export function ring(sim: Sim, x: number, y: number, speed: number, n: number, offset = 0, big = false, turn = 0) {
   for (let i = 0; i < n; i++) {
     const a = offset + (Math.PI * 2 * i) / n;
-    sim.addBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed, big);
+    sim.addBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed, big, turn);
   }
 }
 
@@ -69,6 +56,29 @@ export const PATTERNS = {
   },
   spiral4: (sim: Sim, x: number, y: number, t: number) => spiral(sim, x, y, 3.4, 4, t),
   laser: (sim: Sim, x: number, y: number) => laser(sim, x, y, 7),
+  /** 2 바다: 물속에서 솟아 쏘는 원형 8발 */
+  rise8: (sim: Sim, x: number, y: number, t: number) => ring(sim, x, y, 3.2, 8, t * 0.3),
+  /** 큰 조준탄 한 발 */
+  bigAim: (sim: Sim, x: number, y: number) => aimed(sim, x, y, 4.4, true),
+  /** 아래로 퍼지는 넓은 부채 9발 */
+  fan9: (sim: Sim, x: number, y: number) => nway(sim, x, y, 3.6, 9, 1.6, Math.PI / 2),
+  /** 4 벚꽃: 휘어 도는 꽃잎 탄 (좌우 번갈아 돈다) */
+  petal: (sim: Sim, x: number, y: number, t: number) => ring(sim, x, y, 2.8, 10, t * 0.05, false, (Math.floor(t / 30) % 2 ? 1 : -1) * 0.012),
+  /** 4 벚꽃: 꽃잎 부채 (곡선) */
+  petalFan: (sim: Sim, x: number, y: number, t: number) => {
+    const turn = (Math.floor(t / 40) % 2 ? 1 : -1) * 0.009;
+    for (let i = 0; i < 6; i++) { const a = Math.PI / 2 - 0.9 + i * 0.36; sim.addBullet(x, y, Math.cos(a) * 3.4, Math.sin(a) * 3.4, false, turn); }
+  },
+  /** 5 구름 위: 기체 자리에 번개 예고 */
+  thunder: (sim: Sim) => sim.addBolt(sim.px, 80),
+  /** 5 구름 위: 번개 두 줄 (기체 양옆) */
+  thunder2: (sim: Sim) => { sim.addBolt(sim.px - 170, 70); sim.addBolt(sim.px + 170, 70); },
+  /** 6 늪: 느린 큰 탄 원형 */
+  slowRing: (sim: Sim, x: number, y: number, t: number) => ring(sim, x, y, 2.4, 12, t * 0.07, true),
+  /** 빠른 조준 5-way */
+  aim5: (sim: Sim, x: number, y: number) => nway(sim, x, y, 5.2, 5, 0.6),
+  /** 이무기: 몸을 따라 흩뿌리는 나선 2팔 */
+  serpent: (sim: Sim, x: number, y: number, t: number) => spiral(sim, x, y, 3.6, 2, t, 0.23),
   /** 게 집게: 아래로 넓게 퍼지는 7-way */
   clawFan: (sim: Sim, x: number, y: number) => nway(sim, x, y, 3.8, 7, 1.3, Math.PI / 2),
 } satisfies Record<string, (sim: Sim, x: number, y: number, t: number) => void>;
