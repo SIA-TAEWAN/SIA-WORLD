@@ -19,7 +19,8 @@ import S6 from './data/stages/stage6.json';
 const STAGES = [S1, S2, S3, S4, S5, S6] as unknown as StageDef[];
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
-const ALL = params.get('all') === '1';
+// 시험 페이지(아티팩트)는 주소에 ?all=1 을 못 붙여서 window.ACE_ALL 로 모두 연다
+const ALL = params.get('all') === '1' || (window as unknown as { ACE_ALL?: boolean }).ACE_ALL === true;
 const PROTO_MODE = params.get('proto') === '1';
 const progress = loadProgress();
 
