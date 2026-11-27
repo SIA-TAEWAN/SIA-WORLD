@@ -1,0 +1,711 @@
+{
+  "note": "시아집사(games/nyang) 흰 고양이 자세 그림 — 2026-11-27. 기본 그림 후보 C(41e3e785-…)를 입 다문 얼굴로 고친 sit 이 모든 자세의 참고 원본이다.",
+  "base_asset_id": "41e3e785-6629-4feb-b052-7c2b1e21e212",
+  "credits": {
+    "before": 428,
+    "used": 168,
+    "after": 260,
+    "limit": 170
+  },
+  "common": {
+    "tool": "generate_game_art",
+    "pixel": false,
+    "bg_mode": "transparent",
+    "width": 512,
+    "height": 512,
+    "resolution": "1K",
+    "style": "cute chibi mascot sticker, thick dark brown outline, flat bright colors, blush cheeks"
+  },
+  "fields": {
+    "size": "원본 크기 [w,h] (px)",
+    "bbox": "알파 96 이상인 범위 [x0,y0,x1,y1] (px, 끝 포함)",
+    "foot": "발 바닥 중앙 [x,y] (원본 px). y 는 가장 아래 불투명 줄. 이 점을 바닥의 같은 자리에 놓으면 자세를 바꿔도 튀지 않는다",
+    "anchor": "feet = 발이 닿는 아래쪽 띠의 가운데 / body = 누운 자세라 바닥에 닿는 몸 아래쪽 띠의 가운데 / air = 공중 자세(jump): x 는 몸 무게중심, y 는 가장 아래 발끝 — 게임에서 위로 띄워 쓴다",
+    "scale": "sit 을 1 로 볼 때 곱할 배율 (불투명 넓이를 맞춘 값, beg 만 눈으로 0.94 배 조정). 화면 크기 = 원본 px × scale × (게임 배율)",
+    "fur": "털 색. white = 밝은 털 대표 RGB(중앙값), shade = 청회색 음영 대표 RGB, min/max = 털 픽셀 5%~95% 범위, white_pct/shade_pct = 불투명 픽셀 중 비율, warm_pct = 털처럼 밝은데 붉은 기운이 도는 픽셀 비율(분홍·갈색 경계의 번짐, 낮을수록 좋음)"
+  },
+  "recolor_hint": "털 = 불투명하고 min(r,g,b)>185 이고 r-b<14 인 픽셀(밝고 푸른 기운). 외곽선(어두운 갈색)·눈·코·볼·귀 안·젤리(분홍, r-b>40)는 이 조건에 안 걸린다. 밝기(흰 243,255,255 → 음영 약 210,222,231)를 그대로 곱하기 값으로 쓰면 음영이 유지된다. 눈의 흰 반짝임도 같은 조건에 걸리므로 눈 영역은 따로 빼거나 그대로 둘지 정해야 한다.",
+  "poses": {
+    "sit": {
+      "file": "sit.png",
+      "label": "입 다문 정면 앉기 (기본 대기)",
+      "asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "sha12": "08a112203083",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "edit_asset_id": "41e3e785-6629-4feb-b052-7c2b1e21e212",
+      "size": [
+        1024,
+        1024
+      ],
+      "bbox": [
+        60,
+        1,
+        963,
+        1023
+      ],
+      "foot": [
+        514,
+        1023
+      ],
+      "anchor": "feet",
+      "scale": 1.0,
+      "fur": {
+        "white": [
+          243,
+          254,
+          255
+        ],
+        "shade": [
+          213,
+          222,
+          231
+        ],
+        "min": [
+          212,
+          222,
+          230
+        ],
+        "max": [
+          249,
+          255,
+          255
+        ],
+        "white_pct": 65.8,
+        "shade_pct": 8.5,
+        "warm_pct": 0.88
+      },
+      "prompt": "Keep this white kitten exactly the same — same sitting front-facing pose, same outline, same big round eyes, same pink blush cheeks, pink nose, pink inner ears, same paws with pink paw pads and same tail — only change the mouth: the mouth is now closed, a tiny calm closed cat mouth shaped like a small \":3\" (two little curved lines under the nose), no open mouth, no tongue, no teeth. Nothing else changes."
+    },
+    "sit-blink": {
+      "file": "sit-blink.png",
+      "label": "앉아서 눈 감음 (깜빡임·골골송)",
+      "asset_id": "82b06736-04ab-4c78-86de-461a4aedcf11",
+      "sha12": "82487c44ad9b",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "edit_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        1024,
+        1024
+      ],
+      "bbox": [
+        61,
+        1,
+        962,
+        1022
+      ],
+      "foot": [
+        514,
+        1023
+      ],
+      "anchor": "feet",
+      "scale": 1.0,
+      "fur": {
+        "white": [
+          244,
+          255,
+          255
+        ],
+        "shade": [
+          212,
+          221,
+          230
+        ],
+        "min": [
+          211,
+          221,
+          230
+        ],
+        "max": [
+          247,
+          255,
+          255
+        ],
+        "white_pct": 69.0,
+        "shade_pct": 8.5,
+        "warm_pct": 0.91
+      },
+      "prompt": "Keep this white kitten exactly the same — same sitting front-facing pose, same outline, same head, same pink blush cheeks, pink nose, same closed \":3\" mouth, same ears, paws, pink paw pads and tail — only change the eyes: both eyes are now happily closed, each drawn as one simple thick dark brown downward-curved arc line (like \"n n\" / \"^ ^\" content sleepy smile), no eyeballs, no highlights visible. Nothing else changes."
+    },
+    "walk-1": {
+      "file": "walk-1.png",
+      "label": "걷기 1 (다리 벌린 걸음, 오른쪽)",
+      "asset_id": "2f52c6e6-f477-4bb3-b4de-390777fc7173",
+      "sha12": "27c33c2a8358",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        946,
+        946
+      ],
+      "bbox": [
+        1,
+        41,
+        943,
+        904
+      ],
+      "foot": [
+        460,
+        904
+      ],
+      "anchor": "feet",
+      "scale": 1.168,
+      "fur": {
+        "white": [
+          241,
+          255,
+          255
+        ],
+        "shade": [
+          206,
+          223,
+          232
+        ],
+        "min": [
+          205,
+          222,
+          231
+        ],
+        "max": [
+          245,
+          255,
+          255
+        ],
+        "white_pct": 66.1,
+        "shade_pct": 12.0,
+        "warm_pct": 0.43
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, same big round shiny dark brown eyes with sparkles, pink blush cheek, pink nose, tiny closed \":3\" mouth, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now drawn in a full side profile view, walking to the right on all four short stubby legs, mid-stride walk cycle frame: the near front leg reaches forward and the near hind leg pushes back, the far legs do the opposite, legs clearly separated and crossing. Tail raised up behind the body. Solid white fur with no markings. No accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "walk-2": {
+      "file": "walk-2.png",
+      "label": "걷기 2 (다리 모은 걸음, 오른쪽)",
+      "asset_id": "fd8db068-c5df-470a-95e6-c07281e75e46",
+      "sha12": "e3c2be8f72de",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "2f52c6e6-f477-4bb3-b4de-390777fc7173",
+      "size": [
+        1022,
+        1022
+      ],
+      "bbox": [
+        1,
+        44,
+        1019,
+        977
+      ],
+      "foot": [
+        494,
+        977
+      ],
+      "anchor": "feet",
+      "scale": 1.087,
+      "fur": {
+        "white": [
+          241,
+          255,
+          255
+        ],
+        "shade": [
+          207,
+          222,
+          231
+        ],
+        "min": [
+          207,
+          222,
+          231
+        ],
+        "max": [
+          245,
+          255,
+          255
+        ],
+        "white_pct": 66.5,
+        "shade_pct": 7.4,
+        "warm_pct": 0.41
+      },
+      "prompt": "The exact same white kitten as the reference image, same side profile view facing right, same head, same eye, cheek, nose, mouth, ears, same body size, same raised tail, same thick dark brown outline and colors. This is the OTHER frame of a two-frame walk cycle, the \"passing\" pose: unlike the reference where the legs are spread wide apart in a stride, here all four legs are gathered close together under the body — the near front leg stands straight down vertically under the chest, the near hind leg stands straight down vertically under the hips, and the two far-side legs (pale blue-grey shaded) are lifted off the ground with bent knees, paws hanging in the air. The legs must look clearly different from the reference. Solid white fur, no markings. No accessories, no ground shadow, no text. Single character, full body including all paws, nothing cropped, empty margin around the character."
+    },
+    "loaf": {
+      "file": "loaf.png",
+      "label": "식빵 굽기",
+      "asset_id": "cdc2a81f-fbff-4857-b0b8-c852c946d2c1",
+      "sha12": "4a19370ae045",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        976,
+        976
+      ],
+      "bbox": [
+        15,
+        1,
+        960,
+        974
+      ],
+      "foot": [
+        549,
+        974
+      ],
+      "anchor": "body",
+      "scale": 0.975,
+      "fur": {
+        "white": [
+          244,
+          255,
+          255
+        ],
+        "shade": [
+          207,
+          220,
+          229
+        ],
+        "min": [
+          207,
+          220,
+          228
+        ],
+        "max": [
+          247,
+          255,
+          255
+        ],
+        "white_pct": 68.7,
+        "shade_pct": 11.0,
+        "warm_pct": 0.73
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, pink blush cheeks, pink nose, tiny closed \":3\" mouth, pink inner ears, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now in a \"cat loaf\" pose seen from the front: lying down compactly like a loaf of bread, all four paws tucked under the round body and hidden, body a smooth rounded bun shape, tail wrapped along one side, eyes half closed and sleepy and relaxed (half-lidded). Solid white fur with no markings. No accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "sleep": {
+      "file": "sleep.png",
+      "label": "동그랗게 말고 자기",
+      "asset_id": "436853fa-44d1-4d96-89ab-d2341ec24014",
+      "sha12": "dedcba8dbfc6",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        1004,
+        1004
+      ],
+      "bbox": [
+        0,
+        64,
+        1001,
+        938
+      ],
+      "foot": [
+        550,
+        938
+      ],
+      "anchor": "body",
+      "scale": 1.046,
+      "fur": {
+        "white": [
+          243,
+          255,
+          255
+        ],
+        "shade": [
+          208,
+          225,
+          234
+        ],
+        "min": [
+          207,
+          224,
+          233
+        ],
+        "max": [
+          246,
+          255,
+          255
+        ],
+        "white_pct": 66.6,
+        "shade_pct": 12.9,
+        "warm_pct": 0.51
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, pink blush cheeks, pink nose, tiny closed \":3\" mouth, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now fast asleep, curled up into a round ball (cat donut), lying on its side with the head resting on its front paws and the fluffy tail wrapped around the body toward the face, eyes closed as two simple curved arc lines, peaceful face. Seen from a slightly raised front view. Solid white fur with no markings. No \"Zzz\" letters, no pillow, no accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "eat": {
+      "file": "eat.png",
+      "label": "고개 숙여 먹기 (그릇 없음)",
+      "asset_id": "2b850a0f-be76-41a4-8643-425c3bfa56f4",
+      "sha12": "b258965bd3a4",
+      "model": "gemini-3.1-flash-lite-image",
+      "credits": 8,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        1024,
+        1024
+      ],
+      "bbox": [
+        0,
+        194,
+        1023,
+        828
+      ],
+      "foot": [
+        514,
+        828
+      ],
+      "anchor": "feet",
+      "scale": 1.346,
+      "fur": {
+        "white": [
+          244,
+          254,
+          255
+        ],
+        "shade": [
+          215,
+          224,
+          233
+        ],
+        "min": [
+          214,
+          223,
+          231
+        ],
+        "max": [
+          247,
+          255,
+          255
+        ],
+        "white_pct": 68.0,
+        "shade_pct": 12.9,
+        "warm_pct": 1.2
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, pink blush cheeks, pink nose, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now eating, side view facing right: standing on all four short legs, front legs bent and shoulders lowered, the head bowed far down so the chin almost touches the ground line at the level of the paws, eyes happily closed as curved arcs, tiny closed \":3\" mouth, tail up and relaxed. The dark brown outline is complete and unbroken all around the head and chin. Draw only the kitten: no bowl, no dish, no food, no crumbs, nothing under the face. Solid white fur with no markings. No accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "stretch": {
+      "file": "stretch.png",
+      "label": "기지개",
+      "asset_id": "15ee9b64-72cf-4fcc-a951-0ad8630b36db",
+      "sha12": "fc260c8dc019",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        998,
+        998
+      ],
+      "bbox": [
+        1,
+        77,
+        995,
+        919
+      ],
+      "foot": [
+        539,
+        919
+      ],
+      "anchor": "body",
+      "scale": 1.123,
+      "fur": {
+        "white": [
+          243,
+          255,
+          255
+        ],
+        "shade": [
+          203,
+          219,
+          228
+        ],
+        "min": [
+          203,
+          219,
+          228
+        ],
+        "max": [
+          246,
+          255,
+          255
+        ],
+        "white_pct": 69.0,
+        "shade_pct": 7.9,
+        "warm_pct": 0.39
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, pink blush cheeks, pink nose, tiny closed \":3\" mouth, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now doing a big cat stretch, side view facing right: front legs stretched far forward flat along the ground, chest lowered to the ground, bottom raised high in the air with hind legs standing, tail curved up, eyes squeezed happily closed as curved arcs, relaxed face. Solid white fur with no markings. No accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "pounce": {
+      "file": "pounce.png",
+      "label": "놀이: 몸 낮추고 엉덩이 실룩",
+      "asset_id": "6e7dd130-9c0e-45d5-b4d6-c3fc54495080",
+      "sha12": "405b08709631",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        1000,
+        1000
+      ],
+      "bbox": [
+        12,
+        1,
+        986,
+        997
+      ],
+      "foot": [
+        526,
+        997
+      ],
+      "anchor": "body",
+      "scale": 1.054,
+      "fur": {
+        "white": [
+          243,
+          255,
+          255
+        ],
+        "shade": [
+          210,
+          223,
+          231
+        ],
+        "min": [
+          210,
+          222,
+          230
+        ],
+        "max": [
+          247,
+          255,
+          255
+        ],
+        "white_pct": 66.8,
+        "shade_pct": 11.0,
+        "warm_pct": 0.6
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, same big round shiny dark brown eyes with sparkles, pink blush cheeks, pink nose, tiny closed \":3\" mouth, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now in a playful hunting crouch about to pounce, three-quarter view facing right: chest and chin low near the ground, front paws planted forward, bottom raised and wiggling, tail up, eyes wide open, excited and focused, pupils big. Solid white fur with no markings. No toy, no motion lines, no accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "jump": {
+      "file": "jump.png",
+      "label": "놀이: 뛰어오르기 (공중)",
+      "asset_id": "8ed2a871-2d24-4d04-bc88-8e775b5dd1d5",
+      "sha12": "9d42835b74c9",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        1016,
+        1016
+      ],
+      "bbox": [
+        33,
+        1,
+        980,
+        1013
+      ],
+      "foot": [
+        528,
+        1013
+      ],
+      "anchor": "air",
+      "scale": 1.188,
+      "fur": {
+        "white": [
+          243,
+          255,
+          255
+        ],
+        "shade": [
+          208,
+          225,
+          232
+        ],
+        "min": [
+          208,
+          225,
+          232
+        ],
+        "max": [
+          248,
+          255,
+          255
+        ],
+        "white_pct": 62.0,
+        "shade_pct": 7.0,
+        "warm_pct": 0.49
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, same big round shiny dark brown eyes with sparkles, pink blush cheeks, pink nose, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now leaping up in mid-air to catch a toy, three-quarter view facing right: whole body airborne and stretched upward, both front paws reaching up high with pink paw pads showing, hind legs trailing below, tail flying behind, eyes wide open and excited, small happy open mouth. Solid white fur with no markings. No toy, no motion lines, no accessories, no ground, no shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "beg": {
+      "file": "beg.png",
+      "label": "뒷발로 서서 조르기 (츄르)",
+      "asset_id": "9cae1aea-6712-4fe5-addb-0fe762000b36",
+      "sha12": "71bad3dcad5a",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        1024,
+        1024
+      ],
+      "bbox": [
+        142,
+        0,
+        880,
+        1023
+      ],
+      "foot": [
+        480,
+        1023
+      ],
+      "anchor": "feet",
+      "scale": 1.056,
+      "fur": {
+        "white": [
+          243,
+          255,
+          255
+        ],
+        "shade": [
+          204,
+          219,
+          229
+        ],
+        "min": [
+          203,
+          219,
+          228
+        ],
+        "max": [
+          255,
+          255,
+          255
+        ],
+        "white_pct": 63.6,
+        "shade_pct": 9.5,
+        "warm_pct": 0.53
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, same big round shiny dark brown eyes with sparkles, pink blush cheeks, pink nose, tiny closed \":3\" mouth, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now begging for a treat, front view: standing upright on its two hind feet like a meerkat, round belly showing, both front paws raised together in front of the chest in a pleading \"please\" gesture with pink paw pads visible, head tilted slightly up, big sparkling pleading eyes, tail visible to the right side. Solid white fur with no markings. No treat, no food, no accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "knead": {
+      "file": "knead.png",
+      "label": "꾹꾹이 (앞발 하나 듦)",
+      "asset_id": "88018cc6-cabd-4a46-affe-ec7cae9af0be",
+      "sha12": "06789117f2d4",
+      "model": "gemini-3.1-flash-lite-image",
+      "credits": 8,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        834,
+        834
+      ],
+      "bbox": [
+        24,
+        1,
+        808,
+        831
+      ],
+      "foot": [
+        438,
+        831
+      ],
+      "anchor": "feet",
+      "scale": 1.265,
+      "fur": {
+        "white": [
+          244,
+          254,
+          255
+        ],
+        "shade": [
+          214,
+          223,
+          232
+        ],
+        "min": [
+          213,
+          222,
+          231
+        ],
+        "max": [
+          247,
+          255,
+          255
+        ],
+        "white_pct": 66.2,
+        "shade_pct": 13.2,
+        "warm_pct": 1.23
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, same big round shiny dark brown eyes, pink blush cheeks, pink nose, tiny closed \":3\" mouth, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now kneading (making biscuits), three-quarter view facing right: sitting up on its haunches leaning forward, one front paw pressed down on the ground and the other front paw lifted up in the air mid-knead with the pink paw pad toe beans showing, content dreamy face with eyes half closed, tail curled behind. Draw only the kitten: no blanket, no cushion, no object. Solid white fur with no markings. No accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    },
+    "belly": {
+      "file": "belly.png",
+      "label": "배 보여 주며 누움",
+      "asset_id": "23b710db-cd79-4c3e-a6d3-3594a300b827",
+      "sha12": "74a13e39fb76",
+      "model": "gemini-3.1-flash-lite-image",
+      "credits": 8,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "size": [
+        984,
+        984
+      ],
+      "bbox": [
+        1,
+        114,
+        982,
+        868
+      ],
+      "foot": [
+        606,
+        868
+      ],
+      "anchor": "body",
+      "scale": 1.343,
+      "fur": {
+        "white": [
+          243,
+          253,
+          254
+        ],
+        "shade": [
+          212,
+          223,
+          233
+        ],
+        "min": [
+          211,
+          222,
+          231
+        ],
+        "max": [
+          255,
+          255,
+          255
+        ],
+        "white_pct": 61.6,
+        "shade_pct": 15.6,
+        "warm_pct": 1.52
+      },
+      "prompt": "The exact same white kitten character as the reference image — same big round head, same big round shiny dark brown eyes, pink blush cheeks, pink nose, tiny closed \":3\" mouth, pink inner ears, fluffy white tail, same thick dark brown outline, flat white fur with faint pale blue-grey shading — now lying on its back showing its round fluffy belly, seen from the side-front: back on the ground, belly up, all four paws curled up in the air with pink paw pad toe beans showing, head turned toward the viewer with a happy trusting face and open sparkling eyes, tail lying on the ground to the side. Solid white fur with no markings. No accessories, no ground shadow, no text. Single character, full body, nothing cropped, small empty margin around the character."
+    }
+  },
+  "rejected": [
+    {
+      "file": "_rejected/walk-2-edit.png",
+      "asset_id": "5991fc0a-1db1-41ec-9d13-c5ebaf15d15c",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "edit_asset_id": "2f52c6e6-f477-4bb3-b4de-390777fc7173",
+      "why": "walk-1 을 edit 해서 다리만 바꾸려 했으나 다리가 거의 그대로 나옴"
+    },
+    {
+      "file": "_rejected/eat-nb21.png",
+      "asset_id": "ff41bcf2-2a8b-4ad4-9590-6dc1803f41d0",
+      "model": "gemini-nano-banana-2.1",
+      "credits": 12,
+      "reference_asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+      "why": "턱 아래 외곽선이 끊기고 흰 얼룩이 남음, 고개도 덜 숙임"
+    }
+  ]
+}

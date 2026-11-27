@@ -37,6 +37,8 @@ export const GAMES = [
     path: 'games/ace/', image: 'shared/images/card-ace.png', open: false },
   { id: 'block', name: '시아블록', desc: '정령 블록을 놓아 줄을 지워라 · 8×8 블록 퍼즐 · 1인용',
     path: 'games/block/', image: 'shared/images/card-block.png', open: false },
+  { id: 'nyang', name: '시아집사', desc: '아기 고양이를 입양해 밥 주고 놀아 주며 친해지기 · 고양이 키우기 · 1인용',
+    path: 'games/nyang/', image: 'shared/images/card-nyang.png', open: false },
 ];
 
 const KEY = 'game_open:';

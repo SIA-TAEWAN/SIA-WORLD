@@ -66,6 +66,8 @@ export const RACE = { track: 0xf9a873, trackDark: 0xe08a4f, grass: 0x7cc08a };
 /** 시아돌격대: 그림을 못 읽었을 때 코드로 그리는 장애물·상자 색, 기절한 대원 색조 */
 /** 시아팡팡 보드 (DESIGN.md · theme.css 의 --pang-*) */
 export const PANG = { board: 0x2b2350, cell: 0x352b5e, cellAlt: 0x3c3268 };
+/** 시아집사 방 (DESIGN.md · theme.css 의 --nyang-*) */
+export const NYANG = { wall: 0xfdeccf, wallLine: 0xf6dcb4, floor: 0xe2b07a, floorDark: 0xc98f58, sand: 0xf1dfb6, water: 0x8fd3f5 };
 export const CHARGE = { log: 0x9a6a3a, logEnd: 0xc89a5a, blade: 0xcfd6de, pit: 0x3a2a1c, pitInner: 0x5a4030, crate: 0xd9a05b, stunTint: 0x9fb6ff };
 
 /** 숫자 색 → '#rrggbb' */

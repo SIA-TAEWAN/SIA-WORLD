@@ -51,6 +51,12 @@
   --pang-board: #2b2350;     /* 시아팡팡: 보드 바닥 (밤하늘) */
   --pang-cell: #352b5e;
   --pang-cell-alt: #3c3268;
+  --nyang-wall: #fdeccf;      /* 시아집사: 방 벽 (크림 벽지) */
+  --nyang-wall-line: #f6dcb4;  /* 벽지 줄무늬 · 걸레받이 위 */
+  --nyang-floor: #e2b07a;     /* 나무 바닥 */
+  --nyang-floor-dark: #c98f58; /* 바닥 널 사이 · 그림자 */
+  --nyang-sand: #f1dfb6;      /* 화장실 모래 */
+  --nyang-water: #8fd3f5;     /* 물그릇 물 */
   --charge-log: #9a6a3a;     /* 시아돌격대: 코드로 그리는 장애물·상자 (그림 못 읽을 때) */
   --charge-log-end: #c89a5a;
   --charge-blade: #cfd6de;

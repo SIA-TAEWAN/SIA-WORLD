@@ -1,0 +1,51 @@
+{
+  "note": "시아집사(games/nyang) 하얀 고양이 기본 그림 미리보기 — 2026-11-27. 게임에는 아직 넣지 않았다.",
+  "credits": { "before": 508, "used": 80, "after": 428, "limit": 150 },
+  "picked": "b0cc7806-2c89-4c68-a5bf-127d664a7cfe",
+  "common": { "tool": "generate_game_art", "pixel": false, "bg_mode": "transparent", "width": 512, "height": 512, "resolution": "1K", "style": "cute chibi mascot sticker, thick dark brown outline, flat bright colors, blush cheeks" },
+  "assets": [
+    {
+      "asset_id": "b0cc7806-2c89-4c68-a5bf-127d664a7cfe", "sha12": "0ae726a8e1c9", "file": "cand-a-front.png", "size": "912x912",
+      "label": "후보 A 정면 앉기 (고름 — 옆모습·무늬·애니메이션의 원본)",
+      "model": "gemini-nano-banana-2.1", "credits": 12,
+      "style_asset_ids": ["0620e930-1751-4436-8940-4da390e5b5db"],
+      "prompt": "A single adorable plain house kitten, pure solid white fur with no markings or patterns, sitting upright facing the viewer (front view), chubby round chibi body with a big round head, very large sparkling round eyes, rosy pink blush cheeks, tiny pink nose, pink inner ears, short stubby front legs resting on the ground with both front paws visible, both hind feet visible showing soft pink paw pad toe beans, a thick fluffy tail curled out clearly to the right side of the body, not hidden. Thick dark brown outline, flat solid color fills, only very faint light cream-grey shading, sticker style. No clothes, no crown, no collar, no accessories, no ground shadow, no text. Full body, entire character inside the frame."
+    },
+    {
+      "asset_id": "3628dea8-bc49-4812-90fb-354130894bc9", "sha12": "bf4840857080", "file": "cand-b-34.png", "size": "888x888",
+      "label": "후보 B 3/4 앉기",
+      "model": "gemini-nano-banana-2.1", "credits": 12,
+      "style_asset_ids": ["0620e930-1751-4436-8940-4da390e5b5db"],
+      "prompt": "A single super cute baby kitten, plain house cat, solid snow-white fur with absolutely no markings, sitting in a three-quarter view turned slightly to the left, round squishy body and oversized round head, huge glossy round eyes with highlights, pink blush cheeks, small pink triangle nose, tiny smiling mouth, pink inner ears, short stubby legs, all four paws clearly separated and visible, one front paw slightly lifted showing pink paw pad toe beans, a plump rounded tail sticking out to the side clearly separated from the body. Thick dark brown outline, flat color fills, minimal very pale cream shading only, clean simple shapes. No clothes, no crown, no collar, no accessories, no ground shadow, no text. Full body, nothing cropped."
+    },
+    {
+      "asset_id": "41e3e785-6629-4feb-b052-7c2b1e21e212", "sha12": "874beeeb568c", "file": "cand-c-front.png", "size": "1022x1022",
+      "label": "후보 C 정면 앉기 (야옹이 그림을 참고)",
+      "model": "gemini-nano-banana-2.1", "credits": 12,
+      "reference_asset_id": "4b3ae64a-9a50-48a2-9451-e0fc5d5f42ef",
+      "prompt": "The same art style as this cat character, but a different cat: an ordinary plain baby house kitten with no crown, no cape, no watch, no accessories at all. Solid pure white short fur with no markings, sitting upright facing front, round chubby two-heads-tall chibi body, big round shiny dark eyes, pink blush cheeks, pink nose, pink inner ears, short stubby legs, front paws together on the ground, hind feet showing pink paw pad toe beans, a thick plump tail curving out to the right side clearly separated from the body. Thick dark brown outline, flat solid colors, only very faint pale grey shading. No ground shadow, no text. Full body, nothing cropped."
+    },
+    {
+      "asset_id": "d1a0daa7-5967-43cf-9850-41605742b58e", "sha12": "ab800995b626", "file": "side.png", "size": "1024x1024",
+      "label": "옆모습 서기 (A 참고, 왼쪽을 본다)",
+      "model": "gemini-nano-banana-2.1", "credits": 12,
+      "reference_asset_id": "b0cc7806-2c89-4c68-a5bf-127d664a7cfe",
+      "prompt": "The exact same white kitten character as the reference image, same proportions, same face, same big eyes, pink blush cheek, pink nose, pink inner ears, same fluffy white tail, same thick dark brown outline and flat colors — now drawn in a full side profile view, standing on all four short stubby legs facing right, as a neutral standing pose for a walk cycle. All four legs clearly visible and separated, tail raised behind the body, one ear in front and one behind. Solid white fur with no markings. No accessories, no ground shadow, no text. Full body, nothing cropped."
+    },
+    {
+      "asset_id": "ba663e84-3c84-46cb-ace6-1e5d53349f36", "sha12": "dadd96792bc8", "file": "pattern-cheese.png", "size": "1024x1024",
+      "label": "무늬 시험 — 치즈 (A 를 edit)",
+      "model": "gemini-nano-banana-2.1", "credits": 12,
+      "edit_asset_id": "b0cc7806-2c89-4c68-a5bf-127d664a7cfe",
+      "prompt": "Keep this kitten exactly the same — same pose, same outline, same face, same eyes, same pink cheeks, nose, inner ears and pink paw pads — only change the fur into an orange ginger tabby (cheese cat) pattern: warm orange fur with darker orange tabby stripes on the forehead, back, legs and tail, while the muzzle, chest, belly and paws stay white. Flat colors, thick dark brown outline, no other changes."
+    },
+    {
+      "asset_id": "822d4c04-8b94-46d9-89cf-63a320cde69e", "sha12": "6602948ea301", "file": "idle.webp", "also": ["idle.gif", "idle-sheet.png (5120x640, 8칸 가로, sha12 dd7207e63d62)"], "size": "640x640 x 8칸, 8fps",
+      "label": "애니메이션 시험 — 대기 (A 를 animate, detailed 모드)",
+      "tool": "animate_game_art", "model": "기본값 (지정 안 함)", "credits": 20,
+      "source_asset_id": "b0cc7806-2c89-4c68-a5bf-127d664a7cfe",
+      "settings": { "output_frames": 8, "output_format": "webp", "auto_enhance_prompt": false, "removebg": "Basic", "edge_margin": 6 },
+      "prompt": "The white kitten sits still facing the viewer in a calm looping idle. Its chest and round body gently rise and fall as it breathes, it blinks its big round eyes once, and its fluffy white tail sways softly from side to side. The head, ears, paws and pink paw pads stay in place, the outline and proportions stay exactly the same, and the motion loops cleanly back to the starting pose."
+    }
+  ]
+}

@@ -1,0 +1,1262 @@
+{
+ "note": "시아집사(games/nyang) 방·물건·식물·가구·베란다·츄르·카드 그림 — 2026-11-27. 시트 원본은 _sheets/, 자르기 스크립트는 _sheets/slice.py (python slice.py <이 폴더>). 고양이 자세는 poses/assets.json.",
+ "style_reference": "poses/sit.png (0bba07ae-6c61-4835-a47b-9ccd8cc4f447) 를 style_asset_ids 로",
+ "common": {
+  "tool": "generate_game_art",
+  "pixel": false,
+  "resolution": "1K",
+  "style": "cute chibi mascot sticker style, thick dark brown outline, flat bright colors, warm pastel"
+ },
+ "credits": {
+  "before": 260,
+  "used": 152,
+  "after": 108,
+  "limit": 210
+ },
+ "generations": [
+  {
+   "name": "room",
+   "asset_id": "1ec72756-b9b9-42ee-b2e0-4c836ecd6987",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "9:16 include, style=sit",
+   "prompt": "Empty cozy one-room interior background, straight-on front view, cream striped wallpaper, white baseboard, one square wooden window upper right with flat solid cyan glass, light wood plank floor, completely empty"
+  },
+  {
+   "name": "veranda",
+   "asset_id": "4a8fbade-31b7-4899-ae4c-4455a29f004b",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "9:16 include, style=sit",
+   "prompt": "Apartment veranda balcony garden background, pastel sky with clouds and rooftops over a low wooden railing, two long empty wooden plant shelves, terracotta tiled floor, completely empty"
+  },
+  {
+   "name": "objects-a (12개 시트)",
+   "asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "1:1 transparent, style=sit",
+   "prompt": "Sprite sheet of 12 separate cat care items, 4x3 grid: bowls x4, litter box, food bag, scoop, poop, churu x3 (tuna/salmon/chicken), medicine treat"
+  },
+  {
+   "name": "objects-b (12개 시트)",
+   "asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "1:1 transparent, style=sit",
+   "prompt": "Sprite sheet of 12 separate cat toys and items, 4x3 grid: brush, fur ball, teaser rod, laser pointer, ball, toy mouse, box, blanket, Korean coin, watering can, yarn, fish plush"
+  },
+  {
+   "name": "plants-a (데이지·캣그라스·해바라기)",
+   "asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "1:1 transparent, style=sit",
+   "prompt": "Sprite sheet of potted plant growth stages, 4 columns (seed, sprout, bud, grown) x 3 rows: daisy / cat grass / sunflower, identical terracotta pots"
+  },
+  {
+   "name": "plants-b (캣닢·장미·보름달꽃)",
+   "asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "1:1 transparent, reference=plants-a",
+   "prompt": "Same layout as the reference sheet: catnip / rose / magical full moon flower"
+  },
+  {
+   "name": "furniture-a (6개 시트)",
+   "asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "1:1 transparent, style=sit+objects-b",
+   "prompt": "Sprite sheet of 6 cat furniture, 3x2 grid: cat tower, igloo hideaway, donut cushion, scratching post, empty vase, low desk"
+  },
+  {
+   "name": "furniture-b (보름달 등·빈 화분·씨앗 봉투; 인형 선반은 11마리라 버림)",
+   "asset_id": "7e191ab4-778d-4dbc-9fb4-28c123487b3d",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "1:1 transparent, style=sit+plants-a",
+   "prompt": "Sprite sheet of 4 items, 2x2 grid: zodiac doll shelf, moon lamp, empty pot, seed packet"
+  },
+  {
+   "name": "zodiac-shelf (12마리로 다시)",
+   "asset_id": "71ac2a6c-a1c7-47d1-add2-ae3d69f78cb5",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "transparent, reference=furniture-b",
+   "prompt": "Wide wooden display shelf with exactly twelve zodiac plush dolls, six per tier"
+  },
+  {
+   "name": "card",
+   "asset_id": "a93dee7e-b3a1-48e3-888b-7f859df6b649",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "16:9 include, reference=sit",
+   "prompt": "This exact white kitten resting on a mint cushion in a cozy sunny room, window, cat tower, bowls, yarn, potted daisy, hearts"
+  },
+  {
+   "name": "churu lick 애니메이션 (원본 beg 9cae1aea-5967…)",
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "model": "animate_game_art 기본 모델(detailed)",
+   "credits": 20,
+   "settings": "8 frames 640×640 8fps, spritesheet",
+   "prompt": "The white kitten stands upright with both front paws under its chin and eagerly licks a treat: pink tongue laps up and down, eyes sparkle, head bobs, loops back to closed mouth"
+  },
+  {
+   "name": "window-views (2×2 시트)",
+   "asset_id": "356c228d-abe0-43d2-b4c6-cbdd85d2c180",
+   "model": "gemini-nano-banana-2.1",
+   "credits": 12,
+   "settings": "1:1 include, style=veranda",
+   "prompt": "2x2 grid of square panels with white gutter: morning / day / sunset / night view of pastel rooftops"
+  }
+ ],
+ "room_layout": {
+  "size": [
+   768,
+   1376
+  ],
+  "wall_floor_y": 688,
+  "baseboard_y": [
+   640,
+   688
+  ],
+  "window_glass_bbox": [
+   429,
+   117,
+   716,
+   427
+  ],
+  "window_frame_bbox": [
+   400,
+   88,
+   746,
+   458
+  ]
+ },
+ "veranda_layout": {
+  "size": [
+   768,
+   1376
+  ],
+  "shelf_top_pot_y": 735,
+  "shelf_bottom_pot_y": 925,
+  "floor_y": 955,
+  "railing_y": [
+   598,
+   690
+  ]
+ },
+ "assets": {
+  "objects/bowl-food-empty": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/bowl-food-empty.png",
+   "size": [
+    215,
+    161
+   ],
+   "sha12": "51f940e087e9",
+   "label": "밥그릇(빈)",
+   "use": "사료 그릇 — 비었을 때",
+   "display": "너비 84"
+  },
+  "objects/bowl-food-full": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/bowl-food-full.png",
+   "size": [
+    214,
+    164
+   ],
+   "sha12": "e4ba50ee8394",
+   "label": "밥그릇(찬)",
+   "use": "사료 그릇 — 찼을 때 (빈 것과 같은 크기)",
+   "display": "너비 84"
+  },
+  "objects/bowl-water-empty": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/bowl-water-empty.png",
+   "size": [
+    216,
+    162
+   ],
+   "sha12": "83fd9f2f4141",
+   "label": "물그릇(빈)",
+   "use": "물그릇 — 비었을 때",
+   "display": "너비 84"
+  },
+  "objects/bowl-water-full": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/bowl-water-full.png",
+   "size": [
+    216,
+    163
+   ],
+   "sha12": "a96a8fc4e41b",
+   "label": "물그릇(찬)",
+   "use": "물그릇 — 찼을 때",
+   "display": "너비 84"
+  },
+  "objects/litter-box": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/litter-box.png",
+   "size": [
+    266,
+    198
+   ],
+   "sha12": "c994932a6d2d",
+   "label": "화장실",
+   "use": "모래 상자. 똥(poop)을 모래 위에 겹쳐 그림",
+   "display": "너비 120"
+  },
+  "objects/food-bag": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/food-bag.png",
+   "size": [
+    191,
+    243
+   ],
+   "sha12": "9872b231b8b7",
+   "label": "사료 봉투",
+   "use": "사료 붓기 버튼·끌기 그림, 상점 사료",
+   "display": "높이 76 (버튼 56)"
+  },
+  "objects/scoop": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/scoop.png",
+   "size": [
+    190,
+    199
+   ],
+   "sha12": "49483f2fb0ec",
+   "label": "모래 삽",
+   "use": "똥 치우기 도구",
+   "display": "너비 60"
+  },
+  "objects/poop": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/poop.png",
+   "size": [
+    140,
+    171
+   ],
+   "sha12": "1602dbb07cd7",
+   "label": "똥 덩어리",
+   "use": "화장실 모래 위 (냄새 꼬리 포함)",
+   "display": "너비 40"
+  },
+  "objects/churu-tuna": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/churu-tuna.png",
+   "size": [
+    209,
+    260
+   ],
+   "sha12": "3bbf3e09e546",
+   "label": "츄르 참치",
+   "use": "츄르(뜯은 모양) — 주기 연출·상점",
+   "display": "높이 80"
+  },
+  "objects/churu-salmon": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/churu-salmon.png",
+   "size": [
+    203,
+    257
+   ],
+   "sha12": "49873404e675",
+   "label": "츄르 연어",
+   "use": "츄르 연어 맛",
+   "display": "높이 80"
+  },
+  "objects/churu-chicken": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/churu-chicken.png",
+   "size": [
+    203,
+    257
+   ],
+   "sha12": "426e15f6f2fc",
+   "label": "츄르 닭가슴살",
+   "use": "츄르 닭가슴살 맛",
+   "display": "높이 80"
+  },
+  "objects/medicine": {
+   "sheet": "_sheets/objects-a.png",
+   "sheet_asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "file": "objects/medicine.png",
+   "size": [
+    170,
+    169
+   ],
+   "sha12": "7846184afe9b",
+   "label": "약 간식",
+   "use": "감기 약 간식(상점·주기)",
+   "display": "너비 44"
+  },
+  "objects/brush": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/brush.png",
+   "size": [
+    216,
+    227
+   ],
+   "sha12": "d07c4f05ebcb",
+   "label": "빗",
+   "use": "빗질 도구",
+   "display": "너비 64"
+  },
+  "objects/fur-ball": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/fur-ball.png",
+   "size": [
+    194,
+    171
+   ],
+   "sha12": "3e0d0c85b7b8",
+   "label": "털 뭉치",
+   "use": "빗질하면 나오는 털",
+   "display": "너비 40"
+  },
+  "objects/rod": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/rod.png",
+   "size": [
+    218,
+    239
+   ],
+   "sha12": "63b8072e7735",
+   "label": "낚싯대",
+   "use": "놀아 주기 — 낚싯대",
+   "display": "너비 96"
+  },
+  "objects/laser": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/laser.png",
+   "size": [
+    183,
+    202
+   ],
+   "sha12": "a1b4240034d6",
+   "label": "레이저 포인터",
+   "use": "놀아 주기 — 레이저(빨간 점은 코드로)",
+   "display": "너비 60"
+  },
+  "objects/ball": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/ball.png",
+   "size": [
+    185,
+    186
+   ],
+   "sha12": "05cd29c95bee",
+   "label": "공",
+   "use": "놀아 주기 — 공",
+   "display": "너비 44"
+  },
+  "objects/mouse": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/mouse.png",
+   "size": [
+    230,
+    184
+   ],
+   "sha12": "5aac2a254b51",
+   "label": "쥐 인형",
+   "use": "놀아 주기 — 쥐 인형",
+   "display": "너비 64"
+  },
+  "objects/box": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/box.png",
+   "size": [
+    237,
+    213
+   ],
+   "sha12": "7dfcdafce003",
+   "label": "상자",
+   "use": "기분 낮을 때 들어가는 상자 / 가구",
+   "display": "너비 130"
+  },
+  "objects/blanket": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/blanket.png",
+   "size": [
+    231,
+    176
+   ],
+   "sha12": "100b0f5c1596",
+   "label": "담요",
+   "use": "감기 때 덮어 주는 담요(접힌 모양, 아이콘)",
+   "display": "너비 100"
+  },
+  "objects/coin": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/coin.png",
+   "size": [
+    189,
+    191
+   ],
+   "sha12": "873fda69f971",
+   "label": "엽전",
+   "use": "엽전 아이콘·선물 (글자는 장식 한자)",
+   "display": "24~40"
+  },
+  "objects/watering-can": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/watering-can.png",
+   "size": [
+    268,
+    212
+   ],
+   "sha12": "919fa895de2f",
+   "label": "물뿌리개",
+   "use": "베란다 물 주기",
+   "display": "너비 76"
+  },
+  "objects/yarn": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/yarn.png",
+   "size": [
+    209,
+    196
+   ],
+   "sha12": "87260603971b",
+   "label": "털실",
+   "use": "덤 — 장난감·선물",
+   "display": "너비 52"
+  },
+  "objects/fish-toy": {
+   "sheet": "_sheets/objects-b.png",
+   "sheet_asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "file": "objects/fish-toy.png",
+   "size": [
+    208,
+    151
+   ],
+   "sha12": "1035b7985293",
+   "label": "물고기 인형",
+   "use": "덤 — 장난감·선물",
+   "display": "너비 60"
+  },
+  "furniture/cat-tower": {
+   "sheet": "_sheets/furniture-a.png",
+   "sheet_asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "file": "furniture/cat-tower.png",
+   "size": [
+    303,
+    491
+   ],
+   "sha12": "6784b53b3fe3",
+   "label": "캣타워",
+   "use": "가구 — 고양이가 올라감(맨 위 바구니·가운데 판·아래 집)",
+   "display": "높이 230"
+  },
+  "furniture/hideaway": {
+   "sheet": "_sheets/furniture-a.png",
+   "sheet_asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "file": "furniture/hideaway.png",
+   "size": [
+    263,
+    251
+   ],
+   "sha12": "23f9e489f6f1",
+   "label": "숨숨집",
+   "use": "가구 — 숨기",
+   "display": "너비 130"
+  },
+  "furniture/cushion": {
+   "sheet": "_sheets/furniture-a.png",
+   "sheet_asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "file": "furniture/cushion.png",
+   "size": [
+    287,
+    210
+   ],
+   "sha12": "f107f4847dcc",
+   "label": "방석",
+   "use": "가구 — 자기",
+   "display": "너비 130"
+  },
+  "furniture/scratcher": {
+   "sheet": "_sheets/furniture-a.png",
+   "sheet_asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "file": "furniture/scratcher.png",
+   "size": [
+    262,
+    337
+   ],
+   "sha12": "5ea53ac9ae1f",
+   "label": "스크래처",
+   "use": "가구 — 긁기",
+   "display": "높이 130"
+  },
+  "furniture/vase": {
+   "sheet": "_sheets/furniture-a.png",
+   "sheet_asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "file": "furniture/vase.png",
+   "size": [
+    188,
+    225
+   ],
+   "sha12": "1090e368df5a",
+   "label": "꽃병",
+   "use": "가구 — 해바라기·장미 꽂기(꽃은 따로 겹침)",
+   "display": "너비 48"
+  },
+  "furniture/desk": {
+   "sheet": "_sheets/furniture-a.png",
+   "sheet_asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "file": "furniture/desk.png",
+   "size": [
+    323,
+    272
+   ],
+   "sha12": "4632cd606efd",
+   "label": "책상",
+   "use": "가구 — 물건 떨어뜨리기용(윗면 비어 있음)",
+   "display": "너비 150"
+  },
+  "furniture/moon-lamp": {
+   "sheet": "_sheets/furniture-b.png",
+   "sheet_asset_id": "7e191ab4-778d-4dbc-9fb4-28c123487b3d",
+   "file": "furniture/moon-lamp.png",
+   "size": [
+    379,
+    386
+   ],
+   "sha12": "8deee6b7043b",
+   "label": "보름달 등",
+   "use": "특별 가구 — 보름달꽃과 바꿈",
+   "display": "너비 90"
+  },
+  "objects/seed-packet": {
+   "sheet": "_sheets/furniture-b.png",
+   "sheet_asset_id": "7e191ab4-778d-4dbc-9fb4-28c123487b3d",
+   "file": "objects/seed-packet.png",
+   "size": [
+    288,
+    343
+   ],
+   "sha12": "f949841b3aa7",
+   "label": "씨앗 봉투",
+   "use": "덤 — 씨앗 아이콘(상점·선물)",
+   "display": "너비 48"
+  },
+  "furniture/zodiac-shelf": {
+   "asset_id": "71ac2a6c-a1c7-47d1-add2-ae3d69f78cb5",
+   "file": "furniture/zodiac-shelf.png",
+   "size": [
+    922,
+    494
+   ],
+   "sha12": "7fba8866a21c",
+   "label": "십이지 인형 세트",
+   "use": "특별 가구(시아코인) — 벽 선반",
+   "display": "너비 170"
+  },
+  "plants/daisy-0": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "seed",
+   "file": "plants/daisy-0.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "3df464419017",
+   "label": "데이지 씨앗",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/daisy-1": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "sprout",
+   "file": "plants/daisy-1.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "50f144f81e3d",
+   "label": "데이지 새싹",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/daisy-2": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "bud",
+   "file": "plants/daisy-2.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "85a975e86d47",
+   "label": "데이지 봉오리",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/daisy-3": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "flower",
+   "file": "plants/daisy-3.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "4b531952aaa3",
+   "label": "데이지 꽃",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catgrass-0": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "seed",
+   "file": "plants/catgrass-0.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "1e105d88ab36",
+   "label": "캣그라스 씨앗",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catgrass-1": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "sprout",
+   "file": "plants/catgrass-1.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "73781c866e93",
+   "label": "캣그라스 새싹",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catgrass-2": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "bud",
+   "file": "plants/catgrass-2.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "d42b3f47ac28",
+   "label": "캣그라스 봉오리",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catgrass-3": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "flower",
+   "file": "plants/catgrass-3.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "57d1d97485b0",
+   "label": "캣그라스 꽃",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/sunflower-0": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "seed",
+   "file": "plants/sunflower-0.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "8daa274e96f4",
+   "label": "해바라기 씨앗",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/sunflower-1": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "sprout",
+   "file": "plants/sunflower-1.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "9bc41f23045b",
+   "label": "해바라기 새싹",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/sunflower-2": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "bud",
+   "file": "plants/sunflower-2.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "a85baa4aeeb3",
+   "label": "해바라기 봉오리",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/sunflower-3": {
+   "sheet": "_sheets/plants-a.png",
+   "sheet_asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "stage": "flower",
+   "file": "plants/sunflower-3.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "09be1452069f",
+   "label": "해바라기 꽃",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catnip-0": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "seed",
+   "file": "plants/catnip-0.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "89537a547f16",
+   "label": "캣닢 씨앗",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catnip-1": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "sprout",
+   "file": "plants/catnip-1.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "07cb3db9dafd",
+   "label": "캣닢 새싹",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catnip-2": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "bud",
+   "file": "plants/catnip-2.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "b5349aa41465",
+   "label": "캣닢 봉오리",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/catnip-3": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "flower",
+   "file": "plants/catnip-3.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "14f898362537",
+   "label": "캣닢 꽃",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/rose-0": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "seed",
+   "file": "plants/rose-0.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "b111c786c3de",
+   "label": "장미 씨앗",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/rose-1": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "sprout",
+   "file": "plants/rose-1.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "8c421a69518e",
+   "label": "장미 새싹",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/rose-2": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "bud",
+   "file": "plants/rose-2.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "d2bfb11257b9",
+   "label": "장미 봉오리",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/rose-3": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "flower",
+   "file": "plants/rose-3.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "67b69a8f1a96",
+   "label": "장미 꽃",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/moonflower-0": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "seed",
+   "file": "plants/moonflower-0.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "6d80710c1e77",
+   "label": "보름달꽃 씨앗",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/moonflower-1": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "sprout",
+   "file": "plants/moonflower-1.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "8c6012d1ce33",
+   "label": "보름달꽃 새싹",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/moonflower-2": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "bud",
+   "file": "plants/moonflower-2.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "45edc994b18d",
+   "label": "보름달꽃 봉오리",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/moonflower-3": {
+   "sheet": "_sheets/plants-b.png",
+   "sheet_asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "stage": "flower",
+   "file": "plants/moonflower-3.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "bd9e2d563bed",
+   "label": "보름달꽃 꽃",
+   "use": "화분 식물 단계 그림. 모든 식물이 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데 — 단계가 바뀌어도 화분이 안 움직임",
+   "display": "너비 72~84 (화분 폭 약 57~66)"
+  },
+  "plants/pot-empty": {
+   "sheet": "_sheets/furniture-b.png",
+   "sheet_asset_id": "7e191ab4-778d-4dbc-9fb4-28c123487b3d",
+   "file": "plants/pot-empty.png",
+   "size": [
+    240,
+    372
+   ],
+   "sha12": "421baf41c2a6",
+   "label": "빈 화분",
+   "use": "빈 화분 칸. 식물 그림과 같은 캔버스(240×372), 화분 바닥 가운데 = 캔버스 아래 가운데",
+   "display": "너비 72~84"
+  },
+  "room/room": {
+   "asset_id": "1ec72756-b9b9-42ee-b2e0-4c836ecd6987",
+   "window_glass_bbox": [
+    429,
+    117,
+    716,
+    427
+   ],
+   "file": "room/room.png",
+   "size": [
+    768,
+    1376
+   ],
+   "sha12": "8b0e6cccb57c",
+   "label": "방 배경",
+   "use": "방 화면 전체 배경(768×1376, 9:16). 벽/바닥 경계 y=688(50%), 걸레받이 y=640~688. 창 유리는 평평한 하늘색",
+   "display": "480×860 (가로 480 에 맞춤)"
+  },
+  "room/room-window-cut": {
+   "asset_id": "1ec72756-b9b9-42ee-b2e0-4c836ecd6987",
+   "window_glass_bbox": [
+    429,
+    117,
+    716,
+    427
+   ],
+   "note": "window glass alpha 0",
+   "file": "room/room-window-cut.png",
+   "size": [
+    768,
+    1376
+   ],
+   "sha12": "e4fe54f20e33",
+   "label": "방 배경(창 유리 투명)",
+   "use": "room 과 같고 창 유리만 투명 — 뒤에 view-* 또는 코드 그라데이션을 깔기. 유리 범위 window_glass_bbox",
+   "display": "480×860"
+  },
+  "veranda/veranda": {
+   "asset_id": "4a8fbade-31b7-4899-ae4c-4455a29f004b",
+   "file": "veranda/veranda.png",
+   "size": [
+    768,
+    1376
+   ],
+   "sha12": "1a11ea0ecad0",
+   "label": "베란다 배경",
+   "use": "베란다(정원) 화면 배경(768×1376). 화분 놓는 선반 2단: 윗단 화분 바닥 y≈735, 아랫단 y≈925, 타일 바닥 y≥955",
+   "display": "480×860"
+  },
+  "room/view-morning": {
+   "sheet": "_sheets/window-views.png",
+   "sheet_asset_id": "356c228d-abe0-43d2-b4c6-cbdd85d2c180",
+   "file": "room/view-morning.png",
+   "size": [
+    488,
+    488
+   ],
+   "sha12": "d5b8e0c44b2c",
+   "label": "창밖 아침",
+   "use": "창 유리 뒤에 까는 풍경(488×488)",
+   "display": "유리 범위 약 180×194 를 덮게"
+  },
+  "room/view-day": {
+   "sheet": "_sheets/window-views.png",
+   "sheet_asset_id": "356c228d-abe0-43d2-b4c6-cbdd85d2c180",
+   "file": "room/view-day.png",
+   "size": [
+    488,
+    488
+   ],
+   "sha12": "fb79738e85a8",
+   "label": "창밖 낮",
+   "use": "〃",
+   "display": "〃"
+  },
+  "room/view-sunset": {
+   "sheet": "_sheets/window-views.png",
+   "sheet_asset_id": "356c228d-abe0-43d2-b4c6-cbdd85d2c180",
+   "file": "room/view-sunset.png",
+   "size": [
+    488,
+    488
+   ],
+   "sha12": "01dc4be2e58b",
+   "label": "창밖 노을",
+   "use": "〃",
+   "display": "〃"
+  },
+  "room/view-night": {
+   "sheet": "_sheets/window-views.png",
+   "sheet_asset_id": "356c228d-abe0-43d2-b4c6-cbdd85d2c180",
+   "file": "room/view-night.png",
+   "size": [
+    488,
+    488
+   ],
+   "sha12": "aa335ff88ee0",
+   "label": "창밖 밤",
+   "use": "〃",
+   "display": "〃"
+  },
+  "card/card-original": {
+   "asset_id": "a93dee7e-b3a1-48e3-888b-7f859df6b649",
+   "file": "card/card-original.png",
+   "size": [
+    1376,
+    768
+   ],
+   "sha12": "ce27ba7bacef",
+   "label": "로비 카드 원본",
+   "use": "1376×768 원본 (다시 자를 때)",
+   "display": "—"
+  },
+  "card/card-nyang": {
+   "asset_id": "a93dee7e-b3a1-48e3-888b-7f859df6b649",
+   "crop": [
+    110,
+    0,
+    1338,
+    768
+   ],
+   "file": "card/card-nyang.png",
+   "size": [
+    640,
+    400
+   ],
+   "sha12": "af6a542df16a",
+   "label": "로비 카드 640×400",
+   "use": "shared/images/card-nyang.png 로 그대로 복사",
+   "display": "640×400"
+  },
+  "churu/lick-sheet": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "frames": 8,
+   "frame": [
+    640,
+    640
+   ],
+   "fps": 8,
+   "file": "churu/lick-sheet.png",
+   "size": [
+    5120,
+    640
+   ],
+   "sha12": "e56e811627ef",
+   "label": "츄르 핥기 시트",
+   "use": "8칸 가로 시트(640×640 ×8, 8fps)",
+   "display": "—"
+  },
+  "churu/lick-0": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    88,
+    0,
+    550,
+    639
+   ],
+   "foot": [
+    291,
+    639
+   ],
+   "file": "churu/lick-0.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "0373e83f881e",
+   "label": "츄르 핥기 0",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  },
+  "churu/lick-1": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    88,
+    5,
+    550,
+    639
+   ],
+   "foot": [
+    292,
+    639
+   ],
+   "file": "churu/lick-1.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "be8941e34bd7",
+   "label": "츄르 핥기 1",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  },
+  "churu/lick-2": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    89,
+    16,
+    553,
+    639
+   ],
+   "foot": [
+    292,
+    639
+   ],
+   "file": "churu/lick-2.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "577e22cac0be",
+   "label": "츄르 핥기 2",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  },
+  "churu/lick-3": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    88,
+    3,
+    556,
+    639
+   ],
+   "foot": [
+    291,
+    639
+   ],
+   "file": "churu/lick-3.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "3bf5da632a40",
+   "label": "츄르 핥기 3",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  },
+  "churu/lick-4": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    89,
+    0,
+    553,
+    639
+   ],
+   "foot": [
+    291,
+    639
+   ],
+   "file": "churu/lick-4.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "59d635504a63",
+   "label": "츄르 핥기 4",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  },
+  "churu/lick-5": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    89,
+    3,
+    551,
+    639
+   ],
+   "foot": [
+    292,
+    639
+   ],
+   "file": "churu/lick-5.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "af91ada7c01e",
+   "label": "츄르 핥기 5",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  },
+  "churu/lick-6": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    89,
+    13,
+    549,
+    639
+   ],
+   "foot": [
+    291,
+    639
+   ],
+   "file": "churu/lick-6.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "96317a5b0540",
+   "label": "츄르 핥기 6",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  },
+  "churu/lick-7": {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "bbox": [
+    88,
+    2,
+    550,
+    639
+   ],
+   "foot": [
+    291,
+    639
+   ],
+   "file": "churu/lick-7.png",
+   "size": [
+    640,
+    640
+   ],
+   "sha12": "0e36576f36ec",
+   "label": "츄르 핥기 7",
+   "use": "츄르 먹기 칸 그림. 0·4=입 다문 기본, 1·3·5·7=입 벌림, 2·6=혀 낼름. foot 을 바닥 점에, scale 1.69 (poses 의 sit=1 기준; beg 1.056×1024/640)",
+   "display": "poses 와 같은 배율 × 1.69",
+   "scale": 1.69
+  }
+ }
+}

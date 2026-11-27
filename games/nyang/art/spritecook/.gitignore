@@ -1,0 +1,9 @@
+# 원본 보관용 (빌드에 쓰지 않음 · 큰 파일) — 시트 원본 · 미리보기 html · 합친 시트 · 원본 카드 · 방 그림(유리 있는 것, room-window-cut 으로 충분)
+_sheets/
+*.html
+churu/lick-sheet.png
+churu/lick.webp
+card/card-original.png
+room/room.png
+poses/_rejected/
+poses/_recolor-test.png

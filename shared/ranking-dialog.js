@@ -24,7 +24,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 기본 탭 순서 (내 기록을 받기 전, 그리고 판 수가 같을 때) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'ace', 'block', 'card'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'ace', 'block', 'nyang', 'card'];
 /** 시아코인 기록의 게임 id → 탭 (카지노 네 게임은 한 탭) */
 const PLAY_TAB = { volleyball: 'volley', poker: 'casino', holdem: 'casino', blackjack: 'casino', roulette: 'casino' };
 /**
@@ -123,6 +123,8 @@ export const ACE_MODES = [
 const BLOCK_INFO = { label: '🧩 시아블록', note: '최고 점수 순 (같으면 먼저 달성한 사람이 위)' };
 const BLOCK_WEEKLY_NOTE = '이번 주(월~일) 최고 점수 순 (같으면 먼저 세운 사람이 위)';
 export const BLOCK_MODES = [{ id: 'all', name: '전체' }, { id: 'weekly', name: '이번 주' }];
+/** 시아집사 집사 랭킹: 고양이들의 친밀도 합 → 돌본 날 수 → 먼저 달성한 순 (123_nyang.sql 의 nyang_ranking). 친밀도는 마지막으로 들른 때까지 */
+const NYANG_INFO = { label: '🐱 시아집사', note: '고양이들의 친밀도 합 순 (같으면 돌본 날이 많은 사람, 그다음 먼저 달성한 사람이 위)' };
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
 /**
@@ -158,7 +160,7 @@ const shiftDay = (day, n) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 const num = (v) => Math.max(0, Math.floor(Number(v) || 0));
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'pang' ? PANG_INFO : g === 'card' ? CARD_INFO : g === 'ace' ? ACE_INFO : g === 'block' ? BLOCK_INFO : RANKINGS[g]);
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'pang' ? PANG_INFO : g === 'card' ? CARD_INFO : g === 'ace' ? ACE_INFO : g === 'block' ? BLOCK_INFO : g === 'nyang' ? NYANG_INFO : RANKINGS[g]);
 
 /** 역대 최고 기록 순위 → 등급 (1위 해 · 2위 달 · 3위 별 · 4위부터와 순위 없음은 구름) */
 export function raceTierOfPlace(place) {
@@ -491,6 +493,28 @@ export async function getPangRanking(meId = null) {
   return { rows, mine, total };
 }
 /**
+ * 시아집사 집사 랭킹 (nyang_ranking 뷰: 친밀도 합 → 돌본 날 수 → 먼저 달성한 순).
+ * → { rows: 상위 100명 [{ key, nickname, love, cats, days, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getNyangRanking(meId = null) {
+  const cols = 'user_id,nickname,love,cats,care_days,achieved_at,place,total';
+  const view = () => supabase.from('nyang_ranking');
+  const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(DEFENSE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, love: Number(r.love ?? 0), cats: Number(r.cats ?? 0), days: Number(r.care_days ?? 0), at: r.achieved_at, place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= DEFENSE_TOP) {
+    const res = await view().select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
+/**
  * 시아에이스 랭킹 (ace_ranking 뷰, mode 하나: 아케이드 점수 · 보스 러시 시간(짧을수록) · 끝없는 모드 시간).
  * → { rows: 상위 100명 [{ key, nickname, value, ship, stage, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
  */
@@ -675,7 +699,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 /**
  * 랭킹 창 열기.
  * 탭은 내가 많이 한 게임 순서 (기록을 받기 전에는 기본 순서). first 를 주지 않으면(로비) 맨 앞 탭을 보여 준다.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang' | 'card' | 'ace' | 'block')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang' | 'card' | 'ace' | 'block' | 'nyang')
  */
 export function openRanking({ meId = null, first = null } = {}) {
   // 이미 열린 창이 있으면 하나 더 띄우지 않는다 (버튼을 빠르게 두 번 눌렀을 때). 돌려주는 닫기는 그 창을 닫는다
@@ -778,6 +802,7 @@ export function openRanking({ meId = null, first = null } = {}) {
     if (game === 'tower') return showTower();
     if (game === 'card') return showCard(cardMode);
     if (game === 'pang') return showPang();
+    if (game === 'nyang') return showNyang();
     if (game === 'block') return showBlock(blockMode);
     if (game === 'ace') return showAce(aceMode);
     const info = RANKINGS[game];
@@ -1202,6 +1227,30 @@ export function openRanking({ meId = null, first = null } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'pang') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /** 시아집사: 친밀도 합 · 돌본 날 · 고양이 수 · 달성 날짜. 상위 100명 + 내 순위 */
+  async function showNyang() {
+    $('.note').textContent = `${NYANG_INFO.note} · 상위 ${DEFENSE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getNyangRanking(meId);
+      if (shown !== 'nyang') return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · 💗 ${mine.love.toLocaleString()} · 돌본 날 ${mine.days}일`
+        : '아직 고양이와 친해진 기록이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="nm">${esc(r.nickname)}</td><td class="am">💗 ${r.love.toLocaleString()}<small>${r.cats}마리 · 돌본 날 ${r.days}일${r.at ? ` · ${esc(dateText(r.at))}` : ''}</small></td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'nyang') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   /** 시아에이스: 모드마다 상위 100명 + 내 순위 (탄 기체 얼굴 · 점수나 시간 · 달성 날짜) */

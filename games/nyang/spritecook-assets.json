@@ -1,0 +1,110 @@
+{
+ "_note": "시아집사(games/nyang) SpriteCook 그림 (2026-11-27). 자세 상세(foot · scale · 털 색 분석)는 art/spritecook/poses/assets.json, 방 · 베란다 · 물건 · 식물 · 가구 · 츄르 · 카드는 art/spritecook/assets-world.json (용도 · 권장 크기 · room_layout/veranda_layout), 기본 그림 후보는 art/spritecook/preview-assets.json. python art/build.py 가 게임용으로 줄인 사본을 public/art/ 에 만든다. 로비 카드는 shared/images/card-nyang.png.",
+ "picked_base_preview": "b0cc7806-2c89-4c68-a5bf-127d664a7cfe",
+ "assets": [
+  {
+   "asset_id": "41e3e785-6629-4feb-b052-7c2b1e21e212",
+   "label": "고양이 기본 그림 (후보 C, 정면 흰 고양이) — 모든 자세의 원본"
+  },
+  {
+   "asset_id": "0bba07ae-6c61-4835-a47b-9ccd8cc4f447",
+   "label": "자세 sit — 입 다문 정면 앉기 (기본 대기) → public/art/cat/sit.png"
+  },
+  {
+   "asset_id": "82b06736-04ab-4c78-86de-461a4aedcf11",
+   "label": "자세 sit-blink — 앉아서 눈 감음 (깜빡임·골골송) → public/art/cat/sit-blink.png"
+  },
+  {
+   "asset_id": "2f52c6e6-f477-4bb3-b4de-390777fc7173",
+   "label": "자세 walk-1 — 걷기 1 (다리 벌린 걸음, 오른쪽) → public/art/cat/walk-1.png"
+  },
+  {
+   "asset_id": "fd8db068-c5df-470a-95e6-c07281e75e46",
+   "label": "자세 walk-2 — 걷기 2 (다리 모은 걸음, 오른쪽) → public/art/cat/walk-2.png"
+  },
+  {
+   "asset_id": "cdc2a81f-fbff-4857-b0b8-c852c946d2c1",
+   "label": "자세 loaf — 식빵 굽기 → public/art/cat/loaf.png"
+  },
+  {
+   "asset_id": "436853fa-44d1-4d96-89ab-d2341ec24014",
+   "label": "자세 sleep — 동그랗게 말고 자기 → public/art/cat/sleep.png"
+  },
+  {
+   "asset_id": "2b850a0f-be76-41a4-8643-425c3bfa56f4",
+   "label": "자세 eat — 고개 숙여 먹기 (그릇 없음) → public/art/cat/eat.png"
+  },
+  {
+   "asset_id": "15ee9b64-72cf-4fcc-a951-0ad8630b36db",
+   "label": "자세 stretch — 기지개 → public/art/cat/stretch.png"
+  },
+  {
+   "asset_id": "6e7dd130-9c0e-45d5-b4d6-c3fc54495080",
+   "label": "자세 pounce — 놀이: 몸 낮추고 엉덩이 실룩 → public/art/cat/pounce.png"
+  },
+  {
+   "asset_id": "8ed2a871-2d24-4d04-bc88-8e775b5dd1d5",
+   "label": "자세 jump — 놀이: 뛰어오르기 (공중) → public/art/cat/jump.png"
+  },
+  {
+   "asset_id": "9cae1aea-6712-4fe5-addb-0fe762000b36",
+   "label": "자세 beg — 뒷발로 서서 조르기 (츄르) → public/art/cat/beg.png"
+  },
+  {
+   "asset_id": "88018cc6-cabd-4a46-affe-ec7cae9af0be",
+   "label": "자세 knead — 꾹꾹이 (앞발 하나 듦) → public/art/cat/knead.png"
+  },
+  {
+   "asset_id": "23b710db-cd79-4c3e-a6d3-3594a300b827",
+   "label": "자세 belly — 배 보여 주며 누움 → public/art/cat/belly.png"
+  },
+  {
+   "asset_id": "1ec72756-b9b9-42ee-b2e0-4c836ecd6987",
+   "label": "room (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "4a8fbade-31b7-4899-ae4c-4455a29f004b",
+   "label": "veranda (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "33ad7f7d-dd04-4539-8300-75dd969162f1",
+   "label": "objects-a (12개 시트) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "b435d653-7a0d-46bd-8630-e30d10a19235",
+   "label": "objects-b (12개 시트) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "3ba4826b-9f38-4f64-8a49-590fd842a8bb",
+   "label": "plants-a (데이지·캣그라스·해바라기) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "2aa08bf5-e975-446d-a1c2-998ba2d29a1d",
+   "label": "plants-b (캣닢·장미·보름달꽃) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "d96783dd-bc6c-46cd-b5d3-02eb8c37c187",
+   "label": "furniture-a (6개 시트) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "7e191ab4-778d-4dbc-9fb4-28c123487b3d",
+   "label": "furniture-b (보름달 등·빈 화분·씨앗 봉투; 인형 선반은 11마리라 버림) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "71ac2a6c-a1c7-47d1-add2-ae3d69f78cb5",
+   "label": "zodiac-shelf (12마리로 다시) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "a93dee7e-b3a1-48e3-888b-7f859df6b649",
+   "label": "card (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "1454c792-cf64-429c-9948-b6bb6a1b907c",
+   "label": "churu lick 애니메이션 (원본 beg 9cae1aea-5967…) (animate_game_art 기본 모델(detailed), 20크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  },
+  {
+   "asset_id": "356c228d-abe0-43d2-b4c6-cbdd85d2c180",
+   "label": "window-views (2×2 시트) (gemini-nano-banana-2.1, 12크레딧) → art/spritecook/ 아래로 잘라 public/art/world · public/art/cat/lick-*"
+  }
+ ]
+}

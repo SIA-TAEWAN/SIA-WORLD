@@ -57,6 +57,7 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아�
 | 시아레이스 | 트랙 주황 | `#F9A873` (어두운 점·구분 `#E08A4F`, `--race-track`) |
 | 시아돌격대 | 코드로 그리는 장애물·상자 (그림을 못 읽을 때만, 작은 면) | 통나무 `#9A6A3A`(`--charge-log`) · 끝 `#C89A5A`(`--charge-log-end`) · 칼날 `#CFD6DE`(`--charge-blade`) · 구덩이 `#3A2A1C`/안쪽 `#5A4030`(`--charge-pit` · `--charge-pit-inner`) · 상자 `#D9A05B`(`--charge-crate`) · 기절 색조 `#9FB6FF`(`--charge-stun-tint`). Phaser 는 `shared/theme.js` 의 `CHARGE` |
 | 시아팡팡 | 보드 바닥 (정령의 빛이 살도록 넓은 면 하나만 어둡게. 판 테두리는 크림 판 + 갈색 외곽선 그대로) | 밤하늘 `#2B2350`(`--pang-board`) · 칸 `#352B5E` / `#3C3268`(`--pang-cell` · `--pang-cell-alt`). 캔버스용 숫자는 `shared/theme.js` 의 `PANG` |
+| 시아집사 | 방 (벽·바닥·모래·물만. 가구·고양이는 그림, 외곽선은 `--outline`) | 벽 `#FDECCF`(`--nyang-wall`) · 벽지 줄 `#F6DCB4`(`--nyang-wall-line`) · 나무 바닥 `#E2B07A` / 널 사이 `#C98F58`(`--nyang-floor` · `--nyang-floor-dark`) · 모래 `#F1DFB6`(`--nyang-sand`) · 물 `#8FD3F5`(`--nyang-water`). Phaser·캔버스용 숫자는 `shared/theme.js` 의 `NYANG`. 꾸미기로 사는 벽지·바닥·커튼(5단계)은 새 색 없이 기존 값만: 룰렛 계절색(봄 `#9CC7F2` · 여름 `#F7C1A8` · 가을 `#A9DDC6`) · 팡팡 밤하늘 `#2B2350`/`#3C3268` · 크림 `--panel` · 노랑 `--primary-light`, 줄·물방울·체크·별 무늬는 CSS 로 |
 | 룰렛 | 계절 4색 | 봄 `#9CC7F2` · 여름 `#F7C1A8` · 가을 `#A9DDC6` · 겨울 `#C9D1DD` |
 
 결과 색 (시아탱크에 없음, 새로 정한 값): 승리 `#4CB86A`, 패배 `#E86A5A`, 무승부 `#9A8C7E`.
