@@ -235,6 +235,10 @@
       130
     ],
     "art": "b-gumiho",
+    "eliteMod": {
+      "hp": 55,
+      "dmg": 85
+    },
     "boss": true,
     "phase1": {
       "moves": [
@@ -761,6 +765,10 @@
       150
     ],
     "art": "b-bigDokkaebi",
+    "eliteMod": {
+      "hp": 55,
+      "dmg": 80
+    },
     "boss": true,
     "phase1": {
       "moves": [
@@ -923,6 +931,9 @@
       190
     ],
     "art": "b-gangcheori",
+    "eliteMod": {
+      "hp": 66
+    },
     "boss": true,
     "phase1": {
       "moves": [
@@ -1455,6 +1466,10 @@
       300
     ],
     "art": "b-imugi",
+    "eliteMod": {
+      "hp": 70,
+      "dmg": 120
+    },
     "boss": true,
     "phase1": {
       "moves": [
@@ -1902,6 +1917,10 @@
       400
     ],
     "art": "b-yagwanggwi",
+    "eliteMod": {
+      "hp": 75,
+      "dmg": 125
+    },
     "boss": true,
     "phase1": {
       "moves": [
@@ -2000,6 +2019,10 @@
       330
     ],
     "art": "b-yeomra",
+    "eliteMod": {
+      "hp": 65,
+      "dmg": 120
+    },
     "boss": true,
     "phase1": {
       "moves": [

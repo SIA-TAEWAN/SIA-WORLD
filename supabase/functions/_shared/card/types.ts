@@ -191,6 +191,11 @@ export interface EnemyDef {
   rage?: number;
   /** 강해진 요괴: 바탕이 된 일반 요괴 id (2·3막 뒤쪽 일반 전투에 가끔 섞임) */
   strong?: string;
+  /**
+   * 정예로 나왔을 때만 (그 지역 다른 보스 — 막 보스로 만날 때는 그대로): hp = 체력 % (없으면 60), dmg = 공격 피해 % (없으면 100).
+   * 9단계: 1막 정예 쓰러짐률을 다른 보스와 맞춤 (games/card/PROGRESS.md)
+   */
+  eliteMod?: { hp?: number; dmg?: number };
 }
 
 export interface HeroDef {

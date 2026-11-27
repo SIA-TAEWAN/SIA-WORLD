@@ -3,6 +3,7 @@
  * 보스 체력·행동 이름·수치는 PRD 사용자 스펙 그대로 (6단계 밸런스로 바꾼 것: 큰도깨비 200→170 · 염라대왕 380→350, 강철이 2단계 불길 — games/card/PROGRESS.md). 일반 요괴의 체력·행동 수치는 스펙에 없어 정한 값(PROGRESS.md '물어볼 것').
  * 4지역 일반 요괴 4종씩(저승의 원귀는 궁궐 원혼과 같은 그림, 더 센 값) — 막이 오를수록 체력·피해가 크다.
  * 보스 12종 + 숨은 최종보스 어둑시니, 불려 나오는 요괴(여우 분신 · 병졸 · 저승사자), 갈림길의 여우 정예(천년 여우).
+ * eliteMod: 정예로 나왔을 때만 쓰는 체력 % · 공격 % (9단계 — 정예 쓰러짐률을 5~15% 로 맞춤, 막 보스 수치는 그대로).
  */
 import type { EnemyDef } from '../types.ts';
 
@@ -70,6 +71,7 @@ const BASE: EnemyDef[] = [
     name: '구미호',
     hp: [130, 130],
     art: 'b-gumiho',
+    eliteMod: { hp: 55, dmg: 85 },
     boss: true,
     phase1: {
       moves: [
@@ -209,6 +211,7 @@ const BASE: EnemyDef[] = [
     name: '큰도깨비',
     hp: [150, 150],
     art: 'b-bigDokkaebi',
+    eliteMod: { hp: 55, dmg: 80 },
     boss: true,
     phase1: {
       moves: [
@@ -255,6 +258,7 @@ const BASE: EnemyDef[] = [
     name: '강철이',
     hp: [190, 190],
     art: 'b-gangcheori',
+    eliteMod: { hp: 66 },
     boss: true,
     phase1: {
       moves: [
@@ -397,6 +401,7 @@ const BASE: EnemyDef[] = [
     name: '이무기',
     hp: [300, 300],
     art: 'b-imugi',
+    eliteMod: { hp: 70, dmg: 120 },
     boss: true,
     phase1: {
       moves: [
@@ -505,6 +510,7 @@ const BASE: EnemyDef[] = [
     name: '야광귀',
     hp: [400, 400],
     art: 'b-yagwanggwi',
+    eliteMod: { hp: 75, dmg: 125 },
     boss: true,
     phase1: {
       moves: [
@@ -529,6 +535,7 @@ const BASE: EnemyDef[] = [
     name: '염라대왕',
     hp: [330, 330],
     art: 'b-yeomra',
+    eliteMod: { hp: 65, dmg: 120 },
     boss: true,
     phase1: {
       moves: [

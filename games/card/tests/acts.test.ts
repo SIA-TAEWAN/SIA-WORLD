@@ -83,7 +83,8 @@ describe('막과 지역', () => {
         found++;
         const f = run.battle!.foes[0];
         expect(run.map.elites).toContain(f.id);
-        expect(f.maxHp).toBe(Math.round(enemyDef(f.id).hp[0] * 0.6));
+        const ep = enemyDef(f.id).eliteMod?.hp;
+        expect(f.maxHp).toBe(ep === undefined ? Math.round(enemyDef(f.id).hp[0] * 0.6) : Math.round((enemyDef(f.id).hp[0] * ep) / 100));
       }
       expect(found).toBeGreaterThan(0);
       const run = newRun({ seed: 3, hero: 'pig' });
