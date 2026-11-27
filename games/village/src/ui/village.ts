@@ -508,7 +508,9 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   });
   $('#visitpraise').addEventListener('click', () => {
     const v = visiting;
-    if (!v) return;
+    const bt = $<HTMLButtonElement>('#visitpraise');
+    if (!v || bt.disabled) return;
+    bt.disabled = true; // 답을 기다리는 동안 두 번 누르지 않게 (paintVisit 이 상태에 맞게 다시 정한다)
     void act(() => api.praise(v.userId), (r) => {
       sfx('win');
       toast(`${v.nickname} 님의 마을을 칭찬했어요! 엽전 ${CONST.praise_coin}닢을 받았어요 (오늘 ${Math.max(0, praiseLeft(r.state, api.now()))}번 남음)`, 3000);
@@ -518,7 +520,7 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
         viewState = toViewState(r.visit);
         paintVisit();
       }
-    });
+    }).finally(() => paintVisit());
   });
 
   /**
@@ -1199,11 +1201,13 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
       if (maxCount(d.id, from) === 0) opened.push(`<li><b>${d.kind === 'main' ? '새 건물' : d.kind === 'special' ? '특별 건물' : '새 장식'}</b> ${d.name}</li>`);
       else opened.push(`<li>${d.name} +${more}채</li>`);
     }
-    const hallUp = HALL_NEED.findIndex((l) => l > from && l <= to);
-    if (hallUp >= 0) opened.push(`<li>마을 회관 레벨 ${hallUp + 2}</li>`);
+    HALL_NEED.forEach((l, i) => {
+      if (l > from && l <= to) opened.push(`<li>마을 회관 레벨 ${i + 2}</li>`);
+    });
     for (const d of RESIDENTS) if (d.level > from && d.level <= to) opened.push(`<li><b>새 주민</b> ${d.nick} <small>(빈 주민 집이 있으면 이사 와요)</small></li>`);
-    const land = LAND_NEED.findIndex((l) => l > from && l <= to);
-    if (land >= 0 && land >= state.profile.landStage) opened.push(`<li>땅 넓히기 ${LAND_SIZES[land + 1]}×${LAND_SIZES[land + 1]} (시아코인)</li>`);
+    LAND_NEED.forEach((l, land) => {
+      if (l > from && l <= to && land >= state.profile.landStage) opened.push(`<li>땅 넓히기 ${LAND_SIZES[land + 1]}×${LAND_SIZES[land + 1]} (시아코인)</li>`);
+    });
     stage.querySelector('.dim')?.remove();
     const dim = document.createElement('div');
     dim.className = 'dim';

@@ -4,7 +4,7 @@ import { LOBBY_MAX, LobbyFullError, VolleyLobby } from './net/lobby';
 import { cleanRoomCode, validRoomCode } from './net/room';
 import { loadAuth, loadCharacterProgress, loadOwnedCharacters, worldHome, type WorldUser } from './net/world';
 import { initUnlock } from './game/unlock';
-import { loadChar, loadEngine, nav, screen, state } from './ui/app';
+import { loadChar, loadEngine, nav, screen, state, toast } from './ui/app';
 import { enterRoom, showCharSelect, showLobby, showWaiting } from './ui/menus';
 import { showResult } from './ui/result';
 
@@ -12,7 +12,11 @@ nav.lobby = showLobby;
 nav.select = showCharSelect;
 nav.room = (code, title) => void enterRoom(code, title);
 nav.waiting = showWaiting;
-nav.match = (setup) => void loadEngine().then((m) => m.showMatch(setup));
+nav.match = (setup) =>
+  void loadEngine().then(
+    (m) => m.showMatch(setup),
+    () => toast('경기 화면을 불러오지 못했어요. 새로 고침해 주세요', 3200),
+  );
 nav.result = showResult;
 
 /** 테스트 모드(?local=1): 로그인 없이 탭마다 다른 플레이어 (?name= 으로 이름 지정) */

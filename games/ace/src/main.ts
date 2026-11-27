@@ -15,6 +15,7 @@ import { LAST_STAGE, MODES, loadProgress, recordClear, saveProgress, shipOpen } 
 import { StageScene, shared, type HudState } from './scenes/StageScene';
 import { ApiError, LIMITS, getApi, type AceApi, type ServerMode } from './net/api';
 import { LOCAL_MODE } from './net/local';
+import { COLOR, css } from './theme';
 import { enterLobby, loadAuth, loadCharacters, loadSound, openWorldRanking, worldHome, type SoundModule, type WorldUser } from './net/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -674,7 +675,7 @@ async function boot() {
     type: params.get('canvas') === '1' ? Phaser.CANVAS : Phaser.AUTO,
     parent: 'game',
     width: W, height: H,
-    backgroundColor: '#9fd6ff',
+    backgroundColor: css(COLOR.skyMid),
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     fps: { target: 60 },
     input: { activePointers: 3 },

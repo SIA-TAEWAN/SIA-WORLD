@@ -830,7 +830,29 @@ function startOnline(room: Room, game: OnlineGame | null, resume?: Parameters<ty
   });
 }
 
+/** [게임방으로]를 누른 뒤 결과 정리를 기다리는 중 (여러 번 눌러도 한 번만) */
+let backing = false;
 async function backToRoom(id: string) {
+  if (backing) return;
+  backing = true;
+  const btn = document.querySelector<HTMLButtonElement>('#again');
+  const label = btn?.textContent ?? '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '결과 정리 중…';
+  }
+  try {
+    await backToRoomNow(id);
+  } finally {
+    backing = false;
+    // 실패해서 결과 화면에 그대로 있으면 다시 누를 수 있게
+    if (btn?.isConnected) {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+}
+async function backToRoomNow(id: string) {
   const sess = lobby!;
   // 이 기기의 결과 정리(기준 기기가 아니면 몇 초 기다림)가 끝난 뒤에 본다
   if (settling) await settling;

@@ -1293,6 +1293,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
         autoReadyRound = round;
         setTimeout(() => {
           if (closed || !auto || room?.status !== 'waiting' || room.round_no !== round) return;
+          // 화면이 안 보이면(자리를 비움) 레디하지 않는다 — 다음에 다시 그릴 때 또 본다
+          if (document.visibilityState !== 'visible') {
+            if (autoReadyRound === round) autoReadyRound = -1;
+            return;
+          }
           const now = mySeatRow();
           if (!now || now.ready) return;
           void m.room.setReady(roomId, true, (res) => local?.onStart(res)).catch((e) => toast(m.room.friendly(e)));

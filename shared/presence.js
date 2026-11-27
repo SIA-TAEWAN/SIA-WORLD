@@ -2,7 +2,8 @@
 //   게임마다 실시간 채널(Presence)이 있고, 들어온 사람은 그 채널에 자기 정보를 올린다 (같은 계정은 탭이 여러 개여도 한 명).
 //   - 시아탱크 lobby:main · 시아배구 volley-lobby · 시아서바이벌 survival-lobby 는 각 게임의 대기실 채널을 그대로 센다.
 //   - 맞고·카지노는 이 파일의 enterGame()으로 card-lobby:<게임> 채널에 들어간다.
-//   - 시아돌격대·시아핑거·시아레이스·시아의탑·시아팡팡도 enterGame()으로 charge-lobby · finger-lobby · race-lobby 에 들어간다
+//   - 시아돌격대·시아핑거·시아레이스·시아의탑·시아팡팡·시아열두길·시아카드배틀·시아에이스·시아블록 등도 enterGame()으로 각자의 <게임>-lobby 채널
+//     (charge-lobby · finger-lobby · race-lobby …, 정확한 이름은 아래 GAME_CHANNELS)에 들어간다
 //     (시아레이스는 2026-11-23 방 경기를 없애며 예전 대기실 채널 이름 race-lobby 를 그대로 접속 인원 채널로 쓴다).
 //   - SIA WORLD 로비는 watchWorld()로 게임 채널을 구독만 해서(게임 채널에는 자기 정보를 올리지 않는다 → 게임 정원과 무관)
 //     게임 카드에 인원과 닉네임 목록을 보여 주고, 로비 전용 채널 world-lobby 에만 자기 정보를 올려 로비 사람끼리 보이게 한다.

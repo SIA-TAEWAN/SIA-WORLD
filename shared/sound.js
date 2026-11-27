@@ -579,14 +579,14 @@ if (typeof document !== 'undefined') {
 
 // ───────────────────────── 소리 설정 창 (시아레이스와 같은 모양) ─────────────────────────
 const SET_CSS = `
-.sia-snd-dim{position:fixed;inset:0;z-index:2000;background:var(--dim,rgba(42,26,16,.45));display:grid;place-items:center;padding:16px;font-family:var(--font,inherit)}
-.sia-snd-dlg{width:min(340px,100%);box-sizing:border-box;background:var(--panel,#fff8ea);color:var(--ink,#2a1a10);border:var(--line-big,4px) solid var(--outline,#2a1a10);border-radius:var(--radius-panel-big,22px);box-shadow:0 var(--depth-big,6px) 0 var(--outline,#2a1a10);padding:16px}
+.sia-snd-dim{position:fixed;inset:0;z-index:2000;background:var(--dim,rgba(42,26,16,.55));display:grid;place-items:center;padding:16px;font-family:var(--font,inherit)}
+.sia-snd-dlg{width:min(340px,100%);box-sizing:border-box;background:var(--panel,#fff8e8);color:var(--ink,#2a1a10);border:var(--line-big,4px) solid var(--outline,#2a1a10);border-radius:var(--radius-panel-big,28px);box-shadow:0 var(--depth-big,8px) 0 var(--outline,#2a1a10);padding:16px}
 .sia-snd-dlg h3{margin:0 0 12px;font-weight:normal;font-size:22px;text-align:center}
-.sia-snd-dlg .sia-snd-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;font-size:17px;border-bottom:2px dashed var(--line-soft,rgba(42,26,16,.2))}
+.sia-snd-dlg .sia-snd-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;font-size:17px;border-bottom:2px dashed var(--line-soft,#e2d3b5)}
 .sia-snd-seg{display:flex;gap:6px}
 .sia-snd-seg button{font:inherit;color:inherit;border:var(--line-thin,2px) solid var(--outline,#2a1a10);background:var(--white,#fff);border-radius:var(--radius-item,12px);padding:5px 14px;font-size:15px;cursor:pointer}
-.sia-snd-seg button.sel{background:var(--primary,#ffc93c);box-shadow:0 3px 0 var(--outline,#2a1a10)}
-.sia-snd-close{display:block;width:100%;margin-top:14px;font:inherit;font-size:var(--fs-button,18px);color:inherit;background:var(--primary,#ffc93c);border:var(--line,3px) solid var(--outline,#2a1a10);border-radius:var(--radius-button,16px);box-shadow:0 var(--depth-button,4px) 0 var(--outline,#2a1a10);padding:10px;cursor:pointer}
+.sia-snd-seg button.sel{background:var(--primary,#ffd34d);box-shadow:0 3px 0 var(--outline,#2a1a10)}
+.sia-snd-close{display:block;width:100%;margin-top:14px;font:inherit;font-size:var(--fs-button,18px);color:inherit;background:var(--primary,#ffd34d);border:var(--line,3px) solid var(--outline,#2a1a10);border-radius:var(--radius-button,16px);box-shadow:0 var(--depth-button,4px) 0 var(--outline,#2a1a10);padding:10px;cursor:pointer}
 .sia-snd-close:active{transform:translateY(3px);box-shadow:0 1px 0 var(--outline,#2a1a10)}`;
 function setCss() {
   if (document.getElementById('sia-snd-css')) return;

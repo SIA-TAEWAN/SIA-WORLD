@@ -29,6 +29,7 @@ import {
   itemOf,
   joinText,
   keyCount,
+  LIMITS,
   loadoutOf,
   normalDone,
   mapOpen,
@@ -873,7 +874,8 @@ async function startMap(map: MapDef, deaths: number) {
       map: map.id,
       mode,
       hero: s.hero.id,
-      time: Math.floor(s.t),
+      // 서버는 한 판 LIMITS.maxTime 초까지만 받는다 (화면을 켜 둔 채 오래 세워 둔 판도 기록되게 자른다)
+      time: Math.min(LIMITS.maxTime, Math.floor(s.t)),
       cleared: s.phase === 'clear',
       kills: { ...s.kills },
       elites: s.eliteKills,
@@ -1313,7 +1315,7 @@ async function floorCleared(t: TowerPlay, s: RunState) {
   t.sending = true;
   // 보내는 시간: 서버는 정수 초만 받고 층마다 최소 시간을 본다 — 빠른 층이 내림 때문에 걸리지 않게 앞에 보낸 시간 + 최소 시간까지 올린다
   // (올리는 폭은 서버의 경과 시간 여유 LIMITS.timeSlack 3초 안이다)
-  const total = Math.max(Math.floor(t.played + s.t), t.played + floorMinTime(t.floor));
+  const total = Math.max(Math.floor(t.played + Math.min(s.t, LIMITS.maxTime)), t.played + floorMinTime(t.floor));
   const used = s.used.map((r) => [...r]);
   let res: TowerFloorResult | null = null;
   let why = '';

@@ -309,7 +309,10 @@ export async function enterRoom(code: string, title = '') {
     // 경기 시작 알림을 받으면 경기 화면으로 (게임방에서든 결과 화면에서든)
     room.onStart((s) => {
       if (state.room !== room) return;
-      void loadEngine().then(() => state.room === room && room.current?.matchNo === s.matchNo && nav.match(onlineSetup(s, state.user.id)));
+      void loadEngine().then(
+        () => state.room === room && room.current?.matchNo === s.matchNo && nav.match(onlineSetup(s, state.user.id)),
+        () => toast('경기 화면을 불러오지 못했어요. 새로 고침해 주세요', 3200),
+      );
     });
   }
   showWaiting();

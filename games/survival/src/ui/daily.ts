@@ -20,8 +20,9 @@ function play(c: DailyChallenge) {
  * prev: 방금 한 판의 날짜. 날짜가 바뀌었으면 조건이 달라졌으니 오늘의 도전 화면으로 보낸다 (그 판은 시작하지 않는다).
  * 날짜는 서버에서만 받는다 (net/daily.ts): 못 받았으면 시작하지 않는다
  */
-export async function startDaily(prev?: string) {
+export async function startDaily(prev?: string, still: () => boolean = () => true) {
   const c = await loadDailyChallenge();
+  if (!still()) return;
   if (!c) return toast('오늘 날짜를 받지 못했어요. 잠시 뒤에 다시 해 주세요', 3000);
   if (prev && prev !== c.day) {
     toast('날짜가 바뀌었어요. 새 도전을 확인해 주세요', 3000);

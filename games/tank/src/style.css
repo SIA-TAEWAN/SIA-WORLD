@@ -2659,3 +2659,6 @@ a.btn { text-decoration: none; text-align: center; }
     border-width: 2px;
   }
 }
+
+/* 공용 ⚙️ 소리 설정 창(shared/sound.js)은 body 에 붙는다: 탱크의 남색 --panel 대신 크림 판으로 (글자가 읽히게) */
+.sia-snd-dim { --panel: var(--cream); --primary: var(--sun); }

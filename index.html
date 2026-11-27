@@ -33,7 +33,7 @@
     .hidden { display: none !important; }
 
     /* ---------- 로그인 / 회원가입 (시아탱크 .entry-card) ---------- */
-    .auth-wrap { min-height: 100vh; display: grid; place-items: center;
+    .auth-wrap { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center;
       padding: calc(24px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px))
         calc(24px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)); }
     .auth-card {
@@ -154,7 +154,7 @@
     .admin-box .hint { margin: 6px 0 14px; color: var(--ink-soft); font-size: 13px; min-height: 16px; }
     .admin-box .hint.bad { color: var(--pink); }
     .admin-box .err { color: var(--pink); font-size: 14px; min-height: 18px; margin: 6px 0 0; }
-    .center { min-height: 100vh; display: grid; place-items: center; color: var(--white); font-size: 18px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
+    .center { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; color: var(--white); font-size: 18px; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
 
     /* 지갑 · 출석 · 랭킹 */
     .notice { background: var(--panel-strong); border: var(--line) solid var(--outline); color: var(--ink); border-radius: var(--radius-item);

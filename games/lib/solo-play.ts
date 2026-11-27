@@ -959,9 +959,13 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
         }
         // 나가기: 그때까지를 서버에 맞춰 두면 서버 AI 가 거기서 이어 둔다
         stop();
-        if (batch.length && !sending) {
+        // 중간 저장을 보내는 중이면 잠깐 기다렸다가 그 뒤에 남은 것을 보낸다 (그냥 버리면 마지막 행동을 서버 AI 가 대신 둔다)
+        for (let i = 0; i < 40 && cur === c && sending; i++) await sleep(100);
+        if (cur !== c) return;
+        const rest = unsent(c);
+        if (rest.length && !sending) {
           try {
-            await Promise.race([host.api.replay(payload), sleep(4000)]);
+            await Promise.race([host.api.replay(withRules({ n: c.savedN, actions: rest.map((e) => e.a) })), sleep(4000)]);
           } catch {
             /* 실패해도 나간다 (서버에 저장된 데서부터 AI 가 이어 둔다) */
           }
