@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport: 안드로이드는 viewport-fit=cover 없이 (games/tower/index.html 과 같은 이유) -->
+    <script>(function () { var c = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'; if (/Android/i.test(navigator.userAgent)) c = c.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, ''); document.write('<meta name="viewport" content="' + c + '" />'); })();</script>
+    <meta name="theme-color" content="#4aa8ff" />
+    <!-- SIA WORLD 앱(PWA): 로비와 같은 manifest·아이콘·서비스 워커. vite-ignore = Vite 가 건드리지 않고 그대로 둔다 -->
+    <link rel="manifest" href="../../manifest.webmanifest" vite-ignore />
+    <link rel="apple-touch-icon" href="../../shared/images/app/apple-touch-icon.png" vite-ignore />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SIA WORLD" />
+    <script type="module" src="../../shared/pwa.js" vite-ignore></script>
+    <meta name="description" content="하루 몇 번 들러 고양이 밥과 물을 챙기고 쓰다듬는 랜선 고양이 집사" />
+    <title>시아집사</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐱</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

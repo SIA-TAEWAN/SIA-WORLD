@@ -111,10 +111,19 @@ export const SOUNDS = {
   blockCombo: [0.6, 0, 523, 0.01, 0.1, 0.25, 1, 1.4, 6, 0, 262, 0.05],
   blockPerfect: [0.7, 0, 784, 0.02, 0.25, 0.5, 0, 1.3, 0, 0, 392, 0.08, 0.08, 0, 15],
   blockOver: [0.55, 0, 300, 0.02, 0.12, 0.5, 1, 1.2, -1.2],
+  // 시아집사: 사료 붓기(짧은 알갱이 소리, 여러 번) · 물 붓기 · 모래 퍼내기 · 봉투에 넣기 · 골골송 · 야옹 · 냥펀치 · 하트
+  nyangPour: [0.3, 0.3, 1800, 0, 0.005, 0.03, 4, 0.5, -20, 0, 0, 0, 0, 0.9],
+  nyangWater: [0.4, 0.1, 500, 0.05, 0.25, 0.25, 0, 0.6, 3, 0, 0, 0, 0.05, 0.4],
+  nyangScoop: [0.45, 0.2, 300, 0, 0.04, 0.12, 4, 1.4, -2, 0, 0, 0, 0, 1.5],
+  nyangDrop: [0.45, 0.05, 220, 0, 0.02, 0.1, 1, 1.6, -4, 0, 0, 0, 0, 0.8],
+  nyangPurr: [0.35, 0.05, 55, 0.08, 0.5, 0.3, 2, 0.6, 0, 0, 0, 0, 0, 0.3, 28],
+  nyangMeow: [0.5, 0, 620, 0.04, 0.12, 0.22, 0, 1.2, -2.5, 0, 160, 0.07, 0, 0, 6],
+  nyangPunch: [0.7, 0.05, 260, 0, 0.03, 0.12, 2, 1.8, -6, 0, 0, 0, 0, 0.6],
+  nyangHeart: [0.35, 0, 1047, 0.01, 0.06, 0.16, 0, 1.2, 0, 0, 523, 0.04],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80, blockPick: 50, blockPlace: 50, blockNope: 80, blockClear: 60 };
+const MIN_GAP = { nyangPour: 70, nyangHeart: 120, nyangPurr: 600, chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80, blockPick: 50, blockPlace: 50, blockNope: 80, blockClear: 60 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 

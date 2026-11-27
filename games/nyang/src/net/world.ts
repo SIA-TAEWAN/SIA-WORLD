@@ -1,0 +1,65 @@
+/**
+ * SIA WORLD 공통 모듈(shared/*.js) 연결 (시아팡팡 games/pang/src/net/world.ts 와 같은 방식).
+ * 공통 모듈은 빌드에 넣지 않고 실행 중에 ../../shared/ 에서 불러온다.
+ * 그래야 로비와 시아집사이 같은 Supabase 클라이언트·로그인 세션을 쓴다.
+ */
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+export interface WorldUser {
+  userId: string;
+  loginId: string;
+  nickname: string;
+  /** 관리자 계정 (profiles.is_admin) */
+  isAdmin?: boolean;
+}
+
+interface AuthModule {
+  requireLogin(): Promise<WorldUser>;
+  getCurrentUser(): Promise<WorldUser | null>;
+  onSignedOut(cb: () => void): () => void;
+  loginUrl(redirect?: string): string;
+}
+
+/** SIA WORLD 최상위 (games/nyang/ 에서 두 단계 위) */
+const root = () => new URL('../../', document.baseURI);
+
+/** SIA WORLD 로비 주소 */
+export const worldHome = () => new URL('index.html', root()).href;
+
+let authMod: Promise<AuthModule> | null = null;
+
+export function loadAuth(): Promise<AuthModule> {
+  authMod ??= import(/* @vite-ignore */ new URL('shared/auth.js', root()).href) as Promise<AuthModule>;
+  authMod.catch(() => (authMod = null));
+  return authMod;
+}
+
+let supaMod: Promise<{ supabase: SupabaseClient }> | null = null;
+/** SIA WORLD 공용 Supabase 클라이언트 (shared/supabase.js) */
+export async function worldSupabase(): Promise<SupabaseClient> {
+  supaMod ??= import(/* @vite-ignore */ new URL('shared/supabase.js', root()).href) as Promise<{ supabase: SupabaseClient }>;
+  supaMod.catch(() => (supaMod = null));
+  return (await supaMod).supabase;
+}
+
+export interface SoundModule {
+  play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
+  isMuted(): boolean;
+  /** ⚙️ 소리 설정 창 (🎵 배경음 · 🔊 효과음 따로, 시아레이스와 같은 모양). onClose: 닫을 때 */
+  openSoundSettings(onClose?: () => void): HTMLElement;
+  setMuted(m: boolean): void;
+  isBgmOn(): boolean;
+  setBgmOn(on: boolean): void;
+  onMuteChange(cb: (m: boolean) => void): () => void;
+  /** 배경음: shared/audio/bgm/nyang/main.mp3 (방) · boss.mp3 (밤). 파일이 없으면 소리 없이 */
+  playBgm(game: string, scene?: string): void;
+  stopBgm(): void;
+}
+let soundMod: Promise<SoundModule> | null = null;
+/** SIA WORLD 공용 효과음 (shared/sound.js) */
+export function loadSound(): Promise<SoundModule> {
+  soundMod ??= import(/* @vite-ignore */ new URL('shared/sound.js', root()).href) as Promise<SoundModule>;
+  soundMod.catch(() => (soundMod = null));
+  return soundMod;
+}
+
