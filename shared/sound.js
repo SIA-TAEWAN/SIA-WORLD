@@ -1,4 +1,4 @@
-// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 · 시아레이스 · 시아배구 · 시아서바이벌 · 시아열두길 공용).
+// SIA WORLD 효과음 (시아탱크 · 시아맞고 · 시아카지노 · 시아레이스 · 시아배구 · 시아서바이벌 · 시아열두길 · 시아팡팡 등 공용).
 //
 // - 소리는 ZzFX 방식(코드로 파형을 만든다, MIT · Frank Force)으로 만든다. 외부 파일 없음.
 // - shared/sounds/<이름>.ogg 또는 .mp3 파일을 넣으면 그 소리를 처음 낼 때 확인해서 파일로 바꿔 쓴다.
@@ -88,10 +88,22 @@ export const SOUNDS = {
   twelveHurt: [0.75, 0.05, 150, 0, 0.04, 0.2, 2, 1.6, -3, 0, 0, 0, 0, 0.9],
   twelveRare: [0.65, 0, 784, 0.01, 0.14, 0.45, 1, 1.6, 0, 0, 392, 0.07, 0.07],
   twelveLevel: [0.65, 0, 523, 0.02, 0.2, 0.4, 1, 1.5, 6, 0, 262, 0.08, 0.08],
+  // 시아팡팡 (터뜨림은 콤보마다 rate 로 높아진다. 클리어·실패·최고 기록은 win · lose · newRecord 를 같이 쓴다)
+  pangSwap: [0.35, 0.05, 520, 0, 0.02, 0.07, 1, 1.2, 12],
+  pangNope: [0.4, 0, 240, 0, 0.03, 0.1, 1, 1.4, -4],
+  pangPop: [0.5, 0.05, 700, 0, 0.02, 0.1, 1, 1.6, 0, 0, 350, 0.03],
+  pangMake: [0.55, 0, 880, 0.01, 0.08, 0.22, 1, 1.4, 8, 0, 440, 0.05],
+  pangBlast: [0.7, 0.05, 160, 0, 0.06, 0.3, 4, 2, -0.6, 0, 0, 0, 0, 1.4],
+  pangOrb: [0.6, 0, 1047, 0.01, 0.2, 0.4, 0, 1.2, 0, 0, 262, 0.05, 0.05, 0, 20],
+  pangIce: [0.45, 0.1, 2200, 0, 0.01, 0.08, 4, 1.4, -20, 0, 0, 0, 0, 0.8],
+  pangBox: [0.6, 0.05, 140, 0, 0.02, 0.1, 4, 2, -1.2, 0, 0, 0, 0, 1.2],
+  pangVine: [0.4, 0.05, 420, 0, 0.02, 0.08, 4, 1.6, -6, 0, 0, 0, 0, 1],
+  pangBonus: [0.4, 0, 1320, 0, 0.02, 0.08, 1, 1.5, 0, 0, 660, 0.02],
+  pangTap: [0.45, 0.05, 600, 0, 0.03, 0.12, 0, 1.2, 10],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150 };
+const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 

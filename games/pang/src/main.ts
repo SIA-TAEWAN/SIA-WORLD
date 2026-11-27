@@ -1,7 +1,7 @@
 import './style.css';
 import { getApi } from './net/api';
 import { LOCAL_MODE } from './net/local';
-import { enterLobby, loadAuth, openWorldRanking, worldHome, type WorldUser } from './net/world';
+import { enterLobby, loadAuth, loadSound, openWorldRanking, worldHome, type WorldUser } from './net/world';
 import { startApp } from './ui/app.js';
 
 const boot = document.getElementById('boot')!;
@@ -32,7 +32,7 @@ async function start() {
     boot.classList.add('hidden');
     document.getElementById('main')!.classList.remove('hidden');
     const meId = user?.userId ?? null;
-    startApp({ api, state, local: LOCAL_MODE, worldHome, openRanking: () => (meId ? openWorldRanking(meId) : Promise.resolve(false)) });
+    startApp({ api, state, local: LOCAL_MODE, loadSound, worldHome, openRanking: () => (meId ? openWorldRanking(meId) : Promise.resolve(false)) });
   } catch {
     message(`SIA WORLD에 연결하지 못했어요.<br/>인터넷 연결을 확인하고 다시 시도해 주세요.<br/><br/>
       <button class="btn primary" id="retry">다시 시도</button> <a class="btn" href="${worldHome()}">🌏 SIA WORLD로</a>`);
