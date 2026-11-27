@@ -177,7 +177,7 @@ def col_in(im, cols):
 #   char2-base.png      파랑 도포를 입은 민머리 대원 8칸 × 3줄(아래 · 오른쪽 · 위) — 자세의 기준. 여기서 몸과 옷 0 을 나눈다
 #   char2-outfit1~3     기준 시트의 옷만 바꾼 것 → 옷 1~3
 #   char2-hair.png      초록 옷을 입은 대기 칸에 머리 모양 8가지(남 4 · 여 4) × 3방향
-#   char2-faces.png     같은 틀에 얼굴 8가지 × 3방향 (앞의 4개를 쓴다)
+#   char2-faces.png     같은 틀에 얼굴 8가지 × 3방향 — 2026-11-27 부터 쓰지 않는다 (얼굴은 아래 FACE_ART 의 손도트)
 # 시트는 SpriteCook 원본(2752×1536)을 512 너비로 줄여 배경을 지운 것이다 (도트 한 점 = 그림 한 점).
 # 머리는 방향마다 한 가지 모양이고 칸마다 조금 오르내릴 뿐이라, 얼굴·머리카락은 대기 칸 것을 그대로 따라 옮긴다.
 # =====================================================================
@@ -450,22 +450,191 @@ def hair_of(fr, rf, r):
     return o
 
 
-def face_of(fr, head, r):
-    """얼굴(눈 · 볼 · 입)만 남긴다. 뒤를 보는 줄은 비운다"""
-    o = np.zeros_like(fr)
+# ---------------------------------------------------------------------
+# 얼굴 4종 (동글 · 방긋 · 초롱 · 다부진): 손으로 찍은 도트 (2026-11-27). SpriteCook 시트(char2-faces.png)에서 잘라 쓰던 것을 바꿨다 —
+# 64×80 칸에서 얼굴은 16×10 남짓이라 잘라 온 눈은 크기 · 자리가 얼굴마다 달랐다. 다시 그릴 목록: art/spritecook/REDRAW-QUEUE.md
+# 앞모습은 왼쪽 절반(x 24~31)만 적고 가운데(31.5)를 축으로 뒤집어 붙인다 → 눈 · 눈썹 · 볼이 좌우 대칭. 옆모습은 오른쪽을 본다.
+# 눈은 앞 26줄 · 옆 25줄부터: 바가지 머리(m3) · 긴 생머리(f0) 앞머리가 그 윗줄까지 내려온다. 눈썹은 그 위라 앞머리에 가려도 된다.
+# 맨 아랫점은 앞 32줄 · 옆 31줄 — src/art/load.ts 의 2등신 만들기가 얼굴 레이어의 아래 끝을 턱으로 쓴다 (FACE_CHIN).
+# ---------------------------------------------------------------------
+FACE_PAL = {'#': OUT, 'w': hx('#fff8e8'), 'b': hx('#6b4226'), 'i': hx('#a85a34'), 'k': hx('#e86a5a'), 'r': hx('#c93a58'), 'm': hx('#a85a34')}
+FACE_BASE = hx('#f2b48c')                                  # 얼굴 살색 (몸 레이어 머리의 바탕색)
+FACE_LIGHT = {SKIN, hx('#f7c1a8'), hx('#ffe9b8'), hx('#fff4c2'), hx('#fff8e8')}   # 몸 레이어에 남은 옛 눈 자리(밝은 얼룩)
+FACE_AT = {0: (24, 23), 1: (33, 22)}                       # 아래 그림의 왼쪽 위 (대기 칸 좌표)
+FACE_SKIN = {0: (24, 39, 22, 32), 1: (30, 40, 21, 31)}     # 살색을 고르게 덮는 자리 (x0, x1, y0, y1 — 끝 포함)
+FACE_CHIN = {0: (31, 32), 1: (36, 31)}                     # 언제나 찍는 맨 아랫점
+FACE_ART = [
+    {   # 0 동글: 둥글고 순한 눈 · 작은 미소
+        0: ['........',
+            '..bb....',
+            '........',
+            '..b#b...',
+            '..w##...',
+            '..b#b...',
+            '.kk...m.',
+            '.......m',
+            '........',
+            '........'],
+        1: ['.........',
+            '...bb....',
+            '.........',
+            '...##....',
+            '...#w....',
+            '...##....',
+            '.kk......',
+            '.....mm..',
+            '.........',
+            '.........'],
+    },
+    {   # 1 방긋: 웃어서 감긴 눈 · 벌린 입 · 짙은 볼
+        0: ['........',
+            '........',
+            '........',
+            '..###...',
+            '.#...#..',
+            '.kk.....',
+            '.kk...##',
+            '.......r',
+            '........',
+            '........'],
+        1: ['.........',
+            '.........',
+            '.........',
+            '....#....',
+            '...#.#...',
+            '.kk......',
+            '.kk.##...',
+            '.....r...',
+            '.........',
+            '.........'],
+    },
+    {   # 2 초롱: 크고 반짝이는 눈
+        0: ['...bb...',
+            '........',
+            '...##...',
+            '..#ww#..',
+            '..#w##..',
+            '..##i#..',
+            '...##...',
+            '.kk....m',
+            '........',
+            '........'],
+        1: ['....bb...',
+            '.........',
+            '....#....',
+            '...#ww...',
+            '...#w#...',
+            '...#i#...',
+            '....#....',
+            '.kk...m..',
+            '.........',
+            '.........'],
+    },
+    {   # 3 다부진: 굵고 치켜 올라간 눈썹 · 다문 입
+        0: ['........',
+            '.##.....',
+            '..###...',
+            '....##..',
+            '..###...',
+            '..w##...',
+            '........',
+            '......##',
+            '........',
+            '........'],
+        1: ['.........',
+            '..##.....',
+            '...###...',
+            '...##....',
+            '...#w....',
+            '...##....',
+            '.........',
+            '.....##..',
+            '.........',
+            '.........'],
+    },
+]
+
+
+def face_holes(body_fr):
+    """몸 레이어 머리 안의 빈 점 (머리를 가를 때 빠진 점 — 칸 테두리에서 투명으로 이어지지 않는 투명 점)"""
+    clear = body_fr[..., 3] == 0
+    seen = np.zeros_like(clear)
+    seen[0, :], seen[-1, :], seen[:, 0], seen[:, -1] = clear[0, :], clear[-1, :], clear[:, 0], clear[:, -1]
+    q = deque(zip(*np.where(seen)))
+    while q:
+        y, x = q.popleft()
+        for yy, xx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+            if 0 <= yy < FH and 0 <= xx < FW and clear[yy, xx] and not seen[yy, xx]:
+                seen[yy, xx] = True
+                q.append((yy, xx))
+    return clear & ~seen
+
+
+def face_zone(r, off):
+    m = np.zeros((FH, FW), bool)
+    if r < 2:
+        x0, x1, y0, y1 = FACE_SKIN[r]
+        m[y0 + off[1]:y1 + 1 + off[1], x0 + off[0]:x1 + 1 + off[0]] = True
+    return m
+
+
+def face_hand(v, r, body_fr, off):
+    """얼굴 v 의 한 칸: 살색 고르기(옛 눈 자리 · 빈 점) + 눈 · 눈썹 · 볼 · 입. 뒤를 보는 줄은 비운다"""
+    o = blank()
     if r == 2:
         return o
-    x0, x1, y0, y1 = FACE_ZONE[r]
-    a = head[..., 3] > 0
-    for y in range(y0, y1):
-        xs = np.where(a[y])[0]
-        if len(xs) < 5:
-            continue
-        for x in range(max(x0, xs[2]), min(x1, xs[-3] + 1)):
-            px = fr[HY + y, HX + x]
-            if px[3] and tuple(px[:3]) not in SKINS and tuple(px[:3]) not in GREENS:
-                o[HY + y, HX + x] = px
+    dx, dy = off
+    o[face_zone(r, off) & (face_holes(body_fr) | col_in(body_fr, FACE_LIGHT))] = (*FACE_BASE, 255)
+    ax, ay = FACE_AT[r]
+    for j, line in enumerate(FACE_ART[v][r]):
+        if r == 0:
+            line = line + line[::-1]
+        for i, ch in enumerate(line):
+            if ch != '.':
+                o[ay + j + dy, ax + i + dx] = (*FACE_PAL[ch], 255)
+    cx, cy = FACE_CHIN[r]
+    if not o[cy + dy, cx + dx, 3]:
+        assert body_fr[cy + dy, cx + dx, 3], 'chin'
+        o[cy + dy, cx + dx] = body_fr[cy + dy, cx + dx]
+    assert not o[cy + dy + 1:].any(), 'below chin'
     return o
+
+
+# 머리 레이어에 남은 옛 얼굴 조각(머리 시트에 그려져 있던 눈 · 눈썹 · 볼 · 턱 선)을 지우는 자리: 대기 칸의 (y0, y1, x0, x1) — 끝 포함.
+# 머리 시트는 얼굴이 있는 그림에서 살색만 빼고 남긴 것이라, 머리가 얼굴 위에 그려질 때 눈 조각이 덧그려졌다 (단발 f3 은 눈이 아예 가려졌다).
+HAIR_FACE = {
+    0: {'m0': [(24, 25, 31, 38), (26, 26, 25, 38), (27, 34, 24, 39)],
+        'm1': [(24, 25, 26, 38), (26, 26, 25, 39), (27, 34, 24, 39)],
+        'm2': [(23, 25, 26, 38), (26, 34, 24, 39)],
+        'm3': [(26, 34, 24, 39)],
+        'f0': [(25, 35, 25, 38)],
+        'f1': [(24, 25, 26, 38), (26, 34, 24, 39)],
+        'f2': [(24, 25, 25, 38), (26, 34, 24, 39)],
+        'f3': [(25, 27, 26, 37), (28, 29, 24, 39), (32, 34, 27, 36)]},
+    1: {'m0': [(24, 24, 34, 40), (25, 30, 31, 40)],
+        'm1': [(25, 30, 31, 40)],
+        'm2': [(22, 24, 33, 40), (25, 30, 31, 40)],
+        'm3': [(25, 30, 31, 40)],
+        'f0': [(25, 30, 31, 40)],
+        'f1': [(22, 30, 34, 40)],
+        'f2': [(25, 30, 31, 40)],
+        'f3': [(23, 24, 32, 39), (25, 30, 32, 40)]},
+}
+
+
+def hair_clean(h, name, r):
+    if r < 2:
+        for y0, y1, x0, x1 in HAIR_FACE[r][name]:
+            h[y0:y1 + 1, x0:x1 + 1] = 0
+    return h
+
+
+def outfit_clean(rows3, body, offs):
+    """옷 레이어에 섞인 얼굴 속의 점(몸 레이어 머리의 빈 점 자리에 남은 것)을 지운다 — 옷은 얼굴 위에 그려져 눈 옆에 점으로 보였다"""
+    for r in range(2):
+        for c in range(8):
+            rows3[r][c][face_zone(r, offs[r][c]) & face_holes(body[r][c])] = 0
+    return rows3
 
 
 def spread(layer3, offs):
@@ -505,20 +674,19 @@ def build_chars(only_base=False):
     for src, dst in SHOE_F.items():
         bf[col_in(bf, {src}) & low, :3] = dst
     out['body_f'] = bf
-    out['outfit_0'] = char_sheet(outfit0)
+    out['outfit_0'] = char_sheet(outfit_clean(outfit0, body, offs))
     if only_base:
         return out, frames, offs, heads
     href = {0: heads[0], 1: heads[1], 2: heads[2], 'offs': offs}
     for n in (1, 2, 3):
         fr, _, _ = char_frames(SRC / f'char2-outfit{n}.png', head_ref=href)
-        out[f'outfit_{n}'] = char_sheet(split_outfit(fr, heads, body, info))
+        out[f'outfit_{n}'] = char_sheet(outfit_clean(split_outfit(fr, heads, body, info), body, offs))
     ref = [snap(f, extra=EXTRA) for f in green_rows(frames, heads)]
     al = align_ref(SRC / 'char2-hair.png', ref, fit_top=True)
     for c, name in enumerate(HAIR_NAMES):
-        out[f'hair_{name}'] = char_sheet(spread([hair_of(outline(al[r][c]), ref[r], r) for r in range(3)], offs))
-    al = align_ref(SRC / 'char2-faces.png', ref)
-    for c in range(4):
-        out[f'face_{c}'] = char_sheet(spread([face_of(al[r][c], heads[r], r) for r in range(3)], offs))
+        out[f'hair_{name}'] = char_sheet(spread([hair_clean(hair_of(outline(al[r][c]), ref[r], r), name, r) for r in range(3)], offs))
+    for v in range(4):
+        out[f'face_{v}'] = char_sheet([[face_hand(v, r, body[r][c], offs[r][c]) for c in range(8)] for r in range(3)])
     return out
 
 

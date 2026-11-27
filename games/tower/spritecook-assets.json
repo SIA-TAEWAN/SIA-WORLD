@@ -261,7 +261,7 @@
       "asset_id": "b19f989a-f86f-4e31-a1e4-6e526ae832b7",
       "sha12": "5aee106084d9",
       "file": "art/spritecook/char2-faces.png",
-      "label": "얼굴 8가지 × 3방향 (앞의 4개: 동글 · 방긋 · 초롱 · 다부진) → char/face_0~3"
+      "label": "(2026-11-27 부터 쓰지 않는다 — char/face_0~3 은 art/build.py 의 FACE_ART 손도트) 얼굴 8가지 × 3방향 (앞의 4개: 동글 · 방긋 · 초롱 · 다부진)"
     },
     {
       "asset_id": "7b7595d3-bb13-4e23-99b6-485490f326f5",

@@ -39,6 +39,7 @@ const C = {
   white: css(COLOR.white),
   skin: '#ffd9b8',
   skinShade: '#f2b98f',
+  iris: '#a85a34',
   blush: css(COLOR.pink),
   shoe: css(COLOR.inkSoft),
 };
@@ -176,14 +177,24 @@ function attackArm(px: Px, p: Pose, c: string, sleeve = false) {
   }
 }
 
+/**
+ * 얼굴 4종: 0 동글(둥근 눈 · 작은 미소) · 1 방긋(웃어 감긴 눈 · 벌린 입) · 2 초롱(크고 반짝이는 눈) · 3 다부진(치켜 올라간 눈썹 · 다문 입).
+ * 파일 그림(art/build.py 의 FACE_ART)과 같은 생김새 — 앞모습은 가운데(x 16)를 축으로 좌우 대칭이다.
+ */
 function facePaint(v: number): Painter {
   return (px, p) => {
     if (p.dir === 3) return;
-    const b = p.bob;
-    const y = 10 + b;
-    const eyes = p.dir === 2 ? [18] : [13, 18];
-    for (const ex of eyes) {
-      if (v === 0) px(ex, y, 2, 2, C.outline);
+    const y = 10 + p.bob;
+    const side = p.dir === 2;
+    // [눈의 왼쪽 칸, 얼굴 바깥쪽이 어느 쪽인지 (-1 왼쪽 · 1 오른쪽)]. 옆모습은 오른쪽을 보므로 바깥쪽(뒤통수 쪽)이 왼쪽
+    const eyes: [number, number][] = side ? [[18, -1]] : [[13, -1], [18, 1]];
+    for (const [ex, out] of eyes) {
+      const outer = out < 0 ? ex : ex + 1;
+      const inner = out < 0 ? ex + 1 : ex;
+      if (v === 0) {
+        px(ex, y, 2, 2, C.outline);
+        px(outer, y, 1, 1, C.white);
+      }
       if (v === 1) {
         px(ex - 1, y + 1, 1, 1, C.outline);
         px(ex, y, 2, 1, C.outline);
@@ -191,20 +202,31 @@ function facePaint(v: number): Painter {
       }
       if (v === 2) {
         px(ex, y - 1, 2, 3, C.outline);
-        px(ex, y - 1, 1, 1, C.white);
+        px(outer, y - 1, 1, 2, C.white);
+        px(inner, y + 1, 1, 1, C.iris);
       }
       if (v === 3) {
         px(ex, y, 2, 2, C.outline);
-        px(ex - 1, y - 2, 3, 1, C.outline);
+        px(outer, y, 1, 1, C.white);
+        px(out < 0 ? outer - 1 : outer, y - 2, 2, 1, C.outline); // 눈썹: 바깥쪽이 높고
+        px(inner + (out < 0 ? 0 : -1), y - 1, 2, 1, C.outline); // 안쪽이 낮다
       }
     }
-    // 입 · 볼
-    const mx = p.dir === 2 ? 19 : 15;
-    if (v === 1 || v === 2) px(mx, y + 4, 2, 1, C.outline);
-    else if (v === 3) px(mx, y + 4, 2, 1, C.skinShade);
-    else px(mx, y + 4, 1, 1, C.outline);
-    px(p.dir === 2 ? 20 : 11, y + 2, 2, 1, C.blush);
-    if (p.dir !== 2) px(19, y + 2, 2, 1, C.blush);
+    // 입
+    const mx = side ? 19 : 15;
+    if (v === 1) {
+      px(mx, y + 3, 2, 1, C.outline);
+      px(mx, y + 4, 2, 1, C.blush);
+    } else px(mx, y + 4, 2, 1, v === 3 ? C.outline : C.iris);
+    if (v === 0 && !side) {
+      px(mx - 1, y + 3, 1, 1, C.iris);
+      px(mx + 2, y + 3, 1, 1, C.iris);
+    }
+    // 볼 (다부진은 없다)
+    if (v === 3) return;
+    const bh = v === 1 ? 2 : 1;
+    px(side ? 15 : 11, y + 2, 2, bh, C.blush);
+    if (!side) px(19, y + 2, 2, bh, C.blush);
   };
 }
 
