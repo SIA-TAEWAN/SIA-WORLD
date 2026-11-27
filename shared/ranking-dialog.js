@@ -24,7 +24,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 기본 탭 순서 (내 기록을 받기 전, 그리고 판 수가 같을 때) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'card'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'ace', 'card'];
 /** 시아코인 기록의 게임 id → 탭 (카지노 네 게임은 한 탭) */
 const PLAY_TAB = { volleyball: 'volley', poker: 'casino', holdem: 'casino', blackjack: 'casino', roulette: 'casino' };
 /**
@@ -107,6 +107,18 @@ const CARD_INFO = { label: '🃏 카드배틀', note: '끝없는 모드 · 올�
 export const CARD_MODES = [{ id: 'endless', name: '끝없는 모드' }];
 /** 시아팡팡: 모은 별 → 깬 스테이지 수 → 먼저 달성한 순 (111_pang.sql 의 pang_ranking). 별을 하나라도 모은 사람만 */
 const PANG_INFO = { label: '💖 시아팡팡', note: '모은 별 순 (같으면 깬 스테이지 수, 그다음 먼저 달성한 사람이 위)' };
+/**
+ * 시아에이스: 모드마다 따로 (121_ace.sql 의 ace_ranking). 아케이드는 난이도별 점수(이어하기 전 점수만),
+ * 보스 러시는 12마리를 다 깬 시간이 짧은 순, 끝없는 모드는 버틴 시간이 긴 순. 고르기 줄은 이 탭에만 (.amodes)
+ */
+const ACE_INFO = { label: '✈️ 시아에이스', note: '같으면 먼저 달성한 사람이 위' };
+export const ACE_MODES = [
+  { id: 'arcade_normal', name: '아케이드 보통', note: '아케이드 보통 · 점수 순 (이어하기 전 점수)' },
+  { id: 'arcade_easy', name: '쉬움', note: '아케이드 쉬움 · 점수 순 (이어하기 전 점수)' },
+  { id: 'arcade_hard', name: '어려움', note: '아케이드 어려움 · 점수 순 (이어하기 전 점수)' },
+  { id: 'rush', name: '보스 러시', note: '보스 러시 · 12마리를 모두 깬 시간이 짧은 순' },
+  { id: 'endless', name: '끝없는', note: '끝없는 모드 · 버틴 시간이 긴 순' },
+];
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
 /**
@@ -142,7 +154,7 @@ const shiftDay = (day, n) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 const num = (v) => Math.max(0, Math.floor(Number(v) || 0));
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'pang' ? PANG_INFO : g === 'card' ? CARD_INFO : RANKINGS[g]);
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'pang' ? PANG_INFO : g === 'card' ? CARD_INFO : g === 'ace' ? ACE_INFO : RANKINGS[g]);
 
 /** 역대 최고 기록 순위 → 등급 (1위 해 · 2위 달 · 3위 별 · 4위부터와 순위 없음은 구름) */
 export function raceTierOfPlace(place) {
@@ -474,6 +486,28 @@ export async function getPangRanking(meId = null) {
   }
   return { rows, mine, total };
 }
+/**
+ * 시아에이스 랭킹 (ace_ranking 뷰, mode 하나: 아케이드 점수 · 보스 러시 시간(짧을수록) · 끝없는 모드 시간).
+ * → { rows: 상위 100명 [{ key, nickname, value, ship, stage, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getAceRanking(mode, meId = null) {
+  const cols = 'user_id,nickname,value,ship,stage,achieved_at,place,total';
+  const view = () => supabase.from('ace_ranking').select(cols).eq('mode', mode);
+  const { data, error } = await view().order('place', { ascending: true }).limit(DEFENSE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, value: Number(r.value ?? 0), ship: r.ship ?? 'dragon', stage: Number(r.stage ?? 0), at: r.achieved_at, place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= DEFENSE_TOP) {
+    const res = await view().eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
 /** 걸린 시간 표시 (초 → 3:05 · 1:02:03) */
 export const twelveTime = (sec) => {
   const s = Math.max(0, Math.floor(Number(sec) || 0));
@@ -541,6 +575,11 @@ const CSS = `
   background: #fff; border: 2px solid #2a1a10; border-radius: 12px; padding: 4px 6px; }
 .sia-rank .dmodes button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
 .sia-rank .dmodes button[hidden] { display: none; }
+.sia-rank .amodes { display: none; gap: 6px; margin-bottom: 6px; }
+.sia-rank .amodes.on { display: flex; flex-wrap: wrap; }
+.sia-rank .amodes button { flex: 1 0 auto; white-space: nowrap; font: inherit; font-size: 14px; color: #2a1a10; cursor: pointer;
+  background: #ffffff; border: 2px solid #2a1a10; border-radius: 12px; padding: 3px 8px; }
+.sia-rank .amodes button.sel { background: #ffd34d; box-shadow: 0 3px 0 #2a1a10; }
 .sia-rank .dday { display: none; align-items: center; gap: 6px; margin-bottom: 2px; }
 .sia-rank .dday.on { display: flex; }
 .sia-rank .dday span { flex: 1; min-width: 0; text-align: center; font-size: 14px; color: #2a1a10; }
@@ -597,7 +636,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 /**
  * 랭킹 창 열기.
  * 탭은 내가 많이 한 게임 순서 (기록을 받기 전에는 기본 순서). first 를 주지 않으면(로비) 맨 앞 탭을 보여 준다.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang' | 'card' | 'ace')
  */
 export function openRanking({ meId = null, first = null } = {}) {
   // 이미 열린 창이 있으면 하나 더 띄우지 않는다 (버튼을 빠르게 두 번 눌렀을 때). 돌려주는 닫기는 그 창을 닫는다
@@ -624,6 +663,7 @@ export function openRanking({ meId = null, first = null } = {}) {
     <div class="modes">${SURVIVAL_MODES.map((m) => `<button type="button" data-sm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-sm="${DAILY_MODE}">${DAILY_NAME}</button></div>
     <div class="subs">${SURVIVAL_MAPS.map((m) => `<button type="button" data-m="${m.id}">${m.name}</button>`).join('')}</div>
     <div class="dmodes">${DEFENSE_MODES.map((m) => `<button type="button" data-dm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-dm="${DAILY_MODE}">${DAILY_NAME}</button><button type="button" data-dm="${WEEKLY_MODE}" hidden>${WEEKLY_NAME}</button></div>
+    <div class="amodes">${ACE_MODES.map((m) => `<button type="button" data-am="${m.id}">${m.name}</button>`).join('')}</div>
     <div class="dday"><button type="button" data-dd="-1" aria-label="하루 전" disabled>◀</button><span></span><button type="button" data-dd="1" aria-label="하루 뒤" disabled>▶</button></div>
     <p class="wk"></p>
     <p class="me-line"></p>
@@ -651,6 +691,8 @@ export function openRanking({ meId = null, first = null } = {}) {
     else if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : shown === 'card' ? showCard(dm.dataset.dm) : showDefense(dm.dataset.dm));
     const dd = e.target.closest('[data-dd]');
     if (dd && !dd.disabled) moveDaily(Number(dd.dataset.dd));
+    const am = e.target.closest('[data-am]');
+    if (am) void showAce(am.dataset.am);
   });
 
   let shown = '';
@@ -669,6 +711,8 @@ export function openRanking({ meId = null, first = null } = {}) {
     $('.modes').classList.toggle('on', game === 'survival');
     // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스·돌격대·핑거·열두길 탭에서만 보인다 (버튼 글자는 탭마다 바꾼다)
     $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve' || game === 'race' || game === 'card');
+    // 시아에이스 모드 고르기 줄 (아케이드 난이도 3 · 보스 러시 · 끝없는)
+    $('.amodes').classList.toggle('on', game === 'ace');
     // 레이스는 [오늘의 도전 · 주간 · 최고 기록] 셋 (보이는 순서는 CSS order), 주간 단추는 레이스에만. 열두길은 오늘의 도전이 없다
     dim.querySelectorAll('.dmodes button').forEach((b, i) => {
       const dm = b.dataset.dm;
@@ -692,6 +736,7 @@ export function openRanking({ meId = null, first = null } = {}) {
     if (game === 'tower') return showTower();
     if (game === 'card') return showCard(cardMode);
     if (game === 'pang') return showPang();
+    if (game === 'ace') return showAce(aceMode);
     const info = RANKINGS[game];
     $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${info.cloud ?? `${formatAmount(info.base)}${info.unit} 이하는 구름`})`;
     const amountText = (r) => r.text ?? `${formatAmount(r.amount)}${info.unit}`;
@@ -1114,6 +1159,38 @@ export function openRanking({ meId = null, first = null } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'pang') $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /** 시아에이스: 모드마다 상위 100명 + 내 순위 (탄 기체 얼굴 · 점수나 시간 · 달성 날짜) */
+  let aceMode = ACE_MODES[0].id;
+  async function showAce(mode = aceMode) {
+    const m = ACE_MODES.find((v) => v.id === mode) ?? ACE_MODES[0];
+    aceMode = m.id;
+    dim.querySelectorAll('.amodes button').forEach((b) => b.classList.toggle('sel', b.dataset.am === m.id));
+    const time = m.id === 'rush' || m.id === 'endless';
+    const val = (r) => (time ? twelveTime(r.value) : r.value.toLocaleString('ko-KR') + '점');
+    const sub = (r) => (m.id.startsWith('arcade') ? `${r.stage}스테이지 · ` : '') + esc(dateText(r.at));
+    $('.note').textContent = `${m.note} · ${ACE_INFO.note} · 상위 ${DEFENSE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    try {
+      const { rows, mine, total } = await getAceRanking(m.id, meId);
+      if (shown !== 'ace' || aceMode !== m.id) return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      $('.me-line').innerHTML = mine
+        ? `내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${val(mine)}`
+        : '아직 이 모드 기록이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="ch"><img src="${faceUrl(r.ship)}" alt="" /></td><td class="nm">${esc(r.nickname)}</td>` +
+              `<td class="am">${val(r)}<small>${sub(r)}</small></td></tr>`,
+          )
+          .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
+    } catch {
+      if (shown === 'ace' && aceMode === m.id) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
     }
   }
   /**

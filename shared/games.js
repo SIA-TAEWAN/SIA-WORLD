@@ -33,6 +33,8 @@ export const GAMES = [
     path: 'games/card/', image: 'shared/images/card-card.png', open: false },
   { id: 'pang', name: '시아팡팡', desc: '아홉 정령을 셋씩 맞춰 터뜨려라 · 3매치 퍼즐 100스테이지 · 1인용',
     path: 'games/pang/', image: 'shared/images/card-pang.png', open: false },
+  { id: 'ace', name: '시아에이스', desc: '십이지 비행단으로 요괴 비행단을 막아라 · 세로 슈팅 12스테이지 · 1인용',
+    path: 'games/ace/', image: 'shared/images/card-ace.png', open: false },
 ];
 
 const KEY = 'game_open:';
