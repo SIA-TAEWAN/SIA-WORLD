@@ -2,6 +2,8 @@
  * 방 안 물건 그림 (임시 — 코드로 그린 SVG. 디자인 단계(6단계)에서 SpriteCook 그림으로 바꾼다).
  * DESIGN.md: 굵은 갈색 외곽선 + 밝은 단색. 색은 shared/theme.css 의 값만 쓴다.
  */
+import { artImg } from './art';
+
 const O = 'var(--outline)';
 
 /** 밥그릇: level 0 ~ 1 (사료 양) */
@@ -171,4 +173,11 @@ export function presentIcon(kind: string): string {
     <rect x="8" y="18" width="44" height="28" rx="4" fill="var(--pink)" stroke="${O}" stroke-width="3.5"/>
     <rect x="5" y="12" width="50" height="10" rx="3" fill="#FF8FA3" stroke="${O}" stroke-width="3.5"/>
     <path d="M30 12 V46" stroke="var(--primary)" stroke-width="6"/><path d="M30 12 Q18 0 14 8 Q20 14 30 12 Q42 0 46 8 Q40 14 30 12" fill="var(--primary)" stroke="${O}" stroke-width="2.5"/></svg>`;
+}
+
+/** 장난감 그림 (정보 창 · 상점) — 그림이 없으면 글자 그림 */
+export function toyIcon(id: string): string {
+  const name = ({ rod: 'objects-rod', laser: 'objects-laser', ball: 'objects-ball', box: 'objects-box' } as const)[id as 'rod'];
+  const emoji = ({ rod: '🎣', laser: '🔴', ball: '🧶', box: '📦' } as Record<string, string>)[id] ?? '🎁';
+  return name ? artImg(name, emoji, 'art toy-ico') : emoji;
 }

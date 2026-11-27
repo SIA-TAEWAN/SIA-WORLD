@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { CHURU_IDS, PRESENT_FURNITURE, loveAt } from '../data/balance';
+import { CHURU_IDS, POT_START, PRESENT_FURNITURE, SEED_IDS, isPlantId, loveAt } from '../data/balance';
 import {
-  RuleError, adopt, brush, churu, clean, cure, feed, gift, newState, payLocal, pet, play, playStart, seen, visit, water,
-  type Cat, type NyangState, type Present, type Profile,
+  RuleError, adopt, brush, buy, churu, clean, cure, exchange, expandPots, feed, gift, harvest, newState, payLocal, pet, plant, play, playStart, seen, sell,
+  treat, visit, water, waterPot,
+  type Cat, type NyangState, type Pot, type Present, type Profile,
 } from '../game/rules';
 import { worldSupabase } from './world';
 
@@ -12,6 +13,7 @@ import { worldSupabase } from './world';
  * 테스트 모드(?local=1, 개발 서버 · localhost 전용)는 같은 규칙으로 이 기기에만 저장한다.
  *   &time=10  시간 10배 빠르게 · &skip=6h  6시간 지난 것처럼 (한 번) · &love=7  첫 고양이 친밀도 7단계로 (한 번) · &reset=1 처음부터
  *   &toys=1  장난감 모두 (한 번) · &churu=5  츄르 맛마다 5개 더 (한 번) · &gift=1  첫 고양이가 선물을 물어 온 것처럼 (한 번)
+ *   4단계: &coins=500 엽전 더 · &sia=50 시아코인 더 · &seeds=3 씨앗 종류마다 3개 더 (모두 한 번)
  */
 const loc = typeof location === 'undefined' ? null : location;
 const params = new URLSearchParams(loc?.search ?? '');
@@ -43,6 +45,15 @@ export interface NyangApi {
   churu(slot: number, flavor: string): Promise<CareOut & { love: number; liked: boolean; cured: boolean }>;
   gift(slot: number): Promise<{ state: NyangState; present: Present }>;
   seen(slot: number, behavior: string): Promise<{ state: NyangState; added: boolean }>;
+  // 4단계: 정원 · 상점
+  plant(pot: number, seed: string): Promise<CareOut>;
+  waterPot(pot: number): Promise<CareOut>;
+  harvest(pot: number): Promise<CareOut & { plant: string }>;
+  expandPots(): Promise<{ state: NyangState; price: number }>;
+  buy(item: string, n: number): Promise<{ state: NyangState }>;
+  sell(item: string, n: number): Promise<{ state: NyangState; coins: number }>;
+  exchange(id: string): Promise<{ state: NyangState }>;
+  treat(slot: number, kind: string): Promise<CareOut & { love: number }>;
 }
 
 // ---------- 서버 ----------
@@ -72,7 +83,13 @@ function cleanCat(raw: unknown): Cat {
     playAt: num(r.playAt), playToy: strOrNull(r.playToy), playDay: num(r.playDay, -1), playLove: num(r.playLove), brushDay: num(r.brushDay, -1),
     churuDay: num(r.churuDay, -1), churuN: num(r.churuN), presentAt: num(r.presentAt), present: cleanPresent(r.present),
     seen: Array.isArray(r.seen) ? r.seen.map(String) : [],
+    treatDay: num(r.treatDay, -1), treatN: num(r.treatN), nipAt: num(r.nipAt),
   };
+}
+function cleanPot(raw: unknown): Pot | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  if (!isPlantId(r.plant)) return null;
+  return { slot: num(r.slot, 1), plant: r.plant, plantedAt: num(r.plantedAt), grown: num(r.grown), waterAt: numOrNull(r.waterAt) };
 }
 export function cleanState(raw: unknown): NyangState {
   const r = (raw ?? {}) as Record<string, unknown>;
@@ -81,8 +98,10 @@ export function cleanState(raw: unknown): NyangState {
     coins: num(p.coins), seq: num(p.seq), visitAt: num(p.visitAt), bonusDay: num(p.bonusDay, -1), careDays: num(p.careDays), siaDay: num(p.siaDay, -1),
     siaToday: num(p.siaToday), siaDue: num(p.siaDue), siaPaid: num(p.siaPaid), sia: num(p.sia),
     items: cleanItems(p.items), furniture: Array.isArray(p.furniture) ? p.furniture.map(String) : [], pseq: num(p.pseq),
+    pots: num(p.pots, POT_START), buySeq: num(p.buySeq),
   };
-  return { profile, cats: (Array.isArray(r.cats) ? r.cats : []).map(cleanCat) };
+  const pots = (Array.isArray(r.pots) ? r.pots : []).map(cleanPot).filter((x): x is Pot => !!x);
+  return { profile, cats: (Array.isArray(r.cats) ? r.cats : []).map(cleanCat), pots };
 }
 
 async function createSupabaseApi(): Promise<NyangApi> {
@@ -156,6 +175,32 @@ async function createSupabaseApi(): Promise<NyangApi> {
       const d = await rpc('nyang_seen', { p_slot: slot, p_behavior: behavior });
       return { state: cleanState(d.state), added: d.added === true };
     },
+    plant: async (pot, seed) => care(await rpc('nyang_plant', { p_pot: pot, p_seed: seed })),
+    waterPot: async (pot) => care(await rpc('nyang_water_pot', { p_pot: pot })),
+    async harvest(pot) {
+      const d = await rpc('nyang_harvest', { p_pot: pot });
+      return { ...care(d), plant: String(d.plant ?? '') };
+    },
+    async expandPots() {
+      const d = await rpc('nyang_expand_pots');
+      return { state: cleanState(d.state), price: num(d.price) };
+    },
+    async buy(item, n) {
+      const d = await rpc('nyang_buy', { p_item: item, p_n: n });
+      return { state: cleanState(d.state) };
+    },
+    async sell(item, n) {
+      const d = await rpc('nyang_sell', { p_item: item, p_n: n });
+      return { state: cleanState(d.state), coins: num(d.coins) };
+    },
+    async exchange(id) {
+      const d = await rpc('nyang_exchange', { p_id: id });
+      return { state: cleanState(d.state) };
+    },
+    async treat(slot, kind) {
+      const d = await rpc('nyang_treat', { p_slot: slot, p_kind: kind });
+      return { ...care(d), love: num(d.love) };
+    },
   };
 }
 
@@ -206,8 +251,14 @@ function createLocalApi(): NyangApi {
     ];
     s.state.cats[0] = { ...s.state.cats[0], present: kinds[Math.floor(Math.random() * kinds.length)] };
   }
+  const addCoins = Math.min(100000, Number(params.get('coins')) || 0);
+  if (addCoins > 0) s.state.profile.coins += addCoins;
+  const addSia = Math.min(10000, Number(params.get('sia')) || 0);
+  if (addSia > 0) s.state.profile.sia += addSia;
+  const seeds = Math.min(99, Number(params.get('seeds')) || 0);
+  if (seeds > 0) for (const id of SEED_IDS) items['seed:' + id] = (items['seed:' + id] ?? 0) + seeds;
   // 한 번만 쓰는 설정은 주소에서 지운다 (새로 고침해도 다시 걸리지 않게)
-  const ONCE = ['skip', 'love', 'reset', 'toys', 'churu', 'gift'];
+  const ONCE = ['skip', 'love', 'reset', 'toys', 'churu', 'gift', 'coins', 'sia', 'seeds'];
   if (loc && ONCE.some((k) => params.has(k))) {
     const u = new URL(loc.href);
     for (const k of ONCE) u.searchParams.delete(k);
@@ -252,6 +303,14 @@ function createLocalApi(): NyangApi {
     churu: (slot, flavor) => step((st, at) => churu(st, slot, flavor, at)),
     gift: (slot) => step((st, at) => gift(st, slot, at)),
     seen: (slot, behavior) => step((st, at) => seen(st, slot, behavior, at)),
+    plant: (pot, seed) => step((st, at) => plant(st, pot, seed, at)),
+    waterPot: (pot) => step((st, at) => waterPot(st, pot, at)),
+    harvest: (pot) => step((st, at) => harvest(st, pot, at)),
+    expandPots: () => step((st, at) => expandPots(st, at)),
+    buy: (item, n) => step((st, at) => buy(st, item, n, at)),
+    sell: (item, n) => step((st, at) => sell(st, item, n, at)),
+    exchange: (id) => step((st, at) => exchange(st, id, at)),
+    treat: (slot, kind) => step((st, at) => treat(st, slot, kind, at)),
   };
 }
 
@@ -281,6 +340,23 @@ export function errorText(e: unknown): string {
       'no churu': '이 맛 츄르가 없어요',
       'no present': '선물이 없어요',
       'no medicine': '약 간식이 없어요',
+      'no food': '그 사료가 없어요',
+      'bad pot': '없는 화분이에요',
+      'pot busy': '이미 심은 화분이에요',
+      'no seed': '씨앗이 없어요',
+      'no plant': '빈 화분이에요',
+      'pot ready': '다 자랐어요. 눌러서 수확해요',
+      'pot wet': '아직 흙이 촉촉해요',
+      'not ready': '아직 덜 자랐어요',
+      'max pots': '화분은 12칸까지예요',
+      'no coins': '엽전이 모자라요',
+      'not enough coin': '시아코인이 모자라요',
+      'already spent': '잠시 뒤 다시 해 주세요',
+      'locked': '친밀도가 더 오르면 열려요',
+      'have it': '이미 가지고 있어요',
+      'no item': '보관함에 없어요',
+      'bad amount': '개수가 맞지 않아요',
+      'treat full': '오늘은 풀을 그만 먹을래요',
     } as Record<string, string>
   )[e.message] ?? '할 수 없어요';
 }

@@ -84,7 +84,7 @@ for (const t of ['nyang_profiles', 'nyang_cats', 'nyang_pots', 'nyang_album']) {
   ok(/permission denied/.test((await call(u1, `select count(*) r from public.${t}`)).error ?? ''), `${t} 직접 읽기 거절`);
   ok(/permission denied/.test((await call(u1, `delete from public.${t} returning 1 r`)).error ?? ''), `${t} 직접 쓰기 거절`);
 }
-for (const f of ['_nyang_care(auth.uid(), true, 0)', '_nyang_pay(auth.uid())', "_nyang_const('max')", '_nyang_now()', "_nyang_add_item(auth.uid(), 'medicine', 5)", "_nyang_item(auth.uid(), 'fur')"]) {
+for (const f of ['_nyang_top_level(auth.uid())', '_nyang_care(auth.uid(), true, 0)', '_nyang_pay(auth.uid())', "_nyang_const('max')", '_nyang_now()', "_nyang_add_item(auth.uid(), 'medicine', 5)", "_nyang_item(auth.uid(), 'fur')"]) {
   ok(/permission denied/.test((await call(u1, `select public.${f} r`)).error ?? ''), `내부 함수 ${f} 거절`);
 }
 const open = await db.query("select value from public.app_settings where key = 'game_open:nyang'");
@@ -107,6 +107,14 @@ const CALL = {
   churu: 'select public.nyang_churu($1, $2) r',
   gift: 'select public.nyang_gift($1) r',
   seen: 'select public.nyang_seen($1, $2) r',
+  plant: 'select public.nyang_plant($1, $2) r',
+  water_pot: 'select public.nyang_water_pot($1) r',
+  harvest: 'select public.nyang_harvest($1) r',
+  expand_pots: 'select public.nyang_expand_pots() r',
+  buy: 'select public.nyang_buy($1, $2) r',
+  sell: 'select public.nyang_sell($1, $2) r',
+  exchange: 'select public.nyang_exchange($1) r',
+  treat: 'select public.nyang_treat($1, $2) r',
 };
 const fixSia = (st) => {
   const p = { ...st.profile, siaGot: st.profile.siaDue + st.profile.siaPaid };
@@ -125,6 +133,14 @@ for (const step of steps) {
   }
   if (step.op === 'setitem') {
     await db.query('update public.nyang_profiles set items = items || jsonb_build_object($1::text, $2::int) where user_id = $3', [step.args[0], step.args[1], u2]);
+    continue;
+  }
+  if (step.op === 'setcoins') {
+    await db.query('update public.nyang_profiles set coins = $1 where user_id = $2', [step.args[0], u2]);
+    continue;
+  }
+  if (step.op === 'setsia') {
+    await db.query('update public.wallets set sia_coins = $1 where user_id = $2', [step.args[0], u2]);
     continue;
   }
   n++;
@@ -149,11 +165,13 @@ for (const step of steps) {
   const rs = same(grest, erest);
   ok(rs, `${label} 결과${rs ? '' : `\n     서버 ${JSON.stringify(grest)}\n     기대 ${JSON.stringify(erest)}`}`);
 }
-// 시아코인: 기록이 sia_coin_logs 에 'nyang' 으로 남고 지갑과 같다
+// 시아코인: 받은 기록이 sia_coin_logs 에 'nyang' 으로 남고, 쓴 기록(sia_coin_spends 'buy:<n>')이 산 수와 같다 (지갑은 setsia 로 맞췄으니 보지 않는다)
 const logs = await db.query("select count(*)::int n from public.sia_coin_logs where user_id = $1 and game = 'nyang'", [u2]);
-const prof = await db.query('select p.sia_paid, p.sia_due, w.sia_coins from public.nyang_profiles p join public.wallets w using (user_id) where p.user_id = $1', [u2]);
+const spends = await db.query("select count(*)::int n, coalesce(sum(amount), 0)::int a from public.sia_coin_spends where user_id = $1 and game = 'nyang'", [u2]);
+const prof = await db.query('select p.sia_paid, p.sia_due, p.buy_seq from public.nyang_profiles p where p.user_id = $1', [u2]);
 const pr = prof.rows[0];
-ok(logs.rows[0].n === pr.sia_paid && logs.rows[0].n > 0 && Number(pr.sia_coins) === pr.sia_paid, `시아코인 기록 ${logs.rows[0].n}개 = 받은 수 ${pr.sia_paid} = 지갑 ${pr.sia_coins} (못 받은 것 ${pr.sia_due})`);
+ok(logs.rows[0].n === pr.sia_paid && logs.rows[0].n > 0, `시아코인 기록 ${logs.rows[0].n}개 = 받은 수 ${pr.sia_paid} (못 받은 것 ${pr.sia_due})`);
+ok(spends.rows[0].n === pr.buy_seq && pr.buy_seq > 0, `시아코인 쓴 기록 ${spends.rows[0].n}개 (${spends.rows[0].a}개) = 산 수 ${pr.buy_seq}`);
 console.log('단계 종류:', JSON.stringify(kinds));
 console.log(`\n${n}단계 대조 · 확인 ${checks}개 · ${fails ? `실패 ${fails}개` : '모두 통과'}`);
 process.exit(fails ? 1 : 0);

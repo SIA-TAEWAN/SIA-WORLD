@@ -5,7 +5,7 @@
  * 친밀도 단계가 오르면 새 행동이 열린다: 무릎(3) · 따라다니기(4, 바닥을 누르면) · 배 보여 주기(6) · 꾹꾹이(8) · 같이 자기(10).
  * 처음 보는 행동은 ctx.saw 가 행동 도감(서버)에 남긴다.
  */
-import { BEHAVIOR } from '../data/balance';
+import { BEHAVIOR, CONST } from '../data/balance';
 import { needs } from '../game/rules';
 import type { Act, Spot2 } from './cat';
 import { floatAt, sfx } from './common';
@@ -201,6 +201,15 @@ export function think(ctx: RoomCtx, v: CatView, t: number) {
     a.facing = -1;
     if (r < 0.3) a.say('…', 1500, t);
     a.act = { kind: 'pose', pose: 'loaf', until: t + 6000 };
+    return;
+  }
+  // 캣닢을 먹고 10분 동안은 신나서 우다다 (4단계)
+  if (ctx.now() - c.nipAt < CONST.nip_sec && r < 0.75) {
+    begin(ctx, v, 'zoomies');
+    if (r < 0.3) a.say(['냥냥냥!', '우다다다!', '신난다옹!'][Math.floor(Math.random() * 3)], 1200, t);
+    let act: Act | undefined;
+    for (let i = 0; i < 4; i++) act = { kind: 'walk', to: { x: rand(0.06, 0.94), y: rand(0.25, 0.98) }, speed: 500, then: act };
+    a.act = act!;
     return;
   }
   if (ctx.timeOfDay() === 'night' && r < 0.8) {

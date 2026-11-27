@@ -25,7 +25,17 @@ export const POSE_IMAGE = {
   beg: 'beg',
   knead: 'knead',
   belly: 'belly',
+  // 츄르 핥기 8칸 (SpriteCook 애니메이션): 0 · 4 입 다묾, 1 · 3 · 5 · 7 벌림, 2 · 6 혀
+  lick0: 'lick-0',
+  lick1: 'lick-1',
+  lick2: 'lick-2',
+  lick3: 'lick-3',
+  lick4: 'lick-4',
+  lick5: 'lick-5',
+  lick6: 'lick-6',
+  lick7: 'lick-7',
 } as const satisfies Record<string, ArtName>;
+export const LICK_POSES = ['lick0', 'lick1', 'lick2', 'lick3', 'lick4', 'lick5', 'lick6', 'lick7'] as const;
 export type Pose = keyof typeof POSE_IMAGE;
 
 /** 그림 주소 (배포는 상대 경로라 문서 주소 기준으로 만든다) */

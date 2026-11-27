@@ -11,9 +11,10 @@
  * 친밀도와 감기는 settle 이 calcAt 부터 t 까지를 한 번에 반영한다 (자주 불러도 한 번 부른 것과 결과가 같다).
  */
 import {
-  BEHAVIOR, CAT_NEED, CONST, FOOD, MAX_CATS, NAME_RE, PERSONALITY, PRESENT_FURNITURE, PRESENT_SEEDS, PRESENT_TOYS, TOYS,
-  isChuruId, isColorId, isFoodId, isPersonalityId, isToyId, itemKey, kstDay, loveLevel, mix,
-  type ColorId, type FoodId, type PersonalityId, type Spot, type ToyId, SPOTS,
+  BEHAVIOR, CAT_NEED, CONST, EXCHANGES, FOOD, MAX_CATS, NAME_RE, PERSONALITY, PLANT, POT_MAX, POT_PRICES, POT_START, PRESENT_FURNITURE, PRESENT_SEEDS,
+  PRESENT_TOYS, SELL, SHOP_ITEM, TOYS, TREAT,
+  isChuruId, isColorId, isFoodId, isPersonalityId, isPlantId, isToyId, isTreatId, itemKey, kstDay, loveLevel, mix,
+  type ColorId, type FoodId, type PersonalityId, type PlantId, type Spot, type ToyId, SPOTS,
 } from '../data/balance';
 
 /** 서버가 거절한 까닭과 같은 글자 (SQL 의 raise exception) */
@@ -61,6 +62,22 @@ export interface Cat {
   present: Present | null;
   /** 처음 본 행동 (행동 도감, 본 순서) */
   seen: string[];
+  /** 캣그라스 · 캣닢: 그날 · 그날 먹은 수 · 캣닢을 먹은 때 (0 = 없음, 화면은 nip_sec 동안 우다다) */
+  treatDay: number;
+  treatN: number;
+  nipAt: number;
+}
+
+/** 베란다 화분 하나 (빈 화분은 목록에 없다) */
+export interface Pot {
+  /** 1 ~ 12 */
+  slot: number;
+  plant: PlantId;
+  plantedAt: number;
+  /** 마지막으로 물을 준 때까지 자란 초 */
+  grown: number;
+  /** 마지막으로 물을 준 때 (아직 안 줬으면 null) */
+  waterAt: number | null;
 }
 
 /** 고양이가 물어다 놓은 선물 */
@@ -93,11 +110,15 @@ export interface Profile {
   furniture: string[];
   /** 선물을 굴린 수 (선물을 정하는 번호) */
   pseq: number;
+  /** 화분 칸 수 (4 ~ 12) · 시아코인으로 산 수 (결제 기록 번호) */
+  pots: number;
+  buySeq: number;
 }
 
 export interface NyangState {
   profile: Profile;
   cats: Cat[];
+  pots: Pot[];
 }
 
 /** 돌보기 결과에 붙는 것: 하루 첫 돌보기 엽전 · 시아코인을 받게 됐는지 */
@@ -110,14 +131,18 @@ const { max: MAX, half: HALF } = CONST;
 const ceilDiv = (a: number, b: number) => Math.floor((a + b - 1) / b);
 
 export function newProfile(): Profile {
-  return { coins: 0, seq: 0, visitAt: 0, bonusDay: -1, careDays: 0, siaDay: -1, siaToday: 0, siaDue: 0, siaPaid: 0, sia: 0, items: {}, furniture: [], pseq: 0 };
+  return {
+    coins: 0, seq: 0, visitAt: 0, bonusDay: -1, careDays: 0, siaDay: -1, siaToday: 0, siaDue: 0, siaPaid: 0, sia: 0, items: {}, furniture: [], pseq: 0,
+    pots: POT_START, buySeq: 0,
+  };
 }
 export function newState(): NyangState {
-  return { profile: newProfile(), cats: [] };
+  return { profile: newProfile(), cats: [], pots: [] };
 }
 export const cloneState = (s: NyangState): NyangState => ({
   profile: { ...s.profile, items: { ...s.profile.items }, furniture: [...s.profile.furniture] },
   cats: s.cats.map(cloneCat),
+  pots: s.pots.map((p) => ({ ...p })),
 });
 const cloneCat = (c: Cat): Cat => ({ ...c, seen: [...c.seen], present: c.present ? { ...c.present } : null });
 
@@ -287,6 +312,7 @@ export function adopt(s0: NyangState, color: string, personality: string, name: 
     fedAt: t, fedAmount: MAX, waterAt: t, poopBase: 0, poopAt: t, moodVal: CONST.start_mood, moodAt: t,
     love: 0, sickAt: null, cureAt: null, petDay: -1, petLove: 0, petAt: 0,
     playAt: 0, playToy: null, playDay: -1, playLove: 0, brushDay: -1, churuDay: -1, churuN: 0, presentAt: t, present: null, seen: [],
+    treatDay: -1, treatN: 0, nipAt: 0,
   });
   // 첫 고양이를 들이면 그 고양이가 좋아하는 맛 츄르를 조금 (상점은 4단계)
   if (slot === 1) addItem(s.profile, itemKey.churu(PERSONALITY[personality as PersonalityId].churu), CONST.start_churu);
@@ -307,16 +333,22 @@ export function visit(s0: NyangState, entry: boolean, t: number): { state: Nyang
   return { state: s, away };
 }
 
-/** 밥 주기: 밥그릇을 채운다 (사료마다 양이 다르다) */
+/** 밥 주기: 밥그릇을 채운다. 기본 사료는 공짜, 상점 사료는 보관함의 'food:<id>' 하나를 쓰고 기분도 오른다 */
 export function feed(s0: NyangState, slot: number, food: string, t: number): { state: NyangState } & CareResult {
   const s = cloneState(s0);
   if (!isFoodId(food)) throw new RuleError('bad food');
+  const f = FOOD[food as FoodId];
   const c = settle(catOf(s, slot), t);
   const before = fullOf(c, t);
   if (before >= CONST.feed_full) throw new RuleError('bowl full');
-  const after = Math.min(MAX, before + FOOD[food as FoodId].add);
+  if (f.price > 0) {
+    if (itemCount(s.profile, itemKey.food(f.id)) < 1) throw new RuleError('no food');
+    addItem(s.profile, itemKey.food(f.id), -1);
+  }
+  const after = Math.min(MAX, before + f.add);
   c.fedAmount = after;
   c.fedAt = t;
+  if (f.mood > 0) raiseMood(c, f.mood, t);
   putCat(s, c);
   return { state: s, ...care(s.profile, before < HALF && after >= HALF, t) };
 }
@@ -572,4 +604,170 @@ export function seen(s0: NyangState, slot: number, behavior: string, t: number):
   if (added) c.seen.push(b.id);
   putCat(s, c);
   return { state: s, added };
+}
+
+// ---------- 4단계: 베란다 정원 · 상점 ----------
+
+/** 내 고양이 중 가장 높은 친밀도 단계 (씨앗이 열리는 기준, 고양이가 없으면 1) */
+export const topLevel = (s: NyangState) => Math.max(1, ...s.cats.map(levelOf));
+
+/** 화분이 지금까지 자란 초 (물을 준 뒤 water_sec 동안만 자란다 · 다 자라면 멈춘다) */
+export function potGrown(p: Pot, t: number): number {
+  const pl = PLANT[p.plant];
+  const wet = p.waterAt == null ? 0 : Math.max(0, Math.min(t - p.waterAt, pl.water_sec));
+  return Math.min(pl.grow_sec, p.grown + wet);
+}
+/** 물이 아직 남아 있나 (자라는 중) */
+export const potWet = (p: Pot, t: number) => p.waterAt != null && t < p.waterAt + PLANT[p.plant].water_sec && potGrown(p, t) < PLANT[p.plant].grow_sec;
+/** 그림 단계: 0 씨앗 · 1 새싹 · 2 봉오리 · 3 꽃 (다 자람) */
+export function potStage(p: Pot, t: number): 0 | 1 | 2 | 3 {
+  const g = potGrown(p, t);
+  const total = PLANT[p.plant].grow_sec;
+  if (g >= total) return 3;
+  return Math.min(2, Math.floor((g * 3) / total)) as 0 | 1 | 2;
+}
+/** 다 자라는 때 (물이 계속 있다면 · 지금 물이 마르면 null) */
+export function potReadyAt(p: Pot, t: number): number | null {
+  const pl = PLANT[p.plant];
+  const g = potGrown(p, t);
+  if (g >= pl.grow_sec) return t;
+  if (!potWet(p, t)) return null;
+  const at = p.waterAt! + (pl.grow_sec - p.grown);
+  return at <= p.waterAt! + pl.water_sec ? at : null;
+}
+
+function potOf(s: NyangState, slot: number): Pot | undefined {
+  return s.pots.find((p) => p.slot === slot);
+}
+
+/** 심기: 빈 화분에 보관함의 씨앗 하나 */
+export function plant(s0: NyangState, slot: number, seed: string, t: number): { state: NyangState } & CareResult {
+  const s = cloneState(s0);
+  if (!isPlantId(seed)) throw new RuleError('bad seed');
+  if (!Number.isInteger(slot) || slot < 1 || slot > s.profile.pots) throw new RuleError('bad pot');
+  if (potOf(s, slot)) throw new RuleError('pot busy');
+  if (itemCount(s.profile, itemKey.seed(seed)) < 1) throw new RuleError('no seed');
+  addItem(s.profile, itemKey.seed(seed), -1);
+  s.pots.push({ slot, plant: seed, plantedAt: t, grown: 0, waterAt: null });
+  s.pots.sort((a, b) => a.slot - b.slot);
+  return { state: s, ...care(s.profile, false, t) };
+}
+
+/** 물 주기: 지금까지 자란 것을 적어 두고 물을 새로 (water_sec 동안 자란다). 물이 남아 있으면 'pot wet' */
+export function waterPot(s0: NyangState, slot: number, t: number): { state: NyangState } & CareResult {
+  const s = cloneState(s0);
+  const p = potOf(s, slot);
+  if (!p) throw new RuleError('no plant');
+  const g = potGrown(p, t);
+  if (g >= PLANT[p.plant].grow_sec) throw new RuleError('pot ready');
+  if (potWet(p, t)) throw new RuleError('pot wet');
+  p.grown = g;
+  p.waterAt = t;
+  return { state: s, ...care(s.profile, false, t) };
+}
+
+/** 수확: 다 자란 것을 보관함('plant:<id>')에, 화분은 빈 칸으로 */
+export function harvest(s0: NyangState, slot: number, t: number): { state: NyangState; plant: PlantId } & CareResult {
+  const s = cloneState(s0);
+  const p = potOf(s, slot);
+  if (!p) throw new RuleError('no plant');
+  if (potGrown(p, t) < PLANT[p.plant].grow_sec) throw new RuleError('not ready');
+  s.pots = s.pots.filter((x) => x.slot !== slot);
+  addItem(s.profile, itemKey.plant(p.plant), 1);
+  return { state: s, plant: p.plant, ...care(s.profile, false, t) };
+}
+
+/** 화분 칸 늘리기 (엽전) */
+export function expandPots(s0: NyangState, t: number): { state: NyangState; price: number } {
+  void t;
+  const s = cloneState(s0);
+  const pr = s.profile;
+  if (pr.pots >= POT_MAX) throw new RuleError('max pots');
+  const price = POT_PRICES[pr.pots - POT_START];
+  if (pr.coins < price) throw new RuleError('no coins');
+  pr.coins -= price;
+  pr.pots += 1;
+  return { state: s, price };
+}
+
+/** 이미 가진 것인지 (하나만 가질 수 있는 장난감 · 가구) */
+function owns(p: Profile, id: string): boolean {
+  if (id.startsWith('furniture:')) return p.furniture.includes(id.slice('furniture:'.length));
+  return itemCount(p, id) > 0;
+}
+
+/**
+ * 상점에서 사기: 엽전(price × n) · 시아코인(sia × n, 서버는 _spend_sia_coin 으로 지갑에서 한 번에). 보관함에 give × n 개.
+ * 가구는 nyang_profiles.furniture 에 (하나만). 씨앗은 친밀도 단계가 닿아야 열린다.
+ */
+export function buy(s0: NyangState, id: string, n: number, t: number): { state: NyangState; id: string; n: number } {
+  void t;
+  const s = cloneState(s0);
+  const it = Object.prototype.hasOwnProperty.call(SHOP_ITEM, id) ? SHOP_ITEM[id] : undefined;
+  if (!it) throw new RuleError('bad item');
+  if (!Number.isInteger(n) || n < 1 || n > CONST.buy_max || (it.once && n !== 1)) throw new RuleError('bad amount');
+  if (topLevel(s) < it.level) throw new RuleError('locked');
+  const p = s.profile;
+  if (it.once && owns(p, id)) throw new RuleError('have it');
+  const coins = it.price * n;
+  if (p.coins < coins) throw new RuleError('no coins');
+  const sia = it.sia * n;
+  if (sia > 0 && p.sia < sia) throw new RuleError('not enough coin');
+  p.coins -= coins;
+  if (sia > 0) {
+    p.sia -= sia;
+    p.buySeq += 1;
+  }
+  if (id.startsWith('furniture:')) p.furniture.push(id.slice('furniture:'.length));
+  else addItem(p, id, it.give * n);
+  return { state: s, id, n };
+}
+
+/** 팔기 (수확한 꽃 · 털 뭉치) → 받은 엽전 */
+export function sell(s0: NyangState, id: string, n: number, t: number): { state: NyangState; coins: number } {
+  void t;
+  const s = cloneState(s0);
+  const price = Object.prototype.hasOwnProperty.call(SELL, id) ? SELL[id] : 0;
+  if (!price) throw new RuleError('bad item');
+  if (!Number.isInteger(n) || n < 1 || n > CONST.sell_max) throw new RuleError('bad amount');
+  if (itemCount(s.profile, id) < n) throw new RuleError('no item');
+  addItem(s.profile, id, -n);
+  s.profile.coins += price * n;
+  return { state: s, coins: price * n };
+}
+
+/** 수확물과 특별 가구 바꾸기 (보름달꽃 3송이 → 보름달 등) */
+export function exchange(s0: NyangState, id: string, t: number): { state: NyangState } {
+  void t;
+  const s = cloneState(s0);
+  const ex = EXCHANGES.find((e) => e.id === id);
+  if (!ex) throw new RuleError('bad item');
+  const p = s.profile;
+  if (p.furniture.includes(ex.id)) throw new RuleError('have it');
+  if (itemCount(p, ex.need) < ex.n) throw new RuleError('no item');
+  addItem(p, ex.need, -ex.n);
+  p.furniture.push(ex.id);
+  return { state: s };
+}
+
+/** 캣그라스 · 캣닢을 고양이에게 (고양이마다 하루 treat_day_max 번): 기분 크게 · 친밀도. 캣닢이면 nipAt (화면은 10분 우다다) */
+export function treat(s0: NyangState, slot: number, kind: string, t: number): { state: NyangState; love: number } & CareResult {
+  const s = cloneState(s0);
+  if (!isTreatId(kind)) throw new RuleError('bad treat');
+  const c = settle(catOf(s, slot), t);
+  const day = kstDay(t);
+  if (c.treatDay !== day) {
+    c.treatDay = day;
+    c.treatN = 0;
+  }
+  if (c.treatN >= CONST.treat_day_max) throw new RuleError('treat full');
+  if (itemCount(s.profile, itemKey.plant(kind)) < 1) throw new RuleError('no item');
+  addItem(s.profile, itemKey.plant(kind), -1);
+  c.treatN += 1;
+  const needed = raiseMood(c, TREAT[kind].mood, t);
+  const love = c.sickAt != null ? 0 : TREAT[kind].love;
+  c.love += love;
+  if (kind === 'catnip') c.nipAt = t;
+  putCat(s, c);
+  return { state: s, love, ...care(s.profile, needed, t) };
 }

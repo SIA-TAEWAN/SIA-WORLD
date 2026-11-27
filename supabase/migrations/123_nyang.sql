@@ -1,4 +1,4 @@
--- 123: 시아집사 (games/nyang) — 1단계 서버 규칙
+-- 123: 시아집사 (games/nyang) — 서버 규칙 (1~4단계: 돌보기 · 놀이 · 츄르 · 선물 · 베란다 정원 · 상점)
 --
 -- 랜선 고양이 집사 게임. 고양이 상태 · 친밀도 · 감기는 모두 서버 시각으로 계산한다 (시아마을과 같은 방식).
 -- 같은 규칙이 games/nyang/src/game/rules.ts 에 있고 (로컬 모드 · 화면 미리 보기), 값 · 표는 games/nyang/src/data/balance.ts 와 같다
@@ -24,6 +24,15 @@
 --   nyang_churu(p_slot, p_flavor) → love, liked, cured     'bad flavor' · 'churu full' · 'no churu'
 --   nyang_gift(p_slot) → present               'no present'   (선물은 nyang_state(true) 가 고양이마다 굴린다)
 --   nyang_seen(p_slot, p_behavior) → added     'bad behavior' · 'too early'   (행동 도감)
+--   4단계 (베란다 정원 · 상점):
+--   nyang_plant(p_pot, p_seed)                 'bad seed' · 'bad pot' · 'pot busy' · 'no seed'
+--   nyang_water_pot(p_pot)                     'no plant' · 'pot ready' · 'pot wet'   (물을 준 뒤 water_sec 동안만 자란다. 마르면 멈출 뿐 시들지 않는다)
+--   nyang_harvest(p_pot) → plant               'no plant' · 'not ready'
+--   nyang_expand_pots() → price                'max pots' · 'no coins'
+--   nyang_buy(p_item, p_n)                     'bad item' · 'bad amount' · 'locked' · 'have it' · 'no coins' · 'not enough coin'(시아코인, _spend_sia_coin)
+--   nyang_sell(p_item, p_n) → coins            'bad item' · 'bad amount' · 'no item'
+--   nyang_exchange(p_id)                       'bad item' · 'have it' · 'no item'   (보름달꽃 3송이 → 보름달 등)
+--   nyang_treat(p_slot, p_kind) → love         'bad treat' · 'treat full' · 'no item'   (캣그라스 · 캣닢을 고양이에게)
 -- 돌보기 결과에는 bonus(하루 첫 돌보기 엽전)와 sia(시아코인을 받게 됐는지)가 붙는다.
 -- 시아코인: 필요한 돌보기(상태가 절반 아래 → 절반 이상으로 돌아오게 한 것) 한 번에 1개, 하루(한국 시간) 최대 5개.
 --   _grant_sia_coin 은 15초 간격을 지키느라 바로 못 줄 때가 있어, 못 준 것은 nyang_profiles.sia_due 에 두고 다음 요청 때 준다
@@ -50,6 +59,8 @@ create table if not exists public.nyang_profiles (
   sia_due int not null default 0 check (sia_due >= 0),          -- 아직 못 받은 시아코인
   sia_paid int not null default 0 check (sia_paid >= 0),        -- 받은 시아코인 수 (기록 번호)
   pseq int not null default 0 check (pseq >= 0),                -- 고양이 선물을 굴린 수 (선물을 정하는 번호)
+  pots smallint not null default 4 check (pots between 4 and 12), -- 베란다 화분 칸 수 (4단계)
+  buy_seq int not null default 0 check (buy_seq >= 0),          -- 시아코인으로 산 수 (sia_coin_spends 의 ref = 'buy:<번호>')
   created_at timestamptz not null default now()
 );
 alter table public.nyang_profiles enable row level security;
@@ -88,20 +99,22 @@ create table if not exists public.nyang_cats (
   present_at bigint not null default 0,                         -- 선물을 마지막으로 굴린 때
   present jsonb,                                                -- 바닥에 놓인 선물 { kind, id, n } (없으면 null)
   seen jsonb not null default '[]'::jsonb,                      -- 처음 본 행동 id (행동 도감 — 화면은 5단계)
+  treat_day int not null default -1,                            -- 캣그라스 · 캣닢을 먹은 날 (4단계)
+  treat_n int not null default 0,                               -- 그날 먹은 수 (하루 treat_day_max)
+  nip_at bigint not null default 0,                             -- 캣닢을 먹은 때 (화면은 10분 동안 우다다)
   primary key (user_id, slot)
 );
 alter table public.nyang_cats enable row level security;
 revoke all on public.nyang_cats from anon, authenticated;
 
--- 베란다 화분 (4단계): 처음 4칸, 최대 12칸
+-- 베란다 화분 (4단계): 심은 화분만 줄이 있다 (빈 화분 = 줄 없음, 수확하면 지운다). 칸 수는 nyang_profiles.pots
 create table if not exists public.nyang_pots (
   user_id uuid not null references public.profiles(id) on delete cascade,
   slot smallint not null check (slot between 1 and 12),
-  plant text,                                                   -- null = 빈 화분
-  planted_at bigint,
-  grown int not null default 0 check (grown >= 0),              -- 물을 준 동안 자란 초 (마지막으로 계산한 때까지)
-  water_at bigint,                                              -- 마지막으로 물을 준 때
-  calc_at bigint,
+  plant text not null,
+  planted_at bigint not null,
+  grown int not null default 0 check (grown >= 0),              -- 마지막으로 물을 준 때까지 자란 초
+  water_at bigint,                                              -- 마지막으로 물을 준 때 (null = 아직 안 줌)
   primary key (user_id, slot)
 );
 alter table public.nyang_pots enable row level security;
@@ -177,6 +190,12 @@ language sql immutable as $$
     when 'present_toy_pct' then 15
     when 'present_coin_min' then 5
     when 'present_coin_span' then 11
+    when 'treat_day_max' then 2
+    when 'nip_sec' then 600
+    when 'buy_max' then 99
+    when 'sell_max' then 999
+    when 'pot_start' then 4
+    when 'pot_max' then 12
   end
 $$;
 revoke all on function public._nyang_const(text) from public, anon, authenticated;
@@ -186,6 +205,7 @@ language sql immutable as $$
   select case p_name
     when 'love_need' then array[30000, 135000, 230000, 310000, 380000, 490000, 620000, 810000, 1135000]
     when 'cat_need' then array[4, 7, 10]
+    when 'pot_prices' then array[100, 150, 220, 300, 400, 500, 650, 800]
   end
 $$;
 revoke all on function public._nyang_table(text) from public, anon, authenticated;
@@ -219,13 +239,15 @@ language sql immutable as $$
 $$;
 revoke all on function public._nyang_personalities() from public, anon, authenticated;
 
--- 사료: 한 번에 채우는 배부름 · 값(엽전)
+-- 사료: 한 번에 채우는 배부름 · 함께 오르는 기분 · 상점 한 묶음의 그릇 수 · 값(엽전). 값이 0 이면 공짜 · 무제한 (보관함을 쓰지 않는다)
 create or replace function public._nyang_foods()
-returns table (id text, add int, price int)
+returns table (id text, add int, mood int, pack int, price int)
 language sql immutable as $$
   select * from (values
-    ('basic', 10000, 0)
-  ) v (id, add, price)
+    ('basic', 10000, 0, 0, 0),
+    ('tasty', 10000, 1500, 5, 10),
+    ('premium', 10000, 3000, 5, 30)
+  ) v (id, add, mood, pack, price)
 $$;
 revoke all on function public._nyang_foods() from public, anon, authenticated;
 
@@ -257,6 +279,86 @@ language sql immutable as $$
   ) v (id, level)
 $$;
 revoke all on function public._nyang_behaviors() from public, anon, authenticated;
+
+-- 식물 6종 (4단계, balance.ts 의 PLANTS): 다 자라는 시간 · 물 한 번에 자라는 시간 · 씨앗이 열리는 친밀도 단계 · 씨앗 값 · 팔 때 값(0 = 안 팜)
+create or replace function public._nyang_plants()
+returns table (id text, grow_sec int, water_sec int, level int, seed int, sell int)
+language sql immutable as $$
+  select * from (values
+    ('daisy', 3600, 3600, 1, 4, 8),
+    ('catgrass', 7200, 7200, 1, 5, 7),
+    ('sunflower', 14400, 7200, 2, 10, 24),
+    ('catnip', 21600, 10800, 3, 15, 32),
+    ('rose', 28800, 14400, 5, 25, 50),
+    ('moonflower', 43200, 21600, 7, 50, 0)
+  ) v (id, grow_sec, water_sec, level, seed, sell)
+$$;
+revoke all on function public._nyang_plants() from public, anon, authenticated;
+
+-- 상점 (balance.ts 의 SHOP): 보관함 열쇠 · 탭 · 엽전 · 시아코인 · 하나 사면 받는 수 · 하나만(1) · 열리는 친밀도 단계
+create or replace function public._nyang_shop()
+returns table (id text, tab text, price int, sia int, give int, once int, level int)
+language sql immutable as $$
+  select * from (values
+    ('food:tasty', 'food', 10, 0, 5, 0, 1),
+    ('food:premium', 'food', 30, 0, 5, 0, 1),
+    ('medicine', 'snack', 8, 0, 1, 0, 1),
+    ('churu:tuna', 'churu', 0, 5, 1, 0, 1),
+    ('churu:salmon', 'churu', 0, 5, 1, 0, 1),
+    ('churu:chicken', 'churu', 0, 5, 1, 0, 1),
+    ('seed:daisy', 'seed', 4, 0, 1, 0, 1),
+    ('seed:catgrass', 'seed', 5, 0, 1, 0, 1),
+    ('seed:sunflower', 'seed', 10, 0, 1, 0, 2),
+    ('seed:catnip', 'seed', 15, 0, 1, 0, 3),
+    ('seed:rose', 'seed', 25, 0, 1, 0, 5),
+    ('seed:moonflower', 'seed', 50, 0, 1, 0, 7),
+    ('toy:laser', 'toy', 60, 0, 1, 1, 1),
+    ('toy:ball', 'toy', 40, 0, 1, 1, 1),
+    ('toy:box', 'toy', 30, 0, 1, 1, 1),
+    ('furniture:vase', 'furniture', 40, 0, 1, 1, 1),
+    ('furniture:scratcher', 'furniture', 150, 0, 1, 1, 1),
+    ('furniture:hideaway', 'furniture', 200, 0, 1, 1, 1),
+    ('furniture:cat_tower', 'furniture', 400, 0, 1, 1, 1),
+    ('furniture:zodiac_shelf', 'furniture', 0, 60, 1, 1, 1)
+  ) v (id, tab, price, sia, give, once, level)
+$$;
+revoke all on function public._nyang_shop() from public, anon, authenticated;
+
+-- 팔 수 있는 것 (balance.ts 의 SELL): 보관함 열쇠 · 하나에 엽전
+create or replace function public._nyang_sell()
+returns table (id text, price int)
+language sql immutable as $$
+  select * from (values
+    ('plant:daisy', 8),
+    ('plant:catgrass', 7),
+    ('plant:sunflower', 24),
+    ('plant:catnip', 32),
+    ('plant:rose', 50),
+    ('fur', 2)
+  ) v (id, price)
+$$;
+revoke all on function public._nyang_sell() from public, anon, authenticated;
+
+-- 수확물과 바꾸는 특별 가구 (balance.ts 의 EXCHANGES): 가구 id · 필요한 보관함 열쇠 · 개수
+create or replace function public._nyang_exchanges()
+returns table (id text, need text, n int)
+language sql immutable as $$
+  select * from (values
+    ('moon_lamp', 'plant:moonflower', 3)
+  ) v (id, need, n)
+$$;
+revoke all on function public._nyang_exchanges() from public, anon, authenticated;
+
+-- 고양이에게 주는 풀 (balance.ts 의 TREAT): 기분 · 친밀도
+create or replace function public._nyang_treats()
+returns table (id text, mood int, love int)
+language sql immutable as $$
+  select * from (values
+    ('catgrass', 5000, 1000),
+    ('catnip', 8000, 2000)
+  ) v (id, mood, love)
+$$;
+revoke all on function public._nyang_treats() from public, anon, authenticated;
 
 -- ---------- 3. 계산 (games/nyang/src/game/rules.ts 와 같다) ----------
 
@@ -412,7 +514,8 @@ begin
     mood_val = c.mood_val, mood_at = c.mood_at, love = c.love, love_at = c.love_at, sick_at = c.sick_at, cure_at = c.cure_at,
     pet_day = c.pet_day, pet_love = c.pet_love, pet_at = c.pet_at,
     play_at = c.play_at, play_toy = c.play_toy, play_day = c.play_day, play_love = c.play_love, brush_day = c.brush_day,
-    churu_day = c.churu_day, churu_n = c.churu_n, present_at = c.present_at, present = c.present, seen = c.seen
+    churu_day = c.churu_day, churu_n = c.churu_n, present_at = c.present_at, present = c.present, seen = c.seen,
+    treat_day = c.treat_day, treat_n = c.treat_n, nip_at = c.nip_at
   where user_id = c.user_id and slot = c.slot;
 end $$;
 revoke all on function public._nyang_save(public.nyang_cats) from public, anon, authenticated;
@@ -529,15 +632,18 @@ language sql stable security definer set search_path = public as $$
     'profile', (select jsonb_build_object('coins', pr.coins, 'seq', pr.seq, 'visitAt', pr.visit_at, 'bonusDay', pr.bonus_day, 'careDays', pr.care_days,
         'siaDay', pr.sia_day, 'siaToday', pr.sia_today, 'siaDue', pr.sia_due, 'siaPaid', pr.sia_paid,
         'sia', coalesce((select w.sia_coins from public.wallets w where w.user_id = p_user), 0),
-        'items', pr.items, 'furniture', pr.furniture, 'pseq', pr.pseq)
+        'items', pr.items, 'furniture', pr.furniture, 'pseq', pr.pseq, 'pots', pr.pots, 'buySeq', pr.buy_seq)
       from public.nyang_profiles pr where pr.user_id = p_user),
     'cats', coalesce((select jsonb_agg(jsonb_build_object('slot', c.slot, 'name', c.name, 'color', c.color, 'pattern', c.pattern, 'personality', c.personality,
         'adoptedAt', c.adopted_at, 'calcAt', c.calc_at, 'fedAt', c.fed_at, 'fedAmount', c.fed_amount, 'waterAt', c.water_at,
         'poopBase', c.poop_base, 'poopAt', c.poop_at, 'moodVal', c.mood_val, 'moodAt', c.mood_at, 'love', c.love,
         'sickAt', c.sick_at, 'cureAt', c.cure_at, 'petDay', c.pet_day, 'petLove', c.pet_love, 'petAt', c.pet_at,
         'playAt', c.play_at, 'playToy', c.play_toy, 'playDay', c.play_day, 'playLove', c.play_love, 'brushDay', c.brush_day,
-        'churuDay', c.churu_day, 'churuN', c.churu_n, 'presentAt', c.present_at, 'present', c.present, 'seen', c.seen) order by c.slot)
-      from public.nyang_cats c where c.user_id = p_user), '[]'::jsonb))
+        'churuDay', c.churu_day, 'churuN', c.churu_n, 'presentAt', c.present_at, 'present', c.present, 'seen', c.seen,
+        'treatDay', c.treat_day, 'treatN', c.treat_n, 'nipAt', c.nip_at) order by c.slot)
+      from public.nyang_cats c where c.user_id = p_user), '[]'::jsonb),
+    'pots', coalesce((select jsonb_agg(jsonb_build_object('slot', p.slot, 'plant', p.plant, 'plantedAt', p.planted_at, 'grown', p.grown, 'waterAt', p.water_at)
+        order by p.slot) from public.nyang_pots p where p.user_id = p_user), '[]'::jsonb))
 $$;
 revoke all on function public._nyang_json(uuid, bigint) from public, anon, authenticated;
 
@@ -598,16 +704,26 @@ grant execute on function public.nyang_adopt(text, text, text) to authenticated;
 -- 밥 주기 (rules.ts 의 feed)
 create or replace function public.nyang_feed(p_slot int, p_food text default 'basic') returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; f record; before int; after int; r jsonb;
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; f record; before int; after int; m int; r jsonb;
 begin
   select * into f from public._nyang_foods() x where x.id = p_food;
   if not found then raise exception 'bad food'; end if;
   c := public._nyang_cat(me, p_slot, t);
   before := (public._nyang_levels(c, t)->>'full')::int;
   if before >= public._nyang_const('feed_full') then raise exception 'bowl full'; end if;
+  -- 상점 사료는 보관함에서 하나 (기본 사료는 공짜)
+  if f.price > 0 then
+    if public._nyang_item(me, 'food:' || f.id) < 1 then raise exception 'no food'; end if;
+    perform public._nyang_add_item(me, 'food:' || f.id, -1);
+  end if;
   after := least(10000, before + f.add);
   c.fed_amount := after;
   c.fed_at := t;
+  if f.mood > 0 then
+    m := (public._nyang_levels(c, t)->>'mood')::int;
+    c.mood_val := least(10000, m + f.mood);
+    c.mood_at := t;
+  end if;
   perform public._nyang_save(c);
   r := public._nyang_care(me, before < 5000 and after >= 5000, t);
   perform public._nyang_pay(me);
@@ -889,6 +1005,190 @@ begin
 end $$;
 revoke all on function public.nyang_seen(int, text) from public;
 grant execute on function public.nyang_seen(int, text) to authenticated;
+
+-- ---------- 5-3. 베란다 정원 · 상점 (4단계) ----------
+
+-- 내 고양이 중 가장 높은 친밀도 단계 (씨앗이 열리는 기준 — rules.ts 의 topLevel)
+create or replace function public._nyang_top_level(p_user uuid) returns int
+language sql stable security definer set search_path = public as $$
+  select greatest(1, coalesce((select max(public._nyang_level(c.love)) from public.nyang_cats c where c.user_id = p_user), 1))
+$$;
+revoke all on function public._nyang_top_level(uuid) from public, anon, authenticated;
+
+-- 화분이 p_t 까지 자란 초 (rules.ts 의 potGrown): 물을 준 뒤 water_sec 동안만 자라고, 다 자라면 멈춘다
+create or replace function public._nyang_pot_grown(p public.nyang_pots, p_t bigint) returns int
+language sql stable set search_path = public as $$
+  select least(pl.grow_sec, p.grown + case when p.water_at is null then 0 else greatest(0, least(p_t - p.water_at, pl.water_sec::bigint))::int end)
+  from public._nyang_plants() pl where pl.id = p.plant
+$$;
+revoke all on function public._nyang_pot_grown(public.nyang_pots, bigint) from public, anon, authenticated;
+
+-- 심기 (rules.ts 의 plant): 빈 화분에 보관함의 씨앗 하나
+create or replace function public.nyang_plant(p_pot int, p_seed text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); n int; r jsonb;
+begin
+  if p_seed is null or not exists (select 1 from public._nyang_plants() x where x.id = p_seed) then raise exception 'bad seed'; end if;
+  select pots into n from public.nyang_profiles where user_id = me;
+  if p_pot is null or p_pot < 1 or p_pot > n then raise exception 'bad pot'; end if;
+  if exists (select 1 from public.nyang_pots where user_id = me and slot = p_pot) then raise exception 'pot busy'; end if;
+  if public._nyang_item(me, 'seed:' || p_seed) < 1 then raise exception 'no seed'; end if;
+  perform public._nyang_add_item(me, 'seed:' || p_seed, -1);
+  insert into public.nyang_pots (user_id, slot, plant, planted_at, grown, water_at) values (me, p_pot, p_seed, t, 0, null);
+  r := public._nyang_care(me, false, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_plant(int, text) from public;
+grant execute on function public.nyang_plant(int, text) to authenticated;
+
+-- 물 주기 (rules.ts 의 waterPot): 지금까지 자란 것을 적고 물을 새로. 물이 남아 있으면 'pot wet'
+create or replace function public.nyang_water_pot(p_pot int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); p public.nyang_pots; pl record; g int; r jsonb;
+begin
+  select * into p from public.nyang_pots where user_id = me and slot = p_pot for update;
+  if not found then raise exception 'no plant'; end if;
+  select * into pl from public._nyang_plants() x where x.id = p.plant;
+  g := public._nyang_pot_grown(p, t);
+  if g >= pl.grow_sec then raise exception 'pot ready'; end if;
+  if p.water_at is not null and t < p.water_at + pl.water_sec then raise exception 'pot wet'; end if;
+  update public.nyang_pots set grown = g, water_at = t where user_id = me and slot = p_pot;
+  r := public._nyang_care(me, false, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_water_pot(int) from public;
+grant execute on function public.nyang_water_pot(int) to authenticated;
+
+-- 수확 (rules.ts 의 harvest): 다 자란 것을 보관함 'plant:<id>' 에, 화분은 빈 칸으로 → plant
+create or replace function public.nyang_harvest(p_pot int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); p public.nyang_pots; r jsonb;
+begin
+  select * into p from public.nyang_pots where user_id = me and slot = p_pot for update;
+  if not found then raise exception 'no plant'; end if;
+  if public._nyang_pot_grown(p, t) < (select x.grow_sec from public._nyang_plants() x where x.id = p.plant) then raise exception 'not ready'; end if;
+  delete from public.nyang_pots where user_id = me and slot = p_pot;
+  perform public._nyang_add_item(me, 'plant:' || p.plant, 1);
+  r := public._nyang_care(me, false, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t), 'plant', p.plant);
+end $$;
+revoke all on function public.nyang_harvest(int) from public;
+grant execute on function public.nyang_harvest(int) to authenticated;
+
+-- 화분 칸 늘리기 (rules.ts 의 expandPots) → price
+create or replace function public.nyang_expand_pots() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); pr public.nyang_profiles; price int;
+begin
+  select * into pr from public.nyang_profiles where user_id = me;
+  if pr.pots >= public._nyang_const('pot_max') then raise exception 'max pots'; end if;
+  price := (public._nyang_table('pot_prices'))[pr.pots - public._nyang_const('pot_start') + 1];
+  if pr.coins < price then raise exception 'no coins'; end if;
+  update public.nyang_profiles set coins = coins - price, pots = pots + 1 where user_id = me;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t), 'price', price);
+end $$;
+revoke all on function public.nyang_expand_pots() from public;
+grant execute on function public.nyang_expand_pots() to authenticated;
+
+-- 상점에서 사기 (rules.ts 의 buy): 엽전 price × n · 시아코인 sia × n (지갑에서 _spend_sia_coin 으로 한 번에) → 보관함 give × n · 가구는 furniture 에
+create or replace function public.nyang_buy(p_item text, p_n int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); it record; pr public.nyang_profiles; owned boolean; fid text;
+begin
+  select * into it from public._nyang_shop() x where x.id = p_item;
+  if not found then raise exception 'bad item'; end if;
+  if p_n is null or p_n < 1 or p_n > public._nyang_const('buy_max') or (it.once = 1 and p_n <> 1) then raise exception 'bad amount'; end if;
+  if public._nyang_top_level(me) < it.level then raise exception 'locked'; end if;
+  select * into pr from public.nyang_profiles where user_id = me;
+  fid := case when p_item like 'furniture:%' then substr(p_item, 11) else null end;
+  owned := case when fid is not null then pr.furniture ? fid else public._nyang_item(me, p_item) > 0 end;
+  if it.once = 1 and owned then raise exception 'have it'; end if;
+  if pr.coins < it.price * p_n then raise exception 'no coins'; end if;
+  if it.sia > 0 then
+    perform public._spend_sia_coin(me, it.sia * p_n, 'nyang', 'buy:' || (pr.buy_seq + 1));
+    update public.nyang_profiles set buy_seq = buy_seq + 1 where user_id = me;
+  end if;
+  update public.nyang_profiles set coins = coins - it.price * p_n where user_id = me;
+  if fid is not null then
+    update public.nyang_profiles set furniture = furniture || jsonb_build_array(fid) where user_id = me;
+  else
+    perform public._nyang_add_item(me, p_item, it.give * p_n);
+  end if;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t), 'id', p_item, 'n', p_n);
+end $$;
+revoke all on function public.nyang_buy(text, int) from public;
+grant execute on function public.nyang_buy(text, int) to authenticated;
+
+-- 팔기 (rules.ts 의 sell): 수확한 꽃 · 털 뭉치 → coins (받은 엽전)
+create or replace function public.nyang_sell(p_item text, p_n int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); price int;
+begin
+  select x.price into price from public._nyang_sell() x where x.id = p_item;
+  if price is null or price <= 0 then raise exception 'bad item'; end if;
+  if p_n is null or p_n < 1 or p_n > public._nyang_const('sell_max') then raise exception 'bad amount'; end if;
+  if public._nyang_item(me, p_item) < p_n then raise exception 'no item'; end if;
+  perform public._nyang_add_item(me, p_item, -p_n);
+  update public.nyang_profiles set coins = coins + price * p_n where user_id = me;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t), 'coins', price * p_n);
+end $$;
+revoke all on function public.nyang_sell(text, int) from public;
+grant execute on function public.nyang_sell(text, int) to authenticated;
+
+-- 수확물과 특별 가구 바꾸기 (rules.ts 의 exchange)
+create or replace function public.nyang_exchange(p_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); ex record;
+begin
+  select * into ex from public._nyang_exchanges() x where x.id = p_id;
+  if not found then raise exception 'bad item'; end if;
+  if (select furniture ? ex.id from public.nyang_profiles where user_id = me) then raise exception 'have it'; end if;
+  if public._nyang_item(me, ex.need) < ex.n then raise exception 'no item'; end if;
+  perform public._nyang_add_item(me, ex.need, -ex.n);
+  update public.nyang_profiles set furniture = furniture || jsonb_build_array(ex.id) where user_id = me;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_exchange(text) from public;
+grant execute on function public.nyang_exchange(text) to authenticated;
+
+-- 캣그라스 · 캣닢을 고양이에게 (rules.ts 의 treat): 고양이마다 하루 treat_day_max 번 → love
+create or replace function public.nyang_treat(p_slot int, p_kind text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; tr record; day int := public._nyang_day(t);
+  before int; after int; add int; r jsonb;
+begin
+  select * into tr from public._nyang_treats() x where x.id = p_kind;
+  if not found then raise exception 'bad treat'; end if;
+  c := public._nyang_cat(me, p_slot, t);
+  if c.treat_day <> day then
+    c.treat_day := day;
+    c.treat_n := 0;
+  end if;
+  if c.treat_n >= public._nyang_const('treat_day_max') then raise exception 'treat full'; end if;
+  if public._nyang_item(me, 'plant:' || p_kind) < 1 then raise exception 'no item'; end if;
+  perform public._nyang_add_item(me, 'plant:' || p_kind, -1);
+  c.treat_n := c.treat_n + 1;
+  before := (public._nyang_levels(c, t)->>'mood')::int;
+  after := least(10000, before + tr.mood);
+  c.mood_val := after;
+  c.mood_at := t;
+  add := case when c.sick_at is not null then 0 else tr.love end;
+  c.love := c.love + add;
+  if p_kind = 'catnip' then c.nip_at := t; end if;
+  perform public._nyang_save(c);
+  r := public._nyang_care(me, before < 5000 and after >= 5000, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t), 'love', add);
+end $$;
+revoke all on function public.nyang_treat(int, text) from public;
+grant execute on function public.nyang_treat(int, text) to authenticated;
 
 -- ---------- 6. 게임 열기 (처음에는 닫힘 — 관리자만 들어간다) ----------
 

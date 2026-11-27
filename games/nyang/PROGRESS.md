@@ -1,6 +1,6 @@
 # 시아집사 진행 상황 (인계 문서)
 
-PRD: `PRD.md`. 지금 끝난 것: **13장 1단계(서버 규칙) · 2단계(입양 · 방 · 밥/물/똥/쓰다듬기) · 3단계(놀아 주기 · 츄르 · 빗질 · 친밀도 행동 · 선물 · 시간대 행동 · 마중 · 행동 도감 기록)**. 다음은 4단계(정원 · 상점)부터.
+PRD: `PRD.md`. 지금 끝난 것: **13장 1단계(서버 규칙) · 2단계(입양 · 방 · 밥/물/똥/쓰다듬기) · 3단계(놀아 주기 · 츄르 · 빗질 · 친밀도 행동 · 선물 · 시간대 행동 · 마중 · 행동 도감 기록) · 4단계(베란다 정원 · 상점 · 보관함 · 엽전 경제 · SpriteCook 방/물건/식물/츄르 그림)**. 다음은 5단계(꾸미기 · 가구 쓰기 · 추가 입양 · 앨범 · 도감)부터.
 dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<PC의 IP>:5303/games/nyang/?local=1`).
 
 ## 파일 구조
@@ -8,12 +8,13 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 | 파일 | 하는 일 |
 |---|---|
 | `src/data/balance.ts` | 모든 수치: `CONST`(SQL `_nyang_const`) · `LOVE_NEED` · `CAT_NEED`(`_nyang_table`) · 성격 5종 `PERSONALITIES`(`_nyang_personalities`) · 털 색 `COLORS`(`_nyang_ids('colors')`) · 사료 `FOODS`(`_nyang_foods`) · `SPOTS` · `kstDay` · `mix` · `shelterKittens` · 이름 규칙 |
-| `src/data/poses.gen.ts` | `art/build.py` 가 만든 자세 그림 크기 · 발 기준점 (손으로 고치지 않는다) |
+| `src/data/poses.gen.ts` | `art/build.py` 가 만든 자세 그림 크기 · 발 기준점 (츄르 핥기 `lick-0~7` 포함, 손으로 고치지 않는다) |
+| `src/data/world.gen.ts` | `art/build.py` 가 만든 방 · 베란다 · 물건 그림 크기(`WORLD_ART`) · 창 유리 자리(`WINDOW_GLASS`) · 베란다 선반 자리(`VERANDA`) |
 | `src/game/rules.ts` | 순수 규칙 (시각 t 는 인자, 초 단위 정수). SQL RPC 와 1:1 |
 | `src/game/recolor.ts` | 털 픽셀만 목표 색으로 (순수 함수, `tests/recolor.test.ts`) |
 | `src/net/api.ts` | `NyangApi` — 서버(Supabase RPC) / 로컬(`?local=1`, rules.ts + localStorage `siaNyang:local`) 두 구현, `errorText` |
 | `src/net/world.ts` | 공용 shared 모듈 런타임 로드 (auth · supabase · sound) |
-| `src/ui/room.ts` | 방 화면 (배치 · 상태 그리기 · 밥 끌기 · 물 · 화장실 확대 · 쓰다듬기 · 정보 창(놀이 · 츄르 · 빗질 고르기) · 선물 줍기 · 바닥 누르면 따라오기 · 설정 · 요약 카드 · 문 앞 마중). 고양이마다 `CatView`(여러 마리 구조, 돌보기 물건은 첫 고양이 것) |
+| `src/ui/room.ts` | 방 화면 (4단계: 무대 `.stage > .slide` 안에 방 · 베란다를 나란히 두고 옆으로 밀기/🌱 단추로 이동, 벽 · 바닥 · 창 그림 층, 창밖 시간대 풍경, 그림 물건, 사료 봉투 누르기 = 사료 바꾸기, 약 간식 단추, 요약 카드에 수확 가능 · 배치 · 상태 그리기 · 밥 끌기 · 물 · 화장실 확대 · 쓰다듬기 · 정보 창(놀이 · 츄르 · 빗질 고르기) · 선물 줍기 · 바닥 누르면 따라오기 · 설정 · 요약 카드 · 문 앞 마중). 고양이마다 `CatView`(여러 마리 구조, 돌보기 물건은 첫 고양이 것) |
 | `src/ui/ctx.ts` | 방 화면 공용 자리 `RoomCtx`(api · 상태 · 좌표 · 물건 · `saw`(도감) · `tray`(아래 띠 바꾸기) · `walkTo`) · `CatView` |
 | `src/ui/behavior.ts` | 고양이 머리 `think`: 아픔(재채기) → 밥/물/화장실 → 심심함(등 돌린 식빵, 상자 있으면 상자 속) → 밤엔 80% 잠(10단계면 집사 옆) → 시간대별 비율로 행동 고르기(`PICKS`). `follow`(바닥 누르기, 4단계부터) |
 | `src/ui/play.ts` | 놀아 주기 미니게임 30초 (낚싯대 · 레이저 · 공 · 상자), 잡은 수를 서버 상한 안에서만 센다 |
@@ -23,7 +24,10 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 | `src/ui/adopt.ts` | 입양 화면 (보호소 6마리 = 털 색 6 × 그날 성격) |
 | `src/ui/props.ts` | 임시 SVG 물건 (밥그릇 · 물그릇 · 화장실 · 봉투 · 삽 · 방석 · 담요 · 3단계: 깃털 · 털실 공 · 상자 · 탁자 + 컵 · 츄르(맛 색) · 빗 · 선물 4종) |
 | `src/ui/common.ts` | 소리 `sfx` · 진동 `buzz`(설정 `siaNyang:vibe`) · `toast` · `josa` · `floatAt` |
-| `src/ui/gallery.ts` | 개발용 `?local=1&gallery=1`: 털 색 × 자세 전부 |
+| `src/ui/gallery.ts` | 개발용 `?local=1&gallery=1`: 털 색 × 자세 전부 (핥기 8칸 포함) |
+| `src/ui/art.ts` | 4단계: SpriteCook 그림 `worldUrl` · `artImg(이름, 대신 쓸 코드 그림)`(못 불러오면 SVG 로 바뀜) · `bgLayer`(배경 층, 실패하면 투명 → 아래 코드 배경) · 전체 주소로 만든다 |
+| `src/ui/veranda.ts` | 4단계 베란다: 선반 2단 화분(4~12칸) · 빈 화분 → 씨앗 고르기 · 물뿌리개 끌어 기울이기(주둥이가 화분 위 0.65초 → `waterPot`) · 다 자라면 반짝 → 눌러 수확 · 칸 늘리기(＋) · 고양이가 가끔 따라와 냄새 맡기/나비 쫓기 |
+| `src/ui/shop.ts` | 4단계 상점 · 보관함: 탭(사료 · 간식 · 츄르 · 씨앗 · 장난감 · 가구 · 보관함), 시아코인은 두 번 눌러야 삼, 보관함에서 팔기 · 고양이에게 주기(캣그라스/캣닢) · 보름달 등 바꾸기 |
 | `art/build.py` | `art/spritecook/poses/*.png` + `assets.json`(foot · scale) → `public/art/cat/<자세>.png`(같은 배율 · 여백) + `poses.gen.ts` |
 | `scripts/pace.ts` · `sqlrows.ts` · `pg-expect.ts` · `pg-check.mjs` | 친밀도 곡선 · SQL 줄 뽑기 · PGlite 대조 |
 
@@ -46,8 +50,20 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 | `rollPresent`(visit 안) · `gift` | `_nyang_roll_present`(nyang_state 안, entry 일 때) · `nyang_gift(p_slot)` |
 | `seen` | `nyang_seen(p_slot, p_behavior)` |
 | `itemCount` · `addItem` · `hasToy` | `_nyang_item` · `_nyang_add_item` · `_nyang_has_toy` |
+| 4단계 `topLevel` · `potGrown` | `_nyang_top_level` · `_nyang_pot_grown` |
+| `plant` · `waterPot` · `harvest` · `expandPots` | `nyang_plant(p_pot, p_seed)` · `nyang_water_pot(p_pot)` · `nyang_harvest(p_pot)` · `nyang_expand_pots()` |
+| `buy` · `sell` · `exchange` · `treat` | `nyang_buy(p_item, p_n)` · `nyang_sell(p_item, p_n)` · `nyang_exchange(p_id)` · `nyang_treat(p_slot, p_kind)` |
+| `feed`(상점 사료면 보관함 `food:<id>` 하나 + 기분) | `nyang_feed` (다시 정의) |
 
-거절 글자(`RuleError` = SQL `raise exception`): `bad color` · `bad personality` · `bad name` · `no room` · `no cat` · `bad food` · `bowl full` · `water fresh` · `no poop` · `bad spot` · `too soon` · `bad cure` · `not sick` · `already curing` · `need care` · `need login` · 3단계: `bad toy` · `no toy` · `no play` · `brushed today` · `bad flavor` · `churu full` · `no churu` · `no present` · `bad behavior` · `too early` · `no medicine`.
+거절 글자(`RuleError` = SQL `raise exception`): `bad color` · `bad personality` · `bad name` · `no room` · `no cat` · `bad food` · `bowl full` · `water fresh` · `no poop` · `bad spot` · `too soon` · `bad cure` · `not sick` · `already curing` · `need care` · `need login` · 3단계: `bad toy` · `no toy` · `no play` · `brushed today` · `bad flavor` · `churu full` · `no churu` · `no present` · `bad behavior` · `too early` · `no medicine` · 4단계: `no food` · `bad seed` · `bad pot` · `pot busy` · `no seed` · `no plant` · `pot ready` · `pot wet` · `not ready` · `max pots` · `no coins` · `not enough coin`(_spend_sia_coin) · `bad item` · `bad amount` · `locked` · `have it` · `no item` · `bad treat` · `treat full`.
+
+**4단계 규칙 (정원 · 상점)**
+- 화분: `nyang_profiles.pots`(4~12) 칸, `nyang_pots` 는 **심은 화분만** 줄이 있다(수확하면 지움). 자란 시간 = `min(grow_sec, grown + clamp(t − water_at, 0, water_sec))` — 물을 준 뒤 water_sec 동안만 자라고 마르면 멈춘다(시들지 않음). 물은 물이 남아 있으면 못 준다(`pot wet`), 다 자랐으면 `pot ready`. 그림 단계 = 다 자람 3, 아니면 ⌊자란/전체 × 3⌋. 심기 · 물 · 수확도 '하루 첫 돌보기 엽전'을 준다(시아코인은 아님).
+- 씨앗은 '내 고양이 중 가장 높은 친밀도 단계'(`topLevel`, 저장된 love 기준)로 열린다. 선물로 받은 씨앗은 단계와 상관없이 심을 수 있다.
+- 상점 `SHOP`(`_nyang_shop`): 엽전 · 시아코인 · 한 번에 받는 수(give) · 하나만(once: 장난감 · 가구) · 단계. 시아코인은 `_spend_sia_coin(me, sia×n, 'nyang', 'buy:<buy_seq+1>')`, `buy_seq` 는 시아코인으로 살 때만 오른다. 가구는 `furniture` 배열에 (`furniture:` 를 뗀 id).
+- 기본 사료는 공짜 · 무제한(보관함을 쓰지 않음) — 엽전이 0 이어도 밥은 언제나. 참치 · 고급 사료는 5그릇 묶음, 먹으면 기분 +1500 / +3000.
+- 팔기 `SELL`(`_nyang_sell`): 꽃 · 풀(보름달꽃 제외) · 털 뭉치(2). 바꾸기 `EXCHANGES`: 보름달꽃 3 → 보름달 등(하나만).
+- 풀 주기 `treat`: 캣그라스(기분 +5000 · 친밀도 +1000) · 캣닢(+8000 · +2000, `nip_at` → 화면은 10분 동안 우다다 `behavior.ts`), 고양이마다 하루 2번(`treat_day`/`treat_n`). 아플 때는 친밀도 0.
 
 **3단계 규칙**
 - 보관함 `nyang_profiles.items` = `{ 'toy:laser' · 'churu:tuna' · 'seed:daisy' · 'fur' · 'medicine' … : 개수 }` (0 개 이하가 되면 열쇠를 지운다). 가구는 `furniture`(id 배열). 상점(4단계)은 여기에 더하기만 하면 된다.
@@ -63,7 +79,8 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 
 - 표: `nyang_profiles`(엽전 coins, items · furniture · layout jsonb 는 4·5단계용, visit_at, bonus_day, care_days, sia_*), `nyang_cats`(user_id+slot 키, color, **pattern(나중 무늬, 지금 null)**, 돌보기 기록, love, love_at(랭킹용 예약), sick_at/cure_at, pet_*, seen jsonb(도감 예약)), `nyang_pots`(4단계), `nyang_album`(5단계). 모두 RLS + revoke, 직접 쓰기 없음.
 - 내부: `_nyang_const` · `_nyang_table` · `_nyang_ids`(colors · spots · toys · free_toys · churus · present_*) · `_nyang_personalities` · `_nyang_foods` · `_nyang_behaviors` · `_nyang_item` · `_nyang_add_item` · `_nyang_has_toy` · `_nyang_roll_present` · `_nyang_now`(서버 시각, 이것만 씀) · `_nyang_day` · `_nyang_mix` · `_nyang_lin/_half_at/_zero_at` · `_nyang_levels` · `_nyang_settle` · `_nyang_level` · `_nyang_spot_kind` · `_nyang_me`(프로필 만들고 잠금) · `_nyang_cat`(잠그고 settle) · `_nyang_save` · `_nyang_pay` · `_nyang_care` · `_nyang_json`.
-- 화면용(authenticated): `nyang_state` · `nyang_adopt` · `nyang_feed` · `nyang_water` · `nyang_clean` · `nyang_pet` · `nyang_cure` · `nyang_play_start` · `nyang_play` · `nyang_brush` · `nyang_churu` · `nyang_gift` · `nyang_seen`. `game_open:nyang` = false.
+- 화면용(authenticated): `nyang_state` · `nyang_adopt` · `nyang_feed` · `nyang_water` · `nyang_clean` · `nyang_pet` · `nyang_cure` · `nyang_play_start` · `nyang_play` · `nyang_brush` · `nyang_churu` · `nyang_gift` · `nyang_seen` · 4단계 `nyang_plant` · `nyang_water_pot` · `nyang_harvest` · `nyang_expand_pots` · `nyang_buy` · `nyang_sell` · `nyang_exchange` · `nyang_treat`. `game_open:nyang` = false.
+- 4단계: 표 `nyang_pots` 를 다시 정의(plant · planted_at not null, `calc_at` 없앰 — 아직 push 전이라 같은 파일에서 고쳤다), `nyang_profiles.pots` · `buy_seq`, `nyang_cats.treat_day` · `treat_n` · `nip_at`, `_nyang_foods` 에 mood · pack 열, 새 데이터 함수 `_nyang_plants` · `_nyang_shop` · `_nyang_sell` · `_nyang_exchanges` · `_nyang_treats`, `_nyang_table('pot_prices')`, `_nyang_json` 에 `pots` 배열 · profile.pots/buySeq · 고양이 treat 열.
 - 3단계에서 표에 더한 열: `nyang_profiles.pseq` · `nyang_cats.play_at/play_toy/play_day/play_love/brush_day/churu_day/churu_n/present_at/present` (`seen` 은 1단계부터 있던 열을 쓴다).
 - 잠금 순서: nyang_profiles → nyang_cats → wallets. 새 RPC 는 `_nyang_me()` → `_nyang_cat()` → 바꾸고 `_nyang_save` → `_nyang_care` → `_nyang_pay` → `_nyang_json` 순서를 따른다.
 - **PL/pgSQL 함정**: `if … < case when … then … end then` 은 IF 가 CASE 안의 `then` 에서 끊겨 문법 오류 — 변수로 빼라. 변수 이름이 열 이름(`seq` 등)과 같으면 ambiguous.
@@ -71,13 +88,15 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 ## 검사
 
 - `npm test`: `rules.test.ts`(시간 계산 · 친밀도 · 쓰다듬기 · 돌보기 · 감기 · 입양) · `sql.test.ts`(SQL 값 · 표 · 식 · 권한이 데이터와 같은지 — 새 마이그레이션이 함수를 다시 정의하면 `FILES` 에 더한다) · `recolor.test.ts`.
-- PGlite (저장소 밖에 설치): `npx vite-node scripts/pg-expect.ts > <pg>/nyang-expect.json && node scripts/pg-check.mjs <pg>` — 001~123 적용 후 권한 · `game_open` · **939단계를 기기 규칙과 대조(확인 2246개 모두 통과, 3단계 RPC 포함, 2026-11-27)**. 보관함은 `setitem` 단계로 SQL 에서 맞춘다. `_nyang_now()` 를 설정 값 `nyang.now` 로 바꿔 시각을 맞춘다. 새 RPC 는 `pg-expect.ts` 의 순서와 `pg-check.mjs` 의 `CALL` 에 더한다.
+- PGlite (저장소 밖에 설치): `npx vite-node scripts/pg-expect.ts > <pg>/nyang-expect.json && node scripts/pg-check.mjs <pg>` — 001~123 적용 후 권한 · `game_open` · **1323단계를 기기 규칙과 대조(확인 2856개 모두 통과, 4단계 정원 · 상점 · 시아코인 결제 포함, 2026-11-27)**. 엽전 · 시아코인 잔액은 `setcoins` · `setsia` 단계로 SQL 에서 맞추고, 끝에 `sia_coin_spends`('nyang') 수 = `buy_seq` 를 본다. 보관함은 `setitem` 단계로 SQL 에서 맞춘다. `_nyang_now()` 를 설정 값 `nyang.now` 로 바꿔 시각을 맞춘다. 새 RPC 는 `pg-expect.ts` 의 순서와 `pg-check.mjs` 의 `CALL` 에 더한다.
 - `npm run pace`: 성격 5종 × 하루 1 · 2 · 3번 × 츄르 0 · 2개(1번은 0 · 1개). 들를 때마다 밥 · 물 · 똥 · 놀이 한 판(낚싯대 10마리) · 쓰다듬기 3번, 하루 한 번 빗질. 들르는 시각은 정해진 무작위로 흔든다(하루 1번은 8~23시 아무 때, 2 · 3번은 ±1.5시간). 감기는 무작위 3가지의 합.
+  4단계부터 정원도 돌린다: 들를 때마다 수확 → 모두 팔기 → '하루 들르는 횟수 안에 다 자랄 수 있는 것' 중 이익이 큰 씨앗을 사서 심기 → 물, 엽전이 '다음 칸 값 + 씨앗 값'보다 많으면 화분을 늘린다.
+  **엽전 (2026-11-27, 얌전이)**: 하루 2번 — 7일 175냥 · 7칸 / 14일 10칸 / 30일 12칸 · 4천냥, 이후 하루 약 300냥이 쌓임. 하루 3번 — 14일에 12칸. 하루 1번 — 30일 10칸 · 60일 12칸(하루 약 55~80냥). 장난감 · 가구(합 약 920냥 + 시아코인 60)는 하루 2번이면 3주 안팎에 모두 살 수 있다.
   **2026-11-27 결과 (LOVE_NEED 합 4,140,000)**: 10단계 — 하루 2번 62~66일(츄르 2개면 57~59일) · 하루 3번 53~56일(츄르 2개면 48~52일) · 하루 1번 101~117일. 감기 — 하루 1번 94번/1800일(약 19일에 한 번) · 하루 2 · 3번 0번.
 
 ## 로컬 모드 · 개발 설정 (localhost / dev 서버만)
 
-`?local=1` 로그인 없이, rules.ts 로 기기 안에서. `&time=10` 시간 10배(저장된 시계를 이어 받아 다시 잰다) · `&skip=6h`(s · m · h · d, 한 번만 — 주소에서 지운다) · `&love=7` 첫 고양이 친밀도 7단계로(한 번) · `&reset=1` 처음부터 · `&gallery=1` 털 색 × 자세 그림 · 3단계: `&toys=1` 장난감 모두 · `&churu=5` 맛마다 츄르 5개 더 · `&gift=1` 첫 고양이가 선물을 물어 온 것처럼 (모두 한 번). 마중은 `&skip=7h`.
+`?local=1` 로그인 없이, rules.ts 로 기기 안에서. `&time=10` 시간 10배(저장된 시계를 이어 받아 다시 잰다) · `&skip=6h`(s · m · h · d, 한 번만 — 주소에서 지운다) · `&love=7` 첫 고양이 친밀도 7단계로(한 번) · `&reset=1` 처음부터 · `&gallery=1` 털 색 × 자세 그림 · 3단계: `&toys=1` 장난감 모두 · `&churu=5` 맛마다 츄르 5개 더 · `&gift=1` 첫 고양이가 선물을 물어 온 것처럼 (모두 한 번). 마중은 `&skip=7h`. 4단계: `&coins=500` 엽전 더 · `&sia=50` 시아코인 더 · `&seeds=3` 씨앗 종류마다 3개 더 (모두 한 번). 정원은 `&skip=65m` 처럼 시간을 넘겨 확인.
 
 ## 그림
 
@@ -85,14 +104,18 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 - 게임 속 자세 → 그림: `src/ui/catart.ts` 의 `POSE_IMAGE` (sit · blink · walk1/2 · loaf · sleep · eat · drink(=eat) · stretch · pounce · jump · beg · knead · belly). 새 자세 그림이 오면 assets.json 에 넣고 build.py → 이 표에 한 줄.
 - 털 색: `recolorFur` — 털(불투명 · min>185 · r−b<14)을 목표색 × (원래색/흰털)로, 작고(220px 미만) 둘레 70% 이상이 어두운 털 덩어리(눈 반짝임)는 그대로, 털 옆 2px 경계는 밝기로 섞인 정도만큼. 검정(92,90,104)도 외곽선 · 눈이 보이는 것을 화면으로 확인했다.
 - 무늬(줄무늬)는 `catArt(color, art, pattern)` 의 `patternLayer` 에서 색을 바꾼 canvas 위에 그리면 된다 (DB `nyang_cats.pattern`).
-- 방 · 물건은 임시 SVG(`props.ts`) + CSS. 색은 `--nyang-*`(shared/theme.css · theme.js `NYANG` · DESIGN.md 에 한 줄 더함).
+- 4단계 방 · 물건 · 식물 · 가구 · 츄르: `art/spritecook/<room|veranda|objects|plants|furniture|churu|card>/` + `assets-world.json`(용도 · 크기 · 자리) → `python art/build.py` → `public/art/world/*.webp`(물건 200px · 식물 160×248 같은 캔버스 · 가구 260px · 배경 768) + `public/art/cat/lick-0~7.png` + `world.gen.ts`. 방 배경은 벽(줄무늬 42px × 9 = 378px 를 가로 되풀이) · 바닥(늘림) · 창(유리 투명 + 뒤에 `view-<시간대>`) 세 조각으로 나눠 방 비율이 달라도 창이 잘리지 않게 했다. `_sheets/` · `*.html` · `lick-sheet` · `lick.webp` · `card-original` · `room/room.png` 은 `art/spritecook/.gitignore` 로 커밋하지 않는다. asset id 는 `spritecook-assets.json`.
+- 코드 그림(`props.ts` SVG · CSS 벽/바닥/창/베란다 하늘)은 그림을 못 불러올 때 대신 보인다 (`artImg` · `bgLayer`).
+- 츄르: 누르고 있는 동안 `lick0~7`(8fps)을 돌리고 `objects/churu-<맛>` 그림을 입 앞에(뜯은 입구 78% · 8% 를 축으로 222~230° 돌려 몸통이 오른쪽으로) 겹친다. 털 색 바꾸기는 핥기 칸에도 그대로 — 입 · 혀 분홍은 물들지 않는 것을 갤러리에서 6색 모두 확인했다.
+- 엽전 그림(`objects/coin`)은 장식 한자가 있어 크게 쓰지 않는다 — 위 띠 · 선물 주머니는 코드 그림 그대로.
+- 로비 카드 `shared/images/card-nyang.png` (640×400) 는 넣어 두었다 (로비 연결은 6단계).
 
 ## 다음 단계에서 붙일 자리
 
-- 4단계 상점: 장난감은 `items['toy:<id>'] = 1`, 츄르는 `items['churu:<맛>'] += n`(시아코인 5개씩 `_spend_sia_coin`), 약 간식 `items.medicine`. 받은 씨앗(`seed:<id>`) · 털 뭉치(`fur`)는 보관함에 이미 쌓인다. 정보 창 장난감 · 츄르 고르기의 '상점에서 (곧)' 글을 상점 단추로 바꾼다.
+- (4단계 끝남) 상점: 장난감은 `items['toy:<id>'] = 1`, 츄르는 `items['churu:<맛>'] += n`(시아코인 5개씩 `_spend_sia_coin`), 약 간식 `items.medicine`. 받은 씨앗(`seed:<id>`) · 털 뭉치(`fur`)는 보관함에 이미 쌓인다. 정보 창 장난감 · 츄르 고르기의 '상점에서 (곧)' 글을 상점 단추로 바꾼다.
+- 5단계 꾸미기: 가진 가구는 `profile.furniture`(vase · scratcher · hideaway · cat_tower · zodiac_shelf · moon_lamp · 선물 가구). 그림은 `public/art/world/furniture-*.webp`. 방에 처음부터 있는 방석(`furniture-cushion`) · 책상(`furniture-desk`)은 기본 가구로 썼다(상점에서 팔지 않음). 꽃병에 해바라기 · 장미 꽂기는 보관함의 `plant:sunflower` · `plant:rose` 를 쓰면 된다. 배치는 `nyang_profiles.layout`.
 - 5단계: 앨범 · 도감 화면은 `cats[].seen`(본 순서) + `BEHAVIORS` 로 (못 본 것은 그림자). 사진 단추는 `data-soon`. 여러 마리는 `views` 가 이미 고양이마다 있다 — 돌보기 물건 · 정보 창 버튼을 고양이별로, 고양이끼리 어울리기(같이 자기 · 그루밍)를 `behavior.ts` 에.
 
-- 4단계 정원 · 상점: 방을 옆으로 밀기(지금 방은 `touch-action:none`), `nyang_pots` 표, 엽전은 `nyang_profiles.coins`, 츄르 구매는 `_spend_sia_coin(user, 5, 'nyang', ref)`.
 - 5단계 여러 마리: 규칙 · SQL 은 이미 4마리까지(`catRoom`, `CAT_NEED`). 화면은 지금 `state.cats[0]` 한 마리만 그린다 — `room.ts` 를 고양이마다 `CatActor` 로.
 - 6단계: shared/games.js · presence `GAME_CHANNELS` · ranking-dialog 탭 · deploy.yml · 로비 카드. PWA head 블록은 index.html 에 이미 있다. 배경음 폴더 `shared/audio/bgm/nyang/`(README 표에 줄 있음). `playBgm('nyang', 밤이면 'boss')` 는 이미 부른다.
 
@@ -110,3 +133,8 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 - 자세 그림의 쓰다듬는 곳(`spotAt`)은 정면 앉은 그림 비율로 어림한다. 담요 · 물 주전자 위치는 대강이다.
 - 진동은 `navigator.vibrate` — 아이폰 사파리는 없음.
 - 실제 Supabase 서버에서는 아직 돌려 보지 않았다 (PGlite 와 로컬 모드만).
+- 4단계에서 내가 정한 것: 식물 값(씨앗 4 · 5 · 10 · 15 · 25 · 50 / 팔 값 8 · 7 · 24 · 32 · 50 · 없음), 화분 값 100~800(합 3120), 사료 2종 값 · 기분, 약 간식 8, 장난감 60 · 40 · 30, 가구 40~400 · 십이지 선반 시아코인 60, 털 뭉치 2냥, 풀 주기 하루 2번 · 수치, 보름달꽃 3송이 = 보름달 등. 방석 · 책상은 기본 가구라 상점에서 뺐다.
+- 엽전은 하루 2~3번 성실히 정원을 돌리면 한 달쯤 뒤 쓸 곳(화분 · 장난감 · 가구)보다 많이 쌓인다 (pace 하루 2번 약 300냥/일). 5단계 꾸미기(벽지 · 바닥 · 창문)를 엽전 쓸 곳으로 더하면 된다.
+- 고양이가 베란다에 따라오는 것은 화면만의 연출이다 (방 쪽 고양이는 그대로 방에 있다고 본다). 아플 때 · 연출 중에는 오지 않는다.
+- 베란다 6번째 열의 큰 꽃(장미 · 보름달꽃)은 오른쪽 위 무대 단추(방 · 상점)와 조금 겹칠 수 있다.
+- 물뿌리개 주둥이 위치는 그림 기준 대강(손가락 왼쪽 45px)이다.

@@ -13,4 +13,12 @@ export const POSE_ART = {
   'beg': { w: 401, h: 401, fx: 188, fy: 395, anchor: 'feet' },
   'knead': { w: 392, h: 392, fx: 205, fy: 384, anchor: 'feet' },
   'belly': { w: 488, h: 488, fx: 299, fy: 426, anchor: 'body' },
+  'lick-0': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
+  'lick-1': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
+  'lick-2': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
+  'lick-3': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
+  'lick-4': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
+  'lick-5': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
+  'lick-6': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
+  'lick-7': { w: 401, h: 401, fx: 183, fy: 395, anchor: 'feet' },
 } as const;

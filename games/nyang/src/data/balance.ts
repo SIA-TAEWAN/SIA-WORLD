@@ -101,6 +101,17 @@ export const CONST = {
   /** 엽전 = present_coin_min + 단계 × 2 + (0 … present_coin_span-1) */
   present_coin_min: 5,
   present_coin_span: 11,
+
+  // ---- 4단계: 정원 · 상점 ----
+  /** 캣그라스 · 캣닢을 고양이마다 하루 몇 번까지 줄 수 있나 · 캣닢 우다다 시간(초, 화면) */
+  treat_day_max: 2,
+  nip_sec: 600,
+  /** 한 번에 살 수 있는 개수 · 팔 수 있는 개수 */
+  buy_max: 99,
+  sell_max: 999,
+  /** 화분: 처음 칸 수 · 최대 칸 수 (늘리는 값은 POT_PRICES) */
+  pot_start: 4,
+  pot_max: 12,
 } as const;
 export type ConstName = keyof typeof CONST;
 
@@ -192,16 +203,26 @@ export const COLORS: FurColor[] = [
 export const COLOR: Record<ColorId, FurColor> = Object.fromEntries(COLORS.map((c) => [c.id, c])) as Record<ColorId, FurColor>;
 export const isColorId = (v: unknown): v is ColorId => typeof v === 'string' && (COLOR_IDS as readonly string[]).includes(v);
 
-/** 사료 (SQL 의 _nyang_foods): 한 번에 채우는 배부름 · 값(엽전). 지금은 기본 사료만 (상점은 4단계) */
+/**
+ * 사료 (SQL 의 _nyang_foods): 한 번에 채우는 배부름 · 함께 오르는 기분 · 상점에서 한 번 살 때 받는 그릇 수(pack) · 값(엽전, pack 하나).
+ * 기본 사료는 공짜 · 무제한이다 — 엽전이 0 이어도 밥은 언제나 줄 수 있다 (PRD 1장: 숙제 · 결핍감 없게). 나머지는 보관함의 'food:<id>' 하나를 쓴다.
+ */
 export interface Food {
   id: FoodId;
   name: string;
   add: number;
+  mood: number;
+  pack: number;
   price: number;
+  desc: string;
 }
-export const FOOD_IDS = ['basic'] as const;
+export const FOOD_IDS = ['basic', 'tasty', 'premium'] as const;
 export type FoodId = (typeof FOOD_IDS)[number];
-export const FOODS: Food[] = [{ id: 'basic', name: '기본 사료', add: 10000, price: 0 }];
+export const FOODS: Food[] = [
+  { id: 'basic', name: '기본 사료', add: 10000, mood: 0, pack: 0, price: 0, desc: '언제나 공짜예요' },
+  { id: 'tasty', name: '참치 사료', add: 10000, mood: 1500, pack: 5, price: 10, desc: '먹으면 기분도 조금 올라요' },
+  { id: 'premium', name: '고급 사료', add: 10000, mood: 3000, pack: 5, price: 30, desc: '먹으면 기분이 많이 올라요' },
+];
 export const FOOD: Record<FoodId, Food> = Object.fromEntries(FOODS.map((f) => [f.id, f])) as Record<FoodId, Food>;
 export const isFoodId = (v: unknown): v is FoodId => typeof v === 'string' && (FOOD_IDS as readonly string[]).includes(v);
 
@@ -250,17 +271,27 @@ export const itemKey = {
   toy: (id: string) => `toy:${id}`,
   churu: (id: string) => `churu:${id}`,
   seed: (id: string) => `seed:${id}`,
+  /** 수확한 꽃 · 풀 (4단계) */
+  plant: (id: string) => `plant:${id}`,
+  /** 상점에서 산 사료 (4단계) */
+  food: (id: string) => `food:${id}`,
   fur: 'fur',
   medicine: 'medicine',
 };
 
-/** 씨앗 (정원은 4단계. 선물로 받을 수 있는 것은 앞의 셋) */
+/** 씨앗 (선물로 받을 수 있는 것은 앞의 셋) */
 export const SEED_IDS = ['daisy', 'catgrass', 'sunflower', 'catnip', 'rose', 'moonflower'] as const;
-export const SEED_NAME: Record<(typeof SEED_IDS)[number], string> = { daisy: '데이지', catgrass: '캣그라스', sunflower: '해바라기', catnip: '캣닢', rose: '장미', moonflower: '보름달꽃' };
+export type PlantId = (typeof SEED_IDS)[number];
+export const SEED_NAME: Record<PlantId, string> = { daisy: '데이지', catgrass: '캣그라스', sunflower: '해바라기', catnip: '캣닢', rose: '장미', moonflower: '보름달꽃' };
+export const isPlantId = (v: unknown): v is PlantId => typeof v === 'string' && (SEED_IDS as readonly string[]).includes(v);
 export const PRESENT_SEEDS = ['daisy', 'catgrass', 'sunflower'] as const;
 /** 선물로 드물게 오는 가구 (꾸미기는 5단계: nyang_profiles.furniture 에 id 를 더한다) */
 export const PRESENT_FURNITURE = ['paw_rug', 'fish_pillow', 'yarn_basket'] as const;
-export const FURNITURE_NAME: Record<string, string> = { paw_rug: '발바닥 러그', fish_pillow: '생선 쿠션', yarn_basket: '털실 바구니' };
+export const FURNITURE_NAME: Record<string, string> = {
+  paw_rug: '발바닥 러그', fish_pillow: '생선 쿠션', yarn_basket: '털실 바구니',
+  cat_tower: '캣타워', hideaway: '숨숨집', donut_cushion: '도넛 방석', scratcher: '스크래처', desk: '책상', vase: '꽃병',
+  zodiac_shelf: '십이지 인형 선반', moon_lamp: '보름달 등',
+};
 /** 선물로 오는 장난감 (가지고 있지 않은 것 중에서) */
 export const PRESENT_TOYS = ['laser', 'ball', 'box'] as const;
 
@@ -308,3 +339,83 @@ export const SQL_IDS: Record<string, readonly string[]> = {
   present_toys: PRESENT_TOYS,
   present_furniture: PRESENT_FURNITURE,
 };
+
+// ---------- 4단계: 베란다 정원 · 상점 ----------
+
+/**
+ * 식물 6종 (PRD 6장 표, SQL 의 _nyang_plants).
+ *   grow_sec  : 다 자라는 데 드는 '물이 있는 동안'의 시간 (물이 마르면 성장이 멈추기만 하고 시들지 않는다)
+ *   water_sec : 물 한 번에 자라는 시간 (물을 주면 이 시간 동안만 자란다)
+ *   level     : 씨앗을 살 수 있는 친밀도 단계 (내 고양이 중 가장 높은 단계)
+ *   seed      : 씨앗 한 개 값 (엽전) · sell : 수확한 것 하나를 팔 때 (0 = 팔지 않음 — 보름달꽃은 특별 가구와 바꾼다)
+ */
+export interface Plant {
+  id: PlantId;
+  grow_sec: number;
+  water_sec: number;
+  level: number;
+  seed: number;
+  sell: number;
+  use: string;
+}
+export const PLANTS: Plant[] = [
+  { id: 'daisy', grow_sec: 3600, water_sec: 3600, level: 1, seed: 4, sell: 8, use: '팔면 엽전' },
+  { id: 'catgrass', grow_sec: 7200, water_sec: 7200, level: 1, seed: 5, sell: 7, use: '고양이에게 주면 기분이 크게 올라요' },
+  { id: 'sunflower', grow_sec: 14400, water_sec: 7200, level: 2, seed: 10, sell: 24, use: '팔기 · 꽃병 장식(꾸미기)' },
+  { id: 'catnip', grow_sec: 21600, water_sec: 10800, level: 3, seed: 15, sell: 32, use: '고양이에게 주면 10분 동안 신나서 우다다' },
+  { id: 'rose', grow_sec: 28800, water_sec: 14400, level: 5, seed: 25, sell: 50, use: '비싸게 팔기 · 꽃병 장식(꾸미기)' },
+  { id: 'moonflower', grow_sec: 43200, water_sec: 21600, level: 7, seed: 50, sell: 0, use: '3송이를 모으면 보름달 등과 바꿔요' },
+];
+export const PLANT: Record<PlantId, Plant> = Object.fromEntries(PLANTS.map((p) => [p.id, p])) as Record<PlantId, Plant>;
+
+/** 화분: 처음 칸 수 · 최대 · 늘릴 때의 값 (5번째 칸 = POT_PRICES[0]) */
+export const POT_START = CONST.pot_start;
+export const POT_MAX = CONST.pot_max;
+export const POT_PRICES = [100, 150, 220, 300, 400, 500, 650, 800];
+
+/** 고양이에게 주는 풀 (캣그라스 · 캣닢): 기분 · 친밀도 (하루 횟수 · 캣닢 우다다 시간은 CONST 의 treat_day_max · nip_sec) */
+export const TREAT = {
+  catgrass: { mood: 5000, love: 1000 },
+  catnip: { mood: 8000, love: 2000 },
+} as const;
+export type TreatId = keyof typeof TREAT;
+export const isTreatId = (v: unknown): v is TreatId => v === 'catgrass' || v === 'catnip';
+
+/**
+ * 상점 (PRD 7 · 8장, SQL 의 _nyang_shop). id 는 보관함 열쇠 (가구는 'furniture:<id>').
+ *   price : 엽전 (하나 살 때) · sia : 시아코인 (하나 살 때) · give : 하나 사면 보관함에 들어가는 개수
+ *   once  : 1 이면 하나만 가질 수 있다 (장난감 · 가구) · level : 이 친밀도 단계부터 (씨앗)
+ */
+export type ShopTab = 'food' | 'snack' | 'churu' | 'seed' | 'toy' | 'furniture';
+export interface ShopItem {
+  id: string;
+  tab: ShopTab;
+  price: number;
+  sia: number;
+  give: number;
+  once: number;
+  level: number;
+}
+export const SHOP: ShopItem[] = [
+  ...FOODS.filter((f) => f.price > 0).map((f): ShopItem => ({ id: `food:${f.id}`, tab: 'food', price: f.price, sia: 0, give: f.pack, once: 0, level: 1 })),
+  { id: 'medicine', tab: 'snack', price: 8, sia: 0, give: 1, once: 0, level: 1 },
+  ...CHURU_IDS.map((c): ShopItem => ({ id: `churu:${c}`, tab: 'churu', price: 0, sia: 5, give: 1, once: 0, level: 1 })),
+  ...PLANTS.map((p): ShopItem => ({ id: `seed:${p.id}`, tab: 'seed', price: p.seed, sia: 0, give: 1, once: 0, level: p.level })),
+  { id: 'toy:laser', tab: 'toy', price: 60, sia: 0, give: 1, once: 1, level: 1 },
+  { id: 'toy:ball', tab: 'toy', price: 40, sia: 0, give: 1, once: 1, level: 1 },
+  { id: 'toy:box', tab: 'toy', price: 30, sia: 0, give: 1, once: 1, level: 1 },
+  { id: 'furniture:vase', tab: 'furniture', price: 40, sia: 0, give: 1, once: 1, level: 1 },
+  { id: 'furniture:scratcher', tab: 'furniture', price: 150, sia: 0, give: 1, once: 1, level: 1 },
+  { id: 'furniture:hideaway', tab: 'furniture', price: 200, sia: 0, give: 1, once: 1, level: 1 },
+  { id: 'furniture:cat_tower', tab: 'furniture', price: 400, sia: 0, give: 1, once: 1, level: 1 },
+  { id: 'furniture:zodiac_shelf', tab: 'furniture', price: 0, sia: 60, give: 1, once: 1, level: 1 },
+];
+export const SHOP_ITEM: Record<string, ShopItem> = Object.fromEntries(SHOP.map((i) => [i.id, i]));
+
+/** 팔 수 있는 것 (보관함 열쇠 → 하나에 엽전, SQL 의 _nyang_sell) */
+export const SELL: Record<string, number> = {
+  ...Object.fromEntries(PLANTS.filter((p) => p.sell > 0).map((p) => [`plant:${p.id}`, p.sell])),
+  fur: 2,
+};
+/** 수확물과 바꾸는 특별 가구 (SQL 의 _nyang_exchanges) */
+export const EXCHANGES: { id: string; need: string; n: number }[] = [{ id: 'moon_lamp', need: 'plant:moonflower', n: 3 }];

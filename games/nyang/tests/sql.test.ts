@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { BEHAVIORS, CAT_NEED, CONST, FOODS, LOVE_NEED, PERSONALITIES, SQL_IDS, kstDay, mix } from '../src/data/balance';
+import { BEHAVIORS, CAT_NEED, CONST, EXCHANGES, FOODS, LOVE_NEED, PERSONALITIES, PLANTS, POT_PRICES, SELL, SHOP, SQL_IDS, TREAT, kstDay, mix } from '../src/data/balance';
 
 /**
  * 서버 SQL(supabase/migrations/123_nyang.sql)의 값 · 표가 게임 데이터(src/data/balance.ts)와 같은지 본다.
@@ -33,14 +33,30 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
 
   it('표 · 목록', () => {
     const tables = Object.fromEntries([...body('_nyang_table').matchAll(/when '(\w+)' then array\[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map(Number)]));
-    expect(tables).toEqual({ love_need: LOVE_NEED, cat_need: CAT_NEED });
+    expect(tables).toEqual({ love_need: LOVE_NEED, cat_need: CAT_NEED, pot_prices: POT_PRICES });
+    expect(POT_PRICES.length).toBe(CONST.pot_max - CONST.pot_start);
     const ids = Object.fromEntries([...body('_nyang_ids').matchAll(/when '(\w+)' then array\[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map((s) => s.trim().slice(1, -1))]));
     expect(ids).toEqual(Object.fromEntries(Object.entries(SQL_IDS).map(([k, v]) => [k, [...v]])));
   });
 
   it('성격 5종 · 사료', () => {
     expect(rows('_nyang_personalities')).toEqual(PERSONALITIES.map((p) => [p.id, p.full_sec, p.water_sec, p.poop_sec, p.mood_sec, p.likes.join(','), p.dislikes.join(','), p.toy, p.churu]));
-    expect(rows('_nyang_foods')).toEqual(FOODS.map((f) => [f.id, f.add, f.price]));
+    expect(rows('_nyang_foods')).toEqual(FOODS.map((f) => [f.id, f.add, f.mood, f.pack, f.price]));
+  });
+
+  it('4단계: 식물 · 상점 · 팔기 · 바꾸기 · 풀', () => {
+    expect(rows('_nyang_plants')).toEqual(PLANTS.map((p) => [p.id, p.grow_sec, p.water_sec, p.level, p.seed, p.sell]));
+    expect(rows('_nyang_shop')).toEqual(SHOP.map((i) => [i.id, i.tab, i.price, i.sia, i.give, i.once, i.level]));
+    expect(rows('_nyang_sell')).toEqual(Object.entries(SELL));
+    expect(rows('_nyang_exchanges')).toEqual(EXCHANGES.map((e) => [e.id, e.need, e.n]));
+    expect(rows('_nyang_treats')).toEqual(Object.entries(TREAT).map(([id, v]) => [id, v.mood, v.love]));
+    // 시아코인으로 사는 것은 지갑에서 한 번에 (_spend_sia_coin, 기록 번호 buy:<n>)
+    expect(body('nyang_buy')).toContain("public._spend_sia_coin(me, it.sia * p_n, 'nyang', 'buy:' || (pr.buy_seq + 1))");
+    // 츄르는 시아코인 5개 (PRD)
+    for (const i of SHOP.filter((x) => x.tab === 'churu')) expect([i.price, i.sia]).toEqual([0, 5]);
+    // 기본 사료는 공짜 (엽전 0 이어도 밥은 준다)
+    expect(FOODS[0]).toMatchObject({ id: 'basic', price: 0 });
+    expect(body('_nyang_pot_grown')).toContain('least(pl.grow_sec, p.grown + case when p.water_at is null then 0 else greatest(0, least(p_t - p.water_at, pl.water_sec::bigint))::int end)');
   });
 
   it('행동 도감', () => {
@@ -88,8 +104,9 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
     const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)/g)].map((m) => m[1]);
     const pub = fns.filter((f) => f.startsWith('nyang_'));
     expect(pub.sort()).toEqual([
-      'nyang_adopt', 'nyang_brush', 'nyang_churu', 'nyang_clean', 'nyang_cure', 'nyang_feed', 'nyang_gift', 'nyang_pet', 'nyang_play', 'nyang_play_start',
-      'nyang_seen', 'nyang_state', 'nyang_water',
+      'nyang_adopt', 'nyang_brush', 'nyang_buy', 'nyang_churu', 'nyang_clean', 'nyang_cure', 'nyang_exchange', 'nyang_expand_pots', 'nyang_feed', 'nyang_gift',
+      'nyang_harvest', 'nyang_pet', 'nyang_plant', 'nyang_play', 'nyang_play_start', 'nyang_seen', 'nyang_sell', 'nyang_state', 'nyang_treat', 'nyang_water',
+      'nyang_water_pot',
     ]);
     for (const f of fns) {
       expect(sql, f).toMatch(new RegExp(`revoke all on function public\\.${f}\\(`));

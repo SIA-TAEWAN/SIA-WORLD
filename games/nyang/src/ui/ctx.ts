@@ -54,7 +54,12 @@ export interface RoomCtx {
   tray(html: string | null): HTMLElement;
   walkTo(view: CatView, to: Spot2, then?: import('./cat').Act, fast?: boolean): void;
   layoutProps(): void;
+  /** 4단계: 상점 열기 (탭) · 캣그라스 · 캣닢 주기 · 지금 보이는 곳 */
+  openShop(tab?: ShopTabId): void;
+  giveTreat(kind: 'catgrass' | 'catnip'): void;
+  view(): 'room' | 'veranda';
 }
+export type ShopTabId = import('../data/balance').ShopTab | 'bag';
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));

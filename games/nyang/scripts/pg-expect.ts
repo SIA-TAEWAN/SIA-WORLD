@@ -5,7 +5,11 @@
  * (PGlite 는 저장소에 넣지 않는다 — games/twelve/PROGRESS.md 의 'SQL 을 실제로 돌려 보기' 참고)
  */
 import { BEHAVIORS, COLOR_IDS, PERSONALITY_IDS, SPOTS, loveAt } from '../src/data/balance';
-import { RuleError, adopt, brush, churu, clean, cure, feed, gift, pet, play, playStart, seen, visit, water, newState, cloneState, type NyangState } from '../src/game/rules';
+import {
+  RuleError, adopt, brush, buy, churu, clean, cure, exchange, expandPots, feed, gift, harvest, pet, plant, play, playStart, seen, sell, treat, visit, water, waterPot, newState,
+  cloneState, type NyangState,
+} from '../src/game/rules';
+import { SHOP, SELL } from '../src/data/balance';
 
 const H = 3600;
 let t = 1767193200 + 330 * 86400 + 9 * H;
@@ -150,4 +154,79 @@ for (let i = 0; i < 6; i++) {
 }
 for (let i = 0; i < 3; i++) run('churu', [2, 'chicken'], () => churu(s, 2, 'chicken', t));
 run('seen', [1, 'together'], () => seen(s, 1, 'together', t));
+// 4단계: 베란다 정원 · 상점 · 팔기 · 바꾸기 · 풀 (엽전 · 시아코인은 서버도 SQL 로 맞춘다)
+const setCoins = (n: number) => {
+  steps.push({ op: 'setcoins', t, args: [n], out: {} });
+  s = cloneState(s);
+  s.profile.coins = n;
+};
+const setSia = (n: number) => {
+  steps.push({ op: 'setsia', t, args: [n], out: {} });
+  s = cloneState(s);
+  s.profile.sia = n;
+};
+setCoins(300);
+setSia(40);
+setItem('seed:daisy', 3);
+setItem('seed:rose', 1);
+const ITEMS = [...SHOP.map((i) => i.id), 'seed:tulip', 'furniture:sofa'];
+const SELLS = [...Object.keys(SELL), 'plant:moonflower', 'medicine'];
+const SEEDS = ['daisy', 'catgrass', 'sunflower', 'catnip', 'rose', 'moonflower', 'tulip'];
+for (let i = 0; i < 360; i++) {
+  const k = rnd2(100);
+  t += k < 55 ? 1 + rnd2(60) : k < 88 ? rnd2(4 * H) : rnd2(20 * H);
+  const pot = 1 + rnd2(7);
+  const op = rnd2(16);
+  if (op <= 2) {
+    const seed = SEEDS[rnd2(SEEDS.length)];
+    run('plant', [pot, seed], () => plant(s, pot, seed, t));
+  } else if (op <= 5) run('water_pot', [pot], () => waterPot(s, pot, t));
+  else if (op <= 7) run('harvest', [pot], () => harvest(s, pot, t));
+  else if (op === 8) run('expand_pots', [], () => expandPots(s, t));
+  else if (op === 9 || op === 10) {
+    const id = ITEMS[rnd2(ITEMS.length)];
+    const n = [1, 1, 2, 3, 0, 120][rnd2(6)];
+    run('buy', [id, n], () => buy(s, id, n, t));
+  } else if (op === 11) {
+    const id = SELLS[rnd2(SELLS.length)];
+    const n = 1 + rnd2(3);
+    run('sell', [id, n], () => sell(s, id, n, t));
+  } else if (op === 12) run('exchange', ['moon_lamp'], () => exchange(s, 'moon_lamp', t));
+  else if (op === 13) {
+    const kind = ['catgrass', 'catnip', 'rose'][rnd2(3)];
+    const slot = 1 + rnd2(2);
+    run('treat', [slot, kind], () => treat(s, slot, kind, t));
+  } else if (op === 14) {
+    const f = ['tasty', 'premium', 'basic'][rnd2(3)];
+    run('feed', [1, f], () => feed(s, 1, f, t));
+  } else {
+    const e = rnd2(2) === 0;
+    run('state', [e], () => visit(s, e, t));
+  }
+}
+// 보름달꽃 3송이 → 보름달 등 · 캣닢 · 상점 사료
+setItem('plant:moonflower', 3);
+setItem('plant:catnip', 2);
+setItem('food:premium', 2);
+run('exchange', ['moon_lamp'], () => exchange(s, 'moon_lamp', t));
+run('exchange', ['moon_lamp'], () => exchange(s, 'moon_lamp', t));
+t += 5 * H;
+run('treat', [2, 'catnip'], () => treat(s, 2, 'catnip', t));
+run('feed', [2, 'premium'], () => feed(s, 2, 'premium', t));
+setCoins(5000);
+for (let i = 0; i < 9; i++) run('expand_pots', [], () => expandPots(s, t));
+run('buy', ['furniture:zodiac_shelf', 1], () => buy(s, 'furniture:zodiac_shelf', 1, t));
+setSia(100);
+run('buy', ['furniture:zodiac_shelf', 1], () => buy(s, 'furniture:zodiac_shelf', 1, t));
+run('buy', ['furniture:zodiac_shelf', 1], () => buy(s, 'furniture:zodiac_shelf', 1, t));
+run('buy', ['churu:tuna', 3], () => buy(s, 'churu:tuna', 3, t));
+setItem('seed:daisy', 2);
+run('plant', [12, 'daisy'], () => plant(s, 12, 'daisy', t));
+run('water_pot', [12], () => waterPot(s, 12, t));
+t += 1800;
+run('water_pot', [12], () => waterPot(s, 12, t));
+setItem('plant:catgrass', 4);
+for (let i = 0; i < 3; i++) run('treat', [1, 'catgrass'], () => treat(s, 1, 'catgrass', t));
+t += 1800;
+run('harvest', [12], () => harvest(s, 12, t));
 console.log(JSON.stringify(steps));

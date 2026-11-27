@@ -2,23 +2,46 @@
  * 방 화면 (PRD 8장 1 · 2): 위 띠 · 방(벽 · 창 · 문 · 바닥 · 밥그릇 · 물그릇 · 화장실 · 방석 · 탁자 · 상자 · 선물) · 고양이 · 아래 도구 띠.
  * 돌보기: 사료 봉투 끌어다 기울이기 · 물그릇 누르기 · 화장실 누르기(확대 → 삽으로 퍼서 봉투에) · 고양이 문지르기(쓰다듬기) · 고양이 누르기(정보 창).
  * 3단계: 정보 창의 놀아 주기(play.ts) · 빗질 · 츄르(treats.ts), 선물 줍기, 문 앞 마중, 행동 여러 가지(behavior.ts), 바닥을 누르면 따라오기.
+ * 4단계: 방을 옆으로 밀면 베란다 정원(veranda.ts), 상점 · 보관함(shop.ts), 사료 고르기(봉투를 누르면), 약 간식, SpriteCook 그림(art.ts — 실패하면 코드 그림).
  * 고양이는 여러 마리를 그릴 수 있게 CatView 로 둔다 (지금 입양은 한 마리 — 둘째부터는 5단계). 돌보기 물건은 첫 고양이 것.
  * 상태는 서버가 준 기록을 서버 시각으로 풀어서(game/rules.ts) 보여 준다. 돌보기는 모두 api 를 거친다.
  */
-import { BEHAVIOR, BEHAVIORS, CHURU, CHURU_IDS, COLOR, CONST, FURNITURE_NAME, PERSONALITY, SEED_NAME, SPOT_NAME, TOYS, TOY_IDS, kstDay, kstHour, loveLevel, type ChuruId, type ToyId } from '../data/balance';
+import {
+  BEHAVIOR, BEHAVIORS, CHURU, CHURU_IDS, COLOR, CONST, FOOD, FOODS, FURNITURE_NAME, PERSONALITY, SEED_NAME, SPOT_NAME, TOYS, TOY_IDS, kstDay, kstHour, loveLevel,
+  type ChuruId, type FoodId, type ToyId,
+} from '../data/balance';
+import { WINDOW_GLASS, type WorldArt } from '../data/world.gen';
 import { errorText, type CareOut, type NyangApi } from '../net/api';
-import { hasToy, itemCount, levelsOf, needs, spotKind, type Cat, type Levels, type NyangState, type Present } from '../game/rules';
+import { hasToy, itemCount, levelsOf, needs, potStage, spotKind, type Cat, type Levels, type NyangState, type Present } from '../game/rules';
+import { artImg, bgLayer, preloadWorld, ratioOf, worldUrl } from './art';
 import { follow, think } from './behavior';
 import { CatActor, type Act, type Spot2 } from './cat';
 import { preloadColor } from './catart';
 import { buzz, esc, floatAt, getSound, josa, setVibe, sfx, toast, vibeOn } from './common';
 import { clamp, type CatView, type Prop, type PropName, type RoomCtx, type TimeOfDay } from './ctx';
 import { playGame } from './play';
-import { blanket, boxFront, cup, cushion, foodBag, foodBowl, litterBox, presentIcon, scoop, sideTable, trashBag, waterBowl, waterJug } from './props';
-import { brushCat, giveChuru, refuseChuru } from './treats';
+import { blanket, boxFront, cup, cushion, foodBag, foodBowl, litterBox, presentIcon, scoop, sideTable, toyIcon, trashBag, waterBowl, waterJug } from './props';
+import { openShop } from './shop';
+import { brushCat, giveChuru, giveTreat, refuseChuru } from './treats';
+import { mountVeranda } from './veranda';
+
+/** 사료 봉투 그림 (상점 사료는 봉투 위에 표시) */
+const bagArt = () => artImg('objects-food-bag', foodBag);
+/** 밥그릇 · 물그릇 · 화장실 그림 (그림이 없으면 코드 그림) */
+const foodArt = (level: number) => artImg(level > 0.02 ? 'objects-bowl-food-full' : 'objects-bowl-food-empty', foodBowl(level));
+const waterArt = (level: number, spoiled: boolean) => artImg(level > 0.12 || spoiled ? 'objects-bowl-water-full' : 'objects-bowl-water-empty', waterBowl(level, spoiled));
+const POOP_AT = [[30, 30], [56, 24], [43, 42], [68, 38]];
+const litterArt = (poops: number) =>
+  `<div class="litter-art">${artImg('objects-litter-box', litterBox(poops))}${POOP_AT.slice(0, poops).map(([x, y]) => `<img class="poop" src="${worldUrl('objects-poop')}" alt="" draggable="false" style="left:${x}%;top:${y}%">`).join('')}</div>`;
+/** 선물 그림: 엽전은 큰 엽전 그림을 쓰지 않는다 (장식 글자) — 코드 그림의 주머니 */
+const presentArt = (kind: string) =>
+  kind === 'seed' ? artImg('objects-seed-packet', presentIcon(kind)) : kind === 'toy' ? artImg('objects-yarn', presentIcon(kind)) : presentIcon(kind);
+/** 창밖 풍경 (시간대) */
+const VIEW: Record<TimeOfDay, WorldArt> = { morning: 'view-morning', day: 'view-day', dusk: 'view-sunset', night: 'view-night' };
 
 /** 들어올 때 요약 카드 · 문 앞 마중 (UI 기준 값) */
 const SUMMARY_SEC = 3 * 3600;
+const FOOD_KEY = 'siaNyang:food';
 const GREET_SEC = 6 * 3600;
 
 export interface RoomOpts {
@@ -41,6 +64,8 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   let sheetSlot = 1;
   let busy = false;
   let lastPetCall = 0;
+  /** 봉투에 담긴 사료 (봉투를 누르면 바뀐다) */
+  let food: FoodId = 'basic';
 
   root.innerHTML = `
     <div class="screen">
@@ -50,41 +75,52 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
         <span class="pill" title="시아코인"><i class="sia-ico">S</i><b id="sia">0</b></span>
         <button class="btn iconbtn" id="setBtn" type="button" aria-label="설정">⚙️</button>
       </header>
-      <main class="room" id="room">
+      <main class="stage" id="stage">
+      <div class="slide" id="slide">
+      <div class="room" id="room">
         <div class="wall">
-          <div class="window" id="window"><div class="sky"></div><div class="sun"></div><i class="bird"></i><i class="bird b2"></i><div class="panes"></div></div>
+          <div class="wall-art" id="wallArt"></div>
+          <div class="window" id="window"><div class="sky"></div><div class="view" id="view"></div><div class="sun"></div><i class="bird"></i><i class="bird b2"></i><div class="panes"></div><img class="frame" id="winFrame" alt="" draggable="false"></div>
           <div class="door" id="door"><i></i></div>
           <div class="baseboard"></div>
         </div>
-        <div class="floor"></div>
-        <div class="prop" id="pLitter" role="button" aria-label="화장실">${litterBox(0)}<span class="alert">!</span><span class="flies"><i></i><i></i></span></div>
-        <div class="prop" id="pCushion" aria-hidden="true">${cushion}</div>
-        <div class="prop" id="pTable" aria-hidden="true">${sideTable}<span class="cup">${cup}</span></div>
-        <div class="prop hidden" id="pBox" aria-hidden="true">${boxFront}</div>
+        <div class="floor"><div class="floor-art" id="floorArt"></div></div>
+        <div class="prop" id="pLitter" role="button" aria-label="화장실"><div class="pic">${litterArt(0)}</div><span class="alert">!</span><span class="flies"><i></i><i></i></span></div>
+        <div class="prop" id="pCushion" aria-hidden="true"><div class="pic">${artImg('furniture-cushion', cushion)}</div></div>
+        <div class="prop" id="pTable" aria-hidden="true"><div class="pic">${artImg('furniture-desk', sideTable)}</div><span class="cup">${cup}</span></div>
+        <div class="prop hidden" id="pBox" aria-hidden="true"><div class="pic">${artImg('objects-box', boxFront)}</div></div>
         <div class="prop present hidden" id="pPresent" role="button" aria-label="선물"></div>
-        <div class="prop" id="pFood" role="button" aria-label="밥그릇">${foodBowl(1)}<span class="alert">!</span></div>
-        <div class="prop" id="pWater" role="button" aria-label="물그릇">${waterBowl(1, false)}<span class="alert">!</span></div>
+        <div class="prop" id="pFood" role="button" aria-label="밥그릇"><div class="pic">${foodArt(1)}</div><span class="alert">!</span></div>
+        <div class="prop" id="pWater" role="button" aria-label="물그릇"><div class="pic">${waterArt(1, false)}</div><span class="alert">!</span><span class="flies"><i></i><i></i></span></div>
         <div class="blanket hidden" id="blanket">${blanket}</div>
         <div class="night" id="night"></div>
+      </div>
+      <div class="veranda" id="veranda"></div>
+      </div>
+      <div class="stage-ui">
+        <button class="btn stagebtn" id="goBtn" type="button">🌱<small>베란다</small></button>
+        <button class="btn stagebtn" id="shopBtn" type="button">🛒<small>상점</small></button>
+      </div>
       </main>
       <footer class="tray" id="tray">
-        <div class="tray-main">
-          <div class="bagslot"><div class="bag" id="bag" aria-label="사료 봉투">${foodBag}</div><small>사료</small></div>
+        <div class="tray-main" id="trayRoom">
+          <div class="bagslot"><div class="bag" id="bag" aria-label="사료 봉투">${bagArt()}<b class="bag-tag hidden" id="bagTag"></b></div><small id="bagName">사료</small></div>
           <div class="hint" id="hint"></div>
           <button class="btn catbtn" id="catBtn" type="button"></button>
         </div>
+        <div class="tray-main hidden" id="trayVeranda"></div>
         <div class="tray-scene hidden" id="trayScene"></div>
       </footer>
     </div>`;
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
   const room = $('#room');
   const props: Record<PropName, Prop> = {
-    litter: { el: $('#pLitter'), at: { x: 0.8, y: 0.08 }, w: 0.3, ratio: 52 / 100 },
-    cushion: { el: $('#pCushion'), at: { x: 0.27, y: 0.86 }, w: 0.3, ratio: 50 / 120 },
-    food: { el: $('#pFood'), at: { x: 0.4, y: 0.42 }, w: 0.23, ratio: 58 / 100 },
-    water: { el: $('#pWater'), at: { x: 0.78, y: 0.56 }, w: 0.23, ratio: 58 / 100 },
-    table: { el: $('#pTable'), at: { x: 0.1, y: 0.3 }, w: 0.17, ratio: 70 / 80 },
-    box: { el: $('#pBox'), at: { x: 0.74, y: 0.9 }, w: 0.26, ratio: 80 / 120 },
+    litter: { el: $('#pLitter'), at: { x: 0.77, y: 0.1 }, w: 0.32, ratio: ratioOf('objects-litter-box') },
+    cushion: { el: $('#pCushion'), at: { x: 0.27, y: 0.88 }, w: 0.32, ratio: ratioOf('furniture-cushion') },
+    food: { el: $('#pFood'), at: { x: 0.4, y: 0.42 }, w: 0.2, ratio: ratioOf('objects-bowl-food-full') },
+    water: { el: $('#pWater'), at: { x: 0.78, y: 0.56 }, w: 0.2, ratio: ratioOf('objects-bowl-water-full') },
+    table: { el: $('#pTable'), at: { x: 0.11, y: 0.3 }, w: 0.2, ratio: ratioOf('furniture-desk') },
+    box: { el: $('#pBox'), at: { x: 0.74, y: 0.92 }, w: 0.27, ratio: ratioOf('objects-box') },
     present: { el: $('#pPresent'), at: { x: 0.2, y: 0.5 }, w: 0.13, ratio: 50 / 60 },
   };
 
@@ -114,9 +150,30 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     const f = floorRect();
     return { x: clamp((cx - r.left - f.left) / f.width, 0.03, 0.97), y: clamp((cy - r.top - f.top) / f.height, 0, 1.02) };
   };
+  // 방 그림 (벽 · 바닥 · 창 — 못 불러오면 코드 그림 그대로)
+  bgLayer($('#wallArt'), 'wall');
+  bgLayer($('#floorArt'), 'floor');
+  const winFrame = $<HTMLImageElement>('#winFrame');
+  winFrame.onload = () => $('#window').classList.add('art');
+  winFrame.onerror = () => winFrame.remove();
+  winFrame.src = worldUrl('window');
+  {
+    const v = $('#view');
+    const [gx, gy, gw, gh] = WINDOW_GLASS;
+    v.style.cssText = `left:${gx * 100}%;top:${gy * 100}%;width:${gw * 100}%;height:${gh * 100}%`;
+  }
+  let shownView = '';
   function layout() {
     W = room.clientWidth;
     H = room.clientHeight;
+    // 창: 벽 높이 안에 들어가게 (그림 비율 그대로)
+    const wallH = H * 0.44;
+    const winW = Math.min(W * 0.4, (wallH * 0.74) / ratioOf('window'));
+    const win = $('#window');
+    win.style.width = `${winW}px`;
+    win.style.height = `${winW * ratioOf('window')}px`;
+    win.style.left = `${W * 0.57 - winW / 2}px`;
+    win.style.top = `${wallH * 0.1}px`;
     const f = floorRect();
     for (const v of views) v.actor.floor = { ...f, scale: Math.min(H * 0.27, W * 0.42) / 381 };
     for (const p of Object.values(props)) {
@@ -187,7 +244,51 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     },
     walkTo,
     layoutProps: layout,
+    openShop: (tab) => openShop(ctx, tab),
+    giveTreat: (kind) => void giveTreat(ctx, main, kind),
+    view: () => view,
   };
+
+  // ---------- 방 ↔ 베란다 (옆으로 밀기 · 단추) ----------
+  let view: 'room' | 'veranda' = 'room';
+  const stage = $('#stage');
+  const veranda = mountVeranda(ctx, $('#veranda'), $('#trayVeranda'));
+  function go(to: 'room' | 'veranda') {
+    if (to === view || busy) return;
+    view = to;
+    stage.classList.toggle('at-veranda', to === 'veranda');
+    $('#trayRoom').classList.toggle('hidden', to !== 'room');
+    $('#trayVeranda').classList.toggle('hidden', to !== 'veranda');
+    $('#goBtn').innerHTML = to === 'room' ? '🌱<small>베란다</small>' : '🏠<small>방</small>';
+    sfx('click');
+    if (to === 'veranda') veranda.enter();
+    else veranda.leave();
+    paint();
+  }
+  $('#goBtn').addEventListener('click', () => go(view === 'room' ? 'veranda' : 'room'));
+  $('#shopBtn').addEventListener('click', () => openShop(ctx));
+  {
+    // 옆으로 밀기: 고양이 · 물건을 누른 것이 아니면 (고양이 누르기는 stopPropagation)
+    let sx = 0;
+    let sy = 0;
+    let st = 0;
+    let on = false;
+    stage.addEventListener('pointerdown', (e) => {
+      const tg = e.target as HTMLElement;
+      on = !tg.closest('.prop,.pot,.can,.stage-ui,.cat');
+      sx = e.clientX;
+      sy = e.clientY;
+      st = performance.now();
+    });
+    stage.addEventListener('pointerup', (e) => {
+      if (!on) return;
+      on = false;
+      const dx = e.clientX - sx;
+      const dy = e.clientY - sy;
+      if (Math.abs(dx) > 70 && Math.abs(dy) < Math.abs(dx) * 0.6 && performance.now() - st < 800) go(dx < 0 ? 'veranda' : 'room');
+    });
+  }
+  preloadWorld(['veranda', 'plants-pot-empty', 'objects-watering-can']);
 
   // ---------- 상태 그리기 ----------
   let lastFood = -1;
@@ -207,16 +308,16 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     const fl = Math.ceil((lv.full / CONST.max) * 3) / 3;
     if (fl !== lastFood) {
       lastFood = fl;
-      props.food.el.firstElementChild!.outerHTML = foodBowl(lv.full / CONST.max);
+      props.food.el.querySelector('.pic')!.innerHTML = foodArt(lv.full / CONST.max);
     }
     const wk = `${Math.ceil((lv.water / CONST.max) * 4)}:${lv.spoiled}`;
     if (wk !== lastWater) {
       lastWater = wk;
-      props.water.el.firstElementChild!.outerHTML = waterBowl(lv.water / CONST.max, lv.spoiled);
+      props.water.el.querySelector('.pic')!.innerHTML = waterArt(lv.water / CONST.max, lv.spoiled);
     }
     if (lv.poops !== lastPoops) {
       lastPoops = lv.poops;
-      props.litter.el.firstElementChild!.outerHTML = litterBox(lv.poops);
+      props.litter.el.querySelector('.pic')!.innerHTML = litterArt(lv.poops);
     }
     props.food.el.classList.toggle('need', nd.food);
     props.water.el.classList.toggle('need', nd.water);
@@ -230,7 +331,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     const pk = pc?.present ? `${pc.slot}:${pc.present.kind}:${pc.present.id}` : '';
     if (pk !== lastPresent) {
       lastPresent = pk;
-      props.present.el.innerHTML = pc?.present ? `${presentIcon(pc.present.kind)}<span class="sparkle">✦</span>` : '';
+      props.present.el.innerHTML = pc?.present ? `<div class="pic">${presentArt(pc.present.kind)}</div><span class="sparkle">✦</span>` : '';
       props.present.el.dataset.slot = String(pc?.slot ?? '');
     }
     props.present.el.classList.toggle('hidden', !pk || greeting);
@@ -251,8 +352,17 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
                 : nd.mood
                   ? `${josa(c.name, '이', '가')} 심심해해요 — 고양이를 눌러 놀아 주세요`
                   : '고양이를 문지르면 쓰다듬어요 · 누르면 놀아 주기';
-    $('#hint').textContent = hint;
-    room.dataset.time = timeOfDay();
+    const ready = state.pots.filter((p) => potStage(p, t) === 3).length;
+    $('#hint').textContent = hint === '고양이를 문지르면 쓰다듬어요 · 누르면 놀아 주기' && ready ? `베란다에 다 자란 꽃이 ${ready}개 있어요 — 방을 옆으로 밀어요` : hint;
+    $('#goBtn').classList.toggle('ready', ready > 0 && view === 'room');
+    const tod = timeOfDay();
+    room.dataset.time = tod;
+    if (shownView !== tod) {
+      shownView = tod;
+      bgLayer($('#view'), VIEW[tod]);
+    }
+    paintBag();
+    veranda.paint();
     if (sheet) paintSheet();
   }
 
@@ -312,7 +422,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     bag.setPointerCapture(e.pointerId);
     const ghost = document.createElement('div');
     ghost.className = 'drag-bag';
-    ghost.innerHTML = foodBag;
+    ghost.innerHTML = bagArt();
     document.body.append(ghost);
     bag.classList.add('lifted');
     let pour = 0;
@@ -322,6 +432,10 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     let raf = 0;
     let px = e.clientX;
     let py = e.clientY;
+    let moved = false;
+    const downAt = performance.now();
+    const x0 = e.clientX;
+    const y0 = e.clientY;
     const place = () => {
       ghost.style.transform = `translate(${px - 32}px, ${py - 60}px) rotate(${over ? -118 : -8}deg)`;
     };
@@ -363,6 +477,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     const move = (ev: PointerEvent) => {
       px = ev.clientX;
       py = ev.clientY;
+      if (Math.hypot(px - x0, py - y0) > 10) moved = true;
       const b = bowlBox();
       const nowOver = px > b.left - 10 && px < b.right + 50 && py > b.top - 130 && py < b.bottom + 10;
       if (nowOver !== over) {
@@ -384,17 +499,48 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       ghost.style.transform = `translate(${r.left}px, ${r.top}px) rotate(0deg)`;
       setTimeout(() => ghost.remove(), 250);
       if (!done && over && pour > 0) toast('조금 더 기울여 주세요');
+      // 끌지 않고 누르기만 했으면: 사료 고르기
+      if (!moved && performance.now() - downAt < 400) chooseFood();
     };
     bag.addEventListener('pointermove', move);
     bag.addEventListener('pointerup', up);
     bag.addEventListener('pointercancel', up);
   });
+  // ---------- 사료 고르기: 기본 사료(공짜) · 상점 사료(보관함) ----------
+  try {
+    const f = localStorage.getItem(FOOD_KEY);
+    if (f && f in FOOD) food = f as FoodId;
+  } catch {
+    /* 저장이 막힌 기기 */
+  }
+  function paintBag() {
+    if (food !== 'basic' && itemCount(state.profile, `food:${food}`) < 1) food = 'basic';
+    const n = food === 'basic' ? 0 : itemCount(state.profile, `food:${food}`);
+    $('#bagName').textContent = food === 'basic' ? '사료' : FOOD[food].name;
+    const tag = $('#bagTag');
+    tag.classList.toggle('hidden', !n);
+    tag.textContent = String(n);
+  }
+  function chooseFood() {
+    const owned = FOODS.filter((f) => f.price === 0 || itemCount(state.profile, `food:${f.id}`) > 0);
+    if (owned.length < 2) return toast('사료 봉투를 끌어다 밥그릇 위에서 기울여요 · 다른 사료는 상점에서');
+    const i = owned.findIndex((f) => f.id === food);
+    food = owned[(i + 1) % owned.length].id;
+    try {
+      localStorage.setItem(FOOD_KEY, food);
+    } catch {
+      /* 저장이 막힌 기기 */
+    }
+    sfx('toggle');
+    paintBag();
+    toast(`${FOOD[food].name}${food === 'basic' ? ' (공짜)' : ` · ${itemCount(state.profile, `food:${food}`)}번 남음`} — ${FOOD[food].desc}`);
+  }
   const bowlSpot = (p: Prop): Spot2 => ({ x: Math.max(0.12, p.at.x - 0.24), y: p.at.y + 0.05 });
   async function doFeed() {
     busy = true;
     buzz([20, 30, 20]);
     try {
-      const r = await api.feed(mainSlot, 'basic');
+      const r = await api.feed(mainSlot, food);
       apply(r);
       rewards(r);
       sfx('nyangMeow', { rate: 1.2 });
@@ -466,8 +612,8 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     dim.innerHTML = `<div class="litter-zoom panel" role="dialog" aria-label="화장실 치우기">
       <button class="btn iconbtn close" type="button" aria-label="닫기">✕</button>
       <h3>화장실 치우기</h3>
-      <div class="sandbox"><div class="sand">${SPOTS.slice(0, n).map(([x, y], i) => `<div class="lump" data-i="${i}" style="left:${x}%;top:${y}%"><i></i></div>`).join('')}</div></div>
-      <div class="tools"><div class="trash" aria-label="봉투">${trashBag}</div><p class="lhint">삽으로 덩어리를 떠서 봉투에 넣어요</p><div class="scoop" aria-label="모래 삽">${scoop}</div></div>
+      <div class="sandbox"><div class="sand">${SPOTS.slice(0, n).map(([x, y], i) => `<div class="lump" data-i="${i}" style="left:${x}%;top:${y}%">${artImg('objects-poop', '<i></i>')}</div>`).join('')}</div></div>
+      <div class="tools"><div class="trash" aria-label="봉투">${trashBag}</div><p class="lhint">삽으로 덩어리를 떠서 봉투에 넣어요</p><div class="scoop" aria-label="모래 삽">${artImg('objects-scoop', scoop)}</div></div>
     </div>`;
     document.body.append(dim);
     const close = () => {
@@ -594,9 +740,9 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     buzz([10, 30, 10]);
     const dim = document.createElement('div');
     dim.className = 'dim';
-    const extra = g.kind === 'toy' ? '<p class="away">놀아 주기에서 쓸 수 있어요</p>' : g.kind === 'seed' ? '<p class="away">베란다 정원이 열리면 심을 수 있어요</p>' : g.kind === 'furniture' ? '<p class="away">꾸미기가 열리면 방에 놓을 수 있어요</p>' : '';
+    const extra = g.kind === 'toy' ? '<p class="away">놀아 주기에서 쓸 수 있어요</p>' : g.kind === 'seed' ? '<p class="away">베란다 화분에 심을 수 있어요</p>' : g.kind === 'furniture' ? '<p class="away">꾸미기가 열리면 방에 놓을 수 있어요</p>' : '';
     dim.innerHTML = `<div class="summary panel gift-card" role="dialog" aria-label="선물">
-      <div class="gift-ico">${presentIcon(g.kind)}</div>
+      <div class="gift-ico">${presentArt(g.kind)}</div>
       <h3>${esc(josa(catOf(slot).name, '이', '가'))} 선물을 물어 왔어요!</h3>
       <p class="gift-what">${esc(presentText(g))}</p>${extra}
       <p class="tapto">눌러서 닫기</p></div>`;
@@ -710,7 +856,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   // ---------- 바닥을 누르면: 친밀도 4단계부터 따라온다 ----------
   room.addEventListener('pointerdown', (e) => {
     const tgt = e.target as HTMLElement;
-    if (busy || !(tgt === room || tgt.classList.contains('floor'))) return;
+    if (busy || view !== 'room' || !(tgt === room || tgt.classList.contains('floor') || tgt.classList.contains('floor-art'))) return;
     const rr = room.getBoundingClientRect();
     if (e.clientY - rr.top < floorRect().top - 10) return;
     const fl = toFloor(e.clientX, e.clientY);
@@ -731,7 +877,12 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       const el = e.target as HTMLElement;
       if (el === sheet || el.closest('[data-close]')) return closeSheet();
       if (el.closest('[data-back]')) return (sheetMode = 'main'), paintSheet();
-      if (el.closest('[data-cure]')) return void doCure();
+      if (el.closest('[data-cure]')) return void doCure((el.closest('[data-cure]') as HTMLElement).dataset.cure ?? 'blanket');
+      if (el.closest('[data-shop]')) {
+        const tab = (el.closest('[data-shop]') as HTMLElement).dataset.shop as Parameters<typeof openShop>[1];
+        closeSheet();
+        return openShop(ctx, tab);
+      }
       if (el.closest('[data-soon]')) return toast('사진은 다음 업데이트에서 열려요');
       const act = el.closest<HTMLElement>('[data-act]')?.dataset.act;
       if (act === 'play') return (sheetMode = 'toys'), paintSheet();
@@ -765,8 +916,9 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
           const own = hasToy(state.profile, id);
           const fav = p.toy === id;
           return `<button class="btn choice ${own ? '' : 'locked'}" type="button" ${own ? `data-toy="${id}"` : 'disabled'}>
-            <span class="cico">${TOYS[id].icon}</span><b>${TOYS[id].name}</b><small>${own ? TOYS[id].desc : '상점에서 (곧)'}</small>${fav ? '<em class="fav">♥ 좋아해요</em>' : ''}</button>`;
+            <span class="cico">${toyIcon(id)}</span><b>${TOYS[id].name}</b><small>${own ? TOYS[id].desc : '상점에서 살 수 있어요'}</small>${fav ? '<em class="fav">♥ 좋아해요</em>' : ''}</button>`;
         }).join('')}</div>
+        ${TOY_IDS.some((id) => !hasToy(state.profile, id)) ? '<button class="btn wide" type="button" data-shop="toy">🛒 상점에서 장난감 보기</button>' : ''}
         <button class="btn wide" type="button" data-back>뒤로</button>`;
       return;
     }
@@ -777,9 +929,9 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
           const have = itemCount(state.profile, `churu:${id}`);
           const fav = p.churu === id;
           return `<button class="btn choice ${have ? '' : 'locked'}" type="button" ${have ? `data-flavor="${id}"` : 'disabled'}>
-            <span class="cico churu-chip" style="--c:${CHURU[id].color}"></span><b>${CHURU[id].name}</b><small>${have}개</small>${fav ? '<em class="fav">♥ 제일 좋아</em>' : ''}</button>`;
+            <span class="cico">${artImg(`objects-churu-${id}`, `<span class="churu-chip" style="--c:${CHURU[id].color}"></span>`, 'art churu-ico')}</span><b>${CHURU[id].name}</b><small>${have}개</small>${fav ? '<em class="fav">♥ 제일 좋아</em>' : ''}</button>`;
         }).join('')}</div>
-        <p class="likes">츄르는 상점에서 시아코인으로 살 수 있어요 (곧)</p>
+        <button class="btn wide" type="button" data-shop="churu">🛒 츄르 사기 (시아코인 5개)</button>
         <button class="btn wide" type="button" data-back>뒤로</button>`;
       return;
     }
@@ -797,7 +949,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       ${bar('청결', '🧹', lv.clean, lv.poops ? ` · 똥 ${lv.poops}` : '')}
       ${bar('기분', '😺', lv.mood)}
       <p class="likes">좋아하는 곳: ${p.likes.map((s) => SPOT_NAME[s]).join(' · ')} · 싫어하는 곳: ${p.dislikes.map((s) => SPOT_NAME[s]).join(' · ')}<br/>좋아하는 장난감: ${TOYS[p.toy].name} · 츄르: ${CHURU[p.churu].name} · 본 행동 ${seenN}/${BEHAVIORS.length}</p>
-      ${lv.sick && !lv.curing ? `<button class="btn primary wide" data-cure type="button">담요 덮어 주기</button>` : ''}
+      ${lv.sick && !lv.curing ? `<button class="btn primary wide" data-cure="blanket" type="button">담요 덮어 주기</button>${itemCount(state.profile, 'medicine') ? `<button class="btn wide" data-cure="medicine" type="button">💊 약 간식 주기 (${itemCount(state.profile, 'medicine')}개)</button>` : ''}` : ''}
       <div class="acts">
         <button class="btn" data-act="play" type="button">🎣<small>놀아 주기</small></button>
         <button class="btn ${brushed ? 'done' : ''}" data-act="brush" type="button">🪮<small>${brushed ? '오늘 했어요' : '빗질'}</small></button>
@@ -820,7 +972,11 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       toast('츄르는 하루 2개까지만 먹어요');
       return;
     }
-    if (!CHURU_IDS.some((id) => itemCount(state.profile, `churu:${id}`) > 0)) return toast('츄르가 없어요. 상점이 열리면 시아코인으로 살 수 있어요');
+    if (!CHURU_IDS.some((id) => itemCount(state.profile, `churu:${id}`) > 0)) {
+      closeSheet();
+      toast('츄르가 없어요. 상점에서 시아코인으로 살 수 있어요');
+      return openShop(ctx, 'churu');
+    }
     sheetMode = 'churu';
     paintSheet();
   }
@@ -836,13 +992,13 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     closeSheet();
     void brushCat(ctx, v);
   }
-  async function doCure() {
+  async function doCure(kind: string) {
     try {
-      const r = await api.cure(sheetSlot, 'blanket');
+      const r = await api.cure(sheetSlot, kind);
       apply(r);
       sfx('tankHeal');
       buzz(20);
-      toast('담요를 덮어 주었어요. 2시간 뒤면 나아요');
+      toast(kind === 'medicine' ? '약 간식을 먹었어요. 2시간 뒤면 나아요' : '담요를 덮어 주었어요. 2시간 뒤면 나아요');
       viewOf(sheetSlot).actor.act = { kind: 'pose', pose: 'sleep', until: performance.now() + 15000 };
     } catch (e) {
       toast(errorText(e));
@@ -963,6 +1119,10 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     if (lv.poops) lines.push(`화장실에 똥 ${lv.poops}개`);
     if (lv.mood < CONST.half) lines.push('심심해하고 있어요');
     if (state.cats.some((x) => x.present)) lines.push('선물을 물어 왔어요!');
+    const t = Math.floor(now());
+    const ready = new Map<string, number>();
+    for (const p of state.pots) if (potStage(p, t) === 3) ready.set(p.plant, (ready.get(p.plant) ?? 0) + 1);
+    for (const [id, n] of ready) lines.push(`${SEED_NAME[id as keyof typeof SEED_NAME]} ${n}개 수확할 수 있어요`);
     if (!lines.length) lines.push('모두 괜찮아요. 쓰다듬어 줄까요?');
     const h = Math.floor(away / 3600);
     const dim = document.createElement('div');

@@ -14,6 +14,8 @@ const FACE: Partial<Record<ArtName, { eyes: [number, number][]; mouth: [number, 
   beg: { eyes: [[0.337, 0.335], [0.563, 0.338]], mouth: [0.43, 0.388] },
   sit: { eyes: [[0.336, 0.447], [0.617, 0.452]], mouth: [0.5, 0.535] },
   'sit-blink': { eyes: [[0.336, 0.447], [0.617, 0.452]], mouth: [0.5, 0.535] },
+  // 츄르 핥기 칸: 입 자리만 쓴다 (눈 반짝 · 혀는 그림에 이미 있다 — 연출은 'none' 으로 둔다)
+  ...Object.fromEntries([0, 1, 2, 3, 4, 5, 6, 7].map((i) => [`lick-${i}`, { eyes: [[0.33, 0.36], [0.57, 0.36]], mouth: [0.405, 0.44] }])),
 };
 
 export interface Spot2 {

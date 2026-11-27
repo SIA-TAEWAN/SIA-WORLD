@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CONST, LOVE_NEED, PERSONALITIES, PERSONALITY, kstDay, loveAt, loveLevel, shelterKittens } from '../src/data/balance';
+import { CONST, LOVE_NEED, PERSONALITIES, PERSONALITY, POT_PRICES, kstDay, loveAt, loveLevel, shelterKittens } from '../src/data/balance';
 import {
-  RuleError, adopt, brush, churu, clean, cleanOf, cure, feed, gift, play, playStart, seen, fullOf, levelsOf, lin, linHalfAt, linZeroAt, moodOf, newState, pet, poopsOf, settle, spotKind, visit, water, waterOf,
+  RuleError, adopt, brush, buy, churu, exchange, expandPots, harvest, plant, potGrown, potReadyAt, potStage, sell, treat, waterPot, clean, cleanOf, cure, feed, gift, play, playStart, seen, fullOf, levelsOf, lin, linHalfAt, linZeroAt, moodOf, newState, pet, poopsOf, settle, spotKind, visit, water, waterOf,
   type NyangState,
 } from '../src/game/rules';
 
@@ -437,5 +437,105 @@ describe('3단계: 놀아 주기 · 빗질 · 츄르 · 선물 · 행동 도감'
     s = cure(s, 1, 'medicine', T0 + 5 * 86400).state;
     expect(s.profile.items.medicine).toBeUndefined();
     expect(levelsOf(cat(s), T0 + 5 * 86400 + 1).curing).toBe(true);
+  });
+});
+
+describe('4단계: 베란다 정원', () => {
+  it('물을 준 뒤 water_sec 동안만 자라고, 마르면 멈출 뿐 시들지 않는다 (장미 8시간 · 물 한 번 4시간)', () => {
+    let s = start();
+    s.profile.items['seed:rose'] = 1;
+    err(() => plant(s, 5, 'rose', T0), 'bad pot');
+    err(() => plant(s, 1, 'tulip', T0), 'bad seed');
+    s = plant(s, 1, 'rose', T0).state;
+    err(() => plant(s, 1, 'rose', T0), 'pot busy');
+    err(() => plant(s, 2, 'rose', T0), 'no seed');
+    const pot = () => s.pots[0];
+    expect(potStage(pot(), T0 + 99 * H)).toBe(0); // 물을 안 주면 그대로
+    s = waterPot(s, 1, T0 + H).state;
+    err(() => waterPot(s, 1, T0 + 2 * H), 'pot wet');
+    expect(potGrown(pot(), T0 + 3 * H)).toBe(2 * H);
+    expect(potGrown(pot(), T0 + 30 * H)).toBe(4 * H); // 말라서 멈춤
+    expect(potStage(pot(), T0 + 30 * H)).toBe(1);
+    err(() => harvest(s, 1, T0 + 30 * H), 'not ready');
+    s = waterPot(s, 1, T0 + 30 * H).state;
+    expect(potReadyAt(pot(), T0 + 30 * H)).toBe(T0 + 34 * H);
+    expect(potStage(pot(), T0 + 34 * H - 1)).toBe(2);
+    expect(potStage(pot(), T0 + 34 * H)).toBe(3);
+    err(() => waterPot(s, 1, T0 + 40 * H), 'pot ready');
+    const r = harvest(s, 1, T0 + 40 * H);
+    expect(r.plant).toBe('rose');
+    expect(r.state.pots).toEqual([]);
+    expect(r.state.profile.items['plant:rose']).toBe(1);
+    err(() => harvest(r.state, 1, T0 + 40 * H), 'no plant');
+  });
+
+  it('화분 늘리기 · 팔기 · 보름달 등 바꾸기', () => {
+    let s = start();
+    err(() => expandPots(s, T0), 'no coins');
+    s.profile.coins = 10000;
+    for (let i = 0; i < 8; i++) s = expandPots(s, T0).state;
+    expect(s.profile.pots).toBe(12);
+    expect(s.profile.coins).toBe(10000 - POT_PRICES.reduce((a, b) => a + b, 0));
+    err(() => expandPots(s, T0), 'max pots');
+    s.profile.items['plant:daisy'] = 3;
+    err(() => sell(s, 'plant:moonflower', 1, T0), 'bad item');
+    err(() => sell(s, 'plant:daisy', 4, T0), 'no item');
+    const r = sell(s, 'plant:daisy', 3, T0);
+    expect(r.coins).toBe(3 * 8);
+    s = r.state;
+    s.profile.items['plant:moonflower'] = 3;
+    s = exchange(s, 'moon_lamp', T0).state;
+    expect(s.profile.furniture).toContain('moon_lamp');
+    err(() => exchange(s, 'moon_lamp', T0), 'have it');
+  });
+
+  it('상점: 엽전 · 시아코인 · 하나만 · 친밀도로 열리는 씨앗', () => {
+    let s = start();
+    err(() => buy(s, 'seed:daisy', 1, T0), 'no coins');
+    s.profile.coins = 100;
+    err(() => buy(s, 'seed:rose', 1, T0), 'locked');
+    err(() => buy(s, 'seed:daisy', 0, T0), 'bad amount');
+    s = buy(s, 'seed:daisy', 5, T0).state;
+    expect([s.profile.coins, s.profile.items['seed:daisy']]).toEqual([80, 5]);
+    s = buy(s, 'food:tasty', 1, T0).state;
+    expect(s.profile.items['food:tasty']).toBe(5);
+    err(() => buy(s, 'churu:tuna', 1, T0), 'not enough coin');
+    s.profile.sia = 12;
+    s = buy(s, 'churu:salmon', 2, T0).state;
+    expect([s.profile.sia, s.profile.buySeq, s.profile.items['churu:salmon']]).toEqual([2, 1, 2]);
+    s = buy(s, 'toy:box', 1, T0).state;
+    err(() => buy(s, 'toy:box', 1, T0), 'have it');
+    err(() => buy(s, 'furniture:vase', 2, T0), 'bad amount');
+    s = buy(s, 'furniture:vase', 1, T0).state;
+    expect(s.profile.furniture).toEqual(['vase']);
+    s.cats[0].love = loveAt(5);
+    s.profile.coins = 30;
+    expect(buy(s, 'seed:rose', 1, T0).state.profile.items['seed:rose']).toBe(1);
+  });
+
+  it('상점 사료: 보관함에서 하나 쓰고 기분도 오른다 · 기본 사료는 공짜', () => {
+    let s = start();
+    const t = T0 + 6 * H;
+    err(() => feed(s, 1, 'tasty', t), 'no food');
+    s.profile.items['food:tasty'] = 1;
+    const m0 = moodOf(cat(s), t);
+    s = feed(s, 1, 'tasty', t).state;
+    expect(s.profile.items['food:tasty']).toBeUndefined();
+    expect(moodOf(cat(s), t)).toBe(Math.min(10000, m0 + 1500));
+    expect(s.profile.coins).toBeGreaterThanOrEqual(0);
+  });
+
+  it('캣그라스 · 캣닢: 하루 2번 · 기분 크게 · 캣닢은 nipAt', () => {
+    let s = start();
+    s.profile.items['plant:catnip'] = 3;
+    err(() => treat(s, 1, 'catgrass', T0), 'no item');
+    err(() => treat(s, 1, 'rose', T0), 'bad treat');
+    const r = treat(s, 1, 'catnip', T0 + 10);
+    expect(r.love).toBe(2000);
+    s = r.state;
+    expect(cat(s).nipAt).toBe(T0 + 10);
+    s = treat(s, 1, 'catnip', T0 + 20).state;
+    err(() => treat(s, 1, 'catnip', T0 + 30), 'treat full');
+    expect(treat(s, 1, 'catnip', T0 + 86400).state.profile.items['plant:catnip']).toBeUndefined();
   });
 });
