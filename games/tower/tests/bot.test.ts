@@ -116,12 +116,12 @@ describe('봇: 11층 → 20층 이끼 이무기 → 체크포인트 21', () => {
     expect(avg).toBeLessThanOrEqual(5);
   });
 
-  it('이끼 이무기: 2~3분 싸움 (봇 기준 80~220초)', () => {
+  it('이끼 이무기: 2~3분 싸움 (봇 기준 80~240초 — 쓰러지면 같은 레벨로 그 층을 바로 다시)', () => {
     const times = zone2.flatMap((l) => l.log.floors.filter((f) => f.floor === 20 && f.result === 'clear').map((f) => f.bossTime));
     expect(times.length).toBe(SEEDS2.length);
     for (const t of times) {
       expect(t).toBeGreaterThanOrEqual(80);
-      expect(t).toBeLessThanOrEqual(220);
+      expect(t).toBeLessThanOrEqual(240);
     }
   });
 

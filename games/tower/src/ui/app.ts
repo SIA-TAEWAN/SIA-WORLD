@@ -1010,7 +1010,7 @@ async function mvpEnd(floor: number, saving: Promise<unknown>, s: RunState) {
       ${last
         ? `<div class="loot-big"><b>🏯 ${ctx.data.checkpoint}층부터는 아직 준비 중이에요</b><small>다음 구역이 열리면 체크포인트에서 이어서 올라요</small></div>
       <button class="btn primary big" data-close>처음 화면으로</button>`
-        : `<div class="loot-big"><b>🏯 다음 구역 · ${esc(next?.name ?? '')}</b><small>${esc(next?.desc ?? '')} — 쓰러져도 ${ctx.data.checkpoint}층부터 다시 올라요</small></div>
+        : `<div class="loot-big"><b>🏯 다음 구역 · ${esc(next?.name ?? '')}</b><small>${esc(next?.desc ?? '')}</small></div>
       <div class="btns"><button class="btn primary big" id="go-on">${floor + 1}층으로 ▶</button><button class="btn" data-close>처음 화면</button></div>`}
     </div>`);
   ov.querySelector('[data-close]')!.addEventListener('click', () => {
@@ -1033,7 +1033,7 @@ function onDead(s: RunState) {
   music.play('lose');
   const data = clone(s.data);
   const floor = s.map.floor;
-  die(data);
+  die(data, floor);
   ctx.data = data;
   void saveNow(data);
   const mine = cur;
@@ -1045,13 +1045,13 @@ function onDead(s: RunState) {
         <h2>쓰러졌어요…</h2>
         <p class="center">${floor}층에서 쓰러졌어요. 레벨·엽전·구슬은 그대로예요.</p>
         <div class="rows">
-          <div><span>다시 시작</span><b>${data.checkpoint}층 (체크포인트)</b></div>
+          <div><span>다시 시작</span><b>${data.floor}층 처음부터</b></div>
           <div><span>레벨</span><b>Lv ${data.level}</b></div>
           <div><span>엽전</span><b class="coin">${coinFmt(data.coins)}냥</b></div>
         </div>
         <p class="soft center">이미 깬 층은 경험치가 절반이에요</p>
         <div class="btns">
-          <button class="btn primary big" id="again">${data.checkpoint}층부터 다시 ▶</button>
+          <button class="btn primary big" id="again">${data.floor}층 다시 ▶</button>
           <button class="btn" id="home">처음 화면</button>
         </div>
       </div>`);
