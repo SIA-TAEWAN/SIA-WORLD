@@ -404,6 +404,8 @@ describe('3단계: 놀아 주기 · 빗질 · 츄르 · 선물 · 행동 도감'
     expect(Object.keys(high.kinds).sort()).toEqual(['coin', 'furniture', 'seed', 'toy']);
     // 장난감은 가지고 있지 않은 것만 (셋 다 생기면 엽전)
     expect(['laser', 'ball', 'box'].every((t) => (high.s.profile.items[`toy:${t}`] ?? 0) <= 1)).toBe(true);
+    // 가구도 가지고 있지 않은 것만 (같은 가구가 두 번 오지 않는다)
+    expect(new Set(high.s.profile.furniture).size).toBe(high.s.profile.furniture.length);
     // 4시간이 안 지났으면 다시 굴리지 않는다
     let s = start('calm');
     const p0 = s.profile.pseq;
@@ -437,6 +439,37 @@ describe('3단계: 놀아 주기 · 빗질 · 츄르 · 선물 · 행동 도감'
     s = cure(s, 1, 'medicine', T0 + 5 * 86400).state;
     expect(s.profile.items.medicine).toBeUndefined();
     expect(levelsOf(cat(s), T0 + 5 * 86400 + 1).curing).toBe(true);
+  });
+
+  it('약 간식으로 나은 뒤에는 바닥인 채 sick_sec 를 나은 때부터 다시 센다 (바로 다시 걸리지 않는다)', () => {
+    let s = start('glutton');
+    const t1 = T0 + 50 * H;
+    s = visit(s, true, t1).state;
+    expect(cat(s).sickAt).not.toBeNull();
+    s.profile.items.medicine = 1;
+    s = cure(s, 1, 'medicine', t1).state;
+    const well = t1 + CONST.cure_sec;
+    s = visit(s, false, well + 5).state;
+    expect(cat(s)).toMatchObject({ sickAt: null, cureAt: null, wellAt: well });
+    // 몇 번에 나눠 불러도 같고, 나은 때 + sick_sec 에 다시 걸린다
+    s = visit(s, false, well + 10 * H).state;
+    expect(cat(s).sickAt).toBeNull();
+    expect(levelsOf(cat(s), well + CONST.sick_sec - 1).sick).toBe(false);
+    expect(settle(cat(s), well + CONST.sick_sec + 60).sickAt).toBe(well + CONST.sick_sec);
+  });
+
+  it('시각이 거꾸로 가도 하루 상한이 풀리지 않는다 (빗질 · 츄르 · 하루 첫 돌보기)', () => {
+    let s = start();
+    s.profile.items['churu:tuna'] = 5;
+    const t = T0 + 3 * H;
+    s = brush(s, 1, t).state;
+    s = churu(s, 1, 'tuna', t).state;
+    s = churu(s, 1, 'tuna', t).state;
+    // 다음 날로 갔다가 되돌아온 시각 (전날)
+    s = { ...s, cats: s.cats.map((c) => ({ ...c, brushDay: c.brushDay + 1, churuDay: c.churuDay + 1 })), profile: { ...s.profile, bonusDay: s.profile.bonusDay + 1 } };
+    err(() => brush(s, 1, t + 1), 'brushed today');
+    err(() => churu(s, 1, 'tuna', t + 1), 'churu full');
+    expect(feed(s, 1, 'basic', t + 2 * H).bonus).toBe(0);
   });
 });
 

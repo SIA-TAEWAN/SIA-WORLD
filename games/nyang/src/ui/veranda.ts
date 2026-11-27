@@ -203,7 +203,11 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
     });
   }
 
+  /** 칸 늘리기 · 물 주기 요청 중 (연타 막기) */
+  let expanding = false;
+  const wateringPots = new Set<number>();
   async function expand() {
+    if (expanding) return;
     const s = ctx.state();
     const n = s.profile.pots;
     if (n >= POT_MAX) return;
@@ -217,7 +221,8 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
     dim.addEventListener('click', async (e) => {
       const t = e.target as HTMLElement;
       if (t === dim || t.closest('[data-close]')) return dim.remove();
-      if (!t.closest('[data-ok]')) return;
+      if (!t.closest('[data-ok]') || expanding) return;
+      expanding = true;
       dim.remove();
       try {
         const r = await ctx.api.expandPots();
@@ -227,6 +232,8 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
         toast(`화분이 ${r.state.profile.pots}칸이 되었어요`);
       } catch (err) {
         toast(errorText(err));
+      } finally {
+        expanding = false;
       }
     });
   }
@@ -315,9 +322,10 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
   async function waterOne(slot: number, b: HTMLElement) {
     const p = ctx.state().pots.find((x) => x.slot === slot);
     const t = Math.floor(ctx.now());
-    if (!p) return;
+    if (!p || wateringPots.has(slot)) return;
     if (potStage(p, t) === 3) return toast('다 자랐어요. 눌러서 수확해요');
     if (potWet(p, t)) return toast('아직 흙이 촉촉해요');
+    wateringPots.add(slot);
     try {
       const r = await ctx.api.waterPot(slot);
       ctx.apply(r);
@@ -329,6 +337,8 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
       floatAt(el, bb.left - rr.left + bb.width / 2, bb.top - rr.top + 20, '촉촉 💧', 'float love');
     } catch (e) {
       toast(errorText(e));
+    } finally {
+      wateringPots.delete(slot);
     }
   }
 

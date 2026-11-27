@@ -37,7 +37,7 @@ const waterArt = (level: number, spoiled: boolean) => artImg(level > 0.12 || spo
 const POOP_AT = [[30, 30], [56, 24], [43, 42], [68, 38]];
 /** 화장실: 똥은 4개까지 그리고, 더 많으면 ×n 표 (여러 마리일 때 모두의 합) */
 const litterArt = (poops: number) =>
-  `<div class="litter-art">${artImg('objects-litter-box', litterBox(Math.min(4, poops)))}${POOP_AT.slice(0, Math.min(4, poops)).map(([x, y]) => `<img class="poop" src="${worldUrl('objects-poop')}" alt="" draggable="false" style="left:${x}%;top:${y}%">`).join('')}${poops > 4 ? `<b class="poop-n">×${poops}</b>` : ''}</div>`;
+  `<div class="litter-art">${artImg('objects-litter-box', litterBox(Math.min(4, poops)))}${POOP_AT.slice(0, Math.min(4, poops)).map(([x, y]) => `<span class="poop" style="left:${x}%;top:${y}%">${artImg('objects-poop', '<i class="poop-fb"></i>')}</span>`).join('')}${poops > 4 ? `<b class="poop-n">×${poops}</b>` : ''}</div>`;
 /** 선물 그림: 엽전은 큰 엽전 그림을 쓰지 않는다 (장식 글자) — 코드 그림의 주머니 */
 const presentArt = (kind: string) =>
   kind === 'seed' ? artImg('objects-seed-packet', presentIcon(kind)) : kind === 'toy' ? artImg('objects-yarn', presentIcon(kind)) : presentIcon(kind);
@@ -82,8 +82,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
         <a class="back" href="${o.worldHome}" aria-label="SIA WORLD 로 돌아가기">←<span> SIA WORLD</span></a><span class="spacer"></span>
         <span class="pill" title="엽전"><i class="coin-ico"></i><b id="coins">0</b></span>
         <span class="pill" title="시아코인"><i class="sia-ico">S</i><b id="sia">0</b></span>
-        ${o.openRanking ? '<button class="btn iconbtn" id="rankBtn" type="button" aria-label="집사 랭킹">🏆</button>' : ''}
-        <button class="btn iconbtn" id="albumBtn" type="button" aria-label="앨범 · 도감">📖</button>
         <button class="btn iconbtn" id="setBtn" type="button" aria-label="설정">⚙️</button>
       </header>
       <main class="stage" id="stage">
@@ -112,6 +110,8 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
           <div class="hint" id="hint"></div>
           <button class="btn catbtn" id="catBtn" type="button"></button>
         </div>
+        <div class="tray-main hidden" id="trayVeranda"></div>
+        <div class="tray-scene hidden" id="trayScene"></div>
         <!-- 엄지가 닿는 아래 띠: 자주 쓰는 단추는 모두 여기 (위 띠에는 돌아가기 · 지갑 · 설정만) -->
         <nav class="nav" aria-label="메뉴">
           <button class="btn navbtn" id="goBtn" type="button">🌱<small>베란다</small></button>
@@ -121,8 +121,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
           <button class="btn navbtn" id="albumBtn" type="button">📖<small>앨범</small></button>
           ${o.openRanking ? '<button class="btn navbtn" id="rankBtn" type="button">🏆<small>랭킹</small></button>' : ''}
         </nav>
-        <div class="tray-main hidden" id="trayVeranda"></div>
-        <div class="tray-scene hidden" id="trayScene"></div>
       </footer>
     </div>`;
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
@@ -160,13 +158,13 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       foodKey: -1,
       waterKey: '',
     });
+  }
+  const bowlOf = (slot: number) => bowls.get(slot) ?? bowls.values().next().value!;
   /** 📷 고르기 (여러 마리일 때 찍을 고양이를 누르는 중) — 아래 띠 단추도 켜 보인다 */
   const setCamera = (on: boolean) => {
     room.classList.toggle('camera', on);
     root.querySelector('#camBtn')?.classList.toggle('on', on);
   };
-  }
-  const bowlOf = (slot: number) => bowls.get(slot) ?? bowls.values().next().value!;
   const furnish = new Furnishing(room);
   let decoOn = false;
   const furnOf = (id: string): FurnView | undefined => furnish.views.find((v) => v.id === id);
@@ -490,13 +488,29 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       shownView = tod;
       bgLayer($('#view'), VIEW[tod]);
     }
+    bgm();
     paintBag();
     veranda.paint();
     if (sheet) paintSheet();
   }
 
+  /** 배경음: 마지막으로 튼 곡 (시간대가 바뀌면 바꾼다) */
+  let bgmScene = '';
+  function bgm() {
+    const snd = getSound();
+    if (!snd || !alive) return;
+    const sc = timeOfDay() === 'night' ? 'boss' : 'main';
+    if (sc === bgmScene) return;
+    bgmScene = sc;
+    snd.playBgm('nyang', sc);
+  }
+  /** 받은 상태 수 (늦게 온 refresh 답이 그사이 바뀐 상태를 덮지 않게) */
+  let applied = 0;
   function apply(r: { state: NyangState }) {
+    // 더 오래된 서버 시각의 상태는 버린다 (같은 초는 받는다)
+    if (r.state.now != null && state.now != null && r.state.now < state.now) return;
     state = r.state;
+    applied++;
     paint();
   }
   function rewards(r: CareOut) {
@@ -518,6 +532,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     last = t;
     for (const v of views) {
       const a = v.actor;
+      a.front = v.scene === 'churu' || v.scene === 'brush' || v.scene === 'treat';
       if (!v.scene && ((a.act.kind === 'idle' && t >= a.act.until) || (a.act.kind === 'pose' && t >= a.act.until))) think(ctx, v, t);
       a.update(t, dt);
       // 상자 속 고양이: 상자가 늘 앞에
@@ -532,7 +547,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       const bl = blankets.get(v.slot)!;
       bl.style.width = `${w}px`;
       bl.style.height = `${w * 0.58}px`;
-      a.front = v.scene === 'churu' || v.scene === 'brush' || v.scene === 'treat';
       bl.style.transform = `translate(${sc.x - w / 2}px, ${sc.y - w * 0.5}px)`;
       bl.style.zIndex = String(Math.round(sc.y) + 1);
     }
@@ -543,12 +557,26 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     requestAnimationFrame(frame);
   }
   let greeting = false;
+  /** 방이 닫히면 함께 지우는 타이머 (마중 연출 · 요약 카드) */
+  const timers = new Set<number>();
+  const later = (fn: () => void, ms: number) => {
+    const id = window.setTimeout(() => {
+      timers.delete(id);
+      if (alive) fn();
+    }, ms);
+    timers.add(id);
+  };
+  /** 방이 닫히면 끝나지 않는 기다림 (연출이 거기서 멈춘다) */
+  const wait = (ms: number) => new Promise<void>((ok) => later(ok, ms));
   paint();
 
   // ---------- 밥 주기: 사료 봉투를 끌어다 밥그릇 위에서 기울인다 ----------
   const bag = $('#bag');
+  /** 봉투를 끄는 중 (두 손가락으로 두 번 붓지 않게) */
+  let bagDrag = false;
   bag.addEventListener('pointerdown', (e) => {
-    if (busy) return;
+    if (busy || bagDrag || !e.isPrimary) return;
+    bagDrag = true;
     e.preventDefault();
     bag.setPointerCapture(e.pointerId);
     const ghost = document.createElement('div');
@@ -639,6 +667,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       place();
     };
     const up = () => {
+      bagDrag = false;
       cancelAnimationFrame(raf);
       bag.removeEventListener('pointermove', move);
       bag.removeEventListener('pointerup', up);
@@ -866,7 +895,9 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
           }
         } catch (e) {
           toast(errorText(e));
+          // 이미 치운 덩어리면 지우고, 통신 실패면 모래 위로 되돌린다
           if (e instanceof Error && e.message === 'no poop') lump.remove();
+          else lump.classList.remove('gone');
         } finally {
           working = false;
         }
@@ -1184,7 +1215,10 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     closeSheet();
     void brushCat(ctx, v);
   }
+  let curingReq = false;
   async function doCure(kind: string) {
+    if (curingReq) return;
+    curingReq = true;
     try {
       const r = await api.cure(sheetSlot, kind);
       apply(r);
@@ -1194,6 +1228,8 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       viewOf(sheetSlot).actor.act = { kind: 'pose', pose: 'sleep', until: performance.now() + 15000 };
     } catch (e) {
       toast(errorText(e));
+    } finally {
+      curingReq = false;
     }
   }
 
@@ -1307,15 +1343,34 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
 
   // ---------- 서버와 맞추기 ----------
   const refresh = async () => {
+    const was = applied;
     try {
-      apply(await api.state(false));
+      const r = await api.state(false);
+      // 기다리는 동안 다른 돌보기 답이 왔으면 그쪽이 더 새 상태다
+      if (applied === was) apply(r);
     } catch {
       /* 다음에 */
     }
   };
   const timer = setInterval(refresh, 60_000);
-  const onVisible = () => {
-    if (document.visibilityState === 'visible') void refresh();
+  /** 화면이 숨겨진 때 (게임 시각) — 오래 떠나 있다 돌아오면 들어올 때처럼 선물 · 마중 · 요약 */
+  let hiddenAt = 0;
+  const onVisible = async () => {
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = now();
+      return;
+    }
+    const gone = hiddenAt ? now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (gone < SUMMARY_SEC) return void refresh();
+    try {
+      const r = await api.state(true);
+      if (!alive) return;
+      apply(r);
+      welcome(r.away);
+    } catch {
+      /* 다음에 */
+    }
   };
   document.addEventListener('visibilitychange', onVisible);
 
@@ -1336,8 +1391,15 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       walkTo(old, { x: 0.78, y: 0.62 }, { kind: 'pose', pose: 'sit', until: 0, ms: 2500, face: -1 });
       setTimeout(() => old.actor.say('킁킁… 새 친구냥?', 2000), 1500);
     }
-  } else if (o.away >= GREET_SEC && !state.cats.every((c) => levels(c.slot).sick)) {
-    void greet();
+  } else welcome(o.away, false);
+  /** 들어올 때 · 오래 숨겨졌다 돌아왔을 때: 문 앞 마중 · 요약 카드 */
+  function welcome(away: number, summary = true) {
+    const calm = !busy && !decoOn && !sheet && view === 'room' && views.every((v) => !v.scene || v.scene === 'social' || v.scene === 'furn');
+    if (calm && !greeting && away >= GREET_SEC && !state.cats.every((c) => levels(c.slot).sick)) {
+      for (const v of views) freeCat(v);
+      void greet();
+    }
+    if (summary && (away >= SUMMARY_SEC || state.cats.some((c) => levels(c.slot).sick))) showSummary(away);
   }
   /** 오랜만이면 문이 열리고 고양이가 문 앞까지 달려와 맞이한다 (선물이 있으면 물어 와서 내려놓는다) */
   async function greet() {
@@ -1351,21 +1413,21 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       v.actor.act = { kind: 'pose', pose: 'sleep', until: Infinity };
     });
     const door = $('#door');
-    await new Promise((r) => setTimeout(r, 500));
+    await wait(500);
     door.classList.add('open');
     sfx('click');
-    await new Promise((r) => setTimeout(r, 450));
+    await wait(450);
     for (const v of vs) {
       v.actor.act = { kind: 'hold', pose: 'sit' };
       v.actor.say('!', 600);
     }
     sfx('nyangMeow', { rate: 1.3 });
-    await new Promise((r) => setTimeout(r, 500));
+    await wait(500);
     vs.forEach((v, i) => {
       v.actor.perky = true;
-      setTimeout(() => walkTo(v, DOOR[i % DOOR.length], { kind: 'hold', pose: 'beg' }, true), i * 220);
+      later(() => walkTo(v, DOOR[i % DOOR.length], { kind: 'hold', pose: 'beg' }, true), i * 220);
     });
-    while (vs.some((v) => (v.actor.act as Act).kind !== 'hold' || (v.actor.act as { pose?: string }).pose !== 'beg')) await new Promise((r) => setTimeout(r, 50));
+    while (vs.some((v) => (v.actor.act as Act).kind !== 'hold' || (v.actor.act as { pose?: string }).pose !== 'beg')) await wait(50);
     for (const v of vs) {
       const a = v.actor;
       a.perky = false;
@@ -1373,13 +1435,13 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       a.setFx('sparkle');
       ctx.saw(v, 'greet');
       const m = a.mouthPoint();
-      for (let i = 0; i < 4; i++) setTimeout(() => floatAt(room, m.x + (Math.random() - 0.5) * 60, m.y - 30 - Math.random() * 30, '♥', 'float heart'), i * 180);
+      for (let i = 0; i < 4; i++) later(() => floatAt(room, m.x + (Math.random() - 0.5) * 60, m.y - 30 - Math.random() * 30, '♥', 'float heart'), i * 180);
     }
     vs[0]?.actor.say('냐앙~! 왔다옹!', 2200);
-    if (vs[1]) setTimeout(() => vs[1].actor.say('냥냥!', 1600), 500);
+    if (vs[1]) later(() => vs[1].actor.say('냥냥!', 1600), 500);
     sfx('nyangMeow');
     buzz([10, 30, 10]);
-    await new Promise((r) => setTimeout(r, 2300));
+    await wait(2300);
     for (const v of vs) v.actor.setFx('none');
     door.classList.remove('open');
     greeting = false;
@@ -1429,17 +1491,11 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       <p class="tapto">눌러서 닫기</p></div>`;
     dim.addEventListener('click', () => dim.remove());
     // 마중을 먼저 보고 나서 카드
-    setTimeout(() => document.body.append(dim), greeting ? 4200 : 0);
+    later(() => document.body.append(dim), greeting ? 4200 : 0);
   }
 
-  // 배경음: 밤에는 편안한 곡 (파일이 없으면 소리 없이)
-  const bgm = () => getSound()?.playBgm('nyang', room.dataset.time === 'night' ? 'boss' : 'main');
+  // 배경음: 밤에는 편안한 곡 (파일이 없으면 소리 없이). paint 가 시간대가 바뀔 때마다 부른다 — 마지막으로 튼 곡과 비교
   bgm();
-  const bgmTimer = setInterval(() => {
-    const was = room.dataset.time;
-    paint();
-    if (room.dataset.time !== was) bgm();
-  }, 60_000);
 
   // 개발용 (?local=1): 콘솔에서 행동 시키기 · 장면 시간 재기
   if (api.kind === 'local') (window as unknown as { __nyang: unknown }).__nyang = { ctx, views, act: (slot: number, id: string) => devAct(ctx, viewOf(slot), id) };
@@ -1448,7 +1504,9 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     alive = false;
     ro.disconnect();
     clearInterval(timer);
-    clearInterval(bgmTimer);
+    for (const id of timers) clearTimeout(id);
+    timers.clear();
+    veranda.leave();
     document.removeEventListener('visibilitychange', onVisible);
   }
   return dispose;

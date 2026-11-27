@@ -129,6 +129,8 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
       expect(sql, f).toMatch(new RegExp(`revoke all on function public\\.${f}\\(`));
       if (pub.includes(f)) {
         expect(sql, f).toMatch(new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to authenticated;`));
+        // anon 에도 기본 권한이 남지 않게 (121 · 122 · 047 과 같다)
+        expect(sql, f).toMatch(new RegExp(`revoke all on function public\\.${f}\\([^)]*\\) from public, anon;`));
         expect(body(f), f).toContain('security definer set search_path = public');
       } else expect(sql, f).not.toMatch(new RegExp(`grant execute on function public\\.${f}\\(`));
     }

@@ -43,6 +43,8 @@ export interface Cat {
   /** 감기 기운에 걸린 때 (안 아프면 null) · 낫는 때 (담요를 덮어 줬으면) */
   sickAt: number | null;
   cureAt: number | null;
+  /** 마지막으로 감기가 나은 때 (0 = 없음) — 바닥인 채 sick_sec 는 이때부터 다시 센다 */
+  wellAt: number;
   /** 쓰다듬기: 그날(한국 날짜) · 그날 쓰다듬기로 오른 친밀도 · 마지막으로 쓰다듬은 때 */
   petDay: number;
   petLove: number;
@@ -155,6 +157,8 @@ export interface NyangState {
   pots: Pot[];
   /** 앨범 (사진 번호 순) */
   album: Photo[];
+  /** 이 상태를 만든 서버 시각 (화면용 — 늦게 온 옛 상태를 버린다. 규칙은 쓰지 않는다) */
+  now?: number;
 }
 
 /** 돌보기 결과에 붙는 것: 하루 첫 돌보기 엽전 · 시아코인을 받게 됐는지 */
@@ -253,6 +257,7 @@ export function settle(c0: Cat, t: number): Cat {
   if (c.sickAt != null) {
     if (c.cureAt != null && c.cureAt <= t) {
       from = Math.max(from, c.cureAt);
+      c.wellAt = c.cureAt;
       c.sickAt = null;
       c.cureAt = null;
     } else good = false;
@@ -260,7 +265,9 @@ export function settle(c0: Cat, t: number): Cat {
   if (good) {
     const to = Math.min(t, goodUntil(c, from));
     if (to > from) c.love += to - from;
-    const fl = floorSince(c, t);
+    // 바닥인 채 sick_sec: 감기가 나은 뒤에는 나은 때부터 다시 센다 (약 간식 · 츄르는 상태를 채우지 않고도 낫게 한다)
+    const f0 = floorSince(c, t);
+    const fl = f0 == null ? null : Math.max(f0, c.wellAt);
     if (fl != null && fl + CONST.sick_sec <= t) c.sickAt = Math.max(fl + CONST.sick_sec, from);
   }
   c.calcAt = t;
@@ -296,7 +303,7 @@ function putCat(s: NyangState, c: Cat) {
 export function care(p: Profile, needed: boolean, t: number): CareResult {
   const day = kstDay(t);
   let bonus = 0;
-  if (p.bonusDay !== day) {
+  if (p.bonusDay < day) {
     p.bonusDay = day;
     p.careDays += 1;
     p.coins += CONST.day_bonus;
@@ -304,7 +311,7 @@ export function care(p: Profile, needed: boolean, t: number): CareResult {
   }
   let sia = false;
   if (needed) {
-    if (p.siaDay !== day) {
+    if (p.siaDay < day) {
       p.siaDay = day;
       p.siaToday = 0;
     }
@@ -348,7 +355,7 @@ export function adopt(s0: NyangState, color: string, personality: string, name: 
   s.cats.push({
     slot, name: nm, color, pattern: null, personality, adoptedAt: t, calcAt: t,
     fedAt: t, fedAmount: MAX, waterAt: t, poopBase: 0, poopAt: t, moodVal: CONST.start_mood, moodAt: t,
-    love: 0, sickAt: null, cureAt: null, petDay: -1, petLove: 0, petAt: 0,
+    love: 0, sickAt: null, cureAt: null, wellAt: 0, petDay: -1, petLove: 0, petAt: 0,
     playAt: 0, playToy: null, playDay: -1, playLove: 0, brushDay: -1, churuDay: -1, churuN: 0, presentAt: t, present: null, seen: [],
     treatDay: -1, treatN: 0, nipAt: 0,
   });
@@ -451,7 +458,7 @@ export function pet(s0: NyangState, slot: number, spot: string, t: number): { st
   c.moodVal = after;
   c.moodAt = t;
   const day = kstDay(t);
-  if (c.petDay !== day) {
+  if (c.petDay < day) {
     c.petDay = day;
     c.petLove = 0;
   }
@@ -537,7 +544,7 @@ export function play(s0: NyangState, slot: number, catches: number, t: number): 
   if (sick) mood = Math.floor(mood / 2);
   const needed = raiseMood(c, mood, t);
   const day = kstDay(t);
-  if (c.playDay !== day) {
+  if (c.playDay < day) {
     c.playDay = day;
     c.playLove = 0;
   }
@@ -555,7 +562,7 @@ export function brush(s0: NyangState, slot: number, t: number): { state: NyangSt
   const s = cloneState(s0);
   const c = settle(catOf(s, slot), t);
   const day = kstDay(t);
-  if (c.brushDay === day) throw new RuleError('brushed today');
+  if (c.brushDay >= day) throw new RuleError('brushed today');
   c.brushDay = day;
   const needed = raiseMood(c, CONST.brush_mood, t);
   const love = c.sickAt != null ? 0 : CONST.brush_love;
@@ -575,7 +582,7 @@ export function churu(s0: NyangState, slot: number, flavor: string, t: number): 
   if (!isChuruId(flavor)) throw new RuleError('bad flavor');
   const c = settle(catOf(s, slot), t);
   const day = kstDay(t);
-  if (c.churuDay !== day) {
+  if (c.churuDay < day) {
     c.churuDay = day;
     c.churuN = 0;
   }
@@ -613,16 +620,22 @@ export function rollPresent(c: Cat, p: Profile, t: number) {
   else if (k < CONST.present_coin_pct + CONST.present_seed_pct + CONST.present_toy_pct) {
     const missing = PRESENT_TOYS.filter((toy) => !hasToy(p, toy));
     c.present = missing.length ? { kind: 'toy', id: missing[mix(q, 3) % missing.length], n: 1 } : coin;
-  } else c.present = { kind: 'furniture', id: PRESENT_FURNITURE[mix(q, 3) % PRESENT_FURNITURE.length], n: 1 };
+  } else {
+    const missing = PRESENT_FURNITURE.filter((f) => !p.furniture.includes(f));
+    c.present = missing.length ? { kind: 'furniture', id: missing[mix(q, 3) % missing.length], n: 1 } : coin;
+  }
 }
 
 /** 선물 줍기: 엽전 · 보관함 · 가구로 */
 export function gift(s0: NyangState, slot: number, t: number): { state: NyangState; present: Present } {
   const s = cloneState(s0);
   const c = settle(catOf(s, slot), t);
-  const g = c.present;
+  let g = c.present;
   if (!g) throw new RuleError('no present');
   const p = s.profile;
+  // 그사이 같은 장난감 · 가구가 생겼으면 (다른 고양이의 선물 · 상점) 엽전으로
+  if ((g.kind === 'furniture' && p.furniture.includes(g.id)) || (g.kind === 'toy' && hasToy(p, g.id as ToyId)))
+    g = { kind: 'coin', id: 'coin', n: CONST.present_coin_min + levelOf(c) * 2 };
   if (g.kind === 'coin') p.coins += g.n;
   else if (g.kind === 'furniture') p.furniture.push(g.id);
   else addItem(p, g.kind === 'seed' ? itemKey.seed(g.id) : itemKey.toy(g.id), g.n);
@@ -794,7 +807,7 @@ export function treat(s0: NyangState, slot: number, kind: string, t: number): { 
   if (!isTreatId(kind)) throw new RuleError('bad treat');
   const c = settle(catOf(s, slot), t);
   const day = kstDay(t);
-  if (c.treatDay !== day) {
+  if (c.treatDay < day) {
     c.treatDay = day;
     c.treatN = 0;
   }

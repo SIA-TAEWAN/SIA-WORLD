@@ -85,7 +85,7 @@ function cleanCat(raw: unknown): Cat {
     slot: num(r.slot, 1), name: String(r.name ?? ''), color: String(r.color ?? 'white') as Cat['color'], pattern: typeof r.pattern === 'string' ? r.pattern : null,
     personality: String(r.personality ?? 'calm') as Cat['personality'], adoptedAt: num(r.adoptedAt), calcAt: num(r.calcAt), fedAt: num(r.fedAt), fedAmount: num(r.fedAmount),
     waterAt: num(r.waterAt), poopBase: num(r.poopBase), poopAt: num(r.poopAt), moodVal: num(r.moodVal), moodAt: num(r.moodAt), love: num(r.love),
-    sickAt: numOrNull(r.sickAt), cureAt: numOrNull(r.cureAt), petDay: num(r.petDay, -1), petLove: num(r.petLove), petAt: num(r.petAt),
+    sickAt: numOrNull(r.sickAt), cureAt: numOrNull(r.cureAt), wellAt: num(r.wellAt), petDay: num(r.petDay, -1), petLove: num(r.petLove), petAt: num(r.petAt),
     playAt: num(r.playAt), playToy: strOrNull(r.playToy), playDay: num(r.playDay, -1), playLove: num(r.playLove), brushDay: num(r.brushDay, -1),
     churuDay: num(r.churuDay, -1), churuN: num(r.churuN), presentAt: num(r.presentAt), present: cleanPresent(r.present),
     seen: Array.isArray(r.seen) ? r.seen.map(String) : [],
@@ -126,7 +126,10 @@ export function cleanState(raw: unknown): NyangState {
   };
   const pots = (Array.isArray(r.pots) ? r.pots : []).map(cleanPot).filter((x): x is Pot => !!x);
   const album = (Array.isArray(r.album) ? r.album : []).map(cleanPhoto);
-  return { profile, cats: (Array.isArray(r.cats) ? r.cats : []).map(cleanCat), pots, album };
+  const out: NyangState = { profile, cats: (Array.isArray(r.cats) ? r.cats : []).map(cleanCat), pots, album };
+  // 서버 시각 (화면이 늦게 온 옛 상태를 버리는 데 쓴다)
+  if (typeof r.now === 'number' || typeof r.now === 'string') out.now = num(r.now);
+  return out;
 }
 
 async function createSupabaseApi(): Promise<NyangApi> {
@@ -336,9 +339,10 @@ function createLocalApi(): NyangApi {
   async function step<R extends { state: NyangState }>(fn: (st: NyangState, at: number) => R): Promise<R> {
     await new Promise((r) => setTimeout(r, 60));
     try {
-      const r = fn(s.state, t());
+      const at = t();
+      const r = fn(s.state, at);
       payLocal(r.state.profile);
-      s.state = r.state;
+      s.state = { ...r.state, now: at };
       persist();
       return { ...r, state: s.state };
     } catch (e) {

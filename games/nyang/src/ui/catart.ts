@@ -48,7 +48,15 @@ const cache = new Map<string, Promise<string>>();
  */
 let artScale = 1;
 export function setArtScale(k: number) {
+  const old = artScale;
   artScale = Math.max(0.2, Math.min(1, Math.ceil(k * 10) / 10));
+  if (old === artScale || old >= 1) return;
+  // 옛 배율로 만든 그림은 버린다 (화면에 남은 그림이 새 그림으로 바뀔 때까지 조금 기다렸다가 objectURL 을 놓아준다)
+  for (const [key, p] of [...cache]) {
+    if (!key.endsWith(`:${old}`)) continue;
+    cache.delete(key);
+    setTimeout(() => void p.then((u) => u.startsWith('blob:') && URL.revokeObjectURL(u), () => undefined), 5000);
+  }
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

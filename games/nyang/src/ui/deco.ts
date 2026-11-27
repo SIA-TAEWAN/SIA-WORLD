@@ -158,7 +158,10 @@ const swatch = (st: RoomStyle) => `<span class="swatch sw-${st.id}"></span>`;
 // ---------- 꽃병 ----------
 
 /** 꽃병 누르기: 해바라기 · 장미 꽂기 / 빼기 (꾸미기 밖에서도) */
+/** 꽃병 요청 중 (연타 막기) */
+let vasing = false;
 export function chooseVase(ctx: RoomCtx) {
+  if (vasing) return;
   const s = ctx.state();
   const cur = s.profile.layout.vase;
   const dim = document.createElement('div');
@@ -176,7 +179,8 @@ export function chooseVase(ctx: RoomCtx) {
     const el = e.target as HTMLElement;
     if (el === dim || el.closest('[data-close]')) return dim.remove();
     const b = el.closest<HTMLElement>('[data-flower]');
-    if (!b) return;
+    if (!b || vasing) return;
+    vasing = true;
     dim.remove();
     try {
       ctx.apply(await ctx.api.vase(b.dataset.flower ?? ''));
@@ -185,6 +189,8 @@ export function chooseVase(ctx: RoomCtx) {
       if (b.dataset.flower) toast(`꽃병에 ${SEED_NAME[b.dataset.flower as 'rose']}를 꽂았어요`);
     } catch (er) {
       toast(errorText(er));
+    } finally {
+      vasing = false;
     }
   });
 }

@@ -80,6 +80,18 @@ async function call(uid, sql, params) {
 const u1 = await signUp('nyang1');
 await db.exec(`select set_config('nyang.now', '1795680000', false)`);
 ok((await call(null, 'select public.nyang_state(true) r')).error !== undefined, '로그인 안 하면 거절');
+for (const f of ['nyang_state(true)', "nyang_feed(1, 'basic')", 'nyang_photo_delete(1)']) {
+  let err = '';
+  try {
+    await db.exec('set role anon');
+    await db.query(`select public.${f}`);
+  } catch (e) {
+    err = e.message;
+  } finally {
+    await db.exec('reset role');
+  }
+  ok(/permission denied/.test(err), `anon 은 ${f} 실행 권한 없음`);
+}
 for (const t of ['nyang_profiles', 'nyang_cats', 'nyang_pots', 'nyang_album']) {
   ok(/permission denied/.test((await call(u1, `select count(*) r from public.${t}`)).error ?? ''), `${t} 직접 읽기 거절`);
   ok(/permission denied/.test((await call(u1, `delete from public.${t} returning 1 r`)).error ?? ''), `${t} 직접 쓰기 거절`);

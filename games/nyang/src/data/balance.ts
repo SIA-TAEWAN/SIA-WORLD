@@ -21,7 +21,7 @@ export const CONST = {
   poop_max: 4,
   /** 물을 갈지 않고 이만큼 지나면 물이 상한다 (12시간) */
   spoil_sec: 43200,
-  /** 상태 하나가 바닥인 채로 이만큼 지나면 감기 기운 (24시간) */
+  /** 상태 하나가 바닥인 채로 이만큼 지나면 감기 기운 (28시간) */
   sick_sec: 100800,
   /** 담요 · 약 간식 · 츄르를 주면 이만큼 뒤에 낫는다 (2시간) */
   cure_sec: 7200,
@@ -379,7 +379,7 @@ export const BASE_STYLE: Record<RoomStyle['kind'], string> = { wall: 'wall_cream
 export const VASE_FLOWERS = ['sunflower', 'rose'] as const;
 export const FURNITURE_NAME: Record<string, string> = {
   paw_rug: '발바닥 러그', fish_pillow: '생선 쿠션', yarn_basket: '털실 바구니',
-  cat_tower: '캣타워', hideaway: '숨숨집', donut_cushion: '도넛 방석', scratcher: '스크래처', desk: '책상', vase: '꽃병',
+  cat_tower: '캣타워', hideaway: '숨숨집', donut_cushion: '도넛 방석', scratcher: '스크래처', desk: '책상', cushion: '방석', vase: '꽃병',
   zodiac_shelf: '십이지 인형 선반', moon_lamp: '보름달 등',
 };
 /** 선물로 오는 장난감 (가지고 있지 않은 것 중에서) */

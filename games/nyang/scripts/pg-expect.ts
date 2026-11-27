@@ -292,6 +292,17 @@ for (let i = 0; i < 90; i++) {
     run('photo_delete', [id], () => deletePhoto(s, id, t));
   } else run('photo', [slot, b, pose, face, mate, mp], () => photo(s, slot, b, pose, face, mate, mp, t));
 }
+// 약 간식으로 나은 뒤 바로 다시 감기에 걸리지 않는다 (바닥인 채 sick_sec 는 나은 때부터 다시 센다)
+t += 50 * H;
+run('state', [true], () => visit(s, true, t));
+setItem('medicine', 1);
+run('cure', [1, 'medicine'], () => cure(s, 1, 'medicine', t));
+t += 2 * H + 5;
+run('state', [false], () => visit(s, false, t));
+t += 26 * H;
+run('state', [false], () => visit(s, false, t));
+t += 2 * H;
+run('state', [false], () => visit(s, false, t));
 // 마지막: 집사 랭킹 줄 (친밀도 합 · 고양이 수 · 돌본 날 수 · 달성 시각)
 steps.push({ op: 'rank', t, args: [], out: { love: loveSum(s), cats: s.cats.length, careDays: s.profile.careDays, at: loveT } });
 console.log(JSON.stringify(steps));

@@ -7,7 +7,7 @@
 -- 상태 4가지는 '마지막으로 돌본 때'의 기록으로부터 바로 계산한다 (쌓아 두지 않는다):
 --   배부름 = fed_amount 에서 fed_at 부터 성격의 full_sec 동안 0 까지 · 목마름 = water_at 에 가득, water_sec 동안 0 까지 (12시간이면 물이 상함)
 --   청결 = 똥 개수 (poop_base 개였던 때가 poop_at, poop_sec 마다 하나, 최대 4개) · 기분 = mood_val 에서 mood_at 부터 mood_sec 동안 0 까지
--- 친밀도(1초 = 1점, 네 상태가 모두 절반 이상이고 아프지 않을 때)와 감기(상태 하나가 바닥인 채 24시간)는 _nyang_settle 이 calc_at 부터 지금까지를 반영한다.
+-- 친밀도(1초 = 1점, 네 상태가 모두 절반 이상이고 아프지 않을 때)와 감기(상태 하나가 바닥인 채 28시간)는 _nyang_settle 이 calc_at 부터 지금까지를 반영한다.
 -- 친밀도는 절대 내려가지 않는다. 고양이는 떠나거나 죽지 않는다.
 --
 -- 화면이 부르는 함수 (모두 { state, … } 를 돌려준다. state = { now, profile, cats }):
@@ -92,6 +92,7 @@ create table if not exists public.nyang_cats (
   love_at bigint,                                               -- 랭킹 '먼저 달성한 순' (6단계)
   sick_at bigint,
   cure_at bigint,
+  well_at bigint not null default 0,                            -- 마지막으로 감기가 나은 때 (0 = 없음): 바닥인 채 sick_sec 는 이때부터 다시 센다
   pet_day int not null default -1,
   pet_love int not null default 0,
   pet_at bigint not null default 0,
@@ -503,6 +504,7 @@ begin
   if c.sick_at is not null then
     if c.cure_at is not null and c.cure_at <= p_t then
       v_from := greatest(v_from, c.cure_at);
+      c.well_at := c.cure_at;
       c.sick_at := null;
       c.cure_at := null;
     else
@@ -527,6 +529,8 @@ begin
       public._nyang_zero_at(c.mood_val, c.mood_at, p.mood_sec)] loop
       if z <= p_t and (fl is null or z < fl) then fl := z; end if;
     end loop;
+    -- 감기가 나은 뒤에는 나은 때부터 다시 센다 (약 간식 · 츄르는 상태를 채우지 않고도 낫게 한다)
+    if fl is not null then fl := greatest(fl, c.well_at); end if;
     if fl is not null and fl + public._nyang_const('sick_sec') <= p_t then
       c.sick_at := greatest(fl + public._nyang_const('sick_sec'), v_from);
     end if;
@@ -600,7 +604,7 @@ begin
     calc_at = c.calc_at, fed_at = c.fed_at, fed_amount = c.fed_amount, water_at = c.water_at, poop_base = c.poop_base, poop_at = c.poop_at,
     mood_val = c.mood_val, mood_at = c.mood_at, love = c.love,
     -- 친밀도가 오른 때 = 지금 친밀도에 닿은 때 (집사 랭킹의 '먼저 달성한 순')
-    love_at = case when c.love > nyang_cats.love then public._nyang_now() else nyang_cats.love_at end, sick_at = c.sick_at, cure_at = c.cure_at,
+    love_at = case when c.love > nyang_cats.love then public._nyang_now() else nyang_cats.love_at end, sick_at = c.sick_at, cure_at = c.cure_at, well_at = c.well_at,
     pet_day = c.pet_day, pet_love = c.pet_love, pet_at = c.pet_at,
     play_at = c.play_at, play_toy = c.play_toy, play_day = c.play_day, play_love = c.play_love, brush_day = c.brush_day,
     churu_day = c.churu_day, churu_n = c.churu_n, present_at = c.present_at, present = c.present, seen = c.seen,
@@ -630,14 +634,14 @@ language plpgsql security definer set search_path = public as $$
 declare pr public.nyang_profiles; day int := public._nyang_day(p_t); bonus int := 0; sia boolean := false;
 begin
   select * into pr from public.nyang_profiles where user_id = p_user;
-  if pr.bonus_day <> day then
+  if pr.bonus_day < day then
     pr.bonus_day := day;
     pr.care_days := pr.care_days + 1;
     pr.coins := pr.coins + public._nyang_const('day_bonus');
     bonus := public._nyang_const('day_bonus');
   end if;
   if p_needed then
-    if pr.sia_day <> day then
+    if pr.sia_day < day then
       pr.sia_day := day;
       pr.sia_today := 0;
     end if;
@@ -706,8 +710,15 @@ begin
       c.present := jsonb_build_object('kind', 'toy', 'id', missing[1 + public._nyang_mix(q, 3) % cardinality(missing)], 'n', 1);
     end if;
   else
-    c.present := jsonb_build_object('kind', 'furniture',
-      'id', (public._nyang_ids('present_furniture'))[1 + public._nyang_mix(q, 3) % cardinality(public._nyang_ids('present_furniture'))], 'n', 1);
+    -- 가구도 아직 없는 것에서만 (다 있으면 엽전)
+    select array_agg(x order by o) into missing
+      from unnest(public._nyang_ids('present_furniture')) with ordinality u(x, o)
+      where not coalesce((select pr.furniture ? x from public.nyang_profiles pr where pr.user_id = p_user), false);
+    if coalesce(cardinality(missing), 0) = 0 then
+      c.present := coin;
+    else
+      c.present := jsonb_build_object('kind', 'furniture', 'id', missing[1 + public._nyang_mix(q, 3) % cardinality(missing)], 'n', 1);
+    end if;
   end if;
   return c;
 end $$;
@@ -727,7 +738,7 @@ language sql stable security definer set search_path = public as $$
     'cats', coalesce((select jsonb_agg(jsonb_build_object('slot', c.slot, 'name', c.name, 'color', c.color, 'pattern', c.pattern, 'personality', c.personality,
         'adoptedAt', c.adopted_at, 'calcAt', c.calc_at, 'fedAt', c.fed_at, 'fedAmount', c.fed_amount, 'waterAt', c.water_at,
         'poopBase', c.poop_base, 'poopAt', c.poop_at, 'moodVal', c.mood_val, 'moodAt', c.mood_at, 'love', c.love,
-        'sickAt', c.sick_at, 'cureAt', c.cure_at, 'petDay', c.pet_day, 'petLove', c.pet_love, 'petAt', c.pet_at,
+        'sickAt', c.sick_at, 'cureAt', c.cure_at, 'wellAt', c.well_at, 'petDay', c.pet_day, 'petLove', c.pet_love, 'petAt', c.pet_at,
         'playAt', c.play_at, 'playToy', c.play_toy, 'playDay', c.play_day, 'playLove', c.play_love, 'brushDay', c.brush_day,
         'churuDay', c.churu_day, 'churuN', c.churu_n, 'presentAt', c.present_at, 'present', c.present, 'seen', c.seen,
         'treatDay', c.treat_day, 'treatN', c.treat_n, 'nipAt', c.nip_at) order by c.slot)
@@ -761,7 +772,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'away', v_away);
 end $$;
-revoke all on function public.nyang_state(boolean) from public;
+revoke all on function public.nyang_state(boolean) from public, anon;
 grant execute on function public.nyang_state(boolean) to authenticated;
 
 -- 입양 (rules.ts 의 adopt): 첫 고양이는 그냥, 둘째부터는 첫 고양이의 친밀도 단계 4 · 7 · 10
@@ -791,7 +802,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'slot', n + 1);
 end $$;
-revoke all on function public.nyang_adopt(text, text, text) from public;
+revoke all on function public.nyang_adopt(text, text, text) from public, anon;
 grant execute on function public.nyang_adopt(text, text, text) to authenticated;
 
 -- 밥 주기 (rules.ts 의 feed)
@@ -822,7 +833,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_feed(int, text) from public;
+revoke all on function public.nyang_feed(int, text) from public, anon;
 grant execute on function public.nyang_feed(int, text) to authenticated;
 
 -- 물 갈기 (rules.ts 의 water)
@@ -841,7 +852,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_water(int) from public;
+revoke all on function public.nyang_water(int) from public, anon;
 grant execute on function public.nyang_water(int) to authenticated;
 
 -- 똥 하나 퍼내기 (rules.ts 의 clean) → gift(모래 속 엽전, 없으면 0) · poops(남은 똥)
@@ -873,7 +884,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t), 'gift', gift, 'poops', c.poop_base);
 end $$;
-revoke all on function public.nyang_clean(int) from public;
+revoke all on function public.nyang_clean(int) from public, anon;
 grant execute on function public.nyang_clean(int) to authenticated;
 
 -- 쓰다듬기 (rules.ts 의 pet) → kind(like · ok · hate = 냥펀치) · love(오른 친밀도)
@@ -896,7 +907,7 @@ begin
   c.mood_val := after;
   c.mood_at := t;
   day := public._nyang_day(t);
-  if c.pet_day <> day then
+  if c.pet_day < day then
     c.pet_day := day;
     c.pet_love := 0;
   end if;
@@ -910,7 +921,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t), 'kind', kind, 'love', add);
 end $$;
-revoke all on function public.nyang_pet(int, text) from public;
+revoke all on function public.nyang_pet(int, text) from public, anon;
 grant execute on function public.nyang_pet(int, text) to authenticated;
 
 -- 감기 낫게 하기 (rules.ts 의 cure): 담요(네 상태를 모두 채운 뒤) · 약 간식(보관함의 medicine 하나). cure_sec 뒤에 낫는다
@@ -936,7 +947,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_cure(int, text) from public;
+revoke all on function public.nyang_cure(int, text) from public, anon;
 grant execute on function public.nyang_cure(int, text) to authenticated;
 
 -- ---------- 5-2. 놀아 주기 · 빗질 · 츄르 · 선물 · 행동 도감 (3단계) ----------
@@ -955,7 +966,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_play_start(int, text) from public;
+revoke all on function public.nyang_play_start(int, text) from public, anon;
 grant execute on function public.nyang_play_start(int, text) to authenticated;
 
 -- 놀아 주기 끝 (rules.ts 의 play) → catches(센 수) · love · liked. 잡은 수는 play_catch_max 개, 시작부터 play_catch_sec 초에 하나까지만
@@ -977,7 +988,7 @@ begin
   c.mood_val := after;
   c.mood_at := t;
   day := public._nyang_day(t);
-  if c.play_day <> day then
+  if c.play_day < day then
     c.play_day := day;
     c.play_love := 0;
   end if;
@@ -992,7 +1003,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t), 'catches', n, 'love', add, 'liked', liked);
 end $$;
-revoke all on function public.nyang_play(int, int) from public;
+revoke all on function public.nyang_play(int, int) from public, anon;
 grant execute on function public.nyang_play(int, int) to authenticated;
 
 -- 빗질 (rules.ts 의 brush): 고양이마다 하루 한 번 → fur(털 뭉치) · love
@@ -1002,7 +1013,7 @@ declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public
   before int; after int; add int; fur int; r jsonb;
 begin
   c := public._nyang_cat(me, p_slot, t);
-  if c.brush_day = day then raise exception 'brushed today'; end if;
+  if c.brush_day >= day then raise exception 'brushed today'; end if;
   c.brush_day := day;
   before := (public._nyang_levels(c, t)->>'mood')::int;
   after := least(10000, before + public._nyang_const('brush_mood'));
@@ -1017,7 +1028,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t), 'fur', fur, 'love', add);
 end $$;
-revoke all on function public.nyang_brush(int) from public;
+revoke all on function public.nyang_brush(int) from public, anon;
 grant execute on function public.nyang_brush(int) to authenticated;
 
 -- 츄르 (rules.ts 의 churu): 고양이마다 하루 churu_day_max 개, 보관함의 'churu:<맛>' 하나 → love · liked · cured(아파서 낫기 시작)
@@ -1028,7 +1039,7 @@ declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public
 begin
   if p_flavor is null or not (p_flavor = any(public._nyang_ids('churus'))) then raise exception 'bad flavor'; end if;
   c := public._nyang_cat(me, p_slot, t);
-  if c.churu_day <> day then
+  if c.churu_day < day then
     c.churu_day := day;
     c.churu_n := 0;
   end if;
@@ -1055,7 +1066,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t), 'love', add, 'liked', liked, 'cured', cured);
 end $$;
-revoke all on function public.nyang_churu(int, text) from public;
+revoke all on function public.nyang_churu(int, text) from public, anon;
 grant execute on function public.nyang_churu(int, text) to authenticated;
 
 -- 선물 줍기 (rules.ts 의 gift) → present { kind, id, n }: 엽전 · 보관함(씨앗 · 장난감) · 가구
@@ -1066,6 +1077,11 @@ begin
   c := public._nyang_cat(me, p_slot, t);
   g := c.present;
   if g is null then raise exception 'no present'; end if;
+  -- 그사이 같은 장난감 · 가구가 생겼으면 (다른 고양이의 선물 · 상점) 엽전으로
+  if (g->>'kind' = 'furniture' and coalesce((select pr.furniture ? (g->>'id') from public.nyang_profiles pr where pr.user_id = me), false))
+     or (g->>'kind' = 'toy' and public._nyang_has_toy(me, g->>'id')) then
+    g := jsonb_build_object('kind', 'coin', 'id', 'coin', 'n', public._nyang_const('present_coin_min') + public._nyang_level(c.love) * 2);
+  end if;
   if g->>'kind' = 'coin' then
     update public.nyang_profiles set coins = coins + (g->>'n')::int where user_id = me;
   elsif g->>'kind' = 'furniture' then
@@ -1078,7 +1094,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'present', g);
 end $$;
-revoke all on function public.nyang_gift(int) from public;
+revoke all on function public.nyang_gift(int) from public, anon;
 grant execute on function public.nyang_gift(int) to authenticated;
 
 -- 처음 본 행동을 도감에 (rules.ts 의 seen) → added
@@ -1096,7 +1112,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'added', added);
 end $$;
-revoke all on function public.nyang_seen(int, text) from public;
+revoke all on function public.nyang_seen(int, text) from public, anon;
 grant execute on function public.nyang_seen(int, text) to authenticated;
 
 -- ---------- 5-3. 베란다 정원 · 상점 (4단계) ----------
@@ -1132,7 +1148,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_plant(int, text) from public;
+revoke all on function public.nyang_plant(int, text) from public, anon;
 grant execute on function public.nyang_plant(int, text) to authenticated;
 
 -- 물 주기 (rules.ts 의 waterPot): 지금까지 자란 것을 적고 물을 새로. 물이 남아 있으면 'pot wet'
@@ -1151,7 +1167,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_water_pot(int) from public;
+revoke all on function public.nyang_water_pot(int) from public, anon;
 grant execute on function public.nyang_water_pot(int) to authenticated;
 
 -- 수확 (rules.ts 의 harvest): 다 자란 것을 보관함 'plant:<id>' 에, 화분은 빈 칸으로 → plant
@@ -1168,7 +1184,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t), 'plant', p.plant);
 end $$;
-revoke all on function public.nyang_harvest(int) from public;
+revoke all on function public.nyang_harvest(int) from public, anon;
 grant execute on function public.nyang_harvest(int) to authenticated;
 
 -- 화분 칸 늘리기 (rules.ts 의 expandPots) → price
@@ -1184,7 +1200,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'price', price);
 end $$;
-revoke all on function public.nyang_expand_pots() from public;
+revoke all on function public.nyang_expand_pots() from public, anon;
 grant execute on function public.nyang_expand_pots() to authenticated;
 
 -- 상점에서 사기 (rules.ts 의 buy): 엽전 price × n · 시아코인 sia × n (지갑에서 _spend_sia_coin 으로 한 번에) → 보관함 give × n · 가구는 furniture 에
@@ -1214,7 +1230,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'id', p_item, 'n', p_n);
 end $$;
-revoke all on function public.nyang_buy(text, int) from public;
+revoke all on function public.nyang_buy(text, int) from public, anon;
 grant execute on function public.nyang_buy(text, int) to authenticated;
 
 -- 팔기 (rules.ts 의 sell): 수확한 꽃 · 털 뭉치 → coins (받은 엽전)
@@ -1231,7 +1247,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'coins', price * p_n);
 end $$;
-revoke all on function public.nyang_sell(text, int) from public;
+revoke all on function public.nyang_sell(text, int) from public, anon;
 grant execute on function public.nyang_sell(text, int) to authenticated;
 
 -- 수확물과 특별 가구 바꾸기 (rules.ts 의 exchange)
@@ -1248,7 +1264,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_exchange(text) from public;
+revoke all on function public.nyang_exchange(text) from public, anon;
 grant execute on function public.nyang_exchange(text) to authenticated;
 
 -- 캣그라스 · 캣닢을 고양이에게 (rules.ts 의 treat): 고양이마다 하루 treat_day_max 번 → love
@@ -1260,7 +1276,7 @@ begin
   select * into tr from public._nyang_treats() x where x.id = p_kind;
   if not found then raise exception 'bad treat'; end if;
   c := public._nyang_cat(me, p_slot, t);
-  if c.treat_day <> day then
+  if c.treat_day < day then
     c.treat_day := day;
     c.treat_n := 0;
   end if;
@@ -1280,7 +1296,7 @@ begin
   perform public._nyang_pay(me);
   return r || jsonb_build_object('state', public._nyang_json(me, t), 'love', add);
 end $$;
-revoke all on function public.nyang_treat(int, text) from public;
+revoke all on function public.nyang_treat(int, text) from public, anon;
 grant execute on function public.nyang_treat(int, text) to authenticated;
 
 -- ---------- 5-4. 꾸미기 · 앨범 (5단계) ----------
@@ -1352,7 +1368,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_place(jsonb) from public;
+revoke all on function public.nyang_place(jsonb) from public, anon;
 grant execute on function public.nyang_place(jsonb) to authenticated;
 
 -- 꽃병에 꽃 꽂기 (rules.ts 의 vase): 보관함의 꽃 하나를 쓴다 · 빈 글자면 꽃을 뺀다
@@ -1372,7 +1388,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_vase(text) from public;
+revoke all on function public.nyang_vase(text) from public, anon;
 grant execute on function public.nyang_vase(text) to authenticated;
 
 -- 사진 찍기 (rules.ts 의 photo) → id, added: 행동 · 자세 · 방향 · 같이 찍힌 고양이를 앨범에 (그림은 저장하지 않는다). 처음 본 행동이면 도감에도
@@ -1403,7 +1419,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t), 'id', sq, 'added', added);
 end $$;
-revoke all on function public.nyang_photo(int, text, text, int, int, text) from public;
+revoke all on function public.nyang_photo(int, text, text, int, int, text) from public, anon;
 grant execute on function public.nyang_photo(int, text, text, int, int, text) to authenticated;
 
 -- 사진 지우기 (rules.ts 의 deletePhoto)
@@ -1416,7 +1432,7 @@ begin
   perform public._nyang_pay(me);
   return jsonb_build_object('state', public._nyang_json(me, t));
 end $$;
-revoke all on function public.nyang_photo_delete(int) from public;
+revoke all on function public.nyang_photo_delete(int) from public, anon;
 grant execute on function public.nyang_photo_delete(int) to authenticated;
 
 -- ---------- 6. 집사 랭킹 ----------
