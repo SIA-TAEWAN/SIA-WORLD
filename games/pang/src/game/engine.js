@@ -234,7 +234,12 @@ function stepClear(G) {
     if (g.sp) {
       let pos = null;
       if (G.lastSwap) for (const p of [G.lastSwap[1], G.lastSwap[0]]) if (g.cells.some(q => q[0] === p[0] && q[1] === p[1])) { pos = p; break; }
-      if (!pos) pos = g.longest[Math.floor(g.longest.length / 2)];
+      if (!pos) {
+        // 가운데에서 가까운 칸부터, 덩굴 없는 칸 (덩굴 칸은 타일이 남아 특수 블록이 생기지 못한다)
+        const mid = Math.floor(g.longest.length / 2);
+        const order = g.longest.map((p, i) => [p, Math.abs(i - mid)]).sort((a, b) => a[1] - b[1]).map(q => q[0]);
+        pos = order.find(p => !G.cells[p[0]][p[1]].vine) || g.longest[mid];
+      }
       creates.push({ r: pos[0], c: pos[1], k: g.sp === 'orb' ? 'orb' : g.k, sp: g.sp });
     }
   }
