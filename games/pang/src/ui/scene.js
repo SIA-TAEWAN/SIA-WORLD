@@ -123,12 +123,16 @@ function create(canvas, PS) {
   function setup(ch, kinds) {
     st.ch = ch; st.kinds = kinds.slice(); st.parts = []; st.fx = []; st.flowers = []; st.ambient = [];
     st.actors = kinds.map((k, i) => ({ k, x: (i + 0.5) / kinds.length, y: 0, vy: 0, vx: (R() < 0.5 ? -1 : 1) * (0.03 + R() * 0.04), face: 1, pause: R() * 2, busy: 0, T: R() * 10, squash: 0 }));
-    st.bg = null;
+    dropBg();
   }
+  // 옛 배경 캔버스는 바로 비운다 (아이폰은 버린 캔버스 메모리를 늦게 돌려준다)
+  function dropBg() { if (st.bg) { st.bg.width = 0; st.bg.height = 0; } st.bg = null; }
   function resize(W, H) {
-    st.dpr = window.devicePixelRatio || 1; st.W = W; st.H = H;
+    const dpr = window.devicePixelRatio || 1;
+    if (W === st.W && H === st.H && dpr === st.dpr) return;
+    st.dpr = dpr; st.W = W; st.H = H;
     canvas.width = Math.round(W * st.dpr); canvas.height = Math.round(H * st.dpr);
-    st.bg = null;
+    dropBg();
   }
   function gy() { return st.H * 0.8; }
   function size() { return Math.max(0.55, Math.min(1.15, st.H / 190)); }

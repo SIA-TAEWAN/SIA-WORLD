@@ -632,7 +632,8 @@ function showParty(st: StageDef | null) {
     play('click');
     lastParty = party;
     saveParty(userKey(), party);
-    void startGame(st ? st.id : TOWER, party);
+    // 시작을 기다리는 동안 뒤로 가 버리면 기다림 끝에 판이 갑자기 열린다 → 버튼을 막아 둔다
+    lockWhileStarting(root, () => startGame(st ? st.id : TOWER, party));
   });
 }
 
@@ -683,7 +684,22 @@ async function startDaily(c: DailyChallenge, before?: () => void) {
     toast('날짜가 바뀌었어요. 새 오늘의 판을 보여 드려요');
     return void showDaily();
   }
-  void startGame(c.stage, c.party, c);
+  await startGame(c.stage, c.party, c);
+}
+
+/**
+ * 결과 창의 다시하기: 시작을 기다리는 동안(최대 수십 초) 창의 버튼을 모두 막는다.
+ * 그사이 메뉴로 · 다음 스테이지로 가 버리면 기다림이 끝날 때 판이 갑자기 열린다.
+ * 시작에 성공하면 화면이 바뀌며 창이 사라지고, 실패하면 창이 남아 버튼을 다시 켠다
+ */
+function lockWhileStarting(box: HTMLElement, start: () => Promise<unknown>) {
+  const btns = [...box.querySelectorAll<HTMLButtonElement>('button')].filter((b) => !b.disabled);
+  for (const b of btns) b.disabled = true;
+  void start()
+    .catch(() => undefined)
+    .finally(() => {
+      if (box.isConnected) for (const b of btns) b.disabled = false;
+    });
 }
 
 /** 오늘의 도전: 오늘 조건 설명 + 오늘 순위 + 도전하기 */
@@ -735,7 +751,7 @@ async function showDaily() {
   back(root);
   root.querySelector('#start')!.addEventListener('click', () => {
     play('click');
-    void startDaily(c);
+    lockWhileStarting(root, () => startDaily(c));
   });
   void dailyRanking(day).then((rk) => {
     if (!rk || !root.isConnected) return;
@@ -788,7 +804,7 @@ function showDailyResult(s: RunState, st: StageDef, c: DailyChallenge, out: Sent
     });
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
-    void startDaily(c, closeGame);
+    lockWhileStarting(box, () => startDaily(c, closeGame));
   });
   box.querySelector('#menu')!.addEventListener('click', () => {
     play('click');
@@ -1129,7 +1145,7 @@ function showTowerResult(s: RunState, party: HeroId[], out: Sent) {
   // 다시하기: 시작이 실패하면 결과 창이 그대로 남는다 (지난 판은 startGame 이 시작에 성공할 때 닫는다)
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
-    void startGame(TOWER, party);
+    lockWhileStarting(box, () => startGame(TOWER, party));
   });
   box.querySelector('#menu')!.addEventListener('click', () => {
     play('click');
@@ -1196,7 +1212,7 @@ function showResult(s: RunState, st: StageDef, party: HeroId[], out: Sent) {
   // 시작(finger_start)이 실패하면 안내만 띄우고 이 결과 창이 그대로 남아 다시 누르거나 메뉴로 갈 수 있다
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
-    void startGame(st.id, party);
+    lockWhileStarting(box, () => startGame(st.id, party));
   });
   box.querySelector('#menu')!.addEventListener('click', () => {
     play('click');

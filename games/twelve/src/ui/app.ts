@@ -633,6 +633,12 @@ function showCatScene(after: () => void) {
 
 /** 고양이 열기: 조건(보통 모드 최종보스 처치)과 값을 보여 주고 산다. 테스트 모드는 구매를 흉내만 낸다 */
 let buying = false;
+/** 고양이 구매 요청의 기다림 한도 (ms) */
+const BUY_TIMEOUT_MS = 15000;
+/** p 가 ms 안에 끝나지 않으면 fallback 으로 (늦게 온 답은 버린다) */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((ok) => setTimeout(() => ok(fallback), ms))]);
+}
 async function buyCat(after: () => void) {
   if (buying) return;
   const h = heroOf('cat');
@@ -654,8 +660,12 @@ async function buyCat(after: () => void) {
     return joined();
   }
   buying = true;
-  const pr = await loadCharacterProgress();
-  buying = false;
+  let pr: Awaited<ReturnType<typeof loadCharacterProgress>> = null;
+  try {
+    pr = await withTimeout(loadCharacterProgress(), BUY_TIMEOUT_MS, null);
+  } finally {
+    buying = false;
+  }
   const ok = !pr || pr.have >= pr.need;
   const box = overlay(`<div class="card pop"><h3>${face('cat')} ${h.name} 열기</h3>
     <div class="rows"><div><span>조건: 보통 모드 최종보스 처치</span><b>${pr ? `${Math.min(pr.have, pr.need)} / ${pr.need}` : '확인 중'}</b></div><div><span>값</span><b class="coin">시아코인 ${h.price}개</b></div></div>
@@ -666,14 +676,27 @@ async function buyCat(after: () => void) {
   on(box, '#yes', async () => {
     if (buying) return;
     buying = true;
-    const { r, text } = await buyCharacter('cat');
-    buying = false;
-    box.remove();
-    toast(text, 3000);
-    if (!r.ok && r.reason !== 'owned') return;
-    cat = (await loadOwnedCharacters(true))?.includes('cat') ?? true;
-    if (r.ok) joined();
-    else after();
+    try {
+      // 요청이 멈춰도 버튼이 영영 잠기지 않게 시간을 둔다 (답을 못 받았을 뿐 서버에서는 샀을 수 있다 → 아래에서 다시 읽는다)
+      const { r, text } = await withTimeout(buyCharacter('cat'), BUY_TIMEOUT_MS, { r: { ok: false, reason: 'error' }, text: '열지 못했어요. 잠시 후 다시 시도해 주세요' });
+      box.remove();
+      if (!r.ok && r.reason !== 'owned') {
+        // 통신 실패: 산 것이 서버에 들어갔는지 다시 읽어 반영한다
+        if (r.reason === 'error' && (await withTimeout(loadOwnedCharacters(true), BUY_TIMEOUT_MS, null))?.includes('cat')) {
+          cat = true;
+          toast('열었어요!', 3000);
+          return joined();
+        }
+        toast(text, 3000);
+        return;
+      }
+      toast(text, 3000);
+      cat = (await loadOwnedCharacters(true))?.includes('cat') ?? true;
+      if (r.ok) joined();
+      else after();
+    } finally {
+      buying = false;
+    }
   });
 }
 
@@ -827,6 +850,8 @@ async function startMap(map: MapDef, deaths: number) {
     return;
   }
   busy = false;
+  // 판 시작을 서버에 못 알렸다 (통신 실패): 놀 수는 있지만 결과가 남지 않는다
+  if (!DEV_PLAY && !runId) toast('연결이 불안정해서 이번 판은 기록되지 않아요', 3500);
   closeGame();
   const mode = profile.mode;
   // 전투 무작위(치명타 등)는 기기 씨앗, 드랍은 서버가 준 씨앗 (서버가 같은 규칙으로 다시 판정한다)
@@ -836,6 +861,9 @@ async function startMap(map: MapDef, deaths: number) {
   if (LOCAL_MODE) (window as unknown as { __twelve?: RunState }).__twelve = run;
 
   let sent = false;
+  // 결과 답을 못 받았을 때(통신 실패·시간 초과) 결과 화면에 띄울 한 줄과, 다시 읽은 기록으로 본 '처음 깸'
+  const hadClear = cleared(profile, map.id, mode);
+  let lost: { note: string; first: boolean } | null = null;
   const finish = async (s: RunState): Promise<FinishResult | null> => {
     if (sent) return null;
     sent = true;
@@ -856,11 +884,28 @@ async function startMap(map: MapDef, deaths: number) {
     };
     // 개발 판: 같은 규칙으로 계산만 하고 저장하지 않는다
     if (DEV_PLAY) return applyReport(structuredClone(profile), report, seed);
+    if (!runId) {
+      lost = { note: '시작할 때 연결이 끊겨서 이번 판은 기록되지 않았어요', first: false };
+      return null;
+    }
     try {
       const r = await api.finish(report);
-      if (!r) return null;
-      profile = view(r.profile);
-      return r.result;
+      if (r) {
+        profile = view(r.profile);
+        return r.result;
+      }
+      // 통신 실패·시간 초과: 결과는 보관되어 있다. 서버에 이미 들어갔을 수 있으니 그 자리에서 한 번 다시 보내고 기록을 읽어 반영한다
+      toast('연결이 불안정해서 잠시 뒤 다시 보내요', 3000);
+      lost = { note: '연결이 불안정해서 기록은 잠시 뒤 다시 보내요', first: false };
+      try {
+        if ((await api.resend()) > 0) {
+          profile = view(await api.loadProfile());
+          lost = { note: '기록은 저장했어요 (자세한 결과는 받지 못했어요)', first: !hadClear && cleared(profile, map.id, mode) };
+        }
+      } catch {
+        /* 다음에 쉼터·지도에서 다시 보낸다 */
+      }
+      return null;
     } catch (e) {
       toast(errText(e));
       return null;
@@ -879,7 +924,10 @@ async function startMap(map: MapDef, deaths: number) {
       await finish(s);
       restOf(map);
     },
-    onEnd: async (s) => showResult(s, await finish(s), deaths),
+    onEnd: async (s) => {
+      const r = await finish(s);
+      showResult(s, r, deaths, lost);
+    },
   });
 }
 
@@ -1119,7 +1167,8 @@ function lootHtml(r: FinishResult): string {
   return `${big.join('')}${small.length ? `<div class="loot">${small.join('')}</div>` : ''}`;
 }
 
-function showResult(s: RunState, r: FinishResult | null, deaths: number) {
+/** lost = 결과 답을 못 받은 판 (안내 한 줄 · 다시 읽은 기록으로 본 처음 깸) */
+function showResult(s: RunState, r: FinishResult | null, deaths: number, lost: { note: string; first: boolean } | null = null) {
   const map = s.map;
   const win = s.phase === 'clear';
   play(win ? 'win' : 'lose');
@@ -1127,7 +1176,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
   const next = win ? nextMap(map.id) : null;
   const nextOk = !!next && mapOpen(profile, next.id);
   // 최종보스를 처음 잡았다: 결과 다음에 엔딩 (PRD '이야기')
-  const ending = win && !!map.final && !!r?.first;
+  const ending = win && !!map.final && (r ? r.first : !!lost?.first);
   const stars = r?.stars ?? 0;
   const box = overlay(`<div class="card pop result ${win ? 'win' : 'lose'}">
       <h2>${win ? (map.final ? (s.mode === 'hard' ? '진짜 봉인 완료! 👑' : '봉인 완료!') : '클리어!') : '쓰러졌어요'}</h2>
@@ -1147,7 +1196,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
       ${r && win ? lootHtml(r) : ''}
       ${r?.joined ? `<div class="new-hero">${face(r.joined)}<span>${heroOf(r.joined).name}(${heroOf(r.joined).animal})${iGa(heroOf(r.joined).name)} 합류했어요!${heroOf(r.joined).hello ? `<small>“${heroOf(r.joined).hello}”</small>` : ''}</span></div>` : ''}
       ${r?.gift ? `<div class="new-hero"><span class="ic">🎁</span><span>보스의 선물! 강화석 꾸러미 ${r.gift}개를 받았어요<small>${map.final ? `${MODE_NAME[s.mode]} 모드의 열두 길을 끝까지 걸었어요` : '열두 대원이 모두 모여서, 이제 보스는 선물을 남겨요'}</small></span></div>` : ''}
-      ${DEV_PLAY ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : r ? '' : '<p class="soft center">기록을 저장하지 못했어요</p>'}
+      ${DEV_PLAY ? '<p class="soft center">개발 옵션으로 한 판이라 저장하지 않았어요</p>' : r ? '' : `<p class="soft center">${lost?.note ?? '기록을 저장하지 못했어요'}</p>`}
       <div class="btns">
         ${ending ? `<button class="btn primary big" id="ending">이야기 계속 ▶</button>` : nextOk ? `<button class="btn primary big" id="next">${next!.final ? '최종보스로 ▶' : '다음 맵 ▶'}</button>` : ''}
         ${ending ? '' : `<button class="btn ${nextOk ? '' : 'primary big'}" id="again">${win ? '다시 하기' : '다시 도전'}</button><button class="btn" id="rest">쉼터로</button>`}

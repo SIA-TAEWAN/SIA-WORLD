@@ -51,6 +51,7 @@ import { MAP_NODE_FRAME, artState, artUrl, hasArt } from '../art';
 import { artImg, cardHtml, potionHtml, potionIcon, relicHtml, relicIcon } from './cards';
 import { addToCodex, loadCodex, saveCodex } from './codex';
 import { shrinkOverflow } from './fit';
+import { COLOR, css } from '../theme';
 import { pickResume, startedRun, type Saved } from './resume';
 
 interface Ctx {
@@ -679,7 +680,12 @@ function showHeroes(mode: 'normal' | 'endless' = 'normal') {
 async function buyCat(redraw: () => void) {
   try {
     const m = await loadCharacters();
-    const r = await m.buyCharacter('card', 'cat');
+    let r = await m.buyCharacter('card', 'cat');
+    // 시간 초과 · 통신 끊김('error'): 서버에서는 샀을 수 있으니 목록을 다시 읽어 본다 (이미 샀으면 owned 라 두 번 빠지지 않는다)
+    if (!r?.ok && r?.reason === 'error') {
+      await refreshOwned(true);
+      if (ctx.owned?.includes('cat')) r = { ok: false, reason: 'owned' };
+    }
     toast(m.buyMessage(r, 'cat'), 2600);
     if (r?.ok || r?.reason === 'owned') {
       await refreshOwned(true);
@@ -693,6 +699,8 @@ async function buyCat(redraw: () => void) {
 
 /** 새 판 시작: 서버가 판 번호·씨앗을 정한다 (오늘의 도전 씨앗은 날짜로). 테스트 모드는 기기에서만 */
 let starting = false;
+/** 직전 card_start 가 시간초과·통신 실패로 끝난 판 (모드:영웅:날짜). 같은 판을 다시 누를 때만 p_retry=true (119) */
+let failedStart: string | null = null;
 async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { day: string; seed: number }) {
   if (starting) return;
   starting = true;
@@ -707,8 +715,11 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
     } else {
       await ctx.ready;
       if (!ctx.api) return toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요');
+      const startKey = `${mode}:${hero}:${daily?.day ?? ''}`;
+      const retry = failedStart === startKey;
+      failedStart = null;
       try {
-        const r = await ctx.api.start(mode, hero, mastery, daily?.day ?? null, daily?.seed ?? null);
+        const r = await ctx.api.start(mode, hero, mastery, daily?.day ?? null, daily?.seed ?? null, retry);
         // 배포 전에 열어 둔 탭: 규칙이 달라 막을 다 한 뒤에야 거절되므로 처음부터 막는다
         if (r.rules && r.rules !== RULES_VERSION) return toast('게임이 새 버전으로 바뀌었어요. 새로 고침해 주세요', 3200);
         started = r;
@@ -719,6 +730,8 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
         if (r.paidCoins) toast(`지난 판에서 못 받은 시아코인 +${r.paidCoins}`, 2400);
       } catch (e) {
         if (e instanceof ApiError && e.message === 'bad day') void refreshState();
+        // 거절(ApiError)이 아니면 서버에선 판이 만들어졌을 수 있다 → 다음에 같은 판을 누르면 그 판을 돌려받는다
+        else if (!(e instanceof ApiError)) failedStart = startKey;
         return toast(friendly(e), 2600);
       }
     }
@@ -984,7 +997,7 @@ function showBattle() {
     parent: gameEl(),
     width: W,
     height: H,
-    backgroundColor: '#9fd6ff',
+    backgroundColor: css(COLOR.skyMid),
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     scene: [],
     banner: false,

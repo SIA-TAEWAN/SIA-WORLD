@@ -43,7 +43,7 @@ import { COLOR, FONT, css } from '../theme';
 import { DESC_BOX, DESC_LINE, DESC_MIN, fitDesc } from '../ui/fit';
 
 /** 글자 외곽선 (art.ts txt 와 같은 색) */
-const INK = '#2a1a10';
+const INK = css(COLOR.ink);
 import { KIND_COLOR, RARITY_RING, STATUS_COLOR, STATUS_SHORT, drawFoe, drawHero, drawIntent, drawKindGlyph, txt } from './art';
 
 /** 보스 단계 특성 설명 (요괴를 누르면) */
@@ -620,7 +620,7 @@ export class BattleScene extends Phaser.Scene {
         c.add(glyph);
       }
       c.add(txt(this, 4, T + 13, name, name.length > 5 ? 12 : 14, COLOR.white, 3));
-      c.add(this.add.text(0, 18, cardText(card.id, card.up), { fontFamily: FONT, fontSize: '11px', color: '#2a1a10', align: 'center', wordWrap: { width: w - 16, useAdvancedWrap: true } }).setOrigin(0.5, 0));
+      c.add(this.add.text(0, 18, cardText(card.id, card.up), { fontFamily: FONT, fontSize: '11px', color: INK, align: 'center', wordWrap: { width: w - 16, useAdvancedWrap: true } }).setOrigin(0.5, 0));
       const cg = this.add.graphics();
       cg.fillStyle(cost < cardDef(card.id).cost ? COLOR.win : COLOR.primary, 1);
       cg.lineStyle(3, COLOR.outline, 1);
@@ -640,7 +640,7 @@ export class BattleScene extends Phaser.Scene {
   private descText(text: string, y: number): Phaser.GameObjects.Text {
     const box = DESC_BOX.canvas;
     let f = fitDesc(text, box.w, box.h);
-    const t = this.add.text(0, y, '', { fontFamily: FONT, fontSize: `${f.size}px`, color: '#2a1a10', align: 'center' }).setOrigin(0.5, 0.5);
+    const t = this.add.text(0, y, '', { fontFamily: FONT, fontSize: `${f.size}px`, color: INK, align: 'center' }).setOrigin(0.5, 0.5);
     const set = () => {
       t.setFontSize(f.size);
       t.setLineSpacing(Math.round(f.size * DESC_LINE) - Math.ceil(f.size * 1.25));

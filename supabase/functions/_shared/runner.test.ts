@@ -833,6 +833,44 @@ describe('Runner: 판 도중 나간 사람 자리 (포커·홀덤은 체크 아�
     }
   });
 
+  /**
+   * apply_round_result(118) 의 시아코인 규칙 흉내: 돈이 오간 판(블랙잭은 deltas 에 자리가 하나라도 있으면 — 모두 무승부여도 한 판)에서,
+   * 끝까지 자리에 있던(나가지 않은) 사람 중 deltas 에 든 자리
+   */
+  function watchCoins(m: ReturnType<typeof memStore>) {
+    const coins: string[] = [];
+    const apply = m.store.applyResult;
+    m.store.applyResult = async (id, round, deltas) => {
+      const played = Object.values(deltas).some((d) => d !== 0) || (m.room.game === 'blackjack' && Object.keys(deltas).length > 0);
+      for (const x of m.seats) if (x.user_id && played && !x.left_game && String(x.seat_no) in deltas) coins.push(x.user_id);
+      return apply(id, round, deltas);
+    };
+    return coins;
+  }
+
+  it('블랙잭: 건 자리가 모두 무승부인 판도 한 판 — deltas 가 전부 0 이어도 시아코인 (118)', async () => {
+    const m = memStore('blackjack', ['u1', 'u2'], 2);
+    // 둘 다 17, 딜러도 17 (스탠드) → 모두 push
+    const shoe = stackDeal([['10S', '7S'], ['10H', '7D']], ['10D', '7C'], freshShoe().slice(0, 200));
+    m.deck = { version: 0, round_no: 0, state: null, carry: { shoe, cut: 0 } };
+    const coins = watchCoins(m);
+    const runner = new Runner(m.store, ENGINES, seededRng(9));
+    await runner.start('r1', 'u1');
+    const start = { ...m.wallets };
+    await runner.act('r1', 'u1', { type: 'bet', amount: 100 });
+    await runner.act('r1', 'u2', { type: 'bet', amount: 200 });
+    for (let i = 0; i < 20 && m.room.status === 'playing'; i++) {
+      const seat = m.published[m.published.length - 1].pending[0];
+      if (seat === undefined) await runner.timeout('r1');
+      else await runner.act('r1', seat === 0 ? 'u1' : 'u2', { type: 'stand' });
+    }
+    expect(m.room.status).toBe('waiting');
+    const res = m.results.get(1)!;
+    expect(res).toEqual({ 0: 0, 1: 0 });
+    expect(m.wallets).toEqual(start);
+    expect(coins.sort()).toEqual(['u1', 'u2']);
+  });
+
   /** 블랙잭: 베팅까지 마친 뒤 u2(자리 1)가 나가는 판을 끝까지. split 이면 u2 는 나가기 전에 스플릿한다 */
   async function bjLeaveAfterBet(split: boolean) {
     const m = memStore('blackjack', ['u1', 'u2'], 4);
@@ -840,14 +878,7 @@ describe('Runner: 판 도중 나간 사람 자리 (포커·홀덤은 체크 아�
     const u2Cards: [string, string] = split ? ['8H', '8D'] : ['5H', '6D'];
     const shoe = stackDeal([['10S', '7S'], u2Cards, ['5C', '6C'], ['9D', '2D']], ['6S', '10D'], freshShoe().slice(0, 200));
     m.deck = { version: 0, round_no: 0, state: null, carry: { shoe, cut: 0 } };
-    // apply_round_result 의 시아코인 규칙: 돈이 오간 판에서, 끝까지 자리에 있던(나가지 않은) 사람 중 deltas 에 든 자리
-    const coins: string[] = [];
-    const apply = m.store.applyResult;
-    m.store.applyResult = async (id, round, deltas) => {
-      const played = Object.values(deltas).some((d) => d !== 0);
-      for (const x of m.seats) if (x.user_id && played && !x.left_game && String(x.seat_no) in deltas) coins.push(x.user_id);
-      return apply(id, round, deltas);
-    };
+    const coins = watchCoins(m);
     const leftActs: string[] = [];
     const base = ENGINES.blackjack;
     const spy = { ...base, apply: (st: unknown, seat: number, a: { type: string }, rng: never) => (seat === 1 && m.seats[1].left_game && leftActs.push(a.type), base.apply(st, seat, a, rng)) };

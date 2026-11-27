@@ -160,7 +160,12 @@ export async function unlockCat(buy: Buyer): Promise<{ opened: boolean; result: 
     setAllOpen(true);
     return { opened: true, result: { ok: true, siaCoins: 0, price: CAT_PRICE }, local: true };
   }
-  const result = await buy(GAME_ID, 'cat');
+  let result = await buy(GAME_ID, 'cat');
+  // 시간 초과 · 통신 끊김('error'): 서버에서는 샀을 수 있으니 목록을 다시 읽어 본다 (buy_character 는 이미 샀으면 owned 라 두 번 빠지지 않는다)
+  if (!result.ok && result.reason === 'error' && loader) {
+    const list = await loader(GAME_ID, true).catch(() => null);
+    if (list?.includes('cat')) result = { ok: false, reason: 'owned', price: CAT_PRICE };
+  }
   const opened = result.ok || result.reason === 'owned';
   // 조건 미달: 서버가 알려 준 진행으로 글을 고친다
   if (result.reason === 'condition' && result.have != null && result.need != null) setProgress({ have: result.have, need: result.need });

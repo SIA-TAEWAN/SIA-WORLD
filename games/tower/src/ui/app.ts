@@ -977,9 +977,11 @@ function onClear(s: RunState) {
   el.innerHTML = `<b>${floor}층 돌파!</b><small>계단을 올라요…</small>`;
   $('.play')?.appendChild(el);
   setPaused(true);
+  // 그사이 판을 떠났다가 새 판을 열었으면 그 판의 층을 건너뛰지 않게, 이 판일 때만 다음 층으로
+  const mine = cur;
   setTimeout(() => {
     el.remove();
-    if (cur) startFloor();
+    if (cur && cur === mine) startFloor();
   }, 1300);
 }
 
@@ -1028,8 +1030,9 @@ function onDead(s: RunState) {
   die(data);
   ctx.data = data;
   void saveNow(data);
+  const mine = cur;
   setTimeout(() => {
-    if (!cur) return;
+    if (!cur || cur !== mine) return;
     setPaused(true);
     const ov = overlay(`
       <div class="card pop result lose">
@@ -1073,6 +1076,11 @@ function openMenu() {
     setPaused(false);
   };
   const onKey = (ev: KeyboardEvent) => {
+    // 메뉴가 열린 채 판을 떠났으면(leavePlay 가 창만 치움) 듣기를 그만둔다 — 남아 있으면 다음 I/Esc 를 먹는다
+    if (!ov.isConnected) {
+      window.removeEventListener('keydown', onKey, true);
+      return;
+    }
     if (ev.code === 'Escape' || ev.code === 'KeyI') {
       // 메뉴 위에 다른 창(외형 바꾸기·조작법·랭킹·소리 설정)이 떠 있으면 메뉴를 닫지 않는다 (뒤에서 게임이 다시 돌지 않게)
       const tops = document.querySelectorAll('.overlay, .sia-rank-dim, .sia-snd-dim');

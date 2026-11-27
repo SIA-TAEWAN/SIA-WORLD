@@ -407,7 +407,12 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
       case 'result': {
         if (typeof ev.seat !== 'number') return null;
         const d = Number(ev.delta) || 0;
-        if (!d) return { at: ev.seat, text: `${who} 무승부`, gap: 500, after: true };
+        // 0 이라도 무승부만은 아니다 (스플릿 한 손 이기고 한 손 지면 ±0): 모든 손이 push 일 때만 '무승부'
+        if (!d) {
+          const rs: unknown[] = Array.isArray(ev.results) ? ev.results : [];
+          const push = rs.length > 0 && rs.every((r) => r === 'push');
+          return { at: ev.seat, text: push ? `${who} 무승부` : `${who} ±0`, gap: 500, after: true };
+        }
         return d > 0
           ? { at: ev.seat, text: `${who} +${t.fmt(d)}`, chips: { from: 'dealer', to: ev.seat, amount: d }, sound: 'coin', gap: 600, after: true }
           : { at: ev.seat, text: `${who} ${t.fmt(d)}`, chips: { from: ev.seat, to: 'dealer', amount: -d }, gap: 600, after: true };

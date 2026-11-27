@@ -364,6 +364,8 @@ function cleanLocalPraises(raw: unknown): LocalPraises | undefined {
 
 /** 서버 함수 하나를 기다리는 시간 */
 export const RPC_TIMEOUT_MS = 12000;
+/** 시간 초과 뒤 서버에서 됐는지 다시 읽어 볼 때 기다리는 시간 */
+const RECHECK_TIMEOUT_MS = 5000;
 
 type RpcError = { code?: string; message?: string };
 type RpcAnswer = { data: unknown; error: RpcError | null };
@@ -375,14 +377,14 @@ export interface RpcClient {
 export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RPC_TIMEOUT_MS, deviceNow: () => number = () => Date.now(), uid = ''): VillageApi {
   /** 서버 시각 − 기기 시각 */
   let offset = 0;
-  const call = async (fn: string, args?: Record<string, unknown>): Promise<Record<string, unknown>> => {
+  const call = async (fn: string, args?: Record<string, unknown>, limitMs = timeoutMs): Promise<Record<string, unknown>> => {
     const ctrl = typeof AbortController === 'undefined' ? null : new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<RpcAnswer>((resolve) => {
       timer = setTimeout(() => {
         ctrl?.abort();
         resolve({ data: null, error: { message: 'timeout' } });
-      }, timeoutMs);
+      }, limitMs);
     });
     const sent = deviceNow();
     let ans: RpcAnswer;
@@ -404,11 +406,11 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
     if (typeof d.now === 'number') offset = d.now - (sent + got) / 2;
     return d;
   };
-  const load = async (entry = false) => cleanState(await call('village_state', { p_entry: entry }));
+  const load = async (entry = false, limitMs = timeoutMs) => cleanState(await call('village_state', { p_entry: entry }, limitMs));
   return {
     kind: 'supabase',
     now: () => Math.floor(deviceNow() + offset),
-    load,
+    load: (entry?: boolean) => load(entry),
     async buyCat() {
       let d: Record<string, unknown>;
       try {
@@ -416,7 +418,8 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
       } catch (e) {
         if (e instanceof ApiError) return { result: { ok: false, reason: /need login/.test(e.message) ? 'login' : 'error' }, state: null };
         // 시간 초과 · 통신 끊김: 서버에서는 샀을 수 있으니 마을을 다시 읽어 본다 (buy_character 는 이미 샀으면 owned 라 두 번 빠지지 않는다)
-        const state = await load().catch(() => null);
+        // 이미 한 번 기다렸으니 다시 읽기는 짧게만 기다린다 (버튼이 너무 오래 막히지 않게)
+        const state = await load(false, Math.min(timeoutMs, RECHECK_TIMEOUT_MS)).catch(() => null);
         if (state?.catOwned) return { result: { ok: true, siaCoins: state.sia, price: CAT_PRICE }, state };
         return { result: { ok: false, reason: 'network' }, state };
       }

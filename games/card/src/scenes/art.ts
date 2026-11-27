@@ -3,7 +3,7 @@
  * 3단계에서 public/art/<이름>.png 를 연결하면 같은 자리에 그림이 들어간다.
  */
 import Phaser from 'phaser';
-import { COLOR, FONT } from '../theme';
+import { COLOR, FONT, css } from '../theme';
 import type { CardKind, Intent, StatusId } from '../game/rules';
 
 export const KIND_COLOR: Record<CardKind, number> = {
@@ -52,7 +52,7 @@ export function txt(scene: Phaser.Scene, x: number, y: number, s: string, size: 
     color: `#${color.toString(16).padStart(6, '0')}`,
     align: 'center',
   });
-  if (stroke) t.setStroke('#2a1a10', stroke);
+  if (stroke) t.setStroke(css(COLOR.ink), stroke);
   t.setOrigin(0.5);
   return t;
 }

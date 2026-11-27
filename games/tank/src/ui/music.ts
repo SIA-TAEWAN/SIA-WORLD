@@ -10,7 +10,7 @@ export type Scene = 'main' | 'boss' | 'win' | 'lose';
 
 let shared: SoundModule | null = null;
 let want: Scene | null = null;
-/** 판이 끝나고 튼 승리·패배 곡을 다음 화면(결과 화면) 하나 동안 지킨다 */
+/** 판이 끝나고 튼 승리·패배 곡을 결과 화면 동안 지킨다 (결과 화면이 열기 직전에 keepResult 로 켠다) */
 let holdResult = false;
 
 function apply() {
@@ -31,10 +31,17 @@ export const music = {
   /** 이 곡을 틀어 둔다 (null 이면 끈다) */
   play(scene: Scene | null) {
     want = scene;
-    holdResult = scene === 'win' || scene === 'lose';
+    holdResult = false;
     apply();
   },
-  /** 메뉴 화면: 기본 곡. 판이 막 끝났으면 결과 화면 동안은 승리·패배 곡을 그대로 둔다 */
+  /**
+   * 결과 화면을 열기 직전에: 지금 승리·패배 곡이면 그 화면(다음 menu 한 번) 동안 그대로 둔다.
+   * 결과 화면이 아닌 화면(판 끝 직후 나가기·강퇴로 열린 대기실 등)은 menu 에서 바로 기본 곡으로 돌아간다.
+   */
+  keepResult() {
+    holdResult = want === 'win' || want === 'lose';
+  },
+  /** 메뉴 화면: 기본 곡. 결과 화면이면(keepResult) 승리·패배 곡을 그대로 둔다 */
   menu() {
     if (holdResult) {
       holdResult = false;

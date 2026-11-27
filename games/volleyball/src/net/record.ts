@@ -14,6 +14,8 @@ export const MIN_MATCH_MS = 15000;
 export const EARLY_MARGIN_MS = 700;
 /** 시작 알림이 아직 live가 아니면 이만큼 뒤에 한 번 더 부른다 (누가 내 자리에 끼어든 경우를 바로잡는다) */
 export const BEGIN_RETRY_MS = 2500;
+/** 결과 보고가 통신 실패(서버가 답하지 않음)면 이만큼씩 쉬고 다시 보낸다. 그래도 안 되면 기기에 적어 두고 다음에 보낸다 */
+export const REPORT_RETRY_MS = [1500, 2000] as const;
 /** 확정을 기다리는 경기를 기억해 두는 시간 (서버는 30분이 지난 경기를 받지 않는다) */
 export const PENDING_KEEP_MS = 40 * 60 * 1000;
 
@@ -48,9 +50,22 @@ export function forfeitResult(setup: MatchSetup, score: readonly [number, number
 
 // ---------- 확정을 기다리는 경기 (페이지를 떠나도 다음에 확정할 수 있게 적어 둔다) ----------
 
+/** 서버에 보낼 내 보고 (점수 · 까닭) */
+export interface PendingReport {
+  left: number;
+  right: number;
+  reason: 'normal' | 'leave';
+}
 export interface PendingEntry {
   id: string;
   at: number;
+  /** 보고를 보내지 못한 경기: 다음에 확정하기 전에 이 보고부터 다시 보낸다 */
+  report?: PendingReport;
+}
+
+function isReport(v: unknown): v is PendingReport {
+  const r = v as PendingReport | null;
+  return !!r && typeof r === 'object' && Number.isInteger(r.left) && Number.isInteger(r.right) && (r.reason === 'normal' || r.reason === 'leave');
 }
 export interface PendingStore {
   load(): PendingEntry[];
@@ -65,7 +80,10 @@ export function pendingStore(uid: string): PendingStore {
       try {
         const v = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
         if (!Array.isArray(v)) return [];
-        return v.filter((e): e is PendingEntry => !!e && typeof (e as PendingEntry).id === 'string' && Number.isFinite((e as PendingEntry).at)).slice(-20);
+        return v
+          .filter((e): e is PendingEntry => !!e && typeof (e as PendingEntry).id === 'string' && Number.isFinite((e as PendingEntry).at))
+          .map((e) => (e.report === undefined || isReport(e.report) ? e : { id: e.id, at: e.at }))
+          .slice(-20);
       } catch {
         return [];
       }
@@ -81,10 +99,10 @@ export function pendingStore(uid: string): PendingStore {
   };
 }
 
-function addPending(store: PendingStore | null, id: string, now: number) {
+function addPending(store: PendingStore | null, id: string, now: number, report?: PendingReport) {
   if (!store) return;
   const list = store.load().filter((e) => e.id !== id);
-  list.push({ id, at: now });
+  list.push(report ? { id, at: now, report } : { id, at: now });
   store.save(list);
 }
 function removePending(store: PendingStore | null, id: string) {
@@ -104,6 +122,21 @@ export async function settlePending(api: VolleyApi, store: PendingStore, now = D
   const keep: PendingEntry[] = [];
   for (const e of list) {
     let r: SaveResult;
+    // 보고를 보내지 못한 경기: 보고부터 다시 보낸다 (서버는 같은 사람의 두 번째 보고를 처음 것 그대로 둔다)
+    if (e.report) {
+      try {
+        r = await api.report(e.id, e.report.left, e.report.right, e.report.reason);
+      } catch {
+        keep.push(e);
+        continue;
+      }
+      if (r.status === 'done' || r.status === 'void') settled++;
+      // 보고가 닿았다: 다음에는 확정만 물어본다 (내 보고 하나로 확정되려면 10초가 지나야 한다)
+      else if (r.status === 'waiting') keep.push({ id: e.id, at: e.at });
+      // 통신이 또 안 됐으면 다음에 다시, 서버가 거절했으면(너무 늦음 등) 지운다
+      else if (!r.code) keep.push(e);
+      continue;
+    }
     try {
       r = await api.settle(e.id);
     } catch {
@@ -157,8 +190,13 @@ export class MatchRecorder {
       api.kind === 'local' || !opp.id
         ? Promise.resolve(null)
         : (async () => {
-            const call = () => api.begin(room, no, me, opp.id!, setup.fighters[me].char);
+            const call = () => api.begin(room, no, me, opp.id!, setup.fighters[me].char).catch(() => null);
             let r = await call();
+            // 통신 실패(답 없음)면 잠깐 뒤 한 번 더 알린다 (못 알리면 이 경기는 기록되지 않는다)
+            if (!r) {
+              await sleep(BEGIN_RETRY_MS);
+              r = await call();
+            }
             if (r && 'match' in r && !r.live) {
               await sleep(BEGIN_RETRY_MS);
               const again = await call();
@@ -185,11 +223,22 @@ export class MatchRecorder {
       if (!id) return { state: rep ? 'failed' : 'left' };
       // 내가 나간(끊긴) 경기: 보고하지 않는다. 남은 사람의 보고로 나는 패배로 기록된다
       if (!rep) return { state: 'left' };
-      let r: SaveResult = await api.report(id, rep.left, rep.right, rep.reason);
+      const report = () => api.report(id, rep.left, rep.right, rep.reason).catch((): SaveResult => ({ status: 'error' }));
+      let r: SaveResult = await report();
       // 너무 빨리 끝난 경기: 서버가 받아 주는 시각(live 뒤 15초)이 지난 다음에 다시 보고한다
       for (let i = 0; i < 2 && r.status === 'error' && /too early/.test(r.code ?? ''); i++) {
         await sleep(Math.max(1000, this.liveAt + MIN_MATCH_MS + EARLY_MARGIN_MS - this.now()));
-        r = await api.report(id, rep.left, rep.right, rep.reason);
+        r = await report();
+      }
+      // 통신 실패(code 없음): 조금 쉬고 다시. 그래도 안 되면 보고를 기기에 적어 두고 다음에 로비에서 보낸다
+      // (이탈 경기는 남은 내 보고 하나뿐이라, 버리면 경기 결과가 통째로 사라진다)
+      for (let i = 0; i < REPORT_RETRY_MS.length && r.status === 'error' && !r.code; i++) {
+        await sleep(REPORT_RETRY_MS[i]);
+        r = await report();
+      }
+      if (r.status === 'error' && !r.code) {
+        addPending(this.store, id, this.now(), rep);
+        return { state: 'failed' };
       }
       // 여기서 페이지를 떠나도 다음에 확정할 수 있게 적어 둔다
       if (r.status === 'waiting') addPending(this.store, id, this.now());

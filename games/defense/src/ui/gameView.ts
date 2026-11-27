@@ -483,6 +483,8 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
 
   // ---------- 일시정지: 계속 · 다시하기 · 포기 · 소리 ----------
   let pauseDim: HTMLElement | null = null;
+  /** 다시하기로 새 판을 여는 중 (그동안 창을 닫거나 '계속하기' 로 옛 판을 다시 돌리지 않는다) */
+  let restarting = false;
   function openPause() {
     if (ended || pauseDim) return;
     run.paused = true;
@@ -511,7 +513,21 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
               <div class="actions"><button class="btn small" data-retry>🔄 다시하기</button><button class="btn small" data-giveup>🏳️ 포기</button></div></div>`;
     };
     paint('');
+    // 다시하기: 새 판을 여는 동안 창 버튼을 막고 '준비 중…'. 새 판이 열리지 않았으면(통신·잠김) 창을 되살린다
+    const restart = (back: '' | 'retry') => {
+      if (restarting) return;
+      restarting = true;
+      for (const b of dim.querySelectorAll('button')) b.disabled = true;
+      const acts = dim.querySelectorAll('.actions');
+      const last = acts[acts.length - 1] as HTMLElement | undefined;
+      if (last) last.innerHTML = '<p class="soft center">준비 중…</p>';
+      void Promise.resolve(nav.game({ ...setup, seed: undefined })).finally(() => {
+        restarting = false;
+        if (dim.isConnected) paint(back);
+      });
+    };
     dim.addEventListener('click', (e) => {
+      if (restarting) return;
       const t = e.target as HTMLElement;
       const seg = t.closest('.seg button') as HTMLElement | null;
       if (seg) {
@@ -529,14 +545,14 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
         else paint('quit');
       } else if (t.closest('[data-retry]')) {
         sfx('click');
-        if (s.phase === 'prep') nav.game({ ...setup, seed: undefined });
+        if (s.phase === 'prep') restart('');
         else paint('retry');
       } else if (t.closest('[data-back]')) {
         sfx('click');
         paint('');
       } else if (t.closest('[data-again]')) {
         sfx('click');
-        nav.game({ ...setup, seed: undefined });
+        restart('retry');
       } else if (t.closest('[data-quit]')) {
         sfx('click');
         finish(true);
@@ -547,7 +563,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     sfx('click');
   }
   function closePause() {
-    if (!pauseDim) return;
+    if (!pauseDim || restarting) return;
     sfx('click');
     pauseDim.remove();
     pauseDim = null;

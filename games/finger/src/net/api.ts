@@ -289,9 +289,12 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
       } catch {
         answer = { ok: false, reason: 'error' };
       }
+      // 시간 초과 · 통신 끊김('error'): 서버에서는 샀을 수 있으니 프로필을 다시 읽어 본다 (buy_character 는 이미 샀으면 owned 라 두 번 빠지지 않는다)
+      const unsure = !answer.ok && answer.reason === 'error';
       // 조건 미달이면 진행(스테이지 기록)을 다시 받아 안내를 고친다
-      if (!answer.ok && answer.reason !== 'owned' && answer.reason !== 'condition') return { answer, profile: null };
+      if (!answer.ok && answer.reason !== 'owned' && answer.reason !== 'condition' && !unsure) return { answer, profile: null };
       const profile = await call('finger_profile').then(normalize).catch(() => null);
+      if (unsure && profile && (profile.owned ?? []).includes(id)) answer = { ok: false, reason: 'owned', price: CAT_PRICE };
       return { answer, profile };
     },
     async stageBests() {

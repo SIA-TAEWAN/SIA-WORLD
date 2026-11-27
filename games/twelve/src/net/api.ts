@@ -461,8 +461,15 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
             return null;
           }
           // 층을 받았으면 엽전이 그 층 몫만큼 늘어 있다 (탑 도중에는 엽전이 줄지 않고, 장신구 보너스는 늘리기만 한다)
-          const coins = now.coins - before.coins;
-          if (coins < towerCoins(floor)) throw e;
+          let coins = now.coins - before.coins;
+          // 관리자 계정은 twelve_state 가 엽전·강화석을 1만으로 되돌린다 (102·103): 그러면 엽전으로는 알 수 없다 → 탑 기록·층 수로 판정한다
+          const reset = coins < towerCoins(floor) && now.coins === ADMIN_FILL && now.stones === ADMIN_FILL;
+          const b = before.tower;
+          const t = now.tower;
+          const recMoved = !!t && (!b || t.floor !== b.floor || t.time !== b.time || t.cps[String(floor)] !== b.cps[String(floor)]);
+          const got = coins >= towerCoins(floor) || (reset && !!t && (recMoved || t.floor >= floor));
+          if (!got) throw e;
+          if (reset) coins = towerCoins(floor);
           keep(now);
           const had = new Set(before.items.map((it) => it.id));
           const total = (towerBase.get(run) ?? 0) + Math.floor(time);
@@ -495,6 +502,9 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, uid: string, s
     },
   };
 }
+
+/** 관리자 계정이 twelve_state 를 부를 때마다 맞춰지는 엽전 · 강화석 (102_admin_coins.sql · 103_twelve_admin_stones.sql) */
+const ADMIN_FILL = 10000;
 
 let api: TwelveApi | null = null;
 /** uid = 로그인한 사람 (테스트 모드는 'local') */

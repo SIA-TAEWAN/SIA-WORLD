@@ -22,3 +22,22 @@ describe('pang SQL (111 + 113) 이 클라이언트와 같다', () => {
     expect(JSON.parse(m![1])).toEqual(LIVES);
   });
 });
+
+describe('119: pang_start 재시도 · 랭킹에서 관리자 빼기', () => {
+  const t = lf(readFileSync(new URL('../../../supabase/migrations/119_review_fixes.sql', import.meta.url), 'utf8'));
+  const at = t.indexOf('create or replace function public.pang_start(p_stage int)');
+  const body = t.slice(at, t.indexOf('$$;', at)).replace(/\s+/g, ' ');
+  it('2분 안에 시작한 끝나지 않은 같은 스테이지 판은 목숨을 빼기 전에 그대로 돌려준다', () => {
+    expect(at).toBeGreaterThan(0);
+    const reuse = body.indexOf("pr.stage = p_stage and pr.finished_at is null and pr.started_at > now() - interval '2 minutes'");
+    expect(reuse).toBeGreaterThan(body.indexOf('from public._pang_refill(me)'));
+    expect(reuse).toBeLessThan(body.indexOf('left_ := left_ - 1;'));
+    expect(body).toContain("return jsonb_build_object('run', rid, 'lives', left_, 'nextLife', nxt);");
+    expect(body).toContain('security definer set search_path = public');
+    expect(t).toContain('grant execute on function public.pang_start(int) to authenticated;');
+  });
+  it('pang_ranking 에서 관리자 빼기 (열 그대로)', () => {
+    expect(t).toContain('where r.total_stars > 0 and not coalesce(p.is_admin, false);');
+    expect(t).toContain('grant select on public.pang_ranking to anon, authenticated;');
+  });
+});
