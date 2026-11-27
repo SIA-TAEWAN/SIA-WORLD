@@ -110,6 +110,8 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
   autoStart: true,
   title: '텍사스 홀덤',
   manual: HOLDEM_MANUAL,
+  // 배경음: 리버(마지막 공용 카드) 베팅은 긴장 곡
+  bgmBoss: (pub) => pub.phase === 'river',
   icon: '♥️',
   back: 'games/casino/',
   backLabel: '카지노',

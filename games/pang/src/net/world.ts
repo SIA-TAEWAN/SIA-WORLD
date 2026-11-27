@@ -63,6 +63,9 @@ export interface SoundModule {
   isMuted(): boolean;
   setMuted(m: boolean): void;
   onMuteChange(cb: (m: boolean) => void): () => void;
+  /** 배경음: shared/audio/bgm/pang/main|boss.mp3, 승리·패배는 common/win|lose.mp3 */
+  playBgm(game: string, scene?: string): void;
+  stopBgm(): void;
 }
 let soundMod: Promise<SoundModule> | null = null;
 /** SIA WORLD 공용 효과음 (shared/sound.js) */

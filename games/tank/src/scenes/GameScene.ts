@@ -582,6 +582,7 @@ export class GameScene extends Phaser.Scene {
     // 서든데스 물: 탱크 앞에 반투명하게 (잠긴 탱크가 비쳐 보인다)
     this.waterG = this.add.graphics().setDepth(13);
     this.waterShown = this.match.water;
+    this.syncMusic(); // 이어 하기·다시 맞추기: 이미 물이 차올라 있으면 긴장 곡
 
     // UI
     this.input2 = new Input();
@@ -889,6 +890,7 @@ export class GameScene extends Phaser.Scene {
     this.match.startTurn();
     const flood = this.match.lastFlood;
     if (flood) this.playFlood(flood);
+    this.syncMusic();
     // 물이 차올라 판이 끝났다
     if (this.match.over) {
       this.phase = 'settle';
@@ -900,6 +902,11 @@ export class GameScene extends Phaser.Scene {
     if (this.match.lastDrop) this.playDrop(this.match.lastDrop);
     this.cfg.net?.turnStarted(this.match);
     this.beginTurn(0);
+  }
+
+  /** 배경음: 서든데스로 물이 차오르기 시작하면 긴장 곡(boss), 그 전에는 기본 곡 */
+  private syncMusic() {
+    if (!this.match.over) music.play(this.match.water !== null ? 'boss' : 'main');
   }
 
   private beginTurn(elapsed: number) {
@@ -1568,6 +1575,7 @@ export class GameScene extends Phaser.Scene {
     this.crateViews.clear();
     this.falling.clear();
     this.waterShown = this.match.water;
+    this.syncMusic(); // 이어 하기·다시 맞추기: 이미 물이 차올라 있으면 긴장 곡
     if (this.match.water === null) this.waterG.clear();
     this.match.pickups = [];
     if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = this.match;
@@ -1810,9 +1818,11 @@ export class GameScene extends Phaser.Scene {
   private finish() {
     this.phase = 'over';
     this.views.forEach((v) => v.arrow.setVisible(false));
-    music.play(null);
-    sfx.win();
     const m = this.match;
+    // 배경음: 내 편이 이겼으면 승리 곡, 졌거나 비겼으면 패배 곡 (백발백중은 승패가 없어 승리 곡). 결과 화면까지 이어진다
+    const mine = m.tanks.filter((t) => (this.cfg.net ? t.idx === this.cfg.net.myIdx : !t.ai));
+    music.play(m.practice || mine.some((t) => t.team === m.winner) ? 'win' : 'lose');
+    sfx.win();
     const summary: MatchSummary = {
       winner: m.winner as 0 | 1 | -1,
       turns: m.turn,

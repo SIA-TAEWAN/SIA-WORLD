@@ -12,6 +12,7 @@
  *  - 해시 없는 그림·소리(shared/images, sounds 등): 캐시로 바로 주고 뒤에서 새로 받아 캐시를 바꾼다
  *    (stale-while-revalidate: 파일을 바꿔 올리면 다음번 열 때부터 새 것)
  *  - 캐시에 넣기는 응답을 기다리게 하지 않고 event.waitUntil 로 (워커가 넣기 전에 꺼지지 않게)
+ *  - 배경음 파일(shared/audio/…mp3): 크기가 커서 손대지 않는다 (바로 네트워크, 브라우저 HTTP 캐시만)
  *  - Supabase(REST·Realtime·Edge Function·로그인), GET 이 아닌 요청, 그 밖의 주소: 손대지 않는다 (바로 네트워크)
  *
  * 새 워커는 설치돼도 스스로 넘어가지 않는다 (게임 중에 갑자기 바뀌지 않게).
@@ -72,6 +73,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin || !url.href.startsWith(scope)) return;
   const rel = url.pathname.slice(new URL(scope).pathname.length);
 
+  // 배경음(shared/audio/): 곡마다 몇 MB 라 캐시에 넣지 않는다 (브라우저가 조금씩 받아 재생한다)
+  if (rel.startsWith('shared/audio/')) return;
   if (req.mode === 'navigate') {
     event.respondWith(networkFirst(event, true));
     return;

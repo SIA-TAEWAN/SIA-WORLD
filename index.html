@@ -386,6 +386,7 @@
     import { watchWorld, GAME_MAX } from './shared/presence.js';
     import { onInstallChange, promptInstall, dismissIosHint, openInBrowser } from './shared/pwa.js';
     import { CAT, CAT_PRICE } from './shared/characters.js';
+    import { playBgm, stopBgm, mountSoundButton } from './shared/sound.js';
 
     const $ = (s) => document.querySelector(s);
 
@@ -669,6 +670,9 @@
       void rememberGameOrder(user.userId);
       renderGames(user);
       show('lobby-view');
+      // 로비 배경음 (shared/audio/bgm/common/main.mp3 · 휴대폰은 첫 터치 뒤에 시작) + 오른쪽 아래 소리 버튼
+      playBgm('common', 'main');
+      mountSoundButton();
       // 지금 누가 어디에 있나 (한 번만 구독. 로비 채널에는 내 닉네임을 올린다)
       startWatchingWorld(user);
       void loadWallet(user);
@@ -893,6 +897,8 @@
 
     // ---------- 로그인 ----------
     function showLogin() {
+      stopBgm();
+      document.getElementById('sia-sound-btn')?.remove();
       // 다른 곳(다른 기기·다른 브라우저·홈 화면 앱)에서 같은 계정으로 로그인해 밀려난 경우 알려 준다
       $('#li-err').textContent = takeKickedNotice() ? '다른 곳(다른 기기나 브라우저)에서 로그인해서 여기는 로그아웃됐어요' : '';
       $('#li-pw').value = '';

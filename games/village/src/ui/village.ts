@@ -14,8 +14,7 @@ import { worldGameOpen, worldHome, zodiacFace, zodiacFull } from '../net/world';
 import { PRAISE_LIST_MAX, agoText, praiseNotice, type PraiseInbox } from '../game/praise';
 import { VillageScene, type SceneData, type SceneHooks } from '../scenes/VillageScene';
 import { texKey } from '../scenes/art';
-import { kstHour, skyAt } from '../scenes/sky';
-import { music } from './music';
+import { kstHour } from '../scenes/sky';
 import { duration, esc, num, screen, sfx, sound, stage, toast } from './app';
 import { DPR } from './dpr';
 import { MATGO, css } from '../theme';
@@ -1346,10 +1345,8 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
   // ───────────────────────── 주기적으로 ─────────────────────────
 
   if (LOCAL_MODE) window.__village = { state, api, scene: null, game: null };
-  // 배경음: 낮 곡 / 밤 곡 (하늘 색과 같은 때에 바꾼다)
-  const pickTrack = () => music.play(skyAt(hourNow()).phase === 'night' ? 'night' : 'day');
-  pickTrack();
-  setInterval(pickTrack, 30000);
+  // 배경음: 마을 곡 하나 (마을에는 보스·승패가 없다)
+  sound.playBgm();
   // 랭킹 창(로비 · 다른 게임)의 [구경]으로 들어왔으면 그 마을부터 보여 준다:  ?visit=<사용자 id>
   const wantVisit = new URLSearchParams(location.search).get('visit');
   if (wantVisit && wantVisit !== user.id) setTimeout(() => startVisit(wantVisit), 600);

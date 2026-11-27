@@ -67,6 +67,8 @@ export interface SoundModule {
   isMuted(): boolean;
   setMuted(m: boolean): void;
   onMuteChange(cb: (m: boolean) => void): () => void;
+  playBgm(game: string, scene?: string): void;
+  stopBgm(): void;
 }
 let soundMod: Promise<SoundModule> | null = null;
 /** SIA WORLD 공용 효과음 (shared/sound.js) */

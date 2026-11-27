@@ -15,7 +15,7 @@ import { GameScene, type SceneArt, type SceneHooks } from '../scenes/GameScene';
 import { COLOR } from '../theme';
 import { createControls, potionSvg, type Controls } from './controls';
 import { lookLayers, makePreview, stillImage } from './preview';
-import { music, zoneTrack, type TrackName } from './music';
+import { music, type BgmScene } from './music';
 
 interface Ctx {
   api: TowerApi;
@@ -122,7 +122,7 @@ export function showFirst() {
 // ---------- 처음 화면 ----------
 let titlePreview: { destroy(): void } | null = null;
 function title() {
-  music.play('title');
+  music.play('main');
   titlePreview?.destroy();
   const d = ctx.data;
   const ready = floorReady(d.floor);
@@ -389,11 +389,9 @@ async function loadArt(look: Look): Promise<SceneArt & { themes: Record<string, 
   const byTheme = Object.fromEntries(themes.map((t, i) => [t, sheets[i]]));
   return { layers, tiles: byTheme[themeOf(ctx.data.floor)] ?? sheets[0], themes: byTheme, enemies: Object.fromEntries(ids.map((id, i) => [id, enemies[i]])) };
 }
-/** 층에 맞는 배경음 */
-function floorTrack(floor: number): TrackName {
-  const kind = floorRule(floor).kind;
-  if (kind === 'rest') return 'rest';
-  return zoneTrack(themeOf(floor), kind === 'boss');
+/** 층에 맞는 배경음: 보스층(10·20…100층)만 보스 곡, 나머지(쉼터 포함)는 시아의탑 곡 */
+function floorTrack(floor: number): BgmScene {
+  return floorRule(floor).kind === 'boss' ? 'boss' : 'main';
 }
 
 async function play() {
@@ -501,7 +499,7 @@ function startFloor() {
 }
 
 function leavePlay(to: () => void) {
-  music.play('title');
+  music.play('main');
   document.removeEventListener('visibilitychange', onHidden);
   gameWatch?.disconnect();
   gameWatch = null;
@@ -731,7 +729,7 @@ function onEvent(ev: SimEvent, s: RunState) {
       break;
     case 'wishRise':
       sfx('twelveRare');
-      music.play('ending');
+      music.play('main'); // 마지막 보스를 쓰러뜨렸다 — 보스 곡을 내린다
       hudNote('소원 구슬이 떠올랐어요! 다가가 소원을 빌어요', 5000);
       break;
     case 'wish':
@@ -988,7 +986,7 @@ function onClear(s: RunState) {
 
 async function mvpEnd(floor: number, saving: Promise<unknown>, s: RunState) {
   setPaused(true);
-  music.play('rest');
+  music.play('win');
   const last = floor >= LAST_READY;
   const next = zoneData(floor + 1);
   const ov = overlay(`
@@ -1025,6 +1023,7 @@ function onDead(s: RunState) {
   if (!cur || cur.ended) return;
   cur.ended = true;
   sfx('lose');
+  music.play('lose');
   const data = clone(s.data);
   const floor = s.map.floor;
   die(data);
@@ -1287,7 +1286,7 @@ function openShop() {
 function endingScreen(onDone: () => void, saving?: Promise<unknown>) {
   titlePreview?.destroy();
   titlePreview = null;
-  music.play('ending');
+  music.play('win');
   const d = ctx.data;
   const name = nick();
   const orbCount = ORBS.filter((o) => d.orbs[o.id]).length;

@@ -34,6 +34,8 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
   const reactHtml = react
     ? `<p class="react-line g-${react.grade.toLowerCase()}">${esc(reactionLine(react))}${reactBest ? ' <span class="react-rec">⚡ 반응 신기록</span>' : ''}</p>`
     : '';
+  // 배경음: 완주해서 1등이면 승리 곡, 아니면(2등 아래·실격·미완주) 패배 곡을 한 번
+  const won = mine?.status === 'finish' && mine.place === 1;
   const root = screen(
     `<div class="result-card">
       <h2>🏁 경기 결과</h2>
@@ -77,7 +79,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
       <div class="sub"><button class="btn small" id="rank">🏆 랭킹</button></div>
     </div><div class="cheer" id="cheer"></div>`,
     'result',
-    'result',
+    won ? 'win' : 'lose',
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
 

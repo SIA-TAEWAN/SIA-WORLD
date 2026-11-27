@@ -45,8 +45,22 @@ const LEADER_KEY = 'siacharge:leader';
 let leader: LeaderId = 'rat';
 
 let sound: SoundModule | null = null;
+/**
+ * 배경음 장면 (shared/audio/bgm/charge/main|boss.mp3, 승패는 common/win|lose.mp3).
+ * 메뉴·달리기 = main, 보스전 = boss, 결과 창 = win/lose. 공용 모듈을 불러오기 전에 고른 장면은 불러온 뒤에 튼다
+ */
+type BgmScene = 'main' | 'boss' | 'win' | 'lose';
+let bgmScene: BgmScene = 'main';
+const bgm = (scene: BgmScene) => {
+  if (scene === bgmScene && sound) return;
+  bgmScene = scene;
+  sound?.playBgm('charge', scene);
+};
 void loadSound()
-  .then((m) => (sound = m))
+  .then((m) => {
+    sound = m;
+    m.playBgm('charge', bgmScene);
+  })
   .catch(() => null);
 const play = (name: string, opts?: { volume?: number; rate?: number }) => sound?.play(name, opts);
 
@@ -56,6 +70,7 @@ function screen(html: string, bg = ''): HTMLElement {
   const root = app();
   root.innerHTML = `<div class="screen ${bg}">${html}</div>`;
   const el = root.firstElementChild as HTMLElement;
+  bgm('main');
   soundButton(root); // .screen 밖(#app)에 붙여, 화면이 스크롤돼도 오른쪽 아래 제자리에 둔다
   return el;
 }
@@ -775,6 +790,7 @@ export async function startGame(stage: StageDef, endless: boolean) {
   wait?.remove();
   if (!DEV_ALL && !runId) toast('서버에 연결하지 못했어요. 이번 판은 기록되지 않아요');
   const run = createRun(stage, leader, modsOf(profile.upgrades));
+  bgm('main');
   const root = app();
   root.innerHTML = `
     <div id="game"></div>
@@ -848,6 +864,9 @@ export async function startGame(stage: StageDef, endless: boolean) {
         if (prog) prog.style.width = `${Math.round(progressOf(s) * 100)}%`;
         if (meters) meters.textContent = `${metersOf(s).toLocaleString()}m · 보스 ${s.bosses}`;
         troops.textContent = `🪖 ${s.troops.toLocaleString()}`;
+        // 배경음: 보스와 싸우는 동안 보스 곡 (끝없는 길은 보스를 쓰러뜨리면 다시 main)
+        if (s.phase === 'boss') bgm('boss');
+        else if (s.phase === 'run') bgm('main');
         if (!hinted && s.t > 3) {
           hinted = true;
           root.querySelector('#hint')?.remove();
@@ -923,6 +942,7 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
   const win = !endless && s.phase === 'clear';
   const stars = win ? starsFor(s) : 0;
   play(win || (endless && r?.best) ? 'win' : 'lose');
+  bgm(win || (endless && r?.best) ? 'win' : 'lose');
   const next = win ? nextStage(st.id) : null;
   const nextOk = !!next && stageOpen(profile, next.id);
   const title = daily ? (r?.best ? '오늘 새 기록!' : '오늘의 길 끝') : endless ? (r?.best ? '새 기록!' : '끝없는 길 끝') : win ? '클리어!' : '전멸했어요';

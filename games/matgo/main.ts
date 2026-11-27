@@ -1008,6 +1008,8 @@ const ui: GameUI<MatgoPublic, MatgoPrivate> = {
   game: 'matgo',
   title: '시아맞고',
   manual: MATGO_MANUAL,
+  // 배경음: 누가 한 번이라도 고를 부르면 판이 커진다 → 긴장 곡
+  bgmBoss: (pub) => Object.values(pub.players ?? {}).some((p) => (p?.go ?? 0) > 0),
   icon: '🎴',
   back: '',
   backLabel: 'SIA WORLD',

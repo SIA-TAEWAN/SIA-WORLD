@@ -59,7 +59,7 @@ export function showResult(result: MatchResult) {
       <div class="emo-row" id="emo">${emoteChips()}</div>
     </div><div class="cheer" id="cheer"></div>`,
     'result',
-    'result',
+    won ? 'win' : 'lose',
     () => {
       off?.();
       offEmote?.();

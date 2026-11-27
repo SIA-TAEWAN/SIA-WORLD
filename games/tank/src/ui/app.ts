@@ -65,7 +65,7 @@ document.body.append(soundBtn);
 
 export function screen(html: string, cls: string, cleanup?: () => void) {
   document.body.classList.remove('in-game');
-  music.play('menu');
+  music.menu();
   cleanupScreen?.();
   cleanupScreen = cleanup ?? null;
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
@@ -119,7 +119,7 @@ export function launchGame(cfg: Omit<GameConfig, 'touch' | 'hudParent'>) {
       app.classList.add('hidden');
       app.innerHTML = '';
       document.body.classList.add('in-game');
-      music.play('battle');
+      music.play('main');
       gameEl.classList.remove('hidden');
       hudEl.classList.remove('hidden');
       if (game) destroyGame(game);

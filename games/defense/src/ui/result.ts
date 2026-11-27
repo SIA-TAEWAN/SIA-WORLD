@@ -7,6 +7,7 @@ import { featScore, supportLine, type Feats } from '../game/feats';
 import { zodiacFaceUrl, zodiacFullUrl } from '../assets';
 import { esc, josa, nav, screen, state, type GameResult } from './app';
 import { sfx } from './sfx';
+import { music } from './music';
 import { DAILY_GAME, dailyScore } from '../game/daily';
 import { LOCAL_MODE } from '../net/api';
 import { loadDaily } from '../net/world';
@@ -87,6 +88,8 @@ export function showResult(r: GameResult) {
      ${r.cleared ? '<div class="cheer" id="cheer"></div>' : ''}`,
     'result',
   );
+  // 판이 끝날 때 튼 승리·패배 곡이 이어진다. 스스로 포기했으면 메인 곡
+  music.play(r.quit ? 'main' : r.cleared || r.endless ? 'win' : 'lose');
   if (r.cleared) {
     // 색종이 (DESIGN.md 8장: 승리 = 별·색종이)
     const cheer = root.querySelector('#cheer')!;

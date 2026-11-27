@@ -72,10 +72,25 @@ const myHeroes = () => heroesOf(profile, cat);
 const DEV_PLAY = DEV_ALL || DEV_MODE || DEV_GOD || DEV_LEVEL > 0 || !!DEV_HERO || !!DEV_WEAPON || !!DEV_MAP;
 
 let sound: SoundModule | null = null;
+/** 지금 틀려는 배경음 장면 (공용 소리 모듈이 늦게 읽혀도 읽히자마자 이 곡을 튼다) */
+type BgmScene = 'main' | 'boss' | 'win' | 'lose';
+let bgmScene: BgmScene = 'main';
 void loadSound()
-  .then((m) => (sound = m))
+  .then((m) => {
+    sound = m;
+    bgm(bgmScene);
+  })
   .catch(() => null);
 const play = (name: string, opts?: { volume?: number; rate?: number }) => sound?.play(name, opts);
+/** 배경음 (shared/audio/bgm/twelve/): 쉼터·지도·판 = main, 보스가 깨어난 뒤·최종보스 맵 = boss, 결과 = win/lose. 소리 모듈이 없으면(로컬·오프라인) 아무 일도 없다 */
+function bgm(scene: BgmScene) {
+  bgmScene = scene;
+  try {
+    sound?.playBgm('twelve', scene);
+  } catch {
+    /* 옛 shared/sound.js (playBgm 없음) */
+  }
+}
 
 // ---------- 설정 (기기마다) ----------
 
@@ -130,6 +145,8 @@ function screen(html: string, bg = ''): HTMLElement {
   const root = app();
   root.innerHTML = `<div class="screen ${bg}">${html}</div>`;
   fitTitle(root);
+  // 판 밖의 화면(쉼터·지도·가방·이야기 …)은 모두 main — 결과 창에서 쉼터로 돌아오면 여기서 다시 main
+  bgm('main');
   return root.firstElementChild as HTMLElement;
 }
 
@@ -881,6 +898,9 @@ function playRun(run: RunState, o: PlayOpts) {
   const map = run.map;
   const bossDef = map.boss ? BOSSES[bossIdOf(map)] : null;
   const need = exitNeed(run.total);
+  // 배경음: 최종보스 맵은 처음부터 boss, 보스 맵(탑 보스 층 포함)은 보스가 깨어나면 boss 로 바꾸고 판이 끝날 때까지 둔다. 나머지는 main
+  let bossBgm = !!map.final;
+  bgm(bossBgm ? 'boss' : 'main');
   const root = app();
   root.innerHTML = `
     <div id="game"></div>
@@ -1029,6 +1049,11 @@ function playRun(run: RunState, o: PlayOpts) {
       },
       onFrame: (s: RunState) => {
         ctl.update(s);
+        // 바뀔 때 한 번만 부른다 (매 프레임 부르지 않는다)
+        if (!bossBgm && s.boss?.awake && s.phase === 'play') {
+          bossBgm = true;
+          bgm('boss');
+        }
         const p = s.p;
         set('hp', String(Math.round((p.hp / s.stats.hp) * 100)), (v) => (hp.style.width = `${v}%`));
         set('hpT', `${Math.ceil(p.hp)} / ${s.stats.hp}`, (v) => (hpT.textContent = v));
@@ -1093,6 +1118,7 @@ function showResult(s: RunState, r: FinishResult | null, deaths: number) {
   const map = s.map;
   const win = s.phase === 'clear';
   play(win ? 'win' : 'lose');
+  bgm(win ? 'win' : 'lose');
   const next = win ? nextMap(map.id) : null;
   const nextOk = !!next && mapOpen(profile, next.id);
   // 최종보스를 처음 잡았다: 결과 다음에 엔딩 (PRD '이야기')
@@ -1259,6 +1285,8 @@ async function floorCleared(t: TowerPlay, s: RunState) {
   t.best ||= res.best;
   const boss = floorKind(t.floor) === 'boss';
   play(boss ? 'win' : 'goal');
+  // 보스 층만 승리 곡 (보통 층은 1.8초 뒤 다음 층으로 바로 가니 곡을 바꾸지 않는다)
+  if (boss) bgm('win');
   const box = overlay(`<div class="card pop result win">
       <h2>${t.floor}층 클리어!</h2>
       <div class="rows">
@@ -1316,6 +1344,7 @@ async function endTowerPlay(t: TowerPlay, used: number[][], note: string, force 
   const reached = t.floor - 1;
   const rec = profile.tower;
   play(reached >= t.first ? 'win' : 'lose');
+  bgm(reached >= t.first ? 'win' : 'lose');
   const box = overlay(`<div class="card pop result ${reached >= t.first ? 'win' : 'lose'}">
       <h2>${reached >= t.first ? `${reached}층까지 올랐어요` : `${t.floor}층에서 끝났어요`}</h2>
       <div class="rows">

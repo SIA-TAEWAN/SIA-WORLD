@@ -74,10 +74,25 @@ let lastParty: HeroId[] = [];
 const userKey = () => me?.userId ?? 'local';
 
 let sound: SoundModule | null = null;
+/** 지금 틀려는 배경음 장면 (공용 소리 모듈이 늦게 읽혀도 읽히자마자 이 곡을 튼다) */
+type BgmScene = 'main' | 'boss' | 'win' | 'lose';
+let bgmScene: BgmScene = 'main';
 void loadSound()
-  .then((m) => (sound = m))
+  .then((m) => {
+    sound = m;
+    bgm(bgmScene);
+  })
   .catch(() => null);
 const play = (name: string, opts?: { volume?: number; rate?: number }) => sound?.play(name, opts);
+/** 배경음 (shared/audio/bgm/finger/): 메뉴·판 = main, 보스가 있는 웨이브·층 = boss, 판 결과 = win/lose. 소리 모듈이 없으면(로컬·오프라인) 아무 일도 없다 */
+function bgm(scene: BgmScene) {
+  bgmScene = scene;
+  try {
+    sound?.playBgm('finger', scene);
+  } catch {
+    /* 옛 shared/sound.js (playBgm 없음) */
+  }
+}
 
 const app = () => document.getElementById('app')!;
 
@@ -107,6 +122,8 @@ function screen(html: string, bg = '', backdrop = true): HTMLElement {
   root.innerHTML = `<div class="screen ${bg}${backdrop ? bgStyle(bg) : ''}">${html}</div>`;
   const el = root.firstElementChild as HTMLElement;
   soundButton(el);
+  // 메뉴 화면은 모두 main (판 결과 창에서 메뉴·다시하기로 돌아오면 여기서 다시 main)
+  bgm('main');
   return el;
 }
 
@@ -733,6 +750,7 @@ function showDailyResult(s: RunState, st: StageDef, c: DailyChallenge, out: Sent
   const r = out.replay ?? resultOf(s);
   const d = out.result?.daily;
   play(r.cleared ? (d?.improved ? 'newRecord' : 'win') : 'lose');
+  bgm(r.cleared ? 'win' : 'lose');
   const best = d?.best != null ? Math.abs(d.best) : 0;
   const box = document.createElement('div');
   box.className = 'overlay';
@@ -1001,6 +1019,12 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
       sound: play,
       onFrame: (s: RunState) => {
         paintHint();
+        // 지역 보스(rank 2)가 있는 웨이브·탑 층이면 boss, 아니면 main. 판이 끝난 뒤에는 결과 화면이 win/lose 를 튼다.
+        // 매 프레임 부르지 않고 바뀔 때만 (같은 곡을 계속 부르면 페이드 인이 매번 처음부터 다시 걸린다)
+        if (!ended && s.phase !== 'clear' && s.phase !== 'fail') {
+          const want: BgmScene = s.cfg.waves[s.wave]?.some((f) => f.rank === 2) ? 'boss' : 'main';
+          if (want !== bgmScene) bgm(want);
+        }
         if (tower) {
           const tf = towerFloor(s.wave + 1);
           waveEl.textContent = `${s.wave + 1}층${tf.boss ? ' · 보스' : tf.chief ? ' · 작은 대장' : ''} · ${REGION_NAMES[tf.region - 1]}`;
@@ -1080,6 +1104,7 @@ function showTowerResult(s: RunState, party: HeroId[], out: Sent) {
   const res = out.result;
   const best = !!res?.best;
   play(best ? 'newRecord' : r.floors > 0 ? 'win' : 'lose');
+  bgm(r.floors > 0 ? 'win' : 'lose');
   const why = r.turns >= s.cfg.maxTurns ? `${s.cfg.maxTurns}턴을 다 썼어요` : r.cleared ? '탑 꼭대기까지 올랐어요!' : '모두 쓰러졌어요';
   const box = document.createElement('div');
   box.className = 'overlay';
@@ -1124,6 +1149,7 @@ function showResult(s: RunState, st: StageDef, party: HeroId[], out: Sent) {
   const r = out.replay ?? resultOf(s);
   const res = out.result;
   play(r.cleared ? 'win' : 'lose');
+  bgm(r.cleared ? 'win' : 'lose');
   const next = r.cleared ? nextStageOf(st) : null;
   const nextOk = !!next && stageOpen(profile, next.id);
   const [, inPar, noFall] = r.starFlags;

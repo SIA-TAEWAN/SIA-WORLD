@@ -244,6 +244,8 @@ export interface GameUI<P = any, Q = any> {
   autoStart?: boolean;
   /** 방 화면을 떠날 때 (나가기 · 방이 사라짐): 게임이 따로 걸어 둔 타이머 등을 치운다 (모듈 상태는 방을 옮겨도 남는다) */
   leave?(): void;
+  /** 참이면 판 도중 배경음을 긴장 곡(boss)으로 (맞고: 누가 고를 불렀을 때, 포커: 마지막 베팅). 없으면 늘 기본 곡 */
+  bgmBoss?(pub: P): boolean;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, s: string) => root.querySelector<T>(s)!;
@@ -336,8 +338,18 @@ interface SoundModule {
   play(name: string, opts?: { delay?: number; volume?: number; rate?: number }): void;
   playMany(name: string, count: number, gapMs?: number, opts?: { delay?: number }): void;
   mountSoundButton(parent?: HTMLElement): HTMLElement;
+  playBgm(game: string, scene?: string): void;
+  stopBgm(): void;
 }
 let snd: SoundModule | null = null;
+/** 배경음 폴더 (shared/audio/bgm/<폴더>): 맞고는 matgo, 카지노 네 게임은 casino */
+let bgmGame = 'matgo';
+let bgmWant: 'main' | 'boss' | 'win' | 'lose' = 'main';
+/** 배경음 장면 (같은 곡이면 아무 일 없다. 모듈을 아직 못 불러왔으면 불러온 뒤에 튼다) */
+function bgm(scene: typeof bgmWant) {
+  bgmWant = scene;
+  snd?.playBgm(bgmGame, scene);
+}
 /** 효과음 (모듈을 아직 못 불러왔으면 조용히) */
 export const sfx = (name: SoundName, opts?: { delay?: number; volume?: number; rate?: number }) => snd?.play(name, opts);
 export const sfxMany = (name: SoundName, count: number, gapMs?: number, opts?: { delay?: number }) => snd?.playMany(name, count, gapMs, opts);
@@ -346,6 +358,7 @@ function loadSound() {
     (m: SoundModule) => {
       snd = m;
       m.mountSoundButton();
+      m.playBgm(bgmGame, bgmWant);
       // 버튼 누르는 소리 (모든 화면)
       document.addEventListener('click', (e) => {
         const b = (e.target as HTMLElement | null)?.closest('button, .unit, label.btn');
@@ -363,6 +376,7 @@ let hereMax = 30;
 export async function bootGame(ui: GameUI) {
   document.title = ui.title;
   linkThemeCss();
+  bgmGame = ui.game === 'matgo' ? 'matgo' : 'casino';
   loadSound();
   app().innerHTML = '<div class="center">불러오는 중…</div>';
   let me: WorldUser;
@@ -399,6 +413,7 @@ export async function bootGame(ui: GameUI) {
 // ---------- 방 목록 ----------
 
 async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
+  bgm('main');
   const cur = m.room.CURRENCY[ui.game];
   const unit = cur === 'nyang' ? '냥' : '칩';
   let wallet: Wallet | null = null;
@@ -645,6 +660,8 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
   let resultShownFor = -1;
   /** 결과 창을 띄우기로 했지만 (컷인이 끝나기를 기다리는 중) 아직 뜨지 않은 판 */
   let resultDue = -1;
+  /** 이 판 결과 창에서 승리·패배 곡을 틀었다 → 다음 판이 시작될 때까지 기본 곡으로 덮지 않는다 */
+  let bgmJingle = -1;
   let firstLoad = true;
   // 카드 연출 상태: 판마다 key → 면. 처음 화면을 그릴 때(새로고침 등)는 연출 없이 기록만
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1375,6 +1392,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     const lost = c.resultSeat !== null && (deltas?.[String(c.resultSeat)] ?? 0) < 0;
     if (won) sfx('win');
     else if (lost) sfx('lose');
+    // 배경음: 이긴 판·진 판이면 승리·패배 곡 한 번 (비김·구경은 그대로)
+    if (won || lost) {
+      bgm(won ? 'win' : 'lose');
+      bgmJingle = st?.round_no ?? -1;
+    }
     d.innerHTML = `<div class="box result ${won ? 'win' : ''}">${sparkles}${ui.resultHtml(c)}<div class="row">${
       mySeatRow() ? '<button type="button" class="btn small emote-btn" data-emote-open aria-label="한마디 보내기" title="한마디 보내기">💬</button>' : ''
     }<button class="btn primary" data-x>확인</button></div></div>`;
@@ -1541,6 +1563,20 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     sharpenText(c.scene.children.list);
   }
 
+  /** 배경음: 판 도중엔 기본 곡(게임이 정한 긴장 순간엔 boss), 대기 중엔 기본 곡 — 방금 튼 승리·패배 곡은 다음 판까지 그대로 */
+  function syncBgm(c: TableCtx | null) {
+    const pub = c?.pub as { result?: unknown } | null | undefined;
+    if (room?.status === 'playing' && pub && !pub.result) {
+      bgmJingle = -1;
+      let boss = false;
+      try {
+        boss = !!ui.bgmBoss?.(pub);
+      } catch {
+        /* 상태 모양이 낯설면 기본 곡 */
+      }
+      bgm(boss ? 'boss' : 'main');
+    } else if (bgmJingle < 0 && !pub?.result) bgm('main');
+  }
   function paint() {
     if (closed) return;
     maybeStart();
@@ -1556,6 +1592,7 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
       return;
     }
     const c = ctx();
+    syncBgm(c);
     if (c) {
       clearScene(c.scene);
       c.scene.tweens.killAll();

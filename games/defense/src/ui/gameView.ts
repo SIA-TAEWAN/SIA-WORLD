@@ -23,7 +23,7 @@ import { artUrl, zodiacFaceUrl } from '../assets';
 import { esc, mmss, nav, screen, setProfile, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { levelText } from './codex';
 import { DPR } from './dpr';
-import { bgTrack, music } from './music';
+import { music } from './music';
 import { attackSfx, sfx, sound } from './sfx';
 
 declare global {
@@ -605,22 +605,21 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     endTimer = setTimeout(() => nav.result(result), 1700);
   }
   function onFail() {
-    music.play(null);
+    // 끝없는 모드는 실패로만 끝나고 결과 화면도 '버틴 기록'이라 승리 곡
+    music.play(s.endless ? 'win' : 'lose');
     sfx('lose');
     if (s.endless) setCut(`웨이브 ${s.wave + 1}<small>여기까지 버텼어요</small>`, 'go');
     else setCut('실패…<small>마을에 요괴가 들어왔어요</small>', 'bad');
     finish(false);
   }
   function onClear() {
-    music.play(null);
+    music.play('win');
     sfx('win');
     setCut('클리어!<small>마을을 지켜 냈어요</small>', 'go');
     finish(false);
   }
 
   // ---------- 생긴 일 → 소리·연출 ----------
-  /** 이 판의 배경 곡 (끝없는 모드는 들판 곡) */
-  const bgm = bgTrack(s.endless ? 'field' : stageBg(s.stage));
   /** 캐릭터별 공격음: [공용 소리 이름, 높낮이]. 양(쉬지 않고 구름을 깐다)·돼지(공격하지 않는다)는 없다 */
   const ATTACK_SFX: Record<string, [string, number] | undefined> = {
     rat: ['survShot', 1.3], ox: ['tankTurn', 0.8], tiger: ['survSlash', 1], rabbit: ['survPop', 0.85], dragon: ['tankLaser', 1.4], snake: ['survPop', 1.4],
@@ -630,7 +629,6 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
     switch (e.t) {
       case EV.start:
         sfx('raceGo');
-        music.play(bgm);
         break;
       case EV.wave:
         if (e.a > 0) sfx('turn');
@@ -658,8 +656,8 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
         sfx('survHurt');
         flashEdge('hurt');
         scene()?.burst('leak');
-        // 보스가 지나갔으면 (남은 보스가 없을 때) 배경 곡으로 돌아간다
-        if (e.b >= 0 && st.phase === 'play' && !bossAlive(st)) music.play(bgm);
+        // 보스가 지나갔으면 (남은 보스가 없을 때) 메인 곡으로 돌아간다
+        if (e.b >= 0 && st.phase === 'play' && !bossAlive(st)) music.play('main');
         break;
       case EV.bossWarn:
         // 스테이지는 경고와 함께 보스 곡. 끝없는 모드는 보스가 실제로 나올 때 (bossIn) — 앞 보스가 남아 있을 수 있다
@@ -689,7 +687,7 @@ export function showGame(setup: GameSetup, begun: StartInfo | null = null) {
         music.play('boss');
         break;
       case EV.bossDown:
-        if (st.phase === 'play' && !bossAlive(st)) music.play(bgm);
+        if (st.phase === 'play' && !bossAlive(st)) music.play('main');
         sfx('survBossDown');
         scene()?.burst('boss');
         flashEdge('good');

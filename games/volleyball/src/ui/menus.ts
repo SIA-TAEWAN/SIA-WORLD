@@ -111,7 +111,7 @@ export function showLobby() {
     <div class="card rooms-card"><h3>방 목록 <span class="soft" id="rooms-n"></span><span class="people" id="people"></span></h3><div class="rooms" id="rooms"><p class="empty">불러오는 중…</p></div></div>
     <div class="sub-actions"><button class="btn" id="rank">🏆 랭킹</button><button class="btn" id="howto">❓ 방법</button></div>`,
     'lobby',
-    'lobby',
+    'main',
     () => off?.(),
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
@@ -239,7 +239,7 @@ export function showCharSelect() {
     <p class="status">내가 왼쪽 · AI가 오른쪽 · 전적과 시아코인에 반영돼요 (하루 30판) · 도중에 나가면 패배로 기록돼요</p>
     <button class="btn primary big" id="start">경기 시작 ▶</button>`,
     'room',
-    'lobby',
+    'main',
     () => offUnlock(),
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
@@ -289,7 +289,7 @@ export async function enterRoom(code: string, title = '') {
   if (state.room && state.room.key !== code) leaveRoom();
   setRoomInUrl(code);
   if (!state.room) {
-    screen('<div class="connecting"><div class="spinner"></div><p>방에 들어가는 중…</p></div>', 'center', 'lobby');
+    screen('<div class="connecting"><div class="spinner"></div><p>방에 들어가는 중…</p></div>', 'center', 'main');
     const room = new VolleyRoom(api, code, state.user, state.char, title);
     try {
       await room.join();
@@ -328,7 +328,7 @@ export function showWaiting() {
     <p class="status" id="status"></p>
     <button class="btn primary big" id="ready">레디 ▶</button>`,
     'room',
-    'lobby',
+    'main',
     () => {
       off?.();
       offUnlock();

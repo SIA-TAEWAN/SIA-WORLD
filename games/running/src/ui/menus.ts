@@ -84,7 +84,7 @@ export function showLobby() {
     <div class="best-line"><span>🏅 내 최고 기록</span><span id="best"><span class="soft">불러오는 중…</span></span></div>
     ${reactLineHtml()}`,
     'lobby',
-    'lobby',
+    'main',
     () => {
       alive = false;
     },
@@ -221,7 +221,7 @@ export function showPick() {
     <div class="grow"></div>
     <button class="btn primary big" id="go">출발 ▶</button>`,
     'pick',
-    'lobby',
+    'main',
     () => offUnlock(),
   );
   const $ = <T extends HTMLElement>(s: string) => root.querySelector(s) as T;
@@ -306,7 +306,7 @@ export async function startRun() {
   const root = screen(
     `<div class="connecting"><div class="spinner"></div><p>오늘의 트랙을 준비하는 중…</p><button class="btn small" id="cancel">취소</button></div>`,
     'center',
-    'lobby',
+    'main',
     () => {
       cancelled = true;
     },

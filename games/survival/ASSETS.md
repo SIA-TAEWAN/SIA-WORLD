@@ -171,9 +171,9 @@ SpriteCook (Nano Banana 2.1, 십이지 전신 시트를 화풍 참고) 으로 �
 | 클리어 / 게임 오버 | `win` / `lose` | 기존 이름 |
 | 버튼 | `click` `toggle` | 기존 이름 |
 
-배경음은 코드로 만든 반복곡 7개 (`src/ui/music.ts`): 메인 · 맵 4종(들판·대나무 숲·달빛 궁궐·황천길) · 보스 · 결과.
-`shared/sounds/` 에 아래 이름의 `.ogg`(또는 `.mp3`)를 넣으면 그 파일로 바뀐다:
-`bgmSurvMain` `bgmSurvField` `bgmSurvBamboo` `bgmSurvPalace` `bgmSurvUnderworld` `bgmSurvBoss` `bgmSurvResult`.
+배경음은 공용 배경음 파일 (`src/ui/music.ts` → shared/sound.js `playBgm('survival', 장면)`):
+메뉴·판 = `shared/audio/bgm/survival/main.mp3`, 보스 경고부터 보스가 남아 있는 동안 = `boss.mp3`,
+클리어 = `common/win.mp3`, 게임 오버 = `common/lose.mp3` (결과 화면까지, 스스로 그만두면 메인 곡).
 가려진 탭에서는 게임이 저절로 멈추고 배경음도 멈춘다.
 
 ## 10. 한눈에: SpriteCook으로 만든 것·만들 것
@@ -191,4 +191,4 @@ SpriteCook (Nano Banana 2.1, 십이지 전신 시트를 화풍 참고) 으로 �
 | 레벨업 카드 바탕 | 3 | `card-weapon` `card-passive` `card-bonus` | 640×200 | CSS 크림 판 |
 | 맵 썸네일 | 4 | `map-<맵 id>.png` | 640×200 | 보조색 단색 카드 |
 | 로비 카드 | 1 | `shared/images/card-survival.png` | 640×400 | **완료** |
-| 배경음 | 7 | `shared/sounds/bgmSurv*.ogg` | — | 코드로 만든 반복곡 |
+| 배경음 | 2 | `shared/audio/bgm/survival/main.mp3` · `boss.mp3` | — | 승리·패배는 common/ |
