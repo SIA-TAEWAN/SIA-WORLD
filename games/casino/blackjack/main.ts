@@ -510,7 +510,9 @@ function playControls(t: Ctx, el: HTMLElement) {
       setHinting(!hinting());
       t.redraw();
     });
-    el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a })));
+    const handNo = p.turn.hand ?? 0;
+    const cards = mine?.hands[handNo]?.cards.length;
+    el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => b.addEventListener('click', () => void t.act({ type: b.dataset.a, hand: handNo, ...(cards != null ? { cards } : {}) })));
     return;
   }
   // 내 차례여도 앞선 연출(베팅 말풍선·카드 나누기)이 끝나기 전에는 버튼 대신 안내만

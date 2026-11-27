@@ -43,10 +43,11 @@ export type BjPlayAction = 'hit' | 'stand' | 'double' | 'split';
 export type BjAction =
   | { type: 'bet'; amount: number }
   | { type: 'sitout' }
-  | { type: 'hit' }
-  | { type: 'stand' }
-  | { type: 'double' }
-  | { type: 'split' };
+  // hand · cards: 화면이 본 핸드 번호와 장수 (있으면 다르면 거절 — 시간 초과와 겹쳐 다음 핸드에 들어가지 않게)
+  | { type: 'hit'; hand?: number; cards?: number }
+  | { type: 'stand'; hand?: number; cards?: number }
+  | { type: 'double'; hand?: number; cards?: number }
+  | { type: 'split'; hand?: number; cards?: number };
 
 export interface BjCarry {
   /** 남은 슈 (앞에서부터 뽑음) */
@@ -587,6 +588,10 @@ export const blackjack: Engine<BjState, BjAction, BjCarry, BjPublic, BjPrivate> 
     }
     const hi = turn.hand;
     const h = st.hands[hi];
+    const seen = action as { hand?: unknown; cards?: unknown };
+    if ((typeof seen.hand === 'number' && seen.hand !== hi) || (typeof seen.cards === 'number' && seen.cards !== h.cards.length)) {
+      throw new EngineError('이미 지난 차례예요');
+    }
     switch (action.type) {
       case 'hit': {
         const c = draw(s, rng);

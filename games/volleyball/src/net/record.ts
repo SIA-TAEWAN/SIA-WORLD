@@ -117,7 +117,8 @@ function removePending(store: PendingStore | null, id: string) {
  */
 export async function settlePending(api: VolleyApi, store: PendingStore, now = Date.now()): Promise<number> {
   if (api.kind === 'local') return 0;
-  const list = store.load().filter((e) => now - e.at < PENDING_KEEP_MS);
+  const all = store.load();
+  const list = all.filter((e) => now - e.at < PENDING_KEEP_MS);
   let settled = 0;
   const keep: PendingEntry[] = [];
   for (const e of list) {
@@ -147,7 +148,9 @@ export async function settlePending(api: VolleyApi, store: PendingStore, now = D
     // 아직 기다리는 중이거나 통신이 안 된 것만 다음에 다시 (서버가 거절한 것은 지운다)
     else if (r.status === 'waiting' || !r.code) keep.push(e);
   }
-  store.save(keep);
+  // 서버를 기다리는 사이 새로 적힌 경기(방금 끝난 경기의 못 보낸 보고 등)는 지우지 않고 합친다
+  const added = store.load().filter((e) => !all.some((a) => a.id === e.id));
+  store.save([...keep, ...added]);
   return settled;
 }
 

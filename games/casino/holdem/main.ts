@@ -284,7 +284,7 @@ const ui: GameUI<HoldemPublic, HoldemPrivate> = {
     }
     const dis = t.busy ? 'disabled' : '';
     // 슬라이더 값은 차례가 바뀔 때마다 최소 금액에서 시작
-    const key = `${p.phase}:${p.curBet}:${o.minTo}:${o.maxTo}`;
+    const key = `${t.room.round_no}:${p.phase}:${p.curBet}:${o.minTo}:${o.maxTo}`;
     if (key !== raiseKey) {
       raiseKey = key;
       raiseTo = o.minTo;

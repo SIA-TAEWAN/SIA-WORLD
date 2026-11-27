@@ -1231,7 +1231,7 @@ export function openRanking({ meId = null, first = null } = {}) {
     const asked = dailyDay;
     const current = () => seq === dailySeq && shown === tab && modeOfTab(tab) === DAILY_MODE;
     $('.dday').classList.add('on');
-    $('.note').textContent = `${info.note} · 상위 ${DAILY_TOP}명 · 그날 가장 좋은 기록 하나`;
+    $('.note').textContent = `${info.note} · 상위 ${DAILY_TOP}명${tab === 'card' ? '' : ' · 그날 가장 좋은 기록 하나'}`;
     $('.me-line').textContent = '불러오는 중…';
     $('table').innerHTML = '';
     paintDailyDay(asked ?? dailyToday ?? localDailyDay());

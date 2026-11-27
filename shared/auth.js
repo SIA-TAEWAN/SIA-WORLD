@@ -195,8 +195,17 @@ function dropToken() {
     /* 저장소를 못 써도 계속 */
   }
 }
+/** UUID v4 (iOS 15.4 미만엔 crypto.randomUUID 가 없다 — 서버 claim_session 은 uuid 형식을 받는다) */
+function uuid4() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
 function newToken() {
-  const t = crypto.randomUUID();
+  const t = uuid4();
   try {
     localStorage.setItem(TOKEN_KEY, t);
   } catch {

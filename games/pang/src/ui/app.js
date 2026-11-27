@@ -230,7 +230,7 @@ function showStart(id) {
   popup('<h3>스테이지 ' + id + '</h3><div class="chap">' + (L.chapter + 1) + '장 ' + L.name + (L.boss ? ' · 보스' : '') + '</div><div class="gl"></div><div class="info">이동 ' + L.moves + '번 · 정령 ' + L.kinds.length + '종</div>' + (L.intro ? '<div class="intro"></div>' : '') + (best ? '<div class="info">최고 ' + best.toLocaleString() + '점 ' + [1, 2, 3].map(n => n <= st ? STAR : STAR_OFF).join('') + '</div>' : '') + '<div class="info coin lifeline">' + startLifeLine() + '</div>' + (!st && !admin ? '<div class="info coin">처음 깨면 목숨 +1</div>' : '') + '<div class="row"><button class="btn" data-a="close">닫기</button><button class="btn primary" data-a="go">시작</button></div>', p => {
     p.querySelector('.gl').replaceWith(goalList(goals, false));
     if (L.intro) p.querySelector('.intro').textContent = L.intro;
-    p.querySelector('[data-a=close]').onclick = () => { closePop(); };
+    p.querySelector('[data-a=close]').onclick = () => { closePop(); if (G && phase === 'end') toMap(); }; // 결과 창 → 다음 스테이지 → 닫기: 끝난 판 화면에 갇히지 않게
     p.querySelector('[data-a=go]').onclick = async () => { if (!(await needLife())) return; closePop(); startStage(id); };
   });
 }
@@ -350,6 +350,7 @@ let runId = null, swaps = 0, starting = false;
 async function startStage(id) {
   if (starting) return;
   starting = true;
+  if (G) phase = 'none'; // 다시 하기: 서버 답을 기다리는 동안 옛 판을 더 두지 못하게
   try { const r = await api.start(id); runId = r.run; if (!admin) takeLives(r.lives, r.nextLife); }
   catch (err) {
     starting = false;

@@ -37,7 +37,7 @@ async function main() {
       <a class="pick-card bj" href="blackjack/"><img src="${art('blackjack')}" style="${ART}" alt=""/><b>블랙잭</b><span>딜러와 21을 겨루는 게임 · 최대 4명</span></a>
       <a class="pick-card rl" href="roulette/"><img src="${art('roulette')}" style="${ART}" alt=""/><b>십이지신 룰렛</b><span>띠 ×12 · 이웃 ×6 · 계절 ×4 · 음양 ×2 · 최대 8명</span></a>
     </section>
-    <p class="empty">방을 만들면 AI가 빈자리를 채워요. 친구가 들어오면 AI가 한 명씩 빠져요.</p>
+    <p class="empty">방을 만들면 AI가 빈자리를 채워요. 친구가 들어오면 AI가 한 명씩 빠져요. (룰렛은 사람끼리만)</p>
   </div>`;
 }
 

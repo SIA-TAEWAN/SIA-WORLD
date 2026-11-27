@@ -586,3 +586,28 @@ describe('AI 는 5장까지 다이하지 않는다', () => {
     expect(lateDies).toBeGreaterThan(0);
   });
 });
+
+describe('사이드 팟', () => {
+  it('남은 사람이 체크 대신 다이해도 받을 자격 없는 올인자가 사이드 팟을 가져가지 않는다', () => {
+    // 3명, A 300 · B·C 5000. 4구에서 A 올인, B 하프·C 콜 → 5구에서 B 다이: C 는 겨룰 상대가 없으니 더 묻지 않고 A·C 쇼다운
+    for (let g = 1; g < 300; g++) {
+      const r = seededRng(g);
+      let s = poker.newRound({ seats: [seat(0, 'human', 300), seat(1, 'human', 5000), seat(2, 'human', 5000)], baseUnit: 100, carry: null, rng: r });
+      for (const p of [0, 1, 2]) s = poker.apply(s, p, poker.timeout(s, p, r), r);
+      let guard = 0;
+      while (!poker.done(s) && guard++ < 50) {
+        const t = s.turn!;
+        const types = poker.view(s).public.actions.map((a: { type: string }) => a.type);
+        let a: string;
+        if (s.phase === 'bet4') a = t === 1 && s.raises < 2 && types.includes('half') ? 'half' : t === 0 ? (types.includes('half') ? 'half' : types.includes('call') ? 'call' : 'check') : types.includes('call') ? 'call' : types.includes('half') ? 'half' : 'check';
+        else if (s.phase === 'bet5' && s.players[0].allIn) a = types.includes('check') ? 'die' : 'call';
+        else a = types.includes('check') ? 'check' : 'call';
+        s = poker.apply(s, t, { type: a } as PokerAction, r);
+      }
+      if (!poker.done(s) || !s.players[0].allIn) continue;
+      const won0 = s.result!.deltas[0] + s.players[0].total;
+      // A 가 받을 수 있는 건 메인 팟(각자 A 만큼)까지
+      expect(won0).toBeLessThanOrEqual(s.players[0].total * 3);
+    }
+  });
+});

@@ -535,7 +535,7 @@ async function showLobby(ui: GameUI, m: Mods, me: WorldUser) {
             </div>`;
           })
           .join('')
-      : '<p class="empty">아직 방이 없어요. 방을 만들어 보세요! (AI가 함께해요)</p>';
+      : `<p class="empty">아직 방이 없어요. 방을 만들어 보세요!${ui.noAi ? '' : ' (AI가 함께해요)'}</p>`;
     root.querySelectorAll<HTMLButtonElement>('.room-row button[data-id]').forEach((b) =>
       b.addEventListener('click', async () => {
         let pw = '';
@@ -2116,8 +2116,11 @@ async function roomScreen(ui: GameUI, m: Mods, me: WorldUser, roomId: string) {
     },
     onSeats: async () => {
       if (closed) return;
+      const before = JSON.stringify(seats);
       seats = await m.room.getSeats(roomId).catch(() => seats);
       if (closed) return;
+      // touch_room(20초마다 last_seen 만 바뀜)으로 온 알림이면 그대로 둔다: 조작부를 다시 만들면 끌던 슬라이더가 끊긴다
+      if (JSON.stringify(seats) === before) return;
       if (!seats.some((s) => s.user_id === me.userId || s.pending_user_id === me.userId)) {
         // 오래 자리를 비워 정리되었으면
         toast('방에서 나와졌어요');

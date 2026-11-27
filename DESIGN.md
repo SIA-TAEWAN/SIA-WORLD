@@ -213,8 +213,8 @@ SIA WORLD의 모든 게임(시아탱크, 시아맞고, 시아카지노, 시아�
 ### 효과음
 - 모든 소리는 `shared/sound.js` 한 곳에서 관리 (ZzFX 방식으로 코드로 생성, 외부 파일 없음). 분위기: 짧고 통통 튀는 밝은 소리.
 - `shared/sounds/<이름>.ogg` 또는 `.mp3`를 넣으면 그 소리를 처음 낼 때 파일로 바뀐다. 이름: click, toggle, coin, turn, tick, cutin, win, lose, deal, flip, slap, chip, fold, bust, spinTick, spinStop, tankFire, tankBoom, tankBigBoom, tankLaser, tankBuild, tankHeal, tankTurn, tankWin, raceReady, raceGo, raceFoul, step, jump, land, mud, hurdleHit, slip, logHit, boost, goal, rankShow, newRecord, volleyHit, volleyWall, volleyNet, volleyServe, volleySpeed, volleyPoint, volleyMiss, volleyCount, volleyGo, survShot, survSlash, survPop, survHurt, survLevel, survBossWarn, survBossDown, survChest.
-- 배경음은 게임마다 코드로 만든 짧은 반복곡. 시아레이스는 `shared/sounds/bgmLobby|bgmRace|bgmResult.ogg`(또는 `.mp3`)를 넣으면 그 파일로 바뀐다. 시아서바이벌은 `bgmSurvMain|bgmSurvField|bgmSurvBamboo|bgmSurvPalace|bgmSurvUnderworld|bgmSurvBoss|bgmSurvResult`. 시아디펜스는 `bgmDefMain|bgmDefField|bgmDefBamboo|bgmDefPalace|bgmDefUnderworld|bgmDefBoss` (효과음은 공용 이름을 빌려 쓰고, 소리 버튼 하나가 효과음과 배경음을 함께 켜고 끈다). 시아마을은 `bgmVillDay|bgmVillNight` (효과음 villHarvest·villBuild·villDone·villLevel·villRequest·villWelcome 은 게임 안에서 코드로 만들고 `shared/sounds/<이름>` 으로 바꿀 수 있다). 배경음 켜기/끄기는 효과음과 따로 저장한다 (`sia:bgm`).
-- 오른쪽 아래 원형 사운드 버튼으로 켜기/끄기 (브라우저에 저장, 시아탱크와 같은 설정). 첫 클릭 전에는 소리를 내지 않는다.
+- 배경음은 파일: `shared/audio/bgm/<games 폴더>/main.mp3`(메인)·`boss.mp3`(보스·긴장), 로비·승리·패배는 `common/main|win|lose.mp3` 를 `playBgm(게임, 장면)` 으로 튼다 (`shared/audio/bgm/README.md`). 배경음 켜기/끄기는 효과음과 따로 저장한다 (`sia:bgm`).
+- 소리 설정은 각 게임의 ⚙️ 버튼 → 공용 `openSoundSettings()` 창에서 배경음·효과음을 따로 켜고 끈다. 첫 터치 전에는 소리를 내지 않는다.
 - 같은 소리는 이름마다 최소 간격(칩 70ms 등), 동시에 6개까지.
 
 ## 9. 하지 말 것

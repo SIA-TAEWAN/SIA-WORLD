@@ -72,7 +72,7 @@ export interface FinishResult {
 /** 서버 검증 값 (SQL _charge_const 와 같다) */
 export const LIMITS = {
   /** 스테이지 판의 최대 시간 */
-  maxTime: 600,
+  maxTime: 1800,
   endlessMaxTime: 3600,
   /** 클리어하려면 적어도 이만큼 달려야 한다 (보스 앞까지 50초쯤) */
   clearMinTime: 45,
@@ -163,7 +163,7 @@ export function applyReport(p: ChargeProfile, r: RunReport): FinishResult {
     raw = endlessCoins(r.meters, r.bosses);
   } else if (r.mode === 'endless') {
     raw = endlessCoins(r.meters, r.bosses);
-    if (!p.endless || r.meters > p.endless.meters) {
+    if (r.meters > 0 && (!p.endless || r.meters > p.endless.meters)) {
       p.endless = { meters: r.meters, leader: r.leader };
       best = true;
     }

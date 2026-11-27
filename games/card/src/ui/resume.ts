@@ -13,9 +13,22 @@ export interface Saved {
 
 export type ResumePick = { saved: Saved } | { server: ServerRun } | { clear: true } | null;
 
+/** 기기 기록이 서버 기록으로 시작하는지 (다른 기기가 서버 기록을 앞서 나갔으면 아니다 → 올려도 'bad log') */
+const extendsServer = (log: RunState['log'], srv: ServerRun) =>
+  log.length >= srv.log.length && srv.log.every((e, i) => same(e, log[i]));
+/** 키 순서와 상관없이 같은 값인지 (서버 기록은 jsonb 라 키 순서가 바뀐다) */
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
 export function pickResume(saved: Saved | null, srv: ServerRun | undefined, pending: (runId: string) => boolean): ResumePick {
-  if (saved && srv && saved.runId === srv.runId && saved.run.log.length >= srv.log.length) return { saved };
-  if (saved && saved.runId && pending(saved.runId) && (!srv || srv.runId === saved.runId)) return { saved };
+  if (saved && srv && saved.runId === srv.runId && extendsServer(saved.run.log, srv)) return { saved };
+  if (saved && saved.runId && pending(saved.runId) && (!srv || (srv.runId === saved.runId && extendsServer(saved.run.log, srv)))) return { saved };
   if (srv && srv.rules === RULES_VERSION) return { server: srv };
   if (saved) return { clear: true };
   return null;
