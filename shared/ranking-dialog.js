@@ -654,13 +654,16 @@ export function openRanking({ meId = null, first = null } = {}) {
   });
 
   let shown = '';
-  async function show(game) {
-    shown = game;
-    dim.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
-    // 낮은 화면에서 탭 줄이 가로 스크롤일 때 고른 탭이 보이게
+  /** 낮은 화면에서 탭 줄이 가로 스크롤일 때 고른 탭이 보이게 */
+  function scrollSel() {
     const tabs = $('.tabs');
     const selTab = tabs.querySelector('.sel');
     if (selTab && tabs.scrollWidth > tabs.clientWidth) tabs.scrollLeft = selTab.offsetLeft - tabs.offsetLeft - (tabs.clientWidth - selTab.offsetWidth) / 2;
+  }
+  async function show(game) {
+    shown = game;
+    dim.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.g === game));
+    scrollSel();
     // 모드·맵 고르기 줄은 시아서바이벌 탭에서만 보인다
     $('.subs').classList.toggle('on', game === 'survival');
     $('.modes').classList.toggle('on', game === 'survival');
@@ -1289,7 +1292,11 @@ export function openRanking({ meId = null, first = null } = {}) {
   }
   // 열린 게임만 탭으로 남긴다 (inside 는 예외)
   const visible = (open) => order.filter((g) => tabInfo(g) && (open[gameOfTab(g)] || g === inside));
+  // 오픈 여부(loadGameOpen)와 내 판 수(my_play_counts)는 어느 쪽이 먼저 올지 모른다: 둘 중 늦게 온 쪽에서 맨 앞 탭을 다시 고른다
+  let counted = false;
+  let lastOpen = null;
   const start = (open) => {
+    lastOpen = open;
     const tabs = visible(open);
     dim.querySelectorAll('.tabs button').forEach((b) => b.toggleAttribute('hidden', !tabs.includes(b.dataset.g)));
     for (const g of tabs) {
@@ -1306,7 +1313,9 @@ export function openRanking({ meId = null, first = null } = {}) {
       $('.me-line').textContent = '열린 게임이 없어요';
       return;
     }
-    if (!tabs.includes(shown)) void show(pick);
+    // 로비에서 연 창(first 없음)은 내 판 수를 받은 뒤 맨 앞 탭으로 (사람이 직접 고른 뒤에는 그대로)
+    if (!tabs.includes(shown) || (!first && !picked && counted && pick !== shown)) void show(pick);
+    else scrollSel();
   };
   // 서버의 오픈 여부를 받기 전에는 목록의 기본값으로 먼저 보여 준다
   const fallback = Object.fromEntries(GAMES.map((g) => [g.id, g.open]));
@@ -1327,10 +1336,8 @@ export function openRanking({ meId = null, first = null } = {}) {
           const b = box.querySelector(`[data-g="${g}"]`);
           if (b) box.append(b);
         }
-        if (!first && !picked) {
-          const top = order.find((g) => { const b = box.querySelector(`[data-g="${g}"]`); return b && !b.hidden; });
-          if (top && top !== shown) void show(top);
-        } else if (shown) void show(shown); // 고른 탭이 보이게 가로 스크롤만 다시 맞춘다
+        counted = true;
+        if (lastOpen) start(lastOpen);
       })
       .catch(() => null);
   return close;

@@ -20,15 +20,15 @@ const save = { stars: {}, best: {} };
 let siaCoins = 0;
 // 목숨 (113_pang_lives.sql): 판을 시작할 때마다 1개, 처음 깬 판이면 1개 돌려받음, 20분마다 1개 참. 관리자는 줄지 않는다
 const LIVES_MAX = 5, REGEN_SEC = 1200;
-let lives = LIVES_MAX, lifeAt = 0, admin = false;   // lifeAt = 다음 목숨이 차는 때 (performance.now 기준 ms, 0 = 다 참)
+let lives = LIVES_MAX, lifeAt = 0, admin = false;   // lifeAt = 다음 목숨이 차는 때 (Date.now 기준 ms, 0 = 다 참. 아이폰은 잠든 동안 performance.now 가 멈춘다)
 function takeLives(n, next) {
   if (Number.isFinite(n)) lives = n;
-  lifeAt = next > 0 && lives < LIVES_MAX ? performance.now() + next * 1000 : 0;
+  lifeAt = next > 0 && lives < LIVES_MAX ? Date.now() + next * 1000 : 0;
   livesPill();
 }
 /** 화면에서만 시간이 지나 찬 목숨을 셈 (서버가 같은 규칙으로 다시 센다) */
 function tickLives() {
-  while (lifeAt && performance.now() >= lifeAt) {
+  while (lifeAt && Date.now() >= lifeAt) {
     lives = Math.min(LIVES_MAX, lives + 1);
     lifeAt = lives >= LIVES_MAX ? 0 : lifeAt + REGEN_SEC * 1000;
   }
@@ -37,7 +37,7 @@ function mmss(ms) { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.flo
 function livesText() {
   if (admin) return '❤️ 관리자 · 목숨이 줄지 않아요';
   tickLives();
-  return '❤️ ' + lives + ' / ' + LIVES_MAX + (lifeAt ? ' · ' + mmss(lifeAt - performance.now()) : '');
+  return '❤️ ' + lives + ' / ' + LIVES_MAX + (lifeAt ? ' · ' + mmss(lifeAt - Date.now()) : '');
 }
 function livesPill() { const el = $('livesPill'); if (el) el.textContent = livesText(); }
 setInterval(() => { livesPill(); const w = $('pop').querySelector('.lifeline'); if (w) w.textContent = startLifeLine(); }, 1000);
@@ -48,6 +48,11 @@ function takeState(st) {
   takeLives(st.lives, st.nextLife);
 }
 takeState(opts.state);
+/** 서버의 목숨·시아코인으로 다시 맞춘다 (화면에 돌아왔을 때, 목숨 0개로 시작하려 할 때) */
+async function syncLives() {
+  try { const st = await api.state(); if (Number.isFinite(st.siaCoins)) siaCoins = st.siaCoins; admin = st.admin === true; takeLives(st.lives, st.nextLife); } catch { /* 못 받으면 화면 값 그대로 */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !G) void syncLives(); });
 const ALL = admin || (local && /[?&]all=1\b/.test(location.search));
 function unlockedUpTo() { if (ALL) return 100; let n = 1; while (n <= 100 && save.stars[n]) n++; return Math.min(100, n); }
 /** 실제 진행의 다음 판 (관리자도 깜빡임은 여기에) */
@@ -172,11 +177,16 @@ function goalList(goals, live) {
 function startLifeLine() {
   if (admin) return '관리자 — 목숨이 줄지 않아요';
   tickLives();
-  if (lives < 1) return '목숨이 없어요 · ' + mmss(lifeAt - performance.now()) + ' 뒤 1개 차요';
+  if (lives < 1) return '목숨이 없어요 · ' + mmss(lifeAt - Date.now()) + ' 뒤 1개 차요';
   return '목숨 1개를 써요 (남은 목숨 ' + lives + '개)';
 }
 /** 목숨이 없으면 알려 주고 false */
-function needLife() {
+let finishing = null;   // 보내는 중인 결과 (다음 판은 이 답을 받은 뒤 목숨을 센다)
+async function needLife() {
+  if (finishing) await finishing;
+  tickLives();
+  if (admin || lives >= 1) return true;
+  await syncLives();   // 화면 시계가 틀렸을 수 있다 (서버가 정한다)
   tickLives();
   if (admin || lives >= 1) return true;
   popup('<h3>목숨이 없어요</h3><div class="chap">목숨은 20분마다 1개씩 차요</div><div class="info lifeline">' + startLifeLine() + '</div><div class="row"><button class="btn primary" data-a="ok">확인</button></div>', p => { p.querySelector('[data-a=ok]').onclick = () => { closePop(); if (G) toMap(); else renderMap(); }; });
@@ -191,14 +201,14 @@ function showStart(id) {
     p.querySelector('.gl').replaceWith(goalList(goals, false));
     if (L.intro) p.querySelector('.intro').textContent = L.intro;
     p.querySelector('[data-a=close]').onclick = () => { closePop(); };
-    p.querySelector('[data-a=go]').onclick = () => { if (!needLife()) return; closePop(); startStage(id); };
+    p.querySelector('[data-a=go]').onclick = async () => { if (!(await needLife())) return; closePop(); startStage(id); };
   });
 }
 function showPause() {
   if (!G || phase === 'end') return;
   popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기' + (admin ? '' : ' ❤️-1') + '</button></div><div class="row"><button class="btn primary" data-a="go">계속하기</button></div>', p => {
     p.querySelector('[data-a=go]').onclick = closePop;
-    p.querySelector('[data-a=retry]').onclick = () => { if (!needLife()) return; closePop(); startStage(L.id); };
+    p.querySelector('[data-a=retry]').onclick = async () => { if (!(await needLife())) return; closePop(); startStage(L.id); };
     p.querySelector('[data-a=map]').onclick = () => { closePop(); toMap(); };
   });
 }
@@ -220,18 +230,36 @@ function showResult(win) {
   popup(html, p => {
     const gl = p.querySelector('.gl'); if (gl) gl.replaceWith(goalList(G.goals, true));
     p.querySelector('[data-a=map]').onclick = () => { closePop(); toMap(); };
-    p.querySelector('[data-a=retry]').onclick = () => { if (!needLife()) return; closePop(); startStage(id); };
+    p.querySelector('[data-a=retry]').onclick = async () => { if (!(await needLife())) return; closePop(); startStage(id); };
     const n = p.querySelector('[data-a=next]'); if (n) n.onclick = () => { closePop(); showStart(id + 1); };
   });
   const line = $('pop').querySelector('.coin');
-  api.finish(run, id, win, score, swaps).then(r => {
-    save.stars[id] = Math.max(save.stars[id] || 0, r.stars); save.best[id] = Math.max(save.best[id] || 0, r.best);
-    if (Number.isFinite(r.siaCoins)) siaCoins = r.siaCoins;
-    if (!admin) takeLives(r.lives, r.nextLife);
-    if (line && line.isConnected) line.textContent = (r.gotCoin ? '🪙 시아코인 +1' : '기록을 저장했어요') + (r.lifeBack && !admin ? ' · ❤️ 목숨 +1' : '');
-  }).catch(err => {
-    if (line && line.isConnected) line.textContent = err && err.message === 'too fast' ? '기록이 너무 빨라 저장하지 않았어요' : '기록을 저장하지 못했어요. 인터넷 연결을 확인해 주세요';
-  });
+  // 결과 보내기: 통신이 끊기면 '다시 보내기' (서버가 같은 판을 두 번 받지 않는다). 서버가 거절하면 서버 기록으로 화면을 되돌린다
+  const send = () => {
+    if (line && line.isConnected) line.textContent = '기록을 보내는 중…';
+    finishing = api.finish(run, id, win, score, swaps).then(r => {
+      save.stars[id] = Math.max(save.stars[id] || 0, r.stars); save.best[id] = Math.max(save.best[id] || 0, r.best);
+      if (Number.isFinite(r.siaCoins)) siaCoins = r.siaCoins;
+      if (!admin) takeLives(r.lives, r.nextLife);
+      if (line && line.isConnected) line.textContent = (r.gotCoin ? '🪙 시아코인 +1' : '기록을 저장했어요') + (r.lifeBack && !admin ? ' · ❤️ 목숨 +1' : '');
+    }).catch(async err => {
+      const why = err && err.message;
+      const rejected = ['too fast', 'bad run', 'bad score'].includes(why);
+      if (rejected) {   // 서버에 기록이 없다: 먼저 올려 둔 별을 서버 기록으로 되돌린다
+        try { takeState(await api.state()); } catch { /* 그대로 */ }
+        if (!G) renderMap();
+      }
+      if (!line || !line.isConnected) return;
+      if (why === 'too fast') line.textContent = '기록이 너무 빨라 저장하지 않았어요';
+      else if (why === 'bad run') line.textContent = '판이 너무 오래돼서 기록을 저장하지 못했어요';
+      else if (rejected) line.textContent = '기록을 저장하지 못했어요';
+      else {
+        line.innerHTML = '기록을 보내지 못했어요 <button class="btn" data-a="resend" style="font-size:15px;min-height:36px;padding:4px 12px">다시 보내기</button>';
+        line.querySelector('[data-a=resend]').onclick = send;
+      }
+    }).finally(() => { finishing = null; });
+  };
+  send();
 }
 $('pauseBtn').onclick = showPause;
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('overlay').classList.contains('hidden')) { if (phase !== 'end') closePop(); } else if (G) showPause(); } });
@@ -281,7 +309,7 @@ async function startStage(id) {
   catch (err) {
     starting = false;
     const why = err && err.message;
-    if (why === 'no lives') { lives = 0; if (!lifeAt) lifeAt = performance.now() + REGEN_SEC * 1000; api.state().then(st => takeLives(st.lives, st.nextLife)).catch(() => {}); }
+    if (why === 'no lives') { lives = 0; if (!lifeAt) lifeAt = Date.now() + REGEN_SEC * 1000; api.state().then(st => takeLives(st.lives, st.nextLife)).catch(() => {}); }
     popup('<h3>시작하지 못했어요</h3><div class="chap">' + (why === 'locked stage' ? '아직 열리지 않은 스테이지예요' : why === 'no lives' ? '목숨이 없어요. 20분마다 1개씩 차요' : '인터넷 연결을 확인하고 다시 시도해 주세요') + '</div><div class="row"><button class="btn primary" data-a="ok">확인</button></div>', p => { p.querySelector('[data-a=ok]').onclick = () => { closePop(); toMap(); }; });
     return;
   }
