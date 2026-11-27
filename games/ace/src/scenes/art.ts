@@ -39,7 +39,12 @@ function pack(scene: Phaser.Scene) {
     x.beginPath(); x.rect(0, 0, p.w, p.h); x.clip();
     x.beginPath(); p.draw(x, p.w, p.h); x.restore();
   }
-  if (scene.textures.exists('art')) scene.textures.remove('art');
+  if (scene.textures.exists('art')) {
+    // 옛 아틀라스 캔버스를 비운다 (아이폰은 캔버스 메모리 총량이 작아 GC 를 기다리면 탭이 다시 켜질 수 있다)
+    const old = scene.textures.get('art').getSourceImage() as HTMLCanvasElement;
+    scene.textures.remove('art');
+    if (old && 'width' in old) { old.width = 0; old.height = 0; }
+  }
   const t = scene.textures.addCanvas('art', c)!;
   for (const p of at) t.add(p.key, 0, p.x, p.y, p.w, p.h);
   queue.length = 0;

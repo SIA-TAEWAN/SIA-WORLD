@@ -65,8 +65,15 @@ export function startApp(opts: AppOpts) {
   const tcv = $<HTMLCanvasElement>('tray'), tx = tcv.getContext('2d')!;
   const dcv = $<HTMLCanvasElement>('drag'), dx = dcv.getContext('2d')!;
   let dpr = 1, BW = 400, S = 50, TW = 400, TH = 150, TS = 26;
+  /** 아래 안전 영역 (아이폰 홈 막대) */
+  const safeBottom = () => $('sab')?.offsetHeight ?? 0;
   function resize() {
     dpr = window.devicePixelRatio || 1;
+    // 짧은 화면(노트북 · 가로 폰): 판 + 조각 받침(≈ 판의 0.325 + 18)이 한 화면에 들어오게 판 너비를 줄인다.
+    // 판 위쪽 위치는 판 크기와 상관없으니 지금 위치에서 바로 계산한다 (판 테두리 아래 10 + 받침 앞 간격 10 + 아래 여백)
+    const boardTop = cv.getBoundingClientRect().top + scrollY;
+    const fit = Math.max(180, Math.floor((innerHeight - boardTop - 20 - 18 - 14 - safeBottom()) / 1.325));
+    $('game').style.maxWidth = fit + 20 < 456 ? fit + 20 + 'px' : '';
     BW = cv.clientWidth || 400; S = BW / SIZE;
     cv.style.height = BW + 'px';
     cv.width = Math.round(BW * dpr); cv.height = Math.round(BW * dpr);
@@ -75,6 +82,8 @@ export function startApp(opts: AppOpts) {
     TH = Math.round(TS * 5 + 18);
     tcv.style.height = TH + 'px';
     tcv.width = Math.round(TW * dpr); tcv.height = Math.round(TH * dpr);
+    // 끄는 층: CSS 크기를 픽셀과 같게 (100vh 는 주소창이 보일 때 innerHeight 보다 커서 그림이 어긋난다)
+    dcv.style.width = innerWidth + 'px'; dcv.style.height = innerHeight + 'px';
     dcv.width = Math.round(innerWidth * dpr); dcv.height = Math.round(innerHeight * dpr);
     layoutScene();
   }
@@ -94,7 +103,7 @@ export function startApp(opts: AppOpts) {
     if (phase === 'home') return;
     wrap.classList.remove('hidden');
     const top = wrap.getBoundingClientRect().top + scrollY;
-    const avail = innerHeight - top - 22;
+    const avail = innerHeight - top - 22 - safeBottom();
     if (avail < 110) { wrap.classList.add('hidden'); scene.st.on = false; return; }
     const H = Math.min(260, Math.round(avail));
     $('scene').style.height = H + 'px';
@@ -135,7 +144,8 @@ export function startApp(opts: AppOpts) {
     scene.st.on = false;
     bgm('main');
     renderHome();
-    void api.flush().then(n => { if (n) refreshInfo(); });
+    // 보관했던 판을 보내고 (이미 서버에 들어간 판이어도) 최고 점수 · 시아코인을 서버 값으로 다시 맞춘다
+    void api.flush().finally(() => void refreshInfo());
   }
   async function refreshInfo() {
     try { info = await api.state(); if (phase === 'home') renderHome(); } catch { /* 그대로 */ }
@@ -144,15 +154,20 @@ export function startApp(opts: AppOpts) {
   async function startRun() {
     if (starting) return;
     starting = true;
+    // 기다리는 동안 창의 다른 단추(메인으로 · 이어서)를 누르지 못하게
+    const btns = [...$('pop').querySelectorAll<HTMLButtonElement>('button'), $<HTMLButtonElement>('startBtn')];
+    for (const b of btns) b.disabled = true;
     try {
       const r = await api.start();
       runId = r.run; seed = r.seed;
     } catch {
       starting = false;
+      for (const b of btns) b.disabled = false;
       toast('SIA WORLD에 연결하지 못했어요. 다시 해 주세요');
       return;
     }
     starting = false;
+    for (const b of btns) b.disabled = false;
     closePop();
     G = newGame(seed); log = [];
     bestAtStart = info.best; passedBest = false; dieT = 0; lastResult = null;
@@ -203,12 +218,17 @@ export function startApp(opts: AppOpts) {
     } catch (e) {
       why = e instanceof ApiError ? e.message : 'error';
     }
-    if (phase !== 'result' || G !== st) return;
-    lastResult = res;
+    // 화면을 떠났어도(메인 · 다시 하기) 최고 점수 · 시아코인은 먼저 맞춘다 (다음 판의 '최고 기록!' 기준)
     if (res) {
       info = { ...info, best: res.best, weekBest: res.weekBest, siaCoins: res.siaCoins };
       if (info.weekTop == null || res.weekBest > info.weekTop.score) void refreshInfo();
+    } else if (!why) {
+      // 보관만 한 판: 다시 보내면 들어갈 기록이라 기기에서만 먼저 올려 둔다
+      info = { ...info, best: Math.max(info.best, st.score), weekBest: Math.max(info.weekBest, st.score) };
     }
+    if ((phase as Phase) === 'home') renderHome();
+    if (phase !== 'result' || G !== st) return;
+    lastResult = res;
     renderResult(st, res, false, why);
   }
   function renderResult(st: BlockState, res: FinishResult | null, waiting: boolean, why = '') {
@@ -259,7 +279,11 @@ export function startApp(opts: AppOpts) {
     log.push([slot, r, c]);
     effects(ev);
     hud();
-    if (ev.over) { phase = 'dying'; dieT = ev.cleared.length ? -0.5 : -0.2; drag = null; kb = null; }
+    if (ev.over) {
+      phase = 'dying'; dieT = ev.cleared.length ? -0.5 : -0.2; drag = null; kb = null;
+      // 끝나는 연출 중에 앱을 닫아도 다음에 보낼 수 있게 바로 보관
+      api.keep({ run: runId, seed, log: log.slice(), score: state.score, rules: BLOCK_RULES });
+    }
   }
 
   function effects(ev: PlaceEvent) {
@@ -284,7 +308,8 @@ export function startApp(opts: AppOpts) {
       if (ev.combo >= 3) scene.cheer();
       const cx = ev.cols.length && !ev.rows.length ? (ev.cols[0] + 0.5) * S : sx;
       const cy = ev.rows.length ? (ev.rows[0] + 0.5) * S : sy;
-      fx.text('+' + fmt(ev.linePoints + ev.placePoints), Math.min(BW - S, Math.max(S, cx)), Math.max(S * 0.5, cy - S * 0.2), 22, WHITE);
+      const label = '+' + fmt(ev.linePoints + ev.placePoints), half = label.length * 22 * 0.3 + 6;
+      fx.text(label, Math.min(BW - half, Math.max(half, cx)), Math.max(S * 0.5, cy - S * 0.2), 22, WHITE);
     } else {
       fx.text('+' + ev.placePoints, sx, sy - S * 0.3, 15, CREAM, undefined, 1.6);
     }
@@ -299,20 +324,20 @@ export function startApp(opts: AppOpts) {
     if (ev.perfect) {
       sfx('blockPerfect');
       vibe([30, 40, 30, 40, 80]);
-      fx.text('판 비우기!', BW / 2, BW * 0.55, Math.min(BW * 0.16, 48), TEXT_PINK, 'perfect', 0.6);
-      fx.text('+' + fmt(ev.perfectPoints), BW / 2, BW * 0.55 + 44, 28, GOLD_LIGHT, 'perfect2', 0.6);
+      fx.text('판 비우기!', BW / 2, BW * 0.7, Math.min(BW * 0.16, 48), TEXT_PINK, 'perfect', 0.6);
+      fx.text('+' + fmt(ev.perfectPoints), BW / 2, BW * 0.7 + Math.min(BW * 0.12, 40), 28, GOLD_LIGHT, 'perfect2', 0.6);
       fx.sparkle(BW / 2, BW / 2, 60, S);
       scene.cheer();
     }
     if (G && !passedBest && bestAtStart > 0 && G.score > bestAtStart) {
       passedBest = true;
-      sfx('newRecord', { delay: 0.15 });
+      sfx('newRecord', { delay: 150 });
       fx.text('최고 기록!', BW / 2, BW * 0.2, Math.min(BW * 0.13, 40), GOLD_LIGHT, 'best', 0.55);
       fx.sparkle(BW / 2, BW * 0.2, 40, S);
       bgm('boss');
     }
-    if (ev.dealt) { trayPop = [1, 1, 1]; sfx('blockPick', { rate: 1.3, volume: 0.6, delay: 0.12 }); }
-    if (ev.over) sfx('blockOver', { delay: 0.45 });
+    if (ev.dealt) { trayPop = [1, 1, 1]; sfx('blockPick', { rate: 1.3, volume: 0.6, delay: 120 }); }
+    if (ev.over) sfx('blockOver', { delay: 450 });
   }
 
   // ---------- 끌어서 놓기 ----------
@@ -352,6 +377,9 @@ export function startApp(opts: AppOpts) {
     drag.ghost = g;
   }
   tcv.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // 제자리로 돌아가는 중이면 그 연출은 끝내고 새로 집는다
+    if (drag?.back) drag = null;
     if (phase !== 'play' || !G || drag) return;
     const slot = slotAt(e.clientX);
     if (!G.tray[slot]) return;
@@ -388,6 +416,7 @@ export function startApp(opts: AppOpts) {
 
   // 키보드: 1·2·3 으로 조각 고르기 → 방향키로 옮기기 → Enter 놓기 (Esc 취소)
   addEventListener('keydown', e => {
+    if (document.querySelector('.sia-snd-dim')) return;   // 소리 설정 창이 열려 있으면 키는 그 창 몫
     if (phase === 'paused' && (e.key === 'Escape' || e.key === 'p' || e.key === 'P')) { closePop(); phase = 'play'; e.preventDefault(); return; }
     if (phase === 'home' || !$('overlay').classList.contains('hidden')) return;
     if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { if (kb) kb = null; else showPause(); e.preventDefault(); return; }
@@ -516,7 +545,7 @@ export function startApp(opts: AppOpts) {
     for (let i = 0; i < 3; i++) {
       const p = G.tray[i];
       if (!p) continue;
-      if (drag && drag.slot === i && !drag.back) continue;
+      if (drag && drag.slot === i) continue;
       const sh = shapeOf(p), { h, w } = shapeSize(sh);
       const fits = fitsAnywhere(G.board, sh);
       let cell = TS;
@@ -530,10 +559,14 @@ export function startApp(opts: AppOpts) {
       if (FINE) { x.font = '13px Jua, sans-serif'; x.textAlign = 'center'; x.fillStyle = 'rgba(42,26,16,0.35)'; x.fillText(String(i + 1), i * sw + 12, 14); }
     }
   }
+  /** 끄는 층에 지난 프레임에 그린 게 있나 (없으면 지우지 않는다) */
+  let dragDrawn = false;
   function drawDrag(k: number) {
     const x = dx;
+    if (!dragDrawn && !drag) return;
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
     x.clearRect(0, 0, innerWidth, innerHeight);
+    dragDrawn = !!drag && !!G;
     if (!drag || !G) return;
     const p = G.tray[drag.slot];
     if (!p) { drag = null; return; }
@@ -564,7 +597,7 @@ export function startApp(opts: AppOpts) {
   }
 
   // ---------- 반복 ----------
-  let last = performance.now(), T0 = 0;
+  let last = performance.now(), T0 = 0, drewStill = false;
   function frame(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now; T0 += dt;
     const k = dt * 60;
@@ -573,8 +606,10 @@ export function startApp(opts: AppOpts) {
         dieT += dt;
         if (dieT > SIZE * 0.09 + 0.7) void finishRun();
       }
-      drawBoard(T0, k);
-      drawTray(k);
+      // 멈춤 · 결과 화면에서 연출이 다 끝나면 판은 그대로 두고 다시 그리지 않는다
+      const still = (phase === 'paused' || phase === 'result') && !pops.length && !fx.busy() && !drag && shake === 0 && !lands.size;
+      if (!still || !drewStill) { drawBoard(T0, k); drawTray(k); }
+      drewStill = still;
       drawDrag(k);
       if (scene.st.on) { scene.update(dt); scene.draw(); }
     }

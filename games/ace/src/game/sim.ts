@@ -72,7 +72,8 @@ export interface Shot {
   alive: boolean; x: number; y: number; vx: number; vy: number; dmg: number;
   kind: number; pierce: boolean; r: number; life: number; t: number; x0: number; cd: number; bounced: boolean; big: boolean;
 }
-export interface Item { alive: boolean; kind: ItemKind; x: number; y: number; vx: number; vy: number }
+/** lock = 이 스텝 수 동안은 줍지 못한다 (맞아서 떨군 P 를 곧바로 다시 줍지 않게) */
+export interface Item { alive: boolean; kind: ItemKind; x: number; y: number; vx: number; vy: number; lock: number }
 export interface Enemy {
   alive: boolean; kind: EnemyKind; path: PathName;
   x: number; y: number; x0: number; y0: number; vx: number; vy: number;
@@ -184,6 +185,8 @@ export class Sim {
   bombAct = { kind: '', t: 0 };
   /** 고양이 폭탄: 적·탄이 멈춘 남은 스텝 */
   freezeT = 0;
+  /** 폭탄 피해를 주는 중 (이때 잡은 적은 되받아치기탄을 쏘지 않는다) */
+  private bombing = false;
   /** 황소호 실드 */
   shieldUp = false;
   shieldT = 0;
@@ -219,6 +222,8 @@ export class Sim {
   continued = false;
   /** 제한 시간이 지나 도망간 스테이지 보스 수 (보스 러시: 하나라도 있으면 완주 기록 없음) */
   fled = 0;
+  /** 쓰러뜨린 스테이지 보스 수 (보스 러시 결과) */
+  bossKills = 0;
   nextExtend = 0;
   private waveIdx = 0;
   private loop = 0;
@@ -244,7 +249,7 @@ export class Sim {
     this.shieldUp = !!this.ship.shield;
     for (let i = 0; i < CAP.eb; i++) this.eb.push({ alive: false, x: 0, y: 0, vx: 0, vy: 0, r: 8, big: false, turn: 0 });
     for (let i = 0; i < CAP.ps; i++) this.ps.push({ alive: false, x: 0, y: 0, vx: 0, vy: 0, dmg: 1, kind: 0, pierce: false, r: 8, life: 0, t: 0, x0: 0, cd: 0, bounced: false, big: false });
-    for (let i = 0; i < CAP.item; i++) this.items.push({ alive: false, kind: 'P', x: 0, y: 0, vx: 0, vy: 0 });
+    for (let i = 0; i < CAP.item; i++) this.items.push({ alive: false, kind: 'P', x: 0, y: 0, vx: 0, vy: 0, lock: 0 });
     for (let i = 0; i < CAP.zone; i++) this.zones.push({ alive: false, x: 0, y: 0, r: 0, t: 0, max: 1, dmg: 0 });
     for (let i = 0; i < CAP.bolt; i++) this.bolts.push({ alive: false, x: 0, w: 0, t: 0, fire: false });
     for (let i = 0; i < CAP.en; i++) {
@@ -296,7 +301,7 @@ export class Sim {
     if (!frozen) { this.moveEnemies(); this.moveBoss(); this.moveBullets(); }
     this.moveItems();
     this.zonesStep();
-    if (!frozen) this.boltsStep();
+    this.boltsStep();
     this.collide();
     if (this.iframes > 0) this.iframes--;
     if (this.bombFx > 0) this.bombFx--;
@@ -334,7 +339,7 @@ export class Sim {
       for (let i = 0; i < n; i++) {
         const dx = (w.dx ?? 0) * i, delay = (w.gap ?? 0) * i;
         const y = w.path === 'rise' ? (w.y ?? 0.3) * H + delay * 4 : -40 - delay * 6;
-        this.spawnEnemy(w.kind, w.path, w.x * W + dx, y, g, w.drop ?? null, w.fire ?? null, w.fireEvery ?? 0, w.hp);
+        if (!this.spawnEnemy(w.kind, w.path, w.x * W + dx, y, g, w.drop ?? null, w.fire ?? null, w.fireEvery ?? 0, w.hp)) this.lostSpawn(g);
       }
     }
     if (this.waveIdx < sc.waves.length || t < sc.length * 60) return;
@@ -350,7 +355,7 @@ export class Sim {
       this.bossDone = true;
       this.spawnBoss(sc.boss);
     } else if (!sc.boss && !this.clearAt) {
-      this.clearAt = this.frame + 120;
+      this.startClear();
     }
   }
 
@@ -376,10 +381,18 @@ export class Sim {
     if (r < 0.5) {
       const path = (['dive', 'swoopL', 'swoopR'] as const)[Math.floor(this.rand() * 3)], n = 5 + Math.floor(this.rand() * 3);
       this.groupLeft.set(g, { left: n, broken: false });
-      for (let i = 0; i < n; i++) this.spawnEnemy('small', path, x * W, -40 - i * 60, g, null, t > 1800 ? 'aim1' : null, fe, hp);
+      for (let i = 0; i < n; i++) if (!this.spawnEnemy('small', path, x * W, -40 - i * 60, g, null, t > 1800 ? 'aim1' : null, fe, hp)) this.lostSpawn(g);
     } else if (r < 0.72) this.spawnEnemy('medium', 'hover', x * W, -40, 0, null, (['aim3', 'ring16', 'petal', 'aim5'] as const)[Math.floor(this.rand() * 4)], Math.round(fe * 0.6), hp);
     else if (r < 0.9) this.spawnEnemy('ground', 'ground', x * W, -60, 0, null, 'aim3', fe, hp);
     else this.spawnEnemy('carrier', 'cross', this.rand() < 0.5 ? 0 : W, 0, 0, this.rand() < 0.5 ? 'B' : 'P');
+  }
+
+  /** 적 칸(48)이 다 차서 편대 한 마리를 못 냈을 때: 편대 남은 수에서 빼고, 다 빠지면 지운다 */
+  private lostSpawn(g: number) {
+    const gl = this.groupLeft.get(g);
+    if (!gl) return;
+    gl.broken = true;
+    if (--gl.left <= 0) this.groupLeft.delete(g);
   }
 
   // ---------------- 플레이어 ----------------
@@ -416,12 +429,16 @@ export class Sim {
 
   /** 가장 가까운 목표 (적 또는 보스) */
   target(x: number, y: number, skip = 0): { x: number; y: number } | null {
-    let best: { x: number; y: number } | null = null, bd = Infinity, n = 0;
+    // skip = 1 이면 두 번째로 가까운 적 (없으면 가장 가까운 적)
+    let best: { x: number; y: number } | null = null, bd = Infinity;
+    let second: { x: number; y: number } | null = null, sd = Infinity;
     for (const e of this.en) {
       if (!e.alive || e.y < 0 || this.hidden(e)) continue;
       const d = (e.x - x) ** 2 + (e.y - y) ** 2;
-      if (d < bd || (d === bd && n++ === skip)) { bd = d; best = e; }
+      if (d < bd) { second = best; sd = bd; bd = d; best = e; }
+      else if (d < sd) { sd = d; second = e; }
     }
+    if (skip && second) { best = second; bd = sd; }
     const b = this.boss;
     if (b && b.state === 'fight') {
       const bx = b.x + b.def.core.x, by = b.y + b.def.core.y;
@@ -500,8 +517,7 @@ export class Sim {
     const start = (t: number) => { this.act = { kind, t, max: t, cells: c, n: 0 }; };
     switch (kind) {
       case 'laser': start(24 + c * 14); break;
-      case 'dash': start(26 + c * 12); break;
-      case 'tigerDash': case 'pierceDash': start(26 + c * 12); this.iframes = Math.max(this.iframes, 30 + c * 12); break;
+      case 'dash': case 'tigerDash': case 'pierceDash': start(26 + c * 12); this.iframes = Math.max(this.iframes, 30 + c * 12); break;
       case 'wool': start(90 + c * 60); break;
       case 'magnet': start(180 + c * 90); break;
       case 'absorb': start(50 + c * 25); break;
@@ -575,6 +591,9 @@ export class Sim {
     this.bombFx = 50;
     this.iframes = Math.max(this.iframes, BOMB_IFRAMES);
     this.clearBullets();
+    // 번개 · 불기둥도 지운다 (정지 폭탄 중에 내리치던 번개가 남지 않게)
+    for (const bo of this.bolts) bo.alive = false;
+    this.bombing = true;
     const all = (d: number) => this.allDamage(d);
     switch (kind) {
       case 'chain': this.bombAct = { kind, t: 48 }; all(10); break;
@@ -591,6 +610,7 @@ export class Sim {
       case 'coinRain': all(30); for (let i = 0; i < 14; i++) this.dropItem('C', 40 + (i * (W - 80)) / 13, -20 - (i % 3) * 40, 1); break;
       case 'freeze': this.freezeT = 120; all(20); break;
     }
+    this.bombing = false;
     this.events.push({ t: 'bomb', x: this.px, y: this.py, kind });
     return true;
   }
@@ -599,6 +619,12 @@ export class Sim {
     const b = this.bombAct;
     if (b.t <= 0) return;
     b.t--;
+    this.bombing = true;
+    this.bombStepKind(b);
+    this.bombing = false;
+  }
+
+  private bombStepKind(b: { kind: string; t: number }) {
     switch (b.kind) {
       case 'chain':
         if (b.t % 12 === 0) { this.allDamage(12); this.events.push({ t: 'boom', x: 120 + this.rand() * (W - 240), y: 200 + this.rand() * 600, r: 120 }); }
@@ -666,10 +692,10 @@ export class Sim {
   get wind() { const w = this.opt.waves.wind ?? 0; return w ? Math.sin(this.frame / 240) * w : 0; }
 
   private moveBullets() {
-    const wind = this.wind * 0.035;
+    const wind = this.wind * 0.6;
     for (const b of this.eb) {
       if (!b.alive) continue;
-      if (wind) b.vx += wind;
+      if (wind) b.x += wind;
       if (b.turn) { const c = Math.cos(b.turn), s = Math.sin(b.turn), vx = b.vx; b.vx = vx * c - b.vy * s; b.vy = vx * s + b.vy * c; }
       b.x += b.vx; b.y += b.vy;
       if (b.y < -30 || b.y > H + 30 || b.x < -30 || b.x > W + 30) { b.alive = false; this.ebCount--; }
@@ -787,7 +813,7 @@ export class Sim {
     if (e.kind === 'medium') for (let i = 0; i < 3; i++) this.dropItem('C', e.x + (i - 1) * 40, e.y);
     if (e.kind === 'ground') this.dropItem('C', e.x, e.y);
     // 어려움: 격추한 적이 되받아치기탄을 쏜다
-    if (DIFFICULTY[this.opt.difficulty].revenge && e.kind !== 'carrier' && e.y < this.py - 120) aimed(this, e.x, e.y, 3.6);
+    if (DIFFICULTY[this.opt.difficulty].revenge && !this.bombing && e.kind !== 'carrier' && e.y < this.py - 120) aimed(this, e.x, e.y, 3.6);
     // 편대를 전멸시키면 P 또는 금화 (최대 파워면 금화)
     const g = this.groupLeft.get(e.group);
     if (g) {
@@ -866,6 +892,7 @@ export class Sim {
       b.state = 'down';
       this.clearBullets();
       const mid = b.def.kind === 'mid';
+      if (!mid) this.bossKills++;
       const score = mid ? MID_SCORE : BOSS_SCORE_PER_STAGE * (this.mode === 'rush' ? this.rushIdx : this.opt.stage);
       this.bossScore += score;
       this.addScore(score);
@@ -903,19 +930,28 @@ export class Sim {
     this.boss = null;
     if (this.mode === 'rush') {
       // 다음 보스까지 3초, P · B 보급
-      if (this.rushIdx >= (this.opt.waves.rush?.length ?? 0)) this.clearAt = this.frame + 150;
+      if (this.rushIdx >= (this.opt.waves.rush?.length ?? 0)) this.startClear();
       else { this.rushNext = this.frame + 180; this.dropItem('P', W * 0.35, 120, 1); this.dropItem('B', W * 0.65, 120, 1); }
       return;
     }
     if (this.mode === 'endless') return;
-    if (!mid) this.clearAt = this.frame + 150;
+    if (!mid) this.startClear();
+  }
+
+  /** 정산까지 2.5초: 남은 금화를 줍는 동안 맞지 않게 무적 · 남은 탄 · 번개 · 적을 치운다 */
+  private startClear() {
+    this.clearAt = this.frame + 150;
+    this.iframes = Math.max(this.iframes, 160);
+    this.clearBullets();
+    for (const bo of this.bolts) bo.alive = false;
+    for (const e of this.en) if (e.alive) { e.alive = false; this.groupLeft.delete(e.group); }
   }
 
   // ---------------- 아이템 ----------------
-  dropItem(kind: ItemKind, x: number, y: number, vy = -3) {
+  dropItem(kind: ItemKind, x: number, y: number, vy = -3, lock = 0) {
     const it = this.items.find(v => !v.alive);
     if (!it) return;
-    Object.assign(it, { alive: true, kind, x: clamp(x, 30, W - 30), y, vx: (this.rand() - 0.5) * 2, vy });
+    Object.assign(it, { alive: true, kind, x: clamp(x, 30, W - 30), y, vx: (this.rand() - 0.5) * 2, vy, lock });
   }
 
   get magnetOn() { return this.act.t > 0 && this.act.kind === 'magnet'; }
@@ -1006,7 +1042,7 @@ export class Sim {
       const bb = this.boss;
       if (bb && bb.state === 'fight') {
         for (const p of bb.parts) if (p.alive && Math.abs(bb.x + p.x - this.px) < half + p.r) this.hitPart(p, dmg);
-        if (Math.abs(bb.x + bb.def.core.x - this.px) < half + bb.def.core.r) this.hitBoss(dmg);
+        if (bb.y + bb.def.core.y < this.py && Math.abs(bb.x + bb.def.core.x - this.px) < half + bb.def.core.r) this.hitBoss(dmg);
       }
     }
     // 구름 보조기 (운양호): 닿는 적 탄을 막는다
@@ -1014,6 +1050,7 @@ export class Sim {
     // 아이템 줍기
     for (const it of this.items) {
       if (!it.alive) continue;
+      if (it.lock > 0) { it.lock--; continue; }
       const dx = it.x - this.px, dy = it.y - this.py;
       if (dx * dx + dy * dy < PICK_R * PICK_R) this.pick(it);
     }
@@ -1034,6 +1071,12 @@ export class Sim {
       const dx = e.x - this.px, dy = e.y - this.py, r = e.r * 0.7 + HIT_R;
       if (dx * dx + dy * dy < r * r) { this.hit(); return; }
     }
+    // 보스 몸통 → 나 (겹쳐 앉아 쏠 수 없게)
+    const bb = this.boss;
+    if (bb && bb.state === 'fight') {
+      const dx = bb.x + bb.def.core.x - this.px, dy = bb.y + bb.def.core.y - this.py, r = bb.def.core.r * 0.8 + HIT_R;
+      if (dx * dx + dy * dy < r * r) { this.hit(); return; }
+    }
   }
 
   private hit() {
@@ -1048,7 +1091,7 @@ export class Sim {
     this.lives--;
     this.misses++;
     this.events.push({ t: 'hit', x: this.px, y: this.py });
-    if (this.power > 1) { this.power--; this.dropItem('P', this.px, this.py - 30, -6); }
+    if (this.power > 1) { this.power--; this.dropItem('P', this.px, this.py - 60, -7, 60); }
     this.chargeT = 0;
     if (this.lives <= 0) {
       this.state = 'over';

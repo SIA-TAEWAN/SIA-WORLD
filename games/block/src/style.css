@@ -6,15 +6,15 @@
 @import '../../../shared/theme.css';
 :root{--board:var(--pang-board);color-scheme:light}
 *{box-sizing:border-box;min-width:0}
-html,body{margin:0;min-height:100%}
+html,body{margin:0;min-height:100%;overscroll-behavior:none}
 body{background:linear-gradient(180deg,var(--sky-top) 0,var(--sky-mid) 300px,var(--sky-bottom) 100%) fixed;color:var(--ink);font:16px/1.4 var(--font);overflow-x:clip;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 button{font:inherit;color:inherit}
-#app{max-width:480px;margin:0 auto;padding:10px 12px 20px;padding-top:max(10px,env(safe-area-inset-top))}
+#app{max-width:480px;margin:0 auto;padding:10px 12px max(20px,calc(8px + env(safe-area-inset-bottom)));padding-top:max(10px,env(safe-area-inset-top))}
 .topbar{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .topbar .spacer{flex:1}
 .topbar .back{font-size:16px;color:var(--white);text-decoration:none;background:var(--pill);border-radius:999px;padding:8px 14px;min-height:40px;display:inline-flex;align-items:center}
 .topbar .rank{font-size:16px;min-height:40px;padding:6px 14px}
-.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:var(--ink);color:var(--white);border-radius:999px;padding:10px 18px;font-size:16px;opacity:0;pointer-events:none;transition:.2s;z-index:30;text-align:center;max-width:90vw}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--ink);color:var(--white);border-radius:999px;padding:10px 18px;font-size:16px;opacity:0;pointer-events:none;transition:.2s;z-index:30;text-align:center;max-width:90vw}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 .connecting{text-align:center;color:var(--white);-webkit-text-stroke:1px var(--ink);paint-order:stroke fill;font-size:20px;margin-top:30vh}
 .connecting .btn{-webkit-text-stroke:0;color:var(--ink);display:inline-block;text-decoration:none;margin:6px}
@@ -52,12 +52,14 @@ button{font:inherit;color:inherit}
 .boardwrap{padding:7px;border-radius:20px;background:var(--panel);border:3px solid var(--ink);box-shadow:0 6px 0 var(--ink)}
 #board{display:block;width:100%;border-radius:12px;background:var(--board);touch-action:none}
 #tray{display:block;width:100%;margin-top:10px;touch-action:none;cursor:grab}
-#drag{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8}
+#drag{position:fixed;left:0;top:0;pointer-events:none;z-index:8}
+#game{margin:0 auto}
+#sab{position:fixed;left:0;bottom:0;width:1px;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none}
 #scene{display:block;width:100%;border-radius:12px;cursor:pointer;touch-action:manipulation}
 .scenewrap{margin-top:6px;padding:6px;border-radius:20px;background:var(--panel);border:3px solid var(--ink);box-shadow:0 6px 0 var(--ink)}
 /* popups */
 .overlay{position:fixed;inset:0;background:var(--dim);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
-.pop{width:100%;max-width:360px;padding:18px 18px 20px;text-align:center;animation:pop .22s ease-out}
+.pop{width:100%;max-width:360px;max-height:calc(100dvh - 32px);overflow:auto;padding:18px 18px 20px;text-align:center;animation:pop .22s ease-out}
 @keyframes pop{from{transform:scale(.85);opacity:0}}
 .pop h3{margin:0;font-weight:normal;font-size:32px;line-height:1.15;color:var(--primary);-webkit-text-stroke:2px var(--ink);paint-order:stroke fill;text-shadow:0 3px 0 var(--ink)}
 .pop .info{font-size:16px;margin:8px 0}

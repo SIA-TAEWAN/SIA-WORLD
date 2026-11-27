@@ -38,9 +38,10 @@ export function saveProgress(p: Progress) {
 
 /** 이 기체를 탈 수 있는가 */
 export function shipOpen(p: Progress, id: ShipId, all = false) {
-  if (all) return true;
   const u = SHIPS[id].unlock;
-  return u === 'buy' ? p.catOwned : p.cleared >= u;
+  // 고양이호는 관리자 · 시험 판이어도 산 뒤에만 (서버 _check_character 가 관리자도 막는다)
+  if (u === 'buy') return p.catOwned;
+  return all || p.cleared >= u;
 }
 
 /** 스테이지 n 을 처음 깼을 때 새로 열리는 기체 */

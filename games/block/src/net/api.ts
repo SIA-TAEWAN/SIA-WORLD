@@ -45,6 +45,8 @@ export interface BlockApi {
   finish(report: RunReport): Promise<FinishResult | null>;
   /** 보관한 판 다시 보내기 → 보낸 수 */
   flush(): Promise<number>;
+  /** 보내기 전에 끝난 판을 먼저 기기에 보관 (끝나는 연출 중에 앱을 닫아도 남게) */
+  keep(report: RunReport): void;
 }
 
 export interface Store { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void }
@@ -103,6 +105,7 @@ export function createLocalApi(store: Store, key = 'siablock:local', now: () => 
       return { score: v.score, verified, best: s.best, weekBest: s.weekBest, newBest, rank: s.best ? 1 : null, weekRank: s.weekBest ? 1 : null, gotCoin: true, siaCoins: s.coins };
     },
     async flush() { return 0; },
+    keep() { /* 테스트 모드는 이 기기에서 바로 정한다 */ },
   };
 }
 
@@ -185,7 +188,8 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
         if (j?.error) msg = j.error;
       } catch { /* 그대로 */ }
       // 401(로그인 만료 · 'need login')은 다시 로그인한 뒤 보낼 수 있게 보관한다
-      const why = status && status < 500 && status !== 401 ? rejectOf(msg) ?? 'bad log' : null;
+      // 우리 함수가 알려 준 까닭일 때만 버린다. 게이트웨이의 429 · 404(배포 중) 같은 일시 오류는 보관했다 다시 보낸다
+      const why = status && status < 500 && status !== 401 ? rejectOf(msg) : null;
       throw why ? new ApiError(why) : new Error(msg);
     }
     return normalizeFinish(res.data);
@@ -201,6 +205,7 @@ export function createSupabaseApi(sb: SupabaseClient | ServerClient, uid: string
       if (!run) throw new Error('no run');
       return { run, seed: num(d.seed) };
     },
+    keep(report) { writePending([...readPending().filter(r => r.run !== report.run), report]); },
     async finish(report) {
       writePending([...readPending().filter(r => r.run !== report.run), report]);
       inflight.add(report.run);

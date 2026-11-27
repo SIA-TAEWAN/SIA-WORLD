@@ -21,7 +21,9 @@ describe('M4: 스테이지 7~12 · 최종 보스', () => {
     s.addBullet(W / 2, 100, 0, 1);
     const b = s.eb.find(v => v.alive)!;
     run(s, 30);
-    expect(Math.abs(b.vx)).toBeGreaterThan(0.1);
+    // 옆으로 밀리지만 속도가 쌓이지는 않는다
+    expect(Math.abs(b.x - W / 2)).toBeGreaterThan(5);
+    expect(b.vx).toBe(0);
   });
 
   it('10 폐허 성곽: 벽 뒤에 숨은 포대는 맞지 않는다', () => {
@@ -84,5 +86,37 @@ describe('M4: 이어하기 · 보스 러시 · 끝없는 모드', () => {
     expect(s.endlessMul).toBeGreaterThan(1.4);
     expect(s.kills).toBeGreaterThan(50);
     expect(s.state).toBe('play');
+  });
+});
+
+describe('검토 반영 (11-27)', () => {
+  const EMPTY = { length: 9999, waves: [], loop: true };
+  it('맞아서 떨군 P 는 곧바로 다시 줍지 않는다 (파워가 실제로 준다)', () => {
+    const s = new Sim({ seed: 1, ship: 'dragon', waves: EMPTY });
+    s.power = 3; s.iframes = 0;
+    s.addBullet(s.px, s.py, 0, 0);
+    run(s, 10);
+    expect(s.power).toBe(2);
+  });
+
+  it('어려움: 폭탄으로 잡은 적은 되받아치기탄을 쏘지 않는다', () => {
+    const s = new Sim({ seed: 1, ship: 'ox', waves: EMPTY, difficulty: 'hard' });
+    for (let i = 0; i < 6; i++) s.spawnEnemy('small', 'hover', 100 + i * 90, 200)!;
+    run(s, 30);
+    s.step({ ...NO_INPUT, bomb: true });
+    expect(s.ebCount).toBe(0);
+  });
+
+  it('보스 몸통에 부딪히면 맞고, 보스를 잡은 뒤 정산까지는 무적', () => {
+    const s = new Sim({ seed: 1, ship: 'dragon', waves: { length: 0, waves: [], boss: 'crab' } });
+    for (let i = 0; i < 400 && s.boss?.state !== 'fight'; i++) s.step(NO_INPUT);
+    const b = s.boss!;
+    s.iframes = 0;
+    s.px = b.x + b.def.core.x; s.py = b.y + b.def.core.y;
+    s.step(NO_INPUT);
+    expect(s.lives).toBe(2);
+    (s as unknown as { hitBoss(d: number): void }).hitBoss(1e9);
+    run(s, 5);
+    expect(s.iframes).toBeGreaterThan(100);
   });
 });
