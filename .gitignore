@@ -1,0 +1,6 @@
+# 비밀 키 (Freesound API 키 등)
+.env.local
+.env*.local
+
+# 효과음 후보 (scripts/sound-find.mjs 가 받는 것, 고른 것만 shared/sounds/ 에 올린다)
+shared/sounds/_candidates/

@@ -77,7 +77,20 @@ Consequences:
 
 - State-changing access goes through `security definer` functions with `set search_path`, explicit `revoke`/`grant`, and RLS on tables; clients do not write tables directly.
 - Shared economy: `wallets` (게임 화폐 + 시아코인 via `_grant_sia_coin`), `app_settings` (`game_open:<id>` flags, lobby caps), `user_sessions` (one session per account).
-- Adding a game means: an entry in `shared/games.js`, a `game_open:<id>` row, a channel in `shared/presence.js` `GAME_CHANNELS`, a ranking tab in `shared/ranking-dialog.js` (`TAB_ORDER` is only the fallback: tabs are sorted by the viewer's own play counts from `my_play_counts()` in `115_my_play_counts.sql`, i.e. `sia_coin_logs` per game id — map a new game id to its tab in `PLAY_TAB` if they differ), build/copy steps in `deploy.yml`, and the PWA head block in its `index.html` (manifest + apple-touch-icon links, theme-color + 3 app metas, `<script type="module" src="…/shared/pwa.js" vite-ignore>` — copy it from `games/tank/index.html`, fixing the relative path).
+- Adding a game means: an entry in `shared/games.js`, a `game_open:<id>` row, a channel in `shared/presence.js` `GAME_CHANNELS`, a ranking tab in `shared/ranking-dialog.js` (`TAB_ORDER` is only the fallback: tabs are sorted by the viewer's own play counts from `my_play_counts()` in `115_my_play_counts.sql`, i.e. `sia_coin_logs` per game id — map a new game id to its tab in `PLAY_TAB` if they differ), build/copy steps in `deploy.yml`, and the PWA head block in its `index.html` (manifest + apple-touch-icon links, theme-color + 3 app metas, `<script type="module" src="…/shared/pwa.js" vite-ignore>` — copy it from `games/tank/index.html`, fixing the relative path), and a BGM folder (see below).
+
+### Sound effects from Freesound
+
+- `shared/sound.js` plays `shared/sounds/<name>.mp3|ogg` instead of the ZzFX sound when the file exists. `node scripts/sound-find.mjs [names…]` searches Freesound (CC0, short, by rating) with the words in `scripts/sound-search.json` and downloads preview MP3 candidates to `shared/sounds/_candidates/` (git-ignored; `index.html` there compares them with the current ZzFX sound). `node scripts/sound-pick.mjs <name> <n|off>` copies one in (trimming leading silence with ffmpeg if present) and records it in `shared/sounds/CREDITS.md`. The API key is `FREESOUND_API_KEY` in `.env.local` — never print or commit it.
+
+### Background music (BGM)
+
+- Files live in `shared/audio/bgm/<folder>/`, where `<folder>` is the game's folder name under `games/` (e.g. 레이스 → `running`). Each game has `main.mp3` (main play) and `boss.mp3` (boss / tense scenes; optional, e.g. 마을 has none). `common/` holds the lobby `main.mp3`, `win.mp3` and `lose.mp3`. `shared/audio/bgm/README.md` lists the folders and search words.
+- The owner downloads the tracks himself from Pixabay Music (https://pixabay.com/music/); the Pixabay API does not serve music, so never try to download tracks from code.
+- **When a new game is added**, before finishing the task:
+  1. Create `shared/audio/bgm/<folder>/` with an empty `.gitkeep`, and add the game's row to the table in `shared/audio/bgm/README.md`.
+  2. Tell the owner (in Korean) where to download: Pixabay Music, with search words that fit the game's mood for the main track and the boss track, every search word ending in `instrumental` (e.g. `asian fantasy battle instrumental`).
+  3. Show the full Windows path of the new folder, e.g. `C:\Claude\SIA-WORLD\shared\audio\bgm\<folder>`, and the file names to use (`main.mp3`, `boss.mp3`).
 
 ## Working conventions in this repo
 

@@ -1,0 +1,17 @@
+{
+  "_설명": "소리 이름(shared/sound.js 의 SOUNDS 키) → Freesound 검색어. maxSec 보다 긴 소리는 빼고 찾는다.",
+  "deal":         { "queries": ["card deal", "card slide"],             "maxSec": 1 },
+  "flip":         { "queries": ["card flip"],                           "maxSec": 1 },
+  "slap":         { "queries": ["card slap", "paper slap"],             "maxSec": 1 },
+  "chip":         { "queries": ["poker chips", "casino chip"],          "maxSec": 1.5 },
+  "coin":         { "queries": ["coin pickup game", "coin collect"],    "maxSec": 1.5 },
+  "tankFire":     { "queries": ["cannon shot cartoon", "cannon fire"],  "maxSec": 2 },
+  "tankBoom":     { "queries": ["cartoon explosion", "game explosion"], "maxSec": 2 },
+  "tankBigBoom":  { "queries": ["big explosion game", "explosion"],     "maxSec": 3 },
+  "volleyHit":    { "queries": ["volleyball hit", "ball punch"],        "maxSec": 1 },
+  "twelveSlash":  { "queries": ["sword swoosh", "sword slash"],         "maxSec": 1 },
+  "twelveBow":    { "queries": ["arrow shot bow", "bow release"],       "maxSec": 1.5 },
+  "twelveHurt":   { "queries": ["cartoon hit", "game hurt"],            "maxSec": 1 },
+  "survHurt":     { "queries": ["cartoon punch", "game damage"],        "maxSec": 1 },
+  "survBossDown": { "queries": ["monster death explosion", "boss defeat"], "maxSec": 3 }
+}
