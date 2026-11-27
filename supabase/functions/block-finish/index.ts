@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
     if (body?.rules !== BLOCK_RULES) return json({ error: 'old rules' }, 409);
     const runId = typeof body?.runId === 'string' ? body.runId : '';
     if (!/^[0-9a-f-]{36}$/i.test(runId)) return json({ error: 'bad run' }, 400);
-    const claimed = Number.isInteger(body?.score) ? (body.score as number) : null;
+    // SQL int 범위 밖의 점수는 받지 않는다 (null → 점수 불일치로 끝냄, 다시 보내지 않음)
+    const claimed = Number.isInteger(body?.score) && body.score >= 0 && body.score <= 2147483647 ? (body.score as number) : null;
 
     const { data: run, error: readErr } = await sb
       .from('block_runs')
@@ -63,6 +64,7 @@ Deno.serve(async (req) => {
       if (e instanceof VerifyError) return json({ error: e.message }, 400);
       throw e;
     }
+    if (v.score > 2147483647) return json({ error: 'bad result' }, 400);
 
     const { data, error } = await sb.rpc('block_finish_verified', { p_user: userId, p_run: runId, p_result: v, p_claimed: claimed, p_log: body.log });
     if (error) {

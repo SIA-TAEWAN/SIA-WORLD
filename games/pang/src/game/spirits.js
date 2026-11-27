@@ -1,3 +1,4 @@
+// games/block(시아블록)도 이 파일을 그대로 import 한다 — export 를 바꾸면 block 빌드도 확인할 것
 // 정령 9종 그리기 (코드로만 그린다 · 몸 반지름 약 20). 강화 정령('line')·정령왕 구슬('orb') 모양도 여기
 const PI2 = Math.PI * 2;
 const EYE = { fire: '#4A1A00', water: '#0B2A55', wind: '#1E4A44', bolt: '#3A2266', leaf: '#1F4A17', earth: '#2A1A10', light: '#7A5A10', dark: '#E9D5FF', heart: '#6B1F3A', orb: '#5A4A7A' };
