@@ -6,7 +6,7 @@
 // 기체 13종의 기본샷 · 보조기 · 차지샷 · 폭탄은 data/ships.ts 의 이름으로 고르고, 동작은 이 파일 아래쪽 "무기" 부분.
 import { PATTERNS, aimed, type PatternName } from './patterns';
 import { SHIPS, type ShipId, type ShotSpec } from '../data/ships';
-import { BOSSES, BOSS_SCORE_PER_STAGE, MID_SCORE, PART_SCORE, type BossDef } from '../data/bosses';
+import { BOSSES, BOSS_SCORE_PER_STAGE, MID_SCORE, PART_SCORE, RUSH, type BossDef } from '../data/bosses';
 import type { WaveScript } from '../data/waves';
 
 export const W = 720;
@@ -50,7 +50,7 @@ export const DIFFICULTY: Record<Difficulty, { bulletSpeed: number; lives: number
 };
 
 export type EnemyKind = 'small' | 'medium' | 'carrier' | 'ground';
-export type PathName = 'dive' | 'swoopL' | 'swoopR' | 'hover' | 'cross' | 'ground' | 'rise';
+export type PathName = 'dive' | 'swoopL' | 'swoopR' | 'hover' | 'cross' | 'ground' | 'rise' | 'popup';
 export type ItemKind = 'P' | 'B' | 'C';
 
 export interface Input {
@@ -96,7 +96,8 @@ export interface Boss {
 /** 지금 쓰는 중인 차지샷 (레이저 · 돌진 · 방어막 · 자석 · 흡수) */
 export interface Act { kind: string; t: number; max: number; cells: number; n: number }
 export interface Zone { alive: boolean; x: number; y: number; r: number; t: number; max: number; dmg: number }
-export interface Bolt { alive: boolean; x: number; w: number; t: number }
+/** 번개(위에서) · 불기둥(fire: 아래에서) 예고 구역 */
+export interface Bolt { alive: boolean; x: number; w: number; t: number; fire: boolean }
 
 export type SimEvent =
   | { t: 'kill'; x: number; y: number; kind: EnemyKind; score: number }
@@ -208,6 +209,14 @@ export class Sim {
 
   /** 등장표 시간 (스텝). 보스가 있는 동안은 멈춘다 */
   stageT = 0;
+  /** 보스 러시: 다음 보스 번호 · 나오는 때 */
+  rushIdx = 0;
+  private rushNext = 0;
+  /** 끝없는 모드: 다음 잡몹 · 다음 보스 (등장표 시간 기준) */
+  private nextSpawn = 60;
+  private nextEndlessBoss = 5 * 60 * 60;
+  /** 이어하기를 썼는가 */
+  continued = false;
   nextExtend = 0;
   private waveIdx = 0;
   private loop = 0;
@@ -235,7 +244,7 @@ export class Sim {
     for (let i = 0; i < CAP.ps; i++) this.ps.push({ alive: false, x: 0, y: 0, vx: 0, vy: 0, dmg: 1, kind: 0, pierce: false, r: 8, life: 0, t: 0, x0: 0, cd: 0, bounced: false, big: false });
     for (let i = 0; i < CAP.item; i++) this.items.push({ alive: false, kind: 'P', x: 0, y: 0, vx: 0, vy: 0 });
     for (let i = 0; i < CAP.zone; i++) this.zones.push({ alive: false, x: 0, y: 0, r: 0, t: 0, max: 1, dmg: 0 });
-    for (let i = 0; i < CAP.bolt; i++) this.bolts.push({ alive: false, x: 0, w: 0, t: 0 });
+    for (let i = 0; i < CAP.bolt; i++) this.bolts.push({ alive: false, x: 0, w: 0, t: 0, fire: false });
     for (let i = 0; i < CAP.en; i++) {
       this.en.push({
         alive: false, kind: 'small', path: 'dive', x: 0, y: 0, x0: 0, y0: 0, vx: 0, vy: 0,
@@ -247,7 +256,23 @@ export class Sim {
   get ship() { return SHIPS[this.opt.ship]; }
   get chargeCells() { return Math.min(CHARGE_MAX, Math.floor(this.chargeT / CHARGE_CELL)); }
   /** 적 탄 속도: 난이도 × 스테이지 × (반복할수록 조금씩 빨라짐) */
-  get speedMul() { return this.opt.bulletSpeed * (this.opt.waves.bulletSpeed ?? 1) * (1 + this.loop * 0.08); }
+  get speedMul() { return this.opt.bulletSpeed * (this.opt.waves.bulletSpeed ?? 1) * (1 + this.loop * 0.08) * this.endlessMul; }
+  /** 끝없는 모드: 1분마다 10%씩 빨라진다 (최대 2배) */
+  get endlessMul() { return this.opt.waves.endless ? Math.min(2, 1 + (this.stageT / 3600) * 0.1) : 1; }
+  get mode(): 'stage' | 'rush' | 'endless' { return this.opt.waves.endless ? 'endless' : this.opt.waves.rush ? 'rush' : 'stage'; }
+
+  /** 이어하기 (아케이드 1회): 점수는 0부터, 목숨·폭탄은 처음처럼, 파워와 진행은 그대로 */
+  continueRun() {
+    if (this.state !== 'over') return;
+    this.state = 'play';
+    this.continued = true;
+    this.lives = this.opt.lives;
+    this.score = 0;
+    this.nextExtend = 0;
+    this.bombs = START_BOMBS;
+    this.iframes = 180;
+    this.clearBullets();
+  }
   /** 다음 스테이지로 넘길 것 */
   carry(): Carry { return { score: this.score, lives: this.lives, bombs: this.bombs, power: this.power, nextExtend: this.nextExtend }; }
 
@@ -287,8 +312,10 @@ export class Sim {
 
   // ---------------- 등장표 ----------------
   private timeline() {
-    if (this.boss) return;
     const sc = this.opt.waves;
+    if (sc.rush) { this.rushTimeline(sc.rush); return; }
+    if (this.boss) return;
+    if (sc.endless) { this.endlessTimeline(); return; }
     this.stageT++;
     const t = this.stageT;
     if (sc.midboss && !this.midDone && t >= sc.midboss.at * 60) {
@@ -298,7 +325,7 @@ export class Sim {
     }
     while (this.waveIdx < sc.waves.length && sc.waves[this.waveIdx].at * 60 <= t) {
       const w = sc.waves[this.waveIdx++];
-      if (w.kind === 'bolt') { this.addBolt(w.x * W, w.w ?? 90); continue; }
+      if (w.kind === 'bolt' || w.kind === 'pillar') { this.addBolt(w.x * W, w.w ?? 90, w.kind === 'pillar'); continue; }
       const g = ++this.groupSeq;
       const n = w.count ?? 1;
       if (w.kind === 'small' && n > 1) this.groupLeft.set(g, { left: n, broken: false });
@@ -323,6 +350,34 @@ export class Sim {
     } else if (!sc.boss && !this.clearAt) {
       this.clearAt = this.frame + 120;
     }
+  }
+
+  /** 보스 러시: 보스 12마리를 차례로. 사이사이 3초 쉬며 P · B 보급 */
+  private rushTimeline(list: string[]) {
+    if (this.boss || this.clearAt) return;
+    if (!this.rushNext) this.rushNext = this.frame + 60;
+    if (this.frame >= this.rushNext && this.rushIdx < list.length) this.spawnBoss(list[this.rushIdx++]);
+  }
+
+  /** 끝없는 모드: 잡몹이 점점 빨리 · 많이, 5분마다 무작위 보스 */
+  private endlessTimeline() {
+    const t = ++this.stageT, min = t / 3600;
+    if (t >= this.nextEndlessBoss) {
+      this.nextEndlessBoss += 5 * 60 * 60;
+      this.spawnBoss(RUSH[Math.floor(this.rand() * RUSH.length)]);
+      return;
+    }
+    if (t < this.nextSpawn) return;
+    this.nextSpawn = t + Math.max(36, Math.round(150 - min * 16));
+    const r = this.rand(), x = 0.15 + this.rand() * 0.7, hp = 1 + min * 0.15, fe = Math.max(50, Math.round(150 - min * 12));
+    const g = ++this.groupSeq;
+    if (r < 0.5) {
+      const path = (['dive', 'swoopL', 'swoopR'] as const)[Math.floor(this.rand() * 3)], n = 5 + Math.floor(this.rand() * 3);
+      this.groupLeft.set(g, { left: n, broken: false });
+      for (let i = 0; i < n; i++) this.spawnEnemy('small', path, x * W, -40 - i * 60, g, null, t > 1800 ? 'aim1' : null, fe, hp);
+    } else if (r < 0.72) this.spawnEnemy('medium', 'hover', x * W, -40, 0, null, (['aim3', 'ring16', 'petal', 'aim5'] as const)[Math.floor(this.rand() * 4)], Math.round(fe * 0.6), hp);
+    else if (r < 0.9) this.spawnEnemy('ground', 'ground', x * W, -60, 0, null, 'aim3', fe, hp);
+    else this.spawnEnemy('carrier', 'cross', this.rand() < 0.5 ? 0 : W, 0, 0, this.rand() < 0.5 ? 'B' : 'P');
   }
 
   // ---------------- 플레이어 ----------------
@@ -603,9 +658,14 @@ export class Sim {
     }
   }
 
+  /** 8 바람 고원: 지금 부는 바람 (적 탄이 옆으로 밀린다) */
+  get wind() { const w = this.opt.waves.wind ?? 0; return w ? Math.sin(this.frame / 240) * w : 0; }
+
   private moveBullets() {
+    const wind = this.wind * 0.035;
     for (const b of this.eb) {
       if (!b.alive) continue;
+      if (wind) b.vx += wind;
       if (b.turn) { const c = Math.cos(b.turn), s = Math.sin(b.turn), vx = b.vx; b.vx = vx * c - b.vy * s; b.vy = vx * s + b.vy * c; }
       b.x += b.vx; b.y += b.vy;
       if (b.y < -30 || b.y > H + 30 || b.x < -30 || b.x > W + 30) { b.alive = false; this.ebCount--; }
@@ -613,9 +673,9 @@ export class Sim {
   }
 
   /** 번개 예고 구역 (5스테이지): BOLT_WARN 동안 예고, 그 뒤 BOLT_HIT 동안 세로 띠 안에 있으면 맞는다 */
-  addBolt(x: number, w: number) {
+  addBolt(x: number, w: number, fire = false) {
     const b = this.bolts.find(v => !v.alive);
-    if (b) Object.assign(b, { alive: true, x: clamp(x, w, W - w), w, t: 0 });
+    if (b) Object.assign(b, { alive: true, x: clamp(x, w, W - w), w, t: 0, fire });
   }
 
   private boltsStep() {
@@ -645,12 +705,17 @@ export class Sim {
       group, drop, fire, fireEvery, fireAt: fireEvery ? 40 + Math.floor(this.rand() * fireEvery) : 0,
     });
     if (path === 'cross') { e.y = 160 + this.rand() * 200; e.x = x < W / 2 ? -50 : W + 50; e.y0 = e.y; e.x0 = e.x; }
-    if (path === 'ground') e.y = -60;
+    if (path === 'ground' || path === 'popup') e.y = -60;
     return e;
   }
 
   /** 물·안개 속에서 솟는 중이라 아직 맞지도 않고 부딪히지도 않는 적 */
-  hidden(e: Enemy) { return e.path === 'rise' && (e.t < 36 || e.t > 330); }
+  hidden(e: Enemy) {
+    if (e.path === 'rise') return e.t < 36 || e.t > 330;
+    // 10 폐허 성곽: 벽 뒤에 숨었다가 잠깐 나와 쏜다
+    if (e.path === 'popup') return e.t % 200 < 90;
+    return false;
+  }
 
   private moveEnemies() {
     for (const e of this.en) {
@@ -681,7 +746,7 @@ export class Sim {
           // 공격 없이 옆으로 도망치는 아이템 운반기
           e.vx = e.x0 < 0 ? 3.4 : -3.4; e.vy = Math.sin(t / 30) * 0.8;
           break;
-        case 'ground':
+        case 'ground': case 'popup':
           // 지상·해상 목표: 바닥과 같이 흘러내린다
           e.vx = 0; e.vy = SCROLL;
           break;
@@ -796,7 +861,7 @@ export class Sim {
       b.state = 'down';
       this.clearBullets();
       const mid = b.def.kind === 'mid';
-      const score = mid ? MID_SCORE : BOSS_SCORE_PER_STAGE * this.opt.stage;
+      const score = mid ? MID_SCORE : BOSS_SCORE_PER_STAGE * (this.mode === 'rush' ? this.rushIdx : this.opt.stage);
       this.bossScore += score;
       this.addScore(score);
       this.kills++;
@@ -831,6 +896,13 @@ export class Sim {
     const b = this.boss!;
     const mid = b.def.kind === 'mid';
     this.boss = null;
+    if (this.mode === 'rush') {
+      // 다음 보스까지 3초, P · B 보급
+      if (this.rushIdx >= (this.opt.waves.rush?.length ?? 0)) this.clearAt = this.frame + 150;
+      else { this.rushNext = this.frame + 180; this.dropItem('P', W * 0.35, 120, 1); this.dropItem('B', W * 0.65, 120, 1); }
+      return;
+    }
+    if (this.mode === 'endless') return;
     if (!mid) this.clearAt = this.frame + 150;
   }
 
@@ -953,7 +1025,7 @@ export class Sim {
     }
     // 적 몸통 → 나 (지상 목표 · 솟는 중인 적은 부딪히지 않는다)
     for (const e of this.en) {
-      if (!e.alive || e.kind === 'ground' || this.hidden(e)) continue;
+      if (!e.alive || e.kind === 'ground' || e.path === 'popup' || this.hidden(e)) continue;
       const dx = e.x - this.px, dy = e.y - this.py, r = e.r * 0.7 + HIT_R;
       if (dx * dx + dy * dy < r * r) { this.hit(); return; }
     }

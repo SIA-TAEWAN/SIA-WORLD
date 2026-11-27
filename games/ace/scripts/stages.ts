@@ -15,11 +15,11 @@ const DIR = fileURLToPath(new URL('../src/data/stages/', import.meta.url));
 /** 스테이지마다 다른 것: 이름 · 바닥 · 특징 · 중형기 패턴 · 보스 */
 interface Theme {
   id: number; name: string; animal: string; floor: string; ground: string;
-  sea?: StageDef['sea']; sky?: boolean; fog?: boolean;
+  sea?: StageDef['sea']; sky?: boolean; fog?: boolean; snow?: boolean; lava?: boolean; wind?: number;
   mid: string; boss: string;
   medium: PatternName[];
   /** 특징 */
-  rise?: boolean; groundMany?: boolean; bolts?: boolean; curve?: boolean;
+  rise?: boolean; groundMany?: boolean; bolts?: boolean; curve?: boolean; popup?: boolean; pillars?: boolean;
 }
 export const THEMES: Theme[] = [
   { id: 2, name: '넓은 바다', animal: 'ox', floor: 'floor-r04', ground: 'gunboat', sea: 'full', mid: 'diver', boss: 'carrier', medium: ['aim3', 'rise8', 'ring16'], rise: true },
@@ -27,6 +27,12 @@ export const THEMES: Theme[] = [
   { id: 4, name: '벚꽃 계곡', animal: 'rabbit', floor: 'floor-r08', ground: 'castle', mid: 'petals', boss: 'gumiho', medium: ['petal', 'petalFan', 'aim3'], curve: true },
   { id: 5, name: '구름 위', animal: 'dragon', floor: 'floor-r01', ground: 'castle', sky: true, mid: 'cloudship', boss: 'raijin', medium: ['aim3', 'ring16', 'aim5'], bolts: true },
   { id: 6, name: '독안개 늪', animal: 'snake', floor: 'floor-r06', ground: 'swamp', fog: true, mid: 'fogfort', boss: 'imugi', medium: ['slowRing', 'aim5', 'medMix'], rise: true },
+  { id: 7, name: '사막 협곡', animal: 'horse', floor: 'floor-r03', ground: 'sandtank', mid: 'tanks', boss: 'sandworm', medium: ['aim5', 'fan9', 'bigAim'], groundMany: true },
+  { id: 8, name: '바람 고원', animal: 'sheep', floor: 'floor-r02', ground: 'castle', wind: 3, mid: 'windmill', boss: 'tornado', medium: ['ring16', 'aim5', 'spiral4'] },
+  { id: 9, name: '얼음 산맥', animal: 'monkey', floor: 'floor-r11', ground: 'ice', snow: true, mid: 'snowfog', boss: 'yeti', medium: ['slowRing', 'aim5', 'ring16'] },
+  { id: 10, name: '폐허 성곽', animal: 'rooster', floor: 'floor-r07', ground: 'ruin', mid: 'riders', boss: 'skeleton', medium: ['aim5', 'medMix', 'bigAim'], popup: true, groundMany: true },
+  { id: 11, name: '불타는 화산', animal: 'dog', floor: 'floor-r10', ground: 'lava', lava: true, mid: 'lavaship', boss: 'volcano', medium: ['fan9', 'aim5', 'ring16'], pillars: true },
+  { id: 12, name: '요괴 하늘성', animal: 'pig', floor: 'floor-r12', ground: 'castle', mid: 'generals', boss: 'king', medium: ['petal', 'medMix', 'aim5', 'slowRing', 'spiral4'], rise: true, bolts: true, curve: true },
 ];
 
 /** 테마로 등장표 만들기. 잡몹 편대 → 중간 보스(약 52초) → 탄이 더 많은 잡몹 → 보스 */
@@ -42,15 +48,15 @@ export function generate(th: Theme, seed = th.id * 7919): StageDef {
     const at = Math.round(t * 10) / 10;
     if (at > midAt - 4 && at < midAt + 2) continue;
     const roll = r();
-    if (th.bolts && roll < 0.2) {
-      waves.push({ at, kind: 'bolt', path: 'dive', x: 0.15 + r() * 0.7, w: 80 });
+    if ((th.bolts || th.pillars) && roll < (th.id === 12 ? 0.1 : 0.2)) {
+      waves.push({ at, kind: th.pillars ? 'pillar' : 'bolt', path: 'dive', x: 0.15 + r() * 0.7, w: 80 });
     } else if (th.rise && roll < 0.3) {
       const n = 2 + Math.floor(r() * 2);
       waves.push({ at, kind: 'medium', path: 'rise', x: 0.2 + r() * 0.2, dx: 170, count: n, y: 0.18 + r() * 0.25, fire: th.id === 6 ? 'slowRing' : 'rise8', fireEvery: fe(70, at), hp: 0.5 });
     } else if (roll < (th.groundMany ? 0.42 : 0.3)) {
       const two = r() < 0.5;
       const x = two ? 0.2 : 0.15 + r() * 0.7;
-      waves.push({ at, kind: 'ground', path: 'ground', x, count: two ? 2 : 1, dx: 430, fire: pick(['aim1', 'aim3'] as PatternName[]), fireEvery: fe(110, at) });
+      waves.push({ at, kind: 'ground', path: th.popup ? 'popup' : 'ground', x, count: two ? 2 : 1, dx: 430, fire: pick(['aim1', 'aim3'] as PatternName[]), fireEvery: th.popup ? fe(60, at) : fe(110, at) });
     } else if (roll < 0.48) {
       waves.push({ at, kind: 'medium', path: 'hover', x: 0.25 + r() * 0.5, fire: pick(th.medium), fireEvery: fe(th.medium.includes('spiral4') ? 10 : 70, at) });
     } else if (at - carrier > 22 && roll < 0.56) {
@@ -70,7 +76,8 @@ export function generate(th: Theme, seed = th.id * 7919): StageDef {
   return {
     id: th.id, name: th.name, animal: th.animal, floor: th.floor, ground: th.ground,
     ...(th.sea ? { sea: th.sea } : {}), ...(th.sky ? { sky: true } : {}), ...(th.fog ? { fog: true } : {}),
-    bulletSpeed: 0.85 + th.id * 0.03, length, midboss: { at: midAt, id: th.mid }, boss: th.boss, waves,
+    ...(th.snow ? { snow: true } : {}), ...(th.lava ? { lava: true } : {}), ...(th.wind ? { wind: th.wind } : {}),
+    bulletSpeed: Math.round((0.85 + th.id * 0.03) * 100) / 100, length, midboss: { at: midAt, id: th.mid }, boss: th.boss, waves,
   };
 }
 

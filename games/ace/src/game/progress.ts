@@ -10,15 +10,18 @@ export interface Progress {
   catOwned: boolean;
   best: Record<Difficulty, number>;
   practice: Record<number, number>;
+  /** 보스 러시 전체 클리어 최단 시간 (초, 0 = 없음) · 끝없는 모드 최장 시간 (초) */
+  rushBest: number;
+  endlessBest: number;
   ship: ShipId;
   difficulty: Difficulty;
 }
 
-export const LAST_STAGE = 6; // M3: 6스테이지까지 (M4 에서 12)
+export const LAST_STAGE = 12;
 const KEY = 'ace:progress';
 
 export function emptyProgress(): Progress {
-  return { cleared: 0, allClear: false, catOwned: false, best: { easy: 0, normal: 0, hard: 0 }, practice: {}, ship: 'dragon', difficulty: 'normal' };
+  return { cleared: 0, allClear: false, catOwned: false, best: { easy: 0, normal: 0, hard: 0 }, practice: {}, rushBest: 0, endlessBest: 0, ship: 'dragon', difficulty: 'normal' };
 }
 
 export function loadProgress(): Progress {

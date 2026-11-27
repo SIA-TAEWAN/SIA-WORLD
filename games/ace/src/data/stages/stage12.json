@@ -1,0 +1,94 @@
+{
+  "id": 12,
+  "name": "요괴 하늘성",
+  "animal": "pig",
+  "floor": "floor-r12",
+  "ground": "castle",
+  "bulletSpeed": 1.21,
+  "length": 136,
+  "midboss": {
+    "at": 52,
+    "id": "generals"
+  },
+  "boss": "king",
+  "waves": [
+    { "at": 2, "kind": "small", "path": "swoopL", "x": 0.2619418597314507, "count": 8, "gap": 11
+    },
+    { "at": 4.9, "kind": "small", "path": "swoopL", "x": 0.25516343922354284, "count": 7, "gap": 12
+    },
+    { "at": 7.9, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 75
+    },
+    { "at": 10.8, "kind": "medium", "path": "hover", "x": 0.6756851938553154, "fire": "petal", "fireEvery": 5
+    },
+    { "at": 13.4, "kind": "small", "path": "dive", "x": 0.6765159611124545, "count": 6, "gap": 11, "fire": "aim1", "fireEvery": 75
+    },
+    { "at": 16.9, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "petalFan", "fireEvery": 110
+    },
+    { "at": 19.9, "kind": "medium", "path": "hover", "x": 0.6589122813893482, "fire": "aim5", "fireEvery": 5
+    },
+    { "at": 23.4, "kind": "small", "path": "dive", "x": 0.7595324656926095, "count": 8, "gap": 13, "fire": "aim1", "fireEvery": 75
+    },
+    { "at": 26.5, "kind": "small", "path": "swoopL", "x": 0.7180672053713351, "count": 7, "gap": 12, "fire": "petalFan", "fireEvery": 110
+    },
+    { "at": 29.2, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 75
+    },
+    { "at": 32.6, "kind": "bolt", "path": "dive", "x": 0.4197956949705258, "w": 80
+    },
+    { "at": 36.1, "kind": "medium", "path": "hover", "x": 0.4635863198200241, "fire": "petal", "fireEvery": 5
+    },
+    { "at": 39.5, "kind": "carrier", "path": "cross", "x": 1, "drop": "P"
+    },
+    { "at": 43.3, "kind": "medium", "path": "hover", "x": 0.28293798153754324, "fire": "petal", "fireEvery": 5
+    },
+    { "at": 46, "kind": "small", "path": "dive", "x": 0.2876670673489571, "count": 7, "gap": 11, "fire": "aim1", "fireEvery": 75
+    },
+    { "at": 55.4, "kind": "medium", "path": "rise", "x": 0.3299321027006954, "dx": 170, "count": 2, "y": 0.3671395857306197, "fire": "rise8", "fireEvery": 27, "hp": 0.5
+    },
+    { "at": 58, "kind": "medium", "path": "rise", "x": 0.25752987740561367, "dx": 170, "count": 3, "y": 0.18673039513640105, "fire": "rise8", "fireEvery": 27, "hp": 0.5
+    },
+    { "at": 61.1, "kind": "small", "path": "swoopR", "x": 0.20445369351655246, "count": 5, "gap": 10, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 64.8, "kind": "bolt", "path": "dive", "x": 0.48131558550521725, "w": 80
+    },
+    { "at": 68.4, "kind": "small", "path": "swoopR", "x": 0.4012235214468092, "count": 6, "gap": 13, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 71.4, "kind": "medium", "path": "rise", "x": 0.33517946521751585, "dx": 170, "count": 3, "y": 0.274367285259068, "fire": "rise8", "fireEvery": 27, "hp": 0.5
+    },
+    { "at": 74.9, "kind": "small", "path": "swoopR", "x": 0.4384068147279322, "count": 6, "gap": 11, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 77.6, "kind": "small", "path": "swoopL", "x": 0.5529599036555737, "count": 5, "gap": 12, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 81.3, "kind": "small", "path": "dive", "x": 0.7215760316699744, "count": 6, "gap": 12, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 84.2, "kind": "small", "path": "swoopR", "x": 0.4581854843534529, "count": 7, "gap": 13, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 87.3, "kind": "carrier", "path": "cross", "x": 1, "drop": "B"
+    },
+    { "at": 90, "kind": "medium", "path": "hover", "x": 0.5605994149809703, "fire": "medMix", "fireEvery": 4
+    },
+    { "at": 93.4, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 96, "kind": "small", "path": "swoopR", "x": 0.7740341165103017, "count": 6, "gap": 11, "fire": "petalFan", "fireEvery": 86
+    },
+    { "at": 99, "kind": "medium", "path": "hover", "x": 0.6949935758020729, "fire": "medMix", "fireEvery": 4
+    },
+    { "at": 102.3, "kind": "small", "path": "dive", "x": 0.7498475917614997, "count": 5, "gap": 10, "fire": "petalFan", "fireEvery": 86
+    },
+    { "at": 106.2, "kind": "small", "path": "dive", "x": 0.7415937980171292, "count": 5, "gap": 13, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 110, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 113.9, "kind": "medium", "path": "hover", "x": 0.5839421164710075, "fire": "slowRing", "fireEvery": 4
+    },
+    { "at": 116.7, "kind": "small", "path": "dive", "x": 0.729892012430355, "count": 6, "gap": 13, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 120.6, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 123.9, "kind": "small", "path": "swoopR", "x": 0.20939562506973744, "count": 5, "gap": 10, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 127.7, "kind": "small", "path": "dive", "x": 0.21855595656670632, "count": 6, "gap": 11, "fire": "aim1", "fireEvery": 59
+    },
+    { "at": 131.7, "kind": "small", "path": "dive", "x": 0.36904202005825937, "count": 7, "gap": 12, "fire": "petalFan", "fireEvery": 86
+    }
+  ]
+}

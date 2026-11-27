@@ -5,7 +5,7 @@
   "floor": "floor-r04",
   "ground": "gunboat",
   "sea": "full",
-  "bulletSpeed": 0.9099999999999999,
+  "bulletSpeed": 0.91,
   "length": 116,
   "midboss": {
     "at": 52,

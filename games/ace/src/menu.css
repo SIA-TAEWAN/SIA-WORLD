@@ -70,8 +70,19 @@
 .st.lk { filter: grayscale(.85); opacity: .6; border-color: var(--empty-line); box-shadow: 0 3px 0 var(--empty-line); }
 .st.lk .nm b { background: var(--white); }
 
-/* 독안개 늪: 위쪽이 흐린 초록 안개 (적이 안개 속에서 나타난다) */
-.fog { position: absolute; inset: 0; pointer-events: none; z-index: 1; background: linear-gradient(180deg, rgba(76, 184, 106, .55) 0, rgba(255, 248, 232, .45) 28%, rgba(255, 248, 232, 0) 52%); animation: fog 6s ease-in-out infinite; }
+/* 날씨: 독안개 늪(위쪽 초록 안개) · 얼음 산맥(눈보라가 시야를 가림) · 불타는 화산(아래쪽 용암 빛) */
+.weather { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.weather.hidden { display: none; }
+.weather.fog { background: linear-gradient(180deg, rgba(76, 184, 106, .55) 0, rgba(255, 248, 232, .45) 28%, rgba(255, 248, 232, 0) 52%); animation: fog 6s ease-in-out infinite; }
+.weather.snow { background:
+  radial-gradient(circle, rgba(255,255,255,.95) 0 2px, transparent 3px) 0 0 / calc(var(--px) * 46) calc(var(--px) * 46),
+  radial-gradient(circle, rgba(255,255,255,.8) 0 1.5px, transparent 2.5px) calc(var(--px) * 20) calc(var(--px) * 13) / calc(var(--px) * 30) calc(var(--px) * 30),
+  linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 35%, rgba(255,255,255,.35) 60%, rgba(255,255,255,0) 80%);
+  animation: snow 1.6s linear infinite, haze 7s ease-in-out infinite; }
+.weather.lava { background: linear-gradient(0deg, rgba(240, 165, 0, .45) 0, rgba(232, 106, 90, .25) 14%, rgba(232, 106, 90, 0) 32%); animation: fog 2.4s ease-in-out infinite; }
+@keyframes snow { to { background-position: calc(var(--px) * -20) calc(var(--px) * 46), calc(var(--px) * 6) calc(var(--px) * 43), 0 0; } }
+@keyframes haze { 50% { opacity: .55; } }
+.chip.wind { background: var(--pill); color: var(--white); border-color: transparent; font-size: calc(var(--px) * 13); }
 @keyframes fog { 50% { opacity: .7; } }
 .pop .row { display: flex; gap: 8px; }
 .pop .row .btn { flex: 1 1 0; font-size: 15px; }
@@ -81,7 +92,7 @@
 .unlock small { display: block; color: var(--ink-soft); font-size: 12px; }
 .tag { display: inline-block; background: var(--pink); color: var(--white); border-radius: 999px; padding: 0 8px; font-size: 12px; line-height: 18px; }
 .seg.four { grid-template-columns: repeat(4, 1fr); }
-@media (prefers-reduced-motion: reduce) { .hero .h-ship, .fog { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hero .h-ship, .weather { animation: none !important; } }
 .hud { z-index: 2; }
 .cloud::before { content: ""; position: absolute; background: var(--white); border: calc(var(--px) * 3) solid var(--outline); border-bottom: 0; border-radius: 999px 999px 0 0; left: 22%; top: -58%; width: 46%; height: 110%; }
 .cloud::after { content: ""; position: absolute; left: 3px; right: 3px; bottom: 3px; top: 30%; background: var(--white); border-radius: 999px; }

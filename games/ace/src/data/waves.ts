@@ -7,7 +7,7 @@ import type { EnemyKind, ItemKind, PathName } from '../game/sim';
 export interface Wave {
   at: number;
   /** bolt = 번개 예고 구역 (적이 아님, x 위치에 w 반폭) */
-  kind: EnemyKind | 'bolt';
+  kind: EnemyKind | 'bolt' | 'pillar';
   path: PathName;
   x: number;
   count?: number;
@@ -34,6 +34,12 @@ export interface WaveScript {
   loop?: boolean;
   /** 이 스테이지의 탄 속도 배율 (튜토리얼은 느리게) */
   bulletSpeed?: number;
+  /** 8 바람 고원: 바람 세기 (적 탄이 옆으로 휜다) */
+  wind?: number;
+  /** 보스 러시: 이 보스들을 차례로 */
+  rush?: string[];
+  /** 끝없는 모드 */
+  endless?: boolean;
 }
 export interface StageDef extends WaveScript {
   id: number;
@@ -46,6 +52,10 @@ export interface StageDef extends WaveScript {
   sky?: boolean;
   /** 독안개 (위쪽을 가리는 안개) */
   fog?: boolean;
+  /** 9 얼음 산맥: 시야를 가리는 눈보라 */
+  snow?: boolean;
+  /** 11 화산: 용암 빛 */
+  lava?: boolean;
   /** 지상 목표 그림 (public/art/ground-<이름>.png) */
   ground?: string;
 }

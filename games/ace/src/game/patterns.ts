@@ -73,6 +73,9 @@ export const PATTERNS = {
   thunder: (sim: Sim) => sim.addBolt(sim.px, 80),
   /** 5 구름 위: 번개 두 줄 (기체 양옆) */
   thunder2: (sim: Sim) => { sim.addBolt(sim.px - 170, 70); sim.addBolt(sim.px + 170, 70); },
+  /** 11 화산: 기체 자리에 아래에서 솟는 불기둥 */
+  pillar: (sim: Sim) => sim.addBolt(sim.px, 70, true),
+  pillar2: (sim: Sim) => { sim.addBolt(sim.px - 180, 60, true); sim.addBolt(sim.px + 180, 60, true); },
   /** 6 늪: 느린 큰 탄 원형 */
   slowRing: (sim: Sim, x: number, y: number, t: number) => ring(sim, x, y, 2.4, 12, t * 0.07, true),
   /** 빠른 조준 5-way */

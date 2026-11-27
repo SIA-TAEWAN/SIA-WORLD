@@ -213,4 +213,147 @@ export const BOSSES: Record<string, BossDef> = {
       ] },
     ],
   },
+
+  // ---------- 7 사막 협곡 (지상 포탑 다수) ----------
+  tanks: mid('tanks', '모래 전차 부대', 'fort', 'jangsanbeom', 660,
+    [{ pattern: 'aim5', every: 60, from: 0 }, { pattern: 'aim5', every: 60, from: 1, delay: 30 }, { pattern: 'ring16', every: 90, from: 'core' }],
+    [{ pattern: 'fan9', every: 45, from: 'core' }, { pattern: 'bigAim', every: 40, from: 0 }, { pattern: 'bigAim', every: 40, from: 1, delay: 20 }]),
+  // 모래벌레 요새 (포탑 3)
+  sandworm: {
+    id: 'sandworm', name: '모래벌레 요새', kind: 'stage', image: 'boss-7', width: 440,
+    core: artCore('boss-7', 440, 90), hp: 2600, restY: 380, time: 90,
+    parts: [0, 1, 2].map(i => ({ ...artPart('boss-7', 440, i), r: 40, hp: 230 })),
+    phases: [
+      { until: 0.66, move: 'sway', fire: [
+        { pattern: 'aim5', every: 55, from: 0 }, { pattern: 'fan9', every: 70, from: 1 }, { pattern: 'fan9', every: 70, from: 2, delay: 35 },
+      ] },
+      { until: 0.33, move: 'still', fire: [
+        { pattern: 'spiral4', every: 7, from: 'core' }, { pattern: 'bigAim', every: 36, from: 1 }, { pattern: 'bigAim', every: 36, from: 2, delay: 18 },
+      ] },
+      { until: 0, move: 'figure8', fire: [
+        { pattern: 'medMix', every: 26, from: 'core' }, { pattern: 'aim5', every: 40, from: 0 },
+      ] },
+    ],
+  },
+
+  // ---------- 8 바람 고원 (바람에 휘는 탄) ----------
+  windmill: mid('windmill', '바람개비 요새', 'kite', 'guardCaptain', 720,
+    [{ pattern: 'ring16', every: 55, from: 'core' }, { pattern: 'aim3', every: 45, from: 0 }, { pattern: 'aim3', every: 45, from: 1, delay: 22 }],
+    [{ pattern: 'spiral4', every: 9, from: 'core' }, { pattern: 'aim5', every: 55, from: 0 }, { pattern: 'aim5', every: 55, from: 1, delay: 27 }]),
+  // 회오리 거인 (팔 대포 2)
+  tornado: {
+    id: 'tornado', name: '회오리 거인', kind: 'stage', image: 'boss-8', width: 440,
+    core: artCore('boss-8', 440, 95), hp: 2900, restY: 370, time: 90,
+    parts: [0, 1].map(i => ({ ...artPart('boss-8', 440, i), r: 44, hp: 320 })),
+    phases: [
+      { until: 0.66, move: 'sway', fire: [
+        { pattern: 'ring16', every: 50, from: 'core' }, { pattern: 'aim5', every: 60, from: 0 }, { pattern: 'aim5', every: 60, from: 1, delay: 30 },
+      ] },
+      { until: 0.33, move: 'figure8', fire: [
+        { pattern: 'serpent', every: 6, from: 'core' }, { pattern: 'fan9', every: 60, from: 0 }, { pattern: 'fan9', every: 60, from: 1, delay: 30 },
+      ] },
+      { until: 0, move: 'sway', fire: [
+        { pattern: 'spiral4', every: 6, from: 'core' }, { pattern: 'bigAim', every: 30, from: 0 }, { pattern: 'bigAim', every: 30, from: 1, delay: 15 },
+      ] },
+    ],
+  },
+
+  // ---------- 9 얼음 산맥 (눈보라) ----------
+  snowfog: mid('snowfog', '눈안개 요괴', 'cloud', 'dueoksini', 780,
+    [{ pattern: 'slowRing', every: 45, from: 'core' }, { pattern: 'aim3', every: 40, from: 0 }, { pattern: 'aim3', every: 40, from: 1, delay: 20 }],
+    [{ pattern: 'ring16', every: 40, from: 'core' }, { pattern: 'aim5', every: 45, from: 0 }, { pattern: 'aim5', every: 45, from: 1, delay: 22 }]),
+  // 설인 요새 (눈덩이 대포 + 얼음 포 2)
+  yeti: {
+    id: 'yeti', name: '설인 요새', kind: 'stage', image: 'boss-9', width: 440,
+    core: artCore('boss-9', 440, 95), hp: 3200, restY: 380, time: 90,
+    parts: [0, 1, 2].map(i => ({ ...artPart('boss-9', 440, i), r: 42, hp: 280 })),
+    phases: [
+      { until: 0.66, move: 'sway', fire: [
+        { pattern: 'bigAim', every: 40, from: 0 }, { pattern: 'aim5', every: 55, from: 1 }, { pattern: 'aim5', every: 55, from: 2, delay: 27 },
+      ] },
+      { until: 0.33, move: 'still', fire: [
+        { pattern: 'slowRing', every: 30, from: 'core' }, { pattern: 'fan9', every: 50, from: 1 }, { pattern: 'fan9', every: 50, from: 2, delay: 25 },
+      ] },
+      { until: 0, move: 'figure8', fire: [
+        { pattern: 'spiral4', every: 6, from: 'core' }, { pattern: 'ring16', every: 45, from: 0 },
+      ] },
+    ],
+  },
+
+  // ---------- 10 폐허 성곽 (벽 뒤에서 쏘는 포대) ----------
+  riders: mid('riders', '망령 기병', 'fort', 'reaper', 840,
+    [{ pattern: 'aim5', every: 45, from: 0 }, { pattern: 'aim5', every: 45, from: 1, delay: 22 }, { pattern: 'slowRing', every: 70, from: 'core' }],
+    [{ pattern: 'medMix', every: 30, from: 'core' }, { pattern: 'bigAim', every: 35, from: 0 }, { pattern: 'bigAim', every: 35, from: 1, delay: 17 }]),
+  // 해골 장군 비행탑 (위 대포 + 뼈 대포 2)
+  skeleton: {
+    id: 'skeleton', name: '해골 장군 비행탑', kind: 'stage', image: 'boss-10', width: 430,
+    core: artCore('boss-10', 430, 90), hp: 3500, restY: 380, time: 90,
+    parts: [0, 1, 2].map(i => ({ ...artPart('boss-10', 430, i), r: 42, hp: 300 })),
+    phases: [
+      { until: 0.66, move: 'sway', fire: [
+        { pattern: 'ring16', every: 50, from: 0 }, { pattern: 'aim5', every: 50, from: 1 }, { pattern: 'aim5', every: 50, from: 2, delay: 25 },
+      ] },
+      { until: 0.33, move: 'figure8', fire: [
+        { pattern: 'serpent', every: 5, from: 'core' }, { pattern: 'bigAim', every: 34, from: 1 }, { pattern: 'bigAim', every: 34, from: 2, delay: 17 },
+      ] },
+      { until: 0, move: 'sway', fire: [
+        { pattern: 'medMix', every: 22, from: 'core' }, { pattern: 'fan9', every: 45, from: 0 },
+      ] },
+    ],
+  },
+
+  // ---------- 11 불타는 화산 (아래에서 솟는 불기둥) ----------
+  lavaship: mid('lavaship', '용암 전함', 'airship', 'bigDokkaebi', 900,
+    [{ pattern: 'pillar', every: 90, from: 'core' }, { pattern: 'aim5', every: 45, from: 0 }, { pattern: 'aim5', every: 45, from: 1, delay: 22 }],
+    [{ pattern: 'pillar2', every: 90, from: 'core' }, { pattern: 'ring16', every: 45, from: 'core', delay: 22 }, { pattern: 'bigAim', every: 40, from: 0 }]),
+  // 화산 거인 (분화구 + 용암 팔 2)
+  volcano: {
+    id: 'volcano', name: '화산 거인', kind: 'stage', image: 'boss-11', width: 460,
+    core: artCore('boss-11', 460, 95), hp: 3800, restY: 360, time: 90,
+    parts: [0, 1, 2].map(i => ({ ...artPart('boss-11', 460, i), r: 44, hp: 320 })),
+    phases: [
+      { until: 0.66, move: 'sway', fire: [
+        { pattern: 'pillar', every: 80, from: 'core' }, { pattern: 'ring16', every: 50, from: 0 }, { pattern: 'aim5', every: 50, from: 1 }, { pattern: 'aim5', every: 50, from: 2, delay: 25 },
+      ] },
+      { until: 0.33, move: 'still', fire: [
+        { pattern: 'pillar2', every: 70, from: 'core' }, { pattern: 'spiral4', every: 7, from: 'core' },
+      ] },
+      { until: 0, move: 'figure8', fire: [
+        { pattern: 'pillar', every: 50, from: 'core' }, { pattern: 'fan9', every: 40, from: 1 }, { pattern: 'fan9', every: 40, from: 2, delay: 20 }, { pattern: 'bigAim', every: 30, from: 0 },
+      ] },
+    ],
+  },
+
+  // ---------- 12 요괴 하늘성 (이전 보스 패턴 일부) ----------
+  generals: mid('generals', '두 장군', 'fort', 'yeomra', 1000,
+    [{ pattern: 'clawFan', every: 45, from: 0 }, { pattern: 'petalFan', every: 45, from: 1, delay: 22 }, { pattern: 'ring16', every: 60, from: 'core' }],
+    [{ pattern: 'serpent', every: 6, from: 'core' }, { pattern: 'aim5', every: 40, from: 0 }, { pattern: 'aim5', every: 40, from: 1, delay: 20 }]),
+  // 요괴왕 모함: 4 페이즈, 페이즈마다 앞 스테이지 보스의 패턴을 섞는다
+  king: {
+    id: 'king', name: '요괴왕 모함', kind: 'stage', image: 'boss-12', width: 470,
+    core: artCore('boss-12', 470, 100), hp: 5600, restY: 370, time: 90,
+    parts: [0, 1, 2, 3].map(i => ({ ...artPart('boss-12', 470, i), r: 40, hp: 300 })),
+    phases: [
+      // 1: 게 전함 · 해룡 항모
+      { until: 0.75, move: 'sway', fire: [
+        { pattern: 'clawFan', every: 50, from: 2 }, { pattern: 'clawFan', every: 50, from: 3, delay: 25 }, { pattern: 'rise8', every: 40, from: 0 }, { pattern: 'rise8', every: 40, from: 1, delay: 20 },
+      ] },
+      // 2: 구미호 · 뇌신
+      { until: 0.5, move: 'figure8', fire: [
+        { pattern: 'petal', every: 22, from: 'core' }, { pattern: 'thunder', every: 90, from: 'core' }, { pattern: 'aim5', every: 50, from: 0 }, { pattern: 'aim5', every: 50, from: 1, delay: 25 },
+      ] },
+      // 3: 이무기 · 화산 거인
+      { until: 0.25, move: 'sway', fire: [
+        { pattern: 'serpent', every: 5, from: 'core' }, { pattern: 'pillar', every: 70, from: 'core' }, { pattern: 'bigAim', every: 36, from: 2 }, { pattern: 'bigAim', every: 36, from: 3, delay: 18 },
+      ] },
+      // 4: 요괴왕 본모습 — 모두 섞어서
+      { until: 0, move: 'figure8', fire: [
+        { pattern: 'spiral4', every: 5, from: 'core' }, { pattern: 'petalFan', every: 40, from: 'core', delay: 20 }, { pattern: 'thunder2', every: 100, from: 'core' },
+        { pattern: 'fan9', every: 45, from: 0 }, { pattern: 'fan9', every: 45, from: 1, delay: 22 },
+      ] },
+    ],
+  },
 };
+
+/** 아케이드 스테이지 보스 순서 (보스 러시) */
+export const RUSH = ['crab', 'carrier', 'tanuki', 'gumiho', 'raijin', 'imugi', 'sandworm', 'tornado', 'yeti', 'skeleton', 'volcano', 'king'];

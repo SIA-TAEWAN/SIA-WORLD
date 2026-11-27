@@ -2,15 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DIFFICULTY, NO_INPUT, Sim, type Input } from '../src/game/sim';
 import { SHIPS, SHIP_ORDER } from '../src/data/ships';
 import { check, generate, THEMES } from '../scripts/stages';
-import type { StageDef, WaveScript } from '../src/data/waves';
-import S1 from '../src/data/stages/stage1.json';
-import S2 from '../src/data/stages/stage2.json';
-import S3 from '../src/data/stages/stage3.json';
-import S4 from '../src/data/stages/stage4.json';
-import S5 from '../src/data/stages/stage5.json';
-import S6 from '../src/data/stages/stage6.json';
-
-const STAGES = [S1, S2, S3, S4, S5, S6] as unknown as StageDef[];
+import type { WaveScript } from '../src/data/waves';
+import { STAGES } from '../src/data/stages';
 const EMPTY: WaveScript = { length: 9999, waves: [], loop: true };
 const run = (s: Sim, n: number, inp: Input = NO_INPUT) => { for (let i = 0; i < n; i++) s.step(inp); };
 
@@ -85,7 +78,7 @@ describe('M3: 난이도', () => {
   });
 });
 
-describe('M3: 스테이지 1~6', () => {
+describe('스테이지 1~12', () => {
   it('스테이지 JSON 검사 통과 (패턴·보스 이름, 시간, 위치)', () => {
     for (const st of STAGES) expect(check(st), `stage${st.id}`).toEqual([]);
   });
@@ -95,7 +88,7 @@ describe('M3: 스테이지 1~6', () => {
   });
 
   for (const st of STAGES) {
-    it(`${st.id}. ${st.name}: 중간 보스 → 보스 → 클리어, 2.5~4분`, () => {
+    it(`${st.id}. ${st.name}: 중간 보스 → 보스 → 클리어, 최대 5분`, () => {
       const s = new Sim({ seed: 9, ship: 'dragon', waves: st, stage: st.id });
       s.iframes = 1e12; s.power = 4;
       const seen: string[] = [];
@@ -105,7 +98,8 @@ describe('M3: 스테이지 1~6', () => {
       }
       expect(seen).toEqual(['mid', 'boss', 'clear']);
       expect(s.frame / 60).toBeGreaterThan(140);
-      expect(s.frame / 60).toBeLessThan(280);
+      // 보스를 못 잡는 봇이라 보스가 도망갈 때까지 기다린 최대 시간
+      expect(s.frame / 60).toBeLessThan(300);
     });
   }
 });

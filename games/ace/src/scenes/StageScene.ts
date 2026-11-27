@@ -5,7 +5,7 @@ import Phaser from 'phaser';
 import { BOLT_WARN, CAP, CHARGE_MAX, H, NO_INPUT, SCROLL, Sim, W, type Input, type SimEvent, type SimOptions } from '../game/sim';
 import { artFiles, makeArt, makeSea, makeSky, type BossArt } from './art';
 import { SHIPS } from '../data/ships';
-import { BOSSES } from '../data/bosses';
+import { BOSSES, RUSH } from '../data/bosses';
 import type { StageDef, WaveScript } from '../data/waves';
 import { FONT, COLOR, css } from '../theme';
 
@@ -81,7 +81,8 @@ export class StageScene extends Phaser.Scene {
   get options() { return this.simOpts; }
 
   private bossArts(): BossArt[] {
-    const ids = [this.stage.midboss?.id, this.stage.boss].filter((v): v is string => !!v && !!BOSSES[v]);
+    // 보스 러시 · 끝없는 모드는 스테이지 보스 12마리를 모두 아틀라스에 넣는다
+    const ids = this.stage.rush || this.stage.endless ? RUSH : [this.stage.midboss?.id, this.stage.boss].filter((v): v is string => !!v && !!BOSSES[v]);
     return ids.map(id => { const b = BOSSES[id]; return { key: bossKey(id), name: b.image, width: b.width, hull: b.hull, rider: b.rider }; });
   }
 
@@ -187,6 +188,14 @@ export class StageScene extends Phaser.Scene {
   }
 
   bomb() { if (!this.paused) this.bombReq = true; }
+
+  /** 아케이드 이어하기: 그 자리에서 다시 (점수 0) */
+  continueRun() {
+    this.sim.continueRun();
+    this.ended = false;
+    this.lastHud = '';
+    this.setPaused(false);
+  }
 
   setPaused(p: boolean) {
     this.paused = p;
@@ -381,8 +390,8 @@ export class StageScene extends Phaser.Scene {
       const fr = e.kind === 'ground' ? (seaSide ? 'groundSea' : 'ground') : e.kind;
       if (im.frame.name !== fr) im.setFrame(fr).setDepth(e.kind === 'ground' ? 1 : 3);
       // 물·안개에서 솟는 적: 나타날 때·가라앉을 때 흐리게
-      const a = e.path === 'rise' ? Math.min(1, e.t / 36, Math.max(0, (366 - e.t) / 36)) : 1;
-      im.setVisible(true).setPosition(e.x, e.y).setRotation(e.kind === 'small' ? Math.sin(e.t / 8) * 0.12 : 0).setAlpha(a).setScale(e.path === 'rise' ? 0.7 + 0.3 * a : 1);
+      const a = e.path === 'rise' ? Math.min(1, e.t / 36, Math.max(0, (366 - e.t) / 36)) : e.path === 'popup' && s.hidden(e) ? 0.4 : 1;
+      im.setVisible(true).setPosition(e.x, e.y).setRotation(e.kind === 'small' ? Math.sin(e.t / 8) * 0.12 : 0).setAlpha(a).setScale(e.path === 'rise' ? 0.7 + 0.3 * a : e.path === 'popup' ? 0.8 + 0.2 * a : 1);
       if (e.flash > 0) im.setTintFill(0xffffff); else if (im.isTinted) im.clearTint();
     }
     for (let i = 0; i < CAP.item; i++) {
@@ -405,7 +414,10 @@ export class StageScene extends Phaser.Scene {
       if (!b.alive) { if (im.visible) im.setVisible(false); continue; }
       const hit = b.t > BOLT_WARN, fr = hit ? 'boltHit' : 'boltWarn';
       if (im.frame.name !== fr) im.setFrame(fr);
-      im.setVisible(true).setPosition(b.x, 0).setDisplaySize(b.w * 2, H).setAlpha(hit ? 1 : 0.5 + ((b.t >> 3) & 1) * 0.5);
+      // 불기둥(화산)은 주황으로 아래에서 솟는다 · 번개는 위에서 한 번에
+      const rise = b.fire && hit ? Math.min(1, (b.t - BOLT_WARN) / 6) : 1;
+      im.setVisible(true).setPosition(b.x, H * (1 - rise)).setDisplaySize(b.w * 2, H * rise).setAlpha(hit ? 1 : 0.5 + ((b.t >> 3) & 1) * 0.5);
+      if (b.fire) im.setTint(0xff9a2e); else if (im.isTinted) im.clearTint();
     }
     // 보스: 그림 한 장 + 부서진 부위 자리
     const b = s.boss;

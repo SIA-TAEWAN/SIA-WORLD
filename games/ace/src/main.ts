@@ -1,22 +1,18 @@
 // 시아에이스: 타이틀 → 기체·난이도 고르기 → 스테이지 → 정산 → (다음 스테이지 | 타이틀).
-// M3: 기체 13종 · 스테이지 1~6 · 난이도 3단계 · 스테이지 연습. 진행은 이 기기에 저장 (M5 에서 서버 · 로그인 · 랭킹 · 시아코인).
+// 모드 4개: 아케이드(1~12 · 이어하기 1회) · 스테이지 연습 · 보스 러시 · 끝없는 모드.
+// 진행은 이 기기에 저장 (M5 에서 서버 · 로그인 · 랭킹 · 시아코인).
 // 개발용: ?all=1 (모두 열림), ?stage=n (아케이드 n 스테이지부터), ?at=초, ?power=4, ?fps=1, ?stress=1, ?canvas=1, ?proto=1
 import './style.css';
 import './menu.css';
 import Phaser from 'phaser';
 import { BONUS, DIFFICULTY, H, W, type Difficulty, type Sim, type SimEvent } from './game/sim';
 import { PROTO, type StageDef } from './data/waves';
+import { ENDLESS_STAGE, RUSH_STAGE, STAGES } from './data/stages';
 import { SHIPS, SHIP_ORDER, type ShipId } from './data/ships';
+import { RUSH } from './data/bosses';
 import { LAST_STAGE, MODES, loadProgress, recordClear, saveProgress, shipOpen } from './game/progress';
 import { StageScene, shared, type HudState } from './scenes/StageScene';
-import S1 from './data/stages/stage1.json';
-import S2 from './data/stages/stage2.json';
-import S3 from './data/stages/stage3.json';
-import S4 from './data/stages/stage4.json';
-import S5 from './data/stages/stage5.json';
-import S6 from './data/stages/stage6.json';
 
-const STAGES = [S1, S2, S3, S4, S5, S6] as unknown as StageDef[];
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
 // 시험 페이지(아티팩트)는 주소에 ?all=1 을 못 붙여서 window.ACE_ALL 로 모두 연다
@@ -24,8 +20,9 @@ const ALL = params.get('all') === '1' || (window as unknown as { ACE_ALL?: boole
 const PROTO_MODE = params.get('proto') === '1';
 const progress = loadProgress();
 
-type Mode = 'arcade' | 'practice';
-const run = { mode: 'arcade' as Mode, stage: 1 };
+type Mode = 'arcade' | 'practice' | 'rush' | 'endless';
+/** 이번 판. rankScore = 랭킹에 올릴 점수 (아케이드 이어하기 전 점수) */
+const run = { mode: 'arcade' as Mode, stage: 1, rankScore: 0, continued: false };
 
 const LOCK = '<svg class="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';
 const face = (id: string) => shared(`images/zodiac/face/${id}.png`);
@@ -39,6 +36,7 @@ app.innerHTML = `
     <div class="hud-top">
       <button class="btn iconbtn" id="pauseBtn" type="button" aria-label="멈춤">II</button>
       <span class="chip" id="stageChip"></span>
+      <span class="chip wind hidden" id="windChip"></span>
       <span class="sp"></span>
       <span class="chip score" id="score">0</span>
     </div>
@@ -56,7 +54,7 @@ app.innerHTML = `
     </div>
     <button class="bombbtn" id="bombBtn" type="button" aria-label="폭탄">💣<em id="bombs">2</em></button>
   </div>
-  <div class="fog hidden" id="fog"></div>
+  <div class="weather hidden" id="weather"></div>
   <div class="menu" id="menu"></div>
   <div class="overlay hidden" id="overlay"><div class="panel pop" id="pop"></div></div>
   <div class="toast" id="toast"></div>`;
@@ -97,13 +95,18 @@ function cutin(html: string, cls = '', ms = 1800) {
 }
 function mmss(sec: number) { const t = Math.floor(sec); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }
 function stageName(n: number) { return `${n}. ${STAGES[n - 1].name}`; }
+function runLabel() {
+  if (run.mode === 'rush') return `보스 러시 ${Math.max(1, scene?.sim?.rushIdx ?? 1)} / ${RUSH.length}`;
+  if (run.mode === 'endless') return `끝없는 모드 ${mmss((scene?.sim?.frame ?? 0) / 60)}`;
+  return stageName(run.stage);
+}
 
 // ---------------- 타이틀 ----------------
 function showTitle() {
   inGame = false;
   closePop();
   $('hud').classList.add('hidden');
-  $('fog').classList.add('hidden');
+  $('weather').className = 'weather hidden';
   scene?.setPaused(true);
   const open = SHIP_ORDER.filter(id => shipOpen(progress, id, ALL)).length;
   const mode = (ic: string, name: string, sub: string, right: string, ok: boolean, id: string, need: string) => ok
@@ -120,10 +123,10 @@ function showTitle() {
       <img class="h-foe a" src="${new URL('art/enemy-small.png', location.href).href}" alt=""><img class="h-foe b" src="${new URL('art/enemy-medium.png', location.href).href}" alt="">
     </div>
     <div class="modes">
-      <button class="mode arcade" type="button" data-mode="arcade"><span class="ic">✈️</span><span class="tx">아케이드<small>스테이지 1~${LAST_STAGE} · 목숨 ${DIFFICULTY[progress.difficulty].lives}</small></span><span class="rt">최고<b>${progress.best[progress.difficulty].toLocaleString()}</b></span></button>
-      ${mode('🎯', '스테이지 연습', '깬 스테이지를 파워 최대로', `${progress.cleared}개 열림`, ALL || MODES.practice(progress), 'practice', '스테이지 1을 깨면 열려요')}
-      ${mode('👹', '보스 러시', '', '', false, 'rush', ALL || MODES.bossRush(progress) ? 'M4 에서 열려요' : '아케이드를 한 번 끝까지 깨면 열려요')}
-      ${mode('♾️', '끝없는 모드', '', '', false, 'endless', ALL || MODES.endless(progress) ? 'M4 에서 열려요' : '스테이지 6을 깨면 열려요')}
+      <button class="mode arcade" type="button" data-mode="arcade"><span class="ic">✈️</span><span class="tx">아케이드<small>스테이지 1~${LAST_STAGE} · 이어하기 1회</small></span><span class="rt">최고<b>${progress.best[progress.difficulty].toLocaleString()}</b></span></button>
+      ${mode('🎯', '스테이지 연습', '깬 스테이지를 파워 최대로', `${ALL ? LAST_STAGE : progress.cleared}개 열림`, ALL || MODES.practice(progress), 'practice', '스테이지 1을 깨면 열려요')}
+      ${mode('👹', '보스 러시', `보스 ${RUSH.length}마리 연속 · 목숨 3`, progress.rushBest ? `최단<b>${mmss(progress.rushBest)}</b>` : '', ALL || MODES.bossRush(progress), 'rush', '아케이드를 한 번 끝까지 깨면 열려요')}
+      ${mode('♾️', '끝없는 모드', '점점 빨라지는 적 · 목숨 1', progress.endlessBest ? `최장<b>${mmss(progress.endlessBest)}</b>` : '', ALL || MODES.endless(progress), 'endless', '스테이지 6을 깨면 열려요')}
     </div>
     <div class="pills"><span class="pill">✈️ 기체 ${open} / 13</span></div>`;
   $('menu').querySelectorAll<HTMLButtonElement>('.mode').forEach(b => b.addEventListener('click', () => {
@@ -139,10 +142,11 @@ function showSelect() {
   $('menu').className = 'menu select';
   let pick: ShipId = shipOpen(progress, progress.ship, ALL) ? progress.ship : 'dragon';
   let diff: Difficulty = progress.difficulty;
+  const title = { arcade: '기체 고르기', practice: '연습 기체', rush: '보스 러시', endless: '끝없는 모드' }[run.mode];
   const render = () => {
     const s = SHIPS[pick];
     $('menu').innerHTML = `
-      <div class="topbar"><button class="back" id="backBtn" type="button">← 뒤로</button><span class="sp"></span><span class="ttl">${run.mode === 'practice' ? '연습 기체' : '기체 고르기'}</span><span class="sp"></span></div>
+      <div class="topbar"><button class="back" id="backBtn" type="button">← 뒤로</button><span class="sp"></span><span class="ttl">${title}</span><span class="sp"></span></div>
       <div class="panel detail">
         <div class="top"><i class="cloud" style="left:5%;top:62%;width:22%;height:14%"></i><img class="d-ship" src="${shipArt(pick)}" alt=""><img class="d-pilot" src="${full(pick)}" alt=""></div>
         <div class="info">
@@ -169,7 +173,10 @@ function showSelect() {
     $('menu').querySelectorAll<HTMLButtonElement>('.seg button').forEach(b => b.addEventListener('click', () => { diff = b.dataset.d as Difficulty; render(); }));
     $('goBtn').addEventListener('click', () => {
       progress.ship = pick; progress.difficulty = diff; saveProgress(progress);
-      if (run.mode === 'practice') showPractice(); else startStage(Number(params.get('stage')) || 1, true);
+      if (run.mode === 'practice') showPractice();
+      else if (run.mode === 'rush') startScript(RUSH_STAGE, 3);
+      else if (run.mode === 'endless') startScript(ENDLESS_STAGE, 1);
+      else { run.rankScore = 0; run.continued = false; startStage(Number(params.get('stage')) || 1, true); }
     });
   };
   render();
@@ -184,7 +191,7 @@ function showPractice() {
     <div class="pills"><span class="pill">파워 최대로 시작</span><span class="pill">기록만 남아요</span></div>
     <div class="stgrid">${STAGES.map((st, i) => {
       const n = i + 1, ok = n <= open, best = progress.practice[n];
-      const bg = st.sea === 'full' ? '' : st.sky ? '' : `style="background-image:url(${floorArt(st.floor)})"`;
+      const bg = st.sea === 'full' || st.sky ? '' : `style="background-image:url(${floorArt(st.floor)})"`;
       return `<button type="button" class="st ${ok ? 'done' : 'lk'}${st.sea === 'full' ? ' sea' : ''}${st.sky ? ' sky' : ''}" data-n="${n}" ${bg}><span class="nm"><b>${n}</b>${st.name}</span><span class="rec">${ok ? (best ? '최고 ' + best.toLocaleString() : '기록 없음') : '아케이드에서 깨면 열려요'}</span></button>`;
     }).join('')}</div>`;
   $('backBtn').addEventListener('click', showSelect);
@@ -196,29 +203,48 @@ function showPractice() {
 }
 
 // ---------------- 게임 ----------------
-/** fresh = 새 판 (아케이드 처음 · 연습). 아니면 앞 스테이지에서 이어 간다 */
-function startStage(n: number, fresh: boolean, carry?: ReturnType<Sim['carry']>) {
-  run.stage = n;
-  const st = STAGES[n - 1];
+function enterGame(st: StageDef) {
   closePop();
   $('menu').className = 'menu hidden';
   $('hud').classList.remove('hidden');
   $('bossbar').classList.add('hidden');
-  $('fog').classList.toggle('hidden', !st.fog);
-  $('stageChip').textContent = stageName(n);
+  $('weather').className = 'weather' + (st.fog ? ' fog' : st.snow ? ' snow' : st.lava ? ' lava' : ' hidden');
+  $('windChip').classList.toggle('hidden', !st.wind);
   $<HTMLImageElement>('lifeFace').src = face(progress.ship);
   inGame = true;
+}
+
+/** 아케이드 · 연습 스테이지. fresh = 새 판, 아니면 앞 스테이지에서 이어 간다 */
+function startStage(n: number, fresh: boolean, carry?: ReturnType<Sim['carry']>) {
+  run.stage = n;
+  const st = STAGES[n - 1];
+  enterGame(st);
+  $('stageChip').textContent = stageName(n);
   scene.restartWith({
     ship: progress.ship, difficulty: progress.difficulty, waves: PROTO_MODE ? PROTO : st, stage: n,
-    carry: fresh ? undefined : carry, stress,
+    carry: fresh ? undefined : carry, lives: undefined, stress,
   }, false);
   readyThen = () => {
     if (run.mode === 'practice' && fresh) scene.sim.power = 4;
+    if (run.continued) scene.sim.continued = true;
     const at = Number(params.get('at')), pw = Number(params.get('power'));
     if (at > 0) scene.sim.skipTo(at);
     if (pw >= 1 && pw <= 4) scene.sim.power = pw;
     scene.setPaused(false);
     cutin(`<b>스테이지 ${n}</b><small>${st.name}</small>`, 'stage', 2200);
+  };
+}
+
+/** 보스 러시 · 끝없는 모드 */
+function startScript(st: StageDef, lives: number) {
+  enterGame(st);
+  $('stageChip').textContent = runLabel();
+  scene.restartWith({ ship: progress.ship, difficulty: progress.difficulty, waves: st, stage: 1, carry: undefined, lives, stress }, false);
+  readyThen = () => {
+    const pw = Number(params.get('power'));
+    if (pw >= 1 && pw <= 4) scene.sim.power = pw;
+    scene.setPaused(false);
+    cutin(`<b>${st.name}</b><small>${run.mode === 'rush' ? `보스 ${RUSH.length}마리를 가장 빨리` : '얼마나 버틸 수 있을까?'}</small>`, 'stage', 2200);
   };
 }
 let readyThen: (() => void) | null = null;
@@ -228,7 +254,7 @@ function pause() {
   scene.setPaused(true);
   const s = scene.hudState();
   popup(`<h3>잠깐 멈춤</h3>
-    <div class="chap">${stageName(run.stage)} · ${mmss(s.seconds)} · ${s.score.toLocaleString()}점</div>${intro}
+    <div class="chap">${runLabel()} · ${mmss(s.seconds)} · ${s.score.toLocaleString()}점</div>${intro}
     <div class="tools">
       <div class="lbl">이동 감도</div>
       <div class="seg four" id="sens">${[0.8, 1, 1.25, 1.5].map(v => `<button type="button" data-v="${v}" class="${v === scene.sens ? 'on' : ''}">${v}×</button>`).join('')}</div>
@@ -236,10 +262,10 @@ function pause() {
     </div>
     <div class="col">
       <button class="btn primary" id="resume" type="button">계속하기 ▶</button>
-      <div class="row"><button class="btn" id="restart" type="button">이 스테이지 처음부터</button><button class="btn" id="quit" type="button">그만하기</button></div>
+      <div class="row">${run.mode === 'arcade' || run.mode === 'practice' ? '<button class="btn" id="restart" type="button">이 스테이지 처음부터</button>' : ''}<button class="btn" id="quit" type="button">그만하기</button></div>
     </div>`, el => {
     el.querySelector('#resume')!.addEventListener('click', resume);
-    el.querySelector('#restart')!.addEventListener('click', () => { closePop(); scene.newRun({ stress }); if (run.mode === 'practice') scene.sim.power = 4; scene.setPaused(false); });
+    el.querySelector('#restart')?.addEventListener('click', () => { closePop(); scene.newRun({ stress }); if (run.mode === 'practice') scene.sim.power = 4; scene.setPaused(false); });
     el.querySelector('#quit')!.addEventListener('click', showTitle);
     el.querySelectorAll<HTMLButtonElement>('#sens button').forEach(b => b.addEventListener('click', () => {
       scene.sens = +b.dataset.v!;
@@ -256,31 +282,68 @@ function pause() {
 }
 function resume() { closePop(); scene.setPaused(false); }
 
-function recordBest(score: number) {
-  if (run.mode === 'arcade') progress.best[progress.difficulty] = Math.max(progress.best[progress.difficulty], score);
-  else progress.practice[run.stage] = Math.max(progress.practice[run.stage] ?? 0, score);
+/** 아케이드 최고 점수: 이어하기를 썼으면 이어하기 전 점수만 */
+function recordArcade(score: number) {
+  const s = run.continued ? run.rankScore : score;
+  progress.best[progress.difficulty] = Math.max(progress.best[progress.difficulty], s);
   saveProgress(progress);
 }
 
 function over(s: HudState) {
-  recordBest(s.score);
+  const sim = scene.sim;
+  if (run.mode === 'endless') {
+    const sec = Math.floor(sim.frame / 60), best = sec > progress.endlessBest;
+    if (best) { progress.endlessBest = sec; saveProgress(progress); }
+    popup(`<h3>${best ? '새 기록!' : '끝났어요'}</h3>
+      <div class="chap">끝없는 모드 · 격추 ${s.kills} · ${s.score.toLocaleString()}점</div>
+      <div class="total">${mmss(sec)}</div>
+      <div class="note">최장 ${mmss(progress.endlessBest)} 버팀</div>
+      <div class="col"><button class="btn primary" id="again" type="button">다시 하기 ▶</button><button class="btn" id="toTitle" type="button">타이틀로</button></div>`, el => {
+      el.querySelector('#again')!.addEventListener('click', () => startScript(ENDLESS_STAGE, 1));
+      el.querySelector('#toTitle')!.addEventListener('click', showTitle);
+    });
+    return;
+  }
+  if (run.mode === 'rush') {
+    popup(`<h3>격추당했어요</h3>
+      <div class="chap">보스 러시 · ${Math.max(0, sim.rushIdx - 1)} / ${RUSH.length} 격파 · ${mmss(s.seconds)}</div>
+      <div class="total">${s.score.toLocaleString()}</div>
+      <div class="note">보스 러시 기록은 끝까지 깼을 때 시간으로 남아요</div>
+      <div class="col"><button class="btn primary" id="again" type="button">다시 하기 ▶</button><button class="btn" id="toTitle" type="button">타이틀로</button></div>`, el => {
+      el.querySelector('#again')!.addEventListener('click', () => startScript(RUSH_STAGE, 3));
+      el.querySelector('#toTitle')!.addEventListener('click', showTitle);
+    });
+    return;
+  }
+  if (run.mode === 'practice') {
+    progress.practice[run.stage] = Math.max(progress.practice[run.stage] ?? 0, s.score);
+    saveProgress(progress);
+  }
+  // 아케이드: 이어하기 1회 (점수는 0부터, 랭킹에는 이어하기 전 점수만)
+  const canContinue = run.mode === 'arcade' && !run.continued;
+  if (run.mode === 'arcade' && !canContinue) recordArcade(s.score);
   popup(`<h3>격추당했어요</h3>
     <div class="chap">${stageName(run.stage)} · ${mmss(s.seconds)} · 격추 ${s.kills}</div>
     <div class="total">${s.score.toLocaleString()}</div>
-    <div class="note">${run.mode === 'arcade' ? `${DIFFICULTY[progress.difficulty].label} 최고 ${progress.best[progress.difficulty].toLocaleString()} · 이어하기는 M4 에서 붙어요` : '연습 기록이 남았어요'}</div>
-    <div class="col"><button class="btn primary" id="again" type="button">${run.mode === 'arcade' ? '처음부터 다시 ▶' : '다시 하기 ▶'}</button><button class="btn" id="toTitle" type="button">타이틀로</button></div>`, el => {
-    el.querySelector('#again')!.addEventListener('click', () => startStage(run.mode === 'arcade' ? 1 : run.stage, true));
-    el.querySelector('#toTitle')!.addEventListener('click', showTitle);
+    <div class="note">${canContinue ? '이어하면 이 자리에서 다시 시작해요. 점수는 0부터, 랭킹에는 지금 점수가 남아요' : run.mode === 'arcade' ? `${DIFFICULTY[progress.difficulty].label} 최고 ${progress.best[progress.difficulty].toLocaleString()}` : '연습 기록이 남았어요'}</div>
+    <div class="col">${canContinue ? '<button class="btn primary" id="cont" type="button">이어하기 (1회) ▶</button><button class="btn" id="giveUp" type="button">그만하기</button>'
+      : `<button class="btn primary" id="again" type="button">${run.mode === 'arcade' ? '처음부터 다시 ▶' : '다시 하기 ▶'}</button><button class="btn" id="toTitle" type="button">타이틀로</button>`}</div>`, el => {
+    el.querySelector('#cont')?.addEventListener('click', () => {
+      run.rankScore = s.score; run.continued = true;
+      recordArcade(s.score);
+      closePop();
+      scene.continueRun();
+      toast('이어하기! 점수는 0부터');
+    });
+    el.querySelector('#giveUp')?.addEventListener('click', () => { recordArcade(s.score); showTitle(); });
+    el.querySelector('#again')?.addEventListener('click', () => { run.rankScore = 0; run.continued = false; startStage(run.mode === 'arcade' ? 1 : run.stage, true); });
+    el.querySelector('#toTitle')?.addEventListener('click', showTitle);
   });
 }
 
-/** 스테이지 정산: 줄이 하나씩 찍히고 합계가 올라간다 */
+/** 정산: 줄이 하나씩 찍히고 합계가 올라간다 */
 function clear(sim: Sim) {
   const t = sim.tally!;
-  const n = run.stage, arcade = run.mode === 'arcade';
-  const unlocked = arcade && !ALL ? recordClear(progress, n) : null;
-  const last = n >= LAST_STAGE;
-  if (!arcade || last) recordBest(t.total); else saveProgress(progress);
   const rows: [string, string, boolean][] = [
     [`격추 <small>${t.kills}기</small>`, '', true],
     ['보스 격파', t.bossScore ? t.bossScore.toLocaleString() : '도망감', t.bossScore > 0],
@@ -289,26 +352,51 @@ function clear(sim: Sim) {
     [`남은 폭탄 ${t.bombs} × ${BONUS.bomb.toLocaleString()}`, t.bombBonus.toLocaleString(), t.bombBonus > 0],
     ['노미스 보너스', t.noMiss ? t.noMissBonus.toLocaleString() : '—', t.noMiss],
   ];
-  const u = unlocked ? SHIPS[unlocked] : null;
-  popup(`<h3>${arcade && last ? '모두 깼어요!' : '스테이지 클리어!'}</h3>
-    <div class="chap">${stageName(n)} · ${mmss(t.frames / 60)}</div>
-    <div class="tally">${rows.map(([a, b, ok], i) => `<div class="${ok ? '' : 'miss'}" style="animation-delay:${0.15 + i * 0.18}s"><span>${a}</span><b>${b}</b></div>`).join('')}</div>
-    <div class="total" id="total">0</div>
-    ${u ? `<div class="unlock"><img src="${face(u.id)}" alt=""><div>${u.name}가 열렸어요!<small>조종사 ${u.pilot} · ${u.shotText}</small></div><span class="tag">NEW</span></div>` : ''}
-    ${arcade && last ? `<div class="note">스테이지 7~12 · 이어하기 · 보스 러시 · 끝없는 모드는 M4 에서 붙어요</div>` : ''}
-    <div class="col">${arcade && !last
-      ? `<button class="btn primary" id="next" type="button">다음 스테이지 ▶</button><button class="btn" id="toTitle" type="button">그만하기</button>`
-      : `<button class="btn primary" id="again" type="button">${arcade ? '타이틀로 ▶' : '다시 하기 ▶'}</button>${arcade ? '' : '<button class="btn" id="toTitle" type="button">연습 지도로</button>'}`}</div>`, el => {
-    el.querySelector('#next')?.addEventListener('click', () => startStage(n + 1, false, sim.carry()));
-    el.querySelector('#again')?.addEventListener('click', () => (arcade ? showTitle() : startStage(n, true)));
-    el.querySelector('#toTitle')?.addEventListener('click', () => (arcade ? showTitle() : (showTitle(), run.mode = 'practice', showPractice())));
-    const total = el.querySelector('#total')!, start = performance.now(), dur = 1400, delay = 0.15 + rows.length * 0.18;
+  const tally = `<div class="tally">${rows.map(([a, b, ok], i) => `<div class="${ok ? '' : 'miss'}" style="animation-delay:${0.15 + i * 0.18}s"><span>${a}</span><b>${b}</b></div>`).join('')}</div>`;
+  const countUp = (el: HTMLElement, value: number, fmt: (v: number) => string) => {
+    const total = el.querySelector('#total')!, start = performance.now(), delay = 0.15 + rows.length * 0.18;
     const tick = (now: number) => {
-      const k = Math.min(1, Math.max(0, (now - start) / 1000 - delay) / (dur / 1000));
-      total.textContent = Math.round(t.total * (1 - (1 - k) ** 3)).toLocaleString();
+      const k = Math.min(1, Math.max(0, (now - start) / 1000 - delay) / 1.4);
+      total.textContent = fmt(Math.round(value * (1 - (1 - k) ** 3)));
       if (k < 1 && el.isConnected) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  };
+
+  if (run.mode === 'rush') {
+    const sec = Math.round(t.frames / 60), best = !progress.rushBest || sec < progress.rushBest;
+    if (best) { progress.rushBest = sec; saveProgress(progress); }
+    popup(`<h3>보스 러시 완주!</h3>
+      <div class="chap">보스 ${RUSH.length}마리 · ${t.total.toLocaleString()}점</div>${tally}
+      <div class="total" id="total">0:00</div>
+      <div class="note">${best ? '새 최단 기록!' : '최단 ' + mmss(progress.rushBest)}</div>
+      <div class="col"><button class="btn primary" id="toTitle" type="button">타이틀로 ▶</button></div>`, el => {
+      el.querySelector('#toTitle')!.addEventListener('click', showTitle);
+      countUp(el, sec, mmss);
+    });
+    return;
+  }
+
+  const n = run.stage, arcade = run.mode === 'arcade';
+  const unlocked = arcade && !ALL ? recordClear(progress, n) : null;
+  const last = n >= LAST_STAGE;
+  if (arcade && last) recordArcade(t.total);
+  else if (!arcade) progress.practice[n] = Math.max(progress.practice[n] ?? 0, t.total);
+  saveProgress(progress);
+  const u = unlocked ? SHIPS[unlocked] : null;
+  popup(`<h3>${arcade && last ? '요괴왕을 물리쳤어요!' : '스테이지 클리어!'}</h3>
+    <div class="chap">${stageName(n)} · ${mmss(t.frames / 60)}</div>${tally}
+    <div class="total" id="total">0</div>
+    ${u ? `<div class="unlock"><img src="${face(u.id)}" alt=""><div>${u.name}가 열렸어요!<small>조종사 ${u.pilot} · ${u.shotText}</small></div><span class="tag">NEW</span></div>` : ''}
+    ${arcade && last ? `<div class="note">${run.continued ? `이어하기 전 점수 ${run.rankScore.toLocaleString()}점이 기록돼요` : '보스 러시가 열렸어요!'}</div>` : ''}
+    <div class="col">${arcade && !last
+      ? `<button class="btn primary" id="next" type="button">다음 스테이지 ▶</button><button class="btn" id="toTitle" type="button">그만하기</button>`
+      : `<button class="btn primary" id="again" type="button">${arcade ? '타이틀로 ▶' : '다시 하기 ▶'}</button>${arcade ? '' : '<button class="btn" id="toMap" type="button">연습 지도로</button>'}`}</div>`, el => {
+    el.querySelector('#next')?.addEventListener('click', () => startStage(n + 1, false, sim.carry()));
+    el.querySelector('#again')?.addEventListener('click', () => (arcade ? showTitle() : startStage(n, true)));
+    el.querySelector('#toTitle')?.addEventListener('click', () => { recordArcade(sim.score); showTitle(); });
+    el.querySelector('#toMap')?.addEventListener('click', () => { showTitle(); run.mode = 'practice'; showPractice(); });
+    countUp(el, t.total, v => v.toLocaleString());
   });
 }
 
@@ -336,7 +424,10 @@ function hud(s: HudState) {
 function onEvent(e: SimEvent) {
   switch (e.t) {
     case 'extend': toast('목숨 +1!'); break;
-    case 'bossIn': cutin(`<small>${e.mid ? '중간 보스' : '경고!'}</small><b>${e.name}</b>`, e.mid ? '' : 'warn', 2200); break;
+    case 'bossIn':
+      if (run.mode === 'rush') $('stageChip').textContent = runLabel();
+      cutin(`<small>${e.mid ? '중간 보스' : run.mode === 'rush' ? `보스 ${scene.sim.rushIdx} / ${RUSH.length}` : '경고!'}</small><b>${e.name}</b>`, e.mid ? '' : 'warn', 2200);
+      break;
     case 'flee': cutin(`<b>${e.mid ? '도망갔어요' : '보스가 도망갔어요'}</b><small>제한 시간이 지났어요</small>`); break;
     case 'bossDown': if (!e.mid) cutin('<b>격파!</b>', 'win', 1600); break;
     case 'bomb': if (e.kind === 'freeze') cutin('<b>정지!</b>', 'stage', 1200); break;
@@ -374,7 +465,14 @@ async function boot() {
   // 앱이 뒤로 가면 자동으로 멈춤
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   window.addEventListener('blur', pause);
-  setInterval(() => { if (showFps) $('fps').textContent = `${Math.round(game.loop.actualFps)}fps · 탄 ${scene.sim?.ebCount ?? 0}`; }, 500);
+  setInterval(() => {
+    if (showFps) $('fps').textContent = `${Math.round(game.loop.actualFps)}fps · 탄 ${scene.sim?.ebCount ?? 0}`;
+    if (!inGame || !scene.sim) return;
+    if (run.mode === 'endless') $('stageChip').textContent = runLabel();
+    // 바람 고원: 지금 바람 방향
+    const w = scene.sim.wind;
+    if (scene.stage.wind) $('windChip').textContent = Math.abs(w) < 0.4 ? '🍃 잔잔' : w > 0 ? '🍃 바람 →' : '← 바람 🍃';
+  }, 500);
   $('fps').classList.toggle('hidden', !showFps);
 }
 

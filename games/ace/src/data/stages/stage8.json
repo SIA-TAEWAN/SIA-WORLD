@@ -1,0 +1,87 @@
+{
+  "id": 8,
+  "name": "바람 고원",
+  "animal": "sheep",
+  "floor": "floor-r02",
+  "ground": "castle",
+  "wind": 3,
+  "bulletSpeed": 1.09,
+  "length": 128,
+  "midboss": {
+    "at": 52,
+    "id": "windmill"
+  },
+  "boss": "tornado",
+  "waves": [
+    { "at": 2, "kind": "small", "path": "swoopL", "x": 0.34476253399625423, "count": 6, "gap": 13
+    },
+    { "at": 5.6, "kind": "ground", "path": "ground", "x": 0.5076280588051304, "count": 1, "dx": 430, "fire": "aim1", "fireEvery": 77
+    },
+    { "at": 8.6, "kind": "small", "path": "swoopL", "x": 0.5633694832213223, "count": 8, "gap": 12, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 12.6, "kind": "medium", "path": "hover", "x": 0.525178988231346, "fire": "aim5", "fireEvery": 7
+    },
+    { "at": 15.9, "kind": "medium", "path": "hover", "x": 0.5541262506740168, "fire": "aim5", "fireEvery": 7
+    },
+    { "at": 19.4, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 23.4, "kind": "small", "path": "swoopL", "x": 0.4716421503107995, "count": 6, "gap": 11, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 26.4, "kind": "small", "path": "swoopL", "x": 0.26780151329003277, "count": 5, "gap": 12, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 29.5, "kind": "medium", "path": "hover", "x": 0.6032949915388599, "fire": "aim5", "fireEvery": 7
+    },
+    { "at": 32.2, "kind": "carrier", "path": "cross", "x": 1, "drop": "P"
+    },
+    { "at": 35.8, "kind": "small", "path": "swoopR", "x": 0.7011644770856946, "count": 7, "gap": 12, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 38.8, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 41.7, "kind": "ground", "path": "ground", "x": 0.40217709359712894, "count": 1, "dx": 430, "fire": "aim3", "fireEvery": 77
+    },
+    { "at": 44.8, "kind": "small", "path": "swoopR", "x": 0.40592840551398696, "count": 7, "gap": 12, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 47.9, "kind": "small", "path": "dive", "x": 0.5437841134145855, "count": 6, "gap": 13, "fire": "aim1", "fireEvery": 105
+    },
+    { "at": 54.9, "kind": "small", "path": "swoopR", "x": 0.3748310289811343, "count": 5, "gap": 13, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 58.7, "kind": "medium", "path": "hover", "x": 0.5858289005700499, "fire": "ring16", "fireEvery": 5
+    },
+    { "at": 61.8, "kind": "medium", "path": "hover", "x": 0.708247842034325, "fire": "aim5", "fireEvery": 5
+    },
+    { "at": 65.5, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim3", "fireEvery": 60
+    },
+    { "at": 69.1, "kind": "small", "path": "dive", "x": 0.12, "count": 6, "dx": 96, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 72, "kind": "small", "path": "swoopR", "x": 0.6000723603181541, "count": 5, "gap": 13, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 75.3, "kind": "ground", "path": "ground", "x": 0.8399330426007509, "count": 1, "dx": 430, "fire": "aim1", "fireEvery": 60
+    },
+    { "at": 79, "kind": "small", "path": "swoopL", "x": 0.635403479449451, "count": 6, "gap": 12, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 82.1, "kind": "ground", "path": "ground", "x": 0.7156350509263575, "count": 1, "dx": 430, "fire": "aim3", "fireEvery": 60
+    },
+    { "at": 85.7, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim3", "fireEvery": 60
+    },
+    { "at": 89.5, "kind": "carrier", "path": "cross", "x": 0, "drop": "B"
+    },
+    { "at": 93.4, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim1", "fireEvery": 60
+    },
+    { "at": 97.1, "kind": "medium", "path": "hover", "x": 0.5447058063000441, "fire": "spiral4", "fireEvery": 5
+    },
+    { "at": 100.6, "kind": "small", "path": "swoopL", "x": 0.6238219502847642, "count": 8, "gap": 10, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 104.4, "kind": "small", "path": "swoopL", "x": 0.5832100379746408, "count": 6, "gap": 13, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 107.3, "kind": "small", "path": "dive", "x": 0.6001419689506292, "count": 7, "gap": 10, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 110.9, "kind": "small", "path": "swoopR", "x": 0.46431545275263486, "count": 6, "gap": 13, "fire": "aim1", "fireEvery": 82
+    },
+    { "at": 114.4, "kind": "ground", "path": "ground", "x": 0.2, "count": 2, "dx": 430, "fire": "aim1", "fireEvery": 60
+    },
+    { "at": 118, "kind": "carrier", "path": "cross", "x": 1, "drop": "B"
+    },
+    { "at": 121.8, "kind": "small", "path": "swoopR", "x": 0.5513006014283747, "count": 8, "gap": 12, "fire": "aim1", "fireEvery": 82
+    }
+  ]
+}
