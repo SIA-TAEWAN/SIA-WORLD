@@ -1070,13 +1070,16 @@ export function showVillage(api: VillageApi, user: { id: string; name: string },
             toast(
               res.reason === 'condition' ? `땅을 ${CAT_LAND_STAGE}단계까지 넓히면 열 수 있어요 · 지금 ${res.have ?? 0}단계`
               : res.reason === 'coin' ? `시아코인이 모자라요 (${num(res.siaCoins ?? 0)} / ${CAT_PRICE})`
-              : res.reason === 'login' ? '로그인이 필요해요'
-              : '열지 못했어요. 잠시 후 다시 시도해 주세요',
-              2800,
+              : res.reason === 'login' ? '로그인이 필요해요. 다시 로그인한 뒤 열어 주세요'
+              : res.reason === 'network' ? '연결이 불안정해 데려왔는지 확인하지 못했어요. 잠시 뒤 마을을 다시 읽어 볼게요 (다시 눌러도 시아코인이 두 번 빠지지 않아요)'
+              : '야옹이를 데려오지 못했어요. 시아코인은 그대로예요. 잠시 후 다시 시도해 주세요',
+              res.reason === 'network' ? 4200 : 2800,
             );
           }
           if (r.state) apply(r.state);
           else void reload();
+          // 답을 못 받은 경우: 서버가 늦게 처리했을 수 있으니 조금 뒤 한 번 더 읽어 산 것을 반영한다
+          if (res.reason === 'network') setTimeout(() => void reload(), 5000);
         }),
       );
     } else if (d.showcase !== undefined) {

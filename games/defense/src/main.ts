@@ -39,6 +39,19 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** 보류분 재전송이 진행 중인가 (겹쳐 부르지 않게) */
 let resending = false;
+/** 이미 "올렸어요" 를 알린 재전송 (api.resend 는 진행 중인 것을 함께 쓰므로 두 곳이 같은 결과를 받는다) */
+const announced = new WeakSet<Promise<number>>();
+/**
+ * 보류분을 다시 보내고, 올라간 판 수를 돌려준다. 같은 재전송을 기다린 다른 곳(처음 화면 · 지도 화면 · 다시 연결됨)이
+ * 이미 받아 갔으면 0 — 안내가 두 번 뜨지 않게 (프로필 다시 읽기도 먼저 받은 쪽이 한다)
+ */
+async function resendOnce(api: NonNullable<typeof state.api>): Promise<number> {
+  const job = api.resend();
+  const sent = await job.catch(() => 0);
+  if (sent <= 0 || announced.has(job)) return 0;
+  announced.add(job);
+  return sent;
+}
 /**
  * 보류해 둔 판 결과를 다시 보낸다 (지도 화면에 들어올 때 · 인터넷이 다시 연결될 때).
  * 올라간 판이 있으면 프로필을 새로 읽는다: 떠 있는 화면(메인·지도·스테이지·캐릭터)은 watchProfile 로 다시 그린다 (판 안에서는 알림도 띄우지 않는다)
@@ -49,7 +62,7 @@ function resendPending() {
   resending = true;
   void (async () => {
     try {
-      const sent = await api.resend().catch(() => 0);
+      const sent = await resendOnce(api);
       if (sent <= 0) return;
       setProfile(await api.loadProfile());
       if (!app.querySelector('.screen.game')) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
@@ -245,7 +258,7 @@ async function start() {
   try {
     if (!api) throw new Error('no api');
     // 지난번에 올리지 못한 판 결과가 있으면 먼저 다시 보낸다
-    const sent = await api.resend().catch(() => 0);
+    const sent = await resendOnce(api);
     setProfile(await api.loadProfile());
     if (sent > 0) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
   } catch {

@@ -213,6 +213,9 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
     let turnTimer: ReturnType<typeof setTimeout> | null = null;
     let lateTimer: ReturnType<typeof setTimeout> | null = null;
     let lagTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 가려진 탭에서 내 시간이 다 됐다: 화면이 다시 보이기를 기다리는 중 (그때 시간을 처음부터 다시 잰다) */
+    let visWait: (() => void) | null = null;
+    const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
     let pumping = false;
     /** 공개 상태의 지문 (서버가 덧붙이는 칸은 빼고, DB 를 거친 것과 같은 모양으로) */
     const pubPrint = (pub: unknown) => {
@@ -337,6 +340,8 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
     const clearTurn = () => {
       if (turnTimer) clearTimeout(turnTimer);
       turnTimer = null;
+      if (visWait) document.removeEventListener('visibilitychange', visWait);
+      visWait = null;
     };
     const stop = () => {
       gen++;
@@ -467,6 +472,20 @@ export function soloPlay<S, A>(engine: Engine<S, A, any, any, any>, opts: SoloPl
       turnTimer = setTimeout(() => {
         turnTimer = null;
         if (cur !== c || nOf(c.state) !== n || disposed) return;
+        // 탭이 가려져 있으면 대신 두지 않는다 (가려 둔 채로 20초마다 판이 저절로 흘러가지 않게).
+        // 서버는 혼자 하는 판의 차례 시간을 재지 않으므로(SOLO_DEADLINE_MS 30분) 기다려도 된다. 다시 보이면 시간을 처음부터 잰다
+        if (isHidden()) {
+          host.setDeadline(null);
+          const back = () => {
+            if (isHidden()) return;
+            document.removeEventListener('visibilitychange', back);
+            if (visWait === back) visWait = null;
+            if (cur === c && nOf(c.state) === n && !disposed) arm(c);
+          };
+          visWait = back;
+          document.addEventListener('visibilitychange', back);
+          return;
+        }
         let a: A;
         try {
           a = engine.timeout(c.state, c.seat, seededRng((Date.now() ^ Math.imul(n + 1, 0x9e3779b1)) >>> 0));

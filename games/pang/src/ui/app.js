@@ -4,6 +4,26 @@ import * as E from '../game/engine.js';
 import * as SPR from '../game/spirits.js';
 import * as PangScene from './scene.js';
 import LEVELS from '../data/levels.json';
+import { COLOR, PANG, css } from '../theme.js';
+
+// ---------- 색 (공통 토큰: shared/theme.js 의 PANG · COLOR) ----------
+/** 보드: 밤하늘 바닥 · 칸 두 가지 (theme.css 의 --pang-board · --pang-cell · --pang-cell-alt) */
+const BOARD = { bg: css(PANG.board), cell: css(PANG.cell), cellAlt: css(PANG.cellAlt) };
+/** 글자·별·외곽선 (DESIGN.md 공통 색) */
+const INK = css(COLOR.outline);
+const GOLD = css(COLOR.primary);
+const GOLD_LIGHT = css(COLOR.primaryLight);
+const CREAM = css(COLOR.panelStrong);
+const WHITE = css(COLOR.white);
+/** 떠오르는 글자 가운데 공통 토큰에 없는 분홍 두 가지 (큰 콤보 · 이동 +) */
+const TEXT_PINK = '#FFB3C8';
+const TEXT_PINK_DEEP = '#FF9EC4';
+/** 방해 블록 그림 (공통 토큰에 없는 시아팡팡 전용 색: 나무 상자 · 쇠 띠 · 덩굴) */
+const BLOCK = {
+  wood: '#C8894A', woodLine: '#5A3A1E',
+  metal: '#9AA4B0', metalLine: '#4A5260', rivet: '#E8EDF2',
+  vine: '#3E8A2E', vineLight: '#6FCB52',
+};
 
 export function startApp(opts) {
 const { api, worldHome, openRanking, local } = opts;
@@ -124,36 +144,36 @@ function drawIce(x, S, n) {
 }
 function drawBox(x, S, n) {
   const p = S * 0.08, w = S - 2 * p;
-  rr(x, -w / 2, -w / 2, w, w, S * 0.1); x.fillStyle = '#C8894A'; x.fill();
-  x.strokeStyle = '#5A3A1E'; x.lineWidth = Math.max(2, S * 0.05); x.stroke();
+  rr(x, -w / 2, -w / 2, w, w, S * 0.1); x.fillStyle = BLOCK.wood; x.fill();
+  x.strokeStyle = BLOCK.woodLine; x.lineWidth = Math.max(2, S * 0.05); x.stroke();
   x.strokeStyle = 'rgba(90,58,30,0.55)'; x.lineWidth = Math.max(1.5, S * 0.03); x.beginPath();
   x.moveTo(-w / 2 + 3, -w / 6); x.lineTo(w / 2 - 3, -w / 6); x.moveTo(-w / 2 + 3, w / 6); x.lineTo(w / 2 - 3, w / 6);
   x.moveTo(-w / 2 + 4, -w / 2 + 4); x.lineTo(w / 2 - 4, w / 2 - 4); x.stroke();
   x.fillStyle = 'rgba(255,230,190,0.35)'; x.fillRect(-w / 2 + 4, -w / 2 + 4, w - 8, 3);
   if (n > 1) {
-    x.fillStyle = '#9AA4B0'; x.strokeStyle = '#4A5260'; x.lineWidth = 1.5;
+    x.fillStyle = BLOCK.metal; x.strokeStyle = BLOCK.metalLine; x.lineWidth = 1.5;
     for (const yy of [-w * 0.3, w * 0.22]) { x.fillRect(-w / 2, yy, w, S * 0.1); x.strokeRect(-w / 2, yy, w, S * 0.1); }
-    x.fillStyle = '#E8EDF2'; for (const yy of [-w * 0.3, w * 0.22]) for (const xx of [-w * 0.32, w * 0.32]) { x.beginPath(); x.arc(xx, yy + S * 0.05, S * 0.025, 0, PI2); x.fill(); }
+    x.fillStyle = BLOCK.rivet; for (const yy of [-w * 0.3, w * 0.22]) for (const xx of [-w * 0.32, w * 0.32]) { x.beginPath(); x.arc(xx, yy + S * 0.05, S * 0.025, 0, PI2); x.fill(); }
   }
 }
 function drawVine(x, S) {
-  x.strokeStyle = '#3E8A2E'; x.lineWidth = Math.max(2.5, S * 0.07); x.lineCap = 'round';
+  x.strokeStyle = BLOCK.vine; x.lineWidth = Math.max(2.5, S * 0.07); x.lineCap = 'round';
   x.beginPath(); x.moveTo(-S * 0.45, -S * 0.25); x.bezierCurveTo(-S * 0.1, -S * 0.5, S * 0.1, S * 0.5, S * 0.45, S * 0.25); x.stroke();
   x.beginPath(); x.moveTo(-S * 0.45, S * 0.3); x.bezierCurveTo(-S * 0.1, S * 0.05, S * 0.15, -S * 0.45, S * 0.42, -S * 0.32); x.stroke();
-  x.strokeStyle = '#6FCB52'; x.lineWidth = Math.max(1, S * 0.025);
+  x.strokeStyle = BLOCK.vineLight; x.lineWidth = Math.max(1, S * 0.025);
   x.beginPath(); x.moveTo(-S * 0.45, -S * 0.25); x.bezierCurveTo(-S * 0.1, -S * 0.5, S * 0.1, S * 0.5, S * 0.45, S * 0.25); x.stroke();
-  x.fillStyle = '#6FCB52';
+  x.fillStyle = BLOCK.vineLight;
   for (const [a, b, r] of [[-0.25, -0.33, 0.6], [0.28, 0.32, -0.5], [0.05, -0.1, 1.2], [-0.3, 0.2, -1]]) { x.save(); x.translate(a * S, b * S); x.rotate(r); x.beginPath(); x.ellipse(0, 0, S * 0.09, S * 0.045, 0, 0, PI2); x.fill(); x.restore(); }
 }
 function drawGoalIcon(x, g, T) {
   const W = 34;
   x.clearRect(0, 0, W, W);
   x.save(); x.translate(W / 2, W / 2);
-  if (g.t === 'collect') { x.fillStyle = '#2B2350'; rr(x, -16, -16, 32, 32, 9); x.fill(); x.scale(0.62, 0.62); SPR.draw(x, g.k, T, null); }
-  else if (g.t === 'ice') { x.fillStyle = '#2B2350'; rr(x, -16, -16, 32, 32, 9); x.fill(); drawIce(x, 30, 2); }
+  if (g.t === 'collect') { x.fillStyle = BOARD.bg; rr(x, -16, -16, 32, 32, 9); x.fill(); x.scale(0.62, 0.62); SPR.draw(x, g.k, T, null); }
+  else if (g.t === 'ice') { x.fillStyle = BOARD.bg; rr(x, -16, -16, 32, 32, 9); x.fill(); drawIce(x, 30, 2); }
   else if (g.t === 'box') drawBox(x, 32, 1);
-  else if (g.t === 'vine') { x.fillStyle = '#2B2350'; rr(x, -16, -16, 32, 32, 9); x.fill(); drawVine(x, 30); }
-  else { x.scale(1.3, 1.3); x.fillStyle = '#FFD34D'; x.strokeStyle = '#2A1A10'; x.lineWidth = 1.6; x.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 4.5 : 11; x.lineTo(Math.cos(a) * r, Math.sin(a) * r); } x.closePath(); x.fill(); x.stroke(); }
+  else if (g.t === 'vine') { x.fillStyle = BOARD.bg; rr(x, -16, -16, 32, 32, 9); x.fill(); drawVine(x, 30); }
+  else { x.scale(1.3, 1.3); x.fillStyle = GOLD; x.strokeStyle = INK; x.lineWidth = 1.6; x.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 4.5 : 11; x.lineTo(Math.cos(a) * r, Math.sin(a) * r); } x.closePath(); x.fill(); x.stroke(); }
   x.restore();
 }
 function goalText(g) {
@@ -442,7 +462,7 @@ function burst(k, X, Y, n) {
 function chips(X, Y, col, n, kind) {
   for (let i = 0; i < n; i++) { const a = Math.random() * PI2, sp = (1 + Math.random() * 2.5) * S / 50; parts.push({ x: X, y: Y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.5, g: 0.2, l: 1, d: 0.03, z: (2 + Math.random() * 3) * S / 50, c: col, kind: kind || 'rock', rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4 }); }
 }
-function floatText(s, X, Y, size, col) { texts.push({ s, x: X, y: Y, size, col: col || '#FFFFFF', l: 1 }); }
+function floatText(s, X, Y, size, col) { texts.push({ s, x: X, y: Y, size, col: col || WHITE, l: 1 }); }
 
 function eventSounds(ev) {
   const bonus = G.state === 'bonus';
@@ -477,7 +497,7 @@ function applyEvent(ev) {
   for (const c of ev.created) {
     sprites.set(c.id, { x: c.c, y: c.r, vy: 0, pop: 1, land: 0 });
     const [X, Y] = cxy(c.r, c.c); burst(c.k === 'orb' ? 'light' : c.k, X, Y, 10);
-    floatText(c.sp === 'orb' ? '정령왕 구슬!' : '강화 정령!', X, Math.max(S * 0.4, Y - S * 0.9), 15, '#FFF4C2');
+    floatText(c.sp === 'orb' ? '정령왕 구슬!' : '강화 정령!', X, Math.max(S * 0.4, Y - S * 0.9), 15, CREAM);
   }
   for (const [r, c, left] of ev.boxHits) { const [X, Y] = cxy(r, c); chips(X, Y, left ? '154,164,176' : '200,137,74', 8, 'rock'); }
   for (const [r, c] of ev.iceHits) { const [X, Y] = cxy(r, c); chips(X, Y, '200,235,255', 6, 'shard'); }
@@ -493,7 +513,7 @@ function applyEvent(ev) {
   }
   if (ev.combo >= 2 && G.state === 'play') {
     // 연쇄 콤보 수 (크게) + 칭찬 (작게)
-    const big = ev.combo >= 5, col = big ? '#FFB3C8' : '#FFE066';
+    const big = ev.combo >= 5, col = big ? TEXT_PINK : GOLD_LIGHT;
     // 진동: 콤보가 길수록 길고 강하게 (navigator.vibrate 가 없는 아이폰 사파리는 아무 일도 없음)
     try { navigator.vibrate?.(big ? [40, 30, 60] : Math.min(50, 15 + ev.combo * 8)); } catch { /* 막힌 기기 */ }
     texts = texts.filter(t => !t.combo);   // 앞 콤보 글자는 지우고 새 수만
@@ -504,7 +524,7 @@ function applyEvent(ev) {
     floatText(big ? '정령 폭풍!' : COMBO[ev.combo] + '!', BW / 2, BH * 0.38 + size * 0.55 + sub * 0.7, sub, col);
     texts[texts.length - 1].combo = true;
   }
-  if (ev.movesAdded) floatText('이동 +' + ev.movesAdded, BW / 2, BH * 0.25, 26, '#FF9EC4');
+  if (ev.movesAdded) floatText('이동 +' + ev.movesAdded, BW / 2, BH * 0.25, 26, TEXT_PINK_DEEP);
 }
 
 // ---------- update ----------
@@ -557,7 +577,7 @@ function later(t, p) { wait = t; nextPhase = p; phase = 'wait'; }
 function afterSettle(r) {
   if (r === 'idle') { phase = 'idle'; idle = 0; }
   else if (r === 'shuffle') { sfx('deal'); floatText('섞는 중', BW / 2, BH / 2, 28); for (const sp of sprites.values()) sp.pop = 1; later(0.8, 'idle'); }
-  else if (r === 'win') { sfx('goal'); floatText('목표 달성!', BW / 2, BH * 0.4, 34, '#FFE066'); if (G.moves > 0) floatText('보너스 타임', BW / 2, BH * 0.55, 24, '#FFF4C2'); later(1.1, 'bonus'); }
+  else if (r === 'win') { sfx('goal'); floatText('목표 달성!', BW / 2, BH * 0.4, 34, GOLD_LIGHT); if (G.moves > 0) floatText('보너스 타임', BW / 2, BH * 0.55, 24, CREAM); later(1.1, 'bonus'); }
   else if (r === 'bonus') phase = 'bonus';
   else if (r === 'done') later(0.6, 'resultWin');
   else if (r === 'lose') later(0.5, 'resultLose');
@@ -565,7 +585,7 @@ function afterSettle(r) {
 function bonusTick() {
   const n = G.moves > 8 ? 3 : G.moves > 3 ? 2 : 1;
   const bs = E.bonusStep(G, n);
-  if (bs) { sfx('pangBonus', { rate: 1 + Math.random() * 0.2 }); for (const b of bs) { const [X, Y] = cxy(b.r, b.c); burst('light', X, Y, 10); floatText('+200', X, Y - S * 0.4, 14, '#FFF4C2'); } later(0.15, 'resolve'); }
+  if (bs) { sfx('pangBonus', { rate: 1 + Math.random() * 0.2 }); for (const b of bs) { const [X, Y] = cxy(b.r, b.c); burst('light', X, Y, 10); floatText('+200', X, Y - S * 0.4, 14, CREAM); } later(0.15, 'resolve'); }
   else afterSettle(E.settle(G));
 }
 
@@ -577,7 +597,7 @@ function drawBoard(T) {
   for (let r = 0; r < G.rows; r++) for (let c = 0; c < G.cols; c++) {
     const e = G.cells[r][c];
     if (e.hole) continue;
-    x.fillStyle = (r + c) % 2 ? '#352B5E' : '#3C3268';
+    x.fillStyle = (r + c) % 2 ? BOARD.cell : BOARD.cellAlt;
     rr(x, c * S + 1.5, r * S + 1.5, S - 3, S - 3, S * 0.18); x.fill();
     if (e.ice) { x.save(); x.translate((c + 0.5) * S, (r + 0.5) * S); drawIce(x, S, e.ice); x.restore(); }
   }
@@ -713,7 +733,7 @@ function drawTexts() {
     const a = Math.min(1, t.l * 2.5), pop = t.l > 0.9 ? 1 + (t.l - 0.9) * 3 : 1;
     x.globalAlpha = a;
     x.font = Math.round(t.size * pop) + "px Jua, 'Apple SD Gothic Neo', sans-serif";
-    x.strokeStyle = '#2A1A10'; x.lineWidth = Math.max(3, t.size * 0.18); x.strokeText(t.s, t.x, t.y);
+    x.strokeStyle = INK; x.lineWidth = Math.max(3, t.size * 0.18); x.strokeText(t.s, t.x, t.y);
     x.fillStyle = t.col; x.fillText(t.s, t.x, t.y);
   }
   x.globalAlpha = 1;

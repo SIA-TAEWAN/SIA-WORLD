@@ -173,6 +173,27 @@ describe('서버 (SupabaseApi)', () => {
     expect((await createSupabaseApi(bad).buyCat()).result.reason).toBe('login');
   });
 
+  it('고양이 사기: 답을 못 받으면(통신 끊김) 마을을 다시 읽어 산 것이 보이면 산 것으로 · 아니면 network', async () => {
+    let owned = true;
+    const sb: RpcClient = {
+      rpc: (fn) =>
+        fn === 'buy_character'
+          ? Promise.resolve({ data: null, error: { message: 'Failed to fetch' } })
+          : Promise.resolve({ data: { ...answer(1000), catOwned: owned, sia: owned ? 20 : 120 }, error: null }),
+    };
+    const api = createSupabaseApi(sb);
+    let r = await api.buyCat();
+    expect(r.result).toEqual({ ok: true, siaCoins: 20, price: 100 });
+    expect(r.state?.catOwned).toBe(true);
+    owned = false;
+    r = await api.buyCat();
+    expect(r.result).toEqual({ ok: false, reason: 'network' });
+    expect(r.state).toMatchObject({ catOwned: false, sia: 120 });
+    // 다시 읽기도 실패하면 상태 없이 network
+    const down: RpcClient = { rpc: () => Promise.resolve({ data: null, error: { message: 'Failed to fetch' } }) };
+    expect(await createSupabaseApi(down).buyCat()).toEqual({ result: { ok: false, reason: 'network' }, state: null });
+  });
+
   it('고양이 사기 (테스트 모드): 땅 3단계 · 시아코인 100', async () => {
     const t = 1_700_000_000_000;
     const api = createLocalApi(memory(), () => t);

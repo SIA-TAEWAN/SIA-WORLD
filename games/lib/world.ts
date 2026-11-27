@@ -209,7 +209,13 @@ export interface PresenceModule {
   enterGame(topic: string, user: WorldUser): Promise<PresenceHandle>;
 }
 
+/** shared/supabase.js (같은 로그인 세션의 클라이언트) — 여기서는 서버 시각 같은 작은 RPC 에만 쓴다 */
+export interface SupabaseModule {
+  supabase: { rpc(fn: string, args?: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }> };
+}
+
 export const world = {
+  supabase: () => load<SupabaseModule>('supabase'),
   presence: () => load<PresenceModule>('presence'),
   auth: () => load<AuthModule>('auth'),
   room: () => load<RoomModule>('room'),

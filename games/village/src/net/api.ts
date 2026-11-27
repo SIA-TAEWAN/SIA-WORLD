@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { STAT_IDS, noStats, type GameStats, type StatId } from '../data/monuments';
 import { CONST, LEVEL_EXP, RES_IDS } from '../data/balance';
 import { isBuildingType, type BuildingType } from '../data/buildings';
-import { CAT_LAND_STAGE, isResidentId, type ResidentId } from '../data/residents';
+import { CAT_LAND_STAGE, CAT_PRICE, isResidentId, type ResidentId } from '../data/residents';
 import { GOALS } from '../data/goals';
 import {
   RuleError, assign, build, claimGoal, cleanState, cloneState, craft, dailyClaim, expand, feast, harvest, move, newVillage, place, praiseGive, praiseLeft, prosperityOf, refresh, rename,
@@ -414,7 +414,11 @@ export function createSupabaseApi(sb: SupabaseClient | RpcClient, timeoutMs = RP
       try {
         d = await call('buy_character', { p_game: 'village', p_id: 'cat' });
       } catch (e) {
-        return { result: { ok: false, reason: e instanceof ApiError && /need login/.test(e.message) ? 'login' : 'error' }, state: null };
+        if (e instanceof ApiError) return { result: { ok: false, reason: /need login/.test(e.message) ? 'login' : 'error' }, state: null };
+        // 시간 초과 · 통신 끊김: 서버에서는 샀을 수 있으니 마을을 다시 읽어 본다 (buy_character 는 이미 샀으면 owned 라 두 번 빠지지 않는다)
+        const state = await load().catch(() => null);
+        if (state?.catOwned) return { result: { ok: true, siaCoins: state.sia, price: CAT_PRICE }, state };
+        return { result: { ok: false, reason: 'network' }, state };
       }
       const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
       const reason = (['owned', 'coin', 'condition'] as const).find((x) => x === d.reason);

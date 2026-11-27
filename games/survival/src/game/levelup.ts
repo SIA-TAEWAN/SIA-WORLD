@@ -110,6 +110,14 @@ export function drawCards(s: State) {
   s.cardN = k;
 }
 
+/**
+ * 다시 뽑기가 쓸모 있는가: 고를 후보가 카드 수보다 많아야 다른 카드가 나온다.
+ * (후보가 0개 — 떡·엽전·쌓이는 카드만 — 이거나 카드 수 이하면 다시 뽑아도 같은 카드라 횟수만 날아간다)
+ */
+export function canReroll(s: State): boolean {
+  return s.phase === 'levelup' && s.rerolls > 0 && candidates(s, false) > CARD_COUNT;
+}
+
 /** 계속 쌓이는 카드를 내는 때인가: 무한 모드에서 4분이 지난 뒤 */
 export const stackTime = (s: State) => s.endless && s.time >= RUN_SEC;
 

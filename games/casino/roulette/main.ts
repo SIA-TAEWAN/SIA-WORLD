@@ -8,7 +8,7 @@ import { rlDouble, rlFollow, rlFromPreset, rlPresetsLoad, rlPush, rlToPreset, rl
 import { bootGame, esc, sfx, sfxMany, type GameUI, type TableCtx } from '../../lib/shell.ts';
 import { clamp, drawTable, label, tc, theme, viewSize } from '../../lib/cards.ts';
 import { BET_MS, MULT, SEASONS, WHEEL, hits, inThisSpin, seasonCells, type BetKind, type RBet, type RoulettePublic } from '../../../supabase/functions/_shared/roulette.ts';
-import { worldRoot } from '../../lib/world.ts';
+import { world, worldRoot } from '../../lib/world.ts';
 import type PhaserNS from 'phaser';
 
 type Ctx = TableCtx<RoulettePublic, Record<string, never>>;
@@ -81,7 +81,36 @@ let lastTick = '';
 /** 흐름 통계판을 펼쳤는가 (조작부를 다시 그려도 그대로) */
 let statsOpen = false;
 
-function enterRoom(id: string, base: number) {
+/**
+ * 방에 들어오면 서버 시각을 직접 물어 시계 차이를 맞춘다 (race_now, 왕복이 가장 짧았던 답).
+ * 베팅 도중에 처음 들어오면 syncClock 은 '서버가 앞선 만큼'만 잠정으로 알 수 있어서, 시계가 늦은 기기는
+ * 첫 스핀의 남은 시간을 길게 보고 자동 확정을 마감 뒤에 보내 첫 스핀이 어긋났다. 못 물으면 예전처럼 syncClock 에 맡긴다
+ */
+async function measureSkew(id: string, redraw: () => void) {
+  try {
+    const { supabase } = await world.supabase();
+    let best = Infinity;
+    let got: number | null = null;
+    for (let i = 0; i < 3; i++) {
+      const t0 = Date.now();
+      const { data, error } = await supabase.rpc('race_now');
+      const t1 = Date.now();
+      if (error || typeof data !== 'number' || !Number.isFinite(data)) break;
+      if (t1 - t0 < best) {
+        best = t1 - t0;
+        got = data - (t0 + t1) / 2;
+      }
+    }
+    if (got === null || id !== roomId || Math.abs(got) > 24 * 3600_000) return;
+    skew = got;
+    skewSeen = true;
+    redraw();
+  } catch {
+    /* 못 물으면 syncClock 이 베팅이 열리는 순간을 보고 맞춘다 */
+  }
+}
+
+function enterRoom(id: string, base: number, redraw?: () => void) {
   if (id === roomId && base === lastBase) return;
   roomId = id;
   lastBase = base;
@@ -101,6 +130,7 @@ function enterRoom(id: string, base: number) {
   if (countdown) clearTimeout(countdown);
   countdown = null;
   spinStart.clear();
+  if (redraw) void measureSkew(id, redraw);
 }
 const serverNow = () => Date.now() + skew;
 /** 베팅이 막 열린 순간(앞에 본 것이 회전·결과)이면 서버 시계와의 차이를 잰다 (처음 그리기·중간에 들어왔을 때는 앞선 만큼만 잠정으로) */
@@ -237,7 +267,7 @@ const ui: GameUI<RoulettePublic, Record<string, never>> = {
     const p = t.pub;
     drawTable(scene, 'roulette');
     const T = theme();
-    enterRoom(t.room.id, t.room.base_unit);
+    enterRoom(t.room.id, t.room.base_unit, t.redraw);
     if (p) syncClock(p);
     // 결과가 처음 보인 순간부터 회전 (다시 그려도 이어서)
     const spinKey = p ? `${p.spin}:${t.room.round_no}` : '';
@@ -393,7 +423,7 @@ function betControls(t: Ctx, el: HTMLElement) {
     if (autoTimer) clearTimeout(autoTimer);
     autoTimer = null;
     if (!p || t.mySeat === null) return;
-    enterRoom(t.room.id, t.room.base_unit);
+    enterRoom(t.room.id, t.room.base_unit, t.redraw);
     const me = String(t.mySeat);
     const base = p.baseUnit;
     // 스핀이 바뀌면 놓던 칩은 새로

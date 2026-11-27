@@ -22,6 +22,8 @@ export interface SubmitResult {
   improved: boolean;
   /** 서버가 잠긴 캐릭터라서 거절했다 ('locked character') */
   locked?: boolean;
+  /** 서버가 시간 검사로 거절했다 ('bad time': 도착한 지 한참 뒤에 올라왔다 — 대개 화면을 가렸을 때) */
+  late?: boolean;
 }
 
 export interface RankRow {
@@ -250,7 +252,7 @@ function createSupabaseApi(sb: SupabaseClient, uid: string): RaceApi {
         if (!error || error.code === 'P0001') break;
       }
       console.warn('[시아레이스] 기록을 서버에 올리지 못했어요', error?.message);
-      return { ...saveLocalBest(uid, ms), locked: isLockedError(error?.message) };
+      return { ...saveLocalBest(uid, ms), locked: isLockedError(error?.message), late: /bad time/.test(error?.message ?? '') };
     },
     async myBest() {
       const { data, error } = await sb.from('race_records').select('best_ms').eq('user_id', uid).maybeSingle();

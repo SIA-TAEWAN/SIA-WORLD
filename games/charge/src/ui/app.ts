@@ -533,7 +533,7 @@ async function startDaily(shownDay: string) {
       showDaily(c);
       return toast('날짜가 바뀌었어요. 새 길을 준비했어요', 3200);
     }
-    closeGame();
+    // 지난 판(결과 창에서 다시하기)은 startGame 이 시작에 성공할 때 닫는다: 실패하면 결과 창이 그대로 남는다
     runDay = c.day;
     await startGame(dailyStage(c.seed), true);
   } finally {
@@ -777,8 +777,15 @@ export async function startGame(stage: StageDef, endless: boolean) {
     busy = false;
     wait?.remove();
     // 오늘의 길: 날짜가 바뀌었으면(자정) 새 날짜로 오늘의 도전 화면을 다시 그린다
-    if (daily && e instanceof ApiError && e.message === 'bad day') showDaily();
-    else if (fromBoot) showMain();
+    // 결과 창에서 다시 시작하다 실패했으면 지난 판과 결과 창이 그대로 남아 있다 (다시 누르거나 메뉴로).
+    // 다른 화면으로 바꿀 때만 지난 판을 닫는다
+    if (daily && e instanceof ApiError && e.message === 'bad day') {
+      closeGame();
+      showDaily();
+    } else if (fromBoot) {
+      closeGame();
+      showMain();
+    }
     toast(errText(e), 3200);
     return;
   }
@@ -997,16 +1004,16 @@ function showResult(s: RunState, endless: boolean, r: FinishResult | null, note:
       placeEl.hidden = false;
     });
   }
+  // 다음 · 다시하기: 지난 판은 여기서 닫지 않는다. startGame 이 시작에 성공하면 화면을 바꾸며 닫고,
+  // 시작(charge_start)이 실패하면 안내만 띄우고 이 결과 창이 그대로 남아 다시 누르거나 메뉴로 갈 수 있다
   box.querySelector('#next')?.addEventListener('click', () => {
     play('click');
-    closeGame();
     void startGame(next!, false);
   });
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
-    // 오늘의 길: 날짜를 다시 받아 보고 나서 판을 닫는다 (못 받으면 결과 창에 그대로 머문다)
+    // 오늘의 길: 날짜를 다시 받아 보고 시작한다 (못 받거나 시작이 실패하면 결과 창에 그대로 머문다)
     if (daily) return void startDaily(runDay);
-    closeGame();
     void startGame(endless ? endlessStage() : st, endless);
   });
   box.querySelector('#menu')!.addEventListener('click', () => {

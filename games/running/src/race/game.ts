@@ -79,6 +79,8 @@ export class RaceGame {
   /** 오늘의 도전 기록을 넣은 결과 (들어갔으면 기록된 날짜, 아니면 null) */
   dailySaved: Promise<string | null> | null = null;
   onOver: ((r: RankedEntry[]) => void) | null = null;
+  /** 화면이 가려진 동안 도는 타이머 (requestAnimationFrame 이 멈추므로, 내 도착을 제때 서버에 보내려고) */
+  private hiddenTick: ReturnType<typeof setInterval> | null = null;
   /** 판 전에 읽은 내 이번 주 순위 (경기 화면이 연다. 순위 없음 null, 못 읽음 undefined) — 결과 화면이 판 뒤 순위와 비교한다 */
   weekBefore: Promise<number | null | undefined> | null = null;
   /** 판 전에 읽은 그날 순위 (경기 화면이 연다, 못 읽으면 null) — 결과 화면이 고스트 기록이 그 자리의 실제 기록인지 본다 (ghostWho) */
@@ -98,6 +100,18 @@ export class RaceGame {
     this.obs = makeTrack(start.seed);
     this.mySlot = start.roster.find((r) => r.role === 'me')?.slot ?? -1;
     this.ghost = start.ghost ?? null;
+    // 탭이 가려지면 화면(Phaser) 루프가 멈춘다. 그 사이 결승에 닿으면 돌아온 뒤에야 기록을 보내서
+    // 서버가 '도착 뒤 6초 안' 검사(late_ms)로 거절했다 ('bad time'). 가려진 동안에도 1초마다 계산해
+    // 도착하는 대로 기록을 보낸다 (가려진 탭의 타이머는 1초에 한 번쯤 돈다. 기록을 보낸 뒤에는 멈춘다)
+    if (typeof document !== 'undefined' && typeof setInterval !== 'undefined') {
+      this.hiddenTick = setInterval(() => {
+        if (this.record || this.results) {
+          this.stopHiddenTick();
+          return;
+        }
+        if (document.hidden) this.update();
+      }, 1000);
+    }
     for (const r of start.roster) {
       this.runners[r.slot] = newRunner();
       this.ghosts[r.slot] = r.role === 'ghost' && this.ghost ? new GhostPlayer(this.ghost.ghost) : null;
@@ -287,7 +301,13 @@ export class RaceGame {
     return this.fouledAt ? serverNow() - this.fouledAt : 0;
   }
 
+  private stopHiddenTick() {
+    if (this.hiddenTick !== null) clearInterval(this.hiddenTick);
+    this.hiddenTick = null;
+  }
+
   dispose() {
     this.onOver = null;
+    this.stopHiddenTick();
   }
 }

@@ -3,7 +3,9 @@
    PICTURE: 보드 자체가 그림. 정령·특수 효과는 코드로 그린다
    COLOUR and TYPE: 하늘 그라데이션, 크림 판, 갈색 외곽선, 노란 버튼, 보드 밤하늘 #2B2350, Jua 하나
    LAYOUT: 480px 세로 띠. 지도 → 시작 팝업 → 게임(상태 띠, 목표, 점수, 보드) → 결과 */
-:root{--sky-top:#4AA8FF;--sky-mid:#9FD6FF;--sky-bottom:#FFE9B8;--panel:#FFF8E8;--panel-strong:#FFF4C2;--ink:#2A1A10;--ink-soft:#8A6A4A;--line-soft:#E2D3B5;--primary:#FFD34D;--primary-light:#FFE066;--primary-deep:#F0A500;--pink:#FF4D6D;--track:#EEE2C8;--win:#4CB86A;--lose:#E86A5A;--board:#2B2350;--font:'Jua','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;color-scheme:light}
+@import '../../../shared/theme.css';
+/* 색·글꼴은 shared/theme.css 의 값 (보드 바닥 = --pang-board) */
+:root{--board:var(--pang-board);color-scheme:light}
 *{box-sizing:border-box;min-width:0}
 html,body{margin:0;min-height:100%}
 body{background:linear-gradient(180deg,var(--sky-top) 0,var(--sky-mid) 300px,var(--sky-bottom) 100%) fixed;color:var(--ink);font:16px/1.4 var(--font);overflow-x:clip;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
