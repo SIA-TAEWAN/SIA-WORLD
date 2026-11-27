@@ -121,8 +121,6 @@ export interface SoundModule {
   isBgmOn(): boolean;
   setBgmOn(on: boolean): void;
   onBgmChange(cb: (on: boolean) => void): () => void;
-  /** shared/sounds/<이름>.ogg|.mp3 가 있으면 그 주소 */
-  bgmFileUrl(name: string): Promise<string | null>;
   /** 배경음 파일 틀기: shared/audio/bgm/<game>/<scene>.mp3 (scene = main · boss · win · lose). 같은 곡이면 아무 일도 없다 */
   playBgm(game: string, scene?: string): void;
   stopBgm(): void;
