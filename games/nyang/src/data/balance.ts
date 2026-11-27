@@ -22,7 +22,7 @@ export const CONST = {
   /** 물을 갈지 않고 이만큼 지나면 물이 상한다 (12시간) */
   spoil_sec: 43200,
   /** 상태 하나가 바닥인 채로 이만큼 지나면 감기 기운 (24시간) */
-  sick_sec: 86400,
+  sick_sec: 100800,
   /** 담요 · 약 간식 · 츄르를 주면 이만큼 뒤에 낫는다 (2시간) */
   cure_sec: 7200,
   /** 감기를 낫게 하려면 네 상태가 모두 이 값 이상 (청결은 똥 1개까지) */
@@ -35,10 +35,10 @@ export const CONST = {
   pet_mood_like: 2500,
   pet_mood: 1500,
   /** 쓰다듬기 친밀도 +: 좋아하는 곳 · 보통인 곳 */
-  pet_love_like: 300,
-  pet_love: 150,
+  pet_love_like: 1000,
+  pet_love: 500,
   /** 쓰다듬기로 오르는 친밀도의 하루 상한 (한국 시간 하루) */
-  pet_love_day: 1800,
+  pet_love_day: 6000,
   /** 이 친밀도 단계부터 배를 만져도 냥펀치를 하지 않는다 (배 보여 주기) */
   belly_ok_level: 9,
   /** 이 단계부터 배가 아닌 싫어하는 곳(겁쟁이의 등)은 보통인 곳이 된다 */
@@ -55,6 +55,52 @@ export const CONST = {
   sia_day_max: 5,
   /** 이름 길이 (글자) */
   name_max: 8,
+
+  // ---- 놀아 주기 (3단계): 시작(nyang_play_start) → 30초 미니게임 → 끝(nyang_play, 잡은 수) ----
+  /** 놀이 시간 (화면) */
+  play_sec: 30,
+  /** 시작하고 이만큼 지나면 끝을 받지 않는다 ('no play') */
+  play_max_sec: 180,
+  /** 잡은 수 상한: 한 번에 최대 · 시작부터 이 초마다 하나까지 */
+  play_catch_max: 15,
+  play_catch_sec: 2,
+  /** 잡을 때마다 기분 + (좋아하는 장난감이면 _like) */
+  play_mood: 700,
+  play_mood_like: 1000,
+  /** 잡을 때마다 친밀도 + · 놀아 주기로 오르는 친밀도의 하루 상한 */
+  play_love: 1200,
+  play_love_like: 1600,
+  play_love_day: 24000,
+
+  // ---- 빗질: 고양이마다 하루 한 번 ----
+  brush_mood: 3000,
+  brush_love: 12000,
+  /** 털 뭉치 = fur_min + (0 … fur_span-1) */
+  fur_min: 2,
+  fur_span: 3,
+
+  // ---- 츄르: 고양이마다 하루 2개까지 ----
+  churu_day_max: 2,
+  churu_mood: 6000,
+  churu_mood_like: 8000,
+  churu_love: 2500,
+  churu_love_like: 3500,
+  /** 첫 고양이를 입양하면 받는 츄르 (그 고양이가 좋아하는 맛) */
+  start_churu: 3,
+
+  // ---- 고양이 선물: 들어올 때(entry) 고양이마다 한 번 굴린다 ----
+  /** 지난번에 굴린 때부터 이만큼 지나야 다시 굴린다 */
+  present_gap_sec: 14400,
+  /** 선물을 가져올 확률(%) = present_pct + 친밀도 단계 × present_pct_level */
+  present_pct: 20,
+  present_pct_level: 6,
+  /** 무엇을: 엽전 · 씨앗 · 장난감 (%, 나머지는 가구) */
+  present_coin_pct: 55,
+  present_seed_pct: 25,
+  present_toy_pct: 15,
+  /** 엽전 = present_coin_min + 단계 × 2 + (0 … present_coin_span-1) */
+  present_coin_min: 5,
+  present_coin_span: 11,
 } as const;
 export type ConstName = keyof typeof CONST;
 
@@ -62,7 +108,7 @@ export type ConstName = keyof typeof CONST;
  * 친밀도 단계 (1 ~ 10): n 단계에서 n+1 단계로 가는 데 드는 점수 (SQL 의 _nyang_table('love_need')).
  * 좋은 상태(네 상태 모두 절반 이상) 1초 = 1점. 하루 2~3번이면 하루 약 6~9시간이 좋은 상태 → 10단계까지 약 2달 (npm run pace).
  */
-export const LOVE_NEED = [12000, 50000, 85000, 115000, 140000, 180000, 230000, 300000, 420000];
+export const LOVE_NEED = [30000, 135000, 230000, 310000, 380000, 490000, 620000, 810000, 1135000];
 /** 두 번째 · 세 번째 · 네 번째 고양이를 입양할 수 있는 첫 고양이의 친밀도 단계 (SQL 의 _nyang_table('cat_need')) */
 export const CAT_NEED = [4, 7, 10];
 export const MAX_CATS = CAT_NEED.length + 1;
@@ -159,8 +205,8 @@ export const FOODS: Food[] = [{ id: 'basic', name: '기본 사료', add: 10000, 
 export const FOOD: Record<FoodId, Food> = Object.fromEntries(FOODS.map((f) => [f.id, f])) as Record<FoodId, Food>;
 export const isFoodId = (v: unknown): v is FoodId => typeof v === 'string' && (FOOD_IDS as readonly string[]).includes(v);
 
-/** 감기를 낫게 하는 것 (지금은 담요만. 약 간식 · 츄르는 3·4단계) */
-export const CURE_IDS = ['blanket'] as const;
+/** 감기를 낫게 하는 것: 담요(네 상태를 모두 채운 뒤) · 약 간식(보관함의 medicine 하나). 츄르는 nyang_churu 가 낫게 한다 */
+export const CURE_IDS = ['blanket', 'medicine'] as const;
 export type CureId = (typeof CURE_IDS)[number];
 
 /** 이름: 한글 · 영문 · 숫자, 가운데 띄어쓰기 한 칸 (시아마을과 같은 규칙) */
@@ -181,3 +227,84 @@ export const mix = (seq: number, k: number) => (((seq * 7919 + k * 104729 + 1234
 export function shelterKittens(day: number): { color: ColorId; personality: PersonalityId }[] {
   return COLOR_IDS.map((color, i) => ({ color, personality: PERSONALITY_IDS[mix(day * 6 + i, 7) % PERSONALITY_IDS.length] }));
 }
+
+// ---------- 3단계: 장난감 · 츄르 · 선물 · 행동 ----------
+
+/** 장난감 (PRD 4장 4). 낚싯대는 처음부터, 나머지는 보관함(items 의 'toy:<id>')에 있어야 한다 — 상점은 4단계 */
+export const TOYS: Record<ToyId, { name: string; icon: string; desc: string; free: boolean }> = {
+  rod: { name: '낚싯대', icon: '🎣', desc: '깃털을 흔들다가 멈추면 덮쳐요', free: true },
+  laser: { name: '레이저', icon: '🔴', desc: '빨간 점을 끌면 쫓아가 덮쳐요', free: false },
+  ball: { name: '공', icon: '🧶', desc: '던지면 우다다 쫓아가요', free: false },
+  box: { name: '상자', icon: '📦', desc: '고개를 내밀 때 톡!', free: false },
+};
+export const isToyId = (v: unknown): v is ToyId => typeof v === 'string' && (TOY_IDS as readonly string[]).includes(v);
+export const CHURU: Record<ChuruId, { name: string; color: string }> = {
+  tuna: { name: '참치', color: '#FF8FA3' },
+  salmon: { name: '연어', color: '#F9A873' },
+  chicken: { name: '닭가슴살', color: '#FFE066' },
+};
+export const isChuruId = (v: unknown): v is ChuruId => typeof v === 'string' && (CHURU_IDS as readonly string[]).includes(v);
+
+/** 보관함 열쇠 (nyang_profiles.items: { 열쇠: 개수 }) */
+export const itemKey = {
+  toy: (id: string) => `toy:${id}`,
+  churu: (id: string) => `churu:${id}`,
+  seed: (id: string) => `seed:${id}`,
+  fur: 'fur',
+  medicine: 'medicine',
+};
+
+/** 씨앗 (정원은 4단계. 선물로 받을 수 있는 것은 앞의 셋) */
+export const SEED_IDS = ['daisy', 'catgrass', 'sunflower', 'catnip', 'rose', 'moonflower'] as const;
+export const SEED_NAME: Record<(typeof SEED_IDS)[number], string> = { daisy: '데이지', catgrass: '캣그라스', sunflower: '해바라기', catnip: '캣닢', rose: '장미', moonflower: '보름달꽃' };
+export const PRESENT_SEEDS = ['daisy', 'catgrass', 'sunflower'] as const;
+/** 선물로 드물게 오는 가구 (꾸미기는 5단계: nyang_profiles.furniture 에 id 를 더한다) */
+export const PRESENT_FURNITURE = ['paw_rug', 'fish_pillow', 'yarn_basket'] as const;
+export const FURNITURE_NAME: Record<string, string> = { paw_rug: '발바닥 러그', fish_pillow: '생선 쿠션', yarn_basket: '털실 바구니' };
+/** 선물로 오는 장난감 (가지고 있지 않은 것 중에서) */
+export const PRESENT_TOYS = ['laser', 'ball', 'box'] as const;
+
+/**
+ * 행동 도감 (PRD 5장 · 7장). 화면에서 처음 본 행동을 서버(nyang_seen)에 남긴다 — 앨범 · 도감 화면은 5단계.
+ * level: 이 친밀도 단계부터 하는 행동 (서버도 확인한다)
+ */
+export interface Behavior {
+  id: string;
+  name: string;
+  level: number;
+}
+export const BEHAVIORS: Behavior[] = [
+  { id: 'loaf', name: '식빵 굽기', level: 1 },
+  { id: 'window', name: '창밖 새 구경', level: 1 },
+  { id: 'zoomies', name: '우다다', level: 1 },
+  { id: 'stretch', name: '기지개', level: 1 },
+  { id: 'knock', name: '물건 떨어뜨리기', level: 1 },
+  { id: 'rub', name: '발치에 몸 비비기', level: 1 },
+  { id: 'box', name: '상자에 쏙', level: 1 },
+  { id: 'sleep', name: '쿨쿨 낮잠', level: 1 },
+  { id: 'eat', name: '냠냠 밥 먹기', level: 1 },
+  { id: 'greet', name: '문 앞 마중', level: 1 },
+  { id: 'present', name: '선물 물어 오기', level: 1 },
+  { id: 'hunt', name: '사냥 놀이', level: 1 },
+  { id: 'churu', name: '츄르 날름날름', level: 1 },
+  { id: 'brush', name: '빗질 받기', level: 1 },
+  { id: 'sneeze', name: '에취!', level: 1 },
+  { id: 'lap', name: '무릎에 올라오기', level: 3 },
+  { id: 'follow', name: '꼬리 세우고 따라다니기', level: 4 },
+  { id: 'belly', name: '배 보여 주기', level: 6 },
+  { id: 'knead', name: '꾹꾹이', level: 8 },
+  { id: 'together', name: '집사 옆에서 같이 자기', level: 10 },
+];
+export const BEHAVIOR: Record<string, Behavior> = Object.fromEntries(BEHAVIORS.map((b) => [b.id, b]));
+
+/** SQL 의 _nyang_ids 에 들어가는 목록 (tests/sql.test.ts 가 맞춰 본다) */
+export const SQL_IDS: Record<string, readonly string[]> = {
+  colors: COLOR_IDS,
+  spots: SPOTS,
+  toys: TOY_IDS,
+  free_toys: TOY_IDS.filter((t) => TOYS[t].free),
+  churus: CHURU_IDS,
+  present_seeds: PRESENT_SEEDS,
+  present_toys: PRESENT_TOYS,
+  present_furniture: PRESENT_FURNITURE,
+};

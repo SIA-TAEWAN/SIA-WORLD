@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CAT_NEED, COLOR_IDS, CONST, FOODS, LOVE_NEED, PERSONALITIES, SPOTS, kstDay, mix } from '../src/data/balance';
+import { BEHAVIORS, CAT_NEED, CONST, FOODS, LOVE_NEED, PERSONALITIES, SQL_IDS, kstDay, mix } from '../src/data/balance';
 
 /**
  * 서버 SQL(supabase/migrations/123_nyang.sql)의 값 · 표가 게임 데이터(src/data/balance.ts)와 같은지 본다.
@@ -35,12 +35,29 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
     const tables = Object.fromEntries([...body('_nyang_table').matchAll(/when '(\w+)' then array\[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map(Number)]));
     expect(tables).toEqual({ love_need: LOVE_NEED, cat_need: CAT_NEED });
     const ids = Object.fromEntries([...body('_nyang_ids').matchAll(/when '(\w+)' then array\[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map((s) => s.trim().slice(1, -1))]));
-    expect(ids).toEqual({ colors: [...COLOR_IDS], spots: [...SPOTS] });
+    expect(ids).toEqual(Object.fromEntries(Object.entries(SQL_IDS).map(([k, v]) => [k, [...v]])));
   });
 
   it('성격 5종 · 사료', () => {
     expect(rows('_nyang_personalities')).toEqual(PERSONALITIES.map((p) => [p.id, p.full_sec, p.water_sec, p.poop_sec, p.mood_sec, p.likes.join(','), p.dislikes.join(','), p.toy, p.churu]));
     expect(rows('_nyang_foods')).toEqual(FOODS.map((f) => [f.id, f.add, f.price]));
+  });
+
+  it('행동 도감', () => {
+    expect(rows('_nyang_behaviors')).toEqual(BEHAVIORS.map((b) => [b.id, b.level]));
+  });
+
+  it('3단계 계산 (놀아 주기 상한 · 빗질 털 뭉치 · 선물)이 rules.ts 와 같은 모양', () => {
+    const pl = body('nyang_play');
+    expect(pl).toContain("least(coalesce(p_catches, 0), public._nyang_const('play_catch_max'), ((t - c.play_at) / public._nyang_const('play_catch_sec'))::int)");
+    expect(pl).toContain("public._nyang_const('play_love_day') - c.play_love");
+    expect(body('nyang_brush')).toContain("public._nyang_const('fur_min') + public._nyang_mix(day * 4 + c.slot, 5) % public._nyang_const('fur_span')");
+    const rp = body('_nyang_roll_present');
+    expect(rp).toContain("public._nyang_const('present_pct') + lv * public._nyang_const('present_pct_level')");
+    expect(rp).toContain("public._nyang_const('present_coin_min') + lv * 2 + public._nyang_mix(q, 3) % public._nyang_const('present_coin_span')");
+    expect(body('nyang_state')).toContain('public._nyang_roll_present(me, c, t)');
+    // 첫 고양이를 들이면 츄르
+    expect(body('nyang_adopt')).toContain("public._nyang_const('start_churu')");
   });
 
   it('계산 식이 rules.ts 와 같은 모양', () => {
@@ -70,7 +87,10 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
   it('보안: 화면이 부르는 함수만 authenticated 에 열고, 나머지는 막는다', () => {
     const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)/g)].map((m) => m[1]);
     const pub = fns.filter((f) => f.startsWith('nyang_'));
-    expect(pub.sort()).toEqual(['nyang_adopt', 'nyang_clean', 'nyang_cure', 'nyang_feed', 'nyang_pet', 'nyang_state', 'nyang_water']);
+    expect(pub.sort()).toEqual([
+      'nyang_adopt', 'nyang_brush', 'nyang_churu', 'nyang_clean', 'nyang_cure', 'nyang_feed', 'nyang_gift', 'nyang_pet', 'nyang_play', 'nyang_play_start',
+      'nyang_seen', 'nyang_state', 'nyang_water',
+    ]);
     for (const f of fns) {
       expect(sql, f).toMatch(new RegExp(`revoke all on function public\\.${f}\\(`));
       if (pub.includes(f)) {

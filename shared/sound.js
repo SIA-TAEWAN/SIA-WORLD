@@ -120,10 +120,17 @@ export const SOUNDS = {
   nyangMeow: [0.5, 0, 620, 0.04, 0.12, 0.22, 0, 1.2, -2.5, 0, 160, 0.07, 0, 0, 6],
   nyangPunch: [0.7, 0.05, 260, 0, 0.03, 0.12, 2, 1.8, -6, 0, 0, 0, 0, 0.6],
   nyangHeart: [0.35, 0, 1047, 0.01, 0.06, 0.16, 0, 1.2, 0, 0, 523, 0.04],
+  // 시아집사 3단계: 츄르 핥기(짧고 촉촉하게) · 츄르 짜기 · 빗질(사각) · 낚싯대 휙 · 선물 반짝 · 잡았다
+  nyangLick: [0.3, 0.05, 900, 0, 0.02, 0.05, 0, 2, -30, 0, 0, 0, 0, 0.2],
+  nyangSqueeze: [0.25, 0.1, 200, 0.02, 0.08, 0.1, 0, 1.5, 4, 0, 0, 0, 0, 0.6],
+  nyangBrush: [0.3, 0.2, 1200, 0.02, 0.06, 0.1, 4, 1.2, 0, 0, 0, 0, 0, 0.4],
+  nyangSwish: [0.3, 0.1, 500, 0.01, 0.05, 0.12, 4, 1.5, 30, 0, 0, 0, 0, 0.3],
+  nyangGift: [0.45, 0, 880, 0.01, 0.12, 0.3, 0, 1.4, 0, 0, 440, 0.06, 0.06],
+  nyangCatch: [0.45, 0.05, 520, 0, 0.04, 0.12, 1, 1.6, 8, 0, 260, 0.03],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { nyangPour: 70, nyangHeart: 120, nyangPurr: 600, chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80, blockPick: 50, blockPlace: 50, blockNope: 80, blockClear: 60 };
+const MIN_GAP = { nyangPour: 70, nyangHeart: 120, nyangPurr: 600, nyangLick: 90, nyangBrush: 110, nyangSwish: 120, nyangSqueeze: 160, chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80, blockPick: 50, blockPlace: 50, blockNope: 80, blockClear: 60 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 

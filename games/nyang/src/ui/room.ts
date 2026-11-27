@@ -1,27 +1,25 @@
 /**
- * 방 화면 (PRD 8장 1 · 2): 위 띠 · 방(벽 · 창 · 문 · 바닥 · 밥그릇 · 물그릇 · 화장실 · 방석) · 고양이 · 아래 도구 띠.
+ * 방 화면 (PRD 8장 1 · 2): 위 띠 · 방(벽 · 창 · 문 · 바닥 · 밥그릇 · 물그릇 · 화장실 · 방석 · 탁자 · 상자 · 선물) · 고양이 · 아래 도구 띠.
  * 돌보기: 사료 봉투 끌어다 기울이기 · 물그릇 누르기 · 화장실 누르기(확대 → 삽으로 퍼서 봉투에) · 고양이 문지르기(쓰다듬기) · 고양이 누르기(정보 창).
+ * 3단계: 정보 창의 놀아 주기(play.ts) · 빗질 · 츄르(treats.ts), 선물 줍기, 문 앞 마중, 행동 여러 가지(behavior.ts), 바닥을 누르면 따라오기.
+ * 고양이는 여러 마리를 그릴 수 있게 CatView 로 둔다 (지금 입양은 한 마리 — 둘째부터는 5단계). 돌보기 물건은 첫 고양이 것.
  * 상태는 서버가 준 기록을 서버 시각으로 풀어서(game/rules.ts) 보여 준다. 돌보기는 모두 api 를 거친다.
  */
-import { COLOR, CONST, PERSONALITY, SPOT_NAME, kstHour, loveLevel } from '../data/balance';
+import { BEHAVIOR, BEHAVIORS, CHURU, CHURU_IDS, COLOR, CONST, FURNITURE_NAME, PERSONALITY, SEED_NAME, SPOT_NAME, TOYS, TOY_IDS, kstDay, kstHour, loveLevel, type ChuruId, type ToyId } from '../data/balance';
 import { errorText, type CareOut, type NyangApi } from '../net/api';
-import { levelsOf, needs, spotKind, type Cat, type Levels, type NyangState } from '../game/rules';
+import { hasToy, itemCount, levelsOf, needs, spotKind, type Cat, type Levels, type NyangState, type Present } from '../game/rules';
+import { follow, think } from './behavior';
 import { CatActor, type Act, type Spot2 } from './cat';
 import { preloadColor } from './catart';
 import { buzz, esc, floatAt, getSound, josa, setVibe, sfx, toast, vibeOn } from './common';
-import { blanket, cushion, foodBag, foodBowl, litterBox, scoop, trashBag, waterBowl, waterJug } from './props';
+import { clamp, type CatView, type Prop, type PropName, type RoomCtx, type TimeOfDay } from './ctx';
+import { playGame } from './play';
+import { blanket, boxFront, cup, cushion, foodBag, foodBowl, litterBox, presentIcon, scoop, sideTable, trashBag, waterBowl, waterJug } from './props';
+import { brushCat, giveChuru, refuseChuru } from './treats';
 
 /** 들어올 때 요약 카드 · 문 앞 마중 (UI 기준 값) */
 const SUMMARY_SEC = 3 * 3600;
 const GREET_SEC = 6 * 3600;
-
-interface Prop {
-  el: HTMLElement;
-  at: Spot2;
-  /** 방 너비에 대한 그림 너비 비율 · 그림 세로/가로 */
-  w: number;
-  ratio: number;
-}
 
 export interface RoomOpts {
   api: NyangApi;
@@ -35,11 +33,12 @@ export interface RoomOpts {
 export function showRoom(root: HTMLElement, o: RoomOpts) {
   const api = o.api;
   let state = o.state;
-  const slot = state.cats[0]?.slot ?? 1;
-  const catOf = (): Cat => state.cats.find((c) => c.slot === slot)!;
   const now = () => api.now();
-  let lv: Levels = levelsOf(catOf(), Math.floor(now()));
+  const catOf = (slot: number): Cat => state.cats.find((c) => c.slot === slot) ?? state.cats[0];
+  const lvCache = new Map<number, Levels>();
+  const levels = (slot: number) => lvCache.get(slot) ?? levelsOf(catOf(slot), Math.floor(now()));
   let sheet: HTMLElement | null = null;
+  let sheetSlot = 1;
   let busy = false;
   let lastPetCall = 0;
 
@@ -53,34 +52,54 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       </header>
       <main class="room" id="room">
         <div class="wall">
-          <div class="window" id="window"><div class="sky"></div><div class="sun"></div><div class="panes"></div></div>
-          <div class="door"><i></i></div>
+          <div class="window" id="window"><div class="sky"></div><div class="sun"></div><i class="bird"></i><i class="bird b2"></i><div class="panes"></div></div>
+          <div class="door" id="door"><i></i></div>
           <div class="baseboard"></div>
         </div>
         <div class="floor"></div>
         <div class="prop" id="pLitter" role="button" aria-label="화장실">${litterBox(0)}<span class="alert">!</span><span class="flies"><i></i><i></i></span></div>
         <div class="prop" id="pCushion" aria-hidden="true">${cushion}</div>
+        <div class="prop" id="pTable" aria-hidden="true">${sideTable}<span class="cup">${cup}</span></div>
+        <div class="prop hidden" id="pBox" aria-hidden="true">${boxFront}</div>
+        <div class="prop present hidden" id="pPresent" role="button" aria-label="선물"></div>
         <div class="prop" id="pFood" role="button" aria-label="밥그릇">${foodBowl(1)}<span class="alert">!</span></div>
         <div class="prop" id="pWater" role="button" aria-label="물그릇">${waterBowl(1, false)}<span class="alert">!</span></div>
         <div class="blanket hidden" id="blanket">${blanket}</div>
         <div class="night" id="night"></div>
       </main>
-      <footer class="tray">
-        <div class="bagslot"><div class="bag" id="bag" aria-label="사료 봉투">${foodBag}</div><small>사료</small></div>
-        <div class="hint" id="hint"></div>
-        <button class="btn catbtn" id="catBtn" type="button"></button>
+      <footer class="tray" id="tray">
+        <div class="tray-main">
+          <div class="bagslot"><div class="bag" id="bag" aria-label="사료 봉투">${foodBag}</div><small>사료</small></div>
+          <div class="hint" id="hint"></div>
+          <button class="btn catbtn" id="catBtn" type="button"></button>
+        </div>
+        <div class="tray-scene hidden" id="trayScene"></div>
       </footer>
     </div>`;
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
   const room = $('#room');
-  const props: Record<'food' | 'water' | 'litter' | 'cushion', Prop> = {
+  const props: Record<PropName, Prop> = {
     litter: { el: $('#pLitter'), at: { x: 0.8, y: 0.08 }, w: 0.3, ratio: 52 / 100 },
     cushion: { el: $('#pCushion'), at: { x: 0.27, y: 0.86 }, w: 0.3, ratio: 50 / 120 },
     food: { el: $('#pFood'), at: { x: 0.4, y: 0.42 }, w: 0.23, ratio: 58 / 100 },
     water: { el: $('#pWater'), at: { x: 0.78, y: 0.56 }, w: 0.23, ratio: 58 / 100 },
+    table: { el: $('#pTable'), at: { x: 0.1, y: 0.3 }, w: 0.17, ratio: 70 / 80 },
+    box: { el: $('#pBox'), at: { x: 0.74, y: 0.9 }, w: 0.26, ratio: 80 / 120 },
+    present: { el: $('#pPresent'), at: { x: 0.2, y: 0.5 }, w: 0.13, ratio: 50 / 60 },
   };
-  const cat = new CatActor(room, catOf().color, catOf().pattern, { x: 0.5, y: 0.7 });
-  void preloadColor(catOf().color, catOf().pattern);
+
+  // ---------- 고양이들 ----------
+  const views: CatView[] = state.cats.map((c, i) => ({
+    slot: c.slot,
+    actor: new CatActor(room, c.color, c.pattern, { x: 0.5 + i * 0.12, y: 0.7 - i * 0.1 }),
+    nextMeow: 0,
+    scene: null,
+    behavior: null,
+  }));
+  for (const c of state.cats) void preloadColor(c.color, c.pattern);
+  const main = views[0];
+  const mainSlot = main.slot;
+  const viewOf = (slot: number) => views.find((v) => v.slot === slot) ?? main;
 
   // ---------- 배치 ----------
   let W = 300;
@@ -90,31 +109,97 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     const f = floorRect();
     return { x: f.left + p.x * f.width, y: f.top + p.y * f.height };
   };
+  const toFloor = (cx: number, cy: number): Spot2 => {
+    const r = room.getBoundingClientRect();
+    const f = floorRect();
+    return { x: clamp((cx - r.left - f.left) / f.width, 0.03, 0.97), y: clamp((cy - r.top - f.top) / f.height, 0, 1.02) };
+  };
   function layout() {
     W = room.clientWidth;
     H = room.clientHeight;
     const f = floorRect();
-    cat.floor = { ...f, scale: Math.min(H * 0.27, W * 0.42) / 381 };
+    for (const v of views) v.actor.floor = { ...f, scale: Math.min(H * 0.27, W * 0.42) / 381 };
     for (const p of Object.values(props)) {
       const s = toScreen(p.at);
       const w = W * p.w * (0.9 + 0.2 * p.at.y);
       p.el.style.width = `${w}px`;
       p.el.style.height = `${w * p.ratio}px`;
       p.el.style.transform = `translate(${s.x - w / 2}px, ${s.y - w * p.ratio}px)`;
-      p.el.style.zIndex = String(Math.round(s.y));
+      // 상자는 그 안의 고양이보다 앞에
+      p.el.style.zIndex = String(Math.round(s.y) + (p === props.box ? 3 : 0));
     }
   }
   new ResizeObserver(layout).observe(room);
   layout();
 
+  // ---------- 화면 공용 (ctx) ----------
+  const trayMain = root.querySelector<HTMLElement>('.tray-main')!;
+  const trayScene = $('#trayScene');
+  const pendingSeen = new Set<string>();
+  const timeOfDay = (): TimeOfDay => {
+    const h = kstHour(Math.floor(now()));
+    return h >= 6 && h < 10 ? 'morning' : h >= 10 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'dusk' : 'night';
+  };
+  const walkTo = (v: CatView, to: Spot2, then?: Act, fast = false) => {
+    v.actor.act = { kind: 'walk', to, speed: fast ? 330 : 150, then };
+  };
+  const ctx: RoomCtx = {
+    api,
+    room,
+    state: () => state,
+    cat: catOf,
+    levels,
+    level: (slot) => loveLevel(catOf(slot).love).level,
+    apply,
+    rewards,
+    now,
+    W: () => W,
+    H: () => H,
+    toScreen,
+    toFloor,
+    props,
+    views,
+    timeOfDay,
+    saw(v, id) {
+      const c = catOf(v.slot);
+      const key = `${v.slot}:${id}`;
+      if (!BEHAVIOR[id] || c.seen.includes(id) || pendingSeen.has(key)) return;
+      if (loveLevel(c.love).level < BEHAVIOR[id].level) return;
+      pendingSeen.add(key);
+      void api
+        .seen(v.slot, id)
+        .then((r) => {
+          apply(r);
+          if (r.added) {
+            sfx('nyangGift', { volume: 0.5 });
+            toast(`📖 처음 본 행동: ${BEHAVIOR[id].name}`);
+          }
+        })
+        .catch(() => pendingSeen.delete(key));
+    },
+    busy: () => busy,
+    setBusy: (b) => (busy = b),
+    tray(html) {
+      trayMain.classList.toggle('hidden', html != null);
+      trayScene.classList.toggle('hidden', html == null);
+      trayScene.innerHTML = html ?? '';
+      return trayScene;
+    },
+    walkTo,
+    layoutProps: layout,
+  };
+
   // ---------- 상태 그리기 ----------
   let lastFood = -1;
   let lastWater = '';
   let lastPoops = -1;
+  let lastPresent = '';
   function paint() {
     const t = Math.floor(now());
-    const c = catOf();
-    lv = levelsOf(c, t);
+    lvCache.clear();
+    for (const c of state.cats) lvCache.set(c.slot, levelsOf(c, t));
+    const c = catOf(mainSlot);
+    const lv = levels(mainSlot);
     const nd = needs(c, t);
     $('#coins').textContent = state.profile.coins.toLocaleString('ko-KR');
     $('#sia').textContent = state.profile.sia.toLocaleString('ko-KR');
@@ -138,10 +223,21 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     props.litter.el.classList.toggle('need', nd.litter);
     props.litter.el.classList.toggle('dirty', lv.poops >= 3);
     props.water.el.classList.toggle('spoiled', lv.spoiled);
-    cat.sick = lv.sick;
+    // 상자: 가지고 있으면 방에 둔다 (혼자 들어가 놀기도 한다)
+    props.box.el.classList.toggle('hidden', !hasToy(state.profile, 'box'));
+    // 선물: 고양이가 물어다 놓은 것 (마중 중에는 아직)
+    const pc = state.cats.find((x) => x.present);
+    const pk = pc?.present ? `${pc.slot}:${pc.present.kind}:${pc.present.id}` : '';
+    if (pk !== lastPresent) {
+      lastPresent = pk;
+      props.present.el.innerHTML = pc?.present ? `${presentIcon(pc.present.kind)}<span class="sparkle">✦</span>` : '';
+      props.present.el.dataset.slot = String(pc?.slot ?? '');
+    }
+    props.present.el.classList.toggle('hidden', !pk || greeting);
+    for (const v of views) v.actor.sick = levels(v.slot).sick;
     $('#blanket').classList.toggle('hidden', !lv.curing);
     const hint = lv.sick && !lv.curing
-      ? `${josa(c.name, '이', '가')} 감기 기운이 있어요. 모두 채우고 담요를 덮어 주세요`
+      ? `${josa(c.name, '이', '가')} 감기 기운이 있어요. 모두 채우고 담요를 덮거나 츄르를 주세요`
       : lv.curing
         ? '담요를 덮고 쉬는 중이에요. 곧 나아요'
         : nd.food
@@ -150,14 +246,13 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
             ? lv.spoiled ? '물이 상했어요 — 물그릇을 눌러 갈아 주세요' : '물이 부족해요 — 물그릇을 눌러요'
             : nd.litter
               ? '화장실이 지저분해요 — 화장실을 눌러요'
-              : nd.mood
-                ? `${josa(c.name, '이', '가')} 심심해해요 — 문질러서 쓰다듬어 주세요`
-                : '고양이를 문지르면 쓰다듬어요';
+              : pk
+                ? `${josa(catOf(pc!.slot).name, '이', '가')} 선물을 물어 왔어요 — 눌러서 받아요`
+                : nd.mood
+                  ? `${josa(c.name, '이', '가')} 심심해해요 — 고양이를 눌러 놀아 주세요`
+                  : '고양이를 문지르면 쓰다듬어요 · 누르면 놀아 주기';
     $('#hint').textContent = hint;
-    // 시간대: 창밖과 밤 어둠
-    const h = kstHour(t);
-    const part = h >= 6 && h < 10 ? 'morning' : h >= 10 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'dusk' : 'night';
-    room.dataset.time = part;
+    room.dataset.time = timeOfDay();
     if (sheet) paintSheet();
   }
 
@@ -174,63 +269,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     }
   }
 
-  // ---------- 고양이 머리 ----------
-  const bowlSpot = (p: Prop): Spot2 => ({ x: Math.max(0.12, p.at.x - 0.24), y: p.at.y + 0.05 });
-  const walkTo = (to: Spot2, then?: Act, fast = false) => {
-    cat.act = { kind: 'walk', to, speed: fast ? 330 : 150, then };
-  };
-  let nextMeow = 0;
-  function think(t: number) {
-    const c = catOf();
-    const nd = needs(c, Math.floor(now()));
-    const night = room.dataset.time === 'night';
-    const r = Math.random();
-    if (lv.sick) {
-      if (r < 0.4) cat.say('에취!', 1400, t), sfx('nyangMeow', { rate: 1.6, volume: 0.5 });
-      cat.act = { kind: 'pose', pose: 'loaf', until: t + 5000 + Math.random() * 5000 };
-      return;
-    }
-    if (nd.food || nd.water || nd.litter) {
-      const target = nd.food ? props.food : nd.water ? props.water : props.litter;
-      const spot = target === props.litter ? { x: 0.58, y: 0.28 } : bowlSpot(target);
-      const near = Math.hypot(cat.pos.x - spot.x, cat.pos.y - spot.y) < 0.05;
-      if (!near) return walkTo(spot);
-      cat.facing = 1;
-      const words = nd.food ? '배고파옹…' : nd.water ? (lv.spoiled ? '물이 이상해옹' : '목말라옹…') : '화장실이…';
-      if (t > nextMeow) {
-        cat.say(words, 2200, t);
-        sfx('nyangMeow', { rate: 0.9 + Math.random() * 0.2 });
-        nextMeow = t + 9000;
-      }
-      if (nd.water) target.el.classList.add('tap'), setTimeout(() => target.el.classList.remove('tap'), 700);
-      cat.act = { kind: 'pose', pose: 'sit', until: t + 3500 };
-      return;
-    }
-    if (nd.mood) {
-      cat.facing = -1;
-      if (r < 0.3) cat.say('…', 1500, t);
-      cat.act = { kind: 'pose', pose: 'loaf', until: t + 6000 };
-      return;
-    }
-    if (night && r < 0.75) {
-      const bed = { x: props.cushion.at.x, y: props.cushion.at.y - 0.06 };
-      if (Math.hypot(cat.pos.x - bed.x, cat.pos.y - bed.y) > 0.04) return walkTo(bed);
-      cat.act = { kind: 'pose', pose: 'sleep', until: t + 20000 + Math.random() * 20000 };
-      if (Math.random() < 0.5) cat.say('zZ', 2500, t);
-      return;
-    }
-    if (r < 0.5) return walkTo({ x: 0.08 + Math.random() * 0.84, y: 0.3 + Math.random() * 0.65 });
-    if (r < 0.65) return void (cat.act = { kind: 'pose', pose: 'loaf', until: t + 7000 + Math.random() * 8000 });
-    if (r < 0.73) return void (cat.act = { kind: 'pose', pose: 'stretch', until: t + 1800 });
-    if (r < 0.8) {
-      const bed = { x: props.cushion.at.x, y: props.cushion.at.y - 0.06 };
-      return walkTo(bed, { kind: 'pose', pose: 'knead', until: 0, ms: 6000 });
-    }
-    if (r < 0.86) return void (cat.act = { kind: 'pose', pose: 'jump', until: t + 600 });
-    if (r < 0.9) return void (cat.act = { kind: 'pose', pose: 'sleep', until: t + 12000 });
-    cat.act = { kind: 'idle', until: t + 3000 + Math.random() * 3000 };
-  }
-
   // ---------- 매 장면 ----------
   let last = performance.now();
   let paintAt = 0;
@@ -239,12 +277,17 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     if (!alive) return;
     const dt = Math.min(100, t - last);
     last = t;
-    if (cat.act.kind === 'idle' && t >= cat.act.until) think(t);
-    else if (cat.act.kind === 'pose' && t >= cat.act.until) think(t);
-    cat.update(t, dt);
+    for (const v of views) {
+      const a = v.actor;
+      if (!v.scene && ((a.act.kind === 'idle' && t >= a.act.until) || (a.act.kind === 'pose' && t >= a.act.until))) think(ctx, v, t);
+      a.update(t, dt);
+      // 상자 속 고양이: 상자가 늘 앞에
+      if (a.sink > 0 && !v.scene) props.box.el.style.zIndex = String((Number(a.el.style.zIndex) || 0) + 5);
+    }
+    const lv = levels(mainSlot);
     if (lv.curing) {
       // 담요: 고양이 몸 위에
-      const sc = cat.screen();
+      const sc = main.actor.screen();
       const w = 400 * sc.s;
       const bl = $('#blanket');
       bl.style.width = `${w}px`;
@@ -258,6 +301,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     }
     requestAnimationFrame(frame);
   }
+  let greeting = false;
   paint();
 
   // ---------- 밥 주기: 사료 봉투를 끌어다 밥그릇 위에서 기울인다 ----------
@@ -288,12 +332,11 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       const dt = t - lastT;
       lastT = t;
       if (over && !done) {
-        if (lv.full >= CONST.feed_full) {
+        if (levels(mainSlot).full >= CONST.feed_full) {
           done = true;
           toast('밥그릇이 아직 가득해요');
         } else {
           pour += dt;
-          // 사료 알갱이
           if (Math.random() < 0.6) {
             const b = bowlBox();
             const r = room.getBoundingClientRect();
@@ -321,7 +364,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       px = ev.clientX;
       py = ev.clientY;
       const b = bowlBox();
-      // 봉투 입구(손가락 왼쪽 위)가 밥그릇 위에 오면 기울인다
       const nowOver = px > b.left - 10 && px < b.right + 50 && py > b.top - 130 && py < b.bottom + 10;
       if (nowOver !== over) {
         over = nowOver;
@@ -347,17 +389,20 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     bag.addEventListener('pointerup', up);
     bag.addEventListener('pointercancel', up);
   });
+  const bowlSpot = (p: Prop): Spot2 => ({ x: Math.max(0.12, p.at.x - 0.24), y: p.at.y + 0.05 });
   async function doFeed() {
     busy = true;
     buzz([20, 30, 20]);
     try {
-      const r = await api.feed(slot, 'basic');
+      const r = await api.feed(mainSlot, 'basic');
       apply(r);
       rewards(r);
       sfx('nyangMeow', { rate: 1.2 });
-      // 고양이가 달려와서 먹는다
-      cat.say('냠냠!', 1500);
-      walkTo(bowlSpot(props.food), { kind: 'pose', pose: 'eat', until: 0, ms: 7000, face: 1 }, true);
+      main.actor.say('냠냠!', 1500);
+      main.actor.sink = 0;
+      walkTo(main, bowlSpot(props.food), { kind: 'pose', pose: 'eat', until: 0, ms: 7000, face: 1 }, true);
+      const a = main.actor.act;
+      if (a.kind === 'walk') a.arrive = () => ctx.saw(main, 'eat');
     } catch (e) {
       toast(errorText(e));
     } finally {
@@ -369,6 +414,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   // ---------- 물 갈기: 물그릇을 누른다 ----------
   props.water.el.addEventListener('click', async () => {
     if (busy) return;
+    const lv = levels(mainSlot);
     if (lv.water >= CONST.water_fresh && !lv.spoiled) return toast('물이 아직 깨끗해요');
     busy = true;
     const el = props.water.el;
@@ -385,7 +431,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     jug.style.width = `${b.width * 0.9}px`;
     room.append(jug);
     try {
-      const r = await api.water(slot);
+      const r = await api.water(mainSlot);
       await new Promise((ok) => setTimeout(ok, 450));
       el.classList.remove('dump');
       jug.classList.add('pour');
@@ -394,7 +440,8 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       await new Promise((ok) => setTimeout(ok, 650));
       apply(r);
       rewards(r);
-      walkTo(bowlSpot(props.water), { kind: 'pose', pose: 'drink', until: 0, ms: 4500, face: 1 }, true);
+      main.actor.sink = 0;
+      walkTo(main, bowlSpot(props.water), { kind: 'pose', pose: 'drink', until: 0, ms: 4500, face: 1 }, true);
     } catch (e) {
       el.classList.remove('dump');
       toast(errorText(e));
@@ -407,15 +454,14 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   // ---------- 똥 치우기: 화장실을 누르면 확대 ----------
   props.litter.el.addEventListener('click', () => {
     if (busy) return;
-    if (lv.poops === 0) return toast('화장실이 깨끗해요');
+    if (levels(mainSlot).poops === 0) return toast('화장실이 깨끗해요');
     openLitter();
   });
   function openLitter() {
     sfx('click');
     const dim = document.createElement('div');
     dim.className = 'dim';
-    const n = lv.poops;
-    // 덩어리 자리 (모래 판 안 %, 정해진 자리)
+    const n = levels(mainSlot).poops;
     const SPOTS = [[30, 38], [62, 30], [44, 62], [72, 60]];
     dim.innerHTML = `<div class="litter-zoom panel" role="dialog" aria-label="화장실 치우기">
       <button class="btn iconbtn close" type="button" aria-label="닫기">✕</button>
@@ -455,7 +501,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
               tool.classList.add('full');
               sfx('nyangScoop');
               buzz(18);
-              // 모래 튀김
               const sb = dim.querySelector<HTMLElement>('.sand')!;
               const sr = sb.getBoundingClientRect();
               for (let k = 0; k < 6; k++) floatAt(sb, b.left - sr.left + b.width / 2 + (Math.random() - 0.5) * 30, b.top - sr.top + b.height / 2, '', 'grain');
@@ -478,7 +523,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
         if (!carry) return;
         const lump = carry;
         if (!into) {
-          // 봉투에 넣지 않았으면 덩어리를 제자리로
           lump.classList.remove('gone');
           tool.classList.remove('full');
           carry = null;
@@ -492,7 +536,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
         trash.classList.add('gulp');
         setTimeout(() => trash.classList.remove('gulp'), 300);
         try {
-          const r = await api.clean(slot);
+          const r = await api.clean(mainSlot);
           apply(r);
           rewards(r);
           left--;
@@ -519,107 +563,165 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     });
   }
 
-  // ---------- 쓰다듬기 · 고양이 누르기 ----------
-  cat.hit.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    cat.hit.setPointerCapture(e.pointerId);
-    const x0 = e.clientX;
-    const y0 = e.clientY;
-    const t0 = performance.now();
-    let moved = 0;
-    let lx = x0;
-    let ly = y0;
-    let rubMs = 0;
-    let hateMs = 0;
-    let lastT = t0;
-    let heartAt = 0;
-    let petting = false;
-    let punched = false;
-    const before = cat.act;
-    const move = (ev: PointerEvent) => {
-      const d = Math.hypot(ev.clientX - lx, ev.clientY - ly);
-      moved += d;
-      lx = ev.clientX;
-      ly = ev.clientY;
-      const t = performance.now();
-      const dt = Math.min(80, t - lastT);
-      lastT = t;
-      if (moved < 12 || punched) return;
-      if (!petting) {
-        petting = true;
-        cat.act = { kind: 'pet' };
-      }
-      if (d < 1) return;
-      const spot = cat.spotAt(ev.clientX, ev.clientY);
-      const kind = spotKind(catOf(), spot);
-      const rr = room.getBoundingClientRect();
-      if (kind === 'hate') {
-        hateMs += dt;
-        cat.act = { kind: 'hold', pose: 'sit' };
-        cat.shake = t + 120;
-        if (hateMs > 1400) {
-          punched = true;
-          cat.act = { kind: 'pose', pose: 'pounce', until: t + 900 };
-          cat.say('냥!', 1300, t);
-          sfx('nyangPunch');
-          buzz([30, 40, 30]);
-          room.classList.add('bump');
-          setTimeout(() => room.classList.remove('bump'), 300);
-          floatAt(room, ev.clientX - rr.left, ev.clientY - rr.top, '🐾', 'float paw');
-          toast(`${SPOT_NAME[spot]}는 싫어해요!`);
-        }
-        return;
-      }
-      hateMs = Math.max(0, hateMs - dt);
-      cat.act = { kind: 'pet' };
-      rubMs += dt;
-      if (t > heartAt) {
-        heartAt = t + (kind === 'like' ? 220 : 380);
-        floatAt(room, ev.clientX - rr.left + (Math.random() - 0.5) * 30, ev.clientY - rr.top - 20, '♥', kind === 'like' ? 'float heart' : 'float heart small');
-        sfx('nyangPurr', { volume: 0.7 });
-        if (Math.random() < 0.3) buzz(6);
-      }
-      // 1.2초 넘게 문지르면 서버에 쓰다듬기 한 번 (같은 고양이는 8초에 한 번까지)
-      if (rubMs > 1200 && now() - lastPetCall >= CONST.pet_gap_sec + 0.5) {
-        lastPetCall = now();
-        rubMs = 0;
-        void api
-          .pet(slot, spot)
-          .then((r) => {
-            apply(r);
-            rewards(r);
-            if (r.love > 0) floatAt(room, ev.clientX - rr.left, ev.clientY - rr.top - 50, `친밀도 +${r.love}`, 'float love');
-            if (r.kind === 'like') sfx('nyangHeart');
-          })
-          .catch(() => {
-            /* 너무 잦음 · 통신 — 하트만 보여 준다 */
-          });
-      }
-    };
-    const up = () => {
-      cat.hit.removeEventListener('pointermove', move);
-      cat.hit.removeEventListener('pointerup', up);
-      cat.hit.removeEventListener('pointercancel', up);
-      if (punched) return;
-      if (!petting && moved < 12 && performance.now() - t0 < 500) {
-        cat.act = before;
-        openSheet();
-        return;
-      }
-      if (petting) {
-        cat.act = { kind: 'pose', pose: 'blink', until: performance.now() + 1200 };
-        if (Math.random() < 0.5) cat.say('골골…', 1300);
-      }
-    };
-    cat.hit.addEventListener('pointermove', move);
-    cat.hit.addEventListener('pointerup', up);
-    cat.hit.addEventListener('pointercancel', up);
+  // ---------- 선물 줍기 ----------
+  props.present.el.addEventListener('click', async () => {
+    if (busy) return;
+    const slot = Number(props.present.el.dataset.slot) || mainSlot;
+    busy = true;
+    sfx('click');
+    try {
+      const r = await api.gift(slot);
+      apply(r);
+      showPresent(slot, r.present);
+      const v = viewOf(slot);
+      ctx.saw(v, 'present');
+      v.actor.say('칭찬해 달라옹!', 1600);
+      v.actor.act = { kind: 'pose', pose: 'beg', until: performance.now() + 1800 };
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      busy = false;
+    }
   });
-  $('#catBtn').addEventListener('click', () => openSheet());
+  function presentText(g: Present): string {
+    if (g.kind === 'coin') return `엽전 +${g.n}`;
+    if (g.kind === 'seed') return `${SEED_NAME[g.id as keyof typeof SEED_NAME] ?? g.id} 씨앗 ${g.n}개`;
+    if (g.kind === 'toy') return `${TOYS[g.id as ToyId]?.name ?? g.id} (장난감)`;
+    return `${FURNITURE_NAME[g.id] ?? g.id} (가구)`;
+  }
+  function showPresent(slot: number, g: Present) {
+    sfx('nyangGift');
+    buzz([10, 30, 10]);
+    const dim = document.createElement('div');
+    dim.className = 'dim';
+    const extra = g.kind === 'toy' ? '<p class="away">놀아 주기에서 쓸 수 있어요</p>' : g.kind === 'seed' ? '<p class="away">베란다 정원이 열리면 심을 수 있어요</p>' : g.kind === 'furniture' ? '<p class="away">꾸미기가 열리면 방에 놓을 수 있어요</p>' : '';
+    dim.innerHTML = `<div class="summary panel gift-card" role="dialog" aria-label="선물">
+      <div class="gift-ico">${presentIcon(g.kind)}</div>
+      <h3>${esc(josa(catOf(slot).name, '이', '가'))} 선물을 물어 왔어요!</h3>
+      <p class="gift-what">${esc(presentText(g))}</p>${extra}
+      <p class="tapto">눌러서 닫기</p></div>`;
+    dim.addEventListener('click', () => dim.remove());
+    document.body.append(dim);
+  }
+
+  // ---------- 쓰다듬기 · 고양이 누르기 ----------
+  for (const v of views) bindPet(v);
+  function bindPet(v: CatView) {
+    const cat = v.actor;
+    cat.hit.addEventListener('pointerdown', (e) => {
+      if (v.scene) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cat.hit.setPointerCapture(e.pointerId);
+      const x0 = e.clientX;
+      const y0 = e.clientY;
+      const t0 = performance.now();
+      let moved = 0;
+      let lx = x0;
+      let ly = y0;
+      let rubMs = 0;
+      let hateMs = 0;
+      let lastT = t0;
+      let heartAt = 0;
+      let petting = false;
+      let punched = false;
+      const before = cat.act;
+      const move = (ev: PointerEvent) => {
+        const d = Math.hypot(ev.clientX - lx, ev.clientY - ly);
+        moved += d;
+        lx = ev.clientX;
+        ly = ev.clientY;
+        const t = performance.now();
+        const dt = Math.min(80, t - lastT);
+        lastT = t;
+        if (moved < 12 || punched) return;
+        if (!petting) {
+          petting = true;
+          cat.act = { kind: 'pet' };
+        }
+        if (d < 1) return;
+        const spot = cat.spotAt(ev.clientX, ev.clientY);
+        const kind = spotKind(catOf(v.slot), spot);
+        const rr = room.getBoundingClientRect();
+        if (kind === 'hate') {
+          hateMs += dt;
+          cat.act = { kind: 'hold', pose: 'sit' };
+          cat.shake = t + 120;
+          if (hateMs > 1400) {
+            punched = true;
+            cat.act = { kind: 'pose', pose: 'pounce', until: t + 900 };
+            cat.say('냥!', 1300, t);
+            sfx('nyangPunch');
+            buzz([30, 40, 30]);
+            room.classList.add('bump');
+            setTimeout(() => room.classList.remove('bump'), 300);
+            floatAt(room, ev.clientX - rr.left, ev.clientY - rr.top, '🐾', 'float paw');
+            toast(`${SPOT_NAME[spot]}는 싫어해요!`);
+          }
+          return;
+        }
+        hateMs = Math.max(0, hateMs - dt);
+        cat.act = { kind: 'pet' };
+        rubMs += dt;
+        if (t > heartAt) {
+          heartAt = t + (kind === 'like' ? 220 : 380);
+          floatAt(room, ev.clientX - rr.left + (Math.random() - 0.5) * 30, ev.clientY - rr.top - 20, '♥', kind === 'like' ? 'float heart' : 'float heart small');
+          sfx('nyangPurr', { volume: 0.7 });
+          if (Math.random() < 0.3) buzz(6);
+        }
+        if (rubMs > 1200 && now() - lastPetCall >= CONST.pet_gap_sec + 0.5) {
+          lastPetCall = now();
+          rubMs = 0;
+          void api
+            .pet(v.slot, spot)
+            .then((r) => {
+              apply(r);
+              rewards(r);
+              if (r.love > 0) floatAt(room, ev.clientX - rr.left, ev.clientY - rr.top - 50, `친밀도 +${r.love}`, 'float love');
+              if (r.kind === 'like') sfx('nyangHeart');
+            })
+            .catch(() => {
+              /* 너무 잦음 · 통신 — 하트만 보여 준다 */
+            });
+        }
+      };
+      const up = () => {
+        cat.hit.removeEventListener('pointermove', move);
+        cat.hit.removeEventListener('pointerup', up);
+        cat.hit.removeEventListener('pointercancel', up);
+        if (punched) return;
+        if (!petting && moved < 12 && performance.now() - t0 < 500) {
+          cat.act = before;
+          openSheet(v.slot);
+          return;
+        }
+        if (petting) {
+          cat.act = { kind: 'pose', pose: 'blink', until: performance.now() + 1200 };
+          if (Math.random() < 0.5) cat.say('골골…', 1300);
+        }
+      };
+      cat.hit.addEventListener('pointermove', move);
+      cat.hit.addEventListener('pointerup', up);
+      cat.hit.addEventListener('pointercancel', up);
+    });
+  }
+  $('#catBtn').addEventListener('click', () => openSheet(mainSlot));
+
+  // ---------- 바닥을 누르면: 친밀도 4단계부터 따라온다 ----------
+  room.addEventListener('pointerdown', (e) => {
+    const tgt = e.target as HTMLElement;
+    if (busy || !(tgt === room || tgt.classList.contains('floor'))) return;
+    const rr = room.getBoundingClientRect();
+    if (e.clientY - rr.top < floorRect().top - 10) return;
+    const fl = toFloor(e.clientX, e.clientY);
+    floatAt(room, e.clientX - rr.left, e.clientY - rr.top, '', 'tapdot');
+    follow(ctx, main, fl);
+  });
 
   // ---------- 고양이 정보 창 ----------
-  function openSheet() {
-    if (sheet) return;
+  function openSheet(slot: number) {
+    if (sheet || busy) return;
+    sheetSlot = slot;
     sfx('nyangMeow', { rate: 1.15 });
     sheet = document.createElement('div');
     sheet.className = 'dim sheet-dim';
@@ -628,48 +730,120 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     sheet.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
       if (el === sheet || el.closest('[data-close]')) return closeSheet();
-      if (el.closest('[data-cure]')) void doCure();
-      if (el.closest('[data-soon]')) toast('다음 업데이트에서 열려요');
+      if (el.closest('[data-back]')) return (sheetMode = 'main'), paintSheet();
+      if (el.closest('[data-cure]')) return void doCure();
+      if (el.closest('[data-soon]')) return toast('사진은 다음 업데이트에서 열려요');
+      const act = el.closest<HTMLElement>('[data-act]')?.dataset.act;
+      if (act === 'play') return (sheetMode = 'toys'), paintSheet();
+      if (act === 'churu') return chooseChuru();
+      if (act === 'brush') return startBrush();
+      const toy = el.closest<HTMLElement>('[data-toy]')?.dataset.toy as ToyId | undefined;
+      if (toy) return startPlay(toy);
+      const fl = el.closest<HTMLElement>('[data-flavor]')?.dataset.flavor as ChuruId | undefined;
+      if (fl) return startChuru(fl);
     });
+    sheetMode = 'main';
     paintSheet();
   }
+  let sheetMode: 'main' | 'toys' | 'churu' = 'main';
   function closeSheet() {
     sheet?.remove();
     sheet = null;
   }
+  const today = () => kstDay(Math.floor(now()));
   function paintSheet() {
     if (!sheet) return;
-    const c = catOf();
+    const c = catOf(sheetSlot);
+    const lv = levels(sheetSlot);
     const p = PERSONALITY[c.personality];
     const l = loveLevel(c.love);
+    const body = sheet.querySelector('.sheet-body')!;
+    const head = `<button class="btn iconbtn close" type="button" data-close aria-label="닫기">✕</button><h3>${esc(c.name)}</h3>`;
+    if (sheetMode === 'toys') {
+      body.innerHTML = `${head}<p class="likes">어떤 장난감으로 놀아 줄까요? (30초)</p>
+        <div class="choices">${TOY_IDS.map((id) => {
+          const own = hasToy(state.profile, id);
+          const fav = p.toy === id;
+          return `<button class="btn choice ${own ? '' : 'locked'}" type="button" ${own ? `data-toy="${id}"` : 'disabled'}>
+            <span class="cico">${TOYS[id].icon}</span><b>${TOYS[id].name}</b><small>${own ? TOYS[id].desc : '상점에서 (곧)'}</small>${fav ? '<em class="fav">♥ 좋아해요</em>' : ''}</button>`;
+        }).join('')}</div>
+        <button class="btn wide" type="button" data-back>뒤로</button>`;
+      return;
+    }
+    if (sheetMode === 'churu') {
+      const n = c.churuDay === today() ? c.churuN : 0;
+      body.innerHTML = `${head}<p class="likes">어떤 맛을 줄까요? 오늘 ${n}/${CONST.churu_day_max}개 먹었어요</p>
+        <div class="choices three">${CHURU_IDS.map((id) => {
+          const have = itemCount(state.profile, `churu:${id}`);
+          const fav = p.churu === id;
+          return `<button class="btn choice ${have ? '' : 'locked'}" type="button" ${have ? `data-flavor="${id}"` : 'disabled'}>
+            <span class="cico churu-chip" style="--c:${CHURU[id].color}"></span><b>${CHURU[id].name}</b><small>${have}개</small>${fav ? '<em class="fav">♥ 제일 좋아</em>' : ''}</button>`;
+        }).join('')}</div>
+        <p class="likes">츄르는 상점에서 시아코인으로 살 수 있어요 (곧)</p>
+        <button class="btn wide" type="button" data-back>뒤로</button>`;
+      return;
+    }
     const bar = (name: string, ico: string, v: number, extra = '') =>
       `<div class="stat"><span>${ico} ${name}</span><div class="track"><i style="width:${Math.round((v / CONST.max) * 100)}%" class="${v < CONST.half ? 'low' : ''}"></i></div><em>${Math.round((v / CONST.max) * 100)}%${extra}</em></div>`;
-    sheet.querySelector('.sheet-body')!.innerHTML = `
-      <button class="btn iconbtn close" type="button" data-close aria-label="닫기">✕</button>
-      <h3>${esc(c.name)}</h3>
+    const brushed = c.brushDay === today();
+    const churuN = c.churuDay === today() ? c.churuN : 0;
+    const churuHave = CHURU_IDS.reduce((s, id) => s + itemCount(state.profile, `churu:${id}`), 0);
+    const seenN = c.seen.filter((id) => BEHAVIOR[id]).length;
+    body.innerHTML = `${head}
       <div class="ai-head"><span class="tag">${COLOR[c.color].name}</span><span class="tag pink">${p.name}</span>${lv.sick ? `<span class="tag blue">${lv.curing ? '쉬는 중' : '감기 기운'}</span>` : ''}</div>
       <div class="love"><span>친밀도 <b>Lv${l.level}</b></span><div class="track"><i style="width:${l.need ? Math.round((l.have / l.need) * 100) : 100}%"></i></div><em>${l.need ? `${Math.floor((l.have / l.need) * 100)}%` : '최고'}</em></div>
       ${bar('배부름', '🍚', lv.full)}
       ${bar('목마름', '💧', lv.water, lv.spoiled ? ' · 상함' : '')}
       ${bar('청결', '🧹', lv.clean, lv.poops ? ` · 똥 ${lv.poops}` : '')}
       ${bar('기분', '😺', lv.mood)}
-      <p class="likes">좋아하는 곳: ${p.likes.map((s) => SPOT_NAME[s]).join(' · ')} · 싫어하는 곳: ${p.dislikes.map((s) => SPOT_NAME[s]).join(' · ')}</p>
+      <p class="likes">좋아하는 곳: ${p.likes.map((s) => SPOT_NAME[s]).join(' · ')} · 싫어하는 곳: ${p.dislikes.map((s) => SPOT_NAME[s]).join(' · ')}<br/>좋아하는 장난감: ${TOYS[p.toy].name} · 츄르: ${CHURU[p.churu].name} · 본 행동 ${seenN}/${BEHAVIORS.length}</p>
       ${lv.sick && !lv.curing ? `<button class="btn primary wide" data-cure type="button">담요 덮어 주기</button>` : ''}
       <div class="acts">
-        <button class="btn" data-soon type="button">🎣<small>놀아 주기</small></button>
-        <button class="btn" data-soon type="button">🪮<small>빗질</small></button>
-        <button class="btn" data-soon type="button">📷<small>사진</small></button>
-        <button class="btn" data-soon type="button">🍡<small>츄르</small></button>
+        <button class="btn" data-act="play" type="button">🎣<small>놀아 주기</small></button>
+        <button class="btn ${brushed ? 'done' : ''}" data-act="brush" type="button">🪮<small>${brushed ? '오늘 했어요' : '빗질'}</small></button>
+        <button class="btn soon" data-soon type="button">📷<small>사진</small></button>
+        <button class="btn ${churuN >= CONST.churu_day_max || !churuHave ? 'done' : ''}" data-act="churu" type="button">🍡<small>츄르 ${churuHave}</small></button>
       </div>`;
+  }
+  function startPlay(toy: ToyId) {
+    const v = viewOf(sheetSlot);
+    closeSheet();
+    void playGame(ctx, v, toy);
+  }
+  function chooseChuru() {
+    const c = catOf(sheetSlot);
+    const n = c.churuDay === today() ? c.churuN : 0;
+    if (n >= CONST.churu_day_max) {
+      const v = viewOf(sheetSlot);
+      closeSheet();
+      refuseChuru(v);
+      toast('츄르는 하루 2개까지만 먹어요');
+      return;
+    }
+    if (!CHURU_IDS.some((id) => itemCount(state.profile, `churu:${id}`) > 0)) return toast('츄르가 없어요. 상점이 열리면 시아코인으로 살 수 있어요');
+    sheetMode = 'churu';
+    paintSheet();
+  }
+  function startChuru(flavor: ChuruId) {
+    const v = viewOf(sheetSlot);
+    closeSheet();
+    void giveChuru(ctx, v, flavor);
+  }
+  function startBrush() {
+    const c = catOf(sheetSlot);
+    if (c.brushDay === today()) return toast('오늘은 벌써 빗질했어요. 내일 또 해 주세요');
+    const v = viewOf(sheetSlot);
+    closeSheet();
+    void brushCat(ctx, v);
   }
   async function doCure() {
     try {
-      const r = await api.cure(slot, 'blanket');
+      const r = await api.cure(sheetSlot, 'blanket');
       apply(r);
       sfx('tankHeal');
       buzz(20);
       toast('담요를 덮어 주었어요. 2시간 뒤면 나아요');
-      cat.act = { kind: 'pose', pose: 'sleep', until: performance.now() + 15000 };
+      viewOf(sheetSlot).actor.act = { kind: 'pose', pose: 'sleep', until: performance.now() + 15000 };
     } catch (e) {
       toast(errorText(e));
     }
@@ -725,20 +899,62 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   });
 
   // ---------- 들어올 때 ----------
-  const c0 = catOf();
+  const c0 = catOf(mainSlot);
+  const lv0 = levels(mainSlot);
   if (o.fresh) {
-    cat.say('냐앙!', 2000);
+    main.actor.say('냐앙!', 2000);
     toast(`${josa(c0.name, '이', '가')} 집에 왔어요!`);
-    cat.act = { kind: 'pose', pose: 'beg', until: performance.now() + 2500 };
-  } else if (o.away >= GREET_SEC) {
-    // 오랜만이면 문 앞으로 달려와 맞이한다
-    cat.pos = { x: 0.04, y: 0.02 };
-    walkTo({ x: 0.45, y: 0.75 }, { kind: 'pose', pose: 'beg', until: 0, ms: 4000 }, true);
-    setTimeout(() => (cat.say('냐앙~!', 2200), sfx('nyangMeow')), 900);
+    main.actor.act = { kind: 'pose', pose: 'beg', until: performance.now() + 2500 };
+    if (itemCount(state.profile, `churu:${PERSONALITY[c0.personality].churu}`) > 0)
+      setTimeout(() => toast(`입양 선물로 ${CHURU[PERSONALITY[c0.personality].churu].name} 츄르 ${CONST.start_churu}개를 받았어요`, 2600), 2400);
+  } else if (o.away >= GREET_SEC && !lv0.sick) {
+    void greet();
   }
-  if (o.away >= SUMMARY_SEC || lv.sick) showSummary(o.away);
+  /** 오랜만이면 문이 열리고 고양이가 문 앞까지 달려와 맞이한다 (선물이 있으면 물어 와서 내려놓는다) */
+  async function greet() {
+    const v = main;
+    const a = v.actor;
+    greeting = true;
+    v.scene = 'greet';
+    a.pos = { x: 0.55, y: 0.85 };
+    a.act = { kind: 'pose', pose: 'sleep', until: Infinity };
+    const door = $('#door');
+    await new Promise((r) => setTimeout(r, 500));
+    door.classList.add('open');
+    sfx('click');
+    await new Promise((r) => setTimeout(r, 450));
+    a.act = { kind: 'hold', pose: 'sit' };
+    a.say('!', 600);
+    sfx('nyangMeow', { rate: 1.3 });
+    await new Promise((r) => setTimeout(r, 500));
+    a.perky = true;
+    walkTo(v, { x: 0.14, y: 0.05 }, { kind: 'hold', pose: 'beg' }, true);
+    while ((a.act as Act).kind === 'walk') await new Promise((r) => setTimeout(r, 50));
+    a.perky = false;
+    a.facing = -1;
+    a.setFx('sparkle');
+    a.say('냐앙~! 왔다옹!', 2200);
+    sfx('nyangMeow');
+    ctx.saw(v, 'greet');
+    const m = a.mouthPoint();
+    for (let i = 0; i < 5; i++) setTimeout(() => floatAt(room, m.x + (Math.random() - 0.5) * 60, m.y - 30 - Math.random() * 30, '♥', 'float heart'), i * 180);
+    buzz([10, 30, 10]);
+    await new Promise((r) => setTimeout(r, 2300));
+    a.setFx('none');
+    door.classList.remove('open');
+    greeting = false;
+    if (state.cats.some((c) => c.present)) {
+      // 물어 온 선물을 내려놓는다
+      a.say('선물이다옹!', 1600);
+      walkTo(v, { x: props.present.at.x + 0.12, y: props.present.at.y + 0.02 }, { kind: 'pose', pose: 'sit', until: 0, ms: 3000, face: -1 });
+    } else a.act = { kind: 'pose', pose: 'sit', until: performance.now() + 1500 };
+    paint();
+    v.scene = null;
+  }
+  if (o.away >= SUMMARY_SEC || lv0.sick) showSummary(o.away);
   function showSummary(away: number) {
-    const c = catOf();
+    const c = catOf(mainSlot);
+    const lv = levels(mainSlot);
     const lines: string[] = [];
     if (lv.sick) lines.push(lv.curing ? '담요를 덮고 쉬는 중이에요' : '감기 기운이 있어요 (에취!)');
     if (lv.full < CONST.half) lines.push(lv.full === 0 ? '밥그릇이 텅 비었어요' : '밥이 얼마 안 남았어요');
@@ -746,6 +962,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     else if (lv.water < CONST.half) lines.push('물이 거의 없어요');
     if (lv.poops) lines.push(`화장실에 똥 ${lv.poops}개`);
     if (lv.mood < CONST.half) lines.push('심심해하고 있어요');
+    if (state.cats.some((x) => x.present)) lines.push('선물을 물어 왔어요!');
     if (!lines.length) lines.push('모두 괜찮아요. 쓰다듬어 줄까요?');
     const h = Math.floor(away / 3600);
     const dim = document.createElement('div');
@@ -756,13 +973,14 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       <ul>${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       <p class="tapto">눌러서 닫기</p></div>`;
     dim.addEventListener('click', () => dim.remove());
-    document.body.append(dim);
+    // 마중을 먼저 보고 나서 카드
+    setTimeout(() => document.body.append(dim), greeting ? 4200 : 0);
   }
 
   // 배경음: 밤에는 편안한 곡 (파일이 없으면 소리 없이)
   const bgm = () => getSound()?.playBgm('nyang', room.dataset.time === 'night' ? 'boss' : 'main');
   bgm();
-  setInterval(() => {
+  const bgmTimer = setInterval(() => {
     const was = room.dataset.time;
     paint();
     if (room.dataset.time !== was) bgm();
@@ -772,5 +990,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   return () => {
     alive = false;
     clearInterval(timer);
+    clearInterval(bgmTimer);
   };
 }

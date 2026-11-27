@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { loveAt } from '../data/balance';
+import { CHURU_IDS, PRESENT_FURNITURE, loveAt } from '../data/balance';
 import {
-  RuleError, adopt, clean, cure, feed, newState, payLocal, pet, visit, water,
-  type Cat, type NyangState, type Profile,
+  RuleError, adopt, brush, churu, clean, cure, feed, gift, newState, payLocal, pet, play, playStart, seen, visit, water,
+  type Cat, type NyangState, type Present, type Profile,
 } from '../game/rules';
 import { worldSupabase } from './world';
 
@@ -11,6 +11,7 @@ import { worldSupabase } from './world';
  * 서버 시각으로 계산하고, 화면은 돌려받은 상태를 서버 시각(now())으로 풀어서(game/rules.ts) 보여 주기만 한다.
  * 테스트 모드(?local=1, 개발 서버 · localhost 전용)는 같은 규칙으로 이 기기에만 저장한다.
  *   &time=10  시간 10배 빠르게 · &skip=6h  6시간 지난 것처럼 (한 번) · &love=7  첫 고양이 친밀도 7단계로 (한 번) · &reset=1 처음부터
+ *   &toys=1  장난감 모두 (한 번) · &churu=5  츄르 맛마다 5개 더 (한 번) · &gift=1  첫 고양이가 선물을 물어 온 것처럼 (한 번)
  */
 const loc = typeof location === 'undefined' ? null : location;
 const params = new URLSearchParams(loc?.search ?? '');
@@ -36,12 +37,31 @@ export interface NyangApi {
   clean(slot: number): Promise<CareOut & { gift: number; poops: number }>;
   pet(slot: number, spot: string): Promise<CareOut & { kind: 'like' | 'ok' | 'hate'; love: number }>;
   cure(slot: number, kind?: string): Promise<{ state: NyangState }>;
+  playStart(slot: number, toy: string): Promise<{ state: NyangState }>;
+  play(slot: number, catches: number): Promise<CareOut & { catches: number; love: number; liked: boolean }>;
+  brush(slot: number): Promise<CareOut & { fur: number; love: number }>;
+  churu(slot: number, flavor: string): Promise<CareOut & { love: number; liked: boolean; cured: boolean }>;
+  gift(slot: number): Promise<{ state: NyangState; present: Present }>;
+  seen(slot: number, behavior: string): Promise<{ state: NyangState; added: boolean }>;
 }
 
 // ---------- 서버 ----------
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
 const numOrNull = (v: unknown) => (v == null ? null : num(v));
+const strOrNull = (v: unknown) => (typeof v === 'string' ? v : null);
+function cleanPresent(v: unknown): Present | null {
+  const r = v as Record<string, unknown> | null;
+  if (!r || typeof r !== 'object') return null;
+  const kind = String(r.kind);
+  if (kind !== 'coin' && kind !== 'seed' && kind !== 'toy' && kind !== 'furniture') return null;
+  return { kind, id: String(r.id ?? ''), n: num(r.n, 1) };
+}
+function cleanItems(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k, n] of Object.entries(v)) if (num(n) > 0) out[k] = num(n);
+  return out;
+}
 function cleanCat(raw: unknown): Cat {
   const r = (raw ?? {}) as Record<string, unknown>;
   return {
@@ -49,6 +69,9 @@ function cleanCat(raw: unknown): Cat {
     personality: String(r.personality ?? 'calm') as Cat['personality'], adoptedAt: num(r.adoptedAt), calcAt: num(r.calcAt), fedAt: num(r.fedAt), fedAmount: num(r.fedAmount),
     waterAt: num(r.waterAt), poopBase: num(r.poopBase), poopAt: num(r.poopAt), moodVal: num(r.moodVal), moodAt: num(r.moodAt), love: num(r.love),
     sickAt: numOrNull(r.sickAt), cureAt: numOrNull(r.cureAt), petDay: num(r.petDay, -1), petLove: num(r.petLove), petAt: num(r.petAt),
+    playAt: num(r.playAt), playToy: strOrNull(r.playToy), playDay: num(r.playDay, -1), playLove: num(r.playLove), brushDay: num(r.brushDay, -1),
+    churuDay: num(r.churuDay, -1), churuN: num(r.churuN), presentAt: num(r.presentAt), present: cleanPresent(r.present),
+    seen: Array.isArray(r.seen) ? r.seen.map(String) : [],
   };
 }
 export function cleanState(raw: unknown): NyangState {
@@ -57,6 +80,7 @@ export function cleanState(raw: unknown): NyangState {
   const profile: Profile = {
     coins: num(p.coins), seq: num(p.seq), visitAt: num(p.visitAt), bonusDay: num(p.bonusDay, -1), careDays: num(p.careDays), siaDay: num(p.siaDay, -1),
     siaToday: num(p.siaToday), siaDue: num(p.siaDue), siaPaid: num(p.siaPaid), sia: num(p.sia),
+    items: cleanItems(p.items), furniture: Array.isArray(p.furniture) ? p.furniture.map(String) : [], pseq: num(p.pseq),
   };
   return { profile, cats: (Array.isArray(r.cats) ? r.cats : []).map(cleanCat) };
 }
@@ -108,6 +132,30 @@ async function createSupabaseApi(): Promise<NyangApi> {
       const d = await rpc('nyang_cure', { p_slot: slot, p_kind: kind });
       return { state: cleanState(d.state) };
     },
+    async playStart(slot, toy) {
+      const d = await rpc('nyang_play_start', { p_slot: slot, p_toy: toy });
+      return { state: cleanState(d.state) };
+    },
+    async play(slot, catches) {
+      const d = await rpc('nyang_play', { p_slot: slot, p_catches: Math.max(0, Math.floor(catches)) });
+      return { ...care(d), catches: num(d.catches), love: num(d.love), liked: d.liked === true };
+    },
+    async brush(slot) {
+      const d = await rpc('nyang_brush', { p_slot: slot });
+      return { ...care(d), fur: num(d.fur), love: num(d.love) };
+    },
+    async churu(slot, flavor) {
+      const d = await rpc('nyang_churu', { p_slot: slot, p_flavor: flavor });
+      return { ...care(d), love: num(d.love), liked: d.liked === true, cured: d.cured === true };
+    },
+    async gift(slot) {
+      const d = await rpc('nyang_gift', { p_slot: slot });
+      return { state: cleanState(d.state), present: cleanPresent(d.present) ?? { kind: 'coin', id: 'coin', n: 0 } };
+    },
+    async seen(slot, behavior) {
+      const d = await rpc('nyang_seen', { p_slot: slot, p_behavior: behavior });
+      return { state: cleanState(d.state), added: d.added === true };
+    },
   };
 }
 
@@ -148,10 +196,21 @@ function createLocalApi(): NyangApi {
   const now = () => s.clock.virt0 + (real() - s.clock.real0) * s.clock.factor;
   const love = Number(params.get('love'));
   if (love >= 1 && love <= 10) s.state.cats = s.state.cats.map((c) => (c.slot === 1 ? { ...c, love: Math.max(c.love, loveAt(love)) } : c));
+  const items = s.state.profile.items;
+  if (params.get('toys') === '1') for (const t of ['laser', 'ball', 'box']) items['toy:' + t] = Math.max(1, items['toy:' + t] ?? 0);
+  const ch = Math.min(99, Number(params.get('churu')) || 0);
+  if (ch > 0) for (const f of CHURU_IDS) items['churu:' + f] = (items['churu:' + f] ?? 0) + ch;
+  if (params.get('gift') === '1' && s.state.cats[0]) {
+    const kinds: Present[] = [
+      { kind: 'coin', id: 'coin', n: 12 }, { kind: 'seed', id: 'catgrass', n: 2 }, { kind: 'toy', id: 'ball', n: 1 }, { kind: 'furniture', id: PRESENT_FURNITURE[0], n: 1 },
+    ];
+    s.state.cats[0] = { ...s.state.cats[0], present: kinds[Math.floor(Math.random() * kinds.length)] };
+  }
   // 한 번만 쓰는 설정은 주소에서 지운다 (새로 고침해도 다시 걸리지 않게)
-  if (loc && (params.has('skip') || params.has('love') || params.has('reset'))) {
+  const ONCE = ['skip', 'love', 'reset', 'toys', 'churu', 'gift'];
+  if (loc && ONCE.some((k) => params.has(k))) {
     const u = new URL(loc.href);
-    for (const k of ['skip', 'love', 'reset']) u.searchParams.delete(k);
+    for (const k of ONCE) u.searchParams.delete(k);
     history.replaceState(null, '', u.href);
   }
   const persist = () => {
@@ -187,6 +246,12 @@ function createLocalApi(): NyangApi {
     clean: (slot) => step((st, at) => clean(st, slot, at)),
     pet: (slot, spot) => step((st, at) => pet(st, slot, spot, at)),
     cure: (slot, kind = 'blanket') => step((st, at) => cure(st, slot, kind, at)),
+    playStart: (slot, toy) => step((st, at) => playStart(st, slot, toy, at)),
+    play: (slot, catches) => step((st, at) => play(st, slot, catches, at)),
+    brush: (slot) => step((st, at) => brush(st, slot, at)),
+    churu: (slot, flavor) => step((st, at) => churu(st, slot, flavor, at)),
+    gift: (slot) => step((st, at) => gift(st, slot, at)),
+    seen: (slot, behavior) => step((st, at) => seen(st, slot, behavior, at)),
   };
 }
 
@@ -209,6 +274,13 @@ export function errorText(e: unknown): string {
       'no room': '지금은 더 입양할 수 없어요',
       'bad name': '이름은 한글 · 영문 · 숫자로 1~8글자예요',
       'need login': '로그인이 필요해요',
+      'no toy': '아직 없는 장난감이에요',
+      'no play': '놀이 시간이 지났어요',
+      'brushed today': '오늘은 벌써 빗질했어요',
+      'churu full': '오늘은 츄르를 그만 먹을래요',
+      'no churu': '이 맛 츄르가 없어요',
+      'no present': '선물이 없어요',
+      'no medicine': '약 간식이 없어요',
     } as Record<string, string>
   )[e.message] ?? '할 수 없어요';
 }

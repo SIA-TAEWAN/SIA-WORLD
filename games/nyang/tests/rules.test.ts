@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONST, LOVE_NEED, PERSONALITIES, PERSONALITY, kstDay, loveAt, loveLevel, shelterKittens } from '../src/data/balance';
 import {
-  RuleError, adopt, clean, cleanOf, cure, feed, fullOf, levelsOf, lin, linHalfAt, linZeroAt, moodOf, newState, pet, poopsOf, settle, spotKind, visit, water, waterOf,
+  RuleError, adopt, brush, churu, clean, cleanOf, cure, feed, gift, play, playStart, seen, fullOf, levelsOf, lin, linHalfAt, linZeroAt, moodOf, newState, pet, poopsOf, settle, spotKind, visit, water, waterOf,
   type NyangState,
 } from '../src/game/rules';
 
@@ -215,7 +215,7 @@ describe('돌보기', () => {
 });
 
 describe('감기 기운', () => {
-  it('상태 하나가 바닥인 채로 24시간 → 걸림, 그동안 친밀도가 쌓이지 않음, 다 채우고 담요 → 2시간 뒤 나음', () => {
+  it('상태 하나가 바닥인 채로 28시간(sick_sec) → 걸림, 그동안 친밀도가 쌓이지 않음, 다 채우고 담요 → 2시간 뒤 나음', () => {
     const p = PERSONALITY.calm;
     let s = start('calm');
     const waterZero = linZeroAt(10000, T0, p.water_sec);
@@ -237,7 +237,8 @@ describe('감기 기운', () => {
     for (let i = 0; i < 4; i++) s = clean(s, 1, t).state;
     for (let i = 0; i < 4; i++) s = pet(s, 1, 'chin', t + i * CONST.pet_gap_sec).state;
     const tc = t + 4 * CONST.pet_gap_sec;
-    err(() => cure(s, 1, 'medicine', tc), 'bad cure');
+    err(() => cure(s, 1, 'pill', tc), 'bad cure');
+    err(() => cure(s, 1, 'medicine', tc), 'no medicine');
     s = cure(s, 1, 'blanket', tc).state;
     err(() => cure(s, 1, 'blanket', tc + 1), 'already curing');
     expect(levelsOf(cat(s), tc + CONST.cure_sec - 1)).toMatchObject({ sick: true, curing: true });
@@ -297,5 +298,144 @@ describe('입양', () => {
     expect(a.away).toBe(0);
     const b = visit(a.state, true, T0 + 100 + 7 * H);
     expect(b.away).toBe(7 * H);
+  });
+});
+
+describe('3단계: 놀아 주기 · 빗질 · 츄르 · 선물 · 행동 도감', () => {
+  it('놀아 주기: 낚싯대는 처음부터, 다른 장난감은 보관함에 있어야 · 잡은 수 상한(15개 · 2초에 하나) · 하루 친밀도 상한', () => {
+    let s = start('calm'); // calm 은 낚싯대를 좋아한다
+    err(() => playStart(s, 1, 'yarn', T0), 'bad toy');
+    err(() => playStart(s, 1, 'laser', T0), 'no toy');
+    err(() => play(s, 1, 5, T0 + 30), 'no play');
+    s = playStart(s, 1, 'rod', T0).state;
+    // 10초 뒤 끝내면 5개까지만
+    let r = play(s, 1, 12, T0 + 10);
+    expect(r.catches).toBe(5);
+    expect(r.liked).toBe(true);
+    expect(r.love).toBe(5 * CONST.play_love_like);
+    s = r.state;
+    err(() => play(s, 1, 5, T0 + 12), 'no play');
+    // 시작하고 너무 오래 지나면 받지 않는다
+    s = playStart(s, 1, 'rod', T0 + 100).state;
+    err(() => play(s, 1, 5, T0 + 100 + CONST.play_max_sec + 1), 'no play');
+    // 하루 상한
+    let t = T0 + 1000;
+    let total = r.love;
+    for (let i = 0; i < 10; i++) {
+      s = playStart(s, 1, 'rod', t).state;
+      t += 40;
+      r = play(s, 1, 99, t);
+      expect(r.catches).toBe(CONST.play_catch_max);
+      total += r.love;
+      s = r.state;
+    }
+    expect(total).toBe(CONST.play_love_day);
+    expect(cat(s).playLove).toBe(CONST.play_love_day);
+    // 다른 장난감은 보관함에 있으면
+    s.profile.items['toy:laser'] = 1;
+    s = playStart(s, 1, 'laser', t).state;
+    expect(cat(s).playToy).toBe('laser');
+  });
+
+  it('빗질: 하루 한 번, 털 뭉치는 보관함으로', () => {
+    let s = start('lazy');
+    const r = brush(s, 1, T0);
+    expect(r.love).toBe(CONST.brush_love);
+    expect(r.fur).toBeGreaterThanOrEqual(CONST.fur_min);
+    expect(r.state.profile.items.fur).toBe(r.fur);
+    s = r.state;
+    err(() => brush(s, 1, T0 + 3 * H), 'brushed today');
+    const next = 1767193200 + (kstDay(T0) + 1) * 86400;
+    expect(brush(s, 1, next).state.profile.items.fur).toBeGreaterThan(r.fur);
+  });
+
+  it('츄르: 첫 입양에 좋아하는 맛 3개, 하루 2개까지, 없으면 못 줌, 아플 때 주면 낫기 시작', () => {
+    let s = start('glutton');
+    expect(s.profile.items).toEqual({ 'churu:salmon': CONST.start_churu });
+    err(() => churu(s, 1, 'beef', T0), 'bad flavor');
+    err(() => churu(s, 1, 'tuna', T0), 'no churu');
+    let r = churu(s, 1, 'salmon', T0);
+    expect(r.liked).toBe(true);
+    expect(r.love).toBe(CONST.churu_love_like);
+    s = churu(r.state, 1, 'salmon', T0 + 60).state;
+    expect(s.profile.items['churu:salmon']).toBe(CONST.start_churu - 2);
+    err(() => churu(s, 1, 'salmon', T0 + 120), 'churu full');
+    // 다 쓰면 열쇠가 지워진다
+    const next = 1767193200 + (kstDay(T0) + 1) * 86400 + 9 * H;
+    s = churu(s, 1, 'salmon', next).state;
+    expect(s.profile.items['churu:salmon']).toBeUndefined();
+    // 아플 때
+    let sk = start('glutton');
+    sk = visit(sk, true, T0 + 5 * 86400).state;
+    expect(cat(sk).sickAt).not.toBeNull();
+    r = churu(sk, 1, 'salmon', T0 + 5 * 86400);
+    expect(r).toMatchObject({ love: 0, cured: true });
+    expect(cat(r.state).cureAt).toBe(T0 + 5 * 86400 + CONST.cure_sec);
+  });
+
+  it('선물: 들어올 때 4시간에 한 번 굴리고, 친밀도가 높을수록 자주 · 주우면 보관함 · 엽전 · 가구', () => {
+    const count = (love: number) => {
+      let s = start('calm');
+      s.cats[0].love = love;
+      let got = 0;
+      const kinds: Record<string, number> = {};
+      for (let i = 1; i <= 400; i++) {
+        const t = T0 + i * CONST.present_gap_sec;
+        // 아프지 않게 기록을 새로
+        s.cats[0] = { ...s.cats[0], fedAt: t, waterAt: t, poopAt: t, poopBase: 0, moodAt: t, moodVal: 10000, sickAt: null, cureAt: null, calcAt: t };
+        s = visit(s, true, t).state;
+        const g = s.cats[0].present;
+        if (g) {
+          got++;
+          kinds[g.kind] = (kinds[g.kind] ?? 0) + 1;
+          const before = s.profile.coins;
+          s = gift(s, 1, t).state;
+          if (g.kind === 'coin') expect(s.profile.coins).toBe(before + g.n);
+          if (g.kind === 'furniture') expect(s.profile.furniture.at(-1)).toBe(g.id);
+          if (g.kind === 'seed') expect(s.profile.items[`seed:${g.id}`]).toBeGreaterThan(0);
+        }
+      }
+      return { got, kinds, s };
+    };
+    const low = count(0);
+    const high = count(loveAt(10));
+    expect(low.got).toBeGreaterThan(400 * 0.15);
+    expect(high.got).toBeGreaterThan(low.got * 2);
+    expect(Object.keys(high.kinds).sort()).toEqual(['coin', 'furniture', 'seed', 'toy']);
+    // 장난감은 가지고 있지 않은 것만 (셋 다 생기면 엽전)
+    expect(['laser', 'ball', 'box'].every((t) => (high.s.profile.items[`toy:${t}`] ?? 0) <= 1)).toBe(true);
+    // 4시간이 안 지났으면 다시 굴리지 않는다
+    let s = start('calm');
+    const p0 = s.profile.pseq;
+    s = visit(s, true, T0 + CONST.present_gap_sec - 1).state;
+    expect(s.profile.pseq).toBe(p0);
+    s = visit(s, true, T0 + CONST.present_gap_sec).state;
+    expect(s.profile.pseq).toBe(p0 + 1);
+    s = visit(s, false, T0 + 3 * CONST.present_gap_sec).state;
+    expect(s.profile.pseq).toBe(p0 + 1);
+    if (!s.cats[0].present) err(() => gift(s, 1, T0 + 3 * CONST.present_gap_sec), 'no present');
+  });
+
+  it('행동 도감: 처음 본 것만 남기고, 친밀도 단계가 모자라면 거절', () => {
+    let s = start('calm');
+    err(() => seen(s, 1, 'dance', T0), 'bad behavior');
+    err(() => seen(s, 1, 'toString', T0), 'bad behavior');
+    err(() => seen(s, 1, 'together', T0), 'too early');
+    let r = seen(s, 1, 'loaf', T0);
+    expect(r.added).toBe(true);
+    r = seen(r.state, 1, 'loaf', T0 + 1);
+    expect(r.added).toBe(false);
+    s = r.state;
+    s.cats[0].love = loveAt(10);
+    expect(seen(s, 1, 'together', T0 + 2).state.cats[0].seen).toEqual(['loaf', 'together']);
+  });
+
+  it('약 간식: 보관함에서 하나 쓰고, 채우지 않아도 낫기 시작', () => {
+    let s = start('glutton');
+    s = visit(s, true, T0 + 5 * 86400).state;
+    s.profile.items.medicine = 1;
+    s = cure(s, 1, 'medicine', T0 + 5 * 86400).state;
+    expect(s.profile.items.medicine).toBeUndefined();
+    expect(levelsOf(cat(s), T0 + 5 * 86400 + 1).curing).toBe(true);
   });
 });

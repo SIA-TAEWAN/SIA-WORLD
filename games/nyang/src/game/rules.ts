@@ -11,8 +11,9 @@
  * 친밀도와 감기는 settle 이 calcAt 부터 t 까지를 한 번에 반영한다 (자주 불러도 한 번 부른 것과 결과가 같다).
  */
 import {
-  CAT_NEED, CONST, FOOD, MAX_CATS, NAME_RE, PERSONALITY, isColorId, isFoodId, isPersonalityId, kstDay, loveLevel, mix,
-  type ColorId, type FoodId, type PersonalityId, type Spot, SPOTS,
+  BEHAVIOR, CAT_NEED, CONST, FOOD, MAX_CATS, NAME_RE, PERSONALITY, PRESENT_FURNITURE, PRESENT_SEEDS, PRESENT_TOYS, TOYS,
+  isChuruId, isColorId, isFoodId, isPersonalityId, isToyId, itemKey, kstDay, loveLevel, mix,
+  type ColorId, type FoodId, type PersonalityId, type Spot, type ToyId, SPOTS,
 } from '../data/balance';
 
 /** 서버가 거절한 까닭과 같은 글자 (SQL 의 raise exception) */
@@ -45,6 +46,28 @@ export interface Cat {
   petDay: number;
   petLove: number;
   petAt: number;
+  /** 놀아 주기: 시작한 때(0 = 놀고 있지 않음) · 장난감 · 그날 · 그날 놀이로 오른 친밀도 */
+  playAt: number;
+  playToy: string | null;
+  playDay: number;
+  playLove: number;
+  /** 빗질한 날 (하루 한 번) */
+  brushDay: number;
+  /** 츄르: 그날 · 그날 먹은 개수 (하루 2개) */
+  churuDay: number;
+  churuN: number;
+  /** 선물: 마지막으로 굴린 때 · 바닥에 놓인 선물 (없으면 null) */
+  presentAt: number;
+  present: Present | null;
+  /** 처음 본 행동 (행동 도감, 본 순서) */
+  seen: string[];
+}
+
+/** 고양이가 물어다 놓은 선물 */
+export interface Present {
+  kind: 'coin' | 'seed' | 'toy' | 'furniture';
+  id: string;
+  n: number;
 }
 
 export interface Profile {
@@ -64,6 +87,12 @@ export interface Profile {
   siaPaid: number;
   /** 시아코인 잔액 (서버: wallets.sia_coins, 로컬 모드: 이 기기에서만 센다) */
   sia: number;
+  /** 보관함 { 'toy:laser' · 'churu:tuna' · 'seed:daisy' · 'fur' · 'medicine' … : 개수 } (0 개는 지운다) */
+  items: Record<string, number>;
+  /** 가진 가구 id (꾸미기는 5단계) */
+  furniture: string[];
+  /** 선물을 굴린 수 (선물을 정하는 번호) */
+  pseq: number;
 }
 
 export interface NyangState {
@@ -81,12 +110,16 @@ const { max: MAX, half: HALF } = CONST;
 const ceilDiv = (a: number, b: number) => Math.floor((a + b - 1) / b);
 
 export function newProfile(): Profile {
-  return { coins: 0, seq: 0, visitAt: 0, bonusDay: -1, careDays: 0, siaDay: -1, siaToday: 0, siaDue: 0, siaPaid: 0, sia: 0 };
+  return { coins: 0, seq: 0, visitAt: 0, bonusDay: -1, careDays: 0, siaDay: -1, siaToday: 0, siaDue: 0, siaPaid: 0, sia: 0, items: {}, furniture: [], pseq: 0 };
 }
 export function newState(): NyangState {
   return { profile: newProfile(), cats: [] };
 }
-export const cloneState = (s: NyangState): NyangState => ({ profile: { ...s.profile }, cats: s.cats.map((c) => ({ ...c })) });
+export const cloneState = (s: NyangState): NyangState => ({
+  profile: { ...s.profile, items: { ...s.profile.items }, furniture: [...s.profile.furniture] },
+  cats: s.cats.map(cloneCat),
+});
+const cloneCat = (c: Cat): Cat => ({ ...c, seen: [...c.seen], present: c.present ? { ...c.present } : null });
 
 const pers = (c: Cat) => PERSONALITY[c.personality];
 
@@ -150,7 +183,7 @@ export function floorSince(c: Cat, t: number): number | null {
  * 돌보기 기록은 바꾸지 않는다. 같은 t 로 여러 번 불러도 같고, 중간에 몇 번 부르든 결과가 같다.
  */
 export function settle(c0: Cat, t: number): Cat {
-  const c = { ...c0 };
+  const c = cloneCat(c0);
   if (t <= c.calcAt) return c;
   let from = c.calcAt;
   let good = true;
@@ -253,7 +286,10 @@ export function adopt(s0: NyangState, color: string, personality: string, name: 
     slot, name: nm, color, pattern: null, personality, adoptedAt: t, calcAt: t,
     fedAt: t, fedAmount: MAX, waterAt: t, poopBase: 0, poopAt: t, moodVal: CONST.start_mood, moodAt: t,
     love: 0, sickAt: null, cureAt: null, petDay: -1, petLove: 0, petAt: 0,
+    playAt: 0, playToy: null, playDay: -1, playLove: 0, brushDay: -1, churuDay: -1, churuN: 0, presentAt: t, present: null, seen: [],
   });
+  // 첫 고양이를 들이면 그 고양이가 좋아하는 맛 츄르를 조금 (상점은 4단계)
+  if (slot === 1) addItem(s.profile, itemKey.churu(PERSONALITY[personality as PersonalityId].churu), CONST.start_churu);
   return { state: s, slot };
 }
 
@@ -265,6 +301,8 @@ export function visit(s0: NyangState, entry: boolean, t: number): { state: Nyang
   if (entry) {
     away = s.profile.visitAt > 0 ? Math.max(0, t - s.profile.visitAt) : 0;
     s.profile.visitAt = t;
+    // 고양이마다 선물을 물어 왔는지 (지난번에 굴리고 present_gap_sec 이 지났을 때 한 번)
+    for (const c of s.cats) rollPresent(c, s.profile, t);
   }
   return { state: s, away };
 }
@@ -355,14 +393,20 @@ export function pet(s0: NyangState, slot: number, spot: string, t: number): { st
   return { state: s, kind, love, ...care(s.profile, before < HALF && after >= HALF, t) };
 }
 
-/** 감기 낫게 하기 (담요): 네 상태를 모두 채운 뒤에만. cure_sec 뒤에 낫는다 */
+/**
+ * 감기 낫게 하기: 담요(blanket)는 네 상태를 모두 채운 뒤에만, 약 간식(medicine)은 보관함에서 하나 쓴다. cure_sec 뒤에 낫는다.
+ * (츄르를 줘도 낫기 시작한다 — churu)
+ */
 export function cure(s0: NyangState, slot: number, kind: string, t: number): { state: NyangState } {
   const s = cloneState(s0);
-  if (kind !== 'blanket') throw new RuleError('bad cure');
+  if (kind !== 'blanket' && kind !== 'medicine') throw new RuleError('bad cure');
   const c = settle(catOf(s, slot), t);
   if (c.sickAt == null) throw new RuleError('not sick');
   if (c.cureAt != null) throw new RuleError('already curing');
-  if ([fullOf(c, t), waterOf(c, t), cleanOf(c, t), moodOf(c, t)].some((v) => v < CONST.cure_need) || spoiledOf(c, t)) throw new RuleError('need care');
+  if (kind === 'medicine') {
+    if (itemCount(s.profile, itemKey.medicine) < 1) throw new RuleError('no medicine');
+    addItem(s.profile, itemKey.medicine, -1);
+  } else if ([fullOf(c, t), waterOf(c, t), cleanOf(c, t), moodOf(c, t)].some((v) => v < CONST.cure_need) || spoiledOf(c, t)) throw new RuleError('need care');
   c.cureAt = t + CONST.cure_sec;
   putCat(s, c);
   return { state: s };
@@ -372,4 +416,160 @@ export function cure(s0: NyangState, slot: number, kind: string, t: number): { s
 export function needs(c: Cat, t: number) {
   const l = levelsOf(c, t);
   return { food: l.full < HALF, water: l.water < HALF || l.spoiled, litter: l.clean < HALF, mood: l.mood < HALF, sick: l.sick && !l.curing };
+}
+
+// ---------- 3단계: 보관함 · 놀아 주기 · 빗질 · 츄르 · 선물 · 행동 도감 ----------
+
+export const itemCount = (p: Profile, key: string) => p.items[key] ?? 0;
+/** 보관함에 n 개 더하기 (0 개 이하가 되면 열쇠를 지운다 — SQL 도 같다) */
+export function addItem(p: Profile, key: string, n: number) {
+  const v = itemCount(p, key) + n;
+  if (v <= 0) delete p.items[key];
+  else p.items[key] = v;
+}
+/** 장난감을 가지고 있는지 (낚싯대는 처음부터) */
+export const hasToy = (p: Profile, toy: ToyId) => TOYS[toy].free || itemCount(p, itemKey.toy(toy)) > 0;
+
+/** 기분을 올리고 '필요한 돌보기'였는지 (절반 아래 → 절반 이상) */
+function raiseMood(c: Cat, add: number, t: number): boolean {
+  const before = moodOf(c, t);
+  const after = Math.min(MAX, before + add);
+  c.moodVal = after;
+  c.moodAt = t;
+  return before < HALF && after >= HALF;
+}
+
+/** 놀아 주기 시작: 장난감을 고른다 (가지고 있어야 한다) */
+export function playStart(s0: NyangState, slot: number, toy: string, t: number): { state: NyangState } {
+  const s = cloneState(s0);
+  if (!isToyId(toy)) throw new RuleError('bad toy');
+  const c = settle(catOf(s, slot), t);
+  if (!hasToy(s.profile, toy)) throw new RuleError('no toy');
+  c.playAt = t;
+  c.playToy = toy;
+  putCat(s, c);
+  return { state: s };
+}
+
+/**
+ * 놀아 주기 끝: 잡은 수만큼 기분 · 친밀도 (좋아하는 장난감이면 더). 서버가 믿을 수 있게 잡은 수는
+ * 한 번에 play_catch_max, 시작부터 play_catch_sec 초마다 하나까지만 센다. 친밀도는 하루 play_love_day 까지.
+ * 아플 때는 반응이 시큰둥하다 (기분 절반, 친밀도 없음).
+ */
+export function play(s0: NyangState, slot: number, catches: number, t: number): { state: NyangState; catches: number; love: number; liked: boolean } & CareResult {
+  const s = cloneState(s0);
+  const c = settle(catOf(s, slot), t);
+  if (!c.playAt || !c.playToy || t - c.playAt > CONST.play_max_sec) throw new RuleError('no play');
+  const n = Math.max(0, Math.min(Number.isFinite(catches) ? Math.floor(catches) : 0, CONST.play_catch_max, Math.floor((t - c.playAt) / CONST.play_catch_sec)));
+  const liked = pers(c).toy === c.playToy;
+  const sick = c.sickAt != null;
+  let mood = n * (liked ? CONST.play_mood_like : CONST.play_mood);
+  if (sick) mood = Math.floor(mood / 2);
+  const needed = raiseMood(c, mood, t);
+  const day = kstDay(t);
+  if (c.playDay !== day) {
+    c.playDay = day;
+    c.playLove = 0;
+  }
+  const love = sick ? 0 : Math.max(0, Math.min(n * (liked ? CONST.play_love_like : CONST.play_love), CONST.play_love_day - c.playLove));
+  c.love += love;
+  c.playLove += love;
+  c.playAt = 0;
+  c.playToy = null;
+  putCat(s, c);
+  return { state: s, catches: n, love, liked, ...care(s.profile, needed, t) };
+}
+
+/** 빗질 (고양이마다 하루 한 번): 기분 · 친밀도 + 털 뭉치 */
+export function brush(s0: NyangState, slot: number, t: number): { state: NyangState; fur: number; love: number } & CareResult {
+  const s = cloneState(s0);
+  const c = settle(catOf(s, slot), t);
+  const day = kstDay(t);
+  if (c.brushDay === day) throw new RuleError('brushed today');
+  c.brushDay = day;
+  const needed = raiseMood(c, CONST.brush_mood, t);
+  const love = c.sickAt != null ? 0 : CONST.brush_love;
+  c.love += love;
+  const fur = CONST.fur_min + (mix(day * 4 + c.slot, 5) % CONST.fur_span);
+  addItem(s.profile, itemKey.fur, fur);
+  putCat(s, c);
+  return { state: s, fur, love, ...care(s.profile, needed, t) };
+}
+
+/**
+ * 츄르 (고양이마다 하루 churu_day_max 개, 보관함의 'churu:<맛>' 하나): 기분 · 친밀도가 크게 (좋아하는 맛이면 더).
+ * 아플 때 주면 친밀도는 오르지 않지만 감기가 낫기 시작한다 (cure_sec 뒤).
+ */
+export function churu(s0: NyangState, slot: number, flavor: string, t: number): { state: NyangState; love: number; liked: boolean; cured: boolean } & CareResult {
+  const s = cloneState(s0);
+  if (!isChuruId(flavor)) throw new RuleError('bad flavor');
+  const c = settle(catOf(s, slot), t);
+  const day = kstDay(t);
+  if (c.churuDay !== day) {
+    c.churuDay = day;
+    c.churuN = 0;
+  }
+  if (c.churuN >= CONST.churu_day_max) throw new RuleError('churu full');
+  if (itemCount(s.profile, itemKey.churu(flavor)) < 1) throw new RuleError('no churu');
+  addItem(s.profile, itemKey.churu(flavor), -1);
+  c.churuN += 1;
+  const liked = pers(c).churu === flavor;
+  const needed = raiseMood(c, liked ? CONST.churu_mood_like : CONST.churu_mood, t);
+  let love = 0;
+  let cured = false;
+  if (c.sickAt != null) {
+    if (c.cureAt == null) {
+      c.cureAt = t + CONST.cure_sec;
+      cured = true;
+    }
+  } else love = liked ? CONST.churu_love_like : CONST.churu_love;
+  c.love += love;
+  putCat(s, c);
+  return { state: s, love, liked, cured, ...care(s.profile, needed, t) };
+}
+
+/** 들어올 때 고양이 한 마리의 선물 굴리기 (visit 이 부른다. 아프면 가져오지 않는다) */
+export function rollPresent(c: Cat, p: Profile, t: number) {
+  if (c.present || c.sickAt != null || t - c.presentAt < CONST.present_gap_sec) return;
+  c.presentAt = t;
+  p.pseq += 1;
+  const q = p.pseq;
+  const lv = levelOf(c);
+  if (mix(q, 1) % 100 >= CONST.present_pct + lv * CONST.present_pct_level) return;
+  const k = mix(q, 2) % 100;
+  const coin: Present = { kind: 'coin', id: 'coin', n: CONST.present_coin_min + lv * 2 + (mix(q, 3) % CONST.present_coin_span) };
+  if (k < CONST.present_coin_pct) c.present = coin;
+  else if (k < CONST.present_coin_pct + CONST.present_seed_pct) c.present = { kind: 'seed', id: PRESENT_SEEDS[mix(q, 3) % PRESENT_SEEDS.length], n: 1 + (mix(q, 4) % 2) };
+  else if (k < CONST.present_coin_pct + CONST.present_seed_pct + CONST.present_toy_pct) {
+    const missing = PRESENT_TOYS.filter((toy) => !hasToy(p, toy));
+    c.present = missing.length ? { kind: 'toy', id: missing[mix(q, 3) % missing.length], n: 1 } : coin;
+  } else c.present = { kind: 'furniture', id: PRESENT_FURNITURE[mix(q, 3) % PRESENT_FURNITURE.length], n: 1 };
+}
+
+/** 선물 줍기: 엽전 · 보관함 · 가구로 */
+export function gift(s0: NyangState, slot: number, t: number): { state: NyangState; present: Present } {
+  const s = cloneState(s0);
+  const c = settle(catOf(s, slot), t);
+  const g = c.present;
+  if (!g) throw new RuleError('no present');
+  const p = s.profile;
+  if (g.kind === 'coin') p.coins += g.n;
+  else if (g.kind === 'furniture') p.furniture.push(g.id);
+  else addItem(p, g.kind === 'seed' ? itemKey.seed(g.id) : itemKey.toy(g.id), g.n);
+  c.present = null;
+  putCat(s, c);
+  return { state: s, present: g };
+}
+
+/** 처음 본 행동을 도감에 (이미 있으면 그대로) */
+export function seen(s0: NyangState, slot: number, behavior: string, t: number): { state: NyangState; added: boolean } {
+  const s = cloneState(s0);
+  const b = Object.prototype.hasOwnProperty.call(BEHAVIOR, behavior) ? BEHAVIOR[behavior] : undefined;
+  if (!b) throw new RuleError('bad behavior');
+  const c = settle(catOf(s, slot), t);
+  if (levelOf(c) < b.level) throw new RuleError('too early');
+  const added = !c.seen.includes(b.id);
+  if (added) c.seen.push(b.id);
+  putCat(s, c);
+  return { state: s, added };
 }

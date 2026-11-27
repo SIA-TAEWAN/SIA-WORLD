@@ -5,7 +5,16 @@
  */
 import type { ColorId } from '../data/balance';
 import { POSE_ART } from '../data/poses.gen';
-import { POSE_IMAGE, catArt, type Pose } from './catart';
+import { POSE_IMAGE, catArt, type ArtName, type Pose } from './catart';
+
+/** 얼굴 연출: 눈 반짝(츄르를 볼 때) · 혀 낼름(핥기) · 입맛 다시기(다 먹고) */
+export type FaceFx = 'none' | 'sparkle' | 'lick' | 'smack';
+/** 그림 안의 눈 · 입 자리 (그림 크기에 대한 비율). 정면 그림만 — 없는 자세는 얼굴 연출을 숨긴다 */
+const FACE: Partial<Record<ArtName, { eyes: [number, number][]; mouth: [number, number] }>> = {
+  beg: { eyes: [[0.337, 0.335], [0.563, 0.338]], mouth: [0.43, 0.388] },
+  sit: { eyes: [[0.336, 0.447], [0.617, 0.452]], mouth: [0.5, 0.535] },
+  'sit-blink': { eyes: [[0.336, 0.447], [0.617, 0.452]], mouth: [0.5, 0.535] },
+};
 
 export interface Spot2 {
   x: number;
@@ -14,7 +23,7 @@ export interface Spot2 {
 /** 지금 하는 일 */
 export type Act =
   | { kind: 'idle'; until: number }
-  | { kind: 'walk'; to: Spot2; speed: number; then?: Act }
+  | { kind: 'walk'; to: Spot2; speed: number; then?: Act; arrive?: () => void }
   /** ms: 걸어간 뒤에 시작하는 자세는 도착한 때부터 ms 동안 */
   | { kind: 'pose'; pose: Pose; until: number; ms?: number; face?: 1 | -1 }
   | { kind: 'pet' }
@@ -25,6 +34,16 @@ export class CatActor {
   private readonly body: HTMLDivElement;
   private readonly img: HTMLImageElement;
   private readonly bubbleEl: HTMLDivElement;
+  private readonly fxEl: HTMLDivElement;
+  private fx: FaceFx = 'none';
+  /** 엉덩이 실룩 (덮치기 전) */
+  wiggle = false;
+  /** 그림을 위로 더 띄우기 (px, 화면) — 점프 높이 등 */
+  lift = 0;
+  /** 상자 속으로 가라앉기 (px, 화면): 그만큼 아래로 내리고 원래 바닥 아래는 잘라 낸다 */
+  sink = 0;
+  /** 걸을 때 꼬리 세우고 통통 (따라다니기) */
+  perky = false;
   pos: Spot2;
   facing: 1 | -1 = 1;
   act: Act = { kind: 'idle', until: 0 };
@@ -53,7 +72,10 @@ export class CatActor {
     this.img = document.createElement('img');
     this.img.alt = '';
     this.img.draggable = false;
-    this.body.append(this.img);
+    this.fxEl = document.createElement('div');
+    this.fxEl.className = 'face-fx';
+    this.fxEl.innerHTML = '<i class="spark"></i><i class="spark"></i><b class="tongue"></b>';
+    this.body.append(this.img, this.fxEl);
     this.bubbleEl = document.createElement('div');
     this.bubbleEl.className = 'bubble hidden';
     this.el.append(this.body, this.bubbleEl);
@@ -93,6 +115,25 @@ export class CatActor {
     return Math.abs(x - cx) < 0.16 && y > 0.6 ? 'belly' : 'back';
   }
 
+  /** 입 자리 (방 안 px). 정면 그림이 아니면 머리 위쯤 */
+  mouthPoint(): { x: number; y: number } {
+    const art = POSE_IMAGE[this.pose];
+    const meta = POSE_ART[art];
+    const { x, y, s } = this.screen();
+    const face = FACE[art];
+    const lift = (meta.anchor === 'air' ? 40 : 0) + this.lift - this.sink;
+    if (!face) return { x, y: y - meta.fy * s * 0.7 - lift };
+    return { x: x + (face.mouth[0] * meta.w - meta.fx) * s * this.facing, y: y + (face.mouth[1] * meta.h - meta.fy) * s - lift };
+  }
+
+  /** 얼굴 연출 바꾸기 */
+  setFx(fx: FaceFx) {
+    if (fx === this.fx) return;
+    this.fx = fx;
+    this.fxEl.dataset.fx = fx;
+    this.shown = '';
+  }
+
   /** 누를 수 있는 그림 */
   get hit(): HTMLElement {
     return this.img;
@@ -116,12 +157,14 @@ export class CatActor {
         if (n?.kind === 'pose' && n.ms) n.until = now + n.ms;
         if (n?.kind === 'pose' && n.face) this.facing = n.face;
         this.act = n ?? { kind: 'idle', until: now + 2500 + Math.random() * 4000 };
+        // 도착했을 때 할 일 (다음 동작을 바꿀 수 있다)
+        a.arrive?.();
       } else {
         this.pos = { x: this.pos.x + (d.x * step) / dist, y: this.pos.y + (d.y * step) / dist };
       }
       this.stepPhase += dt * (a.speed > 260 ? 0.026 : 0.017);
       pose = Math.floor(this.stepPhase) % 2 ? 'walk2' : 'walk1';
-      hop = Math.abs(Math.sin(this.stepPhase * Math.PI)) * (a.speed > 260 ? 10 : 5);
+      hop = Math.abs(Math.sin(this.stepPhase * Math.PI)) * (a.speed > 260 ? 10 : this.perky ? 8 : 5);
     } else if (a.kind === 'pose') {
       pose = a.pose;
       if (now >= a.until) this.act = { kind: 'idle', until: now + 2000 + Math.random() * 3000 };
@@ -157,13 +200,25 @@ export class CatActor {
       this.img.style.height = `${meta.h}px`;
       this.img.style.left = `${-meta.fx}px`;
       this.img.style.top = `${-meta.fy}px`;
+      // 얼굴 연출 자리 (그림이 바뀔 때마다)
+      const face = FACE[art];
+      this.fxEl.classList.toggle('hidden', !face || this.fx === 'none');
+      if (face) {
+        const at = ([x, y]: [number, number]) => `left:${x * meta.w - meta.fx}px;top:${y * meta.h - meta.fy}px`;
+        const [s1, s2] = this.fxEl.querySelectorAll<HTMLElement>('.spark');
+        s1.style.cssText = at(face.eyes[0]);
+        s2.style.cssText = at(face.eyes[1]);
+        this.fxEl.querySelector<HTMLElement>('.tongue')!.style.cssText = at(face.mouth);
+      }
     }
     const { x, y, s } = this.screen();
     const breathe = this.pose === 'walk1' || this.pose === 'walk2' ? 1 : 1 + Math.sin(now / (this.pose === 'sleep' ? 900 : 520)) * (this.sick ? 0.008 : 0.016);
     const droop = this.sick ? 0.94 : 1;
     const sh = this.shake > now ? Math.sin(now / 22) * 4 : 0;
-    const lift = meta.anchor === 'air' ? 40 : 0;
-    this.el.style.transform = `translate3d(${x + sh}px, ${y - hop - lift}px, 0)`;
+    const lift = (meta.anchor === 'air' ? 40 : 0) + this.lift - this.sink;
+    const wig = this.wiggle ? Math.sin(now / 55) * 3 : 0;
+    this.el.style.transform = `translate3d(${x + sh + wig}px, ${y - hop - lift}px, 0)`;
+    this.el.style.clipPath = this.sink > 0 ? `inset(-3000px -3000px ${this.sink}px -3000px)` : '';
     this.el.style.zIndex = String(Math.round(y));
     this.body.style.transform = `scale(${s * this.facing}, ${s * breathe * droop})`;
     this.body.classList.toggle('sick', this.sick);

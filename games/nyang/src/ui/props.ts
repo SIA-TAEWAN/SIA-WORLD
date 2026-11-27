@@ -94,3 +94,81 @@ export const blanket = `<svg viewBox="0 0 120 70" aria-hidden="true">
   <path d="M6 30 Q60 0 114 30 L106 64 Q60 54 14 64 Z" fill="var(--sky-mid)" stroke="${O}" stroke-width="4" stroke-linejoin="round"/>
   <path d="M30 22 L26 60 M60 14 V56 M90 22 L94 60" stroke="var(--white)" stroke-width="4" stroke-linecap="round" opacity=".7"/>
 </svg>`;
+
+// ---------- 3단계: 장난감 · 선물 · 츄르 · 빗 · 탁자 ----------
+
+/** 낚싯대 끝의 깃털 */
+export const feather = `<svg viewBox="0 0 40 70" aria-hidden="true">
+  <path d="M20 4 Q34 22 26 50 Q20 62 20 68 Q20 62 14 50 Q6 22 20 4 Z" fill="var(--pink)" stroke="${O}" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M20 10 V66" stroke="${O}" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M20 24 L28 18 M20 34 L29 28 M20 24 L12 18 M20 34 L11 28" stroke="var(--white)" stroke-width="2" stroke-linecap="round" opacity=".8"/>
+</svg>`;
+
+/** 털실 공 */
+export const yarnBall = `<svg viewBox="0 0 50 50" aria-hidden="true">
+  <circle cx="25" cy="25" r="21" fill="var(--team-a)" stroke="${O}" stroke-width="3.5"/>
+  <path d="M8 18 Q25 30 42 16 M6 28 Q25 40 44 26 M14 42 Q22 22 36 8" stroke="var(--white)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".75"/>
+</svg>`;
+
+/** 빈 상자 (앞면 — 고양이가 뒤에 들어간다) */
+export const boxFront = `<svg viewBox="0 0 120 80" aria-hidden="true">
+  <ellipse cx="60" cy="76" rx="58" ry="5" fill="rgba(42,26,16,.18)"/>
+  <path d="M4 18 L22 4 H98 L116 18 Z" fill="#C88B4E" stroke="${O}" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M6 18 H114 L108 74 H12 Z" fill="var(--charge-crate)" stroke="${O}" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M46 18 V40 H74 V18" fill="none" stroke="#B57A40" stroke-width="5"/>
+  <path d="M-4 22 L6 18 L12 30 Z M124 22 L114 18 L108 30 Z" fill="#D9A05B" stroke="${O}" stroke-width="3" stroke-linejoin="round"/>
+</svg>`;
+
+/** 작은 탁자 + 컵 (고양이가 떨어뜨린다) */
+export const sideTable = `<svg viewBox="0 0 80 70" aria-hidden="true">
+  <ellipse cx="40" cy="66" rx="34" ry="4" fill="rgba(42,26,16,.18)"/>
+  <path d="M16 26 V64 M64 26 V64" stroke="${O}" stroke-width="7" stroke-linecap="round"/>
+  <path d="M16 26 V64 M64 26 V64" stroke="#B57A40" stroke-width="3" stroke-linecap="round"/>
+  <rect x="4" y="18" width="72" height="12" rx="5" fill="#C88B4E" stroke="${O}" stroke-width="4"/>
+</svg>`;
+export const cup = `<svg viewBox="0 0 30 30" aria-hidden="true">
+  <path d="M5 6 H23 L21 27 H7 Z" fill="var(--white)" stroke="${O}" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M23 10 Q30 12 22 20" fill="none" stroke="${O}" stroke-width="3"/>
+  <path d="M8 12 H20" stroke="var(--pink)" stroke-width="3"/>
+</svg>`;
+
+/** 츄르 (맛마다 색) */
+export function churuTube(color: string): string {
+  return `<svg viewBox="0 0 40 150" aria-hidden="true">
+  <path d="M8 6 H32 L30 120 Q20 150 10 120 Z" fill="${color}" stroke="${O}" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M8 6 H32" stroke="${O}" stroke-width="8" stroke-linecap="round"/>
+  <rect x="11" y="36" width="18" height="44" rx="6" fill="var(--white)" stroke="${O}" stroke-width="2.5"/>
+  <path d="M15 52 l3 -6 2 4 2 -4 3 6" fill="none" stroke="${O}" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="20" cy="64" r="3" fill="var(--pink)"/>
+</svg>`;
+}
+
+/** 빗 */
+export const comb = `<svg viewBox="0 0 90 60" aria-hidden="true">
+  <rect x="4" y="6" width="56" height="18" rx="8" fill="var(--primary)" stroke="${O}" stroke-width="4"/>
+  <path d="M10 24 V46 M18 24 V48 M26 24 V48 M34 24 V48 M42 24 V48 M50 24 V46" stroke="${O}" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M60 14 L86 10" stroke="${O}" stroke-width="10" stroke-linecap="round"/><path d="M60 14 L86 10" stroke="var(--primary-deep)" stroke-width="5" stroke-linecap="round"/>
+</svg>`;
+
+/** 선물 그림 (kind) */
+export function presentIcon(kind: string): string {
+  if (kind === 'coin')
+    return `<svg viewBox="0 0 60 50" aria-hidden="true"><ellipse cx="30" cy="46" rx="26" ry="4" fill="rgba(42,26,16,.18)"/>
+      <path d="M12 20 Q6 44 30 46 Q54 44 48 20 Z" fill="#C88B4E" stroke="${O}" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M14 20 Q30 8 46 20" fill="none" stroke="${O}" stroke-width="3.5"/><path d="M22 14 L30 22 L38 14" fill="none" stroke="var(--pink)" stroke-width="3"/>
+      <circle cx="30" cy="33" r="8" fill="var(--primary)" stroke="${O}" stroke-width="3"/><rect x="27.5" y="30.5" width="5" height="5" fill="#C88B4E" stroke="${O}" stroke-width="1.5"/></svg>`;
+  if (kind === 'seed')
+    return `<svg viewBox="0 0 60 50" aria-hidden="true"><ellipse cx="30" cy="46" rx="22" ry="4" fill="rgba(42,26,16,.18)"/>
+      <path d="M14 8 H46 V44 H14 Z" fill="var(--panel)" stroke="${O}" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M30 36 V22" stroke="#5FA772" stroke-width="3.5" stroke-linecap="round"/><path d="M30 26 Q22 16 18 24 Q24 28 30 26 Z M30 24 Q38 14 42 22 Q36 26 30 24 Z" fill="#7CC08A" stroke="${O}" stroke-width="2.5"/>
+      <path d="M14 14 H46" stroke="var(--pink)" stroke-width="4"/></svg>`;
+  if (kind === 'toy')
+    return `<svg viewBox="0 0 60 50" aria-hidden="true"><ellipse cx="30" cy="46" rx="20" ry="4" fill="rgba(42,26,16,.18)"/>
+      <circle cx="30" cy="26" r="17" fill="var(--team-a)" stroke="${O}" stroke-width="3.5"/>
+      <path d="M16 20 Q30 30 44 18 M14 30 Q30 40 46 28" stroke="var(--white)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".75"/>
+      <path d="M44 34 Q54 42 50 48" stroke="${O}" stroke-width="2.5" fill="none"/></svg>`;
+  return `<svg viewBox="0 0 60 50" aria-hidden="true"><ellipse cx="30" cy="46" rx="26" ry="4" fill="rgba(42,26,16,.18)"/>
+    <rect x="8" y="18" width="44" height="28" rx="4" fill="var(--pink)" stroke="${O}" stroke-width="3.5"/>
+    <rect x="5" y="12" width="50" height="10" rx="3" fill="#FF8FA3" stroke="${O}" stroke-width="3.5"/>
+    <path d="M30 12 V46" stroke="var(--primary)" stroke-width="6"/><path d="M30 12 Q18 0 14 8 Q20 14 30 12 Q42 0 46 8 Q40 14 30 12" fill="var(--primary)" stroke="${O}" stroke-width="2.5"/></svg>`;
+}
