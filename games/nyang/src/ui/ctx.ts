@@ -13,7 +13,15 @@ export interface Prop {
   w: number;
   ratio: number;
 }
-export type PropName = 'food' | 'water' | 'litter' | 'cushion' | 'table' | 'box' | 'present';
+export type PropName = 'litter' | 'present';
+/** 방에 놓인 가구 하나 (꾸미기 배치에서 만든다) */
+export interface FurnView {
+  id: string;
+  f: import('../data/balance').Furniture;
+  el: HTMLElement;
+  /** 바닥 가구: 바닥 위 발 자리(가운데 아래) · 벽 가구: 쓰지 않음 */
+  at: Spot2;
+}
 export type TimeOfDay = 'morning' | 'day' | 'dusk' | 'night';
 
 /** 고양이 한 마리의 화면 쪽 상태 */
@@ -23,8 +31,10 @@ export interface CatView {
   nextMeow: number;
   /** 연출(놀이 · 츄르 · 빗질 · 마중)이 고양이를 쥐고 있으면 머리(think)를 쉰다 */
   scene: string | null;
-  /** 지금 하는 행동 (도감 id, 사진은 5단계) */
+  /** 지금 하는 행동 (도감 id — 사진에 남는다) */
   behavior: string | null;
+  /** 같이 어울리는 고양이 (그루밍 · 같이 자기 · 잡기 놀이) */
+  mate: number | null;
 }
 
 export interface RoomCtx {
@@ -44,6 +54,10 @@ export interface RoomCtx {
   /** 화면(client) 좌표 → 바닥 자리 (바닥 밖이면 가장 가까운 바닥) */
   toFloor(clientX: number, clientY: number): Spot2;
   props: Record<PropName, Prop>;
+  /** 5단계: 고양이마다 밥그릇 · 물그릇 (밥 자리에 나란히) · 놓인 가구 */
+  bowl(slot: number): { food: Prop; water: Prop };
+  furn(id: string): FurnView | undefined;
+  furnUse(use: import('../data/balance').Furniture['use']): FurnView[];
   views: CatView[];
   timeOfDay(): TimeOfDay;
   /** 처음 본 행동이면 도감에 남긴다 */
@@ -58,6 +72,8 @@ export interface RoomCtx {
   openShop(tab?: ShopTabId): void;
   giveTreat(kind: 'catgrass' | 'catnip'): void;
   view(): 'room' | 'veranda';
+  /** 5단계: 사진 찍기 (그 고양이가 지금 하는 행동 · 자세) */
+  photo(view: CatView): void;
 }
 export type ShopTabId = import('../data/balance').ShopTab | 'bag';
 

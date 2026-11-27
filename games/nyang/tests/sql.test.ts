@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { BEHAVIORS, CAT_NEED, CONST, EXCHANGES, FOODS, LOVE_NEED, PERSONALITIES, PLANTS, POT_PRICES, SELL, SHOP, SQL_IDS, TREAT, kstDay, mix } from '../src/data/balance';
+import { BEHAVIORS, BLOCKED, CAT_NEED, CONST, EXCHANGES, FOODS, FURNITURE, LOVE_NEED, PERSONALITIES, PLANTS, POT_PRICES, SELL, SHOP, SQL_IDS, STYLES, TREAT, kstDay, mix } from '../src/data/balance';
 
 /**
  * 서버 SQL(supabase/migrations/123_nyang.sql)의 값 · 표가 게임 데이터(src/data/balance.ts)와 같은지 본다.
@@ -59,6 +59,23 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
     expect(body('_nyang_pot_grown')).toContain('least(pl.grow_sec, p.grown + case when p.water_at is null then 0 else greatest(0, least(p_t - p.water_at, pl.water_sec::bigint))::int end)');
   });
 
+  it('5단계: 가구 · 벽지 · 바닥 · 창문 · 막힌 칸 · 앨범', () => {
+    expect(rows('_nyang_furniture')).toEqual(FURNITURE.map((f) => [f.id, f.kind, f.w, f.h]));
+    expect(rows('_nyang_styles')).toEqual(STYLES.map((x) => [x.id, x.kind, x.price]));
+    // 막힌 칸은 격자 안 (가구를 놓을 자리가 남는다)
+    for (const c of BLOCKED) {
+      const m = /^([fw])(\d+)_(\d+)$/.exec(c)!;
+      expect(m, c).toBeTruthy();
+      const [cols, rows] = m[1] === 'f' ? [CONST.grid_cols, CONST.grid_rows] : [CONST.wall_cols, CONST.wall_rows];
+      expect(Number(m[2]) < cols && Number(m[3]) < rows, c).toBe(true);
+    }
+    const pl = body('nyang_place');
+    expect(pl).toContain("raise exception 'not owned'");
+    expect(pl).toContain('px + f.w > ncols or py + f.h > nrows');
+    expect(body('nyang_photo')).toContain("public._nyang_const('album_max')");
+    expect(sql).toContain('primary key (user_id, id)');
+  });
+
   it('행동 도감', () => {
     expect(rows('_nyang_behaviors')).toEqual(BEHAVIORS.map((b) => [b.id, b.level]));
   });
@@ -106,8 +123,8 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
     expect(pub.sort()).toEqual([
       'nyang_adopt', 'nyang_brush', 'nyang_buy', 'nyang_churu', 'nyang_clean', 'nyang_cure', 'nyang_exchange', 'nyang_expand_pots', 'nyang_feed', 'nyang_gift',
       'nyang_harvest', 'nyang_pet', 'nyang_plant', 'nyang_play', 'nyang_play_start', 'nyang_seen', 'nyang_sell', 'nyang_state', 'nyang_treat', 'nyang_water',
-      'nyang_water_pot',
-    ]);
+      'nyang_water_pot', 'nyang_place', 'nyang_vase', 'nyang_photo', 'nyang_photo_delete',
+    ].sort());
     for (const f of fns) {
       expect(sql, f).toMatch(new RegExp(`revoke all on function public\\.${f}\\(`));
       if (pub.includes(f)) {

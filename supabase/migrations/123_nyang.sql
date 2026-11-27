@@ -1,4 +1,4 @@
--- 123: 시아집사 (games/nyang) — 서버 규칙 (1~4단계: 돌보기 · 놀이 · 츄르 · 선물 · 베란다 정원 · 상점)
+-- 123: 시아집사 (games/nyang) — 서버 규칙 (1~5단계: 돌보기 · 놀이 · 츄르 · 선물 · 베란다 정원 · 상점 · 꾸미기 · 앨범)
 --
 -- 랜선 고양이 집사 게임. 고양이 상태 · 친밀도 · 감기는 모두 서버 시각으로 계산한다 (시아마을과 같은 방식).
 -- 같은 규칙이 games/nyang/src/game/rules.ts 에 있고 (로컬 모드 · 화면 미리 보기), 값 · 표는 games/nyang/src/data/balance.ts 와 같다
@@ -33,6 +33,11 @@
 --   nyang_sell(p_item, p_n) → coins            'bad item' · 'bad amount' · 'no item'
 --   nyang_exchange(p_id)                       'bad item' · 'have it' · 'no item'   (보름달꽃 3송이 → 보름달 등)
 --   nyang_treat(p_slot, p_kind) → love         'bad treat' · 'treat full' · 'no item'   (캣그라스 · 캣닢을 고양이에게)
+--   5단계 (꾸미기 · 앨범):
+--   nyang_place(p_layout)                      'bad layout' · 'not owned'   (방 배치 { items: [{id, x, y}], wall, floor, window } 를 한 번에 — 격자 안 · 안 겹침 · 가진 것)
+--   nyang_vase(p_flower)                       'bad flower' · 'no vase' · 'no item'   (꽃병에 해바라기 · 장미, 빈 글자 = 빼기)
+--   nyang_photo(p_slot, p_behavior, p_pose, p_face, p_mate, p_mate_pose) → id, added   'no cat' · 'bad behavior' · 'too early' · 'bad pose' · 'album full'
+--   nyang_photo_delete(p_id)                   'no photo'
 -- 돌보기 결과에는 bonus(하루 첫 돌보기 엽전)와 sia(시아코인을 받게 됐는지)가 붙는다.
 -- 시아코인: 필요한 돌보기(상태가 절반 아래 → 절반 이상으로 돌아오게 한 것) 한 번에 1개, 하루(한국 시간) 최대 5개.
 --   _grant_sia_coin 은 15초 간격을 지키느라 바로 못 줄 때가 있어, 못 준 것은 nyang_profiles.sia_due 에 두고 다음 요청 때 준다
@@ -61,6 +66,7 @@ create table if not exists public.nyang_profiles (
   pseq int not null default 0 check (pseq >= 0),                -- 고양이 선물을 굴린 수 (선물을 정하는 번호)
   pots smallint not null default 4 check (pots between 4 and 12), -- 베란다 화분 칸 수 (4단계)
   buy_seq int not null default 0 check (buy_seq >= 0),          -- 시아코인으로 산 수 (sia_coin_spends 의 ref = 'buy:<번호>')
+  photo_seq int not null default 0 check (photo_seq >= 0),      -- 찍은 사진 수 (사진 번호, 5단계)
   created_at timestamptz not null default now()
 );
 alter table public.nyang_profiles enable row level security;
@@ -120,16 +126,22 @@ create table if not exists public.nyang_pots (
 alter table public.nyang_pots enable row level security;
 revoke all on public.nyang_pots from anon, authenticated;
 
--- 앨범 (5단계): 찍은 사진
+-- 앨범 (5단계): 찍은 사진. 그림은 저장하지 않고 고양이 · 행동 · 자세 · 방향 · 털 색 · 시각만 — 화면이 다시 그린다 (사람마다 album_max 장)
 create table if not exists public.nyang_album (
-  id bigserial primary key,
   user_id uuid not null references public.profiles(id) on delete cascade,
+  id int not null,                                              -- 사진 번호 (nyang_profiles.photo_seq)
   slot smallint not null,
+  name text not null,                                           -- 찍을 때의 이름 · 털 색
+  color text not null,
   behavior text not null,
+  pose text not null,
+  face smallint not null check (face in (-1, 1)),
+  mate_slot smallint,                                           -- 같이 찍힌 고양이 (없으면 null)
+  mate_color text,
+  mate_pose text,
   shot_at bigint not null,
-  created_at timestamptz not null default now()
+  primary key (user_id, id)
 );
-create index if not exists nyang_album_user_idx on public.nyang_album (user_id, id desc);
 alter table public.nyang_album enable row level security;
 revoke all on public.nyang_album from anon, authenticated;
 
@@ -196,6 +208,11 @@ language sql immutable as $$
     when 'sell_max' then 999
     when 'pot_start' then 4
     when 'pot_max' then 12
+    when 'grid_cols' then 8
+    when 'grid_rows' then 5
+    when 'wall_cols' then 8
+    when 'wall_rows' then 2
+    when 'album_max' then 60
   end
 $$;
 revoke all on function public._nyang_const(text) from public, anon, authenticated;
@@ -221,6 +238,11 @@ language sql immutable as $$
     when 'present_seeds' then array['daisy', 'catgrass', 'sunflower']
     when 'present_toys' then array['laser', 'ball', 'box']
     when 'present_furniture' then array['paw_rug', 'fish_pillow', 'yarn_basket']
+    when 'poses' then array['sit', 'blink', 'walk1', 'walk2', 'loaf', 'sleep', 'eat', 'drink', 'stretch', 'pounce', 'jump', 'beg', 'knead', 'belly', 'lick0', 'lick1', 'lick2', 'lick3', 'lick4', 'lick5', 'lick6', 'lick7']
+    when 'base_furniture' then array['desk', 'cushion']
+    when 'base_styles' then array['wall_cream', 'floor_wood', 'window_basic']
+    when 'blocked' then array['f0_2', 'f1_2', 'f2_2', 'f0_3', 'f1_3', 'f2_3', 'f4_0', 'f5_0', 'w2_0', 'w2_1', 'w3_0', 'w3_1', 'w4_0', 'w4_1', 'w5_0', 'w5_1', 'w6_0', 'w6_1', 'w7_0', 'w7_1']
+    when 'vase_flowers' then array['sunflower', 'rose']
   end
 $$;
 revoke all on function public._nyang_ids(text) from public, anon, authenticated;
@@ -275,7 +297,15 @@ language sql immutable as $$
     ('follow', 4),
     ('belly', 6),
     ('knead', 8),
-    ('together', 10)
+    ('together', 10),
+    ('sit', 1),
+    ('walk', 1),
+    ('tower', 1),
+    ('hide', 1),
+    ('scratch', 1),
+    ('groom', 1),
+    ('cuddle', 1),
+    ('chase', 1)
   ) v (id, level)
 $$;
 revoke all on function public._nyang_behaviors() from public, anon, authenticated;
@@ -319,10 +349,67 @@ language sql immutable as $$
     ('furniture:scratcher', 'furniture', 150, 0, 1, 1, 1),
     ('furniture:hideaway', 'furniture', 200, 0, 1, 1, 1),
     ('furniture:cat_tower', 'furniture', 400, 0, 1, 1, 1),
-    ('furniture:zodiac_shelf', 'furniture', 0, 60, 1, 1, 1)
+    ('furniture:zodiac_shelf', 'furniture', 0, 60, 1, 1, 1),
+    ('style:wall_mint', 'style', 600, 0, 1, 1, 1),
+    ('style:wall_pink', 'style', 800, 0, 1, 1, 1),
+    ('style:wall_sky', 'style', 1200, 0, 1, 1, 1),
+    ('style:wall_night', 'style', 2000, 0, 1, 1, 1),
+    ('style:floor_maple', 'style', 600, 0, 1, 1, 1),
+    ('style:floor_walnut', 'style', 900, 0, 1, 1, 1),
+    ('style:floor_mint', 'style', 1200, 0, 1, 1, 1),
+    ('style:floor_pink', 'style', 1800, 0, 1, 1, 1),
+    ('style:window_pink', 'style', 400, 0, 1, 1, 1),
+    ('style:window_mint', 'style', 600, 0, 1, 1, 1),
+    ('style:window_lace', 'style', 900, 0, 1, 1, 1),
+    ('style:window_star', 'style', 1500, 0, 1, 1, 1)
   ) v (id, tab, price, sia, give, once, level)
 $$;
 revoke all on function public._nyang_shop() from public, anon, authenticated;
+
+-- 방에 놓을 수 있는 가구 (5단계, balance.ts 의 FURNITURE): id · 바닥(floor) / 벽(wall) 격자 · 차지하는 칸 (가로 · 세로)
+create or replace function public._nyang_furniture()
+returns table (id text, kind text, w int, h int)
+language sql immutable as $$
+  select * from (values
+    ('desk', 'floor', 2, 1),
+    ('cushion', 'floor', 2, 1),
+    ('box', 'floor', 2, 1),
+    ('vase', 'floor', 1, 1),
+    ('scratcher', 'floor', 1, 1),
+    ('hideaway', 'floor', 2, 1),
+    ('cat_tower', 'floor', 2, 1),
+    ('moon_lamp', 'floor', 1, 1),
+    ('paw_rug', 'floor', 2, 1),
+    ('fish_pillow', 'floor', 1, 1),
+    ('yarn_basket', 'floor', 1, 1),
+    ('zodiac_shelf', 'wall', 2, 1)
+  ) v (id, kind, w, h)
+$$;
+revoke all on function public._nyang_furniture() from public, anon, authenticated;
+
+-- 벽지 · 바닥 · 창문 (5단계, balance.ts 의 STYLES): id · 종류 · 엽전 (0 = 처음부터)
+create or replace function public._nyang_styles()
+returns table (id text, kind text, price int)
+language sql immutable as $$
+  select * from (values
+    ('wall_cream', 'wall', 0),
+    ('wall_mint', 'wall', 600),
+    ('wall_pink', 'wall', 800),
+    ('wall_sky', 'wall', 1200),
+    ('wall_night', 'wall', 2000),
+    ('floor_wood', 'floor', 0),
+    ('floor_maple', 'floor', 600),
+    ('floor_walnut', 'floor', 900),
+    ('floor_mint', 'floor', 1200),
+    ('floor_pink', 'floor', 1800),
+    ('window_basic', 'window', 0),
+    ('window_pink', 'window', 400),
+    ('window_mint', 'window', 600),
+    ('window_lace', 'window', 900),
+    ('window_star', 'window', 1500)
+  ) v (id, kind, price)
+$$;
+revoke all on function public._nyang_styles() from public, anon, authenticated;
 
 -- 팔 수 있는 것 (balance.ts 의 SELL): 보관함 열쇠 · 하나에 엽전
 create or replace function public._nyang_sell()
@@ -632,7 +719,8 @@ language sql stable security definer set search_path = public as $$
     'profile', (select jsonb_build_object('coins', pr.coins, 'seq', pr.seq, 'visitAt', pr.visit_at, 'bonusDay', pr.bonus_day, 'careDays', pr.care_days,
         'siaDay', pr.sia_day, 'siaToday', pr.sia_today, 'siaDue', pr.sia_due, 'siaPaid', pr.sia_paid,
         'sia', coalesce((select w.sia_coins from public.wallets w where w.user_id = p_user), 0),
-        'items', pr.items, 'furniture', pr.furniture, 'pseq', pr.pseq, 'pots', pr.pots, 'buySeq', pr.buy_seq)
+        'items', pr.items, 'furniture', pr.furniture, 'pseq', pr.pseq, 'pots', pr.pots, 'buySeq', pr.buy_seq,
+        'layout', pr.layout, 'photoSeq', pr.photo_seq)
       from public.nyang_profiles pr where pr.user_id = p_user),
     'cats', coalesce((select jsonb_agg(jsonb_build_object('slot', c.slot, 'name', c.name, 'color', c.color, 'pattern', c.pattern, 'personality', c.personality,
         'adoptedAt', c.adopted_at, 'calcAt', c.calc_at, 'fedAt', c.fed_at, 'fedAmount', c.fed_amount, 'waterAt', c.water_at,
@@ -643,7 +731,10 @@ language sql stable security definer set search_path = public as $$
         'treatDay', c.treat_day, 'treatN', c.treat_n, 'nipAt', c.nip_at) order by c.slot)
       from public.nyang_cats c where c.user_id = p_user), '[]'::jsonb),
     'pots', coalesce((select jsonb_agg(jsonb_build_object('slot', p.slot, 'plant', p.plant, 'plantedAt', p.planted_at, 'grown', p.grown, 'waterAt', p.water_at)
-        order by p.slot) from public.nyang_pots p where p.user_id = p_user), '[]'::jsonb))
+        order by p.slot) from public.nyang_pots p where p.user_id = p_user), '[]'::jsonb),
+    'album', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'slot', a.slot, 'name', a.name, 'color', a.color, 'behavior', a.behavior, 'pose', a.pose,
+        'face', a.face, 'mate', case when a.mate_slot is null then null else jsonb_build_object('slot', a.mate_slot, 'color', a.mate_color, 'pose', a.mate_pose) end,
+        'at', a.shot_at) order by a.id) from public.nyang_album a where a.user_id = p_user), '[]'::jsonb))
 $$;
 revoke all on function public._nyang_json(uuid, bigint) from public, anon, authenticated;
 
@@ -1189,6 +1280,142 @@ begin
 end $$;
 revoke all on function public.nyang_treat(int, text) from public;
 grant execute on function public.nyang_treat(int, text) to authenticated;
+
+-- ---------- 5-4. 꾸미기 · 앨범 (5단계) ----------
+
+-- 가지고 있는 가구인지 (rules.ts 의 ownsFurniture): 책상 · 방석은 처음부터, 상자는 장난감 상자가 있으면
+create or replace function public._nyang_owns_furniture(p_user uuid, p_id text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select p_id = any(public._nyang_ids('base_furniture'))
+    or (p_id = 'box' and public._nyang_has_toy(p_user, 'box'))
+    or coalesce((select pr.furniture ? p_id from public.nyang_profiles pr where pr.user_id = p_user), false)
+$$;
+revoke all on function public._nyang_owns_furniture(uuid, text) from public, anon, authenticated;
+
+-- 가지고 있는 벽지 · 바닥 · 창문인지 (rules.ts 의 ownsStyle): 기본은 처음부터, 나머지는 보관함 'style:<id>'
+create or replace function public._nyang_owns_style(p_user uuid, p_id text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public._nyang_styles() x where x.id = p_id and x.price = 0) or public._nyang_item(p_user, 'style:' || p_id) > 0
+$$;
+revoke all on function public._nyang_owns_style(uuid, text) from public, anon, authenticated;
+
+-- 꾸미기 저장 (rules.ts 의 place): { items: [{ id, x, y }], wall, floor, window } — 가진 것 · 격자 안 · 막힌 칸이나 다른 가구와 안 겹침. 꽃병의 꽃은 그대로
+create or replace function public.nyang_place(p_layout jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); items jsonb; it jsonb; f record; st record; used text[]; ids text[] := '{}';
+  px numeric; py numeric; ncols int; nrows int; k text; dx int; dy int; cell text; placed jsonb := '[]'::jsonb; res jsonb; knd text; v jsonb; old jsonb;
+begin
+  if p_layout is null or jsonb_typeof(p_layout) <> 'object' then raise exception 'bad layout'; end if;
+  items := p_layout->'items';
+  if items is null or items = 'null'::jsonb then items := '[]'::jsonb; end if;
+  if jsonb_typeof(items) <> 'array' or jsonb_array_length(items) > (select count(*) from public._nyang_furniture()) then raise exception 'bad layout'; end if;
+  used := public._nyang_ids('blocked');
+  for it in select e from jsonb_array_elements(items) with ordinality a(e, o) order by o loop
+    if jsonb_typeof(it) <> 'object' or jsonb_typeof(it->'id') is distinct from 'string' or jsonb_typeof(it->'x') is distinct from 'number'
+      or jsonb_typeof(it->'y') is distinct from 'number' then raise exception 'bad layout'; end if;
+    select * into f from public._nyang_furniture() z where z.id = it->>'id';
+    if not found or f.id = any(ids) then raise exception 'bad layout'; end if;
+    ids := ids || f.id;
+    if not public._nyang_owns_furniture(me, f.id) then raise exception 'not owned'; end if;
+    px := (it->>'x')::numeric;
+    py := (it->>'y')::numeric;
+    ncols := case when f.kind = 'wall' then public._nyang_const('wall_cols') else public._nyang_const('grid_cols') end;
+    nrows := case when f.kind = 'wall' then public._nyang_const('wall_rows') else public._nyang_const('grid_rows') end;
+    if px <> trunc(px) or py <> trunc(py) or px < 0 or py < 0 or px + f.w > ncols or py + f.h > nrows then raise exception 'bad layout'; end if;
+    k := case when f.kind = 'wall' then 'w' else 'f' end;
+    for dx in 0 .. f.w - 1 loop
+      for dy in 0 .. f.h - 1 loop
+        cell := k || (px::int + dx) || '_' || (py::int + dy);
+        if cell = any(used) then raise exception 'bad layout'; end if;
+        used := used || cell;
+      end loop;
+    end loop;
+    placed := placed || jsonb_build_array(jsonb_build_object('id', f.id, 'x', px::int, 'y', py::int));
+  end loop;
+  res := jsonb_build_object('items', placed);
+  foreach knd in array array['wall', 'floor', 'window'] loop
+    v := p_layout->knd;
+    if v is null or v = 'null'::jsonb then
+      v := to_jsonb((select x.id from public._nyang_styles() x where x.kind = knd and x.price = 0 limit 1));
+    end if;
+    if jsonb_typeof(v) <> 'string' then raise exception 'bad layout'; end if;
+    select * into st from public._nyang_styles() x where x.id = v #>> '{}';
+    if not found or st.kind <> knd then raise exception 'bad layout'; end if;
+    if not public._nyang_owns_style(me, st.id) then raise exception 'not owned'; end if;
+    res := res || jsonb_build_object(knd, st.id);
+  end loop;
+  select layout into old from public.nyang_profiles where user_id = me;
+  if old ? 'vase' then res := res || jsonb_build_object('vase', old->'vase'); end if;
+  update public.nyang_profiles set layout = res where user_id = me;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_place(jsonb) from public;
+grant execute on function public.nyang_place(jsonb) to authenticated;
+
+-- 꽃병에 꽃 꽂기 (rules.ts 의 vase): 보관함의 꽃 하나를 쓴다 · 빈 글자면 꽃을 뺀다
+create or replace function public.nyang_vase(p_flower text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now();
+begin
+  if p_flower is null or (p_flower <> '' and not (p_flower = any(public._nyang_ids('vase_flowers')))) then raise exception 'bad flower'; end if;
+  if not public._nyang_owns_furniture(me, 'vase') then raise exception 'no vase'; end if;
+  if p_flower = '' then
+    update public.nyang_profiles set layout = layout - 'vase' where user_id = me;
+  else
+    if public._nyang_item(me, 'plant:' || p_flower) < 1 then raise exception 'no item'; end if;
+    perform public._nyang_add_item(me, 'plant:' || p_flower, -1);
+    update public.nyang_profiles set layout = layout || jsonb_build_object('vase', p_flower) where user_id = me;
+  end if;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_vase(text) from public;
+grant execute on function public.nyang_vase(text) to authenticated;
+
+-- 사진 찍기 (rules.ts 의 photo) → id, added: 행동 · 자세 · 방향 · 같이 찍힌 고양이를 앨범에 (그림은 저장하지 않는다). 처음 본 행동이면 도감에도
+create or replace function public.nyang_photo(p_slot int, p_behavior text, p_pose text, p_face int, p_mate int, p_mate_pose text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; mc public.nyang_cats; need int; n int; added boolean; sq int;
+begin
+  c := public._nyang_cat(me, p_slot, t);
+  select b.level into need from public._nyang_behaviors() b where b.id = p_behavior;
+  if not found then raise exception 'bad behavior'; end if;
+  if public._nyang_level(c.love) < need then raise exception 'too early'; end if;
+  if p_pose is null or not (p_pose = any(public._nyang_ids('poses'))) then raise exception 'bad pose'; end if;
+  if coalesce(p_mate, 0) <> 0 then
+    select * into mc from public.nyang_cats where user_id = me and slot = p_mate;
+    if not found or p_mate = p_slot then raise exception 'no cat'; end if;
+    if p_mate_pose is null or not (p_mate_pose = any(public._nyang_ids('poses'))) then raise exception 'bad pose'; end if;
+  end if;
+  select count(*) into n from public.nyang_album where user_id = me;
+  if n >= public._nyang_const('album_max') then raise exception 'album full'; end if;
+  added := not (c.seen ? p_behavior);
+  if added then c.seen := c.seen || jsonb_build_array(p_behavior); end if;
+  perform public._nyang_save(c);
+  update public.nyang_profiles set photo_seq = photo_seq + 1 where user_id = me returning photo_seq into sq;
+  insert into public.nyang_album (user_id, id, slot, name, color, behavior, pose, face, mate_slot, mate_color, mate_pose, shot_at)
+    values (me, sq, p_slot, c.name, c.color, p_behavior, p_pose, case when coalesce(p_face, 1) < 0 then -1 else 1 end,
+      case when coalesce(p_mate, 0) <> 0 then p_mate end, case when coalesce(p_mate, 0) <> 0 then mc.color end,
+      case when coalesce(p_mate, 0) <> 0 then p_mate_pose end, t);
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t), 'id', sq, 'added', added);
+end $$;
+revoke all on function public.nyang_photo(int, text, text, int, int, text) from public;
+grant execute on function public.nyang_photo(int, text, text, int, int, text) to authenticated;
+
+-- 사진 지우기 (rules.ts 의 deletePhoto)
+create or replace function public.nyang_photo_delete(p_id int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now();
+begin
+  delete from public.nyang_album a where a.user_id = me and a.id = p_id;
+  if not found then raise exception 'no photo'; end if;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_photo_delete(int) from public;
+grant execute on function public.nyang_photo_delete(int) to authenticated;
 
 -- ---------- 6. 게임 열기 (처음에는 닫힘 — 관리자만 들어간다) ----------
 

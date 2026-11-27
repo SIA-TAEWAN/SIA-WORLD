@@ -12,7 +12,7 @@
  */
 import {
   BEHAVIOR, CAT_NEED, CONST, EXCHANGES, FOOD, MAX_CATS, NAME_RE, PERSONALITY, PLANT, POT_MAX, POT_PRICES, POT_START, PRESENT_FURNITURE, PRESENT_SEEDS,
-  PRESENT_TOYS, SELL, SHOP_ITEM, TOYS, TREAT,
+  PRESENT_TOYS, SELL, SHOP_ITEM, TOYS, TREAT, BASE_FURNITURE, BASE_STYLE, BLOCKED, DEFAULT_ITEMS, FURNITURE_OF, POSE_IDS, STYLE_OF, VASE_FLOWERS,
   isChuruId, isColorId, isFoodId, isPersonalityId, isPlantId, isToyId, isTreatId, itemKey, kstDay, loveLevel, mix,
   type ColorId, type FoodId, type PersonalityId, type PlantId, type Spot, type ToyId, SPOTS,
 } from '../data/balance';
@@ -113,12 +113,48 @@ export interface Profile {
   /** 화분 칸 수 (4 ~ 12) · 시아코인으로 산 수 (결제 기록 번호) */
   pots: number;
   buySeq: number;
+  /** 5단계: 방 배치 · 벽지 · 바닥 · 창문 · 꽃병 (한 번도 꾸미지 않았으면 {}) */
+  layout: RoomLayout;
+  /** 찍은 사진 수 (사진 번호) */
+  photoSeq: number;
+}
+
+/** 방에 놓은 가구 하나: 격자 칸 (x, y 는 왼쪽 위 칸) */
+export interface Placed {
+  id: string;
+  x: number;
+  y: number;
+}
+export interface RoomLayout {
+  items?: Placed[];
+  wall?: string;
+  floor?: string;
+  window?: string;
+  /** 꽃병에 꽂은 꽃 (sunflower · rose) */
+  vase?: string;
+}
+
+/** 앨범의 사진 한 장 (그림은 저장하지 않는다 — 화면이 이 정보로 다시 그린다) */
+export interface Photo {
+  id: number;
+  slot: number;
+  name: string;
+  color: string;
+  behavior: string;
+  pose: string;
+  /** 1 오른쪽 · -1 왼쪽 */
+  face: number;
+  /** 같이 찍힌 고양이 (고양이끼리 어울릴 때) */
+  mate: { slot: number; color: string; pose: string } | null;
+  at: number;
 }
 
 export interface NyangState {
   profile: Profile;
   cats: Cat[];
   pots: Pot[];
+  /** 앨범 (사진 번호 순) */
+  album: Photo[];
 }
 
 /** 돌보기 결과에 붙는 것: 하루 첫 돌보기 엽전 · 시아코인을 받게 됐는지 */
@@ -133,16 +169,18 @@ const ceilDiv = (a: number, b: number) => Math.floor((a + b - 1) / b);
 export function newProfile(): Profile {
   return {
     coins: 0, seq: 0, visitAt: 0, bonusDay: -1, careDays: 0, siaDay: -1, siaToday: 0, siaDue: 0, siaPaid: 0, sia: 0, items: {}, furniture: [], pseq: 0,
-    pots: POT_START, buySeq: 0,
+    pots: POT_START, buySeq: 0, layout: {}, photoSeq: 0,
   };
 }
 export function newState(): NyangState {
-  return { profile: newProfile(), cats: [], pots: [] };
+  return { profile: newProfile(), cats: [], pots: [], album: [] };
 }
+const cloneLayout = (l: RoomLayout): RoomLayout => ({ ...l, ...(l.items ? { items: l.items.map((i) => ({ ...i })) } : {}) });
 export const cloneState = (s: NyangState): NyangState => ({
-  profile: { ...s.profile, items: { ...s.profile.items }, furniture: [...s.profile.furniture] },
+  profile: { ...s.profile, items: { ...s.profile.items }, furniture: [...s.profile.furniture], layout: cloneLayout(s.profile.layout) },
   cats: s.cats.map(cloneCat),
   pots: s.pots.map((p) => ({ ...p })),
+  album: s.album.map((a) => ({ ...a, mate: a.mate ? { ...a.mate } : null })),
 });
 const cloneCat = (c: Cat): Cat => ({ ...c, seen: [...c.seen], present: c.present ? { ...c.present } : null });
 
@@ -770,4 +808,128 @@ export function treat(s0: NyangState, slot: number, kind: string, t: number): { 
   if (kind === 'catnip') c.nipAt = t;
   putCat(s, c);
   return { state: s, love, ...care(s.profile, needed, t) };
+}
+
+// ---------- 5단계: 꾸미기 · 앨범 ----------
+
+/** 가지고 있는 가구인지 (책상 · 방석은 처음부터, 상자는 장난감 상자가 있으면) */
+export function ownsFurniture(p: Profile, id: string): boolean {
+  if ((BASE_FURNITURE as readonly string[]).includes(id)) return true;
+  if (id === 'box') return hasToy(p, 'box');
+  return p.furniture.includes(id);
+}
+/** 가지고 있는 벽지 · 바닥 · 창문인지 (기본은 처음부터, 나머지는 보관함 'style:<id>') */
+export const ownsStyle = (p: Profile, id: string) => STYLE_OF[id]?.price === 0 || itemCount(p, itemKey.style(id)) > 0;
+
+/** 지금 방에 놓인 가구 (한 번도 저장하지 않았으면 기본 배치 중 가진 것) */
+export function layoutItems(p: Profile): Placed[] {
+  if (p.layout.items) return p.layout.items;
+  return DEFAULT_ITEMS.filter((i) => ownsFurniture(p, i.id));
+}
+/** 지금 벽지 · 바닥 · 창문 */
+export const layoutStyle = (p: Profile, kind: 'wall' | 'floor' | 'window') => p.layout[kind] ?? BASE_STYLE[kind];
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * 꾸미기 저장: 방에 놓을 가구(격자 칸) · 벽지 · 바닥 · 창문을 한 번에. 서버는 가진 것인지 · 격자 안인지 · 겹치지 않는지를 본다.
+ * 거절: 'bad layout'(모양 · 모르는 가구 · 두 번 · 격자 밖 · 겹침 · 종류가 다른 무늬) · 'not owned'(없는 가구 · 무늬). 꽃병의 꽃은 그대로 둔다.
+ */
+export function place(s0: NyangState, layout: unknown, t: number): { state: NyangState } {
+  void t;
+  const s = cloneState(s0);
+  const p = s.profile;
+  if (!isObj(layout)) throw new RuleError('bad layout');
+  const raw = layout.items ?? [];
+  if (!Array.isArray(raw) || raw.length > Object.keys(FURNITURE_OF).length) throw new RuleError('bad layout');
+  const used = new Set<string>(BLOCKED);
+  const seenIds = new Set<string>();
+  const items: Placed[] = [];
+  for (const it of raw) {
+    if (!isObj(it) || typeof it.id !== 'string' || typeof it.x !== 'number' || typeof it.y !== 'number') throw new RuleError('bad layout');
+    const f = Object.prototype.hasOwnProperty.call(FURNITURE_OF, it.id) ? FURNITURE_OF[it.id] : undefined;
+    if (!f || seenIds.has(f.id)) throw new RuleError('bad layout');
+    seenIds.add(f.id);
+    if (!ownsFurniture(p, f.id)) throw new RuleError('not owned');
+    const { x, y } = it;
+    const cols = f.kind === 'wall' ? CONST.wall_cols : CONST.grid_cols;
+    const rows = f.kind === 'wall' ? CONST.wall_rows : CONST.grid_rows;
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x + f.w > cols || y + f.h > rows) throw new RuleError('bad layout');
+    const k = f.kind === 'wall' ? 'w' : 'f';
+    for (let dx = 0; dx < f.w; dx++)
+      for (let dy = 0; dy < f.h; dy++) {
+        const cell = `${k}${x + dx}_${y + dy}`;
+        if (used.has(cell)) throw new RuleError('bad layout');
+        used.add(cell);
+      }
+    items.push({ id: f.id, x, y });
+  }
+  const out: RoomLayout = { items };
+  for (const kind of ['wall', 'floor', 'window'] as const) {
+    const v = layout[kind] ?? BASE_STYLE[kind];
+    if (typeof v !== 'string') throw new RuleError('bad layout');
+    const st = Object.prototype.hasOwnProperty.call(STYLE_OF, v) ? STYLE_OF[v] : undefined;
+    if (!st || st.kind !== kind) throw new RuleError('bad layout');
+    if (!ownsStyle(p, v)) throw new RuleError('not owned');
+    out[kind] = v;
+  }
+  if (p.layout.vase) out.vase = p.layout.vase;
+  p.layout = out;
+  return { state: s };
+}
+
+/** 꽃병에 꽃 꽂기 (보관함의 꽃 하나를 쓴다 · 빈 글자면 꽃을 뺀다 — 뺀 꽃은 돌아오지 않는다) */
+export function vase(s0: NyangState, flower: string, t: number): { state: NyangState } {
+  void t;
+  const s = cloneState(s0);
+  const p = s.profile;
+  if (flower !== '' && !(VASE_FLOWERS as readonly string[]).includes(flower)) throw new RuleError('bad flower');
+  if (!ownsFurniture(p, 'vase')) throw new RuleError('no vase');
+  if (flower === '') {
+    delete p.layout.vase;
+    return { state: s };
+  }
+  if (itemCount(p, itemKey.plant(flower)) < 1) throw new RuleError('no item');
+  addItem(p, itemKey.plant(flower), -1);
+  p.layout.vase = flower;
+  return { state: s };
+}
+
+/**
+ * 사진 찍기: 지금 행동 · 자세 · 방향(+ 같이 찍힌 고양이)을 앨범에 (그림은 저장하지 않는다). 처음 본 행동이면 도감에도.
+ * 거절: 'no cat' · 'bad behavior' · 'too early' · 'bad pose' · 'album full'
+ */
+export function photo(
+  s0: NyangState, slot: number, behavior: string, pose: string, face: number, mate: number, matePose: string, t: number,
+): { state: NyangState; id: number; added: boolean } {
+  const s = cloneState(s0);
+  const c = settle(catOf(s, slot), t);
+  const b = Object.prototype.hasOwnProperty.call(BEHAVIOR, behavior) ? BEHAVIOR[behavior] : undefined;
+  if (!b) throw new RuleError('bad behavior');
+  if (levelOf(c) < b.level) throw new RuleError('too early');
+  if (!(POSE_IDS as readonly string[]).includes(pose)) throw new RuleError('bad pose');
+  let m: Photo['mate'] = null;
+  if (mate) {
+    const mc = s.cats.find((x) => x.slot === mate);
+    if (!mc || mate === slot) throw new RuleError('no cat');
+    if (!(POSE_IDS as readonly string[]).includes(matePose)) throw new RuleError('bad pose');
+    m = { slot: mate, color: mc.color, pose: matePose };
+  }
+  if (s.album.length >= CONST.album_max) throw new RuleError('album full');
+  const added = !c.seen.includes(b.id);
+  if (added) c.seen.push(b.id);
+  putCat(s, c);
+  s.profile.photoSeq += 1;
+  const id = s.profile.photoSeq;
+  s.album.push({ id, slot, name: c.name, color: c.color, behavior: b.id, pose, face: face < 0 ? -1 : 1, mate: m, at: t });
+  return { state: s, id, added };
+}
+
+/** 사진 지우기 */
+export function deletePhoto(s0: NyangState, id: number, t: number): { state: NyangState } {
+  void t;
+  const s = cloneState(s0);
+  if (!s.album.some((a) => a.id === id)) throw new RuleError('no photo');
+  s.album = s.album.filter((a) => a.id !== id);
+  return { state: s };
 }

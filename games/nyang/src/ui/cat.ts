@@ -5,7 +5,7 @@
  */
 import type { ColorId } from '../data/balance';
 import { POSE_ART } from '../data/poses.gen';
-import { POSE_IMAGE, catArt, type ArtName, type Pose } from './catart';
+import { POSE_IMAGE, catArt, roomArtScale, type ArtName, type Pose } from './catart';
 
 /** 얼굴 연출: 눈 반짝(츄르를 볼 때) · 혀 낼름(핥기) · 입맛 다시기(다 먹고) */
 export type FaceFx = 'none' | 'sparkle' | 'lick' | 'smack';
@@ -46,6 +46,10 @@ export class CatActor {
   sink = 0;
   /** 걸을 때 꼬리 세우고 통통 (따라다니기) */
   perky = false;
+  /** 숨숨집 속에 숨었을 때 (그림을 감춘다) */
+  vanish = false;
+  /** 그림 덮어쓰기 (그루밍 혀 낼름처럼 자세를 코드로 돌릴 때) */
+  forcePose: Pose | null = null;
   pos: Spot2;
   facing: 1 | -1 = 1;
   act: Act = { kind: 'idle', until: 0 };
@@ -185,17 +189,27 @@ export class CatActor {
       }
       if (now - this.blinkAt < 160) pose = 'blink';
     }
+    if (this.forcePose && a.kind !== 'walk') pose = this.forcePose;
     this.pose = pose;
     this.render(now, hop);
+  }
+
+  private last = new Map<string, string>();
+  private set(el: HTMLElement, prop: 'transform' | 'clipPath' | 'zIndex' | 'visibility', v: string) {
+    const k = (el === this.el ? 'e' : el === this.body ? 'b' : 'u') + prop;
+    if (this.last.get(k) === v) return;
+    this.last.set(k, v);
+    el.style[prop] = v;
   }
 
   private render(now: number, hop: number) {
     const art = POSE_IMAGE[this.pose];
     const meta = POSE_ART[art];
-    const key = `${this.color}:${art}`;
+    const sc = roomArtScale();
+    const key = `${this.color}:${art}:${sc}`;
     if (this.shown !== key) {
       this.shown = key;
-      void catArt(this.color, art, this.pattern).then((url) => {
+      void catArt(this.color, art, this.pattern, sc).then((url) => {
         if (this.shown === key) this.img.src = url;
       });
       this.img.style.width = `${meta.w}px`;
@@ -219,13 +233,15 @@ export class CatActor {
     const sh = this.shake > now ? Math.sin(now / 22) * 4 : 0;
     const lift = (meta.anchor === 'air' ? 40 : 0) + this.lift - this.sink;
     const wig = this.wiggle ? Math.sin(now / 55) * 3 : 0;
-    this.el.style.transform = `translate3d(${x + sh + wig}px, ${y - hop - lift}px, 0)`;
-    this.el.style.clipPath = this.sink > 0 ? `inset(-3000px -3000px ${this.sink}px -3000px)` : '';
-    this.el.style.zIndex = String(Math.round(y));
-    this.body.style.transform = `scale(${s * this.facing}, ${s * breathe * droop})`;
-    this.body.classList.toggle('sick', this.sick);
+    // 바뀐 것만 쓴다 (고양이 4마리 × 매 장면 — 쓸데없는 스타일 다시 계산을 줄인다)
+    this.set(this.el, 'transform', `translate3d(${(x + sh + wig).toFixed(1)}px, ${(y - hop - lift).toFixed(1)}px, 0)`);
+    this.set(this.el, 'clipPath', this.sink > 0 ? `inset(-3000px -3000px ${Math.round(this.sink)}px -3000px)` : '');
+    this.set(this.el, 'zIndex', String(Math.round(y)));
+    this.set(this.el, 'visibility', this.vanish ? 'hidden' : '');
+    this.set(this.body, 'transform', `scale(${(s * this.facing).toFixed(4)}, ${(s * breathe * droop).toFixed(4)})`);
+    if (this.body.classList.contains('sick') !== this.sick) this.body.classList.toggle('sick', this.sick);
     // 말풍선은 머리 위 (뒤집지 않는다)
-    this.bubbleEl.style.transform = `translate(-50%, ${-meta.fy * s - 8}px)`;
+    this.set(this.bubbleEl, 'transform', `translate(-50%, ${Math.round(-meta.fy * s - 8)}px)`);
     if (this.bubbleUntil && now > this.bubbleUntil) {
       this.bubbleUntil = 0;
       this.bubbleEl.classList.add('hidden');

@@ -539,3 +539,68 @@ describe('4단계: 베란다 정원', () => {
     expect(treat(s, 1, 'catnip', T0 + 86400).state.profile.items['plant:catnip']).toBeUndefined();
   });
 });
+
+describe('5단계: 꾸미기 · 꽃병 · 앨범 · 추가 입양', () => {
+  it('꾸미기: 가진 것만 · 격자 안 · 안 겹침 · 기본 배치', async () => {
+    const { place, vase, layoutItems, layoutStyle } = await import('../src/game/rules');
+    let s = start();
+    // 한 번도 저장하지 않았으면 기본 배치 중 가진 것 (상자는 장난감이 있어야)
+    expect(layoutItems(s.profile).map((i) => i.id)).toEqual(['desk', 'cushion']);
+    expect(layoutStyle(s.profile, 'wall')).toBe('wall_cream');
+    err(() => place(s, { items: [{ id: 'cat_tower', x: 3, y: 1 }] }, T0), 'not owned');
+    err(() => place(s, { items: [{ id: 'desk', x: 7, y: 0 }] }, T0), 'bad layout'); // 격자 밖 (2칸)
+    err(() => place(s, { items: [{ id: 'desk', x: 0, y: 2 }] }, T0), 'bad layout'); // 밥 자리
+    err(() => place(s, { items: [{ id: 'desk', x: 3, y: 1 }, { id: 'cushion', x: 4, y: 1 }] }, T0), 'bad layout'); // 겹침
+    err(() => place(s, { items: [{ id: 'desk', x: 3, y: 1 }, { id: 'desk', x: 5, y: 1 }] }, T0), 'bad layout'); // 두 번
+    err(() => place(s, { items: [{ id: 'desk', x: 1.5, y: 1 }] }, T0), 'bad layout');
+    err(() => place(s, { wall: 'floor_maple' }, T0), 'bad layout');
+    err(() => place(s, { wall: 'wall_mint' }, T0), 'not owned');
+    s.profile.furniture.push('zodiac_shelf');
+    err(() => place(s, { items: [{ id: 'zodiac_shelf', x: 2, y: 0 }] }, T0), 'bad layout'); // 창
+    s.profile.items['style:wall_mint'] = 1;
+    s = place(s, { items: [{ id: 'zodiac_shelf', x: 0, y: 1 }, { id: 'desk', x: 6, y: 0 }], wall: 'wall_mint' }, T0).state;
+    expect(s.profile.layout).toEqual({ items: [{ id: 'zodiac_shelf', x: 0, y: 1 }, { id: 'desk', x: 6, y: 0 }], wall: 'wall_mint', floor: 'floor_wood', window: 'window_basic' });
+    // 꽃병
+    err(() => vase(s, 'rose', T0), 'no vase');
+    s.profile.furniture.push('vase');
+    err(() => vase(s, 'daisy', T0), 'bad flower');
+    err(() => vase(s, 'rose', T0), 'no item');
+    s.profile.items['plant:rose'] = 1;
+    s = vase(s, 'rose', T0).state;
+    expect(s.profile.layout.vase).toBe('rose');
+    expect(s.profile.items['plant:rose']).toBeUndefined();
+    // 다시 배치해도 꽃은 그대로
+    expect(place(s, {}, T0).state.profile.layout.vase).toBe('rose');
+    expect(vase(s, '', T0).state.profile.layout.vase).toBeUndefined();
+  });
+
+  it('사진: 앨범 상한 · 도감 · 같이 찍힌 고양이 · 지우기', async () => {
+    const { photo, deletePhoto } = await import('../src/game/rules');
+    let s = start();
+    err(() => photo(s, 1, 'dance', 'sit', 1, 0, '', T0), 'bad behavior');
+    err(() => photo(s, 1, 'knead', 'knead', 1, 0, '', T0), 'too early');
+    err(() => photo(s, 1, 'loaf', 'fly', 1, 0, '', T0), 'bad pose');
+    err(() => photo(s, 1, 'groom', 'lick2', 1, 2, 'blink', T0), 'no cat');
+    const r = photo(s, 1, 'loaf', 'loaf', -5, 0, '', T0);
+    expect(r.added).toBe(true);
+    expect(r.state.album[0]).toEqual({ id: 1, slot: 1, name: '나비', color: 'white', behavior: 'loaf', pose: 'loaf', face: -1, mate: null, at: T0 });
+    expect(cat(r.state).seen).toContain('loaf');
+    s = r.state;
+    for (let i = 1; i < CONST.album_max; i++) s = photo(s, 1, 'sit', 'sit', 1, 0, '', T0 + i).state;
+    err(() => photo(s, 1, 'sit', 'sit', 1, 0, '', T0), 'album full');
+    s = deletePhoto(s, 1, T0).state;
+    err(() => deletePhoto(s, 1, T0), 'no photo');
+    expect(photo(s, 1, 'sit', 'blink', 1, 0, '', T0).id).toBe(CONST.album_max + 1);
+  });
+
+  it('추가 입양: 첫 고양이 친밀도 4 · 7 · 10 단계', () => {
+    let s = start();
+    err(() => adopt(s, 'gray', 'lazy', '회색이', T0), 'no room');
+    for (const [lv, n] of [[4, 2], [7, 3], [10, 4]]) {
+      s.cats[0].love = loveAt(lv);
+      s = adopt(s, 'gray', 'lazy', `냥${n}`, T0).state;
+      expect(s.cats.length).toBe(n);
+      err(() => adopt(s, 'gray', 'lazy', '또', T0), 'no room');
+    }
+  });
+});

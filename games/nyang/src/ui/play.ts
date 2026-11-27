@@ -148,7 +148,7 @@ export async function playGame(ctx: RoomCtx, v: CatView, toy: ToyId): Promise<vo
     F.y = s.y;
   }
   if (toy === 'box') {
-    ctx.props.box.el.classList.add('away');
+    ctx.furn('box')?.el.classList.add('away');
     const b = ctx.toScreen(BOXP);
     const bw = W * 0.34;
     toyEl.style.width = `${bw}px`;
@@ -369,7 +369,7 @@ export async function playGame(ctx: RoomCtx, v: CatView, toy: ToyId): Promise<vo
   a.sink = 0;
   layer.remove();
   toyEl.remove();
-  ctx.props.box.el.classList.remove('away');
+  ctx.furn('box')?.el.classList.remove('away');
   room.classList.remove('playing');
   ctx.tray(null);
   try {

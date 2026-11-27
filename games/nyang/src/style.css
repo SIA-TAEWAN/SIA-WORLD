@@ -111,7 +111,7 @@ button{font:inherit;color:inherit}
 .blanket svg{width:100%;height:100%;display:block}
 /* 고양이 */
 .cat{position:absolute;left:0;top:0;will-change:transform}
-.cat-body{position:absolute;left:0;top:0;transform-origin:0 0}
+.cat-body{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 .cat-body img{position:absolute;display:block;max-width:none;-webkit-user-drag:none;cursor:grab;touch-action:none}
 .cat-body.sick img{filter:saturate(.75) brightness(.96) hue-rotate(-8deg)}
 .bubble{position:absolute;left:0;top:0;white-space:nowrap;background:var(--white);border:3px solid var(--outline);border-radius:14px;padding:2px 10px;font-size:16px;pointer-events:none}
@@ -412,3 +412,146 @@ button{font:inherit;color:inherit}
 .bag-cell .sico{width:40px;height:40px;font-size:24px}
 .bag-cell small{font-size:11px;text-align:center;line-height:1.2}
 .bag-cell b{position:absolute;right:4px;top:2px;font-weight:normal;font-size:12px;color:var(--accent)}
+
+/* ---------- 5단계: 문(오른쪽) · 그릇 여러 개 · 가구 · 꾸미기 · 앨범 ---------- */
+.door{left:auto;right:5%;width:18%;transform-origin:100% 50%}
+.door i{right:auto;left:12%}
+.door.open{transform:perspective(300px) rotateY(55deg)}
+.stage-ui{gap:6px}
+.stagebtn{width:52px;min-height:50px}
+.adoptbtn{background:var(--panel-strong);box-shadow:0 3px 0 var(--outline),0 0 0 4px var(--pink);animation:breathe 1s ease-in-out infinite}
+.prop.bowl .alert{width:24px;height:24px;top:-28px;font-size:15px}
+.bowl-dot{position:absolute;left:50%;bottom:-8px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--dot);border:2px solid var(--outline);pointer-events:none}
+.litter-art .poop-n{position:absolute;right:-6px;top:-10px;background:var(--white);border:2px solid var(--outline);border-radius:999px;font-weight:normal;font-size:13px;padding:0 6px}
+.cambtn{flex:none}
+.room.camera .cat-body img{cursor:crosshair;filter:drop-shadow(0 0 0 var(--white)) drop-shadow(0 0 5px var(--primary))}
+.flash{position:absolute;inset:0;background:var(--white);z-index:4900;pointer-events:none;animation:flash .45s ease-out forwards}
+@keyframes flash{from{opacity:.9}to{opacity:0}}
+/* 가구 */
+.furn{cursor:default}
+.furn .pic>img,.furn .pic>svg{width:100%;height:100%;display:block;object-fit:contain;object-position:50% 100%}
+.furn-vase{cursor:pointer}
+.vase-flower{position:absolute;left:4%;width:92%;bottom:62%;height:120%;pointer-events:none;overflow:hidden;clip-path:inset(0 0 46% 0)}
+.vase-flower img{position:absolute;left:0;top:0;width:100%;height:auto}
+.furn .peek{position:absolute;left:28%;top:36%;width:30%;height:22%;display:none;gap:16%;justify-content:center;align-items:center;pointer-events:none}
+.furn.occupied .peek{display:flex}
+.furn .peek i{width:22%;aspect-ratio:1;border-radius:50%;background:var(--primary);box-shadow:0 0 6px var(--primary);animation:peek 2.4s infinite}
+@keyframes peek{0%,88%,100%{transform:scaleY(1)}92%{transform:scaleY(.1)}}
+.furn.occupied .pic{animation:wobble 2.4s ease-in-out infinite;transform-origin:50% 100%}
+.furn.scratching .pic{animation:tap .4s infinite}
+.furn-desk .cup{left:58%;top:-14%}
+.furn-desk.knocked.flip .cup{transform:translate(-200%,340%) rotate(-100deg)}
+.room[data-time=night] .furn-moon_lamp .pic{filter:drop-shadow(0 0 14px #FFE066) drop-shadow(0 0 30px rgba(255,224,102,.6))}
+.room[data-time=night] .furn-moon_lamp{z-index:2100!important}
+/* 벽지 · 바닥 · 커튼 (그림을 새로 그리지 않고 기존 색 값으로) */
+.room:not([data-wall=wall_cream]) .wall-art{background-image:none!important}
+.room:not([data-wall=wall_cream]) .baseboard{display:block!important}
+.room[data-wall=wall_mint] .wall{background:repeating-linear-gradient(90deg,#DDF2E8 0 22px,#A9DDC6 22px 26px)}
+.room[data-wall=wall_pink] .wall{background:radial-gradient(circle at 12px 12px,#F7C1A8 0 4px,transparent 5px) 0 0/26px 26px,radial-gradient(circle at 25px 25px,#F7C1A8 0 4px,transparent 5px) 0 0/26px 26px,#FFF4EC}
+.room[data-wall=wall_sky] .wall{background:repeating-linear-gradient(90deg,rgba(156,199,242,.45) 0 14px,transparent 14px 28px),repeating-linear-gradient(0deg,rgba(156,199,242,.45) 0 14px,transparent 14px 28px),#F2F8FF}
+.room[data-wall=wall_night] .wall{background:radial-gradient(circle at 8px 10px,#FFE066 0 1.6px,transparent 2.4px) 0 0/34px 30px,radial-gradient(circle at 24px 22px,#FFF8E8 0 1.2px,transparent 2px) 0 0/34px 30px,linear-gradient(#2B2350,#3C3268)}
+.room[data-floor=floor_maple] .floor-art{filter:brightness(1.13) saturate(.8)}
+.room[data-floor=floor_walnut] .floor-art{filter:brightness(.74) saturate(1.15) hue-rotate(-6deg)}
+.room[data-floor=floor_mint] .floor-art,.room[data-floor=floor_pink] .floor-art{background-image:none!important}
+.room[data-floor=floor_mint] .floor{background:repeating-linear-gradient(45deg,#A9DDC6 0 18px,#BFE6D3 18px 36px)}
+.room[data-floor=floor_pink] .floor{background:conic-gradient(#F7C1A8 25%,#FFF4EC 0 50%,#F7C1A8 0 75%,#FFF4EC 0) 0 0/40px 40px}
+.window .curtain,.window .rod{display:none;position:absolute;pointer-events:none;z-index:2}
+.room:not([data-window=window_basic]) .window .curtain,.room:not([data-window=window_basic]) .window .rod{display:block}
+.window .rod{left:-10%;right:-10%;top:-5%;height:6%;background:#9A6A3A;border:2.5px solid var(--outline);border-radius:999px}
+.window .curtain{top:-2%;bottom:-4%;width:28%;border:3px solid var(--outline);background:var(--cur,#F7C1A8);box-shadow:inset -6px 0 0 rgba(42,26,16,.1)}
+.window .curtain.l{left:-12%;border-radius:4px 4px 40% 10px}
+.window .curtain.r{right:-12%;border-radius:4px 4px 10px 40%}
+.window .curtain::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 9px,rgba(42,26,16,.12) 9px 11px)}
+.room[data-window=window_pink] .window{--cur:#F7C1A8}
+.room[data-window=window_mint] .window{--cur:#A9DDC6}
+.room[data-window=window_lace] .window .curtain{background:radial-gradient(circle at 6px 6px,rgba(255,255,255,.95) 0 2.4px,transparent 3px) 0 0/12px 12px,rgba(255,248,232,.82)}
+.room[data-window=window_star] .window .curtain{background:radial-gradient(circle at 7px 9px,#FFE066 0 2.4px,transparent 3px) 0 0/16px 18px,#2B2350}
+/* 꾸미기 모드 */
+.room.deco .cat{opacity:.35;pointer-events:none}
+.room.deco .prop:not(.furn){pointer-events:none}
+.room.deco .furn{cursor:grab;outline:2px dashed rgba(42,26,16,.45);outline-offset:-2px;border-radius:8px}
+.room.deco .furn.lifting{opacity:.3}
+.deco-grid{position:absolute;inset:0;z-index:2050;pointer-events:none}
+.deco-grid i{position:absolute;border:1.5px dashed rgba(255,248,232,.85);background:rgba(255,248,232,.12)}
+.deco-grid i.wall{border-color:rgba(42,26,16,.35)}
+.deco-grid i.blk{background:repeating-linear-gradient(45deg,rgba(42,26,16,.18) 0 4px,transparent 4px 9px);border-color:transparent}
+.deco-grid i.use{background:rgba(255,211,77,.18)}
+.deco-grid i.hot{background:rgba(76,184,106,.45);border:2px solid #4CB86A}
+.deco-grid i.no{background:rgba(232,106,90,.45);border:2px solid #E86A5A}
+.deco-bar{position:absolute;left:8px;right:8px;top:8px;z-index:4800;display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none}
+.deco-bar>*{pointer-events:auto}
+.deco-bar b{font-weight:normal;font-size:18px;color:var(--white);-webkit-text-stroke:3px var(--outline);paint-order:stroke fill}
+.deco-tray{width:100%}
+.deco-tabs{display:flex;gap:6px;margin-bottom:6px}
+.deco-tabs button{flex:1;font-size:15px;border:3px solid var(--outline);border-radius:12px;background:var(--white);min-height:34px;padding:0}
+.deco-tabs button.sel{background:var(--primary)}
+.deco-list{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 6px;touch-action:pan-x}
+.dcard{flex:none;position:relative;width:74px;min-height:84px;background:var(--panel);border:3px solid var(--outline);border-radius:14px;display:flex;flex-direction:column;align-items:center;padding:4px;cursor:grab;touch-action:none}
+.dcard .dico{width:56px;height:46px;display:grid;place-items:center;font-size:28px;overflow:hidden}
+.dcard .dico img,.dcard .dico svg{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}
+.dcard small{font-size:12px;line-height:1.15;text-align:center}
+.dcard em{position:absolute;right:-4px;top:-8px;font-style:normal;font-size:11px;background:var(--white);border:2px solid var(--outline);border-radius:999px;padding:0 5px}
+.dcard.on{opacity:.55;cursor:default}
+.dcard.style{cursor:pointer;touch-action:pan-x}
+.dcard.style.sel{background:var(--panel-strong);box-shadow:inset 0 0 0 3px var(--primary)}
+.dcard.style.lock{background:var(--track)}
+.dcard.shopcard{cursor:pointer;touch-action:pan-x}
+.deco-hint{margin:0;font-size:13px;color:var(--white);-webkit-text-stroke:1px var(--outline);paint-order:stroke fill;text-align:center}
+.deco-ghost{position:fixed;left:0;top:0;z-index:5000;pointer-events:none;filter:drop-shadow(0 6px 0 rgba(42,26,16,.3))}
+.deco-ghost img,.deco-ghost svg{width:100%;height:100%;object-fit:contain;display:block}
+.deco-ghost.bad{opacity:.6;filter:grayscale(.6) drop-shadow(0 0 4px #E86A5A)}
+.deco-ghost.away{opacity:.4}
+.swatch{width:56px;height:44px;border:2.5px solid var(--outline);border-radius:10px;display:block;overflow:hidden;position:relative}
+.sw-wall_cream{background:repeating-linear-gradient(90deg,var(--nyang-wall) 0 8px,var(--nyang-wall-line) 8px 10px)}
+.sw-wall_mint{background:repeating-linear-gradient(90deg,#DDF2E8 0 8px,#A9DDC6 8px 10px)}
+.sw-wall_pink{background:radial-gradient(circle at 6px 6px,#F7C1A8 0 3px,transparent 3.5px) 0 0/13px 13px,#FFF4EC}
+.sw-wall_sky{background:repeating-linear-gradient(90deg,rgba(156,199,242,.5) 0 7px,transparent 7px 14px),repeating-linear-gradient(0deg,rgba(156,199,242,.5) 0 7px,transparent 7px 14px),#F2F8FF}
+.sw-wall_night{background:radial-gradient(circle at 6px 8px,#FFE066 0 1.5px,transparent 2px) 0 0/16px 14px,#2B2350}
+.sw-floor_wood{background:repeating-linear-gradient(90deg,var(--nyang-floor) 0 14px,var(--nyang-floor-dark) 14px 16px)}
+.sw-floor_maple{background:repeating-linear-gradient(90deg,#F0CFA2 0 14px,#DDB284 14px 16px)}
+.sw-floor_walnut{background:repeating-linear-gradient(90deg,#A8774A 0 14px,#7E5531 14px 16px)}
+.sw-floor_mint{background:repeating-linear-gradient(45deg,#A9DDC6 0 7px,#BFE6D3 7px 14px)}
+.sw-floor_pink{background:conic-gradient(#F7C1A8 25%,#FFF4EC 0 50%,#F7C1A8 0 75%,#FFF4EC 0) 0 0/16px 16px}
+.sw-window_basic{background:var(--sky-mid)}
+.sw-window_pink,.sw-window_mint,.sw-window_lace,.sw-window_star{background:linear-gradient(90deg,var(--c) 0 30%,var(--sky-mid) 30% 70%,var(--c) 70%)}
+.sw-window_pink{--c:#F7C1A8}
+.sw-window_mint{--c:#A9DDC6}
+.sw-window_lace{--c:#FFF8E8}
+.sw-window_star{--c:#2B2350}
+.vase-pick .choices{margin-top:10px}
+.float.scratch{font-size:16px;color:var(--ink-soft);-webkit-text-stroke:0}
+/* 정보 창 고양이 고르기 */
+.cat-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 48px 6px 0}
+.cat-chips .chip{display:inline-flex;align-items:center;gap:5px;border:2.5px solid var(--outline);border-radius:999px;background:var(--white);padding:3px 10px;font-size:14px;min-height:34px}
+.cat-chips .chip.sel{background:var(--primary)}
+.cat-chips .chip i{width:12px;height:12px;border-radius:50%;background:var(--dot);border:2px solid var(--outline)}
+.adopt{position:relative}
+.adopt-back{position:sticky;top:0;z-index:2;margin-bottom:-40px}
+/* 앨범 · 도감 */
+.album .shop-body{max-height:62vh;overflow-y:auto}
+.album-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.photo{position:relative;aspect-ratio:3/4;border:3px solid var(--outline);border-radius:12px;overflow:hidden;background:linear-gradient(var(--sky-top),var(--sky-mid));cursor:pointer;box-shadow:0 3px 0 var(--outline)}
+.photo.t-morning{background:linear-gradient(#9FD6FF,#FFE9B8)}
+.photo.t-dusk{background:linear-gradient(#F7A07A,#FFD38A)}
+.photo.t-night{background:linear-gradient(#2B2350,#3C3268)}
+.photo .pfloor{position:absolute;left:0;right:0;bottom:0;height:42%;background:repeating-linear-gradient(90deg,var(--nyang-floor) 0 18px,var(--nyang-floor-dark) 18px 20px);border-top:3px solid var(--outline)}
+.photo .pcat{position:absolute;left:50%;bottom:16%;width:78%;transform:translateX(-50%) scaleX(var(--face));object-fit:contain;pointer-events:none}
+.photo .pcat.two{left:64%;width:62%}
+.photo .pcat.mate{left:34%;width:56%}
+.photo .pcap{position:absolute;left:0;right:0;bottom:0;background:rgba(255,248,232,.92);border-top:2px solid var(--outline);padding:1px 4px;display:flex;flex-direction:column;line-height:1.15}
+.photo .pcap b{font-weight:normal;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo .pcap small{font-size:10px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo.big{width:min(340px,86vw);cursor:default;border-width:5px;border-radius:18px;box-shadow:0 0 0 8px var(--white),0 10px 0 8px var(--outline)}
+.photo.big .pcap b{font-size:20px}
+.photo.big .pcap small{font-size:14px}
+.photo-view{display:flex;flex-direction:column;align-items:center;gap:22px}
+.photo-btns{display:flex;gap:10px}
+.empty-note{text-align:center;padding:24px 0}
+.book-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.bcell{background:var(--white);border:2.5px solid var(--outline);border-radius:12px;padding:4px 2px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.bcell .bimg{width:100%;aspect-ratio:1;display:grid;place-items:center}
+.bcell img{width:92%;height:92%;object-fit:contain}
+.bcell b{font-weight:normal;font-size:12px;line-height:1.15}
+.bcell small{font-size:10px;color:var(--ink-soft)}
+.bcell.off{background:var(--track)}
+.bcell.off img{filter:brightness(0) opacity(.28)}

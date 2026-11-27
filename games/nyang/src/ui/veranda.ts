@@ -68,7 +68,8 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
     const col = (slot - 1) % 6;
     const w = Math.min(W / 6, (g.bottom - g.top) * 0.68);
     const h = w * 1.55;
-    const x = W * (0.1 + col * 0.16);
+    // 오른쪽 위 무대 단추(방 · 상점)와 겹치지 않게 왼쪽으로 모은다 (6번째 열 = 0.735W)
+    const x = W * (0.085 + col * 0.13);
     const y = row ? g.bottom : g.top;
     return { x, y, w, h };
   }

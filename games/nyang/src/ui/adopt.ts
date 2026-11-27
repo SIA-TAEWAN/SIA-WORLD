@@ -7,13 +7,16 @@ import type { NyangState } from '../game/rules';
 import { catArt } from './catart';
 import { buzz, esc, sfx, toast } from './common';
 
-export function showAdopt(root: HTMLElement, api: NyangApi, done: (state: NyangState, slot: number) => void) {
+/** more: 이미 함께 사는 고양이 수 (5단계 추가 입양 — 돌아가기 단추가 생긴다) */
+export function showAdopt(root: HTMLElement, api: NyangApi, done: (state: NyangState, slot: number) => void, opts: { more?: number; cancel?: () => void } = {}) {
   const kittens = shelterKittens(kstDay(Math.floor(api.now())));
   let pick = -1;
+  const nth = ['', '첫', '두', '세', '네'][(opts.more ?? 0) + 1] ?? '새';
   root.innerHTML = `
     <section class="adopt">
+      ${opts.cancel ? '<button class="btn small adopt-back" type="button" id="adoptBack">← 집으로</button>' : ''}
       <div class="logo">시아집사</div>
-      <div class="sub">보호소에서 기다리는 아기 고양이예요.<br/>함께 살 아이를 골라 주세요</div>
+      <div class="sub">${opts.more ? `${nth} 번째 가족을 맞이할 수 있어요!<br/>먼저 사는 고양이와 사이좋게 지낼 아이를 골라 주세요` : '보호소에서 기다리는 아기 고양이예요.<br/>함께 살 아이를 골라 주세요'}</div>
       <div class="kittens">${kittens
         .map(
           (k, i) => `<button class="kitten" data-i="${i}" type="button" aria-label="${COLOR[k.color].name} ${PERSONALITY[k.personality].name}">
@@ -23,6 +26,7 @@ export function showAdopt(root: HTMLElement, api: NyangApi, done: (state: NyangS
         .join('')}</div>
       <div class="panel adopt-info hidden" id="adoptInfo"></div>
     </section>`;
+  root.querySelector('#adoptBack')?.addEventListener('click', () => opts.cancel?.());
   root.querySelectorAll<HTMLImageElement>('.kitten img').forEach((im) => {
     void catArt(im.dataset.color as ColorId, 'sit').then((u) => (im.src = u));
   });

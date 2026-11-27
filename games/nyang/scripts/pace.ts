@@ -10,9 +10,9 @@
  *   기본 사료는 공짜라 엽전이 0 이어도 돌보기는 그대로 된다 (엽전이 쓰이는 곳은 씨앗 · 화분 · 장난감 · 가구뿐).
  * 규칙은 게임과 같은 함수(src/game/rules.ts)를 그대로 쓴다.
  */
-import { CONST, LOVE_NEED, PERSONALITIES, PLANTS, POT_MAX, POT_PRICES, POT_START, SELL, itemKey, kstDay, type PersonalityId } from '../src/data/balance';
+import { CAT_NEED, CONST, LOVE_NEED, PERSONALITIES, PLANTS, POT_MAX, POT_PRICES, POT_START, SELL, itemKey, kstDay, type PersonalityId } from '../src/data/balance';
 import {
-  RuleError, addItem, adopt, brush, buy, churu, clean, cure, expandPots, feed, gift, harvest, itemCount, pet, plant, play, playStart, sell, topLevel, visit, water,
+  RuleError, newState, addItem, adopt, brush, buy, churu, clean, cure, expandPots, feed, gift, harvest, itemCount, pet, plant, play, playStart, sell, topLevel, visit, water,
   waterPot, type NyangState,
 } from '../src/game/rules';
 
@@ -125,7 +125,7 @@ function run(personality: PersonalityId, visits: number, churuPerDay: number, se
 }
 
 function newStateAt(): NyangState {
-  return { profile: { coins: 0, seq: 0, visitAt: 0, bonusDay: -1, careDays: 0, siaDay: -1, siaToday: 0, siaDue: 0, siaPaid: 0, sia: 0, items: {}, furniture: [], pseq: 0, pots: 4, buySeq: 0 }, cats: [], pots: [] };
+  return newState();
 }
 function levelOfLove(love: number) {
   let rest = love;
@@ -146,6 +146,7 @@ const econ: string[] = [];
 for (const visits of visitsList)
   for (const ch of visits === 1 ? [0, 1] : [0, 2]) {
     const lv10: number[] = [];
+    const adoptAt: number[][] = CAT_NEED.map(() => []);
     let sickAll = 0;
     for (const p of PERSONALITIES) {
       // 들르는 시각의 무작위 3가지로 돌려 감기는 합, 단계는 첫 번째 것
@@ -154,11 +155,14 @@ for (const visits of visitsList)
       const sick = runs.reduce((a, x) => a + x.sickEp, 0);
       sickAll += sick;
       if (r.reached[9]) lv10.push(r.reached[9]);
+      CAT_NEED.forEach((lv, i) => r.reached[lv - 1] && adoptAt[i].push(r.reached[lv - 1]));
       const cells = [...Array(9)].map((_, i) => String(r.reached[i + 1] ?? '—').padStart(5)).join('');
       console.log(`${p.name.padEnd(8)} ${visits}번  ${ch}개 ${cells}   ${String(sick).padStart(4)}  ${(r.sia / DAYS).toFixed(1).padStart(6)}  ${(r.presents / DAYS).toFixed(2).padStart(6)}  ${(r.coins / DAYS).toFixed(1).padStart(6)}  ${(r.earned / DAYS).toFixed(1).padStart(6)}  ${String(r.potsDay12 || '—').padStart(4)}`);
       if (p.id === 'calm') econ.push(`하루 ${visits}번 · 츄르 ${ch}개 (얌전이): ${[1, 3, 7, 14, 30, 60, 120].map((d) => `${d}일 ${r.coinsAt[d]}냥/${r.potsAt[d]}칸`).join(' · ')} · 씨앗에 쓴 엽전 ${r.spentSeeds} · 꽃 판 엽전 ${r.earned}`);
     }
     summary.push(`하루 ${visits}번 · 츄르 ${ch}개: 10단계 ${lv10.length ? `${Math.min(...lv10)}~${Math.max(...lv10)}일` : '—'} · 감기 ${sickAll}번 (성격 5 × 120일 × 3가지 = 1800일)`);
+    const span = (a: number[]) => (a.length ? `${Math.min(...a)}~${Math.max(...a)}일` : '—');
+    summary.push(`   추가 입양 (첫 고양이 Lv${CAT_NEED.join(' · ')}): ${['둘째', '셋째', '넷째'].map((n, i) => `${n} ${span(adoptAt[i])}${adoptAt[i].length < PERSONALITIES.length ? ` (${PERSONALITIES.length - adoptAt[i].length}성격은 120일 안에 못 닿음)` : ''}`).join(' · ')}`);
   }
 console.log(`\n${summary.join('\n')}`);
 console.log('\n엽전 · 화분 칸 (그날 끝 — 남은 엽전은 화분을 늘리고 남은 것, 장난감 · 가구는 사지 않았다):');

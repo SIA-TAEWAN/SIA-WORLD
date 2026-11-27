@@ -84,7 +84,7 @@ for (const t of ['nyang_profiles', 'nyang_cats', 'nyang_pots', 'nyang_album']) {
   ok(/permission denied/.test((await call(u1, `select count(*) r from public.${t}`)).error ?? ''), `${t} 직접 읽기 거절`);
   ok(/permission denied/.test((await call(u1, `delete from public.${t} returning 1 r`)).error ?? ''), `${t} 직접 쓰기 거절`);
 }
-for (const f of ['_nyang_top_level(auth.uid())', '_nyang_care(auth.uid(), true, 0)', '_nyang_pay(auth.uid())', "_nyang_const('max')", '_nyang_now()', "_nyang_add_item(auth.uid(), 'medicine', 5)", "_nyang_item(auth.uid(), 'fur')"]) {
+for (const f of ['_nyang_top_level(auth.uid())', "_nyang_owns_furniture(auth.uid(), 'desk')", "_nyang_owns_style(auth.uid(), 'wall_cream')", '_nyang_care(auth.uid(), true, 0)', '_nyang_pay(auth.uid())', "_nyang_const('max')", '_nyang_now()', "_nyang_add_item(auth.uid(), 'medicine', 5)", "_nyang_item(auth.uid(), 'fur')"]) {
   ok(/permission denied/.test((await call(u1, `select public.${f} r`)).error ?? ''), `내부 함수 ${f} 거절`);
 }
 const open = await db.query("select value from public.app_settings where key = 'game_open:nyang'");
@@ -115,6 +115,10 @@ const CALL = {
   sell: 'select public.nyang_sell($1, $2) r',
   exchange: 'select public.nyang_exchange($1) r',
   treat: 'select public.nyang_treat($1, $2) r',
+  place: 'select public.nyang_place($1::jsonb) r',
+  vase: 'select public.nyang_vase($1) r',
+  photo: 'select public.nyang_photo($1, $2, $3, $4, $5, $6) r',
+  photo_delete: 'select public.nyang_photo_delete($1) r',
 };
 const fixSia = (st) => {
   const p = { ...st.profile, siaGot: st.profile.siaDue + st.profile.siaPaid };
@@ -146,8 +150,8 @@ for (const step of steps) {
   n++;
   const key = `${step.op}:${'error' in step.out ? step.out.error : 'ok'}`;
   kinds[key] = (kinds[key] ?? 0) + 1;
-  const r = await call(u2, CALL[step.op], step.args);
-  const label = `${n}. ${step.op}(${step.args.join(', ')}) @${step.t}`;
+  const r = await call(u2, CALL[step.op], step.op === 'place' ? [JSON.stringify(step.args[0])] : step.args);
+  const label = `${n}. ${step.op}(${step.args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(', ')}) @${step.t}`;
   if ('error' in step.out) {
     ok(r.error === step.out.error, `${label} → '${step.out.error}' (서버 ${r.error ?? '성공'})`);
     continue;

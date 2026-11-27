@@ -112,6 +112,15 @@ export const CONST = {
   /** 화분: 처음 칸 수 · 최대 칸 수 (늘리는 값은 POT_PRICES) */
   pot_start: 4,
   pot_max: 12,
+
+  // ---- 5단계: 꾸미기 · 앨범 ----
+  /** 방 바닥 격자 (가로 칸 · 세로 칸) · 벽 격자 (가로 칸 · 세로 칸) — 자리는 0 부터 */
+  grid_cols: 8,
+  grid_rows: 5,
+  wall_cols: 8,
+  wall_rows: 2,
+  /** 앨범에 둘 수 있는 사진 수 (지우면 다시 찍을 수 있다) */
+  album_max: 60,
 } as const;
 export type ConstName = keyof typeof CONST;
 
@@ -275,6 +284,8 @@ export const itemKey = {
   plant: (id: string) => `plant:${id}`,
   /** 상점에서 산 사료 (4단계) */
   food: (id: string) => `food:${id}`,
+  /** 벽지 · 바닥 · 창문 (5단계) */
+  style: (id: string) => `style:${id}`,
   fur: 'fur',
   medicine: 'medicine',
 };
@@ -287,6 +298,85 @@ export const isPlantId = (v: unknown): v is PlantId => typeof v === 'string' && 
 export const PRESENT_SEEDS = ['daisy', 'catgrass', 'sunflower'] as const;
 /** 선물로 드물게 오는 가구 (꾸미기는 5단계: nyang_profiles.furniture 에 id 를 더한다) */
 export const PRESENT_FURNITURE = ['paw_rug', 'fish_pillow', 'yarn_basket'] as const;
+
+// ---------- 5단계: 꾸미기 (방 배치 · 벽지 · 바닥 · 창문) ----------
+
+/**
+ * 방에 놓을 수 있는 가구 (SQL 의 _nyang_furniture). kind: 바닥(floor) · 벽(wall) 격자, w · h: 차지하는 칸.
+ * 바닥 격자는 CONST.grid_cols × grid_rows (x 0 = 왼쪽, y 0 = 벽 쪽), 벽 격자는 wall_cols × wall_rows (y 0 = 위).
+ * use: 고양이가 가구를 쓰는 방법 (화면 — ui/behavior.ts)
+ */
+export interface Furniture {
+  id: string;
+  kind: 'floor' | 'wall';
+  w: number;
+  h: number;
+  use: 'desk' | 'bed' | 'box' | 'vase' | 'scratch' | 'hide' | 'tower' | 'lamp' | 'rug' | 'shelf';
+}
+export const FURNITURE: Furniture[] = [
+  { id: 'desk', kind: 'floor', w: 2, h: 1, use: 'desk' },
+  { id: 'cushion', kind: 'floor', w: 2, h: 1, use: 'bed' },
+  { id: 'box', kind: 'floor', w: 2, h: 1, use: 'box' },
+  { id: 'vase', kind: 'floor', w: 1, h: 1, use: 'vase' },
+  { id: 'scratcher', kind: 'floor', w: 1, h: 1, use: 'scratch' },
+  { id: 'hideaway', kind: 'floor', w: 2, h: 1, use: 'hide' },
+  { id: 'cat_tower', kind: 'floor', w: 2, h: 1, use: 'tower' },
+  { id: 'moon_lamp', kind: 'floor', w: 1, h: 1, use: 'lamp' },
+  { id: 'paw_rug', kind: 'floor', w: 2, h: 1, use: 'rug' },
+  { id: 'fish_pillow', kind: 'floor', w: 1, h: 1, use: 'bed' },
+  { id: 'yarn_basket', kind: 'floor', w: 1, h: 1, use: 'bed' },
+  { id: 'zodiac_shelf', kind: 'wall', w: 2, h: 1, use: 'shelf' },
+];
+export const FURNITURE_OF: Record<string, Furniture> = Object.fromEntries(FURNITURE.map((f) => [f.id, f]));
+/** 처음부터 가진 가구 (상점에서 팔지 않는다). 상자(box)는 장난감 'toy:box' 가 있으면 놓을 수 있다 */
+export const BASE_FURNITURE = ['desk', 'cushion'] as const;
+/**
+ * 놓을 수 없는 칸: 바닥 'f<x>_<y>' (밥 자리 = 왼쪽 가운데 3 × 2칸 · 화장실 = 가운데 뒤 2칸) · 벽 'w<x>_<y>' (창 · 문)
+ * 밥그릇 · 물그릇 · 화장실은 늘 같은 자리에 있다 (고양이가 늘어도 그 안에서 나란히).
+ */
+export const BLOCKED: readonly string[] = [
+  'f0_2', 'f1_2', 'f2_2', 'f0_3', 'f1_3', 'f2_3', 'f4_0', 'f5_0',
+  ...[2, 3, 4, 5, 6, 7].flatMap((x) => [`w${x}_0`, `w${x}_1`]),
+];
+/** 꾸미기를 한 번도 저장하지 않았을 때의 배치 (가지고 있는 것만 보인다) */
+export const DEFAULT_ITEMS: { id: string; x: number; y: number }[] = [
+  { id: 'desk', x: 0, y: 0 },
+  { id: 'cushion', x: 3, y: 4 },
+  { id: 'box', x: 6, y: 3 },
+];
+
+/**
+ * 벽지 · 바닥 · 창문 (SQL 의 _nyang_styles). 그림을 새로 그리지 않고 코드(CSS 색 · 무늬)로 그린다 (ui/deco.ts).
+ * price: 엽전 (0 = 처음부터). 4단계 pace: 정원을 돌리면 한 달 뒤 엽전이 남는다 → 이 값들이 그 엽전을 쓰는 곳 (합 12,500냥 — 하루 2번이면 30일 뒤부터 한 달쯤, 하루 1번이면 넉 달쯤 모아야 다 산다)
+ */
+export interface RoomStyle {
+  id: string;
+  kind: 'wall' | 'floor' | 'window';
+  name: string;
+  price: number;
+}
+export const STYLES: RoomStyle[] = [
+  { id: 'wall_cream', kind: 'wall', name: '크림 줄무늬', price: 0 },
+  { id: 'wall_mint', kind: 'wall', name: '민트 줄무늬', price: 600 },
+  { id: 'wall_pink', kind: 'wall', name: '분홍 물방울', price: 800 },
+  { id: 'wall_sky', kind: 'wall', name: '하늘 체크', price: 1200 },
+  { id: 'wall_night', kind: 'wall', name: '별밤', price: 2000 },
+  { id: 'floor_wood', kind: 'floor', name: '나무 마루', price: 0 },
+  { id: 'floor_maple', kind: 'floor', name: '밝은 마루', price: 600 },
+  { id: 'floor_walnut', kind: 'floor', name: '짙은 마루', price: 900 },
+  { id: 'floor_mint', kind: 'floor', name: '민트 장판', price: 1200 },
+  { id: 'floor_pink', kind: 'floor', name: '분홍 타일', price: 1800 },
+  { id: 'window_basic', kind: 'window', name: '커튼 없음', price: 0 },
+  { id: 'window_pink', kind: 'window', name: '분홍 커튼', price: 400 },
+  { id: 'window_mint', kind: 'window', name: '민트 커튼', price: 600 },
+  { id: 'window_lace', kind: 'window', name: '레이스 커튼', price: 900 },
+  { id: 'window_star', kind: 'window', name: '별 커튼', price: 1500 },
+];
+export const STYLE_OF: Record<string, RoomStyle> = Object.fromEntries(STYLES.map((x) => [x.id, x]));
+export const BASE_STYLES = STYLES.filter((x) => x.price === 0).map((x) => x.id);
+export const BASE_STYLE: Record<RoomStyle['kind'], string> = { wall: 'wall_cream', floor: 'floor_wood', window: 'window_basic' };
+/** 꽃병에 꽂을 수 있는 꽃 (보관함의 'plant:<id>' 하나를 쓴다 — 시들지 않는다) */
+export const VASE_FLOWERS = ['sunflower', 'rose'] as const;
 export const FURNITURE_NAME: Record<string, string> = {
   paw_rug: '발바닥 러그', fish_pillow: '생선 쿠션', yarn_basket: '털실 바구니',
   cat_tower: '캣타워', hideaway: '숨숨집', donut_cushion: '도넛 방석', scratcher: '스크래처', desk: '책상', vase: '꽃병',
@@ -294,6 +384,13 @@ export const FURNITURE_NAME: Record<string, string> = {
 };
 /** 선물로 오는 장난감 (가지고 있지 않은 것 중에서) */
 export const PRESENT_TOYS = ['laser', 'ball', 'box'] as const;
+
+/** 고양이 자세 (화면의 자세 → 그림 표는 ui/catart.ts 의 POSE_IMAGE · 사진은 이 이름으로 저장한다) */
+export const POSE_IDS = [
+  'sit', 'blink', 'walk1', 'walk2', 'loaf', 'sleep', 'eat', 'drink', 'stretch', 'pounce', 'jump', 'beg', 'knead', 'belly',
+  'lick0', 'lick1', 'lick2', 'lick3', 'lick4', 'lick5', 'lick6', 'lick7',
+] as const;
+export type PoseId = (typeof POSE_IDS)[number];
 
 /**
  * 행동 도감 (PRD 5장 · 7장). 화면에서 처음 본 행동을 서버(nyang_seen)에 남긴다 — 앨범 · 도감 화면은 5단계.
@@ -303,28 +400,39 @@ export interface Behavior {
   id: string;
   name: string;
   level: number;
+  /** 도감 그림 자세 (화면만) */
+  pose: PoseId;
 }
 export const BEHAVIORS: Behavior[] = [
-  { id: 'loaf', name: '식빵 굽기', level: 1 },
-  { id: 'window', name: '창밖 새 구경', level: 1 },
-  { id: 'zoomies', name: '우다다', level: 1 },
-  { id: 'stretch', name: '기지개', level: 1 },
-  { id: 'knock', name: '물건 떨어뜨리기', level: 1 },
-  { id: 'rub', name: '발치에 몸 비비기', level: 1 },
-  { id: 'box', name: '상자에 쏙', level: 1 },
-  { id: 'sleep', name: '쿨쿨 낮잠', level: 1 },
-  { id: 'eat', name: '냠냠 밥 먹기', level: 1 },
-  { id: 'greet', name: '문 앞 마중', level: 1 },
-  { id: 'present', name: '선물 물어 오기', level: 1 },
-  { id: 'hunt', name: '사냥 놀이', level: 1 },
-  { id: 'churu', name: '츄르 날름날름', level: 1 },
-  { id: 'brush', name: '빗질 받기', level: 1 },
-  { id: 'sneeze', name: '에취!', level: 1 },
-  { id: 'lap', name: '무릎에 올라오기', level: 3 },
-  { id: 'follow', name: '꼬리 세우고 따라다니기', level: 4 },
-  { id: 'belly', name: '배 보여 주기', level: 6 },
-  { id: 'knead', name: '꾹꾹이', level: 8 },
-  { id: 'together', name: '집사 옆에서 같이 자기', level: 10 },
+  { id: 'loaf', name: '식빵 굽기', level: 1, pose: 'loaf' },
+  { id: 'window', name: '창밖 새 구경', level: 1, pose: 'sit' },
+  { id: 'zoomies', name: '우다다', level: 1, pose: 'walk2' },
+  { id: 'stretch', name: '기지개', level: 1, pose: 'stretch' },
+  { id: 'knock', name: '물건 떨어뜨리기', level: 1, pose: 'pounce' },
+  { id: 'rub', name: '발치에 몸 비비기', level: 1, pose: 'walk1' },
+  { id: 'box', name: '상자에 쏙', level: 1, pose: 'loaf' },
+  { id: 'sleep', name: '쿨쿨 낮잠', level: 1, pose: 'sleep' },
+  { id: 'eat', name: '냠냠 밥 먹기', level: 1, pose: 'eat' },
+  { id: 'greet', name: '문 앞 마중', level: 1, pose: 'beg' },
+  { id: 'present', name: '선물 물어 오기', level: 1, pose: 'beg' },
+  { id: 'hunt', name: '사냥 놀이', level: 1, pose: 'pounce' },
+  { id: 'churu', name: '츄르 날름날름', level: 1, pose: 'lick2' },
+  { id: 'brush', name: '빗질 받기', level: 1, pose: 'blink' },
+  { id: 'sneeze', name: '에취!', level: 1, pose: 'loaf' },
+  { id: 'lap', name: '무릎에 올라오기', level: 3, pose: 'loaf' },
+  { id: 'follow', name: '꼬리 세우고 따라다니기', level: 4, pose: 'walk1' },
+  { id: 'belly', name: '배 보여 주기', level: 6, pose: 'belly' },
+  { id: 'knead', name: '꾹꾹이', level: 8, pose: 'knead' },
+  { id: 'together', name: '집사 옆에서 같이 자기', level: 10, pose: 'sleep' },
+  // 5단계: 가만히 있을 때 · 가구 쓰기 · 고양이끼리
+  { id: 'sit', name: '얌전히 앉아 있기', level: 1, pose: 'sit' },
+  { id: 'walk', name: '어슬렁어슬렁', level: 1, pose: 'walk1' },
+  { id: 'tower', name: '캣타워 꼭대기', level: 1, pose: 'loaf' },
+  { id: 'hide', name: '숨숨집에 쏙', level: 1, pose: 'loaf' },
+  { id: 'scratch', name: '발톱 긁기', level: 1, pose: 'stretch' },
+  { id: 'groom', name: '서로 그루밍', level: 1, pose: 'lick2' },
+  { id: 'cuddle', name: '꼭 붙어 자기', level: 1, pose: 'sleep' },
+  { id: 'chase', name: '잡기 놀이', level: 1, pose: 'jump' },
 ];
 export const BEHAVIOR: Record<string, Behavior> = Object.fromEntries(BEHAVIORS.map((b) => [b.id, b]));
 
@@ -338,6 +446,11 @@ export const SQL_IDS: Record<string, readonly string[]> = {
   present_seeds: PRESENT_SEEDS,
   present_toys: PRESENT_TOYS,
   present_furniture: PRESENT_FURNITURE,
+  poses: POSE_IDS,
+  base_furniture: BASE_FURNITURE,
+  base_styles: BASE_STYLES,
+  blocked: BLOCKED,
+  vase_flowers: VASE_FLOWERS,
 };
 
 // ---------- 4단계: 베란다 정원 · 상점 ----------
@@ -386,7 +499,7 @@ export const isTreatId = (v: unknown): v is TreatId => v === 'catgrass' || v ===
  *   price : 엽전 (하나 살 때) · sia : 시아코인 (하나 살 때) · give : 하나 사면 보관함에 들어가는 개수
  *   once  : 1 이면 하나만 가질 수 있다 (장난감 · 가구) · level : 이 친밀도 단계부터 (씨앗)
  */
-export type ShopTab = 'food' | 'snack' | 'churu' | 'seed' | 'toy' | 'furniture';
+export type ShopTab = 'food' | 'snack' | 'churu' | 'seed' | 'toy' | 'furniture' | 'style';
 export interface ShopItem {
   id: string;
   tab: ShopTab;
@@ -409,6 +522,8 @@ export const SHOP: ShopItem[] = [
   { id: 'furniture:hideaway', tab: 'furniture', price: 200, sia: 0, give: 1, once: 1, level: 1 },
   { id: 'furniture:cat_tower', tab: 'furniture', price: 400, sia: 0, give: 1, once: 1, level: 1 },
   { id: 'furniture:zodiac_shelf', tab: 'furniture', price: 0, sia: 60, give: 1, once: 1, level: 1 },
+  // 5단계: 벽지 · 바닥 · 창문 (보관함 'style:<id>' = 1)
+  ...STYLES.filter((x) => x.price > 0).map((x): ShopItem => ({ id: `style:${x.id}`, tab: 'style', price: x.price, sia: 0, give: 1, once: 1, level: 1 })),
 ];
 export const SHOP_ITEM: Record<string, ShopItem> = Object.fromEntries(SHOP.map((i) => [i.id, i]));
 

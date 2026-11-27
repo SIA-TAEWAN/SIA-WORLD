@@ -6,10 +6,11 @@
  */
 import { BEHAVIORS, COLOR_IDS, PERSONALITY_IDS, SPOTS, loveAt } from '../src/data/balance';
 import {
-  RuleError, adopt, brush, buy, churu, clean, cure, exchange, expandPots, feed, gift, harvest, pet, plant, play, playStart, seen, sell, treat, visit, water, waterPot, newState,
+  RuleError, adopt, brush, buy, churu, clean, cure, deletePhoto, exchange, expandPots, feed, gift, harvest, pet, photo, place, plant, play, playStart, seen, sell, treat, vase,
+  visit, water, waterPot, newState,
   cloneState, type NyangState,
 } from '../src/game/rules';
-import { SHOP, SELL } from '../src/data/balance';
+import { FURNITURE, POSE_IDS, SHOP, SELL, STYLES } from '../src/data/balance';
 
 const H = 3600;
 let t = 1767193200 + 330 * 86400 + 9 * H;
@@ -229,4 +230,62 @@ setItem('plant:catgrass', 4);
 for (let i = 0; i < 3; i++) run('treat', [1, 'catgrass'], () => treat(s, 1, 'catgrass', t));
 t += 1800;
 run('harvest', [12], () => harvest(s, 12, t));
+// 5단계: 꾸미기 · 꽃병 · 사진 · 셋째 · 넷째 입양 (가구 · 무늬는 상점에서 산다)
+setCoins(20000);
+setSia(200);
+for (const id of ['furniture:vase', 'furniture:scratcher', 'furniture:hideaway', 'toy:box', 'style:wall_mint', 'style:floor_pink', 'style:window_lace'])
+  run('buy', [id, 1], () => buy(s, id, 1, t));
+const FIDS = [...FURNITURE.map((f) => f.id), 'sofa'];
+const SIDS = [...STYLES.map((x) => x.id), 'wall_gold'];
+const randLayout = (): unknown => {
+  const k = rnd2(20);
+  if (k === 0) return [1, 2];
+  if (k === 1) return { items: 'desk' };
+  if (k === 2) return { items: [{ id: 'desk', x: 1.5, y: 0 }] };
+  if (k === 3) return { items: [null] };
+  const items = [];
+  const n = rnd2(6);
+  for (let i = 0; i < n; i++) items.push({ id: FIDS[rnd2(FIDS.length)], x: rnd2(9) - (rnd2(15) === 0 ? 1 : 0), y: rnd2(6) });
+  const out: Record<string, unknown> = { items };
+  if (rnd2(3) === 0) out.wall = SIDS[rnd2(SIDS.length)];
+  if (rnd2(3) === 0) out.floor = SIDS[rnd2(SIDS.length)];
+  if (rnd2(3) === 0) out.window = SIDS[rnd2(SIDS.length)];
+  if (rnd2(8) === 0) out.wall = null;
+  return out;
+};
+for (let i = 0; i < 160; i++) {
+  t += rnd2(600);
+  const L = randLayout();
+  run('place', [L], () => place(s, L, t));
+}
+// 확실히 되는 배치 몇 가지
+const GOOD = [
+  { items: [{ id: 'desk', x: 6, y: 0 }, { id: 'vase', x: 3, y: 0 }, { id: 'box', x: 5, y: 4 }, { id: 'hideaway', x: 3, y: 2 }], wall: 'wall_mint', floor: 'floor_pink', window: 'window_lace' },
+  { items: [{ id: 'scratcher', x: 7, y: 4 }, { id: 'cushion', x: 0, y: 4 }], window: 'window_basic' },
+  { items: [] },
+];
+for (const L of GOOD) run('place', [L], () => place(s, L, t));
+setItem('plant:rose', 2);
+setItem('plant:sunflower', 1);
+for (const f of ['rose', 'daisy', 'sunflower', 'sunflower', '', 'rose', 'rose', '']) run('vase', [f], () => vase(s, f, t));
+run('place', [GOOD[0]], () => place(s, GOOD[0], t));
+// 셋째 · 넷째 (첫 고양이 10단계)
+run('adopt', ['choco', 'playful', '셋째'], () => adopt(s, 'choco', 'playful', '셋째', t));
+run('adopt', ['cream', 'timid', '넷째'], () => adopt(s, 'cream', 'timid', '넷째', t));
+run('adopt', ['cream', 'timid', '다섯째'], () => adopt(s, 'cream', 'timid', '다섯째', t));
+const PBEH = ['sit', 'walk', 'loaf', 'groom', 'cuddle', 'chase', 'tower', 'knead', 'together', 'dance'];
+const PPOSE = [...POSE_IDS, 'fly'];
+for (let i = 0; i < 90; i++) {
+  t += rnd2(300);
+  const slot = 1 + rnd2(5);
+  const b = PBEH[rnd2(PBEH.length)];
+  const pose = PPOSE[rnd2(PPOSE.length)];
+  const face = [1, -1, 0, -3][rnd2(4)];
+  const mate = rnd2(3) === 0 ? 1 + rnd2(5) : 0;
+  const mp = mate ? PPOSE[rnd2(PPOSE.length)] : '';
+  if (rnd2(5) === 0) {
+    const id = 1 + rnd2(Math.max(1, s.profile.photoSeq + 2));
+    run('photo_delete', [id], () => deletePhoto(s, id, t));
+  } else run('photo', [slot, b, pose, face, mate, mp], () => photo(s, slot, b, pose, face, mate, mp, t));
+}
 console.log(JSON.stringify(steps));

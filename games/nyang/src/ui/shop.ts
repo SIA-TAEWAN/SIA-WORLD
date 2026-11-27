@@ -4,7 +4,7 @@
  * 시아코인으로 사는 것은 두 번 눌러야 산다 (잘못 누름 방지).
  */
 import {
-  CHURU, CONST, EXCHANGES, FOOD, FURNITURE_NAME, PLANT, SELL, SHOP, SEED_NAME, TOYS, isPlantId, kstDay,
+  CHURU, CONST, EXCHANGES, FOOD, FURNITURE_NAME, PLANT, SELL, SHOP, SEED_NAME, STYLE_OF, TOYS, isPlantId, kstDay,
   type ChuruId, type FoodId, type PlantId, type ShopItem, type ToyId,
 } from '../data/balance';
 import type { WorldArt } from '../data/world.gen';
@@ -22,6 +22,7 @@ const TABS: { id: ShopTabId; name: string }[] = [
   { id: 'seed', name: '씨앗' },
   { id: 'toy', name: '장난감' },
   { id: 'furniture', name: '가구' },
+  { id: 'style', name: '벽지·바닥' },
   { id: 'bag', name: '보관함' },
 ];
 const FURNITURE_ART: Record<string, WorldArt> = {
@@ -46,6 +47,7 @@ function itemName(id: string): string {
   if (id.startsWith('plant:')) return SEED_NAME[fid(id) as PlantId] ?? id;
   if (id.startsWith('toy:')) return TOYS[fid(id) as ToyId]?.name ?? id;
   if (id.startsWith('furniture:')) return FURNITURE_NAME[fid(id)] ?? id;
+  if (id.startsWith('style:')) return `${{ wall: '벽지', floor: '바닥', window: '창문' }[STYLE_OF[fid(id)]?.kind ?? 'wall']} · ${STYLE_OF[fid(id)]?.name ?? id}`;
   return ({ medicine: '약 간식', fur: '털 뭉치' } as Record<string, string>)[id] ?? id;
 }
 function itemIcon(id: string): string {
@@ -56,6 +58,7 @@ function itemIcon(id: string): string {
   if (id.startsWith('plant:')) return artImg(`plants-${f}-3` as WorldArt, '🌼', 'art');
   if (id.startsWith('toy:')) return toyIcon(f);
   if (id.startsWith('furniture:')) return FURNITURE_ART[f] ? artImg(FURNITURE_ART[f], presentIcon('furniture'), 'art') : presentIcon('furniture');
+  if (id.startsWith('style:')) return `<span class="swatch sw-${f}"></span>`;
   if (id === 'medicine') return artImg('objects-medicine', '💊', 'art');
   if (id === 'fur') return artImg('objects-fur-ball', '☁️', 'art');
   return '🎁';
@@ -70,6 +73,7 @@ function itemDesc(it: ShopItem): string {
     return `${p.grow_sec / 3600}시간 · 물 한 번에 ${p.water_sec / 3600}시간 · ${p.use}`;
   }
   if (id.startsWith('toy:')) return TOYS[fid(id) as ToyId].desc;
+  if (id.startsWith('style:')) return '🛋️ 꾸미기에서 바꿔요 (꾸미기 화면에서 바로 살 수도 있어요)';
   return FURNITURE_DESC[fid(id)] ?? '꾸미기에서 방에 놓을 수 있어요';
 }
 const priceHtml = (it: ShopItem, n = 1) =>
@@ -112,7 +116,8 @@ export function openShop(ctx: RoomCtx, tab0?: ShopTabId) {
       tab === 'food' ? '<p class="likes">기본 사료는 언제나 공짜예요. 사료 봉투를 누르면 산 사료로 바꿀 수 있어요</p>'
       : tab === 'churu' ? '<p class="likes">츄르는 시아코인으로만 살 수 있어요 (하나에 5개). 돌봐 줄 일이 있을 때 돌보면 시아코인을 받아요</p>'
       : tab === 'seed' ? '<p class="likes">씨앗은 친밀도가 오를수록 더 열려요 (내 고양이 중 가장 높은 단계)</p>'
-      : tab === 'furniture' ? '<p class="likes">가구는 꾸미기(다음 업데이트)에서 방에 놓아요. 지금은 보관만 해요</p>' : '';
+      : tab === 'furniture' ? '<p class="likes">가구는 🛋️ 꾸미기에서 방에 놓아요. 고양이가 올라가고 · 숨고 · 긁고 · 자요</p>'
+      : tab === 'style' ? '<p class="likes">벽지 · 바닥 · 커튼을 바꿔요. 엽전이 넉넉할 때 하나씩 모아 보세요</p>' : '';
     return note + list.map((it) => {
       const once = it.once === 1;
       const own = it.id.startsWith('furniture:') ? s.profile.furniture.includes(fid(it.id)) : itemCount(s.profile, it.id) > 0;
@@ -234,7 +239,7 @@ export function openShop(ctx: RoomCtx, tab0?: ShopTabId) {
         () => {
           sfx('coin');
           buzz(15);
-          toast(it.once ? `${josa(itemName(id), '을', '를')} 샀어요` : `${itemName(id)} ${n * it.give}개를 샀어요`);
+          toast(it.once ? `${josa(itemName(id), '을', '를')} 샀어요${id.startsWith('furniture:') || id.startsWith('style:') ? ' — 🛋️ 꾸미기에서 방에 놓아요' : ''}` : `${itemName(id)} ${n * it.give}개를 샀어요`);
         },
       );
     }
