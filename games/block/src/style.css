@@ -1,0 +1,81 @@
+/* VOICE: 장난감 상자 같은 캐주얼 블록 퍼즐, 밝고 귀엽게 (SIA WORLD DESIGN.md · 시아팡팡과 같은 느낌)
+   IDEA: 크림색 스티커 판 안에 밤하늘 보드, 그 위에 정령 블록이 빛난다
+   PICTURE: 보드와 블록이 그림. 정령은 시아팡팡 코드 그림을 그대로 쓴다
+   COLOUR and TYPE: 하늘 그라데이션, 크림 판, 갈색 외곽선, 노란 버튼, 보드 밤하늘 --pang-board, Jua 하나
+   LAYOUT: 480px 세로 띠. 메인 → 게임(점수 띠 · 판 · 조각 3개 · 정령 마당) → 결과 */
+@import '../../../shared/theme.css';
+:root{--board:var(--pang-board);color-scheme:light}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;min-height:100%}
+body{background:linear-gradient(180deg,var(--sky-top) 0,var(--sky-mid) 300px,var(--sky-bottom) 100%) fixed;color:var(--ink);font:16px/1.4 var(--font);overflow-x:clip;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button{font:inherit;color:inherit}
+#app{max-width:480px;margin:0 auto;padding:10px 12px 20px;padding-top:max(10px,env(safe-area-inset-top))}
+.topbar{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.topbar .spacer{flex:1}
+.topbar .back{font-size:16px;color:var(--white);text-decoration:none;background:var(--pill);border-radius:999px;padding:8px 14px;min-height:40px;display:inline-flex;align-items:center}
+.topbar .rank{font-size:16px;min-height:40px;padding:6px 14px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:var(--ink);color:var(--white);border-radius:999px;padding:10px 18px;font-size:16px;opacity:0;pointer-events:none;transition:.2s;z-index:30;text-align:center;max-width:90vw}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.connecting{text-align:center;color:var(--white);-webkit-text-stroke:1px var(--ink);paint-order:stroke fill;font-size:20px;margin-top:30vh}
+.connecting .btn{-webkit-text-stroke:0;color:var(--ink);display:inline-block;text-decoration:none;margin:6px}
+.hidden{display:none!important}
+.logo{font-size:52px;line-height:1.05;color:var(--primary);-webkit-text-stroke:3px var(--ink);paint-order:stroke fill;text-shadow:0 5px 0 var(--ink);text-align:center;margin:14px 0 4px}
+.sub{text-align:center;color:var(--white);-webkit-text-stroke:1.5px var(--ink);paint-order:stroke fill;font-size:18px;margin-bottom:8px}
+#logoArt{display:block;width:220px;height:120px;margin:0 auto 6px}
+.panel{background:var(--panel);border:3px solid var(--ink);border-radius:18px;box-shadow:0 5px 0 var(--ink)}
+.btn{font-size:18px;background:var(--white);border:3px solid var(--ink);border-radius:14px;padding:8px 18px;min-height:48px;box-shadow:0 4px 0 var(--ink);cursor:pointer}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.btn.primary{background:linear-gradient(var(--primary-light),var(--primary) 55%,var(--primary-deep));font-size:22px}
+.btn.big{display:block;width:100%;max-width:300px;margin:14px auto 10px;font-size:30px;min-height:68px;border-radius:20px}
+.btn:focus-visible{outline:3px solid var(--white);outline-offset:2px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--pill);color:var(--white);border-radius:999px;padding:4px 12px;font-size:16px}
+.soundpill{border:0;font:inherit;cursor:pointer;min-height:36px;justify-content:center}
+.topline{display:flex;justify-content:center;gap:8px;margin-bottom:12px}
+.homebox{max-width:320px;margin:6px auto 0;padding:10px 16px}
+.homebox .line{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:2px 0}
+.homebox small{color:var(--ink-soft);font-size:15px}
+.homebox b{font-weight:normal;font-size:28px;color:var(--primary-deep);-webkit-text-stroke:1px var(--ink);paint-order:stroke fill}
+.homebox span{font-size:17px;text-align:right}
+.howto{max-width:340px;margin:4px auto 0;background:rgba(255,248,232,.85);border:2px dashed var(--primary-deep);border-radius:14px;padding:8px 12px;font-size:14px;color:var(--ink-soft)}
+.howto p{margin:2px 0}
+/* game */
+.hud{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-bottom:8px}
+.iconbtn{width:48px;height:48px;padding:0;display:grid;place-items:center;font-size:22px}
+.scorebox{text-align:center;line-height:1}
+.scorebox small{display:block;font-size:14px;color:var(--white);-webkit-text-stroke:1px var(--ink);paint-order:stroke fill}
+.scorebox b{font-weight:normal;font-size:38px;color:var(--white);-webkit-text-stroke:2.5px var(--ink);paint-order:stroke fill;text-shadow:0 3px 0 var(--ink)}
+.bestbox{padding:4px 12px;text-align:center;min-width:86px}
+.bestbox small{display:block;font-size:12px;color:var(--ink-soft)}
+.bestbox b{font-weight:normal;font-size:20px;line-height:1.1}
+.bestbox.beat{background:linear-gradient(var(--primary-light),var(--primary));animation:beat 1s ease-in-out infinite}
+@keyframes beat{50%{transform:scale(1.06)}}
+.boardwrap{padding:7px;border-radius:20px;background:var(--panel);border:3px solid var(--ink);box-shadow:0 6px 0 var(--ink)}
+#board{display:block;width:100%;border-radius:12px;background:var(--board);touch-action:none}
+#tray{display:block;width:100%;margin-top:10px;touch-action:none;cursor:grab}
+#drag{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8}
+#scene{display:block;width:100%;border-radius:12px;cursor:pointer;touch-action:manipulation}
+.scenewrap{margin-top:6px;padding:6px;border-radius:20px;background:var(--panel);border:3px solid var(--ink);box-shadow:0 6px 0 var(--ink)}
+/* popups */
+.overlay{position:fixed;inset:0;background:var(--dim);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+.pop{width:100%;max-width:360px;padding:18px 18px 20px;text-align:center;animation:pop .22s ease-out}
+@keyframes pop{from{transform:scale(.85);opacity:0}}
+.pop h3{margin:0;font-weight:normal;font-size:32px;line-height:1.15;color:var(--primary);-webkit-text-stroke:2px var(--ink);paint-order:stroke fill;text-shadow:0 3px 0 var(--ink)}
+.pop .info{font-size:16px;margin:8px 0}
+.pop .info b{font-weight:normal;color:var(--primary-deep)}
+.pop .col{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.pop .note{font-size:13px;color:var(--ink-soft);margin-top:8px}
+.pop .note.bad{color:var(--lose)}
+.pop .score{font-size:44px;line-height:1.1;margin:6px 0;color:var(--primary-deep);-webkit-text-stroke:1.5px var(--ink);paint-order:stroke fill}
+.pop .score.big{font-size:60px;color:var(--primary);text-shadow:0 4px 0 var(--ink)}
+.pop .score.stamp{animation:stamp .4s ease-out both}
+@keyframes stamp{from{transform:scale(2);opacity:0}}
+.pop .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0}
+.pop .stats div{background:var(--white);border:2px solid var(--line-soft);border-radius:12px;padding:4px 2px}
+.pop .stats small{display:block;font-size:12px;color:var(--ink-soft)}
+.pop .stats b{font-weight:normal;font-size:20px}
+.pop .ranks{display:flex;justify-content:center;gap:16px;font-size:16px;margin:8px 0 2px}
+.pop .ranks b{font-weight:normal;color:var(--primary-deep);font-size:20px}
+.pop .coin{color:var(--ink-soft);font-size:14px;margin-top:4px}
+.pop .row{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+.pop .row .btn{flex:1 1 0}
+@media (prefers-reduced-motion:reduce){.pop,.pop .score.stamp,.bestbox.beat{animation:none}}

@@ -103,10 +103,18 @@ export const SOUNDS = {
   pangVine: [0.4, 0.05, 420, 0, 0.02, 0.08, 4, 1.6, -6, 0, 0, 0, 0, 1],
   pangBonus: [0.4, 0, 1320, 0, 0.02, 0.08, 1, 1.5, 0, 0, 660, 0.02],
   pangTap: [0.45, 0.05, 600, 0, 0.03, 0.12, 0, 1.2, 10],
+  // 시아블록: 집기 · 놓기 · 못 놓음 · 줄 지우기(rate 로 줄 수만큼 높게) · 콤보 · 판 비우기 · 게임 끝
+  blockPick: [0.35, 0.05, 640, 0, 0.01, 0.05, 1, 1.3, 12],
+  blockPlace: [0.5, 0.05, 240, 0, 0.012, 0.07, 1, 1.8, -5, 0, 0, 0, 0, 0.6],
+  blockNope: [0.4, 0, 210, 0, 0.03, 0.12, 1, 1.4, -5],
+  blockClear: [0.55, 0.05, 660, 0, 0.03, 0.2, 1, 1.5, 0, 0, 330, 0.04],
+  blockCombo: [0.6, 0, 523, 0.01, 0.1, 0.25, 1, 1.4, 6, 0, 262, 0.05],
+  blockPerfect: [0.7, 0, 784, 0.02, 0.25, 0.5, 0, 1.3, 0, 0, 392, 0.08, 0.08, 0, 15],
+  blockOver: [0.55, 0, 300, 0.02, 0.12, 0.5, 1, 1.2, -1.2],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80 };
+const MIN_GAP = { chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80, blockPick: 50, blockPlace: 50, blockNope: 80, blockClear: 60 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 
