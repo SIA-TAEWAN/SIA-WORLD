@@ -1,0 +1,579 @@
+-- 123: 시아집사 (games/nyang) — 1단계 서버 규칙
+--
+-- 랜선 고양이 집사 게임. 고양이 상태 · 친밀도 · 감기는 모두 서버 시각으로 계산한다 (시아마을과 같은 방식).
+-- 같은 규칙이 games/nyang/src/game/rules.ts 에 있고 (로컬 모드 · 화면 미리 보기), 값 · 표는 games/nyang/src/data/balance.ts 와 같다
+-- (tests/sql.test.ts 가 두 곳을 맞춰 본다). 시각은 1970 부터의 초(bigint)로 저장한다 — 정수 계산만 써서 기기 규칙과 똑같이 나오게.
+--
+-- 상태 4가지는 '마지막으로 돌본 때'의 기록으로부터 바로 계산한다 (쌓아 두지 않는다):
+--   배부름 = fed_amount 에서 fed_at 부터 성격의 full_sec 동안 0 까지 · 목마름 = water_at 에 가득, water_sec 동안 0 까지 (12시간이면 물이 상함)
+--   청결 = 똥 개수 (poop_base 개였던 때가 poop_at, poop_sec 마다 하나, 최대 4개) · 기분 = mood_val 에서 mood_at 부터 mood_sec 동안 0 까지
+-- 친밀도(1초 = 1점, 네 상태가 모두 절반 이상이고 아프지 않을 때)와 감기(상태 하나가 바닥인 채 24시간)는 _nyang_settle 이 calc_at 부터 지금까지를 반영한다.
+-- 친밀도는 절대 내려가지 않는다. 고양이는 떠나거나 죽지 않는다.
+--
+-- 화면이 부르는 함수 (모두 { state, … } 를 돌려준다. state = { now, profile, cats }):
+--   nyang_state(p_entry)                       들어올 때 entry = true → away(떠나 있던 초)
+--   nyang_adopt(p_color, p_personality, p_name) → slot      'bad color' · 'bad personality' · 'bad name' · 'no room'
+--   nyang_feed(p_slot, p_food)                 'bowl full' · 'bad food' · 'no cat'
+--   nyang_water(p_slot)                        'water fresh'
+--   nyang_clean(p_slot)  → gift(엽전), poops   'no poop'
+--   nyang_pet(p_slot, p_spot) → kind(like · ok · hate), love   'too soon' · 'bad spot'
+--   nyang_cure(p_slot, p_kind)                 'not sick' · 'already curing' · 'need care' · 'bad cure'
+-- 돌보기 결과에는 bonus(하루 첫 돌보기 엽전)와 sia(시아코인을 받게 됐는지)가 붙는다.
+-- 시아코인: 필요한 돌보기(상태가 절반 아래 → 절반 이상으로 돌아오게 한 것) 한 번에 1개, 하루(한국 시간) 최대 5개.
+--   _grant_sia_coin 은 15초 간격을 지키느라 바로 못 줄 때가 있어, 못 준 것은 nyang_profiles.sia_due 에 두고 다음 요청 때 준다
+--   (sia_coin_logs 의 game = 'nyang', ref = 'care:<번호>').
+--
+-- 뒤 단계(놀아 주기 · 츄르 · 정원 · 상점 · 꾸미기 · 앨범 · 랭킹)의 함수는 이 파일에 이어서 더한다 (아직 올리지 않았다).
+-- 표는 미리 만들어 둔다: nyang_pots · nyang_album · nyang_profiles 의 items · furniture · layout, nyang_cats 의 pattern · seen.
+
+-- ---------- 1. 표 ----------
+
+create table if not exists public.nyang_profiles (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  coins bigint not null default 0 check (coins >= 0),          -- 엽전 (시아집사 전용 지갑)
+  items jsonb not null default '{}'::jsonb,                     -- 보관함: 사료 · 간식 · 씨앗 · 꽃 … (4단계)
+  furniture jsonb not null default '[]'::jsonb,                 -- 가진 가구 (5단계)
+  layout jsonb not null default '{}'::jsonb,                    -- 방 배치 · 바닥 · 벽지 · 창문 (5단계)
+  seq int not null default 0 check (seq >= 0),                  -- 똥을 퍼낸 수 (모래 속 선물 번호)
+  visit_at bigint not null default 0,                           -- 마지막으로 들어온 때 (0 = 처음)
+  bonus_day int not null default -1,                            -- 하루 첫 돌보기 보너스를 받은 날 (한국 날짜 번호)
+  care_days int not null default 0 check (care_days >= 0),      -- 돌본 날 수 (집사 랭킹)
+  sia_day int not null default -1,                              -- 시아코인을 센 날
+  sia_today int not null default 0 check (sia_today >= 0),      -- 그날 받기로 한 시아코인 (최대 5)
+  sia_due int not null default 0 check (sia_due >= 0),          -- 아직 못 받은 시아코인
+  sia_paid int not null default 0 check (sia_paid >= 0),        -- 받은 시아코인 수 (기록 번호)
+  created_at timestamptz not null default now()
+);
+alter table public.nyang_profiles enable row level security;
+revoke all on public.nyang_profiles from anon, authenticated;
+
+create table if not exists public.nyang_cats (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  slot smallint not null check (slot between 1 and 4),          -- 입양 순서
+  name text not null check (char_length(name) between 1 and 8),
+  color text not null,                                          -- 털 색 (흰 그림의 털 픽셀만 바꾼다)
+  pattern text,                                                 -- 털 색 위에 겹치는 무늬 (나중 단계, 지금은 null)
+  personality text not null,
+  adopted_at bigint not null,
+  calc_at bigint not null,                                      -- 친밀도 · 감기를 마지막으로 계산한 때
+  fed_at bigint not null,
+  fed_amount int not null check (fed_amount between 0 and 10000),
+  water_at bigint not null,
+  poop_base int not null check (poop_base between 0 and 4),
+  poop_at bigint not null,
+  mood_val int not null check (mood_val between 0 and 10000),
+  mood_at bigint not null,
+  love bigint not null default 0 check (love >= 0),
+  love_at bigint,                                               -- 랭킹 '먼저 달성한 순' (6단계)
+  sick_at bigint,
+  cure_at bigint,
+  pet_day int not null default -1,
+  pet_love int not null default 0,
+  pet_at bigint not null default 0,
+  seen jsonb not null default '[]'::jsonb,                      -- 처음 본 행동 (행동 도감, 5단계)
+  primary key (user_id, slot)
+);
+alter table public.nyang_cats enable row level security;
+revoke all on public.nyang_cats from anon, authenticated;
+
+-- 베란다 화분 (4단계): 처음 4칸, 최대 12칸
+create table if not exists public.nyang_pots (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  slot smallint not null check (slot between 1 and 12),
+  plant text,                                                   -- null = 빈 화분
+  planted_at bigint,
+  grown int not null default 0 check (grown >= 0),              -- 물을 준 동안 자란 초 (마지막으로 계산한 때까지)
+  water_at bigint,                                              -- 마지막으로 물을 준 때
+  calc_at bigint,
+  primary key (user_id, slot)
+);
+alter table public.nyang_pots enable row level security;
+revoke all on public.nyang_pots from anon, authenticated;
+
+-- 앨범 (5단계): 찍은 사진
+create table if not exists public.nyang_album (
+  id bigserial primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  slot smallint not null,
+  behavior text not null,
+  shot_at bigint not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists nyang_album_user_idx on public.nyang_album (user_id, id desc);
+alter table public.nyang_album enable row level security;
+revoke all on public.nyang_album from anon, authenticated;
+
+-- ---------- 2. 수치 (games/nyang/src/data/balance.ts 와 같다) ----------
+
+create or replace function public._nyang_const(p_name text) returns int
+language sql immutable as $$
+  select case p_name
+    when 'max' then 10000
+    when 'half' then 5000
+    when 'feed_full' then 9000
+    when 'water_fresh' then 9000
+    when 'poop_max' then 4
+    when 'spoil_sec' then 43200
+    when 'sick_sec' then 86400
+    when 'cure_sec' then 7200
+    when 'cure_need' then 7000
+    when 'start_mood' then 8000
+    when 'pet_gap_sec' then 8
+    when 'pet_mood_like' then 2500
+    when 'pet_mood' then 1500
+    when 'pet_love_like' then 300
+    when 'pet_love' then 150
+    when 'pet_love_day' then 1800
+    when 'belly_ok_level' then 9
+    when 'hate_ok_level' then 5
+    when 'like_all_level' then 6
+    when 'day_bonus' then 20
+    when 'gift_pct' then 20
+    when 'gift_min' then 3
+    when 'gift_span' then 8
+    when 'sia_day_max' then 5
+    when 'name_max' then 8
+  end
+$$;
+revoke all on function public._nyang_const(text) from public, anon, authenticated;
+
+create or replace function public._nyang_table(p_name text) returns int[]
+language sql immutable as $$
+  select case p_name
+    when 'love_need' then array[12000, 50000, 85000, 115000, 140000, 180000, 230000, 300000, 420000]
+    when 'cat_need' then array[4, 7, 10]
+  end
+$$;
+revoke all on function public._nyang_table(text) from public, anon, authenticated;
+
+create or replace function public._nyang_ids(p_name text) returns text[]
+language sql immutable as $$
+  select case p_name
+    when 'colors' then array['white', 'cream', 'cheese', 'gray', 'choco', 'black']
+    when 'spots' then array['head', 'chin', 'back', 'belly']
+  end
+$$;
+revoke all on function public._nyang_ids(text) from public, anon, authenticated;
+
+-- 성격 5종: 상태가 낮아지는 시간(초) · 쓰다듬기 좋아하는 곳 · 싫어하는 곳 · 좋아하는 장난감 · 츄르 맛
+create or replace function public._nyang_personalities()
+returns table (id text, full_sec int, water_sec int, poop_sec int, mood_sec int, likes text, dislikes text, toy text, churu text)
+language sql immutable as $$
+  select * from (values
+    ('playful', 28800, 21600, 18000, 36000, 'head,back', 'belly', 'laser', 'tuna'),
+    ('calm', 30600, 23400, 19800, 50400, 'chin,back', 'belly', 'rod', 'chicken'),
+    ('glutton', 23400, 21600, 14400, 43200, 'chin,head', 'belly', 'ball', 'salmon'),
+    ('timid', 28800, 21600, 18000, 39600, 'head', 'belly,back', 'box', 'chicken'),
+    ('lazy', 34200, 25200, 21600, 46800, 'back,chin', 'belly', 'rod', 'tuna')
+  ) v (id, full_sec, water_sec, poop_sec, mood_sec, likes, dislikes, toy, churu)
+$$;
+revoke all on function public._nyang_personalities() from public, anon, authenticated;
+
+-- 사료: 한 번에 채우는 배부름 · 값(엽전)
+create or replace function public._nyang_foods()
+returns table (id text, add int, price int)
+language sql immutable as $$
+  select * from (values
+    ('basic', 10000, 0)
+  ) v (id, add, price)
+$$;
+revoke all on function public._nyang_foods() from public, anon, authenticated;
+
+-- ---------- 3. 계산 (games/nyang/src/game/rules.ts 와 같다) ----------
+
+-- 서버 시각 (초). 모든 함수가 이것만 쓴다
+create or replace function public._nyang_now() returns bigint
+language sql stable as $$ select floor(extract(epoch from now()))::bigint $$;
+revoke all on function public._nyang_now() from public, anon, authenticated;
+
+-- 한국 날짜 번호 (2026-01-01 = 0) — balance.ts 의 kstDay
+create or replace function public._nyang_day(p_t bigint) returns int
+language sql immutable as $$ select floor((p_t - 1767193200)::numeric / 86400)::int $$;
+revoke all on function public._nyang_day(bigint) from public, anon, authenticated;
+
+-- 정해진 수 (시아마을 _village_mix 와 같은 식)
+create or replace function public._nyang_mix(p_seq bigint, p_k int) returns int
+language sql immutable as $$ select (((p_seq * 7919 + p_k * 104729 + 12345) % 1000003 + 1000003) % 1000003)::int $$;
+revoke all on function public._nyang_mix(bigint, int) from public, anon, authenticated;
+
+-- amount 에서 at 부터 dur 동안 0 까지 일정하게 줄어드는 값 · 절반 이상인 마지막 때의 다음 초 · 0 이 되는 때
+create or replace function public._nyang_lin(p_amount int, p_at bigint, p_dur int, p_t bigint) returns int
+language sql immutable as $$ select greatest(0, p_amount - (greatest(0, p_t - p_at) * 10000 / p_dur))::int $$;
+create or replace function public._nyang_half_at(p_amount int, p_at bigint, p_dur int) returns bigint
+language sql immutable as $$ select case when p_amount >= 5000 then p_at + ((p_amount - 5000 + 1)::bigint * p_dur + 10000 - 1) / 10000 else p_at end $$;
+create or replace function public._nyang_zero_at(p_amount int, p_at bigint, p_dur int) returns bigint
+language sql immutable as $$ select p_at + (p_amount::bigint * p_dur + 10000 - 1) / 10000 $$;
+revoke all on function public._nyang_lin(int, bigint, int, bigint) from public, anon, authenticated;
+revoke all on function public._nyang_half_at(int, bigint, int) from public, anon, authenticated;
+revoke all on function public._nyang_zero_at(int, bigint, int) from public, anon, authenticated;
+
+-- 고양이의 상태 4가지 · 똥 개수 · 물 상함 (rules.ts 의 fullOf · waterOf · poopsOf · cleanOf · moodOf · spoiledOf)
+create or replace function public._nyang_levels(c public.nyang_cats, p_t bigint) returns jsonb
+language plpgsql stable set search_path = public as $$
+declare p record; poops int;
+begin
+  select * into p from public._nyang_personalities() x where x.id = c.personality;
+  poops := least(4, c.poop_base + (greatest(0, p_t - c.poop_at) / p.poop_sec)::int);
+  return jsonb_build_object(
+    'full', public._nyang_lin(c.fed_amount, c.fed_at, p.full_sec, p_t),
+    'water', public._nyang_lin(10000, c.water_at, p.water_sec, p_t),
+    'clean', (4 - poops) * 10000 / 4,
+    'mood', public._nyang_lin(c.mood_val, c.mood_at, p.mood_sec, p_t),
+    'poops', poops,
+    'spoiled', p_t - c.water_at >= public._nyang_const('spoil_sec'));
+end $$;
+revoke all on function public._nyang_levels(public.nyang_cats, bigint) from public, anon, authenticated;
+
+-- calc_at 부터 p_t 까지를 반영한다: 친밀도 · 감기 걸림 · 나음 (rules.ts 의 settle). 표에 쓰지 않고 바뀐 줄을 돌려준다
+create or replace function public._nyang_settle(c public.nyang_cats, p_t bigint) returns public.nyang_cats
+language plpgsql stable set search_path = public as $$
+declare p record; v_from bigint; good boolean := true; v_to bigint; fl bigint; z bigint;
+begin
+  if p_t <= c.calc_at then return c; end if;
+  select * into p from public._nyang_personalities() x where x.id = c.personality;
+  v_from := c.calc_at;
+  if c.sick_at is not null then
+    if c.cure_at is not null and c.cure_at <= p_t then
+      v_from := greatest(v_from, c.cure_at);
+      c.sick_at := null;
+      c.cure_at := null;
+    else
+      good := false;
+    end if;
+  end if;
+  if good then
+    -- 네 상태가 모두 절반 이상인 동안 (goodUntil)
+    v_to := least(
+      public._nyang_half_at(c.fed_amount, c.fed_at, p.full_sec),
+      public._nyang_half_at(10000, c.water_at, p.water_sec),
+      case when c.poop_base <= 2 then c.poop_at + (3 - c.poop_base)::bigint * p.poop_sec else c.poop_at end,
+      public._nyang_half_at(c.mood_val, c.mood_at, p.mood_sec));
+    v_to := least(p_t, greatest(v_from, v_to));
+    if v_to > v_from then c.love := c.love + (v_to - v_from); end if;
+    -- 바닥인 상태 중 가장 먼저 바닥이 된 때 (floorSince)
+    fl := null;
+    foreach z in array array[
+      public._nyang_zero_at(c.fed_amount, c.fed_at, p.full_sec),
+      public._nyang_zero_at(10000, c.water_at, p.water_sec),
+      c.poop_at + greatest(0, 4 - c.poop_base)::bigint * p.poop_sec,
+      public._nyang_zero_at(c.mood_val, c.mood_at, p.mood_sec)] loop
+      if z <= p_t and (fl is null or z < fl) then fl := z; end if;
+    end loop;
+    if fl is not null and fl + public._nyang_const('sick_sec') <= p_t then
+      c.sick_at := greatest(fl + public._nyang_const('sick_sec'), v_from);
+    end if;
+  end if;
+  c.calc_at := p_t;
+  return c;
+end $$;
+revoke all on function public._nyang_settle(public.nyang_cats, bigint) from public, anon, authenticated;
+
+-- 친밀도 점수 → 단계 (1 ~ 10)
+create or replace function public._nyang_level(p_love bigint) returns int
+language plpgsql immutable as $$
+declare rest bigint := greatest(0, p_love); need int; lv int := 1;
+begin
+  foreach need in array public._nyang_table('love_need') loop
+    if rest < need then return lv; end if;
+    rest := rest - need;
+    lv := lv + 1;
+  end loop;
+  return lv;
+end $$;
+revoke all on function public._nyang_level(bigint) from public, anon, authenticated;
+
+-- 쓰다듬는 곳: like · ok · hate (rules.ts 의 spotKind)
+create or replace function public._nyang_spot_kind(c public.nyang_cats, p_spot text) returns text
+language plpgsql stable set search_path = public as $$
+declare p record; lv int := public._nyang_level(c.love); likes text[]; dislikes text[]; ok_lv int;
+begin
+  select * into p from public._nyang_personalities() x where x.id = c.personality;
+  likes := string_to_array(p.likes, ',');
+  dislikes := string_to_array(p.dislikes, ',');
+  ok_lv := public._nyang_const(case when p_spot = 'belly' then 'belly_ok_level' else 'hate_ok_level' end);
+  if p_spot = any(dislikes) and lv < ok_lv then return 'hate'; end if;
+  if p_spot = any(likes) then return 'like'; end if;
+  if lv >= public._nyang_const('like_all_level') and not (p_spot = any(dislikes)) then return 'like'; end if;
+  return 'ok';
+end $$;
+revoke all on function public._nyang_spot_kind(public.nyang_cats, text) from public, anon, authenticated;
+
+-- ---------- 4. 내부 도우미 ----------
+
+-- 로그인한 사람 (프로필 줄을 만들고 잠근다 — 잠금 순서는 늘 nyang_profiles → nyang_cats → wallets)
+create or replace function public._nyang_me() returns uuid
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid();
+begin
+  if me is null or not exists (select 1 from public.profiles where id = me) then raise exception 'need login'; end if;
+  perform public._ensure_wallet(me);
+  insert into public.nyang_profiles (user_id) values (me) on conflict (user_id) do nothing;
+  perform 1 from public.nyang_profiles where user_id = me for update;
+  return me;
+end $$;
+revoke all on function public._nyang_me() from public, anon, authenticated;
+
+-- 내 고양이 한 마리를 잠그고 지금까지 반영한 줄
+create or replace function public._nyang_cat(p_user uuid, p_slot int, p_t bigint) returns public.nyang_cats
+language plpgsql security definer set search_path = public as $$
+declare c public.nyang_cats;
+begin
+  select * into c from public.nyang_cats where user_id = p_user and slot = p_slot for update;
+  if not found then raise exception 'no cat'; end if;
+  return public._nyang_settle(c, p_t);
+end $$;
+revoke all on function public._nyang_cat(uuid, int, bigint) from public, anon, authenticated;
+
+-- 고양이 줄 저장 (돌보기 기록 · 친밀도 · 감기 · 쓰다듬기)
+create or replace function public._nyang_save(c public.nyang_cats) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.nyang_cats set
+    calc_at = c.calc_at, fed_at = c.fed_at, fed_amount = c.fed_amount, water_at = c.water_at, poop_base = c.poop_base, poop_at = c.poop_at,
+    mood_val = c.mood_val, mood_at = c.mood_at, love = c.love, love_at = c.love_at, sick_at = c.sick_at, cure_at = c.cure_at,
+    pet_day = c.pet_day, pet_love = c.pet_love, pet_at = c.pet_at
+  where user_id = c.user_id and slot = c.slot;
+end $$;
+revoke all on function public._nyang_save(public.nyang_cats) from public, anon, authenticated;
+
+-- 못 받은 시아코인 주기 (15초 간격 때문에 못 주면 다음 요청 때)
+create or replace function public._nyang_pay(p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare pr public.nyang_profiles;
+begin
+  select * into pr from public.nyang_profiles where user_id = p_user;
+  while pr.sia_due > 0 loop
+    exit when not public._grant_sia_coin(p_user, 'nyang', 'care:' || (pr.sia_paid + 1));
+    pr.sia_due := pr.sia_due - 1;
+    pr.sia_paid := pr.sia_paid + 1;
+  end loop;
+  update public.nyang_profiles set sia_due = pr.sia_due, sia_paid = pr.sia_paid where user_id = p_user;
+end $$;
+revoke all on function public._nyang_pay(uuid) from public, anon, authenticated;
+
+-- 돌보기 한 번의 공통 처리: 하루 첫 돌보기 엽전 · 필요한 돌보기면 시아코인 (rules.ts 의 care) → { bonus, sia }
+create or replace function public._nyang_care(p_user uuid, p_needed boolean, p_t bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare pr public.nyang_profiles; day int := public._nyang_day(p_t); bonus int := 0; sia boolean := false;
+begin
+  select * into pr from public.nyang_profiles where user_id = p_user;
+  if pr.bonus_day <> day then
+    pr.bonus_day := day;
+    pr.care_days := pr.care_days + 1;
+    pr.coins := pr.coins + public._nyang_const('day_bonus');
+    bonus := public._nyang_const('day_bonus');
+  end if;
+  if p_needed then
+    if pr.sia_day <> day then
+      pr.sia_day := day;
+      pr.sia_today := 0;
+    end if;
+    if pr.sia_today < public._nyang_const('sia_day_max') then
+      pr.sia_today := pr.sia_today + 1;
+      pr.sia_due := pr.sia_due + 1;
+      sia := true;
+    end if;
+  end if;
+  update public.nyang_profiles set bonus_day = pr.bonus_day, care_days = pr.care_days, coins = pr.coins,
+    sia_day = pr.sia_day, sia_today = pr.sia_today, sia_due = pr.sia_due where user_id = p_user;
+  return jsonb_build_object('bonus', bonus, 'sia', sia);
+end $$;
+revoke all on function public._nyang_care(uuid, boolean, bigint) from public, anon, authenticated;
+
+-- 화면에 보내는 상태 (rules.ts 의 NyangState 와 같은 모양)
+create or replace function public._nyang_json(p_user uuid, p_t bigint) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'now', p_t,
+    'profile', (select jsonb_build_object('coins', pr.coins, 'seq', pr.seq, 'visitAt', pr.visit_at, 'bonusDay', pr.bonus_day, 'careDays', pr.care_days,
+        'siaDay', pr.sia_day, 'siaToday', pr.sia_today, 'siaDue', pr.sia_due, 'siaPaid', pr.sia_paid,
+        'sia', coalesce((select w.sia_coins from public.wallets w where w.user_id = p_user), 0))
+      from public.nyang_profiles pr where pr.user_id = p_user),
+    'cats', coalesce((select jsonb_agg(jsonb_build_object('slot', c.slot, 'name', c.name, 'color', c.color, 'pattern', c.pattern, 'personality', c.personality,
+        'adoptedAt', c.adopted_at, 'calcAt', c.calc_at, 'fedAt', c.fed_at, 'fedAmount', c.fed_amount, 'waterAt', c.water_at,
+        'poopBase', c.poop_base, 'poopAt', c.poop_at, 'moodVal', c.mood_val, 'moodAt', c.mood_at, 'love', c.love,
+        'sickAt', c.sick_at, 'cureAt', c.cure_at, 'petDay', c.pet_day, 'petLove', c.pet_love, 'petAt', c.pet_at) order by c.slot)
+      from public.nyang_cats c where c.user_id = p_user), '[]'::jsonb))
+$$;
+revoke all on function public._nyang_json(uuid, bigint) from public, anon, authenticated;
+
+-- ---------- 5. 화면이 부르는 함수 ----------
+
+-- 내 상태 (모든 고양이를 지금까지 반영해 저장한다). entry: 게임에 들어올 때만 true → 마지막 방문 시각을 바꾸고 away(초)
+create or replace function public.nyang_state(p_entry boolean default false) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; v_away bigint := 0; va bigint;
+begin
+  for c in select * from public.nyang_cats where user_id = me order by slot for update loop
+    perform public._nyang_save(public._nyang_settle(c, t));
+  end loop;
+  if p_entry then
+    select visit_at into va from public.nyang_profiles where user_id = me;
+    v_away := case when va > 0 then greatest(0, t - va) else 0 end;
+    update public.nyang_profiles set visit_at = t where user_id = me;
+  end if;
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t), 'away', v_away);
+end $$;
+revoke all on function public.nyang_state(boolean) from public;
+grant execute on function public.nyang_state(boolean) to authenticated;
+
+-- 입양 (rules.ts 의 adopt): 첫 고양이는 그냥, 둘째부터는 첫 고양이의 친밀도 단계 4 · 7 · 10
+create or replace function public.nyang_adopt(p_color text, p_personality text, p_name text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); nm text; n int; room int := 1; lv int; c public.nyang_cats; need int;
+begin
+  for c in select * from public.nyang_cats where user_id = me order by slot for update loop
+    perform public._nyang_save(public._nyang_settle(c, t));
+  end loop;
+  if p_color is null or not (p_color = any(public._nyang_ids('colors'))) then raise exception 'bad color'; end if;
+  if p_personality is null or not exists (select 1 from public._nyang_personalities() x where x.id = p_personality) then raise exception 'bad personality'; end if;
+  nm := regexp_replace(btrim(coalesce(p_name, '')), '\s+', ' ', 'g');
+  if char_length(nm) < 1 or char_length(nm) > public._nyang_const('name_max') or nm !~ '^[가-힣a-zA-Z0-9]+( [가-힣a-zA-Z0-9]+)*$' then raise exception 'bad name'; end if;
+  select count(*) into n from public.nyang_cats where user_id = me;
+  select public._nyang_level(love) into lv from public.nyang_cats where user_id = me and slot = 1;
+  foreach need in array public._nyang_table('cat_need') loop
+    if coalesce(lv, 0) >= need then room := room + 1; end if;
+  end loop;
+  if n >= least(4, room) then raise exception 'no room'; end if;
+  insert into public.nyang_cats (user_id, slot, name, color, pattern, personality, adopted_at, calc_at, fed_at, fed_amount, water_at, poop_base, poop_at, mood_val, mood_at)
+    values (me, n + 1, nm, p_color, null, p_personality, t, t, t, 10000, t, 0, t, public._nyang_const('start_mood'), t);
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t), 'slot', n + 1);
+end $$;
+revoke all on function public.nyang_adopt(text, text, text) from public;
+grant execute on function public.nyang_adopt(text, text, text) to authenticated;
+
+-- 밥 주기 (rules.ts 의 feed)
+create or replace function public.nyang_feed(p_slot int, p_food text default 'basic') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; f record; before int; after int; r jsonb;
+begin
+  select * into f from public._nyang_foods() x where x.id = p_food;
+  if not found then raise exception 'bad food'; end if;
+  c := public._nyang_cat(me, p_slot, t);
+  before := (public._nyang_levels(c, t)->>'full')::int;
+  if before >= public._nyang_const('feed_full') then raise exception 'bowl full'; end if;
+  after := least(10000, before + f.add);
+  c.fed_amount := after;
+  c.fed_at := t;
+  perform public._nyang_save(c);
+  r := public._nyang_care(me, before < 5000 and after >= 5000, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_feed(int, text) from public;
+grant execute on function public.nyang_feed(int, text) to authenticated;
+
+-- 물 갈기 (rules.ts 의 water)
+create or replace function public.nyang_water(p_slot int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; lv jsonb; before int; spoiled boolean; r jsonb;
+begin
+  c := public._nyang_cat(me, p_slot, t);
+  lv := public._nyang_levels(c, t);
+  before := (lv->>'water')::int;
+  spoiled := (lv->>'spoiled')::boolean;
+  if before >= public._nyang_const('water_fresh') and not spoiled then raise exception 'water fresh'; end if;
+  c.water_at := t;
+  perform public._nyang_save(c);
+  r := public._nyang_care(me, before < 5000 or spoiled, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_water(int) from public;
+grant execute on function public.nyang_water(int) to authenticated;
+
+-- 똥 하나 퍼내기 (rules.ts 의 clean) → gift(모래 속 엽전, 없으면 0) · poops(남은 똥)
+create or replace function public.nyang_clean(p_slot int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; iv int; n int; before int; v_seq int; gift int := 0; r jsonb;
+begin
+  c := public._nyang_cat(me, p_slot, t);
+  select x.poop_sec into iv from public._nyang_personalities() x where x.id = c.personality;
+  n := (greatest(0, t - c.poop_at) / iv)::int;
+  if c.poop_base + n >= 4 then
+    c.poop_at := c.poop_at + greatest(0, 4 - c.poop_base)::bigint * iv;
+    c.poop_base := 4;
+  else
+    c.poop_base := c.poop_base + n;
+    c.poop_at := c.poop_at + n::bigint * iv;
+  end if;
+  before := c.poop_base;
+  if before <= 0 then raise exception 'no poop'; end if;
+  if before >= 4 then c.poop_at := t; end if;
+  c.poop_base := before - 1;
+  perform public._nyang_save(c);
+  update public.nyang_profiles set seq = nyang_profiles.seq + 1 where user_id = me returning nyang_profiles.seq into v_seq;
+  if public._nyang_mix(v_seq, 1) % 100 < public._nyang_const('gift_pct') then
+    gift := public._nyang_const('gift_min') + public._nyang_mix(v_seq, 2) % public._nyang_const('gift_span');
+    update public.nyang_profiles set coins = coins + gift where user_id = me;
+  end if;
+  r := public._nyang_care(me, before = 3, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t), 'gift', gift, 'poops', c.poop_base);
+end $$;
+revoke all on function public.nyang_clean(int) from public;
+grant execute on function public.nyang_clean(int) to authenticated;
+
+-- 쓰다듬기 (rules.ts 의 pet) → kind(like · ok · hate = 냥펀치) · love(오른 친밀도)
+create or replace function public.nyang_pet(p_slot int, p_spot text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; kind text; before int; after int; day int; add int; r jsonb;
+begin
+  if p_spot is null or not (p_spot = any(public._nyang_ids('spots'))) then raise exception 'bad spot'; end if;
+  c := public._nyang_cat(me, p_slot, t);
+  if t - c.pet_at < public._nyang_const('pet_gap_sec') then raise exception 'too soon'; end if;
+  kind := public._nyang_spot_kind(c, p_spot);
+  c.pet_at := t;
+  if kind = 'hate' then
+    perform public._nyang_save(c);
+    perform public._nyang_pay(me);
+    return jsonb_build_object('state', public._nyang_json(me, t), 'kind', kind, 'love', 0, 'bonus', 0, 'sia', false);
+  end if;
+  before := (public._nyang_levels(c, t)->>'mood')::int;
+  after := least(10000, before + case when kind = 'like' then public._nyang_const('pet_mood_like') else public._nyang_const('pet_mood') end);
+  c.mood_val := after;
+  c.mood_at := t;
+  day := public._nyang_day(t);
+  if c.pet_day <> day then
+    c.pet_day := day;
+    c.pet_love := 0;
+  end if;
+  add := case when c.sick_at is not null then 0 else greatest(0, least(
+    case when kind = 'like' then public._nyang_const('pet_love_like') else public._nyang_const('pet_love') end,
+    public._nyang_const('pet_love_day') - c.pet_love)) end;
+  c.love := c.love + add;
+  c.pet_love := c.pet_love + add;
+  perform public._nyang_save(c);
+  r := public._nyang_care(me, before < 5000 and after >= 5000, t);
+  perform public._nyang_pay(me);
+  return r || jsonb_build_object('state', public._nyang_json(me, t), 'kind', kind, 'love', add);
+end $$;
+revoke all on function public.nyang_pet(int, text) from public;
+grant execute on function public.nyang_pet(int, text) to authenticated;
+
+-- 감기 낫게 하기 (rules.ts 의 cure): 지금은 담요만. 네 상태를 모두 채운 뒤에 cure_sec 뒤에 낫는다
+create or replace function public.nyang_cure(p_slot int, p_kind text default 'blanket') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := public._nyang_me(); t bigint := public._nyang_now(); c public.nyang_cats; lv jsonb; need int := public._nyang_const('cure_need');
+begin
+  if p_kind is distinct from 'blanket' then raise exception 'bad cure'; end if;
+  c := public._nyang_cat(me, p_slot, t);
+  if c.sick_at is null then raise exception 'not sick'; end if;
+  if c.cure_at is not null then raise exception 'already curing'; end if;
+  lv := public._nyang_levels(c, t);
+  if (lv->>'full')::int < need or (lv->>'water')::int < need or (lv->>'clean')::int < need or (lv->>'mood')::int < need or (lv->>'spoiled')::boolean then
+    raise exception 'need care';
+  end if;
+  c.cure_at := t + public._nyang_const('cure_sec');
+  perform public._nyang_save(c);
+  perform public._nyang_pay(me);
+  return jsonb_build_object('state', public._nyang_json(me, t));
+end $$;
+revoke all on function public.nyang_cure(int, text) from public;
+grant execute on function public.nyang_cure(int, text) to authenticated;
+
+-- ---------- 6. 게임 열기 (처음에는 닫힘 — 관리자만 들어간다) ----------
+
+insert into public.app_settings (key, value) values ('game_open:nyang', 'false'::jsonb) on conflict (key) do nothing;
