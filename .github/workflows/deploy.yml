@@ -15,6 +15,7 @@ name: Deploy to GitHub Pages
 #   /games/card/   시아카드배틀 빌드 결과 (games/card/dist)
 #   /games/pang/   시아팡팡 빌드 결과 (games/pang/dist)
 #   /games/ace/    시아에이스 빌드 결과 (games/ace/dist)
+#   /games/block/  시아블록 빌드 결과 (games/block/dist)
 on:
   push:
     branches: [main]
@@ -54,6 +55,7 @@ jobs:
             games/card/package-lock.json
             games/pang/package-lock.json
             games/ace/package-lock.json
+            games/block/package-lock.json
       # shared/*.js 와 index.html 은 빌드를 거치지 않고 그대로 올라간다 → 문법 오류만이라도 배포 전에 잡는다
       - name: 로비·공용 코드 문법 검사
         run: |
@@ -215,9 +217,15 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: 시아블록 테스트·빌드
+        working-directory: games/block
+        run: |
+          npm ci
+          npm test
+          npm run build
       - name: 사이트 파일 모으기
         run: |
-          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense _site/games/village _site/games/charge _site/games/finger _site/games/twelve _site/games/tower _site/games/pang _site/games/card _site/games/ace
+          mkdir -p _site/games/tank _site/games/running _site/games/volleyball _site/games/survival _site/games/defense _site/games/village _site/games/charge _site/games/finger _site/games/twelve _site/games/tower _site/games/pang _site/games/card _site/games/ace _site/games/block
           cp index.html _site/
           cp -r shared _site/
           # 앱(PWA): manifest·오프라인 화면·서비스 워커 (아이콘은 shared/images/app/ 에 있어 위에서 같이 복사된다)
@@ -240,6 +248,7 @@ jobs:
           cp -r games/card/dist/. _site/games/card/
           cp -r games/pang/dist/. _site/games/pang/
           cp -r games/ace/dist/. _site/games/ace/
+          cp -r games/block/dist/. _site/games/block/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
@@ -266,7 +275,7 @@ jobs:
       - run: supabase db push --remote "$DB_URL" --yes
       - run: supabase migration list --remote "$DB_URL"
 
-  # Edge Function 배포 (게임 딜러 game-action, 시간 초과 game-timeout, 시아핑거 판 검증 finger-finish, 시아카드배틀 막 검증 card-finish)
+  # Edge Function 배포 (게임 딜러 game-action, 시간 초과 game-timeout, 시아핑거 판 검증 finger-finish, 시아카드배틀 막 검증 card-finish, 시아블록 판 검증 block-finish)
   functions:
     needs: migrate
     runs-on: ubuntu-latest
@@ -296,6 +305,8 @@ jobs:
           deploy_fn finger-finish --project-ref "$PROJECT_REF" --use-api --yes
           # 시아카드배틀 막 끝 · 판 끝 기록: 화면이 사용자 JWT 로 부른다 (JWT 확인은 켠 채로)
           deploy_fn card-finish --project-ref "$PROJECT_REF" --use-api --yes
+          # 시아블록 판 끝 기록: 화면이 사용자 JWT 로 부른다 (JWT 확인은 켠 채로)
+          deploy_fn block-finish --project-ref "$PROJECT_REF" --use-api --yes
 
   deploy:
     needs: [build, migrate, functions]

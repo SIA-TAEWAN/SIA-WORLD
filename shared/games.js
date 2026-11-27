@@ -35,6 +35,8 @@ export const GAMES = [
     path: 'games/pang/', image: 'shared/images/card-pang.png', open: false },
   { id: 'ace', name: '시아에이스', desc: '십이지 비행단으로 요괴 비행단을 막아라 · 세로 슈팅 12스테이지 · 1인용',
     path: 'games/ace/', image: 'shared/images/card-ace.png', open: false },
+  { id: 'block', name: '시아블록', desc: '정령 블록을 놓아 줄을 지워라 · 8×8 블록 퍼즐 · 1인용',
+    path: 'games/block/', image: 'shared/images/card-block.png', open: false },
 ];
 
 const KEY = 'game_open:';

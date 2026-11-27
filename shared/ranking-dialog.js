@@ -24,7 +24,7 @@ const STYLE_ID = 'sia-ranking-style';
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
 /** 기본 탭 순서 (내 기록을 받기 전, 그리고 판 수가 같을 때) */
-const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'ace', 'card'];
+const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'ace', 'card', 'block'];
 /** 시아코인 기록의 게임 id → 탭 (카지노 네 게임은 한 탭) */
 const PLAY_TAB = { volleyball: 'volley', poker: 'casino', holdem: 'casino', blackjack: 'casino', roulette: 'casino' };
 /**
@@ -119,6 +119,10 @@ export const ACE_MODES = [
   { id: 'rush', name: '보스 러시', note: '보스 러시 · 12마리를 모두 깬 시간이 짧은 순' },
   { id: 'endless', name: '끝없는', note: '끝없는 모드 · 버틴 시간이 긴 순' },
 ];
+/** 시아블록: 각자 최고 점수 → 먼저 달성한 순 (122_block.sql 의 block_ranking). 이번 주(월요일 시작) 랭킹은 block_weekly_ranking */
+const BLOCK_INFO = { label: '🧩 시아블록', note: '최고 점수 순 (같으면 먼저 달성한 사람이 위)' };
+const BLOCK_WEEKLY_NOTE = '이번 주(월~일) 최고 점수 순 (같으면 먼저 세운 사람이 위)';
+export const BLOCK_MODES = [{ id: 'all', name: '전체' }, { id: 'weekly', name: '이번 주' }];
 const VILLAGE_INFO = { label: '🏡 마을', note: '번영도 순 (건물 레벨 · 장식물 · 기념물 · 주민 친밀도 · 받은 칭찬. 같으면 먼저 달성한 마을이 위)' };
 export const VILLAGE_TOP = 100;
 /**
@@ -154,7 +158,7 @@ const shiftDay = (day, n) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 const num = (v) => Math.max(0, Math.floor(Number(v) || 0));
-const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'pang' ? PANG_INFO : g === 'card' ? CARD_INFO : g === 'ace' ? ACE_INFO : RANKINGS[g]);
+const tabInfo = (g) => (g === 'race' ? RACE_INFO : g === 'volley' ? VOLLEY_INFO : g === 'survival' ? SURVIVAL_INFO : g === 'defense' ? DEFENSE_INFO : g === 'village' ? VILLAGE_INFO : g === 'charge' ? CHARGE_INFO : g === 'finger' ? FINGER_INFO : g === 'twelve' ? TWELVE_INFO : g === 'tower' ? TOWER_INFO : g === 'pang' ? PANG_INFO : g === 'card' ? CARD_INFO : g === 'ace' ? ACE_INFO : g === 'block' ? BLOCK_INFO : RANKINGS[g]);
 
 /** 역대 최고 기록 순위 → 등급 (1위 해 · 2위 달 · 3위 별 · 4위부터와 순위 없음은 구름) */
 export function raceTierOfPlace(place) {
@@ -508,6 +512,41 @@ export async function getAceRanking(mode, meId = null) {
   }
   return { rows, mine, total };
 }
+/**
+ * 시아블록 랭킹 (weekly false: block_ranking 각자 최고 점수 · true: block_weekly_ranking 이번 주).
+ * → { rows: 상위 100명 [{ key, nickname, best, at, place }], mine: 내 줄(100위 밖이어도) | null, total }
+ */
+export async function getBlockRanking(meId = null, weekly = false) {
+  const cols = 'user_id,nickname,best,achieved_at,place,total';
+  const view = () => supabase.from(weekly ? 'block_weekly_ranking' : 'block_ranking');
+  const { data, error } = await view().select(cols).order('place', { ascending: true }).limit(DEFENSE_TOP);
+  if (error) throw new Error('랭킹을 불러오지 못했어요');
+  const map = (r) => ({ key: r.user_id, nickname: r.nickname, best: Number(r.best ?? 0), at: r.achieved_at, place: Number(r.place) });
+  const rows = (data ?? []).map(map);
+  let mine = meId ? (rows.find((r) => r.key === meId) ?? null) : null;
+  let total = Number(data?.[0]?.total ?? 0);
+  if (meId && !mine && rows.length >= DEFENSE_TOP) {
+    const res = await view().select(cols).eq('user_id', meId).maybeSingle();
+    if (res.data) {
+      mine = map(res.data);
+      total = Number(res.data.total);
+    }
+  }
+  return { rows, mine, total };
+}
+/** 시아블록 지난주 1~3등 (block_weekly_last_top) → { today, top: [{ place, nickname, best }] }. 못 읽으면 null */
+export async function getBlockWeeklyLastTop() {
+  try {
+    const { data, error } = await supabase.rpc('block_weekly_last_top');
+    if (error || !data || typeof data !== 'object') return null;
+    const top = (Array.isArray(data.top) ? data.top : [])
+      .map((t) => ({ place: Number(t.place), nickname: t.nickname, best: Number(t.best) }))
+      .filter((t) => t.place >= 1 && t.place <= 3);
+    return { today: isDay(data.today) ? data.today : null, top };
+  } catch {
+    return null;
+  }
+}
 /** 걸린 시간 표시 (초 → 3:05 · 1:02:03) */
 export const twelveTime = (sec) => {
   const s = Math.max(0, Math.floor(Number(sec) || 0));
@@ -636,7 +675,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 /**
  * 랭킹 창 열기.
  * 탭은 내가 많이 한 게임 순서 (기록을 받기 전에는 기본 순서). first 를 주지 않으면(로비) 맨 앞 탭을 보여 준다.
- * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang' | 'card' | 'ace')
+ * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang' | 'card' | 'ace' | 'block')
  */
 export function openRanking({ meId = null, first = null } = {}) {
   // 이미 열린 창이 있으면 하나 더 띄우지 않는다 (버튼을 빠르게 두 번 눌렀을 때). 돌려주는 닫기는 그 창을 닫는다
@@ -687,7 +726,8 @@ export function openRanking({ meId = null, first = null } = {}) {
     const sm = e.target.closest('[data-sm]');
     if (sm) void showSurvival(survivalMap, sm.dataset.sm);
     const dm = e.target.closest('[data-dm]');
-    if (dm && shown === 'race') void showRace(dm.dataset.dm === DAILY_MODE || dm.dataset.dm === WEEKLY_MODE ? dm.dataset.dm : 'best');
+    if (dm && shown === 'block') void showBlock(dm.dataset.dm === WEEKLY_MODE ? WEEKLY_MODE : 'all');
+    else if (dm && shown === 'race') void showRace(dm.dataset.dm === DAILY_MODE || dm.dataset.dm === WEEKLY_MODE ? dm.dataset.dm : 'best');
     else if (dm) void (shown === 'charge' ? showCharge(dm.dataset.dm) : shown === 'finger' ? showFinger(dm.dataset.dm) : shown === 'twelve' ? showTwelve(dm.dataset.dm) : shown === 'card' ? showCard(dm.dataset.dm) : showDefense(dm.dataset.dm));
     const dd = e.target.closest('[data-dd]');
     if (dd && !dd.disabled) moveDaily(Number(dd.dataset.dd));
@@ -710,14 +750,16 @@ export function openRanking({ meId = null, first = null } = {}) {
     $('.subs').classList.toggle('on', game === 'survival');
     $('.modes').classList.toggle('on', game === 'survival');
     // 스테이지 / 끝없는 모드 고르기 줄은 시아디펜스·돌격대·핑거·열두길 탭에서만 보인다 (버튼 글자는 탭마다 바꾼다)
-    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve' || game === 'race' || game === 'card');
+    $('.dmodes').classList.toggle('on', game === 'defense' || game === 'charge' || game === 'finger' || game === 'twelve' || game === 'race' || game === 'card' || game === 'block');
     // 시아에이스 모드 고르기 줄 (아케이드 난이도 3 · 보스 러시 · 끝없는)
     $('.amodes').classList.toggle('on', game === 'ace');
     // 레이스는 [오늘의 도전 · 주간 · 최고 기록] 셋 (보이는 순서는 CSS order), 주간 단추는 레이스에만. 열두길은 오늘의 도전이 없다
     dim.querySelectorAll('.dmodes button').forEach((b, i) => {
       const dm = b.dataset.dm;
       // 카드배틀은 [끝없는 모드 · 오늘의 도전] 둘 (두 번째 디펜스 단추는 숨김)
-      b.toggleAttribute('hidden', dm === DAILY_MODE ? !DAILY_TABS[game] : dm === WEEKLY_MODE ? game !== 'race' : (game === 'race' || game === 'card') && i > 0);
+      b.toggleAttribute('hidden', dm === DAILY_MODE ? !DAILY_TABS[game] : dm === WEEKLY_MODE ? game !== 'race' && game !== 'block' : (game === 'race' || game === 'card' || game === 'block') && i > 0);
+      // 주간 단추 글자: 시아블록은 '이번 주'
+      if (dm === WEEKLY_MODE) b.textContent = game === 'block' ? BLOCK_MODES[1].name : WEEKLY_NAME;
       b.style.order = game === 'race' ? String(RACE_MODE_ORDER[dm === DAILY_MODE || dm === WEEKLY_MODE ? dm : 'best']) : '';
     });
     // 주간 줄(남은 날 · 지난주 1~3등)은 레이스 주간에서만 (showRace 가 켠다)
@@ -736,6 +778,7 @@ export function openRanking({ meId = null, first = null } = {}) {
     if (game === 'tower') return showTower();
     if (game === 'card') return showCard(cardMode);
     if (game === 'pang') return showPang();
+    if (game === 'block') return showBlock(blockMode);
     if (game === 'ace') return showAce(aceMode);
     const info = RANKINGS[game];
     $('.note').textContent = `${info.note} · 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (${info.cloud ?? `${formatAmount(info.base)}${info.unit} 이하는 구름`})`;
@@ -1191,6 +1234,57 @@ export function openRanking({ meId = null, first = null } = {}) {
           .join('') || '<tr><td>아직 랭킹이 없어요</td></tr>';
     } catch {
       if (shown === 'ace' && aceMode === m.id) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+  }
+  /**
+   * 시아블록: 전체(각자 최고 점수) / 이번 주(월요일 시작, 위 줄에 남은 날 · 지난주 🥇🥈🥉). 줄마다 순위 · 등급 · 닉네임 · 점수 · 달성 날짜
+   */
+  let blockMode = 'all';
+  let blockSeq = 0;
+  async function showBlock(mode = blockMode) {
+    blockMode = mode === WEEKLY_MODE ? WEEKLY_MODE : 'all';
+    const weekly = blockMode === WEEKLY_MODE;
+    const seq = ++blockSeq;
+    const current = () => seq === blockSeq && shown === 'block' && blockMode === mode;
+    dim.querySelectorAll('.dmodes button').forEach((b, i) => {
+      b.classList.toggle('sel', b.dataset.dm === WEEKLY_MODE ? weekly : i === 0 && !weekly);
+      if (i === 0) b.textContent = BLOCK_MODES[0].name;
+    });
+    $('.wk').classList.toggle('on', weekly);
+    $('.note').textContent = `${weekly ? BLOCK_WEEKLY_NOTE : BLOCK_INFO.note} · 상위 ${DEFENSE_TOP}명 · 해 상위 10% · 달 30% · 별 60% · 그 외 구름`;
+    $('.me-line').textContent = '불러오는 중…';
+    $('table').innerHTML = '';
+    const medals = ['🥇', '🥈', '🥉'];
+    const paintWeek = (today, last) => {
+      const lastHtml =
+        last && last.top.length
+          ? `<span class="last">지난주 ${last.top.map((t) => `<i>${medals[t.place - 1]} <b>${esc(t.nickname)}</b> ${t.best.toLocaleString()}점</i>`).join(' · ')}</span>`
+          : '';
+      $('.wk').innerHTML = `<span class="left">📅 ${esc(raceWeekLeftText(today))}</span>${lastHtml}`;
+    };
+    const lastP = weekly ? getBlockWeeklyLastTop() : null;
+    if (weekly) paintWeek(dailyToday ?? localDailyDay(), null);
+    try {
+      const { rows, mine, total } = await getBlockRanking(meId, weekly);
+      if (!current()) return;
+      const tier = (r) => tierOfPlace(r.place, total);
+      $('.me-line').innerHTML = mine
+        ? `${weekly ? '이번 주 ' : ''}내 순위 <b>${mine.place}위</b> / ${total}명 · ${tierSvg(tier(mine), 20)} · ${mine.best.toLocaleString()}점`
+        : weekly ? '아직 이번 주 기록이 없어요' : '아직 기록이 없어요';
+      $('table').innerHTML =
+        rows
+          .map(
+            (r) =>
+              `<tr class="${r.key === meId ? 'me' : ''}"><td class="pl">${r.place}</td><td class="tr">${tierSvg(tier(r), 26)}</td>` +
+              `<td class="nm">${esc(r.nickname)}</td><td class="am">${r.best.toLocaleString()}점<small>${esc(dateText(r.at))}</small></td></tr>`,
+          )
+          .join('') || `<tr><td>${weekly ? '이번 주에는 아직 기록이 없어요' : '아직 랭킹이 없어요'}</td></tr>`;
+    } catch {
+      if (current()) $('.me-line').textContent = '랭킹을 불러오지 못했어요';
+    }
+    if (lastP) {
+      const last = await lastP;
+      if (current()) paintWeek(last?.today ?? dailyToday ?? localDailyDay(), last);
     }
   }
   /**
