@@ -127,10 +127,14 @@ export const SOUNDS = {
   nyangSwish: [0.3, 0.1, 500, 0.01, 0.05, 0.12, 4, 1.5, 30, 0, 0, 0, 0, 0.3],
   nyangGift: [0.45, 0, 880, 0.01, 0.12, 0.3, 0, 1.4, 0, 0, 440, 0.06, 0.06],
   nyangCatch: [0.45, 0.05, 520, 0, 0.04, 0.12, 1, 1.6, 8, 0, 260, 0.03],
+  // 시아집사 6단계: 물뿌리개(쏴아 — 잡음이 길게) · 수확(뽁) · 엽전(놋쇠 짤랑, 공용 coin 보다 낮고 짧게)
+  nyangSprinkle: [0.3, 0.2, 2400, 0.05, 0.3, 0.25, 4, 0.4, 0, 0, 0, 0, 0, 2.5],
+  nyangHarvest: [0.5, 0.05, 330, 0, 0.03, 0.1, 0, 2, 40, 0, 0, 0, 0, 0.3],
+  nyangCoin: [0.5, 0, 1480, 0, 0.03, 0.16, 1, 1.6, 0, 0, 370, 0.04],
 };
 
 /** 이름별 최소 간격(ms): 칩 여러 개 → 짧은 간격으로 한 번씩 */
-const MIN_GAP = { nyangPour: 70, nyangHeart: 120, nyangPurr: 600, nyangLick: 90, nyangBrush: 110, nyangSwish: 120, nyangSqueeze: 160, chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80, blockPick: 50, blockPlace: 50, blockNope: 80, blockClear: 60 };
+const MIN_GAP = { nyangPour: 70, nyangHeart: 120, nyangPurr: 600, nyangLick: 90, nyangBrush: 110, nyangSwish: 120, nyangSqueeze: 160, nyangSprinkle: 350, nyangCoin: 60, chip: 60, deal: 60, tick: 120, spinTick: 45, flip: 60, click: 40, step: 130, jump: 60, land: 60, slide: 60, volleyHit: 50, volleyWall: 50, volleyNet: 50, survShot: 80, survSlash: 80, survPop: 80, survHurt: 150, twelveSlash: 80, twelveBow: 80, twelveMagic: 80, twelveHurt: 150, pangSwap: 60, pangPop: 70, pangIce: 60, pangBox: 60, pangVine: 60, pangBonus: 70, pangTap: 80, blockPick: 50, blockPlace: 50, blockNope: 80, blockClear: 60 };
 const DEFAULT_GAP = 90;
 const MAX_VOICES = 6;
 

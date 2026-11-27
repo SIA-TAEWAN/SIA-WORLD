@@ -21,9 +21,13 @@ type Step = { op: string; t: number; args: unknown[]; out: Record<string, unknow
 const steps: Step[] = [];
 let s: NyangState = newState();
 
+// 집사 랭킹(nyang_ranking): 친밀도 합이 마지막으로 오른 때 (SQL 은 _nyang_save 가 love_at 에 적는다)
+const loveSum = (st: NyangState) => st.cats.reduce((a, c) => a + c.love, 0);
+let loveT: number | null = null;
 function run(op: string, args: unknown[], fn: () => { state: NyangState }) {
   try {
     const { state, ...rest } = fn();
+    if (loveSum(state) > loveSum(s)) loveT = t;
     s = state;
     steps.push({ op, t, args, out: { ...rest, state: s } });
   } catch (e) {
@@ -288,4 +292,6 @@ for (let i = 0; i < 90; i++) {
     run('photo_delete', [id], () => deletePhoto(s, id, t));
   } else run('photo', [slot, b, pose, face, mate, mp], () => photo(s, slot, b, pose, face, mate, mp, t));
 }
+// 마지막: 집사 랭킹 줄 (친밀도 합 · 고양이 수 · 돌본 날 수 · 달성 시각)
+steps.push({ op: 'rank', t, args: [], out: { love: loveSum(s), cats: s.cats.length, careDays: s.profile.careDays, at: loveT } });
 console.log(JSON.stringify(steps));

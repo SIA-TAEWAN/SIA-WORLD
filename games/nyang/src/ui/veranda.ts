@@ -147,7 +147,8 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
       const rr = el.getBoundingClientRect();
       const bb = b.getBoundingClientRect();
       floatAt(el, bb.left - rr.left + bb.width / 2, bb.top - rr.top + 10, `${SEED_NAME[p.plant]} +1`, 'float big');
-      sfx('nyangGift');
+      sfx('nyangHarvest');
+      sfx('nyangGift', { delay: 120, volume: 0.5 });
       buzz([10, 30, 10]);
       if (p.plant === 'catgrass' || p.plant === 'catnip') setTimeout(() => toast('보관함에서 고양이에게 줄 수 있어요'), 900);
       else if (p.plant === 'moonflower') setTimeout(() => toast('보름달꽃 3송이를 모으면 보관함에서 보름달 등과 바꿔요'), 900);
@@ -221,7 +222,7 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
       try {
         const r = await ctx.api.expandPots();
         ctx.apply(r);
-        sfx('coin');
+        sfx('nyangCoin');
         buzz(20);
         toast(`화분이 ${r.state.profile.pots}칸이 되었어요`);
       } catch (err) {
@@ -265,7 +266,7 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
           el.append(d);
           setTimeout(() => d.remove(), 500);
         }
-        if (Math.random() < 0.08) sfx('nyangWater', { rate: 1.3, volume: 0.5 });
+        sfx('nyangSprinkle', { volume: 0.5 });
         const slot = Number(over.dataset.pot);
         if (pour > 650 && !sent.has(slot)) {
           sent.add(slot);
@@ -321,7 +322,7 @@ export function mountVeranda(ctx: RoomCtx, el: HTMLElement, tray: HTMLElement): 
       const r = await ctx.api.waterPot(slot);
       ctx.apply(r);
       ctx.rewards(r);
-      sfx('nyangWater');
+      sfx('nyangSprinkle');
       buzz([8, 30, 8]);
       const rr = el.getBoundingClientRect();
       const bb = b.getBoundingClientRect();

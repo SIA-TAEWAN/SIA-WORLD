@@ -58,6 +58,8 @@ export interface RoomOpts {
   fresh?: number;
   /** 5단계: 고양이를 더 입양하러 (방을 닫고 보호소로) */
   adoptMore?: (state: NyangState) => void;
+  /** 6단계: SIA WORLD 랭킹 창(집사 랭킹 탭). 로컬 모드에는 없다 → 못 열면 false */
+  openRanking?: () => Promise<boolean>;
 }
 
 export function showRoom(root: HTMLElement, o: RoomOpts) {
@@ -80,6 +82,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
         <a class="back" href="${o.worldHome}">← SIA WORLD</a><span class="spacer"></span>
         <span class="pill" title="엽전"><i class="coin-ico"></i><b id="coins">0</b></span>
         <span class="pill" title="시아코인"><i class="sia-ico">S</i><b id="sia">0</b></span>
+        ${o.openRanking ? '<button class="btn iconbtn" id="rankBtn" type="button" aria-label="집사 랭킹">🏆</button>' : ''}
         <button class="btn iconbtn" id="albumBtn" type="button" aria-label="앨범 · 도감">📖</button>
         <button class="btn iconbtn" id="setBtn" type="button" aria-label="설정">⚙️</button>
       </header>
@@ -842,7 +845,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
           if (r.gift) {
             const sb = dim.querySelector<HTMLElement>('.sand')!;
             floatAt(sb, lump.offsetLeft, lump.offsetTop, `<i class="coin-ico"></i> 엽전 +${r.gift}`, 'float gift');
-            sfx('coin');
+            sfx('nyangCoin');
             buzz([10, 30, 10]);
           }
           if (left <= 0) {
@@ -1246,6 +1249,12 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     const f = (e.target as HTMLElement).closest<HTMLElement>('.furn');
     if (!f || decoOn || busy) return;
     if (f.dataset.furn === 'vase') chooseVase(ctx);
+  });
+
+  // ---------- 집사 랭킹 (SIA WORLD 랭킹 창) ----------
+  root.querySelector('#rankBtn')?.addEventListener('click', async () => {
+    sfx('click');
+    if (!(await o.openRanking?.())) toast('랭킹을 열지 못했어요');
   });
 
   // ---------- 설정 (배경음 · 효과음 · 진동) ----------

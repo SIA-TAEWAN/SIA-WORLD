@@ -1,6 +1,6 @@
 # 시아집사 진행 상황 (인계 문서)
 
-PRD: `PRD.md`. 지금 끝난 것: **13장 1단계(서버 규칙) · 2단계(입양 · 방 · 밥/물/똥/쓰다듬기) · 3단계(놀아 주기 · 츄르 · 빗질 · 친밀도 행동 · 선물 · 시간대 행동 · 마중 · 행동 도감 기록) · 4단계(베란다 정원 · 상점 · 보관함 · 엽전 경제 · SpriteCook 방/물건/식물/츄르 그림) · 5단계(꾸미기 · 가구 쓰기 · 추가 입양 · 여러 마리 · 앨범 · 행동 도감)**. 다음은 6단계(디자인 · 소리 · 랭킹 · SIA-WORLD 연결)부터.
+PRD: `PRD.md`. 지금 끝난 것: **13장 1단계(서버 규칙) · 2단계(입양 · 방 · 밥/물/똥/쓰다듬기) · 3단계(놀아 주기 · 츄르 · 빗질 · 친밀도 행동 · 선물 · 시간대 행동 · 마중 · 행동 도감 기록) · 4단계(베란다 정원 · 상점 · 보관함 · 엽전 경제 · SpriteCook 방/물건/식물/츄르 그림) · 5단계(꾸미기 · 가구 쓰기 · 추가 입양 · 여러 마리 · 앨범 · 행동 도감) · 6단계(소리 · 집사 랭킹 · SIA-WORLD 연결)**. 남은 것: 디자인 검토 · 전체 검사 뒤 push (게임은 닫힌 채로 시작).
 dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<PC의 IP>:5303/games/nyang/?local=1`).
 
 ## 파일 구조
@@ -13,7 +13,7 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 | `src/game/rules.ts` | 순수 규칙 (시각 t 는 인자, 초 단위 정수). SQL RPC 와 1:1 |
 | `src/game/recolor.ts` | 털 픽셀만 목표 색으로 (순수 함수, `tests/recolor.test.ts`) |
 | `src/net/api.ts` | `NyangApi` — 서버(Supabase RPC) / 로컬(`?local=1`, rules.ts + localStorage `siaNyang:local`) 두 구현, `errorText` |
-| `src/net/world.ts` | 공용 shared 모듈 런타임 로드 (auth · supabase · sound) |
+| `src/net/world.ts` | 공용 shared 모듈 런타임 로드 (auth · supabase · sound · 랭킹 창 `openWorldRanking` · 접속 인원 `enterLobby` = `nyang-lobby`) |
 | `src/ui/room.ts` | 방 화면 (4단계: 무대 `.stage > .slide` 안에 방 · 베란다를 나란히 두고 옆으로 밀기/🌱 단추로 이동, 벽 · 바닥 · 창 그림 층, 창밖 시간대 풍경, 그림 물건, 사료 봉투 누르기 = 사료 바꾸기, 약 간식 단추, 요약 카드에 수확 가능 · 배치 · 상태 그리기 · 밥 끌기 · 물 · 화장실 확대 · 쓰다듬기 · 정보 창(놀이 · 츄르 · 빗질 고르기) · 선물 줍기 · 바닥 누르면 따라오기 · 설정 · 요약 카드 · 문 앞 마중). 고양이마다 `CatView`(여러 마리 구조, 돌보기 물건은 첫 고양이 것) |
 | `src/ui/ctx.ts` | 방 화면 공용 자리 `RoomCtx`(api · 상태 · 좌표 · 물건 · `saw`(도감) · `tray`(아래 띠 바꾸기) · `walkTo`) · `CatView` |
 | `src/ui/behavior.ts` | 5단계: 가구 쓰기(캣타워 두 번 폴짝 → 꼭대기 · 숨숨집 쏙(구멍에 눈 반짝) · 방석/쿠션/바구니에서 자기 · 스크래처 긁기 · 책상 컵 떨어뜨리기 · 꽃병 냄새 · 러그 식빵) · 고양이끼리(서로 그루밍 = 혀 낼름 칸 · 꼭 붙어 자기 · 잡기 놀이) — 연출은 `hold/mine/release` 표(token)로 잡고, 쓰다듬기 · 밥 주기가 끼어들면 놓아준다 · `devAct`(개발용). 고양이 머리 `think`: 아픔(재채기) → 밥/물/화장실 → 심심함(등 돌린 식빵, 상자 있으면 상자 속) → 밤엔 80% 잠(10단계면 집사 옆) → 시간대별 비율로 행동 고르기(`PICKS`). `follow`(바닥 누르기, 4단계부터) |
@@ -96,10 +96,20 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 - 잠금 순서: nyang_profiles → nyang_cats → wallets. 새 RPC 는 `_nyang_me()` → `_nyang_cat()` → 바꾸고 `_nyang_save` → `_nyang_care` → `_nyang_pay` → `_nyang_json` 순서를 따른다.
 - **PL/pgSQL 함정**: `if … < case when … then … end then` 은 IF 가 CASE 안의 `then` 에서 끊겨 문법 오류 — 변수로 빼라. 변수 이름이 열 이름(`seq` 등)과 같으면 ambiguous.
 
+## 6단계: SIA-WORLD 연결 · 집사 랭킹 · 소리 (2026-11-27)
+
+- 로비: `shared/games.js` 에 `nyang`(카드 `shared/images/card-nyang.png`, 기본 닫힘 — `game_open:nyang` = false 는 123 끝에). 닫힌 게임 막기 · 한 계정 한 접속(user_sessions)은 `requireLogin()` 이 한다. 방 위 띠 `← SIA WORLD` 로 로비.
+- 접속 인원: `shared/presence.js` `GAME_CHANNELS.nyang = ['nyang-lobby']`, `main.ts` 가 로그인 뒤 `enterLobby` (정원이 차면 안내 후 들어가지 않는다). 로컬 모드는 하지 않는다.
+- 배포: `deploy.yml` 에 캐시 경로 · 테스트 · 빌드 · `_site/games/nyang` 복사. PWA head 블록은 index.html 에 원래 있다 (`tests/sql.test.ts` 'SIA WORLD 연결' 이 모두 확인).
+- **집사 랭킹**: 뷰 `nyang_ranking` (123 의 6절) = 고양이들의 `love` 합 → `nyang_profiles.care_days`(하루 첫 돌보기를 한 날 수) → 먼저 달성한 순(`max(nyang_cats.love_at)` 이른 순) → user_id. 친밀도 합 0 · 관리자(`profiles.is_admin`, 120 과 같다)는 뺀다. `love_at` 은 `_nyang_save` 가 친밀도가 오를 때 `_nyang_now()` 로 적는다 (기기 규칙에는 없는 서버 전용 열). 친밀도는 들러서 settle 된 만큼만 저장되므로 '마지막으로 들른 때까지'의 값이다. 다른 게임처럼 RPC 가 아니라 뷰(`select` 권한 anon · authenticated)로 두고 `shared/ranking-dialog.js` 의 `getNyangRanking` 이 상위 100명 + 내 줄을 읽는다.
+- 랭킹 창: 탭 `🐱 시아집사` (`TAB_ORDER` 에서 card 앞 — card 는 마지막이어야 한다는 card 테스트가 있다), 줄마다 💗 친밀도 합 · n마리 · 돌본 날 n일 · 달성 날짜, 내 순위 줄. 게임 안에서는 위 띠 🏆(로그인했을 때만)로 이 탭을 바로 연다. 시아코인 기록 게임 id 가 `nyang` 이라 `my_play_counts()` 탭 정렬에 그대로 잡힌다 (`PLAY_TAB` 필요 없음).
+- 소리: PRD 11장 목록 중 없던 물뿌리개(`nyangSprinkle`) · 수확(`nyangHarvest`) · 엽전(`nyangCoin`)을 `shared/sound.js` 에 ZzFX 로 더했다 (나머지는 3단계에 넣은 `nyangPour` · `nyangWater` · `nyangScoop` · `nyangPurr` · `nyangMeow`(상태마다 rate) · `nyangLick` · `nyangSwish`). 시아코인을 받을 때는 공용 `coin` 그대로. `tests/sound.test.ts` 가 화면이 부르는 소리 이름이 모두 있는지 본다.
+- 배경음: 방 `main.mp3` · 밤 `boss.mp3` (`playBgm('nyang', …)`, 파일 없으면 조용히). 방을 열기 전에 소리 모듈을 기다리게 고쳤다 (전에는 첫 화면에서 배경음이 안 나올 수 있었다). ⚙️ 는 공용 `openSoundSettings()` 와 같은 두 줄(🎵 배경음 `setBgmOn` · 🔊 효과음 `setMuted`)에 📳 진동 줄을 더한 자기 창이다 (CLAUDE.md 의 '같은 두 줄을 가진 자기 창' 예외에 적었다).
+
 ## 검사
 
 - `npm test`: `rules.test.ts`(시간 계산 · 친밀도 · 쓰다듬기 · 돌보기 · 감기 · 입양) · `sql.test.ts`(SQL 값 · 표 · 식 · 권한이 데이터와 같은지 — 새 마이그레이션이 함수를 다시 정의하면 `FILES` 에 더한다) · `recolor.test.ts`.
-- PGlite (저장소 밖에 설치): `npx vite-node scripts/pg-expect.ts > <pg>/nyang-expect.json && node scripts/pg-check.mjs <pg>` — 001~123 적용 후 권한 · `game_open` · **1595단계를 기기 규칙과 대조(확인 3268개 모두 통과 — 5단계 꾸미기 무작위 배치 160번 · 꽃병 · 셋째/넷째 입양 · 사진 90번 · 지우기 포함, 2026-11-27)**. 엽전 · 시아코인 잔액은 `setcoins` · `setsia` 단계로 SQL 에서 맞추고, 끝에 `sia_coin_spends`('nyang') 수 = `buy_seq` 를 본다. 보관함은 `setitem` 단계로 SQL 에서 맞춘다. `_nyang_now()` 를 설정 값 `nyang.now` 로 바꿔 시각을 맞춘다. 새 RPC 는 `pg-expect.ts` 의 순서와 `pg-check.mjs` 의 `CALL` 에 더한다.
+- PGlite (저장소 밖에 설치): `npx vite-node scripts/pg-expect.ts > <pg>/nyang-expect.json && node scripts/pg-check.mjs <pg>` — 001~123 적용 후 권한 · `game_open` · **1595단계를 기기 규칙과 대조 + 마지막 `rank` 단계(집사 랭킹 줄 = 기기 규칙의 친밀도 합 · 고양이 수 · 돌본 날 · 친밀도가 마지막으로 오른 시각, 로그인 안 해도 읽기, 관리자 빠짐)(확인 3271개 모두 통과 — 5단계 꾸미기 무작위 배치 160번 · 꽃병 · 셋째/넷째 입양 · 사진 90번 · 지우기 포함, 2026-11-27)**. 엽전 · 시아코인 잔액은 `setcoins` · `setsia` 단계로 SQL 에서 맞추고, 끝에 `sia_coin_spends`('nyang') 수 = `buy_seq` 를 본다. 보관함은 `setitem` 단계로 SQL 에서 맞춘다. `_nyang_now()` 를 설정 값 `nyang.now` 로 바꿔 시각을 맞춘다. 새 RPC 는 `pg-expect.ts` 의 순서와 `pg-check.mjs` 의 `CALL` 에 더한다.
 - `npm run pace`: 성격 5종 × 하루 1 · 2 · 3번 × 츄르 0 · 2개(1번은 0 · 1개). 들를 때마다 밥 · 물 · 똥 · 놀이 한 판(낚싯대 10마리) · 쓰다듬기 3번, 하루 한 번 빗질. 들르는 시각은 정해진 무작위로 흔든다(하루 1번은 8~23시 아무 때, 2 · 3번은 ±1.5시간). 감기는 무작위 3가지의 합.
   4단계부터 정원도 돌린다: 들를 때마다 수확 → 모두 팔기 → '하루 들르는 횟수 안에 다 자랄 수 있는 것' 중 이익이 큰 씨앗을 사서 심기 → 물, 엽전이 '다음 칸 값 + 씨앗 값'보다 많으면 화분을 늘린다.
   **엽전 (2026-11-27, 얌전이)**: 하루 2번 — 7일 175냥 · 7칸 / 14일 10칸 / 30일 12칸 · 4천냥, 이후 하루 약 300냥이 쌓임. 하루 3번 — 14일에 12칸. 하루 1번 — 30일 10칸 · 60일 12칸(하루 약 55~80냥). 장난감 · 가구(합 약 920냥 + 시아코인 60)는 하루 2번이면 3주 안팎에 모두 살 수 있다.
@@ -124,14 +134,14 @@ dev 포트 **5303** (`npm run dev`, 폰은 `npm run dev -- --host` → `http://<
 
 ## 다음 단계에서 붙일 자리
 
-- 6단계: 디자인 다듬기(가구 · 고양이 크기 비, 커튼 · 벽지 무늬가 DESIGN.md 와 맞는지 Fable 검토), 소리(사진 찰칵 · 긁기 · 가구 효과음은 지금 기존 ZzFX 재사용), 랭킹(친밀도 합 → 돌본 날 → 먼저), SIA-WORLD 연결. 무늬(줄무늬)는 `catArt` 의 `patternLayer`.
+- 디자인 검토(Fable): 가구 · 고양이 크기 비, 커튼 · 벽지 무늬가 DESIGN.md 와 맞는지. 무늬(줄무늬)는 `catArt` 의 `patternLayer`.
 - 5단계에서 '지난 단계에서 붙일 자리'로 적었던 것(꾸미기 · 앨범 · 여러 마리)은 모두 끝났다.
 
 - (4단계 끝남) 상점: 장난감은 `items['toy:<id>'] = 1`, 츄르는 `items['churu:<맛>'] += n`(시아코인 5개씩 `_spend_sia_coin`), 약 간식 `items.medicine`. 받은 씨앗(`seed:<id>`) · 털 뭉치(`fur`)는 보관함에 이미 쌓인다. 정보 창 장난감 · 츄르 고르기의 '상점에서 (곧)' 글을 상점 단추로 바꾼다.
 
 
 
-- 6단계: shared/games.js · presence `GAME_CHANNELS` · ranking-dialog 탭 · deploy.yml · 로비 카드. PWA head 블록은 index.html 에 이미 있다. 배경음 폴더 `shared/audio/bgm/nyang/`(README 표에 줄 있음). `playBgm('nyang', 밤이면 'boss')` 는 이미 부른다.
+- (6단계 끝남) 로비 · 접속 인원 · 랭킹 · 배포 · 소리. 남은 것: 디자인 검토(가구 · 고양이 크기 비, 커튼 · 벽지 무늬, 위 띠 단추 5개 — 360px 에서 넘치지 않는 것은 확인), 사진 찰칵 · 긁기 · 가구 효과음은 기존 ZzFX 재사용 그대로.
 
 ## 알려진 문제 · 임의로 정한 것
 

@@ -1,4 +1,4 @@
--- 123: 시아집사 (games/nyang) — 서버 규칙 (1~5단계: 돌보기 · 놀이 · 츄르 · 선물 · 베란다 정원 · 상점 · 꾸미기 · 앨범)
+-- 123: 시아집사 (games/nyang) — 서버 규칙 (1~6단계: 돌보기 · 놀이 · 츄르 · 선물 · 베란다 정원 · 상점 · 꾸미기 · 앨범 · 집사 랭킹)
 --
 -- 랜선 고양이 집사 게임. 고양이 상태 · 친밀도 · 감기는 모두 서버 시각으로 계산한다 (시아마을과 같은 방식).
 -- 같은 규칙이 games/nyang/src/game/rules.ts 에 있고 (로컬 모드 · 화면 미리 보기), 값 · 표는 games/nyang/src/data/balance.ts 와 같다
@@ -43,7 +43,7 @@
 --   _grant_sia_coin 은 15초 간격을 지키느라 바로 못 줄 때가 있어, 못 준 것은 nyang_profiles.sia_due 에 두고 다음 요청 때 준다
 --   (sia_coin_logs 의 game = 'nyang', ref = 'care:<번호>').
 --
--- 뒤 단계(정원 · 상점 · 꾸미기 · 앨범 · 랭킹)의 함수는 이 파일에 이어서 더한다 (아직 올리지 않았다).
+-- 6단계: 집사 랭킹 뷰 nyang_ranking (친밀도 합 → 돌본 날 수 → 먼저 달성한 순, 관리자 빼고). 아직 올리지 않았다.
 -- 보관함 nyang_profiles.items = { 'toy:laser' · 'churu:tuna' · 'seed:daisy' · 'fur' · 'medicine' … : 개수 } (0 개는 지운다).
 -- 표는 미리 만들어 둔다: nyang_pots · nyang_album · nyang_profiles 의 items · furniture · layout, nyang_cats 의 pattern · seen.
 
@@ -592,13 +592,15 @@ begin
 end $$;
 revoke all on function public._nyang_cat(uuid, int, bigint) from public, anon, authenticated;
 
--- 고양이 줄 저장 (돌보기 기록 · 친밀도 · 감기 · 쓰다듬기)
+-- 고양이 줄 저장 (돌보기 기록 · 친밀도 · 감기 · 쓰다듬기). love_at 은 여기서만 정한다 (기기 규칙에는 없다 — 랭킹용)
 create or replace function public._nyang_save(c public.nyang_cats) returns void
 language plpgsql security definer set search_path = public as $$
 begin
   update public.nyang_cats set
     calc_at = c.calc_at, fed_at = c.fed_at, fed_amount = c.fed_amount, water_at = c.water_at, poop_base = c.poop_base, poop_at = c.poop_at,
-    mood_val = c.mood_val, mood_at = c.mood_at, love = c.love, love_at = c.love_at, sick_at = c.sick_at, cure_at = c.cure_at,
+    mood_val = c.mood_val, mood_at = c.mood_at, love = c.love,
+    -- 친밀도가 오른 때 = 지금 친밀도에 닿은 때 (집사 랭킹의 '먼저 달성한 순')
+    love_at = case when c.love > nyang_cats.love then public._nyang_now() else nyang_cats.love_at end, sick_at = c.sick_at, cure_at = c.cure_at,
     pet_day = c.pet_day, pet_love = c.pet_love, pet_at = c.pet_at,
     play_at = c.play_at, play_toy = c.play_toy, play_day = c.play_day, play_love = c.play_love, brush_day = c.brush_day,
     churu_day = c.churu_day, churu_n = c.churu_n, present_at = c.present_at, present = c.present, seen = c.seen,
@@ -1417,6 +1419,24 @@ end $$;
 revoke all on function public.nyang_photo_delete(int) from public;
 grant execute on function public.nyang_photo_delete(int) to authenticated;
 
--- ---------- 6. 게임 열기 (처음에는 닫힘 — 관리자만 들어간다) ----------
+-- ---------- 6. 집사 랭킹 ----------
+-- 고양이들의 친밀도 합 → 돌본 날 수(care_days, 하루 첫 돌보기를 한 날) → 먼저 달성한 순(친밀도가 마지막으로 오른 때 = 고양이들 love_at 의 최댓값).
+-- 친밀도는 들러서 계산(_nyang_settle)된 만큼만 저장되므로 '마지막으로 들른 때까지'의 값이다. 친밀도 합이 0 인 사람 · 관리자(120 과 같다)는 뺀다.
+-- 다른 게임 랭킹 뷰와 같이 상위 100명은 place 순으로 읽고, 내 줄은 user_id 로 따로 읽는다 (shared/ranking-dialog.js 의 getNyangRanking).
+create or replace view public.nyang_ranking as
+  select r.user_id, p.nickname, r.love, r.cats, r.care_days, r.achieved_at,
+    (row_number() over (order by r.love desc, r.care_days desc, r.achieved_at asc nulls last, r.user_id))::int as place,
+    (count(*) over ())::int as total
+  from (
+    select pr.user_id, sum(c.love)::bigint as love, count(*)::int as cats, pr.care_days,
+      to_timestamp(max(c.love_at)) as achieved_at
+    from public.nyang_profiles pr join public.nyang_cats c on c.user_id = pr.user_id
+    group by pr.user_id, pr.care_days
+  ) r join public.profiles p on p.id = r.user_id
+  where r.love > 0 and not coalesce(p.is_admin, false);
+revoke all on public.nyang_ranking from anon, authenticated;
+grant select on public.nyang_ranking to anon, authenticated;
+
+-- ---------- 7. 게임 열기 (처음에는 닫힘 — 관리자만 들어간다) ----------
 
 insert into public.app_settings (key, value) values ('game_open:nyang', 'false'::jsonb) on conflict (key) do nothing;

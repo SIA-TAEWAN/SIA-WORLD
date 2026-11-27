@@ -237,7 +237,7 @@ export function openShop(ctx: RoomCtx, tab0?: ShopTabId) {
       return void act(
         () => ctx.api.buy(id, n),
         () => {
-          sfx('coin');
+          sfx('nyangCoin');
           buzz(15);
           toast(it.once ? `${josa(itemName(id), '을', '를')} 샀어요${id.startsWith('furniture:') || id.startsWith('style:') ? ' — 🛋️ 꾸미기에서 방에 놓아요' : ''}` : `${itemName(id)} ${n * it.give}개를 샀어요`);
         },
@@ -250,7 +250,7 @@ export function openShop(ctx: RoomCtx, tab0?: ShopTabId) {
       return void act(
         () => ctx.api.sell(id, n),
         (r) => {
-          sfx('coin');
+          sfx('nyangCoin');
           buzz([10, 30, 10]);
           toast(`${itemName(id)} ${n}개를 팔았어요 · 엽전 +${r.coins}`);
         },

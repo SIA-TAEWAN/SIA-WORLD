@@ -143,6 +143,22 @@ for (const step of steps) {
     await db.query('update public.nyang_profiles set coins = $1 where user_id = $2', [step.args[0], u2]);
     continue;
   }
+  if (step.op === 'rank') {
+    // 집사 랭킹: 내 줄이 기기 규칙의 친밀도 합 · 돌본 날 · 달성 시각과 같고, 관리자가 되면 빠진다
+    const e = step.out;
+    const q = () => as(u2, 'select love, cats, care_days, extract(epoch from achieved_at)::bigint at, place, total from public.nyang_ranking where user_id = $1', [u2]);
+    const row = (await q())[0];
+    ok(!!row && Number(row.love) === e.love && row.cats === e.cats && row.care_days === e.careDays && Number(row.at) === e.at && row.place === 1 && row.total === 1,
+      `집사 랭킹 줄 ${JSON.stringify(row)} = 기대 ${JSON.stringify(e)}`);
+    await db.exec('set role anon');
+    const anonN = (await db.query('select count(*)::int n from public.nyang_ranking')).rows[0]?.n;
+    await db.exec('reset role');
+    ok(anonN === 1, '집사 랭킹: 로그인 안 해도 읽기 · 고양이 없는 사람(nyang1)은 없음');
+    await db.query('update public.profiles set is_admin = true where id = $1', [u2]);
+    ok((await q()).length === 0, '집사 랭킹: 관리자는 빠진다');
+    await db.query('update public.profiles set is_admin = false where id = $1', [u2]);
+    continue;
+  }
   if (step.op === 'setsia') {
     await db.query('update public.wallets set sia_coins = $1 where user_id = $2', [step.args[0], u2]);
     continue;

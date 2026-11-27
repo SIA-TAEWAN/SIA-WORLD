@@ -31,6 +31,7 @@ export const GAME_CHANNELS = {
   pang: ['pang-lobby'],
   ace: ['ace-lobby'],
   block: ['block-lobby'],
+  nyang: ['nyang-lobby'],
 };
 
 /** 맞고·카지노 게임 하나의 접속 채널 이름 */

@@ -139,7 +139,37 @@ describe('SQL의 값 · 표가 게임 데이터와 같다', () => {
     // 서버 시각만 쓴다
     expect(body('_nyang_now')).toContain('extract(epoch from now())');
     for (const f of pub) expect(body(f), f).toContain('public._nyang_now()');
+    // 집사 랭킹: 친밀도 합 → 돌본 날 → 먼저 달성한 순, 관리자 · 친밀도 0 은 빼고, 읽기만
+    const view = sql.slice(sql.lastIndexOf('create or replace view public.nyang_ranking'), sql.indexOf('grant select on public.nyang_ranking'));
+    expect(view).toContain('order by r.love desc, r.care_days desc, r.achieved_at asc nulls last, r.user_id');
+    expect(view).toContain('where r.love > 0 and not coalesce(p.is_admin, false)');
+    expect(sql).toContain('revoke all on public.nyang_ranking from anon, authenticated;\ngrant select on public.nyang_ranking to anon, authenticated;');
+    // love_at(먼저 달성한 순)은 친밀도가 오를 때만 바뀐다
+    expect(body('_nyang_save')).toContain('love_at = case when c.love > nyang_cats.love then public._nyang_now() else nyang_cats.love_at end');
     // 처음에는 닫힘
     expect(sql).toContain("insert into public.app_settings (key, value) values ('game_open:nyang', 'false'::jsonb) on conflict (key) do nothing;");
+  });
+});
+
+describe('SIA WORLD 연결', () => {
+  const shared = (f: string) => readFileSync(new URL(`../../../shared/${f}`, import.meta.url), 'utf8');
+  it('games.js · presence.js · ranking-dialog.js · deploy.yml · 배경음 폴더에 nyang', () => {
+    expect(shared('games.js')).toMatch(/id: 'nyang'[\s\S]*?path: 'games\/nyang\/', image: 'shared\/images\/card-nyang.png', open: false/);
+    expect(shared('presence.js')).toContain("nyang: ['nyang-lobby']");
+    expect(readFileSync(new URL('../src/net/world.ts', import.meta.url), 'utf8')).toContain("enterGame('nyang-lobby', user)");
+    expect(shared('ranking-dialog.js')).toMatch(/TAB_ORDER = \[[^\]]*'nyang'/);
+    expect(shared('ranking-dialog.js')).toContain("supabase.from('nyang_ranking')");
+    expect(shared('audio/bgm/README.md')).toMatch(/\| nyang \| 시아집사 \|[^\n]*instrumental[^\n]*instrumental \|/);
+    const deploy = readFileSync(new URL('../../../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+    expect(deploy).toContain('working-directory: games/nyang');
+    expect(deploy).toContain('games/nyang/package-lock.json');
+    expect(deploy).toContain('_site/games/nyang');
+    expect(deploy).toContain('cp -r games/nyang/dist/. _site/games/nyang/');
+  });
+  it('index.html PWA head 블록', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    expect(html).toContain('<link rel="manifest" href="../../manifest.webmanifest" vite-ignore />');
+    expect(html).toContain('<link rel="apple-touch-icon" href="../../shared/images/app/apple-touch-icon.png" vite-ignore />');
+    expect(html).toContain('<script type="module" src="../../shared/pwa.js" vite-ignore></script>');
   });
 });

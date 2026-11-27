@@ -349,7 +349,7 @@ export function openDeco(h: DecoHost) {
         try {
           const it = SHOP_ITEM[`style:${st.id}`];
           ctx.apply(await ctx.api.buy(it.id, 1));
-          sfx('coin');
+          sfx('nyangCoin');
           toast(`${st.name}을(를) 샀어요`);
         } catch (er) {
           toast(errorText(er));

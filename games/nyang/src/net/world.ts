@@ -63,3 +63,36 @@ export function loadSound(): Promise<SoundModule> {
   return soundMod;
 }
 
+
+interface RankingDialogModule {
+  openRanking(opts: { meId?: string | null; first?: string }): () => void;
+}
+let rankMod: Promise<RankingDialogModule> | null = null;
+/** SIA WORLD 로비와 같은 랭킹 창 (shared/ranking-dialog.js) 을 집사 랭킹 탭으로 연다. 못 불러오면 false */
+export async function openWorldRanking(meId: string | null): Promise<boolean> {
+  try {
+    rankMod ??= import(/* @vite-ignore */ new URL('shared/ranking-dialog.js', root()).href) as Promise<RankingDialogModule>;
+    (await rankMod).openRanking({ meId, first: 'nyang' });
+    return true;
+  } catch {
+    rankMod = null;
+    return false;
+  }
+}
+
+export interface PresenceHandle {
+  full: boolean;
+  leave(): Promise<void>;
+}
+interface PresenceModule {
+  enterGame(topic: string, user: WorldUser): Promise<PresenceHandle>;
+}
+/** SIA WORLD 접속 인원 채널에 들어간다 (shared/presence.js: 로비에 인원이 보이고, 정원을 넘으면 full). 못 하면 null */
+export async function enterLobby(user: WorldUser): Promise<PresenceHandle | null> {
+  try {
+    const m = (await import(/* @vite-ignore */ new URL('shared/presence.js', root()).href)) as PresenceModule;
+    return await m.enterGame('nyang-lobby', user);
+  } catch {
+    return null;
+  }
+}
