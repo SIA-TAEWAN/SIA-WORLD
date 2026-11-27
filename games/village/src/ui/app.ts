@@ -57,11 +57,9 @@ const unlock = () => {
 window.addEventListener('pointerdown', unlock, { passive: true, capture: true });
 window.addEventListener('keydown', unlock, { capture: true });
 export const sound = {
-  get on() {
-    return shared ? !shared.isMuted() : true;
-  },
-  set(on: boolean) {
-    shared?.setMuted(!on);
+  /** ⚙️ 공용 소리 설정 창 (배경음·효과음 따로, 시아레이스와 같다) */
+  openSettings() {
+    shared?.openSoundSettings();
   },
   whenReady(fn: () => void) {
     if (shared) fn();
@@ -69,7 +67,7 @@ export const sound = {
   },
   /**
    * 배경음: SIA WORLD 공용 배경음 파일(shared/audio/bgm/village/main.mp3)을 공용 모듈(shared/sound.js 의 playBgm)로 튼다.
-   * 효과음 끄기 · 배경음 끄기('sia:bgm') · 첫 터치 기다리기 · 가려진 탭 멈춤은 공용 모듈이 맡는다. 공용 모듈이 없으면 조용하다.
+   * 배경음 끄기('sia:bgm') · 첫 터치 기다리기 · 가려진 탭 멈춤은 공용 모듈이 맡는다. 공용 모듈이 없으면 조용하다.
    */
   playBgm() {
     sound.whenReady(() => shared!.playBgm('village'));

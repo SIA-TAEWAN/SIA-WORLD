@@ -86,6 +86,7 @@ Consequences:
 ### Background music (BGM)
 
 - Files live in `shared/audio/bgm/<folder>/`, where `<folder>` is the game's folder name under `games/` (e.g. 레이스 → `running`). Each game has `main.mp3` (main play) and `boss.mp3` (boss / tense scenes; optional, e.g. 마을 has none). `common/` holds the lobby `main.mp3`, `win.mp3` and `lose.mp3`. `shared/audio/bgm/README.md` lists the folders and search words.
+- Sound settings work like 시아레이스 everywhere: 🎵 배경음 (`sia:bgm`, `setBgmOn`) and 🔊 효과음 (`sia:sound`, `setMuted`) are independent (muting effects does not stop BGM). Every game's ⚙️ button opens the shared `openSoundSettings()` dialog in `shared/sound.js` (or its own dialog with the same two rows: 레이스·배구·서바이벌 settings, 디펜스 pause, 열두길 settings); `mountSoundButton()` (lobby, 맞고·카지노) is that ⚙️ button.
 - The owner downloads the tracks himself from Pixabay Music (https://pixabay.com/music/); the Pixabay API does not serve music, so never try to download tracks from code.
 - **When a new game is added**, before finishing the task:
   1. Create `shared/audio/bgm/<folder>/` with an empty `.gitkeep`, and add the game's row to the table in `shared/audio/bgm/README.md`.

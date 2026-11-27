@@ -72,10 +72,10 @@ export class Hud {
     const top = el('div', 'hud-top');
     const timerBox = el('div', 'timer-box');
     timerBox.append(this.timer, this.waterEl);
-    const mute = el('button', 'mute', sfx.muted ? '🔇' : '🔊') as HTMLButtonElement;
-    mute.title = '소리 켜기/끄기';
-    mute.onclick = () => sfx.toggleMute();
-    this.offMute = sfx.onMute((m) => (mute.textContent = m ? '🔇' : '🔊'));
+    const mute = el('button', 'mute', '⚙️') as HTMLButtonElement;
+    mute.title = '소리 설정';
+    mute.setAttribute('aria-label', '소리 설정');
+    mute.onclick = () => sfx.openSettings();
     top.append(timerBox, this.wind, this.order, mute);
 
     const bottom = el('div', 'hud-bottom');
@@ -176,7 +176,6 @@ export class Hud {
   }
 
   private bottomEl: HTMLElement;
-  private offMute: () => void;
   private ro: ResizeObserver | null = null;
 
   private chatOff: (() => void) | null = null;
@@ -515,7 +514,6 @@ export class Hud {
 
   destroy() {
     this.ro?.disconnect();
-    this.offMute();
     this.chatOff?.();
     this.emoteTimers.forEach((t) => clearTimeout(t));
     this.root.remove();

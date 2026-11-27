@@ -123,6 +123,8 @@ export interface SoundModule {
   /** 배경음 켜기/끄기 (효과음과 따로) */
   isBgmOn(): boolean;
   setBgmOn(on: boolean): void;
+  /** ⚙️ 소리 설정 창 (🎵 배경음 · 🔊 효과음 따로, 시아레이스와 같은 모양). onClose: 닫을 때 */
+  openSoundSettings(onClose?: () => void): HTMLElement;
   onBgmChange(cb: (on: boolean) => void): () => void;
   /** 배경음 파일 틀기 (shared/audio/bgm/<game>/<scene>.mp3). scene: main | boss | win | lose */
   playBgm(game: string, scene?: string): void;

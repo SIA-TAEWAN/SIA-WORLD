@@ -2,7 +2,7 @@ import { sound, whenSound } from './sfx';
 
 /**
  * 배경음: SIA WORLD 공용 배경음 파일(shared/audio/bgm/survival/main.mp3 · boss.mp3, 승리·패배는 common/win · lose)을
- * 공용 모듈(shared/sound.js 의 playBgm)로 튼다. 배경음 켜기/끄기 · 효과음 끄기 · 첫 터치 기다리기 · 가려진 탭 멈춤은 공용 모듈이 맡는다.
+ * 공용 모듈(shared/sound.js 의 playBgm)로 튼다. 배경음 켜기/끄기 · 첫 터치 기다리기 · 가려진 탭 멈춤은 공용 모듈이 맡는다.
  * 장면: 메뉴·맵 판 = main, 보스가 나와 있는 동안 = boss, 클리어 = win, 게임 오버 = lose (결과 화면까지 이어진다).
  * 공용 모듈을 못 불러오면(로컬 모드·오프라인) 조용히 아무것도 하지 않는다.
  */

@@ -86,6 +86,8 @@ export interface SoundModule {
   /** 배경음 켜기/끄기 (효과음과 따로) */
   isBgmOn(): boolean;
   setBgmOn(on: boolean): void;
+  /** ⚙️ 소리 설정 창 (🎵 배경음 · 🔊 효과음 따로, 시아레이스와 같은 모양). onClose: 닫을 때 */
+  openSoundSettings(onClose?: () => void): HTMLElement;
   onBgmChange(cb: (on: boolean) => void): () => void;
   /** shared/sounds/<이름>.ogg|.mp3 가 있으면 그 주소 */
   bgmFileUrl(name: string): Promise<string | null>;

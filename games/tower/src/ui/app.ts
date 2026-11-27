@@ -157,7 +157,7 @@ function title() {
           <button class="btn" id="rank">🏆 랭킹</button>
         </div>
         <div class="row2">
-          <button class="btn" id="sound">${ctx.sound?.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐'}</button>
+          <button class="btn" id="sound">⚙️ 소리 설정</button>
           <button class="btn" id="help">❓ 조작법</button>
         </div>
         ${pending ? `<p class="light center">보내지 못한 저장 ${pending}개 — 연결되면 다시 보내요</p>` : ''}
@@ -196,12 +196,8 @@ function title() {
     openCreator({ first: false, onDone: title, onCancel: title });
   });
   $('#rank').addEventListener('click', () => openRanking());
-  $('#sound').addEventListener('click', () => {
-    if (!ctx.sound) return;
-    ctx.sound.setMuted(!ctx.sound.isMuted());
-    sfx('toggle');
-    title();
-  });
+  // 배경음·효과음을 따로 켜고 끄는 공용 설정 창 (시아레이스와 같다)
+  $('#sound').addEventListener('click', () => ctx.sound?.openSoundSettings());
   $('#help').addEventListener('click', () => helpBox());
   if (pending) void ctx.api.resend();
 }
@@ -1075,8 +1071,8 @@ function openMenu() {
   };
   const onKey = (ev: KeyboardEvent) => {
     if (ev.code === 'Escape' || ev.code === 'KeyI') {
-      // 메뉴 위에 다른 창(외형 바꾸기·조작법·랭킹)이 떠 있으면 메뉴를 닫지 않는다 (뒤에서 게임이 다시 돌지 않게)
-      const tops = document.querySelectorAll('.overlay, .sia-rank-dim');
+      // 메뉴 위에 다른 창(외형 바꾸기·조작법·랭킹·소리 설정)이 떠 있으면 메뉴를 닫지 않는다 (뒤에서 게임이 다시 돌지 않게)
+      const tops = document.querySelectorAll('.overlay, .sia-rank-dim, .sia-snd-dim');
       if (tops.length && tops[tops.length - 1] !== ov) return;
       ev.preventDefault();
       // 같은 키가 조작(controls 의 메뉴 키)까지 가서 닫자마자 다시 열리지 않게
@@ -1148,7 +1144,7 @@ function openMenu() {
         <div class="btns">
           <button class="btn" id="look">👕 외형 바꾸기 <small>시아코인 ${ctx.lookPrice}</small></button>
           <button class="btn" id="rank">🏆 랭킹</button>
-          <button class="btn" id="sound">${ctx.sound?.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐'}</button>
+          <button class="btn" id="sound">⚙️ 소리 설정</button>
           <button class="btn" id="help">❓ 조작법</button>
           <button class="btn" id="exit">🌏 SIA WORLD로 나가기</button>
         </div>
@@ -1216,11 +1212,7 @@ function openMenu() {
       });
     });
     box.querySelector('#rank')?.addEventListener('click', () => openRanking());
-    box.querySelector('#sound')?.addEventListener('click', () => {
-      if (!ctx.sound) return;
-      ctx.sound.setMuted(!ctx.sound.isMuted());
-      render();
-    });
+    box.querySelector('#sound')?.addEventListener('click', () => ctx.sound?.openSoundSettings());
     box.querySelector('#help')?.addEventListener('click', () => helpBox());
     box.querySelector('#exit')?.addEventListener('click', () => {
       window.removeEventListener('keydown', onKey, true);

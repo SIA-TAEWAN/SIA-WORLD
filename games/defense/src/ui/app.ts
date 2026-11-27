@@ -227,22 +227,14 @@ export function saveSquad(list: CharId[]) {
   }
 }
 
-// ---------- 소리 켜기/끄기: 오른쪽 아래 원형 버튼 (DESIGN.md 5장, 다른 게임과 같은 위치·같은 설정) ----------
+// ---------- ⚙️ 소리 설정: 오른쪽 아래 원형 버튼 (DESIGN.md 5장, 다른 게임과 같은 위치). 배경음·효과음을 따로 켜고 끈다 ----------
 export function soundButton(): HTMLButtonElement {
   const b = document.createElement('button');
   b.className = 'icon-btn sound-btn';
-  const paint = () => {
-    b.textContent = sound.on ? '🔊' : '🔇';
-    b.setAttribute('aria-label', sound.on ? '소리 끄기' : '소리 켜기');
-  };
-  paint();
-  b.addEventListener('click', () => {
-    sound.set(!sound.on);
-    paint();
-    sfx('toggle');
-  });
-  // 공용 소리 모듈을 받기 전에 그려졌을 수 있다: 조금 뒤에 한 번 더 맞춘다
-  setTimeout(paint, 600);
+  b.textContent = '⚙️';
+  b.setAttribute('aria-label', '소리 설정');
+  b.title = '소리 설정';
+  b.addEventListener('click', () => sound.openSettings());
   return b;
 }
 

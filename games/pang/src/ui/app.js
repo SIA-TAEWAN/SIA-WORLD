@@ -11,13 +11,12 @@ const $ = id => document.getElementById(id);
 // ---------- 소리 (공용 shared/sound.js: 켜기/끄기는 SIA WORLD 전체가 같이 쓴다. 못 불러오면 소리 없이) ----------
 let snd = null;
 function sfx(name, o) { try { snd?.play(name, o); } catch { /* 소리는 실패해도 게임은 계속 */ } }
-function soundLabel() { return snd && snd.isMuted() ? '🔇' : '🔊'; }
-function paintSound() { const b = $('soundBtn'); if (!b) return; b.textContent = soundLabel(); b.setAttribute('aria-label', snd && snd.isMuted() ? '소리 켜기' : '소리 끄기'); b.title = b.getAttribute('aria-label'); }
 /** 배경음: 지도·보통 판은 main, 보스 판은 boss, 끝나면 win/lose (같은 곡이면 그대로) */
 let bgmScene = 'main';
 function bgm(scene) { bgmScene = scene; try { snd?.playBgm('pang', scene); } catch { /* 배경음은 없어도 게임은 계속 */ } }
-function toggleSound() { if (!snd) return; snd.setMuted(!snd.isMuted()); paintSound(); }
-opts.loadSound?.().then(m => { snd = m; m.onMuteChange(paintSound); paintSound(); bgm(bgmScene); }).catch(() => {});
+/** ⚙️ 소리 설정 창 (배경음·효과음 따로, 시아레이스와 같은 공용 창) */
+function openSound() { try { snd?.openSoundSettings(); } catch { /* 소리 설정이 없어도 게임은 계속 */ } }
+opts.loadSound?.().then(m => { snd = m; bgm(bgmScene); }).catch(() => {});
 const PI2 = Math.PI * 2;
 const STAR = '<svg class="star" viewBox="0 0 24 24"><path d="M12 2.5l2.8 6.2 6.7.6-5.1 4.5 1.5 6.6L12 17l-5.9 3.4 1.5-6.6-5.1-4.5 6.7-.6z"/></svg>';
 const STAR_OFF = STAR.replace('class="star"', 'class="star off"');
@@ -104,7 +103,7 @@ function renderMap() {
 }
 $('chapters').addEventListener('click', e => { const b = e.target.closest('.stage'); if (b && !b.disabled) { sfx('click'); showStart(+b.dataset.id); } });
 $('worldLink').href = worldHome();
-$('soundBtn').onclick = toggleSound;
+$('soundBtn').onclick = openSound;
 $('rankBtn').onclick = async () => { sfx('click'); if (!(await openRanking())) toast('랭킹을 불러오지 못했어요'); };
 function toast(msg, ms) {
   const t = $('toast'); t.textContent = msg; t.classList.add('on');
@@ -217,9 +216,9 @@ function showStart(id) {
 }
 function showPause() {
   if (!G || phase === 'end') return;
-  popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기' + (admin ? '' : ' ❤️-1') + '</button></div><div class="row"><button class="btn" data-a="snd">' + (snd && snd.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐') + '</button><button class="btn primary" data-a="go">계속하기</button></div>', p => {
+  popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기' + (admin ? '' : ' ❤️-1') + '</button></div><div class="row"><button class="btn" data-a="snd">' + '⚙️ 소리 설정' + '</button><button class="btn primary" data-a="go">계속하기</button></div>', p => {
     p.querySelector('[data-a=go]').onclick = closePop;
-    p.querySelector('[data-a=snd]').onclick = e => { toggleSound(); e.currentTarget.textContent = snd && snd.isMuted() ? '🔇 소리 꺼짐' : '🔊 소리 켜짐'; };
+    p.querySelector('[data-a=snd]').onclick = openSound;
     p.querySelector('[data-a=retry]').onclick = async () => { if (!(await needLife())) return; closePop(); startStage(L.id); };
     p.querySelector('[data-a=map]').onclick = () => { closePop(); toMap(); };
   });

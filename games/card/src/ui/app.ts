@@ -343,7 +343,7 @@ function showTitle() {
   const best = ctx.state?.endless;
   const s = screen(
     `
-    <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><span class="spacer"></span><span class="nick">${esc(ctx.user?.nickname ?? '테스트 대원')}</span></div>
+    <div class="bar"><a class="back" href="${worldHome()}">← SIA WORLD</a><span class="spacer"></span><span class="nick">${esc(ctx.user?.nickname ?? '테스트 대원')}</span><button class="icon-btn" id="sound" aria-label="소리 설정" title="소리 설정">⚙️</button></div>
     <div class="title"><h1>시아카드배틀</h1><p>십이지 영웅으로 카드 덱을 키우며 요괴를 물리쳐요</p></div>
     <div class="title-art"><img src="${heroImg('tiger')}" alt="" onerror="this.remove()"></div>
     <div class="btns">
@@ -363,6 +363,8 @@ function showTitle() {
     '',
     'title',
   );
+  // ⚙️ 소리 설정: 배경음·효과음을 따로 켜고 끈다 (시아레이스와 같은 공용 창)
+  on(s, '#sound', () => ctx.sound?.openSoundSettings());
   on(s, '#cont', () => {
     if (resume('normal')) showRun();
   });

@@ -135,13 +135,11 @@ function topsBoxHtml(t: StageTop): string {
 function soundButton(root: HTMLElement) {
   const b = document.createElement('button');
   b.className = 'icon-btn sound-btn';
-  const paint = () => (b.textContent = sound?.isMuted() ? '🔇' : '🔊');
-  paint();
-  b.addEventListener('click', () => {
-    sound?.setMuted(!sound.isMuted());
-    paint();
-    play('click');
-  });
+  // ⚙️ 소리 설정 창: 배경음·효과음을 따로 켜고 끈다 (시아레이스와 같은 공용 창)
+  b.textContent = '⚙️';
+  b.setAttribute('aria-label', '소리 설정');
+  b.title = '소리 설정';
+  b.addEventListener('click', () => sound?.openSoundSettings());
   root.appendChild(b);
 }
 
