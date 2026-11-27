@@ -60,7 +60,8 @@ describe('규칙', () => {
     expect(d).toMatchObject({ best: 10, floor: 11, checkpoint: 11 });
     d.floor = 14;
     die(d);
-    expect(d.floor).toBe(11);
+    expect(d.floor).toBe(14);
+    expect(d.checkpoint).toBe(11);
     expect(d.deaths).toBe(1);
   });
 

@@ -182,9 +182,9 @@ export function clearFloor(d: TowerData, floor: number): number {
   d.mapped = d.mapped.filter((f) => f > floor);
   return floor;
 }
-/** 쓰러졌다: 마지막 체크포인트부터. 레벨·경험치·엽전·구슬·조각·외형은 그대로 */
-export function die(d: TowerData) {
-  d.floor = d.checkpoint;
+/** 쓰러졌다: 쓰러진 층 처음부터 다시. 레벨·경험치·엽전·구슬·조각·외형은 그대로 */
+export function die(d: TowerData, floor = d.floor) {
+  d.floor = Math.max(1, Math.min(TOTAL_FLOORS, floor));
   d.deaths++;
 }
 /** 이미 깬 층(다시 오르는 층): 경험치 절반 */
