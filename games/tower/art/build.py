@@ -455,14 +455,14 @@ def hair_of(fr, rf, r):
 # 64×80 칸에서 얼굴은 16×10 남짓이라 잘라 온 눈은 크기 · 자리가 얼굴마다 달랐다. 다시 그릴 목록: art/spritecook/REDRAW-QUEUE.md
 # 앞모습은 왼쪽 절반(x 24~31)만 적고 가운데(31.5)를 축으로 뒤집어 붙인다 → 눈 · 눈썹 · 볼이 좌우 대칭. 옆모습은 오른쪽을 본다.
 # 눈은 앞 26줄 · 옆 25줄부터: 바가지 머리(m3) · 긴 생머리(f0) 앞머리가 그 윗줄까지 내려온다. 눈썹은 그 위라 앞머리에 가려도 된다.
-# 맨 아랫점은 앞 32줄 · 옆 31줄 — src/art/load.ts 의 2등신 만들기가 얼굴 레이어의 아래 끝을 턱으로 쓴다 (FACE_CHIN).
+# 맨 아랫점은 앞 33줄 · 옆 32줄(턱 끝 테두리, JAW_ART) — src/art/load.ts 의 2등신 만들기가 얼굴 레이어의 아래 끝을 턱으로 쓴다 (FACE_CHIN).
 # ---------------------------------------------------------------------
 FACE_PAL = {'#': OUT, 'w': hx('#fff8e8'), 'b': hx('#6b4226'), 'i': hx('#a85a34'), 'k': hx('#e86a5a'), 'r': hx('#c93a58'), 'm': hx('#a85a34')}
 FACE_BASE = hx('#f2b48c')                                  # 얼굴 살색 (몸 레이어 머리의 바탕색)
 FACE_LIGHT = {SKIN, hx('#f7c1a8'), hx('#ffe9b8'), hx('#fff4c2'), hx('#fff8e8')}   # 몸 레이어에 남은 옛 눈 자리(밝은 얼룩)
 FACE_AT = {0: (24, 23), 1: (33, 22)}                       # 아래 그림의 왼쪽 위 (대기 칸 좌표)
 FACE_SKIN = {0: (24, 39, 22, 32), 1: (30, 40, 21, 31)}     # 살색을 고르게 덮는 자리 (x0, x1, y0, y1 — 끝 포함)
-FACE_CHIN = {0: (31, 32), 1: (36, 31)}                     # 언제나 찍는 맨 아랫점
+FACE_CHIN = {0: (31, 33), 1: (35, 32)}                     # 언제나 찍는 맨 아랫점 = 턱 끝 테두리 (JAW_ART 의 아랫줄)
 FACE_ART = [
     {   # 0 동글: 둥글고 순한 눈 · 작은 미소
         0: ['........',
@@ -555,6 +555,49 @@ FACE_ART = [
 ]
 
 
+# 턱 (2026-11-27): 몸 레이어의 머리 아래쪽을 손도트로 다시 찍는다. 잘라 온 머리는 턱 아래 테두리가 없거나(옆) 목 · 옷깃 조각과 섞여(앞) 있어,
+# 2등신으로 머리와 몸을 나누면 턱이 일자로 잘려 네모나게 보였다. 턱 끝 테두리까지가 머리 — 얼굴 레이어의 맨 아랫점(FACE_CHIN)과 같은 줄.
+#   '#' 테두리 · 's' 살색 · 'n' 목 그늘 · '.' 비움 · '_' 그대로.  앞모습은 왼쪽 절반(x 22~31)만 적고 뒤집어 붙인다.
+JAW_PAL = {'#': OUT, 's': FACE_BASE, 'n': hx('#e39a72')}
+JAW_AT = {0: (22, 29), 1: (30, 29)}
+JAW_ART = {
+    0: ['_#ssssssss',
+        '..#sssssss',
+        '...#ssssss',
+        '....##ssss',
+        '......####',
+        '_______nnn'],
+    1: ['sssssssssss#.',
+        'ssssssssss#..',
+        '_ssssssss##..',
+        '_nnnn###.....',
+        '_______......'],
+}
+JAW_OUTFIT = {0: (23, 40, 29, 34), 1: (31, 42, 29, 32)}    # 옷 레이어에 섞여 있던 턱 밑 · 목 그늘을 지우는 자리 (x0, x1, y0, y1 — 끝 포함)
+
+
+def jaw(body_fr, r, off):
+    """몸 레이어 한 칸의 얼굴 살색을 고르게 하고 턱을 다시 찍는다"""
+    if r == 2:
+        return body_fr
+    o = body_fr.copy()
+    dx, dy = off
+    x0, x1, y0, _ = FACE_SKIN[r]
+    for y in range(y0 + 2, JAW_AT[r][1]):                  # 눈 둘레에 남은 얼룩 · 빈 점 → 고른 살색 (테두리와 맨 가장자리는 그대로)
+        for x in range(x0, x1 + 1):
+            px = o[y + dy, x + dx]
+            if not px[3] or tuple(px[:3]) != OUT:
+                o[y + dy, x + dx] = (*FACE_BASE, 255)
+    ax, ay = JAW_AT[r]
+    for j, line in enumerate(JAW_ART[r]):
+        if r == 0:
+            line = line + line[::-1]
+        for i, ch in enumerate(line):
+            if ch != '_':
+                o[ay + j + dy, ax + i + dx] = (*JAW_PAL[ch], 255) if ch != '.' else 0
+    return o
+
+
 def face_holes(body_fr):
     """몸 레이어 머리 안의 빈 점 (머리를 가를 때 빠진 점 — 칸 테두리에서 투명으로 이어지지 않는 투명 점)"""
     clear = body_fr[..., 3] == 0
@@ -626,6 +669,8 @@ def hair_clean(h, name, r):
     if r < 2:
         for y0, y1, x0, x1 in HAIR_FACE[r][name]:
             h[y0:y1 + 1, x0:x1 + 1] = 0
+    if r == 0 and not h[30, 41, 3]:                        # 짧은 머리에 남은 옛 턱 테두리 조각 (새 턱 선 밖으로 1px 튀어나온다)
+        h[29:31, 40] = 0
     return h
 
 
@@ -634,6 +679,9 @@ def outfit_clean(rows3, body, offs):
     for r in range(2):
         for c in range(8):
             rows3[r][c][face_zone(r, offs[r][c]) & face_holes(body[r][c])] = 0
+            x0, x1, y0, y1 = JAW_OUTFIT[r]
+            dx, dy = offs[r][c]
+            rows3[r][c][y0 + dy:y1 + 1 + dy, x0 + dx:x1 + 1 + dx] = 0
     return rows3
 
 
@@ -666,6 +714,8 @@ HAIR_NAMES = ['m0', 'm1', 'm2', 'm3', 'f0', 'f1', 'f2', 'f3']
 def build_chars(only_base=False):
     frames, offs, heads = char_frames(SRC / 'char2-base.png')
     body, outfit0, info = split_base(frames, offs, heads)
+    raw = body                                             # 옷 · 얼굴의 빈 점 찾기는 턱을 고치기 전 머리로 (face_holes)
+    body = [[jaw(raw[r][c], r, offs[r][c]) for c in range(8)] for r in range(3)]
     out = {'body_m': char_sheet(body)}
     bf = char_sheet(body)
     low = np.zeros(bf.shape[:2], bool)
@@ -674,13 +724,13 @@ def build_chars(only_base=False):
     for src, dst in SHOE_F.items():
         bf[col_in(bf, {src}) & low, :3] = dst
     out['body_f'] = bf
-    out['outfit_0'] = char_sheet(outfit_clean(outfit0, body, offs))
+    out['outfit_0'] = char_sheet(outfit_clean(outfit0, raw, offs))
     if only_base:
         return out, frames, offs, heads
     href = {0: heads[0], 1: heads[1], 2: heads[2], 'offs': offs}
     for n in (1, 2, 3):
         fr, _, _ = char_frames(SRC / f'char2-outfit{n}.png', head_ref=href)
-        out[f'outfit_{n}'] = char_sheet(outfit_clean(split_outfit(fr, heads, body, info), body, offs))
+        out[f'outfit_{n}'] = char_sheet(outfit_clean(split_outfit(fr, heads, raw, info), raw, offs))
     ref = [snap(f, extra=EXTRA) for f in green_rows(frames, heads)]
     al = align_ref(SRC / 'char2-hair.png', ref, fit_top=True)
     for c, name in enumerate(HAIR_NAMES):

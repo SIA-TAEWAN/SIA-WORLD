@@ -126,8 +126,8 @@ function chibifyOne(src: HTMLCanvasElement, chins: number[]): HTMLCanvasElement 
       g.clip();
       // 몸: 칸 너비 그대로, 높이만 줄여 발을 칸 아래에
       g.drawImage(src, x0, y0 + neck, FRAME_W, FRAME_H - neck, x0, by, FRAME_W, bodyH);
-      // 머리: 칸 가운데를 축으로 키워 턱이 몸 위에 닿게 (조금 겹쳐 목 틈이 안 보이게)
-      g.drawImage(src, x0, y0, FRAME_W, neck, x0 + (FRAME_W - headW) / 2, by - headH + 2, headW, headH);
+      // 머리: 칸 가운데를 축으로 키워 턱 끝 테두리(머리의 맨 아랫줄)가 옷깃 바로 위에 얹히게 — 1px 만 겹친다 (2px 이면 옷깃이 턱 선을 덮는다)
+      g.drawImage(src, x0, y0, FRAME_W, neck, x0 + (FRAME_W - headW) / 2, by - headH + 1, headW, headH);
       g.restore();
     }
   }
