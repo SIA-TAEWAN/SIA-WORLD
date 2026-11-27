@@ -12,7 +12,7 @@ import { CAT_STAGE, LIMITS } from '../src/game/progress';
 const mig = (f: string) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), 'utf8');
 const sql = mig('061_charge.sql');
 /** 함수를 다시 정의한 뒤 마이그레이션 (뒤 파일이 이긴다). 함수를 다시 정의하는 파일을 더하면 여기에 넣는다 */
-const LATER = ['075_cat_charge.sql', '085_charge_daily.sql', '088_charge_daily_day.sql', '101_overlap_village_fix.sql', '102_admin_coins.sql', '107_review_1125.sql'].map(mig);
+const LATER = ['075_cat_charge.sql', '085_charge_daily.sql', '088_charge_daily_day.sql', '101_overlap_village_fix.sql', '102_admin_coins.sql', '107_review_1125.sql', '120_review_1127c.sql'].map(mig);
 const block = (fn: string) => {
   const src = [...LATER].reverse().find((t) => t.includes(`function public.${fn}(`)) ?? sql;
   const i = src.indexOf(`function public.${fn}(`);
@@ -88,7 +88,11 @@ describe('SQL 표', () => {
     expect(now.indexOf(lock)).toBeLessThan(now.indexOf('before_leaders := public._charge_unlocked(me);'));
     const strip = (t: string) => t.replace(/  -- 107: [^\n]*\n/, '').replace(lock, '');
     expect(strip(now)).toBe(strip(whole('101_overlap_village_fix.sql')));
-    expect(block('charge_finish').replace(/\r\n/g, '\n')).toBe(now.slice(now.indexOf('function public.charge_finish('), now.indexOf('$$;')));
+    // 120: 107 그대로에 끝없는 길 0m 는 최고 기록으로 넣지 않는 조건만 더함
+    const in107 = now.slice(now.indexOf('function public.charge_finish('), now.indexOf('$$;'));
+    expect(block('charge_finish').replace(/\r\n/g, '\n')).toBe(
+      in107.replace('    if not exists (select 1 from public.charge_endless e', '    if p_meters > 0 and not exists (select 1 from public.charge_endless e'),
+    );
   });
 
   it('대장 검사는 공용 _check_character 를 쓴다 (075)', () => {

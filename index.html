@@ -1023,13 +1023,19 @@
       stopWorld();
       showLogin();
     });
-    try {
-      const user = await getCurrentUser();
-      if (user) afterLogin(user);
-      else showLogin();
-    } catch {
-      showLogin();
-    }
+    // 세션은 있는데 프로필을 잠깐 못 읽었으면(통신 끊김) 로그인 화면 대신 잠시 뒤 다시 읽는다
+    const enter = async (tries) => {
+      try {
+        const user = await getCurrentUser();
+        if (user) afterLogin(user);
+        else showLogin();
+      } catch {
+        const has = await supabase.auth.getSession().then(({ data }) => !!data.session, () => false);
+        if (has && tries < 5) setTimeout(() => void enter(tries + 1), 2000);
+        else showLogin();
+      }
+    };
+    void enter(0);
   </script>
 </body>
 </html>

@@ -349,6 +349,12 @@ function openCreator(opts: { first: boolean; onDone(): void; onCancel?(): void; 
     } catch (e) {
       busy = false;
       render();
+      if (opts.first && e instanceof ApiError && e.message === 'not enough sia coins') {
+        // 첫 만들기인데 서버엔 이미 외형이 있음 = 다른 기기에서 먼저 만들었다 → 그 캐릭터로 다시 읽는다 (이 화면엔 돌아가기가 없다)
+        toast('다른 기기에서 이미 캐릭터를 만들었어요. 다시 불러올게요');
+        setTimeout(() => location.reload(), 1500);
+        return;
+      }
       if (e instanceof ApiError && e.message === 'not enough sia coins') toast('시아코인이 모자라요');
       else toast('저장하지 못했어요. 연결을 확인하고 다시 눌러 주세요');
     }
@@ -1112,6 +1118,7 @@ function openMenu() {
     let body = '';
     if (menuTab === 'orb') {
       const sel = orbDef(menuOrb ?? d.equipped ?? 'rat')!;
+      menuOrb = sel.id; // 장착·각성 버튼이 화면에 보이는 칸을 쓰게 (빼기 뒤 null 로 아무 일도 안 하던 것)
       const have = !!d.orbs[sel.id];
       const awake = d.awakened.includes(sel.id);
       body = `

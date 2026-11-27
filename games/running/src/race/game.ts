@@ -109,7 +109,10 @@ export class RaceGame {
           this.stopHiddenTick();
           return;
         }
-        if (document.hidden) this.update();
+        if (document.hidden) {
+          this.update();
+          this.events.length = 0; // 가려진 동안 생긴 일은 소리·효과 없이 버린다 (돌아와서 한꺼번에 터지지 않게)
+        }
       }, 1000);
     }
     for (const r of start.roster) {
@@ -163,6 +166,7 @@ export class RaceGame {
     if (t >= 0 && !this.results) {
       // 고정 간격으로 지금 시각까지 (단, 끝 시각까지만) 모든 자리를 한 걸음씩 함께 계산한다
       // (화면이 잠깐 멈췄거나 가려졌다 와도 따라잡는다. 1등이 이 루프 안에서 도착하면 끝 시각도 그 걸음부터 당겨진다)
+      const fromStep = this.step;
       while ((this.step + 1) * DT <= Math.min(t, this.endT()) + 1e-9) {
         const step = ++this.step;
         const stepT = step * DT;
@@ -194,7 +198,8 @@ export class RaceGame {
       for (const entry of this.roster) {
         const s = entry.slot;
         const r = this.runners[s];
-        for (const ev of r.events) this.events.push({ slot: s, ev });
+        // 한 번에 많이 따라잡았으면(멈췄다 돌아옴) 그 사이 일은 화면 연출로 넘기지 않는다 (결과·기록과는 무관)
+        if (this.step - fromStep <= 30) for (const ev of r.events) this.events.push({ slot: s, ev });
         r.events.length = 0;
         if (s === this.mySlot && r.finishMs !== null && !this.record) this.submit(r.finishMs);
       }

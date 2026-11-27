@@ -28,6 +28,18 @@ describe('pickResume', () => {
     expect(pickResume(saved, undefined, (id) => id === 'old')).toEqual({ saved });
     expect(pickResume(null, srvRun({ rules: RULES_VERSION - 1 }), none)).toBeNull();
   });
+  it('다른 기기가 서버 기록을 앞서 나갔으면(앞부분이 다름) 기기 저장이 더 길어도 서버 판 — 올리면 bad log 로 버려진다', () => {
+    const run = newRun({ seed: 5, hero: 'dog' });
+    apply(run, { t: 'go', col: 0 });
+    run.log.push({ t: 'end' } as never, { t: 'end' } as never);
+    const saved = { runId: 'r1', run };
+    const srv = srvRun({ log: [{ t: 'go', col: 1 }] });
+    expect(pickResume(saved, srv, none)).toEqual({ server: srv });
+    expect(pickResume(saved, srv, () => true)).toEqual({ server: srv });
+    // 키 순서만 다른 같은 기록이면 기기 저장
+    const same = srvRun({ log: [{ col: 0, t: 'go' } as never] });
+    expect(pickResume(saved, same, none)).toEqual({ saved });
+  });
   it('startedRun: 기록·코인 없이', () => {
     expect(startedRun(srvRun({ log: [{ t: 'end' }], acts: 2, paidCoins: 1 }))).toMatchObject({ runId: 'r1', log: [], acts: 0, paidCoins: undefined });
   });

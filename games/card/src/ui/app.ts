@@ -70,7 +70,8 @@ interface Ctx {
   /** 서버 연결 준비 (boot) */
   ready: Promise<void>;
   /** 마지막 업로드 결과 (결과 화면이 기다린다) */
-  lastResult: Promise<FinishResult | null> | null;
+  /** 'rejected' = 서버가 거절해 보관분도 지웠음 (다시 보내지 않음) */
+  lastResult: Promise<FinishResult | null | 'rejected'> | null;
   /** 지금 보이는 화면 (처음 화면을 서버 상태로 다시 그릴 때) */
   view: string;
 }
@@ -232,7 +233,8 @@ function uploadRun() {
     })
     .catch((e) => {
       if (e instanceof ApiError && e.message === 'old rules') toast(friendly(e), 2600);
-      return null;
+      // 거절(4xx)이면 api 가 보관분을 지웠다 — '다음에 다시 보내요' 가 아니다
+      return e instanceof ApiError ? ('rejected' as const) : null;
     });
   ctx.lastResult = p;
   void p.then(() => refreshState());
@@ -267,7 +269,7 @@ export function boot(user: WorldUser | null) {
   if (DEV_RESET) for (const m of ['normal', 'endless', 'daily'] as const) clearRun(m);
   ctx.ready = initServer().then(() => {
     // 서버 상태가 늦게 왔으면 처음 화면을 다시 그린다 (이어하기 · 숙련 · 오늘의 도전)
-    if (ctx.view === 'title') showTitle();
+    if (ctx.view === 'title' && !ctx.game) showTitle();
   });
   void loadSound()
     .then((m) => {
@@ -975,6 +977,7 @@ function showAbyss() {
 // ---------- 전투 ----------
 
 function showBattle() {
+  ctx.view = 'battle'; // 늦게 온 서버 상태가 처음 화면을 다시 그리지 않게
   app().innerHTML = '';
   stopGame();
   // 정예 · 보스 전투는 보스 곡, 보통 전투는 게임 곡
@@ -1002,6 +1005,8 @@ function showBattle() {
     scene: [],
     banner: false,
     input: { activePointers: 2 },
+    // 소리는 shared/sound.js 만 쓴다 — Phaser 가 전투마다 AudioContext 를 만들지 않게 (아이폰 배경음과 다툼)
+    audio: { noAudio: true },
   });
   ctx.game.scene.add('battle', BattleScene, true, { hooks });
   if (LOCAL_MODE) {
@@ -1318,7 +1323,8 @@ function showResult(step = 0) {
 }
 
 /** 결과 화면의 서버 기록 한 줄 */
-function serverLine(r: FinishResult | null, mastery: number): string {
+function serverLine(r: FinishResult | null | 'rejected', mastery: number): string {
+  if (r === 'rejected') return '이 판은 서버에 기록되지 않았어요';
   if (!r) return '기록을 아직 보내지 못했어요. 다음에 들어올 때 다시 보내요';
   const out: string[] = [];
   if (r.mode !== 'daily') out.push(`시아코인 ${r.coins}개 받음`);

@@ -267,6 +267,12 @@ export class OnlineGame implements NetHooks {
     this.send({ t: 'turn', r: rec });
   }
 
+  /** 받은 판 상태를 내 것으로 기억한다: 내가 기준 기기가 되면 남에게 이걸로 답한다 (옛 턴 · 답 없음이 되지 않게) */
+  private adoptSnap(r: SnapReply) {
+    this.lastSnap = { snap: r.snap, at: Date.now() - r.elapsed * 1000 };
+    for (const rec of r.records) this.records.set(rec.turn, rec);
+  }
+
   turnStarted(m: Match) {
     this.lastSnap = { snap: m.snapshot(), at: Date.now() };
     // 오래된 기록 정리
@@ -372,6 +378,7 @@ export class OnlineGame implements NetHooks {
           break;
         }
         const reply: SnapReply = { snap: m.snap, records: m.records ?? [], elapsed: m.elapsed ?? 0 };
+        if (this.waitingSnap || (this.scene && !this.stale && this.trusted(m.from))) this.adoptSnap(reply);
         if (this.waitingSnap) {
           // 내가 청한 답: 보낸 기기가 아는 순서·넘겨받은 목록으로 맞춘다
           this.hostOrder = adoptOrder(this.hostOrder, m.order);

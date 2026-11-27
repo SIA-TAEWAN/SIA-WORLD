@@ -359,7 +359,10 @@ function advance(s: PokerState): void {
 /** 행동 뒤 진행 */
 function progress(s: PokerState): void {
   if (live(s).length <= 1) return finishUncontested(s);
-  const need = live(s).filter((p) => !p.allIn && (!p.acted || p.betRound < s.curBet));
+  let need = live(s).filter((p) => !p.allIn && (!p.acted || p.betRound < s.curBet));
+  // 올인 아닌 사람이 하나뿐이고 낼 돈도 없으면 겨룰 상대가 없다 → 더 묻지 않는다
+  // (묻으면 다이를 눌러 받을 자격 없는 올인자가 사이드 팟까지 가져갔다)
+  if (live(s).filter((p) => !p.allIn).length <= 1 && need.every((p) => p.betRound >= s.curBet)) need = [];
   if (need.length === 0) {
     s.turn = null;
     return advance(s);
