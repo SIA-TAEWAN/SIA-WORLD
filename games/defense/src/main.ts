@@ -15,7 +15,10 @@ import { showResult } from './ui/result';
 import { DAY_CHANGED_TEXT, NO_DAY_TEXT, showDaily, todayChallenge } from './ui/daily';
 import { showChars } from './ui/roster';
 
-nav.main = showMain;
+nav.main = () => {
+  showMain();
+  if (profileStale) resendPending();
+};
 // 지도 화면(지역 지도 · 스테이지 고르기)에 들어올 때마다 보류해 둔 결과를 다시 보낸다.
 // 올라가서 프로필이 바뀌면 그 화면이 watchProfile 로 스스로 다시 그린다
 nav.regions = () => {
@@ -56,6 +59,8 @@ async function resendOnce(api: NonNullable<typeof state.api>): Promise<number> {
  * 보류해 둔 판 결과를 다시 보낸다 (지도 화면에 들어올 때 · 인터넷이 다시 연결될 때).
  * 올라간 판이 있으면 프로필을 새로 읽는다: 떠 있는 화면(메인·지도·스테이지·캐릭터)은 watchProfile 로 다시 그린다 (판 안에서는 알림도 띄우지 않는다)
  */
+/** 접속할 때 프로필을 못 읽었다 (빈 프로필로 보인다) → 다시 연결되거나 화면이 다시 보일 때 읽는다 */
+let profileStale = false;
 function resendPending() {
   const api = state.api;
   if (!api || resending) return;
@@ -63,9 +68,10 @@ function resendPending() {
   void (async () => {
     try {
       const sent = await resendOnce(api);
-      if (sent <= 0) return;
+      if (sent <= 0 && !profileStale) return;
       setProfile(await api.loadProfile());
-      if (!app.querySelector('.screen.game')) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
+      profileStale = false;
+      if (sent > 0 && !app.querySelector('.screen.game')) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
     } catch {
       // 프로필을 못 읽었다: 다음 기회에 다시 읽는다 (resend 가 받은 프로필은 onProfile 로 이미 반영된다)
     } finally {
@@ -74,6 +80,9 @@ function resendPending() {
   })();
 }
 window.addEventListener('online', () => resendPending());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && profileStale) resendPending();
+});
 
 /**
  * 판 열기: ① 보류해 둔 결과를 먼저 올린다 (실패해도 시작은 한다 — 서버가 열린 판을 정리할 때 다시 보낼 판이 지워지지 않게)
@@ -277,6 +286,7 @@ async function start() {
       });
     }
   } catch {
+    profileStale = !!api;
     toast('서버에 연결하지 못했어요. 지금은 기록되지 않아요', 3600);
   }
   state.squad = loadSquad();

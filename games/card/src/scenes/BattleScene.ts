@@ -132,6 +132,8 @@ export class BattleScene extends Phaser.Scene {
   private ui!: Phaser.GameObjects.Container;
   private hud!: Phaser.GameObjects.Container;
   private tip!: Phaser.GameObjects.Container;
+  /** 말풍선을 닫는 타이머 (새 말풍선·더미 보기를 열 때 앞 타이머를 지운다) */
+  private tipTimer: Phaser.Time.TimerEvent | null = null;
   private busy = false;
   /** 달빛 구슬: 턴 끝에 손에 남길 카드를 고르는 중 */
   private keepPick = false;
@@ -838,6 +840,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showPile(title: string, cards: BCard[]) {
+    this.tipTimer?.remove();
+    this.tipTimer = null;
     this.tip.removeAll(true);
     const g = this.add.graphics();
     g.fillStyle(COLOR.outline, 0.55);
@@ -859,14 +863,18 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showTip(s: string) {
+    this.tipTimer?.remove();
     this.tip.removeAll(true);
-    const t = this.add.text(W / 2, 108, s, { fontFamily: FONT, fontSize: '14px', color: '#ffffff', align: 'center', wordWrap: { width: W - 60 } }).setOrigin(0.5, 0);
+    const t = this.add.text(W / 2, 108, s, { fontFamily: FONT, fontSize: '14px', color: css(COLOR.white), align: 'center', wordWrap: { width: W - 60 } }).setOrigin(0.5, 0);
     const g = this.add.graphics();
     g.fillStyle(COLOR.outline, 0.9);
     g.fillRoundedRect(W / 2 - t.width / 2 - 12, 100, t.width + 24, t.height + 16, 12);
     this.tip.add(g);
     this.tip.add(t);
-    this.time.delayedCall(2600, () => this.tip.removeAll(true));
+    this.tipTimer = this.time.delayedCall(2600, () => {
+      this.tipTimer = null;
+      this.tip.removeAll(true);
+    });
   }
 
   // ---------- 그리기 ----------

@@ -226,6 +226,8 @@ export function startApp(opts: AppOpts) {
       // 보관만 한 판: 다시 보내면 들어갈 기록이라 기기에서만 먼저 올려 둔다
       info = { ...info, best: Math.max(info.best, st.score), weekBest: Math.max(info.weekBest, st.score) };
     }
+    // 결과를 기다리는 사이 [다시 하기]로 새 판을 열었으면 그 판의 '최고 기록!' 기준도 새 최고로
+    if ((phase as Phase) === 'play' && G !== st && !passedBest) bestAtStart = Math.max(bestAtStart, info.best);
     if ((phase as Phase) === 'home') renderHome();
     if (phase !== 'result' || G !== st) return;
     lastResult = res;
@@ -238,6 +240,7 @@ export function startApp(opts: AppOpts) {
     if (waiting) rankLine = '<div class="note">기록을 확인하는 중…</div>';
     else if (res && !res.verified) rankLine = '<div class="note bad">기록이 서버 계산과 달라 랭킹에 넣지 않았어요</div>';
     else if (res) rankLine = `<div class="ranks"><span>전체 <b>${res.rank ? res.rank + '위' : '-'}</b></span><span>이번 주 <b>${res.weekRank ? res.weekRank + '위' : '-'}</b></span></div>`;
+    else if (why === 'old rules') rankLine = '<div class="note bad">새 버전이 있어요. 새로고침하면 다음 판부터 기록돼요</div>';
     else if (why) rankLine = '<div class="note bad">이 판은 기록되지 않았어요</div>';
     else rankLine = '<div class="note">연결이 끊겨 기록을 보관했어요. 다음에 다시 보낼게요</div>';
     const coin = res?.gotCoin ? `<div class="coin">🪙 시아코인 +1 (모두 ${fmt(res.siaCoins)})</div>` : '';
@@ -500,11 +503,11 @@ export function startApp(opts: AppOpts) {
       for (const [dr, dc] of a.sh.cells) {
         const r = a.r + dr, c = a.c + dc;
         if (a.ok) x.drawImage(tile(a.spirit, S, dpr), c * S, r * S, S, S);
-        else { x.fillStyle = 'rgba(255,90,90,0.7)'; rr(x, c * S + 3, r * S + 3, S - 6, S - 6, S * 0.18); x.fill(); }
+        else { x.fillStyle = css(COLOR.lose); rr(x, c * S + 3, r * S + 3, S - 6, S - 6, S * 0.18); x.fill(); }
       }
       x.globalAlpha = 1;
       if (kb) {
-        x.strokeStyle = a.ok ? WHITE : '#FF8A8A'; x.lineWidth = 3;
+        x.strokeStyle = a.ok ? WHITE : css(COLOR.lose); x.lineWidth = 3;
         for (const [dr, dc] of a.sh.cells) { rr(x, (a.c + dc) * S + 2, (a.r + dr) * S + 2, S - 4, S - 4, S * 0.18); x.stroke(); }
       }
       // 지워질 줄 반짝임
@@ -556,7 +559,7 @@ export function startApp(opts: AppOpts) {
       drawPiece(x, sh, p.spirit, left, top, cell, !fits, TS);
       x.globalAlpha = 1;
       if (kb && kb.slot === i) { x.strokeStyle = WHITE; x.lineWidth = 3; rr(x, i * sw + 6, 4, sw - 12, TH - 8, 14); x.stroke(); }
-      if (FINE) { x.font = '13px Jua, sans-serif'; x.textAlign = 'center'; x.fillStyle = 'rgba(42,26,16,0.35)'; x.fillText(String(i + 1), i * sw + 12, 14); }
+      if (FINE) { x.font = '13px Jua, sans-serif'; x.textAlign = 'center'; x.fillStyle = css(COLOR.outline); x.globalAlpha = 0.35; x.fillText(String(i + 1), i * sw + 12, 14); x.globalAlpha = 1; }
     }
   }
   /** 끄는 층에 지난 프레임에 그린 게 있나 (없으면 지우지 않는다) */

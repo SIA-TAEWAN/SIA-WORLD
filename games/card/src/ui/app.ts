@@ -432,7 +432,12 @@ async function showDailyIntro() {
   });
   on(s, '#go', () => {
     if (cont && !confirm('진행 중인 오늘의 도전 판이 사라져요. 새로 시작할까요?')) return;
-    void startRun('daily', d.hero, 0, { day, seed: d.seed });
+    void startRun('daily', d.hero, 0, { day, seed: d.seed }).then(async () => {
+      // 자정이 지나 날짜가 바뀌었다: 새 날짜로 이 화면을 다시 그린다 (옛 날짜 단추가 계속 실패하지 않게)
+      if (lastStartError !== 'bad day' || !s.isConnected) return;
+      await refreshState();
+      if (s.isConnected) void showDailyIntro();
+    });
   });
 }
 
@@ -703,9 +708,12 @@ async function buyCat(redraw: () => void) {
 let starting = false;
 /** 직전 card_start 가 시간초과·통신 실패로 끝난 판 (모드:영웅:날짜). 같은 판을 다시 누를 때만 p_retry=true (119) */
 let failedStart: string | null = null;
+/** 마지막 시작이 서버에서 거절된 까닭 (없으면 null) */
+let lastStartError: string | null = null;
 async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { day: string; seed: number }) {
   if (starting) return;
   starting = true;
+  lastStartError = null;
   try {
     let runId: string | null = null;
     let started: ServerRun | null = null;
@@ -717,6 +725,9 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
     } else {
       await ctx.ready;
       if (!ctx.api) return toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요');
+      // 지난 판 기록을 먼저 보낸다: 새 판을 시작하면 서버가 같은 모드의 진행 중인 판을 버려, 늦게 닿은 기록은 받지 않는다
+      await ctx.api.flush().catch(() => 0);
+      if (ctx.api.hasPending() && !confirm('지난 판 기록을 아직 보내지 못했어요. 새로 시작하면 그 기록은 사라질 수 있어요. 시작할까요?')) return;
       const startKey = `${mode}:${hero}:${daily?.day ?? ''}`;
       const retry = failedStart === startKey;
       failedStart = null;
@@ -731,6 +742,7 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
         if (r.startGold != null) toast(`관리자 시험 판: 엽전 ${r.startGold.toLocaleString()} 으로 시작해요`, 2400);
         if (r.paidCoins) toast(`지난 판에서 못 받은 시아코인 +${r.paidCoins}`, 2400);
       } catch (e) {
+        if (e instanceof ApiError) lastStartError = e.message;
         if (e instanceof ApiError && e.message === 'bad day') void refreshState();
         // 거절(ApiError)이 아니면 서버에선 판이 만들어졌을 수 있다 → 다음에 같은 판을 누르면 그 판을 돌려받는다
         else if (!(e instanceof ApiError)) failedStart = startKey;

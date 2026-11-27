@@ -212,8 +212,10 @@ function startLifeLine() {
 }
 /** 목숨이 없으면 알려 주고 false */
 let finishing = null;   // 보내는 중인 결과 (다음 판은 이 답을 받은 뒤 목숨을 센다)
+let pendingSend = null; // 통신이 끊겨 못 보낸 결과 (결과 창을 떠나도 다음 판 전에 다시 보낸다)
 async function needLife() {
   if (finishing) await finishing;
+  if (pendingSend) { const s = pendingSend; pendingSend = null; s(); if (finishing) await finishing; }
   tickLives();
   if (admin || lives >= 1) return true;
   await syncLives();   // 화면 시계가 틀렸을 수 있다 (서버가 정한다)
@@ -275,13 +277,15 @@ function showResult(win) {
   let tries = 0;
   const send = () => {
     tries++;
+    tickLives(); const livesBefore = lives;
     if (line && line.isConnected) line.textContent = '기록을 보내는 중…';
+    pendingSend = null;
     finishing = api.finish(run, id, win, score, swaps).then(r => {
       save.stars[id] = Math.max(save.stars[id] || 0, r.stars); save.best[id] = Math.max(save.best[id] || 0, r.best);
       if (Number.isFinite(r.siaCoins)) siaCoins = r.siaCoins;
       if (!admin) takeLives(r.lives, r.nextLife);
       if (r.gotCoin) sfx('coin');
-      if (line && line.isConnected) line.textContent = (r.gotCoin ? '🪙 시아코인 +1' : '기록을 저장했어요') + (r.lifeBack && !admin ? ' · ❤️ 목숨 +1' : '');
+      if (line && line.isConnected) line.textContent = (r.gotCoin ? '🪙 시아코인 +1' : '기록을 저장했어요') + (r.lifeBack && !admin && Number(r.lives) > livesBefore ? ' · ❤️ 목숨 +1' : '');
     }).catch(async err => {
       const why = err && err.message;
       const rejected = ['too fast', 'bad run', 'bad score'].includes(why);
@@ -289,6 +293,7 @@ function showResult(win) {
         try { takeState(await api.state()); } catch { /* 그대로 */ }
         if (!G) renderMap();
       }
+      if (!rejected) pendingSend = send;   // 통신 오류: 결과 창을 떠나도 다음 판 전에 다시 보낸다
       if (!line || !line.isConnected) return;
       // 다시 보내기에서 온 'bad run': 첫 번째가 시간초과였지만 서버는 이미 저장했을 수 있다 (서버 기록으로 확인)
       const savedBefore = why === 'bad run' && tries > 1 && (!win || ((save.stars[id] || 0) >= st && (save.best[id] || 0) >= score));
@@ -355,6 +360,7 @@ async function startStage(id) {
   catch (err) {
     starting = false;
     const why = err && err.message;
+    if (why === 'locked stage') { api.state().then(st => { takeState(st); if (!G) renderMap(); }).catch(() => {}); }
     if (why === 'no lives') { lives = 0; if (!lifeAt) lifeAt = Date.now() + REGEN_SEC * 1000; api.state().then(st => takeLives(st.lives, st.nextLife)).catch(() => {}); }
     popup('<h3>시작하지 못했어요</h3><div class="chap">' + (why === 'locked stage' ? '아직 열리지 않은 스테이지예요' : why === 'no lives' ? '목숨이 없어요. 20분마다 1개씩 차요' : '인터넷 연결을 확인하고 다시 시도해 주세요') + '</div><div class="row"><button class="btn primary" data-a="ok">확인</button></div>', p => { p.querySelector('[data-a=ok]').onclick = () => { closePop(); toMap(); }; });
     return;
@@ -587,7 +593,7 @@ let nextPhase = 'idle';
 function later(t, p) { wait = t; nextPhase = p; phase = 'wait'; }
 function afterSettle(r) {
   if (r === 'idle') { phase = 'idle'; idle = 0; }
-  else if (r === 'shuffle') { sfx('deal'); floatText('섞는 중', BW / 2, BH / 2, 28); for (const sp of sprites.values()) sp.pop = 1; later(0.8, 'idle'); }
+  else if (r === 'shuffle') { sfx('deal'); floatText('섞는 중', BW / 2, BH / 2, 28); for (const sp of sprites.values()) sp.pop = 1; later(0.8, 'resolve'); }
   else if (r === 'win') { sfx('goal'); floatText('목표 달성!', BW / 2, BH * 0.4, 34, GOLD_LIGHT); if (G.moves > 0) floatText('보너스 타임', BW / 2, BH * 0.55, 24, CREAM); later(1.1, 'bonus'); }
   else if (r === 'bonus') phase = 'bonus';
   else if (r === 'done') later(0.6, 'resultWin');

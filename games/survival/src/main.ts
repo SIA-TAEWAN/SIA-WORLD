@@ -9,7 +9,21 @@ import { showCharSelect, showMain, showMapSelect } from './ui/menus';
 import { showResult } from './ui/result';
 import { showUpgrade } from './ui/upgrade';
 
-nav.main = showMain;
+/** 입장 때 프로필을 읽었나. 못 읽었으면(엽전 0·강화 없음으로 보인다) 메인 화면·판 시작 전에 다시 읽는다 */
+let profileOk = false;
+async function ensureProfile(): Promise<void> {
+  if (profileOk || !state.api) return;
+  try {
+    setProfile(await state.api.loadProfile());
+    profileOk = true;
+  } catch {
+    /* 다음 기회에 */
+  }
+}
+nav.main = () => {
+  showMain();
+  void ensureProfile();
+};
 nav.select = showCharSelect;
 nav.maps = showMapSelect;
 nav.upgrade = showUpgrade;
@@ -24,7 +38,8 @@ nav.game = (setup) => {
   starting = true;
   // 지난번에 올리지 못한 결과가 있으면 지금 올린다 (판 시작은 기다리지 않는다)
   void state.api?.resend().catch(() => 0);
-  void loadEngine()
+  void ensureProfile()
+    .then(() => loadEngine())
     .then(
       // 오늘의 도전은 조건이 정해진 판이라 개발용 설정을 얹지 않는다
       (m) => m.showGame(setup.daily ? setup : { ...setup, upg: setup.upg ?? dev?.upg ?? undefined, startAt: setup.startAt ?? (dev?.t || undefined) }),
@@ -108,6 +123,7 @@ async function start() {
     // 지난번에 올리지 못한 판 결과가 있으면 먼저 다시 보낸다
     const sent = await api.resend().catch(() => 0);
     setProfile(await api.loadProfile());
+    profileOk = true;
     if (sent > 0) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
   } catch {
     toast('서버에 연결하지 못했어요. 지금은 기록되지 않아요', 3600);

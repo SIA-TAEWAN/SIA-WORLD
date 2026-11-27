@@ -598,7 +598,8 @@ export class GameScene extends Phaser.Scene {
     this.quitBtn.textContent = '나가기';
     this.quitBtn.onclick = () => {
       // 혼자 하는 판: 승패가 난 뒤(결과 화면으로 넘어가기 직전)에는 나가지 않는다 (끝난 판이 '도중에 나간 판'이 되지 않게)
-      if (!cfg.net && this.phase === 'over') return;
+      // 함께 하는 판도 마찬가지: 끝난 판에서 나가면 정산(end_game)·시아코인을 놓친다
+      if (this.phase === 'over') return;
       if (cfg.net) {
         if (confirm('게임에서 나갈까요? 30초 뒤에는 AI가 대신 조종하고 다시 들어올 수 없어요.')) cfg.onQuit();
         return;

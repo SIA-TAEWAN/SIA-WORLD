@@ -108,6 +108,8 @@ export interface CardApi {
   flush(): Promise<number>;
   /** 이 판의 업로드가 아직 보관 중인지 */
   pending(runId: string): boolean;
+  /** 보관 중인 업로드가 하나라도 있는지 */
+  hasPending(): boolean;
 }
 
 const asNum = (v: unknown, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
@@ -250,6 +252,9 @@ export function createApi(sb: SupabaseClient | ServerClient, uid: string, store:
     },
     pending(runId) {
       return read().some((p) => p.runId === runId);
+    },
+    hasPending() {
+      return read().length > 0;
     },
   };
 }

@@ -6,7 +6,7 @@ import Phaser from 'phaser';
 import { endingBgUrl, enemySheet, orbIcons, preloadOrbIcons, tileSheet } from '../art/load';
 import { FLOORS, ITEMS, LAST_READY, ORBS, SHARDS_TO_AWAKEN, TOTAL_FLOORS, ZONE_SIZE, enemyDef, expNeed, floorReady, floorRule, itemDef, orbDef, priceOf, statsAt, zoneData, type ItemId } from '../data';
 import { generateFloor } from '../game/floorgen';
-import { awakenWithShards, buy, clearFloor, climbAgain, clone, die, equipOrb, isLook, sameLook, towerDone, type Look, type TowerData } from '../game/progress';
+import { awakenWithShards, buy, clearFloor, climbAgain, clone, die, equipOrb, isLook, isReplay, sameLook, towerDone, type Look, type TowerData } from '../game/progress';
 import { canAwaken, createRun, equippedOrb, interactLabel, interactTarget, maxHp, maxMp, plateLeft, useItem, type RunState, type SimEvent } from '../game/sim';
 import { ApiError, type TowerApi } from '../net/api';
 import { DEV_AWAKEN, DEV_COINS, DEV_ENDING, DEV_FLOOR, DEV_GOD, DEV_LEVEL, DEV_ORBS, DEV_RESET, DEV_SHARDS, LOCAL_MODE } from '../net/local';
@@ -151,6 +151,7 @@ function title() {
           <div class="cp-grid">${cps.map((f) => `<button class="btn small ${f === d.checkpoint ? 'on' : ''}" data-cp="${f}">${f}층</button>`).join('')}</div></div>
           <div class="row2"><button class="btn primary" id="last">100층 다시 ▶</button><button class="btn" id="ending">🌟 엔딩 다시 보기</button></div>`
           : ready ? `<button class="btn primary big" id="go">${d.floor}층부터 오르기 ▶</button>` : `<div class="card soon-card"><b>${d.floor}층부터는 아직 준비 중이에요</b><p class="soft">${d.checkpoint}층 체크포인트가 저장되어 있어요. 곧 열려요!</p></div>
+          ${d.floor < d.checkpoint ? `<button class="btn big" id="to-cp">${d.checkpoint}층(체크포인트)으로 돌아가기</button>` : ''}
           <button class="btn big" id="replay">1층부터 다시 오르기 <small>경험치 절반</small></button>`}
         <div class="row2">
           <button class="btn" id="look">👕 외형 바꾸기</button>
@@ -167,6 +168,15 @@ function title() {
   $('#go', app())?.addEventListener('click', () => {
     sfx('click');
     play();
+  });
+  // 1층부터 다시 오르다 그만둘 때: 체크포인트로 돌아간다 (쓰러져도 그 층에 남으니 돌아갈 길)
+  document.getElementById('to-cp')?.addEventListener('click', () => {
+    sfx('click');
+    const d2 = clone(ctx.data);
+    d2.floor = d2.checkpoint;
+    ctx.data = d2;
+    void saveNow(d2);
+    title();
   });
   document.getElementById('replay')?.addEventListener('click', () => {
     sfx('click');
@@ -1049,7 +1059,7 @@ function onDead(s: RunState) {
           <div><span>레벨</span><b>Lv ${data.level}</b></div>
           <div><span>엽전</span><b class="coin">${coinFmt(data.coins)}냥</b></div>
         </div>
-        <p class="soft center">이미 깬 층은 경험치가 절반이에요</p>
+        ${isReplay(data, data.floor) ? '<p class="soft center">이미 깬 층이라 경험치가 절반이에요</p>' : ''}
         <div class="btns">
           <button class="btn primary big" id="again">${data.floor}층 다시 ▶</button>
           <button class="btn" id="home">처음 화면</button>

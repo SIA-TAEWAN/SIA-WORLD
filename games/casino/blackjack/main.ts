@@ -438,7 +438,7 @@ const ui: GameUI<BjPublic, Record<string, never>> = {
     if (ev.t === 'dealer_blackjack') return '딜러 블랙잭';
     if (ev.t === 'result' && ev.seat === t.mySeat) {
       const s = t.pub?.seats.find((x) => x.seat === t.mySeat);
-      if (s?.hands.some((h) => h.doubled && h.result === 'win')) return '더블다운 승리!';
+      if (Number((ev as { delta?: unknown }).delta) > 0 && s?.hands.some((h) => h.doubled && h.result === 'win')) return '더블다운 승리!';
     }
     return null;
   },

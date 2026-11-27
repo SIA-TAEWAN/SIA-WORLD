@@ -720,6 +720,7 @@ function killEnemy(s: RunState, e: Enemy) {
     // 보스가 쓰러지면 부하와 남은 예고도 사라진다
     for (const o of s.enemies) if (o.summoned && !o.dead) killEnemy(s, o);
     s.warns.length = 0;
+    s.pools.length = 0; // 남은 독 웅덩이·불길도 치운다 (보스를 잡고 출구로 가다 쓰러지지 않게)
     for (const sh of s.shots) if (sh.foe) sh.on = false;
   } else {
     s.killed++;

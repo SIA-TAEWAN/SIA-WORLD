@@ -187,11 +187,19 @@ export function showResult(r: GameResult) {
       root.querySelector('#unlocks')!.innerHTML = lines.join('');
     }
   });
-  root.querySelector('#again')!.addEventListener('click', () => {
+  let going = false;
+  root.querySelector('#again')!.addEventListener('click', async () => {
+    if (going) return;
     sfx('click');
     // 같은 캐릭터·맵·모드로 새 판 (개발용 설정도 그대로, 시드만 새로)
     // 오늘의 도전은 같은 조건(시드도 같다)으로. 자정이 지났으면 새 날의 도전 화면으로 간다
-    if (daily) return void startDaily(daily);
+    if (daily) {
+      // 날짜를 묻는 동안 두 번 누르기 · 다른 화면으로 떠나기를 막는다
+      going = true;
+      await startDaily(daily, () => root.isConnected);
+      going = false;
+      return;
+    }
     nav.game({ ...r.setup, seed: undefined });
   });
   root.querySelector('#upgrade')?.addEventListener('click', () => {

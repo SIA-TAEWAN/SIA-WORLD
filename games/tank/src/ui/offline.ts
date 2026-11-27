@@ -228,7 +228,7 @@ export function showSetup() {
       .map((id) => {
         const m = id === 'random' ? null : MAPS[id];
         // 맵 썸네일: SpriteCook 배경 그림 + 아래쪽을 어둡게 해서 흰 글자가 읽히게
-        const bg = m ? `linear-gradient(#2a1a1040, #2a1a10b0), url(${mapBgUrl(id, true)}) center / cover` : 'linear-gradient(135deg,#8ec5ff,#ffd38a)';
+        const bg = m ? `linear-gradient(#2a1a1040, #2a1a10b0), url(${new URL(mapBgUrl(id, true), location.href).href}) center / cover` : 'linear-gradient(135deg,#8ec5ff,#ffd38a)';
         return `<button class="map ${state.map === id ? 'sel' : ''}" data-id="${id}" style="--bg:${bg}">
           <span class="mn">${m ? m.name : '랜덤'}</span><small>${m ? m.desc : '셋 중 하나를 무작위로'}${m?.practice ? '<br><b>🐔 꼬꼬댁 · 깃털탄만 · 혼자 과녁 맞히기</b>' : m?.lockTank ? '<br><b>🐶 모두 멍뭉이 · 2번 땅파기탄만</b>' : ''}</small></button>`;
       })
@@ -452,7 +452,7 @@ export function showResult(s: MatchSummary, actions?: ResultActions, record: Pro
   const root = screen(
     `<div class="result-card">
       <div class="trophy">${s.winner === -1 ? '🤝' : vsAi ? (meWon ? '🏆' : '💥') : '🏆'}</div>
-      <h2 style="color:${s.winner === -1 ? '#fff' : TEAM_COLORS[s.winner]}">${winText}</h2>
+      <h2 style="color:${s.winner === -1 ? 'var(--cream)' : TEAM_COLORS[s.winner]}">${winText}</h2>
       <p class="sub">${vsAi ? (meWon ? '멋진 포격이었어요!' : '아깝다! 바람을 다시 계산해볼까요?') : ''} · ${s.turns}턴</p>
       <div class="result-body ${s.awards?.length ? 'two' : ''}">
       <table class="score">
