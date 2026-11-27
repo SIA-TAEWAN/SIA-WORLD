@@ -69,6 +69,8 @@ export const PATTERNS = {
   },
   spiral4: (sim: Sim, x: number, y: number, t: number) => spiral(sim, x, y, 3.4, 4, t),
   laser: (sim: Sim, x: number, y: number) => laser(sim, x, y, 7),
+  /** 게 집게: 아래로 넓게 퍼지는 7-way */
+  clawFan: (sim: Sim, x: number, y: number) => nway(sim, x, y, 3.8, 7, 1.3, Math.PI / 2),
 } satisfies Record<string, (sim: Sim, x: number, y: number, t: number) => void>;
 
 export type PatternName = keyof typeof PATTERNS;

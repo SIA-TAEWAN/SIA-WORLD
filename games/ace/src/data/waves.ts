@@ -16,10 +16,29 @@ export interface Wave {
   fire?: PatternName;
   fireEvery?: number;
 }
-export interface WaveScript { length: number; waves: Wave[] }
+export interface WaveScript {
+  /** 등장표 길이 (초). 다 지나면 남은 적이 사라진 뒤 보스 */
+  length: number;
+  waves: Wave[];
+  /** 중간 보스: at 초에 나오고, 처리할 때까지 등장표가 멈춘다 */
+  midboss?: { at: number; id: string };
+  boss?: string;
+  /** 끝나면 처음부터 다시 (M1 시험 비행·끝없는 모드) */
+  loop?: boolean;
+  /** 이 스테이지의 탄 속도 배율 (튜토리얼은 느리게) */
+  bulletSpeed?: number;
+}
+export interface StageDef extends WaveScript {
+  id: number;
+  name: string;
+  animal: string;
+  floor: string;
+  sea?: 'left' | 'right';
+}
 
 export const PROTO: WaveScript = {
   length: 72,
+  loop: true,
   waves: [
     { at: 1.5, kind: 'small', path: 'dive', x: 0.3, count: 5, gap: 14 },
     { at: 4, kind: 'small', path: 'dive', x: 0.7, count: 5, gap: 14 },
