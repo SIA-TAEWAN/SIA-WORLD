@@ -8,7 +8,7 @@ const read = (f: string) => readFileSync(new URL(f, MIG), 'utf8').replace(/\r\n/
 const shared = (f: string) => readFileSync(new URL(`../../../shared/${f}`, import.meta.url), 'utf8');
 const files = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
 /** 카드배틀 마이그레이션 (뒤의 것이 앞의 정의를 create or replace 로 바꾼다) */
-const CARD_FILES = ['112_card.sql', '114_card_tune.sql'];
+const CARD_FILES = ['112_card.sql', '114_card_tune.sql', '116_card_elite.sql'];
 
 /** 함수의 마지막 정의 (create or replace — 가장 늦은 마이그레이션이 이긴다) → 본문, 파일 */
 function lastDef(fn: string): { body: string; from: string } {

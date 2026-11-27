@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apply, enterTestBattle, newRun, type Battle, type RunState } from '../src/game/rules';
+import { apply, enterTestBattle, foeDamage, newRun, type Battle, type RunState } from '../src/game/rules';
 import { playBattle } from './bot';
 
 function setup(foes: string[], seed = 7, relics: string[] = []) {
@@ -272,11 +272,35 @@ describe('보스', () => {
     expect(f.hp).toBe(hp - 6);
   });
 
-  it('정예로 나오면 체력 60%', () => {
+  it('정예로 나오면 체력 60% (eliteMod 가 있으면 그 값 — 9단계)', () => {
     const run = newRun({ seed: 1, hero: 'tiger' });
-    enterTestBattle(run, ['gumiho'], 'elite');
-    expect(run.battle!.foes[0].maxHp).toBe(78);
+    enterTestBattle(run, ['centipede'], 'elite');
+    expect(run.battle!.foes[0].maxHp).toBe(81); // 135 × 60%
     expect(run.battle!.foes[0].elite).toBe(true);
+    const r2 = newRun({ seed: 1, hero: 'tiger' });
+    enterTestBattle(r2, ['gumiho'], 'elite');
+    expect(r2.battle!.foes[0].maxHp).toBe(72); // 130 × 55% (71.5 → 72)
+  });
+
+  it('9단계: 정예 전용 공격 배율 (eliteMod.dmg) — 막 보스로 만나면 그대로', () => {
+    const elite = newRun({ seed: 1, hero: 'dog' });
+    enterTestBattle(elite, ['bigDokkaebi'], 'elite');
+    const boss = newRun({ seed: 1, hero: 'dog' });
+    enterTestBattle(boss, ['bigDokkaebi'], 'boss');
+    const fe = elite.battle!.foes[0];
+    const fb = boss.battle!.foes[0];
+    expect(fe.maxHp).toBe(83); // 150 × 55% (82.5 → 83)
+    expect(fb.maxHp).toBe(150);
+    expect(foeDamage(elite.battle!, fe, 11)).toBe(8); // 11 × 80% = 8.8 → 8
+    expect(foeDamage(boss.battle!, fb, 11)).toBe(11);
+    // (호랑이는 시작에 약화를 걸어 개로 잰다) 공격을 키운 정예 (야광귀 125%) · eliteMod 없는 정예는 그대로
+    const y = newRun({ seed: 1, hero: 'dog' });
+    enterTestBattle(y, ['yagwanggwi'], 'elite');
+    expect(y.battle!.foes[0].maxHp).toBe(300); // 400 × 75%
+    expect(foeDamage(y.battle!, y.battle!.foes[0], 20)).toBe(25);
+    const c = newRun({ seed: 1, hero: 'dog' });
+    enterTestBattle(c, ['centipede'], 'elite');
+    expect(foeDamage(c.battle!, c.battle!.foes[0], 5)).toBe(5);
   });
 });
 

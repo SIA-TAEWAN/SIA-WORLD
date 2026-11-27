@@ -15,7 +15,7 @@ import type { DeckCard, FoeMods, Input, RewardItem, RunState, Shop, SimEvent } f
 import type { EvOp, NodeType } from './types.ts';
 
 /** 규칙 판본 — 같은 입력이 다른 결과를 내게 규칙을 바꾸면 올린다 (저장한 판·서버 검증이 같은 판본끼리만 맞는다) */
-export const RULES_VERSION = 6;
+export const RULES_VERSION = 7;
 /** 덱 최소 장수 (그 아래로 없애기 불가) */
 export const MIN_DECK = 5;
 export { EASY_BATTLES, FINAL_ELITES };

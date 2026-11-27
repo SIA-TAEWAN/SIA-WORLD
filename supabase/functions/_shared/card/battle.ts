@@ -84,7 +84,8 @@ function addFoe(b: Battle, id: string, elite: boolean): Foe {
   const d = enemyDef(id);
   const r = rngOf(b, 'ai');
   let hp = d.hp[0] === d.hp[1] ? d.hp[0] : r.int(d.hp[0], d.hp[1]);
-  if (elite && d.boss) hp = Math.round(hp * 0.6);
+  // 정예로 나온 보스: 체력 60% (보스마다 eliteMod.hp 로 따로 정할 수 있다)
+  if (elite && d.boss) hp = d.eliteMod?.hp !== undefined ? Math.round((hp * d.eliteMod.hp) / 100) : Math.round(hp * 0.6);
   // 끝없는 모드 막마다 · 숙련 1(정예) · 숙련 5(막 보스)
   const m = b.mods;
   if (m) {
@@ -804,6 +805,11 @@ export function foeDamage(b: Battle, f: Foe, base: number, run?: RunState): numb
   // 숙련 2: 일반 전투 요괴 공격 +1 (공격 한 번마다)
   let n = base + f.str + (m && b.kind === 'battle' && base > 0 ? m.add : 0);
   let mult = m ? m.dmg : 1;
+  // 정예로 나온 보스의 공격 배율 (eliteMod.dmg %)
+  if (f.elite) {
+    const ed = enemyDef(f.id).eliteMod?.dmg;
+    if (ed !== undefined) mult *= ed / 100;
+  }
   if ((f.st.weak ?? 0) > 0) mult *= 0.75;
   if ((b.st.wet ?? 0) > 0) mult *= 1.5;
   if (run && phaseOf(enemyDef(f.id), f.phase).passive === 'execute' && run.hp * 10 <= run.maxHp * 3) mult *= 2;

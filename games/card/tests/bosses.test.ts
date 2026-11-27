@@ -380,9 +380,9 @@ describe('숨은 최종보스 어둑시니', () => {
     expect(ev3.find((e) => e.e === 'phase')).toMatchObject({ n: 3 });
   });
 
-  it('정예로 나온 보스는 체력 60%, 막 보스가 아니다', () => {
+  it('정예로 나온 보스는 체력 60%(염라대왕은 eliteMod 65%), 막 보스가 아니다', () => {
     const { f } = boss('yeomra', 'elite');
-    expect(f.maxHp).toBe(198); // 330 × 0.6
+    expect(f.maxHp).toBe(215); // 330 × 65% (214.5 → 215, 9단계)
     expect(f.elite).toBe(true);
     expect(f.boss).toBeFalsy();
   });
