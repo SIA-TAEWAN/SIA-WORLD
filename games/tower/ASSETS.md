@@ -50,6 +50,7 @@ asset id 는 `games/tower/spritecook-assets.json`. 만드는 방법은 이 문�
 - 1~10층 테마 "탑의 입구(돌 복도)": 바닥 `--roulette-winter`, 벽 `--ink-soft`/`--empty-line`, 테두리 `--outline` (DESIGN.md 의 기존 색만).
 - 손그림: `switch`·`switchOn`·`vine` 은 물 위에 놓이는 칸이라 바탕이 물이고, 나머지 물건 칸은 바탕이 돌바닥이다 (칸은 모두 불투명).
 - 뒤에 붙은 5칸 (그때 27칸 = 432×16 — 지금 시트는 아래 칸까지 모두 **43칸 = 688×16**): `plate` 발판 · `plateOn` 눌린 발판(노랗게 빛남) · `brazier` 꺼진 화로 · `brazierLit` 불붙은 화로 · `post` 물가 말뚝(쇠고리). 바탕은 그 테마의 바닥.
+- `chestOpen` 은 열 장 모두 `art/chest_open.py` 가 같은 시트의 `chest` 칸에서 그린다 (뒤로 젖힌 뚜껑의 안쪽 면 · 어두운 빈 속 · 닫힌 상자와 같은 몸통, 색은 닫힌 칸의 것). `build.py` · `draw.py` 가 시트를 만들 때 부르고, `python games/tower/art/chest_open.py` 로 그 칸만 다시 그릴 수도 있다.
 - 테마마다 한 장: 1구역 `stone` = `tiles.png`, 다른 구역은 `tiles-<theme>.png` (floors.json 의 `theme`, `src/art/load.ts` 의 `tileFile`). 칸 순서는 같다.
 
 - 3~5구역에서 붙은 8칸 (모두 35칸 = **560×16**, 다섯 시트 모두 같은 순서): `coldWater` 찬물(밝은 물 + 살얼음 금) · `ice` 얼음판(흰 판 + 빗금, 걸을 수 있다) · `bell` 풍경(나무 틀에 매달린 종 + 종이 물고기) · `bellOn` 울리는 풍경(노랗게 빛나고 옆으로 흔들림) · `gong` 징(나무 틀의 둥근 놋쇠판) · `gongOn` 울리는 징(밝아지고 둘레에 물결) · `boulder` 둥근 바위(둥글고 줄무늬 — 금 간 바위와 다르다) · `pit` 구덩이. 찬물·얼음은 테마와 상관없이 같은 그림, 나머지는 바탕이 그 테마의 바닥.

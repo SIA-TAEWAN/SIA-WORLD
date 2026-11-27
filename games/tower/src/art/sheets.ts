@@ -448,14 +448,23 @@ export function placeholderTiles(theme = 'stone'): HTMLCanvasElement {
         px(6, 14, 4, 2, css(COLOR.primary));
         break;
       case 'chest':
-      case 'chestOpen':
         floor();
         px(2, 5, 12, 10, css(COLOR.primaryDeep));
-        px(2, 5, 12, 2, k === 'chest' ? css(COLOR.inkSoft) : css(COLOR.outline));
+        px(2, 5, 12, 2, css(COLOR.inkSoft));
         px(2, 9, 12, 1, css(COLOR.inkSoft));
         px(7, 8, 2, 3, css(COLOR.primary));
         px(2, 14, 12, 1, C.outline);
-        if (k === 'chestOpen') px(3, 3, 10, 2, css(COLOR.inkSoft));
+        break;
+      case 'chestOpen': // 뚜껑을 뒤로 젖힌 빈 상자: 위에 뚜껑 안쪽 면, 그 아래 어두운 속, 몸통은 닫힌 상자와 같은 자리
+        floor();
+        px(3, 0, 10, 5, C.outline); // 뚜껑 (안쪽 면)
+        px(4, 1, 8, 4, css(COLOR.primaryDeep));
+        px(5, 2, 6, 3, css(COLOR.inkSoft));
+        px(7, 1, 2, 1, css(COLOR.primary)); // 풀린 걸쇠
+        px(2, 5, 12, 10, css(COLOR.primaryDeep)); // 몸통
+        px(2, 5, 12, 1, C.outline);
+        px(3, 6, 10, 3, C.outline); // 빈 속
+        px(2, 14, 12, 1, C.outline);
         break;
       case 'pedestal':
       case 'pedestalEmpty':
