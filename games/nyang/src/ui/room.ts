@@ -5,7 +5,7 @@
  * 4단계: 방을 옆으로 밀면 베란다 정원(veranda.ts), 상점 · 보관함(shop.ts), 사료 고르기(봉투를 누르면), 약 간식, SpriteCook 그림(art.ts — 실패하면 코드 그림).
  * 5단계: 꾸미기(deco.ts — 가구 배치 · 벽지 · 바닥 · 창문), 가구를 쓰는 고양이(behavior.ts), 추가 입양(첫 고양이 친밀도 4 · 7 · 10),
  *   여러 마리: 밥그릇 · 물그릇은 고양이마다 '밥 자리'에 나란히(그릇 아래 털 색 점), 화장실은 하나에 모두의 똥을 합쳐 보이고 덩어리마다 주인이 있다.
- *   사진(album.ts — 아래 띠 📷 · 정보 창) · 앨범 · 행동 도감(위 띠 📖).
+ *   사진(album.ts — 아래 띠 📷 · 정보 창) · 앨범 · 행동 도감 — 베란다 · 상점 · 꾸미기 · 사진 · 앨범 · 랭킹은 아래 엄지 띠(.nav).
  * 상태는 서버가 준 기록을 서버 시각으로 풀어서(game/rules.ts) 보여 준다. 돌보기는 모두 api 를 거친다.
  */
 import {
@@ -79,7 +79,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   root.innerHTML = `
     <div class="screen">
       <header class="topbar">
-        <a class="back" href="${o.worldHome}">← SIA WORLD</a><span class="spacer"></span>
+        <a class="back" href="${o.worldHome}" aria-label="SIA WORLD 로 돌아가기">←<span> SIA WORLD</span></a><span class="spacer"></span>
         <span class="pill" title="엽전"><i class="coin-ico"></i><b id="coins">0</b></span>
         <span class="pill" title="시아코인"><i class="sia-ico">S</i><b id="sia">0</b></span>
         ${o.openRanking ? '<button class="btn iconbtn" id="rankBtn" type="button" aria-label="집사 랭킹">🏆</button>' : ''}
@@ -103,9 +103,6 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       <div class="veranda" id="veranda"></div>
       </div>
       <div class="stage-ui">
-        <button class="btn stagebtn" id="goBtn" type="button">🌱<small>베란다</small></button>
-        <button class="btn stagebtn" id="shopBtn" type="button">🛒<small>상점</small></button>
-        <button class="btn stagebtn" id="decoBtn" type="button">🛋️<small>꾸미기</small></button>
         <button class="btn stagebtn adoptbtn hidden" id="adoptBtn" type="button">🐱<small>입양</small></button>
       </div>
       </main>
@@ -113,9 +110,17 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
         <div class="tray-main" id="trayRoom">
           <div class="bagslot"><div class="bag" id="bag" aria-label="사료 봉투">${bagArt()}<b class="bag-tag hidden" id="bagTag"></b></div><small id="bagName">사료</small></div>
           <div class="hint" id="hint"></div>
-          <button class="btn iconbtn cambtn" id="camBtn" type="button" aria-label="사진 찍기">📷</button>
           <button class="btn catbtn" id="catBtn" type="button"></button>
         </div>
+        <!-- 엄지가 닿는 아래 띠: 자주 쓰는 단추는 모두 여기 (위 띠에는 돌아가기 · 지갑 · 설정만) -->
+        <nav class="nav" aria-label="메뉴">
+          <button class="btn navbtn" id="goBtn" type="button">🌱<small>베란다</small></button>
+          <button class="btn navbtn" id="shopBtn" type="button">🛒<small>상점</small></button>
+          <button class="btn navbtn" id="decoBtn" type="button">🛋️<small>꾸미기</small></button>
+          <button class="btn navbtn" id="camBtn" type="button">📷<small>사진</small></button>
+          <button class="btn navbtn" id="albumBtn" type="button">📖<small>앨범</small></button>
+          ${o.openRanking ? '<button class="btn navbtn" id="rankBtn" type="button">🏆<small>랭킹</small></button>' : ''}
+        </nav>
         <div class="tray-main hidden" id="trayVeranda"></div>
         <div class="tray-scene hidden" id="trayScene"></div>
       </footer>
@@ -155,6 +160,11 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       foodKey: -1,
       waterKey: '',
     });
+  /** 📷 고르기 (여러 마리일 때 찍을 고양이를 누르는 중) — 아래 띠 단추도 켜 보인다 */
+  const setCamera = (on: boolean) => {
+    room.classList.toggle('camera', on);
+    root.querySelector('#camBtn')?.classList.toggle('on', on);
+  };
   }
   const bowlOf = (slot: number) => bowls.get(slot) ?? bowls.values().next().value!;
   const furnish = new Furnishing(room);
@@ -332,7 +342,8 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     $('#trayVeranda').classList.toggle('hidden', to !== 'veranda');
     $('#goBtn').innerHTML = to === 'room' ? '🌱<small>베란다</small>' : '🏠<small>방</small>';
     $('#decoBtn').classList.toggle('hidden', to !== 'room');
-    room.classList.remove('camera');
+    $('#camBtn').classList.toggle('hidden', to !== 'room');
+    setCamera(false);
     sfx('click');
     if (to === 'veranda') veranda.enter();
     else veranda.leave();
@@ -521,6 +532,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       const bl = blankets.get(v.slot)!;
       bl.style.width = `${w}px`;
       bl.style.height = `${w * 0.58}px`;
+      a.front = v.scene === 'churu' || v.scene === 'brush' || v.scene === 'treat';
       bl.style.transform = `translate(${sc.x - w / 2}px, ${sc.y - w * 0.5}px)`;
       bl.style.zIndex = String(Math.round(sc.y) + 1);
     }
@@ -914,7 +926,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
       if (room.classList.contains('camera')) {
         e.preventDefault();
         e.stopPropagation();
-        room.classList.remove('camera');
+        setCamera(false);
         return void takePhoto(v);
       }
       if (v.scene && v.scene !== 'social' && v.scene !== 'furn') return;
@@ -1214,7 +1226,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
   $('#camBtn').addEventListener('click', () => {
     if (busy || view !== 'room') return;
     if (views.length === 1) return void takePhoto(main);
-    room.classList.toggle('camera');
+    setCamera(!room.classList.contains('camera'));
     if (room.classList.contains('camera')) {
       toast('찍을 고양이를 눌러요');
       sfx('click');
@@ -1226,7 +1238,7 @@ export function showRoom(root: HTMLElement, o: RoomOpts) {
     if (busy || decoOn) return;
     if (view !== 'room') go('room');
     decoOn = true;
-    room.classList.remove('camera');
+    setCamera(false);
     $('.stage-ui').classList.add('hidden');
     openDeco({
       ctx, room, stage, furnish, geo,

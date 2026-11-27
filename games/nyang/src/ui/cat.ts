@@ -44,6 +44,10 @@ export class CatActor {
   lift = 0;
   /** 상자 속으로 가라앉기 (px, 화면): 그만큼 아래로 내리고 원래 바닥 아래는 잘라 낸다 */
   sink = 0;
+  /** 방석 · 쿠션 위에서 잘 때 가구보다 앞에 그린다 (걸어 나가면 0) */
+  bedLift = 0;
+  /** 츄르 · 빗질 · 풀 주기 연출 중: 가구보다 늘 앞에 (집사와 마주 보는 장면) */
+  front = false;
   /** 걸을 때 꼬리 세우고 통통 (따라다니기) */
   perky = false;
   /** 숨숨집 속에 숨었을 때 (그림을 감춘다) */
@@ -61,6 +65,9 @@ export class CatActor {
   private nextBlink = 0;
   private stepPhase = 0;
   private bubbleUntil = 0;
+  /** 말풍선 너비 (방 가장자리에서 잘리지 않게 안쪽으로 민다) · 꼬리 자리 */
+  private bubbleW = 0;
+  private bubbleDx = 0;
   /** 아플 때: 축 처지고 색이 살짝 푸르스름 */
   sick = false;
   /** 바닥 → 화면 좌표 (방 크기가 바뀌면 다시 받는다) */
@@ -105,7 +112,8 @@ export class CatActor {
     this.bubbleEl.textContent = text;
     this.bubbleEl.classList.remove('hidden');
     this.bubbleEl.classList.remove('pop');
-    void this.bubbleEl.offsetWidth;
+    this.bubbleW = this.bubbleEl.offsetWidth;
+    this.bubbleDx = NaN;
     this.bubbleEl.classList.add('pop');
     this.bubbleUntil = now + ms;
   }
@@ -236,12 +244,21 @@ export class CatActor {
     // 바뀐 것만 쓴다 (고양이 4마리 × 매 장면 — 쓸데없는 스타일 다시 계산을 줄인다)
     this.set(this.el, 'transform', `translate3d(${(x + sh + wig).toFixed(1)}px, ${(y - hop - lift).toFixed(1)}px, 0)`);
     this.set(this.el, 'clipPath', this.sink > 0 ? `inset(-3000px -3000px ${Math.round(this.sink)}px -3000px)` : '');
-    this.set(this.el, 'zIndex', String(Math.round(y)));
+    if (this.act.kind === 'walk') this.bedLift = 0;
+    this.set(this.el, 'zIndex', String(Math.round(y) + this.bedLift + (this.front ? 400 : 0)));
     this.set(this.el, 'visibility', this.vanish ? 'hidden' : '');
     this.set(this.body, 'transform', `scale(${(s * this.facing).toFixed(4)}, ${(s * breathe * droop).toFixed(4)})`);
     if (this.body.classList.contains('sick') !== this.sick) this.body.classList.toggle('sick', this.sick);
     // 말풍선은 머리 위 (뒤집지 않는다)
-    this.set(this.bubbleEl, 'transform', `translate(-50%, ${Math.round(-meta.fy * s - 8)}px)`);
+    // 방 양 끝에서 잘리지 않게 안쪽으로 (꼬리는 고양이 머리 위 그대로)
+    const roomW = this.floor.left * 2 + this.floor.width;
+    const half = this.bubbleW / 2;
+    const dx = this.bubbleW ? Math.round(Math.max(6 - (x - half), Math.min(0, roomW - 6 - (x + half)))) : 0;
+    if (dx !== this.bubbleDx) {
+      this.bubbleDx = dx;
+      this.bubbleEl.style.setProperty('--tail', `${Math.round(half - dx)}px`);
+    }
+    this.set(this.bubbleEl, 'transform', `translate(calc(-50% + ${dx}px), ${Math.round(-meta.fy * s - 8)}px)`);
     if (this.bubbleUntil && now > this.bubbleUntil) {
       this.bubbleUntil = 0;
       this.bubbleEl.classList.add('hidden');

@@ -5,8 +5,8 @@
 @import '../../../shared/theme.css';
 :root{color-scheme:light}
 *{box-sizing:border-box;min-width:0}
-html,body{margin:0;height:100%}
-body{background:linear-gradient(180deg,var(--sky-top) 0,var(--sky-mid) 300px,var(--sky-bottom) 100%) fixed;color:var(--ink);font:16px/1.4 var(--font);overflow:hidden;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+html,body{margin:0;height:100%;overscroll-behavior:none}
+body{background:linear-gradient(180deg,var(--sky-top) 0,var(--sky-mid) 300px,var(--sky-bottom) 100%) fixed;color:var(--ink);font:16px/1.4 var(--font);overflow:hidden;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;touch-action:manipulation;-webkit-touch-callout:none}
 button{font:inherit;color:inherit}
 #app{max-width:480px;margin:0 auto;height:100dvh;display:flex;flex-direction:column}
 .hidden{display:none!important}
@@ -91,6 +91,7 @@ button{font:inherit;color:inherit}
 .prop.need .pic{animation:wobble 1.6s ease-in-out infinite;transform-origin:50% 90%}
 @keyframes wobble{0%,70%,100%{transform:rotate(0)}76%{transform:rotate(-5deg)}84%{transform:rotate(5deg)}92%{transform:rotate(-3deg)}}
 @keyframes bob{50%{transform:translate(-50%,-5px)}}
+@keyframes bob-side{50%{transform:translateY(-5px)}}
 .prop.target .pic{filter:drop-shadow(0 0 0 var(--primary)) drop-shadow(0 0 6px var(--primary))}
 .prop.tap .pic{animation:tap .7s}
 @keyframes tap{20%,60%{transform:translateX(3px)}40%,80%{transform:translateX(-3px)}}
@@ -115,7 +116,7 @@ button{font:inherit;color:inherit}
 .cat-body img{position:absolute;display:block;max-width:none;-webkit-user-drag:none;cursor:grab;touch-action:none}
 .cat-body.sick img{filter:saturate(.75) brightness(.96) hue-rotate(-8deg)}
 .bubble{position:absolute;left:0;top:0;white-space:nowrap;background:var(--white);border:3px solid var(--outline);border-radius:14px;padding:2px 10px;font-size:16px;pointer-events:none}
-.bubble::after{content:'';position:absolute;left:50%;bottom:-9px;width:10px;height:10px;background:var(--white);border:3px solid var(--outline);border-top:0;border-left:0;transform:translateX(-50%) rotate(45deg)}
+.bubble::after{content:'';position:absolute;left:var(--tail,50%);bottom:-9px;width:10px;height:10px;background:var(--white);border:3px solid var(--outline);border-top:0;border-left:0;transform:translateX(-50%) rotate(45deg)}
 .bubble.pop{animation:pop .25s ease-out}
 @keyframes pop{from{scale:.5;opacity:0}}
 .float{position:absolute;transform:translate(-50%,-50%);pointer-events:none;z-index:4000;font-size:18px;color:var(--white);-webkit-text-stroke:3px var(--outline);paint-order:stroke fill;animation:up 1.3s ease-out forwards;white-space:nowrap}
@@ -330,12 +331,14 @@ button{font:inherit;color:inherit}
 .litter-art{position:relative}
 .litter-art>img.art,.litter-art>svg{width:100%;height:100%;object-fit:contain;display:block}
 .litter-art .poop{position:absolute;width:19%;transform:translate(-50%,-55%);pointer-events:none;-webkit-user-drag:none}
+.litter-art .poop img{display:block;width:100%;height:auto;pointer-events:none}
+.litter-art .poop-fb{display:block;width:100%;aspect-ratio:1.3;border-radius:50% 50% 45% 45%;background:radial-gradient(ellipse at 40% 35%,#B07A4A,#8A5A34 60%);border:2px solid var(--outline)}
 .prop .cup{top:-14%}
 .toy-ico,.churu-ico,.seed-ico{width:48px;height:48px;object-fit:contain;display:block;margin:0 auto}
 .choice .cico{min-height:48px;display:grid;place-items:center}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 
-/* 무대 단추: 베란다 · 상점 (벽 오른쪽 위) */
+/* 무대 단추: 입양 (벽 오른쪽 위 — 베란다 · 상점 등은 아래 엄지 띠 .nav 로 옮겼다) */
 .stage-ui{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:8px;z-index:4800}
 .stagebtn{width:56px;min-height:56px;padding:2px 0;border-radius:16px;font-size:22px;line-height:1.1;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .stagebtn small{font-size:11px}
@@ -421,6 +424,8 @@ button{font:inherit;color:inherit}
 .stagebtn{width:52px;min-height:50px}
 .adoptbtn{background:var(--panel-strong);box-shadow:0 3px 0 var(--outline),0 0 0 4px var(--pink);animation:breathe 1s ease-in-out infinite}
 .prop.bowl .alert{width:24px;height:24px;top:-28px;font-size:15px}
+/* 물그릇은 밥그릇 바로 앞이라 ! 를 오른쪽 옆에 (밥그릇 ! 와 겹치지 않게) */
+.prop.bowl.water .alert{left:auto;right:-14px;top:-6px;transform:none;animation-name:bob-side}
 .bowl-dot{position:absolute;left:50%;bottom:-8px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--dot);border:2px solid var(--outline);pointer-events:none}
 .litter-art .poop-n{position:absolute;right:-6px;top:-10px;background:var(--white);border:2px solid var(--outline);border-radius:999px;font-weight:normal;font-size:13px;padding:0 6px}
 .cambtn{flex:none}
@@ -555,3 +560,28 @@ button{font:inherit;color:inherit}
 .bcell small{font-size:10px;color:var(--ink-soft)}
 .bcell.off{background:var(--track)}
 .bcell.off img{filter:brightness(0) opacity(.28)}
+
+/* ---------- 디자인 손질: 엄지 띠 (자주 쓰는 단추는 아래, 위 띠는 돌아가기 · 지갑 · 설정만) ---------- */
+.topbar{padding:6px 10px 4px;padding-top:max(6px,env(safe-area-inset-top))}
+.topbar>*{flex:none}
+.topbar .spacer{flex:1}
+.topbar .back{flex:0 1 auto;display:block;min-width:44px;min-height:44px;line-height:32px;padding:6px 11px;overflow:hidden;text-overflow:ellipsis}
+.topbar .pill{min-height:36px}
+.tray{flex-direction:column;align-items:stretch;gap:7px;padding:8px 10px;padding-bottom:max(10px,env(safe-area-inset-bottom));min-height:0}
+.tray-main{flex:none;min-height:72px;gap:8px}
+.tray-scene{flex:none;min-height:130px;display:flex;flex-direction:column;justify-content:center}
+.bagslot{width:58px}
+.bag{width:50px;height:58px}
+.bagslot small,.canslot small{font-size:13px;line-height:1.1;white-space:nowrap}
+.hint{font-size:14px;line-height:1.25;padding:6px 10px;min-height:56px;border-radius:16px;position:relative}
+.catbtn{max-width:112px;overflow:hidden;text-overflow:ellipsis;font-size:16px;line-height:1.15;padding:6px 10px;min-height:56px}
+.catbtn small{display:block;font-size:13px}
+.nav{display:flex;gap:6px}
+.tray:has(#trayScene:not(.hidden)) .nav{display:none}
+.navbtn{flex:1;min-height:48px;padding:3px 0 2px;border-radius:12px;box-shadow:0 3px 0 var(--outline);font-size:20px;line-height:1.1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.navbtn small{font-size:12px;line-height:1.2}
+.navbtn.ready{background:var(--panel-strong);box-shadow:0 3px 0 var(--outline),0 0 0 3px var(--primary);animation:breathe 1s ease-in-out infinite}
+.navbtn.on{background:var(--primary)}
+@media (max-width:389px){.topbar .back{text-align:center;padding:6px 0;width:44px}.topbar .back span{display:none}}
+/* 놀이 · 츄르 · 빗질 · 꾸미기 중에는 무대 단추(입양)를 치운다 */
+.screen:has(#trayScene:not(.hidden)) .stage-ui{display:none}

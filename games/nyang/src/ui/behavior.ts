@@ -76,6 +76,11 @@ export function bedSpot(ctx: RoomCtx, prefer?: FurnView): Spot2 {
   const b = prefer ?? (beds.length ? pick(beds) : undefined);
   return b ? { x: b.at.x, y: b.at.y - (b.f.w > 1 ? 0.06 : 0.03) } : { x: 0.56, y: 0.92 };
 }
+/** 잠자리 가구 위에 누웠으면 가구보다 앞에 그린다 (가구 뒤에 파묻혀 보이지 않게) */
+function onBed(ctx: RoomCtx, v: CatView) {
+  const p = v.actor.pos;
+  if (ctx.furnUse('bed').some((b) => Math.abs(b.at.x - p.x) < 0.1 + b.f.w / 16 && p.y < b.at.y + 0.02 && p.y > b.at.y - 0.2)) v.actor.bedLift = 60;
+}
 export const LAP: Spot2 = { x: 0.5, y: 1.0 };
 /** 여러 마리가 같은 곳으로 갈 때 겹치지 않게 고양이마다 조금씩 비켜 선다 */
 function spread(ctx: RoomCtx, v: CatView, p: Spot2): Spot2 {
@@ -198,7 +203,10 @@ const PICKS: Pick[] = [
     id: 'nap', w: { morning: 0.5, day: 3, dusk: 1, night: 0 },
     run: (ctx, v) => {
       ctx.walkTo(v, spread(ctx, v, bedSpot(ctx)), { kind: 'pose', pose: 'sleep', until: 0, ms: rand(12000, 22000) });
-      onArrive(v, () => begin(ctx, v, 'sleep'));
+      onArrive(v, () => {
+        begin(ctx, v, 'sleep');
+        onBed(ctx, v);
+      });
     },
   },
   {
@@ -522,6 +530,7 @@ export function think(ctx: RoomCtx, v: CatView, t: number) {
     if (!near(a.pos, bed, 0.04)) return ctx.walkTo(v, bed);
     begin(ctx, v, together ? 'together' : 'sleep');
     a.act = { kind: 'pose', pose: 'sleep', until: t + 20000 + Math.random() * 20000 };
+    if (!together) onBed(ctx, v);
     if (Math.random() < 0.5) a.say(together ? '(집사 옆) zZ' : 'zZ', 2500, t);
     return;
   }

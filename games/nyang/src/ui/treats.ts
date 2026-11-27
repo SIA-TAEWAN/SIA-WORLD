@@ -105,7 +105,7 @@ export async function giveChuru(ctx: RoomCtx, v: CatView, flavor: ChuruId): Prom
       tube.style.transformOrigin = '78% 8%';
       tube.style.transform = `translate(${m.x + 10 - tw * 0.78}px, ${m.y - tw * 1.25 * 0.08}px) rotate(${pressing ? 222 : 230}deg)`;
       tube.classList.toggle('squeezing', pressing);
-      tube.style.zIndex = String(Math.round(ctx.toScreen(a.pos).y) + 5);
+      tube.style.zIndex = String(Math.round(ctx.toScreen(a.pos).y) + 405); // 고양이(연출 중 +400)보다 앞
       tube.style.setProperty('--left', String(1 - progress));
       a.lift = pressing ? 0 : Math.abs(Math.sin(now / 180)) * 6;
       if (pressing) {
@@ -281,7 +281,7 @@ export async function giveTreat(ctx: RoomCtx, v: CatView, kind: 'catgrass' | 'ca
   room.append(dish);
   const s0 = ctx.toScreen({ x: spot.x + 0.13, y: spot.y + 0.02 });
   const w = Math.max(44, ctx.W() * 0.15);
-  dish.style.cssText = `width:${w}px;height:${w * 1.55}px;transform:translate(${s0.x - w / 2}px, ${s0.y - w * 1.55}px);z-index:${Math.round(s0.y) + 2}`;
+  dish.style.cssText = `width:${w}px;height:${w * 1.55}px;transform:translate(${s0.x - w / 2}px, ${s0.y - w * 1.55}px);z-index:${Math.round(s0.y) + 402}`;
   while (a.act.kind === 'walk') await sleep(50);
   a.perky = false;
   a.facing = 1;
