@@ -691,6 +691,8 @@ async function startRun(mode: RunMode, hero: string, mastery: number, daily?: { 
       if (!ctx.api) return toast('서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요');
       try {
         const r = await ctx.api.start(mode, hero, mastery, daily?.day ?? null, daily?.seed ?? null);
+        // 배포 전에 열어 둔 탭: 규칙이 달라 막을 다 한 뒤에야 거절되므로 처음부터 막는다
+        if (r.rules && r.rules !== RULES_VERSION) return toast('게임이 새 버전으로 바뀌었어요. 새로 고침해 주세요', 3200);
         started = r;
         runId = r.runId;
         seed = r.seed;
@@ -790,7 +792,8 @@ function bindBar(s: HTMLElement, redraw: () => void) {
   });
 }
 
-function modal(html: string, bind?: (m: HTMLElement, close: () => void) => void) {
+/** sticky: 바깥을 눌러도 닫히지 않는다 (꼭 골라야 하는 창) */
+function modal(html: string, bind?: (m: HTMLElement, close: () => void) => void, sticky = false) {
   const m = document.createElement('div');
   m.className = 'modal';
   m.innerHTML = `<div class="card modal-box">${html}</div>`;
@@ -798,7 +801,7 @@ function modal(html: string, bind?: (m: HTMLElement, close: () => void) => void)
   requestAnimationFrame(() => shrinkOverflow(m));
   const close = () => m.remove();
   m.addEventListener('click', (e) => {
-    if (e.target === m) close();
+    if (e.target === m && !sticky) close();
   });
   m.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', close));
   bind?.(m, close);
@@ -838,6 +841,7 @@ function pickCards(title: string, cards: DeckCard[], n: number, preview: 'up' | 
         cancel?.();
       });
     },
+    !cancel, // 그만두기가 없는 고르기(이야기 칸의 강화·없애기·복사)는 바깥을 눌러 닫으면 화면이 멈춘다
   );
   return close;
 }
@@ -1219,7 +1223,11 @@ const ENDINGS: Record<'normal' | 'true', { art: string; title: string; text: str
 function showResult(step = 0) {
   const run = ctx.run!;
   const win = run.phase === 'won';
-  if (!run.practice) clearRun(run.mode);
+  if (!run.practice) {
+    clearRun(run.mode);
+    // 업로드 답이 오기 전에 '처음 화면'으로 가도 끝난 판이 '이어하기'로 뜨지 않게
+    if (ctx.state) delete ctx.state.runs[run.mode];
+  }
   const st = run.stats;
   const scenes = win && !run.practice && run.ending ? ENDINGS[run.ending] : [];
   if (step < scenes.length) {
