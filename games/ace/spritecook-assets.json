@@ -1,0 +1,182 @@
+{
+  "_note": "시아에이스 그림 (2026-11-27). 모델: gpt-image-2.5-flare · medium · 2K(2048×2048) · 1:1 · 도트 아님 · 투명 배경 · smart_crop 끔, 참조 그림은 한 장씩(reference_asset_id). 시트 10장 = 212 크레딧 (참조 있는 9장 × 22 + 아이템 14). 받은 PNG 는 용량 때문에 WebP(품질 95)로 바꿔 art/spritecook/ 에 두었고, python art/build.py 가 빈 틈으로 나눠 잘라 public/art/ 에 넣는다 (기체 너비 200 · 보스 480×620 안 · 지상 120 · 아이템 64). 참조 그림은 python art/make_refs.py 가 art/refs/ 에 만든다. 프롬프트 전체는 SpriteCook 의 asset 에 남아 있다 (list_recent_assets / get_asset_metadata). 보스 포대 위치는 art/boss-parts.json.",
+  "assets": [
+    {
+      "asset_id": "6ccd3d15-5546-45cc-8ec6-3b98ff3b2ec9",
+      "sha12": "df3a0837e986",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "기체 시트 A — 쥐 재빠르호 · 소 황소호 · 호랑이 백호호 · 토끼 옥토끼호 (2×2, 참조 faces-a)",
+      "source": "art/spritecook/ships-a.webp",
+      "files": [
+        "public/art/ship-rat.png",
+        "public/art/ship-ox.png",
+        "public/art/ship-tiger.png",
+        "public/art/ship-rabbit.png"
+      ]
+    },
+    {
+      "asset_id": "2e1b6247-e1b2-4e44-8d6e-3ab5cdcec4a3",
+      "sha12": "e6aeabb2e88f",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "기체 시트 B — 용 청룡호 · 뱀 흑사호 · 말 천마호 · 양 운양호 (2×2, 참조 faces-b)",
+      "source": "art/spritecook/ships-b.webp",
+      "files": [
+        "public/art/ship-dragon.png",
+        "public/art/ship-snake.png",
+        "public/art/ship-horse.png",
+        "public/art/ship-sheep.png"
+      ]
+    },
+    {
+      "asset_id": "235b3be8-9cac-4c84-9632-42091104bca9",
+      "sha12": "d5ae20259bb4",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "기체 시트 C — 원숭이 금원호 · 닭 홍닭호 · 개 견우호 / 돼지 복돼지호 · 고양이호 (3+2, 참조 faces-c)",
+      "source": "art/spritecook/ships-c.webp",
+      "files": [
+        "public/art/ship-monkey.png",
+        "public/art/ship-rooster.png",
+        "public/art/ship-dog.png",
+        "public/art/ship-pig.png",
+        "public/art/ship-cat.png"
+      ]
+    },
+    {
+      "asset_id": "1eac1bf8-6ae9-4501-b2a4-35795d91b722",
+      "sha12": "5adfbca49fc1",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "보스 — 1 거대 게 전함 · 2 해룡 항모 (참조 style-boss)",
+      "source": "art/spritecook/boss-1-2.webp",
+      "files": [
+        "public/art/boss-1.png",
+        "public/art/boss-2.png"
+      ]
+    },
+    {
+      "asset_id": "47f4cf26-cee6-4cdd-a2a7-3fc83dfd80ca",
+      "sha12": "ce089c3a8495",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "보스 — 3 천년 너구리 · 5 뇌신 비행선 (참조 style-boss)",
+      "source": "art/spritecook/boss-3-5.webp",
+      "files": [
+        "public/art/boss-3.png",
+        "public/art/boss-5.png"
+      ]
+    },
+    {
+      "asset_id": "5445e124-d0dd-4296-a58b-880a725611d7",
+      "sha12": "967a9076e39b",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "보스 — 7 모래벌레 요새 · 8 회오리 거인 (참조 style-boss)",
+      "source": "art/spritecook/boss-7-8.webp",
+      "files": [
+        "public/art/boss-7.png",
+        "public/art/boss-8.png"
+      ]
+    },
+    {
+      "asset_id": "75daf7f6-4216-4f61-a3d9-dd333ca72d1a",
+      "sha12": "44fb55ee3a16",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "보스 — 9 설인 요새 · 10 해골 장군 비행탑 (참조 style-boss)",
+      "source": "art/spritecook/boss-9-10.webp",
+      "files": [
+        "public/art/boss-9.png",
+        "public/art/boss-10.png"
+      ]
+    },
+    {
+      "asset_id": "71e24964-a2f0-4fa3-a0dc-ed3f022a4b52",
+      "sha12": "74c277f63f15",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "보스 — 11 화산 거인 · 12 요괴왕 모함 (참조 style-boss)",
+      "source": "art/spritecook/boss-11-12.webp",
+      "files": [
+        "public/art/boss-11.png",
+        "public/art/boss-12.png"
+      ]
+    },
+    {
+      "asset_id": "a9c1e11d-54fc-4f3e-aebb-9a301ad3960b",
+      "sha12": "52b5e04c7e03",
+      "model": "gpt-image-2.5-flare",
+      "credits": 22,
+      "label": "지상 목표 9 (3×3, 참조 style-boss) — 대숲 포대 · 모래 전차 · 포함 / 항구 포 · 얼음 포탑 · 폐허 포 / 용암 배 · 늪 박격포 · 하늘성 포탑",
+      "source": "art/spritecook/ground.webp",
+      "files": [
+        "public/art/ground-bamboo.png",
+        "public/art/ground-sandtank.png",
+        "public/art/ground-gunboat.png",
+        "public/art/ground-harbor.png",
+        "public/art/ground-ice.png",
+        "public/art/ground-ruin.png",
+        "public/art/ground-lava.png",
+        "public/art/ground-swamp.png",
+        "public/art/ground-castle.png"
+      ]
+    },
+    {
+      "asset_id": "23d62242-602f-452e-a125-0e14bff648e3",
+      "sha12": "bf9c4429f85d",
+      "model": "gpt-image-2.5-flare",
+      "credits": 14,
+      "label": "아이템 9 (3×3, 참조 없음) — P · B · 엽전 / 큰 엽전 · 보조기 · 목숨 / 시계 · 방패 · 별",
+      "source": "art/spritecook/items.webp",
+      "files": [
+        "public/art/item-p.png",
+        "public/art/item-b.png",
+        "public/art/item-coin.png",
+        "public/art/item-coinbig.png",
+        "public/art/item-option.png",
+        "public/art/item-life.png",
+        "public/art/item-clock.png",
+        "public/art/item-shield.png",
+        "public/art/item-star.png"
+      ]
+    },
+    {
+      "asset_id": "9fbf09cd-7c83-43c7-8a96-37e5f06229bb",
+      "sha12": "56b578367644",
+      "model": "uploaded-file",
+      "credits": 0,
+      "label": "참조(올린 그림) — 얼굴 줄: rat ox tiger rabbit",
+      "source": "art/refs/faces-a.png",
+      "files": []
+    },
+    {
+      "asset_id": "f119233d-9072-4947-a4de-40d5910cdaeb",
+      "sha12": "81e844300b51",
+      "model": "uploaded-file",
+      "credits": 0,
+      "label": "참조(올린 그림) — 얼굴 줄: dragon snake horse sheep",
+      "source": "art/refs/faces-b.png",
+      "files": []
+    },
+    {
+      "asset_id": "ef0a4c40-81bb-4c76-a8a6-0439b3761dd5",
+      "sha12": "4adef537c62b",
+      "model": "uploaded-file",
+      "credits": 0,
+      "label": "참조(올린 그림) — 얼굴 줄: monkey rooster dog pig cat",
+      "source": "art/refs/faces-c.png",
+      "files": []
+    },
+    {
+      "asset_id": "faf19e09-85d5-470b-8de8-eb8725f1f85f",
+      "sha12": "6bbaefa7752d",
+      "model": "uploaded-file",
+      "credits": 0,
+      "label": "참조(올린 그림) — 보스 그림체: 서바이벌 b-gumiho + 열두길 b-final",
+      "source": "art/refs/style-boss.png",
+      "files": []
+    }
+  ]
+}
