@@ -5,8 +5,8 @@
 // - 켜기/끄기는 브라우저에 저장 (localStorage 'sia:sound'). 시아탱크의 예전 설정('siatank:mute')도 이어받는다.
 // - 배경음(BGM) 파일 재생: playBgm(game, scene) — shared/audio/bgm/<게임>/main|boss.mp3, common/main|win|lose.mp3
 //   (반복 재생, 볼륨 0.4, 장면이 바뀌면 페이드 아웃 → 페이드 인. 효과음 끄기('sia:sound')나 배경음 끄기('sia:bgm')를 따른다.)
-// - 배경음 켜기/끄기는 따로 저장 (localStorage 'sia:bgm'). 곡 자체는 각 게임이 만든다 (시아레이스: games/running/src/ui/music.ts,
-//   shared/sounds/bgmLobby|bgmRace|bgmResult.ogg|.mp3 를 넣으면 그 파일로 바뀐다).
+// - 배경음 켜기/끄기는 따로 저장 (localStorage 'sia:bgm'). 모든 게임이 playBgm 으로 위 폴더의 곡을 튼다
+//   (예전처럼 게임이 코드로 곡을 만들거나 shared/sounds/bgm*.mp3 를 찾지 않는다).
 // - 브라우저 정책: 첫 클릭·터치·키 입력 전에는 소리를 내지 않는다 (그때 오디오를 깨운다).
 // - 같은 소리가 겹치지 않게 이름마다 최소 간격, 동시에 나는 소리 수 제한.
 
@@ -356,7 +356,11 @@ export function onBgmChange(cb) {
   bgmListeners.add(cb);
   return () => bgmListeners.delete(cb);
 }
-/** 배경음 파일(shared/sounds/<이름>.ogg|.mp3)이 있으면 그 주소, 없으면 null */
+/**
+ * shared/sounds/<이름>.ogg|.mp3 파일이 있으면 그 주소, 없으면 null.
+ * 이름과 달리 지금은 배경음에 쓰지 않는다 (배경음은 playBgm · shared/audio/bgm/).
+ * 시아마을 전용 효과음을 파일로 바꿔 끼울 때만 쓴다 (games/village/src/ui/vsound.ts). 예전 탭이 부를 수 있어 이름은 그대로 둔다.
+ */
 export async function bgmFileUrl(name) {
   for (const ext of ['ogg', 'mp3']) {
     const url = `${soundsBase()}${name}.${ext}`;

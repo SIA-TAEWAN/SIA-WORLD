@@ -67,8 +67,6 @@ export interface SoundModule {
   isBgmOn(): boolean;
   setBgmOn(on: boolean): void;
   onBgmChange(cb: (on: boolean) => void): () => void;
-  /** shared/sounds/<이름>.ogg|.mp3 가 있으면 그 주소 */
-  bgmFileUrl(name: string): Promise<string | null>;
   /** 배경음 파일 재생: shared/audio/bgm/<게임>/<장면>.mp3 (main · boss 는 반복, win · lose 는 한 번). 같은 곡이면 그대로 */
   playBgm(game: string, scene?: string): void;
   /** 배경음 페이드 아웃 후 멈춤 */
