@@ -600,6 +600,43 @@ def face_hand(v, r, body_fr, off):
     return o
 
 
+# 머리 레이어에 남은 옛 얼굴 조각(머리 시트에 그려져 있던 눈 · 눈썹 · 볼 · 턱 선)을 지우는 자리: 대기 칸의 (y0, y1, x0, x1) — 끝 포함.
+# 머리 시트는 얼굴이 있는 그림에서 살색만 빼고 남긴 것이라, 머리가 얼굴 위에 그려질 때 눈 조각이 덧그려졌다 (단발 f3 은 눈이 아예 가려졌다).
+HAIR_FACE = {
+    0: {'m0': [(24, 25, 31, 38), (26, 26, 25, 38), (27, 34, 24, 39)],
+        'm1': [(24, 25, 26, 38), (26, 26, 25, 39), (27, 34, 24, 39)],
+        'm2': [(23, 25, 26, 38), (26, 34, 24, 39)],
+        'm3': [(26, 34, 24, 39)],
+        'f0': [(25, 35, 25, 38)],
+        'f1': [(24, 25, 26, 38), (26, 34, 24, 39)],
+        'f2': [(24, 25, 25, 38), (26, 34, 24, 39)],
+        'f3': [(25, 27, 26, 37), (28, 29, 24, 39), (32, 34, 27, 36)]},
+    1: {'m0': [(24, 24, 34, 40), (25, 30, 31, 40)],
+        'm1': [(25, 30, 31, 40)],
+        'm2': [(22, 24, 33, 40), (25, 30, 31, 40)],
+        'm3': [(25, 30, 31, 40)],
+        'f0': [(25, 30, 31, 40)],
+        'f1': [(22, 30, 34, 40)],
+        'f2': [(25, 30, 31, 40)],
+        'f3': [(23, 24, 32, 39), (25, 30, 32, 40)]},
+}
+
+
+def hair_clean(h, name, r):
+    if r < 2:
+        for y0, y1, x0, x1 in HAIR_FACE[r][name]:
+            h[y0:y1 + 1, x0:x1 + 1] = 0
+    return h
+
+
+def outfit_clean(rows3, body, offs):
+    """옷 레이어에 섞인 얼굴 속의 점(몸 레이어 머리의 빈 점 자리에 남은 것)을 지운다 — 옷은 얼굴 위에 그려져 눈 옆에 점으로 보였다"""
+    for r in range(2):
+        for c in range(8):
+            rows3[r][c][face_zone(r, offs[r][c]) & face_holes(body[r][c])] = 0
+    return rows3
+
+
 def spread(layer3, offs):
     """대기 칸의 레이어 3줄 → 8칸 × 3줄 (머리가 옮겨 간 만큼 같이 옮긴다)"""
     out = []
@@ -637,17 +674,17 @@ def build_chars(only_base=False):
     for src, dst in SHOE_F.items():
         bf[col_in(bf, {src}) & low, :3] = dst
     out['body_f'] = bf
-    out['outfit_0'] = char_sheet(outfit0)
+    out['outfit_0'] = char_sheet(outfit_clean(outfit0, body, offs))
     if only_base:
         return out, frames, offs, heads
     href = {0: heads[0], 1: heads[1], 2: heads[2], 'offs': offs}
     for n in (1, 2, 3):
         fr, _, _ = char_frames(SRC / f'char2-outfit{n}.png', head_ref=href)
-        out[f'outfit_{n}'] = char_sheet(split_outfit(fr, heads, body, info))
+        out[f'outfit_{n}'] = char_sheet(outfit_clean(split_outfit(fr, heads, body, info), body, offs))
     ref = [snap(f, extra=EXTRA) for f in green_rows(frames, heads)]
     al = align_ref(SRC / 'char2-hair.png', ref, fit_top=True)
     for c, name in enumerate(HAIR_NAMES):
-        out[f'hair_{name}'] = char_sheet(spread([hair_of(outline(al[r][c]), ref[r], r) for r in range(3)], offs))
+        out[f'hair_{name}'] = char_sheet(spread([hair_clean(hair_of(outline(al[r][c]), ref[r], r), name, r) for r in range(3)], offs))
     for v in range(4):
         out[f'face_{v}'] = char_sheet([[face_hand(v, r, body[r][c], offs[r][c]) for c in range(8)] for r in range(3)])
     return out
