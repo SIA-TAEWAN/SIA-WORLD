@@ -66,6 +66,18 @@ describe('서버 제출', () => {
     expect(await api.finish(report)).toBeNull();
     expect(store.m.get('siablock:pending:u')).toContain(report.run);
   });
+  it('게이트웨이의 일시 4xx(429 등, 까닭 모름)는 버리지 않고 보관한다', async () => {
+    const store = mem();
+    const api = createSupabaseApi(client(async () => ({ data: null, error: { message: 'Too Many Requests', context: { status: 429 } } })), 'u', store);
+    expect(await api.finish(report)).toBeNull();
+    expect(store.m.get('siablock:pending:u')).toContain(report.run);
+  });
+  it('keep 은 보내기 전에 먼저 보관한다', () => {
+    const store = mem();
+    const api = createSupabaseApi(client(async () => ({ data: null, error: null })), 'u', store);
+    api.keep(report);
+    expect(store.m.get('siablock:pending:u')).toContain(report.run);
+  });
   it('서버가 거절하면 버린다', async () => {
     const store = mem();
     const api = createSupabaseApi(client(async () => ({ data: null, error: { message: 'x', context: { status: 400, json: async () => ({ error: 'bad move' }) } } })), 'u', store);

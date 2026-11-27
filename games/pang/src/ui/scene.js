@@ -1,3 +1,4 @@
+// games/block(시아블록)도 이 파일을 그대로 import 한다 — export 를 바꾸면 block 빌드도 확인할 것
 // 정령 마당: 보드 아래 빈 공간에 챕터 배경을 깔고 그 판의 정령들이 뛰어논다. 정령을 터뜨리면 같은 속성 정령이 능력을 쓴다
 const PI2 = Math.PI * 2;
 const R = Math.random;
