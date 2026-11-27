@@ -66,6 +66,21 @@ describe('고양이 잠금 (게임마다 따로)', () => {
     expect(games).toEqual([GAME_ID, GAME_ID]);
     reset();
   });
+
+  it("열기가 시간 초과·통신 실패('error')면 목록을 다시 읽어, 서버에서 샀으면 연 것으로", async () => {
+    reset();
+    let list: string[] = [];
+    await initUnlock(async () => list, false, null);
+    const lost = await unlockCat(async () => ({ ok: false, reason: 'error' }));
+    expect(lost.opened).toBe(false);
+    expect(isCharOpen('cat')).toBe(false);
+    list = ['cat'];
+    const bought = await unlockCat(async () => ({ ok: false, reason: 'error' }));
+    expect(bought.opened).toBe(true);
+    expect(bought.result.reason).toBe('owned');
+    expect(isCharOpen('cat')).toBe(true);
+    reset();
+  });
   it('테스트 모드: 기본은 열림, &cat=0 이면 잠김, 열기는 서버 없이 바로', async () => {
     let called = 0;
     const load = async () => (called++, ['cat']);

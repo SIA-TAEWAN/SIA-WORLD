@@ -206,14 +206,62 @@ describe('결과 저장 순서', () => {
         return null;
       },
     });
-    expect(await new MatchRecorder(a.api, 'room01', setup(0)).finish(result(0, [3, 0], 0))).toEqual({ state: 'failed' });
+    const pa = new MatchRecorder(a.api, 'room01', setup(0)).finish(result(0, [3, 0], 0));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await pa).toEqual({ state: 'failed' });
     expect(a.calls.some((c) => c.startsWith('report'))).toBe(false);
     const b = fakeApi({
       async report() {
         throw new Error('network');
       },
     });
-    expect(await new MatchRecorder(b.api, 'room01', setup(0)).finish(result(0, [3, 0], 0))).toEqual({ state: 'failed' });
+    const pb = new MatchRecorder(b.api, 'room01', setup(0)).finish(result(0, [3, 0], 0));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await pb).toEqual({ state: 'failed' });
+  });
+
+  it('begin 이 통신 실패(null)면 잠깐 뒤 한 번 더 알린다', async () => {
+    let n = 0;
+    const { api, calls } = fakeApi({
+      async begin() {
+        n++;
+        return n < 2 ? null : { match: 'm2', live: true };
+      },
+    });
+    const p = new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 0], 0));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(n).toBe(2);
+    expect(await p).toEqual({ state: 'saved', wins: 4, losses: 2 });
+    expect(calls).toContain('report m2 3:0 normal');
+  });
+
+  it('보고가 통신 실패면 1~2초 뒤 다시 보낸다. 끝내 안 되면 보고를 기기에 적어 둔다', async () => {
+    const store = memStore();
+    let n = 0;
+    const { api } = fakeApi({
+      async report(): Promise<SaveResult> {
+        n++;
+        return { status: 'error' };
+      },
+    });
+    const p = new MatchRecorder(api, 'room01', setup(0), { store }).finish(result(0, [3, 1], 0, 'leave', 1));
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(await p).toEqual({ state: 'failed' });
+    expect(n).toBe(3);
+    expect(store.list).toEqual([{ id: 'm1', at: expect.any(Number), report: { left: 3, right: 1, reason: 'leave' } }]);
+  });
+
+  it('보고가 한 번 실패해도 다시 보내 닿으면 그대로 저장된다', async () => {
+    let n = 0;
+    const { api } = fakeApi({
+      async report(): Promise<SaveResult> {
+        n++;
+        return n < 2 ? { status: 'error' } : { status: 'done', wins: 3, losses: 1 };
+      },
+    });
+    const p = new MatchRecorder(api, 'room01', setup(0)).finish(result(0, [3, 1], 0));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await p).toEqual({ state: 'saved', wins: 3, losses: 1 });
   });
 
   it('테스트 모드(local)는 서버를 부르지 않는다', async () => {
@@ -295,6 +343,24 @@ describe('확정하지 못하고 떠난 경기 (M4)', () => {
     expect(await settlePending(api, store, now)).toBe(1);
     expect(calls).toEqual(['settle wait', 'settle net', 'settle gone', 'settle void']);
     expect(store.list.map((e) => e.id)).toEqual(['wait', 'net']);
+  });
+
+  it('보내지 못한 보고는 보고부터 다시 보낸다 (닿으면 다음엔 확정만, 통신 실패는 그대로, 거절은 지운다)', async () => {
+    const now = Date.now();
+    const rep = { left: 3, right: 1, reason: 'leave' as const };
+    const store = memStore([{ id: 'ok', at: now, report: rep }, { id: 'wait', at: now, report: rep }, { id: 'net', at: now, report: rep }, { id: 'late', at: now, report: rep }]);
+    const { api, calls } = fakeApi({
+      async report(m, l, r, reason): Promise<SaveResult> {
+        calls.push(`report ${m} ${l}:${r} ${reason}`);
+        if (m === 'ok') return { status: 'done', wins: 1, losses: 0 };
+        if (m === 'wait') return { status: 'waiting' };
+        if (m === 'net') return { status: 'error' };
+        return { status: 'error', code: 'too late' };
+      },
+    });
+    expect(await settlePending(api, store, now)).toBe(1);
+    expect(calls).toEqual(['report ok 3:1 leave', 'report wait 3:1 leave', 'report net 3:1 leave', 'report late 3:1 leave']);
+    expect(store.list).toEqual([{ id: 'wait', at: now }, { id: 'net', at: now, report: rep }]);
   });
 
   it('테스트 모드(local)는 서버를 부르지 않는다', async () => {

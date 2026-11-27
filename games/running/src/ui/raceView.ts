@@ -53,6 +53,12 @@ export function showRace(start: SoloStart) {
   let game: Phaser.Game | null = null;
   let ro: ResizeObserver | null = null;
   let resultTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 가려진 탭에서 끝난 판: 돌아오면 결과 화면을 여는 감시 */
+  let onShow: (() => void) | null = null;
+  const dropShow = () => {
+    if (onShow) document.removeEventListener('visibilitychange', onShow);
+    onShow = null;
+  };
   /** '경기를 그만둘까요?' 창 (#stage 에 붙으므로 화면이 바뀔 때 함께 치운다) */
   let quitDim: HTMLElement | null = null;
   // 키보드: 점프 = 스페이스·↑·W·엔터, 슬라이딩 = ↓·S
@@ -96,6 +102,7 @@ export function showRace(start: SoloStart) {
       window.removeEventListener('keyup', onKeyUp);
       ro?.disconnect();
       if (resultTimer) clearTimeout(resultTimer);
+      dropShow();
       quitDim?.remove();
       quitDim = null;
       // 이 판의 기록 올리기가 아직 끝나지 않았을 수 있다: 다음 판의 판 전 주간 순위는 이것을 기다린다
@@ -163,8 +170,19 @@ export function showRace(start: SoloStart) {
     dim.querySelector<HTMLButtonElement>('[data-no]')?.focus();
   });
 
+  // 가려진 탭에서 끝났으면(숨김 타이머가 끝 판정까지 함) 결과 화면은 돌아온 뒤에 연다
+  // (안 그러면 가려진 채 결과 화면이 열리고 순위 효과음이 들리며, 돌아오면 연출이 이미 지나가 있다)
   race.onOver = (results) => {
-    resultTimer = setTimeout(() => nav.result(race, results), 1400);
+    const open = () => {
+      dropShow();
+      resultTimer = setTimeout(() => nav.result(race, results), 1400);
+    };
+    if (!document.hidden) return open();
+    dropShow();
+    onShow = () => {
+      if (!document.hidden) open();
+    };
+    document.addEventListener('visibilitychange', onShow);
   };
 
   // ---------- 가운데 큰 글자 (준비 · GO · 실격 · 도착) ----------

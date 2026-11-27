@@ -81,6 +81,8 @@ export function createControls(root: HTMLElement, run: RunState, opts: { lefty: 
   };
   const onTouchStart = (ev: TouchEvent) => {
     ev.preventDefault();
+    // touchend · touchcancel 을 못 받아 남은 손가락 (화면 밖에서 뗐거나 알림이 끼어들었을 때): 지금 닿은 손가락에 없으면 놓은 것으로
+    if (typeof stickId === 'number' && !find(ev.touches, stickId)) stickEnd();
     if (stickId !== null) return;
     const t = ev.changedTouches[0];
     stickStart(t.identifier, t.clientX, t.clientY);

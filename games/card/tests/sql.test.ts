@@ -8,7 +8,7 @@ const read = (f: string) => readFileSync(new URL(f, MIG), 'utf8').replace(/\r\n/
 const shared = (f: string) => readFileSync(new URL(`../../../shared/${f}`, import.meta.url), 'utf8');
 const files = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
 /** 카드배틀 마이그레이션 (뒤의 것이 앞의 정의를 create or replace 로 바꾼다) */
-const CARD_FILES = ['112_card.sql', '114_card_tune.sql', '116_card_elite.sql', '117_card_cleanup.sql'];
+const CARD_FILES = ['112_card.sql', '114_card_tune.sql', '116_card_elite.sql', '117_card_cleanup.sql', '119_review_fixes.sql'];
 
 /** 함수의 마지막 정의 (create or replace — 가장 늦은 마이그레이션이 이긴다) → 본문, 파일 */
 function lastDef(fn: string): { body: string; from: string } {
@@ -43,7 +43,7 @@ describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
 
   it('관리자 시험 판 시작 엽전: card_start 가 보통·끝없는 판에만 start_gold 를 정해 저장 · 판 JSON 에 startGold', () => {
     const st = lastDef('card_start');
-    expect(st.from).toBe('117_card_cleanup.sql');
+    expect(st.from).toBe('119_review_fixes.sql');
     const body = st.body.replace(/\s+/g, ' ');
     // 관리자 갈래는 오늘의 도전이 아닌 쪽(else) 안
     const els = body.indexOf("perform public._check_character(me, p_hero, 'card')");
@@ -79,8 +79,11 @@ describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
     const t114 = read('114_card_tune.sql');
     expect(t114).toContain('revoke all on function public.card_state() from public, anon;');
     const t117 = read('117_card_cleanup.sql');
-    expect(t117).toContain('revoke all on function public.card_start(text, text, int, text, bigint) from public, anon;');
-    expect(t117).toContain('grant execute on function public.card_start(text, text, int, text, bigint) to authenticated;');
+    // 119: 옛 5인자 card_start 를 지우고 p_retry 를 더한 6인자에 같은 권한
+    const t119 = read('119_review_fixes.sql');
+    expect(t119).toContain('drop function if exists public.card_start(text, text, int, text, bigint);');
+    expect(t119).toContain('revoke all on function public.card_start(text, text, int, text, bigint, boolean) from public, anon;');
+    expect(t119).toContain('grant execute on function public.card_start(text, text, int, text, bigint, boolean) to authenticated;');
     expect(lastDef('_card_prune').body).toContain('security definer set search_path = public');
     expect(t117).toContain('revoke all on function public._card_prune(uuid) from public, anon, authenticated;');
     expect(t114).toContain('revoke all on function public._card_const(text) from public, anon, authenticated;');
@@ -98,6 +101,11 @@ describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
     const reuse = body.indexOf("and day = d and hero = p_hero and seed = s and log_len = 0");
     expect(reuse).toBeGreaterThan(0);
     expect(reuse).toBeLessThan(body.indexOf('first := not exists'));
+    // 119: 재사용은 화면이 '시간초과 뒤 다시 누름' 이라고 알린 때(p_retry)만
+    expect(body).toContain('p_retry boolean default false');
+    const gate = body.indexOf('if coalesce(p_retry, false) then');
+    expect(gate).toBeGreaterThan(0);
+    expect(gate).toBeLessThan(reuse);
     // 정리는 앞 판을 버린 뒤, 새 판을 넣기 전
     const prune = body.indexOf('perform public._card_prune(me);');
     expect(prune).toBeGreaterThan(body.indexOf("set status = 'abandoned'"));

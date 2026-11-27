@@ -76,7 +76,8 @@ export const nav = {
   prepare: (_stage: string, _daily?: DailyChallenge) => {},
   /** 오늘의 고개: 오늘의 스테이지·조건과 오늘 순위 */
   daily: () => {},
-  game: (_setup: GameSetup) => {},
+  /** 판 열기. 끝나면(열렸든 못 열었든) 풀리는 Promise */
+  game: (_setup: GameSetup): Promise<void> | void => {},
   result: (_result: GameResult) => {},
 };
 

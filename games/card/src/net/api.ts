@@ -100,7 +100,8 @@ interface Pending {
 
 export interface CardApi {
   state(): Promise<CardState>;
-  start(mode: RunMode, hero: string, mastery: number, day?: string | null, seed?: number | null): Promise<ServerRun>;
+  /** retry: 직전 시작이 시간초과·통신 실패로 끝난 뒤 같은 판을 다시 누른 것 (서버가 방금 만든 같은 오늘의 도전 판을 돌려준다 — 119) */
+  start(mode: RunMode, hero: string, mastery: number, day?: string | null, seed?: number | null, retry?: boolean): Promise<ServerRun>;
   /** 보내고 결과 (보관만 하고 못 보냈으면 null, 거절이면 ApiError) */
   upload(runId: string, log: Input[]): Promise<FinishResult | null>;
   /** 보관한 업로드를 다시 보낸다 → 보낸 개수 */
@@ -224,8 +225,8 @@ export function createApi(sb: SupabaseClient | ServerClient, uid: string, store:
     async state() {
       return normState(await call('card_state'));
     },
-    async start(mode, hero, mastery, day = null, seed = null) {
-      const r = normRun(await call('card_start', { p_mode: mode, p_hero: hero, p_mastery: mastery, p_day: day, p_seed: seed }));
+    async start(mode, hero, mastery, day = null, seed = null, retry = false) {
+      const r = normRun(await call('card_start', { p_mode: mode, p_hero: hero, p_mastery: mastery, p_day: day, p_seed: seed, p_retry: retry }));
       if (!r) throw new Error('bad answer');
       return r;
     },

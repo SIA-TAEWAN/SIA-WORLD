@@ -235,12 +235,15 @@ function showStart(id) {
   });
 }
 function showPause() {
-  if (!G || phase === 'end') return;
+  // 목표를 이룬 뒤(보너스 타임·결과 창 기다림)엔 멈추지 않는다: 이 때 지도로 가면 이긴 판이 서버에 가지 않는다
+  if (!G || phase === 'end' || G.state !== 'play') return;
   popup('<h3>멈춤</h3><div class="chap">스테이지 ' + L.id + '</div><div class="row"><button class="btn" data-a="map">지도로</button><button class="btn" data-a="retry">다시 하기' + (admin ? '' : ' ❤️-1') + '</button></div><div class="row"><button class="btn" data-a="snd">' + '⚙️ 소리 설정' + '</button><button class="btn primary" data-a="go">계속하기</button></div>', p => {
     p.querySelector('[data-a=go]').onclick = closePop;
     p.querySelector('[data-a=snd]').onclick = openSound;
-    p.querySelector('[data-a=retry]').onclick = async () => { if (!(await needLife())) return; closePop(); startStage(L.id); };
-    p.querySelector('[data-a=map]').onclick = () => { closePop(); toMap(); };
+    // 멈춤 창이 열린 사이에 목표를 이뤘으면 창만 닫는다 (곧 결과 창이 뜨고 기록을 보낸다)
+    const over = () => !G || G.state !== 'play' || phase === 'end';
+    p.querySelector('[data-a=retry]').onclick = async () => { if (over()) { if (phase !== 'end') closePop(); return; } if (!(await needLife())) return; closePop(); startStage(L.id); };
+    p.querySelector('[data-a=map]').onclick = () => { if (over()) { if (phase !== 'end') closePop(); return; } closePop(); toMap(); };
   });
 }
 function showResult(win) {
@@ -269,7 +272,9 @@ function showResult(win) {
   });
   const line = $('pop').querySelector('.coin');
   // 결과 보내기: 통신이 끊기면 '다시 보내기' (서버가 같은 판을 두 번 받지 않는다). 서버가 거절하면 서버 기록으로 화면을 되돌린다
+  let tries = 0;
   const send = () => {
+    tries++;
     if (line && line.isConnected) line.textContent = '기록을 보내는 중…';
     finishing = api.finish(run, id, win, score, swaps).then(r => {
       save.stars[id] = Math.max(save.stars[id] || 0, r.stars); save.best[id] = Math.max(save.best[id] || 0, r.best);
@@ -285,7 +290,10 @@ function showResult(win) {
         if (!G) renderMap();
       }
       if (!line || !line.isConnected) return;
-      if (why === 'too fast') line.textContent = '기록이 너무 빨라 저장하지 않았어요';
+      // 다시 보내기에서 온 'bad run': 첫 번째가 시간초과였지만 서버는 이미 저장했을 수 있다 (서버 기록으로 확인)
+      const savedBefore = why === 'bad run' && tries > 1 && (!win || ((save.stars[id] || 0) >= st && (save.best[id] || 0) >= score));
+      if (savedBefore) line.textContent = '기록을 저장했어요';
+      else if (why === 'too fast') line.textContent = '기록이 너무 빨라 저장하지 않았어요';
       else if (why === 'bad run') line.textContent = '판이 너무 오래돼서 기록을 저장하지 못했어요';
       else if (rejected) line.textContent = '기록을 저장하지 못했어요';
       else {

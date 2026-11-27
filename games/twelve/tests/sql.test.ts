@@ -239,3 +239,17 @@ describe('SQL 규칙', () => {
 
   it('게임 오픈 여부는 닫힌 채로 추가', () => expect(sql).toContain("('game_open:twelve', 'false'::jsonb)"));
 });
+
+describe('119: 랭킹 뷰에서 관리자 빼기', () => {
+  const t = read('119_review_fixes.sql');
+  it('레벨 · 끝없는 탑 랭킹 둘 다 (열 · 권한 그대로)', () => {
+    for (const v of ['twelve_level_ranking', 'twelve_tower_ranking']) {
+      const at = t.indexOf(`create or replace view public.${v} as`);
+      expect(at, v).toBeGreaterThan(0);
+      expect(t.slice(at, t.indexOf(';', at)), v).toContain('not coalesce(p.is_admin, false)');
+      expect(t).toContain(`grant select on public.${v} to anon, authenticated;`);
+    }
+    // 레벨 랭킹 지형 열은 097 의 정의 그대로
+    expect(t).toContain("m.clears > 0 and m.map_id ~ '^[0-9]+-8$'), 0) + 1) as region");
+  });
+});

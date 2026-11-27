@@ -9,6 +9,7 @@ import { escapeHtml } from './hud';
 import { tankSvg } from './tankSvg';
 import { save } from './storage';
 import { sfx } from './sfx';
+import { music } from './music';
 import { TEAM_COLORS, TEAM_NAMES } from './teams';
 import { closeGame, launchGame, nav, screen, state, toast, type Opponent } from './app';
 import { renderShop as shopWidget } from './shop';
@@ -442,6 +443,7 @@ export interface ResultActions {
 /** record: AI 전 전적 기록 (반영되는 판일 때만. 무승부 판은 record.draw()) */
 export function showResult(s: MatchSummary, actions?: ResultActions, record: Promise<AiOutcome> | null = null) {
   const act: ResultActions = actions ?? { primary: '다시 하기', onPrimary: showSetup, secondary: '대기실로', onSecondary: () => nav.lobby() };
+  music.keepResult(); // 판 끝의 승리·패배 곡을 결과 화면 동안 이어 간다
   if (s.practice) return showTargetResult(s, act);
   const winText = s.winner === -1 ? '무승부!' : `${TEAM_NAMES[s.winner]} 승리!`;
   const meWon = s.players.some((p) => p.team === s.winner && p.mine);

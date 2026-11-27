@@ -49,8 +49,10 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
   autoStart: true,
   title: '세븐포커',
   manual: POKER_MANUAL,
-  // 배경음: 7구(히든) 마지막 베팅부터 쇼다운까지 긴장 곡
-  bgmBoss: (pub) => pub.phase === 'bet7' || pub.phase === 'showdown',
+  // 배경음: 7구(히든) 마지막 베팅 동안 긴장 곡.
+  // 'showdown' 은 보지 않는다 — 엔진의 showdown() 이 같은 처리 안에서 finish() 로 곧장 'done' 까지 가서 밖에 나오는 상태에는 없다.
+  // 끝난 판(result 있음)은 셸이 긴장 곡을 묻지 않는다
+  bgmBoss: (pub) => pub.phase === 'bet7',
   icon: '♠️',
   back: 'games/casino/',
   backLabel: '카지노',

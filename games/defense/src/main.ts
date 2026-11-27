@@ -131,7 +131,9 @@ async function openGame(setup: GameSetup) {
 nav.game = (setup) => {
   if (starting) return;
   starting = true;
-  void openGame(setup).finally(() => (starting = false));
+  return openGame(setup).finally(() => {
+    starting = false;
+  });
 };
 nav.result = showResult;
 
@@ -258,9 +260,22 @@ async function start() {
   try {
     if (!api) throw new Error('no api');
     // 지난번에 올리지 못한 판 결과가 있으면 먼저 다시 보낸다
-    const sent = await resendOnce(api);
+    // 느린 망에서 오래 걸리면 RESEND_WAIT_MS 만 기다리고 화면을 연다 (올리기는 뒤에서 계속하고, 끝나면 resendPending 처럼 알린다)
+    const job = resendOnce(api);
+    const sent = await Promise.race([job, wait(RESEND_WAIT_MS).then(() => -1)]);
     setProfile(await api.loadProfile());
     if (sent > 0) toast(`지난번에 올리지 못한 결과 ${sent}판을 올렸어요`, 3200);
+    else if (sent < 0) {
+      void job.then(async (n) => {
+        if (n <= 0) return;
+        try {
+          setProfile(await api.loadProfile());
+        } catch {
+          // 프로필을 못 읽었다: 다음 기회에 다시 읽는다
+        }
+        if (!app.querySelector('.screen.game')) toast(`지난번에 올리지 못한 결과 ${n}판을 올렸어요`, 3200);
+      });
+    }
   } catch {
     toast('서버에 연결하지 못했어요. 지금은 기록되지 않아요', 3600);
   }

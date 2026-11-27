@@ -220,9 +220,14 @@ function unlock() {
   const a = audio();
   bgmKick(); // 배경음: 첫 입력(사용자 동작) 안에서 재생을 시작해야 휴대폰이 허락한다
   // 오디오가 실제로 깨어날 때까지 입력마다 다시 시도 (휴대폰은 touchend/click에서만 깨어나는 경우가 있다)
-  if (a && a.state === 'running') for (const ev of UNLOCK_EVENTS) removeEventListener(ev, unlock, true);
+  // 배경음을 틀어야 하는데 아직 안 틀었으면 감시를 남긴다: 나중에(로그인 뒤 등) 사용자 동작 밖에서 부른 play() 는 아이폰이 거절한다
+  if (a && a.state === 'running' && bgmSettled()) for (const ev of UNLOCK_EVENTS) removeEventListener(ev, unlock, true);
 }
-if (typeof addEventListener === 'function') for (const ev of UNLOCK_EVENTS) addEventListener(ev, unlock, true);
+/** 입력 감시를 (다시) 붙인다 — 같은 함수라 여러 번 붙여도 한 번만 걸린다 */
+function armUnlock() {
+  if (typeof addEventListener === 'function') for (const ev of UNLOCK_EVENTS) addEventListener(ev, unlock, true);
+}
+armUnlock();
 // 홈 화면 앱(특히 아이폰)은 다른 앱에 다녀오면 오디오가 멈춘 채(interrupted/suspended) 남는다
 // → 화면으로 돌아왔을 때 멈춰 있으면 다음 입력에서 다시 깨우도록 걸어 둔다
 if (typeof document !== 'undefined' && typeof addEventListener === 'function') {
@@ -392,6 +397,7 @@ let bgmBusy = null; // 진행 중인 바꾸기 (Promise)
 let bgmLevel = 0; // 지금 크기 (0~1, BGM_VOLUME 곱하기 전)
 let bgmRamp = 0;
 let bgmRampTo = -1; // 지금 진행 중인 페이드의 목표 (-1 = 없음)
+let bgmRampOwner = 0; // bgmRampTo 를 건 페이드의 번호
 
 /** 장면 → 차례로 찾아볼 파일들 (없으면 다음 것): 보스 → 그 게임 main → 로비 곡 */
 function bgmTries(game, scene) {
@@ -442,11 +448,16 @@ function setLevel(v) {
 function fadeTo(to, ms) {
   const id = ++bgmRamp;
   bgmRampTo = to;
+  bgmRampOwner = id;
   const from = bgmLevel;
   const t0 = performance.now();
   return new Promise((done) => {
     const step = () => {
-      if (id !== bgmRamp) return done(false);
+      if (id !== bgmRamp) {
+        // 끊김: 새 페이드가 목표를 다시 걸지 않았으면 (숨김 등) 목표를 지운다 → 돌아왔을 때 다시 튼다
+        if (bgmRampOwner === id) bgmRampTo = -1;
+        return done(false);
+      }
       const k = ms > 0 ? Math.min(1, (performance.now() - t0) / ms) : 1;
       setLevel(from + (to - from) * k);
       if (k >= 1) {
@@ -458,9 +469,21 @@ function fadeTo(to, ms) {
     step();
   });
 }
+/** 배경음 쪽에서 더 입력을 기다릴 일이 없는지 (원하지 않음 · 이미 재생 중 · 한 번만 트는 곡이 끝남) */
+function bgmSettled() {
+  if (!bgmWant || !bgmOn) return true;
+  const url = bgmWant.tries[bgmWant.i];
+  if (!url) return true;
+  return !!bgmEl && bgmNow === url && (!bgmEl.paused || bgmEl.ended);
+}
+/** play() 가 거절되면(사용자 동작 밖) 다음 입력 때 다시 시도하도록 감시를 붙인다 */
+function bgmRefused() {
+  if (bgmWant && bgmOn) armUnlock();
+}
 /** 첫 입력 안에서: 요소를 만들고 바로 재생을 시작한다 (휴대폰 허락) */
 function bgmKick() {
-  if (!bgmWant || !bgmOn) return;
+  if (!bgmWant || !bgmOn || bgmBusy) return; // 곡 바꾸는 중이면 그쪽이 튼다
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   const el = bgmElement();
   if (!el) return;
   const url = bgmWant.tries[bgmWant.i];
@@ -469,8 +492,8 @@ function bgmKick() {
     bgmNow = url;
     el.src = url;
     el.loop = !BGM_ONCE.has(bgmWant.scene);
-  }
-  if (el.paused) el.play().then(() => fadeTo(1, BGM_FADE_IN)).catch(() => undefined);
+  } else if (el.ended) return; // 한 번만 트는 곡이 이미 끝남
+  if (el.paused) el.play().then(() => fadeTo(1, BGM_FADE_IN)).catch(bgmRefused);
 }
 /** 지금 원하는 곡·설정에 맞춘다 */
 function bgmApply() {
@@ -480,6 +503,7 @@ function bgmApply() {
     // 가려진 탭은 바로 멈춘다 (가려진 탭의 타이머는 느려서 페이드가 길게 늘어진다)
     if (el && !el.paused && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       bgmRamp++;
+      bgmRampTo = -1; // 끊은 페이드의 목표를 지운다 (안 지우면 돌아왔을 때 '커지는 중'으로 보여 다시 틀지 않는다)
       setLevel(0);
       el.pause();
       return;
@@ -492,7 +516,7 @@ function bgmApply() {
   if (!target) return;
   if (bgmNow === url) {
     // 같은 곡: 멈춰 있었으면 이어서 (한 번만 트는 곡이 이미 끝났으면 다시 틀지 않는다)
-    if (target.paused && !target.ended && bgmRampTo !== 1) target.play().then(() => fadeTo(1, BGM_FADE_IN)).catch(() => undefined);
+    if (target.paused && !target.ended && bgmRampTo !== 1) target.play().then(() => fadeTo(1, BGM_FADE_IN)).catch(bgmRefused);
     // 이미 커지는 중이면 그대로 둔다 (매 프레임 불러도 페이드가 처음부터 다시 시작되지 않게)
     else if (!target.paused && bgmLevel < 1 && bgmRampTo !== 1) void fadeTo(1, BGM_FADE_IN);
     return;
@@ -508,7 +532,7 @@ function bgmApply() {
       await target.play();
       void fadeTo(1, BGM_FADE_IN);
     } catch {
-      /* 재생 거절(입력 전) → 다음 입력 때 bgmKick */
+      bgmRefused(); // 재생 거절(사용자 동작 밖) → 다음 입력 때 bgmKick
     }
   })().finally(() => {
     bgmBusy = null;
@@ -571,11 +595,15 @@ export const isSoundSettingsOpen = () => typeof document !== 'undefined' && !!do
  */
 export function openSoundSettings(onClose) {
   const old = document.querySelector('.sia-snd-dim');
-  if (old) return old;
+  if (old) {
+    if (onClose) old._siaOnClose = onClose; // 마지막에 받은 것으로 바꿔 끼운다
+    return old;
+  }
   setCss();
   play('click');
   const dim = document.createElement('div');
   dim.className = 'sia-snd-dim';
+  dim._siaOnClose = onClose;
   const seg = (k, on) =>
     `<div class="sia-snd-seg" data-k="${k}"><button type="button" data-v="1" class="${on ? 'sel' : ''}" aria-pressed="${on}">켜기</button><button type="button" data-v="0" class="${on ? '' : 'sel'}" aria-pressed="${!on}">끄기</button></div>`;
   const paint = () => {
@@ -590,7 +618,7 @@ export function openSoundSettings(onClose) {
     play('click');
     dim.remove();
     removeEventListener('keydown', onKey, true);
-    onClose?.();
+    dim._siaOnClose?.();
   };
   const onKey = (e) => {
     if (e.key !== 'Escape') return;

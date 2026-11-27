@@ -240,8 +240,17 @@ async function unlockCat(btn: HTMLButtonElement) {
       applyOwned([...owned, 'cat']);
       toast('열었어요! (테스트 모드)');
     } else {
-      const { r, text } = await buyCharacter('cat');
-      if (r.ok || r.reason === 'owned') applyOwned((await loadOwnedCharacters(true)) ?? [...owned, 'cat']);
+      let { r, text } = await buyCharacter('cat');
+      // 시간 초과 · 통신 끊김('error'): 서버에서는 샀을 수 있으니 목록을 다시 읽어 본다 (이미 샀으면 owned 라 두 번 빠지지 않는다)
+      let list: string[] | null = null;
+      if (!r.ok && r.reason === 'error') {
+        list = await loadOwnedCharacters(true);
+        if (list?.includes('cat')) {
+          r = { ok: false, reason: 'owned' };
+          text = '이미 열었어요';
+        }
+      }
+      if (r.ok || r.reason === 'owned') applyOwned((list ?? (await loadOwnedCharacters(true))) ?? [...owned, 'cat']);
       // 조건 미달로 거절되면 기록을 다시 읽어 조건 글을 고친다
       if (r.reason === 'condition') profile = await api.loadProfile().catch(() => profile);
       toast(text);
@@ -936,6 +945,9 @@ export async function startGame(stage: StageDef, endless: boolean) {
   };
   stopHideWatch = () => document.removeEventListener('visibilitychange', onHide);
   document.addEventListener('visibilitychange', onHide);
+  // 시작 요청을 기다리는 사이 홈으로 나갔으면 숨은 탭에서 판이 막 열린 것이다: 바로 멈춰 둔다
+  // (scene.paused 는 장면이 뜰 때 되돌리지 않으므로 장면이 뜨기 전에 멈춰도 그대로 남는다)
+  if (document.hidden) openPause();
 }
 
 /** note: 'kept' = 서버에 못 보내 기기에 보관, 'unrecorded' = 시작을 알리지 못해 기록되지 않는 판 */

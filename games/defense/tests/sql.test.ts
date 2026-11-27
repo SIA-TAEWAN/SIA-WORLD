@@ -150,3 +150,15 @@ describe('SQL의 표가 게임 데이터와 같다', () => {
     expect(sql).toContain("insert into public.app_settings (key, value) values ('game_open:defense', 'false'::jsonb) on conflict (key) do nothing;");
   });
 });
+
+describe('119: 랭킹 뷰에서 관리자 빼기', () => {
+  const t = read('119_review_fixes.sql');
+  it('스테이지 · 끝없는 랭킹 둘 다 (열 · 권한 그대로)', () => {
+    for (const v of ['defense_stage_ranking', 'defense_endless_ranking']) {
+      const at = t.indexOf(`create or replace view public.${v} as`);
+      expect(at, v).toBeGreaterThan(0);
+      expect(t.slice(at, t.indexOf(';', at)), v).toContain('not coalesce(p.is_admin, false)');
+      expect(t).toContain(`grant select on public.${v} to anon, authenticated;`);
+    }
+  });
+});
