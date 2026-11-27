@@ -137,7 +137,7 @@ export function showResult(race: RaceGame, results: RankedEntry[]) {
         sfx('newRecord', { delay: 900 });
         confetti($('#cheer'));
       } else el.innerHTML = `<span class="soft">최고 ${formatTime(rec.bestMs)}초</span>`;
-      if (!rec.saved && !LOCAL_MODE) el.insertAdjacentHTML('beforeend', `<br/><span class="soft">${rec.locked ? LOCKED_MSG : '서버에 기록을 올리지 못했어요'}</span>`);
+      if (!rec.saved && !LOCAL_MODE) el.insertAdjacentHTML('beforeend', `<br/><span class="soft">${rec.locked ? LOCKED_MSG : rec.late ? '달리는 도중 화면을 가리거나 다른 앱으로 가면 기록이 인정되지 않아요' : '서버에 기록을 올리지 못했어요'}</span>`);
     });
   }
 

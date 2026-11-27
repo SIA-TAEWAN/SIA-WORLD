@@ -1,4 +1,5 @@
 import { TICK } from '../data/balance';
+import { canReroll } from '../game/levelup';
 import { createRun, makeInput, step, summarize, type RunSummary } from '../game/sim';
 import type { Ev, Input, RunConfig, State } from '../game/state';
 
@@ -76,7 +77,7 @@ export class Run {
 
   /** 레벨업 카드를 다시 뽑는다 */
   reroll() {
-    if (this.state.phase !== 'levelup' || this.state.rerolls <= 0) return;
+    if (!canReroll(this.state)) return;
     this.input.reroll = true;
     this.stepOnce();
     this.input.reroll = false;

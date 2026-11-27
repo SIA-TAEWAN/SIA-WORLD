@@ -455,6 +455,8 @@ async function play() {
   floorBanner(run.map.floor);
   // 가려진 탭에서는 멈춘다
   document.addEventListener('visibilitychange', onHidden);
+  // 그림을 불러오는 사이에 이미 가렸으면 바뀜 알림이 다시 오지 않으니 지금 멈춘다 (장면은 시작할 때 hooks.paused 로 이어받는다)
+  if (document.hidden) openMenu();
 }
 const onHidden = () => {
   if (document.hidden && cur && !cur.paused && !cur.ended) openMenu();
@@ -571,6 +573,7 @@ function hooks(): SceneHooks {
       for (const ev of evs) onEvent(ev, s);
     },
     onFrame: (s) => drawHud(s),
+    paused: () => !!cur?.paused,
   };
 }
 

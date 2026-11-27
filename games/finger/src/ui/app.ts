@@ -665,7 +665,8 @@ const NO_PROFILE = '내 기록을 받지 못했어요. 잠시 뒤 다시 해 주
 let dailyChecking = false;
 /**
  * 도전하기 · 다시 도전: 누를 때 날짜를 다시 받아, 화면에 그린 날짜와 다르면 새 날짜의 판을 다시 보여 준다 (그 판은 시작하지 않는다).
- * 날짜를 못 받으면 시작하지 않는다. 테스트 모드는 기기 시계. before 는 시작 · 다시 그리기 직전에 할 일 (결과 창 닫기)
+ * 날짜를 못 받으면 시작하지 않는다. 테스트 모드는 기기 시계. before 는 새 날짜로 다시 그리기 직전에 할 일 (지난 판 닫기).
+ * 시작할 때는 부르지 않는다: 지난 판은 startGame 이 시작에 성공할 때 닫고, 실패하면 결과 창이 그대로 남는다
  */
 async function startDaily(c: DailyChallenge, before?: () => void) {
   if (dailyChecking || busy) return;
@@ -677,8 +678,8 @@ async function startDaily(c: DailyChallenge, before?: () => void) {
     dailyChecking = false;
   }
   if (!day) return toast(NO_DAY);
-  before?.();
   if (day !== c.day) {
+    before?.();
     toast('날짜가 바뀌었어요. 새 오늘의 판을 보여 드려요');
     return void showDaily();
   }
@@ -901,7 +902,11 @@ export async function startGame(stageId: string, party: HeroId[] = partyOf(profi
     busy = false;
     toast(errText(e));
     // 오늘의 도전: 그사이 날짜가 바뀌었으면 새 날짜의 판을 다시 보여 준다
-    if (daily && e instanceof ApiError && e.message === 'bad day') void showDaily();
+    // (그 밖의 실패는 지금 화면 그대로: 결과 창에서 다시하기였으면 결과 창이 남아 다시 누르거나 메뉴로 갈 수 있다)
+    if (daily && e instanceof ApiError && e.message === 'bad day') {
+      closeGame();
+      void showDaily();
+    }
     return;
   }
   busy = false;
@@ -1121,9 +1126,9 @@ function showTowerResult(s: RunState, party: HeroId[], out: Sent) {
         <button class="btn" id="menu">메뉴로</button>
       </div></div>`;
   app().appendChild(box);
+  // 다시하기: 시작이 실패하면 결과 창이 그대로 남는다 (지난 판은 startGame 이 시작에 성공할 때 닫는다)
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
-    closeGame();
     void startGame(TOWER, party);
   });
   box.querySelector('#menu')!.addEventListener('click', () => {
@@ -1187,9 +1192,10 @@ function showResult(s: RunState, st: StageDef, party: HeroId[], out: Sent) {
     closeGame();
     showParty(next!);
   });
+  // 다시하기: 지난 판은 여기서 닫지 않는다. startGame 이 시작에 성공하면 화면을 바꾸며 닫고,
+  // 시작(finger_start)이 실패하면 안내만 띄우고 이 결과 창이 그대로 남아 다시 누르거나 메뉴로 갈 수 있다
   box.querySelector('#again')!.addEventListener('click', () => {
     play('click');
-    closeGame();
     void startGame(st.id, party);
   });
   box.querySelector('#menu')!.addEventListener('click', () => {

@@ -9,6 +9,7 @@ import { presetUpgrades } from '../data/upgrades';
 import { WEAPONS, WEAPON_INDEX } from '../data/weapons';
 import { isMaxLevel, passiveSetActive, setActive, setOf } from '../game/weapons';
 import { LIMITS, endlessOpen, enoughKills } from '../game/progress';
+import { canReroll } from '../game/levelup';
 import { activeBoss } from '../game/sim';
 import { CARD, EV, type Card, type Ev, type State } from '../game/state';
 import { ApiError, LOCAL_MODE } from '../net/api';
@@ -496,7 +497,7 @@ export function showGame(setup: GameSetup) {
         <span class="tx"><b>${esc(v.name)}</b><span class="tag ${c.isNew ? 'new' : ''} ${v.max ? 'max' : ''}">${esc(v.tag)}</span><small>${esc(v.text)}</small>${v.set ? `<small class="set ${v.done ? 'done' : ''}">${esc(v.set)}</small>` : ''}</span></button>`;
     });
     dim.innerHTML = `<div class="lv-box"><h3>레벨 업! <b>Lv ${s.level}</b></h3><p class="soft">하나를 골라요</p>${cards.join('')}
-      ${s.rerolls > 0 ? `<button class="btn small" data-reroll>🔄 다시 뽑기 (${s.rerolls}번 남음) <span class="key">R</span></button>` : ''}</div>`;
+      ${s.rerolls > 0 ? (canReroll(s) ? `<button class="btn small" data-reroll>🔄 다시 뽑기 (${s.rerolls}번 남음) <span class="key">R</span></button>` : `<button class="btn small" disabled>🔄 바꿀 카드가 없어요 (${s.rerolls}번 남음)</button>`) : ''}</div>`;
     dim.addEventListener('click', (e) => {
       // 창이 뜬 직후의 클릭은 무시한다 (움직이려고 누른 것이 카드를 고르지 않게. 1·2·3 키는 바로 듣는다)
       if (performance.now() - levelAt < LEVELUP_GUARD_MS) return;
@@ -526,7 +527,7 @@ export function showGame(setup: GameSetup) {
     }
   }
   function reroll() {
-    if (s.phase !== 'levelup' || s.rerolls <= 0) return;
+    if (!canReroll(s)) return;
     sfx('toggle');
     run.reroll();
     showLevelUp(false);

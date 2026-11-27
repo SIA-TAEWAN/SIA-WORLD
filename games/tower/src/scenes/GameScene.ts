@@ -18,6 +18,8 @@ export interface SceneHooks {
   /** 한 간격의 사건들 (HUD·소리·안내·상점·층 끝) */
   onEvents(evs: SimEvent[], s: RunState): void;
   onFrame(s: RunState): void;
+  /** 장면이 (다시) 시작될 때 멈춘 상태인지 — 준비 중에 메뉴가 열렸으면 멈춘 채로 시작한다 */
+  paused?(): boolean;
 }
 export interface SceneArt {
   /** 캐릭터 레이어 4장 (몸 → 얼굴 → 옷 → 머리) */
@@ -73,6 +75,7 @@ export class GameScene extends Phaser.Scene {
     this.run = data.run;
     this.hooks = data.hooks;
     this.art = data.art;
+    this.paused = data.hooks.paused?.() ?? false;
     this.acc = 0;
     this.foes.clear();
     this.projs.clear();

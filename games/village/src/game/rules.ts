@@ -756,10 +756,13 @@ export function expand(s: VillageState, now: number): void {
   s.profile.landStage = stage + 1;
 }
 
-/** 고양이 사기 결과 (071 buy_character 의 답과 같은 모양. login · error 는 서버 연결에서만) */
+/**
+ * 고양이 사기 결과 (071 buy_character 의 답과 같은 모양. login · error · network 는 서버 연결에서만).
+ * network = 시간 초과 · 통신 끊김으로 답을 못 받았고, 다시 읽은 마을에서도 산 것이 보이지 않았다 (서버에서는 샀을 수도 있다)
+ */
 export interface CatBuy {
   ok: boolean;
-  reason?: 'owned' | 'coin' | 'condition' | 'login' | 'error';
+  reason?: 'owned' | 'coin' | 'condition' | 'login' | 'error' | 'network';
   have?: number;
   need?: number;
   siaCoins?: number;

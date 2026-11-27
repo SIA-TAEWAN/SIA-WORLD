@@ -3,7 +3,7 @@
  * Phaser·DOM·Math.random 을 쓰지 않는다 (같은 시드·같은 조작이면 언제나 같은 결과).
  * 화면은 이 상태를 그리기만 하고, 화면 없이도 수천 판을 돌려 밸런스를 볼 수 있다 (game/policy.ts).
  */
-import { BOSS_WARN_SEC, DAILY_COIN_MUL, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, STACKS, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
+import { ARENA, BOSS_WARN_SEC, DAILY_COIN_MUL, DEV_LEVEL_PER_SEC, ENDLESS, LIMIT, PLAYER, RUN_SEC, STACKS, TICK, TICKS_PER_SEC, xpNeed, type RunMode } from '../data/balance';
 import { BOSSES, BOSS_INDEX } from '../data/bosses';
 import { CHARACTER_BY_ID } from '../data/characters';
 import { ENEMIES, ENEMY_INDEX } from '../data/enemies';
@@ -19,7 +19,7 @@ import {
 import { runBuild, type RunBuild } from './build';
 import { updateEnemies } from './enemies';
 import { Grid } from './grid';
-import { addWeapon, applyCard, checkLevelUp, drawCards, openChest, pickCard } from './levelup';
+import { addWeapon, applyCard, canReroll, checkLevelUp, drawCards, openChest, pickCard } from './levelup';
 import { EV, FX, MODE, type Enemy, type Input, type RunConfig, type State } from './state';
 import { OUT, blocked, pushOut } from './terrain';
 import { updateWeapons, weaponReady } from './weapons';
@@ -138,6 +138,11 @@ const PT = { x: 0, y: 0 };
  * 요괴 종류에 맞는 자리에 나타나게 한다 (data/enemies.ts 의 spawn):
  *   edge 화면 밖 둘레 한 마리 · near 내 근처 바닥에 숨어서 · row 화면 밖에 한 줄로 늘어서서
  */
+/** 줄지어 오는 요괴: 줄 끝과 맵 끝 담 사이에 남기는 틈 */
+const ROW_MARGIN = 20;
+/** 줄지어 오는 요괴가 장애물 위에 나면 비켜 서 볼 자리 (나아가는 방향으로 간격의 몇 배 — 앞이 먼저) */
+const ROW_NUDGE = [1, -1, 2, -2];
+
 function spawnByKind(s: State, kind: number) {
   const def = ENEMIES[kind];
   const p = s.player;
@@ -166,13 +171,33 @@ function spawnByKind(s: State, kind: number) {
     const n = Math.round(def.extra?.row ?? 5);
     const gap = def.r * 2.3;
     const horizontal = side < 2;
+    // 줄 전체가 맵 끝의 담 안쪽에 들어오게 가운데를 옮긴다 (담에 걸친 녀석들이 담에 붙어 한 점에 뭉치지 않게)
+    const half = ((n - 1) / 2) * gap;
+    const lim = (horizontal ? ARENA.halfW : ARENA.halfH) - def.r - ROW_MARGIN - half;
+    if (lim > 0) {
+      if (horizontal) PT.x = Math.max(-lim, Math.min(lim, PT.x));
+      else PT.y = Math.max(-lim, Math.min(lim, PT.y));
+    }
     const dx = p.x - PT.x;
     const dy = p.y - PT.y;
     const d = Math.hypot(dx, dy) || 1;
     for (let i = 0; i < n; i++) {
       if (s.enemies.n >= LIMIT.enemyPool - 6) break;
       const o = (i - (n - 1) / 2) * gap;
-      const e = spawnEnemy(s, kind, PT.x + (horizontal ? o : 0), PT.y + (horizontal ? 0 : o));
+      let x = PT.x + (horizontal ? o : 0);
+      let y = PT.y + (horizontal ? 0 : o);
+      // 장애물(담·대나무·웅덩이) 위에 놓이면 나아가는 방향 앞뒤로 비켜 선다 (한 칸에 겹쳐 밀려나며 뭉치지 않게)
+      if (blocked(s.map.terrain, s.terrainSeed, x, y, def.r)) {
+        for (const k of ROW_NUDGE) {
+          const nx = x + (dx / d) * gap * k;
+          const ny = y + (dy / d) * gap * k;
+          if (!insideArena(nx, ny, def.r) || blocked(s.map.terrain, s.terrainSeed, nx, ny, def.r)) continue;
+          x = nx;
+          y = ny;
+          break;
+        }
+      }
+      const e = spawnEnemy(s, kind, x, y);
       if (!e) break;
       e.ax = dx / d;
       e.ay = dy / d;
@@ -516,7 +541,7 @@ export function step(s: State, input: Input) {
   s.killEv = false;
   if (s.phase === 'levelup') {
     // 레벨업 중에는 게임이 멈추고 카드 고르기만 받는다
-    if (input.reroll && s.rerolls > 0) {
+    if (input.reroll && canReroll(s)) {
       s.rerolls--;
       drawCards(s);
     } else if (input.pick >= 0) pickCard(s, input.pick);

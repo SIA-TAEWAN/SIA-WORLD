@@ -8,7 +8,7 @@ const read = (f: string) => readFileSync(new URL(f, MIG), 'utf8').replace(/\r\n/
 const shared = (f: string) => readFileSync(new URL(`../../../shared/${f}`, import.meta.url), 'utf8');
 const files = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
 /** 카드배틀 마이그레이션 (뒤의 것이 앞의 정의를 create or replace 로 바꾼다) */
-const CARD_FILES = ['112_card.sql', '114_card_tune.sql', '116_card_elite.sql'];
+const CARD_FILES = ['112_card.sql', '114_card_tune.sql', '116_card_elite.sql', '117_card_cleanup.sql'];
 
 /** 함수의 마지막 정의 (create or replace — 가장 늦은 마이그레이션이 이긴다) → 본문, 파일 */
 function lastDef(fn: string): { body: string; from: string } {
@@ -29,7 +29,7 @@ describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
   for (const m of c.body.matchAll(/when '(\w+)' then (\d+)/g)) vals[m[1]] = Number(m[2]);
 
   it('_card_const: 규칙 판본 · 숙련 · 시아코인 · 기록 길이 · 오늘의 도전 점수', () => {
-    expect(c.from).toBe(CARD_FILES[CARD_FILES.length - 1]);
+    expect(c.from).toBe('116_card_elite.sql');
     for (const f of CARD_FILES) expect(files).toContain(f);
     expect(vals.rules).toBe(RULES_VERSION);
     expect(vals.mastery_open).toBe(MASTERY_OPEN);
@@ -43,7 +43,7 @@ describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
 
   it('관리자 시험 판 시작 엽전: card_start 가 보통·끝없는 판에만 start_gold 를 정해 저장 · 판 JSON 에 startGold', () => {
     const st = lastDef('card_start');
-    expect(st.from).toBe('114_card_tune.sql');
+    expect(st.from).toBe('117_card_cleanup.sql');
     const body = st.body.replace(/\s+/g, ' ');
     // 관리자 갈래는 오늘의 도전이 아닌 쪽(else) 안
     const els = body.indexOf("perform public._check_character(me, p_hero, 'card')");
@@ -77,7 +77,12 @@ describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
       expect(lastDef(fn).body, fn).toContain('security definer set search_path = public');
     }
     const t114 = read('114_card_tune.sql');
-    for (const fn of ['card_start(text, text, int, text, bigint)', 'card_state()']) expect(t114, fn).toContain(`revoke all on function public.${fn} from public, anon;`);
+    expect(t114).toContain('revoke all on function public.card_state() from public, anon;');
+    const t117 = read('117_card_cleanup.sql');
+    expect(t117).toContain('revoke all on function public.card_start(text, text, int, text, bigint) from public, anon;');
+    expect(t117).toContain('grant execute on function public.card_start(text, text, int, text, bigint) to authenticated;');
+    expect(lastDef('_card_prune').body).toContain('security definer set search_path = public');
+    expect(t117).toContain('revoke all on function public._card_prune(uuid) from public, anon, authenticated;');
     expect(t114).toContain('revoke all on function public._card_const(text) from public, anon, authenticated;');
     expect(t114).toContain('revoke all on function public._card_run_json(public.card_runs) from public, anon, authenticated;');
     const sql = read('112_card.sql');
@@ -85,6 +90,25 @@ describe('112_card.sql · 114_card_tune.sql 과 규칙 코드', () => {
     expect(sql).toContain('grant execute on function public.card_finish_verified(uuid, uuid, jsonb, jsonb) to service_role;');
     expect(sql).toContain("('game_open:card', 'false'::jsonb)");
     for (const t of ['card_runs', 'card_heroes', 'card_endless']) expect(sql).toContain(`alter table public.${t} enable row level security;`);
+  });
+
+  it('117: 버린 판 정리 · 오늘의 도전 시작 재시도 · 끝없는 랭킹에서 관리자 빼기', () => {
+    const body = lastDef('card_start').body.replace(/\s+/g, ' ');
+    // 재시도: 새 판을 만들기 전에 기록 없는 같은 오늘의 도전 판을 돌려준다 ('그날 첫 판' 판정보다 먼저)
+    const reuse = body.indexOf("and day = d and hero = p_hero and seed = s and log_len = 0");
+    expect(reuse).toBeGreaterThan(0);
+    expect(reuse).toBeLessThan(body.indexOf('first := not exists'));
+    // 정리는 앞 판을 버린 뒤, 새 판을 넣기 전
+    const prune = body.indexOf('perform public._card_prune(me);');
+    expect(prune).toBeGreaterThan(body.indexOf("set status = 'abandoned'"));
+    expect(prune).toBeLessThan(body.indexOf('insert into public.card_runs'));
+    // 지우는 것은 기록 없는 버린 판만 (오늘의 도전은 오늘 판을 남긴다)
+    const pr = lastDef('_card_prune').body.replace(/\s+/g, ' ');
+    expect(pr).toContain("status = 'abandoned' and log_len = 0 and acts = 0 and (mode <> 'daily' or day is null or day < public._daily_day())");
+    const t117 = read('117_card_cleanup.sql').replace(/\s+/g, ' ');
+    expect(t117).toContain('create or replace view public.card_endless_ranking as');
+    expect(t117).toContain('where not coalesce(p.is_admin, false);');
+    expect(t117).toContain('grant select on public.card_endless_ranking to anon, authenticated;');
   });
 
   it('오늘의 도전 점수식이 DAILY_SCORE 와 같은 꼴', () => {
