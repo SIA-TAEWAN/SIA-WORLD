@@ -1,5 +1,6 @@
 // SIA WORLD 랭킹 창 (로비와 시아탱크가 같이 쓴다).
 //   탭: 💣 시아탱크(승패) · 🎯 백발백중 · 🪙 카지노 · 💰 맞고 · 🏁 시아레이스(오늘의 도전 · 주간 · 최고 기록) · 🏐 시아배구(승수) · 👹 시아서바이벌(맵별 생존 시간)
+//   탭 순서는 내가 많이 한 게임 순 (my_play_counts — 시아코인을 받은 판 수, 115). 로비에서 열면 맨 앞 탭부터
 //   탭은 관리자가 로비에서 연 게임만 보인다 (shared/games.js 의 game_open). 닫힌 게임 안에서 연 창은 그 게임 탭만 예외
 //   등급: 해 상위 10% · 달 30% · 별 60% · 그 외 구름 (shared/rank.js)
 //   시아레이스 탭은 [오늘의 도전(처음) · 주간 · 최고 기록]. 최고 기록은 순위 기준, 한 명씩: 1위 해 · 2위 달 · 3위 별 · 4위부터 구름 (RACE_TIERS, raceTierOfPlace).
@@ -22,8 +23,19 @@ const STYLE_ID = 'sia-ranking-style';
 /** 탭 → 게임 id (shared/games.js). 관리자가 로비에서 연 게임의 탭만 보인다 */
 const TAB_GAME = { target: 'tank', volley: 'volleyball' };
 const gameOfTab = (tab) => TAB_GAME[tab] ?? tab;
-/** 탭 순서 (시아탱크가 먼저) */
+/** 기본 탭 순서 (내 기록을 받기 전, 그리고 판 수가 같을 때) */
 const TAB_ORDER = ['tank', 'target', 'casino', 'matgo', 'race', 'volley', 'survival', 'defense', 'village', 'charge', 'finger', 'twelve', 'tower', 'pang', 'card'];
+/** 시아코인 기록의 게임 id → 탭 (카지노 네 게임은 한 탭) */
+const PLAY_TAB = { volleyball: 'volley', poker: 'casino', holdem: 'casino', blackjack: 'casino', roulette: 'casino' };
+/**
+ * 내가 많이 한 게임 순 탭 순서 (115_my_play_counts.sql 의 my_play_counts → { 게임 id: 판 수 }).
+ * 판 수가 같으면 기본 순서. 마을처럼 기록이 없는 게임은 0판으로 친다
+ */
+export function sortTabsByPlays(counts) {
+  const n = {};
+  for (const [game, v] of Object.entries(counts ?? {})) { const t = PLAY_TAB[game] ?? game; n[t] = (n[t] ?? 0) + (Number(v) || 0); }
+  return TAB_ORDER.slice().sort((a, b) => (n[b] ?? 0) - (n[a] ?? 0) || TAB_ORDER.indexOf(a) - TAB_ORDER.indexOf(b));
+}
 
 /**
  * 시아레이스 등급 기준: 역대 최고 기록 순위(race_ranking 의 place). 등급마다 한 명뿐이다.
@@ -584,9 +596,10 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 /**
  * 랭킹 창 열기.
+ * 탭은 내가 많이 한 게임 순서 (기록을 받기 전에는 기본 순서). first 를 주지 않으면(로비) 맨 앞 탭을 보여 준다.
  * meId: 내 사용자 ID (내 줄 강조), first: 처음 보여 줄 탭 ('tank' | 'target' | 'casino' | 'matgo' | 'race' | 'volley' | 'survival' | 'defense' | 'village' | 'charge' | 'finger' | 'twelve' | 'tower' | 'pang')
  */
-export function openRanking({ meId = null, first = 'tank' } = {}) {
+export function openRanking({ meId = null, first = null } = {}) {
   // 이미 열린 창이 있으면 하나 더 띄우지 않는다 (버튼을 빠르게 두 번 눌렀을 때). 돌려주는 닫기는 그 창을 닫는다
   const opened = document.querySelector('.sia-rank-dim');
   if (opened) return () => opened.querySelector('[data-close]')?.click();
@@ -599,11 +612,13 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     st.textContent = CSS;
     document.head.append(st);
   }
+  let order = TAB_ORDER.slice();
+  let picked = false; // 사람이 탭을 직접 고르면 순서가 바뀌어도 그 탭에 머문다
   const dim = document.createElement('div');
   dim.className = 'sia-rank-dim';
   dim.innerHTML = `<div class="sia-rank" role="dialog" aria-modal="true" aria-label="랭킹">
     <div class="rh"><h3>🏆 랭킹</h3><button type="button" data-close>닫기</button></div>
-    <div class="tabs">${TAB_ORDER.filter((g) => tabInfo(g) && (defaultOpen(g) || g === inside))
+    <div class="tabs">${order.filter((g) => tabInfo(g) && (defaultOpen(g) || g === inside))
       .map((g) => `<button type="button" data-g="${g}">${tabInfo(g).label}</button>`)
       .join('')}</div>
     <div class="modes">${SURVIVAL_MODES.map((m) => `<button type="button" data-sm="${m.id}">${m.name}</button>`).join('')}<button type="button" data-sm="${DAILY_MODE}">${DAILY_NAME}</button></div>
@@ -626,7 +641,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
   dim.addEventListener('click', (e) => {
     if (e.target === dim || e.target.closest('[data-close]')) close();
     const tab = e.target.closest('[data-g]');
-    if (tab) void show(tab.dataset.g);
+    if (tab) { picked = true; void show(tab.dataset.g); }
     const sub = e.target.closest('[data-m]');
     if (sub) void showSurvival(sub.dataset.m);
     const sm = e.target.closest('[data-sm]');
@@ -1273,7 +1288,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
     }
   }
   // 열린 게임만 탭으로 남긴다 (inside 는 예외)
-  const visible = (open) => TAB_ORDER.filter((g) => tabInfo(g) && (open[gameOfTab(g)] || g === inside));
+  const visible = (open) => order.filter((g) => tabInfo(g) && (open[gameOfTab(g)] || g === inside));
   const start = (open) => {
     const tabs = visible(open);
     dim.querySelectorAll('.tabs button').forEach((b) => b.toggleAttribute('hidden', !tabs.includes(b.dataset.g)));
@@ -1283,7 +1298,7 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       b.type = 'button';
       b.dataset.g = g;
       b.textContent = tabInfo(g).label;
-      const after = [...dim.querySelectorAll('.tabs button')].find((x) => TAB_ORDER.indexOf(x.dataset.g) > TAB_ORDER.indexOf(g));
+      const after = [...dim.querySelectorAll('.tabs button')].find((x) => order.indexOf(x.dataset.g) > order.indexOf(g));
       $('.tabs').insertBefore(b, after ?? null);
     }
     const pick = tabs.includes(first) ? first : tabs[0];
@@ -1301,6 +1316,23 @@ export function openRanking({ meId = null, first = 'tank' } = {}) {
       if (dim.isConnected) start(open);
     })
     .catch(() => null);
+  // 내가 많이 한 게임 순으로 탭을 다시 줄 세운다 (로그인 안 했거나 못 받으면 기본 순서 그대로)
+  if (meId)
+    Promise.resolve(supabase.rpc('my_play_counts'))
+      .then(({ data, error }) => {
+        if (error || !data || !dim.isConnected) return;
+        order = sortTabsByPlays(data);
+        const box = $('.tabs');
+        for (const g of order) {
+          const b = box.querySelector(`[data-g="${g}"]`);
+          if (b) box.append(b);
+        }
+        if (!first && !picked) {
+          const top = order.find((g) => { const b = box.querySelector(`[data-g="${g}"]`); return b && !b.hidden; });
+          if (top && top !== shown) void show(top);
+        } else if (shown) void show(shown); // 고른 탭이 보이게 가로 스크롤만 다시 맞춘다
+      })
+      .catch(() => null);
   return close;
 }
 

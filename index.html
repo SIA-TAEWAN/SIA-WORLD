@@ -846,7 +846,7 @@
     }
 
     // ---------- 랭킹 (시아탱크와 같은 창: shared/ranking-dialog.js) ----------
-    $('#rank-btn').addEventListener('click', () => openRanking({ meId: me?.userId ?? null, first: 'tank' }));
+    $('#rank-btn').addEventListener('click', () => openRanking({ meId: me?.userId ?? null }));
     $('#logout').addEventListener('click', async () => {
       stopWorld();
       await signOut();

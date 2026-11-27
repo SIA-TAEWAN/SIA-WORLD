@@ -252,6 +252,12 @@ function resize() {
 }
 new ResizeObserver(() => resize()).observe(cv);
 const scene = PangScene.create($('scene'), SPR);
+// 정령 마당: 정령을 누르면 그 정령의 고유 스킬 (불 뿜기·분수·돌풍·벼락·꽃·쿵·빛의 고리·블랙홀·하트)
+$('scene').addEventListener('pointerdown', e => {
+  if (!scene.st.on) return;
+  const r = $('scene').getBoundingClientRect();
+  if (scene.tap(e.clientX - r.left, e.clientY - r.top)) { try { navigator.vibrate?.(12); } catch { /* 막힌 기기 */ } }
+});
 function layoutScene() {
   const wrap = $('sceneWrap');
   if (!G) return;
