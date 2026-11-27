@@ -12,6 +12,10 @@ import { fontsReady, nav, screen, stage, state } from './app';
 import { DPR } from './dpr';
 import { COLOR, css } from '../theme';
 import { sfx } from './sfx';
+import { music } from './music';
+
+/** 배경음을 보스 곡(마지막 직선)으로 바꾸는 지점: 트랙 길이의 이 비율 */
+const FINAL_STRETCH = 0.7;
 
 declare global {
   interface Window {
@@ -86,7 +90,7 @@ export function showRace(start: SoloStart) {
     <div class="pad solo" id="pad"><div class="pad-btns"><div class="go-btn slide" id="slide">슬라이딩</div><div class="go-btn" id="go">출발</div></div>
       <p class="hint" id="hint">스페이스 키 · 이 아래 아무 곳이나 눌러도 돼요</p></div>`,
     'race',
-    'race',
+    'main',
     () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
@@ -217,6 +221,8 @@ export function showRace(start: SoloStart) {
       img.style.left = `${Math.min(100, (v.x / TRACK_LEN) * 100).toFixed(1)}%`;
     }
     if (mine) rail.style.width = `${Math.min(100, (mine.x / TRACK_LEN) * 100).toFixed(1)}%`;
+    // 배경음: 내가 달리는 중에 트랙 70%를 넘으면 마지막 직선 곡 (도착한 뒤에도 결과 화면까지 그대로)
+    if (mine && mine.state !== 'wait' && mine.state !== 'foul' && mine.x >= TRACK_LEN * FINAL_STRETCH) music.play('boss');
 
     // 버튼: 출발 전 '출발' 하나, 달리는 중에는 '슬라이딩'(왼쪽)과 '점프'(오른쪽)
     let label = '출발';

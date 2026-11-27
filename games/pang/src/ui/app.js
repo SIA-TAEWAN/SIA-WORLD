@@ -13,8 +13,11 @@ let snd = null;
 function sfx(name, o) { try { snd?.play(name, o); } catch { /* 소리는 실패해도 게임은 계속 */ } }
 function soundLabel() { return snd && snd.isMuted() ? '🔇' : '🔊'; }
 function paintSound() { const b = $('soundBtn'); if (!b) return; b.textContent = soundLabel(); b.setAttribute('aria-label', snd && snd.isMuted() ? '소리 켜기' : '소리 끄기'); b.title = b.getAttribute('aria-label'); }
+/** 배경음: 지도·보통 판은 main, 보스 판은 boss, 끝나면 win/lose (같은 곡이면 그대로) */
+let bgmScene = 'main';
+function bgm(scene) { bgmScene = scene; try { snd?.playBgm('pang', scene); } catch { /* 배경음은 없어도 게임은 계속 */ } }
 function toggleSound() { if (!snd) return; snd.setMuted(!snd.isMuted()); paintSound(); }
-opts.loadSound?.().then(m => { snd = m; m.onMuteChange(paintSound); paintSound(); }).catch(() => {});
+opts.loadSound?.().then(m => { snd = m; m.onMuteChange(paintSound); paintSound(); bgm(bgmScene); }).catch(() => {});
 const PI2 = Math.PI * 2;
 const STAR = '<svg class="star" viewBox="0 0 24 24"><path d="M12 2.5l2.8 6.2 6.7.6-5.1 4.5 1.5 6.6L12 17l-5.9 3.4 1.5-6.6-5.1-4.5 6.7-.6z"/></svg>';
 const STAR_OFF = STAR.replace('class="star"', 'class="star off"');
@@ -235,6 +238,7 @@ function showResult(win) {
   } else {
     html = '<h3>아쉬워요</h3><div class="chap">스테이지 ' + id + ' · 이동을 모두 썼어요</div><div class="gl"></div><div class="info coin">기록을 보내는 중…</div><div class="row"><button class="btn" data-a="map">지도</button><button class="btn primary" data-a="retry">다시 하기</button></div>';
   }
+  bgm(win ? 'win' : 'lose');
   if (win) { sfx('win'); if (score > prevBest && prevBest) sfx('newRecord', { delay: 600 }); }
   else sfx('lose');
   iconCanvases.length = 0;
@@ -312,7 +316,7 @@ function layoutScene() {
 }
 window.addEventListener('resize', () => { if (G) layoutScene(); });
 
-function toMap() { G = null; phase = 'none'; $('game').classList.add('hidden'); $('map').classList.remove('hidden'); renderMap(); }
+function toMap() { bgm('main'); G = null; phase = 'none'; $('game').classList.add('hidden'); $('map').classList.remove('hidden'); renderMap(); }
 let runId = null, swaps = 0, starting = false;
 async function startStage(id) {
   if (starting) return;
@@ -340,6 +344,7 @@ async function startStage(id) {
   $('mk2').innerHTML = STAR; $('mk3').innerHTML = STAR + STAR;
   $('mk2').style.left = (s2 / max * 100) + '%'; $('mk3').style.left = (s3 / max * 100) + '%';
   window.scrollTo({ top: 0 });
+  bgm(L.boss ? 'boss' : 'main');
   scene.setup(L.chapter, L.kinds);
   layoutScene();
   phase = 'falling';

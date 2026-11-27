@@ -28,8 +28,8 @@ try {
 }
 const muteListeners = new Set<(m: boolean) => void>();
 
-/** 소리 끔 상태와 상관없이 오디오 장치를 얻는다 (배경음악용) */
-export function audioCtx(): AudioContext | null {
+/** 오디오 장치를 얻는다 (공용 모듈을 못 불러왔을 때의 효과음용) */
+function audioCtx(): AudioContext | null {
   try {
     if (!ctx) {
       const a = new AudioContext();

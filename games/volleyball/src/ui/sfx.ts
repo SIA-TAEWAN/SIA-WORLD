@@ -41,10 +41,11 @@ export const sound = {
   setBgm(on: boolean) {
     shared?.setBgmOn(on);
   },
-  onBgm(fn: (on: boolean) => void) {
-    whenSound(() => shared!.onBgmChange(fn));
+  /** 공용 배경음 (shared/sound.js playBgm). 공용 모듈이 없으면 아무것도 하지 않는다 */
+  playBgm(scene: string) {
+    shared?.playBgm('volleyball', scene);
   },
-  bgmFile(name: string): Promise<string | null> {
-    return shared ? shared.bgmFileUrl(name) : Promise.resolve(null);
+  stopBgm() {
+    shared?.stopBgm();
   },
 };

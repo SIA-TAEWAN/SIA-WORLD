@@ -94,8 +94,9 @@ export interface SoundModule {
   isBgmOn(): boolean;
   setBgmOn(on: boolean): void;
   onBgmChange(cb: (on: boolean) => void): () => void;
-  /** shared/sounds/<이름>.ogg|.mp3 가 있으면 그 주소 */
-  bgmFileUrl(name: string): Promise<string | null>;
+  /** 배경음 파일 틀기: shared/audio/bgm/<게임>/<장면>.mp3 (scene: main · boss · win · lose) */
+  playBgm(game: string, scene?: string): void;
+  stopBgm(): void;
 }
 let soundMod: Promise<SoundModule> | null = null;
 /** SIA WORLD 공용 효과음 (shared/sound.js) */

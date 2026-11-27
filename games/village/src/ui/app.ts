@@ -63,23 +63,15 @@ export const sound = {
   set(on: boolean) {
     shared?.setMuted(!on);
   },
-  get bgmOn() {
-    return shared ? shared.isBgmOn() : true;
-  },
-  get unlocked() {
-    return unlocked;
-  },
   whenReady(fn: () => void) {
     if (shared) fn();
     else waiting.push(fn);
   },
-  onChange(fn: () => void) {
-    sound.whenReady(() => {
-      shared!.onMuteChange(fn);
-      shared!.onBgmChange(fn);
-    });
-  },
-  bgmFile(name: string): Promise<string | null> {
-    return shared ? shared.bgmFileUrl(name) : Promise.resolve(null);
+  /**
+   * 배경음: SIA WORLD 공용 배경음 파일(shared/audio/bgm/village/main.mp3)을 공용 모듈(shared/sound.js 의 playBgm)로 튼다.
+   * 효과음 끄기 · 배경음 끄기('sia:bgm') · 첫 터치 기다리기 · 가려진 탭 멈춤은 공용 모듈이 맡는다. 공용 모듈이 없으면 조용하다.
+   */
+  playBgm() {
+    sound.whenReady(() => shared!.playBgm('village'));
   },
 };

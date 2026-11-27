@@ -3,6 +3,8 @@
 // - 소리는 ZzFX 방식(코드로 파형을 만든다, MIT · Frank Force)으로 만든다. 외부 파일 없음.
 // - shared/sounds/<이름>.ogg 또는 .mp3 파일을 넣으면 그 소리를 처음 낼 때 확인해서 파일로 바꿔 쓴다.
 // - 켜기/끄기는 브라우저에 저장 (localStorage 'sia:sound'). 시아탱크의 예전 설정('siatank:mute')도 이어받는다.
+// - 배경음(BGM) 파일 재생: playBgm(game, scene) — shared/audio/bgm/<게임>/main|boss.mp3, common/main|win|lose.mp3
+//   (반복 재생, 볼륨 0.4, 장면이 바뀌면 페이드 아웃 → 페이드 인. 효과음 끄기('sia:sound')나 배경음 끄기('sia:bgm')를 따른다.)
 // - 배경음 켜기/끄기는 따로 저장 (localStorage 'sia:bgm'). 곡 자체는 각 게임이 만든다 (시아레이스: games/running/src/ui/music.ts,
 //   shared/sounds/bgmLobby|bgmRace|bgmResult.ogg|.mp3 를 넣으면 그 파일로 바뀐다).
 // - 브라우저 정책: 첫 클릭·터치·키 입력 전에는 소리를 내지 않는다 (그때 오디오를 깨운다).
@@ -215,6 +217,7 @@ const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'tou
 function unlock() {
   unlocked = true;
   const a = audio();
+  bgmKick(); // 배경음: 첫 입력(사용자 동작) 안에서 재생을 시작해야 휴대폰이 허락한다
   // 오디오가 실제로 깨어날 때까지 입력마다 다시 시도 (휴대폰은 touchend/click에서만 깨어나는 경우가 있다)
   if (a && a.state === 'running') for (const ev of UNLOCK_EVENTS) removeEventListener(ev, unlock, true);
 }
@@ -317,6 +320,7 @@ export function setMuted(m) {
     /* 저장 못 해도 이번에는 적용 */
   }
   listeners.forEach((f) => f(muted));
+  bgmApply();
   if (!muted) play('toggle');
 }
 export const toggleMuted = () => (setMuted(!muted), muted);
@@ -345,6 +349,7 @@ export function setBgmOn(on) {
     /* 저장 못 해도 이번에는 적용 */
   }
   bgmListeners.forEach((f) => f(bgmOn));
+  bgmApply();
 }
 /** 배경음 켜기/끄기가 바뀌면 cb(on) → 해제 함수 */
 export function onBgmChange(cb) {
@@ -363,6 +368,176 @@ export async function bgmFileUrl(name) {
     }
   }
   return null;
+}
+
+// ───────────────────────── 배경음(BGM) 파일 재생 ─────────────────────────
+// 오디오 요소는 하나만 쓴다: 휴대폰(특히 아이폰)은 사용자 입력 안에서 한 번 재생한 요소만 나중에 마음대로 재생할 수 있어서,
+// 첫 터치 때 깨운 요소를 계속 다시 쓴다. 곡 바꾸기 = 페이드 아웃 → 주소 바꾸기 → 페이드 인.
+// 소리 크기는 AudioContext 의 GainNode 로 조절한다 (아이폰은 audio.volume 을 바꿀 수 없다). AudioContext 가 없으면 volume.
+export const BGM_VOLUME = 0.4;
+const BGM_FADE_OUT = 600;
+const BGM_FADE_IN = 900;
+const BGM_ONCE = new Set(['win', 'lose']); // 한 번만 (끝나면 조용히)
+const bgmBase = () => new URL('audio/bgm/', import.meta.url).href;
+let bgmEl = null;
+let bgmGain = null; // GainNode (없으면 el.volume)
+let bgmWant = null; // { game, scene, tries: [주소…], i }
+let bgmNow = null; // 지금 요소에 걸린 주소
+let bgmBusy = null; // 진행 중인 바꾸기 (Promise)
+let bgmLevel = 0; // 지금 크기 (0~1, BGM_VOLUME 곱하기 전)
+let bgmRamp = 0;
+let bgmRampTo = -1; // 지금 진행 중인 페이드의 목표 (-1 = 없음)
+
+/** 장면 → 차례로 찾아볼 파일들 (없으면 다음 것): 보스 → 그 게임 main → 로비 곡 */
+function bgmTries(game, scene) {
+  const f = (g, n) => `${bgmBase()}${g}/${n}.mp3`;
+  if (BGM_ONCE.has(scene)) return [f('common', scene)];
+  if (!game || game === 'common' || game === 'lobby') return [f('common', 'main')];
+  const list = scene === 'boss' ? [f(game, 'boss'), f(game, 'main')] : [f(game, 'main')];
+  list.push(f('common', 'main'));
+  return list;
+}
+function bgmAllowed() {
+  return !muted && bgmOn && unlocked && (typeof document === 'undefined' || document.visibilityState !== 'hidden');
+}
+function bgmElement() {
+  if (bgmEl) return bgmEl;
+  if (typeof Audio === 'undefined') return null;
+  const el = new Audio();
+  el.preload = 'auto';
+  el.setAttribute('playsinline', '');
+  el.addEventListener('error', () => {
+    // 파일이 없거나 못 읽음 → 다음 후보
+    if (!bgmWant || el.getAttribute('src') !== bgmNow) return;
+    bgmWant.i++;
+    bgmNow = null;
+    bgmApply();
+  });
+  bgmEl = el;
+  const a = audio();
+  if (a && a.createMediaElementSource) {
+    try {
+      bgmGain = a.createGain();
+      bgmGain.gain.value = 0;
+      a.createMediaElementSource(el).connect(bgmGain).connect(a.destination);
+    } catch {
+      bgmGain = null;
+    }
+  }
+  setLevel(0);
+  return el;
+}
+function setLevel(v) {
+  bgmLevel = Math.max(0, Math.min(1, v));
+  const out = bgmLevel * BGM_VOLUME;
+  if (bgmGain) bgmGain.gain.value = out;
+  else if (bgmEl) bgmEl.volume = out;
+}
+/** 지금 크기에서 to 까지 ms 동안 */
+function fadeTo(to, ms) {
+  const id = ++bgmRamp;
+  bgmRampTo = to;
+  const from = bgmLevel;
+  const t0 = performance.now();
+  return new Promise((done) => {
+    const step = () => {
+      if (id !== bgmRamp) return done(false);
+      const k = ms > 0 ? Math.min(1, (performance.now() - t0) / ms) : 1;
+      setLevel(from + (to - from) * k);
+      if (k >= 1) {
+        bgmRampTo = -1;
+        return done(true);
+      }
+      setTimeout(step, 30); // requestAnimationFrame 은 가려진 탭에서 멈춘다
+    };
+    step();
+  });
+}
+/** 첫 입력 안에서: 요소를 만들고 바로 재생을 시작한다 (휴대폰 허락) */
+function bgmKick() {
+  if (!bgmWant || muted || !bgmOn) return;
+  const el = bgmElement();
+  if (!el) return;
+  const url = bgmWant.tries[bgmWant.i];
+  if (!url) return;
+  if (bgmNow !== url) {
+    bgmNow = url;
+    el.src = url;
+    el.loop = !BGM_ONCE.has(bgmWant.scene);
+  }
+  if (el.paused) el.play().then(() => fadeTo(1, BGM_FADE_IN)).catch(() => undefined);
+}
+/** 지금 원하는 곡·설정에 맞춘다 */
+function bgmApply() {
+  if (bgmBusy) return void bgmBusy.then(() => bgmApply());
+  const el = bgmEl;
+  if (!bgmAllowed() || !bgmWant || !bgmWant.tries[bgmWant.i]) {
+    // 가려진 탭은 바로 멈춘다 (가려진 탭의 타이머는 느려서 페이드가 길게 늘어진다)
+    if (el && !el.paused && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      bgmRamp++;
+      setLevel(0);
+      el.pause();
+      return;
+    }
+    if (el && !el.paused) bgmBusy = fadeTo(0, BGM_FADE_OUT).then((ok) => { if (ok) el.pause(); bgmBusy = null; });
+    return;
+  }
+  const url = bgmWant.tries[bgmWant.i];
+  const target = bgmElement();
+  if (!target) return;
+  if (bgmNow === url) {
+    // 같은 곡: 멈춰 있었으면 이어서 (한 번만 트는 곡이 이미 끝났으면 다시 틀지 않는다)
+    if (target.paused && !target.ended && bgmRampTo !== 1) target.play().then(() => fadeTo(1, BGM_FADE_IN)).catch(() => undefined);
+    // 이미 커지는 중이면 그대로 둔다 (매 프레임 불러도 페이드가 처음부터 다시 시작되지 않게)
+    else if (!target.paused && bgmLevel < 1 && bgmRampTo !== 1) void fadeTo(1, BGM_FADE_IN);
+    return;
+  }
+  bgmBusy = (async () => {
+    if (!target.paused && bgmNow) await fadeTo(0, BGM_FADE_OUT);
+    if (!bgmWant || bgmWant.tries[bgmWant.i] !== url || !bgmAllowed()) return; // 그 사이 바뀜 → 다시 맞춘다
+    bgmNow = url;
+    setLevel(0);
+    target.src = url;
+    target.loop = !BGM_ONCE.has(bgmWant.scene);
+    try {
+      await target.play();
+      void fadeTo(1, BGM_FADE_IN);
+    } catch {
+      /* 재생 거절(입력 전) → 다음 입력 때 bgmKick */
+    }
+  })().finally(() => {
+    bgmBusy = null;
+  });
+  void bgmBusy.then(() => {
+    if (bgmWant && bgmAllowed() && bgmNow !== bgmWant.tries[bgmWant.i]) bgmApply();
+  });
+}
+
+/**
+ * 배경음 틀기. game = games/ 폴더 이름('pang', 'tank' …) 또는 'common'(로비).
+ * scene = 'main'(기본) | 'boss'(보스·긴장) | 'win' | 'lose' (승리·패배는 common/ 의 곡을 한 번만).
+ * 같은 곡이면 아무 일도 없다. 파일이 없으면 보스 → 그 게임 main → 로비 곡 차례로.
+ * 효과음 끄기·배경음 끄기·첫 입력 전·가려진 탭에서는 조용히 기다렸다가 풀리면 튼다.
+ */
+export function playBgm(game, scene = 'main') {
+  const g = game || 'common';
+  if (bgmWant && bgmWant.game === g && bgmWant.scene === scene) {
+    bgmApply();
+    return;
+  }
+  bgmWant = { game: g, scene, tries: bgmTries(g, scene), i: 0 };
+  bgmApply();
+}
+/** 배경음 끄기 (페이드 아웃) */
+export function stopBgm() {
+  bgmWant = null;
+  bgmApply();
+}
+/** 지금 틀려는 배경음 { game, scene } 또는 null */
+export const currentBgm = () => (bgmWant ? { game: bgmWant.game, scene: bgmWant.scene } : null);
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => bgmApply());
+  if (typeof addEventListener === 'function') addEventListener('pagehide', () => bgmEl && bgmEl.pause());
 }
 
 /** 오른쪽 아래 사운드 버튼 (DESIGN.md: 원형 흰 버튼) */

@@ -20,7 +20,7 @@ import { COLOR } from '../theme';
 import { esc, mmss, nav, openSettings, screen, setProfile, showNumbers, stage, state, toast, type GameResult, type GameSetup } from './app';
 import { DPR } from './dpr';
 import { icon } from './icons';
-import { bossTrack, mapTrack, music } from './music';
+import { music } from './music';
 import { sfx, weaponSfx } from './sfx';
 import { whyText } from './upgrade';
 
@@ -159,7 +159,7 @@ export function showGame(setup: GameSetup) {
     <div class="cutin" id="cutin"></div>
     <div class="stick hidden" id="stick"><i></i></div>`,
     `game m-${s.map.id}${s.hell ? ' hell' : ''}`,
-    mapTrack(s.map.id, s.hell),
+    'main',
     () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
@@ -662,14 +662,14 @@ export function showGame(setup: GameSetup) {
     sfx('lose');
     closeLevelUp();
     setCut(`게임 오버<small>${mmss(clockSec())} 버텼어요</small>`, 'bad');
-    music.play(null);
+    music.play('lose');
     finish(false);
   }
   function onClear() {
     sfx('win');
     closeLevelUp();
     setCut(s.hell ? '헬 클리어!<small>헬의 최종 보스를 물리쳤어요</small>' : '클리어!<small>최종 보스를 물리쳤어요</small>', 'go');
-    music.play(null);
+    music.play('win');
     finish(false);
   }
 
@@ -706,7 +706,7 @@ export function showGame(setup: GameSetup) {
         sfx('survBossWarn');
         setCut(`⚠️ ${esc(BOSSES[e.a].name)}<small>${st.hell ? '🔥 헬의 보스가 다가온다!' : '보스가 다가온다!'}</small>`, 'bad warn', 2600);
         flashEdge('warn');
-        music.play(bossTrack(st.hell));
+        music.play('boss');
         break;
       case EV.bossDown:
         sfx('survBossDown');
@@ -718,7 +718,7 @@ export function showGame(setup: GameSetup) {
           const more = st.endless && st.bossKind[st.map.bosses.length - 1] === e.a && st.bossNext === st.map.bosses.length;
           if (more) setCutHeld(`${esc(BOSSES[e.a].name)} 처치!<small>끝이 아니에요. 요괴가 점점 강해져요</small>`, 'go', 2400);
           else if (st.phase === 'play') setCut(`${esc(BOSSES[e.a].name)} 처치!<small>보물상자를 주워요</small>`, 'go', 1800);
-          if (!activeBoss(st)) music.play(mapTrack(st.map.id, st.hell));
+          if (!activeBoss(st)) music.play('main');
         }
         break;
       case EV.evolve:

@@ -4,7 +4,7 @@ import type { RankedEntry } from '../game/ranking';
 import type { RaceApi } from '../net/api';
 import type { GhostRun, SoloSession, SoloStart } from '../net/solo';
 import type { RaceGame } from '../race/game';
-import { music, type TrackName } from './music';
+import { music, type BgmScene } from './music';
 import { sfx, sound } from './sfx';
 
 export const app = document.getElementById('app')!;
@@ -49,8 +49,8 @@ export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ES
 
 let cleanupScreen: (() => void) | null = null;
 
-/** 화면 바꾸기. bgm: 이 화면의 배경음 */
-export function screen(html: string, cls: string, bgm: TrackName | null, cleanup?: () => void): HTMLElement {
+/** 화면 바꾸기. bgm: 이 화면의 배경음 장면 (null = 끄기) */
+export function screen(html: string, cls: string, bgm: BgmScene | null, cleanup?: () => void): HTMLElement {
   cleanupScreen?.();
   cleanupScreen = cleanup ?? null;
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
@@ -113,7 +113,6 @@ export function openSettings() {
     const on = b.dataset.v === '1';
     if ((b.parentElement as HTMLElement).dataset.k === 'bgm') {
       sound.setBgm(on);
-      music.refresh();
     } else sound.setSfx(on);
     paint();
   });

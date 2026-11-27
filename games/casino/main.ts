@@ -1,8 +1,17 @@
 /** 시아카지노: 세븐포커 / 블랙잭 고르기 + 내 칩 */
 import '../lib/style.css';
-import { linkThemeCss, world, worldHome } from '../lib/world.ts';
+import { linkThemeCss, world, worldHome, worldRoot } from '../lib/world.ts';
 
 linkThemeCss();
+
+// 배경음: 카지노 고르기 화면도 카지노 곡 (공용 shared/sound.js. 못 불러오면 조용히). 끌 수 있게 소리 버튼도
+void import(/* @vite-ignore */ new URL('shared/sound.js', worldRoot()).href).then(
+  (m: { playBgm(game: string, scene?: string): void; mountSoundButton(): HTMLElement }) => {
+    m.mountSoundButton();
+    m.playBgm('casino');
+  },
+  () => undefined,
+);
 
 const app = document.getElementById('app')!;
 app.innerHTML = '<div class="center">불러오는 중…</div>';

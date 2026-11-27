@@ -47,17 +47,11 @@ export const sound = {
     shared?.setMuted(!on);
     shared?.setBgmOn(on);
   },
-  /** 배경음: 효과음을 껐으면 배경음도 나지 않는다 */
-  get bgmOn() {
-    return shared ? shared.isBgmOn() && !shared.isMuted() : true;
+  /** 공용 배경음 파일 틀기 (shared/sound.js playBgm, 효과음을 껐으면 배경음도 나지 않는다). 공용 모듈이 없으면 아무 일도 없다 */
+  playBgm(game: string, scene: string) {
+    shared?.playBgm(game, scene);
   },
-  onBgm(fn: (on: boolean) => void) {
-    whenSound(() => {
-      shared!.onBgmChange(fn);
-      shared!.onMuteChange((m) => fn(!m));
-    });
-  },
-  bgmFile(name: string): Promise<string | null> {
-    return shared ? shared.bgmFileUrl(name) : Promise.resolve(null);
+  stopBgm() {
+    shared?.stopBgm();
   },
 };

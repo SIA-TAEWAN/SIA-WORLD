@@ -98,6 +98,6 @@
 | 레벨업 | `villLevel` |
 | 부탁 · 마을 목표 완료 | `villRequest` |
 | 주민 이사 환영 | `villWelcome` |
-| 배경음 낮 / 밤 | `bgmVillDay` / `bgmVillNight` (`src/ui/music.ts`, 코드로 만든 5음 음계 반복곡. 하늘 색과 같은 때에 바뀐다) |
+| 배경음 | `shared/audio/bgm/village/main.mp3` (공용 `playBgm('village')`, 마을 곡 하나) |
 
-소리 버튼은 오른쪽 아래 원형 버튼(다른 게임과 같은 자리). 효과음 설정(`sia:sound`)을 따르고, 배경음은 효과음이 켜져 있고 공용 배경음 설정(`sia:bgm`)도 켜져 있을 때 울린다.
+소리 버튼은 오른쪽 아래 원형 버튼(다른 게임과 같은 자리). 효과음 설정(`sia:sound`)을 따르고, 배경음은 효과음이 켜져 있고 공용 배경음 설정(`sia:bgm`)도 켜져 있을 때 울린다 (공용 모듈이 판단).

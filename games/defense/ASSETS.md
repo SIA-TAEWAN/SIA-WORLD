@@ -121,7 +121,7 @@
 | `defBossWarn` · `defBossDash` · `defBossDown` | 보스 경고 · 특수 행동 · 처치 | `survBossWarn` · `cutin` · `survBossDown` |
 | `defClear` · `defFail` · `defStar` | 클리어 · 실패 · 결과의 별 | `win` · `lose` · `coin` |
 
-배경음은 `src/ui/music.ts` 가 코드로 연주하는 반복곡이다 (시아서바이벌의 연주기). 메인 · 배경 4종(들판·대숲·궁궐·저승) · 보스.
-`shared/sounds/` 에 아래 이름의 `.ogg`(또는 `.mp3`)를 넣으면 그 파일을 반복 재생한다:
-`bgmDefMain` · `bgmDefField` · `bgmDefBamboo` · `bgmDefPalace` · `bgmDefUnderworld` · `bgmDefBoss`.
+배경음은 공용 배경음 파일 (`src/ui/music.ts` → shared/sound.js `playBgm('defense', 장면)`):
+메뉴·지도·판 = `shared/audio/bgm/defense/main.mp3`, 보스 경고(끝없는 모드는 보스 등장)부터 보스가 남아 있는 동안 = `boss.mp3`,
+클리어(끝없는 모드는 끝난 판) = `common/win.mp3`, 실패 = `common/lose.mp3` (결과 화면까지, 포기하면 메인 곡).
 소리 버튼(오른쪽 아래 🔊)은 효과음과 배경음을 함께 켜고 끈다 (공용 설정 `sia:sound` · `sia:bgm`).

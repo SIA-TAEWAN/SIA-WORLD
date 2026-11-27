@@ -4,7 +4,7 @@ import type { MatchResult, MatchSetup } from '../match/game';
 import type { VolleyApi } from '../net/api';
 import type { VolleyLobby } from '../net/lobby';
 import type { VolleyRoom } from '../net/room';
-import { music, type TrackName } from './music';
+import { music, type BgmScene } from './music';
 import { sfx, sound } from './sfx';
 
 export const app = document.getElementById('app')!;
@@ -40,8 +40,8 @@ export const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ES
 
 let cleanupScreen: (() => void) | null = null;
 
-/** 화면 바꾸기. bgm: 이 화면의 배경음 */
-export function screen(html: string, cls: string, bgm: TrackName | null, cleanup?: () => void): HTMLElement {
+/** 화면 바꾸기. bgm: 이 화면의 배경음 장면 (null = 끄기) */
+export function screen(html: string, cls: string, bgm: BgmScene | null, cleanup?: () => void): HTMLElement {
   cleanupScreen?.();
   cleanupScreen = cleanup ?? null;
   // 앞 화면에서 띄운 창(나가기 확인·설정·방법)이 새 화면 위에 남지 않게
@@ -114,7 +114,6 @@ export function openSettings(onClose?: () => void) {
     const on = b.dataset.v === '1';
     if ((b.parentElement as HTMLElement).dataset.k === 'bgm') {
       sound.setBgm(on);
-      music.refresh();
     } else sound.setSfx(on);
     paint();
   });

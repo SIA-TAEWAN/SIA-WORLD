@@ -85,6 +85,18 @@ export const sfx = (name: string) => {
     /* 소리는 없어도 된다 */
   }
 };
+/** 배경음 장면: 보통 화면 · 정예/보스 전투 · 이긴 결과 · 진 결과 */
+type BgmScene = 'main' | 'boss' | 'win' | 'lose';
+let bgmWant: BgmScene = 'main';
+/** 배경음 (shared/audio/bgm/card/…, 없으면 공용 곡). 같은 곡이면 그대로. 공용 모듈이 늦게 오면 붙을 때 튼다 */
+function bgm(scene: BgmScene) {
+  bgmWant = scene;
+  try {
+    ctx.sound?.playBgm('card', scene);
+  } catch {
+    /* 배경음은 없어도 된다 */
+  }
+}
 const worldRoot = () => new URL('../../', document.baseURI);
 const heroImg = (id: string) => new URL(`shared/images/zodiac/full/${id}.png`, worldRoot()).href;
 const heroFace = (id: string) => new URL(`shared/images/zodiac/face/${id}.png`, worldRoot()).href;
@@ -257,7 +269,10 @@ export function boot(user: WorldUser | null) {
     if (ctx.view === 'title') showTitle();
   });
   void loadSound()
-    .then((m) => (ctx.sound = m))
+    .then((m) => {
+      ctx.sound = m;
+      bgm(bgmWant);
+    })
     .catch(() => null);
 }
 
@@ -296,9 +311,10 @@ function stopGame() {
   gameEl().classList.add('hidden');
 }
 
-function screen(html: string, cls = '', view = '') {
+function screen(html: string, cls = '', view = '', music: BgmScene = 'main') {
   ctx.view = view;
   stopGame();
+  bgm(music);
   app().innerHTML = `<div class="screen ${cls}">${html}</div>`;
   app().querySelector('.screen')!.scrollTop = 0;
   requestAnimationFrame(() => shrinkOverflow(app()));
@@ -931,6 +947,8 @@ function showAbyss() {
     <div class="grow"></div>
     <button class="btn primary big" id="fight">맞서 싸우기 ▶</button>`,
     'abyss-screen',
+    '',
+    'boss', // 최종보스 앞 — 보스 곡이 여기서부터
   );
   bindBar(s, showAbyss);
   on(s, '#fight', () => {
@@ -944,6 +962,8 @@ function showAbyss() {
 function showBattle() {
   app().innerHTML = '';
   stopGame();
+  // 정예 · 보스 전투는 보스 곡, 보통 전투는 게임 곡
+  bgm(ctx.run?.battle && ctx.run.battle.kind !== 'battle' ? 'boss' : 'main');
   gameEl().classList.remove('hidden');
   const hooks: BattleHooks = {
     run: () => ctx.run!,
@@ -1241,7 +1261,7 @@ function showResult(step = 0) {
         <p class="dots">${scenes.map((_, i) => `<i class="${i === step ? 'on' : ''}"></i>`).join('')}</p>
         <button class="btn primary big" id="next">${last ? '결과 보기 ▶' : '다음 ▶'}</button>
       </div>
-      <div class="grow"></div>`);
+      <div class="grow"></div>`, '', '', 'win');
     if (step === 0) sfx('win');
     on(s, '#next', () => showResult(step + 1));
     return;
@@ -1267,7 +1287,7 @@ function showResult(step = 0) {
       ${!run.practice && ctx.runId ? '<p class="srv soft">기록을 보내는 중…</p>' : ''}
       <button class="btn primary big" id="again">처음 화면 ▶</button>
     </div>
-    <div class="grow"></div>`);
+    <div class="grow"></div>`, '', '', win ? 'win' : 'lose');
   on(s, '#again', () => {
     ctx.run = null;
     ctx.runId = null;

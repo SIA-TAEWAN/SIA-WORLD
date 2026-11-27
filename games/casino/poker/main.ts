@@ -49,6 +49,8 @@ const ui: GameUI<PokerPublic, PokerPrivate> = {
   autoStart: true,
   title: '세븐포커',
   manual: POKER_MANUAL,
+  // 배경음: 7구(히든) 마지막 베팅부터 쇼다운까지 긴장 곡
+  bgmBoss: (pub) => pub.phase === 'bet7' || pub.phase === 'showdown',
   icon: '♠️',
   back: 'games/casino/',
   backLabel: '카지노',

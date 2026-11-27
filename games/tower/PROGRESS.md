@@ -7,7 +7,7 @@
 - 데이터(JSON, `src/data/`): `floors.json`(10층 구성 규칙 · 구역 10개) · `rooms.json`(방 템플릿, 19×13 글자 그리드 — 예전 15×11 은 읽을 때 채운다) · `enemies.json` · `orbs.json`(16개) · `items.json` · `growth.json`. 타입 붙인 로더 `src/data/index.ts`.
   다음 구역을 열 때: `floors.json` 의 구역에 적·정예·보스를 채우고 `ready: true`, 새 적은 `enemies.json`, 새 방은 `rooms.json`. 새 AI 만 코드(`sim.ts`).
 - 시뮬레이션(순수 TS, 고정 1/60초, 씨앗 Rng): `src/game/floorgen.ts`(층 생성) · `sim.ts`(이동·충돌·3타 콤보·적 AI·무리·퍼즐·구슬 스킬 16개·보스) · `progress.ts`(저장 모양·층 깨기·체크포인트·상점·구슬·각성).
-- 화면: `src/ui/app.ts` · `controls.ts` · `preview.ts` · `music.ts`(배경음) · `src/scenes/GameScene.ts`.
+- 화면: `src/ui/app.ts` · `controls.ts` · `preview.ts` · `music.ts`(배경음 — 11-27부터 코드 반복곡 대신 공용 배경음 파일 `playBgm('tower', main|boss|win|lose)`) · `src/scenes/GameScene.ts`.
 - 서버: `src/net/api.ts` — `tower_state()` · `tower_set_look(p_look)` · `tower_save(p_data, p_cleared)` 만 부른다.
 
 ### 2차 (105): 층 시간 · 11~20층 · 구슬 14개 · 배경음 · 관리자 엽전 — PRD.md '2차'

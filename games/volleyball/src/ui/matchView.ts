@@ -14,6 +14,7 @@ import { DPR } from './dpr';
 import { COLOR, css } from '../theme';
 import { bubble, emoteChips, emoteHub, primaryPress, wireChips } from './emote';
 import { sfx } from './sfx';
+import { music } from './music';
 
 declare global {
   interface Window {
@@ -68,7 +69,7 @@ export function showMatch(setup: MatchSetup) {
       <div class="pbtn jump" data-b="jump">점프</div>
     </div>`,
     'match',
-    'match',
+    'main',
     () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
@@ -338,6 +339,8 @@ export function showMatch(setup: MatchSetup) {
       $(`#pt${s}`).textContent = String(sc[s]);
       $(`#dots${s}`).querySelectorAll('i').forEach((el, i) => el.classList.toggle('on', i < sc[s]));
     }
+    // 배경음: 어느 쪽이든 매치 포인트(한 점만 더 내면 이김)가 되면 긴장 곡 (결과 화면까지 그대로)
+    if (sc[0] >= WIN_SCORE - 1 || sc[1] >= WIN_SCORE - 1) music.play('boss');
   }
   function bump(s: Side) {
     const el = $(`#pt${s}`);

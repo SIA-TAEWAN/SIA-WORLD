@@ -5,7 +5,7 @@ import type { SurvivalApi } from '../net/api';
 import { loadOwned, loadProgress, type CatProgress } from '../net/characters';
 import { CHARACTER_BY_ID } from '../data/characters';
 import type { SurvivalLobby } from '../net/lobby';
-import { music, type TrackName } from './music';
+import { music, type BgmScene } from './music';
 import { sfx, sound } from './sfx';
 
 export const app = document.getElementById('app')!;
@@ -119,7 +119,7 @@ export const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floo
 let cleanupScreen: (() => void) | null = null;
 
 /** 화면 바꾸기. bgm: 이 화면의 배경음 */
-export function screen(html: string, cls: string, bgm: TrackName | null, cleanup?: () => void): HTMLElement {
+export function screen(html: string, cls: string, bgm: BgmScene | null, cleanup?: () => void): HTMLElement {
   cleanupScreen?.();
   cleanupScreen = cleanup ?? null;
   // 앞 화면에서 띄운 창(일시정지·설정)이 새 화면 위에 남지 않게
@@ -214,7 +214,6 @@ export function openSettings(onClose?: () => void) {
     const k = (b.parentElement as HTMLElement).dataset.k;
     if (k === 'bgm') {
       sound.setBgm(on);
-      music.refresh();
     } else if (k === 'sfx') sound.setSfx(on);
     else setNumbers(on);
     paint();

@@ -89,7 +89,8 @@ export function showResult(r: GameResult) {
      <button class="btn primary big" id="again">다시하기 ▶</button>
      ${r.cleared ? '<div class="cheer" id="cheer"></div>' : ''}`,
     'result',
-    'result',
+    // 클리어 = 승리 곡, 게임 오버 = 패배 곡 (판이 끝날 때 이미 튼 곡이 이어진다). 스스로 그만두면 메인 곡
+    r.cleared ? 'win' : r.quit ? 'main' : 'lose',
   );
   // 헬 판: 결과 카드 아래쪽에서 불씨가 올라온다
   const embers = root.querySelector('#embers');
