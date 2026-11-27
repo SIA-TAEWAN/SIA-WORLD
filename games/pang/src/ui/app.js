@@ -309,6 +309,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('ov
 
 // ---------- game state ----------
 let hintCache = null;
+/** 이만큼(초) 아무것도 못 하면 가장 좋은 이동을 보여 준다 */
+const HINT_AFTER = 3;
 let G = null, L = null, phase = 'none', wait = 0, idle = 0, sel = null, down = null, shake = 0;
 const sprites = new Map();
 let dying = [], parts = [], fx = [], texts = [];
@@ -611,8 +613,15 @@ function drawBoard(T) {
   }
   // hint
   if (phase !== 'idle') hintCache = null;
-  else if (idle > 5 && !hintCache) hintCache = E.hint(G) || 'none';
+  else if (idle > HINT_AFTER && !hintCache) hintCache = E.hint(G) || 'none';
   const hint = hintCache && hintCache !== 'none' ? hintCache : null;
+  if (hint) {
+    // 3초 동안 못 움직이면 가장 좋은 이동: 두 칸을 빛나는 테두리로 감싸고 서로 쪽으로 살짝 다가간다
+    const glow = 0.45 + 0.45 * Math.abs(Math.sin(T * 4));
+    x.save(); x.globalAlpha = glow; x.strokeStyle = WHITE; x.lineWidth = 3.5; x.shadowColor = GOLD_LIGHT; x.shadowBlur = 12;
+    for (const [r, c] of hint) { rr(x, c * S + 2, r * S + 2, S - 4, S - 4, S * 0.18); x.stroke(); }
+    x.restore();
+  }
   if (sel) { x.strokeStyle = 'rgba(255,255,255,0.9)'; x.lineWidth = 3; rr(x, sel[1] * S + 2, sel[0] * S + 2, S - 4, S - 4, S * 0.18); x.stroke(); }
   x.save(); x.beginPath(); x.rect(0, 0, BW, BH); x.clip();
   const sc = S / 50;
@@ -625,7 +634,12 @@ function drawBoard(T) {
     let s = sc * (1 - sp.pop * 0.6 + sp.pop * Math.sin(sp.pop * Math.PI) * 0.8);
     let sy = 1;
     if (sp.land) { sy = 1 - Math.sin(sp.land * Math.PI) * 0.12; }
-    if (hint && ((hint[0][0] === tg[0] && hint[0][1] === tg[1]) || (hint[1][0] === tg[0] && hint[1][1] === tg[1]))) s *= 1 + 0.1 * Math.abs(Math.sin(T * 5));
+    const hi = !hint ? -1 : hint[0][0] === tg[0] && hint[0][1] === tg[1] ? 0 : hint[1][0] === tg[0] && hint[1][1] === tg[1] ? 1 : -1;
+    if (hi >= 0) {
+      const o = hint[1 - hi], k = Math.abs(Math.sin(T * 4)) * 0.12 * S;
+      X += (o[1] - tg[1]) * k; Y += (o[0] - tg[0]) * k;
+      s *= 1 + 0.12 * Math.abs(Math.sin(T * 4));
+    }
     x.save(); x.translate(X, Y + (1 - sy) * S * 0.3); x.scale(s, s * sy);
     SPR.draw(x, t.sp === 'orb' ? 'orb' : t.k, T + (id % 17) * 0.37, t.sp === 'line' ? 'line' : null);
     x.restore();
