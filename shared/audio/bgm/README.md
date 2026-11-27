@@ -25,5 +25,6 @@ Pixabay Music(https://pixabay.com/music/)에서 받은 MP3를 게임 폴더에 �
 | pang | 시아팡팡 | cute happy game instrumental | fast puzzle instrumental |
 | card | 시아카드배틀 | asian fantasy card game instrumental | dark oriental boss battle instrumental |
 | ace | 시아에이스 | upbeat arcade shooter instrumental | epic boss battle shooter instrumental |
+| block | 시아블록 | relaxing puzzle game instrumental | upbeat puzzle challenge instrumental |
 
 새 게임을 추가하면 이 표에 한 줄을 추가하고 폴더를 만들어 주세요.

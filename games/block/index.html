@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport: 안드로이드는 viewport-fit=cover 없이 (games/tower/index.html 과 같은 이유) -->
+    <script>(function () { var c = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'; if (/Android/i.test(navigator.userAgent)) c = c.replace(/\s*,?\s*viewport-fit\s*=\s*cover/i, ''); document.write('<meta name="viewport" content="' + c + '" />'); })();</script>
+    <meta name="theme-color" content="#4aa8ff" />
+    <!-- SIA WORLD 앱(PWA): 로비와 같은 manifest·아이콘·서비스 워커. vite-ignore = Vite 가 건드리지 않고 그대로 둔다 -->
+    <link rel="manifest" href="../../manifest.webmanifest" vite-ignore />
+    <link rel="apple-touch-icon" href="../../shared/images/app/apple-touch-icon.png" vite-ignore />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SIA WORLD" />
+    <script type="module" src="../../shared/pwa.js" vite-ignore></script>
+    <meta name="description" content="정령 블록을 끌어다 놓고 줄을 지우는 블록 퍼즐" />
+    <title>시아블록</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="boot" class="connecting">불러오는 중…</div>
+    <div id="main" class="hidden">
+<div id="app">
+  <section id="home">
+    <div class="topbar"><a class="back" id="worldLink" href="../../index.html">← SIA WORLD</a><span class="spacer"></span><span class="pill" id="coinPill" title="시아코인"></span><button class="btn rank" id="rankBtn">🏆 랭킹</button></div>
+    <div class="logo">시아블록</div>
+    <div class="sub">정령 블록을 놓아 줄을 지워요</div>
+    <canvas id="logoArt" aria-hidden="true"></canvas>
+    <div class="panel homebox">
+      <div class="line"><small>내 최고 점수</small><b id="homeBest">0</b></div>
+      <div class="line"><small>이번 주 1등</small><span id="homeWeek">아직 없어요</span></div>
+    </div>
+    <button class="btn primary big" id="startBtn">시작</button>
+    <div class="topline"><button class="pill soundpill" id="soundBtn" type="button" aria-label="소리 설정" title="소리 설정">⚙️ 소리</button></div>
+    <div class="howto">
+      <p>아래 조각 3개를 끌어다 판에 놓아요. 조각은 돌릴 수 없어요.</p>
+      <p>가로나 세로 한 줄이 꽉 차면 지워져요. 이어서 지우면 콤보!</p>
+      <p>남은 조각을 놓을 곳이 없으면 끝나요.</p>
+    </div>
+  </section>
+  <section id="game" class="hidden">
+    <div class="hud">
+      <button class="btn iconbtn" id="pauseBtn" aria-label="멈춤">II</button>
+      <div class="scorebox"><small>점수</small><b id="scoreNum">0</b></div>
+      <div class="panel bestbox" id="bestBox"><small>👑 최고</small><b id="bestNum">0</b></div>
+    </div>
+    <div class="boardwrap"><canvas id="board" aria-label="8×8 판"></canvas></div>
+    <canvas id="tray" aria-label="놓을 조각 3개 — 끌어다 판에 놓으세요 (키보드: 1·2·3, 방향키, Enter)"></canvas>
+    <div class="scenewrap" id="sceneWrap"><canvas id="scene" aria-label="정령들이 노는 모습 — 정령을 누르면 스킬을 써요"></canvas></div>
+  </section>
+</div>
+<canvas id="drag" aria-hidden="true"></canvas>
+<div class="toast" id="toast" role="status"></div>
+<div class="overlay hidden" id="overlay"><div class="panel pop" id="pop"></div></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
