@@ -153,6 +153,7 @@ async function sendClear(id: string, n: number) {
       saveProgress(progress);
       return;
     } catch (e) {
+      if (i > 0 && e instanceof ApiError && e.message === 'bad stage') { await syncState().catch(() => {}); return; }
       if (e instanceof ApiError || i === 2) { toast('스테이지 기록을 보내지 못했어요 · ' + reasonText(e)); return; }
       await new Promise(r => setTimeout(r, 1500));
     }
@@ -162,27 +163,47 @@ async function sendClear(id: string, n: number) {
 /** 이 판의 격추 · 시간을 모은다 (아케이드는 스테이지마다 Sim 을 새로 만들어서) */
 function addRunTotals(sim: Sim) { run.kills += sim.kills; run.frames += sim.frame; }
 
-/** 판 끝을 서버에 보낸다 (연습은 보내지 않음). 시아코인 +1 · 최고 기록 */
-async function sendFinish(sim: Sim, done: boolean) {
-  if (!run.id || run.mode === 'practice') return;
+/** 판 끝에 보낼 것을 지금 값으로 담아 둔다 (판 번호를 비워서 두 번 보내지 않게). 연습이면 null */
+function finishSnapshot(sim: Sim, done: boolean, withThisStage = true) {
+  if (!run.id || run.mode === 'practice') return null;
   const id = run.id;
   run.id = '';
-  addRunTotals(sim);
-  try {
-    const r = await api.finish(id, {
+  if (withThisStage) addRunTotals(sim);
+  return {
+    id,
+    args: {
       score: Math.floor(sim.score), rankScore: Math.floor(run.continued ? run.rankScore : sim.score), kills: run.kills,
       seconds: Math.floor(run.frames / 60), stage: run.mode === 'arcade' ? run.stage : 0, done,
-    });
-    siaCoins = r.siaCoins;
-    if (r.gotCoin) toast(`시아코인 +1 (모두 ${r.siaCoins.toLocaleString()}개)`);
-    await syncState().catch(() => {});
-  } catch (e) {
-    toast('기록을 보내지 못했어요 · ' + reasonText(e));
+    },
+  };
+}
+
+/** 담아 둔 판 끝을 서버에 보낸다 (통신 오류면 두 번 더). 시아코인 +1 · 최고 기록 */
+async function postFinish(snap: ReturnType<typeof finishSnapshot>) {
+  if (!snap) return;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await api.finish(snap.id, snap.args);
+      siaCoins = r.siaCoins;
+      if (r.gotCoin) toast(`시아코인 +1 (모두 ${r.siaCoins.toLocaleString()}개)`);
+      await syncState().catch(() => {});
+      return;
+    } catch (e) {
+      // 다시 보낸 것이 'bad run' 이면 앞의 것이 이미 닿은 것
+      if (i > 0 && e instanceof ApiError && e.message === 'bad run') { await syncState().catch(() => {}); return; }
+      if (e instanceof ApiError || i === 2) { toast('기록을 보내지 못했어요 · ' + reasonText(e)); return; }
+      await new Promise(r => setTimeout(r, 1500));
+    }
   }
 }
 
+async function sendFinish(sim: Sim, done: boolean) { await postFinish(finishSnapshot(sim, done)); }
+
 // ---------------- 타이틀 ----------------
+/** 화면을 옮길 때마다 올린다 (늦게 온 서버 응답이 옛 화면의 동작을 하지 않게) */
+let viewSeq = 0;
 function showTitle() {
+  viewSeq++;
   inGame = false;
   closePop();
   $('hud').classList.add('hidden');
@@ -321,16 +342,24 @@ function showPractice() {
 
 // ---------------- 게임 ----------------
 /** 서버에 판 시작을 알리고 (기체·모드 열림 확인) 시작 */
+let starting = false;
 async function startServerRun(mode: ServerMode, go: () => void, stage = 1) {
-  const btn = document.getElementById('goBtn') as HTMLButtonElement | null;
-  if (btn) btn.disabled = true;
+  if (starting) return;
+  starting = true;
+  const myView = viewSeq;
+  $('app').classList.add('busy');
   try {
-    run.id = await api.start(mode, progress.difficulty, progress.ship, stage);
+    const id = await api.start(mode, progress.difficulty, progress.ship, stage);
+    // 기다리는 사이 다른 화면으로 갔으면 시작하지 않는다 (그 판은 서버에서 하루 뒤 지워진다)
+    if (myView !== viewSeq) return;
+    run.id = id;
     run.kills = 0; run.frames = 0;
     go();
   } catch (e) {
     toast(reasonText(e));
-    if (btn) btn.disabled = false;
+  } finally {
+    starting = false;
+    $('app').classList.remove('busy');
   }
 }
 
@@ -365,6 +394,7 @@ function startStage(n: number, fresh: boolean, carry?: ReturnType<Sim['carry']>)
     if (ALL && at > 0) scene.sim.skipTo(at);
     if (ALL && pw >= 1 && pw <= 4) scene.sim.power = pw;
     scene.setPaused(false);
+    if (document.hidden) pause();
     cutin(`<b>스테이지 ${n}</b><small>${st.name}</small>`, 'stage', 2200);
   };
 }
@@ -379,14 +409,17 @@ function startScript(st: StageDef, lives: number) {
     const pw = Number(params.get('power'));
     if (ALL && pw >= 1 && pw <= 4) scene.sim.power = pw;
     scene.setPaused(false);
+    if (document.hidden) pause();
     cutin(`<b>${st.name}</b><small>${run.mode === 'rush' ? `보스 ${RUSH.length}마리를 가장 빨리` : '얼마나 버틸 수 있을까?'}</small>`, 'stage', 2200);
   };
 }
 let readyThen: (() => void) | null = null;
 let slowTicks = 0;
-function setLite(on: boolean) {
+/** save = 사람이 직접 고른 것 (자동으로 켠 것은 이 판에만) */
+function setLite(on: boolean, save = true) {
   scene.lite = on;
-  try { localStorage.setItem('ace:lite', on ? '1' : '0'); } catch { /* 이번 판만 */ }
+  slowTicks = 0;
+  if (save) try { localStorage.setItem('ace:lite', on ? '1' : '0'); } catch { /* 이번 판만 */ }
 }
 
 function pause() {
@@ -446,7 +479,7 @@ function over(s: HudState) {
   if (run.mode === 'rush') {
     void sendFinish(sim, false);
     popup(`<h3>격추당했어요</h3>
-      <div class="chap">보스 러시 · ${Math.max(0, sim.rushIdx - 1)} / ${RUSH.length} 격파 · ${mmss(s.seconds)}</div>
+      <div class="chap">보스 러시 · ${sim.bossKills} / ${RUSH.length} 격파 · ${mmss(s.seconds)}</div>
       <div class="total">${s.score.toLocaleString()}</div>
       <div class="note">보스 러시 기록은 끝까지 깼을 때 시간으로 남아요</div>
       <div class="col"><button class="btn primary" id="again" type="button">다시 하기 ▶</button><button class="btn" id="toTitle" type="button">타이틀로</button></div>`, el => {
@@ -509,7 +542,7 @@ function clear(sim: Sim) {
   };
 
   if (run.mode === 'rush') {
-    const sec = Math.round(t.frames / 60), full = sim.fled === 0, best = full && (!progress.rushBest || sec < progress.rushBest);
+    const sec = Math.floor(t.frames / 60), full = sim.fled === 0, best = full && (!progress.rushBest || sec < progress.rushBest);
     void sendFinish(sim, full);
     popup(`<h3>${full ? '보스 러시 완주!' : '보스 러시 끝'}</h3>
       <div class="chap">보스 ${RUSH.length}마리 · ${t.total.toLocaleString()}점</div>${tally}
@@ -531,7 +564,8 @@ function clear(sim: Sim) {
   let clearSent: Promise<void> = Promise.resolve();
   if (arcade && run.id) {
     const id = run.id;
-    clearSent = sendClear(id, n).then(() => { if (last) void sendFinish(sim, true); });
+    const snap = last ? finishSnapshot(sim, true) : null;
+    clearSent = sendClear(id, n).then(() => { if (snap) void postFinish(snap); });
     if (!last) addRunTotals(sim);
   }
   const u = unlocked ? SHIPS[unlocked] : null;
@@ -548,7 +582,7 @@ function clear(sim: Sim) {
     el.querySelector('#again')?.addEventListener('click', () => (arcade ? showTitle() : startStage(n, true)));
     // 스테이지를 깬 뒤 끝내면 그 점수로 판을 마친다 (이미 더한 이 스테이지 격추·시간은 빼고 보냄)
     // 클리어 알림이 먼저 서버에 닿은 뒤에 끝을 보낸다 (그래야 방금 연 기체가 남는다)
-    el.querySelector('#toTitle')?.addEventListener('click', () => { run.kills -= sim.kills; run.frames -= sim.frame; void clearSent.then(() => sendFinish(sim, false)); showTitle(); });
+    el.querySelector('#toTitle')?.addEventListener('click', () => { const snap = finishSnapshot(sim, false, false); void clearSent.then(() => postFinish(snap)); showTitle(); });
     el.querySelector('#toMap')?.addEventListener('click', () => { showTitle(); run.mode = 'practice'; showPractice(); });
     countUp(el, t.total, v => v.toLocaleString());
   });
@@ -594,7 +628,7 @@ function onEvent(e: SimEvent) {
       cutin(`<small>${e.mid ? '중간 보스' : run.mode === 'rush' ? `보스 ${scene.sim.rushIdx} / ${RUSH.length}` : '경고!'}</small><b>${e.name}</b>`, e.mid ? '' : 'warn', 2200);
       break;
     case 'flee': if (!e.mid) bgm('main'); cutin(`<b>${e.mid ? '도망갔어요' : '보스가 도망갔어요'}</b><small>제한 시간이 지났어요</small>`); break;
-    case 'bossDown': sfx('survBossDown'); if (!e.mid) { cutin('<b>격파!</b>', 'win', 1600); if (run.mode !== 'rush' && run.mode !== 'endless') bgm('main'); } break;
+    case 'bossDown': sfx('survBossDown'); if (!e.mid) { cutin('<b>격파!</b>', 'win', 1600); if (run.mode !== 'rush') bgm('main'); } break;
     case 'bomb': if (e.kind === 'freeze') cutin('<b>정지!</b>', 'stage', 1200); break;
     case 'coinLost': $('coinChip').classList.remove('lost'); void $('coinChip').offsetWidth; $('coinChip').classList.add('lost'); break;
   }
@@ -658,14 +692,18 @@ async function boot() {
   // 앱이 뒤로 가면 자동으로 멈춤
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   window.addEventListener('blur', pause);
-  try { if (localStorage.getItem('ace:lite') === '1') scene.lite = true; } catch { /* 기본 */ }
+  // 가벼운 화면: 직접 켠 적이 있거나, 움직임 줄이기 설정이면 처음부터
+  try { if (localStorage.getItem('ace:lite') === '1' || matchMedia('(prefers-reduced-motion: reduce)').matches) scene.lite = true; } catch { /* 기본 */ }
+  // 9:16 판이 화면 위아래에 닿지 않으면(여백이 있으면) 노치 여백을 또 넣지 않는다
+  const boxed = () => { const r = $('stage').getBoundingClientRect(); $('stage').classList.toggle('boxed', r.top > 24 && innerHeight - r.bottom > 24); };
+  boxed(); window.addEventListener('resize', boxed);
   setInterval(() => {
     if (showFps) $('fps').textContent = `${Math.round(game.loop.actualFps)}fps · 탄 ${scene.sim?.ebCount ?? 0}`;
     if (!inGame || !scene.sim) return;
     // 느린 폰: 판 중에 4초 넘게 45fps 아래면 가벼운 화면으로 (멈춤 화면에서 다시 끌 수 있다)
     if (!scene.paused && !scene.lite) {
       slowTicks = game.loop.actualFps < 45 ? slowTicks + 1 : 0;
-      if (slowTicks >= 8) { setLite(true); toast('화면이 느려서 가벼운 화면으로 바꿨어요'); }
+      if (slowTicks >= 8) { setLite(true, false); toast('화면이 느려서 가벼운 화면으로 바꿨어요 (멈춤에서 끌 수 있어요)'); }
     }
     if (run.mode === 'endless') $('stageChip').textContent = runLabel();
     // 바람 고원: 지금 바람 방향

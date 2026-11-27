@@ -22,14 +22,19 @@ button { font: inherit; color: inherit; }
 #game canvas { display: block; }
 #app { position: absolute; inset: 0; pointer-events: none; }
 #app > * { pointer-events: auto; }
+/* 판을 덮는 날씨 · 안 보이는 토스트가 드래그를 가로채지 않게 (#app > * 보다 강하게) */
+#app > .weather, #app > .toast, #app > .hud { pointer-events: none; }
+/* 노치 여백: 9:16 판이 화면 위아래에 닿을 때만 (판 밖에 여백이 있으면 main.ts 가 0 으로) */
+#stage { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
+#stage.boxed { --sat: 0px; --sab: 0px; }
 #app > .hud { pointer-events: none; }
 .hud button { pointer-events: auto; }
 
 /* 크림 알약 HUD */
 .hud { position: absolute; inset: 0; }
-.hud-top { position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); top: max(calc(var(--px) * 10), env(safe-area-inset-top)); display: flex; gap: calc(var(--px) * 6); align-items: center; }
+.hud-top { position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); top: max(calc(var(--px) * 10), var(--sat)); display: flex; gap: calc(var(--px) * 6); align-items: center; }
 .hud-top .sp { flex: 1; }
-.hud-bot { position: absolute; left: calc(var(--px) * 10); bottom: max(calc(var(--px) * 12), env(safe-area-inset-bottom)); display: flex; gap: calc(var(--px) * 6); align-items: center; flex-wrap: wrap; max-width: 70%; }
+.hud-bot { position: absolute; left: calc(var(--px) * 10); bottom: max(calc(var(--px) * 12), var(--sab)); display: flex; gap: calc(var(--px) * 6); align-items: center; flex-wrap: wrap; max-width: 70%; }
 .chip { display: inline-flex; align-items: center; gap: calc(var(--px) * 4); background: var(--panel); border: 2px solid var(--outline); border-radius: 999px; padding: calc(var(--px) * 2) calc(var(--px) * 10); font-size: calc(var(--px) * 15); line-height: 1.2; white-space: nowrap; }
 .chip b { font-weight: normal; }
 .chip img { width: calc(var(--px) * 22); height: calc(var(--px) * 22); border-radius: 50%; background: var(--white); border: 2px solid var(--outline); margin-left: calc(var(--px) * -7); }
@@ -44,7 +49,7 @@ button { font: inherit; color: inherit; }
 .btn.primary { background: linear-gradient(var(--primary-light), var(--primary) 55%, var(--primary-deep)); font-size: 22px; }
 .iconbtn { width: calc(var(--px) * 42); height: calc(var(--px) * 42); min-height: 0; padding: 0; font-size: calc(var(--px) * 17); border-radius: calc(var(--px) * 12); }
 
-.bombbtn { position: absolute; right: calc(var(--px) * 14); bottom: max(calc(var(--px) * 16), env(safe-area-inset-bottom)); width: calc(var(--px) * 64); height: calc(var(--px) * 64); border-radius: 50%; padding: 0; background: linear-gradient(var(--primary-light), var(--primary-deep)); border: var(--line) solid var(--outline); box-shadow: 0 var(--depth-button) 0 var(--outline); font-size: calc(var(--px) * 27); display: grid; place-items: center; cursor: pointer; touch-action: none; }
+.bombbtn { position: absolute; right: calc(var(--px) * 14); bottom: max(calc(var(--px) * 16), var(--sab)); width: calc(var(--px) * 64); height: calc(var(--px) * 64); border-radius: 50%; padding: 0; background: linear-gradient(var(--primary-light), var(--primary-deep)); border: var(--line) solid var(--outline); box-shadow: 0 var(--depth-button) 0 var(--outline); font-size: calc(var(--px) * 27); display: grid; place-items: center; cursor: pointer; touch-action: none; }
 .bombbtn:active { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
 .bombbtn em { position: absolute; right: -6px; top: -6px; font-style: normal; background: var(--pink); color: var(--white); border: 2px solid var(--outline); border-radius: 999px; font-size: calc(var(--px) * 13); min-width: calc(var(--px) * 24); height: calc(var(--px) * 24); display: grid; place-items: center; }
 .bombbtn.empty { filter: grayscale(1); opacity: .6; }
@@ -76,7 +81,7 @@ button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) { .pop { animation: none; } }
 
 /* ---------- M2: 보스 체력 바 · 컷인 · 금화 연속 · 정산 ---------- */
-.bossbar { position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); top: calc(max(calc(var(--px) * 10), env(safe-area-inset-top)) + var(--px) * 50); padding: calc(var(--px) * 4) calc(var(--px) * 10) calc(var(--px) * 6); border-radius: calc(var(--px) * 14); pointer-events: none; }
+.bossbar { position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); top: calc(max(calc(var(--px) * 10), var(--sat)) + var(--px) * 50); padding: calc(var(--px) * 4) calc(var(--px) * 10) calc(var(--px) * 6); border-radius: calc(var(--px) * 14); pointer-events: none; }
 .bossbar .nm { display: flex; justify-content: space-between; font-size: calc(var(--px) * 14); line-height: 1.2; }
 .bossbar .nm em { font-style: normal; font-variant-numeric: tabular-nums; }
 .bossbar .nm em.low { color: var(--pink); }
@@ -107,3 +112,6 @@ button { font: inherit; color: inherit; }
 .tally div.miss b { color: var(--empty-line); }
 @keyframes stamp { from { opacity: 0; transform: translateX(-12px); } }
 @media (prefers-reduced-motion: reduce) { .cutin.on, .tally div { animation: none; opacity: 1; } }
+/* 서버에 판 시작을 묻는 동안 다른 버튼을 누르지 못하게 */
+#app.busy .menu, #app.busy .overlay { pointer-events: none; }
+#app.busy .menu .go, #app.busy .overlay .btn.primary { opacity: .6; }
