@@ -4,3 +4,6 @@
 
 # 효과음 후보 (scripts/sound-find.mjs 가 받는 것, 고른 것만 shared/sounds/ 에 올린다)
 shared/sounds/_candidates/
+
+# 브라우저 확인 스크린샷 (Playwright MCP)
+.playwright-mcp/
