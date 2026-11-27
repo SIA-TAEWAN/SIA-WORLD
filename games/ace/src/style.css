@@ -1,0 +1,76 @@
+/* 시아에이스 화면. 시아팡팡(games/pang/src/style.css)의 크림 판 · 갈색 외곽선 · 노란 버튼을 따르고,
+   게임 화면은 B안: 게임판을 9:16 화면 끝까지 쓰고 HUD 는 크림 알약으로 띄운다. 색·글꼴은 shared/theme.css 값만 쓴다 */
+@import '../../../shared/theme.css';
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body {
+  font-family: var(--font); color: var(--ink); background: var(--sky-gradient); background-color: var(--sky-mid);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+}
+button { font: inherit; color: inherit; }
+.hidden { display: none !important; }
+
+/* 세로 9:16 판. PC 는 가운데 + 양옆 하늘 여백 */
+#stage {
+  position: relative; height: 100%; aspect-ratio: 9 / 16; width: auto; max-width: 100vw; max-height: calc(100vw * 16 / 9);
+  margin: 0 auto; overflow: hidden; container-type: size; --px: calc(100cqw / 360);
+  top: 50%; transform: translateY(-50%);
+}
+@media (min-aspect-ratio: 9/16) { #stage { box-shadow: 0 0 0 var(--line-big) var(--outline); } }
+#game { position: absolute; inset: 0; }
+#game canvas { display: block; }
+#app { position: absolute; inset: 0; pointer-events: none; }
+#app > * { pointer-events: auto; }
+#app > .hud { pointer-events: none; }
+.hud button { pointer-events: auto; }
+
+/* 크림 알약 HUD */
+.hud { position: absolute; inset: 0; }
+.hud-top { position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); top: max(calc(var(--px) * 10), env(safe-area-inset-top)); display: flex; gap: calc(var(--px) * 6); align-items: center; }
+.hud-top .sp { flex: 1; }
+.hud-bot { position: absolute; left: calc(var(--px) * 10); bottom: max(calc(var(--px) * 12), env(safe-area-inset-bottom)); display: flex; gap: calc(var(--px) * 6); align-items: center; flex-wrap: wrap; max-width: 70%; }
+.chip { display: inline-flex; align-items: center; gap: calc(var(--px) * 4); background: var(--panel); border: 2px solid var(--outline); border-radius: 999px; padding: calc(var(--px) * 2) calc(var(--px) * 10); font-size: calc(var(--px) * 15); line-height: 1.2; white-space: nowrap; }
+.chip b { font-weight: normal; }
+.chip img { width: calc(var(--px) * 22); height: calc(var(--px) * 22); border-radius: 50%; background: var(--white); border: 2px solid var(--outline); margin-left: calc(var(--px) * -7); }
+.chip.score { font-size: calc(var(--px) * 18); font-variant-numeric: tabular-nums; min-width: calc(var(--px) * 96); justify-content: flex-end; }
+.chip.fps { font-size: calc(var(--px) * 12); background: var(--pill); color: var(--white); border-color: transparent; }
+.mini { display: inline-grid; place-items: center; width: calc(var(--px) * 20); height: calc(var(--px) * 20); margin-left: calc(var(--px) * -7); border-radius: 50%; border: 2px solid var(--outline); font-size: calc(var(--px) * 11); font-style: normal; }
+.mini.p { background: var(--primary); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--white); border: var(--line) solid var(--outline); border-radius: 14px; padding: 6px 16px; min-height: 48px; box-shadow: 0 var(--depth-button) 0 var(--outline); font-size: 18px; cursor: pointer; }
+.btn:active { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
+.btn:focus-visible, .bombbtn:focus-visible { outline: 3px solid var(--white); outline-offset: 2px; }
+.btn.primary { background: linear-gradient(var(--primary-light), var(--primary) 55%, var(--primary-deep)); font-size: 22px; }
+.iconbtn { width: calc(var(--px) * 42); height: calc(var(--px) * 42); min-height: 0; padding: 0; font-size: calc(var(--px) * 17); border-radius: calc(var(--px) * 12); }
+
+.bombbtn { position: absolute; right: calc(var(--px) * 14); bottom: max(calc(var(--px) * 16), env(safe-area-inset-bottom)); width: calc(var(--px) * 64); height: calc(var(--px) * 64); border-radius: 50%; padding: 0; background: linear-gradient(var(--primary-light), var(--primary-deep)); border: var(--line) solid var(--outline); box-shadow: 0 var(--depth-button) 0 var(--outline); font-size: calc(var(--px) * 27); display: grid; place-items: center; cursor: pointer; touch-action: none; }
+.bombbtn:active { transform: translateY(var(--press)); box-shadow: 0 1px 0 var(--outline); }
+.bombbtn em { position: absolute; right: -6px; top: -6px; font-style: normal; background: var(--pink); color: var(--white); border: 2px solid var(--outline); border-radius: 999px; font-size: calc(var(--px) * 13); min-width: calc(var(--px) * 24); height: calc(var(--px) * 24); display: grid; place-items: center; }
+.bombbtn.empty { filter: grayscale(1); opacity: .6; }
+
+/* 팝업 (시아팡팡과 같은 모양) */
+.overlay { position: absolute; inset: 0; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+.panel { background: var(--panel); border: var(--line) solid var(--outline); border-radius: 18px; box-shadow: 0 var(--depth-panel) 0 var(--outline); }
+.pop { width: 100%; max-width: 360px; padding: 16px 16px 18px; text-align: center; animation: pop .22s ease-out; max-height: 100%; overflow-y: auto; }
+@keyframes pop { from { transform: scale(.85); opacity: 0; } }
+.pop h3 { margin: 0; font-weight: normal; font-size: 30px; line-height: 1.15; color: var(--primary); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; text-shadow: 0 3px 0 var(--outline); }
+.pop .logo { font-size: 46px; line-height: 1.05; color: var(--primary); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); }
+.pop .chap { color: var(--ink-soft); font-size: 14px; margin: 4px 0 10px; }
+.pop .note { color: var(--ink-soft); font-size: 13px; margin-top: 4px; }
+.pop .total { font-size: 36px; color: var(--primary-deep); -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; font-variant-numeric: tabular-nums; }
+.pop .col { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.intro { background: var(--panel-strong); border: 2px dashed var(--primary-deep); border-radius: 12px; padding: 8px 10px; font-size: 14px; text-align: left; }
+.intro div { display: flex; align-items: center; gap: 8px; }
+.intro div + div { margin-top: 5px; }
+.key { display: inline-grid; place-items: center; min-width: 34px; height: 22px; padding: 0 5px; border-radius: var(--radius-key); background: var(--outline); color: var(--white); font-size: 12px; flex: none; }
+.tools { margin-top: 10px; text-align: left; }
+.tools .lbl { font-size: 13px; color: var(--ink-soft); margin-bottom: 4px; }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.seg.two { grid-template-columns: repeat(2, 1fr); margin-top: 8px; }
+.seg button { background: var(--white); border: 2px solid var(--outline); border-radius: 12px; padding: 5px 0; font-size: 15px; cursor: pointer; }
+.seg button.on { background: var(--primary); box-shadow: 0 3px 0 var(--outline); }
+
+.toast { position: absolute; left: 50%; top: 30%; transform: translate(-50%, 10px); background: var(--outline); color: var(--white); border-radius: 999px; padding: 8px 18px; font-size: 18px; opacity: 0; pointer-events: none; transition: .2s; z-index: 6; }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .pop { animation: none; } }
